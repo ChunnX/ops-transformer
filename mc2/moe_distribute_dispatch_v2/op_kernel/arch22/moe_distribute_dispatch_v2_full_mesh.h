@@ -56,6 +56,7 @@ constexpr uint32_t RUNPOS_CALCUMSUM = 2U;
 constexpr uint32_t RUNPOS_CUMSUMFLAG = 3U;
 constexpr uint32_t RUNPOS_ARRIVECNT = 4U;
 constexpr uint8_t VALID_EVENT_FLAG_NUM = 8U;
+constexpr uint8_t SEND_RECORDS_PER_EVENT = 2U;
 constexpr uint8_t LOCAL_COPY_BUFFER_NUM = 2U;
 constexpr uint32_t DATA_COPY_MAX_BLOCK_COUNT = 4095U;
 constexpr uint8_t UB_ALIGN_DATA_COUNT = 8U; // 8 = UB_ALIGN / sizeof(float) = UB_ALIGN / sizeof(int32_t)
@@ -104,7 +105,11 @@ private:
                                             bool isMultiCorePerToken, LocalTensor<int32_t> &srcTensorInt32);
     __aicore__ inline void ExpertActiveMaskInit();
     __aicore__ inline void ExpertActiveMaskCal();
-    __aicore__ inline void CalcSendTokenBufNum(TBuf<> &outBuf);
+    __aicore__ inline void CalcSendTokenBufNum(TBuf<> &outBuf, bool allowPair = false);
+    __aicore__ inline void SetSendBufferCapacity(uint64_t availableRecords, bool allowPair);
+    __aicore__ inline uint32_t PrepareSendRecord();
+    __aicore__ inline void QueueSendRecord(GlobalTensor<XOutType> dstWinGMTensor);
+    __aicore__ inline void FlushSendGroup();
     __aicore__ inline void AllToAllDispatchA3(TQue<QuePosition::VECIN, 1> inQueue, TBuf<> outBuf);
     __aicore__ inline void AllToAllDispatch();
     __aicore__ inline void SendCumSum();
@@ -225,8 +230,12 @@ private:
     GM_ADDR statusDataSpaceGM_;
 
     // tiling侧已确保数据上限，相乘不会越界，因此统一采用uint32_t进行处理
-    uint8_t sendTokenBufNum_{0};
-    uint32_t syncFlagId_{0}; // 多buffer发送流水：outTensor_槽位轮转游标
+    uint8_t sendTokenBufNum_{0};   // Physical records, at most two per event group.
+    uint8_t sendEventGroupNum_{0}; // Hardware event IDs remain in [0, 7].
+    uint8_t sendRecordsPerGroup_{1};
+    uint8_t pendingSendRecords_{0};
+    uint64_t pendingSendAddrs_[SEND_RECORDS_PER_EVENT]{};
+    uint32_t syncFlagId_{0}; // Completed send groups, used as the event-group cursor.
     uint32_t axisBS_{0};
     uint32_t axisMaxBS_{0};
     uint32_t axisH_{0};
@@ -506,21 +515,15 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     SyncFunc<HardEvent::V_S>();
     FillTriple(tempTensor_, srcTokenIndex, fillExpertIdx, writeExpertScale);
     SyncFunc<HardEvent::S_V>();
-    // 多buffer发送：等待该slot上一次MTE3发送完成后复用
-    WaitFlag<HardEvent::MTE3_V>(syncFlagId_ % sendTokenBufNum_);
+    uint32_t sendSlot = PrepareSendRecord();
     LocalTensor<int32_t> tempTensorInt32 = tempTensor_.template ReinterpretCast<int32_t>();
-    LocalTensor<int32_t> outTensorInt32 =
-        (outTensor_[(syncFlagId_ % sendTokenBufNum_) * axisHCommu_]).template ReinterpretCast<int32_t>();
+    LocalTensor<int32_t> outTensorInt32 = (outTensor_[sendSlot * axisHCommu_]).template ReinterpretCast<int32_t>();
     // 64 = 256 / sizeof(int32_t) 一次操作字节数; 16、15分别为dst、src相邻迭代间地址步长
     Copy(outTensorInt32, tempTensorInt32, uint64_t(64), uint8_t(blockCntPerToken_), {1, 1, 16, 15});
     // 64：偏移前一次拷贝的256字节；56 = (480 - 256) / sizeof(int32_t)
     // 16、15分别为dst、src相邻迭代间地址步长
     Copy(outTensorInt32[64], tempTensorInt32[64], uint64_t(56), uint8_t(blockCntPerToken_), {1, 1, 16, 15});
-    SetFlag<HardEvent::V_MTE3>(syncFlagId_ % sendTokenBufNum_);
-    WaitFlag<HardEvent::V_MTE3>(syncFlagId_ % sendTokenBufNum_);
-    DataCopy(dstWinGMTensor, outTensor_[(syncFlagId_ % sendTokenBufNum_) * axisHCommu_], axisHCommu_);
-    SetFlag<HardEvent::MTE3_V>(syncFlagId_ % sendTokenBufNum_);
-    syncFlagId_++;
+    QueueSendRecord(dstWinGMTensor);
 }
 
 template <TemplateMC2TypeFullmeshClass>
@@ -538,22 +541,59 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     SyncFunc<HardEvent::MTE2_S>();
     FillTriple(xInTensor, srcTokenIndex, toExpertIndex, writeExpertScale);
     SyncFunc<HardEvent::S_V>();
-    // 多buffer发送：等待该slot上一次MTE3发送完成后复用
-    WaitFlag<HardEvent::MTE3_V>(syncFlagId_ % sendTokenBufNum_);
+    uint32_t sendSlot = PrepareSendRecord();
     LocalTensor<int32_t> xInTensorInt32 = xInTensor.template ReinterpretCast<int32_t>();
-    LocalTensor<int32_t> outTensorInt32 =
-        (outTensor_[(syncFlagId_ % sendTokenBufNum_) * axisHCommu_]).template ReinterpretCast<int32_t>();
+    LocalTensor<int32_t> outTensorInt32 = (outTensor_[sendSlot * axisHCommu_]).template ReinterpretCast<int32_t>();
     // 64 = 256 / sizeof(int32_t) 一次操作字节数; 16、15分别为dst、src相邻迭代间地址步长
     Copy(outTensorInt32, xInTensorInt32, uint64_t(64), uint8_t(blockCntPerToken_), {1, 1, 16, 15});
     // 64：偏移前一次拷贝的256字节；56 = (480 - 256) / sizeof(int32_t)
     // 16、15分别为dst、src相邻迭代间地址步长
     Copy(outTensorInt32[64], xInTensorInt32[64], uint64_t(56), uint8_t(blockCntPerToken_), {1, 1, 16, 15});
     inQueue.FreeTensor<XInType>(xInTensor);
-    SetFlag<HardEvent::V_MTE3>(syncFlagId_ % sendTokenBufNum_);
-    WaitFlag<HardEvent::V_MTE3>(syncFlagId_ % sendTokenBufNum_);
-    DataCopy(dstWinGMTensor, outTensor_[(syncFlagId_ % sendTokenBufNum_) * axisHCommu_], axisHCommu_);
-    SetFlag<HardEvent::MTE3_V>(syncFlagId_ % sendTokenBufNum_);
-    syncFlagId_++;
+    QueueSendRecord(dstWinGMTensor);
+}
+
+template <TemplateMC2TypeFullmeshClass>
+__aicore__ inline uint32_t MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::PrepareSendRecord()
+{
+    uint32_t groupId = syncFlagId_ % sendEventGroupNum_;
+    if (pendingSendRecords_ == 0) {
+        // Both records belong to this event until the group's final DMA has completed.
+        WaitFlag<HardEvent::MTE3_V>(groupId);
+    }
+    return groupId * sendRecordsPerGroup_ + pendingSendRecords_;
+}
+
+template <TemplateMC2TypeFullmeshClass>
+__aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::QueueSendRecord(
+    GlobalTensor<XOutType> dstWinGMTensor)
+{
+    pendingSendAddrs_[pendingSendRecords_] = reinterpret_cast<uint64_t>(dstWinGMTensor.GetPhyAddr());
+    ++pendingSendRecords_;
+    if (pendingSendRecords_ == sendRecordsPerGroup_) {
+        FlushSendGroup();
+    }
+}
+
+template <TemplateMC2TypeFullmeshClass>
+__aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::FlushSendGroup()
+{
+    if (pendingSendRecords_ == 0) {
+        return;
+    }
+    uint32_t groupId = syncFlagId_ % sendEventGroupNum_;
+    // Publish readiness only after every record is packed. Destinations need not be adjacent.
+    SetFlag<HardEvent::V_MTE3>(groupId);
+    WaitFlag<HardEvent::V_MTE3>(groupId);
+    for (uint32_t record = 0; record < pendingSendRecords_; ++record) {
+        GlobalTensor<XOutType> dstWinGMTensor;
+        dstWinGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ XOutType *>(pendingSendAddrs_[record]));
+        uint32_t sendSlot = groupId * sendRecordsPerGroup_ + record;
+        DataCopy(dstWinGMTensor, outTensor_[sendSlot * axisHCommu_], axisHCommu_);
+    }
+    SetFlag<HardEvent::MTE3_V>(groupId);
+    pendingSendRecords_ = 0;
+    ++syncFlagId_;
 }
 
 template <TemplateMC2TypeFullmeshClass>
@@ -605,8 +645,9 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     uint32_t idInSharedGroup = epRankId_ % rankNumPerSharedExpert_;
     // 多buffer发送：预置所有slot为空闲（MTE3_V），发送流水结束后统一回收
     syncFlagId_ = 0;
-    for (int i = 0; i < sendTokenBufNum_; i++) {
-        SetFlag<HardEvent::MTE3_V>(i % sendTokenBufNum_);
+    pendingSendRecords_ = 0;
+    for (int i = 0; i < sendEventGroupNum_; i++) {
+        SetFlag<HardEvent::MTE3_V>(i);
     }
     for (uint32_t virtualTokenIndex = startTokenId; virtualTokenIndex < endTokenId; ++virtualTokenIndex) {
         uint32_t sendTokenIndex = virtualTokenIndex % activeMaskBsCnt_;
@@ -630,9 +671,10 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
             TokenToExpert(dstWinGMTensor, inQueue, srcTokenIndex, axisK_ + toSharedExpertIndex, false);
         }
     }
-    // 等待所有slot上的MTE3发送完成
-    for (int i = 0; i < sendTokenBufNum_; i++) {
-        WaitFlag<HardEvent::MTE3_V>(i % sendTokenBufNum_);
+    // Flush the odd tail before draining both used and initially idle event groups.
+    FlushSendGroup();
+    for (int i = 0; i < sendEventGroupNum_; i++) {
+        WaitFlag<HardEvent::MTE3_V>(i);
     }
 }
 
@@ -678,8 +720,9 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     int32_t endIdx = startIdx + static_cast<int32_t>(sendNum_);
     // 多buffer发送：预置所有slot为空闲（MTE3_V），发送流水结束后统一回收
     syncFlagId_ = 0;
-    for (int i = 0; i < sendTokenBufNum_; i++) {
-        SetFlag<HardEvent::MTE3_V>(i % sendTokenBufNum_);
+    pendingSendRecords_ = 0;
+    for (int i = 0; i < sendEventGroupNum_; i++) {
+        SetFlag<HardEvent::MTE3_V>(i);
     }
     for (int32_t index = startIdx; index < endIdx; index++) {
         int32_t tokenId = index / axisK_;
@@ -698,14 +741,29 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
             TokenToExpert(dstWinGMTensor, inQueue, tokenId, topKId, writeExpertScale);
         }
     }
-    // 等待所有slot上的MTE3发送完成
-    for (int i = 0; i < sendTokenBufNum_; i++) {
-        WaitFlag<HardEvent::MTE3_V>(i % sendTokenBufNum_);
+    // Flush the odd tail before draining both used and initially idle event groups.
+    FlushSendGroup();
+    for (int i = 0; i < sendEventGroupNum_; i++) {
+        WaitFlag<HardEvent::MTE3_V>(i);
     }
 }
 
 template <TemplateMC2TypeFullmeshClass>
-__aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::CalcSendTokenBufNum(TBuf<> &outBuf)
+__aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::SetSendBufferCapacity(
+    uint64_t availableRecords, bool allowPair)
+{
+    // Pair only when all eight event groups fit; otherwise preserve the single-record concurrency.
+    sendRecordsPerGroup_ =
+        allowPair && availableRecords >= VALID_EVENT_FLAG_NUM * SEND_RECORDS_PER_EVENT ? SEND_RECORDS_PER_EVENT : 1U;
+    uint64_t availableGroups = availableRecords / sendRecordsPerGroup_;
+    sendEventGroupNum_ =
+        static_cast<uint8_t>(availableGroups > VALID_EVENT_FLAG_NUM ? VALID_EVENT_FLAG_NUM : availableGroups);
+    sendTokenBufNum_ = sendEventGroupNum_ * sendRecordsPerGroup_;
+}
+
+template <TemplateMC2TypeFullmeshClass>
+__aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::CalcSendTokenBufNum(TBuf<> &outBuf,
+                                                                                                         bool allowPair)
 {
     tpipe_->InitBuffer(calEndBuf_, UB_ALIGN);
     uint64_t beiginUbAddr = (calBeginBuf_.Get<uint8_t>()).GetPhyAddr();
@@ -713,15 +771,12 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     uint64_t usedUbSize = endUbAddr - beiginUbAddr + UB_ALIGN;
     uint64_t remainUbSize = usedUbSize < totalUbSize_ ? totalUbSize_ - usedUbSize : 0;
 
-    sendTokenBufNum_ = remainUbSize / hCommuSize_;
-    if (sendTokenBufNum_ > VALID_EVENT_FLAG_NUM)
-        sendTokenBufNum_ = VALID_EVENT_FLAG_NUM;
+    SetSendBufferCapacity(remainUbSize / hCommuSize_, allowPair);
     if (sendTokenBufNum_ == 0) {
         // Counts are no longer needed after MTE3 finishes reading statusBuf_.
         // Reuse it only when the remaining UB cannot hold a complete token.
         SyncFunc<HardEvent::MTE3_V>();
-        sendTokenBufNum_ = statusCntAlign_ * UB_ALIGN / hCommuSize_;
-        sendTokenBufNum_ = sendTokenBufNum_ > VALID_EVENT_FLAG_NUM ? VALID_EVENT_FLAG_NUM : sendTokenBufNum_;
+        SetSendBufferCapacity(static_cast<uint64_t>(statusCntAlign_) * UB_ALIGN / hCommuSize_, allowPair);
         outBuf = statusBuf_;
         outTensor_ = outBuf.Get<XOutType>();
         return;
@@ -935,8 +990,8 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
             CalcSendTokenBufNum(outBuf);
             SendToMoeExpertByBS(inQueue, outBuf);
         } else {
-            // Token partition uses the same counting scratch as the BS path.
-            CalcSendTokenBufNum(outBuf);
+            // Two independent destinations share one completion event when UB holds both records.
+            CalcSendTokenBufNum(outBuf, true);
             SendToMoeExpert(inQueue, outBuf);
         }
     }
