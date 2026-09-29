@@ -757,7 +757,7 @@
   <tr>
    <td>cclBufferSize</td>
    <td>属性</td>
-   <td>CCL通信缓冲区大小。</td>
+   <td>CCL对称窗口总大小。Ascend 950PR&950DT系列产品上包含前部通信区和后部算子workspace。</td>
    <td>INT64</td>
    <td></td>
   </tr>
@@ -908,7 +908,7 @@
 - **通信域约束**：
   - 所有卡的`epWorldSize`、`cclBufferSize`参数取值需保持一致。
   - 通信域各节点的驱动版本应当相同。
-  - <term>Ascend 950PR&950DT系列产品</term>：Torch接口通过`get_symm_buffer_for_mega_moe`自动计算并申请通信buffer，用户无需自行计算或设置`cclBufferSize`。
+  - <term>Ascend 950PR&950DT系列产品</term>：Torch接口通过`get_symm_buffer_for_mega_moe`自动计算并申请通信buffer及算子workspace的连续空间，用户无需自行计算或设置`cclBufferSize`。
 
 - **组网约束**：
   - <term>Atlas A2系列产品</term>：多机通信域要求交换机组网，不支持双机直连组网。

@@ -74,7 +74,6 @@ const static int64_t MAX_MTE_EP_WORLD_SIZE = 1024LL;
 const static int64_t MAX_URMA_EP_WORLD_SIZE = 1024LL;
 const static int64_t MAX_MOE_EXPERT_NUM = 2048LL;
 const static int64_t INPUT_WEIGHT_SCALES_CEIL_ALIGN = 64LL;
-const static int64_t RESERVED_WORKSPACE_SIZE = 1024 * 1024 * 50LL;
 constexpr float DEFAULT_ACTIVATION_CLAMP = std::numeric_limits<float>::max();
 constexpr float DEFAULT_SWIGLU_OAI_ALPHA = 1.702f;
 constexpr float DEFAULT_SWIGLU_OAI_BETA = 1.0f;
@@ -266,6 +265,7 @@ void PrintMegaMoeTilingData(const MegaMoeTilingData *tilingData, const char *nod
     OP_LOGD(nodeName, "combineSync: slotCountPerExpert=%lu", tilingData->combineSyncSlotCountPerExpert);
     OP_LOGD(nodeName, "dedup: dedupMode=%d, topkWeightsPrefetch=%d", tilingData->dedupMode,
             tilingData->topkWeightsPrefetch);
+    OP_LOGD(nodeName, "cclWorkspaceOffset is %lu", tilingData->cclWorkspaceOffset);
     OP_LOGD(nodeName, "topkWeightsPrefetch is %d", tilingData->topkWeightsPrefetch);
     OP_LOGD(nodeName, "mGroupsPerWave is %u", tilingData->mGroupsPerWave);
 
@@ -984,25 +984,39 @@ static ge::graphStatus CheckAndSetTopkWeightsTypeAttr(const gert::TilingContext 
 /*
  * 按已解析的 token 上界、tensor 维度及量化配置计算 peermem 最小容量，并校验通信窗口大小。
  */
-static ge::graphStatus CheckCclBufferCapacity(const gert::TilingContext *context, const MegaMoeConfig &config,
-                                              const MegaMoeTilingData *tilingData, const char *nodeName)
+static ge::graphStatus CheckAndSetCclBufferCapacity(const gert::TilingContext *context, const MegaMoeConfig &config,
+                                                    MegaMoeTilingData *tilingData,
+                                                    const WorkspaceLayout &workspaceLayout, const char *nodeName)
 {
     auto attrs = context->GetAttrs();
     int64_t yDtypeSize = ge::GetSizeByDataType(context->GetOutputDesc(config.yIndex)->GetDataType());
-    // 记录布局是否带权重段与最终 tilingData 同式（tkw=1 或 combine 去重）。此处收益门尚未裁决
-    // （SetDedupModeParams 排在容量属性之后），tilingData->dedupMode 仍是 CheckDedupRequestAttrs
-    // 落库的原始请求位，按其算下界偏保守（门只会关位、实际需求只小不大），安全。
-    const int64_t dedupModeForLayout = static_cast<int64_t>(tilingData->dedupMode);
     const bool recordHasWeights =
-        tilingData->topkWeightsPrefetch == 1 || (dedupModeForLayout > 0 && IsCombineDedupOn(dedupModeForLayout));
-    int64_t leastCclBufferSize = CalcLeastCclBufferSize(static_cast<int64_t>(tilingData->numMaxTokensPerRank),
-                                                        yDtypeSize, tilingData, recordHasWeights);
+        tilingData->topkWeightsPrefetch == 1 || IsCombineDedupOn(tilingData->dedupMode);
+    int64_t communicationBufferSize = CalcLeastCclBufferSize(
+        static_cast<int64_t>(tilingData->numMaxTokensPerRank), yDtypeSize, tilingData, recordHasWeights);
     int64_t cclBufferSize = static_cast<int64_t>(*attrs->GetAttrPointer<int64_t>((config.attrCclBufferSizeIndex)));
-    OP_TILING_CHECK(cclBufferSize < leastCclBufferSize,
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "cclBufferSize", std::to_string(cclBufferSize).c_str(),
-                                              (std::string("should >= ") + std::to_string(leastCclBufferSize)).c_str()),
+    OP_TILING_CHECK(workspaceLayout.workspaceSize <= 0,
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "workspaceSize",
+                                              std::to_string(workspaceLayout.workspaceSize).c_str(), "positive"),
                     return ge::GRAPH_FAILED);
-    OP_LOGD(nodeName, "cclBufferSize is %ld, leastCclBufferSize is %ld", cclBufferSize, leastCclBufferSize);
+    OP_TILING_CHECK(communicationBufferSize > std::numeric_limits<int64_t>::max() - workspaceLayout.workspaceSize,
+                    OP_LOGE(nodeName, "CCL buffer size overflows when appending MegaMoe workspace."),
+                    return ge::GRAPH_FAILED);
+    int64_t requiredCclBufferSize = communicationBufferSize + workspaceLayout.workspaceSize;
+    OP_TILING_CHECK(cclBufferSize < requiredCclBufferSize,
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "cclBufferSize", std::to_string(cclBufferSize).c_str(),
+                                              (std::string("should >= communication buffer (") +
+                                               std::to_string(communicationBufferSize) + ") + workspace (" +
+                                               std::to_string(workspaceLayout.workspaceSize) + ") = " +
+                                               std::to_string(requiredCclBufferSize))
+                                                  .c_str()),
+                    return ge::GRAPH_FAILED);
+    // The communication layout occupies the window prefix. Keep the operator workspace immediately after that
+    // prefix; any capacity beyond the required sum remains unused at the end of the registered window.
+    tilingData->cclWorkspaceOffset = static_cast<uint64_t>(communicationBufferSize);
+    OP_LOGD(nodeName,
+            "cclBufferSize=%ld, communicationBufferSize=%ld, workspaceSize=%ld, cclWorkspaceOffset=%lu",
+            cclBufferSize, communicationBufferSize, workspaceLayout.workspaceSize, tilingData->cclWorkspaceOffset);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1566,10 +1580,9 @@ static void SetAdaptiveBufferConfigs(const gert::TilingContext *context, const M
 }
 
 /*
- * 汇总系统、算子及保留区 workspace 大小，并写入 tiling context。
+ * 仅申请框架 LibAPI 需要的系统 workspace。MegaMoe 算子 workspace 位于 CCL 对称窗口尾部。
  */
-static ge::graphStatus SetWorkspace(gert::TilingContext *context, const WorkspaceLayout &workspaceLayout,
-                                    const char *nodeName)
+static ge::graphStatus SetWorkspace(gert::TilingContext *context, const char *nodeName)
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     int64_t sysWorkspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
@@ -1577,16 +1590,10 @@ static ge::graphStatus SetWorkspace(gert::TilingContext *context, const Workspac
     size_t *workspace = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workspace == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "workspace"), return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK(workspaceLayout.workspaceSize == 0LL,
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "workspaceSize",
-                                              std::to_string(workspaceLayout.workspaceSize).c_str(), "non-zero"),
-                    return ge::GRAPH_FAILED);
-
-    int64_t workspaceSize = sysWorkspaceSize + workspaceLayout.workspaceSize + RESERVED_WORKSPACE_SIZE;
-    workspace[0] = workspaceSize;
+    workspace[0] = sysWorkspaceSize;
 
     OP_LOGD(nodeName, "sysWorkspaceSize: %ld \n", sysWorkspaceSize);
-    OP_LOGD(nodeName, "mega_moe_tiling workspaceSize: %ld \n", workspaceSize);
+    OP_LOGD(nodeName, "mega_moe_tiling workspaceSize: %ld \n", sysWorkspaceSize);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -2625,7 +2632,7 @@ static ge::graphStatus CheckAndSetExpertExecutionParams(const gert::TilingContex
 }
 
 /*
- * 校验并设置 token 容量属性，同时检查 CCL 缓冲区容量。
+ * 校验并设置 token 容量属性。CCL 容量要在完整 workspace 布局生成后统一检查。
  */
 static ge::graphStatus CheckAndSetCapacityAttrs(const gert::TilingContext *context, const MegaMoeConfig &config,
                                                 MegaMoeTilingData *tilingData, const char *nodeName)
@@ -2634,8 +2641,6 @@ static ge::graphStatus CheckAndSetCapacityAttrs(const gert::TilingContext *conte
                     OP_LOGE(nodeName, "maximum tokens per rank is invalid."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckAndSetMaxRecvTokenNumAttr(context, config, tilingData, nodeName) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "maximum received token count is invalid."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(CheckCclBufferCapacity(context, config, tilingData, nodeName) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(nodeName, "CCL buffer capacity is insufficient."), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -2875,7 +2880,10 @@ static ge::graphStatus CommitTilingResult(gert::TilingContext *context, const Me
         CalcMegaMoeL1Layout(std::max(uint64_t{tilingData->h}, uint64_t{tilingData->hiddenDim / 2U}));
 
     WorkspaceLayout workspaceLayout(tilingData);
-    OP_TILING_CHECK(SetWorkspace(context, workspaceLayout, nodeName) != ge::GRAPH_SUCCESS,
+    OP_TILING_CHECK(
+        CheckAndSetCclBufferCapacity(context, config, tilingData, workspaceLayout, nodeName) != ge::GRAPH_SUCCESS,
+        OP_LOGE(nodeName, "CCL buffer capacity is insufficient."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(SetWorkspace(context, nodeName) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Tiling set workspace failed."), return ge::GRAPH_FAILED);
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
@@ -2930,7 +2938,7 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
                     OP_LOGE(nodeName, "capacity attributes are invalid."), return ge::GRAPH_FAILED);
 
     // 通信去重：请求位落库 + per-shape 收益/容量门。prepass 容量护栏要读 numMaxTokensPerRank，
-    // 故必须排在容量属性落库之后；CCL 窗口下界按原始请求位算（GetDedupMode），不依赖本步裁决。
+    // 故必须排在容量属性落库之后；CCL 窗口下界在收益门确定最终布局后于 CommitTilingResult 中检查。
     OP_TILING_CHECK(SetDedupModeParams(context, config, tilingData, nodeName) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "dedup mode params are invalid."), return ge::GRAPH_FAILED);
 

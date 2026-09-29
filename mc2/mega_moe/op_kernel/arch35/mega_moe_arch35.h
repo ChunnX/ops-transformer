@@ -318,9 +318,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     params_.y2GmAddr = yOut;
     params_.expertTokenNumsOutGmAddr = expertTokenNumsOut;
     params_.probsGmAddr = topkWeights;
+    (void)workspaceGM;
     {
         WorkspaceLayout workspaceLayout(tilingData);
-        params_.workspaceInfo.Bind(workspaceGM, workspaceLayout);
+        GM_ADDR cclWorkspace =
+            reinterpret_cast<GM_ADDR>(mc2Context_->epHcclBuffer_[rankId_]) + tilingData->cclWorkspaceOffset;
+        params_.workspaceInfo.Bind(cclWorkspace, workspaceLayout);
     }
     params_.peermemInfo = PeermemInfo(g_winRankAddr_[rankId_], tilingData, A_ELEMS_PER_BYTE);
     params_.tilingData = tilingData;
