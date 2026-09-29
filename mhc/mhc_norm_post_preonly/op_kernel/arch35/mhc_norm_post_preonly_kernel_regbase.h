@@ -316,8 +316,8 @@ __aicore__ inline void VFPairMulAdd(const LocalTensor<float> &dst, const LocalTe
     }
 }
 
-// 完整分块在寄存器内跨向量累加，每行仅向UB写回一个向量供最终归约。
-template <bool ACCUMULATE = false>
+// 完整分块在寄存器内跨向量累加，每行仅向UB写回一个向量供最终归约；SQUARE要求两组乘法输入各自相同。
+template <bool ACCUMULATE = false, bool SQUARE = false>
 __aicore__ inline void VFPairMulAddCompact(const LocalTensor<float> &dst, const LocalTensor<float> &src00,
                                             const LocalTensor<float> &src01, const LocalTensor<float> &src10,
                                             const LocalTensor<float> &src11, uint32_t count)
@@ -336,11 +336,20 @@ __aicore__ inline void VFPairMulAddCompact(const LocalTensor<float> &dst, const 
         for (uint16_t i = 0; i < loops; ++i) {
             const uint32_t off = static_cast<uint32_t>(i) * VL_FP32;
             Reg::LoadAlign(ar, a + off);
-            Reg::LoadAlign(br, b + off);
+            if constexpr (!SQUARE) {
+                Reg::LoadAlign(br, b + off);
+            }
             Reg::LoadAlign(cr, c + off);
-            Reg::LoadAlign(dr, d + off);
-            Reg::Mul(p0, ar, br, mask);
-            Reg::Mul(p1, cr, dr, mask);
+            if constexpr (!SQUARE) {
+                Reg::LoadAlign(dr, d + off);
+            }
+            if constexpr (SQUARE) {
+                Reg::Mul(p0, ar, ar, mask);
+                Reg::Mul(p1, cr, cr, mask);
+            } else {
+                Reg::Mul(p0, ar, br, mask);
+                Reg::Mul(p1, cr, dr, mask);
+            }
             Reg::Add(pair, p0, p1, mask);
             Reg::Add(acc, acc, pair, mask);
         }
