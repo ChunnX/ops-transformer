@@ -250,8 +250,6 @@ void ExpectSwigluParams(const ::GMMSwigluQuantSwigluParams &params, int64_t mode
     EXPECT_EQ(params.roundMode, 0U);
     EXPECT_EQ(params.reserved0, 0U);
     EXPECT_EQ(params.reserved1, 0U);
-    EXPECT_EQ(params.reserved2, 0U);
-    EXPECT_EQ(params.reserved3, 0U);
 }
 
 template <typename DeviceTiling, typename HostTiling>
@@ -268,10 +266,8 @@ void ExpectHostTailReset(HostTiling &host)
     previous.scaleAlg = SCALE_ALG_CUBLAS;
     previous.dstTypeMax = FP8_MAX_FINITE;
     previous.roundMode = DIRTY_BYTE_PATTERN;
-    previous.reserved0 = DIRTY_BYTE_PATTERN;
-    previous.reserved1 = DIRTY_HALFWORD_PATTERN;
-    previous.reserved2 = DIRTY_BYTE_PATTERN;
-    previous.reserved3 = DIRTY_HALFWORD_PATTERN;
+    previous.reserved0 = DIRTY_HALFWORD_PATTERN;
+    previous.reserved1 = 0xA5A5A5A5U;
     optiling::SetGMMSwigluQuantSwigluParams(host.swigluParams, previous);
     host.SaveToBuffer(buffer.data(), buffer.size());
     DeviceTiling decoded{};
@@ -290,6 +286,11 @@ void ExpectHostTailReset(HostTiling &host)
 TEST(GroupedMatmulSwigluQuantV3Route, SharedPayloadsPreserveLegacyPrefixes)
 {
     EXPECT_EQ(sizeof(::GMMSwigluQuantSwigluParams), EXPECTED_SWIGLU_PARAMS_BYTES);
+    EXPECT_EQ(offsetof(::GMMSwigluQuantSwigluParams, dstTypeMax), 20U);
+    EXPECT_EQ(offsetof(::GMMSwigluQuantSwigluParams, scaleAlg), 24U);
+    EXPECT_EQ(offsetof(::GMMSwigluQuantSwigluParams, roundMode), 25U);
+    EXPECT_EQ(offsetof(::GMMSwigluQuantSwigluParams, reserved0), 26U);
+    EXPECT_EQ(offsetof(::GMMSwigluQuantSwigluParams, reserved1), 28U);
     EXPECT_EQ(sizeof(::GMMSwigluQuantV2Params), EXPECTED_CGMCT_PARAMS_BYTES);
     EXPECT_EQ(offsetof(CgmctTilingData, mmTilingData), EXPECTED_CGMCT_PARAMS_BYTES);
     EXPECT_EQ(offsetof(CgmctTilingData, swigluParams), EXPECTED_CGMCT_PARAMS_BYTES + sizeof(::TCubeTiling));

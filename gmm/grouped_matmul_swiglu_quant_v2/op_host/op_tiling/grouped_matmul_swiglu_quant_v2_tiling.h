@@ -89,13 +89,11 @@ TILING_DATA_FIELD_DEF(int64_t, swigluMode);
 TILING_DATA_FIELD_DEF(float, clampLimit);
 TILING_DATA_FIELD_DEF(float, gluAlpha);
 TILING_DATA_FIELD_DEF(float, gluBias);
-TILING_DATA_FIELD_DEF(uint8_t, scaleAlg);
-TILING_DATA_FIELD_DEF(uint8_t, reserved0);
-TILING_DATA_FIELD_DEF(uint16_t, reserved1);
 TILING_DATA_FIELD_DEF(float, dstTypeMax);
+TILING_DATA_FIELD_DEF(uint8_t, scaleAlg);
 TILING_DATA_FIELD_DEF(uint8_t, roundMode);
-TILING_DATA_FIELD_DEF(uint8_t, reserved2);
-TILING_DATA_FIELD_DEF(uint16_t, reserved3);
+TILING_DATA_FIELD_DEF(uint16_t, reserved0);
+TILING_DATA_FIELD_DEF(uint32_t, reserved1);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(GMMSwigluQuantSwigluParamsOp, GMMSwigluQuantSwigluParamsHost)
 
@@ -106,13 +104,11 @@ inline void SetGMMSwigluQuantSwigluParams(GMMSwigluQuantSwigluParamsHost &target
     target.set_clampLimit(source.clampLimit);
     target.set_gluAlpha(source.gluAlpha);
     target.set_gluBias(source.gluBias);
+    target.set_dstTypeMax(source.dstTypeMax);
     target.set_scaleAlg(source.scaleAlg);
+    target.set_roundMode(source.roundMode);
     target.set_reserved0(source.reserved0);
     target.set_reserved1(source.reserved1);
-    target.set_dstTypeMax(source.dstTypeMax);
-    target.set_roundMode(source.roundMode);
-    target.set_reserved2(source.reserved2);
-    target.set_reserved3(source.reserved3);
 }
 
 BEGIN_TILING_DATA_DEF(GMMSwigluQuantTilingDataParams)

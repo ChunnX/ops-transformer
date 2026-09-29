@@ -31,13 +31,11 @@ struct GMMSwigluQuantSwigluParams {
     float clampLimit = GMMSQ_DEFAULT_CLAMP_LIMIT;
     float gluAlpha = GMMSQ_DEFAULT_GLU_ALPHA;
     float gluBias = GMMSQ_DEFAULT_GLU_BIAS;
-    uint8_t scaleAlg = 0;
-    uint8_t reserved0 = 0;
-    uint16_t reserved1 = 0;
     float dstTypeMax = 0.0F;
+    uint8_t scaleAlg = 0;
     uint8_t roundMode = 0;
-    uint8_t reserved2 = 0;
-    uint16_t reserved3 = 0;
+    uint16_t reserved0 = 0;
+    uint32_t reserved1 = 0;
 };
 #pragma pack(pop)
 
