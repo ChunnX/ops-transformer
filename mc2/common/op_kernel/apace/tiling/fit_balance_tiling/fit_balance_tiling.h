@@ -45,6 +45,29 @@
 #include "fit_balance_tiling_utils/solver.h"
 
 // 统一入口: 算子侧只传大结构体标定数据 + 键控枚举(原语/顺序/引擎; soc 恒 950)
+// 通信标定行查找: 按引擎分区(aicpu/ccu) + rankDim 匹配首个命中行; miss 返回 nullptr。
+// rankDim=0 为未填行哨兵(截断)。
+inline const FitBalanceCalibration::CommFit::Row *FindCommFitRow(const FitBalanceCalibration &calib,
+                                                                 TilingCommEngine commEngine, uint32_t rankDim)
+{
+    const auto &rows = (commEngine == TilingCommEngine::CCU) ? calib.ccu.rows : calib.aicpu.rows;
+    for (size_t i = 0; i < FitBalanceCalibration::MAX_COMM_FIT_ROWS; ++i) {
+        if (rows[i].rankDim == 0) {
+            break;
+        }
+        if (rows[i].rankDim == rankDim) {
+            return &rows[i];
+        }
+    }
+    return nullptr;
+}
+
+// 标定命中判定(算子分派查询): 命中 → fit-balance; miss → 走核利用率优先等其他切分策略
+inline bool IsCommCalibrated(uint32_t rankDim, TilingCommEngine commEngine, const FitBalanceCalibration &calib)
+{
+    return FindCommFitRow(calib, commEngine, rankDim) != nullptr;
+}
+
 inline FitBasedBalanceCtx InitCtx(const FitBalanceTilingArgs &args, LocalMMPosition localMMPosition,
                                   CommComputeOrder order, TilingCommEngine commEngine,
                                   const FitBalanceCalibration &calib)

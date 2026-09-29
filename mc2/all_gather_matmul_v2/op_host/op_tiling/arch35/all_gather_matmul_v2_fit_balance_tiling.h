@@ -19,7 +19,7 @@
  *       通信) / mm 总行数倍数 rankDim(聚合后算全量)）;
  *   二) 边界转换: 旧全局类型(mc2tiling::TilingArgs/CutResult) ↔ 引擎入参;
  *   三) 一行组装 ScheduleFitBalance: 引擎入口 FitBalanceCut(LocalMMPosition::FRONT, ...);
- *   四) 标定命中判定 IsCommCalibrated(miss→核利用率优先分派) + COF 结果转换。
+ *   四) 分派调用: 引擎的 IsCommCalibrated(命中判定, miss→核利用率优先)+ COF 结果转换。
  *
  * 公共逻辑与 FRONT 键控分支（本地首块重叠建模/长块反解/短块收尾 + D4/D5/D6 胶水)
  * 均在 apace/tiling/fit_balance_tiling.h(global)。
@@ -112,22 +112,6 @@ inline CutResult ScheduleFitBalance(const mc2tiling::TilingArgs &args, TilingCom
     CutResult cut = ToLegacyCut(FitBalanceCut(ToEngineArgs(args), LocalMMPosition::FRONT, CommComputeOrder::COMM_FIRST,
                                               commEngine, CALIBRATION));
     return cut;
-}
-
-//  全家族分派: 通信标定表命中 → fit-balance; miss(未标定 rank) → 核利用率优先(op 侧自备
-// 全量 mm tiling 后调 GetCommTilingFromV3)。本函数只判断标定命中, COF 路径在各 tiling 类实现。
-inline bool IsCommCalibrated(uint32_t rankDim, TilingCommEngine commEngine)
-{
-    const auto &rows = (commEngine == TilingCommEngine::CCU) ? CALIBRATION.ccu.rows : CALIBRATION.aicpu.rows;
-    for (const auto &row : rows) {
-        if (row.rankDim == 0) { // 哨兵截断(与 InitCtx 同约定)
-            break;
-        }
-        if (row.rankDim == rankDim) {
-            return true;
-        }
-    }
-    return false;
 }
 
 // COF 结果(head 在前/tail 在后) → CutResult(long/short) 映射; 短块(尾块)后置

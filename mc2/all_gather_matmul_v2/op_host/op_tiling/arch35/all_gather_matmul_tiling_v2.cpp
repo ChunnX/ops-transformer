@@ -134,7 +134,7 @@ CutResult AllGatherMatmulTilingV2::GetTilingResult()
     // 分派: 通信标定表命中 → fit-balance; miss(未标定 rank) → 核利用率优先(mm-first)
     const auto commEngine = ParseCommEngine(commMode_);
     CutResult result;
-    if (IsCommCalibrated(args_.rankDim, commEngine)) {
+    if (IsCommCalibrated(args_.rankDim, commEngine, CALIBRATION)) {
         result = GetFitBalanceCut(args_, commEngine);
     } else {
         result = GetCutResByCoreOccupancyFirst();
