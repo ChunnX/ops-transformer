@@ -407,6 +407,44 @@ def _build_plan(
     )
 
 
+def _plan_matches(
+    plan: _FastPathPlan,
+    q: torch.Tensor,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    tensor_layout: str,
+    is_causal: bool,
+    qk_quant_gran: str,
+    sm_scale: Optional[float],
+    pv_accum_dtype: str,
+    smooth_k: bool,
+    return_lse: bool,
+) -> bool:
+    """Whether a cached plan is valid for these exact inputs; anything else needs _validate."""
+    return (
+        not (q.requires_grad or k.requires_grad or v.requires_grad)
+        and q.stride(-1) == 1
+        and k.stride(-1) == 1
+        and v.stride(-1) == 1
+        and q.dtype is plan.dtype
+        and k.dtype is plan.dtype
+        and v.dtype is plan.dtype
+        and q.device == plan.device
+        and k.device == plan.device
+        and v.device == plan.device
+        and q.shape == plan.q_shape
+        and k.shape == plan.k_shape
+        and v.shape == plan.v_shape
+        and tensor_layout == plan.tensor_layout
+        and is_causal == plan.is_causal
+        and return_lse == plan.return_lse
+        and sm_scale == plan.sm_scale
+        and smooth_k == plan.smooth_k
+        and qk_quant_gran == plan.qk_quant_gran
+        and pv_accum_dtype == plan.pv_accum_dtype
+    )
+
+
 def _dispatch(
     q: torch.Tensor,
     k: torch.Tensor,
@@ -421,31 +459,30 @@ def _dispatch(
     return_lse: bool,
     kwargs: Optional[Dict[str, Any]],
 ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
-    """Ultra-low latency dispatch with fast-path caching for inference loops."""
+    """Dispatch with cached execution plans for repeated inference calls."""
     global _LAST_PLAN, _PLAN_CACHE
 
+    cacheable = not kwargs and not smooth_v
     plan = _LAST_PLAN
-    # Fast path: check last plan (typical in layer-by-layer transformer loops)
-    if (
-        plan is not None
-        and not kwargs
-        and not smooth_v
-        and q.shape == plan.q_shape
-        and k.shape == plan.k_shape
-        and q.dtype is plan.dtype
-        and tensor_layout == plan.tensor_layout
-        and is_causal == plan.is_causal
-        and return_lse == plan.return_lse
-        and sm_scale == plan.sm_scale
-        and smooth_k == plan.smooth_k
-        and qk_quant_gran == plan.qk_quant_gran
-        and pv_accum_dtype == plan.pv_accum_dtype
-        and not q.requires_grad
-    ):
-        pass  # Fast-path hit
-    else:
-        # Cache lookup or full build
-        if not kwargs and not smooth_v:
+    matched = (
+        cacheable
+        and plan is not None
+        and _plan_matches(
+            plan,
+            q,
+            k,
+            v,
+            tensor_layout,
+            is_causal,
+            qk_quant_gran,
+            sm_scale,
+            pv_accum_dtype,
+            smooth_k,
+            return_lse,
+        )
+    )
+    if not matched:
+        if cacheable:
             key = (
                 q.shape,
                 k.shape,
@@ -461,19 +498,22 @@ def _dispatch(
                 sm_scale,
             )
             plan = _PLAN_CACHE.get(key)
-            if (
+            if not (
                 plan is not None
-                and k.dtype is plan.dtype
-                and v.dtype is plan.dtype
-                and k.device == plan.device
-                and v.device == plan.device
-                and q.stride(-1) == 1
-                and k.stride(-1) == 1
-                and v.stride(-1) == 1
-                and not (q.requires_grad or k.requires_grad or v.requires_grad)
+                and _plan_matches(
+                    plan,
+                    q,
+                    k,
+                    v,
+                    tensor_layout,
+                    is_causal,
+                    qk_quant_gran,
+                    sm_scale,
+                    pv_accum_dtype,
+                    smooth_k,
+                    return_lse,
+                )
             ):
-                _LAST_PLAN = plan
-            else:
                 plan = _build_plan(
                     q,
                     k,
@@ -491,7 +531,7 @@ def _dispatch(
                 if len(_PLAN_CACHE) >= _MAX_CACHE_SIZE:
                     _PLAN_CACHE.clear()
                 _PLAN_CACHE[key] = plan
-                _LAST_PLAN = plan
+            _LAST_PLAN = plan
         else:
             plan = _build_plan(
                 q,

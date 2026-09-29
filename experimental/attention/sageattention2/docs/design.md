@@ -412,12 +412,11 @@ Attention 阶段的任务粒度不是整个 head，而是 128 行的 Query tile�
 total = B * Hq * ceil(Sq / 128)
 ```
 
-各核心以循环步长 `cores`（AIC 数，AIV 以 GetBlockIdx()/2 对齐到同一 AIC 组）领取任务（`attention.h` 主循环）。以 P-01（B=1, Hq=32, Sq=4096）为例：
+各核心以循环步长 `cores`（AIC 数，AIV 以 GetBlockIdx()/2 对齐到同一 AIC 组）领取任务（`attention.h` 主循环）。以 B=1、Hq=32、Sq=4096 为例：
 
 ```text
 total = 1 * 32 * 32 = 1024 个任务，24 个 AIC 核心
 波次数 = ceil(1024 / 24) = 43 波（最后一波 1024 - 42*24 = 16 个任务）
-核心平均利用率 = 1024 / (24 * 43) = 99.2%
 ```
 
 任务粒度为 128 行 Query tile，波次末尾的不完整波次只影响一 wave 内的核心数；按 head 静态分配时 `B*Hq=32 < 2*24` 会出现核心闲置。`DieTaskEnd`（`common.h`）以虚拟循环任务空间精确计算每核的终止边界，正确处理不满一波的尾波。
@@ -629,7 +628,7 @@ p.qs[2] = p.d;  p.qs[1] = uint64_t(p.sq) * p.d;  p.qs[0] = uint64_t(p.hq) * p.qs
 在线 Softmax 的全局累加更新形式为：
 `O = O * alpha + PV`，其中 `alpha = exp(m_old - m_new)`。
 
-当当前切块的局部最大值未突破历史极大值时，`m_new == m_old`，此时重缩放系数 `alpha` 精确等于 `1.0f`。在具有注意力汇聚（Attention Sink）或长序列因果推断的场景中，该现象出现得较为频繁。
+当当前切块的局部最大值未超过历史极大值时，`m_new == m_old`，此时重缩放系数 `alpha` 精确等于 `1.0f`。在具有注意力汇聚（Attention Sink）或长序列因果推断的场景中，该现象出现得较为频繁。
 
 本算子在 `output_update.h` 中实现了特化的惰性重缩放：
 - 当判定 `alpha == 1.0f` 时，直接旁路片上统一缓冲区（UB）中的 alpha 装载与标量广播，将原先的 `MulDstAdd` 矢量乘加指令简化为单周期原位向量 `Add`：
