@@ -31,10 +31,6 @@ class AttentionBlockVecWide : public AttentionBlockVec<T, DP, WideVectorLayout> 
     using Base = AttentionBlockVec<T, DP, WideVectorLayout>;
 
 public:
-    __aicore__ inline __attribute__((always_inline)) void PrefetchWideScales(uint64_t kb, uint32_t count)
-    {
-        PrefetchKScales<512>(*resource_, ksg_, kb, count, KS_UB);
-    }
     template <bool CAUSAL>
     __aicore__ inline __attribute__((always_inline)) void SoftmaxWide(uint32_t step, uint32_t count,
                                                                       uint32_t qstart = 0, uint32_t group = 0,

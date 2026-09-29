@@ -26,6 +26,8 @@ __aicore__ inline __attribute__((always_inline)) void FusedAttention(GM_ADDR q, 
         // Quant stride by 2 * p.cores, including AIVs with no assigned work.
         Stats<T>(k, work + t.mean, p);
         SyncAll<true>();
+        // The wide N512 PV stream consumes V as interleaved row pairs, so the
+        // quantiser's store layout is selected by the same WIDE flag.
         Quant<T, WIDE>(q, k, v, work + t.mean, work + t.vMxScale, work + t.q8, work + t.k8, work + t.v8,
                        work + t.qScale, work + t.kScale, p);
     }

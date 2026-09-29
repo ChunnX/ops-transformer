@@ -139,8 +139,8 @@ ge::graphStatus Tile(gert::TilingContext *c)
         return Failure(__LINE__);
     }
     c->SetBlockDim(p.cores);
-    p.qp = (p.sq + 127U) & ~127U;
-    p.kp = (p.sk + 511U) & ~511U;
+    p.qp = RoundUpTo(p.sq, 128U);
+    p.kp = RoundUpTo(p.sk, 512U);
     const bool wide = p.dp == 128 && p.sq % 128 == 0 && p.sk % 512 == 0 && p.sk >= 4096;
     c->SetTilingKey(GET_TPL_TILING_KEY(static_cast<uint32_t>(dt), wide));
     // SyncAll requires the entire MIX 1:2 grid to be resident together.
@@ -159,7 +159,7 @@ ge::graphStatus Tile(gert::TilingContext *c)
         if (size > std::numeric_limits<uint64_t>::max() - (WORKSPACE_ALIGN - 1)) {
             return false;
         }
-        size = (size + (WORKSPACE_ALIGN - 1)) & ~(WORKSPACE_ALIGN - 1);
+        size = RoundUpTo(size, WORKSPACE_ALIGN);
         if (bytes > std::numeric_limits<uint64_t>::max() - size) {
             return false;
         }

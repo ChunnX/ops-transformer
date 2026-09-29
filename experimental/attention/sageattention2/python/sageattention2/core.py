@@ -8,9 +8,6 @@
 
 """Core API entry for SageAttention2 on Ascend NPU (aligning with open-source sageattention.core)."""
 
-from typing import Any, Optional, Tuple, Union
-import torch
-
 from ._ops import (
     replace_sdpa,
     run,

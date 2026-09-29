@@ -17,3 +17,12 @@ struct SageParams {
     float smScale;
     uint64_t qs[3], ks[3], vs[3]; // canonical B,H,S strides, in elements
 };
+
+constexpr uint32_t RoundUpTo(uint32_t v, uint32_t align)
+{
+    return (v + align - 1U) & ~(align - 1U);
+}
+constexpr uint64_t RoundUpTo(uint64_t v, uint64_t align)
+{
+    return (v + align - 1ULL) & ~(align - 1ULL);
+}

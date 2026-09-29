@@ -34,20 +34,16 @@ class _FastPathPlan:
         "qk_quant_gran",
         "pv_accum_dtype",
         "smooth_k",
-        "smooth_v",
         "return_lse",
         "sm_scale",
         "scale",
         "d_orig",
         "need_pad",
         "pad_size",
-        "target_d",
         "b",
         "hq",
         "hk",
         "sq",
-        "sk",
-        "is_gqa",
         "is_npu",
     )
 
@@ -63,20 +59,16 @@ class _FastPathPlan:
         qk_quant_gran: str,
         pv_accum_dtype: str,
         smooth_k: bool,
-        smooth_v: bool,
         return_lse: bool,
         sm_scale: Optional[float],
         scale: float,
         d_orig: int,
         need_pad: bool,
         pad_size: int,
-        target_d: int,
         b: int,
         hq: int,
         hk: int,
         sq: int,
-        sk: int,
-        is_gqa: bool,
     ):
         self.q_shape = q_shape
         self.k_shape = k_shape
@@ -88,20 +80,16 @@ class _FastPathPlan:
         self.qk_quant_gran = qk_quant_gran
         self.pv_accum_dtype = pv_accum_dtype
         self.smooth_k = smooth_k
-        self.smooth_v = smooth_v
         self.return_lse = return_lse
         self.sm_scale = sm_scale
         self.scale = scale
         self.d_orig = d_orig
         self.need_pad = need_pad
         self.pad_size = pad_size
-        self.target_d = target_d
         self.b = b
         self.hq = hq
         self.hk = hk
         self.sq = sq
-        self.sk = sk
-        self.is_gqa = is_gqa
         self.is_npu = device.type in ("privateuseone", "npu")
 
 
@@ -314,7 +302,6 @@ def _cpu(
             sm_scale=sm_scale,
             is_causal=is_causal,
             smooth_k=smooth_k,
-            smooth_v=False,
             tensor_layout=tensor_layout,
             return_lse=True,
         )
@@ -339,7 +326,6 @@ def _cpu(
             sm_scale=sm_scale,
             is_causal=is_causal,
             smooth_k=smooth_k,
-            smooth_v=False,
             tensor_layout=tensor_layout,
             return_lse=False,
         )
@@ -385,7 +371,6 @@ def _build_plan(
             UserWarning,
             stacklevel=3,
         )
-        smooth_v = False
 
     target_d = 64 if d_orig <= 64 else 128
     need_pad = d_orig < target_d
@@ -393,10 +378,10 @@ def _build_plan(
 
     if tensor_layout == "HND":
         b, hq, sq, _ = q.shape
-        _, hk, sk, _ = k.shape
+        _, hk, _, _ = k.shape
     else:
         b, sq, hq, _ = q.shape
-        _, sk, hk, _ = k.shape
+        _, _, hk, _ = k.shape
 
     return _FastPathPlan(
         q_shape=q.shape,
@@ -409,20 +394,16 @@ def _build_plan(
         qk_quant_gran=qk_quant_gran,
         pv_accum_dtype=pv_accum_dtype,
         smooth_k=smooth_k,
-        smooth_v=smooth_v,
         return_lse=return_lse,
         sm_scale=sm_scale,
         scale=scale,
         d_orig=d_orig,
         need_pad=need_pad,
         pad_size=pad_size,
-        target_d=target_d,
         b=b,
         hq=hq,
         hk=hk,
         sq=sq,
-        sk=sk,
-        is_gqa=(hq != hk),
     )
 
 
@@ -451,6 +432,7 @@ def _dispatch(
         and not smooth_v
         and q.shape == plan.q_shape
         and q.dtype is plan.dtype
+        and q.device == plan.device
         and tensor_layout == plan.tensor_layout
         and is_causal == plan.is_causal
         and return_lse == plan.return_lse
@@ -461,6 +443,8 @@ def _dispatch(
         and v.shape == plan.v_shape
         and k.dtype is plan.dtype
         and v.dtype is plan.dtype
+        and k.device == plan.device
+        and v.device == plan.device
         and smooth_k == plan.smooth_k
         and qk_quant_gran == plan.qk_quant_gran
         and pv_accum_dtype == plan.pv_accum_dtype

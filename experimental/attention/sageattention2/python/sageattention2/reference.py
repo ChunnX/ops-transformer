@@ -31,7 +31,7 @@ def quantize_v_mx(v):
     return data.reshape_as(padded)[..., :seq, :], scales.squeeze(-2)
 
 
-def quantize(q, k, v, *, smooth_k=True, smooth_v=False):
+def quantize(q, k, v, *, smooth_k=True):
     q, k, v = q.float(), k.float(), v.float()
     mean = k.mean(-2, keepdim=True) if smooth_k else torch.zeros_like(k[..., :1, :])
     kc = k - mean
@@ -43,7 +43,6 @@ def quantize(q, k, v, *, smooth_k=True, smooth_v=False):
 
     q8, qs = token(q)
     k8, ks = token(kc)
-    # smooth_v is a compatibility argument only, matching the public API.
     v8, vs = quantize_v_mx(v)
     return q8, k8, v8, qs, ks, mean.squeeze(-2), vs
 
@@ -57,6 +56,8 @@ def prepare_scales(qs, ks, sm_scale):
     return (qs * qfactor).half(), (ks * factor).half()
 
 
+# The FP16 scale path mirrors the kernel's 64-row query tile; block_k follows
+# the kernel's key tile, so the golden reproduces its online-softmax grouping.
 def attention(
     q,
     k,
@@ -65,19 +66,11 @@ def attention(
     sm_scale=None,
     is_causal=False,
     smooth_k=True,
-    smooth_v=False,
     tensor_layout="HND",
     return_lse=False,
-    block_q=128,
     block_k=256,
-    quantized=None,
-    pv_storage="fp32",
-    score_mode="fp16",
 ):
-    """CPU golden; quantized optionally isolates attention from quantization error.
-
-    quantized is an unpadded HND tuple in the order returned by quantize().
-    """
+    """CPU golden for the per-token INT8 QK / MXFP8 PV algorithm."""
     if tensor_layout == "NHD":
         q, k, v = [t.transpose(1, 2) for t in (q, k, v)]
     b, hq, sq, d = q.shape
@@ -85,19 +78,11 @@ def attention(
     if is_causal and sq != sk:
         raise ValueError("causal requires Sq == Sk")
     scale = 1 / math.sqrt(d) if sm_scale is None else float(sm_scale)
-    packed = (
-        quantize(q, k, v, smooth_k=smooth_k, smooth_v=smooth_v)
-        if quantized is None
-        else quantized
-    )
-    q8, k8, v8, qs, ks, mean, vs = packed[:7]
+    q8, k8, v8, qs, ks, mean, vs = quantize(q, k, v, smooth_k=smooth_k)
     v_dequant = v8.float() * vs.repeat_interleave(32, dim=-2)[..., :sk, :]
-    if score_mode not in ("fp16", "fp32"):
-        raise ValueError("score_mode must be fp16 or fp32")
-    if score_mode == "fp16":
-        block_q = 64
-        qhalf, khalf = prepare_scales(qs, ks, scale)
-        log_scale = torch.tensor(math.log(448), dtype=torch.float16, device=q.device)
+    block_q = 64
+    qhalf, khalf = prepare_scales(qs, ks, scale)
+    log_scale = torch.tensor(math.log(448), dtype=torch.float16, device=q.device)
     output = torch.empty_like(q)
     lse = torch.empty((b, hq, sq), dtype=torch.float32, device=q.device)
     for h in range(hq):
@@ -113,38 +98,27 @@ def attention(
                 scores = q8[:, h, start:end].float() @ k8[
                     :, kh, j:je
                 ].float().transpose(-2, -1)
-                if score_mode == "fp16":
-                    qh = qhalf[:, h, start:end, None]
-                    khs = khalf[:, kh, None, j:je]
-                    coeff = (qh.float() * khs.float()).half()
-                    scores = ((scores / 2048).half().float() * coeff.float()).half()
-                else:
-                    scores *= qs[:, h, start:end, None] * ks[:, kh, None, j:je] * scale
+                qh = qhalf[:, h, start:end, None]
+                khs = khalf[:, kh, None, j:je]
+                coeff = (qh.float() * khs.float()).half()
+                scores = ((scores / 2048).half().float() * coeff.float()).half()
                 if is_causal:
                     mask = (
                         torch.arange(j, je, device=q.device)[None, :]
                         > torch.arange(start, end, device=q.device)[:, None]
                     )
                     scores.masked_fill_(mask, -torch.inf)
-                if score_mode == "fp16":
-                    # FP16 shifted maxima are the online normalization state.
-                    block_max = (scores.amax(-1, keepdim=True) - log_scale).half()
-                    nm = torch.maximum(m.half(), block_max).float()
-                    scores = scores.float()
-                else:
-                    nm = torch.maximum(m, scores.amax(-1, keepdim=True) - 6.10450458)
+                # FP16 shifted maxima are the online normalization state.
+                block_max = (scores.amax(-1, keepdim=True) - log_scale).half()
+                nm = torch.maximum(m.half(), block_max).float()
+                scores = scores.float()
                 alpha = (m - nm).exp()
                 prob = (scores - nm).exp()
                 den = den * alpha + prob.sum(-1, keepdim=True)
                 # Device FP8 Cast saturates; torch's E4M3 conversion alone can
                 # produce NaN when a rounded FP16 max makes P exceed its range.
                 p8 = prob.clamp(max=448.0).to(torch.float8_e4m3fn).float()
-                partial = p8 @ v_dequant[:, kh, j:je]
-                if pv_storage == "bf16":
-                    partial = partial.to(torch.bfloat16).float()
-                elif pv_storage != "fp32":
-                    raise ValueError("pv_storage must be bf16 or fp32")
-                acc = acc * alpha + partial
+                acc = acc * alpha + p8 @ v_dequant[:, kh, j:je]
                 m = nm
             result = acc / den
             output[:, h, start:end] = result.to(q.dtype)

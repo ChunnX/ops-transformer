@@ -772,10 +772,10 @@ info.count = (limit + 511) / 512;
 
 #### 3.5 接口与编译期现代工程化设计
 
-- Gemm 调用接口结构化：Cube 侧 `Gemm()` 原先携带 13 个位置实参（含 5 个含义易混的布尔/奇偶量），现已收敛为 `GemmPlan` 聚合结构（`a/b/k/n/ubOffset/parity/loadA/mxScale/mxCache/mxK/mxStart/vParity`，字段自注释、带默认值），四个调用点（通用 QK/PV 与 wide 双分支）全部改为具名赋值；wide 的两相 PV 分支共享同一份 plan 构造，仅 `Emit/Initialize` 模板参不同，消除了参数列复制。
+- Gemm 调用接口结构化：Cube 侧统一入口 `Gemm<T, BLayout, LocalA, BOffset, Emit, Initialize, PreloadedB>` 将全部行为差异上提为模板参数（数据类型与 B 布局、A 是否已在 L0A、B 的 L1 固定偏移、是否发射 Fixpipe、是否初始化 L0C、B 是否已由 MTE2 预取），运行期仅保留 `a/b/k/n/ubOffset/parity/loadA/mxScale/mxCache/mxK/mxStart/vParity` 等实际变化的数据形参，缺省值收敛了 QK 路径不涉及的 MX 与 V 双缓冲参数；槽位事件 `PV_EVENT/QK_EVENT` 与 L0/L0C 偏移由 `LocalA` 在编译期推导，QK 与 PV 互不干扰，消除了运行期分支与参数列复制。
 - 编译期对齐工具：`params.h` 提供 `constexpr RoundUpTo(v, align)`（32/64 位重载），tiling 的 `qp/kp` 序列补齐与 workspace 512B 突发对齐均改用该编译期函数表达，消除手写位运算魔数。
 - 分支现代化与去重：wide 流水线的运行期常数分支改写为 `if constexpr (PHASE == 0)`（编译期裁剪）；`stats.h` 以泛型 `LoadLaneF32` 统一 FP32/16 位装载转换的三处重复分支；LSE 尾声复用 P0 槽的暂存区由静态断言约束（`2*8*128*4+1024 <= P_SLOT_BYTES`）。
-- 分层边界：Python 侧 `aclnn.run` 作为测试依赖的公共接缝保留；`_ops` 与 csrc 各自独立校验形成纵深防御，接口语义与内核模板参数（dtype × wide）一一对应。
+- 分层边界：Python 侧公开接缝为 `_ops` 导出的 `sageattn`、`sageattn_qk_int8_pv_fp8_asc` 及其别名 `run`（`run = sageattn_qk_int8_pv_fp8_asc`），由 `__init__` 与 `core` 两级同时再导出；随仓验收测试 `python/test_python_api.py` 只依赖这组公开符号，不存在独立的兼容层模块。`_ops` 与 csrc 各自独立校验形成纵深防御，接口语义与内核模板参数（dtype × wide）一一对应。
 
 #### 3.6 张量布局规整与零拷贝直通设计
 

@@ -8,9 +8,6 @@
 
 """SageAttention2 Ascend 950: INT8 QK, FP8 PV."""
 
-from typing import Any, Optional, Tuple, Union
-import torch
-
 from . import core
 from ._ops import replace_sdpa, run, sageattn, sageattn_qk_int8_pv_fp8_asc
 

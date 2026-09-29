@@ -12,21 +12,18 @@
 #include "common.h"
 namespace Sage {
 
-// Single-alpha denominator update
+// Denominator update for a continuation PV tile: denom = denom * alpha + sum.
+// The first tile of a query takes InitializeWideFp32VF instead, which seeds
+// denom directly from the block sum in alpha + 64.
 __simd_callee__ inline void UpdateWideDenominator(__ubuf__ float *denom, __ubuf__ float *alpha,
-                                                  AscendC::MicroAPI::MaskReg &f, bool isFirst)
+                                                  AscendC::MicroAPI::MaskReg &f)
 {
     using namespace AscendC::MicroAPI;
-    RegTensor<float> den, sum;
+    RegTensor<float> den, sum, ratio;
     LoadAlign(sum, alpha + 64);
-    if (isFirst) {
-        den = sum;
-    } else {
-        RegTensor<float> ratio;
-        LoadAlign(den, denom);
-        LoadAlign(ratio, alpha);
-        MulDstAdd(den, ratio, sum, f);
-    }
+    LoadAlign(den, denom);
+    LoadAlign(ratio, alpha);
+    MulDstAdd(den, ratio, sum, f);
     StoreAlign(denom, den, f);
 }
 
@@ -61,7 +58,7 @@ __simd_vf__ inline void AccumulateWideFp32VF(__ubuf__ float *accum, __ubuf__ flo
 {
     using namespace AscendC::MicroAPI;
     auto f = CreateMask<float, MaskPattern::ALL>();
-    UpdateWideDenominator(denom, alpha, f, false);
+    UpdateWideDenominator(denom, alpha, f);
     for (uint16_t row = 0; row < 64; ++row) {
         RegTensor<float> ratio, x0, y0;
         LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio, alpha + row);
