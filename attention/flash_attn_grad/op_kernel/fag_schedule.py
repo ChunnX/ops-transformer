@@ -26,7 +26,11 @@ import pypto_pro.language as pl
 # --- generated imports (fag_fiximports.py) ---
 from fag_colsplit import col_core_count, col_local_to_global, col_packed_to_dense
 from fag_common import CUBE_BASEM, CUBE_BASEN, VECTOR_BASEM
-from fag_deter_ondevice import deter_lin_gidx, deter_lin_max_round
+from fag_deter_ondevice import (
+    deter_lin_gidx,
+    deter_lin_max_round,
+    deter_lin_round_bounds,
+)
 # --- end generated imports ---
 
 
@@ -90,6 +94,13 @@ def deter_max_round(constInfo, coreNum):
     if swizzle == 0:
         return deter_lin_max_round(constInfo, coreNum)
     return block_range_of(constInfo, 0, coreNum, 0, 0)
+
+
+def deter_round_bounds(constInfo, coreNum):
+    """All cores share one physical-round interval; swizzle stays unchanged."""
+    if swizzle == 0:
+        return deter_lin_round_bounds(constInfo, coreNum)
+    return pl.astype(0, pl.DT_INT64), deter_max_round(constInfo, coreNum)
 
 
 def deter_swz_gidx(constInfo, cBlockIdx, coreNum, roundId):

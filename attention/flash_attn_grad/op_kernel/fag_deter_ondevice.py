@@ -1182,42 +1182,45 @@ def cal_gqa_band(k, m, n, p, q, b, g, j, r):
 
 
 def _causal_max_round(m, n, k, b, g):
+    """Exclusive upper bound from the mapper's actual segment lengths.
+
+    cal_causal/cal_gqa_causal concatenate full batches, paired batches,
+    an optional single batch, then a column-pair tail. The last tail wave
+    splits its two columns across cores when at most half the cores are used;
+    it then takes only the longest column, not the full reflected pair length.
+    """
     out = 0
     if k > 0 and m > 0 and n > 0 and b > 0 and g > 0:
-        if n > m:
-            n = m
+        n = pl.min(n, m)
         b_tail = b % k
-        r_upper = (b // k) * (n * m - n * (n - 1) // 2)
+        rounds = (b // k) * (n * m - n * (n - 1) // 2)
         t = n // k
         ell = n % k
         t1 = n // (2 * k)
-        n1 = t * k
-        if g != 1:
-            r_upper = r_upper + (2 * m - n1 + 1) * t * (b_tail // 2)
-        elif k > 0:
-            r_upper = r_upper + b_tail * (n1 * m - n1 * (n1 - 1) // 2) // k
+        rounds = rounds + (2 * m - t * k + 1) * t * (b_tail // 2)
         if b_tail % 2 == 1:
             if t % 2 == 1:
                 m1 = m - t1 * 2 * k
-                if g != 1:
-                    rm3 = (m + m1 + 1) * t1
-                else:
-                    rm3 = 0
+                rm3 = (m + m1 + 1) * t1
                 if ell == 0:
-                    r_upper = r_upper + m1 + rm3
+                    rounds = rounds + rm3 + m1
                 else:
-                    r_upper = r_upper + pl.max(m1, 2 * m1 - 2 * k + 1) + rm3
+                    rounds = rounds + rm3 + pl.max(m1, 2 * m1 - 2 * k + 1)
                 b_tail = b_tail - 1
             else:
-                r_upper = r_upper + (2 * m - n1 + 1) * t // 2
-        if ell % 2 == 0:
-            ell1 = ell // 2
-            leng = 2 * (m - n) + ell + 1
-        else:
-            ell1 = ell // 2 + 1
-            leng = 2 * (m - n) + ell
-        r_upper = r_upper + _ceil(ell1 * b_tail, k) * leng
-        out = pl.max(r_upper * g, 0)
+                rounds = rounds + (2 * m - t * k + 1) * t // 2
+        pairs = ((ell + 1) // 2) * b_tail
+        pair_len = 2 * (m - n) + ell + 1 - ell % 2
+        rounds = rounds + (pairs // k) * pair_len
+        remaining = pairs % k
+        if remaining > 0:
+            if remaining <= k // 2:
+                rounds = (
+                    rounds + m - n + ell // 2 + 1 + (remaining - 1) // pl.max(b_tail, 1)
+                )
+            else:
+                rounds = rounds + pair_len
+        out = pl.max(rounds * g, 0)
     return out
 
 
@@ -1289,12 +1292,47 @@ def deter_lin_max_round(constInfo, coreNum):
                 k, m, n, bb, g, constInfo.s1Token, constInfo.s2Token
             )
             if mask_mode == 3:
-                causal_r = _causal_max_round(m, n, k, bb, g) + m
+                causal_r = _causal_max_round(m, n, k, bb, g)
                 use_band = _lt(constInfo.s1Size, constInfo.s2Size)
                 out = causal_r * (1 - use_band) + band_r * use_band
             else:
                 out = band_r
     return pl.astype(out, pl.DT_INT64)
+
+
+def deter_lin_round_bounds(constInfo, coreNum):
+    """Common [first, end) physical rounds; never compact per-core holes.
+
+    A small rectangular causal schedule (B*N2 < k, S2Outer < k) consists
+    solely of the causal column-pair tail. On its rising half x-y=a-1,
+    and on its reflected half x-y=pair_len-a (coordinates are 1-based).
+    Right-down masking requires x-y >= floor((S1-S2)/128). This gives a
+    provably empty global prefix, and a suffix on a reflected final wave.
+    Interior empty rounds and the original absolute round numbers remain.
+    """
+    first = pl.astype(0, pl.DT_INT64)
+    end = deter_lin_max_round(constInfo, coreNum)
+    if mask_mode == 3:
+        m = constInfo.s1Outer
+        n = constInfo.s2Outer
+        bb = constInfo.bSize * constInfo.n2Size
+        g = pl.max(constInfo.gSize, 1)
+        if (
+            coreNum > 0
+            and bb > 0
+            and bb < coreNum
+            and n > 0
+            and n < coreNum
+            and constInfo.s1Size >= constInfo.s2Size
+            and constInfo.s2Token == constInfo.s2Size - constInfo.s1Size
+        ):
+            offset = (constInfo.s1Size - constInfo.s2Size) // CUBE_BASEM
+            first = pl.astype(offset * g, pl.DT_INT64)
+            pairs = ((n + 1) // 2) * bb
+            remaining = pairs % coreNum
+            if remaining == 0 or remaining > coreNum // 2:
+                end = pl.astype(end - offset * g, pl.DT_INT64)
+    return first, end
 
 
 def _fused_valid(constInfo, s1o, s2o):

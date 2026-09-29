@@ -102,7 +102,8 @@ def _run_preload3_cube_deter(
     isLastLoop = 0
     drainDone = 0
     nFetched = 0
-    maxRound = deter_max_round(constInfo, coreNum)
+    firstRound, maxRound = deter_round_bounds(constInfo, coreNum)
+    denseCursor = firstRound
     pl.system.set_cross_core(
         pipe=pl.PipeType.FIX,
         event_id=SYNC_DQ_DETER_FIX_FLAG,
@@ -298,7 +299,7 @@ def _run_preload3_cube_deter(
             pl.system.set_cross_core(pipe=pl.PipeType.MTE1, event_id=SYNC_C5_TO_V4_FLAG)
             fixTaskId = fixTaskId + 1
         if doFix == 0:
-            if physicalRound > 0:
+            if physicalRound > firstRound:
                 pl.system.wait_cross_core(
                     pipe=pl.PipeType.FIX,
                     event_id=SYNC_DQ_DETER_FIX_FLAG,
@@ -405,7 +406,8 @@ def _run_preload3_vector_deter(
     isLastLoop = 0
     drainDone = 0
     nFetched = 0
-    maxRound = deter_max_round(constInfo, coreNum)
+    firstRound, maxRound = deter_round_bounds(constInfo, coreNum)
+    denseCursor = firstRound
     while True:
         gIdx = pl.const(-1, pl.DT_INT64)
         physicalRound = denseCursor
@@ -603,7 +605,8 @@ def _run_preload2_cube_gs_deter(
     physicalRound = pl.const(0, pl.DT_INT64)
     isLastLoop = 0
     drainDone = 0
-    maxRound = deter_max_round(constInfo, coreNum)
+    firstRound, maxRound = deter_round_bounds(constInfo, coreNum)
+    denseCursor = firstRound
     pl.system.set_cross_core(
         pipe=pl.PipeType.FIX,
         event_id=SYNC_DQ_DETER_FIX_FLAG,
@@ -776,7 +779,7 @@ def _run_preload2_cube_gs_deter(
             pl.system.set_cross_core(pipe=pl.PipeType.MTE1, event_id=SYNC_C5_TO_V4_FLAG)
             fixTaskId = fixTaskId + 1
         if doFix == 0:
-            if physicalRound > 0:
+            if physicalRound > firstRound:
                 pl.system.wait_cross_core(
                     pipe=pl.PipeType.FIX,
                     event_id=SYNC_DQ_DETER_FIX_FLAG,
@@ -867,7 +870,8 @@ def _run_preload2_vector_gs_deter(
     isLastLoop = 0
     drainDone = 0
     nFetched = 0
-    maxRound = deter_max_round(constInfo, coreNum)
+    firstRound, maxRound = deter_round_bounds(constInfo, coreNum)
+    denseCursor = firstRound
     while True:
         gIdx = pl.const(-1, pl.DT_INT64)
         physicalRound = denseCursor
