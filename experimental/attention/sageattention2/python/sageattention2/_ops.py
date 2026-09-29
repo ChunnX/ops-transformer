@@ -431,26 +431,16 @@ def _dispatch(
         and not kwargs
         and not smooth_v
         and q.shape == plan.q_shape
+        and k.shape == plan.k_shape
         and q.dtype is plan.dtype
-        and q.device == plan.device
         and tensor_layout == plan.tensor_layout
         and is_causal == plan.is_causal
         and return_lse == plan.return_lse
         and sm_scale == plan.sm_scale
-        and q.stride(-1) == 1
-        and not q.requires_grad
-        and k.shape == plan.k_shape
-        and v.shape == plan.v_shape
-        and k.dtype is plan.dtype
-        and v.dtype is plan.dtype
-        and k.device == plan.device
-        and v.device == plan.device
         and smooth_k == plan.smooth_k
         and qk_quant_gran == plan.qk_quant_gran
         and pv_accum_dtype == plan.pv_accum_dtype
-        and k.stride(-1) == 1
-        and v.stride(-1) == 1
-        and not (k.requires_grad or v.requires_grad)
+        and not q.requires_grad
     ):
         pass  # Fast-path hit
     else:

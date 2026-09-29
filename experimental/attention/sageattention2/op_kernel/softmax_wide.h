@@ -10,8 +10,9 @@
 #include "softmax.h"
 namespace Sage {
 
-// Topology pruning helper: skips compare/select if all 128 NZ lanes are strictly inside (thresh >= 15)
-// or strictly outside (thresh < -7) the causal mask boundary, achieving bit-exact >= 95% instruction bypass.
+// Pure branchless SIMD causal mask: eliminates all scalar branch stalls on DaVinci VLIW Vector Core.
+// Bit-exact mathematical identity: for any laneOffset in [-7, 15], CompareScalar(laneOffset <= thresh)
+// is identical to thresh >= 15 ? true : (thresh < -7 ? false : (laneOffset <= thresh)).
 template <class RegT>
 __simd_callee__ inline __attribute__((always_inline)) void ApplyCausalMaskSubBlock(
     RegT &x, int32_t thresh,
@@ -20,13 +21,6 @@ __simd_callee__ inline __attribute__((always_inline)) void ApplyCausalMaskSubBlo
     AscendC::MicroAPI::MaskReg &h)
 {
     using namespace AscendC::MicroAPI;
-    if (thresh >= 15) {
-        return;
-    }
-    if (thresh < -7) {
-        x = negative;
-        return;
-    }
     MaskReg valid;
     CompareScalar<int16_t, CMPMODE::LE>(valid, laneOffset, int16_t(thresh), h);
     Select(x, x, negative, valid);

@@ -141,24 +141,19 @@ __aicore__ inline void WriteRow(GlobalTensor<T> dst, uint64_t off, LocalTensor<T
     DataCopyPad(dst[off], src, copy);
     Sync<HardEvent::MTE3_V>();
 }
-template <class T>
-__simd_vf__ inline void Pack8(__ubuf__ T *out, __ubuf__ float *in, uint32_t count)
+__simd_vf__ inline void Pack8(__ubuf__ int8_t *out, __ubuf__ float *in, uint32_t count)
 {
     using namespace AscendC::MicroAPI;
     constexpr static CastTrait trait{RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
     auto mask = CreateMask<float, MaskPattern::ALL>();
     for (uint32_t i = 0; i < count; i += 64) {
         RegTensor<float> x;
-        RegTensor<T> y;
         LoadAlign(x, in + i);
-        if constexpr (AscendC::IsSameType<T, int8_t>::value) {
-            RegTensor<int32_t> integers;
-            Cast<int32_t, float, trait>(integers, x, mask);
-            y = (RegTensor<T> &)integers;
-        } else {
-            Cast<T, float, trait>(y, x, mask);
-        }
-        StoreAlign<T, StoreDist::DIST_PACK4_B32>(out + i, y, mask);
+        // Round-to-nearest-even through the 32-bit lane, then truncate to INT8.
+        RegTensor<int32_t> integers;
+        Cast<int32_t, float, trait>(integers, x, mask);
+        RegTensor<int8_t> y = (RegTensor<int8_t> &)integers;
+        StoreAlign<int8_t, StoreDist::DIST_PACK4_B32>(out + i, y, mask);
     }
 }
 __aicore__ inline float Scalar(LocalTensor<float> x)

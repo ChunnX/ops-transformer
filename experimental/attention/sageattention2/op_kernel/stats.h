@@ -13,26 +13,22 @@
 namespace Sage {
 // Shared stats UB layout: raw 16-bit rows, FP32 rows, then the column sums.
 constexpr uint32_t STATS_RAW_UB = 0, STATS_F32_UB = 65536, STATS_SUM_UB = 131072;
-// Load one 64-lane column slice of a row as FP32 registers. FP32 rows load
-// directly; 16-bit rows unpack and cast in the same sequence.
+// Load one 64-lane column slice of a 16-bit row as FP32 registers, unpacking
+// and casting in the same sequence.
 template <class T, uint32_t DP>
 __simd_callee__ inline void LoadLaneF32(AscendC::MicroAPI::RegTensor<float> &x, __ubuf__ T *addr, uint32_t row,
                                         uint32_t col)
 {
     using namespace AscendC::MicroAPI;
     auto mask = CreateMask<float, MaskPattern::ALL>();
-    if constexpr (AscendC::IsSameType<T, float>::value) {
-        LoadAlign(x, addr + row * DP + col);
-    } else {
-        RegTensor<T> raw;
-        static constexpr CastTrait cast{
-            RegLayout::ZERO, SatMode::UNKNOWN, MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
-        LoadAlign<T, LoadDist::DIST_UNPACK_B16>(raw, addr + row * DP + col);
-        Cast<float, T, cast>(x, raw, mask);
-    }
+    RegTensor<T> raw;
+    static constexpr CastTrait cast{
+        RegLayout::ZERO, SatMode::UNKNOWN, MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+    LoadAlign<T, LoadDist::DIST_UNPACK_B16>(raw, addr + row * DP + col);
+    Cast<float, T, cast>(x, raw, mask);
 }
-// Preserve per-channel FP32 addition order. Raw inputs are converted in
-// registers; the fallback can pass its already-converted FP32 rows.
+// Preserve per-channel FP32 addition order. Raw 16-bit inputs are converted in
+// registers.
 // Optimized with 4-way independent accumulator unrolling and interleaved load/cast/add
 // to completely saturate Vector ALU pipeline throughput and eliminate pipeline bubbles.
 template <class T, uint32_t DP>
@@ -51,34 +47,21 @@ __simd_vf__ inline void StatsSumImpl(__ubuf__ T *rows, __ubuf__ float *state, ui
         // 4-row unrolled accumulator pipeline to maximize Vector ALU throughput
         for (; row + 3 < count; row += 4) {
             RegTensor<float> x0, x1, x2, x3;
-            if constexpr (AscendC::IsSameType<T, float>::value) {
-                LoadAlign(x0, rows + (row + 0) * DP + col);
-                LoadAlign(x1, rows + (row + 1) * DP + col);
-                LoadAlign(x2, rows + (row + 2) * DP + col);
-                LoadAlign(x3, rows + (row + 3) * DP + col);
-            } else {
-                RegTensor<T> raw0, raw1, raw2, raw3;
-                static constexpr CastTrait cast{
-                    RegLayout::ZERO, SatMode::UNKNOWN, MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
-                LoadAlign<T, LoadDist::DIST_UNPACK_B16>(raw0, rows + (row + 0) * DP + col);
-                LoadAlign<T, LoadDist::DIST_UNPACK_B16>(raw1, rows + (row + 1) * DP + col);
-                Cast<float, T, cast>(x0, raw0, mask);
-                LoadAlign<T, LoadDist::DIST_UNPACK_B16>(raw2, rows + (row + 2) * DP + col);
-                Cast<float, T, cast>(x1, raw1, mask);
-                LoadAlign<T, LoadDist::DIST_UNPACK_B16>(raw3, rows + (row + 3) * DP + col);
-                Cast<float, T, cast>(x2, raw2, mask);
-                Add(acc0, acc0, x0, mask);
-                Cast<float, T, cast>(x3, raw3, mask);
-                Add(acc1, acc1, x1, mask);
-                Add(acc2, acc2, x2, mask);
-                Add(acc3, acc3, x3, mask);
-            }
-            if constexpr (AscendC::IsSameType<T, float>::value) {
-                Add(acc0, acc0, x0, mask);
-                Add(acc1, acc1, x1, mask);
-                Add(acc2, acc2, x2, mask);
-                Add(acc3, acc3, x3, mask);
-            }
+            RegTensor<T> raw0, raw1, raw2, raw3;
+            static constexpr CastTrait cast{
+                RegLayout::ZERO, SatMode::UNKNOWN, MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+            LoadAlign<T, LoadDist::DIST_UNPACK_B16>(raw0, rows + (row + 0) * DP + col);
+            LoadAlign<T, LoadDist::DIST_UNPACK_B16>(raw1, rows + (row + 1) * DP + col);
+            Cast<float, T, cast>(x0, raw0, mask);
+            LoadAlign<T, LoadDist::DIST_UNPACK_B16>(raw2, rows + (row + 2) * DP + col);
+            Cast<float, T, cast>(x1, raw1, mask);
+            LoadAlign<T, LoadDist::DIST_UNPACK_B16>(raw3, rows + (row + 3) * DP + col);
+            Cast<float, T, cast>(x2, raw2, mask);
+            Add(acc0, acc0, x0, mask);
+            Cast<float, T, cast>(x3, raw3, mask);
+            Add(acc1, acc1, x1, mask);
+            Add(acc2, acc2, x2, mask);
+            Add(acc3, acc3, x3, mask);
         }
         // 2-row cleanup loop
         for (; row + 1 < count; row += 2) {
