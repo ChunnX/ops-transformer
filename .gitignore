@@ -52,3 +52,9 @@ third_party/
 # pre-commit log
 log/
 pre-commit_reports/
+
+# Local camodel artifacts
+/sim_build/
+/sim_cases/
+/sim_deps/
+/sim.local.json
