@@ -531,7 +531,6 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ProcessVec0(
     Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
     Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm, const RunInfo &runInfo, ConstInfo &constInfo)
 {
-    outputL1.WaitCrossCore(); // 核间同步
     blockSize = constInfo.blockSize;
     maxBlockNumPerBatch = constInfo.maxBlockNumPerBatch;
 
@@ -543,9 +542,10 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ProcessVec0(
         CrossCoreWaitFlag<QSFA_SYNC_MODE0, PIPE_MTE3>(15); // 15: 跨核同步标志位值
     }
 
-    outputL1.SetCrossCore(); // 核间同步
     if constexpr (IS_SPLIT_G) {
         v0ResGm.SetCrossCore();
+    } else {
+        outputL1.SetCrossCore(); // 核间同步
     }
 }
 
