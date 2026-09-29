@@ -10,7 +10,7 @@
 #   bash run.sh 2-4                    # 运行 CSV 第 2~4 行
 #   bash run.sh all                    # 运行 CSV 全部行
 #   bash run.sh --csv <file> 1 3       # 指定 csv 文件 + 行号
-#   bash run.sh --cli m k n r [lm] [h] # 命令行模式(绕过 csv)
+#   bash run.sh --cli m k n r [lm] [h] [mode] [dtype]  # 命令行模式(绕过 csv)
 #   bash run.sh --skip-build ...       # 跳过编译
 #   bash run.sh --gen-only ...         # 仅生成 CPU golden
 #   bash run.sh --verify-only ...      # 仅精度比对
@@ -310,6 +310,19 @@ if [ "${CLI_MODE:-0}" -eq 1 ]; then
     [ $idx -lt ${#ARGS[@]} ] && { RANK_NUM=${ARGS[$idx]}; idx=$((idx+1)); }
     [ $idx -lt ${#ARGS[@]} ] && { LOCAL_MATMUL=${ARGS[$idx]}; idx=$((idx+1)); }
     [ $idx -lt ${#ARGS[@]} ] && { HEAD_M_SIZE=${ARGS[$idx]}; idx=$((idx+1)); }
+    # 第 7/8 位可选：mode(perf/precision) 和 dtype(fp16/bf16)，兼容"第7位直接给dtype"的写法
+    MODE_POS=""; DTYPE_POS=""
+    [ $idx -lt ${#ARGS[@]} ] && { MODE_POS=${ARGS[$idx]}; idx=$((idx+1)); }
+    [ $idx -lt ${#ARGS[@]} ] && { DTYPE_POS=${ARGS[$idx]}; idx=$((idx+1)); }
+    if [ -n "$MODE_POS" ]; then
+        case "$MODE_POS" in
+            perf)      PERF_MODE=1 ;;
+            precision) PERF_MODE=0 ;;
+            fp16|bf16) DTYPE="$MODE_POS" ;;  # 第7位直接给 dtype（mode 由 --perf/默认决定）
+            *) echo "ERROR: 7th arg must be mode(perf/precision) or dtype(fp16/bf16): $MODE_POS"; exit 1 ;;
+        esac
+    fi
+    [ -n "$DTYPE_POS" ] && DTYPE="$DTYPE_POS"
     run_single "$M" "$K" "$N" "$RANK_NUM" "$HEAD_M_SIZE" "$LOCAL_MATMUL"
     rc=$?
     print_perf_hint
