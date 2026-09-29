@@ -32,6 +32,61 @@ def test_arch22_h5120_d512_snapshot_chunks(dtype, layout_th, ratio):
 
 @pytest.mark.ci
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("layout_th", [False, True])
+def test_arch22_h5120_d512_snapshot_task_reuse(dtype, layout_th):
+    _run_ring_sequence(
+        dtype,
+        layout_th,
+        [257],
+        head_dim=512,
+        hidden=5120,
+        capacity=131,
+        ratio=128,
+        starts=[255, 383, 511],
+        state_padding=1,
+    )
+
+
+@pytest.mark.ci
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("layout_th", [False, True])
+@pytest.mark.parametrize(
+    "settings",
+    [
+        pytest.param({"starts": [255]}, id="single"),
+        pytest.param({"starts": [255, 382, 510, 638]}, id="one-conflict"),
+        pytest.param(
+            {"starts": [254, 382, 511, 638, 766, 895, 1022, 1150]},
+            id="sparse-conflicts",
+        ),
+        pytest.param({"starts": [255, 383, 511, 639]}, id="all-conflicts"),
+        pytest.param({"starts": [254, 382, 510, 638]}, id="no-conflict"),
+        pytest.param(
+            {"starts": [255, 382, 384, 638], "used": [130, 130, 0, 1]},
+            id="unused-and-no-output",
+        ),
+        pytest.param(
+            {"starts": [128 * (batch + 2) - 1 for batch in range(8)]},
+            id="many-conflicts",
+        ),
+    ],
+)
+def test_arch22_h5120_d512_selective_snapshot(dtype, layout_th, settings):
+    _run_ring_sequence(
+        dtype,
+        layout_th,
+        [130],
+        head_dim=512,
+        hidden=5120,
+        capacity=256,
+        ratio=128,
+        state_padding=1,
+        **settings,
+    )
+
+
+@pytest.mark.ci
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("head_dim", [128, 512])
 @pytest.mark.parametrize(
     "layout_th,length",
@@ -150,4 +205,28 @@ def test_arch22_h5120_d512_ragged_th(
         ratio=ratio,
         starts=starts,
         th_lengths=th_lengths,
+    )
+
+
+@pytest.mark.ci
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("layout_th", [False, True])
+@pytest.mark.parametrize("mixed", [False, True])
+def test_arch22_h5120_d512_parallel_batch_owners(dtype, layout_th, mixed):
+    batch_size = 65
+    starts = [
+        0 if mixed and index % 3 == 0 else 7 + 8 * index for index in range(batch_size)
+    ]
+    used = [0 if mixed and index % 3 == 2 else 9 for index in range(batch_size)]
+    _run_ring_sequence(
+        dtype,
+        layout_th,
+        [9],
+        head_dim=512,
+        hidden=5120,
+        capacity=8,
+        ratio=4,
+        starts=starts,
+        used=used,
+        state_padding=1,
     )

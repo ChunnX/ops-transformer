@@ -518,7 +518,7 @@ __aicore__ inline void CompressorV2KernelPerf<COMP>::Process()
         if (constInfo.stateCacheSnapshotSize != 0) {
             bool needSnapshot = blockVec_.IsPotentialStateCacheConflict();
             blockVec_.SetStateCacheSnapshotEnabled(needSnapshot);
-            if (needSnapshot && GetBlockIdx() == 1) {
+            if (needSnapshot && GetBlockIdx() % 2 == 1 && constInfo.aiCoreIdx < constInfo.batchSize) {
                 blockVec_.SnapshotStateCache();
             }
             if (needSnapshot) {

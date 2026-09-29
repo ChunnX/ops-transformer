@@ -56,6 +56,7 @@ public:
                                                 GlobalTensor<T> kvCacheTcGm, GlobalTensor<T> scoreCacheTcGm,
                                                 GlobalTensor<T> stateCacheSnapshotGm);
     __aicore__ inline bool IsPotentialStateCacheConflict();
+    __aicore__ inline bool NeedBatchPrefixSnapshot(uint64_t startPos, uint32_t seqUsed);
     __aicore__ inline void SetStateCacheSnapshotEnabled(bool enabled);
     __aicore__ inline void SnapshotStateCache();
 
@@ -251,6 +252,14 @@ __aicore__ inline void CompressorV2BlockVectorPerf<COMP>::InitVec1GlobalTensor(G
 }
 
 template <typename COMP>
+__aicore__ inline bool CompressorV2BlockVectorPerf<COMP>::NeedBatchPrefixSnapshot(uint64_t startPos, uint32_t seqUsed)
+{
+    uint32_t prefixSize = startPos % cmpRatio_;
+    return prefixSize != 0 && seqUsed != 0 && (startPos + seqUsed) / cmpRatio_ != startPos / cmpRatio_ &&
+           static_cast<uint64_t>(prefixSize) + min(seqUsed, constInfo_.blockSize) > constInfo_.blockSize;
+}
+
+template <typename COMP>
 __aicore__ inline bool CompressorV2BlockVectorPerf<COMP>::IsPotentialStateCacheConflict()
 {
     if (constInfo_.stateCacheSnapshotSize == 0 || constInfo_.blockSize == 0 || cmpRatio_ <= 1) {
@@ -266,11 +275,7 @@ __aicore__ inline bool CompressorV2BlockVectorPerf<COMP>::IsPotentialStateCacheC
         uint32_t prefixSize = startPos % cmpRatio_;
         totalDealTcNum += CeilDivT(prefixSize + seqLength, cmpRatio_);
 
-        if (prefixSize == 0 || seqUsed == 0 || (startPos + seqUsed) / cmpRatio_ == startPos / cmpRatio_) {
-            continue;
-        }
-        uint32_t writeSize = min(seqUsed, constInfo_.blockSize);
-        if (prefixSize + writeSize > constInfo_.blockSize) {
+        if (NeedBatchPrefixSnapshot(startPos, seqUsed)) {
             hasRingSlotOverlap = true;
         }
     }
@@ -307,11 +312,12 @@ __aicore__ inline void CompressorV2BlockVectorPerf<COMP>::SnapshotStateCache()
     for (uint32_t dChunkIdx = 0; dChunkIdx < dChunkNum; ++dChunkIdx) {
         uint32_t dStartIdx = dChunkIdx * dChunkSize;
         uint32_t dDealSize = min(dChunkSize, constInfo_.headDim - dStartIdx);
-        for (uint32_t batchIdx = 0; batchIdx < constInfo_.batchSize; ++batchIdx) {
+        for (uint32_t batchIdx = constInfo_.aiCoreIdx; batchIdx < constInfo_.batchSize;
+             batchIdx += constInfo_.usedCoreNum) {
             uint64_t startPos = tools_.GetStartPos(batchIdx);
             uint32_t seqUsed = tools_.GetSeqUsed(batchIdx);
             uint32_t prefixSize = startPos % cmpRatio_;
-            if (prefixSize == 0 || seqUsed == 0 || (startPos + seqUsed) / cmpRatio_ == startPos / cmpRatio_) {
+            if (!NeedBatchPrefixSnapshot(startPos, seqUsed)) {
                 continue;
             }
 
@@ -758,7 +764,8 @@ __aicore__ inline void CompressorV2BlockVectorPerf<COMP>::ReadState(const LocalT
         uint64_t startSeqIdx = Trunc(sliceInfo.bStartPos + sliceInfo.sIdx, (uint64_t)constInfo_.cmpRatio);
         uint32_t endSeqIdx = sliceInfo.bStartPos;
         uint64_t dstBaseOffset = sliceInfo.compressoredScCnt * constInfo_.cmpRatio * coff_ * dDealSize;
-        if (isStateCacheSnapshotEnabled_) {
+        if (isStateCacheSnapshotEnabled_ &&
+            NeedBatchPrefixSnapshot(sliceInfo.bStartPos, tools_.GetSeqUsed(sliceInfo.bIdx))) {
             ReadFromStateCacheSnapshot(dstLocal[dstBaseOffset], sliceInfo, startSeqIdx, endSeqIdx,
                                        dStartIdx + (coff_ - 1) * constInfo_.headDim, dDealSize, stateIdx);
         } else {
