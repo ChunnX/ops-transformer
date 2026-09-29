@@ -50,8 +50,8 @@ public:
     __aicore__ inline EngramFetchLocalArch35() = default;
 
     __aicore__ inline void Init(GM_ADDR commContext, GM_ADDR indices, GM_ADDR fetched, GM_ADDR sfTable,
-                                GM_ADDR fetchedSf, GM_ADDR workspaceGM, AscendC::TPipe *pipe,
-                                const EngramFetchTilingData *tilingData);
+                                GM_ADDR fetchedSf, GM_ADDR workspaceGM, AscendC::TPipe* pipe,
+                                const EngramFetchTilingData* tilingData);
 
     __aicore__ inline void Process();
 
@@ -64,14 +64,14 @@ private:
 
 __aicore__ inline void EngramFetchLocalArch35::Init(GM_ADDR commContext, GM_ADDR indices, GM_ADDR fetched,
                                                     GM_ADDR sfTable, GM_ADDR fetchedSf, GM_ADDR workspaceGM,
-                                                    AscendC::TPipe *pipe, const EngramFetchTilingData *tilingData)
+                                                    AscendC::TPipe* pipe, const EngramFetchTilingData* tilingData)
 {
     (void)workspaceGM;
     InitInferBase(commContext, indices, fetched, sfTable, fetchedSf, pipe, tilingData);
     totalBlocks_ = AscendC::GetBlockNum();
 
     AscendC::GlobalTensor<uint64_t> commBufferGm;
-    commBufferGm.SetGlobalBuffer((__gm__ uint64_t *)&ctxPtr_->commBuffer[0]);
+    commBufferGm.SetGlobalBuffer((__gm__ uint64_t*)&ctxPtr_->commBuffer[0]);
     tableBase_ = commBufferGm.GetValue(rankId_);
 
     InitIndicesBuffer(tileBytes_ * RELAY_BUFFER_NUM_INFER, sizeof(int32_t));

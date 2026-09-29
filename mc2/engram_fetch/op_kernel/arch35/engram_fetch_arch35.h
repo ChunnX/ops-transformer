@@ -68,8 +68,8 @@ public:
     __aicore__ inline EngramFetchArch35() = default;
 
     __aicore__ inline void Init(GM_ADDR commContext, GM_ADDR indices, GM_ADDR fetched, GM_ADDR sfTable,
-                                GM_ADDR fetchedSf, GM_ADDR workspaceGM, AscendC::TPipe *pipe,
-                                const EngramFetchTilingData *tilingData);
+                                GM_ADDR fetchedSf, GM_ADDR workspaceGM, AscendC::TPipe* pipe,
+                                const EngramFetchTilingData* tilingData);
 
     template <bool HasSf>
     __aicore__ inline void Process();
@@ -85,7 +85,7 @@ private:
     __aicore__ inline void RemoteFetchRank(uint32_t ownerRank, uint32_t indicesBatchStart, uint32_t channelIdxInRank,
                                            uint32_t channelCount);
     __aicore__ inline void GatherRankTokens(uint32_t ownerRank, uint32_t batchLen, uint32_t compareCntMax,
-                                            uint32_t &runningOffset);
+                                            uint32_t& runningOffset);
     uint32_t channelsPerRank_{1};
     AscendC::TBuf<> hcommBuf_;
     AscendC::TBuf<> rankCountsBuf_;
@@ -106,14 +106,14 @@ private:
     uint32_t preparedReadCount_{0};
     uint32_t sqReadCount_{0};
 
-    template <auto const &config>
+    template <auto const& config>
     __aicore__ inline void PrepareRead(uint64_t commHandle, GM_ADDR remoteBase, GM_ADDR dst, GM_ADDR src, uint64_t len);
     __aicore__ inline void FlushPreparedReads();
 };
 
 __aicore__ inline void EngramFetchArch35::Init(GM_ADDR commContext, GM_ADDR indices, GM_ADDR fetched, GM_ADDR sfTable,
-                                               GM_ADDR fetchedSf, GM_ADDR workspaceGM, AscendC::TPipe *pipe,
-                                               const EngramFetchTilingData *tilingData)
+                                               GM_ADDR fetchedSf, GM_ADDR workspaceGM, AscendC::TPipe* pipe,
+                                               const EngramFetchTilingData* tilingData)
 {
     (void)workspaceGM;
     InitInferBase(commContext, indices, fetched, sfTable, fetchedSf, pipe, tilingData);
@@ -163,14 +163,14 @@ __aicore__ inline void EngramFetchArch35::CopyContextToUb()
 {
     AscendC::LocalTensor<uint64_t> commBufferLocal = commBufferBuf_.Get<uint64_t>();
     AscendC::GlobalTensor<uint64_t> commBufferGm;
-    commBufferGm.SetGlobalBuffer((__gm__ uint64_t *)&ctxPtr_->commBuffer[0]);
+    commBufferGm.SetGlobalBuffer((__gm__ uint64_t*)&ctxPtr_->commBuffer[0]);
     AscendC::DataCopyExtParams cpComm{1U, numRanks_ * static_cast<uint32_t>(sizeof(uint64_t)), 0U, 0U, 0U};
     AscendC::DataCopyPadExtParams<uint64_t> padComm{false, 0, 0, 0};
     AscendC::DataCopyPad(commBufferLocal, commBufferGm, cpComm, padComm);
 
     AscendC::LocalTensor<uint64_t> hcommHandleLocal = hcommHandleBuf_.Get<uint64_t>();
     AscendC::GlobalTensor<uint64_t> hcommHandleGm;
-    hcommHandleGm.SetGlobalBuffer((__gm__ uint64_t *)&ctxPtr_->hcommHandle[0]);
+    hcommHandleGm.SetGlobalBuffer((__gm__ uint64_t*)&ctxPtr_->hcommHandle[0]);
     AscendC::DataCopyExtParams cpHandle{1U, numRanks_ * channelsPerRank_ * static_cast<uint32_t>(sizeof(uint64_t)), 0U,
                                         0U, 0U};
     AscendC::DataCopyPadExtParams<uint64_t> padHandle{false, 0, 0, 0};
@@ -178,7 +178,7 @@ __aicore__ inline void EngramFetchArch35::CopyContextToUb()
 }
 
 __aicore__ inline void EngramFetchArch35::GatherRankTokens(uint32_t ownerRank, uint32_t batchLen,
-                                                           uint32_t compareCntMax, uint32_t &runningOffset)
+                                                           uint32_t compareCntMax, uint32_t& runningOffset)
 {
     AscendC::LocalTensor<uint32_t> rankCounts = rankCountsBuf_.Get<uint32_t>();
     AscendC::LocalTensor<uint32_t> rankOffsets = rankOffsetsBuf_.Get<uint32_t>();
@@ -290,7 +290,7 @@ __aicore__ inline void EngramFetchArch35::LocalFetchTokens(uint32_t indicesBatch
     SyncFunc<AscendC::HardEvent::MTE3_S>();
 }
 
-template <auto const &config>
+template <auto const& config>
 __aicore__ inline void EngramFetchArch35::PrepareRead(uint64_t commHandle, GM_ADDR remoteBase, GM_ADDR dst, GM_ADDR src,
                                                       uint64_t len)
 {
