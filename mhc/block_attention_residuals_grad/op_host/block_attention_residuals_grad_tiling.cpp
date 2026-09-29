@@ -42,6 +42,9 @@ constexpr uint64_t A35_H_INPUT_ALIGN_ELEMS = 16UL;
 constexpr int64_t FP32_ELEM_PER_32B = 8;
 constexpr int64_t FP16_ELEM_PER_32B = 16;
 constexpr int64_t MAX_NUM_BLOCKS = 128;
+constexpr int64_t MIN_BATCH_SIZE = 64;
+constexpr int64_t MIN_HIDDEN_SIZE = 2048;
+constexpr int64_t MAX_HIDDEN_SIZE = 500000;
 constexpr size_t PARTIAL_BLOCK_RANK = 2;
 constexpr size_t BLOCK_RES_RANK = 3;
 // Input tensor positions, keep in sync with the op def registration order.
@@ -300,16 +303,16 @@ static ge::graphStatus CheckShapeBlockAttentionResidualsGrad(gert::TilingContext
                                               "valid_block_num must be -1 or block_res.shape[1]");
         return ge::GRAPH_FAILED;
     }
-    if (B <= 0) {
+    if (B < MIN_BATCH_SIZE) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "partialBlock.shape[0]",
                                               std::to_string(B).c_str(),
-                                              "partialBlock.shape[0] must be greater than 0");
+                                              "partialBlock.shape[0] must be greater than or equal to 64");
         return ge::GRAPH_FAILED;
     }
-    if (H <= 0) {
+    if (H < MIN_HIDDEN_SIZE || H > MAX_HIDDEN_SIZE) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "partialBlock.shape[1]",
                                               std::to_string(H).c_str(),
-                                              "partialBlock.shape[1] must be greater than 0");
+                                              "partialBlock.shape[1] must be in [2048, 500000]");
         return ge::GRAPH_FAILED;
     }
     if (N < 0) {
