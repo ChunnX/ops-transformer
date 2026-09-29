@@ -21,7 +21,7 @@ CommCutResult FitBalanceCut(const FitBalanceTilingArgs &args, const FitBalanceCa
 
 单入参 + 标定。内部串联 上下文构造（InitCtx）→ 键控求解（Schedule）→ 诊断打印（debug 级）。
 返回"1 短 + N 长"的 M 轴切分方案（或退化的等分/单块）。
-通信引擎（AICPU/CCU）经 `args.commEngine` 传入——op 侧 `ParseCommEngine(comm_mode)` 解析。
+通信引擎（AICPU/CCU/AIV_URMA）经 `args.commEngine` 传入——op 侧 `ParseCommEngine(comm_mode)` 解析。
 
 ```cpp
 template <typename LegacyArgs>
@@ -42,7 +42,7 @@ bool IsCommCalibrated(uint32_t rankDim, TilingCommEngine commEngine, const FitBa
 **命中 → FitBalanceCut；miss → 核利用率优先（core_occupancy_first_tiling.h）等其他策略**。
 
 ```cpp
-TilingCommEngine ParseCommEngine(const char *commMode);   // "ai_cpu"→AICPU, "ccu"→CCU, 其余→AICPU
+TilingCommEngine ParseCommEngine(const char *commMode);   // "aiv_urma"→AIV_URMA, "ccu"→CCU, 其余(含"ai_cpu")→AICPU
 ```
 
 ### 进阶（一般不需要直接用）
@@ -65,7 +65,7 @@ CommCutResult CutResultFromCof(const CommTilingData &data);                    /
 | `FitBalanceCalibration` | 客户标定数据总集（CommProfile 结构参数 + 通信拟合行 k/b/c + matmul 算力档），算子侧唯一编辑面 |
 | `LocalMMPosition` | 流水线结构键控：FRONT（本地 mm 块前置）/ BACK（后置）/ NONE（无本地块） |
 | `CommComputeOrder` | 通算顺序：COMM_FIRST（通信在前）/ COMPUTE_FIRST（计算在前） |
-| `TilingCommEngine` | 通信引擎：AICPU / CCU / AIV_URMA（占位） |
+| `TilingCommEngine` | 通信引擎：AICPU / CCU / AIV_URMA |
 
 ---
 
@@ -93,7 +93,7 @@ static const FitBalanceCalibration CALIBRATION = {
           // ↓ 两行新增标定填法演示(数值为演示数——上线前替换为实测值, 未标定则删行留空):
           {TilingCommEngine::AICPU, 8, 22.7301, 33.17, 20.58}, // 新卡档: 同引擎追加一行(8P 实测后照此)
           {TilingCommEngine::AIV_URMA, 4, 3.2, 4.45, 1.8} },   // 新引擎: 引擎维度在行上, 同表加行即可
-                                                               // (AIV_URMA 档当前预留, 生产 URMA 走核利用率优先)
+                                                               // (aiv_urma 是否走本引擎, 标定后视情况决定)
     },
     /* mmFit: matmul 算力档 + 最优基本块 */
     {
