@@ -1,6 +1,6 @@
 # aclnnInplacePartialRotaryMul
 
-[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/posembedding/inplace_partial_rotary_mul)
+[📄 查看源码](https://atomgit.com/cann/ops-transformer/tree/master/posembedding/inplace_partial_rotary_mul)
 
 ## 产品支持情况
 
@@ -142,7 +142,7 @@ aclnnStatus aclnnInplacePartialRotaryMul(
       <td>partialSlice</td>
       <td>输入</td>
       <td>部分旋转的切片范围[start, end)，作用于最后一维。</td>
-      <td>不传值则默认整D轴做旋转编码，start和end相等时则不做旋转编码。</td>
+      <td>不传值则默认为[0, 0]，start和end相等时则不做旋转编码。</td>
       <td>INT64数组</td>
       <td>-</td>
       <td>-</td>
