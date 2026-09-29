@@ -19,7 +19,14 @@
 #include "blaze/gemm/policy/dispatch_policy.h"
 #include "blaze/gemm/block/block_mmad_qgmm_mx.h"
 #include "blaze/gemm/block/block_scheduler_gmm_swat_with_tail_split.h"
+#include "../../matmul/grouped_matmul/tensor_api_compat.h"
+// A6's bundled Blaze still exposes the legacy AscendC::Te tensor API. Keep the
+// mainline A5 kernel unchanged and isolate that ABI difference in an A6 wrapper.
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201)
+#include "../../matmul/grouped_matmul/grouped_matmul_mx_kernel_a6.h"
+#else
 #include "../../matmul/grouped_matmul/grouped_matmul_mx_kernel.h"
+#endif
 
 namespace Apace {
 
@@ -96,12 +103,12 @@ private:
     static constexpr AscendC::HcclDataType X_HCCL_DATA_TYPE = GetA2avGmmHcclDataType<AType>();
     static constexpr AscendC::HcclDataType SCALE_HCCL_DATA_TYPE = AscendC::HCCL_DATA_TYPE_FP8E8M0;
 
-    using LayoutA = asc::te::nd_ext_layout_ptn;
-    using LayoutB = AscendC::Std::conditional_t<TransB, asc::te::dn_ext_layout_ptn,
-                                                asc::te::nd_ext_layout_ptn>;
-    using LayoutC = asc::te::nd_ext_layout_ptn;
-    using LayoutBias = asc::te::nd_ext_layout_ptn;
-    using ProblemShape = asc::te::shape<int64_t, int64_t, int64_t, int64_t>;
+    using LayoutA = TensorApiCompat::NDExtLayoutPtn;
+    using LayoutB = AscendC::Std::conditional_t<TransB, TensorApiCompat::DNExtLayoutPtn,
+                                                TensorApiCompat::NDExtLayoutPtn>;
+    using LayoutC = TensorApiCompat::NDExtLayoutPtn;
+    using LayoutBias = TensorApiCompat::NDExtLayoutPtn;
+    using ProblemShape = TensorApiCompat::Shape<int64_t, int64_t, int64_t, int64_t>;
     using BlockScheduler = Blaze::Gemm::Block::BlockSchedulerGmmSwatWithTailSplit;
     using DispatchPolicy =
         Blaze::Gemm::GroupedMatmulWithScaleMx<0, false, Blaze::Gemm::KernelGroupedMmadWithScaleMx>;
@@ -109,8 +116,8 @@ private:
                                                     float, LayoutBias>;
     using GmmKernel = Blaze::Gemm::Kernel::GroupedMatmulMxKernel<ProblemShape, BlockMmad, BlockScheduler>;
 
-    using MmLayoutB = AscendC::Std::conditional_t<TransMmB, asc::te::dn_ext_layout_ptn,
-                                                  asc::te::nd_ext_layout_ptn>;
+    using MmLayoutB = AscendC::Std::conditional_t<TransMmB, TensorApiCompat::DNExtLayoutPtn,
+                                                  TensorApiCompat::NDExtLayoutPtn>;
     using MmBlockMmad = Blaze::Gemm::Block::BlockMmad<DispatchPolicy, AType, LayoutA, BType, MmLayoutB, CType,
                                                       LayoutC, float, LayoutBias>;
     using MmKernel = Blaze::Gemm::Kernel::GroupedMatmulMxKernel<ProblemShape, MmBlockMmad, BlockScheduler>;

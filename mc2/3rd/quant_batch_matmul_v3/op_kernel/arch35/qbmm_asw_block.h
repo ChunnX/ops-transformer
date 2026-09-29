@@ -83,7 +83,7 @@ struct PerBlockMmParam {
 
 __aicore__ inline constexpr uint32_t GetVectorRegSize()
 {
-#if __CCE_AICORE__ == 310
+#if __CCE_AICORE__ == 310 || (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201))
     return AscendC::VECTOR_REG_WIDTH;
 #else
     return 256U;
@@ -116,7 +116,11 @@ public:
     const DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams *tilingData_;
 
 private:
-    const uint64_t WINDOW_LEN = 4;
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201)
+    const uint64_t WINDOW_LEN = 8UL;
+#else
+    const uint64_t WINDOW_LEN = 4UL;
+#endif
     static constexpr uint64_t CUBE_BLOCK = 16UL;
     uint32_t blockIdx_;
 };
@@ -364,7 +368,8 @@ __aicore__ inline void Mc2QuantBmmAswBlock::UpdatePerBlockUBValidMN()
 
 __aicore__ inline void Mc2QuantBmmAswBlock::UpdatePerBlockUBParam()
 {
-    ubParams_.fixpipeSplitN = params_.singleCoreN > PER_BLOCK_SIZE || params_.singleCoreM == 1;
+    ubParams_.fixpipeSplitN =
+        (params_.singleCoreN > PER_BLOCK_SIZE || params_.singleCoreM == 1) && (AscendC::GetTaskRation() > 1);
     ubParams_.offsetM = params_.mIndex * tilingData_->matmulTiling.baseM + params_.mSplitAddrOffset;
     ubParams_.offsetN = params_.nIndex * tilingData_->matmulTiling.baseN + params_.nSplitAddrOffset;
     ubParams_.singleM =
@@ -392,7 +397,8 @@ __aicore__ inline void Mc2QuantBmmAswBlock::UpdatePerBlockUBParam()
 template <bool aTrans, bool bTrans>
 __aicore__ inline void Mc2QuantBmmAswBlock::UpdatePerBlockMmParam()
 {
-    mmParams_.fixpipeSplitN = params_.singleCoreN > PER_BLOCK_SIZE || params_.singleCoreM == 1;
+    mmParams_.fixpipeSplitN =
+        (params_.singleCoreN > PER_BLOCK_SIZE || params_.singleCoreM == 1) && (AscendC::GetTaskRation() > 1);
     if ASCEND_IS_AIC {
         if constexpr (aTrans) {
             mmParams_.fixSrcStride = DequantBmm::Align(params_.singleCoreM, static_cast<uint64_t>(DATA_BLOCK));

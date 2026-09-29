@@ -71,28 +71,31 @@ __global__ __aicore__ void allto_allv_quant_grouped_mat_mul(
                 mmweightOptionalGM, mmWeightScaleGM, gmmyGM, mmyOptionalGM, permuteOutOptionalGM, userWorkspace);
         op.Run();
 #endif
-        return;
+    } else {
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201)
+        KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
+#else
+        KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+#endif
+        GET_TILING_DATA_WITH_STRUCT(QuantAlltoAllvGroupedMatmulTilingData, tilingData, tilingGM);
+        using ComputeOpType =
+            QuantGroupedMatmul<QuantAlltoAllvGroupedMatmulTilingData, GMMQuantTilingData, DTYPE_GMM_X,
+                               DTYPE_GMM_WEIGHT, DTYPE_GMM_X_SCALE, DTYPE_GMM_Y, CubeFormat::ND, false,
+                               TILINGKEY_GMM_WEIGHT_TRANSPOSE, false, true>; // isLocal=false, isA2avGmm=true
+        using LocalComputeOpType =
+            QuantGroupedMatmul<QuantAlltoAllvGroupedMatmulTilingData, GMMQuantTilingData, DTYPE_GMM_X,
+                               DTYPE_GMM_WEIGHT, DTYPE_GMM_X_SCALE, DTYPE_GMM_Y, CubeFormat::ND, false,
+                               TILINGKEY_MM_WEIGHT_TRANSPOSE, true, true>; // isLocal=true, isA2avGmm=true
+        A2avGmmScheduler<HcclA2avOp<DTYPE_GMM_X, true, TILINGKEY_COMM_MODE>, ComputeOpType, LocalComputeOpType,
+                         QuantAlltoAllvGroupedMatmulTilingData, GMMQuantTilingData, Mc2TilingType>
+            a2avGmmScheduler;
+        GET_NESTED_TILING_DATA_MEMBER_ADDR(QuantAlltoAllvGroupedMatmulTilingData, GMMQuantTilingData,
+                                           gmmQuantTilingData, gmmArray, gmmArrayAddr_, tilingGM);
+        GET_NESTED_TILING_DATA_MEMBER_ADDR(QuantAlltoAllvGroupedMatmulTilingData, GMMQuantTilingData,
+                                           mmQuantTilingData, gmmArray, mmArrayAddr_, tilingGM);
+        a2avGmmScheduler.Init(gmmxGM, gmmweightGM, mmxOptionalGM, mmweightOptionalGM, gmmxScaleGM, gmmWeightScaleGM,
+                              mmxScaleGM, mmWeightScaleGM, gmmyGM, mmyOptionalGM, permuteOutOptionalGM, userWorkspace,
+                              tilingGM, gmmArrayAddr_, mmArrayAddr_, &pipe, true); // isA2avGmmFlag=true
+        a2avGmmScheduler.Process();
     }
-
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-    GET_TILING_DATA_WITH_STRUCT(QuantAlltoAllvGroupedMatmulTilingData, tilingData, tilingGM);
-    using ComputeOpType =
-        QuantGroupedMatmul<QuantAlltoAllvGroupedMatmulTilingData, GMMQuantTilingData, DTYPE_GMM_X, DTYPE_GMM_WEIGHT,
-                           DTYPE_GMM_X_SCALE, DTYPE_GMM_Y, CubeFormat::ND, false, TILINGKEY_GMM_WEIGHT_TRANSPOSE, false,
-                           true>; // isLocal=false, isA2avGmm=true
-    using LocalComputeOpType =
-        QuantGroupedMatmul<QuantAlltoAllvGroupedMatmulTilingData, GMMQuantTilingData, DTYPE_GMM_X, DTYPE_GMM_WEIGHT,
-                           DTYPE_GMM_X_SCALE, DTYPE_GMM_Y, CubeFormat::ND, false, TILINGKEY_MM_WEIGHT_TRANSPOSE, true,
-                           true>; // isLocal=true, isA2avGmm=true
-    A2avGmmScheduler<HcclA2avOp<DTYPE_GMM_X, true, TILINGKEY_COMM_MODE>, ComputeOpType, LocalComputeOpType,
-                     QuantAlltoAllvGroupedMatmulTilingData, GMMQuantTilingData, Mc2TilingType>
-        a2avGmmScheduler;
-    GET_NESTED_TILING_DATA_MEMBER_ADDR(QuantAlltoAllvGroupedMatmulTilingData, GMMQuantTilingData, gmmQuantTilingData,
-                                       gmmArray, gmmArrayAddr_, tilingGM);
-    GET_NESTED_TILING_DATA_MEMBER_ADDR(QuantAlltoAllvGroupedMatmulTilingData, GMMQuantTilingData, mmQuantTilingData,
-                                       gmmArray, mmArrayAddr_, tilingGM);
-    a2avGmmScheduler.Init(gmmxGM, gmmweightGM, mmxOptionalGM, mmweightOptionalGM, gmmxScaleGM, gmmWeightScaleGM,
-                          mmxScaleGM, mmWeightScaleGM, gmmyGM, mmyOptionalGM, permuteOutOptionalGM, userWorkspace,
-                          tilingGM, gmmArrayAddr_, mmArrayAddr_, &pipe, true); // isA2avGmmFlag=true
-    a2avGmmScheduler.Process();
 }
