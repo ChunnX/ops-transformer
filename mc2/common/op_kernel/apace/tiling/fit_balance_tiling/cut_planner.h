@@ -8,7 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-// fit_balance_tiling 离散切分引擎(CutPlanner, §4.39 拆分——原二区):
+// fit_balance_tiling 离散切分引擎:
 // "1 短 + N 长"形态的初切/离散化七步/尾对齐/NoCut——总长守恒与对齐粒度的守门人。
 #pragma once
 
@@ -19,7 +19,6 @@
 // ============================================================================
 // ============================================================================
 
-// (2026-09-15 精简: 连续切分路径 FitTileLengthContinuous/SmallFrontTileCheck/
 //  LargeBackTileCheck/CommBoundShortAlign 为 B 家族(公式化)专用, A 家族 5 算子
 //  经 grep 证实零调用, 已随旧芯片逻辑剥离; B 家族原位副本不受影响)
 constexpr uint64_t GOOD_LINEARITY_NK_BYTES = 32;
@@ -136,7 +135,7 @@ inline void CutPlanner::AlignTileSmall()
 }
 
 // 对齐容差取整: 计算bound(短块后置) 0.5 中性舍入, 通信bound(短块前置) 0.75 消极进位
-// (小形态强制对齐开关 smallDimAlignUp 系 B 家族/A2AMM 专属——引擎消费者恒 false, §4.35 删)
+//
 inline void CutPlanner::GenerateInitialPartition()
 {
     cutRes.longTileLen = std::max(cutRes.longTileLen, cutRes.shortTileLen);

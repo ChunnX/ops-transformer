@@ -8,9 +8,9 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-// fit_balance_tiling 通信模型(HCCLCommModel, §4.39 拆分——原一.1 区):
-// 线性拟合 y = k·x + N·b + c 的前向/反解/总量三口径(§4.37 公式改革;
-// §4.38 口径消融后通信公式零份数乘子——份数已融进标定斜率 k)。
+// fit_balance_tiling 通信模型:
+// 线性拟合 y = k·x + N·b + c 的前向/反解/总量三口径( 公式改革;
+//  口径消融后通信公式零份数乘子——份数已融进标定斜率 k)。
 #pragma once
 
 #include "fit_balance_types.h"
@@ -21,7 +21,6 @@ constexpr uint64_t FP4_PACK_RATIO = 2;
 // 一、模型层
 // ============================================================================
 // ---- 1.1 HCCL 通信模型与拟合表（自由长度分支, 950 专用）----
-// 由旧 HCCLPerformanceModel + HCCLPerformanceArch35 合并精简(2026-09-15, 类名已去 arch35):
 // 本引擎按设计仅在 950 标卡 4P/8P 生效, 旧芯片分支(310P 环网/910_93
 // 双环/基表两段式查表——其结果恒被 950 查表覆盖)经 grep 证实 5 个消费
 // 算子零调用后剥离; 老芯片的真实需求由原位保留的 B 家族(mc2/common/op_host/
@@ -36,7 +35,7 @@ class HCCLCommModel {
 public:
     CommFitParams commEstimatePar_;
     CommModelInfo commTypeInfo_;
-    double commTimeFactor_ = 1.0; // 时间折算因子, 恒 1(§4.31: 8-die 折算桥接已随 plain RS 死分支删除)
+    double commTimeFactor_ = 1.0; // 时间折算因子, 恒 1
 
     // Constructor(commFitParams 由 InitCtx 按 rankDim 从标定的行, miss=零值行)
     HCCLCommModel(uint32_t inputRankDim, CommFitParams commFitParams)
@@ -72,8 +71,8 @@ public:
         return commTypeInfo_.rankDim;
     }
 
-    // 单轮通信耗时: y = k·x + b(§4.37)——本轮数据量按带宽线性计, 外加该轮启动开销 b;
-    // 一次性开销 c 不进单轮口径。配平(E18/E19 反解)消费的就是这个单轮语义。
+    // 单轮通信耗时: y = k·x + b——本轮数据量按带宽线性计, 外加该轮启动开销 b;
+    // 一次性开销 c 不进单轮口径。配平反解消费的就是这个单轮语义。
     double CommTime(uint64_t mSize) const
     {
         const double commDataSize = static_cast<double>(mSize) * commTypeInfo_.commMatrixLen * GetRealDtypeSizes();
@@ -89,9 +88,9 @@ public:
         return static_cast<uint64_t>(tmpSize * BYTES_PER_MB / (commTypeInfo_.commMatrixLen * GetRealDtypeSizes()));
     }
 
-    // 总通信耗时(N 轮求和口径): y = k·X + N·b + c(§4.37)——X 为切分域总数据量, 每轮各付
+    // 总通信耗时(N 轮求和口径): y = k·X + N·b + c——X 为切分域总数据量, 每轮各付
     // 一份启动开销 b, c 整个算子只付一次。切分完成后按实际轮数精算, 与 NoCut 候选(N=1)
-    // 之差 = (N−1)·b, 即切分多付的启动税; Estimate 阶段轮数未知, 按 N=1 保守估(§4.37 拍板)。
+    // 之差 = (N−1)·b, 即切分多付的启动税; Estimate 阶段轮数未知, 按 N=1 保守估。
     double TotalCommTime(uint64_t totalLen, uint64_t numRounds) const
     {
         const double commDataSize = static_cast<double>(totalLen) * commTypeInfo_.commMatrixLen * GetRealDtypeSizes();

@@ -8,15 +8,14 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-// fit_balance_tiling 客户标定数据总集(FitBalanceCalibration, §4.39 拆分):
-// 算子侧唯一需要接触的标定类型——CommProfile 结构参数(§4.38 原语语义终结在标定层)
+// fit_balance_tiling 客户标定数据总集:
+// 算子侧唯一需要接触的标定类型——CommProfile 结构参数
 // + 通信拟合行(k/b/c, k 为引擎 x 口径) + matmul 算力档/基本块。
 #pragma once
 
 #include "fit_balance_types.h"
 
 // ============================================================================
-// 客户标定数据总集（算子侧唯一需要接触的标定类型, 2026-09-15 评审裁定:
 // 单一大结构体替代"引擎侧一堆小结构体 + 算子侧一堆具名 constexpr"）
 //
 // 用法（算子侧标定头, 填一个实例传给 InitCtx 即可）:
@@ -27,9 +26,9 @@
 //   };
 //
 // 填写规则:
-//   - 通信行按 rankDim 匹配(未标定形态由 op 层分派走核利用率优先, §4.29——引擎不设回退);
+//   - 通信行按 rankDim 匹配;
 //   - matmul 行按 (calcType, A/B/C 字节数) 匹配, 未填字段取 NSDMI 默认; 行按前缀填, 0 值行=未填;
-//   - 通信拟合公式 y = k·x + N·b + c(§4.37): 客户标定产出 k/b/c 三个数。
+//   - 通信拟合公式 y = k·x + N·b + c: 客户标定产出 k/b/c 三个数。
 // ============================================================================
 
 struct FitBalanceCalibration {
@@ -37,7 +36,7 @@ struct FitBalanceCalibration {
     static constexpr size_t MAX_CUBE_CALC_ROWS = 4;  // matmul 算力档位数上限
     static constexpr size_t MAX_BASE_BLOCK_ROWS = 2; // 最优基本块档位数上限
 
-    // —— 通信结构参数(§4.38: 原语语义终结在标定层——每算子一份, 引擎不区分通信原语) ——
+    // —— 通信结构参数 ——
     // 倍数依赖运行时 rankDim 故存模式枚举, 引擎经 RankMulValue() 一处集中换算。
     struct CommProfile {
         CommAxis axis = CommAxis::K;         // 通信承载侧: K=A 侧输入(传 A 行), N=C 侧输出(传 C 行)
@@ -67,7 +66,7 @@ struct FitBalanceCalibration {
     // —— matmul 性能拟合（对仗 CommFit; 字段序: 用户常改字段在前, 平台默认在后——聚合初始化
     //    可省尾部, 省略的尾部字段自动取 NSDMI 默认值）——
     struct MatmulFit {
-        // 键维度裁定(§4.37 缺陷根治, 2026-09-22): 不含 C 侧字节数——glue 恒 cType=aType,
+        // 键维度裁定: 不含 C 侧字节数——glue 恒 cType=aType,
         // 运行时 cBytes 恒等于 aBytes(零信息量冗余维度, 假设/真实口径曾在其上分叉致算力查表缺陷);
         // 物理上 C dtype 只影响写出带宽不影响 MACs/cycle(老表 _1/_2 行同值 8192 佐证)。
         // 未来 outputDtypeSize 口径独立化(真按输出计)且重标定发现 C 影响算力时, 再按独立 CR 加回。

@@ -8,16 +8,15 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-// fit_balance_tiling 计算模型(MatmulPerfModel, §4.39 拆分——原一.2 区):
+// fit_balance_tiling 计算模型:
 // cube 利用率(聚合 0.7/本地窗口 0.6 双口径)/每行梯度/耗时正反解。
 #pragma once
 
 #include "fit_balance_types.h"
 
 // ---- 1.2 matmul 模型（HCCL 算力/梯度模型, 自由长度分支专用, 950）----
-// 由旧 MatmulPerformanceModel + MatmulPerformanceArch35 合并精简(2026-09-15, 类名已去 arch35),
 // 剥离 310P/910_B4 分支与 4 参 FindCubeUtil(含其独占的 K 对齐修正链)——
-// 5 个消费算子经 grep 证实仅用 FindCubeUtil(§4.34 合并为单一参数化函数)。
+// 5 个消费算子经 grep 证实仅用 FindCubeUtil。
 
 namespace MatmulPerfConst {
 constexpr double COMPUTES_PER_CYCLE = 4096; // 基础算力(查表未命中回退, 标定头回填同值)
@@ -62,7 +61,7 @@ public:
 
     // dtype 分类(选行匹配键的推导; 查表选行已在 InitCtx 完成):
     // 950 量化语义: fp4/fp8/HIF8 或 A8W8 量化, 其余按 FP16 建模;
-    // fp4 经 geAType 识别(matmul_tiling::DataType 无 fp4 枚举, aType 对 fp4 为 DT_MAX, §4.17)
+    // fp4 经 geAType 识别
     void SetCalcType(const FitBalanceTilingArgs &args)
     {
         if ((args.aType == matmul_tiling::DataType::DT_HIFLOAT8) ||
@@ -72,9 +71,7 @@ public:
             calcType_ = MatmulDtypeKind::QUANT;
         }
     }
-    // cube 利用率(950 调和平均公式; §4.34 由 FindCubeUtil/FindCubeUtilByL2Usage 两函数合并而来——
-    // 老代码 L2 三档+核占用比在 950 上被本公式无条件覆盖、maxTileLen 出参无人请求, 全系死代码,
-    // 随 L2 标定链一并删除):
+    // cube 利用率(950 调和平均公式):
     //   util = min(0.95, 0.75 × (K/1280)^0.7 × (调和平均/820)^mnExp)
     //   调和平均 = (mSize × commRankCntForMm × n) / (mSize × commRankCntForMm + n)
     // mnExponent: MN 因子指数, 两种口径——聚合稳态 0.7(数据齐/流水满, 增长快)、

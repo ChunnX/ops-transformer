@@ -8,7 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-// fit_balance_tiling 求解层(solver, §4.39 拆分——原三/四区):
+// fit_balance_tiling 求解层:
 // 调度上下文 + InitCtx 上下文构造 + 公共逻辑片段 + Schedule 键控流水
 // (①Estimate→②SetShort→③SetLong 配平→④离散化→⑤轮数搜索/门控→⑥CCU 整形)。
 #pragma once
@@ -22,7 +22,7 @@
 // ============================================================================
 // 三、求解层（两分支求解器）
 // ============================================================================
-// ---- 3.1 自由长度求解器（ctx + 键控分支, HCCL AICPU/CCU; 钩子机制已于 §4.24 废除）----
+// ---- 3.1 自由长度求解器----
 // ============================================================================
 
 // 调度上下文: 引擎三件套 + 键控维度 + 过程量(刻意不含静态标定数据, 在 FitBalanceCalibration)
@@ -30,7 +30,7 @@ struct FitBasedBalanceCtx {
     MatmulPerfModel matmulPerf;
     HCCLCommModel commPerf;
     CutPlanner tilingM;
-    LocalMMPosition localMMPosition; // 键控维度: 本地 mm 块位置(§4.38——引擎唯一的结构键控,
+    LocalMMPosition localMMPosition; // 键控维度: 本地 mm 块位置(,
                                      // 取代原通信原语; 原语语义全部终结在标定层 CommProfile)
     CommComputeOrder order;          // 键控维度: 通算顺序
     TilingCommEngine commEngine;     // 键控维度: 通信引擎(CCU 专属的单轮通信量上限整形)
@@ -40,14 +40,14 @@ struct FitBasedBalanceCtx {
     double ratioCalcComm = 1.0; // 过程量: Estimate 骨干设置的通算比(键控分支消费)
     double frontMMTime = 0; // 过程量(FRONT 键): 本地首块计算耗时(流水线首端, 启动端被本地块占据)
     double backMMTime = 0; // 过程量(BACK 键): 本地尾块计算耗时(流水线尾端, 与末块通信重叠)
-    // 诊断量(§4.37, Schedule 尾部写入): 切分完成后按实际轮数精算的总通信时, 与 NoCut 候单轮
-    // 之差 = (N−1)·b 启动税。仅供 op 侧日志消费, 不参与引擎决策(机制与日志分离, §4.24 裁定)
+    // 诊断量: 切分完成后按实际轮数精算的总通信时, 与 NoCut 候单轮
+    // 之差 = (N−1)·b 启动税。仅供 op 侧日志消费, 不参与引擎决策
     double commTimeActualUs = 0; // 实际切分(N 轮)的总通信时
     double commTimeNoCutUs = 0;  // 不切候选(1 轮)的总通信时
 };
 
 // 四、公共逻辑片段（求解器键控分支与后续算子迁移复用的公共逻辑, P2 迁移时优先对齐;
-//     2026-09-15 五算子逐行对比提取, 覆盖率注明各行; §4.24 后由键控分支/P2 迁移消费）
+//     五算子逐行对比提取, 覆盖率注明各行;  后由键控分支/P2 迁移消费）
 // ============================================================================
 
 // 短长块等长归一（5/5 算子 Adjust 尾部逐字一致）
@@ -90,9 +90,8 @@ inline void BalanceLongTileLen(FitBasedBalanceCtx &ctx)
 // FindCubeUtil + GetMatmulGradient + 总量估计 + 通算比; shortTileAtBack 判定不在此
 // (各算子语义相反: mmrs 系 mm>=comm→后置, allto_all_matmul 是 comm>mm→后置, agmm 恒后置)。
 // 总量倍数 ctx.mmRankMul 由 InitCtx 按通信原语单次派生(见 MmRankMul 注释)。
-// [已废弃 2026-09-17] mmTimeScale/KC_QUANT×1.43 补偿不再保留——与 A2AMM 独立拟合
+// [已废弃 ] mmTimeScale/KC_QUANT×1.43 补偿不再保留——与 A2AMM 独立拟合
 // 同根因(老切分尾块引发 matmul 膨胀, 理论失准), 新架构不引入该膨胀, 无需补偿;
-// MMA2A 的 E14(80μs 不切门)迁移时同样不带 ×1.43。
 struct EstimateTimesResult {
     double totalMatmulTime = 0.0;
     double totalTpTime = 0.0;
@@ -103,7 +102,7 @@ inline EstimateTimesResult EstimateTotalTimes(FitBasedBalanceCtx &ctx)
     ctx.matmulPerf.GetMatmulGradient();
     EstimateTimesResult r;
     r.totalMatmulTime = ctx.matmulPerf.MatmulTime(ctx.matmulPerf.mmShapeInfo_.mValue, ctx.mmRankMul);
-    // N=1(NoCut 候选口径, §4.37): Estimate 发生在切分前、轮数未知, 按不切保守估通信总量;
+    // N=1: Estimate 发生在切分前、轮数未知, 按不切保守估通信总量;
     // 切分完成后由 Schedule 尾部按实际轮数精算(ctx.commTimeActualUs)供日志/观察
     r.totalTpTime = ctx.commPerf.TotalCommTime(ctx.matmulPerf.mmShapeInfo_.mValue, 1);
     ctx.ratioCalcComm = (std::max(r.totalTpTime, r.totalMatmulTime) / std::min(r.totalTpTime, r.totalMatmulTime));
@@ -140,14 +139,14 @@ inline void ApplySmallShapeMinLen(CutPlanner &tilingM, FitBasedBalanceCtx &ctx)
     }
 }
 
-// 单轮通信量上限整形(CCU 键, §4.37: 自 AGMM 调用点 AdjustCutResultForCCU 四函数链迁入合并):
+// 单轮通信量上限整形:
 // HCCL 单次通信调用有 256MB 上限——单块通信量(块长×单行通信字节)超过时按候选表
 // {2048,1024,512,256}(大块优先=少轮次)等长重切, 尾块吸收余数, 完全覆盖长短结构
 // (超限属极端大 shape, 约束满足优先); 轮次预算 = MAX_COMM_ROUNDS−1(1 轮保留给 scale
 // 通道通信, AGMM quant 语义, 与老 HCCL_MAX_TOTAL_TILES=62 一致)。
-// 量级安全: 块长×单行字节 ≤ 1e6×5e5 = 5e11 << uint64 上限, 免老代码三段溢出回检;
-// 两约束(256MB/轮次预算)冲突时放弃整形保持原切分(老代码 UNSUPPORTED 路径)。
-// 流水线总时估计(§4.37.1, 轮数搜索/门控的统一估值器): 切 N 轮的近似总时——不可重叠段在
+// 量级安全: 块长×单行字节 ≤ 1e6×5e5 = 5e11 << uint64 上限, 无需分段溢出回检;
+// 两约束(256MB/轮次预算)冲突时放弃整形, 保持原切分。
+// 流水线总时估计: 切 N 轮的近似总时——不可重叠段在
 // 流水线两端(与通算顺序对应), 中段取通信/计算瓶颈侧:
 //   通信在前(AG):       T_cut ≈ T_comm(首块) + max(T_comm(其余轮), T_mm − T_mm(末块)) + T_mm(末块)
 //   通信在后(RS/AR/A2A): T_cut ≈ T_mm(首块) + max(T_mm − T_mm(首块), T_comm(除末轮)) + T_comm(末轮)

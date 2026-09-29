@@ -9,34 +9,21 @@
  */
 /*!
  * \file fit_balance_tiling.h
- * \brief fit-balance tiling 家族唯一公共文件（三层结构, 两分支共居, 迁移方案 §2.2/§4.9）
+ * \brief fit-balance tiling 公共引擎——对外总接口(伞形头)
  *
- * 当前仅含自由长度分支: HCCL AICPU/CCU 引擎, 每轮开销大 → 反解最优轮长压轮数。
- * 消费者为旧通算融合算子的 fit-balance 路径（950 标卡 4P/8P; 引擎仅支持 950, 后续芯片扩展时更新此注释）。
+ * 自由长度求解分支: HCCL AICPU/CCU 引擎, 每轮启动开销显著 → 反解最优轮长并压轮数。
+ * 消费者为通算融合算子的 fit-balance 路径(950 标卡 4P/8P; 引擎仅支持 950)。
  *
- * 历史存档: URMA wave-packing 拓展分支（v2 aiv_urma 的 estTime k 搜索方案）曾在此文件,
- * 2026-09-15 评审裁定废弃——与核利用率优先切分大部分结果相同, 少量差异定位为
- * 核利用率优先的实现问题(修复走独立事项)。相关标定方法论与实测数据仍有效,
- * 存档于 tiling-plan/ALLTO_ALL_MATMUL_V2_FIT_BALANCE_*。
+ * 架构: 引擎不区分通信原语——原语语义全部终结在标定层(通信份数口径融进标定斜率 k,
+ * 轴向与 mm 倍数在 CommProfile, 流水线结构由 LocalMMPosition 表达); 键控维度仅
+ * (LocalMMPosition 本地 mm 块位置, CommComputeOrder 通算顺序, TilingCommEngine
+ * 通信引擎, dtype)。算子侧 = CALIBRATION 实例 + 枚举入参 + 一行调用 FitBalanceCut。
  *
- * 布局(§4.39 拆分, 2026-09-28): 按功能分层为 fit_balance_tiling/ 目录下多个头文件,
- *       本文件为对外总接口(伞形头)——消费方 include 路径不变, 详见下方拆分清单
- *
- * 零特有代码架构(§4.24/§4.38 演进): 钩子机制已废除; 引擎不区分通信原语——原语语义
- * (通信份数口径已融进标定斜率 k / 轴向与 mm 倍数在 CommProfile / 流水线结构由 LocalMMPosition
- * 表达)全部终结在标定层; 键控维度仅 (LocalMMPosition 本地块位置, CommComputeOrder 通算顺序,
- * TilingCommEngine 通信引擎, dtype)。算子侧 = CALIBRATION 实例 + 枚举入参 + 一行调用。
- *
- * 统一引擎分派（三引擎接入结构完全一致, 见 TilingCommEngine/ParseCommEngine）:
- *   同时支持多通信模式的算子按同一模式接入——CCU/AICPU 走自由长度分支（各引擎拟合表）;
- *   AIV_URMA 当前无求解分支(原 wave-packing 已废弃), 枚举值保留供未来方案接入;
- *   每引擎一组标定常量 + 一张表 + 一个分派点, 无任何引擎特殊路径。
- *
- * 等价性基线: 自由长度分支 2026-09-14 P0 提取经 162 用例 bit 级验证
- * (与老类逐字段比对), 消费方 agmm_v2 双包构建通过。
+ * 统一引擎分派(三引擎接入结构一致): CCU/AICPU 走自由长度分支(各引擎拟合表);
+ * AIV_URMA 枚举值保留供未来方案接入; 每引擎一组标定常量 + 一张表 + 一个分派点。
  */
 // ============================================================================
-// §4.39 文件拆分(2026-09-28): 引擎按功能分层(fit_balance_tiling/ 目录), 消费方
+//  文件拆分: 引擎按功能分层(fit_balance_tiling/ 目录), 消费方
 // include 本伞形头即可(路径与拆分前完全一致):
 //   fit_balance_types.h  零: 公共类型/枚举/常量
 //   comm_model.h         一.1: 通信模型(y=k·x+N·b+c 三口径, 零份数乘子)
@@ -64,7 +51,7 @@ inline FitBasedBalanceCtx InitCtx(const FitBalanceTilingArgs &args, LocalMMPosit
                                   const FitBalanceCalibration &calib)
 {
     // ---- 标定选行(所有匹配键此刻已知: rankDim 与 dtype 均来自 args, 就地选定传纯参数) ----
-    // 通信行: 按引擎分区(aicpu/ccu) + rankDim 匹配首个命中行; miss=零值行(§4.29 防御 NoCut)
+    // 通信行: 按引擎分区(aicpu/ccu) + rankDim 匹配首个命中行; miss=零值行
     const auto &commRows = ((commEngine == TilingCommEngine::CCU) ? calib.ccu : calib.aicpu).rows;
     CommFitParams commFitParams = {};
     for (size_t i = 0; i < FitBalanceCalibration::MAX_COMM_FIT_ROWS; ++i) {
@@ -77,7 +64,7 @@ inline FitBasedBalanceCtx InitCtx(const FitBalanceTilingArgs &args, LocalMMPosit
         }
     }
     // matmul 行: 按"计算形态"匹配算力行——形态键 = (量化类别, fp4 打包, A/B 字节数) 四维
-    // (C 侧字节数不进键, §4.37 根治裁定: glue cType=aType 使其恒等于 aBytes, 零信息量),
+    // ,
     // 键推导与模型 SetCalcType 同源
     const auto isQuant = (args.aType == matmul_tiling::DataType::DT_HIFLOAT8) ||
                          (args.aType == matmul_tiling::DataType::DT_FLOAT8_E4M3FN) ||
@@ -88,13 +75,13 @@ inline FitBasedBalanceCtx InitCtx(const FitBalanceTilingArgs &args, LocalMMPosit
     const bool isFp4 = (args.geAType == ge::DataType::DT_FLOAT4_E2M1);
     const auto matchesCalcProfile = [&](const auto &row) {
         return (row.calcType == calcType) && (row.isFp4 == isFp4) && (row.aBytes == args.inputDtypeSize) &&
-               (row.bBytes == args.inputDtypeSize); // C 侧字节数不进键(§4.37 根治裁定, 见 CubeCalc 注释)
+               (row.bBytes == args.inputDtypeSize); // C 侧字节数不进键
     };
     double computesPerCycle = calib.mmFit.defaultComputesPerCycle;
     for (size_t i = 0; i < FitBalanceCalibration::MAX_CUBE_CALC_ROWS; ++i) {
         if (calib.mmFit.cubeCalc[i].computesPerCycle == 0.0) { // 哨兵截断(未填行; 勿用 aBytes——
             break;                                             // glue 真实口径 fp4 行 aBytes=0 合法, 见
-        } // AGMM_QUANT_CPC_KEY_DEFECT_AND_FIX.md)
+        } //
         if (matchesCalcProfile(calib.mmFit.cubeCalc[i])) {
             computesPerCycle = calib.mmFit.cubeCalc[i].computesPerCycle;
             break;
@@ -110,17 +97,17 @@ inline FitBasedBalanceCtx InitCtx(const FitBalanceTilingArgs &args, LocalMMPosit
                            1,
                            1,
                            1.0};
-    ctx.tilingM.SetMaxTileCnt(MAX_COMM_ROUNDS); // 通信 API FFTS 队列轮次上限(2026-09-17: 63)
-    // §4.38 结构参数入口换算(标定层 CommProfile 声明模式, 引擎一处集中换算)
+    ctx.tilingM.SetMaxTileCnt(MAX_COMM_ROUNDS); // 通信 API FFTS 队列轮次上限
+    //  结构参数入口换算(标定层 CommProfile 声明模式, 引擎一处集中换算)
     ctx.commRankCntForMm = RankMulValue(calib.profile.mmWorksetMul, ctx.commPerf.rankDim());
     ctx.mmRankMul = RankMulValue(calib.profile.mmTotalMul, ctx.commPerf.rankDim());
     ctx.commVolumeMul = RankMulValue(calib.profile.commVolumeMul, ctx.commPerf.rankDim());
 
-    // ---- 通算胶水(键控, 原散在各算子构造函数, §4.24 裁定随引擎下沉) ----
-    // D4 通信矩阵另一维(§4.38: 轴向由标定层 CommProfile.axis 声明——A 侧承载沿 K 轴, C 侧沿 N 轴)
+    // ---- 通算胶水 ----
+    // D4 通信矩阵另一维
     const bool commOnKAxis = (calib.profile.axis == CommAxis::K);
     ctx.commPerf.SetCommShapeLen(commOnKAxis ? ctx.matmulPerf.mmShapeInfo_.kValue : ctx.matmulPerf.mmShapeInfo_.nValue);
-    // D5+D6 通信承载 dtype 与 fp4 子字节建模(两件独立的事, 原耦合在 AG 构造函数单分支内, §4.33 解耦):
+    // D5+D6 通信承载 dtype 与 fp4 子字节建模:
     // ① 通信 dtype 按 CommProfile.axis 承载侧: K(A 侧输入)取 A 字节, N(C 侧输出)取 C 字节——
     //    fp4 只可能是输入 A 的 dtype, C 侧(计算输出)永远不是 fp4, 故子字节建模仅 K 轴承载时需要;
     // ② fp4(0.5B/元素)无法用 uint64 表达: 通信侧按"1 字节打包 2 元素"建模(dtypeSize=1+
@@ -138,12 +125,11 @@ inline FitBasedBalanceCtx InitCtx(const FitBalanceTilingArgs &args, LocalMMPosit
     }
     // ③ mm 侧 fp4 口径(与通信承载哪侧无关, 故独立于上分支): L2 工作集估算按 1B/元素保守取值
     //    (真实 0.5B 无法表达, 2x 高估防 memUsage 退化); 算力查表已由 matchesCalcProfile 的
-    //    isFp4 维度接管(§4.17), 不在此处理。op 侧对 fp4 传 inputDtypeSize=1 时此两行为防御冗余
+    //    isFp4 维度接管, 不在此处理。op 侧对 fp4 传 inputDtypeSize=1 时此两行为防御冗余
     if (isFp4Input) {
         ctx.matmulPerf.mmShapeInfo_.inMatrixADtypeSize = 1;
         ctx.matmulPerf.mmShapeInfo_.inMatrixBDtypeSize = 1;
     }
-    // §4.29 分派后引擎不设回退模型: 标定未命中(零值行 slope=0)时置 minLen=mValue——
     // NoCut 门控即输出单块不切(防御行为, 正常分派下 op 层已引走 COF, 不可达;
     // 同时避免 InverseCommTime 除零斜率的 float→uint UB)
     if (ctx.commPerf.commEstimatePar_.slopeUsPerMb == 0.0) {
@@ -157,18 +143,18 @@ inline FitBasedBalanceCtx InitCtx(const FitBalanceTilingArgs &args, LocalMMPosit
 
 // ============================================================================
 
-// 键控维度: LocalMMPosition(§4.38——取代通信原语的结构键控)。
+// 键控维度: LocalMMPosition。
 // FRONT: 本地 mm 块在流水线首端(本卡数据已在手, 不等通信)——启动端被本地块免费占据,
-//        短块退到尾部专职快速收尾(恒后置), 长块通信掩盖本地首块计算(E5/E19, 原 AG 分支);
+//        短块退到尾部专职快速收尾(恒后置), 长块通信掩盖本地首块计算;
 // BACK:  本地 mm 块在流水线尾端(本地保留份无需发出、无通信 deadline)——收尾端被本地块
-//        占据(与末块通信重叠), 短块前置专职启动通信管道, 长块通信掩盖本地尾块计算(镜像 E5/E19);
-// NONE:  无本地块——短块作流水线垫片, 按 bound 判定放首/尾(E4 通用规律)。
+//        占据(与末块通信重叠), 短块前置专职启动通信管道, 长块通信掩盖本地尾块计算;
+// NONE:  无本地块——短块作流水线垫片, 按 bound 判定放首/尾。
 inline CommCutResult Schedule(FitBasedBalanceCtx &ctx)
 {
     const bool isLocalMMFront = (ctx.localMMPosition == LocalMMPosition::FRONT);
     const bool isLocalMMBack = (ctx.localMMPosition == LocalMMPosition::BACK);
 
-    // ---- ① Estimate: 公共骨干(E1) + E2 总量倍数(ctx.mmRankMul, InitCtx 已派生) ----
+    // ---- ① Estimate: 总量估计(通算比/bound 判定; mmRankMul 由 InitCtx 派生) ----
     const auto estimate = EstimateTotalTimes(ctx);
     if (isLocalMMFront || isLocalMMBack) {
         // 本地块独立计算的 L2 利用率与稳态不同(单份数据、流水未满, 0.6 指数口径;
@@ -193,7 +179,6 @@ inline CommCutResult Schedule(FitBasedBalanceCtx &ctx)
     }
 
     // ---- ② SetShort: 短块落位(minTileLen 为短块长度种子; NoCut 几何门在落位后) ----
-    // [P2 接线] E11-E13(L2/小 shape)随各算子迁移接入; §4.37 废弃条目(E9/E10/E14-E16/E20/E26/E29)不再接线
     ctx.tilingM.cutRes.shortTileLen = ctx.tilingM.GetMinLen();
     ctx.tilingM.cutRes.numShortTile = 1U;
 
@@ -202,15 +187,15 @@ inline CommCutResult Schedule(FitBasedBalanceCtx &ctx)
         return ctx.tilingM.cutRes;
     }
 
-    // ---- ③ SetLong: 本地窗口配平(FRONT/BACK) / E18 公共双向配平(NONE) ----
+    // ---- ③ SetLong: 本地窗口配平(FRONT/BACK) / 双向配平(NONE) ----
     if (isLocalMMFront) {
-        // 首长块的通信恰好掩盖本地首块计算(E19)
+        // 首长块的通信恰好掩盖本地首块计算
         ctx.tilingM.cutRes.longTileLen = ctx.commPerf.InverseCommTime(ctx.frontMMTime);
     } else if (isLocalMMBack) {
-        // 末长块的通信恰好掩盖本地尾块计算(镜像 E19: 本地保留份在收尾端与末块通信重叠)
+        // 末长块的通信恰好掩盖本地尾块计算(本地保留份在收尾端与末块通信重叠)
         ctx.tilingM.cutRes.longTileLen = ctx.commPerf.InverseCommTime(ctx.backMMTime);
     } else {
-        BalanceLongTileLen(ctx); // 乘数 ctx.mmRankMul(老代码 A2A 曾误用管线系数 rankTileNum)
+        BalanceLongTileLen(ctx);
     }
     // ⑤ 轮数搜索的恢复点: ③ 后形态(短块落位 + 长块反解值)。反解与轮数无关——
     // 每档仅在收紧的轮次预算下重跑 ④ 离散化, 无需重算配平
@@ -223,14 +208,14 @@ inline CommCutResult Schedule(FitBasedBalanceCtx &ctx)
     ctx.tilingM.FitTileLengthDiscrete(goodLinearity, isLocalMMFront || isLocalMMBack);
     MergeEqualTiles(ctx.tilingM);
 
-    // ---- ⑤ 轮数搜索 + 切分收益门控(§4.37.1): 把每轮启动开销纳入切分决策 ----
+    // ---- ⑤ 轮数搜索 + 切分收益门控: 把每轮启动开销纳入切分决策 ----
     // 切分不改变总通信数据量(k·X 不变), 只多付启动税 (N−1)·b, 买到的是通信-计算重叠。
     // 流水线总时近似(不可重叠段在流水线两端, 按 LocalMMPosition/顺序三形态, 见 EstimateCutTotalTime):
     //   FRONT(本地首块): T_cut ≈ T_comm(首块) + max(T_comm(其余轮), T_mm − T_mm(末块)) + T_mm(末块)
     //   BACK(本地尾块):  T_cut ≈ T_mm(首块) + max(T_mm(其余), T_comm(除末轮)) + max(T_comm(末轮), 本地窗口)
     //   NONE(通信在后):  T_cut ≈ T_mm(首块) + max(T_mm − T_mm(首块), T_comm(除末轮)) + T_comm(末轮)
     // 不切 T_serial = T_comm(1 轮) + T_mm(全串行)。
-    // 搜索动机(2026-09-21 用户指出): 配平产出的轮数 N₀ 是"配平最优"而非"全局最优"——
+    // 搜索动机: 配平产出的轮数 N₀ 是"配平最优"而非"全局最优"——
     // 通信重时 T(N) 随轮数单调增(启动税吃收益)、计算重时单调降(至首块通信≈b 触底),
     // 最优轮数常在 [1, N₀] 中间, 二值判定(N₀ vs 1)会错过中间解。
     // 搜索实现: budget 线性枚举 [2, N₀)(每档恢复 ③ 后形态 + 收紧轮次预算 + 重跑 ④,
@@ -258,12 +243,12 @@ inline CommCutResult Schedule(FitBasedBalanceCtx &ctx)
         ctx.tilingM.cutRes = bestCut;
     }
 
-    // ---- ⑥ 单轮通信量上限整形(CCU 键, §4.37): HCCL 单次调用 256MB 上限, 超限块等长重切 ----
+    // ---- ⑥ 单轮通信量上限整形: HCCL 单次调用 256MB 上限, 超限块等长重切 ----
     if (ctx.commEngine == TilingCommEngine::CCU) {
         ApplySingleRoundCommLimit(ctx.tilingM, ctx.commPerf, ctx.commVolumeMul, ctx.matmulPerf.mmShapeInfo_.mValue);
     }
 
-    // §4.37: 按最终切分的实际轮数精算总通信时(N 轮 vs NoCut 候选 1 轮), 差值即切分
+    // : 按最终切分的实际轮数精算总通信时(N 轮 vs NoCut 候选 1 轮), 差值即切分
     // 多付的启动税 (N−1)·b——诊断输出供 op 侧日志
     ctx.commTimeActualUs =
         ctx.commPerf.TotalCommTime(ctx.matmulPerf.mmShapeInfo_.mValue, ctx.tilingM.cutRes.totalTileCnt);
@@ -272,7 +257,7 @@ inline CommCutResult Schedule(FitBasedBalanceCtx &ctx)
 }
 
 // ============================================================================
-// 对外唯一入口(§4.39 用户裁定): 算子侧一行调用——上下文构造 + 键控求解的串联。
+// 对外唯一入口: 算子侧一行调用——上下文构造 + 键控求解的串联。
 // 返回 cut + ctx: ctx 不可默认构造(模型需标定参数), 故随结果一并带回——
 // op 侧经 ctx 读诊断字段(commTimeActualUs/commTimeNoCutUs 启动税、GetBaseM 等)。
 // 不需要诊断时只取 .cut 即可。

@@ -8,7 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-// fit_balance_tiling 公共类型与常量(§4.39 文件拆分——引擎共享词汇层):
+// fit_balance_tiling 公共类型与常量:
 // 枚举(键控维度/标定模式)/数据结构(模型信息/切分结果/引擎入参)/常量。
 #pragma once
 
@@ -47,8 +47,8 @@ struct MatmulBaseBlock {
     uint32_t baseK = 128; // 128: init value for baseK
 };
 
-// 计算域画像(§4.40 清理: 按类型聚合, 删旧镜像死成员 socType/batchSize)
-// 计算域画像(§4.40 清理: 删旧镜像死成员 socType/batchSize; 12 成员平铺)
+// 计算域画像
+// 计算域画像
 struct MatmulShapeInfo {
     uint64_t mValue;
     uint64_t nValue;
@@ -64,7 +64,7 @@ struct MatmulShapeInfo {
     double cyclePerMicroSec; // 频率
 };
 
-// 通信域画像(§4.40 清理: 删旧镜像死成员 commMethod/maxStepSize/topoType)
+// 通信域画像
 struct CommModelInfo {
     uint64_t rankDim;                        // 通信域卡数(构造期钳位 ≥2)
     uint64_t commDtypeSize;                  // 通信每元素字节数
@@ -72,11 +72,10 @@ struct CommModelInfo {
     uint64_t commDtypeSizeExpansionFraction; // 子字节折算分母(fp4=2)
 };
 
-// 通信时间线性拟合参数(3 字段): 总量公式 y = k·x + N·b + c(§4.37 专家裁定)——
+// 通信时间线性拟合参数(3 字段): 总量公式 y = k·x + N·b + c——
 // k=带宽斜率, b=每轮启动开销(单轮全款), c=一次性固定开销(只进总量口径, 不进单轮/反解)。
 // 阶段1 结构先行: 现有标定行填 b=旧截距、c=0 → 与旧 y=k·x+offset 逐位等价(bit 锁保持);
 // 阶段2 真实 b/c 标定数据到位后激活行为变化(与开销补丁删除同批, 独立性能验证)。
-// 字段演进史 12→8→2→3 见 §4.28/§4.29/§4.37。
 struct CommFitParams {
     double slopeUsPerMb;    // 带宽斜率 k (us/MB)
     double roundOverheadUs; // 每轮启动开销 b (us)——单轮通信全款, 反解时从目标时间中扣除
@@ -100,16 +99,16 @@ struct CutParams {
     uint64_t maxTileCnt;
 };
 
-// 通信轮次硬上限（通信 API 的 FFTS 队列大小限制; 2026-09-17 随 API 上限放宽 16→63）
+// 通信轮次硬上限（通信 API 的 FFTS 队列大小限制; 随 API 上限放宽 16→63）
 constexpr uint64_t MAX_COMM_ROUNDS = 63;
 
 constexpr uint32_t DEFAULT_BASE_M = 128;
 constexpr uint32_t DEFAULT_BASE_N = 256;
 constexpr uint32_t DEFAULT_BASE_K = 64;
 
-// 引擎调度入参(§4.40 清理: 旧 33 字段镜像裁至引擎实际消费的 9 个, 按类型聚合;
+// 引擎调度入参( 清理: 旧 33 字段镜像裁至引擎实际消费的 9 个, 按类型聚合;
 // 算子侧 ToEngineArgs 从旧 mc2tiling::TilingArgs 挑字段填充)
-// 引擎调度入参(§4.40 清理: 旧 33 字段镜像裁至引擎实际消费的 9 个, 平铺;
+// 引擎调度入参( 清理: 旧 33 字段镜像裁至引擎实际消费的 9 个, 平铺;
 // 算子侧 ToEngineArgs 从旧 mc2tiling::TilingArgs 挑字段填充)
 struct FitBalanceTilingArgs {
     uint64_t mValue;
@@ -152,9 +151,9 @@ enum class CommComputeOrder {
     COMM_FIRST,    // 通信在前计算在后(输入侧通信: AG/allto_all_matmul)
 };
 
-// ====== 本地 mm 块位置枚举(§4.38 核心键控维度, 2026-09-25 裁定) ======
+// ====== 本地 mm 块位置枚举 ======
 // 引擎不区分通信原语——原语语义(份数口径/轴向/流水线结构)全部终结在标定层 CommProfile;
-// 引擎唯一的结构键控是"本地 mm 块在流水线的位置"(不经通信的数据块, 2026-09-25 前按
+// 引擎唯一的结构键控是"本地 mm 块在流水线的位置"(不经通信的数据块, 前按
 // 通信原语隐式表达, 现显式化):
 enum class LocalMMPosition {
     FRONT, // 本地 mm 块前置: 流水线首端(AGMM——本卡 A 块已在手, 聚合前即可计算, 启动端
