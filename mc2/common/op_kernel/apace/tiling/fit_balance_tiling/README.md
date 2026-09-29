@@ -87,11 +87,16 @@ static const FitBalanceCalibration CALIBRATION = {
     },
     /* aicpu 引擎通信拟合行: {卡数, k 带宽斜率(us/MB), b 每轮启动开销(us), c 一次性固定开销(us)} */
     {
-        { {4, 26.5894, 33.17, 20.58} },   // 950 标卡 4P 实测; 未标定形态留空 → 分派走 miss 路径
+        { {4, 26.5894, 33.17, 20.58},      // 950 标卡 4P 实测
+          {8, 22.7301, 33.17, 20.58} },    // 8P: <演示占位值——实测后替换; k 需按 8P 单份口径重标,
+                                           //   b/c 通常与 4P 接近(同为 AICPU 引擎)但以实测为准>
     },
-    /* ccu 引擎通信拟合行 */
+    /* ccu 引擎通信拟合行(与 aicpu 同结构, 各引擎独立标定) */
     {
-        { {4, 23.367368, 8.590666, 0.0} },
+        { {4, 23.367368, 8.590666, 0.0},   // 4P: 历史值换算
+          {8, 0.0, 0.0, 0.0} },            // 8P: <未标定占位——三零行不会命中(IsCommCalibrated
+                                           //   对 k=0 的行仍返回 true, 引擎侧防御 NoCut), 但
+                                           //   请勿保留零值上线, CCU 重标后替换或整行删除>
     },
     /* mmFit: matmul 算力档 + 最优基本块 */
     {
@@ -347,10 +352,43 @@ fit_balance_tiling/
 
 ---
 
-## 五、标定指南（摘要）
+## 五、标定数据维护指南
 
-- **通信行**：CommBench 工具实测；k 按引擎 x 口径（单卡份 MB）填工具原始值；b 用固定 chunk
-  扫轮数 T(N)=N(k·chunk+b)+c 拟合；c 为拟合截距。未标定形态留空（分派自动走 miss 路径）。
-- **算力档**：按 (calcType, isFp4, A/B 字节数) 四维键匹配，miss 落 defaultComputesPerCycle。
-  fp4 行的键为 {0,0}（GetDataTypeSize 对 fp4 无条目返回 0，glue 真实口径）。
-- **CommProfile**：按算子流水线结构填四个参数（见接入示例注释），属结构事实而非实测值。
+### 5.1 通信拟合行（k/b/c）——新形态（如 8P）怎么加
+
+**行结构**：`{卡数, k, b, c}`，按卡数（rankDim）匹配，每引擎（aicpu/ccu）独立一组。
+
+**加 8P 行的完整步骤**：
+1. **实测**（CommBench 工具，AG/aicpu/int8/rank8 配置）：
+   - k：turn=1 尺寸扫描（8~96MB/rank）线性拟合，**直接取工具输出的斜率原值**——引擎 x 口径
+     就是单卡份 MB，不要做 ÷rankDim 之类的预换算（份数口径已融进引擎使用 k 的方式）；
+   - b：固定 chunk 扫轮数 T(N)=N(k·chunk+b)+c 拟合，取多组 chunk 交叉一致的中位值
+     （16MB 以上大块带宽亚线性，拟合值偏离时应弃用）；
+   - c：同拟合截距，多组取中位。
+2. **填行**：在对应引擎的 rows 里追加 `{8, k实测, b实测, c实测}`——一行即一个已标定形态，
+   与 4P 行并存，运行时按 rankDim 自动匹配。
+3. **生效路径**：填入后 `IsCommCalibrated(8, ...)` 返回 true，8P 调用自动从 miss 路径
+   （核利用率优先）切到 fit-balance。
+
+**未标定形态的处理**：rows 里**不写该卡数的行**即可——分派自动走 miss（核利用率优先），
+无需任何开关。**不要用零值行占位上线**（k=0 的行会让 IsCommCalibrated 返回 true，引擎侧
+退化为防御 NoCut，切分策略悄然劣化）。
+
+**CCU 引擎**：与 aicpu 结构完全相同但数值独立——CCU 每轮开销与带宽特性与 AICPU 不同，
+必须分别标定，不可复用 aicpu 行。
+
+### 5.2 算力档（mmFit.cubeCalc）——新 dtype 怎么加
+
+按 (calcType, isFp4, A/B 字节数) 四维键匹配，加行即加档：
+- fp8：`{MatmulDtypeKind::QUANT, false, 1, 1, 算力}`；
+- fp4：`{MatmulDtypeKind::QUANT, true, 0, 0, 算力}`——键的 {0,0} 是 glue 真实口径
+  （GetDataTypeSize 对 fp4 无条目返回 0），不是笔误；
+- bf16：`{MatmulDtypeKind::FP16, false, 2, 2, 算力}`；
+- miss 落 `defaultComputesPerCycle`（引擎默认 4096，勿用作长期方案）。
+
+### 5.3 何时不需要动标定
+
+- **换 shape**：不需要——标定行按卡数与 dtype 匹配，与 shape 无关；
+- **换通信引擎配置**（comm_mode）：不需要——运行时按 commEngine 选表，两表都已标定即可；
+- **新算子接入**：dataflow 三元组按算子填，**通信行/算力档可以直接复制同原语已标定算子的
+  数值**（标定的是通信与芯片特性，不是算子特性）——这正是标定层与算子解耦的设计收益。
