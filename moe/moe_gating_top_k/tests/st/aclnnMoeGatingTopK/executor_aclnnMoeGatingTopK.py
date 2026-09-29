@@ -79,7 +79,7 @@ class MoeGatingTopKMethod(BaseApi):
 
         # Process y2 if needed
         if y2_flag:
-            y2 = torch.from_numpy(original_x).to(dtype)
+            y2 = torch.from_numpy(original_x).to(dtype).to(torch.float32)
         else:
             y2 = None
 
@@ -87,7 +87,7 @@ class MoeGatingTopKMethod(BaseApi):
         y = torch.from_numpy(np.asarray(y)).to(dtype)
         indices = torch.from_numpy(indices).to(torch.int32)
 
-        return y, indices, y2.to(torch.float32)
+        return y, indices, y2
 
     def __call__(self, input_data: InputDataset, with_output: bool = False):
         if self.device == "cpu":
@@ -123,3 +123,4 @@ class MoeGatingTopKAclnnApi(AclnnBaseApi):
             output.append(self.acl_tensor_to_torch(output_pack))
 
         return output
+    
