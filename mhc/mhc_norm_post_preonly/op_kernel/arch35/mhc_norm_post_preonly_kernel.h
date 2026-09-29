@@ -167,6 +167,8 @@ public:
 private:
     __aicore__ inline void ProcessTokenSingleAiv(uint32_t token);
     __aicore__ inline void ProcessTokenDualSiblingAiv(uint32_t token);
+    __aicore__ inline void ProcessTokenDual4Op(uint32_t token);
+    __aicore__ inline void ProcessTokenDual5Op(uint32_t token);
 
     // 加载一个token的h_post[N]和h_res[N*N]。
     __aicore__ inline void CopyInTokenWeights(uint32_t token, float (&postVals)[N], uint32_t nStart = 0U,
