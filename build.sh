@@ -75,8 +75,6 @@ GENOP_TYPE=""
 GENOP_NAME=""
 INCREMENTAL_BUILD=FALSE
 PR_CHANGED_FILES=""  # PR场景, 修改文件清单, 可用于标识是否PR场景
-UT_SOC_ARRAY=()
-UT_TEST_CNT=0
 PR_UT_FLAG=FALSE
 CI_MODE=FALSE
 SPECIFIC_EXAMPLE_NAME=""  # 指定运行特定的 example 文件名
@@ -386,6 +384,7 @@ function help_info() {
     echo "    --opgraph_test build and run opgraph unit tests"
     echo "    --opkernel_test build and run opkernel unit tests"
     echo "    --run_example Compile and execute the test_aclnn_xxx.cpp/test_geir_xxx.cpp"
+    echo "    --PR_COMPILE Build changed compile scope from CMake/def.cpp with kernel bin"
     echo "    --simulator    Enable simulator mode for run_example (requires --soc parameter)"
     echo "    --genop Create the initial directory for op"
     echo "    --genop_aicpu Create the initial directory for AI CPU op"
@@ -1350,7 +1349,7 @@ SUPPORTED_LONG_OPTS=(
   "rule_launch=" "simulator=" "example_name=" "tiling_key=" "tiling-key="
   "kernel_template_input=" "vendor_name=" "genop=" "genop_aicpu="
   "cann_3rd_lib_path=" "op_build_tool" "ascend_cmake_dir"
-  "ccache" "PR_UT" "PR_PKG" "op_debug_config" "ops-compile-options"
+  "ccache" "PR_UT" "PR_PKG" "PR_COMPILE" "op_debug_config" "ops-compile-options"
   "op-name" "compute-unit" "package-path" "build" "changed_list"
   "test" "example" "verbose" "incremental"
 )
@@ -1496,9 +1495,7 @@ assemble_cmake_args() {
     fi
     CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_TEST=TRUE"
   fi
-  if [[ $UT_TEST_CNT -eq 0 ]]; then
-    CUSTOM_OPTION="${CUSTOM_OPTION} -DUT_INFERSHAPE_FLAG=TRUE"
-  fi
+  CUSTOM_OPTION="${CUSTOM_OPTION} -DUT_INFERSHAPE_FLAG=TRUE"
   if [[ "$OP_HOST_UT" == "TRUE" ]]; then
     CUSTOM_OPTION="${CUSTOM_OPTION} -DOP_HOST_UT=TRUE"
   fi
@@ -1861,11 +1858,28 @@ while [[ $# -gt 0 ]]; do
         PR_UT_FLAG=TRUE
         TEST_MC2=$(python3 "$CURRENT_DIR"/cmake/scripts/parse_changed_files.py -c "$CURRENT_DIR"/tests/test_config.yaml -f "$PR_CHANGED_FILES" get_related_ut_mc2)
         TEST_EXCLUDE_MC2=$(python3 "$CURRENT_DIR"/cmake/scripts/parse_changed_files.py -c "$CURRENT_DIR"/tests/test_config.yaml -f "$PR_CHANGED_FILES" get_related_ut_exclude_mc2)
-        ut_soc_version=$(python3 "$CURRENT_DIR"/cmake/scripts/get_soc_version.py -c "$CURRENT_DIR"/tests/test_soc_config.yaml -f "$PR_CHANGED_FILES" get_related_soc)
-        ut_soc_version="ascend${ut_soc_version#*ascend}"
-        IFS=',' read -ra UT_SOC_ARRAY <<< "$ut_soc_version"
-        echo "UT_SOC_ARRAY = ${UT_SOC_ARRAY[@]}"
 
+        CI_MODE=TRUE
+        shift 2
+        ;;
+    --PR_COMPILE)
+        PR_CHANGED_FILES="$2"
+        experimental_flag=""
+        if [[ "$ENABLE_EXPERIMENTAL" == "TRUE" ]]; then
+            experimental_flag="--experimental"
+        fi
+        ops_names=$(python3 "$CURRENT_DIR"/cmake/scripts/parse_compile_scope.py -f "$PR_CHANGED_FILES" --soc "$ASCEND_SOC_UNITS" ${experimental_flag})
+        echo "Operators that need compile:$ops_names"
+        if [ -z "${ops_names}" ]; then
+            log "Info: No compile scope for this PR."
+            exit 200
+        fi
+        ops_names="${ops_names%;}"
+        ops_names="${ops_names//;/,}"
+        ascend_op_name="$ops_names"
+        ENABLE_BUILD_PKG=TRUE
+        ENABLE_BUILT_CUSTOM=TRUE
+        ENABLE_BUILT_IN=FALSE
         CI_MODE=TRUE
         shift 2
         ;;
@@ -2377,20 +2391,9 @@ function build_pr_ut_mc2()
     fi
     CUSTOM_OPTION="${CUSTOM_OPTION} -DTESTS_UT_OPS_TEST_CI_PR=ON"
     CUSTOM_OPTION="${CUSTOM_OPTION} -DTESTS_UT_OPS_TEST=${TEST_MC2}"
-    for element in "${UT_SOC_ARRAY[@]}"; do
-            if [ $UT_TEST_CNT -eq 0 ]; then
-                CUSTOM_OPTION="${CUSTOM_OPTION} -DUT_INFERSHAPE_FLAG=TRUE"
-                CUSTOM_OPTION="${CUSTOM_OPTION} -DOP_API_UT=TRUE"
-            else
-                CUSTOM_OPTION="${CUSTOM_OPTION} -DUT_INFERSHAPE_FLAG=FALSE"
-                CUSTOM_OPTION="${CUSTOM_OPTION} -DOP_API_UT=FALSE"
-            fi
-            echo "start to test $element"
-            process_soc_input "$element"
-            set_compute_unit_option_ut
-            build_ut ${BUILD}
-            UT_TEST_CNT=$((UT_TEST_CNT +1))
-    done
+    process_soc_input "ascend310p,ascend910b,ascend910_93,ascend950,ascend350"
+    set_compute_unit_option_ut
+    build_ut ${BUILD}
 }
 
 function build_pr_ut_exclude_mc2()
@@ -2407,7 +2410,7 @@ function build_pr_ut_exclude_mc2()
     fi
     CUSTOM_OPTION="${CUSTOM_OPTION} -DTESTS_UT_OPS_TEST_CI_PR=ON"
     CUSTOM_OPTION="${CUSTOM_OPTION} -DTESTS_UT_OPS_TEST=${TEST_EXCLUDE_MC2}"
-    process_soc_input "ascend310p,ascend910b,ascend950,ascend350"
+    process_soc_input "ascend310p,ascend910b,ascend910_93,ascend950,ascend350"
     set_compute_unit_option_ut
     build_ut ${BUILD}
 }
