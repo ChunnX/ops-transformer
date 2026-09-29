@@ -99,7 +99,8 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         }
         ComputeX2PostTileForSiblingAiv(token, tOff, tD, invRms0, postVals);
         RestoreAndCopyOutX2TileForSiblingAiv(token, tOff, tD);
-        AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf, siblingAivIdx_, siblingAivIdx_ + 1U);
+        AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf, siblingAivIdx_, siblingAivIdx_ + 1U,
+                               firstPhiPrefetched);
     }
 
     // follower写partial；两个sibling AIV均完成会合，follower立即退出。
