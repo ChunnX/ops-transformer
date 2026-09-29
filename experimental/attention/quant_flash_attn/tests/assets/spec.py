@@ -20,13 +20,6 @@ _impl_cache = {}
 
 
 def load_impl_module(stem):
-    """懒加载 impl 模块.
-
-    与 flash_attn 资产一致: 不在 import spec.py 时 (主进程) 级联 import
-    golden/graph (其中会 import torch_npu), 避免 fork 子进程 re-init NPU 报错。
-    改为在 golden/customize_inputs/compare/npu_preprocess 首次被 ttk 调用时
-    (fork 之后的 worker) 才加载。
-    """
     if stem not in _impl_cache:
         path = ASSET_IMPL_DIR / f"{stem}.py"
         spec = importlib.util.spec_from_file_location(
@@ -47,14 +40,7 @@ def _inputs_dispatch(*args, **kwargs):
 
 
 class QuantFlashAttnMxfp4Spec:
-    """quant_flash_attn (MXFP4, quant_mode=5) 测试规范.
-
-    metadata 由 npu_preprocess 在主算子调用前生成并回填 metadata slot,
-    主算子直接由 ttk 调用 torch.ops.cann_ops_transformer.quant_flash_attn。
-
-    golden/customize_inputs/compare/npu_preprocess 均懒加载 impl 模块,
-    避免主进程 fork 前 import torch_npu (与 flash_attn 资产一致)。
-    """
+    """quant_flash_attn (MXFP4, quant_mode=5) 测试规范."""
 
     golden = staticmethod(_golden_dispatch)
     customize_inputs = staticmethod(_inputs_dispatch)
@@ -86,11 +72,7 @@ class QuantFlashAttnMxfp4Spec:
 
 
 class QuantFlashAttnMxfp4MetadataSpec:
-    """quant_flash_attn_metadata 生成器的 TestSpec.
-
-    与 flash_attn 资产的 FlashAttnMetadataSpec 一致: 只提供 customized inputs
-    (把 cu_seqlens/seqused 描述向量回填进 metadata API 输入), 无独立测试套件。
-    """
+    """quant_flash_attn_metadata 生成器的 TestSpec."""
 
     customize_inputs = load_impl_module(
         "metadata_inputs"

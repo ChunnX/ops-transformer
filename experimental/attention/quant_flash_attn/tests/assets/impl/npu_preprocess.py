@@ -15,9 +15,6 @@
 hook 调用伴随算子 ``quant_flash_attn_metadata`` 并把结果 ``copy_`` 回填到 metadata
 槽位, 随后主算子 ``torch.ops.cann_ops_transformer.quant_flash_attn`` 由 ttk 直调。
 hook 始终返回 ``None``。
-
-metadata 构建逻辑从原 two-phase ``npu_mxfp4_fa`` / ``call_npu_main`` 提取:
-  先调 ``quant_flash_attn_metadata`` 生成 metadata, 再调主算子。
 """
 
 import logging
@@ -181,11 +178,6 @@ def run(
     return_softmax_lse=False,
     **kwargs,
 ):
-    """生成并回填 QuantFlashAttn (MXFP4) metadata。
-
-    Signature 镜像 ``torch.ops.cann_ops_transformer.quant_flash_attn``, ttk 按 op
-    schema 顺序传入位置参数; 额外 CSV attributes (B/N_q/N_kv/D/V_D/...) 走 kwargs。
-    """
     if metadata is None:
         raise ValueError("QuantFlashAttn (MXFP4) npu_preprocess requires metadata")
 
