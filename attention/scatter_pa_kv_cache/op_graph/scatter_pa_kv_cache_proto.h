@@ -150,7 +150,7 @@ REG_OP(ScatterPaKvCache)
     .ATTR(strides, ListInt, {1, 1})
     .ATTR(offsets, ListInt, {0, 0})
     .DATATYPE(T, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT, DT_INT8, DT_UINT8, DT_INT16, DT_UINT16, DT_INT32, DT_UINT32,
-                             DT_HIFLOAT8, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_FLOAT4_E2M1, DT_FLOAT4_E1M2}))
+                             DT_HIFLOAT8, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_FLOAT4_E2M1, DT_FLOAT4_E1M2, DT_HIFLOAT4}))
     .OP_END_FACTORY_REG(ScatterPaKvCache)
 
 } // namespace ge
