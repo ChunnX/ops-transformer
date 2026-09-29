@@ -131,8 +131,19 @@ using MC2KernelTemplate::MC2AlltoAllPrimitives;
 #ifndef MATMUL_ALLTO_ALL_APACE_MX_QUANT_IMPL
 #define MATMUL_ALLTO_ALL_APACE_MX_QUANT_IMPL(tilingData, ServerType) \
     do { \
-        Apace::MatmulAllToAllMxQuantMatmulHcommImpl<DTYPE_X1, DTYPE_X2, DTYPE_Y, hcommMatmulAllToAllTilingData, \
-                                                    ServerType> \
+        Apace::MatmulAllToAllMxQuantMatmulHcommImpl<DTYPE_X1, DTYPE_X2, DTYPE_Y, \
+                                                    hcommMatmulAllToAllTilingData, ServerType, true> \
+            op(&tilingData); \
+        op.Init(x1, x2, bias, y, x1Scale, x2Scale, workspaceGM); \
+        op.Run(); \
+    } while (0)
+#endif
+
+#ifndef MATMUL_ALLTO_ALL_APACE_HIF4_QUANT_IMPL
+#define MATMUL_ALLTO_ALL_APACE_HIF4_QUANT_IMPL(tilingData, ServerType, TransB) \
+    do { \
+        Apace::MatmulAllToAllMxQuantMatmulHcommImpl<DTYPE_X1, DTYPE_X2, DTYPE_Y, \
+                                                    hcommMatmulAllToAllTilingData, ServerType, TransB> \
             op(&tilingData); \
         op.Init(x1, x2, bias, y, x1Scale, x2Scale, workspaceGM); \
         op.Run(); \
@@ -168,6 +179,16 @@ __global__ __aicore__ void matmul_allto_all(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
         GET_TILING_DATA_WITH_STRUCT(QuantMatmulAlltoAllTilingData, tilingData, tilingGM);
         MATMUL_ALLTO_ALL_APT_MX_QUANT_IMPL(tilingData, pipe, commServerType);
     }
+#elif ((ORIG_DTYPE_X1 == DT_HIFLOAT4) && (ORIG_DTYPE_X2 == DT_HIFLOAT4))
+    // HiF4 全量化: 仅支持 Apace Hcomm 通路(纯C通信, AIC_ONLY), 无主线 pipeline 实现。
+    // 无条件走 APACE(对齐 AlltoAllMatmul): 二进制按 dtype变体×tilingKey组合 全叉积实例化,
+    // HiF4 dtype × APACE=0 的叉积实例同样会编译本分支(编译无害), 而 host 侧只会发出
+    // USING_APACE_IMPL=1 的 tilingKey(SEL 仅声明 APACE=1 组合), 该类实例运行时不可达。
+    REGISTER_TILING_DEFAULT(QuantMatmulAlltoAllTilingData);
+    GET_TILING_DATA_WITH_STRUCT(hcommMatmulAllToAllTilingData, tilingData, tilingGM);
+    // scale 类型由 Blaze 按 X1Type(hifloat4x2_t) 自动导出为 hif4_scale(4字节: E6M2+E1_8+E1_16);
+    // TransB 由 X2TRANSPOSE 决定, 支持转置/非转置两种 B 布局
+    MATMUL_ALLTO_ALL_APACE_HIF4_QUANT_IMPL(tilingData, commServerType, X2TRANSPOSE);
 #else
     REGISTER_TILING_DEFAULT(QuantMatmulAlltoAllTilingData);
     if constexpr (QUANTMODE == KC_QUANT_MODE) {

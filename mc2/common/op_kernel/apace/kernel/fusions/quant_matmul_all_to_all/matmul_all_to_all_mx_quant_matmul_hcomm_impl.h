@@ -36,6 +36,12 @@ struct MatmulAllToAllMxPackFactor<fp4x2_e2m1_t> {
     static constexpr uint64_t VALUE = 2UL;
 };
 
+// HiF4: hifloat4x2_t 与 fp4x2_e2m1_t 同为 2 个 4-bit 元素打包 1 字节
+template <>
+struct MatmulAllToAllMxPackFactor<hifloat4x2_t> {
+    static constexpr uint64_t VALUE = 2UL;
+};
+
 template <typename T>
 __aicore__ inline uint64_t MatmulAllToAllMxByteOffset(uint64_t elementCount)
 {
@@ -56,7 +62,8 @@ __aicore__ inline GM_ADDR MatmulAllToAllMxGmAddr(GM_ADDR baseAddr, uint64_t elem
  * MxQuantMatmulAlltoAllArch35 wrapper is intentionally not reused, matching
  * the isolation pattern of AllToAllMxQuantMatmulHcommImpl.
  */
-template <typename X1Type, typename X2Type, typename YType, typename TilingDataType, AscendC::HcclServerType ServerType>
+template <typename X1Type, typename X2Type, typename YType, typename TilingDataType,
+          AscendC::HcclServerType ServerType, bool TransB>
 class MatmulAllToAllMxQuantMatmulHcommImpl {
 public:
     explicit __aicore__ inline MatmulAllToAllMxQuantMatmulHcommImpl(TilingDataType *tilingData)
@@ -92,8 +99,11 @@ public:
     }
 
 private:
-    using LayoutA = AscendC::Te::NDExtLayoutPtn;
-    using LayoutB = AscendC::Te::DNExtLayoutPtn;
+    using LayoutA = AscendC::Te::NDExtLayoutPtn;   // A 始终非转置
+    // B 矩阵布局: TransB=true 为转置 (N, K), false 为非转置 (K, N);
+    // MX 场景恒为转置, HiF4 场景转置/非转置均支持
+    using LayoutB =
+        AscendC::Std::conditional_t<TransB, AscendC::Te::DNExtLayoutPtn, AscendC::Te::NDExtLayoutPtn>;
     using LayoutC = AscendC::Te::NDExtLayoutPtn;
     using LayoutBias = AscendC::Te::NDExtLayoutPtn;
     using BiasType = float;
@@ -104,6 +114,9 @@ private:
     using BlockMmad = Blaze::Gemm::Block::BlockMmad<DispatchPolicy, X1Type, LayoutA, X2Type, LayoutB, YType, LayoutC,
                                                     BiasType, LayoutBias>;
     using KernelImpl = Blaze::Gemm::Kernel::MatmulAllToAllQbmmMxKernel<ProblemShape, BlockMmad, BlockScheduler>;
+    // Scale 元素类型由 kernel 侧 BlockMmad 按 X1Type 键控导出(ops-tensor 公共 MxScaleType):
+    // MX 量化 → fp8_e8m0_t, HiF4 量化(hifloat4x2_t) → hif4_scale; 编排层不显式传 scale 类型
+    using ScaleType = typename KernelImpl::ScaleType;
     using Params = typename KernelImpl::Params;
     using SliceParams = typename KernelImpl::SliceParams;
     using BlockMmadParams = typename KernelImpl::BlockMmadParams;
@@ -124,21 +137,19 @@ private:
         }
     };
 
-    static constexpr uint64_t MXFP_GROUP_SIZE = 64UL;
-    static constexpr uint64_t MXFP_SCALE_FACTOR = 2UL;
-
     __aicore__ inline void SetupParams(Params &params, uint64_t rowOffset, uint32_t taskM, uint32_t taskCnt,
                                        const QuantMatmulTilingData &mmTile)
     {
         const auto &tilingInfo = tilingData_->matmulAllToAllTilingInfo;
         const uint64_t rankNPerPeer = static_cast<uint64_t>(tilingInfo.rankN) / tilingInfo.rankDim;
-        const uint64_t scaleK =
-            Blaze::Gemm::CeilDiv(static_cast<uint64_t>(tilingInfo.rankK), MXFP_GROUP_SIZE) * MXFP_SCALE_FACTOR;
+        // scale K 向单元数(按 scale 元素计), 由 ops-tensor 公共 MxScaleKLen 按数据类型(X1Type)导出:
+        // MX 为 E8M0 单元(K/64*2), HiF4 为 hif4_scale 单元(K/64)
+        const uint64_t scaleK = Blaze::Gemm::MxScaleKLen<X1Type>(static_cast<uint64_t>(tilingInfo.rankK));
 
         ProblemShape problemShape{mmTile.m, mmTile.n, mmTile.k, 1UL};
         BlockMmadParams mmParams;
         mmParams.aGmAddr = MatmulAllToAllMxGmAddr<X1Type>(x1_, rowOffset * tilingInfo.rankK);
-        mmParams.scaleAGmAddr = MatmulAllToAllMxGmAddr<AscendC::fp8_e8m0_t>(x1Scale_, rowOffset * scaleK);
+        mmParams.scaleAGmAddr = MatmulAllToAllMxGmAddr<ScaleType>(x1Scale_, rowOffset * scaleK);
         mmParams.bGmAddr = x2_;
         mmParams.scaleBGmAddr = x2Scale_;
         mmParams.cGmAddr = MatmulAllToAllMxGmAddr<YType>(workspaceGM_, rowOffset * rankNPerPeer);
@@ -155,9 +166,9 @@ private:
                                              mmTile.nTailMain};
         QBMMTiling qbmmParams{mmTile.baseM, mmTile.baseN, mmTile.baseK, mmTile.dbL0c, bias_ != nullptr};
         SliceParams sliceParams{MatmulAllToAllMxByteOffset<X1Type>(static_cast<uint64_t>(taskM) * tilingInfo.rankK),
-                                MatmulAllToAllMxByteOffset<AscendC::fp8_e8m0_t>(static_cast<uint64_t>(taskM) * scaleK),
-                                MatmulAllToAllMxByteOffset<YType>(static_cast<uint64_t>(taskM) * rankNPerPeer),
-                                taskCnt};
+                                 MatmulAllToAllMxByteOffset<ScaleType>(static_cast<uint64_t>(taskM) * scaleK),
+                                 MatmulAllToAllMxByteOffset<YType>(static_cast<uint64_t>(taskM) * rankNPerPeer),
+                                 taskCnt};
         params = {problemShape,       mmParams,   l1Params,
                   schedulerParams,    qbmmParams, static_cast<uint64_t>(tilingInfo.rankM) * rankNPerPeer,
                   tilingInfo.rankDim, sliceParams};
