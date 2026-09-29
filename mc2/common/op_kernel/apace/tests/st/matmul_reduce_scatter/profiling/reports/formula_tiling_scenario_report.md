@@ -111,21 +111,52 @@
 - 通信 Bound 族掩盖率 0.83→0.88（轻度上升）
 - 完整数据：probe 工程 `isolation_metrics_report_formula_scenario.md`（本地留存）
 
-## 四、结论
+## 四、组合策略（Phase 1：2×2 矩阵关键 cell 补测）
 
-1. **公式语义实现正确、精度零回退、全量性能净中性（−0.48%）**
-2. **分族矛盾显著**（rank4 大 N −5.67% vs rank2 大 N +2.95% vs 小 N r4 +10.69%）——
-   维持 **cases.csv 实测表为唯一正式配置**，公式保留为 `headMSize<=0` 实验入口
-3. 可单独评估的后续方向：**rank4 大 N 族（25 case）公式接管**（−5.67% 潜在收益），
-   需与 rank2/小 N 族的例外策略组合验证
-4. 关联发现（同日顺序开关 A/B，localScopeLast=1）：rank2 完全中性（单 flag 语义验证）；
-   row27 存在稳定 −8.5% 收益（3 对复测），rank4 小 case 轻度收益（−0.5~−2.5%），
-   机制为 AIC 侧未建模的二阶效应，默认 localLast=0 保持不变
+对 6 个代表 case 补测 (tileM × localScopeLast) 组合矩阵，结论：
 
-## 五、数据索引
+| 发现 | 证据 |
+|---|---|
+| **两维度"替代互补"而非"叠加"** | row27 顺序收益 −9.2% 仅在 tileM=128 存在，256 下消失（+0.6%）；公式收益与顺序无关（公式@last1 ≈ 公式@last0） |
+| 顺序效应与 tile 粒度绑定 | rank4 大 N 族顺序@256 均值 +0.26%（中性）；rank2（双 scope 同构）双维度完全中性 |
+| 逐 case 最优组合 oracle | −3.98% geomean（56 变化 case），收益来源：公式 26 + 顺序 3 + 无收益 27 |
+
+## 五、组合表落地与全新验证（Phase 2/3）
+
+**落地**：cases.csv 更新为逐 case 组合表（新增第 6 列 `local_scope_last`，run.sh CSV 模式支持）：
+- **17 case 公式接管**（原测收益 ≤ −2% 阈值防过拟合）：headM → 公式值（256/512），last=0
+- **4 case 顺序开关**：row27（128,L1）、row10/12/17（现值 headM,L1）
+- 其余 80 case 配置不变
+
+**验证**（同日全新 A/B，非原测量数据复用）：
+
+| 项 | 结果 |
+|---|---|
+| 精度（21 变更 case，CSV 端到端） | **21/21 PASS** |
+| 性能（21 case 新旧配置交替 A/B） | **geomean −9.65%**（折算 101 全集 ≈ **−2.0%**） |
+| 改善/回退 | 20 改善 / 1 噪声级（row10 +0.7%），**零真实回退** |
+| 大额收益复现 | row69 −28.2% / row57 −26.3% / row33 −21.7% / row67 −16.8% / row27 −8.2%（顺序） |
+
+> 数据完整性说明：续跑批次曾因脚本参数传递缺陷（headM 传空 → 二进制按公式 tiling 执行）产生 5 条
+> 无效 old 侧数据，已识别剔除并以显式参数重测修正——修正后 5 case 收益全部复现（−2.7% ~ −28.2%），
+> 与原始测量吻合。
+
+## 六、结论
+
+1. **组合表为新的正式配置**：cases.csv 逐 case 组合（tiling + localScopeLast），全新复测确认
+   变更 case geomean −9.65%（101 全集 ≈ −2.0%），精度零回退
+2. 公式与顺序**不可叠加但可分 case 组合**：公式收益 order 无关（rank4 大 N 族为主），
+   顺序收益 tiling 绑定（row27 @128 独有 −8.5%）
+3. 机制遗留：row27 顺序收益的量级特异性（vs 同构 row47 中性）与顺序效应的 tile 粒度依赖
+   未闭合，需 op_summary pipe 利用率分析（后续方向）
+4. 默认 headM 缺省仍为 512（公式保留为 `headMSize<=0` 实验入口），localScopeLast 缺省 0
+
+## 七、数据索引
 
 | 项 | 位置 |
 |---|---|
-| A/B 结果 | 本地 `/tmp/opencode/ab_formula_result.txt`（11 case）+ `ab_formula_rest_result.txt`（45 case） |
+| 公式 A/B | 本地 `/tmp/opencode/ab_formula_result.txt`（11）+ `ab_formula_rest_result.txt`（45） |
+| 组合矩阵 Phase 1 | 本地 `/tmp/opencode/phase1_matrix_result.txt` |
+| 组合验证 Phase 3 | 本地 `/tmp/opencode/p3_ab_result.txt`（21 case 新旧 A/B）+ p3_precision.log |
 | 掩盖率 probe | 本地 `apace_perf_probe/`（isolation_metrics_report_formula_scenario.md + 60 组 PROF） |
-| 复现 | `run.sh --cli m k n r perf 0 0`（公式+顺序0）vs `... perf <curHeadM> 0`（现值） |
+| 复现 | `run.sh --skip-build <rows>`（组合表 CSV 模式）vs `run.sh --cli m k n r perf <旧headM> 0` |

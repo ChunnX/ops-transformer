@@ -394,11 +394,14 @@ for row in "${SELECTED_ROWS[@]}"; do
     N=$(echo "$SELECTED" | awk -F, '{print $3}')
     RANK_NUM=$(echo "$SELECTED" | awk -F, '{print $4}')
     HEAD_M_SIZE=$(echo "$SELECTED" | awk -F, '{print $5}')
+    # 第 6 列 local_scope_last (可选, 缺省 0): 0 = LOCAL 先 (默认), 1 = LOCAL 后置
+    LOCAL_SCOPE_LAST=$(echo "$SELECTED" | awk -F, '{print $6}')
+    [ -z "$LOCAL_SCOPE_LAST" ] && LOCAL_SCOPE_LAST=0
 
     echo ""
     echo "########## CSV row ${row}/${TOTAL_LINES} ##########"
 
-    if run_single "$M" "$K" "$N" "$RANK_NUM" "$HEAD_M_SIZE"; then
+    if run_single "$M" "$K" "$N" "$RANK_NUM" "$HEAD_M_SIZE" "$LOCAL_SCOPE_LAST"; then
         PASS_CNT=$((PASS_CNT + 1))
         RESULTS+=("PASS  row$row  M=$M K=$K N=$N rank=$RANK_NUM headM=$HEAD_M_SIZE")
     else

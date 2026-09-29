@@ -11,7 +11,7 @@
 |---|---|---|
 | **★ 全量 v5 vs v8 对比** | [reports/full_suite_v5_vs_v8_report.md](reports/full_suite_v5_vs_v8_report.md) | **101/101 用例** v5/v8 同日同机交替 A/B；优化收益归因、机制要点、已验证不可行/关闭方向 (P0/P3/P2-AIC) |
 | 隔离测试（当前代码重测） | [reports/isolation_metrics_report.md](reports/isolation_metrics_report.md) | 四分量分解 (T_mm/T_a2a/T_rs/T_before/T_after)、融合加速比与掩盖率（12 代表 case），与 v1 期对比 |
-| tileM 公式化场景验证 | [reports/formula_tiling_scenario_report.md](reports/formula_tiling_scenario_report.md) | `tileM=ceil(blockNum/(N/256))*256` 场景（localLast=0）：56 case A/B（净 −0.48%，分族 ±28% 分化）+ 掩盖率对比，结论维持 cases.csv 实测表 |
+| tileM 公式与组合策略 | [reports/formula_tiling_scenario_report.md](reports/formula_tiling_scenario_report.md) | 公式场景 56 case A/B + 掩盖率 + 2×2 组合矩阵 + **组合表落地验证**（21 case 全新 A/B geomean −9.65%，101 全集 ≈ −2.0%，精度 21/21） |
 
 > v1 期外部基线对比 (97 用例 vs 级联/MC2 融合)、v6/v7/v8 分轮专项 A/B 报告已移除:
 > 核心结论分别保留于本文件「v1 期外部基线结论」小节与 full_suite 报告第三/四节, 明细可查 git 历史。
@@ -41,6 +41,12 @@
 - **小 M / 少 tile (T=2, -8.6%)**: 逐轮同步开销占比高，v6/v7 barrier 消减与 fence 重叠化收益最直接
 - **rank4 (-6.1%) 略优于 rank2 (-5.2%)**: 通信核多，v7 fence 重叠化收益放大
 - **大 M (≥8192) 收窄至 -4.1%**: 通信量主导，受单通道 ~40GB/s 链路上限约束 (P0 已证不可破)
+
+### 组合 tiling 表（2026-09-29 落地）
+
+cases.csv 逐 case 组合（17 case 公式 tiling + 4 case localScopeLast=1）：21 变更 case 全新 A/B
+**geomean −9.65%**（折算 101 全集 ≈ **−2.0%**），精度 21/21 零回退——见
+[formula_tiling_scenario_report.md](reports/formula_tiling_scenario_report.md) 第五/六节。
 
 ### 隔离指标（2026-09-28 当前代码重测，12 代表 case）
 
