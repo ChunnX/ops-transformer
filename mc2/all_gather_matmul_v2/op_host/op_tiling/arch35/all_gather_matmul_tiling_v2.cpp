@@ -26,8 +26,7 @@
 
 #include "all_gather_matmul_tiling_v2.h"
 #include "all_gather_comm_algo_table.h"
-#include "all_gather_fit_balance_tiling.h"
-#include "all_gather_hccl_utils.h"
+#include "all_gather_matmul_v2_fit_balance_tiling.h" // 统一接口头(内部已含老类头, 回退分支用)
 #include "graph/utils/type_utils.h"
 #include "mc2_hcom_topo_info.h"
 #include "mc2_comm_algo_selector.h"
@@ -131,18 +130,69 @@ ge::graphStatus AllGatherMatmulTilingV2::PostTiling()
 
 CutResult AllGatherMatmulTilingV2::GetTilingResult()
 {
-    AllGatherMMFitBalanceTiling tileFormulate(args_, KernelType::ALL_GATHER, TopoType::STANDARD_CARD);
-    CutResult result = tileFormulate.GetTiling();
-
-    bool isCcuMode = (std::strncmp(commMode_, "ccu", CMP_MAX_LEN) == 0);
-    if (isCcuMode) {
-        CommSizeInfo commSize{args_.kValue, args_.inputDtypeSize, args_.rankDim};
-        AdjustCutResultForCCU(result, args_.mValue, commSize, opName_);
+    // 分派: 通信标定表命中 → fit-balance; miss(未标定 rank) → 核利用率优先(mm-first)
+    const auto commEngine = ParseCommEngine(commMode_);
+    CutResult result;
+    if (IsCommCalibrated(args_.rankDim, commEngine, CALIBRATION)) {
+        result = GetFitBalanceCut(args_, commEngine);
     } else {
-        AdjustCutResultForAICPU(result, args_.mValue, tileFormulate.matmulPerf_.GetBaseM(), opName_);
+        result = GetCutResByCoreOccupancyFirst();
+    }
+    return result;
+}
+
+// §4.29 miss 路径: 全量 V3 mm tiling → 核利用率优先推导通信切分。
+// M 口径: V3 参考与切分域同单位(per-rank m, 即本地块口径)——(rankDim-1) 远程行的展开是
+// kernel 侧语义, 波推导按 v2 同构口径; 待 miss 形态实测后如需按远程行域修正只改本函数。
+CutResult AllGatherMatmulTilingV2::GetCutResByCoreOccupancyFirst()
+{
+    auto platformInfo = context_->GetPlatformInfo();
+    if (platformInfo == nullptr ||
+        mc2_matmul_v3_advanced::InitCompileInfo(platformInfo, &compileInfo_) != ge::GRAPH_SUCCESS) {
+        OP_LOGE(opName_, "COF: init compileInfo failed, fallback no-cut.");
+        return MakeNoCutResult();
+    }
+    platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
+    NpuArch npuArch = ascendcPlatform.GetCurNpuArch();
+    std::vector<int32_t> priorities;
+    if (mc2tiling::NewGetMatmulV3PriorityPolicy(npuArch, priorities, opName_) != ge::GRAPH_SUCCESS) {
+        return MakeNoCutResult();
+    }
+    Mc2MMRegisterCfg registerCfg{"Mc2MatMulV3", npuArch, priorities};
+    mc2tiling::NewUpdateMatmulV3Args(mmV3Args_, args_, opName_);
+    mmV3Args_.mValue = args_.mValue; // 全量(栈上临时结果, 不占真实槽位; 下游 DoVersion2Tiling 重跑按块 tiling)
+    Mc2MatMulV3TilingData fullMm = {};
+    Mc2MatmulHelper::Mc2MatmulTilingCfg fullTilingCfg(reinterpret_cast<const void *>(&compileInfo_),
+                                                      reinterpret_cast<const void *>(&mmV3Args_));
+    if (DoMatmulV3Tiling(fullTilingCfg, registerCfg, fullMm) != ge::GRAPH_SUCCESS) {
+        return MakeNoCutResult();
     }
 
-    return result;
+    const auto &cube = fullMm.tCubeTiling;
+    CommTilingData comm = {};
+    if (!GetCommTilingFromV3(args_.mValue, args_.nValue, static_cast<uint64_t>(cube.baseM),
+                             static_cast<uint64_t>(cube.baseN), static_cast<uint64_t>(cube.usedCoreNum), comm)) {
+        OP_LOGE(opName_, "COF: mm tiling anomaly (baseM/baseN/usedCoreNum invalid), fallback no-cut.");
+        return MakeNoCutResult();
+    }
+    OP_LOGI(opName_, "COF cut: baseM=%d baseN=%d usedCoreNum=%d, head=%lux%lu tail=%lux%lu", cube.baseM, cube.baseN,
+            cube.usedCoreNum, comm.splitAxisTileSize, comm.splitAxisTileCnt, comm.splitAxisTailSize,
+            comm.splitAxisTailCnt);
+    CommCutResult cof = CutResultFromCof(comm);
+    return {cof.shortTileAtBack, cof.totalTileCnt, cof.numLongTile,
+            cof.numShortTile,    cof.longTileLen,  cof.shortTileLen};
+}
+
+CutResult AllGatherMatmulTilingV2::MakeNoCutResult() const
+{
+    CutResult r;
+    r.shortTileAtBack = true;
+    r.totalTileCnt = 1;
+    r.numLongTile = 1;
+    r.numShortTile = 0;
+    r.longTileLen = args_.mValue;
+    r.shortTileLen = 0;
+    return r;
 }
 
 ge::graphStatus AllGatherMatmulTilingV2::DoMatmulV3Tiling(Mc2MatmulHelper::Mc2MatmulTilingCfg &tilingCfg,
