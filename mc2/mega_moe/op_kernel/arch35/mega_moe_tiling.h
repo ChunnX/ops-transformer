@@ -156,6 +156,27 @@ struct MegaMoeSendMaskBufferConfig {
     uint32_t bufferBytes;
 };
 
+// 预量化搬运阶段的固定布局参数，由 host tiling 计算后直接供 kernel 使用。
+struct MegaMoePreQuantConfig {
+    uint32_t dataValidBytes;
+    uint32_t scaleValidBytes;
+    uint32_t tokenAlignBytes;
+    uint32_t scaleAlignBytes;
+    uint32_t recordBytes;
+    uint32_t weightValidBytes;
+    uint32_t weightSrcRowBytes;
+    uint32_t weightOffset;
+    uint32_t weightSrcOffset;
+};
+
+// 动态量化与 dispatch 共用的 token/scale 记录布局，由 host tiling 统一计算。
+struct MegaMoeQuantProcessConfig {
+    uint32_t quantTokenAlignBytes;
+    uint32_t quantScaleAlignBytes;
+    uint32_t quantTokenScaleAlignBytes;
+    uint32_t quantScaleValidCountPerToken;
+};
+
 // Host-computed A8W4 layout, shared by Wave/Layered and routed/shared experts.
 // Offsets are bytes; A and expanded W8 B tiles both use 256 x 256 bytes.
 struct MegaMoeL1Layout {
@@ -232,5 +253,11 @@ struct MegaMoeTilingData {
     // 判断统一用 IsDispatchDedupOn/IsCombineDedupOn（mega_moe_peermem.h）。
     // 0 时所有路径与无该字段时逐字等价；dispatch 去重数值恒等，combine 去重为生产卡预加权合并。
     int32_t dedupMode;
+    // 预量化输入搬运 tile 配置。动态量化路径保持旧的 scratch 布局，这两个字段为 0。
+    uint32_t preQuantTileTokens;
+    uint32_t preQuantStageBytes;
+    MegaMoePreQuantConfig preQuantConfig;
+    MegaMoeQuantProcessConfig moeQuantConfig;
+    MegaMoeQuantProcessConfig sharedQuantConfig;
 };
 #endif

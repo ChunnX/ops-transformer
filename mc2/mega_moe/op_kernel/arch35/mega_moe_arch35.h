@@ -193,15 +193,11 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::InitInputPrepareConfigs()
 {
     aivJob_ = {.jobIndex = aivCoreIdx_, .totalJobs = blockAivNum_};
-    quantProcessConfig_ =
-        CreateQuantProcessConfig<typename MoeQuantConfig::QuantStorageType, typename MoeQuantConfig::QuantScaleType,
-                                 TopkWeightsPrefetch, MoeQuantConfig::A_ELEMS_PER_BYTE>(k_, params_);
+    quantProcessConfig_ = params_.tilingData->moeQuantConfig;
     if constexpr (SHARED_INPUT_REUSES_MOE_QUANT) {
         sharedQuantProcessConfig_ = quantProcessConfig_;
     } else {
-        sharedQuantProcessConfig_ = CreateQuantProcessConfig<typename SharedQuantConfig::QuantStorageType,
-                                                             typename SharedQuantConfig::QuantScaleType, false,
-                                                             SharedQuantConfig::A_ELEMS_PER_BYTE, false>(k_, params_);
+        sharedQuantProcessConfig_ = params_.tilingData->sharedQuantConfig;
     }
     // 共享专家启用时仅 AIV1 计算发送 topK 有效下标，其余情况保留全 AIV 分工。
     const uint32_t topkValidIndexCoreIdx = sharedExpertNum_ > 0U ? blockIdx_ : aivCoreIdx_;
@@ -419,6 +415,20 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::InitQuantTokenBufferCon
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline uint32_t MegaMoe<TemplateMegaMoeTypeFunc>::InitQuantScratchTensors(uint32_t mxTempTensorAddr)
 {
+    /*
+     * 预量化输入已符合 dispatch 格式，使用两个 stage 槽位搬运 x、scale 和可选的 topk weight，
+     * 不再分配动态量化 scratch 布局。
+    */
+    if constexpr (!Std::IsSame<XType, bfloat16_t>::value) {
+        const uint32_t stageBytes = params_.tilingData->preQuantStageBytes;
+        quantScratch_.preQuantStage0 = LocalTensor<uint8_t>(TPosition::VECCALC, mxTempTensorAddr, stageBytes);
+        quantScratch_.preQuantStage1 =
+            LocalTensor<uint8_t>(TPosition::VECCALC, mxTempTensorAddr + stageBytes, stageBytes);
+        sharedQuantScratch_.preQuantStage0 = quantScratch_.preQuantStage0;
+        sharedQuantScratch_.preQuantStage1 = quantScratch_.preQuantStage1;
+        return mxTempTensorAddr + DOUBLE_BUFFER * stageBytes;
+    }
+
     uint32_t mxTempTensorSize = 2 * 1024;
     uint32_t xOutTensorSize = quantProcessConfig_.quantTokenScaleAlignBytes;
     uint32_t xInAlignSize = Ops::Base::CeilAlign(k_, static_cast<uint32_t>(ALIGN_128)) * sizeof(bfloat16_t);
@@ -901,7 +911,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessInputPreparation
             QuantizeInputTokens(tokenRange);
         } else {
             PackPreQuantizedLocalTokens<XType, ActivationType, TopkWeightsType, TopkWeightsPrefetch>(
-                tokenRange, commonConfig_, params_, quantProcessConfig_, params_.peermemInfo.quantTokenScalePtr,
+                tokenRange, params_, params_.tilingData->preQuantConfig, params_.peermemInfo.quantTokenScalePtr,
                 quantScratch_);
             // 预量化共享专家与 MoE 类型一致；64 对齐时直接读取原始输入，
             // 否则复用这里的 MoE 拼接结果，无需独立打包共享输入。
