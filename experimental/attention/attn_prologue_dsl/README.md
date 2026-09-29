@@ -1,6 +1,6 @@
 # attn_prologue
 
-基于 CANNBotDSL 0.7 的 MXFP8 attention prologue 融合算子，面向 Ascend 950。
+基于 CANNBotDSL 0.7 的 FP8 微缩放 attention prologue 融合算子，面向 Ascend 950。
 在一个 MIX kernel 中完成 QA/KV 投影、RMSNorm、QR 动态量化、QB 投影、尾部 RoPE 和 KV cache 写回。
 固定生产维度为 `(H,R,N,D,Dr)=(5120,1280,64,512,64)`，支持 decode / prefill 的 `T=batch*sequence` 泛化。
 
@@ -66,8 +66,9 @@ out_tail[h + i] = z[2*i] * rope_sin[t,h+i] + z[2*i+1] * rope_cos[t,h+i]
 ## 函数原型
 
 ```python
-from samples.attn_prologue.attn_prologue import (
-    attn_prologue, prepare_attn_prologue, to_nz,
+from cann_ops_transformer_custom.ops.ds41 import attn_prologue
+from cann_ops_transformer_custom.ops.attention.attn_prologue_dsl import (
+    prepare_attn_prologue, to_nz,
 )
 
 q, qr, descale_qr = attn_prologue(
@@ -184,18 +185,27 @@ workspace_bytes = 4 * work_rows * split_k * (R + D)
 
 | 模块 | 主要实现 |
 |---|---|
-| 分块规划与路径选择 | [`AttnPrologueTiling.plan`](attn_prologue.py#L285)、[`AttnPrologueKernel.__call__`](attn_prologue.py#L751) |
-| QA/KV 投影 | 通用路径 [`_a1_tile`](attn_prologue.py#L2048) → [`_mm_a`](attn_prologue.py#L2135)；L1 复用路径 [`_resident_a_project`](attn_prologue.py#L1275) |
-| QR 部分和归约 | 通用路径 [`_acc_partial_qa`](attn_prologue.py#L2409)；L1 复用路径 [`_acc_all_partials`](attn_prologue.py#L1330) |
-| QR RMSNorm 与动态量化 | [`_quantize_qr`](attn_prologue.py#L2443)、[`_pack_scale`](attn_prologue.py#L2542) |
-| QB 投影与 Q 写回 | [`_stage_b`](attn_prologue.py#L2681)、[`_resident_b_cube`](attn_prologue.py#L1455)、[`_finish_q`](attn_prologue.py#L3320) |
-| KV 归约、后处理与写回 | [`_service_kv`](attn_prologue.py#L1882)、[`_reduce_normalize_a`](attn_prologue.py#L2228)、[`_finish_kv_row`](attn_prologue.py#L2562) |
-| 尾部 RoPE 与跨阶段发布 | [`_rope_pair`](attn_prologue.py#L2634)、[`_publish_a1`](attn_prologue.py#L1621)、[`_publish_qr`](attn_prologue.py#L1631) |
-| 公共入口与编译缓存 | [`prepare_attn_prologue`](attn_prologue.py#L3555)、[`_Launcher.compile_cached`](attn_prologue.py#L3488) |
+| 分块规划与路径选择 | [`AttnPrologueTiling.plan`](torch_extension/_kernel.py#L293)、[`AttnPrologueKernel.__call__`](torch_extension/_kernel.py#L804) |
+| QA/KV 投影 | 通用路径 [`_a1_tile`](torch_extension/_kernel.py#L2275) → [`_mm_a`](torch_extension/_kernel.py#L2372)；L1 复用路径 [`_resident_a_project`](torch_extension/_kernel.py#L1346) |
+| QR 部分和归约 | 通用路径 [`_acc_partial_qa`](torch_extension/_kernel.py#L2713)；L1 复用路径 [`_acc_all_partials`](torch_extension/_kernel.py#L1401) |
+| QR RMSNorm 与动态量化 | [`_quantize_qr`](torch_extension/_kernel.py#L2752)、[`_pack_scale`](torch_extension/_kernel.py#L2861) |
+| QB 投影与 Q 写回 | [`_stage_b`](torch_extension/_kernel.py#L3025)、[`_resident_b_cube`](torch_extension/_kernel.py#L1540)、[`_finish_q`](torch_extension/_kernel.py#L3775) |
+| KV 归约、后处理与写回 | [`_service_kv`](torch_extension/_kernel.py#L2045)、[`_reduce_normalize_a`](torch_extension/_kernel.py#L2479)、[`_finish_kv_row`](torch_extension/_kernel.py#L2883) |
+| 尾部 RoPE 与跨阶段发布 | [`_rope_pair`](torch_extension/_kernel.py#L2976)、[`_publish_a1`](torch_extension/_kernel.py#L1740)、[`_publish_qr`](torch_extension/_kernel.py#L1750) |
+| 公共入口与编译缓存 | [`prepare_attn_prologue`](torch_extension/_kernel.py#L4038)、[`_Launcher.compile_cached`](torch_extension/_kernel.py#L3959) |
 
 ## 调用示例
 
 安装与当前 Python 版本匹配的 CANNBotDSL 0.7 包，并加载 CANN、PyTorch 与 torch_npu 环境。
+先在仓库根目录构建并安装单算子 wheel：
+
+```bash
+bash build.sh --torch_extension --experimental --ops=attn_prologue_dsl
+python3 -m pip install build_out/cann_ops_transformer_custom-*.whl --no-deps
+```
+
+以下示例使用单算子包 `cann_ops_transformer_custom`；若安装的是完整实验性算子包，
+将导入路径和测试命令中的包名替换为 `cann_ops_transformer`。
 在仓库根目录运行以下示例；输入构造复用测试工具，生成 `batch=12, sequence=6, T=72` 的数据：
 
 ```python
@@ -203,9 +213,11 @@ import dataclasses
 import sys
 import torch
 import torch_npu
-from samples.attn_prologue.attn_prologue import prepare_attn_prologue, to_nz
+from cann_ops_transformer_custom.ops.attention.attn_prologue_dsl import (
+    prepare_attn_prologue, to_nz,
+)
 
-sys.path.insert(0, "test/attn_prologue")
+sys.path.insert(0, "experimental/attention/attn_prologue_dsl/tests")
 from generalization_inputs import Case, SharedWeights, make_case_inputs, device_input
 
 torch.npu.set_device(0)
@@ -217,25 +229,27 @@ values = {
 prepared = prepare_attn_prologue(**values, norm_eps=1e-6)
 q, qr, descale_qr = prepared.run()
 torch.npu.synchronize()
-# q 为最终 Q；qr 和 descale_qr 为中间 MXFP8 结果；values["kv_cache"] 已被更新。
+# q 为最终 Q；qr 和 descale_qr 为中间 FP8 微缩放结果；values["kv_cache"] 已被更新。
 ```
 
 ## 精度验证
 
 | 文件 | 职责 |
 |---|---|
-| [run_generalization_accuracy.py](../../test/attn_prologue/run_generalization_accuracy.py) | 运行用例、逐块检查完整输出并记录 JSONL 结果 |
-| [generalization_inputs.py](../../test/attn_prologue/generalization_inputs.py) | 标准用例矩阵、输入构造和设备布局转换 |
-| [attn_prologue_golden.py](../../test/attn_prologue/attn_prologue_golden.py) | 独立 CPU 参考实现 |
-| [fp8_criterion.py](../../test/attn_prologue/fp8_criterion.py)、[fp64_shadow.py](../../test/attn_prologue/fp64_shadow.py) | FP8 判据与独立 FP64 值域复核 |
+| [run_generalization_accuracy.py](tests/run_generalization_accuracy.py) | 运行用例、逐块检查完整输出并记录 JSONL 结果 |
+| [generalization_inputs.py](tests/generalization_inputs.py) | 标准用例矩阵、输入构造和设备布局转换 |
+| [attn_prologue_golden.py](tests/attn_prologue_golden.py) | 独立 CPU 参考实现 |
+| [fp8_criterion.py](tests/fp8_criterion.py)、[fp64_shadow.py](tests/fp64_shadow.py) | FP8 判据与独立 FP64 值域复核 |
 
 在仓库根目录运行：
 
 ```bash
 # 单个 decode 用例。
-python3 test/attn_prologue/run_generalization_accuracy.py --case-id decode-b12-s6-t72 --device npu:0 --output results/attn_prologue_smoke.jsonl
+bash experimental/attention/attn_prologue_dsl/tests/test.sh \
+    --package cann_ops_transformer_custom --case-id decode-b12-s6-t72 --device npu:0 --output results/attn_prologue_smoke.jsonl
 # 完整的 12 个 decode 和 20 个 prefill 用例。
-python3 test/attn_prologue/run_generalization_accuracy.py --device npu:0 --output results/attn_prologue_accuracy.jsonl
+bash experimental/attention/attn_prologue_dsl/tests/test.sh \
+    --package cann_ops_transformer_custom --device npu:0 --output results/attn_prologue_accuracy.jsonl
 ```
 
 标准矩阵为 decode 的 `batch∈{1,4,8,12,16,32}`、`sequence∈{1,6}`，以及 prefill 的
