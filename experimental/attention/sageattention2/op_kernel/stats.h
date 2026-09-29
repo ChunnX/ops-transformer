@@ -189,7 +189,7 @@ __aicore__ void StreamKStats(GM_ADDR k, GM_ADDR mean, SageParams p)
 template <class T>
 __aicore__ void Stats(GM_ADDR k, GM_ADDR mean, SageParams p)
 {
-    if (p.smoothK && p.d == p.dp && p.sk >= 1024) {
+    if (p.smoothK && p.d == p.dp && (p.sk > 4096 || p.hk <= p.cores / 2)) {
         StreamKStats<T>(k, mean, p);
         return;
     }

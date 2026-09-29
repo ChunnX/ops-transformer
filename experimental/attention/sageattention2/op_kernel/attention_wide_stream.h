@@ -27,13 +27,9 @@ __aicore__ inline __attribute__((always_inline)) WideQueryInfo DecodeWideQuery(c
     if (UseDieGroups(p))
         task = DieTask(task, uint64_t(p.b) * p.hq * tiles, p.cores);
     info.ordinal = ordinal;
-    uint32_t tile = task % tiles;
+    info.qstart = (task % tiles) * M;
     info.h = (task / tiles) % p.hq;
     info.b = task / tiles / p.hq;
-    if constexpr (CAUSAL) {
-        tile = (tile % 2 == 0) ? (tile / 2) : (tiles - 1 - tile / 2);
-    }
-    info.qstart = tile * M;
     info.kh = CalcKh(info.h, p.hq, p.hk);
     info.qb = (uint64_t(info.b) * p.hq + info.h) * p.qp;
     info.kb = (uint64_t(info.b) * p.hk + info.kh) * p.kp;
