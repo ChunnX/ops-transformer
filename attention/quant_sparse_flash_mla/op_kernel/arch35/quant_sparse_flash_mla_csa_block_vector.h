@@ -78,31 +78,31 @@ public:
     bool isSoftmaxLseGmValid = false;                 // 标记 softmaxLseGm 是否已有效 SetGlobalBuffer
     // ==================== Functions ======================
     __aicore__ inline CSABlockVec(){};
-    __aicore__ inline void InitVecBlock(TPipe *pipe, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensOriKv,
-                                        __gm__ uint8_t *cuSeqlensCmpKv, __gm__ uint8_t *sequsedOriKv,
-                                        __gm__ uint8_t *sequsedCmpKv, __gm__ uint8_t *cmpResidualKv)
+    __aicore__ inline void InitVecBlock(TPipe* pipe, __gm__ uint8_t* cuSeqlensQ, __gm__ uint8_t* cuSeqlensOriKv,
+                                        __gm__ uint8_t* cuSeqlensCmpKv, __gm__ uint8_t* sequsedOriKv,
+                                        __gm__ uint8_t* sequsedCmpKv, __gm__ uint8_t* cmpResidualKv)
     {
         if ASCEND_IS_AIV {
             tPipe = pipe;
             if (cuSeqlensQ != nullptr) {
-                cuSeqlensQGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensQ);
+                cuSeqlensQGm.SetGlobalBuffer((__gm__ int32_t*)cuSeqlensQ);
             }
             if (cuSeqlensOriKv != nullptr) {
-                cuSeqlensOriKvGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensOriKv);
+                cuSeqlensOriKvGm.SetGlobalBuffer((__gm__ int32_t*)cuSeqlensOriKv);
             }
             if constexpr (TEMPLATE_MODE != QSMLATemplateMode::SWA_TEMPLATE_MODE) {
                 if (cuSeqlensCmpKv != nullptr) {
-                    cuSeqlensCmpKvGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensCmpKv);
+                    cuSeqlensCmpKvGm.SetGlobalBuffer((__gm__ int32_t*)cuSeqlensCmpKv);
                 }
             }
             if (sequsedOriKv != nullptr) {
-                actualSeqOriKvGm.SetGlobalBuffer((__gm__ int32_t *)sequsedOriKv);
+                actualSeqOriKvGm.SetGlobalBuffer((__gm__ int32_t*)sequsedOriKv);
             }
             if constexpr (TEMPLATE_MODE != QSMLATemplateMode::SWA_TEMPLATE_MODE) {
                 if (sequsedCmpKv != nullptr) {
-                    actualSeqCmpKvGm.SetGlobalBuffer((__gm__ int32_t *)sequsedCmpKv);
+                    actualSeqCmpKvGm.SetGlobalBuffer((__gm__ int32_t*)sequsedCmpKv);
                 }
-                cmpResidualKvGm.SetGlobalBuffer((__gm__ int32_t *)cmpResidualKv);
+                cmpResidualKvGm.SetGlobalBuffer((__gm__ int32_t*)cmpResidualKv);
             }
             this->GetExtremeValue(this->negativeFloatScalar);
         }
@@ -127,8 +127,8 @@ public:
         fdStagingBase = fdStaging.template GetTensor<uint8_t>().GetPhyAddr(0);
         stagingOutGm = fdStaging.template GetTensor<float>();
     }
-    __aicore__ inline void InitS2SplitStaging(Buffer<BufferType::GM, SyncType::INNER_CORE_SYNC> &intraCoreCombine,
-                                              Buffer<BufferType::GM, SyncType::INNER_CORE_SYNC> &crossCoreCombine)
+    __aicore__ inline void InitS2SplitStaging(Buffer<BufferType::GM, SyncType::INNER_CORE_SYNC>& intraCoreCombine,
+                                              Buffer<BufferType::GM, SyncType::INNER_CORE_SYNC>& crossCoreCombine)
     {
         intraCoreCombineBase = intraCoreCombine.template GetTensor<uint8_t>().GetPhyAddr(0);
         intraCoreCombineGm = intraCoreCombine.template GetTensor<float>();
@@ -230,7 +230,7 @@ private:
     __aicore__ inline uint32_t CopyInKvSparse(LocalTensor<KV_T> kvInUb, int64_t startRow, int64_t *tokenData,
                                               const RunInfo &qs35VecRunInfo, ConstInfo &qs35VecConstInfo);
     __aicore__ inline void CastNd2Nz(LocalTensor<Q_T> dstTensor, LocalTensor<KV_T> srcTensor, int64_t dealRow);
-    __aicore__ inline void CopyOutKvUb2L1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
+    __aicore__ inline void CopyOutKvUb2L1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>& outputL1,
                                           LocalTensor<Q_T> kvOutUb, int64_t dealRow, int64_t s2StartIdx,
                                           const RunInfo &qs35VecRunInfo, ConstInfo &qs35VecConstInfo);
     __aicore__ inline void CopyOutKvUb2Gm(Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
@@ -274,7 +274,7 @@ private:
     __aicore__ inline void ReduceIntraBlockAndStage(RunInfo &qs35VecRunInfo, ConstInfo &qs35VecConstInfo,
                                                     LocalTensor<T> &qs35Vec2ResultUb, LocalTensor<T> &partialTmpUb);
 
-    TPipe *tPipe;
+    TPipe* tPipe;
 
     GlobalTensor<OUTPUT_T> attentionOutGm;
     GlobalTensor<float> softmaxLseGm;
@@ -344,11 +344,11 @@ private:
     int64_t processSize;
     int64_t processS2Start;
     int64_t processS2End;
-    __gm__ uint8_t *fdStagingBase = nullptr;
+    __gm__ uint8_t* fdStagingBase = nullptr;
     GlobalTensor<float> stagingOutGm;
-    __gm__ uint8_t *intraCoreCombineBase = nullptr;
+    __gm__ uint8_t* intraCoreCombineBase = nullptr;
     GlobalTensor<float> intraCoreCombineGm;
-    __gm__ uint8_t *crossCoreCombineBase = nullptr;
+    __gm__ uint8_t* crossCoreCombineBase = nullptr;
     GlobalTensor<float> crossCoreCombineGm;
 };
 
@@ -441,10 +441,11 @@ __aicore__ inline int64_t CSABlockVec<TEMPLATE_ARGS>::GetKeyOffset(int64_t s2Idx
         int64_t blkTableIdx = s2Idx / qsActiveBlockSize;
         int64_t blkTableOffset = s2Idx % qsActiveBlockSize;
         int64_t paBlockStride = qs35VecRunInfo.isCmp ? qs35VecConstInfo.cmpKvStride : qs35VecConstInfo.oriKvStride;
-        qsmlaRealkeyOffset =
-            qsActiveBlockTableGm.GetValue(qs35VecRunInfo.boIdx * qsActiveMaxBlocksPerBatch + blkTableIdx) *
-                paBlockStride +
-            blkTableOffset * qs35VecConstInfo.dSizeVInput;
+        int64_t physBlockIdx = blkTableIdx;
+        if constexpr (TOPK_VALUE_MODE == TopkValueMode::TOPK_INDEX_MODE) {
+            physBlockIdx = qsActiveBlockTableGm.GetValue(qs35VecRunInfo.boIdx * qsActiveMaxBlocksPerBatch + blkTableIdx);
+        }
+        qsmlaRealkeyOffset = physBlockIdx * paBlockStride + blkTableOffset * qs35VecConstInfo.dSizeVInput;
     } else if constexpr (KV_LAYOUT_T == QSMLA_LAYOUT::TND) {
         int64_t tPrefix = qs35VecRunInfo.isCmp ? cuSeqlensCmpKvGm.GetValue(qs35VecRunInfo.boIdx) :
                                                  cuSeqlensOriKvGm.GetValue(qs35VecRunInfo.boIdx);
@@ -565,8 +566,8 @@ __simd_vf__ void CastB8Nd2NzVFImpl(__ubuf__ int8_t *ubDstAddr, __ubuf__ int8_t *
     const uint32_t combine_dim = 512; // nope(448) + rope(64)
     const uint32_t element_num_per_vl = 256;
 
-    __ubuf__ int8_t *ub_src_addr_tmp = ubSrcAddr + element_num_per_vl;
-    __ubuf__ int8_t *ub_dst_addr_tmp = ubDstAddr + element_num_per_vl * blockStride;
+    __ubuf__ int8_t* ub_src_addr_tmp = ubSrcAddr + element_num_per_vl;
+    __ubuf__ int8_t* ub_dst_addr_tmp = ubDstAddr + element_num_per_vl * blockStride;
 
     // fp8 copy in 512 element (448 nope + 64 rope) in each loop
     for (uint16_t i = 0; i < static_cast<uint16_t>(qs35DealRows); i++) {
@@ -589,8 +590,8 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CastNd2Nz(LocalTensor<Q_T> dstTensor, LocalTensor<KV_T> srcTensor,
                                                              int64_t dealRow)
 {
-    __ubuf__ int8_t *ubDstAddr = (__ubuf__ int8_t *)(dstTensor.GetPhyAddr());
-    __ubuf__ int8_t *ubSrcAddr = (__ubuf__ int8_t *)(srcTensor.GetPhyAddr());
+    __ubuf__ int8_t* ubDstAddr = (__ubuf__ int8_t*)(dstTensor.GetPhyAddr());
+    __ubuf__ int8_t* ubSrcAddr = (__ubuf__ int8_t*)(srcTensor.GetPhyAddr());
     const uint32_t blockStride = dealRow | 0x1; // odd row num to avoid bank confict
     CastB8Nd2NzVFImpl(ubDstAddr, ubSrcAddr, dealRow, blockStride);
 }
@@ -1847,42 +1848,42 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetKVPhyAddr(
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(
-    __gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV, __gm__ uint8_t *qDescale, __gm__ uint8_t *oriKvDescale,
-    __gm__ uint8_t *cmpKvDescale, __gm__ uint8_t *oriSparseIndices, __gm__ uint8_t *cmpSparseIndices,
-    __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sinks,
-    __gm__ uint8_t *sequsedOriKv, __gm__ uint8_t *sequsedCmpKv, __gm__ uint8_t *cmpResidualKv)
+    __gm__ uint8_t* oriKV, __gm__ uint8_t* cmpKV, __gm__ uint8_t* qDescale, __gm__ uint8_t* oriKvDescale,
+    __gm__ uint8_t* cmpKvDescale, __gm__ uint8_t* oriSparseIndices, __gm__ uint8_t* cmpSparseIndices,
+    __gm__ uint8_t* oriBlockTable, __gm__ uint8_t* cmpBlockTable, __gm__ uint8_t* sequsedQ, __gm__ uint8_t* sinks,
+    __gm__ uint8_t* sequsedOriKv, __gm__ uint8_t* sequsedCmpKv, __gm__ uint8_t* cmpResidualKv)
 {
-    qDescaleGm.SetGlobalBuffer((__gm__ float *)qDescale);
+    qDescaleGm.SetGlobalBuffer((__gm__ float*)qDescale);
     if (oriKV != nullptr) {
-        oriKVGm.SetGlobalBuffer((__gm__ KV_T *)(oriKV));
-        oriKvDescaleGm.SetGlobalBuffer((__gm__ float *)oriKvDescale);
+        oriKVGm.SetGlobalBuffer((__gm__ KV_T*)(oriKV));
+        oriKvDescaleGm.SetGlobalBuffer((__gm__ float*)oriKvDescale);
     }
 
     if (oriBlockTable != nullptr) {
-        oriBlockTableGm.SetGlobalBuffer((__gm__ int32_t *)oriBlockTable);
+        oriBlockTableGm.SetGlobalBuffer((__gm__ int32_t*)oriBlockTable);
     }
 
     if constexpr (TEMPLATE_MODE != QSMLATemplateMode::SWA_TEMPLATE_MODE &&
                   TEMPLATE_MODE != QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE) {
-        cmpKVGm.SetGlobalBuffer((__gm__ KV_T *)cmpKV);
-        cmpKvDescaleGm.SetGlobalBuffer((__gm__ float *)cmpKvDescale);
+        cmpKVGm.SetGlobalBuffer((__gm__ KV_T*)cmpKV);
+        cmpKvDescaleGm.SetGlobalBuffer((__gm__ float*)cmpKvDescale);
         if (cmpBlockTable != nullptr) {
-            cmpBlockTableGm.SetGlobalBuffer((__gm__ int32_t *)cmpBlockTable);
+            cmpBlockTableGm.SetGlobalBuffer((__gm__ int32_t*)cmpBlockTable);
         }
     }
 
     if constexpr (TEMPLATE_MODE == QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
                   TEMPLATE_MODE == QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
-        oriSparseIndicesGm.SetGlobalBuffer((__gm__ int32_t *)oriSparseIndices);
+        oriSparseIndicesGm.SetGlobalBuffer((__gm__ int32_t*)oriSparseIndices);
     }
 
     if constexpr (TEMPLATE_MODE == QSMLATemplateMode::CSA_TEMPLATE_MODE ||
                   TEMPLATE_MODE == QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
-        cmpSparseIndicesGm.SetGlobalBuffer((__gm__ int32_t *)cmpSparseIndices);
+        cmpSparseIndicesGm.SetGlobalBuffer((__gm__ int32_t*)cmpSparseIndices);
     }
 
     if (sinks != nullptr) {
-        sinksGm.SetGlobalBuffer((__gm__ T *)sinks);
+        sinksGm.SetGlobalBuffer((__gm__ T*)sinks);
         this->isSinks = true;
     }
 }
@@ -2032,7 +2033,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::FreeEvent(ConstInfo &qs35VecC
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitFDBuffers(FdRunInfo &fdRunInfo)
+__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitFDBuffers(FdRunInfo& fdRunInfo)
 {
     FdRunInfo fdBufferInfo = fdRunInfo;
     if (fdBufferInfo.mNum > AttentionCommon::FD_REDUCE_CHUNK_ROWS) {
@@ -2042,10 +2043,10 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitFDBuffers(FdRunInfo &fdRu
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetExtremeValue(T &negativeScalar)
+__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetExtremeValue(T& negativeScalar)
 {
     uint32_t qsmlaTmp1 = NEGATIVE_MIN_VALUE_FP32;
-    negativeScalar = *((float *)&qsmlaTmp1);
+    negativeScalar = *((float*)&qsmlaTmp1);
 }
 
 TEMPLATES_DEF
@@ -2055,13 +2056,13 @@ public:
     __aicore__ inline void CleanOutput(__gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse,
                                        ConstInfo &qs35VecConstInfo)
     {}
-    __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV, __gm__ uint8_t *qDescale,
-                                            __gm__ uint8_t *oriKvDescale, __gm__ uint8_t *cmpKvDescale,
-                                            __gm__ uint8_t *oriSparseIndices, __gm__ uint8_t *cmpSparseIndices,
-                                            __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable,
-                                            __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sinks,
-                                            __gm__ uint8_t *sequsedOriKv, __gm__ uint8_t *sequsedCmpKv,
-                                            __gm__ uint8_t *cmpResidualKv)
+    __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t* oriKV, __gm__ uint8_t* cmpKV, __gm__ uint8_t* qDescale,
+                                            __gm__ uint8_t* oriKvDescale, __gm__ uint8_t* cmpKvDescale,
+                                            __gm__ uint8_t* oriSparseIndices, __gm__ uint8_t* cmpSparseIndices,
+                                            __gm__ uint8_t* oriBlockTable, __gm__ uint8_t* cmpBlockTable,
+                                            __gm__ uint8_t* sequsedQ, __gm__ uint8_t* sinks,
+                                            __gm__ uint8_t* sequsedOriKv, __gm__ uint8_t* sequsedCmpKv,
+                                            __gm__ uint8_t* cmpResidualKv)
     {}
     __aicore__ inline void InitVecBlock(TPipe *pipe, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensOriKv,
                                         __gm__ uint8_t *cuSeqlensCmpKv, __gm__ uint8_t *sequsedOriKv,
