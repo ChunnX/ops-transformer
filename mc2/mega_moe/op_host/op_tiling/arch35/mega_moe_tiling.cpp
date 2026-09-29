@@ -75,11 +75,6 @@ const static int64_t MAX_URMA_EP_WORLD_SIZE = 1024LL;
 const static int64_t MAX_MOE_EXPERT_NUM = 2048LL;
 const static int64_t INPUT_WEIGHT_SCALES_CEIL_ALIGN = 64LL;
 const static int64_t RESERVED_WORKSPACE_SIZE = 1024 * 1024 * 50LL;
-/*
- * arch35 上 DataCopy/DataCopyPad 的 blockCount 上限为 4095。
- * 实际 tile 大小还会由下方的 UB 总预算检查进一步收缩。
- */
-constexpr uint32_t PRE_QUANT_MAX_DMA_BLOCK_COUNT = 4095U;
 constexpr float DEFAULT_ACTIVATION_CLAMP = std::numeric_limits<float>::max();
 constexpr float DEFAULT_SWIGLU_OAI_ALPHA = 1.702f;
 constexpr float DEFAULT_SWIGLU_OAI_BETA = 1.0f;
@@ -1463,8 +1458,9 @@ static uint32_t CalcTopkValidIndexFixedBufferBytes(const MegaMoeTilingData *tili
      * Host 侧的 UB reset 预算必须与 device 侧的最大值保持一致，否则 route ring 可能与 reset UB 重叠。
      */
     if (tilingData->topkWeightsPrefetch == 1U) {
-        uint64_t statusSlots = static_cast<uint64_t>(tilingData->moeExpertPerRank) *
-                               static_cast<uint64_t>(tilingData->maxTilesPerExpert) + 1U;
+        uint64_t statusSlots =
+            static_cast<uint64_t>(tilingData->moeExpertPerRank) * static_cast<uint64_t>(tilingData->maxTilesPerExpert) +
+            1U;
         uint64_t statusElementCount = statusSlots * static_cast<uint64_t>(INT_CACHELINE);
         totalFlagElementCount = std::max(totalFlagElementCount, statusElementCount);
     }
@@ -1502,94 +1498,51 @@ static uint32_t CalcTopkValidIndexFixedBufferBytes(const MegaMoeTilingData *tili
 
 /*
  * 计算预量化一个 stage slot 所需的 UB。kernel 的 x/scale/weight 阶段共用同一 slot，
- * 因此取三类 tile 空间的最大值，而不是相加；BF16 topK weight 的 Cast 输入/输出需要同时保留。
+ * stage 中保存完整 dispatch record，token、scale 和 weight 按记录布局相加；BF16 topK weight
+ * 的 Cast 输入与输出需要同时保留额外的源数据区。
  */
 static uint32_t CalcPreQuantStageBytes(const MegaMoeTilingData *tilingData, uint32_t activationElementsPerByte,
                                        uint32_t tileTokens, ge::DataType topKWeightsDataType)
 {
     // 保存完整的 dispatch 记录，使 MTE3 能一次写出整个 tile。
-    uint64_t stageBytes = static_cast<uint64_t>(CalcDispatchCopyBufferBytes(tilingData, activationElementsPerByte)) *
-                          tileTokens;
+    uint64_t stageBytes =
+        static_cast<uint64_t>(CalcDispatchCopyBufferBytes(tilingData, activationElementsPerByte)) * tileTokens;
     if (tilingData->topkWeightsPrefetch == 1 && topKWeightsDataType == ge::DT_BF16) {
-        uint64_t weightSrcRowBytes = ops::CeilAlign(
-            static_cast<uint64_t>(tilingData->topK) * ge::GetSizeByDataType(topKWeightsDataType),
-            static_cast<uint64_t>(ALIGN_32));
+        uint64_t weightSrcRowBytes =
+            ops::CeilAlign(static_cast<uint64_t>(tilingData->topK) * ge::GetSizeByDataType(topKWeightsDataType),
+                           static_cast<uint64_t>(ALIGN_32));
         stageBytes += weightSrcRowBytes * tileTokens;
     }
     return static_cast<uint32_t>(ops::CeilAlign(stageBytes, static_cast<uint64_t>(ALIGN_512)));
 }
 
-static uint64_t CalcTopkValidIndexConfigUsedBytes(const MegaMoeTilingData *tilingData,
-                                                  const MegaMoeSendMaskBufferConfig &bufferConfig,
-                                                  uint32_t fixedBufferBytes)
-{
-    uint32_t topkIndexTypeBytes = static_cast<uint32_t>(
-        CalcTopkIndexTypeBytes(tilingData->numMaxTokensPerRank, tilingData->topK));
-    uint64_t topkIdsBytes = static_cast<uint64_t>(bufferConfig.routeItemsPerBatch) * sizeof(int32_t);
-    uint64_t topkIndexBytes = static_cast<uint64_t>(bufferConfig.routeItemsPerBatch) * topkIndexTypeBytes;
-    uint64_t routeRingBytes = static_cast<uint64_t>(bufferConfig.bufferCount) * bufferConfig.bufferBytes;
-    return static_cast<uint64_t>(fixedBufferBytes) + topkIdsBytes + topkIndexBytes + routeRingBytes;
-}
-
 /*
- * 预量化 tile 与 SendMask route ring 共用 UB。候选 B 从大到小检查两类 SendMask core，
- * 只有两类配置都不越界时才接受，避免 extra-expert core 的 route ring 溢出。
+ * 计算预量化 tile 的 B 和双 buffer stage 空间。route ring 的核数及 UB 配置
+ * 由 SetTopkValidIndexBufferConfigs 统一处理。
  */
-static bool SetPreQuantTileConfig(MegaMoeTilingData *tilingData, bool isPreQuantizedX, uint32_t activationElementsPerByte,
-                                  uint32_t sharedActivationElementsPerByte, bool isSharedQuantIndependent,
-                                  ge::DataType topKWeightsDataType, uint32_t availableUbBytes)
+static void SetPreQuantTileConfig(MegaMoeTilingData *tilingData, bool isPreQuantizedX,
+                                  uint32_t activationElementsPerByte, ge::DataType topKWeightsDataType)
 {
     tilingData->preQuantTileTokens = 0U;
     tilingData->preQuantStageBytes = 0U;
     if (!isPreQuantizedX || tilingData->h == 0U) {
-        return true;
+        return;
     }
 
-    const uint32_t topkValidIndexCoreNum =
-        tilingData->sharedExpertNum > 0U && tilingData->topoType == TOPO_TYPE_MTE ? tilingData->aicNum
-                                                                                  : tilingData->blockAivNum;
-    if (topkValidIndexCoreNum == 0U) {
-        return false;
-    }
-    uint32_t totalExpertCount = tilingData->epWorldSize * tilingData->moeExpertPerRank;
-    uint32_t expertCountWithoutExtra = totalExpertCount / topkValidIndexCoreNum;
-    uint32_t expertCountWithExtra = expertCountWithoutExtra + 1U;
     // PrepareLocalTokens 按 blockAivNum 个 AIV 分工，stage 不需要为 route 上界之外的 token 预留空间。
-    uint32_t maxTokensPerAiv =
-        ops::CeilDiv(tilingData->bs, std::max(tilingData->blockAivNum, 1U));
-    // 先按单 token 的 scale 宽度对齐 512B 计算 B，再按完整 record 的 UB 占用向下收缩。
-    uint32_t scaleRowBytes = static_cast<uint32_t>(ops::CeilAlign(
-        ops::CeilDiv(static_cast<uint64_t>(tilingData->h), static_cast<uint64_t>(ALIGN_32)),
-        static_cast<uint64_t>(ALIGN_32)));
+    uint32_t maxTokensPerAiv = ops::CeilDiv(tilingData->bs, std::max(tilingData->blockAivNum, 1U));
     // 仅以单个 token 的 scale 行宽作为 B 的性能基准。
-    uint32_t scaleBasedTokens = std::max(
-        1U, static_cast<uint32_t>(ops::CeilDiv(static_cast<uint64_t>(ALIGN_512), static_cast<uint64_t>(scaleRowBytes))));
-    uint32_t candidate = std::min(std::min(scaleBasedTokens, maxTokensPerAiv), PRE_QUANT_MAX_DMA_BLOCK_COUNT);
-    candidate = std::max(candidate, 1U);
+    uint32_t scaleRowBytes = static_cast<uint32_t>(
+        ops::CeilAlign(ops::CeilDiv(static_cast<uint64_t>(tilingData->h), static_cast<uint64_t>(ALIGN_32)),
+                       static_cast<uint64_t>(ALIGN_32)));
+    uint32_t scaleBasedTokens = std::max(1U, static_cast<uint32_t>(ops::CeilDiv(static_cast<uint64_t>(ALIGN_512),
+                                                                                static_cast<uint64_t>(scaleRowBytes))));
+    uint32_t tileTokens = std::min(scaleBasedTokens, maxTokensPerAiv);
+    tileTokens = std::max(tileTokens, 1U);
 
-    // 仅当完整的 token/scale/weight tile 无法放入 UB 时才缩小 B。
-    for (; candidate > 0U; --candidate) {
-        tilingData->preQuantTileTokens = candidate;
-        tilingData->preQuantStageBytes =
-            CalcPreQuantStageBytes(tilingData, activationElementsPerByte, candidate, topKWeightsDataType);
-        uint32_t fixedBytes = CalcTopkValidIndexFixedBufferBytes(
-            tilingData, activationElementsPerByte, sharedActivationElementsPerByte, isSharedQuantIndependent,
-            topkValidIndexCoreNum);
-        MegaMoeSendMaskBufferConfig withExtra = CalcTopkValidIndexBufferConfig(
-            tilingData, fixedBytes, expertCountWithExtra, availableUbBytes);
-        MegaMoeSendMaskBufferConfig withoutExtra = CalcTopkValidIndexBufferConfig(
-            tilingData, fixedBytes, expertCountWithoutExtra, availableUbBytes);
-        bool fits = CalcTopkValidIndexConfigUsedBytes(tilingData, withExtra, fixedBytes) <= availableUbBytes &&
-                    CalcTopkValidIndexConfigUsedBytes(tilingData, withoutExtra, fixedBytes) <= availableUbBytes;
-        if (fits) {
-            return true;
-        }
-    }
-
-    // 没有任何可行 tile 时不能把越界的 route ring 配置提交给 device。
-    tilingData->preQuantTileTokens = 0U;
-    tilingData->preQuantStageBytes = 0U;
-    return false;
+    tilingData->preQuantTileTokens = tileTokens;
+    tilingData->preQuantStageBytes =
+        CalcPreQuantStageBytes(tilingData, activationElementsPerByte, tileTokens, topKWeightsDataType);
 }
 
 /*
@@ -1655,9 +1608,9 @@ static void SetUnpermuteBufferConfigs(MegaMoeTilingData *tilingData, ge::DataTyp
 /*
  * 按依赖顺序生成 dispatch、SendMask 和 unpermute 的自适应 UB 配置。
  */
-static ge::graphStatus SetAdaptiveBufferConfigs(const gert::TilingContext *context, const MegaMoeConfig &config,
-                                                const MegaMoeExpertParams &expertParams,
-                                                MegaMoeTilingData *tilingData, uint32_t availableUbBytes)
+static void SetAdaptiveBufferConfigs(const gert::TilingContext *context, const MegaMoeConfig &config,
+                                     const MegaMoeExpertParams &expertParams, MegaMoeTilingData *tilingData,
+                                     uint32_t availableUbBytes)
 {
     auto topKWeightsDesc = context->GetInputDesc(config.topkWeightsIndex);
     auto xDesc = context->GetInputDesc(config.xIndex);
@@ -1674,21 +1627,14 @@ static ge::graphStatus SetAdaptiveBufferConfigs(const gert::TilingContext *conte
     tilingData->combineSyncSlotCountPerExpert = CalcCombineSyncSlotCountPerExpert(tilingData);
 
     const bool isPreQuantizedX = xDesc != nullptr && IsPreQuantizedXType(xDesc->GetDataType());
-    OP_TILING_CHECK(
-        !SetPreQuantTileConfig(tilingData, isPreQuantizedX, activationElementsPerByte, sharedActivationElementsPerByte,
-                               tilingData->isSharedQuantIndependent == 1U,
-                               topKWeightsDesc == nullptr ? ge::DT_FLOAT : topKWeightsDesc->GetDataType(),
-                               availableUbBytes),
-        OP_LOGE("MegaMoe", "pre-quantized transfer stage does not fit UB: H=%u, topK=%u, UB=%u", tilingData->h,
-                tilingData->topK, availableUbBytes),
-        return ge::GRAPH_FAILED);
+    SetPreQuantTileConfig(tilingData, isPreQuantizedX, activationElementsPerByte,
+                          topKWeightsDesc == nullptr ? ge::DT_FLOAT : topKWeightsDesc->GetDataType());
 
     SetTopkValidIndexBufferConfigs(tilingData, activationElementsPerByte, sharedActivationElementsPerByte,
                                    tilingData->isSharedQuantIndependent == 1U, availableUbBytes);
 
     ge::DataType topKWeightsDataType = topKWeightsDesc->GetDataType();
     SetUnpermuteBufferConfigs(tilingData, topKWeightsDataType, availableUbBytes);
-    return ge::GRAPH_SUCCESS;
 }
 
 /*
@@ -3067,9 +3013,7 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
                     OP_LOGE(nodeName, "platform parameters are invalid."), return ge::GRAPH_FAILED);
 
     SetPrefetchAndWaveParams(tilingData, aicNum);
-    OP_TILING_CHECK(SetAdaptiveBufferConfigs(context, config, expertParams, tilingData, static_cast<uint32_t>(ubSize)) !=
-                        ge::GRAPH_SUCCESS,
-                    OP_LOGE(nodeName, "adaptive UB buffer configuration failed."), return ge::GRAPH_FAILED);
+    SetAdaptiveBufferConfigs(context, config, expertParams, tilingData, static_cast<uint32_t>(ubSize));
 
     return CommitTilingResult(context, config, expertParams, tilingData, nodeName);
 }
