@@ -469,16 +469,13 @@ auto allocate = [&bytes](uint64_t &offset, std::initializer_list<uint64_t> facto
     return true;
 };
 
-// 8 大工作区张量段分配（保存在 SageAttention2TilingData 中传递给 Kernel）：
-// WIDE 模式下 Query 启用片上流式即时量化，直通 L1/UB，q8 与 qScale 零显存占用（节省数十至数百兆显存）
-const uint64_t qBatch = wide ? 0ULL : p.b;
+// 7 大工作区张量段分配（保存在 SageAttention2TilingData 中传递给 Kernel）：
 allocate(t.mean,     {p.b, p.hk, p.dp, sizeof(float)});       // Key 序列通道均值向量
-allocate(t.vMean,    {p.b, p.hk, p.dp, sizeof(float)});       // Value 序列通道均值向量 (smoothV)
 allocate(t.vMxScale, {p.b, p.hk, p.kp / 32, p.dp});          // Value MXFP8 32-token 分组 E8M0 Scale
-allocate(t.q8,       {qBatch, p.hq, p.qp, p.dp});             // INT8 平滑量化 Query 张量 (WIDE 下为 0)
+allocate(t.q8,       {p.b, p.hq, p.qp, p.dp});               // INT8 平滑量化 Query 张量
 allocate(t.k8,       {p.b, p.hk, p.kp, p.dp});               // INT8 平滑量化 Key 张量
 allocate(t.v8,       {p.b, p.hk, p.kp, p.dp});               // MXFP8 (E4M3) 量化 Value 张量
-allocate(t.qScale,   {qBatch, p.hq, p.qp, sizeof(uint16_t)}); // Query Token FP16 平衡 scale (WIDE 下为 0)
+allocate(t.qScale,   {p.b, p.hq, p.qp, sizeof(uint16_t)});   // Query Token FP16 平衡 scale
 allocate(t.kScale,   {p.b, p.hk, p.kp, sizeof(uint16_t)});   // Key Token FP16 平衡 scale
 // 其中 qp = ceil(Sq/128)*128、kp = ceil(Sk/512)*512 为补齐后的序列长度。
 

@@ -36,19 +36,12 @@ __aicore__ inline __attribute__((always_inline)) void FusedAttention(GM_ADDR q, 
         Quant<T, WIDE>(q, k, v, work + t.mean, work + t.vMean, work + t.vMxScale, work + t.q8, work + t.k8, work + t.v8,
                        work + t.qScale, work + t.kScale, p);
     }
-    // Drain preprocessing pipes and publish K/V GM writes to every AIC/AIV.
-    // When Q is decoupled (WIDE path), Q preprocessing HBM roundtrips and global
-    // sync stalls are eliminated; Q is quantized on-chip in Attention.
+    // Drain preprocessing pipes and publish GM writes to every AIC/AIV.
     // Idle cores also reach this barrier. Its flags (11..14) do not overlap
     // attention's MODE4 flags (0..3).
     SyncAll<false>();
-    if constexpr (WIDE) {
-        Attention<T, WIDE>(q, work + t.k8, work + t.v8, work + t.qScale, work + t.kScale,
-                           work + t.vMxScale, work + t.vMean, out, lse, p);
-    } else {
-        Attention<T, WIDE>(work + t.q8, work + t.k8, work + t.v8, work + t.qScale, work + t.kScale,
-                           work + t.vMxScale, work + t.vMean, out, lse, p);
-    }
+    Attention<T, WIDE>(work + t.q8, work + t.k8, work + t.v8, work + t.qScale, work + t.kScale,
+                       work + t.vMxScale, work + t.vMean, out, lse, p);
 }
 } // namespace Sage
 

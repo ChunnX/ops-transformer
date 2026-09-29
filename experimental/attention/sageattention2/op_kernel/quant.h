@@ -237,7 +237,7 @@ __aicore__ void QuantBatch(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADD
     const bool grouped = UseDieGroups(p);
     const uint32_t cores = grouped ? p.cores : 2 * p.cores;
     const uint32_t core = GetBlockIdx() % cores, group = GetBlockIdx() / cores;
-    const uint64_t localNq = PERMUTE_V ? 0 : (nq / (grouped ? 2 : 1)), localNk = nk / (grouped ? 2 : 1);
+    const uint64_t localNq = nq / (grouped ? 2 : 1), localNk = nk / (grouped ? 2 : 1);
     if (core >= localNq + localNk)
         return;
     const uint64_t iterations = (localNq + localNk - core + cores - 1) / cores;
@@ -368,7 +368,7 @@ __aicore__ void Quant(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADDR vMe
     FixedScaleFactorsVF((__ubuf__ float *)factors.GetPhyAddr(), p.smScale);
     __ubuf__ float *factorPtr[2] = {(__ubuf__ float *)factors[0].GetPhyAddr(),
                                     (__ubuf__ float *)factors[64].GetPhyAddr()};
-    const uint64_t nq = PERMUTE_V ? 0 : (uint64_t(p.b) * p.hq * p.qp);
+    const uint64_t nq = uint64_t(p.b) * p.hq * p.qp;
     const uint64_t nk = uint64_t(p.b) * p.hk * p.kp;
     for (uint64_t tile = GetBlockIdx(); tile < (nq + nk) / 64; tile += 2 * p.cores) {
         const bool iskv = tile < nk / 64;

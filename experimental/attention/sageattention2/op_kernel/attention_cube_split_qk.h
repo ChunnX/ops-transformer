@@ -33,7 +33,7 @@ __aicore__ inline __attribute__((always_inline)) void PrefetchWideK(FixedResourc
     SetFlag<HardEvent::MTE2_MTE1>(ev);
 }
 template <uint32_t BOffset>
-__aicore__ inline __attribute__((always_inline)) void GemmQkSplit(FixedResource &r, [[maybe_unused]] GM_ADDR a,
+__aicore__ inline __attribute__((always_inline)) void GemmQkSplit(FixedResource &r, GM_ADDR a,
                                                                   uint32_t ubOffset, bool loadA, uint32_t kParity)
 {
     using namespace Catlass;
@@ -48,7 +48,12 @@ __aicore__ inline __attribute__((always_inline)) void GemmQkSplit(FixedResource 
     auto lb = tla::MakeTensor(r.l1Buf.template GetBufferByByte<T>(BOffset + kParity * 65536),
                               tla::MakeLayout<T, typename Copy::LayoutTagL1B>(k, n), Catlass::Arch::PositionL1{});
     if (loadA) {
-        WaitBothAiv<PIPE_MTE1>(Q_READY);
+        GlobalTensor<T> ag;
+        ag.SetGlobalBuffer((__gm__ T *)a);
+        auto ga = tla::MakeTensor(ag, tla::MakeLayout<T, layout::RowMajor>(M, k), Catlass::Arch::PositionGM{});
+        typename Copy::template CopyGmToL1A<decltype(ga)> ca;
+        ca(la, ga);
+        Sync<HardEvent::MTE2_MTE1>();
     }
     event_t kEvent = static_cast<event_t>(4 + kParity);
     WaitFlag<HardEvent::MTE2_MTE1>(kEvent);

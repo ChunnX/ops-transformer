@@ -143,7 +143,7 @@ __aicore__ inline __attribute__((always_inline)) void AttentionImpl(GM_ADDR q8, 
     kernel.Process();
 }
 template <class T, bool WIDE>
-__aicore__ inline __attribute__((always_inline)) void Attention(GM_ADDR q, GM_ADDR k8, GM_ADDR v8,
+__aicore__ inline __attribute__((always_inline)) void Attention(GM_ADDR q8, GM_ADDR k8, GM_ADDR v8,
                                                                 GM_ADDR qs, GM_ADDR ks, GM_ADDR mxScale,
                                                                 GM_ADDR vMean, GM_ADDR out, GM_ADDR lse,
                                                                 SageParams p)
@@ -151,20 +151,20 @@ __aicore__ inline __attribute__((always_inline)) void Attention(GM_ADDR q, GM_AD
     // Joint N512 uses NZ softmax on aligned prefill, including the causal frontier.
     if constexpr (WIDE) {
         if (p.causal)
-            AttentionWideStream<T, true>(q, k8, v8, qs, ks, mxScale, vMean, out, lse, p);
+            AttentionWideStream<T, true>(q8, k8, v8, qs, ks, mxScale, vMean, out, lse, p);
         else
-            AttentionWideStream<T, false>(q, k8, v8, qs, ks, mxScale, vMean, out, lse, p);
+            AttentionWideStream<T, false>(q8, k8, v8, qs, ks, mxScale, vMean, out, lse, p);
     } else {
         if (p.causal) {
             if (p.dp == 128)
-                AttentionImpl<T, 128, true>(q, k8, v8, qs, ks, mxScale, vMean, out, lse, p);
+                AttentionImpl<T, 128, true>(q8, k8, v8, qs, ks, mxScale, vMean, out, lse, p);
             else
-                AttentionImpl<T, 64, true>(q, k8, v8, qs, ks, mxScale, vMean, out, lse, p);
+                AttentionImpl<T, 64, true>(q8, k8, v8, qs, ks, mxScale, vMean, out, lse, p);
         } else {
             if (p.dp == 128)
-                AttentionImpl<T, 128, false>(q, k8, v8, qs, ks, mxScale, vMean, out, lse, p);
+                AttentionImpl<T, 128, false>(q8, k8, v8, qs, ks, mxScale, vMean, out, lse, p);
             else
-                AttentionImpl<T, 64, false>(q, k8, v8, qs, ks, mxScale, vMean, out, lse, p);
+                AttentionImpl<T, 64, false>(q8, k8, v8, qs, ks, mxScale, vMean, out, lse, p);
         }
     }
 }

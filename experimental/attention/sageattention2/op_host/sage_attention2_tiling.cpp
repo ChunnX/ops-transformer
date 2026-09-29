@@ -182,15 +182,11 @@ ge::graphStatus Tile(gert::TilingContext *c)
         bytes += size;
         return true;
     };
-    // When wide is true, On-Chip Streaming Q Quantization is active: q8 and
-    // qScale are streamed directly on-chip in L1 and UB, requiring zero Global
-    // Memory workspace and saving tens to hundreds of megabytes of HBM.
-    const uint64_t qBatch = wide ? 0ULL : p.b;
     if (!allocate(t.mean, {p.b, p.hk, p.dp, sizeof(float)}) ||
         !allocate(t.vMean, {p.b, p.hk, p.dp, sizeof(float)}) ||
         !allocate(t.vMxScale, {p.b, p.hk, p.kp / 32, p.dp}) ||
-        !allocate(t.q8, {qBatch, p.hq, p.qp, p.dp}) || !allocate(t.k8, {p.b, p.hk, p.kp, p.dp}) ||
-        !allocate(t.v8, {p.b, p.hk, p.kp, p.dp}) || !allocate(t.qScale, {qBatch, p.hq, p.qp, sizeof(uint16_t)}) ||
+        !allocate(t.q8, {p.b, p.hq, p.qp, p.dp}) || !allocate(t.k8, {p.b, p.hk, p.kp, p.dp}) ||
+        !allocate(t.v8, {p.b, p.hk, p.kp, p.dp}) || !allocate(t.qScale, {p.b, p.hq, p.qp, sizeof(uint16_t)}) ||
         !allocate(t.kScale, {p.b, p.hk, p.kp, sizeof(uint16_t)})) {
         return Failure(__LINE__);
     }
