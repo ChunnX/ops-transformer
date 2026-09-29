@@ -37,6 +37,7 @@ enum class VselrIndexEnum {
     int64_t s2LoopEndIdx;       /* S2方向的循环控制信息 souter层确定 */ \
     int64_t s2LineStartIdx = 0; /* S2方向按行的起始位置 */ \
     int64_t s2LineOriEndIdx;    /* S2方向按行的结束位置 */ \
+    int64_t s2CmpLineStartIdx = 0; \
     int64_t s2CmpLineEndIdx; \
     int64_t s2LineCmpEndIdx; \
     /* cube视角的sOuter，在SAMEAB场景中cubeSOuterSize为两倍的 halfS1RealSize souter层确定 */ \
@@ -74,8 +75,13 @@ struct RunParamStr { // 分核与切块需要使用到参数
     int64_t qSNumInOneBlock;
     int64_t oriKvLoopEndIdx;
     int64_t cmpKvLoopEndIdx;
+    int64_t firstFdDataWorkspaceIdx = 0;
+    bool isCrossCoreSplit = false;
+    int64_t s2SplitIdx = 0;
+    bool isFirstS2SplitCore = true;
     uint32_t oriSparseBlockCount;
     uint32_t cmpSparseBlockCount;
+    int64_t baseBlockNumPerReductionBlock = 1;
 };
 
 #define COMMON_RUN_INFO \
@@ -120,7 +126,10 @@ struct RunParamStr { // 分核与切块需要使用到参数
     uint8_t multiCoreIdxMod3 = 0; \
     int64_t sOuterOffset; \
     int64_t mOuterOffset; \
-    bool isCmp
+    bool isCmp; \
+    bool isCrossCoreSplit = false; \
+    int64_t s2SplitIdx = 0; \
+    bool isFirstS2SplitCore = true;
 
 struct RunInfo {
     COMMON_RUN_INFO;
@@ -131,8 +140,14 @@ struct RunInfo {
     int64_t qSNumInOneBlock;
     int64_t oriKvLoopEndIdx;
     int64_t cmpKvLoopEndIdx;
+    int64_t firstFdDataWorkspaceIdx = 0;
     uint32_t oriSparseBlockCount;
     uint32_t cmpSparseBlockCount;
+    bool isFirstBase = true;
+    bool isLastBase = true;
+    bool isFirstReduce = false;
+    bool needReduce = false;
+    int64_t reduceBlockId = 0;
 };
 
 struct ConstInfo {

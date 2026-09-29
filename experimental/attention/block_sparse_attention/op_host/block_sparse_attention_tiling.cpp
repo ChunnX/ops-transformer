@@ -771,6 +771,33 @@ static bool IsKvScalePerHeadShape(gert::TilingContext *bsaContext)
     return kvScaleShape->GetStorageShape().GetDimNum() == DIM_NUM_2;
 }
 
+ge::graphStatus BSATiling::ParseAttenMaskShape(gert::TilingContext *bsaContext, const gert::Tensor *attenMaskTensor,
+                                               uint32_t &attenMaskMaxBlockNum)
+{
+    auto &attenMaskShape = attenMaskTensor->GetStorageShape();
+    if (attenMaskShape.GetDimNum() != DIM_NUM_4) {
+        OP_LOGE(bsaContext->GetNodeName(),
+                "attenMask (blockEffRows) must be 4D [batch, numHeads, maxBlockNum, 2], but got dimNum %zu.",
+                attenMaskShape.GetDimNum());
+        return ge::GRAPH_FAILED;
+    }
+    if (attenMaskShape.GetDim(DIM_3) != 2) {
+        OP_LOGE(bsaContext->GetNodeName(), "attenMask (blockEffRows) last dim must be 2, but got %ld.",
+                attenMaskShape.GetDim(DIM_3));
+        return ge::GRAPH_FAILED;
+    }
+    uint32_t attenMaskBatch = static_cast<uint32_t>(attenMaskShape.GetDim(DIM_0));
+    uint32_t attenMaskNumHeads = static_cast<uint32_t>(attenMaskShape.GetDim(DIM_1));
+    if (attenMaskBatch != batch_ || attenMaskNumHeads != numHeads_) {
+        OP_LOGE(bsaContext->GetNodeName(),
+                "attenMask (blockEffRows) batch/numHeads mismatch: expected (%u, %u), got (%u, %u).", batch_, numHeads_,
+                attenMaskBatch, attenMaskNumHeads);
+        return ge::GRAPH_FAILED;
+    }
+    attenMaskMaxBlockNum = static_cast<uint32_t>(attenMaskShape.GetDim(DIM_2));
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus BSATiling::ParseA2A3AttenMask(gert::TilingContext *bsaContext, const gert::Tensor *attenMaskTensor,
                                               uint32_t &attenMaskMaxBlockNum)
 {
@@ -779,21 +806,7 @@ ge::graphStatus BSATiling::ParseA2A3AttenMask(gert::TilingContext *bsaContext, c
                 "attenMask (blockEffRows) only supports no quant on non-950 chips, but got quantMode=%ld.", quantMode_);
         return ge::GRAPH_FAILED;
     }
-    auto &attenMaskShape = attenMaskTensor->GetStorageShape();
-    // A2/A3 use one shared [maxBlockNum, 2] table: [effective Q rows, effective KV rows].
-    if (attenMaskShape.GetDimNum() != DIM_NUM_2) {
-        OP_LOGE(bsaContext->GetNodeName(),
-                "A2/A3 attenMask (blockEffRows) must be 2D [maxBlockNum, 2], but got dimNum %zu.",
-                attenMaskShape.GetDimNum());
-        return ge::GRAPH_FAILED;
-    }
-    if (attenMaskShape.GetDim(DIM_1) != 2) {
-        OP_LOGE(bsaContext->GetNodeName(), "A2/A3 attenMask (blockEffRows) dim1 must be 2, but got %ld.",
-                attenMaskShape.GetDim(DIM_1));
-        return ge::GRAPH_FAILED;
-    }
-    attenMaskMaxBlockNum = static_cast<uint32_t>(attenMaskShape.GetDim(DIM_0));
-    return ge::GRAPH_SUCCESS;
+    return ParseAttenMaskShape(bsaContext, attenMaskTensor, attenMaskMaxBlockNum);
 }
 
 ge::graphStatus BSATiling::ParseA5AttenMask(gert::TilingContext *bsaContext, const gert::Tensor *attenMaskTensor,
@@ -826,27 +839,7 @@ ge::graphStatus BSATiling::ParseA5AttenMask(gert::TilingContext *bsaContext, con
                 quantMode_);
         return ge::GRAPH_FAILED;
     }
-    auto &attenMaskShape = attenMaskTensor->GetStorageShape();
-    if (attenMaskShape.GetDimNum() != DIM_NUM_4) {
-        OP_LOGE(bsaContext->GetNodeName(), "A5 attenMask (blockEffRows) must be 4D, but got dimNum %zu.",
-                attenMaskShape.GetDimNum());
-        return ge::GRAPH_FAILED;
-    }
-    if (attenMaskShape.GetDim(DIM_3) != 2) {
-        OP_LOGE(bsaContext->GetNodeName(), "A5 attenMask (blockEffRows) last dim must be 2, but got %ld.",
-                attenMaskShape.GetDim(DIM_3));
-        return ge::GRAPH_FAILED;
-    }
-    uint32_t attenMaskBatch = static_cast<uint32_t>(attenMaskShape.GetDim(DIM_0));
-    uint32_t attenMaskNumHeads = static_cast<uint32_t>(attenMaskShape.GetDim(DIM_1));
-    attenMaskMaxBlockNum = static_cast<uint32_t>(attenMaskShape.GetDim(DIM_2));
-    if (attenMaskBatch != batch_ || attenMaskNumHeads != numHeads_) {
-        OP_LOGE(bsaContext->GetNodeName(),
-                "A5 attenMask (blockEffRows) batch/numHeads mismatch: expected (%u, %u), got (%u, %u).", batch_,
-                numHeads_, attenMaskBatch, attenMaskNumHeads);
-        return ge::GRAPH_FAILED;
-    }
-    return ge::GRAPH_SUCCESS;
+    return ParseAttenMaskShape(bsaContext, attenMaskTensor, attenMaskMaxBlockNum);
 }
 
 ge::graphStatus BSATiling::ParseAttenMask(gert::TilingContext *bsaContext)

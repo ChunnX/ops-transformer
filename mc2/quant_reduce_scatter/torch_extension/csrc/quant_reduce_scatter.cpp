@@ -29,6 +29,8 @@ static const int H_LOWER_LIMIT = 1024;
 static const int H_UPPER_LIMIT = 8192;
 static const int NUM_64 = 64;
 static const int NUM_128 = 128;
+static const int DIM_ZERO = 0;
+static const int DIM_ONE = 1;
 static const int DIM_TWO = 2;
 static const int DIM_THREE = 3;
 static const int DIM_FOUR = 4;
@@ -36,6 +38,15 @@ static const int DIM_FOUR = 4;
 inline TensorWrapper make_wrapper(const at::Tensor &tensor, aclDataType tensorAcltype)
 {
     return {tensor, tensorAcltype};
+}
+
+inline bool CheckTensorNotEmpty(const at::Tensor &tensor)
+{
+    bool check_result = tensor.dim() > 0;
+    for (int i = 0; i < tensor.dim(); ++i) {
+        check_result &= (tensor.size(i) != 0);
+    }
+    return check_result;
 }
 
 at::Tensor NpuQuantReduceScatter(const at::Tensor &context, const at::Tensor &x, const at::Tensor &scales,
@@ -50,18 +61,12 @@ at::Tensor NpuQuantReduceScatter(const at::Tensor &context, const at::Tensor &x,
     TORCH_CHECK(x.dim() == DIM_TWO || x.dim() == DIM_THREE,
                 "The input x tensor shape is required to be 2 or 3 dim, but the actual input shape is ", x.dim());
     // 校验x是否为空tensor
-    if (x.dim() == DIM_TWO) {
-        TORCH_CHECK(x.size(0) != 0 && x.size(1) != 0, "The input 2 dim tensor x can not be empty tensor");
-    } else if (x.dim() == DIM_THREE) {
-        TORCH_CHECK(x.size(0) != 0 && x.size(1) != 0 && x.size(DIM_TWO) != 0,
-                    "The input 3 dim tensor x can not be empty tensor");
-    }
+    TORCH_CHECK(CheckTensorNotEmpty(x), "The input tensor x can not be empty tensor");
     // 校验x的dtype
     if (xDtype.has_value()) {
         TORCH_CHECK(SUPPORT_X_DTYPE_LIST.find(GetAclDataType(xDtype.value())) != SUPPORT_X_DTYPE_LIST.end(),
                     "The optional parameter xDtype only supports: "
-                    "int8/hifloat8/float8_e4m3fn/float8_e5m2/float4_e1m2/float4_e2m1, "
-                    "but now is ",
+                    "int8/hifloat8/float8_e4m3fn/float8_e5m2/float4_e1m2/float4_e2m1, but now is ",
                     xDtype.value());
     }
 
@@ -73,29 +78,21 @@ at::Tensor NpuQuantReduceScatter(const at::Tensor &context, const at::Tensor &x,
         x.size(AxisHIdx) >= H_LOWER_LIMIT && x.size(AxisHIdx) <= H_UPPER_LIMIT && x.size(AxisHIdx) % NUM_128 == 0,
         "The x H-axis should be in [1024, 8192] and divisible by 128");
 
-    int64_t axisBs = x.size(0);
-    if (x.dim() == DIM_THREE) {
-        axisBs = axisBs * x.size(1);
-    }
+    int64_t axisBs = (x.dim() == DIM_THREE) ? x.size(DIM_ZERO) * x.size(DIM_ONE) : x.size(DIM_ZERO);
     TORCH_CHECK(axisBs % worldSize == 0, "The x BS-axis should be divisible by worldSize");
 
     // 校验scales的shape
-    TORCH_CHECK(scales.dim() == DIM_TWO || scales.dim() == DIM_THREE || scales.dim() == DIM_FOUR,
-                "The input scales tensor shape is required to be equal to x in TG QuantMode, "
-                "or be equal to x plus 1 in MX QuantMode, but the actual input scales shape is ",
-                scales.dim());
+    TORCH_CHECK(
+        scales.dim() == DIM_ONE || scales.dim() == DIM_TWO || scales.dim() == DIM_THREE || scales.dim() == DIM_FOUR,
+        "The input scales tensor shape is required to be equal to x in TG QuantMode, "
+        "or be equal to x plus 1 in MX QuantMode, or be 1D (1) in PT QuantMode, "
+        "but the actual input scales shape is ",
+        scales.dim());
 
     // 校验scales是否为空tensor
-    if (scales.dim() == DIM_TWO) {
-        TORCH_CHECK(scales.size(0) != 0 && scales.size(1) != 0,
-                    "The input 2 dim tensor scales can not be empty tensor");
-    } else if (scales.dim() == DIM_THREE) {
-        TORCH_CHECK(scales.size(0) != 0 && scales.size(1) != 0 && scales.size(DIM_TWO) != 0,
-                    "The input 3 dim tensor scales can not be empty tensor");
-    } else if (scales.dim() == DIM_FOUR) {
-        TORCH_CHECK(
-            scales.size(0) != 0 && scales.size(1) != 0 && scales.size(DIM_TWO) != 0 && scales.size(DIM_THREE) != 0,
-            "The input 4 dim tensor scales can not be empty tensor");
+    TORCH_CHECK(CheckTensorNotEmpty(scales), "The input tensor scales can not be empty tensor");
+    if (scales.dim() == DIM_ONE) {
+        TORCH_CHECK(scales.size(DIM_ZERO) == 1, "The input 1 dim tensor scales must be 1D (1)");
     }
     // 校验scales的dtype: float/float8_e8m0
     if (scalesDtype.has_value()) {
@@ -107,7 +104,6 @@ at::Tensor NpuQuantReduceScatter(const at::Tensor &context, const at::Tensor &x,
     // pta主要是为了推导output的shape和dtype，如果这里的output_dtype没有传入，则默认是bf16
     at::ScalarType outputDefaultDtype = at::kBFloat16;
     if (outputDtype.has_value()) {
-        // 这里应该校验output_dtype，但是目前没有bfloat16的类型定义。怕影响正常功能，因此这里不校验了
         aclDataType outputAclDtype = GetAclDataType(outputDtype.value());
         if (outputAclDtype == ACL_FLOAT16) {
             outputDefaultDtype = at::kHalf;
@@ -120,7 +116,6 @@ at::Tensor NpuQuantReduceScatter(const at::Tensor &context, const at::Tensor &x,
         }
     }
     auto outputSize = {axisBs / worldSize, x.size(AxisHIdx)};
-    // 输出的outputTensor需要自己推导，outputTensor按照实际的shape和dtype去创建
     at::Tensor outputTensor = at::empty(outputSize, x.options().dtype(outputDefaultDtype));
 
     // attr

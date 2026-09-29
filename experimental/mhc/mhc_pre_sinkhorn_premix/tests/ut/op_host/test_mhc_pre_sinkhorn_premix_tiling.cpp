@@ -317,6 +317,15 @@ TEST_F(MhcPreSinkhornPremixTiling, ascend950_regbase_premix_optional_input)
     ExpectRegbasePremixTiling("m_split_premix_grad", 16384, 4096, true, 2001);
 }
 
+TEST_F(MhcPreSinkhornPremixTiling, ascend950_regbase_d5120_supported)
+{
+    // 尾轴 c=5120 放行：K/M 分核、grad/no-grad 各覆盖
+    ExpectRegbasePremixTiling("k_split_d5120_no_grad", 256, 5120, false, 1000);
+    ExpectRegbasePremixTiling("k_split_d5120_grad", 256, 5120, true, 2000);
+    ExpectRegbasePremixTiling("m_split_d5120_no_grad", 16384, 5120, false, 1001);
+    ExpectRegbasePremixTiling("m_split_d5120_grad", 16384, 5120, true, 2001);
+}
+
 TEST_F(MhcPreSinkhornPremixTiling, membase_rejects_premix)
 {
     // ascend910b/910_93 (membase) 不支持 premix 可选输入，tiling 应失败

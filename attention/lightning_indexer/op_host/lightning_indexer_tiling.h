@@ -140,8 +140,8 @@ public:
     uint32_t n2Size = 0;
     uint32_t s1Size = 0;
     int64_t s2Size = 0;
-    uint32_t qkHeadDim = 0;
     uint32_t gSize = 0;
+    uint32_t qkHeadDim = 0;
     // Mask
     int32_t sparseMode = 0;
     // PageAttention
@@ -174,25 +174,25 @@ public:
     ~LIInfoParser() = default;
 
     ge::graphStatus CheckRequiredInOutExistence() const;
-    ge::graphStatus CheckTensorShapes() const;
     ge::graphStatus CheckTensorDescriptions() const;
+    ge::graphStatus CheckTensorShapes() const;
     ge::graphStatus CheckRequiredAttrExistence() const;
-    ge::graphStatus CheckRequiredParaExistence() const;
+    ge::graphStatus CheckLiRequiredParameters() const;
     ge::graphStatus GetActualSeqLenSize(int64_t &liSize, const gert::Tensor *liTensor,
                                         const std::string &liSeqLenName) const;
     ge::graphStatus GetOpName();
     ge::graphStatus GetNpuInfo();
-    void GetOptionalInputParaInfo();
     void GetInputParaInfo();
+    void GetOptionalInputParaInfo();
     void GetOutputParaInfo();
     ge::graphStatus GetAndCheckAttrParaInfo();
     ge::graphStatus GetOpParaInfo();
-    ge::graphStatus ValidateInputShapesMatchQbsnd();
     ge::graphStatus ValidateInputShapesMatchQtnd();
+    ge::graphStatus ValidateInputShapesMatchQbsnd();
     ge::graphStatus ValidateInputShapesMatch();
     ge::graphStatus GetAndCheckInOutDataType();
-    ge::graphStatus GetBatchSize();
     ge::graphStatus GetHeadDim();
+    ge::graphStatus GetBatchSize();
     ge::graphStatus GetS1Size();
     ge::graphStatus GetAndCheckOptionalInput();
     ge::graphStatus CheckShapeDim();
@@ -216,7 +216,7 @@ public:
     gert::TilingContext *context_ = nullptr;
     const char *opName_;
     fe::PlatFormInfos *platformInfo_;
-    LiParaInfo opParamInfo_;
+    LiParaInfo liParams_;
 
     // BaseParams
     int64_t bSize_ = 0;

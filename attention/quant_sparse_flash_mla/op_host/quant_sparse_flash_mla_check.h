@@ -17,7 +17,6 @@
 
 #include "tiling/tiling_api.h"
 #include "../../sparse_flash_mla/op_host/common/smla_host_common_defs.h"
-#include "platform/soc_spec.h"
 
 namespace optiling {
 
@@ -172,6 +171,7 @@ public:
     int32_t sparseMode = 0;
     // Others Flag
     uint32_t sparseCount = 0;
+    bool batchConsistency = false;
 
     // PageAttention
     uint32_t blockTypeSize = 0;
@@ -268,6 +268,7 @@ public:
     int64_t cmpSparseBlockCount_ = 0;
     int64_t maxActualseq_ = 0;
     bool isSameSeqAllKVTensor_ = true;
+    bool batchConsistency_ = false;
     int64_t dSizeQ_ = 0;
     int64_t dSizeKV_ = 0;
     int64_t oriKvStride_ = 0;

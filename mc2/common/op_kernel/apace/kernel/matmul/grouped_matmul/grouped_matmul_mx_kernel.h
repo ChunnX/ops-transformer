@@ -32,12 +32,11 @@ namespace Blaze {
 namespace Gemm {
 namespace Kernel {
 
-
 namespace {
 // group list 的 三种类型
-constexpr uint64_t GROUP_LIST_TYPE_OFFSET = 0UL;   // group list 累计offset
-constexpr uint64_t GROUP_LIST_TYPE_LENGTH = 1UL;   // group list 存每组 token 数
-constexpr uint64_t GROUP_LIST_TYPE_SPARSE = 2UL;   // group list [专家id， token数]
+constexpr uint64_t GROUP_LIST_TYPE_OFFSET = 0UL; // group list 累计offset
+constexpr uint64_t GROUP_LIST_TYPE_LENGTH = 1UL; // group list 存每组 token 数
+constexpr uint64_t GROUP_LIST_TYPE_SPARSE = 2UL; // [专家id， token数]， 组与专家可多对一，允许中间 0 token 组
 constexpr uint64_t SPARSE_GROUP_LIST_ITEM_STRIDE = 2UL;
 constexpr uint64_t SPARSE_GROUP_LIST_SPLIT_VALUE_OFFSET = 1UL;
 constexpr int64_t BLOCK_CUBE_MASK = BLOCK_CUBE - 1;
@@ -45,8 +44,8 @@ constexpr int64_t SCALE_CACHE_MASK = 0xff;
 
 } // namespace
 
-template <class ProblemShape, class BlockMmad, class BlockScheduler,
-          class ScaleAType = fp8_e8m0_t, class ScaleBType = fp8_e8m0_t>
+template <class ProblemShape, class BlockMmad, class BlockScheduler, class ScaleAType = fp8_e8m0_t,
+          class ScaleBType = fp8_e8m0_t>
 class GroupedMatmulMxKernel {
 public:
     using AType = typename BlockMmad::AType;
@@ -59,8 +58,7 @@ public:
     using LayoutScaleB = typename BlockMmad::LayoutScaleB;
     using LayoutBias = typename BlockMmad::LayoutBias;
 
-    static_assert((IsFp4<AType>() && IsFp4<BType>()) ||
-                      (IsFp8<AType>() && IsFp8<BType>()),
+    static_assert((IsFp4<AType>() && IsFp4<BType>()) || (IsFp8<AType>() && IsFp8<BType>()),
                   "GroupedMatmulMx only supports same bit-width MXFP4/MXFP8 AType and BType.");
     static_assert(AscendC::Std::is_one_of_v<CType, half, bfloat16_t, float>,
                   "GroupedMatmulMx only supports half/bfloat16_t/float CType.");
@@ -79,7 +77,7 @@ public:
     static constexpr bool WEIGHT_NZ = IsWeightNz<LayoutB>::value;
     static constexpr bool SCALE_NZ = IsScaleNz<LayoutScaleB>::value;
 
-    using BlockMmadParams = typename BlockMmad::Params; // 6 地址包，字段名与 Blaze BlockMmad::Params 一致
+    using BlockMmadParams = typename BlockMmad::Params;
     using L1Params = typename BlockMmad::L1Params;
     using BlockShape = typename BlockMmad::BlockShape;
     using SchedulerProblemShape = typename BlockScheduler::ProblemShape;
@@ -92,28 +90,28 @@ public:
     using MakeLayoutScaleA = AscendC::Std::conditional_t<
         TRANS_A, asc::te::frame_layout_format<asc::te::scalea_dn_layout_ptn, AscendC::Std::Int<SCALE_C0>>,
         asc::te::frame_layout_format<asc::te::scalea_nd_layout_ptn, AscendC::Std::Int<SCALE_C0>>>;
-    using MakeLayoutScaleB = asc::te::frame_layout_format<LayoutScaleB,
-                                                          AscendC::Std::Int<SCALE_C0>>;
+    using MakeLayoutScaleB = asc::te::frame_layout_format<LayoutScaleB, AscendC::Std::Int<SCALE_C0>>;
 
+    // 表按 grouplist 位置对齐（table[i] 对应 grouplist 第 i 项）
     struct GroupOffsetTables {
-        const __gm__ uint64_t* aGroupAddrTable{nullptr};
-        const __gm__ uint64_t* scaleAGroupAddrTable{nullptr};
-        const __gm__ uint64_t* cGroupAddrTable{nullptr};
-        const __gm__ uint64_t* bGroupAddrTable{nullptr};
-        const __gm__ uint64_t* scaleBGroupAddrTable{nullptr};
+        const __gm__ uint64_t *aGroupAddrTable{nullptr};
+        const __gm__ uint64_t *scaleAGroupAddrTable{nullptr};
+        const __gm__ uint64_t *cGroupAddrTable{nullptr};
+        const __gm__ uint64_t *bGroupAddrTable{nullptr};
+        const __gm__ uint64_t *scaleBGroupAddrTable{nullptr};
     };
 
     struct GMMTiling {
-        uint32_t groupNum; // 本 batch 实际组数 = expertNum*ep
-        int64_t m;         // maxM（problemShape 初值）
+        uint32_t groupNum;
+        int64_t m;
         int64_t n;
         int64_t k;
         uint32_t baseM;
         uint32_t baseN;
         uint32_t baseK;
-        uint32_t kAL1;      // A 一次搬进 L1 的 K 元素数；host tiling 填 0 表示走 GMX_L1_K_DEPTH 兜底
+        uint32_t kAL1;      // A 一次搬进 L1 的 K 元素数；填 0 兜底为 baseK
         uint32_t kBL1;      // 同上，B 侧
-        uint32_t scaleKAL1; // scale K 窗口；填 0 走 GMX_L1_SCALE_K_DEPTH 兜底（MX 要求 kAL1 为 64 倍数）
+        uint32_t scaleKAL1; // scale K 窗口；填 0 兜底为 baseK（MX 要求 kAL1 为 64 倍数）
         uint8_t isBias;
         uint8_t dbL0C{DOUBLE_BUFFER_COUNT};         // L0C 中的 buffer 个数（1/2）
         uint8_t l1BufferStage{DOUBLE_BUFFER_COUNT}; // L1 缓冲 stage 数（2/3，block 层硬编码消费）
@@ -121,30 +119,30 @@ public:
     };
 
     struct Params {
-        ProblemShape problemShape;           // {maxM, n, k, 0}，与 gmmParams 同源
-        BlockMmadParams mmadParams;          // 6 地址
-        GM_ADDR groupListGmAddr;             // groupList 每个 group 的 token 数
+        ProblemShape problemShape;
+        BlockMmadParams mmadParams;
+        GM_ADDR groupListGmAddr; // groupList 每个 group 的 token 数
         GMMTiling gmmParams;
-        GroupOffsetTables groupOffsetTables; // 每个 group 对应数据在 GMM 的起始元素偏移
+        GroupOffsetTables groupOffsetTables; // 各 group 相对基址偏移表
     };
 
     __aicore__ inline GroupedMatmulMxKernel() {}
     __aicore__ inline ~GroupedMatmulMxKernel() {}
 
-    __aicore__ inline void Init(const Params& params)
+    __aicore__ inline void Init(const Params &params)
     {
         if ASCEND_IS_AIV {
             return;
         }
         tiling_ = params.gmmParams;
-        const GMMTiling* gmmParams = &tiling_;
-        aBasePtr_ = reinterpret_cast<__gm__ AType*>(params.mmadParams.aGmAddr);
-        bBasePtr_ = reinterpret_cast<__gm__ BType*>(params.mmadParams.bGmAddr);
-        cBasePtr_ = reinterpret_cast<__gm__ CType*>(params.mmadParams.cGmAddr);
-        scaleABasePtr_ = reinterpret_cast<__gm__ ScaleAType*>(params.mmadParams.scaleAGmAddr);
-        scaleBBasePtr_ = reinterpret_cast<__gm__ ScaleBType*>(params.mmadParams.scaleBGmAddr);
+        const GMMTiling *gmmParams = &tiling_;
+        aBasePtr_ = reinterpret_cast<__gm__ AType *>(params.mmadParams.aGmAddr);
+        bBasePtr_ = reinterpret_cast<__gm__ BType *>(params.mmadParams.bGmAddr);
+        cBasePtr_ = reinterpret_cast<__gm__ CType *>(params.mmadParams.cGmAddr);
+        scaleABasePtr_ = reinterpret_cast<__gm__ ScaleAType *>(params.mmadParams.scaleAGmAddr);
+        scaleBBasePtr_ = reinterpret_cast<__gm__ ScaleBType *>(params.mmadParams.scaleBGmAddr);
         if (gmmParams->isBias == 1) {
-            biasBasePtr_ = reinterpret_cast<__gm__ float*>(params.mmadParams.biasGmAddr);
+            biasBasePtr_ = reinterpret_cast<__gm__ float *>(params.mmadParams.biasGmAddr);
             isBias_ = true;
         } else {
             biasBasePtr_ = nullptr;
@@ -165,14 +163,10 @@ public:
         } else {
             if constexpr (TRANS_B) {
                 groupState_.perGroupB = static_cast<int64_t>(
-                    Align16(gmmParams->n) * (IsFp4<AType>() ?
-                                                              Align64(gmmParams->k) :
-                                                              Align32(gmmParams->k)));
+                    Align16(gmmParams->n) * (IsFp4<AType>() ? Align64(gmmParams->k) : Align32(gmmParams->k)));
             } else {
                 groupState_.perGroupB = static_cast<int64_t>(
-                    (IsFp4<AType>() ? Align64(gmmParams->n) :
-                                                   Align32(gmmParams->n)) *
-                    Align16(gmmParams->k));
+                    (IsFp4<AType>() ? Align64(gmmParams->n) : Align32(gmmParams->n)) * Align16(gmmParams->k));
             }
         }
 
@@ -195,32 +189,27 @@ public:
         if (groupNum_ == 0) {
             return;
         }
-        const int64_t groupListSize = static_cast<int64_t>(groupNum_) *
-                                      (tiling_.groupListType == GROUP_LIST_TYPE_SPARSE ? SPARSE_GROUP_LIST_ITEM_STRIDE : 1UL);
-        // groupListType 是 group list 的存储格式， splitValue：当前 group 的 token 数
-        // GROUP_LIST_TYPE_OFFSET： 存每个 group 的结束 offset   splitValue = 当前 offset - 上个 offset   [4, 10, 13]
-        // GROUP_LIST_TYPE_LENGTH：存每个 group 的长度(token数)   splitValue = gmGroupList[groupIdx]    [4, 6, 3]
-        // GROUP_LIST_TYPE_SPARSE： 存稀疏格式   splitValue = gmGroupList[groupIdx * STRIDE + OFFSET]   [gIdx0, 4, gIdx1, 6, gIdx2, 3]
+        const int64_t groupListSize =
+            static_cast<int64_t>(groupNum_) *
+            (tiling_.groupListType == GROUP_LIST_TYPE_SPARSE ? SPARSE_GROUP_LIST_ITEM_STRIDE : 1UL);
         const auto groupListLayout = asc::te::make_layout(asc::te::make_shape(groupListSize), asc::te::make_stride(1L));
         const auto gmGroupList = asc::te::make_tensor(
-            asc::te::make_mem_ptr<asc::te::location::gm>(reinterpret_cast<__gm__ int64_t*>(groupListGmAddr_)),
+            asc::te::make_mem_ptr<asc::te::location::gm>(reinterpret_cast<__gm__ int64_t *>(groupListGmAddr_)),
             groupListLayout);
         BlockScheduler scheduler(tiling_.baseM, tiling_.baseN, tiling_.baseK);
-        SetSchedulerTailAlign(scheduler);
+        SetSchedulerTailAlign(scheduler); // 设置尾块调度器能切的最小 block 大小
         const uint32_t lastGroupIdx = groupNum_ - 1;
         for (uint32_t groupIdx = 0; groupIdx < lastGroupIdx; ++groupIdx) {
-            SetMNK(gmGroupList, groupIdx);
+            SetMNK(gmGroupList, groupIdx); // 按当前 group 的 M 重新均衡 baseM
             const int64_t problemM = asc::te::get<MNK_M>(problemShape_);
             const int64_t problemN = asc::te::get<MNK_N>(problemShape_);
             const int64_t problemK = asc::te::get<MNK_K>(problemShape_);
             if (problemM <= 0 || problemN <= 0 || problemK <= 0) {
-                if (tiling_.groupListType == GROUP_LIST_TYPE_SPARSE && problemM <= 0) {
-                    break;
-                }
                 continue;
             }
-            BaseMBalance(scheduler, problemM, tiling_.baseM);
-            scheduler.UpdateNextProblem(SchedulerProblemShape{problemM, problemN, problemK, 0});
+            BaseMBalance(scheduler, problemM, tiling_.baseM); // 按当前 group 的 M 重新均衡 baseM
+            scheduler.UpdateNextProblem(
+                SchedulerProblemShape{problemM, problemN, problemK, 0}); // 对当前的 groupidx 更新调度器状态
             ProcessSingleGroup<false>(scheduler, gmGroupList, groupIdx);
         }
 
@@ -232,7 +221,7 @@ public:
             BaseMBalance(scheduler, problemM, tiling_.baseM);
             scheduler.UpdateNextProblem(SchedulerProblemShape{problemM, problemN, problemK, 0});
             if (IsLastGroupAndNeedSplit(scheduler)) {
-                scheduler.UpdateTailTile();
+                scheduler.UpdateTailTile(); // 尾部均衡
                 ProcessSingleGroup<true>(scheduler, gmGroupList, lastGroupIdx);
             } else {
                 ProcessSingleGroup<false>(scheduler, gmGroupList, lastGroupIdx);
@@ -241,15 +230,16 @@ public:
     }
 
 private:
-    __aicore__ inline void SetSchedulerTailAlign(BlockScheduler& scheduler)
+    __aicore__ inline void SetSchedulerTailAlign(BlockScheduler &scheduler)
     {
+        // 调度器尾块切分，能切的最小block的大小
         constexpr uint32_t mTailAlign = 1;
         constexpr uint32_t nTailAlign = TRANS_B ? static_cast<uint32_t>(BLOCK_CUBE) : static_cast<uint32_t>(C0_SIZE);
         scheduler.SetTailAlign(mTailAlign, nTailAlign);
     }
 
     template <typename TensorB, typename TensorScaleB>
-    __aicore__ inline void SetL2CacheHint(TensorB& gmB, TensorScaleB& gmScaleB, int64_t mSize, int64_t curBaseM,
+    __aicore__ inline void SetL2CacheHint(TensorB &gmB, TensorScaleB &gmScaleB, int64_t mSize, int64_t curBaseM,
                                           int64_t baseN)
     {
         const int64_t problemN = asc::te::get<MNK_N>(problemShape_);
@@ -283,7 +273,7 @@ private:
         }
     }
 
-    __aicore__ inline void BaseMBalance(BlockScheduler& scheduler, int64_t m, int64_t baseM)
+    __aicore__ inline void BaseMBalance(BlockScheduler &scheduler, int64_t m, int64_t baseM)
     {
         if (m <= 0) {
             return;
@@ -295,21 +285,21 @@ private:
         scheduler.UpdateBaseM(curBaseM_);
     }
 
-    __aicore__ inline bool IsLastGroupAndNeedSplit(const BlockScheduler& scheduler)
+    __aicore__ inline bool IsLastGroupAndNeedSplit(const BlockScheduler &scheduler)
     {
         return (scheduler.GetEndBlockIdx() + 1) <= (AscendC::GetBlockNum() >> 1);
     }
 
     template <typename GroupListTensor>
-    __aicore__ inline void SetMNK(const GroupListTensor& gmGroupList, uint32_t groupIdx)
+    __aicore__ inline void SetMNK(const GroupListTensor &gmGroupList, uint32_t groupIdx)
     {
-        const int64_t splitValue = GetSplitValueFromGroupList(gmGroupList, groupIdx);
+        const int64_t splitValue = GetSplitValueFromGroupList(gmGroupList, groupIdx); // 当前 groupIdx 的 tokens 数量
         const int64_t n = asc::te::get<MNK_N>(problemShape_);
         problemShape_ = ProblemShape{splitValue, n, asc::te::get<MNK_K>(problemShape_), 0};
     }
 
     template <typename GroupListTensor>
-    __aicore__ inline int64_t GetSplitValueFromGroupList(const GroupListTensor& gmGroupList, uint32_t groupIdx)
+    __aicore__ inline int64_t GetSplitValueFromGroupList(const GroupListTensor &gmGroupList, uint32_t groupIdx)
     {
         int64_t splitValue = 0;
         if (tiling_.groupListType == GROUP_LIST_TYPE_OFFSET) {
@@ -330,12 +320,11 @@ private:
 
     __aicore__ inline int64_t GetScaleK(int64_t k) const
     {
-        return ((k + MXFP_DIVISOR_SIZE - 1) >> MXFP_DIVISOR_SHIFT)
-               << MXFP_MULTI_BASE_SHIFT;
+        return ((k + MXFP_DIVISOR_SIZE - 1) >> MXFP_DIVISOR_SHIFT) << MXFP_MULTI_BASE_SHIFT;
     }
 
     template <typename GroupListTensor>
-    __aicore__ inline void UpdateBaseOffsets(const GroupListTensor& gmGroupList, uint32_t groupIdx)
+    __aicore__ inline void UpdateBaseOffsets(const GroupListTensor &gmGroupList, uint32_t groupIdx)
     {
         uint32_t weightIdx = groupIdx;
         if (tiling_.groupListType == GROUP_LIST_TYPE_SPARSE) {
@@ -379,8 +368,8 @@ private:
         } else {
             const int64_t scaleK = GetScaleK(k);
             if constexpr (SCALE_NZ) {
-                groupOffsets_.scaleB = static_cast<int64_t>(CalScaleNZGmAddrOffset(
-                    TRANS_B, static_cast<int64_t>(weightIdx), n, scaleK));
+                groupOffsets_.scaleB =
+                    static_cast<int64_t>(CalScaleNZGmAddrOffset(TRANS_B, static_cast<int64_t>(weightIdx), n, scaleK));
             } else {
                 groupOffsets_.scaleB = static_cast<int64_t>(weightIdx) * n * scaleK;
             }
@@ -389,7 +378,7 @@ private:
     }
 
     template <bool isLastGroupAndNeedSplit, typename GroupListTensor>
-    __aicore__ inline void ProcessSingleGroup(BlockScheduler& scheduler, const GroupListTensor& gmGroupList,
+    __aicore__ inline void ProcessSingleGroup(BlockScheduler &scheduler, const GroupListTensor &gmGroupList,
                                               uint32_t groupIdx)
     {
         BlockCoord blockCoord;
@@ -410,20 +399,23 @@ private:
         auto layoutB = MakeLayoutB{}(problemK, problemN);
         auto layoutScaleB = MakeLayoutScaleB{}(scaleK, problemN);
         auto layoutC = MakeLayoutC{}(problemM, problemN);
-        auto gmA = asc::te::make_tensor(asc::te::make_mem_ptr<asc::te::location::gm>(aBasePtr_ + groupOffsets_.a), layoutA);
+        auto gmA =
+            asc::te::make_tensor(asc::te::make_mem_ptr<asc::te::location::gm>(aBasePtr_ + groupOffsets_.a), layoutA);
         auto gmScaleA = asc::te::make_tensor(
             asc::te::make_mem_ptr<asc::te::location::gm>(scaleABasePtr_ + groupOffsets_.scaleA), layoutScaleA);
-        auto gmB = asc::te::make_tensor(
-            asc::te::make_mem_ptr<asc::te::location::gm>(bBasePtr_ + groupOffsets_.b), layoutB);
+        auto gmB =
+            asc::te::make_tensor(asc::te::make_mem_ptr<asc::te::location::gm>(bBasePtr_ + groupOffsets_.b), layoutB);
         auto gmScaleB = asc::te::make_tensor(
             asc::te::make_mem_ptr<asc::te::location::gm>(scaleBBasePtr_ + groupOffsets_.scaleB), layoutScaleB);
-        auto gmC = asc::te::make_tensor(asc::te::make_mem_ptr<asc::te::location::gm>(cBasePtr_ + groupOffsets_.c), layoutC);
+        auto gmC =
+            asc::te::make_tensor(asc::te::make_mem_ptr<asc::te::location::gm>(cBasePtr_ + groupOffsets_.c), layoutC);
         auto biasPtr = isBias_ ? (biasBasePtr_ + groupOffsets_.bias) : nullptr;
         auto layoutBias = asc::te::make_frame_layout<asc::te::nd_ext_layout_ptn>(static_cast<int64_t>(1), problemN);
         auto gmBias = asc::te::make_tensor(asc::te::make_mem_ptr<asc::te::location::gm>(biasPtr), layoutBias);
 
         if constexpr (!isLastGroupAndNeedSplit) {
-            SetL2CacheHint(gmB, gmScaleB, problemM, static_cast<int64_t>(curBaseM_), static_cast<int64_t>(tiling_.baseN));
+            SetL2CacheHint(gmB, gmScaleB, problemM, static_cast<int64_t>(curBaseM_),
+                           static_cast<int64_t>(tiling_.baseN));
         }
 
         do {
@@ -433,7 +425,7 @@ private:
             if (blockM <= 0 || blockN <= 0) {
                 continue;
             }
-            const int64_t mSplitOffset = asc::te::get<MNK_K>(schedulerBlockShape);
+            const int64_t mSplitOffset = asc::te::get<MNK_K>(schedulerBlockShape); // 尾块切分时，被切块内部的偏移
             const int64_t nSplitOffset = asc::te::get<MNK_B>(schedulerBlockShape);
             const int64_t mBlockIdx = asc::te::get<MNK_M>(blockCoord);
             const int64_t nBlockIdx = asc::te::get<MNK_N>(blockCoord);
@@ -444,12 +436,12 @@ private:
 
             auto gmBlockA =
                 gmA.slice(asc::te::make_coord(mPos, static_cast<int64_t>(0)), asc::te::make_shape(blockM, blockK));
-            auto gmBlockScaleA = gmScaleA.slice(asc::te::make_coord(mPos, static_cast<int64_t>(0)),
-                                                asc::te::make_shape(blockM, scaleK));
+            auto gmBlockScaleA =
+                gmScaleA.slice(asc::te::make_coord(mPos, static_cast<int64_t>(0)), asc::te::make_shape(blockM, scaleK));
             auto gmBlockB =
                 gmB.slice(asc::te::make_coord(static_cast<int64_t>(0), nPos), asc::te::make_shape(blockK, blockN));
-            auto gmBlockScaleB = gmScaleB.slice(asc::te::make_coord(static_cast<int64_t>(0), nPos),
-                                                asc::te::make_shape(scaleK, blockN));
+            auto gmBlockScaleB =
+                gmScaleB.slice(asc::te::make_coord(static_cast<int64_t>(0), nPos), asc::te::make_shape(scaleK, blockN));
             auto gmBlockBias = gmBias.slice(asc::te::make_coord(static_cast<int64_t>(0), nPos),
                                             asc::te::make_shape(static_cast<int64_t>(1), blockN));
             auto gmBlockC = gmC.slice(asc::te::make_coord(mPos, nPos), asc::te::make_shape(blockM, blockN));
@@ -460,19 +452,19 @@ private:
 private:
     BlockMmad mmadOp_;
     ProblemShape problemShape_{};
-    __gm__ AType* aBasePtr_{nullptr};
-    __gm__ BType* bBasePtr_{nullptr};
-    __gm__ CType* cBasePtr_{nullptr};
-    __gm__ float* biasBasePtr_{nullptr};
-    __gm__ ScaleAType* scaleABasePtr_{nullptr};
-    __gm__ ScaleBType* scaleBBasePtr_{nullptr};
+    __gm__ AType *aBasePtr_{nullptr};
+    __gm__ BType *bBasePtr_{nullptr};
+    __gm__ CType *cBasePtr_{nullptr};
+    __gm__ float *biasBasePtr_{nullptr};
+    __gm__ ScaleAType *scaleABasePtr_{nullptr};
+    __gm__ ScaleBType *scaleBBasePtr_{nullptr};
     GM_ADDR groupListGmAddr_{nullptr};
     GroupOffsetTables offsetTables_{};
     GMMTiling tiling_{};
 
     struct GroupState {
-        int64_t preOffset{0};    // 已解析组的累计 token 总数（含当前组）
-        int64_t perGroupB{0};    // 一组权重的步长（组间间隔）
+        int64_t preOffset{0}; // 已解析组的累计 token 总数（含当前组）
+        int64_t perGroupB{0}; // 一组权重的步长（组间间隔）
     };
     struct GroupOffsets {
         int64_t a{0};

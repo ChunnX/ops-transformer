@@ -17,10 +17,13 @@
 - 支持D为128/512。
 - 支持H为1K~10K，512对齐。
 - 支持cmp_ratio为2、4、8、16、32、64、128。
-- 当cmp_ratio为4/128时，支持如下三种情况：
-    - C4A: D=512, coff=2, cmp_ratio=4;
-    - C4Li: D=128, coff=2, cmp_ratio=4;
-    - C128A: D=512, coff=1, cmp_ratio=128。
+- V2 固定 coff=1，使用循环buffer。
+
+### A2/A3 测试
+
+```bash
+python3 -m pytest -v test_compressor_single.py test_compressor_arch22.py test_compressor_arch22_h5120.py
+```
 
 ### 环境配置
 
