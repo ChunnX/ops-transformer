@@ -8,8 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CHUNK_GATED_DELTA_RULE_CUBE_COMPUTE_H
-#define CHUNK_GATED_DELTA_RULE_CUBE_COMPUTE_H
+#pragma once
 
 #include "utils/chunk_gated_delta_rule_context.h"
 #include "utils/chunk_gated_delta_rule_cube_utils.h"
@@ -23,26 +22,28 @@ using namespace AscendC;
 template <typename stateType, bool hasGamma>
 class CubeCompute : private FusedLayout {
 public:
-    __aicore__ inline explicit CubeCompute(KernelContext<stateType> &context) : context_(context) {}
+    __aicore__ inline explicit CubeCompute(const KernelContext<stateType>& context)
+        : context_(context)
+    {}
 
     // BasicBlock 已选择融合路径；本函数完成当前 head 的全部 chunk 和跨核握手收尾。
     // 缓冲区绑定及临时矩阵仅在本类内部使用，不向调度层传递。
-    __aicore__ inline void Run(uint32_t valueHead)
+    __aicore__ inline void Run(const WorkItem& task)
     {
-        if (context_.task.seqLength == 0) {
+        if (task.seqLength == 0) {
             return;
         }
-        const uint32_t qkHead = context_.QueryKeyHead(valueHead);
-        const uint32_t chunkNum = context_.ChunkNum();
+        const uint32_t qkHead = context_.QueryKeyHead(task.valueHead);
+        const uint64_t chunkNum = ChunkNum(task.seqLength);
         Reset();
         NotifyVector<PIPE_MTE2, CubeToVectorEvent::ChunkSlotFree>(0);
         if (chunkNum > 1) {
             NotifyVector<PIPE_MTE2, CubeToVectorEvent::ChunkSlotFree>(1);
         }
-        CopyPrefixQkGmToL1(qkHead, 0);
+        CopyPrefixQkGmToL1(qkHead, 0, task.tokenStart, ChunkValidRows(task.seqLength, 0));
         ComputeKeyKeyAndQueryKeyScores(0);
-        for (uint32_t chunk = 0; chunk < chunkNum; ++chunk) {
-            ComputeCubeChunk(valueHead, qkHead, chunk);
+        for (uint64_t chunk = 0; chunk < chunkNum; ++chunk) {
+            ComputeCubeChunk(task, qkHead, chunk);
         }
         // 收回最后一次发布的归还信号，避免计数 token 遗留到同一核组处理的下一个 head。
         WaitForVector<VectorToCubeEvent::StateDeltaBufferFree>();
@@ -75,15 +76,16 @@ private:
     static constexpr uint32_t L0AB_STAGES = 2;
     static constexpr uint32_t L0A_STAGE_BYTES = ArchTag::L0A_SIZE / L0AB_STAGES;
     static constexpr uint32_t L0B_STAGE_BYTES = ArchTag::L0B_SIZE / L0AB_STAGES;
-    static constexpr uint32_t AIC_L0AB_MUTEX_BASE = 0;
-    static constexpr uint32_t AIC_L0C_TMP_MUTEX = 2;
-    static constexpr uint32_t AIC_L0C_RESIDUAL_MUTEX = 3;
-    static constexpr uint32_t AIC_L0C_OUTPUT_MUTEX = 4;
-    static constexpr uint32_t AIC_L1_QK_MUTEX_BASE = 5;
-    static constexpr uint32_t AIC_L1_FIX_MUTEX = 7;
+    // 固定 ID 直接使用 MutexID；BASE + stage/slot 经整数提升，仅动态组合处显式转换。
+    // stage/slot 均为 0/1：L0AB 使用 0/1，QK 使用 5/6。
+    static constexpr MutexID AIC_L0AB_MUTEX_BASE = 0;
+    static constexpr MutexID AIC_L0C_TMP_MUTEX = 2;
+    static constexpr MutexID AIC_L0C_RESIDUAL_MUTEX = 3;
+    static constexpr MutexID AIC_L0C_OUTPUT_MUTEX = 4;
+    static constexpr MutexID AIC_L1_QK_MUTEX_BASE = 5;
+    static constexpr MutexID AIC_L1_FIX_MUTEX = 7;
 
-    static_assert(L1_Q_OFFSET + CHUNK * DIM * sizeof(bfloat16_t) <= L1_K_OFFSET,
-                  "AIC Q scratch overlaps K scratch");
+    static_assert(L1_Q_OFFSET + CHUNK * DIM * sizeof(bfloat16_t) <= L1_K_OFFSET, "AIC Q scratch overlaps K scratch");
     static_assert(L1_K_OFFSET + CHUNK * DIM * sizeof(bfloat16_t) <= L1_INVERSE_OFFSET,
                   "AIC Q/K scratch overlaps the shared inverse matrix");
     static_assert(L1_INVERSE_OFFSET + CHUNK * CHUNK * sizeof(bfloat16_t) <= L1_LOWER_TIMES_INVERSE_OFFSET,
@@ -94,14 +96,12 @@ private:
                   "arch35 exact L0A tile exceeds one ping-pong stage");
     static_assert(DIM * DIM * sizeof(bfloat16_t) <= L0B_STAGE_BYTES,
                   "arch35 exact L0B tile exceeds one ping-pong stage");
-    static_assert(DIM * DIM * sizeof(float) <= L0C_RESIDUAL_OFFSET,
-                  "AIC temporary accumulator overlaps residual");
+    static_assert(DIM * DIM * sizeof(float) <= L0C_RESIDUAL_OFFSET, "AIC temporary accumulator overlaps residual");
     static_assert(L0C_RESIDUAL_OFFSET + CHUNK * DIM * sizeof(float) <= L0C_OUTPUT_OFFSET,
                   "AIC residual accumulator overlaps output");
     static_assert(L0C_OUTPUT_OFFSET + CHUNK * DIM * sizeof(float) <= ArchTag::L0C_SIZE,
                   "AIC accumulators exceed L0C capacity");
-    static_assert(AIC_L1_FIX_MUTEX < MUTEX_COUNT,
-                  "arch35 exact AIC mutex layout exceeds its allocation");
+    static_assert(AIC_L1_FIX_MUTEX < MUTEX_COUNT, "arch35 exact AIC mutex layout exceeds its allocation");
 
     // 一个 chunk 的内部工作集；shape 为补零后的计算范围，不分配缓冲区。
     struct ChunkMatrices {
@@ -110,15 +110,15 @@ private:
         LocalTensor<bfloat16_t> rawKcd;            // -beta*exp(G)*K:[C,DIM]
         LocalTensor<bfloat16_t> vBeta;             // beta*V:[C,DIM]
         LocalTensor<bfloat16_t> kcdQPrime;         // [Kcd;Q']:[2*C,DIM]，两份矩阵连续存储
-        LocalTensor<bfloat16_t> state;            // S:[DIM,DIM]，逻辑方向 [Dv,Dk]
+        LocalTensor<bfloat16_t> state;             // S:[DIM,DIM]，逻辑方向 [Dv,Dk]
         LocalTensor<bfloat16_t> residualBf16;      // R:[C,DIM] 的 Cube 输入副本
-        LocalTensor<bfloat16_t> kg;               // Kg:[C,DIM]
-        LocalTensor<bfloat16_t> maskedQkt;        // M:[C,C]
-        LocalTensor<float> residual;             // U -> R:[C,DIM]，L0C
-        LocalTensor<float> output;               // O_inter -> O:[C,DIM]，L0C
+        LocalTensor<bfloat16_t> kg;                // Kg:[C,DIM]
+        LocalTensor<bfloat16_t> maskedQkt;         // M:[C,C]
+        LocalTensor<float> residual;               // U -> R:[C,DIM]，L0C
+        LocalTensor<float> output;                 // O_inter -> O:[C,DIM]，L0C
     };
 
-    __aicore__ inline ChunkMatrices BindChunkMatrices(uint32_t chunk)
+    __aicore__ inline ChunkMatrices BindChunkMatrices(uint64_t chunk)
     {
         const uint32_t base = (chunk & 1) * L1_SLOT_STRIDE_BYTES;
         return {BufferViews::L1<bfloat16_t>(base + L1_INVERSE_OFFSET),
@@ -134,36 +134,41 @@ private:
                 BufferViews::L0C<float>(L0C_OUTPUT_OFFSET)};
     }
 
-    __aicore__ inline void ComputeCubeChunk(uint32_t valueHead, uint32_t qkHead, uint32_t chunk)
+    __aicore__ inline void ComputeCubeChunk(const WorkItem& task, uint32_t qkHead, uint64_t chunk)
     {
         const auto x = BindChunkMatrices(chunk);
         const uint32_t slot = chunk & 1;
-        if (chunk + 1 < context_.ChunkNum()) {
+        if (chunk + 1 < ChunkNum(task.seqLength)) {
             // 优化方案：前缀只依赖 Q/K，预取下块并与 AIV 求逆、当前状态递推重叠。
-            CopyPrefixQkGmToL1(qkHead, chunk + 1);
+            CopyPrefixQkGmToL1(qkHead, chunk + 1, task.tokenStart + (chunk + 1) * CHUNK,
+                               ChunkValidRows(task.seqLength, chunk + 1));
             ComputeKeyKeyAndQueryKeyScores(chunk + 1);
         }
 
         WaitForVector<VectorToCubeEvent::InverseInputsReady>(slot);
-        CompleteBlockLowerInverse(x);          // [4a/b] A10=A11@((-L10)@A00)，接 Vector [3b]。
-        ComputeInverseWeightedKeys(x);         // [5a] Kcd=A@rawKcd:[C,Dk]。
-        ComputeInverseWeightedValues(x);       // [5b] U=A@(beta*V):[C,Dv]，保留在 residual L0C。
+        CompleteBlockLowerInverse(x);    // [4a/b] A10=A11@((-L10)@A00)，接 Vector [3b]。
+        ComputeInverseWeightedKeys(x);   // [5a] Kcd=A@rawKcd:[C,Dk]。
+        ComputeInverseWeightedValues(x); // [5b] U=A@(beta*V):[C,Dv]，保留在 residual L0C。
         WaitForVector<VectorToCubeEvent::StateReady>();
         ComputeResidualAndStateOutput(x, slot); // [6a/b] R=U+Kcd@S.T；O_inter=Q'@S.T。
         // [6c, Vector] 等待 R32 -> R16 及 UB -> L1；此后两次 MMAD 都消费同一份 R16。
         WaitForVector<VectorToCubeEvent::ResidualReady>();
         ComputeResidualKeyStateDelta(x, chunk); // [7] stateDelta=R16.T@Kg:[Dv,Dk]，交 Vector [9a]。
         WaitForVector<VectorToCubeEvent::CausalScoresReady>(slot);
-        AccumulateCausalResidualOutput(x);      // [8] O=O_inter+M@R16:[C,Dv]。
+        AccumulateCausalResidualOutput(x); // [8] O=O_inter+M@R16:[C,Dv]。
 
-        if (chunk + 2 < context_.ChunkNum()) {
+        if (chunk + 2 < ChunkNum(task.seqLength)) {
             // L1 操作数已进入 L0，chunk+2 可复用当前槽；独立 L0C/FIX 继续完成 O 的写回。
             NotifyVector<PIPE_MTE1, CubeToVectorEvent::ChunkSlotFree>(slot);
         }
-        CopyOutputL0CToGm(valueHead, chunk, context_.ChunkValidRows(chunk), x.output);
+        const uint64_t tokenStart = task.tokenStart + chunk * CHUNK;
+        CopyOutputL0CToGm(task.valueHead, tokenStart, ChunkValidRows(task.seqLength, chunk), x.output);
     }
 
-    __aicore__ inline void Reset() { l0abStage_ = 0; }
+    __aicore__ inline void Reset()
+    {
+        l0abStage_ = 0;
+    }
 
     struct CubeOperands {
         LocalTensor<bfloat16_t> lhs;
@@ -177,9 +182,9 @@ private:
         return stage;
     }
 
-    __aicore__ inline void CopyStateDeltaL0CToUb(LocalTensor<float> result, uint32_t chunk)
+    __aicore__ inline void CopyStateDeltaL0CToUb(LocalTensor<float> result, uint64_t chunk)
     {
-        const MutexID resultMutex = MutexId(AIC_L0C_TMP_MUTEX);
+        const MutexID resultMutex = AIC_L0C_TMP_MUTEX;
         // ComputeResidualKeyStateDelta 已结束 M 的使用期；此处成对管理 FIX 读取。
         Mutex::Lock<PIPE_FIX>(resultMutex);
         if (chunk != 0) {
@@ -195,7 +200,7 @@ private:
 
     __aicore__ inline void CopyPrefixScoresL0CToUb(LocalTensor<float> result, uint32_t slot, bool waitReusable)
     {
-        const MutexID resultMutex = MutexId(AIC_L0C_TMP_MUTEX);
+        const MutexID resultMutex = AIC_L0C_TMP_MUTEX;
         // MatmulKeyKeyAndQueryKeyScores 已持有 PIPE_M；此处只释放一次，再取得 FIX 所有权。
         Mutex::Unlock<PIPE_M>(resultMutex);
         Mutex::Lock<PIPE_FIX>(resultMutex);
@@ -209,28 +214,29 @@ private:
         Mutex::Unlock<PIPE_FIX>(resultMutex);
     }
 
-    __aicore__ inline void CopyResultL0CToL1(LocalTensor<bfloat16_t> dst, LocalTensor<float> l0c, uint32_t m, uint32_t n,
-                                     uint32_t fullRows, MutexID l0cMutex, uint32_t rowStart = 0, uint32_t colStart = 0)
+    __aicore__ inline void CopyResultL0CToL1(LocalTensor<bfloat16_t> dst, LocalTensor<float> l0c, uint32_t m,
+                                             uint32_t n, uint32_t fullRows, MutexID l0cMutex, uint32_t rowStart = 0,
+                                             uint32_t colStart = 0)
     {
         // 顺序不可交换：先占用 L1 目标，再结束 MMAD，最后允许 FIX 读取 L0C。
-        Mutex::Lock<PIPE_FIX>(MutexId(AIC_L1_FIX_MUTEX));
+        Mutex::Lock<PIPE_FIX>(AIC_L1_FIX_MUTEX);
         Mutex::Unlock<PIPE_M>(l0cMutex);
         Mutex::Lock<PIPE_FIX>(l0cMutex);
         CopyTileL0CToL1(dst[GetZnOffset(rowStart, colStart, fullRows)], l0c, m, n, fullRows);
         Mutex::Unlock<PIPE_FIX>(l0cMutex);
-        Mutex::Unlock<PIPE_FIX>(MutexId(AIC_L1_FIX_MUTEX));
+        Mutex::Unlock<PIPE_FIX>(AIC_L1_FIX_MUTEX);
     }
 
-    __aicore__ inline void CopyOutputL0CToGm(uint32_t nvId, uint32_t chunk, uint32_t validRows, LocalTensor<float> l0c)
+    __aicore__ inline void CopyOutputL0CToGm(uint64_t valueHead, uint64_t tokenStart, uint32_t validRows,
+                                             LocalTensor<float> l0c)
     {
-        const MutexID outputMutex = MutexId(AIC_L0C_OUTPUT_MUTEX);
+        const MutexID outputMutex = AIC_L0C_OUTPUT_MUTEX;
         Mutex::Unlock<PIPE_M>(outputMutex);
         Mutex::Lock<PIPE_FIX>(outputMutex);
         const uint64_t outputOffset =
-            (context_.task.tokenStart + static_cast<uint64_t>(chunk) * CHUNK) * context_.params.nv * context_.params.dv +
-            static_cast<uint64_t>(nvId) * context_.params.dv;
-        CopyRowsL0CToGm(context_.params.out[outputOffset], l0c, validRows, context_.params.dv,
-                        CHUNK, context_.params.nv * context_.params.dv);
+            tokenStart * context_.params.nv * context_.params.dv + valueHead * context_.params.dv;
+        CopyRowsL0CToGm(context_.params.out[outputOffset], l0c, validRows, context_.params.dv, CHUNK,
+                        context_.params.nv * context_.params.dv);
         Mutex::Unlock<PIPE_FIX>(outputMutex);
     }
 
@@ -240,23 +246,23 @@ private:
         const uint32_t stage = NextL0AbStage();
         return {BufferViews::L0A<bfloat16_t>(stage * L0A_STAGE_BYTES),
                 BufferViews::L0B<bfloat16_t>(stage * L0B_STAGE_BYTES),
-                MutexId(AIC_L0AB_MUTEX_BASE + stage)};
+                static_cast<MutexID>(AIC_L0AB_MUTEX_BASE + stage)};
     }
 
     // [5a, Cube] Kcd=A@rawKcd:[C,Dk]。Kcd 已带负号，是旧状态对 R 的贡献系数。
     // 结果以 BF16 写入 kcdQPrime 前 C 行，后 C 行的 Q' 由 Vector 准备。
     // rawKcd 来自 Vector [2b]，A 由 Vector [3b] + Cube [4] 完成；Kcd 经 BF16 FIX 交 [6a]。
-    __aicore__ inline void ComputeInverseWeightedKeys(const ChunkMatrices &x)
+    __aicore__ inline void ComputeInverseWeightedKeys(const ChunkMatrices& x)
     {
         const auto operands = NextOperands();
         auto result = BufferViews::L0C<float>(0);
-        const MutexID resultMutex = MutexId(AIC_L0C_TMP_MUTEX);
+        const MutexID resultMutex = AIC_L0C_TMP_MUTEX;
         Mutex::Lock<PIPE_MTE1>(operands.mutex);
         // CompleteBlockLowerInverse 的 FIX 刚写回 A；在读取该 L1 区域前等待它完成。
-        Mutex::Lock<PIPE_MTE1>(MutexId(AIC_L1_FIX_MUTEX));
+        Mutex::Lock<PIPE_MTE1>(AIC_L1_FIX_MUTEX);
         CopyL1ToL0<false>(operands.lhs, x.inverse, CHUNK, CHUNK, CHUNK);
         CopyL1ToL0<true>(operands.rhs, x.rawKcd, CHUNK, DIM, CHUNK);
-        Mutex::Unlock<PIPE_MTE1>(MutexId(AIC_L1_FIX_MUTEX));
+        Mutex::Unlock<PIPE_MTE1>(AIC_L1_FIX_MUTEX);
         Mutex::Unlock<PIPE_MTE1>(operands.mutex);
 
         Mutex::Lock<PIPE_M>(operands.mutex);
@@ -269,7 +275,7 @@ private:
 
     // [5b, Cube] U=A@(beta*V)：[C,C] @ [C,Dv] -> [C,Dv]，物理 [C,DIM]。
     // x.residual 此时存 U，尚不是 R；[6a] 原地叠加 Kcd@S.T 后才成为 R，避免额外 L0C 副本。
-    __aicore__ inline void ComputeInverseWeightedValues(const ChunkMatrices &x)
+    __aicore__ inline void ComputeInverseWeightedValues(const ChunkMatrices& x)
     {
         const auto operands = NextOperands();
         // A 已在上一阶段读过；beta*V 的就绪由 ComputeCubeChunk 的 InverseInputsReady 保证。
@@ -279,7 +285,7 @@ private:
         Mutex::Unlock<PIPE_MTE1>(operands.mutex);
 
         Mutex::Lock<PIPE_M>(operands.mutex);
-        Mutex::Lock<PIPE_M>(MutexId(AIC_L0C_RESIDUAL_MUTEX));
+        Mutex::Lock<PIPE_M>(AIC_L0C_RESIDUAL_MUTEX);
         Mmad(x.residual, operands.lhs, operands.rhs, CHUNK, DIM, CHUNK);
         Mutex::Unlock<PIPE_M>(operands.mutex);
         // 保留 residual 的 M 锁：ComputeResidualAndStateOutput 原地累加，CopyResidualL0CToUb 最终释放。
@@ -287,7 +293,7 @@ private:
 
     // [8, Cube] O=O_inter+M@R16：[C,C] @ [C,Dv] -> [C,Dv]。
     // x.output 由 [6b] 的 O_inter 原地变为 O；沿用其 FP32 L0C 和 M 锁，不重新初始化累加器。
-    __aicore__ inline void AccumulateCausalResidualOutput(const ChunkMatrices &x)
+    __aicore__ inline void AccumulateCausalResidualOutput(const ChunkMatrices& x)
     {
         const auto operands = NextOperands();
         // ComputeCubeChunk 已分别等待 Vector 的 CausalScoresReady 与 ResidualReady。
@@ -304,18 +310,18 @@ private:
 
     // [7, Cube -> Vector] stateDelta=R16.T@Kg：[Dv,C] @ [C,Dk] -> [Dv,Dk]，物理 [DIM,DIM]。
     // R16 来自 Vector [6c]，Kg 来自 [2b]；CopyStateDeltaL0CToUb + StateDeltaReady 交接到 [9a]。
-    __aicore__ inline void ComputeResidualKeyStateDelta(const ChunkMatrices &x, uint32_t chunk)
+    __aicore__ inline void ComputeResidualKeyStateDelta(const ChunkMatrices& x, uint64_t chunk)
     {
         const auto operands = NextOperands();
         auto result = BufferViews::L0C<float>(0);
-        const MutexID resultMutex = MutexId(AIC_L0C_TMP_MUTEX);
+        const MutexID resultMutex = AIC_L0C_TMP_MUTEX;
         Mutex::Lock<PIPE_MTE1>(operands.mutex);
         // 沿用 L1/FIX 缓冲区交接协议；R 的跨核就绪由 ComputeCubeChunk 单独等待。
-        Mutex::Lock<PIPE_MTE1>(MutexId(AIC_L1_FIX_MUTEX));
+        Mutex::Lock<PIPE_MTE1>(AIC_L1_FIX_MUTEX);
         // A 的 true 表示 R.T()；B 的 true 是 NZ -> L0B 的装载方式，Kg 数学上不转置。
         CopyL1ToL0<true>(operands.lhs, x.residualBf16, CHUNK, DIM, CHUNK);
         CopyL1ToL0<true>(operands.rhs, x.kg, CHUNK, DIM, CHUNK);
-        Mutex::Unlock<PIPE_MTE1>(MutexId(AIC_L1_FIX_MUTEX));
+        Mutex::Unlock<PIPE_MTE1>(AIC_L1_FIX_MUTEX);
         Mutex::Unlock<PIPE_MTE1>(operands.mutex);
 
         Mutex::Lock<PIPE_M>(operands.mutex);
@@ -329,8 +335,9 @@ private:
     __aicore__ inline void CopyResidualL0CToUb(LocalTensor<float> l0cResidual, uint32_t slot)
     {
         auto residual = BufferViews::Ub<float>(PrefixTransformsUbOffset(slot));
-        const MutexID residualMutex = MutexId(AIC_L0C_RESIDUAL_MUTEX);
-        // ComputeInverseWeightedValues 初始化 U 后持续持有 PIPE_M；ComputeResidualAndStateOutput 累加 Kcd@S.T()，在此交给 FIX。
+        const MutexID residualMutex = AIC_L0C_RESIDUAL_MUTEX;
+        // ComputeInverseWeightedValues 初始化 U 后持续持有 PIPE_M；ComputeResidualAndStateOutput 累加
+        // Kcd@S.T()，在此交给 FIX。
         Mutex::Unlock<PIPE_M>(residualMutex);
         Mutex::Lock<PIPE_FIX>(residualMutex);
         // R32 保留 16 列分块布局，一条 FIX 按 M 平分给两个 AIV。
@@ -342,7 +349,7 @@ private:
 
     // [6a/6b, Cube] 两个明确的数学结果共享同一个 S:[Dv,Dk]；因此保留在同一函数中管理 L0B 锁。
     // 结果 R32 经 FIX -> Vector [6c]；O_inter 留 L0C，等待 [8] 累加 M@R16。
-    __aicore__ inline void ComputeResidualAndStateOutput(const ChunkMatrices &matrices, uint32_t slot)
+    __aicore__ inline void ComputeResidualAndStateOutput(const ChunkMatrices& matrices, uint32_t slot)
     {
         auto l0cResidual = matrices.residual;
         auto l0cOutput = matrices.output;
@@ -353,17 +360,17 @@ private:
         // STATE_FREE 在 L1->L0B 完成后即可发出；L0B 的 Mutex 则保持到两次矩阵乘均结束。
         const uint32_t stateStage = NextL0AbStage();
         const uint32_t outputStage = NextL0AbStage();
-        const MutexID stateMutex = MutexId(AIC_L0AB_MUTEX_BASE + stateStage);
-        const MutexID outputMutex = MutexId(AIC_L0AB_MUTEX_BASE + outputStage);
+        const MutexID stateMutex = static_cast<MutexID>(AIC_L0AB_MUTEX_BASE + stateStage);
+        const MutexID outputMutex = static_cast<MutexID>(AIC_L0AB_MUTEX_BASE + outputStage);
         auto l0aKcd = BufferViews::L0A<bfloat16_t>(stateStage * L0A_STAGE_BYTES);
         auto l0aQPrime = BufferViews::L0A<bfloat16_t>(outputStage * L0A_STAGE_BYTES);
         auto l0bState = BufferViews::L0B<bfloat16_t>(stateStage * L0B_STAGE_BYTES);
 
         Mutex::Lock<PIPE_MTE1>(stateMutex);
-        Mutex::Lock<PIPE_MTE1>(MutexId(AIC_L1_FIX_MUTEX));
+        Mutex::Lock<PIPE_MTE1>(AIC_L1_FIX_MUTEX);
         CopyL1ToL0<false>(l0aKcd, l1KcdQPrime, CHUNK, DIM, DIM, 0, 0);
         CopyL1ToL0<false>(l0bState, l1State, DIM, DIM, DIM);
-        Mutex::Unlock<PIPE_MTE1>(MutexId(AIC_L1_FIX_MUTEX));
+        Mutex::Unlock<PIPE_MTE1>(AIC_L1_FIX_MUTEX);
         NotifyVector<PIPE_MTE1, CubeToVectorEvent::StateBufferFree>();
         Mutex::Unlock<PIPE_MTE1>(stateMutex);
         Mutex::Lock<PIPE_M>(stateMutex);
@@ -375,7 +382,7 @@ private:
         CopyL1ToL0<false>(l0aQPrime, l1KcdQPrime, CHUNK, DIM, DIM, CHUNK, 0);
         Mutex::Unlock<PIPE_MTE1>(outputMutex);
         Mutex::Lock<PIPE_M>(outputMutex);
-        Mutex::Lock<PIPE_M>(MutexId(AIC_L0C_OUTPUT_MUTEX));
+        Mutex::Lock<PIPE_M>(AIC_L0C_OUTPUT_MUTEX);
         // [6b] O_inter=Q'@S.T；新的输出累加器，S 的 L0B 副本仍来自 [6a]。
         Mmad(l0cOutput, l0aQPrime, l0bState, CHUNK, DIM, DIM, true);
         // 两次 MMAD 均完成后，先归还共享 S 所在的槽，再归还 output 操作数所在的槽。
@@ -385,15 +392,15 @@ private:
     }
 
     // [1, Cube -> Vector] 计算 KKT/QKT:[C,C]；FIX -> UB 后以 PrefixScoresReady 交给 Vector [3a]。
-    __aicore__ inline void MatmulKeyKeyAndQueryKeyScores(
-        LocalTensor<bfloat16_t> l1Q, LocalTensor<bfloat16_t> l1K, uint32_t prefixSlot, bool waitDirectFree)
+    __aicore__ inline void MatmulKeyKeyAndQueryKeyScores(LocalTensor<bfloat16_t> l1Q, LocalTensor<bfloat16_t> l1K,
+                                                         uint32_t prefixSlot, bool waitDirectFree)
     {
         // 优化方案：L0A 按 [K前32行,Q前32行,K后32行,Q后32行] 拼接，一次 [2*C,DIM]*K^T
         // 同时得到 KKT/QKT:[2*C,C]，两个分数矩阵各为 [C,C]。
         // 结果沿 M 平分后，每个 AIV 恰好收到自己 32 个 token 的 KKT 和 QKT，复用同一份 L0B 的 K。
         const uint32_t stage = NextL0AbStage();
-        const MutexID l0abMutex = MutexId(AIC_L0AB_MUTEX_BASE + stage);
-        const MutexID qkMutex = MutexId(AIC_L1_QK_MUTEX_BASE + prefixSlot);
+        const MutexID l0abMutex = static_cast<MutexID>(AIC_L0AB_MUTEX_BASE + stage);
+        const MutexID qkMutex = static_cast<MutexID>(AIC_L1_QK_MUTEX_BASE + prefixSlot);
         auto l0a = BufferViews::L0A<bfloat16_t>(stage * L0A_STAGE_BYTES);
         auto l0b = BufferViews::L0B<bfloat16_t>(stage * L0B_STAGE_BYTES);
         auto l0c = BufferViews::L0C<float>(0);
@@ -408,23 +415,21 @@ private:
         Mutex::Unlock<PIPE_MTE1>(qkMutex);
         Mutex::Unlock<PIPE_MTE1>(l0abMutex);
         Mutex::Lock<PIPE_M>(l0abMutex);
-        Mutex::Lock<PIPE_M>(MutexId(AIC_L0C_TMP_MUTEX));
+        Mutex::Lock<PIPE_M>(AIC_L0C_TMP_MUTEX);
         Mmad(l0c, l0a, l0b, CHUNK * 2, CHUNK, DIM);
         Mutex::Unlock<PIPE_M>(l0abMutex);
         CopyPrefixScoresL0CToUb(l0c, prefixSlot, waitDirectFree);
     }
 
-    __aicore__ inline void CopyPrefixQkGmToL1(uint32_t qkHead, uint32_t chunk)
+    __aicore__ inline void CopyPrefixQkGmToL1(uint32_t qkHead, uint64_t chunk, uint64_t tokenStart, uint32_t validRows)
     {
         const uint32_t slot = chunk & 1;
         const uint32_t slotBase = slot * L1_SLOT_STRIDE_BYTES;
-        const uint32_t validRows = context_.ChunkValidRows(chunk);
-        const uint64_t tokenStart = context_.task.tokenStart + static_cast<uint64_t>(chunk) * CHUNK;
         const uint64_t qkOffset = tokenStart * context_.params.nk * context_.params.dk + qkHead * context_.params.dk;
         auto l1Q = BufferViews::L1<bfloat16_t>(slotBase + L1_Q_OFFSET);
         auto l1K = BufferViews::L1<bfloat16_t>(slotBase + L1_K_OFFSET);
 
-        const MutexID qkMutex = MutexId(AIC_L1_QK_MUTEX_BASE + slot);
+        const MutexID qkMutex = static_cast<MutexID>(AIC_L1_QK_MUTEX_BASE + slot);
         Mutex::Lock<PIPE_MTE2>(qkMutex);
         if (validRows < CHUNK || context_.params.dk < DIM) {
             // 先清完整物理 Q/K，再覆盖有效矩形；尾部零值保证 padding token 不影响分数和状态。
@@ -433,13 +438,15 @@ private:
             Fill(l1Q, zeroParams);
             Fill(l1K, zeroParams);
         }
-        CopyGmToL1(context_.params.query[qkOffset], l1Q, validRows, context_.params.dk, context_.params.nk * context_.params.dk, CHUNK);
-        CopyGmToL1(context_.params.key[qkOffset], l1K, validRows, context_.params.dk, context_.params.nk * context_.params.dk, CHUNK);
+        CopyGmToL1(context_.params.query[qkOffset], l1Q, validRows, context_.params.dk,
+                   context_.params.nk * context_.params.dk, CHUNK);
+        CopyGmToL1(context_.params.key[qkOffset], l1K, validRows, context_.params.dk,
+                   context_.params.nk * context_.params.dk, CHUNK);
         Mutex::Unlock<PIPE_MTE2>(qkMutex);
     }
 
     // [1] 只依赖本块 Q/K，可在当前块状态递推期间提前计算下一块；数学上仍是下一块的分数。
-    __aicore__ inline void ComputeKeyKeyAndQueryKeyScores(uint32_t chunk)
+    __aicore__ inline void ComputeKeyKeyAndQueryKeyScores(uint64_t chunk)
     {
         const uint32_t slot = chunk & 1;
         const uint32_t slotBase = slot * L1_SLOT_STRIDE_BYTES;
@@ -452,10 +459,10 @@ private:
     // [4, Cube] 接 Vector [3b]：A=(I+L)^(-1)，两个 [32,32] 对角块 A00/A11 已在 L1。
     // x.inverse 的左下块暂存 -L10；本步骤结束后才是完整 A，右上块保持 0。
     // A10 = A11 @ ((-L10) @ A00)。两次矩乘分别写回 BF16，不能合并而改变舍入点。
-    __aicore__ inline void CompleteBlockLowerInverse(const ChunkMatrices &x)
+    __aicore__ inline void CompleteBlockLowerInverse(const ChunkMatrices& x)
     {
         auto result = BufferViews::L0C<float>(0);
-        const MutexID resultMutex = MutexId(AIC_L0C_TMP_MUTEX);
+        const MutexID resultMutex = AIC_L0C_TMP_MUTEX;
         {
             // [4a] tmp=(-L10)@A00:[32,32]；FIX 为 BF16 写回 lowerTimesInverse。
             const auto operands = NextOperands();
@@ -476,10 +483,10 @@ private:
             const auto operands = NextOperands();
             Mutex::Lock<PIPE_MTE1>(operands.mutex);
             // 等待上一步 FIX 写完 lowerTimesInverse，再加载 A11 和这个紧凑 [32,32] 中间积。
-            Mutex::Lock<PIPE_MTE1>(MutexId(AIC_L1_FIX_MUTEX));
+            Mutex::Lock<PIPE_MTE1>(AIC_L1_FIX_MUTEX);
             CopyL1ToL0<false>(operands.lhs, x.inverse, HALF_CHUNK, HALF_CHUNK, CHUNK, HALF_CHUNK, HALF_CHUNK);
             CopyL1ToL0<true>(operands.rhs, x.lowerTimesInverse, HALF_CHUNK, HALF_CHUNK, HALF_CHUNK);
-            Mutex::Unlock<PIPE_MTE1>(MutexId(AIC_L1_FIX_MUTEX));
+            Mutex::Unlock<PIPE_MTE1>(AIC_L1_FIX_MUTEX);
             Mutex::Unlock<PIPE_MTE1>(operands.mutex);
             Mutex::Lock<PIPE_M>(operands.mutex);
             Mutex::Lock<PIPE_M>(resultMutex);
@@ -491,10 +498,8 @@ private:
     }
 
     static constexpr bool STATE_FP32 = std::is_same_v<stateType, float>;
-    KernelContext<stateType> &context_;
+    const KernelContext<stateType>& context_;
     uint32_t l0abStage_;
 };
 
 } // namespace ChunkGatedDeltaRule
-
-#endif // CHUNK_GATED_DELTA_RULE_CUBE_COMPUTE_H

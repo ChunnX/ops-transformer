@@ -13,13 +13,9 @@
  * \brief Common constants and alignment helpers for chunk_gated_delta_rule kernels
  */
 
-#ifndef CHUNK_GATED_DELTA_RULE_UTILS_H__
-#define CHUNK_GATED_DELTA_RULE_UTILS_H__
+#pragma once
 
-#include "kernel_vec_intf.h"
-#include "kernel_cube_intf.h"
-#include "kernel_operator_list_tensor_intf.h"
-#include "kernel_tiling/kernel_tiling.h"
+#include "basic_api/kernel_basic_intf.h"
 
 namespace ChunkGatedDeltaRule {
 // Cube/NZ 布局按 16 个元素分块；行、列对齐单位分别保留名称，供搬运和地址计算使用。
@@ -64,5 +60,3 @@ constexpr uint32_t BLOCK_FLOAT_NUM = 8;
 constexpr uint32_t BLOCK_BF16_NUM = 16;
 constexpr uint32_t TILE_LEN = 1024; // 1024 = 1kb，经测试1kb和10kb性能差异很小
 } // namespace ChunkGatedDeltaRule
-
-#endif // __CHUNK_GATED_DELTA_RULE_UTILS_H__

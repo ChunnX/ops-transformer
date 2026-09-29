@@ -8,8 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CHUNK_GATED_DELTA_RULE_CUBE_UTILS_H
-#define CHUNK_GATED_DELTA_RULE_CUBE_UTILS_H
+#pragma once
 
 #include "chunk_gated_delta_rule_utils.h"
 #include "catlass/gemm/tile/ascend950/copy_l0c_to_ub.hpp"
@@ -22,8 +21,8 @@ using namespace AscendC;
 // 调用方负责 Lock/Unlock、跨核握手和缓冲生命周期；这里不隐含任何同步。
 
 // MTE2：GM 行主序 [rows,cols] -> L1 NZ；两个行跨度以元素/逻辑行数传入。
-__aicore__ inline void CopyGmToL1(GlobalTensor<bfloat16_t> gm, LocalTensor<bfloat16_t> l1, uint32_t rows,
-                                  uint32_t cols, uint32_t srcRowStride, uint32_t dstRows)
+__aicore__ inline void CopyGmToL1(GlobalTensor<bfloat16_t> gm, LocalTensor<bfloat16_t> l1, uint32_t rows, uint32_t cols,
+                                  uint32_t srcRowStride, uint32_t dstRows)
 {
     Nd2NzParams params;
     params.ndNum = 1;
@@ -39,8 +38,8 @@ __aicore__ inline void CopyGmToL1(GlobalTensor<bfloat16_t> gm, LocalTensor<bfloa
 
 // MTE1：从 L1 NZ 的 (rowStart,colStart) 装入 [rows,cols]，按模板选择 L0 装载转置。
 template <bool ifTranspose>
-__aicore__ inline void CopyL1ToL0(LocalTensor<bfloat16_t> l0, LocalTensor<bfloat16_t> l1, uint32_t rows,
-                                  uint32_t cols, uint32_t fullRows, uint32_t rowStart = 0, uint32_t colStart = 0)
+__aicore__ inline void CopyL1ToL0(LocalTensor<bfloat16_t> l0, LocalTensor<bfloat16_t> l1, uint32_t rows, uint32_t cols,
+                                  uint32_t fullRows, uint32_t rowStart = 0, uint32_t colStart = 0)
 {
     LoadData2DParamsV2 params;
     params.mStartPosition = rowStart / MM_BLOCK_CUBE;
@@ -55,8 +54,8 @@ __aicore__ inline void CopyL1ToL0(LocalTensor<bfloat16_t> l0, LocalTensor<bfloat
 
 // MTE1：L1 NZ 的 [rows,cols] 行片 -> L0A 指定行片；行跨度及起点均以元素传入。
 __aicore__ inline void CopyRowsL1ToL0A(LocalTensor<bfloat16_t> l0a, LocalTensor<bfloat16_t> l1, uint32_t rows,
-                                       uint32_t cols, uint32_t srcFullRows, uint32_t srcRowStart,
-                                       uint32_t dstFullRows, uint32_t dstRowStart)
+                                       uint32_t cols, uint32_t srcFullRows, uint32_t srcRowStart, uint32_t dstFullRows,
+                                       uint32_t dstRowStart)
 {
     LoadData2DParamsV2 params;
     params.mStartPosition = srcRowStart / MM_BLOCK_CUBE;
@@ -83,8 +82,8 @@ __aicore__ inline void Mmad(LocalTensor<float> l0c, LocalTensor<bfloat16_t> l0a,
 }
 
 template <typename outputType>
-__aicore__ inline void CopyResultRowsL0CToUb(LocalTensor<outputType> dst, LocalTensor<float> src,
-                                           uint32_t rows, uint32_t cols)
+__aicore__ inline void CopyResultRowsL0CToUb(LocalTensor<outputType> dst, LocalTensor<float> src, uint32_t rows,
+                                             uint32_t cols)
 {
     // [rows,cols] -> 两个 AIV 的 [rows/2,cols] row-major UB；保持两条 FIX 的先后顺序。
     FixpipeParamsC310<CO2Layout::ROW_MAJOR> copy;
@@ -104,8 +103,8 @@ __aicore__ inline void CopyResultRowsL0CToUb(LocalTensor<outputType> dst, LocalT
 }
 
 // FIX：FP32 L0C [m,n] -> BF16 L1 NZ；dst 已指向目标子块，fullRows 为目标矩阵行跨度。
-__aicore__ inline void CopyTileL0CToL1(LocalTensor<bfloat16_t> dst, LocalTensor<float> l0c,
-                                     uint32_t m, uint32_t n, uint32_t fullRows)
+__aicore__ inline void CopyTileL0CToL1(LocalTensor<bfloat16_t> dst, LocalTensor<float> l0c, uint32_t m, uint32_t n,
+                                       uint32_t fullRows)
 {
     FixpipeParamsC310<CO2Layout::NZ> params;
     params.nSize = n;
@@ -117,8 +116,8 @@ __aicore__ inline void CopyTileL0CToL1(LocalTensor<bfloat16_t> dst, LocalTensor<
 }
 
 // FIX：L0C 有效 [rows,cols] -> GM 行主序；srcRows/dstRowStride 均以元素计。
-__aicore__ inline void CopyRowsL0CToGm(GlobalTensor<bfloat16_t> dst, LocalTensor<float> l0c,
-                                      uint32_t rows, uint32_t cols, uint32_t srcRows, uint32_t dstRowStride)
+__aicore__ inline void CopyRowsL0CToGm(GlobalTensor<bfloat16_t> dst, LocalTensor<float> l0c, uint32_t rows,
+                                       uint32_t cols, uint32_t srcRows, uint32_t dstRowStride)
 {
     FixpipeParamsC310<CO2Layout::ROW_MAJOR> params;
     params.nSize = cols;
@@ -137,8 +136,7 @@ __aicore__ inline void CopyRowsL0CToGm(GlobalTensor<bfloat16_t> dst, LocalTensor
 // 优化方案：一条 dual-destination FIX 完成分发，保留 FP32 精度和 16 列分块布局。
 // 配置通过 const 引用模板参数传入 Fixpipe，必须具有静态存储期。
 static constexpr FixpipeConfig CGDR_CFG_NZ_UB = {CO2Layout::NZ, true};
-__aicore__ inline void CopyResultNzL0CToUb(LocalTensor<float> dst, LocalTensor<float> src,
-                                         uint32_t rows, uint32_t cols)
+__aicore__ inline void CopyResultNzL0CToUb(LocalTensor<float> dst, LocalTensor<float> src, uint32_t rows, uint32_t cols)
 {
     FixpipeParamsC310<CO2Layout::NZ> fix;
     fix.nSize = cols;
@@ -152,5 +150,3 @@ __aicore__ inline void CopyResultNzL0CToUb(LocalTensor<float> dst, LocalTensor<f
 }
 
 } // namespace ChunkGatedDeltaRule
-
-#endif // CHUNK_GATED_DELTA_RULE_CUBE_UTILS_H

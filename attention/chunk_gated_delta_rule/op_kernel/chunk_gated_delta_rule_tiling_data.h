@@ -13,8 +13,7 @@
  * \brief
  */
 
-#ifndef CHUNK_GATED_DELTA_RULE_TILING_DATA_H
-#define CHUNK_GATED_DELTA_RULE_TILING_DATA_H
+#pragma once
 
 #include "kernel_tiling/kernel_tiling.h"
 
@@ -52,5 +51,3 @@ struct ChunkGroup {
     int64_t coreEnd = 0;   // 预留
 };
 } // namespace ChunkGatedDeltaRule
-
-#endif // CHUNK_GATED_DELTA_RULE_TILING_DATA_H

@@ -12,10 +12,9 @@
  * \file chunk_gated_delta_rule_arch35.h
  * \brief
  */
-#ifndef CHUNK_GATED_DELTA_RULE_ARCH35_H
-#define CHUNK_GATED_DELTA_RULE_ARCH35_H
+#pragma once
 
-#include "kernel_operator.h"
+#include "basic_api/kernel_basic_intf.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "../chunk_gated_delta_rule_tiling_data.h"
 #include "chunk_gated_delta_rule_basic_block.h"
@@ -67,7 +66,7 @@ using namespace AscendC;
 template <typename stateType, bool hasGamma>
 class CGDR {
 public:
-    __aicore__ inline CGDR(const CGDRInitParams &addresses, const ChunkGatedDeltaRuleTilingData &tiling)
+    __aicore__ inline CGDR(const CGDRInitParams& addresses, const ChunkGatedDeltaRuleTilingData& tiling)
         : context_(addresses, tiling, hasGamma)
     {}
 
@@ -85,8 +84,7 @@ public:
     }
 
 private:
-    KernelContext<stateType> context_;
+    const KernelContext<stateType> context_;
 };
 
 } // namespace ChunkGatedDeltaRule
-#endif // CHUNK_GATED_DELTA_RULE_ARCH35_H

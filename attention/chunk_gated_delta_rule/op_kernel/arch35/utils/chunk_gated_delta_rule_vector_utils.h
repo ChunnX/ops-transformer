@@ -8,11 +8,10 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CHUNK_GATED_DELTA_RULE_VECTOR_UTILS_H
-#define CHUNK_GATED_DELTA_RULE_VECTOR_UTILS_H
+#pragma once
 
 #include "chunk_gated_delta_rule_utils.h"
-#include "kernel_tensor.h"
+#include "basic_api/kernel_tensor.h"
 
 namespace ChunkGatedDeltaRule {
 
@@ -24,8 +23,8 @@ using namespace AscendC;
 // MTE2：GM [rows,cols] -> UB [rows,dstRowStride]；行跨度均以元素传入，内部换算为字节/块。
 // DMA 仅补齐最后一个 32B 块，完整 tile 的尾部仍由各计算路径显式清零或用 mask 排除。
 template <uint32_t dstRowStride, typename T>
-__aicore__ inline void CopyRowsGmToUb(LocalTensor<T> dst, GlobalTensor<T> src, uint32_t rows,
-                                    uint32_t cols, uint32_t srcRowStride)
+__aicore__ inline void CopyRowsGmToUb(LocalTensor<T> dst, GlobalTensor<T> src, uint32_t rows, uint32_t cols,
+                                      uint32_t srcRowStride)
 {
     constexpr uint32_t elementsPerBlock = BLOCK_SIZE / sizeof(T);
     const uint32_t alignedCols = CeilAlign(cols, elementsPerBlock);
@@ -38,8 +37,8 @@ __aicore__ inline void CopyRowsGmToUb(LocalTensor<T> dst, GlobalTensor<T> src, u
 
 // MTE3：UB [validRows,srcRowStride] -> GM 行跨度 dstRowStride；仅写回有效 [validRows,validCols]。
 template <uint32_t srcRowStride, typename T>
-__aicore__ inline void CopyRowsUbToGm(GlobalTensor<T> dst, LocalTensor<T> src,
-                                         uint32_t validRows, uint32_t validCols, uint32_t dstRowStride)
+__aicore__ inline void CopyRowsUbToGm(GlobalTensor<T> dst, LocalTensor<T> src, uint32_t validRows, uint32_t validCols,
+                                      uint32_t dstRowStride)
 {
     if (validRows == 0) {
         return;
@@ -53,45 +52,41 @@ __aicore__ inline void CopyRowsUbToGm(GlobalTensor<T> dst, LocalTensor<T> src,
 }
 
 template <uint32_t rows, uint32_t cols, uint32_t fullRows, uint32_t matrixCount = 1>
-__aicore__ inline void CopyCompactNzUbToL1(LocalTensor<bfloat16_t> src, LocalTensor<bfloat16_t> dst,
-                                         uint32_t rowBegin)
+__aicore__ inline void CopyCompactNzUbToL1(LocalTensor<bfloat16_t> src, LocalTensor<bfloat16_t> dst, uint32_t rowBegin)
 {
     // MTE3：UB [matrixCount,rows,cols] -> L1[:,rowBegin:rowBegin+rows,:]。
     // NZ 布局为 [matrixCount,cols/16,rows,16]，每行恰好一个 32B 块；L1 行跨度为 fullRows。
     // 优化方案：相邻矩阵合并为一次 DMA；静态模板参数集中推导块数/长度/间隔。
-    static_assert(rows % MM_BLOCK_CUBE == 0 && fullRows % MM_BLOCK_CUBE == 0,
-                  "NZ rows must be fractal aligned");
-    static_assert(cols % MM_NZ_FRACTAL == 0 && rows <= fullRows,
-                  "the aligned UB tile must fit into the L1 matrix");
-    DataCopyParams params{static_cast<uint16_t>(matrixCount * cols / MM_NZ_FRACTAL),
-                          static_cast<uint16_t>(rows), 0, static_cast<uint16_t>(fullRows - rows)};
+    static_assert(rows % MM_BLOCK_CUBE == 0 && fullRows % MM_BLOCK_CUBE == 0, "NZ rows must be fractal aligned");
+    static_assert(cols % MM_NZ_FRACTAL == 0 && rows <= fullRows, "the aligned UB tile must fit into the L1 matrix");
+    DataCopyParams params{static_cast<uint16_t>(matrixCount * cols / MM_NZ_FRACTAL), static_cast<uint16_t>(rows), 0,
+                          static_cast<uint16_t>(fullRows - rows)};
     DataCopy(dst[GetZnOffset(rowBegin, 0, fullRows)], src, params);
 }
 
 // MTE2：以 srcStride 元素为间隔读取 count 个标量，每个标量在 UB 独占一个 32B 块。
 // GM [count] strided -> UB [count,BLOCK_SIZE/sizeof(T)]，其余元素补零，便于 VF 广播。
 template <typename T>
-__aicore__ inline void CopyScalarsGmToUb(LocalTensor<T> dst, GlobalTensor<T> src,
-                                       uint32_t count, uint32_t srcStride)
+__aicore__ inline void CopyScalarsGmToUb(LocalTensor<T> dst, GlobalTensor<T> src, uint32_t count, uint32_t srcStride)
 {
     constexpr uint32_t elementsPerBlock = BLOCK_SIZE / sizeof(T);
-    DataCopyExtParams copy{static_cast<uint16_t>(count), sizeof(T),
-                           static_cast<int64_t>((srcStride - 1) * sizeof(T)), 0, 0};
+    DataCopyExtParams copy{static_cast<uint16_t>(count), sizeof(T), static_cast<int64_t>((srcStride - 1) * sizeof(T)),
+                           0, 0};
     DataCopyPadExtParams<T> pad{true, 0, elementsPerBlock - 1, static_cast<T>(0)};
     DataCopyPad(dst, src, copy, pad);
 }
 
 // VF 使用 UB 指针；LocalTensor 仍负责描述物理地址空间。
 template <typename T>
-__aicore__ inline __ubuf__ T *UbAddress(LocalTensor<T> tensor)
+__aicore__ inline __ubuf__ T* UbAddress(LocalTensor<T> tensor)
 {
-    return reinterpret_cast<__ubuf__ T *>(tensor.GetPhyAddr());
+    return reinterpret_cast<__ubuf__ T*>(tensor.GetPhyAddr());
 }
 
 // V：FP32 [rowCount,colCount] -> BF16 NZ [colCount/16,rowCount,16]，CAST_RINT 舍入。
 // 每行放入一个 FP32 寄存器，要求 colCount<=VECTOR_REG_WIDTH/sizeof(float)，行首满足 LoadAlign 对齐。
 // Pack 后按16元素块跨步写出，供 UB->L1 直接搬运；较宽矩阵使用下方带 repeats 的版本。
-__simd_vf__ inline void CastFp32ToCompactZnBf16VF(__ubuf__ float *srcAddr, __ubuf__ bfloat16_t *dstZnAddr,
+__simd_vf__ inline void CastFp32ToCompactZnBf16VF(__ubuf__ float* srcAddr, __ubuf__ bfloat16_t* dstZnAddr,
                                                   uint16_t rowCount, uint16_t colCount)
 {
     using namespace Reg;
@@ -108,16 +103,16 @@ __simd_vf__ inline void CastFp32ToCompactZnBf16VF(__ubuf__ float *srcAddr, __ubu
     for (uint16_t row = 0; row < rowCount; ++row) {
         LoadAlign(srcReg, srcAddr + static_cast<uint32_t>(row) * colCount);
         Cast<bfloat16_t, float, castFp32ToBf16>(bf16Reg, srcReg, validMask);
-        Pack<uint16_t, uint32_t, HighLowPart::LOWEST>(packedBf16Reg, reinterpret_cast<RegTensor<uint32_t> &>(bf16Reg));
+        Pack<uint16_t, uint32_t, HighLowPart::LOWEST>(packedBf16Reg, reinterpret_cast<RegTensor<uint32_t>&>(bf16Reg));
         StoreAlign<uint16_t, DataCopyMode::DATA_BLOCK_COPY>(
-            reinterpret_cast<__ubuf__ uint16_t *>(dstZnAddr) + static_cast<uint32_t>(row) * 16, packedBf16Reg, rowCount,
+            reinterpret_cast<__ubuf__ uint16_t*>(dstZnAddr) + static_cast<uint32_t>(row) * 16, packedBf16Reg, rowCount,
             packedMask);
     }
 }
 
 // V：FP32 src:[rowCount,srcRowStride] -> BF16 NZ dst:[ceil(colCount/16),dstFullRows,16]。
 // 只转换有效 [rowCount,colCount]，CAST_RINT 舍入；补零与流水同步由调用方完成。
-__simd_vf__ inline void RowMajorFp32ToCompactZnBf16VF(__ubuf__ float *srcAddr, __ubuf__ bfloat16_t *dstZnAddr,
+__simd_vf__ inline void RowMajorFp32ToCompactZnBf16VF(__ubuf__ float* srcAddr, __ubuf__ bfloat16_t* dstZnAddr,
                                                       uint16_t rowCount, uint16_t colCount, uint16_t srcRowStride,
                                                       uint16_t dstFullRows)
 {
@@ -146,15 +141,15 @@ __simd_vf__ inline void RowMajorFp32ToCompactZnBf16VF(__ubuf__ float *srcAddr, _
             LoadAlign(srcReg, srcAddr + srcOffset);
             Cast<bfloat16_t, float, castFp32ToBf16>(bf16Reg, srcReg, validMask);
             Pack<uint16_t, uint32_t, HighLowPart::LOWEST>(packedBf16Reg,
-                                                          reinterpret_cast<RegTensor<uint32_t> &>(bf16Reg));
+                                                          reinterpret_cast<RegTensor<uint32_t>&>(bf16Reg));
             StoreAlign<uint16_t, DataCopyMode::DATA_BLOCK_COPY>(
-                reinterpret_cast<__ubuf__ uint16_t *>(dstZnAddr) + dstOffset, packedBf16Reg, dstFullRows, packedMask);
+                reinterpret_cast<__ubuf__ uint16_t*>(dstZnAddr) + dstOffset, packedBf16Reg, dstFullRows, packedMask);
         }
     }
 }
 
 // V：BF16 行主序 [rowCount,srcRowStride] -> NZ [ceil(colCount/16),dstFullRows,16]；只重排，不改精度。
-__simd_vf__ inline void RowMajorToCompactZnBf16VF(__ubuf__ bfloat16_t *srcAddr, __ubuf__ bfloat16_t *dstZnAddr,
+__simd_vf__ inline void RowMajorToCompactZnBf16VF(__ubuf__ bfloat16_t* srcAddr, __ubuf__ bfloat16_t* dstZnAddr,
                                                   uint16_t rowCount, uint16_t colCount, uint16_t srcRowStride,
                                                   uint16_t dstFullRows)
 {
@@ -177,13 +172,11 @@ __simd_vf__ inline void RowMajorToCompactZnBf16VF(__ubuf__ bfloat16_t *srcAddr, 
             MaskReg packedMask = UpdateMask<uint16_t>(packedCount);
             LoadAlign<bfloat16_t, LoadDist::DIST_UNPACK_B16>(srcBf16Reg, srcAddr + srcOffset);
             Pack<uint16_t, uint32_t, HighLowPart::LOWEST>(packedBf16Reg,
-                                                          reinterpret_cast<RegTensor<uint32_t> &>(srcBf16Reg));
+                                                          reinterpret_cast<RegTensor<uint32_t>&>(srcBf16Reg));
             StoreAlign<uint16_t, DataCopyMode::DATA_BLOCK_COPY>(
-                reinterpret_cast<__ubuf__ uint16_t *>(dstZnAddr) + dstOffset, packedBf16Reg, dstFullRows, packedMask);
+                reinterpret_cast<__ubuf__ uint16_t*>(dstZnAddr) + dstOffset, packedBf16Reg, dstFullRows, packedMask);
         }
     }
 }
 
 } // namespace ChunkGatedDeltaRule
-
-#endif // CHUNK_GATED_DELTA_RULE_VECTOR_UTILS_H

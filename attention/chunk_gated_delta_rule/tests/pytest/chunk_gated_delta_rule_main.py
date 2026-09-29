@@ -15,7 +15,7 @@ import torch
 import torch_npu
 
 # from cann_ops_transformer.ops import chunk_gated_delta_rule
-from chunk_gated_delta_rule_benchmark_fused import chunk_gdn_benchmark_fused, MODEL_REVISION
+from chunk_gated_delta_rule_benchmark_fused import chunk_gdn_benchmark_fused
 from chunk_gated_delta_rule_golden import chunk_gated_delta_rule_npu
 import torch.nn.functional as F
 import numpy as np
@@ -238,7 +238,7 @@ def cgdr_benchmark(
     dtype = torch.bfloat16
     if g is None:
         g = torch.zeros((v.shape[0], v.shape[1])).to(v.device).to(torch.float32)
-    logger.info(f"[benchmark] {MODEL_REVISION}, device={q.device}, state_dtype={initial_state.dtype}")
+    logger.info(f"[benchmark] device={q.device}, state_dtype={initial_state.dtype}")
     o_bench, state_bench = chunk_gdn_benchmark_fused(
         q.to(dtype),
         k.to(dtype),
@@ -383,12 +383,20 @@ def to_device_preserving_layout(tensor, device):
     if tensor is None:
         return None
     offset = tensor.storage_offset()
-    # 最后一个元素的位置 = offset + sum((shape[i] - 1) * stride[i])。
-    count = offset + sum((n - 1) * stride for n, stride in zip(tensor.shape, tensor.stride())) + 1
-    base = torch.empty(max(count, 0), dtype=tensor.dtype, device=device)
-    target = base.as_strided(tensor.shape, tensor.stride(), offset)
-    target.copy_(tensor.to(device))
-    return target
+    # 非空视图最后一个元素的位置 = offset + sum((shape[i] - 1) * stride[i])。
+    # 空视图不访问存储，不能用上述公式推算容量；其 shape/stride/offset 仍需保留。
+    count = (
+        0
+        if tensor.numel() == 0
+        else offset
+        + sum((n - 1) * stride for n, stride in zip(tensor.shape, tensor.stride()))
+        + 1
+    )
+    # expand 的 stride=0 会产生重叠视图，不能直接对该视图 copy_。
+    # 先搬运包含 offset 前缀和 stride 间隙的连续存储，再恢复原视图，避免重复写同一地址。
+    storage = tensor.as_strided((count,), (1,), storage_offset=0)
+    base = storage.to(device=device, copy=True)
+    return base.as_strided(tensor.shape, tensor.stride(), offset)
 
 
 def _load_input_pt(
@@ -429,8 +437,10 @@ def _load_input_pt(
         raise FileNotFoundError(f"[LOAD_PT] pt file not found: {fpath}")
     data = torch.load(fpath, map_location="cpu")
     dev = f"npu:{DEVICE_ID}"
-    loaded = {key: to_device_preserving_layout(data[key], dev)
-              for key in ("q", "k", "v", "beta", "initial_state", "actual_seq_lengths", "g")}
+    loaded = {
+        key: to_device_preserving_layout(data[key], dev)
+        for key in ("q", "k", "v", "beta", "initial_state", "actual_seq_lengths", "g")
+    }
     loaded["scale"] = data["scale"]
     logger.info(f"[LOAD_PT] loaded input data from {fpath}")
     return loaded

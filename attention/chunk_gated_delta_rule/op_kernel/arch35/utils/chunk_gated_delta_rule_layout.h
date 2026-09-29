@@ -8,14 +8,13 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CHUNK_GATED_DELTA_RULE_LAYOUT_H
-#define CHUNK_GATED_DELTA_RULE_LAYOUT_H
+#pragma once
 
 #ifndef CATLASS_ARCH
 #define CATLASS_ARCH 3510
 #endif
 
-#include "kernel_operator.h"
+#include "basic_api/kernel_basic_intf.h"
 #include "catlass/arch/arch.hpp"
 #include "chunk_gated_delta_rule_utils.h"
 
@@ -75,8 +74,7 @@ struct FusedLayout {
     // 使用架构给出的可用 UB 容量，不在布局中再维护一份硬件容量数字。
     static constexpr uint32_t UB_WORKSPACE_BYTES = ArchTag::UB_SIZE;
     static constexpr uint32_t MUTEX_COUNT = 8;
-    static_assert(2 * HALF_DIM == DIM && 2 * HALF_CHUNK == CHUNK,
-                  "AIV halves must cover one physical tile");
+    static_assert(2 * HALF_DIM == DIM && 2 * HALF_CHUNK == CHUNK, "AIV halves must cover one physical tile");
 
     // 布局表均使用半开区间 [begin,end)，单位 KiB；代码中的偏移/容量单位为字节。
     // L1 总览：[0,160) chunk 槽0 | [160,192) S | [192,256) 未使用；
@@ -102,9 +100,9 @@ struct FusedLayout {
     // 优化方案：两槽使当前递推和下一块前缀重叠；rawKcd/vBeta 连续，合并一次 MTE3 搬运。
     // Q/K、逆块临时区的私有起点在 CubeCompute；公共部分只定义两侧需要一致的边界。
     static constexpr uint32_t L1_TILE_BYTES = CHUNK * DIM * sizeof(bfloat16_t); // [C,D] = 16 KiB
-    static constexpr uint32_t L1_INVERSE_OFFSET = 2 * L1_TILE_BYTES; // 紧接 Q、K
-    static constexpr uint32_t L1_RAW_KCD_OFFSET = L1_INVERSE_OFFSET +
-        CHUNK * CHUNK * sizeof(bfloat16_t) + HALF_CHUNK * HALF_CHUNK * sizeof(bfloat16_t) + 6 * 1024;
+    static constexpr uint32_t L1_INVERSE_OFFSET = 2 * L1_TILE_BYTES;            // 紧接 Q、K
+    static constexpr uint32_t L1_RAW_KCD_OFFSET = L1_INVERSE_OFFSET + CHUNK * CHUNK * sizeof(bfloat16_t) +
+                                                  HALF_CHUNK * HALF_CHUNK * sizeof(bfloat16_t) + 6 * 1024;
     static constexpr uint32_t L1_VBETA_OFFSET = L1_RAW_KCD_OFFSET + L1_TILE_BYTES;
     static constexpr uint32_t L1_KCD_QPRIME_OFFSET = L1_VBETA_OFFSET + L1_TILE_BYTES;
     static constexpr uint32_t L1_RESIDUAL_OFFSET = L1_KCD_QPRIME_OFFSET + 2 * L1_TILE_BYTES;
@@ -132,22 +130,23 @@ struct FusedLayout {
     // 跨阶段必须沿用 ResidualReady、StateDeltaReady/BufferFree 等握手，不能因地址相同并行复用。
     // 下方72KiB边界是私有区各容量之和；顶部从可用UB末端向下排，避免硬写160/176/208/240。
     static constexpr uint32_t UB_STATE_DELTA_BF16_OFFSET = STATE_SLICE_ELEMS * sizeof(float) + 8 * 1024 +
-        3 * SCORE_SLICE_ELEMS * sizeof(float) + 2 * SCORE_SLICE_ELEMS * sizeof(bfloat16_t);
+                                                           3 * SCORE_SLICE_ELEMS * sizeof(float) +
+                                                           2 * SCORE_SLICE_ELEMS * sizeof(bfloat16_t);
     static constexpr uint32_t UB_PREFIX_DIRECT_BYTES = 2 * SCORE_SLICE_ELEMS * sizeof(bfloat16_t);
     // 最大阶段占用：4*BF16[C/2,D] = FP32[D/2,D] = 32 KiB；R32+R16 只需24 KiB。
     static constexpr uint32_t UB_STAGE1_SLOT_BYTES = STATE_SLICE_ELEMS * sizeof(float);
     static constexpr uint32_t UB_PREFIX_DIRECT1_OFFSET = UB_WORKSPACE_BYTES - UB_PREFIX_DIRECT_BYTES;
     static constexpr uint32_t UB_STAGE1_PUB1_OFFSET = UB_PREFIX_DIRECT1_OFFSET - UB_STAGE1_SLOT_BYTES;
     static constexpr uint32_t UB_STAGE1_PUB0_OFFSET = UB_STAGE1_PUB1_OFFSET - UB_STAGE1_SLOT_BYTES;
-    static constexpr uint32_t UB_PREFIX_DIRECT0_OFFSET = UB_STAGE1_PUB0_OFFSET - UB_PREFIX_DIRECT_BYTES -
+    static constexpr uint32_t UB_PREFIX_DIRECT0_OFFSET =
+        UB_STAGE1_PUB0_OFFSET - UB_PREFIX_DIRECT_BYTES -
         2 * SCORE_SLICE_ELEMS * sizeof(bfloat16_t); // 中间还需两个 inverse 发布槽，共8 KiB
 
     static_assert(L1_SLOT_BYTES <= L1_SLOT_STRIDE_BYTES, "L1 slot crosses its half");
     static_assert(L1_STATE_OFFSET >= L1_SLOT_BYTES &&
-                  L1_STATE_OFFSET + DIM * DIM * sizeof(bfloat16_t) <= L1_SLOT_STRIDE_BYTES,
+                      L1_STATE_OFFSET + DIM * DIM * sizeof(bfloat16_t) <= L1_SLOT_STRIDE_BYTES,
                   "shared L1 state must fit between the two slots");
-    static_assert(L1_SLOT_STRIDE_BYTES + L1_SLOT_BYTES <= ArchTag::L1_SIZE,
-                  "L1 slot 1 exceeds capacity");
+    static_assert(L1_SLOT_STRIDE_BYTES + L1_SLOT_BYTES <= ArchTag::L1_SIZE, "L1 slot 1 exceeds capacity");
     static_assert(L1_VBETA_OFFSET == L1_RAW_KCD_OFFSET + CHUNK * DIM * sizeof(bfloat16_t),
                   "rawKcd and vBeta must stay contiguous for merged DMA");
     static_assert(UB_STATE_DELTA_BF16_OFFSET + STATE_SLICE_ELEMS * sizeof(bfloat16_t) <= UB_PREFIX_DIRECT0_OFFSET,
@@ -163,11 +162,6 @@ struct FusedLayout {
     static_assert(UB_PREFIX_DIRECT1_OFFSET + UB_PREFIX_DIRECT_BYTES <= UB_WORKSPACE_BYTES,
                   "shared UB regions exceed workspace capacity");
 
-    __aicore__ static inline MutexID MutexId(uint32_t index)
-    {
-        return static_cast<MutexID>(index);
-    }
-
     __aicore__ static inline uint32_t PrefixDirectOffset(uint32_t slot)
     {
         return slot == 0 ? UB_PREFIX_DIRECT0_OFFSET : UB_PREFIX_DIRECT1_OFFSET;
@@ -177,9 +171,6 @@ struct FusedLayout {
     {
         return slot == 0 ? UB_STAGE1_PUB0_OFFSET : UB_STAGE1_PUB1_OFFSET;
     }
-
 };
 
 } // namespace ChunkGatedDeltaRule
-
-#endif // CHUNK_GATED_DELTA_RULE_LAYOUT_H

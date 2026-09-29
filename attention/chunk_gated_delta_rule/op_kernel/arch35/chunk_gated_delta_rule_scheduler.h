@@ -8,8 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CHUNK_GATED_DELTA_RULE_SCHEDULER_H
-#define CHUNK_GATED_DELTA_RULE_SCHEDULER_H
+#pragma once
 
 #include "utils/chunk_gated_delta_rule_context.h"
 
@@ -23,7 +22,8 @@ using namespace AscendC;
 template <typename stateType>
 class Scheduler {
 public:
-    __aicore__ inline explicit Scheduler(const KernelParams<stateType> &params) : params_(params)
+    __aicore__ inline explicit Scheduler(const KernelParams<stateType>& params)
+        : params_(params)
     {
         // 将 AIC/AIV 的硬件编号归一为同一个核组编号，保证三者独立枚举出相同任务。
         if ASCEND_IS_AIC {
@@ -36,7 +36,7 @@ public:
 
     // 当前策略保持循环分配：workId=groupId+n*aiCoreNum。
     // 后续按长度调整整条head的分配/顺序只需替换任务枚举；Block不感知策略。
-    __aicore__ inline bool Next(WorkItem &task)
+    __aicore__ inline bool Next(WorkItem& task)
     {
         if (nextWork_ >= totalWork_) {
             return false;
@@ -44,18 +44,25 @@ public:
         const uint64_t batchId = nextWork_ / params_.nv;
         // 当前workId单调递增，只累加新经过的batch。若改为乱序调度，必须一起替换此定位逻辑。
         while (scannedBatch_ < batchId) {
-            tokenStart_ += static_cast<uint32_t>(params_.actualSeqLengths.GetValue(scannedBatch_));
+            tokenStart_ += SequenceLength(scannedBatch_);
             ++scannedBatch_;
         }
         // 空序列仍产出任务，由Block完成initialState -> finalState复制。
-        task = {batchId, tokenStart_, static_cast<uint32_t>(params_.actualSeqLengths.GetValue(batchId)),
-                static_cast<uint32_t>(nextWork_ - batchId * params_.nv)};
+        task = {batchId, tokenStart_, SequenceLength(batchId), nextWork_ - batchId * params_.nv};
         nextWork_ += params_.aiCoreNum;
         return true;
     }
 
 private:
-    const KernelParams<stateType> &params_;
+    __aicore__ inline uint64_t SequenceLength(uint64_t batchId) const
+    {
+        const int32_t length = params_.actualSeqLengths.GetValue(batchId);
+        // 接口要求长度非负；防御性地将负值按空序列处理，避免转为uint64后回绕。
+        // 任务长度与tokenStart前缀累加必须使用同一规则。
+        return length > 0 ? static_cast<uint64_t>(length) : 0;
+    }
+
+    const KernelParams<stateType>& params_;
     uint64_t nextWork_;
     uint64_t totalWork_;
     uint64_t scannedBatch_ = 0;
@@ -63,5 +70,3 @@ private:
 };
 
 } // namespace ChunkGatedDeltaRule
-
-#endif // CHUNK_GATED_DELTA_RULE_SCHEDULER_H

@@ -8,8 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CHUNK_GATED_DELTA_RULE_VECTOR_COMPUTE_H
-#define CHUNK_GATED_DELTA_RULE_VECTOR_COMPUTE_H
+#pragma once
 
 #include "utils/chunk_gated_delta_rule_context.h"
 #include "utils/chunk_gated_delta_rule_sync.h"
@@ -27,54 +26,57 @@ template <typename stateType, bool hasGamma>
 class VectorCompute : private FusedLayout {
 private:
     struct VectorHead {
-        uint32_t valueHead;
+        uint64_t valueHead;
         uint32_t queryKeyHead;
-        uint32_t subBlock; // 0/1：前缀沿 token 分片，主状态沿 Dv 分片
+        uint32_t subBlockIdx; // 0/1：前缀沿 token 分片，主状态沿 Dv 分片
     };
 
     struct VectorBuffers {
-        LocalTensor<float> state;          // [HALF_DIM,DIM]，FP32 主状态
-        LocalTensor<float> lower;          // [HALF_CHUNK,CHUNK]，严格下三角 L
-        LocalTensor<float> inverse;        // [HALF_CHUNK,CHUNK]，对角逆块及 -L10
-        LocalTensor<float> identity;       // [HALF_CHUNK,CHUNK]，对角求逆单位行
-        LocalTensor<bfloat16_t> query;     // [HALF_CHUNK,DIM]
-        LocalTensor<bfloat16_t> key;       // [HALF_CHUNK,DIM]
-        LocalTensor<bfloat16_t> value;     // [HALF_CHUNK,DIM]
-        LocalTensor<float> gExp;        // [CHUNK]，exp(G)
-        LocalTensor<float> beta;           // [HALF_CHUNK]
+        LocalTensor<float> state;      // [HALF_DIM,DIM]，FP32 主状态
+        LocalTensor<float> lower;      // [HALF_CHUNK,CHUNK]，严格下三角 L
+        LocalTensor<float> inverse;    // [HALF_CHUNK,CHUNK]，对角逆块及 -L10
+        LocalTensor<float> identity;   // [HALF_CHUNK,CHUNK]，对角求逆单位行
+        LocalTensor<bfloat16_t> query; // [HALF_CHUNK,DIM]
+        LocalTensor<bfloat16_t> key;   // [HALF_CHUNK,DIM]
+        LocalTensor<bfloat16_t> value; // [HALF_CHUNK,DIM]
+        LocalTensor<float> gExp;       // [CHUNK]，exp(G)
+        LocalTensor<float> beta;       // [HALF_CHUNK]
     };
 
     struct PrefixBuffers {
         uint32_t slot;
-        LocalTensor<float> gCum;          // G=cumsum(g):[CHUNK]，不可被下块覆盖
+        LocalTensor<float> gCum;            // G=cumsum(g):[CHUNK]，不可被下块覆盖
         LocalTensor<bfloat16_t> transforms; // [rawKcd;vBeta;qPrime;kg]，四个 [HALF_CHUNK,DIM] NZ 矩阵
-        LocalTensor<bfloat16_t> rawKcd;    // -beta*exp(G)*K:[HALF_CHUNK,DIM]
-        LocalTensor<bfloat16_t> vBeta;     // beta*V:[HALF_CHUNK,DIM]
-        LocalTensor<bfloat16_t> qPrime;    // Q'=scale*exp(G)*Q:[HALF_CHUNK,DIM]
-        LocalTensor<bfloat16_t> kg;        // Kg=exp(G_last-G)*K:[HALF_CHUNK,DIM]
-        LocalTensor<bfloat16_t> inverse;   // A00/A11/-L10:[HALF_CHUNK,CHUNK] NZ，Cube 继续补齐 A
-        LocalTensor<bfloat16_t> maskedQkt; // M=tril(scale*QKT*exp(G_i-G_j)):[HALF_CHUNK,CHUNK] NZ
+        LocalTensor<bfloat16_t> rawKcd;     // -beta*exp(G)*K:[HALF_CHUNK,DIM]
+        LocalTensor<bfloat16_t> vBeta;      // beta*V:[HALF_CHUNK,DIM]
+        LocalTensor<bfloat16_t> qPrime;     // Q'=scale*exp(G)*Q:[HALF_CHUNK,DIM]
+        LocalTensor<bfloat16_t> kg;         // Kg=exp(G_last-G)*K:[HALF_CHUNK,DIM]
+        LocalTensor<bfloat16_t> inverse;    // A00/A11/-L10:[HALF_CHUNK,CHUNK] NZ，Cube 继续补齐 A
+        LocalTensor<bfloat16_t> maskedQkt;  // M=tril(scale*QKT*exp(G_i-G_j)):[HALF_CHUNK,CHUNK] NZ
     };
 
 public:
-    __aicore__ inline explicit VectorCompute(KernelContext<stateType> &context) : context_(context) {}
+    __aicore__ inline explicit VectorCompute(const KernelContext<stateType>& context)
+        : context_(context)
+    {}
 
-    __aicore__ inline void Run(uint32_t valueHead, uint32_t subBlock)
+    __aicore__ inline void Run(const WorkItem& task, uint32_t subBlockIdx)
     {
-        const VectorHead head{valueHead, context_.QueryKeyHead(valueHead), subBlock};
+        const VectorHead head{task.valueHead, context_.QueryKeyHead(task.valueHead), subBlockIdx};
+        const uint64_t chunkNum = ChunkNum(task.seqLength);
         const auto buffers = BindVectorBuffers();
         InitializeVectorConstants(buffers);
         // 等待 S 写完 identity/gather；整个 head 的 V 使用期由本层成对管理。
-        const MutexID scalarMutex = MutexId(AIV_SCALAR_MUTEX);
+        const MutexID scalarMutex = AIV_SCALAR_MUTEX;
         Mutex::Lock<PIPE_V>(scalarMutex);
-        CopyInitialStateGmToUb(head, buffers);
-        PrepareStateIndependentChunkInputs<false>(head, 0, buffers);
-        Mutex::Lock<PIPE_V>(MutexId(AIV_STATE_MUTEX));
-        CopyStateUbToL1(subBlock, buffers.state);
-        for (uint32_t chunk = 0; chunk < context_.ChunkNum(); ++chunk) {
-            ComputeVectorChunk(head, chunk, buffers);
+        CopyInitialStateGmToUb(task.batchId, head, buffers);
+        PrepareStateIndependentChunkInputs<false>(task, head, 0, buffers);
+        Mutex::Lock<PIPE_V>(AIV_STATE_MUTEX);
+        CopyStateUbToL1(subBlockIdx, buffers.state);
+        for (uint64_t chunk = 0; chunk < chunkNum; ++chunk) {
+            ComputeVectorChunk(task, head, chunk, buffers);
         }
-        CopyFinalStateUbToGm(head, buffers);
+        CopyFinalStateUbToGm(task.batchId, head, buffers);
         Mutex::Unlock<PIPE_V>(scalarMutex);
     }
 
@@ -111,25 +113,27 @@ private:
     // 单处使用的起点仍在相应Bind函数内，跨方法使用的边界留在本类。
     static constexpr uint32_t UB_STAGE1_MATRIX_BYTES = HALF_CHUNK * DIM * sizeof(bfloat16_t);
     static constexpr uint32_t UB_INPUT_GAP_BYTES = 4 * 1024; // delta之后、Q之前的既有留白
-    static constexpr uint32_t UB_SCALAR_SLOT_BYTES = 1024; // 标量向量的既有槽容量，非有效数据大小
+    static constexpr uint32_t UB_SCALAR_SLOT_BYTES = 1024;   // 标量向量的既有槽容量，非有效数据大小
     static constexpr uint32_t UB_MASKED_QKT_PUB_OFFSET =
         UB_STATE_DELTA_BF16_OFFSET - 2 * SCORE_SLICE_ELEMS * sizeof(bfloat16_t);
     static constexpr uint32_t UB_STATE_PUB_OFFSET = UB_STATE_DELTA_BF16_OFFSET +
-        STATE_SLICE_ELEMS * sizeof(bfloat16_t) + UB_INPUT_GAP_BYTES + 3 * UB_STAGE1_MATRIX_BYTES;
+                                                    STATE_SLICE_ELEMS * sizeof(bfloat16_t) + UB_INPUT_GAP_BYTES +
+                                                    3 * UB_STAGE1_MATRIX_BYTES;
     static constexpr uint32_t UB_RAW_G_OFFSET = UB_STATE_PUB_OFFSET + STATE_SLICE_ELEMS * sizeof(bfloat16_t);
     static constexpr uint32_t UB_RAW_BETA_OFFSET = UB_RAW_G_OFFSET + CHUNK * BLOCK_SIZE;
-    static constexpr uint32_t UB_G_EXP_OFFSET = UB_RAW_BETA_OFFSET + HALF_CHUNK * BLOCK_SIZE +
-        3 * UB_SCALAR_SLOT_BYTES; // 跳过紧凑betaBF16、G0、G1三个槽
+    static constexpr uint32_t UB_G_EXP_OFFSET =
+        UB_RAW_BETA_OFFSET + HALF_CHUNK * BLOCK_SIZE + 3 * UB_SCALAR_SLOT_BYTES; // 跳过紧凑betaBF16、G0、G1三个槽
     static constexpr uint32_t UB_GATHER_OFFSET = UB_G_EXP_OFFSET + 2 * UB_SCALAR_SLOT_BYTES; // gExp、betaFP32
     static constexpr uint32_t INPUT_BATCH_ROWS = HALF_CHUNK / 2;
 
     // 每条 AIV 路径独立使用 0..7；chunk 与 streaming 互斥，可复用相同编号。
-    static constexpr uint32_t AIV_INPUT_HEAD_MUTEX = 0;
-    static constexpr uint32_t AIV_INPUT_TAIL_MUTEX = 1;
-    static constexpr uint32_t AIV_STATE_MUTEX = 2;
-    static constexpr uint32_t AIV_STAGE1_PUB_MUTEX_BASE = 3;
-    static constexpr uint32_t AIV_PREFIX_PUB_MUTEX_BASE = 5;
-    static constexpr uint32_t AIV_SCALAR_MUTEX = 7;
+    // BASE + slot 中 slot 为 0/1；动态组合经整数提升，使用处再显式转回 MutexID。
+    static constexpr MutexID AIV_INPUT_HEAD_MUTEX = 0;
+    static constexpr MutexID AIV_INPUT_TAIL_MUTEX = 1;
+    static constexpr MutexID AIV_STATE_MUTEX = 2;
+    static constexpr MutexID AIV_STAGE1_PUB_MUTEX_BASE = 3;
+    static constexpr MutexID AIV_PREFIX_PUB_MUTEX_BASE = 5;
+    static constexpr MutexID AIV_SCALAR_MUTEX = 7;
 
     static_assert(AIV_SCALAR_MUTEX < MUTEX_COUNT, "Vector mutex ID exceeds hardware capacity");
     static_assert(UB_MASKED_QKT_PUB_OFFSET + 2 * SCORE_SLICE_ELEMS * sizeof(bfloat16_t) <= UB_STATE_DELTA_BF16_OFFSET,
@@ -140,8 +144,7 @@ private:
                   "gather indices overlap shared prefix scores");
     static_assert(4 * UB_STAGE1_MATRIX_BYTES <= UB_STAGE1_SLOT_BYTES,
                   "four prefix transforms exceed their shared Stage1 slot");
-    static_assert(CHUNK * sizeof(float) <= UB_SCALAR_SLOT_BYTES &&
-                  HALF_CHUNK * sizeof(float) <= UB_SCALAR_SLOT_BYTES,
+    static_assert(CHUNK * sizeof(float) <= UB_SCALAR_SLOT_BYTES && HALF_CHUNK * sizeof(float) <= UB_SCALAR_SLOT_BYTES,
                   "gate/beta vectors exceed their reserved scalar slots");
 
     // 每个 AIV 的固定工作集；偏移只在此处使用，shape 和边界与绑定放在一起。
@@ -151,35 +154,35 @@ private:
         constexpr uint32_t lowerOffset = stateOffset + STATE_SLICE_ELEMS * sizeof(float) + 8 * 1024; // 保留8KiB
         constexpr uint32_t inverseOffset = lowerOffset + SCORE_SLICE_ELEMS * sizeof(float);
         constexpr uint32_t identityOffset = inverseOffset + SCORE_SLICE_ELEMS * sizeof(float);
-        constexpr uint32_t queryOffset = UB_STATE_DELTA_BF16_OFFSET +
-            STATE_SLICE_ELEMS * sizeof(bfloat16_t) + UB_INPUT_GAP_BYTES;
+        constexpr uint32_t queryOffset =
+            UB_STATE_DELTA_BF16_OFFSET + STATE_SLICE_ELEMS * sizeof(bfloat16_t) + UB_INPUT_GAP_BYTES;
         constexpr uint32_t keyOffset = queryOffset + HALF_CHUNK * DIM * sizeof(bfloat16_t);
         constexpr uint32_t valueOffset = keyOffset + HALF_CHUNK * DIM * sizeof(bfloat16_t);
         constexpr uint32_t betaOffset = UB_G_EXP_OFFSET + UB_SCALAR_SLOT_BYTES;
         static_assert(stateOffset + STATE_SLICE_ELEMS * sizeof(float) <= lowerOffset,
                       "FP32 state overlaps attention scratch");
         static_assert(lowerOffset + SCORE_SLICE_ELEMS * sizeof(float) <= inverseOffset &&
-                      inverseOffset + SCORE_SLICE_ELEMS * sizeof(float) <= identityOffset &&
-                      identityOffset + SCORE_SLICE_ELEMS * sizeof(float) <= UB_MASKED_QKT_PUB_OFFSET,
+                          inverseOffset + SCORE_SLICE_ELEMS * sizeof(float) <= identityOffset &&
+                          identityOffset + SCORE_SLICE_ELEMS * sizeof(float) <= UB_MASKED_QKT_PUB_OFFSET,
                       "attention/inverse/identity scratch overlaps its next region");
         static_assert(UB_STATE_DELTA_BF16_OFFSET + STATE_SLICE_ELEMS * sizeof(bfloat16_t) <= queryOffset,
                       "shared BF16 delta overlaps Q input");
         static_assert(queryOffset + HALF_CHUNK * DIM * sizeof(bfloat16_t) <= keyOffset &&
-                      keyOffset + HALF_CHUNK * DIM * sizeof(bfloat16_t) <= valueOffset &&
-                      valueOffset + HALF_CHUNK * DIM * sizeof(bfloat16_t) <= UB_STATE_PUB_OFFSET,
+                          keyOffset + HALF_CHUNK * DIM * sizeof(bfloat16_t) <= valueOffset &&
+                          valueOffset + HALF_CHUNK * DIM * sizeof(bfloat16_t) <= UB_STATE_PUB_OFFSET,
                       "Q/K/V inputs overlap their next region");
         static_assert(UB_G_EXP_OFFSET + CHUNK * sizeof(float) <= betaOffset &&
-                      betaOffset + HALF_CHUNK * sizeof(float) <= UB_GATHER_OFFSET,
+                          betaOffset + HALF_CHUNK * sizeof(float) <= UB_GATHER_OFFSET,
                       "gate/beta scratch overlaps its next region");
-        return {BufferViews::Ub<float>(stateOffset), BufferViews::Ub<float>(lowerOffset),
-                BufferViews::Ub<float>(inverseOffset), BufferViews::Ub<float>(identityOffset),
+        return {BufferViews::Ub<float>(stateOffset),      BufferViews::Ub<float>(lowerOffset),
+                BufferViews::Ub<float>(inverseOffset),    BufferViews::Ub<float>(identityOffset),
                 BufferViews::Ub<bfloat16_t>(queryOffset), BufferViews::Ub<bfloat16_t>(keyOffset),
                 BufferViews::Ub<bfloat16_t>(valueOffset), BufferViews::Ub<float>(UB_G_EXP_OFFSET),
                 BufferViews::Ub<float>(betaOffset)};
     }
 
     // G 与 inverse/score 发布区各有两个槽，避免预取下块时覆盖当前 chunk 的递推输入。
-    __aicore__ inline PrefixBuffers BindPrefixBuffers(uint32_t chunk)
+    __aicore__ inline PrefixBuffers BindPrefixBuffers(uint64_t chunk)
     {
         constexpr uint32_t gCum0Offset =
             UB_RAW_BETA_OFFSET + HALF_CHUNK * BLOCK_SIZE + UB_SCALAR_SLOT_BYTES; // rawBeta、紧凑betaBF16之后
@@ -187,83 +190,92 @@ private:
         constexpr uint32_t inverse0Offset = UB_PREFIX_DIRECT0_OFFSET + UB_PREFIX_DIRECT_BYTES;
         constexpr uint32_t inverse1Offset = inverse0Offset + SCORE_SLICE_ELEMS * sizeof(bfloat16_t);
         static_assert(gCum0Offset + CHUNK * sizeof(float) <= gCum1Offset &&
-                      gCum1Offset + CHUNK * sizeof(float) <= UB_G_EXP_OFFSET,
+                          gCum1Offset + CHUNK * sizeof(float) <= UB_G_EXP_OFFSET,
                       "cumulative gates overlap each other or exp(g)");
         static_assert(UB_PREFIX_DIRECT0_OFFSET + UB_PREFIX_DIRECT_BYTES <= inverse0Offset,
                       "shared prefix scores overlap inverse staging");
         static_assert(inverse0Offset + SCORE_SLICE_ELEMS * sizeof(bfloat16_t) <= inverse1Offset &&
-                      inverse1Offset + SCORE_SLICE_ELEMS * sizeof(bfloat16_t) <= UB_STAGE1_PUB0_OFFSET,
+                          inverse1Offset + SCORE_SLICE_ELEMS * sizeof(bfloat16_t) <= UB_STAGE1_PUB0_OFFSET,
                       "inverse staging overlaps its next slot or shared Stage1");
         const uint32_t slot = chunk & 1;
         auto transforms = BufferViews::Ub<bfloat16_t>(PrefixTransformsUbOffset(slot));
         constexpr uint32_t matrixElements = UB_STAGE1_MATRIX_BYTES / sizeof(bfloat16_t);
         return {slot,
                 BufferViews::Ub<float>(slot == 0 ? gCum0Offset : gCum1Offset),
-                transforms, transforms, transforms[matrixElements], transforms[2 * matrixElements],
+                transforms,
+                transforms,
+                transforms[matrixElements],
+                transforms[2 * matrixElements],
                 transforms[3 * matrixElements],
                 BufferViews::Ub<bfloat16_t>(slot == 0 ? inverse0Offset : inverse1Offset),
                 BufferViews::Ub<bfloat16_t>(UB_MASKED_QKT_PUB_OFFSET + slot * SCORE_SLICE_ELEMS * sizeof(bfloat16_t))};
     }
 
     template <bool headPrefetched>
-    __aicore__ inline void PrepareStateIndependentChunkInputs(
-        const VectorHead &head, uint32_t chunk, const VectorBuffers &buffers)
+    __aicore__ inline void PrepareStateIndependentChunkInputs(const WorkItem& task, const VectorHead& head,
+                                                              uint64_t chunk, const VectorBuffers& buffers)
     {
         // [2~3] 只依赖本块 Q/K/V/beta/g，不读取 S；主循环可提前为 chunk+1 执行。
         const auto prefix = BindPrefixBuffers(chunk);
         WaitForCube<CubeToVectorEvent::ChunkSlotFree>(prefix.slot);
-        CopyInputsAndComputeCumulativeGate<headPrefetched>(head, chunk, buffers, prefix); // [2a] G/expG，整理 beta。
-        ComputeGatedChunkOperands(head, chunk, buffers, prefix);        // [2b] rawKcd/vBeta/Q'/Kg。
-        CopyPrefixTransformsUbToL1(head, prefix);                       // [2c] UB -> L1，不等分数。
+        const uint64_t tokenStart = task.tokenStart + chunk * CHUNK;
+        const uint32_t validRows = ChunkValidRows(task.seqLength, chunk);
+        // [2a] G/expG，整理 beta；tokenStart 为当前 chunk 在全局 TND 中的起点。
+        CopyInputsAndComputeCumulativeGate<headPrefetched>(head, tokenStart, validRows, buffers, prefix);
+        ComputeGatedChunkOperands(task, head, chunk, buffers, prefix); // [2b] rawKcd/vBeta/Q'/Kg。
+        CopyPrefixTransformsUbToL1(head, prefix);                      // [2c] UB -> L1，不等分数。
         ComputeCausalScoresAndDiagonalInverse(head, buffers, prefix);  // [3a] L/M；[3b] A00 或 A11。
-        CopyInverseAndScoresUbToL1(head, prefix);                       // [3c] 交给 Cube [4]/[8]。
+        CopyInverseAndScoresUbToL1(head, prefix);                      // [3c] 交给 Cube [4]/[8]。
     }
 
-    __aicore__ inline void ComputeVectorChunk(const VectorHead &head, uint32_t chunk, const VectorBuffers &buffers)
+    __aicore__ inline void ComputeVectorChunk(const WorkItem& task, const VectorHead& head, uint64_t chunk,
+                                              const VectorBuffers& buffers)
     {
-        CopyResidualUbToL1(chunk & 1, head.subBlock);          // [6c] R32 -> R16 -> L1，交 Cube [7]/[8]。
-        if (chunk + 1 < context_.ChunkNum()) {
-            PrepareStateIndependentChunkInputs<true>(head, chunk + 1, buffers); // 提前准备下块，与 Cube 递推重叠
+        const bool hasNextChunk = chunk + 1 < ChunkNum(task.seqLength);
+        CopyResidualUbToL1(chunk & 1, head.subBlockIdx); // [6c] R32 -> R16 -> L1，交 Cube [7]/[8]。
+        if (hasNextChunk) {
+            PrepareStateIndependentChunkInputs<true>(task, head, chunk + 1, buffers); // 提前准备下块，与 Cube 递推重叠
         }
-        UpdateStateFromResidualKeyProduct(head, chunk, buffers); // [9a/b] S_next=exp(G_last)*S+delta，按需复制到 L1。
+        // [9a/b] S_next=exp(G_last)*S+delta；仅有下一块时将状态副本送往 L1。
+        UpdateStateFromResidualKeyProduct(head.subBlockIdx, chunk, hasNextChunk, buffers);
     }
 
     // Q/K:[T,Nk,Dk]、V:[T,Nv,Dv] -> 当前 AIV 的 [HALF_CHUNK,DIM] UB。
-    // localRow 指明前/后 16 行；调用方持有对应输入 Mutex，搬运后由消费者处理无效尾部。
-    __aicore__ inline void CopyQkvRowsGmToUb(const VectorHead &head, uint32_t chunk, const VectorBuffers &buffers,
-                                       uint32_t localRow, uint32_t validRows)
+    // tokenStart 为当前 chunk 的全局起点；localRow 指明当前 AIV 的前/后 16 行。
+    // 调用方持有对应输入 Mutex，搬运后由消费者处理无效尾部。
+    __aicore__ inline void CopyQkvRowsGmToUb(const VectorHead& head, uint64_t tokenStart, const VectorBuffers& buffers,
+                                             uint32_t localRow, uint32_t validRows)
     {
-        const uint64_t token = context_.task.tokenStart + static_cast<uint64_t>(chunk) * CHUNK +
-                               head.subBlock * HALF_CHUNK + localRow;
-        const uint64_t qkOffset = token * context_.params.nk * context_.params.dk + head.queryKeyHead * context_.params.dk;
-        const uint64_t valueOffset = token * context_.params.nv * context_.params.dv +
-                                     static_cast<uint64_t>(head.valueHead) * context_.params.dv;
+        const uint64_t token = tokenStart + head.subBlockIdx * HALF_CHUNK + localRow;
+        const uint64_t qkOffset =
+            token * context_.params.nk * context_.params.dk + head.queryKeyHead * context_.params.dk;
+        const uint64_t valueOffset =
+            token * context_.params.nv * context_.params.dv + head.valueHead * context_.params.dv;
         CopyRowsGmToUb<DIM>(buffers.query[localRow * DIM], context_.params.query[qkOffset], validRows,
-                        context_.params.dk, context_.params.nk * context_.params.dk);
-        CopyRowsGmToUb<DIM>(buffers.key[localRow * DIM], context_.params.key[qkOffset], validRows,
-                        context_.params.dk, context_.params.nk * context_.params.dk);
+                            context_.params.dk, context_.params.nk * context_.params.dk);
+        CopyRowsGmToUb<DIM>(buffers.key[localRow * DIM], context_.params.key[qkOffset], validRows, context_.params.dk,
+                            context_.params.nk * context_.params.dk);
         CopyRowsGmToUb<DIM>(buffers.value[localRow * DIM], context_.params.value[valueOffset], validRows,
-                        context_.params.dv, context_.params.nv * context_.params.dv);
+                            context_.params.dv, context_.params.nv * context_.params.dv);
     }
 
-    __aicore__ inline void CopyInputHeadGmToUb(const VectorHead &head, uint32_t chunk, const VectorBuffers &buffers)
+    __aicore__ inline void CopyInputHeadGmToUb(const VectorHead& head, uint64_t tokenStart, uint32_t validRows,
+                                               const VectorBuffers& buffers)
     {
-        const uint32_t tokenBegin = head.subBlock * HALF_CHUNK;
-        const uint32_t validRows = context_.ChunkValidRows(chunk);
-        const uint32_t localValidRows = context_.SubBlockValidRows(chunk, head.subBlock);
+        const uint32_t tokenBegin = head.subBlockIdx * HALF_CHUNK;
+        const uint32_t localValidRows = SubBlockValidRows(validRows, head.subBlockIdx);
         const uint32_t headValidRows = localValidRows < INPUT_BATCH_ROWS ? localValidRows : INPUT_BATCH_ROWS;
-        const uint64_t tokenStart = context_.task.tokenStart + static_cast<uint64_t>(chunk) * CHUNK;
         auto rawG = BufferViews::Ub<float>(UB_RAW_G_OFFSET);
         auto rawBeta = BufferViews::Ub<bfloat16_t>(UB_RAW_BETA_OFFSET);
-        const MutexID inputHeadMutex = MutexId(AIV_INPUT_HEAD_MUTEX);
+        const MutexID inputHeadMutex = AIV_INPUT_HEAD_MUTEX;
         Mutex::Lock<PIPE_MTE2>(inputHeadMutex);
         if (headValidRows > 0) {
-            CopyQkvRowsGmToUb(head, chunk, buffers, 0, headValidRows);
+            CopyQkvRowsGmToUb(head, tokenStart, buffers, 0, headValidRows);
         }
 
         if constexpr (hasGamma) {
-            CopyScalarsGmToUb(rawG, context_.params.g[tokenStart * context_.params.nv + head.valueHead],
-                              validRows, context_.params.nv);
+            CopyScalarsGmToUb(rawG, context_.params.g[tokenStart * context_.params.nv + head.valueHead], validRows,
+                              context_.params.nv);
         }
         if (localValidRows > 0) {
             CopyScalarsGmToUb(rawBeta,
@@ -277,14 +289,14 @@ private:
     // 数学输出 G=cumsum(g)、expG=exp(G):[64]；无 gate 时 G=0、expG=1。
     // 此函数保留输入前16行的 V 锁，交 [2b] 消费；预取锁的跨度由流水决定。
     template <bool headPrefetched>
-    __aicore__ inline void CopyInputsAndComputeCumulativeGate(
-        const VectorHead &head, uint32_t chunk, const VectorBuffers &buffers, const PrefixBuffers &prefix)
+    __aicore__ inline void CopyInputsAndComputeCumulativeGate(const VectorHead& head, uint64_t tokenStart,
+                                                              uint32_t validRows, const VectorBuffers& buffers,
+                                                              const PrefixBuffers& prefix)
     {
         auto gCum = prefix.gCum;
         auto gExp = buffers.gExp;
         auto beta = buffers.beta;
-        const uint32_t validRows = context_.ChunkValidRows(chunk);
-        const uint32_t localValidRows = context_.SubBlockValidRows(chunk, head.subBlock);
+        const uint32_t localValidRows = SubBlockValidRows(validRows, head.subBlockIdx);
         const uint32_t tailValidRows = localValidRows > INPUT_BATCH_ROWS ? localValidRows - INPUT_BATCH_ROWS : 0;
         auto rawG = BufferViews::Ub<float>(UB_RAW_G_OFFSET);
         auto rawBeta = BufferViews::Ub<bfloat16_t>(UB_RAW_BETA_OFFSET);
@@ -293,14 +305,14 @@ private:
         auto gather = BufferViews::Ub<uint32_t>(UB_GATHER_OFFSET);
 
         if constexpr (!headPrefetched) {
-            CopyInputHeadGmToUb(head, chunk, buffers);
+            CopyInputHeadGmToUb(head, tokenStart, validRows, buffers);
         }
 
-        const MutexID inputHeadMutex = MutexId(AIV_INPUT_HEAD_MUTEX);
-        const MutexID inputTailMutex = MutexId(AIV_INPUT_TAIL_MUTEX);
+        const MutexID inputHeadMutex = AIV_INPUT_HEAD_MUTEX;
+        const MutexID inputTailMutex = AIV_INPUT_TAIL_MUTEX;
         Mutex::Lock<PIPE_MTE2>(inputTailMutex);
         if (tailValidRows > 0) {
-            CopyQkvRowsGmToUb(head, chunk, buffers, INPUT_BATCH_ROWS, tailValidRows);
+            CopyQkvRowsGmToUb(head, tokenStart, buffers, INPUT_BATCH_ROWS, tailValidRows);
         }
         Mutex::Unlock<PIPE_MTE2>(inputTailMutex);
 
@@ -341,9 +353,9 @@ private:
     // [3b, Vector] AIV0: A00=(I+L00)^-1；AIV1: A11=(I+L11)^-1，分别为 [32,32]。
     // 前代公式 A_i=e_i-sum_{j<i}(L_ij*A_j)，单位对角线无需除法；按8行panel复用已求出的逆矩阵行。
     // 非对角区域保留 [3a] 初始化的 -L10，待 [3c] 搬到 L1 后由 Cube [4] 补齐。
-    __aicore__ inline void InvertDiagonalBlockAndPack(
-        uint32_t subBlockIdx, LocalTensor<float> lower, LocalTensor<float> inverse,
-        LocalTensor<float> identity, LocalTensor<bfloat16_t> inverseBf16)
+    __aicore__ inline void InvertDiagonalBlockAndPack(uint32_t subBlockIdx, LocalTensor<float> lower,
+                                                      LocalTensor<float> inverse, LocalTensor<float> identity,
+                                                      LocalTensor<bfloat16_t> inverseBf16)
     {
         // UB lower/inverse:[C/2,C] FP32，inverseBf16 为同 shape 的 BF16 NZ 发布副本。
         // 每个 AIV 仅求自己的 32x32 对角块；inverse 其余位置保留初始化的 -L，供 AIC 拼出左下逆块。
@@ -357,8 +369,8 @@ private:
     }
 
     template <uint32_t rowOffset>
-    __aicore__ inline void ComputeGatedChunkOperandRows(
-        const VectorHead &head, const VectorBuffers &buffers, const PrefixBuffers &prefix, uint32_t validRows)
+    __aicore__ inline void ComputeGatedChunkOperandRows(const VectorHead& head, const VectorBuffers& buffers,
+                                                        const PrefixBuffers& prefix, uint32_t validRows)
     {
         // [2b] rawKcd=-beta*exp(G)*K，vBeta=beta*V，Q'=scale*exp(G)*Q，Kg=exp(G_last-G)*K。
         // 有效 shape 为 [validRows,Dk/Dv]，发布布局为 [HALF_CHUNK,DIM] compact NZ。
@@ -366,20 +378,18 @@ private:
         auto key = UbAddress(buffers.key) + rowOffset * DIM;
         auto value = UbAddress(buffers.value) + rowOffset * DIM;
         auto beta = UbAddress(buffers.beta) + rowOffset;
-        const uint16_t tokenBegin = static_cast<uint16_t>(head.subBlock * HALF_CHUNK + rowOffset);
+        const uint16_t tokenBegin = static_cast<uint16_t>(head.subBlockIdx * HALF_CHUNK + rowOffset);
         if (context_.params.dk == DIM && context_.params.dv == DIM) {
             AscendC::VF_CALL<PrepareStage1FullDimSliceVF>(
-                query, key, value, UbAddress(prefix.rawKcd), UbAddress(prefix.vBeta),
-                UbAddress(prefix.qPrime), UbAddress(prefix.kg), beta,
-                UbAddress(prefix.gCum), UbAddress(buffers.gExp), context_.params.scale, tokenBegin,
-                static_cast<uint16_t>(validRows), static_cast<uint16_t>(DIM),
+                query, key, value, UbAddress(prefix.rawKcd), UbAddress(prefix.vBeta), UbAddress(prefix.qPrime),
+                UbAddress(prefix.kg), beta, UbAddress(prefix.gCum), UbAddress(buffers.gExp), context_.params.scale,
+                tokenBegin, static_cast<uint16_t>(validRows), static_cast<uint16_t>(DIM),
                 static_cast<uint16_t>(rowOffset), static_cast<uint16_t>(HALF_CHUNK));
         } else {
             AscendC::VF_CALL<PrepareStage1SliceVF>(
-                query, key, value, UbAddress(prefix.rawKcd), UbAddress(prefix.vBeta),
-                UbAddress(prefix.qPrime), UbAddress(prefix.kg), beta,
-                UbAddress(prefix.gCum), UbAddress(buffers.gExp), context_.params.scale, tokenBegin,
-                static_cast<uint16_t>(validRows), static_cast<uint16_t>(context_.params.dk),
+                query, key, value, UbAddress(prefix.rawKcd), UbAddress(prefix.vBeta), UbAddress(prefix.qPrime),
+                UbAddress(prefix.kg), beta, UbAddress(prefix.gCum), UbAddress(buffers.gExp), context_.params.scale,
+                tokenBegin, static_cast<uint16_t>(validRows), static_cast<uint16_t>(context_.params.dk),
                 static_cast<uint16_t>(context_.params.dv), static_cast<uint16_t>(DIM), static_cast<uint16_t>(DIM),
                 static_cast<uint16_t>(rowOffset), static_cast<uint16_t>(HALF_CHUNK));
         }
@@ -387,13 +397,13 @@ private:
 
     // [2b, Vector] 四个行缩放结果融合在一次 VF 中生成；逐前/后16行调用，中间预取下一块输入。
     // 四个数学结果不拆为四次 VF，避免重复读 Q/K/V、增加 UB 临时量及打断现有预取。
-    __aicore__ inline void ComputeGatedChunkOperands(
-        const VectorHead &head, uint32_t chunk, const VectorBuffers &buffers, const PrefixBuffers &prefix)
+    __aicore__ inline void ComputeGatedChunkOperands(const WorkItem& task, const VectorHead& head, uint64_t chunk,
+                                                     const VectorBuffers& buffers, const PrefixBuffers& prefix)
     {
-        const uint32_t validRows = context_.SubBlockValidRows(chunk, head.subBlock);
+        const uint32_t validRows = SubBlockValidRows(ChunkValidRows(task.seqLength, chunk), head.subBlockIdx);
         const uint32_t firstRows = validRows < INPUT_BATCH_ROWS ? validRows : INPUT_BATCH_ROWS;
         const uint32_t lastRows = validRows > INPUT_BATCH_ROWS ? validRows - INPUT_BATCH_ROWS : 0;
-        const MutexID prefixMutex = MutexId(AIV_STAGE1_PUB_MUTEX_BASE + prefix.slot);
+        const MutexID prefixMutex = static_cast<MutexID>(AIV_STAGE1_PUB_MUTEX_BASE + prefix.slot);
         Mutex::Lock<PIPE_V>(prefixMutex);
         if (validRows < HALF_CHUNK || context_.params.dk < DIM || context_.params.dv < DIM) {
             Duplicate(prefix.transforms, static_cast<bfloat16_t>(0), 4 * UB_STAGE1_MATRIX_BYTES / sizeof(bfloat16_t));
@@ -401,45 +411,46 @@ private:
         }
         // CopyInputsAndComputeCumulativeGate 已持有前半输入的 V 锁。消费前 16 行后，马上复用其 UB 预取下一块。
         ComputeGatedChunkOperandRows<0>(head, buffers, prefix, firstRows);
-        Mutex::Unlock<PIPE_V>(MutexId(AIV_INPUT_HEAD_MUTEX));
-        if (chunk + 1 < context_.ChunkNum()) {
-            CopyInputHeadGmToUb(head, chunk + 1, buffers);
+        Mutex::Unlock<PIPE_V>(AIV_INPUT_HEAD_MUTEX);
+        if (chunk + 1 < ChunkNum(task.seqLength)) {
+            CopyInputHeadGmToUb(head, task.tokenStart + (chunk + 1) * CHUNK, ChunkValidRows(task.seqLength, chunk + 1),
+                                buffers);
         }
-        Mutex::Lock<PIPE_V>(MutexId(AIV_INPUT_TAIL_MUTEX));
+        Mutex::Lock<PIPE_V>(AIV_INPUT_TAIL_MUTEX);
         ComputeGatedChunkOperandRows<INPUT_BATCH_ROWS>(head, buffers, prefix, lastRows);
         PipeBarrier<PIPE_V>();
         // 后 16 行输入消费完毕，再释放整个前缀输出区供 MTE3 搬运。
-        Mutex::Unlock<PIPE_V>(MutexId(AIV_INPUT_TAIL_MUTEX));
+        Mutex::Unlock<PIPE_V>(AIV_INPUT_TAIL_MUTEX);
         Mutex::Unlock<PIPE_V>(prefixMutex);
     }
 
     // [2c] 将 [2b] 的四个 BF16 矩阵送至 L1：rawKcd/vBeta -> [5]，Q' -> [6b]，Kg -> [7]。
-    __aicore__ inline void CopyPrefixTransformsUbToL1(const VectorHead &head, const PrefixBuffers &prefix)
+    __aicore__ inline void CopyPrefixTransformsUbToL1(const VectorHead& head, const PrefixBuffers& prefix)
     {
         const uint32_t base = prefix.slot * L1_SLOT_STRIDE_BYTES;
-        const uint32_t tokenBegin = head.subBlock * HALF_CHUNK;
-        const MutexID prefixMutex = MutexId(AIV_STAGE1_PUB_MUTEX_BASE + prefix.slot);
+        const uint32_t tokenBegin = head.subBlockIdx * HALF_CHUNK;
+        const MutexID prefixMutex = static_cast<MutexID>(AIV_STAGE1_PUB_MUTEX_BASE + prefix.slot);
         Mutex::Lock<PIPE_MTE3>(prefixMutex);
         // 优化方案：rawKcd/vBeta 在 UB 和 L1 均相邻，合并一次 DMA；不必等待 KKT/QKT。
         CopyCompactNzUbToL1<HALF_CHUNK, DIM, CHUNK, 2>(
             prefix.rawKcd, BufferViews::L1<bfloat16_t>(base + L1_RAW_KCD_OFFSET), tokenBegin);
         CopyCompactNzUbToL1<HALF_CHUNK, DIM, DIM>(
             prefix.qPrime, BufferViews::L1<bfloat16_t>(base + L1_KCD_QPRIME_OFFSET), CHUNK + tokenBegin);
-        CopyCompactNzUbToL1<HALF_CHUNK, DIM, CHUNK>(
-            prefix.kg, BufferViews::L1<bfloat16_t>(base + L1_KG_OFFSET), tokenBegin);
+        CopyCompactNzUbToL1<HALF_CHUNK, DIM, CHUNK>(prefix.kg, BufferViews::L1<bfloat16_t>(base + L1_KG_OFFSET),
+                                                    tokenBegin);
         Mutex::Unlock<PIPE_MTE3>(prefixMutex);
     }
 
-    __aicore__ inline void ComputeCausalScoresAndDiagonalInverse(
-        const VectorHead &head, const VectorBuffers &buffers, const PrefixBuffers &prefix)
+    __aicore__ inline void ComputeCausalScoresAndDiagonalInverse(const VectorHead& head, const VectorBuffers& buffers,
+                                                                 const PrefixBuffers& prefix)
     {
         // [3, Vector] Cube [1] 经 FIX 把 KKT/QKT 送到本 AIV 的 UB 后，才能构造 L/M。
         WaitForCube<CubeToVectorEvent::PrefixScoresReady>(prefix.slot);
-        const MutexID prefixMutex = MutexId(AIV_PREFIX_PUB_MUTEX_BASE + prefix.slot);
+        const MutexID prefixMutex = static_cast<MutexID>(AIV_PREFIX_PUB_MUTEX_BASE + prefix.slot);
         Mutex::Lock<PIPE_V>(prefixMutex);
         ComputeCausalLowerAndOutputScores(head, buffers, prefix); // [3a] L/M:[32,64]，初始化 inverse=-L。
         // [3b] 求当前 AIV 的对角逆块，并转为 BF16 compact NZ。
-        InvertDiagonalBlockAndPack(head.subBlock, buffers.lower, buffers.inverse, buffers.identity, prefix.inverse);
+        InvertDiagonalBlockAndPack(head.subBlockIdx, buffers.lower, buffers.inverse, buffers.identity, prefix.inverse);
         NotifyCube<PIPE_V, VectorToCubeEvent::PrefixScoresBufferFree>(prefix.slot);
         Mutex::Unlock<PIPE_V>(prefixMutex);
     }
@@ -447,25 +458,25 @@ private:
     // [3a, Vector] L_ij=beta_i*KKT_ij*exp(G_i-G_j), j<i；M_ij=scale*QKT_ij*exp(G_i-G_j), j<=i。
     // 各 AIV 处理 [32,64] 行片；L 的对角线必须为0，M 的对角线保留当前 token 更新的输出贡献。
     // 调用方持有 PREFIX 的 V 锁；本函数只计算 L/M 并初始化 inverse=-L，不负责求逆或跨核通知。
-    __aicore__ inline void ComputeCausalLowerAndOutputScores(
-        const VectorHead &head, const VectorBuffers &buffers, const PrefixBuffers &prefix)
+    __aicore__ inline void ComputeCausalLowerAndOutputScores(const VectorHead& head, const VectorBuffers& buffers,
+                                                             const PrefixBuffers& prefix)
     {
         auto scores = BufferViews::Ub<bfloat16_t>(PrefixDirectOffset(prefix.slot));
         AscendC::VF_CALL<BuildLowerAndMaskedQktExactSliceVF>(
-            UbAddress(buffers.lower), UbAddress(buffers.inverse), UbAddress(prefix.maskedQkt),
-            UbAddress(scores), UbAddress(scores) + SCORE_SLICE_ELEMS, UbAddress(prefix.gCum),
-            UbAddress(buffers.beta), context_.params.scale, static_cast<uint16_t>(head.subBlock * HALF_CHUNK),
+            UbAddress(buffers.lower), UbAddress(buffers.inverse), UbAddress(prefix.maskedQkt), UbAddress(scores),
+            UbAddress(scores) + SCORE_SLICE_ELEMS, UbAddress(prefix.gCum), UbAddress(buffers.beta),
+            context_.params.scale, static_cast<uint16_t>(head.subBlockIdx * HALF_CHUNK),
             static_cast<uint16_t>(HALF_CHUNK), static_cast<uint16_t>(CHUNK));
         PipeBarrier<PIPE_V>();
     }
 
     // [3c, Vector -> Cube] A00/A11/-L10 先到 L1，InverseInputsReady 唤醒 [4]；
     // M 后到 L1，CausalScoresReady 唤醒 [8]。两个通知对应不同数学消费者，保留先后顺序。
-    __aicore__ inline void CopyInverseAndScoresUbToL1(const VectorHead &head, const PrefixBuffers &prefix)
+    __aicore__ inline void CopyInverseAndScoresUbToL1(const VectorHead& head, const PrefixBuffers& prefix)
     {
         const uint32_t base = prefix.slot * L1_SLOT_STRIDE_BYTES;
-        const uint32_t tokenBegin = head.subBlock * HALF_CHUNK;
-        const MutexID prefixMutex = MutexId(AIV_PREFIX_PUB_MUTEX_BASE + prefix.slot);
+        const uint32_t tokenBegin = head.subBlockIdx * HALF_CHUNK;
+        const MutexID prefixMutex = static_cast<MutexID>(AIV_PREFIX_PUB_MUTEX_BASE + prefix.slot);
         Mutex::Lock<PIPE_MTE3>(prefixMutex);
         CopyCompactNzUbToL1<HALF_CHUNK, CHUNK, CHUNK>(
             prefix.inverse, BufferViews::L1<bfloat16_t>(base + L1_INVERSE_OFFSET), tokenBegin);
@@ -484,10 +495,10 @@ private:
         // 调用方已锁定 STATE 的 PIPE_V：首次由 Run 申请，后续由 UpdateStateFromResidualKeyProduct 申请。
         // 转换完成后释放 V，再由 MTE3 读取同一缓冲区。
         const uint32_t stateRowBegin = subBlockIdx * HALF_DIM;
-        const uint32_t validRows = context_.StateValidRows(subBlockIdx);
+        const uint32_t validRows = StateValidRows(context_.params.dv, subBlockIdx);
         auto statePub = BufferViews::Ub<bfloat16_t>(UB_STATE_PUB_OFFSET);
         auto l1State = BufferViews::L1<bfloat16_t>(L1_STATE_OFFSET);
-        const MutexID stateMutex = MutexId(AIV_STATE_MUTEX);
+        const MutexID stateMutex = AIV_STATE_MUTEX;
 
         if (validRows < HALF_DIM || context_.params.dk < DIM) {
             Duplicate(statePub, static_cast<bfloat16_t>(0), STATE_SLICE_ELEMS);
@@ -495,8 +506,7 @@ private:
         }
         AscendC::VF_CALL<RowMajorFp32ToCompactZnBf16VF>(
             UbAddress(state), UbAddress(statePub), static_cast<uint16_t>(validRows),
-            static_cast<uint16_t>(context_.params.dk), static_cast<uint16_t>(DIM),
-            static_cast<uint16_t>(HALF_DIM));
+            static_cast<uint16_t>(context_.params.dk), static_cast<uint16_t>(DIM), static_cast<uint16_t>(HALF_DIM));
         PipeBarrier<PIPE_V>();
         Mutex::Unlock<PIPE_V>(stateMutex);
         Mutex::Lock<PIPE_MTE3>(stateMutex);
@@ -518,9 +528,8 @@ private:
                       "residual receive and BF16 copy must fit their reused Stage1 slot");
         const uint32_t residualOffset = PrefixTransformsUbOffset(slot);
         auto residual = BufferViews::Ub<float>(residualOffset);
-        auto residualBf16 =
-            BufferViews::Ub<bfloat16_t>(residualOffset + residualFp32Bytes);
-        const MutexID residualMutex = MutexId(AIV_STAGE1_PUB_MUTEX_BASE + slot);
+        auto residualBf16 = BufferViews::Ub<bfloat16_t>(residualOffset + residualFp32Bytes);
+        const MutexID residualMutex = static_cast<MutexID>(AIV_STAGE1_PUB_MUTEX_BASE + slot);
         Mutex::Lock<PIPE_V>(residualMutex);
         Cast(residualBf16, residual, RoundMode::CAST_RINT, HALF_CHUNK * DIM);
         PipeBarrier<PIPE_V>();
@@ -533,8 +542,8 @@ private:
     }
 
     // [9a/b, Vector] 消费 Cube [7] 的 delta=R16.T@Kg；递推主状态，再按需准备下一块的 Cube 副本。
-    __aicore__ inline void UpdateStateFromResidualKeyProduct(
-        const VectorHead &head, uint32_t chunk, const VectorBuffers &buffers)
+    __aicore__ inline void UpdateStateFromResidualKeyProduct(uint32_t subBlockIdx, uint64_t chunk, bool hasNextChunk,
+                                                             const VectorBuffers& buffers)
     {
         const uint32_t slot = chunk & 1;
         auto gCum = BindPrefixBuffers(chunk).gCum;
@@ -544,7 +553,7 @@ private:
         // 等待当前增量到达且旧 L1 状态已读走，再更新并发布下个 chunk 的状态副本。
         // gCum 必须按 chunk 双缓冲，避免下一 chunk 的前缀和覆盖本次递推仍需使用的 G_last。
         // 后续 chunk 交给 CopyStateUbToL1；最后一次交给 CopyFinalStateUbToGm，由对应函数在转换完成后释放 PIPE_V 锁。
-        Mutex::Lock<PIPE_V>(MutexId(AIV_STATE_MUTEX));
+        Mutex::Lock<PIPE_V>(AIV_STATE_MUTEX);
         auto gCumAddr = UbAddress(gCum);
         auto stateDelta = BufferViews::Ub<float>(PrefixTransformsUbOffset(slot));
         if constexpr (!STATE_FP32) {
@@ -559,18 +568,18 @@ private:
         AscendC::VF_CALL<UpdateFp32StateByExpVF>(stateAddr, stateDeltaAddr, gCumAddr + CHUNK - 1, STATE_SLICE_ELEMS);
         PipeBarrier<PIPE_V>();
         NotifyCube<PIPE_V, VectorToCubeEvent::StateDeltaBufferFree>();
-        if (chunk + 1 < context_.ChunkNum()) {
+        if (hasNextChunk) {
             // [9b] 主状态仍在 FP32 UB，仅将 BF16 副本送往下一块 [6]；末块由 Run 写回 GM。
-            CopyStateUbToL1(head.subBlock, buffers.state);
+            CopyStateUbToL1(subBlockIdx, buffers.state);
         }
     }
 
     // 每个 head 初始化一次 I/gather
-    __aicore__ inline void InitializeVectorConstants(const VectorBuffers &buffers)
+    __aicore__ inline void InitializeVectorConstants(const VectorBuffers& buffers)
     {
         auto identity = buffers.identity;
         auto gather = BufferViews::Ub<uint32_t>(UB_GATHER_OFFSET);
-        const MutexID scalarMutex = MutexId(AIV_SCALAR_MUTEX);
+        const MutexID scalarMutex = AIV_SCALAR_MUTEX;
         Mutex::Lock<PIPE_V>(scalarMutex);
         constexpr uint32_t inverseSliceElements = HALF_CHUNK * CHUNK;
         Duplicate(identity, 0.0f, inverseSliceElements);
@@ -585,13 +594,14 @@ private:
         Mutex::Unlock<PIPE_S>(scalarMutex);
     }
 
-    __aicore__ inline void CopyInitialStateGmToUb(const VectorHead &head, const VectorBuffers &buffers)
+    __aicore__ inline void CopyInitialStateGmToUb(uint64_t batchId, const VectorHead& head,
+                                                  const VectorBuffers& buffers)
     {
-        const uint32_t stateRowBegin = head.subBlock * HALF_DIM;
-        const uint32_t stateValidRows = context_.StateValidRows(head.subBlock);
-        const MutexID stateMutex = MutexId(AIV_STATE_MUTEX);
+        const uint32_t stateRowBegin = head.subBlockIdx * HALF_DIM;
+        const uint32_t stateValidRows = StateValidRows(context_.params.dv, head.subBlockIdx);
+        const MutexID stateMutex = AIV_STATE_MUTEX;
         auto state = buffers.state;
-        const uint64_t initialStateOffset = context_.InitialStateOffset(head.valueHead, stateRowBegin);
+        const uint64_t initialStateOffset = context_.InitialStateOffset(batchId, head.valueHead, stateRowBegin);
         // 主状态始终为 FP32；BF16 初态经独立的发布暂存区转换，避免输入与目标重叠。
         Mutex::Lock<PIPE_V>(stateMutex);
         Duplicate(state, 0.0f, STATE_SLICE_ELEMS);
@@ -601,10 +611,10 @@ private:
         if (stateValidRows > 0) {
             if constexpr (STATE_FP32) {
                 CopyRowsGmToUb<DIM>(state, context_.params.initialState[initialStateOffset], stateValidRows,
-                              context_.params.dk, context_.params.dk);
+                                    context_.params.dk, context_.params.dk);
             } else {
                 CopyRowsGmToUb<DIM>(stateStaging, context_.params.initialState[initialStateOffset], stateValidRows,
-                              context_.params.dk, context_.params.dk);
+                                    context_.params.dk, context_.params.dk);
             }
         }
         Mutex::Unlock<PIPE_MTE2>(stateMutex);
@@ -619,11 +629,11 @@ private:
     }
 
     // UpdateStateFromResidualKeyProduct 的最后一次更新保留 V 锁，本函数完成 dtype 转换、写回并释放。
-    __aicore__ inline void CopyFinalStateUbToGm(const VectorHead &head, const VectorBuffers &buffers)
+    __aicore__ inline void CopyFinalStateUbToGm(uint64_t batchId, const VectorHead& head, const VectorBuffers& buffers)
     {
-        const uint32_t stateRowBegin = head.subBlock * HALF_DIM;
-        const uint32_t stateValidRows = context_.StateValidRows(head.subBlock);
-        const MutexID stateMutex = MutexId(AIV_STATE_MUTEX);
+        const uint32_t stateRowBegin = head.subBlockIdx * HALF_DIM;
+        const uint32_t stateValidRows = StateValidRows(context_.params.dv, head.subBlockIdx);
+        const MutexID stateMutex = AIV_STATE_MUTEX;
         auto state = buffers.state;
         auto stateStaging = BufferViews::Ub<bfloat16_t>(UB_STATE_PUB_OFFSET);
         // 最终接口输出仍保持原 dtype；仅到整个 batch 递推结束才量化 BF16 主状态。
@@ -636,22 +646,20 @@ private:
         Mutex::Unlock<PIPE_V>(stateMutex);
         Mutex::Lock<PIPE_MTE3>(stateMutex);
         if (stateValidRows > 0) {
-            const uint64_t finalStateOffset = context_.FinalStateOffset(head.valueHead, stateRowBegin);
+            const uint64_t finalStateOffset = context_.FinalStateOffset(batchId, head.valueHead, stateRowBegin);
             if constexpr (STATE_FP32) {
-                CopyRowsUbToGm<DIM>(context_.params.finalState[finalStateOffset], state,
-                    stateValidRows, context_.params.dk, context_.params.dk);
+                CopyRowsUbToGm<DIM>(context_.params.finalState[finalStateOffset], state, stateValidRows,
+                                    context_.params.dk, context_.params.dk);
             } else {
-                CopyRowsUbToGm<DIM>(context_.params.finalState[finalStateOffset], stateStaging,
-                    stateValidRows, context_.params.dk, context_.params.dk);
+                CopyRowsUbToGm<DIM>(context_.params.finalState[finalStateOffset], stateStaging, stateValidRows,
+                                    context_.params.dk, context_.params.dk);
             }
         }
         Mutex::Unlock<PIPE_MTE3>(stateMutex);
     }
 
     static constexpr bool STATE_FP32 = std::is_same_v<stateType, float>;
-    KernelContext<stateType> &context_;
+    const KernelContext<stateType>& context_;
 };
 
 } // namespace ChunkGatedDeltaRule
-
-#endif // CHUNK_GATED_DELTA_RULE_VECTOR_COMPUTE_H

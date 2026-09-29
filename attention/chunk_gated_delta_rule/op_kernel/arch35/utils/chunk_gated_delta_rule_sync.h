@@ -8,10 +8,9 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CHUNK_GATED_DELTA_RULE_SYNC_H
-#define CHUNK_GATED_DELTA_RULE_SYNC_H
+#pragma once
 
-#include "kernel_operator.h"
+#include "basic_api/kernel_basic_intf.h"
 
 namespace ChunkGatedDeltaRule {
 
@@ -31,8 +30,8 @@ enum class VectorToCubeEvent : uint16_t {
     StateDeltaBufferFree = 3,   // V: 状态增量消费完毕，Cube 可以复用其 UB。
     InverseInputsReady = 4,     // MTE3: 求逆/状态投影所需数据已到 L1；slot 1 使用 flag 5。
     CausalScoresReady = 6,      // MTE3: maskedQkt 已到 L1；slot 1 使用 flag 7。
-    StateReady = 8,            // MTE3: BF16 状态副本已到 L1。
-    ResidualReady = 15,        // MTE3: BF16 R 已从 UB 搬到 L1。
+    StateReady = 8,             // MTE3: BF16 状态副本已到 L1。
+    ResidualReady = 15,         // MTE3: BF16 R 已从 UB 搬到 L1。
 };
 
 template <CubeToVectorEvent event>
@@ -89,5 +88,3 @@ __aicore__ inline void NotifyCube(uint32_t slot = 0)
 }
 
 } // namespace ChunkGatedDeltaRule
-
-#endif // CHUNK_GATED_DELTA_RULE_SYNC_H

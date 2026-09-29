@@ -8,8 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CHUNK_GATED_DELTA_RULE_CONTEXT_H
-#define CHUNK_GATED_DELTA_RULE_CONTEXT_H
+#pragma once
 
 #include "../../chunk_gated_delta_rule_tiling_data.h"
 #include "chunk_gated_delta_rule_layout.h"
@@ -41,7 +40,7 @@ struct KernelParams {
     GlobalTensor<float> g;
     GlobalTensor<stateType> initialState; // [B,Nv,Dv,Dk]，batch/head 按 stateStride0/1 寻址
     GlobalTensor<bfloat16_t> out;
-    GlobalTensor<stateType> finalState; // [B,Nv,Dv,Dk]，连续布局
+    GlobalTensor<stateType> finalState;     // [B,Nv,Dv,Dk]，连续布局
     GlobalTensor<int32_t> actualSeqLengths; // [B]，各 batch 长度，总和为 T
     float scale;
     uint32_t nk;
@@ -56,33 +55,33 @@ struct KernelParams {
     // 优化方案：在最终参数对象中就地绑定描述符，省去逐层构造、赋值和复制参数对象。
     // SetGlobalBuffer 只设置地址/长度等元数据，不搬运 GM 数据。
     // hasGamma 来自 CGDR 的模板常量；内联后可消除无 g 分支，无需为此扩展 Context 的模板参数。
-    __aicore__ inline KernelParams(const CGDRInitParams &addresses,
-                                  const ChunkGatedDeltaRuleTilingData &tiling, bool hasGamma)
+    __aicore__ inline KernelParams(const CGDRInitParams& addresses, const ChunkGatedDeltaRuleTilingData& tiling,
+                                   bool hasGamma)
     {
         // Q, K: [T,Nk,Dk]；value 头 h 共享 QK 头 floor(h/(Nv/Nk))。
         const uint64_t queryKeyElements = tiling.t * tiling.nk * tiling.dk;
-        query.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(addresses.query), queryKeyElements);
-        key.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(addresses.key), queryKeyElements);
+        query.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(addresses.query), queryKeyElements);
+        key.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(addresses.key), queryKeyElements);
 
         // V, O: [T,Nv,Dv]。
         const uint64_t valueElements = tiling.t * tiling.nv * tiling.dv;
-        value.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(addresses.value), valueElements);
-        out.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(addresses.attnOut), valueElements);
+        value.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(addresses.value), valueElements);
+        out.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(addresses.attnOut), valueElements);
 
         // beta, g: [T,Nv]；g 为 log decay，alpha=exp(g)，缺省 g 时 alpha=1。
         const uint64_t gateElements = tiling.t * tiling.nv;
-        beta.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(addresses.beta), gateElements);
+        beta.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(addresses.beta), gateElements);
         if (hasGamma) {
-            g.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(addresses.gOptional), gateElements);
+            g.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(addresses.gOptional), gateElements);
         }
 
         // S_in, S_out: [B,Nv,Dv,Dk]。初态按 stateStride0/1 寻址（可广播），终态连续写回。
         const uint64_t stateElements = tiling.b * tiling.nv * tiling.dv * tiling.dk;
-        initialState.SetGlobalBuffer(reinterpret_cast<__gm__ stateType *>(addresses.initState), stateElements);
-        finalState.SetGlobalBuffer(reinterpret_cast<__gm__ stateType *>(addresses.finalState), stateElements);
+        initialState.SetGlobalBuffer(reinterpret_cast<__gm__ stateType*>(addresses.initState), stateElements);
+        finalState.SetGlobalBuffer(reinterpret_cast<__gm__ stateType*>(addresses.finalState), stateElements);
 
         // seq_lens: [B]，存各 batch 长度，非累积终点；空序列的终态等于初态。
-        actualSeqLengths.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(addresses.seqlens), tiling.b);
+        actualSeqLengths.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(addresses.seqlens), tiling.b);
 
         scale = tiling.scale;
         nk = static_cast<uint32_t>(tiling.nk);
@@ -99,80 +98,82 @@ struct KernelParams {
 // 一个完整的 (batch, value-head) 任务；Scheduler 产出，BasicBlock 执行。
 // tokenStart=sum(seq_lens[0:batchId]) 是原始TND位置，不取决于后续调度顺序。
 // 整条序列的 chunk 递推期间，这四个字段保持不变。
+// 任务元数据统一用64位，长度、分块和GM偏移计算不在中途截断。
+// 当前接口的 seq_lens 仍为 int32，Nv<=64；类型加宽不改变接口约束。
 struct WorkItem {
     uint64_t batchId;
     uint64_t tokenStart;
-    uint32_t seqLength;
-    uint32_t valueHead;
+    uint64_t seqLength;
+    uint64_t valueHead;
 };
 
-// Context 是参数的唯一持有者；BasicBlock/Compute 借用它，Scheduler 只借用只读 params。
-// params 直接从入口地址和 tiling 构造，之后只读；不保存对入口临时参数的引用。
-template <typename stateType>
-struct KernelContext : FusedLayout {
-    const KernelParams<stateType> params;
-    WorkItem task;
+// 任务尺寸计算只依赖显式参数，不读取“当前任务”；行数均为有效 token/状态行数。
+__aicore__ inline uint64_t ChunkNum(uint64_t seqLength)
+{
+    // ceil(L/C)，先除再补尾块，避免 L+C-1 的加法溢出。
+    return seqLength / FusedLayout::CHUNK + (seqLength % FusedLayout::CHUNK != 0);
+}
 
-    __aicore__ inline KernelContext(const CGDRInitParams &addresses,
-                                   const ChunkGatedDeltaRuleTilingData &tiling, bool hasGamma)
+// 调用方保证 chunk < ChunkNum(seqLength)；空序列由 Streaming 单独复制初态。
+__aicore__ inline uint32_t ChunkValidRows(uint64_t seqLength, uint64_t chunk)
+{
+    const uint64_t chunkBegin = chunk * FusedLayout::CHUNK;
+    const uint64_t remaining = seqLength - chunkBegin;
+    // 有效行数<=CHUNK，缩窄后可直接填写搬运/VF参数。
+    return static_cast<uint32_t>(remaining < FusedLayout::CHUNK ? remaining : FusedLayout::CHUNK);
+}
+
+__aicore__ inline uint32_t SubBlockValidRows(uint32_t validRows, uint32_t subBlockIdx)
+{
+    const uint32_t rowBegin = subBlockIdx * FusedLayout::HALF_CHUNK;
+    if (validRows <= rowBegin) {
+        return 0;
+    }
+    const uint32_t remaining = validRows - rowBegin;
+    return remaining < FusedLayout::HALF_CHUNK ? remaining : FusedLayout::HALF_CHUNK;
+}
+
+__aicore__ inline uint32_t StateValidRows(uint32_t dv, uint32_t subBlockIdx)
+{
+    const uint32_t rowBegin = subBlockIdx * FusedLayout::HALF_DIM;
+    if (dv <= rowBegin) {
+        return 0;
+    }
+    const uint32_t remaining = dv - rowBegin;
+    return remaining < FusedLayout::HALF_DIM ? remaining : FusedLayout::HALF_DIM;
+}
+
+// Context 只持有本次 kernel 调用的只读参数，不保存随 Scheduler::Next 改变的任务。
+// params 直接从入口地址和 tiling 构造；BasicBlock/Compute 借用只读 Context。
+template <typename stateType>
+struct KernelContext {
+    const KernelParams<stateType> params;
+
+    __aicore__ inline KernelContext(const CGDRInitParams& addresses, const ChunkGatedDeltaRuleTilingData& tiling,
+                                    bool hasGamma)
         : params(addresses, tiling, hasGamma)
     {}
 
     // Q/K:[T,Nk,Dk]，V:[T,Nv,Dv]；每 Nv/Nk 个相邻 value 头共享一个 QK 头。
-    __aicore__ inline uint32_t QueryKeyHead(uint32_t valueHead) const
+    __aicore__ inline uint32_t QueryKeyHead(uint64_t valueHead) const
     {
-        return valueHead / (params.nv / params.nk);
+        // host已校验 Nk<=Nv<=64，QK头索引限定在[0,Nk)，可安全使用32位。
+        return static_cast<uint32_t>(valueHead / (params.nv / params.nk));
     }
 
     // S:[B,Nv,Dv,Dk]，偏移单位为元素。初态 batch/head stride 可为 0，以支持广播。
-    __aicore__ inline uint64_t InitialStateOffset(uint32_t valueHead, uint32_t valueRowBegin) const
+    __aicore__ inline uint64_t InitialStateOffset(uint64_t batchId, uint64_t valueHead, uint32_t valueRowBegin) const
     {
-        return task.batchId * params.stateStride0 + static_cast<uint64_t>(valueHead) * params.stateStride1 +
+        return batchId * params.stateStride0 + valueHead * params.stateStride1 +
                static_cast<uint64_t>(valueRowBegin) * params.dk;
     }
 
     // 终态始终连续写回；每个 AIV 独占 [valueRowBegin:valueRowBegin+validRows, :Dk]。
-    __aicore__ inline uint64_t FinalStateOffset(uint32_t valueHead, uint32_t valueRowBegin) const
+    __aicore__ inline uint64_t FinalStateOffset(uint64_t batchId, uint64_t valueHead, uint32_t valueRowBegin) const
     {
-        return (task.batchId * params.nv + valueHead) * params.dv * params.dk +
+        return (batchId * params.nv + valueHead) * params.dv * params.dk +
                static_cast<uint64_t>(valueRowBegin) * params.dk;
     }
-
-    __aicore__ inline uint32_t ChunkNum() const
-    {
-        return (task.seqLength + CHUNK - 1) / CHUNK;
-    }
-
-    __aicore__ inline uint32_t ChunkValidRows(uint32_t chunk) const
-    {
-        const uint32_t chunkBegin = chunk * CHUNK;
-        const uint32_t remaining = task.seqLength - chunkBegin;
-        return remaining < CHUNK ? remaining : CHUNK;
-    }
-
-    __aicore__ inline uint32_t SubBlockValidRows(uint32_t chunk, uint32_t subBlockIdx) const
-    {
-        const uint32_t validRows = ChunkValidRows(chunk);
-        const uint32_t rowBegin = subBlockIdx * HALF_CHUNK;
-        if (validRows <= rowBegin) {
-            return 0;
-        }
-        const uint32_t remaining = validRows - rowBegin;
-        return remaining < HALF_CHUNK ? remaining : HALF_CHUNK;
-    }
-
-    __aicore__ inline uint32_t StateValidRows(uint32_t subBlockIdx) const
-    {
-        const uint32_t rowBegin = subBlockIdx * HALF_DIM;
-        if (params.dv <= rowBegin) {
-            return 0;
-        }
-        const uint32_t remaining = params.dv - rowBegin;
-        return remaining < HALF_DIM ? remaining : HALF_DIM;
-    }
-
 };
 
 } // namespace ChunkGatedDeltaRule
-
-#endif // CHUNK_GATED_DELTA_RULE_CONTEXT_H

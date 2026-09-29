@@ -8,20 +8,21 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CHUNK_GATED_DELTA_RULE_STAGE2_VF_H
-#define CHUNK_GATED_DELTA_RULE_STAGE2_VF_H
+#pragma once
 
-#include "kernel_tensor.h"
+#include "basic_api/kernel_tensor.h"
 
 namespace ChunkGatedDeltaRule {
 using namespace AscendC;
 using namespace Reg;
 
 /*
+ * 备用，当前无调用：保留独立的 FP32 状态衰减步骤，供拆分状态更新时评估性能。
+ * 当前由 UpdateFp32StateByExpVF 合并衰减与增量累加，省去一次状态 UB 往返。
  * FP32 状态缩放：scale = exp(gCumLast)，state = state * scale。
  * exp 结果保留在寄存器中，整条计算链只读写一次 state UB。
  */
-__simd_vf__ inline void ScaleFp32StateByExpVF(__ubuf__ float *stateAddr, float gCumLast, uint32_t count)
+__simd_vf__ inline void ScaleFp32StateByExpVF(__ubuf__ float* stateAddr, float gCumLast, uint32_t count)
 {
     constexpr uint32_t elementsPerRepeat = VECTOR_REG_WIDTH / sizeof(float);
     RegTensor<float> scaleReg;
@@ -44,10 +45,12 @@ __simd_vf__ inline void ScaleFp32StateByExpVF(__ubuf__ float *stateAddr, float g
 }
 
 /*
+ * 备用，当前无调用：用于 BF16 常驻状态方案的独立门控缩放，减少 FP32 临时 UB。
+ * 当前主状态常驻 FP32；切换前需验证中间 BF16 舍入的累计误差及整条路径的性能。
  * BF16 gated 状态缩放：scale = exp(gCumLast)，dst = BF16(FP32(src) * scale)。
  * Cast、Exp、Mul、Cast 在同一个 VF 中完成，FP32 中间结果不再写回临时 UB。
  */
-__simd_vf__ inline void ScaleBf16StateByExpVF(__ubuf__ bfloat16_t *dstAddr, __ubuf__ bfloat16_t *srcAddr,
+__simd_vf__ inline void ScaleBf16StateByExpVF(__ubuf__ bfloat16_t* dstAddr, __ubuf__ bfloat16_t* srcAddr,
                                               float gCumLast, uint32_t count)
 {
     constexpr uint32_t elementsPerRepeat = VECTOR_REG_WIDTH / sizeof(float);
@@ -78,8 +81,11 @@ __simd_vf__ inline void ScaleBf16StateByExpVF(__ubuf__ bfloat16_t *dstAddr, __ub
     }
 }
 
-/* 无门控路径保持原 Cast -> Muls(1.0) -> Cast 顺序，并在寄存器中完成。 */
-__simd_vf__ inline void ScaleBf16StateVF(__ubuf__ bfloat16_t *dstAddr, __ubuf__ bfloat16_t *srcAddr, uint32_t count)
+/*
+ * 备用，当前无调用：BF16 常驻状态方案的无门控配套实现；当前 FP32 主状态无需此往返。
+ * 保留供 BF16 方案通过精度/性能验证后启用；寄存器内保持 Cast -> Muls(1.0) -> Cast 顺序。
+ */
+__simd_vf__ inline void ScaleBf16StateVF(__ubuf__ bfloat16_t* dstAddr, __ubuf__ bfloat16_t* srcAddr, uint32_t count)
 {
     constexpr uint32_t elementsPerRepeat = VECTOR_REG_WIDTH / sizeof(float);
     static constexpr CastTrait castBf16ToFp32 = {RegLayout::ZERO, SatMode::UNKNOWN, MaskMergeMode::ZEROING,
@@ -107,11 +113,14 @@ __simd_vf__ inline void ScaleBf16StateVF(__ubuf__ bfloat16_t *dstAddr, __ubuf__ 
 }
 
 /*
+ * 备用，当前无调用：每个 chunk 将 S_next 舍入为 BF16，长序列上可能累积误差。
+ * 若后续精度验证允许，可启用 BF16 常驻状态以减少状态 UB 容量/读写量和独立转换开销；
+ * 需配套调整状态缓冲与搬运，并验证性能收益，不能直接替换当前 FP32 更新入口。
  * BF16 chunk 状态：把旧状态和 Cube 已转成 BF16 的增量升到 FP32，计算 exp(G_last)*S+update，
  * 最后一次舍入写回 BF16 状态。此处融合衰减与加法，避免在两者之间再落地一个 BF16 中间状态。
  */
-__simd_vf__ inline void UpdateBf16StateByExpVF(__ubuf__ bfloat16_t *stateAddr, __ubuf__ bfloat16_t *stateDeltaAddr,
-                                               __ubuf__ float *gCumLastAddr, uint32_t count)
+__simd_vf__ inline void UpdateBf16StateByExpVF(__ubuf__ bfloat16_t* stateAddr, __ubuf__ bfloat16_t* stateDeltaAddr,
+                                               __ubuf__ float* gCumLastAddr, uint32_t count)
 {
     constexpr uint32_t elementsPerRepeat = VECTOR_REG_WIDTH / sizeof(float);
     static constexpr CastTrait castBf16ToFp32 = {RegLayout::ZERO, SatMode::UNKNOWN, MaskMergeMode::ZEROING,
@@ -148,10 +157,12 @@ __simd_vf__ inline void UpdateBf16StateByExpVF(__ubuf__ bfloat16_t *stateAddr, _
  * [9a] S_next=exp(G_last)*S+delta，delta 来自 Cube [7] 的 R16.T@Kg。
  * 每个 AIV 更新 FP32 [HALF_DIM,DIM]=[64,128] 的状态行片，主状态常驻行主序 UB。
  * FP32 接口的 delta 经 FIX 直接送达；BF16 接口的 delta 由调用方先转回 FP32。
+ * 精度取舍：跨 chunk 保留 FP32 主状态，避免每轮 BF16 舍入的误差积累；代价是更大的状态
+ * UB 容量/读写量及转换开销。上方 BF16 更新版本保留供精度足够时重新评估性能。
  * 保持先乘后加的递推顺序，中间不做 BF16 舍入；但 Cube 的矩阵输入仍是 BF16，并非全链路 FP32。
  */
-__simd_vf__ inline void UpdateFp32StateByExpVF(__ubuf__ float *stateAddr, __ubuf__ float *stateDeltaAddr,
-                                               __ubuf__ float *gCumLastAddr, uint32_t count)
+__simd_vf__ inline void UpdateFp32StateByExpVF(__ubuf__ float* stateAddr, __ubuf__ float* stateDeltaAddr,
+                                               __ubuf__ float* gCumLastAddr, uint32_t count)
 {
     constexpr uint32_t elementsPerRepeat = VECTOR_REG_WIDTH / sizeof(float);
     RegTensor<float> stateReg;
@@ -180,10 +191,10 @@ __simd_vf__ inline void UpdateFp32StateByExpVF(__ubuf__ float *stateAddr, __ubuf
 // ReduceDataBlock 按 8 元素分组归约，padding lane 必须排除在乘法和归约之外。
 // 每批 token 内状态保留在寄存器，仅在批首 Gather、批尾 Scatter；搬运步长与通用批处理一致。
 template <bool hasGamma>
-__simd_vf__ inline void StreamingExactPackedRowsVF(__ubuf__ float *stateAddr, __ubuf__ bfloat16_t *queryAddr,
-                                                   __ubuf__ bfloat16_t *keyAddr, __ubuf__ float *valueAddr,
-                                                   __ubuf__ float *betaAddr, __ubuf__ float *gAddr,
-                                                   __ubuf__ float *outAddr, float scale, uint16_t rowCount, uint16_t dk,
+__simd_vf__ inline void StreamingExactPackedRowsVF(__ubuf__ float* stateAddr, __ubuf__ bfloat16_t* queryAddr,
+                                                   __ubuf__ bfloat16_t* keyAddr, __ubuf__ float* valueAddr,
+                                                   __ubuf__ float* betaAddr, __ubuf__ float* gAddr,
+                                                   __ubuf__ float* outAddr, float scale, uint16_t rowCount, uint16_t dk,
                                                    uint16_t stateRowStride, uint16_t tokenCount)
 {
     static constexpr CastTrait castBf16ToFp32 = {RegLayout::ZERO, SatMode::UNKNOWN, MaskMergeMode::ZEROING,
@@ -211,7 +222,7 @@ __simd_vf__ inline void StreamingExactPackedRowsVF(__ubuf__ float *stateAddr, __
         And(packedMask, packedMask, featureMask, allMask);
         MaskReg rowMask = UpdateMask<float>(validRows);
         auto stateBase = stateAddr + static_cast<uint32_t>(rowBegin) * stateRowStride;
-        Gather(state, stateBase, reinterpret_cast<RegTensor<uint32_t> &>(offset), packedMask);
+        Gather(state, stateBase, reinterpret_cast<RegTensor<uint32_t>&>(offset), packedMask);
         for (uint16_t token = 0; token < tokenCount; ++token) {
             const uint32_t inputOffset = static_cast<uint32_t>(token) * stateRowStride;
             if constexpr (hasGamma) {
@@ -223,7 +234,7 @@ __simd_vf__ inline void StreamingExactPackedRowsVF(__ubuf__ float *stateAddr, __
             LoadAlign<float, LoadDist::DIST_BRC_B32>(beta, betaAddr + token * 16);
             LoadAlign<bfloat16_t, LoadDist::DIST_UNPACK_B16>(bf16, keyAddr + inputOffset);
             Cast<float, bfloat16_t, castBf16ToFp32>(source, bf16, allMask);
-            Gather<float, uint32_t>(key, source, reinterpret_cast<RegTensor<uint32_t> &>(featureIndex));
+            Gather<float, uint32_t>(key, source, reinterpret_cast<RegTensor<uint32_t>&>(featureIndex));
             Mul(product, state, key, packedMask);
             ReduceDataBlock<ReduceType::SUM>(reduced, product, packedMask);
             Duplicate(total, static_cast<float>(0.0f));
@@ -232,13 +243,13 @@ __simd_vf__ inline void StreamingExactPackedRowsVF(__ubuf__ float *stateAddr, __
             Mul(product, alpha, total, rowMask);
             Sub(residual, value, product, rowMask);
             Mul(residual, residual, beta, rowMask);
-            Gather<float, uint32_t>(residualBroadcast, residual, reinterpret_cast<RegTensor<uint32_t> &>(rowIndex));
+            Gather<float, uint32_t>(residualBroadcast, residual, reinterpret_cast<RegTensor<uint32_t>&>(rowIndex));
             Mul(state, state, alpha, packedMask);
             Mul(product, key, residualBroadcast, packedMask);
             Add(state, state, product, packedMask);
             LoadAlign<bfloat16_t, LoadDist::DIST_UNPACK_B16>(bf16, queryAddr + inputOffset);
             Cast<float, bfloat16_t, castBf16ToFp32>(source, bf16, allMask);
-            Gather<float, uint32_t>(query, source, reinterpret_cast<RegTensor<uint32_t> &>(featureIndex));
+            Gather<float, uint32_t>(query, source, reinterpret_cast<RegTensor<uint32_t>&>(featureIndex));
             Muls(query, query, scale, packedMask);
             Mul(product, state, query, packedMask);
             ReduceDataBlock<ReduceType::SUM>(reduced, product, packedMask);
@@ -247,7 +258,7 @@ __simd_vf__ inline void StreamingExactPackedRowsVF(__ubuf__ float *stateAddr, __
             StoreAlign<float, StoreDist::DIST_NORM_B32>(outAddr + static_cast<uint32_t>(token) * 64 + rowBegin, total,
                                                         rowMask);
         }
-        Scatter(stateBase, state, reinterpret_cast<RegTensor<uint32_t> &>(offset), packedMask);
+        Scatter(stateBase, state, reinterpret_cast<RegTensor<uint32_t>&>(offset), packedMask);
     }
 }
 
@@ -261,9 +272,9 @@ __simd_vf__ inline void StreamingExactPackedRowsVF(__ubuf__ float *stateAddr, __
  * Chunk 路径还会量化 Cube 输入和 BF16 接口的 stateDelta，因此 Exact 不表示两条路径逐位相同。
  */
 template <bool hasGamma>
-__simd_vf__ inline void StreamingExactBatchVF(__ubuf__ float *stateAddr, __ubuf__ bfloat16_t *queryAddr,
-                                              __ubuf__ bfloat16_t *keyAddr, __ubuf__ float *valueAddr,
-                                              __ubuf__ float *betaAddr, __ubuf__ float *gAddr, __ubuf__ float *outAddr,
+__simd_vf__ inline void StreamingExactBatchVF(__ubuf__ float* stateAddr, __ubuf__ bfloat16_t* queryAddr,
+                                              __ubuf__ bfloat16_t* keyAddr, __ubuf__ float* valueAddr,
+                                              __ubuf__ float* betaAddr, __ubuf__ float* gAddr, __ubuf__ float* outAddr,
                                               float scale, uint16_t rowCount, uint16_t dk, uint16_t stateRowStride,
                                               uint16_t tokenCount)
 {
@@ -365,5 +376,3 @@ __simd_vf__ inline void StreamingExactBatchVF(__ubuf__ float *stateAddr, __ubuf_
 }
 
 } // namespace ChunkGatedDeltaRule
-
-#endif // CHUNK_GATED_DELTA_RULE_STAGE2_VF_H
