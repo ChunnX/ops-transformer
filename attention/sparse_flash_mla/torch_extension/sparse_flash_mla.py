@@ -145,7 +145,7 @@ class SparseFlashMlaOpBuilder(OpBuilder):
                     )
                 else:
                     # 给一个空的合法张量，不能返回nullptr
-                    softmax_lse = torch.empty([], dtype=torch.float32, device=q.device)
+                    softmax_lse = torch.empty([0], dtype=torch.float32, device=q.device)
             else:
                 attn_out = torch.empty(q.shape, dtype=q.dtype, device=q.device)
                 if return_softmax_lse:
@@ -156,7 +156,7 @@ class SparseFlashMlaOpBuilder(OpBuilder):
                     )
                 else:
                     # 给一个空的合法张量，不能返回nullptr
-                    softmax_lse = torch.empty([], dtype=torch.float32, device=q.device)
+                    softmax_lse = torch.empty([0], dtype=torch.float32, device=q.device)
             return (attn_out, softmax_lse)
 
 
