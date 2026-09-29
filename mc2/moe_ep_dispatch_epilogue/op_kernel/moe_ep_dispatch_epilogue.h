@@ -148,6 +148,7 @@ private:
     GlobalTensor<int32_t> recvSrcMetadataGm_;
     GlobalTensor<int32_t> recvRankOffsetsGm_;
     GlobalTensor<int32_t> localRecvIndexGm_;
+    GlobalTensor<int32_t> cachedLocalRecvIndexGm_;
     GlobalTensor<ScalesType> recvScalesGm_;
     GlobalTensor<int32_t> cachedRecvSrcMetadataGm_; // cached 路径专用：来自上一轮 dispatch 的 recv_src_metadata
     GlobalTensor<int32_t> cachedRecvRankOffsetsGm_; // cached 路径专用：来自上一轮 dispatch 的 rank offsets
@@ -174,7 +175,6 @@ private:
     LocalTensor<int64_t> ubHitList_;
     LocalTensor<int32_t> ubWaitStatus_;
     LocalTensor<int32_t> ubWaitSum_;
-    LocalTensor<int32_t> ubLocalIndexValue_;
 
     TBuf<QuePosition::VECIN> ubHitCountBuf_;
     TBuf<QuePosition::VECIN> ubRankExpertHitCountBuf_;
@@ -199,7 +199,6 @@ private:
     TBuf<> waitStatusBuf_;
     TBuf<> waitSumBuf_;
     TBuf<> sharedTmpBuf_;
-    TBuf<> ubLocalIndexValueBuf_;
 
     uint32_t expertSum_{0};
     GM_ADDR workspaceGM_{nullptr};
@@ -307,6 +306,8 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     if constexpr (IsCached) {
         cachedRecvRankOffsetsGm_.SetGlobalBuffer(
             reinterpret_cast<__gm__ int32_t *>(cachedRecvSrcMetadata + tilingData->metadataRankOffsetsOffset));
+        cachedLocalRecvIndexGm_.SetGlobalBuffer(
+            reinterpret_cast<__gm__ int32_t *>(cachedRecvSrcMetadata + tilingData->localRecvIndexOffset));
     }
     xGm_.SetGlobalBuffer((__gm__ XType *)x);
     recvXGm_.SetGlobalBuffer((__gm__ XType *)recvX);
@@ -404,9 +405,6 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
             stageEvtMte3ToS_[ringIdx] = static_cast<int32_t>(GetTPipePtr()->AllocEventID<AscendC::HardEvent::MTE3_S>());
         }
         stageEvtSToMte3_ = static_cast<int32_t>(GetTPipePtr()->AllocEventID<AscendC::HardEvent::S_MTE3>());
-    } else {
-        tpipe_->InitBuffer(ubLocalIndexValueBuf_, UB_ALIGN);
-        ubLocalIndexValue_ = ubLocalIndexValueBuf_.Get<int32_t>();
     }
 
     if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
@@ -456,7 +454,23 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     uint32_t start = startBlock * INT32_PER_BLOCK;
     uint32_t end = endBlock * INT32_PER_BLOCK;
     end = end > totalElements ? totalElements : end;
-    InitOutput<int32_t>(localRecvIndexGm_[start], end - start, -1);
+    if constexpr (IsCached) {
+        // 路由未变，直接复用反向索引，省去逐条4字节写出和等待。
+        // 通信等待前借用状态buffer，搬出完成后再归还，不增加UB。
+        const uint32_t tileElements = totalNotifyCnt_ * INT32_PER_BLOCK;
+        DataCopyPadExtParams<int32_t> padding{false, 0U, 0U, 0};
+        for (uint32_t offset = start; offset < end;) {
+            const uint32_t count = end - offset < tileElements ? end - offset : tileElements;
+            DataCopyExtParams params{1U, count * static_cast<uint32_t>(sizeof(int32_t)), 0U, 0U, 0U};
+            DataCopyPad(ubWaitStatus_, cachedLocalRecvIndexGm_[offset], params, padding);
+            SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
+            DataCopyPad(localRecvIndexGm_[offset], ubWaitStatus_, params);
+            SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
+            offset += count;
+        }
+    } else {
+        InitOutput<int32_t>(localRecvIndexGm_[start], end - start, -1);
+    }
     SyncFunc<AscendC::HardEvent::MTE3_S>();
 }
 
@@ -962,7 +976,6 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     DataCopyPadExtParams<int32_t> metaPadParams{false, 0, 0, 0};
     DataCopyParams tokenCopyParams{1U, static_cast<uint16_t>(axisH_ * sizeof(XType)), 0U, 0U};
     DataCopyPadParams tokenPadParams{false, 0, 0, 0};
-    DataCopyExtParams localIndexOutParams{1U, static_cast<uint32_t>(sizeof(int32_t)), 0U, 0U, 0U};
 
     uint32_t processed = 0;
     while (processed < cnt) {
@@ -1036,26 +1049,10 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
             }
             tokenQueue_.FreeTensor(tokenOut);
 
-            const bool writeLocalIndex = srcRankId == static_cast<int32_t>(epRankId_) && tokenIdx >= 0 &&
-                                         tokenIdx < static_cast<int32_t>(numTokens_) && srcTopkIdx >= 0 &&
-                                         srcTopkIdx < static_cast<int32_t>(axisK_);
-            if (writeLocalIndex) {
-                ubLocalIndexValue_.SetValue(0, recvXIdx);
-            }
             if constexpr (HasTopkWeights) {
                 SyncFunc<AscendC::HardEvent::S_MTE3>();
                 DataCopyExtParams weightOutParams{1U, static_cast<uint32_t>(sizeof(float)), 0U, 0U, 0U};
                 DataCopyPad(recvTopkWeightsGm_[recvXRow], ubStageWeights_, weightOutParams);
-                if (writeLocalIndex) {
-                    uint32_t lookupIndex = static_cast<uint32_t>(tokenIdx) * axisK_ + static_cast<uint32_t>(srcTopkIdx);
-                    DataCopyPad(localRecvIndexGm_[lookupIndex], ubLocalIndexValue_, localIndexOutParams);
-                }
-                // Both scalar outputs have consumed their aligned staging blocks before the next metadata row.
-                SyncFunc<AscendC::HardEvent::MTE3_S>();
-            } else if (writeLocalIndex) {
-                uint32_t lookupIndex = static_cast<uint32_t>(tokenIdx) * axisK_ + static_cast<uint32_t>(srcTopkIdx);
-                SyncFunc<AscendC::HardEvent::S_MTE3>();
-                DataCopyPad(localRecvIndexGm_[lookupIndex], ubLocalIndexValue_, localIndexOutParams);
                 SyncFunc<AscendC::HardEvent::MTE3_S>();
             }
         }
