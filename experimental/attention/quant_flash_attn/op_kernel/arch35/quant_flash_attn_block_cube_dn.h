@@ -82,9 +82,9 @@ private:
     static constexpr uint8_t VEC0 = 0;
     static constexpr uint8_t VEC1 = 1;
 
-    const ConstInfo &constInfo;
-    const SeqLensTool<LAYOUT_Q, SEQLEN_T> &qSeqLensTool;
-    const SeqLensTool<LAYOUT_KV, SEQLEN_T> &kvSeqLensTool;
+    const ConstInfo& constInfo;
+    const SeqLensTool<LAYOUT_Q, SEQLEN_T>& qSeqLensTool;
+    const SeqLensTool<LAYOUT_KV, SEQLEN_T>& kvSeqLensTool;
 
     GlobalTensor<int32_t> blockTableGm;
     GlobalTensor<DATA_T> queryGm;
@@ -201,27 +201,27 @@ private:
     FixpipeParamsArch3510<CO2Layout::ROW_MAJOR> fixpipeMm1Params;
 
 public:
-    __aicore__ inline QuantFlashAttnBlockCubeDn(ConstInfo &constInfo, SeqLensTool<LAYOUT_Q, SEQLEN_T> &qSeqLensTool,
-                                                SeqLensTool<LAYOUT_KV, SEQLEN_T> &kvSeqLensTool)
+    __aicore__ inline QuantFlashAttnBlockCubeDn(ConstInfo& constInfo, SeqLensTool<LAYOUT_Q, SEQLEN_T>& qSeqLensTool,
+                                                SeqLensTool<LAYOUT_KV, SEQLEN_T>& kvSeqLensTool)
         : constInfo(constInfo),
           qSeqLensTool(qSeqLensTool),
           kvSeqLensTool(kvSeqLensTool){};
 
-    __aicore__ inline void InitInput(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
-                                     __gm__ uint8_t *dequantScaleQuery, __gm__ uint8_t *dequantScaleKey,
-                                     __gm__ uint8_t *dequantScaleValue, __gm__ uint8_t *blockTable)
+    __aicore__ inline void InitInput(__gm__ uint8_t* query, __gm__ uint8_t* key, __gm__ uint8_t* value,
+                                     __gm__ uint8_t* dequantScaleQuery, __gm__ uint8_t* dequantScaleKey,
+                                     __gm__ uint8_t* dequantScaleValue, __gm__ uint8_t* blockTable)
     {
         if constexpr (PAGE_ATTENTION) {
-            blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
+            blockTableGm.SetGlobalBuffer((__gm__ int32_t*)blockTable);
         }
 
         headDimInt8 = (constInfo.dSize / GetBlockElemCnt<QUANT_T>()) * GetBlockElemCnt<DATA_T>();
-        queryGm.SetGlobalBuffer((__gm__ DATA_T *)query);
-        keyGm.SetGlobalBuffer((__gm__ DATA_T *)key);
-        valueGm.SetGlobalBuffer((__gm__ DATA_T *)value);
-        queryScaleGm.SetGlobalBuffer((__gm__ SCALE_T *)dequantScaleQuery);
-        keyScaleGm.SetGlobalBuffer((__gm__ SCALE_T *)dequantScaleKey);
-        valueScaleGm.SetGlobalBuffer((__gm__ SCALE_T *)dequantScaleValue);
+        queryGm.SetGlobalBuffer((__gm__ DATA_T*)query);
+        keyGm.SetGlobalBuffer((__gm__ DATA_T*)key);
+        valueGm.SetGlobalBuffer((__gm__ DATA_T*)value);
+        queryScaleGm.SetGlobalBuffer((__gm__ SCALE_T*)dequantScaleQuery);
+        keyScaleGm.SetGlobalBuffer((__gm__ SCALE_T*)dequantScaleKey);
+        valueScaleGm.SetGlobalBuffer((__gm__ SCALE_T*)dequantScaleValue);
 
         InitGmCopyConsts();
     }
@@ -311,13 +311,13 @@ public:
 
         fixpipeMm1Params.dstStride = 512 / sizeof(half);
         fixpipeMm1Params.quantPre = QuantMode_t::QF322F16_PRE;
-        fixpipeMm1Params.deqScalar = static_cast<uint64_t>(*reinterpret_cast<const int32_t *>(&constInfo.scaleValue));
+        fixpipeMm1Params.deqScalar = static_cast<uint64_t>(*reinterpret_cast<const int32_t*>(&constInfo.scaleValue));
         fixpipeMm1Params.dualDstCtl = 0;
         fixpipeMm1Params.params.ndNum = 1;
         fixpipeMm1Params.params.dstNdStride = 512 / sizeof(half);
     }
 
-    __aicore__ inline void ComputeMm1(const CubeRunInfo &info)
+    __aicore__ inline void ComputeMm1(const CubeRunInfo& info)
     {
         if (unlikely(info.isFirstS2Loop)) {
             Mutex::Lock<PIPE_MTE2>(Q_MUTEX_ID_BASE);
@@ -377,7 +377,7 @@ public:
         }
     }
 
-    __aicore__ inline void ComputeMm2(const CubeRunInfo &info)
+    __aicore__ inline void ComputeMm2(const CubeRunInfo& info)
     {
         if (info.actSingleLoopS2SizeAlign != info.actSingleLoopS2SizeAlign64) {
             Mutex::Lock<PIPE_MTE2>(P_FILL_MUTEX_ID);
@@ -457,7 +457,7 @@ public:
         }
     }
 
-    __aicore__ inline void CopyGMaxL1ToUb(const CubeRunInfo &runInfo)
+    __aicore__ inline void CopyGMaxL1ToUb(const CubeRunInfo& runInfo)
     {
         LocalTensor<half> localGlobalMax0 = localGlobalMaxL1[runInfo.tileMaxIdx * 256];
         LocalTensor<half> localGlobalMax1 = localGlobalMaxL1[runInfo.tileMaxIdx * 256 + L1_SINGLE_GLOBAL_MAX_SIZE];
@@ -586,7 +586,7 @@ private:
         Mutex::Unlock<PIPE_MTE1>(VSUM_MUTEX_ID_BASE);
     }
 
-    __aicore__ inline void CopyQGmToL1(const CubeRunInfo &info)
+    __aicore__ inline void CopyQGmToL1(const CubeRunInfo& info)
     {
         qNd2NzParams.nValue = info.actMSize;
         qNd2NzParams.dstNzC0Stride = info.actMSizeAlign128;
@@ -594,7 +594,7 @@ private:
         DataCopy(qL1Tensor, queryGm[gmOffset], qNd2NzParams);
     }
 
-    __aicore__ inline void CopyKGmToL1(const CubeRunInfo &info)
+    __aicore__ inline void CopyKGmToL1(const CubeRunInfo& info)
     {
         uint64_t l1BaseOffset = kvBufId * (L1_KV_SIZE / sizeof(DATA_T));
         uint64_t gmOffset = info.bIdx * kvGmStrideB + info.kvHeadIdx * kvGmStrideN2 + info.s2Idx * kvGmStrideS2;
@@ -602,7 +602,7 @@ private:
         DataCopy(kvL1Tensor[l1BaseOffset], keyGm[gmOffset], kvNd2NzParams);
     }
 
-    __aicore__ inline void CopyVGmToL1(const CubeRunInfo &info)
+    __aicore__ inline void CopyVGmToL1(const CubeRunInfo& info)
     {
         uint64_t l1BaseOffset = kvBufId * (L1_KV_SIZE / sizeof(DATA_T));
         uint64_t gmOffset = info.bIdx * kvGmStrideB + info.kvHeadIdx * kvGmStrideN2 + info.s2Idx * kvGmStrideS2;
@@ -611,29 +611,29 @@ private:
     }
 
     // copy query scale with full s1g
-    __aicore__ inline void CopyQScaleGmToL1(const CubeRunInfo &info)
+    __aicore__ inline void CopyQScaleGmToL1(const CubeRunInfo& info)
     {
         qScaleDn2NzParams.dValue = info.actMSize;
         uint64_t gmOffset =
             info.bIdx * qScaleGmStrideB + info.n2Idx * qScaleGmStrideN2 + info.gS1Idx * qScaleGmStrideS1;
         GlobalTensor<bfloat16_t> gmTensorCast;
-        gmTensorCast.SetGlobalBuffer((__gm__ bfloat16_t *)(queryScaleGm[gmOffset].GetPhyAddr()));
+        gmTensorCast.SetGlobalBuffer((__gm__ bfloat16_t*)(queryScaleGm[gmOffset].GetPhyAddr()));
         DataCopy(qDescaleL1Tensor.template ReinterpretCast<bfloat16_t>(), gmTensorCast, qScaleDn2NzParams);
     }
 
     // copy key scale with full s2
-    __aicore__ inline void CopyKScaleGmToL1(const CubeRunInfo &info)
+    __aicore__ inline void CopyKScaleGmToL1(const CubeRunInfo& info)
     {
         uint32_t offset = kvBufId * (L1_KV_DESCALE_SIZE / sizeof(SCALE_T));
         kScaleDn2NzParams.dValue = info.pairKVCopyS2Size;
         uint64_t gmOffset =
             info.bIdx * kScaleGmStrideB + info.kvHeadIdx * kScaleGmStrideN2 + info.s2Idx * kScaleGmStrideS2;
         GlobalTensor<bfloat16_t> gmTensorCast;
-        gmTensorCast.SetGlobalBuffer((__gm__ bfloat16_t *)(keyScaleGm[gmOffset].GetPhyAddr()));
+        gmTensorCast.SetGlobalBuffer((__gm__ bfloat16_t*)(keyScaleGm[gmOffset].GetPhyAddr()));
         DataCopy(kvDescaleL1Tensor[offset].template ReinterpretCast<bfloat16_t>(), gmTensorCast, kScaleDn2NzParams);
     }
 
-    __aicore__ inline void LoadQToL0(const CubeRunInfo &info)
+    __aicore__ inline void LoadQToL0(const CubeRunInfo& info)
     {
         LoadData2DParamsV2 loadData2DParamsA;
         loadData2DParamsA.mStartPosition = 0;
@@ -659,7 +659,7 @@ private:
                  qDescaleL1Tensor[qScaleL1Offset], loadData2DParamsA, loadData2DMxParamsA);
     }
 
-    __aicore__ inline void LoadKToL0(const CubeRunInfo &info, uint32_t subLoop, uint32_t actS2SizeAlign)
+    __aicore__ inline void LoadKToL0(const CubeRunInfo& info, uint32_t subLoop, uint32_t actS2SizeAlign)
     {
         uint32_t mStart = (info.prefetched ? (s2BaseSize / 16) : 0) + subLoop * (QK_L0_S2_SPLIT_SIZE / 16);
         uint32_t mStep = actS2SizeAlign / 16;
@@ -677,7 +677,7 @@ private:
                  kvDescaleL1Tensor[kScaleL1Offset], loadKParamsA, loadKParamsMx);
     }
 
-    __aicore__ inline void MatmulQK(const CubeRunInfo &info, uint32_t actS2Size)
+    __aicore__ inline void MatmulQK(const CubeRunInfo& info, uint32_t actS2Size)
     {
         mmadQKParams.m = actS2Size;
         mmadQKParams.n = info.actMSizeAlign128;
@@ -688,7 +688,7 @@ private:
              qkL0BTensor[qkL0BOffset].ReinterpretCast<QUANT_T>(), mmadQKParams);
     }
 
-    __aicore__ inline void FixpipeMm1(const CubeRunInfo &info, uint32_t subLoop, uint32_t actS2Size)
+    __aicore__ inline void FixpipeMm1(const CubeRunInfo& info, uint32_t subLoop, uint32_t actS2Size)
     {
         fixpipeMm1Params.nSize = (info.actMSizeAlign128 + 7) >> 3 << 3;
         fixpipeMm1Params.mSize = (actS2Size + 1) >> 1 << 1;
@@ -702,7 +702,7 @@ private:
                                                    qkL0CTensor[qkL0COffset], fixpipeMm1Params);
     }
 
-    __aicore__ inline void CopyVScaleGmToL1(const CubeRunInfo &info)
+    __aicore__ inline void CopyVScaleGmToL1(const CubeRunInfo& info)
     {
         uint32_t offset = kvBufId * (L1_KV_DESCALE_SIZE / sizeof(SCALE_T));
         vScaleNd2NzParams.nValue = (info.pairKVCopyS2Size + 63) / 64;
@@ -710,11 +710,11 @@ private:
         uint64_t gmOffset =
             info.bIdx * vScaleGmStrideB + info.kvHeadIdx * vScaleGmStrideN2 + (info.s2Idx / 64) * vScaleGmStrideS2;
         GlobalTensor<bfloat16_t> gmTensorCast;
-        gmTensorCast.SetGlobalBuffer((__gm__ bfloat16_t *)(valueScaleGm[gmOffset].GetPhyAddr()));
+        gmTensorCast.SetGlobalBuffer((__gm__ bfloat16_t*)(valueScaleGm[gmOffset].GetPhyAddr()));
         DataCopy(kvDescaleL1Tensor[offset].template ReinterpretCast<bfloat16_t>(), gmTensorCast, vScaleNd2NzParams);
     }
 
-    __aicore__ inline void LoadPToL0(const CubeRunInfo &info)
+    __aicore__ inline void LoadPToL0(const CubeRunInfo& info)
     {
         LoadData2DParamsV2 loadData2DParamsB;
         loadData2DParamsB.mStartPosition = 0;
@@ -743,7 +743,7 @@ private:
                  pDescaleL1Tensor[pScaleL1Offset], loadData2DParamsB, load2DMxParamsB);
     }
 
-    __aicore__ inline void LoadVToL0(const CubeRunInfo &info)
+    __aicore__ inline void LoadVToL0(const CubeRunInfo& info)
     {
         LoadData2DParamsV2 loadData2DParamsA;
         loadData2DParamsA.mStartPosition = info.prefetched ? (s2BaseSize / 16) : 0;
@@ -772,7 +772,7 @@ private:
                  kvDescaleL1Tensor[vScaleL1Offset], loadData2DParamsA, load2DMxParamsA);
     }
 
-    __aicore__ inline void MatmulPV(const CubeRunInfo &info)
+    __aicore__ inline void MatmulPV(const CubeRunInfo& info)
     {
         MmadParams mmadParams;
         mmadParams.m = constInfo.dSize + 16;
@@ -788,7 +788,7 @@ private:
              pvL0BTensor[pvL0BOffset].ReinterpretCast<QUANT_T>(), mmadParams);
     }
 
-    __aicore__ inline void FixpipeMm2(const CubeRunInfo &info)
+    __aicore__ inline void FixpipeMm2(const CubeRunInfo& info)
     {
         FixpipeParamsArch3510<CO2Layout::ROW_MAJOR> fixpipeParams;
         fixpipeParams.nSize = (info.actMSizeAlign128 + 7) >> 3 << 3;
