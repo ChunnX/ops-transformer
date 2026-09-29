@@ -56,6 +56,10 @@ constexpr uint32_t HCCL_COMM_LAYERS_UB_MEM = 0;
 constexpr uint32_t GET_LOCAL_SERVER_RANK_SIZE_LAYER = 0;
 constexpr int64_t NETWORK_DIRECT = 0;
 constexpr int64_t NETWORK_HYBRID = 1;
+// engram fetch modes (this standalone package cannot include op-side headers; values must stay in
+// sync with mc2/engram_fetch/op_api/engram_fetch_mode_def.h and the Python FETCH_MODE_* constants)
+constexpr int64_t ENGRAM_FETCH_MODE_SLICED = 0; // sliced sharding + cross-NPU comm (default)
+constexpr int64_t ENGRAM_FETCH_MODE_LOCAL = 1;  // full table replicated per NPU, local gather only
 constexpr int64_t BUFFER_ALIGNMENT = 2 * 1024 * 1024;
 constexpr int64_t MB_SIZE = 1024LL * 1024LL;
 constexpr int64_t HUGE1G_SIZE = 1024ULL * 1024ULL * 1024ULL;
@@ -232,6 +236,8 @@ struct EngramSharedBufferEntry {
     bool externalRegistered = false;
     int64_t registeredBytes = 0; // 实际已注册的字节数
     int64_t commBufferSize = 0;
+    int64_t fetchMode = ENGRAM_FETCH_MODE_SLICED;
+    bool withGrad = false;
     EngramCommContext context;
     void *sfDeviceBufPtr = nullptr;
     bool sfExternalRegistered = false;
@@ -496,11 +502,12 @@ protected:
 
 class EngramContextBuilder : public HcclContextBuilderBase {
 public:
-    EngramContextResources Build(const std::string &groupName, int64_t numCpuBytes, bool withGrad,
+    EngramContextResources Build(const std::string &groupName, int64_t numCpuBytes, bool withGrad, int64_t fetchMode,
                                  void *externalHostPtr = nullptr, int64_t externalBytes = 0, void *sfHostPtr = nullptr,
                                  int64_t sfBytes = 0)
     {
         withGrad_ = withGrad;
+        fetchMode_ = fetchMode;
         EngramContextResources resources;
         AcquireHcclHandle(groupName, resources.hcclComm);
 
@@ -543,6 +550,8 @@ public:
                 entry.registeredBytes =
                     resources.hostBufPtr != nullptr ? ((externalHostPtr != nullptr) ? externalBytes : numCpuBytes) : 0;
                 entry.commBufferSize = resources.commBufferSize;
+                entry.fetchMode = fetchMode_;
+                entry.withGrad = withGrad_;
                 entry.context = resources.context;
                 entry.sfDeviceBufPtr = resources.sfDeviceBufPtr;
                 entry.sfExternalRegistered = resources.sfExternalRegistered;
@@ -568,6 +577,10 @@ public:
         bool callerHasBuffer = (numCpuBytes > 0) || (externalHostPtr != nullptr);
         if (!callerHasBuffer) {
             // 仅初始化 ctx(如 engram_barrier 无存储场景)：复用共享池既有状态
+            TORCH_CHECK(!(withGrad_ && entry.fetchMode == ENGRAM_FETCH_MODE_LOCAL), "Engram comm context of group '",
+                        contextTag,
+                        "' was created in local fetch mode and has no cross-NPU channel; a training instance "
+                        "requires channels to fetch remotely, please use a new comm group");
             resources.hostBufPtr = entry.hostBufPtr;
             resources.deviceBufPtr = entry.deviceBufPtr;
             resources.memHandle = entry.memHandle;
@@ -609,6 +622,8 @@ public:
                 poolEntry.externalRegistered = resources.externalRegistered;
                 poolEntry.registeredBytes = (externalHostPtr != nullptr) ? externalBytes : numCpuBytes;
                 poolEntry.commBufferSize = resources.commBufferSize;
+                poolEntry.fetchMode = fetchMode_;
+                poolEntry.withGrad = withGrad_;
                 poolEntry.context = resources.context;
                 poolEntry.sfDeviceBufPtr = resources.sfDeviceBufPtr;
                 poolEntry.sfExternalRegistered = resources.sfExternalRegistered;
@@ -637,6 +652,10 @@ public:
                         "; the shared engram storage is sized by the first ElasticBuffer created on this group, "
                         "destroy and recreate with a larger size is not supported, please use a new comm group");
         }
+        TORCH_CHECK(!(entry.fetchMode == ENGRAM_FETCH_MODE_LOCAL && fetchMode_ == ENGRAM_FETCH_MODE_SLICED),
+                    "Engram comm context of group '", contextTag,
+                    "' was created in local fetch mode and holds no cross-NPU channels; sliced fetch-mode "
+                    "rebuild on this group is not supported, please use a new comm group");
         resources.hostBufPtr = entry.hostBufPtr;
         resources.deviceBufPtr = entry.deviceBufPtr;
         resources.memHandle = entry.memHandle;
@@ -650,6 +669,7 @@ public:
 
 private:
     bool withGrad_ = false;
+    int64_t fetchMode_ = ENGRAM_FETCH_MODE_SLICED;
 
     static void ValidateRankSize(uint32_t rankSize)
     {
@@ -966,17 +986,24 @@ private:
             MapSfTableBuffer(resources, sfHostPtr, sfBytes);
         }
 
-        uint32_t *netLayerList = nullptr;
-        uint32_t netLayerNum = 0;
-        GetNetLayers(resources.hcclComm, netLayerList, netLayerNum);
-        if (netLayerNum != HCCL_COMM_LAYERS_MTE_CCU) {
-            CheckProtocolSupport(resources.hcclComm, netLayerList, netLayerNum, CommProtocol::COMM_PROTOCOL_UB_CTP);
-        }
-
-        if (withGrad_) {
-            QueryHcclBufferResource(resources.hcclComm, resources);
+        if (fetchMode_ == ENGRAM_FETCH_MODE_LOCAL) {
+            // Local mode (infer only): acquire no cross-card channels or remote addresses
+            // (no inter-NPU RDMA dependency); record only this rank's table base address.
+            resources.context.virtualAddrList[resources.context.rankId] =
+                reinterpret_cast<uint64_t>(resources.deviceBufPtr);
         } else {
-            GetHcclCommResource(resources.hcclComm, resources, memBufferTag);
+            uint32_t *netLayerList = nullptr;
+            uint32_t netLayerNum = 0;
+            GetNetLayers(resources.hcclComm, netLayerList, netLayerNum);
+            if (netLayerNum != HCCL_COMM_LAYERS_MTE_CCU) {
+                CheckProtocolSupport(resources.hcclComm, netLayerList, netLayerNum, CommProtocol::COMM_PROTOCOL_UB_CTP);
+            }
+
+            if (withGrad_) {
+                QueryHcclBufferResource(resources.hcclComm, resources);
+            } else {
+                GetHcclCommResource(resources.hcclComm, resources, memBufferTag);
+            }
         }
 
         CopyContextToDevice(resources.hcclComm, contextTag, CommEngine::COMM_ENGINE_AIV, &resources.context,
@@ -1631,7 +1658,7 @@ private:
 class ElasticBuffer {
 public:
     ElasticBuffer(const std::string &groupName, int64_t numCpuBytes, int64_t numMaxTokensPerRank = 0,
-                  bool withGrad = false, bool explicitlyDestroy = false);
+                  bool withGrad = false, bool explicitlyDestroy = false, int64_t fetchMode = ENGRAM_FETCH_MODE_SLICED);
     ~ElasticBuffer();
 
     void EngramWrite(const at::Tensor &storage, const c10::optional<at::Tensor> &sf);
@@ -1658,10 +1685,9 @@ public:
     {
         return engramCommContext_.rankSize;
     }
-
     static at::Tensor EngramFetch(const at::Tensor &context, const at::Tensor &indices, int64_t hiddenSize,
                                   int64_t numEntries, int64_t dtypeEnum, const at::Tensor &sfTable,
-                                  at::Tensor &fetchedSf);
+                                  at::Tensor &fetchedSf, int64_t fetchMode);
     using EngramFetchTrainOutput = std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor>;
     static EngramFetchTrainOutput EngramFetchTrain(const at::Tensor &context, const at::Tensor &indices,
                                                    int64_t hiddenSize, int64_t numEntries, int64_t dtypeEnum,
@@ -1757,21 +1783,29 @@ private:
 
     bool destroyed_ = false;
     bool engramWriteCalled_ = false;
+    int64_t fetchMode_ = ENGRAM_FETCH_MODE_SLICED; // 0 = sliced cross-NPU (default), 1 = local full table
     aclrtStream commStream_ = nullptr;
 };
 
 // Constructor
 
 ElasticBuffer::ElasticBuffer(const std::string &groupName, int64_t numCpuBytes, int64_t numMaxTokensPerRank,
-                             bool withGrad, bool explicitlyDestroy)
+                             bool withGrad, bool explicitlyDestroy, int64_t fetchMode)
     : groupName_(groupName),
       engramNumCpuBytes_(numCpuBytes),
       destroyed_(false),
       engramWriteCalled_(false),
       numMaxTokensPerRank_(numMaxTokensPerRank),
       explicitlyDestroy_(explicitlyDestroy),
-      withGrad_(withGrad)
+      withGrad_(withGrad),
+      fetchMode_(fetchMode)
 {
+    TORCH_CHECK(fetchMode == ENGRAM_FETCH_MODE_SLICED || fetchMode == ENGRAM_FETCH_MODE_LOCAL,
+                "fetch_mode must be 0 (sliced, cross-NPU) or 1 (local, full replication), got ", fetchMode);
+    TORCH_CHECK(!(withGrad && fetchMode == ENGRAM_FETCH_MODE_LOCAL),
+                "fetch_mode=1 (local, full replication) only supports inference, "
+                "with_grad=True is not supported in local fetch_mode, got with_grad=",
+                withGrad, ", fetch_mode=", fetchMode);
     InitHcclEngineCtxFunctions();
     InitHcclFunctions();
 }
@@ -1803,7 +1837,7 @@ void ElasticBuffer::EnsureEngramContext(void *externalHostPtr, int64_t externalB
     TORCH_CHECK(commStream_ != nullptr, "Failed to get NPU stream from pool for comm stream");
     EngramContextBuilder builder;
     EngramContextResources resources = builder.Build(groupName_, withGrad_ ? 0 : engramNumCpuBytes_, withGrad_,
-                                                     externalHostPtr, externalBytes, sfHostPtr, sfBytes);
+                                                     fetchMode_, externalHostPtr, externalBytes, sfHostPtr, sfBytes);
     engramHcclComm_ = resources.hcclComm;
     engramMemHandle_ = resources.memHandle;
     engramHostBufPtr_ = resources.hostBufPtr;
@@ -1904,10 +1938,16 @@ void ElasticBuffer::EngramWrite(const at::Tensor &storage, const c10::optional<a
     }
 
     constexpr int64_t int32Max = static_cast<int64_t>(INT32_MAX);
-    TORCH_CHECK(storage.size(0) * static_cast<int64_t>(engramCommContext_.rankSize) <= int32Max,
-                "num_entries * rank_size must not exceed INT32_MAX, got num_entries=", storage.size(0),
-                ", rank_size=", engramCommContext_.rankSize,
-                ", product=", storage.size(0) * static_cast<int64_t>(engramCommContext_.rankSize));
+    if (fetchMode_ == ENGRAM_FETCH_MODE_LOCAL) {
+        // Local mode: storage is the full global table, its row count is the global entry count.
+        TORCH_CHECK(storage.size(0) <= int32Max,
+                    "num_entries must not exceed INT32_MAX in local fetch_mode, got num_entries=", storage.size(0));
+    } else {
+        TORCH_CHECK(storage.size(0) * static_cast<int64_t>(engramCommContext_.rankSize) <= int32Max,
+                    "num_entries * rank_size must not exceed INT32_MAX, got num_entries=", storage.size(0),
+                    ", rank_size=", engramCommContext_.rankSize,
+                    ", product=", storage.size(0) * static_cast<int64_t>(engramCommContext_.rankSize));
+    }
 
     EngramBarrier(false, true);
 
@@ -1939,7 +1979,7 @@ void ElasticBuffer::EngramWrite(const at::Tensor &storage, const c10::optional<a
 // EngramFetch - stateless static method for torch CustomOp registration (graph-mode compatible).
 at::Tensor ElasticBuffer::EngramFetch(const at::Tensor &context, const at::Tensor &indices, int64_t hiddenSize,
                                       int64_t numEntries, int64_t dtypeEnum, const at::Tensor &sfTable,
-                                      at::Tensor &fetchedSf)
+                                      at::Tensor &fetchedSf, int64_t fetchMode)
 {
     auto dtype = static_cast<at::ScalarType>(dtypeEnum);
     int64_t numTokens = indices.size(0);
@@ -1950,7 +1990,7 @@ at::Tensor ElasticBuffer::EngramFetch(const at::Tensor &context, const at::Tenso
     aclTensor *nullTensor = nullptr;
     int64_t zero = 0;
     ACLNN_CMD(aclnnEngramFetch, context, indices, nullTensor, sfTable, fetched, nullTensor, nullTensor, nullTensor,
-              nullTensor, nullTensor, fetchedSf, hiddenSize, numEntries, zero, zero, zero);
+              nullTensor, nullTensor, fetchedSf, hiddenSize, numEntries, zero, zero, zero, fetchMode);
     return fetched;
 }
 
@@ -1980,7 +2020,7 @@ ElasticBuffer::EngramFetchTrainOutput ElasticBuffer::EngramFetchTrain(
         int64_t zero = 0;
         ACLNN_CMD(aclnnEngramFetch, context, indices, localStorageAddr, sfTableAddr, fetched, perm, sendCounts,
                   recvCounts, recvLocalEntry, numRecv, fetchedSf, hiddenSize, numEntries, numMaxTokensPerRank,
-                  commBufferSize, withGrad);
+                  commBufferSize, withGrad, ENGRAM_FETCH_MODE_SLICED); // 训练场景仅支持切片跨NPU模式
     }
     return std::make_tuple(fetched, perm, sendCounts, recvCounts, recvLocalEntry, numRecv);
 }
@@ -2366,17 +2406,18 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
         .def("host_ptr", &OpApi::HostPinnedCounter::HostPtr);
 
     pybind11::class_<Mc2Api::ElasticBuffer>(m, "ElasticBuffer")
-        .def(pybind11::init<const std::string &, int64_t, int64_t, bool, bool>(), pybind11::arg("groupName"),
+        .def(pybind11::init<const std::string &, int64_t, int64_t, bool, bool, int64_t>(), pybind11::arg("groupName"),
              pybind11::arg("numCpuBytes"), pybind11::arg("numMaxTokensPerRank") = 0, pybind11::arg("withGrad") = false,
-             pybind11::arg("explicitlyDestroy") = false)
+             pybind11::arg("explicitlyDestroy") = false, pybind11::arg("fetchMode") = Mc2Api::ENGRAM_FETCH_MODE_SLICED)
         .def("engram_write", &Mc2Api::ElasticBuffer::EngramWrite, pybind11::arg("storage").noconvert(),
              pybind11::arg("sf") = pybind11::none())
-        .def_static("engram_fetch",
-                    static_cast<at::Tensor (*)(const at::Tensor &, const at::Tensor &, int64_t, int64_t, int64_t,
-                                               const at::Tensor &, at::Tensor &)>(&Mc2Api::ElasticBuffer::EngramFetch),
-                    pybind11::arg("context"), pybind11::arg("indices"), pybind11::arg("hidden_size"),
-                    pybind11::arg("num_entries"), pybind11::arg("dtype"), pybind11::arg("sf_table"),
-                    pybind11::arg("fetched_sf"))
+        .def_static(
+            "engram_fetch",
+            static_cast<at::Tensor (*)(const at::Tensor &, const at::Tensor &, int64_t, int64_t, int64_t,
+                                       const at::Tensor &, at::Tensor &, int64_t)>(&Mc2Api::ElasticBuffer::EngramFetch),
+            pybind11::arg("context"), pybind11::arg("indices"), pybind11::arg("hidden_size"),
+            pybind11::arg("num_entries"), pybind11::arg("dtype"), pybind11::arg("sf_table"),
+            pybind11::arg("fetched_sf"), pybind11::arg("fetch_mode") = Mc2Api::ENGRAM_FETCH_MODE_SLICED)
         .def_static("engram_fetch_train", &Mc2Api::ElasticBuffer::EngramFetchTrain, pybind11::arg("context"),
                     pybind11::arg("indices"), pybind11::arg("hidden_size"), pybind11::arg("num_entries"),
                     pybind11::arg("dtype"), pybind11::arg("local_storage_addr"), pybind11::arg("sf_table_addr"),

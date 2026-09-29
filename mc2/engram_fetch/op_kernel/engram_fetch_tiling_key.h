@@ -18,20 +18,26 @@
 
 #include "ascendc/host_api/tiling/template_argument.h"
 
+// Kernel instance modes (template parameter, not the user-facing fetch_mode attr).
+// Derived by op_host tiling from the fetch_mode attr (op_api/engram_fetch_mode_def.h) and with_grad:
+// fetch_mode=0 + with_grad=0 -> DEFAULT_MODE; fetch_mode=0 + with_grad=1 -> TRAIN_MODE; fetch_mode=1 -> LOCAL_MODE
 #define ENGRAM_FETCH_DEFAULT_MODE 0
 #define ENGRAM_FETCH_TRAIN_MODE 1
+#define ENGRAM_FETCH_LOCAL_MODE 2
 #define ENGRAM_FETCH_NO_SF 0
 #define ENGRAM_FETCH_HAS_SF 1
 // 模板参数
 ASCENDC_TPL_ARGS_DECL(EngramFetch,
                       ASCENDC_TPL_UINT_DECL(EngramFetchMode, ASCENDC_TPL_8_BW, ASCENDC_TPL_UI_LIST,
-                                            ENGRAM_FETCH_DEFAULT_MODE, ENGRAM_FETCH_TRAIN_MODE),
+                                            ENGRAM_FETCH_DEFAULT_MODE, ENGRAM_FETCH_TRAIN_MODE,
+                                            ENGRAM_FETCH_LOCAL_MODE),
                       ASCENDC_TPL_BOOL_DECL(EngramHasSf, ENGRAM_FETCH_NO_SF, ENGRAM_FETCH_HAS_SF));
 
 // 模板参数组合
 // 用于调用GET_TPL_TILING_KEY获取TilingKey时，接口内部校验TilingKey是否合法
 ASCENDC_TPL_SEL(ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(EngramFetchMode, ASCENDC_TPL_UI_LIST,
-                                                          ENGRAM_FETCH_DEFAULT_MODE, ENGRAM_FETCH_TRAIN_MODE),
+                                                          ENGRAM_FETCH_DEFAULT_MODE, ENGRAM_FETCH_TRAIN_MODE,
+                                                          ENGRAM_FETCH_LOCAL_MODE),
                                      ASCENDC_TPL_BOOL_SEL(EngramHasSf, ENGRAM_FETCH_NO_SF, ENGRAM_FETCH_HAS_SF)));
 
 #endif // ENGRAM_FETCH_TILING_KEY_H
