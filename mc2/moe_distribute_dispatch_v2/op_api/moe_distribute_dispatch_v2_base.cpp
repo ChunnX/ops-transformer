@@ -14,8 +14,6 @@
  */
 
 #include <algorithm>
-#include <cstdlib>
-#include <cstring>
 #include "common/utils/op_mc2.h"
 #include "common/utils/op_mc2_def.h"
 #include "opdev/op_log.h"
@@ -132,14 +130,6 @@ static inline void SafeCopyGroupBuf(char *dst, size_t dstSize, const char *src, 
     }
 }
 
-// CCU 控制面混合模式开关（与 op_host tiling 层同名 env 语义一致；aclnn 层读一次用于 ServerType
-// 门控。图模式下 capture 期求值并烘焙，须与 tiling 期一致设置，全 rank 统一）
-static bool IsCcuCtrlHybridEnabled()
-{
-    const char *envVal = std::getenv("MOE_DISPATCH_USE_CCU_CTRL");
-    return (envVal != nullptr) && (std::strcmp(envVal, "1") == 0);
-}
-
 static void SetCommArgs(const bool isA5, const bool is910B, const char *commAlg, aclOpExecutor **executor)
 {
 #if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
@@ -148,18 +138,14 @@ static void SetCommArgs(const bool isA5, const bool is910B, const char *commAlg,
         if (commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0) {
             arg = reinterpret_cast<void *>(static_cast<uintptr_t>(CommType::CCU)); // ccu为1
         }
-        NnopbaseSetUserHandle(*executor, arg); // fullmesh_v2 恒 AIV：launch 路由维持 InnerV3（张量数据面）
+        NnopbaseSetUserHandle(*executor, arg);
     }
 #endif
 
     if (NnopbaseSetHcclServerType) { // 给ACLnn框架指定通讯方式。
         if (is910B) {
             NnopbaseSetHcclServerType(*executor, NNOPBASE_HCCL_SERVER_TYPE_AICPU);
-        } else if (isA5 && commAlg != nullptr &&
-                   ((std::strcmp(commAlg, "ccu") == 0) ||
-                    // 方案 C（matmul_reduce_scatter_v2 生产配方移植）：fullmesh_v2 混合模式会话切 CCU——
-                    // CCU 槽位注入仅在 CCU 会话发生（六配方实证矩阵归一），数据面不受影响（V3 张量）
-                    ((std::strcmp(commAlg, "fullmesh_v2") == 0) && IsCcuCtrlHybridEnabled()))) {
+        } else if (isA5 && commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0) {
             NnopbaseSetHcclServerType(*executor, NNOPBASE_HCCL_SERVER_TYPE_CCU);
         } else {
             NnopbaseSetHcclServerType(*executor, NNOPBASE_HCCL_SERVER_TYPE_MTE);
