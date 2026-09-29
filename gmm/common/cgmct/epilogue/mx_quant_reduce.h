@@ -23,7 +23,7 @@ namespace Gemm {
 namespace Block {
 namespace MxQuantDetail {
 // Share only the reduction: scale rounding and zero handling remain with each epilogue.
-__aicore__ inline void ReduceBf16MaxExponent(__ubuf__ bfloat16_t *srcAddr, __ubuf__ uint16_t *maxExpAddr,
+__aicore__ inline void ReduceBf16MaxExponent(__ubuf__ bfloat16_t* srcAddr, __ubuf__ uint16_t* maxExpAddr,
                                              uint32_t validCount, uint16_t loopNum, uint32_t registerElements,
                                              uint32_t reducedElements)
 {
@@ -42,8 +42,8 @@ __aicore__ inline void ReduceBf16MaxExponent(__ubuf__ bfloat16_t *srcAddr, __ubu
             AscendC::Reg::DataCopy<bfloat16_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE,
                                    AscendC::Reg::LoadDist::DIST_DINTLV_B16>(input0, input1, srcAddr,
                                                                             registerElements * INTERLEAVED_REGISTERS);
-            AscendC::Reg::And(exponent0, (AscendC::Reg::RegTensor<uint16_t> &)input0, exponentMask, mask);
-            AscendC::Reg::And(exponent1, (AscendC::Reg::RegTensor<uint16_t> &)input1, exponentMask, mask);
+            AscendC::Reg::And(exponent0, (AscendC::Reg::RegTensor<uint16_t>&)input0, exponentMask, mask);
+            AscendC::Reg::And(exponent1, (AscendC::Reg::RegTensor<uint16_t>&)input1, exponentMask, mask);
             AscendC::Reg::Max(maximum, exponent0, exponent1, mask);
             AscendC::Reg::ReduceMaxWithDataBlock(maximum, maximum, mask);
             AscendC::Reg::DataCopyUnAlign<uint16_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(

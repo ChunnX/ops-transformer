@@ -42,7 +42,7 @@ struct CapabilityParams {
     bool platformMemoryReady;
 };
 
-inline bool IsShapeAndPlatformCapable(const CapabilityParams &params)
+inline bool IsShapeAndPlatformCapable(const CapabilityParams& params)
 {
     if (!params.platformMemoryReady || params.groupNum == 0UL || params.aicNum == 0UL ||
         params.aivNum != AIC_AIV_CORE_RATIO * params.aicNum) {
@@ -55,20 +55,20 @@ inline bool IsShapeAndPlatformCapable(const CapabilityParams &params)
            params.n % FP8_N_ALIGN == 0UL && params.k > K_LOWER_LIMIT && params.k % K_ALIGN == 0UL;
 }
 
-inline void PrepareBasicBlockForL1(GQmmBasicTiling &tiling)
+inline void PrepareBasicBlockForL1(GQmmBasicTiling& tiling)
 {
     tiling.baseM = GroupedMatmul::CeilAlign(std::min(tiling.baseM, BASE_M), GmmConstant::CUBE_BLOCK);
     tiling.baseN = GroupedMatmul::CeilAlign(std::min(tiling.baseN, BASE_N), GmmConstant::CUBE_BLOCK);
     tiling.baseN *= SWIGLU_SPLIT;
 }
 
-inline void RestoreBasicBlockAfterL1(GQmmBasicTiling &tiling)
+inline void RestoreBasicBlockAfterL1(GQmmBasicTiling& tiling)
 {
     tiling.baseN /= SWIGLU_SPLIT;
 }
 
-inline void FillQuantParams(GroupedMatmulSwigluQuantV2TensorApi::GMMTensorApiQuantParams &params,
-                            const GQmmInputInfo &input)
+inline void FillQuantParams(GroupedMatmulSwigluQuantV2TensorApi::GMMTensorApiQuantParams& params,
+                            const GQmmInputInfo& input)
 {
     params = {};
     params.groupNum = static_cast<uint32_t>(input.groupNum);
@@ -82,8 +82,8 @@ inline void FillQuantParams(GroupedMatmulSwigluQuantV2TensorApi::GMMTensorApiQua
     params.groupListType = static_cast<uint8_t>(input.groupListType);
 }
 
-inline void FillMatmulTiling(GroupedMatmulSwigluQuantV2TensorApi::GMMTensorApiMMTiling &mm, const GQmmInputInfo &input,
-                             const GQmmBasicTiling &basic, uint64_t scaleFactorA, uint64_t scaleFactorB)
+inline void FillMatmulTiling(GroupedMatmulSwigluQuantV2TensorApi::GMMTensorApiMMTiling& mm, const GQmmInputInfo& input,
+                             const GQmmBasicTiling& basic, uint64_t scaleFactorA, uint64_t scaleFactorB)
 {
     mm = {};
     mm.m = static_cast<uint32_t>(input.mSize);

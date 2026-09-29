@@ -41,7 +41,7 @@ constexpr size_t WEIGHT_ORIGIN_LAST_DIM_OFFSET = 1;
 constexpr size_t WEIGHT_ORIGIN_LAST_SECOND_DIM_OFFSET = 2;
 constexpr size_t MXFP4_ND_N_ALIGN = 4; // MXFP4、ND场景下，N需要4对齐
 
-size_t GetDynamicInputCount(gert::TilingContext *context, size_t inputIndex)
+size_t GetDynamicInputCount(gert::TilingContext* context, size_t inputIndex)
 {
     size_t count = 0;
     while (context->GetDynamicInputShape(inputIndex, count) != nullptr) {
@@ -84,9 +84,9 @@ constexpr size_t V3_OUTPUT_DIM_NUM = 2;
 constexpr size_t V3_OUTPUT_SCALE_DIM_NUM = 3;
 
 template <typename T>
-bool ReadV3Attr(const gert::TilingContext *context, const gert::RuntimeAttrs *attrs, uint32_t index, T &value)
+bool ReadV3Attr(const gert::TilingContext* context, const gert::RuntimeAttrs* attrs, uint32_t index, T& value)
 {
-    const auto *ptr = attrs == nullptr ? nullptr : attrs->GetAttrPointer<T>(index);
+    const auto* ptr = attrs == nullptr ? nullptr : attrs->GetAttrPointer<T>(index);
     OP_CHECK_IF(
         ptr == nullptr,
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "attribute", "does not support nullptr"),
@@ -103,7 +103,7 @@ bool IsDenseFormat(ge::Format format)
 
 void GroupedMatmulSwigluQuantV2Tiling950::Reset()
 {
-    auto *rawTilingData = context_ == nullptr ? nullptr : context_->GetRawTilingData();
+    auto* rawTilingData = context_ == nullptr ? nullptr : context_->GetRawTilingData();
     tilingData_.SetDataPtr(rawTilingData == nullptr ? nullptr : rawTilingData->GetData());
     isMxWeightNzMultiTensor_ = false;
     swigluParams_ = {};
@@ -115,8 +115,8 @@ void GroupedMatmulSwigluQuantV2Tiling950::Reset()
 ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::GetShapeAttrsInfo()
 {
     inputParams_.Reset();
-    const auto *attrs = context_->GetAttrs();
-    const auto *mode = attrs == nullptr ?
+    const auto* attrs = context_->GetAttrs();
+    const auto* mode = attrs == nullptr ?
                            nullptr :
                            attrs->GetAttrPointer<int64_t>(GroupedMatmulSwigluQuantV2Tiling::ATTR_INDEX_SWIGLU_MODE);
     swigluParams_.swigluMode = mode == nullptr ? 0 : *mode;
@@ -127,7 +127,7 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeAttrsPertoken()
 {
     auto attrs = context_->GetAttrs();
     if (attrs != nullptr) {
-        const int64_t *groupListTypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_GROUP_LIST_TYPE); // 通路保证非负数
+        const int64_t* groupListTypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_GROUP_LIST_TYPE); // 通路保证非负数
         inputParams_.groupListType = groupListTypePtr != nullptr ? *groupListTypePtr : inputParams_.groupListType;
         OP_CHECK_IF(!(inputParams_.groupListType == 0 || inputParams_.groupListType == 1),
                     OP_LOGE_FOR_INVALID_VALUE(inputParams_.opType, "groupListType",
@@ -138,25 +138,25 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeAttrsPertoken()
         attrs == nullptr,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "attrs", "nullptr", "attrs cannot be nullptr"),
         return false);
-    const bool *transposeWeightPtr = attrs->GetAttrPointer<bool>(ATTR_INDEX_TRANS_W);
+    const bool* transposeWeightPtr = attrs->GetAttrPointer<bool>(ATTR_INDEX_TRANS_W);
     inputParams_.transB = transposeWeightPtr != nullptr ? *transposeWeightPtr : false;
-    const int64_t *dequantModePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_DEQUANT_MODE);
+    const int64_t* dequantModePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_DEQUANT_MODE);
     OP_CHECK_IF(dequantModePtr == nullptr,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "dequant_mode", "nullptr",
                                                       "dequantModePtr cannot be nullptr"),
                 return false);
-    const int64_t *quantModePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_QUANT_MODE);
+    const int64_t* quantModePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_QUANT_MODE);
     OP_CHECK_IF(quantModePtr == nullptr,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "quant_mode", "nullptr",
                                                       "quantModePtr cannot be nullptr"),
                 return false);
-    const int64_t *dequantDtypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_DEQUANT_DTYPE);
+    const int64_t* dequantDtypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_DEQUANT_DTYPE);
     OP_CHECK_IF(dequantDtypePtr == nullptr,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "dequant_dtype", "nullptr",
                                                       "dequantDtypePtr cannot be nullptr"),
                 return false);
     ge::DataType dequantDtype = static_cast<ge::DataType>(*dequantDtypePtr);
-    const int64_t *quantDtypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_QUANT_DTYPE);
+    const int64_t* quantDtypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_QUANT_DTYPE);
     OP_CHECK_IF(quantDtypePtr == nullptr,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "quant_dtype", "nullptr",
                                                       "quantDtypePtr cannot be nullptr"),
@@ -177,7 +177,7 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeAttrs()
     }
     auto attrs = context_->GetAttrs();
     if (attrs != nullptr) {
-        const int64_t *groupListTypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_GROUP_LIST_TYPE); // 通路保证非负数
+        const int64_t* groupListTypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_GROUP_LIST_TYPE); // 通路保证非负数
         inputParams_.groupListType = groupListTypePtr != nullptr ? *groupListTypePtr : inputParams_.groupListType;
         OP_CHECK_IF(!(inputParams_.groupListType == 0 || inputParams_.groupListType == 1),
                     OP_LOGE_FOR_INVALID_VALUE(inputParams_.opType, "groupListType",
@@ -194,9 +194,9 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeAttrs()
 bool GroupedMatmulSwigluQuantV2Tiling950::ValidateAttrsCommon()
 {
     auto attrs = context_->GetAttrs();
-    const bool *transposeWeightPtr = attrs->GetAttrPointer<bool>(ATTR_INDEX_TRANS_W);
+    const bool* transposeWeightPtr = attrs->GetAttrPointer<bool>(ATTR_INDEX_TRANS_W);
     inputParams_.transB = transposeWeightPtr != nullptr ? *transposeWeightPtr : false;
-    const int64_t *dequantModePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_DEQUANT_MODE);
+    const int64_t* dequantModePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_DEQUANT_MODE);
     OP_CHECK_IF(dequantModePtr == nullptr,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "dequant_mode", "nullptr",
                                                       "dequantModePtr cannot be nullptr"),
@@ -204,7 +204,7 @@ bool GroupedMatmulSwigluQuantV2Tiling950::ValidateAttrsCommon()
     OP_CHECK_IF(*dequantModePtr != MXQuantMode,
                 OP_LOGE_FOR_INVALID_VALUE(inputParams_.opType, "dequant_mode", std::to_string(*dequantModePtr), "2"),
                 return false);
-    const int64_t *quantModePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_QUANT_MODE);
+    const int64_t* quantModePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_QUANT_MODE);
     OP_CHECK_IF(quantModePtr == nullptr,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "quant_mode", "nullptr",
                                                       "quantModePtr cannot be nullptr"),
@@ -212,7 +212,7 @@ bool GroupedMatmulSwigluQuantV2Tiling950::ValidateAttrsCommon()
     OP_CHECK_IF(*quantModePtr != MXQuantMode,
                 OP_LOGE_FOR_INVALID_VALUE(inputParams_.opType, "quant_mode", std::to_string(*quantModePtr), "2"),
                 return false);
-    const int64_t *dequantDtypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_DEQUANT_DTYPE);
+    const int64_t* dequantDtypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_DEQUANT_DTYPE);
     OP_CHECK_IF(dequantDtypePtr == nullptr,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "dequant_dtype", "nullptr",
                                                       "dequantDtypePtr cannot be nullptr"),
@@ -226,7 +226,7 @@ bool GroupedMatmulSwigluQuantV2Tiling950::ValidateAttrsCommon()
                 OP_LOGE_FOR_INVALID_VALUE(inputParams_.opType, "dequant_dtype",
                                           ge::TypeUtils::DataTypeToSerialString(dequantDtype), "DT_FLOAT"),
                 return false);
-    const int64_t *quantDtypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_QUANT_DTYPE);
+    const int64_t* quantDtypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_QUANT_DTYPE);
     OP_CHECK_IF(quantDtypePtr == nullptr,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "quant_dtype", "nullptr",
                                                       "quantDtypePtr cannot be nullptr"),
@@ -272,7 +272,7 @@ bool GroupedMatmulSwigluQuantV2Tiling950::LoadDescsAndDtypes()
     return true;
 }
 
-bool GroupedMatmulSwigluQuantV2Tiling950::CheckWeightNzDtype(const gert::Shape &xShape, const gert::Shape &wShape,
+bool GroupedMatmulSwigluQuantV2Tiling950::CheckWeightNzDtype(const gert::Shape& xShape, const gert::Shape& wShape,
                                                              ge::Format weightFormat)
 {
     OP_CHECK_IF(!((inputParams_.aDtype == ge::DT_FLOAT8_E4M3FN && inputParams_.bDtype == ge::DT_FLOAT8_E4M3FN) ||
@@ -302,39 +302,39 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeDtype()
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "per_token_scale", "nullptr",
                                                       "xScaleStorageShape cannot be nullptr"),
                 return false);
-    const gert::Shape &xScaleShape = x1ScaleStorageShape->GetOriginShape();
+    const gert::Shape& xScaleShape = x1ScaleStorageShape->GetOriginShape();
     auto scaleStorageShape = context_->GetDynamicInputShape(SCALE_INDEX, 0);
     OP_CHECK_IF(scaleStorageShape == nullptr,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "scale", "nullptr",
                                                       "scaleStorageShape cannot be nullptr"),
                 return false);
-    const gert::Shape &wScaleShape = scaleStorageShape->GetStorageShape();
+    const gert::Shape& wScaleShape = scaleStorageShape->GetStorageShape();
     auto xStorageShape = context_->GetInputShape(X_INDEX);
     OP_CHECK_IF(
         xStorageShape == nullptr,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "x", "nullptr", "xStorageShape cannot be nullptr"),
         return false);
-    const gert::Shape &xShape = xStorageShape->GetOriginShape();
+    const gert::Shape& xShape = xStorageShape->GetOriginShape();
     auto wStorageShape = context_->GetDynamicInputShape(WEIGHT_INDEX, 0);
     OP_CHECK_IF(wStorageShape == nullptr,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "weight", "nullptr",
                                                       "wStorageShape cannot be nullptr"),
                 return false);
-    const gert::Shape &wShape = wStorageShape->GetOriginShape();
+    const gert::Shape& wShape = wStorageShape->GetOriginShape();
     return ValidateDtypeAndQuantParams(xShape, wShape, wScaleShape, xScaleShape);
 }
 
-bool GroupedMatmulSwigluQuantV2Tiling950::ValidateDtypeAndQuantParams(const gert::Shape &xShape,
-                                                                      const gert::Shape &wShape,
-                                                                      const gert::Shape &wScaleShape,
-                                                                      const gert::Shape &xScaleShape)
+bool GroupedMatmulSwigluQuantV2Tiling950::ValidateDtypeAndQuantParams(const gert::Shape& xShape,
+                                                                      const gert::Shape& wShape,
+                                                                      const gert::Shape& wScaleShape,
+                                                                      const gert::Shape& xScaleShape)
 {
     auto attrs = context_->GetAttrs();
     OP_CHECK_IF(
         attrs == nullptr,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "attrs", "nullptr", "attrs cannot be nullptr"),
         return false);
-    const bool *transposeWeightPtr = attrs->GetAttrPointer<bool>(ATTR_INDEX_TRANS_W);
+    const bool* transposeWeightPtr = attrs->GetAttrPointer<bool>(ATTR_INDEX_TRANS_W);
     inputParams_.transB = transposeWeightPtr != nullptr ? *transposeWeightPtr : false;
     OP_CHECK_IF(!SetMKN(xShape, wShape), OP_LOGE(inputParams_.opName, "SetMKN failed."), return false);
     OP_CHECK_IF(!SetQuantModeForGMMSwigluQuant(wScaleShape, xScaleShape),
@@ -350,7 +350,7 @@ bool GroupedMatmulSwigluQuantV2Tiling950::ValidateDtypeAndQuantParams(const gert
                     OP_LOGE(inputParams_.opName, "CheckWeightNzDtype failed."), return false);
     }
     OP_CHECK_IF(!CheckWeightNdDtype(), OP_LOGE(context_->GetNodeName(), "CheckWeightNdDtype failed."), return false);
-    const int64_t *quantDtypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_QUANT_DTYPE);
+    const int64_t* quantDtypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_QUANT_DTYPE);
     if (quantDtypePtr != nullptr) {
         ge::DataType quantDtype = static_cast<ge::DataType>(*quantDtypePtr);
         OP_CHECK_IF(!CheckQuantDtypeByFormat(quantDtype, weightFormat),
@@ -407,13 +407,13 @@ bool GroupedMatmulSwigluQuantV2Tiling950::IsMxFp8WeightNz() const
     return IsMXFp8Input() && inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ;
 }
 
-bool GroupedMatmulSwigluQuantV2Tiling950::IsMxWeightNzMultiTensor(const gert::Shape &wShape) const
+bool GroupedMatmulSwigluQuantV2Tiling950::IsMxWeightNzMultiTensor(const gert::Shape& wShape) const
 {
     return wShape.GetDimNum() == MIN_WEIGHT_ORIGIN_SHAPE_DIM && inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ;
 }
 
-bool GroupedMatmulSwigluQuantV2Tiling950::CheckMxFp4WeightNzShape(const gert::Shape &xShape,
-                                                                  const gert::Shape &wShape) const
+bool GroupedMatmulSwigluQuantV2Tiling950::CheckMxFp4WeightNzShape(const gert::Shape& xShape,
+                                                                  const gert::Shape& wShape) const
 {
     OP_CHECK_IF(xShape.GetDimNum() < MIN_X_ORIGIN_SHAPE_DIM || wShape.GetDimNum() < MIN_WEIGHT_ORIGIN_SHAPE_DIM,
                 OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(
@@ -500,8 +500,8 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckDtype()
     return true;
 }
 
-bool GroupedMatmulSwigluQuantV2Tiling950::SetQuantModeForGMMSwigluQuant(const gert::Shape &wScaleShape,
-                                                                        const gert::Shape &xScaleShape)
+bool GroupedMatmulSwigluQuantV2Tiling950::SetQuantModeForGMMSwigluQuant(const gert::Shape& wScaleShape,
+                                                                        const gert::Shape& xScaleShape)
 {
     auto wScaleDims = wScaleShape.GetDimNum();
     if (IsMicroScaling()) {
@@ -524,7 +524,7 @@ bool GroupedMatmulSwigluQuantV2Tiling950::SetQuantModeForGMMSwigluQuant(const ge
     return false;
 }
 
-bool GroupedMatmulSwigluQuantV2Tiling950::CheckDims(const gert::Shape &xShape, const gert::Shape &wShape) const
+bool GroupedMatmulSwigluQuantV2Tiling950::CheckDims(const gert::Shape& xShape, const gert::Shape& wShape) const
 {
     auto aInnerSize = inputParams_.transA ? inputParams_.mSize : inputParams_.kSize;
     auto bInnerSize = inputParams_.transB ? inputParams_.kSize : inputParams_.nSize;
@@ -584,8 +584,8 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckDims(const gert::Shape &xShape, c
 
     return true;
 }
-bool GroupedMatmulSwigluQuantV2Tiling950::GetInputShapes(const gert::Shape *&xShape, const gert::Shape *&wShape,
-                                                         const gert::Shape *&wScaleShape)
+bool GroupedMatmulSwigluQuantV2Tiling950::GetInputShapes(const gert::Shape*& xShape, const gert::Shape*& wShape,
+                                                         const gert::Shape*& wScaleShape)
 {
     auto xStorageShape = context_->GetInputShape(X_INDEX);
     OP_CHECK_IF(
@@ -608,7 +608,7 @@ bool GroupedMatmulSwigluQuantV2Tiling950::GetInputShapes(const gert::Shape *&xSh
     return true;
 }
 
-bool GroupedMatmulSwigluQuantV2Tiling950::GetAndCheckXScaleShape(const gert::Shape *&xScaleShape)
+bool GroupedMatmulSwigluQuantV2Tiling950::GetAndCheckXScaleShape(const gert::Shape*& xScaleShape)
 {
     auto x1ScaleStorageShape = context_->GetInputShape(PER_TOKEN_SCALE_INDEX);
     OP_CHECK_IF(x1ScaleStorageShape == nullptr,
@@ -623,8 +623,8 @@ bool GroupedMatmulSwigluQuantV2Tiling950::GetAndCheckXScaleShape(const gert::Sha
     return true;
 }
 
-bool GroupedMatmulSwigluQuantV2Tiling950::CheckMxPerGroupShape(const gert::Shape &xScaleShape,
-                                                               const gert::Shape &wScaleShape, size_t weightCount,
+bool GroupedMatmulSwigluQuantV2Tiling950::CheckMxPerGroupShape(const gert::Shape& xScaleShape,
+                                                               const gert::Shape& wScaleShape, size_t weightCount,
                                                                bool isMultiWeightNz)
 {
     if (isMultiWeightNz) {
@@ -640,8 +640,8 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckMxPerGroupShape(const gert::Shape
                         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "weight/weight_scale", "nullptr",
                                                               "dynamic weight and weightScale cannot be nullptr"),
                         return false);
-            const gert::Shape &curWShape = curWStorageShape->GetOriginShape();
-            const gert::Shape &curScaleShape = curScaleStorageShape->GetOriginShape();
+            const gert::Shape& curWShape = curWStorageShape->GetOriginShape();
+            const gert::Shape& curScaleShape = curScaleStorageShape->GetOriginShape();
             OP_CHECK_IF(curWShape.GetDimNum() != MIN_WEIGHT_ORIGIN_SHAPE_DIM ||
                             static_cast<uint64_t>(curWShape.GetDim(0)) != expectedWeightDim0 ||
                             static_cast<uint64_t>(curWShape.GetDim(BATCHED_MATRIX_ROW_DIM)) != expectedWeightDim1,
@@ -681,9 +681,9 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeInputs()
     if (inputParams_.aQuantMode == optiling::QuantMode::PERTOKEN_MODE) {
         return AnalyzeInputsPertoken();
     }
-    const gert::Shape *xShape = nullptr;
-    const gert::Shape *wShape = nullptr;
-    const gert::Shape *wScaleShape = nullptr;
+    const gert::Shape* xShape = nullptr;
+    const gert::Shape* wShape = nullptr;
+    const gert::Shape* wScaleShape = nullptr;
     if (!GetInputShapes(xShape, wShape, wScaleShape)) {
         return false;
     }
@@ -697,7 +697,7 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeInputs()
                 OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opType, "weight_scale", std::to_string(scaleDimNum),
                                              std::to_string(expectedScaleDim)),
                 return false);
-    const gert::Shape *xScaleShape = nullptr;
+    const gert::Shape* xScaleShape = nullptr;
     if (!GetAndCheckXScaleShape(xScaleShape)) {
         return false;
     }
@@ -756,12 +756,12 @@ ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::DoOpTiling()
     tilingData_.gmmSwigluQuantParams.set_isMxWeightNzMultiTensor(static_cast<uint8_t>(isMxWeightNzMultiTensor_));
     auto attrs = context_->GetAttrs();
     if (attrs != nullptr) {
-        const int64_t *dequantDtypeTypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_DEQUANT_DTYPE);
+        const int64_t* dequantDtypeTypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_DEQUANT_DTYPE);
         int64_t dequantDtype = dequantDtypeTypePtr != nullptr ? static_cast<int64_t>(*dequantDtypeTypePtr) : 0L;
         if (inputParams_.aQuantMode == optiling::QuantMode::PERTOKEN_MODE) {
             tilingData_.gmmSwigluQuantParams.set_dequantDtype(static_cast<uint8_t>(dequantDtype));
         }
-        const int64_t *quantDtypeTypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_QUANT_DTYPE);
+        const int64_t* quantDtypeTypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_QUANT_DTYPE);
         int64_t quantDtype = quantDtypeTypePtr != nullptr ? static_cast<int64_t>(*quantDtypeTypePtr) : 0L;
         tilingData_.gmmSwigluQuantParams.set_quantDtype(static_cast<uint8_t>(quantDtype));
     }
@@ -779,7 +779,7 @@ ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::DoOpTiling()
 
 int64_t GroupedMatmulSwigluQuantV2Tiling950::LogQuantParams()
 {
-    auto &params = tilingData_.gmmSwigluQuantParams;
+    auto& params = tilingData_.gmmSwigluQuantParams;
     std::ostringstream oss;
     oss << "GMMQuantParams: groupNum = " << params.get_groupNum()
         << ", groupListType = " << static_cast<uint32_t>(params.get_groupListType())
@@ -947,9 +947,9 @@ void GroupedMatmulSwigluQuantV2Tiling950::ModifyWeightNzDepthForUnalign(uint64_t
     }
 }
 
-ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::CalBaseSizesAndScaleInit(uint64_t &baseScaleASize,
-                                                                              uint64_t &baseScaleBSize,
-                                                                              uint32_t &scaleInit)
+ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::CalBaseSizesAndScaleInit(uint64_t& baseScaleASize,
+                                                                              uint64_t& baseScaleBSize,
+                                                                              uint32_t& scaleInit)
 {
     uint64_t baseASize = GetSizeWithDataType(basicTiling_.baseM * basicTiling_.baseK, inputParams_.aDtype);
     uint64_t baseBSize = GetSizeWithDataType(basicTiling_.baseN * basicTiling_.baseK, inputParams_.bDtype);
@@ -1039,7 +1039,7 @@ ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::CalWeightNzScaleFactors()
 
 ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::PostTiling()
 {
-    auto *rawTilingData = context_->GetRawTilingData();
+    auto* rawTilingData = context_->GetRawTilingData();
     OP_CHECK_IF(
         rawTilingData == nullptr || rawTilingData->GetData() == nullptr,
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->GetNodeName(), "tilingData", "does not support nullptr"),
@@ -1141,8 +1141,8 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckDtypePertoken()
     return true;
 }
 
-bool GroupedMatmulSwigluQuantV2Tiling950::CheckPertokenWeightNzShape(const gert::Shape &wShape,
-                                                                     const gert::Shape &wStorageShape) const
+bool GroupedMatmulSwigluQuantV2Tiling950::CheckPertokenWeightNzShape(const gert::Shape& wShape,
+                                                                     const gert::Shape& wStorageShape) const
 {
     OP_CHECK_IF(
         wShape.GetDimNum() != PERTOKEN_WEIGHT_ORIGIN_DIM,
@@ -1175,14 +1175,14 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeInputsPertoken()
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "weight", "nullptr",
                                                       "wStorageShape cannot be nullptr"),
                 return false);
-    const gert::Shape &wShape = wStorageShape->GetOriginShape();
-    const gert::Shape &wNzStorageShape = wStorageShape->GetStorageShape();
+    const gert::Shape& wShape = wStorageShape->GetOriginShape();
+    const gert::Shape& wNzStorageShape = wStorageShape->GetStorageShape();
     auto scaleStorageShape = context_->GetDynamicInputShape(SCALE_INDEX, 0);
     OP_CHECK_IF(scaleStorageShape == nullptr,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "weight_scale", "nullptr",
                                                       "scaleStorageShape cannot be nullptr"),
                 return false);
-    const gert::Shape &wScaleShape = scaleStorageShape->GetStorageShape();
+    const gert::Shape& wScaleShape = scaleStorageShape->GetStorageShape();
     auto scaleDimNum = wScaleShape.GetDimNum();
     OP_CHECK_IF(scaleDimNum != PRECHANNEL_WEIGHT_SCALE_DIM,
                 OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opType, "weight_scale", std::to_string(scaleDimNum), "2"),
@@ -1192,7 +1192,7 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeInputsPertoken()
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "x_scale", "nullptr",
                                                       "xScaleStorageShape cannot be nullptr"),
                 return false);
-    const gert::Shape &xScaleShape = x1ScaleStorageShape->GetOriginShape();
+    const gert::Shape& xScaleShape = x1ScaleStorageShape->GetOriginShape();
     auto xScaleDimNum = xScaleShape.GetDimNum();
     OP_CHECK_IF(xScaleDimNum != PERTOKEN_X_SCALE_DIM,
                 OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opType, "x_scale", std::to_string(xScaleDimNum), "1"),
@@ -1247,7 +1247,7 @@ ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::DoOpTilingPertoken()
 
 int64_t GroupedMatmulSwigluQuantV2Tiling950::LogPertokenQuantParams()
 {
-    auto &params = tilingData_.gmmSwigluQuantParams;
+    auto& params = tilingData_.gmmSwigluQuantParams;
     std::ostringstream oss;
     oss << "GMMQuantParams: groupNum = " << params.get_groupNum()
         << ", groupListType = " << static_cast<uint32_t>(params.get_groupListType())
@@ -1260,11 +1260,11 @@ int64_t GroupedMatmulSwigluQuantV2Tiling950::LogPertokenQuantParams()
 
 ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::GetWorkspaceSize()
 {
-    size_t *workspaces = context_->GetWorkspaceSizes(1);
+    size_t* workspaces = context_->GetWorkspaceSizes(1);
     OP_CHECK_NULL_WITH_CONTEXT(context_, workspaces);
     workspaces[0] = GmmConstant::SYS_WORKSPACE_SIZES;
     if (inputParams_.aQuantMode == optiling::QuantMode::PERTOKEN_MODE) {
-        optiling::GMMSwigluQuantParams &params = tilingData_.gmmSwigluQuantParams;
+        optiling::GMMSwigluQuantParams& params = tilingData_.gmmSwigluQuantParams;
         uint32_t workSize = 1;
         if (params.get_dequantDtype() == 1 || params.get_dequantDtype() == GmmConstant::BF16_VALUE) {
             workSize = GmmConstant::BF16_WORKSIZE;
@@ -1291,7 +1291,7 @@ ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::GetPlatformInfo()
         return ge::GRAPH_SUCCESS;
     }
 
-    const auto *compileInfo = context_->GetCompileInfo<GMMSwigluV2CompileInfo>();
+    const auto* compileInfo = context_->GetCompileInfo<GMMSwigluV2CompileInfo>();
     OP_CHECK_IF(compileInfo == nullptr, OP_LOGE(context_->GetNodeName(), "compileInfo is nullptr"),
                 return ge::GRAPH_FAILED);
     aicoreParams_.aicNum = compileInfo->aicNum_;
@@ -1304,7 +1304,7 @@ ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::GetPlatformInfo()
 
 bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeV3Attrs()
 {
-    const gert::RuntimeAttrs *attrs = context_->GetAttrs();
+    const gert::RuntimeAttrs* attrs = context_->GetAttrs();
     OP_CHECK_IF(attrs == nullptr, OP_LOGE(context_->GetNodeName(), "attrs is nullptr"), return false);
 
     int64_t quantDtype = 0;
@@ -1313,7 +1313,7 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeV3Attrs()
     int64_t swigluMode = V3_SWIGLU_MODE;
     int64_t scaleAlg = V3_SCALE_ALG_OCP;
     float dstTypeMax = V3_DEFAULT_DST_TYPE_MAX;
-    const char *roundMode = attrs->GetAttrPointer<char>(GroupedMatmulSwigluQuantV2Tiling::ATTR_INDEX_ROUND_MODE);
+    const char* roundMode = attrs->GetAttrPointer<char>(GroupedMatmulSwigluQuantV2Tiling::ATTR_INDEX_ROUND_MODE);
     OP_CHECK_IF(
         !ReadV3Attr(context_, attrs, ATTR_INDEX_QUANT_DTYPE, quantDtype) ||
             !ReadV3Attr(context_, attrs, ATTR_INDEX_TRANS_W, transposeWeight) ||
@@ -1330,10 +1330,9 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeV3Attrs()
             !ReadV3Attr(context_, attrs, GroupedMatmulSwigluQuantV2Tiling::ATTR_INDEX_DST_TYPE_MAX, dstTypeMax),
         OP_LOGE(context_->GetNodeName(), "failed to read V3 attributes"), return false);
 
-    OP_CHECK_IF(groupListType != GroupedMatmul::GROUPLIST_TYPE_CUMSUM &&
-                    groupListType != GroupedMatmul::GROUPLIST_TYPE_COUNT,
-                OP_LOGE(context_->GetNodeName(), "group_list_type must be 0 or 1, but got %ld", groupListType),
-                return false);
+    OP_CHECK_IF(
+        groupListType != GroupedMatmul::GROUPLIST_TYPE_CUMSUM && groupListType != GroupedMatmul::GROUPLIST_TYPE_COUNT,
+        OP_LOGE(context_->GetNodeName(), "group_list_type must be 0 or 1, but got %ld", groupListType), return false);
     OP_CHECK_IF(quantDtype != static_cast<int64_t>(inputParams_.outDataDtype),
                 OP_LOGE(context_->GetNodeName(), "quant_dtype must match the FP8 output dtype"), return false);
     OP_CHECK_IF(swigluMode != V3_SWIGLU_MODE,
@@ -1415,9 +1414,11 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeV3Dtype()
     return true;
 }
 
-bool GroupedMatmulSwigluQuantV2Tiling950::CheckV3ShapeAndScale(
-    const gert::Shape &xShape, const gert::Shape &weightShape,
-    const gert::Shape &weightStorageShape, const gert::Shape &weightScaleShape, const gert::Shape &groupListShape) const
+bool GroupedMatmulSwigluQuantV2Tiling950::CheckV3ShapeAndScale(const gert::Shape& xShape,
+                                                               const gert::Shape& weightShape,
+                                                               const gert::Shape& weightStorageShape,
+                                                               const gert::Shape& weightScaleShape,
+                                                               const gert::Shape& groupListShape) const
 {
     OP_CHECK_IF(xShape.GetDimNum() != V3_X_DIM_NUM, OP_LOGE(context_->GetNodeName(), "x must be a 2D shape"),
                 return false);
@@ -1439,16 +1440,15 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckV3ShapeAndScale(
                 OP_LOGE(context_->GetNodeName(), "group_list length must be in [1, 1024]"), return false);
     OP_CHECK_IF(
         weightShape.GetDim(0) != e || weightK != k || n <= 0,
-        OP_LOGE(context_->GetNodeName(),
-                "weight view must be (E, K, N) or transposed (E, N, K), with positive N"),
+        OP_LOGE(context_->GetNodeName(), "weight view must be (E, K, N) or transposed (E, N, K), with positive N"),
         return false);
     // FRACTAL_NZ follows the V2 MXFP8 contract: non-transposed (E, K, N)
     // views use storage (E, ceil(N/32), ceil(K/16), 16, 32), while
     // transposed (E, N, K) views use (E, ceil(K/32), ceil(N/16), 16, 32).
-    const int64_t expectedStorageDim1 = inputParams_.transB ? GroupedMatmul::CeilDiv(k, V3_NZ_C0_SIZE) :
-                                                        GroupedMatmul::CeilDiv(n, V3_NZ_C0_SIZE);
-    const int64_t expectedStorageDim2 = inputParams_.transB ? GroupedMatmul::CeilDiv(n, V3_NZ_K0_SIZE) :
-                                                        GroupedMatmul::CeilDiv(k, V3_NZ_K0_SIZE);
+    const int64_t expectedStorageDim1 =
+        inputParams_.transB ? GroupedMatmul::CeilDiv(k, V3_NZ_C0_SIZE) : GroupedMatmul::CeilDiv(n, V3_NZ_C0_SIZE);
+    const int64_t expectedStorageDim2 =
+        inputParams_.transB ? GroupedMatmul::CeilDiv(n, V3_NZ_K0_SIZE) : GroupedMatmul::CeilDiv(k, V3_NZ_K0_SIZE);
     OP_CHECK_IF(weightStorageShape.GetDimNum() != V3_WEIGHT_STORAGE_DIM_NUM || weightStorageShape.GetDim(0) != e ||
                     weightStorageShape.GetDim(BATCHED_MATRIX_ROW_DIM) != expectedStorageDim1 ||
                     weightStorageShape.GetDim(BATCHED_MATRIX_COLUMN_DIM) != expectedStorageDim2 ||
@@ -1482,10 +1482,10 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckV3OutputShape() const
     OP_CHECK_IF(
         xStorage == nullptr || weightStorage == nullptr || outputStorage == nullptr || outputScaleStorage == nullptr,
         OP_LOGE(context_->GetNodeName(), "shape is nullptr"), return false);
-    const auto &xShape = xStorage->GetOriginShape();
-    const auto &weightShape = weightStorage->GetOriginShape();
-    const auto &yShape = outputStorage->GetOriginShape();
-    const auto &yScaleShape = outputScaleStorage->GetOriginShape();
+    const auto& xShape = xStorage->GetOriginShape();
+    const auto& weightShape = weightStorage->GetOriginShape();
+    const auto& yShape = outputStorage->GetOriginShape();
+    const auto& yScaleShape = outputScaleStorage->GetOriginShape();
     OP_CHECK_IF(xShape.GetDimNum() != V3_X_DIM_NUM || weightShape.GetDimNum() != V3_WEIGHT_VIEW_DIM_NUM ||
                     yShape.GetDimNum() != V3_OUTPUT_DIM_NUM || yScaleShape.GetDimNum() != V3_OUTPUT_SCALE_DIM_NUM,
                 OP_LOGE(context_->GetNodeName(), "output shape rank is invalid"), return false);
@@ -1506,31 +1506,30 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckV3OutputShape() const
 
 bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeV3Inputs()
 {
-    const auto *xStorage = context_->GetInputShape(X_INDEX);
-    const auto *groupListStorage = context_->GetInputShape(GROUPLIST_INDEX);
-    const auto *weightStorage = context_->GetDynamicInputShape(WEIGHT_INDEX, 0);
-    const auto *weightScaleStorage = context_->GetDynamicInputShape(SCALE_INDEX, 0);
-    OP_CHECK_IF(xStorage == nullptr || groupListStorage == nullptr ||
-                    weightStorage == nullptr || weightScaleStorage == nullptr,
-                OP_LOGE(context_->GetNodeName(), "required input shape is nullptr"), return false);
+    const auto* xStorage = context_->GetInputShape(X_INDEX);
+    const auto* groupListStorage = context_->GetInputShape(GROUPLIST_INDEX);
+    const auto* weightStorage = context_->GetDynamicInputShape(WEIGHT_INDEX, 0);
+    const auto* weightScaleStorage = context_->GetDynamicInputShape(SCALE_INDEX, 0);
+    OP_CHECK_IF(
+        xStorage == nullptr || groupListStorage == nullptr || weightStorage == nullptr || weightScaleStorage == nullptr,
+        OP_LOGE(context_->GetNodeName(), "required input shape is nullptr"), return false);
     OP_CHECK_IF(GetDynamicInputCount(context_, WEIGHT_INDEX) != V3_SINGLE_TENSOR_COUNT ||
                     GetDynamicInputCount(context_, SCALE_INDEX) != V3_SINGLE_TENSOR_COUNT,
                 OP_LOGE(context_->GetNodeName(), "V3 only supports a single weight and weight_scale tensor"),
                 return false);
 
-    const auto &xShape = xStorage->GetOriginShape();
-    const gert::Shape *xScaleShape = nullptr;
+    const auto& xShape = xStorage->GetOriginShape();
+    const gert::Shape* xScaleShape = nullptr;
     OP_CHECK_IF(!GetAndCheckXScaleShape(xScaleShape), OP_LOGE(context_->GetNodeName(), "x_scale shape is invalid"),
                 return false);
-    const auto &groupListShape = groupListStorage->GetOriginShape();
-    const auto &weightShape = weightStorage->GetOriginShape();
-    const auto &weightNzShape = weightStorage->GetStorageShape();
-    const auto &weightScaleShape = weightScaleStorage->GetOriginShape();
+    const auto& groupListShape = groupListStorage->GetOriginShape();
+    const auto& weightShape = weightStorage->GetOriginShape();
+    const auto& weightNzShape = weightStorage->GetStorageShape();
+    const auto& weightScaleShape = weightScaleStorage->GetOriginShape();
     OP_CHECK_IF(!SetGroupNum(GROUPLIST_INDEX), OP_LOGE(context_->GetNodeName(), "SetGroupNum failed"), return false);
     OP_CHECK_IF(!SetMKN(xShape, weightShape), OP_LOGE(context_->GetNodeName(), "SetMKN failed"), return false);
-    OP_CHECK_IF(
-        !CheckV3ShapeAndScale(xShape, weightShape, weightNzShape, weightScaleShape, groupListShape),
-        OP_LOGE(context_->GetNodeName(), "shape and scale validation failed"), return false);
+    OP_CHECK_IF(!CheckV3ShapeAndScale(xShape, weightShape, weightNzShape, weightScaleShape, groupListShape),
+                OP_LOGE(context_->GetNodeName(), "shape and scale validation failed"), return false);
     OP_CHECK_IF(!CheckDims(xShape, weightShape), OP_LOGE(context_->GetNodeName(), "CheckDims failed"), return false);
     OP_CHECK_IF(!CheckQuantParamsForMXTypeM(*xScaleShape, weightScaleShape),
                 OP_LOGE(context_->GetNodeName(), "CheckQuantParamsForMXTypeM failed"), return false);

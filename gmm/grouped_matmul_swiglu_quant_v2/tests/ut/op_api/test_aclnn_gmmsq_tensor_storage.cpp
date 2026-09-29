@@ -52,7 +52,7 @@ constexpr int64_t BOUNDARY_STRIDE = 2;
 constexpr int64_t BOUNDARY_STORAGE_ELEMENTS = 4;
 constexpr int64_t BOUNDARY_LEGAL_OFFSET = 1;
 constexpr int64_t BOUNDARY_INVALID_OFFSET = 2;
-using TensorPtr = std::unique_ptr<aclTensor, void (*)(aclTensor *)>;
+using TensorPtr = std::unique_ptr<aclTensor, void (*)(aclTensor*)>;
 using TensorListPtr = std::unique_ptr<aclTensorList, decltype(&aclDestroyTensorList)>;
 enum class StorageApi {
     ND_V2,
@@ -79,20 +79,20 @@ struct StorageInputs {
                          .ToAclType())
     {}
 
-    std::array<aclTensor *, REQUIRED_TENSOR_COUNT> RequiredTensors()
+    std::array<aclTensor*, REQUIRED_TENSOR_COUNT> RequiredTensors()
     {
         return {x.get(),         weight.get(), weightScale.get(), xScale.get(),
                 groupList.get(), output.get(), outputScale.get()};
     }
 };
 
-void ExpectWorkspaceStatus(StorageApi api, StorageInputs &inputs, aclnnStatus expected,
-                           const aclTensorList *assistance = nullptr, const aclTensor *bias = nullptr,
-                           const aclTensor *smoothScale = nullptr, bool nullX = false)
+void ExpectWorkspaceStatus(StorageApi api, StorageInputs& inputs, aclnnStatus expected,
+                           const aclTensorList* assistance = nullptr, const aclTensor* bias = nullptr,
+                           const aclTensor* smoothScale = nullptr, bool nullX = false)
 {
     op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
-    const aclTensor *weightElements[] = {inputs.weight.get()};
-    const aclTensor *scaleElements[] = {inputs.weightScale.get()};
+    const aclTensor* weightElements[] = {inputs.weight.get()};
+    const aclTensor* scaleElements[] = {inputs.weightScale.get()};
     TensorListPtr weights(aclCreateTensorList(weightElements, SINGLE_TENSOR_COUNT), aclDestroyTensorList);
     ASSERT_NE(weights.get(), nullptr);
     (void)inputs.weight.release();
@@ -101,8 +101,8 @@ void ExpectWorkspaceStatus(StorageApi api, StorageInputs &inputs, aclnnStatus ex
     (void)inputs.weightScale.release();
     constexpr uint64_t WORKSPACE_SENTINEL = 12345;
     uint64_t workspaceSize = WORKSPACE_SENTINEL;
-    aclOpExecutor *executor = nullptr;
-    const auto *x = nullX ? nullptr : inputs.x.get();
+    aclOpExecutor* executor = nullptr;
+    const auto* x = nullX ? nullptr : inputs.x.get();
     aclnnStatus status;
     if (api == StorageApi::NZ_V3) {
         status = aclnnGroupedMatmulSwigluQuantWeightNzV3GetWorkspaceSize(
@@ -188,7 +188,7 @@ TEST_P(GmmsqTensorStorageTest, ChecksOptionalTensorStorage)
         auto optional = TensorDesc({TEST_E}, ACL_FLOAT, ACL_FORMAT_ND).ToAclType();
         optional->SetViewOffset(SHIFTED_VIEW_OFFSET);
         if (index == 0) {
-            const aclTensor *elements[] = {optional.get()};
+            const aclTensor* elements[] = {optional.get()};
             TensorListPtr assistance(aclCreateTensorList(elements, SINGLE_TENSOR_COUNT), aclDestroyTensorList);
             ASSERT_NE(assistance.get(), nullptr);
             (void)optional.release();

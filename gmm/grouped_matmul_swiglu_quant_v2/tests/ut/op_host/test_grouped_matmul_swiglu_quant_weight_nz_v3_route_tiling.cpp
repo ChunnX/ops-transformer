@@ -101,7 +101,7 @@ constexpr int64_t V3_TENSOR_API_ZN_KEY = 17;
 using CgmctTilingData = ::GMMSwigluQuantV2TilingDataParams;
 using TensorApiTilingData = GroupedMatmulSwigluQuantV2TensorApi::GMMSwigluQuantV2TensorApiTilingData;
 
-gert::TilingContextPara MakeContext(const RouteCase &c, optiling::GMMSwigluV2CompileInfo *info, int scaleAlg,
+gert::TilingContextPara MakeContext(const RouteCase& c, optiling::GMMSwigluV2CompileInfo* info, int scaleAlg,
                                     int aiv = AIV_CORE_COUNT, int64_t swigluMode = SPLIT_SWIGLU_MODE)
 {
     using Desc = gert::TilingContextPara::TensorDescription;
@@ -158,9 +158,8 @@ gert::TilingContextPara MakeContext(const RouteCase &c, optiling::GMMSwigluV2Com
 
 std::vector<RouteCsvCase> LoadRouteCases()
 {
-    const std::string path = ops::ut::ResolveCsvPath(
-        "test_grouped_matmul_swiglu_quant_weight_nz_v3_route_tiling.csv",
-        "gmm/grouped_matmul_swiglu_quant_v2/tests/ut/op_host", __FILE__);
+    const std::string path = ops::ut::ResolveCsvPath("test_grouped_matmul_swiglu_quant_weight_nz_v3_route_tiling.csv",
+                                                     "gmm/grouped_matmul_swiglu_quant_v2/tests/ut/op_host", __FILE__);
     std::ifstream input(path);
     EXPECT_TRUE(input.is_open()) << "Failed to open CSV file: " << path;
     std::vector<RouteCsvCase> cases;
@@ -179,7 +178,7 @@ std::vector<RouteCsvCase> LoadRouteCases()
             continue;
         }
         try {
-            for (auto &field : fields) {
+            for (auto& field : fields) {
                 field = ops::ut::Trim(field);
             }
             RouteCsvCase item;
@@ -196,13 +195,13 @@ std::vector<RouteCsvCase> LoadRouteCases()
             item.route.key = std::stoll(fields[10]);
             item.mutation = fields[11];
             item.expectSuccess = ops::ut::ParseBool(fields[12]);
-            if (item.caseName.empty() || (item.transposeValues != "0" && item.transposeValues != "1" &&
-                                          item.transposeValues != "both") ||
+            if (item.caseName.empty() ||
+                (item.transposeValues != "0" && item.transposeValues != "1" && item.transposeValues != "both") ||
                 (item.scaleAlgValues != "0" && item.scaleAlgValues != "1" && item.scaleAlgValues != "both")) {
                 throw std::invalid_argument("invalid case name, transpose, or scaleAlg field");
             }
             cases.push_back(std::move(item));
-        } catch (const std::exception &error) {
+        } catch (const std::exception& error) {
             ADD_FAILURE() << ops::ut::BuildCsvParseErrorMessage(path, lineNo, "", error);
         }
     }
@@ -211,30 +210,30 @@ std::vector<RouteCsvCase> LoadRouteCases()
 }
 
 template <typename T>
-const T *GetTilingData(const TilingInfo &result)
+const T* GetTilingData(const TilingInfo& result)
 {
     EXPECT_EQ(result.tilingDataSize, sizeof(T));
     if (result.tilingDataSize != sizeof(T)) {
         return nullptr;
     }
-    return reinterpret_cast<const T *>(result.tilingData.get());
+    return reinterpret_cast<const T*>(result.tilingData.get());
 }
 
-const ::GMMSwigluQuantSwigluParams *GetSwigluParams(const TilingInfo &result)
+const ::GMMSwigluQuantSwigluParams* GetSwigluParams(const TilingInfo& result)
 {
     if (result.tilingKey == V3_CGMCT_NZ_KEY || result.tilingKey == V3_CGMCT_ZN_KEY) {
-        const auto *data = GetTilingData<CgmctTilingData>(result);
+        const auto* data = GetTilingData<CgmctTilingData>(result);
         return data == nullptr ? nullptr : &data->swigluParams;
     }
     if (result.tilingKey == V3_TENSOR_API_NZ_KEY || result.tilingKey == V3_TENSOR_API_ZN_KEY) {
-        const auto *data = GetTilingData<TensorApiTilingData>(result);
+        const auto* data = GetTilingData<TensorApiTilingData>(result);
         return data == nullptr ? nullptr : &data->swigluParams;
     }
     ADD_FAILURE() << "Unexpected MXFP8 tiling key: " << result.tilingKey;
     return nullptr;
 }
 
-void ExpectSwigluParams(const ::GMMSwigluQuantSwigluParams &params, int64_t mode, uint8_t scaleAlg,
+void ExpectSwigluParams(const ::GMMSwigluQuantSwigluParams& params, int64_t mode, uint8_t scaleAlg,
                         float clampLimit = DEFAULT_CLAMP_LIMIT, float gluAlpha = DEFAULT_GLU_ALPHA,
                         float gluBias = DEFAULT_GLU_BIAS)
 {
@@ -250,7 +249,7 @@ void ExpectSwigluParams(const ::GMMSwigluQuantSwigluParams &params, int64_t mode
 }
 
 template <typename DeviceTiling, typename HostTiling>
-void ExpectHostTailReset(HostTiling &host)
+void ExpectHostTailReset(HostTiling& host)
 {
     ASSERT_EQ(host.GetDataSize(), sizeof(DeviceTiling));
     std::array<uint8_t, sizeof(DeviceTiling)> buffer;
@@ -313,7 +312,7 @@ TEST(GroupedMatmulSwigluQuantV3Route, HostTailResetOverwritesPreviousModeAndRese
     ExpectHostTailReset<TensorApiTilingData>(tensorApiHost);
 }
 
-void CheckCsvRouteCase(const RouteCsvCase &item, bool trans, int scaleAlg)
+void CheckCsvRouteCase(const RouteCsvCase& item, bool trans, int scaleAlg)
 {
     RouteCase route = item.route;
     route.trans = trans;
@@ -330,16 +329,18 @@ void CheckCsvRouteCase(const RouteCsvCase &item, bool trans, int scaleAlg)
             ops::ut::MakeGertStorageShape(weightShape, weightShape), ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND);
     }
     if (item.scenario == "legacy_cgmct_omitted" || item.scenario == "legacy_tensor_omitted") {
-        context.attrs_.erase(context.attrs_.begin() + optiling::GroupedMatmulSwigluQuantV2Tiling::ATTR_INDEX_SWIGLU_MODE,
-                             context.attrs_.end());
+        context.attrs_.erase(
+            context.attrs_.begin() + optiling::GroupedMatmulSwigluQuantV2Tiling::ATTR_INDEX_SWIGLU_MODE,
+            context.attrs_.end());
     }
     if (item.mutation == "invalid_platform") {
         info.npuArch_ = static_cast<int32_t>(NpuArch::DAV_2201);
     } else if (item.mutation == "dequant_overflow_pos" || item.mutation == "dequant_overflow_neg" ||
                item.mutation == "dequant_one") {
         const int64_t overflow = 1LL << 32;
-        const int64_t value = item.mutation == "dequant_one" ? 1 :
-                              item.mutation == "dequant_overflow_neg" ? -overflow : overflow;
+        const int64_t value = item.mutation == "dequant_one"          ? 1 :
+                              item.mutation == "dequant_overflow_neg" ? -overflow :
+                                                                        overflow;
         context.attrs_[optiling::GroupedMatmulSwigluQuantV2Tiling::ATTR_INDEX_DEQUANT_DTYPE].attr_ =
             Ops::Transformer::AnyValue::CreateFrom<int64_t>(value);
     } else if (item.mutation.rfind("missing_input_", 0) == 0) {
@@ -357,8 +358,8 @@ void CheckCsvRouteCase(const RouteCsvCase &item, bool trans, int scaleAlg)
         ExecuteTestCase(context, ge::GRAPH_FAILED);
         return;
     }
-    const bool customParams = item.scenario == "attributes" ||
-                              (item.scenario == "reuse" && item.swigluMode == SPLIT_SWIGLU_MODE);
+    const bool customParams =
+        item.scenario == "attributes" || (item.scenario == "reuse" && item.swigluMode == SPLIT_SWIGLU_MODE);
     if (customParams) {
         context.attrs_[optiling::GroupedMatmulSwigluQuantV2Tiling::ATTR_INDEX_CLAMP_LIMIT].attr_ =
             Ops::Transformer::AnyValue::CreateFrom<float>(CUSTOM_CLAMP_LIMIT);
@@ -378,7 +379,7 @@ void CheckCsvRouteCase(const RouteCsvCase &item, bool trans, int scaleAlg)
     if (item.scenario == "capability") {
         EXPECT_EQ(result.blockNum, AIC_CORE_COUNT);
     }
-    const auto *params = GetSwigluParams(result);
+    const auto* params = GetSwigluParams(result);
     ASSERT_NE(params, nullptr);
     const int expectedAlg = item.swigluMode == SPLIT_SWIGLU_MODE ? scaleAlg : 0;
     if (customParams) {
@@ -389,19 +390,17 @@ void CheckCsvRouteCase(const RouteCsvCase &item, bool trans, int scaleAlg)
     }
 
     if (item.scenario == "unaligned" || item.scenario == "unaligned_regression") {
-        const auto *tilingData = GetTilingData<CgmctTilingData>(result);
+        const auto* tilingData = GetTilingData<CgmctTilingData>(result);
         ASSERT_NE(tilingData, nullptr);
-        const auto &mm = tilingData->mmTilingData;
+        const auto& mm = tilingData->mmTilingData;
         ASSERT_GT(mm.stepKa, 0);
         ASSERT_GT(mm.stepKb, 0);
         ASSERT_GT(mm.baseK, 0);
         const auto mxTypePara = static_cast<uint32_t>(mm.mxTypePara);
         const uint64_t scaleFactorA = mxTypePara & SCALE_FACTOR_MASK;
         const uint64_t scaleFactorB = (mxTypePara >> SCALE_FACTOR_B_SHIFT) & SCALE_FACTOR_MASK;
-        const uint64_t fullScaleWindowsA =
-            std::max<int64_t>(MIN_SCALE_WINDOW_COUNT, route.k / (mm.stepKa * mm.baseK));
-        const uint64_t fullScaleWindowsB =
-            std::max<int64_t>(MIN_SCALE_WINDOW_COUNT, route.k / (mm.stepKb * mm.baseK));
+        const uint64_t fullScaleWindowsA = std::max<int64_t>(MIN_SCALE_WINDOW_COUNT, route.k / (mm.stepKa * mm.baseK));
+        const uint64_t fullScaleWindowsB = std::max<int64_t>(MIN_SCALE_WINDOW_COUNT, route.k / (mm.stepKb * mm.baseK));
         EXPECT_LE(scaleFactorA, fullScaleWindowsA);
         EXPECT_LE(scaleFactorB, fullScaleWindowsB);
         const uint64_t scaleK =
@@ -423,9 +422,9 @@ void CheckCsvRouteCase(const RouteCsvCase &item, bool trans, int scaleAlg)
 
     if (item.scenario == "symmetric_l1" || item.scenario == "long_k" || item.scenario == "performance") {
         if (route.key == V3_TENSOR_API_NZ_KEY || route.key == V3_TENSOR_API_ZN_KEY) {
-            const auto *tilingData = GetTilingData<TensorApiTilingData>(result);
+            const auto* tilingData = GetTilingData<TensorApiTilingData>(result);
             ASSERT_NE(tilingData, nullptr);
-            const auto &mm = tilingData->mmTilingData;
+            const auto& mm = tilingData->mmTilingData;
             EXPECT_EQ(mm.baseM, EXPECTED_TENSOR_BASE_M);
             EXPECT_EQ(mm.baseN, EXPECTED_TENSOR_BASE_N);
             EXPECT_EQ(mm.baseK, EXPECTED_TENSOR_BASE_K);
@@ -438,7 +437,7 @@ void CheckCsvRouteCase(const RouteCsvCase &item, bool trans, int scaleAlg)
             }
         } else {
             ASSERT_EQ(item.scenario, "performance");
-            const auto *tilingData = GetTilingData<CgmctTilingData>(result);
+            const auto* tilingData = GetTilingData<CgmctTilingData>(result);
             ASSERT_NE(tilingData, nullptr);
             EXPECT_EQ(tilingData->mmTilingData.baseM, EXPECTED_CGMCT_BASE_M);
             EXPECT_EQ(tilingData->mmTilingData.baseN, EXPECTED_CGMCT_BASE_N);
@@ -450,7 +449,7 @@ void CheckCsvRouteCase(const RouteCsvCase &item, bool trans, int scaleAlg)
 TEST(GroupedMatmulSwigluQuantV3Route, CsvRouteCases)
 {
     std::vector<RouteCsvCase> reuseCases;
-    for (const auto &item : LoadRouteCases()) {
+    for (const auto& item : LoadRouteCases()) {
         if (item.scenario == "reuse") {
             reuseCases.push_back(item);
             continue;
@@ -469,7 +468,7 @@ TEST(GroupedMatmulSwigluQuantV3Route, CsvRouteCases)
     }
     // Preserve the original per-layout sequence of V2 -> V3 -> V2 calls.
     for (const bool trans : {false, true}) {
-        for (const auto &item : reuseCases) {
+        for (const auto& item : reuseCases) {
             CheckCsvRouteCase(item, trans, std::stoi(item.scaleAlgValues));
         }
     }

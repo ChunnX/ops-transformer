@@ -97,8 +97,8 @@ TILING_DATA_FIELD_DEF(uint32_t, reserved1);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(GMMSwigluQuantSwigluParamsOp, GMMSwigluQuantSwigluParamsHost)
 
-inline void SetGMMSwigluQuantSwigluParams(GMMSwigluQuantSwigluParamsHost &target,
-                                          const ::GMMSwigluQuantSwigluParams &source = {})
+inline void SetGMMSwigluQuantSwigluParams(GMMSwigluQuantSwigluParamsHost& target,
+                                          const ::GMMSwigluQuantSwigluParams& source = {})
 {
     target.set_swigluMode(source.swigluMode);
     target.set_clampLimit(source.clampLimit);
@@ -236,7 +236,7 @@ constexpr int64_t SIZE_OF_HALF_2 = 2;
 
 class GroupedMatmulSwigluQuantV2Tiling : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit GroupedMatmulSwigluQuantV2Tiling(gert::TilingContext *context)
+    explicit GroupedMatmulSwigluQuantV2Tiling(gert::TilingContext* context)
         : Ops::Transformer::OpTiling::TilingBaseClass(context) {};
 
     ~GroupedMatmulSwigluQuantV2Tiling() override = default;

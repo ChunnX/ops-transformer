@@ -47,19 +47,19 @@ constexpr char DEFAULT_ROUND_MODE[] = "rint";
 
 namespace l0op {
 
-const std::tuple<aclTensor *, aclTensor *> GroupedMatmulSwigluQuantV2(
-    const aclTensor *x, const aclTensorList *weight, const aclTensorList *weightScale, const aclTensor *xScale,
-    const aclTensorList *weightAssistanceMatrix, const aclTensor *bias, const aclTensor *smoothScale,
-    const aclTensor *groupList, int64_t dequantMode, int64_t dequantDtype, int64_t quantMode, int64_t quantDtype,
-    bool transposeWeight, int64_t groupListType, const aclIntArray *tuningConfigOptional, aclOpExecutor *executor);
+const std::tuple<aclTensor*, aclTensor*> GroupedMatmulSwigluQuantV2(
+    const aclTensor* x, const aclTensorList* weight, const aclTensorList* weightScale, const aclTensor* xScale,
+    const aclTensorList* weightAssistanceMatrix, const aclTensor* bias, const aclTensor* smoothScale,
+    const aclTensor* groupList, int64_t dequantMode, int64_t dequantDtype, int64_t quantMode, int64_t quantDtype,
+    bool transposeWeight, int64_t groupListType, const aclIntArray* tuningConfigOptional, aclOpExecutor* executor);
 
-const std::tuple<aclTensor *, aclTensor *> GroupedMatmulSwigluQuantV2(
-    const aclTensor *x, const aclTensorList *weight, const aclTensorList *weightScale, const aclTensor *xScale,
-    const aclTensorList *weightAssistanceMatrix, const aclTensor *bias, const aclTensor *smoothScale,
-    const aclTensor *groupList, int64_t dequantMode, int64_t dequantDtype, int64_t quantMode, int64_t quantDtype,
-    bool transposeWeight, int64_t groupListType, const aclIntArray *tuningConfigOptional, int64_t swigluMode,
-    float clampLimit, float gluAlpha, float gluBias, const char *roundMode, int64_t scaleAlg, float dstTypeMax,
-    aclOpExecutor *executor);
+const std::tuple<aclTensor*, aclTensor*> GroupedMatmulSwigluQuantV2(
+    const aclTensor* x, const aclTensorList* weight, const aclTensorList* weightScale, const aclTensor* xScale,
+    const aclTensorList* weightAssistanceMatrix, const aclTensor* bias, const aclTensor* smoothScale,
+    const aclTensor* groupList, int64_t dequantMode, int64_t dequantDtype, int64_t quantMode, int64_t quantDtype,
+    bool transposeWeight, int64_t groupListType, const aclIntArray* tuningConfigOptional, int64_t swigluMode,
+    float clampLimit, float gluAlpha, float gluBias, const char* roundMode, int64_t scaleAlg, float dstTypeMax,
+    aclOpExecutor* executor);
 } // namespace l0op
 
 #endif

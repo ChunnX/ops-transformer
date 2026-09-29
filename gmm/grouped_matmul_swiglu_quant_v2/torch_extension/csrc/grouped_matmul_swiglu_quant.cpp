@@ -63,7 +63,7 @@ aclDataType GetAclDtypeFromValue(int64_t dtype)
     return GetAclDataType(dtype);
 }
 
-aclDataType GetTensorAclDtype(const c10::optional<int64_t> &dtype, const at::Tensor &tensor, const char *name)
+aclDataType GetTensorAclDtype(const c10::optional<int64_t>& dtype, const at::Tensor& tensor, const char* name)
 {
     const aclDataType storageDtype = ConvertToAclDataType(tensor.scalar_type());
     // TensorWrapper changes the descriptor, not the underlying storage. Do not
@@ -73,7 +73,7 @@ aclDataType GetTensorAclDtype(const c10::optional<int64_t> &dtype, const at::Ten
     return storageDtype;
 }
 
-aclDataType GetMxScaleAclDtype(const c10::optional<int64_t> &dtype, const at::Tensor &tensor, const char *name)
+aclDataType GetMxScaleAclDtype(const c10::optional<int64_t>& dtype, const at::Tensor& tensor, const char* name)
 {
     // E8M0 is reinterpreted from its raw bytes, not converted numerically. Both
     // signed and unsigned byte storage preserve that bit pattern.
@@ -85,7 +85,7 @@ aclDataType GetMxScaleAclDtype(const c10::optional<int64_t> &dtype, const at::Te
     return ACL_FLOAT8_E8M0;
 }
 
-void CheckListForIndexing(const std::vector<at::Tensor> &tensors, const char *name)
+void CheckListForIndexing(const std::vector<at::Tensor>& tensors, const char* name)
 {
     // ACLNN validates the supported TensorList cardinality. The wrapper only
     // needs its first tensor to infer the descriptor and output shape safely.
@@ -93,7 +93,7 @@ void CheckListForIndexing(const std::vector<at::Tensor> &tensors, const char *na
     TORCH_CHECK(tensors[0].defined(), name, "[0] must be defined.");
 }
 
-int64_t InferLogicalN(const at::Tensor &weightScale)
+int64_t InferLogicalN(const at::Tensor& weightScale)
 {
     TORCH_CHECK(weightScale.dim() == kWeightScaleRank, "weight_scale[0] must be 4D in the V3 MXFP8 scenario, but got ",
                 weightScale.dim(), ".");
@@ -105,15 +105,15 @@ int64_t InferLogicalN(const at::Tensor &weightScale)
 } // namespace
 
 std::tuple<at::Tensor, at::Tensor> grouped_matmul_swiglu_quant(
-    const at::Tensor &x, const std::vector<at::Tensor> &weight, const std::vector<at::Tensor> &weightScale,
-    const at::Tensor &xScale, const at::Tensor &groupList, const c10::optional<at::Tensor> &smoothScale,
-    const c10::optional<std::vector<at::Tensor>> &weightAssistMatrix,
-    const c10::optional<std::vector<at::Tensor>> &bias, c10::optional<int64_t> dequantMode,
+    const at::Tensor& x, const std::vector<at::Tensor>& weight, const std::vector<at::Tensor>& weightScale,
+    const at::Tensor& xScale, const at::Tensor& groupList, const c10::optional<at::Tensor>& smoothScale,
+    const c10::optional<std::vector<at::Tensor>>& weightAssistMatrix,
+    const c10::optional<std::vector<at::Tensor>>& bias, c10::optional<int64_t> dequantMode,
     c10::optional<int64_t> dequantDtype, c10::optional<int64_t> quantMode, c10::optional<int64_t> quantDtype,
-    c10::optional<int64_t> groupListType, const c10::optional<std::vector<int64_t>> &tuningConfig,
+    c10::optional<int64_t> groupListType, const c10::optional<std::vector<int64_t>>& tuningConfig,
     c10::optional<int64_t> xDtype, c10::optional<int64_t> weightDtype, c10::optional<int64_t> weightScaleDtype,
     c10::optional<int64_t> xScaleDtype, c10::optional<int64_t> swigluMode, c10::optional<double> clampLimit,
-    c10::optional<double> gluAlpha, c10::optional<double> gluBias, const std::string &roundMode, int64_t scaleAlg,
+    c10::optional<double> gluAlpha, c10::optional<double> gluBias, const std::string& roundMode, int64_t scaleAlg,
     double dstTypeMax)
 {
     const double clampLimitValue = clampLimit.value_or(kDefaultClampLimit);
@@ -161,7 +161,7 @@ std::tuple<at::Tensor, at::Tensor> grouped_matmul_swiglu_quant(
     at::TensorList weightRef = weight;
     at::TensorList weightScaleRef = weightScale;
     const std::vector<at::Tensor> emptyAssist;
-    const std::vector<at::Tensor> &assist = weightAssistMatrix.has_value() ? weightAssistMatrix.value() : emptyAssist;
+    const std::vector<at::Tensor>& assist = weightAssistMatrix.has_value() ? weightAssistMatrix.value() : emptyAssist;
     at::TensorList assistRef = assist;
     // V3 currently accepts only an empty bias TensorList. ACLNN V3 keeps its
     // optional single-tensor ABI, so pass an undefined tensor.
@@ -178,7 +178,7 @@ std::tuple<at::Tensor, at::Tensor> grouped_matmul_swiglu_quant(
     TensorWrapper xScaleWrapper = {xScale, xScaleAclDtype};
     TensorWrapper outputWrapper = {output, ACL_FLOAT8_E4M3FN};
     TensorWrapper outputScaleWrapper = {outputScale, ACL_FLOAT8_E8M0};
-    const char *roundModePtr = roundMode.c_str();
+    const char* roundModePtr = roundMode.c_str();
     // ACLNN_CMD forwards every argument through the ACL type converter, whose
     // interface takes non-const lvalue references.  Keep the scalar attributes
     // in named variables instead of passing value_or() / temporary expressions.

@@ -52,7 +52,7 @@ ge::graphStatus GroupedMatmulSwigluQuantV2BasicApiTiling950::GetPlatformInfo()
 {
     auto platformInfo = context_->GetPlatformInfo();
     if (platformInfo == nullptr) {
-        const auto *compileInfo = context_->GetCompileInfo<GMMSwigluV2CompileInfo>();
+        const auto* compileInfo = context_->GetCompileInfo<GMMSwigluV2CompileInfo>();
         OP_CHECK_IF(compileInfo == nullptr, OP_LOGE(context_->GetNodeName(), "Compile info is nullptr."),
                     return ge::GRAPH_FAILED);
         aicoreParams_.aicNum = compileInfo->aicNum_;
@@ -132,10 +132,10 @@ bool GroupedMatmulSwigluQuantV2BasicApiTiling950::AnalyzeAttrs()
     auto attrs = context_->GetAttrs();
     OP_CHECK_IF(attrs == nullptr, OP_LOGE(context_->GetNodeName(), "Attrs is nullptr."), return false);
 
-    const int64_t *dequantMode = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_DEQUANT_MODE);
-    const int64_t *dequantDtype = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_DEQUANT_DTYPE);
-    const int64_t *quantMode = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_QUANT_MODE);
-    const int64_t *quantDtype = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_QUANT_DTYPE);
+    const int64_t* dequantMode = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_DEQUANT_MODE);
+    const int64_t* dequantDtype = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_DEQUANT_DTYPE);
+    const int64_t* quantMode = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_QUANT_MODE);
+    const int64_t* quantDtype = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_QUANT_DTYPE);
     OP_CHECK_IF(dequantMode == nullptr || dequantDtype == nullptr || quantMode == nullptr || quantDtype == nullptr,
                 OP_LOGE(context_->GetNodeName(), "Required quantization attrs are nullptr."), return false);
     OP_CHECK_IF(*dequantMode != MX_QUANT_MODE || *quantMode != MX_QUANT_MODE,
@@ -144,8 +144,8 @@ bool GroupedMatmulSwigluQuantV2BasicApiTiling950::AnalyzeAttrs()
     OP_CHECK_IF(static_cast<ge::DataType>(*dequantDtype) != ge::DT_FLOAT,
                 OP_LOGE(context_->GetNodeName(), "dequant_dtype must be DT_FLOAT for MX quant."), return false);
     quantDtype_ = static_cast<ge::DataType>(*quantDtype);
-    const bool *transposeWeight = attrs->GetAttrPointer<bool>(ATTR_INDEX_TRANSPOSE_WEIGHT);
-    const int64_t *groupListType = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_GROUPLIST_TYPE);
+    const bool* transposeWeight = attrs->GetAttrPointer<bool>(ATTR_INDEX_TRANSPOSE_WEIGHT);
+    const int64_t* groupListType = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_GROUPLIST_TYPE);
     inputParams_.transA = false;
     inputParams_.transB = transposeWeight != nullptr ? *transposeWeight : false;
     inputParams_.groupListType = groupListType != nullptr ? static_cast<int8_t>(*groupListType) : 0;
@@ -165,9 +165,9 @@ bool GroupedMatmulSwigluQuantV2BasicApiTiling950::AnalyzeInputs()
     OP_CHECK_IF(xStorageShape == nullptr || weightStorageShape == nullptr || groupListStorageShape == nullptr,
                 OP_LOGE(context_->GetNodeName(), "x, weight or group_list shape is nullptr."), return false);
 
-    const auto &xShape = xStorageShape->GetOriginShape();
-    const auto &weightShape = weightStorageShape->GetOriginShape();
-    const auto &groupListShape = groupListStorageShape->GetStorageShape();
+    const auto& xShape = xStorageShape->GetOriginShape();
+    const auto& weightShape = weightStorageShape->GetOriginShape();
+    const auto& groupListShape = groupListStorageShape->GetStorageShape();
     OP_CHECK_IF(xShape.GetDimNum() < SHAPE_DIM_TWO || weightShape.GetDimNum() < SHAPE_DIM_TWO,
                 OP_LOGE(context_->GetNodeName(), "x and weight must have at least two dimensions."), return false);
     OP_CHECK_IF(groupListShape.GetDimNum() != SHAPE_DIM_ONE,
@@ -226,8 +226,8 @@ bool GroupedMatmulSwigluQuantV2BasicApiTiling950::CheckTensorApiShapes() const
         GetDynamicInputCount(WEIGHT_SCALE_INDEX) != 1U) {
         return false;
     }
-    const auto &xShape = xShapePtr->GetOriginShape();
-    const auto &weightShape = weightShapePtr->GetOriginShape();
+    const auto& xShape = xShapePtr->GetOriginShape();
+    const auto& weightShape = weightShapePtr->GetOriginShape();
     if (xShape.GetDimNum() != SHAPE_DIM_TWO ||
         (weightShape.GetDimNum() != SHAPE_DIM_TWO && weightShape.GetDimNum() != SHAPE_DIM_THREE)) {
         return false;
@@ -244,8 +244,8 @@ bool GroupedMatmulSwigluQuantV2BasicApiTiling950::CheckTensorApiScaleShapes() co
     if (xScaleShapePtr == nullptr || weightScaleShapePtr == nullptr) {
         return false;
     }
-    const auto &xScaleShape = xScaleShapePtr->GetOriginShape();
-    const auto &weightScaleShape = weightScaleShapePtr->GetOriginShape();
+    const auto& xScaleShape = xScaleShapePtr->GetOriginShape();
+    const auto& weightScaleShape = weightScaleShapePtr->GetOriginShape();
     if (xScaleShape.GetDimNum() != SHAPE_DIM_THREE || weightScaleShape.GetDimNum() != SHAPE_DIM_FOUR) {
         return false;
     }
@@ -324,7 +324,7 @@ ge::graphStatus GroupedMatmulSwigluQuantV2BasicApiTiling950::DoLibApiTiling()
 
 ge::graphStatus GroupedMatmulSwigluQuantV2BasicApiTiling950::GetWorkspaceSize()
 {
-    size_t *workspaces = context_->GetWorkspaceSizes(1);
+    size_t* workspaces = context_->GetWorkspaceSizes(1);
     OP_CHECK_NULL_WITH_CONTEXT(context_, workspaces);
     workspaces[0] = GmmConstant::SYS_WORKSPACE_SIZES;
     return ge::GRAPH_SUCCESS;

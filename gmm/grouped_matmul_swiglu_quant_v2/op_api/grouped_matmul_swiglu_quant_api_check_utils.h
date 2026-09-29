@@ -18,7 +18,7 @@
 
 namespace gmm_swiglu_quant_api_check {
 
-inline aclnnStatus CheckRequiredPointer(const void *pointer, const char *apiName, const char *parameterName)
+inline aclnnStatus CheckRequiredPointer(const void* pointer, const char* apiName, const char* parameterName)
 {
     if (pointer != nullptr) {
         return ACLNN_SUCCESS;
@@ -28,8 +28,8 @@ inline aclnnStatus CheckRequiredPointer(const void *pointer, const char *apiName
 }
 
 // expectedSize == 0 preserves the V2 contract (a non-empty list); V3 requires exactly one tensor.
-inline aclnnStatus CheckRequiredTensorList(const aclTensorList *tensorList, const char *apiName,
-                                           const char *parameterName, size_t expectedSize = 0)
+inline aclnnStatus CheckRequiredTensorList(const aclTensorList* tensorList, const char* apiName,
+                                           const char* parameterName, size_t expectedSize = 0)
 {
     auto status = CheckRequiredPointer(tensorList, apiName, parameterName);
     if (status != ACLNN_SUCCESS) {
@@ -53,10 +53,10 @@ inline aclnnStatus CheckRequiredTensorList(const aclTensorList *tensorList, cons
     return ACLNN_SUCCESS;
 }
 
-inline aclnnStatus CheckRequiredInputs(const char *apiName, const aclTensor *x, const aclTensorList *weight,
-                                       const aclTensorList *weightScale, const aclTensor *xScale,
-                                       const aclTensor *groupList, const aclTensor *output,
-                                       const aclTensor *outputScale, size_t expectedWeightSize = 0)
+inline aclnnStatus CheckRequiredInputs(const char* apiName, const aclTensor* x, const aclTensorList* weight,
+                                       const aclTensorList* weightScale, const aclTensor* xScale,
+                                       const aclTensor* groupList, const aclTensor* output,
+                                       const aclTensor* outputScale, size_t expectedWeightSize = 0)
 {
     auto status = CheckRequiredPointer(x, apiName, "x");
     if (status != ACLNN_SUCCESS) {
@@ -71,11 +71,11 @@ inline aclnnStatus CheckRequiredInputs(const char *apiName, const aclTensor *x, 
         return status;
     }
     const struct {
-        const void *pointer;
-        const char *name;
-    } requiredInputs[] = {{xScale, "xScale"}, {groupList, "groupList"}, {output, "output"},
-                          {outputScale, "outputScale"}};
-    for (const auto &input : requiredInputs) {
+        const void* pointer;
+        const char* name;
+    } requiredInputs[] = {
+        {xScale, "xScale"}, {groupList, "groupList"}, {output, "output"}, {outputScale, "outputScale"}};
+    for (const auto& input : requiredInputs) {
         status = CheckRequiredPointer(input.pointer, apiName, input.name);
         if (status != ACLNN_SUCCESS) {
             return status;
