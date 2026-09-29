@@ -17,7 +17,7 @@
 #define GROUPED_MATMUL_SWIGLU_QUANT_V2_HIF4QUANT_H
 
 #include "cgmct/kernel/kernel_gmm_swiglu_hif4quant.h"
-#include "cgmct/block/block_mmad_mx_hif4.h"
+#include "cgmct/block/block_mmad_mx.h"
 #include "cgmct/block/block_scheduler_gmm_aswt_with_tail_split.h"
 
 using namespace Cgmct::Gemm;

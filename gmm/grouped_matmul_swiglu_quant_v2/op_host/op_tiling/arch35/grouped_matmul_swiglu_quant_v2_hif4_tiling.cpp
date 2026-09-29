@@ -149,11 +149,9 @@ bool GroupedMatmulSwigluQuantV2Hif4Tiling::AnalyzeDtype()
     auto x1ScaleStorageShape = context_->GetInputShape(PER_TOKEN_SCALE_INDEX);
     OP_CHECK_IF(x1ScaleStorageShape == nullptr, OP_LOGE(context_->GetNodeName(), "XScaleStorageShape is nullptr."),
                 return false);
-    const gert::Shape &xScaleShape = x1ScaleStorageShape->GetOriginShape();
     auto scaleStorageShape = context_->GetDynamicInputShape(SCALE_INDEX, 0);
     OP_CHECK_IF(scaleStorageShape == nullptr, OP_LOGE(context_->GetNodeName(), "scaleStorageShape is nullptr."),
                 return false);
-    const gert::Shape &wScaleShape = scaleStorageShape->GetStorageShape();
     auto xStorageShape = context_->GetInputShape(X_INDEX);
     OP_CHECK_IF(xStorageShape == nullptr, OP_LOGE(context_->GetNodeName(), "xStorageShape is nullptr."), return false);
     const gert::Shape &xShape = xStorageShape->GetOriginShape();
@@ -165,7 +163,7 @@ bool GroupedMatmulSwigluQuantV2Hif4Tiling::AnalyzeDtype()
     const bool *transposeWeightPtr = attrs->GetAttrPointer<bool>(ATTR_INDEX_TRANS_W);
     inputParams_.transB = transposeWeightPtr != nullptr ? *transposeWeightPtr : false;
     OP_CHECK_IF(!SetMKN(xShape, wShape), OP_LOGE(inputParams_.opName, "SetMKN failed."), return false);
-    OP_CHECK_IF(!SetQuantModeForGMMSwigluQuant(wScaleShape, xScaleShape),
+    OP_CHECK_IF(!SetQuantModeForGMMSwigluQuant(),
                 OP_LOGE(inputParams_.opName, "SetQuantModeForGMMSwigluQuant failed."), return false);
     return CheckDtype();
 }
@@ -282,10 +280,8 @@ bool GroupedMatmulSwigluQuantV2Hif4Tiling::CheckCoreNum() const
     return true;
 }
 
-bool GroupedMatmulSwigluQuantV2Hif4Tiling::SetQuantModeForGMMSwigluQuant(const gert::Shape &wScaleShape,
-                                                                          const gert::Shape &xScaleShape)
+bool GroupedMatmulSwigluQuantV2Hif4Tiling::SetQuantModeForGMMSwigluQuant()
 {
-    auto wScaleDims = wScaleShape.GetDimNum();
     if (IsHif4Scale()) {
         inputParams_.bQuantMode = optiling::QuantMode::HIF4_PERGROUP_MODE;
         inputParams_.aQuantMode = optiling::QuantMode::HIF4_PERGROUP_MODE;
@@ -300,8 +296,6 @@ ge::graphStatus GroupedMatmulSwigluQuantV2Hif4Tiling::DoOpTiling()
     tilingData_.gmmSwigluQuantParams.set_groupListType(static_cast<uint8_t>(inputParams_.groupListType));
     auto attrs = context_->GetAttrs();
     if (attrs != nullptr) {
-        const int64_t *dequantDtypeTypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_DEQUANT_DTYPE);
-        int64_t dequantDtype = dequantDtypeTypePtr != nullptr ? static_cast<int64_t>(*dequantDtypeTypePtr) : 0L;
         const int64_t *quantDtypeTypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_QUANT_DTYPE);
         int64_t quantDtype = quantDtypeTypePtr != nullptr ? static_cast<int64_t>(*quantDtypeTypePtr) : 0L;
         tilingData_.gmmSwigluQuantParams.set_quantDtype(static_cast<uint8_t>(quantDtype));

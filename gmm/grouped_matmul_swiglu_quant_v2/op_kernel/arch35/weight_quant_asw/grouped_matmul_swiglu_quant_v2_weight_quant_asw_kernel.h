@@ -20,7 +20,7 @@
 #include "grouped_matmul_swiglu_quant_v2_weight_quant_asw_cube_compute.h"
 #include "grouped_matmul_swiglu_quant_v2_weight_quant_asw_vec_compute.h"
 #include "grouped_matmul_swiglu_quant_v2_weight_quant_asw_tiling_data.h"
-#include "../../grouped_matmul_swiglu_quant_v2_utils.h"
+#include "../../grouped_matmul_swiglu_quant_v2_utils_kernel.h"
 using namespace WeightQuantTools;
 using AswParams = GMMSQArch35Tiling::GMMSQWeightQuantAswParams;
 using namespace GroupedMatmulDequantSwigluQuant;
