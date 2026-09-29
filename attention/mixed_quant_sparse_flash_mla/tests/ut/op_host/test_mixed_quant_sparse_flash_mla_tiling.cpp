@@ -34,6 +34,7 @@ protected:
 namespace {
 constexpr uint64_t SKIP_TILING_KEY = UINT64_MAX;
 constexpr uint64_t TOPK_OFFSET_ORI_CMP_SPARSE_TILING_KEY = 50333698U;
+constexpr uint64_t ARCH22_TURBO_QUANT_TILING_KEY = 33794U;
 constexpr int64_t kBatchSize = 4;
 constexpr int64_t kNumHeadsKv = 1;
 constexpr int64_t kMetadataSize = optiling::SMLA_META_SIZE;
@@ -142,6 +143,26 @@ void RunMQSmlaTilingCase(const MQSmlaCase &c, ge::graphStatus expect, uint64_t e
         &compileInfo, c.socVersion, c.coreNum, c.ubSize);
     ExecuteTestCase(tilingContextPara, expect, expectTilingKey);
 }
+
+MQSmlaCase MakeArch22TurboQuantCase(ge::DataType dtype, int64_t topk)
+{
+    MQSmlaCase c;
+    c.oriKvShape = {65, 128, 1, 512};
+    c.cmpKvShape = {17, 128, 1, 258};
+    c.cmpSparseIndicesShape = {512, 1, topk};
+    c.oriBlockTableShape = {4, 65};
+    c.cmpBlockTableShape = {4, 17};
+    c.qType = dtype;
+    c.kvType = dtype;
+    c.cmpKvType = ge::DT_UINT8;
+    c.outType = dtype;
+    c.quantMode = 3;
+    c.cmpRatio = 4;
+    c.cmpMaskMode = 3;
+    c.socVersion = "Ascend910B";
+    c.coreNum = 64;
+    return c;
+}
 } // namespace
 
 // SWA only, ori_kv fp8, TND/PA_BBND success, quant_mode=1 (kv head dim 608)
@@ -185,6 +206,21 @@ TEST_F(MixedQuantSparseFlashMlaTiling, test_tiling_csa_with_sparse_indices_tnd_p
     c.cmpRatio = 4;
     c.cmpMaskMode = 3;
     RunMQSmlaTilingCase(c, ge::GRAPH_SUCCESS);
+}
+
+TEST_F(MixedQuantSparseFlashMlaTiling, test_tiling_topk_offset_ori_cmp_sparse_success)
+{
+    MQSmlaCase c;
+    c.cmpKvShape = {32, 128, 1, 608};
+    c.oriSparseIndicesShape = {512, 1, 512};
+    c.cmpSparseIndicesShape = {512, 1, 512};
+    c.cmpBlockTableShape = {4, 8};
+    c.sequsedCmpKvShape = {4};
+    c.cmpResidualKvShape = {4};
+    c.cmpRatio = 4;
+    c.cmpMaskMode = 3;
+    c.topkValueMode = 2;
+    RunMQSmlaTilingCase(c, ge::GRAPH_SUCCESS, TOPK_OFFSET_ORI_CMP_SPARSE_TILING_KEY);
 }
 
 // topk_value_mode=2 is only supported for PA_BBND KV layout.
@@ -259,41 +295,22 @@ TEST_F(MixedQuantSparseFlashMlaTiling, test_tiling_arch22_turbo_quant_success)
 {
     for (ge::DataType dtype : {ge::DT_FLOAT16, ge::DT_BF16}) {
         for (int64_t topk : {512, 1024}) {
-            MQSmlaCase c;
-            c.oriKvShape = {65, 128, 1, 512};
-            c.cmpKvShape = {17, 128, 1, 258};
-            c.cmpSparseIndicesShape = {512, 1, topk};
-            c.oriBlockTableShape = {4, 65};
-            c.cmpBlockTableShape = {4, 17};
-            c.qType = dtype;
-            c.kvType = dtype;
-            c.cmpKvType = ge::DT_UINT8;
-            c.outType = dtype;
-            c.quantMode = 3;
-            c.cmpRatio = 4;
-            c.cmpMaskMode = 3;
-            c.socVersion = "Ascend910B";
-            c.coreNum = 64;
-            RunMQSmlaTilingCase(c, ge::GRAPH_SUCCESS);
+            MQSmlaCase c = MakeArch22TurboQuantCase(dtype, topk);
+            RunMQSmlaTilingCase(c, ge::GRAPH_SUCCESS, ARCH22_TURBO_QUANT_TILING_KEY);
         }
     }
 }
 
+TEST_F(MixedQuantSparseFlashMlaTiling, test_tiling_arch22_topk_offset_failed)
+{
+    MQSmlaCase c = MakeArch22TurboQuantCase(ge::DT_BF16, 512);
+    c.topkValueMode = 2;
+    RunMQSmlaTilingCase(c, ge::GRAPH_FAILED);
+}
+
 TEST_F(MixedQuantSparseFlashMlaTiling, test_tiling_arch22_turbo_quant_topk_failed)
 {
-    MQSmlaCase c;
-    c.oriKvShape = {65, 128, 1, 512};
-    c.cmpKvShape = {17, 128, 1, 258};
-    c.cmpSparseIndicesShape = {512, 1, 256};
-    c.oriBlockTableShape = {4, 65};
-    c.cmpBlockTableShape = {4, 17};
-    c.kvType = ge::DT_BF16;
-    c.cmpKvType = ge::DT_UINT8;
-    c.quantMode = 3;
-    c.cmpRatio = 4;
-    c.cmpMaskMode = 3;
-    c.socVersion = "Ascend910B";
-    c.coreNum = 64;
+    MQSmlaCase c = MakeArch22TurboQuantCase(ge::DT_BF16, 256);
     RunMQSmlaTilingCase(c, ge::GRAPH_FAILED);
 }
 
