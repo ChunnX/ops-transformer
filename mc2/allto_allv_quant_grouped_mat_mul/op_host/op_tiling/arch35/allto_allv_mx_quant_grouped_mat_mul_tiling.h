@@ -29,7 +29,9 @@ public:
 protected:
     // tiling base
     bool IsCapable() override;
+    ge::graphStatus GetShapeAttrsInfo() override;
     uint64_t GetTilingKey() const override;
+    ge::graphStatus PostTiling() override;
     // quant base
     ge::graphStatus CheckScaleFormatAndDtype() const override;
     ge::graphStatus CheckInputDtype() const override;
@@ -48,6 +50,9 @@ private:
     ge::graphStatus CheckQuantGroupSize() const;
     ge::graphStatus CheckGmmScaleShape() const;
     ge::graphStatus CheckMmScaleShape() const;
+    bool CheckApaceImplCapable() const;
+
+    bool usingApaceImpl_{false};
 };
 
 class AlltoAllvMXQuantGmmTilingHelper : public Mc2GroupedMatmulTiling::Mc2GroupedQbmmTiling {
