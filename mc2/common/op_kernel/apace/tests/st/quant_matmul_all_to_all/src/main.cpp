@@ -38,7 +38,7 @@
 #include <cstdlib>
 #include "apace_st_utils.h"
 #include "apace/utils/apace_constant.h"
-#include "apace/tiling/quant_matmul_tiling_swat.h"
+#include "apace/tiling/matmul_tiling/quant_matmul_tiling.h"
 #include "apace/kernel/fusions/quant_matmul_all_to_all/matmul_all_to_all_tiling_data.h"
 #include "kernel_launcher.h"
 #include "apace/utils/comm_channel_builder.h"
@@ -49,6 +49,7 @@ static constexpr int32_t BENCHMARK_ITERATIONS = 10;
 static constexpr int32_t MXFP_K_ALIGN_SIZE = 32;
 static constexpr uint16_t HCCL_ROOT_INFO_PORT = 8998;
 static constexpr double MS_TO_US = 1000.0;
+static constexpr uint64_t Y_OUTPUT_BYTE = 2;
 
 enum QuantType {
     QUANT_E2M1_E2M1 = 0,
@@ -72,7 +73,7 @@ struct AllToAllArgs {
     int isLocalDelayed{1};
 };
 
-void PrintAllToAllUsage(const std::string &programName)
+void PrintAllToAllUsage(const std::string& programName)
 {
     std::cerr << "Usage: " << programName
               << " m k n rankNum [quantType] [isFp16] [isBias] [tileCnt] [tileSize]"
@@ -94,7 +95,7 @@ void PrintAllToAllUsage(const std::string &programName)
     std::cerr << "Example: " << programName << " 2048 3584 4096 4 1 0 0 4 512 0 1" << std::endl;
 }
 
-void ParseArgs(int argc, char *argv[], AllToAllArgs &args)
+void ParseArgs(int argc, char* argv[], AllToAllArgs& args)
 {
     if (argc >= 2 && (std::string(argv[1]) == "--help" || std::string(argv[1]) == "-h")) {
         PrintAllToAllUsage(argv[0]);
@@ -115,7 +116,7 @@ void ParseArgs(int argc, char *argv[], AllToAllArgs &args)
         args.tileSize = (argc >= 10) ? std::stoi(argv[9]) : 0;
         args.tailSize = (argc >= 11) ? std::stoi(argv[10]) : 0;
         args.isLocalDelayed = (argc >= 12) ? std::stoi(argv[11]) : 1;
-    } catch (const std::invalid_argument &) {
+    } catch (const std::invalid_argument&) {
         throw std::invalid_argument(
             "ERROR: m k n rankNum quantType isFp16 isBias tileCnt tileSize tailSize isLocalDelayed must "
             "be Integer");
@@ -170,9 +171,9 @@ void ParseArgs(int argc, char *argv[], AllToAllArgs &args)
     }
 }
 
-static void LaunchKernel(uint32_t usedCoreNum, aclrtStream stream, CommContext *hcommCtx, GM_ADDR deviceA,
+static void LaunchKernel(uint32_t usedCoreNum, aclrtStream stream, CommContext* hcommCtx, GM_ADDR deviceA,
                          GM_ADDR deviceScaleA, GM_ADDR deviceB, GM_ADDR deviceScaleB, GM_ADDR deviceBias,
-                         GM_ADDR deviceOutput, const MatmulAllToAllTilingData &tilingData, int quantType, int isFp16,
+                         GM_ADDR deviceOutput, const MatmulAllToAllTilingData& tilingData, int quantType, int isFp16,
                          int isLocalDelayed)
 {
 #define A2A_MX_LAUNCH(kernelName) \
@@ -226,7 +227,7 @@ static void ReleaseStreamDevice(aclrtStream stream, int32_t deviceId)
     aclFinalize();
 }
 
-int RunMatmulAllToAll(const AllToAllArgs &args, int rankId)
+int RunMatmulAllToAll(const AllToAllArgs& args, int rankId)
 {
     std::string ipport = "tcp://127.0.0.1:" + std::to_string(HCCL_ROOT_INFO_PORT);
     int rankNum = args.rankNum;
@@ -249,7 +250,7 @@ int RunMatmulAllToAll(const AllToAllArgs &args, int rankId)
                                          static_cast<uint64_t>(tileSize) * static_cast<uint64_t>(tileCnt));
     uint32_t tailCnt = (tailSize > 0) ? rem / tailSize : 0;
 
-    auto &commTd = tilingData.commTilingData;
+    auto& commTd = tilingData.commTilingData;
     commTd.splitAxisTileSize = static_cast<uint64_t>(tileSize);
     commTd.splitAxisTileCnt = static_cast<uint64_t>(tileCnt);
     commTd.splitAxisTailSize = static_cast<uint64_t>(tailSize);
@@ -300,9 +301,9 @@ int RunMatmulAllToAll(const AllToAllArgs &args, int rankId)
     CommChannelBuilder<> builder(comm);
     CommContext hostCtx = {};
 
-    const char *ctxTag = "quant_matmul_all_to_all";
+    const char* ctxTag = "quant_matmul_all_to_all";
 
-    CommContext *devContext = reinterpret_cast<CommContext *>(
+    CommContext* devContext = reinterpret_cast<CommContext*>(
         builder.CreateDeviceContext(&hostCtx, sizeof(CommContext), ctxTag, &hostCtx.udmaCtx, &hostCtx.ubmemCtx));
     if (devContext == nullptr) {
         ERROR_LOG("rank %d CreateDeviceContext failed", rankId);
@@ -310,6 +311,41 @@ int RunMatmulAllToAll(const AllToAllArgs &args, int rankId)
         ReleaseStreamDevice(stream, deviceId);
         return -1;
     }
+
+    void* hcclBuf = nullptr;
+    uint64_t hcclBufSize = 0;
+    if (HcclGetHcclBuffer(comm, &hcclBuf, &hcclBufSize) != HCCL_SUCCESS || hcclBuf == nullptr) {
+        ERROR_LOG("rank %d HcclGetHcclBuffer failed", rankId);
+        HcclCommDestroy(comm);
+        ReleaseStreamDevice(stream, deviceId);
+        return -1;
+    }
+    INFO_LOG("rank %d HcclGetHcclBuffer: buf=%p, size=%lu bytes (%lu MB)", rankId, hcclBuf,
+             static_cast<unsigned long>(hcclBufSize), static_cast<unsigned long>(hcclBufSize / (1024UL * 1024UL)));
+    uint64_t totalTileCntAll = static_cast<uint64_t>(tileCnt) + static_cast<uint64_t>(tailCnt);
+    uint64_t maxTileM = (tileSize > tailSize) ? static_cast<uint64_t>(tileSize) : static_cast<uint64_t>(tailSize);
+    // no-reuse 判定须按 kernel 实际占用口径: 全部 slot 按 maxTileM 步进预留
+    uint64_t totalSlotBytesNeeded = totalTileCntAll * maxTileM * static_cast<uint64_t>(n) * Y_OUTPUT_BYTE;
+    uint64_t slotNum = 0;
+    if (totalSlotBytesNeeded <= hcclBufSize) {
+        slotNum = totalTileCntAll; // 空间足够不复用buffer 此时slotNum = tileNum
+    } else {
+        uint64_t slotDataSize = maxTileM * static_cast<uint64_t>(n) * Y_OUTPUT_BYTE;
+        if (slotDataSize > hcclBufSize) {
+            ERROR_LOG("rank %d per-tile datasize %lu exceeds hccl buffer %lu", rankId,
+                      static_cast<unsigned long>(slotDataSize), static_cast<unsigned long>(hcclBufSize));
+            HcclCommDestroy(comm);
+            ReleaseStreamDevice(stream, deviceId);
+            return -1;
+        }
+        uint64_t budgetDepth = hcclBufSize / slotDataSize;
+        slotNum = (budgetDepth < totalTileCntAll) ? budgetDepth : totalTileCntAll;
+        slotNum = (slotNum > WIN_REUSE_DEPTH_CAP) ? WIN_REUSE_DEPTH_CAP : slotNum;
+    }
+    commTd.slotNum = slotNum;
+    INFO_LOG("BufferReuse: totalSlotBytesNeeded=%lu hcclBufSize=%lu totalTileCnt=%lu slotNum=%lu",
+             static_cast<unsigned long>(totalSlotBytesNeeded), static_cast<unsigned long>(hcclBufSize),
+             static_cast<unsigned long>(totalTileCntAll), static_cast<unsigned long>(slotNum));
 
     exchanger.Barrier();
     exchanger.Close();
@@ -322,7 +358,8 @@ int RunMatmulAllToAll(const AllToAllArgs &args, int rankId)
 
 #define DO_TILING(dTypeA, dTypeB) \
     do { \
-        QuantMatmulTilingSwat<dTypeA, dTypeB> tilingEngine; \
+        QuantMatmulTilingSwat<dTypeA, dTypeB, mm::BiasDataType::DT_FLOAT> tilingEngine; \
+        tilingEngine.SetBiasInfo(args.isBias != 0); \
         tilingEngine.GetTilingData(mmTileM, np, static_cast<uint64_t>(k), tilingData.tileQbmmTilingData, remoteBatch); \
         if (tailSize > 0) { \
             tilingEngine.GetTilingData(static_cast<uint64_t>(tailSize), np, static_cast<uint64_t>(k), \
@@ -432,7 +469,7 @@ int RunMatmulAllToAll(const AllToAllArgs &args, int rankId)
     }
     std::string inputDir = baseDir + "/input/" + std::to_string(rankId);
     std::string outputDir = baseDir + "/output/" + std::to_string(rankId);
-    auto readInput = [&](const std::string &fileName, void *buffer, size_t size) -> bool {
+    auto readInput = [&](const std::string& fileName, void* buffer, size_t size) -> bool {
         std::string path = inputDir + "/" + fileName;
         if (!ReadFile(path, buffer, size)) {
             ERROR_LOG("rank %d read %s failed. path = %s", rankId, fileName.c_str(), path.c_str());
@@ -448,34 +485,34 @@ int RunMatmulAllToAll(const AllToAllArgs &args, int rankId)
         return -1;
     }
 
-    if (aclrtMalloc((void **)&deviceA, sizeA, ACL_MEM_MALLOC_HUGE_ONLY) != ACL_ERROR_NONE) {
+    if (aclrtMalloc((void**)&deviceA, sizeA, ACL_MEM_MALLOC_HUGE_ONLY) != ACL_ERROR_NONE) {
         ERROR_LOG("rank %d aclrtMalloc deviceA failed", rankId);
         releaseAll();
         return -1;
     }
-    if (aclrtMalloc((void **)&deviceB, sizeB, ACL_MEM_MALLOC_HUGE_ONLY) != ACL_ERROR_NONE) {
+    if (aclrtMalloc((void**)&deviceB, sizeB, ACL_MEM_MALLOC_HUGE_ONLY) != ACL_ERROR_NONE) {
         ERROR_LOG("rank %d aclrtMalloc deviceB failed", rankId);
         releaseAll();
         return -1;
     }
-    if (aclrtMalloc((void **)&deviceScaleA, sizeScaleA, ACL_MEM_MALLOC_HUGE_ONLY) != ACL_ERROR_NONE) {
+    if (aclrtMalloc((void**)&deviceScaleA, sizeScaleA, ACL_MEM_MALLOC_HUGE_ONLY) != ACL_ERROR_NONE) {
         ERROR_LOG("rank %d aclrtMalloc deviceScaleA failed", rankId);
         releaseAll();
         return -1;
     }
-    if (aclrtMalloc((void **)&deviceScaleB, sizeScaleB, ACL_MEM_MALLOC_HUGE_ONLY) != ACL_ERROR_NONE) {
+    if (aclrtMalloc((void**)&deviceScaleB, sizeScaleB, ACL_MEM_MALLOC_HUGE_ONLY) != ACL_ERROR_NONE) {
         ERROR_LOG("rank %d aclrtMalloc deviceScaleB failed", rankId);
         releaseAll();
         return -1;
     }
     if (args.isBias != 0) {
-        if (aclrtMalloc((void **)&deviceBias, sizeBias, ACL_MEM_MALLOC_HUGE_ONLY) != ACL_ERROR_NONE) {
+        if (aclrtMalloc((void**)&deviceBias, sizeBias, ACL_MEM_MALLOC_HUGE_ONLY) != ACL_ERROR_NONE) {
             ERROR_LOG("rank %d aclrtMalloc deviceBias failed", rankId);
             releaseAll();
             return -1;
         }
     }
-    if (aclrtMalloc((void **)&deviceOutput, sizeOutput, ACL_MEM_MALLOC_HUGE_ONLY) != ACL_ERROR_NONE) {
+    if (aclrtMalloc((void**)&deviceOutput, sizeOutput, ACL_MEM_MALLOC_HUGE_ONLY) != ACL_ERROR_NONE) {
         ERROR_LOG("rank %d aclrtMalloc deviceOutput failed", rankId);
         releaseAll();
         return -1;
@@ -592,12 +629,12 @@ int RunMatmulAllToAll(const AllToAllArgs &args, int rankId)
     return writeOk ? 0 : -1;
 }
 
-int main(int argc, char *argv[])
+int main(int argc, char* argv[])
 {
     AllToAllArgs args;
     try {
         ParseArgs(argc, argv, args);
-    } catch (const std::invalid_argument &e) {
+    } catch (const std::invalid_argument& e) {
         std::cerr << e.what() << std::endl;
         PrintAllToAllUsage(argv[0]);
         return -1;

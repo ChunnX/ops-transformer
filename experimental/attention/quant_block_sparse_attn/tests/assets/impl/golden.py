@@ -294,7 +294,7 @@ def _mxfp8_cpu_golden(
             "cu_seqlens_kv": to_list(cu_seqlens_kv),
             "seqused_q": to_list(seqused_q),
             "seqused_kv": kv_lengths,
-            "s2_base_size": int(kwargs.get("s2_base_size", 512)),
+            "s2_base_size": 256 if int(query.shape[-1]) == 256 else 512,
             "blocknum": int(key.shape[0]),
             "max_block_per_batch": int(block_table.shape[1]),
             "block_size": int(key.shape[2]),

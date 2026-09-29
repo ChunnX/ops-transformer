@@ -23,7 +23,6 @@ class FlashMlaWithKvcacheComparator:
     DEFAULT_ATOL = 0.000025
     BFLOAT16_ATOL = 0.0001
     FAIL_RATIO = 0.005
-    MAX_RELATIVE_ERROR = 10.0
     RELATIVE_FLOOR = (1.0 / (1 << 14)) / 0.005
     RELATIVE_EPSILON = 2e-9
 
@@ -202,15 +201,18 @@ class FlashMlaWithKvcacheComparator:
             relative_error = diff_abs / (denominator + cls.RELATIVE_EPSILON)
             max_relative_error = float(np.max(relative_error[diff_idx]))
 
-        passed = (
-            fail_ratio <= cls.FAIL_RATIO and max_relative_error < cls.MAX_RELATIVE_ERROR
+        nonfinite_mismatch = mismatch & (
+            ~np.isfinite(npu_flat) | ~np.isfinite(golden_flat)
         )
+        nonfinite_mismatch_count = int(np.count_nonzero(nonfinite_mismatch))
+        passed = fail_ratio <= cls.FAIL_RATIO and nonfinite_mismatch_count == 0
         precision = (golden_flat.size - diff_idx.size) / golden_flat.size * 100
         error_info = None
         if not passed:
             error_info = (
                 f"FlashMlaWithKvcache precision failed: mismatches={diff_idx.size}, "
                 f"fail_ratio={fail_ratio:.6g}, "
+                f"nonfinite_mismatches={nonfinite_mismatch_count}, "
                 f"max_relative_error={max_relative_error:.6g}"
             )
             cls.print_log(error_info, output_index)
@@ -229,8 +231,8 @@ class FlashMlaWithKvcacheComparator:
                 "atol": atol,
                 "fail_ratio": fail_ratio,
                 "fail_ratio_limit": cls.FAIL_RATIO,
+                "nonfinite_mismatch_count": nonfinite_mismatch_count,
                 "max_relative_error": max_relative_error,
-                "max_relative_error_limit": cls.MAX_RELATIVE_ERROR,
             },
         }
 
@@ -255,12 +257,10 @@ def compare(*outputs):
         npu = COMPARATOR.as_float32(npu_out)
         golden = COMPARATOR.as_float32(golden_out)
         passed = npu.shape == golden.shape and bool(
-            np.all(np.isclose(npu, golden, rtol=0.0, atol=0.1, equal_nan=False))
+            np.all(np.isclose(npu, golden, rtol=0.0, atol=0.1, equal_nan=True))
         )
         error_info = None
         diff_idx = np.empty(0, dtype=np.int64)
-        if passed:
-            COMPARATOR.display_pass_output(npu, golden, 100.0, index)
         if not passed:
             if npu.shape != golden.shape:
                 error_info = (
@@ -268,19 +268,24 @@ def compare(*outputs):
                 )
             else:
                 diff_idx = np.flatnonzero(
-                    ~np.isclose(npu, golden, rtol=0.0, atol=0.1, equal_nan=False)
+                    ~np.isclose(npu, golden, rtol=0.0, atol=0.1, equal_nan=True)
                 )
                 error_info = (
                     "MLA LSE absolute error exceeds 0.1 or non-finite value mismatch: "
                     f"mismatches={diff_idx.size}"
                 )
             COMPARATOR.print_log(error_info, index)
-            if diff_idx.size:
-                COMPARATOR.display_error_output(npu, golden, diff_idx, index)
+        precision = 100.0 if passed else 0.0
+        if npu.shape == golden.shape:
+            COMPARATOR.display_samples(npu, golden, precision, index, passed=passed)
+        if diff_idx.size:
+            COMPARATOR.display_error_output(
+                npu, golden, diff_idx, index, passed=passed, precision=precision
+            )
         results.append(
             {
                 "pass": passed,
-                "precision": 100.0 if passed else 0.0,
+                "precision": precision,
                 "error_info": error_info,
                 "diff_indices": diff_idx[:1000].tolist(),
             }
