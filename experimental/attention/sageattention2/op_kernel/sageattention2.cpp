@@ -40,7 +40,7 @@ __aicore__ inline __attribute__((always_inline)) void FusedAttention(GM_ADDR q, 
     // When Q is decoupled (WIDE path), Q preprocessing HBM roundtrips and global
     // sync stalls are eliminated; Q is quantized on-chip in Attention.
     // Idle cores also reach this barrier. Its flags (11..14) do not overlap
-    // attention's MODE4 flags (0..3).
+    // attention's MODE4 flags (0..4, where 4 is the streaming Q handoff).
     SyncAll<false>();
     if constexpr (WIDE) {
         Attention<T, WIDE>(q, work + t.k8, work + t.v8, work + t.qScale, work + t.kScale,

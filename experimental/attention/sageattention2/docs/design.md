@@ -499,7 +499,8 @@ AIV(subBlockIdx_)  每个 query tile 的 step 0（SelectStreamQuery）
   V     Cast 转 FP32 → QuantRowsVF：per-token 对称 INT8（粒度 p.qg）
         ├─ INT8 量化值 → 临时区 out
         └─ FP16 scale → qsu_（与离线路径的 GM qScale 逐位等价）
-  MTE3  out ──zN 平面──▶ L1 A 槽（l1Buf[0]），每 32 列一次集中搬运
+  MTE3  out ──zN 平面──▶ L1 A 槽（l1Buf[0]）：每 32 列一次集中搬运，
+        两个 AIV 各写平面内 64 行（subBlockIdx_ 选前/后 2 KiB），互不重叠
   MODE4 CrossCoreSetFlag<PIPE_MTE3>(Q_READY)
 
 AIC  GemmQkSplit（仅该 query 的 part == 0 触发 loadA）

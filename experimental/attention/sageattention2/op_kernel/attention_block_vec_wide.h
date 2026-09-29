@@ -163,11 +163,8 @@ public:
                         (__ubuf__ float *)inverseScales.GetPhyAddr(), DP, 0, HALF, params_.qg);
 
             Sync<HardEvent::V_MTE3>();
-            // Cube reads Q as zN: each 32-column block is a plane of 128 rows spaced
-            // 32 bytes apart, planes 4096 bytes apart. Gather one plane per copy;
-            // UB-to-L1 counts are in 32-byte units and gaps exclude the burst.
-            // The BASE offset of HALF*32 puts this half in the second 2 KiB of each
-            // plane, disjoint from the other AIV's rows 0..63.
+            // zN keeps one 32-column plane per 4096 bytes. UB->L1 counts are 32-byte
+            // units and gaps exclude the burst; HALF*32 offsets this half to row 64.
             auto ql1 = resource_->l1Buf.template GetBufferByByte<int8_t>(subBlockIdx_ * HALF * 32);
             DataCopyParams plane{HALF, 1, DP / 32 - 1, 0};
             #pragma unroll
