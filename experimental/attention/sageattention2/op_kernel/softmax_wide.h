@@ -246,7 +246,6 @@ __simd_vf__ inline void SoftmaxWideFirstVF(__ubuf__ half *scores, __ubuf__ half 
 {
     SoftmaxWideMaxCore<MASK>(scores, scoresNext, maxima, alpha, qhalf, khalf, queryInGroup);
     SoftmaxWideProbCore<true>(scores, maxima, out, partialSums);
-    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 }
 
 // The second 256-token half publishes its block sum in the unused upper half
@@ -256,7 +255,6 @@ __simd_vf__ inline void SoftmaxWideSecondVF(__ubuf__ half *scores, __ubuf__ half
                                             __ubuf__ float *partialSums)
 {
     SoftmaxWideProbCore<false>(scores, maxima, out, partialSums, alpha + 64);
-    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 }
 
 } // namespace Sage
