@@ -51,6 +51,8 @@ FitBasedBalanceCtx InitCtx(args, localMMPosition, order, commEngine, calib);  //
 CommCutResult Schedule(ctx);                                                  // 键控求解
 void PrintTilingData(args, cut, commTimeActualUs, commTimeNoCutUs);          // 诊断打印(通常由 FitBalanceCut 自动调)
 const FitBalanceCalibration::CommFit::Row *FindCommFitRow(calib, engine, rankDim); // 标定行查找
+CommCutResult CutResultFromCof(const CommTilingData &data);                    // COF 结果(head/tail)→
+                                                                               // 引擎切分(长/短), miss 分派用
 ```
 
 ### 核心类型
