@@ -82,18 +82,31 @@ ge::graphStatus CommonChecker::CheckSingleParaLayout(const QfaTilingInfo &qfaInf
 
 ge::graphStatus CommonChecker::CheckSingleParaDtype(const QfaTilingInfo &qfaInfo)
 {
+#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510))
     const std::vector<ge::DataType> supportedQuantDtypes = {ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8};
+#elif (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201))
+    const std::vector<ge::DataType> supportedQuantDtypes = {ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT4};
+#endif
     const auto checkQuantDtype = [&](const gert::CompileTimeTensorDesc *desc,
                                      const std::string &name) -> ge::graphStatus {
         if (desc == nullptr) {
             return ge::GRAPH_SUCCESS;
         }
+#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510))
         OP_CHECK_IF(
             std::find(supportedQuantDtypes.begin(), supportedQuantDtypes.end(), desc->GetDataType()) ==
                 supportedQuantDtypes.end(),
             OP_LOGE_FOR_INVALID_DTYPE(qfaInfo.opName, name.c_str(), DataTypeToSerialString(desc->GetDataType()).c_str(),
                                       "FLOAT8_E4M3FN/HIFLOAT8"),
             return ge::GRAPH_FAILED);
+#elif (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201))
+        OP_CHECK_IF(
+            std::find(supportedQuantDtypes.begin(), supportedQuantDtypes.end(), desc->GetDataType()) ==
+                supportedQuantDtypes.end(),
+            OP_LOGE_FOR_INVALID_DTYPE(qfaInfo.opName, name.c_str(), DataTypeToSerialString(desc->GetDataType()).c_str(),
+                                      "FLOAT8_E4M3FN/DT_HIFLOAT4"),
+            return ge::GRAPH_FAILED);
+#endif
         if (CheckFormatSupport(desc, name) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
