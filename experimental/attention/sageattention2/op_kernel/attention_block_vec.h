@@ -113,6 +113,8 @@ public:
             // Both PV slots remain owned by this pair until both reads finish.
             CrossCoreWaitFlag<4, PIPE_V>(PV_READY);
             CrossCoreWaitFlag<4, PIPE_V>(PV_READY);
+            RoundPvSlot(0);
+            RoundPvSlot(1);
             auto alpha0 = resource_->ubBuf.GetBufferByByte<float>(ALPHA_UB + ((index - 1) % ALPHA_SLOTS) * 512);
             auto alpha1 = resource_->ubBuf.GetBufferByByte<float>(ALPHA_UB + (index % ALPHA_SLOTS) * 512);
             AccumulateFp32PairVF<DP>(
@@ -124,6 +126,7 @@ public:
             CrossCoreSetFlag<4, PIPE_V>(PV_RELEASE);
         } else if (index + 1 == count) {
             CrossCoreWaitFlag<4, PIPE_V>(PV_READY);
+            RoundPvSlot(0);
             auto alpha = resource_->ubBuf.GetBufferByByte<float>(ALPHA_UB + (index % ALPHA_SLOTS) * 512);
             AccumulateFp32VF<DP>((__ubuf__ float *)accum_.GetPhyAddr(),
                                  (__ubuf__ float *)resource_->ubBuf.GetBufferByByte<float>(PV_UB).GetPhyAddr(),

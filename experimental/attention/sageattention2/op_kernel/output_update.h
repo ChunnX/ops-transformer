@@ -12,6 +12,28 @@
 #include "common.h"
 namespace Sage {
 
+// pv_accum_dtype "fp32+fp16" keeps each per-block PV partial in half precision
+// before folding it into the FP32 running state. Narrowing and widening share
+// the same 64-element register footprint, so the pair applies exactly one FP16
+// rounding to the slot in place.
+__simd_vf__ inline void RoundPartialFp16VF(__ubuf__ float *partial, uint32_t count)
+{
+    using namespace AscendC::MicroAPI;
+    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+    auto f = CreateMask<float, MaskPattern::ALL>();
+    static constexpr CastTrait narrow{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+    static constexpr CastTrait widen{RegLayout::ZERO, SatMode::UNKNOWN, MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+    for (uint32_t i = 0; i < count; i += 64) {
+        RegTensor<float> x;
+        RegTensor<half> packed;
+        LoadAlign(x, partial + i);
+        Cast<half, float, narrow>(packed, x, f);
+        Cast<float, half, widen>(x, packed, f);
+        StoreAlign(partial + i, x, f);
+    }
+    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+}
+
 // Accumulate a 64-row PV tile into the running FP32 O with the alpha ratio FMA.
 template <uint32_t DP>
 __simd_vf__ inline void AccumulateFp32VF(__ubuf__ float *accum, __ubuf__ float *partial, __ubuf__ float *alpha)
