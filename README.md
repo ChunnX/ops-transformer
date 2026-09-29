@@ -11,6 +11,8 @@
 
 </div>
 
+本分支新增 [KL Loss 同步超时复现与客户说明](README.klloss.md)：独立源码构建、最小 A/B 实验、流水图和 flagId 审查 skill。
+
 ---
 
 ## 🔥Latest News

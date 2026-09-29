@@ -1,0 +1,2 @@
+# Keep diagnostic figures self-contained in the patch, without Git LFS objects.
+*.png -filter -diff -merge -text
