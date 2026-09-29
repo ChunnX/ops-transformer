@@ -34,7 +34,7 @@ public:
             .AutoContiguous();
         this->Input("valid_blocks")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_UINT64})
+            .DataType({ge::DT_UINT64, ge::DT_UINT64})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("pseudo_query")
@@ -45,17 +45,17 @@ public:
 
         this->Output("numerator")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT})
+            .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Output("logit_max")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT})
+            .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Output("exp_sum")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT})
+            .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
 

@@ -99,7 +99,7 @@ __simd_vf__ inline void FillZero(__ubuf__ float *outputAddr, uint32_t validD)
 
 // These raw UB arguments are internal static byte offsets. UB offset zero is valid and must not be treated as nullptr.
 template <typename INPUT_T>
-__simd_vf__ inline void LoadInputAsFloat(RegTensor<float> &dst, __ubuf__ INPUT_T *src, const MaskReg &mask)
+__simd_callee__ inline void LoadInputAsFloat(RegTensor<float> &dst, __ubuf__ INPUT_T *src, MaskReg mask)
 {
     if constexpr (std::is_same<INPUT_T, bfloat16_t>::value) {
         RegTensor<bfloat16_t> srcReg;
