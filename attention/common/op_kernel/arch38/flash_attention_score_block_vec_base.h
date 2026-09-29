@@ -594,6 +594,10 @@ __aicore__ inline void FABlockVecBase<TEMPLATE_BASE_ARGS>::Bmm2DataCopyOut(RunIn
     }
 
     dataCopyParams.blockCount = runInfo.vec2S1RealSize;
+    if constexpr (isInfer && useDn) {
+        // DN computation pads the S1 tail to 32 rows; only write valid rows to GM.
+        dataCopyParams.blockCount = Min(runInfo.vec2S1RealSize, runInfo.s1RealSize);
+    }
     DataCopyPad(this->attentionOutGm[runInfo.attentionOutOffset + vec2S1Idx * runInfo.vec2S1BaseSize * attenOutOffset],
                 attenOut, dataCopyParams); //
 }
