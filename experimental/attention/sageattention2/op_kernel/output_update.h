@@ -156,15 +156,29 @@ __simd_vf__ inline void NormalizeCastVF(__ubuf__ T *out, __ubuf__ float *accum, 
     StoreAlign(scratch, inv, f);
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     static constexpr CastTrait cast{RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
-    for (uint16_t col = 0; col < DP; col += 64) {
+    if constexpr (DP == 128) {
+        for (uint16_t row = 0; row < 64; ++row) {
+            RegTensor<float> ratio, x0, x1;
+            RegTensor<T> p0, p1;
+            LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio, scratch + row);
+            LoadAlign(x0, accum + row * DP);
+            LoadAlign(x1, accum + row * DP + 64);
+            Mul(x0, x0, ratio, f);
+            Mul(x1, x1, ratio, f);
+            Cast<T, float, cast>(p0, x0, f);
+            Cast<T, float, cast>(p1, x1, f);
+            StoreAlign<T, StoreDist::DIST_PACK_B32>(out + row * DP, p0, f);
+            StoreAlign<T, StoreDist::DIST_PACK_B32>(out + row * DP + 64, p1, f);
+        }
+    } else {
         for (uint16_t row = 0; row < 64; ++row) {
             RegTensor<float> ratio, x;
             RegTensor<T> packed;
             LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio, scratch + row);
-            LoadAlign(x, accum + row * DP + col);
+            LoadAlign(x, accum + row * DP);
             Mul(x, x, ratio, f);
             Cast<T, float, cast>(packed, x, f);
-            StoreAlign<T, StoreDist::DIST_PACK_B32>(out + row * DP + col, packed, f);
+            StoreAlign<T, StoreDist::DIST_PACK_B32>(out + row * DP, packed, f);
         }
     }
 }
@@ -193,23 +207,48 @@ __simd_vf__ inline void FinalizeWideFp32VF(__ubuf__ T *out, __ubuf__ float *accu
     StoreAlign(scratch, inv, f);
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     static constexpr CastTrait cast{RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
-    for (uint16_t col = 0; col < DP; col += 64) {
+    if constexpr (DP == 128) {
         for (uint16_t row = 0; row < 64; ++row) {
-            RegTensor<float> x, ratio;
+            RegTensor<float> x0, x1, ratio, rinv;
+            RegTensor<T> p0, p1;
+            LoadAlign<float, LoadDist::DIST_BRC_B32>(rinv, scratch + row);
+            if constexpr (FIRST) {
+                LoadAlign(x0, partial + row * DP);
+                LoadAlign(x1, partial + row * DP + 64);
+            } else {
+                RegTensor<float> y0, y1;
+                LoadAlign(x0, accum + row * DP);
+                LoadAlign(x1, accum + row * DP + 64);
+                LoadAlign(y0, partial + row * DP);
+                LoadAlign(y1, partial + row * DP + 64);
+                LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio, alpha + row);
+                MulDstAdd(x0, ratio, y0, f);
+                MulDstAdd(x1, ratio, y1, f);
+            }
+            Mul(x0, x0, rinv, f);
+            Mul(x1, x1, rinv, f);
+            Cast<T, float, cast>(p0, x0, f);
+            Cast<T, float, cast>(p1, x1, f);
+            StoreAlign<T, StoreDist::DIST_PACK_B32>(out + row * DP, p0, f);
+            StoreAlign<T, StoreDist::DIST_PACK_B32>(out + row * DP + 64, p1, f);
+        }
+    } else {
+        for (uint16_t row = 0; row < 64; ++row) {
+            RegTensor<float> x, ratio, rinv;
             RegTensor<T> packed;
             if constexpr (FIRST) {
-                LoadAlign(x, partial + row * DP + col);
+                LoadAlign(x, partial + row * DP);
             } else {
                 RegTensor<float> y;
-                LoadAlign(x, accum + row * DP + col);
-                LoadAlign(y, partial + row * DP + col);
+                LoadAlign(x, accum + row * DP);
+                LoadAlign(y, partial + row * DP);
                 LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio, alpha + row);
                 MulDstAdd(x, ratio, y, f);
             }
-            LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio, scratch + row);
-            Mul(x, x, ratio, f);
+            LoadAlign<float, LoadDist::DIST_BRC_B32>(rinv, scratch + row);
+            Mul(x, x, rinv, f);
             Cast<T, float, cast>(packed, x, f);
-            StoreAlign<T, StoreDist::DIST_PACK_B32>(out + row * DP + col, packed, f);
+            StoreAlign<T, StoreDist::DIST_PACK_B32>(out + row * DP, packed, f);
         }
     }
 }

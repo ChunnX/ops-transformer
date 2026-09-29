@@ -223,8 +223,9 @@ __aicore__ void QuantBatch(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADD
         if (iteration < iterations) {
             const uint32_t slot = iteration & 1;
             const uint64_t task = core + iteration * cores;
-            const bool isq = task < localNq;
-            const uint64_t idx = (isq ? group * localNq + task : group * localNk + task - localNq) * 64;
+            const bool iskv = task < localNk;
+            const bool isq = !iskv;
+            const uint64_t idx = (iskv ? group * localNk + task : group * localNq + (task - localNk)) * 64;
             const uint32_t seq = isq ? p.qp : p.kp, heads = isq ? p.hq : p.hk;
             const uint32_t token = idx % seq, h = (idx / seq) % heads, b = idx / seq / heads;
             const uint32_t valid = token < (isq ? p.sq : p.sk) ? 64 : 0;
@@ -319,8 +320,9 @@ __aicore__ void Quant(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADDR mxS
     uint64_t nq = DO_Q ? uint64_t(p.b) * p.hq * p.qp : 0;
     uint64_t nk = DO_KV ? uint64_t(p.b) * p.hk * p.kp : 0;
     for (uint64_t row = GetBlockIdx(); row < nq + nk; row += (2 * p.cores)) {
-        bool isq = row < nq;
-        uint64_t idx = isq ? row : row - nq;
+        bool iskv = row < nk;
+        bool isq = !iskv;
+        uint64_t idx = iskv ? row : row - nk;
         uint32_t seq = isq ? p.qp : p.kp, heads = isq ? p.hq : p.hk;
         uint32_t token = idx % seq, h = (idx / seq) % heads, b = idx / seq / heads;
         bool valid = token < (isq ? p.sq : p.sk);

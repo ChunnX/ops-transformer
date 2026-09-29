@@ -31,9 +31,7 @@ __aicore__ inline __attribute__((always_inline)) WideQueryInfo DecodeWideQuery(c
     info.h = (task / tiles) % p.hq;
     info.b = task / tiles / p.hq;
     if constexpr (CAUSAL) {
-        if (info.h % 2 != 0) {
-            tile = tiles - 1 - tile;
-        }
+        tile = (tile % 2 == 0) ? (tile / 2) : (tiles - 1 - tile / 2);
     }
     info.qstart = tile * M;
     info.kh = CalcKh(info.h, p.hq, p.hk);
