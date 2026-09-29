@@ -15,15 +15,15 @@ template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ProcessTokenSingleAiv(
     uint32_t token)
 {
-    float postVals[N_MAX];
+    float postVals[N];
     float sumSqHalf[2] = {0.0f, 0.0f};
-    float dotHalf[2][N_MAX] = {{0.0f, 0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 0.0f}};
+    float dotHalf[2][N] = {{0.0f, 0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 0.0f}};
     float midSqHalf[2] = {0.0f, 0.0f};
-    CacheHOut((uint64_t)token * D_);
+    CopyInHOut((uint64_t)token * D_);
     if (dLoop_ != 1U) {
-        CacheGamma0();
+        CopyInGamma0();
     }
-    LoadTokenWeights(token, postVals);
+    CopyInTokenWeights(token, postVals);
 
     // 第一遍：沿完整D轴计算输入归一化。
     float sumSq0 = 0.0f;
@@ -40,11 +40,11 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dTile_;
         ComputeX2PostTile(token, tOff, tD, invRms0, postVals);
-        CacheX2Tile(token, tOff, tD, !USE_RMS_MID);
+        PrepareX2Tile(token, tOff, tD, !USE_RMS_MID);
 
         if constexpr (USE_RMS_MID) {
-            LocalTensor<float> out = bufResFp32_.Get<float>()[N_MAX * dTile_];
-            LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
+            LocalTensor<float> out = bufResFp32_.Get<float>()[N * dTile_];
+            LocalTensor<T> x2Cache = bufActivationLowp_.Get<T>();
             for (uint32_t half = 0; half < 2; ++half) {
                 const uint32_t h0 = half * 2;
                 const uint32_t h1 = h0 + 1;
@@ -67,12 +67,12 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
             // 单分块时复用残差融合结束后已空闲的residual scratch作为第二个gamma2槽，
             // 保留Process预载的gamma0供后续token复用；多分块仍复用gamma0缓冲。
             // 首个gamma2搬运和x2缓存恢复重叠，后续搬运与前一head的Vector计算重叠。
-            LocalTensor<float> gammaEven = bufGamma2Fp32_.Get<float>();
+            LocalTensor<float> gammaEven = bufScratchFp32_.Get<float>();
             LocalTensor<float> gammaOdd =
-                dLoop_ == 1U ? bufResFp32_.Get<float>() : bufGamma0Fp32_.Get<float>();
-            LoadGammaInto(gammaEven, gamma2Gm_, tOff, tD);
-            LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
-            for (uint32_t n = 0; n < N_MAX; ++n) {
+                dLoop_ == 1U ? bufResFp32_.Get<float>() : bufGammaFp32_.Get<float>();
+            CopyInGammaTile(gammaEven, gamma2Gm_, tOff, tD);
+            LocalTensor<T> x2Cache = bufActivationLowp_.Get<T>();
+            for (uint32_t n = 0; n < N; ++n) {
                 LocalTensor<float> gammaCurrent = gammaEven;
                 LocalTensor<float> gammaNext = gammaOdd;
                 if ((n & 1U) != 0) {
@@ -81,18 +81,18 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
                 }
                 SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
                 WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
-                if (n + 1 < N_MAX) {
-                    LoadGammaInto(gammaNext, gamma2Gm_, (n + 1) * D_ + tOff, tD);
+                if (n + 1 < N) {
+                    CopyInGammaTile(gammaNext, gamma2Gm_, (n + 1) * D_ + tOff, tD);
                 }
                 MhcNormRegBase::VFCastB16ScaleAndMulGammaToB16(x2Cache[n * D_ + tOff], x2Cache[n * D_ + tOff],
                                                                gammaCurrent, invRmsMid, tD);
                 PipeBarrier<PIPE_V>();
                 // 当前缓存会在两轮后再次由MTE2写入，前两轮显式建立V到MTE2依赖。
-                if (n + 2 < N_MAX) {
+                if (n + 2 < N) {
                     FenceVToMte2();
                 }
             }
-            CacheX2Tile(token, tOff, tD, true);
+            PrepareX2Tile(token, tOff, tD, true);
             AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf);
         }
     }
@@ -100,8 +100,8 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
 
     // 固定执行顶层合并，与双sibling方案保持一致。
     const float totalSumSqPre = sumSqHalf[0] + sumSqHalf[1];
-    float xHatVals[N_MAX];
-    for (uint32_t o = 0; o < N_MAX; ++o) {
+    float xHatVals[N];
+    for (uint32_t o = 0; o < N; ++o) {
         xHatVals[o] = dotHalf[0][o] + dotHalf[1][o];
     }
     ComputeGateValues(totalSumSqPre, xHatVals);
@@ -109,31 +109,31 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     // 第三遍：计算门控融合和h_in低精度边界。在完整D轴的输出归一化标量确定前，
     // 复用已经消费完的x2缓存首段保存低精度h_in。
     float sumSq1 = 0.0f;
-    // 提前发起gamma1搬运（到bufGamma0Fp32_），与下方门控融合的Vector计算重叠。
-    StartCacheGamma1();
+    // 提前发起gamma1搬运（到bufGammaFp32_），与下方门控融合的Vector计算重叠。
+    StartCopyInGamma1();
     for (uint32_t tile = 0; tile < dLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dTile_;
-        LocalTensor<T> x2Cache = bufX2Cache_.Get<T>()[tOff];
+        LocalTensor<T> x2Cache = bufActivationLowp_.Get<T>()[tOff];
         LocalTensor<float> gateBuf = bufScalar_.Get<float>()[EXP_DIV_ELEM];
         sumSq1 += ComputeHInCacheAndReduceSumSq(tOff, tD, x2Cache, gateBuf);
     }
 
     // 第四遍：沿完整D轴计算输出归一化并写最终输出。
     const float invRms1 = ComputeInvRms(sumSq1, invD_);
-    WaitCacheGamma1();
+    WaitCopyInGamma1();
     for (uint32_t tile = 0; tile < dLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dTile_;
-        LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dTile_];
-        LocalTensor<T> hInCache = bufX2Cache_.Get<T>()[tOff];
-        LocalTensor<float> gamma1 = bufGamma0Fp32_.Get<float>()[tOff];
+        LocalTensor<float> hIn = bufResFp32_.Get<float>()[N * dTile_];
+        LocalTensor<T> hInCache = bufActivationLowp_.Get<T>()[tOff];
+        LocalTensor<float> gamma1 = bufGammaFp32_.Get<float>()[tOff];
         if constexpr (RETURN_H_IN_F32) {
             MhcNormRegBase::VFCastB16ScaleAndMulGamma(hIn, hInCache, gamma1, invRms1, tD);
             PipeBarrier<PIPE_V>();
-            WriteHInPrimeTile(hIn, (uint64_t)token * D_ + tOff, tD);
+            CopyOutHInPrimeTile(hIn, (uint64_t)token * D_ + tOff, tD);
         } else {
-            WriteHInPrimeTileFromCache(hInCache, gamma1, invRms1,
+            ComputeAndCopyOutHInPrimeTile(hInCache, gamma1, invRms1,
                                        (uint64_t)token * D_ + tOff, tD);
         }
     }
