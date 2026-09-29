@@ -350,7 +350,8 @@ __simd_vf__ inline void SinkMergeStableBlockVF(__ubuf__ T *sumUb, __ubuf__ T *ma
                                                __ubuf__ T *sinkUb, uint32_t offset, uint32_t validCount)
 {
     // newSum = oldSum * exp(oldMax - newMax) + exp(sink - newMax).
-    // scaleUb is applied to the KV numerator after its final normalization.
+    // Vec2 has already normalized its KV numerator by oldSum, so scaleUb
+    // must include the denominator correction oldSum / newSum as well.
     RegTensor<T> sinkReg;
     RegTensor<T> sumReg;
     RegTensor<T> maxReg;
@@ -358,6 +359,7 @@ __simd_vf__ inline void SinkMergeStableBlockVF(__ubuf__ T *sumUb, __ubuf__ T *ma
     RegTensor<T> oldScaleReg;
     RegTensor<T> sinkScaleReg;
     RegTensor<T> outSumReg;
+    RegTensor<T> outScaleReg;
     Reg::MaskReg preg = Reg::UpdateMask<T>(validCount);
     Reg::LoadAlign<T, Reg::LoadDist::DIST_NORM>(sinkReg, sinkUb);
     Reg::LoadAlign<T, Reg::LoadDist::DIST_NORM>(sumReg, sumUb + offset);
@@ -369,9 +371,11 @@ __simd_vf__ inline void SinkMergeStableBlockVF(__ubuf__ T *sumUb, __ubuf__ T *ma
     Reg::Exp<T, Reg::MaskMergeMode::ZEROING>(sinkScaleReg, sinkScaleReg, preg);
     Reg::Mul<T, Reg::MaskMergeMode::ZEROING>(outSumReg, sumReg, oldScaleReg, preg);
     Reg::Add<T, Reg::MaskMergeMode::ZEROING>(outSumReg, outSumReg, sinkScaleReg, preg);
+    Reg::Mul<T, Reg::MaskMergeMode::ZEROING>(outScaleReg, sumReg, oldScaleReg, preg);
+    Reg::Div<T, Reg::MaskMergeMode::ZEROING>(outScaleReg, outScaleReg, outSumReg, preg);
     Reg::StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>(sumUb + offset, outSumReg, preg);
     Reg::StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>(maxUb + offset, newMaxReg, preg);
-    Reg::StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>(scaleUb + offset, oldScaleReg, preg);
+    Reg::StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>(scaleUb + offset, outScaleReg, preg);
 }
 
 template <typename T, typename SINK_T>
