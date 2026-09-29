@@ -876,7 +876,7 @@ metadata校验
             <td>
                 <ul>
                     <li>data_type支持int32</li>
-                    <li>topK索引取值模式，默认值为1</li>
+                    <li>topK索引取值模式，默认值为1，A2A3只支持1，A5支持1和2</li>
                 </ul>
             </td>
             <td>可选属性，默认值为1</td>
