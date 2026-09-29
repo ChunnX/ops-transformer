@@ -81,7 +81,7 @@ public:
 
     __aicore__ inline void Init(GM_ADDR context, GM_ADDR x, GM_ADDR topkIdx, GM_ADDR recvSrcMetadata,
                                 GM_ADDR numRecvPerExpert, GM_ADDR topkWeights, GM_ADDR workspace, GM_ADDR tilingGM,
-                                TPipe *pipe, const MoeEpCombineInfo *tilingData);
+                                TPipe* pipe, const MoeEpCombineInfo* tilingData);
 
     __aicore__ inline void Process();
 
@@ -90,21 +90,30 @@ private:
     __aicore__ inline void EnsureHcommInitialized();
     __aicore__ inline void BeginPreparedWrites(uint32_t dstRank, uint32_t channelIndex);
     __aicore__ inline void InitFlagSource();
-    template <auto const &config>
+    template <auto const& config>
     __aicore__ inline void PrepareWrite(GM_ADDR dst, GM_ADDR src, uint64_t len);
-    template <auto const &config>
-    __aicore__ inline void PrepareMultiSgeWrite(GM_ADDR dst, const AscendC::BufDesc *srcDescs, uint32_t srcNum);
+    template <auto const& config>
+    __aicore__ inline void PrepareMultiSgeWrite(GM_ADDR dst, const AscendC::BufDesc* srcDescs, uint32_t srcNum);
     __aicore__ inline void FlushPreparedWrites(bool keepHandle = false);
     __aicore__ inline void SplitRange(uint64_t rangeBegin, uint64_t rangeEnd, uint32_t coreCount, uint32_t coreIndex,
-                                      uint64_t &coreBegin, uint64_t &coreEnd);
-    __aicore__ inline void GetCoreAssignment(uint32_t totalBlocks, uint32_t &targetRank, uint32_t &coreIndexInGroup,
-                                             uint32_t &groupSize);
+                                      uint64_t& coreBegin, uint64_t& coreEnd);
+    __aicore__ inline void GetCoreAssignment(uint32_t totalBlocks, uint32_t& targetRank, uint32_t& coreIndexInGroup,
+                                             uint32_t& groupSize);
     __aicore__ inline void SendRemoteMetadataSlot(uint32_t recvXIdx, int32_t srcTokenIdx, int32_t srcTopKIdx,
                                                   GM_ADDR remoteDataBase, GM_ADDR remoteStateBase, uint64_t tokenBytes,
                                                   bool lastToken);
     __aicore__ inline void ProcessRemoteMetadataRange(uint32_t targetRank, uint64_t rangeBegin, uint64_t rangeEnd,
                                                       uint32_t channelIndex);
     __aicore__ inline void SendPhaseDirectFromMetadata();
+    __aicore__ inline uint64_t BeginUrmaApiTiming()
+    {
+        return static_cast<uint64_t>(GetSystemCycle());
+    }
+    __aicore__ inline void EndUrmaApiTiming(uint64_t beginCycle)
+    {
+        urmaApiCycles_ += static_cast<uint64_t>(GetSystemCycle()) - beginCycle;
+        ++urmaApiCallCount_;
+    }
 
     __aicore__ inline uint64_t GetCommHandle(uint32_t rankId, uint32_t channelIndex)
     {
@@ -119,9 +128,9 @@ private:
         return (GM_ADDR)(winRankAddr_[rankId] + offset);
     }
 
-    TPipe *tpipe_{nullptr};
-    const MoeEpCombineInfo *tilingData_{nullptr};
-    __gm__ Mc2Aclnn::MoeCommContext *mc2Context_{nullptr};
+    TPipe* tpipe_{nullptr};
+    const MoeEpCombineInfo* tilingData_{nullptr};
+    __gm__ Mc2Aclnn::MoeCommContext* mc2Context_{nullptr};
     MoeEpExceptionDump::MoeEpCoreDiagWriter diagWriter_;
 
     uint32_t rankId_{0};
@@ -169,6 +178,8 @@ private:
     uint64_t activeBatchChannel_{0};
     uint32_t preparedWriteCount_{0};
     uint32_t sqWriteCount_{0};
+    uint64_t urmaApiCycles_{0};
+    uint32_t urmaApiCallCount_{0};
     bool hcommInitialized_{false};
     bool activeBatchInitialized_{false};
 };
@@ -178,7 +189,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(GM_ADDR 
                                                                         GM_ADDR recvSrcMetadata,
                                                                         GM_ADDR numRecvPerExpert, GM_ADDR topkWeights,
                                                                         GM_ADDR workspace, GM_ADDR tilingGM,
-                                                                        TPipe *pipe, const MoeEpCombineInfo *tilingData)
+                                                                        TPipe* pipe, const MoeEpCombineInfo* tilingData)
 {
     tpipe_ = pipe;
     tilingData_ = tilingData;
@@ -197,7 +208,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(GM_ADDR 
     tpipe_->InitBuffer(hcommBuf_, HCOMM_INIT_SIZE);
     tpipe_->InitBuffer(hcommBatchBuf_, HCOMM_BATCH_BUFFER_BYTES);
 
-    mc2Context_ = reinterpret_cast<__gm__ Mc2Aclnn::MoeCommContext *>(context);
+    mc2Context_ = reinterpret_cast<__gm__ Mc2Aclnn::MoeCommContext*>(context);
     rankId_ = mc2Context_->epRankId;
     constexpr size_t metadataOffset =
         offsetof(MoeEpCombineTilingData, moeEpCombineInfo) + offsetof(MoeEpCombineInfo, dumpMetadata);
@@ -218,10 +229,10 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(GM_ADDR 
     combineDataWinOffset_ = tilingData->combineDataWinOffset;
     flagSourceWinAddr_ = GetUrmaStateAddrByRankId(rankId_, tilingData->combineFlagSourceWinOffset);
 
-    xGm_.SetGlobalBuffer((__gm__ XType *)x);
-    recvSrcMetadataGm_.SetGlobalBuffer((__gm__ int32_t *)recvSrcMetadata);
+    xGm_.SetGlobalBuffer((__gm__ XType*)x);
+    recvSrcMetadataGm_.SetGlobalBuffer((__gm__ int32_t*)recvSrcMetadata);
     recvRankOffsetsGm_.SetGlobalBuffer(
-        reinterpret_cast<__gm__ int32_t *>(recvSrcMetadata + tilingData->metadataRankOffsetsOffset));
+        reinterpret_cast<__gm__ int32_t*>(recvSrcMetadata + tilingData->metadataRankOffsetsOffset));
 
     uint32_t rankOffsetsBytes = Ceil(static_cast<uint64_t>(epWorldSize_ + 1U) * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(rankOffsetsBuf_, rankOffsetsBytes);
@@ -238,7 +249,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(GM_ADDR 
         actualA_ = recvCapacity_;
     }
     if constexpr (HasTopkWeight == 1) {
-        topkWeightsGm_.SetGlobalBuffer((__gm__ float *)topkWeights);
+        topkWeightsGm_.SetGlobalBuffer((__gm__ float*)topkWeights);
     }
     metadataChunkTokens_ = (actualA_ < META_CHUNK_TOKEN_MAX) ? static_cast<uint32_t>(actualA_) : META_CHUNK_TOKEN_MAX;
     metadataChunkTokens_ = (metadataChunkTokens_ == 0U) ? 1U : metadataChunkTokens_;
@@ -268,7 +279,9 @@ template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::FlushPreparedWrites(bool keepHandle)
 {
     if (preparedWriteCount_ != 0) {
+        uint64_t urmaBeginCycle = BeginUrmaApiTiming();
         (void)hcomm_.BatchCommit(activeBatchHandle_);
+        EndUrmaApiTiming(urmaBeginCycle);
         preparedWriteCount_ = 0;
     }
     if (!keepHandle) {
@@ -298,22 +311,24 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::BeginPrepared
 }
 
 template <TemplateMoeEpCombineTypeClass>
-template <auto const &config>
+template <auto const& config>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareWrite(GM_ADDR dst, GM_ADDR src, uint64_t len)
 {
     // Single-SGE WQE occupies 1 WQEBB (64 bytes).
     if (preparedWriteCount_ + 1U > HCOMM_BATCH_CAPACITY) {
         FlushPreparedWrites(true);
     }
+    uint64_t urmaBeginCycle = BeginUrmaApiTiming();
     (void)hcomm_.WriteNbi<config>(activeBatchHandle_, dst, src, len);
+    EndUrmaApiTiming(urmaBeginCycle);
     ++preparedWriteCount_;
     ++sqWriteCount_;
 }
 
 template <TemplateMoeEpCombineTypeClass>
-template <auto const &config>
+template <auto const& config>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareMultiSgeWrite(
-    GM_ADDR dst, const AscendC::BufDesc *srcDescs, uint32_t srcNum)
+    GM_ADDR dst, const AscendC::BufDesc* srcDescs, uint32_t srcNum)
 {
     // Multi-SGE WQE: SQE header (48B) + srcNum * SGE (16B each), rounded up to WQEBB boundary (64B).
     constexpr uint32_t sqeHeaderBytes = 48U;
@@ -324,7 +339,9 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareMultiS
     if (preparedWriteCount_ + wqebbCount_ > HCOMM_BATCH_CAPACITY) {
         FlushPreparedWrites(true);
     }
+    uint64_t urmaBeginCycle = BeginUrmaApiTiming();
     (void)hcomm_.WriteNbi<config>(activeBatchHandle_, dst, srcDescs, srcNum);
+    EndUrmaApiTiming(urmaBeginCycle);
     preparedWriteCount_ += wqebbCount_;
     sqWriteCount_ += wqebbCount_;
 }
@@ -339,7 +356,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendChannelFl
     GM_ADDR flagAddr = GetUrmaStateAddrByRankId(dstRank, combineStateWinOffset_) + flagOffset;
     if (dstRank == rankId_) {
         GlobalTensor<uint64_t> localFlag;
-        localFlag.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t *>(flagAddr));
+        localFlag.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t*>(flagAddr));
         localFlag.SetValue(0, 1U);
         DataCacheCleanAndInvalid<uint64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(localFlag);
         return;
@@ -359,7 +376,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::InitFlagSourc
     SyncFunc<AscendC::HardEvent::V_MTE3>();
     // Reinitialize to the same constant for standalone combine as well; no receive/clear path touches this slot.
     GlobalTensor<uint64_t> flagSource;
-    flagSource.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t *>(flagSourceWinAddr_));
+    flagSource.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t*>(flagSourceWinAddr_));
     DataCopy(flagSource, flagTensor, WIN_ADDR_ALIGN / sizeof(uint64_t));
     SyncFunc<AscendC::HardEvent::MTE3_S>();
 }
@@ -367,7 +384,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::InitFlagSourc
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SplitRange(uint64_t rangeBegin, uint64_t rangeEnd,
                                                                               uint32_t coreCount, uint32_t coreIndex,
-                                                                              uint64_t &coreBegin, uint64_t &coreEnd)
+                                                                              uint64_t& coreBegin, uint64_t& coreEnd)
 {
     if (rangeBegin >= rangeEnd || coreCount == 0U || coreIndex >= coreCount) {
         coreBegin = rangeBegin;
@@ -458,9 +475,9 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::ProcessRemote
 
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::GetCoreAssignment(uint32_t totalBlocks,
-                                                                                     uint32_t &targetRank,
-                                                                                     uint32_t &coreIndexInGroup,
-                                                                                     uint32_t &groupSize)
+                                                                                     uint32_t& targetRank,
+                                                                                     uint32_t& coreIndexInGroup,
+                                                                                     uint32_t& groupSize)
 {
     uint32_t maxChannelAivNum = epWorldSize_ * combineChannelCount_;
     bool hasExtraAivs = totalBlocks > maxChannelAivNum;
@@ -565,6 +582,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseDire
     // Publish channel CQ counters for epilogue.
     DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(recvSrcMetadataGm_);
     diagWriter_.RunPosRecord(MOE_EP_COMBINE_RUN_POS_URMA_REQUESTS_ISSUE_DONE);
+    AscendC::printf("[URMA_CYCLE][combine] rank=%u aiv=%u calls=%u total_cycles=%llu\n", rankId_, aivId_,
+                    urmaApiCallCount_, static_cast<unsigned long long>(urmaApiCycles_));
 }
 
 template <TemplateMoeEpCombineTypeClass>
