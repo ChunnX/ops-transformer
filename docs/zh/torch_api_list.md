@@ -71,6 +71,7 @@
 |[mhc_post](../../mhc/mhc_post/docs/torchapi_mhc_post.md)|实现MHC Post组件的前向计算，用于Transformer模型中多层残差连接的后处理阶段。该算子将残差矩阵变换与输出状态投影融合为单次计算，避免多次独立算子调用带来的额外开销。|默认确定性实现|-|
 |[mhc_pre_sinkhorn](../../mhc/mhc_pre_sinkhorn/docs/torchapi_mhc_pre_sinkhorn.md)|基于一系列计算得到MHC架构中hidden层的$\mathbf{H}'_{\text{res}}$和$\mathbf{H}_{\text{post}}$投影矩阵以及Attention或MLP层的输入矩阵$\mathbf{h}_{\text{in}}$。对$\mathbf{H}'_{\text{res}}$矩阵执行Sinkhorn迭代归一化变换，最终得到双随机矩阵$\mathbf{H}_{\text{res}}$；支持输出中间计算结果，用于反向梯度计算。其中，该接口在Cube中的计算模式为HF32。|默认确定性实现|默认确定性实现|
 |[mixed_quant_sparse_flash_mla](../../attention/mixed_quant_sparse_flash_mla/docs/torchapi_mixed_quant_sparse_flash_mla.md)|量化场景下基于共享KV完成MixedQuantSparseFlashMla稀疏注意力计算。需与`mixed_quant_sparse_flash_mla_metadata`配套使用。|默认确定性实现|默认确定性实现|
+|[mixed_quant_flash_attn](../../attention/mixed_quant_flash_attn/docs/torchapi_mixed_quant_flash_attn.md)|Q保持高精度不量化，key、value采用MXFP4/HiFP4低精度存储并通过descale因子反量化恢复的伪量化注意力计算，训练推理归一化。`mixed_quant_flash_attn_metadata`为其生成metadata切分方案。|默认确定性实现|默认确定性实现|
 |[mla_prolog](../../attention/mla_prolog_v3/docs/torchapi_mla_prolog.md)|调用`MlaPrologV4WeightNz`完成MLA Decoder前向中Query/KV相关预处理。|默认支持确定性计算|默认支持确定性计算|
 |[moe_finalize_routing](../../moe/moe_finalize_routing_v2/docs/torchapi_moe_finalize_routing.md)|将各专家FFN的输出结果按路由权重加权合并，还原为原始token序列。|默认支持确定性计算。|默认支持确定性计算。|
 |[moe_finalize_routing_grad](../../moe/moe_finalize_routing_v2_grad/docs/torchapi_moe_finalize_routing_grad.md)|`moe_finalize_routing`的反向接口，封装aclnnMoeFinalizeRoutingV2Grad。|默认支持确定性计算|默认支持确定性计算|
