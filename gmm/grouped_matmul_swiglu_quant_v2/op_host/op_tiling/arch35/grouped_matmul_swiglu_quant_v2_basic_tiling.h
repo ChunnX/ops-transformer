@@ -30,21 +30,21 @@ namespace optiling {
 using namespace Ops::Transformer::OpTiling;
 class GroupedMatmulSwigluQuantV2Tiling950 : public GroupedQmmTiling {
 public:
-    explicit GroupedMatmulSwigluQuantV2Tiling950(gert::TilingContext *context)
+    explicit GroupedMatmulSwigluQuantV2Tiling950(gert::TilingContext* context)
         : GroupedQmmTiling(context)
     {
         Reset();
     }
     ~GroupedMatmulSwigluQuantV2Tiling950() override = default;
 
-    void Reset(gert::TilingContext *context) override
+    void Reset(gert::TilingContext* context) override
     {
         GroupedQmmTiling::Reset(context);
         Reset();
     }
 
 protected:
-    const char *GetOpType() const override
+    const char* GetOpType() const override
     {
         return "GroupedMatmulSwigluQuantV2";
     }
@@ -72,23 +72,23 @@ private:
     bool AnalyzeV3Attrs();
     bool AnalyzeV3Dtype();
     bool AnalyzeV3Inputs();
-    bool CheckV3ShapeAndScale(const gert::Shape &xShape, const gert::Shape &weightShape,
-                              const gert::Shape &weightStorageShape, const gert::Shape &weightScaleShape,
-                              const gert::Shape &groupListShape) const;
+    bool CheckV3ShapeAndScale(const gert::Shape& xShape, const gert::Shape& weightShape,
+                              const gert::Shape& weightStorageShape, const gert::Shape& weightScaleShape,
+                              const gert::Shape& groupListShape) const;
     bool CheckV3OutputShape() const;
     bool IsTensorApiCapable() const;
     bool AnalyzeAttrs() override;
     bool AnalyzeDtype() override;
     bool AnalyzeInputs() override;
-    bool GetInputShapes(const gert::Shape *&xShape, const gert::Shape *&wShape, const gert::Shape *&wScaleShape);
-    bool GetAndCheckXScaleShape(const gert::Shape *&xScaleShape);
-    bool CheckMxPerGroupShape(const gert::Shape &xScaleShape, const gert::Shape &wScaleShape, size_t weightCount,
+    bool GetInputShapes(const gert::Shape*& xShape, const gert::Shape*& wShape, const gert::Shape*& wScaleShape);
+    bool GetAndCheckXScaleShape(const gert::Shape*& xScaleShape);
+    bool CheckMxPerGroupShape(const gert::Shape& xScaleShape, const gert::Shape& wScaleShape, size_t weightCount,
                               bool isMultiWeightNz);
     int64_t LogQuantParams();
-    bool SetQuantModeForGMMSwigluQuant(const gert::Shape &wScaleShape, const gert::Shape &xScaleShape);
-    bool CheckShapeForMxQuant(const gert::Shape &x1ScaleShape, const gert::Shape &x2ScaleShape);
+    bool SetQuantModeForGMMSwigluQuant(const gert::Shape& wScaleShape, const gert::Shape& xScaleShape);
+    bool CheckShapeForMxQuant(const gert::Shape& x1ScaleShape, const gert::Shape& x2ScaleShape);
     bool CheckDtype();
-    bool CheckDims(const gert::Shape &xShape, const gert::Shape &wShape) const;
+    bool CheckDims(const gert::Shape& xShape, const gert::Shape& wShape) const;
     bool IsFp4(ge::DataType dtype) const;
     bool IsFp8(ge::DataType dtype) const;
     bool IsFp4Input() const;
@@ -96,22 +96,22 @@ private:
     bool IsMXFp8Input() const;
     bool IsMxFp4WeightNz() const;
     bool IsMxFp8WeightNz() const;
-    bool IsMxWeightNzMultiTensor(const gert::Shape &wShape) const;
-    bool CheckMxFp4WeightNzShape(const gert::Shape &xShape, const gert::Shape &wShape) const;
+    bool IsMxWeightNzMultiTensor(const gert::Shape& wShape) const;
+    bool CheckMxFp4WeightNzShape(const gert::Shape& xShape, const gert::Shape& wShape) const;
     ge::graphStatus CalWeightNzL1Tiling();
     ge::graphStatus CalWeightNzL1Depth(uint64_t leftL1Size);
     uint64_t GetWeightNzDepthWithHighBW(uint64_t mnL1) const;
     void ModifyWeightNzDepthForUnalign(uint64_t leftL1Size, uint64_t baseASize, uint64_t baseBSize,
                                        uint64_t baseScaleABSize);
     ge::graphStatus CalWeightNzScaleFactors();
-    ge::graphStatus CalBaseSizesAndScaleInit(uint64_t &baseScaleASize, uint64_t &baseScaleBSize, uint32_t &scaleInit);
+    ge::graphStatus CalBaseSizesAndScaleInit(uint64_t& baseScaleASize, uint64_t& baseScaleBSize, uint32_t& scaleInit);
     ge::graphStatus CalScaleFactors(uint64_t baseScaleASize, uint64_t baseScaleBSize, uint32_t scaleInit);
     // add for pertoken quant mode
     bool AnalyzeAttrsPertoken();
     bool IsB8(ge::DataType dtype);
     bool CheckDtypePertoken();
     bool AnalyzeInputsPertoken();
-    bool CheckPertokenWeightNzShape(const gert::Shape &wShape, const gert::Shape &wStorageShape) const;
+    bool CheckPertokenWeightNzShape(const gert::Shape& wShape, const gert::Shape& wStorageShape) const;
     ge::graphStatus DoOpTilingPertoken();
     int64_t LogPertokenQuantParams();
     bool CheckCoreNum() const override;
@@ -119,9 +119,9 @@ private:
     bool CheckQuantDtypeByFormat(ge::DataType quantDtype, ge::Format weightFormat);
     bool ValidateAttrsCommon();
     bool LoadDescsAndDtypes();
-    bool CheckWeightNzDtype(const gert::Shape &xShape, const gert::Shape &wShape, ge::Format weightFormat);
-    bool ValidateDtypeAndQuantParams(const gert::Shape &xShape, const gert::Shape &wShape,
-                                     const gert::Shape &wScaleShape, const gert::Shape &xScaleShape);
+    bool CheckWeightNzDtype(const gert::Shape& xShape, const gert::Shape& wShape, ge::Format weightFormat);
+    bool ValidateDtypeAndQuantParams(const gert::Shape& xShape, const gert::Shape& wShape,
+                                     const gert::Shape& wScaleShape, const gert::Shape& xScaleShape);
     GMMSwigluQuantTilingDataParams tilingData_;
     bool isMxWeightNzMultiTensor_ = false;
     ::GMMSwigluQuantSwigluParams swigluParams_;

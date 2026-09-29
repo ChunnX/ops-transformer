@@ -37,7 +37,7 @@ public:
     using BType = typename BlockMmadMxOp::BType;
     using CType = typename BlockMmadMxOp::CType;
 
-    __aicore__ inline void Init(TCubeTiling *__restrict matmulTiling, AscendC::TPipe *tpipe = nullptr)
+    __aicore__ inline void Init(TCubeTiling* __restrict matmulTiling, AscendC::TPipe* tpipe = nullptr)
     {
         (void)tpipe;
         uint64_t scaleFactorA = matmulTiling->mxTypePara & MX_SCALE_FACTOR_MASK;
@@ -56,11 +56,11 @@ public:
     }
 
     template <typename SingleShape>
-    __aicore__ inline void operator()(const AscendC::GlobalTensor<AType> &aGlobal,
-                                      const AscendC::GlobalTensor<BType> &bGlobal,
-                                      const AscendC::GlobalTensor<AscendC::fp8_e8m0_t> &scaleAGlobal,
-                                      const AscendC::GlobalTensor<AscendC::fp8_e8m0_t> &scaleBGlobal,
-                                      const AscendC::LocalTensor<CType> &cLocal, const SingleShape &singleShape,
+    __aicore__ inline void operator()(const AscendC::GlobalTensor<AType>& aGlobal,
+                                      const AscendC::GlobalTensor<BType>& bGlobal,
+                                      const AscendC::GlobalTensor<AscendC::fp8_e8m0_t>& scaleAGlobal,
+                                      const AscendC::GlobalTensor<AscendC::fp8_e8m0_t>& scaleBGlobal,
+                                      const AscendC::LocalTensor<CType>& cLocal, const SingleShape& singleShape,
                                       bool transA, bool transB)
     {
         (void)transA;

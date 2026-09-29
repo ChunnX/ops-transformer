@@ -45,8 +45,8 @@ __aicore__ inline void GmmTensorApiSwigluQuantMxFp8Kernel(GM_ADDR x, GM_ADDR wei
 
     GET_TILING_DATA_WITH_STRUCT(GroupedMatmulSwigluQuantV2TensorApi::GMMSwigluQuantV2TensorApiTilingData, tilingData,
                                 tiling);
-    const auto &gmmQuantParams_ = tilingData.gmmQuantParams;
-    const auto &mmTilingData_ = tilingData.mmTilingData;
+    const auto& gmmQuantParams_ = tilingData.gmmQuantParams;
+    const auto& mmTilingData_ = tilingData.mmTilingData;
 
     using AType = DTYPE_X;
     using BType = DTYPE_WEIGHT;
@@ -113,7 +113,7 @@ __aicore__ inline void GmmTensorApiSwigluQuantMxFp8Kernel(GM_ADDR x, GM_ADDR wei
                                                   nullptr,   scaleADataAddr, scaleBDataAddr};
     typename BlockEpilogue::Params epilogueParams{yDataAddr, yScaleDataAddr, gmmParams.baseM, gmmParams.baseN};
     if constexpr (EnableSwigluAttrs) {
-        const auto &swigluParams_ = tilingData.swigluParams;
+        const auto& swigluParams_ = tilingData.swigluParams;
         epilogueParams.swigluMode = swigluParams_.swigluMode;
         epilogueParams.clampLimit = swigluParams_.clampLimit;
         epilogueParams.gluAlpha = swigluParams_.gluAlpha;

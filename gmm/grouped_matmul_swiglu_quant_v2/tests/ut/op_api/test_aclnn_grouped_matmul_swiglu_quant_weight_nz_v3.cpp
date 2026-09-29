@@ -78,7 +78,7 @@ class SwigluOpApiCsvTest : public testing::TestWithParam<Case> {
 protected:
     void CheckWorkspaceSize()
     {
-        const auto &item = this->GetParam();
+        const auto& item = this->GetParam();
         const aclnnStatus actual = item.Run();
         if (item.checkRet) {
             EXPECT_EQ(actual, item.expected);
@@ -87,7 +87,7 @@ protected:
 };
 
 template <typename Case, typename ParseRow>
-vector<Case> LoadSwigluCases(const string &csvPath, size_t columnCount, ParseRow parseRow)
+vector<Case> LoadSwigluCases(const string& csvPath, size_t columnCount, ParseRow parseRow)
 {
     ifstream in(csvPath);
     EXPECT_TRUE(in.is_open()) << "Failed to open CSV file: " << csvPath;
@@ -115,7 +115,7 @@ vector<Case> LoadSwigluCases(const string &csvPath, size_t columnCount, ParseRow
             if (parseRow(cols, item)) {
                 cases.emplace_back(std::move(item));
             }
-        } catch (const exception &error) {
+        } catch (const exception& error) {
             ADD_FAILURE() << ops::ut::BuildCsvParseErrorMessage(csvPath, lineNo, "", error);
         }
     }
@@ -124,16 +124,16 @@ vector<Case> LoadSwigluCases(const string &csvPath, size_t columnCount, ParseRow
 }
 
 template <typename Case>
-string BuildCaseName(const testing::TestParamInfo<Case> &info)
+string BuildCaseName(const testing::TestParamInfo<Case>& info)
 {
     return ops::ut::MakeSafeParamName(info.param.caseName);
 }
 
-void ReleaseCaseTensor(aclTensor *tensor)
+void ReleaseCaseTensor(aclTensor* tensor)
 {
     Release(tensor);
 }
-void ReleaseCaseTensorList(aclTensorList *tensors)
+void ReleaseCaseTensorList(aclTensorList* tensors)
 {
     Release(tensors);
 }
@@ -141,8 +141,8 @@ void ReleaseCaseTensorList(aclTensorList *tensors)
 // Retain the framework's TensorDesc/TensorListDesc ownership and null semantics without
 // instantiating a different OP_API_UT tuple for every combination of optional inputs.
 struct SwigluApiTensors {
-    using Tensor = unique_ptr<aclTensor, void (*)(aclTensor *)>;
-    using TensorList = unique_ptr<aclTensorList, void (*)(aclTensorList *)>;
+    using Tensor = unique_ptr<aclTensor, void (*)(aclTensor*)>;
+    using TensorList = unique_ptr<aclTensorList, void (*)(aclTensorList*)>;
 
     Tensor x{nullptr, ReleaseCaseTensor};
     TensorList weight{nullptr, ReleaseCaseTensorList};
@@ -156,7 +156,7 @@ struct SwigluApiTensors {
     Tensor outputScale{nullptr, ReleaseCaseTensor};
     unique_ptr<aclIntArray, decltype(&aclDestroyIntArray)> tuningConfig{nullptr, aclDestroyIntArray};
 
-    void SetTuningConfig(const string &value)
+    void SetTuningConfig(const string& value)
     {
         const auto values = ParseI64List(value, "|");
         if (!values.empty()) {
@@ -169,7 +169,7 @@ struct SwigluApiTensors {
     {
         struct QueryResult {
             uint64_t workspaceSize{0};
-            aclOpExecutor *executor{nullptr};
+            aclOpExecutor* executor{nullptr};
             // Match OpApiUt::TestGetWorkspaceSize, including exceptional exits.
             ~QueryResult()
             {
@@ -206,8 +206,8 @@ aclnnStatus RunPhase1NullPointerCase(Phase1NullPointerTarget target)
     auto output = BuildAclTensorDescFromSpec("32:64", "FLOAT8_E4M3FN", "ND").ToAclType();
     auto outputScale = BuildAclTensorDescFromSpec("32:1:2", "FLOAT8_E8M0", "ND").ToAclType();
 
-    vector<aclTensor *> weightElements = {weightTensor.get()};
-    vector<aclTensor *> weightScaleElements = {weightScaleTensor.get()};
+    vector<aclTensor*> weightElements = {weightTensor.get()};
+    vector<aclTensor*> weightScaleElements = {weightScaleTensor.get()};
     if (target == Phase1NullPointerTarget::kWeightElement) {
         weightElements = {nullptr};
     } else if (target == Phase1NullPointerTarget::kWeightScaleElement) {
@@ -234,9 +234,9 @@ aclnnStatus RunPhase1NullPointerCase(Phase1NullPointerTarget target)
     }
 
     uint64_t workspaceSize = 0;
-    aclOpExecutor *executor = nullptr;
-    uint64_t *workspaceSizeArg = target == Phase1NullPointerTarget::kWorkspaceSize ? nullptr : &workspaceSize;
-    aclOpExecutor **executorArg = target == Phase1NullPointerTarget::kExecutor ? nullptr : &executor;
+    aclOpExecutor* executor = nullptr;
+    uint64_t* workspaceSizeArg = target == Phase1NullPointerTarget::kWorkspaceSize ? nullptr : &workspaceSize;
+    aclOpExecutor** executorArg = target == Phase1NullPointerTarget::kExecutor ? nullptr : &executor;
     const aclnnStatus ret = aclnnGroupedMatmulSwigluQuantWeightNzV3GetWorkspaceSize(
         x.get(), weight.get(), weightScale.get(), nullptr, nullptr, xScale.get(), nullptr, groupList.get(),
         MX_QUANT_MODE, 0, MX_QUANT_MODE, 0, nullptr, SPLIT_SWIGLU_MODE, DEFAULT_CLAMP_LIMIT, DEFAULT_GLU_ALPHA,
@@ -247,7 +247,7 @@ aclnnStatus RunPhase1NullPointerCase(Phase1NullPointerTarget target)
     return ret;
 }
 
-aclnnStatus RunHostGroupListCase(const vector<int64_t> &storageValues, int64_t stride, int64_t offset,
+aclnnStatus RunHostGroupListCase(const vector<int64_t>& storageValues, int64_t stride, int64_t offset,
                                  int64_t groupListType)
 {
     SetupPlatformForCase();
@@ -256,7 +256,7 @@ aclnnStatus RunHostGroupListCase(const vector<int64_t> &storageValues, int64_t s
         return ACLNN_ERR_INNER_NULLPTR;
     }
     // The input executor owns the copied Host storage until the API executor has been destroyed.
-    auto *groupList =
+    auto* groupList =
         inputExecutor->AllocHostTensor(storageValues.data(), storageValues.size(), op::DataType::DT_INT64);
     if (groupList == nullptr) {
         return ACLNN_ERR_INNER_NULLPTR;
@@ -273,14 +273,14 @@ aclnnStatus RunHostGroupListCase(const vector<int64_t> &storageValues, int64_t s
     auto output = BuildAclTensorDescFromSpec("32:64", "FLOAT8_E4M3FN", "ND").ToAclType();
     auto outputScale = BuildAclTensorDescFromSpec("32:1:2", "FLOAT8_E8M0", "ND").ToAclType();
 
-    const aclTensor *weightElements[] = {weightTensor.get()};
+    const aclTensor* weightElements[] = {weightTensor.get()};
     unique_ptr<aclTensorList, decltype(&aclDestroyTensorList)> weight(
         aclCreateTensorList(weightElements, SINGLE_TENSOR_COUNT), aclDestroyTensorList);
     if (weight == nullptr) {
         return ACLNN_ERR_INNER_NULLPTR;
     }
     (void)weightTensor.release();
-    const aclTensor *weightScaleElements[] = {weightScaleTensor.get()};
+    const aclTensor* weightScaleElements[] = {weightScaleTensor.get()};
     unique_ptr<aclTensorList, decltype(&aclDestroyTensorList)> weightScale(
         aclCreateTensorList(weightScaleElements, SINGLE_TENSOR_COUNT), aclDestroyTensorList);
     if (weightScale == nullptr) {
@@ -289,7 +289,7 @@ aclnnStatus RunHostGroupListCase(const vector<int64_t> &storageValues, int64_t s
     (void)weightScaleTensor.release();
 
     uint64_t workspaceSize = 0;
-    aclOpExecutor *executor = nullptr;
+    aclOpExecutor* executor = nullptr;
     const aclnnStatus ret = aclnnGroupedMatmulSwigluQuantWeightNzV3GetWorkspaceSize(
         x.get(), weight.get(), weightScale.get(), nullptr, nullptr, xScale.get(), nullptr, groupList, MX_QUANT_MODE, 0,
         MX_QUANT_MODE, groupListType, nullptr, SPLIT_SWIGLU_MODE, DEFAULT_CLAMP_LIMIT, DEFAULT_GLU_ALPHA,
@@ -300,13 +300,13 @@ aclnnStatus RunHostGroupListCase(const vector<int64_t> &storageValues, int64_t s
     return ret;
 }
 
-aclOpExecutor *CreateTestExecutor()
+aclOpExecutor* CreateTestExecutor()
 {
     auto uniqueExecutor = CREATE_EXECUTOR();
     if (uniqueExecutor.get() == nullptr) {
         return nullptr;
     }
-    aclOpExecutor *executor = nullptr;
+    aclOpExecutor* executor = nullptr;
     uniqueExecutor.ReleaseTo(&executor);
     return executor;
 }
@@ -383,8 +383,8 @@ struct V3Case : CsvExpectation {
             }
         }
         tensors.SetTuningConfig(tuningConfig);
-        const char *roundModePtr = roundMode == "NULL" ? nullptr : roundMode.c_str();
-        return tensors.GetWorkspaceSize([&](uint64_t *workspaceSize, aclOpExecutor **executor) {
+        const char* roundModePtr = roundMode == "NULL" ? nullptr : roundMode.c_str();
+        return tensors.GetWorkspaceSize([&](uint64_t* workspaceSize, aclOpExecutor** executor) {
             return aclnnGroupedMatmulSwigluQuantWeightNzV3GetWorkspaceSize(
                 tensors.x.get(), tensors.weight.get(), tensors.weightScale.get(), tensors.weightAssist.get(),
                 tensors.bias.get(), tensors.xScale.get(), tensors.smoothScale.get(), tensors.groupList.get(),
@@ -395,7 +395,7 @@ struct V3Case : CsvExpectation {
     }
 };
 
-bool ParseV3Case(const vector<string> &cols, V3Case &item)
+bool ParseV3Case(const vector<string>& cols, V3Case& item)
 {
     size_t i = 0;
     item.caseName = Trim(cols[i++]);

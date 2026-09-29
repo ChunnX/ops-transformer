@@ -28,20 +28,20 @@ constexpr size_t MX_MULTI_WEIGHT_DIM = 2UL;
 constexpr size_t MX_MULTI_WEIGHT_SCALE_N_DIM = 1UL;
 constexpr size_t MX_WEIGHT_SCALE_N_DIM = 2UL;
 
-static bool IsMxWeightNzMultiTensor(const aclTensorList *weight)
+static bool IsMxWeightNzMultiTensor(const aclTensorList* weight)
 {
     return weight != nullptr && weight->Size() > 0 && (*weight)[0] != nullptr &&
            op::IsPrivateFormat((*weight)[0]->GetStorageFormat()) &&
            (*weight)[0]->GetViewShape().GetDimNum() == MX_MULTI_WEIGHT_DIM;
 }
 
-const std::tuple<aclTensor *, aclTensor *> GroupedMatmulSwigluQuantV2(
-    const aclTensor *x, const aclTensorList *weight, const aclTensorList *weightScale, const aclTensor *xScale,
-    const aclTensorList *weightAssistanceMatrix, const aclTensor *bias, const aclTensor *smoothScale,
-    const aclTensor *groupList, int64_t dequantMode, int64_t dequantDtype, int64_t quantMode, int64_t quantDtype,
-    bool transposeWeight, int64_t groupListType, const aclIntArray *tuningConfigOptional, int64_t swigluMode,
-    float clampLimit, float gluAlpha, float gluBias, const char *roundMode, int64_t scaleAlg, float dstTypeMax,
-    aclOpExecutor *executor)
+const std::tuple<aclTensor*, aclTensor*> GroupedMatmulSwigluQuantV2(
+    const aclTensor* x, const aclTensorList* weight, const aclTensorList* weightScale, const aclTensor* xScale,
+    const aclTensorList* weightAssistanceMatrix, const aclTensor* bias, const aclTensor* smoothScale,
+    const aclTensor* groupList, int64_t dequantMode, int64_t dequantDtype, int64_t quantMode, int64_t quantDtype,
+    bool transposeWeight, int64_t groupListType, const aclIntArray* tuningConfigOptional, int64_t swigluMode,
+    float clampLimit, float gluAlpha, float gluBias, const char* roundMode, int64_t scaleAlg, float dstTypeMax,
+    aclOpExecutor* executor)
 {
     L0_DFX(GroupedMatmulSwigluQuantV2, x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList,
            dequantMode, dequantDtype, quantMode, quantDtype, transposeWeight, groupListType, tuningConfigOptional,
@@ -138,11 +138,11 @@ const std::tuple<aclTensor *, aclTensor *> GroupedMatmulSwigluQuantV2(
     return std::tie(out, scaleOut);
 }
 
-const std::tuple<aclTensor *, aclTensor *> GroupedMatmulSwigluQuantV2(
-    const aclTensor *x, const aclTensorList *weight, const aclTensorList *weightScale, const aclTensor *xScale,
-    const aclTensorList *weightAssistanceMatrix, const aclTensor *bias, const aclTensor *smoothScale,
-    const aclTensor *groupList, int64_t dequantMode, int64_t dequantDtype, int64_t quantMode, int64_t quantDtype,
-    bool transposeWeight, int64_t groupListType, const aclIntArray *tuningConfigOptional, aclOpExecutor *executor)
+const std::tuple<aclTensor*, aclTensor*> GroupedMatmulSwigluQuantV2(
+    const aclTensor* x, const aclTensorList* weight, const aclTensorList* weightScale, const aclTensor* xScale,
+    const aclTensorList* weightAssistanceMatrix, const aclTensor* bias, const aclTensor* smoothScale,
+    const aclTensor* groupList, int64_t dequantMode, int64_t dequantDtype, int64_t quantMode, int64_t quantDtype,
+    bool transposeWeight, int64_t groupListType, const aclIntArray* tuningConfigOptional, aclOpExecutor* executor)
 {
     return GroupedMatmulSwigluQuantV2(x, weight, weightScale, xScale, weightAssistanceMatrix, bias, smoothScale,
                                       groupList, dequantMode, dequantDtype, quantMode, quantDtype, transposeWeight,

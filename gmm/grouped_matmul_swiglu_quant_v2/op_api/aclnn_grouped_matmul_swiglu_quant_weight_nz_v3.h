@@ -51,12 +51,12 @@ extern "C" {
  * @return aclnnStatus: 返回状态码。
  */
 ACLNN_API aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3GetWorkspaceSize(
-    const aclTensor *x, const aclTensorList *weight, const aclTensorList *weightScale,
-    const aclTensorList *weightAssistMatrix, const aclTensor *bias, const aclTensor *xScale,
-    const aclTensor *smoothScale, const aclTensor *groupList, int64_t dequantMode, int64_t dequantDtype,
-    int64_t quantMode, int64_t groupListType, const aclIntArray *tuningConfigOptional, int64_t swigluMode,
-    double clampLimit, double gluAlpha, double gluBias, const char *roundMode, int64_t scaleAlg, double dstTypeMax,
-    aclTensor *output, aclTensor *outputScale, uint64_t *workspaceSize, aclOpExecutor **executor);
+    const aclTensor* x, const aclTensorList* weight, const aclTensorList* weightScale,
+    const aclTensorList* weightAssistMatrix, const aclTensor* bias, const aclTensor* xScale,
+    const aclTensor* smoothScale, const aclTensor* groupList, int64_t dequantMode, int64_t dequantDtype,
+    int64_t quantMode, int64_t groupListType, const aclIntArray* tuningConfigOptional, int64_t swigluMode,
+    double clampLimit, double gluAlpha, double gluBias, const char* roundMode, int64_t scaleAlg, double dstTypeMax,
+    aclTensor* output, aclTensor* outputScale, uint64_t* workspaceSize, aclOpExecutor** executor);
 
 /**
  * @brief aclnnGroupedMatmulSwigluQuantWeightNzV3 的第二段接口，用于执行计算。
@@ -66,8 +66,8 @@ ACLNN_API aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3GetWorkspaceSize(
  * @param [in] stream: acl stream 流。
  * @return aclnnStatus: 返回状态码。
  */
-ACLNN_API aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3(void *workspace, uint64_t workspaceSize,
-                                                              aclOpExecutor *executor, aclrtStream stream);
+ACLNN_API aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3(void* workspace, uint64_t workspaceSize,
+                                                              aclOpExecutor* executor, aclrtStream stream);
 
 #ifdef __cplusplus
 }
