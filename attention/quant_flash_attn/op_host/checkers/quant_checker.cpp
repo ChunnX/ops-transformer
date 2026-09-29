@@ -892,7 +892,6 @@ struct QfaLayoutConstraintConfig {
 };
 
 const std::map<QfaQuantMode, QfaLayoutConstraintConfig> QFA_LAYOUT_CONSTRAINT_TABLE = {
-#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510))
     {QfaQuantMode::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32,
      {{QfaLayout::TND},
       {QfaLayout::TND, QfaLayout::PA_BBND, QfaLayout::PA_BNBD, QfaLayout::PA_NZ},
@@ -907,7 +906,6 @@ const std::map<QfaQuantMode, QfaLayoutConstraintConfig> QFA_LAYOUT_CONSTRAINT_TA
       {QfaLayout::TND, QfaLayout::BSND, QfaLayout::BNSD},
       {QfaLayout::BSND},
       true}},
-#elif (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201))
     {QfaQuantMode::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32,
      {{QfaLayout::TND},
       {QfaLayout::TND, QfaLayout::PA_BBND, QfaLayout::PA_BNBD, QfaLayout::PA_NZ},
@@ -915,8 +913,11 @@ const std::map<QfaQuantMode, QfaLayoutConstraintConfig> QFA_LAYOUT_CONSTRAINT_TA
       {QfaLayout::TND, QfaLayout::N2TGD},
       false}},
     {QfaQuantMode::A4C4_QKV_HIF4_P_FP8_E4M3_SOFTMAX_FP16,
-     {{QfaLayout::BNSD}, {QfaLayout::BNSD}, {QfaLayout::BNSD}, {QfaLayout::BNSD}, true}},
-#endif
+     {{QfaLayout::BNSD}, 
+      {QfaLayout::BNSD}, 
+      {QfaLayout::BNSD}, 
+      {QfaLayout::BNSD}, 
+      true}},
 };
 
 // 按 quant_mode 的支持列表动态拼接报错文案, 避免硬编码误导 (如 HIF8 打印 mxfp8 的列表)

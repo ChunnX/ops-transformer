@@ -181,7 +181,7 @@ __aicore__ inline void quant_flash_attn_hifp4(__gm__ uint8_t *query, __gm__ uint
                                               __gm__ uint8_t *sequsedKv, __gm__ uint8_t *sinks,
                                               __gm__ uint8_t *attnMask, __gm__ uint8_t *metadata,
                                               __gm__ uint8_t *attnOut, __gm__ uint8_t *softmaxLse,
-                                              __gm__ uint8_t *workspace, const QuantFlashAttnTilingData &tilingData)
+                                              __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
 {
     using INPUT_T = hifloat4x2_t;
     using OUT_T = bfloat16_t;
@@ -229,6 +229,8 @@ __aicore__ inline void quant_flash_attn_hifp4(__gm__ uint8_t *query, __gm__ uint
     using Kernel = BaseApi::QuantFlashAttnKernelHifp4<CubeBlockDummy, VecFaBlock, VecFdBlock>;
 #endif
 
+    const __gm__ QuantFlashAttnTilingData *__restrict tilingData = (const __gm__ QuantFlashAttnTilingData *__restrict)tiling;
+
     Kernel op;
     op.Init(query, key, value, sinks, attnMask, cuSeqLensQ, cuSeqLensKv, blockTable, dequantScaleQuery, dequantScaleKey,
             dequantScaleValue, pScale, softmaxLse, attnOut, workspace, metadata, sequsedQ, sequsedKv, tilingData);
@@ -267,7 +269,7 @@ __global__ __aicore__ void quant_flash_attn(
     InitSocState();
     quant_flash_attn_hifp4<inOutLayoutType, config, quantMode, hasAttenMask, KvLayoutType, isFd>(
         query, key, value, dequantScaleQuery, dequantScaleKey, dequantScaleValue, blockTable, pScale, cuSeqLensQ,
-        cuSeqLensKv, sequsedQ, sequsedKv, sinks, attnMask, metadata, attnOut, softmaxLse, user, tilingData);
+        cuSeqLensKv, sequsedQ, sequsedKv, sinks, attnMask, metadata, attnOut, softmaxLse, user, tiling);
     PipeBarrier<PIPE_ALL>();
 #endif
 }
