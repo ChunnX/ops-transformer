@@ -19,7 +19,7 @@
 #include <graph/utils/type_utils.h>
 #include "log/log.h"
 #include "../quant_flash_attn_tiling_utils.h"
-#include "../../op_kernel/arch92/quant_flash_attn_template_tiling_key.h"
+#include "../../op_kernel/arch92/quant_flash_attn_template_tiling_key_arch92.h"
 #include "../../../common/op_host/fia_tiling_templates_registry.h"
 #include "../quant_flash_attn_tiling_constants.h"
 

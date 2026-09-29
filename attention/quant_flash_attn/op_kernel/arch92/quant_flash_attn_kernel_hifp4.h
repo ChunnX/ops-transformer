@@ -16,11 +16,11 @@
 #ifndef QUANT_FLASH_ATTN_KERNEL_HIFP4_H_
 #define QUANT_FLASH_ATTN_KERNEL_HIFP4_H_
 
-#include "quant_flash_attn_common_def.h"
+#include "quant_flash_attn_common_def_arch92.h"
 #include "quant_flash_attn_block_cube_hifp4.h"
 #include "quant_flash_attn_block_vec_hifp4.h"
 #include "memory_copy_arch92_quant_flash_attn.h"
-#include "quant_flash_attn_block_vec_flashdecode.h"
+#include "quant_flash_attn_block_vec_flashdecode_arch92.h"
 
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"

@@ -19,7 +19,7 @@
 #include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h"
 #include "../../../common/op_kernel/arch92/vf/vf_mul_sel_softmaxflashv2_cast_nz_dn_hif4.h"
 #include "../../../common/op_kernel/arch92/vf/vf_flashupdate_hif4.h"
-#include "quant_flash_attn_common_def.h"
+#include "quant_flash_attn_common_def_arch92.h"
 #include "../../../common/op_kernel/vector_common.h"
 #include "memory_copy_arch92_quant_flash_attn.h"
 
