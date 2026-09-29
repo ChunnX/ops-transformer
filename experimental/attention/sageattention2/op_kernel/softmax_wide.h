@@ -13,7 +13,7 @@ namespace Sage {
 // Scale a pair of NZ score blocks across group halves by Q and K factors, apply optional causal mask, and accumulate block maximums.
 // Interleaves 4 rows across both blocks to ensure >= 3 independent instructions between Mul and consumers.
 template <bool MASK>
-__simd_callee__ inline void ScaleMaskAndMaxWideNZPair(
+__simd_callee__ inline __attribute__((always_inline)) void ScaleMaskAndMaxWideNZPair(
     __ubuf__ half *scores0, __ubuf__ half *scores1,
     AscendC::MicroAPI::RegTensor<half> &q0, AscendC::MicroAPI::RegTensor<half> &q1,
     __ubuf__ half *khalf0, __ubuf__ half *khalf1,
@@ -72,7 +72,7 @@ __simd_callee__ inline void ScaleMaskAndMaxWideNZPair(
 // Compute probabilities from scores, tree-accumulate row sums, cast to FP8, and pack into NZ output format.
 // Uses perfectly interleaved Vector ALU instructions with minimal register pressure (<= 10 registers)
 // to eliminate all RAW writeback pipeline stalls and prevent any register spilling to UB.
-__simd_callee__ inline void ComputeProbAndPackNZSingle(
+__simd_callee__ inline __attribute__((always_inline)) void ComputeProbAndPackNZSingle(
     __ubuf__ float8_e4m3_t *out,
     AscendC::MicroAPI::RegTensor<half> &x0,
     AscendC::MicroAPI::RegTensor<half> &x1,

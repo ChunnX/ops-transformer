@@ -187,79 +187,10 @@ __aicore__ void StreamKStats(GM_ADDR k, GM_ADDR mean, SageParams p)
 }
 
 template <class T>
-__aicore__ void HeadStats(GM_ADDR k, GM_ADDR mean, SageParams p)
-{
-    FixedResource r;
-    GlobalTensor<T> kg;
-    kg.SetGlobalBuffer((__gm__ T *)k);
-    GlobalTensor<float> mg;
-    mg.SetGlobalBuffer((__gm__ float *)mean);
-    constexpr uint32_t BATCH_ROWS = 128;
-    constexpr uint32_t SLOT_BYTES = BATCH_ROWS * 128 * sizeof(T);
-    auto sum = r.ubBuf.template GetBufferByByte<float>(STATS_SUM_UB);
-    LocalTensor<T> slotBuf[2] = {
-        r.ubBuf.template GetBufferByByte<T>(0),
-        r.ubBuf.template GetBufferByByte<T>(SLOT_BYTES)
-    };
-    const bool grouped = UseDieGroups(p);
-    const uint32_t workers = grouped ? p.cores : 2 * p.cores;
-    const uint32_t rank = GetBlockIdx() % workers;
-    const uint32_t group = GetBlockIdx() / workers;
-    const uint64_t heads = uint64_t(p.b) * p.hk / (grouped ? 2 : 1);
-    const uint64_t firstHead = group * heads;
-    const float invSk = 1.0f / float(p.sk);
-    const uint32_t batches = (p.sk + BATCH_ROWS - 1) / BATCH_ROWS;
-
-    SetFlag<HardEvent::V_MTE2>(1);
-    SetFlag<HardEvent::V_MTE2>(2);
-
-    for (uint64_t head = rank; head < heads; head += workers) {
-        const uint64_t bh = firstHead + head;
-        const uint32_t b = bh / p.hk, h = bh % p.hk;
-        const uint64_t headBase = Offset(p.ks, b, h, 0);
-        Duplicate(sum, 0.0f, p.dp);
-        if (p.smoothK) {
-            for (uint32_t batch = 0; batch <= batches; ++batch) {
-                if (batch < batches) {
-                    const uint32_t slot = batch & 1, start = batch * BATCH_ROWS;
-                    const uint32_t rows = Min(BATCH_ROWS, p.sk - start);
-                    const event_t event = static_cast<event_t>(1 + slot);
-                    WaitFlag<HardEvent::V_MTE2>(event);
-                    DataCopy(slotBuf[slot], kg[headBase + uint64_t(start) * p.dp], rows * p.dp);
-                    SetFlag<HardEvent::MTE2_V>(event);
-                }
-                if (batch == 0)
-                    continue;
-                const uint32_t slot = (batch - 1) & 1;
-                const uint32_t rows = Min(BATCH_ROWS, p.sk - (batch - 1) * BATCH_ROWS);
-                const event_t event = static_cast<event_t>(1 + slot);
-                WaitFlag<HardEvent::MTE2_V>(event);
-                StatsSumVF(slotBuf[slot], sum, rows, p.dp);
-                SetFlag<HardEvent::V_MTE2>(event);
-            }
-            PipeBarrier<PIPE_V>();
-            Muls(sum, sum, invSk, p.dp);
-        }
-        WriteRow(mg, bh * p.dp, sum, p.dp);
-    }
-    WaitFlag<HardEvent::V_MTE2>(1);
-    WaitFlag<HardEvent::V_MTE2>(2);
-}
-
-template <class T>
 __aicore__ void Stats(GM_ADDR k, GM_ADDR mean, SageParams p)
 {
-    if (p.smoothK && p.d == p.dp) {
-        if (p.sk <= 8192 && (p.hk >= 32 || uint64_t(p.b) * p.hk >= 32)) {
-            HeadStats<T>(k, mean, p);
-            return;
-        } else {
-            StreamKStats<T>(k, mean, p);
-            return;
-        }
-    }
-    if (p.d == p.dp) {
-        HeadStats<T>(k, mean, p);
+    if (p.smoothK && p.d == p.dp && p.sk >= 1024) {
+        StreamKStats<T>(k, mean, p);
         return;
     }
     const bool grouped = UseDieGroups(p);
