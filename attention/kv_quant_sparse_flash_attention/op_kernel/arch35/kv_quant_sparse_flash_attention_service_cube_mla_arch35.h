@@ -233,6 +233,8 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAMatmulService<TEMPLATE_ARGS>
     Buffer<BufferType::L1> inputLeftBuf;
     PrepareLeftMatrixBmm1QSFA(inputLeftBuf, runInfo, constInfo);
 
+    // 加载当前轮的右矩阵到L1
+
     if constexpr (IS_SPLIT_G) {
         SetFlag<HardEvent::MTE1_MTE2>(mte2ToMte1Id[runInfo.taskIdMod3]);
         WaitFlag<HardEvent::MTE1_MTE2>(mte2ToMte1Id[runInfo.taskIdMod3]);

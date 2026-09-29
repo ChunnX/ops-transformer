@@ -1574,6 +1574,5 @@ public:
     using mm2ResPos = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
     __aicore__ inline void ProcessVec2(mm2ResPos& bmm2ResBuf, RunInfo& qsfaRunInfo, ConstInfo& qsfaConstInfo) {}
 };
-
 } // namespace BaseApi
 #endif // KV_QUANT_SPARSE_FLASH_ATTENTION_SERVICE_VECTOR_MLA_ARCH35_H

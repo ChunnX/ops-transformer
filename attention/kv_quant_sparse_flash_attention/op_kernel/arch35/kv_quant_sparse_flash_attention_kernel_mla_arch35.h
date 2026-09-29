@@ -797,6 +797,5 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
         runInfo.s2AlignedSize = Align(runInfo.s2RealSize);
     }
 }
-
 } // namespace BaseApi
 #endif // KV_QUANT_SPARSE_FLASH_ATTENTION_KERNEL_MLA_ARCH35_H
