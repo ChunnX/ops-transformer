@@ -192,7 +192,7 @@ __aicore__ void Stats(GM_ADDR src, GM_ADDR mean, SageParams p)
     const uint64_t heads = uint64_t(p.b) * p.hk / (grouped ? 2 : 1);
     FixedResource r;
     GlobalTensor<T> kg;
-    kg.SetGlobalBuffer((__gm__ T *)k);
+    kg.SetGlobalBuffer((__gm__ T *)src);
     GlobalTensor<float> mg;
     mg.SetGlobalBuffer((__gm__ float *)mean);
     auto input = r.ubBuf.template GetBufferByByte<T>(STATS_RAW_UB);

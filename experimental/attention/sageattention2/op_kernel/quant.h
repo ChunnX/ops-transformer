@@ -224,7 +224,6 @@ __aicore__ void QuantBatch(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADD
         x[s] = r.ubBuf.template GetBufferByByte<float>(b + FLOAT_INPUT);
         mu[s] = r.ubBuf.template GetBufferByByte<float>(b + MEAN);
         vmean[s] = r.ubBuf.template GetBufferByByte<float>(b + V_MEAN);
-        vmean[s] = r.ubBuf.template GetBufferByByte<float>(b + V_MEAN);
         vs[s] = r.ubBuf.template GetBufferByByte<float>(b + MX_SCALE);
         out[s] = r.ubBuf.template GetBufferByByte<int8_t>(b + QK_OUTPUT);
         fp8[s] = r.ubBuf.template GetBufferByByte<float8_e4m3_t>(b + V_OUTPUT);
@@ -270,8 +269,6 @@ __aicore__ void QuantBatch(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADD
                 if (valid)
                     DataCopy(vInput[slot], vg[Offset(p.vs, b, h, token)], 64 * p.dp);
                 DataCopy(mu[slot], mg[(uint64_t(b) * p.hk + h) * p.dp], p.dp);
-                if (p.smoothV)
-                    DataCopy(vmean[slot], vmg[(uint64_t(b) * p.hk + h) * p.dp], p.dp);
                 if (p.smoothV)
                     DataCopy(vmean[slot], vmg[(uint64_t(b) * p.hk + h) * p.dp], p.dp);
             }
@@ -407,7 +404,6 @@ __aicore__ void Quant(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADDR vMe
     auto maxima = r.ubBuf.GetBufferByByte<T>(V_MAXIMA);
     auto vOut = r.ubBuf.GetBufferByByte<float8_e4m3_t>(V_OUTPUT);
     auto mx = r.ubBuf.GetBufferByByte<uint16_t>(MX_SCALE);
-    auto vmean = r.ubBuf.GetBufferByByte<float>(V_MEAN);
     auto vmean = r.ubBuf.GetBufferByByte<float>(V_MEAN);
     for (uint64_t tile = GetBlockIdx(); tile < nk / 64; tile += 2 * p.cores) {
         const uint64_t idx = tile * 64;
