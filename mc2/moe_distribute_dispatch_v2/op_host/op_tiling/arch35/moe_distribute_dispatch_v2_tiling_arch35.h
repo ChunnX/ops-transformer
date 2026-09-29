@@ -38,9 +38,6 @@ protected:
 class MoeDistributeDispatchV2TilingFuncA5 : public MoeDistributeDispatchV2TilingFuncBase {
 public:
     ge::graphStatus MoeDistributeDispatchV2TilingFunc(gert::TilingContext *context) override;
-    // CCU 控制面统一使能入口（V2/V3 tiling 入口共用：fullmesh_v2+env 开启时配置，否则显式关）；
-    // commAlg/groupEp 由调用方按各自属性布局读取传入（V2/V3 的 attr 索引不同）
-    ge::graphStatus TryEnableCcuCtrl(gert::TilingContext *context, const char *commAlg, const char *groupEp);
     ge::graphStatus MoeDistributeDispatchTilingFuncImpl(gert::TilingContext *context) override;
     bool CheckTensorDataType(const gert::TilingContext *context, const char *nodeName, const bool isScales,
                              const uint32_t quantMode, const bool isActiveMask, const bool hasElasticInfo,
@@ -51,13 +48,6 @@ public:
                                               uint32_t quantMode, DispatchV2Config &config) override;
     ge::graphStatus CheckCommAlgPtr(const char *commAlgPtr, const char *nodeName) override;
     ge::graphStatus CheckQuantModePtr(const int64_t *quantModePtr, const char *nodeName) override;
-
-private:
-    // ccu 入口混合模式的 tiling key 通信模式选择：true 时 CalTilingKey 产出 ENABLE_FULLMESH+CCU 组合，
-    // 与 ccTiling 引擎、aclnn serverType 三层一致注册为 CCU 算子（windowsIn 注入的前提）。
-    // 由 MoeDistributeDispatchTilingFuncImpl 在调用 A3Public 前置位——CalTilingKey 在 A3Public 内部
-    // 经 this 虚调用读取；其余入口恒为默认 false（MTE key 不受影响）
-    bool ccuHybridKey_ = false;
 };
 } // namespace optiling
 
