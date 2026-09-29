@@ -14,8 +14,10 @@
 
 namespace ops {
 class ChunkLocalCumsum : public OpDef {
-   public:
-    explicit ChunkLocalCumsum(const char *name) : OpDef(name) {
+public:
+    explicit ChunkLocalCumsum(const char *name)
+        : OpDef(name)
+    {
         this->Input("input")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT})
@@ -39,4 +41,4 @@ class ChunkLocalCumsum : public OpDef {
 };
 
 OP_ADD(ChunkLocalCumsum);
-}  // namespace ops
+} // namespace ops
