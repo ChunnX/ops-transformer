@@ -462,6 +462,6 @@
 
 | 调用方式      | 调用样例                 | 说明                                                         |
 |--------------|-------------------------|--------------------------------------------------------------|
-| aclnn调用 | [test_aclnn_quant_grouped_matmul_swiglu_quant_V2](examples/test_aclnn_grouped_matmul_swiglu_quant_v2_a8w8.cpp) | 通过接口方式调用[GroupedMatmulSwigluQuantV2](docs/aclnnGroupedMatmulSwigluQuantV2.md)算子。 |
-| aclnn调用 | [test_aclnn_grouped_matmul_swiglu_quant_weight_nz_v3](examples/arch35/test_aclnn_grouped_matmul_swiglu_quant_weight_nz_v3.cpp) | 通过[aclnnGroupedMatmulSwigluQuantWeightNzV3](docs/aclnnGroupedMatmulSwigluQuantWeightNzV3.md)调用Ascend 950PR/Ascend 950DT的MXFP8 weight FRACTAL_NZ增量场景。 |
-| PyTorch调用 | [grouped_matmul_swiglu_quant_v2](docs/torchapi_grouped_matmul_swiglu_quant_v2.md) | 通过`cann_ops_transformer.grouped_matmul_swiglu_quant_v2`调用上述增量场景。 |
+| aclnn API | [test_aclnn_quant_grouped_matmul_swiglu_quant_V2](examples/test_aclnn_grouped_matmul_swiglu_quant_v2_a8w8.cpp) | 通过接口方式调用[GroupedMatmulSwigluQuantV2](docs/aclnnGroupedMatmulSwigluQuantV2.md)算子。 |
+| aclnn API | [test_aclnn_grouped_matmul_swiglu_quant_weight_nz_v3](examples/arch35/test_aclnn_grouped_matmul_swiglu_quant_weight_nz_v3.cpp) | 通过[aclnnGroupedMatmulSwigluQuantWeightNzV3](docs/aclnnGroupedMatmulSwigluQuantWeightNzV3.md)调用Ascend 950PR/Ascend 950DT的MXFP8 weight FRACTAL_NZ增量场景。 |
+| PyTorch API | [grouped_matmul_swiglu_quant_v2](docs/torchapi_grouped_matmul_swiglu_quant_v2.md) | 通过`cann_ops_transformer.grouped_matmul_swiglu_quant_v2`调用上述增量场景。 |
