@@ -213,7 +213,7 @@ cann_ops_transformer.mixed_quant_sparse_flash_mla(
 | ori_win_right | int | 可选 | 表示q和ori_kv计算中q对未来token计算的数量，-1表示无穷大，即全部参与运算。默认值为-1 | int32 | - | -
 | layout_q | string | 可选 | 表示输入q的布局格式，默认值为BSND | string | - | -
 | layout_kv | string | 可选 | 表示输入ori_kv/cmp_kv的布局格式，默认值为BSND | string | - | -
-| topk_value_mode | int | 可选 | 表示topK索引取值模式。默认值为1 | int32 | - | -
+| topk_value_mode | int | 可选 | 表示topK索引取值模式。支持1和2，默认值为1 | int32 | - | -
 | return_softmax_lse | bool | 可选 | 表示是否返回softmax的lse结果。默认值为False | bool | - | -
 
 ## 返回值说明
@@ -863,7 +863,7 @@ metadata校验
             <td>
                 <ul>
                     <li>data_type支持int32</li>
-                    <li>topK索引取值模式，默认值为1</li>
+                    <li>topK索引取值模式，默认值为1，A2A3只支持1，A5支持1和2</li>
                 </ul>
             </td>
             <td>可选属性，默认值为1</td>
