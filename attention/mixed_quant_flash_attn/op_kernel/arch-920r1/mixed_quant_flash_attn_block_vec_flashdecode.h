@@ -22,7 +22,6 @@
 // #include "lib/matrix/matmul/tiling.h"
 #include "../../../common/op_kernel/arch35/infer_flash_attention_comm_arch35.h"
 #include "../../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h"
-#include "vf/vf_flash_decode.h"
 #include "../utils/mixed_quant_flash_attn_utils.h"
 #include "memory_copy_arch35_mixed_quant_flash_attn.h"
 
@@ -339,9 +338,9 @@ protected:
         LocalTensor<T> sinkExpBuf = fdSinkExpBuf.ReinterpretCast<T>();
         LocalTensor<T> maxLseUb = fdLseUbBuf.ReinterpretCast<T>();
         if (unlikely(learnableSinkFlag)) {
-            FaVectorApiAntiQuant::ComputeScaleValue_VF_FD_(sinkExpBuf, lseMax, lseSum, lseExp, maxLseUb, lseMaxUb,
-                                                           dealRowCount, actualCombineLoopSize,
-                                                           constInfo.isSoftmaxLseEnable, true);
+            FaVectorApi::ComputeScaleValue_VF_FD<T, T, SinkInjectStage::AT_FD_EPILOGUE>(
+                sinkExpBuf, lseMax, lseSum, lseExp, maxLseUb, lseMaxUb, dealRowCount, actualCombineLoopSize,
+                constInfo.isSoftmaxLseEnable, true);
         } else {
             FaVectorApi::ComputeScaleValue_VF_FD<T, T, SinkInjectStage::AT_FA_PROLOGUE>(
                 sinkExpBuf, lseMax, lseSum, lseExp, maxLseUb, lseMaxUb, dealRowCount, actualCombineLoopSize,

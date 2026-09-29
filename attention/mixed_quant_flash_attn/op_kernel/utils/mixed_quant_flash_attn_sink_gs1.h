@@ -347,7 +347,7 @@ __aicore__ inline void SinkExpandMaxVf(const LocalTensor<T> &maxUb, const LocalT
 
 template <typename T>
 __simd_vf__ inline void SinkMergeStableBlockVF(__ubuf__ T *sumUb, __ubuf__ T *maxUb, __ubuf__ T *scaleUb,
-                                               __ubuf__ T *sinkUb, uint32_t offset, Reg::MaskReg preg)
+                                               __ubuf__ T *sinkUb, uint32_t offset, uint32_t validCount)
 {
     // newSum = oldSum * exp(oldMax - newMax) + exp(sink - newMax).
     // scaleUb is applied to the KV numerator after its final normalization.
@@ -358,6 +358,7 @@ __simd_vf__ inline void SinkMergeStableBlockVF(__ubuf__ T *sumUb, __ubuf__ T *ma
     RegTensor<T> oldScaleReg;
     RegTensor<T> sinkScaleReg;
     RegTensor<T> outSumReg;
+    Reg::MaskReg preg = Reg::UpdateMask<T>(validCount);
     Reg::LoadAlign<T, Reg::LoadDist::DIST_NORM>(sinkReg, sinkUb);
     Reg::LoadAlign<T, Reg::LoadDist::DIST_NORM>(sumReg, sumUb + offset);
     Reg::LoadAlign<T, Reg::LoadDist::DIST_NORM>(maxReg, maxUb + offset);
@@ -386,13 +387,11 @@ __aicore__ inline void SinkMergeStableVF(const LocalTensor<SINK_T> &sinkTensor, 
     __ubuf__ T *maxUb = (__ubuf__ T *)maxTensor.GetPhyAddr();
     __ubuf__ T *scaleUb = (__ubuf__ T *)scaleTensor.GetPhyAddr();
     __ubuf__ T *sinkUb = (__ubuf__ T *)sinkTensor.GetPhyAddr();
-    Reg::MaskReg pregAll = Reg::CreateMask<T, Reg::MaskPattern::ALL>();
-    Reg::MaskReg pregTail = Reg::UpdateMask<T>(pltTail);
     for (uint16_t i = 0; i < updateLoops; ++i) {
-        SinkMergeStableBlockVF<T>(sumUb, maxUb, scaleUb, sinkUb, i * floatRepSize, pregAll);
+        SinkMergeStableBlockVF<T>(sumUb, maxUb, scaleUb, sinkUb, i * floatRepSize, floatRepSize);
     }
     if (tailSize != 0) {
-        SinkMergeStableBlockVF<T>(sumUb, maxUb, scaleUb, sinkUb, updateLoops * floatRepSize, pregTail);
+        SinkMergeStableBlockVF<T>(sumUb, maxUb, scaleUb, sinkUb, updateLoops * floatRepSize, pltTail);
     }
 }
 
