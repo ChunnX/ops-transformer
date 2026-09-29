@@ -735,10 +735,10 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
             // 避免每个标量结果都单独触发一次Vector到Scalar的等待。
             if (compactRows) {
                 if (accumulateRows) {
-                    MhcNormRegBase::VFPairMulAddCompact<true, true>(reduceRows, x2[x2h0 * dTile_], x2[x2h0 * dTile_],
+                    MhcNormRegBase::VFPairMulAddCompact<true, USE_RMS_MID>(reduceRows, x2[x2h0 * dTile_], x2[x2h0 * dTile_],
                                                                x2[x2h1 * dTile_], x2[x2h1 * dTile_], tD);
                 } else {
-                    MhcNormRegBase::VFPairMulAddCompact<false, true>(reduceRows, x2[x2h0 * dTile_], x2[x2h0 * dTile_],
+                    MhcNormRegBase::VFPairMulAddCompact<false, USE_RMS_MID>(reduceRows, x2[x2h0 * dTile_], x2[x2h0 * dTile_],
                                                         x2[x2h1 * dTile_], x2[x2h1 * dTile_], tD);
                 }
             } else if (accumulateRows) {
