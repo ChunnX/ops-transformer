@@ -43,6 +43,7 @@
 #include "mega_moe_layered.h"
 #endif
 
+#include "common/mega_moe_sim_marks.h"
 #include "mega_moe_tiling.h"
 #include "mega_moe_tiling_key.h"
 #include <type_traits>
@@ -100,6 +101,7 @@ __global__ __aicore__ void mega_moe(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds,
                                     GM_ADDR sharedBias1, GM_ADDR sharedBias2, GM_ADDR maskBuffer, GM_ADDR yOut,
                                     GM_ADDR expertTokenNumsOut, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
+    MEGA_MOE_MARK_BEGIN(KERNEL);
     InitSocState();
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     REGISTER_TILING_DEFAULT(MegaMoeTilingData);
@@ -135,4 +137,5 @@ __global__ __aicore__ void mega_moe(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds,
 #endif
     }
 #endif
+    MEGA_MOE_MARK_END(KERNEL);
 }

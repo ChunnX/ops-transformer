@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+
+# Compile and simulate in separate CANN environments from the same caller shell.
+set -euo pipefail
+
+usage() {
+    cat <<'EOF'
+Usage:
+  ./mega-sim-deploy --build-env BUILD/set_env.sh --sim-env DEBUG/set_env.sh \
+      --case NEW_CASE [--config CONFIG] [--dependencies CACHE]
+  ./mega-sim-deploy --build-env BUILD/set_env.sh --sim-env DEBUG/set_env.sh \
+      --inputs PREPARED_INPUT_CASE [--dependencies CACHE]
+
+Prepare (or build + attach), validate, then run npusim -c with no time limit.
+Use a fresh shell with Python/build prerequisites available. Each CANN setup is
+sourced in a separate child process; the build setup does not leak into simulation.
+Paths are resolved relative to the caller's directory. NEW_CASE must not exist.
+--inputs uses the config.json already stored in the prepared input-only case.
+The simulator runs from the case directory; stdout/stderr remain on the terminal.
+Simulator-specific dump locations follow the installed debug package defaults.
+EOF
+}
+
+fail() { echo "ERROR: $*" >&2; exit 2; }
+repo_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+build_env= sim_env= new_case= inputs_case= config= dependencies=
+while (($#)); do
+    case "$1" in
+        -h|--help) usage; exit 0 ;;
+        --build-env|--sim-env|--case|--inputs|--config|--dependencies)
+            (($# >= 2)) && [[ -n "$2" ]] || fail "Missing value for $1"
+            option=$1
+            value=$(realpath -m -- "$2")
+            case "$option" in
+                --build-env) build_env=$value ;;
+                --sim-env) sim_env=$value ;;
+                --case) new_case=$value ;;
+                --inputs) inputs_case=$value ;;
+                --config) config=$value ;;
+                --dependencies) dependencies=$value ;;
+            esac
+            shift 2 ;;
+        *) fail "Unknown option: $1 (see --help)" ;;
+    esac
+done
+[[ -f "$build_env" ]] || fail "Supply an existing --build-env set_env.sh"
+[[ -f "$sim_env" ]] || fail "Supply an existing --sim-env set_env.sh"
+[[ -n "$new_case" || -n "$inputs_case" ]] || fail "Supply --case or --inputs"
+[[ -z "$new_case" || -z "$inputs_case" ]] || fail "--case and --inputs are mutually exclusive"
+if [[ -n "$inputs_case" ]]; then
+    [[ -z "$config" ]] || fail "--inputs uses its own config.json; omit --config"
+    [[ -f "$inputs_case/top.pending.json" && ! -e "$inputs_case/top.json" ]] || fail "--inputs requires an input-only case"
+    config=$inputs_case/config.json
+    case_dir=$inputs_case
+else
+    [[ ! -e "$new_case" && ! -L "$new_case" ]] || fail "Case already exists: $new_case"
+    config=${config:-$repo_dir/sim/configs/bs72.json}
+    case_dir=$new_case
+fi
+[[ -f "$config" ]] || fail "Config not found: $config"
+build_args=(--config "$config")
+if [[ -n "$dependencies" ]]; then
+    [[ -d "$dependencies" ]] || fail "Dependency cache not found: $dependencies"
+    build_args+=(--dependencies "$dependencies")
+fi
+
+# Do not source vendor scripts with nounset enabled; some read unset optional vars.
+# A separate bash for each command retains only the original caller environment.
+with_build_env() {
+    bash --noprofile --norc -c '
+        set -e
+        source "$1"
+        cd -- "$2"
+        shift 2
+        exec "$@"
+    ' mega-build "$build_env" "$repo_dir" "$@"
+}
+echo "Preparing case: $case_dir"
+with_build_env ./mega-sim test
+if [[ -n "$inputs_case" ]]; then
+    with_build_env ./mega-sim relocate --inputs-only --case "$case_dir"
+    with_build_env ./mega-sim build "${build_args[@]}"
+    with_build_env ./mega-sim attach --case "$case_dir"
+else
+    with_build_env ./mega-sim prepare "${build_args[@]}" --case "$case_dir"
+fi
+with_build_env ./mega-sim validate --case "$case_dir"
+echo "Starting debug npusim; working directory: $case_dir (no wrapper timeout)"
+exec bash --noprofile --norc -c '
+    set -e
+    source "$1"
+    cd -- "$2"
+    command -v npusim
+    exec npusim -c "$2"
+' mega-debug "$sim_env" "$case_dir"

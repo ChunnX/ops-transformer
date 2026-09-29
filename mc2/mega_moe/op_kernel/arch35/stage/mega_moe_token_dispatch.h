@@ -12,6 +12,7 @@
 #define MEGA_MOE_TOKEN_DISPATCH_H
 
 #include "mega_moe_expert_count.h"
+#include "../common/mega_moe_sim_marks.h"
 #include "../common/mega_moe_utils.h"
 #include "mega_moe_token_quant.h"
 #include "mega_moe_token_dedup.h"
@@ -460,8 +461,10 @@ __aicore__ inline void LoadAndComputeExpertCountTable(const MoeStageCommonConfig
     expertCountGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(params.peermemInfo.expertCountRecvPtr));
     // MoE 阶段入口已通过 MTE3_MTE2 完成这段 UB 的交接。
     // expertTokenNumsOutTensor 尚未保存输出，首项暂存整表检查结果，不增加 UB 分配。
+    MEGA_MOE_MARK_BEGIN(WAIT_REMOTE_COUNT);
     WaitForCountTable(expertCountGlobal, scratch.cumsumInfoTensor, scratch.expertTokenNumsOutTensor,
                       rawCountElementCount, expectedSyncRoundTag);
+    MEGA_MOE_MARK_END(WAIT_REMOTE_COUNT);
     ComputeExpertCountTables(scratch.cumsumInfoTensor, scratch.expertTokenNumsOutTensor, common.moeExpertPerRank,
                              common.worldSize, params.tilingData->maxOutputSize);
     // 后续只使用 UB 结果及 workspace 副本，不再读取 peermem 原始 count 表。

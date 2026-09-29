@@ -1,0 +1,36 @@
+{
+  "model": {
+    "ep": 8,
+    "aic_per_rank": 28,
+    "aiv_per_rank": 56,
+    "tokens_per_rank": 128,
+    "hidden": 7168,
+    "intermediate": 2048,
+    "moe_experts_per_rank": 3,
+    "shared_experts_per_rank": 1,
+    "top_k": 6,
+    "tiling_key": 730152,
+    "max_tokens_per_rank": 128,
+    "max_recv_tokens": 0,
+    "ub_bytes": 253952
+  },
+  "fixture": {
+    "seed": 56,
+    "kind": "random",
+    "scale_exponent": -2
+  },
+  "build": {
+    "soc_version": "Ascend950PR_9589",
+    "jobs": 8
+  },
+  "simulation": {
+    "command": [
+      "npusim",
+      "-c",
+      "{case}"
+    ],
+    "timeout_seconds": 604800,
+    "dump_outputs": false
+  },
+  "topk_weights_dtype": "float32"
+}
