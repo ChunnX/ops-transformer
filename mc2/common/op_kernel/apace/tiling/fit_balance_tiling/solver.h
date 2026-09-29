@@ -64,7 +64,7 @@ inline void MergeEqualTiles(CutPlanner &tilingM)
 // allto_all_matmul 自有离散切分不用）
 inline bool IsGoodLinearityShape(const MatmulShapeInfo &mmInfo)
 {
-    return mmInfo.kValue * mmInfo.nValue >= GOOD_LINEARITY_NK_BYTES * BYTES_PER_MB;
+    return mmInfo.shape.kValue * mmInfo.shape.nValue >= GOOD_LINEARITY_NK_BYTES * BYTES_PER_MB;
 }
 
 // 双向配平长块（3/5 算子一致: mmrs / all_reduce / matmul_allto_all）:
@@ -102,10 +102,10 @@ inline EstimateTimesResult EstimateTotalTimes(FitBasedBalanceCtx &ctx)
     ctx.matmulPerf.FindCubeUtil(ctx.commRankCntForMm);
     ctx.matmulPerf.GetMatmulGradient();
     EstimateTimesResult r;
-    r.totalMatmulTime = ctx.matmulPerf.MatmulTime(ctx.matmulPerf.mmShapeInfo_.mValue, ctx.mmRankMul);
+    r.totalMatmulTime = ctx.matmulPerf.MatmulTime(ctx.matmulPerf.mmShapeInfo_.shape.mValue, ctx.mmRankMul);
     // N=1(NoCut 候选口径, §4.37): Estimate 发生在切分前、轮数未知, 按不切保守估通信总量;
     // 切分完成后由 Schedule 尾部按实际轮数精算(ctx.commTimeActualUs)供日志/观察
-    r.totalTpTime = ctx.commPerf.TotalCommTime(ctx.matmulPerf.mmShapeInfo_.mValue, 1);
+    r.totalTpTime = ctx.commPerf.TotalCommTime(ctx.matmulPerf.mmShapeInfo_.shape.mValue, 1);
     ctx.ratioCalcComm = (std::max(r.totalTpTime, r.totalMatmulTime) / std::min(r.totalTpTime, r.totalMatmulTime));
     return r;
 }
@@ -114,8 +114,8 @@ inline EstimateTimesResult EstimateTotalTimes(FitBasedBalanceCtx &ctx)
 inline bool ExceedsL2Cache(const MatmulShapeInfo &mmInfo)
 {
     constexpr uint64_t L2_CACHE_SIZE = 128UL * BYTES_PER_MB;
-    const uint64_t l2UseSize = mmInfo.mValue * mmInfo.kValue * mmInfo.inMatrixADtypeSize +
-                               mmInfo.kValue * mmInfo.nValue * mmInfo.inMatrixBDtypeSize;
+    const uint64_t l2UseSize = mmInfo.shape.mValue * mmInfo.shape.kValue * mmInfo.dtypeSizes.inMatrixA +
+                               mmInfo.shape.kValue * mmInfo.shape.nValue * mmInfo.dtypeSizes.inMatrixB;
     return l2UseSize > L2_CACHE_SIZE;
 }
 
@@ -124,7 +124,7 @@ inline bool ExceedsL2Cache(const MatmulShapeInfo &mmInfo)
 inline void ApplyL2MinLenBoost(CutPlanner &tilingM, const MatmulShapeInfo &mmInfo, bool exceedsL2,
                                uint64_t mGuardMul = 0UL)
 {
-    const bool guardOk = (mGuardMul == 0UL) || (mmInfo.mValue > tilingM.GetMinLen() * mGuardMul);
+    const bool guardOk = (mGuardMul == 0UL) || (mmInfo.shape.mValue > tilingM.GetMinLen() * mGuardMul);
     if (exceedsL2 && guardOk) {
         tilingM.SetMinLenByMax(tilingM.GetMinLen() * 2U);
     }
@@ -134,9 +134,9 @@ inline void ApplyL2MinLenBoost(CutPlanner &tilingM, const MatmulShapeInfo &mmInf
 // 判据 m×n ≤ 2×coreNum×baseM×baseN; GetBaseM/N 为非 const 成员故 ctx 取非常量引用）
 inline void ApplySmallShapeMinLen(CutPlanner &tilingM, FitBasedBalanceCtx &ctx)
 {
-    if (ctx.matmulPerf.mmShapeInfo_.mValue * ctx.matmulPerf.mmShapeInfo_.nValue <=
+    if (ctx.matmulPerf.mmShapeInfo_.shape.mValue * ctx.matmulPerf.mmShapeInfo_.shape.nValue <=
         ctx.matmulPerf.mmShapeInfo_.coreNum * ctx.matmulPerf.GetBaseM() * ctx.matmulPerf.GetBaseN() * 2U) {
-        tilingM.SetMinLenByMax(ctx.matmulPerf.mmShapeInfo_.mValue);
+        tilingM.SetMinLenByMax(ctx.matmulPerf.mmShapeInfo_.shape.mValue);
     }
 }
 
@@ -159,7 +159,7 @@ inline double EstimateCutTotalTime(FitBasedBalanceCtx &ctx, const CommCutResult 
     if (cut.totalTileCnt <= 1U) {
         return serialTotalTime; // 单块即 NoCut 候选
     }
-    const uint64_t mValue = ctx.matmulPerf.mmShapeInfo_.mValue;
+    const uint64_t mValue = ctx.matmulPerf.mmShapeInfo_.shape.mValue;
     const double totalCommTime = ctx.commPerf.TotalCommTime(mValue, cut.totalTileCnt);
     const uint64_t firstLen = (cut.numShortTile > 0U && !cut.shortTileAtBack) ? cut.shortTileLen : cut.longTileLen;
     const uint64_t lastLen = (cut.numShortTile > 0U && cut.shortTileAtBack) ? cut.shortTileLen : cut.longTileLen;

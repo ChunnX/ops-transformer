@@ -41,40 +41,36 @@ enum class MatmulDtypeKind {
     ANTI_QUANT,
 };
 
+struct MatmulBaseBlock {
+    uint32_t baseM = 256; // 256: init value for baseM
+    uint32_t baseN = 256; // 256: init value for baseN
+    uint32_t baseK = 128; // 128: init value for baseK
+};
+
+// 计算域画像(§4.40 清理: 按类型聚合, 删旧镜像死成员 socType/batchSize)
 struct MatmulShapeInfo {
-    TilingSocVersion socType;
-    uint64_t coreNum;
-    uint64_t inMatrixADtypeSize;
-    uint64_t inMatrixBDtypeSize;
-    uint64_t outMatrixCDtypeSize;
-    uint64_t batchSize; // E / Ep
-    uint64_t mValue;
-    uint64_t nValue;
-    uint64_t kValue;
-    uint64_t baseM;
-    uint64_t baseN;
-    uint64_t baseK;
-    double computesPerCycle; // cube算力
-    double cyclePerMicroSec; // frequency
+    struct Shape { // 计算域三围
+        uint64_t mValue;
+        uint64_t nValue;
+        uint64_t kValue;
+    } shape;
+    MatmulBaseBlock baseBlock; // matmul 最优基本块(对齐粒度/下限)
+    struct DtypeSizes {        // A/B/C 每元素字节数(L2 估算与通信胶水消费)
+        uint64_t inMatrixA;
+        uint64_t inMatrixB;
+        uint64_t outMatrixC;
+    } dtypeSizes;
+    uint64_t coreNum;        // 参与计算的 AIC 核数
+    double computesPerCycle; // cube 有效算力(MACs/cycle, 标定查表产出)
+    double cyclePerMicroSec; // 频率
 };
 
-enum class CommMeshType {
-    FULL_MESH, // 950 仅全互联一种通信形态(旧芯片环网形态随旧芯片逻辑剥离)
-};
-
-enum class CommTopology {
-    STANDARD_CARD, // 0 - 标卡 4P
-    EIGHT_P,       // 1 - 8P场景（POD8P/Server8P）
-};
-
+// 通信域画像(§4.40 清理: 删旧镜像死成员 commMethod/maxStepSize/topoType)
 struct CommModelInfo {
-    uint64_t rankDim;
-    uint64_t commDtypeSize; // data type size in hccl
-    uint64_t commMatrixLen; // equal to kValue in gather, equal to nValue in reduce
-    CommMeshType commMethod;
-    CommTopology topoType;
-    uint64_t maxStepSize; // number of steps in a full round of communication
-    uint64_t commDtypeSizeExpansionFraction;
+    uint64_t rankDim;                        // 通信域卡数(构造期钳位 ≥2)
+    uint64_t commDtypeSize;                  // 通信每元素字节数
+    uint64_t commMatrixLen;                  // 通信矩阵另一维(K 或 N, CommProfile.axis 决定)
+    uint64_t commDtypeSizeExpansionFraction; // 子字节折算分母(fp4=2)
 };
 
 // 通信时间线性拟合参数(3 字段): 总量公式 y = k·x + N·b + c(§4.37 专家裁定)——
@@ -105,74 +101,31 @@ struct CutParams {
     uint64_t maxTileCnt;
 };
 
-struct MatmulBaseBlock {
-    uint32_t baseM = 256; // 256: init value for baseM
-    uint32_t baseN = 256; // 256: init value for baseN
-    uint32_t baseK = 128; // 128: init value for baseK
-};
-
 // 通信轮次硬上限（通信 API 的 FFTS 队列大小限制; 2026-09-17 随 API 上限放宽 16→63）
 constexpr uint64_t MAX_COMM_ROUNDS = 63;
-
-// 旧基类头文件里的通算比阈值（E9 减半鼓励门消费）
-constexpr double CALC_COMM_BALANCE_RATIO = 2.0;
 
 constexpr uint32_t DEFAULT_BASE_M = 128;
 constexpr uint32_t DEFAULT_BASE_N = 256;
 constexpr uint32_t DEFAULT_BASE_K = 64;
 
-enum class AicpuComType {
-    HCCL_CMD_INVALID = 0,
-    HCCL_CMD_BROADCAST = 1,
-    HCCL_CMD_ALLREDUCE,
-    HCCL_CMD_REDUCE,
-    HCCL_CMD_SEND,
-    HCCL_CMD_RECEIVE,
-    HCCL_CMD_ALLGATHER,
-    HCCL_CMD_REDUCE_SCATTER,
-    HCCL_CMD_ALLTOALLV,
-    HCCL_CMD_ALLTOALLVC,
-    HCCL_CMD_ALLTOALL,
-    HCCL_CMD_GATHER,
-    HCCL_CMD_HALFALLTOALLV = 20,
-    HCCL_CMD_MAX
-};
-
-// 引擎调度入参(字段镜像旧 mc2tiling::FitBalanceTilingArgs, 算子侧边界处整字段转换)
+// 引擎调度入参(§4.40 清理: 旧 33 字段镜像裁至引擎实际消费的 9 个, 按类型聚合;
+// 算子侧 ToEngineArgs 从旧 mc2tiling::TilingArgs 挑字段填充)
 struct FitBalanceTilingArgs {
-    AicpuComType cmdType;
-    uint32_t rankDim;
-    uint32_t usedCoreNum;
-    uint64_t orgMValue;
-    uint64_t orgNValue;
-    uint64_t orgKValue;
-    uint64_t batchValue;
-    uint64_t mValue;
-    uint64_t kValue;
-    uint64_t nValue;
-    uint64_t baseMLimit;
-    uint64_t inputDtypeSize;
-    uint64_t outputDtypeSize;
-    uint64_t aicCoreNum;
-    uint64_t commTurn;
-    uint64_t rankTileNum;
-    uint8_t commAlg;
-    bool isATrans;
-    bool isBTrans;
-    bool enablePad;
-    bool enableSplitK;
-    bool isBias;
-    bool isStorageGather;
-    bool isLocal = false;
-    ge::DataType geAType;
-    ge::DataType geBType;
-    ge::DataType geCType;
-    ge::DataType geBiasType;
-    ge::DataType antiquantscaleDType;
-    matmul_tiling::DataType aType;
-    matmul_tiling::DataType bType;
-    matmul_tiling::DataType cType;
-    matmul_tiling::DataType biasType;
+    struct Shape { // 计算域三围(切分对象/通信矩阵另一维)
+        uint64_t mValue;
+        uint64_t nValue;
+        uint64_t kValue;
+    } shape;
+    struct Platform {        // 并行度
+        uint32_t rankDim;    // 通信域卡数
+        uint32_t aicCoreNum; // 计算 AIC 核数
+    } platform;
+    struct Dtype {                     // dtype 画像(算力查表键推导/通信胶水)
+        matmul_tiling::DataType aType; // mm 域 A dtype(量化类别判定)
+        ge::DataType geAType;          // ge 域 A dtype(fp4 识别——DT_FLOAT4_E2M1 无 mm 域表达)
+        uint64_t inputDtypeSize;       // A 每元素字节数(glue 真实口径, fp4 时=0)
+        uint64_t outputDtypeSize;      // C 每元素字节数(C 侧承载通信时的字节)
+    } dtype;
 };
 
 // ====== 通信引擎枚举与解析（三引擎统一分派的公共词汇）======

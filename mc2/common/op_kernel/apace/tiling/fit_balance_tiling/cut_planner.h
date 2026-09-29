@@ -39,7 +39,7 @@ public:
     // Constructor
     explicit CutPlanner(const FitBalanceTilingArgs &args)
     {
-        totalLen = args.mValue;
+        totalLen = args.shape.mValue;
         tileArgs.mAlignLen = DEFAULT_BASE_M; // 切分长度照顾mm性能，对齐baseM
         tileArgs.minTileLen = tileArgs.mAlignLen;
         tileArgs.maxTileCnt = 1U;

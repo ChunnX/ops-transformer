@@ -95,42 +95,21 @@ static const FitBalanceCalibration CALIBRATION = {
 // 二、组装与新旧切换
 // ============================================================================
 
-// 边界转换(引擎自包含, 2026-09-17 裁定): 旧全局类型 ↔ 引擎自有类型整字段拷贝
+// 边界转换(§4.40 裁定): 旧全局类型 → 引擎入参(引擎 33 字段镜像已裁至实际消费的 9 个,
+// 按类型聚合——shape/platform/dtype 三组)
 inline FitBalanceTilingArgs ToEngineArgs(const mc2tiling::TilingArgs &a)
 {
-    return {static_cast<AicpuComType>(a.cmdType),
-            a.rankDim,
-            a.usedCoreNum,
-            a.orgMValue,
-            a.orgNValue,
-            a.orgKValue,
-            a.batchValue,
-            a.mValue,
-            a.kValue,
-            a.nValue,
-            a.baseMLimit,
-            a.inputDtypeSize,
-            a.outputDtypeSize,
-            a.aicCoreNum,
-            a.commTurn,
-            a.rankTileNum,
-            a.commAlg,
-            a.isATrans,
-            a.isBTrans,
-            a.enablePad,
-            a.enableSplitK,
-            a.isBias,
-            a.isStorageGather,
-            a.isLocal,
-            a.geAType,
-            a.geBType,
-            a.geCType,
-            a.geBiasType,
-            a.antiquantscaleDType,
-            a.aType,
-            a.bType,
-            a.cType,
-            a.biasType};
+    FitBalanceTilingArgs e = {};
+    e.shape.mValue = a.mValue;
+    e.shape.nValue = a.nValue;
+    e.shape.kValue = a.kValue;
+    e.platform.rankDim = a.rankDim;
+    e.platform.aicCoreNum = a.aicCoreNum;
+    e.dtype.aType = a.aType;
+    e.dtype.geAType = a.geAType;
+    e.dtype.inputDtypeSize = a.inputDtypeSize;
+    e.dtype.outputDtypeSize = a.outputDtypeSize;
+    return e;
 }
 
 inline CutResult ToLegacyCut(const CommCutResult &c)
@@ -146,7 +125,7 @@ inline CutResult ScheduleFitBalance(const mc2tiling::TilingArgs &args, TilingCom
                                     uint32_t *baseMOut = nullptr)
 {
     auto result = FitBalanceCut(ToEngineArgs(args), LocalMMPosition::FRONT, CommComputeOrder::COMM_FIRST, commEngine,
-                                CALIBRATION, CommTopology::STANDARD_CARD);
+                                CALIBRATION);
     auto &ctx = result.ctx; // 诊断字段载体(启动税日志/baseM; GetBaseM 非 const)
     CutResult cut = ToLegacyCut(result.cut);
     // INFO 级分派标识(与 miss 路径的 "COF cut:" 对仗): 默认日志级别即可正向确认命中标定并
@@ -158,8 +137,8 @@ inline CutResult ScheduleFitBalance(const mc2tiling::TilingArgs &args, TilingCom
     OPS_LOG_D("AllGatherMatmul",
               "Input shape {M, N, K} = {%lu, %lu, %lu}, Final cut: shortTileAtBack %d, longTileLen %lu, "
               "numLongTile %lu, shortTileLen %lu, numShortTile %lu",
-              ctx.matmulPerf.mmShapeInfo_.mValue, ctx.matmulPerf.mmShapeInfo_.nValue,
-              ctx.matmulPerf.mmShapeInfo_.kValue, cut.shortTileAtBack, cut.longTileLen, cut.numLongTile,
+              ctx.matmulPerf.mmShapeInfo_.shape.mValue, ctx.matmulPerf.mmShapeInfo_.shape.nValue,
+              ctx.matmulPerf.mmShapeInfo_.shape.kValue, cut.shortTileAtBack, cut.longTileLen, cut.numLongTile,
               cut.shortTileLen, cut.numShortTile);
     // §4.37 诊断: 实际切分 N 轮 vs 不切的总通信时(含每轮启动开销 b 与一次性 c), 差值=切分启动税
     OPS_LOG_D("AllGatherMatmul", "Comm total time: %lu rounds actual %.3fus vs no-cut %.3fus (round tax %.3fus)",

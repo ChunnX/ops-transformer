@@ -38,9 +38,8 @@ public:
     CommModelInfo commTypeInfo_;
     double commTimeFactor_ = 1.0; // 时间折算因子, 恒 1(§4.31: 8-die 折算桥接已随 plain RS 死分支删除)
 
-    // Constructor(soc 恒 950; commFitParams 由 InitCtx 按 rankDim 从标定的行, miss=零值行)
-    HCCLCommModel(uint32_t inputRankDim, CommFitParams commFitParams,
-                  CommTopology topoType = CommTopology::STANDARD_CARD)
+    // Constructor(commFitParams 由 InitCtx 按 rankDim 从标定的行, miss=零值行)
+    HCCLCommModel(uint32_t inputRankDim, CommFitParams commFitParams)
     {
         // 通信域卡数(op 侧来自 GetRankSize(group)), 下限钳位 2, 三层原因:
         //   ① 防 uint64 下溢: AG 远程流转份数 = rankDim-1, rankDim=0 时下溢;
@@ -48,9 +47,6 @@ public:
         //   ③ 历史防御: 老基类服务全家族, rankDim 来源多样(attr/group/shape 推导)不可靠, 入口统一兜底
         commTypeInfo_.rankDim = std::max(static_cast<uint64_t>(inputRankDim), MIN_RANK_DIM);
         commTypeInfo_.commDtypeSizeExpansionFraction = 1;
-        commTypeInfo_.maxStepSize = 1;
-        commTypeInfo_.commMethod = CommMeshType::FULL_MESH; // 全互联(旧 InitPrimitiveParams 残余, 仅完整性保留)
-        commTypeInfo_.topoType = topoType;
         commEstimatePar_ = commFitParams; // InitCtx 按 rankDim 选定的标定行(miss=零值行)
     };
 
