@@ -27,7 +27,7 @@ dtype 和 wide 通过 `ASCENDC_TPL_ARGS_DECL` 声明为模板参数，Host 用 `
 
 中间结果仅保存在算子 workspace：K 均值、E8M0 V scale、Q8/K8/V8、FP16 Q/K scale 。各区域按 512 字节对齐，tiling 检查大小溢出并加上 CANN 系统 workspace 前缀；每次调用独立分配，无跨调用全局状态。ACLNN 只注册和启动一个融合算子，接口签名不变。
 
-QK 在 Cube 中累加为 INT32，经固定 `2^-11` DEQF16 转为 FP16，再乘预处理的 Q/K scale；score 与 max 使用 FP16，ExpSub 输出 FP32。每个块的 max 在 FP16 中减去 `FP16(ln(448))`，与旧的平移后 max 取最大值；概率、online alpha 和 LSE 共用这一状态，因此省去概率逐元素乘 448。kernel 输出的 LSE 为 raw log2 域值 `(shifted_max + log(denom)) * log2(e)`，不含平滑校正；PyTorch 层按开源契约换算 `lse / log2(e) + sm_scale * <q, mean_k>`（`smooth_k=False` 时仅换算），与开源 `core.py` 返回值逐项对齐。V 使用 E4M3 数据与 E8M0 分组 scale；P 的 MX scale 固定为 1。PV、持续累加的 O 和 softmax 分母全部使用 FP32，除法采用默认 AscendC Div。
+QK 在 Cube 中累加为 INT32，经固定 `2^-11` DEQF16 转为 FP16，再乘预处理的 Q/K scale；score 与 max 使用 FP16，ExpSub 输出 FP32。每个块的 max 在 FP16 中减去 `FP16(ln(448))`，与旧的平移后 max 取最大值；概率、online alpha 和 LSE 共用这一状态，因此省去概率逐元素乘 448。kernel 输出的 LSE 为 raw log2 域值 `(shifted_max + log(denom)) * log2(e)`，不含平滑校正；PyTorch 层按开源契约换算 `lse / log2(e) + sm_scale * <q, mean_k>`（`smooth_k=False` 时仅换算），与开源 `core.py` 返回值逐项对齐。V 使用 E4M3 数据与 E8M0 分组 scale；P 的 MX scale 固定为 1。PV、持续累加的 O 和 softmax 分母全部使用 FP32；量化 scale 倒数与输出归一化一律用 `FastReciprocal`（魔数初值 + 两次牛顿迭代）替代向量除法，内核不含 `Div` 指令。
 
 连续对齐输入的 Q/V 原始读取使用 bypass L2 的 cache hint，保留 K 与量化输出的默认缓存策略，减少一次性读取对后续数据的挤占。连续对齐输入按 64 行双缓冲量化，Q/K 复用每 token 的 FP32 scale 倒数；非对齐输入保留原有 Q/K 舍入路径。两类输入都使用同一个 V MX 分组量化实现，不足 32 个 token 的尾组补零。V scale 在 workspace 中按 `[B,Hkv,Kp/64,Dp,2]` 保存，每个 E8M0 scale 占一字节。
 
@@ -35,7 +35,7 @@ PV 通过 CATLASS 的 MX scale 布局和搬运接口加载 L0B scale，使用硬
 
 通用路径采用 M128/N256 分块、四个 score 槽和两个 P/PV 共享槽。D padding 为 128、Sq 为 128 的倍数且 Sk 为 512 的倍数并不少于 4096 时，使用 N512 路径：两个 N256 Cube 片段共享一次 softmax，流水跨 query 连续执行。O 常驻 UB，P 经 UB→L1 交给 Cube，QK/PV 经 L0C→UB 交给 Vector。wide 路径的 K/V 各使用两个 L1 缓冲区预取；Cube 按 N256 片段推进，Vector 按 N512 分组推进。
 
-wide 路径将 FP8 P 原位写入已经消费的 FP16 score 条带，再通过带源间隔的 UB→L1 搬运保持既有 L1 布局，使两个 PV 槽能保留待合并的结果。同一 query 的相邻两组输出配对更新，在两次 PV 等待之间先计算下一组 softmax 并供 P；读取完成后才释放两个 PV 槽，保持两次 FP32 FMA 的舍入顺序。alpha 和延迟输出记录各用三个槽，跨 query 无法配对及奇数组尾部退回单组更新。P_READY 后的 Cube 计算依赖保护 score 槽复用，UB 高水位为 246 KiB。
+wide 路径将 FP8 P 原位写入已经消费的 FP16 score 条带，再通过带源间隔的 UB→L1 搬运保持既有 L1 布局，使两个 PV 槽能保留待合并的结果。同一 query 的相邻两组输出配对更新，在两次 PV 等待之间先计算下一组 softmax 并供 P；读取完成后才释放两个 PV 槽，保持两次 FP32 FMA 的舍入顺序。alpha 和延迟输出记录各用三个槽，跨 query 无法配对及奇数组尾部退回单组更新。P_READY 后的 Cube 计算依赖保护 score 槽复用，UB 静态预算高水位为 248 KiB（物理 256 KiB，余量留给队列与栈），各段的偏移由 `static_assert` 逐条对该高水位证明。
 
 ## 参数说明
 
@@ -132,7 +132,7 @@ g++ -O2 -std=c++17 tests/numeric_error_test.cpp -o build/numeric_error_test && .
 
 CPU 参考采用 per-token Q/K 与 32-token MXFP8 V 量化，使用上述 FP16 平移 max 定义及 FP8 饱和转换；独立 SDPA 标准未改变。
 
-测试全部通过公开 ACLNN 路径运行（`python/test_python_api.py`），并对照独立 QK INT8 / MXFP8 PV CPU 算法（`python/sageattention2/reference.py`，per_thread=Q4/K16、per_warp=Q32/K64 与内核同配置）、FP32 SDPA 或可解析的常数输入结果。覆盖 dtype/layout/stride、GQA、causal（含组粒度下的严格因果独立性）、smooth_k、smooth_v（`fp32` 生效、其余告警忽略）、`sageattn` 固定分发 FP8 PV（NPU 上拦截下沉实参）、LSE shape/数值、head_dim padding（D=48→64、D=96→128）、非法参数报错与 SDPA 替换冒烟。
+测试全部通过公开 ACLNN 路径运行（`python/test_python_api.py`），并对照独立 QK INT8 / MXFP8 PV CPU 算法（`python/sageattention2/reference.py`，per_thread=Q4/K16、per_warp=Q32/K64 与内核同配置）、FP32 SDPA 或可解析的常数输入结果。覆盖 dtype/layout/stride、GQA、causal（含组粒度下的严格因果独立性）、smooth_k、smooth_v（`fp32` 生效、其余告警忽略）、`sageattn` 固定分发 FP8 PV（NPU 上拦截下沉实参）、LSE shape/数值、head_dim padding（D=48→64、D=96→128）、非法参数报错、§2.4 环境变量覆盖（`SAGEATTN_QK_QUANT_GRAN`/`SAGEATTN_PV_ACCUM_DTYPE`：显式实参优先、空串回退默认、非法值与非法实参同报 ValueError、且与执行计划缓存互不污染）与 SDPA 替换冒烟。
 
 L-B 层在宿主机套件内闭环（`test_tc04b_lb_precision_gates`）：NPU 数值通路（CPU golden）与独立的开源 sm89 FP8 路径逐配置（per_thread/per_warp 各自同配置）对比，两者相对 FP32 SDPA 的误差比须满足 max<=2、mean<=1.2、RMSE<=1.2，LSE 相对偏差 <= 5e-2。
 
@@ -163,5 +163,6 @@ g++ -O2 -std=c++17 -I$ASCEND_HOME_PATH/aarch64-linux/include     -I$ASCEND_HOME_
 |---|---|
 | `op_kernel` | Stats、Quant、Cube/Vector 分块、online softmax 和 O 更新 |
 | `op_host`、`op_api` | 参数校验、注册、tiling 和两阶段 ACLNN |
-| `python` | PyTorch ACLNN 适配层和 CPU 参考 |
-| `tests` | 内核数值规格一致性测试（可移植 C++） |
+| `python` | 公开 PyTorch 接口（`sageattn` 等）、C++ 扩展 bridge、CPU 参考实现 `reference.py` 与随仓验收套件 `test_python_api.py` |
+| `tests` | 内核数值规格一致性测试（`numeric_error_test.cpp`，可移植 C++）与 aclnn C++ 双路径基准（`benchmark_aclnn.cpp`），说明见 `tests/README.md` |
+| `docs` | 设计文档 `design.md`（数学推导、内存排布、Tiling 调度、接口契约、验收标准） |

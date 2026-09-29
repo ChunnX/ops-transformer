@@ -1,8 +1,8 @@
 # SageAttention2 测试目录说明
 
 本目录包含两个可独立编译运行的 C++ 测试；Python API 验收套件位于
-`../python/test_python_api.py`（覆盖任务书 TC-01 ~ TC-10 与 L-B 精度门限，
-复现步骤见仓库根 `README.md` 的「测试说明」）。
+`../python/test_python_api.py`（覆盖任务书 TC-00 ~ TC-11、快速通路计划缓存 TC-12
+与 L-B 精度门限，复现步骤见仓库根 `README.md` 的「测试说明」）。
 
 ## 1. numeric_error_test.cpp —— 内核数值规格一致性测试
 
