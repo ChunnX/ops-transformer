@@ -536,10 +536,12 @@ public:
                 sinkExpanded, sinkInput, runInfo.gS1Idx + runInfo.vecMbaseIdx, runInfo.actVecMSize, runInfo.actS1Size,
                 constInfo.gSize);
         }
+        PipeBarrier<PIPE_V>();
         LocalTensor<float> sinkScale =
             sinkScaleBuf[(runInfo.mloop % (PRELOAD_N + 1)) * SOFTMAX_BUF_BYTES].template ReinterpretCast<float>();
         MixedQuantFlashAttnSink::SinkMergeStableVF<float, float>(sinkExpanded, sumUb, maxUb, sinkScale,
                                                                  runInfo.actVecMSize);
+        PipeBarrier<PIPE_V>();
         SetFlag<HardEvent::V_MTE2>(V_MTE2_SINK);
     }
 
