@@ -295,4 +295,19 @@
     接口方式调用算子
     </td>
   </tr>
+</tbody>
+<tbody>
+  <tr>
+    <td class="tg-9wq8">图模式调用</td>
+    <td class="tg-0pky">
+    <a href="./examples/test_geir_sparse_flash_attention_grad.cpp">test_geir_sparse_flash_attention_grad
+    </a>
+    </td>
+    <td class="tg-lboi">
+    通过
+    <a href="./Ascendir_SparseFlashAttentionGrad.md">Ascend IR
+    </a>
+    构图方式调用SparseFlashAttentionGrad算子
+    </td>
+  </tr>
 </tbody></table>
