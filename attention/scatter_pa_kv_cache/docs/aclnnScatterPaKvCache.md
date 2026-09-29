@@ -4,6 +4,9 @@
 
 ## 产品支持情况
 
+<!-- npu="960" id12 -->
+- <term>Ascend 960DT</term>：支持
+<!-- end id12 -->
 <!-- npu="950" id1 -->
 - <term>Ascend 950PR&950DT系列产品</term>：支持
 <!-- end id1 -->
@@ -130,6 +133,10 @@
 <!-- npu="A3,910b" id7 -->
 - <term>Atlas A3系列产品</term>、<term>Atlas A2系列产品</term>：仅支持场景一、二、四、五、六、七。
 <!-- end id7 -->
+<!-- npu="960" id13 -->
+- <term>Ascend 960DT</term>：仅支持场景一、二、三、四、五。
+
+<!-- end id13 -->
 <!-- npu="950" id8 -->
 - <term>Ascend 950PR&950DT系列产品</term>：仅支持场景一、二、三、四、五。
 
@@ -339,6 +346,10 @@ aclnnStatus aclnnScatterPaKvCache(
     - 输入key、keyCacheRef、value、valueCacheRef仅支持FLOAT16、BFLOAT16、INT8数据类型，不支持FLOAT、UINT8、INT16、UINT16、INT32、UINT32、HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E1M2、FLOAT4_E2M1。
 
   <!-- end id9 -->
+  <!-- npu="960" id14 -->
+  - <term>Ascend 960DT</term>：支持参数表中列出的全部数据类型及HIFLOAT4数据类型；其中FLOAT4_E1M2、FLOAT4_E2M1、HIFLOAT4仅场景一、场景二且scatterMode为"None"时支持。
+
+  <!-- end id14 -->
   <!-- npu="950" id10 -->
   - <term>Ascend 950PR&950DT系列产品</term>：支持参数表中列出的全部数据类型；其中FLOAT4_E1M2、FLOAT4_E2M1仅场景一、场景二且scatterMode为"None"时支持。
 
@@ -454,8 +465,8 @@ aclnnStatus aclnnScatterPaKvCache(
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
-<!-- npu="950,A3,910b" id11 -->
-- <term>Atlas A3系列产品</term>、<term>Atlas A2系列产品</term>、<term>Ascend 950PR&950DT系列产品</term>：
+<!-- npu="960,950,A3,910b" id11 -->
+- <term>Ascend 960DT</term>、<term>Atlas A3系列产品</term>、<term>Atlas A2系列产品</term>、<term>Ascend 950PR&950DT系列产品</term>：
 
   ```c++
   #include <iostream>

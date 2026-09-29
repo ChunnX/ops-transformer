@@ -27,7 +27,7 @@
 #include "register/op_def_registry.h"
 #include "tiling/tiling_api.h"
 #include "tiling/platform/platform_ascendc.h"
-#include "op_host/tiling_base.h"
+#include "tiling_base/tiling_base.h"
 
 using namespace Ops::Transformer::OpTiling;
 namespace optiling {
@@ -73,6 +73,7 @@ TILING_DATA_FIELD_DEF(int64_t, valueCacheStride2);
 TILING_DATA_FIELD_DEF(int64_t, valueCacheStride3);
 TILING_DATA_FIELD_DEF(int64_t, kCacheBlockStride);
 TILING_DATA_FIELD_DEF(int64_t, vCacheBlockStride);
+TILING_DATA_FIELD_DEF(int64_t, ubBlockFactor);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(ScatterPaKvCache, ScatterPaKvCacheTilingData)
@@ -85,7 +86,7 @@ struct ScatterPaKvCacheCompileInfo {
 
 class ScatterPaKvCacheTiling : public TilingBaseClass {
 public:
-    explicit ScatterPaKvCacheTiling(gert::TilingContext *context, int64_t inOutMode)
+    explicit ScatterPaKvCacheTiling(gert::TilingContext* context, int64_t inOutMode)
         : TilingBaseClass(context),
           inOutMode_(inOutMode)
     {}
@@ -113,20 +114,21 @@ protected:
     ge::graphStatus CheckAlibi();
     ge::graphStatus CheckNz();
     ge::graphStatus GetTemplateType(int64_t inputKeyDimNum);
-    ge::graphStatus GetContiguousTensorInfo(gert::Shape &shape, gert::Stride &stride, size_t idx);
+    ge::graphStatus GetContiguousTensorInfo(gert::Shape& shape, gert::Stride& stride, size_t idx);
     void GetNonContigousStrideInfo();
-    ge::graphStatus GetTensorInfo(gert::Shape &shape, gert::Stride &stride, size_t idx);
+    ge::graphStatus GetTensorInfo(gert::Shape& shape, gert::Stride& stride, size_t idx);
     void SetInputPos();
     void GetCommonTilingInfo();
     ge::graphStatus CheckSlotMappingShape(int64_t requiredDimNum);
     int64_t RoundUp(int64_t x, int64_t dtypeSize);
     void GenTilingKey();
     bool IsNonContiguous();
-    bool IsAxesContiguous(const gert::Stride &stride, const gert::Shape &shape, int64_t startAxis, int64_t endAxis);
-    bool IsLastAxisContiguous(const gert::Stride &stride, const gert::Shape &shape);
+    bool IsAxesContiguous(const gert::Stride& stride, const gert::Shape& shape, int64_t startAxis, int64_t endAxis);
+    bool IsLastAxisContiguous(const gert::Stride& stride, const gert::Shape& shape);
 
 private:
     platform_ascendc::SocVersion socVersion_;
+    bool isAscend96_ = false;
     int64_t ubSize_ = 0;
     int64_t totalCoreNum_ = 0;
     int64_t usedCoreNum_ = 0;
@@ -181,6 +183,8 @@ private:
     int64_t vStride_ = 0;
     int64_t kOffset_ = 0;
     int64_t vOffset_ = 0;
+    int64_t offsetTypeSize_ = 0;
+    int64_t ubBlockFactor_ = 0;
 
     gert::Shape inputKeyShape_;
     gert::Shape inputKeyCacheInShape_;
@@ -233,7 +237,7 @@ struct ScatterPaKvCacheMembaseParams {
 
 class ScatterPaKvCacheMembaseTiling : public TilingBaseClass {
 public:
-    explicit ScatterPaKvCacheMembaseTiling(gert::TilingContext *context)
+    explicit ScatterPaKvCacheMembaseTiling(gert::TilingContext* context)
         : TilingBaseClass(context)
     {}
 
