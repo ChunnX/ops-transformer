@@ -57,12 +57,25 @@
 
   本接口当前固定沿最后一维拆分，具体约束见“约束说明”。
 
-  - MX 量化先将 `swigluOut_i` 按 `roundMode="rint"`（最近偶数舍入）转换为 BF16，再按每 32 个元素一组计算 scale。设组内 BF16 绝对值最大值为 $a$，其指数位为 $b$（含偏置 127）、尾数位为 $t$（7 位）。当前输出固定为 FLOAT8_E4M3FN。
+  - MX 量化先将 `swigluOut_i` 按最近偶数舍入转为 BF16，再沿输出的 N 轴每 32 个元素组成一个量化组；每 64 个元素在 `outputScale` 中存储两个 E8M0 scale。设该组的 BF16 元素为 $V_j$，最大绝对值为 $a=\max_j |V_j|$。输出类型固定为 FLOAT8_E4M3FN，其最大有限值为 448。对处于正常可表示范围的非零有限 $a$，两种 `scaleAlg` 的计算公式分别为：
 
-    - `scaleAlg=0`（OCP）：对非零有限值，E8M0 编码为 $s=\max(b-8,0)$；即正常范围内 scale 为 $2^{\lfloor\log_2 a\rfloor-8}$。
-    - `scaleAlg=1`（cuBLAS）：对非零有限值，E8M0 编码为 $s=\max(b+\mathbf{1}_{t>96}-8,0)$。尾数阈值对应 E4M3FN 最大有限值 448 的归一化尾数 1.75；阈值处不进位。
-    - 全零组使用编码 0；含 Inf/NaN 的组使用编码 255。有限 scale 的解码值为 $2^{s-127}$。量化使用 BF16 倒数 scale，并将乘积按最近偶数舍入转换为 FLOAT8_E4M3FN；因此不能用无限精度除法替代实现中的倒数乘法。OCP 对最大指数位为 0 的组（全零或仅包含 BF16 次正规数）将倒数置 0；cuBLAS 仅对全零组将倒数置 0。
-    - `dstTypeMax=0.0` 表示使用输出类型的默认最大值（E4M3FN 为 448），不是用 0 做除数。当前接口不支持非零自定义值。
+    - `scaleAlg=0`（OCP）：共享指数不向上进位。
+
+      $$e_{\mathrm{OCP}}=\lfloor\log_2 a\rfloor-8,\qquad YScale=2^{e_{\mathrm{OCP}}}$$
+
+      在正常范围内，设 $a$ 的 BF16 指数位为 $b$（含偏置 127），则对应的 E8M0 编码为 $s=\max(b-8,0)$。
+
+    - `scaleAlg=1`（cuBLAS）：先用目标类型的最大有限值计算块缩放比，再将其指数向上取整，避免组内最大值在量化时溢出。
+
+      $$r=\frac{a}{448},\qquad e_{\mathrm{cuBLAS}}=\lceil\log_2 r\rceil,\qquad YScale=2^{e_{\mathrm{cuBLAS}}}$$
+
+      本接口在 BF16 上实现该规则：设 $a$ 的指数位为 $b$、7 位尾数为 $t$，E8M0 编码为 $s=\max(b+\mathbf{1}_{t>96}-8,0)$。阈值 $t=96$ 对应 $448=1.75\times 2^8$，等于阈值时不进位。
+
+    - 对组内各元素，两种算法均使用对应的共享 scale 量化：
+
+      $$P_j=\operatorname{cast}_{\mathrm{FLOAT8\_E4M3FN},\mathrm{rint}}\!\left(V_j\times\operatorname{BF16}\!\left(\frac{1}{YScale}\right)\right)$$
+
+      $P_j$ 按原位置组成 `output`。有限 scale 的 E8M0 编码 $s$ 解码为 $YScale=2^{s-127}$；超出下界时编码截断到 0。全零组使用编码 0（解码值为 $2^{-127}$），含 Inf/NaN 的组使用编码 255。OCP 对最大指数位为 0 的组（全零或仅包含 BF16 次正规数）将倒数置 0；cuBLAS 仅对全零组将倒数置 0。实现使用 BF16 倒数乘法，不能以无限精度除法替代。`dstTypeMax=0.0` 表示采用 E4M3FN 的默认最大值 448，并非以 0 为除数；当前不支持非零自定义值。
 
   非转置和转置的 `weight` 均使用 `ACL_FORMAT_FRACTAL_NZ` 格式，通过 view stride 和物理存储排列区分。
 
