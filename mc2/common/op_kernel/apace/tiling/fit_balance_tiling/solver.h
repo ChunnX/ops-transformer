@@ -17,7 +17,6 @@
 #include "comm_model.h"
 #include "matmul_model.h"
 #include "cut_planner.h"
-#include "calibration.h"
 
 // ============================================================================
 // 求解层: 调度上下文 + 公共逻辑片段(求解器键控分支复用)

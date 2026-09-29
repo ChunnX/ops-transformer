@@ -42,7 +42,6 @@
 #include "fit_balance_tiling/comm_model.h"
 #include "fit_balance_tiling/matmul_model.h"
 #include "fit_balance_tiling/cut_planner.h"
-#include "fit_balance_tiling/calibration.h"
 #include "fit_balance_tiling/solver.h"
 
 // 统一入口: 算子侧只传大结构体标定数据 + 键控枚举(原语/顺序/引擎; soc 恒 950)
