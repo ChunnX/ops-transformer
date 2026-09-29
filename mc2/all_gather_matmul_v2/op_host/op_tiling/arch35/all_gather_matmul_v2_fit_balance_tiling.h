@@ -116,7 +116,6 @@ inline CutResult ScheduleFitBalance(const mc2tiling::TilingArgs &args, TilingCom
 {
     auto result = FitBalanceCut(ToEngineArgs(args), LocalMMPosition::FRONT, CommComputeOrder::COMM_FIRST, commEngine,
                                 CALIBRATION);
-    auto &ctx = result.ctx; // 诊断字段载体(启动税日志/baseM; GetBaseM 非 const)
     CutResult cut = ToLegacyCut(result.cut);
     // INFO 级分派标识(与 miss 路径的 "COF cut:" 对仗): 默认日志级别即可正向确认命中标定并
     // 走进 fit-balance 新引擎(kUseNewEngine=false 回退老类不打本行); 详细决策与启动税诊断
@@ -127,15 +126,12 @@ inline CutResult ScheduleFitBalance(const mc2tiling::TilingArgs &args, TilingCom
     OPS_LOG_D("AllGatherMatmul",
               "Input shape {M, N, K} = {%lu, %lu, %lu}, Final cut: shortTileAtBack %d, longTileLen %lu, "
               "numLongTile %lu, shortTileLen %lu, numShortTile %lu",
-              ctx.matmulPerf.mmShapeInfo_.mValue, ctx.matmulPerf.mmShapeInfo_.nValue,
-              ctx.matmulPerf.mmShapeInfo_.kValue, cut.shortTileAtBack, cut.longTileLen, cut.numLongTile,
+              args.mValue, args.nValue, args.kValue, cut.shortTileAtBack, cut.longTileLen, cut.numLongTile,
               cut.shortTileLen, cut.numShortTile);
     //  诊断: 实际切分 N 轮 vs 不切的总通信时(含每轮启动开销 b 与一次性 c), 差值=切分启动税
     OPS_LOG_D("AllGatherMatmul", "Comm total time: %lu rounds actual %.3fus vs no-cut %.3fus (round tax %.3fus)",
-              cut.totalTileCnt, ctx.commTimeActualUs, ctx.commTimeNoCutUs, ctx.commTimeActualUs - ctx.commTimeNoCutUs);
-    if (baseMOut != nullptr) {
-        *baseMOut = ctx.matmulPerf.GetBaseM();
-    }
+              cut.totalTileCnt, result.commTimeActualUs, result.commTimeNoCutUs,
+              result.commTimeActualUs - result.commTimeNoCutUs);
     return cut;
 }
 

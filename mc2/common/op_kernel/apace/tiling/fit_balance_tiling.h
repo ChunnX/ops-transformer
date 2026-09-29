@@ -258,13 +258,12 @@ inline CommCutResult Schedule(FitBasedBalanceCtx &ctx)
 
 // ============================================================================
 // 对外唯一入口: 算子侧一行调用——上下文构造 + 键控求解的串联。
-// 返回 cut + ctx: ctx 不可默认构造(模型需标定参数), 故随结果一并带回——
-// op 侧经 ctx 读诊断字段(commTimeActualUs/commTimeNoCutUs 启动税、GetBaseM 等)。
-// 不需要诊断时只取 .cut 即可。
+// 诊断字段供 op 侧日志: 实际切分 N 轮 vs 不切的总通信时, 差值 = (N−1)·b 启动税。
 // ============================================================================
 struct FitBalanceCutResult {
     CommCutResult cut;
-    FitBasedBalanceCtx ctx;
+    double commTimeActualUs; // 实际切分(N 轮)的总通信时
+    double commTimeNoCutUs;  // 不切候选(1 轮)的总通信时
 };
 inline FitBalanceCutResult FitBalanceCut(const FitBalanceTilingArgs &args, LocalMMPosition localMMPosition,
                                          CommComputeOrder order, TilingCommEngine commEngine,
@@ -272,7 +271,7 @@ inline FitBalanceCutResult FitBalanceCut(const FitBalanceTilingArgs &args, Local
 {
     FitBasedBalanceCtx ctx = InitCtx(args, localMMPosition, order, commEngine, calib);
     CommCutResult cut = Schedule(ctx);
-    return {cut, ctx}; // 聚合初始化(移动构造, ctx 不可默认构造)
+    return {cut, ctx.commTimeActualUs, ctx.commTimeNoCutUs};
 }
 
 #endif // __APACE_FIT_BALANCE_TILING_H__
