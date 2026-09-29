@@ -29,20 +29,20 @@ extern "C" {
 // aclnnInner* 实现由构建工具自动生成（build/autogen/inner/aclnnInner_flash_mla_with_kvcache.cpp）
 // 并链接进 libcust_opapi.so，此处仅作前置声明（合并自原 aclnn_flash_mla_with_kvcache_inner.h）。
 extern aclnnStatus aclnnInnerFlashMlaWithKvcacheGetWorkspaceSize(
-    const aclTensor *q, const aclTensor *kCache, const aclTensor *blockTableOptional,
-    const aclTensor *cacheSeqlensOptional, const aclTensor *cuSeqlensQOptional, const aclTensor *sequsedQOptional,
-    const aclTensor *attnMaskOptional, const aclTensor *metadataOptional, int64_t headDimV, double softmaxScale,
-    int64_t maskMode, int64_t maxSeqlenQ, int64_t maxSeqlenKV, const char *layoutQ, const char *layoutKv,
-    const char *layoutOut, int64_t returnSoftmaxLse, const aclTensor *attnOut, const aclTensor *softmaxLse,
-    uint64_t *workspaceSize, aclOpExecutor **executor);
+    const aclTensor* q, const aclTensor* kCache, const aclTensor* blockTableOptional,
+    const aclTensor* cacheSeqlensOptional, const aclTensor* cuSeqlensQOptional, const aclTensor* sequsedQOptional,
+    const aclTensor* attnMaskOptional, const aclTensor* metadataOptional, int64_t headDimV, double softmaxScale,
+    int64_t maskMode, int64_t maxSeqlenQ, int64_t maxSeqlenKV, const char* layoutQ, const char* layoutKv,
+    const char* layoutOut, int64_t returnSoftmaxLse, const aclTensor* attnOut, const aclTensor* softmaxLse,
+    uint64_t* workspaceSize, aclOpExecutor** executor);
 
-extern aclnnStatus aclnnInnerFlashMlaWithKvcache(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+extern aclnnStatus aclnnInnerFlashMlaWithKvcache(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
                                                  const aclrtStream stream);
 
 namespace {
 
-aclnnStatus FlashMlaWithKvcacheProcessSoftmaxLse(int64_t returnSoftmaxLse, const aclTensor *softmaxLse,
-                                                 const aclTensor *&tempTensor, const aclTensor *&placeHolder)
+aclnnStatus FlashMlaWithKvcacheProcessSoftmaxLse(int64_t returnSoftmaxLse, const aclTensor* softmaxLse,
+                                                 const aclTensor*& tempTensor, const aclTensor*& placeHolder)
 {
     if (returnSoftmaxLse == false) {
         std::vector<int64_t> shape = {0};
@@ -68,17 +68,17 @@ aclnnStatus FlashMlaWithKvcacheProcessSoftmaxLse(int64_t returnSoftmaxLse, const
 
 // 第一段接口：计算workspace大小
 aclnnStatus aclnnFlashMlaWithKvcacheGetWorkspaceSize(
-    const aclTensor *q, const aclTensor *kCache, const aclTensor *blockTableOptional,
-    const aclTensor *cacheSeqlensOptional, const aclTensor *cuSeqlensQOptional, const aclTensor *sequsedQOptional,
-    const aclTensor *attnMaskOptional, const aclTensor *metadataOptional, int64_t headDimV, double softmaxScale,
-    int64_t maskMode, int64_t maxSeqlenQ, int64_t maxSeqlenKV, const char *layoutQ, const char *layoutKv,
-    const char *layoutOut, int64_t returnSoftmaxLse, const aclTensor *attnOut, const aclTensor *softmaxLseOptional,
-    uint64_t *workspaceSize, aclOpExecutor **executor)
+    const aclTensor* q, const aclTensor* kCache, const aclTensor* blockTableOptional,
+    const aclTensor* cacheSeqlensOptional, const aclTensor* cuSeqlensQOptional, const aclTensor* sequsedQOptional,
+    const aclTensor* attnMaskOptional, const aclTensor* metadataOptional, int64_t headDimV, double softmaxScale,
+    int64_t maskMode, int64_t maxSeqlenQ, int64_t maxSeqlenKV, const char* layoutQ, const char* layoutKv,
+    const char* layoutOut, int64_t returnSoftmaxLse, const aclTensor* attnOut, const aclTensor* softmaxLseOptional,
+    uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     OP_LOGD("start aclnnFlashMlaWithKvcacheGetWorkspaceSize");
 
-    const aclTensor *placeHolder = nullptr;
-    const aclTensor *tempTensor = nullptr;
+    const aclTensor* placeHolder = nullptr;
+    const aclTensor* tempTensor = nullptr;
 
     aclnnStatus ret =
         FlashMlaWithKvcacheProcessSoftmaxLse(returnSoftmaxLse, softmaxLseOptional, tempTensor, placeHolder);
@@ -100,7 +100,7 @@ aclnnStatus aclnnFlashMlaWithKvcacheGetWorkspaceSize(
 }
 
 // 第二段接口：执行计算
-aclnnStatus aclnnFlashMlaWithKvcache(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+aclnnStatus aclnnFlashMlaWithKvcache(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
                                      const aclrtStream stream)
 {
     return aclnnInnerFlashMlaWithKvcache(workspace, workspaceSize, executor, stream);
