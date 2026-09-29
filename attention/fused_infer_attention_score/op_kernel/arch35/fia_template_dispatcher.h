@@ -104,12 +104,11 @@ inline __aicore__ void run_fia_noquant_mla_kernel(__gm__ uint8_t *query, __gm__ 
 
     // VecFdBlockType
     using VecFdBlockNormal =
-        BaseApi::FiaBlockVecFlashDecodeMla<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType, s1TemplateType,
-                                           s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType>;
+        BaseApi::FiaBlockVecFlashDecode<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType, s1TemplateType,
+                                        s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType>;
     using VecFdBlockDummy =
-        BaseApi::FiaBlockVecFlashDecodeMlaDummy<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
-                                                s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-                                                hasAttenMask, KvLayoutType>;
+        BaseApi::FiaBlockVecFlashDecodeDummy<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType, s1TemplateType,
+                                             s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType>;
     using VecFdBlock = typename std::conditional<g_coreType == AscendC::AIV, VecFdBlockNormal, VecFdBlockDummy>::type;
 
     // KernelType

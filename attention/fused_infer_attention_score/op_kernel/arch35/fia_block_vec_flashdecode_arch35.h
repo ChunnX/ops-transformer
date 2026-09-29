@@ -307,6 +307,14 @@ protected:
                                               constInfo.actualSeqLenSize);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
+        } else if (constInfo.outputLayout == FIA_LAYOUT::NBSD) {
+            constexpr GmFormat OUT_FORMAT = GmFormat::NGBSD;
+            FaGmTensor<OUTPUT_T, OUT_FORMAT> outGmTensor;
+            outGmTensor.gmTensor = attentionOutGm;
+            outGmTensor.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
+                                              constInfo.dSizeV, actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
+            CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
+            copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         }
     }
     __aicore__ inline void ReduceFinalRes(LocalTensor<T> &reduceOut, LocalTensor<T> &mm2Res, LocalTensor<T> &lseLocal,
