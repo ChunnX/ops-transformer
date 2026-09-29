@@ -39,7 +39,7 @@ Ascend960DT,nosplit_mmm_weightNZ_960dt,true,nosplit_mmm_weightNZ_960dt,64,256,10
 Ascend960DT,transpose_weight_960dt,true,transpose_weight_960dt,64,256,1024,512,2,false,true,0,3,ND,FLOAT16,FLOAT16,FLOAT,FLOAT16,false,true,,,,,
 Ascend960DT,with_bias_960dt,true,with_bias_960dt,64,256,1024,512,2,false,false,0,3,ND,FLOAT16,FLOAT16,FLOAT,FLOAT16,true,true,,,,,
 Ascend960DT,split_m_sss_960dt_small,true,split_m_sss_960dt_small,64,17,15,13,1,false,false,0,3,ND,FLOAT16,FLOAT16,FLOAT,FLOAT16,false,true,,,,,
-Ascend960DT,baseM_limit_960dt,true,baseM_limit_960dt,64,64,256,2,2,false,false,0,3,ND,FLOAT16,FLOAT16,FLOAT,FLOAT16,false,true,,,,,
+Ascend960DT,baseM_limit_960dt,true,baseM_limit_960dt,64,1024,64,256,2,false,false,0,3,ND,FLOAT16,FLOAT16,FLOAT,FLOAT16,false,true,,,,,
 Ascend960DT,invalid_groupnum_zero_960dt,true,invalid_groupnum_zero_960dt,64,256,1024,512,0,false,false,0,3,ND,FLOAT16,FLOAT16,FLOAT,FLOAT16,false,false,32,0,,,
 Ascend960DT,invalid_grouptype_960dt,true,invalid_grouptype_960dt,64,256,1024,512,2,false,false,3,3,ND,FLOAT16,FLOAT16,FLOAT,FLOAT16,false,false,32,0,,,
 Ascend960PR,split_m_sss_960pr,true,split_m_sss_960pr,64,256,1024,512,2,false,false,0,3,ND,FLOAT16,FLOAT16,FLOAT,FLOAT16,false,true,,,,,
