@@ -209,6 +209,9 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     SetFlag<HardEvent::MTE2_S>(evtMte2toS_);
     WaitFlag<HardEvent::MTE2_S>(evtMte2toS_);
     midSqHalf[1U - siblingAivIdx_] = midBuf.GetValue(0);
+    // 本核的MTE2读完对方midSq后通知对方，防止后续partial写入覆盖仍在读取的槽。
+    CrossCoreSetFlag<0x1, PIPE_MTE2>(MID_CONSUMED_FLAG);
+    CrossCoreWaitFlag<0x1, PIPE_MTE3>(MID_CONSUMED_FLAG);
     const float totalMidSq = midSqHalf[0] + midSqHalf[1];
     const float invRmsMid = 1.0f / sqrt(totalMidSq * invK_ + normEps_);
     WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
