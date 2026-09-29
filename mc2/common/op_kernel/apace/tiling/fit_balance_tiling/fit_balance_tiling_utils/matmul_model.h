@@ -107,10 +107,6 @@ public:
     {
         return mmShapeInfo_.baseM;
     };
-    uint32_t GetBaseN()
-    {
-        return mmShapeInfo_.baseN;
-    };
     // 性能预测
     double MatmulTime(uint64_t tileSize, uint64_t rowMul)
     {

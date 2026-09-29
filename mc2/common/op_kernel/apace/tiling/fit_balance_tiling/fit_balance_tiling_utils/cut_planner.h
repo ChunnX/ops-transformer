@@ -47,7 +47,6 @@ public:
     };
 
     void SetMinLenByMax(uint64_t newLen);
-    void SetMinLenByMin(uint64_t newLen);
     uint64_t GetMinLen()
     {
         return tileArgs.minTileLen;
@@ -67,7 +66,6 @@ public:
 
     // TilingMethods
     void GenerateInitialPartition();
-    bool SetShortTileLen(bool noCutFlag = false);
     void NoCutTiling();
     void MaxTileCntUniform();
 
@@ -83,11 +81,6 @@ public:
 inline void CutPlanner::SetMinLenByMax(uint64_t newLen)
 {
     tileArgs.minTileLen = std::max(tileArgs.minTileLen, newLen);
-}
-
-inline void CutPlanner::SetMinLenByMin(uint64_t newLen)
-{
-    tileArgs.minTileLen = std::min(tileArgs.minTileLen, newLen);
 }
 
 inline void CutPlanner::AlignTileLarge()
@@ -254,19 +247,6 @@ inline void CutPlanner::RedistributeTile()
         cutRes.longTileLen += redistTileLen;
     }
     CalcBackTile();
-}
-
-inline bool CutPlanner::SetShortTileLen(bool noCutFlag)
-{
-    cutRes.shortTileLen = tileArgs.minTileLen;
-    cutRes.numShortTile = 1U;
-    // do not cut if mValue is too small
-    bool smallMPerRank = (totalLen < cutRes.shortTileLen * 2);
-    smallMPerRank = smallMPerRank || noCutFlag;
-    if (smallMPerRank) {
-        NoCutTiling();
-    }
-    return smallMPerRank;
 }
 
 inline void CutPlanner::MaxTileCntUniform()
