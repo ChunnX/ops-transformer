@@ -895,7 +895,10 @@ def get_qfa_section_info(actual_seq_q, actual_seq_kv):
     key = (
         tuple(int(x) for x in actual_seq_q),
         tuple(int(x) for x in actual_seq_kv),
-        N_q, N_kv, D, SPARSE_MODE,
+        N_q,
+        N_kv,
+        D,
+        SPARSE_MODE,
         globals().get("INPUT_LAYOUT"),
         globals().get("KV_CACHE_LAYOUT"),
         globals().get("ENABLE_PA"),
@@ -949,13 +952,29 @@ def _build_qfa_section_info(actual_seq_q, actual_seq_kv):
 
     seqused_q_t = torch.tensor(actual_seq_q, dtype=torch.int32).npu().contiguous()
     seqused_kv_t = torch.tensor(actual_seq_kv, dtype=torch.int32).npu().contiguous()
-    cu_q_t = torch.tensor(cu_q, dtype=torch.int32).npu().contiguous() if layout_q == "TND" else None
-    cu_kv_t = torch.tensor(cu_kv, dtype=torch.int32).npu().contiguous() if layout_kv == "TND" else None
+    cu_q_t = (
+        torch.tensor(cu_q, dtype=torch.int32).npu().contiguous()
+        if layout_q == "TND"
+        else None
+    )
+    cu_kv_t = (
+        torch.tensor(cu_kv, dtype=torch.int32).npu().contiguous()
+        if layout_kv == "TND"
+        else None
+    )
 
     max_sq = globals().get("MAX_SEQLEN_Q")
-    max_sq = max_sq if (max_sq is not None and max_sq > 0) else max(int(x) for x in actual_seq_q)
+    max_sq = (
+        max_sq
+        if (max_sq is not None and max_sq > 0)
+        else max(int(x) for x in actual_seq_q)
+    )
     max_skv = globals().get("MAX_SEQLEN_KV")
-    max_skv = max_skv if (max_skv is not None and max_skv > 0) else max(int(x) for x in actual_seq_kv)
+    max_skv = (
+        max_skv
+        if (max_skv is not None and max_skv > 0)
+        else max(int(x) for x in actual_seq_kv)
+    )
 
     meta = quant_flash_attn_metadata(
         num_heads_q=N_q,
@@ -1012,8 +1031,7 @@ def _decode_qfa_sections(meta_flat, seqused_q, seqused_kv):
     batch = len(seqused_kv)
     bn_total = batch * head_num
     m_blocks = [
-        (int(seqused_q[bi]) * sched_group + m_base - 1) // m_base
-        for bi in range(batch)
+        (int(seqused_q[bi]) * sched_group + m_base - 1) // m_base for bi in range(batch)
     ]
     # 每个 (bn, mi) 的 s2 块范围 [s2Start, s2End)
     s2_ranges = []
@@ -1029,9 +1047,7 @@ def _decode_qfa_sections(meta_flat, seqused_q, seqused_kv):
             ]
         )
 
-    segments = [
-        [[] for _ in range(m_blocks[bn // head_num])] for bn in range(bn_total)
-    ]
+    segments = [[[] for _ in range(m_blocks[bn // head_num])] for bn in range(bn_total)]
 
     def _advance(bn, mi):
         mi += 1
@@ -1044,7 +1060,7 @@ def _decode_qfa_sections(meta_flat, seqused_q, seqused_kv):
         for core in range(aic_num):
             base_idx = META_SIZE + (sec * aic_num + core) * META_SIZE
             bn_s, m_s, s2_s, bn_e, m_e, s2_e = (
-                int(v) for v in meta_flat[base_idx:base_idx + 6]
+                int(v) for v in meta_flat[base_idx : base_idx + 6]
             )
             if bn_s == bn_e and m_s == m_e and s2_s == s2_e:
                 continue  # 未使用的核 (全 0) 或空 chunk
@@ -1094,7 +1110,13 @@ def _decode_qfa_sections(meta_flat, seqused_q, seqused_kv):
     logger.info(
         "[Section] 解码成功: isFd=%d, sectionNum=%d, mBase=%d, s2Base=%d, "
         "aicNum=%d, headNum=%d, schedGroup=%d, 跨核分段 (bn,m) 数=%d",
-        is_fd, section_num, m_base, s2_base, aic_num, head_num, sched_group,
+        is_fd,
+        section_num,
+        m_base,
+        s2_base,
+        aic_num,
+        head_num,
+        sched_group,
         split_num,
     )
     return m_base, s2_base, segments, head_num, is_decode
@@ -1184,7 +1206,10 @@ def _cpu_mxfp8_golden_sectioned(
     sg_need = math.ceil(skv_max / QUANT_GROUP_SIZE)
     sg_pad = max(sg_need + (sg_need % 2), math.ceil(skv_max / 64) * 2)
     if not is_decode:
-        sg_pad = max(sg_pad, math.ceil(skv_max / K_BLOCK_SIZE) * (K_BLOCK_SIZE // QUANT_GROUP_SIZE))
+        sg_pad = max(
+            sg_pad,
+            math.ceil(skv_max / K_BLOCK_SIZE) * (K_BLOCK_SIZE // QUANT_GROUP_SIZE),
+        )
     ds_v = dequant_scale_v
     if ds_v.shape[2] < sg_pad:
         ds_v = F.pad(ds_v, (0, 0, 0, sg_pad - ds_v.shape[2]), value=1.0)
@@ -1242,7 +1267,12 @@ def _cpu_mxfp8_golden_sectioned(
                     mx = torch.full_like(m_g, minValue)
                     for j in range(blk_a * chunks_per_s2, blk_b * chunks_per_s2):
                         lo = j * K_BLOCK_SIZE
-                        hi = min(lo + K_BLOCK_SIZE, k_bn.shape[0], math.ceil(kv_len / (64 if is_decode else K_BLOCK_SIZE)) * (64 if is_decode else K_BLOCK_SIZE))
+                        hi = min(
+                            lo + K_BLOCK_SIZE,
+                            k_bn.shape[0],
+                            math.ceil(kv_len / (64 if is_decode else K_BLOCK_SIZE))
+                            * (64 if is_decode else K_BLOCK_SIZE),
+                        )
                         if lo >= hi:
                             break  # 末尾 s2 块按 s2Base 取整后可能超出 kv_len
                         kj = k_bn[lo:hi, :]
@@ -1256,7 +1286,10 @@ def _cpu_mxfp8_golden_sectioned(
                             softmax_scale,
                         )[0, 0]  # (R, S2)
                         if not is_decode:
-                            tile_hi = min(lo + K_BLOCK_SIZE, math.ceil(kv_len / K_BLOCK_SIZE) * K_BLOCK_SIZE)
+                            tile_hi = min(
+                                lo + K_BLOCK_SIZE,
+                                math.ceil(kv_len / K_BLOCK_SIZE) * K_BLOCK_SIZE,
+                            )
                             if tile_hi > hi:
                                 sij = F.pad(sij, (0, tile_hi - hi), value=mask_fill)
                                 hi = tile_hi
@@ -1274,9 +1307,7 @@ def _cpu_mxfp8_golden_sectioned(
                         sij_masked = sij.masked_fill(mask_kv, mask_fill)
                         if mask_causal is not None:
                             sij_masked = sij_masked.masked_fill(mask_causal, mask_fill)
-                            s_valid = sij_masked.masked_fill(
-                                mask_causal, float("-inf")
-                            )
+                            s_valid = sij_masked.masked_fill(mask_causal, float("-inf"))
                         else:
                             s_valid = sij_masked
                         m_valid_blk, _ = torch.max(s_valid, dim=-1)
@@ -1323,7 +1354,7 @@ def _cpu_mxfp8_golden_sectioned(
                             v_pad = F.pad(vj, (0, 0, 0, pad_len))
                         n_grp = padded_s2 // QUANT_GROUP_SIZE  # 64 对齐 → 偶数
                         grp_lo = lo // QUANT_GROUP_SIZE
-                        dv_j = deq_v_flat[bi, kv_head, grp_lo:grp_lo + n_grp, :]
+                        dv_j = deq_v_flat[bi, kv_head, grp_lo : grp_lo + n_grp, :]
                         deq_p = (
                             torch.ones(1, 1, p_pad.shape[0], n_grp, dtype=torch.int8)
                             * 127
@@ -1341,32 +1372,45 @@ def _cpu_mxfp8_golden_sectioned(
                     diag_segments.append((o.clone(), st.clone(), mx.clone()))
                     mg_new = torch.maximum(m_g, mx)
                     sc_g = torch.exp(m_g - mg_new)
-                    sc_g = torch.where(
-                        m_g <= minValue, torch.zeros_like(sc_g), sc_g
-                    )
+                    sc_g = torch.where(m_g <= minValue, torch.zeros_like(sc_g), sc_g)
                     sc_s = torch.exp(mx - mg_new)
-                    sc_s = torch.where(
-                        mx <= minValue, torch.zeros_like(sc_s), sc_s
-                    )
+                    sc_s = torch.where(mx <= minValue, torch.zeros_like(sc_s), sc_s)
                     o_g = o_g * sc_g + o * sc_s
                     s_g = s_g * sc_g + st * sc_s
                     m_g = mg_new
 
-                if not hasattr(_cpu_mxfp8_golden_sectioned, 'diag'):
+                if not hasattr(_cpu_mxfp8_golden_sectioned, "diag"):
                     _cpu_mxfp8_golden_sectioned.diag = []
-                _cpu_mxfp8_golden_sectioned.diag.append(dict(b=bi,h=h,mi=mi,segs=segs,rows=s1_idx,heads=head_idx,stats=diag_segments))
+                _cpu_mxfp8_golden_sectioned.diag.append(
+                    dict(
+                        b=bi,
+                        h=h,
+                        mi=mi,
+                        segs=segs,
+                        rows=s1_idx,
+                        heads=head_idx,
+                        stats=diag_segments,
+                    )
+                )
                 all_masked = (m_g <= minValue).squeeze(-1)
                 # kernel lse minCheckValue EQ 语义: 有效列 max ≤ vreg_min 填充值
                 # (即 softmaxMax 停留在 grid(vreg_min·dScale)) → lse = +inf
                 no_valid_score = m_valid_g <= mask_fill
                 # Experimental native FA normalization followed by FD weights.
                 max_all = torch.stack([item[2] for item in diag_segments]).amax(0)
-                weights_raw = [item[1] * torch.exp(item[2] - max_all) for item in diag_segments]
+                weights_raw = [
+                    item[1] * torch.exp(item[2] - max_all) for item in diag_segments
+                ]
                 total = torch.stack(weights_raw).sum(0)
                 if len(diag_segments) == 1:
                     res_rows = diag_segments[0][0] / diag_segments[0][1]
                 else:
-                    res_rows = torch.stack([(item[0] / item[1]) * (weight / total) for item, weight in zip(diag_segments, weights_raw)]).sum(0)
+                    res_rows = torch.stack(
+                        [
+                            (item[0] / item[1]) * (weight / total)
+                            for item, weight in zip(diag_segments, weights_raw)
+                        ]
+                    ).sum(0)
                 out[bi, head_idx, s1_idx, :] = res_rows
                 lse_rows = torch.where(
                     all_masked | no_valid_score,
@@ -1423,9 +1467,7 @@ def cpu_mxfp8_golden(
                 softmax_scale=softmax_scale,
             )
         except Exception as exc:
-            logger.warning(
-                "[Section] 分段 golden 计算失败(%s), 回退全局量化语义", exc
-            )
+            logger.warning("[Section] 分段 golden 计算失败(%s), 回退全局量化语义", exc)
 
     # GQA: 广播 K/V 到与 Q 相同的 head 数
     if N_q != N_kv:
@@ -1825,12 +1867,15 @@ def prepare_npu_inputs(
         out_dtype=out_dtype,
     )
 
+
 _diag_c1_original = _compute_c1_npu
 _diag_c1_stats = dict(calls=0, elements=0, neginf=0, nan=0)
+
+
 def _compute_c1_npu(*args, **kwargs):
     result = _diag_c1_original(*args, **kwargs)
-    _diag_c1_stats['calls'] += 1
-    _diag_c1_stats['elements'] += result.numel()
-    _diag_c1_stats['neginf'] += int(torch.isneginf(result).sum())
-    _diag_c1_stats['nan'] += int(torch.isnan(result).sum())
+    _diag_c1_stats["calls"] += 1
+    _diag_c1_stats["elements"] += result.numel()
+    _diag_c1_stats["neginf"] += int(torch.isneginf(result).sum())
+    _diag_c1_stats["nan"] += int(torch.isnan(result).sum())
     return result

@@ -1064,8 +1064,16 @@ def get_qfa_section_info(actual_seq_q, actual_seq_kv):
     key = (
         tuple(int(x) for x in actual_seq_q),
         tuple(int(x) for x in actual_seq_kv),
-        N_q, N_kv, D, SPARSE_MODE, INPUT_LAYOUT, KV_CACHE_LAYOUT,
-        ENABLE_PA, MAX_SEQLEN_Q, MAX_SEQLEN_KV, Q_SCALE_LAYOUT,
+        N_q,
+        N_kv,
+        D,
+        SPARSE_MODE,
+        INPUT_LAYOUT,
+        KV_CACHE_LAYOUT,
+        ENABLE_PA,
+        MAX_SEQLEN_Q,
+        MAX_SEQLEN_KV,
+        Q_SCALE_LAYOUT,
     )
     if key in _QFA_SECTION_CACHE:
         return _QFA_SECTION_CACHE[key]
@@ -1108,8 +1116,16 @@ def _build_qfa_section_info(actual_seq_q, actual_seq_kv):
 
     seqused_q_t = torch.tensor(actual_seq_q, dtype=torch.int32).npu().contiguous()
     seqused_kv_t = torch.tensor(actual_seq_kv, dtype=torch.int32).npu().contiguous()
-    cu_q_t = torch.tensor(cu_q, dtype=torch.int32).npu().contiguous() if layout_q == "TND" else None
-    cu_kv_t = torch.tensor(cu_kv, dtype=torch.int32).npu().contiguous() if layout_kv == "TND" else None
+    cu_q_t = (
+        torch.tensor(cu_q, dtype=torch.int32).npu().contiguous()
+        if layout_q == "TND"
+        else None
+    )
+    cu_kv_t = (
+        torch.tensor(cu_kv, dtype=torch.int32).npu().contiguous()
+        if layout_kv == "TND"
+        else None
+    )
 
     max_sq = (
         MAX_SEQLEN_Q
@@ -1177,8 +1193,7 @@ def _decode_qfa_sections(meta_flat, seqused_q, seqused_kv):
     batch = len(seqused_kv)
     bn_total = batch * head_num
     m_blocks = [
-        (int(seqused_q[bi]) * sched_group + m_base - 1) // m_base
-        for bi in range(batch)
+        (int(seqused_q[bi]) * sched_group + m_base - 1) // m_base for bi in range(batch)
     ]
     # 每个 (bn, mi) 的 s2 块范围 [s2Start, s2End)
     s2_ranges = []
@@ -1194,9 +1209,7 @@ def _decode_qfa_sections(meta_flat, seqused_q, seqused_kv):
             ]
         )
 
-    segments = [
-        [[] for _ in range(m_blocks[bn // head_num])] for bn in range(bn_total)
-    ]
+    segments = [[[] for _ in range(m_blocks[bn // head_num])] for bn in range(bn_total)]
 
     def _advance(bn, mi):
         mi += 1
@@ -1209,7 +1222,7 @@ def _decode_qfa_sections(meta_flat, seqused_q, seqused_kv):
         for core in range(aic_num):
             base_idx = META_SIZE + (sec * aic_num + core) * META_SIZE
             bn_s, m_s, s2_s, bn_e, m_e, s2_e = (
-                int(v) for v in meta_flat[base_idx:base_idx + 6]
+                int(v) for v in meta_flat[base_idx : base_idx + 6]
             )
             if bn_s == bn_e and m_s == m_e and s2_s == s2_e:
                 continue  # 未使用的核 (全 0) 或空 chunk
@@ -1259,7 +1272,13 @@ def _decode_qfa_sections(meta_flat, seqused_q, seqused_kv):
     logger.info(
         "[Section] 解码成功: isFd=%d, sectionNum=%d, mBase=%d, s2Base=%d, "
         "aicNum=%d, headNum=%d, schedGroup=%d, 跨核分段 (bn,m) 数=%d",
-        is_fd, section_num, m_base, s2_base, aic_num, head_num, sched_group,
+        is_fd,
+        section_num,
+        m_base,
+        s2_base,
+        aic_num,
+        head_num,
+        sched_group,
         split_num,
     )
     return m_base, s2_base, segments, head_num, is_decode
@@ -1351,7 +1370,9 @@ def _cpu_mxfp8_golden_sectioned(
     k_bound = k_tensor.abs().amax().item() * dequant_scale_k.abs().amax().item()
     v_bound = v_tensor.abs().amax().item() * v_descale.abs().amax().item()
     qk_dtype = torch.float64 if q_bound * k_bound * d > fp32_max else torch.float32
-    pv_dtype = torch.float64 if 448.0 * v_bound * K_BLOCK_SIZE > fp32_max else torch.float32
+    pv_dtype = (
+        torch.float64 if 448.0 * v_bound * K_BLOCK_SIZE > fp32_max else torch.float32
+    )
 
     ln_p_scale = torch.tensor([math.log(p_scale)], dtype=torch.float32)
 
@@ -1410,13 +1431,18 @@ def _cpu_mxfp8_golden_sectioned(
                     mx = torch.full_like(m_g, minValue)
                     for j in range(blk_a * chunks_per_s2, blk_b * chunks_per_s2):
                         lo = j * K_BLOCK_SIZE
-                        hi = min(lo + K_BLOCK_SIZE, math.ceil(kv_len / tail_align) * tail_align)
+                        hi = min(
+                            lo + K_BLOCK_SIZE,
+                            math.ceil(kv_len / tail_align) * tail_align,
+                        )
                         if lo >= hi:
                             break
                         # Only real KV rows participate in QK/PV. Padding scores
                         # contribute to the denominator, with zero V contribution.
                         data_hi = min(hi, kv_len)
-                        kj = k_bn[lo:data_hi, :].to(qk_dtype) * dk_bn[lo:data_hi, :].to(qk_dtype)
+                        kj = k_bn[lo:data_hi, :].to(qk_dtype) * dk_bn[lo:data_hi, :].to(
+                            qk_dtype
+                        )
                         if qk_dtype == torch.float64:
                             sij = _cpu_mxfp8_overflow_matmul(q_sel, kj.transpose(0, 1))
                         else:
@@ -1427,7 +1453,9 @@ def _cpu_mxfp8_golden_sectioned(
                                 qr_sel, kr_bn[lo:data_hi, :].transpose(0, 1)
                             )
                         if hi > data_hi:
-                            sij = torch.nn.functional.pad(sij, (0, hi - data_hi), value=mask_fill)
+                            sij = torch.nn.functional.pad(
+                                sij, (0, hi - data_hi), value=mask_fill
+                            )
                         cols = torch.arange(lo, hi)
                         mask_j = (cols >= kv_len)[None, :].expand(r1 - r0, hi - lo)
                         if causal_bound is not None:
@@ -1461,7 +1489,9 @@ def _cpu_mxfp8_golden_sectioned(
                         upd_cur = torch.exp(m_own - m_run_new)
                         p_run = torch.exp(sij_masked - m_own_safe) * upd_cur
                         p_drop = p_run.to(FP8_DTYPE).to(torch.float32)
-                        vj = v_bn[lo:data_hi, :].to(pv_dtype) * vd_bn[lo:data_hi, :].to(pv_dtype)
+                        vj = v_bn[lo:data_hi, :].to(pv_dtype) * vd_bn[lo:data_hi, :].to(
+                            pv_dtype
+                        )
                         if hi > data_hi:
                             vj = torch.nn.functional.pad(vj, (0, 0, 0, hi - data_hi))
                         if pv_dtype == torch.float64:
@@ -1476,13 +1506,9 @@ def _cpu_mxfp8_golden_sectioned(
                     segment_stats.append((o, st, mx))
                     mg_new = torch.maximum(m_g, mx)
                     sc_g = torch.exp(m_g - mg_new)
-                    sc_g = torch.where(
-                        m_g <= minValue, torch.zeros_like(sc_g), sc_g
-                    )
+                    sc_g = torch.where(m_g <= minValue, torch.zeros_like(sc_g), sc_g)
                     sc_s = torch.exp(mx - mg_new)
-                    sc_s = torch.where(
-                        mx <= minValue, torch.zeros_like(sc_s), sc_s
-                    )
+                    sc_s = torch.where(mx <= minValue, torch.zeros_like(sc_s), sc_s)
                     o_g = o_g * sc_g + o * sc_s
                     s_g = s_g * sc_g + st * sc_s
                     m_g = mg_new
@@ -1493,10 +1519,12 @@ def _cpu_mxfp8_golden_sectioned(
                 if len(segment_stats) == 1:
                     res_rows = segment_stats[0][0] / segment_stats[0][1]
                 else:
-                    res_rows = torch.stack([
-                        (o / st) * (weight / total)
-                        for (o, st, _), weight in zip(segment_stats, weights)
-                    ]).sum(0)
+                    res_rows = torch.stack(
+                        [
+                            (o / st) * (weight / total)
+                            for (o, st, _), weight in zip(segment_stats, weights)
+                        ]
+                    ).sum(0)
                 out[bi, head_idx, s1_idx, :] = res_rows
                 no_valid_score = m_valid_g <= mask_fill
                 lse_rows = torch.where(
@@ -1669,8 +1697,10 @@ def cpu_mxfp8_golden(
                     Qi, Kj1, deq_scale_q_i, deq_scale_k_j1, softmax_scale, Qri, Krj1
                 )
                 mask_j1 = mask_global[:, :, Sq_start:Sq_end, Sk1_start:Sk1_end]
-                m_block_j1, s_block_j1, P_ij1_drop, s_block_j1_q = _online_softmax_update(
-                    S_ij1, mask_j1, m_block_j, s_block_j, oi, ln_p_scale, LN2
+                m_block_j1, s_block_j1, P_ij1_drop, s_block_j1_q = (
+                    _online_softmax_update(
+                        S_ij1, mask_j1, m_block_j, s_block_j, oi, ln_p_scale, LN2
+                    )
                 )
 
                 # V block: 一个 V_BLOCK_SIZE 对应两个 K_BLOCK_SIZE
@@ -1692,8 +1722,8 @@ def cpu_mxfp8_golden(
                 # 的 subloop0 用 own grid, 数值等价); 分母 raw 累加, 子块 A 的 P
                 # 靠 e8m0 pScale (精确 2 的幂) 缩到公共网格 -> 先缩放再 cast,
                 # 小 P 会进 subnormal/flush 区, 与 own-grid cast 结果不同
-                m_run_j = torch.max(mi, m_block_j)          # G_j: 子块A cast 网格
-                m_run_j1 = torch.max(m_run_j, m_block_j1)   # G_j1: 子块B cast 网格
+                m_run_j = torch.max(mi, m_block_j)  # G_j: 子块A cast 网格
+                m_run_j1 = torch.max(m_run_j, m_block_j1)  # G_j1: 子块B cast 网格
                 # 注意: 外层 S_ij/S_ij1 未 mask (函数内的 mask 是局部的), 必须
                 # mask 后再 exp, 否则被 mask 位置的 raw S 远大于 cast 网格时
                 # exp 溢出, e4m3fn 无 inf 表示 -> NaN
@@ -1705,12 +1735,16 @@ def cpu_mxfp8_golden(
                 m_run_j1_safe = torch.where(
                     m_run_j1 == float("-inf"), torch.zeros_like(m_run_j1), m_run_j1
                 )
-                P_ij_drop = torch.exp(
-                    S_ij_masked - m_run_j_safe
-                ).to(FP8_DTYPE).to(torch.float32)
-                P_ij1_drop = torch.exp(
-                    S_ij1_masked - m_run_j1_safe
-                ).to(FP8_DTYPE).to(torch.float32)
+                P_ij_drop = (
+                    torch.exp(S_ij_masked - m_run_j_safe)
+                    .to(FP8_DTYPE)
+                    .to(torch.float32)
+                )
+                P_ij1_drop = (
+                    torch.exp(S_ij1_masked - m_run_j1_safe)
+                    .to(FP8_DTYPE)
+                    .to(torch.float32)
+                )
                 # 子块 A 的 P 从 G_j 网格精确 (2 的幂) 缩到 G_j1
                 gap_j = m_run_j - m_run_j1
                 gap_j = torch.where(torch.isnan(gap_j), torch.zeros_like(gap_j), gap_j)
@@ -1741,15 +1775,14 @@ def cpu_mxfp8_golden(
                 m_run_j_safe = torch.where(
                     m_run_j == float("-inf"), torch.zeros_like(m_run_j), m_run_j
                 )
-                P_ij_drop = torch.exp(
-                    S_ij_masked_tail - m_run_j_safe
-                ).to(FP8_DTYPE).to(torch.float32)
+                P_ij_drop = (
+                    torch.exp(S_ij_masked_tail - m_run_j_safe)
+                    .to(FP8_DTYPE)
+                    .to(torch.float32)
+                )
                 P_ij_Vj = torch.matmul(P_ij_drop, Vj_dequant)
                 update_mul_si = torch.exp(mi - m_run_j)
-                si_new = (
-                    update_mul_si * si
-                    + s_block_j * torch.exp(m_block_j - m_run_j)
-                )
+                si_new = update_mul_si * si + s_block_j * torch.exp(m_block_j - m_run_j)
                 o_BLOCKS[i] = update_mul_si * oi + P_ij_Vj
                 s_BLOCKS[i] = si_new
                 s_BLOCKS_raw[i] = si_new
@@ -2080,7 +2113,10 @@ def _call_npu_fa_op(
         max_seqlen_kv=max_seqlen_kv,
     )
     _md = metadata.cpu().tolist() if hasattr(metadata, "cpu") else list(metadata)
-    logger.info("[METADATA] (sectionNum,isFd,mBase,s2Base,aicNum,aivNum,needInit,?): %s", _md[0][0:8])
+    logger.info(
+        "[METADATA] (sectionNum,isFd,mBase,s2Base,aicNum,aivNum,needInit,?): %s",
+        _md[0][0:8],
+    )
 
     main_kwargs = dict(
         q=q,
