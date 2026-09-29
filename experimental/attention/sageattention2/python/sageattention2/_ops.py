@@ -48,6 +48,7 @@ class _FastPathPlan:
         "sq",
         "sk",
         "is_gqa",
+        "is_npu",
     )
 
     def __init__(
@@ -101,6 +102,7 @@ class _FastPathPlan:
         self.sq = sq
         self.sk = sk
         self.is_gqa = is_gqa
+        self.is_npu = device.type in ("privateuseone", "npu")
 
 
 _LAST_PLAN: Optional[_FastPathPlan] = None
@@ -446,25 +448,23 @@ def _dispatch(
         and not kwargs
         and not smooth_v
         and q.shape == plan.q_shape
-        and k.shape == plan.k_shape
-        and v.shape == plan.v_shape
         and q.dtype is plan.dtype
-        and k.dtype is plan.dtype
-        and v.dtype is plan.dtype
-        and (q.device is plan.device or q.device == plan.device)
-        and (k.device is plan.device or k.device == plan.device)
-        and (v.device is plan.device or v.device == plan.device)
         and tensor_layout == plan.tensor_layout
         and is_causal == plan.is_causal
-        and qk_quant_gran == plan.qk_quant_gran
-        and pv_accum_dtype == plan.pv_accum_dtype
-        and smooth_k == plan.smooth_k
         and return_lse == plan.return_lse
         and sm_scale == plan.sm_scale
         and q.stride(-1) == 1
+        and not q.requires_grad
+        and k.shape == plan.k_shape
+        and v.shape == plan.v_shape
+        and k.dtype is plan.dtype
+        and v.dtype is plan.dtype
+        and smooth_k == plan.smooth_k
+        and qk_quant_gran == plan.qk_quant_gran
+        and pv_accum_dtype == plan.pv_accum_dtype
         and k.stride(-1) == 1
         and v.stride(-1) == 1
-        and not (q.requires_grad or k.requires_grad or v.requires_grad)
+        and not (k.requires_grad or v.requires_grad)
     ):
         pass  # Fast-path hit
     else:
@@ -543,8 +543,7 @@ def _dispatch(
     else:
         q_in, k_in, v_in = q, k, v
 
-    dev_type = q_in.device.type
-    if dev_type == "privateuseone" or dev_type == "npu":
+    if plan.is_npu:
         if _FORWARD_FN is None:
             _get_extension()
         out, lse = _FORWARD_FN(

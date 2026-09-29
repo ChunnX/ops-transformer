@@ -173,9 +173,14 @@ ge::graphStatus Tile(gert::TilingContext *c)
         !allocate(t.kScale, {p.b, p.hk, p.kp, sizeof(uint16_t)})) {
         return Failure(__LINE__);
     }
-    uint64_t reserved = DEFAULT_RESERVED_WS;
-    if (c->GetPlatformInfo()) {
-        reserved = platform_ascendc::PlatformAscendC(c->GetPlatformInfo()).GetLibApiWorkSpaceSize();
+    static uint64_t s_cachedReserved = 0;
+    uint64_t reserved = s_cachedReserved;
+    if (reserved == 0) {
+        reserved = DEFAULT_RESERVED_WS;
+        if (c->GetPlatformInfo()) {
+            reserved = platform_ascendc::PlatformAscendC(c->GetPlatformInfo()).GetLibApiWorkSpaceSize();
+        }
+        s_cachedReserved = reserved;
     }
     if (bytes > std::numeric_limits<size_t>::max() - reserved) {
         return Failure(__LINE__);
