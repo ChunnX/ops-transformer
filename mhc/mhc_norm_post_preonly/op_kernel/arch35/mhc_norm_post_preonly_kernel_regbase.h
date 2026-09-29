@@ -657,12 +657,7 @@ __aicore__ inline void VFComputePostHeadPair(const LocalTensor<T> &dst0, const L
         Reg::RegTensor<float> hOutReg, residualReg, dst0Reg, dst1Reg;
         Reg::RegTensor<float> weight00Reg, weight01Reg, weight10Reg, weight11Reg;
         Reg::RegTensor<float> weight20Reg, weight21Reg, weight30Reg, weight31Reg;
-        Reg::RegTensor<float> midSqAcc;
         Reg::MaskReg mask;
-        if constexpr (FUSE_NORM_SQUARE) {
-            Reg::MaskReg fullMask = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
-            Reg::Duplicate(midSqAcc, 0.0f, fullMask);
-        }
         // 8个组合权重与D无关，在循环外一次广播，避免每个vector block重复从UB取标量。
         Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(weight00Reg, combAddr + headIndex);
         Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(weight01Reg, combAddr + headIndex + 1U);
@@ -727,12 +722,8 @@ __aicore__ inline void VFComputePostHeadPair(const LocalTensor<T> &dst0, const L
                 Reg::Mul(dst0Reg, dst0Reg, dst0Reg, mask);
                 Reg::Mul(dst1Reg, dst1Reg, dst1Reg, mask);
                 Reg::Add(dst0Reg, dst0Reg, dst1Reg, mask);
-                Reg::Add(midSqAcc, midSqAcc, dst0Reg, mask);
+                Reg::StoreAlign(hOutAddr + i * VL_FP32, dst0Reg, mask);
             }
-        }
-        if constexpr (FUSE_NORM_SQUARE) {
-            Reg::MaskReg fullMask = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
-            Reg::StoreAlign(hOutAddr, midSqAcc, fullMask);
         }
     }
 }
