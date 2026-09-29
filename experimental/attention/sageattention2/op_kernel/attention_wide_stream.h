@@ -69,8 +69,8 @@ template <class T>
 __aicore__ inline __attribute__((always_inline)) void FinishWideOutput(
     AttentionBlockVecWide<T, 128> &vector, const WideOutputInfo &info, uint64_t group)
 {
+    vector.UpdateStreamOutput(group, info.first);
     if (info.last) {
-        vector.UpdateStreamOutput(group, info.first);
         vector.FinishStreamQuery(info.ordinal, info.qstart, info.b, info.h);
     }
 }
