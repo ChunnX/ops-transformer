@@ -261,7 +261,10 @@ public:
                     AscendC::PipeBarrier<PIPE_V>();
                     AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID4);
                     AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID4);
-                    if (qNThisSubBlock == 0U) {
+                    if (stride == 1U) { // BNSD连续
+                        AscendC::DataCopyPad(gLse, lse32_ubuf_tensor,
+                                             AscendC::DataCopyExtParams(1, totalRowNum * sizeof(float), 0, 0, 0));
+                    } else if (qNThisSubBlock == 0U) {
                         AscendC::DataCopyPad(
                             gLse, tvUbTensor,
                             AscendC::DataCopyExtParams(totalRowNum, sizeof(float), 0, (stride - 1) * sizeof(float), 0));
