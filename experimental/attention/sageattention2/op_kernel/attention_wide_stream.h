@@ -103,14 +103,14 @@ struct CubeFragmentInfo {
 };
 template <uint32_t PHASE>
 __aicore__ inline __attribute__((always_inline)) void ProcessWideCubeStep(
-    FixedResource &r, CubeFragmentInfo *pending, uint64_t fragment, bool hasQk, GM_ADDR q,
+    FixedResource &r, CubeFragmentInfo *pending, uint64_t fragment, bool hasQk,
     GM_ADDR k8, GM_ADDR v8, GM_ADDR vsmx, MxScaleCache &mxCache, const SageParams &p,
     uint32_t count, bool prefetchPv = true)
 {
     constexpr uint32_t DP = 128;
     if (hasQk) {
         const auto &current = pending[fragment & 3];
-        GemmQkSplit<WIDE_B_L1>(r, q, (fragment & 3) * HALF * N * 2,
+        GemmQkSplit<WIDE_B_L1>(r, (fragment & 3) * HALF * N * 2,
                                current.part == 0, PHASE);
         if (current.part + 2 < count * 2)
             PrefetchWideK<WIDE_B_L1>(r, k8 + (current.kb + (current.part + 2) * N) * DP, PHASE);
@@ -189,13 +189,11 @@ __aicore__ inline __attribute__((always_inline)) void AttentionWideStream(GM_ADD
         if ASCEND_IS_AIC {
             PrefetchWideK<WIDE_B_L1>(r, k8 + current.kb * 128, 0);
             PrefetchWideK<WIDE_B_L1>(r, k8 + (current.kb + N) * 128, 1);
-        }
-        if ASCEND_IS_AIC {
             for (uint32_t part = 0; part < current.count * 2; part += 2, fragment += 2) {
                 cubePending[fragment & 3] = {current.kb, part};
-                ProcessWideCubeStep<0>(r, cubePending, fragment, true, nullptr, k8, v8, mxScale, mxCache, p, current.count);
+                ProcessWideCubeStep<0>(r, cubePending, fragment, true, k8, v8, mxScale, mxCache, p, current.count);
                 cubePending[(fragment + 1) & 3] = {current.kb, part + 1};
-                ProcessWideCubeStep<1>(r, cubePending, fragment + 1, true, nullptr, k8, v8, mxScale, mxCache, p, current.count);
+                ProcessWideCubeStep<1>(r, cubePending, fragment + 1, true, k8, v8, mxScale, mxCache, p, current.count);
             }
         } else {
             for (uint32_t step = 0; step < current.count; ++step, fragment += 2) {
@@ -229,9 +227,9 @@ __aicore__ inline __attribute__((always_inline)) void AttentionWideStream(GM_ADD
         }
     }
     if ASCEND_IS_AIC {
-        ProcessWideCubeStep<0>(r, cubePending, fragment, false, nullptr, k8, v8, mxScale, mxCache, p, 0);
-        ProcessWideCubeStep<1>(r, cubePending, fragment + 1, false, nullptr, k8, v8, mxScale, mxCache, p, 0);
-        ProcessWideCubeStep<0>(r, cubePending, fragment + 2, false, nullptr, k8, v8, mxScale, mxCache, p, 0, false);
+        ProcessWideCubeStep<0>(r, cubePending, fragment, false, k8, v8, mxScale, mxCache, p, 0);
+        ProcessWideCubeStep<1>(r, cubePending, fragment + 1, false, k8, v8, mxScale, mxCache, p, 0);
+        ProcessWideCubeStep<0>(r, cubePending, fragment + 2, false, k8, v8, mxScale, mxCache, p, 0, false);
     } else {
         const uint64_t groups = fragment / 2;
         while (retired < groups)

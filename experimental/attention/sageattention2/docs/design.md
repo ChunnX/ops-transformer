@@ -489,6 +489,31 @@ ws[0] = reserved + bytes;
 
 Kernel 侧入口通过 `GetUserWorkspace(workspace)` 越过系统前置保留区，以 `work + t.xxx` 取得各中间张量的 512 字节对齐物理起始指针。workspace 每次调用独立分配，无跨调用全局状态。
 
+#### 2.2.1 WIDE 模式下的 Query 片上流式量化数据流
+
+非 WIDE 路径保持"预处理批量量化 → GM 中转 → Attention 读取"的两段式结构；WIDE 路径把 Query 整段搬进 Attention 主循环，Query 不再落 HBM：
+
+```text
+AIV(subBlockIdx_)  每个 query tile 的 step 0（SelectStreamQuery）
+  MTE2  GM Q[qToken*DP] ──64×DP──▶ SCORE_UB 起步的临时区（借用已退休的偶环 stripe 0/1）
+  V     Cast 转 FP32 → QuantRowsVF：per-token 对称 INT8（粒度 p.qg）
+        ├─ INT8 量化值 → 临时区 out
+        └─ FP16 scale → qsu_（与离线路径的 GM qScale 逐位等价）
+  MTE3  out ──zN 平面──▶ L1 A 槽（l1Buf[0]），每 32 列一次集中搬运
+  MODE4 CrossCoreSetFlag<PIPE_MTE3>(Q_READY)
+
+AIC  GemmQkSplit（仅该 query 的 part == 0 触发 loadA）
+  WaitBothAiv<PIPE_MTE1>(Q_READY) → CopyL1ToL0A 取 64 行子块 → MMAD
+```
+
+三条约束是本路径的正确性前提，改动时必须同时保持：
+
+1. **L1 A 槽按 `layout::zN` 排布**。Cube 侧 `PackedTileCopyTla` 的 `LayoutTagL1A` 由 `RowMajor` 映射为 `zN`，int8 且 M=128 时偏移为 `addr(r,c) = (c/32)*4096 + r*32 + (c%32)`，故 AIV 必须逐列平面写出，不能平铺拷贝。UB→L1 的 `DataCopyParams` 以 32 字节为单位，且第 3/4 项是**不含 burst 长度的间隔**（`srcGap`/`dstGap`），与既有 FP8 P 写出使用同一套约定。
+2. **mode-4 的 AIV→AIC 事件由硬件按源 sub-block 区分**。AIV 只写裸 flag id，AIC 用 `WaitBothAiv` 同时等 `f` 与 `f+16`（与 `SyncAll` 内部的 `SYNC_AIV_FLAG` 协议一致）；`AIV_FLAG_OFFSET` 仅用于 AIC→AIV 方向。
+3. **临时区与偶环得分条带重叠**。step 0 之前必须排空上一组 `SoftmaxWide` 遗留的 MTE3 条带读与 V 读，因此填入临时区前依次执行 `Sync<MTE3_MTE2>` 与 `Sync<V_MTE2>`，且临时区上界必须严格低于 stripe 2 的起始地址。
+
+Query 与 K/V 预处理解耦后，`SyncAll<false>()` 只需等待 K/V；Query 的就绪完全由上述局部 `Q_READY` 握手承担，跨 Die 硬屏障的等待面积随之减半。
+
 #### 2.3 模板参数特化与分块路由规划
 
 为了消除运行时数据类型分支与核心循环跳转，同时避免因张量维度穷举导致二进制膨胀，本算子遵循官方 AscendC 模板机制（`sage_attention2_template_tiling_key.h`），在编译期仅对主数据类型与 WIDE 超宽双流水模式做模板特化：
@@ -509,8 +534,10 @@ ASCENDC_TPL_SEL(ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_DTYPE_SEL(INPUT_DTYPE, SAGE_TPL
 Host 侧 Tiling 路由判定逻辑（dtype 占 tiling key 低 8 位，wide 占第 8 位，四种组合为 1/27/257/283）：
 
 ```cpp
-// 判定是否激活 WIDE 超宽双流水内核（长序列分支）:
-const bool wide = p.dp == 128 && p.sq % 128 == 0 && p.sk % 512 == 0 && p.sk >= 4096;
+// 判定是否激活 WIDE 超宽双流水内核（长序列分支）。
+// 流式 Q 以 DP 为行距直读原始 Q，故要求补齐后的特征维度等于真实特征维度；
+// qp == sq 由 sq % 128 == 0 保证。
+const bool wide = p.dp == 128 && p.d == p.dp && p.sq % 128 == 0 && p.sk % 512 == 0 && p.sk >= 4096;
 c->SetTilingKey(GET_TPL_TILING_KEY(static_cast<uint32_t>(dt), wide));
 
 // 强制设置调度模式为 1，确保 1:2 MIX 全网格核心驻留调度

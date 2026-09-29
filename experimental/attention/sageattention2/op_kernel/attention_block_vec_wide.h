@@ -172,6 +172,9 @@ public:
             for (uint32_t cb = 0; cb < DP / 32; ++cb)
                 DataCopy(ql1[cb * M * 32], out[cb * 32], plane);
             CrossCoreSetFlag<4, PIPE_MTE3>(Q_READY);
+            // Cube lags the Vector by three fragments, so this token is published
+            // while it is still draining the previous query's PV tail. A single Q
+            // slot is therefore enough; a second one would not shorten the wait.
 
             Duplicate(maxima_, half(FP16_MIN), 128);
             PipeBarrier<PIPE_V>();

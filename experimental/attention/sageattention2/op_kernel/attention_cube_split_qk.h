@@ -33,7 +33,7 @@ __aicore__ inline __attribute__((always_inline)) void PrefetchWideK(FixedResourc
     SetFlag<HardEvent::MTE2_MTE1>(ev);
 }
 template <uint32_t BOffset>
-__aicore__ inline __attribute__((always_inline)) void GemmQkSplit(FixedResource &r, [[maybe_unused]] GM_ADDR a,
+__aicore__ inline __attribute__((always_inline)) void GemmQkSplit(FixedResource &r,
                                                                   uint32_t ubOffset, bool loadA, uint32_t kParity)
 {
     using namespace Catlass;
