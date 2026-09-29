@@ -15,15 +15,12 @@
 
 #include <cstdlib>
 #include <dlfcn.h>
-#include <utility>
 #include "mc2_context.h"
 #if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
 
 namespace {
 constexpr uint64_t KOPY_DEFAULT_CTX_OFFSET = 0;
 constexpr uint64_t MAX_CONTEXT_TAG_SIZE = 255;
-constexpr uint32_t HCCL_COMM_LAYERS_MTE_CCU = 1;
-constexpr uint32_t HCCL_COMM_LAYERS_UB_MEM = 0;
 constexpr uint32_t GET_LOCAL_SERVER_RANK_SIZE_LAYER = 0;
 constexpr uint32_t EP_RANK_OFFSET_STEP = 1024;
 } // namespace
@@ -188,25 +185,19 @@ aclnnStatus Mc2Context::GetRankSizePerServer(const HcclComm &hcclHandle, uint32_
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus Mc2Context::ResolveLinkInfo(uint32_t dstRank, const CommProtocol &protocol, const uint32_t *netLayerList,
-                                     uint32_t netLayerNum, RankLinkInfo &linkInfo) const
+aclnnStatus Mc2Context::ResolveLinkInfo(uint32_t dstRank, RankLinkInfo &linkInfo) const
 {
     auto linkIter = rankLinkMap_.find(dstRank);
     if (linkIter != rankLinkMap_.end()) {
         linkInfo = linkIter->second;
         return ACLNN_SUCCESS;
     }
-    if (netLayerNum != HCCL_COMM_LAYERS_MTE_CCU) {
-        OP_LOGE_LIBOPAPI_REPORT("Mc2Context", "Topology info not found for dstRank %u in a multi-layer topology",
-                               dstRank);
-        return ACLNN_ERR_INNER;
-    }
-    linkInfo = {protocol, netLayerList[HCCL_COMM_LAYERS_UB_MEM]};
-    return ACLNN_SUCCESS;
+    OP_LOGE_LIBOPAPI_REPORT("Mc2Context", "Topology info not found for dstRank: %u", dstRank);
+    return ACLNN_ERR_INNER;
 }
 
 aclnnStatus Mc2Context::InitHcclChannel(const HcclComm &hcclHandle, uint32_t rankDim, uint32_t srcRankId,
-                                        const CommProtocol &protocol, std::vector<HcclChannelDesc> &channelDesc)
+                                        std::vector<HcclChannelDesc> &channelDesc)
 {
     uint32_t channelNum = channelDesc.size();
     auto hcclRet = HcclChannelDescInit(channelDesc.data(), channelNum);
@@ -216,18 +207,13 @@ aclnnStatus Mc2Context::InitHcclChannel(const HcclComm &hcclHandle, uint32_t ran
     }
     OP_LOGD("HCCL channel init success");
 
-    uint32_t netLayerNum = 0;
-    uint32_t *netLayerList = nullptr;
-    auto ret = GetNetLayers(hcclHandle, netLayerList, netLayerNum);
-    CHECK_RET(ret == ACLNN_SUCCESS, ret);
-
     for (uint32_t dstRank = 0; dstRank < rankDim; ++dstRank) {
         if (dstRank == srcRankId) {
             continue;
         }
         uint32_t channelId = (dstRank > srcRankId) ? (dstRank - 1) : dstRank;
         RankLinkInfo linkInfo;
-        ret = ResolveLinkInfo(dstRank, protocol, netLayerList, netLayerNum, linkInfo);
+        auto ret = ResolveLinkInfo(dstRank, linkInfo);
         CHECK_RET(ret == ACLNN_SUCCESS, ret);
         CommLink *links = nullptr;
         ret = GetHcclCommLink(hcclHandle, linkInfo.layer, srcRankId, dstRank, linkInfo.protocol, links);
@@ -243,8 +229,7 @@ aclnnStatus Mc2Context::InitHcclChannel(const HcclComm &hcclHandle, uint32_t ran
 }
 
 aclnnStatus Mc2Context::GetHcclCommChannel(const HcclComm &hcclHandle, uint32_t rankDim, uint32_t srcRankId,
-                                           const CommProtocol &protocol, const CommEngine &engine,
-                                           std::vector<ChannelHandle> &channels)
+                                           const CommEngine &engine, std::vector<ChannelHandle> &channels)
 {
     OP_LOGD("Start to get HCCL communication channel");
     uint32_t channelNum = rankDim - 1;
@@ -264,7 +249,7 @@ aclnnStatus Mc2Context::GetHcclCommChannel(const HcclComm &hcclHandle, uint32_t 
         return ret;
     }
 
-    ret = InitHcclChannel(hcclHandle, rankDim, srcRankId, protocol, channelDesc);
+    ret = InitHcclChannel(hcclHandle, rankDim, srcRankId, channelDesc);
     if (ret != ACLNN_SUCCESS) {
         return ret;
     }
@@ -278,13 +263,13 @@ aclnnStatus Mc2Context::GetHcclCommChannel(const HcclComm &hcclHandle, uint32_t 
 }
 
 aclnnStatus Mc2Context::GetHcclCommResource(const HcclComm &hcclHandle, const CommEngine &engine,
-                                            const CommProtocol &protocol, Mc2MoeContext *mc2ContextStruct)
+                                            Mc2MoeContext *mc2ContextStruct)
 {
     OP_LOGD("Start to get HCCL communication resource");
     uint32_t rankId = mc2ContextStruct->epRankId;
     std::vector<ChannelHandle> channels;
 
-    auto ret = GetHcclCommChannel(hcclHandle, epRankSize_, rankId, protocol, engine, channels);
+    auto ret = GetHcclCommChannel(hcclHandle, epRankSize_, rankId, engine, channels);
     if (ret != ACLNN_SUCCESS) {
         return ret;
     }
@@ -316,8 +301,8 @@ aclnnStatus Mc2Context::GetHcclCommResource(const HcclComm &hcclHandle, const Co
 }
 
 aclnnStatus Mc2Context::CreatMc2Context(const HcclComm &hcclHandle, const std::string &mc2ContextTag,
-                                        const CommEngine &engine, const CommProtocol &protocol,
-                                        Mc2MoeContext *mc2ContextStruct, void *&ctx, uint64_t &hcclBuffSize)
+                                        const CommEngine &engine, Mc2MoeContext *mc2ContextStruct,
+                                        void *&ctx, uint64_t &hcclBuffSize)
 {
     OP_LOGD("Start to create HCCL context");
     uint64_t ctxSize = sizeof(Mc2MoeContext);
@@ -348,7 +333,7 @@ aclnnStatus Mc2Context::CreatMc2Context(const HcclComm &hcclHandle, const std::s
         return ACLNN_ERR_PARAM_INVALID;
     }
 
-    auto ret = GetHcclCommResource(hcclHandle, engine, protocol, mc2ContextStruct);
+    auto ret = GetHcclCommResource(hcclHandle, engine, mc2ContextStruct);
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE_LIBOPAPI_REPORT("Mc2Context", "Get HCCL communication resource failed");
         return ret;
@@ -457,50 +442,23 @@ bool Mc2Context::SupportsProtocol(const HcclComm &hcclHandle, uint32_t layerId, 
     return HasLinkWithProtocol(linksList, netLinkNum, protocol);
 }
 
-bool Mc2Context::SupportsDomainProtocolWithAllRanks(const HcclComm &hcclHandle, const LayerRanks &layer,
-                                                  const CommProtocol &domainProtocol, uint32_t srcRankId) const
+// Record each peer at its first layer, preferring UB_MEM over PCIE within that layer.
+aclnnStatus Mc2Context::RecordLayerRankLinks(const HcclComm &hcclHandle, const LayerRanks &layer, uint32_t srcRankId)
 {
     for (uint32_t dstRank : layer.ranks) {
         if (dstRank == srcRankId || rankLinkMap_.count(dstRank) > 0) {
             continue;
         }
-        if (!SupportsProtocol(hcclHandle, layer.layer, srcRankId, dstRank, domainProtocol)) {
-            return false;
+        CommProtocol protocol = CommProtocol::COMM_PROTOCOL_UB_MEM;
+        if (!SupportsProtocol(hcclHandle, layer.layer, srcRankId, dstRank, protocol)) {
+            protocol = CommProtocol::COMM_PROTOCOL_PCIE;
+            if (!SupportsProtocol(hcclHandle, layer.layer, srcRankId, dstRank, protocol)) {
+                OP_LOGE_LIBOPAPI_REPORT("Mc2Context", "No UB_MEM or PCIE link found, "
+                                       "srcRankId: %u, dstRankId: %u, layerId: %u", srcRankId, dstRank, layer.layer);
+                return ACLNN_ERR_INNER;
+            }
         }
-    }
-    return true;
-}
-
-// Record a peer once so its innermost usable layer is retained.
-void Mc2Context::RecordDomainLayerRanks(const CommProtocol &protocol, const LayerRanks &layer, uint32_t srcRankId)
-{
-    for (uint32_t dstRank : layer.ranks) {
-        if (dstRank != srcRankId && rankLinkMap_.count(dstRank) == 0) {
-            rankLinkMap_[dstRank] = {protocol, layer.layer};
-        }
-    }
-}
-
-// Extend the UB domain through consecutive inner-to-outer layers; record each peer's innermost usable layer.
-aclnnStatus Mc2Context::FindUbDomain(const HcclComm &hcclHandle, const uint32_t *layerList, uint32_t layerNum,
-                                  const CommProtocol &domainProtocol, uint32_t srcRankId, LayerRanks &ubDomain)
-{
-    bool hasDomainLayer = false;
-    for (uint32_t layerIndex = 0; layerIndex < layerNum; ++layerIndex) {
-        LayerRanks layer;
-        auto ret = GetLayerRanks(hcclHandle, layerList[layerIndex], layer);
-        CHECK_RET(ret == ACLNN_SUCCESS, ret);
-        if (!SupportsDomainProtocolWithAllRanks(hcclHandle, layer, domainProtocol, srcRankId)) {
-            break;
-        }
-        RecordDomainLayerRanks(domainProtocol, layer, srcRankId);
-        ubDomain = std::move(layer);
-        hasDomainLayer = true;
-    }
-    if (!hasDomainLayer) {
-        OP_LOGE_LIBOPAPI_REPORT("Mc2Context", "Failed to determine UB domain for rank %u, protocol %d",
-                               srcRankId, domainProtocol);
-        return ACLNN_ERR_INNER;
+        rankLinkMap_[dstRank] = {protocol, layer.layer};
     }
     return ACLNN_SUCCESS;
 }
@@ -521,35 +479,7 @@ aclnnStatus Mc2Context::ValidateRankLinkMap(uint32_t rankSize, uint32_t srcRankI
     return ACLNN_SUCCESS;
 }
 
-// Search all layers because the cross-domain protocol may differ from the protocol used to identify the UB domain.
-aclnnStatus Mc2Context::CheckCrossUbDomainProtocols(const HcclComm &hcclHandle, const uint32_t *layerList,
-                                                uint32_t layerNum, uint32_t srcRankId)
-{
-    bool hasCrossDomainPcieLink = false;
-    for (uint32_t layerIndex = 0; layerIndex < layerNum; ++layerIndex) {
-        LayerRanks layer;
-        auto ret = GetLayerRanks(hcclHandle, layerList[layerIndex], layer);
-        CHECK_RET(ret == ACLNN_SUCCESS, ret);
-        for (uint32_t dstRank : layer.ranks) {
-            if (dstRank == srcRankId || rankLinkMap_.count(dstRank) > 0) {
-                continue;
-            }
-            if (SupportsProtocol(hcclHandle, layer.layer, srcRankId, dstRank, CommProtocol::COMM_PROTOCOL_PCIE)) {
-                OP_LOGI("Rank %u supports PCIE with cross-domain rank %u in layer %u", srcRankId, dstRank, layer.layer);
-                hasCrossDomainPcieLink = true;
-                rankLinkMap_[dstRank] = {CommProtocol::COMM_PROTOCOL_PCIE, layer.layer};
-            }
-        }
-    }
-    if (!hasCrossDomainPcieLink) {
-        OP_LOGE_LIBOPAPI_REPORT("Mc2Context", "Rank %u has no PCIE link to a peer outside its UB domain", srcRankId);
-        return ACLNN_ERR_INNER;
-    }
-    return ACLNN_SUCCESS;
-}
-
-aclnnStatus Mc2Context::CheckProtocolSupport(const HcclComm &hcclHandle, const uint32_t *layerList, uint32_t layerNum,
-                                           const CommProtocol &protocol)
+aclnnStatus Mc2Context::CheckProtocolSupport(const HcclComm &hcclHandle, const uint32_t *layerList, uint32_t layerNum)
 {
     uint32_t srcRankId = 0;
     uint32_t rankSize = 0;
@@ -558,27 +488,16 @@ aclnnStatus Mc2Context::CheckProtocolSupport(const HcclComm &hcclHandle, const u
     ret = GetRankSize(hcclHandle, rankSize);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
     rankLinkMap_.clear();
-    rankNumPerUbDomain_ = 0;
 
-    LayerRanks ubDomain;
-    ret = FindUbDomain(hcclHandle, layerList, layerNum, protocol, srcRankId, ubDomain);
-    CHECK_RET(ret == ACLNN_SUCCESS, ret);
+    for (uint32_t layerIndex = 0; layerIndex < layerNum; ++layerIndex) {
+        LayerRanks layer;
+        ret = GetLayerRanks(hcclHandle, layerList[layerIndex], layer);
+        CHECK_RET(ret == ACLNN_SUCCESS, ret);
+        ret = RecordLayerRankLinks(hcclHandle, layer, srcRankId);
+        CHECK_RET(ret == ACLNN_SUCCESS, ret);
+    }
     ret = ValidateRankLinkMap(rankSize, srcRankId);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
-    rankNumPerUbDomain_ = static_cast<uint32_t>(ubDomain.ranks.size());
-    if (rankNumPerUbDomain_ > rankSize) {
-        OP_LOGE_LIBOPAPI_REPORT("Mc2Context", "UB domain rank count %u exceeds rank size %u",
-                               rankNumPerUbDomain_, rankSize);
-        return ACLNN_ERR_INNER;
-    }
-    OP_LOGI("Layer %u is current rank's UB domain, rankNumPerUbDomain_: %u", ubDomain.layer, rankNumPerUbDomain_);
-    if (rankNumPerUbDomain_ != rankSize) {
-        // UB_MEM links inside the domain are already resolved by FindUbDomain.
-        ret = CheckCrossUbDomainProtocols(hcclHandle, layerList, layerNum, srcRankId);
-        CHECK_RET(ret == ACLNN_SUCCESS, ret);
-        ret = ValidateRankLinkMap(rankSize, srcRankId);
-        CHECK_RET(ret == ACLNN_SUCCESS, ret);
-    }
     if (rankLinkMap_.size() != rankSize - 1) {
         OP_LOGE_LIBOPAPI_REPORT("Mc2Context", "Incomplete topology for rank %u, recorded %zu of %u peers",
                                srcRankId, rankLinkMap_.size(), rankSize - 1);
@@ -587,20 +506,15 @@ aclnnStatus Mc2Context::CheckProtocolSupport(const HcclComm &hcclHandle, const u
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus Mc2Context::GetCommProtocol(const HcclComm &hcclHandle, CommProtocol &protocol)
+aclnnStatus Mc2Context::BuildRankLinkMap(const HcclComm &hcclHandle)
 {
-    OP_LOGD("Start to get HCCL communication protocol");
+    OP_LOGD("Start to build HCCL rank link map");
     uint32_t layerNum = 0;
     uint32_t *layerList = nullptr;
     auto ret = GetNetLayers(hcclHandle, layerList, layerNum);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
-    protocol = CommProtocol::COMM_PROTOCOL_UB_MEM;
-    if (layerNum == HCCL_COMM_LAYERS_MTE_CCU) {
-        OP_LOGI("HCCL communication layerNum is %u,so set protocol to UB_MEM", layerNum);
-        return ACLNN_SUCCESS;
-    }
-    return CheckProtocolSupport(hcclHandle, layerList, layerNum, protocol);
+    return CheckProtocolSupport(hcclHandle, layerList, layerNum);
 }
 
 aclnnStatus Mc2Context::ValidateContextTag(const std::string &mc2ContextTag)
@@ -638,7 +552,6 @@ aclnnStatus Mc2Context::GetMc2ContextTensor(const char *groupEp, const char *opN
     CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
 
     void *ctx = nullptr;
-    CommProtocol protocol;
     std::string mc2ContextTag = std::string(groupEp) + std::string(opName);
     CommEngine engine = CommEngine::COMM_ENGINE_AIV;
     hcclBuffSize = 0; // Default to 0, will be updated in CheckContextCache
@@ -659,12 +572,12 @@ aclnnStatus Mc2Context::GetMc2ContextTensor(const char *groupEp, const char *opN
         return ACLNN_SUCCESS;
     }
 
-    aclnnRet = instance.GetCommProtocol(hcclHandle, protocol);
+    aclnnRet = instance.BuildRankLinkMap(hcclHandle);
     CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
 
     Mc2MoeContext mc2ContextStruct;
     aclnnRet =
-        instance.CreatMc2Context(hcclHandle, mc2ContextTag, engine, protocol, &mc2ContextStruct, ctx, hcclBuffSize);
+        instance.CreatMc2Context(hcclHandle, mc2ContextTag, engine, &mc2ContextStruct, ctx, hcclBuffSize);
     CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
 
     aclnnRet = instance.CreatMc2ContextTensor(ctx, mc2Context);

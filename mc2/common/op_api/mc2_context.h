@@ -60,18 +60,15 @@ private:
                                 const CommProtocol &protocol, CommLink *&links);
     aclnnStatus GetNetLayers(const HcclComm &hcclHandle, uint32_t *&netLayerList, uint32_t &netLayerNum);
     aclnnStatus GetRankSizePerServer(const HcclComm &hcclHandle, uint32_t netLayers);
-    aclnnStatus ResolveLinkInfo(uint32_t dstRank, const CommProtocol &protocol, const uint32_t *netLayerList,
-                               uint32_t netLayerNum, RankLinkInfo &linkInfo) const;
+    aclnnStatus ResolveLinkInfo(uint32_t dstRank, RankLinkInfo &linkInfo) const;
     aclnnStatus InitHcclChannel(const HcclComm &hcclHandle, uint32_t rankDim, uint32_t srcRankId,
-                                const CommProtocol &protocol, std::vector<HcclChannelDesc> &channelDesc);
+                                std::vector<HcclChannelDesc> &channelDesc);
     aclnnStatus GetHcclCommChannel(const HcclComm &hcclHandle, uint32_t rankDim, uint32_t srcRankId,
-                                   const CommProtocol &protocol, const CommEngine &engine,
-                                   std::vector<ChannelHandle> &channels);
-    aclnnStatus GetHcclCommResource(const HcclComm &hcclHandle, const CommEngine &engine, const CommProtocol &protocol,
+                                   const CommEngine &engine, std::vector<ChannelHandle> &channels);
+    aclnnStatus GetHcclCommResource(const HcclComm &hcclHandle, const CommEngine &engine,
                                     Mc2MoeContext *mc2ContextStruct);
     aclnnStatus CreatMc2Context(const HcclComm &hcclHandle, const std::string &mc2ContextTag, const CommEngine &engine,
-                                const CommProtocol &protocol, Mc2MoeContext *mc2ContextStruct, void *&ctx,
-                                uint64_t &hcclBuffSize);
+                                Mc2MoeContext *mc2ContextStruct, void *&ctx, uint64_t &hcclBuffSize);
     aclnnStatus CreatMc2ContextTensor(void *ctx, aclTensor *&mc2Context);
     aclnnStatus GetHcclBufferSize(const HcclComm &hcclHandle, uint64_t &hcclBuffSize);
     aclnnStatus GetRankId(const HcclComm &hcclHandle, uint32_t &rankId) const;
@@ -80,17 +77,10 @@ private:
     static bool HasLinkWithProtocol(const CommLink *linksList, uint32_t netLinkNum, const CommProtocol &protocol);
     bool SupportsProtocol(const HcclComm &hcclHandle, uint32_t layerId, uint32_t srcRankId, uint32_t dstRankId,
                           const CommProtocol &protocol) const;
-    bool SupportsDomainProtocolWithAllRanks(const HcclComm &hcclHandle, const LayerRanks &layer,
-                                           const CommProtocol &domainProtocol, uint32_t srcRankId) const;
-    void RecordDomainLayerRanks(const CommProtocol &protocol, const LayerRanks &layer, uint32_t srcRankId);
-    aclnnStatus FindUbDomain(const HcclComm &hcclHandle, const uint32_t *layerList, uint32_t layerNum,
-                            const CommProtocol &domainProtocol, uint32_t srcRankId, LayerRanks &ubDomain);
+    aclnnStatus RecordLayerRankLinks(const HcclComm &hcclHandle, const LayerRanks &layer, uint32_t srcRankId);
     aclnnStatus ValidateRankLinkMap(uint32_t rankSize, uint32_t srcRankId) const;
-    aclnnStatus CheckCrossUbDomainProtocols(const HcclComm &hcclHandle, const uint32_t *layerList, uint32_t layerNum,
-                                          uint32_t srcRankId);
-    aclnnStatus CheckProtocolSupport(const HcclComm &hcclHandle, const uint32_t *layerList, uint32_t layerNum,
-                                    const CommProtocol &protocol);
-    aclnnStatus GetCommProtocol(const HcclComm &hcclHandle, CommProtocol &protocol);
+    aclnnStatus CheckProtocolSupport(const HcclComm &hcclHandle, const uint32_t *layerList, uint32_t layerNum);
+    aclnnStatus BuildRankLinkMap(const HcclComm &hcclHandle);
     aclnnStatus ValidateContextTag(const std::string &mc2ContextTag);
     aclnnStatus CheckContextCache(const HcclComm &hcclHandle, const std::string &mc2ContextTag,
                                   const CommEngine &engine, void *&ctx, uint64_t &hcclBuffSize);
@@ -103,7 +93,6 @@ private:
     uint32_t epRankSize_ = 0;
     uint32_t rankSizePerServer_ = 0;
     std::unordered_map<uint32_t, RankLinkInfo> rankLinkMap_;
-    uint32_t rankNumPerUbDomain_ = 0;
 
     HcclResult (*HcomGetCommHandleByGroup)(const char *, HcclComm *) = nullptr;
     HcclResult (*HcclRankGraphGetLinks)(HcclComm, uint32_t, uint32_t, uint32_t, CommLink **, uint32_t *) = nullptr;
