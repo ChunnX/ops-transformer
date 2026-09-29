@@ -10,11 +10,11 @@
 # -----------------------------------------------------------------------------------------------------------
 # 判断PR是否需要分布式编译：
 #   用法：bash check_distributed_compile.sh <soc_version> <pr_file>
-#   1. 调用cmake/scripts/parse_changed_files.py的get_related_ut子命令：按仓内tests/test_config.yaml
-#      的模块看护规则，从pr_file（变更文件列表，每行一个路径）解析受影响的算子列表（与仓内UT触发
-#      逻辑一致）；输出all表示全量触发
+#   1. 调用cmake/scripts/parse_compile_scope.py：按白名单(tests/compile_scope_whitelist.yaml)优先、
+#      否则CMake depends反向闭包 + def.cpp AddConfig SoC过滤，从pr_file（变更文件列表，每行一个路径）
+#      解析本PR在指定soc上的实际编译算子范围（与PR_COMPILE任务的编译口径一致）
 #   2. 不同soc编译耗时不同，长耗时算子字典按soc区分：生效字典 = 全soc通用字典 + 当前soc专属字典
-#   3. 脚本返回的受影响算子命中字典，则输出true（PR需要分布式编译），否则输出false
+#   3. 编译范围内的算子命中字典，则输出true（PR需要分布式编译），否则输出false
 #   返回值：结果通过stdout输出true/false，脚本退出码0表示执行成功，1表示参数/文件/执行错误
 
 set -u
@@ -30,6 +30,11 @@ LONG_COMPILE_OPS_ALL=(
 
 # ascend910b长耗时算子字典
 LONG_COMPILE_OPS_910B=(
+    mla_preprocess_v2
+    mla_preprocess
+)
+# ascend910_93长耗时算子字典（初始沿用910b，后续按实测耗时调整）
+LONG_COMPILE_OPS_910_93=(
     mla_preprocess_v2
     mla_preprocess
 )
@@ -60,16 +65,12 @@ main() {
         exit 1
     fi
 
-    # 受影响算子以parse_changed_files.py返回值为准，不做依赖解析
+    # 受影响算子以parse_compile_scope.py返回值为准（与PR_COMPILE实际编译范围一致）
     local affected_ops
-    affected_ops=$(python3 "${REPO_ROOT}/cmake/scripts/parse_changed_files.py" \
-        -c "${REPO_ROOT}/tests/test_config.yaml" -f "$pr_file" get_related_examples) || exit 1
+    affected_ops=$(python3 "${REPO_ROOT}/cmake/scripts/parse_compile_scope.py" \
+        -f "$pr_file" --soc "$soc") || exit 1
     if [ -z "$affected_ops" ]; then
         echo "false"
-        exit 0
-    fi
-    if [ "$affected_ops" = "all" ]; then
-        echo "true"
         exit 0
     fi
 
@@ -78,6 +79,9 @@ main() {
     case $(echo "$soc" | tr '[:upper:]' '[:lower:]') in
         ascend910b)
             dict+=(${LONG_COMPILE_OPS_910B[@]+"${LONG_COMPILE_OPS_910B[@]}"})
+            ;;
+        ascend910_93)
+            dict+=(${LONG_COMPILE_OPS_910_93[@]+"${LONG_COMPILE_OPS_910_93[@]}"})
             ;;
         ascend950)
             dict+=(${LONG_COMPILE_OPS_950[@]+"${LONG_COMPILE_OPS_950[@]}"})
