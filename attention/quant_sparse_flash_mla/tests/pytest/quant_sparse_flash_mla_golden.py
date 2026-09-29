@@ -1,0 +1,2563 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
+
+import os
+import torch
+import random
+import numpy as np
+import math
+from generate_hifloat8_data import (
+    trans_float_tensor_to_hifuint8,
+    trans_hifuint8_tensor_to_float,
+)
+import logging
+
+DATA_RANGE_LEFT = -2
+DATA_RANGE_RIGHT = 2
+
+FP8_DATA_RANGE_LEFT = -5
+FP8_DATA_RANGE_RIGHT = 5
+
+
+def _nonfinite_fill(shape, data_range):
+    """Return a constant tensor for an INF/NAN range, or None for finite data."""
+    low, high = (float(data_range[0]), float(data_range[1]))
+    if math.isfinite(low) and math.isfinite(high):
+        return None
+    if math.isnan(low) or math.isnan(high):
+        if math.isnan(low) and math.isnan(high):
+            value = math.nan
+        else:
+            raise ValueError(
+                f"data range must use [nan, nan] for a constant NaN, got [{low}, {high}]"
+            )
+    elif low == high:
+        value = low
+    else:
+        raise ValueError(f"non-finite data range must be constant, got [{low}, {high}]")
+    return torch.full(shape, value, dtype=torch.float32)
+
+
+def _resolve_descale_range(data_range):
+    """Avoid non-finite scale factors masking the data-range signal."""
+    if any(not math.isfinite(float(value)) for value in data_range):
+        return [1.0, 1.0]
+    return [
+        float(data_range[0]) / FP8_DATA_RANGE_LEFT,
+        float(data_range[1]) / FP8_DATA_RANGE_RIGHT,
+    ]
+
+
+def prepare_fd_params(params, policy="auto"):
+    """配置普通 FD 模式，与确定性批次一致性模式分别处理。"""
+    if policy not in ("auto", "on", "off"):
+        raise ValueError("QSMLA_FD must be auto, on or off")
+    configured = params.get("fd_mode")
+    if configured not in (None, False, True, 0, 1):
+        raise ValueError("fd_mode must be a boolean")
+    enabled = policy == "on" or (policy == "auto" and bool(configured))
+    params["fd_mode"] = enabled
+    if not enabled:
+        return False
+    if params.get("batch_consistency"):
+        raise ValueError(
+            "fd_mode requires batch_consistency=False (deterministic level 0)"
+        )
+    for key, env, default in (
+        ("fd_aic_core_num", "QSMLA_FD_AIC_NUM", 32),
+        ("fd_aiv_core_num", "QSMLA_FD_AIV_NUM", None),
+    ):
+        value = os.environ.get(env, params.get(key))
+        if value is None:
+            value = default if default is not None else 2 * params["fd_aic_core_num"]
+        if isinstance(value, bool) or isinstance(value, float):
+            raise ValueError(f"{key} must be an integer")
+        params[key] = int(value)
+    _validate_fd_cores(
+        params["fd_aic_core_num"], params["fd_aiv_core_num"], params["N1"]
+    )
+    required = params.get("fd_require_split", False)
+    if required not in (None, False, True, 0, 1):
+        raise ValueError("fd_require_split must be a boolean")
+    params["fd_require_split"] = bool(required)
+    params["npu_deterministic_level"] = 0
+    return True
+
+
+def _validate_fd_cores(aic_num, aiv_num, heads):
+    if type(aic_num) is not int or not 1 <= aic_num <= 36:
+        raise ValueError("fd_aic_core_num must be an integer in [1,36]")
+    if type(aiv_num) is not int or not 1 <= aiv_num <= 72:
+        raise ValueError("fd_aiv_core_num must be an integer in [1,72]")
+    if heads > 64 and (aic_num < 2 or aiv_num < 2):
+        raise ValueError("split-G needs at least two AICs and two AIVs")
+
+
+class _MetadataRowCosts:
+    """以固定存储空间表示 ORI、CMP 基本块序列的前缀开销。"""
+
+    __slots__ = ("ori_blocks", "cmp_blocks", "normal", "ori_discount", "cmp_discount")
+
+    def __init__(self, ori_tokens, cmp_tokens, m_cost):
+        self.ori_blocks = (ori_tokens + 127) // 128
+        self.cmp_blocks = (cmp_tokens + 127) // 128
+        self.normal = m_cost + 20
+        self.ori_discount = 10 if 0 < ori_tokens % 128 <= 64 else 0
+        self.cmp_discount = 10 if 0 < cmp_tokens % 128 <= 64 else 0
+
+    def __len__(self):
+        return self.ori_blocks + self.cmp_blocks + 1
+
+    def __getitem__(self, index):
+        if index < 0:
+            index += len(self)
+        if not 0 <= index < len(self):
+            raise IndexError(index)
+        value = index * self.normal
+        if self.ori_blocks and index >= self.ori_blocks:
+            value -= self.ori_discount
+        if self.cmp_blocks and index == len(self) - 1:
+            value -= self.cmp_discount
+        return value
+
+
+def generate_metadata_golden(meta, aic_num=32, aiv_num=None):
+    """用 Python 复现 Ascend950 的普通 FD 调度，返回 int32[1024]。
+
+    对应 CalcS1GCache、AssignByBatch/Row/Block、RecordFDInfo 和 SplitFD 的调度逻辑。
+    FA/FD 存储区大小固定为 36*9 和 72*8，不随请求核数变化。
+    前 900 个元素由 metadata 接口约定定义，其余填充为零。
+    """
+    aiv_num = 2 * aic_num if aiv_num is None else aiv_num
+    heads = int(meta["num_heads_q"])
+    _validate_fd_cores(aic_num, aiv_num, heads)
+    if int(meta["num_heads_kv"]) != 1 or not 1 <= heads <= 128:
+        raise ValueError("QSMLA requires N2=1 and N1 in [1,128]")
+    if meta.get("is_batch_consistency", False):
+        raise ValueError("metadata golden supports ordinary FD only")
+    batch = int(meta["batch_size"])
+    layout_q, layout_kv = meta["layout_q"], meta["layout_kv"]
+    if (
+        batch < 1
+        or layout_q not in ("BSND", "TND")
+        or layout_kv not in ("BSND", "TND", "PA_BBND")
+    ):
+        raise ValueError("Invalid metadata batch or layout")
+    vectors = {}
+    for name in (
+        "cu_seqlens_q",
+        "cu_seqlens_ori_kv",
+        "cu_seqlens_cmp_kv",
+        "seqused_q",
+        "seqused_ori_kv",
+        "seqused_cmp_kv",
+        "cmp_residual_kv",
+        "ori_topk_length",
+        "cmp_topk_length",
+    ):
+        value = meta.get(name)
+        if value is None:
+            vectors[name] = None
+            continue
+        tensor = torch.as_tensor(value).detach().cpu().flatten()
+        if not tensor.numel():
+            vectors[name] = None
+            continue
+        if tensor.dtype not in (torch.int32, torch.int64) or bool(
+            ((tensor < 0) | (tensor > 2**31 - 1)).any()
+        ):
+            raise ValueError(f"{name} must contain nonnegative int32 values")
+        values = tensor.tolist()
+        if name.startswith("cu_seqlens"):
+            if (
+                len(values) != batch + 1
+                or values[0] != 0
+                or any(x > y for x, y in zip(values, values[1:]))
+            ):
+                raise ValueError(f"Invalid {name}")
+        elif "topk" not in name and len(values) != batch:
+            raise ValueError(f"{name} must have B elements")
+        vectors[name] = values
+    if layout_q == "TND" and vectors["cu_seqlens_q"] is None:
+        raise ValueError("TND requires cu_seqlens_q")
+    q_physical = (
+        [int(meta["max_seqlen_q"])] * batch
+        if layout_q == "BSND"
+        else [
+            y - x for x, y in zip(vectors["cu_seqlens_q"], vectors["cu_seqlens_q"][1:])
+        ]
+    )
+    q_lengths = vectors["seqused_q"] or q_physical
+    if any(n > capacity for n, capacity in zip(q_lengths, q_physical)):
+        raise ValueError("seqused_q exceeds physical query capacity")
+    ratio = int(meta.get("cmp_ratio") or 1)
+    if ratio < 1:
+        raise ValueError("cmp_ratio must be positive")
+    has = {p: bool(meta.get(f"has_{p}_kv", True)) for p in ("ori", "cmp")}
+    topk = {
+        "ori": int(meta.get("ori_topk") or 0),
+        "cmp": int(meta.get("cmp_topk", meta.get("topk")) or 0),
+    }
+    lengths = {}
+    for p in ("ori", "cmp"):
+        mode = int(meta.get(f"{p}_mask_mode") or 0)
+        if mode not in (0, 3, 4) or topk[p] < 0:
+            raise ValueError(f"Invalid {p} mask mode or top-k")
+        seq, cu = vectors[f"seqused_{p}_kv"], vectors[f"cu_seqlens_{p}_kv"]
+        maximum = int(meta.get(f"max_seqlen_{p}_kv") or 0)
+        lengths[p] = (
+            seq
+            if seq is not None
+            else [y - x for x, y in zip(cu, cu[1:])]
+            if layout_kv == "TND" and cu is not None
+            else [
+                2**32 - 1
+                if topk[p] and (layout_kv == "PA_BBND" or maximum == 0)
+                else maximum
+            ]
+            * batch
+        )
+        tk = vectors[f"{p}_topk_length"]
+        if tk is not None and (
+            len(tk) != sum(q_physical) or any(n > topk[p] for n in tk)
+        ):
+            raise ValueError(f"Invalid {p}_topk_length shape or value")
+    residuals = vectors["cmp_residual_kv"] or [0] * batch
+    if any(n >= ratio for n in residuals):
+        raise ValueError("cmp_residual_kv must be smaller than cmp_ratio")
+
+    def active_tokens(prefix, b, q):
+        if not has[prefix]:
+            return 0
+        length = lengths[prefix][b]
+        restored = length if prefix == "ori" else length * ratio + residuals[b]
+        if restored == 0:
+            return 0
+        mode = int(meta.get(f"{prefix}_mask_mode") or 0)
+        threshold = restored - q_lengths[b] + q
+        left, right = 0, restored - 1
+        if mode in (3, 4):
+            right = threshold
+            if mode == 4:
+                wl, wr = meta.get("ori_win_left"), meta.get("ori_win_right")
+                left = 0 if wl is None or wl < 0 else threshold - int(wl)
+                right = restored - 1 if wr is None or wr < 0 else threshold + int(wr)
+        if left >= restored or right < 0 or right < left:
+            return 0
+        left, right = max(0, left), min(restored - 1, right)
+        if prefix == "cmp":
+            if (right + 1) // ratio == 0:
+                return 0
+            left, right = max(0, (left + 1) // ratio - 1), (right + 1) // ratio - 1
+        count = right - left + 1
+        if topk[prefix]:
+            tk = vectors[f"{prefix}_topk_length"]
+            offset = (
+                vectors["cu_seqlens_q"][b]
+                if layout_q == "TND"
+                else b * int(meta["max_seqlen_q"])
+            )
+            limit = tk[offset + q] if mode == 0 and tk is not None else topk[prefix]
+            count = min(count, limit)
+        return count
+
+    # 每行记录先 ORI 后 CMP 的基本块前缀开销。
+    rows, batch_costs, batch_blocks, batch_last = [], [], [], []
+    m_cost = 6 * ((heads + 15) // 16)
+    for b in range(batch):
+        current = []
+        for q in range(q_lengths[b]):
+            current.append(
+                _MetadataRowCosts(
+                    active_tokens("ori", b, q), active_tokens("cmp", b, q), m_cost
+                )
+            )
+        rows.append(current)
+        batch_costs.append(sum(row[-1] for row in current))
+        batch_blocks.append(sum(len(row) - 1 for row in current))
+        batch_last.append(
+            next((row[-1] - row[-2] for row in reversed(current) if len(row) > 1), 0)
+        )
+
+    metadata = torch.zeros(1024, dtype=torch.int32)
+    fa, fd = metadata[:324].reshape(36, 9), metadata[324:900].reshape(72, 8)
+    split_g = heads > 64
+    cores = aic_num // 2 if split_g else aic_num
+    if not any(batch_blocks):
+        all_kv_zero = not any(
+            q_lengths[b] and any(has[p] and lengths[p][b] for p in has)
+            for b in range(batch)
+        )
+        for core in range(2 if split_g else 1):
+            fa[core, :8] = torch.tensor(
+                [1, 0, 0, 0, batch if all_kv_zero else 0, 0, 0, 0]
+            )
+        return metadata
+    b = q = tile = 0
+    remaining_cost, remaining_blocks = batch_costs[0], batch_blocks[0]
+    unassigned = sum(batch_costs)
+    endpoints, first_slots, tasks, max_loops = [], [], [], 0
+    split_parts, previous_slots = 1, 0
+    for core in range(cores):
+        if b == batch or unassigned <= 0:
+            break
+        limit = unassigned // (cores - core)
+        used_cost = used_blocks = 0
+        first_slots.append(previous_slots + split_parts - 1)
+        while b < batch and (
+            remaining_cost == 0
+            or limit + batch_last[b] // 2 >= used_cost + remaining_cost
+        ):
+            used_cost += remaining_cost
+            used_blocks += remaining_blocks
+            b, q, tile = b + 1, 0, 0
+            if b < batch:
+                remaining_cost, remaining_blocks = batch_costs[b], batch_blocks[b]
+        if b < batch:
+            while q < q_lengths[b]:
+                row = rows[b][q]
+                row_cost, row_blocks = row[-1] - row[tile], len(row) - 1 - tile
+                last = row[-1] - row[-2] if len(row) > 1 else 0
+                if limit + last // 2 < used_cost + row_cost:
+                    break
+                used_cost += row_cost
+                used_blocks += row_blocks
+                remaining_cost -= row_cost
+                remaining_blocks -= row_blocks
+                q, tile = q + 1, 0
+            if q >= q_lengths[b]:
+                raise RuntimeError(
+                    "Metadata row cursor exceeded batch before batch assignment"
+                )
+            row = rows[b][q]
+            while tile + 1 < len(row):
+                cost = row[tile + 1] - row[tile]
+                if limit + cost // 2 < used_cost + cost:
+                    break
+                used_cost += cost
+                used_blocks += 1
+                remaining_cost -= cost
+                remaining_blocks -= 1
+                tile += 1
+            if used_blocks == 0:
+                cost = row[tile + 1] - row[tile]
+                used_cost += cost
+                used_blocks = 1
+                remaining_cost -= cost
+                remaining_blocks -= 1
+                tile += 1
+                if tile == len(row) - 1:
+                    q, tile = q + 1, 0
+                if q == q_lengths[b]:
+                    b, q = b + 1, 0
+                    if b < batch:
+                        remaining_cost, remaining_blocks = (
+                            batch_costs[b],
+                            batch_blocks[b],
+                        )
+        end = (b, q, tile)
+        if core and split_parts > 1 and end[:2] != endpoints[-1][:2]:
+            tasks.append((*endpoints[-1][:2], previous_slots, split_parts, heads))
+            previous_slots += split_parts
+            split_parts = 1
+        if tile > 0:
+            split_parts += 1
+        endpoints.append(end)
+        max_loops = max(max_loops, used_blocks)
+        unassigned -= used_cost
+    if unassigned != 0:
+        raise RuntimeError("Metadata scheduling did not cover all KV tiles")
+    for core, end in enumerate(endpoints):
+        start = endpoints[core - 1] if core else (0, 0, 0)
+        record = torch.tensor(
+            [1, *start, *end, first_slots[core], max_loops if split_g else 0]
+        )
+        fa[2 * core if split_g else core] = record
+        if split_g:
+            fa[2 * core + 1] = record
+    if split_g:
+        fa[: 2 * cores, 8] = max_loops
+    if tasks:
+        load = sum(parts * m for _, _, _, parts, m in tasks)
+        average = (load + aiv_num - 1) // aiv_num
+        vector = 0
+        for bn, query, slot, parts, m in tasks:
+            count = max(1, parts * m // average)
+            per_vector = (m + count - 1) // count
+            count = (m + per_vector - 1) // per_vector
+            for index in range(count):
+                if vector >= aiv_num:
+                    raise ValueError(
+                        "Configured AIV count cannot hold FD tasks; increase fd_aiv_core_num"
+                    )
+                fd[vector, :7] = torch.tensor(
+                    [
+                        1,
+                        bn,
+                        query,
+                        slot,
+                        parts,
+                        index * per_vector,
+                        min(per_vector, m - index * per_vector),
+                    ]
+                )
+                vector += 1
+    return metadata
+
+
+def metadata_fa_ranges(metadata):
+    if metadata.dtype != torch.int32 or metadata.numel() != 1024:
+        raise ValueError("metadata must be int32[1024]")
+    return sorted(
+        {
+            (tuple(map(int, row[1:4])), tuple(map(int, row[4:7])))
+            for row in metadata[:324].reshape(36, 9)
+            if int(row[0])
+        }
+    )
+
+
+def metadata_row_partitions(ranges, row, total_tiles):
+    parts = []
+    for start, end in ranges:
+        if start[:2] <= row and (end[:2] > row or (end[:2] == row and end[2] > 0)):
+            low = start[2] if start[:2] == row else 0
+            high = end[2] if end[:2] == row else total_tiles
+            if high > low:
+                if low < 0 or high > total_tiles:
+                    raise ValueError(f"FA range exceeds row {row}")
+                parts.append((low, high))
+    parts.sort()
+    if (
+        not parts
+        or parts[0][0] != 0
+        or parts[-1][1] != total_tiles
+        or any(left[1] != right[0] for left, right in zip(parts, parts[1:]))
+    ):
+        raise ValueError(
+            f"Incomplete or overlapping FA coverage for row {row}: {parts}"
+        )
+    return parts
+
+
+def restore_cmp_kv_lengths(
+    seqused_cmp_kv, cmp_ratio, cmp_residual_kv=None, cmp_mask_mode=3
+):
+    """Restore the logical CMP context lengths used by the Arch35 kernels."""
+    if seqused_cmp_kv is None:
+        return None
+    if cmp_mask_mode == 0 or int(cmp_ratio) == 1:
+        cmp_residual_kv = None
+    if cmp_residual_kv is not None and len(cmp_residual_kv) != len(seqused_cmp_kv):
+        raise ValueError("cmp_residual_kv and seqused_cmp_kv must have the same length")
+
+    return [
+        int(cmp_len) * cmp_ratio
+        + (int(cmp_residual_kv[index]) if cmp_residual_kv is not None else 0)
+        for index, cmp_len in enumerate(seqused_cmp_kv)
+    ]
+
+
+class GeneralizedSFAQuant:
+    def __init__(
+        self,
+        layout_q,
+        layout_kv,
+        q_type,
+        ori_kv_type,
+        cmp_kv_type,
+        B,
+        S1,
+        T1,
+        N1,
+        N2,
+        D,
+        K,
+        block_num1,
+        block_num2,
+        block_size1,
+        block_size2,
+        cu_seqlens_q,
+        seqused_q,
+        seqused_ori_kv,
+        seqused_cmp_kv,
+        cu_seqlens_ori_kv,
+        cu_seqlens_cmp_kv,
+        cmp_residual_kv,
+        softmax_scale,
+        cmp_ratio,
+        ori_mask_mode,
+        cmp_mask_mode,
+        ori_win_left,
+        ori_win_right,
+        ori_topk_length,
+        cmp_topk_length,
+        template_run_mode,
+        q_descale_val,
+        ori_kv_descale_val,
+        cmp_kv_descale_val,
+    ):
+        self.ori_topk_length = ori_topk_length
+        self.cmp_topk_length = cmp_topk_length
+        self.q_descale_val = q_descale_val
+        self.ori_kv_descale_val = ori_kv_descale_val
+        self.cmp_kv_descale_val = cmp_kv_descale_val
+        self.layout_q = layout_q
+        self.layout_kv = layout_kv
+        self.q_type = q_type
+        self.ori_kv_type = ori_kv_type
+        self.cmp_kv_type = cmp_kv_type
+        self.B = B
+        self.S1 = S1
+        self.T1 = T1
+        self.N1 = N1
+        self.N2 = N2
+        self.D = D
+        self.K = K
+        self.block_num1 = block_num1
+        self.block_num2 = block_num2
+        self.block_size1 = block_size1
+        self.block_size2 = block_size2
+        self.cu_seqlens_q = cu_seqlens_q
+        self.seqused_q = seqused_q
+        self.seqused_ori_kv = seqused_ori_kv
+        self.seqused_cmp_kv = seqused_cmp_kv
+        self.cu_seqlens_ori_kv = cu_seqlens_ori_kv
+        self.cu_seqlens_cmp_kv = cu_seqlens_cmp_kv
+        self.cmp_residual_kv = cmp_residual_kv
+        self.softmax_scale = softmax_scale
+        self.cmp_ratio = cmp_ratio
+        self.ori_mask_mode = ori_mask_mode
+        self.cmp_mask_mode = cmp_mask_mode
+        self.ori_win_left = ori_win_left
+        self.ori_win_right = ori_win_right
+        self.template_run_mode = template_run_mode
+
+    @staticmethod
+    def _get_batch_consistency_reduce_size(ori_s2_size, cmp_s2_size):
+        """Return the S2 reduction-block size used by batch-consistency metadata."""
+        total_s2_size = ori_s2_size + cmp_s2_size
+        # 先向上整除 32，再向上对齐到 128-token 基础块，与 metadata 和 kernel 保持一致。
+        raw_reduce_size = (total_s2_size + 31) // 32
+        return max(((raw_reduce_size + 127) // 128) * 128, 128)
+
+    @staticmethod
+    def _update_s2_tile(
+        q_fp32,
+        k_tile,
+        combined_scale,
+        kv_descale,
+        score_max,
+        sumexp,
+        acc_o,
+        hifp8_scale_value=16.0,
+    ):
+        """使用一个 S2 tile 更新 online-softmax 状态。"""
+        v_tile = k_tile.clone()
+        mm1_res = torch.matmul(q_fp32, k_tile.T)
+        scale_res = mm1_res * combined_scale
+
+        score_max_pre = score_max.clone()
+        cur_score_max = scale_res.max(dim=-1)[0]
+        score_max = torch.max(score_max, cur_score_max)
+        score_max_pre = score_max_pre - score_max
+        score_max_pre = torch.exp(score_max_pre)
+
+        acc_s = torch.exp(scale_res - score_max.unsqueeze(1))
+        sumexp_i = acc_s.sum(dim=-1)
+        sumexp = sumexp * score_max_pre + sumexp_i
+
+        acc_s_cast = acc_s * hifp8_scale_value
+        acc_s_cast = trans_float_tensor_to_hifuint8(acc_s_cast)
+        acc_s_cast = trans_hifuint8_tensor_to_float(acc_s_cast)
+
+        mm2_res = torch.matmul(acc_s_cast, v_tile)
+        mm2_res = mm2_res * kv_descale
+        acc_o = acc_o * score_max_pre.unsqueeze(1) + mm2_res
+        return score_max, sumexp, acc_o
+
+    def _calculate_local_s2_block(
+        self,
+        q_fp32,
+        k_tiles_fp32,
+        initial_score_max,
+        hifp8_scale_value=16.0,
+    ):
+        """Calculate one NPU reduction block and keep its local softmax state."""
+        score_max = initial_score_max.clone()
+        sumexp = torch.ones_like(score_max, dtype=torch.float32)
+        acc_o = torch.zeros(
+            (q_fp32.shape[0], k_tiles_fp32[0][0].shape[-1]), dtype=torch.float32
+        )
+        for k_tile, kv_descale in k_tiles_fp32:
+            combined_scale = self.softmax_scale * self.q_descale_val * kv_descale
+            score_max, sumexp, acc_o = self._update_s2_tile(
+                q_fp32,
+                k_tile,
+                combined_scale,
+                kv_descale,
+                score_max,
+                sumexp,
+                acc_o,
+                hifp8_scale_value,
+            )
+
+        return score_max, sumexp, acc_o / sumexp.unsqueeze(1)
+
+    def _calculate_batch_consistency(
+        self,
+        q_fp32,
+        ori_k_fp32,
+        cmp_k_fp32,
+        sinks,
+    ):
+        """按照 NPU batch-consistency 的 S2 切分和固定 FD 规约顺序计算。"""
+        ori_s2_size = 0 if ori_k_fp32 is None else ori_k_fp32.shape[0]
+        cmp_s2_size = 0 if cmp_k_fp32 is None else cmp_k_fp32.shape[0]
+        reduce_size = self._get_batch_consistency_reduce_size(ori_s2_size, cmp_s2_size)
+
+        # ORI、CMP 分别划分规约块，每个基本块使用所属分支的反量化系数。
+        blocks = []
+        for k_tensor, kv_descale in (
+            (ori_k_fp32, self.ori_kv_descale_val),
+            (cmp_k_fp32, self.cmp_kv_descale_val),
+        ):
+            if k_tensor is None or k_tensor.shape[0] == 0:
+                continue
+            blocks.extend(
+                [(tile, kv_descale) for tile in block.split(128, dim=0)]
+                for block in k_tensor.split(reduce_size, dim=0)
+            )
+
+        merged_lse = None
+        merged_sum = None
+        merged_o = None
+        for block_id, k_tiles in enumerate(blocks):
+            initial_max = (
+                sinks.clone()
+                if block_id == 0 and sinks is not None
+                else torch.full((q_fp32.shape[0],), -torch.inf, dtype=torch.float32)
+            )
+            local_max, local_sum, local_o = self._calculate_local_s2_block(
+                q_fp32, k_tiles, initial_max
+            )
+            if merged_lse is None:
+                merged_lse = local_max
+                merged_sum = local_sum
+                merged_o = local_o
+                continue
+
+            global_max = torch.max(merged_lse, local_max)
+            prev_weight = torch.exp(merged_lse - global_max) * merged_sum
+            cur_weight = torch.exp(local_max - global_max) * local_sum
+            global_sum = prev_weight + cur_weight
+            merged_o = (
+                merged_o * prev_weight.unsqueeze(1) + local_o * cur_weight.unsqueeze(1)
+            ) / global_sum.unsqueeze(1)
+
+            # Pairwise FD stores the merged state as (LSE, 1, normalized O),
+            # then consumes that state in the next fixed left-fold merge.
+            merged_lse = global_max + torch.log(global_sum)
+            merged_sum = torch.ones_like(global_sum)
+
+        if merged_lse is None:
+            raise ValueError("batch-consistency calculation requires non-empty KV")
+        return merged_o, merged_lse + torch.log(merged_sum)
+
+    def _calculate_fd(self, q, ori, cmp, sinks, batch, head, query):
+        ori_tiles = (ori.shape[0] + 127) // 128
+        cmp_tiles = 0 if cmp is None else (cmp.shape[0] + 127) // 128
+        row = (batch * self.N2 + head, query)
+        parts = metadata_row_partitions(self.fd_ranges, row, ori_tiles + cmp_tiles)
+        states = []
+        for part, (low, high) in enumerate(parts):
+            maximum = (
+                sinks.clone()
+                if part == 0 and sinks is not None
+                else torch.full((q.shape[0],), -torch.inf, dtype=torch.float32)
+            )
+            total = torch.ones_like(maximum)
+            accum = torch.zeros((q.shape[0], q.shape[-1]), dtype=torch.float32)
+            for block in range(low, high):
+                is_ori = block < ori_tiles
+                start = (block if is_ori else block - ori_tiles) * 128
+                tile = (ori if is_ori else cmp)[start : start + 128]
+                descale = self.ori_kv_descale_val if is_ori else self.cmp_kv_descale_val
+                maximum, total, accum = self._update_s2_tile(
+                    q,
+                    tile,
+                    self.softmax_scale * self.q_descale_val * descale,
+                    descale,
+                    maximum,
+                    total,
+                    accum,
+                )
+            states.append(
+                (
+                    maximum.double(),
+                    total.double(),
+                    accum.double() / total.double().unsqueeze(-1),
+                )
+            )
+        maxima = torch.stack([state[0] for state in states])
+        global_max = maxima.max(0).values
+        weights = torch.stack([state[1] for state in states]) * torch.exp(
+            maxima - global_max
+        )
+        denominator = weights.sum(0)
+        output = (
+            torch.stack([state[2] for state in states]) * weights.unsqueeze(-1)
+        ).sum(0)
+        self.fd_trace.append(
+            {"row": list(row), "parts": [list(part) for part in parts]}
+        )
+        return (output / denominator.unsqueeze(-1)).float(), (
+            global_max + torch.log(denominator)
+        ).float()
+
+    def calculate_by_bnsd(
+        self,
+        q_bnsd,
+        ori_k_bnsd,
+        cmp_k_bnsd,
+        ori_sparse_indices_bnsd,
+        cmp_sparse_indices_bnsd,
+        cu_seqlens_q,
+        seqused_ori_kv,
+        seqused_cmp_kv,
+        cmp_residual_kv,
+        sinks,
+        ori_topk_length_bnsd,
+        cmp_topk_length_bnsd,
+        return_softmax_lse=False,
+        batch_consistency=False,
+    ):
+        attn_out = torch.zeros(q_bnsd.shape, dtype=q_bnsd.dtype)
+        softmax_lse = None
+        if return_softmax_lse:
+            softmax_lse = torch.zeros(
+                (
+                    q_bnsd.shape[0],
+                    ori_k_bnsd.shape[1],
+                    q_bnsd.shape[2],
+                    q_bnsd.shape[1] // ori_k_bnsd.shape[1],
+                ),
+                dtype=torch.float32,
+            )
+        B = q_bnsd.shape[0]
+        act_q = self.seqused_q
+        G = int(self.N1 / self.N2)
+        s2_base_size = 128
+        cmp_restored_lengths = restore_cmp_kv_lengths(
+            seqused_cmp_kv, self.cmp_ratio, cmp_residual_kv, self.cmp_mask_mode
+        )
+
+        for i_B in range(B):
+            logging.info(f"i_B = {i_B}/{B}")
+            cur_act_q = act_q[i_B]
+            cur_ori_act_kv = seqused_ori_kv[i_B]
+            cur_cmp_restored = (
+                cmp_restored_lengths[i_B] if cmp_restored_lengths is not None else 0
+            )
+
+            for i_N2 in range(self.N2):
+                logging.info(f"    i_N2 = {i_N2}/{self.N2}")
+                cur_sinks = (
+                    sinks[i_N2 * G : (i_N2 + 1) * G] if sinks is not None else None
+                )
+                for i_S1 in range(cur_act_q):
+                    milestones = [
+                        int(cur_act_q * pct / 100) for pct in range(10, 101, 10)
+                    ]
+                    milestones = list(dict.fromkeys(milestones))
+                    if i_S1 in milestones:
+                        current_pct = (i_S1 / cur_act_q) * 100
+                        logging.info(
+                            f"      进度：{current_pct:.1f}% | 步数：{i_S1:>{len(str(cur_act_q))}}/{cur_act_q}"
+                        )
+                    if self.ori_mask_mode == 0:
+                        ori_win_start = 0
+                        ori_win_end = cur_ori_act_kv
+                    elif self.ori_mask_mode == 3:
+                        ori_win_start = 0
+                        ori_win_end = min(
+                            max(cur_ori_act_kv - cur_act_q + i_S1 + 1, 0),
+                            cur_ori_act_kv,
+                        )
+                    elif self.ori_mask_mode == 4:
+                        ori_threshold = cur_ori_act_kv - cur_act_q + i_S1 + 1
+                        if self.ori_win_left == -1:
+                            ori_win_start = 0
+                        else:
+                            ori_win_start = max(
+                                ori_threshold - self.ori_win_left - 1, 0
+                            )
+                        if self.ori_win_right == -1:
+                            ori_win_end = cur_ori_act_kv
+                        else:
+                            ori_win_end = min(
+                                max(ori_threshold + self.ori_win_right, 0),
+                                cur_ori_act_kv,
+                            )
+
+                    if ori_win_start >= ori_win_end:
+                        cur_ori_k_bnsd = torch.zeros(
+                            [0, self.D], dtype=ori_k_bnsd.dtype
+                        )
+                    else:
+                        cur_ori_k_bnsd = ori_k_bnsd[
+                            i_B, i_N2, ori_win_start:ori_win_end, :
+                        ]
+
+                    if (
+                        self.template_run_mode == "CSA"
+                        and cmp_sparse_indices_bnsd is not None
+                    ):
+                        topk_id = cmp_sparse_indices_bnsd[i_B, i_N2, i_S1, :]
+                        _, cur_cmp_k = self.gather_cmp_kv(
+                            cmp_k_bnsd,
+                            topk_id,
+                            i_B,
+                            i_N2,
+                            i_S1,
+                            cur_cmp_restored,
+                            cur_act_q,
+                            cmp_topk_length_bnsd=cmp_topk_length_bnsd,
+                        )
+                    elif self.template_run_mode == "HCA":
+                        _, cur_cmp_k = self.mask_cmp_kv(
+                            cmp_k_bnsd, i_B, i_N2, i_S1, cur_cmp_restored, cur_act_q
+                        )
+                    elif (
+                        self.template_run_mode == "ORI_SPARSE"
+                        and ori_sparse_indices_bnsd is not None
+                    ):
+                        topk_id = ori_sparse_indices_bnsd[i_B, i_N2, i_S1, :]
+                        empty_flag, cur_ori_k = self.gather_ori_kv(
+                            ori_k_bnsd,
+                            topk_id,
+                            i_B,
+                            i_N2,
+                            i_S1,
+                            cur_ori_act_kv,
+                            cur_act_q,
+                            ori_topk_length_bnsd,
+                        )
+                        if empty_flag is not True:
+                            cur_ori_k_bnsd = cur_ori_k
+                        cur_cmp_k = []
+                        empty_flag = True
+                    elif (
+                        self.template_run_mode == "ORI_CMP_SPARSE"
+                        and ori_sparse_indices_bnsd is not None
+                        and cmp_sparse_indices_bnsd is not None
+                    ):
+                        ori_topk_id = ori_sparse_indices_bnsd[i_B, i_N2, i_S1, :]
+                        ori_empty_flag, cur_ori_k = self.gather_ori_kv(
+                            ori_k_bnsd,
+                            ori_topk_id,
+                            i_B,
+                            i_N2,
+                            i_S1,
+                            cur_ori_act_kv,
+                            cur_act_q,
+                            ori_topk_length_bnsd,
+                        )
+                        cmp_topk_id = cmp_sparse_indices_bnsd[i_B, i_N2, i_S1, :]
+                        cmp_empty_flag, cur_cmp_k = self.gather_cmp_kv(
+                            cmp_k_bnsd,
+                            cmp_topk_id,
+                            i_B,
+                            i_N2,
+                            i_S1,
+                            cur_cmp_restored,
+                            cur_act_q,
+                            cmp_topk_length_bnsd=cmp_topk_length_bnsd,
+                        )
+                        if ori_empty_flag is not True:
+                            cur_ori_k_bnsd = cur_ori_k
+                        if cmp_empty_flag is True:
+                            cur_cmp_k = []
+                        empty_flag = cmp_empty_flag
+                    else:
+                        empty_flag = True
+                        cur_cmp_k = []
+                    if cur_cmp_k == []:
+                        cmp_s2_loop_time = 0
+                        cur_cmp_k_fp32 = []
+                    else:
+                        cmp_s2_loop_time = math.ceil(cur_cmp_k.size(0) / s2_base_size)
+                        cur_cmp_k_fp32 = cur_cmp_k.to(dtype=torch.float32)
+
+                    if cur_ori_k_bnsd.size(0) == 0 and cur_cmp_k == []:
+                        attn_out[i_B, i_N2 * G : (i_N2 + 1) * G, i_S1, :] = torch.zeros(
+                            [G, self.D], dtype=torch.float
+                        )
+                        continue
+
+                    q_curr = q_bnsd[i_B, i_N2 * G : (i_N2 + 1) * G, i_S1, :]
+                    q_curr_fp32 = q_curr.to(dtype=torch.float32)
+                    ori_s2_loop_time = math.ceil(cur_ori_k_bnsd.size(0) / s2_base_size)
+                    total_s2_loop_time = ori_s2_loop_time + cmp_s2_loop_time
+                    cur_ori_k_bnsd_fp32 = cur_ori_k_bnsd.to(dtype=torch.float32)
+                    # hifp8FullQuant: online softmax with hif8 quantized attention scores
+                    hifp8_scale_value = 16.0
+                    if (
+                        batch_consistency
+                        or getattr(self, "fd_ranges", None) is not None
+                    ):
+                        cmp_k_for_reduce = (
+                            None if cmp_s2_loop_time == 0 else cur_cmp_k_fp32
+                        )
+                        if getattr(self, "fd_ranges", None) is not None:
+                            acc_o, final_lse = self._calculate_fd(
+                                q_curr_fp32,
+                                cur_ori_k_bnsd_fp32,
+                                cmp_k_for_reduce,
+                                cur_sinks,
+                                i_B,
+                                i_N2,
+                                i_S1,
+                            )
+                        else:
+                            acc_o, final_lse = self._calculate_batch_consistency(
+                                q_curr_fp32,
+                                cur_ori_k_bnsd_fp32,
+                                cmp_k_for_reduce,
+                                cur_sinks,
+                            )
+                        acc_o = acc_o / hifp8_scale_value
+                        attn_out[i_B, i_N2 * G : (i_N2 + 1) * G, i_S1, :] = acc_o.to(
+                            torch.bfloat16
+                        )
+                        if return_softmax_lse:
+                            softmax_lse[i_B, i_N2, i_S1, :] = final_lse
+                        continue
+
+                    score_max = (
+                        cur_sinks.clone()
+                        if cur_sinks is not None
+                        else torch.ones((G,)).to(torch.float) * (-torch.inf)
+                    )
+                    score_max = (
+                        cur_sinks.clone()
+                        if cur_sinks is not None
+                        else torch.ones((G,)).to(torch.float) * (-torch.inf)
+                    )
+                    acc_o = torch.zeros((G, self.D)).to(torch.float32)
+                    sumexp = torch.ones((G,)).to(torch.float32)
+
+                    for i_S2 in range(total_s2_loop_time):
+                        if i_S2 < ori_s2_loop_time:  # ori_kv
+                            if i_S2 < ori_s2_loop_time - 1:
+                                k_tile = cur_ori_k_bnsd_fp32[
+                                    i_S2 * s2_base_size : (i_S2 + 1) * s2_base_size, :
+                                ]
+                            else:
+                                k_tile = cur_ori_k_bnsd_fp32[i_S2 * s2_base_size :, :]
+                        else:  # cmp_kv
+                            if i_S2 < total_s2_loop_time - 1:
+                                k_tile = cur_cmp_k_fp32[
+                                    (i_S2 - ori_s2_loop_time) * s2_base_size : (
+                                        i_S2 - ori_s2_loop_time + 1
+                                    )
+                                    * s2_base_size,
+                                    :,
+                                ]
+                            else:
+                                k_tile = cur_cmp_k_fp32[
+                                    (i_S2 - ori_s2_loop_time) * s2_base_size :, :
+                                ]
+                        # scale过程与NPU一致 保证精度统一
+                        is_cmp_tile = i_S2 >= ori_s2_loop_time
+                        if is_cmp_tile:
+                            combined_scale = (
+                                self.softmax_scale
+                                * self.q_descale_val
+                                * self.cmp_kv_descale_val
+                            )
+                            cur_v_descale = self.cmp_kv_descale_val
+                        else:
+                            combined_scale = (
+                                self.softmax_scale
+                                * self.q_descale_val
+                                * self.ori_kv_descale_val
+                            )
+                            cur_v_descale = self.ori_kv_descale_val
+                        score_max, sumexp, acc_o = self._update_s2_tile(
+                            q_curr_fp32,
+                            k_tile,
+                            combined_scale,
+                            cur_v_descale,
+                            score_max,
+                            sumexp,
+                            acc_o,
+                            hifp8_scale_value,
+                        )
+
+                    acc_o = torch.div(acc_o, sumexp.unsqueeze(1))
+                    acc_o = acc_o / hifp8_scale_value
+                    attn_out[i_B, i_N2 * G : (i_N2 + 1) * G, i_S1, :] = acc_o.to(
+                        torch.bfloat16
+                    )
+                    if return_softmax_lse:
+                        softmax_lse[i_B, i_N2, i_S1, :] = score_max + torch.log(
+                            sumexp + 1e-10
+                        )
+        return attn_out, softmax_lse
+
+    def gather_ori_kv(
+        self,
+        k_tensor,
+        topk_id,
+        i_B,
+        i_N2,
+        i_S1,
+        cur_act_kv,
+        cur_act_q,
+        ori_topk_length_bnsd,
+        sparse_block_size=1,
+    ):
+        s2_sparse = list()
+        ori_threshold = cur_act_kv - cur_act_q + i_S1 + 1
+        left_bound = 0
+        right_bound = cur_act_kv
+        if self.ori_mask_mode == 3:
+            left_bound = 0
+            right_bound = min(max(ori_threshold, 0), cur_act_kv)
+        elif self.ori_mask_mode == 4:
+            if self.ori_win_left == -1:
+                left_bound = 0
+            else:
+                left_bound = max(ori_threshold - self.ori_win_left - 1, 0)
+            if self.ori_win_right == -1:
+                right_bound = cur_act_kv
+            else:
+                right_bound = min(
+                    max(ori_threshold + self.ori_win_right, 0), cur_act_kv
+                )
+        elif self.ori_mask_mode == 0:
+            pass
+        left_bound = min(left_bound, cur_act_kv)
+
+        valid_count = min(topk_id.shape[0], right_bound)
+        if ori_topk_length_bnsd is not None:
+            valid_count = min(int(ori_topk_length_bnsd[i_B, 0, i_S1, 0]), valid_count)
+
+        for i_valid in range(valid_count):
+            cur_topk_id = topk_id[i_valid]
+            if cur_topk_id == -1:
+                break
+            begin_idx = cur_topk_id * sparse_block_size
+            end_idx = min(begin_idx + sparse_block_size, cur_act_kv)
+            if begin_idx >= right_bound:
+                continue
+            if begin_idx < left_bound:
+                continue
+            if end_idx <= right_bound:
+                s2_sparse.extend(np.arange(begin_idx, end_idx))
+            else:
+                s2_sparse.extend(np.arange(begin_idx, right_bound))
+        empty_flag = len(s2_sparse) == 0
+        k_sparse = k_tensor[i_B, i_N2, s2_sparse, :] if not empty_flag else []
+        return empty_flag, k_sparse
+
+    def gather_cmp_kv(
+        self,
+        k_tensor,
+        topk_id,
+        i_B,
+        i_N2,
+        i_S1,
+        cur_act_kv,
+        cur_act_q,
+        cmp_topk_length_bnsd=None,
+        sparse_block_size=1,
+    ):
+        s2_sparse = list()
+        cur_cmp_act_kv = math.floor(cur_act_kv / self.cmp_ratio)
+        threshold = 0
+        if self.cmp_mask_mode == 3:
+            threshold = math.floor((cur_act_kv - cur_act_q + i_S1 + 1) / self.cmp_ratio)
+        elif self.cmp_mask_mode == 0:
+            threshold = cur_cmp_act_kv
+        if cmp_topk_length_bnsd is not None:
+            valid_count = min(
+                int(cmp_topk_length_bnsd[i_B, 0, i_S1, 0]),
+                topk_id.shape[0],
+                math.ceil(threshold / sparse_block_size),
+            )
+        else:
+            valid_count = min(self.K, math.ceil(threshold / sparse_block_size))
+        # Read integer indices once; preserve order and the first -1 terminator.
+        topk_values = topk_id.tolist()
+        for i_valid in range(valid_count):
+            cur_topk_id = topk_values[i_valid]
+
+            if cur_topk_id == -1:
+                break
+            begin_idx = cur_topk_id * sparse_block_size
+            end_idx = (
+                begin_idx + sparse_block_size
+                if begin_idx + sparse_block_size <= cur_cmp_act_kv
+                else cur_cmp_act_kv
+            )
+            if begin_idx >= threshold:
+                continue
+            if end_idx <= threshold:
+                s2_sparse.extend(np.arange(begin_idx, end_idx))
+            else:
+                s2_sparse.extend(np.arange(begin_idx, threshold))
+
+        empty_flag = False
+        if len(s2_sparse) == 0:
+            k_sparse = []
+            empty_flag = True
+        else:
+            k_sparse = k_tensor[i_B, i_N2, s2_sparse, :]
+        return empty_flag, k_sparse
+
+    def mask_cmp_kv(self, k_tensor, i_B, i_N2, i_S1, cur_act_kv, cur_act_q):
+        threshold = 0
+        if self.cmp_mask_mode == 3:
+            threshold = (cur_act_kv - cur_act_q + i_S1 + 1) // self.cmp_ratio
+        elif self.cmp_mask_mode == 0:
+            threshold = cur_act_kv // self.cmp_ratio
+        empty_flag = True
+        k_sparse = []
+        if threshold > 0:
+            empty_flag = False
+            k_sparse = k_tensor[i_B, i_N2, :threshold, :]
+        return empty_flag, k_sparse
+
+    def trans_shape_to_bnsd(
+        self, tensor, shape, layout, cu_seqlens_q=None, seqused_q=None
+    ):
+        if layout in ["BSND"]:
+            B = shape[0]
+            S = shape[1]
+            N = shape[2]
+            D = shape[3]
+            tensor = tensor.permute(0, 2, 1, 3)
+            return tensor, [B, N, S, D]
+        elif layout in ["TND"]:
+            N = shape[1]
+            D = shape[2]
+            B = len(cu_seqlens_q) - 1
+            max_s1 = get_max_adjacent_diff(cu_seqlens_q)
+            seqused_per_batch = (
+                seqused_q
+                if seqused_q is not None
+                else prefix_sum_to_original(cu_seqlens_q)
+            )
+            new_tensor = torch.zeros((B, N, max_s1, D), dtype=tensor.dtype)
+            for b_index in range(B):
+                t_start = int(cu_seqlens_q[b_index])
+                cur_seqused = int(seqused_per_batch[b_index])
+                if cur_seqused == 0:
+                    continue
+                for n_index in range(N):
+                    new_tensor[b_index, n_index, 0:cur_seqused, :] = tensor[
+                        t_start : t_start + cur_seqused, n_index, :
+                    ]
+            return new_tensor, [B, N, max_s1, D]
+        else:
+            return tensor, shape
+
+    def trans_topk_length_shape_to_bnsd(
+        self, tensor, shape, layout, cu_seqlens_q=None, seqused_q=None
+    ):
+        if layout in ["BSND"]:
+            B = shape[0]
+            S = shape[1]
+            tensor = tensor.reshape(B, 1, S, 1)
+            return tensor, [B, 1, S, 1]
+        elif layout in ["TND"]:
+            T = shape[0]
+            B = len(cu_seqlens_q) - 1
+            max_s1 = get_max_adjacent_diff(cu_seqlens_q)
+            seqused_per_batch = (
+                seqused_q
+                if seqused_q is not None
+                else prefix_sum_to_original(cu_seqlens_q)
+            )
+            new_tensor = torch.zeros((B, 1, max_s1, 1), dtype=tensor.dtype)
+            for b_index in range(B):
+                t_start = int(cu_seqlens_q[b_index])
+                cur_seqused = int(seqused_per_batch[b_index])
+                if cur_seqused == 0:
+                    continue
+                new_tensor[b_index, 0, 0:cur_seqused, :] = tensor[
+                    t_start : t_start + cur_seqused, :
+                ]
+            return new_tensor, [B, 1, max_s1, 1]
+
+    def trans_bnsd_to_target_layout(
+        self, tensor, layout, cu_seqlens_q=None, seqused_q=None
+    ):
+        if layout in ["BSND"]:
+            output = tensor.permute(0, 2, 1, 3).contiguous()
+            return output
+        elif layout in ["TND"]:
+            T = cu_seqlens_q[-1]
+            B = tensor.shape[0]
+            N = tensor.shape[1]
+            D = tensor.shape[3]
+            seqused_per_batch = (
+                seqused_q
+                if seqused_q is not None
+                else prefix_sum_to_original(cu_seqlens_q)
+            )
+            output = torch.zeros((T, N, D), dtype=torch.float)
+            for b_index in range(B):
+                t_start = int(cu_seqlens_q[b_index])
+                cur_seqused = int(seqused_per_batch[b_index])
+                if cur_seqused == 0:
+                    continue
+                for n_index in range(N):
+                    output[t_start : t_start + cur_seqused, n_index, :] = tensor[
+                        b_index, n_index, :cur_seqused, :
+                    ]
+            return output
+        else:
+            return tensor
+
+    def lse_trans_bnsd_to_target_layout(self, tensor, layout, act_seq=None):
+        if layout in ["BSND"]:  # B N S G
+            return tensor
+        elif layout in ["TND"]:  # B N2 S1 G  --> T1 N2 G --> N2 T1 G
+            T = act_seq[-1]
+            B = tensor.shape[0]
+            N2 = tensor.shape[1]
+            G = tensor.shape[3]
+            output = torch.zeros((N2, T, G), dtype=torch.float)
+            t_start = 0
+            act_seq_per_batch = prefix_sum_to_original(
+                act_seq
+            )  # prefix_sum_to_original 还原成每个batch的真实长度
+            for b_index in range(B):
+                cur_act_seq = act_seq_per_batch[b_index]
+                t_end = t_start + cur_act_seq
+                if cur_act_seq == 0:
+                    continue
+                for n_index in range(N2):
+                    output[n_index, t_start:t_end, :] = tensor[
+                        b_index, n_index, :cur_act_seq, :
+                    ]
+                t_start += cur_act_seq
+            return output
+        else:
+            return tensor
+
+    def forward(
+        self,
+        q,
+        ori_k_bnsd,
+        cmp_k_bnsd,
+        ori_sparse_indices,
+        cmp_sparse_indices,
+        cu_seqlens_q,
+        seqused_ori_kv,
+        seqused_cmp_kv,
+        cmp_residual_kv,
+        sinks,
+        ori_topk_length,
+        cmp_topk_length,
+        return_softmax_lse,
+        batch_consistency=False,
+    ):
+        logging.info("cpu执行中...")
+        logging.info(f"template_run_mode = {self.template_run_mode}")
+
+        q_bnsd, q_bnsd_shape = self.trans_shape_to_bnsd(
+            q, q.shape, self.layout_q, cu_seqlens_q, self.seqused_q
+        )
+
+        ori_sparse_indices_bnsd = None
+        if (
+            self.template_run_mode in ("ORI_SPARSE", "ORI_CMP_SPARSE")
+            and ori_sparse_indices is not None
+        ):
+            ori_sparse_indices_bnsd, _ = self.trans_shape_to_bnsd(
+                ori_sparse_indices,
+                ori_sparse_indices.shape,
+                self.layout_q,
+                cu_seqlens_q,
+                self.seqused_q,
+            )
+
+        cmp_sparse_indices_bnsd = None
+        if (
+            self.template_run_mode in ("CSA", "ORI_CMP_SPARSE")
+            and cmp_sparse_indices is not None
+        ):
+            cmp_sparse_indices_bnsd, cmp_sparse_indices_bnsd_shape = (
+                self.trans_shape_to_bnsd(
+                    cmp_sparse_indices,
+                    cmp_sparse_indices.shape,
+                    self.layout_q,
+                    cu_seqlens_q,
+                    self.seqused_q,
+                )
+            )
+
+        ori_topk_length_bnsd = None
+        if (
+            self.template_run_mode in ("ORI_SPARSE", "ORI_CMP_SPARSE")
+            and ori_topk_length is not None
+        ):
+            ori_topk_length_bnsd, _ = self.trans_topk_length_shape_to_bnsd(
+                ori_topk_length,
+                ori_topk_length.shape,
+                self.layout_q,
+                cu_seqlens_q,
+                self.seqused_q,
+            )
+
+        cmp_topk_length_bnsd = None
+        if (
+            self.template_run_mode in ("ORI_SPARSE", "ORI_CMP_SPARSE", "CSA")
+            and cmp_topk_length is not None
+        ):
+            cmp_topk_length_bnsd, _ = self.trans_topk_length_shape_to_bnsd(
+                cmp_topk_length,
+                cmp_topk_length.shape,
+                self.layout_q,
+                cu_seqlens_q,
+                self.seqused_q,
+            )
+
+        attn_out, softmax_lse = self.calculate_by_bnsd(
+            q_bnsd,
+            ori_k_bnsd,
+            cmp_k_bnsd,
+            ori_sparse_indices_bnsd,
+            cmp_sparse_indices_bnsd,
+            cu_seqlens_q,
+            seqused_ori_kv,
+            seqused_cmp_kv,
+            cmp_residual_kv,
+            sinks,
+            ori_topk_length_bnsd,
+            cmp_topk_length_bnsd,
+            return_softmax_lse,
+            batch_consistency=batch_consistency,
+        )
+
+        attn_out = self.trans_bnsd_to_target_layout(
+            attn_out, self.layout_q, cu_seqlens_q, self.seqused_q
+        )
+        if return_softmax_lse:
+            softmax_lse = self.lse_trans_bnsd_to_target_layout(
+                softmax_lse, self.layout_q, cu_seqlens_q
+            )
+        return attn_out, softmax_lse
+
+
+def prefix_sum_to_original(cu_seqlens_q):
+    """
+    从前缀和张量反向计算出原始的非前缀和张量（替代原列表逻辑）
+
+    Args:
+        cu_seqlens_q (torch.Tensor): 形状为 [B+1] 的一维前缀和张量（元素为数字类型，如int/float）
+
+    Returns:
+        torch.Tensor: 原始的非前缀和张量，形状为 [B]（与原列表长度一致）
+
+    Raises:
+        TypeError: 输入非tensor/非一维tensor
+        ValueError: tensor长度<2（无法计算差值）
+    """
+    # 1. 基础类型校验：必须是torch.Tensor
+    if not isinstance(cu_seqlens_q, torch.Tensor):
+        raise TypeError(f"输入必须是torch.Tensor，当前类型：{type(cu_seqlens_q)}")
+
+    # 2. 维度校验：必须是一维tensor（原列表对应一维）
+    if cu_seqlens_q.ndim != 1:
+        raise TypeError(
+            f"输入必须是一维tensor，当前维度：{cu_seqlens_q.ndim}，形状：{cu_seqlens_q.shape}"
+        )
+
+    # 3. 长度校验（前缀和tensor至少需2个元素才能反向计算）
+    if len(cu_seqlens_q) < 2:
+        raise ValueError(f"前缀和tensor长度需≥2，当前长度：{len(cu_seqlens_q)}")
+
+    # 4. 核心逻辑：计算相邻元素差值（用tensor向量化运算替代循环，效率更高）
+    # 原理：original_val[i] = cu_seqlens_q[i+1] - cu_seqlens_q[i]
+    # 切片实现：cu_seqlens_q[1:] 取第2个到最后一个元素，cu_seqlens_q[:-1] 取第1个到倒数第2个元素
+    original_tensor = cu_seqlens_q[1:] - cu_seqlens_q[:-1]
+
+    return original_tensor
+
+
+def get_max_adjacent_diff(cu_seqlens_q):
+    """
+    计算前缀和列表中相邻元素（后-前）的最大差值
+
+    Args:
+        cu_seqlens_q (list): 长度为 B+1 的前缀和列表
+
+    Returns:
+        float/int: 相邻元素的最大差值；若列表长度<2，返回 None
+    """
+    # 边界检查：列表长度不足2时无相邻元素
+    if len(cu_seqlens_q) < 2:
+        return None
+
+    # 初始化最大差值为第一个相邻对的差值
+    max_diff = cu_seqlens_q[1] - cu_seqlens_q[0]
+
+    # 遍历所有相邻元素对（从第2对开始）
+    for i in range(1, len(cu_seqlens_q) - 1):
+        current_diff = cu_seqlens_q[i + 1] - cu_seqlens_q[i]
+        # 更新最大差值
+        if current_diff > max_diff:
+            max_diff = current_diff
+
+    return max_diff
+
+
+def gen_sparse_indices_bsnd(
+    cmp_ratio,
+    B,
+    S1,
+    N2,
+    K,
+    seqused_q,
+    seqused_kv,
+    mask_mode,
+    sparse_indices_mode,
+    kv_topk_mode,
+    topk_length_override=None,
+    ori_win_left=-1,
+    ori_win_right=-1,
+):
+    if mask_mode != 0:
+        kv_topk_mode = "no"  # mask_mode != 0时，kv_topk_mode只能为no
+    if sparse_indices_mode is None:
+        sparse_indices_mode = "full"
+    if sparse_indices_mode not in ["full", "random"]:
+        raise ValueError(
+            f"sparse_indices_mode only support full/random, which is {sparse_indices_mode}"
+        )
+    if kv_topk_mode not in ["fullK", "random", "no"]:
+        raise ValueError(
+            f"kv_topk_mode only support fullK, random, which is {kv_topk_mode}"
+        )
+
+    # 有效索引在叠加了causal后有效tokens中选取，不足sparse_block_count，尾部填充-1
+    sparse_data = torch.full((B, S1, N2, K), fill_value=-1, dtype=torch.int32)
+
+    if topk_length_override is not None:
+        topk_length = topk_length_override
+    elif kv_topk_mode != "no":
+        topk_length = torch.zeros((B, S1, N2), dtype=torch.int32)
+    else:
+        topk_length = None
+
+    for i_B in range(B):
+        cur_act_q = seqused_q[i_B]
+        cur_act_kv = seqused_kv[i_B]
+        for i_N2 in range(N2):
+            for i_S1 in range(cur_act_q):
+                cur_valid_left = 0
+                if mask_mode == 3:
+                    cur_valid_s2_max = math.floor(
+                        (cur_act_kv - cur_act_q + i_S1 + 1) / cmp_ratio
+                    )
+                elif mask_mode == 0:
+                    cur_valid_s2_max = math.floor(cur_act_kv / cmp_ratio)
+                elif mask_mode == 4:
+                    ori_threshold = cur_act_kv - cur_act_q + i_S1 + 1
+                    if ori_win_left == -1:
+                        left_bound = 0
+                    else:
+                        left_bound = max(ori_threshold - ori_win_left - 1, 0)
+                    if ori_win_right == -1:
+                        right_bound = cur_act_kv
+                    else:
+                        right_bound = min(
+                            max(ori_threshold + ori_win_right, 0), cur_act_kv
+                        )
+                    left_bound = min(left_bound, cur_act_kv)
+                    cur_valid_left = max(0, left_bound)
+                    cur_valid_s2_max = max(0, right_bound - cur_valid_left)
+                else:
+                    raise ValueError(
+                        f"topklen sparse mask mode only support 0/3/4, which is {mask_mode}"
+                    )
+                cur_valid_s2_max = max(0, cur_valid_s2_max)
+
+                # gen sparse indices
+                if sparse_indices_mode == "random":
+                    if cur_valid_s2_max > 1:
+                        cur_valid_s2_max_update = torch.randint(
+                            1, cur_valid_s2_max, (1, 1)
+                        )[0]
+                    else:
+                        cur_valid_s2_max_update = 1
+                else:
+                    cur_valid_s2_max_update = cur_valid_s2_max
+
+                valid_blocks_max = max(0, cur_valid_s2_max_update)
+                block_indices = torch.randperm(valid_blocks_max).to(torch.int32)
+                valid_blocks_topk = min(valid_blocks_max, K)
+                sparse_data[i_B, i_S1, i_N2, :valid_blocks_topk] = (
+                    block_indices[0:valid_blocks_topk] + cur_valid_left
+                )
+
+                # gen topk length
+                if topk_length is not None and topk_length_override is None:
+                    if kv_topk_mode == "fullK":
+                        topk_length[i_B, i_S1, i_N2] = min(cur_valid_s2_max_update, K)
+                    elif kv_topk_mode == "random":
+                        # torch.randint范围 [1, K + 1)左开右闭
+                        topk_length[i_B, i_S1, i_N2] = min(
+                            torch.randint(1, K + 1, (1, 1))[0], cur_valid_s2_max_update
+                        )
+
+    return sparse_data, topk_length
+
+
+def gen_sparse_indices_tnd(
+    cmp_ratio,
+    B,
+    T1,
+    N2,
+    K,
+    cu_seqlens_q,
+    seqused_q,
+    seqused_ori_kv,
+    mask_mode,
+    sparse_indices_mode,
+    kv_topk_mode,
+    topk_length_override=None,
+    ori_win_left=-1,
+    ori_win_right=-1,
+):
+    if mask_mode != 0:
+        kv_topk_mode = "no"  # mask_mode != 0时，kv_topk_mode只能为no
+    if sparse_indices_mode is None:
+        sparse_indices_mode = "full"
+    if sparse_indices_mode not in ["full", "random"]:
+        raise ValueError(
+            f"sparse_indices_mode only support full/random, which is {sparse_indices_mode}"
+        )
+    if kv_topk_mode not in ["fullK", "random", "no"]:
+        raise ValueError(
+            f"kv_topk_mode only support fullK, random, which is {kv_topk_mode}"
+        )
+
+    sparse_data = torch.full((T1, N2, K), fill_value=-1, dtype=torch.int32)
+
+    if topk_length_override is not None:
+        topk_length = topk_length_override
+    elif kv_topk_mode != "no":
+        topk_length = torch.zeros((T1, N2), dtype=torch.int32)
+    else:
+        topk_length = None
+
+    for i_B in range(B):
+        cur_act_q = seqused_q[i_B]
+        s1_prefix = cu_seqlens_q[i_B]
+        cur_act_kv = seqused_ori_kv[i_B]
+        for i_N2 in range(N2):
+            for i_S1 in range(cur_act_q):
+                cur_valid_left = 0
+                if mask_mode == 3:
+                    cur_valid_s2_max = math.floor(
+                        (cur_act_kv - cur_act_q + i_S1 + 1) / cmp_ratio
+                    )
+                elif mask_mode == 0:
+                    cur_valid_s2_max = math.floor(cur_act_kv / cmp_ratio)
+                elif mask_mode == 4:
+                    ori_threshold = cur_act_kv - cur_act_q + i_S1 + 1
+                    if ori_win_left == -1:
+                        left_bound = 0
+                    else:
+                        left_bound = max(ori_threshold - ori_win_left - 1, 0)
+                    if ori_win_right == -1:
+                        right_bound = cur_act_kv
+                    else:
+                        right_bound = min(
+                            max(ori_threshold + ori_win_right, 0), cur_act_kv
+                        )
+                    left_bound = min(left_bound, cur_act_kv)
+                    cur_valid_left = max(0, left_bound)
+                    cur_valid_s2_max = max(0, right_bound - cur_valid_left)
+                else:
+                    raise ValueError(
+                        f"ori_mask_mode only support 0/3/4, which is {mask_mode}"
+                    )
+                cur_valid_s2_max = max(0, cur_valid_s2_max)
+
+                # gen sparse indices
+                if sparse_indices_mode == "random":
+                    if cur_valid_s2_max > 1:
+                        cur_valid_s2_max_update = torch.randint(
+                            1, cur_valid_s2_max, (1, 1)
+                        )[0]
+                    else:
+                        cur_valid_s2_max_update = 1
+                else:
+                    cur_valid_s2_max_update = cur_valid_s2_max
+
+                valid_blocks_max = max(0, cur_valid_s2_max_update)
+                block_indices = torch.randperm(valid_blocks_max).to(torch.int32)
+                valid_blocks_topk = min(valid_blocks_max, K)
+                sparse_data[s1_prefix + i_S1, i_N2, :valid_blocks_topk] = (
+                    block_indices[0:valid_blocks_topk] + cur_valid_left
+                )
+
+                # gen topk length
+                if topk_length is not None and topk_length_override is None:
+                    if kv_topk_mode == "fullK":
+                        topk_length[s1_prefix + i_S1, i_N2] = min(
+                            cur_valid_s2_max_update, K
+                        )
+                    elif kv_topk_mode == "random":
+                        # torch.randint范围 [1, K + 1)左开右闭
+                        topk_length[s1_prefix + i_S1, i_N2] = min(
+                            torch.randint(1, K + 1, (1, 1))[0], cur_valid_s2_max_update
+                        )
+
+    return sparse_data, topk_length
+
+
+def convert_sparse_indices_to_pa_offsets(
+    sparse_indices, block_table, block_size, layout_q, cu_seqlens_q
+):
+    """Convert logical sparse indices to physical PA token offsets for mode 2."""
+    if sparse_indices is None or block_table is None:
+        return sparse_indices
+
+    physical_offsets = sparse_indices.clone()
+    for batch_idx in range(block_table.shape[0]):
+        if layout_q == "BSND":
+            logical_slice = sparse_indices[batch_idx]
+            physical_slice = physical_offsets[batch_idx]
+        elif layout_q == "TND":
+            q_start = int(cu_seqlens_q[batch_idx])
+            q_end = int(cu_seqlens_q[batch_idx + 1])
+            logical_slice = sparse_indices[q_start:q_end]
+            physical_slice = physical_offsets[q_start:q_end]
+        else:
+            raise ValueError(f"unsupported layout_q for sparse indices: {layout_q}")
+
+        valid_mask = logical_slice >= 0
+        if not valid_mask.any().item():
+            continue
+        logical_values = logical_slice[valid_mask].to(torch.int64)
+        logical_block_ids = torch.div(logical_values, block_size, rounding_mode="floor")
+        in_block_offsets = logical_values % block_size
+        physical_block_ids = block_table[
+            batch_idx, logical_block_ids.to(torch.long)
+        ].to(torch.int64)
+        if (physical_block_ids < 0).any().item():
+            raise ValueError("sparse index maps to an invalid PA block table entry")
+        physical_slice[valid_mask] = (
+            physical_block_ids * block_size + in_block_offsets
+        ).to(physical_offsets.dtype)
+
+    return physical_offsets
+
+
+def trans_kv_bnsd_to_tnd(kv_bnsd_npu, cu_seqlens_kv, seqused_kv, B, N2, D, kv_type):
+    total_t = int(cu_seqlens_kv[-1])
+    kv_tnd = torch.zeros((total_t, N2, D), dtype=kv_type)
+    for i_B in range(B):
+        t_start = int(cu_seqlens_kv[i_B])
+        cur_s = int(seqused_kv[i_B])
+        if cur_s > 0:
+            kv_tnd[t_start : t_start + cur_s, :, :] = kv_bnsd_npu[
+                i_B, :, :cur_s, :
+            ].permute(1, 0, 2)
+    return kv_tnd
+
+
+def _gen_hif8_tensor(shape, data_range, scale_range):
+    if any(not math.isfinite(float(value)) for value in scale_range):
+        scale = torch.ones((1,), dtype=torch.float32)
+    else:
+        scale = torch.tensor(
+            [random.uniform(*scale_range)],
+            dtype=torch.float32,
+        )
+
+    x = _nonfinite_fill(shape, data_range)
+    if x is None:
+        x = (
+            torch.rand(shape, dtype=torch.float32) * (data_range[1] - data_range[0])
+            + data_range[0]
+        )
+
+    x_uint8 = trans_float_tensor_to_hifuint8(x)
+    x_fp32 = torch.tensor(trans_hifuint8_tensor_to_float(x_uint8))
+    x_uint8 = torch.tensor(x_uint8)
+
+    return x_fp32, x_uint8, scale
+
+
+def _build_block_table_and_pa(
+    k_bnsd_npu,
+    kv_type,
+    B,
+    N2,
+    max_s2,
+    max_block_num_per_batch,
+    block_num,
+    block_size,
+    seqused_kv,
+):
+    """构建 block_table 和 PA 物理布局"""
+    block_num_per_batch = [math.ceil(s / block_size) for s in seqused_kv]
+    total_needed = sum(block_num_per_batch)
+
+    if block_num < total_needed:
+        raise ValueError(
+            f"kv actual_block_num < needed_block_num, which is {block_num} < {total_needed}"
+        )
+
+    D = k_bnsd_npu.shape[-1]
+    block_id_list = np.random.permutation(block_num).astype(np.int32)
+    block_table = np.full((B, max_block_num_per_batch), fill_value=-1, dtype=np.int32)
+
+    cur_id = 0
+    for batch_idx, num_blocks in enumerate(block_num_per_batch):
+        block_table[batch_idx, :num_blocks] = block_id_list[
+            cur_id : cur_id + num_blocks
+        ]
+        cur_id += num_blocks
+
+    # 展开到 PA 物理布局
+    k_expand = torch.zeros(
+        (B, N2, max_block_num_per_batch * block_size, D), dtype=kv_type
+    )
+    k_expand[:, :, :max_s2, :] = k_bnsd_npu
+    k_in_pa_shape = torch.zeros((block_num, block_size, N2, D), dtype=kv_type)
+
+    for i_B in range(B):
+        for i_block, bid in enumerate(block_table[i_B]):
+            if bid == -1:
+                continue
+            start = i_block * block_size
+            k_in_pa_shape[bid, :, :, :] = k_expand[
+                i_B, :, start : start + block_size, :
+            ].permute(1, 0, 2)
+
+    block_table = torch.tensor(block_table).to(torch.int32)
+    return k_in_pa_shape, block_table
+
+
+def gen_ori_kv(
+    ori_kv_type,
+    B,
+    S1,
+    T1,
+    N2,
+    D,
+    block_num1,
+    block_size1,
+    ori_max_s2,
+    ori_max_block_num_per_batch,
+    seqused_ori_kv,
+    cu_seqlens_ori_kv,
+    layout_kv="PA_BBND",
+    ori_kv_datarange=[-2, 2],
+    scale_datarange=[-1, 1],
+    K1=None,
+    template_run_mode=None,
+    layout_q=None,
+    cu_seqlens_q=None,
+    seqused_q=None,
+    ori_mask_mode=0,
+    ori_sparse_indices_mode="full",
+    ori_kv_topk_mode="no",
+    ori_topk_length_override=None,
+    ori_win_left=-1,
+    ori_win_right=-1,
+):
+    ori_k_bnsd, ori_k_bnsd_npu, ori_kv_descale = _gen_hif8_tensor(
+        (B, N2, ori_max_s2, D), ori_kv_datarange, scale_datarange
+    )
+
+    if layout_kv == "TND":
+        ori_k_in_pa_shape = trans_kv_bnsd_to_tnd(
+            ori_k_bnsd_npu, cu_seqlens_ori_kv, seqused_ori_kv, B, N2, D, ori_kv_type
+        )
+        ori_block_table = None
+    elif layout_kv == "BSND":
+        ori_block_table = None
+        ori_k_in_pa_shape = ori_k_bnsd_npu.reshape(B, ori_max_s2, N2, D).contiguous()
+    else:
+        ori_k_in_pa_shape, ori_block_table = _build_block_table_and_pa(
+            ori_k_bnsd_npu,
+            ori_kv_type,
+            B,
+            N2,
+            ori_max_s2,
+            ori_max_block_num_per_batch,
+            block_num1,
+            block_size1,
+            seqused_ori_kv,
+        )
+
+    ori_sparse_indices = None
+    ori_topk_length = None
+    if template_run_mode in ("ORI_SPARSE", "ORI_CMP_SPARSE") and K1 is not None:
+        if layout_q == "BSND":
+            ori_sparse_indices, ori_topk_length = gen_sparse_indices_bsnd(
+                1,
+                B,
+                S1,
+                N2,
+                K1,
+                seqused_q,
+                seqused_ori_kv,
+                ori_mask_mode,
+                ori_sparse_indices_mode,
+                ori_kv_topk_mode,
+                ori_topk_length_override,
+                ori_win_left=ori_win_left,
+                ori_win_right=ori_win_right,
+            )
+        elif layout_q == "TND":
+            ori_sparse_indices, ori_topk_length = gen_sparse_indices_tnd(
+                1,
+                B,
+                T1,
+                N2,
+                K1,
+                cu_seqlens_q,
+                seqused_q,
+                seqused_ori_kv,
+                ori_mask_mode,
+                ori_sparse_indices_mode,
+                ori_kv_topk_mode,
+                ori_topk_length_override,
+                ori_win_left=ori_win_left,
+                ori_win_right=ori_win_right,
+            )
+
+    return (
+        ori_k_bnsd,
+        ori_k_in_pa_shape,
+        ori_block_table,
+        ori_sparse_indices,
+        ori_topk_length,
+        ori_kv_descale,
+    )
+
+
+def gen_cmp_kv(
+    layout_q,
+    cmp_kv_type,
+    B,
+    S1,
+    T1,
+    N2,
+    D,
+    K,
+    block_num2,
+    block_size2,
+    cmp_max_s2,
+    cmp_max_block_num_per_batch,
+    cu_seqlens_q,
+    seqused_q,
+    seqused_cmp_kv,
+    cu_seqlens_cmp_kv,
+    cmp_residual_kv,
+    cmp_ratio,
+    cmp_mask_mode,
+    template_run_mode,
+    layout_kv="PA_BBND",
+    cmp_kv_datarange=[-2, 2],
+    scale_datarange=[-1, 1],
+    cmp_kv_topk_mode="no",
+    cmp_sparse_indices_mode="full",
+    cmp_topk_length_override=None,
+):
+    if cmp_max_s2 == 0:
+        return None, None, None, None, None, None
+
+    cmp_k_bnsd, cmp_k_bnsd_npu, cmp_kv_descale = _gen_hif8_tensor(
+        (B, N2, cmp_max_s2, D), cmp_kv_datarange, scale_datarange
+    )
+
+    if layout_kv == "TND":
+        cmp_k_in_pa_shape = trans_kv_bnsd_to_tnd(
+            cmp_k_bnsd_npu, cu_seqlens_cmp_kv, seqused_cmp_kv, B, N2, D, cmp_kv_type
+        )
+        cmp_block_table = None
+    elif layout_kv == "BSND":
+        cmp_block_table = None
+        cmp_k_in_pa_shape = cmp_k_bnsd_npu.reshape(B, cmp_max_s2, N2, D).contiguous()
+    else:
+        cmp_k_in_pa_shape, cmp_block_table = _build_block_table_and_pa(
+            cmp_k_bnsd_npu,
+            cmp_kv_type,
+            B,
+            N2,
+            cmp_max_s2,
+            cmp_max_block_num_per_batch,
+            block_num2,
+            block_size2,
+            seqused_cmp_kv,
+        )
+
+    # generate cmp_sparse_indices
+    cmp_sparse_indices = None
+    cmp_topk_length = None
+    if template_run_mode in ("CSA", "ORI_CMP_SPARSE") and cmp_max_s2 != 0:
+        cmp_restored_len = restore_cmp_kv_lengths(
+            seqused_cmp_kv, cmp_ratio, cmp_residual_kv, cmp_mask_mode
+        )
+        if layout_q == "BSND":
+            cmp_sparse_indices, cmp_topk_length = gen_sparse_indices_bsnd(
+                cmp_ratio,
+                B,
+                S1,
+                N2,
+                K,
+                seqused_q,
+                cmp_restored_len,
+                cmp_mask_mode,
+                cmp_sparse_indices_mode,
+                cmp_kv_topk_mode,
+                cmp_topk_length_override,
+            )
+        elif layout_q == "TND":
+            cmp_sparse_indices, cmp_topk_length = gen_sparse_indices_tnd(
+                cmp_ratio,
+                B,
+                T1,
+                N2,
+                K,
+                cu_seqlens_q,
+                seqused_q,
+                cmp_restored_len,
+                cmp_mask_mode,
+                cmp_sparse_indices_mode,
+                cmp_kv_topk_mode,
+                cmp_topk_length_override,
+            )
+
+    return (
+        cmp_k_bnsd,
+        cmp_k_in_pa_shape,
+        cmp_block_table,
+        cmp_sparse_indices,
+        cmp_topk_length,
+        cmp_kv_descale,
+    )
+
+
+def save_test_case(input_data, output_dir):
+    """
+    保存单条测试用例到文件
+    """
+    # 创建输出目录
+    os.makedirs(output_dir, exist_ok=True)
+    case_name = input_data["Testcase_Name"]
+
+    # 生成文件名
+    input_filename = f"qsmla_case_{case_name}.pt"
+    input_filepath = os.path.join(output_dir, input_filename)
+
+    # 保存数据
+    torch.save(input_data, input_filepath)
+    logging.info(f"测试用例已保存到: {input_filepath}")
+
+    return input_filepath
+
+
+def gen_data(params, generate_golden=True):
+    """
+    生成input param及cpuout
+    runNpu: 生成完毕后执行npu计算
+    return test_data
+    """
+    prepare_fd_params(params)
+    seed = 42
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    random.seed(seed)
+
+    Testcase_Name = params["Testcase_Name"]
+    layout_q = params["layout_q"]
+    layout_kv = params["layout_kv"]
+    q_type = params["q_type"]
+    ori_kv_type = params["ori_kv_type"]
+    cmp_kv_type = params["cmp_kv_type"]
+    B = params["B"]
+    S1 = params["S1"]
+    T1 = params["T1"]
+    N1 = params["N1"]
+    N2 = params["N2"]
+    D = params["D"]
+    K = params["K"]
+    block_num1 = params["block_num1"]
+    block_num2 = params["block_num2"]
+    block_size1 = params["block_size1"]
+    block_size2 = params["block_size2"]
+    cu_seqlens_q = params["cu_seqlens_q"]
+    seqused_q = params["seqused_q"]
+    seqused_ori_kv = params["seqused_ori_kv"]
+    seqused_cmp_kv = params["seqused_cmp_kv"]
+    cu_seqlens_ori_kv = params["cu_seqlens_ori_kv"]
+    cu_seqlens_cmp_kv = params["cu_seqlens_cmp_kv"]
+    cmp_residual_kv = params["cmp_residual_kv"]
+    softmax_scale = params["softmax_scale"]
+    cmp_ratio = params["cmp_ratio"]
+    ori_mask_mode = params["ori_mask_mode"]
+    cmp_mask_mode = params["cmp_mask_mode"]
+    ori_win_left = params["ori_win_left"]
+    ori_win_right = params["ori_win_right"]
+    template_run_mode = params["template_run_mode"]
+    topk_value_mode = params.get("topk_value_mode", 1)
+    return_softmax_lse = params.get("return_softmax_lse", False)
+    batch_consistency = params.get("batch_consistency", False)
+    quant_mode = params.get("quant_mode", False)
+    isSink = params.get("isSink", True)
+    return_softmax_lse = params.get("return_softmax_lse", False)
+    q_datarange = params.get("q_datarange")
+    ori_kv_datarange = params.get("ori_kv_datarange")
+    cmp_kv_datarange = params.get("cmp_kv_datarange")
+    q_descale_datarange = _resolve_descale_range(q_datarange)
+    ori_kv_descale_datarange = _resolve_descale_range(ori_kv_datarange)
+    cmp_kv_descale_datarange = _resolve_descale_range(cmp_kv_datarange)
+    K1 = params.get("K1")
+    ori_kv_topk_mode = params.get("ori_kv_topk_mode", "no")
+    cmp_kv_topk_mode = params.get("cmp_kv_topk_mode", "no")
+    ori_sparse_indices_mode = params.get("ori_sparse_indices_mode", "full")
+    cmp_sparse_indices_mode = params.get("cmp_sparse_indices_mode", "full")
+    ori_topk_length_override = params.get("ori_topk_length", None)
+    cmp_topk_length_override = params.get("cmp_topk_length", None)
+
+    if seqused_q is None:
+        raise ValueError("seqused_q must not be None")
+    cu_seqlens_q = torch.tensor(cu_seqlens_q).to(torch.int32)
+    seqused_q = torch.tensor(seqused_q).to(torch.int32)
+    seqused_ori_kv = torch.tensor(seqused_ori_kv).to(torch.int32)
+    seqused_cmp_kv = (
+        torch.tensor(seqused_cmp_kv).to(torch.int32)
+        if seqused_cmp_kv is not None
+        else None
+    )
+
+    print(q_datarange, ori_kv_datarange, cmp_kv_datarange)
+    print(params)
+
+    assert quant_mode == 1, f"quant_mode only support 1, but got {quant_mode}"
+    # convert topk_length override to tensor with proper shape
+    if ori_topk_length_override is not None and not isinstance(
+        ori_topk_length_override, torch.Tensor
+    ):
+        if layout_q == "BSND":
+            ori_topk_length_override = torch.tensor(
+                ori_topk_length_override, dtype=torch.int32
+            ).reshape(B, S1, N2)
+        elif layout_q == "TND":
+            ori_topk_length_override = torch.tensor(
+                ori_topk_length_override, dtype=torch.int32
+            ).reshape(T1, N2)
+    if cmp_topk_length_override is not None and not isinstance(
+        cmp_topk_length_override, torch.Tensor
+    ):
+        if layout_q == "BSND":
+            cmp_topk_length_override = torch.tensor(
+                cmp_topk_length_override, dtype=torch.int32
+            ).reshape(B, S1, N2)
+        elif layout_q == "TND":
+            cmp_topk_length_override = torch.tensor(
+                cmp_topk_length_override, dtype=torch.int32
+            ).reshape(T1, N2)
+    # generate q (hifp8FullQuant)
+    if layout_q == "BSND":
+        q, q_npu, q_descale = _gen_hif8_tensor(
+            (B, S1, N1, D), q_datarange, q_descale_datarange
+        )
+    elif layout_q == "TND":
+        q, q_npu, q_descale = _gen_hif8_tensor(
+            (T1, N1, D), q_datarange, q_descale_datarange
+        )
+        if len(cu_seqlens_q) != (B + 1):
+            raise ValueError(
+                f"len(cu_seqlens_q) != B + 1, which is {len(cu_seqlens_q)} != {B + 1}"
+            )
+    else:
+        raise ValueError(f"layout_q is not support {layout_q}")
+
+    if len(seqused_ori_kv) != B:
+        raise ValueError(
+            f"len(seqused_ori_kv) != B, which is {len(seqused_ori_kv)} != {B}"
+        )
+    else:
+        ori_max_s2 = int(get_max_adjacent_diff(cu_seqlens_ori_kv))
+        ori_max_block_num_per_batch = math.ceil(ori_max_s2 / block_size1)
+
+        cmp_max_s2 = (
+            int(get_max_adjacent_diff(cu_seqlens_cmp_kv))
+            if cu_seqlens_cmp_kv is not None
+            else 0
+        )
+        cmp_max_block_num_per_batch = (
+            math.ceil(cmp_max_s2 / block_size2) if cmp_max_s2 > 0 else 0
+        )
+
+    # D维度固定512，已对齐128，无需padding
+
+    # generate sinks tensor (only when isSink=True)
+    if isSink:
+        sinks = _nonfinite_fill((N1,), q_datarange)
+        if sinks is None:
+            sinks = (
+                torch.rand((N1)) * (q_datarange[1] - q_datarange[0]) / 10
+                + q_datarange[0] / 10
+            )
+        else:
+            sinks = sinks / 10
+        sinks = sinks.to(torch.float)
+    else:
+        sinks = None
+
+    # generate ori_kv tensor
+    (
+        ori_k_bnsd,
+        ori_k_in_pa_shape,
+        ori_block_table,
+        ori_sparse_indices,
+        ori_topk_length,
+        ori_kv_descale,
+    ) = gen_ori_kv(
+        ori_kv_type,
+        B,
+        S1,
+        T1,
+        N2,
+        D,
+        block_num1,
+        block_size1,
+        ori_max_s2,
+        ori_max_block_num_per_batch,
+        seqused_ori_kv,
+        cu_seqlens_ori_kv,
+        layout_kv,
+        ori_kv_datarange,
+        ori_kv_descale_datarange,
+        K1=K1,
+        template_run_mode=template_run_mode,
+        layout_q=layout_q,
+        cu_seqlens_q=cu_seqlens_q,
+        seqused_q=seqused_q,
+        ori_mask_mode=ori_mask_mode,
+        ori_sparse_indices_mode=ori_sparse_indices_mode,
+        ori_kv_topk_mode=ori_kv_topk_mode,
+        ori_topk_length_override=ori_topk_length_override,
+        ori_win_left=ori_win_left,
+        ori_win_right=ori_win_right,
+    )
+
+    # generate cmp_kv and sparse_indices
+    if template_run_mode in ("HCA", "CSA", "ORI_CMP_SPARSE"):
+        (
+            cmp_k_bnsd,
+            cmp_k_in_pa_shape,
+            cmp_block_table,
+            cmp_sparse_indices,
+            cmp_topk_length,
+            cmp_kv_descale,
+        ) = gen_cmp_kv(
+            layout_q,
+            cmp_kv_type,
+            B,
+            S1,
+            T1,
+            N2,
+            D,
+            K,
+            block_num2,
+            block_size2,
+            cmp_max_s2,
+            cmp_max_block_num_per_batch,
+            cu_seqlens_q,
+            seqused_q,
+            seqused_cmp_kv,
+            cu_seqlens_cmp_kv,
+            cmp_residual_kv,
+            cmp_ratio,
+            cmp_mask_mode,
+            template_run_mode,
+            layout_kv,
+            cmp_kv_datarange,
+            cmp_kv_descale_datarange,
+            cmp_kv_topk_mode=cmp_kv_topk_mode,
+            cmp_sparse_indices_mode=cmp_sparse_indices_mode,
+            cmp_topk_length_override=cmp_topk_length_override,
+        )
+    else:
+        cmp_k_in_pa_shape = None
+        cmp_sparse_indices = None
+        cmp_block_table = None
+        cmp_k_bnsd = None
+        cmp_kv_descale = None
+        cmp_topk_length = None
+
+    # Keep logical indices for CPU Golden, and convert only the operator inputs.
+    ori_sparse_indices_for_op = ori_sparse_indices
+    cmp_sparse_indices_for_op = cmp_sparse_indices
+    if topk_value_mode == 2 and layout_kv == "PA_BBND":
+        ori_sparse_indices_for_op = convert_sparse_indices_to_pa_offsets(
+            ori_sparse_indices,
+            ori_block_table,
+            block_size1,
+            layout_q,
+            cu_seqlens_q,
+        )
+        cmp_sparse_indices_for_op = convert_sparse_indices_to_pa_offsets(
+            cmp_sparse_indices,
+            cmp_block_table,
+            block_size2,
+            layout_q,
+            cu_seqlens_q,
+        )
+
+    if cmp_k_bnsd is None:  # 如果cmp_k_bnsd为None
+        cmp_mask_mode = 0  # cmp_mask_mode 设置为0，防止拦截
+    if (
+        layout_kv == "PA_BBND"
+        and (template_run_mode in ("HCA", "CSA", "ORI_CMP_SPARSE"))
+        and cmp_k_in_pa_shape is not None
+    ):
+        # 0轴非连续：ori/cmp独立成池后，每个物理块仍补齐到block_size1+block_size2行，
+        # 保持与原融合布局相同的stride覆盖
+        total_block = block_size1 + block_size2
+        ori_fusion_base = torch.zeros(
+            (block_num1, total_block, N2, D), dtype=ori_kv_type
+        )
+        ori_fusion_base[:, :block_size1, :, :] = ori_k_in_pa_shape
+        cmp_fusion_base = torch.zeros(
+            (block_num2, total_block, N2, D), dtype=cmp_kv_type
+        )
+        cmp_fusion_base[:, block_size1:, :, :] = cmp_k_in_pa_shape
+        stride_n = total_block * N2 * D
+        stride_bs = N2 * D
+        stride_n2 = D
+        stride_d = 1
+        ori_k_in_pa_shape = torch.as_strided(
+            ori_fusion_base,
+            size=[block_num1, block_size1, N2, D],
+            stride=[stride_n, stride_bs, stride_n2, stride_d],
+        )
+        cmp_k_in_pa_shape = torch.as_strided(
+            cmp_fusion_base,
+            size=[block_num2, block_size2, N2, D],
+            stride=[stride_n, stride_bs, stride_n2, stride_d],
+            storage_offset=block_size1 * N2 * D,
+        )
+
+    golden_state = {
+        "layout_q": layout_q,
+        "layout_kv": layout_kv,
+        "q_type": q_type,
+        "ori_kv_type": ori_kv_type,
+        "cmp_kv_type": cmp_kv_type,
+        "B": B,
+        "S1": S1,
+        "T1": T1,
+        "N1": N1,
+        "N2": N2,
+        "D": D,
+        "K": K,
+        "block_num1": block_num1,
+        "block_num2": block_num2,
+        "block_size1": block_size1,
+        "block_size2": block_size2,
+        "cu_seqlens_q": cu_seqlens_q,
+        "seqused_q": seqused_q,
+        "seqused_ori_kv": seqused_ori_kv,
+        "seqused_cmp_kv": seqused_cmp_kv,
+        "cu_seqlens_ori_kv": cu_seqlens_ori_kv,
+        "cu_seqlens_cmp_kv": cu_seqlens_cmp_kv,
+        "cmp_residual_kv": cmp_residual_kv,
+        "softmax_scale": softmax_scale,
+        "cmp_ratio": cmp_ratio,
+        "ori_mask_mode": ori_mask_mode,
+        "cmp_mask_mode": cmp_mask_mode,
+        "ori_win_left": ori_win_left,
+        "ori_win_right": ori_win_right,
+        "ori_topk_length": ori_topk_length,
+        "cmp_topk_length": cmp_topk_length,
+        "template_run_mode": template_run_mode,
+        "q_descale_val": q_descale.item(),
+        "ori_kv_descale_val": ori_kv_descale.item(),
+        "cmp_kv_descale_val": (
+            cmp_kv_descale.item() if cmp_kv_descale is not None else None
+        ),
+        "q": q,
+        "ori_k_bnsd": ori_k_bnsd,
+        "cmp_k_bnsd": cmp_k_bnsd,
+        "ori_sparse_indices": ori_sparse_indices,
+        "cmp_sparse_indices": cmp_sparse_indices,
+        "sinks": sinks,
+        "return_softmax_lse": return_softmax_lse,
+        "batch_consistency": batch_consistency,
+    }
+    if generate_golden and not params.get("fd_mode"):
+        generate_cpu_golden({"golden_state": golden_state})
+        cpu_result = golden_state["cpu_output"]
+        cpu_lse = golden_state["cpu_lse"]
+    else:
+        cpu_result = None
+        cpu_lse = None
+
+    logging.info("mode:%s\n", template_run_mode)
+
+    cu_seqlens_q = torch.tensor(cu_seqlens_q).to(torch.int32)
+    seqused_ori_kv = torch.tensor(seqused_ori_kv).to(torch.int32)
+    seqused_cmp_kv = (
+        torch.tensor(seqused_cmp_kv).to(torch.int32)
+        if seqused_cmp_kv is not None
+        else None
+    )
+    cu_seqlens_ori_kv = (
+        torch.tensor(cu_seqlens_ori_kv).to(torch.int32)
+        if cu_seqlens_ori_kv is not None
+        else None
+    )
+    cu_seqlens_cmp_kv = (
+        torch.tensor(cu_seqlens_cmp_kv).to(torch.int32)
+        if cu_seqlens_cmp_kv is not None
+        else None
+    )
+    cmp_residual_kv = (
+        torch.tensor(cmp_residual_kv).to(torch.int32)
+        if cmp_residual_kv is not None
+        else None
+    )
+    max_seqlen_q = S1
+    if layout_q == "TND":
+        max_seqlen_q = cu_seqlens_q.max().item()
+    else:
+        cu_seqlens_q = None
+        max_seqlen_q = S1
+    max_seqlen_ori_kv = seqused_ori_kv.max().item()
+    max_seqlen_cmp_kv = seqused_cmp_kv.max().item() if seqused_cmp_kv is not None else 0
+
+    # 实际 KV 长度同时传给 metadata、参考计算和算子，保证窗口定位一致。
+    cu_seqlens_ori_kv = cu_seqlens_ori_kv if layout_kv == "TND" else None
+    cu_seqlens_cmp_kv = cu_seqlens_cmp_kv if layout_kv == "TND" else None
+
+    input_data = {
+        "Testcase_Name": Testcase_Name,
+        "params": params,
+        "metadata_input": {
+            "num_heads_q": N1,
+            "num_heads_kv": N2,
+            "head_dim": D,
+            "cu_seqlens_q": cu_seqlens_q,
+            "seqused_q": seqused_q,
+            "cu_seqlens_ori_kv": cu_seqlens_ori_kv,
+            "cu_seqlens_cmp_kv": cu_seqlens_cmp_kv,
+            "seqused_ori_kv": seqused_ori_kv,
+            "seqused_cmp_kv": seqused_cmp_kv,
+            "cmp_residual_kv": cmp_residual_kv,
+            "ori_topk_length": ori_topk_length,
+            "cmp_topk_length": cmp_topk_length,
+            "batch_size": B,
+            "max_seqlen_q": max_seqlen_q,
+            "max_seqlen_ori_kv": max_seqlen_ori_kv,
+            "max_seqlen_cmp_kv": max_seqlen_cmp_kv,
+            "topk": K if template_run_mode in ("CSA", "ORI_CMP_SPARSE") else 0,
+            "ori_topk": K1
+            if template_run_mode in ("ORI_SPARSE", "ORI_CMP_SPARSE")
+            else 0,
+            "cmp_ratio": cmp_ratio
+            if template_run_mode not in ("SWA", "ORI_SPARSE")
+            else 1,
+            "quant_mode": quant_mode,
+            "ori_mask_mode": ori_mask_mode,
+            "cmp_mask_mode": cmp_mask_mode,
+            "ori_win_left": ori_win_left,
+            "ori_win_right": ori_win_right,
+            "layout_q": layout_q,
+            "layout_kv": layout_kv,
+            "has_ori_kv": True,
+            "has_cmp_kv": False
+            if (template_run_mode in ("SWA", "ORI_SPARSE") or cmp_k_in_pa_shape is None)
+            else True,
+        },
+        "op_input": {
+            "q": q_npu,
+            "ori_kv": ori_k_in_pa_shape,
+            "cmp_kv": cmp_k_in_pa_shape,
+            "ori_sparse_indices": ori_sparse_indices_for_op,
+            "cmp_sparse_indices": cmp_sparse_indices_for_op,
+            "ori_topk_length": ori_topk_length,
+            "cmp_topk_length": cmp_topk_length,
+            "ori_block_table": ori_block_table,
+            "cmp_block_table": cmp_block_table,
+            "cu_seqlens_q": cu_seqlens_q,
+            "seqused_q": seqused_q,
+            "cu_seqlens_ori_kv": cu_seqlens_ori_kv,
+            "cu_seqlens_cmp_kv": cu_seqlens_cmp_kv,
+            "seqused_ori_kv": seqused_ori_kv,
+            "seqused_cmp_kv": seqused_cmp_kv,
+            "cmp_residual_kv": cmp_residual_kv,
+            "sinks": sinks,
+            "q_descale": q_descale,
+            "ori_kv_descale": ori_kv_descale,
+            "cmp_kv_descale": cmp_kv_descale,
+            "softmax_scale": softmax_scale,
+            "quant_mode": quant_mode,
+            "cmp_ratio": cmp_ratio
+            if template_run_mode not in ("SWA", "ORI_SPARSE")
+            else 1,
+            "ori_mask_mode": ori_mask_mode,
+            "cmp_mask_mode": cmp_mask_mode,
+            "ori_win_left": ori_win_left,
+            "ori_win_right": ori_win_right,
+            "layout_q": layout_q,
+            "layout_kv": layout_kv,
+            "topk_value_mode": topk_value_mode,
+            "return_softmax_lse": return_softmax_lse,
+        },
+        "golden_state": golden_state,
+        "cpu_output": cpu_result,
+        "cpu_lse": cpu_lse if return_softmax_lse else None,
+    }
+
+    if params.get("fd_mode"):
+        prepare_fd_data(input_data, generate_golden=generate_golden)
+    return input_data
+
+
+def generate_cpu_golden(input_data):
+    """Calculate QSMLA CPU Golden from input-stage state without new random data."""
+    state = input_data["golden_state"]
+    test_qsmla = GeneralizedSFAQuant(
+        state["layout_q"],
+        state["layout_kv"],
+        state["q_type"],
+        state["ori_kv_type"],
+        state["cmp_kv_type"],
+        state["B"],
+        state["S1"],
+        state["T1"],
+        state["N1"],
+        state["N2"],
+        state["D"],
+        state["K"],
+        state["block_num1"],
+        state["block_num2"],
+        state["block_size1"],
+        state["block_size2"],
+        state["cu_seqlens_q"],
+        state["seqused_q"],
+        state["seqused_ori_kv"],
+        state["seqused_cmp_kv"],
+        state["cu_seqlens_ori_kv"],
+        state["cu_seqlens_cmp_kv"],
+        state["cmp_residual_kv"],
+        state["softmax_scale"],
+        state["cmp_ratio"],
+        state["ori_mask_mode"],
+        state["cmp_mask_mode"],
+        state["ori_win_left"],
+        state["ori_win_right"],
+        state["ori_topk_length"],
+        state["cmp_topk_length"],
+        state["template_run_mode"],
+        q_descale_val=state["q_descale_val"],
+        ori_kv_descale_val=state["ori_kv_descale_val"],
+        cmp_kv_descale_val=state["cmp_kv_descale_val"],
+    )
+    if state.get("fd_metadata") is not None:
+        if state["batch_consistency"]:
+            raise ValueError("FD reference cannot use batch-consistency mode")
+        test_qsmla.fd_ranges = metadata_fa_ranges(state["fd_metadata"])
+        test_qsmla.fd_trace = []
+    cpu_output, cpu_lse = test_qsmla.forward(
+        state["q"],
+        state["ori_k_bnsd"],
+        state["cmp_k_bnsd"],
+        state["ori_sparse_indices"],
+        state["cmp_sparse_indices"],
+        state["cu_seqlens_q"],
+        state["seqused_ori_kv"],
+        state["seqused_cmp_kv"],
+        state["cmp_residual_kv"],
+        state["sinks"],
+        state["ori_topk_length"],
+        state["cmp_topk_length"],
+        state["return_softmax_lse"],
+        state["batch_consistency"],
+    )
+    state["cpu_output"] = cpu_output
+    state["cpu_lse"] = cpu_lse
+    input_data["cpu_output"] = cpu_output
+    input_data["cpu_lse"] = cpu_lse
+    if state.get("fd_metadata") is not None:
+        input_data["fd_partition_trace"] = test_qsmla.fd_trace
+    return cpu_output, cpu_lse
+
+
+def prepare_fd_data(data, generate_golden=True):
+    """核数变化时，重新生成 metadata 和数值参考结果。"""
+    params = data["params"]
+    if not prepare_fd_params(params):
+        raise ValueError("prepare_fd_data requires fd_mode=True")
+    meta_input = dict(data["metadata_input"])
+    for name in (
+        "cu_seqlens_q",
+        "cu_seqlens_ori_kv",
+        "cu_seqlens_cmp_kv",
+        "seqused_q",
+        "seqused_ori_kv",
+        "seqused_cmp_kv",
+        "cmp_residual_kv",
+        "ori_topk_length",
+        "cmp_topk_length",
+    ):
+        meta_input[name] = data["op_input"].get(name)
+    metadata = generate_metadata_golden(
+        meta_input, params["fd_aic_core_num"], params["fd_aiv_core_num"]
+    )
+    actual_fd = bool(metadata[324:900].reshape(72, 8)[:, 0].any())
+    if params.get("fd_require_split") and not actual_fd:
+        raise ValueError(
+            "FD split required but this shape/core configuration has no FD task"
+        )
+    data["golden_metadata"] = metadata
+    data["fd_actual_split"] = actual_fd
+    data["fd_core_config"] = (params["fd_aic_core_num"], params["fd_aiv_core_num"])
+    data["golden_state"]["fd_metadata"] = metadata.clone()
+    data["cpu_output"] = data["cpu_lse"] = None
+    data["golden_state"]["cpu_output"] = data["golden_state"]["cpu_lse"] = None
+    data.pop("fd_partition_trace", None)
+    if generate_golden:
+        generate_cpu_golden(data)
+    return metadata
+
+
+def get_fd_metadata_for_device(data, device):
+    """将 FD 参考计算使用的同一份 CPU 调度方案传给计算内核。"""
+    params = data["params"]
+    expected = (params["fd_aic_core_num"], params["fd_aiv_core_num"])
+    if tuple(data.get("fd_core_config", ())) != expected:
+        raise ValueError("FD core counts changed; regenerate metadata and golden first")
+    metadata = data.get("golden_metadata")
+    if metadata is None or not torch.equal(
+        metadata, data["golden_state"]["fd_metadata"]
+    ):
+        raise ValueError("FD metadata does not match the numerical reference")
+    return metadata.to(device=device)
