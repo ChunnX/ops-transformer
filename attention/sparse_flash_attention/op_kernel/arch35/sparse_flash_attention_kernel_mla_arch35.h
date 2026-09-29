@@ -350,11 +350,6 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
     crossCoreSyncBufId++;
     l1RightBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID);
     crossCoreSyncBufId++;
-    if ASCEND_IS_AIC {
-        l1RightBuffers.Get().SetCrossCore();
-        l1RightBuffers.Get().SetCrossCore();
-        l1RightBuffers.Get().SetCrossCore();
-    }
     ubBufferManager.Init(pipe, mm1ResultSize * 2 + mm2ResultSize);
     bmm2Buffers.Init(ubBufferManager, mm2ResultSize);
     bmm2Buffers.Get().SetCrossCoreID(crossCoreSyncBufId, crossCoreSyncBufId);
@@ -371,7 +366,6 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
         bmm1Buffers.Get().SetCrossCore();
         bmm1Buffers.Get().SetCrossCore();
     }
-
     uint32_t v0ResSize = constInfo.s2BaseSize * 576U * sizeof(Q_T);
     int64_t totalOffset;
     if constexpr (IS_SPLIT_G) {
@@ -483,6 +477,9 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
 {
     if ASCEND_IS_AIC {
         cubeBlock.UninitLocalBuffer();
+        bmm1Buffers.Get().WaitCrossCore();
+        bmm1Buffers.Get().WaitCrossCore();
+        bmm2Buffers.Get().WaitCrossCore();
     }
     if ASCEND_IS_AIV {
         vecBlock.UninitLocalBuffer();
