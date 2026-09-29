@@ -37,21 +37,13 @@ void QuantFlashAttnMxfp8SoftmaxFp16TilingImpl::InitTilingInfo(TilingInfo *tiling
 
 bool QuantFlashAttnMxfp8SoftmaxFp16TilingImpl::IsCapable()
 {
-    // 先从 context 侧读取 quant_mode（attr idx 0）判定：非 mode-3 场景直接拒绝，
-    // 避免其他量化方案（如 mxfp4 DN）传入的 info 结构类型不匹配时解引用 qfaInfo_。
-    auto attrs = context_->GetAttrs();
-    if (attrs == nullptr) {
-        return false;
-    }
-    const int64_t *quantModeAttr = attrs->GetAttrPointer<int64_t>(ATTR_QUANT_MODE_INDEX);
-    if (quantModeAttr == nullptr ||
-        *quantModeAttr != static_cast<int64_t>(QfaQuantMode::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP16)) {
+    // 按 q 输入 dtype 判定本场景（MxFP8 Softmax FP16 的 q 为 float8_e4m3fn，mxfp4 为 float4_e2m1），
+    // 通过 context 读取，不依赖 TilingInfo 的具体类型，避免跨场景分发时读到类型不匹配的 info 结构。
+    auto qDesc = context_->GetInputDesc(0);
+    if (qDesc == nullptr || qDesc->GetDataType() != ge::DT_FLOAT8_E4M3FN) {
         return false;
     }
     if (qfaInfo_ == nullptr) {
-        return false;
-    }
-    if (qfaInfo_->quantMode != QfaQuantMode::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP16) {
         return false;
     }
     return true;
