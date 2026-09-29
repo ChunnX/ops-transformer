@@ -40,6 +40,43 @@ class TestSageAttention2PythonAPI(unittest.TestCase):
         torch.manual_seed(42)
 
     # -------------------------------------------------------------------------
+    # TC-00: 函数签名、默认参数与 core 模块对齐
+    # -------------------------------------------------------------------------
+    def test_tc00_signatures_and_core_module(self):
+        """TC-00: Verify function signatures, default arguments, and core module exports."""
+        import inspect
+        from sageattention2 import core as s2_core
+        from sageattention2.core import replace_sdpa as core_replace_sdpa
+        from sageattention2.core import run as core_run
+        from sageattention2.core import sageattn as core_sageattn
+        from sageattention2.core import sageattn_qk_int8_pv_fp8_asc as core_sageattn_qk_int8_pv_fp8_asc
+
+        self.assertIs(s2_core.sageattn, sageattn)
+        self.assertIs(s2_core.sageattn_qk_int8_pv_fp8_asc, sageattn_qk_int8_pv_fp8_asc)
+        self.assertIs(s2_core.replace_sdpa, replace_sdpa)
+        self.assertIs(s2_core.run, run)
+
+        # Inspect sageattn signature
+        sig_sage = inspect.signature(sageattn)
+        params_sage = sig_sage.parameters
+        self.assertEqual(params_sage["tensor_layout"].default, "HND")
+        self.assertEqual(params_sage["is_causal"].default, False)
+        self.assertIsNone(params_sage["sm_scale"].default)
+        self.assertEqual(params_sage["return_lse"].default, False)
+
+        # Inspect sageattn_qk_int8_pv_fp8_asc signature
+        sig_asc = inspect.signature(sageattn_qk_int8_pv_fp8_asc)
+        params_asc = sig_asc.parameters
+        self.assertEqual(params_asc["tensor_layout"].default, "HND")
+        self.assertEqual(params_asc["is_causal"].default, False)
+        self.assertEqual(params_asc["qk_quant_gran"].default, "per_thread")
+        self.assertIsNone(params_asc["sm_scale"].default)
+        self.assertEqual(params_asc["pv_accum_dtype"].default, "fp32+fp16")
+        self.assertEqual(params_asc["smooth_k"].default, True)
+        self.assertEqual(params_asc["smooth_v"].default, False)
+        self.assertEqual(params_asc["return_lse"].default, False)
+
+    # -------------------------------------------------------------------------
     # TC-01: 基本功能与精度/数据类型 (FP16 / BF16, Causal / Non-Causal, HND / NHD)
     # -------------------------------------------------------------------------
     def test_tc01_basic_functionality_and_dtypes(self):
@@ -251,9 +288,9 @@ class TestSageAttention2PythonAPI(unittest.TestCase):
         out128 = sageattn(q128, q128, q128)
         self.assertEqual(out128.shape, (b, h, s, 128))
 
-        # D > 128 (must raise ValueError)
+        # D > 128 (must raise ValueError("Only head_dim <= 128 is supported"))
         q144 = torch.randn(b, h, s, 144, dtype=torch.float16)
-        with self.assertRaises(ValueError):
+        with self.assertRaisesRegex(ValueError, "Only head_dim <= 128 is supported"):
             sageattn(q144, q144, q144)
 
     # -------------------------------------------------------------------------

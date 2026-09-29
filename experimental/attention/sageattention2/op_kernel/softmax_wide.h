@@ -106,10 +106,10 @@ __simd_callee__ inline void ComputeProbAndPackNZSingle(
     Add(pair0, pair0, pair1, f);
 
     Cast<float8_e4m3_t, float, cast1>(packed2, p2, f);
-    Cast<float8_e4m3_t, float, cast3>(packed3, p3, f);
-
     RegTensor<uint8_t> merge0, merge1, merged;
     Or(merge0, (RegTensor<uint8_t> &)packed0, (RegTensor<uint8_t> &)packed1, b);
+    Cast<float8_e4m3_t, float, cast3>(packed3, p3, f);
+
     Add(rowSum, rowSum, pair0, f);
 
     Or(merge1, (RegTensor<uint8_t> &)packed2, (RegTensor<uint8_t> &)packed3, b);

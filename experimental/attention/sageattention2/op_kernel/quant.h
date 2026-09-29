@@ -142,7 +142,7 @@ __aicore__ inline void QuantRowsVF(__ubuf__ float *x, __ubuf__ float *mean, __ub
             QuantRowsImpl<64, false>(x, mean, scales, out, halfScales, factor, inverseScales, valid);
     }
 }
-template <class T, bool PERMUTE_V = false>
+template <class T, bool PERMUTE_V = false, bool DO_Q = true, bool DO_KV = true>
 __aicore__ void QuantBatch(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADDR mxScale, GM_ADDR q8, GM_ADDR k8,
                            GM_ADDR v8, GM_ADDR qs, GM_ADDR ks, SageParams p)
 {
@@ -200,8 +200,8 @@ __aicore__ void QuantBatch(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADD
         inverseScales[s] = r.ubBuf.template GetBufferByByte<float>(b + INVERSE_SCALE);
     }
 
-    const uint64_t nq = uint64_t(p.b) * p.hq * p.qp / 64;
-    const uint64_t nk = uint64_t(p.b) * p.hk * p.kp / 64;
+    const uint64_t nq = DO_Q ? uint64_t(p.b) * p.hq * p.qp / 64 : 0;
+    const uint64_t nk = DO_KV ? uint64_t(p.b) * p.hk * p.kp / 64 : 0;
     const bool grouped = UseDieGroups(p);
     const uint32_t cores = grouped ? p.cores : 2 * p.cores;
     const uint32_t core = GetBlockIdx() % cores, group = GetBlockIdx() / cores;
@@ -283,12 +283,12 @@ __aicore__ void QuantBatch(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADD
     WaitFlag<HardEvent::V_MTE2>(1);
     WaitFlag<HardEvent::V_MTE2>(2);
 }
-template <class T, bool PERMUTE_V = false>
+template <class T, bool PERMUTE_V = false, bool DO_Q = true, bool DO_KV = true>
 __aicore__ void Quant(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADDR mxScale, GM_ADDR q8, GM_ADDR k8,
                       GM_ADDR v8, GM_ADDR qs, GM_ADDR ks, SageParams p)
 {
     if (p.d == p.dp && p.sq % 64 == 0 && p.sk % 64 == 0 && p.qs[2] == p.dp && p.ks[2] == p.dp && p.vs[2] == p.dp) {
-        QuantBatch<T, PERMUTE_V>(q, k, v, mean, mxScale, q8, k8, v8, qs, ks, p);
+        QuantBatch<T, PERMUTE_V, DO_Q, DO_KV>(q, k, v, mean, mxScale, q8, k8, v8, qs, ks, p);
         return;
     }
     FixedResource r;
@@ -316,7 +316,8 @@ __aicore__ void Quant(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADDR mxS
     auto halfScales = r.ubBuf.GetBufferByByte<half>(4352);
     auto factors = r.ubBuf.GetBufferByByte<float>(4608);
     FixedScaleFactorsVF((__ubuf__ float *)factors.GetPhyAddr(), p.smScale);
-    uint64_t nq = uint64_t(p.b) * p.hq * p.qp, nk = uint64_t(p.b) * p.hk * p.kp;
+    uint64_t nq = DO_Q ? uint64_t(p.b) * p.hq * p.qp : 0;
+    uint64_t nk = DO_KV ? uint64_t(p.b) * p.hk * p.kp : 0;
     for (uint64_t row = GetBlockIdx(); row < nq + nk; row += (2 * p.cores)) {
         bool isq = row < nq;
         uint64_t idx = isq ? row : row - nq;

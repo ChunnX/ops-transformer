@@ -27,9 +27,15 @@ __aicore__ inline __attribute__((always_inline)) WideQueryInfo DecodeWideQuery(c
     if (UseDieGroups(p))
         task = DieTask(task, uint64_t(p.b) * p.hq * tiles, p.cores);
     info.ordinal = ordinal;
-    info.qstart = (task % tiles) * M;
+    uint32_t tile = task % tiles;
     info.h = (task / tiles) % p.hq;
     info.b = task / tiles / p.hq;
+    if constexpr (CAUSAL) {
+        if (info.h % 2 != 0) {
+            tile = tiles - 1 - tile;
+        }
+    }
+    info.qstart = tile * M;
     info.kh = CalcKh(info.h, p.hq, p.hk);
     info.qb = (uint64_t(info.b) * p.hq + info.h) * p.qp;
     info.kb = (uint64_t(info.b) * p.hk + info.kh) * p.kp;
@@ -100,39 +106,36 @@ __aicore__ inline __attribute__((always_inline)) void ProcessWideCubeStep(
         const auto &current = pending[fragment & 3];
         GemmQkSplit<WIDE_B_L1>(r, q, (fragment & 3) * HALF * N * 2,
                                current.part == 0, PHASE);
-    }
-        if (fragment >= 3) {
-            uint64_t previous = fragment - 3;
-            const auto &old = pending[previous & 3];
-            uint32_t group = previous / 2;
-            WaitBothAiv<PIPE_MTE1>(P_READY);
-            uint32_t parity = previous & 3;
-            uint32_t pvOffset = WideVectorLayout::PV_UB + (group & 1) * WideVectorLayout::PV_SLOT_BYTES;
-            if constexpr (PHASE == 0) {
-                // Even fragment: accumulate onto the L0C state left by the odd
-                // fragment and emit the completed 512-token group to the AIVs.
-                if (group >= 2) {
-                    WaitBothAiv<PIPE_FIX>(PV_RELEASE);
-                }
-                Gemm<float8_e4m3_t, Catlass::layout::RowMajor, true, WIDE_B_L1, true, false, true>(
-                    r, v8, nullptr, N, DP, pvOffset, parity, true,
-                    vsmx + (old.kb + old.part * N) / 32 * DP, &mxCache, p.kp, old.part * N, (1 - PHASE));
-                Notify(PV_READY);
-            } else {
-                // Odd fragment: initialize L0C and keep the partial in place.
-                Gemm<float8_e4m3_t, Catlass::layout::RowMajor, true, WIDE_B_L1, false, true, true>(
-                    r, v8, nullptr, N, DP, pvOffset, parity, true,
-                    vsmx + (old.kb + old.part * N) / 32 * DP, &mxCache, p.kp, old.part * N, (1 - PHASE));
-            }
-        }
-    if (hasQk) {
-        const auto &current = pending[fragment & 3];
         if (current.part + 2 < count * 2)
             PrefetchWideK<WIDE_B_L1>(r, k8 + (current.kb + (current.part + 2) * N) * DP, PHASE);
     }
     if (fragment >= 2 && prefetchPv) {
         const auto &next = pending[(fragment - 2) & 3];
         PrefetchWideV<WIDE_B_L1>(r, v8 + (next.kb + next.part * N) * DP, PHASE);
+    }
+    if (fragment >= 3) {
+        uint64_t previous = fragment - 3;
+        const auto &old = pending[previous & 3];
+        uint32_t group = previous / 2;
+        WaitBothAiv<PIPE_MTE1>(P_READY);
+        uint32_t parity = previous & 3;
+        uint32_t pvOffset = WideVectorLayout::PV_UB + (group & 1) * WideVectorLayout::PV_SLOT_BYTES;
+        if constexpr (PHASE == 0) {
+            // Even fragment: accumulate onto the L0C state left by the odd
+            // fragment and emit the completed 512-token group to the AIVs.
+            if (group >= 2) {
+                WaitBothAiv<PIPE_FIX>(PV_RELEASE);
+            }
+            Gemm<float8_e4m3_t, Catlass::layout::RowMajor, true, WIDE_B_L1, true, false, true>(
+                r, v8, nullptr, N, DP, pvOffset, parity, true,
+                vsmx + (old.kb + old.part * N) / 32 * DP, &mxCache, p.kp, old.part * N, (1 - PHASE));
+            Notify(PV_READY);
+        } else {
+            // Odd fragment: initialize L0C and keep the partial in place.
+            Gemm<float8_e4m3_t, Catlass::layout::RowMajor, true, WIDE_B_L1, false, true, true>(
+                r, v8, nullptr, N, DP, pvOffset, parity, true,
+                vsmx + (old.kb + old.part * N) / 32 * DP, &mxCache, p.kp, old.part * N, (1 - PHASE));
+        }
     }
 }
 template <class T, bool CAUSAL = false>

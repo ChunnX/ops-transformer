@@ -115,7 +115,7 @@ std::tuple<at::Tensor, c10::optional<at::Tensor>> sageattention2(
                 d > 0 && d < MAX_DIM && hk > 0 && hk < MAX_DIM && sk > 0 && sk < MAX_DIM,
                 "invalid tensor dimension");
 
-    TORCH_CHECK(d <= MAX_HEAD_DIM, "head_dim must be in [1,128]");
+    TORCH_CHECK(d <= MAX_HEAD_DIM, "Only head_dim <= 128 is supported");
     TORCH_CHECK(kb == b && kd == d, "incompatible q/k/v shapes");
     TORCH_CHECK(hq % hk == 0, "Hq must be divisible by Hkv");
     TORCH_CHECK(b * hk < (int64_t{1} << 32), "batch times KV heads exceeds uint32 range");

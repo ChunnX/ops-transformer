@@ -210,7 +210,9 @@ def _validate(q, k, v, layout, causal, gran, accum, kwargs):
         b, s, h, d = qs
         kb, ks_len, kh, kd = ks
 
-    if not (0 < d <= 128):
+    if d > 128:
+        raise ValueError("Only head_dim <= 128 is supported")
+    if d <= 0:
         raise ValueError("head_dim must be in [1,128]")
     if ks != vs or kb != b or kd != d:
         raise ValueError("incompatible q/k/v shapes")
