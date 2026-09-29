@@ -197,7 +197,6 @@ private:
     // in queue
     TQue<QuePosition::VECIN, 1> inputQue1;
     TQue<QuePosition::VECIN, 1> inputQue2;
-    TQue<QuePosition::VECIN, 1> inputQue3;
     // out queue
     TQue<QuePosition::VECOUT, 1> outputQue1;
     TQue<QuePosition::VECOUT, 1> outputQue2;
@@ -250,9 +249,6 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::InitBuffers(TPipe *pipe)
 {
     pipe->InitBuffer(inputQue1, 1, BUFFER_SIZE_BYTE_32K);
     pipe->InitBuffer(inputQue2, 1, BUFFER_SIZE_BYTE_32K);
-    // The current Norm-on tiling uses kBaseNum=1, so the alternating
-    // multi-K fallback queue only needs the reduced reservation on A5.
-    pipe->InitBuffer(inputQue3, 1, hasLayerNorm_ ? BUFFER_SIZE_BYTE_16K : BUFFER_SIZE_BYTE_32K);
     pipe->InitBuffer(tmpBuff1, BUFFER_SIZE_BYTE_32K);
     // Norm-on gathers one full FP32 compression group; the regular pooling
     // path only needs one 32 KiB group and must stay within the A5 Vector UB.
