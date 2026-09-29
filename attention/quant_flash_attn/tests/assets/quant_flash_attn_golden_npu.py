@@ -888,6 +888,7 @@ def cpu_mxfp8_golden(
     kv_pos_range = torch.arange(Skv, dtype=torch.int32).view(1, 1, 1, -1)
     qlen_acl_t = torch.tensor(actual_seq_q, dtype=torch.int32).view(b, 1, 1, 1)
     kv_hi_t = (kv_len_acl + 63) // 64 * 64  # kv 64 对齐上界
+    kv_hi = int(kv_hi_t.max().item())  # 全局 64 对齐上界, 用于末块 ghost 列
     t_loc_t = torch.arange(Sq, dtype=torch.int32).view(1, 1, Sq, 1)
     if SPARSE_MODE == 3:
         # causal 才有对角线右界跳过
@@ -957,6 +958,16 @@ def cpu_mxfp8_golden(
             S_ij = _apply_tile_window(S_ij, Sq_start, Sk_start)
 
             mask_j = mask_global[:, :, Sq_start:Sq_end, Sk_start:Sk_end]
+            # kernel 64 对齐语义: 末块 [Skv, kv_hi) 为 ghost 列, 填 minValue
+            # (P=exp(0)=1 计入分母, 与 NPU 行为一致);
+            # kv 窗口未超出张量的 batch 在 kernel 中整块跳过该区间, 等价 -inf
+            block_end = Sk_start + S_ij.shape[3]
+            if block_end == Skv and block_end < kv_hi:
+                pad_cols = kv_hi - block_end
+                ghost_val = torch.where(kv_hi_t > Skv, min_val_t, neg_inf_t)
+                ghost = ghost_val.expand(b, S_ij.shape[1], S_ij.shape[2], pad_cols)
+                S_ij = torch.cat([S_ij, ghost], dim=3)
+                mask_j = F.pad(mask_j, (0, pad_cols))
             m_block_j, s_block_j, P_ij_drop = _online_softmax_update(
                 S_ij, mask_j, mi, si, oi, ln_p_scale, minValue
             )
@@ -973,6 +984,16 @@ def cpu_mxfp8_golden(
                 )
                 S_ij1 = _apply_tile_window(S_ij1, Sq_start, Sk1_start)
                 mask_j1 = mask_global[:, :, Sq_start:Sq_end, Sk1_start:Sk1_end]
+                # 第二个 K block 为末块时同样补 ghost 列
+                block_end1 = Sk1_start + S_ij1.shape[3]
+                if block_end1 == Skv and block_end1 < kv_hi:
+                    pad_cols = kv_hi - block_end1
+                    ghost_val = torch.where(kv_hi_t > Skv, min_val_t, neg_inf_t)
+                    ghost = ghost_val.expand(
+                        b, S_ij1.shape[1], S_ij1.shape[2], pad_cols
+                    )
+                    S_ij1 = torch.cat([S_ij1, ghost], dim=3)
+                    mask_j1 = F.pad(mask_j1, (0, pad_cols))
                 m_block_j1, s_block_j1, P_ij1_drop = _online_softmax_update(
                     S_ij1, mask_j1, m_block_j, s_block_j, oi, ln_p_scale, minValue
                 )
@@ -988,12 +1009,9 @@ def cpu_mxfp8_golden(
                 P_ij = torch.cat(
                     (P_ij_drop * torch.exp(m_block_j - m_block_j1), P_ij1_drop), dim=3
                 )
-                actual_s2size = Vj.shape[2]
-                padded_s2size = 0
-                if actual_s2size % 64 != 0:
-                    padded_s2size = math.ceil(actual_s2size / 64) * 64 - actual_s2size
-                    P_ij = F.pad(P_ij, (0, padded_s2size))
-                    Vj = F.pad(Vj, (0, 0, 0, padded_s2size))
+                # P 已含 ghost 列(64 对齐宽), 仅需将 V 补零到同宽
+                if P_ij.shape[3] > Vj.shape[2]:
+                    Vj = F.pad(Vj, (0, 0, 0, P_ij.shape[3] - Vj.shape[2]))
 
                 deq_scale_p = (
                     torch.ones(
@@ -1024,12 +1042,9 @@ def cpu_mxfp8_golden(
                     :, :, Sv_start // QUANT_GROUP_SIZE : Sv_end // QUANT_GROUP_SIZE, :
                 ]
 
-                actual_s2size = Vj.shape[2]
-                padded_s2size = 0
-                if actual_s2size % 64 != 0:
-                    padded_s2size = math.ceil(actual_s2size / 64) * 64 - actual_s2size
-                    P_ij_drop = F.pad(P_ij_drop, (0, padded_s2size))
-                    Vj = F.pad(Vj, (0, 0, 0, padded_s2size))
+                # P 已含 ghost 列(64 对齐宽), 仅需将 V 补零到同宽
+                if P_ij_drop.shape[3] > Vj.shape[2]:
+                    Vj = F.pad(Vj, (0, 0, 0, P_ij_drop.shape[3] - Vj.shape[2]))
 
                 deq_scale_p = (
                     torch.ones(
@@ -1055,8 +1070,9 @@ def cpu_mxfp8_golden(
 
     o_max = torch.cat(m_BLOCKS, dim=2)
     all_masked = o_max <= minValue.item()
-    # kernel 语义: 全跳过行 (s=0 且 m 未更新) 输出 0, 其余 0/0=NaN 保留
-    out = torch.where((out_sum == 0) & all_masked, torch.zeros_like(out), out)
+    # 置 0 只由 true_all_masked 决定（需同时满足 all_masked 与 true_padding）。
+    # 不可用 (out_sum == 0) & all_masked：该条件等价于 out_sum == 0，会把
+    # "C1 全 -inf 但并非 padding" 的行也刷成 0，与 NPU 的 NaN 输出不符。
     true_padding = mask_global.all(dim=-1).unsqueeze(-1).to(o_max.device)
     true_all_masked = all_masked & true_padding
     lse = torch.where(
