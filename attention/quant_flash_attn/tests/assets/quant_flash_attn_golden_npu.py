@@ -23,7 +23,6 @@ import logging
 import math
 from typing import Optional
 
-import en_dtypes
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -1106,9 +1105,12 @@ def _pack_e8m0_int8(scale_fp32, name="scale"):
 
     e8m0 pack 是逐元素操作, 先 pack 整个主备份再按行/按组 gather/切片,
     与先 gather 再 pack 逐字节等价; 切片按需 .npu() 送入 npu_quant_matmul。
+    scale 为 2 的幂 (e8m0 语义), 直接提取 fp32 biased exponent 即得 e8m0 字节,
+    与 numpy astype("float8_e8m0") 等价, 且不依赖 numpy>=2 的 fp8 支持。
     """
     safe = sanitize_e8m0_scale(scale_fp32, name)
-    return torch.from_numpy(safe.numpy().astype("float8_e8m0").view(np.int8))
+    bits = safe.float().view(torch.int32)
+    return ((bits >> 23) & 0xFF).to(torch.uint8).view(torch.int8)
 
 
 def _cpu_mxfp8_golden_sectioned(
@@ -1166,6 +1168,13 @@ def _cpu_mxfp8_golden_sectioned(
     sched_group = n // head_num  # GetGroupSize: prefill=1, decode=G
     gqa_group = n // N_kv  # GQA: 每 kv head 对应的 query head 数
     minValue = -3.402823466e38
+    # kernel vreg_min = NEGATIVE_MIN_VALUE_FP32_LN2 (0xFF7FFFFE ≈ -FLT_MAX):
+    # causal 掩码列 (kv_len 以内) 的 score 填充值; 经 dScale(=softmax scale) 后
+    # P = p_scale·exp(-frac) 非零, 并以真实 V 行参与 C2 (与 kernel maskLine
+    # Select vreg_min + FusedExpSub 语义一致)。kv_len 以外的列 kernel 不计入
+    # C2 (等价 P=0), 保持 -inf 填充。
+    neg_min_ln2 = np.array([0xFF7FFFFE], dtype=np.uint32).view(np.float32).item()
+    mask_fill = neg_min_ln2 if is_decode else neg_min_ln2 * softmax_scale
 
     # e8m0 scale 主备份 (int8 字节, CPU)
     deq_q_flat = _pack_e8m0_int8(dequant_scale_q, "dequant_scale_q")  # (B,N_q,S,Dg)
@@ -1219,7 +1228,11 @@ def _cpu_mxfp8_golden_sectioned(
                 o_g = torch.zeros((r1 - r0, dv), dtype=torch.float32)
                 s_g = torch.zeros((r1 - r0, 1), dtype=torch.float32)
                 m_g = torch.full((r1 - r0, 1), minValue, dtype=torch.float32)
+                # 有效列 (未被 mask) 的最大 score: kernel lse 的 minCheckValue EQ 语义
+                # (softmaxMax == grid(vreg_min·dScale) → lse = +inf)
+                m_valid_g = torch.full((r1 - r0,), float("-inf"), dtype=torch.float32)
 
+                diag_segments = []
                 for blk_a, blk_b in segs:
                     # 每个分段独立 online softmax (对应 kernel 的一个 core chunk)
                     o = torch.zeros_like(o_g)
@@ -1227,7 +1240,7 @@ def _cpu_mxfp8_golden_sectioned(
                     mx = torch.full_like(m_g, minValue)
                     for j in range(blk_a * chunks_per_s2, blk_b * chunks_per_s2):
                         lo = j * K_BLOCK_SIZE
-                        hi = min(lo + K_BLOCK_SIZE, k_bn.shape[0])
+                        hi = min(lo + K_BLOCK_SIZE, k_bn.shape[0], math.ceil(kv_len / 64) * 64)
                         if lo >= hi:
                             break  # 末尾 s2 块按 s2Base 取整后可能超出 kv_len
                         kj = k_bn[lo:hi, :]
@@ -1241,13 +1254,30 @@ def _cpu_mxfp8_golden_sectioned(
                             softmax_scale,
                         )[0, 0]  # (R, S2)
                         cols = torch.arange(lo, hi)
-                        mask_j = (cols >= kv_len)[None, :].expand(r1 - r0, hi - lo)
+                        mask_kv = (cols >= kv_len)[None, :].expand(r1 - r0, hi - lo)
+                        mask_causal = None
                         if causal_bound is not None:
-                            mask_j = mask_j | (cols[None, :] > causal_bound)
+                            mask_causal = (
+                                (cols[None, :] > causal_bound)
+                                & (cols[None, :] < kv_len)
+                            ).expand(r1 - r0, hi - lo)
                         # 本块 own 网格: m 对齐到 ln2 整数倍 (ceil), 模拟 NPU 量化
-                        sij_masked = sij.masked_fill(mask_j, float("-inf"))
+                        # kv_len 以外列 -inf (P=0, 不产生 C2 贡献);
+                        # causal 掩码列填 kernel vreg_min 语义 (P 非零, 乘真实 V)
+                        sij_masked = sij.masked_fill(mask_kv, mask_fill if is_decode else float("-inf"))
+                        if mask_causal is not None:
+                            sij_masked = sij_masked.masked_fill(mask_causal, mask_fill)
+                            s_valid = sij_masked.masked_fill(
+                                mask_causal, float("-inf")
+                            )
+                        else:
+                            s_valid = sij_masked
+                        m_valid_blk, _ = torch.max(s_valid, dim=-1)
+                        m_valid_g = torch.maximum(m_valid_g, m_valid_blk)
                         m_blk_j, _ = torch.max(sij_masked, dim=-1, keepdims=True)
                         m_own = torch.ceil(m_blk_j * INV_LN2) * LN2 - ln_p_scale
+                        if is_decode:
+                            m_own = torch.clamp(m_own, min=neg_min_ln2)
                         m_own_safe = torch.where(
                             m_blk_j == float("-inf"),
                             torch.zeros_like(m_own),
@@ -1296,6 +1326,7 @@ def _cpu_mxfp8_golden_sectioned(
                         st = st * upd_old + s_blk * upd_cur
                         mx = m_run_new
                     # 分段合并 (FD 语义: max 重标定累加)
+                    diag_segments.append((o.clone(), st.clone(), mx.clone()))
                     mg_new = torch.maximum(m_g, mx)
                     sc_g = torch.exp(m_g - mg_new)
                     sc_g = torch.where(
@@ -1309,14 +1340,27 @@ def _cpu_mxfp8_golden_sectioned(
                     s_g = s_g * sc_g + st * sc_s
                     m_g = mg_new
 
+                if not hasattr(_cpu_mxfp8_golden_sectioned, 'diag'):
+                    _cpu_mxfp8_golden_sectioned.diag = []
+                _cpu_mxfp8_golden_sectioned.diag.append(dict(b=bi,h=h,mi=mi,segs=segs,rows=s1_idx,heads=head_idx,stats=diag_segments))
                 all_masked = (m_g <= minValue).squeeze(-1)
-                denom = s_g + EPSILON
-                res_rows = torch.where(
-                    all_masked[:, None], torch.zeros_like(o_g), o_g / denom
-                )
+                # kernel lse minCheckValue EQ 语义: 有效列 max ≤ vreg_min 填充值
+                # (即 softmaxMax 停留在 grid(vreg_min·dScale)) → lse = +inf
+                no_valid_score = m_valid_g <= mask_fill
+                # Experimental native FA normalization followed by FD weights.
+                if is_decode:
+                    max_all = torch.stack([item[2] for item in diag_segments]).amax(0)
+                    weights_raw = [item[1] * torch.exp(item[2] - max_all) for item in diag_segments]
+                    total = torch.stack(weights_raw).sum(0)
+                    if len(diag_segments) == 1:
+                        res_rows = diag_segments[0][0] / diag_segments[0][1]
+                    else:
+                        res_rows = torch.stack([(item[0] / item[1]) * (weight / total) for item, weight in zip(diag_segments, weights_raw)]).sum(0)
+                else:
+                    res_rows = torch.where(all_masked[:, None], torch.zeros_like(o_g), o_g / (s_g + EPSILON))
                 out[bi, head_idx, s1_idx, :] = res_rows
                 lse_rows = torch.where(
-                    all_masked,
+                    all_masked | no_valid_score,
                     torch.full_like(all_masked, float("inf"), dtype=torch.float32),
                     (m_g + torch.log(s_g + EPSILON)).squeeze(-1),
                 )
@@ -1438,19 +1482,13 @@ def cpu_mxfp8_golden(
 
     # sanitize: e8m0 没有 0 值语义，0.0 转 e8m0 后变 NaN(0xFF)
     # PA 逆转换时 padding 位置为 0.0，需替换为 E8M0_MIN_POSITIVE 与 NPU 行为对齐
-    dequant_scale_q = sanitize_e8m0_scale(dequant_scale_q, "dequant_scale_q")
-    dequant_scale_k = sanitize_e8m0_scale(dequant_scale_k, "dequant_scale_k")
-    dequant_scale_q_np = dequant_scale_q.numpy().astype("float8_e8m0").view(np.int8)
-    dequant_scale_k_np = dequant_scale_k.numpy().astype("float8_e8m0").view(np.int8)
-    dequant_scale_q = torch.from_numpy(dequant_scale_q_np).npu()
-    dequant_scale_k = torch.from_numpy(dequant_scale_k_np).npu()
+    dequant_scale_q = _pack_e8m0_int8(dequant_scale_q, "dequant_scale_q").npu()
+    dequant_scale_k = _pack_e8m0_int8(dequant_scale_k, "dequant_scale_k").npu()
     groups_num = dequant_scale_v.shape[2]
     if groups_num % 2 != 0:  # s2没有64对齐
         dequant_scale_v = F.pad(dequant_scale_v, (0, 0, 0, 1))
         dequant_scale_v[:, :, -1, :] = 1.0
-    dequant_scale_v = sanitize_e8m0_scale(dequant_scale_v, "dequant_scale_v")
-    dequant_scale_v_np = dequant_scale_v.numpy().astype("float8_e8m0").view(np.int8)
-    dequant_scale_v = torch.from_numpy(dequant_scale_v_np)
+    dequant_scale_v = _pack_e8m0_int8(dequant_scale_v, "dequant_scale_v")
 
     logger.info(
         "[CPU Golden] TILES_Q=%d, TILES_KV=%d, Sq=%d, Skv=%d",
@@ -1777,3 +1815,13 @@ def prepare_npu_inputs(
         sparse_mode=SPARSE_MODE,
         out_dtype=out_dtype,
     )
+
+_diag_c1_original = _compute_c1_npu
+_diag_c1_stats = dict(calls=0, elements=0, neginf=0, nan=0)
+def _compute_c1_npu(*args, **kwargs):
+    result = _diag_c1_original(*args, **kwargs)
+    _diag_c1_stats['calls'] += 1
+    _diag_c1_stats['elements'] += result.numel()
+    _diag_c1_stats['neginf'] += int(torch.isneginf(result).sum())
+    _diag_c1_stats['nan'] += int(torch.isnan(result).sum())
+    return result
