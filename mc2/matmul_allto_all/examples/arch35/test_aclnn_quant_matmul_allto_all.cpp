@@ -22,6 +22,7 @@
 #include <hccl/hccl.h>
 #include "aclnn/opdev/fp16_t.h"
 #include "aclnnop/aclnn_quant_matmul_allto_all.h"
+#include "aclnnop/aclnn_quant_matmul_allto_all_v2.h"
 
 constexpr int g_ndev = 2;
 
@@ -203,6 +204,119 @@ int launchOneThreadQuantMatmulAlltoAll(Args &args)
     HcclCommDestroy(args.hcclComm);
     aclrtDestroyContext(args.context);
     aclrtResetDevice(args.rankId);
+    return 0;
+}
+
+// HiF4 全量化用例(A6/ascend960dt, v2 接口):
+// x1: (m, k) uint8 载体(hifloat4 2:1 打包), x1Scale: (m, k/64, 1) int32 载体(hif4_scale 4B);
+// x2 转置: (n, k), x2Scale: (n, k/64, 1); y: (rank*m, n/rank) 仅支持 FP16/BF16;
+// HiF4 不支持 bias: biasOptional(第 3 参) 恒传 nullptr; A6 上 commMode 必传(建议 "ai_cpu")。
+int launchOneThreadHiF4QuantMatmulAlltoAll(Args &args)
+{
+    int ret;
+    ret = aclrtSetCurrentContext(args.context);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSetCurrentContext failed. ERROR: %d\n", ret); return ret);
+    char hcom_name[128] = {0};
+    ret = HcclGetCommName(args.hcclComm, hcom_name);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetCommName failed. ret = %d \n", ret); return -1);
+
+    std::vector<int64_t> x1Shape = {32, 64};
+    std::vector<int64_t> x2Shape = {128, 64};                 // 转置 x2: (n, k)
+    std::vector<int64_t> x1ScaleShape = {32, 1, 1};           // [m, ceil(k/64), 1]
+    std::vector<int64_t> x2ScaleShape = {128, 1, 1};
+    std::vector<int64_t> outShape = {32 * g_ndev, 128 / g_ndev};
+    void *x1DeviceAddr = nullptr;
+    void *x2DeviceAddr = nullptr;
+    void *x1ScaleDeviceAddr = nullptr;
+    void *x2ScaleDeviceAddr = nullptr;
+    void *outDeviceAddr = nullptr;
+    aclTensor *x1 = nullptr;
+    aclTensor *x2 = nullptr;
+    aclTensor *x1Scale = nullptr;
+    aclTensor *x2Scale = nullptr;
+    aclTensor *out = nullptr;
+
+    int64_t x1QuantMode = 8;   // HIFLOAT4_QUANT
+    int64_t x2QuantMode = 8;
+    int64_t commQuantMode = 0;
+    int64_t commQuantDtype = -1;
+    int64_t groupSize = (1LL << 32) | (1LL << 16) | 64LL;     // (1, 1, 64)
+
+    int64_t a2aAxes[2] = {-1, -2};
+    aclIntArray *alltoAllAxesOptional = aclCreateIntArray(a2aAxes, static_cast<uint64_t>(2));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor;
+    void *workspaceAddr = nullptr;
+
+    long long x1ShapeSize = GetShapeSize(x1Shape);
+    long long x2ShapeSize = GetShapeSize(x2Shape);
+    long long x1ScaleShapeSize = GetShapeSize(x1ScaleShape);
+    long long x2ScaleShapeSize = GetShapeSize(x2ScaleShape);
+    long long outShapeSize = GetShapeSize(outShape);
+    std::vector<int8_t> x1HostData(x1ShapeSize, 1);           // hifloat4 2:1 打包载体
+    std::vector<int8_t> x2HostData(x2ShapeSize, 1);
+    std::vector<int32_t> x1ScaleHostData(x1ScaleShapeSize, 0x3F3F3F3F); // hif4_scale 4B 载体
+    std::vector<int32_t> x2ScaleHostData(x2ScaleShapeSize, 0x3F3F3F3F);
+    std::vector<op::fp16_t> outHostData(outShapeSize, 0);
+    ret = CreateAclTensor(x1HostData, x1Shape, &x1DeviceAddr, aclDataType::ACL_HIFLOAT4, &x1);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = CreateAclTensor(x2HostData, x2Shape, &x2DeviceAddr, aclDataType::ACL_HIFLOAT4, &x2);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = CreateAclTensor(x1ScaleHostData, x1ScaleShape, &x1ScaleDeviceAddr, aclDataType::ACL_HIFLOAT4_SCALE, &x1Scale);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = CreateAclTensor(x2ScaleHostData, x2ScaleShape, &x2ScaleDeviceAddr, aclDataType::ACL_HIFLOAT4_SCALE, &x2Scale);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = CreateAclTensor(outHostData, outShape, &outDeviceAddr, aclDataType::ACL_FLOAT16, &out);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    // HiF4 不支持 bias, 恒传 nullptr; v2 接口显式传入 commMode
+    ret = aclnnQuantMatmulAlltoAllV2GetWorkspaceSize(
+        x1, x2, nullptr, x1Scale, x2Scale, nullptr, nullptr, nullptr, alltoAllAxesOptional, hcom_name, "ai_cpu",
+        x1QuantMode, x2QuantMode, commQuantMode, commQuantDtype, groupSize, false, true, out, &workspaceSize,
+        &executor);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnQuantMatmulAlltoAllV2GetWorkspaceSize failed. ERROR: %d\n", ret);
+              return ret);
+    if (workspaceSize > 0) {
+        ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
+    }
+    ret = aclnnQuantMatmulAlltoAllV2(workspaceAddr, workspaceSize, executor, args.stream);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnQuantMatmulAlltoAllV2 failed. ERROR: %d\n", ret); return ret);
+    ret = aclrtSynchronizeStreamWithTimeout(args.stream, 10000);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
+    LOG_PRINT("device%d aclnnQuantMatmulAlltoAllV2(hif4) execute success \n", args.rankId);
+    if (x1 != nullptr) {
+        aclDestroyTensor(x1);
+    }
+    if (x2 != nullptr) {
+        aclDestroyTensor(x2);
+    }
+    if (x1Scale != nullptr) {
+        aclDestroyTensor(x1Scale);
+    }
+    if (x2Scale != nullptr) {
+        aclDestroyTensor(x2Scale);
+    }
+    if (out != nullptr) {
+        aclDestroyTensor(out);
+    }
+    if (x1DeviceAddr != nullptr) {
+        aclrtFree(x1DeviceAddr);
+    }
+    if (x2DeviceAddr != nullptr) {
+        aclrtFree(x2DeviceAddr);
+    }
+    if (x1ScaleDeviceAddr != nullptr) {
+        aclrtFree(x1ScaleDeviceAddr);
+    }
+    if (x2ScaleDeviceAddr != nullptr) {
+        aclrtFree(x2ScaleDeviceAddr);
+    }
+    if (outDeviceAddr != nullptr) {
+        aclrtFree(outDeviceAddr);
+    }
+    if (workspaceSize > 0) {
+        aclrtFree(workspaceAddr);
+    }
     return 0;
 }
 

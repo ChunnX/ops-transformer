@@ -33,6 +33,14 @@ if (BUILD_OPEN_PROJECT)  # custom
             OPTIONS -mllvm -cce-aicore-dcci-before-kernel-end=false
                     -DENABLE_CV_COMM_VIA_SSBUF=true
         )
+    elseif("${CONDITION_UNIT}" STREQUAL "ascend960dt")
+        # ascend960dt: HiF4 全量化路径 + MX 量化路径(Apace Hcomm)
+        add_ops_compile_options(
+            OP_NAME MatmulAlltoAll
+            OPTIONS -mllvm
+                    -cce-aicore-dcci-before-kernel-end=false
+                    -DENABLE_CV_COMM_VIA_SSBUF=true
+        )
     elseif("${CONDITION_UNIT}" STREQUAL "ascend910_93")
  	         add_ops_compile_options(
  	             OP_NAME MatmulAlltoAll

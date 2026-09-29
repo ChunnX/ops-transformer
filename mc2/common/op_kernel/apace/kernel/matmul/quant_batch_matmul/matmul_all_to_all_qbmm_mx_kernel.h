@@ -34,6 +34,43 @@ namespace Kernel {
 using namespace AscendC;
 using AscendC::Te::Get;
 
+// Scale 类型判定: MX 的 scale 为 fp8_e8m0(1字节/组32元素), HiF4 的 scale 为 hif4_scale
+// (4字节: E6M2+E1_8+E1_16, 每 64 元素组 1 个, scale shape [M, K/64, 1])。
+// hif4_scale 由 devkit(blaze) 侧定义, 按设计约定以未限定名引用。
+template <typename ScaleType>
+__aicore__ inline constexpr bool IsHiF4Scale()
+{
+    return AscendC::IsSameType<ScaleType, hif4_scale>::value;
+}
+
+// Scale K 方向单元数(按 scale 元素计):
+// MX: 每 64 元素 2 个 E8M0 单元(shape [M, K/64, 2] 的展平单元数);
+// HiF4: 每 64 元素 1 个 hif4_scale 单元(shape [M, K/64, 1])。
+template <typename ScaleType>
+__aicore__ inline int64_t MxScaleKLen(int64_t kValue)
+{
+    if constexpr (IsHiF4Scale<ScaleType>()) {
+        return Blaze::Gemm::CeilDiv(kValue, static_cast<int64_t>(MXFP_DIVISOR_SIZE));
+    } else {
+        return Blaze::Gemm::CeilDiv(kValue, static_cast<int64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
+    }
+}
+
+// 每 64 个数据元素对应的 scale 字节数: MX 为 2 字节(2×E8M0), HiF4 为 4 字节(1×hif4_scale)
+template <typename ScaleType>
+__aicore__ inline int64_t MxScaleBytesPerDivisor()
+{
+    return MxScaleKLen<ScaleType>(static_cast<int64_t>(MXFP_DIVISOR_SIZE)) * static_cast<int64_t>(sizeof(ScaleType));
+}
+
+// Scale framing 的 C0 值(按 scale 数据类型导出): MX 为 2(每 2 个 E8M0 单元构成一个 framing 单元),
+// HiF4 为 1(单个 4 字节 hif4_scale 即为完整的 framing 单元)
+template <typename ScaleType>
+__aicore__ inline constexpr int32_t MxScaleC0()
+{
+    return IsHiF4Scale<ScaleType>() ? 1 : 2;
+}
+
 /**
  * The kernel computes [M, K] x [K, fullN] one destination rank at a time.
  * Each rank's [M, fullN/rankDim] result is written directly to a rank-major
@@ -48,6 +85,9 @@ public:
     using BType = typename BlockMmad::BType;
     using CType = typename BlockMmad::CType;
     using BiasType = typename BlockMmad::BiasType;
+    // Scale 元素类型从 Blaze BlockMmad 导出: MX 为 fp8_e8m0_t, HiF4 为 hif4_scale(blaze 侧已定义, 直接 using)
+    using ScaleAType = typename BlockMmad::ScaleAType;
+    using ScaleBType = typename BlockMmad::ScaleBType;
     using LayoutA = typename BlockMmad::LayoutA;
     using LayoutB = typename BlockMmad::LayoutB;
     using LayoutC = typename BlockMmad::LayoutC;
@@ -58,7 +98,8 @@ public:
     static constexpr bool transB = BlockMmad::TRANS_B;
     static constexpr int64_t C0_SIZE = IsFp4<AType>() ? C0_SIZE_B4 : C0_SIZE_B8;
     static constexpr int64_t CACHE_LINE_ALIGN_MASK = IsFp4<AType>() ? 0xff : 0x7f;
-    static constexpr int32_t SCALE_C0 = 2;
+    static constexpr int32_t SCALE_C0_A = MxScaleC0<ScaleAType>(); // MX 2 / HiF4 1
+    static constexpr int32_t SCALE_C0_B = MxScaleC0<ScaleBType>();
 
     using BlockShape = Te::Shape<int64_t, int64_t, int64_t, int64_t>;
     using BlockCoord = Te::Coord<int64_t, int64_t, int64_t, int64_t>;
@@ -66,11 +107,11 @@ public:
     using MakeLayoutB = Te::FrameLayoutFormat<LayoutB, Std::Int<C0_SIZE>>;
     using MakeLayoutC = Te::FrameLayoutFormat<LayoutC, Std::Int<C0_SIZE>>;
     using MakeLayoutScaleA =
-        Std::conditional_t<transA, Te::FrameLayoutFormat<Te::ScaleADNLayoutPtn, Std::Int<SCALE_C0>>,
-                           Te::FrameLayoutFormat<Te::ScaleANDLayoutPtn, Std::Int<SCALE_C0>>>;
+        Std::conditional_t<transA, Te::FrameLayoutFormat<Te::ScaleADNLayoutPtn, Std::Int<SCALE_C0_A>>,
+                           Te::FrameLayoutFormat<Te::ScaleANDLayoutPtn, Std::Int<SCALE_C0_A>>>;
     using MakeLayoutScaleB =
-        Std::conditional_t<transB, Te::FrameLayoutFormat<Te::ScaleBDNLayoutPtn, Std::Int<SCALE_C0>>,
-                           Te::FrameLayoutFormat<Te::ScaleBNDLayoutPtn, Std::Int<SCALE_C0>>>;
+        Std::conditional_t<transB, Te::FrameLayoutFormat<Te::ScaleBDNLayoutPtn, Std::Int<SCALE_C0_B>>,
+                           Te::FrameLayoutFormat<Te::ScaleBNDLayoutPtn, Std::Int<SCALE_C0_B>>>;
 
     struct QBMMTiling {
         uint32_t baseM;
@@ -158,26 +199,38 @@ private:
     }
 
     template <typename TensorB, typename TensorScaleB>
-    __aicore__ inline void SetL2Cache(const ProblemShape &shape, uint64_t curBaseM, uint64_t scaleKL1, TensorB &gmB,
-                                      TensorScaleB &gmScaleB);
+    __aicore__ inline void SetL2Cache(const ProblemShape &shape, uint64_t curBaseM, uint64_t curBaseN,
+                                      uint64_t scaleKL1, TensorB &gmB, TensorScaleB &gmScaleB);
 };
 
 template <class ProblemShape, class BlockMmad, class BlockScheduler>
 template <typename TensorB, typename TensorScaleB>
 __aicore__ inline void MatmulAllToAllQbmmMxKernel<ProblemShape, BlockMmad, BlockScheduler>::SetL2Cache(
-    const ProblemShape &shape, uint64_t curBaseM, uint64_t scaleKL1, TensorB &gmB, TensorScaleB &gmScaleB)
+    const ProblemShape &shape, uint64_t curBaseM, uint64_t curBaseN, uint64_t scaleKL1, TensorB &gmB,
+    TensorScaleB &gmScaleB)
 {
     const bool fullMTile = curBaseM >= Te::Get<MNK_M>(shape);
     if (!fullMTile) {
         return;
     }
 
-    const int64_t scaleKRowBytes =
-        Blaze::Gemm::CeilDiv(Te::Get<MNK_K>(shape), static_cast<int64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
-    const int64_t scaleKL1RowBytes = Blaze::Gemm::CeilDiv(scaleKL1, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
-    const bool scaleAlign =
-        (scaleKRowBytes & CACHE_LINE_ALIGN_MASK) == 0 && (scaleKL1RowBytes & CACHE_LINE_ALIGN_MASK) == 0;
-    gmScaleB.SetL2CacheHint(scaleAlign ? Te::CacheMode::CACHE_MODE_DISABLE : Te::CacheMode::CACHE_MODE_NORMAL);
+    // 每 64 元素的 scale 字节数: MX 为 2(E8M0), HiF4 为 4(hif4_scale)
+    const int64_t scaleBytesPerDivisor = MxScaleBytesPerDivisor<ScaleBType>();
+    if constexpr (transB) {
+        const int64_t scaleKRowBytes =
+            MxScaleKLen<ScaleBType>(Te::Get<MNK_K>(shape)) * static_cast<int64_t>(sizeof(ScaleBType));
+        const int64_t scaleKL1RowBytes =
+            MxScaleKLen<ScaleBType>(static_cast<int64_t>(scaleKL1)) * static_cast<int64_t>(sizeof(ScaleBType));
+        const bool scaleAlign =
+            (scaleKRowBytes & CACHE_LINE_ALIGN_MASK) == 0 && (scaleKL1RowBytes & CACHE_LINE_ALIGN_MASK) == 0;
+        gmScaleB.SetL2CacheHint(scaleAlign ? Te::CacheMode::CACHE_MODE_DISABLE : Te::CacheMode::CACHE_MODE_NORMAL);
+    } else {
+        const int64_t scaleNStrideBytes = Te::Get<MNK_N>(shape) * scaleBytesPerDivisor;
+        const int64_t scaleBaseNStrideBytes = static_cast<int64_t>(curBaseN) * scaleBytesPerDivisor;
+        const bool scaleAlign =
+            (scaleNStrideBytes & CACHE_LINE_ALIGN_MASK) == 0 && (scaleBaseNStrideBytes & CACHE_LINE_ALIGN_MASK) == 0;
+        gmScaleB.SetL2CacheHint(scaleAlign ? Te::CacheMode::CACHE_MODE_DISABLE : Te::CacheMode::CACHE_MODE_NORMAL);
+    }
 
     if constexpr (weightNz) {
         gmB.SetL2CacheHint(Te::CacheMode::CACHE_MODE_DISABLE);
@@ -197,35 +250,29 @@ __aicore__ inline void MatmulAllToAllQbmmMxKernel<ProblemShape, BlockMmad, Block
     const int64_t fullN = rankN * static_cast<int64_t>(params.rankDim);
 
     auto layoutA = MakeLayoutA{}(Te::Get<MNK_M>(params.problemShape), Te::Get<MNK_K>(params.problemShape));
-    auto layoutScaleA = MakeLayoutScaleA{}(
-        Te::Get<MNK_M>(params.problemShape),
-        Blaze::Gemm::CeilDiv(Te::Get<MNK_K>(params.problemShape), static_cast<int64_t>(MXFP_DIVISOR_SIZE)) *
-            MXFP_MULTI_BASE_SIZE);
+    auto layoutScaleA = MakeLayoutScaleA{}(Te::Get<MNK_M>(params.problemShape),
+                                           MxScaleKLen<ScaleAType>(Te::Get<MNK_K>(params.problemShape)));
     auto layoutB = MakeLayoutB{}(Te::Get<MNK_K>(params.problemShape), fullN);
-    auto layoutScaleB = MakeLayoutScaleB{}(
-        Blaze::Gemm::CeilDiv(Te::Get<MNK_K>(params.problemShape), static_cast<int64_t>(MXFP_DIVISOR_SIZE)) *
-            MXFP_MULTI_BASE_SIZE,
-        fullN);
+    auto layoutScaleB = MakeLayoutScaleB{}(MxScaleKLen<ScaleBType>(Te::Get<MNK_K>(params.problemShape)), fullN);
     auto layoutC = MakeLayoutC{}(Te::Get<MNK_M>(params.problemShape), rankN);
     auto layoutBias = Te::MakeFrameLayout<Te::NDExtLayoutPtn>(1L, fullN);
 
     auto gmA = Te::MakeTensor(
         Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ AType *>(params.mmParams.aGmAddr)), layoutA);
     auto gmScaleA = Te::MakeTensor(
-        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ::fp8_e8m0_t *>(params.mmParams.scaleAGmAddr)),
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ScaleAType *>(params.mmParams.scaleAGmAddr)),
         layoutScaleA);
     auto gmB = Te::MakeTensor(
         Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ BType *>(params.mmParams.bGmAddr)), layoutB);
     auto gmScaleB = Te::MakeTensor(
-        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ::fp8_e8m0_t *>(params.mmParams.scaleBGmAddr)),
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ScaleBType *>(params.mmParams.scaleBGmAddr)),
         layoutScaleB);
     auto gmBias = Te::MakeTensor(
         Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ BiasType *>(params.mmParams.biasGmAddr)), layoutBias);
 
-    const int64_t scaleKLen =
-        Blaze::Gemm::CeilDiv(Te::Get<MNK_K>(params.problemShape), static_cast<int64_t>(MXFP_DIVISOR_SIZE)) *
-        MXFP_MULTI_BASE_SIZE;
-    SetL2Cache(params.problemShape, params.qbmmParams.baseM, params.l1Params.scaleKL1, gmB, gmScaleB);
+    const int64_t scaleKLen = MxScaleKLen<ScaleAType>(Te::Get<MNK_K>(params.problemShape));
+    SetL2Cache(params.problemShape, params.qbmmParams.baseM, params.qbmmParams.baseN, params.l1Params.scaleKL1, gmB,
+               gmScaleB);
     for (uint32_t rankIdx = 0; rankIdx < params.rankDim; ++rankIdx) {
         BlockScheduler scheduler(params.problemShape, params.schedulerParams);
         if ((scheduler.GetEndBlockIdx() + 1) * params.schedulerParams.mTailTile * params.schedulerParams.nTailTile <=

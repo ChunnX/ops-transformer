@@ -438,6 +438,128 @@ def gen_golden_data_matmul_all_to_all(m, k, n, rank_num, quant_type, is_fp16, is
         )
 
 
+
+# ============================ HiF4 全量化(A6/ascend960dt) ============================
+# HiF4: 64 个 S1P2(4-bit) 元素 + 32bits 三级共享元数据(1 个 hif4_scale, 4 字节)。
+#   Level-1 E6M2 (Byte0): exponent(6bit, bias=48) + mantissa(2bit)
+#   Level-2 E1_8 (Byte1): 8 个 1-bit 微指数, 每 bit 覆盖 8 个元素
+#   Level-3 E1_16 (Byte2~3): 16 个 1-bit 微指数, 每 bit 覆盖 4 个元素(Byte2 低 8 位在前)
+#   V[i] = E6M2 * 2^(E1_8[i//8] + E1_16[i//4]) * S1P2[i]
+# 约束: K 为偶数(无 32/64/128 对齐约束); 不支持 bias; y 仅 FP16/BF16。
+
+
+def gen_hif4_meta(m, k_groups, rng=None):
+    """生成 hif4_scale 三级元数据: Byte0=E6M2, Byte1=E1_8, Byte2=E1_16_lo, Byte3=E1_16_hi"""
+    rng = rng if rng is not None else np.random
+    meta = np.zeros((m, k_groups, 4), dtype=np.uint8)
+    meta[:, :, 0] = rng.integers(0, 0x80, (m, k_groups))   # E6M2
+    meta[:, :, 1] = rng.integers(0, 0x100, (m, k_groups))  # E1_8
+    meta[:, :, 2] = rng.integers(0, 0x100, (m, k_groups))  # E1_16 低 8 位
+    meta[:, :, 3] = rng.integers(0, 0x100, (m, k_groups))  # E1_16 高 8 位
+    return meta
+
+
+def hif4_dequant(data_packed, meta):
+    """HiF4 反量化: V = E6M2 * 2^(E1_8[i//8] + E1_16[i//4]) * S1P2[i], 输出 FP32 [rows, K]"""
+    m, k_half = data_packed.shape
+    k = k_half * 2
+    data = np.asarray(data_packed, dtype=np.uint8)
+    lo = (data & 0x0F).astype(np.int32)
+    hi = ((data >> 4) & 0x0F).astype(np.int32)
+    s1p2_code = np.empty((m, k), dtype=np.int32)
+    s1p2_code[:, 0::2] = lo
+    s1p2_code[:, 1::2] = hi
+    # S1P2 解码: sign(1) + int(1) + frac(2)
+    sign = np.where((s1p2_code >> 3) & 0x1 == 1, -1.0, 1.0)
+    int_part = (s1p2_code >> 2) & 0x1
+    frac_part = s1p2_code & 0x3
+    s1p2_val = sign * (int_part.astype(np.float32) + frac_part.astype(np.float32) * 0.25)
+    # E6M2 解码: exponent(6bit, bias=48) + mantissa(2bit)
+    e6m2_code = meta[:, :, 0].astype(np.int32)
+    e6m2_exp = ((e6m2_code >> 2) & 0x3F).astype(np.int32) - 48
+    e6m2_val = np.power(2.0, e6m2_exp.astype(np.float32)) * (
+        1.0 + (e6m2_code & 0x3).astype(np.float32) * 0.25
+    )
+    # E1_8 / E1_16 微指数(每 8/4 元素共享 1 bit)
+    e1_8_bits = np.unpackbits(meta[:, :, 1].astype(np.uint8), axis=-1)
+    e1_16 = (meta[:, :, 3].astype(np.uint16) << 8) | meta[:, :, 2].astype(np.uint16)
+    e1_16_bits = np.zeros((m, k_groups_of(meta), 16), dtype=np.float32)
+    for bit in range(16):
+        e1_16_bits[:, :, bit] = ((e1_16 >> (15 - bit)) & 0x1).astype(np.float32)
+    idx = np.arange(k, dtype=np.int64) % 64
+    exp_scale = e1_8_bits[:, :, idx // 8].astype(np.float32) * 1.0 + e1_16_bits[:, :, idx // 4]
+    group_idx = np.arange(k, dtype=np.int64) // 64
+    scale = e6m2_val[:, group_idx] * np.power(2.0, exp_scale[:, group_idx, np.arange(k)])
+    return (scale * s1p2_val).astype(np.float32)
+
+
+def k_groups_of(meta):
+    """meta 形状 [rows, k_groups, 4] -> k_groups"""
+    return meta.shape[1]
+
+
+def gen_hif4_data(m, k, n, rank_num, is_fp16):
+    """生成 HiF4 全量化 ST 数据与 golden(与 gen_golden_data_matmul_all_to_all 同源的 alltoall 流程)。"""
+    assert k % 2 == 0, "K must be even (4-bit 2:1 packing)"
+    assert n % rank_num == 0, "n must be divisible by rank_num"
+    np_ = n // rank_num
+    ck = math.ceil(k / 64)
+    print(f"  M={m}, K={k}, N={n}, Np={np_} (per rank), quantType=hif4(hifloat4 x hifloat4), isFp16={is_fp16}")
+
+    a_packed_list = []
+    a_meta_list = []
+    b_packed_list = []
+    b_meta_list = []
+    for rank_id in range(rank_num):
+        rng = np.random.default_rng(BASE_SEED + rank_id)
+        # A: (m, k) 沿 K 打包 -> (m, k//2); B: 转置 (n, k) 沿 K 打包 -> (n, k//2)
+        a_packed_list.append(rng.integers(0, 0x100, (m, k // 2), dtype=np.uint8))
+        b_packed_list.append(rng.integers(0, 0x100, (n, k // 2), dtype=np.uint8))
+        a_meta_list.append(gen_hif4_meta(m, ck, rng))
+        b_meta_list.append(gen_hif4_meta(n, ck, rng))
+
+    # Step 1: 反量化 -> FP32 matmul(HiF4 不支持 bias) -> C_i [M, N]
+    cpu_outputs_full = []
+    for rank_id in range(rank_num):
+        a_deq = hif4_dequant(a_packed_list[rank_id], a_meta_list[rank_id])
+        b_deq = hif4_dequant(b_packed_list[rank_id], b_meta_list[rank_id])
+        c_full = torch.matmul(torch.from_numpy(a_deq), torch.from_numpy(b_deq).T)
+        cpu_outputs_full.append(c_full)
+        print(f"  Rank {rank_id}: C shape {c_full.shape}, range [{c_full.min():.2f}, {c_full.max():.2f}]")
+
+    # Step 2/3: alltoall 模拟(与 MX 流程一致)
+    allto_all_inputs = [c.view(m, rank_num, np_).permute(1, 0, 2) for c in cpu_outputs_full]
+    out_dtype = torch.float16 if is_fp16 else torch.bfloat16
+    allto_all_outputs_out = []
+    for dst_rank in range(rank_num):
+        out = torch.cat([allto_all_inputs[src][dst_rank] for src in range(rank_num)], dim=0).to(out_dtype)
+        if not torch.isfinite(out).all():
+            print(f"Error: golden output contains non-finite values (inf/nan) after cast to {out_dtype}")
+            sys.exit(1)
+        allto_all_outputs_out.append(out)
+        print(f"  Rank {dst_rank}: AllToAll output shape {out.shape}")
+
+    # HiF4 产物布局(不复用 write_artifacts 的 MX scaleB 转置逻辑):
+    #   input_a.bin:      (m, k//2) uint8, hifloat4 沿 K 2:1 打包(ND)
+    #   input_b.bin:      (n, k//2) uint8, 转置 B 沿 K 2:1 打包(DN)
+    #   input_scaleA.bin: (m, ceil(k/64), 4) uint8, hif4_scale 三级元数据 [M, K/64, 1]
+    #   input_scaleB.bin: (n, ceil(k/64), 4) uint8, [N, K/64, 1]
+    #   cpu_output.bin:   golden (rank_num*m, n/rank_num) fp16/bf16
+    base_dir = os.getcwd()
+    for rank_id in range(rank_num):
+        input_dir = os.path.join(base_dir, "input", str(rank_id))
+        output_dir = os.path.join(base_dir, "output", str(rank_id))
+        os.makedirs(input_dir, exist_ok=True)
+        os.makedirs(output_dir, exist_ok=True)
+        a_packed_list[rank_id].tofile(os.path.join(input_dir, "input_a.bin"))
+        b_packed_list[rank_id].tofile(os.path.join(input_dir, "input_b.bin"))
+        a_meta_list[rank_id].tofile(os.path.join(input_dir, "input_scaleA.bin"))
+        b_meta_list[rank_id].tofile(os.path.join(input_dir, "input_scaleB.bin"))
+        allto_all_outputs_out[rank_id].view(torch.uint16).numpy().tofile(
+            os.path.join(output_dir, "cpu_output.bin")
+        )
+
+
 if __name__ == "__main__":
     if len(sys.argv) < 5 or len(sys.argv) > 8:
         print(
@@ -448,7 +570,7 @@ if __name__ == "__main__":
         print("  n: matrix B column dimension N (split to N/rank_num per rank)")
         print("  rank_num: number of ranks")
         print(
-            "  quant_type: 0=E2M1E2M1(FP4), 1=E4M3E4M3, 2=E5M2E5M2, 3=E4M3E5M2, 4=E5M2E4M3 (default: 1)"
+            "  quant_type: 0=E2M1E2M1(FP4), 1=E4M3E4M3, 2=E5M2E5M2, 3=E4M3E5M2, 4=E5M2E4M3, 5=HIF4HIF4 (default: 1)"
         )
         print("  is_fp16: output float16 instead of bfloat16 (default: 0)")
         print("  is_bias: add bias input [N] (default: 0)")
@@ -479,9 +601,21 @@ if __name__ == "__main__":
         print(f"Error: n={n} not divisible by rank_num={rank_num}")
         sys.exit(1)
 
-    if quant_type not in QUANT_TYPES:
-        print(f"Error: quant_type={quant_type} must be 0-4")
+    if quant_type != 5 and quant_type not in QUANT_TYPES:
+        print(f"Error: quant_type={quant_type} must be 0-5")
         sys.exit(1)
+
+    if quant_type == 5:
+        # HiF4: K 仅需偶数(无 32/64/128 对齐约束), 不支持 bias
+        if k % 2 != 0:
+            print(f"Error: K={k} must be even in hif4 quant mode (4-bit 2:1 packing)")
+            sys.exit(1)
+        if is_bias:
+            print("Error: bias is not supported in hif4 quant mode")
+            sys.exit(1)
+        gen_hif4_data(m, k, n, rank_num, is_fp16)
+        print("Test data generation completed!")
+        sys.exit(0)
 
     print("Generating QuantMatmulAllToAll test data:")
     print(f"  M={m}, K_full={k}, N={n}, rankSize={rank_num}")
