@@ -1166,6 +1166,13 @@ def _cpu_mxfp8_golden_sectioned(
     sched_group = n // head_num  # GetGroupSize: prefill=1, decode=G
     gqa_group = n // N_kv  # GQA: 每 kv head 对应的 query head 数
     minValue = -3.402823466e38
+    # kernel vreg_min = NEGATIVE_MIN_VALUE_FP32_LN2 (0xFF7FFFFE ≈ -FLT_MAX):
+    # causal 掩码列 (kv_len 以内) 的 score 填充值; 经 dScale(=softmax scale) 后
+    # P = p_scale·exp(-frac) 非零, 并以真实 V 行参与 C2 (与 kernel maskLine
+    # Select vreg_min + FusedExpSub 语义一致)。kv_len 以外的列 kernel 不计入
+    # C2 (等价 P=0), 保持 -inf 填充。
+    neg_min_ln2 = np.array([0xFF7FFFFE], dtype=np.uint32).view(np.float32).item()
+    mask_fill = neg_min_ln2 * softmax_scale
 
     # e8m0 scale 主备份 (int8 字节, CPU)
     deq_q_flat = _pack_e8m0_int8(dequant_scale_q, "dequant_scale_q")  # (B,N_q,S,Dg)
@@ -1219,6 +1226,9 @@ def _cpu_mxfp8_golden_sectioned(
                 o_g = torch.zeros((r1 - r0, dv), dtype=torch.float32)
                 s_g = torch.zeros((r1 - r0, 1), dtype=torch.float32)
                 m_g = torch.full((r1 - r0, 1), minValue, dtype=torch.float32)
+                # 有效列 (未被 mask) 的最大 score: kernel lse 的 minCheckValue EQ 语义
+                # (softmaxMax == grid(vreg_min·dScale) → lse = +inf)
+                m_valid_g = torch.full((r1 - r0,), float("-inf"), dtype=torch.float32)
 
                 for blk_a, blk_b in segs:
                     # 每个分段独立 online softmax (对应 kernel 的一个 core chunk)
@@ -1241,11 +1251,26 @@ def _cpu_mxfp8_golden_sectioned(
                             softmax_scale,
                         )[0, 0]  # (R, S2)
                         cols = torch.arange(lo, hi)
-                        mask_j = (cols >= kv_len)[None, :].expand(r1 - r0, hi - lo)
+                        mask_kv = (cols >= kv_len)[None, :].expand(r1 - r0, hi - lo)
+                        mask_causal = None
                         if causal_bound is not None:
-                            mask_j = mask_j | (cols[None, :] > causal_bound)
+                            mask_causal = (
+                                (cols[None, :] > causal_bound)
+                                & (cols[None, :] < kv_len)
+                            ).expand(r1 - r0, hi - lo)
                         # 本块 own 网格: m 对齐到 ln2 整数倍 (ceil), 模拟 NPU 量化
-                        sij_masked = sij.masked_fill(mask_j, float("-inf"))
+                        # kv_len 以外列 -inf (P=0, 不产生 C2 贡献);
+                        # causal 掩码列填 kernel vreg_min 语义 (P 非零, 乘真实 V)
+                        sij_masked = sij.masked_fill(mask_kv, float("-inf"))
+                        if mask_causal is not None:
+                            sij_masked = sij_masked.masked_fill(mask_causal, mask_fill)
+                            s_valid = sij_masked.masked_fill(
+                                mask_causal, float("-inf")
+                            )
+                        else:
+                            s_valid = sij_masked
+                        m_valid_blk, _ = torch.max(s_valid, dim=-1)
+                        m_valid_g = torch.maximum(m_valid_g, m_valid_blk)
                         m_blk_j, _ = torch.max(sij_masked, dim=-1, keepdims=True)
                         m_own = torch.ceil(m_blk_j * INV_LN2) * LN2 - ln_p_scale
                         m_own_safe = torch.where(
@@ -1310,13 +1335,16 @@ def _cpu_mxfp8_golden_sectioned(
                     m_g = mg_new
 
                 all_masked = (m_g <= minValue).squeeze(-1)
+                # kernel lse minCheckValue EQ 语义: 有效列 max ≤ vreg_min 填充值
+                # (即 softmaxMax 停留在 grid(vreg_min·dScale)) → lse = +inf
+                no_valid_score = m_valid_g <= mask_fill
                 denom = s_g + EPSILON
                 res_rows = torch.where(
                     all_masked[:, None], torch.zeros_like(o_g), o_g / denom
                 )
                 out[bi, head_idx, s1_idx, :] = res_rows
                 lse_rows = torch.where(
-                    all_masked,
+                    all_masked | no_valid_score,
                     torch.full_like(all_masked, float("inf"), dtype=torch.float32),
                     (m_g + torch.log(s_g + EPSILON)).squeeze(-1),
                 )
