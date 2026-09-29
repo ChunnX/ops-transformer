@@ -89,7 +89,8 @@ extern "C" aclnnStatus aclnnSageAttention2GetWorkspaceSize(const aclTensor *q, c
         q->GetDataType() != out->GetDataType() || q->GetViewShape() != out->GetViewShape()) {
         return ACLNN_ERR_PARAM_INVALID;
     }
-    if (GetCurrentPlatformInfo().GetSocLongVersion().find("Ascend950") != 0) {
+    static const bool isAscend950 = (GetCurrentPlatformInfo().GetSocLongVersion().find("Ascend950") == 0);
+    if (!isAscend950) {
         return ACLNN_ERR_PARAM_INVALID;
     }
     L2_DFX_PHASE_1(aclnnSageAttention2,

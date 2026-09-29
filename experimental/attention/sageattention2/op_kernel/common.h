@@ -50,9 +50,22 @@ __aicore__ inline bool UseDieGroups(const SageParams &p) {
            p.sq % 128 == 0;
 }
 
+template <bool CAUSAL = false>
 __aicore__ inline uint64_t DieTask(uint64_t task, uint64_t total, uint32_t cores) {
     const uint32_t half = cores / 2;
-    return (task % cores / half) * (total / 2) + (task / cores) * half + task % half;
+    const uint64_t dieId = (task % cores) / half;
+    const uint64_t dieTotal = total / 2;
+    const uint64_t wave = task / cores;
+    const uint64_t rank = task % half;
+
+    if constexpr (!CAUSAL) {
+        return dieId * dieTotal + wave * half + rank;
+    } else {
+        const uint64_t k = wave / 2;
+        const uint64_t local = ((wave & 1) == 0) ? (k * half + rank)
+                                                 : (dieTotal - 1 - (k * half + rank));
+        return dieId * dieTotal + local;
+    }
 }
 
 // Per-core end in the virtual cyclic task space, including a partial final wave.

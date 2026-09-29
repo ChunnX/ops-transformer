@@ -37,6 +37,12 @@ struct CompileInfo {
 // guess core counts from a device model.
 bool ResolveCoreCounts(const gert::TilingContext *c, uint32_t &cores, uint32_t &vectors)
 {
+    static uint32_t s_cachedCores = 0, s_cachedVectors = 0;
+    if (s_cachedCores > 0 && s_cachedVectors >= 2 * s_cachedCores) {
+        cores = s_cachedCores;
+        vectors = s_cachedVectors;
+        return true;
+    }
     if (c->GetPlatformInfo()) {
         auto platform = platform_ascendc::PlatformAscendC(c->GetPlatformInfo());
         cores = platform.GetCoreNumAic();
@@ -61,7 +67,12 @@ bool ResolveCoreCounts(const gert::TilingContext *c, uint32_t &cores, uint32_t &
             vectors = static_cast<uint32_t>(aiv);
         }
     }
-    return cores > 0 && vectors >= 2 * cores;
+    if (cores > 0 && vectors >= 2 * cores) {
+        s_cachedCores = cores;
+        s_cachedVectors = vectors;
+        return true;
+    }
+    return false;
 }
 ge::graphStatus Tile(gert::TilingContext *c)
 {
