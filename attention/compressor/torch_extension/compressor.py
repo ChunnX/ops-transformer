@@ -91,11 +91,19 @@ def _compressor_forward_impl(
     state_cache: torch.Tensor,
     ape: torch.Tensor,
     cmp_ratio: int,
-    state_block_table: Optional[torch.Tensor] = None,
-    cu_seqlens: Optional[torch.Tensor] = None,
-    seqused: Optional[torch.Tensor] = None,
-    start_pos: Optional[torch.Tensor] = None,
-    x_cache: Optional[torch.Tensor] = None,
+    # state_block_table..x_cache stay Optional (None is a legal value) but must
+    # be positional-or-keyword arguments without a default. The ADInplaceOrView
+    # kernel of this mutable custom op bumps the version of the mutated args by
+    # positional index (state_cache=3, x_cache=10). Older PyTorch dispatchers
+    # drop a trailing run of positionals that equal their schema default, so a
+    # defaulted x_cache let the args tuple shrink to length 10 and
+    # ``increment_version(args[10])`` raised IndexError. Requiring explicit
+    # values keeps the mutated index present for every caller.
+    state_block_table: Optional[torch.Tensor],
+    cu_seqlens: Optional[torch.Tensor],
+    seqused: Optional[torch.Tensor],
+    start_pos: Optional[torch.Tensor],
+    x_cache: Optional[torch.Tensor],
     x_cache_slot_mapping: Optional[torch.Tensor] = None,
     coff: Optional[int] = 1,
     cache_mode: Optional[int] = 1,

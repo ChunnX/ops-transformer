@@ -7,12 +7,19 @@ real ``torch.library`` machinery is used. Covered:
 * schema: the outer ``compressor`` op and the inner ``_compressor_inference``
   custom op both declare ``state_cache`` and ``x_cache`` as writes, and the
   removed pure-function forward / training registrations are gone;
+* the inner ``_compressor_inference`` schema keeps every positional argument up
+  to and including the last write (``x_cache``, index 10) free of a schema
+  default, so the ADInplaceOrView version bump cannot index past the end of the
+  trimmed args tuple;
 * meta/fake shape inference for both the inner custom op and the outer op;
 * behaviour driven through the real dispatcher with a small CPU native
   stand-in: the native binding is reached, the write is visible on the very
   same cache objects, the native call always receives ``grad_enabled=False``,
   plain inference / ``no_grad`` / ``inference_mode`` all run, and an ``x`` or a
-  weight that requires grad is rejected before the native call.
+  weight that requires grad is rejected before the native call. The outer
+  normal path is exercised with ``x_cache=None`` and the default ``coff`` /
+  ``cache_mode`` while still writing back ``state_cache``, and the grouped
+  ``x_cache`` tensor path keeps its in-place write check.
 
 The CPU kernels registered in the child are test-only stand-ins for the NPU
 backend. They prove the dispatcher wiring and the Python guard, not anything
@@ -134,7 +141,8 @@ if __name__ == "__main__" and "--child-graph" not in sys.argv:
     slots = torch.empty((1,), device="meta", dtype=torch.int32)
 
     inner_out = torch.ops.cann_ops_transformer._compressor_inference(
-        x, w, w, state, ape, 128, x_cache=cache, x_cache_slot_mapping=slots
+        x, w, w, state, ape, 128, None, None, None, None, cache,
+        x_cache_slot_mapping=slots,
     )
     assert inner_out[0].shape == CMP_KV_SIZE, inner_out[0].shape
 
@@ -143,6 +151,29 @@ if __name__ == "__main__" and "--child-graph" not in sys.argv:
         args = {a.name: a for a in schema.arguments}
         assert args["state_cache"].alias_info.is_write, name
         assert args["x_cache"].alias_info.is_write, name
+
+    # ---------------------------------------------- mutation index contract
+    # Every schema argument up to and including the last write must be free of a
+    # schema default. The ADInplaceOrView kernel of this mutable custom op bumps
+    # the version of the mutated args by positional index (state_cache=3,
+    # x_cache=10); a defaulted trailing positional would let an older dispatcher
+    # drop it and index past the trimmed args tuple.
+    inner_schema = (
+        torch.ops.cann_ops_transformer._compressor_inference.default._schema
+    )
+    write_indices = [
+        i
+        for i, arg in enumerate(inner_schema.arguments)
+        if arg.alias_info is not None and arg.alias_info.is_write
+    ]
+    assert write_indices == [3, 10], write_indices
+    last_write = write_indices[-1]
+    assert inner_schema.arguments[last_write].name == "x_cache", inner_schema
+    for arg in inner_schema.arguments[: last_write + 1]:
+        assert not arg.has_default_value(), (
+            "inner arg {} must not have a schema default so the mutable "
+            "version bump cannot index past the args tuple".format(arg.name)
+        )
 
     # The pure-function forward and the now-unreachable training registrations
     # must be gone from this module.
@@ -195,7 +226,8 @@ if __name__ == "__main__" and "--child-graph" not in sys.argv:
     state_id, cache_id = id(state), id(cache)
     native.calls.clear()
     inner = torch.ops.cann_ops_transformer._compressor_inference(
-        x, w, w, state, ape, 128, x_cache=cache, x_cache_slot_mapping=slots
+        x, w, w, state, ape, 128, None, None, None, None, cache,
+        x_cache_slot_mapping=slots,
     )
     assert len(inner) == 3
     assert len(native.calls) == 1, native.calls
@@ -204,7 +236,7 @@ if __name__ == "__main__" and "--child-graph" not in sys.argv:
     assert id(state) == state_id and torch.equal(state, torch.ones_like(state))
     assert id(cache) == cache_id and torch.equal(cache, torch.ones_like(cache))
 
-    # Plain (default grad mode, no requires_grad) inference runs.
+    # Grouped x_cache tensor path: default grad mode, no requires_grad.
     x, w, state, ape, cache, slots = make()
     state_id, cache_id = id(state), id(cache)
     native.calls.clear()
@@ -214,6 +246,24 @@ if __name__ == "__main__" and "--child-graph" not in sys.argv:
     assert native.calls[-1][-1] is False, native.calls[-1][-1]
     assert id(state) == state_id and torch.equal(state, torch.ones_like(state))
     assert id(cache) == cache_id and torch.equal(cache, torch.ones_like(cache))
+
+    # Normal path: x_cache omitted (None) with the default coff / cache_mode;
+    # state_cache is still written back in place and the native ABI stays the
+    # full positional call with x_cache present as a legal None.
+    x, w, state, ape, cache, slots = make()
+    state_id = id(state)
+    native.calls.clear()
+    out = torch.ops.cann_ops_transformer.compressor(x, w, w, state, ape, 128)
+    assert out.shape == CMP_KV_SIZE, out.shape
+    assert len(native.calls) == 1, native.calls
+    native_args = native.calls[-1]
+    assert len(native_args) == 16, len(native_args)
+    assert native_args[10] is None, native_args[10]
+    assert native_args[11] is None, native_args[11]
+    assert native_args[12] == 1 and native_args[13] == 1, native_args[11:]
+    assert native_args[14] is True, native_args[14]
+    assert native_args[-1] is False, native_args[-1]
+    assert id(state) == state_id and torch.equal(state, torch.ones_like(state))
 
     # no_grad / inference_mode run even when an input requires grad.
     x, w, state, ape, cache, slots = make()
