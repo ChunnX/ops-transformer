@@ -733,17 +733,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
 
             // 五行依次保存{sumSqPre,dot0,dot1,dot2,dot3}，一次按行归约，
             // 避免每个标量结果都单独触发一次Vector到Scalar的等待。
-            if constexpr (DUAL_SIBLING && USE_RMS_MID) {
-                if (!compactRows) {
-                    if (accumulateRows) {
-                        MhcNormRegBase::VFPairSquareAdd<true>(reduceRows, x2[x2h0 * dTile_],
-                                                              x2[x2h1 * dTile_], tD);
-                    } else {
-                        MhcNormRegBase::VFPairSquareAdd(reduceRows, x2[x2h0 * dTile_],
-                                                        x2[x2h1 * dTile_], tD);
-                    }
-                }
-            } else if (compactRows) {
+            if (compactRows) {
                 if (accumulateRows) {
                     if constexpr (USE_RMS_MID) {
                         MhcNormRegBase::VFPairSquareAddCompact<true>(reduceRows, x2[x2h0 * dTile_],
@@ -786,33 +776,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
 
                 LocalTensor<float> dotRow = reduceRows[(o + 1U) * reduceWidth];
                 curPhi0 = bufPhiFp32_.DeQue<float>();
-                if constexpr (DUAL_SIBLING && USE_RMS_MID) {
-                    if (o == 0U && compactRows) {
-                        if (accumulateRows) {
-                            MhcNormRegBase::VFPairSquareAndDotCompact<true>(
-                                reduceRows, dotRow, x2[x2h0 * dTile_], curPhi0,
-                                x2[x2h1 * dTile_], curPhi0[dTile_], tD);
-                        } else {
-                            MhcNormRegBase::VFPairSquareAndDotCompact(
-                                reduceRows, dotRow, x2[x2h0 * dTile_], curPhi0,
-                                x2[x2h1 * dTile_], curPhi0[dTile_], tD);
-                        }
-                    } else if (compactRows) {
-                        if (accumulateRows) {
-                            MhcNormRegBase::VFPairMulAddCompact<true>(dotRow, x2[x2h0 * dTile_], curPhi0,
-                                                                       x2[x2h1 * dTile_], curPhi0[dTile_], tD);
-                        } else {
-                            MhcNormRegBase::VFPairMulAddCompact(dotRow, x2[x2h0 * dTile_], curPhi0,
-                                                                x2[x2h1 * dTile_], curPhi0[dTile_], tD);
-                        }
-                    } else if (accumulateRows) {
-                        MhcNormRegBase::VFPairMulAdd<true>(dotRow, x2[x2h0 * dTile_], curPhi0,
-                                                           x2[x2h1 * dTile_], curPhi0[dTile_], tD);
-                    } else {
-                        MhcNormRegBase::VFPairMulAdd(dotRow, x2[x2h0 * dTile_], curPhi0,
-                                                     x2[x2h1 * dTile_], curPhi0[dTile_], tD);
-                    }
-                } else if (compactRows) {
+                if (compactRows) {
                     if (accumulateRows) {
                         MhcNormRegBase::VFPairMulAddCompact<true>(dotRow, x2[x2h0 * dTile_], curPhi0,
                                                                    x2[x2h1 * dTile_], curPhi0[dTile_], tD);

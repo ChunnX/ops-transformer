@@ -385,53 +385,6 @@ __aicore__ inline void VFPairSquareAddCompact(const LocalTensor<float> &dst, con
     }
 }
 
-// 同一组x2寄存器同时生成平方行和首个Phi点积行，两行各自保持原有累加顺序。
-template <bool ACCUMULATE = false>
-__aicore__ inline void VFPairSquareAndDotCompact(const LocalTensor<float> &squareDst,
-                                                  const LocalTensor<float> &dotDst, const LocalTensor<float> &src0,
-                                                  const LocalTensor<float> &phi0, const LocalTensor<float> &src1,
-                                                  const LocalTensor<float> &phi1, uint32_t count)
-{
-    __local_mem__ float *squareAddr = (__local_mem__ float *)squareDst.GetPhyAddr();
-    __local_mem__ float *dotAddr = (__local_mem__ float *)dotDst.GetPhyAddr();
-    __local_mem__ float *a = (__local_mem__ float *)src0.GetPhyAddr();
-    __local_mem__ float *b = (__local_mem__ float *)phi0.GetPhyAddr();
-    __local_mem__ float *c = (__local_mem__ float *)src1.GetPhyAddr();
-    __local_mem__ float *d = (__local_mem__ float *)phi1.GetPhyAddr();
-    const uint16_t loops = static_cast<uint16_t>(count / VL_FP32);
-    __VEC_SCOPE__
-    {
-        Reg::RegTensor<float> ar, br, cr, dr, p0, p1, pair, squareAcc, dotAcc;
-        Reg::MaskReg mask = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
-        Reg::Duplicate(squareAcc, 0.0f, mask);
-        Reg::Duplicate(dotAcc, 0.0f, mask);
-        for (uint16_t i = 0; i < loops; ++i) {
-            const uint32_t off = static_cast<uint32_t>(i) * VL_FP32;
-            Reg::LoadAlign(ar, a + off);
-            Reg::LoadAlign(cr, c + off);
-            Reg::Mul(p0, ar, ar, mask);
-            Reg::Mul(p1, cr, cr, mask);
-            Reg::Add(pair, p0, p1, mask);
-            Reg::Add(squareAcc, squareAcc, pair, mask);
-            Reg::LoadAlign(br, b + off);
-            Reg::LoadAlign(dr, d + off);
-            Reg::Mul(p0, ar, br, mask);
-            Reg::Mul(p1, cr, dr, mask);
-            Reg::Add(pair, p0, p1, mask);
-            Reg::Add(dotAcc, dotAcc, pair, mask);
-        }
-        if constexpr (ACCUMULATE) {
-            Reg::RegTensor<float> previous;
-            Reg::LoadAlign(previous, squareAddr);
-            Reg::Add(squareAcc, previous, squareAcc, mask);
-            Reg::LoadAlign(previous, dotAddr);
-            Reg::Add(dotAcc, previous, dotAcc, mask);
-        }
-        Reg::StoreAlign(squareAddr, squareAcc, mask);
-        Reg::StoreAlign(dotAddr, dotAcc, mask);
-    }
-}
-
 __aicore__ inline void VFMuls(const LocalTensor<float> &dst, const LocalTensor<float> &src, float scalar,
                               uint32_t count)
 {
