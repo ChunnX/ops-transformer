@@ -1,0 +1,256 @@
+2026-09-29 15:22:55,748 [INFO] [1678694 MP MT] [bridge.py:441]: Command: ttk framework-api -i qfa_mxfp8_excel_DTS2026092327827.csv 
+2026-09-29 15:22:59,000 [INFO] [1678694 MP MT] [patch_getenv.py:15]: get env LOGNAME = root 
+2026-09-29 15:22:59,256 [INFO] [1678694 MP MT] [patch_getenv.py:15]: get env ASCEND_HOME_PATH = /home/s00456726/Ascend_mx_0924_master/cann-9.2.0 
+2026-09-29 15:23:00,049 [INFO] [1678694 MP MT] [__init__.py:157]: Active hardware: npu (torch_lib=npu) 
+2026-09-29 15:23:00,050 [INFO] [1678694 MP MT] [instance.py:38]: Framework API mode: backend=npu, framework=torch 
+2026-09-29 15:23:00,050 [INFO] [1678694 MP MT] [instance_base.py:118]: TTK Profiling Start! 
+2026-09-29 15:23:00,050 [INFO] [1678694 MP MT] [instance_base.py:119]: Mode: ASCEND_ONBOARD 
+2026-09-29 15:23:00,057 [INFO] [1678694 MP MT] [instance.py:552]: Registered 15 mc2 torch_npu APIs 
+2026-09-29 15:23:00,057 [INFO] [1678694 MP MT] [patch_getenv.py:15]: get env ASCEND_OPP_PATH = /home/s00456726/Ascend_mx_0924_master/cann-9.2.0/opp 
+2026-09-29 15:23:00,060 [INFO] [1678694 MP MT] [instance.py:565]: Device platform: Ascend950DT_9584 
+2026-09-29 15:23:00,060 [INFO] [1678694 MP MT] [instance_base.py:122]: Device Platform: Ascend950DT_9584 
+2026-09-29 15:23:00,060 [INFO] [1678694 MP MT] [instance.py:558]: Device count: 1 
+2026-09-29 15:23:00,060 [INFO] [1678694 MP MT] [instance_base.py:129]: Device Count: 1 
+2026-09-29 15:23:00,060 [INFO] [1678694 MP MT] [instance_base.py:372]: Preparing testcases ... 
+2026-09-29 15:23:00,060 [INFO] [1678694 MP MT] [instance_base.py:374]: Reading testcase file qfa_mxfp8_excel_DTS2026092327827.csv ... 
+2026-09-29 15:23:00,060 [INFO] [1678694 MP MT] [instance_base.py:447]: Input testcase file is not a valid zip file, switch to normal csv mode... 
+2026-09-29 15:23:00,061 [INFO] [1678694 MP MT] [instance_base.py:723]: Reading testcases from qfa_mxfp8_excel_DTS2026092327827.csv ... 
+2026-09-29 15:23:00,071 [INFO] [1678694 TestcaseManager Decode_FP8_E4M3FN_FP8_E4M3FN_BF16_L0_MXFP8_3_40_4_4_8000_128_128_TND_PA_LSE_Mask_000132] [patch_getenv.py:15]: get env ASCEND_TOOLKIT_HOME = /home/s00456726/Ascend_mx_0924_master/cann-9.2.0 
+2026-09-29 15:23:00,072 [INFO] [1678694 TestcaseManager Decode_FP8_E4M3FN_FP8_E4M3FN_BF16_L0_MXFP8_3_40_4_4_8000_128_128_TND_PA_LSE_Mask_000132] [patch_getenv.py:15]: get env ASCEND_AICPU_PATH = /home/s00456726/Ascend_mx_0924_master/cann-9.2.0 
+2026-09-29 15:23:00,159 [INFO] [1678694 TestcaseManager Decode_FP8_E4M3FN_FP8_E4M3FN_BF16_L0_MXFP8_3_40_4_4_8000_128_128_TND_PA_LSE_Mask_000132] [patch_getenv.py:15]: get env ASCEND_CUSTOM_OPP_PATH = /home/s00456726/Ascend_mx/cann/vendors/custom_transformer:/home/s00456726/Ascend_mx/cann/vendors/custom_transformer:/home/s00456726/Ascend_mx/cann/vendors/custom_transformer:/home/s00456726/Ascend_mx/cann/vendors/custom_transformer:/home/s00456726/Ascend_mx/cann/vendors/custom_transformer: 
+2026-09-29 15:23:00,160 [INFO] [1678694 TestcaseManager Decode_FP8_E4M3FN_FP8_E4M3FN_BF16_L0_MXFP8_3_40_4_4_8000_128_128_TND_PA_LSE_Mask_000132] [patch_getenv.py:15]: get env PATH = /home/s00456726/Ascend_mx_0924_master/cann-9.2.0/bin:/home/s00456726/Ascend_mx_0924_master/cann-9.2.0/tools/ccec_compiler/bin:/home/s00456726/Ascend_mx_0924_master/cann-9.2.0/tools/profiler/bin:/home/s00456726/Ascend_mx_0924_master/cann-9.2.0/tools/ascend_system_advisor/asys:/home/s00456726/Ascend_mx_0924_master/cann-9.2.0/tools/show_kernel_debug_data:/home/s00456726/Ascend_mx_0924_master/cann-9.2.0/tools/msobjdump:/home/s00456726/Ascend_mx_0924/cann-9.2.0/bin:/home/s00456726/Ascend_mx_0924/cann-9.2.0/tools/ccec_compiler/bin:/home/s00456726/Ascend_mx_0924/cann-9.2.0/tools/profiler/bin:/home/s00456726/Ascend_mx_0924/cann-9.2.0/tools/ascend_system_advisor/asys:/home/s00456726/Ascend_mx_0924/cann-9.2.0/tools/show_kernel_debug_data:/home/s00456726/Ascend_mx_0924/cann-9.2.0/tools/msobjdump:/home/s00456726/Ascend_mx_0923_master/cann/bin:/home/s00456726/Ascend_mx_0923_master/cann-9.2.0/bin:/home/s00456726/Ascend_mx_0923_master/cann-9.2.0/tools/ccec_compiler/bin:/home/s00456726/Ascend_mx_0923_master/cann-9.2.0/tools/profiler/bin:/home/s00456726/Ascend_mx_0923_master/cann-9.2.0/tools/ascend_system_advisor/asys:/home/s00456726/Ascend_mx_0923_master/cann-9.2.0/tools/show_kernel_debug_data:/home/s00456726/Ascend_mx_0923_master/cann-9.2.0/tools/msobjdump:/home/s00456726/Ascend_mx_0923_920/cann-9.2.0/bin:/home/s00456726/Ascend_mx_0923_920/cann-9.2.0/tools/ccec_compiler/bin:/home/s00456726/Ascend_mx_0923_920/cann-9.2.0/tools/profiler/bin:/home/s00456726/Ascend_mx_0923_920/cann-9.2.0/tools/ascend_system_advisor/asys:/home/s00456726/Ascend_mx_0923_920/cann-9.2.0/tools/show_kernel_debug_data:/home/s00456726/Ascend_mx_0923_920/cann-9.2.0/tools/msobjdump:/home/s00456726/Ascend_mx_920/cann-9.2.0/bin:/home/s00456726/Ascend_mx_920/cann-9.2.0/tools/ccec_compiler/bin:/home/s00456726/Ascend_mx_920/cann-9.2.0/tools/profiler/bin:/home/s00456726/Ascend_mx_920/cann-9.2.0/tools/ascend_system_advisor/asys:/home/s00456726/Ascend_mx_920/cann-9.2.0/tools/show_kernel_debug_data:/home/s00456726/Ascend_mx_920/cann-9.2.0/tools/msobjdump:/home/s00456726/Ascend_mx_0922/cann/bin:/home/s00456726/Ascend_mx_0922/cann/bin:/home/s00456726/Ascend_mx_0922/cann/tools/ccec_compiler/bin:/home/s00456726/Ascend_mx_0922/cann/tools/profiler/bin:/home/s00456726/Ascend_mx_0922/cann/tools/ascend_system_advisor/asys:/home/s00456726/Ascend_mx_0922/cann/tools/show_kernel_debug_data:/home/s00456726/Ascend_mx_0922/cann/tools/msobjdump:/home/w00944282/docker_dir/Ascend_0922/cann/bin:/home/w00944282/docker_dir/Ascend_0922/cann/tools/ccec_compiler/bin:/home/w00944282/docker_dir/Ascend_0922/cann/tools/profiler/bin:/home/w00944282/docker_dir/Ascend_0922/cann/tools/ascend_system_advisor/asys:/home/w00944282/docker_dir/Ascend_0922/cann/tools/show_kernel_debug_data:/home/w00944282/docker_dir/Ascend_0922/cann/tools/msobjdump:/home/s00456726/Ascend_mx/cann/bin:/home/s00456726/Ascend_mx/cann/bin:/home/s00456726/Ascend_mx/cann/tools/ccec_compiler/bin:/home/s00456726/Ascend_mx/cann/tools/profiler/bin:/home/s00456726/Ascend_mx/cann/tools/ascend_system_advisor/asys:/home/s00456726/Ascend_mx/cann/tools/show_kernel_debug_data:/home/s00456726/Ascend_mx/cann/tools/msobjdump:/home/s00456726/Ascend_mx_fd/cann-9.2.0/bin:/home/s00456726/Ascend_mx_fd/cann-9.2.0/tools/ccec_compiler/bin:/home/s00456726/Ascend_mx_fd/cann-9.2.0/tools/profiler/bin:/home/s00456726/Ascend_mx_fd/cann-9.2.0/tools/ascend_system_advisor/asys:/home/s00456726/Ascend_mx_fd/cann-9.2.0/tools/show_kernel_debug_data:/home/s00456726/Ascend_mx_fd/cann-9.2.0/tools/msobjdump:/usr/lib/ccache:/usr/local/bin:/root/miniconda3/envs/swl_311/bin:/root/miniconda3/condabin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin 
+ninja: no work to do.
+ninja: no work to do.
+2026-09-29 15:23:02,333 [INFO] [1678694 MP MT] [instance_base.py:378]: Checking testcase name... 
+2026-09-29 15:23:02,333 [INFO] [1678694 MP MT] [instance_base.py:381]: Case number: 1 
+2026-09-29 15:23:02,334 [INFO] [1678694 MP MT] [instance_base.py:463]: Initialize output csv file... 
+2026-09-29 15:23:02,335 [INFO] [1678694 MP MT] [instance_base.py:492]: Append mode: appending to existing qfa_mxfp8_excel_DTS2026092327827_result.csv 
+2026-09-29 15:23:02,424 [INFO] [1678694 MP MT] [instance_base.py:167]: Process per device: 1 
+2026-09-29 15:23:02,424 [INFO] [1678694 MP MT] [instance_base.py:169]: Preparing Task Executors... 
+2026-09-29 15:23:05,976 [INFO] [1678877 D0P0 MainThread] [patch_getenv.py:15]: get env TORCHINDUCTOR_CACHE_DIR = /tmp/torchinductor_root 
+2026-09-29 15:23:06,214 [INFO] [1678877 D0P0 MainThread] [patch_getenv.py:15]: get env ASCEND_HOME_PATH = /home/s00456726/Ascend_mx_0924_master/cann-9.2.0 
+2026-09-29 15:23:06,996 [INFO] [1678694 MP MT] [instance_base.py:301]: 
++-------------------------------------------------------------------------------------------------------+
+| Version: 3.0.0 Summary (Device Total: 1) Progress: 0% 0 / 1 ET: 11s Rev: 72ab72b                      |
++-------------------------------------------------------------------------------------------------------+
+| npu:0                                    | 1678877 D0P0             UNKNOWN              IDLE     0s  |
++-------------------------------------------------------------------------------------------------------+ 
+2026-09-29 15:23:07,033 [INFO] [1678877 Decode_FP8_E4M3FN_FP8_E4M3FN_BF16_L0_MXFP8_3_40_4_4_8000_128_128_TND_PA_LSE_Mask_000132 OnWaitingForMemory] [__init__.py:157]: Active hardware: npu (torch_lib=npu) 
+2026-09-29 15:23:07,034 [INFO] [1678877 Decode_FP8_E4M3FN_FP8_E4M3FN_BF16_L0_MXFP8_3_40_4_4_8000_128_128_TND_PA_LSE_Mask_000132 OnWaitingForMemory] [profiling.py:391]: NPU deterministic level=0 for Decode_FP8_E4M3FN_FP8_E4M3FN_BF16_L0_MXFP8_3_40_4_4_8000_128_128_TND_PA_LSE_Mask_000132 
+2026-09-29 15:23:16,991 [INFO] [1678694 MP MT] [instance_base.py:301]: 
++-------------------------------------------------------------------------------------------------------+
+| Version: 3.0.0 Summary (Device Total: 1) Progress: 0% 0 / 1 ET: 21s Rev: 72ab72b                      |
++-------------------------------------------------------------------------------------------------------+
+| npu:0                                    | 1678877 _LSE_Mask_000132 OnGenInput           RUNNING  9s  |
++-------------------------------------------------------------------------------------------------------+ 
+2026-09-29 15:23:21,439 [INFO] [1678877 Decode_FP8_E4M3FN_FP8_E4M3FN_BF16_L0_MXFP8_3_40_4_4_8000_128_128_TND_PA_LSE_Mask_000132 OnGenInput] [patch_getenv.py:15]: get env ASCEND_CUSTOM_OPP_PATH = /home/s00456726/Ascend_mx/cann/vendors/custom_transformer:/home/s00456726/Ascend_mx/cann/vendors/custom_transformer:/home/s00456726/Ascend_mx/cann/vendors/custom_transformer:/home/s00456726/Ascend_mx/cann/vendors/custom_transformer:/home/s00456726/Ascend_mx/cann/vendors/custom_transformer: 
+2026-09-29 15:23:21,440 [INFO] [1678877 Decode_FP8_E4M3FN_FP8_E4M3FN_BF16_L0_MXFP8_3_40_4_4_8000_128_128_TND_PA_LSE_Mask_000132 OnGenInput] [patch_getenv.py:15]: get env PATH = /home/s00456726/Ascend_mx_0924_master/cann-9.2.0/bin:/home/s00456726/Ascend_mx_0924_master/cann-9.2.0/tools/ccec_compiler/bin:/home/s00456726/Ascend_mx_0924_master/cann-9.2.0/tools/profiler/bin:/home/s00456726/Ascend_mx_0924_master/cann-9.2.0/tools/ascend_system_advisor/asys:/home/s00456726/Ascend_mx_0924_master/cann-9.2.0/tools/show_kernel_debug_data:/home/s00456726/Ascend_mx_0924_master/cann-9.2.0/tools/msobjdump:/home/s00456726/Ascend_mx_0924/cann-9.2.0/bin:/home/s00456726/Ascend_mx_0924/cann-9.2.0/tools/ccec_compiler/bin:/home/s00456726/Ascend_mx_0924/cann-9.2.0/tools/profiler/bin:/home/s00456726/Ascend_mx_0924/cann-9.2.0/tools/ascend_system_advisor/asys:/home/s00456726/Ascend_mx_0924/cann-9.2.0/tools/show_kernel_debug_data:/home/s00456726/Ascend_mx_0924/cann-9.2.0/tools/msobjdump:/home/s00456726/Ascend_mx_0923_master/cann/bin:/home/s00456726/Ascend_mx_0923_master/cann-9.2.0/bin:/home/s00456726/Ascend_mx_0923_master/cann-9.2.0/tools/ccec_compiler/bin:/home/s00456726/Ascend_mx_0923_master/cann-9.2.0/tools/profiler/bin:/home/s00456726/Ascend_mx_0923_master/cann-9.2.0/tools/ascend_system_advisor/asys:/home/s00456726/Ascend_mx_0923_master/cann-9.2.0/tools/show_kernel_debug_data:/home/s00456726/Ascend_mx_0923_master/cann-9.2.0/tools/msobjdump:/home/s00456726/Ascend_mx_0923_920/cann-9.2.0/bin:/home/s00456726/Ascend_mx_0923_920/cann-9.2.0/tools/ccec_compiler/bin:/home/s00456726/Ascend_mx_0923_920/cann-9.2.0/tools/profiler/bin:/home/s00456726/Ascend_mx_0923_920/cann-9.2.0/tools/ascend_system_advisor/asys:/home/s00456726/Ascend_mx_0923_920/cann-9.2.0/tools/show_kernel_debug_data:/home/s00456726/Ascend_mx_0923_920/cann-9.2.0/tools/msobjdump:/home/s00456726/Ascend_mx_920/cann-9.2.0/bin:/home/s00456726/Ascend_mx_920/cann-9.2.0/tools/ccec_compiler/bin:/home/s00456726/Ascend_mx_920/cann-9.2.0/tools/profiler/bin:/home/s00456726/Ascend_mx_920/cann-9.2.0/tools/ascend_system_advisor/asys:/home/s00456726/Ascend_mx_920/cann-9.2.0/tools/show_kernel_debug_data:/home/s00456726/Ascend_mx_920/cann-9.2.0/tools/msobjdump:/home/s00456726/Ascend_mx_0922/cann/bin:/home/s00456726/Ascend_mx_0922/cann/bin:/home/s00456726/Ascend_mx_0922/cann/tools/ccec_compiler/bin:/home/s00456726/Ascend_mx_0922/cann/tools/profiler/bin:/home/s00456726/Ascend_mx_0922/cann/tools/ascend_system_advisor/asys:/home/s00456726/Ascend_mx_0922/cann/tools/show_kernel_debug_data:/home/s00456726/Ascend_mx_0922/cann/tools/msobjdump:/home/w00944282/docker_dir/Ascend_0922/cann/bin:/home/w00944282/docker_dir/Ascend_0922/cann/tools/ccec_compiler/bin:/home/w00944282/docker_dir/Ascend_0922/cann/tools/profiler/bin:/home/w00944282/docker_dir/Ascend_0922/cann/tools/ascend_system_advisor/asys:/home/w00944282/docker_dir/Ascend_0922/cann/tools/show_kernel_debug_data:/home/w00944282/docker_dir/Ascend_0922/cann/tools/msobjdump:/home/s00456726/Ascend_mx/cann/bin:/home/s00456726/Ascend_mx/cann/bin:/home/s00456726/Ascend_mx/cann/tools/ccec_compiler/bin:/home/s00456726/Ascend_mx/cann/tools/profiler/bin:/home/s00456726/Ascend_mx/cann/tools/ascend_system_advisor/asys:/home/s00456726/Ascend_mx/cann/tools/show_kernel_debug_data:/home/s00456726/Ascend_mx/cann/tools/msobjdump:/home/s00456726/Ascend_mx_fd/cann-9.2.0/bin:/home/s00456726/Ascend_mx_fd/cann-9.2.0/tools/ccec_compiler/bin:/home/s00456726/Ascend_mx_fd/cann-9.2.0/tools/profiler/bin:/home/s00456726/Ascend_mx_fd/cann-9.2.0/tools/ascend_system_advisor/asys:/home/s00456726/Ascend_mx_fd/cann-9.2.0/tools/show_kernel_debug_data:/home/s00456726/Ascend_mx_fd/cann-9.2.0/tools/msobjdump:/usr/lib/ccache:/usr/local/bin:/root/miniconda3/envs/swl_311/bin:/root/miniconda3/condabin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin 
+ninja: no work to do.
+2026-09-29 15:23:21,604 [INFO] [1678877 Decode_FP8_E4M3FN_FP8_E4M3FN_BF16_L0_MXFP8_3_40_4_4_8000_128_128_TND_PA_LSE_Mask_000132 OnGenInput] [patch_getenv.py:15]: get env LOGNAME = root 
+ninja: no work to do.
+[INPUTS] in-place wrote fp8 q/k/v (q=(4, 40, 128)), e8m0 descale (dq=(4, 4, 10, 2, 2), dk=(104, 4, 8, 2, 16, 2), dv=(104, 4, 8, 2, 16, 2)), fp32 p_scale, int32 block_table (pa=True)
+
+----------------------------------------------------------------------------------------------------
+API Name: torch.ops.cann_ops_transformer.quant_flash_attn
+Golden API: 
+Backend: npu
+////////////// Tensors //////////////
+Input View Shapes: ((4, 40, 128), (104, 4, 4, 128, 32), (104, 4, 4, 128, 32), (4, 4, 10, 2, 2), (104, 4, 8, 2, 16, 2), (104, 4, 8, 2, 16, 2), (3, 63), (1,), (4,), None, (3,), (3,), None, (2048, 2048), (2, 188416))
+Input Dtypes: ('float8_e4m3fn', 'float8_e4m3fn', 'float8_e4m3fn', 'float8_e8m0', 'float8_e8m0', 'float8_e8m0', 'int32', 'float32', 'int32', 'int32', 'int32', 'int32', 'float32', 'int8', 'int32')
+Input Storage Shapes: ()
+Input Formats: ()
+Input View Offsets: ()
+Input View Strides: ()
+//////////// Output Info //////////
+Output Tensor Indexes: ()
+//////////// Attributes //////////
+precision_tolerances: ((0.0078125, 0.0001, 0.005, 0.005, 10),)
+absolute_precision: 1e-08
+p_scale_value: 163.5
+cu_seqlens_q_values: [0, 0, 4, 4]
+cu_seqlens_kv_values: None
+seqused_q_values: [0, 4, 0]
+seqused_kv_values: [8000, 1001, 3849]
+attn_mask_shape: (2048, 2048)
+attn_mask_dtype: int8
+quant_mode: 1
+softmax_scale: 0.088388
+mask_mode: 3
+win_left: -1
+win_right: -1
+max_seqlen_q: -1
+max_seqlen_kv: -1
+layout_q: TND
+layout_q_descale: N2TGD
+layout_kv: PA_NZ
+layout_out: TND
+return_softmax_lse: 1
+N_q: 40
+N_kv: 4
+D: 128
+head_dim_v: None
+batch_size: None
+enable_pa: True
+kv_cache_layout: PA_NZ
+q_scale_layout: N2TGD
+block_size: 128
+//////////// Test Config //////////
+Input Data Range: ((-0.5, 0.5), (-3.3895313892515355e+38, -3.3895313892515355e+38), (-3.3895313892515355e+38, -3.3895313892515355e+38), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1))
+Precision Tolerance: ((0.0078125, 0.0001, 0.005, 0.005, 10),)
+Absolute Precision: (1e-08,)
+Mode: ASCEND_ONBOARD
+PID: 1678877
+Device: 0
+----------------------------------------------------------------------------------------------------
+[Decode_FP8_E4M3FN_FP8_E4M3FN_BF16_L0_MXFP8_3_40_4_4_8000_128_128_TND_PA_LSE_Mask_000132] build QuantFlashAttn metadata (quant_mode=1)
+ninja: no work to do.
+[2026-09-29 15:23:25] [WARNING] [1678877] profiler.py: Profiler won't be using warmup, this can skew profiler results
+2026-09-29 15:23:26,995 [INFO] [1678694 MP MT] [instance_base.py:301]: 
++-------------------------------------------------------------------------------------------------------+
+| Version: 3.0.0 Summary (Device Total: 1) Progress: 0% 0 / 1 ET: 31s Rev: 72ab72b                      |
++-------------------------------------------------------------------------------------------------------+
+| npu:0                                    | 1678877 _LSE_Mask_000132 OnEagerProfiling     RUNNING  2s  |
++-------------------------------------------------------------------------------------------------------+ 
+get env ASCEND_GLOBAL_LOG_LEVEL = 3
+[2026-09-29 15:23:28] [INFO] [1679424] profiler.py: Start parsing profiling data in sync mode at: /home/s00456726/test/ops-test-kit/msprof/e2e/Decode_FP8_E4M3FN_FP8_E4M3FN_BF16_L0_MXFP8_3_40_4_4_8000_128_128_TND_PA_LSE_Mask_000132/aa_1678877_20260929152325525_ascend_pt
+|/-[2026-09-29 15:23:30] [INFO] [1679441] profiler.py: CANN profiling data parsed in a total time of 0:00:02.025368
+\[2026-09-29 15:23:31] [INFO] [1679424] profiler.py: All profiling data parsed in a total time of 0:00:03.344135
+[Section] 解码成功: isFd=0, sectionNum=1, mBase=128, s2Base=512, aicNum=32, headNum=4, schedGroup=10, 跨核分段 (bn,m) 数=0
+[COMPARE] atten: csv rtol=0.0078125 atol=0.0001 diff_thd=0.005 pct_thd=0.005 max_diff_hd=10.0
+[COMPARE] atten: npu_shape=(4, 40, 128) npu_dtype=torch.bfloat16 | golden_shape=(4, 40, 128) golden_dtype=torch.float32
+Overflow,size:20480,benchmark_output:tensor([]), tensor([nan, nan, nan, nan, nan, nan, nan, nan, nan, nan])
+split_count:20480.0; max_diff_hd:10.0;
+---------------------------------------------------------------------------------------
+Loop 	 ExpectOut 	 RealOut 	 FpDiff 	 RateDiff
+---------------------------------------------------------------------------------------
+00000001 	 nan     	 nan     	 nan     	 nan    
+00000002 	 nan     	 nan     	 nan     	 nan    
+00000003 	 nan     	 nan     	 nan     	 nan    
+00000004 	 nan     	 nan     	 nan     	 nan    
+00000005 	 nan     	 nan     	 nan     	 nan    
+00000006 	 nan     	 nan     	 nan     	 nan    
+00000007 	 nan     	 nan     	 nan     	 nan    
+00000008 	 nan     	 nan     	 nan     	 nan    
+00000009 	 nan     	 nan     	 nan     	 nan    
+00000010 	 nan     	 nan     	 nan     	 nan    
+...   	   ...   	   ...   	   ...    	   ...
+00020471 	 nan     	 nan     	 nan     	 nan    
+00020472 	 nan     	 nan     	 nan     	 nan    
+00020473 	 nan     	 nan     	 nan     	 nan    
+00020474 	 nan     	 nan     	 nan     	 nan    
+00020475 	 nan     	 nan     	 nan     	 nan    
+00020476 	 nan     	 nan     	 nan     	 nan    
+00020477 	 nan     	 nan     	 nan     	 nan    
+00020478 	 nan     	 nan     	 nan     	 nan    
+00020479 	 nan     	 nan     	 nan     	 nan    
+00020480 	 nan     	 nan     	 nan     	 nan    
+---------------------------------------------------------------------------------------
+Rtol   	 Atol   	 PctThd   	 PctRlt   	 Result
+---------------------------------------------------------------------------------------
+0.0078    	 0.000100  	 99.50%   	 50.000000%   	 Failed
+Max-RelativeError is: inf. Threshold is: 10.0.
+Error Line-----------------------------------------------------------------------------
+Loop 	 ExpectOut 	 RealOut 	 FpDiff 	 RateDiff
+---------------------------------------------------------------------------------------
+00000128 	 nan 	 -inf 	 nan 	 inf
+00000129 	 nan 	 -inf 	 nan 	 inf
+00000130 	 nan 	 -inf 	 nan 	 inf
+00000131 	 nan 	 -inf 	 nan 	 inf
+00000132 	 nan 	 -inf 	 nan 	 inf
+00000133 	 nan 	 -inf 	 nan 	 inf
+00000134 	 nan 	 -inf 	 nan 	 inf
+00000135 	 nan 	 -inf 	 nan 	 inf
+00000136 	 nan 	 -inf 	 nan 	 inf
+     ... 	     ... 	     ... 	     ... 	     ...
+00000218 	 nan 	 -inf 	 nan 	 inf
+00000219 	 nan 	 -inf 	 nan 	 inf
+00000220 	 nan 	 -inf 	 nan 	 inf
+00000221 	 nan 	 -inf 	 nan 	 inf
+00000222 	 nan 	 -inf 	 nan 	 inf
+00000223 	 nan 	 -inf 	 nan 	 inf
+00000224 	 nan 	 -inf 	 nan 	 inf
+00000225 	 nan 	 -inf 	 nan 	 inf
+00000226 	 nan 	 -inf 	 nan 	 inf
+     ... 	     ... 	     ... 	     ... 	     ...
+Max-RE line:---------------------------------------------------------------------------
+00000128 	 nan 	 -inf 	 nan 	 inf
+00000129 	 nan 	 -inf 	 nan 	 inf
+00000130 	 nan 	 -inf 	 nan 	 inf
+---------------------------------------------------------------------------------------
+[COMPARE] out1: csv rtol=0.0078125 atol=0.0001 diff_thd=0.005 pct_thd=0.005 max_diff_hd=10.0
+[COMPARE] out1: npu_shape=(40, 4) npu_dtype=torch.float32 | golden_shape=(40, 4) golden_dtype=torch.float32
+Overflow,size:160,benchmark_output:tensor([]), tensor([nan, nan, nan, nan, nan, nan, nan, nan, nan, nan])
+split_count:160.0; max_diff_hd:10.0;
+---------------------------------------------------------------------------------------
+Loop 	 ExpectOut 	 RealOut 	 FpDiff 	 RateDiff
+---------------------------------------------------------------------------------------
+00000001 	 nan     	 nan     	 nan     	 nan    
+00000002 	 nan     	 inf     	 nan     	 nan    
+00000003 	 nan     	 inf     	 nan     	 nan    
+00000004 	 nan     	 inf     	 nan     	 nan    
+00000005 	 nan     	 inf     	 nan     	 nan    
+00000006 	 nan     	 inf     	 nan     	 nan    
+00000007 	 nan     	 nan     	 nan     	 nan    
+00000008 	 nan     	 nan     	 nan     	 nan    
+00000009 	 nan     	 2.7609635432368073e+37 	 nan     	 nan    
+00000010 	 nan     	 inf     	 nan     	 nan    
+...   	   ...   	   ...   	   ...    	   ...
+00000151 	 nan     	 nan     	 nan     	 nan    
+00000152 	 nan     	 nan     	 nan     	 nan    
+00000153 	 nan     	 nan     	 nan     	 nan    
+00000154 	 nan     	 nan     	 nan     	 nan    
+00000155 	 nan     	 nan     	 nan     	 nan    
+00000156 	 nan     	 inf     	 nan     	 nan    
+00000157 	 nan     	 inf     	 nan     	 nan    
+00000158 	 nan     	 inf     	 nan     	 nan    
+00000159 	 nan     	 inf     	 nan     	 nan    
+00000160 	 nan     	 nan     	 nan     	 nan    
+---------------------------------------------------------------------------------------
+Rtol   	 Atol   	 PctThd   	 PctRlt   	 Result
+---------------------------------------------------------------------------------------
+0.0078    	 0.000100  	 99.50%   	 50.000000%   	 Failed
+Max-RelativeError is: inf. Threshold is: 10.0.
+Error Line-----------------------------------------------------------------------------
+Loop 	 ExpectOut 	 RealOut 	 FpDiff 	 RateDiff
+---------------------------------------------------------------------------------------
+00000001 	 nan 	 inf 	 nan 	 inf
+00000002 	 nan 	 inf 	 nan 	 inf
+00000003 	 nan 	 inf 	 nan 	 inf
+00000004 	 nan 	 inf 	 nan 	 inf
+00000005 	 nan 	 inf 	 nan 	 inf
+00000008 	 nan 	 27609635432368073337761238279008550912.0000000 	 nan 	 inf
+00000009 	 nan 	 inf 	 nan 	 inf
+00000010 	 nan 	 inf 	 nan 	 inf
+00000013 	 nan 	 inf 	 nan 	 inf
+     ... 	     ... 	     ... 	     ... 	     ...
+Max-RE line:---------------------------------------------------------------------------
+00000001 	 nan 	 inf 	 nan 	 inf
+00000002 	 nan 	 inf 	 nan 	 inf
+00000003 	 nan 	 inf 	 nan 	 inf
+---------------------------------------------------------------------------------------
+
+Eager Kernels
+-------------------------------------------------------------------------------------------------------
+Name            avg            max           min           # of Calls
+-------------------------------------------------------------------------------------------------------
+QuantFlashAttn  31.584         31.584        31.584        1
+-------------------------------------------------------------------------------------------------------
+
+
+ ####################################### Eager Result Summary  ######################################## 
+EAGER:       50.0%,50.0%
+  DEVICE: 31.584 us
+  CPU:    1613277.721 us
+STATUS: FAIL
+Golden Shapes: ((4, 40, 128), (40, 4))
+Golden Dtypes: ('float32', 'float32')
+#######################################################################################################
+2026-09-29 15:23:34,253 [INFO] [1678694 MP MT] [instance_base.py:147]: ttk Profiling complete 
+2026-09-29 15:23:37,797 [INFO] [1678694 MP MT] [instance_base.py:325]: 
+==================== TTK Test Summary ===================
+  Total    : 1
+  PASS     : 0
+  FAIL     : 1
+  SKIP/NA  : 0
+  PassRate : 0.00%  (0/1)
+========================================================= 
