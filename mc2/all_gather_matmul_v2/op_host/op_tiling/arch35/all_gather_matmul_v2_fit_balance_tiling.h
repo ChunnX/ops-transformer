@@ -138,17 +138,17 @@ inline CutResult ToLegacyCut(const CommCutResult &c)
     return {c.shortTileAtBack, c.totalTileCnt, c.numLongTile, c.numShortTile, c.longTileLen, c.shortTileLen};
 }
 
-// 统一引擎路径: 键控枚举 + 标定 → InitCtx(含通算胶水) → Schedule(含 AG 键控分支)。
+// 统一引擎路径: 引擎对外唯一入口 FitBalanceCut(§4.39——InitCtx+Schedule 串联,
+// cut+ctx 一并返回), 本算子 LocalMMPosition::FRONT(本地 A 块前置) + COMM_FIRST。
 // baseMOut(可空): 回传 matmul 基本块(回退老类路径的调用点后处理 AdjustCutResultForAICPU 需要;
 // 新引擎路径不消费——§4.37 切分收益门控已接替, 保留出参仅为回退路径完整)
 inline CutResult ScheduleFitBalance(const mc2tiling::TilingArgs &args, TilingCommEngine commEngine,
                                     uint32_t *baseMOut = nullptr)
 {
-    // 引擎分路在 InitCtx 内完成(按 CommEngine 选 CALIBRATION 的 aicpu/ccu 分区);
-    // 本算子 kernel 仅 HCCL 两引擎, AIV_URMA 不可达(枚举值保留供三引擎分派框架)
-    auto ctx = InitCtx(ToEngineArgs(args), LocalMMPosition::FRONT, CommComputeOrder::COMM_FIRST, commEngine,
-                       CALIBRATION, CommTopology::STANDARD_CARD);
-    CutResult cut = ToLegacyCut(Schedule(ctx));
+    auto result = FitBalanceCut(ToEngineArgs(args), LocalMMPosition::FRONT, CommComputeOrder::COMM_FIRST, commEngine,
+                                CALIBRATION, CommTopology::STANDARD_CARD);
+    auto &ctx = result.ctx; // 诊断字段载体(启动税日志/baseM; GetBaseM 非 const)
+    CutResult cut = ToLegacyCut(result.cut);
     // INFO 级分派标识(与 miss 路径的 "COF cut:" 对仗): 默认日志级别即可正向确认命中标定并
     // 走进 fit-balance 新引擎(kUseNewEngine=false 回退老类不打本行); 详细决策与启动税诊断
     // 仍为 debug 级(下方两行)
