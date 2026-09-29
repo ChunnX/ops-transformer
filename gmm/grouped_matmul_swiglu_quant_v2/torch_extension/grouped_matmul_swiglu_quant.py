@@ -105,7 +105,7 @@ class GroupedMatmulSwigluQuantOpBuilder(OpBuilder):
         super().__init__("grouped_matmul_swiglu_quant", category="gmm")
 
     def sources(self):
-        return ["csrc/gmm/grouped_matmul_swiglu_quant_v2.cpp"]
+        return ["csrc/gmm/grouped_matmul_swiglu_quant.cpp"]
 
     def schema(self):
         return (

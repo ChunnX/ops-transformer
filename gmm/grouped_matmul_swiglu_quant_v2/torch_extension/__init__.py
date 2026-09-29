@@ -10,4 +10,4 @@
 
 __all__ = ["grouped_matmul_swiglu_quant"]
 
-from .grouped_matmul_swiglu_quant_v2 import grouped_matmul_swiglu_quant
+from .grouped_matmul_swiglu_quant import grouped_matmul_swiglu_quant
