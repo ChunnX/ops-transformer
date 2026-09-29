@@ -139,7 +139,7 @@ ge::graphStatus MyOpTiling::DoTiling()
 | 字段 | 回答的问题 | 取值含义 |
 |---|---|---|
 | `order` | 流水线**哪段先行**？ | `COMM_FIRST` 通信在前（先收输入再算）；`COMPUTE_FIRST` 计算在前（先算再发输出） |
-| `localMMPosition` | 流水线里有没有一块**不经通信的本地 matmul**？在哪端？ | `FRONT` 本地块前置（首端——本卡数据已在手，聚合前即可算）；`BACK` 本地块后置（尾端——本地保留份无需发出）；`NONE` 无本地块 |
+| `localMMPosition` | kernel 侧有没有实现"本地计算块的特殊调度"？ | `FRONT` 通信在前时，不参与通信的本地计算块不依赖通信、提前开始计算（kernel 已实现该调度）；`BACK` 通信在后时，先算被通信依赖的块以求尽早开始通信、本地块后置计算（kernel 已实现该调度）；`NONE` kernel 无此特殊实现 |
 | `fullVolume` | 切分域（mValue）是"本卡份"还是"本卡实算全量"？ | `true` 全量形态（实算 mm 行数与单次通信字节均为切分域×rankDim，聚合/分发类）；`false` 单份形态（本卡一份，两者×1） |
 
 **推导规则**（引擎内部，接入方无需再填任何结构量）：
@@ -155,15 +155,17 @@ ge::graphStatus MyOpTiling::DoTiling()
 选错的后果：order/localMM 错 → 配平锚点错位、短块位置错、总时公式形态错（切分整体劣化）；
 fullVolume 错 → 通信量与 mm 总量估计整体偏移。
 
-判定方法（看本算子的数据流即可）：
-1. 通信的输入是不是 matmul 的输入？是 → `COMM_FIRST`；通信的输入是 matmul 的输出 → `COMPUTE_FIRST`
-2. 本卡自己的数据要不要经过通信才能参与第一次计算？不用 → `FRONT`；算完的份额有保留在本地的一份
-   → `BACK`；都不是 → `NONE`
-3. mValue 传进引擎的是"本卡份"（引擎需要 ×rankDim 才是实算量）→ `true`；mValue 本身就是本卡
-   实算全量 → `false`
-
-> 历史备注：A2A 系老实现的工作集份数为 rankDim，与单份形态（fullVolume=false）的推导值 1 不同——
-> A2A 系当前无引擎消费者，BACK 形态实测校准时定稿。
+判定方法（只看本算子自己的通信方向与 kernel 实现，不考虑其他因素）：
+1. **order**：通信的输入是 matmul 的输入 → `COMM_FIRST`；通信的输入是 matmul 的输出 →
+   `COMPUTE_FIRST`
+2. **localMMPosition**：与通算顺序和 kernel 侧实现绑定——
+   - 通信在前，且存在不参与通信的本地计算块可以不依赖通信直接提前开始计算，且 kernel 侧
+     实现了这一调度 → `FRONT`
+   - 通信在后，存在不被通信依赖的本地计算块，先算被通信依赖的块以求尽早开始通信、把本地
+     块后置计算，且 kernel 侧实现了这一调度 → `BACK`
+   - kernel 侧没有对本地计算块的特殊调度实现 → `NONE`（即使数据流上存在本地块）
+3. **fullVolume**：mValue 传进引擎的是"本卡份"（实算量 = mValue × rankDim）→ `true`；
+   mValue 本身就是本卡实算全量 → `false`
 
 诊断打印内置：`ASCEND_GLOBAL_LOG_LEVEL=0` 时 FitBalanceCut 输出输入 shape / 最终切分 / 启动税三段。
 
