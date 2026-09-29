@@ -14,10 +14,10 @@
  *
  * 每个 token 由 coresPerToken（1 或 2）个核并行处理（T×2 ≤ coreNum 时双核），
  * phi 行按 phiRowMid 对半分：core0 处理 [0, phiRowMid)，core1 处理 [phiRowMid, phiRows)。
- * 每个 token 分两轮遍历 dimTile（Phase A 累加平方和求 invRms → Phase B 对本核负责的
- * phi 行做双缓冲流水 dot；双核下每核只算一半 phi 行，Phase A 双核各自全量冗余可接受）。
- * Phase A 的 Cast 按 tile 偏移拼接持久化整 token xFp32（Regbase 归约只读不覆盖），
- * Phase B 直接切片复用、无 GM 重读（PERF-6）。
+ * 每个 token 分两轮遍历 dimTile（第一轮累加平方和求 invRms → 第二轮对本核负责的
+ * phi 行做双缓冲流水 dot；双核下每核只算一半 phi 行，第一轮双核各自全量冗余可接受）。
+ * 第一轮的 Cast 按 tile 偏移拼接持久化整 token xFp32（Regbase 归约只读不覆盖），
+ * 第二轮直接切片复用、无 GM 重读（PERF-6）。
  *
  * xHat 本地下标规则（phiRowStart 由调用方传入）：
  *   row < n_  → row - phiRowStart          （core0 的 h_post 段，phiRowStart==0）
@@ -133,7 +133,7 @@ private:
     {
         int64_t xTokenOff = tokenIdx * n_ * d_;
 
-        // ── Phase A：双缓冲流水累加 sumSq ────────────────────────────
+        // sumSq 双缓冲流水累加（第一遍遍历 dimTile）：tile 预取与向量计算重叠
         //
         // 流水时序（depth=2 队列，MTE2 与 Vector 重叠）：
         //
@@ -159,7 +159,7 @@ private:
             CopyInXTile(xTokenOff, (d + 1) * dimTile_, copyDNext);
 
             // 等待当前 tile 就绪，Cast → AccumSumSq；Cast 写入 tile 偏移 d*n*dimTile
-            // （整 token 拼接持久化，供 Phase B 复用）
+            // （整 token 拼接持久化，供第二轮遍历复用）
             LocalTensor<float> xFp32 = xFp32Base[d * dimTile_ * n_];
             LocalTensor<T> xLocal = this->xInQueue_.template DeQue<T>();
             Cast(xFp32, xLocal, RoundMode::CAST_NONE, static_cast<uint32_t>(n_ * copyD));
@@ -184,9 +184,9 @@ private:
 
         float invRms = FLOAT_ONE / sqrt(sumSq.GetValue(NUM_ZERO) * invK_ + normEps_);
 
-        // ── Phase B：双缓冲流水计算 xHat ─────────────────────────────
+        // xHat 双缓冲流水计算（第二遍遍历 dimTile）：对本核负责的 phi 行逐行 dot
         //
-        // Phase A 已将整 token 的 xFp32 按 tile 拼接持久化（Regbase 归约对 xFp32 只读
+        // 第一轮已将整 token 的 xFp32 按 tile 拼接持久化（Regbase 归约对 xFp32 只读
         // 不覆盖），此处直接按偏移切片复用，免除 x 的 GM 重读（PERF-6：每 token 省一遍
         // x 搬运）；tile 内 phiRowQue_（depth=2）对 phi 行做双缓冲。
         LocalTensor<float> xHat = this->xHatBuf_.template Get<float>();

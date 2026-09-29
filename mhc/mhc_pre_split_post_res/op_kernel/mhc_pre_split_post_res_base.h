@@ -79,7 +79,7 @@ protected:
         // xInQueue_ depth：SINGLE_TILE=1，MULTI_TILE=2（双缓冲）
         pipe->InitBuffer(xInQueue_, doubleBufferX ? NUM_TWO : NUM_ONE, static_cast<uint32_t>(xTileElems * sizeof(T)));
         // xFp32Buf_：整 token 全量 n*d 并按 tile 拼接布局（tile d 存于偏移 d*xTileElems）——
-        // Regbase 归约对 xFp32 只读不覆盖，MULTI 的 Phase B 直接复用持久化数据，
+        // Regbase 归约对 xFp32 只读不覆盖，MULTI 的第二轮遍历直接复用持久化数据，
         // 免除 x 的 GM 重读（PERF-6）。
         int64_t xFp32Elems = n_ * d_;
         pipe->InitBuffer(xFp32Buf_, static_cast<uint32_t>(xFp32Elems * FP32_BYTES));

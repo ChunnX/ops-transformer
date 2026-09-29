@@ -274,7 +274,7 @@ ge::graphStatus MhcPreSplitPostResInfoParser::CheckUbBudget()
                                  MHC_NUM_TWO * MIN_FP32_ALIGN_ELEM_SIZE * fp32Bytes +
                                  (alignedN + alignedNN) * fp32Bytes;
     // 线性增长 buffer（对应 kernel InitCommonBuffers）：xInQueue_(2B/元素，SINGLE depth1/MULTI depth2)、
-    // xFp32Buf_(4B，arch35 全量 n*d 按 tile 拼接持久化——Phase B 免除 x 的 GM 重读)、
+    // xFp32Buf_(4B，arch35 全量 n*d 按 tile 拼接持久化——第二轮遍历免除 x 的 GM 重读)、
     // phiRowQue_(4B，depth2)
     const bool isSingleTile = (dimLoop_ == MHC_NUM_ONE);
     const int64_t xInQueueBytes = xTileElemsUb * xElemBytes * (isSingleTile ? MHC_NUM_ONE : MHC_NUM_TWO);

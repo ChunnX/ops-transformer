@@ -18,6 +18,10 @@
 #include <torch/extension.h>
 #include "aclnn_common.h"
 
+// N 固定规格：与 op_host/mhc_pre_split_post_res_const.h 的 MHC_N_VALUE(=4) 同源互锚
+// （torch 扩展构建隔离无法 include host 头，改动必须两侧同步）
+constexpr int64_t kMhcNValue = 4;
+
 namespace op_api {
 
 std::tuple<at::Tensor, at::Tensor> MhcPreSplitPostRes(
@@ -30,7 +34,7 @@ std::tuple<at::Tensor, at::Tensor> MhcPreSplitPostRes(
     // h_res 为可选输出：phi 行数为 N^2+N（完整形态）时分配真 shape；
     // 仅 post 形态（phi 行数==N）时第二个返回 0 元素 tensor（aclnn 层按 phi shape 忽略）
     const int64_t n = x.size(x.dim() - 2);
-    TORCH_CHECK(n == 4, "n must be 4, but got ", n);
+    TORCH_CHECK(n == kMhcNValue, "n must be ", kMhcNValue, ", but got ", n);
     const bool hasRes = phi.size(0) == n * n + n;
     std::vector<int64_t> outSizes = x.sizes().vec();
     outSizes.pop_back();  // [T, n] / [B, S, n]
