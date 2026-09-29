@@ -570,18 +570,12 @@ def quant_flash_attn(
             )
 
     if quant_mode == int(QuantMode.A4C4_QKV_MXFP4_P_MXFP4_SOFTMAX_FP16):
-        if q.dtype != torch.uint8:
-            raise ValueError(
-                f"In MxFP4 mode (quant_mode=5), q must be uint8, but got {q.dtype}"
-            )
-        if k.dtype != torch.uint8:
-            raise ValueError(
-                f"In MxFP4 mode (quant_mode=5), k must be uint8, but got {k.dtype}"
-            )
-        if v.dtype != torch.uint8:
-            raise ValueError(
-                f"In MxFP4 mode (quant_mode=5), v must be uint8, but got {v.dtype}"
-            )
+        for name, tensor in (("q", q), ("k", k), ("v", v)):
+            if tensor.dtype != torch.float4_e2m1fn_x2:
+                raise ValueError(
+                    f"In MxFP4 mode (quant_mode=5), {name} must be "
+                    f"float4_e2m1fn_x2, but got {tensor.dtype}"
+                )
 
     op_module = quant_flash_attn_op_builder.load()
     return op_module.quant_flash_attn(

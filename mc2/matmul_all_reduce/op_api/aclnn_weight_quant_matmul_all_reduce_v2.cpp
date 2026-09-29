@@ -60,9 +60,13 @@ static bool CheckDtypeValid(const aclTensor *x1, const aclTensor *x2, const aclT
 
     const std::initializer_list<op::DataType> biasDtypeListA5 = {DataType::DT_FLOAT16, DataType::DT_BF16};
 
-    const auto x2SupportedDtypeList = (curArch == Ops::Base::DAV_3510) ? quantDtypeListA5 : DTYPE_SUPPORT_LIST_QUANT;
+    const auto x2SupportedDtypeList = (curArch == Ops::Base::DAV_3510 || curArch == Ops::Base::DAV_9201) ?
+                                          quantDtypeListA5 :
+                                          DTYPE_SUPPORT_LIST_QUANT; // A6复用A5 dtype列表
 
-    const auto biasSupportedDtypeList = (curArch == Ops::Base::DAV_3510) ? biasDtypeListA5 : supportedDtypeList;
+    const auto biasSupportedDtypeList = (curArch == Ops::Base::DAV_3510 || curArch == Ops::Base::DAV_9201) ?
+                                            biasDtypeListA5 :
+                                            supportedDtypeList; // A6复用A5 dtype列表
     // 检查x1、x2、bias、scale、offset、x3、output的数据类型是否在算子的支持列表内
     OP_CHECK_DTYPE_NOT_SUPPORT(x1, supportedDtypeList, return false);
     // 对于量化来说，x2只为INT8/INT4
@@ -290,7 +294,8 @@ static bool CheckContiguous(const aclTensor *x2, const aclTensor *scale, const a
 {
     // check x2(weight) is transposed, scale and offset should also be transposed
     const bool isX2Transposed = IsTransposeLastTwoDims(x2) || QuantMatmulAllReduceIsAclnnPreTransposed(x2);
-    const bool isArch3510 = (op::GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510);
+    const bool isArch3510 = (op::GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510 ||
+                              op::GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_9201); // A6同A5做一致性校验
     const bool isASCEND910B = (op::GetCurrentPlatformInfo().GetSocVersion() == op::SocVersion::ASCEND910B);
     if ((!isArch3510) && (!isASCEND910B)) {
         return true;

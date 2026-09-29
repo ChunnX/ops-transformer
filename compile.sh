@@ -47,7 +47,7 @@ BUILD_CHILD_PID=0
 # ===================== 根据编译结果处理 =====================
 if [ $BUILD_EXIT_CODE -eq 0 ]; then
     BUILD_SUCCESS=1  # 标记编译成功
-   # echo "[$(date)] 编译流程正常执行完毕！"
+    # echo "[$(date)] 编译流程正常执行完毕！"
     exit 0  # 正常退出，不触发cleanup
 else
     BUILD_SUCCESS=0  # 编译失败，触发cleanup

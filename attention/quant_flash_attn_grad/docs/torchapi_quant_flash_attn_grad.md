@@ -211,7 +211,7 @@ cann_ops_transformer.quant_flash_attn_grad(
 | do_descale | Tensor | 必选 | dout的反量化缩放因子 | float32 | ND | (1,) | × |
 | p_scale | Tensor | 必选 | P矩阵的量化缩放因子 | float32 | ND | (1,) | × |
 | ds_scale | Tensor | 必选 | 反量化缩放因子 | float32 | ND | (1,) | × |
-| softmax_lse | Tensor | 必选 | 注意力正向计算的输出softmaxLse | float32 | ND | (B, Q_N, Q_S, 1) | × |
+| softmax_lse | Tensor | 必选 | 注意力正向计算的输出softmaxLse | float32 | ND | (B, Q_N, Q_S) | × |
 | cu_seqlens_q | Tensor | 可选 | Q的累积序列长度，用于处理变长序列，第一个元素必须为0 | int32 | ND | (B+1,) | × |
 | cu_seqlens_kv | Tensor | 可选 | KV的累积序列长度，用于处理变长序列，第一个元素必须为0 | int32 | ND | (B+1,) | × |
 | seqused_q | Tensor | 可选 | 指定每batch中q实际使用的序列长度，截断冗余运算 | int32 | ND | (B,) | × |
@@ -697,7 +697,7 @@ cann_ops_transformer.quant_flash_attn_grad(
                 <td>
                     <ul>
                         <li>tensor_type仅支持float32</li>
-                        <li>shape为(B, Q_N, Q_S, 1)</li>
+                        <li>shape为(B, Q_N, Q_S)</li>
                     </ul>
                 </td>
             </tr>
@@ -947,8 +947,8 @@ mask_mode参数解释
     p_scale = torch.ones(1, dtype=torch.float32, device="npu")
     ds_scale = torch.ones(1, dtype=torch.float32, device="npu")
 
-    # softmax_lse: FP32, shape=(B, Q_N, Q_S, 1)
-    softmax_lse = torch.zeros(B, Q_N, Q_S, 1, dtype=torch.float32, device="npu")
+    # softmax_lse: FP32, shape=(B, Q_N, Q_S)
+    softmax_lse = torch.zeros(B, Q_N, Q_S, dtype=torch.float32, device="npu")
 
     try:
         metadata = cann_ops_transformer.quant_flash_attn_metadata(

@@ -288,7 +288,7 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::CheckParamsAttrEpAndSetLocalParams
 
     std::string supportRankSizeRange;
     const std::set<int64_t> &supportRankSize =
-        (npuArch_ == Ops::Base::DAV_3510) ? A5_SUPPORT_RANK_SIZE : A3_SUPPORT_RANK_SIZE;
+        (npuArch_ == Ops::Base::DAV_3510 || npuArch_ == Ops::Base::DAV_9201) ? A5_SUPPORT_RANK_SIZE : A3_SUPPORT_RANK_SIZE;
     for (const auto &v : supportRankSize) {
         supportRankSizeRange += (std::to_string(v) + " ");
     }
@@ -347,10 +347,15 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::GetAndConvertCommMode(gert::Tiling
     OP_TILING_CHECK(commModeStr == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "comm_mode"),
                     return ge::GRAPH_FAILED);
     const size_t maxLength = 7UL;
-    if (npuArch_ == Ops::Base::DAV_3510) {
+    if (npuArch_ == Ops::Base::DAV_3510 || npuArch_ == Ops::Base::DAV_9201) {
         if (strncmp(commModeStr, "ai_cpu", maxLength) == 0) {
             commMode = Mc2Comm::COMM_MODE_AICPU;
         } else if (strncmp(commModeStr, "ccu", maxLength) == 0) {
+            if (npuArch_ == Ops::Base::DAV_9201) {
+                // A6(ascend910_96)无CCU引擎，显式ccu直接报错(默认ai_cpu不受影响)
+                OP_LOGE(context->GetNodeName(), "A6 has no CCU engine, commMode 'ccu' is not supported.");
+                return ge::GRAPH_FAILED;
+            }
             commMode = Mc2Comm::COMM_MODE_CCU;
         } else {
             OP_LOGD(context->GetNodeName(), "Currently, commMode only support 'ccu', 'ai_cpu', but got %s.",

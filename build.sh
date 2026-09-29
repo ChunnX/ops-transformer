@@ -362,8 +362,8 @@ function help_info() {
     echo "    --valgrind run ut with valgrind. This option will disable asan, noexec and run utest by valgrind"
     echo "    --ops Compile specified operator, use snake name, like: --ops=add,add_lora, use ',' to separate different operator"
     echo "    --module Compile specified module, like: --module=mc2,attention, use ',' to separate different modules (supported: mc2,attention,moe,ffn,mhc,posembedding,gmm)"
-    echo "    --soc Compile binary with specified Ascend SoC, like: --soc=ascend910b,ascend910_93,ascend950 use ',' to separate different SoC"
-    echo "    --soc supported parameters must only in [$(get_supported_soc_text)], A3(--soc=ascend910_93)"
+    echo "    --soc Compile binary with specified Ascend SoC, like: --soc=ascend910b,ascend910_93,ascend910_96,ascend950 use ',' to separate different SoC"
+    echo "    --soc supported parameters must only in [$(get_supported_soc_text)], A3(--soc=ascend910_93), A6(--soc=ascend910_96)"
     echo "    --list_soc List all supported Ascend SoC"
     echo "    --vendor_name Specify the custom operator package vendor name, like: --vendor_name=customize, default to custom"
     echo "    --opgraph build graph_plugin_transformer.so"
@@ -1042,6 +1042,7 @@ function process_soc_input(){
         # 与 cmake/scripts/util/const_var.py 的 SOC_MAP_EXT
         [ascend910b]="Atlas A2"
         [ascend910_93]="Atlas A3"
+        [ascend910_96]="Ascend 960 (A6)"
         [ascend310p]="Ascend310P3"
         [ascend950]="Ascend 950PR/Ascend 950DT"
         [kirinx90]="KirinX90"

@@ -519,6 +519,11 @@ static aclnnStatus CheckAndHandleCommMode(const char *commMode, uint8_t &commMod
     if (std::strncmp(commMode, "ai_cpu", CMP_MAX_LEN) == 0) {
         commModeEnum = Mc2Comm::COMM_MODE_AICPU;
     } else if (std::strncmp(commMode, "ccu", CMP_MAX_LEN) == 0) {
+        if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_9201) {
+            // A6(ascend910_96)无CCU引擎，commMode为显式入参，直接拒绝
+            OP_LOGE_WITH_INVALID_ATTR("aclnnAllGatherMatmulV2", "commMode", commMode, "'ai_cpu' on A6");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
         commModeEnum = Mc2Comm::COMM_MODE_CCU;
     } else {
         OP_LOGE_WITH_INVALID_ATTR("aclnnAllGatherMatmulV2", "commMode", commMode, "'ccu' or 'ai_cpu'");
@@ -667,6 +672,10 @@ aclnnStatus aclnnAllGatherMatmulV2GetWorkspaceSize(const aclTensor *x1, const ac
         ret = allGatherMatmulV2GetWorkspaceSizeAIVMode(x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, group,
                                                        gatherIndex, commTurn, streamMode, groupSize, commMode, output,
                                                        gatherOut, amaxOut, workspaceSize, executor);
+    } else if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_9201) {
+        ret = allGatherMatmulV2GetWorkspaceSizeCCUMode(x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, group,
+                                                       gatherIndex, commTurn, streamMode, groupSize, commMode, output,
+                                                       gatherOut, amaxOut, workspaceSize, executor);        
     } else {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
             "aclnnAllGatherMatmulV2", "npuArch",
@@ -702,6 +711,14 @@ aclnnStatus aclnnAllGatherMatmulV2(void *workspace, uint64_t workspaceSize, aclO
             }
         } else if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_2201) {
             NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
+        } else if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_9201) {
+            void *arg = NnopbaseGetUserHandle(executor);
+            uintptr_t handleVal = reinterpret_cast<uintptr_t>(arg);
+            uint8_t commMode = static_cast<uint8_t>(handleVal);
+            if (commMode == Mc2Comm::COMM_MODE_AICPU) {
+                OP_LOGD("aclnnAllGatherMatmulV2: NnopbaseHcclServerType, use AICPU mode");
+                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
+            }
         }
     }
 

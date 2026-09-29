@@ -58,7 +58,9 @@ static bool CheckNotNull(const aclTensor *x1, const aclTensor *x2, const aclTens
 }
 static inline bool IsAscend910A5(void)
 {
-    return op::GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510;
+    // A6(ascend910_96)复用A5路径：aclnn层转发到已适配的AllGatherMatmulV2接口
+    return op::GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510 ||
+           op::GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_9201;
 }
 // 根据API定义，需要列出所能支持的所有dtype
 static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT16, op::DataType::DT_BF16};

@@ -13,7 +13,12 @@
  * \brief
  */
 
+#if (__CCE_AICORE__ == 220)
+#include "arch22/compressor_v2_kernel_full_load.h"
+#include "arch22/compressor_v2_kernel_perf.h"
+#else
 #include "arch35/compressor_v2_kernel.h"
+#endif
 
 using namespace CompressorV2;
 
@@ -42,9 +47,21 @@ __global__ __aicore__ void compressor_v2(__gm__ uint8_t *x, __gm__ uint8_t *wKv,
     TPipe pipe;
     constexpr auto xLayout = static_cast<X_LAYOUT>(XLayout);
     constexpr auto xDtype = static_cast<X_DTYPE>(XDType);
+#if (__CCE_AICORE__ == 220)
+    if constexpr (static_cast<TEMPLATE_ID>(TemplateId) == TEMPLATE_ID::FULL_LOAD) {
+        CompressorV2KernelFullLoad<COMPType<xLayout, xDtype>> op(&pipe, tilingData);
+        op.Init(x, wKv, wGate, stateCache, stateBlockTable, cuSeqlens, seqUsed, startPos, cmpKvOut, workspace);
+        op.Process();
+    } else {
+        CompressorV2KernelPerf<COMPType<xLayout, xDtype>> op(&pipe, tilingData);
+        op.Init(x, wKv, wGate, stateCache, stateBlockTable, cuSeqlens, seqUsed, startPos, cmpKvOut, workspace);
+        op.Process();
+    }
+#else
     if constexpr (static_cast<TEMPLATE_ID>(TemplateId) == TEMPLATE_ID::FULL_LOAD) {
         INVOKE_COMPRESSOR_GENERAL_OP_IMPL(CompressorV2Kernel, true, xLayout, xDtype);
     } else {
         INVOKE_COMPRESSOR_GENERAL_OP_IMPL(CompressorV2Kernel, false, xLayout, xDtype);
     }
+#endif
 }
