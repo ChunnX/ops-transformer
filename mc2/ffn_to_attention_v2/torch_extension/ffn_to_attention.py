@@ -127,7 +127,7 @@ def _get_hccl_comm_name(group, rank_id):
 
 
 def _calc_window_size(token_info_table_shape, token_data_shape, world_size):
-    """Calculate window capacity including flag sources, address tables and count rows."""
+    """Calculate the conservative FFN-side window capacity."""
     _op_module = _ffn_to_attention_op_builder.load()
     return _op_module.get_ffn_to_attention_ccl_buffer_size(
         token_info_table_shape, token_data_shape, world_size
@@ -145,14 +145,15 @@ class FFNToAttentionBuffer:
     is used as the local communication window instead of an internally
     allocated buffer: it is zeroed once, registered into the HCCL
     communication domain, and never freed by this class. The caller owns the
-    memory and must keep it alive while the buffer is in use. The
-    attention-side CCL buffer size is always computed internally from the
-    attention-side token shapes and exposed as ``ccl_buffer_size`` (the size
-    of the remote attention windows the ffn_to_attention op writes to). This
-    class intentionally shares its registration tag with attention_to_ffn so
-    peer ranks can discover this rank's window; create only one buffer per
-    group in this process (attn workers create the attention_to_ffn buffer,
-    FFN workers create this one).
+    memory and must keep it alive while the buffer is in use. ``ccl_buffer_size``
+    always equals the registered window size: the user-provided ``window_size``
+    when custom memory is used, or the internally computed conservative
+    capacity otherwise (it must host the attention_to_ffn dispatch receiving
+    area for the maximum possible attention worker count plus this op's flag
+    sources and address tables). This class intentionally shares its
+    registration tag with attention_to_ffn so peer ranks can discover this
+    rank's window; create only one buffer per group in this process (attn
+    workers create the attention_to_ffn buffer, FFN workers create this one).
     """
 
     def __init__(
@@ -196,20 +197,19 @@ class FFNToAttentionBuffer:
                 ),
             )
 
-        # Attention-side CCL buffer size, computed internally from the
-        self.ccl_buffer_size = _calc_window_size(
-            token_info_table_shape, token_data_shape, world_size
+        self.ccl_buffer_size = (
+            window_size
+            if window_size is not None
+            else _calc_window_size(token_info_table_shape, token_data_shape, world_size)
         )
 
         self._capacity_shapes = (
             tuple(self.token_info_table_shape),
             tuple(self.token_data_shape),
         )
-        # Local FFN-side window: user-provided memory
+        # Local FFN-side window: user-provided memory (or internally allocated with the same size).
         self.window_addr = window_addr
-        self.window_size = (
-            window_size if window_size is not None else self.ccl_buffer_size
-        )
+        self.window_size = self.ccl_buffer_size
 
         self._ctx_manager = CommContextManager(
             self.group_name,
@@ -261,9 +261,9 @@ def get_buffer_for_ffn_to_attention(
     """Create a communication buffer for ffn_to_attention.
 
     This is a thin factory around ``FFNToAttentionBuffer`` that computes the
-    required attention-side CCL buffer size internally, creates the
-    communication context, and returns a buffer object holding all the
-    information ``ffn_to_attention`` needs.
+    required FFN-side CCL buffer size internally, creates the communication
+    context, and returns a buffer object holding all the information
+    ``ffn_to_attention`` needs.
 
     Args:
         group (ProcessGroup): HCCL process group.
@@ -280,19 +280,20 @@ def get_buffer_for_ffn_to_attention(
             internally.
         window_size (int, optional): Size in bytes of the memory at
             ``window_addr``, i.e. the FFN-side memory size. It must be no
-            smaller than the FFN-side window size required to receive the
-            attention_to_ffn token data (computable on the attention side,
-            e.g. from ``ccl_buffer_size`` of the buffer created by
-            ``get_buffer_for_attention_to_ffn``). The attention-side memory
-            size is computed internally from ``token_info_table_shape`` and
-            ``token_data_shape`` and exposed as ``ccl_buffer_size`` of the
-            returned buffer. Default None, meaning the framework allocates
-            the window internally.
+            smaller than the FFN-side window size required to host the
+            attention_to_ffn dispatch receiving area plus this op's flag
+            sources and address tables; the op tiling validates it against
+            the session layout (the exact attention worker count when
+            ``attn_rank_table`` is provided at call time, or the conservative
+            maximum count otherwise). When omitted, the framework allocates
+            the window with the internally computed conservative capacity
+            (covering ``world_size - 1`` sessions) and exposes it as
+            ``ccl_buffer_size`` of the returned buffer. Default None.
 
     Returns:
         FFNToAttentionBuffer: Buffer holding the communication context, group
         name, world size, token table shapes and CCL buffer size (the
-        attention-side window size, computed internally).
+        registered FFN-side window size).
     """
     return FFNToAttentionBuffer(
         group,
@@ -324,7 +325,7 @@ def ffn_to_attention(
         buffer (FFNToAttentionBuffer): Communication buffer created by
             ``get_buffer_for_ffn_to_attention``. Holds the context tensor,
             group name, world size, token table shapes and CCL buffer size
-            (the attention-side window size, computed internally).
+            (the registered FFN-side window size).
         x (Tensor): Token data to send, shape (Y, H), dtype float16/bfloat16.
         session_ids (Tensor): Per-token attention worker index, shape (Y,), dtype int32.
         micro_batch_ids (Tensor): Per-token micro batch index, shape (Y,), dtype int32.
