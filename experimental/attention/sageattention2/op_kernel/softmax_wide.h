@@ -72,21 +72,28 @@ __simd_callee__ inline __attribute__((always_inline)) void ScaleMaskAndMaxWideNZ
         int32_t t0_1 = causalLimit1 + row - col * 16;
         int32_t t1_1 = t0_1 + 8;
 
-        ApplyCausalMaskSubBlock(x0_0, t0_0, laneOffset, negative, h);
-        ApplyCausalMaskSubBlock(x1_0, t1_0, laneOffset, negative, h);
-        ApplyCausalMaskSubBlock(x0_1, t0_1, laneOffset, negative, h);
-        ApplyCausalMaskSubBlock(x1_1, t1_1, laneOffset, negative, h);
+        MaskReg valid0_0, valid1_0, valid0_1, valid1_1;
+        CompareScalar<int16_t, CMPMODE::LE>(valid0_0, laneOffset, int16_t(t0_0), h);
+        CompareScalar<int16_t, CMPMODE::LE>(valid1_0, laneOffset, int16_t(t1_0), h);
+        CompareScalar<int16_t, CMPMODE::LE>(valid0_1, laneOffset, int16_t(t0_1), h);
+        CompareScalar<int16_t, CMPMODE::LE>(valid1_1, laneOffset, int16_t(t1_1), h);
+
+        Select(x0_0, x0_0, negative, valid0_0);
+        Select(x1_0, x1_0, negative, valid1_0);
+        Select(x0_1, x0_1, negative, valid0_1);
+        Select(x1_1, x1_1, negative, valid1_1);
     }
+
+    StoreAlign(scores0 + col * 64 * 16 + row * 16 + 0, x0_0, h);
+    StoreAlign(scores0 + col * 64 * 16 + row * 16 + 128, x1_0, h);
 
     RegTensor<half> pair_max0, pair_max1;
     Max(pair_max0, x0_0, x0_1, h);
-    StoreAlign(scores0 + col * 64 * 16 + row * 16 + 0, x0_0, h);
-    Max(pair_max1, x1_0, x1_1, h);
-    StoreAlign(scores0 + col * 64 * 16 + row * 16 + 128, x1_0, h);
-
     StoreAlign(scores1 + col * 64 * 16 + row * 16 + 0, x0_1, h);
-    Max(m0, m0, pair_max0, h);
+    Max(pair_max1, x1_0, x1_1, h);
     StoreAlign(scores1 + col * 64 * 16 + row * 16 + 128, x1_1, h);
+
+    Max(m0, m0, pair_max0, h);
     Max(m1, m1, pair_max1, h);
 }
 
@@ -117,27 +124,24 @@ __simd_callee__ inline __attribute__((always_inline)) void ComputeProbAndPackNZS
     ExpSub<float, half, RegLayout::ZERO>(p2, x1, m, h);
     ExpSub<float, half, RegLayout::ONE>(p3, x1, m, h);
 
-    // Consume p0 and p1 first (issued earliest, maximum latency padding)
-    RegTensor<float8_e4m3_t> pk0, pk1;
+    // Fine-grained instruction interleaving across Convert, ALU, and Logic pipes.
+    // Def-use distances >= 2-6 cycles completely hide latency without UB spilling (peak 7 live regs <= 8).
+    RegTensor<float8_e4m3_t> pk0, pk1, pk2, pk3;
     Cast<float8_e4m3_t, float, cast0>(pk0, p0, f);
     Cast<float8_e4m3_t, float, cast2>(pk1, p1, f);
     Add(p0, p0, p1, f);
-
-    RegTensor<uint8_t> merge0, merged;
-    Or(merge0, (RegTensor<uint8_t> &)pk0, (RegTensor<uint8_t> &)pk1, b);
-
-    // Consume p2 and p3 (reuse pk0 and pk1 registers to minimize register pressure)
-    Cast<float8_e4m3_t, float, cast1>(pk0, p2, f);
-    Cast<float8_e4m3_t, float, cast3>(pk1, p3, f);
+    Cast<float8_e4m3_t, float, cast1>(pk2, p2, f);
+    Cast<float8_e4m3_t, float, cast3>(pk3, p3, f);
     Add(p2, p2, p3, f);
 
-    Or(merged, (RegTensor<uint8_t> &)pk0, (RegTensor<uint8_t> &)pk1, b);
+    Or((RegTensor<uint8_t> &)pk0, (RegTensor<uint8_t> &)pk0, (RegTensor<uint8_t> &)pk1, b);
+    Or((RegTensor<uint8_t> &)pk2, (RegTensor<uint8_t> &)pk2, (RegTensor<uint8_t> &)pk3, b);
     Add(p0, p0, p2, f);
 
-    Or(merged, merge0, merged, b);
+    Or((RegTensor<uint8_t> &)pk0, (RegTensor<uint8_t> &)pk0, (RegTensor<uint8_t> &)pk2, b);
     Add(rowSum, rowSum, p0, f);
 
-    StoreAlign((__ubuf__ uint8_t *)out + outOffset, merged, b);
+    StoreAlign((__ubuf__ uint8_t *)out + outOffset, (RegTensor<uint8_t> &)pk0, b);
 }
 
 // NZ scores retain eight rows in each FP16 register. ReduceDataBlock produces
@@ -197,8 +201,11 @@ __simd_callee__ inline void SoftmaxWideProbCore(__ubuf__ half *scores, __ubuf__ 
                                                 __ubuf__ float *scratch = nullptr)
 {
     using namespace AscendC::MicroAPI;
-    // FIRST reads MaxCore's maxima; SECOND reads FIRST's partial lane sums.
-    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+    // Barrier is only required for FIRST (waiting for MaxCore's maxima update).
+    // In SECOND, SoftmaxWideFirstVF has already flushed and synchronized its stores.
+    if constexpr (FIRST) {
+        LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+    }
     auto f = CreateMask<float, MaskPattern::ALL>();
     auto sumMask = CreateMask<float, MaskPattern::VL8>();
     for (uint16_t row = 0; row < 64; row += 8) {
@@ -210,13 +217,14 @@ __simd_callee__ inline void SoftmaxWideProbCore(__ubuf__ half *scores, __ubuf__ 
         else
             LoadAlign(rowSum, partialSums + row * 8);
         for (uint16_t col = 0; col < 8; col += 2) {
-            RegTensor<half> next0, next1;
-            LoadAlign(next0, scores + (col + 1) * 64 * 32 + row * 16);
-            LoadAlign(next1, scores + (col + 1) * 64 * 32 + 64 * 16 + row * 16);
-
+            // Load x0, x1 first so that subsequent loads provide latency hiding before consumption
             RegTensor<half> x0, x1;
             LoadAlign(x0, scores + (col + 0) * 64 * 32 + row * 16);
             LoadAlign(x1, scores + (col + 0) * 64 * 32 + 64 * 16 + row * 16);
+
+            RegTensor<half> next0, next1;
+            LoadAlign(next0, scores + (col + 1) * 64 * 32 + row * 16);
+            LoadAlign(next1, scores + (col + 1) * 64 * 32 + 64 * 16 + row * 16);
 
             ComputeProbAndPackNZSingle(out, x0, x1, m, rowSum, (col + 0) * 64 * 64 + row * 32);
             ComputeProbAndPackNZSingle(out, next0, next1, m, rowSum, (col + 1) * 64 * 64 + row * 32);
@@ -238,6 +246,7 @@ __simd_vf__ inline void SoftmaxWideFirstVF(__ubuf__ half *scores, __ubuf__ half 
 {
     SoftmaxWideMaxCore<MASK>(scores, scoresNext, maxima, alpha, qhalf, khalf, queryInGroup);
     SoftmaxWideProbCore<true>(scores, maxima, out, partialSums);
+    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 }
 
 // The second 256-token half publishes its block sum in the unused upper half
@@ -247,6 +256,7 @@ __simd_vf__ inline void SoftmaxWideSecondVF(__ubuf__ half *scores, __ubuf__ half
                                             __ubuf__ float *partialSums)
 {
     SoftmaxWideProbCore<false>(scores, maxima, out, partialSums, alpha + 64);
+    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 }
 
 } // namespace Sage

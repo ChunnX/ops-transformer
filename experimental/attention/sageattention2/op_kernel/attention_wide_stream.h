@@ -145,7 +145,7 @@ __aicore__ inline __attribute__((always_inline)) void ProcessWideCubeStep(
     }
 }
 template <class T, bool CAUSAL = false>
-__aicore__ inline __attribute__((always_inline)) void AttentionWideStream(GM_ADDR q8, GM_ADDR k8, GM_ADDR v8,
+__aicore__ inline __attribute__((always_inline)) void AttentionWideStream(GM_ADDR q, GM_ADDR k8, GM_ADDR v8,
                                                                           GM_ADDR qs, GM_ADDR ks, GM_ADDR mxScale,
                                                                           GM_ADDR vMean, GM_ADDR out, GM_ADDR lse,
                                                                           SageParams p)
@@ -153,7 +153,7 @@ __aicore__ inline __attribute__((always_inline)) void AttentionWideStream(GM_ADD
     FixedResource r;
     MxScaleCache mxCache;
     AttentionBlockVecWide<T, 128> vector;
-    vector.Init(r, qs, ks, vMean, out, lse, p);
+    vector.Init(r, q, qs, ks, vMean, out, lse, p);
     uint32_t core = GetBlockIdx();
     if ASCEND_IS_AIV {
         core /= 2;
@@ -190,13 +190,12 @@ __aicore__ inline __attribute__((always_inline)) void AttentionWideStream(GM_ADD
             PrefetchWideK<WIDE_B_L1>(r, k8 + current.kb * 128, 0);
             PrefetchWideK<WIDE_B_L1>(r, k8 + (current.kb + N) * 128, 1);
         }
-        GM_ADDR qTile = q8 + (current.qb + current.qstart) * 128;
         if ASCEND_IS_AIC {
             for (uint32_t part = 0; part < current.count * 2; part += 2, fragment += 2) {
                 cubePending[fragment & 3] = {current.kb, part};
-                ProcessWideCubeStep<0>(r, cubePending, fragment, true, qTile, k8, v8, mxScale, mxCache, p, current.count);
+                ProcessWideCubeStep<0>(r, cubePending, fragment, true, nullptr, k8, v8, mxScale, mxCache, p, current.count);
                 cubePending[(fragment + 1) & 3] = {current.kb, part + 1};
-                ProcessWideCubeStep<1>(r, cubePending, fragment + 1, true, qTile, k8, v8, mxScale, mxCache, p, current.count);
+                ProcessWideCubeStep<1>(r, cubePending, fragment + 1, true, nullptr, k8, v8, mxScale, mxCache, p, current.count);
             }
         } else {
             for (uint32_t step = 0; step < current.count; ++step, fragment += 2) {

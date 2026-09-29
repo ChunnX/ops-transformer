@@ -11,6 +11,7 @@
 #pragma once
 #include "attention_block_vec.h"
 #include "softmax_wide.h"
+#include "quant.h"
 namespace Sage {
 struct WideVectorLayout {
     static constexpr uint32_t SCORE_UB = 0, PV_UB = 4 * HALF * N * 2;
@@ -32,6 +33,15 @@ class AttentionBlockVecWide : public AttentionBlockVec<T, DP, WideVectorLayout> 
     using Base = AttentionBlockVec<T, DP, WideVectorLayout>;
 
 public:
+    using Base::Init;
+    __aicore__ inline __attribute__((always_inline)) void Init(FixedResource &resource, GM_ADDR q, GM_ADDR qs,
+                                                               GM_ADDR ks, GM_ADDR vMean, GM_ADDR out,
+                                                               GM_ADDR lse, SageParams params)
+    {
+        Base::Init(resource, qs, ks, vMean, out, lse, params);
+        qg_.SetGlobalBuffer((__gm__ T *)q);
+        qg_.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
+    }
     template <bool CAUSAL>
     __aicore__ inline __attribute__((always_inline)) void SoftmaxWide(uint32_t step, uint32_t count, uint32_t qstart,
                                                                       uint32_t ring, uint64_t nextScale)
@@ -116,9 +126,41 @@ public:
         // MAX_UB already reserves 512 bytes: two independent 256-byte slots.
         maxima_ = resource_->ubBuf.template GetBufferByByte<half>(Base::MAX_UB + (ordinal & 1) * 256);
         if (first) {
+            constexpr uint32_t Q_IN_UB = WideVectorLayout::SCORE_UB;
+            constexpr uint32_t Q_FP32_UB = Q_IN_UB + HALF * DP * sizeof(T);
+            constexpr uint32_t Q_INT8_UB = Q_FP32_UB + HALF * DP * sizeof(float);
+            constexpr uint32_t Q_RAW_SCALE = Q_INT8_UB + HALF * DP * sizeof(int8_t);
+            constexpr uint32_t Q_INV_SCALE = Q_RAW_SCALE + HALF * sizeof(float);
+            constexpr uint32_t Q_FACTORS = Q_INV_SCALE + HALF * sizeof(float);
+            static_assert(Q_FACTORS + 128 * sizeof(float) <= WideVectorLayout::PV_UB, "streaming Q exceeds SCORE_UB");
+
+            auto input = resource_->ubBuf.template GetBufferByByte<T>(Q_IN_UB);
+            auto x = resource_->ubBuf.template GetBufferByByte<float>(Q_FP32_UB);
+            auto out = resource_->ubBuf.template GetBufferByByte<int8_t>(Q_INT8_UB);
+            auto scales = resource_->ubBuf.template GetBufferByByte<float>(Q_RAW_SCALE);
+            auto inverseScales = resource_->ubBuf.template GetBufferByByte<float>(Q_INV_SCALE);
+            auto factors = resource_->ubBuf.template GetBufferByByte<float>(Q_FACTORS);
+
             Sync<HardEvent::V_MTE2>();
-            DataCopy(qsu_, Base::qsg_[qb + qstart + subBlockIdx_ * HALF], HALF);
+            uint64_t qToken = qb + qstart + subBlockIdx_ * HALF;
+            DataCopy(input, qg_[qToken * DP], HALF * DP);
             Sync<HardEvent::MTE2_V>();
+
+            Cast(x, input, RoundMode::CAST_NONE, HALF * DP);
+            PipeBarrier<PIPE_V>();
+
+            FixedScaleFactorsVF((__ubuf__ float *)factors.GetPhyAddr(), params_.smScale);
+
+            QuantRowsVF((__ubuf__ float *)x.GetPhyAddr(), (__ubuf__ float *)x.GetPhyAddr(),
+                        (__ubuf__ float *)scales.GetPhyAddr(), (__ubuf__ int8_t *)out.GetPhyAddr(),
+                        (__ubuf__ half *)qsu_.GetPhyAddr(), (__ubuf__ float *)factors.GetPhyAddr(),
+                        (__ubuf__ float *)inverseScales.GetPhyAddr(), DP, 0, HALF, params_.qg);
+
+            Sync<HardEvent::V_MTE3>();
+            auto ql1 = resource_->l1Buf.template GetBufferByByte<int8_t>(subBlockIdx_ * 8192);
+            DataCopy(ql1, out, 8192);
+            CrossCoreSetFlag<4, PIPE_MTE3>(Q_READY + subBlockIdx_ * AIV_FLAG_OFFSET);
+
             Duplicate(maxima_, half(FP16_MIN), 128);
             PipeBarrier<PIPE_V>();
         }
@@ -219,5 +261,8 @@ private:
     using Base::PV_SLOT_BYTES;
     using Base::ALPHA_UB;
     using Base::SUM_UB;
+    using Base::params_;
+
+    GlobalTensor<T> qg_;
 };
 } // namespace Sage

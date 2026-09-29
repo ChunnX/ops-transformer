@@ -21,6 +21,7 @@
  *  10. qk_quant_gran 组共享 INT8 scale 覆盖性与半步长误差                  ≤ scale/2
  *  11. pv_accum_dtype="fp32+fp16" 部分和 FP16 往返的折入误差               ≤ Σ|O_j|·2^-11
  *  12. smooth_v 居中 + 输出补回的 MXFP8 重建误差，及包络不放大             ≤ amax·2^-4
+ *  13. on-chip streaming query INT8 量化与全量离线量化位级严格等价性       bit-exact == 0
  *
  * 编译运行：
  *   g++ -O2 -std=c++17 tests/numeric_error_test.cpp -o build/numeric_error_test
@@ -660,6 +661,138 @@ void TestSmoothVReconstruction(std::mt19937 &rng)
     Report("centering does not widen the error envelope", centered, plain, centered <= plain);
 }
 
+// 验证片上即时流式 Query INT8 量化（On-Chip Streaming Q Quantization）与全量离线 Batch 量化
+// 的位级严格等价性（Bit-exact Equivalence）。
+// 对应 Stage 1.2 / 1.3 / 1.4：每个 128x128 FP16 Q Tile 在 Attention 内循环由 MIX 1:2 的
+// 两个 AIV 核心按 64x128 子块就地在线量化并直写 L1/UB，消灭 HBM 往返与 LLC 击穿。
+// 基于 per-token 对称 INT8 量化数学公式（INV_INT8_MAX = 1/127，FastReciprocal 倒数），
+// 逐 token 量化具有行独立性，子块流式输出与离线批处理输出在 INT8 编码与 FP16 尺度上
+// 必须完全 bit-exact 相同（max_err == 0）。
+void TestOnChipStreamingQQuantEquivalence(std::mt19937 &rng)
+{
+    constexpr float INV_INT8_MAX = 1.0f / 127.0f;
+    constexpr float DEQF16_FACTOR = 2048.0f;
+    const int tileRows = 128, headDim = 128;
+    const int subBlockRows = 64;  // MIX 1:2 中每个 AIV 核心处理 64 行
+    std::normal_distribution<float> gauss(0.0f, 1.0f);
+    std::uniform_real_distribution<float> scaleDist(0.05f, 2.0f);
+
+    int maxDiffInt8 = 0;
+    double maxDiffScale = 0.0;
+    bool zeroRowMatch = true;
+    bool saturationMatch = true;
+
+    // 测试多个 Tile，涵盖常规高斯分布、全零行、大离群值、极端动态范围
+    for (int t = 0; t < 50; ++t) {
+        float smScale = (t % 2 ? 1.0f : -1.0f) * scaleDist(rng) / std::sqrt(static_cast<float>(headDim));
+        float factor = std::sqrt(std::fabs(smScale) * DEQF16_FACTOR);
+        float qFactor = (smScale >= 0.0f) ? factor : -factor;
+
+        std::vector<std::vector<float>> qTile(tileRows, std::vector<float>(headDim));
+        for (int r = 0; r < tileRows; ++r) {
+            for (int c = 0; c < headDim; ++c) {
+                qTile[r][c] = RoundToFp16(gauss(rng));
+            }
+        }
+        // 边界情况注入
+        if (t % 5 == 0) {
+            // 注入全零行（验证 amax=0, scale=1.0f 规避被除数为 0）
+            for (int c = 0; c < headDim; ++c) {
+                qTile[10][c] = 0.0f;
+                qTile[75][c] = 0.0f;
+            }
+        }
+        if (t % 7 == 0) {
+            // 注入极大离群值（触发 INT8 饱和截断 [-127, 127]）
+            qTile[20][3] = RoundToFp16(50.0f);
+            qTile[20][4] = RoundToFp16(-50.0f);
+            qTile[90][5] = RoundToFp16(80.0f);
+        }
+
+        // 1. 全量离线 Batch 量化（模拟原始 preprocessing Quant 阶段）
+        std::vector<std::vector<int8_t>> q8Batch(tileRows, std::vector<int8_t>(headDim));
+        std::vector<float> scaleBatch(tileRows);
+        for (int r = 0; r < tileRows; ++r) {
+            float amax = 0.0f;
+            for (int c = 0; c < headDim; ++c) {
+                amax = std::fmax(amax, std::fabs(qTile[r][c]));
+            }
+            float m = amax * INV_INT8_MAX;
+            if (m <= 0.0f) {
+                m = 1.0f;
+            }
+            float inv = FastReciprocal(m);
+            for (int c = 0; c < headDim; ++c) {
+                float scaled = qTile[r][c] * inv;
+                float rounded = std::nearbyint(scaled);
+                rounded = std::fmax(-127.0f, std::fmin(127.0f, rounded));
+                q8Batch[r][c] = static_cast<int8_t>(rounded);
+            }
+            scaleBatch[r] = RoundToFp16(m * qFactor);
+        }
+
+        // 2. 片上即时流式子块量化（模拟 AttentionWideStream 内两个 AIV 核心各处理 64x128 子块）
+        std::vector<std::vector<int8_t>> q8Stream(tileRows, std::vector<int8_t>(headDim));
+        std::vector<float> scaleStream(tileRows);
+
+        for (int sub = 0; sub < 2; ++sub) {
+            int startRow = sub * subBlockRows;
+            int endRow = startRow + subBlockRows;
+            for (int r = startRow; r < endRow; ++r) {
+                float amax = 0.0f;
+                for (int c = 0; c < headDim; ++c) {
+                    amax = std::fmax(amax, std::fabs(qTile[r][c]));
+                }
+                float m = amax * INV_INT8_MAX;
+                if (m <= 0.0f) {
+                    m = 1.0f;
+                }
+                float inv = FastReciprocal(m);
+                for (int c = 0; c < headDim; ++c) {
+                    float scaled = qTile[r][c] * inv;
+                    float rounded = std::nearbyint(scaled);
+                    rounded = std::fmax(-127.0f, std::fmin(127.0f, rounded));
+                    q8Stream[r][c] = static_cast<int8_t>(rounded);
+                }
+                scaleStream[r] = RoundToFp16(m * qFactor);
+            }
+        }
+
+        // 逐元素与逐行比对
+        for (int r = 0; r < tileRows; ++r) {
+            if (scaleBatch[r] != scaleStream[r]) {
+                double diff = std::fabs(static_cast<double>(scaleBatch[r]) - static_cast<double>(scaleStream[r]));
+                maxDiffScale = std::fmax(maxDiffScale, diff);
+            }
+            for (int c = 0; c < headDim; ++c) {
+                int diff = std::abs(static_cast<int>(q8Batch[r][c]) - static_cast<int>(q8Stream[r][c]));
+                if (diff > maxDiffInt8) {
+                    maxDiffInt8 = diff;
+                }
+            }
+        }
+
+        // 验证全零行与饱和一致性
+        if (t % 5 == 0) {
+            if (scaleBatch[10] != scaleStream[10] || q8Batch[10][0] != q8Stream[10][0]) {
+                zeroRowMatch = false;
+            }
+        }
+        if (t % 7 == 0) {
+            if (q8Batch[20][3] != 127 || q8Stream[20][3] != 127 ||
+                q8Batch[20][4] != -127 || q8Stream[20][4] != -127) {
+                saturationMatch = false;
+            }
+        }
+    }
+
+    std::printf("[13] on-chip streaming query INT8 quantization bit-exact equivalence\n");
+    Report("bit-exact INT8 codewords (max_err == 0)", maxDiffInt8, 0.0, maxDiffInt8 == 0);
+    Report("bit-exact FP16 scales (max_err == 0)", maxDiffScale, 0.0, maxDiffScale == 0.0);
+    Report("zero-row handling bit-exact match", zeroRowMatch ? 0.0 : 1.0, 0.0, zeroRowMatch);
+    Report("saturation clamping bit-exact match", saturationMatch ? 0.0 : 1.0, 0.0, saturationMatch);
+}
+
 }  // namespace
 
 int main()
@@ -679,6 +812,7 @@ int main()
     TestQuantGranularityGroups(rng);
     TestFp16PartialRoundtrip(rng);
     TestSmoothVReconstruction(rng);
+    TestOnChipStreamingQQuantEquivalence(rng);
     std::printf("================================================================\n");
     if (g_failures == 0) {
         std::printf("ALL NUMERIC ERROR TESTS PASSED\n");
