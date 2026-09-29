@@ -7,7 +7,7 @@
 
 ## 一、对外接口
 
-全部符号为 global namespace，include 伞形头即可用：
+全部符号为 global namespace，include 这一个头文件即可用：
 
 ```cpp
 #include "apace/tiling/fit_balance_tiling/fit_balance_tiling.h"
@@ -28,8 +28,9 @@ template <typename LegacyArgs>
 FitBalanceTilingArgs MakeFitBalanceArgs(const LegacyArgs &a, TilingCommEngine commEngine);
 ```
 
-存量算子过渡用：从旧全局 mc2tiling::TilingArgs 挑字段构造引擎入参（模板鸭子类型，引擎不依赖
-旧类型定义）；commEngine 由调用方解析后补入。**新算子直接构造 FitBalanceTilingArgs，不用本函数**。
+存量算子过渡用：从旧全局 mc2tiling::TilingArgs 挑字段构造引擎入参。
+函数是模板（只要求传入类型有同名成员字段，引擎不依赖旧类型定义）；commEngine 由调用方解析后补入。
+**新算子直接构造 FitBalanceTilingArgs，不用本函数**。
 
 ### 分派判定
 
@@ -88,7 +89,7 @@ static const FitBalanceCalibration CALIBRATION = {
     /* aicpu 引擎通信拟合行: {卡数, k 带宽斜率(us/MB), b 每轮启动开销(us), c 一次性固定开销(us)} */
     {
         { {4, 26.5894, 33.17, 20.58},      // 950 标卡 4P 实测
-          {8, 22.7301, 33.17, 20.58} },    // 8P: <演示占位值——实测后替换; k 需按 8P 单份口径重标,
+          {8, 22.7301, 33.17, 20.58} },    // 8P: <演示占位值——实测后替换; k 按 8P 的单卡数据量重新标定,
                                            //   b/c 通常与 4P 接近(同为 AICPU 引擎)但以实测为准>
     },
     /* ccu 引擎通信拟合行(与 aicpu 同结构, 各引擎独立标定) */
@@ -101,7 +102,7 @@ static const FitBalanceCalibration CALIBRATION = {
     /* mmFit: matmul 算力档 + 最优基本块 */
     {
         { {MatmulDtypeKind::QUANT, false, 1, 1, 8192},   // fp8 量化
-          {MatmulDtypeKind::QUANT, true, 0, 0, 16384} }, // fp4 打包(键 {0,0} 为 glue 真实口径)
+          {MatmulDtypeKind::QUANT, true, 0, 0, 16384} }, // fp4 打包(键 {0,0} 是现网真实值, 见 5.2)
         {256, 256, 128},                                  // baseBlock
     },
 };
@@ -161,7 +162,7 @@ fullVolume 错 → 通信量与 mm 总量估计整体偏移。
 3. mValue 传进引擎的是"本卡份"（引擎需要 ×rankDim 才是实算量）→ `true`；mValue 本身就是本卡
    实算全量 → `false`
 
-> 口径备注：A2A 系老实现的工作集口径为 rankDim，与单份形态（fullVolume=false）的推导值 1 不同——
+> 历史备注：A2A 系老实现的工作集份数为 rankDim，与单份形态（fullVolume=false）的推导值 1 不同——
 > A2A 系当前无引擎消费者，BACK 形态实测校准时定稿。
 
 诊断打印内置：`ASCEND_GLOBAL_LOG_LEVEL=0` 时 FitBalanceCut 输出输入 shape / 最终切分 / 启动税三段。
@@ -178,15 +179,15 @@ fullVolume 错 → 通信量与 mm 总量估计整体偏移。
 本引擎的模型：把 M 轴切成 1 短 + N 长，长块的通信时长恰好掩盖相邻块的计算时长（配平）；
 每多切一轮多付一份启动开销 b，用轮数搜索择优。
 
-配平的**锚点 = 流水线的垫片块**（先动起来打破串行依赖的那块）：
-有本地块的算子垫片是本地块（FRONT 首端 / BACK 尾端，比短块更好——零通信依赖或无 deadline）；
-无本地块的算子垫片是短块（通信 bound 前置先发、计算 bound 后置垫尾）。长块长度
-= 反解垫片块的时长——这是 FRONT/BACK/NONE 三态配平公式的统一原理。
+配平的**锚点 = 流水线的启动块**（最先动起来、打破串行依赖的那块）：
+有本地块的算子启动块是本地块（FRONT 在首端 / BACK 在尾端，比短块更好——不等通信或没有发送时限）；
+无本地块的算子启动块是短块（通信耗时占比大时放在最前先发、计算耗时占比大时放在最后垫尾）。
+长块长度 = 按启动块的耗时反解——这是 FRONT/BACK/NONE 三种形态配平公式的统一原理。
 
 ### 3.2 通信模型（comm_model.h）
 
 ```
-x 的口径: m × commMatrixLen × realDtypeSize 的 MB(单份口径——份数已融进斜率 k)
+x 的计算基准: m × commMatrixLen × realDtypeSize 的 MB(按单卡数据量计——多份数的放大已折进斜率 k)
 realDtypeSize = commDtypeSize / expansionFraction   // fp4 子字节: 1/2 = 0.5 B/元素
 
 单轮 CommTime(m)          = k·x + b
@@ -194,10 +195,10 @@ realDtypeSize = commDtypeSize / expansionFraction   // fp4 子字节: 1/2 = 0.5 
 总量 TotalCommTime(m, N)  = k·X + N·b + c
 ```
 
-- **k**（带宽斜率）：按引擎 x 口径拟合，通信份数口径已融进 k——聚合类算子标定行直接填
-  工具原始值（如 26.5894），无需 ÷rankDim 预换算；
+- **k**（带宽斜率）：按上面 x 的计算基准拟合，多份数的放大已折进 k——聚合类算子标定行
+  直接填工具原始值（如 26.5894），**不要**再除以 rankDim；
 - **b**（每轮启动开销）：单轮全款——反解时从目标时间整额扣除，配平天然感知它；
-- **c**（一次性固定开销）：只进总量口径，不进单轮/反解（整个算子只付一次）；
+- **c**（一次性固定开销）：只计入总时间公式，不计入单轮时间和反解（整个算子只付一次）；
 - **消费链**：单轮→配平反解（③）与 ⑤ 门控的首末块；总量→Estimate 通算比、⑤ 轮数搜索、
   诊断打印（(N−1)·b = 启动税）；
 - **坑**：fp4 子字节建模只在 K 轴承载（A 侧输入）时需要——C 侧（计算输出）永远不是 fp4。
@@ -219,7 +220,7 @@ InverseMatmulTime(t, rowMul) = t / (rowMul × gradient), 抬到 baseM 下限
 - **MN 调和平均**：**惩罚偏斜**——M/N 都够大才能铺满 baseM×baseN 的 cube 分块；m 巨大 n 极小
   时被短板拖住。比几何平均更贴合分块阵列的实际填充率；`worksetShares` 乘进 m 是因为利用率
   建模对象是稳态流水的工作集形状（不是单卡裸 m）；
-- **mnExp 双口径**：0.7 聚合稳态（数据齐/流水满，Estimate 用）；**0.6 本地窗口**（单份数据/
+- **mnExp 双值**：0.7 聚合稳态（数据齐/流水满，Estimate 用）；**0.6 本地窗口**（单份数据/
   流水未满，增长更平缓 → FRONT/BACK 本地块时长估计更保守）；
 - **baseM/N/K 下限**（max）：小于基本块的 tile 也按基本块耗时计（阵列粒度）——防小 shape
   耗时趋于 0；算力 `computesPerCycle` 按 (量化类别, isFp4, A/B 字节数) 四维键查标定档，
@@ -231,7 +232,7 @@ InverseMatmulTime(t, rowMul) = t / (rowMul × gradient), 抬到 baseM 下限
 commOnKAxis    = (order == COMM_FIRST)          // 通信在前=传输入 A 侧→K 轴; 在后=传输出 C 侧→N 轴
 volumeMul      = fullVolume ? rankDim : 1        // 全量形态: 实算 mm 行数与单次通信字节均为切分域×rankDim
 mmRowMul       = volumeMul                        // mm 总行数倍数(MatmulTime 的 rowMul)
-commVolumeMul  = volumeMul                        // ⑥ 的 256MB 物理字节判定用(与 k 的口径融合无关)
+commVolumeMul  = volumeMul                        // ⑥ 的 256MB 物理字节判定用(与斜率 k 无关, 是真实字节数)
 worksetShares  = (localMMPosition == FRONT) ? rankDim−1 : volumeMul
                                                   // FRONT: 本地份剔出稳态工作集(单独按单份建模)
 ```
@@ -243,14 +244,14 @@ FRONT: 本地 mm 块在流水线首端——启动端被本地块免费占据(�
        短块退到尾部专职快速收尾; 长块 = 反解本地块计算时长(首块通信恰好掩盖它)
 BACK:  本地 mm 块在流水线尾端——本地保留份无通信 deadline, 与末块通信重叠,
        短块前置专职启动通信管道; 长块 = 反解本地块计算时长(末块通信恰好掩盖它)
-NONE:  无本地块——短块作流水线垫片(按 bound 判定放首/尾),
+NONE:  无本地块——短块兼任启动块(哪侧耗时占比大就放另一端, 由耗时判定),
        长块 = 反解短块的通信/计算时长(双向配平: 短块在后→反解其计算时长,
        在前→反解其通信时长)
 ```
 
-标定查表：通信行按（引擎分区 aicpu/ccu + rankDim）匹配（`FindCommFitRow`，miss=零值行→
-防御 NoCut）；算力行按四维形态键匹配（键推导与模型 dtype 分类同源）。
-**算力行哨兵判 `computesPerCycle == 0`**（勿用 aBytes——fp4 的 glue 真实口径 aBytes=0 合法）。
+标定查表：通信行按（引擎分区 aicpu/ccu + 卡数）匹配（`FindCommFitRow`，未命中=空行→
+防御性输出不切）；算力行按四维键匹配（键推导与模型 dtype 分类同源）。
+**未填行的识别判 `computesPerCycle == 0`**（不能用 aBytes 判空——fp4 行的 aBytes 就是合法值 0）。
 
 ### 3.5 离散切分引擎（cut_planner.h，CutPlanner 七步）
 
@@ -260,7 +261,7 @@ NONE:  无本地块——短块作流水线垫片(按 bound 判定放首/尾),
 ① GenerateInitialPartition  连续长块→离散块数
    夹取 longTileLen ∈ [shortTileLen, totalLen − shortTileLen];
    对齐到 mAlignLen(=baseM), 余数 > 对齐长×tol 才 ceil 进位;
-   tol 双值: 短块后置(计算 bound) 0.5——长块规整更重要; 前置(通信 bound) 0.75——倾向向下保块大;
+   tol 双值: 短块在尾(计算耗时占比大)取 0.5——长块规整更重要; 短块在首(通信耗时占比大)取 0.75——宁可块大不冒进;
    numLongTile = (totalLen − shortTileLen×0.75) / longTileLen   ← 0.75 权重折算短块占位
 ② 残余判定 + balanceCut     残余够大且长短接近且块数少(≤2)且线性度好 → 索性全等分
    (等分 = 通信轮次最规整的保底形态)
@@ -279,7 +280,7 @@ NONE:  无本地块——短块作流水线垫片(按 bound 判定放首/尾),
 ```
 ① Estimate     总量估计: FindCubeUtil(聚合 0.7) → gradient → 总 mm/通时间 → 通算比;
                FRONT/BACK 算本地窗口时长(FindCubeUtil(m, 1, 0.6), 除以更保守的本地利用率);
-               短块位置: FRONT→恒后置 / BACK→恒前置 / NONE→先行段为瓶颈侧则后置
+               短块位置: FRONT→恒后置 / BACK→恒前置 / NONE→先行的一段是瓶颈则短块放另一端
 ② SetShort     短块 = minTileLen(种子 = baseM) 落位; NoCut 几何门(总长 < 短块×2 → 不切)
 ③ SetLong      长块反解: FRONT/BACK = InverseCommTime(本地窗口时长);
                NONE = 双向配平(短块在后→反解其 mm 时长, 在前→反解其通信时长)
@@ -301,7 +302,7 @@ NONE:  无本地块——短块作流水线垫片(按 bound 判定放首/尾),
 ```
 FRONT:  T = T_comm(首块) + max(T_comm(其余轮), T_mm − T_mm(末块)) + T_mm(末块)
 BACK:   T = T_mm(首块) + max(T_mm − T_mm(首块) − 本地窗口, T_comm(除末轮)) + max(T_comm(末轮), 本地窗口)
-NONE:   T = T_mm(首块) + max(T_mm − T_mm(首块), T_comm(除末轮)) + T_comm(末轮)   [计算在前]
+NONE:   T = T_mm(首块) + max(T_mm − T_mm(首块), T_comm(除末轮)) + T_comm(末轮)   [计算在前的形态]
 ```
 
 ### 3.7 方法-消费方速查
@@ -326,15 +327,15 @@ NONE:   T = T_mm(首块) + max(T_mm − T_mm(首块), T_comm(除末轮)) + T_com
 ```
 fit_balance_tiling/
 ├── README.md                       本文档
-├── fit_balance_tiling.h            对外总接口(伞形头): 引擎文档 + include 全部分文件
+├── fit_balance_tiling.h            对外总接口头文件: 引擎文档 + include 全部分文件
 │                                   + InitCtx/Schedule/FitBalanceCut/IsCommCalibrated/FindCommFitRow
-└── fit_balance_tiling_utils/       内部分文件(消费方经伞形头间接使用, 勿直接 include)
+└── fit_balance_tiling_utils/       内部分文件(经总接口头间接引入, 算子勿直接 include)
     ├── fit_balance_types.h         类型层: 键控枚举(LocalMMPosition/CommComputeOrder/
     │                               TilingCommEngine/CommAxis/RankMul) + ParseCommEngine +
     │                               数据结构(args/cut/模型画像) + FitBalanceCalibration 标定总集
-    ├── comm_model.h                通信模型 HCCLCommModel: y=k·x+N·b+c 三口径
+    ├── comm_model.h                通信模型 HCCLCommModel: y=k·x+N·b+c(单轮/反解/总时间)
     │                               (CommTime 单轮 / InverseCommTime 反解 / TotalCommTime 总量)
-    ├── matmul_model.h              计算模型 MatmulPerfModel: cube 利用率(0.7/0.6 双口径)/
+    ├── matmul_model.h              计算模型 MatmulPerfModel: cube 利用率(0.7/0.6 双值)/
     │                               每行梯度/MatmulTime 正反解
     ├── cut_planner.h               离散切分引擎 CutPlanner: "1 短 + N 长"的初切/离散化七步/
     │                               尾对齐/NoCut——总长守恒与对齐粒度的守门人
@@ -360,8 +361,8 @@ fit_balance_tiling/
 
 **加 8P 行的完整步骤**：
 1. **实测**（CommBench 工具，AG/aicpu/int8/rank8 配置）：
-   - k：turn=1 尺寸扫描（8~96MB/rank）线性拟合，**直接取工具输出的斜率原值**——引擎 x 口径
-     就是单卡份 MB，不要做 ÷rankDim 之类的预换算（份数口径已融进引擎使用 k 的方式）；
+   - k：turn=1 尺寸扫描（8~96MB/rank）线性拟合，**直接取工具输出的斜率原值**——引擎算的就是
+     单卡数据量的 MB，**不要**再做 ÷rankDim 之类的预换算（多份数的放大已折进引擎使用 k 的方式）；
    - b：固定 chunk 扫轮数 T(N)=N(k·chunk+b)+c 拟合，取多组 chunk 交叉一致的中位值
      （16MB 以上大块带宽亚线性，拟合值偏离时应弃用）；
    - c：同拟合截距，多组取中位。
@@ -381,8 +382,8 @@ fit_balance_tiling/
 
 按 (calcType, isFp4, A/B 字节数) 四维键匹配，加行即加档：
 - fp8：`{MatmulDtypeKind::QUANT, false, 1, 1, 算力}`；
-- fp4：`{MatmulDtypeKind::QUANT, true, 0, 0, 算力}`——键的 {0,0} 是 glue 真实口径
-  （GetDataTypeSize 对 fp4 无条目返回 0），不是笔误；
+- fp4：`{MatmulDtypeKind::QUANT, true, 0, 0, 算力}`——键的 {0,0} 是现网真实值
+  （算子侧获取字节数的 GetDataTypeSize 函数没有 fp4 条目，返回 0），不是笔误；
 - bf16：`{MatmulDtypeKind::FP16, false, 2, 2, 算力}`；
 - miss 落 `defaultComputesPerCycle`（引擎默认 4096，勿用作长期方案）。
 
