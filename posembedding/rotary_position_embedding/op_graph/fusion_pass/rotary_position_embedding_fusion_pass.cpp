@@ -24,7 +24,8 @@
 #include "ge/es_graph_builder.h"
 #include "ge/ge_utils.h"
 #include "log/log.h"
-#include "platform/platform_info.h"
+#include "op_host/util/op_const_def.h"
+#include "runtime/rt_external_base.h"
 
 namespace ops {
 namespace {
@@ -38,19 +39,20 @@ constexpr size_t kCosIdx = 1;
 constexpr size_t kSinIdx = 2;
 
 // Same gating as the built-in pass: fuse only on regbase platforms (NpuArch DAV_3510/DAV_5102).
-// NpuArch 3510 maps to short_soc_version Ascend950/Ascend350, 5102 maps to MC62CM12A.
+// Gating on NpuArch instead of a short_soc_version string list: one arch covers multiple SoCs
+// (DAV_3510: Ascend950/Ascend350/Ascend960DT..., DAV_5102: MC62CM12A), so SoCs sharing the regbase
+// arch are covered without maintaining the soc list.
 bool IsRegBasePlatform()
 {
-    fe::PlatformInfo platformInfo;
-    fe::OptionalInfo optionalInfo;
-    if (fe::PlatformInfoManager::Instance().GetPlatformInfoWithOutSocVersion(platformInfo, optionalInfo) !=
-        ge::SUCCESS) {
-        OP_LOGW(kPassName, "Get platform info failed.");
+    char npuArchVal[16] = {0};
+    if (rtGetSocSpec("version", "NpuArch", npuArchVal, sizeof(npuArchVal)) != RT_ERROR_NONE) {
+        OP_LOGW(kPassName, "Get NpuArch from soc spec failed.");
         return false;
     }
-    const std::string soc = platformInfo.str_info.short_soc_version;
-    OP_LOGD(kPassName, "Platform short soc version: %s.", soc.c_str());
-    return soc == "Ascend950" || soc == "Ascend350" || soc == "MC62CM12A";
+    OP_LOGD(kPassName, "Platform NpuArch: %s.", npuArchVal);
+    const std::string npuArch(npuArchVal);
+    return npuArch == std::to_string(static_cast<uint32_t>(Ops::Base::DAV_3510)) ||
+           npuArch == std::to_string(static_cast<uint32_t>(Ops::Base::DAV_5102));
 }
 
 void GetInputsInfo(const std::vector<ge::fusion::SubgraphInput>& subgraphInputs, std::vector<ge::Shape>& inputShapes,

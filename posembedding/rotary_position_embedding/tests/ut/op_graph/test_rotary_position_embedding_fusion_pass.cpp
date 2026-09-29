@@ -31,6 +31,14 @@ constexpr char kSrcOpType[] = "RotaryMul";
 constexpr char kDstOpType[] = "RotaryPositionEmbedding";
 constexpr int64_t kExpectMode = 0L;
 
+// rtGetSocSpec mock 控制接口（tests/ut/framework_normal/common/rt_soc_spec_mocker.cpp 提供）
+extern "C" {
+void SetRtSocSpecNpuArch(const char* arch);
+void SetRtSocSpecFail(bool fail);
+}
+
+// socVersion -> NpuArch 映射，与 pass 侧 rtGetSocSpec("version", "NpuArch") 取到的数值字符串一致。
+// 注意 Ascend960DT 等同 arch 新 SoC 复用 "3510"，不在此表 —— 用 SetRtSocSpecNpuArch 直接指定。
 void SetPlatform(const std::string& socVersion)
 {
     fe::PlatformInfo platformInfo;
@@ -40,6 +48,15 @@ void SetPlatform(const std::string& socVersion)
     optionalInfo.soc_version = socVersion;
     fe::PlatformInfoManager::Instance().platform_info_map_[socVersion] = platformInfo;
     fe::PlatformInfoManager::Instance().SetOptionalCompilationInfo(optionalInfo);
+
+    SetRtSocSpecFail(false);
+    if (socVersion == "Ascend950" || socVersion == "Ascend350") {
+        SetRtSocSpecNpuArch("3510"); // DAV_3510
+    } else if (socVersion == "MC62CM12A") {
+        SetRtSocSpecNpuArch("5102"); // DAV_5102
+    } else {
+        SetRtSocSpecNpuArch("2201"); // DAV_2201, non-regbase (e.g. Ascend910B)
+    }
 }
 
 void SetInputDesc(const es::EsTensorHolder& input, DataType dtype, const Shape& shape)
@@ -205,4 +222,36 @@ TEST_F(RotaryPositionEmbeddingFusionPassTest, rotaryMulFusionAscend350Success)
     EXPECT_EQ(status, SUCCESS);
     EXPECT_EQ(CountNodes(graph, kSrcOpType), 0);
     EXPECT_EQ(CountNodes(graph, kDstOpType), 1);
+}
+
+// Ascend960DT shares NpuArch DAV_3510 with Ascend950 (regbase) but is not on the soc list:
+// arch-based gating must still fire the fusion.
+TEST_F(RotaryPositionEmbeddingFusionPassTest, rotaryMulFusionNpuArch3510SocNotOnListSuccess)
+{
+    SetPlatform("Ascend960DT");  // only fills the fe-side platform map
+    SetRtSocSpecNpuArch("3510"); // DAV_3510
+    std::shared_ptr<Graph> graph = BuildRotaryMulGraph(DT_FLOAT16);
+
+    CustomPassContext passContext;
+    ops::RotaryMul2RotaryPositionEmbeddingFusionPass pass;
+    Status status = pass.Run(graph, passContext);
+
+    EXPECT_EQ(status, SUCCESS);
+    EXPECT_EQ(CountNodes(graph, kSrcOpType), 0);
+    EXPECT_EQ(CountNodes(graph, kDstOpType), 1);
+}
+
+// rtGetSocSpec failure must disable the fusion instead of crashing.
+TEST_F(RotaryPositionEmbeddingFusionPassTest, rotaryMulFusionNpuArchQueryFailNotChanged)
+{
+    SetRtSocSpecFail(true);
+    std::shared_ptr<Graph> graph = BuildRotaryMulGraph(DT_FLOAT16);
+
+    CustomPassContext passContext;
+    ops::RotaryMul2RotaryPositionEmbeddingFusionPass pass;
+    Status status = pass.Run(graph, passContext);
+
+    EXPECT_EQ(status, GRAPH_NOT_CHANGED);
+    EXPECT_EQ(CountNodes(graph, kSrcOpType), 1);
+    EXPECT_EQ(CountNodes(graph, kDstOpType), 0);
 }
