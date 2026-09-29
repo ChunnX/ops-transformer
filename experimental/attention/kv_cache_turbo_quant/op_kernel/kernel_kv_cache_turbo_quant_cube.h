@@ -157,8 +157,10 @@ public:
         hHllGm_.SetGlobalBuffer((__gm__ bfloat16_t *)(wsBase + offHll_));
         sHiGm_.SetGlobalBuffer((__gm__ half *)(wsBase + offSh_));
         sLoGm_.SetGlobalBuffer((__gm__ half *)(wsBase + offSl_));
-        htGm_.SetGlobalBuffer((__gm__ float *)(wsBase + offHT_ + static_cast<uint64_t>(aivSubIdx_) * HEAD_DIM * HEAD_DIM * 4));
-        stGm_.SetGlobalBuffer((__gm__ float *)(wsBase + offST_ + static_cast<uint64_t>(aivSubIdx_) * HEAD_DIM * HEAD_DIM * 4));
+        htGm_.SetGlobalBuffer(
+            (__gm__ float *)(wsBase + offHT_ + static_cast<uint64_t>(aivSubIdx_) * HEAD_DIM * HEAD_DIM * 4));
+        stGm_.SetGlobalBuffer(
+            (__gm__ float *)(wsBase + offST_ + static_cast<uint64_t>(aivSubIdx_) * HEAD_DIM * HEAD_DIM * 4));
         xGm_.SetGlobalBuffer((__gm__ bfloat16_t *)(wsBase + offX_));
         rHiGm_.SetGlobalBuffer((__gm__ half *)(wsBase + offRh_));
         rLoGm_.SetGlobalBuffer((__gm__ half *)(wsBase + offRl_));
@@ -638,8 +640,7 @@ private:
         const int32_t ncent = BOUND_CNT + 1;
         Abs(dupT_, yT_, elems); // dupT_ = |y|，覆盖中央边界 b_mid = 0
         for (int32_t k = 0; k < ncent / 2 - 1; k++) {
-            float b = (CentTable<BITS>::CENT[ncent / 2 + k] +
-                       CentTable<BITS>::CENT[ncent / 2 + k + 1]) * 0.5f;
+            float b = (CentTable<BITS>::CENT[ncent / 2 + k] + CentTable<BITS>::CENT[ncent / 2 + k + 1]) * 0.5f;
             Adds(yhatT_, dupT_, -b, elems);
             Abs(yhatT_, yhatT_, elems);
             Min(dupT_, dupT_, yhatT_, elems);
@@ -842,8 +843,8 @@ private:
             return;
         }
         for (int32_t chunk = 0; chunk < D / 8; chunk++) {
-            int32_t c16 = chunk / 2;   // 16 行块号
-            int32_t half = chunk % 2;  // 块内 8 行半块
+            int32_t c16 = chunk / 2;  // 16 行块号
+            int32_t half = chunk % 2; // 块内 8 行半块
             int32_t cur = (c16 % 2) * 16 * D + half * 8 * D;
             if (half == 0 && c16 + 1 < D / 16) {
                 DataCopy(htF[((c16 + 1) % 2) * 16 * D], rotSrcGm_[(c16 + 1) * 16 * D], 16 * D); // 预取下一块
@@ -1128,8 +1129,7 @@ private:
             SyncVS();
             float pex[8];
             SumRowsConst(dupT_, 0, nh[u], pex);
-            __ubuf__ uint8_t *qdst = reinterpret_cast<__ubuf__ uint8_t *>(outQjlT_.GetPhyAddr()) +
-                                     cand[u] * QJL_BYTES;
+            __ubuf__ uint8_t *qdst = reinterpret_cast<__ubuf__ uint8_t *>(outQjlT_.GetPhyAddr()) + cand[u] * QJL_BYTES;
             for (int32_t e = 0; e < nh[u]; e++) {
                 int32_t j = hits[u][e];
                 int32_t bit = (pex[e] >= 0.0f) ? 1 : 0;
@@ -1204,8 +1204,8 @@ private:
                 }
                 float pex[8];
                 SumRowsConst(sqT_, rb, nh[i], pex);
-                __ubuf__ uint8_t *qdst = reinterpret_cast<__ubuf__ uint8_t *>(outQjlT_.GetPhyAddr()) +
-                                         cand[i] * QJL_BYTES;
+                __ubuf__ uint8_t *qdst =
+                    reinterpret_cast<__ubuf__ uint8_t *>(outQjlT_.GetPhyAddr()) + cand[i] * QJL_BYTES;
                 for (int32_t e = 0; e < nh[i]; e++) {
                     float p2 = pex[e];
                     float ap = (p2 < 0.0f) ? -p2 : p2;
@@ -1413,7 +1413,7 @@ private:
             return;
         }
         const int32_t D = HEAD_DIM;
-        const int32_t lvLocal = lv % CUBE_SUBBATCH; // 子批内局部向量下标
+        const int32_t lvLocal = lv % CUBE_SUBBATCH;        // 子批内局部向量下标
         const int32_t idxBase = qjlOnly ? 0 : lvLocal * D; // qjlOnly 时用 scratch 0..D-1，不污染子批 idxFT_
         {
             event_t e = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE2));
@@ -2378,7 +2378,8 @@ private:
                     if (cascVec_[s * CUBE_SUBBATCH + v]) {
                         continue; // 已级联的向量 qjl 已由全链重算精确写出
                     }
-                    rcFlag[v] = (sqT_.GetValue(SUB_ELEMS / 2 + v * 2) + sqT_.GetValue(SUB_ELEMS / 2 + v * 2 + 1)) > 0.5f;
+                    rcFlag[v] =
+                        (sqT_.GetValue(SUB_ELEMS / 2 + v * 2) + sqT_.GetValue(SUB_ELEMS / 2 + v * 2 + 1)) > 0.5f;
                 }
                 SyncSV();
                 { // 顺延登记 qjl 候选（命中过滤口径同旧外科；cube qjl 行 16B 进 UB 暂存；
@@ -2387,8 +2388,7 @@ private:
                     int32_t tmpHits[8];
                     int32_t ovQ_[CUBE_SUBBATCH];
                     int32_t nOvQ_ = 0;
-                    __ubuf__ uint32_t *qsrc32 =
-                        reinterpret_cast<__ubuf__ uint32_t *>(outQjlT_.GetPhyAddr());
+                    __ubuf__ uint32_t *qsrc32 = reinterpret_cast<__ubuf__ uint32_t *>(outQjlT_.GetPhyAddr());
                     for (int32_t v = 0; v < n; v++) {
                         if (!rcFlag[v]) {
                             continue;
@@ -2441,8 +2441,8 @@ private:
                     if (cascVec_[s * CUBE_SUBBATCH + v]) {
                         __ubuf__ uint8_t *qsrc = reinterpret_cast<__ubuf__ uint8_t *>(tieQjlT_.GetPhyAddr()) +
                                                  (s * CUBE_SUBBATCH + v) * QJL_BYTES;
-                        __ubuf__ uint8_t *qdst = reinterpret_cast<__ubuf__ uint8_t *>(outQjlT_.GetPhyAddr()) +
-                                                 v * QJL_BYTES;
+                        __ubuf__ uint8_t *qdst =
+                            reinterpret_cast<__ubuf__ uint8_t *>(outQjlT_.GetPhyAddr()) + v * QJL_BYTES;
                         for (int32_t b = 0; b < QJL_BYTES; b++) {
                             qdst[b] = qsrc[b];
                         }
@@ -2770,8 +2770,8 @@ private:
     static constexpr int32_t STASH_GCAP = 8;
     int32_t stashYC_ = 0, stashQC_ = 0, gamYC_ = 0;
     static constexpr int32_t FULL_CAP = 24; // 统一全站点容量（溢出回退即时/标记全链）
-    int32_t qexSlots_[STASH_QCAP]; // pass4 qjlExact 批的暂存槽位清单
-    static constexpr int32_t FLIP_CAP = 8; // flip 降级批容量（实测 ~1-2/case；满则回退全链）
+    int32_t qexSlots_[STASH_QCAP];          // pass4 qjlExact 批的暂存槽位清单
+    static constexpr int32_t FLIP_CAP = 8;  // flip 降级批容量（实测 ~1-2/case；满则回退全链）
     int64_t flipGv_[FLIP_CAP];
     int32_t nFlip_ = 0;
     int32_t nQex_ = 0;
