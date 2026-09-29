@@ -22,9 +22,6 @@ namespace MegaMoeImpl {
 
 using namespace AscendC;
 
-// DataCopyParams 的 blockLen 使用 uint16_t 表示。
-constexpr uint32_t PRE_QUANT_MAX_DATA_COPY_BLOCK_LEN = 65535U;
-
 struct QuantProcessConfig {
     uint32_t quantTokenAlignBytes;
     uint32_t quantScaleAlignBytes;
@@ -247,22 +244,11 @@ __aicore__ inline void PreQuantCopyIn(LocalTensor<uint8_t> dst, GlobalTensor<uin
     if (validBytes % blockBytes == 0U && srcAligned && dstAligned) {
         /*
          * arch35 的 DataCopyParams 中 blockLen 和两个 gap 均以 32B 为单位。
-         * 当 stage 中的各行紧密排列时，将整个 tile 合并为连续突发搬运；
-         * 搬运长度超过 uint16 block 计数上限时进行拆分。
+         * 当 stage 中的各行紧密排列时，将整个 tile 合并为一次连续突发搬运。
          */
         if (rowBytes == validBytes) {
-            constexpr uint32_t maxBlockBytes = PRE_QUANT_MAX_DATA_COPY_BLOCK_LEN * blockBytes;
-            uint32_t totalBytes = tokenCount * validBytes;
-            uint32_t offset = 0U;
-            while (offset < totalBytes) {
-                uint32_t chunkBytes = totalBytes - offset;
-                if (chunkBytes > maxBlockBytes) {
-                    chunkBytes = maxBlockBytes;
-                }
-                DataCopyParams params{1U, static_cast<uint16_t>(chunkBytes / blockBytes), 0U, 0U};
-                DataCopy(dst[offset], src[offset], params);
-                offset += chunkBytes;
-            }
+            DataCopyParams params{1U, static_cast<uint16_t>(tokenCount * validBytes / blockBytes), 0U, 0U};
+            DataCopy(dst, src, params);
         } else {
             DataCopyParams params{static_cast<uint16_t>(tokenCount), static_cast<uint16_t>(validBytes / blockBytes), 0U,
                                   static_cast<uint16_t>((rowBytes - validBytes) / blockBytes)};
