@@ -193,15 +193,11 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::InitInputPrepareConfigs()
 {
     aivJob_ = {.jobIndex = aivCoreIdx_, .totalJobs = blockAivNum_};
-    quantProcessConfig_ =
-        CreateQuantProcessConfig<typename MoeQuantConfig::QuantStorageType, typename MoeQuantConfig::QuantScaleType,
-                                 TopkWeightsPrefetch, MoeQuantConfig::A_ELEMS_PER_BYTE>(k_, params_);
+    quantProcessConfig_ = params_.tilingData->moeQuantConfig;
     if constexpr (SHARED_INPUT_REUSES_MOE_QUANT) {
         sharedQuantProcessConfig_ = quantProcessConfig_;
     } else {
-        sharedQuantProcessConfig_ = CreateQuantProcessConfig<typename SharedQuantConfig::QuantStorageType,
-                                                             typename SharedQuantConfig::QuantScaleType, false,
-                                                             SharedQuantConfig::A_ELEMS_PER_BYTE, false>(k_, params_);
+        sharedQuantProcessConfig_ = params_.tilingData->sharedQuantConfig;
     }
     // 共享专家启用时仅 AIV1 计算发送 topK 有效下标，其余情况保留全 AIV 分工。
     const uint32_t topkValidIndexCoreIdx = sharedExpertNum_ > 0U ? blockIdx_ : aivCoreIdx_;

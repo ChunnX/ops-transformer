@@ -1107,6 +1107,24 @@ static uint32_t CalcQuantTokenAndScaleBytes(const MegaMoeTilingData *tilingData,
     return quantTokenBytes + quantScaleAlignBytes;
 }
 
+static MegaMoeQuantProcessConfig CalcQuantProcessConfig(const MegaMoeTilingData *tilingData,
+                                                        uint32_t activationElementsPerByte, bool includeWeights)
+{
+    MegaMoeQuantProcessConfig config{};
+    config.quantScaleValidCountPerToken = static_cast<uint32_t>(ops::CeilDiv(
+        static_cast<uint64_t>(tilingData->h), static_cast<uint64_t>(ALIGN_32)));
+    config.quantTokenAlignBytes = ops::CeilAlign(
+        tilingData->h / activationElementsPerByte, static_cast<uint32_t>(ALIGN_256));
+    config.quantScaleAlignBytes = ops::CeilAlign(
+        config.quantScaleValidCountPerToken * static_cast<uint32_t>(sizeof(int8_t)), static_cast<uint32_t>(ALIGN_32));
+    config.quantTokenScaleAlignBytes = config.quantTokenAlignBytes + config.quantScaleAlignBytes;
+    if (includeWeights) {
+        config.quantTokenScaleAlignBytes += ops::CeilAlign(
+            tilingData->topK * static_cast<uint32_t>(sizeof(float)), static_cast<uint32_t>(ALIGN_32));
+    }
+    return config;
+}
+
 /*
  * 计算每个 dispatch ring slot 的量化 token 与 scale 拷贝区字节数。记录带权重段（tkw=1 或 combine
  * 去重开）时再追加，该判定式 host 与 kernel 各用点必须保持同式，否则记录布局两侧错位。
@@ -1542,24 +1560,16 @@ static void SetPreQuantTileConfig(MegaMoeTilingData *tilingData, bool isPreQuant
     tileTokens = std::max(tileTokens, 1U);
 
     MegaMoePreQuantConfig &preQuantConfig = tilingData->preQuantConfig;
-    uint32_t scaleValidCount =
-        static_cast<uint32_t>(ops::CeilDiv(static_cast<uint64_t>(tilingData->h), static_cast<uint64_t>(ALIGN_32)));
     preQuantConfig.dataValidBytes = tilingData->h / activationElementsPerByte;
-    preQuantConfig.scaleValidBytes = scaleValidCount * sizeof(int8_t);
-    preQuantConfig.tokenAlignBytes =
-        ops::CeilAlign(preQuantConfig.dataValidBytes, static_cast<uint32_t>(ALIGN_256));
-    preQuantConfig.scaleAlignBytes =
-        ops::CeilAlign(preQuantConfig.scaleValidBytes, static_cast<uint32_t>(ALIGN_32));
+    preQuantConfig.scaleValidBytes = tilingData->moeQuantConfig.quantScaleValidCountPerToken * sizeof(int8_t);
+    preQuantConfig.tokenAlignBytes = tilingData->moeQuantConfig.quantTokenAlignBytes;
+    preQuantConfig.scaleAlignBytes = tilingData->moeQuantConfig.quantScaleAlignBytes;
     preQuantConfig.weightValidBytes =
         tilingData->topK * static_cast<uint32_t>(ge::GetSizeByDataType(topKWeightsDataType));
     preQuantConfig.weightSrcRowBytes =
         ops::CeilAlign(preQuantConfig.weightValidBytes, static_cast<uint32_t>(ALIGN_32));
     preQuantConfig.weightOffset = preQuantConfig.tokenAlignBytes + preQuantConfig.scaleAlignBytes;
-    preQuantConfig.recordBytes = preQuantConfig.weightOffset;
-    if (tilingData->topkWeightsPrefetch == 1U || IsCombineDedupOn(tilingData->dedupMode)) {
-        preQuantConfig.recordBytes += ops::CeilAlign(
-            tilingData->topK * static_cast<uint32_t>(sizeof(float)), static_cast<uint32_t>(ALIGN_32));
-    }
+    preQuantConfig.recordBytes = tilingData->moeQuantConfig.quantTokenScaleAlignBytes;
     preQuantConfig.weightSrcOffset = tileTokens * preQuantConfig.recordBytes;
 
     tilingData->preQuantTileTokens = tileTokens;
@@ -1639,6 +1649,11 @@ static void SetAdaptiveBufferConfigs(const gert::TilingContext *context, const M
 
     uint32_t activationElementsPerByte = expertParams.moe.quantOutDtype == ge::DT_FLOAT4_E2M1 ? 2U : 1U;
     uint32_t sharedActivationElementsPerByte = expertParams.shared.quantOutDtype == ge::DT_FLOAT4_E2M1 ? 2U : 1U;
+    bool moeRecordHasWeights = tilingData->topkWeightsPrefetch == 1U || IsCombineDedupOn(tilingData->dedupMode);
+    tilingData->moeQuantConfig =
+        CalcQuantProcessConfig(tilingData, activationElementsPerByte, moeRecordHasWeights);
+    tilingData->sharedQuantConfig =
+        CalcQuantProcessConfig(tilingData, sharedActivationElementsPerByte, false);
     // 所有 AIV 核共用同一套 dispatch UB 配置，该布局与分核方式无关。
     // 若 kernel 改为按核拆分 tensor 或调整 copyTmp 槽位布局，需同步更新此处计算。
     tilingData->dispatchBufferConfig =

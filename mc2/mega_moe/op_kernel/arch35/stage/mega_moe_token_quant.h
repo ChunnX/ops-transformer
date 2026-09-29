@@ -22,42 +22,9 @@ namespace MegaMoeImpl {
 
 using namespace AscendC;
 
-struct QuantProcessConfig {
-    uint32_t quantTokenAlignBytes;
-    uint32_t quantScaleAlignBytes;
-    uint32_t quantTokenScaleAlignBytes;
-    uint32_t quantScaleValidCountPerToken;
-};
+using QuantProcessConfig = MegaMoeQuantProcessConfig;
 
-/*
- * 计算量化通信记录的对齐布局（普通与 wave 编排模板共用）。
- * 记录布局 = Align256(token 数据) + Align32(scale) + prefetch 时附加 Align32(topk 权重)，
- * 与 host CalcDispatchBufferConfig 的 copyBufferBytes 契约恒相等。
- */
-template <typename ActivationType, typename QuantScaleOutType, bool TopkWeightsPrefetch, uint32_t AElemsPerByte,
-          bool DedupWeightsEligible = true>
-__aicore__ inline QuantProcessConfig CreateQuantProcessConfig(uint32_t tokenHiddenDim, const Params &params)
-{
-    uint32_t quantScaleValidCountPerToken = Ops::Base::CeilDiv(tokenHiddenDim, static_cast<uint32_t>(ALIGN_32));
-    uint32_t quantTokenAlignBytes =
-        Ops::Base::CeilAlign(tokenHiddenDim / AElemsPerByte, static_cast<uint32_t>(ALIGN_256)) * sizeof(ActivationType);
-    uint32_t quantScaleAlignBytes =
-        Ops::Base::CeilAlign(quantScaleValidCountPerToken * static_cast<uint32_t>(sizeof(QuantScaleOutType)),
-                             static_cast<uint32_t>(ALIGN_32));
-    uint32_t quantTokenScaleAlignBytes = quantTokenAlignBytes + quantScaleAlignBytes;
-    // 布局与 host 同式：prefetch 或 tkw=0 的 combine 去重（发送端乘权）都携带权重段。
-    // 权重段只属于 MoE 通信记录：共享专家独立量化的记录不参与 combine，DedupWeightsEligible=false
-    // 时与上游同为编译期判定，host 也只按无权重段给它分配（InitializeMteSharedExpertInput）。
-    if (TopkWeightsPrefetch || (DedupWeightsEligible && (params.tilingData->topkWeightsPrefetch == 1 ||
-                                                         IsCombineDedupOn(params.tilingData->dedupMode)))) {
-        uint32_t weightAlignBytes = Ops::Base::CeilAlign(static_cast<uint32_t>(params.tilingData->topK * sizeof(float)),
-                                                         static_cast<uint32_t>(ALIGN_32));
-        quantTokenScaleAlignBytes += weightAlignBytes;
-    }
-    return {quantTokenAlignBytes, quantScaleAlignBytes, quantTokenScaleAlignBytes, quantScaleValidCountPerToken};
-}
-
-// 记录是否带 topk 权重段：布局由 CreateQuantProcessConfig 唯一决定，消费方按布局判定，不各自重算条件。
+// 记录是否带 topk 权重段：布局由 host tiling 统一计算，消费方按布局判定，不各自重算条件。
 __aicore__ inline bool QuantRecordHasWeights(const QuantProcessConfig &config)
 {
     return config.quantTokenScaleAlignBytes > config.quantTokenAlignBytes + config.quantScaleAlignBytes;
