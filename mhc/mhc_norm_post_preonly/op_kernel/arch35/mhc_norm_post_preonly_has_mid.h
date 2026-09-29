@@ -121,14 +121,7 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         CopyInGamma0();
     }
     const uint32_t nStart = siblingAivIdx_ * HEADS_PER_SIBLING;
-    LocalTensor<float> postCombUb = bufPostComb_.Get<float>();
-    DataCopyExtParams postCopy = {1, N * sizeof(float), 0, 0, 0};
-    DataCopyExtParams resCopy = {1, N * N * sizeof(float), 0, 0, 0};
-    DataCopyPadExtParams<float> weightPad = {true, 0, 0, 0};
-    DataCopyPad(postCombUb, hPostGm_[(uint64_t)token * N], postCopy, weightPad);
-    DataCopyPad(postCombUb[ALIGN8], hResGm_[(uint64_t)token * N * N], resCopy, weightPad);
-    SetFlag<HardEvent::MTE2_S>(evtMte2toS_);
-    SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
+    CopyInTokenWeights(token, postVals, nStart, nStart + HEADS_PER_SIBLING);
 
     LocalTensor<T> firstResidual = queResidualLowp_.AllocTensor<T>();
     const uint32_t firstTD = GetTileD(0U);
@@ -140,12 +133,6 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     DataCopyPadExtParams<T> residualPad = {false, 0, 0, 0};
     DataCopyPad(firstResidual, residualGm_[firstBaseOffset], residualCopy, residualPad);
     queResidualLowp_.EnQue(firstResidual);
-
-    WaitFlag<HardEvent::MTE2_S>(evtMte2toS_);
-    for (uint32_t i = nStart; i < nStart + HEADS_PER_SIBLING; ++i) {
-        postVals[i] = postCombUb.GetValue(i);
-    }
-    WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
 
     // 两个sibling AIV按完全相同的分块和顺序冗余执行输入归一化。
     const float sumSq0 = ReduceSumSqFromCache(0U, D_);
