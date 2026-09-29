@@ -73,18 +73,10 @@ inline FitBasedBalanceCtx InitCtx(const FitBalanceTilingArgs &args, LocalMMPosit
                                   const FitBalanceCalibration &calib)
 {
     // ---- 标定选行(所有匹配键此刻已知: rankDim 与 dtype 均来自 args, 就地选定传纯参数) ----
-    // 通信行: 按引擎分区(aicpu/ccu) + rankDim 匹配首个命中行; miss=零值行
-    const auto &commRows = ((commEngine == TilingCommEngine::CCU) ? calib.ccu : calib.aicpu).rows;
-    CommFitParams commFitParams = {};
-    for (size_t i = 0; i < FitBalanceCalibration::MAX_COMM_FIT_ROWS; ++i) {
-        if (commRows[i].rankDim == 0) { // 哨兵截断
-            break;
-        }
-        if (commRows[i].rankDim == args.rankDim) {
-            commFitParams = {commRows[i].slopeUsPerMb, commRows[i].roundOverheadUs, commRows[i].fixedOverheadUs};
-            break;
-        }
-    }
+    const auto *commRow = FindCommFitRow(calib, commEngine, args.rankDim);
+    CommFitParams commFitParams = (commRow != nullptr) ? CommFitParams{commRow->slopeUsPerMb, commRow->roundOverheadUs,
+                                                                       commRow->fixedOverheadUs} :
+                                                         CommFitParams{}; // miss=零值行(slope=0 → NoCut 防御)
     // matmul 行: 按"计算形态"匹配算力行——形态键 = (量化类别, fp4 打包, A/B 字节数) 四维
     // ,
     // 键推导与模型 SetCalcType 同源
