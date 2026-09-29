@@ -38,8 +38,8 @@ public:
     __aicore__ inline CollectiveCommBase() {}
 
     template <uint8_t BarrierMode = BARRIER_BOTH>
-    __aicore__ inline void Init(__gm__ CommUdmaContext *udmaCtx, Barrier &barrier, const CommTilingData &tilingData,
-                                GM_ADDR localAddr, __ubuf__ uint8_t *commbuf, uint32_t totalJobs, uint32_t jobIndex,
+    __aicore__ inline void Init(__gm__ CommUdmaContext* udmaCtx, Barrier& barrier, const CommTilingData& tilingData,
+                                GM_ADDR localAddr, __ubuf__ uint8_t* commbuf, uint32_t totalJobs, uint32_t jobIndex,
                                 uint64_t winOffset = 0)
     {
         if (jobIndex >= totalJobs) {
@@ -83,9 +83,8 @@ public:
         currentTileIdx_ = 0;
         tileByteOffset_ = 0;
         remainingChunkSize_ = chunkSize;
-        slotByteOffset_ = 0;
         chunkByteOffset_ = 0;
-        static_cast<Impl *>(this)->template PostInit<BarrierMode>();
+        static_cast<Impl*>(this)->template PostInit<BarrierMode>();
     }
 
     template <uint8_t BarrierMode = BARRIER_BOTH>
@@ -107,20 +106,18 @@ public:
 
         uint64_t nonSplitAxisBytes = tilingData_->nonSplitAxisSize * sizeof(Dtype);
         uint64_t currentTileByteSize = currentTileSize * nonSplitAxisBytes;
-        uint64_t slotBytes = udmaCtx_->rankSize * tileMaxByteSize_;
         if (targetRankCnt_ > 0) {
             const uint32_t targetRankStart = targetRankStart_;
             const uint32_t targetRankCnt = targetRankCnt_;
 
             for (uint32_t i = 0; i < targetRankCnt; i++) {
                 uint32_t targetRankId = targetRankStart + i;
-                static_cast<Impl *>(this)->template DoCommit<BarrierMode>(targetRankId, currentTileByteSize,
-                                                                          bufferOffset);
+                static_cast<Impl*>(this)->template DoCommit<BarrierMode>(targetRankId, currentTileByteSize,
+                                                                         bufferOffset);
             }
         }
 
         currentTileIdx_++;
-        slotByteOffset_ += slotBytes;
         tileByteOffset_ += currentTileByteSize;
         chunkByteOffset_ += chunkBytes_;
         remainingChunkSize_ -= currentTileSize;
@@ -135,7 +132,7 @@ public:
         }
         for (uint32_t i = 0; i < targetRankCnt_; i++) {
             uint32_t targetRankId = targetRankStart_ + i;
-            static_cast<Impl *>(this)->template DoWait<BarrierMode>(targetRankId);
+            static_cast<Impl*>(this)->template DoWait<BarrierMode>(targetRankId);
         }
     }
 
@@ -147,17 +144,17 @@ public:
     template <uint8_t BarrierMode = BARRIER_BOTH>
     __aicore__ inline void Finalize()
     {
-        static_cast<Impl *>(this)->template DoFinalize<BarrierMode>();
+        static_cast<Impl*>(this)->template DoFinalize<BarrierMode>();
     }
 
 protected:
-    __gm__ CommUdmaContext *udmaCtx_;
-    const CommTilingData *tilingData_;
+    __gm__ CommUdmaContext* udmaCtx_;
+    const CommTilingData* tilingData_;
     Barrier barrier_;
 
     Hcomm<AscendC::COMM_PROTOCOL_UBC_CTP> comm_;
     GM_ADDR localAddr_;
-    __ubuf__ uint8_t *commBuf_;
+    __ubuf__ uint8_t* commBuf_;
     uint64_t winOffset_;
 
     uint64_t chunkBytes_;
@@ -165,7 +162,6 @@ protected:
     uint64_t tileByteOffset_;
     uint64_t remainingChunkSize_;
     uint64_t tileMaxByteSize_;
-    uint64_t slotByteOffset_;
     uint64_t chunkByteOffset_;
 
     uint32_t targetRankStart_;

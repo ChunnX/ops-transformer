@@ -67,6 +67,10 @@ ge::graphStatus ValidateStrideLocal(const char *opName, const char *tensorName, 
                 OP_LOGE(opName, "The stride rank of %s is %zu, which is smaller than its input rank %zu.", tensorName,
                         static_cast<size_t>(strides->GetDimNum()), static_cast<size_t>(inputShape.GetDimNum())),
                 return ge::GRAPH_FAILED);
+    // Empty tensors may carry zero strides on non-singleton dimensions.
+    if (inputShape.GetShapeSize() == 0) {
+        return ge::GRAPH_SUCCESS;
+    }
     for (uint32_t dim = 0; dim < inputShape.GetDimNum(); ++dim) {
         OP_CHECK_IF(
             inputShape.GetDim(dim) > 1 && strides->GetStride(dim) <= 0,
@@ -599,7 +603,8 @@ ge::graphStatus FiaInfoParser::GetNpuInfo()
     socVersion_ = ascendcPlatform.GetSocVersion();
     npuArch_ = ascendcPlatform.GetCurNpuArch();
     if ((socVersion_ != platform_ascendc::SocVersion::ASCEND310P) &&
-        (socVersion_ != platform_ascendc::SocVersion::ASCEND910B) && (npuArch_ != NpuArch::DAV_3510)) {
+        (socVersion_ != platform_ascendc::SocVersion::ASCEND910B) && (npuArch_ != NpuArch::DAV_3510) &&
+        (npuArch_ != NpuArch::DAV_9201) && (npuArch_ != NpuArch::DAV_9202)) {
         OPS_REPORT_VECTOR_INNER_ERR(opName_, "SOC Version[%d]/NpuArch[%d] is not support.",
                                     static_cast<int32_t>(socVersion_), static_cast<int32_t>(npuArch_));
         return GRAPH_FAILED;
