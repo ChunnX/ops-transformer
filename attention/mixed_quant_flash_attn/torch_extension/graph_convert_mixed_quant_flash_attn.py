@@ -73,3 +73,30 @@ if _TORCHAIR_AVAILABLE:
         meta_outputs: TensorSpec = None,
     ):
         raise RuntimeError("GE converter doesn't support op: 'mixed_quant_flash_attn'")
+
+    @register_fx_node_ge_converter(
+        torch.ops.cann_ops_transformer.mixed_quant_flash_attn_metadata.default
+    )
+    def convert_mixed_quant_flash_attn_metadata(
+        num_heads_q: int,
+        num_heads_kv: int,
+        head_dim: int,
+        quant_compute_mode: int,
+        *,
+        cu_seqlens_q: Optional[Tensor] = None,
+        seqused_q: Optional[Tensor] = None,
+        seqused_kv: Optional[Tensor] = None,
+        batch_size: Optional[int] = None,
+        max_seqlen_q: Optional[int] = -1,
+        max_seqlen_kv: Optional[int] = -1,
+        mask_mode: Optional[int] = 0,
+        win_left: Optional[int] = -1,
+        win_right: Optional[int] = -1,
+        layout_q: Optional[str] = "BSND",
+        layout_kv: Optional[str] = "PA_BBND",
+        layout_attn_out: Optional[str] = "BSND",
+        meta_outputs: TensorSpec = None,
+    ):
+        raise RuntimeError(
+            "GE converter doesn't support op: 'mixed_quant_flash_attn_metadata'"
+        )

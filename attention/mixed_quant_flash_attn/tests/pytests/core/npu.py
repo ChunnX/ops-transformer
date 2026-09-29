@@ -13,9 +13,9 @@ import torch
 import torch_npu
 import torchair
 from torchair.configs.compiler_config import CompilerConfig
-import npu_ops_transformer
+import cann_ops_transformer
 
-# from npu_ops_transformer.ops import mixed_quant_flash_attn
+# from cann_ops_transformer.ops import mixed_quant_flash_attn
 from .cpu import get_axis_from_tensor
 from .meta_cpu.mixed_quant_flash_attn_metadata_op import MixedQuantFlashAttnMetadataOp
 
@@ -81,7 +81,7 @@ class MixedFlashAttnGraphNetwork(torch.nn.Module):
         layout_attn_out,
         return_softmax_lse,
     ):
-        attn_out, softmax_lse = torch.ops.npu_ops_transformer.mixed_quant_flash_attn(
+        attn_out, softmax_lse = torch.ops.cann_ops_transformer.mixed_quant_flash_attn(
             q,
             k,
             v,
@@ -166,7 +166,7 @@ def run_npu(input_data, device_id=0, mode="eager"):
         )
         metadata = torch.tensor(metadata, dtype=torch.int32).to("npu:%s" % device_id)
     elif RUN_METHOD == "npu":
-        metadata = torch.ops.npu_ops_transformer.mixed_quant_flash_attn_metadata(
+        metadata = torch.ops.cann_ops_transformer.mixed_quant_flash_attn_metadata(
             num_heads_q=n1,
             num_heads_kv=n2,
             head_dim=d,
@@ -214,7 +214,7 @@ def run_npu(input_data, device_id=0, mode="eager"):
         attn_mask = attn_mask.to("npu:%s" % device_id)
         print(f"attn_mask: device {attn_mask.device}")
     if mode == "eager":
-        attn_out, softmax_lse = torch.ops.npu_ops_transformer.mixed_quant_flash_attn(
+        attn_out, softmax_lse = torch.ops.cann_ops_transformer.mixed_quant_flash_attn(
             q=q,
             k=k,
             v=v,
