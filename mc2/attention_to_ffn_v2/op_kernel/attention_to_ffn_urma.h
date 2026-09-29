@@ -15,13 +15,26 @@
 #ifndef ATTENTION_TO_FFN_URMA_H
 #define ATTENTION_TO_FFN_URMA_H
 
+#if __has_include("version/asc_devkit_version.h") && __has_include("version/hcomm_version.h")
+#include "version/asc_devkit_version.h"
+#include "version/hcomm_version.h"
+
+#if (ASC_DEVKIT_MAJOR > 9 || (ASC_DEVKIT_MAJOR == 9 && ASC_DEVKIT_MINOR > 1)) && \
+    (HCOMM_MAJOR > 9 || (HCOMM_MAJOR == 9 && HCOMM_MINOR > 1))
+#define ENABLE_ATTENTION_TO_FFN_V2_KERNEL
+#endif
+
+#endif
+
 #if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
 #else
 #include "kernel_operator.h"
 #endif
 #include "kernel_tiling/kernel_tiling.h"
+#if __has_include("adv_api/hcomm/hcomm.h")
 #include "adv_api/hcomm/hcomm.h"
+#endif
 #include "adv_api/reduce/sum.h"
 #include "adv_api/reduce/reduce.h"
 #include "attention_to_ffn_v2_tiling.h"
@@ -38,6 +51,8 @@
 #endif
 
 namespace AttentionToFFNImpl {
+
+#if defined(ENABLE_ATTENTION_TO_FFN_V2_KERNEL)
 
 #ifndef ATTN_FFN_URMA_SHARED_CONSTANTS
 #define ATTN_FFN_URMA_SHARED_CONSTANTS
@@ -1245,6 +1260,8 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::P
         }
     }
 }
+
+#endif
 
 } // namespace AttentionToFFNImpl
 #endif // ATTENTION_TO_FFN_URMA_H
