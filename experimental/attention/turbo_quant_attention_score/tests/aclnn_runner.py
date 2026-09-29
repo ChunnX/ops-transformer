@@ -85,10 +85,12 @@ class AclnnRunner:
             raise RuntimeError("aclCreateTensor failed")
         return handle
 
-    def __call__(self, inputs, bits, max_len, host_lengths=False):
+    def __call__(self, inputs, bits, max_len, host_lengths=False, output_fill=None):
         output = torch.empty(
             (*inputs[0].shape[:2], max_len), dtype=torch.float32, device="npu"
         )
+        if output_fill is not None:
+            output.fill_(output_fill)
         handles = [self.tensor(t) for t in [*inputs, output]]
         length_array = None
         if host_lengths:

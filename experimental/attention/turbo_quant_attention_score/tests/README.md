@@ -63,3 +63,13 @@ CPU 长度数组接口不以 Tensor 的 INT32/INT64 作为其底层类型；矩�
 
 性能模式独立于精度测试，对每组输入预热 5 次、采样 20 次，报告设备事件 median、p95 和原始样本，包含短尾块、长 decode、prefill。每次调用重新创建 executor。
 性能模式本身不做精度验收；应先完成 smoke/edge/invalid/full 及扩展精度测试。对照两个安装包时分别在独立进程加载，记录包 SHA256、源码提交和环境版本。
+
+## GQA 分组及维度拒绝回归
+
+```bash
+python test_gqa_regression.py --output gqa.json
+```
+
+覆盖 GQA 分组 1/2/3/4/5/8，KV heads=2，2/3/4-bit、BF16/FP16 norm、两种长度接口；单序列 query token 数为 7/8/9（覆盖 8-token 分组边界），另含 batch=3 decode，共 288 组配置。Tensor 长度在不同 token 配置下覆盖 INT32/INT64，并非两种 dtype 的全交叉组合。
+每组连续调用三次，每次重新创建 executor、将输出预填 NaN；检查所有输出均被写入、有效位置逐元素匹配独立 CPU 参考、无效位置为负无穷，并要求重复结果完全一致。页表倒序，输入区分 page/head/token。该测试可以检出漏写及导致输出错误的跨组映射，但重复结果一致不等同于证明不存在任何数据竞争。
+另有 24 组负向测试：分别将 query、query residual 或两者的末维设为 64/127/129/256，在两种长度接口下均要求 GetWorkspaceSize 阶段拒绝。两者同时改变的用例排除仅因 query 形状不一致而被拒绝的情况。
