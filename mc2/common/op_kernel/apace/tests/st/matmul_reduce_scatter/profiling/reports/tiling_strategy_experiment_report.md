@@ -172,6 +172,36 @@ T_before（serial）跨场次方差约 ±8%（row67 三场 3128.8/2847.1/2634.3�
 高度稳定（同配置跨场差 <0.1%）——跨场次比较加速比/掩盖率时须注意；同场次内对比不受影响。
 本轮统一复测的价值即在于消除该方差对 4 case 对比表的污染。
 
+## 11. 大额收益 case 完整测试与组件归因（2026-09-29）
+
+对 6 个大额收益 case（row69/57/33/51/67/27）补齐跨场景覆盖缺口（row67 上轮统一实验已完整），
+并对 5 个缺隔离数据的 case 做双配置四分量归因。
+
+### 覆盖矩阵（补齐后全绿）
+
+| 场景 | row69 | row57 | row33 | row51 | row67 | row27 |
+|---|---|---|---|---|---|---|
+| 隔离 @ 旧配置 (128,L0) | ✓ 本轮 | ✓ 本轮 | ✓ 本轮 | ✓ 本轮 | ✓ 0928 | ✓ 本轮 |
+| 隔离 @ 组合表配置 | ✓ 本轮 | ✓ 本轮 | ✓ 本轮 | ✓ 本轮 | ✓ 0929 | ✓ 本轮 (128,L1) |
+| 公式 A/B | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ (−0.6%) |
+| 顺序 A/B | ✓ 2×2 | ✓ 本轮 | ✓ 本轮 | ✓ 本轮 | ✓ | ✓ 全 |
+| 2×2 矩阵 | ✓ | 退化 | 退化 | 退化 | ✓ | ✓ |
+| 组合表 A/B (Phase 3) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+
+### 组件归因（核心发现）
+
+1. **公式 4 case（69/57/33/51）**：收益来源高度一致——**T_mm −21%~−34% 主导**
+   （matmul scope 效率），T_rs −8%~−13% 次要，T_a2a 不变；逐 case 复现并强化
+   row67 的 T_mm −20% 模式（详见 isolation_metrics_report 组件归因小节）
+2. **row27 顺序收益机制闭合**：**(128,L0) vs (128,L1) 的 T_mm = 384.1 vs 354.9（−7.59%）**，
+   而 T_a2a/T_rs 不变——顺序收益来自 **AIC 侧 matmul 执行效率**而非 AIV 重叠，
+   直接证据支持 fixpipe 尾部暴露假说（REMOTE 先行 → 大 fixpipe 尾隐藏于 LOCAL 计算下）；
+   掩盖率 0.43→0.52，加速比 1.16x→1.21x
+3. 顺序 A/B 补齐（57/33/51 @256）：+0.31%/−0.52%/−0.39%，中性偏轻度零回退
+
+至此第 9 节遗留的机制问题（row27 顺序收益来源）以隔离数据闭合；fixpipe 假说的最终确认
+可后续用 op_summary pipe 利用率分析（MTE3/FIX 占比对比 L0/L1）。
+
 ## 附录 A：实验一 56 case 公式 A/B 明细
 
 | row | M,K,N,R | 现值 tileM(T) | 公式 tileM(T) | current(us) | formula(us) | Δ | 组 |
@@ -297,4 +327,5 @@ T_before（serial）跨场次方差约 ±8%（row67 三场 3128.8/2847.1/2634.3�
 | 组合配置表 | `/tmp/opencode/combined_config.json` |
 | 掩盖率 probe（公式场景） | `apace_perf_probe/isolation_metrics_report_formula_scenario.md` |
 | 统一补充实验（4 case 隔离+顺序） | `apace_perf_probe/isolation_metrics_report_unified.md` + `/tmp/opencode/unified_order_result.txt` |
+| 大额 case 归因（5 case × 双配置隔离） | `apace_perf_probe/big_gain_cases.txt` + `/tmp/opencode/biggain_attribution.json` + `biggain_order_result.txt` |
 | 复现 | `run.sh --skip-build <rows>`（组合表）vs `run.sh --cli m k n r perf <旧headM> 0` |
