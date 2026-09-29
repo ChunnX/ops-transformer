@@ -148,9 +148,8 @@ SEED_Q = 54
 SEED_K = 3
 SEED_V = 4
 
-# 物理 S override: inputs 从 CSV 分配的 q/k/v tensor shape 推导物理 S 后注入,
-# generate_data 优先用这两个值作为物理 S (生成 query/key/value 的 S 维),
-# 而不是 max(ACT_SEQ_LENS) / MAX_SEQLEN (后者只决定有效长度).
+# 物理 S override: generate_data 优先用这两个值作为物理 S (生成 query/key/value
+# 的 S 维), 而不是 max(ACT_SEQ_LENS) / MAX_SEQLEN (后者只决定有效长度).
 _PHYSICAL_S_Q_OVERRIDE = None
 _PHYSICAL_S_KV_OVERRIDE = None
 
@@ -286,7 +285,7 @@ def _get_npu_fa_kwargs():
 
 
 # ==============================================================================
-# 配置注入: wrapper 把 case attrs 转成模块全局变量
+# 配置注入
 # ==============================================================================
 _GOLDEN_GLOBALS_MAP = {
     "B": "B",
@@ -384,7 +383,7 @@ def _apply_kwargs_globals(kwargs):
 
 
 # ==============================================================================
-# Layout 工具: 复用 mxfp4 quant_flash_attn_golden.py 中同名函数
+# Layout 工具
 # ==============================================================================
 def get_query_layout(input_layout):
     if input_layout in ("BSH", "BSH_BNSD", "BSH_NBSD"):
@@ -1380,7 +1379,6 @@ def call_npu_main(data_dict):
     torch.npu.synchronize()
 
     if METADATA_SHAPE is None:
-        # 表格显式未提供 (PASS_THROUGH 下 wrapper 注入 None) -> metadata 传 None
         metadata = None
         logger.info("[NPU_MAIN] 表格未提供 metadata_shape, metadata 传 None")
     else:
@@ -1427,5 +1425,4 @@ def call_npu_main(data_dict):
     return npu_attn_out, npu_lse
 
 
-# 自引用, 用于 _apply_golden_globals (避免循环 import)
 golden_mod_self = sys.modules[__name__]

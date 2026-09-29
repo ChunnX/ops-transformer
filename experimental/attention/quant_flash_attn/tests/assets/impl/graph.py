@@ -18,7 +18,6 @@ logger = logging.getLogger(__name__)
 
 
 def _resolve_metadata_op():
-    """惰性解析 metadata 算子入口, 优先 python 包路径, 回退 torch.ops."""
     try:
         from cann_ops_transformer.ops import quant_flash_attn_metadata
 
@@ -30,7 +29,6 @@ def _resolve_metadata_op():
 
 
 def _resolve_main_op():
-    """惰性解析主算子入口, 优先 python 包路径, 回退 torch.ops."""
     try:
         from cann_ops_transformer.ops import quant_flash_attn
 
@@ -48,7 +46,6 @@ def _none_if_empty(t):
 
 
 def _head_index(shape, layout, kv):
-    """从 q/k shape 推导 head 维下标."""
     if kv and layout == "PA_BBND":
         return 2
     if not kv and layout == "BSND":
@@ -57,11 +54,7 @@ def _head_index(shape, layout, kv):
 
 
 class QuantFlashAttnMxfp4AclGraph(torch.nn.Module):
-    """aclgraph 编译目标: forward 只调 quant_flash_attn 主算子.
-
-    __init__ (capture 之外) 完成 metadata 构建并缓存运行时入参; forward (capture
-    之内) 只调主算子。入参对齐 15 位置 tensor 与 op schema 位置参数顺序。
-    """
+    """aclgraph 编译目标: forward 只调 quant_flash_attn 主算子."""
 
     def __init__(
         self,
@@ -95,7 +88,7 @@ class QuantFlashAttnMxfp4AclGraph(torch.nn.Module):
         **kwargs,
     ):
         super().__init__()
-        import torch_npu  # 懒加载 torch_npu (fork 之后再 import)
+        import torch_npu
 
         torch_npu.npu.set_device(int(kwargs.get("device_id", 0)))
 

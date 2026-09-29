@@ -11,8 +11,6 @@
 # -----------------------------------------------------------------------------------------------------------
 """把 mxFp4 Excel sheet 转成符合 ttk e2e 标准的 csv。
 
-主算子直接由 ttk 调用 torch.ops.cann_ops_transformer.quant_flash_attn,
-metadata 由 spec 的 npu_preprocess 在主算子调用前生成并回填 metadata slot。
 输出单份 csv: qfa_mxfp4.csv (api_name=torch.ops.cann_ops_transformer.quant_flash_attn)。
 
 tensor 顺序 (共 15 个, 对齐算子 schema 位置参数顺序):
@@ -21,9 +19,6 @@ tensor 顺序 (共 15 个, 对齐算子 schema 位置参数顺序):
   6  block_table    7  p_scale
   8  cu_seqlens_q   9  cu_seqlens_kv  10 seqused_q  11 seqused_kv
   12 sinks          13 attn_mask      14 metadata
-
-cu_seqlens/seqused 的真实值以 `*_values` 属性保留在 attributes, 不与算子 schema
-的同名 Tensor 参数撞名 (inputs/npu_preprocess 用 `*_values` 覆盖随机占位 tensor)。
 """
 
 import argparse
@@ -117,7 +112,7 @@ METADATA_STRIDE = 16
 
 
 # -----------------------------------------------------------------------------------------------------------
-# metadata slot shape 推导 (与 torch_extension/quant_flash_attn.py 一致)
+# metadata slot shape 推导
 # -----------------------------------------------------------------------------------------------------------
 _CORE_NUMS = None
 
@@ -139,7 +134,6 @@ def _get_core_nums():
 
 
 def _calculate_max_schedule_size(batch_size, num_heads_q, aic_num, aiv_num):
-    # schedule 按 N_q 切分 (kernel n2Size=n1Size, GQA 下 N_q 个 n2 迭代), 与 aicpu 侧保持一致
     align_size = 4096
     batch_size = batch_size if batch_size and batch_size > 0 else 1
     fa_size = aic_num * METADATA_STRIDE * batch_size * num_heads_q
@@ -283,7 +277,6 @@ def excel_row_to_csv_row(ws, row_idx, col_map, api_name, testcase_suffix):
     v_descale_shape = _parse_shape(g("v_descale_shape"))
 
     def _slot_shape(key):
-        # 可选 tensor：Excel 空 → None（主算子收到 None 而非空 (0,) 张量，避免 segv）
         sh = _parse_shape(g(key))
         return sh if sh else None
 
