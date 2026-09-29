@@ -14,6 +14,7 @@ import argparse
 import glob
 import os
 import re
+import sys
 from collections import defaultdict, deque
 from pathlib import Path
 
@@ -232,6 +233,40 @@ def whitelist_selection(key, entry, by_key, target_socs):
     return selected
 
 
+def check_whitelist():
+    try:
+        whitelist = load_whitelist()
+    except ValueError as exc:
+        print(exc, file=sys.stderr)
+        return 1
+    by_key = {f"{domain}/{name}": path for domain, name, path in iter_ops(False)}
+    valid_socs = set(LONG_SOC)
+    errors = []
+    for key, entry in sorted(whitelist.items()):
+        if key not in by_key:
+            errors.append(f"{key}: operator not found")
+            continue
+        domain = key.split("/", 1)[0]
+        impact = entry.get("impact")
+        if impact is not None and not isinstance(impact, list):
+            errors.append(f"{key}: impact must be a list")
+            continue
+        for item in impact or []:
+            item = str(item)
+            impact_key = item if "/" in item else f"{domain}/{item}"
+            if impact_key not in by_key:
+                errors.append(f"{key}: impact target not found: {item}")
+        for soc in split_socs(entry.get("soc")):
+            if soc not in valid_socs:
+                errors.append(f"{key}: invalid soc: {soc}")
+    for err in errors:
+        print(err, file=sys.stderr)
+    if errors:
+        return 1
+    print(f"whitelist check passed: {len(whitelist)} entries")
+    return 0
+
+
 def collect_compile_ops(changed_file, soc_text, experimental):
     ops = list(iter_ops(experimental))
     by_key = {f"{domain}/{name}": (domain, name, path) for domain, name, path in ops}
@@ -261,14 +296,21 @@ def main():
     parser = argparse.ArgumentParser(
         description="Select compile scope from CMake and def.cpp"
     )
-    parser.add_argument("-f", "--file", required=True, help="changed files list")
+    parser.add_argument("-f", "--file", help="changed files list")
     parser.add_argument(
         "--soc", default="", help="target soc list, comma/semicolon separated"
     )
     parser.add_argument(
         "--experimental", action="store_true", help="include experimental operators"
     )
+    parser.add_argument(
+        "--check", action="store_true", help="validate whitelist and exit"
+    )
     args = parser.parse_args()
+    if args.check:
+        sys.exit(check_whitelist())
+    if not args.file:
+        parser.error("-f/--file is required unless --check")
     ops = collect_compile_ops(args.file, args.soc, args.experimental)
     print((";".join(ops) + ";") if ops else "")
 
