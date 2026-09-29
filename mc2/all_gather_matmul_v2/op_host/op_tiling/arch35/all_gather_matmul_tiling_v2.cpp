@@ -27,7 +27,6 @@
 #include "all_gather_matmul_tiling_v2.h"
 #include "all_gather_comm_algo_table.h"
 #include "all_gather_matmul_v2_fit_balance_tiling.h" // 统一接口头(内部已含老类头, 回退分支用)
-#include "all_gather_hccl_utils.h"
 #include "graph/utils/type_utils.h"
 #include "mc2_hcom_topo_info.h"
 #include "mc2_comm_algo_selector.h"

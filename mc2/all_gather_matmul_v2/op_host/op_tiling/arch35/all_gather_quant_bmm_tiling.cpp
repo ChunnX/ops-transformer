@@ -17,7 +17,6 @@
 #include "all_gather_quant_bmm_tiling.h"
 #include "all_gather_comm_algo_table.h"
 #include "all_gather_matmul_v2_fit_balance_tiling.h"
-#include "all_gather_hccl_utils.h"
 #include "common/utils/op_mc2.h"
 #include "mc2_comm_algo_selector.h"
 #include "mc2_comm_utils.h"
