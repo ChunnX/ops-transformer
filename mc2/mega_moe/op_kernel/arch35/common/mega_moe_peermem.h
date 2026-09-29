@@ -32,6 +32,7 @@
 #endif
 #include "../mega_moe_tiling.h"
 #include "mega_moe_constants.h"
+#include "mega_moe_count_layout.h"
 
 namespace MegaMoeImpl {
 
@@ -39,8 +40,8 @@ namespace MegaMoeImpl {
 // URMA 的 rank 槽位超过预留区时动态扩展；MTE 保持原 60 KiB 固定布局。
 constexpr int64_t PEERMEM_MIN_RANK_SYNC_SIZE = 1024 * 48LL;
 constexpr int64_t PEERMEM_DATA_OFFSET = 1024 * 60LL;
-// MTE count 区固定预留 2048 个 int32 槽，容量覆盖总专家数上限。
-constexpr int64_t PEERMEM_MTE_COUNT_REGION_SIZE = 8LL * 1024LL;
+// MTE count 区固定预留 2048 个 512B 槽，每槽仅首个 int32 有效。
+constexpr int64_t PEERMEM_MTE_COUNT_REGION_SIZE = MegaMoeCountLayout::REGION_BYTES;
 constexpr int64_t PEERMEM_SYNC_COUNT_REGION_SIZE = PEERMEM_DATA_OFFSET - PEERMEM_MIN_RANK_SYNC_SIZE;
 constexpr int64_t PEERMEM_SYNC_SLOT_SIZE = static_cast<int64_t>(INT_CACHELINE) * sizeof(int32_t);
 
@@ -100,7 +101,7 @@ HOST_DEVICE int64_t CalcDispatchRouteIndexAlignSize(const MegaMoeTilingData *til
                                 ALIGN_32);
 }
 
-// route index 接收区不再携带槽尾 count；count 继续使用下方独立连续表。
+// route index 接收区不携带槽尾 count；MTE count 使用独立的 512B 间隔表。
 HOST_DEVICE int64_t CalcRouteIndexRecvSize(int64_t routeIndexAlignSize, int64_t moeExpertPerRank, int64_t epWorldSize)
 {
     return Ops::Base::CeilAlign(moeExpertPerRank * epWorldSize * routeIndexAlignSize, ALIGN_512);
@@ -112,7 +113,7 @@ HOST_DEVICE int64_t CalcMaskRecvSize(int64_t maskAlignSize, int64_t moeExpertPer
     return Ops::Base::CeilAlign(moeExpertPerRank * epWorldSize * maskSlotSize, ALIGN_512);
 }
 
-// 独立 raw count 表按 [localExpert][sourceRank] 排列，供接收端一次搬入并做前缀和。
+// URMA 的独立 raw count 表仍按 [localExpert][sourceRank] 连续排列；不使用 MTE slot 布局。
 HOST_DEVICE int64_t CalcExpertCountRecvSize(int64_t moeExpertPerRank, int64_t epWorldSize)
 {
     return Ops::Base::CeilAlign(moeExpertPerRank * epWorldSize * static_cast<int64_t>(sizeof(int32_t)), ALIGN_512);
@@ -275,7 +276,7 @@ struct PeermemInfo {
         rankSyncInWorldPtr = base;
         int64_t offset = sizes.dataOffset;
         if (tilingData->topoType == TOPO_TYPE_MTE) {
-            // count 固定在 [60 KiB, 68 KiB)，避免可变路由区覆盖历史 count 槽。
+            // count 固定在同步区之后的 1 MiB，避免可变路由区覆盖历史 count 槽。
             expertCountRecvPtr = base + offset;
             offset += sizes.expertCountRecvSize;
             maskRecvPtr = base + offset;

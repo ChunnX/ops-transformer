@@ -21,6 +21,7 @@
 #include "kernel_operator.h"
 #include "op_kernel/math_util.h"
 #include "mega_moe_constants.h"
+#include "mega_moe_count_layout.h"
 #include "mega_moe_gmm_epilogue_sync.h"
 #include "mega_moe_types.h"
 
@@ -29,6 +30,12 @@ namespace MegaMoeImpl {
 using namespace AscendC;
 
 constexpr uint32_t UINT64_BYTE_OFFSET_SHIFT = 3U;
+
+// All MTE count/epoch words use independent 512-byte GM regions.
+__aicore__ inline uint32_t GetExpertCountSlotBytes()
+{
+    return MegaMoeCountLayout::SLOT_BYTES;
+}
 
 __aicore__ inline __gm__ int32_t* GetSyncCountAddress(GM_ADDR rankSyncBase, uint32_t aivCoreIdx)
 {
@@ -215,6 +222,26 @@ __aicore__ inline WorkRange GetRotatedBalancedWorkRange(uint32_t totalWorkItems,
 }
 
 #if defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__)
+// range 以逻辑 count 槽为单位；调用方提供已填零且非空的 UB Tensor，并保护其 MTE3 生命周期。
+// 仅清各槽首个 4B count/epoch，不触碰 padding、未使用槽或后续路由区。
+__aicore__ inline void ResetExpertCountSlots(const WorkRange& range, GM_ADDR regionPtr,
+                                             LocalTensor<int32_t>& resetTensor)
+{
+    GlobalTensor<int32_t> regionGm;
+    regionGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(regionPtr));
+    const uint32_t batchCapacity = resetTensor.GetSize();
+    for (uint32_t offset = 0U; offset < range.count;) {
+        const uint32_t remaining = range.count - offset;
+        const uint32_t batchCount = remaining < batchCapacity ? remaining : batchCapacity;
+        const uint64_t dstElement =
+            static_cast<uint64_t>(range.start + offset) * (MegaMoeCountLayout::SLOT_BYTES / sizeof(int32_t));
+        DataCopyExtParams copyParams{static_cast<uint16_t>(batchCount), sizeof(int32_t), 0U,
+                                     MegaMoeCountLayout::SLOT_BYTES - sizeof(int32_t), 0U};
+        DataCopyPad<int32_t, PaddingMode::Compact>(regionGm[dstElement], resetTensor, copyParams);
+        offset += batchCount;
+    }
+}
+
 // 使用调用方准备的全零 UB Tensor 清理指定范围；range 以 int32 元素为单位。
 __aicore__ inline void ResetWorkspaceRegion(const WorkRange& range, GM_ADDR regionPtr, int32_t batchElementCount,
                                             LocalTensor<int32_t>& resetTensor)

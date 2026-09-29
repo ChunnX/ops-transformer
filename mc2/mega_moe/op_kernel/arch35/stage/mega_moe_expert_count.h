@@ -50,7 +50,8 @@ __simd_vf__ inline void CheckCountRoundTagsVF(__ubuf__ uint32_t *counts, __ubuf_
     AscendC::Reg::StoreAlign(pending, resultReg, firstLaneMask);
 }
 
-// counts 为连续 count 表，pending 为独立、32B 对齐的 UB 暂存区（至少一个 int32）。
+// MTE GM count 表按 512B 槽存放；搬入后的 counts 为连续 UB 表。
+// pending 为独立、32B 对齐的 UB 暂存区（至少一个 int32）。
 // 首次立即读取；失败后等待 500 cycle，再重读整表。成功快照直接交给后续 VF cumsum。
 // 调用方保证在 AIV 上执行，且 elementCount > 0。
 __aicore__ inline void WaitForCountTable(const AscendC::GlobalTensor<int32_t> &countGm,
@@ -61,8 +62,12 @@ __aicore__ inline void WaitForCountTable(const AscendC::GlobalTensor<int32_t> &c
     // 首次搬运前保护此前的 Vector 访问；重试时上一轮 V_S 和 Scalar 判断已保证 VF 完成。
     SyncFuncStatic<AscendC::HardEvent::V_MTE2, SYNC_EVENT_ID2>();
     while (true) {
-        AscendC::DataCopyPad(counts, countGm, {1U, elementCount * static_cast<uint32_t>(sizeof(int32_t)), 0U, 0U, 0U},
-                             {true, 0U, 0U, 0U});
+        // Compact 将每个 GM 槽首部的 4B 紧密排入 UB，保持后续 epoch 校验和前缀和布局不变。
+        AscendC::DataCopyPad<int32_t, AscendC::PaddingMode::Compact>(
+            counts, countGm,
+            {static_cast<uint16_t>(elementCount), sizeof(int32_t),
+             static_cast<int64_t>(GetExpertCountSlotBytes()) - static_cast<int64_t>(sizeof(int32_t)), 0U, 0U},
+            {true, 0U, 0U, 0U});
         SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID2>();
         asc_vf_call<CheckCountRoundTagsVF>(reinterpret_cast<__ubuf__ uint32_t *>(counts.GetPhyAddr()),
                                            reinterpret_cast<__ubuf__ uint32_t *>(pending.GetPhyAddr()), elementCount,

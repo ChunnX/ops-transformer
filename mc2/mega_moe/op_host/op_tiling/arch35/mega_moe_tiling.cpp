@@ -34,6 +34,7 @@
 #include "../../../op_kernel/arch35/mega_moe_tiling.h"
 #include "../../../op_kernel/arch35/mega_moe_tiling_key.h"
 #include "../../../op_kernel/arch35/common/mega_moe_constants.h"
+#include "../../../op_kernel/arch35/common/mega_moe_count_layout.h"
 #include "../../../op_kernel/arch35/common/mega_moe_workspace.h"
 
 using namespace Mc2Tiling;
@@ -72,7 +73,7 @@ const static int64_t HIDDEN_DIM_ALIGN = 256LL;
 const static int64_t MIN_EP_WORLD_SIZE = 2LL;
 const static int64_t MAX_MTE_EP_WORLD_SIZE = 1024LL;
 const static int64_t MAX_URMA_EP_WORLD_SIZE = 1024LL;
-const static int64_t MAX_MOE_EXPERT_NUM = 2048LL;
+const static int64_t MAX_MOE_EXPERT_NUM = MegaMoeCountLayout::MAX_SLOTS;
 const static int64_t INPUT_WEIGHT_SCALES_CEIL_ALIGN = 64LL;
 const static int64_t RESERVED_WORKSPACE_SIZE = 1024 * 1024 * 50LL;
 constexpr float DEFAULT_ACTIVATION_CLAMP = std::numeric_limits<float>::max();
