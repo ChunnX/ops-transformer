@@ -1524,6 +1524,7 @@ static void SetPreQuantTileConfig(MegaMoeTilingData *tilingData, bool isPreQuant
 {
     tilingData->preQuantTileTokens = 0U;
     tilingData->preQuantStageBytes = 0U;
+    tilingData->preQuantConfig = {};
     if (!isPreQuantizedX || tilingData->h == 0U) {
         return;
     }
@@ -1539,6 +1540,27 @@ static void SetPreQuantTileConfig(MegaMoeTilingData *tilingData, bool isPreQuant
         1U, static_cast<uint32_t>(ops::CeilDiv(static_cast<uint64_t>(ALIGN_512), static_cast<uint64_t>(scaleRowBytes))));
     uint32_t tileTokens = std::min(scaleBasedTokens, maxTokensPerAiv);
     tileTokens = std::max(tileTokens, 1U);
+
+    MegaMoePreQuantConfig &preQuantConfig = tilingData->preQuantConfig;
+    uint32_t scaleValidCount =
+        static_cast<uint32_t>(ops::CeilDiv(static_cast<uint64_t>(tilingData->h), static_cast<uint64_t>(ALIGN_32)));
+    preQuantConfig.dataValidBytes = tilingData->h / activationElementsPerByte;
+    preQuantConfig.scaleValidBytes = scaleValidCount * sizeof(int8_t);
+    preQuantConfig.tokenAlignBytes =
+        ops::CeilAlign(preQuantConfig.dataValidBytes, static_cast<uint32_t>(ALIGN_256));
+    preQuantConfig.scaleAlignBytes =
+        ops::CeilAlign(preQuantConfig.scaleValidBytes, static_cast<uint32_t>(ALIGN_32));
+    preQuantConfig.weightValidBytes =
+        tilingData->topK * static_cast<uint32_t>(ge::GetSizeByDataType(topKWeightsDataType));
+    preQuantConfig.weightSrcRowBytes =
+        ops::CeilAlign(preQuantConfig.weightValidBytes, static_cast<uint32_t>(ALIGN_32));
+    preQuantConfig.weightOffset = preQuantConfig.tokenAlignBytes + preQuantConfig.scaleAlignBytes;
+    preQuantConfig.recordBytes = preQuantConfig.weightOffset;
+    if (tilingData->topkWeightsPrefetch == 1U || IsCombineDedupOn(tilingData->dedupMode)) {
+        preQuantConfig.recordBytes += ops::CeilAlign(
+            tilingData->topK * static_cast<uint32_t>(sizeof(float)), static_cast<uint32_t>(ALIGN_32));
+    }
+    preQuantConfig.weightSrcOffset = tileTokens * preQuantConfig.recordBytes;
 
     tilingData->preQuantTileTokens = tileTokens;
     tilingData->preQuantStageBytes =
