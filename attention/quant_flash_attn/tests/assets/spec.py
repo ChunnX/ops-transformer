@@ -11,10 +11,11 @@
 # -----------------------------------------------------------------------------------------------------------
 
 import importlib.util
+import logging
 from pathlib import Path
 
 try:
-    from cann_ops_transformer.ops import quant_flash_attn_metadata, quant_flash_attn
+    from cann_ops_transformer.ops import quant_flash_attn, quant_flash_attn_metadata
 except ImportError as e:
     logging.warning("Failed to import cann_ops_transformer.ops: %s", e)
 
