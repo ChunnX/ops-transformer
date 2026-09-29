@@ -39,7 +39,6 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dTile_;
         ComputeX2PostTile(token, tOff, tD, invRms0, postVals);
-        PrepareX2Tile(token, tOff, tD, false);
 
         LocalTensor<float> out = bufResFp32_.Get<float>()[N * dTile_];
         LocalTensor<T> x2Cache = bufActivationLowp_.Get<T>();
@@ -86,7 +85,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
                 FenceVToMte2();
             }
         }
-        PrepareX2Tile(token, tOff, tD, true);
+        RestoreAndCopyOutX2Tile(token, tOff, tD);
         AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf);
     }
     FenceMte3ToV();
@@ -113,23 +112,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     }
 
     // 第四遍：沿完整D轴计算输出归一化并写最终输出。
-    const float invRms1 = ComputeInvRms(sumSq1, invD_);
-    WaitCopyInGamma1();
-    for (uint32_t tile = 0; tile < dLoop_; ++tile) {
-        const uint32_t tD = GetTileD(tile);
-        const uint32_t tOff = tile * dTile_;
-        LocalTensor<float> hIn = bufResFp32_.Get<float>()[N * dTile_];
-        LocalTensor<T> hInCache = bufActivationLowp_.Get<T>()[tOff];
-        LocalTensor<float> gamma1 = bufGammaFp32_.Get<float>()[tOff];
-        if constexpr (RETURN_H_IN_F32) {
-            MhcNormRegBase::VFCastB16ScaleAndMulGamma(hIn, hInCache, gamma1, invRms1, tD);
-            PipeBarrier<PIPE_V>();
-            CopyOutHInPrimeTile(hIn, (uint64_t)token * D_ + tOff, tD);
-        } else {
-            ComputeAndCopyOutHInPrimeTile(hInCache, gamma1, invRms1,
-                                       (uint64_t)token * D_ + tOff, tD);
-        }
-    }
+    FinalizeHInPrime(token, sumSq1);
 }
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
@@ -210,7 +193,6 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         if (residualFromQueue) {
             queResidualLowp_.FreeTensor(residual);
         }
-        PrepareX2TileForSiblingAiv(token, tOff, tD, false);
     }
 
     midSqHalf[siblingAivIdx_] = ReduceSumPrecise(bufScratchFp32_.Get<float>(), D_);
@@ -266,7 +248,7 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         MhcNormRegBase::VFCastB16ScaleAndMulGammaToB16(
             x2Cache[(nStart + 1U) * D_ + tOff], x2Cache[(nStart + 1U) * D_ + tOff], gammaOdd, invRmsMid, tD);
         PipeBarrier<PIPE_V>();
-        PrepareX2TileForSiblingAiv(token, tOff, tD, true);
+        RestoreAndCopyOutX2TileForSiblingAiv(token, tOff, tD);
         AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf, siblingAivIdx_, siblingAivIdx_ + 1U,
                                firstPhiPrefetched);
     }
@@ -335,23 +317,7 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     }
 
     sumSq1 = ReduceSumPrecise(bufScratchFp32_.Get<float>(), D_);
-    const float invRms1 = ComputeInvRms(sumSq1, invD_);
-    WaitCopyInGamma1();
-    for (uint32_t tile = 0; tile < dLoop_; ++tile) {
-        const uint32_t tD = GetTileD(tile);
-        const uint32_t tOff = tile * dTile_;
-        LocalTensor<float> hIn = bufResFp32_.Get<float>()[N * dTile_];
-        LocalTensor<T> hInCache = bufActivationLowp_.Get<T>()[tOff];
-        LocalTensor<float> gamma1 = bufGammaFp32_.Get<float>()[tOff];
-        if constexpr (RETURN_H_IN_F32) {
-            MhcNormRegBase::VFCastB16ScaleAndMulGamma(hIn, hInCache, gamma1, invRms1, tD);
-            PipeBarrier<PIPE_V>();
-            CopyOutHInPrimeTile(hIn, (uint64_t)token * D_ + tOff, tD);
-        } else {
-            ComputeAndCopyOutHInPrimeTile(hInCache, gamma1, invRms1,
-                                       (uint64_t)token * D_ + tOff, tD);
-        }
-    }
+    FinalizeHInPrime(token, sumSq1);
 }
 
 #endif // MHC_NORM_POST_PREONLY_HAS_MID_H_

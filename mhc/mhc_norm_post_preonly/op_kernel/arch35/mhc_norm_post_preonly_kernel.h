@@ -123,6 +123,9 @@ private:
     __aicore__ inline void ComputeAndCopyOutHInPrimeTile(LocalTensor<T> srcDst, LocalTensor<float> gamma, float scale,
                                                          uint64_t gmOffset, uint32_t count);
 
+    // 四条路径共享的输出归一化末段；gamma1 已由调用方在 Gate 之前发起预取。
+    __aicore__ inline void FinalizeHInPrime(uint32_t token, float sumSq1);
+
     __aicore__ inline uint32_t GetTileD(uint32_t tile) const;
 
     // 单AIV和双sibling AIV路径共用的分块计算。
@@ -133,17 +136,19 @@ private:
     __aicore__ inline void ComputeX2PostTileForSiblingAiv(uint32_t token, uint32_t tOff, uint32_t tD, float invRms0,
                                                            const float (&postVals)[N]);
 
-    __aicore__ inline void PrepareX2Tile(uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput);
+    // 最终低精度x2先恢复为R4/R5使用的FP32，再从原低精度缓存写出GM。
+    __aicore__ inline void RestoreAndCopyOutX2Tile(uint32_t token, uint32_t tOff, uint32_t tD);
 
-    __aicore__ inline void PrepareX2TileForSiblingAiv(uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput);
+    __aicore__ inline void RestoreAndCopyOutX2TileForSiblingAiv(uint32_t token, uint32_t tOff, uint32_t tD);
 
     // 门控融合读取完当前x2分块后，复用首个head缓存保留低精度h_in。
     // 恢复FP32与平方在同一VF内完成，保留量化往返边界并减少UB中间写读。
     __aicore__ inline float ComputeHInCacheAndReduceSumSq(uint32_t tOff, uint32_t tD, LocalTensor<T> x2Cache,
                                                           LocalTensor<float> gateBuf);
 
-    // 固定的平方和与投影归约树由单AIV和双sibling AIV路径共用。half0固定覆盖展平区间[0,2D)，
-    // half1固定覆盖[2D,4D)，调用方只执行一次顶层合并partial0+partial1。
+    // 共享R4/R5投影与归约树：half0/half1分别覆盖展平区间[0,2D)/[2D,4D)，顶层合并由schedule执行。
+    // 长D尾块与完整tile各保留已调优的五行归约；普通短尾块的Phi预取按no-mid/has-mid编译期特化。
+    // dual has-mid无尾块时跨tile延迟归约，保留同一共享阶段以避免复制DMA/Vector/event序列。
     __aicore__ inline void AccumulateHalfPartials(uint32_t tOff, uint32_t tD, float (&sumSqHalf)[2],
                                                   float (&dotHalf)[2][N], uint32_t halfBegin = 0,
                                                   uint32_t halfEnd = 2, bool firstPhiPrefetched = false);
@@ -556,6 +561,29 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     }
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
+__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::FinalizeHInPrime(
+    uint32_t token, float sumSq1)
+{
+    const float invRms1 = ComputeInvRms(sumSq1, invD_);
+    WaitCopyInGamma1();
+    for (uint32_t tile = 0; tile < dLoop_; ++tile) {
+        const uint32_t tD = GetTileD(tile);
+        const uint32_t tOff = tile * dTile_;
+        LocalTensor<float> hIn = bufResFp32_.Get<float>()[N * dTile_];
+        LocalTensor<T> hInCache = bufActivationLowp_.Get<T>()[tOff];
+        LocalTensor<float> gamma1 = bufGammaFp32_.Get<float>()[tOff];
+        if constexpr (RETURN_H_IN_F32) {
+            MhcNormRegBase::VFCastB16ScaleAndMulGamma(hIn, hInCache, gamma1, invRms1, tD);
+            PipeBarrier<PIPE_V>();
+            CopyOutHInPrimeTile(hIn, (uint64_t)token * D_ + tOff, tD);
+        } else {
+            ComputeAndCopyOutHInPrimeTile(hInCache, gamma1, invRms1,
+                                       (uint64_t)token * D_ + tOff, tD);
+        }
+    }
+}
+
+template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline uint32_t KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::GetTileD(uint32_t tile) const
 {
         if (lastDTile_ != 0 && tile == dLoop_ - 1) {
@@ -608,49 +636,41 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     }
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::PrepareX2Tile(uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput)
+__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::RestoreAndCopyOutX2Tile(uint32_t token, uint32_t tOff, uint32_t tD)
 {
         LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
         LocalTensor<T> x2Cache = bufActivationLowp_.Get<T>();
         const uint64_t outBase = (uint64_t)token * N_ * D_ + tOff;
 
-        if (!USE_RMS_MID || writeOutput) {
-            for (uint32_t n = 0; n < N; n += 2U) {
-                MhcNormRegBase::VFCastB16PairToFp32(x2[n * dTile_], x2[(n + 1U) * dTile_], x2Cache[n * D_ + tOff],
-                                                    x2Cache[(n + 1U) * D_ + tOff], tD);
-            }
-            PipeBarrier<PIPE_V>();
+        for (uint32_t n = 0; n < N; n += 2U) {
+            MhcNormRegBase::VFCastB16PairToFp32(x2[n * dTile_], x2[(n + 1U) * dTile_], x2Cache[n * D_ + tOff],
+                                                x2Cache[(n + 1U) * D_ + tOff], tD);
         }
+        PipeBarrier<PIPE_V>();
 
-        if (writeOutput) {
-            SetFlag<HardEvent::V_MTE3>(evtVtoMte3_);
-            WaitFlag<HardEvent::V_MTE3>(evtVtoMte3_);
-            for (uint32_t n = 0; n < N; ++n) {
-                DataCopy(x2OutGm_[outBase + (uint64_t)n * D_], x2Cache[n * D_ + tOff], tD);
-            }
+        SetFlag<HardEvent::V_MTE3>(evtVtoMte3_);
+        WaitFlag<HardEvent::V_MTE3>(evtVtoMte3_);
+        for (uint32_t n = 0; n < N; ++n) {
+            DataCopy(x2OutGm_[outBase + (uint64_t)n * D_], x2Cache[n * D_ + tOff], tD);
         }
     }
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::PrepareX2TileForSiblingAiv(uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput)
+__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::RestoreAndCopyOutX2TileForSiblingAiv(uint32_t token, uint32_t tOff, uint32_t tD)
 {
         LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
         LocalTensor<T> x2Cache = bufActivationLowp_.Get<T>();
         const uint64_t outBase = (uint64_t)token * N_ * D_ + tOff;
         const uint32_t nStart = siblingAivIdx_ * HEADS_PER_SIBLING;
 
-        if (!USE_RMS_MID || writeOutput) {
-            MhcNormRegBase::VFCastB16PairToFp32(x2, x2[dTile_], x2Cache[nStart * D_ + tOff],
-                                                x2Cache[(nStart + 1U) * D_ + tOff], tD);
-            PipeBarrier<PIPE_V>();
-        }
+        MhcNormRegBase::VFCastB16PairToFp32(x2, x2[dTile_], x2Cache[nStart * D_ + tOff],
+                                            x2Cache[(nStart + 1U) * D_ + tOff], tD);
+        PipeBarrier<PIPE_V>();
 
-        if (writeOutput) {
-            SetFlag<HardEvent::V_MTE3>(evtVtoMte3_);
-            WaitFlag<HardEvent::V_MTE3>(evtVtoMte3_);
-            for (uint32_t n = nStart; n < nStart + HEADS_PER_SIBLING; ++n) {
-                DataCopy(x2OutGm_[outBase + (uint64_t)n * D_], x2Cache[n * D_ + tOff], tD);
-            }
+        SetFlag<HardEvent::V_MTE3>(evtVtoMte3_);
+        WaitFlag<HardEvent::V_MTE3>(evtVtoMte3_);
+        for (uint32_t n = nStart; n < nStart + HEADS_PER_SIBLING; ++n) {
+            DataCopy(x2OutGm_[outBase + (uint64_t)n * D_], x2Cache[n * D_ + tOff], tD);
         }
     }
 
@@ -672,6 +692,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
 {
         LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
         LocalTensor<float> reduceRows = bufResFp32_.Get<float>();
+        // 仅dual has-mid且D无尾块时延迟归约；single和no-mid在当前tile归约。
         const bool deferReduce = DUAL_SIBLING && USE_RMS_MID && lastDTile_ == 0U;
         const bool accumulateRows = deferReduce && tOff != 0U;
         const bool compactRows = DUAL_SIBLING && tD == dTile_ &&
@@ -720,7 +741,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
             return;
         }
 
-        // 短D尾块的物理行跨度为dTile_，继续逐行归约。
+        // 普通短尾块的物理行跨度为dTile_，继续逐行归约；两种mode只在Phi预取顺序不同。
         if (tD != dTile_) {
             LocalTensor<float> out = reduceRows[N * dTile_];
             for (uint32_t half = halfBegin; half < halfEnd; ++half) {
@@ -774,6 +795,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
             return;
         }
 
+        // 完整tile：复用五行平方/dot归约树；sibling只处理自己负责的half。
         for (uint32_t half = halfBegin; half < halfEnd; ++half) {
             const uint32_t h0 = half * 2;
             const uint32_t h1 = h0 + 1;
