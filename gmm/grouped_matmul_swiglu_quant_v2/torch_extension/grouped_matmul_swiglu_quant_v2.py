@@ -18,6 +18,7 @@ from cann_ops_transformer.op_builder import OpBuilder, get_as_library
 
 
 GE_DTYPE_FLOAT = 0
+TORCH_DTYPE_FLOAT = 6
 GE_DTYPE_INT8 = 1
 GE_DTYPE_FLOAT8_E5M2 = 35
 GE_DTYPE_FLOAT8_E4M3FN = 36
@@ -99,19 +100,19 @@ def _infer_v3_n(weight_scale):
     return weight_scale.shape[WEIGHT_SCALE_N_AXIS]
 
 
-class GroupedMatmulSwigluQuantV2OpBuilder(OpBuilder):
+class GroupedMatmulSwigluQuantOpBuilder(OpBuilder):
     def __init__(self):
-        super().__init__("grouped_matmul_swiglu_quant_v2", category="gmm")
+        super().__init__("grouped_matmul_swiglu_quant", category="gmm")
 
     def sources(self):
         return ["csrc/gmm/grouped_matmul_swiglu_quant_v2.cpp"]
 
     def schema(self):
         return (
-            "grouped_matmul_swiglu_quant_v2("
+            "grouped_matmul_swiglu_quant("
             "Tensor x, Tensor[] weight, Tensor[] weight_scale, Tensor x_scale, Tensor group_list, "
             "*, Tensor? smooth_scale=None, Tensor[]? weight_assist_matrix=None, Tensor[]? bias=None, "
-            f"int? dequant_mode={MX_QUANT_MODE}, int? dequant_dtype=0, "
+            f"int? dequant_mode={MX_QUANT_MODE}, int? dequant_dtype={TORCH_DTYPE_FLOAT}, "
             f"int? quant_mode={MX_QUANT_MODE}, int? quant_dtype={GE_DTYPE_FLOAT8_E4M3FN}, "
             "int? group_list_type=0, int[]? tuning_config=None, int? x_dtype=None, int? weight_dtype=None, "
             "int? weight_scale_dtype=None, int? x_scale_dtype=None, int? swiglu_mode=None, "
@@ -121,7 +122,7 @@ class GroupedMatmulSwigluQuantV2OpBuilder(OpBuilder):
 
     def register_meta(self):
         @impl(get_as_library(), self.name, "Meta")
-        def grouped_matmul_swiglu_quant_v2_meta(
+        def grouped_matmul_swiglu_quant_meta(
             x,
             weight,
             weight_scale,
@@ -131,7 +132,7 @@ class GroupedMatmulSwigluQuantV2OpBuilder(OpBuilder):
             weight_assist_matrix=None,
             bias=None,
             dequant_mode=MX_QUANT_MODE,
-            dequant_dtype=0,
+            dequant_dtype=TORCH_DTYPE_FLOAT,
             quant_mode=MX_QUANT_MODE,
             quant_dtype=GE_DTYPE_FLOAT8_E4M3FN,
             group_list_type=0,
@@ -189,12 +190,12 @@ class GroupedMatmulSwigluQuantV2OpBuilder(OpBuilder):
             )
 
 
-_op_builder = GroupedMatmulSwigluQuantV2OpBuilder()
+_op_builder = GroupedMatmulSwigluQuantOpBuilder()
 _op_builder._ensure_initialized()
 
 
 @impl(get_as_library(), _op_builder.name, "PrivateUse1")
-def _grouped_matmul_swiglu_quant_v2(
+def _grouped_matmul_swiglu_quant(
     x,
     weight,
     weight_scale,
@@ -204,7 +205,7 @@ def _grouped_matmul_swiglu_quant_v2(
     weight_assist_matrix=None,
     bias=None,
     dequant_mode=MX_QUANT_MODE,
-    dequant_dtype=0,
+    dequant_dtype=TORCH_DTYPE_FLOAT,
     quant_mode=MX_QUANT_MODE,
     quant_dtype=GE_DTYPE_FLOAT8_E4M3FN,
     group_list_type=0,
@@ -222,7 +223,7 @@ def _grouped_matmul_swiglu_quant_v2(
     dst_type_max=0.0,
 ):
     module = _op_builder.load()
-    return module.grouped_matmul_swiglu_quant_v2(
+    return module.grouped_matmul_swiglu_quant(
         x,
         weight,
         weight_scale,
@@ -251,7 +252,7 @@ def _grouped_matmul_swiglu_quant_v2(
     )
 
 
-def grouped_matmul_swiglu_quant_v2(
+def grouped_matmul_swiglu_quant(
     x: torch.Tensor,
     weight: List[torch.Tensor],
     weight_scale: List[torch.Tensor],
@@ -262,7 +263,7 @@ def grouped_matmul_swiglu_quant_v2(
     weight_assist_matrix: Optional[List[torch.Tensor]] = None,
     bias: Optional[List[torch.Tensor]] = None,
     dequant_mode: Optional[int] = MX_QUANT_MODE,
-    dequant_dtype: Optional[Union[int, torch.dtype]] = torch.float32,
+    dequant_dtype: Optional[Union[int, torch.dtype]] = TORCH_DTYPE_FLOAT,
     quant_mode: Optional[int] = MX_QUANT_MODE,
     quant_dtype: Optional[Union[int, torch.dtype]] = torch.float8_e4m3fn,
     group_list_type: Optional[int] = 0,
@@ -293,12 +294,12 @@ def grouped_matmul_swiglu_quant_v2(
     bias = _normalize_bias(bias)
     if swiglu_mode is None:
         raise ValueError(
-            "cann_ops_transformer.grouped_matmul_swiglu_quant_v2 currently requires swiglu_mode=2; "
+            "cann_ops_transformer.grouped_matmul_swiglu_quant currently requires swiglu_mode=2; "
             "use torch_npu.npu_grouped_matmul_swiglu_quant_v2 for legacy V2 scenarios."
         )
     # Normalize Python/dispatcher representations here. The C++ bridge guards
     # descriptor construction/output allocation; ACLNN owns scenario checks.
-    return torch.ops.cann_ops_transformer.grouped_matmul_swiglu_quant_v2(
+    return torch.ops.cann_ops_transformer.grouped_matmul_swiglu_quant(
         x,
         weight,
         weight_scale,
