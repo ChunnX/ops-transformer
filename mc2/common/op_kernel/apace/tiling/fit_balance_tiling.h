@@ -257,21 +257,43 @@ inline CommCutResult Schedule(FitBasedBalanceCtx &ctx)
 }
 
 // ============================================================================
+// 诊断打印(日志级别为 debug 即 ASCEND_GLOBAL_LOG_LEVEL=0 时输出, 纯 printf 零日志库依赖):
+// 输入 shape / 最终切分 / 启动税(N 轮 vs 不切的总通信时之差 = (N−1)·b)。
+inline void PrintTilingData(const FitBalanceTilingArgs &args, const CommCutResult &cut, double commTimeActualUs,
+                            double commTimeNoCutUs)
+{
+    const char *level = std::getenv("ASCEND_GLOBAL_LOG_LEVEL");
+    if (level == nullptr || level[0] != '0') {
+        return;
+    }
+    printf("[FitBalance Input]\n");
+    printf("  mValue             : %lu\n", args.mValue);
+    printf("  nValue             : %lu\n", args.nValue);
+    printf("  kValue             : %lu\n", args.kValue);
+    printf("  rankDim            : %u\n", args.rankDim);
+    printf("[FitBalance Cut]\n");
+    printf("  totalTileCnt       : %lu\n", cut.totalTileCnt);
+    printf("  longTileLen        : %lu\n", cut.longTileLen);
+    printf("  numLongTile        : %lu\n", cut.numLongTile);
+    printf("  shortTileLen       : %lu\n", cut.shortTileLen);
+    printf("  numShortTile       : %lu\n", cut.numShortTile);
+    printf("  shortTileAtBack    : %d\n", cut.shortTileAtBack);
+    printf("[FitBalance CommTime]\n");
+    printf("  actual(%lu rounds) : %.3f us\n", cut.totalTileCnt, commTimeActualUs);
+    printf("  no-cut(1 round)    : %.3f us\n", commTimeNoCutUs);
+    printf("  round tax          : %.3f us\n", commTimeActualUs - commTimeNoCutUs);
+}
+
 // 对外唯一入口: 算子侧一行调用——上下文构造 + 键控求解的串联。
-// 诊断字段供 op 侧日志: 实际切分 N 轮 vs 不切的总通信时, 差值 = (N−1)·b 启动税。
-// ============================================================================
-struct FitBalanceCutResult {
-    CommCutResult cut;
-    double commTimeActualUs; // 实际切分(N 轮)的总通信时
-    double commTimeNoCutUs;  // 不切候选(1 轮)的总通信时
-};
-inline FitBalanceCutResult FitBalanceCut(const FitBalanceTilingArgs &args, LocalMMPosition localMMPosition,
-                                         CommComputeOrder order, TilingCommEngine commEngine,
-                                         const FitBalanceCalibration &calib)
+// 诊断打印内置于本函数(debug 级), op 侧无需再写日志。
+inline CommCutResult FitBalanceCut(const FitBalanceTilingArgs &args, LocalMMPosition localMMPosition,
+                                   CommComputeOrder order, TilingCommEngine commEngine,
+                                   const FitBalanceCalibration &calib)
 {
     FitBasedBalanceCtx ctx = InitCtx(args, localMMPosition, order, commEngine, calib);
     CommCutResult cut = Schedule(ctx);
-    return {cut, ctx.commTimeActualUs, ctx.commTimeNoCutUs};
+    PrintTilingData(args, cut, ctx.commTimeActualUs, ctx.commTimeNoCutUs);
+    return cut;
 }
 
 #endif // __APACE_FIT_BALANCE_TILING_H__

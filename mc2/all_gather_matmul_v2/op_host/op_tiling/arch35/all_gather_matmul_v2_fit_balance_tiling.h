@@ -32,7 +32,6 @@
 #include "all_gather_fit_balance_tiling.h"            // 老类(回退分支保留, 迁移收尾后随 P4 删除)
 #include "apace/tiling/core_occupancy_first_tiling.h" // GetCommTilingFromV3/CommTilingData(miss→COF 分派)
 #include "apace/tiling/fit_balance_tiling.h"
-#include "mc2_log.h"
 #include "op_host/op_tiling/formulaic_tiling_datatype.h" // 旧 CutResult/KernelType/TopoType(对外接口沿用旧类型)
 #include "op_host/op_tiling/matmul_formulaic_tiling.h"   // mc2tiling::TilingArgs
 
@@ -107,31 +106,14 @@ inline CutResult ToLegacyCut(const CommCutResult &c)
     return {c.shortTileAtBack, c.totalTileCnt, c.numLongTile, c.numShortTile, c.longTileLen, c.shortTileLen};
 }
 
-// 统一引擎路径: 引擎对外唯一入口 FitBalanceCut(,
-// cut+ctx 一并返回), 本算子 LocalMMPosition::FRONT(本地 A 块前置) + COMM_FIRST。
-// baseMOut(可空): 回传 matmul 基本块(回退老类路径的调用点后处理 AdjustCutResultForAICPU 需要;
-// 新引擎路径不消费—— 切分收益门控已接替, 保留出参仅为回退路径完整)
+// 统一引擎路径: 引擎对外唯一入口 FitBalanceCut(诊断打印内置于引擎, debug 级),
+// 本算子 LocalMMPosition::FRONT(本地 A 块前置) + COMM_FIRST。
+// baseMOut(可空): 仅回退老类路径填充(调用点后处理 AdjustCutResultForAICPU 消费)
 inline CutResult ScheduleFitBalance(const mc2tiling::TilingArgs &args, TilingCommEngine commEngine,
                                     uint32_t *baseMOut = nullptr)
 {
-    auto result = FitBalanceCut(ToEngineArgs(args), LocalMMPosition::FRONT, CommComputeOrder::COMM_FIRST, commEngine,
-                                CALIBRATION);
-    CutResult cut = ToLegacyCut(result.cut);
-    // INFO 级分派标识(与 miss 路径的 "COF cut:" 对仗): 默认日志级别即可正向确认命中标定并
-    // 走进 fit-balance 新引擎(kUseNewEngine=false 回退老类不打本行); 详细决策与启动税诊断
-    // 仍为 debug 级(下方两行)
-    OPS_LOG_I("AllGatherMatmul", "fit-balance cut: engine=%d, %lu rounds: %lux%lu+%lux%lu atBack=%d",
-              static_cast<int32_t>(commEngine), cut.totalTileCnt, cut.numLongTile, cut.longTileLen, cut.numShortTile,
-              cut.shortTileLen, cut.shortTileAtBack);
-    OPS_LOG_D("AllGatherMatmul",
-              "Input shape {M, N, K} = {%lu, %lu, %lu}, Final cut: shortTileAtBack %d, longTileLen %lu, "
-              "numLongTile %lu, shortTileLen %lu, numShortTile %lu",
-              args.mValue, args.nValue, args.kValue, cut.shortTileAtBack, cut.longTileLen, cut.numLongTile,
-              cut.shortTileLen, cut.numShortTile);
-    //  诊断: 实际切分 N 轮 vs 不切的总通信时(含每轮启动开销 b 与一次性 c), 差值=切分启动税
-    OPS_LOG_D("AllGatherMatmul", "Comm total time: %lu rounds actual %.3fus vs no-cut %.3fus (round tax %.3fus)",
-              cut.totalTileCnt, result.commTimeActualUs, result.commTimeNoCutUs,
-              result.commTimeActualUs - result.commTimeNoCutUs);
+    CutResult cut = ToLegacyCut(FitBalanceCut(ToEngineArgs(args), LocalMMPosition::FRONT, CommComputeOrder::COMM_FIRST,
+                                              commEngine, CALIBRATION));
     return cut;
 }
 
