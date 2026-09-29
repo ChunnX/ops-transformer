@@ -26,9 +26,9 @@ constexpr uint32_t SCALAR_BUF_SIZE = 256;     // 标量计算 UB buffer 大小 (
 constexpr uint32_t EXP_DIV_ELEM = 8;          // sigmoid ExpDiv 计算元素数
 constexpr uint32_t POST_COMB_SIZE = 8 + 16;   // h_post[8] + h_res[16] buffer 大小
 constexpr uint32_t PARTIAL_SLOT_ELEMS = 8;    // 每个sibling AIV的partial固定占32B
+constexpr uint32_t HAS_MID_SLOTS_PER_TOKEN = SIBLING_AIV_COUNT * 2U;
 constexpr uint16_t MID_READY_FLAG = 0;        // RMS_mid平方和交换完成标志
 constexpr uint16_t PAIR_READY_FLAG = 1;       // 平方和与投影 partial交换完成标志
-constexpr uint16_t MID_CONSUMED_FLAG = 2;     // sibling读取RMS_mid槽完成标志
 
 template <typename A, typename B>
 struct IsSameT {
@@ -251,8 +251,9 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
             hInF32Gm_.SetGlobalBuffer((__gm__ float *)h_in_f32_gm, (uint64_t)T_ * D_);
         }
         if constexpr (DUAL_SIBLING) {
+            constexpr uint32_t slotsPerToken = USE_RMS_MID ? HAS_MID_SLOTS_PER_TOKEN : SIBLING_AIV_COUNT;
             partial1Gm_.SetGlobalBuffer((__gm__ float *)workspace,
-                                        (uint64_t)T_ * SIBLING_AIV_COUNT * PARTIAL_SLOT_ELEMS);
+                                        (uint64_t)T_ * slotsPerToken * PARTIAL_SLOT_ELEMS);
         }
 
         pipe_.InitBuffer(bufGammaFp32_, D_ * sizeof(float));

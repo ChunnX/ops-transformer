@@ -363,7 +363,8 @@ ge::graphStatus MhcNormPostPreonlyTiling::GetWorkspaceSize()
 {
     workspaceSize_ = systemWorkspaceSize_;
     if (enableDualSibling_) {
-        workspaceSize_ += static_cast<size_t>(T_) * PARTIAL_SLOTS_PER_TOKEN * PARTIAL_SLOT_BYTES;
+        const uint32_t slotsPerToken = useRmsMid_ ? NUM_TWO * PARTIAL_SLOTS_PER_TOKEN : PARTIAL_SLOTS_PER_TOKEN;
+        workspaceSize_ += static_cast<size_t>(T_) * slotsPerToken * PARTIAL_SLOT_BYTES;
     }
     return ge::GRAPH_SUCCESS;
 }
