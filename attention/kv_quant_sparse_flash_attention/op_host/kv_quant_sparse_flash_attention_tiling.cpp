@@ -299,7 +299,7 @@ void QSFAMlaTiling::CalcVectorizeFlag()
     // UB 计算与 kernel 侧 GetKVPhyAddr 的 InitBuffer 保持一致：
     // blkTableBuf 对齐 512B，sparseIdxBuf / kvPhyAddrBuf 对齐 32B。
     vectorizeFlag_ = 0U;
-    if (!qsfaInfo_->isA5) {
+    if (!qsfaInfo_->isA5 && !qsfaInfo_->isA6) {
         return;
     }
     if (qsfaInfo_->kvLayout == QSFALayout::PA_BSND) {
@@ -309,7 +309,7 @@ void QSFAMlaTiling::CalcVectorizeFlag()
         uint32_t sparseBlockCountFlag =
             static_cast<uint32_t>((static_cast<uint32_t>(qsfaInfo_->sparseBlockCount) & (S2_NUM_PER_LOOP - 1U)) == 0U);
         uint32_t sparseModeFlag = static_cast<uint32_t>(qsfaInfo_->sparseMode == 3U);
-        constexpr uint32_t UB_SIZE = 248 * 1024; // UB共256KB，预留8KB
+        const uint32_t UB_SIZE = (qsfaInfo_->isA5) ? (248U * 1024U) : (376U * 1024U); // 预留8KB
         uint32_t alignedSparseBlockCount = (static_cast<uint32_t>(qsfaInfo_->sparseBlockCount) + S2_NUM_PER_LOOP - 1U) /
                                            S2_NUM_PER_LOOP * S2_NUM_PER_LOOP;
         uint32_t vectorizeUbSize =
@@ -499,7 +499,7 @@ void QSFAMlaTiling::CalcFDWorkSpace(const uint32_t actCoreNum)
 void QSFAMlaTiling::GetWorkspaceSize()
 {
     uint32_t actCoreNum = coreNum_;
-    if (qsfaInfo_->isA5) {
+    if (qsfaInfo_->isA5 || qsfaInfo_->isA6) {
         workspaceSize_ = libapiSize_;
         constexpr uint32_t TRIPLE_BUFFER_NUM = 3;
         constexpr uint32_t S2_BASE_SIZE = 128; // S2轴基本块大小
@@ -557,7 +557,7 @@ void QSFAMlaTiling::CalcBlockDim()
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(qsfaInfo_->platformInfo);
     auto aicNum = usedCoreNum_;
-    auto aivNum = 2 * usedCoreNum_;
+    auto aivNum = qsfaInfo_->isA6 ? usedCoreNum_ : (2 * usedCoreNum_);
 
     blockDim_ = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum);
     OP_LOGI(qsfaInfo_->opName, "QSFA block dim: %u aiv Num: %u aic Num: %u.", blockDim_, aivNum, aicNum);
@@ -1286,7 +1286,7 @@ ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantShapeSizes() const
                         std::to_string(n2Size_) + ")"),
                 return ge::GRAPH_FAILED);
 
-    if (isA5_) {
+    if (isA5_ || isA6_) {
         std::vector<uint32_t> gSizeSupportList = {1, 2, 4, 8, 16, 32, 48, 64, 128};
         OP_CHECK_IF(std::find(gSizeSupportList.begin(), gSizeSupportList.end(), gSize_) == gSizeSupportList.end(),
                     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
@@ -1315,7 +1315,7 @@ ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantShapeSizes() const
 
 ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantShapeSparseAndHeadDim() const
 {
-    if (isA5_) {
+    if (isA5_ || isA6_) {
         if (inputKvType_ == ge::DT_HIFLOAT8) {
             OP_CHECK_IF(
                 sparseBlockCount_ != 2048,
@@ -1390,7 +1390,7 @@ ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantDtype() const
                                                   " and " + QSFADataTypeToSerialString(ge::DT_FLOAT16)),
         return ge::GRAPH_FAILED);
 
-    if (isA5_) {
+    if (isA5_ || isA6_) {
         OP_CHECK_IF(
             inputKvType_ != ge::DT_FLOAT8_E4M3FN && inputKvType_ != ge::DT_HIFLOAT8 && inputKvType_ != ge::DT_INT8,
             OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
@@ -1527,6 +1527,7 @@ void QSFATilingCheck::Init()
     opParamInfo_ = qsfaInfo_.opParamInfo;
     npuArch_ = qsfaInfo_.npuArch;
     isA5_ = qsfaInfo_.isA5;
+    isA6_ = qsfaInfo_.isA6;
 
     bSize_ = qsfaInfo_.bSize;
     n1Size_ = qsfaInfo_.n1Size;
@@ -1735,7 +1736,9 @@ ge::graphStatus QSFAInfoParser::GetNpuInfo()
 
     npuArch_ = qsfaAscendcPlat.GetCurNpuArch();
     isA5_ = (npuArch_ == NpuArch::DAV_3510);
-    if (npuArch_ != NpuArch::DAV_2201 && npuArch_ != NpuArch::DAV_3510) {
+    isA6_ = (npuArch_ == NpuArch::DAV_9201) || (npuArch_ == NpuArch::DAV_9202);
+    if (npuArch_ != NpuArch::DAV_2201 && npuArch_ != NpuArch::DAV_3510 && npuArch_ != NpuArch::DAV_9201 &&
+        npuArch_ != NpuArch::DAV_9202) {
         OPS_REPORT_VECTOR_INNER_ERR(opName_, "Npu Arch Version[%d] is not support.", static_cast<int32_t>(npuArch_));
         return GRAPH_FAILED;
     }
@@ -2093,7 +2096,7 @@ ge::graphStatus QSFAInfoParser::GetActualseqInfo()
 // 非PA_BSND时，所有轴都必须连续
 ge::graphStatus QSFAInfoParser::CheckContiguous() const
 {
-    if (!isA5_) {
+    if (!(isA5_ || isA6_)) {
         return ge::GRAPH_SUCCESS;
     }
 
@@ -2143,6 +2146,7 @@ void QSFAInfoParser::GenerateInfo(QSFATilingInfo &qsfaInfo)
     qsfaInfo.isV2Op = isV2Op_;
     qsfaInfo.npuArch = npuArch_;
     qsfaInfo.isA5 = isA5_;
+    qsfaInfo.isA6 = isA6_;
 
     qsfaInfo.bSize = bSize_;
     qsfaInfo.n1Size = n1Size_;
@@ -2172,7 +2176,7 @@ void QSFAInfoParser::GenerateInfo(QSFATilingInfo &qsfaInfo)
     qsfaInfo.blockTypeSize = sizeof(float);
     qsfaInfo.maxBlockNumPerBatch = maxBlockNumPerBatch_;
 
-    if (npuArch_ != NpuArch::DAV_3510) {
+    if (!(isA5_ || isA6_)) {
         qsfaInfo.keyStride0 = 0; // 910无需使用stride
     } else {
         if (keyStride0_ != 0) {

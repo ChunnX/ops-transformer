@@ -236,6 +236,7 @@ struct QSFATilingInfo {
     // Base Param
     NpuArch npuArch = NpuArch::DAV_2201;
     bool isA5 = false;
+    bool isA6 = false;
     uint32_t bSize = 0;
     uint32_t n1Size = 0;
     uint32_t n2Size = 0;
@@ -511,6 +512,7 @@ private:
     uint32_t aivNum_ = 0;
     NpuArch npuArch_ = NpuArch::DAV_2201;
     bool isA5_ = false;
+    bool isA6_ = false;
     uint64_t l2CacheSize_ = 0;
 
     ge::DataType inputQType_ = ge::DT_FLOAT16;
@@ -611,6 +613,7 @@ public:
 
     NpuArch npuArch_ = NpuArch::DAV_2201;
     bool isA5_ = false;
+    bool isA6_ = false;
 
     ge::DataType inputQType_ = ge::DT_FLOAT16;
     ge::DataType inputKvType_ = ge::DT_FLOAT16;
