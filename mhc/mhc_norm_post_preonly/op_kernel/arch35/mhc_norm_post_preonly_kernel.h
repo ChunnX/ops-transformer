@@ -493,7 +493,7 @@ private:
         LocalTensor<float> reduceRows = bufResFp32_.Get<float>();
         const bool deferReduce = DUAL_SIBLING && USE_RMS_MID && lastDTile_ == 0U;
         const bool accumulateRows = deferReduce && tOff != 0U;
-        const bool compactRows = DUAL_SIBLING && USE_RMS_MID && tD == dTile_ &&
+        const bool compactRows = DUAL_SIBLING && tD == dTile_ &&
                                  tD % MhcNormRegBase::VL_FP32 == 0U;
         const uint32_t reduceWidth = compactRows ? MhcNormRegBase::VL_FP32 : tD;
 

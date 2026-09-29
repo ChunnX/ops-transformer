@@ -56,6 +56,19 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     for (uint32_t tile = 0; tile < dLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dTile_;
+        bool firstPhiPrefetched = false;
+        if constexpr (!USE_RMS_MID) {
+            firstPhiPrefetched = tD == dTile_;
+            if (firstPhiPrefetched) {
+                LocalTensor<float> firstPhi = bufPhiFp32_.AllocTensor<float>();
+                DataCopyExtParams phiCopy = {2, 0, 0, 0, 0};
+                phiCopy.blockLen = tD * sizeof(float);
+                phiCopy.srcStride = (D_ - tD) * sizeof(float);
+                DataCopyPadExtParams<float> phiPad = {false, 0, 0, 0};
+                DataCopyPad(firstPhi, phiGm_[(uint64_t)headBegin * D_ + tOff], phiCopy, phiPad);
+                bufPhiFp32_.EnQue(firstPhi);
+            }
+        }
         if constexpr (USE_RMS_MID) {
             LocalTensor<float> hOut = bufGamma2Fp32_.Get<float>()[tOff];
             LocalTensor<T> hOutCache = bufX2Cache_.Get<T>()[tOff];
@@ -108,7 +121,8 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         if constexpr (USE_RMS_MID) {
             // All tile squares are retained; reduce once after 残差融合 completes.
         } else {
-            AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf, siblingAivIdx_, siblingAivIdx_ + 1U);
+            AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf, siblingAivIdx_, siblingAivIdx_ + 1U,
+                                   firstPhiPrefetched);
         }
     }
 
