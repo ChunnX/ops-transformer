@@ -102,10 +102,10 @@ class MixedQuantSparseFlashMlaOpBuilder(OpBuilder):
             has_ori_kv: bool = True,
             has_cmp_kv: bool = True,
         ):
-            device = ori_topk_length.device
-            target = None if device.type == "meta" else device
-            blocks = int(torch.npu.get_device_properties(target).cube_core_num)
-            return torch.empty((2 * blocks,), dtype=torch.int32, device="meta")
+            MQSMLA_METADATA_TOTAL_SIZE = 1024
+            return ori_topk_length.new_empty(
+                (MQSMLA_METADATA_TOTAL_SIZE,), dtype=torch.int32
+            )
 
         @impl(get_as_library(), self.name, "Meta")
         def mixed_quant_sparse_flash_mla_meta(
