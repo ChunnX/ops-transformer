@@ -494,3 +494,139 @@ TEST_F(MhcPreSinkhornPremixBackwardTiling, test_tiling_T64_N9_C128_3d_fail)
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
+
+TEST_F(MhcPreSinkhornPremixBackwardTiling, test_tiling_B2_S128_N4_C256_ascend950_key0)
+{
+    int64_t B = 2;
+    int64_t S = 128;
+    int64_t N = 4;
+    int64_t C = 256;
+    int64_t skIterCount = 20;
+    float eps = 1e-6f;
+
+    int64_t hcMix = N * N + 2 * N;
+    int64_t phiDim0 = hcMix;
+    int64_t phiDim1 = N * C;
+
+    optiling::MhcPreSinkhornPremixBackwardCompileInfo compileInfo = {};
+
+    gert::TilingContextPara tilingContextPara(
+        "MhcPreSinkhornPremixBackward",
+        {
+            {{{B, S, C}, {B, S, C}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{B, S, N}, {B, S, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N, N}, {B, S, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N, C}, {B, S, N, C}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{phiDim0, phiDim1}, {phiDim0, phiDim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{hcMix}, {hcMix}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N}, {B, S, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, hcMix}, {B, S, hcMix}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, 1}, {B, S, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{skIterCount * 2, B, S, N}, {skIterCount * 2, B, S, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{skIterCount * 2, B, S, N, N}, {skIterCount * 2, B, S, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {{{B, S, N, C}, {B, S, N, C}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{phiDim0, phiDim1}, {phiDim0, phiDim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{hcMix}, {hcMix}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {"eps", Ops::Transformer::AnyValue::CreateFrom<float>(eps)},
+        },
+        &compileInfo, "Ascend950", "", 4096);
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 0);
+}
+
+TEST_F(MhcPreSinkhornPremixBackwardTiling, test_tiling_B2_S128_N4_C256_ascend950_deterministic_key1)
+{
+    int64_t B = 2;
+    int64_t S = 128;
+    int64_t N = 4;
+    int64_t C = 256;
+    int64_t skIterCount = 20;
+    float eps = 1e-6f;
+
+    int64_t hcMix = N * N + 2 * N;
+    int64_t phiDim0 = hcMix;
+    int64_t phiDim1 = N * C;
+
+    optiling::MhcPreSinkhornPremixBackwardCompileInfo compileInfo = {};
+
+    gert::TilingContextPara tilingContextPara(
+        "MhcPreSinkhornPremixBackward",
+        {
+            {{{B, S, C}, {B, S, C}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{B, S, N}, {B, S, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N, N}, {B, S, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N, C}, {B, S, N, C}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{phiDim0, phiDim1}, {phiDim0, phiDim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{hcMix}, {hcMix}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N}, {B, S, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, hcMix}, {B, S, hcMix}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, 1}, {B, S, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{skIterCount * 2, B, S, N}, {skIterCount * 2, B, S, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{skIterCount * 2, B, S, N, N}, {skIterCount * 2, B, S, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {{{B, S, N, C}, {B, S, N, C}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{phiDim0, phiDim1}, {phiDim0, phiDim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{hcMix}, {hcMix}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {"eps", Ops::Transformer::AnyValue::CreateFrom<float>(eps)},
+        },
+        &compileInfo, "Ascend950", "", 4096, 1);
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 1);
+}
+
+TEST_F(MhcPreSinkhornPremixBackwardTiling, test_tiling_T256_N4_C256_3d_ascend950_key1)
+{
+    int64_t B = 2;
+    int64_t S = 128;
+    int64_t T = B * S;
+    int64_t N = 4;
+    int64_t C = 256;
+    int64_t skIterCount = 20;
+    float eps = 1e-6f;
+
+    int64_t hcMix = N * N + 2 * N;
+    int64_t phiDim0 = hcMix;
+    int64_t phiDim1 = N * C;
+
+    optiling::MhcPreSinkhornPremixBackwardCompileInfo compileInfo = {};
+
+    gert::TilingContextPara tilingContextPara(
+        "MhcPreSinkhornPremixBackward",
+        {
+            {{{T, C}, {T, C}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{T, N}, {T, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N, N}, {T, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N, C}, {T, N, C}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{phiDim0, phiDim1}, {phiDim0, phiDim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{hcMix}, {hcMix}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, N}, {T, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, hcMix}, {T, hcMix}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, 1}, {T, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{skIterCount * 2, T, N}, {skIterCount * 2, T, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{skIterCount * 2, T, N, N}, {skIterCount * 2, T, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {{{T, N, C}, {T, N, C}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{phiDim0, phiDim1}, {phiDim0, phiDim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{hcMix}, {hcMix}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {"eps", Ops::Transformer::AnyValue::CreateFrom<float>(eps)},
+        },
+        &compileInfo, "Ascend950", "", 4096);
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 1);
+}

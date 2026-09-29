@@ -78,7 +78,17 @@ using namespace AscendC;
 
 bool MhcPreSinkhornPremixBackwardArch35DeterminiticTiling::IsCapable()
 {
-    return true;
+    // 确定性请求必须走本类（无原子写、分阶段规约）
+    if (context_->GetDeterministic() == 1) {
+        return true;
+    }
+    // 非确定性请求优先走 one_stage；one_stage 不支持的 shape（3D TND 或 n != 4）兜底走本类
+    const auto xShapePtr = context_->GetInputShape(INPUT_X_IDX);
+    if (xShapePtr == nullptr) {
+        return true;
+    }
+    auto xShape = xShapePtr->GetStorageShape();
+    return xShape.GetDimNum() != 4 || xShape.GetDim(N_DIM_IDX) != N_SIZE_4;
 }
 
 ge::graphStatus MhcPreSinkhornPremixBackwardArch35DeterminiticTiling::GetShapeAttrsInfo()
