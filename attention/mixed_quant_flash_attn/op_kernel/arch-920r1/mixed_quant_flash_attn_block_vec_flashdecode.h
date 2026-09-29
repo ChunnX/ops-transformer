@@ -22,6 +22,7 @@
 // #include "lib/matrix/matmul/tiling.h"
 #include "../../../common/op_kernel/arch35/infer_flash_attention_comm_arch35.h"
 #include "../../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h"
+#include "vf/vf_flash_decode.h"
 #include "../utils/mixed_quant_flash_attn_utils.h"
 #include "memory_copy_arch35_mixed_quant_flash_attn.h"
 
@@ -61,6 +62,7 @@ public:
     // =================================类型定义区=================================
     // 中间计算数据类型为float，高精度模式
     static constexpr GmFormat PostQuant_FORMAT = GmFormat::NGD;
+    using SINK_T = float;
     using OUTPUT_T = typename MQFA_T::outType;
     using T = float;
     static constexpr LayOutTypeEnum layout = MQFA_T::layoutQ;
@@ -83,6 +85,8 @@ private:
     static constexpr uint64_t SYNC_MM2RES_BUF2_FLAG = 3;
     static constexpr uint64_t SYNC_FDOUTPUT_BUF_FLAG = 4;  // 此处不能给0，可能与syncall的eventId重复
     static constexpr uint64_t SYNC_LSEOUTPUT_BUF_FLAG = 5; // 此处不能给1，可能与syncall的eventId重复
+    static constexpr uint64_t SYNC_SINK_BUF1_FLAG = 6;
+    static constexpr uint64_t SYNC_SINK_BUF2_FLAG = 7;
 
     static constexpr uint32_t BUFFER_SIZE_BYTE_32B = 32;
     static constexpr uint32_t BUFFER_SIZE_BYTE_64B = 64;
@@ -112,6 +116,7 @@ protected:
     GlobalTensor<int32_t> seqUsedGmQ;
     GlobalTensor<int32_t> seqUsedGmKv;
     GlobalTensor<float> softmaxLseGm;
+    GlobalTensor<SINK_T> sinkGm;
 
     // postquant
     FaGmTensor<T, PostQuant_FORMAT> quantScale2GmTensor;
@@ -142,6 +147,7 @@ protected:
 
     static constexpr T BOOL_ATTEN_MASK_SCALAR_VALUE = -1000000000000.0; // 用于mask为bool类型
     uint32_t negativeIntScalar = *((uint32_t *)&BOOL_ATTEN_MASK_SCALAR_VALUE);
+    bool learnableSinkFlag = false;
 
     uint64_t actSeqLensKv = 0;
     uint64_t actSeqLensQ = 0;
@@ -162,6 +168,9 @@ private:
     LocalTensor<uint8_t> fdMm2ResBuf2; // 32k: 16*512*4
     LocalTensor<uint8_t> fdReduceBuf;  // 32k: 16*512*4
     LocalTensor<uint8_t> fdOutputBuf;  // 32k: 16*512*4
+    LocalTensor<uint8_t> fdSinkCopyInBuf;
+    LocalTensor<uint8_t> fdSinkValueBuf;
+    LocalTensor<uint8_t> fdSinkExpBuf;
     LocalTensor<uint8_t> fdLseMaxUbBuf1;
     LocalTensor<uint8_t> fdLseMaxUbBuf2;
     LocalTensor<uint8_t> quant2TmpBuf1;
@@ -199,6 +208,11 @@ public:
     __aicore__ inline void InitSoftmaxLseGm(GlobalTensor<float> softmaxLseGm)
     {
         this->softmaxLseGm = softmaxLseGm;
+    }
+    __aicore__ inline void InitLearnableSinkGm(GlobalTensor<SINK_T> learnableSink)
+    {
+        learnableSinkFlag = true;
+        this->sinkGm = learnableSink;
     }
     __aicore__ inline void InitParams()
     {
@@ -241,6 +255,14 @@ public:
             ubBaseAddr += BUFFER_SIZE_BYTE_16K;
             quant2TmpBuf2 = LocalTensor<uint8_t>(TPosition::VECIN, ubBaseAddr, BUFFER_SIZE_BYTE_8K); // 112K + 768
             ubBaseAddr += BUFFER_SIZE_BYTE_8K;
+            if (unlikely(learnableSinkFlag)) {
+                fdSinkCopyInBuf = LocalTensor<uint8_t>(TPosition::VECIN, ubBaseAddr, BUFFER_SIZE_BYTE_2K);
+                ubBaseAddr += BUFFER_SIZE_BYTE_2K;
+                fdSinkValueBuf = LocalTensor<uint8_t>(TPosition::VECIN, ubBaseAddr, BUFFER_SIZE_BYTE_8K);
+                ubBaseAddr += BUFFER_SIZE_BYTE_8K;
+            }
+            fdSinkExpBuf = LocalTensor<uint8_t>(TPosition::VECIN, ubBaseAddr, BUFFER_SIZE_BYTE_256B);
+            ubBaseAddr += BUFFER_SIZE_BYTE_256B;
         }
     }
     __aicore__ inline void AllocEventID()
@@ -251,6 +273,8 @@ public:
         SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF2_FLAG);
         SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_FDOUTPUT_BUF_FLAG);
         SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_LSEOUTPUT_BUF_FLAG);
+        SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_SINK_BUF1_FLAG);
+        SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_SINK_BUF2_FLAG);
     }
     __aicore__ inline void FreeEventID()
     {
@@ -260,6 +284,8 @@ public:
         WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF2_FLAG);
         WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_FDOUTPUT_BUF_FLAG);
         WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_LSEOUTPUT_BUF_FLAG);
+        WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_SINK_BUF1_FLAG);
+        WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_SINK_BUF2_FLAG);
     }
 
 protected:
@@ -300,18 +326,27 @@ protected:
         }
     }
     __aicore__ inline void ComputeScaleValue(LocalTensor<T> &lseExp, uint32_t dealRowCount,
-                                             uint32_t actualCombineLoopSize, uint32_t cntM)
+                                             uint32_t actualCombineLoopSize, uint32_t cntM, uint32_t startRow)
     {
         LocalTensor<T> lseSum = cntM % 2 == 0 ? fdSumBuf1.ReinterpretCast<T>() : fdSumBuf2.ReinterpretCast<T>();
         LocalTensor<T> lseMax = cntM % 2 == 0 ? fdMaxBuf1.ReinterpretCast<T>() : fdMaxBuf2.ReinterpretCast<T>();
+        if (unlikely(learnableSinkFlag)) {
+            SinkMax(startRow, dealRowCount);
+        }
         LocalTensor<T> lseMaxUb =
             cntM % 2 == 0 ? fdLseMaxUbBuf1.ReinterpretCast<T>() : fdLseMaxUbBuf2.ReinterpretCast<T>();
 
-        LocalTensor<T> sinkExpBuf;
+        LocalTensor<T> sinkExpBuf = fdSinkExpBuf.ReinterpretCast<T>();
         LocalTensor<T> maxLseUb = fdLseUbBuf.ReinterpretCast<T>();
-        FaVectorApi::ComputeScaleValue_VF_FD<T, T, SinkInjectStage::AT_FA_PROLOGUE>(
-            sinkExpBuf, lseMax, lseSum, lseExp, maxLseUb, lseMaxUb, dealRowCount, actualCombineLoopSize,
-            constInfo.isSoftmaxLseEnable, false);
+        if (unlikely(learnableSinkFlag)) {
+            FaVectorApiAntiQuant::ComputeScaleValue_VF_FD_(sinkExpBuf, lseMax, lseSum, lseExp, maxLseUb, lseMaxUb,
+                                                           dealRowCount, actualCombineLoopSize,
+                                                           constInfo.isSoftmaxLseEnable, true);
+        } else {
+            FaVectorApi::ComputeScaleValue_VF_FD<T, T, SinkInjectStage::AT_FA_PROLOGUE>(
+                sinkExpBuf, lseMax, lseSum, lseExp, maxLseUb, lseMaxUb, dealRowCount, actualCombineLoopSize,
+                constInfo.isSoftmaxLseEnable, false);
+        }
     }
 
     __aicore__ inline void Bmm2DataCopyOutTrans(LocalTensor<OUTPUT_T> &attenOutUb, uint32_t startRow,
@@ -430,6 +465,42 @@ protected:
             nextTokensPerBatch = actSeqLensKv - actSeqLensQ;
             preTokensPerBatch = 0;
         }
+    }
+    __aicore__ inline void CopySinkIn(uint32_t cntM)
+    {
+        LocalTensor<SINK_T> sinkCopyInBuf = fdSinkCopyInBuf[(cntM % 2) * BUFFER_SIZE_BYTE_1K].ReinterpretCast<SINK_T>();
+        uint64_t sinkGmOffset = taskInfo.n2Idx * constInfo.gSize;
+
+        WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_SINK_BUF1_FLAG + cntM % 2);
+        DataCopyExtParams sinkCopyParams{1, static_cast<uint32_t>(constInfo.gSize * sizeof(SINK_T)), 0, 0, 0};
+        DataCopyPadExtParams<SINK_T> sinkPadParams{};
+        DataCopyPad(sinkCopyInBuf, sinkGm[sinkGmOffset], sinkCopyParams, sinkPadParams);
+        SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_SINK_BUF1_FLAG + cntM % 2);
+        WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_SINK_BUF1_FLAG + cntM % 2);
+
+        LocalTensor<T> sinkBrcbBuf = fdSinkValueBuf.ReinterpretCast<T>();
+        Brcb(sinkBrcbBuf, sinkCopyInBuf, (constInfo.gSize + BLOCK_ELEMENT_NUM - 1) / BLOCK_ELEMENT_NUM,
+             {1, BLOCK_ELEMENT_NUM});
+        AscendC::PipeBarrier<PIPE_V>();
+        SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_SINK_BUF1_FLAG + cntM % 2);
+    }
+    __aicore__ inline void SinkMax(uint32_t startRow, uint32_t dealRowCount)
+    {
+        constexpr GmFormat Q_FORMAT = GetQueryGmFormat<layout>();
+        int64_t gIdx = 0;
+        LocalTensor<T> sinkBrcbBuf = fdSinkValueBuf.ReinterpretCast<T>();
+        LocalTensor<T> sinkExpBuf = fdSinkExpBuf.ReinterpretCast<T>();
+
+        for (int64_t row = 0; row < dealRowCount; ++row) {
+            if constexpr ((Q_FORMAT == GmFormat::BSNGD) || (Q_FORMAT == GmFormat::TNGD)) {
+                gIdx = (taskInfo.gS1Idx + startRow + row) % constInfo.gSize;
+            } else {
+                int64_t actS1Size = qActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
+                gIdx = (taskInfo.gS1Idx + startRow + row) / actS1Size;
+            }
+            DataCopy(sinkExpBuf[row * BLOCK_ELEMENT_NUM], sinkBrcbBuf[gIdx * BLOCK_ELEMENT_NUM], BLOCK_ELEMENT_NUM);
+        }
+        AscendC::PipeBarrier<PIPE_V>();
     }
     template <typename UBOUT_T>
     __aicore__ inline void DealInvalidRows(LocalTensor<UBOUT_T> &attenOutUb, uint32_t startRow, uint32_t dealRowCount,
@@ -591,6 +662,9 @@ public:
             CopyLseIn(startRow, actualGSplitSize, taskOffset, reduceMLoop);
             SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_LSE_MAX_SUM_BUF1_FLAG + reduceMLoop % 2);
             WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_LSE_MAX_SUM_BUF1_FLAG + reduceMLoop % 2);
+            if (unlikely(learnableSinkFlag)) {
+                CopySinkIn(reduceMLoop);
+            }
             for (uint32_t preLoadIdx = 0; preLoadIdx < preLoadNum; preLoadIdx++) {
                 LocalTensor<T> mm2Res = ((reduceGlobaLoop + preLoadIdx) % 2) == 0 ? fdMm2ResBuf1.ReinterpretCast<T>() :
                                                                                     fdMm2ResBuf2.ReinterpretCast<T>();
@@ -598,7 +672,7 @@ public:
                 CopyAccumOutIn(mm2Res, preLoadIdx, taskOffset + startRow, actualGSplitSize);
                 SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + (reduceGlobaLoop + preLoadIdx) % 2);
             }
-            ComputeScaleValue(lseExp, actualGSplitSize, taskInfo.actualCombineLoopSize, reduceMLoop);
+            ComputeScaleValue(lseExp, actualGSplitSize, taskInfo.actualCombineLoopSize, reduceMLoop, startRow);
             CalcPreNextTokens();
             if (constInfo.isSoftmaxLseEnable) {
                 LocalTensor<T> maxLseUb = fdLseUbBuf.ReinterpretCast<T>();

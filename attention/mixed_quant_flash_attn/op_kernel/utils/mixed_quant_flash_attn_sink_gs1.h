@@ -13,7 +13,7 @@
  * \brief MixedQuantFlashAttn gS1 合轴场景 sink CopyIn 和寄存器展开。
  * sinks 值类型为 float32(与 q dtype 解耦)。
  *
- * 数学目标(Scheme B, prologue 注入): maxUb[r] = inUb[idx(r)], r < m(<= 64)。
+ * 数学目标: 将每行 sink 展开后，在 KV softmax 完成时稳定合并 max/sum，r < m(<= 64)。
  *
  * idx(r) 依布局(值区布局由 SinkCopyInGS1/SinkCopyInS1G 决定, 直写函数只读不写):
  *   GS1(BNSD):       idx = (s0 + r) / actS1Size           —— SinkGs1DirectVF;
@@ -343,6 +343,86 @@ __aicore__ inline void SinkExpandMaxVf(const LocalTensor<T> &maxUb, const LocalT
     }
     // case2.2/3: 值区回绕(m 跨多个 g 周期)
     SinkRotDirectVF<T, INPUT_T>(maxUbPtr, inUb, gStart, gSize, actVecMSize);
+}
+
+template <typename T>
+__simd_vf__ inline void SinkMergeStableBlockVF(__ubuf__ T *sumUb, __ubuf__ T *maxUb, __ubuf__ T *scaleUb,
+                                               __ubuf__ T *sinkUb, uint32_t offset, Reg::MaskReg preg)
+{
+    // newSum = oldSum * exp(oldMax - newMax) + exp(sink - newMax).
+    // scaleUb is applied to the KV numerator after its final normalization.
+    RegTensor<T> sinkReg;
+    RegTensor<T> sumReg;
+    RegTensor<T> maxReg;
+    RegTensor<T> newMaxReg;
+    RegTensor<T> oldScaleReg;
+    RegTensor<T> sinkScaleReg;
+    RegTensor<T> outSumReg;
+    Reg::LoadAlign<T, Reg::LoadDist::DIST_NORM>(sinkReg, sinkUb);
+    Reg::LoadAlign<T, Reg::LoadDist::DIST_NORM>(sumReg, sumUb + offset);
+    Reg::LoadAlign<T, Reg::LoadDist::DIST_NORM>(maxReg, maxUb + offset);
+    Reg::Max<T, Reg::MaskMergeMode::ZEROING>(newMaxReg, maxReg, sinkReg, preg);
+    Reg::Sub<T, Reg::MaskMergeMode::ZEROING>(oldScaleReg, maxReg, newMaxReg, preg);
+    Reg::Exp<T, Reg::MaskMergeMode::ZEROING>(oldScaleReg, oldScaleReg, preg);
+    Reg::Sub<T, Reg::MaskMergeMode::ZEROING>(sinkScaleReg, sinkReg, newMaxReg, preg);
+    Reg::Exp<T, Reg::MaskMergeMode::ZEROING>(sinkScaleReg, sinkScaleReg, preg);
+    Reg::Mul<T, Reg::MaskMergeMode::ZEROING>(outSumReg, sumReg, oldScaleReg, preg);
+    Reg::Add<T, Reg::MaskMergeMode::ZEROING>(outSumReg, outSumReg, sinkScaleReg, preg);
+    Reg::StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>(sumUb + offset, outSumReg, preg);
+    Reg::StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>(maxUb + offset, newMaxReg, preg);
+    Reg::StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>(scaleUb + offset, oldScaleReg, preg);
+}
+
+template <typename T, typename SINK_T>
+__aicore__ inline void SinkMergeStableVF(const LocalTensor<SINK_T> &sinkTensor, const LocalTensor<T> &sumTensor,
+                                         const LocalTensor<T> &maxTensor, const LocalTensor<T> &scaleTensor,
+                                         uint32_t dealCount)
+{
+    constexpr uint32_t floatRepSize = 64;
+    uint16_t updateLoops = dealCount / floatRepSize;
+    uint16_t tailSize = dealCount % floatRepSize;
+    uint32_t pltTail = static_cast<uint32_t>(tailSize);
+    __ubuf__ T *sumUb = (__ubuf__ T *)sumTensor.GetPhyAddr();
+    __ubuf__ T *maxUb = (__ubuf__ T *)maxTensor.GetPhyAddr();
+    __ubuf__ T *scaleUb = (__ubuf__ T *)scaleTensor.GetPhyAddr();
+    __ubuf__ T *sinkUb = (__ubuf__ T *)sinkTensor.GetPhyAddr();
+    Reg::MaskReg pregAll = Reg::CreateMask<T, Reg::MaskPattern::ALL>();
+    Reg::MaskReg pregTail = Reg::UpdateMask<T>(pltTail);
+    for (uint16_t i = 0; i < updateLoops; ++i) {
+        SinkMergeStableBlockVF<T>(sumUb, maxUb, scaleUb, sinkUb, i * floatRepSize, pregAll);
+    }
+    if (tailSize != 0) {
+        SinkMergeStableBlockVF<T>(sumUb, maxUb, scaleUb, sinkUb, updateLoops * floatRepSize, pregTail);
+    }
+}
+
+template <typename T>
+__simd_vf__ inline void SinkScaleRowsBlockVF(__ubuf__ T *dstUb, __ubuf__ T *scaleUb, uint32_t rowCount,
+                                             uint32_t rowWidth)
+{
+    constexpr uint32_t floatRepSize = 64;
+    uint16_t loops = rowWidth / floatRepSize;
+    RegTensor<T> dataReg;
+    RegTensor<T> scaleReg;
+    RegTensor<T> outReg;
+    Reg::MaskReg pregAll = Reg::CreateMask<T, Reg::MaskPattern::ALL>();
+    for (uint16_t row = 0; row < rowCount; ++row) {
+        Reg::LoadAlign<T, Reg::LoadDist::DIST_BRC_B32>(scaleReg, scaleUb + row);
+        for (uint16_t j = 0; j < loops; ++j) {
+            uint32_t offset = row * rowWidth + j * floatRepSize;
+            Reg::LoadAlign<T, Reg::LoadDist::DIST_NORM>(dataReg, dstUb + offset);
+            Reg::Mul<T, Reg::MaskMergeMode::ZEROING>(outReg, dataReg, scaleReg, pregAll);
+            Reg::StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>(dstUb + offset, outReg, pregAll);
+        }
+    }
+}
+
+template <typename T>
+__aicore__ inline void SinkScaleRowsVF(const LocalTensor<T> &dstTensor, const LocalTensor<T> &scaleTensor,
+                                       uint32_t rowCount, uint32_t rowWidth)
+{
+    SinkScaleRowsBlockVF<T>((__ubuf__ T *)dstTensor.GetPhyAddr(), (__ubuf__ T *)scaleTensor.GetPhyAddr(), rowCount,
+                            rowWidth);
 }
 
 } // namespace MixedQuantFlashAttnSink

@@ -66,6 +66,7 @@ public:
     GlobalTensor<int32_t> seqUsedGmKv;
     GlobalTensor<uint32_t> faMetaDataGm;
     GlobalTensor<float> softmaxLseGm;
+    GlobalTensor<float> sinkGm;
 
     __gm__ uint8_t *keyPtr = nullptr;
     __gm__ uint8_t *valuePtr = nullptr;
@@ -163,6 +164,10 @@ public:
                                     workspace);
             if constexpr (QUANT_COMPUTE_MODE == AntiquantMode_FP8_PC) {
                 vecFaBlock.InitQuant(kDescale, vDescale);
+            }
+            if (constInfo.learnableSinkFlag) {
+                sinkGm.SetGlobalBuffer((__gm__ float *)learnableSink);
+                vecFdBlock.InitLearnableSinkGm(sinkGm);
             }
             if (this->tilingData->mixedQuantFlashAttnBaseParams.needInitOutput) {
                 vecFaBlock.ClearOutput();

@@ -15,7 +15,6 @@
 #ifndef FLASH_ATTENTION_ANTIQUANT_GQA_BLOCK_VEC_H_
 #define FLASH_ATTENTION_ANTIQUANT_GQA_BLOCK_VEC_H_
 
-#include <limits>
 #include "kernel_operator.h"
 #include "vf/vf_flashupdate.h"
 #include "vf/vf_mul_nd2nz.h"
@@ -165,6 +164,7 @@ public:
     LocalTensor<uint8_t> FDResOutputQue;
     LocalTensor<uint8_t> accumOutInputQue;
     LocalTensor<uint8_t> sinkBuf; // AttentionSink
+    LocalTensor<uint8_t> sinkScaleBuf;
 
     static constexpr TEventID V_MTE3_QTMP_0 = static_cast<TEventID>(0);
     static constexpr TEventID V_MTE3_QTMP_1 = static_cast<TEventID>(1);
@@ -198,7 +198,9 @@ public:
     static constexpr uint32_t MASK_BUF_NUM = (mBaseSize == 48) ? 1 : 2;      // 48x512 1块 32/64x512 2块
     static constexpr uint32_t UB_MM2RES_BYTE = mBaseSize * dBaseSize * sizeof(MM_OUT_T); // TODO: mBaseSize+1
     static constexpr uint32_t UB_MM1RES_BYTE = mBaseSize * s2BaseSize * sizeof(MM_OUT_T);
+    static constexpr uint32_t SINK_EXPANDED_OFFSET = 128;
     static constexpr uint32_t SINK_BUF_BYTE = 1024;
+    static constexpr uint32_t SINK_SCALE_BUF_BYTES = (PRELOAD_N + 1) * SOFTMAX_BUF_BYTES;
     static constexpr uint32_t INIT_BUF_BYTE = 8192;
     static constexpr uint32_t VEC1_RES_BYTE = (mBaseSize + 1) * s2BaseSize * sizeof(Q_T); // +1解bank冲突
     static constexpr uint32_t VEC2_RES_BYTE = mBaseSize * dTemplateAlign64 * sizeof(T);
@@ -392,12 +394,7 @@ public:
         uint32_t stage1Id = 0;
         auto vec1ResUb = this->vec1ResBuf[stage1Id * VEC1_RES_BYTE].template ReinterpretCast<Q_T>();
 
-        if (unlikely(runInfo.isFirstS2Loop && constInfo.learnableSinkFlag)) {
-            ResetSoftmaxBufferForSink(runInfo, sumUb, maxUb);
-            PipeBarrier<PIPE_V>();
-        }
-
-        if (unlikely(runInfo.isFirstS2Loop && !constInfo.learnableSinkFlag)) {
+        if (unlikely(runInfo.isFirstS2Loop)) {
             ProcessAntiquantVec1VfDn<T, Q_T, false, HAS_MASK, mBaseSize, s2BaseSize, false>(
                 vec1ResUb, sumUb, maxUb, bmm1ResBuf, expUb, nullptr, attenMaskUb, runInfo.actMSizeAlign32,
                 runInfo.actSingleLoopS2SizeAlign, runInfo.actSingleLoopS2Size, static_cast<T>(constInfo.scaleValue),
@@ -483,6 +480,7 @@ public:
                 ComputeLogSumExpAndCopyToGm(runInfo, sumUb, maxUb);
             }
         } else {
+            Vec1SinkComputeGSFused(runInfo, sumUb, maxUb);
             SoftmaxLseCopyOut(sumUb, maxUb, runInfo);
         }
     }
@@ -520,28 +518,29 @@ public:
         SetFlag<HardEvent::MTE3_V>(V_MTE3_LSE_0);
     }
 
-    __aicore__ inline void ResetSoftmaxBufferForSink(RunInfoX &runInfo, LocalTensor<float> &sumUb,
-                                                     LocalTensor<float> &maxUb)
+    __aicore__ inline void Vec1SinkComputeGSFused(RunInfoX &runInfo, LocalTensor<float> &sumUb,
+                                                  LocalTensor<float> &maxUb)
     {
-        constexpr uint32_t softmaxBufElementCount = SOFTMAX_BUF_BYTES / sizeof(float);
-        if (runInfo.isFirstFdBlock) {
-            Duplicate<float>(sumUb, 1.0F, softmaxBufElementCount);
-            CopySinkIn(runInfo);
-            LocalTensor<float> sinkInput = sinkBuf.template ReinterpretCast<float>();
-            if constexpr (layout == LayOutTypeEnum::LAYOUT_BNSD) {
-                MixedQuantFlashAttnSink::SinkExpandMaxVf<float, float, true>(
-                    maxUb, sinkInput, runInfo.gS1Idx + runInfo.vecMbaseIdx, runInfo.actVecMSize, runInfo.actS1Size,
-                    constInfo.gSize);
-            } else {
-                MixedQuantFlashAttnSink::SinkExpandMaxVf<float, float, false>(
-                    maxUb, sinkInput, runInfo.gS1Idx + runInfo.vecMbaseIdx, runInfo.actVecMSize, runInfo.actS1Size,
-                    constInfo.gSize);
-            }
-            SetFlag<HardEvent::V_MTE2>(V_MTE2_SINK);
-        } else {
-            Duplicate<float>(sumUb, 0.0F, softmaxBufElementCount);
-            Duplicate<float>(maxUb, -std::numeric_limits<float>::infinity(), softmaxBufElementCount);
+        if (!constInfo.learnableSinkFlag) {
+            return;
         }
+        CopySinkIn(runInfo);
+        LocalTensor<float> sinkInput = sinkBuf.template ReinterpretCast<float>();
+        LocalTensor<float> sinkExpanded = sinkInput[SINK_EXPANDED_OFFSET];
+        if constexpr (layout == LayOutTypeEnum::LAYOUT_BNSD) {
+            MixedQuantFlashAttnSink::SinkExpandMaxVf<float, float, true>(
+                sinkExpanded, sinkInput, runInfo.gS1Idx + runInfo.vecMbaseIdx, runInfo.actVecMSize, runInfo.actS1Size,
+                constInfo.gSize);
+        } else {
+            MixedQuantFlashAttnSink::SinkExpandMaxVf<float, float, false>(
+                sinkExpanded, sinkInput, runInfo.gS1Idx + runInfo.vecMbaseIdx, runInfo.actVecMSize, runInfo.actS1Size,
+                constInfo.gSize);
+        }
+        LocalTensor<float> sinkScale =
+            sinkScaleBuf[(runInfo.mloop % (PRELOAD_N + 1)) * SOFTMAX_BUF_BYTES].template ReinterpretCast<float>();
+        MixedQuantFlashAttnSink::SinkMergeStableVF<float, float>(sinkExpanded, sumUb, maxUb, sinkScale,
+                                                                 runInfo.actVecMSize);
+        SetFlag<HardEvent::V_MTE2>(V_MTE2_SINK);
     }
 
     __aicore__ inline void CopySinkIn(RunInfoX &runInfo)
@@ -631,12 +630,7 @@ public:
         WaitFlag<HardEvent::MTE3_V>(MTE3_V_VEC1RES_0 + vec1ResId);
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM1_0 + bmm1BufId);
 
-        if (unlikely(runInfo.isFirstS2Loop && constInfo.learnableSinkFlag)) {
-            ResetSoftmaxBufferForSink(runInfo, sumUb, maxUb);
-            PipeBarrier<PIPE_V>();
-        }
-
-        if (runInfo.isFirstS2Loop && !constInfo.learnableSinkFlag) {
+        if (runInfo.isFirstS2Loop) {
             if (runInfo.actSingleLoopS2Size == 512 && needMask) {
                 ProcessVec1Vf<T, Q_T, Q_T, false, doubleMBaseSize, s2BaseSize, EQ_512, true, PseTypeEnum::PSE_NONE_TYPE,
                               false, false, false>(vec1ResUb, nullptr, sumUb, maxUb, bmm1ResBuf, expUb, sumUb, maxUb,
@@ -747,7 +741,7 @@ public:
         Mm2CopyInAToL1(outputBuf, vec1ResUb, runInfo);
 
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(CC_L1P_0 + l1PBufId);
-        if (!runInfo.isFirstS2Loop || constInfo.learnableSinkFlag) {
+        if (!runInfo.isFirstS2Loop) {
             UpdateExpSumAndExpMax<T, mBaseSize>(sumUb, maxUb, expUb, sumUb, maxUb, softmaxApiBuf, runInfo.actVecMSize);
         }
 
@@ -814,6 +808,12 @@ public:
                                            .template ReinterpretCast<T>();
                 FlashUpdateDiv<T, T, Q_T, T, dTemplateAlign64, QUANT_COMPUTE_MODE == 0>(
                     vec2ResUb, bmm2ResBuf, sumUb, valueScaleUb, runInfo.actVecMSize, dTemplateAlign64, deSCaleVValue);
+            }
+            if (constInfo.learnableSinkFlag && !runInfo.isS2SplitCore) {
+                LocalTensor<float> sinkScale = sinkScaleBuf[(runInfo.mloop % (PRELOAD_N + 1)) * SOFTMAX_BUF_BYTES]
+                                                   .template ReinterpretCast<float>();
+                MixedQuantFlashAttnSink::SinkScaleRowsVF<float>(vec2ResUb, sinkScale, runInfo.actVecMSize,
+                                                                dTemplateAlign64);
             }
         }
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM2_0 + bmm2BufId);
@@ -1068,6 +1068,9 @@ public:
             ubBaseAddr = Align(ubBaseAddr, 32U);
             sinkBuf = LocalTensor<uint8_t>(TPosition::VECIN, ubBaseAddr, SINK_BUF_BYTE);
             ubBaseAddr += SINK_BUF_BYTE;
+            ubBaseAddr = Align(ubBaseAddr, 32U);
+            sinkScaleBuf = LocalTensor<uint8_t>(TPosition::VECIN, ubBaseAddr, SINK_SCALE_BUF_BYTES);
+            ubBaseAddr += SINK_SCALE_BUF_BYTES;
         }
 
         SetFlag<HardEvent::MTE3_V>(MTE3_V_VEC2RES);
