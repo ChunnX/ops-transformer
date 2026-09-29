@@ -13,7 +13,7 @@ Covers task specification requirements (SageAttention2_task_doc.md §2.1 ~ §2.4
 - TC-01: Basic functionality & dtype (FP16/BF16, causal/non-causal, HND/NHD) and
   dispatch fixed to the FP8 PV path
 - TC-02: qk_quant_gran x pv_accum_dtype matrix (per_thread/per_warp x fp32/fp32+fp32/fp32+fp16)
-- TC-03: smooth_k toggle and smooth_v warning/ignore behavior
+- TC-03: smooth_k toggle; smooth_v honored under fp32 and warn-ignored otherwise
 - TC-04: LSE export, GQA broadcast correction, and L-B precision gates vs the
   open-source FP8-path emulation (error ratios max<=2 / mean<=1.2 / RMSE<=1.2)
 - TC-05: Head dimension auto-padding & unpadding/cropping (D=48->64, D=96->128, D>128 error)
@@ -173,10 +173,10 @@ class TestSageAttention2PythonAPI(unittest.TestCase):
             )
 
     # -------------------------------------------------------------------------
-    # TC-03: smooth_k / smooth_v 开关与 warning 行为
+    # TC-03: smooth_k / smooth_v 开关行为
     # -------------------------------------------------------------------------
     def test_tc03_smooth_k_and_smooth_v_behavior(self):
-        """TC-03: Verify smooth_k toggle and smooth_v warning/ignore behavior."""
+        """TC-03: Verify the smooth_k toggle and that smooth_v is honored under fp32, ignored elsewhere."""
         b, h, s, d = 1, 4, 64, 64
         q = torch.randn(b, h, s, d, dtype=torch.float16)
         k = torch.randn(b, h, s, d, dtype=torch.float16)
@@ -205,6 +205,15 @@ class TestSageAttention2PythonAPI(unittest.TestCase):
             out_v32 = sageattn_qk_int8_pv_fp8_asc(q, k, v, smooth_v=True, pv_accum_dtype="fp32")
             self.assertEqual(out_v32.shape, (b, h, s, d))
             self.assertFalse(any("smooth_v" in str(item.message) and "ignored" in str(item.message) for item in w))
+
+        # The honored switch must reach the datapath: V centering changes the
+        # quantised operands, so the result must differ from the same run with
+        # smooth_v=False while both stay inside the FP8-path error envelope.
+        out_v32_off = sageattn_qk_int8_pv_fp8_asc(q, k, v, smooth_v=False, pv_accum_dtype="fp32")
+        truth = F.scaled_dot_product_attention(q.float(), k.float(), v.float(), scale=1.0 / math.sqrt(d))
+        self.assertGreater((out_v32 - out_v32_off).abs().max().item(), 0.0, "smooth_v aliased its off state")
+        for name, out in (("on", out_v32), ("off", out_v32_off)):
+            self.assertLess((out.float() - truth).abs().max().item(), 0.05, f"smooth_v={name} out of envelope")
 
     # -------------------------------------------------------------------------
     # 非连续跨步与 Stride 适应 (Non-contiguous strides with stride(-1)==1)

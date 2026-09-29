@@ -51,7 +51,7 @@ wide 路径将 FP8 P 原位写入已经消费的 FP16 score 条带，再通过�
 | `sm_scale` | float/None，`None` | 默认 `1/sqrt(D)`，须可表示为有限 FP32 |
 | `pv_accum_dtype` | str，`fp32+fp16` | PV 累加精度，支持 `fp32+fp16`（默认）、`fp32+fp32`、`fp32`；非法值报错 ValueError |
 | `smooth_k` | bool，`True` | 量化前减去 K 沿序列维的均值 |
-| `smooth_v` | 兼容参数，`False` | 传 `True` 且 `pv_accum_dtype` 为 `fp32+fp16` 或 `fp32+fp32` 时 warning 并忽略（对齐开源实现） |
+| `smooth_v` | bool，`False` | 量化前减去 V 沿序列维的均值，输出端按 softmax 权重和为 1 补偿；仅 `pv_accum_dtype="fp32"` 时生效，其余取值 warning 并忽略 |
 | `return_lse` | bool，`False` | 返回 `(out, lse)`；LSE 为 FP32、shape `[B,Hq,Sq]` |
 
 本实现按 Ascend 950 的计算和执行模型提供接口：Q/K 量化支持 `per_thread`（默认）与 `per_warp`；PV 累加支持 `fp32+fp16`（默认）、`fp32+fp32` 与兼容别名 `fp32`。传入非法选项时明确报错 ValueError。
@@ -59,11 +59,11 @@ wide 路径将 FP8 P 原位写入已经消费的 FP16 score 条带，再通过�
 **粒度与累加配置的 NPU 映射**（对齐任务书允许的"将开源粒度映射到 NPU Tile/Block"口径）：
 
 - `qk_quant_gran`：Q/K 对称 INT8 scale 按连续 token 组共享，对齐开源 CUDA thread/warp 映射——`per_thread` 为每 4 个 Q token / 16 个 K token 一个 scale，`per_warp` 为其 8 倍（32/64）；组边界按序列维对齐。V 侧 MXFP8 的细粒度分组（每 channel × 每 32 token）进一步抑制截断误差。
-- `pv_accum_dtype`：参数经算子属性直通内核（`SagePvAccum`）；`fp32+fp16`（默认验收配置）将块内 PV 部分和经 FP16 归约进 FP32 全局状态，`fp32+fp32` 全程 FP32 归约，`fp32` 单级 FP32 累加并支持 `smooth_v` 生效。950PR 的 MXFP8 MMA 在 L0C 原生以 FP32 累加，PV、O 与 softmax 分母全程 FP32。
+- `pv_accum_dtype`：参数经算子属性直通内核（`SagePvAccum`），选择块内 PV 部分和折入 FP32 运行状态前的存储精度。`fp32+fp16`（默认验收配置）把部分和舍入到 FP16 再折入；`fp32+fp32` 与 `fp32` 折入时不舍入，二者在 950PR 上共用同一数据通路，`fp32` 额外允许 `smooth_v` 生效。950PR 的 MXFP8 MMA 在 L0C 原生以 FP32 累加，PV、O 与 softmax 分母全程 FP32。
 
-当 `smooth_v=True` 且 `pv_accum_dtype` 为 `fp32+fp16` 或 `fp32+fp32` 时，按开源实现规范发出 warning 并忽略。最终 O 仍按输入 dtype 输出。
+最终 O 仍按输入 dtype 输出。
 
-**不再支持 smooth_v 计算。** V 改用 MXFP8 细粒度量化，每个 channel 沿序列每 32 个 token 独立生成 scale，能够适应局部数值范围，降低整条序列共用 scale 时离群值对其他元素的影响。因此当前路径无需再做 V 均值统计、减均值及输出补偿，省去相应计算与访存。`smooth_v` 仅作为兼容参数保留：传 `True` 且 `pv_accum_dtype` 为 `fp32+fp16` 或 `fp32+fp32` 时按开源实现规范发出 warning 并忽略（`pv_accum_dtype="fp32"` 分支与开源一致保持静默）。这是当前量化方案的取舍，不表示任意输入分布下平滑都不可能改善误差。
+**V 平滑（`smooth_v`）。** V 采用 MXFP8 细粒度量化，每个 channel 沿序列每 32 个 token 独立生成 scale，能够适应局部数值范围，降低整条序列共用 scale 时离群值对其他元素的影响。`pv_accum_dtype="fp32"` 时额外提供均值居中：先统计每个 KV head 沿序列维的 V 通道均值，量化前从 V 中减去，归一化输出上再补回，与开源实现的补偿方式一致。居中后的 V 由 FP32 运行状态累加，补回项不受部分和舍入影响，因此 `fp32+fp16` 与 `fp32+fp32` 不接受该开关，传 `True` 时按开源实现规范发出 warning 并忽略。
 
 `sageattn` 在 NPU 上固定分发到 `sageattn_qk_int8_pv_fp8_asc`（默认 `pv_accum_dtype="fp32+fp16"`）；可通过 kwargs 覆盖下沉参数，例如 `sageattn(q, k, v, pv_accum_dtype="fp32+fp32")`。
 
@@ -124,7 +124,7 @@ g++ -O2 -std=c++17 tests/numeric_error_test.cpp -o build/numeric_error_test && .
 
 CPU 参考采用 per-token Q/K 与 32-token MXFP8 V 量化，使用上述 FP16 平移 max 定义及 FP8 饱和转换；独立 SDPA 标准未改变。
 
-测试全部通过公开 ACLNN 路径运行（`python/test_python_api.py`），并对照独立 QK INT8 / MXFP8 PV CPU 算法（`python/sageattention2/reference.py`，per_thread=Q4/K16、per_warp=Q32/K64 与内核同配置）、FP32 SDPA 或可解析的常数输入结果。覆盖 dtype/layout/stride、GQA、causal（含组粒度下的严格因果独立性）、smooth_k、smooth_v warning/ignore、`sageattn` 固定分发 FP8 PV（NPU 上拦截下沉实参）、LSE shape/数值、head_dim padding（D=48→64、D=96→128）、非法参数报错与 SDPA 替换冒烟。
+测试全部通过公开 ACLNN 路径运行（`python/test_python_api.py`），并对照独立 QK INT8 / MXFP8 PV CPU 算法（`python/sageattention2/reference.py`，per_thread=Q4/K16、per_warp=Q32/K64 与内核同配置）、FP32 SDPA 或可解析的常数输入结果。覆盖 dtype/layout/stride、GQA、causal（含组粒度下的严格因果独立性）、smooth_k、smooth_v（`fp32` 生效、其余告警忽略）、`sageattn` 固定分发 FP8 PV（NPU 上拦截下沉实参）、LSE shape/数值、head_dim padding（D=48→64、D=96→128）、非法参数报错与 SDPA 替换冒烟。
 
 L-B 层在宿主机套件内闭环（`test_tc04b_lb_precision_gates`）：NPU 数值通路（CPU golden）与独立的开源 sm89 FP8 路径逐配置（per_thread/per_warp 各自同配置）对比，两者相对 FP32 SDPA 的误差比须满足 max<=2、mean<=1.2、RMSE<=1.2，LSE 相对偏差 <= 5e-2。
 

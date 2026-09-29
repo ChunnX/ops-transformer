@@ -13,7 +13,8 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-// smoothV with fp32+fp16 or fp32+fp32 logs a warning and is ignored.
+// smoothV centers V only under pvAccumDtype "fp32"; the two-level formats log a
+// warning and ignore it.
 // qkQuantGran supports per_thread (default) and per_warp.
 // pvAccumDtype supports fp32+fp16 (default), fp32+fp32, and fp32.
 // PV always uses MXFP8.

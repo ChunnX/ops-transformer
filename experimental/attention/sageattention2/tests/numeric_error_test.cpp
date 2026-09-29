@@ -18,12 +18,16 @@
  *   7. LSE 契约（raw log2 内核值 + 开源平滑校正, GQA 广播）     ≤ 1e-5（双精度参考）
  *   8. smooth-K softmax 不变性（FP32 内核算术精度, 整行）        ≤ 1e-4
  *   9. Causal Mask NZ 拓扑剪枝零精度损失与算力压缩 (≥95% bypass) bit-exact == 0
+ *  10. qk_quant_gran 组共享 INT8 scale 覆盖性与半步长误差                  ≤ scale/2
+ *  11. pv_accum_dtype="fp32+fp16" 部分和 FP16 往返的折入误差               ≤ Σ|O_j|·2^-11
+ *  12. smooth_v 居中 + 输出补回的 MXFP8 重建误差，及包络不放大             ≤ amax·2^-4
  *
  * 编译运行：
  *   g++ -O2 -std=c++17 tests/numeric_error_test.cpp -o build/numeric_error_test
  *   ./build/numeric_error_test
  */
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -475,6 +479,187 @@ void TestCausalMaskTopologyPruning()
     Report("vector instruction bypass ratio >= 95%", 1.0 - bypassRatio, 0.05, bypassRatioOk);
 }
 
+// quant.h QuantRowsImpl：行 amax/127 得 scale，BroadcastGroupMaxima 让连续 group
+// 个 token 共享同一 scale（per_thread = Q4/K16，per_warp = Q32/K64）。
+void TestQuantGranularityGroups(std::mt19937 &rng)
+{
+    std::normal_distribution<float> gauss(0.0f, 1.0f);
+    const int rows = 64, d = 128;
+    bool noSaturation = true, groupCoversRow = true;
+    float worstHalfStep = 0.0f;
+    for (int t = 0; t < 100; ++t) {
+        std::vector<std::vector<float>> x(rows, std::vector<float>(d));
+        for (auto &row : x) {
+            for (auto &v : row) {
+                v = gauss(rng);
+            }
+        }
+        // 单行离群会抬高整组步长，这是组共享 scale 的最坏情形
+        for (auto &v : x[0]) {
+            v *= 8.0f;
+        }
+        std::vector<float> rowAmax(rows, 0.0f);
+        for (int r = 0; r < rows; ++r) {
+            for (int j = 0; j < d; ++j) {
+                rowAmax[r] = std::fmax(rowAmax[r], std::fabs(x[r][j]));
+            }
+        }
+        for (int group : {4, 16, 32, 64}) {
+            for (int start = 0; start < rows; start += group) {
+                const int count = std::min(group, rows - start);
+                float amax = 0.0f;
+                for (int r = 0; r < count; ++r) {
+                    amax = std::fmax(amax, rowAmax[start + r]);
+                }
+                const float scale = amax > 0.0f ? amax / 127.0f : 1.0f;
+                // scale*127 需覆盖组 amax，容差取 FP32 乘除的相对舍入
+                if (amax > 0.0f && scale * 127.0f < amax * (1.0f - 1e-6f)) {
+                    groupCoversRow = false;  // 组 amax 必须被组内每一行的 scale 覆盖
+                }
+                for (int r = 0; r < count; ++r) {
+                    for (int j = 0; j < d; ++j) {
+                        const float q = std::nearbyintf(x[start + r][j] / scale);
+                        if (std::fabs(q) > 127.0f) {
+                            noSaturation = false;
+                        }
+                        // 半步长上界再加 FP32 乘除的相对容差
+                        worstHalfStep = std::fmax(
+                            worstHalfStep, std::fabs(q * scale - x[start + r][j]) / (0.5f * scale));
+                    }
+                }
+            }
+        }
+    }
+    std::printf("[10] qk_quant_gran group-shared INT8 scale (BroadcastGroupMaxima)\n");
+    Report("group scale covers every row amax", groupCoversRow ? 0.0 : 1.0, 0.0, groupCoversRow);
+    Report("no INT8 saturation", noSaturation ? 0.0 : 1.0, 0.0, noSaturation);
+    Report("round-trip error vs half of the group step", worstHalfStep, 1.0 + 1e-5,
+           worstHalfStep <= 1.0 + 1e-5);
+}
+
+// output_update.h RoundPartialFp16VF：pv_accum_dtype="fp32+fp16" 时，块内 PV 部分和
+// 折入 FP32 运行状态前做一次 FP32->FP16->FP32 往返。逐块加权和的误差以
+// sum_j |O_j| / den * 2^-11 为界（每块一次相对舍入，块权重归一化后 <=1）。
+void TestFp16PartialRoundtrip(std::mt19937 &rng)
+{
+    std::normal_distribution<float> gauss(0.0f, 1.0f);
+    const int blocks = 128, channels = 128;
+    float worstRatio = 0.0f, boundRatio = 0.0f;
+    bool inert = true;
+    for (int t = 0; t < 100; ++t) {
+        std::vector<std::vector<float>> part(blocks, std::vector<float>(channels));
+        std::vector<float> den(blocks);
+        for (auto &p : part) {
+            for (auto &v : p) {
+                v = gauss(rng);
+            }
+        }
+        for (auto &d : den) {
+            d = std::fabs(gauss(rng)) + 0.25f;
+        }
+        // 在线重缩放的等价形式：归一化后按块权重求和，FP32 顺序累加
+        float total = 0.0f;
+        for (float d : den) {
+            total += d;
+        }
+        std::vector<float> accFp32(channels, 0.0f), accFp16(channels, 0.0f), absSum(channels, 0.0f);
+        for (int i = 0; i < blocks; ++i) {
+            const float w = den[i] / total;
+            for (int c = 0; c < channels; ++c) {
+                const float rounded = RoundToFp16(part[i][c]);
+                accFp32[c] += w * part[i][c];
+                accFp16[c] += w * rounded;
+                absSum[c] += std::fabs(part[i][c]) * w;
+                if (rounded != part[i][c]) {
+                    inert = false;
+                }
+            }
+        }
+        for (int c = 0; c < channels; ++c) {
+            const float err = std::fabs(accFp16[c] - accFp32[c]);
+            const float bound = std::ldexp(absSum[c], -11);
+            worstRatio = std::fmax(worstRatio, err);
+            boundRatio = std::fmax(boundRatio, bound);
+        }
+    }
+    std::printf("[11] pv_accum_dtype fp32+fp16 partial roundtrip\n");
+    Report("FP16 partial changes the folded addend", inert ? 1.0 : 0.0, 0.0, !inert);
+    Report("accumulated error vs sum |O_j| * 2^-11", worstRatio, boundRatio, worstRatio <= boundRatio);
+}
+
+// stats.h / quant_v_mx.h / output_update.h 的 smooth_v 通路：V 沿序列维取通道均值，
+// 量化前居中，归一化输出上补回。补回项在归一化之后加，不参与跨块累加。
+// E4M3 + E8M0 分组量化下每个元素的绝对误差不超过该组 amax 的 2^-4，权重和为 1，
+// 因此整行重建误差以 2^-4 * max_group_amax 为界；居中降低该 amax，即降低包络本身。
+void TestSmoothVReconstruction(std::mt19937 &rng)
+{
+    std::normal_distribution<float> gauss(0.0f, 1.0f);
+    const int sk = 512, d = 128, group = 32;  // MXFP8：每 channel 每 32 token 一个 E8M0 scale
+    float worstRatio[2] = {0.0f, 0.0f};
+    double envelope[2] = {0.0, 0.0};
+    int samples = 0;
+    for (int t = 0; t < 40; ++t) {
+        std::vector<std::vector<float>> v(sk, std::vector<float>(d));
+        for (auto &row : v) {
+            for (auto &x : row) {
+                x = gauss(rng) + 4.0f;  // 直流偏置：居中前 amax 被整体抬高
+            }
+        }
+        std::vector<float> mean(d, 0.0f);
+        for (int j = 0; j < sk; ++j) {
+            for (int c = 0; c < d; ++c) {
+                mean[c] += v[j][c];
+            }
+        }
+        for (auto &m : mean) {
+            m /= static_cast<float>(sk);
+        }
+        std::vector<float> p(sk);
+        float psum = 0.0f;
+        for (auto &w : p) {
+            w = std::fabs(gauss(rng)) + 1e-3f;
+            psum += w;
+        }
+        for (auto &w : p) {
+            w /= psum;  // softmax 权重，行和为 1
+        }
+        for (int pass = 0; pass < 2; ++pass) {
+            const bool center = pass == 1;
+            for (int c = 0; c < d; ++c) {
+                const float shift = center ? mean[c] : 0.0f;
+                float amaxHead = 0.0f;
+                double ref = 0.0;
+                for (int j = 0; j < sk; ++j) {
+                    amaxHead = std::fmax(amaxHead, std::fabs(v[j][c] - shift));
+                    ref += static_cast<double>(p[j]) * static_cast<double>(v[j][c]);
+                }
+                float acc = 0.0f;
+                for (int g = 0; g < sk; g += group) {
+                    float amax = 0.0f;
+                    for (int j = g; j < g + group; ++j) {
+                        amax = std::fmax(amax, std::fabs(v[j][c] - shift));
+                    }
+                    const float scale = MxScale(amax);
+                    for (int j = g; j < g + group; ++j) {
+                        const float x = v[j][c] - shift;
+                        acc += p[j] * (QuantE4M3(x / scale) * scale + shift);
+                    }
+                }
+                ++samples;
+                const float bound = std::ldexp(amaxHead, -4);
+                worstRatio[pass] = std::fmax(worstRatio[pass], std::fabs(acc - static_cast<float>(ref)) / bound);
+                envelope[pass] += bound;
+            }
+        }
+    }
+    std::printf("[12] smooth_v centering + output compensation (MXFP8 group quant)\n");
+    Report("uncentered rebuild error / 2^-4 * amax", worstRatio[0], 1.0, worstRatio[0] <= 1.0);
+    Report("centered rebuild error / 2^-4 * amax", worstRatio[1], 1.0, worstRatio[1] <= 1.0);
+    const double plain = envelope[0] / samples, centered = envelope[1] / samples;
+    std::printf("       mean error envelope: uncentered = %.6g, centered = %.6g\n", plain, centered);
+    Report("centering does not widen the error envelope", centered, plain, centered <= plain);
+}
+
 }  // namespace
 
 int main()
@@ -491,6 +676,9 @@ int main()
     TestLseIdentity(rng);
     TestSmoothKInvariance(rng);
     TestCausalMaskTopologyPruning();
+    TestQuantGranularityGroups(rng);
+    TestFp16PartialRoundtrip(rng);
+    TestSmoothVReconstruction(rng);
     std::printf("================================================================\n");
     if (g_failures == 0) {
         std::printf("ALL NUMERIC ERROR TESTS PASSED\n");

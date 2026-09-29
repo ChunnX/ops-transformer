@@ -130,6 +130,15 @@ S_smooth[i, j] = dot(Q[i, :], K_smooth[j, :])
 动态范围分析：
 减去 `mean_K` 后，Key 各特征维度的直流偏置（DC bias）被移除，矩阵的最大绝对值 `amax` 下降。在 INT8 对称量化 `[-127, 127]` 区间内，量化阶跃步长 `scale = amax / 127.0` 随之减小，小权重不再因截断归零。
 
+Value 侧的同一恒等式：`smooth_v` 对 V 沿序列维取通道均值 `mean_V[d]`，量化与累加使用 `V' = V - mean_V`。由于归一化权重每行和为 1：
+
+```text
+sum_j P[i, j] * V[j, d] = sum_j P[i, j] * (V'[j, d] + mean_V[d])
+                        = sum_j P[i, j] * V'[j, d] + mean_V[d]
+```
+
+补偿项是每通道一个标量，在输出归一化之后、写入 O 之前加一次（`output_update.h` 的 normalize 通路），不进入跨块累加。`mean_V` 与 `mean_K` 共用 `stats.h` 的分批 FP32 统计与 Stream-K 分配，按 KV head 各写一份，GQA 下由查询侧广播读取。居中后的 V 需要 FP32 的运行状态承接，因此该开关只在 `pv_accum_dtype="fp32"` 下生效，其余取值按 §1.4 的映射告警并忽略。
+
 #### 1.2 注意力得分定点累加与硬件反量化平衡缩放推导
 
 Q/K 以 INT8 进入 Cube 后，GEMM-1 在 L0C 中以 INT32 精确累加（无舍入误差）。得分的反量化与缩放不在 AIV 上逐元素完成，而是拆分为"硬件 Fixpipe 常数反量化 + 量化期预融合 scale"两步，全部乘法融合到既有的向量乘法中（`attention_block_cube.h` 的 Fixpipe `DEQF16` 配置与 `scale.h` 的 `FixedScaleFactorsVF`）：
@@ -144,7 +153,8 @@ Q/K 以 INT8 进入 Cube 后，GEMM-1 在 L0C 中以 INT32 精确累加（无舍
   量化 Q/K 时生成 FP16 平衡 scale：
   qh = qs * sign(sm_scale) * sqrt(|sm_scale| * 2048)
   kh = ks * sqrt(|sm_scale| * 2048)
-  其中 qs = amax_q / 127、ks = amax_k / 127（per-token）。
+  其中 qs = amax_q / 127、ks = amax_k / 127（沿 head_dim 取 amax，scale 在连续
+  token 组内共享，组大小由 qk_quant_gran 决定，见 §1.4 参数映射）。
 
   AIV 在 Softmax 中将得分乘以 (qh ⊗ kh)（softmax.h 中每行一次向量乘）：
   S' = S_fp16 * qh * kh
@@ -188,11 +198,16 @@ clamp(max=448) 复现设备侧饱和语义。
   L0C 结果经 CopyL0CToUB（SPLIT_M）以 FP32 原样注入两个 AIV 的 UB，无降精度。
 
 第二级（跨 N 块，AIV UB）：
+  O_block_fp32 先写入 PV 部分和槽位（两个槽位轮转，与下一块 MMA 重叠）。
+  pv_accum_dtype 决定该加数的精度：
+    fp32+fp16：RoundPartialFp16VF 把槽位内容做 FP32→FP16→FP32 往返后再折入；
+    fp32+fp32 / fp32：原样折入。
   O_accumulator_fp32 = O_accumulator_fp32 * alpha + O_block_fp32
   其中 alpha = exp(m̂_old - m̂_new) 为在线重缩放系数（FP32）。
   通用路径将相邻两块配对更新（AccumulateFp32PairVF），保留两次独立 FP32 FMA
   舍入点；wide 路径以 Initialize/Accumulate/UpdatePair 三态完成同构语义。
   softmax 分母 den、最终归一化（FastReciprocal 乘法）与 LSE 全部为 FP32。
+  `smooth_v` 生效时，归一化后的输出再叠加该 KV head 的 `mean_V`（每通道一次加法）。
 ```
 
 误差界分析（Error Bound Derivation）：
@@ -205,14 +220,21 @@ clamp(max=448) 复现设备侧饱和语义。
 # 若以 FP16 直累加全序列（以 S=16384 为例）：
 # Bound_FP16 = S * eps_FP16 = 16384 * 4.88e-4 = 8.0（随序列长度线性发散）
 
-# 本实现两级均为 FP32 累加状态：
+# 本实现两级的累加状态均为 FP32：
 # 第一级单块内累加 S/N = 64/128 项（N=256/512），误差受 FP32 L0C 累加控制；
 # 第二级跨块归约 S/N = 64/128 次 FP32 FMA：
 # Bound_L2 = (S / N) * eps_FP32 = 128 * 5.96e-8 = 7.63e-6
+# pv_accum_dtype="fp32+fp16" 时，加数在折入前多一次 FP16 舍入，
+# 每块引入 <= |O_block| * 2^-11 的相对误差，随块数以 S/N 线性叠加；
+# 该项由默认验收配置承担，其余取值不含此项。
 # 总误差界由 P/V 的 INT8/FP8 量化噪声主导，累加结构本身不放大误差。
 ```
 
-参数映射说明：公开参数 `qk_quant_gran` 与 `pv_accum_dtype` 在 aclnn 层完成合法性校验，当前不下沉为内核分支：QK 统一执行 per-token INT8 量化，PV 统一执行 §1.4 的两级 FP32 累加（MXFP8 MMA + FP32 L0C + FP32 UB）。相对开源 `fp32+fp16` 的 FP16 局部累加，第一级累加精度更高。非法取值报错。
+参数映射说明：公开参数 `qk_quant_gran`、`pv_accum_dtype` 与 `smooth_v` 经算子属性直通内核，映射到 950PR 的 tile 粒度上，非法取值报错。
+
+- `qk_quant_gran` 决定 Q/K INT8 scale 在多少个连续 token 之间共享（`quant.h` 的 `BroadcastGroupMaxima`）：`per_thread` 为每 4 个 Q token / 16 个 K token 一个 scale，`per_warp` 为 32/64，组边界沿序列维对齐，`SageParams::qg/kg` 承载。开源按 CUDA thread/warp 的寄存器分组，这里按同样的 token 数分组。
+- `pv_accum_dtype` 决定跨块归约前，块内 PV 部分和的存储精度：`fp32+fp16` 把 UB 中的部分和舍入到 FP16 再回读折入（`RoundPvSlot` / `RoundPartialFp16VF`），`fp32+fp32` 与 `fp32` 不舍入。950PR 的 MXFP8 MMA 只能在 L0C 内完成块内累加，块间必须经 UB 归约，因此第一级在三种取值下都是 FP32，差异只在第二级的加数精度。
+- `smooth_v` 需要 FP32 的运行状态承接补回项，因此仅在 `pv_accum_dtype="fp32"` 下生效；`fp32+fp16` 与 `fp32+fp32` 传 `True` 时在 aclnn 层告警并忽略，内核不读取 V 均值。
 
 #### 1.5 对数归一化与分组查询注意力广播校正数学推导
 
@@ -259,7 +281,7 @@ kh = h / (p.hq / p.hk);   // attention.h / attention_wide_stream.h 中的任务�
 
 在 Ascend AIV Vector 硬件架构中，原生硬件向量除法指令 `vdiv` 属于高延迟指令（约 32 个时钟周期），且阻塞后续向量流水线；而向量乘法 `vmul` 与减法为单周期全流水执行单元。
 
-本算子在 `common.h` 中实现基于二阶牛顿-拉夫逊（Newton-Raphson）逼近的无除法快速倒数 `FastReciprocal`，用于 per-token 量化（`quant.h`）与最终输出归一化（`output_update.h` 的 `NormalizeVF` / `FinalizeWideFp32VF`）：
+本算子在 `common.h` 中实现基于二阶牛顿-拉夫逊（Newton-Raphson）逼近的无除法快速倒数 `FastReciprocal`，用于量化 scale 求逆（`quant.h`）与最终输出归一化（`output_update.h` 的 `NormalizeVF` / `FinalizeWideFp32VF`）：
 
 ```cpp
 __simd_callee__ inline void FastReciprocal(AscendC::MicroAPI::RegTensor<float> &dst,
@@ -302,9 +324,9 @@ V 的 MXFP8 scale 生成同样无除法（`quant_v_mx.h`）：`scale = 2^ceil(lo
 
 | 参数项 | 支持数据类型 | 内部计算数据类型 | 物理约束 |
 | --- | --- | --- | --- |
-| query | float16, bfloat16 | INT8 对称量化（per-token） | 末维连续，即 stride(-1) == 1 |
-| key | float16, bfloat16 | INT8 对称量化（per-token，含平滑） | 与 query 保持相同数据类型与 device |
-| value | float16, bfloat16 | MXFP8：E4M3 数据 + E8M0 分组 scale | 与 key 保持相同数据类型与 device |
+| query | float16, bfloat16 | INT8 对称量化（scale 按 `qk_quant_gran` 在连续 token 组内共享） | 末维连续，即 stride(-1) == 1 |
+| key | float16, bfloat16 | INT8 对称量化（同上，smooth_k 开启时先减 mean_K） | 与 query 保持相同数据类型与 device |
+| value | float16, bfloat16 | MXFP8：E4M3 数据 + E8M0 分组 scale；smooth_v 开启时量化前先减 mean_V | 与 key 保持相同数据类型与 device |
 | output | float16, bfloat16 | FP32 两级累加后一次性饱和舍回 | 与 query 保持相同数据类型与形状 |
 | softmax_lse | float32 | float32 | 形状为 [B, Hq, Sq]；内核输出为 raw log2 域（未经平滑校正），PyTorch 层按开源契约还原为自然对数并叠加校正 |
 
@@ -331,10 +353,6 @@ V 的 MXFP8 scale 生成同样无除法（`quant_v_mx.h`）：`scale = 2^ceil(lo
 
 - **以 2 为底的归一化尺度折叠**：把换底常数 `log2(e)` 在 Host 侧折叠进 `sm_scale`，内核改用原生 `Exp2`。
   Atlas 950PR 的 AIV `ExpSub` 本身就是单条自然指数指令，换底反而多一次向量乘，因此未启用（§1.3 沿用自然指数）。
-- **Smooth-V（V 通道均值平滑）**：利用 Softmax 行和为 1 的单位分解性质，`O = P * (V - mean_V) + mean_V`，
-  减去通道均值可压缩 V 的动态范围。交付通路改用 V 的 MXFP8 分组量化（每 channel × 每 32 token 一个 E8M0 scale）
-  达到同一离群抑制目标，不需要 V 均值统计与跨核同步，因此内核数据通路中不含 Smooth-V，
-  接口侧保留参数与告警语义（见「接口定义与对外契约」§1.3）。
 - **变换域正交平滑与 INT4 矩阵乘**：后续架构方向，本版本未实现。
 
 ## 算子实现
@@ -382,12 +400,16 @@ Atlas 950PR（CANN 9.2.0-beta.1，微架构 dav_3510）采用非对称的 1:2 MI
 阶段一 Stats（AIV）：
   1. 各 AIV 先将负责的 mean 槽位清零并 SyncAll<true>() 发布（workspace 复用，必须先清零）。
   2. 沿序列分段累加 Key（FP32），完整 head 独占写回；跨 AIV 边界的 head 以 FP32 原子加汇合。
-  3. SyncAll<true>() 保证均值就绪。
+  3. smooth_v 生效时以同一份代码（`Stats<T, true>`，切换 V 的 stride 表）统计 V 的通道均值。
+  4. SyncAll<true>() 保证均值就绪。
 
 阶段二 Quant（AIV）：
-  1. Q/K per-token INT8 量化：K 先减 mean_K（smooth_k 开启时），scale = amax/127，
-     FP16 平衡 scale 预融合 sm_scale（§1.2），量化结果与 scale 写入 workspace。
-  2. V MXFP8 量化：每 32 token 每 channel 独立 E8M0 scale，尾组补零（§1.6）。
+  1. Q/K INT8 量化：K 先减 mean_K（smooth_k 开启时），scale = amax/127 并在连续
+     token 组内共享（`qk_quant_gran`，§1.3），FP16 平衡 scale 预融合 sm_scale（§1.2），
+     量化结果与 scale 写入 workspace。
+  2. V MXFP8 量化：每 32 token 每 channel 独立 E8M0 scale，尾组补零（§1.6）；
+     smooth_v 开启时在补零之后、取 amax 之前对有效行减去 mean_V，因此 padding 行
+     保持为 0，与参考实现"先居中后补零"的顺序一致。
   3. SyncAll<false>() 同步全部 AIC/AIV，保证量化数据全局可见后进入 Attention。
 
 阶段三 Attention（AIC + AIV 异步流水）：
@@ -397,7 +419,8 @@ Atlas 950PR（CANN 9.2.0-beta.1，微架构 dav_3510）采用非对称的 1:2 MI
      ExpSub 自然指数，P 饱和转 E4M3 经 UB→L1 送入 Cube L0A（§1.3）。
   3. [AIC Cube] MXFP8 GEMM-2：E8M0 V scale 由硬件 MMA 单元应用（§1.4），
      FP32 L0C 结果 SPLIT_M 注入两个 AIV UB。
-  4. [AIV Vector] 两级 FP32 累加更新 O，可选 LSE 校正，最终归一化并写出。
+  4. [AIV Vector] 两级累加更新 O，可选 LSE 校正，最终归一化（smooth_v 生效时叠加
+     mean_V）并按输入 dtype 写出。
 ```
 
 读缓存策略（`quant.h`）：连续对齐输入的 Q/V 原始读取 bypass L2（`CACHE_MODE_DISABLE`），K 与量化输出保留默认缓存策略，减少一次性读取对 Attention 阶段工作集的挤占。Host 使用 `SetScheduleMode(1)` batch 调度，保证 SyncAll 所需的 MIX 全网格同时驻留。
@@ -810,10 +833,10 @@ def sageattn_qk_int8_pv_fp8_asc(
 
 | 公开参数 | 接受值 | NPU 实际执行路径 |
 | --- | --- | --- |
-| `qk_quant_gran` | `per_thread`（默认）/ `per_warp` | aclnn 层校验合法性，不下沉为内核分支；内核统一执行 per-token INT8 量化（每 token 沿 head_dim 取 amax）。该粒度比开源 per_thread / per_warp 的 token 分组共享 scale 更细。非法取值报错。 |
-| `pv_accum_dtype` | `fp32+fp16`（默认）/ `fp32+fp32` / `fp32` | aclnn 层校验合法性，不下沉为内核分支；内核统一执行 §1.4 的两级 FP32 累加路径。非法取值报错。 |
+| `qk_quant_gran` | `per_thread`（默认）/ `per_warp` | 直通内核（`SageParams::qg/kg`）。Q/K 沿 head_dim 取 amax 生成对称 INT8 scale，scale 在连续 token 组内共享：`per_thread` 为每 4 个 Q token / 16 个 K token 一组，`per_warp` 为 32 / 64 一组，组边界沿序列维对齐（`quant.h` 的 `BroadcastGroupMaxima`）。非法取值报错。 |
+| `pv_accum_dtype` | `fp32+fp16`（默认）/ `fp32+fp32` / `fp32` | 直通内核（`SageParams::accum`）。选择块内 PV 部分和折入 FP32 运行状态前是否舍入到 FP16：`fp32+fp16` 舍入，`fp32+fp32` 与 `fp32` 不舍入；块内第一级在 950PR 上恒为 L0C FP32 累加（见 §1.4）。非法取值报错。 |
 | `smooth_k` | True（默认）/ False | 开启时执行 K 序列均值平滑与 LSE 补偿（§1.1 / §1.5）。 |
-| `smooth_v` | True / False（默认） | 内核不执行 V 均值统计与输出补偿（V 采用 MXFP8 分组量化）。`pv_accum_dtype` 为 `fp32+fp32` 或 `fp32+fp16` 时传 True 会告警并忽略。 |
+| `smooth_v` | True / False（默认） | 直通内核（`SageParams::smoothV`）。`pv_accum_dtype="fp32"` 时统计 V 通道均值、量化前居中并在归一化输出上补回（§1.1）；其余取值在 aclnn 层告警并忽略，内核不执行 V 均值统计。 |
 
 > 上述映射的 NPU 取舍口径见 README"粒度与累加配置的 NPU 映射"。
 
@@ -858,7 +881,7 @@ aclnn 入口内部完成：参数与 SoC 校验（仅 Ascend950）、NHD 视图�
 
 #### 3.1 官方算子原型定义规范
 
-在 CANN 原型系统注册为标准自定义算子 `SageAttention2`（4 个运行时属性：`sm_scale`、`smooth_k`、`is_causal`、`return_lse`；量化粒度与累加精度属 aclnn 层兼容参数，不下沉为内核分支）：
+在 CANN 原型系统注册为标准自定义算子 `SageAttention2`（7 个运行时属性：`sm_scale`、`smooth_k`、`is_causal`、`return_lse`、`qk_quant_gran`、`pv_accum_dtype`、`smooth_v`；后三者为 aclnn 字符串枚举经 `op_api` 编码后的整型/布尔值，直通内核分支）：
 
 ```cpp
 namespace ops {
@@ -935,7 +958,7 @@ OP_ADD(SageAttention2);
 2. 特征维度 D 限制在 (0, 128] 范围，D > 128 时报错。
 3. Query 头数 Hq 必须能被 Key 头数 Hk 整除。
 4. 输入张量不支持非连续的最后一维。
-5. 不支持任意 attention mask、dropout、varlen；`smooth_v` 仅作兼容参数（§1.3）。
+5. 不支持任意 attention mask、dropout、varlen；`smooth_v` 仅在 `pv_accum_dtype="fp32"` 下生效（§1.1、§1.3）。
 6. 跨核分裂 head 的 Stats FP32 原子加导致该场景重复调用不保证逐位一致（分布语义不变）。
 
 ---
@@ -962,8 +985,8 @@ OP_ADD(SageAttention2);
 | 用例编号 | 验收场景描述 | 输入规格与配置参数 | 预期行为与判定准则 | 验证状态 |
 | :--- | :--- | :--- | :--- | :--- |
 | TC-01 | 自动分发机制与格式支持 | `sageattn` 自动分发至 FP8 PV；覆盖 FP16 与 BF16 数据类型；支持 HND 与 NHD 张量布局 | 自动路由至 `sageattn_qk_int8_pv_fp8_asc`；HND 零拷贝直通，NHD 视图规整正常 | 全部 PASS |
-| TC-02 | 显式量化粒度与累加精度 | `sageattn_qk_int8_pv_fp8_asc`；`per_thread`/`per_warp` 量化粒度；`fp32` / `fp32+fp32` / `fp32+fp16` 累加模式 | 细粒度 per-token 量化映射；默认 `fp32+fp16` 两级累加精度符合规范；各组合计算正常 | 全部 PASS |
-| TC-03 | 离群平滑开关与警告行为 | `smooth_k` 与 `smooth_v` 布尔开关组合验证 | `smooth_k=True` 正常执行均值中心化；`smooth_v=True` 在 `fp32+fp16` 下触发 warning 并安全忽略 | 全部 PASS |
+| TC-02 | 显式量化粒度与累加精度 | `sageattn_qk_int8_pv_fp8_asc`；`per_thread`/`per_warp` 量化粒度；`fp32` / `fp32+fp32` / `fp32+fp16` 累加模式 | 各组合计算正常且都在 FP8 路径误差包络内；粗粒度组与 FP16 部分和各自产生可区分的数值结果（未被别名为同一路径） | 全部 PASS |
+| TC-03 | 离群平滑开关行为 | `smooth_k` 与 `smooth_v` 布尔开关组合验证 | `smooth_k=True` 正常执行均值中心化；`smooth_v=True` 在 `fp32` 下改变量化输入与输出补偿、在 `fp32+fp16`/`fp32+fp32` 下触发 warning 并安全忽略 | 全部 PASS |
 | TC-04 | 归一化对数因子导出 | 设置 `return_lse=True`；检查输出元组 `(o, lse)` | LSE 输出张量形状严格为 `[B, Hq, Sq]`；数值与 L-A golden 对标；支持 GQA 广播校正 | 全部 PASS |
 | TC-05 | 特征维度自动补齐与裁剪 | 非对齐特征维度：测试 D=48 与 D=96 场景 | 内核内部自动分别向上补齐（padding）至 64 与 128；输出自动精确裁剪还原至原始维度 | 全部 PASS |
 | TC-06 | 分组查询与非对称序列 | GQA 场景（`Hq % Hk == 0`，如 Hq=32, Hk=8）；非对称序列长度（`Sq != Sk`） | Key/Value 跨头共享量化结果与 L2 缓存复用正常；非对称矩阵乘分块计算结果正确 | 全部 PASS |
@@ -1003,8 +1026,8 @@ OP_ADD(SageAttention2);
 
 ### 3. 验证手段
 
-- **随仓 Python 回归**（`python/test_python_api.py`）：以 `reference.py`（QK INT8 / MXFP8 / FP16 平移 max 的独立 CPU 实现，per_thread=Q4/K16、per_warp=Q32/K64 与内核同配置）为 golden，覆盖 dtype、layout、stride、GQA、causal（含组粒度严格因果独立性）、`smooth_k`、`smooth_v` 告警、`sageattn` 固定分发 FP8 PV、LSE 形状与数值、head_dim padding、非法参数报错与 SDPA 替换冒烟。L-B 层在套件内闭环：与独立开源 sm89 FP8 路径仿真逐配置对比，相对 FP32 SDPA 的误差比 max<=2 / mean<=1.2 / RMSE<=1.2，LSE 相对偏差 <= 5e-2（`test_tc04b_lb_precision_gates`）。
-- **随仓 C++ 浮点误差断言**（`tests/numeric_error_test.cpp`）：把内核数值规格固化为可执行断言，覆盖 FastReciprocal 倒数包络、per-token INT8 量化往返误差、E4M3 饱和 RNE、E8M0 分组 scale 覆盖范围、DEQF16 与 FP16 平衡 scale 的抵消、ln(448) 平移满量程、LSE 契约、Smooth-K 的 softmax 不变性。在 CANN 容器内以 g++ -O2 -std=c++17 编译运行。
+- **随仓 Python 回归**（`python/test_python_api.py`）：以 `reference.py`（QK INT8 / MXFP8 / FP16 平移 max 的独立 CPU 实现，per_thread=Q4/K16、per_warp=Q32/K64 与内核同配置）为 golden，覆盖 dtype、layout、stride、GQA、causal（含组粒度严格因果独立性）、`smooth_k`、`smooth_v`（`fp32` 下生效、其余取值告警忽略，并断言生效时确实改变输出）、`sageattn` 固定分发 FP8 PV、LSE 形状与数值、head_dim padding、非法参数报错与 SDPA 替换冒烟。L-B 层在套件内闭环：与独立开源 sm89 FP8 路径仿真逐配置对比，相对 FP32 SDPA 的误差比 max<=2 / mean<=1.2 / RMSE<=1.2，LSE 相对偏差 <= 5e-2（`test_tc04b_lb_precision_gates`）。
+- **随仓 C++ 浮点误差断言**（`tests/numeric_error_test.cpp`）：把内核数值规格固化为可执行断言，覆盖 FastReciprocal 倒数包络、per-token INT8 量化往返误差、E4M3 饱和 RNE、E8M0 分组 scale 覆盖范围、DEQF16 与 FP16 平衡 scale 的抵消、ln(448) 平移满量程、LSE 契约、Smooth-K 的 softmax 不变性、`qk_quant_gran` 组共享 scale 的覆盖性与半步长误差、`pv_accum_dtype="fp32+fp16"` 部分和 FP16 往返的折入误差界、`smooth_v` 居中加补回在 MXFP8 分组量化下的重建误差界。在 CANN 容器内以 g++ -O2 -std=c++17 编译运行。
 - **L-A 真机对标**：以 GPU 端 `sageattn_qk_int8_pv_fp8_cuda` 同参数输出为 golden，在验收环境执行。
 - **L-B 真机对标**：以 FP32 SDPA 为真值，计算误差比值并对照 §2 门限。
 
@@ -1040,4 +1063,4 @@ Speedup = T_FIA / T_Ours >= 1.60
 
 1. 框架兼容性：兼容 PyTorch 2.x 与 torch_npu 扩展；提供 torch.library dispatcher schema 与 Meta 实现，支持 FakeTensor/Meta 设备推演与 `torch.compile(backend="eager", fullgraph=True)` 图模式。
 2. 算子无缝平替：可通过 `torch.nn.functional.scaled_dot_product_attention = sageattn` 达成现有模型代码的即插即用（example 级冒烟已覆盖，`python/test_python_api.py::test_tc10_sdpa_seamless_substitution`）。
-3. 历史版本平滑迁移：显式参数 `smooth_v=True` 时按开源规范告警并忽略，不发生崩溃；`qk_quant_gran`/`pv_accum_dtype` 的全部开源合法取值均原生接受（§1.3 映射），非法取值明确报错。
+3. 历史版本平滑迁移：`qk_quant_gran`/`pv_accum_dtype` 的全部开源合法取值均下沉为内核分支并生效（§1.3 映射），非法取值明确报错；`smooth_v=True` 在不支持的累加格式下按开源规范告警并忽略，不发生崩溃。
