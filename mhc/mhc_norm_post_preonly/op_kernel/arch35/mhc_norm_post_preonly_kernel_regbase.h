@@ -753,7 +753,7 @@ __aicore__ inline void VFGateWeightedSumQuantizeSquare(const LocalTensor<T> &dst
     const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
     __VEC_SCOPE__
     {
-        Reg::RegTensor<T> srcReg, quantizedReg;
+        Reg::RegTensor<T> srcReg0, srcReg1, srcReg2, srcReg3, quantizedReg;
         Reg::RegTensor<float> srcFp32Reg, accReg, quantizedFp32Reg, squareReg;
         Reg::RegTensor<float> g0Reg, g1Reg, g2Reg, g3Reg;
         Reg::MaskReg mask;
@@ -764,17 +764,17 @@ __aicore__ inline void VFGateWeightedSumQuantizeSquare(const LocalTensor<T> &dst
         for (uint16_t i = 0; i < loops; ++i) {
             mask = Reg::UpdateMask<float>(remain);
             const uint32_t offset = static_cast<uint32_t>(i) * VL_FP32;
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + 0U * headStride + offset);
-            Reg::Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
+            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(srcReg0, srcAddr + 0U * headStride + offset);
+            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(srcReg1, srcAddr + 1U * headStride + offset);
+            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(srcReg2, srcAddr + 2U * headStride + offset);
+            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(srcReg3, srcAddr + 3U * headStride + offset);
+            Reg::Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg0, mask);
             Reg::Mul(accReg, srcFp32Reg, g0Reg, mask);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + 1U * headStride + offset);
-            Reg::Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
+            Reg::Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg1, mask);
             Reg::MulAddDst(accReg, srcFp32Reg, g1Reg, mask);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + 2U * headStride + offset);
-            Reg::Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
+            Reg::Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg2, mask);
             Reg::MulAddDst(accReg, srcFp32Reg, g2Reg, mask);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + 3U * headStride + offset);
-            Reg::Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
+            Reg::Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg3, mask);
             Reg::MulAddDst(accReg, srcFp32Reg, g3Reg, mask);
             if constexpr (IsSameT<T, bfloat16_t>::value) {
                 Reg::Cast<T, float, CAST_FP32_TO_B16_RINT>(quantizedReg, accReg, mask);
