@@ -172,8 +172,6 @@ struct GMMSwigluV2CompileInfo {
     uint32_t baseN_ = 256;
     bool supportL12BtBf16 = false;
     uint64_t l1Size_ = 0;
-    uint64_t l0ASize_ = 0;
-    uint64_t l0BSize_ = 0;
     uint64_t l0CSize_ = 0;
     int32_t npuArch_ = 0;
 };
