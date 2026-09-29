@@ -32,7 +32,10 @@ ge::graphStatus TilingMoeTokenPermuteWithEpGrad(gert::TilingContext *context)
     return PermuteWithEpGradTilingCompute(context, -1, true);
 }
 
-static inline int64_t AlignN(const int64_t x, const int64_t N) { return (x + N - 1) & ~(N - 1); }
+static inline int64_t AlignN(const int64_t x, const int64_t N)
+{
+    return (x + N - 1) & ~(N - 1);
+}
 
 static inline int64_t GetLengthByType(const int32_t dtype)
 {
@@ -55,9 +58,15 @@ static inline int64_t GetLengthByType(const int32_t dtype)
     }
 }
 
-static inline int64_t safeMod(const int64_t a, const int64_t b) { return b == 0 ? 0 : a % b; }
+static inline int64_t safeMod(const int64_t a, const int64_t b)
+{
+    return b == 0 ? 0 : a % b;
+}
 
-static inline int64_t safeDiv(const int64_t a, const int64_t b) { return b == 0 ? 0 : a / b; }
+static inline int64_t safeDiv(const int64_t a, const int64_t b)
+{
+    return b == 0 ? 0 : a / b;
+}
 
 static inline bool isFloatDtype(const int64_t inputDtypeSize)
 {
