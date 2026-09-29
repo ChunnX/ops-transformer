@@ -19,13 +19,9 @@
 #include "../../../../3rd/grouped_matmul/op_kernel/grouped_matmul_tiling_data_apt.h"
 
 namespace MC2KernelTemplate {
-#if defined(__NPU_ARCH__) && __NPU_ARCH__ == 3510
-// DAV_3510支持epWorldSize=256，rank索引数组容量需覆盖256
-static constexpr uint32_t MAX_EP_RANK_SIZE = 256U;
-#else
-// 其他架构epWorldSize上限为128，维持原容量避免kernel栈帧超限
+// 栈上通信参数数组容量(适用于ep<=128，实测256容量栈数组存在精度问题)；
+// ep>128(如ep256)时kernel侧自动切换为GM workspace存储，容量按运行时epWorldSize分配
 static constexpr uint32_t MAX_EP_RANK_SIZE = 128U;
-#endif
 static constexpr uint32_t MAX_EXPERT_PER_EP = 1U;
 static constexpr uint32_t MAX_EXPERT_SIZE = 256U;
 static constexpr uint32_t MAX_EXPERT_PER_RANK = 32U;

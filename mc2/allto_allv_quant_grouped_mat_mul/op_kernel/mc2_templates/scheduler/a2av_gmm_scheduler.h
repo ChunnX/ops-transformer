@@ -74,6 +74,14 @@ public:
             commOp.InitScaleBuffer(gmmxScaleGm_, gmmxScaleCommOutGm_, gmmxScalePermuteOutGm_);
             computeScaleGm_ = gmmxScalePermuteOutGm_;
         }
+        // ep>128(如ep256)：通信counts/offsets改用GM workspace(容量256的栈数组实测存在精度问题)
+        if (tilingData_->taskTilingInfo.epWorldSize > MAX_EP_RANK_SIZE) {
+            uint64_t commParamsSize =
+                Align(tilingData_->taskTilingInfo.epWorldSize * 4 * sizeof(uint64_t), TENSOR_LIST_SIZE);
+            commOp.SetCommParamsGmBuffer(workspaceGM + workspaceOffset,
+                                         static_cast<uint32_t>(tilingData_->taskTilingInfo.epWorldSize));
+            workspaceOffset += commParamsSize;
+        }
         computeWorkspaceGm_ = workspaceGM + workspaceOffset;
         isPermuteOut_ = tilingData_->isPermuteOut;
         if (tilingData_->isNeedMM != 0) {

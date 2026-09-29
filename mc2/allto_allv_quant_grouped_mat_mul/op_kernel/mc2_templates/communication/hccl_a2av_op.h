@@ -67,6 +67,7 @@ public:
                                 const TaskTilingInfo *taskTilingInfo, GM_ADDR sendBuffer, GM_ADDR recvBuffer,
                                 GM_ADDR permuteBuffer, uint32_t aivCoreNum);
     __aicore__ inline void InitScaleBuffer(GM_ADDR sendBuffer, GM_ADDR commOutBuffer, GM_ADDR permuteOutBuffer);
+    __aicore__ inline void SetCommParamsGmBuffer(GM_ADDR base, uint32_t rankDim);
     __aicore__ inline void LaunchCommScale(uint32_t startExpertIdx, uint32_t expertNum);
     __aicore__ inline void LaunchCommData(uint32_t startExpertIdx, uint32_t expertNum);
     __aicore__ inline void Launch(uint32_t startExpertIdx, uint32_t expertNum);
@@ -96,6 +97,9 @@ private:
 
     // scale与data串行发射且HCCL在AlltoAllV调用时同步消费counts(基线跨轮覆写已证明)，共用一个结构压缩kernel栈
     A2avCommParams commParams_;
+    // ep>128(如ep256)时启用GM模式：counts/offsets存GM workspace
+    A2avCommParamsGm commParamsGm_;
+    bool useGmCommParams_ = false;
 
     uint64_t dataSendOffsetLastSum_ = 0UL;
     uint64_t dataRecvOffsetLastSum_ = 0UL;
@@ -174,11 +178,33 @@ __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>
 }
 
 template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
+__aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>::SetCommParamsGmBuffer(
+    GM_ADDR base, uint32_t rankDim)
+{
+    __gm__ uint64_t *ptr = reinterpret_cast<__gm__ uint64_t *>(base);
+    commParamsGm_.sendCnt = ptr;
+    commParamsGm_.sendOffset = ptr + rankDim;
+    commParamsGm_.recvCnt = ptr + 2UL * rankDim;
+    commParamsGm_.recvOffset = ptr + 3UL * rankDim;
+    useGmCommParams_ = true;
+}
+
+template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
 __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>::LaunchCommScale(
     uint32_t startExpertIdx, uint32_t expertNum)
 {
     A2AV_AIV_ONLY();
     uint64_t axis = CeilDiv(H1_, SCALE_ALIGNMENT_BLOCK_SIZE) * 2;
+    if (useGmCommParams_) {
+        CalcA2avCommBeforeParams(commParamsGm_, sendCounts_, recvCounts_, rankDim_, e_, startExpertIdx, expertNum, axis,
+                                 scaleSendOffsetLastSum_, scaleRecvOffsetLastSum_);
+        alltoAllvScaleHandleId_[startExpertIdx] = hccl_.template AlltoAllV<true>(
+            (__gm__ uint8_t *)sendScaleGlobalBuffer_.GetPhyAddr(), (void *)commParamsGm_.sendCnt,
+            (void *)commParamsGm_.sendOffset, HCCL_DATA_TYPE_FP8E8M0,
+            (__gm__ uint8_t *)recvScaleGlobalBuffer_.GetPhyAddr(), (void *)commParamsGm_.recvCnt,
+            (void *)commParamsGm_.recvOffset, HCCL_DATA_TYPE_FP8E8M0);
+        return;
+    }
     CalcA2avCommBeforeParams(commParams_, sendCounts_, recvCounts_, rankDim_, e_, startExpertIdx, expertNum, axis,
                              scaleSendOffsetLastSum_, scaleRecvOffsetLastSum_);
     alltoAllvScaleHandleId_[startExpertIdx] = hccl_.template AlltoAllV<true>(
