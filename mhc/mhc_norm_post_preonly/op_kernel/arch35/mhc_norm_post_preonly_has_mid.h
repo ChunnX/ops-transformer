@@ -284,6 +284,8 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     const uint64_t followerHeadOffset = (uint64_t)token * N_ * D_ + HEADS_PER_SIBLING * D_;
     DataCopy(x2Cache[HEADS_PER_SIBLING * D_], x2OutGm_[followerHeadOffset], HEADS_PER_SIBLING * D_);
     SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
+    CopyInGammaTile(bufGammaFp32_.Get<float>(), gamma1Gm_, 0U, D_);
+    SetFlag<HardEvent::MTE2_V>(evtGamma1Mte2toV_);
 
     const float totalSumSqPre = sumSqHalf[0] + sumSqHalf[1];
     float xHatVals[N];
@@ -296,8 +298,6 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
 
     float sumSq1 = 0.0f;
-    // 提前发起gamma1搬运（到bufGammaFp32_），与下方门控融合的Vector计算重叠。
-    StartCopyInGamma1();
     for (uint32_t tile = 0; tile < dLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dTile_;
