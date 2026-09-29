@@ -92,34 +92,14 @@ static const FitBalanceCalibration CALIBRATION = {
 // 组装与新旧切换
 // ============================================================================
 
-// 边界转换: 旧全局类型 → 引擎入参(引擎 33 字段镜像已裁至实际消费的 9 个)
-inline FitBalanceTilingArgs ToEngineArgs(const mc2tiling::TilingArgs &a)
-{
-    FitBalanceTilingArgs e = {};
-    e.mValue = a.mValue;
-    e.nValue = a.nValue;
-    e.kValue = a.kValue;
-    e.rankDim = a.rankDim;
-    e.aicCoreNum = a.aicCoreNum;
-    e.aType = a.aType;
-    e.geAType = a.geAType;
-    e.inputDtypeSize = a.inputDtypeSize;
-    e.outputDtypeSize = a.outputDtypeSize;
-    return e;
-}
-
-inline CutResult ToLegacyCut(const CommCutResult &c)
-{
-    return {c.shortTileAtBack, c.totalTileCnt, c.numLongTile, c.numShortTile, c.longTileLen, c.shortTileLen};
-}
-
-// 统一引擎路径: 引擎对外唯一入口 FitBalanceCut(诊断打印内置于引擎, debug 级);
-// 结构枚举在 CALIBRATION.dataflow(本算子: COMM_FIRST + FRONT + 全量形态)
+// 统一引擎路径: 引擎对外唯一入口 FitBalanceCut(单入参: 引擎新 args; 诊断打印内置于引擎, debug 级)。
+// 结构枚举在 CALIBRATION.dataflow(本算子: COMM_FIRST + FRONT + 全量形态);
+// 旧 CutResult ↔ 引擎 CommCutResult 字段同名同序, 直接按位返回。
 inline CutResult ScheduleFitBalance(const mc2tiling::TilingArgs &args, TilingCommEngine commEngine)
 {
-    FitBalanceTilingArgs engineArgs = ToEngineArgs(args);
-    engineArgs.commEngine = commEngine; // 图属性 comm_mode 解析产物, 旧 TilingArgs 无此字段
-    return ToLegacyCut(FitBalanceCut(engineArgs, CALIBRATION));
+    CommCutResult cut = FitBalanceCut(MakeFitBalanceArgs(args, commEngine), CALIBRATION);
+    return {cut.shortTileAtBack, cut.totalTileCnt, cut.numLongTile,
+            cut.numShortTile,    cut.longTileLen,  cut.shortTileLen};
 }
 
 // COF 结果(head 在前/tail 在后) → CutResult(long/short) 映射; 短块(尾块)后置

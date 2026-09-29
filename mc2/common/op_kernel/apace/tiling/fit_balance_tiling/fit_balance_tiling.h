@@ -306,6 +306,26 @@ inline void PrintTilingData(const FitBalanceTilingArgs &args, const CommCutResul
     printf("  round tax          : %.3f us\n", commTimeActualUs - commTimeNoCutUs);
 }
 
+// 旧入参转换(存量算子过渡用): 从旧全局 mc2tiling::TilingArgs 挑字段构造引擎入参。
+// commEngine 旧结构无对应字段(算子图属性 comm_mode), 由调用方解析后经 commEngine 参数补入。
+// 新算子直接构造 FitBalanceTilingArgs, 无需本函数。
+template <typename LegacyArgs>
+inline FitBalanceTilingArgs MakeFitBalanceArgs(const LegacyArgs &a, TilingCommEngine commEngine)
+{
+    FitBalanceTilingArgs e = {};
+    e.mValue = a.mValue;
+    e.nValue = a.nValue;
+    e.kValue = a.kValue;
+    e.rankDim = a.rankDim;
+    e.aicCoreNum = a.aicCoreNum;
+    e.aType = a.aType;
+    e.geAType = a.geAType;
+    e.inputDtypeSize = a.inputDtypeSize;
+    e.outputDtypeSize = a.outputDtypeSize;
+    e.commEngine = commEngine;
+    return e;
+}
+
 // 对外唯一入口: 算子侧一行调用——上下文构造 + 键控求解的串联。
 // 诊断打印内置于本函数(debug 级), op 侧无需再写日志。
 inline CommCutResult FitBalanceCut(const FitBalanceTilingArgs &args, const FitBalanceCalibration &calib)

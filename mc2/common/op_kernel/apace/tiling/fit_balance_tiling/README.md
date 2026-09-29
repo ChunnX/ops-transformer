@@ -19,9 +19,17 @@
 CommCutResult FitBalanceCut(const FitBalanceTilingArgs &args, const FitBalanceCalibration &calib);
 ```
 
-一行完成切分：内部串联 上下文构造（InitCtx）→ 键控求解（Schedule）→ 诊断打印（debug 级）。
+单入参 + 标定。内部串联 上下文构造（InitCtx）→ 键控求解（Schedule）→ 诊断打印（debug 级）。
 返回"1 短 + N 长"的 M 轴切分方案（或退化的等分/单块）。
 通信引擎（AICPU/CCU）经 `args.commEngine` 传入——op 侧 `ParseCommEngine(comm_mode)` 解析。
+
+```cpp
+template <typename LegacyArgs>
+FitBalanceTilingArgs MakeFitBalanceArgs(const LegacyArgs &a, TilingCommEngine commEngine);
+```
+
+存量算子过渡用：从旧全局 mc2tiling::TilingArgs 挑字段构造引擎入参（模板鸭子类型，引擎不依赖
+旧类型定义）；commEngine 由调用方解析后补入。**新算子直接构造 FitBalanceTilingArgs，不用本函数**。
 
 ### 分派判定
 
@@ -98,10 +106,10 @@ ge::graphStatus MyOpTiling::DoTiling()
 
     CommCutResult cut;
     if (IsCommCalibrated(rankDim_, commEngine, CALIBRATION)) {
-        // 命中: 直接构造引擎入参(9 字段)并调用
+        // 命中: 构造引擎入参并调用(存量算子也可用 MakeFitBalanceArgs 从旧 TilingArgs 转换)
         FitBalanceTilingArgs args = {mValue_, nValue_, kValue_, rankDim_, aicCoreNum_,
                                      aType_, geAType_, inputDtypeSize_, outputDtypeSize_,
-                                     ParseCommEngine(commMode_)};   // comm_mode 图属性 → 引擎枚举
+                                     ParseCommEngine(commMode_)};
         cut = FitBalanceCut(args, CALIBRATION);
     } else {
         // miss: 未标定形态, 走核利用率优先等策略(本例略——见 core_occupancy_first_tiling.h)
@@ -114,7 +122,7 @@ ge::graphStatus MyOpTiling::DoTiling()
 ```
 
 接入要素就一个：**填 CALIBRATION**——结构声明（dataflow 三元组）与实测数据（拟合行/算力档）
-都在这一处，调用侧只传运行时 shape。
+都在这一处；调用侧构造 `FitBalanceTilingArgs`（存量算子经 `MakeFitBalanceArgs` 转换）后单入参调用。
 
 ### 数据流形态（CALIBRATION.dataflow 三元组）
 
