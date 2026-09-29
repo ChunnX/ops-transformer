@@ -296,6 +296,58 @@ __aicore__ inline void MoeDistributeDispatchA5<TemplateMoeDistributeDispatchA5Ty
     hccl_.InitV2((GM_ADDR)context, tilingData);
     hccl_.SetCcTilingV2(offsetof(MoeDistributeDispatchV2TilingData, mc2CcTiling1));
 
+    // 临时诊断（验证后删除）：纯 CCU 生产配方（SetCommTiling：HALFALLTOALLV+fullmesh/pairwise+A5_CCU_ENGINE）
+    // 下注入上下文的窗口表转储——核心判据 cuOut1/cuOut2 是否携带远端 rank 窗口映射（数据面换源候选）。
+    // 两行独立打印按风险递增（任一行 fault 不殃及前行）；rankId & 63U 掩码防异常值越界读表（容量 64）
+    if (GetBlockIdx() == 0) {
+        if ((unsigned long long)(uintptr_t)context != 0ULL) {
+            uint32_t selfIdx = context->rankId & 63U;
+            AscendC::printf("[CCU_PURE0] ctx=0x%llx selfIn=0x%llx in0=0x%llx in1=0x%llx\n",
+                            (unsigned long long)(uintptr_t)context, (unsigned long long)context->windowsIn[selfIdx],
+                            (unsigned long long)context->windowsIn[0], (unsigned long long)context->windowsIn[1]);
+            AscendC::printf("[CCU_PURE1] cuOut0=0x%llx cuOut1=0x%llx cuOut2=0x%llx winSize=%llu rank=%u dim=%u\n",
+                            (unsigned long long)context->windowsOut[0], (unsigned long long)context->windowsOut[1],
+                            (unsigned long long)context->windowsOut[2], (unsigned long long)context->winSize,
+                            context->rankId, context->rankNum);
+
+            // MTE 跨窗口读写试验（验证后删除）：out0/out1 均有值时——从 out0 头部 MTE 读 512B，向
+            // out1 尾部（winSize-512，避开对端状态头与在用数据区头，至多污染本试验轮尾块数据）MTE 写
+            // 512B 并回读比对。写后 DCCI + PIPE_ALL 屏障对齐 MTE3→MTE2 次序（粗粒度同步仅试验用）。
+            // 判读：RB1==RD0 且 !=OLD1 → 跨窗口 MTE 写读闭环成立；RB1==OLD1 → 写未生效；fault → 映射不可写
+            if ((context->windowsOut[0] != 0ULL) && (context->windowsOut[1] != 0ULL) && (context->winSize > 1024ULL)) {
+                TBuf<> mteSrcBuf, mteChkBuf;
+                pipe_->InitBuffer(mteSrcBuf, 512);
+                pipe_->InitBuffer(mteChkBuf, 512);
+                LocalTensor<int32_t> srcLT = mteSrcBuf.Get<int32_t>();
+                LocalTensor<int32_t> chkLT = mteChkBuf.Get<int32_t>();
+                GlobalTensor<int32_t> srcGT;
+                GlobalTensor<int32_t> dstGT;
+                srcGT.SetGlobalBuffer((__gm__ int32_t*)(context->windowsOut[0]));
+                dstGT.SetGlobalBuffer((__gm__ int32_t*)(context->windowsOut[1] + context->winSize - 512));
+                DataCopy(srcLT, srcGT, 128); // MTE2: out0 头 512B → UB
+                PipeBarrier<PIPE_ALL>();
+                AscendC::printf("[MTE_RD0] 0x%x 0x%x 0x%x 0x%x\n", (unsigned int)srcLT.GetValue(0),
+                                (unsigned int)srcLT.GetValue(1), (unsigned int)srcLT.GetValue(2),
+                                (unsigned int)srcLT.GetValue(3));
+                DataCopy(chkLT, dstGT, 128); // MTE2: out1 目标区写前原值 → UB
+                PipeBarrier<PIPE_ALL>();
+                AscendC::printf("[MTE_OLD1] 0x%x 0x%x 0x%x 0x%x\n", (unsigned int)chkLT.GetValue(0),
+                                (unsigned int)chkLT.GetValue(1), (unsigned int)chkLT.GetValue(2),
+                                (unsigned int)chkLT.GetValue(3));
+                DataCopy(dstGT, srcLT, 128); // MTE3: UB → out1 尾部 512B
+                DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(dstGT);
+                PipeBarrier<PIPE_ALL>();
+                DataCopy(chkLT, dstGT, 128); // MTE2: 回读
+                PipeBarrier<PIPE_ALL>();
+                AscendC::printf("[MTE_RB1] 0x%x 0x%x 0x%x 0x%x\n", (unsigned int)chkLT.GetValue(0),
+                                (unsigned int)chkLT.GetValue(1), (unsigned int)chkLT.GetValue(2),
+                                (unsigned int)chkLT.GetValue(3));
+            }
+        } else {
+            AscendC::printf("[CCU_PURE0] ctx=NULL\n");
+        }
+    }
+
     sendBufGM_ = workspaceGM;
     sendSizeGM_ = sendBufGM_ + perRankDataSize_ * epWorldSize_;
     sendOffsetGM_ = sendSizeGM_ + epWorldSize_ * sizeof(uint64_t) * DUAL_DATA;
