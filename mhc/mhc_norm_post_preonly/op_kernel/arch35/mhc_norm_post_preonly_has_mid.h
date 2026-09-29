@@ -196,8 +196,10 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
 
     LocalTensor<float> midBuf = bufScalar_.Get<float>();
+    for (uint32_t i = 1U; i < PARTIAL_SLOT_ELEMS; ++i) {
+        midBuf.SetValue(i, 0.0f);
+    }
     midBuf.SetValue(0, midSqHalf[siblingAivIdx_]);
-    // 32B槽的其余元素不会被sibling读取，无需在关键同步路径上做Scalar清零。
     SetFlag<HardEvent::S_MTE3>(evtStoMte3_);
     WaitFlag<HardEvent::S_MTE3>(evtStoMte3_);
     const uint64_t ownSlot = ((uint64_t)token * SIBLING_AIV_COUNT + siblingAivIdx_) * PARTIAL_SLOT_ELEMS;
@@ -253,7 +255,9 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         for (uint32_t o = 0; o < N; ++o) {
             partialBuf.SetValue(o + 1U, dotHalf[1][o]);
         }
-        // leader只读取前五个有效partial，槽尾三个元素无需清零。
+        for (uint32_t i = N + 1U; i < PARTIAL_SLOT_ELEMS; ++i) {
+            partialBuf.SetValue(i, 0.0f);
+        }
         SetFlag<HardEvent::S_MTE3>(evtStoMte3_);
         WaitFlag<HardEvent::S_MTE3>(evtStoMte3_);
         const uint64_t followerSlot =
