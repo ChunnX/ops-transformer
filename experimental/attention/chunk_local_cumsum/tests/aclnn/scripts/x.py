@@ -1,7 +1,17 @@
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
 import random
+
+import torch
+import torch.nn.functional as F
+from torch import nn
 
 random.seed(42)
 torch.manual_seed(42)
@@ -48,8 +58,6 @@ class GroupedQueryAttention(nn.Module):
         page_ids: torch.Tensor,  # (batch_size, max_num_blocks)
     ) -> torch.Tensor:
 
-
-
         key_cache = key_cache.to(torch.float16)
         value_cache = value_cache.to(torch.float16)
 
@@ -61,9 +69,7 @@ class GroupedQueryAttention(nn.Module):
             # 获取当前sequence的query
             q_start = cu_seqlens_query[i]
             q_end = cu_seqlens_query[i + 1]
-            q = query[
-                q_start:q_end
-            ]  # (seqlen_query, num_attention_heads, head_dim)
+            q = query[q_start:q_end]  # (seqlen_query, num_attention_heads, head_dim)
             seqlen_query = q.shape[0]
             # 获取当前sequence的page_ids和有效长度
             seqlen_kv = seqlens_kv[i]
@@ -71,18 +77,14 @@ class GroupedQueryAttention(nn.Module):
             curr_pages = page_ids[i, :curr_blocks]
 
             # 收集当前sequence的key和value
-            k = key_cache[
-                curr_pages
-            ]  # (num_blocks, num_kv_heads, page_len, head_dim)
+            k = key_cache[curr_pages]  # (num_blocks, num_kv_heads, page_len, head_dim)
             v = value_cache[curr_pages]
 
             if self.is_naive:
                 # 方式一：计算attention
                 k = torch.permute(k, (0, 2, 1, 3)).reshape(
                     -1, self.num_kv_heads, self.qk_head_dim
-                )[
-                    :seqlen_kv
-                ]  # (seqlen_kv, num_kv_heads, head_dim)
+                )[:seqlen_kv]  # (seqlen_kv, num_kv_heads, head_dim)
                 v = torch.permute(v, (0, 2, 1, 3)).reshape(
                     -1, self.num_kv_heads, self.vo_head_dim
                 )[:seqlen_kv]
@@ -97,25 +99,24 @@ class GroupedQueryAttention(nn.Module):
                     torch.float32
                 )  # （num_attention_heads, seqlen_kv, head_dim)
                 v = v.transpose(0, 1).to(torch.float32)
-                scores = (
-                    torch.matmul(cur_q, k.transpose(-2, -1))
-                    * self.softmax_scale
-                )
+                scores = torch.matmul(cur_q, k.transpose(-2, -1)) * self.softmax_scale
 
-                mask = torch.ones(seqlen_query, seqlen_kv, dtype=torch.bool, device=scores.device)
+                mask = torch.ones(
+                    seqlen_query, seqlen_kv, dtype=torch.bool, device=scores.device
+                )
                 if seqlen_query > 1:  # 如果有生成 tokens
                     # 历史 tokens 可以互相关注（双向）
-                    mask[:seqlen_kv - seqlen_query, :seqlen_kv - seqlen_query] = True
+                    mask[: seqlen_kv - seqlen_query, : seqlen_kv - seqlen_query] = True
                     # 生成 tokens 只能关注前面的 tokens（单向）
                     for t in range(seqlen_kv - seqlen_query, seqlen_kv):
-                        mask[t - (seqlen_kv - seqlen_query), :t+1] = True
-                        mask[t - (seqlen_kv - seqlen_query), t+1:] = False
+                        mask[t - (seqlen_kv - seqlen_query), : t + 1] = True
+                        mask[t - (seqlen_kv - seqlen_query), t + 1 :] = False
 
                 # 应用mask
-                scores = scores.masked_fill(~mask, float('-inf'))
-                max = scores.max(dim=-1,keepdim=True).values
-                exp_scores = (scores-max).exp()
-                sum_exp_scores = (scores-max).exp().sum(dim=-1,keepdim=True)
+                scores = scores.masked_fill(~mask, float("-inf"))
+                max = scores.max(dim=-1, keepdim=True).values
+                exp_scores = (scores - max).exp()
+                sum_exp_scores = (scores - max).exp().sum(dim=-1, keepdim=True)
                 temp_atten = exp_scores @ v
 
                 attn = F.softmax(scores, dim=-1)
@@ -131,19 +132,13 @@ class GroupedQueryAttention(nn.Module):
                     self.num_attention_heads // self.num_kv_heads,
                     self.qk_head_dim,
                 )  # (seqlen_q, nhead_kv, group, head_dim)
-                out = torch.zeros_like(
-                    q
-                )  # (seqlen_query, nhead_kv, group, head_dim)
+                out = torch.zeros_like(q)  # (seqlen_query, nhead_kv, group, head_dim)
 
                 k = k.reshape(
                     -1, self.num_kv_heads, page_len, self.qk_head_dim
                 )  # (num_blocks, num_kv_heads, page_len, head_dim)
                 print(f"kcache.shape={key_cache.shape}, k.shape={k.shape}")
-                v = v.reshape(
-                    -1, self.num_kv_heads, page_len, self.vo_head_dim
-                )
-
-
+                v = v.reshape(-1, self.num_kv_heads, page_len, self.vo_head_dim)
 
                 for q_idx in range(seqlen_query):
                     cur_q = q[
@@ -166,17 +161,17 @@ class GroupedQueryAttention(nn.Module):
                         )
                     )
                     O = torch.zeros_like(cur_q)
-                    for curr_page_id in range(len((curr_pages))):
+                    for curr_page_id in range(len(curr_pages)):
                         # page_id = page_ids[0][curr_page_id]
                         start_idx = curr_page_id * page_len
                         end_idx = min(start_idx + page_len, seqlen_kv.item())
                         cur_page_valid_len = end_idx - start_idx
                         # 计算当前page的key和value
                         k_page = k[
-                            curr_page_id, :,:cur_page_valid_len
+                            curr_page_id, :, :cur_page_valid_len
                         ]  # (num_kv_heads, page_len(valid_len), head_dim)
                         v_page = v[
-                            curr_page_id, :,:cur_page_valid_len
+                            curr_page_id, :, :cur_page_valid_len
                         ]  # (num_kv_heads, page_len(valid_len), head_dim)
                         S = (
                             torch.einsum("hgd,htd->hgt", cur_q, k_page)
@@ -206,7 +201,7 @@ class GroupedQueryAttention(nn.Module):
 
                         # 在线累积输出
                         # O = O * exp_diff * (1 / l_new) + O_block * (1 / l_new)
-                        O = O * exp_diff + O_block 
+                        O = O * exp_diff + O_block
 
                         # 写回全局状态
                         m, l = m_new, l_new
@@ -223,8 +218,9 @@ class GroupedQueryAttention(nn.Module):
 # ======================= 测试与数据构造 =======================
 if __name__ == "__main__":
     import argparse
-    import numpy as np
     import os
+
+    import numpy as np
 
     os.makedirs("./input", exist_ok=True)
     os.makedirs("./output", exist_ok=True)
@@ -256,8 +252,7 @@ if __name__ == "__main__":
 
     # 预计算每个sequence需要的blocks数
     blocks_per_seq = [
-        aligned_up(length, page_len) // page_len
-        for length in seqlens_kv.tolist()
+        aligned_up(length, page_len) // page_len for length in seqlens_kv.tolist()
     ]
     valid_seqs = 0
     total_blocks = 0
@@ -290,11 +285,15 @@ if __name__ == "__main__":
     # num_attention_heads = 40/8
     # num_kv_heads = 8/8
 
-    kcache = torch.ones(total_pages, num_kv_heads, page_len, qk_head_dim).fill_(float('-inf')).to(
-        torch.half
+    kcache = (
+        torch.ones(total_pages, num_kv_heads, page_len, qk_head_dim)
+        .fill_(float("-inf"))
+        .to(torch.half)
     )
-    vcache = torch.ones(total_pages, num_kv_heads, page_len, vo_head_dim).fill_(float('-inf')).to(
-        torch.half
+    vcache = (
+        torch.ones(total_pages, num_kv_heads, page_len, vo_head_dim)
+        .fill_(float("-inf"))
+        .to(torch.half)
     )
 
     # seqlens_kv[-1]
@@ -315,15 +314,14 @@ if __name__ == "__main__":
         # 直接生成正确shape的key和value
         # k = torch.randn(num_kv_heads, length, qk_head_dim).to(torch.half)
         # v = torch.randn(num_kv_heads, length, vo_head_dim).to(torch.half)
-        if (i==0):
-            k = all_k[:, 0:kvlens_list[i], :]
-            v = all_v[:, 0:kvlens_list[i], :]
+        if i == 0:
+            k = all_k[:, 0:length, :]
+            v = all_v[:, 0:length, :]
         else:
-            k = all_k[:, kvlens_list[i-1]:kvlens_list[i-1]+kvlens_list[i], :]
-            v = all_v[:, kvlens_list[i-1]:kvlens_list[i-1]+kvlens_list[i], :]
+            k = all_k[:, kvlens_list[i - 1] : kvlens_list[i - 1] + length, :]
+            v = all_v[:, kvlens_list[i - 1] : kvlens_list[i - 1] + length, :]
         print(f"k{k}")
         print(f"v{v}")
-
 
         # 按page_len分块并填充到cache
         num_valid_blocks = aligned_up(length, page_len) // page_len
@@ -333,23 +331,24 @@ if __name__ == "__main__":
             page_id = page_ids[i, j]
 
             # 填充该page的实际长度
-            kcache[page_id, :, : (end_idx - start_idx), :] = k[
-                :, start_idx:end_idx, :
-            ]
-            vcache[page_id, :, : (end_idx - start_idx), :] = v[
-                :, start_idx:end_idx, :
-            ]
+            kcache[page_id, :, : (end_idx - start_idx), :] = k[:, start_idx:end_idx, :]
+            vcache[page_id, :, : (end_idx - start_idx), :] = v[:, start_idx:end_idx, :]
             all_page_ids.append(page_id)
             print(f"all_page_ids{all_page_ids}")
 
     # 随机输入向量 - 改为总token数维度
-    query_temp = torch.randn(total_tokens//batch_size, num_attention_heads, qk_head_dim).half()
+    query_temp = torch.randn(
+        total_tokens // batch_size, num_attention_heads, qk_head_dim
+    ).half()
     query = query_temp.repeat(batch_size, 1, 1)
 
-
-
     # 初始化并运行 GQA
-    gqa = GroupedQueryAttention(tp_size=tp_size,qk_head_dim=qk_head_dim,vo_head_dim=vo_head_dim,softmax_scale=qk_head_dim **-0.5).half()
+    gqa = GroupedQueryAttention(
+        tp_size=tp_size,
+        qk_head_dim=qk_head_dim,
+        vo_head_dim=vo_head_dim,
+        softmax_scale=qk_head_dim**-0.5,
+    ).half()
     output = gqa(
         query,
         kcache,
@@ -359,12 +358,16 @@ if __name__ == "__main__":
         page_ids,
     )
 
-    kcache = kcache.reshape(total_pages,num_kv_heads,-1)
-    vcache = vcache.reshape(total_pages,num_kv_heads,-1)
-    for ids in  all_page_ids:
-        for h in range(num_kv_heads) :
-            kcache[ids,h,:] = kcache[ids,h,:].reshape(page_len,-1,16).permute(1,0,2).reshape(-1)
-            vcache[ids,h,:] = vcache[ids,h,:].reshape(page_len,-1,16).permute(1,0,2).reshape(-1)
+    kcache = kcache.reshape(total_pages, num_kv_heads, -1)
+    vcache = vcache.reshape(total_pages, num_kv_heads, -1)
+    for ids in all_page_ids:
+        for h in range(num_kv_heads):
+            kcache[ids, h, :] = (
+                kcache[ids, h, :].reshape(page_len, -1, 16).permute(1, 0, 2).reshape(-1)
+            )
+            vcache[ids, h, :] = (
+                vcache[ids, h, :].reshape(page_len, -1, 16).permute(1, 0, 2).reshape(-1)
+            )
     kcache.numpy().tofile("./input/input_k.bin")
     vcache.numpy().tofile("./input/input_v.bin")
 

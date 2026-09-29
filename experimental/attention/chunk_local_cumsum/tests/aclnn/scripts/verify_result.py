@@ -1,20 +1,26 @@
-import os
-import sys
-import numpy as np
-
-import os
-import sys
-import numpy as np
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
 import math
+import os
+import sys
+
+import numpy as np
 import torch
 
 
 def get_abs_err(x, y):
-    return (x-y).flatten().abs().max().item()
+    return (x - y).flatten().abs().max().item()
 
 
 def get_err_ratio(x, y):
-    err = (x-y).flatten().square().mean().sqrt().item()
+    err = (x - y).flatten().square().mean().sqrt().item()
     base = (x).flatten().square().mean().sqrt().item()
     return err / base
 
@@ -23,6 +29,7 @@ def assert_close(prefix, ref, tri, ratio):
     msg = f"{prefix} diff: {get_abs_err(ref, tri):.6f} ratio: {get_err_ratio(ref, tri):.6f}"
     print(msg)
     assert get_err_ratio(ref, tri) < ratio, msg
+
 
 def classify_data(data):
     # 初始化分类字典，用于存放不同数量级的数据
@@ -55,7 +62,7 @@ def relative_error_percent(in1, in2):
     in1_magnitude = classify_data(in2)
     for magnitude, idx_set in in1_magnitude.items():
         print(
-            f"======== 数量级：{10**magnitude}~{10**(magnitude+1)} 数量: {len(idx_set)} ========"
+            f"======== 数量级：{10**magnitude}~{10 ** (magnitude + 1)} 数量: {len(idx_set)} ========"
         )
         in1_subset = in1[idx_set]
         in2_subset = in2[idx_set]
@@ -81,8 +88,8 @@ def verify_result(real_result, golden, dtype=np.float32):
     real_result = np.fromfile(real_result, dtype)  # .reshape(16, -1)[:, :1]#.squeeze()
     golden = np.fromfile(golden, dtype)  # .reshape(16, -1)[:,:1]#.squeeze()
 
-    print("a: ",real_result)
-    print("b: ",golden)
+    print("a: ", real_result)
+    print("b: ", golden)
     # np.testing.assert_allclose(real_result, golden, rtol=1e-3, atol=1e-3, err_msg="result error")
     assert_close(" o", torch.from_numpy(golden), torch.from_numpy(real_result), 0.004)
     print("test pass!")

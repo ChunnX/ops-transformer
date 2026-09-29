@@ -1,11 +1,14 @@
 /**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+/**
  * @file main.cpp
- *
- * Copyright (C) 2023. Huawei Technologies Co., Ltd. All rights reserved.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  */
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -27,7 +30,8 @@ bool g_isDevice = false;
 int deviceId = 7;
 
 template <typename T>
-bool TestTime(T &opRunner, aclrtStream &stream) {
+bool TestTime(T &opRunner, aclrtStream &stream)
+{
     std::vector<int64_t> seqIdxDict{0, 1}, curlenDict{567, 567};
     int32_t warmup = 512;
     uint32_t ret;
@@ -49,7 +53,8 @@ bool TestTime(T &opRunner, aclrtStream &stream) {
     return true;
 }
 
-bool CreateStream(aclrtStream &stream) {
+bool CreateStream(aclrtStream &stream)
+{
     if (aclrtCreateStream(&stream) != ACL_SUCCESS) {
         ERROR_LOG("Create stream failed");
         return false;
@@ -58,14 +63,16 @@ bool CreateStream(aclrtStream &stream) {
     return true;
 }
 
-bool DestroyStream(aclrtStream &stream) {
+bool DestroyStream(aclrtStream &stream)
+{
     INFO_LOG("Destroystream()");
     (void)aclrtDestroyStream(stream);
     INFO_LOG("Destroystream()");
     return true;
 }
 
-void DestoryResource() {
+void DestoryResource()
+{
     INFO_LOG("DestroyResource()");
     bool flag = false;
     if (aclrtResetDevice(deviceId) != ACL_SUCCESS) {
@@ -84,7 +91,8 @@ void DestoryResource() {
     }
 }
 
-bool InitResource() {
+bool InitResource()
+{
     std::string output = "../output";
     if (access(output.c_str(), 0) == -1) {
         int ret = mkdir(output.c_str(), 0700);
@@ -123,8 +131,12 @@ bool InitResource() {
     return true;
 }
 
-int AlignUp16(int a) { return (a + 15) & (~15); }
-bool RunOp(const std::vector<int64_t> &cuSeqlen, int32_t head_num, int32_t chunk_size) {
+int AlignUp16(int a)
+{
+    return (a + 15) & (~15);
+}
+bool RunOp(const std::vector<int64_t> &cuSeqlen, int32_t head_num, int32_t chunk_size)
+{
     auto print = [](std::vector<int64_t> dict) {
         for (auto el : dict) {
             std::cout << el << " ";
@@ -135,16 +147,12 @@ bool RunOp(const std::vector<int64_t> &cuSeqlen, int32_t head_num, int32_t chunk
     aclrtStream stream = nullptr;
     CreateStream(stream);
 
-
     int32_t tokenNum = cuSeqlen.back();
     int32_t seqNum = cuSeqlen.size() - 1;
 
-    Tensor *input =
-        new Tensor(tokenNum * head_num * sizeof(float));
+    Tensor *input = new Tensor(tokenNum * head_num * sizeof(float));
     Tensor *cu_seqlens = new Tensor((seqNum + 1) * sizeof(int64_t));
-    Tensor *output =
-        new Tensor(tokenNum * head_num * sizeof(float));
-
+    Tensor *output = new Tensor(tokenNum * head_num * sizeof(float));
 
     input->FromFile("../input/input.bin");
     cu_seqlens->FromFile("../input/input_cu_seqlens.bin");
@@ -161,7 +169,7 @@ bool RunOp(const std::vector<int64_t> &cuSeqlen, int32_t head_num, int32_t chunk
 
     auto start = std::chrono::high_resolution_clock::now();
     // Run op
-    ChunkLocalCumsum(stream, workspace, *input, *cu_seqlens, *output, head_num,chunk_size, cuSeqlen);
+    ChunkLocalCumsum(stream, workspace, *input, *cu_seqlens, *output, head_num, chunk_size, cuSeqlen);
 
     const char *tmp_err_msg = NULL;
     tmp_err_msg = aclGetRecentErrMsg();
@@ -179,14 +187,14 @@ bool RunOp(const std::vector<int64_t> &cuSeqlen, int32_t head_num, int32_t chunk
     {
         int32_t warmup = 50;
         for (int32_t i = 0; i < warmup; ++i) {
-            ChunkLocalCumsum(stream, workspace, *input, *cu_seqlens, *output, head_num, chunk_size,cuSeqlen);
+            ChunkLocalCumsum(stream, workspace, *input, *cu_seqlens, *output, head_num, chunk_size, cuSeqlen);
         }
         aclrtSynchronizeStream(stream);
 
         start = std::chrono::high_resolution_clock::now();
         int repeat = 100;
         for (int i = 0; i < repeat; ++i) {
-            ChunkLocalCumsum(stream, workspace, *input, *cu_seqlens, *output, head_num,chunk_size,cuSeqlen);
+            ChunkLocalCumsum(stream, workspace, *input, *cu_seqlens, *output, head_num, chunk_size, cuSeqlen);
         }
         aclrtSynchronizeStream(stream);
 
@@ -201,10 +209,12 @@ bool RunOp(const std::vector<int64_t> &cuSeqlen, int32_t head_num, int32_t chunk
     return true;
 }
 
-std::vector<int64_t> Stringsplit(const std::string &str, const char split) {
+std::vector<int64_t> Stringsplit(const std::string &str, const char split)
+{
     std::vector<int64_t> res;
 
-    if (str == "") return {};
+    if (str == "")
+        return {};
     // 在字符串末尾也加入分隔符，方便截取最后一段
     std::string strs = str + split;
     size_t pos = strs.find(split);
@@ -220,7 +230,8 @@ std::vector<int64_t> Stringsplit(const std::string &str, const char split) {
     return res;
 }
 
-int main(int argc, char **argv) {
+int main(int argc, char **argv)
+{
     if (!InitResource()) {
         ERROR_LOG("Init resource failed");
         return FAILED;

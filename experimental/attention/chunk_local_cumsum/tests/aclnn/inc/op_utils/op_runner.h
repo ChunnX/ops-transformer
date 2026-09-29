@@ -1,11 +1,14 @@
 /**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+/**
  * @file op_runner.h
- *
- * Copyright (C) 2020. Huawei Technologies Co., Ltd. All rights reserved.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  */
 #ifndef OP_RUNNER_H
 #define OP_RUNNER_H
@@ -20,7 +23,7 @@
  * Op Runner
  */
 class OpRunner {
-   public:
+public:
     /**
      * @brief Constructor
      * @param [in] opDesc: op description
@@ -105,7 +108,8 @@ class OpRunner {
      * @return host address of the input
      */
     template <typename T>
-    T *GetInputBuffer(size_t index) {
+    T *GetInputBuffer(size_t index)
+    {
         if (index >= numInputs_) {
             ERROR_LOG("index out of range. index = %zu, numInputs = %zu", index, numInputs_);
             return nullptr;
@@ -120,7 +124,8 @@ class OpRunner {
      * @return host address of the output
      */
     template <typename T>
-    const T *GetOutputBuffer(size_t index) {
+    const T *GetOutputBuffer(size_t index)
+    {
         if (index >= numOutputs_) {
             ERROR_LOG("index out of range. index = %zu, numOutputs = %zu", index, numOutputs_);
             return nullptr;
@@ -174,7 +179,7 @@ class OpRunner {
     bool SyncOutputDeviceToHost();
 
     // private:
-   protected:
+protected:
     size_t numInputs_;
     size_t numOutputs_;
 
@@ -195,7 +200,7 @@ class OpRunner {
     void *workspace_;
     aclOpExecutor *handle_;
 
-    bool flag_ = false;  // 表示是否进行了初始化
+    bool flag_ = false; // 表示是否进行了初始化
 };
 
-#endif  // OP_RUNNER_H
+#endif // OP_RUNNER_H

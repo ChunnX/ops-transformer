@@ -1,11 +1,14 @@
 /**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+/**
  * @file common.h
- *
- * Copyright (C) 2020. Huawei Technologies Co., Ltd. All rights reserved.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  */
 #ifndef COMMON_H
 #define COMMON_H
@@ -28,7 +31,7 @@
 #define LOG_LEVEL_ERROR 3
 
 #ifndef LOG_LEVEL
-#define LOG_LEVEL LOG_LEVEL_ERROR  // 默认日志级别为 LOG_LEVEL_INFO
+#define LOG_LEVEL LOG_LEVEL_ERROR // 默认日志级别为 LOG_LEVEL_INFO
 #endif
 
 #if LOG_LEVEL <= LOG_LEVEL_DEBUG
@@ -60,7 +63,8 @@
 // #define ERROR_LOG(fmt, args...) fprintf(stderr, "[ERROR]  " fmt "\n", ##args)
 
 template <typename T>
-inline void AllocTensor(Tensor *&x, size_t N) {
+inline void AllocTensor(Tensor *&x, size_t N)
+{
     if (x != nullptr) {
         std::cout << "===========================" << std::endl;
         throw std::runtime_error("Class member variables are not initialized.");
@@ -70,12 +74,14 @@ inline void AllocTensor(Tensor *&x, size_t N) {
 }
 
 template <typename T>
-inline Tensor *CreateTensor(size_t N) {
+inline Tensor *CreateTensor(size_t N)
+{
     return new Tensor(N * sizeof(T));
 }
 
 template <typename T>
-inline void FreeTensor(T *x) {
+inline void FreeTensor(T *x)
+{
     if (x != nullptr) {
         delete x;
         x = nullptr;
@@ -99,4 +105,4 @@ bool ReadFile(const std::string &filePath, size_t &fileSize, void *buffer, size_
  */
 bool WriteFile(const std::string &filePath, const void *buffer, size_t size);
 
-#endif  // COMMON_H
+#endif // COMMON_H

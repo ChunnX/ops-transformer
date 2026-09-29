@@ -1,11 +1,14 @@
 /**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+/**
  * @file op_runner.cpp
- *
- * Copyright (C) 2020. Huawei Technologies Co., Ltd. All rights reserved.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  */
 #include "op_runner.h"
 
@@ -25,9 +28,11 @@ OpRunner::OpRunner()
       handle_(nullptr),
       workspace_(nullptr),
       numInputs_(0),
-      numOutputs_(0) {}
+      numOutputs_(0)
+{}
 
-OpRunner::~OpRunner() {
+OpRunner::~OpRunner()
+{
     // TODO(@xh): 检测这几个vector是否为空
     if (flag_) {
         for (size_t i = 0; i < numInputs_; ++i) {
@@ -54,7 +59,8 @@ OpRunner::~OpRunner() {
     }
 }
 
-bool OpRunner::Init(std::vector<Tensor *> inputs, std::vector<Tensor *> outputs) {
+bool OpRunner::Init(std::vector<Tensor *> inputs, std::vector<Tensor *> outputs)
+{
     // TODO(@xh): 检查numInputs/numOutputs和传进来的inputs/outputs的大小是否一样
 
     for (size_t i = 0; i < numInputs_; ++i) {
@@ -62,10 +68,9 @@ bool OpRunner::Init(std::vector<Tensor *> inputs, std::vector<Tensor *> outputs)
 
         // // TODO(@xh): 检查inputs张量的size和opDesc的size是否一致
         if (inputs[i] != nullptr && size != inputs[i]->size()) {
-            ERROR_LOG(
-                "The input %lu computation description requires a tensor with a size of [%zu] B, "
-                "but the current tensor has a size of [%zu] B.",
-                i, size, inputs[i]->size());
+            ERROR_LOG("The input %lu computation description requires a tensor with a size of [%zu] B, "
+                      "but the current tensor has a size of [%zu] B.",
+                      i, size, inputs[i]->size());
             return false;
         }
 
@@ -73,9 +78,9 @@ bool OpRunner::Init(std::vector<Tensor *> inputs, std::vector<Tensor *> outputs)
         hostInputs_.emplace_back(inputs[i]->host());
         inputBuffers_.emplace_back(aclCreateDataBuffer(inputs[i]->device(), size));
 
-        aclTensor *inputTensor = aclCreateTensor(
-            GetInputShape(i).data(), GetInputNumDims(i), GetInputDataType(i), nullptr, 0,
-            GetInputFormat(i), GetInputShape(i).data(), GetInputNumDims(i), devInputs_[i]);
+        aclTensor *inputTensor =
+            aclCreateTensor(GetInputShape(i).data(), GetInputNumDims(i), GetInputDataType(i), nullptr, 0,
+                            GetInputFormat(i), GetInputShape(i).data(), GetInputNumDims(i), devInputs_[i]);
         if (inputTensor == nullptr) {
             ERROR_LOG("Create Tensor for input[%zu] failed", i);
             return false;
@@ -88,10 +93,9 @@ bool OpRunner::Init(std::vector<Tensor *> inputs, std::vector<Tensor *> outputs)
 
         // TODO(@xh): 更新outputs张量的size
         if (outputs[i] != nullptr && size != outputs[i]->size()) {
-            WARN_LOG(
-                "The output computation description requires a tensor with a size of [%zu] B,  but "
-                "the current tensor has a size of [%zu] B.",
-                size, outputs[i]->size());
+            WARN_LOG("The output computation description requires a tensor with a size of [%zu] B,  but "
+                     "the current tensor has a size of [%zu] B.",
+                     size, outputs[i]->size());
             // return false;
             outputs[i]->SetSize(size);
         }
@@ -99,9 +103,9 @@ bool OpRunner::Init(std::vector<Tensor *> inputs, std::vector<Tensor *> outputs)
         devOutputs_.emplace_back(outputs[i]->device());
         hostOutputs_.emplace_back(outputs[i]->host());
         outputBuffers_.emplace_back(aclCreateDataBuffer(outputs[i]->device(), size));
-        aclTensor *outputTensor = aclCreateTensor(
-            GetOutputShape(i).data(), GetOutputNumDims(i), GetOutputDataType(i), nullptr, 0,
-            GetOutputFormat(i), GetOutputShape(i).data(), GetOutputNumDims(i), devOutputs_[i]);
+        aclTensor *outputTensor =
+            aclCreateTensor(GetOutputShape(i).data(), GetOutputNumDims(i), GetOutputDataType(i), nullptr, 0,
+                            GetOutputFormat(i), GetOutputShape(i).data(), GetOutputNumDims(i), devOutputs_[i]);
         if (outputTensor == nullptr) {
             ERROR_LOG("Create Tensor for output[%zu] failed", i);
             return false;
@@ -113,11 +117,18 @@ bool OpRunner::Init(std::vector<Tensor *> inputs, std::vector<Tensor *> outputs)
     return true;
 }
 
-const size_t OpRunner::NumInputs() { return numInputs_; }
+const size_t OpRunner::NumInputs()
+{
+    return numInputs_;
+}
 
-const size_t OpRunner::NumOutputs() { return numOutputs_; }
+const size_t OpRunner::NumOutputs()
+{
+    return numOutputs_;
+}
 
-const size_t OpRunner::GetInputSize(size_t index) const {
+const size_t OpRunner::GetInputSize(size_t index) const
+{
     if (index >= numInputs_) {
         ERROR_LOG("index out of range. index = %zu, numInputs = %zu", index, numInputs_);
         return 0;
@@ -126,7 +137,8 @@ const size_t OpRunner::GetInputSize(size_t index) const {
     return aclGetTensorDescSize(opDesc_->inputDesc[index]);
 }
 
-const size_t OpRunner::GetInputNumDims(size_t index) const {
+const size_t OpRunner::GetInputNumDims(size_t index) const
+{
     if (index >= numInputs_) {
         ERROR_LOG("index out of range. index = %zu, numInputs = %zu", index, numInputs_);
         return 0;
@@ -135,7 +147,8 @@ const size_t OpRunner::GetInputNumDims(size_t index) const {
     return aclGetTensorDescNumDims(opDesc_->inputDesc[index]);
 }
 
-aclDataType OpRunner::GetInputDataType(size_t index) const {
+aclDataType OpRunner::GetInputDataType(size_t index) const
+{
     if (index >= numInputs_) {
         ERROR_LOG("index out of range. index = %zu, numInputs = %zu", index, numInputs_);
         return ACL_DT_UNDEFINED;
@@ -144,7 +157,8 @@ aclDataType OpRunner::GetInputDataType(size_t index) const {
     return aclGetTensorDescType(opDesc_->inputDesc[index]);
 }
 
-aclFormat OpRunner::GetInputFormat(size_t index) const {
+aclFormat OpRunner::GetInputFormat(size_t index) const
+{
     if (index >= numInputs_) {
         ERROR_LOG("index out of range. index = %zu, numInputs = %zu", index, numInputs_);
         return ACL_FORMAT_UNDEFINED;
@@ -153,7 +167,8 @@ aclFormat OpRunner::GetInputFormat(size_t index) const {
     return aclGetTensorDescFormat(opDesc_->inputDesc[index]);
 }
 
-std::vector<int64_t> OpRunner::GetInputShape(size_t index) const {
+std::vector<int64_t> OpRunner::GetInputShape(size_t index) const
+{
     std::vector<int64_t> ret;
     if (index >= numInputs_) {
         ERROR_LOG("index out of range. index = %zu, numInputs = %zu", index, numInputs_);
@@ -174,7 +189,8 @@ std::vector<int64_t> OpRunner::GetInputShape(size_t index) const {
     return ret;
 }
 
-size_t OpRunner::GetOutputSize(size_t index) const {
+size_t OpRunner::GetOutputSize(size_t index) const
+{
     if (index >= numOutputs_) {
         ERROR_LOG("index out of range. index = %zu, numOutputs = %zu", index, numOutputs_);
         return 0;
@@ -183,7 +199,8 @@ size_t OpRunner::GetOutputSize(size_t index) const {
     return aclGetTensorDescSize(opDesc_->outputDesc[index]);
 }
 
-const size_t OpRunner::GetOutputNumDims(size_t index) const {
+const size_t OpRunner::GetOutputNumDims(size_t index) const
+{
     if (index >= numOutputs_) {
         ERROR_LOG("index out of range. index = %zu, numOutputs = %zu", index, numOutputs_);
         return 0;
@@ -192,7 +209,8 @@ const size_t OpRunner::GetOutputNumDims(size_t index) const {
     return aclGetTensorDescNumDims(opDesc_->outputDesc[index]);
 }
 
-aclDataType OpRunner::GetOutputDataType(size_t index) const {
+aclDataType OpRunner::GetOutputDataType(size_t index) const
+{
     if (index >= numOutputs_) {
         ERROR_LOG("index out of range. index = %zu, numOutputs = %zu", index, numOutputs_);
         return ACL_DT_UNDEFINED;
@@ -201,7 +219,8 @@ aclDataType OpRunner::GetOutputDataType(size_t index) const {
     return aclGetTensorDescType(opDesc_->outputDesc[index]);
 }
 
-aclFormat OpRunner::GetOutputFormat(size_t index) const {
+aclFormat OpRunner::GetOutputFormat(size_t index) const
+{
     if (index >= numOutputs_) {
         ERROR_LOG("index out of range. index = %zu, numOutputs = %zu", index, numOutputs_);
         return ACL_FORMAT_UNDEFINED;
@@ -210,7 +229,8 @@ aclFormat OpRunner::GetOutputFormat(size_t index) const {
     return aclGetTensorDescFormat(opDesc_->outputDesc[index]);
 }
 
-std::vector<int64_t> OpRunner::GetOutputShape(size_t index) const {
+std::vector<int64_t> OpRunner::GetOutputShape(size_t index) const
+{
     std::vector<int64_t> ret;
     if (index >= numOutputs_) {
         ERROR_LOG("index out of range. index = %zu, numOutputs = %zu", index, numOutputs_);
@@ -230,7 +250,8 @@ std::vector<int64_t> OpRunner::GetOutputShape(size_t index) const {
     return ret;
 }
 
-size_t OpRunner::GetInputElementCount(size_t index) const {
+size_t OpRunner::GetInputElementCount(size_t index) const
+{
     if (index >= opDesc_->inputDesc.size()) {
         ERROR_LOG("index out of range. index = %zu, numInputs = %zu", index, numInputs_);
         return 0;
@@ -239,7 +260,8 @@ size_t OpRunner::GetInputElementCount(size_t index) const {
     return aclGetTensorDescElementCount(opDesc_->inputDesc[index]);
 }
 
-size_t OpRunner::GetOutputElementCount(size_t index) const {
+size_t OpRunner::GetOutputElementCount(size_t index) const
+{
     if (index >= opDesc_->outputDesc.size()) {
         ERROR_LOG("index out of range. index = %zu, numOutputs = %zu", index, numOutputs_);
         return 0;
@@ -248,10 +270,14 @@ size_t OpRunner::GetOutputElementCount(size_t index) const {
     return aclGetTensorDescElementCount(opDesc_->outputDesc[index]);
 }
 
-bool OpRunner::RunOp() { return true; }
+bool OpRunner::RunOp()
+{
+    return true;
+}
 
 template <typename T>
-void DoPrintData(const T *data, size_t count, size_t elementsPerRow) {
+void DoPrintData(const T *data, size_t count, size_t elementsPerRow)
+{
     assert(elementsPerRow != 0);
     for (size_t i = 0; i < count; ++i) {
         std::cout << std::setw(10) << data[i];
@@ -261,7 +287,8 @@ void DoPrintData(const T *data, size_t count, size_t elementsPerRow) {
     }
 }
 
-void DoPrintFp16Data(const aclFloat16 *data, size_t count, size_t elementsPerRow) {
+void DoPrintFp16Data(const aclFloat16 *data, size_t count, size_t elementsPerRow)
+{
     assert(elementsPerRow != 0);
     for (size_t i = 0; i < count; ++i) {
         std::cout << std::setw(10) << std::setprecision(4) << aclFloat16ToFloat(data[i]);
@@ -271,7 +298,8 @@ void DoPrintFp16Data(const aclFloat16 *data, size_t count, size_t elementsPerRow
     }
 }
 
-void PrintData(const void *data, size_t count, aclDataType dataType, size_t elementsPerRow) {
+void PrintData(const void *data, size_t count, aclDataType dataType, size_t elementsPerRow)
+{
     if (data == nullptr) {
         ERROR_LOG("Print data failed. data is nullptr");
         return;
@@ -319,29 +347,30 @@ void PrintData(const void *data, size_t count, aclDataType dataType, size_t elem
     }
 }
 
-void OpRunner::PrintInput(size_t index, size_t numElementsPerRow) {
+void OpRunner::PrintInput(size_t index, size_t numElementsPerRow)
+{
     if (index >= numInputs_) {
         ERROR_LOG("index out of range. index = %zu, numOutputs = %zu", index, numInputs_);
         return;
     }
 
     auto desc = opDesc_->inputDesc[index];
-    PrintData(hostInputs_[index], GetInputElementCount(index), aclGetTensorDescType(desc),
-              numElementsPerRow);
+    PrintData(hostInputs_[index], GetInputElementCount(index), aclGetTensorDescType(desc), numElementsPerRow);
 }
 
-void OpRunner::PrintOutput(size_t index, size_t numElementsPerRow) {
+void OpRunner::PrintOutput(size_t index, size_t numElementsPerRow)
+{
     if (index >= numOutputs_) {
         ERROR_LOG("index out of range. index = %zu, numOutputs = %zu", index, numOutputs_);
         return;
     }
 
     auto desc = opDesc_->outputDesc[index];
-    PrintData(hostOutputs_[index], GetOutputElementCount(index), aclGetTensorDescType(desc),
-              numElementsPerRow);
+    PrintData(hostOutputs_[index], GetOutputElementCount(index), aclGetTensorDescType(desc), numElementsPerRow);
 }
 
-bool OpRunner::SyncInputHostToDevice() {
+bool OpRunner::SyncInputHostToDevice()
+{
     for (size_t i = 0; i < numInputs_; ++i) {
         auto size = GetInputSize(i);
         aclrtMemcpyKind kind = ACL_MEMCPY_HOST_TO_DEVICE;
@@ -357,7 +386,8 @@ bool OpRunner::SyncInputHostToDevice() {
     return true;
 }
 
-bool OpRunner::SyncOutputDeviceToHost() {
+bool OpRunner::SyncOutputDeviceToHost()
+{
     for (size_t i = 0; i < numOutputs_; ++i) {
         auto size = GetOutputSize(i);
         aclrtMemcpyKind kind = ACL_MEMCPY_DEVICE_TO_HOST;

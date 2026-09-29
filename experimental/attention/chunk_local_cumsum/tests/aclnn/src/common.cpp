@@ -1,11 +1,14 @@
 /**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+/**
  * @file common.cpp
- *
- * Copyright (C) 2020. Huawei Technologies Co., Ltd. All rights reserved.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  */
 #include "common.h"
 
@@ -17,7 +20,8 @@
 
 extern bool g_isDevice;
 
-bool ReadFile(const std::string &filePath, size_t &fileSize, void *buffer, size_t bufferSize) {
+bool ReadFile(const std::string &filePath, size_t &fileSize, void *buffer, size_t bufferSize)
+{
     struct stat sBuf;
     int fileStatus = stat(filePath.data(), &sBuf);
     if (fileStatus == -1) {
@@ -55,7 +59,8 @@ bool ReadFile(const std::string &filePath, size_t &fileSize, void *buffer, size_
     return true;
 }
 
-bool WriteFile(const std::string &filePath, const void *buffer, size_t size) {
+bool WriteFile(const std::string &filePath, const void *buffer, size_t size)
+{
     if (buffer == nullptr) {
         ERROR_LOG("Write file failed. buffer is nullptr");
         return false;
