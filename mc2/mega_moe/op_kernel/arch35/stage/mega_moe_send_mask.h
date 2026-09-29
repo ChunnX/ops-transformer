@@ -172,12 +172,14 @@ __aicore__ inline void SendTopkIdsCountToRank(const LocalTensor<int32_t> &countT
 {
     int32_t sourceRank = static_cast<int32_t>(common.rankId);
     int32_t worldSize = static_cast<int32_t>(common.worldSize);
+    const uint32_t countSlotBytes = GetExpertCountSlotBytes();
     GlobalTensor<int32_t> dstCountGm;
     uint64_t dstOffset = config.expertCountWinOffset +
-                         static_cast<uint64_t>(localExpertBegin * worldSize + sourceRank) * sizeof(int32_t);
+                         static_cast<uint64_t>(localExpertBegin * worldSize + sourceRank) * countSlotBytes;
     dstCountGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(dstRankAddr + dstOffset));
     DataCopyExtParams countCopyParams{static_cast<uint16_t>(count), static_cast<uint32_t>(sizeof(int32_t)), 0,
-                                      static_cast<int64_t>(worldSize - 1) * static_cast<int64_t>(sizeof(int32_t)), 0U};
+                                      static_cast<int64_t>(worldSize) * static_cast<int64_t>(countSlotBytes) -
+                                          static_cast<int64_t>(sizeof(int32_t)), 0U};
     DataCopyPad<int32_t, PaddingMode::Compact>(dstCountGm, countTensorToSend, countCopyParams);
 }
 
