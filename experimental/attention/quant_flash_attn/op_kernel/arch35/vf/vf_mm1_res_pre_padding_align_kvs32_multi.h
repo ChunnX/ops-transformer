@@ -26,7 +26,7 @@ using namespace AscendC;
 using namespace Reg;
 
 template <typename T, uint16_t S1Base = 128>
-__simd_vf__ inline void mm1_res_pre_padding_align_kvs32_nulti_vf(__ubuf__ T *s, uint16_t actSingleLoopS2Size,
+__simd_vf__ inline void mm1_res_pre_padding_align_kvs32_nulti_vf(__ubuf__ T* s, uint16_t actSingleLoopS2Size,
                                                                  uint16_t actSingleLoopS2SizeAlign32)
 {
     // ====================== 寄存器定义 ======================
@@ -51,11 +51,11 @@ __simd_vf__ inline void mm1_res_pre_padding_align_kvs32_nulti_vf(__ubuf__ T *s, 
 }
 
 template <typename T>
-__aicore__ inline void Mm1ResPrePaddingAlignKvs32MultiCallVF(const LocalTensor<T> &srcTensor,
+__aicore__ inline void Mm1ResPrePaddingAlignKvs32MultiCallVF(const LocalTensor<T>& srcTensor,
                                                              uint16_t actSingleLoopS2Size,
                                                              uint16_t actSingleLoopS2SizeAlign32)
 {
-    __ubuf__ T *input_x_local_UB = (__ubuf__ T *)srcTensor.GetPhyAddr();
+    __ubuf__ T* input_x_local_UB = (__ubuf__ T*)srcTensor.GetPhyAddr();
 
     mm1_res_pre_padding_align_kvs32_nulti_vf<T>(input_x_local_UB, actSingleLoopS2Size, actSingleLoopS2SizeAlign32);
 }

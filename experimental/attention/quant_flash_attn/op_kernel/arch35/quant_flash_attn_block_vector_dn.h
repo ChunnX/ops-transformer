@@ -83,9 +83,9 @@ public:
 
 private:
     // 初始化基础常量
-    const ConstInfo &constInfo;
-    const SeqLensTool<LAYOUT_Q, SEQLEN_T> &qSeqLensTool;
-    const SeqLensTool<LAYOUT_KV, SEQLEN_T> &kvSeqLensTool;
+    const ConstInfo& constInfo;
+    const SeqLensTool<LAYOUT_Q, SEQLEN_T>& qSeqLensTool;
+    const SeqLensTool<LAYOUT_KV, SEQLEN_T>& kvSeqLensTool;
 
     static constexpr uint16_t s1BaseSize = 128;
     static constexpr uint16_t s2BaseSize = 256;
@@ -185,13 +185,13 @@ private:
 
 public:
     // 初始化 Vec Block 层
-    __aicore__ inline QuantFlashAttnBlockVectorDn(ConstInfo &constInfo, SeqLensTool<LAYOUT_Q, SEQLEN_T> &qSeqLensTool,
-                                                  SeqLensTool<LAYOUT_KV, SEQLEN_T> &kvSeqLensTool)
+    __aicore__ inline QuantFlashAttnBlockVectorDn(ConstInfo& constInfo, SeqLensTool<LAYOUT_Q, SEQLEN_T>& qSeqLensTool,
+                                                  SeqLensTool<LAYOUT_KV, SEQLEN_T>& kvSeqLensTool)
         : constInfo(constInfo),
           qSeqLensTool(qSeqLensTool),
           kvSeqLensTool(kvSeqLensTool){};
 
-    __aicore__ inline void InitInput(__gm__ uint8_t *attentionOut)
+    __aicore__ inline void InitInput(__gm__ uint8_t* attentionOut)
     {
         // 初始化 attentionOut GM Buffer 及 GmTensor
         InitAttentionOutBuffer(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size, constInfo.dSize,
@@ -266,7 +266,7 @@ public:
         Mxfp4Api::InitIndexesAndDuplicateCallVF<half>(nd2nzIndexUB, localGlobalMaxUB);
     }
 
-    __aicore__ inline void ComputeVec1(const VecRunInfo &runInfo)
+    __aicore__ inline void ComputeVec1(const VecRunInfo& runInfo)
     {
         uint32_t buffIdx = GetBufferIdx(runInfo.loop);
         if (unlikely(runInfo.isS2FirstTilePerCore)) { // 1/8结构频率, 每个vector core都需要一个跨tile的同步
@@ -348,7 +348,7 @@ public:
         Mutex::Unlock<PIPE_MTE3>(SYNC_VEC1_RES_BUF0_MUTEX_ID + buffIdx);
     }
 
-    __aicore__ inline void CopyGMaxUbToL1(const VecRunInfo &runInfo)
+    __aicore__ inline void CopyGMaxUbToL1(const VecRunInfo& runInfo)
     {
         LocalTensor<half> localGlobalMax = GetLocalGlobalMaxUbByCurIdx(runInfo.tileMaxIdx);
 
@@ -365,7 +365,7 @@ public:
                  localGlobalMax, {1, 8, 0, 0});
     }
 
-    __aicore__ inline void UpdatePScale(const VecRunInfo &runInfo)
+    __aicore__ inline void UpdatePScale(const VecRunInfo& runInfo)
     {
         LocalTensor<half> localGlobalMax1 = GetLocalGlobalMaxUbByCurIdx(runInfo.tileMaxIdx);
         LocalTensor<half> localGlobalMax2 = GetPeerGlobalMaxUbByCurIdx(runInfo.tileMaxIdx);
@@ -423,7 +423,7 @@ public:
         Mutex::Unlock<PIPE_MTE3>(SYNC_VEC1_RES_BUF1_MUTEX_ID);
     }
 
-    __aicore__ inline void ComputeVec2(const VecRunInfo &runInfo)
+    __aicore__ inline void ComputeVec2(const VecRunInfo& runInfo)
     {
         LocalTensor<float> urs = GetUpdateScaleByCurIdx(runInfo.updateScaleNum);
 
@@ -522,11 +522,11 @@ public:
     // V2 attentionOut GM初始化
     __aicore__ inline void InitAttentionOutBuffer(uint32_t batchSize, uint32_t n2Size, uint32_t gSize,
                                                   uint32_t qSeqSize, uint32_t headDim,
-                                                  const SeqLensTool<LAYOUT_Q, SEQLEN_T> &qSeqLensTool,
-                                                  FaGmTensor<OUT_T, OUT_FORMAT, SEQLEN_T, OUT_IS_TND> &outGmTensor,
-                                                  __gm__ uint8_t *attentionOut)
+                                                  const SeqLensTool<LAYOUT_Q, SEQLEN_T>& qSeqLensTool,
+                                                  FaGmTensor<OUT_T, OUT_FORMAT, SEQLEN_T, OUT_IS_TND>& outGmTensor,
+                                                  __gm__ uint8_t* attentionOut)
     {
-        outGmTensor.gmTensor.SetGlobalBuffer((__gm__ OUT_T *)attentionOut);
+        outGmTensor.gmTensor.SetGlobalBuffer((__gm__ OUT_T*)attentionOut);
         if constexpr (GmLayoutParams<OUT_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_BNGSD) {
             outGmTensor.offsetCalculator.Init(batchSize, n2Size, gSize, qSeqSize, headDim, qSeqLensTool.seqUsedParser);
         } else if constexpr (GmLayoutParams<OUT_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_TND) {
@@ -563,8 +563,8 @@ public:
         return updateScaleUB[spaceIdx * UB_UPDATE_SIZE];
     }
 
-    __aicore__ inline void GetPScaleParams(const VecRunInfo &runInfo, uint16_t &firstLoopStart, uint16_t &firstLoop,
-                                           uint16_t &secondLoopStart, uint16_t &secondLoop)
+    __aicore__ inline void GetPScaleParams(const VecRunInfo& runInfo, uint16_t& firstLoopStart, uint16_t& firstLoop,
+                                           uint16_t& secondLoopStart, uint16_t& secondLoop)
     {
         uint32_t subBlockIdx = constInfo.subBlockIdx;
         uint16_t isLoopFirstTaskVecCore = (subBlockIdx == runInfo.s2FirstStartVecCore);

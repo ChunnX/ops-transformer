@@ -69,7 +69,7 @@ public:
     static constexpr uint32_t SUB_S2_BASE_SIZE = s2BaseSize / 2;
 
     ConstInfo constInfo;
-    const FlashAttnTilingData *__restrict tilingData;
+    const FlashAttnTilingData* __restrict tilingData;
 
     // metadata
     GlobalTensor<uint32_t> faMetaDataGm;
@@ -111,23 +111,23 @@ public:
     __aicore__ inline QuantFlashAttnKernelDn()
         : cubeBlock(constInfo, qSeqLensTool, kvSeqLensTool),
           vectorBlock(constInfo, qSeqLensTool, kvSeqLensTool){};
-    __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
-                                __gm__ uint8_t *dequantScaleQuery, __gm__ uint8_t *dequantScaleKey,
-                                __gm__ uint8_t *dequantScaleValue, __gm__ uint8_t *blockTable,
-                                __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensKv, __gm__ uint8_t *seqUsedQ,
-                                __gm__ uint8_t *seqUsedKv, __gm__ uint8_t *attenMask, __gm__ uint8_t *learnableSink,
-                                __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace,
-                                __gm__ uint8_t *fiaMetaData, const FlashAttnTilingData *__restrict tiling)
+    __aicore__ inline void Init(__gm__ uint8_t* query, __gm__ uint8_t* key, __gm__ uint8_t* value,
+                                __gm__ uint8_t* dequantScaleQuery, __gm__ uint8_t* dequantScaleKey,
+                                __gm__ uint8_t* dequantScaleValue, __gm__ uint8_t* blockTable,
+                                __gm__ uint8_t* cuSeqlensQ, __gm__ uint8_t* cuSeqlensKv, __gm__ uint8_t* seqUsedQ,
+                                __gm__ uint8_t* seqUsedKv, __gm__ uint8_t* attenMask, __gm__ uint8_t* learnableSink,
+                                __gm__ uint8_t* softmaxLse, __gm__ uint8_t* attentionOut, __gm__ uint8_t* workspace,
+                                __gm__ uint8_t* fiaMetaData, const FlashAttnTilingData* __restrict tiling)
     {
         this->tilingData = tiling;
 
-        sectionNum_ = ((__gm__ uint32_t *)fiaMetaData)[0];
+        sectionNum_ = ((__gm__ uint32_t*)fiaMetaData)[0];
 
-        faMetaDataGm.SetGlobalBuffer((__gm__ uint32_t *)(fiaMetaData + FA_METADATA_HEADER_OFFSET),
+        faMetaDataGm.SetGlobalBuffer((__gm__ uint32_t*)(fiaMetaData + FA_METADATA_HEADER_OFFSET),
                                      FA_AIC_CORE_NUM * 16U * sectionNum_);
         fdMetaDataGm.SetGlobalBuffer(
-            (__gm__ uint32_t *)(fiaMetaData + FA_METADATA_HEADER_OFFSET +
-                                FLASH_ATTN_METADATA_SIZE * FA_AIC_CORE_NUM * sectionNum_ * sizeof(uint32_t)),
+            (__gm__ uint32_t*)(fiaMetaData + FA_METADATA_HEADER_OFFSET +
+                               FLASH_ATTN_METADATA_SIZE * FA_AIC_CORE_NUM * sectionNum_ * sizeof(uint32_t)),
             FA_AIV_CORE_NUM * 16U * sectionNum_);
 
         InitConstInfo();
@@ -286,7 +286,7 @@ public:
     template <typename RUNINFO_T, bool IS_AIC>
     __aicore__ inline void ExecuteTask(uint64_t loop, RUNINFO_T taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
     {
-        RUNINFO_T &runInfo0 = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE];
+        RUNINFO_T& runInfo0 = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE];
 
         if (runInfo0.isValid) {
             if constexpr (IS_AIC) {
@@ -299,7 +299,7 @@ public:
         }
 
         if (loop >= PRELOAD_N) {
-            RUNINFO_T &runInfo20 = taskRunInfo[(loop - PRELOAD_N) % PRELOAD_TASK_CACHE_SIZE];
+            RUNINFO_T& runInfo20 = taskRunInfo[(loop - PRELOAD_N) % PRELOAD_TASK_CACHE_SIZE];
             if (runInfo20.isValid) {
                 if constexpr (IS_AIC) {
                     if (unlikely(runInfo20.isC2Sync)) {
@@ -328,7 +328,7 @@ public:
         }
 
         if (loop >= DELAY_P_SCALE_N) {
-            RUNINFO_T &runInfo3 = taskRunInfo[(loop - DELAY_P_SCALE_N) % PRELOAD_TASK_CACHE_SIZE];
+            RUNINFO_T& runInfo3 = taskRunInfo[(loop - DELAY_P_SCALE_N) % PRELOAD_TASK_CACHE_SIZE];
             if (runInfo3.isValid && unlikely(runInfo3.isUpdatePScale)) {
                 if constexpr (IS_AIC) {
                     CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_BUF0_GMAX_UB_TO_L1 +
@@ -377,7 +377,7 @@ public:
     __aicore__ inline void CreateTask(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur,
                                       CubeRunInfo taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
     {
-        CubeRunInfo &runInfo = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE]; // 本轮任务
+        CubeRunInfo& runInfo = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE]; // 本轮任务
         CalcCubeParams(loop, bN2Cur, gS1Cur, s2Cur, runInfo);
         runInfo.isValid = true;
     }
@@ -385,13 +385,13 @@ public:
     __aicore__ inline void CreateTask(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur,
                                       VecRunInfo taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
     {
-        VecRunInfo &runInfo = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE]; // 本轮任务
+        VecRunInfo& runInfo = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE]; // 本轮任务
         CalcVecParams(loop, bN2Cur, gS1Cur, s2Cur, runInfo);
         runInfo.isValid = true;
     }
 
     __aicore__ inline void CalcCubeParams(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur,
-                                          CubeRunInfo &info)
+                                          CubeRunInfo& info)
     {
         info.loop = loop;
         info.bIdx = incBIdx_;
@@ -438,7 +438,7 @@ public:
     }
 
     __aicore__ inline void CalcVecParams(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur,
-                                         VecRunInfo &info)
+                                         VecRunInfo& info)
     {
         info.loop = loop;
         info.bIdx = incBIdx_;
