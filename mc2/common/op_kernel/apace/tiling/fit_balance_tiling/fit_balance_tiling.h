@@ -306,6 +306,21 @@ inline void PrintTilingData(const FitBalanceTilingArgs &args, const CommCutResul
     printf("  round tax          : %.3f us\n", commTimeActualUs - commTimeNoCutUs);
 }
 
+// COF 切分结果(head/tail 形态) → 引擎切分结果(1 短 + N 长)转换:
+// COF 的 head 为主体块、tail 为尾块 → 长块/短块; 尾块天然后置。
+// 供"标定 miss → 核利用率优先"分派的算子在两种切分策略间统一输出形态。
+inline CommCutResult CutResultFromCof(const CommTilingData &data)
+{
+    CommCutResult r;
+    r.shortTileAtBack = true;
+    r.longTileLen = data.splitAxisTileSize;
+    r.numLongTile = data.splitAxisTileCnt;
+    r.shortTileLen = data.splitAxisTailSize;
+    r.numShortTile = data.splitAxisTailCnt;
+    r.totalTileCnt = data.splitAxisTileCnt + data.splitAxisTailCnt;
+    return r;
+}
+
 // 旧入参转换(存量算子过渡用): 从旧全局 mc2tiling::TilingArgs 挑字段构造引擎入参。
 // commEngine 旧结构无对应字段(算子图属性 comm_mode), 由调用方解析后经 commEngine 参数补入。
 // 新算子直接构造 FitBalanceTilingArgs, 无需本函数。

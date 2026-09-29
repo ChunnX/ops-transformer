@@ -178,7 +178,9 @@ CutResult AllGatherMatmulTilingV2::GetCutResByCoreOccupancyFirst()
     OP_LOGI(opName_, "COF cut: baseM=%d baseN=%d usedCoreNum=%d, head=%lux%lu tail=%lux%lu", cube.baseM, cube.baseN,
             cube.usedCoreNum, comm.splitAxisTileSize, comm.splitAxisTileCnt, comm.splitAxisTailSize,
             comm.splitAxisTailCnt);
-    return CutResultFromCof(comm);
+    CommCutResult cof = CutResultFromCof(comm);
+    return {cof.shortTileAtBack, cof.totalTileCnt, cof.numLongTile,
+            cof.numShortTile,    cof.longTileLen,  cof.shortTileLen};
 }
 
 CutResult AllGatherMatmulTilingV2::MakeNoCutResult() const

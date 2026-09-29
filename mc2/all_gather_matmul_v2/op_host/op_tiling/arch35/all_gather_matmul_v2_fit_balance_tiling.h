@@ -18,7 +18,7 @@
  *       参数——本算子: 通信沿 K 轴传 A 侧数据 / mm 工作集倍数 rankDim−1(本地份不经
  *       通信) / mm 总行数倍数 rankDim(聚合后算全量)）;
  *   二) 边界转换: 旧全局类型(mc2tiling::TilingArgs/CutResult) ↔ 引擎入参;
- *   三) 一行组装 ScheduleFitBalance: 引擎入口 FitBalanceCut(LocalMMPosition::FRONT, ...);
+ *   三) 一行组装 GetFitBalanceCut: 旧 args 经引擎 MakeFitBalanceArgs 转换 → FitBalanceCut;
  *   四) 分派调用: 引擎的 IsCommCalibrated(命中判定, miss→核利用率优先)+ COF 结果转换。
  *
  * 公共逻辑与 FRONT 键控分支（本地首块重叠建模/长块反解/短块收尾 + D4/D5/D6 胶水)
@@ -92,33 +92,14 @@ static const FitBalanceCalibration CALIBRATION = {
 // 组装与新旧切换
 // ============================================================================
 
-// 统一引擎路径: 引擎对外唯一入口 FitBalanceCut(单入参: 引擎新 args; 诊断打印内置于引擎, debug 级)。
-// 结构枚举在 CALIBRATION.dataflow(本算子: COMM_FIRST + FRONT + 全量形态);
-// 旧 CutResult ↔ 引擎 CommCutResult 字段同名同序, 直接按位返回。
-inline CutResult ScheduleFitBalance(const mc2tiling::TilingArgs &args, TilingCommEngine commEngine)
+// 对外唯一入口(两个 GetTilingResult 调用点共用): 旧 args 经引擎 MakeFitBalanceArgs 转换后
+// 单入参调用 FitBalanceCut; 结构枚举在 CALIBRATION.dataflow(本算子: COMM_FIRST + FRONT + 全量形态);
+// 旧 CutResult 与引擎 CommCutResult 字段同名同序, 按位返回。
+inline CutResult GetFitBalanceCut(const mc2tiling::TilingArgs &args, TilingCommEngine commEngine)
 {
     CommCutResult cut = FitBalanceCut(MakeFitBalanceArgs(args, commEngine), CALIBRATION);
     return {cut.shortTileAtBack, cut.totalTileCnt, cut.numLongTile,
             cut.numShortTile,    cut.longTileLen,  cut.shortTileLen};
-}
-
-// COF 结果(head 在前/tail 在后) → CutResult(long/short) 映射; 短块(尾块)后置
-inline CutResult CutResultFromCof(const CommTilingData &data)
-{
-    CutResult r;
-    r.shortTileAtBack = true;
-    r.longTileLen = data.splitAxisTileSize;
-    r.numLongTile = data.splitAxisTileCnt;
-    r.shortTileLen = data.splitAxisTailSize;
-    r.numShortTile = data.splitAxisTailCnt;
-    r.totalTileCnt = data.splitAxisTileCnt + data.splitAxisTailCnt;
-    return r;
-}
-
-// 对外唯一入口：两个 GetTilingResult 调用点共用
-inline CutResult GetFitBalanceCut(const mc2tiling::TilingArgs &args, TilingCommEngine commEngine)
-{
-    return ScheduleFitBalance(args, commEngine);
 }
 
 } // namespace optiling
