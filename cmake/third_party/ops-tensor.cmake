@@ -134,14 +134,3 @@ else()
   endif()
 
 endif()
-
-# Ascend 910_96 ships Tensor API with the A6 CANN toolchain.  Reusing the
-# asc-devkit submodule from ops-tensor would define AscendC::Std integer
-# helpers a second time alongside the toolchain's type_traits/Int.h.
-# Keep Blaze sourced from ops-tensor, but use the matching toolchain Tensor
-# API for A6 builds.
-if("${ASCEND_COMPUTE_UNIT}" MATCHES "(^|[;,])ascend910_96($|[;,])")
-  get_filename_component(TENSOR_API
-                         ${ASCEND_DIR}/${SYSTEM_PREFIX}/asc REALPATH)
-  message(STATUS "Use CANN built-in Tensor API for ascend910_96: ${TENSOR_API}")
-endif()
