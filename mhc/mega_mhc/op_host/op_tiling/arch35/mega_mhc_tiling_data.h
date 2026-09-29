@@ -96,6 +96,7 @@ TILING_DATA_FIELD_DEF(uint32_t, lastWaveProducerTailRows);
 TILING_DATA_FIELD_DEF(uint32_t, waveProducerTileStride);
 TILING_DATA_FIELD_DEF(uint32_t, waveGroupSize);
 TILING_DATA_FIELD_DEF(uint32_t, waveProducerRowsPerTick);
+TILING_DATA_FIELD_DEF(uint32_t, waveEpilogueRows);
 TILING_DATA_FIELD_DEF(uint32_t, midGammaTile);
 TILING_DATA_FIELD_DEF(uint32_t, midGammaTileCount);
 TILING_DATA_FIELD_DEF(uint32_t, midGammaLastTile);
@@ -106,6 +107,9 @@ TILING_DATA_FIELD_DEF(uint32_t, reduceRows);
 TILING_DATA_FIELD_DEF(uint32_t, reduceRowsAligned);
 TILING_DATA_FIELD_DEF(uint32_t, epiloguePrefetch);
 TILING_DATA_FIELD_DEF(uint32_t, slotCount);
+TILING_DATA_FIELD_DEF(uint32_t, stageUbSlots);
+TILING_DATA_FIELD_DEF(uint32_t, projectionTransport);
+TILING_DATA_FIELD_DEF(uint32_t, stageRowStride);
 TILING_DATA_FIELD_DEF(uint32_t, ubReservedBytes);
 
 TILING_DATA_FIELD_DEF(uint64_t, invRms0Offset);

@@ -187,11 +187,13 @@ public:
         }
     }
 
-    /** Publish completed Post stores, then gate projection loads on all AIV arrivals.
-     * Alternate two hardware notifications; immutable x2 rows need no reuse acknowledgement.
+    /** Publish phase=wave+1 after all local rows are stored, then wait for all group members.
+     * Completion epochs are monotone; immutable x2 rows need no acknowledgement or flag clearing.
      */
     __aicore__ inline void WaitReady(uint32_t wave)
     {
+        // Alternating hardware notifications; every AIV participates, including empty tail members.
+        // MTE3 publishes completed Post stores; MTE2 gates all subsequent projection loads.
         const uint16_t ready = 6U + (wave & 1U);
         CrossCoreSetFlag<0, PIPE_MTE3>(ready);
         CrossCoreWaitFlag<0, PIPE_MTE2>(ready);
@@ -267,8 +269,11 @@ __aicore__ inline void RunMkSchedule(Kernel::Tensors<T> &tensors, const MegaMhcT
     using StageTransfer = Transfer::StagePolicyT<WITH_MID ? kFiveProjectionTransport : kFourProjectionTransport>;
     if constexpr (!WITH_MID) {
         if (tiling.wavePipeline != 0U) {
-            // Hardware notifications need no GM epoch initialization.
+            // Hardware notification counters need no GM epoch initialization.
             RunMkProjectionPhase<T, StageTransfer, USE_HF32, true>(tensors, tiling);
+            if (tiling.waveEpilogueRows != 0U) {
+                return;
+            }
             WaitMkProjectionReady();
             RunMkEpiloguePhase<T>(tensors, tiling);
             return;

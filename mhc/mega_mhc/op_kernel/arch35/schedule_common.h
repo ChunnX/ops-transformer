@@ -17,6 +17,7 @@
 #include "mega_mhc_kernel_context.h"
 #include "compute/projection_cube.h"
 #include "transfer.h"
+#include "epilogue.h"
 
 namespace MegaMhc::Schedule {
 using namespace AscendC;
@@ -73,15 +74,18 @@ __aicore__ inline void StageProjectionRows(Kernel::Tensors<T> &tensors, const Me
         PrefetchProjectionRows(tensors, tiling, firstRow, rows, kStart + tiling.kL1,
                                Kernel::PlannedL1TileKCount(tiling, kIndex, tile + 1U), next, nextEvent);
     }
+    const event_t stageEvent = tiling.stageUbSlots == 2U && (tile & 1U) == 0U ? EVENT_ID6 : EVENT_ID7;
     if constexpr (ASYNC_STAGE) {
-        WaitFlag<HardEvent::MTE3_V>(EVENT_ID7);
+        WaitFlag<HardEvent::MTE3_V>(stageEvent);
     }
-    Compute::PrepareProjectionTile<T>(reinterpret_cast<__ubuf__ T *>(input.GetPhyAddr()), rows, kCount, tiling.kL1,
-                                      reinterpret_cast<__ubuf__ float *>(stage.GetPhyAddr()),
-                                      reinterpret_cast<__ubuf__ float *>(squares.GetPhyAddr()));
+    Compute::PrepareProjectionTile<T, false, StageTransfer::kPackedNz>(
+        reinterpret_cast<__ubuf__ T *>(input.GetPhyAddr()), rows, kCount,
+        StageTransfer::kPackedNz ? tiling.stageRowStride : tiling.kL1,
+        reinterpret_cast<__ubuf__ float *>(stage.GetPhyAddr()),
+        reinterpret_cast<__ubuf__ float *>(squares.GetPhyAddr()));
     SetFlag<HardEvent::V_MTE2>(event);
     if constexpr (ASYNC_STAGE) {
-        StageTransfer::StoreAivRowAsync(tensors.stage, stageOffset, stage, rows * tiling.kL1, tiling);
+        StageTransfer::StoreAivRowAsync(tensors.stage, stageOffset, stage, rows * tiling.kL1, tiling, stageEvent);
     } else {
         StageTransfer::StoreAivRow(tensors.stage, stageOffset, stage, rows * tiling.kL1, tiling);
     }
@@ -97,7 +101,8 @@ struct MaterializedRows {};
  */
 template <typename T, typename StageTransfer, bool USE_HF32, bool WAVE_PRODUCER = false,
           typename Producer = MaterializedRows, bool ASYNC_STAGE = true>
-__aicore__ inline void RunProjectionSchedule(Kernel::Tensors<T> &tensors, const MegaMhcTilingData &tiling, TPipe *pipe)
+__aicore__ inline void RunProjectionScheduleImpl(Kernel::Tensors<T> &tensors, const MegaMhcTilingData &tiling,
+                                                 TPipe *pipe)
 {
     Cube::ProjectionCube<USE_HF32> cube;
     if ASCEND_IS_AIC {
@@ -138,7 +143,12 @@ __aicore__ inline void RunProjectionSchedule(Kernel::Tensors<T> &tensors, const 
                 if (mRows != 0U) {
                     StageTransfer::LoadA1(cube, tensors.stage, stageSlot, mRows, tiling.nzM,
                                           static_cast<uint32_t>(activeK), l1Slot);
-
+                }
+                if constexpr (StageTransfer::kReturnAfterLoad) {
+                    StageTransfer::ReturnCredit(0U);
+                    StageTransfer::ReturnCredit(1U);
+                }
+                if (mRows != 0U) {
                     const uint32_t groupIndex = static_cast<uint32_t>(kTileStart / tiling.partialGroupK);
                     const uint64_t groupEnd = static_cast<uint64_t>(groupIndex + 1U) * tiling.partialGroupK;
                     const bool firstInPartial = kTileStart == static_cast<uint64_t>(groupIndex) * tiling.partialGroupK;
@@ -150,8 +160,15 @@ __aicore__ inline void RunProjectionSchedule(Kernel::Tensors<T> &tensors, const 
                                        tailMmadLoops, tailMmadKStep, tailMmadFinalKStep, firstInPartial, lastInPartial,
                                        l1Slot, tensors.partialMm, partialOffset);
                 }
-                StageTransfer::ReturnCredit(0U);
-                StageTransfer::ReturnCredit(1U);
+                if constexpr (!StageTransfer::kReturnAfterLoad) {
+                    StageTransfer::ReturnCredit(0U);
+                    StageTransfer::ReturnCredit(1U);
+                }
+            }
+            if constexpr (WAVE_PRODUCER) {
+                if (tiling.waveEpilogueRows != 0U) {
+                    CrossCoreSetFlag<2, PIPE_FIX>(9U);
+                }
             }
         }
         cube.End();
@@ -162,11 +179,15 @@ __aicore__ inline void RunProjectionSchedule(Kernel::Tensors<T> &tensors, const 
         TBuf<TPosition::VECCALC> stageTileBuffer;
         TBuf<TPosition::VECCALC> prefetchBuffer;
         Kernel::InitUbBuffer(pipe, rmsRowsBuffer, tiling.projectionRows * sizeof(float));
-        Kernel::InitUbBuffer(pipe, stageTileBuffer, tiling.projectionRows * tiling.kL1 * sizeof(float));
+        Kernel::InitUbBuffer(pipe, stageTileBuffer,
+                             tiling.stageUbSlots * tiling.stageRowStride * tiling.kL1 * sizeof(float));
         Kernel::InitUbBuffer(pipe, prefetchBuffer, tiling.projectionRows * tiling.kL1 * sizeof(T));
         LocalTensor<T> prefetchInput = prefetchBuffer.Get<T>();
         if constexpr (ASYNC_STAGE) {
             SetFlag<HardEvent::MTE3_V>(EVENT_ID7);
+            if (tiling.stageUbSlots == 2U) {
+                SetFlag<HardEvent::MTE3_V>(EVENT_ID6);
+            }
         }
         SetFlag<HardEvent::V_MTE2>(EVENT_ID2);
         SetFlag<HardEvent::V_MTE2>(EVENT_ID3);
@@ -188,7 +209,11 @@ __aicore__ inline void RunProjectionSchedule(Kernel::Tensors<T> &tensors, const 
         Kernel::InitUbBuffer(pipe, x2TileBuffer, tileElements * sizeof(T));
         LocalTensor<T> x2Tile = x2TileBuffer.Get<T>();
         Producer producer;
+        WaveEpilogue<T> epilogue;
         if constexpr (WAVE_PRODUCER) {
+            if (tiling.waveEpilogueRows != 0U) {
+                epilogue.Init(tensors, tiling, pipe);
+            }
             producer.Init(tensors, tiling, pipe);
             producer.Begin(0U);
             producer.Fill();
@@ -196,6 +221,9 @@ __aicore__ inline void RunProjectionSchedule(Kernel::Tensors<T> &tensors, const 
         for (uint32_t wave = 0; wave < tiling.mWaveCount; ++wave) {
             if constexpr (WAVE_PRODUCER) {
                 producer.WaitReady(wave);
+                if (tiling.waveEpilogueRows != 0U && wave != 0U) {
+                    epilogue.Begin(wave - 1U);
+                }
                 if (wave + 1U < tiling.mWaveCount) {
                     producer.Begin(wave + 1U);
                 }
@@ -222,11 +250,15 @@ __aicore__ inline void RunProjectionSchedule(Kernel::Tensors<T> &tensors, const 
                 StageTransfer::AcquireSlot();
                 StageProjectionRows<T, StageTransfer, ASYNC_STAGE>(
                     tensors, tiling, mStart + rowStart, rowCount, kTileStart, activeK, stageSlot, x2Tile, prefetchInput,
-                    stageTile, rmsRows, tile, l1TileCount, kIndex);
+                    stageTile[tiling.stageUbSlots == 2U ? (tile & 1U) * tiling.stageRowStride * tiling.kL1 : 0U],
+                    rmsRows, tile, l1TileCount, kIndex);
                 StageTransfer::PublishReady();
                 if constexpr (WAVE_PRODUCER) {
                     if (wave + 1U < tiling.mWaveCount) {
                         producer.Tick(tile);
+                    }
+                    if (tiling.waveEpilogueRows != 0U && wave != 0U && tile >= 2U) {
+                        epilogue.Tick(tensors);
                     }
                 }
             }
@@ -236,9 +268,24 @@ __aicore__ inline void RunProjectionSchedule(Kernel::Tensors<T> &tensors, const 
                                               static_cast<uint64_t>(kIndex) * tiling.totalRows + mStart + rowStart,
                                               rmsRows, rowCount);
             }
+            if constexpr (WAVE_PRODUCER) {
+                if (tiling.waveEpilogueRows != 0U) {
+                    if (wave != 0U) {
+                        epilogue.Finish(tensors);
+                    }
+                    // FIX protects all projection partials; MTE3 protects the RMS shards.
+                    CrossCoreWaitFlag<2, PIPE_MTE3>(9U);
+                    CrossCoreSetFlag<0, PIPE_MTE3>(10U);
+                    CrossCoreWaitFlag<0, PIPE_MTE2>(10U);
+                }
+            }
         }
         if constexpr (WAVE_PRODUCER) {
             producer.End();
+            if (tiling.waveEpilogueRows != 0U) {
+                epilogue.Begin(tiling.mWaveCount - 1U);
+                epilogue.Finish(tensors);
+            }
         }
 
         WaitFlag<HardEvent::V_MTE2>(EVENT_ID2);
@@ -246,8 +293,26 @@ __aicore__ inline void RunProjectionSchedule(Kernel::Tensors<T> &tensors, const 
         StageTransfer::DrainCredits();
         if constexpr (ASYNC_STAGE) {
             WaitFlag<HardEvent::MTE3_V>(EVENT_ID7);
+            if (tiling.stageUbSlots == 2U) {
+                WaitFlag<HardEvent::MTE3_V>(EVENT_ID6);
+            }
         }
     }
+}
+
+/** Dispatch the host-selected transport once; each projection VF remains a compile-time layout specialization. */
+template <typename T, typename StageTransfer, bool USE_HF32, bool WAVE_PRODUCER = false,
+          typename Producer = MaterializedRows, bool ASYNC_STAGE = true>
+__aicore__ inline void RunProjectionSchedule(Kernel::Tensors<T> &tensors, const MegaMhcTilingData &tiling, TPipe *pipe)
+{
+    if constexpr (StageTransfer::kPackedNz) {
+        if (tiling.projectionTransport == static_cast<uint32_t>(ProjectionTransport::GmStage)) {
+            RunProjectionScheduleImpl<T, Transfer::GmStage, USE_HF32, WAVE_PRODUCER, Producer, ASYNC_STAGE>(
+                tensors, tiling, pipe);
+            return;
+        }
+    }
+    RunProjectionScheduleImpl<T, StageTransfer, USE_HF32, WAVE_PRODUCER, Producer, ASYNC_STAGE>(tensors, tiling, pipe);
 }
 
 /** Enqueue one complete producer input row: hOut=x[row], residual=r[row], coefficients=H[row].

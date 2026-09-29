@@ -38,11 +38,14 @@ inline uint64_t ProducerUbBytes(uint32_t d, bool hasMid, bool wavePipeline = fal
 }
 
 /** Materialized-row projection owns row statistics plus packed input and FP32 transfer half-tiles. */
-inline uint64_t ProjectionUbBytes(uint32_t /* k */, uint32_t kL1, uint32_t projectionRows)
+inline uint64_t ProjectionUbBytes(uint32_t /* k */, uint32_t kL1, uint32_t projectionRows, uint32_t stageSlots = 1U,
+                                  uint32_t stageRowStride = 0U)
 {
     const uint64_t stageElements = static_cast<uint64_t>(projectionRows) * kL1;
-    return UbAllocation(projectionRows * 4U) + UbAllocation(stageElements * 4U) + UbAllocation(stageElements * 2U) +
-           UbAllocation(stageElements * 2U);
+    const uint64_t transferElements =
+        static_cast<uint64_t>(stageRowStride == 0U ? projectionRows : stageRowStride) * kL1;
+    return UbAllocation(projectionRows * 4U) + UbAllocation(transferElements * 4U * stageSlots) +
+           UbAllocation(stageElements * 2U) + UbAllocation(stageElements * 2U);
 }
 
 /** Choose the fewest gamma loads whose aligned, equal-sized chunks fit: G=align64(ceil(4D/count)). */

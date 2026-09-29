@@ -9,6 +9,7 @@
  */
 #include "mega_mhc_tiling.h"
 #include "mega_mhc_memory_plan.h"
+#include "../../../op_kernel/arch35/execution_policy.h"
 #include "../../../op_kernel/arch35/mega_mhc_tiling_key.h"
 
 #include <algorithm>
@@ -336,6 +337,8 @@ void MegaMhcTiling::CopyCubePlanToTilingData()
 /** Build CubePlan, choose stage tiles from the real UB size, and lay out checked workspace regions. */
 ge::graphStatus MegaMhcTiling::DoOpTiling()
 {
+    const bool packedNz = (hasMid_ ? MegaMhc::kFiveProjectionTransport : MegaMhc::kFourProjectionTransport) ==
+                          MegaMhc::ProjectionTransport::UbToL1;
     mega_mhc::CubePlanRequest request;
     request.rows = totalRows_;
     request.schedule = scheduleMode_;
@@ -407,6 +410,16 @@ ge::graphStatus MegaMhcTiling::DoOpTiling()
     tilingData_.set_producerPrefetch(0U); // Reserved legacy field.
     tilingData_.set_postRows(1U);
     tilingData_.set_projectionRows(projectionRows);
+    // Layout padding is optional: never disable an otherwise legal wave to obtain it.
+    const uint64_t liveProducer = request.wavePipeline ? mega_mhc::ProducerUbBytes(d_, false, true) : 0U;
+    const bool padStageRows = packedNz && liveProducer + mega_mhc::ProjectionUbBytes(k_, cubePlan_.l1K, projectionRows,
+                                                                                     1U, projectionRows + 1U) <=
+                                              availableUb;
+    const uint32_t stageRowStride = projectionRows + static_cast<uint32_t>(padStageRows);
+    tilingData_.set_stageRowStride(stageRowStride);
+    // Direct NZ stores require padding to avoid their strided-store penalty; preserve waves via GM otherwise.
+    tilingData_.set_projectionTransport(static_cast<uint32_t>(padStageRows ? MegaMhc::ProjectionTransport::UbToL1 :
+                                                                             MegaMhc::ProjectionTransport::GmStage));
     // Keep the epilogue's reduction batch explicit, independently of its one-row compute tile.
     const uint32_t gammaTile = hasMid_ ? mega_mhc::MidGammaTile(d_, availableUb) : k_;
     if (gammaTile == 0U) {
@@ -438,12 +451,40 @@ ge::graphStatus MegaMhcTiling::DoOpTiling()
     tilingData_.set_slotCount(kSlotCount);
     tilingData_.set_ubReservedBytes(0);
     const uint64_t producerPeak = mega_mhc::ProducerUbBytes(d_, hasMid_, false, gammaTile);
-    const uint64_t projectionPeak = mega_mhc::ProjectionUbBytes(k_, cubePlan_.l1K, projectionRows);
+    // Add a second FP32 UB stage only when the simultaneous live buffers fit.
+    // Cube geometry and GM staging remain unchanged.
+    const uint64_t doubleProjection =
+        mega_mhc::ProjectionUbBytes(k_, cubePlan_.l1K, projectionRows, 2U, stageRowStride);
+    const uint64_t concurrentProducer = request.wavePipeline ? mega_mhc::ProducerUbBytes(d_, false, true) : 0U;
+    const uint32_t stageUbSlots = doubleProjection + concurrentProducer <= availableUb ? 2U : 1U;
+    tilingData_.set_stageUbSlots(stageUbSlots);
+    const uint64_t projectionPeak =
+        mega_mhc::ProjectionUbBytes(k_, cubePlan_.l1K, projectionRows, stageUbSlots, stageRowStride);
+    const uint64_t concurrentUb = projectionPeak + concurrentProducer;
+    // FP32 projection leaves Cube compute time for the previous wave's vector epilogue.
+    // Keep HF32's lighter projection on the separate epilogue schedule.
+    const uint32_t waveEpilogueRows =
+        request.mode == mega_mhc::ProjectionMode::FP32 && request.wavePipeline && cubePlan_.mWaveCount > 1U &&
+                concurrentUb < availableUb ?
+            mega_mhc::FitReductionRows(waveProducerRows, d_, tilingData_.get_partialGroupCount(),
+                                       cubePlan_.fixpipeRowStride, cubePlan_.kGrid, availableUb - concurrentUb) :
+            0U;
+    tilingData_.set_waveEpilogueRows(waveEpilogueRows);
+    if (waveEpilogueRows != 0U) {
+        // This schedule owns the epilogue; expose its actual row plan directly to the kernel.
+        tilingData_.set_reduceRows(waveEpilogueRows);
+        tilingData_.set_reduceRowsAligned((waveEpilogueRows + 7U) / 8U * 8U);
+        tilingData_.set_epiloguePrefetch(0U);
+    }
     const uint64_t epiloguePeak = mega_mhc::EpilogueUbBytes(d_, cubePlan_.partialGroupCount, cubePlan_.fixpipeRowStride,
                                                             reduceRows, cubePlan_.kGrid);
     const uint64_t rms0Peak = mega_mhc::UbAllocation(d_ * 2U) + mega_mhc::UbAllocation(8U);
+    const uint64_t waveEpiloguePeak =
+        waveEpilogueRows != 0U ? mega_mhc::EpilogueUbBytes(d_, cubePlan_.partialGroupCount, cubePlan_.fixpipeRowStride,
+                                                           waveEpilogueRows, cubePlan_.kGrid) :
+                                 0U;
     const uint64_t pipelinePeak =
-        request.wavePipeline ? mega_mhc::ProducerUbBytes(d_, false, true) + projectionPeak : 0U;
+        request.wavePipeline ? mega_mhc::ProducerUbBytes(d_, false, true) + projectionPeak + waveEpiloguePeak : 0U;
     const uint64_t ubPeak = std::max({producerPeak, projectionPeak, epiloguePeak, rms0Peak, pipelinePeak});
     if (ubPeak > availableUb) {
         OP_LOGE(context_->GetNodeName(), "planned stage peak UB %llu exceeds available UB %llu",

@@ -20,6 +20,8 @@ using namespace AscendC;
 /** GM-backed transfer policy for AIV UB -> staging GM -> AIC L1, with pair-mode credit handshakes. */
 class GmStage {
 public:
+    static constexpr bool kPackedNz = false;
+    static constexpr bool kReturnAfterLoad = true;
     /** Allocate two empty-slot credits for each of the paired AIV producers. */
     __aicore__ inline static void SeedPairCredits()
     {
@@ -45,13 +47,13 @@ public:
      */
     __aicore__ inline static void StoreAivRowAsync(const GlobalTensor<float> &stage, uint64_t offset,
                                                    const LocalTensor<float> &tile, uint32_t elements,
-                                                   const MegaMhcTilingData &tiling)
+                                                   const MegaMhcTilingData &tiling, event_t event = EVENT_ID7)
     {
-        SetFlag<HardEvent::V_MTE3>(EVENT_ID7);
-        WaitFlag<HardEvent::V_MTE3>(EVENT_ID7);
+        SetFlag<HardEvent::V_MTE3>(event);
+        WaitFlag<HardEvent::V_MTE3>(event);
         DataCopyExtParams params{1U, static_cast<uint32_t>(elements * sizeof(float)), 0U, 0U, 0U};
         DataCopyPad(stage[offset], tile, params);
-        SetFlag<HardEvent::MTE3_V>(EVENT_ID7);
+        SetFlag<HardEvent::MTE3_V>(event);
     }
 
     /** Acquire one FIFO slot credit BEFORE any MTE3 write can overwrite that slot. */
@@ -80,11 +82,11 @@ public:
         CrossCoreWaitFlag<Kernel::kPairSyncMode, PIPE_MTE2>(ready);
     }
 
-    /** Return a slot credit only after AIC has consumed both staged halves. */
+    /** Release the GM slot after MTE2 has copied both halves into independently owned L1. */
     __aicore__ inline static void ReturnCredit(uint32_t subblock)
     {
         const uint16_t consumed = Kernel::kPairConsumedFlag + subblock * Kernel::kSubblockFlagOffset;
-        CrossCoreSetFlag<Kernel::kPairSyncMode, PIPE_MTE1>(consumed);
+        CrossCoreSetFlag<Kernel::kPairSyncMode, PIPE_MTE2>(consumed);
     }
 
     /** Copy one completed GM slot into the host-sized L1 A NZ buffer. */
@@ -100,40 +102,44 @@ public:
 /** Pair-mode UB -> L1 transfer; each eight-float source block maps to NZ[k/8,m,8]. */
 class UbL1Stage : public GmStage {
 public:
-    /** Store packed FP32 rows directly into the AIC L1 slot, without a GM staging round trip. */
+    static constexpr bool kPackedNz = true;
+    static constexpr bool kReturnAfterLoad = false;
+
+    /** Direct L1 slots remain owned until MTE1 has consumed their data. */
+    __aicore__ inline static void ReturnCredit(uint32_t subblock)
+    {
+        const uint16_t consumed = Kernel::kPairConsumedFlag + subblock * Kernel::kSubblockFlagOffset;
+        CrossCoreSetFlag<Kernel::kPairSyncMode, PIPE_MTE1>(consumed);
+    }
+
+    /** Publish A[nz] from packed UB to L1, then wait for completion for synchronous callers. */
     __aicore__ inline static void StoreAivRow(const GlobalTensor<float> &stage, uint64_t offset,
                                               const LocalTensor<float> &tile, uint32_t elements,
                                               const MegaMhcTilingData &tiling)
     {
-        const uint64_t pairOffset = offset % (static_cast<uint64_t>(tiling.slotCount) * tiling.mTile * tiling.kL1);
-        const uint32_t slot = pairOffset / (tiling.mTile * tiling.kL1);
-        const uint32_t firstRow = (pairOffset % (tiling.mTile * tiling.kL1)) / tiling.kL1;
-        LocalTensor<float> destination(
-            TPosition::A1, (static_cast<uint64_t>(slot) * tiling.l1ASlotElements + firstRow * 8U) * sizeof(float),
-            tiling.l1ASlotElements);
-        SetFlag<HardEvent::V_MTE3>(EVENT_ID1);
-        WaitFlag<HardEvent::V_MTE3>(EVENT_ID1);
-        const uint32_t rows = (elements + tiling.kL1 - 1U) / tiling.kL1;
-        DataCopyParams params{static_cast<uint16_t>(tiling.kL1 / 8U), 1, 0, static_cast<uint16_t>(tiling.nzM - 1U)};
-        for (uint32_t row = 0; row < rows; ++row) {
-            const uint32_t columns =
-                elements - row * tiling.kL1 < tiling.kL1 ? elements - row * tiling.kL1 : tiling.kL1;
-            params.blockCount = static_cast<uint16_t>(columns / 8U);
-            DataCopy(destination[row * 8U], tile[row * tiling.kL1], params);
-        }
-        SetFlag<HardEvent::MTE3_V>(EVENT_ID1);
+        StoreAivRowAsync(stage, offset, tile, elements, tiling, EVENT_ID1);
         WaitFlag<HardEvent::MTE3_V>(EVENT_ID1);
     }
 
-    /** Complete UB -> L1 NZ publication, then issue the scheduler's reusable-buffer credit.
-     * This conservative direct backend completes synchronously; it never inherits a GM-only store.
-     */
+    /** Copy NZ[k/8,row,8] in one DMA; READY follows MTE3 and each UB slot has its own completion event. */
     __aicore__ inline static void StoreAivRowAsync(const GlobalTensor<float> &stage, uint64_t offset,
                                                    const LocalTensor<float> &tile, uint32_t elements,
-                                                   const MegaMhcTilingData &tiling)
+                                                   const MegaMhcTilingData &tiling, event_t event = EVENT_ID7)
     {
-        StoreAivRow(stage, offset, tile, elements, tiling);
-        SetFlag<HardEvent::MTE3_V>(EVENT_ID7);
+        const uint64_t pairOffset = offset % (static_cast<uint64_t>(tiling.slotCount) * tiling.mTile * tiling.kL1);
+        const uint32_t slot = pairOffset / (tiling.mTile * tiling.kL1);
+        const uint32_t firstRow = (pairOffset % (tiling.mTile * tiling.kL1)) / tiling.kL1;
+        const uint32_t rows = elements / tiling.kL1;
+        LocalTensor<float> destination(
+            TPosition::A1, (static_cast<uint64_t>(slot) * tiling.l1ASlotElements + firstRow * 8U) * sizeof(float),
+            tiling.l1ASlotElements);
+        SetFlag<HardEvent::V_MTE3>(event);
+        WaitFlag<HardEvent::V_MTE3>(event);
+        DataCopyParams params{static_cast<uint16_t>(tiling.kL1 / 8U), static_cast<uint16_t>(rows),
+                              static_cast<uint16_t>(tiling.stageRowStride - rows),
+                              static_cast<uint16_t>(tiling.nzM - rows)};
+        DataCopy(destination, tile, params);
+        SetFlag<HardEvent::MTE3_V>(event);
     }
 
     /** Wait on MTE1 so direct L1 loads observe both paired producers' MTE3 writes. */

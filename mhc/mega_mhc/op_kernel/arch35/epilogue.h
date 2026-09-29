@@ -222,6 +222,126 @@ __aicore__ inline void RunEpilogue(Kernel::Tensors<T> &tensors, const MegaMhcTil
     }
 }
 
+template <typename T>
+class WaveEpilogue {
+public:
+    /** Allocate the host-budgeted epilogue state and load immutable parameters once. */
+    __aicore__ inline void Init(Kernel::Tensors<T> &tensors, const MegaMhcTilingData &sourceTiling, TPipe *pipe)
+    {
+        plan_ = &sourceTiling;
+        const auto &tiling = *plan_;
+        Kernel::InitUbBuffer(pipe, x2Buffer, tiling.k * sizeof(T));
+        Kernel::InitUbBuffer(pipe, hInBuffer, tiling.d * sizeof(T));
+        Kernel::InitUbBuffer(pipe, hInPrimeBuffer, tiling.d * sizeof(T));
+        Kernel::InitUbBuffer(pipe, gamma1Buffer, tiling.d * sizeof(float));
+        Kernel::InitUbBuffer(
+            pipe, partialBuffer,
+            (tiling.partialGroupCount * tiling.reduceRows * tiling.fixpipeRowStride + 64U) * sizeof(float));
+        Kernel::InitUbBuffer(pipe, rmsPartialBuffer, tiling.reduceRowsAligned * tiling.kGrid * sizeof(float));
+        Kernel::InitUbBuffer(pipe, coefficientBuffer, tiling.reduceRowsAligned * 24U * sizeof(float));
+        Kernel::InitUbBuffer(pipe, alphaBuffer, 4U * sizeof(float));
+        Kernel::InitUbBuffer(pipe, biasBuffer, 32U * sizeof(float));
+        Kernel::InitUbBuffer(pipe, statsBuffer, 4U * sizeof(float));
+
+        x2 = x2Buffer.Get<T>();
+        hIn = hInBuffer.Get<T>();
+        hInPrime = hInPrimeBuffer.Get<T>();
+        gamma1 = gamma1Buffer.Get<float>();
+        partial = partialBuffer.Get<float>();
+        rmsPartials = rmsPartialBuffer.Get<float>();
+        coefficients = coefficientBuffer.Get<float>();
+        alpha = alphaBuffer.Get<float>();
+        bias = biasBuffer.Get<float>();
+        stats = statsBuffer.Get<float>();
+        // Immutable parameters have disjoint destinations: issue all loads before one readiness wait.
+        Kernel::EnqueueGlobalToUb(gamma1, tensors.gamma1, 0U, tiling.d);
+        Kernel::EnqueueGlobalToUb(alpha, tensors.alpha, 0U, 3U);
+        Kernel::EnqueueGlobalToUb(bias, tensors.bias, 0U, tiling.q);
+        SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
+        WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
+    }
+
+    /** Bind complete rows of a globally completed wave; partials are read in host-sized batches. */
+    __aicore__ inline void Begin(uint32_t wave)
+    {
+        const auto &t = *plan_;
+        const uint32_t member = GetBlockIdx();
+        first_ = static_cast<uint64_t>(wave) * t.rowsPerWave +
+                 static_cast<uint64_t>(member / t.waveGroupSize) * t.mTile +
+                 (member % t.waveGroupSize) * t.waveProducerRows;
+        count_ = wave + 1U != t.mWaveCount || member < t.lastWaveFullProducers ?
+                     t.waveProducerRows :
+                     (member == t.lastWaveFullProducers ? t.lastWaveProducerTailRows : 0U);
+        done_ = 0U;
+        batchStart_ = 0U;
+        batchRows_ = 0U;
+        SetFlag<HardEvent::V_MTE2>(EVENT_ID1);
+        SetFlag<HardEvent::MTE3_V>(EVENT_ID4);
+        SetFlag<HardEvent::MTE3_V>(EVENT_ID5);
+    }
+
+    /** Advance one output row: gates=Pre(partials), output=RMS1(Cast(sum(pre*x2))). */
+    __aicore__ inline void Tick(Kernel::Tensors<T> &tensors)
+    {
+        if (done_ >= count_) {
+            return;
+        }
+        if (done_ == batchStart_ + batchRows_) {
+            batchStart_ = done_;
+            batchRows_ = count_ - done_ < plan_->reduceRows ? count_ - done_ : plan_->reduceRows;
+            PrepareEpilogueRows(tensors, *plan_, first_ + done_, batchRows_, partial, rmsPartials, coefficients, alpha,
+                                bias);
+        }
+        if (done_ == 0U) {
+            PrefetchEpilogueRow(tensors, *plan_, first_, x2, EVENT_ID1);
+        }
+        const event_t outputEvent = (done_ & 1U) == 0U ? EVENT_ID4 : EVENT_ID5;
+        const auto output = (done_ & 1U) == 0U ? hIn : hInPrime;
+        WaitFlag<HardEvent::MTE2_V>(EVENT_ID1);
+        WaitFlag<HardEvent::MTE3_V>(outputEvent);
+        auto statsPtr = reinterpret_cast<__ubuf__ float *>(stats.GetPhyAddr());
+        Compute::ComputeHInTile<T>(
+            reinterpret_cast<__ubuf__ float *>(coefficients.GetPhyAddr()) + (done_ - batchStart_) * 4U,
+            reinterpret_cast<__ubuf__ T *>(x2.GetPhyAddr()), plan_->d, 0U, plan_->d,
+            reinterpret_cast<__ubuf__ T *>(output.GetPhyAddr()), statsPtr);
+        SetFlag<HardEvent::V_MTE2>(EVENT_ID1);
+        // The next x2 load overlaps RMS1 and the following projection work; input is no longer read by RMS1.
+        if (done_ + 1U < count_) {
+            PrefetchEpilogueRow(tensors, *plan_, first_ + done_ + 1U, x2, EVENT_ID1);
+        }
+        Compute::ComputeRmsNorm1FromSquares<T>(reinterpret_cast<__ubuf__ T *>(output.GetPhyAddr()),
+                                               reinterpret_cast<__ubuf__ float *>(gamma1.GetPhyAddr()), plan_->d,
+                                               plan_->normEps, statsPtr, statsPtr + 1U,
+                                               reinterpret_cast<__ubuf__ T *>(output.GetPhyAddr()));
+        SetFlag<HardEvent::V_MTE3>(outputEvent);
+        WaitFlag<HardEvent::V_MTE3>(outputEvent);
+        DataCopyExtParams copy{1U, static_cast<uint32_t>(plan_->d * sizeof(T)), 0U, 0U, 0U};
+        DataCopyPad(tensors.hInPrime[(first_ + done_) * plan_->d], output, copy);
+        SetFlag<HardEvent::MTE3_V>(outputEvent);
+        ++done_;
+    }
+
+    /** Drain any remaining rows before reusing the epilogue state or leaving the final wave. */
+    __aicore__ inline void Finish(Kernel::Tensors<T> &tensors)
+    {
+        while (done_ < count_) {
+            Tick(tensors);
+        }
+        WaitFlag<HardEvent::V_MTE2>(EVENT_ID1);
+        WaitFlag<HardEvent::MTE3_V>(EVENT_ID4);
+        WaitFlag<HardEvent::MTE3_V>(EVENT_ID5);
+    }
+
+private:
+    const MegaMhcTilingData *plan_ = nullptr;
+    uint64_t first_;
+    uint32_t count_, done_, batchStart_, batchRows_;
+    TBuf<TPosition::VECCALC> x2Buffer, hInBuffer, hInPrimeBuffer, gamma1Buffer, partialBuffer;
+    TBuf<TPosition::VECCALC> rmsPartialBuffer, coefficientBuffer, alphaBuffer, biasBuffer, statsBuffer;
+    LocalTensor<T> x2, hIn, hInPrime;
+    LocalTensor<float> gamma1, partial, rmsPartials, coefficients, alpha, bias, stats;
+};
+
 } // namespace MegaMhc::Schedule
 
 #endif // OPS_TRANSFORMER_MHC_MEGA_MHC_EPILOGUE_H
