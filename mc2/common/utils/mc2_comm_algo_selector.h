@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -18,31 +18,70 @@
 namespace Mc2Hcom {
 
 constexpr uint32_t MAX_COMM_ALGO_CANDIDATES = 32;
-constexpr uint32_t INVALID_TOPO_TYPE = 0xFFFFFFFFU;
-constexpr uint32_t WILDCARD_TOPO_TYPE = 0xFFFFFFFEU;
+
+// 组网标志字(uint64)分区布局，由Mc2TopoInfo一次性装配的事实按位拼接，表项按位与匹配：
+// 机器当前标志包含表项要求的全部标志位才命中。
+// 分区：bit0-2 层数/实例数 | bit8-15 实例类型存在(按CommTopo枚举值) | bit16-23 覆盖类型(按CommTopo枚举值)
+//      | bit32-47 链路协议(按CommProtocol枚举值)
+constexpr uint64_t TOPO_FLAG_NONE = 0ULL;
+constexpr uint64_t TOPO_FLAG_SINGLE_LEVEL = 1ULL << 0;  ///< 单层网络(topoLevelNums==1)
+constexpr uint64_t TOPO_FLAG_MULTI_LEVEL = 1ULL << 1;   ///< 多层网络(topoLevelNums>1)
+constexpr uint64_t TOPO_FLAG_L0_MULTI_INST = 1ULL << 2; ///< L0实例数>1(全层视角，来自GetInstSizeListByLayer)
+
+// 类型/覆盖/协议区的起始位与掩码(区宽度与Mc2TopoInfo位图宽度一致，新枚举值超出宽度时需同步扩区)
+constexpr uint32_t TOPO_FLAG_TOPO_TYPE_SHIFT = 8;
+constexpr uint32_t TOPO_FLAG_TOPO_COVER_SHIFT = 16;
+constexpr uint32_t TOPO_FLAG_PROTO_SHIFT = 32;
+constexpr uint64_t TOPO_TYPE_REGION_MASK = (1ULL << MC2_TOPO_TYPE_BITMAP_WIDTH) - 1;
+constexpr uint64_t TOPO_COVER_REGION_MASK = (1ULL << MC2_TOPO_TYPE_BITMAP_WIDTH) - 1;
+constexpr uint64_t TOPO_PROTO_REGION_MASK = (1ULL << MC2_PROTO_BITMAP_WIDTH) - 1;
+
+// 按枚举值构造标志位：bit(TOPO_TYPE_SHIFT+CommTopo值)=该类型实例存在；
+// bit(TOPO_COVER_SHIFT+CommTopo值)=该类型实例覆盖L0；bit(PROTO_SHIFT+CommProtocol值)=L0存在该协议链路
+constexpr uint64_t TopoTypeFlag(const uint32_t commTopo)
+{
+    return 1ULL << (TOPO_FLAG_TOPO_TYPE_SHIFT + commTopo);
+}
+constexpr uint64_t TopoCoverFlag(const uint32_t commTopo)
+{
+    return 1ULL << (TOPO_FLAG_TOPO_COVER_SHIFT + commTopo);
+}
+constexpr uint64_t LinkProtoFlag(const uint32_t commProtocol)
+{
+    return 1ULL << (TOPO_FLAG_PROTO_SHIFT + commProtocol);
+}
+
+// 常用命名常量(950组网)
+constexpr uint64_t TOPO_FLAG_L0_1DMESH = TopoTypeFlag(COMM_TOPO_1DMESH);
+constexpr uint64_t TOPO_FLAG_L0_CLOS = TopoTypeFlag(COMM_TOPO_CLOS);
+constexpr uint64_t TOPO_FLAG_L0_1DMESH_COVER = TopoCoverFlag(COMM_TOPO_1DMESH);
+constexpr uint64_t TOPO_FLAG_L0_CLOS_COVER = TopoCoverFlag(COMM_TOPO_CLOS);
+constexpr uint64_t TOPO_FLAG_L0_PCIE_LINK = LinkProtoFlag(COMM_PROTOCOL_PCIE);
+// UBX机型组合常量：Mesh+CLOS混联且CLOS实例覆盖L0(die内mesh不覆盖L0全部rank)
+constexpr uint64_t TOPO_FLAG_UBX = TOPO_FLAG_L0_1DMESH | TOPO_FLAG_L0_CLOS | TOPO_FLAG_L0_CLOS_COVER;
 
 struct CommAlgoEntry {
     uint8_t commEngine;
-    uint32_t topoType;
-    uint32_t minLayers;
-    uint32_t maxLayers;
+    uint64_t topoFlags; ///< 组网标志位要求(TOPO_FLAG_*按位组合，TOPO_FLAG_NONE表示不要求)
     uint64_t minBytes;
     uint64_t maxBytes;
     uint32_t minRankSize;
     uint32_t maxRankSize;
     int32_t priority;
-    const char *algoName;
+    const char* algoName;
 };
 
 class Mc2CommAlgoSelector {
 public:
-    static std::string SelectAlgoName(const std::string &opName, const char *group, uint8_t commEngine,
-                                      uint64_t commDataBytes, uint32_t rankSize, const CommAlgoEntry *entries,
-                                      uint32_t entryCount, const std::string &defaultAlgoName);
+    static std::string SelectAlgoName(const std::string& opName, const char* group, uint8_t commEngine,
+                                      uint64_t commDataBytes, uint32_t rankSize, const CommAlgoEntry* entries,
+                                      uint32_t entryCount, const std::string& defaultAlgoName);
 
 private:
-    static uint32_t GetL0TopoType(const char *group);
-    static uint32_t GetLayerNum(const char *group);
+    // 一次性装配组网整体信息(Mc2TopoInfo)，装配失败返回false，调用方按维度未知处理
+    static bool GetTopoInfo(const char* group, Mc2TopoInfo& topoInfo);
+    // 由装配事实按位拼接组网标志(层数/实例数/实例类型/覆盖类型/链路协议)，装配失败相应位不置位
+    static uint64_t CalcTopoFlags(const Mc2TopoInfo& topoInfo);
 };
 
 } // namespace Mc2Hcom
