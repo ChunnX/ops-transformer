@@ -7,12 +7,16 @@
 ## 1. numeric_error_test.cpp —— 内核数值规格一致性测试
 
 无 AscendC 依赖的可移植 C++17 宿主机测试，将内核数值构件的浮点误差界固化为
-17 项断言（9 大类）：FastReciprocal（最差 binade 包络 2^-14）、per-token INT8
+13 大类 29 项断言：FastReciprocal（最差 binade 包络 2^-14）、per-token INT8
 量化往返（≤ scale/2）、E4M3 饱和舍入（≤ 2^-4）、E8M0 分组 scale 覆盖性与紧致性、
 DEQF16(2^-11)×FP16 平衡 scale 的 2048 抵消恒等式（≤ 2^-9）、FP16(-ln448) 平移
 常量位级一致与 P 满量程/饱和裕量、LSE 契约（raw log2 内核值 + 开源平滑校正与
 逐头 GQA 广播，双精度参考 ≤ 1e-5）、smooth-K 整行不变性（FP32 内核算术精度
-≤ 1e-4）、Causal Mask NZ 拓扑剪枝 bit-exact 与 ≥95% 向量指令 bypass。
+≤ 1e-4）、Causal Mask NZ 拓扑剪枝 bit-exact 与 ≥95% 向量指令 bypass、
+qk_quant_gran 分组共享 scale（BroadcastGroupMaxima 覆盖性/无饱和/往返界）、
+pv_accum_dtype=fp32+fp16 的部分和 FP16 舍入往返与累积误差界、smooth_v 居中
+补偿的 MXFP8 重建误差包络（居中不展宽）、片上 Streaming Q 量化与 Host 路径
+bit-exact 等价。
 
 ```bash
 g++ -O2 -std=c++17 tests/numeric_error_test.cpp -o build/numeric_error_test

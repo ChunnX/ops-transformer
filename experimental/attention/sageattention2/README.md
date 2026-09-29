@@ -114,7 +114,7 @@ SAGEATTN_TEST_STANDALONE=1 \
 
 修改 kernel 后须重新完整构建、安装，再执行 NPU 测试。
 
-内核数值规格另有独立的可移植 C++ 误差一致性测试（无 AscendC 依赖，宿主机或容器均可编译运行），固化各数值构件的浮点误差界：FastReciprocal（最差 binade 包络 2^-14）、per-token INT8 往返（<= scale/2）、E4M3 饱和舍入（<= 2^-4）、E8M0 分组 scale 覆盖性与紧致性、DEQF16(2^-11)×FP16 平衡 scale 的 2048 抵消恒等式（<= 2^-9）、ln(448) 平移的满量程/饱和裕量、LSE 契约（raw log2 内核值 + 开源平滑校正与 GQA 广播，双精度参考 <= 1e-5）与 smooth-K softmax 整行不变性（FP32 内核算术精度 <= 1e-4）：
+内核数值规格另有独立的可移植 C++ 误差一致性测试（无 AscendC 依赖，宿主机或容器均可编译运行），固化各数值构件的浮点误差界（13 大类 29 项断言）：FastReciprocal（最差 binade 包络 2^-14）、per-token INT8 往返（<= scale/2）、E4M3 饱和舍入（<= 2^-4）、E8M0 分组 scale 覆盖性与紧致性、DEQF16(2^-11)×FP16 平衡 scale 的 2048 抵消恒等式（<= 2^-9）、ln(448) 平移的满量程/饱和裕量、LSE 契约（raw log2 内核值 + 开源平滑校正与 GQA 广播，双精度参考 <= 1e-5）、smooth-K softmax 整行不变性（FP32 内核算术精度 <= 1e-4）、`qk_quant_gran` 分组共享 scale（BroadcastGroupMaxima）、`fp32+fp16` 部分和 FP16 舍入往返界、smooth_v 居中补偿不展宽 MXFP8 误差包络、片上 Streaming Q 量化 bit-exact 等价：
 
 ```bash
 g++ -O2 -std=c++17 tests/numeric_error_test.cpp -o build/numeric_error_test && ./build/numeric_error_test
