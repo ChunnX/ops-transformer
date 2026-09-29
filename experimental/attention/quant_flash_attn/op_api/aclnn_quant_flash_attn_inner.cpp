@@ -23,6 +23,10 @@ namespace {
 void QuantFlashAttnProcessSoftmaxLse(bool returnSoftmaxLse, const aclTensor *softmaxLse, const aclTensor *&tempTensor,
                                      const aclTensor *&placeHolder)
 {
+    if (returnSoftmaxLse) {
+        placeHolder = softmaxLse;
+    }
+    (void)tempTensor;
 }
 
 // sinks shape为{0}时置nullptr

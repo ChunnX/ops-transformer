@@ -53,8 +53,19 @@ private:
     bool Prepare(CpuKernelContext &ctx);
     bool BalanceSchedule(SectionStreamKResult &splitRes);
     bool GenMetaData(SectionStreamKResult &splitRes);
+    bool GenMetaDataDefault(SectionStreamKResult &splitRes);
+    bool GenMetaDataMxfp8SoftmaxFp16(SectionStreamKResult &splitRes);
+    void SetMetadataHead(const SectionStreamKResult &splitRes, optiling::detail::FaMetaData &faMetadata);
+    void SetMetadataFa(const SectionStreamKResult &splitRes, optiling::detail::FaMetaData &faMetadata);
+    void SetMetadataFd(const SectionStreamKResult &splitRes, optiling::detail::FaMetaData &faMetadata);
     bool ParamsInit();
+    bool ParamsInitDefault();
+    bool ParamsInitMxfp8SoftmaxFp16();
+    bool CheckNeedInitOutput();
     std::vector<int64_t> GetTensorDataAsInt64(Tensor *tensor, size_t size);
+    uint32_t GetS1SeqSize(uint32_t bIdx);
+    uint32_t GetS2SeqSize(uint32_t bIdx);
+    int64_t CalDeterMaxRound();
 
 private:
     CpuKernelContext *context_ = nullptr;
@@ -85,12 +96,18 @@ private:
     std::string socVersion_ = "";
     int32_t aicCoreNum_ = 36U;
     int32_t aivCoreNum_ = 72U;
+    uint32_t s1Size_ = 0;
+    uint32_t s2Size_ = 0;
     bool isGradEnabled_ = false;
+    int64_t fagDeterMaxRound_ = 0; // 延迟到 GenMetaData 中 Clear 之后写入
+    int64_t metadataDimNum_ = 0;   // 输出 tensor 维度数(宿主侧经 attr 下发, AICPU 侧 shape 可能未填充)
+    int64_t metadataRowSize_ = -1; // 输出 tensor 单行长度(2D 为 dim1, 1D 为 dim0), 同上
 
     // SplitParams
     uint32_t groupSize_ = 0;
     uint32_t mBaseSize_ = NUM_64;
     uint32_t s2BaseSize_ = NUM_128;
+    bool needInitOutput_ = false;
     load_balance::DeviceInfo deviceInfo;
     load_balance::BaseInfo baseInfo;
     load_balance::SectionStreamKParam param;

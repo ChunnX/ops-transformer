@@ -181,11 +181,25 @@ aclnnStatus aclnnQuantFlashAttnMetadataGetWorkspaceSize(
     uint32_t aivCoreNum = npuInfo.GetVectorCoreNum();
     const char *socVersion = npuInfo.GetSocLongVersion().c_str();
 
+    // 输出 tensor 几何信息经 attr 下发至 AICPU（宿主侧读取可靠；AICPU 侧 shape 可能未填充）
+    constexpr int64_t DIM_ONE = 1;
+    constexpr int64_t DIM_TWO = 2;
+    constexpr int64_t DIM_IDX_0 = 0;
+    constexpr int64_t DIM_IDX_1 = 1;
+    int64_t metadataDimNum = metaData->GetViewShape().GetDimNum();
+    int64_t metadataRowSize = 0;
+    if (metadataDimNum >= DIM_TWO) {
+        metadataRowSize = metaData->GetViewShape().GetDim(DIM_IDX_1);
+    } else if (metadataDimNum == DIM_ONE) {
+        metadataRowSize = metaData->GetViewShape().GetDim(DIM_IDX_0);
+    }
+
     auto output = l0op::QuantFlashAttnMetadata(cuSeqlensQOptional, cuSeqlensKvOptional, sequsedQOptional,
                                                sequsedKvOptional, batchSize, maxSeqlenQ, maxSeqlenKv, numHeadsQ,
                                                numHeadsKv, headDim, headDimV, quantMode, maskMode, winLeft, winRight,
                                                layoutQ, layoutQDescale, layoutKv, layoutOut, isGradEnabled, socVersion,
-                                               aicCoreNum, aivCoreNum, metaData, uniqueExecutor.get());
+                                               aicCoreNum, aivCoreNum, metadataDimNum, metadataRowSize, metaData,
+                                               uniqueExecutor.get());
     CHECK_RET(output != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();

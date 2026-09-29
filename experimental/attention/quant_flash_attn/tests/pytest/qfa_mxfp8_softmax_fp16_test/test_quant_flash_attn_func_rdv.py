@@ -1,0 +1,33 @@
+#!/usr/bin/python3
+# -*- coding: utf-8 -*-
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, and you can redistribute it and/or modify it under the terms and
+# conditions of CANN Open Software License Agreement Version 2.0 (the "License").
+# You should have received a copy of the License along with this program.
+# If not, see <https://www.hiascend.com/legal/cannlicense>.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FIT FOR A PARTICULAR
+# PURPOSE.
+# -----------------------------------------------------------------------------------------------------------
+
+import concurrent.futures
+
+import pytest
+
+from common import test_runner
+import quant_flash_attn_paramset_func_rdv as paramset
+
+CASES = paramset.CASES
+CASE_IDS = [case["name"] for case in CASES]
+
+
+@pytest.mark.func_rdv
+@pytest.mark.parametrize("params", CASES, ids=CASE_IDS)
+def test_quant_flash_attn_mxfp8_softmax_fp16(params, golden_mode, cache_dir):
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(
+            test_runner.execute_test, params, golden_mode, cache_dir
+        )
+        atten_result, lse_result = future.result()
+    test_runner.check_results(atten_result, lse_result)
