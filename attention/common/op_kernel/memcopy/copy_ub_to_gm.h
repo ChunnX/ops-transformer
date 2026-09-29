@@ -199,4 +199,96 @@ public:
     }
 };
 
+// ----------------------------------------------Copy LSE UB To GM--------------------------------
+template <UbFormat UB_FORMAT>
+class CopyLseUbToGm {};
+
+// Each UB row occupies one 32-byte block; only its first float is written to GM.
+// All offsets/strides below are in float elements. baseOffset includes the batch,
+// N2 head group, TND sequence prefix and any left padding supplied by the caller.
+// Callers own synchronization and must keep each DMA's count/stride within DataCopyExtParams limits.
+
+// UB rows are ordered as s1 * gSize + g; GM stores each head's sequence contiguously.
+// gSize and gmHeadStride must be positive for a nonempty copy.
+template <>
+class CopyLseUbToGm<UbFormat::S1G> {
+public:
+    __aicore__ inline void operator()(AscendC::GlobalTensor<float> dst, AscendC::LocalTensor<float> src,
+                                      uint64_t baseOffset, uint32_t rowStart, uint32_t rowCount, uint32_t gSize,
+                                      uint64_t gmHeadStride)
+    {
+        if (rowCount == 0) {
+            return;
+        }
+        uint32_t startS1 = rowStart / gSize;
+        uint32_t startG = rowStart % gSize;
+        uint32_t endS1 = (rowStart + rowCount - 1) / gSize;
+        uint32_t endG = (rowStart + rowCount - 1) % gSize;
+        uint64_t ubOffset = 0;
+        AscendC::DataCopyExtParams params;
+        params.blockLen = sizeof(float);
+        params.srcStride = 0;
+        params.dstStride = (gmHeadStride - 1) * sizeof(float);
+        for (uint32_t s1 = startS1; s1 <= endS1; ++s1) {
+            uint32_t rows = (s1 == endS1) ? endG + 1 - startG : gSize - startG;
+            params.blockCount = rows;
+            AscendC::DataCopyPad(dst[baseOffset + startG * gmHeadStride + s1], src[ubOffset], params);
+            startG = 0;
+            ubOffset += rows * AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
+        }
+    }
+};
+
+// UB rows are ordered as g * actualSeqLen + s1. Split at actual sequence boundaries,
+// keeping GM's head stride independent of actualSeqLen (e.g. BNSD with unused sequence capacity).
+// actualSeqLen and gmSeqStride must be positive for a nonempty copy.
+template <>
+class CopyLseUbToGm<UbFormat::GS1> {
+public:
+    __aicore__ inline void operator()(AscendC::GlobalTensor<float> dst, AscendC::LocalTensor<float> src,
+                                      uint64_t baseOffset, uint32_t rowStart, uint32_t rowCount, uint64_t actualSeqLen,
+                                      uint64_t gmHeadStride, uint64_t gmSeqStride = 1)
+    {
+        if (rowCount == 0) {
+            return;
+        }
+        uint64_t headOffset = baseOffset + rowStart / actualSeqLen * gmHeadStride;
+        uint64_t seqOffset = rowStart % actualSeqLen;
+        uint64_t ubOffset = 0;
+        uint64_t pendingRows = rowCount;
+        AscendC::DataCopyExtParams params;
+        params.blockLen = sizeof(float);
+        params.srcStride = 0;
+        params.dstStride = (gmSeqStride - 1) * sizeof(float);
+        while (pendingRows > 0) {
+            uint64_t rows = AttentionCommon::Min(pendingRows, actualSeqLen - seqOffset);
+            params.blockCount = rows;
+            AscendC::DataCopyPad(dst[headOffset + seqOffset * gmSeqStride], src[ubOffset], params);
+            pendingRows -= rows;
+            ubOffset += rows * AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
+            headOffset += gmHeadStride;
+            seqOffset = 0;
+        }
+    }
+};
+
+// One head, consecutive sequence positions in GM. No G/S1 boundary splitting is needed.
+template <>
+class CopyLseUbToGm<UbFormat::S1_ONLY> {
+public:
+    __aicore__ inline void operator()(AscendC::GlobalTensor<float> dst, AscendC::LocalTensor<float> src,
+                                      uint64_t outputOffset, uint32_t rowCount)
+    {
+        if (rowCount == 0) {
+            return;
+        }
+        AscendC::DataCopyExtParams params;
+        params.blockCount = rowCount;
+        params.blockLen = sizeof(float);
+        params.srcStride = 0;
+        params.dstStride = 0;
+        AscendC::DataCopyPad(dst[outputOffset], src, params);
+    }
+};
+
 #endif

@@ -37,8 +37,11 @@
 #include "../../../common/op_kernel/const_def.h"
 #include "flash_mla_with_kvcache_public_define_arch35.h"
 #include "../../../common/op_kernel/vector_common.h"
-#include "../utils/flash_mla_with_kvcache_memory_copy_arch35.h"
+#include "../../../common/op_kernel/memcopy/copy_ub_to_gm.h"
 #include "../utils/flash_mla_with_kvcache_type.h"
+#include "../../../common/op_kernel/memcopy/fa_gm_tensor.h"
+#include "../../../common/op_kernel/memcopy/fa_ub_tensor.h"
+#include "../../../common/op_kernel/memcopy/gm_coord.h"
 
 using namespace AscendC;
 using namespace FaVectorApi;
@@ -401,31 +404,30 @@ public:
         Mutex::Unlock<PIPE_V>(UB_OUT_LSE_OUT_EVENT0);
         Mutex::Lock<PIPE_MTE3>(UB_OUT_LSE_OUT_EVENT0);
 
-        // flash_mla_with_kvcache LSE 契约为 (N,T) 头主序：runInfo 的 gS1 区间是 [gIdx][s1Idx] token 主序排布，
-        // 用 TND→(N,T) 转置写出；bN2Offset = n2Idx * gSize * t1Size = head 块 GM 起址。
+        // TND 的 UB 行按 S1G 排列，LSE 按 (N,T) 头主序写出；基址包含当前 batch 的 token 前缀。
         if constexpr (LAYOUT_T == FLASH_MLA_WITH_KVCACHE_LAYOUT::NTD) {
             uint32_t prefixBS1 = seqLensTool_.qActSeqLensParser.GetTBase(runInfo.bIdx);
             uint32_t s1Size = seqLensTool_.qActSeqLensParser.GetActualSeqLength(runInfo.bIdx);
             uint64_t bN2Offset = runInfo.n2Idx * constInfo.n2Size * constInfo.gSize * constInfo.t1Size;
-            DataCopySoftmaxLseNTDArch35<T, ConstInfoNoQuant>(softmaxLseGm, lseUb, bN2Offset, vecMIdx,
-                                                             runInfo.actVecMSize, constInfo, s1Size);
+            CopyLseUbToGm<UbFormat::GS1>()(softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize, s1Size, 1,
+                                           static_cast<uint64_t>(constInfo.n2Size) * constInfo.gSize);
         } else if constexpr (LAYOUT_T == FLASH_MLA_WITH_KVCACHE_LAYOUT::TND) {
             uint32_t prefixBS1 = seqLensTool_.qActSeqLensParser.GetTBase(runInfo.bIdx);
-            uint64_t bN2Offset = runInfo.n2Idx * constInfo.n2Size * constInfo.gSize * constInfo.t1Size;
-            DataCopySoftmaxLseTNDtoNTArch35<T, ConstInfoNoQuant>(softmaxLseGm, lseUb, bN2Offset, vecMIdx,
-                                                                 runInfo.actVecMSize, prefixBS1, constInfo);
+            uint64_t lseBaseOffset = runInfo.n2Idx * constInfo.gSize * constInfo.t1Size + prefixBS1;
+            CopyLseUbToGm<UbFormat::S1G>()(softmaxLseGm, lseUb, lseBaseOffset, vecMIdx, runInfo.actVecMSize,
+                                           constInfo.gSize, constInfo.t1Size);
         } else if constexpr (LAYOUT_T == FLASH_MLA_WITH_KVCACHE_LAYOUT::BSH) {
             uint64_t bN2Offset = runInfo.bIdx * constInfo.n2Size * constInfo.gSize * constInfo.s1Size +
                                  runInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
             uint64_t qActSeqLens = seqLensTool_.qActSeqLensParser.GetActualSeqLength(runInfo.bIdx);
-            DataCopySoftmaxLseBSNDArch35<T, ConstInfoNoQuant>(softmaxLseGm, lseUb, bN2Offset, vecMIdx,
-                                                              runInfo.actVecMSize, constInfo, 0);
+            CopyLseUbToGm<UbFormat::S1G>()(softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
+                                           constInfo.gSize, constInfo.s1Size);
         } else { // BNSD
             uint64_t bN2Offset = runInfo.bIdx * constInfo.n2Size * constInfo.gSize * constInfo.s1Size +
                                  runInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
             uint64_t qActSeqLens = seqLensTool_.qActSeqLensParser.GetActualSeqLength(runInfo.bIdx);
-            DataCopySoftmaxLseBNSDArch35<T, ConstInfoNoQuant>(softmaxLseGm, lseUb, bN2Offset, vecMIdx,
-                                                              runInfo.actVecMSize, constInfo, qActSeqLens, 0);
+            CopyLseUbToGm<UbFormat::GS1>()(softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize, qActSeqLens,
+                                           constInfo.s1Size);
         }
 
         Mutex::Unlock<PIPE_MTE3>(UB_OUT_LSE_OUT_EVENT0);

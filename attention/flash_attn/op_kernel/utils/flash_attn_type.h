@@ -16,13 +16,30 @@
 #define FLASH_ATTN_TYPE_H_
 
 #include "flash_attn_common_def.h"
-#include "../arch35/memory_copy_arch35.h"
+#include "adv_api/activation/softmax.h"
+#include "../../../common/op_kernel/vector_common.h"
+#include "../../../common/op_kernel/memcopy/gm_layout.h"
+#include "../../../common/op_kernel/memcopy/fa_ub_tensor.h"
+#include "../../../common/op_kernel/memcopy/parser.h"
 #include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h"
 
 using namespace AscendC;
 using namespace AscendC::Impl::Detail;
 
 namespace FlashAttnKernel {
+
+// DN unmerged tasks belong to a single query head; only the GM address is layout-specific.
+template <FA_LAYOUT LAYOUT_T, typename CONST_INFO_T, typename SEQ_TOOL>
+__aicore__ inline uint64_t GetSoftmaxLseS1Offset(uint32_t b, uint32_t n2, uint32_t g, uint32_t s1,
+                                                 const CONST_INFO_T &info, SEQ_TOOL &seq)
+{
+    uint64_t head = static_cast<uint64_t>(n2) * info.gSize + g;
+    if constexpr (LAYOUT_T == FA_LAYOUT::TND) {
+        return head * info.t1Size + seq.cuSeqLensParser.GetTBase(b) + s1;
+    } else {
+        return (static_cast<uint64_t>(b) * info.n2Size * info.gSize + head) * info.s1Size + s1;
+    }
+}
 
 template <FA_LAYOUT LAYOUT_T>
 __aicore__ inline constexpr GmFormat GetQueryGmFormat()

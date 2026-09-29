@@ -19,13 +19,16 @@
 
 #include "../../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h"
 
-#include "../utils/flash_mla_with_kvcache_memory_copy_arch35.h"
+#include "../../../common/op_kernel/memcopy/copy_ub_to_gm.h"
 #include "flash_mla_with_kvcache_public_define_arch35.h"
 #include "../utils/flash_mla_with_kvcache_type.h"
+#include "../../../common/op_kernel/memcopy/fa_gm_tensor.h"
+#include "../../../common/op_kernel/memcopy/fa_ub_tensor.h"
+#include "../../../common/op_kernel/memcopy/gm_coord.h"
 
 namespace FlashAttnKernel {
 // ConstInfo_t 解析为 MLA 的 ConstInfoX（= ConstInfo_t<FlashMlaWithKvcacheKernelType::NO_QUANT>）；
-// FA fd 构造与 DataCopySoftmaxLse* 模板取 ConstInfo_t，两个 struct 字段完全一致。
+// FD 路径沿用 ConstInfo_t 名称，与 MLA 的 ConstInfoX 表示同一类型。
 using ConstInfoX = AttentionCommon::ConstInfo_t<FlashMlaWithKvcacheKernelType::NO_QUANT>;
 using ConstInfo_t = ConstInfoX;
 
@@ -427,20 +430,20 @@ public:
                 uint32_t mOffset = taskInfo_.gS1Idx + startRow;
                 if constexpr (LAYOUT_T == FLASH_MLA_WITH_KVCACHE_LAYOUT::TND) {
                     uint32_t prefixBS1 = seqLensTool_.qActSeqLensParser.GetTBase(taskInfo_.bIdx);
-                    uint64_t bN2Offset = taskInfo_.n2Idx * constInfo_.gSize * constInfo_.t1Size;
-                    DataCopySoftmaxLseTNDtoNTArch35<T, ConstInfo_t>(softmaxLseGm_, maxLseUb, bN2Offset, mOffset,
-                                                                    actualGSplitSize, prefixBS1, constInfo_);
+                    uint64_t lseBaseOffset = taskInfo_.n2Idx * constInfo_.gSize * constInfo_.t1Size + prefixBS1;
+                    CopyLseUbToGm<UbFormat::S1G>()(softmaxLseGm_, maxLseUb, lseBaseOffset, mOffset, actualGSplitSize,
+                                                   constInfo_.gSize, constInfo_.t1Size);
                 } else if constexpr (LAYOUT_T == FLASH_MLA_WITH_KVCACHE_LAYOUT::BSH) {
                     uint64_t bN2Offset = taskInfo_.bIdx * constInfo_.gSize * constInfo_.n2Size * constInfo_.s1Size +
                                          taskInfo_.n2Idx * constInfo_.gSize * constInfo_.s1Size;
-                    DataCopySoftmaxLseBSNDArch35<T, ConstInfo_t>(softmaxLseGm_, maxLseUb, bN2Offset, mOffset,
-                                                                 actualGSplitSize, constInfo_);
+                    CopyLseUbToGm<UbFormat::S1G>()(softmaxLseGm_, maxLseUb, bN2Offset, mOffset, actualGSplitSize,
+                                                   constInfo_.gSize, constInfo_.s1Size);
                 } else if constexpr (LAYOUT_T == FLASH_MLA_WITH_KVCACHE_LAYOUT::BNSD) {
                     uint64_t bN2Offset = taskInfo_.bIdx * constInfo_.gSize * constInfo_.n2Size * constInfo_.s1Size +
                                          taskInfo_.n2Idx * constInfo_.gSize * constInfo_.s1Size;
                     uint64_t qActSeqLens = seqLensTool_.qActSeqLensParser.GetActualSeqLength(taskInfo_.bIdx);
-                    DataCopySoftmaxLseBNSDArch35<T, ConstInfo_t>(softmaxLseGm_, maxLseUb, bN2Offset, mOffset,
-                                                                 actualGSplitSize, constInfo_, qActSeqLens);
+                    CopyLseUbToGm<UbFormat::GS1>()(softmaxLseGm_, maxLseUb, bN2Offset, mOffset, actualGSplitSize,
+                                                   qActSeqLens, constInfo_.s1Size);
                 }
                 Mutex::Unlock<PIPE_MTE3>(SYNC_LSEOUTPUT_BUF_FLAG);
             }
