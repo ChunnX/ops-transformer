@@ -324,7 +324,7 @@ __aicore__ inline void VFMuls(const LocalTensor<float> &dst, const LocalTensor<f
     }
 }
 
-// 从UB广播标量权重，单独验证R6拆分为多个VF后的性能。
+// 从UB广播标量权重，单独验证门控融合拆分为多个VF后的性能。
 __aicore__ inline void VFMulsWithUbScalar(const LocalTensor<float> &dst, const LocalTensor<float> &src,
                                           const LocalTensor<float> &scalars, uint32_t scalarIndex, uint32_t count)
 {
@@ -424,7 +424,7 @@ __aicore__ inline void VFCastB16ScaleAndMulGamma(const LocalTensor<float> &dst, 
     }
 }
 
-// 在一个VF内完成低精度恢复、R1缩放、gamma缩放以及规定的低精度往返边界。
+// 在一个VF内完成低精度恢复、输入归一化缩放、gamma缩放以及规定的低精度往返边界。
 template <typename T>
 __aicore__ inline void VFCastB16ScaleGammaQuantizeToFp32(const LocalTensor<float> &dst, const LocalTensor<T> &src,
                                                          const LocalTensor<float> &gamma, float scale, uint32_t count)
@@ -457,7 +457,7 @@ __aicore__ inline void VFCastB16ScaleGammaQuantizeToFp32(const LocalTensor<float
     }
 }
 
-// R3在一个VF内完成恢复与缩放后直接写回低精度缓存，保留第二次量化边界。
+// 中间归一化在一个VF内完成恢复与缩放后直接写回低精度缓存，保留第二次量化边界。
 template <typename T>
 __aicore__ inline void VFCastB16ScaleAndMulGammaToB16(const LocalTensor<T> &dst, const LocalTensor<T> &src,
                                                       const LocalTensor<float> &gamma, float scale, uint32_t count)
@@ -647,7 +647,7 @@ __aicore__ inline void VFComputePostHeadPair(const LocalTensor<T> &dst0, const L
     }
 }
 
-// R6在一个VF内完成四路低精度读取、FP32转换和门控累加，不生成四行FP32中间张量。
+// 门控融合在一个VF内完成四路低精度读取、FP32转换和门控累加，不生成四行FP32中间张量。
 // 四个gate权重对整个D循环不变，外提到循环外广播一次，循环内显式展开四路累加，
 // 避免每轮重复广播（参考mhc_pre::VFDoV1ProcessHInRows）。
 template <typename T>
@@ -690,7 +690,7 @@ __aicore__ inline void VFGateWeightedSum(const LocalTensor<float> &dst, const Lo
     }
 }
 
-// R6一次VF完成四路门控和、低精度缓存以及量化后平方，保留低精度往返语义并消除中间FP32写回。
+// 门控融合一次VF完成四路门控和、低精度缓存以及量化后平方，保留低精度往返语义并消除中间FP32写回。
 template <typename T>
 __aicore__ inline void VFGateWeightedSumQuantizeSquare(const LocalTensor<T> &dstCache, const LocalTensor<float> &square,
                                                        const LocalTensor<T> &src, uint32_t headStride,
