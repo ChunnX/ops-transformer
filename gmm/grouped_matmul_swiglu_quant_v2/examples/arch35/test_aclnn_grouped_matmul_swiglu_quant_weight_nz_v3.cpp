@@ -148,6 +148,7 @@ bool DumpFile(const std::string &path, const std::vector<uint8_t> &data)
 
 int RunExample(bool transposeWeight, const std::string &dumpPrefix, int64_t scaleAlg, aclrtStream stream)
 {
+    // 2. 构造输入和输出 Tensor；权重转置时同步调整 weightScale 的 view。
     constexpr int64_t dequantMode = 2;
     const int64_t dequantDtype = 0;
     constexpr int64_t quantMode = 2;
@@ -280,6 +281,7 @@ int RunExample(bool transposeWeight, const std::string &dumpPrefix, int64_t scal
     std::unique_ptr<void, aclError (*)(void *)> outputScaleDeviceAddrPtr(outputScaleDeviceAddr, aclrtFree);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
+    // 3. 第一段接口完成校验并获取 workspace 大小和 executor。
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     ret = aclnnGroupedMatmulSwigluQuantWeightNzV3GetWorkspaceSize(
@@ -296,6 +298,7 @@ int RunExample(bool transposeWeight, const std::string &dumpPrefix, int64_t scal
     }
     std::unique_ptr<void, aclError (*)(void *)> workspacePtr(workspaceAddr, aclrtFree);
 
+    // 4. 第二段接口执行算子，随后同步并读取输出。
     ret = aclnnGroupedMatmulSwigluQuantWeightNzV3(workspaceAddr, workspaceSize, executor, stream);
     // Synchronize even if launch reports an error, before releasing device buffers.
     const auto syncRet = aclrtSynchronizeStream(stream);
@@ -348,7 +351,7 @@ int main(int argc, char **argv)
         return INVALID_ARGUMENT_EXIT;
     }
 
-    // Initialize the device and stream before creating tensors.
+    // 1. 初始化 Device 和 Stream。
     const int32_t deviceId = 0;
     aclrtStream stream = nullptr;
     auto ret = Init(deviceId, &stream);
@@ -360,7 +363,7 @@ int main(int argc, char **argv)
         ret = ACL_ERROR_FAILURE;
     }
 
-    // Release every initialized runtime resource, including on failure.
+    // 5. 释放 Device 和 Stream；Tensor、TensorList 与 workspace 在 RunExample 中释放。
     const auto destroyRet = aclrtDestroyStream(stream);
     const auto resetRet = aclrtResetDevice(deviceId);
     const auto finalizeRet = aclFinalize();

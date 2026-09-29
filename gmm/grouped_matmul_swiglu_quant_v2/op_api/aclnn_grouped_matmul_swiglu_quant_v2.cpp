@@ -9,14 +9,15 @@
  */
 
 #include <dlfcn.h>
-#include "../../common/op_api/gmm_tensor_storage_check.h"
-#include <new>
 #include <memory>
+#include <new>
 #include <sstream>
 #include <string>
 #include <unordered_map>
+#include "../../common/op_api/gmm_tensor_storage_check.h"
 #include "gmm_dsq_base.h"
 #include "grouped_matmul_swiglu_quant_v2_utils.h"
+#include "grouped_matmul_swiglu_quant_api_check_utils.h"
 #include "grouped_matmul_swiglu_quant_v2.h"
 #include "aclnn_grouped_matmul_swiglu_quant_weight_nz_v2.h"
 #include "aclnn_grouped_matmul_swiglu_quant_v2.h"
@@ -48,66 +49,6 @@ public:
         return it != handlers_.end() ? it->second.get() : nullptr;
     }
 };
-
-static aclnnStatus CheckRequiredPointer(const void *pointer, const char *apiName, const char *parameterName)
-{
-    if (pointer != nullptr) {
-        return ACLNN_SUCCESS;
-    }
-    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(apiName, parameterName, "does not support nullptr");
-    return ACLNN_ERR_PARAM_NULLPTR;
-}
-
-static aclnnStatus CheckRequiredTensorList(const aclTensorList *tensorList, const char *apiName,
-                                           const char *parameterName)
-{
-    auto status = CheckRequiredPointer(tensorList, apiName, parameterName);
-    if (status != ACLNN_SUCCESS) {
-        return status;
-    }
-    if (tensorList->Size() == 0) {
-        OP_LOGE_FOR_INVALID_TENSORNUM(apiName, parameterName, tensorList->Size(), "at least 1");
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    for (size_t i = 0; i < tensorList->Size(); ++i) {
-        if ((*tensorList)[i] == nullptr) {
-            const std::string indexedParameterName = std::string(parameterName) + "[" + std::to_string(i) + "]";
-            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(apiName, indexedParameterName, "does not support nullptr");
-            return ACLNN_ERR_PARAM_NULLPTR;
-        }
-    }
-    return ACLNN_SUCCESS;
-}
-
-static aclnnStatus CheckRequiredInputs(const char *apiName, const aclTensor *x, const aclTensorList *weight,
-                                       const aclTensorList *weightScale, const aclTensor *xScale,
-                                       const aclTensor *groupList, const aclTensor *output,
-                                       const aclTensor *outputScale)
-{
-    auto status = CheckRequiredPointer(x, apiName, "x");
-    if (status != ACLNN_SUCCESS) {
-        return status;
-    }
-    status = CheckRequiredTensorList(weight, apiName, "weight");
-    if (status != ACLNN_SUCCESS) {
-        return status;
-    }
-    status = CheckRequiredTensorList(weightScale, apiName, "weightScale");
-    if (status != ACLNN_SUCCESS) {
-        return status;
-    }
-    const struct {
-        const void *pointer;
-        const char *name;
-    } tensorInputs[] = {{xScale, "xScale"}, {groupList, "groupList"}, {output, "output"}, {outputScale, "outputScale"}};
-    for (const auto &input : tensorInputs) {
-        status = CheckRequiredPointer(input.pointer, apiName, input.name);
-        if (status != ACLNN_SUCCESS) {
-            return status;
-        }
-    }
-    return ACLNN_SUCCESS;
-}
 
 static aclnnStatus aclnnGroupedMatmulSwigluQuantGetWorkspaceSizeCommon(const char *apiName,
                                                                        GroupedMatmulSwigluQuantParamsBase &params,
@@ -169,8 +110,8 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2GetWorkspaceSize(
     aclTensor *outputScale, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     OP_CHECK_COMM_INPUT(workspaceSize, executor);
-    auto status = CheckRequiredInputs(ACLNN_GMM_SWIGLU_QUANT_V2_API_NAME, x, weight, weightScale, xScale, groupList,
-                                      output, outputScale);
+    auto status = gmm_swiglu_quant_api_check::CheckRequiredInputs(
+        ACLNN_GMM_SWIGLU_QUANT_V2_API_NAME, x, weight, weightScale, xScale, groupList, output, outputScale);
     if (status != ACLNN_SUCCESS) {
         return status;
     }
@@ -275,8 +216,9 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2GetWorkspaceSize(
     aclTensor *outputScale, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     OP_CHECK_COMM_INPUT(workspaceSize, executor);
-    auto status = CheckRequiredInputs(ACLNN_GMM_SWIGLU_QUANT_WEIGHT_NZ_V2_API_NAME, x, weight, weightScale, xScale,
-                                      groupList, output, outputScale);
+    auto status = gmm_swiglu_quant_api_check::CheckRequiredInputs(
+        ACLNN_GMM_SWIGLU_QUANT_WEIGHT_NZ_V2_API_NAME, x, weight, weightScale, xScale, groupList, output,
+        outputScale);
     if (status != ACLNN_SUCCESS) {
         return status;
     }

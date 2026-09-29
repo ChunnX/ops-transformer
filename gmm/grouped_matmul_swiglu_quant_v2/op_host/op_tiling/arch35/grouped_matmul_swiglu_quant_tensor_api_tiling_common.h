@@ -20,16 +20,16 @@
 namespace optiling {
 namespace GroupedMatmulSwigluQuantTensorApiTiling {
 
-constexpr uint64_t K_LOWER_LIMIT = 64U;
-constexpr uint64_t FP8_N_ALIGN = 128U;
-constexpr uint64_t K_ALIGN = 128U;
-constexpr uint64_t TRANS_B_M_PER_GROUP_LOWER_LIMIT = 128U;
-constexpr uint64_t NOT_TRANS_B_M_PER_GROUP_LOWER_LIMIT = 512U;
-constexpr uint64_t NOT_TRANS_B_M_LOWER_LIMIT = 512U;
-constexpr uint64_t AIC_AIV_CORE_RATIO = 2U;
-constexpr uint64_t BASE_M = 256U;
-constexpr uint64_t BASE_N = 128U;
-constexpr uint64_t SWIGLU_SPLIT = 2U;
+constexpr uint64_t K_LOWER_LIMIT = 64UL;
+constexpr uint64_t FP8_N_ALIGN = 128UL;
+constexpr uint64_t K_ALIGN = 128UL;
+constexpr uint64_t TRANS_B_M_PER_GROUP_LOWER_LIMIT = 128UL;
+constexpr uint64_t NOT_TRANS_B_M_PER_GROUP_LOWER_LIMIT = 512UL;
+constexpr uint64_t NOT_TRANS_B_M_LOWER_LIMIT = 512UL;
+constexpr uint64_t AIC_AIV_CORE_RATIO = 2UL;
+constexpr uint64_t BASE_M = 256UL;
+constexpr uint64_t BASE_N = 128UL;
+constexpr uint64_t SWIGLU_SPLIT = 2UL;
 
 struct CapabilityParams {
     uint64_t m;
@@ -44,7 +44,7 @@ struct CapabilityParams {
 
 inline bool IsShapeAndPlatformCapable(const CapabilityParams &params)
 {
-    if (!params.platformMemoryReady || params.groupNum == 0U || params.aicNum == 0U ||
+    if (!params.platformMemoryReady || params.groupNum == 0UL || params.aicNum == 0UL ||
         params.aivNum != AIC_AIV_CORE_RATIO * params.aicNum) {
         return false;
     }
@@ -52,7 +52,7 @@ inline bool IsShapeAndPlatformCapable(const CapabilityParams &params)
     const uint64_t mPerGroupLimit =
         params.transB ? TRANS_B_M_PER_GROUP_LOWER_LIMIT : NOT_TRANS_B_M_PER_GROUP_LOWER_LIMIT;
     return averageM > mPerGroupLimit && (params.transB || params.m > NOT_TRANS_B_M_LOWER_LIMIT) &&
-           params.n % FP8_N_ALIGN == 0U && params.k > K_LOWER_LIMIT && params.k % K_ALIGN == 0U;
+           params.n % FP8_N_ALIGN == 0UL && params.k > K_LOWER_LIMIT && params.k % K_ALIGN == 0UL;
 }
 
 inline void PrepareBasicBlockForL1(GQmmBasicTiling &tiling)

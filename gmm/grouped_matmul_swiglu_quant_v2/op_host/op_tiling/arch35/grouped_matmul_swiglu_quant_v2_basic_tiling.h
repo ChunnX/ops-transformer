@@ -72,7 +72,7 @@ private:
     bool AnalyzeV3Attrs();
     bool AnalyzeV3Dtype();
     bool AnalyzeV3Inputs();
-    bool CheckV3ShapeAndScale(const gert::Shape &xShape, const gert::Shape &xScaleShape, const gert::Shape &weightShape,
+    bool CheckV3ShapeAndScale(const gert::Shape &xShape, const gert::Shape &weightShape,
                               const gert::Shape &weightStorageShape, const gert::Shape &weightScaleShape,
                               const gert::Shape &groupListShape) const;
     bool CheckV3OutputShape() const;
