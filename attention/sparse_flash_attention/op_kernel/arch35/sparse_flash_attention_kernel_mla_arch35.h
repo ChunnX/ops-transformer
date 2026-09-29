@@ -371,7 +371,6 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
         bmm1Buffers.Get().SetCrossCore();
         bmm1Buffers.Get().SetCrossCore();
     }
-
     uint32_t v0ResSize = constInfo.s2BaseSize * 576U * sizeof(Q_T);
     int64_t totalOffset;
     if constexpr (IS_SPLIT_G) {
@@ -483,9 +482,15 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
 {
     if ASCEND_IS_AIC {
         cubeBlock.UninitLocalBuffer();
+        bmm1Buffers.Get().WaitCrossCore();
+        bmm1Buffers.Get().WaitCrossCore();
+        bmm2Buffers.Get().WaitCrossCore();
     }
     if ASCEND_IS_AIV {
         vecBlock.UninitLocalBuffer();
+        l1RightBuffers.Get().WaitCrossCore();
+        l1RightBuffers.Get().WaitCrossCore();
+        l1RightBuffers.Get().WaitCrossCore();
     }
 }
 
