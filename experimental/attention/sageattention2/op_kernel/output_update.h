@@ -105,10 +105,12 @@ __simd_vf__ inline void AccumulateFp32PairVF(__ubuf__ float *accum, __ubuf__ flo
 }
 
 // Finalize the complete 64-row wide tile. Compute all reciprocals together with FastReciprocal,
-// and cast directly into the output buffer.
+// and cast directly into the output buffer. meanV carries the per-channel V
+// centering term (all zeros when smooth_v is off) and is added in FP32 before
+// the output cast.
 template <class T, uint32_t DP>
 __simd_vf__ inline void NormalizeCastVF(__ubuf__ T *out, __ubuf__ float *accum, __ubuf__ float *denom,
-                                        __ubuf__ float *scratch)
+                                        __ubuf__ float *scratch, __ubuf__ float *meanV)
 {
     using namespace AscendC::MicroAPI;
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
@@ -120,6 +122,9 @@ __simd_vf__ inline void NormalizeCastVF(__ubuf__ T *out, __ubuf__ float *accum, 
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     static constexpr CastTrait cast{RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
     if constexpr (DP == 128) {
+        RegTensor<float> mv0, mv1;
+        LoadAlign(mv0, meanV);
+        LoadAlign(mv1, meanV + 64);
         for (uint16_t row = 0; row < 64; row += 2) {
             RegTensor<float> ratio0, ratio1, x0_0, x1_0, x0_1, x1_1;
             RegTensor<T> p0_0, p1_0, p0_1, p1_1;
@@ -133,6 +138,10 @@ __simd_vf__ inline void NormalizeCastVF(__ubuf__ T *out, __ubuf__ float *accum, 
             Mul(x1_0, x1_0, ratio0, f);
             Mul(x0_1, x0_1, ratio1, f);
             Mul(x1_1, x1_1, ratio1, f);
+            Add(x0_0, x0_0, mv0, f);
+            Add(x1_0, x1_0, mv1, f);
+            Add(x0_1, x0_1, mv0, f);
+            Add(x1_1, x1_1, mv1, f);
             Cast<T, float, cast>(p0_0, x0_0, f);
             Cast<T, float, cast>(p1_0, x1_0, f);
             Cast<T, float, cast>(p0_1, x0_1, f);
@@ -143,6 +152,8 @@ __simd_vf__ inline void NormalizeCastVF(__ubuf__ T *out, __ubuf__ float *accum, 
             StoreAlign<T, StoreDist::DIST_PACK_B32>(out + (row + 1) * DP + 64, p1_1, f);
         }
     } else {
+        RegTensor<float> mv;
+        LoadAlign(mv, meanV);
         for (uint16_t row = 0; row < 64; row += 2) {
             RegTensor<float> ratio0, ratio1, x0, x1;
             RegTensor<T> packed0, packed1;
@@ -152,6 +163,8 @@ __simd_vf__ inline void NormalizeCastVF(__ubuf__ T *out, __ubuf__ float *accum, 
             LoadAlign(x1, accum + (row + 1) * DP);
             Mul(x0, x0, ratio0, f);
             Mul(x1, x1, ratio1, f);
+            Add(x0, x0, mv, f);
+            Add(x1, x1, mv, f);
             Cast<T, float, cast>(packed0, x0, f);
             Cast<T, float, cast>(packed1, x1, f);
             StoreAlign<T, StoreDist::DIST_PACK_B32>(out + row * DP, packed0, f);
@@ -164,7 +177,8 @@ __simd_vf__ inline void NormalizeCastVF(__ubuf__ T *out, __ubuf__ float *accum, 
 // FMA -> reciprocal multiply -> cast rounding sequence.
 template <class T, uint32_t DP, bool FIRST>
 __simd_vf__ inline void FinalizeWideFp32VF(__ubuf__ T *out, __ubuf__ float *accum, __ubuf__ float *partial,
-                                           __ubuf__ float *alpha, __ubuf__ float *denom, __ubuf__ float *scratch)
+                                           __ubuf__ float *alpha, __ubuf__ float *denom, __ubuf__ float *scratch,
+                                           __ubuf__ float *meanV)
 {
     using namespace AscendC::MicroAPI;
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
@@ -185,6 +199,9 @@ __simd_vf__ inline void FinalizeWideFp32VF(__ubuf__ T *out, __ubuf__ float *accu
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     static constexpr CastTrait cast{RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
     if constexpr (DP == 128) {
+        RegTensor<float> mv0, mv1;
+        LoadAlign(mv0, meanV);
+        LoadAlign(mv1, meanV + 64);
         for (uint16_t row = 0; row < 64; ++row) {
             RegTensor<float> x0, x1, ratio, rinv;
             RegTensor<T> p0, p1;
@@ -204,12 +221,16 @@ __simd_vf__ inline void FinalizeWideFp32VF(__ubuf__ T *out, __ubuf__ float *accu
             }
             Mul(x0, x0, rinv, f);
             Mul(x1, x1, rinv, f);
+            Add(x0, x0, mv0, f);
+            Add(x1, x1, mv1, f);
             Cast<T, float, cast>(p0, x0, f);
             Cast<T, float, cast>(p1, x1, f);
             StoreAlign<T, StoreDist::DIST_PACK_B32>(out + row * DP, p0, f);
             StoreAlign<T, StoreDist::DIST_PACK_B32>(out + row * DP + 64, p1, f);
         }
     } else {
+        RegTensor<float> mv;
+        LoadAlign(mv, meanV);
         for (uint16_t row = 0; row < 64; ++row) {
             RegTensor<float> x, ratio, rinv;
             RegTensor<T> packed;
@@ -224,6 +245,7 @@ __simd_vf__ inline void FinalizeWideFp32VF(__ubuf__ T *out, __ubuf__ float *accu
             }
             LoadAlign<float, LoadDist::DIST_BRC_B32>(rinv, scratch + row);
             Mul(x, x, rinv, f);
+            Add(x, x, mv, f);
             Cast<T, float, cast>(packed, x, f);
             StoreAlign<T, StoreDist::DIST_PACK_B32>(out + row * DP, packed, f);
         }
@@ -235,7 +257,7 @@ __simd_vf__ inline void FinalizeWideFp32VF(__ubuf__ T *out, __ubuf__ float *accu
 template <class T, uint32_t DP, bool FIRST, bool LAST>
 __simd_vf__ inline void UpdateWidePairVF(__ubuf__ T *out, __ubuf__ float *accum, __ubuf__ float *partial0,
                                          __ubuf__ float *partial1, __ubuf__ float *alpha0, __ubuf__ float *alpha1,
-                                         __ubuf__ float *denom, __ubuf__ float *scratch)
+                                         __ubuf__ float *denom, __ubuf__ float *scratch, __ubuf__ float *meanV)
 {
     using namespace AscendC::MicroAPI;
     static_assert(DP == 128, "paired wide update requires DP128");
@@ -282,11 +304,15 @@ __simd_vf__ inline void UpdateWidePairVF(__ubuf__ T *out, __ubuf__ float *accum,
         MulDstAdd(x0, a1, z0, f);
         MulDstAdd(x1, a1, z1, f);
         if constexpr (LAST) {
-            RegTensor<float> inv;
+            RegTensor<float> inv, mv0, mv1;
             RegTensor<T> p0, p1;
             LoadAlign<float, LoadDist::DIST_BRC_B32>(inv, scratch + row);
+            LoadAlign(mv0, meanV);
+            LoadAlign(mv1, meanV + 64);
             Mul(x0, x0, inv, f);
             Mul(x1, x1, inv, f);
+            Add(x0, x0, mv0, f);
+            Add(x1, x1, mv1, f);
             Cast<T, float, cast>(p0, x0, f);
             Cast<T, float, cast>(p1, x1, f);
             StoreAlign<T, StoreDist::DIST_PACK_B32>(out + row * DP, p0, f);

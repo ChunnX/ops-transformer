@@ -51,7 +51,7 @@ wide 路径将 FP8 P 原位写入已经消费的 FP16 score 条带，再通过�
 | `sm_scale` | float/None，`None` | 默认 `1/sqrt(D)`，须可表示为有限 FP32 |
 | `pv_accum_dtype` | str，`fp32+fp16` | PV 累加精度，支持 `fp32+fp16`（默认）、`fp32+fp32`、`fp32`；非法值报错 ValueError |
 | `smooth_k` | bool，`True` | 量化前减去 K 沿序列维的均值 |
-| `smooth_v` | 兼容参数，`False` | 传 `True` 且 `pv_accum_dtype` 为 `fp32+fp16` 或 `fp32+fp32` 时 warning 并忽略（对齐开源实现） |
+| `smooth_v` | bool，`False` | 在序列维对 V 减均值、输出端加回；仅 `pv_accum_dtype` 为 `fp32` 时生效，其余取值 warning 并忽略 |
 | `return_lse` | bool，`False` | 返回 `(out, lse)`；LSE 为 FP32、shape `[B,Hq,Sq]` |
 
 本实现按 Ascend 950 的计算和执行模型提供接口：Q/K 量化支持 `per_thread`（默认）与 `per_warp`；PV 累加支持 `fp32+fp16`（默认）、`fp32+fp32` 与兼容别名 `fp32`。传入非法选项时明确报错 ValueError。
