@@ -8,6 +8,7 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+import io
 import itertools
 import os
 import json
@@ -27,6 +28,52 @@ import pytest
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+@pytest.mark.parametrize("device", ["cpu", "npu:0"])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
+@pytest.mark.parametrize(
+    "make_view",
+    [
+        pytest.param(lambda x: x.reshape(2, 3, 4), id="contiguous"),
+        pytest.param(lambda x: x.reshape(2, 3, 4).transpose(0, 2), id="transposed"),
+        pytest.param(lambda x: x[3:21:2], id="offset-and-stride"),
+        pytest.param(
+            lambda x: x[:12].reshape(1, 1, 3, 4).expand(2, 2, 3, 4), id="broadcast"
+        ),
+        pytest.param(
+            lambda x: x[3:15:2].reshape(1, 1, 2, 3).expand(2, 4, 2, 3),
+            id="broadcast-slice",
+        ),
+        pytest.param(lambda x: x.unfold(0, 4, 2), id="overlapping"),
+        pytest.param(
+            lambda x: x[7:7].as_strided((0, 3), (12, 2), 7), id="empty-offset"
+        ),
+        pytest.param(lambda x: x[3], id="scalar-offset"),
+    ],
+)
+def test_pt_replay_preserves_layout(device, dtype, make_view):
+    from chunk_gated_delta_rule_main import to_device_preserving_layout
+
+    tensor = make_view(torch.arange(24, dtype=dtype))
+    with io.BytesIO() as buffer:
+        torch.save(tensor, buffer)
+        buffer.seek(0)
+        loaded = torch.load(buffer, map_location="cpu", weights_only=True)
+    result = to_device_preserving_layout(loaded, device)
+    assert result.shape == tensor.shape
+    assert result.stride() == tensor.stride()
+    assert result.storage_offset() == tensor.storage_offset()
+    assert result.dtype == tensor.dtype
+    assert result.device == torch.device(device)
+    assert torch.equal(result.cpu(), tensor)
+
+
+def test_pt_replay_preserves_optional_input():
+    from chunk_gated_delta_rule_main import to_device_preserving_layout
+
+    assert to_device_preserving_layout(None, "cpu") is None
+
 
 _DTYPE_MAP = {
     "bfloat16": torch.bfloat16,

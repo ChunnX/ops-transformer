@@ -10,18 +10,31 @@
 
 /*!
  * \file chunk_gated_delta_rule_utils.h
- * \brief Common constants for chunk_gated_delta_rule kernels
+ * \brief Common constants and alignment helpers for chunk_gated_delta_rule kernels
  */
 
-#ifndef CHUNK_GATED_DELTA_RULE_UTILS_H__
-#define CHUNK_GATED_DELTA_RULE_UTILS_H__
+#pragma once
 
-#include "kernel_vec_intf.h"
-#include "kernel_cube_intf.h"
-#include "kernel_operator_list_tensor_intf.h"
-#include "kernel_tiling/kernel_tiling.h"
+#include "basic_api/kernel_basic_intf.h"
 
 namespace ChunkGatedDeltaRule {
+// Cube/NZ 布局按 16 个元素分块；行、列对齐单位分别保留名称，供搬运和地址计算使用。
+constexpr uint32_t MM_BLOCK_CUBE = 16;
+constexpr uint32_t MM_NZ_FRACTAL = 16;
+
+// 向上对齐：ceil(value / align) * align，align > 0；参数使用相同单位（元素或字节）。
+__aicore__ inline uint32_t CeilAlign(uint32_t value, uint32_t align)
+{
+    return (value + align - 1) / align * align;
+}
+
+__aicore__ inline uint32_t GetZnOffset(uint32_t row, uint32_t col, uint32_t fullRows)
+{
+    // compact zN/NZ 按 16 列成块：offset=(col/16)*align(fullRows,16)*16+row*16+col%16。
+    return (row % MM_BLOCK_CUBE) * MM_NZ_FRACTAL + (row / MM_BLOCK_CUBE) * MM_BLOCK_CUBE * MM_NZ_FRACTAL +
+           (col % MM_NZ_FRACTAL) + (col / MM_NZ_FRACTAL) * CeilAlign(fullRows, MM_BLOCK_CUBE) * MM_NZ_FRACTAL;
+}
+
 // 同步信号
 constexpr uint64_t V_MTE3_EVENT = 0;
 constexpr uint64_t V_S_EVENT = 1;
@@ -47,5 +60,3 @@ constexpr uint32_t BLOCK_FLOAT_NUM = 8;
 constexpr uint32_t BLOCK_BF16_NUM = 16;
 constexpr uint32_t TILE_LEN = 1024; // 1024 = 1kb，经测试1kb和10kb性能差异很小
 } // namespace ChunkGatedDeltaRule
-
-#endif // __CHUNK_GATED_DELTA_RULE_UTILS_H__
