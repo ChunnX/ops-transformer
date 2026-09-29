@@ -1,4 +1,14 @@
-# Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
 
 import numpy as np
 import torch
@@ -79,7 +89,7 @@ class MoeGatingTopKMethod(BaseApi):
 
         # Process y2 if needed
         if y2_flag:
-            y2 = torch.from_numpy(original_x).to(dtype)
+            y2 = torch.from_numpy(original_x).to(dtype).to(torch.float32)
         else:
             y2 = None
 
@@ -87,7 +97,7 @@ class MoeGatingTopKMethod(BaseApi):
         y = torch.from_numpy(np.asarray(y)).to(dtype)
         indices = torch.from_numpy(indices).to(torch.int32)
 
-        return y, indices, y2.to(torch.float32)
+        return y, indices, y2
 
     def __call__(self, input_data: InputDataset, with_output: bool = False):
         if self.device == "cpu":
@@ -123,3 +133,4 @@ class MoeGatingTopKAclnnApi(AclnnBaseApi):
             output.append(self.acl_tensor_to_torch(output_pack))
 
         return output
+    
