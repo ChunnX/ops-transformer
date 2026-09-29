@@ -1,6 +1,6 @@
 # aclnnMlaPrologV3WeightNz
 
-[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/attention/mla_prolog_v3)
+[📄 查看源码](https://atomgit.com/cann/ops-transformer/tree/master/attention/mla_prolog_v3)
 
 ## 产品支持情况
 
@@ -13,6 +13,15 @@
 <!-- npu="910b" id3 -->
 - <term>Atlas A2系列产品</term>：支持
 <!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
