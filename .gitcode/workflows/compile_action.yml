@@ -68,7 +68,7 @@ jobs:
           AC_SERVER_IP: ${{ vars.AC_SERVER_IP }}
       -
         name: rename_package
-        if: ${{ inputs.task_name != 'Pre_Compile' }}
+        if: ${{ inputs.task_name != 'Pre_Compile' && inputs.package_name != '' }}
         run: |
           cd ${{ steps.process_checkout.outputs.path }}/build_out
           for f in *.run; do
