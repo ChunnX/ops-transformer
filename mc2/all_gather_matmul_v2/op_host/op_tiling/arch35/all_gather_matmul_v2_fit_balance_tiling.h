@@ -42,13 +42,6 @@ namespace optiling { // 与本目录其他 op_tiling 文件一致
 // ============================================================================
 
 static const FitBalanceCalibration CALIBRATION = {
-    /* profile: 通信结构参数 */
-    {
-        CommAxis::K,                 // 通信承载 A 侧输入(gather 沿 K 轴聚散, 传 A 矩阵行)
-        RankMul::RANK_DIM_MINUS_ONE, // mm 工作集倍数: 远程 rankDim−1 份经通信参与计算(本地份不经通信)
-        RankMul::RANK_DIM,           // mm 总行数倍数: 聚合后每卡算全量 m×rankDim 行
-        RankMul::RANK_DIM, // 单次 gather 调用物理字节倍数: 单次搬 rankDim 份(⑥ 的 256MB 判定)
-    },
     /* aicpu（commMode != "ccu"）*/
     {
         /* rows: {卡数, k 带宽斜率(us/MB), b 每轮启动开销(us), c 一次性固定开销(us)} */
@@ -96,8 +89,22 @@ static const FitBalanceCalibration CALIBRATION = {
 // 边界转换: 旧全局类型 → 引擎入参(引擎 33 字段镜像已裁至实际消费的 9 个)
 inline FitBalanceTilingArgs ToEngineArgs(const mc2tiling::TilingArgs &a)
 {
-    return {a.mValue, a.nValue,  a.kValue,         a.rankDim,        a.aicCoreNum,
-            a.aType,  a.geAType, a.inputDtypeSize, a.outputDtypeSize};
+    FitBalanceTilingArgs e = {};
+    e.mValue = a.mValue;
+    e.nValue = a.nValue;
+    e.kValue = a.kValue;
+    e.rankDim = a.rankDim;
+    e.aicCoreNum = a.aicCoreNum;
+    e.aType = a.aType;
+    e.geAType = a.geAType;
+    e.inputDtypeSize = a.inputDtypeSize;
+    e.outputDtypeSize = a.outputDtypeSize;
+    // 数据流结构参数(本算子: 输入侧聚合 + 本地块前置)
+    e.commAxis = CommAxis::K;           // 通信沿 K 轴传 A 侧输入
+    e.mmWorksetShares = a.rankDim - 1U; // 远程 rankDim−1 份进稳态(本地份单独按单份建模)
+    e.mmRowMul = a.rankDim;             // 聚合后实算全量 m×rankDim 行
+    e.commVolumeMul = a.rankDim;        // 单次 gather 调用搬 rankDim 份
+    return e;
 }
 
 inline CutResult ToLegacyCut(const CommCutResult &c)

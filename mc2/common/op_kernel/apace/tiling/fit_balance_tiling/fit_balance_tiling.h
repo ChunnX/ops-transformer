@@ -112,14 +112,14 @@ inline FitBasedBalanceCtx InitCtx(const FitBalanceTilingArgs &args, LocalMMPosit
                            1,
                            1.0};
     ctx.tilingM.SetMaxTileCnt(MAX_COMM_ROUNDS); // 通信 API FFTS 队列轮次上限
-    //  结构参数入口换算(标定层 CommProfile 声明模式, 引擎一处集中换算)
-    ctx.commRankCntForMm = RankMulValue(calib.profile.mmWorksetMul, ctx.commPerf.rankDim());
-    ctx.mmRankMul = RankMulValue(calib.profile.mmTotalMul, ctx.commPerf.rankDim());
-    ctx.commVolumeMul = RankMulValue(calib.profile.commVolumeMul, ctx.commPerf.rankDim());
+    // 数据流结构参数直读(args 已按算子语义填好数值)
+    ctx.commRankCntForMm = args.mmWorksetShares;
+    ctx.mmRankMul = args.mmRowMul;
+    ctx.commVolumeMul = args.commVolumeMul;
 
     // ---- 通算胶水 ----
     // D4 通信矩阵另一维
-    const bool commOnKAxis = (calib.profile.axis == CommAxis::K);
+    const bool commOnKAxis = (args.commAxis == CommAxis::K);
     ctx.commPerf.SetCommShapeLen(commOnKAxis ? ctx.matmulPerf.mmShapeInfo_.kValue : ctx.matmulPerf.mmShapeInfo_.nValue);
     // D5+D6 通信承载 dtype 与 fp4 子字节建模:
     // ① 通信 dtype 按 CommProfile.axis 承载侧: K(A 侧输入)取 A 字节, N(C 侧输出)取 C 字节——

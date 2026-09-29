@@ -50,7 +50,7 @@ const FitBalanceCalibration::CommFit::Row *FindCommFitRow(calib, engine, rankDim
 
 | 类型 | 说明 |
 |---|---|
-| `FitBalanceTilingArgs` | 引擎调度入参（9 字段：m/n/k、rankDim、aicCoreNum、dtype 四元组） |
+| `FitBalanceTilingArgs` | 引擎调度入参（13 字段：m/n/k、rankDim、aicCoreNum、dtype 四元组 + 数据流结构参数四元组） |
 | `CommCutResult` | 切分结果（shortTileAtBack / totalTileCnt / numLongTile / numShortTile / longTileLen / shortTileLen） |
 | `FitBalanceCalibration` | 客户标定数据总集（CommProfile 结构参数 + 通信拟合行 k/b/c + matmul 算力档），算子侧唯一编辑面 |
 | `LocalMMPosition` | 流水线结构键控：FRONT（本地 mm 块前置）/ BACK（后置）/ NONE（无本地块） |
@@ -70,13 +70,6 @@ const FitBalanceCalibration::CommFit::Row *FindCommFitRow(calib, engine, rankDim
 // ── ① 标定数据: 每算子一份, 客户唯一编辑面 ─────────────────────────────────
 // profile 按本算子流水线结构填写; rows 填实测拟合值; mmFit 按 dtype 档填
 static const FitBalanceCalibration CALIBRATION = {
-    /* profile: 通信结构参数 */
-    {
-        CommAxis::K,                 // 通信承载 A 侧输入(沿 K 轴聚散, 传 A 矩阵行)
-        RankMul::RANK_DIM_MINUS_ONE, // mm 工作集倍数(远程 rankDim−1 份参与计算)
-        RankMul::RANK_DIM,           // mm 总行数倍数(聚合后算全量 m×rankDim 行)
-        RankMul::RANK_DIM,           // 单次通信调用物理字节倍数(256MB 上限判定用)
-    },
     /* aicpu 引擎通信拟合行: {卡数, k 带宽斜率(us/MB), b 每轮启动开销(us), c 一次性固定开销(us)} */
     {
         { {4, 26.5894, 33.17, 20.58} },   // 950 标卡 4P 实测; 未标定形态留空 → 分派走 miss 路径
@@ -102,7 +95,9 @@ ge::graphStatus MyOpTiling::DoTiling()
     if (IsCommCalibrated(rankDim_, commEngine, CALIBRATION)) {
         // 命中: 直接构造引擎入参(9 字段)并调用
         FitBalanceTilingArgs args = {mValue_, nValue_, kValue_, rankDim_, aicCoreNum_,
-                                     aType_, geAType_, inputDtypeSize_, outputDtypeSize_};
+                                     aType_, geAType_, inputDtypeSize_, outputDtypeSize_,
+                                     /* 数据流结构参数(见下表) */
+                                     CommAxis::K, rankDim_ - 1, rankDim_, rankDim_};
         cut = FitBalanceCut(args, LocalMMPosition::FRONT,     // 本地 A 块前置(输入侧通信算子)
                             CommComputeOrder::COMM_FIRST, commEngine, CALIBRATION);
     } else {
@@ -116,6 +111,22 @@ ge::graphStatus MyOpTiling::DoTiling()
 ```
 
 接入要素就两个：**填 CALIBRATION**（标定数据）+ **选两个枚举**（LocalMMPosition / CommComputeOrder）。
+
+### 数据流结构参数（args 的后四个字段）
+
+CALIBRATION 只放**实测拟合数据**（k/b/c、算力档、基本块）；而描述"本算子数据怎么流"的
+四个**结构事实**由 op 侧每次调用直接填进 args——它们不是标定值，填错属于接入 bug 而非标定偏差：
+
+| 字段 | 语义 | 典型取值 |
+|---|---|---|
+| `commAxis` | 通信承载哪侧数据 | K=A 侧输入（传 A 行，另一维取 kValue）；N=C 侧输出（传 C 行，取 nValue） |
+| `mmWorksetShares` | 稳态 mm 工作集的数据份数（进 cube 利用率公式） | 输入侧聚合且有本地块（FRONT）=rankDim−1（本地份剔出稳态、单独按单份建模）；其余聚合/分发=rankDim；two-shot 单份=1 |
+| `mmRowMul` | mm 总行数相对切分域的倍数 | 聚合/分发形态（切分域为本卡份、实算全量）=rankDim；单份形态=1 |
+| `commVolumeMul` | 单次通信调用的物理字节份数（单轮 256MB 上限判定） | 聚合/分发（单次调用搬全量）=rankDim；单份调用=1 |
+
+判定方法：① 通信承载的是输入还是输出 → `commAxis`；② 切分域（mValue）是"本卡份"还是
+"本卡实算全量" → 聚合/分发形态 `mmRowMul=commVolumeMul=rankDim`、单份形态两者=1；
+③ 稳态工作集是否含本地块：FRONT 时剔一份（`rankDim−1`），其余按 ② 的形态取值。
 
 ### 为什么引擎不认"通信原语"、而要你传这两个枚举？
 
@@ -177,9 +188,9 @@ FRONT/BACK 本地块时长估计用——更保守）。
 
 | 差异 | 承载 |
 |---|---|
-| 通信份数/字节口径 | 标定斜率 k + CommProfile.commVolumeMul |
-| 通信轴向（K/N）与承载侧（A/C dtype） | CommProfile.axis |
-| mm 工作集/总行数倍数 | CommProfile.mmWorksetMul / mmTotalMul |
+| 通信份数/字节口径 | 标定斜率 k + args.commVolumeMul |
+| 通信轴向（K/N）与承载侧（A/C dtype） | args.commAxis |
+| mm 工作集/总行数倍数 | args.mmWorksetShares / mmRowMul |
 | **流水线结构**（本地块在哪端/有无） | **LocalMMPosition**（引擎唯一结构键控） |
 | 通算顺序 | CommComputeOrder |
 | 通信引擎 | TilingCommEngine（CCU 触发单轮 256MB 整形） |

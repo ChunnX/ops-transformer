@@ -68,7 +68,7 @@ struct MatmulShapeInfo {
 struct CommModelInfo {
     uint64_t rankDim;                        // 通信域卡数(构造期钳位 ≥2)
     uint64_t commDtypeSize;                  // 通信每元素字节数
-    uint64_t commMatrixLen;                  // 通信矩阵另一维(K 或 N, CommProfile.axis 决定)
+    uint64_t commMatrixLen;                  // 通信矩阵另一维(K 或 N, args.commAxis 决定)
     uint64_t commDtypeSizeExpansionFraction; // 子字节折算分母(fp4=2)
 };
 
@@ -106,6 +106,12 @@ constexpr uint32_t DEFAULT_BASE_M = 128;
 constexpr uint32_t DEFAULT_BASE_N = 256;
 constexpr uint32_t DEFAULT_BASE_K = 64;
 
+// 通信承载的数据侧(决定通信矩阵另一维与 dtype 字节取值)
+enum class CommAxis {
+    K, // A 侧(输入): 输入侧通信, 传 A 矩阵行(另一维取 kValue)
+    N, // C 侧(输出): 输出侧通信, 传 C 矩阵行(另一维取 nValue)
+};
+
 // 引擎调度入参( 清理: 旧 33 字段镜像裁至引擎实际消费的 9 个, 按类型聚合;
 // 算子侧 ToEngineArgs 从旧 mc2tiling::TilingArgs 挑字段填充)
 // 引擎调度入参( 清理: 旧 33 字段镜像裁至引擎实际消费的 9 个, 平铺;
@@ -120,6 +126,15 @@ struct FitBalanceTilingArgs {
     ge::DataType geAType;          // ge 域 A dtype(fp4 识别——DT_FLOAT4_E2M1 无 mm 域表达)
     uint64_t inputDtypeSize;       // A 每元素字节数(glue 真实口径, fp4 时=0)
     uint64_t outputDtypeSize;      // C 每元素字节数(C 侧承载通信时的字节)
+    // —— 数据流结构参数(op 侧按算子语义直接填, 属调用事实而非实测标定) ——
+    CommAxis commAxis; // 通信承载侧: K=A 侧输入(传 A 行, 另一维取 kValue); N=C 侧输出(传 C 行, 取 nValue)
+    uint64_t mmWorksetShares; // 稳态 mm 工作集的数据份数(FindCubeUtil 的 M 跨度倍数):
+                              // 输入侧聚合且有本地块(FRONT)=rankDim−1(本地份剔出稳态、单独按单份建模);
+                              // 其余聚合/分发形态=rankDim; two-shot 单份形态=1
+    uint64_t mmRowMul;      // mm 总行数相对切分域的倍数(MatmulTime 的行数乘子):
+                            // 聚合/分发形态(切分域为本卡份, 实算全量)=rankDim; 单份形态=1
+    uint64_t commVolumeMul; // 单次通信调用的物理字节份数(单轮 256MB 上限判定):
+                            // 聚合/分发(单次调用搬全量)=rankDim; 单份调用=1
 };
 
 // ====== 通信引擎枚举与解析（三引擎统一分派的公共词汇）======
@@ -152,7 +167,7 @@ enum class CommComputeOrder {
 };
 
 // ====== 本地 mm 块位置枚举 ======
-// 引擎不区分通信原语——原语语义(份数口径/轴向/流水线结构)全部终结在标定层 CommProfile;
+// 引擎不区分通信原语——原语语义(份数口径/轴向/流水线结构)由调用侧经 args 结构参数声明;
 // 引擎唯一的结构键控是"本地 mm 块在流水线的位置"(不经通信的数据块, 前按
 // 通信原语隐式表达, 现显式化):
 enum class LocalMMPosition {
@@ -162,29 +177,6 @@ enum class LocalMMPosition {
           // deadline, 放尾部与末块通信重叠, 收尾端被本地块占据, 短块前置专职启动通信管道)
     NONE, // 无本地 mm 块——短块作流水线垫片, 按 bound 判定放首/尾
 };
-
-// ====== 标定层结构参数的模式枚举(CommProfile 消费; 倍数依赖运行时 rankDim, 标定层存模式,
-//       引擎一处集中换算——避免按原语的散落取值表) ======
-enum class CommAxis { // 通信承载的数据侧(决定通信矩阵另一维与 dtype 字节取值)
-    K,                // A 侧(输入): 输入侧通信, 传 A 矩阵行(另一维取 kValue)
-    N,                // C 侧(输出): 输出侧通信, 传 C 矩阵行(另一维取 nValue)
-};
-enum class RankMul { // m 的倍数模式(换算: ONE=1, RANK_DIM=rankDim, RANK_DIM_MINUS_ONE=rankDim-1)
-    ONE,
-    RANK_DIM,
-    RANK_DIM_MINUS_ONE,
-};
-inline uint64_t RankMulValue(RankMul mode, uint64_t rankDim)
-{
-    switch (mode) {
-        case RankMul::RANK_DIM:
-            return rankDim;
-        case RankMul::RANK_DIM_MINUS_ONE:
-            return rankDim - 1U; // rankDim 已在模型入口钳位 ≥2, 无下溢
-        default:
-            return 1U;
-    }
-}
 
 // fp4 子字节建模分母: 1 字节打包 2 个 fp4 元素(D6, dtype 键控)
 
@@ -208,20 +200,6 @@ struct FitBalanceCalibration {
     static constexpr size_t MAX_COMM_FIT_ROWS = 4;   // 已标定通信形态数上限
     static constexpr size_t MAX_CUBE_CALC_ROWS = 4;  // matmul 算力档位数上限
     static constexpr size_t MAX_BASE_BLOCK_ROWS = 2; // 最优基本块档位数上限
-
-    // —— 通信结构参数 ——
-    // 倍数依赖运行时 rankDim 故存模式枚举, 引擎经 RankMulValue() 一处集中换算。
-    struct CommProfile {
-        CommAxis axis = CommAxis::K;         // 通信承载侧: K=A 侧输入(传 A 行), N=C 侧输出(传 C 行)
-        RankMul mmWorksetMul = RankMul::ONE; // mm 工作集 M 跨度倍数(FindCubeUtil): AG=rankDim−1
-                                             // (自己的份不经通信, 本地块单独按 1 建模), RS/A2A=rankDim, AR=1
-        RankMul mmTotalMul = RankMul::ONE;    // mm 总行数倍数(MatmulTime): AG/RS=rankDim(聚合全量/
-                                              // scatter 除前全量), AR/A2A=1
-        RankMul commVolumeMul = RankMul::ONE; // 单次通信调用的物理字节倍数(⑥ 的 256MB 上限判定用,
-                                              // 与 k 的标定口径融合无关): AG/RS=rankDim(单次调用搬全量),
-                                              // AR/A2A=1(单次调用按单份)
-    };
-    CommProfile profile{};
 
     // —— 通信拟合（单引擎）——
     struct CommFit {
