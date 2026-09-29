@@ -329,7 +329,7 @@ ge::graphStatus GroupedMatmulWeightQuantChecker::CheckTensorNDimMultiScenario(co
     auto antiquantScaleShape = context->GetDynamicInputShape(GMM_INDEX_IN_ANTIQUANT_SCALE, index);
     OP_CHECK_NULL_WITH_CONTEXT(context, antiquantScaleShape);
     int64_t antiquantScaleNDim;
-    // 返回维度数量
+    // A16W4的pergroup场景antiquantScale为2维(groupNum, n)，N取最后一维；其余场景N取第0维
     if (IsA16W4(xDtype_, weightDtype_) && antiquantScaleShape->GetDimNum() == 2) {
         antiquantScaleNDim = antiquantScaleShape->GetDim(antiquantScaleShape->GetDimNum() - 1);
     } else {
@@ -357,7 +357,7 @@ ge::graphStatus GroupedMatmulWeightQuantChecker::CheckTensorNDimMultiScenario(co
         auto antiquantOffsetShape = context->GetDynamicInputShape(GMM_INDEX_IN_ANTIQUANT_OFFSET, index);
         OP_CHECK_NULL_WITH_CONTEXT(context, antiquantOffsetShape);
         int64_t antiquantOffsetNDim;
-        // 返回维度数量
+        // A16W4的pergroup场景antiquantOffset为2维(groupNum, n)，N取最后一维；其余场景N取第0维
         if (IsA16W4(xDtype_, weightDtype_) && antiquantOffsetShape->GetDimNum() == 2) {
             antiquantOffsetNDim = antiquantOffsetShape->GetDim(antiquantOffsetShape->GetDimNum() - 1);
         } else {
@@ -527,11 +527,16 @@ ge::graphStatus GroupedMatmulWeightQuantChecker::CheckScenarioValid(const gert::
 ge::graphStatus GroupedMatmulWeightQuantChecker::CheckShapeForGrouplist(const gert::InferShapeContext *context,
                                                                         const gert::Shape *groupListShape) const
 {
-    OP_CHECK_IF(groupListShape->GetDimNum() != 1,
+    const gert::RuntimeAttrs *attrs = context->GetAttrs();
+    OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
+    const int64_t *groupListTypePtr = attrs->GetAttrPointer<int64_t>(GMM_INDEX_ATTR_GROUP_LIST_TYPE);
+    OP_CHECK_NULL_WITH_CONTEXT(context, groupListTypePtr);
+    const size_t expectedDimNum = (*groupListTypePtr == GROUP_LIST_SPARSE) ? GROUP_LIST_SPARSE_DIM_NUM : 1;
+    OP_CHECK_IF(groupListShape->GetDimNum() != expectedDimNum,
                 OP_LOGE(context->GetNodeName(),
-                        "In single-single-single scenario, "
-                        "the groupList only support 1 dim num for now, but the actual dim num is [%zu].",
-                        groupListShape->GetDimNum()),
+                        "When groupListType is [%ld], the groupList dim num should be [%zu], "
+                        "but the actual dim num is [%zu].",
+                        *groupListTypePtr, expectedDimNum, groupListShape->GetDimNum()),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(groupListShape->GetDim(0) <= 0,
                 OP_LOGE(context->GetNodeName(),

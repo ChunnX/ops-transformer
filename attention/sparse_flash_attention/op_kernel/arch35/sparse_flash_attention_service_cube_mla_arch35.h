@@ -63,6 +63,7 @@ public:
     __aicore__ inline void InitCubeInput(__gm__ uint8_t *key, __gm__ uint8_t *keyRope, __gm__ uint8_t *sparseIndices,
                                          __gm__ uint8_t *blockTable, __gm__ uint8_t *sfaActualSeqLengthsQ,
                                          const ConstInfo &constInfo);
+    __aicore__ inline void UninitLocalBuffer();
     __aicore__ inline void IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &output,
                                        Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf,
                                        Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
@@ -173,6 +174,26 @@ __aicore__ inline void SFAMatmulService<TEMPLATE_ARGS>::InitLocalBuffer(BufferMa
 }
 
 TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void SFAMatmulService<TEMPLATE_ARGS>::UninitLocalBuffer()
+{
+    if ASCEND_IS_AIC {
+        l1QBuffers.Get().UnInit();
+        mmL0ABuffers.GetPre().UnInit();
+        mmL0ABuffers.Get().UnInit();
+        mmL0BBuffers.GetPre().UnInit();
+        mmL0BBuffers.Get().UnInit();
+        mmL0CBuffers.GetPre().UnInit();
+        mmL0CBuffers.Get().UnInit();
+        GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_MTE1>(mte1ToMte2Id[0]);
+        GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_MTE1>(mte1ToMte2Id[1]);
+        GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_MTE1>(mte1ToMte2Id[2]);
+        GetTPipePtr()->ReleaseEventID<HardEvent::MTE1_MTE2>(mte2ToMte1Id[0]);
+        GetTPipePtr()->ReleaseEventID<HardEvent::MTE1_MTE2>(mte2ToMte1Id[1]);
+        GetTPipePtr()->ReleaseEventID<HardEvent::MTE1_MTE2>(mte2ToMte1Id[2]);
+    }
+}
+
+TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SFAMatmulService<TEMPLATE_ARGS>::InitGmTensor(__gm__ uint8_t *sfaActualSeqLengthsQ,
                                                                      const ConstInfo &constInfo)
 {
@@ -229,7 +250,7 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAMatmulService<TEMPLATE_ARGS>:
         CopyToL1Nd2Nz<Q_T>(dst, v0ResGmTensor, runInfo.s2RealSize, 576, // 576: 表示 KV Cache 单 Token 的特征宽度;
                            576);                                        // 576: 同上
     } else {
-        CopyToL1Nd2Nz<Q_T>(dst, v0ResGmTensor, runInfo.s2RealSize, 512, 512);
+        CopyToL1Nd2Nz<Q_T>(dst, v0ResGmTensor, runInfo.s2RealSize, 512, 512); // 512: 同上
     }
     SetFlag<HardEvent::MTE2_MTE1>(mte1ToMte2Id[runInfo.taskIdMod3]);
     WaitFlag<HardEvent::MTE2_MTE1>(mte1ToMte2Id[runInfo.taskIdMod3]);
@@ -360,6 +381,7 @@ public:
     __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> &sfaL1BuffMgr,
                                          __gm__ uint8_t *query, __gm__ uint8_t *queryRope)
     {}
+    __aicore__ inline void UninitLocalBuffer() {}
     __aicore__ inline void InitCubeInput(__gm__ uint8_t *key, __gm__ uint8_t *keyRope, __gm__ uint8_t *sparseIndices,
                                          __gm__ uint8_t *blockTable, __gm__ uint8_t *sfaActualSeqLengthsQ,
                                          const ConstInfo &constInfo)
@@ -386,8 +408,8 @@ struct CubeBlockTraits; // 声明
 #define DEFINE_CUBE_BLOCK_TRAITS(CUBE_BLOCK_CLASS) \
     TEMPLATES_DEF_NO_DEFAULT \
     struct CubeBlockTraits<CUBE_BLOCK_CLASS<TEMPLATE_ARGS>> { \
-        CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TRAIT_TYPE) \
-        CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TRAIT_CONST) \
+        SFA_CUBE_TRAIT_TYPES(GEN_TRAIT_TYPE) \
+        SFA_CUBE_TRAIT_CONSTANTS(GEN_TRAIT_CONST) \
     }
 
 DEFINE_CUBE_BLOCK_TRAITS(SFAMatmulService);
@@ -397,7 +419,7 @@ DEFINE_CUBE_BLOCK_TRAITS(SFAMatmulServiceDummy);
 #define GEN_ARGS_TYPE(name, ...) using name = typename CubeBlockTraits<CubeBlockType>::name##_TRAITS;
 #define GEN_ARGS_CONST(name, type, ...) static constexpr type name = CubeBlockTraits<CubeBlockType>::name##Traits;
 #define ARGS_TRAITS \
-    CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARGS_TYPE) \
-    CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_ARGS_CONST)
+    SFA_CUBE_TRAIT_TYPES(GEN_ARGS_TYPE) \
+    SFA_CUBE_TRAIT_CONSTANTS(GEN_ARGS_CONST)
 } // namespace BaseApi
 #endif // SPARSE_FLASH_ATTENTION_SERVICE_CUBE_MLA_ARCH35_H

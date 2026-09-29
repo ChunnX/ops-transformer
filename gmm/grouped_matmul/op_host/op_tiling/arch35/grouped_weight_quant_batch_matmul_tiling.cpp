@@ -687,14 +687,25 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckEveryTensorSingleXMultiWeightSing
 bool GroupedWeightQuantBatchMatmulTiling::CheckGroupList(const gert::TilingContext *context) const
 {
     if (groupType_ == static_cast<int64_t>(GroupType::SPLIT_M)) {
-        OP_CHECK_IF(groupListType_ != 0 && groupListType_ != 1,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                        OP_NAME, "groupListType", std::to_string(groupListType_),
-                        "When the dtype of x-weight is bf16/fp16-int4/int32 and groupType is 0, "
-                        "groupListType only supports values 0 or 1"),
+        const bool isMxSparse = IsMxA8W4() && groupListType_ == GroupedMatmul::GROUPLIST_TYPE_SPARSE_M;
+        OP_CHECK_IF(groupListType_ != 0 && groupListType_ != 1 && !isMxSparse,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "groupListType", std::to_string(groupListType_),
+                                                          "When groupType is 0, groupListType supports values 0 or 1; "
+                                                          "MX A8W4 also supports 2(sparse_m)"),
                     return false);
         auto groupListPtr = context->GetOptionalInputShape(GroupedMatmul::GROUPLIST_INDEX);
         OP_CHECK_IF(groupListPtr == nullptr, OP_LOGE(context->GetNodeName(), "GroupList is nullptr."), return false);
+        if (groupListType_ == GroupedMatmul::GROUPLIST_TYPE_SPARSE_M) {
+            const auto &groupListShape = groupListPtr->GetOriginShape();
+            OP_CHECK_IF(groupListShape.GetDimNum() != GmmConstant::GROUP_LIST_SPARSE_DIMS,
+                        OP_LOGE_FOR_INVALID_SHAPEDIM(OP_NAME, "groupList", std::to_string(groupListShape.GetDimNum()),
+                                                     std::to_string(GmmConstant::GROUP_LIST_SPARSE_DIMS)),
+                        return false);
+            OP_CHECK_IF(groupListShape.GetDim(1) != GmmConstant::GROUP_LIST_SPARSE_DIMS,
+                        OP_LOGE_FOR_INVALID_SHAPESIZE(OP_NAME, "groupList", std::to_string(groupListShape.GetDim(1)),
+                                                      std::to_string(GmmConstant::GROUP_LIST_SPARSE_DIMS)),
+                        return false);
+        }
         int32_t groupListSize = static_cast<int32_t>(groupListPtr->GetOriginShape().GetDim(0));
 
         int32_t groupNum = static_cast<int32_t>(numWeight_);
@@ -1368,11 +1379,13 @@ bool GroupedWeightQuantBatchMatmulTiling::SetShapeListSplitMSingleXSingleWeightS
     nSize_ = transB_ ? wShape.GetDim(wDimNum - 2) : wShape.GetDim(wDimNum - 1);
     if (weightNzFlag_) {
         // 非转置NZ排布(N1, K1, K0, N0), 转置NZ排布(K1, N1, N0, K0)
-        // -3含义：转置N1索引；-2含义：转置N0索引
-        nSize_ = transB_ ? wShape.GetDim(wDimNum - 3) * wShape.GetDim(wDimNum - 2)
-                           // -4含义：非转置N1索引；-1含义：非转置N0索引
-                           :
-                           wShape.GetDim(wDimNum - 4) * wShape.GetDim(wDimNum - 1);
+        if (transB_) {
+            // wDimNum-3：转置N1索引；wDimNum-2：转置N0索引
+            nSize_ = wShape.GetDim(wDimNum - 3) * wShape.GetDim(wDimNum - 2);
+        } else {
+            // wDimNum-4：非转置N1索引；wDimNum-1：非转置N0索引
+            nSize_ = wShape.GetDim(wDimNum - 4) * wShape.GetDim(wDimNum - 1);
+        }
         const gert::StorageShape *yShapePtr = context->GetOutputShape(0);
         OP_CHECK_IF(yShapePtr == nullptr, OP_LOGE(context->GetNodeName(), "yShapePtr is nullptr."), return false);
         const gert::Shape &yShape = yShapePtr->GetOriginShape();
@@ -1439,11 +1452,13 @@ bool GroupedWeightQuantBatchMatmulTiling::SetShapeListSplitMSingleXMultiWeightSi
         }
         if (weightNzFlag_) {
             // 非转置NZ排布(N1, K1, K0, N0), 转置NZ排布(K1, N1, N0, K0)
-            // -3含义：转置N1索引；-2含义：转置N0索引
-            nSize = transB_ ? wShape.GetDim(wDimNum - 3) * wShape.GetDim(wDimNum - 2)
-                              // -4含义：非转置N1索引；-1含义：非转置N0索引
-                              :
-                              wShape.GetDim(wDimNum - 4) * wShape.GetDim(wDimNum - 1);
+            if (transB_) {
+                // wDimNum-3：转置N1索引；wDimNum-2：转置N0索引
+                nSize = wShape.GetDim(wDimNum - 3) * wShape.GetDim(wDimNum - 2);
+            } else {
+                // wDimNum-4：非转置N1索引；wDimNum-1：非转置N0索引
+                nSize = wShape.GetDim(wDimNum - 4) * wShape.GetDim(wDimNum - 1);
+            }
         }
         if (isFp4PackType && !transB_) {
             // 一个float32/int32表示8个fp4/int4，设置为正确shape；kSize来自x，不需要考虑转置场景k轴扩大

@@ -42,6 +42,9 @@ _selected_ops = (
 
 _vendor_env = os.environ.get("TORCH_EXTENSION_VENDOR", "").strip()
 
+_experimental_env = os.environ.get("TORCH_EXTENSION_EXPERIMENTAL", "").strip()
+_enable_experimental = _experimental_env.upper() == "TRUE"
+
 if _selected_ops:
     PACKAGE_NAME = "%s_%s" % (BASE_PACKAGE_NAME, _vendor_env or "custom")
 else:
@@ -120,6 +123,12 @@ def _collect_op(op_cat, op_dir, te_dir):
 for cat in sorted(os.listdir(OPS_TRANSFORMER_ROOT)):
     cat_path = os.path.join(OPS_TRANSFORMER_ROOT, cat)
     if not os.path.isdir(cat_path) or cat.startswith((".", "_")):
+        continue
+
+    is_experimental = cat == "experimental"
+    if is_experimental and not _enable_experimental:
+        continue
+    if not is_experimental and _enable_experimental:
         continue
 
     cat_init_src = os.path.join(cat_path, "__init__.py")
@@ -215,7 +224,7 @@ class BuildPyWithOps(_build_py):
                 os.makedirs(os.path.dirname(dst), exist_ok=True)
                 with open(dst, "w") as f:
                     for sel_op in sel_ops:
-                        f.write("from .%s import %s\n" % (sel_op, sel_op))
+                        f.write("from .%s import *\n" % sel_op)
         else:
             for category, init_src in _op_category_inits.items():
                 dst = os.path.join(build_pkg, "ops", category, "__init__.py")
@@ -312,7 +321,7 @@ setup(
     description=DESCRIPTION,
     author="CANN",
     license="CANN Open Software License Agreement Version 2.0",
-    url="https://gitcode.com/cann/ops-transformer/tree/master/torch_extension",
+    url="https://atomgit.com/cann/ops-transformer/tree/master/torch_extension",
     install_requires=["torch>=2.6.0", "torch_npu"],
     packages=_all_packages,
     package_data={PACKAGE_NAME: _non_python_files(_src_path)},

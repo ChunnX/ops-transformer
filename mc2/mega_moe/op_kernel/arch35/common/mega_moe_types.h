@@ -82,7 +82,8 @@ struct GMMAddrInfo {
     __gm__ int32_t *sharedExpertGmm2TileCounter;
     uint32_t gmm2CombineLogicalCoreCount = 0U;
     Gmm1ActivationSync *gmm1ActivationSync = nullptr;
-    Gmm2CombineSync *gmm2CombineSync = nullptr;
+    Gmm2CombineSync *gmm2CombineSync =
+        nullptr; // per-tile credit 握手对象；是否参与握手由模板参 NotifyCombineTileReady 编译期决定
 };
 
 // A/ScaleA 以逻辑元素为单位记录相邻行起始地址的跨度。
@@ -209,6 +210,11 @@ struct QuantConfig {
     static constexpr uint32_t C_ELEMS_PER_BYTE = PackedElementTraits<ActivationQuantOutType>::ELEMENTS_PER_BYTE;
 };
 
+struct WorkRange {
+    uint32_t start = 0;
+    uint32_t count = 0;
+};
+
 struct AivJobContext {
     uint32_t jobIndex;
     uint32_t totalJobs;
@@ -229,7 +235,8 @@ struct MoeStageCommonConfig {
 struct GmmExecutionConfig {
     BlockJobContext blockJob;
     bool isPerExpertWeightTensor;
-    StridedAConfig inputLayout;
+    StridedAConfig inputLayout{};
+    bool useStridedInput = false;
 };
 
 // 各流水阶段在同步 workspace 中为每个专家预留的 slot 数量。
