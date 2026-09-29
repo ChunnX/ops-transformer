@@ -48,6 +48,9 @@ constexpr size_t DIM_BLOCK = 1;  // [B, N, H] 的 N 轴；[B, N + 1] 的 N + 1 �
 constexpr size_t DIM_BLOCK_RES_HIDDEN = 2;
 constexpr size_t DIM_WEIGHT_ROW = 0;  // proj_weight [1, H] 的固定 1 轴
 constexpr size_t DIM_NORM_WEIGHT = 0; // norm_weight [H] 的唯一轴
+constexpr int64_t MIN_BATCH_SIZE = 64;
+constexpr int64_t MIN_HIDDEN_SIZE = 2048;
+constexpr int64_t MAX_HIDDEN_SIZE = 500000;
 constexpr int64_t UNKNOWN_DIM = -1;   // unknown shape dim
 constexpr int64_t UNKNOWN_RANK = -2;  // unknown rank marker (dimNum=1, dim0=-2)
 } // namespace
@@ -179,6 +182,11 @@ static bool CheckShapeBlockAttentionResidualsGrad(gert::InferShapeContext *conte
                                         probsShape};
     const size_t batchDims[] = {DIM_BATCH, DIM_BATCH, DIM_BATCH, DIM_BATCH, DIM_BATCH};
     B = ResolveFirstKnownDim(batchShapes, batchDims, sizeof(batchShapes) / sizeof(batchShapes[0]));
+    if (B != UNKNOWN_DIM && B < MIN_BATCH_SIZE) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "batch size", std::to_string(B).c_str(),
+                                              "batch size must be greater than or equal to 64");
+        return false;
+    }
     // 逐输入校验 batch 维；未知维（-1）自动跳过比较。
     if (!CheckInputDimValue(context, blockResShape, DIM_BATCH, B, "block_res.shape[0]") ||
         !CheckInputDimValue(context, gradHiddenStatesShape, DIM_BATCH, B, "grad_hidden_states.shape[0]") ||
@@ -192,6 +200,11 @@ static bool CheckShapeBlockAttentionResidualsGrad(gert::InferShapeContext *conte
                                          gradHiddenStatesShape};
     const size_t hiddenDims[] = {DIM_HIDDEN, DIM_BLOCK_RES_HIDDEN, DIM_HIDDEN, DIM_NORM_WEIGHT, DIM_HIDDEN};
     H = ResolveFirstKnownDim(hiddenShapes, hiddenDims, sizeof(hiddenShapes) / sizeof(hiddenShapes[0]));
+    if (H != UNKNOWN_DIM && (H < MIN_HIDDEN_SIZE || H > MAX_HIDDEN_SIZE)) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "hidden size", std::to_string(H).c_str(),
+                                              "hidden size must be in [2048, 500000]");
+        return false;
+    }
     // 逐输入校验 hidden 维；未知维（-1）自动跳过比较。
     if (!CheckInputDimValue(context, blockResShape, DIM_BLOCK_RES_HIDDEN, H, "block_res.shape[2]") ||
         !CheckInputDimValue(context, projWeightShape, DIM_HIDDEN, H, "proj_weight.shape[1]") ||
