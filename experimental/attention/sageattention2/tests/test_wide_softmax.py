@@ -17,11 +17,13 @@ from sageattention2 import reference, sageattn
 
 
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
-@pytest.mark.parametrize("sk", [1024, 1536, 4096])
+@pytest.mark.parametrize("sk", [4096, 4608, 5120])
 @pytest.mark.parametrize("causal", [False, True])
 def test_wide_uniform_normalization(dtype, sk, causal):
     # More than 28 query tiles also exercises per-core buffer reuse across tiles.
     sq = sk if causal else 2048
+    # Match the production wide predicate: Dp=128, aligned Sq/Sk, Sk>=4096.
+    assert sq % 128 == 0 and sk >= 4096 and sk % 512 == 0
     q = torch.zeros(1, 2, sq, 128, dtype=dtype, device="npu")
     k = torch.zeros(1, 1, sk, 128, dtype=dtype, device="npu")
     v = torch.ones_like(k)
@@ -73,7 +75,8 @@ def test_wide_unequal_halves(dominant_half):
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("seq", [1024, 4096])
 @pytest.mark.parametrize("causal", [False, True])
-def test_wide_fp32_accuracy(dtype, seq, causal):
+def test_narrow_and_wide_fp32_accuracy(dtype, seq, causal):
+    # 1024 exercises N256; 4096 exercises joint N512 normalization.
     torch.manual_seed(719)
     q = torch.randn(1, 4, seq, 128, dtype=dtype)
     k = torch.randn(1, 2, seq, 128, dtype=dtype)
@@ -142,4 +145,6 @@ def test_wide_preprocessing_layout_accuracy(dtype, dim, layout, causal):
     assert error.mean() <= 1.2 * ref_error.mean() + 1e-6
     assert error.square().mean().sqrt() <= 1.2 * ref_error.square().mean().sqrt() + 1e-6
     contiguous = sageattn(q.npu(), k.npu(), v.npu(), is_causal=causal).cpu().float()
-    torch.testing.assert_close(out, contiguous, atol=0, rtol=0)
+    # Aligned D=128 uses independent atomic K-mean reductions on each call.
+    tol = 2 ** (-9 if dtype == torch.float16 else -6)
+    torch.testing.assert_close(out, contiguous, atol=tol, rtol=tol)

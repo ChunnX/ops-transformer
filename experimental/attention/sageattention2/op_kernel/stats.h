@@ -49,7 +49,8 @@ __aicore__ inline void StatsSumVF(LocalTensor<T> rows, LocalTensor<float> state,
 }
 // Assign consecutive 128-row batches to each AIV within its die group.
 // A complete head has a single writer; only heads crossing an AIV boundary
-// use FP32 atomic adds. The caller synchronizes before consuming mean.
+// use FP32 atomic adds. The caller synchronizes before consuming mean;
+// this guarantees completion, not a deterministic order of atomic additions.
 template <class T>
 __aicore__ void StreamKStats(GM_ADDR k, GM_ADDR mean, SageParams p)
 {

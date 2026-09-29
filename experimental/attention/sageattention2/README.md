@@ -64,6 +64,8 @@ Q/K 量化以 token 为独立 scale 单位。CUDA 的 per-thread/per-warp 分组
 
 不支持任意 attention mask、dropout、varlen 和 autograd。
 
+已注册 GE `InferShape` / `InferDataType`：底层 `SageAttention2` 接受 HND（`[B,H,S,D]`）输入，`out` 的 shape/dtype 与 Q 相同，`lse` 为 `[B,Hq,Sq]`、FP32；支持未知维度与未知 rank 的形状传播，执行时由 tiling 检查实际四维形状。GE schema 始终包含两个输出，只有 `return_lse=True` 时 LSE 内容有效。NHD 转换由 ACLNN/PyTorch 封装完成，直接构建 GE 节点时需使用 HND。PyTorch 的 Meta/FakeTensor 推导独立于 GE；当前未提供 torchair converter。
+
 ```python
 import torch
 import torch_npu

@@ -17,6 +17,10 @@ __aicore__ inline bool UseDieGroups(const SageParams &p) {
     return p.cores > 0 && p.cores % 2 == 0 && (uint64_t(p.b) * p.hk) % 2 == 0 &&
            p.sq % 128 == 0;
 }
+// Valid only when UseDieGroups(p) is true: cores is positive and even.
+// The tiler requires hq % hk == 0, so even b*hk implies even
+// total = b*hq*queryTiles. Both die groups must have exactly total/2 tasks.
+// Keep this invariant if the grouping predicate or task space changes.
 __aicore__ inline uint64_t DieTask(uint64_t task, uint64_t total, uint32_t cores) {
     const uint32_t half = cores / 2;
     return (task % cores / half) * (total / 2) + (task / cores) * half + task % half;
@@ -25,6 +29,7 @@ __aicore__ inline uint64_t DieTask(uint64_t task, uint64_t total, uint32_t cores
 
 namespace Sage {
 // Per-core end in the virtual cyclic task space, including a partial final wave.
+// The grouped branch requires the same even-total invariant as DieTask.
 __aicore__ inline uint64_t DieTaskEnd(const SageParams &p, uint64_t total, uint32_t core) {
     if (!UseDieGroups(p)) return total;
     const uint32_t half = p.cores / 2, rank = core % half;

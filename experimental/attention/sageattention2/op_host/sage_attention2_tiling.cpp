@@ -156,10 +156,14 @@ ge::graphStatus Tile(gert::TilingContext *c)
         return Failure(__LINE__);
     }
     // dav3510 GetUserWorkspace skips the CANN system workspace prefix.
-    uint64_t reserved = 16ULL * 1024 * 1024;
-    if (c->GetPlatformInfo()) {
-        reserved = platform_ascendc::PlatformAscendC(c->GetPlatformInfo()).GetLibApiWorkSpaceSize();
+    // Query the matching platform API; do not guess a 16 MiB prefix when
+    // platform data is missing, even if runtime core-count queries succeed.
+    if (!c->GetPlatformInfo()) {
+        std::fprintf(stderr, "SageAttention2 requires platform info for system workspace size\n");
+        return Failure(__LINE__);
     }
+    const uint64_t reserved =
+        platform_ascendc::PlatformAscendC(c->GetPlatformInfo()).GetLibApiWorkSpaceSize();
     if (bytes > std::numeric_limits<size_t>::max() - reserved) {
         return Failure(__LINE__);
     }

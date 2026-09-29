@@ -87,6 +87,8 @@ def test_wide_full_sequence(seq, dtype, causal, record_property):
     check_wide(q, k, v, causal, "NHD" if causal else "HND", False, record_property)
 
 
+# Field order matches benchmarks/cases.py: name, seq, batch, hk.
+# All acceptance cases use Hq=32 and D=128.
 PERFORMANCE_SHAPES = [
     ("P-01", 4096, 1, 32, torch.float16, False),
     ("P-02", 8192, 1, 32, torch.float16, False),

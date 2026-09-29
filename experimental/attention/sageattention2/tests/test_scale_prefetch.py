@@ -34,8 +34,10 @@ def test_scale_prefetch_long_kv_and_heads(sk):
     inputs = [t.npu() for t in (q, k, v)]
     out, lse = sageattn(*inputs, return_lse=True)
     again, again_lse = sageattn(*inputs, return_lse=True)
-    torch.testing.assert_close(again, out, atol=0, rtol=0)
-    torch.testing.assert_close(again_lse, lse, atol=0, rtol=0)
+    # Cross-core K-mean atomics are synchronized, but their order is not fixed.
+    # Use the same repeated-call tolerances as test_pv_slot_wraparound.
+    torch.testing.assert_close(again, out, atol=2**-9, rtol=2**-9)
+    torch.testing.assert_close(again_lse, lse, atol=2e-6, rtol=2e-6)
     expected, expected_lse = reference.attention(q[:, :, :1], k, v, return_lse=True)
     torch.testing.assert_close(out.cpu(), expected.expand_as(q), atol=0.002, rtol=0.002)
     torch.testing.assert_close(

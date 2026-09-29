@@ -9,6 +9,14 @@
 add_op_to_compiled_list()
 if (BUILD_OPEN_PROJECT)
     target_sources(op_host_aclnnExc PRIVATE sage_attention2_def.cpp)
+    # GE online compilation derives sage_attention2 from the operator type;
+    # the repository directory is named sageattention2. Provide its source
+    # under the generated wrapper's lookup path in the installed package.
+    if(ENABLE_BUILD_PKG)
+        install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../op_kernel/
+            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/sage_attention2/op_kernel
+            FILES_MATCHING PATTERN "*.h" PATTERN "*.cpp")
+    endif()
 endif()
 if(NOT DEFINED CATLASS_ROOT)
     set(CATLASS_ROOT "$ENV{CATLASS_ROOT}")

@@ -17,7 +17,7 @@ import torch
 from torch.library import impl
 
 
-def _validate(q, k, v, layout, causal, gran, kwargs):
+def _validate(q, k, v, layout, causal, gran, kwargs, *, allow_meta=False):
     if layout not in ("HND", "NHD"):
         raise ValueError("tensor_layout must be HND or NHD")
     if gran not in ("per_token", "per_thread", "per_warp"):
@@ -34,6 +34,10 @@ def _validate(q, k, v, layout, causal, gran, kwargs):
         t.dtype != q.dtype for t in (k, v)
     ):
         raise ValueError("q/k/v must share FP16 or BF16 dtype")
+    # Meta is allowed only by the dispatcher shape-inference implementation.
+    # Fake NPU tensors report an NPU device and remain valid public inputs.
+    if q.device.type != "npu" and not (allow_meta and q.device.type == "meta"):
+        raise ValueError("SageAttention2 requires NPU inputs (q/k/v)")
     if any(t.device != q.device for t in (k, v)):
         raise ValueError("q/k/v must share a device")
     if any(t.stride(-1) != 1 for t in (q, k, v)):
@@ -81,7 +85,9 @@ def _meta(
     smooth_k=True,
     return_lse=False,
 ):
-    qc, _, _ = _validate(q, k, v, tensor_layout, is_causal, "per_token", {})
+    qc, _, _ = _validate(
+        q, k, v, tensor_layout, is_causal, "per_token", {}, allow_meta=True
+    )
     if sm_scale is not None and (
         not math.isfinite(sm_scale) or abs(sm_scale) > 3.4028234663852886e38
     ):

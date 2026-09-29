@@ -25,7 +25,7 @@ def main():
     parser.add_argument(
         "--cases",
         nargs="+",
-        choices=[c[0] for c in ALL_CASES],
+        choices=[c.name for c in ALL_CASES],
         default=[f"P-{index:02d}" for index in range(1, 8)],
     )
     parser.add_argument(
@@ -47,7 +47,8 @@ def main():
     output_root = args.output.resolve()
     output_root.mkdir(parents=True, exist_ok=True)
     rows = []
-    for name, *_ in ALL_CASES:
+    for case in ALL_CASES:
+        name = case.name
         if name not in args.cases:
             continue
         directory = output_root / name

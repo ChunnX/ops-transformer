@@ -21,19 +21,17 @@ from sageattention2 import sageattn
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--case", choices=[case[0] for case in ALL_CASES], required=True
+        "--case", choices=[case.name for case in ALL_CASES], required=True
     )
     parser.add_argument("--output", type=Path)
     parser.add_argument("--seq", type=int, help="Override context length")
     parser.add_argument("--smooth-v", action="store_true")
     parser.add_argument("--operator", choices=["sage", "fia"], required=True)
     args = parser.parse_args()
-    _, seq, hk, batch, dtype_name, causal = next(
-        c for c in ALL_CASES if c[0] == args.case
-    )
-    heads = 16 if args.case == "X-02" else 32
-    dim = 64 if args.case == "X-04" else 128
-    seq = args.seq if args.seq is not None else seq
+    case = next(c for c in ALL_CASES if c.name == args.case)
+    batch, heads, hk, dim = case.batch, case.heads, case.hk, case.dim
+    dtype_name, causal = case.dtype, case.causal
+    seq = args.seq if args.seq is not None else case.seq
     if seq < 1:
         parser.error("invalid context length")
     torch.manual_seed(71)

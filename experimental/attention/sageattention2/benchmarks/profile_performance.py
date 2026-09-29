@@ -55,7 +55,7 @@ def _time_ms(fn, warmup: int = 5, iters: int = 20, device: torch.device = None) 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--case", choices=[case[0] for case in ALL_CASES], required=True
+        "--case", choices=[case.name for case in ALL_CASES], required=True
     )
     parser.add_argument(
         "--warmup", type=int, default=int(os.environ.get("SAGEATTN_PERF_WARMUP", "50"))
@@ -69,12 +69,10 @@ def main():
     args = parser.parse_args()
     if args.warmup < 1 or args.repeats < 1:
         parser.error("warmup and repeats must be positive")
-    _, seq, hk, batch, dtype_name, causal = next(
-        c for c in ALL_CASES if c[0] == args.case
-    )
-    heads = 16 if args.case == "X-02" else 32
-    dim = 64 if args.case == "X-04" else 128
-    seq = args.seq if args.seq is not None else seq
+    case = next(c for c in ALL_CASES if c.name == args.case)
+    batch, heads, hk, dim = case.batch, case.heads, case.hk, case.dim
+    dtype_name, causal = case.dtype, case.causal
+    seq = args.seq if args.seq is not None else case.seq
     if seq < 1:
         parser.error("invalid context length")
     torch.manual_seed(71)

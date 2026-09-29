@@ -17,7 +17,8 @@ constexpr uint32_t P_NZ_PAD_ROWS = 1, P_SLOT_BYTES = (HALF + P_NZ_PAD_ROWS) * N;
 constexpr uint32_t ALPHA_SLOTS = 4;
 constexpr uint32_t P_L1 = 65536, B_L1 = P_L1 + PIPE_SLOTS * M * N;
 static_assert(M * 128 <= P_L1 && P_L1 + PIPE_SLOTS * M * N <= B_L1, "L1 A/P/B buffers overlap");
-static_assert(B_L1 + 2 * N * 128 <= 512 * 1024, "L1 B exceeds capacity");
+static_assert(B_L1 + 2 * N * 128 <= Arch::L1_SIZE, "L1 B exceeds capacity");
+// 32 KiB is one operand slot, not the full L0A/L0B capacity.
 static_assert(M * N <= 32 * 1024 && N * 128 <= 32 * 1024 && M * 128 <= 32 * 1024,
               "L0 operands exceed their 32 KiB slots");
 // UB layout derives from tile sizes. The final output reuses P after PV has
@@ -36,8 +37,9 @@ constexpr uint32_t SUM_UB = ALPHA_UB + ALPHA_SLOTS * 512, UB_END = SUM_UB + HALF
 // Do not reuse score: AIC may already be writing the next query tile's QK.
 constexpr uint32_t X_UB = P_UB, RED_UB = P_UB + 1024, WORK_UB = P_UB + 2048, QI_UB = P_UB + 4096;
 static_assert(QI_UB + 512 <= P_UB + P_SLOT_BYTES, "final scratch exceeds retired P0");
-static_assert(UB_END <= 248 * 1024, "UB exceeds capacity");
+static_assert(UB_END <= Arch::UB_SIZE, "UB exceeds capacity");
 static_assert(HALF * N >= HALF * 128 * 2, "P buffer cannot hold final FP16/BF16 output");
+// 128 KiB is one accumulator slot, not the full L0C capacity.
 static_assert(M * N * 4 <= 128 * 1024 && M * 128 * 4 <= 128 * 1024, "L0C exceeds its 128 KiB slot");
 // MODE4 counted notifications, shared by all Cube/Vector groups.
 constexpr uint32_t QK_READY = 0, P_READY = 1, PV_READY = 2, PV_RELEASE = 3, AIV_FLAG_OFFSET = 16;

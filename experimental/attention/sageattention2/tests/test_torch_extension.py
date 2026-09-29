@@ -38,6 +38,13 @@ def test_meta_layout_and_optional_lse(layout, dtype, return_lse):
     assert "cann_ops_transformer" not in sys.modules
 
 
+@pytest.mark.parametrize("device", ["cpu", "meta"])
+def test_public_api_requires_npu(device):
+    q = torch.empty(1, 2, 33, 64, device=device, dtype=torch.float16)
+    with pytest.raises(ValueError, match="requires NPU inputs"):
+        sageattn(q, q, q)
+
+
 def test_fake_tensor_does_not_compile_extension():
     from torch._subclasses.fake_tensor import FakeTensorMode
 

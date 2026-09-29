@@ -129,7 +129,7 @@ __aicore__ void QuantBatch(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADD
     constexpr uint32_t MEAN = 81920, MX_SCALE = 82432, RAW_SCALE = 82944, HALF_SCALE = 83200;
     constexpr uint32_t INVERSE_SCALE = 83456;
     static_assert(INVERSE_SCALE + 64 * sizeof(float) <= SLOT_BYTES, "inverse scale exceeds slot");
-    static_assert(2 * SLOT_BYTES + 512 <= 248 * 1024, "quant pipeline exceeds UB");
+    static_assert(2 * SLOT_BYTES + 512 <= Arch::UB_SIZE, "quant pipeline exceeds UB");
     auto factors = r.ubBuf.GetBufferByByte<float>(2 * SLOT_BYTES);
     FixedScaleFactorsVF((__ubuf__ float *)factors.GetPhyAddr(), p.smScale);
     const uint64_t nq = uint64_t(p.b) * p.hq * p.qp / 64;

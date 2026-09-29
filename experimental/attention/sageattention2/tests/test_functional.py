@@ -78,16 +78,16 @@ def test_layout_dtype_tail(dtype, layout, d, sq, sk, scale):
 
 
 @pytest.mark.parametrize(
-    "bad",
+    "bad,message",
     [
-        {"qk_quant_gran": "invalid"},
-        {"dropout_p": 0.1},
-        {"attn_mask": torch.ones(1)},
+        ({"qk_quant_gran": "invalid"}, "qk_quant_gran must be"),
+        ({"dropout_p": 0.1}, "dropout is unsupported"),
+        ({"attn_mask": torch.ones(1)}, "attn_mask is unsupported"),
     ],
 )
-def test_reject_unsupported(bad):
-    q = torch.zeros(1, 1, 4, 64, dtype=torch.float16)
-    with pytest.raises((ValueError, NotImplementedError)):
+def test_reject_unsupported(bad, message):
+    q = torch.zeros(1, 1, 4, 64, dtype=torch.float16, device="npu")
+    with pytest.raises(ValueError, match=message):
         sageattn_qk_int8_pv_fp8_asc(q, q, q, **bad)
 
 
