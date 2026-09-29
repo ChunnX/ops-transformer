@@ -150,6 +150,7 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
                           actualSeqLengthsQ, actualSeqLengths);
     if ASCEND_IS_AIV {
         sfaConstInfo.bSize = this->sharedParams.bSize;
+        sfaConstInfo.n2Size = this->sharedParams.n2Size;
         sfaConstInfo.gSize = this->sharedParams.gSize;
         sfaConstInfo.s1Size = this->sharedParams.s1Size;
         sfaConstInfo.dSizeV = 512;
