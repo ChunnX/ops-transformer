@@ -26,7 +26,7 @@
 #include "tiling/platform/platform_ascendc.h"
 #include "ascendc/host_api/tiling/template_argument.h"
 #include "apace/kernel/fusions/all_gather_quant_matmul/all_gather_mx_matmul_tiling_data.h"
-#include "apace/tiling/quant_matmul_tiling_swat.h"
+#include "apace/tiling/matmul_tiling/quant_matmul_tiling.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "../../../op_kernel/arch35/all_gather_matmul_v3_tiling_key.h"
 #include "mc2_exception_dump.h"
@@ -75,7 +75,7 @@ constexpr uint64_t MX_GROUP_K = 32UL;
 static const std::vector<ge::DataType> X_DTYPE_LIST = {ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT4_E2M1};
 static const std::vector<ge::DataType> OUT_DTYPE_LIST = {ge::DT_BF16, ge::DT_FLOAT16};
 
-static bool IsContains(const std::vector<ge::DataType> &list, ge::DataType value)
+static bool IsContains(const std::vector<ge::DataType>& list, ge::DataType value)
 {
     return std::find(list.begin(), list.end(), value) != list.end();
 }
@@ -89,7 +89,7 @@ struct ShapeInfo {
 /**
  * @brief 校验tensor指针非空
  */
-static ge::graphStatus CheckTensorPtrNullptr(const gert::TilingContext *context)
+static ge::graphStatus CheckTensorPtrNullptr(const gert::TilingContext* context)
 {
     auto contextDesc = context->GetInputDesc(IDX_INPUT_CONTEXT);
     auto x1Desc = context->GetInputDesc(IDX_INPUT_X1);
@@ -116,9 +116,9 @@ static ge::graphStatus CheckTensorPtrNullptr(const gert::TilingContext *context)
 /**
  * @brief 校验tensor数据类型
  */
-static ge::graphStatus CheckTensorDataType(const gert::TilingContext *context)
+static ge::graphStatus CheckTensorDataType(const gert::TilingContext* context)
 {
-    const char *nodeName = context->GetNodeName();
+    const char* nodeName = context->GetNodeName();
 
     auto x1Desc = context->GetInputDesc(IDX_INPUT_X1);
     auto x2Desc = context->GetInputDesc(IDX_INPUT_X2);
@@ -181,9 +181,9 @@ static ge::graphStatus CheckTensorDataType(const gert::TilingContext *context)
 /**
  * @brief 校验tensor格式
  */
-static ge::graphStatus CheckTensorFormat(const gert::TilingContext *context)
+static ge::graphStatus CheckTensorFormat(const gert::TilingContext* context)
 {
-    const char *nodeName = context->GetNodeName();
+    const char* nodeName = context->GetNodeName();
 
     auto contextDesc = context->GetInputDesc(IDX_INPUT_CONTEXT);
     ge::Format contextFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(contextDesc->GetStorageFormat()));
@@ -241,8 +241,8 @@ static ge::graphStatus CheckTensorFormat(const gert::TilingContext *context)
 /**
  * @brief 校验单个 MX scale shape: [dim0, Ceil(K/64), 2]
  */
-static ge::graphStatus CheckOneScaleShape(const gert::StorageShape *scaleShape, const char *nodeName,
-                                          const char *paramName, int64_t dim0, int64_t scaleKDim)
+static ge::graphStatus CheckOneScaleShape(const gert::StorageShape* scaleShape, const char* nodeName,
+                                          const char* paramName, int64_t dim0, int64_t scaleKDim)
 {
     OP_TILING_CHECK(scaleShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, paramName), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(scaleShape->GetStorageShape().GetDimNum() != SCALE_DIM_NUM,
@@ -270,9 +270,9 @@ static ge::graphStatus CheckOneScaleShape(const gert::StorageShape *scaleShape, 
 /**
  * @brief 读取 rank_size attr（必须由外界显式传入，不做 group 反查）
  */
-static ge::graphStatus ResolveRankSize(const gert::TilingContext *context, int64_t &rankSize)
+static ge::graphStatus ResolveRankSize(const gert::TilingContext* context, int64_t& rankSize)
 {
-    const char *nodeName = context->GetNodeName();
+    const char* nodeName = context->GetNodeName();
     auto attrs = context->GetAttrs();
     auto rankSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_RANK_SIZE_INDEX);
     OP_TILING_CHECK(rankSizePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "rank_size"), return ge::GRAPH_FAILED);
@@ -283,11 +283,11 @@ static ge::graphStatus ResolveRankSize(const gert::TilingContext *context, int64
 /**
  * @brief 校验 x1/x2 维度与取值，并提取基础 shape 信息（m/k/n/rankSize）
  */
-static ge::graphStatus CheckInputShape(const gert::TilingContext *context, ShapeInfo &shapeInfo)
+static ge::graphStatus CheckInputShape(const gert::TilingContext* context, ShapeInfo& shapeInfo)
 {
-    const char *nodeName = context->GetNodeName();
+    const char* nodeName = context->GetNodeName();
 
-    const gert::StorageShape *x1Shape = context->GetInputShape(IDX_INPUT_X1);
+    const gert::StorageShape* x1Shape = context->GetInputShape(IDX_INPUT_X1);
     OP_TILING_CHECK(x1Shape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "x1"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(x1Shape->GetStorageShape().GetDimNum() != DIM_TWO,
                     OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
@@ -295,7 +295,7 @@ static ge::graphStatus CheckInputShape(const gert::TilingContext *context, Shape
                         "The shape dim of x1 must be 2D"),
                     return ge::GRAPH_FAILED);
 
-    const gert::StorageShape *x2Shape = context->GetInputShape(IDX_INPUT_X2);
+    const gert::StorageShape* x2Shape = context->GetInputShape(IDX_INPUT_X2);
     OP_TILING_CHECK(x2Shape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "x2"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(x2Shape->GetStorageShape().GetDimNum() != DIM_TWO,
                     OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
@@ -361,11 +361,11 @@ static ge::graphStatus CheckInputShape(const gert::TilingContext *context, Shape
 /**
  * @brief 校验 y shape: [M * rankSize, N]
  */
-static ge::graphStatus CheckOutputShape(const gert::TilingContext *context, const ShapeInfo &shapeInfo)
+static ge::graphStatus CheckOutputShape(const gert::TilingContext* context, const ShapeInfo& shapeInfo)
 {
-    const char *nodeName = context->GetNodeName();
+    const char* nodeName = context->GetNodeName();
 
-    const gert::StorageShape *yShape = context->GetOutputShape(IDX_OUTPUT_Y);
+    const gert::StorageShape* yShape = context->GetOutputShape(IDX_OUTPUT_Y);
     OP_TILING_CHECK(yShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "y"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(yShape->GetStorageShape().GetDimNum() != DIM_TWO,
                     OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
@@ -390,9 +390,9 @@ static ge::graphStatus CheckOutputShape(const gert::TilingContext *context, cons
 /**
  * @brief 校验 bias shape: [N]，非空时校验
  */
-static ge::graphStatus CheckBiasShape(const gert::TilingContext *context, const ShapeInfo &shapeInfo)
+static ge::graphStatus CheckBiasShape(const gert::TilingContext* context, const ShapeInfo& shapeInfo)
 {
-    const char *nodeName = context->GetNodeName();
+    const char* nodeName = context->GetNodeName();
 
     auto biasShape = context->GetOptionalInputShape(IDX_INPUT_BIAS);
     if (biasShape != nullptr) {
@@ -414,9 +414,9 @@ static ge::graphStatus CheckBiasShape(const gert::TilingContext *context, const 
 /**
  * @brief 校验 scale shapes: x1_scale [M, K/64, 2]; x2_scale [N, K/64, 2]
  */
-static ge::graphStatus CheckScaleShapes(const gert::TilingContext *context, const ShapeInfo &shapeInfo)
+static ge::graphStatus CheckScaleShapes(const gert::TilingContext* context, const ShapeInfo& shapeInfo)
 {
-    const char *nodeName = context->GetNodeName();
+    const char* nodeName = context->GetNodeName();
 
     int64_t scaleKDim = (shapeInfo.k + static_cast<int64_t>(MX_SCALE_BLOCK) - 1) / static_cast<int64_t>(MX_SCALE_BLOCK);
     OP_TILING_CHECK(CheckOneScaleShape(context->GetOptionalInputShape(IDX_INPUT_X1_SCALE), nodeName, "x1_scale",
@@ -432,9 +432,9 @@ static ge::graphStatus CheckScaleShapes(const gert::TilingContext *context, cons
 /**
  * @brief 校验tensor维度和shape
  */
-static ge::graphStatus CheckTensorShape(const gert::TilingContext *context, ShapeInfo &shapeInfo)
+static ge::graphStatus CheckTensorShape(const gert::TilingContext* context, ShapeInfo& shapeInfo)
 {
-    const char *nodeName = context->GetNodeName();
+    const char* nodeName = context->GetNodeName();
 
     OP_TILING_CHECK(CheckInputShape(context, shapeInfo) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "check input shape failed"), return ge::GRAPH_FAILED);
@@ -451,9 +451,9 @@ static ge::graphStatus CheckTensorShape(const gert::TilingContext *context, Shap
 /**
  * @brief 校验tensor (ptr + dtype + format + shape)
  */
-static ge::graphStatus CheckTensor(const gert::TilingContext *context, ShapeInfo &shapeInfo)
+static ge::graphStatus CheckTensor(const gert::TilingContext* context, ShapeInfo& shapeInfo)
 {
-    const char *nodeName = context->GetNodeName();
+    const char* nodeName = context->GetNodeName();
 
     OP_TILING_CHECK(CheckTensorPtrNullptr(context) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "check tensor nullptr failed"), return ge::GRAPH_FAILED);
@@ -470,9 +470,9 @@ static ge::graphStatus CheckTensor(const gert::TilingContext *context, ShapeInfo
 /**
  * @brief 校验 rank_size: 合法取值且不超过 1:1 核配比下实际可用 block 数
  */
-static ge::graphStatus CheckRankSizeAttr(const gert::TilingContext *context)
+static ge::graphStatus CheckRankSizeAttr(const gert::TilingContext* context)
 {
-    const char *nodeName = context->GetNodeName();
+    const char* nodeName = context->GetNodeName();
 
     // rank_size: 仅校验外界传入的 attr，不做 group 反查
     int64_t rankSize = 0;
@@ -502,9 +502,9 @@ static ge::graphStatus CheckRankSizeAttr(const gert::TilingContext *context)
 /**
  * @brief 校验 is_trans_b: V3 仅支持 x2 [N,K] 布局（is_trans_b=true）
  */
-static ge::graphStatus CheckIsTransBAttr(const gert::TilingContext *context)
+static ge::graphStatus CheckIsTransBAttr(const gert::TilingContext* context)
 {
-    const char *nodeName = context->GetNodeName();
+    const char* nodeName = context->GetNodeName();
     auto attrs = context->GetAttrs();
 
     auto isTransBPtr = attrs->GetAttrPointer<bool>(ATTR_IS_TRANS_B_INDEX);
@@ -520,9 +520,9 @@ static ge::graphStatus CheckIsTransBAttr(const gert::TilingContext *context)
 /**
  * @brief 校验 comm_mode: V3 仅支持 urma
  */
-static ge::graphStatus CheckCommModeAttr(const gert::TilingContext *context)
+static ge::graphStatus CheckCommModeAttr(const gert::TilingContext* context)
 {
-    const char *nodeName = context->GetNodeName();
+    const char* nodeName = context->GetNodeName();
     auto attrs = context->GetAttrs();
 
     auto commModePtr = attrs->GetAttrPointer<char>(ATTR_COMM_MODE_INDEX);
@@ -537,9 +537,9 @@ static ge::graphStatus CheckCommModeAttr(const gert::TilingContext *context)
  * @brief 校验 group_size (MX quant: [1,1,32])，V3 仅支持 MX 量化，
  *        值为 0 的维度自动从 scale shape 推导，推导后校验是否为 [1,1,32]
  */
-static ge::graphStatus CheckGroupSizeAttr(const gert::TilingContext *context)
+static ge::graphStatus CheckGroupSizeAttr(const gert::TilingContext* context)
 {
-    const char *nodeName = context->GetNodeName();
+    const char* nodeName = context->GetNodeName();
     auto attrs = context->GetAttrs();
 
     auto groupSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_GROUP_SIZE_INDEX);
@@ -551,8 +551,8 @@ static ge::graphStatus CheckGroupSizeAttr(const gert::TilingContext *context)
     uint64_t gsM = (gs >> GROUP_M_OFFSET) & GROUP_MNK_BIT_SIZE;
 
     // 自动推导：值为 0 的维度从 scale shape 反推
-    const gert::StorageShape *x1Shape = context->GetInputShape(IDX_INPUT_X1);
-    const gert::StorageShape *x2Shape = context->GetInputShape(IDX_INPUT_X2);
+    const gert::StorageShape* x1Shape = context->GetInputShape(IDX_INPUT_X1);
+    const gert::StorageShape* x2Shape = context->GetInputShape(IDX_INPUT_X2);
     auto x1ScaleShape = context->GetOptionalInputShape(IDX_INPUT_X1_SCALE);
     auto x2ScaleShape = context->GetOptionalInputShape(IDX_INPUT_X2_SCALE);
     int64_t mValue = x1Shape->GetStorageShape().GetDim(0);
@@ -618,9 +618,9 @@ static ge::graphStatus CheckGroupSizeAttr(const gert::TilingContext *context)
  *   x1_scale: ceil(k/64) * 2 个元素，e8m0 8bit
  * 预留 2MB（与通信框架开销/同步字段有关，对齐 torch 层拦截口径）。
  */
-static ge::graphStatus CheckHcclBufferSizeAttr(const gert::TilingContext *context, const ShapeInfo &shapeInfo)
+static ge::graphStatus CheckHcclBufferSizeAttr(const gert::TilingContext* context, const ShapeInfo& shapeInfo)
 {
-    const char *nodeName = context->GetNodeName();
+    const char* nodeName = context->GetNodeName();
     auto attrs = context->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "attrs"), return ge::GRAPH_FAILED);
 
@@ -667,9 +667,9 @@ static ge::graphStatus CheckHcclBufferSizeAttr(const gert::TilingContext *contex
 /**
  * @brief 校验算子属性
  */
-static ge::graphStatus CheckAttrs(const gert::TilingContext *context, const ShapeInfo &shapeInfo)
+static ge::graphStatus CheckAttrs(const gert::TilingContext* context, const ShapeInfo& shapeInfo)
 {
-    const char *nodeName = context->GetNodeName();
+    const char* nodeName = context->GetNodeName();
     auto attrs = context->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "attrs"), return ge::GRAPH_FAILED);
 
@@ -690,11 +690,11 @@ static ge::graphStatus CheckAttrs(const gert::TilingContext *context, const Shap
 /**
  * @brief 设置tiling数据
  */
-static ge::graphStatus SetTilingData(gert::TilingContext *context, const ShapeInfo &shapeInfo)
+static ge::graphStatus SetTilingData(gert::TilingContext* context, const ShapeInfo& shapeInfo)
 {
-    const char *nodeName = context->GetNodeName();
+    const char* nodeName = context->GetNodeName();
 
-    auto *rawTilingData = context->GetRawTilingData();
+    auto* rawTilingData = context->GetRawTilingData();
     OP_TILING_CHECK(rawTilingData == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "rawTilingData"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(rawTilingData->GetCapacity() < sizeof(AllGatherMxMatmulUrmaTilingData),
@@ -704,7 +704,7 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, const ShapeIn
 
     memset_s(rawTilingData->GetData(), rawTilingData->GetCapacity(), 0,
              rawTilingData->GetCapacity()); // 校验非空并tilingdata 缓冲区清零
-    auto *tilingData = reinterpret_cast<AllGatherMxMatmulUrmaTilingData *>(rawTilingData->GetData());
+    auto* tilingData = reinterpret_cast<AllGatherMxMatmulUrmaTilingData*>(rawTilingData->GetData());
 
     uint64_t m = static_cast<uint64_t>(shapeInfo.mPerRank);
     uint64_t k = static_cast<uint64_t>(shapeInfo.k);
@@ -813,7 +813,7 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, const ShapeIn
 /**
  * @brief 设置tiling key
  */
-static void SetTilingKey(gert::TilingContext *context)
+static void SetTilingKey(gert::TilingContext* context)
 {
     const uint64_t tilingKey = GET_TPL_TILING_KEY(MX_QUANT_MODE);
     context->SetTilingKey(tilingKey);
@@ -823,14 +823,14 @@ static void SetTilingKey(gert::TilingContext *context)
 /**
  * @brief 设置workspace大小
  */
-static ge::graphStatus SetWorkSpace(gert::TilingContext *context)
+static ge::graphStatus SetWorkSpace(gert::TilingContext* context)
 {
     platform_ascendc::PlatformAscendC ascendcPlatform(context->GetPlatformInfo());
     uint64_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
 #if MC2_DFX_ENABLE
     workspaceSize += Utils::STATE_DUMP_TOTAL_SIZE;
 #endif
-    size_t *workSpaces = context->GetWorkspaceSizes(1);
+    size_t* workSpaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE(context->GetNodeName(), "workSpaces is nullptr"),
                     return ge::GRAPH_FAILED);
     workSpaces[0] = workspaceSize;
@@ -841,11 +841,11 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context)
 /**
  * @brief AllGatherMatmulV3 算子的 tiling 函数
  */
-static ge::graphStatus AllGatherMatmulV3TilingFunc(gert::TilingContext *context)
+static ge::graphStatus AllGatherMatmulV3TilingFunc(gert::TilingContext* context)
 {
     OP_TILING_CHECK(context == nullptr, OP_LOGE("AllGatherMatmulV3", "failed to get tiling context"),
                     return ge::GRAPH_FAILED);
-    const char *nodeName = context->GetNodeName();
+    const char* nodeName = context->GetNodeName();
     OP_TILING_CHECK(nodeName == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "nodeName"), return ge::GRAPH_FAILED);
 
     OP_LOGI(nodeName, "Enter AllGatherMatmulV3 tiling func");
@@ -876,7 +876,7 @@ static ge::graphStatus AllGatherMatmulV3TilingFunc(gert::TilingContext *context)
 
 struct AllGatherMatmulV3CompileInfo {};
 
-static ge::graphStatus TilingParseForAllGatherMatmulV3(gert::TilingParseContext *context)
+static ge::graphStatus TilingParseForAllGatherMatmulV3(gert::TilingParseContext* context)
 {
     (void)context;
     return ge::GRAPH_SUCCESS;
@@ -887,9 +887,9 @@ IMPL_OP_OPTILING(AllGatherMatmulV3)
     .TilingParse<AllGatherMatmulV3CompileInfo>(TilingParseForAllGatherMatmulV3);
 
 #if MC2_DFX_ENABLE
-inline void AllGatherMatmulV3ExceptionImplWrapper(aclrtExceptionInfo *args, void *userdata)
+inline void AllGatherMatmulV3ExceptionImplWrapper(aclrtExceptionInfo* args, void* userdata)
 {
-    const char *socName = aclrtGetSocName();
+    const char* socName = aclrtGetSocName();
     if (std::strstr(socName, "Ascend950") == nullptr) {
         return;
     }

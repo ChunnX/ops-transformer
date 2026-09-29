@@ -36,6 +36,11 @@ public:
 protected:
     bool IsCapable() override;
     ge::graphStatus DoOpTiling() override;
+
+    // §4.29 miss 路径: 全量(per-rank m, 与 local 块同口径) DequantBmm tiling → 核利用率优先通信切分
+    CutResult GetCutResByCoreOccupancyFirst();
+
+    CutResult MakeNoCutResult() const;
     ge::graphStatus GetWorkspaceSize() override;
 #if MC2_DFX_ENABLE
     void BuildWorkspaceLayout();
