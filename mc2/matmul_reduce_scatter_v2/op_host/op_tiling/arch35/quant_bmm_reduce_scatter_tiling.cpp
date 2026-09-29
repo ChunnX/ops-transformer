@@ -73,7 +73,6 @@ constexpr uint32_t QUANTSCALE_INDEX = 5;
 // Attr
 constexpr uint32_t YDTYPE_INDEX = 9;
 constexpr uint32_t OUTPUT_TYPE_FLOAT = 2;
-constexpr uint32_t ALG_CONFIG_RANK_SIZE = 16U;
 constexpr uint32_t BLOCKSIZE_INDEX = 6;
 constexpr uint32_t GROUPSIZE_INDEX = 7;
 constexpr uint32_t TRANSPOSEB_INDEX = 3;
@@ -177,8 +176,8 @@ ge::graphStatus QuantBmmReduceScatterTiling::CheckGroupSize() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QuantBmmReduceScatterTiling::CheckMxScaleDim(const gert::StorageShape *x1ScaleShape,
-                                                             const gert::StorageShape *x2ScaleShape) const
+ge::graphStatus QuantBmmReduceScatterTiling::CheckMxScaleDim(const gert::StorageShape* x1ScaleShape,
+                                                             const gert::StorageShape* x2ScaleShape) const
 {
     auto x1shape = context_->GetInputShape(X1_INDEX);
     auto x2shape = context_->GetInputShape(X2_INDEX);
@@ -243,8 +242,8 @@ ge::graphStatus QuantBmmReduceScatterTiling::CheckMxScaleDim(const gert::Storage
     return ge::GRAPH_SUCCESS;
 }
 
-bool QuantBmmReduceScatterTiling::PertensorSceneParamCheck(const gert::StorageShape *x1ScaleShape,
-                                                           const gert::StorageShape *x2ScaleShape)
+bool QuantBmmReduceScatterTiling::PertensorSceneParamCheck(const gert::StorageShape* x1ScaleShape,
+                                                           const gert::StorageShape* x2ScaleShape)
 {
     OP_TILING_CHECK(
         (x1ScaleShape->GetStorageShape().GetDim(0) != 1) || (x2ScaleShape->GetStorageShape().GetDim(0) != 1),
@@ -277,8 +276,8 @@ bool QuantBmmReduceScatterTiling::PertensorSceneParamCheck(const gert::StorageSh
     return true;
 }
 
-bool QuantBmmReduceScatterTiling::PerblockSceneParamCheck(const gert::StorageShape *x1ScaleShape,
-                                                          const gert::StorageShape *x2ScaleShape) const
+bool QuantBmmReduceScatterTiling::PerblockSceneParamCheck(const gert::StorageShape* x1ScaleShape,
+                                                          const gert::StorageShape* x2ScaleShape) const
 {
     auto biasDesc = context_->GetOptionalInputShape(static_cast<size_t>(BIAS_INDEX));
     OP_TILING_CHECK(biasDesc != nullptr,
@@ -315,8 +314,8 @@ bool QuantBmmReduceScatterTiling::PerblockSceneParamCheck(const gert::StorageSha
     return true;
 }
 
-bool QuantBmmReduceScatterTiling::MxfpSceneParamCheck(const gert::StorageShape *x1ScaleShape,
-                                                      const gert::StorageShape *x2ScaleShape)
+bool QuantBmmReduceScatterTiling::MxfpSceneParamCheck(const gert::StorageShape* x1ScaleShape,
+                                                      const gert::StorageShape* x2ScaleShape)
 {
     OP_TILING_CHECK(!mc2tiling::CheckDataTypeVaild(args_.geAType, MXDTYPE_SUPPORT_LIST) ||
                         !mc2tiling::CheckDataTypeVaild(args_.geBType, MXDTYPE_SUPPORT_LIST),
@@ -473,10 +472,6 @@ ge::graphStatus QuantBmmReduceScatterTiling::SetMc2Hcomm()
     if (commMode_ == TPL_AICPU_COMM_MODE) {
         mc2CcTilingConfig.SetCommEngine(mc2tiling::A5_AICPU_TS_ENGINE);
         OP_LOGD(opName_, "[SetCommEngine] Set CommEngine to AiCPU for quant_bmm_reduce_scatter_tiling.");
-        if (args_.rankDim == ALG_CONFIG_RANK_SIZE) {
-            mc2CcTilingConfig.SetAlgConfig("InsReduceScatterParallelMesh1DNHR");
-            OP_LOGD(opName_, "[SetAlgConfig] Set AlgConfig to InsReduceScatterParallelMesh1DNHR.");
-        }
     } else {
         mc2CcTilingConfig.SetCommEngine(mc2tiling::A5_CCU_ENGINE);
         OP_LOGD(opName_, "[SetCommEngine] Set CommEngine to CCU for quant_bmm_reduce_scatter_tiling.");
@@ -489,16 +484,17 @@ ge::graphStatus QuantBmmReduceScatterTiling::SetMc2Hcomm()
     if (isPeerOnly_) {
         mc2CcTilingConfig.SetAlgConfig(PEER_ONLY_ALGORITHM);
     } else {
-        uint64_t commDataBytes = args_.orgMValue * args_.orgNValue * args_.outputDtypeSize;
+        // 通信算法统一由算法表管理(组网/卡数/数据量/优先级)：UBX机型命中具体表项用组网算法，
+        // 16p非UBX命中benchmark优选表项，其余命中通路对应的fullmesh兜底表项；无匹配回退rsConfig
+        uint64_t commDataBytes =
+            Mc2Hcom::CalcCommDataBytes(opName_, args_.orgMValue, args_.orgNValue, args_.outputDtypeSize);
         uint32_t algoCount = 0;
         uint8_t commEngine =
             (commMode_ == TPL_CCU_COMM_MODE) ? mc2tiling::A5_CCU_ENGINE : mc2tiling::A5_AICPU_TS_ENGINE;
-        const Mc2Hcom::CommAlgoEntry *algoEntries = GetReduceScatterCommAlgoTable(algoCount);
-        std::string algoName = Mc2Hcom::Mc2CommAlgoSelector::SelectAlgoName(
-            opName_, group, commEngine, commDataBytes, static_cast<uint32_t>(args_.rankDim), algoEntries, algoCount,
-            REDUCE_SCATTER_DEFAULT_ALGO_NAME);
-        // 当前版本暂不生效，仍旧使用原算法
-        algoName = rsConfig;
+        const Mc2Hcom::CommAlgoEntry* algoEntries = GetReduceScatterCommAlgoTable(algoCount);
+        std::string algoName = Mc2Hcom::Mc2CommAlgoSelector::SelectAlgoName(opName_, group, commEngine, commDataBytes,
+                                                                            static_cast<uint32_t>(args_.rankDim),
+                                                                            algoEntries, algoCount, rsConfig);
         OP_LOGI(opName_, "[SetMc2Hcomm] selected algoName=%s, group=%s", algoName.c_str(), group);
         mc2CcTilingConfig.SetAlgConfig(algoName);
     }
@@ -671,7 +667,7 @@ ge::graphStatus QuantBmmReduceScatterTiling::BuildQuantWorkspaceLayout()
     workspaceLayout_.totalSize = offset;
     workspaceLayout_.segCount = idx;
     for (uint32_t i = 0; i < workspaceLayout_.segCount; ++i) {
-        const auto &seg = workspaceLayout_.segments[i];
+        const auto& seg = workspaceLayout_.segments[i];
         OP_LOGI(opName_, "Quant MMRS workspace seg[%u]: type=%u, offset=%lu, size=%lu", i, seg.type, seg.offset,
                 seg.size);
     }
@@ -686,7 +682,7 @@ ge::graphStatus QuantBmmReduceScatterTiling::GetWorkspaceSize()
     myWorkSpaceSize_ = myWorkSpaceSize_ + MutableRCSTilingDataA5().cToFloatLen * factor;
 
     OP_LOGI(opName_, "set max workspace size %lu to context", myWorkSpaceSize_);
-    size_t *workspaces = context_->GetWorkspaceSizes(1);
+    size_t* workspaces = context_->GetWorkspaceSizes(1);
     if (workspaces == nullptr) {
         OP_LOGE_WITH_INVALID_INPUT(opName_, "WorkspaceSizes");
         return ge::GRAPH_FAILED;
@@ -704,7 +700,7 @@ ge::graphStatus QuantBmmReduceScatterTiling::GetWorkspaceSize()
     return ge::GRAPH_SUCCESS;
 }
 
-void PrintTCubeTilingParams(const std::string &opName, DequantBmm::Mc2QuantBatchMatmulV3DataParams &tiling)
+void PrintTCubeTilingParams(const std::string& opName, DequantBmm::Mc2QuantBatchMatmulV3DataParams& tiling)
 {
     OP_LOGD(opName, "tiling.batchA %d", tiling.batchA);
     OP_LOGD(opName, "tiling.batchB %d", tiling.batchB);
@@ -740,13 +736,13 @@ void PrintTCubeTilingParams(const std::string &opName, DequantBmm::Mc2QuantBatch
     OP_LOGD(opName, "tiling.isNClash %d", tiling.isNClash);
 }
 
-void PrintTCubeTilingWindowParam(const std::string &opName, DequantBmm::Mc2SlidingWindowParams &tiling)
+void PrintTCubeTilingWindowParam(const std::string& opName, DequantBmm::Mc2SlidingWindowParams& tiling)
 {
     OP_LOGD(opName, "tiling.mTailTile %d", tiling.mTailTile);
     OP_LOGD(opName, "tiling.nTailTile %d", tiling.nTailTile);
 }
 
-void PrintTCubeTilingL2cache(const std::string &opName, DequantBmm::Mc2L2cacheTileParams &tiling)
+void PrintTCubeTilingL2cache(const std::string& opName, DequantBmm::Mc2L2cacheTileParams& tiling)
 {
     OP_LOGD(opName, "tiling.calOrder %d", tiling.calOrder);
     OP_LOGD(opName, "tiling.mTileCntL2 %d", tiling.mTileCntL2);
@@ -793,47 +789,47 @@ ge::graphStatus QuantBmmReduceScatterTiling::PostTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-Mc2Tiling::RCSTiling &QuantBmmReduceScatterTiling::MutableRCSTilingDataA5() const
+Mc2Tiling::RCSTiling& QuantBmmReduceScatterTiling::MutableRCSTilingDataA5() const
 {
     return quantBmmMatmulReducescatterTilingData_->param;
 }
 
-::TCubeTiling &QuantBmmReduceScatterTiling::MutableTCubeTileTilingData() const
+::TCubeTiling& QuantBmmReduceScatterTiling::MutableTCubeTileTilingData() const
 {
     return quantBmmMatmulReducescatterTilingData_->quantBmmV3TileTiling.matmulTiling;
 }
 
-DequantBmm::Mc2QuantBatchMatmulV3DataParams &QuantBmmReduceScatterTiling::MutableTCubeTilingParam() const
+DequantBmm::Mc2QuantBatchMatmulV3DataParams& QuantBmmReduceScatterTiling::MutableTCubeTilingParam() const
 {
     return quantBmmMatmulReducescatterTilingData_->quantBmmV3TileTiling.params;
 }
 
-DequantBmm::Mc2L2cacheTileParams &QuantBmmReduceScatterTiling::MutableTCubeTilingL2cache() const
+DequantBmm::Mc2L2cacheTileParams& QuantBmmReduceScatterTiling::MutableTCubeTilingL2cache() const
 {
     return quantBmmMatmulReducescatterTilingData_->quantBmmV3TileTiling.tileL2cacheTiling;
 }
 
-DequantBmm::Mc2SlidingWindowParams &QuantBmmReduceScatterTiling::MutableTCubeTilingSlidingWindow() const
+DequantBmm::Mc2SlidingWindowParams& QuantBmmReduceScatterTiling::MutableTCubeTilingSlidingWindow() const
 {
     return quantBmmMatmulReducescatterTilingData_->quantBmmV3TileTiling.adaptiveSlidingWin;
 }
 
-::TCubeTiling &QuantBmmReduceScatterTiling::MutableTCubeTailTilingData() const
+::TCubeTiling& QuantBmmReduceScatterTiling::MutableTCubeTailTilingData() const
 {
     return quantBmmMatmulReducescatterTilingData_->quantBmmV3TailTiling.matmulTiling;
 }
 
-DequantBmm::Mc2QuantBatchMatmulV3DataParams &QuantBmmReduceScatterTiling::MutableTailTCubeTilingParam() const
+DequantBmm::Mc2QuantBatchMatmulV3DataParams& QuantBmmReduceScatterTiling::MutableTailTCubeTilingParam() const
 {
     return quantBmmMatmulReducescatterTilingData_->quantBmmV3TailTiling.params;
 }
 
-DequantBmm::Mc2L2cacheTileParams &QuantBmmReduceScatterTiling::MutableTailTCubeTilingL2cache() const
+DequantBmm::Mc2L2cacheTileParams& QuantBmmReduceScatterTiling::MutableTailTCubeTilingL2cache() const
 {
     return quantBmmMatmulReducescatterTilingData_->quantBmmV3TailTiling.tileL2cacheTiling;
 }
 
-DequantBmm::Mc2SlidingWindowParams &QuantBmmReduceScatterTiling::MutableTailTCubeTilingSlidingWindow() const
+DequantBmm::Mc2SlidingWindowParams& QuantBmmReduceScatterTiling::MutableTailTCubeTilingSlidingWindow() const
 {
     return quantBmmMatmulReducescatterTilingData_->quantBmmV3TailTiling.adaptiveSlidingWin;
 }
@@ -878,14 +874,14 @@ ge::graphStatus QuantBmmReduceScatterTiling::DoAdaptSlidWindowTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-QuantBmmReduceScatterTiling::QuantBmmReduceScatterTiling(gert::TilingContext *context)
+QuantBmmReduceScatterTiling::QuantBmmReduceScatterTiling(gert::TilingContext* context)
     : MatmulReduceScatterTilingBase(context),
       quantBmmMatmulReducescatterTilingData_(&quantBmmMatmulReducescatterTilingDataSelf_)
 {
     quantBmmMatmulReducescatterTilingData_ = context->GetTilingData<QuantBatchMatmulV3ReduceScatterTilingData>();
 }
 
-void QuantBmmReduceScatterHelper::AnalyzeBatchInfo(const gert::Shape &oriShapeA, const gert::Shape &oriShapeB)
+void QuantBmmReduceScatterHelper::AnalyzeBatchInfo(const gert::Shape& oriShapeA, const gert::Shape& oriShapeB)
 {
     (void)oriShapeA;
     (void)oriShapeB;
@@ -949,7 +945,7 @@ const gert::Shape QuantBmmReduceScatterHelper::GetOutputShape(const size_t index
                         static_cast<int64_t>(tilingArgs_.nValue)});
 }
 
-const gert::Shape &QuantBmmReduceScatterHelper::GetScaleShape(const size_t index)
+const gert::Shape& QuantBmmReduceScatterHelper::GetScaleShape(const size_t index)
 {
     (void)index;
     if (context_->GetOptionalInputShape(static_cast<size_t>(X2SCALE_INDEX)) == nullptr) {
@@ -960,22 +956,22 @@ const gert::Shape &QuantBmmReduceScatterHelper::GetScaleShape(const size_t index
 }
 
 // matmul 将protoken 作为第二路scale输入
-const gert::StorageShape *QuantBmmReduceScatterHelper::GetPertokenShape(const size_t index)
+const gert::StorageShape* QuantBmmReduceScatterHelper::GetPertokenShape(const size_t index)
 {
     (void)index;
     return context_->GetOptionalInputShape(static_cast<size_t>(X1SCALE_INDEX));
 }
 
-const gert::StorageShape *QuantBmmReduceScatterHelper::GetBiasShape(const size_t index)
+const gert::StorageShape* QuantBmmReduceScatterHelper::GetBiasShape(const size_t index)
 {
     (void)index;
     return context_->GetOptionalInputShape(static_cast<size_t>(BIAS_INDEX));
 }
 
-const gert::StorageShape *QuantBmmReduceScatterHelper::GetOffsetShape(const size_t index) const
+const gert::StorageShape* QuantBmmReduceScatterHelper::GetOffsetShape(const size_t index) const
 {
     (void)index;
-    return static_cast<const gert::StorageShape *>(nullptr);
+    return static_cast<const gert::StorageShape*>(nullptr);
 }
 
 ge::graphStatus QuantBmmReduceScatterHelper::GetShapeAttrsInfo()
@@ -1040,7 +1036,7 @@ ge::graphStatus QuantBmmReduceScatterHelper::DoLibApiTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-void QuantBmmReduceScatterHelper::PrintTilingInputParam(Mc2QuantBatchMatmulInfo &quantBatchMatmulInfo) const
+void QuantBmmReduceScatterHelper::PrintTilingInputParam(Mc2QuantBatchMatmulInfo& quantBatchMatmulInfo) const
 {
     OP_LOGD(inputParams_.opName, "transA_ = %d transB_ = %d, hasBias_ = %d", quantBatchMatmulInfo.transA,
             quantBatchMatmulInfo.transB, quantBatchMatmulInfo.hasBias);
@@ -1061,8 +1057,8 @@ void QuantBmmReduceScatterHelper::PrintTilingInputParam(Mc2QuantBatchMatmulInfo 
     OP_LOGD(inputParams_.opName, "isPerTensor = %d", static_cast<int32_t>(quantBatchMatmulInfo.isPerTensor));
 }
 
-QuantBmmReduceScatterHelper::QuantBmmReduceScatterHelper(QuantBmmReduceScatterTiling &quantBmmReduceScatterTiling,
-                                                         DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams &data)
+QuantBmmReduceScatterHelper::QuantBmmReduceScatterHelper(QuantBmmReduceScatterTiling& quantBmmReduceScatterTiling,
+                                                         DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams& data)
     : Mc2AdaptiveSlidingWindowTiling(quantBmmReduceScatterTiling.GetContext(), &data),
       tilingProcesser_(quantBmmReduceScatterTiling),
       tilingArgs_(quantBmmReduceScatterTiling.GetArgs())
