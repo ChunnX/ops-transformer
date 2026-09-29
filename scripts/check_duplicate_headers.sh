@@ -72,8 +72,12 @@ basename_exists() {
   local name="$1"
   local hit
   local -a _prune=()
+  local line
   # 与查重同一套 prune，避免仅因白名单路径下有同名就换推荐名
-  mapfile -t _prune < <(find_prune_paths)
+  # Do not use mapfile/readarray here: macOS ships Bash 3 by default.
+  while IFS= read -r line; do
+    _prune[${#_prune[@]}]="$line"
+  done < <(find_prune_paths)
   hit="$(
     find "$ROOT" \( "${_prune[@]}" \) -prune -o \
       -type f -name "$name" -print -quit 2>/dev/null
@@ -140,7 +144,10 @@ suggest_unique_basename() {
 }
 
 # 仅暂存区：新增(A) / 重命名(R) 的头文件（重命名取新路径）
-mapfile -t CANDIDATES < <(
+CANDIDATES=()
+while IFS= read -r line; do
+  [[ -n "$line" ]] && CANDIDATES[${#CANDIDATES[@]}]="$line"
+done < <(
   git diff --cached --diff-filter=AR --name-only --relative -- '*.h' '*.hpp' \
     | sed '/^$/d' \
     | sort -u
@@ -166,8 +173,14 @@ for rel in "${CANDIDATES[@]}"; do
 
   base="$(basename "$rel")"
   # find 直接 prune .git 与白名单目录
-  mapfile -t _prune < <(find_prune_paths)
-  mapfile -t HITS < <(
+  _prune=()
+  while IFS= read -r line; do
+    _prune[${#_prune[@]}]="$line"
+  done < <(find_prune_paths)
+  HITS=()
+  while IFS= read -r line; do
+    HITS[${#HITS[@]}]="$line"
+  done < <(
     find "$ROOT" \( "${_prune[@]}" \) -prune -o \
       -type f -name "$base" -print 2>/dev/null \
       | sed "s|^${ROOT}/||" \
