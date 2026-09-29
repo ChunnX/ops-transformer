@@ -144,6 +144,11 @@ ge::graphStatus SelectKernelPlan(gert::TilingContext *context, const FagParsedIn
             trace.Reject(route.name, "preference");
             continue;
         }
+        // MultiBlk 多核写同一 dq 行。确定性改走 GS1S2 核上闭式，不另编 MultiBlk deter。
+        if (info.isDeterministic && route.isBn2MultiBlk == 1) {
+            trace.Reject(route.name, "deterministic-gs1s2");
+            continue;
+        }
         plan.tmpl = route.tmpl;
         plan.isBn2MultiBlk = route.isBn2MultiBlk;
         trace.chosen = route.name;

@@ -21,13 +21,15 @@
 ``fag_mem``          L1/L0/UB 地址与 mutex id
 ``fag_tiling``       host 契约（TilingData / TilingKey）
 ``fag_schedule``     块有效性、swizzle、RunInfo
-``fag_colsplit``     mask 3/4 按列分核几何 + HeadSliceSplit
+``fag_deter_ondevice`` 确定性非 swizzle 闭式分核
 ``fag_buffers``      片上 tile 声明
 ``fag_block_cube``   C1..C5 五个 matmul
 ``fag_block_vec``    V1..V6 与 pre/post 编排
 ``fag_vector_api``   寄存器级 VF 微内核
 ``attenmask``        mask 搬入与 softmax VF
-``fag_kernel``       两个模板的主循环
+``fag_kernel``       两个模板入口 + 编译期分发
+``fag_kernel_norm``  非确定性 / BN2 主循环
+``fag_kernel_deter`` 确定性主循环
 ===================  ============================================
 
 本文件必须保持「有且仅有一个 ``@pl.jit``」：codegen
@@ -123,6 +125,7 @@ def flash_attn_grad(
             d_align,
             dv_align,
             swizzle,
+            deter,
         )
     else:
         flash_attn_grad_preload2(
@@ -144,4 +147,5 @@ def flash_attn_grad(
             d_align,
             dv_align,
             swizzle,
+            deter,
         )

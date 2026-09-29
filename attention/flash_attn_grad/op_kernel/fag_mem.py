@@ -365,8 +365,6 @@ def _build_ub(width, pool):
     nzp = main.buf("nzp", NZP_ROWS * VECTOR_BASEN * 2)
     sfmg = main.buf("sfmg", _UB_ROW_SLOT, align=_UB_ROW_SLOT)
     lse = main.buf("lse", _UB_ROW_SLOT, slots=2)
-    # sink 反向（dsink）专用：本任务的部分和，只写 [1,1] 的 lane 0，随即以
-    # atomicAdd 直落槽位区本 AIV 行的 headQ 列。
     sink_part = main.buf("sink_part", _UB_ROW_SLOT, align=_UB_ROW_SLOT)
     cast = main.buf("cast", VECTOR_BASEM * VECTOR_BASEN * 2)
 
@@ -385,10 +383,6 @@ def _build_ub(width, pool):
     n = POST_ELEMS[width]
     f32 = post.buf("post_f32", n * 4, slots=2)
     f16 = post.buf("post_f16", n * 2, slots=2)
-    # dsink 归约（post 段内）专用：[1, VECTOR_BASEN] fp32 两格（行 + 累加）。
-    # 必须放在 post arena 里、与 post_f32/f16 不重叠：post/pre 借用头部，
-    # 与主线共用地址但靠 sync_all 时间错开，若复用主线的 sink 槽会踩到
-    # 仍在飞行中的 post cast/store（实测 dV 间歇 NaN）。
     sink_row_post = post.buf("sink_row_post", _UB_ROW_SLOT, align=_UB_ROW_SLOT)
     sink_red_post = post.buf("sink_red_post", _UB_ROW_SLOT, align=_UB_ROW_SLOT)
 
@@ -480,9 +474,6 @@ UB_NZP_A = _addr(_UB, "nzp")
 UB_SFMG_A = _addr(_UB, "sfmg")
 UB_LSE0_A = {w: _UB[w]["lse"]["addrs"][0] for w in _TIERS}
 UB_LSE1_A = {w: _UB[w]["lse"]["addrs"][1] for w in _TIERS}
-# sink 反向专用。下面都是按档导出的表，调用方必须传「本分支其余 tile 用的那张图」
-# 的宽度；传错档会取到别档的地址、与同分支的活 buffer 重叠，造成踩UB内存
-UB_SINK_PART_A = _addr(_UB, "sink_part")
 # attenmask 复用 y/dy 的地址与号（vec1 之后 vec2 再用）。
 UB_MASK_A = UB_Y_A
 UB_MASK_PRE_A = UB_DY_A
@@ -491,20 +482,19 @@ MTX_UB_DY = _flat(_UB, "dy")  # attenmask(pre) 复用
 MTX_UB_NZP = _flat(_UB, "nzp")
 MTX_UB_SFMG = _flat(_UB, "sfmg")
 MTX_UB_LSE = _flat(_UB, "lse")
-MTX_UB_SINK_PART = _flat(_UB, "sink_part")
 MTX_UB_CAST = _flat(_UB, "cast")  # 仅 BN2
+UB_SINK_PART_A = _addr(_UB, "sink_part")
+MTX_UB_SINK_PART = _flat(_UB, "sink_part")
+UB_SINK_ROW_POST_A = _addr(_UB, "sink_row_post")
+UB_SINK_RED_POST_A = _addr(_UB, "sink_red_post")
+MTX_UB_SINK_ROW_POST = _flat(_UB, "sink_row_post")
+MTX_UB_SINK_RED_POST = _flat(_UB, "sink_red_post")
 
 UB_PRE_ZERO = _UB[HEAD_DIM_ALIGN]["zero"]["addrs"][0]
 MTX_UB_ZERO = _flat(_UB, "zero")
 POST_F32_ADDRS = _addrs(_UB, "f32")
-# post 段的 sink 归约 tile：规则同 UB_SINK_*——BN2 传 HEAD_DIM_ALIGN，GS1S2 传 v1w。
-# post_f32/f16 的尺寸随档变（POST_ELEMS[width]），这两格排在其后，故必须同档。
-UB_SINK_ROW_POST_A = _addr(_UB, "sink_row_post")
-UB_SINK_RED_POST_A = _addr(_UB, "sink_red_post")
 POST_F16_ADDRS = _addrs(_UB, "f16")
 MTX_UB_POST_F32 = _flat(_UB, "f32")
-MTX_UB_SINK_ROW_POST = _flat(_UB, "sink_row_post")
-MTX_UB_SINK_RED_POST = _flat(_UB, "sink_red_post")
 MTX_UB_POST_F16 = _flat(_UB, "f16")
 
 

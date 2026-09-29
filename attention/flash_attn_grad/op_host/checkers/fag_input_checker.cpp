@@ -64,8 +64,6 @@ ge::graphStatus FagDtypeChecker::Check(FagCheckCtx &ctx)
                             static_cast<int32_t>(qDtype), static_cast<int32_t>(item.desc->GetDataType())),
                     return ge::GRAPH_PARAM_INVALID);
     }
-
-    // sinks 是 fp32 的 per-head 向量，dsink 是它的梯度，两者与 q 的 dtype 解耦。
     const auto sinksDesc = context->GetOptionalInputDesc(SINKS_INDEX);
     if (sinksDesc != nullptr) {
         OP_CHECK_IF(sinksDesc->GetDataType() != ge::DT_FLOAT,

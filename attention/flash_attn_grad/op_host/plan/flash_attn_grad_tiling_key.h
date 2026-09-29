@@ -35,6 +35,7 @@ namespace optiling {
 //                       时为 128
 //   bit12    is_bn2_multiblk  仅 template=1 有效
 //   bit13    bn2_need_zero    仅 MultiBlk + mask 3/4 的无效行/列
+//   bit14    deter            仅 template=0；BN2 单块保持 0
 uint64_t EncodeTilingKey(const FagParsedInfo &info, const FagKernelPlan &kernel, const FagSchedulePlan &schedule);
 
 } // namespace optiling

@@ -6,20 +6,21 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-"""两个分核模板的主循环。
+"""两个分核模板的入口与编译期分发。
 
-本文件只负责**编排**：取下一个有效块、推进 CV ping-pong、在阶段之间插
-cross-core set/wait、决定谁在哪一拍消费谁的产出。真正的计算全部在
+本文件只负责**编排**：建 GM/L1 视图和 ``pl.make_tuple`` 袋子、跑 pre/post、
+按 ``deter`` / ``template`` 分发到主循环。真正的 while 在
+:mod:`fag_kernel_norm` 与 :mod:`fag_kernel_deter`；计算在
 :mod:`fag_block_cube` 与 :mod:`fag_block_vec`，分核映射在 :mod:`fag_schedule`，
-片上地址在 :mod:`fag_mem` —— 这一层不该出现裸地址，也不该出现 matmul。
+片上地址在 :mod:`fag_mem`。
 
 两个模板：
 
 * :func:`flash_attn_grad_preload3` —— ``Tmpl.BN2GS1S2`` 且 D≤192：
   cube 领先 vector 两个 task（``PRELOAD_TIMES=3``），自带 pre/post。
-* :func:`flash_attn_grad_preload2` —— 1-ahead。``Tmpl.BN2`` 与 GS1S2
-  （D=256/768）共用同一套 while，路径按 ``template`` 分支。
-  pre/post：非 BN2 清 workspace + scale/cast；BN2 不跑这套（仅 ``bn2_need_zero``）。
+* :func:`flash_attn_grad_preload2` —— 1-ahead。``Tmpl.BN2`` 走
+  :mod:`fag_kernel_norm` 的 BN2 循环；GS1S2 再按 ``deter`` 分到
+  normal / deterministic。
 
 CV 通信全部使用手动 set/wait cross-core，且正反向成对：
 
@@ -31,39 +32,11 @@ CV 通信全部使用手动 set/wait cross-core，且正反向成对：
 AIC 侧对每个 V->C flag 用 ``sync_mode=INTRA_BLOCK`` 等一次，覆盖两个
 vector 子核各自发来的信号。
 
-以下是这两个模板共同的设计约束，改动前务必读完。
-
 当前裁剪范围：非 TND（BSND/BNSD）、FP16/BF16。mask_mode 0=dense，3=causal，
 4=band。tilingkey ``swizzle`` 区分线性 skip 无效块与 packed 有效块分核。
-BN2 支持 mask，禁止 BN2+swizzle。
-
-dQ/dK/dV 均由 fixpipe 经 GM workspace 做 atomicAdd 累加。dK/dV 的 L0C
-驻留累加作为后续优化单独叠加。mask_mode 静态分支：0 恒有效，3=causal
-块有效，4=band 区间；线性路径 skip 无效块。mask 3/4 非 TND GS1S2 过门
-走 HeadSliceSplit 按列分核，未过门仍 skip。
-
-Tmpl.BN2GS1S2 且 d_align<=192 走 flash_attn_grad_preload3 的
-PRELOAD_TIMES=3（+2）。其余（Tmpl.BN2、D=256/768 GS1S2）走
-flash_attn_grad_preload2 的 1-ahead，同函数内按场景跑 pre/post。
-反向 V2_TO_C 只给 +2 用。
-
-反向同步由 needSyncDkMM 控制：首轮 L1 尚无人读，无需等待。
-
-数据流：
-  MM2(Q@K^T)->UB -> V2(softmax->P) -> V4(P cast+ND2NZ->L1)
-  MM1(dO@V^T)->UB -> V3(dS=(dP-sfmg)*P cast+ND2NZ->L1)
-  -> MM5(P^T@dO->dV) -> MM3(dS@K->dQ) -> MM4(dS^T@Q->dK)
-V1 计算 softmaxGradFront sfmg = rowsum(dy * y)，取自前向输出 y。
-
-每个 GM tensor 只推导出一种 Layout：tensor_k 因 MM2 的转置读(order=[3,1])
-被定为 Layout::DN，MM3 需要非转置的 K，若共用同一 tensor，plain 读会被按 DN
-解释而静默拿到 K^T(dQ 幅度正确但数值全错)。故 MM3 用独立的 tensor_k_nt 视图
-指向同一 buffer，各自推导 layout。平台仅支持
-ND2NZ/DN2NZ/ND2ND/DN2DN/NZ2NZ/DN2ZN，不支持 ND2ZN。
-
-MM4/MM5 的左矩阵需要转置(dS^T / P^T)。L1->L0A 不能随路转置（NZ 版本静默
-算错、ZZ 版本无法编译，L0A 要求非 row-major fractal），因此显式走
-transpose(UB) -> ND2NZ -> insert 到 [N,M] NZ 的 L1，再常规载入 L0A。
+``deter`` 只做编译期分发。非 swizzle 核上闭式分核，与现网同套跨轮流水和
+L0C 累加，不每轮 ``sync_all``。BN2 支持 mask，禁止 BN2+swizzle，且与
+GS1S2 deterministic 完全隔离。
 """
 
 import inspect
@@ -74,8 +47,23 @@ import fag_block_cube
 import fag_block_vec
 import fag_buffers
 import fag_common
+import fag_deter_ondevice
 import fag_schedule
 from fag_tiling import FlashAttnGradTilingData, Tmpl
+from fag_kernel_deter import (
+    _run_preload2_cube_gs_deter,
+    _run_preload2_vector_gs_deter,
+    _run_preload3_cube_deter,
+    _run_preload3_vector_deter,
+)
+from fag_kernel_norm import (
+    _run_preload2_cube_bn2,
+    _run_preload2_cube_gs_normal,
+    _run_preload2_vector_bn2,
+    _run_preload2_vector_gs_normal,
+    _run_preload3_cube_normal,
+    _run_preload3_vector_normal,
+)
 
 # codegen 内联时读的是本模块 globals() 里的裸名，不是 from-import 清单。
 # module.func() 会被当成 IR op，所以这里把 helper / 常量绑成裸名。
@@ -97,6 +85,7 @@ def _bind_helpers():
         fag_block_vec,
         fag_buffers,
         fag_common,
+        fag_deter_ondevice,
         fag_schedule,
     ):
         for name, val in vars(mod).items():
@@ -118,10 +107,10 @@ def flash_attn_grad_preload3(
     dout: pl.Ptr[pl.DT_UINT8],
     attn_out: pl.Ptr[pl.DT_UINT8],
     softmax_lse: pl.Ptr[pl.DT_UINT8],
-    # 以下 6 个为可选输入。cu_seqlens/seqused(TND)本轮不读。
+    # 以下 6 个为可选输入。cu_seqlens/seqused(TND) 本轮不读。
+    # sinks：sinkOptional=1 时按 head 读标量，算 dsink。
     # attn_mask：mask_mode 3/4 时按 [2048,2048] uint8 压缩矩阵搬 UB。
     # metadata：FAG 区含分核 [start,end) 与 pre/post 行区间（412 int32）。
-    # sinks：[N1] fp32，sinkOptional=1 时按 head 读标量，算 dsink。
     cu_seqlens_q: pl.Ptr[pl.DT_UINT8],
     cu_seqlens_kv: pl.Ptr[pl.DT_UINT8],
     seqused_q: pl.Ptr[pl.DT_UINT8],
@@ -129,18 +118,20 @@ def flash_attn_grad_preload3(
     sinks: pl.Ptr[pl.DT_UINT8],
     attn_mask: pl.Ptr[pl.DT_UINT8],
     metadata: pl.Ptr[pl.DT_UINT8],
-    # 4 个输出
+    # 4 个输出。dsink 是 [N1] fp32，仅在传入 sinks 时写出有效结果。
     dq: pl.Ptr[pl.DT_UINT8],
     dk: pl.Ptr[pl.DT_UINT8],
     dv: pl.Ptr[pl.DT_UINT8],
     dsink: pl.Ptr[pl.DT_UINT8],
-    # 单块 workspace，内部再切三份 fp32 累加区（见下方 make_ptr 分区）
+    # 单块 workspace，内部再切 dq/dk/dv 累加区和 dsink 槽位
     workspace: pl.Ptr[pl.DT_UINT8],
     tiling: FlashAttnGradTilingData,
     d_align,
     dv_align,
     swizzle,
+    deter,
 ):
+    # 入口只建视图 / buffer / pre-post，cube/vector 主循环按 deter 编译期分发。
     # coreNum 从内建 API 取而非 tiling：TilingData 无此字段。
     # get_block_num() 是 host SetBlockDim 启动的 cube 数（dense 下等于
     # metadata blockOuter），cube/vector 两侧同一口径，set/wait 才能配对。
@@ -163,12 +154,9 @@ def flash_attn_grad_preload3(
     # 必须与 host 的 dqElems/dkElems/dvElems 逐一对齐。
     dk_workspace = pl.addptr(dq_workspace, wsRowsQ * tiling.d)
     dv_workspace = pl.addptr(dk_workspace, wsRowsKV * tiling.d)
-    # dq/dk/dv 三段 + 128 行对齐垫之后是 dsink 槽位段（与 host
-    # BuildWorkspacePlan 的 dsink 段对齐）：[aivCount x N1]，每 AIV 独占
-    # 一行写部分和。
+    # 128 行对齐垫之后是 dsink 槽位 [aivCount x N1]，与 host BuildWorkspacePlan 对齐。
     dsink_workspace = pl.addptr(
-        dv_workspace,
-        wsRowsKV * tiling.dv + 128 * pl.max(tiling.d, tiling.dv),
+        dv_workspace, wsRowsKV * tiling.dv + 128 * pl.max(tiling.d, tiling.dv)
     )
 
     # ---- 统一四维视图 [viewD0, S, viewD2, D] ----
@@ -248,9 +236,6 @@ def flash_attn_grad_preload3(
         [n1Size * constInfo.s1Size, constInfo.s1Size, 1],
         dtype=pl.DT_FP32,
     )
-    # sinks : [N1] fp32 —— 每个 Q head 一个 sink logit，索引口径与 lse 的
-    # head 一致（headQ = n2oIdx*gSize + goIdx）。仅在 sinkOptional=1 时才被读。
-    tensor_sinks = pl.make_tensor(sinks, [n1Size], [1], dtype=pl.DT_FP32)
     if mask_mode != 0:
         tensor_mask = pl.make_tensor(
             attn_mask,
@@ -258,6 +243,8 @@ def flash_attn_grad_preload3(
             [ATTEN_MASK_COMPRESS, 1],
             dtype=pl.DT_UINT8,
         )
+    else:
+        tensor_mask = tensor_lse
     # dq/dk/dv workspace 为 fp32，供 atomicAdd 累加
     # dq/dk 是 D 宽，dv 是 Dv 宽 —— 与 workspace 的分段宽度一致
     tensor_dq_ws = pl.make_tensor(
@@ -276,15 +263,6 @@ def flash_attn_grad_preload3(
         dv_workspace,
         [constInfo.viewD0KV, constInfo.s2Size, viewD2KV, dV],
         [s2ndKVv, d2dKVv, dV, 1],
-        dtype=pl.DT_FP32,
-    )
-    # dsink 槽位区：每 AIV 一行（行号 = AIV 全局序号），主循环里部分和
-    # atomicAdd 到本行；post 阶段 AIV0 按固定行序归约。
-    aivCount = coreNum * AIV_PER_CORE
-    tensor_dsink_ws = pl.make_tensor(
-        dsink_workspace,
-        [1, aivCount * n1Size],
-        [aivCount * n1Size, 1],
         dtype=pl.DT_FP32,
     )
 
@@ -308,6 +286,11 @@ def flash_attn_grad_preload3(
     tensor_dq_out = pl.make_tensor(dq, [1, dqElems], [dqElems, 1], dtype=input_dtype)
     tensor_dk_out = pl.make_tensor(dk, [1, dkElems], [dkElems, 1], dtype=input_dtype)
     tensor_dv_out = pl.make_tensor(dv, [1, dvElems], [dvElems, 1], dtype=input_dtype)
+    tensor_sinks = pl.make_tensor(sinks, [n1Size], [1], dtype=pl.DT_FP32)
+    dsinkElems = constInfo.aivCount * n1Size
+    tensor_dsink_ws = pl.make_tensor(
+        dsink_workspace, [1, dsinkElems], [dsinkElems, 1], dtype=pl.DT_FP32
+    )
     # dsink : [N1] fp32，post 阶段由 AIV0 固定次序归约后全量写出。
     tensor_dsink_out = pl.make_tensor(dsink, [1, n1Size], [n1Size, 1], dtype=pl.DT_FP32)
     # V1 列宽就是 dv_align。D=256 不进本函数。
@@ -322,13 +305,12 @@ def flash_attn_grad_preload3(
 
     # 分核区间取自 metadata。swizzle 支仍走公式，原因见 block_range_of。
     meta = pl.make_tensor(metadata, [META_VIEW_LEN], [1], dtype=pl.DT_INT32)
-    fagOff = pl.astype(pl.getval(meta, META_HEAD_FAG_START_INDEX), pl.DT_INT64)
-    blockStart = pl.astype(
-        pl.getval(meta, fagOff + META_FAG_BLOCK_STARTS_OFFSET + cBlockIdx), pl.DT_INT64
+    one64 = pl.const(1, pl.DT_INT64)
+    fagOff = pl.getval(meta, META_HEAD_FAG_START_INDEX) * one64
+    blockStart = (
+        pl.getval(meta, fagOff + META_FAG_BLOCK_STARTS_OFFSET + cBlockIdx) * one64
     )
-    blockEnd = pl.astype(
-        pl.getval(meta, fagOff + META_FAG_BLOCK_ENDS_OFFSET + cBlockIdx), pl.DT_INT64
-    )
+    blockEnd = pl.getval(meta, fagOff + META_FAG_BLOCK_ENDS_OFFSET + cBlockIdx) * one64
     numBlocks = block_range_of(constInfo, cBlockIdx, coreNum, blockStart, blockEnd)
 
     # ---- CV 共享区：mm1/mm2 结果 UB + dS/P 的 L1 及其 ZN 转置视图 ----
@@ -341,9 +323,8 @@ def flash_attn_grad_preload3(
     p_t_l1 = make_p_t_l1()
 
     # ==== Pre 阶段：清零 dq/dk/dv workspace ====
-    # 四个 workspace 都用 atomicAdd 累加，进主循环前必须为 0。
+    # 三个 workspace 都用 atomicAdd 累加，进主循环前必须为 0。
     # 清完用 sync_all 隔开：主循环的 atomicAdd 必须看到已清零的 GM。
-    # dsink 槽位区每 AIV 清自己那行（行号 = AIV 全局序号），空闲 AIV 也清。
     with pl.section_vector():
         zero_ub = make_pre_zero_buffer_f32()
         process_pre_from_meta(
@@ -358,10 +339,7 @@ def flash_attn_grad_preload3(
         )
         if constInfo.sinkOptional == 1:
             process_sink_zero(
-                tensor_dsink_ws,
-                constInfo,
-                zero_ub.current(),
-                pl.get_block_idx(),
+                tensor_dsink_ws, constInfo, zero_ub.current(), pl.get_block_idx()
             )
     pl.system.sync_all()
 
@@ -381,154 +359,50 @@ def flash_attn_grad_preload3(
         dk_acc1 = make_dk_l0c_chunk1()
         dv_acc1 = make_dv_l0c_chunk1()
         runInfos = make_run_infos()
-        # ---------------- Process() 主循环 (AIC 侧) ----------------
-        taskId = 0
-        localIdx = 0
-        denseCursor = blockStart
-        isLastLoop = 0
-        drainDone = 0
-        nFetched = 0
-        # cube 领先 vector 两个 task。
-        while True:
-            mm2_cur = mm2_res.next()
-            mm1_cur = mm1_res.next()
-            q_cur = q_l1.next()
-            do_cur = do_l1.next()
-            if isLastLoop == 0:
-                gIdx = next_work_gidx(
-                    constInfo,
-                    cBlockIdx,
-                    coreNum,
-                    blockStart,
-                    blockEnd,
-                    localIdx,
-                    denseCursor,
-                    numBlocks,
-                )
-                if gIdx < 0:
-                    isLastLoop = 1
-                else:
-                    if swizzle == 0:
-                        denseCursor = gIdx + 1
-                    curInfo = runInfos[taskId % PRELOAD_TIMES]
-                    set_run_info(constInfo, curInfo, taskId, gIdx, 0, localIdx)
-                    nFetched = nFetched + 1
-                    if mask_mode != 0:
-                        apply_s2_idx_no_change(runInfos, curInfo, taskId, PRELOAD_TIMES)
-                    if taskId > 1:
-                        pl.system.wait_cross_core(
-                            pipe=pl.PipeType.FIX,
-                            event_id=SYNC_V2_TO_C2_FLAG[taskId % 2],
-                        )
-                    iterate_mm_qk(
-                        constInfo,
-                        curInfo,
-                        tensor_q,
-                        tensor_k,
-                        q_cur,
-                        k_l1,
-                        left,
-                        right,
-                        acc,
-                        mm2_cur,
-                        curInfo.loadKV,
-                    )
-                    pl.system.set_cross_core(
-                        pipe=pl.PipeType.FIX,
-                        event_id=SYNC_C2_TO_V2_FLAG[taskId % 2],
-                    )
-                    if taskId > 1:
-                        pl.system.wait_cross_core(
-                            pipe=pl.PipeType.FIX,
-                            event_id=SYNC_V2_TO_C1_FLAG[taskId % 2],
-                        )
-                    iterate_mm_dyv(
-                        constInfo,
-                        curInfo,
-                        tensor_dy,
-                        tensor_v,
-                        do_cur,
-                        v_l1,
-                        left,
-                        right,
-                        acc,
-                        mm1_cur,
-                        curInfo.loadKV,
-                    )
-                    pl.system.set_cross_core(
-                        pipe=pl.PipeType.FIX,
-                        event_id=SYNC_C1_TO_V2_FLAG[taskId % 2],
-                    )
-            if taskId > 1:
-                prevInfo = runInfos[(taskId + 1) % PRELOAD_TIMES]
-                pl.system.wait_cross_core(
-                    pipe=pl.PipeType.MTE1, event_id=SYNC_V4_TO_C5_FLAG
-                )
-                pl.system.wait_cross_core(
-                    pipe=pl.PipeType.MTE1, event_id=SYNC_V3_TO_C3_FLAG
-                )
-                prevIdx = taskId - 2
-                q_prev = q_l1_dk.next()
-                do_prev = do_l1_dv.next()
-                iterate_mm_pdy(
-                    constInfo,
-                    prevInfo,
-                    p_t_l1.current(),
-                    do_prev,
-                    left,
-                    right,
-                    dv_acc0,
-                    dv_acc1,
-                    prevInfo.dkvAcc,
-                )
-                pl.system.set_cross_core(
-                    pipe=pl.PipeType.MTE1, event_id=SYNC_C5_TO_V4_FLAG
-                )
-                iterate_mm_dsk(
-                    constInfo,
-                    prevInfo,
-                    tensor_k_nt,
-                    tensor_dq_ws,
-                    prevInfo.loadKV,
-                    ds_l1.current(),
-                    k_l1_n,
-                    left,
-                    right,
-                    acc,
-                    mm1_cur,
-                    cBlockIdx,
-                )
-                iterate_mm_dsq(
-                    constInfo,
-                    prevInfo,
-                    ds_t_l1.current(),
-                    q_prev,
-                    left,
-                    right,
-                    dk_acc0,
-                    dk_acc1,
-                    prevInfo.dkvAcc,
-                )
-                if prevIdx >= nFetched - 1 or prevInfo.flushDkv == 1:
-                    flush_dkv(
-                        constInfo,
-                        prevInfo,
-                        tensor_dk_ws,
-                        tensor_dv_ws,
-                        dk_acc0,
-                        dk_acc1,
-                        dv_acc0,
-                        dv_acc1,
-                    )
-                pl.system.set_cross_core(
-                    pipe=pl.PipeType.MTE1, event_id=SYNC_C4_TO_V3_FLAG
-                )
-            if isLastLoop == 1:
-                drainDone = drainDone + 1
-                if drainDone >= 2:
-                    break
-            taskId = taskId + 1
-            localIdx = localIdx + 1
+        sched = pl.make_tuple(
+            meta=meta,
+            fagOff=fagOff,
+            cBlockIdx=cBlockIdx,
+            coreNum=coreNum,
+            blockStart=blockStart,
+            blockEnd=blockEnd,
+            numBlocks=numBlocks,
+        )
+        gm = pl.make_tuple(
+            tensor_q=tensor_q,
+            tensor_k=tensor_k,
+            tensor_k_nt=tensor_k_nt,
+            tensor_dy=tensor_dy,
+            tensor_v=tensor_v,
+            tensor_dq_ws=tensor_dq_ws,
+            tensor_dk_ws=tensor_dk_ws,
+            tensor_dv_ws=tensor_dv_ws,
+        )
+        buf = pl.make_tuple(
+            mm1_res=mm1_res,
+            mm2_res=mm2_res,
+            q_l1=q_l1,
+            k_l1=k_l1,
+            k_l1_n=k_l1_n,
+            v_l1=v_l1,
+            do_l1=do_l1,
+            q_l1_dk=q_l1_dk,
+            do_l1_dv=do_l1_dv,
+            left=left,
+            right=right,
+            acc=acc,
+            dk_acc0=dk_acc0,
+            dv_acc0=dv_acc0,
+            dk_acc1=dk_acc1,
+            dv_acc1=dv_acc1,
+            ds_l1=ds_l1,
+            ds_t_l1=ds_t_l1,
+            p_t_l1=p_t_l1,
+        )
+        if deter == 1:
+            _run_preload3_cube_deter(constInfo, sched, gm, buf, runInfos)
+        else:
+            _run_preload3_cube_normal(constInfo, sched, gm, buf, runInfos)
 
     with pl.section_vector():
         subIdx = pl.get_subblock_idx()
@@ -541,156 +415,44 @@ def flash_attn_grad_preload3(
         mask_ub = make_mask_view(v1w)
         mask_pre_ub = make_mask_pre_view(v1w)
 
-        # dsink 部分和直接 atomicAdd 到槽位区本 AIV 行（行号 = AIV 全局序号）。
-        # 该行已在 pre 阶段清零，主循环内无并发写者。
-        aivIdx = pl.get_block_idx()
-
         runInfos = make_run_infos()
-        # ---------------- Process() 主循环 (AIV 侧) ----------------
-        taskId = 0
-        localIdx = 0
-        denseCursor = blockStart
-        isLastLoop = 0
-        drainDone = 0
-        while True:
-            mm2_res.next()
-            mm1_res.next()
-            if taskId > 1:
-                prevInfo = runInfos[(taskId + 1) % PRELOAD_TIMES]
-                process_vec1(
-                    constInfo,
-                    prevInfo,
-                    subIdx,
-                    tensor_y,
-                    tensor_dy,
-                    y_ub.current(),
-                    dy_ub.current(),
-                    sfmg_ub.current(),
-                    v1w,
-                )
-            if isLastLoop == 0:
-                gIdx = next_work_gidx(
-                    constInfo,
-                    cBlockIdx,
-                    coreNum,
-                    blockStart,
-                    blockEnd,
-                    localIdx,
-                    denseCursor,
-                    numBlocks,
-                )
-                if gIdx < 0:
-                    isLastLoop = 1
-                else:
-                    if swizzle == 0:
-                        denseCursor = gIdx + 1
-                    curInfo = runInfos[taskId % PRELOAD_TIMES]
-                    set_run_info(constInfo, curInfo, taskId, gIdx, subIdx, localIdx)
-                    if mask_mode != 0:
-                        apply_s2_idx_no_change(runInfos, curInfo, taskId, PRELOAD_TIMES)
-                    lse_ub.next()
-            if taskId > 1:
-                prevInfo = runInfos[(taskId + 1) % PRELOAD_TIMES]
-                mm1_t = mm1_res.current()
-                mm2_t = mm2_res.current()
-                pl.system.wait_cross_core(
-                    pipe=pl.PipeType.V, event_id=SYNC_C2_TO_V2_FLAG[taskId % 2]
-                )
-                if mask_mode != 0:
-                    process_vec2(
-                        constInfo,
-                        prevInfo,
-                        subIdx,
-                        tensor_lse,
-                        mm2_t,
-                        lse_ub.previous(),
-                        tensor_mask,
-                        mask_ub.current(),
-                        mask_pre_ub.current(),
-                    )
-                else:
-                    process_vec2(
-                        constInfo,
-                        prevInfo,
-                        subIdx,
-                        tensor_lse,
-                        mm2_t,
-                        lse_ub.previous(),
-                        tensor_lse,
-                        mask_ub.current(),
-                        mask_pre_ub.current(),
-                    )
-                pl.system.wait_cross_core(
-                    pipe=pl.PipeType.V, event_id=SYNC_C1_TO_V2_FLAG[taskId % 2]
-                )
-                needSyncDkMM = taskId > 2
-                if needSyncDkMM:
-                    pl.system.wait_cross_core(
-                        pipe=pl.PipeType.MTE3, event_id=SYNC_C5_TO_V4_FLAG
-                    )
-                process_vec4(
-                    constInfo,
-                    prevInfo,
-                    subIdx,
-                    p_l1.current(),
-                    mm2_t,
-                    nzp_ub.current(),
-                )
-                pl.system.set_cross_core(
-                    pipe=pl.PipeType.MTE3, event_id=SYNC_V4_TO_C5_FLAG
-                )
-                if needSyncDkMM:
-                    pl.system.wait_cross_core(
-                        pipe=pl.PipeType.MTE3, event_id=SYNC_C4_TO_V3_FLAG
-                    )
-                process_vec3(
-                    constInfo,
-                    prevInfo,
-                    subIdx,
-                    ds_l1.current(),
-                    mm1_t,
-                    mm2_t,
-                    sfmg_ub.current(),
-                    nzp_ub.current(),
-                )
-                # 反向：dS 已写完 CV 共享 L1，mm3/mm4 读的是 L1（不碰 mm1/mm2
-                # UB），先放行、不推迟这一拍。
-                pl.system.set_cross_core(
-                    pipe=pl.PipeType.MTE3, event_id=SYNC_V3_TO_C3_FLAG
-                )
-
-                # ---- dsink：本块 Σ(P·dP)·exp(sink-lse) 原子累加到槽位区本
-                # AIV 行的 headQ 列。读本 task 的 mm2(P)/mm1(dP)，必须排在
-                # mm1/mm2 放行 flag 之前，否则 cube 下一轮会把这两块 UB 覆写掉。
-                if constInfo.sinkOptional == 1:
-                    headQ = prevInfo.n2oIdx * constInfo.gSize + prevInfo.goIdx
-                    sink_val = pl.getval(tensor_sinks, headQ)
-                    process_sink_partial(
-                        constInfo,
-                        prevInfo,
-                        tensor_dsink_ws,
-                        aivIdx,
-                        mm2_t,
-                        mm1_t,
-                        lse_ub.previous(),
-                        sink_part_ub.current(),
-                        sink_val,
-                    )
-
-                # 反向：mm1/mm2 的 UB 槽位已读完，放行 cube 覆写。
-                # 下标与刚消费的 task N-2 一致，cube 侧 task N 等的正是它
-                pl.system.set_cross_core(
-                    pipe=pl.PipeType.V, event_id=SYNC_V2_TO_C1_FLAG[taskId % 2]
-                )
-                pl.system.set_cross_core(
-                    pipe=pl.PipeType.V, event_id=SYNC_V2_TO_C2_FLAG[taskId % 2]
-                )
-            if isLastLoop == 1:
-                drainDone = drainDone + 1
-                if drainDone >= 2:
-                    break
-            taskId = taskId + 1
-            localIdx = localIdx + 1
+        sched = pl.make_tuple(
+            meta=meta,
+            fagOff=fagOff,
+            cBlockIdx=cBlockIdx,
+            coreNum=coreNum,
+            blockStart=blockStart,
+            blockEnd=blockEnd,
+            numBlocks=numBlocks,
+            subIdx=subIdx,
+            v1w=v1w,
+        )
+        gm = pl.make_tuple(
+            tensor_y=tensor_y,
+            tensor_dy=tensor_dy,
+            tensor_lse=tensor_lse,
+            tensor_mask=tensor_mask,
+            tensor_sinks=tensor_sinks,
+            tensor_dsink_ws=tensor_dsink_ws,
+        )
+        buf = pl.make_tuple(
+            mm1_res=mm1_res,
+            mm2_res=mm2_res,
+            y_ub=y_ub,
+            dy_ub=dy_ub,
+            nzp_ub=nzp_ub,
+            sfmg_ub=sfmg_ub,
+            lse_ub=lse_ub,
+            sink_part_ub=sink_part_ub,
+            mask_ub=mask_ub,
+            mask_pre_ub=mask_pre_ub,
+            ds_l1=ds_l1,
+            p_l1=p_l1,
+        )
+        if deter == 1:
+            _run_preload3_vector_deter(constInfo, sched, gm, buf, runInfos)
+        else:
+            _run_preload3_vector_normal(constInfo, sched, gm, buf, runInfos)
 
     # ==== Post 阶段：dQ/dK/dV 的 scale + cast fp32->16-bit ====
     # scale 在矩阵乘之后、fp32 结果上施加(而非提前乘进 dS)：先乘会让
@@ -701,17 +463,15 @@ def flash_attn_grad_preload3(
 
     with pl.section_vector():
         vBlockIdxP = pl.get_block_idx()
-        dqRowStartP = pl.astype(
-            pl.getval(meta, fagOff + META_FAG_DQ_ROW_STARTS + vBlockIdxP), pl.DT_INT64
+        dqRowStartP = (
+            pl.getval(meta, fagOff + META_FAG_DQ_ROW_STARTS + vBlockIdxP) * one64
         )
-        dqRowEndP = pl.astype(
-            pl.getval(meta, fagOff + META_FAG_DQ_ROW_ENDS + vBlockIdxP), pl.DT_INT64
+        dqRowEndP = pl.getval(meta, fagOff + META_FAG_DQ_ROW_ENDS + vBlockIdxP) * one64
+        dkvRowStartP = (
+            pl.getval(meta, fagOff + META_FAG_DKV_ROW_STARTS + vBlockIdxP) * one64
         )
-        dkvRowStartP = pl.astype(
-            pl.getval(meta, fagOff + META_FAG_DKV_ROW_STARTS + vBlockIdxP), pl.DT_INT64
-        )
-        dkvRowEndP = pl.astype(
-            pl.getval(meta, fagOff + META_FAG_DKV_ROW_ENDS + vBlockIdxP), pl.DT_INT64
+        dkvRowEndP = (
+            pl.getval(meta, fagOff + META_FAG_DKV_ROW_ENDS + vBlockIdxP) * one64
         )
         post_f32 = make_post_f32_buffer()
         post_f16 = make_post_f16_buffer()
@@ -742,19 +502,17 @@ def flash_attn_grad_preload3(
             dkvRowStartP * dV,
             (dkvRowEndP - dkvRowStartP) * dV,
         )
-
-        # ---- dsink 归约 ----
-        sink_row_ub = make_sink_row_post_ub(v1w)
-        sink_red_ub = make_sink_red_post_ub(v1w)
         if constInfo.sinkOptional == 1:
             if pl.get_block_idx() == 0:
+                sink_red_ub = make_sink_red_post_ub(v1w)
+                sink_row_ub = make_sink_row_post_ub(v1w)
                 process_sink_reduce(
                     constInfo,
                     tensor_dsink_ws,
                     tensor_dsink_out,
                     sink_red_ub.current(),
                     sink_row_ub.current(),
-                    aivCount,
+                    constInfo.aivCount,
                 )
 
 
@@ -777,11 +535,12 @@ def flash_attn_grad_preload2(
     d_align,
     dv_align,
     swizzle,
+    deter,
 ):
-    """1-ahead 主循环。
+    """1-ahead 入口：建视图、pre/post，并按 template/deter 分发主循环。
 
-    同一套 cube/vector while：取块 → MM2/MM1 → 上一拍 MM5/3/4 与 V1…V4，
-    末尾 drain 1。路径按编译期 ``template`` 分支（是否 BN2），不是按 D 档。
+    cube/vector 主循环已拆成 BN2、GS normal、GS deterministic 三套。
+    路径按编译期 ``template`` / ``deter`` 分发，不是按 D 档。
 
     ``template!=Tmpl.BN2``（当前即 D=256 GS1S2）：store 到 fp32 workspace；
     进循环前清 workspace，循环后再 scale+cast。不算 BN2 直出 v5/v6。
@@ -790,11 +549,6 @@ def flash_attn_grad_preload2(
 
     MultiBlk（is_bn2_multiblk）：dQ 首有效 s2 覆盖 workspace，其余 AtomicAdd，
     vector 只在 isLastS1Outer 从 GM Muls+Cast；dK/dV 在 L0C 累加到换 s2 再写回。
-
-    sinks 存在时（sinkOptional=1）：vector 主循环里按本 task 的块内 P·dP 算出
-    部分和，原子累加到槽位区本 AIV 行的 headQ 列；进循环前已由 pre 清零该
-    行（BN2 无 sinks 时 pre 可完全跳过）。post 阶段再由 AIV0 按固定行序归约
-    出 dsink。
     """
     coreNum = pl.get_block_num()
     # swizzle 来自 tilingkey。BN2 is_valid 保证为 0，与原先写死 0 等价。
@@ -942,10 +696,6 @@ def flash_attn_grad_preload2(
         # V1 列宽：768 档工作 tile 仍是 256，其余等于 dv_align。
         v1w = 256 if dv_align == 768 else dv_align
 
-    # sinks/dsink：BN2 只接 n1==n2（gSize=1），headQ 恒等于 n2oIdx；
-    # 仍按 n1Size 口径建视图，与 GS1S2 保持同一套索引。
-    n1Size = constInfo.n2Size * constInfo.gSize
-    tensor_sinks = pl.make_tensor(sinks, [n1Size], [1], dtype=pl.DT_FP32)
     if mask_mode != 0:
         tensor_mask = pl.make_tensor(
             attn_mask,
@@ -953,39 +703,36 @@ def flash_attn_grad_preload2(
             [ATTEN_MASK_COMPRESS, 1],
             dtype=pl.DT_UINT8,
         )
+    else:
+        tensor_mask = tensor_lse
+
+    dsink_workspace = pl.addptr(
+        ws_ptr,
+        tiling.b * tiling.s1 * tiling.n1 * tiling.d
+        + tiling.b * tiling.s2 * tiling.n2 * tiling.d
+        + tiling.b * tiling.s2 * tiling.n2 * tiling.dv
+        + 128 * pl.max(tiling.d, tiling.dv),
+    )
+    tensor_sinks = pl.make_tensor(sinks, [constInfo.n1Size], [1], dtype=pl.DT_FP32)
+    dsinkElems = constInfo.aivCount * constInfo.n1Size
+    tensor_dsink_ws = pl.make_tensor(
+        dsink_workspace, [1, dsinkElems], [dsinkElems, 1], dtype=pl.DT_FP32
+    )
+    tensor_dsink_out = pl.make_tensor(
+        dsink, [1, constInfo.n1Size], [constInfo.n1Size, 1], dtype=pl.DT_FP32
+    )
 
     # AIV get_block_idx 按 vector 子核计数，必须换算成物理核，否则
     # cube/vector 的 numBlocks 不一致，set/wait 配不上。
     cBlockIdx = pl.get_block_idx() // pl.get_subblock_num()
-    # dsink 段（同 GS1S2）：dq+dk+dv+128 行对齐垫之后是槽位区 [aivCount x N1]。
-    n1SizeBn2 = constInfo.n2Size * constInfo.gSize
-    wsRowsQBn2 = constInfo.bSize * constInfo.s1Size * n1SizeBn2
-    wsRowsKVBn2 = constInfo.bSize * constInfo.s2Size * constInfo.n2Size
-    dsink_workspace = pl.addptr(
-        ws_ptr,
-        wsRowsQBn2 * dQ
-        + wsRowsKVBn2 * dQ
-        + wsRowsKVBn2 * constInfo.dvSize
-        + 128 * pl.max(dQ, constInfo.dvSize),
-    )
-    aivCount = coreNum * AIV_PER_CORE
-    tensor_dsink_ws = pl.make_tensor(
-        dsink_workspace,
-        [1, aivCount * n1SizeBn2],
-        [aivCount * n1SizeBn2, 1],
-        dtype=pl.DT_FP32,
-    )
-    # dsink : [N1] fp32，尾部 AIV0 固定次序归约后全量写出。
-    tensor_dsink_out = pl.make_tensor(dsink, [1, n1Size], [n1Size, 1], dtype=pl.DT_FP32)
     coreNum = constInfo.coreNum
     meta = pl.make_tensor(metadata, [META_VIEW_LEN], [1], dtype=pl.DT_INT32)
-    fagOff = pl.astype(pl.getval(meta, META_HEAD_FAG_START_INDEX), pl.DT_INT64)
-    blockStart = pl.astype(
-        pl.getval(meta, fagOff + META_FAG_BLOCK_STARTS_OFFSET + cBlockIdx), pl.DT_INT64
+    one64 = pl.const(1, pl.DT_INT64)
+    fagOff = pl.getval(meta, META_HEAD_FAG_START_INDEX) * one64
+    blockStart = (
+        pl.getval(meta, fagOff + META_FAG_BLOCK_STARTS_OFFSET + cBlockIdx) * one64
     )
-    blockEnd = pl.astype(
-        pl.getval(meta, fagOff + META_FAG_BLOCK_ENDS_OFFSET + cBlockIdx), pl.DT_INT64
-    )
+    blockEnd = pl.getval(meta, fagOff + META_FAG_BLOCK_ENDS_OFFSET + cBlockIdx) * one64
     # swizzle==0（含 BN2）时就是 max(end-start, 0)。
     numBlocks = block_range_of(constInfo, cBlockIdx, coreNum, blockStart, blockEnd)
 
@@ -1035,18 +782,27 @@ def flash_attn_grad_preload2(
                     constInfo.dvSize,
                     zero_ub.current(),
                 )
+                if constInfo.sinkOptional == 1:
+                    sink_zero_ub = make_pre_zero_buffer_f32()
+                    process_sink_zero(
+                        tensor_dsink_ws,
+                        constInfo,
+                        sink_zero_ub.current(),
+                        pl.get_block_idx(),
+                    )
             pl.system.sync_all()
-        # sinks 时清 dsink 槽位区本 AIV 行，供主循环 atomicAdd。
-        if constInfo.sinkOptional == 1:
-            with pl.section_vector():
-                sink_zero_ub = make_pre_zero_buffer_f32()
-                process_sink_zero(
-                    tensor_dsink_ws,
-                    constInfo,
-                    sink_zero_ub.current(),
-                    pl.get_block_idx(),
-                )
-            pl.system.sync_all()
+        else:
+            # No output pre-clear and no sink: BN2 needs no pre barrier.
+            if constInfo.sinkOptional == 1:
+                with pl.section_vector():
+                    sink_zero_ub = make_pre_zero_buffer_f32()
+                    process_sink_zero(
+                        tensor_dsink_ws,
+                        constInfo,
+                        sink_zero_ub.current(),
+                        pl.get_block_idx(),
+                    )
+                pl.system.sync_all()
     else:
         with pl.section_vector():
             zero_ub = make_pre_zero_buffer_f32()
@@ -1060,13 +816,9 @@ def flash_attn_grad_preload2(
                 dV,
                 zero_ub.current(),
             )
-            # sinks 时清 dsink 槽位区本 AIV 行，供主循环 atomicAdd（与 BN2 同）。
             if constInfo.sinkOptional == 1:
                 process_sink_zero(
-                    tensor_dsink_ws,
-                    constInfo,
-                    zero_ub.current(),
-                    pl.get_block_idx(),
+                    tensor_dsink_ws, constInfo, zero_ub.current(), pl.get_block_idx()
                 )
         pl.system.sync_all()
 
@@ -1082,259 +834,116 @@ def flash_attn_grad_preload2(
         if template == Tmpl.BN2:
             dk_acc = make_dk_l0c_chunk0()
             dv_acc = make_dv_l0c_chunk0()
-        runInfos = make_run_infos_2()
-        taskId = 0
-        localIdx = 0
-        denseCursor = blockStart
-        isLastLoop = 0
-        drainDone = 0
-        while True:
-            mm2_cur = mm2_res.next()
-            mm1_cur = mm1_res.next()
-            q_cur = q_l1.next()
-            do_cur = do_l1.next()
-            if isLastLoop == 0:
-                gIdx = next_work_gidx(
-                    constInfo,
-                    cBlockIdx,
-                    coreNum,
-                    blockStart,
-                    blockEnd,
-                    localIdx,
-                    denseCursor,
-                    numBlocks,
-                )
-                if gIdx < 0:
-                    isLastLoop = 1
-                else:
-                    if swizzle == 0:
-                        denseCursor = gIdx + 1
-                    curInfo = runInfos[taskId % 2]
-                    set_run_info(constInfo, curInfo, taskId, gIdx, 0, localIdx)
-                    if mask_mode != 0:
-                        apply_s2_idx_no_change(runInfos, curInfo, taskId, 2)
-                    if template == Tmpl.BN2 and taskId > 1:
-                        pl.system.wait_cross_core(
-                            pipe=pl.PipeType.FIX, event_id=SYNC_DETER_FIX_FLAG
-                        )
-                    iterate_mm_qk(
-                        constInfo,
-                        curInfo,
-                        tensor_q,
-                        tensor_k,
-                        q_cur,
-                        k_l1,
-                        left,
-                        right,
-                        acc,
-                        mm2_cur,
-                        curInfo.loadKV,
-                    )
-                    pl.system.set_cross_core(
-                        pipe=pl.PipeType.FIX, event_id=SYNC_C2_TO_V2_FLAG[taskId % 2]
-                    )
-                    iterate_mm_dyv(
-                        constInfo,
-                        curInfo,
-                        tensor_dy,
-                        tensor_v,
-                        do_cur,
-                        v_l1,
-                        left,
-                        right,
-                        acc,
-                        mm1_cur,
-                        curInfo.loadKV,
-                    )
-                    pl.system.set_cross_core(
-                        pipe=pl.PipeType.FIX, event_id=SYNC_C1_TO_V2_FLAG[taskId % 2]
-                    )
-
-            if taskId > 0:
-                prevInfo = runInfos[(taskId + 1) % 2]
-                q_prev = q_l1.previous()
-                do_prev = do_l1.previous()
-                if template != Tmpl.BN2:
-                    pl.system.wait_cross_core(
-                        pipe=pl.PipeType.MTE1, event_id=SYNC_V4_TO_C5_FLAG
-                    )
-                    pl.system.wait_cross_core(
-                        pipe=pl.PipeType.MTE1, event_id=SYNC_V3_TO_C3_FLAG
-                    )
-                    iterate_mm_pdy(
-                        constInfo,
-                        prevInfo,
-                        p_t_l1.current(),
-                        do_prev,
-                        left,
-                        right,
-                        acc,
-                        acc,
-                        0,
-                        tensor_dv_ws,
-                        tensor_dy,
-                    )
-                    pl.system.set_cross_core(
-                        pipe=pl.PipeType.MTE1, event_id=SYNC_C5_TO_V4_FLAG
-                    )
-                    iterate_mm_dsk(
-                        constInfo,
-                        prevInfo,
-                        tensor_k_nt,
-                        tensor_dq_ws,
-                        prevInfo.loadKV,
-                        ds_l1.current(),
-                        k_l1_n,
-                        left,
-                        right,
-                        acc,
-                        mm1_cur,
-                        cBlockIdx,
-                    )
-                    iterate_mm_dsq(
-                        constInfo,
-                        prevInfo,
-                        ds_t_l1.current(),
-                        q_prev,
-                        left,
-                        right,
-                        acc,
-                        acc,
-                        0,
-                        tensor_dk_ws,
-                        tensor_q,
-                    )
-                    pl.system.set_cross_core(
-                        pipe=pl.PipeType.MTE1, event_id=SYNC_C4_TO_V3_FLAG
-                    )
-                else:
-                    mm1_prev = mm1_res.previous()
-                    mm2_prev = mm2_res.previous()
-                    pl.system.wait_cross_core(
-                        pipe=pl.PipeType.MTE1, event_id=SYNC_V3_TO_C3_FLAG
-                    )
-                    pl.system.wait_cross_core(
-                        pipe=pl.PipeType.MTE1, event_id=SYNC_V4_TO_C5_FLAG
-                    )
-                    iterate_mm_dsk(
-                        constInfo,
-                        prevInfo,
-                        tensor_k_nt,
-                        tensor_dq_ws,
-                        prevInfo.loadKV,
-                        ds_l1.current(),
-                        k_l1_n,
-                        left,
-                        right,
-                        acc,
-                        mm1_prev,
-                        cBlockIdx,
-                    )
-                    if is_bn2_multiblk == 1:
-                        if prevInfo.dqLast == 1:
-                            pl.system.set_cross_core(
-                                pipe=pl.PipeType.FIX, event_id=SYNC_C3_TO_V5_FLAG
-                            )
-                        iterate_mm_dsq(
-                            constInfo,
-                            prevInfo,
-                            ds_t_l1.current(),
-                            q_prev,
-                            left,
-                            right,
-                            dk_acc,
-                            dk_acc,
-                            prevInfo.dkvAcc,
-                        )
-                        if prevInfo.flushDkv == 1:
-                            pl.set_validshape(mm2_prev, [VECTOR_BASEM, VECTOR_BASEN])
-                            pl.move(
-                                mm2_prev,
-                                dk_acc.current(),
-                                acc_to_vec_mode=pl.AccToVecMode.DualModeSplitM,
-                            )
-                            pl.system.set_cross_core(
-                                pipe=pl.PipeType.FIX, event_id=SYNC_C4_TO_V6_FLAG
-                            )
-                        iterate_mm_pdy(
-                            constInfo,
-                            prevInfo,
-                            p_t_l1.current(),
-                            do_prev,
-                            left,
-                            right,
-                            dv_acc,
-                            dv_acc,
-                            prevInfo.dkvAcc,
-                        )
-                        if prevInfo.flushDkv == 1:
-                            pl.store(
-                                tensor_dv_out,
-                                dv_acc.current(),
-                                [
-                                    prevInfo.idx0KV,
-                                    prevInfo.keyOffset,
-                                    prevInfo.idx2KV,
-                                    0,
-                                ],
-                                order=[1, 3],
-                                atomic=pl.AtomicType.AtomicNone,
-                            )
-                    else:
-                        pl.system.set_cross_core(
-                            pipe=pl.PipeType.FIX, event_id=SYNC_C3_TO_V5_FLAG
-                        )
-                        iterate_mm_dsq(
-                            constInfo,
-                            prevInfo,
-                            ds_t_l1.current(),
-                            q_prev,
-                            left,
-                            right,
-                            dk_acc,
-                            dk_acc,
-                            0,
-                        )
-                        pl.set_validshape(mm2_prev, [VECTOR_BASEM, VECTOR_BASEN])
-                        pl.move(
-                            mm2_prev,
-                            dk_acc.current(),
-                            acc_to_vec_mode=pl.AccToVecMode.DualModeSplitM,
-                        )
-                        pl.system.set_cross_core(
-                            pipe=pl.PipeType.FIX, event_id=SYNC_C4_TO_V6_FLAG
-                        )
-                        iterate_mm_pdy(
-                            constInfo,
-                            prevInfo,
-                            p_t_l1.current(),
-                            do_prev,
-                            left,
-                            right,
-                            dv_acc,
-                            dv_acc,
-                            0,
-                        )
-                        pl.store(
-                            tensor_dv_out,
-                            dv_acc.current(),
-                            [prevInfo.idx0KV, prevInfo.keyOffset, prevInfo.idx2KV, 0],
-                            order=[1, 3],
-                            atomic=pl.AtomicType.AtomicNone,
-                        )
-                    pl.system.set_cross_core(
-                        pipe=pl.PipeType.MTE1, event_id=SYNC_C5_TO_V4_FLAG
-                    )
-                    pl.system.set_cross_core(
-                        pipe=pl.PipeType.MTE1, event_id=SYNC_C4_TO_V3_FLAG
-                    )
-
-            if isLastLoop == 1:
-                drainDone = drainDone + 1
-                if drainDone >= 1:
-                    break
-            taskId = taskId + 1
-            localIdx = localIdx + 1
+            runInfos = make_run_infos_2()
+            sched = pl.make_tuple(
+                meta=meta,
+                fagOff=fagOff,
+                cBlockIdx=cBlockIdx,
+                coreNum=coreNum,
+                blockStart=blockStart,
+                blockEnd=blockEnd,
+                numBlocks=numBlocks,
+            )
+            gm = pl.make_tuple(
+                tensor_q=tensor_q,
+                tensor_k=tensor_k,
+                tensor_k_nt=tensor_k_nt,
+                tensor_dy=tensor_dy,
+                tensor_v=tensor_v,
+                tensor_dq_ws=tensor_dq_ws,
+                tensor_dv_out=tensor_dv_out,
+            )
+            buf = pl.make_tuple(
+                mm1_res=mm1_res,
+                mm2_res=mm2_res,
+                q_l1=q_l1,
+                k_l1=k_l1,
+                k_l1_n=k_l1_n,
+                v_l1=v_l1,
+                do_l1=do_l1,
+                left=left,
+                right=right,
+                acc=acc,
+                dk_acc=dk_acc,
+                dv_acc=dv_acc,
+                ds_l1=ds_l1,
+                ds_t_l1=ds_t_l1,
+                p_t_l1=p_t_l1,
+            )
+            _run_preload2_cube_bn2(constInfo, sched, gm, buf, runInfos)
+        elif deter == 1:
+            q_l1_dk = make_q_lag_view()
+            do_l1_dv = make_do_lag_view()
+            runInfos = make_run_infos_2()
+            sched = pl.make_tuple(
+                cBlockIdx=cBlockIdx,
+                coreNum=coreNum,
+            )
+            gm = pl.make_tuple(
+                tensor_q=tensor_q,
+                tensor_k=tensor_k,
+                tensor_k_nt=tensor_k_nt,
+                tensor_dy=tensor_dy,
+                tensor_v=tensor_v,
+                tensor_dq_ws=tensor_dq_ws,
+                tensor_dk_ws=tensor_dk_ws,
+                tensor_dv_ws=tensor_dv_ws,
+            )
+            buf = pl.make_tuple(
+                mm1_res=mm1_res,
+                mm2_res=mm2_res,
+                q_l1=q_l1,
+                k_l1=k_l1,
+                k_l1_n=k_l1_n,
+                v_l1=v_l1,
+                do_l1=do_l1,
+                q_l1_dk=q_l1_dk,
+                do_l1_dv=do_l1_dv,
+                left=left,
+                right=right,
+                acc=acc,
+                ds_l1=ds_l1,
+                ds_t_l1=ds_t_l1,
+                p_t_l1=p_t_l1,
+            )
+            _run_preload2_cube_gs_deter(constInfo, sched, gm, buf, runInfos)
+        else:
+            runInfos = make_run_infos_2()
+            sched = pl.make_tuple(
+                meta=meta,
+                fagOff=fagOff,
+                cBlockIdx=cBlockIdx,
+                coreNum=coreNum,
+                blockStart=blockStart,
+                blockEnd=blockEnd,
+                numBlocks=numBlocks,
+            )
+            gm = pl.make_tuple(
+                tensor_q=tensor_q,
+                tensor_k=tensor_k,
+                tensor_k_nt=tensor_k_nt,
+                tensor_dy=tensor_dy,
+                tensor_v=tensor_v,
+                tensor_dq_ws=tensor_dq_ws,
+                tensor_dk_ws=tensor_dk_ws,
+                tensor_dv_ws=tensor_dv_ws,
+            )
+            buf = pl.make_tuple(
+                mm1_res=mm1_res,
+                mm2_res=mm2_res,
+                q_l1=q_l1,
+                k_l1=k_l1,
+                k_l1_n=k_l1_n,
+                v_l1=v_l1,
+                do_l1=do_l1,
+                left=left,
+                right=right,
+                acc=acc,
+                ds_l1=ds_l1,
+                ds_t_l1=ds_t_l1,
+                p_t_l1=p_t_l1,
+            )
+            _run_preload2_cube_gs_normal(constInfo, sched, gm, buf, runInfos)
 
     with pl.section_vector():
         subIdx = pl.get_subblock_idx()
@@ -1344,305 +953,148 @@ def flash_attn_grad_preload2(
             nzp_ub = make_nzp_ub_bn2()
             sfmg_ub = make_sfmg_ub_bn2()
             lse_ub = make_lse_ub_bn2()
-            # sink 反向专用 tile：BN2 沿用 v1w=128 那张 UB 图（见 fag_mem._BN2）。
-            sink_part_ub = make_sink_part_ub(HEAD_DIM_ALIGN)
             mask_ub = make_mask_view_bn2()
             mask_pre_ub = make_mask_pre_view_bn2()
             cast_ub = make_cast_ub_bn2()
+            sink_part_ub = make_sink_part_ub_bn2()
+            runInfos = make_run_infos_2()
+            sched = pl.make_tuple(
+                meta=meta,
+                fagOff=fagOff,
+                cBlockIdx=cBlockIdx,
+                coreNum=coreNum,
+                blockStart=blockStart,
+                blockEnd=blockEnd,
+                numBlocks=numBlocks,
+                subIdx=subIdx,
+                dv_align=dv_align,
+            )
+            gm = pl.make_tuple(
+                tensor_y=tensor_y,
+                tensor_dy=tensor_dy,
+                tensor_lse=tensor_lse,
+                tensor_mask=tensor_mask,
+                tensor_dq_out=tensor_dq_out,
+                tensor_dk_out=tensor_dk_out,
+                tensor_dq_ws=tensor_dq_ws,
+                tensor_sinks=tensor_sinks,
+                tensor_dsink_ws=tensor_dsink_ws,
+            )
+            buf = pl.make_tuple(
+                mm1_res=mm1_res,
+                mm2_res=mm2_res,
+                y_ub=y_ub,
+                dy_ub=dy_ub,
+                nzp_ub=nzp_ub,
+                sfmg_ub=sfmg_ub,
+                lse_ub=lse_ub,
+                sink_part_ub=sink_part_ub,
+                mask_ub=mask_ub,
+                mask_pre_ub=mask_pre_ub,
+                cast_ub=cast_ub,
+                ds_l1=ds_l1,
+                p_l1=p_l1,
+            )
+            _run_preload2_vector_bn2(constInfo, sched, gm, buf, runInfos)
+        elif deter == 1:
+            y_ub = make_y_ub(v1w)
+            dy_ub = make_dy_ub(v1w)
+            nzp_ub = make_nzp_ub(v1w)
+            sfmg_ub = make_sfmg_ub(v1w)
+            lse_ub = make_lse_ub(v1w)
+            sink_part_ub = make_sink_part_ub(v1w)
+            mask_ub = make_mask_view(v1w)
+            mask_pre_ub = make_mask_pre_view(v1w)
+            runInfos = make_run_infos_2()
+            sched = pl.make_tuple(
+                cBlockIdx=cBlockIdx,
+                coreNum=coreNum,
+                subIdx=subIdx,
+                v1w=v1w,
+            )
+            gm = pl.make_tuple(
+                tensor_y=tensor_y,
+                tensor_dy=tensor_dy,
+                tensor_lse=tensor_lse,
+                tensor_mask=tensor_mask,
+                tensor_sinks=tensor_sinks,
+                tensor_dsink_ws=tensor_dsink_ws,
+            )
+            buf = pl.make_tuple(
+                mm1_res=mm1_res,
+                mm2_res=mm2_res,
+                y_ub=y_ub,
+                dy_ub=dy_ub,
+                nzp_ub=nzp_ub,
+                sfmg_ub=sfmg_ub,
+                lse_ub=lse_ub,
+                sink_part_ub=sink_part_ub,
+                mask_ub=mask_ub,
+                mask_pre_ub=mask_pre_ub,
+                ds_l1=ds_l1,
+                p_l1=p_l1,
+            )
+            _run_preload2_vector_gs_deter(constInfo, sched, gm, buf, runInfos)
         else:
             y_ub = make_y_ub(v1w)
             dy_ub = make_dy_ub(v1w)
             nzp_ub = make_nzp_ub(v1w)
             sfmg_ub = make_sfmg_ub(v1w)
             lse_ub = make_lse_ub(v1w)
-            # sink 反向专用 tile：用本分支（GS1S2）的 v1w 那张 UB 图；
-            # 不能沿用 BN2 的 HEAD_DIM_ALIGN——大 D 档两者地址不同，会踩活 buffer。
             sink_part_ub = make_sink_part_ub(v1w)
             mask_ub = make_mask_view(v1w)
             mask_pre_ub = make_mask_pre_view(v1w)
-        runInfos = make_run_infos_2()
-
-        # dsink 部分和直接 atomicAdd 到槽位区本 AIV 行（行号 = AIV 全局序号）。
-        # 该行已在 pre 阶段清零，主循环内无并发写者。
-        aivIdx = pl.get_block_idx()
-        taskId = 0
-        localIdx = 0
-        denseCursor = blockStart
-        isLastLoop = 0
-        drainDone = 0
-        while True:
-            mm2_res.next()
-            mm1_res.next()
-            if template == Tmpl.BN2:
-                lse_ub.next()
-            if taskId > 0:
-                prevInfo = runInfos[(taskId + 1) % 2]
-                if template == Tmpl.BN2:
-                    process_vec1_bn2(
-                        constInfo,
-                        prevInfo,
-                        subIdx,
-                        tensor_y,
-                        tensor_dy,
-                        y_ub.current(),
-                        dy_ub.current(),
-                        sfmg_ub.current(),
-                        dv_align,
-                    )
-                else:
-                    process_vec1(
-                        constInfo,
-                        prevInfo,
-                        subIdx,
-                        tensor_y,
-                        tensor_dy,
-                        y_ub.current(),
-                        dy_ub.current(),
-                        sfmg_ub.current(),
-                        v1w,
-                    )
-            if isLastLoop == 0:
-                gIdx = next_work_gidx(
-                    constInfo,
-                    cBlockIdx,
-                    coreNum,
-                    blockStart,
-                    blockEnd,
-                    localIdx,
-                    denseCursor,
-                    numBlocks,
-                )
-                if gIdx < 0:
-                    isLastLoop = 1
-                else:
-                    if swizzle == 0:
-                        denseCursor = gIdx + 1
-                    curInfo = runInfos[taskId % 2]
-                    set_run_info(constInfo, curInfo, taskId, gIdx, subIdx, localIdx)
-                    if mask_mode != 0:
-                        apply_s2_idx_no_change(runInfos, curInfo, taskId, 2)
-                    if template != Tmpl.BN2:
-                        lse_ub.next()
-            if taskId > 0:
-                prevInfo = runInfos[(taskId + 1) % 2]
-                mm1_t = mm1_res.previous()
-                mm2_t = mm2_res.previous()
-                pl.system.wait_cross_core(
-                    pipe=pl.PipeType.V, event_id=SYNC_C2_TO_V2_FLAG[(taskId + 1) % 2]
-                )
-                if mask_mode != 0:
-                    process_vec2(
-                        constInfo,
-                        prevInfo,
-                        subIdx,
-                        tensor_lse,
-                        mm2_t,
-                        lse_ub.previous(),
-                        tensor_mask,
-                        mask_ub.current(),
-                        mask_pre_ub.current(),
-                    )
-                else:
-                    process_vec2(
-                        constInfo,
-                        prevInfo,
-                        subIdx,
-                        tensor_lse,
-                        mm2_t,
-                        lse_ub.previous(),
-                        tensor_lse,
-                        mask_ub.current(),
-                        mask_pre_ub.current(),
-                    )
-                pl.system.wait_cross_core(
-                    pipe=pl.PipeType.V, event_id=SYNC_C1_TO_V2_FLAG[(taskId + 1) % 2]
-                )
-                needSyncDkMM = taskId > 1
-                if template != Tmpl.BN2:
-                    if needSyncDkMM:
-                        pl.system.wait_cross_core(
-                            pipe=pl.PipeType.MTE3, event_id=SYNC_C5_TO_V4_FLAG
-                        )
-                    process_vec4(
-                        constInfo,
-                        prevInfo,
-                        subIdx,
-                        p_l1.current(),
-                        mm2_t,
-                        nzp_ub.current(),
-                    )
-                    pl.system.set_cross_core(
-                        pipe=pl.PipeType.MTE3, event_id=SYNC_V4_TO_C5_FLAG
-                    )
-                    if needSyncDkMM:
-                        pl.system.wait_cross_core(
-                            pipe=pl.PipeType.MTE3, event_id=SYNC_C4_TO_V3_FLAG
-                        )
-                    process_vec3(
-                        constInfo,
-                        prevInfo,
-                        subIdx,
-                        ds_l1.current(),
-                        mm1_t,
-                        mm2_t,
-                        sfmg_ub.current(),
-                        nzp_ub.current(),
-                    )
-                    # ---- dsink：本块 Σ(P·dP)·exp(sink-lse) 原子累加到槽位区
-                    # 本 AIV 行的 headQ 列。读本 task 的 mm2(P)/mm1(dP)，必须排在
-                    # 放行 cube（SYNC_V3_TO_C3 / V4_TO_C5）之前。
-                    if constInfo.sinkOptional == 1:
-                        headQ = prevInfo.n2oIdx * constInfo.gSize + prevInfo.goIdx
-                        sink_val = pl.getval(tensor_sinks, headQ)
-                        process_sink_partial(
-                            constInfo,
-                            prevInfo,
-                            tensor_dsink_ws,
-                            aivIdx,
-                            mm2_t,
-                            mm1_t,
-                            lse_ub.previous(),
-                            sink_part_ub.current(),
-                            sink_val,
-                        )
-                    pl.system.set_cross_core(
-                        pipe=pl.PipeType.MTE3, event_id=SYNC_V3_TO_C3_FLAG
-                    )
-                else:
-                    if needSyncDkMM:
-                        pl.system.wait_cross_core(
-                            pipe=pl.PipeType.MTE3, event_id=SYNC_C4_TO_V3_FLAG
-                        )
-                    process_vec3_bn2(
-                        constInfo,
-                        prevInfo,
-                        subIdx,
-                        ds_l1.current(),
-                        mm1_t,
-                        mm2_t,
-                        sfmg_ub.current(),
-                        nzp_ub.current(),
-                    )
-                    pl.system.set_cross_core(
-                        pipe=pl.PipeType.MTE3, event_id=SYNC_V3_TO_C3_FLAG
-                    )
-                    if needSyncDkMM:
-                        pl.system.wait_cross_core(
-                            pipe=pl.PipeType.MTE3, event_id=SYNC_C5_TO_V4_FLAG
-                        )
-                    process_vec4(
-                        constInfo,
-                        prevInfo,
-                        subIdx,
-                        p_l1.current(),
-                        mm2_t,
-                        nzp_ub.current(),
-                    )
-                    pl.system.set_cross_core(
-                        pipe=pl.PipeType.MTE3, event_id=SYNC_V4_TO_C5_FLAG
-                    )
-
-                    # ---- dsink：本块 Σ(P·dP)·exp(sink-lse) 原子累加到槽位区
-                    # 本 AIV 行的 headQ 列。
-                    # 读本 task 的 mm2(P)/mm1(dP)；BN2 里这两块要到 V5/V6 之后
-                    # （SYNC_DETER_FIX）才放行，此处安全。
-                    if constInfo.sinkOptional == 1:
-                        headQ = prevInfo.n2oIdx * constInfo.gSize + prevInfo.goIdx
-                        sink_val = pl.getval(tensor_sinks, headQ)
-                        process_sink_partial(
-                            constInfo,
-                            prevInfo,
-                            tensor_dsink_ws,
-                            aivIdx,
-                            mm2_t,
-                            mm1_t,
-                            lse_ub.previous(),
-                            sink_part_ub.current(),
-                            sink_val,
-                        )
-
-                    if is_bn2_multiblk == 1:
-                        if prevInfo.dqLast == 1:
-                            pl.system.wait_cross_core(
-                                pipe=pl.PipeType.MTE2, event_id=SYNC_C3_TO_V5_FLAG
-                            )
-                            process_dq_multiblk(
-                                tensor_dq_out,
-                                tensor_dq_ws,
-                                mm1_t,
-                                cast_ub.current(),
-                                constInfo,
-                                prevInfo,
-                                subIdx,
-                                cBlockIdx,
-                            )
-                        if prevInfo.flushDkv == 1:
-                            pl.system.wait_cross_core(
-                                pipe=pl.PipeType.V, event_id=SYNC_C4_TO_V6_FLAG
-                            )
-                            process_muls_cast_dk_bn2(
-                                tensor_dk_out,
-                                mm2_t,
-                                cast_ub.current(),
-                                constInfo,
-                                prevInfo,
-                                subIdx,
-                            )
-                        pl.system.set_cross_core(
-                            pipe=pl.PipeType.V, event_id=SYNC_DETER_FIX_FLAG
-                        )
-                    else:
-                        pl.system.wait_cross_core(
-                            pipe=pl.PipeType.V, event_id=SYNC_C3_TO_V5_FLAG
-                        )
-                        process_muls_cast_dq_bn2(
-                            tensor_dq_out,
-                            mm1_t,
-                            cast_ub.current(),
-                            constInfo,
-                            prevInfo,
-                            subIdx,
-                        )
-                        pl.system.wait_cross_core(
-                            pipe=pl.PipeType.V, event_id=SYNC_C4_TO_V6_FLAG
-                        )
-                        process_muls_cast_dk_bn2(
-                            tensor_dk_out,
-                            mm2_t,
-                            cast_ub.current(),
-                            constInfo,
-                            prevInfo,
-                            subIdx,
-                        )
-                        pl.system.set_cross_core(
-                            pipe=pl.PipeType.V, event_id=SYNC_DETER_FIX_FLAG
-                        )
-
-            if isLastLoop == 1:
-                drainDone = drainDone + 1
-                if drainDone >= 1:
-                    break
-            taskId = taskId + 1
-            localIdx = localIdx + 1
+            runInfos = make_run_infos_2()
+            sched = pl.make_tuple(
+                meta=meta,
+                fagOff=fagOff,
+                cBlockIdx=cBlockIdx,
+                coreNum=coreNum,
+                blockStart=blockStart,
+                blockEnd=blockEnd,
+                numBlocks=numBlocks,
+                subIdx=subIdx,
+                v1w=v1w,
+            )
+            gm = pl.make_tuple(
+                tensor_y=tensor_y,
+                tensor_dy=tensor_dy,
+                tensor_lse=tensor_lse,
+                tensor_mask=tensor_mask,
+                tensor_sinks=tensor_sinks,
+                tensor_dsink_ws=tensor_dsink_ws,
+            )
+            buf = pl.make_tuple(
+                mm1_res=mm1_res,
+                mm2_res=mm2_res,
+                y_ub=y_ub,
+                dy_ub=dy_ub,
+                nzp_ub=nzp_ub,
+                sfmg_ub=sfmg_ub,
+                lse_ub=lse_ub,
+                sink_part_ub=sink_part_ub,
+                mask_ub=mask_ub,
+                mask_pre_ub=mask_pre_ub,
+                ds_l1=ds_l1,
+                p_l1=p_l1,
+            )
+            _run_preload2_vector_gs_normal(constInfo, sched, gm, buf, runInfos)
 
     if template != Tmpl.BN2:
         pl.system.sync_all()
         with pl.section_vector():
             vBlockIdxP = pl.get_block_idx()
-            dqRowStartP = pl.astype(
-                pl.getval(meta, fagOff + META_FAG_DQ_ROW_STARTS + vBlockIdxP),
-                pl.DT_INT64,
+            dqRowStartP = (
+                pl.getval(meta, fagOff + META_FAG_DQ_ROW_STARTS + vBlockIdxP) * one64
             )
-            dqRowEndP = pl.astype(
-                pl.getval(meta, fagOff + META_FAG_DQ_ROW_ENDS + vBlockIdxP), pl.DT_INT64
+            dqRowEndP = (
+                pl.getval(meta, fagOff + META_FAG_DQ_ROW_ENDS + vBlockIdxP) * one64
             )
-            dkvRowStartP = pl.astype(
-                pl.getval(meta, fagOff + META_FAG_DKV_ROW_STARTS + vBlockIdxP),
-                pl.DT_INT64,
+            dkvRowStartP = (
+                pl.getval(meta, fagOff + META_FAG_DKV_ROW_STARTS + vBlockIdxP) * one64
             )
-            dkvRowEndP = pl.astype(
-                pl.getval(meta, fagOff + META_FAG_DKV_ROW_ENDS + vBlockIdxP),
-                pl.DT_INT64,
+            dkvRowEndP = (
+                pl.getval(meta, fagOff + META_FAG_DKV_ROW_ENDS + vBlockIdxP) * one64
             )
             post_f32 = make_post_f32_buffer()
             post_f16 = make_post_f16_buffer()
@@ -1673,35 +1125,31 @@ def flash_attn_grad_preload2(
                 dkvRowStartP * dV,
                 (dkvRowEndP - dkvRowStartP) * dV,
             )
-            # ---- dsink 归约（GS1S2 wide-D，与 BN2 同构）：sync_all 已在段首，
-            # 中间隔着整段 process_post，AIV0 在末尾按固定行序归约出 dsink。
-            sink_row_ub = make_sink_row_post_ub(v1w)
-            sink_red_ub = make_sink_red_post_ub(v1w)
             if constInfo.sinkOptional == 1:
                 if pl.get_block_idx() == 0:
+                    sink_red_ub = make_sink_red_post_ub(v1w)
+                    sink_row_ub = make_sink_row_post_ub(v1w)
                     process_sink_reduce(
                         constInfo,
                         tensor_dsink_ws,
                         tensor_dsink_out,
                         sink_red_ub.current(),
                         sink_row_ub.current(),
-                        aivCount,
+                        constInfo.aivCount,
                     )
-    else:
-        # BN2 无 sink 时不能有 post / sync_all（与 ASC 一致：只有
-        # sinkOptional 才 Pre + SyncALL + Post）。归约要读所有 AIV 槽位，
-        # 栅栏必须包在同一条运行期判断里，否则短 BN2 会多付一次全片同步。
+    if template == Tmpl.BN2:
+        # BN2 writes dQ/dK/dV directly; only dsink needs a global reduction.
         if constInfo.sinkOptional == 1:
             pl.system.sync_all()
             with pl.section_vector():
-                sink_row_ub = make_sink_row_post_ub(HEAD_DIM_ALIGN)
-                sink_red_ub = make_sink_red_post_ub(HEAD_DIM_ALIGN)
                 if pl.get_block_idx() == 0:
+                    sink_red_ub = make_sink_red_post_ub(HEAD_DIM_ALIGN)
+                    sink_row_ub = make_sink_row_post_ub(HEAD_DIM_ALIGN)
                     process_sink_reduce(
                         constInfo,
                         tensor_dsink_ws,
                         tensor_dsink_out,
                         sink_red_ub.current(),
                         sink_row_ub.current(),
-                        aivCount,
+                        constInfo.aivCount,
                     )

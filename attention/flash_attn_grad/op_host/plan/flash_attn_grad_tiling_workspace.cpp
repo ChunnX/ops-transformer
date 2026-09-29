@@ -23,8 +23,6 @@ constexpr int64_t FAG_WS_ALIGN_ROWS = 128;
 //   [+libapi]  dq 累加器  B*S1*N1*D  fp32（N1 = N2*G）
 //   [+...]     dk 累加器  B*S2*N2*D  fp32
 //   [+...]     dv 累加器  B*S2*N2*Dv fp32
-//   [+...]     128 行对齐垫
-//   [+...]     dsink 槽位 aivNum*N1 fp32
 // dq 跟随 q 的 head 数（N1），dk/dv 跟随 k/v 的（N2）—— GQA 下同一个 KV head 的
 // G 个 Q head 会 atomicAdd 到同一块 dk/dv。kernel 用 fp32 atomicAdd 累加，之后
 // 由 post 阶段乘 scale 并 cast 回 fp16/bf16 输出；dv 不乘 scale。
@@ -56,9 +54,8 @@ FagWorkspacePlan BuildWorkspacePlan(const FagParsedInfo &info)
         static_cast<size_t>(FAG_WS_ALIGN_ROWS) * static_cast<size_t>(std::max(info.d, info.dv));
     cursor += alignRowElems * FP32_SIZE;
 
-    // dsink 确定性归约的槽位区：[aivNum x N1]。
-    // 行数按芯片 AIV 数取上限（launch 的 AIV = usedCube*subblock ≤ aivNum），
-    // kernel 按实际 AIV 数写槽位，post 阶段由 AIV0 固定次序归约。
+    // dsink 槽位区：[aivNum x N1] fp32。与 kernel 在 128 行垫之后的切分对齐。
+    // 按平台 AIV 数开，不小于实际启动的 AIV 行数。
     plan.dsink.offset = cursor;
     plan.dsink.size = static_cast<size_t>(info.aivNum) * static_cast<size_t>(info.n1) * FP32_SIZE;
     cursor += plan.dsink.size;

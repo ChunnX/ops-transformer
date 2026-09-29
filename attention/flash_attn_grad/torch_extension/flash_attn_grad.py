@@ -71,10 +71,6 @@ class FlashAttnGradOpBuilder(OpBuilder):
             dq = torch.empty(q.size(), dtype=q.dtype, device="meta")
             dk = torch.empty(k.size(), dtype=k.dtype, device="meta")
             dv = torch.empty(v.size(), dtype=v.dtype, device="meta")
-            # sink 的梯度按 Q 的 head 数(N1)一维存放。
-            #   TND  [T1, N1, D]    -> q.size(1)
-            #   BNSD [B, N1, S1, D] -> q.size(1)
-            #   BSND [B, S1, N1, D] -> q.size(2)
             if layout_q == "TND" or layout_q == "BNSD":
                 n_q = q.size(1)
             else:

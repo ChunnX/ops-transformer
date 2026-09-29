@@ -119,8 +119,7 @@ ge::graphStatus CheckCuSeqlens(const char *opName, gert::TilingContext *context,
     return ge::GRAPH_SUCCESS;
 }
 
-// sinks 是每个 Q head 一个值的一维向量 [N1]，与 layout 无关；dtype 在
-// FagDtypeChecker 里单独查（必须 float32，与 q 解耦）。
+// sinks 是每个 Q head 一个值的一维向量 [N1]。
 ge::graphStatus CheckSinks(const char *opName, gert::TilingContext *context, int64_t qN)
 {
     if (!IsOptionalTensorExist(context, SINKS_INDEX)) {
@@ -133,8 +132,6 @@ ge::graphStatus CheckSinks(const char *opName, gert::TilingContext *context, int
     OP_CHECK_IF(shape.GetDim(0) != qN,
                 OP_LOGE(opName, "sinks shape[0] must equal Q head num N1 (%ld), but got %ld.", qN, shape.GetDim(0)),
                 return ge::GRAPH_PARAM_INVALID);
-    // dsink 的部分和累加在 GM workspace 槽位区（每 AIV 一行、行宽 N1），
-    // N1 只影响 workspace 大小，不再有 UB 容量上限。
     return ge::GRAPH_SUCCESS;
 }
 
@@ -194,10 +191,6 @@ ge::graphStatus FagShapeChecker::Check(FagCheckCtx &ctx)
                 OP_LOGE(opName, "N dim of q(%ld) must be divisible by N dim of k(%ld).", qN, kN),
                 return ge::GRAPH_PARAM_INVALID);
 
-    if (CheckSinks(opName, context, qN) != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_PARAM_INVALID;
-    }
-
     // S 与 B 只在非 TND 下成轴；TND 把 B*S 压成 T，长度由 cu_seqlens 描述。
     if (!isTnd) {
         const int64_t qS = q.shape->GetDim(axis.s);
@@ -216,6 +209,9 @@ ge::graphStatus FagShapeChecker::Check(FagCheckCtx &ctx)
         }
     }
 
+    if (CheckSinks(opName, context, qN) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_PARAM_INVALID;
+    }
     return CheckCuSeqlens(opName, context, isTnd);
 }
 

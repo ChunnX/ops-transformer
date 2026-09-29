@@ -27,10 +27,8 @@ bool OptionalInputExists(gert::TilingContext *context, size_t index)
     return (shape != nullptr) && (shape->GetStorageShape().GetDimNum() > 0);
 }
 
-// L2 写 mask 相关解析字段：先把用户 mask=4 且 win=(-1,-1) 归一成有效 maskMode=0，
-// 再按有效 maskMode 派生 hasAttenMask。必须留在 parser，不能进 plan/（L4 不得回写）。
-// 不能做成只返回 bool 的查询：useActualCores / EncodeTilingKey / bn2NeedZero / FillSparse
-// 读的是 maskMode，改写和派生必须在同一处、同一份 info 上完成。
+// 用户 mask=4 且 win=(-1,-1) 先归一成 maskMode=0，再派生 hasAttenMask。
+// useActualCores / EncodeTilingKey / FillSparse 读的都是这份 maskMode。
 void FillAttenMaskInfo(gert::TilingContext *context, FagParsedInfo &info)
 {
     if (info.maskMode == MASK_MODE_WINDOW && info.winLeft == -1 && info.winRight == -1) {
@@ -226,6 +224,7 @@ ge::graphStatus ParseFlashAttnGradInfo(gert::TilingContext *context, FagParsedIn
 
     FillLayoutView(info);
     FagFillSparseInfo(info);
+    info.isDeterministic = (context->GetDeterministic() == 1);
     return ge::GRAPH_SUCCESS;
 }
 

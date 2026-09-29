@@ -71,15 +71,6 @@ VECTOR_BASEN = CUBE_BASEN
 
 # 单个 VF 寄存器的 fp32 / 16-bit(fp16/bf16) lane 数
 VF_LANES = 64
-# 每个 AI Core 的 vector 子核数：pypto 的 get_subblock_idx() 文档明确子核
-# 编号只有 0/1，host 的 FAG_AICV_RATIO_DEFAULT 同为 2 —— 平台常量。
-# 不能用 pl.get_subblock_num() 在函数级求：AIC 语境恒折叠成 1。
-AIV_PER_CORE = 2
-# dsink 支持的 Q head 数上限（host 侧校验用，与 host 的 FAG_SINK_HEADS_MAX
-# 保持同值）。kernel 的部分和直接 atomicAdd 到 workspace 槽位区（每个 AIV
-# 一行、行宽 N1），不再有 UB 容量约束；该上限是 host 侧的保守策略值。
-# workspace 的槽位行数 = 实际 AIV 数，与 N1 无关。
-SINK_HEADS_MAX = 1024
 VF_LANES_F16 = 128  # fp16/bf16 同宽，256B 寄存器各 128 lane
 # 压缩 mask 边长 2048，minValue = 0xFF7FFFFF
 ATTEN_MASK_COMPRESS = 2048
@@ -122,6 +113,11 @@ SYNC_C3_TO_V5_FLAG = 6  # mm3 fp32 已进 mm1 UB，v5 可 Muls+Cast dQ
 SYNC_C4_TO_V6_FLAG = 7  # mm4 fp32 已进 mm2 UB，v6 可 Muls+Cast dK
 # cube 在下一轮 mm1/mm2 前等 v6 写完，避免覆写仍在用的 mm1/mm2 槽
 SYNC_DETER_FIX_FLAG = 14
+# newDeter template0 的三段 FIX token。事件 6/7 在 BN2 分支使用，
+# 事件 14 也只在与 template0 编译期互斥的路径使用，因此可以安全复用。
+SYNC_DQ_DETER_FIX_FLAG = 6
+SYNC_DK_DETER_FIX_FLAG = 7
+SYNC_DV_DETER_FIX_FLAG = 14
 
 # cube 领先 vector 的 task 数。PRELOAD_TIMES=3：首轮连发两组
 # mm2+mm1(共四次 matmul)填满两个 UB 槽位，之后第 N 组的 cube 计算与
@@ -144,18 +140,13 @@ def set_const_info(tiling, coreNum):
     """
     s1Outer = (tiling.s1 + CUBE_BASEM - 1) // CUBE_BASEM
     s2Outer = (tiling.s2 + CUBE_BASEN - 1) // CUBE_BASEN
-
-    # ---- 按列分核的列几何常量（只有 mask 3/4 读，mask0 折叠成 0）----
-    # mask3 是 band 的特例：取 P = M-1 使上界 min(c+P, M-1) 恒为 M-1，
-    # 且末列不需要特例（上界本来就没被 s2 截断）。
-    # mask3 的 s1Token 是 INT32_MAX + s1 - s2（可能已溢出），这里不读它。
+    # mask3 的 s1Token 可能是 INT32_MAX + s1 - s2，这里不读它。
+    # mask0 不走 packed 反查，列几何折叠成整矩形。
     if mask_mode == 0:
         colP = 0
         colQ = 0
-        colRounds = 1
         packedPerHead = s1Outer * s2Outer
     else:
-        # 单侧正无穷 token=INT32_MAX，P/Q 必须夹到 outer-1，否则 col_prefix 溢出。
         colQ = ceil_div_signed(tiling.s2Token, CUBE_BASEM)
         colQ = pl.min(colQ, s2Outer - 1)
         if mask_mode == 3:
@@ -164,20 +155,14 @@ def set_const_info(tiling, coreNum):
         else:
             colP = ceil_div_signed(tiling.s1Token, CUBE_BASEM)
             colP = pl.min(colP, s1Outer - 1)
-            # 末列上界：s2Right 被 s2 截断成 Lc = 64*ceil(s2/64)
             lc = ((tiling.s2 + 63) // 64) * 64
             colLastHi = pl.min(
                 ceil_div_signed(lc + tiling.s1Token, CUBE_BASEM) - 1, s1Outer - 1
             )
-        # 每 head 的有效块数 = P(N) = 前 N-1 列的统一梯形 + 末列。
-        # **不能**用 tiling.totalPerBatchNum：它会多算无效块（S1=256/S2=128
-        # mask3 真值 1、它给 2），拿它当 packed 空间大小会派发到无效块。
         lastLo = pl.max(s2Outer - 1 - colQ, 0)
         packedPerHead = col_prefix_body(s1Outer, colP, colQ, s2Outer - 1) + pl.max(
             colLastHi - lastLo + 1, 0
         )
-        colRounds = 1
-
     return pl.struct(
         "FagConstInfo",
         bSize=tiling.b,
@@ -210,8 +195,6 @@ def set_const_info(tiling, coreNum):
         n2GS1oS2o=tiling.n2 * tiling.gSize * s1Outer * s2Outer,
         totalBlockNum=tiling.b * tiling.n2 * tiling.gSize * s1Outer * s2Outer,
         gSize=tiling.gSize,
-        # Q 侧 head 总数（= n2*g）。dsink/sinks 都按它索引（headQ）。
-        n1Size=tiling.n2 * tiling.gSize,
         coreNum=coreNum,
         # 布局视图参数(BSND/BNSD 统一四维视图)，见 FlashAttnGradTilingData 注释。
         # Q 侧 n1=n2*G 个 head，KV 侧 n2 个，故两套。
@@ -230,13 +213,14 @@ def set_const_info(tiling, coreNum):
         s1Token=tiling.s1Token,
         s2Token=tiling.s2Token,
         totalPerBatchNum=tiling.totalPerBatchNum,
-        # 按列分核列几何。colP/colQ 不夹负值：token < -128 夹到 0 会多算一行。
         colP=colP,
         colQ=colQ,
         packedPerHead=packedPerHead,
-        colRounds=colRounds,
-        # 1 = 带 sinks 输入。主循环里多一个标量分支：额外算 dsink（sink 的梯度）。
+        bandP=(pl.max(tiling.s1Token, 0) + CUBE_BASEM - 1) // CUBE_BASEM,
+        bandQ=(pl.max(tiling.s2Token, 0) + CUBE_BASEN - 1) // CUBE_BASEN,
+        n1Size=tiling.n2 * tiling.gSize,
         sinkOptional=tiling.sinkOptional,
+        aivCount=coreNum * 2,
     )
 
 
@@ -271,6 +255,7 @@ def make_run_infos():
         loadKV=0,
         dkvAcc=0,
         flushDkv=0,
+        readyRound=0,
         gIdx=0,
         dqFirst=1,
         dqLast=1,
@@ -301,6 +286,7 @@ def make_run_infos_2():
         loadKV=0,
         dkvAcc=0,
         flushDkv=0,
+        readyRound=0,
         gIdx=0,
         dqFirst=1,
         dqLast=1,

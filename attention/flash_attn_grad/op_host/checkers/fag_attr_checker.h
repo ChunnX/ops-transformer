@@ -16,8 +16,7 @@
  *
  * 易漂移口径：
  *   - mask_mode 只收 0/3/4，其余 sparse 模式本轮不接；
- *   - attn_mask 在 mask_mode=3/4（非双侧无穷窗）时必须是 [2048, 2048]；
- *     mask_mode=4 且 win=(-1,-1) 时 attn_mask 可选、有也忽略；
+ *   - attn_mask 必须是 [2048, 2048]；
  *   - layout_q / layout_kv / layout_out 必须三者相同。
  */
 

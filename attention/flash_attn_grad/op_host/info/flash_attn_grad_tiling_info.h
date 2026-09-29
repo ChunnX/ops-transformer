@@ -126,11 +126,10 @@ struct FagParsedInfo {
     // 可选输入是否存在
     bool hasAttenMask = false;
     bool hasSeqused = false;
-    // sinks 是否提供。不占 tilingkey：kernel 只在主循环里多一个标量分支，
-    // 命中时按 head 在本 AIV 的 UB 累加器里精确累加，循环末尾写成槽位区本
-    // AIV 行，post 阶段由 AIV0 固定次序归约后整行写 dsink
-    // （见 op_kernel/fag_block_vec.py 的 process_sink_partial/reduce）。
+    // 不占 tilingkey。kernel 用 sinkOptional 在主循环里多一个标量分支算 dsink。
     bool hasSinks = false;
+    // context->GetDeterministic()==1。BN2 单块仍走现网（tilingkey deter=0）。
+    bool isDeterministic = false;
 
     // 布局视图参数：把 BSND/BNSD 折叠成同一种四维紧凑视图，使 kernel 只需
     // 一份 pl.load。推导见 parser 的 FillLayoutView。
@@ -163,6 +162,7 @@ struct FagSchedulePlan {
     uint32_t blockDim = 0;
     bool useActualCores = false;
     int64_t swizzle = 0;
+    int64_t deterMaxRound = 0;
 };
 
 // workspace 具名分区。offset 是相对 kernel 拿到的 workspace 指针的字节偏移，
@@ -177,9 +177,7 @@ struct FagWorkspacePlan {
     FagWorkspaceSegment dq; // B*S1*N1*D  fp32（N1 = N2*G）
     FagWorkspaceSegment dk; // B*S2*N2*D  fp32
     FagWorkspaceSegment dv; // B*S2*N2*Dv fp32
-    // dsink 确定性归约的槽位区：aivNum 行 × N1 列 fp32（每 AIV 独占一行
-    // 写部分和）。行数 = 实际 AIV 数（launch 的 AIV = usedCube*subblock
-    // ≤ aivNum），与 N1 无关；放在 dv 段与 128 行对齐垫之后。
+    // dsink 槽位：[aivNum x N1] fp32。每 AIV 一行，post 由 AIV0 归约。
     FagWorkspaceSegment dsink;
     size_t totalSize = 0;
 };

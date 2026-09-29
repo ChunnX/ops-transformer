@@ -30,7 +30,7 @@ inline void FagCorrectSparseTokens(int64_t maskMode, int64_t winLeft, int64_t wi
                                    int64_t &s1Token, int64_t &s2Token)
 {
     // ProcessTokensInfo (non-TND): causal tokens then right-down pad correction.
-    // mask_mode=4 的 -1 是正无穷（与正向 flash_attn MASK_MODE_INT_MAX 同口径）。
+    // mask_mode=4 的 -1 是正无穷（与正向 flash_attn 同口径）。
     if (maskMode == MASK_MODE_CAUSAL) {
         s1Token = FAG_WIN_INF;
         s2Token = 0;
@@ -38,8 +38,8 @@ inline void FagCorrectSparseTokens(int64_t maskMode, int64_t winLeft, int64_t wi
         s1Token = (winLeft == -1) ? FAG_WIN_INF : winLeft;
         s2Token = (winRight == -1) ? FAG_WIN_INF : winRight;
     } else {
-        s1Token = FAG_WIN_INF;
-        s2Token = FAG_WIN_INF;
+        s1Token = static_cast<int64_t>(std::numeric_limits<int32_t>::max());
+        s2Token = static_cast<int64_t>(std::numeric_limits<int32_t>::max());
         return;
     }
     s1Token = s1Token + s1 - s2;
@@ -127,7 +127,7 @@ inline int64_t FagGetTotalPerBatchNum(int64_t s1, int64_t s2, int64_t s1Outer, i
     }
     int64_t p = FagCeilDiv(s1Token, FAG_CUBE_BASE);
     int64_t q = FagCeilDiv(s2Token, FAG_CUBE_BASE);
-    // 单侧正无穷 token=INT32_MAX，P/Q 必须夹到 outer-1，否则列几何溢出。
+    // 将窗口的有效块跨度限制在实际 outer 范围内。
     if (s1Outer > 0 && p > s1Outer - 1) {
         p = s1Outer - 1;
     }

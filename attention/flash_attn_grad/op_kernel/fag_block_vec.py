@@ -10,12 +10,11 @@
 
 阶段编号与 CV 同步 flag 一致::
 
-    V1  sfmg = rowsum(dy * y)              ProcessVec1
-    V2  P    = softmax(S*scale - lse) [+mask]  ProcessVec2
-    V3  dS   = (dP - sfmg) * P -> cast -> L1   ProcessVec3
-    V4  P    -> cast -> L1                     ProcessVec4
-    V5/V6    dQ/dK 的 muls(scale) + cast       ProcessMulsAndCast
-    sink     dsink 部分和 = -Σ (P·dP)*exp(sink-lse)  ProcessSinkPartial（可选，按块内 P·dP）
+    V1  sfmg = rowsum(dy * y)
+    V2  P    = softmax(S*scale - lse) [+mask]
+    V3  dS   = (dP - sfmg) * P -> cast -> L1
+    V4  P    -> cast -> L1
+    V5/V6    dQ/dK 的 muls(scale) + cast
 
 本文件只做**搬运与编排**：GM->UB 的 load、UB->L1 的 insert、选哪一档 VF；
 真正的寄存器级计算在 :mod:`fag_vector_api` 与 :mod:`attenmask`。
@@ -261,7 +260,19 @@ def process_vec3(constInfo, runInfo, subIdx, ds_l1, mm1_ub, mm2_ub, sfmg_ub, nzp
 
 
 # ==================================================================
-#  dsink —— sink 的反向（仅 sinks 输入存在时）
+#  V4 —— P cast + ND2NZ 落 L1（mm5 读同址 ZN 视图）
+# ==================================================================
+
+
+def process_vec4(constInfo, runInfo, subIdx, p_l1, mm2_ub, nzp_ub):
+    rowOff = subIdx * VECTOR_BASEM
+    cast_p_vf(nzp_ub, mm2_ub, VECTOR_BASEM)
+    # 同 process_vec3：mm5 从 p_t_l1(同地址 ZN 视图)读 P^T
+    copy_ub2l1(p_l1, nzp_ub, rowOff)
+
+
+# ==================================================================
+#  Pre —— dq/dk/dv 累加区清零
 # ==================================================================
 
 
@@ -276,24 +287,7 @@ def process_sink_partial(
     sink_part_ub,
     sink_val,
 ):
-    """本任务（本 s2 块）的 dsink 贡献：
-    -Σ_{m<rows} (Σ_{n<s2RealSize} P[m,n]·dP[m,n])·exp(sink - lse[rowBase+m])。
-
-    P/dP 取本 task 的 mm2/mm1 UB（V2 已把 mm2 覆写成 P），只统计本块的
-    [0, s2RealSize) 列；s2 尾块的 padding 列是 matmul 残留值，必须裁掉。
-    不能改用 V1 的整行 sfmg=rowsum(P·dP)：同一 s1 行会跨多个 s2 块 task，
-    整行量会在每个 task 各加一遍（与 flash_attention_score_grad 的
-    CalculateSink 用块内 P·dP 一致）。
-    本子核 lane m 对应真实行 queryOffset + subIdx*64 + m；lse 直接借主槽位：
-    那里的 lane m+rowShift 正是同一行（与 muls_sel_simple_softmax_vf 的取值
-    口径一致），故不需要额外的 GM 搬运。
-
-    部分和以 fp32 atomicAdd 直接落到槽位区本 AIV 行的 headQ 列
-    （tensor_slots[0, aiv_idx*n1Size + headQ]），post 阶段由 AIV0
-    按固定行序归约出 dsink。槽位区进主循环前已由 pre 清零。
-    rows == 0（尾块里第二个子核无行）时整体跳过，不产生任何写。
-    调用方必须保证此时 mm1/mm2 尚未放行给 cube（本块还没被覆写）。
-    """
+    """本 s2 块的 dsink 贡献，原子加到槽位区本 AIV 行的 headQ 列。"""
     rows = runInfo.halfS1RealSize
     if rows <= 0:
         return
@@ -301,7 +295,6 @@ def process_sink_partial(
     if s2Real <= 0:
         return
     headQ = runInfo.n2oIdx * constInfo.gSize + runInfo.goIdx
-    # s2 列按 VF_LANES 分段：loopTimes 个满段 + 尾段 tailCols(1..VF_LANES)
     loopTimes = (s2Real + VF_LANES - 1) // VF_LANES - 1
     tailCols = s2Real - loopTimes * VF_LANES
     dsink_partial_vf(
@@ -328,11 +321,7 @@ def process_sink_partial(
 def process_sink_reduce(
     constInfo, tensor_slots, tensor_dsink, acc_ub, row_ub, aiv_count
 ):
-    """dsink 的固定次序归约：acc = slot[0] + slot[1] + ... + slot[aiv_count-1]。
-
-    由 AIV0 在末尾 sync_all 之后单点执行；行序固定 → 括号结构逐位可复现。
-    head 维按 VECTOR_BASEN 分块，尾部 valid_shape 裁剪；acc 初值取第 0 行。
-    """
+    """AIV0 按行序把各 AIV 的 dsink 部分和加到输出。"""
     n1Size = constInfo.n1Size
     nsegs = VECTOR_BASEN // VF_LANES
     nChunks = (n1Size + VECTOR_BASEN - 1) // VECTOR_BASEN
@@ -350,21 +339,10 @@ def process_sink_reduce(
         pl.store(tensor_dsink, acc_ub, [0, c * VECTOR_BASEN])
 
 
-# ==================================================================
-#  V4 —— P cast + ND2NZ 落 L1（mm5 读同址 ZN 视图）
-# ==================================================================
-
-
-def process_vec4(constInfo, runInfo, subIdx, p_l1, mm2_ub, nzp_ub):
-    rowOff = subIdx * VECTOR_BASEM
-    cast_p_vf(nzp_ub, mm2_ub, VECTOR_BASEM)
-    # 同 process_vec3：mm5 从 p_t_l1(同地址 ZN 视图)读 P^T
-    copy_ub2l1(p_l1, nzp_ub, rowOff)
-
-
-# ==================================================================
-#  Pre —— dq/dk/dv 累加区清零
-# ==================================================================
+def process_sink_zero(tensor_slots, constInfo, zt, aiv_idx):
+    """清本 AIV 的 dsink 槽位行，供主循环 atomicAdd。"""
+    fill_zero_vf(zt, (constInfo.n1Size + VF_LANES - 1) // VF_LANES)
+    process_pre(tensor_slots, zt, aiv_idx * constInfo.n1Size, constInfo.n1Size)
 
 
 def process_pre(tensor_ws, zt, elemStart, nElems):
@@ -398,18 +376,11 @@ def process_pre_from_meta(meta, fagOff, tensor_dq, tensor_dk, tensor_dv, dQ, dV,
     元素起点 = rowStart * 行宽。填零 VF 跟 tilingkey：bn2_need_zero==1 走 16-bit。
     """
     vBlockIdx = pl.get_block_idx()
-    dqRowStart = pl.astype(
-        pl.getval(meta, fagOff + META_FAG_DQ_ROW_STARTS + vBlockIdx), pl.DT_INT64
-    )
-    dqRowEnd = pl.astype(
-        pl.getval(meta, fagOff + META_FAG_DQ_ROW_ENDS + vBlockIdx), pl.DT_INT64
-    )
-    dkvRowStart = pl.astype(
-        pl.getval(meta, fagOff + META_FAG_DKV_ROW_STARTS + vBlockIdx), pl.DT_INT64
-    )
-    dkvRowEnd = pl.astype(
-        pl.getval(meta, fagOff + META_FAG_DKV_ROW_ENDS + vBlockIdx), pl.DT_INT64
-    )
+    one64 = pl.const(1, pl.DT_INT64)
+    dqRowStart = pl.getval(meta, fagOff + META_FAG_DQ_ROW_STARTS + vBlockIdx) * one64
+    dqRowEnd = pl.getval(meta, fagOff + META_FAG_DQ_ROW_ENDS + vBlockIdx) * one64
+    dkvRowStart = pl.getval(meta, fagOff + META_FAG_DKV_ROW_STARTS + vBlockIdx) * one64
+    dkvRowEnd = pl.getval(meta, fagOff + META_FAG_DKV_ROW_ENDS + vBlockIdx) * one64
     dqNElems = (dqRowEnd - dqRowStart) * dQ
     dkvNElems = (dkvRowEnd - dkvRowStart) * dQ
     dvNElems = (dkvRowEnd - dkvRowStart) * dV
@@ -422,16 +393,6 @@ def process_pre_from_meta(meta, fagOff, tensor_dq, tensor_dk, tensor_dv, dQ, dV,
     process_pre(tensor_dq, zt, dqRowStart * dQ, dqNElems)
     process_pre(tensor_dk, zt, dkvRowStart * dQ, dkvNElems)
     process_pre(tensor_dv, zt, dkvRowStart * dV, dvNElems)
-
-
-def process_sink_zero(tensor_slots, constInfo, zt, aiv_idx):
-    """把 dsink 槽位区本 AIV 行清零，作为主循环 atomicAdd 的前置。
-
-    行号 = AIV 全局序号，空闲 AIV 也清（归约会读所有行）。zt 必须是 fp32
-    视图；清完由调用方用 sync_all 与主循环的 atomicAdd 隔开。
-    """
-    fill_zero_vf(zt, (constInfo.n1Size + VF_LANES - 1) // VF_LANES)
-    process_pre(tensor_slots, zt, aiv_idx * constInfo.n1Size, constInfo.n1Size)
 
 
 # ==================================================================

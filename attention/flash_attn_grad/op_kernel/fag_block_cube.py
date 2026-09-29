@@ -589,10 +589,8 @@ def iterate_mm_pdy(
         )
 
 
-def flush_dkv(
-    constInfo, runInfo, tensor_dk_ws, tensor_dv_ws, dk_acc0, dk_acc1, dv_acc0, dv_acc1
-):
-    """把 L0C 上累加完的 dK/dV 写回 GM。只用于 d_align≤192。"""
+def flush_dk(constInfo, runInfo, tensor_dk_ws, dk_acc0, dk_acc1):
+    """把 L0C 上累加完的 dK 写回 GM。只用于 d_align≤192。"""
     i0 = runInfo.idx0KV
     i1 = runInfo.keyOffset
     i2 = runInfo.idx2KV
@@ -611,6 +609,13 @@ def flush_dkv(
             order=[1, 3],
             atomic=pl.AtomicType.AtomicAdd,
         )
+
+
+def flush_dv(constInfo, runInfo, tensor_dv_ws, dv_acc0, dv_acc1):
+    """把 L0C 上累加完的 dV 写回 GM。只用于 d_align≤192。"""
+    i0 = runInfo.idx0KV
+    i1 = runInfo.keyOffset
+    i2 = runInfo.idx2KV
     if dv_chunk_valid(constInfo, 0) > 0:
         pl.store(
             tensor_dv_ws,
@@ -628,3 +633,11 @@ def flush_dkv(
                 order=[1, 3],
                 atomic=pl.AtomicType.AtomicAdd,
             )
+
+
+def flush_dkv(
+    constInfo, runInfo, tensor_dk_ws, tensor_dv_ws, dk_acc0, dk_acc1, dv_acc0, dv_acc1
+):
+    """普通路径兼容入口；newDeter 在各自 FIX token 内分开 flush。"""
+    flush_dk(constInfo, runInfo, tensor_dk_ws, dk_acc0, dk_acc1)
+    flush_dv(constInfo, runInfo, tensor_dv_ws, dv_acc0, dv_acc1)

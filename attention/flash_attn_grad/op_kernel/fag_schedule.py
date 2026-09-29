@@ -11,8 +11,8 @@
 职责是把「本核该干哪些块」翻译成逐 task 的 :class:`FagRunInfo`：
 
 1. **块级有效性**：``is_block_valid_i`` / ``skip_invalid``；
-2. **分核映射**：线性支读 AICPU metadata；dense swizzle 走 ``swizzle_idx``；
-   mask 3/4 过门走 ``fag_colsplit`` HeadSliceSplit；未过门走 skip_invalid；
+2. **分核映射**：线性支读 AICPU metadata；swizzle 支按列/按 packed 有效块
+   跨核发放；deter+swizzle0 核上闭式算 fusedIdx 并跳过空槽；
 3. **逐 task 展开**：``set_run_info`` 把全局块下标拆成 (b, n2, g, s2o, s1o)
    与各张量的 GM 偏移，并算好 K/V 复用与 dK/dV flush 的开关。
 
@@ -24,9 +24,15 @@ task 数一致的前提，也是 set/wait 能配对的前提。任何只改一�
 import pypto_pro.language as pl
 
 # --- generated imports (fag_fiximports.py) ---
-from fag_common import CUBE_BASEM, CUBE_BASEN, VECTOR_BASEM
 from fag_colsplit import col_core_count, col_local_to_global, col_packed_to_dense
+from fag_common import CUBE_BASEM, CUBE_BASEN, VECTOR_BASEM
+from fag_deter_ondevice import (
+    deter_lin_gidx,
+    deter_lin_max_round,
+    deter_lin_round_bounds,
+)
 # --- end generated imports ---
+
 
 # ==================================================================
 #  块级有效性与「下一块」
@@ -83,6 +89,69 @@ def skip_invalid(constInfo, idx, blockEnd):
     return pl.astype(idx, pl.DT_INT64)
 
 
+def deter_max_round(constInfo, coreNum):
+    """本核循环上界。非 swizzle 闭式估轮；swizzle 取 core0 的列数（lockstep）。"""
+    if swizzle == 0:
+        return deter_lin_max_round(constInfo, coreNum)
+    return block_range_of(constInfo, 0, coreNum, 0, 0)
+
+
+def deter_round_bounds(constInfo, coreNum):
+    """All cores share one physical-round interval; swizzle stays unchanged."""
+    if swizzle == 0:
+        return deter_lin_round_bounds(constInfo, coreNum)
+    return pl.astype(0, pl.DT_INT64), deter_max_round(constInfo, coreNum)
+
+
+def deter_swz_gidx(constInfo, cBlockIdx, coreNum, roundId):
+    """deter+swizzle：与 ``block_idx_of`` 同映射，越界空槽 -1。"""
+    if mask_mode == 0:
+        n_col = constInfo.bSize * constInfo.n2Size * constInfo.gSize * constInfo.s2Outer
+        t = cBlockIdx + (roundId // constInfo.s1Outer) * coreNum
+        if t >= n_col:
+            return pl.astype(-1, pl.DT_INT64)
+        return pl.astype(
+            swizzle_idx(constInfo, cBlockIdx, coreNum, roundId), pl.DT_INT64
+        )
+    packed = cBlockIdx + roundId * coreNum
+    limit = (
+        constInfo.bSize
+        * constInfo.n2Size
+        * constInfo.gSize
+        * constInfo.totalPerBatchNum
+    )
+    if packed >= limit:
+        return pl.astype(-1, pl.DT_INT64)
+    return pl.astype(packed_to_dense_idx(constInfo, packed), pl.DT_INT64)
+
+
+def skip_empty_deter(constInfo, cBlockIdx, coreNum, roundId, maxRound):
+    """deter+swizzle0：只算当前轮，空槽由主循环 continue 跳过。
+
+    闭式 ``cal_*`` 不能内联进 while（0902 loop-carried / ScalarType）。
+    """
+    dead = pl.min(pl.max(roundId + 1 - maxRound, 0), 1)
+    gIdx = deter_lin_gidx(constInfo, cBlockIdx, coreNum, roundId)
+    gOut = gIdx * (1 - dead) + pl.astype(-1, pl.DT_INT64) * dead
+    return pl.astype(gOut, pl.DT_INT64), pl.astype(roundId + 1, pl.DT_INT64)
+
+
+def skip_deter_empty_pipe(gIdx, isLastLoop):
+    """deter+swizzle0 空槽且未收尾：跳过 mm/doFix，避免 CV 事件二次 wait。
+
+    空槽仍推进 denseCursor；taskId/L0C 只跟有效块。swizzle1 lockstep 不跳。
+    """
+    if deter == 0:
+        return 0
+    if swizzle == 1:
+        return 0
+    if gIdx >= 0:
+        return 0
+    if isLastLoop == 1:
+        return 0
+    return 1
+
+
 def next_work_gidx(
     constInfo,
     cBlockIdx,
@@ -93,17 +162,60 @@ def next_work_gidx(
     denseCursor,
     numBlocks,
 ):
-    """下一块全局下标；本核没有活块时 -1。
-
-    swizzle 是 tilingkey 编译期常量。``swizzle == 0`` 先折叠，死支不进
-    swizzle 核。mask 3/4 过门走 HeadSliceSplit（col_local_to_global），
-    未过门走 skip_invalid。dense swizzle 走 swizzle_idx，一行不改。
-    """
+    """下一块全局下标；本核没有活块时 -1。线性走 skip_invalid，swizzle 走公式。"""
     if swizzle == 0:
         return skip_invalid(constInfo, denseCursor, blockEnd)
     if localIdx >= numBlocks:
         return pl.astype(-1, pl.DT_INT64)
     return block_idx_of(constInfo, cBlockIdx, coreNum, blockStart, localIdx)
+
+
+def fetch_work_gidx(
+    constInfo,
+    meta,
+    fagOff,
+    cBlockIdx,
+    coreNum,
+    blockStart,
+    blockEnd,
+    localIdx,
+    denseCursor,
+    numBlocks,
+    roundId,
+):
+    """主循环唯一取块入口，返回 (gIdx, nextCursor)。
+
+    deter+swizzle0：核上闭式跳空槽，nextCursor 是下一轮下标。
+    deter+swizzle1：按轮 lockstep，空槽保持 -1，cursor 原样。
+    非 deter：next_work_gidx；线性支 nextCursor = gIdx+1。
+    """
+    if deter == 1:
+        if swizzle == 1:
+            return (
+                deter_swz_gidx(constInfo, cBlockIdx, coreNum, roundId),
+                pl.astype(denseCursor, pl.DT_INT64),
+            )
+        return skip_empty_deter(
+            constInfo,
+            cBlockIdx,
+            coreNum,
+            denseCursor,
+            deter_max_round(constInfo, coreNum),
+        )
+    gIdx = next_work_gidx(
+        constInfo,
+        cBlockIdx,
+        coreNum,
+        blockStart,
+        blockEnd,
+        localIdx,
+        denseCursor,
+        numBlocks,
+    )
+    if swizzle == 0:
+        if gIdx >= 0:
+            return pl.astype(gIdx, pl.DT_INT64), pl.astype(gIdx + 1, pl.DT_INT64)
+    return pl.astype(gIdx, pl.DT_INT64), pl.astype(denseCursor, pl.DT_INT64)
 
 
 # ==================================================================
@@ -143,13 +255,14 @@ META_FAG_DQ_ROW_ENDS = 196
 META_FAG_DKV_ROW_STARTS = 268
 META_FAG_DKV_ROW_ENDS = 340
 META_FAG_AIV_LIST_NUM = 72
-META_VIEW_LEN = 8192
+# fagOff 随 FA 段（aic * stride * B * N2）变大，与 shape 表无关。
+META_VIEW_LEN = 1048576
 
 
 def block_range_of(constInfo, cBlockIdx, coreNum, blockStart, blockEnd):
     """本核负责的块数。线性支读 metadata；swizzle 仍走列跨核公式。
 
-    mask 3/4 过门按 HeadSliceSplit 计块数；未过门读 metadata 区间。
+    mask+swizzle 按 packed 有效块跨核发，不再用整矩形列跨核。
     分核开关用 tilingkey 裸名 ``swizzle``，与 ``next_work_gidx`` 一样先判
     ``swizzle == 0``，死支公式不进线性核。
     """
@@ -275,6 +388,13 @@ def set_run_info(constInfo, runInfo, taskId, index, subIdx, localIdx):
     # 与 loadKV 互补：列首覆写 L0C，列中累加。消费点必须 == 1，不要用 == 0。
     runInfo.dkvAcc = 1 - runInfo.loadKV
     runInfo.flushDkv = 1 - next_s2_same(constInfo, index, localIdx)
+    # swizzle 表同轮可能撞 (b,n2,s2)，L0C 跨块累加不成立。非 swizzle ASC
+    # 闭式本核独占 (b,n2,s2)，由 apply_s2_idx_no_change 开累加。
+    if deter == 1:
+        if swizzle == 1:
+            runInfo.loadKV = 1
+            runInfo.dkvAcc = 0
+            runInfo.flushDkv = 1
     runInfo.gIdx = index
     runInfo.dqFirst = 1
     runInfo.dqLast = 1
@@ -336,6 +456,45 @@ def check_s1_range_in_bn2(constInfo, runInfo):
         runInfo.dqFirst = 1
 
 
+def apply_l0c_s2(runInfos, curInfo, taskId, ring):
+    """mask 或 deter+非 swizzle：按本核上一有效块的 (s2,b,n2) 开 L0C 累加。"""
+    if mask_mode != 0:
+        apply_s2_idx_no_change(runInfos, curInfo, taskId, ring)
+        return
+    if deter == 1:
+        if swizzle == 0:
+            apply_s2_idx_no_change(runInfos, curInfo, taskId, ring)
+
+
+def dkv_target_of(constInfo, index):
+    """Pack the dK/dV owner ``(b, n2, s2o)``; G is intentionally excluded."""
+    safeIndex = pl.max(index, 0)
+    bTail = safeIndex % constInfo.n2GS1oS2o
+    n2Tail = bTail % constInfo.gS1oS2o
+    bIdx = safeIndex // constInfo.n2GS1oS2o
+    n2Idx = bTail // constInfo.gS1oS2o
+    s2Idx = (safeIndex % constInfo.s1oS2o) // constInfo.s1Outer
+    return (bIdx * constInfo.n2Size + n2Idx) * constInfo.s2Outer + s2Idx
+
+
+def same_dkv_target(constInfo, lhs, rhs):
+    """Scalar 0/1 equality for two valid fused indices' dK/dV destinations."""
+    lhsValid = pl.min(pl.max(lhs + 1, 0), 1)
+    rhsValid = pl.min(pl.max(rhs + 1, 0), 1)
+    diff = dkv_target_of(constInfo, lhs) - dkv_target_of(constInfo, rhs)
+    different = pl.min(pl.min(pl.max(diff, 0), 1) + pl.min(pl.max(-diff, 0), 1), 1)
+    return lhsValid * rhsValid * (1 - different)
+
+
+def set_deter_l0c_neighbors(constInfo, runInfo, prevGIdx, curGIdx, nextGIdx):
+    """Freeze L0C load/acc/flush from adjacent *valid* deterministic tasks."""
+    prevSame = same_dkv_target(constInfo, prevGIdx, curGIdx)
+    nextSame = same_dkv_target(constInfo, curGIdx, nextGIdx)
+    runInfo.loadKV = 1 - prevSame
+    runInfo.dkvAcc = prevSame
+    runInfo.flushDkv = 1 - nextSame
+
+
 def apply_s2_idx_no_change(runInfos, curInfo, taskId, ring):
     """与上一有效块比 (s2o, b, n2)，不含 g。"""
     prevR = runInfos[(taskId + ring - 1) % ring]
@@ -357,3 +516,9 @@ def apply_s2_idx_no_change(runInfos, curInfo, taskId, ring):
         curInfo.dkvAcc = 0
         prevR.flushDkv = 1
     curInfo.flushDkv = 1
+    if deter == 1:
+        if swizzle == 1:
+            curInfo.loadKV = 1
+            curInfo.dkvAcc = 0
+            curInfo.flushDkv = 1
+            prevR.flushDkv = 1

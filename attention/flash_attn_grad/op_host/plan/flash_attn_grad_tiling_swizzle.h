@@ -10,11 +10,11 @@
 
 /*!
  * \file flash_attn_grad_tiling_swizzle.h
- * \brief L4 策略层：分核方式（线性均分 vs 按 s2 列跨核发放 vs mask 按列分核）。
+ * \brief L4 策略层：分核方式（线性均分 vs 按 s2 列跨核发放）。
  *
- * 门槛是纯偏好判据（mask0 与 mask 3/4 共用）—— 两种分核都算得对，只是快慢
- * 不同。判据必须保持纯整数、无浮点、无平台调用。过门后 mask 3/4 走
- * HeadSliceSplit，mask0 走 swizzle_idx。kernel 只消费 tilingkey 的 swizzle 位。
+ * 这是一个纯偏好判据 —— 两种分核都算得对，只是快慢不同。判据必须保持
+ * 纯整数、无浮点、无平台调用。kernel 只消费 tilingkey 里的 swizzle 位，
+ * 不再维护 Python 镜像。
  */
 
 #ifndef FLASH_ATTN_GRAD_TILING_SWIZZLE_H_

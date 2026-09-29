@@ -38,9 +38,6 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> FlashAttnGrad(
     auto device = q.device();
     c10::OptionalDeviceGuard device_guard(device);
 
-    // Q 的 head 数 N1：TND [T1,N1,D] / BNSD [B,N1,S1,D] 在 dim1，BSND 在 dim2。
-    const int64_t n1 = (layoutQ == "TND" || layoutQ == "BNSD") ? q.size(1) : q.size(2);
-
     at::Tensor dq;
     at::Tensor dk;
     at::Tensor dv;
@@ -49,6 +46,13 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> FlashAttnGrad(
         dq = at::empty(q.sizes(), q.options());
         dk = at::empty(k.sizes(), k.options());
         dv = at::empty(v.sizes(), v.options());
+        // dsink 按 Q head 数 N1 存放。
+        int64_t n1 = 0;
+        if (layoutQ == "TND" || layoutQ == "BNSD") {
+            n1 = q.size(1);
+        } else {
+            n1 = q.size(2);
+        }
         // dsink 仅在传入 sinks 时有定义（kernel 归约后全量写出）；
         // sinks=None 时 kernel 不写，内容未定义。故用 empty 分配、不清零。
         dsink = at::empty({n1}, q.options().dtype(at::kFloat));

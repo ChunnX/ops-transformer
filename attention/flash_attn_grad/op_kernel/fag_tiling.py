@@ -81,7 +81,9 @@ class FlashAttnGradTilingData:
     s1Token: int
     s2Token: int
     totalPerBatchNum: int
-    # 1 = 带 sinks 输入，kernel 额外算 dsink。运行期标量分支，不占 tilingkey。
+    # 保留字段；核上闭式算轮次，当前不读该字段。
+    deterMaxRound: int
+    # 1 = 带 sinks 输入，主循环额外算 dsink。运行期标量，不占 tilingkey。必须放最后。
     sinkOptional: int
 
 
@@ -118,6 +120,8 @@ class FlashAttnGradTilingKey:
     # BN2 MultiBlk 且存在整行或整列无效 tile：pre 把 dq/dk/dv out 清零。
     # 一行/一列共用这一位，kernel 不区分。
     bn2_need_zero = TilingKeyField(bits=1, values=[0, 1])
+    # bit14：确定性分核（核上闭式）。非 swizzle 走跨轮流水+L0C；swizzle 仍轮间 barrier。
+    deter = TilingKeyField(bits=1, values=[0, 1])
 
     def is_valid(self, key):
         """剪掉本实现未走到的组合，控制二进制数量。"""
@@ -130,10 +134,20 @@ class FlashAttnGradTilingKey:
             dv_align,
             is_bn2_multiblk,
             bn2_need_zero,
+            deter,
         ) = key
         # 2/3 保留。不剪会当 GS1S2 多编死二进制。
         if template != Tmpl.BN2GS1S2 and template != Tmpl.BN2:
             return False
+        if deter == 1:
+            if template != Tmpl.BN2GS1S2:
+                return False
+            if swizzle != 0:
+                return False
+            if is_bn2_multiblk == 1 or bn2_need_zero == 1:
+                return False
+            if layout != 0:
+                return False
         if template == Tmpl.BN2:
             if (
                 d_align == 192
@@ -152,9 +166,6 @@ class FlashAttnGradTilingKey:
             return False
         # 一般 d_align==dv_align；仅 D=192 且 Dv=128 允许 dv_align=128。
         if d_align != dv_align and not (d_align == 192 and dv_align == 128):
-            return False
-        # TND swizzle 是另一套实现（列前缀和在 AICPU），本轮不接。
-        if layout == 1 and swizzle == 1:
             return False
         # D=192 / 256 / 768 只编非 TND。mask 3/4 与 dense 共用 GS1S2 D-split。
         # 非 TND 的 swizzle=1 必须编出来：长序列 mask 过门走 HeadSliceSplit。

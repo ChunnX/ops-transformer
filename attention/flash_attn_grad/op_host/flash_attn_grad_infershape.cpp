@@ -9,7 +9,6 @@
  */
 
 #include "register/op_impl_registry.h"
-#include "graph/types.h"
 
 #include <string>
 
@@ -19,7 +18,7 @@ namespace ops {
 namespace {
 constexpr size_t ATTR_LAYOUT_Q_INDEX = 6;
 
-// dsink 的 shape 与 layout 有关：[N1]，N1 是 Q 的 head 数。
+// dsink shape 是 [N1]，N1 是 Q 的 head 数。
 //   BSND [B, S1, N1, D] -> dim 2
 //   BNSD [B, N1, S1, D] -> dim 1
 //   TND  [T1, N1, D]    -> dim 1
@@ -54,7 +53,6 @@ static ge::graphStatus InferShapeFlashAttnGrad(gert::InferShapeContext *context)
     *dqShape = *qShape;
     *dkShape = *kShape;
     *dvShape = *vShape;
-
     dsinkShape->SetDimNum(1U);
     dsinkShape->SetDim(0, InferHeadNumQ(context, *qShape));
     return GRAPH_SUCCESS;
