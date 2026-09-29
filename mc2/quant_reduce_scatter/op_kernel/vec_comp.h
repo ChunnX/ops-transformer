@@ -44,10 +44,15 @@ public:
     {
         scaleNumsPerBlock_ = n;
     }
+    __aicore__ inline void SetQuantMode(uint32_t quantMode)
+    {
+        quantMode_ = quantMode;
+    }
 
 private:
     uint32_t xNumPerBlock_{0};
     uint32_t scaleNumsPerBlock_{0};
+    uint32_t quantMode_{0};
 
     LocalTensor<float> scaleCalTensor_;
     LocalTensor<bfloat16_t> tempBf16Scale_;
@@ -173,6 +178,11 @@ __aicore__ inline void VectorCompute<TemplateType>::CastToFloat(LocalTensor<XTyp
         const uint32_t broadcastDst[TWO_DIMS]{totalScaleNum, MX_SIZE};
         const uint32_t broadcastSrc[TWO_DIMS]{totalScaleNum, 1};
         BroadCast<float, TWO_DIMS, 1>(scaleCalTensor_, castLocalScale, broadcastDst, broadcastSrc);
+        PipeBarrier<PIPE_V>();
+    } else if (quantMode_ == PT_QUANT_MOD) {
+        // PT(per-tensor)量化：1个scale，Duplicate填充整块
+        castLocalScale = scaleTensor.template ReinterpretCast<float>();
+        Duplicate<float>(scaleCalTensor_, castLocalScale.GetValue(0), xNumPerBlock_);
         PipeBarrier<PIPE_V>();
     } else {
         // KG量化：scale已为float，直接ReinterpretCast，一次BroadCast广播全部totalScaleNum个scale

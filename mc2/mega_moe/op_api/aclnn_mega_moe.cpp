@@ -101,15 +101,15 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     const aclTensor *context, const aclTensor *x, const aclTensor *topkIds, const aclTensor *topkWeights,
     const aclTensorList *weight1, const aclTensorList *weight2, const aclTensorList *weightScales1Optional,
     const aclTensorList *weightScales2Optional, const aclTensorList *bias1Optional, const aclTensorList *bias2Optional,
-    const aclTensor *xActiveMaskOptional, const aclTensorList *sharedWeight1Optional,
+    const aclTensor *xActiveMaskOptional, const aclTensor *scalesOptional, const aclTensorList *sharedWeight1Optional,
     const aclTensorList *sharedWeight2Optional, const aclTensorList *sharedWeightScales1Optional,
     const aclTensorList *sharedWeightScales2Optional, const aclTensorList *sharedBias1Optional,
     const aclTensorList *sharedBias2Optional, const aclTensor *maskBufferOptional, int64_t moeExpertNum,
     int64_t epWorldSize, int64_t cclBufferSize, int64_t maxRecvTokenNum, int64_t dispatchQuantMode,
     int64_t dispatchQuantOutDtype, int64_t sharedExpertQuantOutDtype, int64_t combineQuantMode, const char *commAlg,
     int64_t numMaxTokensPerRank, const char *activation, const aclFloatArray *activationParams, int64_t topoType,
-    int64_t rankNumPerServer, int64_t topkWeightsType, aclTensor *yOut, aclTensor *expertTokenNumsOut,
-    uint64_t *workspaceSize, aclOpExecutor **executor)
+    int64_t rankNumPerServer, int64_t topkWeightsType, int64_t combineCommMode, aclTensor *yOut,
+    aclTensor *expertTokenNumsOut, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     OP_LOGD("aclnn_mega_moe WorkspaceSize start");
 
@@ -196,12 +196,12 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
 
     aclnnStatus getWorkspaceSizesRes = aclnnInnerMegaMoeGetWorkspaceSize(
         context, x, topkIds, topkWeights, weight1, weight2, weightScales1Optional, weightScales2Optional, bias1Optional,
-        bias2Optional, xActiveMaskOptional, nullptr, sharedWeight1Optional, sharedWeight2Optional,
+        bias2Optional, xActiveMaskOptional, scalesOptional, sharedWeight1Optional, sharedWeight2Optional,
         sharedWeightScales1Optional, sharedWeightScales2Optional, sharedBias1Optional, sharedBias2Optional,
         maskBufferOptional, moeExpertNum, epWorldSize, cclBufferSize, maxRecvTokenNum, dispatchQuantMode,
         dispatchQuantOutDtype, sharedExpertQuantOutDtype, combineQuantMode, commAlgData, numMaxTokensPerRank,
         activationValue.data(), activationParams, ge::DT_UNDEFINED, false, false, 0, topoType, rankNumPerServer,
-        topkWeightsType, yOut, expertTokenNumsOut, workspaceSize, executor);
+        topkWeightsType, combineCommMode, yOut, expertTokenNumsOut, workspaceSize, executor);
 
     return getWorkspaceSizesRes;
 }

@@ -126,7 +126,9 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::CheckX2Transpose(const gert::Ti
                                                                   const OpAttrIndexSchema &indexSchema)
 {
     const gert::RuntimeAttrs *attrs = context_->GetAttrs();
+    OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName, "attrs"), return ge::GRAPH_FAILED);
     const bool *isTransX2 = attrs->GetAttrPointer<bool>(indexSchema.x2Transpose);
+    OP_TILING_CHECK(isTransX2 == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName, "transpose_x2"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(!(*isTransX2), OP_LOGE_WITH_INVALID_ATTR(opName, "transpose_x2", "false", "true"),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -1002,8 +1004,7 @@ CutResult MxQuantMatmulAllToAllTilingBase::GetTilingResult()
     }
 
     uint8_t commMode = (engineType == mc2tiling::A5_CCU_ENGINE) ? Mc2Comm::COMM_MODE_CCU : Mc2Comm::COMM_MODE_AICPU;
-    return GetArch35TilingResult(contextInfo.args_, KernelType::ALL_TO_ALL, SocVersion::SOC950, npuArch_,
-                                 QuantMode::MX_QUANT, commMode);
+    return GetArch35TilingResult(contextInfo.args_, KernelType::ALL_TO_ALL, npuArch_, QuantMode::MX_QUANT, commMode);
 }
 
 /**

@@ -1,26 +1,26 @@
 # aclnnCompressor
 
-[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/attention/compressor)
+[📄 查看源码](https://atomgit.com/cann/ops-transformer/tree/master/attention/compressor)
 
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：支持
+- <term>Ascend 950PR&950DT系列产品</term>：支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+- <term>Atlas A3系列产品</term>：支持
 <!-- end id2 -->
 <!-- npu="910b" id3 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+- <term>Atlas A2系列产品</term>：支持
 <!-- end id3 -->
 <!-- npu="310b" id4 -->
-- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+- <term>Atlas 200I/500 A2推理产品</term>：不支持
 <!-- end id4 -->
 <!-- npu="310p" id5 -->
-- <term>Atlas 推理系列产品</term>：不支持
+- <term>Atlas推理系列产品</term>：不支持
 <!-- end id5 -->
 <!-- npu="910" id6 -->
-- <term>Atlas 训练系列产品</term>：不支持
+- <term>Atlas训练系列产品</term>：不支持
 <!-- end id6 -->
 
 ## 功能说明
@@ -197,7 +197,7 @@ aclnnStatus aclnnCompressor(
     <tr>
       <td>stateBlockTableOptional（const aclTensor*）</td>
       <td>可选输入</td>
-      <td>表示state_cache存储使用的block映射表。当其中元素的值为0时，表示当前位置无需进行更新state_cache操作。</td>
+      <td>表示state_cache存储使用的block映射表。</td>
       <td><ul><li>cacheMode=1时，shape为[B, ceil(Smax/block_size)]，Smax为每个Batch中最大的Sequence Length。当x的shape为[B,S,H]时，Smax=max(start_pos)+S；当x的shape为[T,H]时，Smax=max(start_pos)+max(cuSeqlensOptional[n+1] - cuSeqlensOptional[n])。</li><li>cacheMode=2时，shape为[B]。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
@@ -340,7 +340,7 @@ aclnnStatus aclnnCompressor(
   - D（Head Dim）表示hidden层的最小单元大小，D取值由wkv的第一维大小除以coff得到。
 
   <!-- npu="A3,910b" id7 -->
-  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> ：
+  - <term>Atlas A3系列产品</term>、<term>Atlas A2系列产品</term> ：
     - cmpRatio仅支持2/4/8/16/32/64/128。
     - gradEnabled不支持为true。
   <!-- end id7 -->
@@ -445,13 +445,13 @@ aclnnStatus aclnnCompressor(
 - 确定性计算：
   - aclnnCompressor默认确定性实现。
   <!-- npu="950" id8 -->
-  - <term>Ascend 950PR/Ascend 950DT</term>：batch一致性：通过aclrtSetSysParamOpt()配置ACL_OPT_DETERMINISTIC为3来开启batch一致性，开启后可以满足计算结果和所在批次大小、位置无关。
+  - <term>Ascend 950PR&950DT系列产品</term>：batch一致性：通过aclrtSetSysParamOpt()配置ACL_OPT_DETERMINISTIC为3来开启batch一致性，开启后可以满足计算结果和所在批次大小、位置无关。
   <!-- end id8 -->
 - x参数维度含义：B（Batch Size）表示输入样本批量大小、S（Sequence Length）表示输入样本序列长度、H（Head Size）表示hidden层的大小、D（Head Dim）表示hidden层的最小单元大小、T表示所有Batch输入样本序列长度的累加和。
 - 输入shape限制：
   - stateCacheRef支持输入shape为[block_num, block_size, 2\*coff\*D]，要求block_num>0；cacheMode=2时，需满足block_size >= coff * cmp_ratio + S - 1。
   - 当x采用BS合轴，即x的输入shape为[T,H]时：
-    - cuSeqlensOptional输入shape必须为[B+1,]，且该参数为前缀和数组，后一个元素的值必须大于等于前一个元素的值，第一位必须为0。
+    - cuSeqlensOptional输入shape必须为[B+1,]，且该参数为前缀和数组，后一个元素的值必须大于等于前一个元素的值，第一位必须为0，最后一位必须为T。
     - sequsedOptional支持输入shape为[B,]，要求0 ≤ sequsedOptional[n] ≤ cuSeqlensOptional[n+1] - cuSeqlensOptional[n]。
     - cacheMode=1时，stateBlockTableOptional支持输入shape为[B, ceil(Smax/block_size)]，Smax=max(start_pos)+max(cuSeqlensOptional[n+1] - cuSeqlensOptional[n])；cacheMode=2时，支持输入shape为[B]。
     - cmpKvOut输出shape为[min(T, T/cmp_ratio+B), D]。
@@ -484,6 +484,7 @@ aclnnStatus aclnnCompressor(
       </tbody>
       </table>
   - 该接口支持B、S、T取0，即shape与B、S、T值相关的入参允许传入空tensor，其余入参不支持传入空tensor。该场景下stateCacheRef不做更新，输出cmpKvOut为空tensor。
+  - stateBlockTableOptional元素取值范围为[0, block_num)，block_num为stateCacheRef第0维大小。元素值直接用作state_cache的block索引，越界会导致内存非法访问。元素值为0时：cacheMode=1（连续buffer）下写state_cache操作跳过该位置；cacheMode=2（循环buffer）下读写操作均不跳过。算子不做重复校验，需由调用方保证元素值唯一性：cacheMode=1下元素值0为"未分配"哨兵值可重复出现，非0值须全局唯一；cacheMode=2下0为有效物理块号，所有元素值须全局唯一。重复会导致多个逻辑块/batch写同一物理块区域，造成state_cache数据踩踏覆盖。
 - 输入属性限制：
   - 支持D为128/512。
   - 支持H为1K~10K，512对齐。

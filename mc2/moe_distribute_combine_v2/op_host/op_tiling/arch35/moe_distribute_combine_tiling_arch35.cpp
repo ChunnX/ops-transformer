@@ -819,12 +819,16 @@ bool MoeDistributeCombineTilingA5::IsCapable()
 ge::graphStatus MoeDistributeCombineV2TilingFuncA5::MoeDistributeCombineTilingFuncImpl(gert::TilingContext *context,
                                                                                        const CombineV2Config &config)
 {
-    auto attrs = context->GetAttrs();
+    OP_TILING_CHECK(context == nullptr, OP_LOGE(OP_NAME, "Fail to get tiling context."), return ge::GRAPH_FAILED);
     const char *nodeName = context->GetNodeName();
+    OP_TILING_CHECK(nodeName == nullptr, OP_LOGE(OP_NAME, "Fail to get nodeName."), return ge::GRAPH_FAILED);
+    auto attrs = context->GetAttrs();
+    OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "attrs"), return ge::GRAPH_FAILED);
+
     auto commAlgPtr = attrs->GetAttrPointer<char>(static_cast<int>((config.attrCommAlgIndex)));
     // 检查 commAlg 参数合法性校验
     bool isNullOrEmpty = (commAlgPtr == nullptr) || (std::strlen(commAlgPtr) == 0);
-    bool isCcu = !isNullOrEmpty && (std::strcmp(commAlgPtr, "ccu") == 0);
+    bool isCcu = (!isNullOrEmpty) && (std::strcmp(commAlgPtr, "ccu") == 0);
     OP_TILING_CHECK(
         !(isNullOrEmpty || isCcu),
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "commAlg", commAlgPtr != nullptr ? commAlgPtr : "null",

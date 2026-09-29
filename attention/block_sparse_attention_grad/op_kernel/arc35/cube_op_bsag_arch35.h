@@ -33,12 +33,16 @@ private:
     // l1_tensor
     LocalTensor<INPUT_TYPE> query_l1_tensor_ping_;
     LocalTensor<INPUT_TYPE> query_l1_tensor_pong_;
+    LocalTensor<INPUT_TYPE> query_l1_tensor_ding_;
     LocalTensor<INPUT_TYPE> key_l1_tensor_ping_;
     LocalTensor<INPUT_TYPE> key_l1_tensor_pong_;
+    LocalTensor<INPUT_TYPE> key_l1_tensor_ding_;
     LocalTensor<INPUT_TYPE> value_l1_tensor_ping_;
     LocalTensor<INPUT_TYPE> value_l1_tensor_pong_;
+    LocalTensor<INPUT_TYPE> value_l1_tensor_ding_;
     LocalTensor<INPUT_TYPE> dy_l1_tensor_ping_;
     LocalTensor<INPUT_TYPE> dy_l1_tensor_pong_;
+    LocalTensor<INPUT_TYPE> dy_l1_tensor_ding_;
     // l0_tensor
     LocalTensor<INPUT_TYPE> l0_a_tensor_ping_;
     LocalTensor<INPUT_TYPE> l0_a_tensor_pong_;
@@ -92,22 +96,29 @@ public:
         l1_offset += base_m * head_dim_align_ * sizeof(INPUT_TYPE);
         query_l1_tensor_pong_ = l1_buffer.GetWithOffset<INPUT_TYPE>(base_m * head_dim_align_, l1_offset);
         l1_offset += base_m * head_dim_align_ * sizeof(INPUT_TYPE);
+        query_l1_tensor_ding_ = l1_buffer.GetWithOffset<INPUT_TYPE>(base_m * head_dim_align_, l1_offset);
+        l1_offset += base_m * head_dim_align_ * sizeof(INPUT_TYPE);
         // key_l1
         key_l1_tensor_ping_ = l1_buffer.GetWithOffset<INPUT_TYPE>(base_n * head_dim_align_, l1_offset);
         l1_offset += base_n * head_dim_align_ * sizeof(INPUT_TYPE);
         key_l1_tensor_pong_ = l1_buffer.GetWithOffset<INPUT_TYPE>(base_n * head_dim_align_, l1_offset);
+        l1_offset += base_n * head_dim_align_ * sizeof(INPUT_TYPE);
+        key_l1_tensor_ding_ = l1_buffer.GetWithOffset<INPUT_TYPE>(base_n * head_dim_align_, l1_offset);
         l1_offset += base_n * head_dim_align_ * sizeof(INPUT_TYPE);
         // value_l1
         value_l1_tensor_ping_ = l1_buffer.GetWithOffset<INPUT_TYPE>(base_n * head_dim_align_, l1_offset);
         l1_offset += base_n * head_dim_align_ * sizeof(INPUT_TYPE);
         value_l1_tensor_pong_ = l1_buffer.GetWithOffset<INPUT_TYPE>(base_n * head_dim_align_, l1_offset);
         l1_offset += base_n * head_dim_align_ * sizeof(INPUT_TYPE);
+        value_l1_tensor_ding_ = l1_buffer.GetWithOffset<INPUT_TYPE>(base_n * head_dim_align_, l1_offset);
+        l1_offset += base_n * head_dim_align_ * sizeof(INPUT_TYPE);
         // dy is the left matrix of dY * V^T, so its row count follows Q/base_m.
         dy_l1_tensor_ping_ = l1_buffer.GetWithOffset<INPUT_TYPE>(base_m * head_dim_align_, l1_offset);
         l1_offset += base_m * head_dim_align_ * sizeof(INPUT_TYPE);
         dy_l1_tensor_pong_ = l1_buffer.GetWithOffset<INPUT_TYPE>(base_m * head_dim_align_, l1_offset);
         l1_offset += base_m * head_dim_align_ * sizeof(INPUT_TYPE);
-
+        dy_l1_tensor_ding_ = l1_buffer.GetWithOffset<INPUT_TYPE>(base_m * head_dim_align_, l1_offset);
+        l1_offset += base_m * head_dim_align_ * sizeof(INPUT_TYPE);
         // l0
         l0_a_tensor_ping_ = l0_a_buffer_.GetWithOffset<INPUT_TYPE>(32 * 1024 / sizeof(INPUT_TYPE), 0);
         l0_a_tensor_pong_ = l0_a_buffer_.GetWithOffset<INPUT_TYPE>(32 * 1024 / sizeof(INPUT_TYPE), 32 * 1024);
@@ -121,52 +132,80 @@ public:
 
     __aicore__ inline void SendMatmulQK(const GlobalTensor<INPUT_TYPE> &queryGm, const GlobalTensor<INPUT_TYPE> &keyGm,
                                         const LocalTensor<float> &mm1OutUb, const RunTimeInfo &runTimeInfo,
-                                        const uint32_t ping_pong_idx)
+                                        const RunTimeInfo &nextRunTimeInfo, const uint32_t l1_buffer_flag, bool first)
     {
-        LocalTensor<INPUT_TYPE> l1_a_tensor = ping_pong_idx == 0 ? query_l1_tensor_ping_ : query_l1_tensor_pong_;
+        LocalTensor<INPUT_TYPE> l1_a_tensor = l1_buffer_flag == 0 ?
+                                                  query_l1_tensor_ping_ :
+                                                  (l1_buffer_flag == 1 ? query_l1_tensor_pong_ : query_l1_tensor_ding_);
         LocalTensor<INPUT_TYPE> l1_b_tensor =
-            runTimeInfo.kv_ping_pong_idx == 0 ? key_l1_tensor_ping_ : key_l1_tensor_pong_;
+            runTimeInfo.kv_ping_pong_idx == 0 ?
+                key_l1_tensor_ping_ :
+                (runTimeInfo.kv_ping_pong_idx == 1 ? key_l1_tensor_pong_ : key_l1_tensor_ding_);
 
-        ComputeMM12(queryGm[runTimeInfo.queryGmOffset], keyGm[runTimeInfo.keyGmOffset], l1_a_tensor, l1_b_tensor,
-                    mm1OutUb, runTimeInfo);
+        uint32_t next_flag = (l1_buffer_flag + 1) % 3;
+        LocalTensor<INPUT_TYPE> next_l1_a_tensor =
+            next_flag == 0 ? query_l1_tensor_ping_ : (next_flag == 1 ? query_l1_tensor_pong_ : query_l1_tensor_ding_);
+        LocalTensor<INPUT_TYPE> next_l1_b_tensor =
+            nextRunTimeInfo.kv_ping_pong_idx == 0 ?
+                key_l1_tensor_ping_ :
+                (nextRunTimeInfo.kv_ping_pong_idx == 1 ? key_l1_tensor_pong_ : key_l1_tensor_ding_);
+
+        ComputeMM12(queryGm, keyGm, l1_a_tensor, l1_b_tensor, next_l1_a_tensor, next_l1_b_tensor, mm1OutUb, runTimeInfo,
+                    nextRunTimeInfo, first);
         event_ping_pong_flag = 1 - event_ping_pong_flag;
     }
 
     __aicore__ inline void SendMatmulDyV(const GlobalTensor<INPUT_TYPE> &dyGm, const GlobalTensor<INPUT_TYPE> &valueGm,
                                          LocalTensor<float> &mm2OutUb, const RunTimeInfo &runTimeInfo,
-                                         const uint32_t ping_pong_idx)
+                                         const RunTimeInfo &nextRunTimeInfo, const uint32_t l1_buffer_flag, bool first)
     {
-        LocalTensor<INPUT_TYPE> l1_a_tensor = ping_pong_idx == 0 ? dy_l1_tensor_ping_ : dy_l1_tensor_pong_;
+        LocalTensor<INPUT_TYPE> l1_a_tensor =
+            l1_buffer_flag == 0 ? dy_l1_tensor_ping_ : (l1_buffer_flag == 1 ? dy_l1_tensor_pong_ : dy_l1_tensor_ding_);
         LocalTensor<INPUT_TYPE> l1_b_tensor =
-            runTimeInfo.kv_ping_pong_idx == 0 ? value_l1_tensor_ping_ : value_l1_tensor_pong_;
+            runTimeInfo.kv_ping_pong_idx == 0 ?
+                value_l1_tensor_ping_ :
+                (runTimeInfo.kv_ping_pong_idx == 1 ? value_l1_tensor_pong_ : value_l1_tensor_ding_);
 
-        ComputeMM12(dyGm[runTimeInfo.queryGmOffset], valueGm[runTimeInfo.keyGmOffset], l1_a_tensor, l1_b_tensor,
-                    mm2OutUb, runTimeInfo);
+        uint32_t next_flag = (l1_buffer_flag + 1) % 3;
+        LocalTensor<INPUT_TYPE> next_l1_a_tensor =
+            next_flag == 0 ? dy_l1_tensor_ping_ : (next_flag == 1 ? dy_l1_tensor_pong_ : dy_l1_tensor_ding_);
+        LocalTensor<INPUT_TYPE> next_l1_b_tensor =
+            nextRunTimeInfo.kv_ping_pong_idx == 0 ?
+                value_l1_tensor_ping_ :
+                (nextRunTimeInfo.kv_ping_pong_idx == 1 ? value_l1_tensor_pong_ : value_l1_tensor_ding_);
+
+        ComputeMM12(dyGm, valueGm, l1_a_tensor, l1_b_tensor, next_l1_a_tensor, next_l1_b_tensor, mm2OutUb, runTimeInfo,
+                    nextRunTimeInfo, first);
         event_ping_pong_flag = 1 - event_ping_pong_flag;
     }
 
     __aicore__ inline void SendMatmulDq(const LocalTensor<INPUT_TYPE> &ds_l1_tensor, const GlobalTensor<float> &outGm,
-                                        const RunTimeInfo &runTimeInfo, const uint32_t ping_pong_idx)
+                                        const RunTimeInfo &runTimeInfo, const uint32_t l1_buffer_flag)
     {
         LocalTensor<INPUT_TYPE> l1_b_tensor =
-            runTimeInfo.kv_ping_pong_idx == 0 ? key_l1_tensor_ping_ : key_l1_tensor_pong_;
+            runTimeInfo.kv_ping_pong_idx == 0 ?
+                key_l1_tensor_ping_ :
+                (runTimeInfo.kv_ping_pong_idx == 1 ? key_l1_tensor_pong_ : key_l1_tensor_ding_);
 
         ComputeMMDQ(ds_l1_tensor, l1_b_tensor, outGm[runTimeInfo.queryGmOffset], runTimeInfo);
         event_ping_pong_flag = 1 - event_ping_pong_flag;
     }
 
     __aicore__ inline void SendMatmulDk(const LocalTensor<INPUT_TYPE> &ds_l1_tensor, const GlobalTensor<float> &outGm,
-                                        const RunTimeInfo &runTimeInfo, const uint32_t ping_pong_idx)
+                                        const RunTimeInfo &runTimeInfo, const uint32_t l1_buffer_flag)
     {
-        LocalTensor<INPUT_TYPE> l1_b_tensor = ping_pong_idx == 0 ? query_l1_tensor_ping_ : query_l1_tensor_pong_;
+        LocalTensor<INPUT_TYPE> l1_b_tensor = l1_buffer_flag == 0 ?
+                                                  query_l1_tensor_ping_ :
+                                                  (l1_buffer_flag == 1 ? query_l1_tensor_pong_ : query_l1_tensor_ding_);
         ComputeMMDKV<DK>(ds_l1_tensor, l1_b_tensor, outGm[runTimeInfo.keyGmOffset], runTimeInfo);
         event_ping_pong_flag = 1 - event_ping_pong_flag;
     }
 
     __aicore__ inline void SendMatmulDv(const LocalTensor<INPUT_TYPE> &p_l1_tensor, const GlobalTensor<float> &outGm,
-                                        const RunTimeInfo &runTimeInfo, const uint32_t ping_pong_idx)
+                                        const RunTimeInfo &runTimeInfo, const uint32_t l1_buffer_flag)
     {
-        LocalTensor<INPUT_TYPE> l1_b_tensor = ping_pong_idx == 0 ? dy_l1_tensor_ping_ : dy_l1_tensor_pong_;
+        LocalTensor<INPUT_TYPE> l1_b_tensor =
+            l1_buffer_flag == 0 ? dy_l1_tensor_ping_ : (l1_buffer_flag == 1 ? dy_l1_tensor_pong_ : dy_l1_tensor_ding_);
         ComputeMMDKV<DV>(p_l1_tensor, l1_b_tensor, outGm[runTimeInfo.keyGmOffset], runTimeInfo);
         event_ping_pong_flag = 1 - event_ping_pong_flag;
     }
@@ -174,8 +213,10 @@ public:
 private:
     __aicore__ inline void ComputeMM12(const GlobalTensor<INPUT_TYPE> &leftGm, const GlobalTensor<INPUT_TYPE> &rightGm,
                                        const LocalTensor<INPUT_TYPE> &l1_a_tensor,
-                                       const LocalTensor<INPUT_TYPE> &l1_b_tensor, const LocalTensor<float> &outUb,
-                                       const RunTimeInfo &runTimeInfo)
+                                       const LocalTensor<INPUT_TYPE> &l1_b_tensor,
+                                       const LocalTensor<INPUT_TYPE> &next_l1_a_tensor,
+                                       const LocalTensor<INPUT_TYPE> &next_l1_b_tensor, const LocalTensor<float> &outUb,
+                                       const RunTimeInfo &runTimeInfo, const RunTimeInfo &nextRunTimeInfo, bool first)
     {
         int32_t mProcess = runTimeInfo.s1Len;
         int32_t nProcess = runTimeInfo.s2Len;
@@ -186,20 +227,39 @@ private:
         LocalTensor<float> l0_c_tensor = event_ping_pong_flag ? l0_c_tensor_ping_ : l0_c_tensor_pong_;
         TEventID evnet_id = event_ping_pong_flag ? event_ping_ : event_pong_;
 
-        WAIT_FLAG(M, MTE1, evnet_id);
-        load_data_gm_2_l0<true>(l0_a_tensor, l1_a_tensor, leftGm, mProcess, head_dim_, mProcessAlign, head_dim_align_,
-                                q_stride_);
-        if (runTimeInfo.need_copy_kv) {
-            load_data_gm_2_l0_trans<false>(l0_b_tensor, l1_b_tensor, rightGm, nProcess, head_dim_, nProcessAlign,
-                                           head_dim_align_, kv_stride_);
-        } else {
-            load_data_l1_2_l0_nz(l0_b_tensor, l1_b_tensor, nProcessAlign, head_dim_align_);
+        if (first) {
+            SET_FLAG(MTE1, MTE2, EVENT_ID1);
+            WAIT_FLAG(MTE1, MTE2, EVENT_ID1);
+            load_data_gm_2_l1(l1_a_tensor, leftGm[runTimeInfo.queryGmOffset], mProcess, head_dim_, mProcessAlign,
+                              head_dim_align_, q_stride_);
+            load_data_gm_2_l1(l1_b_tensor, rightGm[runTimeInfo.keyGmOffset], nProcess, head_dim_, nProcessAlign,
+                              head_dim_align_, kv_stride_);
+            SET_FLAG(MTE2, MTE1, EVENT_ID0);
+            WAIT_FLAG(MTE2, MTE1, EVENT_ID0);
         }
+
+        if (nextRunTimeInfo.need_compute) {
+            SET_FLAG(MTE1, MTE2, EVENT_ID0);
+            WAIT_FLAG(MTE1, MTE2, EVENT_ID0);
+            load_data_gm_2_l1(next_l1_a_tensor, leftGm[nextRunTimeInfo.queryGmOffset], nextRunTimeInfo.s1Len, head_dim_,
+                              nextRunTimeInfo.s1LenAlign, head_dim_align_, q_stride_);
+            if (nextRunTimeInfo.is_kv_change) {
+                load_data_gm_2_l1(next_l1_b_tensor, rightGm[nextRunTimeInfo.keyGmOffset], nextRunTimeInfo.s2Len,
+                                  head_dim_, nextRunTimeInfo.s2LenAlign, head_dim_align_, kv_stride_);
+            }
+            SET_FLAG(MTE2, MTE1, EVENT_ID2);
+        }
+
+        if (!first) {
+            WAIT_FLAG(MTE2, MTE1, EVENT_ID2);
+        }
+        WAIT_FLAG(M, MTE1, evnet_id);
+        load_data_l1_2_l0_nz(l0_a_tensor, l1_a_tensor, mProcessAlign, head_dim_align_);
+        load_data_l1_2_l0_nz(l0_b_tensor, l1_b_tensor, nProcessAlign, head_dim_align_);
 
         SET_FLAG(MTE1, M, EVENT_ID0);
         WAIT_FLAG(MTE1, M, EVENT_ID0);
 
-        WAIT_FLAG(FIX, M, evnet_id);
         MmadParams madParams;
         madParams.m = mProcess == 1 ? 2 : mProcess;
         madParams.n = nProcess;
@@ -207,7 +267,6 @@ private:
         madParams.cmatrixInitVal = true;
         madParams.unitFlag = 3;
         AscendC::Mmad(l0_c_tensor, l0_a_tensor, l0_b_tensor, madParams);
-        AscendC::PipeBarrier<PIPE_M>();
         SET_FLAG(M, MTE1, evnet_id);
 
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
@@ -219,7 +278,6 @@ private:
         fixpipeParams.unitFlag = 3;
         constexpr static FixpipeConfig ROW_MAJOR_UB = {CO2Layout::ROW_MAJOR, true};
         AscendC::Fixpipe<float, float, ROW_MAJOR_UB>(outUb, l0_c_tensor, fixpipeParams);
-        SET_FLAG(FIX, M, evnet_id);
     }
 
     template <uint32_t TYPE>
@@ -247,18 +305,16 @@ private:
         SET_FLAG(MTE1, M, EVENT_ID0);
         WAIT_FLAG(MTE1, M, EVENT_ID0);
 
-        WAIT_FLAG(FIX, M, evnet_id);
         MmadParams madParams;
         madParams.m = nProcess == 1 ? 2 : nProcess;
         madParams.n = head_dim_;
         madParams.k = mProcess;
-        madParams.cmatrixInitVal = runTimeInfo.need_copy_kv;
-        madParams.unitFlag = runTimeInfo.is_singlekv_last ? 3 : 2;
+        madParams.cmatrixInitVal = runTimeInfo.is_kv_change;
+        madParams.unitFlag = runTimeInfo.is_kv_end ? 3 : 2;
         AscendC::Mmad(l0_c_tensor, l0_a_tensor, l0_b_tensor, madParams);
-        AscendC::PipeBarrier<PIPE_M>();
         SET_FLAG(M, MTE1, evnet_id);
 
-        if (runTimeInfo.is_singlekv_last) {
+        if (runTimeInfo.is_kv_end) {
             AscendC::FixpipeParamsV220 fixpipeParamsV220;
             fixpipeParamsV220.mSize = nProcess;
             fixpipeParamsV220.nSize = head_dim_;
@@ -267,7 +323,6 @@ private:
             fixpipeParamsV220.dstStride = kv_stride_;
             MM345CopyOut<true>(outGm, l0_c_tensor, fixpipeParamsV220);
         }
-        SET_FLAG(FIX, M, evnet_id);
     }
 
     __aicore__ inline void ComputeMMDQ(const LocalTensor<INPUT_TYPE> &l1_a_tensor,
@@ -289,7 +344,6 @@ private:
         SET_FLAG(MTE1, M, EVENT_ID0);
         WAIT_FLAG(MTE1, M, EVENT_ID0);
 
-        WAIT_FLAG(FIX, M, evnet_id);
         MmadParams madParams;
         madParams.m = mProcess == 1 ? 2 : mProcess;
         madParams.n = head_dim_;
@@ -297,7 +351,6 @@ private:
         madParams.cmatrixInitVal = true;
         madParams.unitFlag = 3;
         AscendC::Mmad(l0_c_tensor, l0_a_tensor, l0_b_tensor, madParams);
-        AscendC::PipeBarrier<PIPE_M>();
         SET_FLAG(M, MTE1, evnet_id);
 
         AscendC::FixpipeParamsV220 fixpipeParamsV220;
@@ -307,7 +360,6 @@ private:
         fixpipeParamsV220.unitFlag = 3;
         fixpipeParamsV220.dstStride = q_stride_;
         MM345CopyOut<true>(outGm, l0_c_tensor, fixpipeParamsV220);
-        SET_FLAG(FIX, M, evnet_id);
     }
 
     __aicore__ inline void load_data_gm_2_l1(const LocalTensor<INPUT_TYPE> &dstL1Tensor,

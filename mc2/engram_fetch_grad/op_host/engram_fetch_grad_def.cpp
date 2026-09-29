@@ -52,8 +52,8 @@ public:
         this->Attr("num_entries_per_rank").AttrType(REQUIRED).Int();
         this->Attr("comm_buffer_size").AttrType(REQUIRED).Int();
 
-        OpAICoreConfig aicore_config_950;
-        aicore_config_950.DynamicCompileStaticFlag(true)
+        OpAICoreConfig aicore_config_a5;
+        aicore_config_a5.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)
             .DynamicRankSupportFlag(true)
             .DynamicShapeSupportFlag(true)
@@ -62,7 +62,7 @@ public:
             .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
             .ExtendCfgInfo("jitCompile.flag", "static_false")
             .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel");
-        this->AICore().AddConfig("ascend950", aicore_config_950);
+        this->AICore().AddConfig("ascend950", aicore_config_a5);
     }
 };
 OP_ADD(EngramFetchGrad);

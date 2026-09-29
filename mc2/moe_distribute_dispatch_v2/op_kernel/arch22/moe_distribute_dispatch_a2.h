@@ -92,6 +92,12 @@ public:
     __aicore__ inline void Process();
 
 private:
+    __aicore__ inline void InitCommTiling(TPipe *pipe, GM_ADDR tilingGM);
+    __aicore__ inline void InitGlobalTensor(GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask,
+                                            GM_ADDR performanceInfo, GM_ADDR expandXOut, GM_ADDR dynamicScalesOut,
+                                            GM_ADDR expandIdxOut, GM_ADDR expertTokenNumsOut, GM_ADDR epRecvCountsOut,
+                                            GM_ADDR workspaceGM);
+    __aicore__ inline void InitADump();
     __aicore__ inline void AllocTensor();
     __aicore__ inline void InitStatusTensor();
     __aicore__ inline void IndexSort();
@@ -190,10 +196,7 @@ private:
 };
 
 template <TemplateMC2TypeA2Class>
-__aicore__ inline void MoeDistributeDispatchA2<TemplateMC2TypeA2Func>::Init(
-    GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR performanceInfo, GM_ADDR expandXOut,
-    GM_ADDR dynamicScalesOut, GM_ADDR expandIdxOut, GM_ADDR expertTokenNumsOut, GM_ADDR epRecvCountsOut,
-    GM_ADDR workspaceGM, TPipe *pipe, GM_ADDR tilingGM)
+__aicore__ inline void MoeDistributeDispatchA2<TemplateMC2TypeA2Func>::InitCommTiling(TPipe *pipe, GM_ADDR tilingGM)
 {
     tpipe_ = pipe;
     GET_TILING_DATA_WITH_STRUCT(MoeDistributeDispatchA2TilingData, tilingData, tilingGM);
@@ -227,7 +230,14 @@ __aicore__ inline void MoeDistributeDispatchA2<TemplateMC2TypeA2Func>::Init(
     aivId_ = GetBlockIdx();
     expertIdsCnt_ = axisBS_ * axisK_;
     localMoeExpertNumAlign_ = (localMoeExpertNum_ + BITS32_PER_BLOCK - 1) / BITS32_PER_BLOCK * BITS32_PER_BLOCK;
+}
 
+template <TemplateMC2TypeA2Class>
+__aicore__ inline void MoeDistributeDispatchA2<TemplateMC2TypeA2Func>::InitGlobalTensor(
+    GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR performanceInfo, GM_ADDR expandXOut,
+    GM_ADDR dynamicScalesOut, GM_ADDR expandIdxOut, GM_ADDR expertTokenNumsOut, GM_ADDR epRecvCountsOut,
+    GM_ADDR workspaceGM)
+{
     bufferChosenGlobal_.SetGlobalBuffer((__gm__ uint32_t *)(windowInGM_ + Mc2A2Kernel::FULLMESH_BUFFERID_ADDR));
     bufferChosen_ = bufferChosenGlobal_(0);
 
@@ -263,7 +273,11 @@ __aicore__ inline void MoeDistributeDispatchA2<TemplateMC2TypeA2Func>::Init(
         performanceInfoSize_ = worldSize_;
         performanceInfoI32GMTensor_.SetGlobalBuffer((__gm__ int32_t *)performanceInfo);
     }
+}
 
+template <TemplateMC2TypeA2Class>
+__aicore__ inline void MoeDistributeDispatchA2<TemplateMC2TypeA2Func>::InitADump()
+{
     isSingleServer_ = worldSize_ <= A2_RANK_NUM_PER_SERVER;
     worldTaskInfo_.SplitCore(worldSize_, aivNum_, aivId_);
     uint32_t aDumpSize =
@@ -275,6 +289,18 @@ __aicore__ inline void MoeDistributeDispatchA2<TemplateMC2TypeA2Func>::Init(
                 Mc2A2Kernel::IS_FULLMESH, aivNum_, aDumpTensor_, axisH_, axisBS_);
     aDump_.UpdateFullmeshRankTaskInfo(worldTaskInfo_.startTaskId, worldTaskInfo_.taskNum, Mc2A2Kernel::IS_SEND);
     aDump_.UpdateFullmeshRankTaskInfo(worldTaskInfo_.startTaskId, worldTaskInfo_.taskNum, Mc2A2Kernel::IS_RECV);
+}
+
+template <TemplateMC2TypeA2Class>
+__aicore__ inline void MoeDistributeDispatchA2<TemplateMC2TypeA2Func>::Init(
+    GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR performanceInfo, GM_ADDR expandXOut,
+    GM_ADDR dynamicScalesOut, GM_ADDR expandIdxOut, GM_ADDR expertTokenNumsOut, GM_ADDR epRecvCountsOut,
+    GM_ADDR workspaceGM, TPipe *pipe, GM_ADDR tilingGM)
+{
+    InitCommTiling(pipe, tilingGM);
+    InitGlobalTensor(x, expertIds, scales, xActiveMask, performanceInfo, expandXOut, dynamicScalesOut, expandIdxOut,
+                     expertTokenNumsOut, epRecvCountsOut, workspaceGM);
+    InitADump();
 }
 
 template <TemplateMC2TypeA2Class>

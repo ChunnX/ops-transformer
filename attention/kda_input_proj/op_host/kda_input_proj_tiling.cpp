@@ -87,10 +87,10 @@ ge::graphStatus KdaInputProjInfoParser::GetNpuInfo()
     aicNum_ = aicNum;
     aivNum_ = aivNum;
 
-    const auto socVersion = ascendcPlatform.GetSocVersion();
-    OP_CHECK_IF(socVersion != platform_ascendc::SocVersion::ASCEND950,
-                OP_LOGE(opName_, "SOC Version[%d] is not supported, only ASCEND950 is supported.",
-                        static_cast<int32_t>(socVersion)),
+    const auto npuArch = ascendcPlatform.GetCurNpuArch();
+    OP_CHECK_IF(npuArch != NpuArch::DAV_3510,
+                OP_LOGE(opName_, "NpuArch[%u] is not supported, only DAV_3510(A5) is supported.",
+                        static_cast<uint32_t>(npuArch)),
                 return ge::GRAPH_FAILED);
 
     l1Size_ = 0UL;

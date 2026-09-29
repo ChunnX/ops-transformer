@@ -204,33 +204,33 @@ public:
 
     ge::graphStatus CheckRequiredInOutExistence() const;
     ge::graphStatus CheckRequiredAttrExistence() const;
-    ge::graphStatus CheckRequiredParaExistence() const;
-    ge::graphStatus GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
+    ge::graphStatus CheckQliv2RequiredParameters() const;
+    ge::graphStatus GetActualSeqLenSize(int64_t &size, const gert::Tensor *tensor,
                                         const std::string &actualSeqLenName) const;
     ge::graphStatus GetOpName();
     ge::graphStatus GetNpuInfo();
-    void GetOptionalInputParaInfo();
     void GetInputParaInfo();
     void GetOutputParaInfo();
+    void GetOptionalInputParaInfo();
     ge::graphStatus GetAttrParaInfo();
     ge::graphStatus CheckAttrParaInfo();
     ge::graphStatus GetOpParaInfo();
     ge::graphStatus ValidateInputShapesMatch();
     ge::graphStatus CheckScaleShape();
     ge::graphStatus GetAndCheckInOutDataType();
-    ge::graphStatus GetBatchSize();
     ge::graphStatus GetHeadDim();
+    ge::graphStatus GetBatchSize();
     ge::graphStatus GetS1Size();
     ge::graphStatus GetAndCheckOptionalInput();
     ge::graphStatus CheckShapeDim();
     ge::graphStatus GetAndCheckBlockSize();
-    ge::graphStatus GetS2SizeForPageAttention();
-    ge::graphStatus GetS2SizeForBatchContinuous();
-    ge::graphStatus GetS2Size();
     ge::graphStatus GetQueryKeyAndOutLayout();
     ge::graphStatus GetN1Size();
     ge::graphStatus GetAndCheckN2Size();
     ge::graphStatus GetGSize();
+    ge::graphStatus GetS2SizeForPageAttention();
+    ge::graphStatus GetS2SizeForBatchContinuous();
+    ge::graphStatus GetS2Size();
     ge::graphStatus GetAttenMaskInfo();
     ge::graphStatus GetActualSeqInfo();
     ge::graphStatus CheckKeyContiguous() const;
@@ -241,22 +241,22 @@ public:
     gert::TilingContext *context_ = nullptr;
     const char *opName_;
     fe::PlatFormInfos *platformInfo_;
-    QLIV2ParaInfo opParamInfo_;
+    QLIV2ParaInfo qliV2Params_;
 
     // BaseParams
-    uint32_t bSize_ = 0;
-    uint32_t n1Size_ = 0;
-    uint32_t n2Size_ = 0;
-    uint32_t gSize_ = 0;
-    uint32_t s1Size_ = 0;
+    int64_t bSize_ = 0;
+    int64_t n1Size_ = 0;
+    int64_t n2Size_ = 0;
+    int64_t gSize_ = 0;
+    int64_t s1Size_ = 0;
     int64_t s2Size_ = 0;
-    uint32_t headDim_ = 0;
+    int64_t headDim_ = 0;
     // Layout
     DataLayout qLayout_ = DataLayout::BSND;
     DataLayout kLayout_ = DataLayout::PA_BBND;
     // PageAttention
     uint32_t maxBlockNumPerBatch_ = 0;
-    int32_t blockSize_ = 0;
+    int64_t blockSize_ = 0;
     platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910B;
     NpuArch npuArch_ = NpuArch::DAV_2201;
     ge::DataType inputQType_ = ge::DT_FLOAT16;

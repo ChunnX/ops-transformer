@@ -7,29 +7,29 @@ abbr {
 }
 </style>
 
-[查看源码](https://gitcode.com/cann/ops-transformer/tree/master/gmm/grouped_matmul)
+[查看源码](https://atomgit.com/cann/ops-transformer/tree/master/gmm/grouped_matmul)
 
 ---
 
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：支持
+- <term>Ascend 950PR&950DT系列产品</term>：支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+- <term>Atlas A3系列产品</term>：支持
 <!-- end id2 -->
 <!-- npu="910b" id3 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+- <term>Atlas A2系列产品</term>：支持
 <!-- end id3 -->
 <!-- npu="310b" id4 -->
-- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+- <term>Atlas 200I/500 A2推理产品</term>：不支持
 <!-- end id4 -->
 <!-- npu="310p" id5 -->
-- <term>Atlas 推理系列产品</term>：支持
+- <term>Atlas推理系列产品</term>：支持
 <!-- end id5 -->
 <!-- npu="910" id6 -->
-- <term>Atlas 训练系列产品</term>：不支持
+- <term>Atlas训练系列产品</term>：不支持
 <!-- end id6 -->
 
 ---
@@ -136,16 +136,16 @@ $$
 
 - **V4 → V5**：
 <!-- npu="A3" id13 -->
-  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：增加可选参数tuningConfigOptional，调优参数。数组中第一个值表示各个专家处理的token数的预期值，算子tiling时会按照该预期值进行最优tiling。
+  - <term>Atlas A3系列产品</term>：增加可选参数tuningConfigOptional，调优参数。数组中第一个值表示各个专家处理的token数的预期值，算子tiling时会按照该预期值进行最优tiling。
 <!-- end id13 -->
 
 - **V1 → V4**：
 
   <!-- npu="950" id7 -->
-  - Ascend 950PR/Ascend 950DT：支持不同分组轴，由groupType表示；非量化支持 x/weight转置；支持静态量化（T-C/T-T）BFLOAT16/FLOAT16/FLOAT32 输出 + bias；支持动态量化（K-C/K-T/T-T/T-C/MX/G-B）BFLOAT16/FLOAT16/FLOAT32 输出 + bias；支持伪量化 weight为 INT4、FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8（INT4 支持 perchannel 和 pergroup，其余仅 perchannel）。
+  - Ascend 950PR&950DT系列产品：支持不同分组轴，由groupType表示；非量化支持 x/weight转置；支持静态量化（T-C/T-T）BFLOAT16/FLOAT16/FLOAT32 输出 + bias；支持动态量化（K-C/K-T/T-T/T-C/MX/G-B）BFLOAT16/FLOAT16/FLOAT32 输出 + bias；支持伪量化 weight为 INT4、FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8（INT4 支持 perchannel 和 pergroup，其余仅 perchannel）。
   <!-- end id7 -->
   <!-- npu="A3,910b" id10 -->
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持不同分组轴，由groupType表示；非量化支持 x/weight转置；支持 x/weight/y 均为单Tensor 非量化 FLOAT32 输入；支持伪量化 weight=INT4（perchannel/pergroup 模式）。
+  - <term>Atlas A2系列产品</term>、<term>Atlas A3系列产品</term>：支持不同分组轴，由groupType表示；非量化支持 x/weight转置；支持 x/weight/y 均为单Tensor 非量化 FLOAT32 输入；支持伪量化 weight=INT4（perchannel/pergroup 模式）。
   <!-- end id10 -->
 
 ## 函数原型
@@ -218,12 +218,12 @@ aclnnStatus aclnnGroupedMatmulV5(
   | executor（aclOpExecutor **） | 输出 | 返回op执行器，包含了算子计算流程 | - | - | - | - | - |
 
   <!-- npu="950" id8 -->
-  - <term>Ascend 950PR/Ascend 950DT</term>：
+  - <term>Ascend 950PR&950DT系列产品</term>：
     - 上表数据类型列中的角标 <span title="Ascend 950PR/950DT 不支持"><sup>1</sup></span> 代表该系列不支持的数据类型
     - 输入参数 x、weight均不支持INT16 类型
   <!-- end id8 -->
   <!-- npu="A3,910b" id11 -->
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+  - <term>Atlas A2系列产品</term>、<term>Atlas A3系列产品</term>：
     - 上表数据类型列中的角标 <span title="Atlas A3/A2 不支持"><sup>2</sup></span> 代表该系列不支持的数据类型
     - 不支持FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8、FLOAT8_E8M0类型
     - 输入参数 biasOptional不支持BFLOAT16
@@ -313,7 +313,7 @@ aclnnStatus aclnnGroupedMatmulV5(
 aclnnGroupedMatmulV5默认确定性实现。
 
 <!-- npu="950" id9 -->
-### Ascend 950PR/Ascend 950DT
+### Ascend 950PR&950DT系列产品
 
 #### 平台约束
 
@@ -321,9 +321,11 @@ aclnnGroupedMatmulV5默认确定性实现。
 - groupListType：支持0、1、2。
   - groupListType=0：groupList须为非负单调非递减数列（累积和），最后一个值不大于x中tensor的第一维。以M=256、E=4（各组大小依次为64、0、128、64）为例：`[64, 64, 192, 256]`
   - groupListType=1：groupList须为非负数列（各组大小），数值总和不大于x中tensor的第一维。例如：`[64, 0, 128, 64]`
-  - groupListType=2：仅全量化且groupType=0场景下支持，groupList须为非负数列，shape为`[E, 2]`，E表示Group大小，数据排布为`[[groupIdx0, groupSize0], [groupIdx1, groupSize1]...]`，非零组前置，第二列的数值总和不大于x中tensor的第一维。例如：`[[0, 64], [2, 128], [3, 64], [1, 0]]`
-- tuningConfigOptional：可选参数，数组中的第一个值表示各个专家处理的token数的预期值。当前仅S8S4场景支持，详见[S8S4场景约束](#ascend950-s8s4场景约束)。如不使用该参数不传即可。
-  - `[1]`：是否开启weight亲和格式（先转置再NZ），适用场景：[S8S4](#ascend950-s8s4场景约束)。
+  - groupListType=2：仅全量化和非量化，且groupType=0场景下支持，groupList须为非负数列，shape为`[E, 2]`，E表示Group大小，数据排布为`[[groupIdx0, groupSize0], [groupIdx1, groupSize1], ...]`，其中groupSize为分组轴上每组大小，必须为非负数。所有groupSize非0的分组按groupIdx有序排列在前，所有groupSize为0的分组按groupIdx有序排列在后，确保非零组前置、零值组后置，且组内有序。第二列的数值总和不大于x中tensor的第一维。例如：`[[0, 64], [2, 128], [3, 64], [1, 0]]`
+- tuningConfigOptional：可选调优参数，当前仅S8S4场景支持。如不使用，传入nullptr即可。
+  - 第一个元素（下标0）：支持0和正整数，取值范围为`[0, min(M, UINT32_MAX)]`，其中M为输入x的行数。0表示不指定预期值，正整数表示各个专家处理的token数的预期值，例如128表示预期每个专家处理128个token（要求M不小于128）。当前S8S4实现仅校验并保存该值，暂不参与实际调优计算。
+  - 第二个元素（下标1）：仅支持0或1，其他值不支持。设为0或不提供该元素时，不开启weight特殊格式，weight按常规`[E,K,N]`逻辑布局解析；设为1时，开启weight特殊格式，仅支持offsetOptional不为空的perchannel场景，weight须按`[E,N,K]`排布后转换为NZ，且weight TensorList长度为1。
+  - 例如，传入`[0, 1]`表示不指定预期token数，并开启weight特殊格式。详见[S8S4场景约束](#ascend950-s8s4场景约束)。
 - actType（0~5）：
   - 非量化/伪量化仅支持 0。
   - 全量化下x、weight数据类型为INT8且out数据类型为BFLOAT16/FLOAT16，静态T-C或动态K-C、scale数据类型为FLOAT32/BFLOAT16时支持0/1/2/4/5（注意3不支持）；其余场景仅支持0。
@@ -554,7 +556,7 @@ aclnnGroupedMatmulV5默认确定性实现。
 
 | offsetOptional | 子场景 | scaleOptional shape | offsetOptional shape |
 |:---:|:---|:---|:---|
-| null | per-group 与 per-channel 离线融合 | `[E, K/256, N]` | - |
+| null | pergroup 与 perchannel 离线融合 | `[E, K/256, N]` | - |
 | 非空 | <abbr title="简称C量化，量化对象是右矩阵，每个channel分别使用独立的量化参数">perchannel</abbr> | `[E, 1, N]` | `[E, 1, N]`（FLOAT32） |
 
 - **约束说明**：
@@ -565,12 +567,12 @@ aclnnGroupedMatmulV5默认确定性实现。
   |:---:|:---:|:---:|:---|
   | 0（M轴分组） | 2/3 | 0 | 1（count） |
 
-  - 当前仅支持x、weight、biasOptional、scaleOptional、offsetOptional、perTokenScaleOptional和out均为长度1的TensorList（下表中省略该要求）。
+  - 当前仅支持x、weight、biasOptional、scaleOptional、perTokenScaleOptional和out均为长度1的TensorList；offsetOptional非空时，其TensorList长度须为1（下表中省略该要求）。
 
   | 输入输出 | 子场景 | shape限制 |
   |:---:|:---|:---|
   | x | 单Tensor | 2维，shape为`[M,K]`，不支持转置 |
-  | weight | 单Tensor | 3维，shape为`[E,K,N]`，不支持转置 |
+  | weight | 单Tensor | 3维，默认逻辑shape为`[E,K,N]`，不支持转置；特殊格式见tuningConfigOptional说明 |
   | biasOptional | 必选输入 | 2维，shape为`[E,N]` |
   | perTokenScaleOptional | 单Tensor | 1维，shape为`[M]` |
   | out | 单Tensor | - |
@@ -578,7 +580,7 @@ aclnnGroupedMatmulV5默认确定性实现。
   - biasOptional为必选输入，是INT4权重离线转换的校正量，按`8 × weight × scale`沿K轴规约得到。
   - 当weight传入数据类型为INT32时，会将每个INT32视为8个INT4。
   - offsetOptional为空时，K不大于18432且必须是256的整数倍。
-  - S8S4 offsetOptional不为空的per-channel场景下，tuningConfigOptional数组第二个元素可置1。此时weight需按`[E,N,K]`排布并转换为NZ，仅支持长度为1的weight TensorList。
+  - S8S4 offsetOptional不为空的perchannel场景下，tuningConfigOptional数组第二个元素可置1。此时weight需按`[E,N,K]`排布并转换为NZ，仅支持长度为1的weight TensorList。
 
 **其他伪量化场景：**
 
@@ -624,7 +626,7 @@ aclnnGroupedMatmulV5默认确定性实现。
 - groupListType：
   - groupListType=0：须为非负单调非递减数列（累积和）。以M=256、E=4（各组大小依次为64、0、128、64）为例：`[64, 64, 192, 256]`
   - groupListType=1：须为非负数列（各组大小）。例如：`[64, 0, 128, 64]`
-  - groupListType=2：须为非负数列，shape `[E, 2]`（[组索引, 组大小]），非零组前置。例如：`[[0, 64], [2, 128], [3, 64], [1, 0]]`
+  - groupListType=2：groupList须为非负数列，shape为`[E, 2]`，E表示Group大小，数据排布为`[[groupIdx0, groupSize0], [groupIdx1, groupSize1], ...]`，其中groupSize为分组轴上每组大小，必须为非负数。所有groupSize非0的分组按groupIdx有序排列在前，所有groupSize为0的分组按groupIdx有序排列在后，确保非零组前置、零值组后置，且组内有序。例如：`[[0, 64], [2, 128], [3, 64], [1, 0]]`
 - groupType：支持M轴分组（0）和不分组（-1），非量化额外支持 K轴分组（2）。全量化下 groupType 仅支持0（M轴分组）。
 - tuningConfigOptional：支持，为Host侧INT64 aclIntArray。
   - `[0]`：预期各专家处理的token数，tiling 按此优化，适用场景：A8W4/A8W8/A4W4，x/weight/out 单Tensor。
@@ -869,5 +871,5 @@ aclnnGroupedMatmulV5默认确定性实现。
 | MX量化 | Ascend 950 | [arch35/test_aclnn_grouped_matmul_mx_quant.cpp](../examples/arch35/test_aclnn_grouped_matmul_mx_quant.cpp) | Ascend 950 MX量化示例 |
 | 全量化（动态 K-C） | Ascend 950 | [arch35/test_aclnn_grouped_matmul_quant_dynamic.cpp](../examples/arch35/test_aclnn_grouped_matmul_quant_dynamic.cpp) | x=INT8, weight=INT8, scale=FLOAT32, perTokenScale=FLOAT |
 | G-B量化 | Ascend 950 | [arch35/test_aclnn_grouped_matmul_quant_gb.cpp](../examples/arch35/test_aclnn_grouped_matmul_quant_gb.cpp) | x/w=FLOAT8_E5M2, scale=FLOAT32 (3维), perTokenScale=FLOAT32 (2维) |
-| 全量化S8S4 | Ascend 950 | [arch35/test_aclnn_grouped_matmul_v5_s8s4.cpp](../examples/arch35/test_aclnn_grouped_matmul_v5_s8s4.cpp) | x=INT8, weight=INT4, offset非空的per-channel量化 |
+| 全量化S8S4 | Ascend 950 | [arch35/test_aclnn_grouped_matmul_v5_s8s4.cpp](../examples/arch35/test_aclnn_grouped_matmul_v5_s8s4.cpp) | x=INT8, weight=INT4, offset非空的perchannel量化 |
 | 全量化A8W8 | Atlas A3/A2  | [arch22/test_aclnn_grouped_matmul_a8w8.cpp](../examples/arch22/test_aclnn_grouped_matmul_a8w8.cpp) | x=INT8, weight=INT8, scale=UINT64, out=BF16 |

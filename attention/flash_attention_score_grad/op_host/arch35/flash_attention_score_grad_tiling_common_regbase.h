@@ -155,6 +155,8 @@ constexpr uint32_t NZ_OUT_MIN_S_SIZE = 2048;
 constexpr uint32_t FP16_C0_SIZE = 16;
 constexpr uint32_t TND_SWIZZLE_MIN_S1_SIZE = 2048;
 constexpr uint32_t TND_SWIZZLE_MIN_S1_SIZE_1 = 1024;
+constexpr int64_t TND_NONDETER_SWIZZLE_MAX_LOAD_PERCENT = 80;
+constexpr int64_t TND_NONDETER_SWIZZLE_PERCENT_BASE = 100;
 
 constexpr uint32_t SFMG_DEFAULT_BURST_NUM = 128;
 constexpr uint32_t SFMG_DOUBLE_BUFFER_NUM = 2;
@@ -361,6 +363,7 @@ struct TndBaseInfo {
     uint64_t tndS1S2AlignPrefixSum[CORE_LIST_NUM] = {0};
     uint64_t tndPrefixSum[CORE_LIST_NUM] = {0};
     uint64_t tndPrefixValidSum[CORE_LIST_NUM] = {0};
+    uint64_t normalMaxValidBlockCount = 0;
 
     bool isS1GreaterThanS2 = true;
     bool isS1LessThanS2 = true;
@@ -562,8 +565,8 @@ inline std::vector<T> SliceVector(const std::vector<T> &arr, const int64_t step)
     }
 
     std::vector<T> result;
-    for (auto it = arr.begin(); it < arr.end(); it += step) {
-        result.push_back(*it);
+    for (size_t i = 0; i < arr.size(); i += static_cast<size_t>(step)) {
+        result.push_back(arr[i]);
     }
     return result;
 }

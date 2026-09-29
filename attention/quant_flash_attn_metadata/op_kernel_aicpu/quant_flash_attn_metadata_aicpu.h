@@ -43,6 +43,27 @@ static const int64_t NUM_128 = 128L;
 static const int64_t NUM_64 = 64L;
 static const int64_t NUM_32 = 32L;
 
+struct TndLineRunShape {
+    int64_t m = 1;
+    int64_t n = 1;
+    int64_t p = 0;
+    int64_t q = 0;
+    int64_t kind = 0;
+};
+
+struct TndLineSchedule {
+    std::vector<int64_t> roundPrefix;
+    std::vector<int64_t> s1Outer;
+    std::vector<int64_t> s2Outer;
+    std::vector<int64_t> lineM;
+    std::vector<int64_t> lineN;
+    std::vector<int64_t> lineP;
+    std::vector<int64_t> lineQ;
+    std::vector<int64_t> runSize;
+    std::vector<int64_t> s1Token;
+    std::vector<int64_t> s2Token;
+};
+
 class QuantFlashAttnMetadataCpuKernel : public CpuKernel {
 public:
     QuantFlashAttnMetadataCpuKernel() = default;
@@ -62,6 +83,21 @@ private:
     uint32_t GetS1SeqSize(uint32_t bIdx);
     uint32_t GetS2SeqSize(uint32_t bIdx);
     int64_t CalDeterMaxRound();
+    bool HasVarlenSeq() const;
+    void GetMetadataRowInfo(int32_t &dimNum, int64_t &rowSize);
+    uint32_t GetFagOffset();
+    bool CalDeterSwizzleSchedule(std::vector<int64_t> &roundPrefix, std::vector<int64_t> &s1OuterList,
+                                 std::vector<int64_t> &s2OuterList, std::vector<std::vector<int64_t>> &sparseData);
+    bool GenQuantFagGradMetaData();
+    bool IsTndLineBandMode() const;
+    void CalTndLineActualToken(uint32_t bIdx, int64_t &s1Token, int64_t &s2Token);
+    void GetTndLineOuterMN(uint32_t bIdx, int64_t &m, int64_t &n);
+    TndLineRunShape MakeTndLineRunShape(uint32_t bIdx);
+    int64_t CountTndLineSameShapeRun(uint32_t start, TndLineRunShape &shape);
+    int64_t CalTndLineRunRounds(const TndLineRunShape &shape, int64_t total);
+    bool PreferTndLineSwizzle();
+    bool CalTndLineSwizzleSchedule(TndLineSchedule &sched);
+    bool GenQuantFagTndLineSchedule(optiling::detail::QuantFAGMetaData &gradMetaData);
 
 private:
     CpuKernelContext *context_ = nullptr;

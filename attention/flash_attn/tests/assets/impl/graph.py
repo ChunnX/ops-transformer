@@ -12,85 +12,13 @@
 
 """TTK graph adapter for the installed FlashAttn API."""
 
-import logging
-
 import torch
-
-_LOGGER = logging.getLogger(__name__)
 
 
 def _resolve_max_seqlen(explicit):
     if explicit is not None and int(explicit) > 0:
         return int(explicit)
     return -1
-
-
-def _build_metadata(
-    q,
-    k,
-    v,
-    *,
-    cu_seqlens_q=None,
-    cu_seqlens_kv=None,
-    seqused_q=None,
-    seqused_kv=None,
-    batch_size=None,
-    mask_mode=0,
-    win_left=-1,
-    win_right=-1,
-    max_seqlen_q=None,
-    max_seqlen_kv=None,
-    layout_q="BSND",
-    layout_kv="BSND",
-    layout_out="BSND",
-):
-    """Build metadata from graph inputs without importing sibling assets."""
-    head_dim = int(q.shape[-1])
-    # v 的 head_dim: 布局与维度数严格匹配, 不匹配回落 head_dim (畸形 shape 由算子 checker 拒绝)
-    # PA_NZ (Bn,N2,D/16,block_size,16) 的 D = dim2*dim4; TND (T,N,D) 取 dim2; 其余 4 维布局 D 在 index 3
-    head_dim_v = head_dim
-    if layout_kv in ("BSND", "BNSD") and len(v.shape) == 4:
-        head_dim_v = int(v.shape[3])
-    elif layout_kv == "TND" and len(v.shape) == 3:
-        head_dim_v = int(v.shape[2])
-    elif layout_kv in ("PA_BBND", "PA_BNBD") and len(v.shape) == 4:
-        head_dim_v = int(v.shape[3])
-    elif layout_kv == "PA_NZ" and len(v.shape) == 5:
-        head_dim_v = int(v.shape[2]) * int(v.shape[4])
-    if layout_q in ("TND", "BNSD"):
-        num_heads_q = int(q.shape[1])
-    else:
-        num_heads_q = int(q.shape[2])
-
-    if layout_kv in ("TND", "BNSD", "PA_BNBD", "PA_NZ"):
-        num_heads_kv = int(k.shape[1])
-    elif layout_kv == "PA_BBND":
-        num_heads_kv = int(k.shape[2])
-    else:
-        num_heads_kv = int(k.shape[2])
-
-    metadata = torch.ops.cann_ops_transformer.flash_attn_metadata(
-        num_heads_q,
-        num_heads_kv,
-        head_dim,
-        head_dim_v=head_dim_v,
-        cu_seqlens_q=cu_seqlens_q,
-        cu_seqlens_kv=cu_seqlens_kv,
-        seqused_q=seqused_q,
-        seqused_kv=seqused_kv,
-        batch_size=batch_size,
-        max_seqlen_q=_resolve_max_seqlen(max_seqlen_q),
-        max_seqlen_kv=_resolve_max_seqlen(max_seqlen_kv),
-        mask_mode=int(mask_mode),
-        win_left=int(win_left),
-        win_right=int(win_right),
-        layout_q=layout_q,
-        layout_kv=layout_kv,
-        layout_out=layout_out,
-    )
-    if hasattr(metadata, "to") and metadata.device != q.device:
-        metadata = metadata.to(q.device)
-    return metadata
 
 
 class FlashAttnAclGraph(torch.nn.Module):
@@ -137,28 +65,10 @@ class FlashAttnAclGraph(torch.nn.Module):
         attn_mask=None,
         metadata=None,
     ):
-        if metadata is not None:
-            _LOGGER.warning(
-                "graph ignores externally provided metadata; rebuilding from attrs/tensors"
+        if metadata is None or metadata.numel() == 0:
+            raise ValueError(
+                "FlashAttn graph requires metadata prepared by npu_preprocess"
             )
-        metadata = _build_metadata(
-            q,
-            k,
-            v,
-            cu_seqlens_q=cu_seqlens_q,
-            cu_seqlens_kv=cu_seqlens_kv,
-            seqused_q=seqused_q,
-            seqused_kv=seqused_kv,
-            batch_size=self.batch_size,
-            mask_mode=self.mask_mode,
-            win_left=self.win_left,
-            win_right=self.win_right,
-            max_seqlen_q=self.max_seqlen_q,
-            max_seqlen_kv=self.max_seqlen_kv,
-            layout_q=self.layout_q,
-            layout_kv=self.layout_kv,
-            layout_out=self.layout_out,
-        )
 
         return torch.ops.cann_ops_transformer.flash_attn(
             q,

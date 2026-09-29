@@ -18,7 +18,6 @@ from ..common import CommChannelBuilderManager
 
 _ACL_DTYPE_TO_TORCH_DTYPE = {
     5: torch.float16,
-    6: torch.float32,
     15: torch.bfloat16,
 }
 
@@ -40,7 +39,7 @@ class _AllToAllQuantMatmulOpBuilder(OpBuilder):
             "int[] group_sizes=[], "
             "int? x1_dtype=None, int? x2_dtype=None, "
             "int? x1_scale_dtype=None, int? x2_scale_dtype=None, "
-            "int? y_dtype=None, str? comm_mode=None, int? precision_mode=None"
+            "int? y_dtype=None, str comm_mode=None, int? precision_mode=None"
             ") -> (Tensor, Tensor)"
         )
 
@@ -83,9 +82,15 @@ class _AllToAllQuantMatmulOpBuilder(OpBuilder):
             h = x1.size(1)
             n = x2.size(1)
             local_bs = bs // world_size
-            out_dtype = torch.float32
-            if y_dtype is not None:
-                out_dtype = _ACL_DTYPE_TO_TORCH_DTYPE.get(y_dtype, out_dtype)
+            if y_dtype is None:
+                out_dtype = torch.bfloat16
+            else:
+                torch._check(
+                    y_dtype in _ACL_DTYPE_TO_TORCH_DTYPE,
+                    lambda: f"y_dtype only supports 15 (BF16) / 5 (FP16) ACL dtype enum, "
+                    f"but got {y_dtype}, {ops_error(ErrCode.VALUE)}.",
+                )
+                out_dtype = _ACL_DTYPE_TO_TORCH_DTYPE[y_dtype]
             y = x1.new_empty(tuple([local_bs, n]), dtype=out_dtype)
             all2all_out = x1.new_empty(
                 tuple([local_bs, h * world_size]), dtype=x1.dtype
@@ -130,15 +135,15 @@ def _npu_all_to_all_quant_matmul(
         bias,
         x1_scale,
         x2_scale,
-        x1_quant_mode,
-        x2_quant_mode,
+        x1_quant_mode if x1_quant_mode is not None else 6,
+        x2_quant_mode if x2_quant_mode is not None else 6,
         group_sizes if group_sizes is not None else [],
         x1_dtype,
         x2_dtype,
         x1_scale_dtype,
         x2_scale_dtype,
-        y_dtype,
-        comm_mode,
+        y_dtype if y_dtype is not None else 15,  # ACL BF16
+        comm_mode if comm_mode is not None else "aiv_urma",
         precision_mode,
     )
     return result
@@ -204,8 +209,8 @@ def all_to_all_quant_matmul(
         x2_scale_dtype (int): x2_scale dtype enum, -1 means use tensor dtype.
         y_dtype (int): Output dtype enum, must be 5 (FP16) or 15 (BF16); the default
             fp32 is rejected by the operator.
-        comm_mode (str): Communication engine, only ``"aiv_urma"`` is supported; must be
-            passed explicitly.
+        comm_mode (str, optional): Communication engine. Only ``"aiv_urma"`` is supported;
+            defaults to ``"aiv_urma"``.
         precision_mode (int): Precision mode, 0 means default.
 
     Returns:
@@ -213,6 +218,47 @@ def all_to_all_quant_matmul(
         ``(BS/world_size, N)``. all2all_out is a reserved output and is not
         supported yet (returned as an empty tensor).
     """
+    if x1_dtype is not None and not isinstance(x1_dtype, (int, torch.dtype)):
+        raise ValueError(
+            f"x1_dtype must be an int (ACL dtype enum), a torch.dtype, or None, "
+            f"but got {type(x1_dtype).__name__}."
+        )
+    if x2_dtype is not None and not isinstance(x2_dtype, (int, torch.dtype)):
+        raise ValueError(
+            f"x2_dtype must be an int (ACL dtype enum), a torch.dtype, or None, "
+            f"but got {type(x2_dtype).__name__}."
+        )
+    if x1_scale_dtype is not None and not isinstance(
+        x1_scale_dtype, (int, torch.dtype)
+    ):
+        raise ValueError(
+            f"x1_scale_dtype must be an int (ACL dtype enum), a torch.dtype, or None, "
+            f"but got {type(x1_scale_dtype).__name__}."
+        )
+    if x2_scale_dtype is not None and not isinstance(
+        x2_scale_dtype, (int, torch.dtype)
+    ):
+        raise ValueError(
+            f"x2_scale_dtype must be an int (ACL dtype enum), a torch.dtype, or None, "
+            f"but got {type(x2_scale_dtype).__name__}."
+        )
+    if x1_quant_mode is not None and not isinstance(x1_quant_mode, int):
+        raise ValueError(
+            f"x1_quant_mode must be an int or None, but got {type(x1_quant_mode).__name__}."
+        )
+    if x2_quant_mode is not None and not isinstance(x2_quant_mode, int):
+        raise ValueError(
+            f"x2_quant_mode must be an int or None, but got {type(x2_quant_mode).__name__}."
+        )
+    if y_dtype is not None and not isinstance(y_dtype, int):
+        raise ValueError(
+            f"y_dtype must be an int (ACL dtype enum) or None, but got {type(y_dtype).__name__}."
+        )
+    if precision_mode is not None and not isinstance(precision_mode, int):
+        raise ValueError(
+            f"precision_mode must be an int or None, but got {type(precision_mode).__name__}."
+        )
+
     rank_id = torch.distributed.get_rank(group)
     world_size, group_name, context, hccl_buffer_size = _prepare_comm_context(
         group, rank_id
@@ -228,15 +274,15 @@ def all_to_all_quant_matmul(
         bias=bias,
         x1_scale=x1_scale,
         x2_scale=x2_scale,
-        x1_quant_mode=x1_quant_mode,
-        x2_quant_mode=x2_quant_mode,
+        x1_quant_mode=x1_quant_mode if x1_quant_mode is not None else 6,
+        x2_quant_mode=x2_quant_mode if x2_quant_mode is not None else 6,
         group_sizes=group_sizes if group_sizes is not None else [],
         x1_dtype=x1_dtype,
         x2_dtype=x2_dtype,
         x1_scale_dtype=x1_scale_dtype,
         x2_scale_dtype=x2_scale_dtype,
-        y_dtype=y_dtype,
-        comm_mode=comm_mode,
+        y_dtype=y_dtype if y_dtype is not None else 15,  # ACL BF16
+        comm_mode=comm_mode if comm_mode is not None else "aiv_urma",
         precision_mode=precision_mode,
     )
     return result

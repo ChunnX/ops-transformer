@@ -21,6 +21,8 @@
 #include "../../common/op_kernel/moe_ep_exception_dump_defs.h"
 
 constexpr uint32_t MOE_EP_SEND_ENTRY_BYTES = 2U * sizeof(uint32_t); // source slot和destination slot
+constexpr uint32_t MOE_EP_META_BATCH_MAX = 32U;
+constexpr uint32_t MOE_EP_META_SCATTER_UB_BYTES = 4U * MOE_EP_META_BATCH_MAX * sizeof(int32_t);
 
 struct MoeEpCommonTilingData {
     uint32_t epWorldSize;
@@ -54,9 +56,7 @@ struct MoeEpDispatchWindowLayout {
 
 struct MoeEpDispatchWorkspaceLayout {
     uint64_t sendEntryTokenRangeBytes; // 单个 token 范围的发送记录字节数
-    uint64_t srcTokenListBytes;        // 发送到每个对端卡的 token索引表 字节数（512B 对齐，int32）
     uint64_t dstRankInfoOffset;        // dstRank 区偏移（sendCnt 区之后），布局 [BS][K] int16
-    uint64_t srcTokenTableOffset;      // srcTokenTable 区偏移（dstRank 区之后），布局 [ep][nmtAlign] int32
     uint64_t routeWorkspaceOffset;
     uint64_t scaleoutSendEntryOffset;
     uint64_t scaleupSendEntryOffset;
@@ -74,6 +74,7 @@ struct MoeEpDispatchInfo {
     uint32_t scalesBytes;
     uint32_t perSlotBytes;
     uint32_t metaSlotBytes; // stash 元数据 slot 字节数（scales+topk+weights+pad，无 hidden）
+    uint32_t metaBatch;
     uint32_t doCpuSync;
     uint32_t isCached;
     uint32_t isTopkWeights;

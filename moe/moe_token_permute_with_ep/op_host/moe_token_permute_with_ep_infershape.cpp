@@ -65,13 +65,17 @@ static ge::graphStatus InferShape4MoeTokenPermuteWithEp(gert::InferShapeContext 
         }
         int64_t topK = (IndicesDimNnum == 1) ? 1 : indicesShape->GetDim(1);
         int64_t N = indicesShape->GetDim(0);
-        sortedIndicesLen = (topK * N > 0) ? topK * N : NEG_ONE;
+        sortedIndicesLen = (topK * N > 0) ? topK * N : ((topK * N == 0) ? 0 : NEG_ONE);
         sortedIndices->SetDim(0U, sortedIndicesLen);
     }
 
     int64_t start;
     int64_t end;
     if (rangePtr != nullptr) {
+        if (rangePtr->GetSize() != DIM_TWO) {
+            OP_LOGE(context->GetNodeName(), "the size of range only support 2");
+            return ge::GRAPH_FAILED;
+        }
         const int64_t *RangeList = reinterpret_cast<const int64_t *>(rangePtr->GetData());
         start = RangeList[0];
         end = RangeList[1];
@@ -81,11 +85,14 @@ static ge::graphStatus InferShape4MoeTokenPermuteWithEp(gert::InferShapeContext 
     }
 
     *permuteXShape = *xShape;
+    permuteProbsShape->SetDimNum(DIM_ONE);
+    permuteProbsShape->SetDim(0U, NEG_ONE);
     if (sortedIndicesLen != NEG_ONE && !Ops::Base::IsUnknownRank(*xShape)) {
         int64_t outTokens = (start >= end) ? sortedIndicesLen + (end - start) : (end - start);
         outTokens = std::min(outTokens, sortedIndicesLen);
         outTokens = std::max(outTokens, (int64_t)0);
         permuteXShape->SetDim(0, outTokens);
+        permuteProbsShape->SetDim(0U, outTokens);
     }
 
     return ge::GRAPH_SUCCESS;
@@ -96,6 +103,9 @@ static ge::graphStatus InferDataType4MoeTokenPermuteWithEp(gert::InferDataTypeCo
     OP_LOGD(context->GetNodeName(), "Begin to do MoeTokenPermuteWithEpInferDataType.");
     auto xDtype = context->GetInputDataType(PERMUTE_WITH_EP_INPUT_TOKENS);
     auto probsDtype = context->GetInputDataType(PERMUTE_WITH_EP_INPUT_PROBS);
+    if (probsDtype == ge::DT_UNDEFINED) {
+        probsDtype = xDtype;
+    }
     context->SetOutputDataType(PERMUTE_WITH_EP_OUTPUT_TOKENS, xDtype);
     context->SetOutputDataType(PERMUTE_WITH_EP_OUTPUT_IDX, ge::DT_INT32);
     context->SetOutputDataType(PERMUTE_WITH_EP_OUTPUT_PROBS, probsDtype);

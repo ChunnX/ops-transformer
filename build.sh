@@ -52,7 +52,7 @@ ASCEND_SOC_UNITS="ascend910b"
 SOC_USER_SPECIFIED=false
 # 支持的 SoC 列表(校验用, 单一数据源): 取自 cmake/scripts/util/const_var.py 的 SOC_MAP_EXT keys(出包遍历的 kernel 编译 soc 集合)
 # + CMakeLists.txt SOC_VERSION_LIST 中的 mc62。不在 CMakeLists.txt SOC_VERSION_LIST 的 soc 会走空包(cpack_empty_package)
-SUPPORT_COMPUTE_UNIT_SHORT=("ascend910b" "ascend910_93" "ascend950" "ascend350" "ascend310p" "ascend310b" "ascend910" "ascend610lite" "kirinx90" "kirin9030" "mc62")
+SUPPORT_COMPUTE_UNIT_SHORT=("ascend910b" "ascend910_93" "ascend950" "ascend350" "ascend310p" "ascend310b" "ascend910" "ascend610lite" "kirinx90" "kirin9030" "mc62" "ascend5162a")
 CMAKE_BUILD_MODE=""
 BUILD_TYPE=""
 VERSION=""
@@ -380,6 +380,7 @@ function help_info() {
     echo "    --opkernel_aicpu build aicpu kernel"
     echo "    --mssanitizer Build with mssanitizer mode on the kernel side (with '-g -sanitizer'; cannot be used with: --oom, --dump_cce, --bisheng_flags, --build-type=Debug)"
     echo "    --dump_cce Dump kernel precompiled files"
+    echo "    --bisheng_flags Specify bisheng compiler flags (comma-separated for multiple), like: --bisheng_flags=ccec_g (cannot be used with: --mssanitizer, --oom, --dump_cce)"
     echo "    --opapi_test build and run opapi unit tests"
     echo "    --ophost_test build and run ophost unit tests"
     echo "    --opgraph_test build and run opgraph unit tests"
@@ -875,6 +876,13 @@ function build_torch_extension_whl() {
             unset TORCH_EXTENSION_VENDOR
         fi
 
+        if [[ "${ENABLE_EXPERIMENTAL}" == "TRUE" ]]; then
+            export TORCH_EXTENSION_EXPERIMENTAL="TRUE"
+            log "[INFO] Building torch_extension whl with experimental ops only"
+        else
+            unset TORCH_EXTENSION_EXPERIMENTAL
+        fi
+
         python3 -m build --wheel -n 2>&1 || {
             log "[ERROR] Failed to build torch_extension whl package"
             cd "${original_dir}"
@@ -1062,6 +1070,11 @@ function process_soc_input(){
 # 映射为编译用 soc_version 并赋值给 ASCEND_SOC_UNITS; 探测失败则保持默认值(ascend910b)。
 # 映射依据: cmake/scripts/util/const_var.py 的 SOC_MAP_EXT 与 opdesc_parser.py 的 SOC_TO_SHORT_SOC_MAP。
 function detect_soc_from_lspci() {
+    # torch_extension 模式为纯 Python 打包, 与 NPU 型号无关, 跳过探测避免误导性日志
+    if [[ "$ENABLE_TORCH_EXTENSION_ONLY" == "TRUE" ]]; then
+        return 0
+    fi
+
     # 用户已显式指定 --soc, 跳过自动探测
     if [[ "$SOC_USER_SPECIFIED" == "true" ]]; then
         return 0
@@ -1824,10 +1837,22 @@ while [[ $# -gt 0 ]]; do
         ;;
     -f|--changed_list)
         PR_CHANGED_FILES="$2"
-        ENABLE_SMOKE=TRUE
-        PKG_MODE="cust"
-        vendor_name="custom"
-        CI_MODE=TRUE
+        if [[ "$ENABLE_OPKERNEL" == "TRUE" ]]; then
+            ops_names=$(python3 scripts/ci/get_changed_files_ops.py $PR_CHANGED_FILES -s "$ASCEND_SOC_UNITS")
+            echo "Operators that need custom package compilation:$ops_names"
+            if [ -z "${ops_names}" ]; then
+                log "Info: No custom packages to build for this PR."
+                break
+            fi
+            ops_names="${ops_names%;}"
+            ops_names="${ops_names//;/,}"
+            ascend_op_name="$ops_names"
+        else
+            ENABLE_SMOKE=TRUE
+            PKG_MODE="cust"
+            vendor_name="custom"
+            CI_MODE=TRUE
+        fi
         shift 2
         ;;
     --PR_UT)
