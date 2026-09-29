@@ -290,7 +290,7 @@ TEST_F(MoeTokenPermuteWithEpGradTiling, test_tiling_parse)
     MoeTokenPermuteWithEpGradCompileInfo compileInfo = {};
     fe::PlatFormInfos platformInfo;
     platformInfo.Init();
-    const char *compileJson = R"({"hardware_info": {"UB_SIZE": 262144, "CORE_NUM": 64, "socVersion": "Ascend910B"}})";
+    const char* compileJson = R"({"hardware_info": {"UB_SIZE": 262144, "CORE_NUM": 64, "socVersion": "Ascend910B"}})";
     gert::OpTilingParseContextBuilder builder;
     auto holder = builder.OpType(ge::AscendString("MoeTokenPermuteWithEpGrad"))
                       .OpName(ge::AscendString("MoeTokenPermuteWithEpGrad"))
@@ -302,9 +302,9 @@ TEST_F(MoeTokenPermuteWithEpGradTiling, test_tiling_parse)
                       .OutputTensorDesc(1, ge::DT_BF16, ge::FORMAT_ND, ge::FORMAT_ND)
                       .CompiledJson(compileJson)
                       .CompiledInfo(&compileInfo)
-                      .PlatformInfo(reinterpret_cast<char *>(&platformInfo))
+                      .PlatformInfo(reinterpret_cast<char*>(&platformInfo))
                       .Build();
-    auto *parseContext = holder.GetContext();
+    auto* parseContext = holder.GetContext();
     ASSERT_NE(parseContext, nullptr);
 
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
@@ -313,7 +313,7 @@ TEST_F(MoeTokenPermuteWithEpGradTiling, test_tiling_parse)
     ASSERT_NE(opImpl, nullptr);
     ASSERT_NE(opImpl->tiling_parse, nullptr);
 
-    auto ret = opImpl->tiling_parse(reinterpret_cast<gert::KernelContext *>(parseContext));
+    auto ret = opImpl->tiling_parse(reinterpret_cast<gert::KernelContext*>(parseContext));
     EXPECT_EQ(ret, ge::GRAPH_SUCCESS);
 }
 
