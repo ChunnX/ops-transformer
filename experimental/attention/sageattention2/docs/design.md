@@ -1003,7 +1003,7 @@ OP_ADD(SageAttention2);
 
 ### 3. 验证手段
 
-- **随仓 Python 回归**（`python/test_python_api.py`、`tests/pytest/`）：以 `reference.py`（per-token INT8 / MXFP8 / FP16 平移 max 的独立 CPU 实现）为 golden，覆盖 dtype、layout、stride、GQA、causal、`smooth_k`、`smooth_v` 告警、LSE 形状与数值、head_dim padding、非法参数报错与 SDPA 替换冒烟。判定：FP16 rtol/atol=2^-9、BF16=2^-6、匹配率 >= 99%。
+- **随仓 Python 回归**（`python/test_python_api.py`）：以 `reference.py`（QK INT8 / MXFP8 / FP16 平移 max 的独立 CPU 实现，per_thread=Q4/K16、per_warp=Q32/K64 与内核同配置）为 golden，覆盖 dtype、layout、stride、GQA、causal（含组粒度严格因果独立性）、`smooth_k`、`smooth_v` 告警、`sageattn` 固定分发 FP8 PV、LSE 形状与数值、head_dim padding、非法参数报错与 SDPA 替换冒烟。L-B 层在套件内闭环：与独立开源 sm89 FP8 路径仿真逐配置对比，相对 FP32 SDPA 的误差比 max<=2 / mean<=1.2 / RMSE<=1.2，LSE 相对偏差 <= 5e-2（`test_tc04b_lb_precision_gates`）。
 - **随仓 C++ 浮点误差断言**（`tests/numeric_error_test.cpp`）：把内核数值规格固化为可执行断言，覆盖 FastReciprocal 倒数包络、per-token INT8 量化往返误差、E4M3 饱和 RNE、E8M0 分组 scale 覆盖范围、DEQF16 与 FP16 平衡 scale 的抵消、ln(448) 平移满量程、LSE 契约、Smooth-K 的 softmax 不变性。在 CANN 容器内以 g++ -O2 -std=c++17 编译运行。
 - **L-A 真机对标**：以 GPU 端 `sageattn_qk_int8_pv_fp8_cuda` 同参数输出为 golden，在验收环境执行。
 - **L-B 真机对标**：以 FP32 SDPA 为真值，计算误差比值并对照 §2 门限。
@@ -1039,5 +1039,5 @@ Speedup = T_FIA / T_Ours >= 1.60
 ## 兼容性分析
 
 1. 框架兼容性：兼容 PyTorch 2.x 与 torch_npu 扩展；提供 torch.library dispatcher schema 与 Meta 实现，支持 FakeTensor/Meta 设备推演与 `torch.compile(backend="eager", fullgraph=True)` 图模式。
-2. 算子无缝平替：可通过 `torch.nn.functional.scaled_dot_product_attention = sageattn` 达成现有模型代码的即插即用（example 级冒烟已覆盖，`tests/test_sdpa_substitution.py`）。
+2. 算子无缝平替：可通过 `torch.nn.functional.scaled_dot_product_attention = sageattn` 达成现有模型代码的即插即用（example 级冒烟已覆盖，`python/test_python_api.py::test_tc10_sdpa_seamless_substitution`）。
 3. 历史版本平滑迁移：显式参数 `smooth_v=True` 时按开源规范告警并忽略，不发生崩溃；`qk_quant_gran`/`pv_accum_dtype` 的全部开源合法取值均原生接受（§1.3 映射），非法取值明确报错。
