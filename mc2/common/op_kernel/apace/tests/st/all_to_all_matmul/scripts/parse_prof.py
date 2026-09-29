@@ -31,7 +31,7 @@ from statistics import median
 _DEFAULT_PROF = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "prof"
 )
-KERNEL_SUBSTR = "AllToAllMmKernel_Udma"
+KERNEL_SUBSTR = "AllToAllMmKernel"  # 匹配 fp16(AllToAllMmKernel_Udma) 与 bf16(AllToAllMmKernel_Bf16_Udma) 两个内核入口
 GROUP_THRESHOLD_S = 5
 OUTLIER_FACTOR = 1.2
 WARMUP_SKIP = 3  # 删除前 N 轮数据（冷启动 + 预热）

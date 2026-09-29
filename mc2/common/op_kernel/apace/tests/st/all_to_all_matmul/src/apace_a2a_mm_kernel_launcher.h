@@ -25,3 +25,13 @@ __global__ __aicore__ void AllToAllMmKernel_Udma(__gm__ CommContext *hcommCtx, G
     impl.Init(hcommCtx, aGM, bGM, cGM, biasGM, &tilingData);
     impl.Run();
 }
+
+__global__ __aicore__ void AllToAllMmKernel_Bf16_Udma(__gm__ CommContext *hcommCtx, GM_ADDR aGM, GM_ADDR bGM,
+                                                      GM_ADDR cGM, GM_ADDR biasGM,
+                                                      allToAllMmMatmulTilingData tilingData)
+{
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
+    Apace::AllToAllMmUrmaImpl<bfloat16_t, bfloat16_t, bfloat16_t, false, true> impl;
+    impl.Init(hcommCtx, aGM, bGM, cGM, biasGM, &tilingData);
+    impl.Run();
+}

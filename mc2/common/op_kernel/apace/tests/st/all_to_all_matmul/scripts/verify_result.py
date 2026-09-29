@@ -26,6 +26,14 @@ FULL_TENSOR_PRINT_MAX_ELEMENTS = 1024
 CORNER_ROWS = 4
 CORNER_COLS = 4
 
+
+def read_matrix(path, dtype):
+    """读取 fp16/bf16 原始 2 字节矩阵。bf16 无 numpy 类型，经 uint16 视图还原。"""
+    if dtype == "bf16":
+        raw = np.fromfile(path, dtype=np.uint16)
+        return torch.from_numpy(raw).view(torch.bfloat16)
+    return torch.from_numpy(np.fromfile(path, dtype=DATA_TYPE))
+
 # ----------------------------------------------------------------------------------------------------------
 # 可视化标注层（纯上报，不改变 pass/fail 判定）
 # ----------------------------------------------------------------------------------------------------------
@@ -315,8 +323,8 @@ def pattern_hint(mask_np, counts, tile_m, tile_n):
 
 def render_visual(golden_tensor, npu_tensor, m, n, opts):
     """可视化标注层入口。opts: --visual on/off, --top, --tile。"""
-    golden_np = golden_tensor.numpy().astype(np.float32)
-    npu_np = npu_tensor.numpy().astype(np.float32)
+    golden_np = golden_tensor.float().numpy()
+    npu_np = npu_tensor.float().numpy()
     mask, diff = build_mismatch_mask(golden_np, npu_np, ERROR_TOL, ERROR_TOL)
     total = int(mask.sum())
     if total == 0:
@@ -370,7 +378,7 @@ def _print_large_tensor_summary(golden_tensor, npu_output_tensor, m, n, rank_id=
         print(f"  npu output (top-left {cr}x{cc}):\n{npu_output_tensor[:cr, :cc]}")
 
 
-def verify_single_rank(m, n, rank_id, base_dir="./output", opts=None):
+def verify_single_rank(m, n, rank_id, base_dir="./output", opts=None, dtype="fp16"):
     output_path = os.path.join(base_dir, str(rank_id), "npu_out.bin")
     golden_path = os.path.join(base_dir, str(rank_id), "cpu_output.bin")
 
@@ -379,21 +387,21 @@ def verify_single_rank(m, n, rank_id, base_dir="./output", opts=None):
     if not os.path.exists(golden_path):
         raise FileNotFoundError(f"CPU golden file not found: {golden_path}")
 
-    output = np.fromfile(output_path, dtype=DATA_TYPE)
-    golden = np.fromfile(golden_path, dtype=DATA_TYPE)
+    output = read_matrix(output_path, dtype)
+    golden = read_matrix(golden_path, dtype)
 
     expected_size = m * n
-    if output.size != expected_size:
+    if output.numel() != expected_size:
         raise ValueError(
-            f"[Rank {rank_id}] npu output size {output.size} != expected size {expected_size}"
+            f"[Rank {rank_id}] npu output size {output.numel()} != expected size {expected_size}"
         )
-    if golden.size != expected_size:
+    if golden.numel() != expected_size:
         raise ValueError(
-            f"[Rank {rank_id}] cpu output size {golden.size} != expected size {expected_size}"
+            f"[Rank {rank_id}] cpu output size {golden.numel()} != expected size {expected_size}"
         )
 
-    npu_output_tensor = torch.from_numpy(output).reshape(m, n)
-    golden_tensor = torch.from_numpy(golden).reshape(m, n)
+    npu_output_tensor = output.reshape(m, n)
+    golden_tensor = golden.reshape(m, n)
 
     numel = m * n
     if numel <= FULL_TENSOR_PRINT_MAX_ELEMENTS:
@@ -410,19 +418,19 @@ def verify_single_rank(m, n, rank_id, base_dir="./output", opts=None):
     )
 
 
-def verify_result(m, n, rank_num, base_dir="./output", opts=None):
+def verify_result(m, n, rank_num, base_dir="./output", opts=None, dtype="fp16"):
     all_pass = True
     results = []
 
     print(f"\n{'=' * 60}")
     print(f"Verifying outputs for {rank_num} ranks")
-    print(f"Matrix shape: M={m}, N={n}")
+    print(f"Matrix shape: M={m}, N={n}, dtype={dtype}")
     print("All ranks should produce the same result after All2All")
     print(f"{'=' * 60}")
 
     for rank_id in range(rank_num):
         try:
-            res = verify_single_rank(m, n, rank_id, base_dir, opts)
+            res = verify_single_rank(m, n, rank_id, base_dir, opts, dtype)
             results.append(
                 (rank_id, bool(res), None if res else "allclose returned False")
             )
@@ -474,19 +482,23 @@ def _parse_args(argv):
                         help="number of top mismatches to list (default: 20)")
     parser.add_argument("--tile", type=str, default="16x16",
                         help="analysis tile (baseM x baseN) granularity, e.g. 256x256 (default: 16x16)")
+    parser.add_argument("--dtype", type=str, default="fp16",
+                        help="output dtype: fp16 (default) | bf16")
     args = parser.parse_args(argv)
     args.tile_m, args.tile_n = _parse_tile(args.tile)
     if args.tile_m < 1 or args.tile_n < 1:
         parser.error("--tile must be >= 1 (e.g. 256 or 256x128)")
     if args.top < 1:
         parser.error("--top must be >= 1")
+    if args.dtype not in ("fp16", "bf16"):
+        parser.error("--dtype must be 'fp16' or 'bf16'")
     return args
 
 
 if __name__ == "__main__":
     args = _parse_args(sys.argv[1:])
     try:
-        all_pass = verify_result(args.m, args.n, args.rank_num, args.base_dir, args)
+        all_pass = verify_result(args.m, args.n, args.rank_num, args.base_dir, args, args.dtype)
         if not all_pass:
             raise ValueError("[ERROR] Some NPU results differ from CPU.\n")
         print(f"\n[ALL PASS] All {args.rank_num} ranks passed verification!\n")

@@ -55,7 +55,7 @@ inline uint64_t CeilDiv(uint32_t a, uint32_t b)
 
 void printUsage(const std::string &programName)
 {
-    std::cerr << "Usage: " << programName << " m k n rankNum [localMatmul] [headMSize] [mode]" << std::endl;
+    std::cerr << "Usage: " << programName << " m k n rankNum [localMatmul] [headMSize] [mode] [dtype]" << std::endl;
     std::cerr << "Args: " << std::endl;
     std::cerr << "  m: row of matrix A" << std::endl;
     std::cerr << "  k: col of matrix A (total K, distributed across ranks)" << std::endl;
@@ -64,12 +64,13 @@ void printUsage(const std::string &programName)
     std::cerr << "  localMatmul: optional, 0=REMOTE融合 | 1=DEFERRED_SYNC | 2=GM累加(LOCAL+REMOTE) (default 0)" << std::endl;
     std::cerr << "  headMSize: optional, long block M size (default 0 = auto from tiling; >0 overrides)" << std::endl;
     std::cerr << "  mode: optional, 'precision' (default) | 'perf'" << std::endl;
+    std::cerr << "  dtype: optional, 'fp16' (default) | 'bf16'" << std::endl;
     std::cerr << "Example: " << programName << " 100 200 64 4" << std::endl;
-    std::cerr << "         " << programName << " 2048 3584 4096 2 1 512 perf" << std::endl;
+    std::cerr << "         " << programName << " 2048 3584 4096 2 1 512 perf bf16" << std::endl;
 }
 
 void parseArguments(int argc, char *argv[], int &m, int &k, int &n, int &rankNum, int &localMatmul, int &headMSize,
-                    std::string &mode)
+                    std::string &mode, std::string &dtype)
 {
     if (argc >= 2 && (std::string(argv[1]) == "--help" || std::string(argv[1]) == "-h")) {
         printUsage(argv[0]);
@@ -102,6 +103,11 @@ void parseArguments(int argc, char *argv[], int &m, int &k, int &n, int &rankNum
         throw std::invalid_argument("ERROR: mode must be 'precision' or 'perf'");
     }
 
+    dtype = (argc >= 9) ? std::string(argv[8]) : std::string("fp16");
+    if (dtype != "fp16" && dtype != "bf16") {
+        throw std::invalid_argument("ERROR: dtype must be 'fp16' or 'bf16'");
+    }
+
     if (m <= 0 || k <= 0 || n <= 0 || rankNum <= 0) {
         throw std::invalid_argument("ERROR: m k n rankNum must be positive");
     }
@@ -112,11 +118,11 @@ void parseArguments(int argc, char *argv[], int &m, int &k, int &n, int &rankNum
 }
 
 int runAllToAllMatmul(int rankNum, int rankId, int m, int k, int n, int localMatmul, int headMSizeArg,
-                      const std::string &mode)
+                      const std::string &mode, const std::string &dtype)
 {
     const char *ipport = "tcp://127.0.0.1:8998";
-    INFO_LOG("rankNum=%d, rankId=%d, ipport=%s, localMatmul=%d, headMSize=%d, mode=%s", rankNum, rankId, ipport,
-             localMatmul, headMSizeArg, mode.c_str());
+    INFO_LOG("rankNum=%d, rankId=%d, ipport=%s, localMatmul=%d, headMSize=%d, mode=%s, dtype=%s", rankNum, rankId,
+             ipport, localMatmul, headMSizeArg, mode.c_str(), dtype.c_str());
 
     uint32_t ka = k / rankNum;
 
@@ -240,9 +246,19 @@ int runAllToAllMatmul(int rankNum, int rankId, int m, int k, int n, int localMat
     ACL_CHECK(aclrtMemcpy(deviceB, sizeB, hostB.data(), sizeB, ACL_MEMCPY_HOST_TO_DEVICE));
     ACL_CHECK(aclrtMemcpy(deviceBias, sizeBias, hostBias.data(), sizeBias, ACL_MEMCPY_HOST_TO_DEVICE));
 
+    // 按 dtype 选择 fp16/bf16 内核（两者数据宽度均为 2 字节，host 侧 buffer/tiling 一致）
+    auto LaunchKernel = [&]() {
+        if (dtype == "bf16") {
+            AllToAllMmKernel_Bf16_Udma<<<tilingData.tileMmTilingData.usedCoreNum, nullptr, stream>>>(
+                devContext, deviceA, deviceB, deviceOutput, deviceBias, tilingData);
+        } else {
+            AllToAllMmKernel_Udma<<<tilingData.tileMmTilingData.usedCoreNum, nullptr, stream>>>(
+                devContext, deviceA, deviceB, deviceOutput, deviceBias, tilingData);
+        }
+    };
+
     if (mode == "precision") {
-        AllToAllMmKernel_Udma<<<tilingData.tileMmTilingData.usedCoreNum, nullptr, stream>>>(
-            devContext, deviceA, deviceB, deviceOutput, deviceBias, tilingData);
+        LaunchKernel();
 
         ACL_CHECK(aclrtSynchronizeStream(stream));
 
@@ -284,8 +300,7 @@ int runAllToAllMatmul(int rankNum, int rankId, int m, int k, int n, int localMat
         std::vector<double> durations(PERF_LOOP_COUNT);
         for (int i = 0; i < PERF_LOOP_COUNT; ++i) {
             auto t0 = std::chrono::steady_clock::now();
-            AllToAllMmKernel_Udma<<<tilingData.tileMmTilingData.usedCoreNum, nullptr, stream>>>(
-                devContext, deviceA, deviceB, deviceOutput, deviceBias, tilingData);
+            LaunchKernel();
             auto t1 = std::chrono::steady_clock::now();
             durations[i] = std::chrono::duration<double, std::milli>(t1 - t0).count();
         }
@@ -326,17 +341,17 @@ int runAllToAllMatmul(int rankNum, int rankId, int m, int k, int n, int localMat
 int main(int argc, char *argv[])
 {
     int m, k, n, rankNum, localMatmul, headMSize;
-    std::string mode;
+    std::string mode, dtype;
     try {
-        parseArguments(argc, argv, m, k, n, rankNum, localMatmul, headMSize, mode);
+        parseArguments(argc, argv, m, k, n, rankNum, localMatmul, headMSize, mode, dtype);
     } catch (const std::invalid_argument &e) {
         std::cerr << e.what() << std::endl;
         printUsage(argv[0]);
         return -1;
     }
 
-    INFO_LOG("Master (PID=%d) will fork %d processes (localMatmul=%d, headMSize=%d, mode=%s)", getpid(), rankNum,
-             localMatmul, headMSize, mode.c_str());
+    INFO_LOG("Master (PID=%d) will fork %d processes (localMatmul=%d, headMSize=%d, mode=%s, dtype=%s)", getpid(),
+             rankNum, localMatmul, headMSize, mode.c_str(), dtype.c_str());
 
     std::vector<pid_t> pids(rankNum);
     for (int rankId = 0; rankId < rankNum; ++rankId) {
@@ -346,7 +361,7 @@ int main(int argc, char *argv[])
             ERROR_LOG("Fork failed for rank %d", rankId);
             exit(-1);
         } else if (pid == 0) {
-            int ret = runAllToAllMatmul(rankNum, rankId, m, k, n, localMatmul, headMSize, mode);
+            int ret = runAllToAllMatmul(rankNum, rankId, m, k, n, localMatmul, headMSize, mode, dtype);
             exit(ret);
         } else {
             pids[rankId] = pid;

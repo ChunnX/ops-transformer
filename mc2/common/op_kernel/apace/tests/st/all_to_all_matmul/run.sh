@@ -25,7 +25,7 @@ BUILD_DIR="${ST_DIR}/build"
 PROF_DIR="${SCRIPT_DIR}/prof"
 KERNEL_TIMEOUT=${KERNEL_TIMEOUT:-600}  # 默认600秒(10分钟)，可用环境变量 KERNEL_TIMEOUT 覆盖
 
-SKIP_BUILD=0; GEN_ONLY=0; VERIFY_ONLY=0; CLI_MODE=0; PERF_MODE=0
+SKIP_BUILD=0; GEN_ONLY=0; VERIFY_ONLY=0; CLI_MODE=0; PERF_MODE=0; DTYPE="fp16"
 CSV_FILE="${SCRIPT_DIR}/cases.csv"
 
 # ---- 解析参数 ----
@@ -38,6 +38,7 @@ while [ $# -gt 0 ]; do
         --cli)         CLI_MODE=1; shift ;;
         --csv)         CSV_FILE="$2"; shift 2 ;;
         --perf)        PERF_MODE=1; shift ;;
+        --dtype)       DTYPE="$2"; shift 2 ;;
         -h|--help)
             sed -n '1,20p' "$0"; exit 0 ;;
         *)
@@ -106,8 +107,8 @@ run_single() {
     rm -rf input output
 
     # ---- 1. 生成数据 ----
-    echo "[1/4] Generate CPU golden + input data..."
-    python3 scripts/gen_data.py "$M" "$K" "$N" "$RANK_NUM"
+    echo "[1/4] Generate CPU golden + input data (dtype=$DTYPE)..."
+    python3 scripts/gen_data.py "$M" "$K" "$N" "$RANK_NUM" "$DTYPE"
 
     if [ "$GEN_ONLY" -eq 1 ]; then return 0; fi
 
@@ -155,17 +156,17 @@ run_single() {
                 local before_dirs after_dirs new_dirs
                 before_dirs=$(get_prof_dirs)
 
-                echo "  [msprof] Running $EXE_PATH $M $K $N $RANK_NUM $LOCAL_MATMUL $HEAD_M_SIZE $MODE ..."
+                echo "  [msprof] Running $EXE_PATH $M $K $N $RANK_NUM $LOCAL_MATMUL $HEAD_M_SIZE $MODE $DTYPE ..."
                 if command -v timeout >/dev/null 2>&1; then
                     set +e
                     timeout ${KERNEL_TIMEOUT}s msprof --output="$PROF_DIR" \
-                        --application="$EXE_PATH $M $K $N $RANK_NUM $LOCAL_MATMUL $HEAD_M_SIZE $MODE" 2>&1
+                        --application="$EXE_PATH $M $K $N $RANK_NUM $LOCAL_MATMUL $HEAD_M_SIZE $MODE $DTYPE" 2>&1
                     local MSPROF_RC=$?
                     set -e
                 else
                     set +e
                     msprof --output="$PROF_DIR" \
-                        --application="$EXE_PATH $M $K $N $RANK_NUM $LOCAL_MATMUL $HEAD_M_SIZE $MODE" 2>&1
+                        --application="$EXE_PATH $M $K $N $RANK_NUM $LOCAL_MATMUL $HEAD_M_SIZE $MODE $DTYPE" 2>&1
                     local MSPROF_RC=$?
                     set -e
                 fi
@@ -192,7 +193,7 @@ run_single() {
                 fi
 
                 for d in $new_dirs; do
-                    echo "M=$M K=$K N=$N headM=$HEAD_M_SIZE lm=$LOCAL_MATMUL" > "$PROF_DIR/$d/case_info.txt"
+                    echo "M=$M K=$K N=$N headM=$HEAD_M_SIZE lm=$LOCAL_MATMUL dtype=$DTYPE" > "$PROF_DIR/$d/case_info.txt"
                 done
 
                 # ---- 校验 PROF 数据有效性（op_summary CSV 是否能解析出 latency）----
@@ -221,7 +222,7 @@ run_single() {
                 local precision="FAIL"
                 if [ -d "$SCRIPT_DIR/output" ]; then
                     set +e
-                    python3 scripts/verify_result.py "$M" "$N" "$RANK_NUM" "$SCRIPT_DIR/output" >/dev/null 2>&1
+                    python3 scripts/verify_result.py "$M" "$N" "$RANK_NUM" "$SCRIPT_DIR/output" --dtype "$DTYPE" >/dev/null 2>&1
                     local verify_rc=$?
                     set -e
                     if [ $verify_rc -eq 0 ]; then precision="PASS"; fi
@@ -245,7 +246,7 @@ run_single() {
                 # ---- precision 模式: 直接调 exe ----
                 set +e
                 KERNEL_OUT=$(timeout ${KERNEL_TIMEOUT}s "$EXE_PATH" $M $K $N $RANK_NUM \
-                    "$LOCAL_MATMUL" "$HEAD_M_SIZE" "$MODE" 2>&1)
+                    "$LOCAL_MATMUL" "$HEAD_M_SIZE" "$MODE" "$DTYPE" 2>&1)
                 KERNEL_RC=$?
                 set -e
                 echo "${KERNEL_OUT}"
@@ -290,7 +291,7 @@ run_single() {
     # ---- 4. 精度比对（perf 模式已在步骤3内完成 verify，此处跳过）----
     if [ "$PERF_MODE" -eq 0 ]; then
         echo "[4/4] Verify..."
-        python3 scripts/verify_result.py "$M" "$N" "$RANK_NUM" "./output" || return 1
+        python3 scripts/verify_result.py "$M" "$N" "$RANK_NUM" "./output" --dtype "$DTYPE" || return 1
         echo "[4/4] Verify comm window..."
         python3 scripts/verify_comm.py "$M" "$K" "$RANK_NUM" "./output"
         return $?

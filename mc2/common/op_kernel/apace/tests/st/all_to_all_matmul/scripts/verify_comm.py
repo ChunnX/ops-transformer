@@ -16,7 +16,8 @@ import sys
 
 import numpy as np
 
-DATA_TYPE = np.float16
+# 按原始 2 字节位模式比较（fp16/bf16 通用；位模式相等即字节相等，NaN 也安全）
+DATA_TYPE = np.uint16
 
 
 def verify_comm(m, k, rank_num, base_dir="./output"):
