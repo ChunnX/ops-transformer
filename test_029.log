@@ -1,0 +1,210 @@
+2026-09-29 19:13:32,022 [INFO] [2432751 MP MT] [bridge.py:441]: Command: ttk framework-api -i qfa_mxfp8_excel_DTS2026092327827.csv 
+2026-09-29 19:13:35,317 [INFO] [2432751 MP MT] [patch_getenv.py:15]: get env LOGNAME = root 
+2026-09-29 19:13:35,584 [INFO] [2432751 MP MT] [patch_getenv.py:15]: get env ASCEND_HOME_PATH = /home/s00456726/Ascend_mx_0924_master/cann-9.2.0 
+2026-09-29 19:13:36,370 [INFO] [2432751 MP MT] [__init__.py:157]: Active hardware: npu (torch_lib=npu) 
+2026-09-29 19:13:36,371 [INFO] [2432751 MP MT] [instance.py:38]: Framework API mode: backend=npu, framework=torch 
+2026-09-29 19:13:36,371 [INFO] [2432751 MP MT] [instance_base.py:118]: TTK Profiling Start! 
+2026-09-29 19:13:36,371 [INFO] [2432751 MP MT] [instance_base.py:119]: Mode: ASCEND_ONBOARD 
+2026-09-29 19:13:36,378 [INFO] [2432751 MP MT] [instance.py:552]: Registered 15 mc2 torch_npu APIs 
+2026-09-29 19:13:36,378 [INFO] [2432751 MP MT] [patch_getenv.py:15]: get env ASCEND_OPP_PATH = /home/s00456726/Ascend_mx_0924_master/cann-9.2.0/opp 
+2026-09-29 19:13:36,381 [INFO] [2432751 MP MT] [instance.py:565]: Device platform: Ascend950DT_9584 
+2026-09-29 19:13:36,381 [INFO] [2432751 MP MT] [instance_base.py:122]: Device Platform: Ascend950DT_9584 
+2026-09-29 19:13:36,381 [INFO] [2432751 MP MT] [instance.py:558]: Device count: 1 
+2026-09-29 19:13:36,381 [INFO] [2432751 MP MT] [instance_base.py:129]: Device Count: 1 
+2026-09-29 19:13:36,381 [INFO] [2432751 MP MT] [instance_base.py:372]: Preparing testcases ... 
+2026-09-29 19:13:36,381 [INFO] [2432751 MP MT] [instance_base.py:374]: Reading testcase file qfa_mxfp8_excel_DTS2026092327827.csv ... 
+2026-09-29 19:13:36,382 [INFO] [2432751 MP MT] [instance_base.py:447]: Input testcase file is not a valid zip file, switch to normal csv mode... 
+2026-09-29 19:13:36,382 [INFO] [2432751 MP MT] [instance_base.py:723]: Reading testcases from qfa_mxfp8_excel_DTS2026092327827.csv ... 
+2026-09-29 19:13:36,392 [INFO] [2432751 TestcaseManager Decode_FP8_E4M3FN_FP8_E4M3FN_BF16_L1_MXFP8_14_64_8_6_24576_64_64_TND_PA_Mask_000029] [patch_getenv.py:15]: get env ASCEND_TOOLKIT_HOME = /home/s00456726/Ascend_mx_0924_master/cann-9.2.0 
+2026-09-29 19:13:36,393 [INFO] [2432751 TestcaseManager Decode_FP8_E4M3FN_FP8_E4M3FN_BF16_L1_MXFP8_14_64_8_6_24576_64_64_TND_PA_Mask_000029] [patch_getenv.py:15]: get env ASCEND_AICPU_PATH = /home/s00456726/Ascend_mx_0924_master/cann-9.2.0 
+2026-09-29 19:13:36,480 [INFO] [2432751 TestcaseManager Decode_FP8_E4M3FN_FP8_E4M3FN_BF16_L1_MXFP8_14_64_8_6_24576_64_64_TND_PA_Mask_000029] [patch_getenv.py:15]: get env ASCEND_CUSTOM_OPP_PATH = /home/s00456726/Ascend_mx/cann/vendors/custom_transformer:/home/s00456726/Ascend_mx/cann/vendors/custom_transformer:/home/s00456726/Ascend_mx/cann/vendors/custom_transformer:/home/s00456726/Ascend_mx/cann/vendors/custom_transformer:/home/s00456726/Ascend_mx/cann/vendors/custom_transformer: 
+2026-09-29 19:13:36,481 [INFO] [2432751 TestcaseManager Decode_FP8_E4M3FN_FP8_E4M3FN_BF16_L1_MXFP8_14_64_8_6_24576_64_64_TND_PA_Mask_000029] [patch_getenv.py:15]: get env PATH = /home/s00456726/Ascend_mx_0924_master/cann-9.2.0/bin:/home/s00456726/Ascend_mx_0924_master/cann-9.2.0/tools/ccec_compiler/bin:/home/s00456726/Ascend_mx_0924_master/cann-9.2.0/tools/profiler/bin:/home/s00456726/Ascend_mx_0924_master/cann-9.2.0/tools/ascend_system_advisor/asys:/home/s00456726/Ascend_mx_0924_master/cann-9.2.0/tools/show_kernel_debug_data:/home/s00456726/Ascend_mx_0924_master/cann-9.2.0/tools/msobjdump:/home/s00456726/Ascend_mx_0924/cann-9.2.0/bin:/home/s00456726/Ascend_mx_0924/cann-9.2.0/tools/ccec_compiler/bin:/home/s00456726/Ascend_mx_0924/cann-9.2.0/tools/profiler/bin:/home/s00456726/Ascend_mx_0924/cann-9.2.0/tools/ascend_system_advisor/asys:/home/s00456726/Ascend_mx_0924/cann-9.2.0/tools/show_kernel_debug_data:/home/s00456726/Ascend_mx_0924/cann-9.2.0/tools/msobjdump:/home/s00456726/Ascend_mx_0923_master/cann/bin:/home/s00456726/Ascend_mx_0923_master/cann-9.2.0/bin:/home/s00456726/Ascend_mx_0923_master/cann-9.2.0/tools/ccec_compiler/bin:/home/s00456726/Ascend_mx_0923_master/cann-9.2.0/tools/profiler/bin:/home/s00456726/Ascend_mx_0923_master/cann-9.2.0/tools/ascend_system_advisor/asys:/home/s00456726/Ascend_mx_0923_master/cann-9.2.0/tools/show_kernel_debug_data:/home/s00456726/Ascend_mx_0923_master/cann-9.2.0/tools/msobjdump:/home/s00456726/Ascend_mx_0923_920/cann-9.2.0/bin:/home/s00456726/Ascend_mx_0923_920/cann-9.2.0/tools/ccec_compiler/bin:/home/s00456726/Ascend_mx_0923_920/cann-9.2.0/tools/profiler/bin:/home/s00456726/Ascend_mx_0923_920/cann-9.2.0/tools/ascend_system_advisor/asys:/home/s00456726/Ascend_mx_0923_920/cann-9.2.0/tools/show_kernel_debug_data:/home/s00456726/Ascend_mx_0923_920/cann-9.2.0/tools/msobjdump:/home/s00456726/Ascend_mx_920/cann-9.2.0/bin:/home/s00456726/Ascend_mx_920/cann-9.2.0/tools/ccec_compiler/bin:/home/s00456726/Ascend_mx_920/cann-9.2.0/tools/profiler/bin:/home/s00456726/Ascend_mx_920/cann-9.2.0/tools/ascend_system_advisor/asys:/home/s00456726/Ascend_mx_920/cann-9.2.0/tools/show_kernel_debug_data:/home/s00456726/Ascend_mx_920/cann-9.2.0/tools/msobjdump:/home/s00456726/Ascend_mx_0922/cann/bin:/home/s00456726/Ascend_mx_0922/cann/bin:/home/s00456726/Ascend_mx_0922/cann/tools/ccec_compiler/bin:/home/s00456726/Ascend_mx_0922/cann/tools/profiler/bin:/home/s00456726/Ascend_mx_0922/cann/tools/ascend_system_advisor/asys:/home/s00456726/Ascend_mx_0922/cann/tools/show_kernel_debug_data:/home/s00456726/Ascend_mx_0922/cann/tools/msobjdump:/home/w00944282/docker_dir/Ascend_0922/cann/bin:/home/w00944282/docker_dir/Ascend_0922/cann/tools/ccec_compiler/bin:/home/w00944282/docker_dir/Ascend_0922/cann/tools/profiler/bin:/home/w00944282/docker_dir/Ascend_0922/cann/tools/ascend_system_advisor/asys:/home/w00944282/docker_dir/Ascend_0922/cann/tools/show_kernel_debug_data:/home/w00944282/docker_dir/Ascend_0922/cann/tools/msobjdump:/home/s00456726/Ascend_mx/cann/bin:/home/s00456726/Ascend_mx/cann/bin:/home/s00456726/Ascend_mx/cann/tools/ccec_compiler/bin:/home/s00456726/Ascend_mx/cann/tools/profiler/bin:/home/s00456726/Ascend_mx/cann/tools/ascend_system_advisor/asys:/home/s00456726/Ascend_mx/cann/tools/show_kernel_debug_data:/home/s00456726/Ascend_mx/cann/tools/msobjdump:/home/s00456726/Ascend_mx_fd/cann-9.2.0/bin:/home/s00456726/Ascend_mx_fd/cann-9.2.0/tools/ccec_compiler/bin:/home/s00456726/Ascend_mx_fd/cann-9.2.0/tools/profiler/bin:/home/s00456726/Ascend_mx_fd/cann-9.2.0/tools/ascend_system_advisor/asys:/home/s00456726/Ascend_mx_fd/cann-9.2.0/tools/show_kernel_debug_data:/home/s00456726/Ascend_mx_fd/cann-9.2.0/tools/msobjdump:/usr/lib/ccache:/usr/local/bin:/root/miniconda3/envs/swl_311/bin:/root/miniconda3/condabin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin 
+ninja: no work to do.
+ninja: no work to do.
+2026-09-29 19:13:38,743 [INFO] [2432751 MP MT] [instance_base.py:378]: Checking testcase name... 
+2026-09-29 19:13:38,743 [INFO] [2432751 MP MT] [instance_base.py:381]: Case number: 1 
+2026-09-29 19:13:38,744 [INFO] [2432751 MP MT] [instance_base.py:463]: Initialize output csv file... 
+2026-09-29 19:13:38,745 [INFO] [2432751 MP MT] [instance_base.py:492]: Append mode: appending to existing qfa_mxfp8_excel_DTS2026092327827_result.csv 
+2026-09-29 19:13:38,836 [INFO] [2432751 MP MT] [instance_base.py:167]: Process per device: 1 
+2026-09-29 19:13:38,836 [INFO] [2432751 MP MT] [instance_base.py:169]: Preparing Task Executors... 
+2026-09-29 19:13:42,445 [INFO] [2433031 D0P0 MainThread] [patch_getenv.py:15]: get env TORCHINDUCTOR_CACHE_DIR = /tmp/torchinductor_root 
+2026-09-29 19:13:42,681 [INFO] [2433031 D0P0 MainThread] [patch_getenv.py:15]: get env ASCEND_HOME_PATH = /home/s00456726/Ascend_mx_0924_master/cann-9.2.0 
+2026-09-29 19:13:43,487 [INFO] [2432751 MP MT] [instance_base.py:301]: 
++-------------------------------------------------------------------------------------------------------+
+| Version: 3.0.0 Summary (Device Total: 1) Progress: 0% 0 / 1 ET: 11s Rev: 72ab72b                      |
++-------------------------------------------------------------------------------------------------------+
+| npu:0                                    | 2433031 D0P0             UNKNOWN              IDLE     0s  |
++-------------------------------------------------------------------------------------------------------+ 
+2026-09-29 19:13:43,527 [INFO] [2433031 Decode_FP8_E4M3FN_FP8_E4M3FN_BF16_L1_MXFP8_14_64_8_6_24576_64_64_TND_PA_Mask_000029 OnWaitingForMemory] [__init__.py:157]: Active hardware: npu (torch_lib=npu) 
+2026-09-29 19:13:43,528 [INFO] [2433031 Decode_FP8_E4M3FN_FP8_E4M3FN_BF16_L1_MXFP8_14_64_8_6_24576_64_64_TND_PA_Mask_000029 OnWaitingForMemory] [profiling.py:391]: NPU deterministic level=0 for Decode_FP8_E4M3FN_FP8_E4M3FN_BF16_L1_MXFP8_14_64_8_6_24576_64_64_TND_PA_Mask_000029 
+2026-09-29 19:13:53,486 [INFO] [2432751 MP MT] [instance_base.py:301]: 
++-------------------------------------------------------------------------------------------------------+
+| Version: 3.0.0 Summary (Device Total: 1) Progress: 0% 0 / 1 ET: 21s Rev: 72ab72b                      |
++-------------------------------------------------------------------------------------------------------+
+| npu:0                                    | 2433031 D_PA_Mask_000029 OnGenInput           RUNNING  9s  |
++-------------------------------------------------------------------------------------------------------+ 
+2026-09-29 19:13:59,748 [INFO] [2433031 Decode_FP8_E4M3FN_FP8_E4M3FN_BF16_L1_MXFP8_14_64_8_6_24576_64_64_TND_PA_Mask_000029 OnGenInput] [patch_getenv.py:15]: get env ASCEND_CUSTOM_OPP_PATH = /home/s00456726/Ascend_mx/cann/vendors/custom_transformer:/home/s00456726/Ascend_mx/cann/vendors/custom_transformer:/home/s00456726/Ascend_mx/cann/vendors/custom_transformer:/home/s00456726/Ascend_mx/cann/vendors/custom_transformer:/home/s00456726/Ascend_mx/cann/vendors/custom_transformer: 
+2026-09-29 19:13:59,749 [INFO] [2433031 Decode_FP8_E4M3FN_FP8_E4M3FN_BF16_L1_MXFP8_14_64_8_6_24576_64_64_TND_PA_Mask_000029 OnGenInput] [patch_getenv.py:15]: get env PATH = /home/s00456726/Ascend_mx_0924_master/cann-9.2.0/bin:/home/s00456726/Ascend_mx_0924_master/cann-9.2.0/tools/ccec_compiler/bin:/home/s00456726/Ascend_mx_0924_master/cann-9.2.0/tools/profiler/bin:/home/s00456726/Ascend_mx_0924_master/cann-9.2.0/tools/ascend_system_advisor/asys:/home/s00456726/Ascend_mx_0924_master/cann-9.2.0/tools/show_kernel_debug_data:/home/s00456726/Ascend_mx_0924_master/cann-9.2.0/tools/msobjdump:/home/s00456726/Ascend_mx_0924/cann-9.2.0/bin:/home/s00456726/Ascend_mx_0924/cann-9.2.0/tools/ccec_compiler/bin:/home/s00456726/Ascend_mx_0924/cann-9.2.0/tools/profiler/bin:/home/s00456726/Ascend_mx_0924/cann-9.2.0/tools/ascend_system_advisor/asys:/home/s00456726/Ascend_mx_0924/cann-9.2.0/tools/show_kernel_debug_data:/home/s00456726/Ascend_mx_0924/cann-9.2.0/tools/msobjdump:/home/s00456726/Ascend_mx_0923_master/cann/bin:/home/s00456726/Ascend_mx_0923_master/cann-9.2.0/bin:/home/s00456726/Ascend_mx_0923_master/cann-9.2.0/tools/ccec_compiler/bin:/home/s00456726/Ascend_mx_0923_master/cann-9.2.0/tools/profiler/bin:/home/s00456726/Ascend_mx_0923_master/cann-9.2.0/tools/ascend_system_advisor/asys:/home/s00456726/Ascend_mx_0923_master/cann-9.2.0/tools/show_kernel_debug_data:/home/s00456726/Ascend_mx_0923_master/cann-9.2.0/tools/msobjdump:/home/s00456726/Ascend_mx_0923_920/cann-9.2.0/bin:/home/s00456726/Ascend_mx_0923_920/cann-9.2.0/tools/ccec_compiler/bin:/home/s00456726/Ascend_mx_0923_920/cann-9.2.0/tools/profiler/bin:/home/s00456726/Ascend_mx_0923_920/cann-9.2.0/tools/ascend_system_advisor/asys:/home/s00456726/Ascend_mx_0923_920/cann-9.2.0/tools/show_kernel_debug_data:/home/s00456726/Ascend_mx_0923_920/cann-9.2.0/tools/msobjdump:/home/s00456726/Ascend_mx_920/cann-9.2.0/bin:/home/s00456726/Ascend_mx_920/cann-9.2.0/tools/ccec_compiler/bin:/home/s00456726/Ascend_mx_920/cann-9.2.0/tools/profiler/bin:/home/s00456726/Ascend_mx_920/cann-9.2.0/tools/ascend_system_advisor/asys:/home/s00456726/Ascend_mx_920/cann-9.2.0/tools/show_kernel_debug_data:/home/s00456726/Ascend_mx_920/cann-9.2.0/tools/msobjdump:/home/s00456726/Ascend_mx_0922/cann/bin:/home/s00456726/Ascend_mx_0922/cann/bin:/home/s00456726/Ascend_mx_0922/cann/tools/ccec_compiler/bin:/home/s00456726/Ascend_mx_0922/cann/tools/profiler/bin:/home/s00456726/Ascend_mx_0922/cann/tools/ascend_system_advisor/asys:/home/s00456726/Ascend_mx_0922/cann/tools/show_kernel_debug_data:/home/s00456726/Ascend_mx_0922/cann/tools/msobjdump:/home/w00944282/docker_dir/Ascend_0922/cann/bin:/home/w00944282/docker_dir/Ascend_0922/cann/tools/ccec_compiler/bin:/home/w00944282/docker_dir/Ascend_0922/cann/tools/profiler/bin:/home/w00944282/docker_dir/Ascend_0922/cann/tools/ascend_system_advisor/asys:/home/w00944282/docker_dir/Ascend_0922/cann/tools/show_kernel_debug_data:/home/w00944282/docker_dir/Ascend_0922/cann/tools/msobjdump:/home/s00456726/Ascend_mx/cann/bin:/home/s00456726/Ascend_mx/cann/bin:/home/s00456726/Ascend_mx/cann/tools/ccec_compiler/bin:/home/s00456726/Ascend_mx/cann/tools/profiler/bin:/home/s00456726/Ascend_mx/cann/tools/ascend_system_advisor/asys:/home/s00456726/Ascend_mx/cann/tools/show_kernel_debug_data:/home/s00456726/Ascend_mx/cann/tools/msobjdump:/home/s00456726/Ascend_mx_fd/cann-9.2.0/bin:/home/s00456726/Ascend_mx_fd/cann-9.2.0/tools/ccec_compiler/bin:/home/s00456726/Ascend_mx_fd/cann-9.2.0/tools/profiler/bin:/home/s00456726/Ascend_mx_fd/cann-9.2.0/tools/ascend_system_advisor/asys:/home/s00456726/Ascend_mx_fd/cann-9.2.0/tools/show_kernel_debug_data:/home/s00456726/Ascend_mx_fd/cann-9.2.0/tools/msobjdump:/usr/lib/ccache:/usr/local/bin:/root/miniconda3/envs/swl_311/bin:/root/miniconda3/condabin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin 
+ninja: no work to do.
+2026-09-29 19:13:59,915 [INFO] [2433031 Decode_FP8_E4M3FN_FP8_E4M3FN_BF16_L1_MXFP8_14_64_8_6_24576_64_64_TND_PA_Mask_000029 OnGenInput] [patch_getenv.py:15]: get env LOGNAME = root 
+ninja: no work to do.
+2026-09-29 19:14:03,490 [INFO] [2432751 MP MT] [instance_base.py:301]: 
++--------------------------------------------------------------------------------------------------------+
+| Version: 3.0.0 Summary (Device Total: 1) Progress: 0% 0 / 1 ET: 31s Rev: 72ab72b                       |
++--------------------------------------------------------------------------------------------------------+
+| npu:0                                    | 2433031 D_PA_Mask_000029 OnGenInput           RUNNING  19s  |
++--------------------------------------------------------------------------------------------------------+ 
+[INPUTS] in-place wrote fp8 q/k/v (q=(71, 64, 64)), e8m0 descale (dq=(8, 71, 8, 1, 2), dk=(930, 8, 64, 1, 2), dv=(930, 8, 1, 64, 2)), fp32 p_scale, int32 block_table (pa=True)
+
+----------------------------------------------------------------------------------------------------
+API Name: torch.ops.cann_ops_transformer.quant_flash_attn
+Golden API: 
+Backend: npu
+////////////// Tensors //////////////
+Input View Shapes: ((71, 64, 64), (930, 8, 64, 64), (930, 8, 64, 64), (8, 71, 8, 1, 2), (930, 8, 64, 1, 2), (930, 8, 1, 64, 2), (14, 384), (1,), (15,), None, None, (14,), None, (2048, 2048), (2, 1380352))
+Input Dtypes: ('float8_e4m3fn', 'float8_e4m3fn', 'float8_e4m3fn', 'float8_e8m0', 'float8_e8m0', 'float8_e8m0', 'int32', 'float32', 'int32', 'int32', 'int32', 'int32', 'float32', 'int8', 'int32')
+Input Storage Shapes: ()
+Input Formats: ()
+Input View Offsets: ()
+Input View Strides: ()
+//////////// Output Info //////////
+Output Tensor Indexes: ()
+//////////// Attributes //////////
+precision_tolerances: ((0.0078125, 0.0001, 0.005, 0.005, 10),)
+absolute_precision: 1e-08
+p_scale_value: 189.3
+cu_seqlens_q_values: [0, 5, 10, 15, 20, 25, 31, 36, 41, 46, 51, 56, 61, 66, 71]
+cu_seqlens_kv_values: None
+seqused_q_values: None
+seqused_kv_values: [24576, 2673, 2673, 2673, 2673, 2673, 2673, 2673, 2673, 2673, 2673, 2673, 2673, 2673]
+attn_mask_shape: (2048, 2048)
+attn_mask_dtype: int8
+quant_mode: 1
+softmax_scale: 0.04419417382415922
+mask_mode: 3
+win_left: -1
+win_right: -1
+max_seqlen_q: 6
+max_seqlen_kv: 24576
+layout_q: TND
+layout_q_descale: N2TGD
+layout_kv: PA_BNBD
+layout_out: TND
+return_softmax_lse: 0
+N_q: 64
+N_kv: 8
+D: 64
+head_dim_v: None
+batch_size: None
+enable_pa: True
+kv_cache_layout: PA_BNBD
+q_scale_layout: N2TGD
+block_size: 64
+//////////// Test Config //////////
+Input Data Range: ((2.0, 10.0), (-3.3895313892515355e+38, -3.3895313892515355e+38), (-0.001, 0.0), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1))
+Precision Tolerance: ((0.0078125, 0.0001, 0.005, 0.005, 10),)
+Absolute Precision: (1e-08,)
+Mode: ASCEND_ONBOARD
+PID: 2433031
+Device: 0
+----------------------------------------------------------------------------------------------------
+[Decode_FP8_E4M3FN_FP8_E4M3FN_BF16_L1_MXFP8_14_64_8_6_24576_64_64_TND_PA_Mask_000029] build QuantFlashAttn metadata (quant_mode=1)
+ninja: no work to do.
+[2026-09-29 19:14:07] [WARNING] [2433031] profiler.py: Profiler won't be using warmup, this can skew profiler results
+get env ASCEND_GLOBAL_LOG_LEVEL = 3
+[2026-09-29 19:14:10] [INFO] [2435193] profiler.py: Start parsing profiling data in sync mode at: /home/s00456726/test/ops-test-kit/msprof/e2e/Decode_FP8_E4M3FN_FP8_E4M3FN_BF16_L1_MXFP8_14_64_8_6_24576_64_64_TND_PA_Mask_000029/aa_2433031_20260929191407823_ascend_pt
+|/-[2026-09-29 19:14:12] [INFO] [2435217] profiler.py: CANN profiling data parsed in a total time of 0:00:02.023375
+\[2026-09-29 19:14:13] [INFO] [2435193] profiler.py: All profiling data parsed in a total time of 0:00:03.324571
+2026-09-29 19:14:13,497 [INFO] [2432751 MP MT] [instance_base.py:301]: 
++-------------------------------------------------------------------------------------------------------+
+| Version: 3.0.0 Summary (Device Total: 1) Progress: 0% 0 / 1 ET: 41s Rev: 72ab72b                      |
++-------------------------------------------------------------------------------------------------------+
+| npu:0                                    | 2433031 D_PA_Mask_000029 OnEagerProfiling     RUNNING  6s  |
++-------------------------------------------------------------------------------------------------------+ 
+[Section] 解码成功: isFd=1, sectionNum=1, mBase=128, s2Base=512, aicNum=32, headNum=8, schedGroup=8, 跨核分段 (bn,m) 数=22
+[COMPARE] atten: csv rtol=0.0078125 atol=0.0001 diff_thd=0.005 pct_thd=0.005 max_diff_hd=10.0
+[COMPARE] atten: npu_shape=(71, 64, 64) npu_dtype=torch.bfloat16 | golden_shape=(71, 64, 64) golden_dtype=torch.float32
+split_count:290816.0; max_diff_hd:10.0;
+---------------------------------------------------------------------------------------
+Loop 	 ExpectOut 	 RealOut 	 FpDiff 	 RateDiff
+---------------------------------------------------------------------------------------
+00000001 	 -0.0005722 	 nan 	 nan 	 nan
+00000002 	 -0.0005722 	 nan 	 nan 	 nan
+00000003 	 -0.0005951 	 nan 	 nan 	 nan
+00000004 	 -0.0004959 	 nan 	 nan 	 nan
+00000005 	 -0.0007935 	 nan 	 nan 	 nan
+00000006 	 -0.0005798 	 nan 	 nan 	 nan
+00000007 	 -0.0004749 	 nan 	 nan 	 nan
+00000008 	 -0.0006332 	 nan 	 nan 	 nan
+00000009 	 -0.0004654 	 nan 	 nan 	 nan
+00000010 	 -0.0005417 	 nan 	 nan 	 nan
+...   	   ...   	   ...   	   ...    	   ...
+00290807 	 0.0000000 	 0.0000000 	 0.0000000 	 0.0000000
+00290808 	 0.0000000 	 0.0000000 	 0.0000000 	 0.0000000
+00290809 	 0.0000000 	 0.0000000 	 0.0000000 	 0.0000000
+00290810 	 0.0000000 	 0.0000000 	 0.0000000 	 0.0000000
+00290811 	 0.0000000 	 0.0000000 	 0.0000000 	 0.0000000
+00290812 	 0.0000000 	 0.0000000 	 0.0000000 	 0.0000000
+00290813 	 0.0000000 	 0.0000000 	 0.0000000 	 0.0000000
+00290814 	 0.0000000 	 0.0000000 	 0.0000000 	 0.0000000
+00290815 	 0.0000000 	 0.0000000 	 0.0000000 	 0.0000000
+00290816 	 0.0000000 	 0.0000000 	 0.0000000 	 0.0000000
+---------------------------------------------------------------------------------------
+Rtol   	 Atol   	 PctThd   	 PctRlt   	 Result
+---------------------------------------------------------------------------------------
+0.0078    	 0.000100  	 99.50%   	 18.078785%   	 Failed
+Max-RelativeError is: inf. Threshold is: 10.0.
+Error Line-----------------------------------------------------------------------------
+Loop 	 ExpectOut 	 RealOut 	 FpDiff 	 RateDiff
+---------------------------------------------------------------------------------------
+00000000 	 -0.0005722 	 nan 	 nan 	 inf
+00000001 	 -0.0005722 	 nan 	 nan 	 inf
+00000002 	 -0.0005951 	 nan 	 nan 	 inf
+00000003 	 -0.0004959 	 nan 	 nan 	 inf
+00000004 	 -0.0007935 	 nan 	 nan 	 inf
+00000005 	 -0.0005798 	 nan 	 nan 	 inf
+00000006 	 -0.0004749 	 nan 	 nan 	 inf
+00000007 	 -0.0006332 	 nan 	 nan 	 inf
+00000008 	 -0.0004654 	 nan 	 nan 	 inf
+     ... 	     ... 	     ... 	     ... 	     ...
+00000090 	 -0.0005188 	 nan 	 nan 	 inf
+00000091 	 -0.0006752 	 nan 	 nan 	 inf
+00000092 	 -0.0005188 	 nan 	 nan 	 inf
+00000093 	 -0.0004005 	 nan 	 nan 	 inf
+00000094 	 -0.0007324 	 nan 	 nan 	 inf
+00000095 	 -0.0004263 	 nan 	 nan 	 inf
+00000096 	 -0.0003357 	 nan 	 nan 	 inf
+00000097 	 -0.0004444 	 nan 	 nan 	 inf
+00000098 	 -0.0004845 	 nan 	 nan 	 inf
+     ... 	     ... 	     ... 	     ... 	     ...
+Max-RE line:---------------------------------------------------------------------------
+00000000 	 -0.0005722 	 nan 	 nan 	 inf
+00000001 	 -0.0005722 	 nan 	 nan 	 inf
+00000002 	 -0.0005951 	 nan 	 nan 	 inf
+---------------------------------------------------------------------------------------
+
+Eager Kernels
+-------------------------------------------------------------------------------------------------------
+Name            avg            max           min           # of Calls
+-------------------------------------------------------------------------------------------------------
+QuantFlashAttn  113.047        113.047       113.047       1
+-------------------------------------------------------------------------------------------------------
+
+
+ ####################################### Eager Result Summary  ######################################## 
+EAGER:       18.078785211267608%
+  DEVICE: 113.047 us
+  CPU:    1412327.732 us
+STATUS: FAIL
+Golden Shapes: ((71, 64, 64), None)
+Golden Dtypes: ('float32', None)
+#######################################################################################################
+2026-09-29 19:14:21,799 [INFO] [2432751 MP MT] [instance_base.py:147]: ttk Profiling complete 
+2026-09-29 19:14:25,339 [INFO] [2432751 MP MT] [instance_base.py:325]: 
+==================== TTK Test Summary ===================
+  Total    : 1
+  PASS     : 0
+  FAIL     : 1
+  SKIP/NA  : 0
+  PassRate : 0.00%  (0/1)
+========================================================= 
