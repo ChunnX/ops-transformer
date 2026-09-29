@@ -244,7 +244,10 @@ template <class T>
 __aicore__ void Stats(GM_ADDR k, GM_ADDR mean, SageParams p)
 {
     if (p.smoothK && p.d == p.dp) {
-        if (p.hk < 32 || p.sk <= 4096) {
+        const bool grouped = UseDieGroups(p);
+        const uint32_t workers = grouped ? p.cores : 2 * p.cores;
+        const uint64_t heads = uint64_t(p.b) * p.hk / (grouped ? 2 : 1);
+        if (heads < workers || p.sk <= 4096) {
             StreamKStats<T>(k, mean, p);
             return;
         } else {
