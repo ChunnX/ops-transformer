@@ -68,7 +68,6 @@ private:
     __aicore__ inline Vec1SplitInfo SplitCoreV1();
 
     uint32_t c1v1DbIdx_ = 0;
-    uint64_t mm1ResMOffset_ = 0;
     uint32_t totalCompressedCnt_ = 0;
     uint32_t kvStateIdx_ = 0;
     uint32_t scoreStateIdx_ = 1;
@@ -224,7 +223,9 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::OverLapScoreKv(
     overLapSliceIterator.SetMaxBatchSize(this->constInfo_.batchSize);
     Vec1SliceInfo& overLapSliceInfo = overLapSliceIterator.GetSlice();
 
-    GlobalTensor<T> scoreDBMm1ResGm = this->scoreMm1ResGm_[c1v1DbIdx_ * this->constInfo_.dbSize + mm1ResMOffset_];
+    // vec 不做 M 段偏移：cube 写出时已换算为【全局 token 行号】（mRowBase == mStart），
+    // 各 M 段结果落在同一 K 段槽位内互不重叠的行区间，vec 从槽位基址按全局行连续读。
+    GlobalTensor<T> scoreDBMm1ResGm = this->scoreMm1ResGm_[c1v1DbIdx_ * this->constInfo_.dbSize];
     overLapSliceIterator.Reset(originSliceInfo.bIdx, originSliceInfo.sIdx, originSliceInfo.dealedSeqCnt, 0U);
     overLapSliceIterator.SetNeedDealTcSize(needDealTcSize);
 
@@ -248,7 +249,7 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::OverLapScoreKv(
                   dDealSize);
         }
     }
-    GlobalTensor<T> kvDBMm1ResGm = this->kvMm1ResGm_[c1v1DbIdx_ * this->constInfo_.dbSize + mm1ResMOffset_];
+    GlobalTensor<T> kvDBMm1ResGm = this->kvMm1ResGm_[c1v1DbIdx_ * this->constInfo_.dbSize];
     overLapSliceIterator.Reset(originSliceInfo.bIdx, originSliceInfo.sIdx, originSliceInfo.dealedSeqCnt, 0U);
     overLapSliceIterator.SetNeedDealTcSize(needDealTcSize);
 
@@ -389,12 +390,8 @@ template <typename COMP>
 __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::ComputeVec1(uint32_t c1v1DbIdx)
 {
     c1v1DbIdx_ = c1v1DbIdx;
-    mm1ResMOffset_ = (this->constInfo_.mLoopNum == 1 && this->constInfo_.mBaseSize != 0) ?
-                         (uint64_t)(this->constInfo_.mStart / this->constInfo_.mBaseSize) * this->constInfo_.kBaseNum *
-                             this->constInfo_.mm1KvResSize :
-                         0;
-    GlobalTensor<T> scoreDbGm = this->scoreMm1ResGm_[(uint64_t)c1v1DbIdx * this->constInfo_.dbSize + mm1ResMOffset_];
-    GlobalTensor<T> kvDbGm = this->kvMm1ResGm_[(uint64_t)c1v1DbIdx * this->constInfo_.dbSize + mm1ResMOffset_];
+    GlobalTensor<T> scoreDbGm = this->scoreMm1ResGm_[(uint64_t)c1v1DbIdx * this->constInfo_.dbSize];
+    GlobalTensor<T> kvDbGm = this->kvMm1ResGm_[(uint64_t)c1v1DbIdx * this->constInfo_.dbSize];
     Vec1SplitInfo splitInfo = SplitCoreV1();
     // 计算当前VecCore的任务量
     if (splitInfo.dealBatchNum == 0) {
@@ -430,9 +427,12 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::ComputeVec1(uint32_t
         uint32_t curLoopBatchNum = min(singleLoopBatchNum, splitInfo.dealBatchNum - singleLoopBatchNum * idx);
         scoreUb = this->inputQue1.template AllocTensor<T>();
         kvUb = scoreUb[BUFFER_SIZE_BYTE_32K / sizeof(T)];
-        this->FromWokrSpaceToUb(scoreUb, scoreDbGm, splitInfo.dealSeqStartIdx, curLoopBatchNum * this->constInfo_.sSize,
+        // mm1 的行偏移改用【全局 token 行】：本 M 段起点 mStart + 段内行偏移。
+        // 注意 dealSeqStartIdx 仍保持"段内相对偏移"语义（它另用于 OverLap 的 globalSeqIdx）。
+        uint32_t globalRowOffset = this->constInfo_.mStart + splitInfo.dealSeqStartIdx;
+        this->FromWokrSpaceToUb(scoreUb, scoreDbGm, globalRowOffset, curLoopBatchNum * this->constInfo_.sSize,
                                 baseOffset, splitInfo.dBaseSize);
-        this->FromWokrSpaceToUb(kvUb, kvDbGm, splitInfo.dealSeqStartIdx, curLoopBatchNum * this->constInfo_.sSize,
+        this->FromWokrSpaceToUb(kvUb, kvDbGm, globalRowOffset, curLoopBatchNum * this->constInfo_.sSize,
                                 baseOffset, splitInfo.dBaseSize);
         this->inputQue1.template EnQue(scoreUb);
         this->inputQue1.template DeQue<T>();

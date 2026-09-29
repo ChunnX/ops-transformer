@@ -197,6 +197,9 @@ __aicore__ inline void CompressorBlockVectorNormal<COMP>::OverLapScoreKv(
     overLapSliceIterator.SetMaxBatchSize(this->constInfo_.batchSize);
     Vec1SliceInfo& overLapSliceInfo = overLapSliceIterator.GetSlice();
 
+    // vec 不做任何 M 段偏移：cube 侧写出时已换算为【全局 token 行号】
+    // （ConstInfo::mRowBase），各 M 段结果落在同一 K 段槽位内互不重叠的行区间，
+    // vec 从槽位基址按全局行连续读取即可，对 M 段切分完全无感。
     GlobalTensor<T> scoreDBMm1ResGm = this->scoreMm1ResGm_[info.c1v1DbIdx * this->constInfo_.dbSize];
     LocalTensor<T> scoreUb = this->inputQue1.template AllocTensor<T>();
     this->FromWokrSpaceToUb(scoreUb, scoreDBMm1ResGm, originSliceInfo.dealedSeqCnt, statisticInfo.dealSeqCnt, dStartIdx,
@@ -282,6 +285,9 @@ __aicore__ inline void CompressorBlockVectorNormal<COMP>::CalcGroupInfo(const Ve
                                                                         Vec1SplitInfo& splitInfo)
 {
     uint32_t aiCoreNum = this->constInfo_.usedCoreNum * this->cvRatio_;
+    // 分工分母用【全部 AIV 核数】：vec 不感知 M 段切分，所有 AIV 均分"轮次内全程 TC"，
+    // 每个核的 TC 区间全局唯一。cube 侧已按【全局 token 行】写 mm1，vec 从 K 段槽位基址
+    // 按全局行连续读即可（无需任何段偏移）。
     splitInfo.dBaseSize =
         this->constInfo_.headDim / min(FloorPow2(aiCoreNum), CeilPow2(CeilDivT(aiCoreNum, info.dealTcNum)));
     // 32B(8个FP32)对齐的UB列窗口上限。dBaseSize 超过它时 this->CalcTilingStrategy 会走
