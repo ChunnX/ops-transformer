@@ -412,9 +412,12 @@ static ge::graphStatus CheckOutputTensors(const gert::TilingContext *context, co
         AlignMoeEpWin(static_cast<uint64_t>(aAlloc) * METADATA_FIELDS * METADATA_DTYPE_SIZE);
     info.localRecvIndexOffset = info.metadataRankOffsetsOffset +
                                 AlignMoeEpWin((static_cast<uint64_t>(info.cfg.epWorldSize) + 1U) * METADATA_DTYPE_SIZE);
+    // 旧字段的偏移保持不变；尾部仅追加slot终点和metadata行号。
+    info.slotEndsOffset = info.localRecvIndexOffset + AlignMoeEpWin(static_cast<uint64_t>(info.cfg.numTokens) *
+                                                                    info.cfg.topK * METADATA_DTYPE_SIZE);
+    info.slotRowIdsOffset = info.slotEndsOffset + AlignMoeEpWin(static_cast<uint64_t>(aAlloc) * METADATA_DTYPE_SIZE);
     const uint64_t packedElements =
-        (info.localRecvIndexOffset +
-         AlignMoeEpWin(static_cast<uint64_t>(info.cfg.numTokens) * info.cfg.topK * METADATA_DTYPE_SIZE)) /
+        (info.slotRowIdsOffset + AlignMoeEpWin(static_cast<uint64_t>(aAlloc) * METADATA_DTYPE_SIZE)) /
         METADATA_DTYPE_SIZE;
     auto recvSrcMetaShape = context->GetOutputShape(OUT_RECV_SRC_METADATA_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, recvSrcMetaShape);

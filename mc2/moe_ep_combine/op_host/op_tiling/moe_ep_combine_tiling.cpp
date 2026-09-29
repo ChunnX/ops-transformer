@@ -151,7 +151,8 @@ static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context,
     OP_CHECK_NULL_WITH_CONTEXT(context, recvSrcMetadataShape);
     const uint64_t packedElements =
         (info.localRecvIndexOffset +
-         AlignMoeEpWin(static_cast<uint64_t>(info.cfg.numTokens) * info.cfg.topK * sizeof(int32_t))) /
+         AlignMoeEpWin(static_cast<uint64_t>(info.cfg.numTokens) * info.cfg.topK * sizeof(int32_t)) +
+         2U * AlignMoeEpWin(info.recvCapacity * sizeof(int32_t))) /
         sizeof(int32_t);
     OP_TILING_CHECK(recvSrcMetadataShape->GetStorageShape().GetDimNum() != ONE_DIMS,
                     OP_LOGE(nodeName, "recv_src_metadata must be a 1D packed tensor."), return ge::GRAPH_FAILED);

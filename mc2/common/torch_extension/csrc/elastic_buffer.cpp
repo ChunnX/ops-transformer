@@ -121,8 +121,9 @@ static inline void CheckMoeEpMetadataTensor(const at::Tensor &metadata, const ch
         AlignTo(capacity * MOE_EP_METADATA_FIELDS * elementBytes, MOE_EP_METADATA_ALIGN_BYTES);
     const int64_t localIndexOffset =
         rankOffsetsOffset + AlignTo((epWorldSize + 1) * elementBytes, MOE_EP_METADATA_ALIGN_BYTES);
-    const int64_t elements =
-        (localIndexOffset + AlignTo(routeSlots * elementBytes, MOE_EP_METADATA_ALIGN_BYTES)) / elementBytes;
+    const int64_t elements = (localIndexOffset + AlignTo(routeSlots * elementBytes, MOE_EP_METADATA_ALIGN_BYTES) +
+                              2 * AlignTo(capacity * elementBytes, MOE_EP_METADATA_ALIGN_BYTES)) /
+                             elementBytes;
     TORCH_CHECK(metadata.scalar_type() == at::kInt && metadata.dim() == DIM_ONE, name,
                 " must be a 1D int32 packed tensor");
     TORCH_CHECK(metadata.numel() == static_cast<int64_t>(elements), name, " packed length must be ", elements);
