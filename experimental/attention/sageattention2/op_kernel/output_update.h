@@ -281,6 +281,11 @@ __simd_vf__ inline void UpdateWidePairVF(__ubuf__ T *out, __ubuf__ float *accum,
         LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     }
     static constexpr CastTrait cast{RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+    RegTensor<float> mv0, mv1;
+    if constexpr (LAST) {
+        LoadAlign(mv0, meanV);
+        LoadAlign(mv1, meanV + 64);
+    }
     for (uint16_t row = 0; row < 64; ++row) {
         RegTensor<float> x0, x1, z0, z1, a0, a1;
         LoadAlign<float, LoadDist::DIST_BRC_B32>(a1, alpha1 + row);
@@ -302,11 +307,9 @@ __simd_vf__ inline void UpdateWidePairVF(__ubuf__ T *out, __ubuf__ float *accum,
         MulDstAdd(x0, a1, z0, f);
         MulDstAdd(x1, a1, z1, f);
         if constexpr (LAST) {
-            RegTensor<float> inv, mv0, mv1;
+            RegTensor<float> inv;
             RegTensor<T> p0, p1;
             LoadAlign<float, LoadDist::DIST_BRC_B32>(inv, scratch + row);
-            LoadAlign(mv0, meanV);
-            LoadAlign(mv1, meanV + 64);
             Mul(x0, x0, inv, f);
             Mul(x1, x1, inv, f);
             Add(x0, x0, mv0, f);
