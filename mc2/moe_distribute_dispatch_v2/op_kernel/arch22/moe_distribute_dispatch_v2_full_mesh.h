@@ -235,7 +235,7 @@ private:
     uint8_t sendRecordsPerGroup_{1};
     uint8_t pendingSendRecords_{0};
     uint64_t pendingSendAddrs_[SEND_RECORDS_PER_EVENT]{};
-    uint32_t syncFlagId_{0}; // Completed send groups, used as the event-group cursor.
+    uint32_t syncFlagId_{0}; // Current event-group cursor, wrapped after each completed group.
     uint32_t axisBS_{0};
     uint32_t axisMaxBS_{0};
     uint32_t axisH_{0};
@@ -556,7 +556,7 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
 template <TemplateMC2TypeFullmeshClass>
 __aicore__ inline uint32_t MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::PrepareSendRecord()
 {
-    uint32_t groupId = syncFlagId_ % sendEventGroupNum_;
+    uint32_t groupId = syncFlagId_;
     if (pendingSendRecords_ == 0) {
         // Both records belong to this event until the group's final DMA has completed.
         WaitFlag<HardEvent::MTE3_V>(groupId);
@@ -581,19 +581,24 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     if (pendingSendRecords_ == 0) {
         return;
     }
-    uint32_t groupId = syncFlagId_ % sendEventGroupNum_;
+    uint32_t groupId = syncFlagId_;
     // Publish readiness only after every record is packed. Destinations need not be adjacent.
     SetFlag<HardEvent::V_MTE3>(groupId);
     WaitFlag<HardEvent::V_MTE3>(groupId);
-    for (uint32_t record = 0; record < pendingSendRecords_; ++record) {
-        GlobalTensor<XOutType> dstWinGMTensor;
-        dstWinGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ XOutType *>(pendingSendAddrs_[record]));
-        uint32_t sendSlot = groupId * sendRecordsPerGroup_ + record;
-        DataCopy(dstWinGMTensor, outTensor_[sendSlot * axisHCommu_], axisHCommu_);
+    uint32_t sendSlot = groupId * sendRecordsPerGroup_;
+    GlobalTensor<XOutType> dstWinGMTensor;
+    dstWinGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ XOutType *>(pendingSendAddrs_[0]));
+    DataCopy(dstWinGMTensor, outTensor_[sendSlot * axisHCommu_], axisHCommu_);
+    if (pendingSendRecords_ == SEND_RECORDS_PER_EVENT) {
+        dstWinGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ XOutType *>(pendingSendAddrs_[1]));
+        DataCopy(dstWinGMTensor, outTensor_[(sendSlot + 1) * axisHCommu_], axisHCommu_);
     }
     SetFlag<HardEvent::MTE3_V>(groupId);
     pendingSendRecords_ = 0;
     ++syncFlagId_;
+    if (syncFlagId_ == sendEventGroupNum_) {
+        syncFlagId_ = 0;
+    }
 }
 
 template <TemplateMC2TypeFullmeshClass>
