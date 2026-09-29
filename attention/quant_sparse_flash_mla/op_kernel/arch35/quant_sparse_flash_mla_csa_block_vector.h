@@ -1012,8 +1012,12 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitOutputSingleCore(ConstInf
 
     if (qsmlaCoreNum != 0) {
         uint64_t singleCoreSize = (totalOutputSize + (CV_RATIO * qsmlaCoreNum) - 1) / (CV_RATIO * qsmlaCoreNum);
-        uint64_t tailSize = totalOutputSize - qs35VecConstInfo.aivIdx * singleCoreSize;
-        uint64_t singleInitOutputSize = tailSize < singleCoreSize ? tailSize : singleCoreSize;
+        uint64_t tailSize = 0;
+        uint64_t singleInitOutputSize = 0;
+        if (qs35VecConstInfo.aivIdx * singleCoreSize < totalOutputSize) {
+            tailSize = totalOutputSize - qs35VecConstInfo.aivIdx * singleCoreSize;
+            singleInitOutputSize = tailSize < singleCoreSize ? tailSize : singleCoreSize;
+        }
         if (singleInitOutputSize > 0) {
             WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
             matmul::InitOutput<OUTPUT_T>(this->attentionOutGm[qs35VecConstInfo.aivIdx * singleCoreSize],
