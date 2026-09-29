@@ -19,8 +19,7 @@ static constexpr uint8_t SEND_OFFSET_BY_RAW_ARRAY = 0;
 static constexpr uint8_t SEND_OFFSET_ACCUMULATIVE = 1;
 
 // HCCL AlltoAllV的counts/offsets必须为泛型(栈)指针(AlltoAllVParamExt为uint64_t*)，不可用__gm__；
-// alignas(64)保证各数组cacheline对齐，规避栈布局相关的地址对齐问题
-struct alignas(64) A2avCommParams {
+struct A2avCommParams {
     uint64_t sendCnt[MAX_EP_RANK_SIZE] = {0UL};
     uint64_t sendOffset[MAX_EP_RANK_SIZE] = {0UL};
     uint64_t recvCnt[MAX_EP_RANK_SIZE] = {0UL};
