@@ -14,31 +14,40 @@
 
 namespace Mc2Tiling {
 
-using Mc2Hcom::WILDCARD_TOPO_TYPE;
+using Mc2Hcom::TOPO_FLAG_NONE;
+using Mc2Hcom::TOPO_FLAG_SINGLE_LEVEL;
+using Mc2Hcom::TOPO_FLAG_UBX;
 
 constexpr uint64_t MAX_DATA_BYTES = ~0ULL;
 constexpr uint32_t MAX_RANK_SIZE = ~0U;
-constexpr uint32_t MAX_LAYERS = ~0U;
 
-// 选择器为软过滤（某过滤器清空候选集时会跳过该过滤器，导致落入引擎内首条表项），
-// 故各引擎必须配一条全区间低优先级兜底表项，避免未覆盖场景误选具体算法；
-// 具体算法表项仅覆盖单层卡数[2,4]与[8,16]，拓扑维度暂用通配（topo枚举取值待与HCCL确认）
+// 选择器为硬过滤（任一维度清空候选集即无匹配，回退默认算法）；
+// 各引擎配一条全区间低优先级兜底表项，承接非UBX机型/多pod/未覆盖卡数等场景回退默认算法；
+// 具体算法表项仅UBX机型支持，通过TOPO_FLAG_UBX|TOPO_FLAG_SINGLE_LEVEL(单pod UBX)约束
 static constexpr Mc2Hcom::CommAlgoEntry ALLTOALL_COMM_ALGO_TABLE[] = {
-    // AICPU 兜底：未覆盖卡数/层数场景低优先级回退默认算法
-    {mc2tiling::A5_AICPU_TS_ENGINE, WILDCARD_TOPO_TYPE, 1, MAX_LAYERS, 0, MAX_DATA_BYTES, 2, MAX_RANK_SIZE, 0,
-     ALLTOALL_DEFAULT_ALGO_NAME},
-    // CCU 兜底：未覆盖卡数/层数场景低优先级回退默认算法
-    {mc2tiling::A5_CCU_ENGINE, WILDCARD_TOPO_TYPE, 1, MAX_LAYERS, 0, MAX_DATA_BYTES, 2, MAX_RANK_SIZE, 0,
-     ALLTOALL_DEFAULT_ALGO_NAME},
+    // AICPU + 单pod UBX + 卡数[8,16] → sole[mesh]
+    {mc2tiling::A5_AICPU_TS_ENGINE, TOPO_FLAG_SINGLE_LEVEL | TOPO_FLAG_UBX, 0, MAX_DATA_BYTES, 8, 16, 1, "sole[mesh]"},
+    // AICPU + 单pod UBX + 卡数[2,4] → concur[mesh,mesh]
+    {mc2tiling::A5_AICPU_TS_ENGINE, TOPO_FLAG_SINGLE_LEVEL | TOPO_FLAG_UBX, 0, MAX_DATA_BYTES, 2, 4, 1,
+     "concur[mesh,mesh]"},
+    // CCU + 单pod UBX + 卡数[2,4] → concur[mesh,mesh]
+    {mc2tiling::A5_CCU_ENGINE, TOPO_FLAG_SINGLE_LEVEL | TOPO_FLAG_UBX, 0, MAX_DATA_BYTES, 2, 4, 1, "concur[mesh,mesh]"},
+    // CCU + 单pod UBX + 卡数[8,16] → sole[mesh.multi_channel]
+    {mc2tiling::A5_CCU_ENGINE, TOPO_FLAG_SINGLE_LEVEL | TOPO_FLAG_UBX, 0, MAX_DATA_BYTES, 8, 16, 1,
+     "sole[mesh.multi_channel]"},
+    // AICPU 兜底：非UBX机型/未覆盖场景低优先级回退默认算法
+    {mc2tiling::A5_AICPU_TS_ENGINE, TOPO_FLAG_NONE, 0, MAX_DATA_BYTES, 2, MAX_RANK_SIZE, 0, ALLTOALL_DEFAULT_ALGO_NAME},
+    // CCU 兜底：非UBX机型/未覆盖场景低优先级回退默认算法
+    {mc2tiling::A5_CCU_ENGINE, TOPO_FLAG_NONE, 0, MAX_DATA_BYTES, 2, MAX_RANK_SIZE, 0, ALLTOALL_DEFAULT_ALGO_NAME},
 };
 
-const Mc2Hcom::CommAlgoEntry *GetAllToAllCommAlgoTable(uint32_t &count)
+const Mc2Hcom::CommAlgoEntry* GetAllToAllCommAlgoTable(uint32_t& count)
 {
     count = sizeof(ALLTOALL_COMM_ALGO_TABLE) / sizeof(ALLTOALL_COMM_ALGO_TABLE[0]);
     return ALLTOALL_COMM_ALGO_TABLE;
 }
 
-std::string SelectAllToAllAlgoName(const std::string &opName, const std::string &group, uint8_t commEngine,
+std::string SelectAllToAllAlgoName(const std::string& opName, const std::string& group, uint8_t commEngine,
                                    uint32_t tileM, uint64_t dimSize, uint64_t dtypeSize, uint32_t rankDim)
 {
     uint64_t commDataBytes = 0;
@@ -57,7 +66,7 @@ std::string SelectAllToAllAlgoName(const std::string &opName, const std::string 
     OP_LOGI(opName.c_str(), "[SetHcclTiling] commDataBytes=%llu, tileM=%u, dimSize=%llu, rankDim=%u, engine=%u",
             commDataBytes, tileM, dimSize, rankDim, static_cast<uint32_t>(commEngine));
     uint32_t algoCount = 0;
-    const Mc2Hcom::CommAlgoEntry *algoEntries = GetAllToAllCommAlgoTable(algoCount);
+    const Mc2Hcom::CommAlgoEntry* algoEntries = GetAllToAllCommAlgoTable(algoCount);
     std::string algoName = Mc2Hcom::Mc2CommAlgoSelector::SelectAlgoName(
         opName, group.c_str(), commEngine, commDataBytes, rankDim, algoEntries, algoCount, ALLTOALL_DEFAULT_ALGO_NAME);
     OP_LOGI(opName.c_str(), "[SetHcclTiling] selected algoName=%s, group=%s", algoName.c_str(), group.c_str());
