@@ -174,6 +174,8 @@ T_before（serial）跨场次方差约 ±8%（row67 三场 3128.8/2847.1/2634.3�
 
 ## 11. 大额收益 case 完整测试与组件归因（2026-09-29）
 
+> 完整深度分析见 [component_attribution_report.md](component_attribution_report.md)，本节为摘要。
+
 对 6 个大额收益 case（row69/57/33/51/67/27）补齐跨场景覆盖缺口（row67 上轮统一实验已完整），
 并对 5 个缺隔离数据的 case 做双配置四分量归因。
 

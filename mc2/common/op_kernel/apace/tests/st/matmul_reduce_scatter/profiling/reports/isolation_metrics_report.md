@@ -109,6 +109,9 @@ rank4 case 做同日单场次统一复测（probe 四分量 + 顺序 A/B），�
 
 ## 大额收益 case 组件归因（5 case × 双配置，2026-09-29）
 
+> 深度分析（贡献占比 / Bound 迁移 / shape 分簇 / 机制推理）见
+> [component_attribution_report.md](component_attribution_report.md)，本节为数据摘要。
+
 对组合表 6 个大额收益 case 中缺隔离数据的 5 个（row69/57/33/51/27；row67 见统一复测小节），
 按新旧配置各跑完整四分量，定位收益来源分量。
 
