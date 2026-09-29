@@ -656,6 +656,9 @@ __aicore__ inline void SparseLightningIndexerKLLossGradKernelBase<CubeBlockType,
         CrossCoreSetFlag<2, PIPE_MTE1>(SYNC_GATHER_TO_MM12_FLAG[1]);
         CrossCoreSetFlag<2, PIPE_MTE1>(SYNC_V6_TO_C3_FLAG);
         CrossCoreSetFlag<2, PIPE_MTE1>(SYNC_V6_TO_RELU_FLAG);
+        if constexpr (!Deterministic) {
+            CrossCoreSetFlag<2, PIPE_MTE2>(SYNC_MM4_TO_GATHER_FLAG);
+        }
     }
 }
 
@@ -667,6 +670,9 @@ __aicore__ inline void SparseLightningIndexerKLLossGradKernelBase<CubeBlockType,
         CrossCoreWaitFlag<2, PIPE_MTE3>(SYNC_GATHER_TO_MM12_FLAG[1]);
         CrossCoreWaitFlag<2, PIPE_MTE3>(SYNC_V6_TO_C3_FLAG);
         CrossCoreWaitFlag<2, PIPE_MTE3>(SYNC_V6_TO_RELU_FLAG);
+        if constexpr (!Deterministic) {
+            CrossCoreWaitFlag<2, PIPE_MTE3>(SYNC_MM4_TO_GATHER_FLAG);
+        }
     } else if ASCEND_IS_AIC {
         CrossCoreWaitFlag<2, PIPE_FIX>(SYNC_MM2_TO_V1_FLAG[0]);
         CrossCoreWaitFlag<2, PIPE_FIX>(SYNC_MM2_TO_V1_FLAG[1]);

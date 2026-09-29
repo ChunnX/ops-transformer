@@ -215,6 +215,12 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ProcessVector0(
     this->mm1AL1Tensor = outputBuf.GetTensor<INPUT_T>();
     this->kvMergUb_ = gatherKeyIndexUb;
 
+    if constexpr (!Deterministic) {
+        if (kRunInfo.kTaskId == 0 && kRunInfo.s2SingleIdx == 0) {
+            // Both AIVs acquire once per nonempty query, even if one has no gather rows.
+            CrossCoreWaitFlag<2, PIPE_MTE3>(SYNC_MM4_TO_GATHER_FLAG);
+        }
+    }
     SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
     SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0 + 1);
     MergeKv<EVENT_ID0, true>(outputBuf, runInfo, kRunInfo, keyIndexGm);

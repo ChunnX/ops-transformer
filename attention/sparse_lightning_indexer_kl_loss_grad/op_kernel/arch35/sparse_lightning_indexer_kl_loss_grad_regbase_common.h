@@ -200,6 +200,8 @@ constexpr uint8_t SYNC_RELU_TO_V6_FLAG = 2;
 
 constexpr uint8_t SYNC_C3_TO_V7_DETER_MTE2_FLAG[2] = {5, 6};
 constexpr uint8_t SYNC_C3_TO_V7_DETER_SA_FLAG = 15;
+// Non-deterministic gather GM reuse; mutually exclusive with deterministic scatter.
+constexpr uint8_t SYNC_MM4_TO_GATHER_FLAG = 15;
 
 template <typename T>
 __aicore__ inline T SLIGAlign(T num, T rnd)

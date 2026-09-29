@@ -335,6 +335,12 @@ __aicore__ inline void SligBlockCube<TEMPLATE_ARGS>::ComputeMm4(
 
         sYGatherL1Buffer.Wait<HardEvent::MTE1_MTE2>();
         CopyInMm4BToL1(sYGatherResTensor, gatherWorkspaceOffset, mmParam.singleK, dSize, dSize);
+        if constexpr (!Deterministic) {
+            if (isFixOut && kIdx == kLoopTimes - 1) {
+                // All gather GM reads for this query finish before the next query can overwrite it.
+                CrossCoreSetFlag<SYNC_MODE, PIPE_MTE2>(SYNC_MM4_TO_GATHER_FLAG);
+            }
+        }
         sYGatherL1Buffer.Set<HardEvent::MTE2_MTE1>();
         sYGatherL1Buffer.Wait<HardEvent::MTE2_MTE1>();
         if ((pRunInfo.kTaskId == 0) && (kIdx == 0)) {
