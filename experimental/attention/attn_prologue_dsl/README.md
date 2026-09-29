@@ -185,14 +185,14 @@ workspace_bytes = 4 * work_rows * split_k * (R + D)
 
 | 模块 | 主要实现 |
 |---|---|
-| 分块规划与路径选择 | [`AttnPrologueTiling.plan`](torch_extension/_kernel.py#L293)、[`AttnPrologueKernel.__call__`](torch_extension/_kernel.py#L804) |
-| QA/KV 投影 | 通用路径 [`_a1_tile`](torch_extension/_kernel.py#L2275) → [`_mm_a`](torch_extension/_kernel.py#L2372)；L1 复用路径 [`_resident_a_project`](torch_extension/_kernel.py#L1346) |
-| QR 部分和归约 | 通用路径 [`_acc_partial_qa`](torch_extension/_kernel.py#L2713)；L1 复用路径 [`_acc_all_partials`](torch_extension/_kernel.py#L1401) |
-| QR RMSNorm 与动态量化 | [`_quantize_qr`](torch_extension/_kernel.py#L2752)、[`_pack_scale`](torch_extension/_kernel.py#L2861) |
-| QB 投影与 Q 写回 | [`_stage_b`](torch_extension/_kernel.py#L3025)、[`_resident_b_cube`](torch_extension/_kernel.py#L1540)、[`_finish_q`](torch_extension/_kernel.py#L3775) |
-| KV 归约、后处理与写回 | [`_service_kv`](torch_extension/_kernel.py#L2045)、[`_reduce_normalize_a`](torch_extension/_kernel.py#L2479)、[`_finish_kv_row`](torch_extension/_kernel.py#L2883) |
-| 尾部 RoPE 与跨阶段发布 | [`_rope_pair`](torch_extension/_kernel.py#L2976)、[`_publish_a1`](torch_extension/_kernel.py#L1740)、[`_publish_qr`](torch_extension/_kernel.py#L1750) |
-| 公共入口与编译缓存 | [`prepare_attn_prologue`](torch_extension/_kernel.py#L4038)、[`_Launcher.compile_cached`](torch_extension/_kernel.py#L3959) |
+| 分块规划与路径选择 | [`AttnPrologueTiling.plan`](torch_extension/_kernel.py)、[`AttnPrologueKernel.__call__`](torch_extension/_kernel.py) |
+| QA/KV 投影 | 通用路径 [`_a1_tile`](torch_extension/_kernel.py) → [`_mm_a`](torch_extension/_kernel.py)；L1 复用路径 [`_resident_a_project`](torch_extension/_kernel.py) |
+| QR 部分和归约 | 通用路径 [`_acc_partial_qa`](torch_extension/_kernel.py)；L1 复用路径 [`_acc_all_partials`](torch_extension/_kernel.py) |
+| QR RMSNorm 与动态量化 | [`_quantize_qr`](torch_extension/_kernel.py)、[`_pack_scale`](torch_extension/_kernel.py) |
+| QB 投影与 Q 写回 | [`_stage_b`](torch_extension/_kernel.py)、[`_resident_b_cube`](torch_extension/_kernel.py)、[`_finish_q`](torch_extension/_kernel.py) |
+| KV 归约、后处理与写回 | [`_service_kv`](torch_extension/_kernel.py)、[`_reduce_normalize_a`](torch_extension/_kernel.py)、[`_finish_kv_row`](torch_extension/_kernel.py) |
+| 尾部 RoPE 与跨阶段发布 | [`_rope_pair`](torch_extension/_kernel.py)、[`_publish_a1`](torch_extension/_kernel.py)、[`_publish_qr`](torch_extension/_kernel.py) |
+| 公共入口与编译缓存 | [`prepare_attn_prologue`](torch_extension/_kernel.py)、[`_Launcher.compile_cached`](torch_extension/_kernel.py) |
 
 ## 调用示例
 
