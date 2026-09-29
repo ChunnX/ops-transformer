@@ -110,6 +110,9 @@ struct Mc2MatmulShapeInfo {
     bool isMxfp{false};
     bool isBTrans{false};
     const char *opName{nullptr};
+    // HiF4 scale shape 为 [m, k/64, 1] (每 64 元素组 1 个 4 字节 hif4_scale),
+    // 区别于 MX 的 [m, k/64, 2]; 追加在末尾以保证既有聚合初始化仍然合法。
+    bool isHif4{false};
 };
 
 struct KFCMsgBody {

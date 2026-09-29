@@ -54,7 +54,10 @@ bool MxQuantMatmulAllToAllTilingBase::IsCapable()
     if (const int64_t *ptr = attrs->GetAttrPointer<int64_t>(ATTR_X2_QUANTMODE_INDEX)) {
         x2QuantMode = *ptr;
     }
-    if (x1QuantMode == X1_QUANTMODE_VALUES && x2QuantMode == X2_QUANTMODE_VALUES) {
+    // HiF4 量化场景: x1/x2 quant mode 均为 HIFLOAT4_QUANT(8)
+    isHiF4_ = (x1QuantMode == static_cast<int64_t>(HIF4_QUANTMODE_VALUES) &&
+               x2QuantMode == static_cast<int64_t>(HIF4_QUANTMODE_VALUES));
+    if ((x1QuantMode == X1_QUANTMODE_VALUES && x2QuantMode == X2_QUANTMODE_VALUES) || isHiF4_) {
         OP_LOGI(opName_, "Start with MxQuantMatmulAlltoAll tiling.");
         return true;
     }
@@ -130,6 +133,10 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::CheckX2Transpose(const gert::Ti
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName, "attrs"), return ge::GRAPH_FAILED);
     const bool *isTransX2 = attrs->GetAttrPointer<bool>(indexSchema.x2Transpose);
     OP_TILING_CHECK(isTransX2 == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName, "transpose_x2"), return ge::GRAPH_FAILED);
+    if (isHiF4_) {
+        // HiF4 支持转置与非转置两种 B 矩阵布局(kernel 侧通过 TransB 模板参数区分)
+        return ge::GRAPH_SUCCESS;
+    }
     OP_TILING_CHECK(!(*isTransX2), OP_LOGE_WITH_INVALID_ATTR(opName, "transpose_x2", "false", "true"),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -148,9 +155,33 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::InitTilingContextParameters()
     MC2_CHECK_LOG_RET(opName_, MatmulAlltoAllTilingUtil::SetShapeInfo(context_, contextInfo));
     contextInfo.quantMode = QuantMode::MX_QUANT;
     // Apace path is reserved for A6 (DAV_9201); A5 (DAV_3510) keeps the legacy arch35 behavior.
+    // 门控(基线 PR 12801, 不动): A6 恒走 Apace(无卡数限制), A5 恒 legacy 与 master 一致;
+    // HiF4 dtype 仅在 ascend910_96 原型中定义, 天然满足 A6 -> Apace, 无需触碰门控。
     usingApaceImpl_ = (npuArch_ == Ops::Base::DAV_9201);
     OP_LOGI(opName_, "MatmulAlltoAll MX implementation: %s, npuArch=%u, rankDim=%lu.",
             usingApaceImpl_ ? "Apace(pure-AIC)" : "legacy", static_cast<uint32_t>(npuArch_), contextInfo.args_.rankDim);
+    if (isHiF4_) {
+        // HiF4 的 rankSize 约束: {2, 4, 8, 16}
+        OP_TILING_CHECK((contextInfo.args_.rankDim != 2) && (contextInfo.args_.rankDim != 4) &&
+                            (contextInfo.args_.rankDim != 8) && (contextInfo.args_.rankDim != 16),
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                            opName_, "world_size(rankDim)", std::to_string(contextInfo.args_.rankDim).c_str(),
+                            "In hif4 quant mode, rankSize must be one of {2, 4, 8, 16}."),
+                        return ge::GRAPH_FAILED);
+        // rankDim > 8 时 CCU 引擎未验证(仓内 MAX_CCU_RANKSIZE=8 口径), 仅支持 ai_cpu
+        if (contextInfo.args_.rankDim > 8) {
+            uint8_t engineType = 0;
+            if (MatmulAlltoAllTilingUtil::GetAndConvertCommMode(context_, opName_, contextInfo,
+                                                                MATMUL_ALLTOALL_INDEX_SCHEMA,
+                                                                engineType) == ge::GRAPH_SUCCESS) {
+                OP_TILING_CHECK(engineType == mc2tiling::A5_CCU_ENGINE,
+                                OP_LOGE_WITH_INVALID_ATTR(opName_, "comm_mode", "ccu",
+                                                          "ai_cpu (rankSize=16 only supports ai_cpu, "
+                                                          "CCU covers <= 8 ranks)"),
+                                return ge::GRAPH_FAILED);
+            }
+        }
+    }
 
     return ge::GRAPH_SUCCESS;
 }
@@ -216,13 +247,28 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::CheckMxQuantTensorDataType(cons
     OP_TILING_CHECK(!IsContains(MX_QUANT_X_DTYPE_LIST, x1Dtype),
                     OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
                         opName, "x1", Ops::Base::ToString(x1Dtype).c_str(),
-                        "The dtype of x1 must be in the mx-quant range (float8_e4m3fn/float8_e5m2/float4_e2m1)"),
+                        "The dtype of x1 must be in the mx-quant range "
+                        "(float8_e4m3fn/float8_e5m2/float4_e2m1/hifloat4)"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(!IsContains(MX_QUANT_X_DTYPE_LIST, x2Dtype),
                     OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
                         opName, "x2", Ops::Base::ToString(x2Dtype).c_str(),
-                        "The dtype of x2 must be in the mx-quant range (float8_e4m3fn/float8_e5m2/float4_e2m1)"),
+                        "The dtype of x2 must be in the mx-quant range "
+                        "(float8_e4m3fn/float8_e5m2/float4_e2m1/hifloat4)"),
                     return ge::GRAPH_FAILED);
+    // HiF4 量化场景: x1/x2 必须均为 DT_HIFLOAT4; MX 量化场景不允许出现 hifloat4
+    if (isHiF4_) {
+        OP_TILING_CHECK((x1Dtype != ge::DT_HIFLOAT4),
+                        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                            opName, "x1", Ops::Base::ToString(x1Dtype).c_str(),
+                            "The dtype of x1 must be hifloat4 in HIFLOAT4 quant mode"),
+                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK((x2Dtype != ge::DT_HIFLOAT4),
+                        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                            opName, "x2", Ops::Base::ToString(x2Dtype).c_str(),
+                            "The dtype of x2 must be hifloat4 in HIFLOAT4 quant mode"),
+                        return ge::GRAPH_FAILED);
+    }
     if (x1Dtype == ge::DataType::DT_FLOAT4_E2M1 || x2Dtype == ge::DataType::DT_FLOAT4_E2M1) {
         isMxfp4_ = true;
         OP_TILING_CHECK(
@@ -234,6 +280,11 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::CheckMxQuantTensorDataType(cons
     }
     // 校验 bias 数据类型（如果存在）
     auto biasTensorDesc = context->GetOptionalInputDesc(INPUT_BIAS_INDEX);
+    // HiF4 场景不支持 bias: 非空直接报错(置于既有 bias dtype 校验之前)
+    if (isHiF4_ && biasTensorDesc != nullptr) {
+        OP_LOGE(opName, "bias is not supported in HIFLOAT4 quant mode, please do not pass bias.");
+        return ge::GRAPH_FAILED;
+    }
     if (biasTensorDesc != nullptr) {
         ge::DataType biasDtype = biasTensorDesc->GetDataType();
         OP_TILING_CHECK((biasDtype != ge::DT_FLOAT),
@@ -248,6 +299,14 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::CheckMxQuantTensorDataType(cons
     auto yDesc = context->GetOutputDesc(OUTPUT_Y_INDEX);
     OP_TILING_CHECK((yDesc == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName, "y"), return ge::GRAPH_FAILED);
     ge::DataType yDtype = yDesc->GetDataType();
+    // HiF4 输出 y 仅支持 FP16/BF16(不支持 FP32, 区别于 MX 的三档)
+    if (isHiF4_) {
+        OP_TILING_CHECK((yDtype != ge::DT_FLOAT16 && yDtype != ge::DT_BF16),
+                        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                            opName, "y", Ops::Base::ToString(yDtype).c_str(),
+                            "The dtype of y must be float16 or bfloat16 in HIFLOAT4 quant mode (fp32 is not supported)"),
+                        return ge::GRAPH_FAILED);
+    }
     OP_TILING_CHECK(!IsContains(MX_QUANT_Y_DTYPE_LIST, yDtype),
                     OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "y", Ops::Base::ToString(yDtype).c_str(),
                                                           "The dtype of y must be float16, bfloat16 or float"),
@@ -271,18 +330,21 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::CheckMxQuantScaleDataType(const
     auto x2ScaleTensorDesc = context->GetOptionalInputDesc(INPUT_X2_SCALE_INDEX);
     OP_TILING_CHECK((x1ScaleTensorDesc == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName, "x1Scale"),
                     return ge::GRAPH_FAILED);
+    // MX: DT_FLOAT8_E8M0; HiF4: DT_HIFLOAT4_SCALE (4-byte hif4_scale per 64-element group)
+    const ge::DataType expectScaleDtype = isHiF4_ ? ge::DT_HIFLOAT4_SCALE : ge::DT_FLOAT8_E8M0;
+    const char *expectScaleDtypeStr = isHiF4_ ? "HIFLOAT4_SCALE" : "FLOAT8_E8M0";
     ge::DataType x1scaleDtype = x1ScaleTensorDesc->GetDataType();
-    OP_TILING_CHECK(
-        (x1scaleDtype != ge::DataType::DT_FLOAT8_E8M0),
-        OP_LOGE_FOR_INVALID_DTYPE(opName, "x1Scale", Ops::Base::ToString(x1scaleDtype).c_str(), "FLOAT8_E8M0"),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((x1scaleDtype != expectScaleDtype),
+                    OP_LOGE_FOR_INVALID_DTYPE(opName, "x1Scale", Ops::Base::ToString(x1scaleDtype).c_str(),
+                                              expectScaleDtypeStr),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK((x2ScaleTensorDesc == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName, "x2Scale"),
                     return ge::GRAPH_FAILED);
     ge::DataType x2scaleDtype = x2ScaleTensorDesc->GetDataType();
-    OP_TILING_CHECK(
-        (x2scaleDtype != ge::DataType::DT_FLOAT8_E8M0),
-        OP_LOGE_FOR_INVALID_DTYPE(opName, "x2Scale", Ops::Base::ToString(x2scaleDtype).c_str(), "FLOAT8_E8M0"),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((x2scaleDtype != expectScaleDtype),
+                    OP_LOGE_FOR_INVALID_DTYPE(opName, "x2Scale", Ops::Base::ToString(x2scaleDtype).c_str(),
+                                              expectScaleDtypeStr),
+                    return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -542,27 +604,69 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::CheckMxQuantScaleShapes(const g
                                                               "in mxfp4 quant mode, k and ceil(k/32) must be even"),
                         return ge::GRAPH_FAILED);
     }
+    // scale 末维: MX 为 2 (每 64 元素 2 个 E8M0); HiF4 为 1 (每 64 元素 1 个 4-byte hif4_scale)
+    const uint64_t expectScaleLastDim = isHiF4_ ? HIF4_SCALE_LAST_DIM : EVEN_ALIGN;
+    // HiF4 前置校验: 内轴偶数(4-bit 2:1 打包) —— K 偶数; 非转置 x2 时 N 偶数;
+    // 无 32/64/128 对齐约束(hif4_scale 自成 framing 单元 C0=1, 无 MX 的 E8M0 配对要求)
+    if (isHiF4_) {
+        OP_TILING_CHECK((shapeInfo.x1Dim1 % EVEN_ALIGN) != 0,
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                            opName, "K(x1 k dimension)", std::to_string(shapeInfo.x1Dim1).c_str(),
+                            "K must be even in hif4 quant mode (4-bit 2:1 packing)"),
+                        return ge::GRAPH_FAILED);
+        const bool *isTransX2 = context->GetAttrs()->GetAttrPointer<bool>(MATMUL_ALLTOALL_INDEX_SCHEMA.x2Transpose);
+        const bool isBTransFlag = (isTransX2 != nullptr) && (*isTransX2);
+        if (!isBTransFlag) {
+            OP_TILING_CHECK((shapeInfo.x2Dim1 % EVEN_ALIGN) != 0,
+                            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                                opName, "N(x2 n dimension)", std::to_string(shapeInfo.x2Dim1).c_str(),
+                                "N must be even when x2 is non-transposed in hif4 quant mode (4-bit 2:1 packing)"),
+                            return ge::GRAPH_FAILED);
+        }
+    }
     OP_TILING_CHECK(
-        (x1ScaleDim0 != shapeInfo.x1Dim0) || (x1ScaleDim1 != x1Dim1DivMxFp8Size) || (x1ScaleDim2 != EVEN_ALIGN),
+        (x1ScaleDim0 != shapeInfo.x1Dim0) || (x1ScaleDim1 != x1Dim1DivMxFp8Size) ||
+            (x1ScaleDim2 != expectScaleLastDim),
         OP_LOGE_FOR_INVALID_SHAPE(opName, "x1Scale",
                                   (std::string("(") + std::to_string(x1ScaleDim0) + "," + std::to_string(x1ScaleDim1) +
                                    "," + std::to_string(x1ScaleDim2) + ")")
                                       .c_str(),
                                   (std::string("(") + std::to_string(shapeInfo.x1Dim0) + "," +
-                                   std::to_string(x1Dim1DivMxFp8Size) + "," + std::to_string(EVEN_ALIGN) + ")")
+                                   std::to_string(x1Dim1DivMxFp8Size) + "," + std::to_string(expectScaleLastDim) + ")")
                                       .c_str()),
         return ge::GRAPH_FAILED);
-    // Transposed Scenario
-    OP_TILING_CHECK(
-        (x2ScaleDim0 != shapeInfo.x2Dim0) || (x2ScaleDim1 != x2Dim1DivMxFp8Size) || (x2ScaleDim2 != EVEN_ALIGN),
-        OP_LOGE_FOR_INVALID_SHAPE(opName_, "x2Scale",
-                                  (std::string("(") + std::to_string(x2ScaleDim0) + "," + std::to_string(x2ScaleDim1) +
-                                   "," + std::to_string(x2ScaleDim2) + ")")
-                                      .c_str(),
-                                  (std::string("(") + std::to_string(shapeInfo.x2Dim0) + "," +
-                                   std::to_string(x2Dim1DivMxFp8Size) + "," + std::to_string(EVEN_ALIGN) + ")")
-                                      .c_str()),
-        return ge::GRAPH_FAILED);
+    // x2Scale 布局随 x2 转置与否切换:
+    // 转置 x2 为 (N, K) -> scale 为 (N, CeilDiv(K,64), lastDim);
+    // 非转置 x2 为 (K, N) -> scale 为 (CeilDiv(K,64), N, lastDim) (HiF4 支持非转置)
+    const bool *isTransX2Ptr = context->GetAttrs()->GetAttrPointer<bool>(MATMUL_ALLTOALL_INDEX_SCHEMA.x2Transpose);
+    const bool isBTransFlag = (isTransX2Ptr != nullptr) && (*isTransX2Ptr);
+    if (isBTransFlag) {
+        OP_TILING_CHECK(
+            (x2ScaleDim0 != shapeInfo.x2Dim0) || (x2ScaleDim1 != x2Dim1DivMxFp8Size) ||
+                (x2ScaleDim2 != expectScaleLastDim),
+            OP_LOGE_FOR_INVALID_SHAPE(opName_, "x2Scale",
+                                      (std::string("(") + std::to_string(x2ScaleDim0) + "," +
+                                       std::to_string(x2ScaleDim1) + "," + std::to_string(x2ScaleDim2) + ")")
+                                          .c_str(),
+                                      (std::string("(") + std::to_string(shapeInfo.x2Dim0) + "," +
+                                       std::to_string(x2Dim1DivMxFp8Size) + "," +
+                                       std::to_string(expectScaleLastDim) + ")")
+                                          .c_str()),
+            return ge::GRAPH_FAILED);
+    } else {
+        OP_TILING_CHECK(
+            (x2ScaleDim0 != x2Dim0DivMxFp8Size) || (x2ScaleDim1 != shapeInfo.x2Dim1) ||
+                (x2ScaleDim2 != expectScaleLastDim),
+            OP_LOGE_FOR_INVALID_SHAPE(opName_, "x2Scale",
+                                      (std::string("(") + std::to_string(x2ScaleDim0) + "," +
+                                       std::to_string(x2ScaleDim1) + "," + std::to_string(x2ScaleDim2) + ")")
+                                          .c_str(),
+                                      (std::string("(") + std::to_string(x2Dim0DivMxFp8Size) + "," +
+                                       std::to_string(shapeInfo.x2Dim1) + "," +
+                                       std::to_string(expectScaleLastDim) + ")")
+                                          .c_str()),
+            return ge::GRAPH_FAILED);
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -587,16 +691,21 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::CheckQuantGroupSize(const gert:
                                                true,
                                                *attrs->GetAttrPointer<bool>(MATMUL_ALLTOALL_INDEX_SCHEMA.x2Transpose),
                                                opName};
+    shapeInfo.isHif4 = isHiF4_; // HiF4 scale 末维为 1, InferGroupSize 按 isHif4 取 scaleKValue 口径
 
     OP_TILING_CHECK(!mc2tiling::Mc2TilingUtils::InferGroupSize(shapeInfo, groupSizeM, groupSizeN, groupSizeK),
                     OP_LOGE(opName_, "Failed to execute inferGroupSize."), return ge::GRAPH_FAILED);
+    // MX: group size (1, 1, 32); HiF4: group size (1, 1, 64)
+    const uint64_t expectGroupSizeK = isHiF4_ ? HIF4_SCALE_BLOCK_K : MX_GROUP_SIZE_K;
     OP_TILING_CHECK(
-        (groupSizeM != MX_GROUP_SIZE_M) || (groupSizeN != MX_GROUP_SIZE_N) || (groupSizeK != MX_GROUP_SIZE_K),
+        (groupSizeM != MX_GROUP_SIZE_M) || (groupSizeN != MX_GROUP_SIZE_N) || (groupSizeK != expectGroupSizeK),
         OP_LOGE_WITH_INVALID_ATTR(opName_, "groupSize",
                                   (std::string("[groupSizeM=") + std::to_string(groupSizeM) + ", groupSizeN=" +
                                    std::to_string(groupSizeN) + ", groupSizeK=" + std::to_string(groupSizeK) + "]")
                                       .c_str(),
-                                  "[groupSizeM=1, groupSizeN=1, groupSizeK=32]"),
+                                  (std::string("[groupSizeM=1, groupSizeN=1, groupSizeK=") +
+                                   std::to_string(expectGroupSizeK) + "]")
+                                      .c_str()),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -1037,7 +1146,21 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::DoHcommMxQuantMMTiling()
     const bool transB = contextInfo.args_.isBTrans;
     const uint64_t rankN = contextInfo.args_.nValue / contextInfo.args_.rankDim;
     const bool hasBias = contextInfo.args_.isBias;
-    if (isMxfp4_) {
+    if (isHiF4_) {
+        // HiF4: x1/x2 均为 hifloat4, scale 为 [M, K/64, 1] 的 hif4_scale 元素; 不支持 bias(SetBiasInfo 恒 false)
+        QuantMatmulTilingSwat<mm::DataType::DT_HIFLOAT4, mm::DataType::DT_HIFLOAT4, mm::BiasDataType::DT_FLOAT>
+            tilingSwat;
+        tilingSwat.SetPlatformInfoPtr(context_->GetPlatformInfo());
+        tilingSwat.SetBiasInfo(false);
+        if (inferredInfo.tileCnt > 0) {
+            tilingSwat.GetTilingData(inferredInfo.tileM, rankN, contextInfo.args_.kValue, false, transB,
+                                     hcommTilingData_.tileQbmmTilingData);
+        }
+        if (inferredInfo.tailCnt > 0) {
+            tilingSwat.GetTilingData(inferredInfo.tailM, rankN, contextInfo.args_.kValue, false, transB,
+                                     hcommTilingData_.tailQbmmTilingData);
+        }
+    } else if (isMxfp4_) {
         // master 的 QuantMatmulTilingSwat 为 3 参模板(biasDtype 无默认值),
         // 需补齐 biasDtype 并调用 SetPlatformInfoPtr/SetBiasInfo
         QuantMatmulTilingSwat<mm::DataType::DT_FLOAT4_E2M1, mm::DataType::DT_FLOAT4_E2M1, mm::BiasDataType::DT_FLOAT>
@@ -1109,12 +1232,14 @@ uint64_t MxQuantMatmulAllToAllTilingBase::GetTilingKey() const
     }
     uint8_t commMode = (engineType == mc2tiling::A5_CCU_ENGINE) ? COMMMODE_CCU : COMMMODE_AICPU;
 
+    // HiF4 量化使用独立的 QUANTMODE(HIF4_PREGROUP_QUANT_MODE), 支持 X2TRANSPOSE 0/1
+    const uint64_t quantModeKey = isHiF4_ ? HIF4_PREGROUP_QUANT_MODE : MX_QUANT_MODE;
     const uint64_t tilingKey =
-        GET_TPL_TILING_KEY(MX_QUANT_MODE, x2TransposeFlag, biasDType, commMode, ADDBIAS_OFF, usingApaceImpl_);
+        GET_TPL_TILING_KEY(quantModeKey, x2TransposeFlag, biasDType, commMode, ADDBIAS_OFF, usingApaceImpl_);
     OP_LOGD(opName_,
-            "MXQUANTMODE,X2TRANSPOSE,DTYPEBIAS,COMMMODE,ADDBIASSPLITMODE,USING_APACE_IMPL: [%d,%d,%d,%d,%d,%d], "
+            "QUANTMODE,X2TRANSPOSE,DTYPEBIAS,COMMMODE,ADDBIASSPLITMODE,USING_APACE_IMPL: [%lu,%d,%d,%d,%d,%d], "
             "TilingKey is [%lu].",
-            MX_QUANT_MODE, x2TransposeFlag, biasDType, commMode, ADDBIAS_OFF, usingApaceImpl_, tilingKey);
+            quantModeKey, x2TransposeFlag, biasDType, commMode, ADDBIAS_OFF, usingApaceImpl_, tilingKey);
     return tilingKey;
 }
 

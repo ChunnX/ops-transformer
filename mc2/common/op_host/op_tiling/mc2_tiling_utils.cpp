@@ -489,21 +489,31 @@ bool Mc2TilingUtils::InferGroupSize(Mc2MatmulShapeInfo &mmInfo, uint64_t &groupS
         auto kValue = mmInfo.x1Shape->GetStorageShape().GetDim(mmInfo.x1Shape->GetStorageShape().GetDimNum() - 1);
         int64_t scaleKValue = 0;
         if (mmInfo.isMxfp) {
+            // MX scale shape 为 [m, k/64, 2]: 每 32 元素组 1 个 E8M0 字节;
+            // HiF4 scale shape 为 [m, k/64, 1]: 每 64 元素组 1 个 4 字节 hif4_scale 元素。
+            const int64_t scaleLastDim = mmInfo.isHif4 ? 1 : 2;
             scaleKValue =
                 mmInfo.x1ScaleShape->GetStorageShape().GetDim(mmInfo.x1ScaleShape->GetStorageShape().GetDimNum() - 2) *
-                2; // in mxfp scene, scaleshape is [m, k/2, 2]
+                scaleLastDim; // in mxfp scene, scaleshape is [m, k/2, 2]
         } else {
             scaleKValue =
                 mmInfo.x1ScaleShape->GetStorageShape().GetDim(mmInfo.x1ScaleShape->GetStorageShape().GetDimNum() - 1);
         }
         OP_TILING_CHECK(scaleKValue == 0,
                         OP_LOGE_FOR_INVALID_VALUE(mmInfo.opName, "x1Scale k dimension", "0", "non-zero"), return false);
-        OP_TILING_CHECK((kValue % scaleKValue) != 0,
-                        OP_LOGE_FOR_INVALID_VALUE(mmInfo.opName, "x1 and x1Scale k dimension",
-                                                  (std::to_string(kValue) + ", " + std::to_string(scaleKValue)).c_str(),
-                                                  "x1 k dimension should be divisible by x1Scale k dimension"),
-                        return false);
-        groupSizeK = kValue / scaleKValue;
+        if (mmInfo.isHif4) {
+            // HiF4: groupSizeK 恒为 64(每 64 元素共享 1 个 4 字节 hif4_scale), x1Scale dim1 = ceil(K/64),
+            // 尾组允许不满, 无 K 对 scale 分组数的整除约束(区别于 MX 的整除语义)
+            constexpr int64_t HIF4_K_GROUP_SIZE = 64;
+            groupSizeK = HIF4_K_GROUP_SIZE;
+        } else {
+            OP_TILING_CHECK((kValue % scaleKValue) != 0,
+                            OP_LOGE_FOR_INVALID_VALUE(mmInfo.opName, "x1 and x1Scale k dimension",
+                                                      (std::to_string(kValue) + ", " + std::to_string(scaleKValue)).c_str(),
+                                                      "x1 k dimension should be divisible by x1Scale k dimension"),
+                            return false);
+            groupSizeK = kValue / scaleKValue;
+        }
     }
 
     return true;
