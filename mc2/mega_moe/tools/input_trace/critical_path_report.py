@@ -1124,7 +1124,7 @@ function renderTimeline(blockGroups,pinSourceGroups,events) {{
   const contentHeight=Math.max(rowTop,140);
   const defaultViewportHeight=Math.min(Math.max(contentHeight,140),650);
   const viewportHeight=timelineViewportHeight??defaultViewportHeight;
-  const labels=rows.map(row=>{{
+  const laneLabelsHtml=rows.map(row=>{{
     const fixedClass=row.fixed?' fixed-pinned':'';
     if(row.type==='section') return `<div class="timeline-label section${{fixedClass}}" style="top:${{row.top}}px;height:${{row.height}}px"><span>${{row.label}}</span>`
       +`<button type="button" class="pinned-toggle" data-toggle-pinned title="${{pinnedPartitionCollapsed?'展开固定对比区':'收起固定对比区'}}">${{pinnedPartitionCollapsed?'▸':'▾'}}</button></div>`;
@@ -1142,7 +1142,7 @@ function renderTimeline(blockGroups,pinSourceGroups,events) {{
   }}).join('');
   const pinnedDivider=hasPinnedPartition?`<div class="timeline-pinned-divider" style="top:${{pinnedBottom-2}}px"></div>`:'';
   root.innerHTML=`<div class="timeline-viewport" style="height:${{viewportHeight}}px"><div class="timeline-content" style="height:${{contentHeight}}px">`
-    +`<div class="timeline-label-layer">${{labels}}${{pinnedDivider}}</div><canvas class="timeline-canvas"></canvas></div></div>`;
+    +`<div class="timeline-label-layer">${{laneLabelsHtml}}${{pinnedDivider}}</div><canvas class="timeline-canvas"></canvas></div></div>`;
   const viewport=root.querySelector('.timeline-viewport'),content=root.querySelector('.timeline-content');
   const labelLayer=root.querySelector('.timeline-label-layer'),canvas=root.querySelector('.timeline-canvas');
   const eventTooltipHtml=(event,record)=>{{

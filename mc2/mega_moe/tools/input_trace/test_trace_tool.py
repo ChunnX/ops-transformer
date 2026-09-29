@@ -189,6 +189,60 @@ class TraceTest(unittest.TestCase):
                         [node, "--check", str(source)], check=True, capture_output=True
                     )
 
+    @unittest.skipUnless(shutil.which("node"), "Node.js is required")
+    def test_timeline_initialization(self):
+        self.write(capture_words())
+        output = self.root / "report"
+        write_report_bundle(trace.parse_capture(self.raw), output, trace.REPORT)
+        page = (output / "index.html").read_text()
+        # Execute the generated label/Canvas DOM initialization with a minimal DOM.
+        # This catches runtime failures that node --check cannot detect.
+        start = page.index("function renderTimeline(")
+        end = page.index("  const viewport=root.querySelector", start)
+        render = page[start:end] + "\n}\n"
+        script = (
+            r"""
+const assert = require('node:assert/strict');
+const root = {innerHTML: ''};
+const document = {getElementById: () => root};
+const labels = {block:'Block', iteration:'Stage', unit:'Unit', range:'Token'};
+const canvasTooltip = {style: {}};
+let redrawTimelineSelection, clearTimelineMeasurement;
+let timelineResizeObserver = null, selectedTimelineEvent = null;
+let timelineViewportHeight = null, pinnedPartitionCollapsed = false;
+const pinnedBlocks = new Set(), pinnedLanes = new Set();
+const laneKey = (core,role) => `${core}:${role}`;
+const signedCycleDelta = cycle => cycle;
+const compactDurationValue = String, compactDurationUnit = 'cycles';
+const esc = String;
+const resetEventDetail = () => {};
+"""
+            + render
+            + r"""
+const event = {event:'InputPrepare',begin_cycle:10,end_cycle:30};
+const records = ['AIC','AIV0','AIV1'].map(role => ({
+  role, core:0, process_begin_cycle:0, process_end_cycle:40,
+  process_duration_cycles:40, events:[event],
+  laneMetrics:{lastEvent:event,eventSpanCycles:20,waitCycles:0,tailCycles:10}
+}));
+const groups = [{core:0,records}];
+for (const pinned of [false,true]) {
+  if (pinned) pinnedBlocks.add(0);
+  renderTimeline(groups,groups,[event]);
+  assert.match(root.innerHTML, /Block 0/);
+  assert.match(root.innerHTML, /timeline-canvas/);
+  for (const role of ['AIC','AIV0','AIV1']) assert.ok(root.innerHTML.includes(role));
+  assert.ok(!root.innerHTML.includes('undefined'));
+}
+"""
+        )
+        source = self.root / "timeline_init.js"
+        source.write_text(script)
+        result = subprocess.run(
+            [shutil.which("node"), str(source)], capture_output=True, text=True
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_mode2_fence(self):
         words = capture_words()
         words[11] = 2
