@@ -24,7 +24,6 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     }
     CopyInTokenWeights(token, postVals);
 
-    // 第一遍：沿完整D轴计算输入归一化。
     float sumSq0 = 0.0f;
     for (uint32_t tile = 0; tile < dLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
@@ -33,7 +32,6 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     }
     const float invRms0 = ComputeInvRms(sumSq0, invD_);
 
-    // 每个tile输出低精度x2后立即计算Phi partial。
     for (uint32_t tile = 0; tile < dLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dTile_;
@@ -43,7 +41,6 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     }
     FenceMte3ToV();
 
-    // 固定执行顶层合并，与双sibling方案保持一致。
     const float totalSumSqPre = sumSqHalf[0] + sumSqHalf[1];
     float xHatVals[N];
     for (uint32_t o = 0; o < N; ++o) {
@@ -51,8 +48,6 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     }
     ComputeGateValues(totalSumSqPre, xHatVals);
 
-    // 第三遍：计算门控融合和h_in低精度边界。在完整D轴的输出归一化标量确定前，
-    // 复用已经消费完的x2缓存首段保存低精度h_in。
     float sumSq1 = 0.0f;
     // 提前发起gamma1搬运（到bufGammaFp32_），与下方门控融合的Vector计算重叠。
     StartCopyInGamma1();
@@ -64,7 +59,6 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         sumSq1 += ComputeHInCacheAndReduceSumSq(tOff, tD, x2Cache, gateBuf);
     }
 
-    // 第四遍：沿完整D轴计算输出归一化并写最终输出。
     FinalizeHInPrime(token, sumSq1);
 }
 
@@ -82,7 +76,6 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     const uint32_t nStart = siblingAivIdx_ * HEADS_PER_SIBLING;
     CopyInTokenWeights(token, postVals, nStart, nStart + HEADS_PER_SIBLING);
 
-    // 两个sibling AIV均按tile归约完整D轴的输入平方和。
     float sumSq0 = 0.0f;
     for (uint32_t tile = 0; tile < dLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
@@ -139,7 +132,6 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         dotHalf[1][o] = partialBuf.GetValue(o + 1U);
     }
 
-    // 4op保持Gate之后回读follower的两个x2 head。
     LocalTensor<T> x2Cache = bufActivationLowp_.Get<T>();
     const uint64_t followerHeadOffset = (uint64_t)token * N_ * D_ + HEADS_PER_SIBLING * D_;
     const float totalSumSqPre = sumSqHalf[0] + sumSqHalf[1];
