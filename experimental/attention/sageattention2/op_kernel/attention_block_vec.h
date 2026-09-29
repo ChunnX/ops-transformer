@@ -118,7 +118,7 @@ public:
     {
         if (params_.accum != uint32_t(SagePvAccum::FP32_FP16))
             return;
-        auto pv = resource_->ubBuf.template GetBufferByByte<float>(PV_UB + slot * PV_SLOT_BYTES);
+        auto pv = resource_->ubBuf.template GetBufferByByte<float>(Layout::PV_UB + slot * Layout::PV_SLOT_BYTES);
         RoundPartialFp16VF((__ubuf__ float *)pv.GetPhyAddr(), HALF * params_.dp);
     }
     __aicore__ inline __attribute__((always_inline)) void UpdateOutput(uint32_t index, uint32_t count)
@@ -133,8 +133,8 @@ public:
             auto alpha1 = resource_->ubBuf.GetBufferByByte<float>(ALPHA_UB + (index % ALPHA_SLOTS) * 512);
             AccumulateFp32PairVF<DP>(
                 (__ubuf__ float *)accum_.GetPhyAddr(),
-                (__ubuf__ float *)resource_->ubBuf.GetBufferByByte<float>(PV_UB).GetPhyAddr(),
-                (__ubuf__ float *)resource_->ubBuf.GetBufferByByte<float>(PV_UB + PV_SLOT_BYTES).GetPhyAddr(),
+                (__ubuf__ float *)resource_->ubBuf.GetBufferByByte<float>(Layout::PV_UB).GetPhyAddr(),
+                (__ubuf__ float *)resource_->ubBuf.GetBufferByByte<float>(Layout::PV_UB + Layout::PV_SLOT_BYTES).GetPhyAddr(),
                 (__ubuf__ float *)alpha0.GetPhyAddr(), (__ubuf__ float *)alpha1.GetPhyAddr());
             CrossCoreSetFlag<4, PIPE_V>(PV_RELEASE);
             CrossCoreSetFlag<4, PIPE_V>(PV_RELEASE);
@@ -143,7 +143,7 @@ public:
             RoundPvSlot(0);
             auto alpha = resource_->ubBuf.GetBufferByByte<float>(ALPHA_UB + (index % ALPHA_SLOTS) * 512);
             AccumulateFp32VF<DP>((__ubuf__ float *)accum_.GetPhyAddr(),
-                                 (__ubuf__ float *)resource_->ubBuf.GetBufferByByte<float>(PV_UB).GetPhyAddr(),
+                                 (__ubuf__ float *)resource_->ubBuf.GetBufferByByte<float>(Layout::PV_UB).GetPhyAddr(),
                                  (__ubuf__ float *)alpha.GetPhyAddr());
             CrossCoreSetFlag<4, PIPE_V>(PV_RELEASE);
         }
