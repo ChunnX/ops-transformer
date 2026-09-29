@@ -16,7 +16,7 @@
 #include "version/asc_devkit_version.h"
 #include "version/hcomm_version.h"
 
-#if ASC_DEVKIT_MAJOR > 9 || (ASC_DEVKIT_MAJOR == 9 && ASC_DEVKIT_MINOR > 0)
+#if ASC_DEVKIT_VERSION_NUM >= 90200000
 #define ENABLE_TENSOR_API
 #endif
 
