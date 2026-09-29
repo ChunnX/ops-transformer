@@ -424,6 +424,20 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::InitQuantTokenBufferCon
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline uint32_t MegaMoe<TemplateMegaMoeTypeFunc>::InitQuantScratchTensors(uint32_t mxTempTensorAddr)
 {
+    /*
+     * 预量化输入已符合 dispatch 格式，使用两个 stage 槽位搬运 x、scale 和可选的 topk weight，
+     * 不再分配动态量化 scratch 布局。
+     */
+    if constexpr (!Std::IsSame<XType, bfloat16_t>::value) {
+        const uint32_t stageBytes = params_.tilingData->preQuantStageBytes;
+        quantScratch_.preQuantStage0 = LocalTensor<uint8_t>(TPosition::VECCALC, mxTempTensorAddr, stageBytes);
+        quantScratch_.preQuantStage1 =
+            LocalTensor<uint8_t>(TPosition::VECCALC, mxTempTensorAddr + stageBytes, stageBytes);
+        sharedQuantScratch_.preQuantStage0 = quantScratch_.preQuantStage0;
+        sharedQuantScratch_.preQuantStage1 = quantScratch_.preQuantStage1;
+        return mxTempTensorAddr + DOUBLE_BUFFER * stageBytes;
+    }
+
     uint32_t mxTempTensorSize = 2 * 1024;
     uint32_t xOutTensorSize = quantProcessConfig_.quantTokenScaleAlignBytes;
     uint32_t xInAlignSize = Ops::Base::CeilAlign(k_, static_cast<uint32_t>(ALIGN_128)) * sizeof(bfloat16_t);
@@ -923,9 +937,19 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::PrepareLocalInput()
         if constexpr (Std::IsSame<XType, bfloat16_t>::value) {
             QuantizeInputTokens(tokenRange);
         } else {
+            // 计时范围覆盖预量化数据搬入、必要的类型转换和完整记录搬出。
+            PipeBarrier<PIPE_ALL>();
+            const uint64_t transferStartCycle = static_cast<uint64_t>(GetSystemCycle());
             PackPreQuantizedLocalTokens<XType, ActivationType, TopkWeightsType, TopkWeightsPrefetch>(
                 tokenRange, commonConfig_, params_, quantProcessConfig_, params_.peermemInfo.quantTokenScalePtr,
                 quantScratch_);
+            PipeBarrier<PIPE_ALL>();
+            const uint64_t transferEndCycle = static_cast<uint64_t>(GetSystemCycle());
+            AscendC::printf(
+                "[MegaMoeTimer] block=%u subBlock=%u start=%llu end=%llu diff=%llu cycles\n",
+                static_cast<uint32_t>(GetBlockIdx()), static_cast<uint32_t>(GetSubBlockIdx()),
+                static_cast<unsigned long long>(transferStartCycle), static_cast<unsigned long long>(transferEndCycle),
+                static_cast<unsigned long long>(transferEndCycle - transferStartCycle));
             // 预量化共享专家与 MoE 类型一致；64 对齐时直接读取原始输入，
             // 否则复用这里的 MoE 拼接结果，无需独立打包共享输入。
         }

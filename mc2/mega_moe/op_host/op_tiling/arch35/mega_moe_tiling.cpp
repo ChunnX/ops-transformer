@@ -267,6 +267,8 @@ void PrintMegaMoeTilingData(const MegaMoeTilingData *tilingData, const char *nod
     OP_LOGD(nodeName, "dedup: dedupMode=%d, topkWeightsPrefetch=%d", tilingData->dedupMode,
             tilingData->topkWeightsPrefetch);
     OP_LOGD(nodeName, "topkWeightsPrefetch is %d", tilingData->topkWeightsPrefetch);
+    OP_LOGD(nodeName, "preQuant: tileTokens=%u, stageBytes=%u", tilingData->preQuantTileTokens,
+            tilingData->preQuantStageBytes);
     OP_LOGD(nodeName, "mGroupsPerWave is %u", tilingData->mGroupsPerWave);
 
     PrintMegaMoeBufferConfigs(tilingData, nodeName);
@@ -1451,6 +1453,17 @@ static uint32_t CalcTopkValidIndexFixedBufferBytes(const MegaMoeTilingData *tili
                                                    bool isSharedQuantIndependent, uint32_t topkValidIndexCoreNum)
 {
     uint64_t totalFlagElementCount = CalcHostFlagElementCount(tilingData);
+    /*
+     * SendAndQuantBuffInit 会清零普通 flag 区域和预取 GMM1 tile 状态区域中较大的一块。
+     * Host 侧的 UB reset 预算必须与 device 侧的最大值保持一致，否则 route ring 可能与 reset UB 重叠。
+     */
+    if (tilingData->topkWeightsPrefetch == 1U) {
+        uint64_t statusSlots =
+            static_cast<uint64_t>(tilingData->moeExpertPerRank) * static_cast<uint64_t>(tilingData->maxTilesPerExpert) +
+            1U;
+        uint64_t statusElementCount = statusSlots * static_cast<uint64_t>(INT_CACHELINE);
+        totalFlagElementCount = std::max(totalFlagElementCount, statusElementCount);
+    }
     uint32_t resetElementCountPerCore =
         static_cast<uint32_t>(ops::CeilDiv(totalFlagElementCount, static_cast<uint64_t>(tilingData->blockAivNum)));
     uint32_t resetBatchElementCount = std::min(resetElementCountPerCore, static_cast<uint32_t>(DISPATCH_RESET_BATCH));
@@ -1472,10 +1485,64 @@ static uint32_t CalcTopkValidIndexFixedBufferBytes(const MegaMoeTilingData *tili
         ops::CeilDiv(tilingData->epWorldSize * tilingData->moeExpertPerRank, topkValidIndexCoreNum);
     uint32_t sendCountAccumulatorBytes = static_cast<uint32_t>(ops::CeilAlign(
         static_cast<uint64_t>(maxExpertCountPerCore) * sizeof(int32_t), static_cast<uint64_t>(ALIGN_32)));
+    if (tilingData->preQuantTileTokens != 0U) {
+        // 预量化不申请动态量化的 mxTemp/xOut/xIn；两个 stage 按阶段复用。
+        return resetTensorBytes + DOUBLE_BUFFER * tilingData->preQuantStageBytes + sendCountAccumulatorBytes;
+    }
+
     // mxTempTensor_ 占 2KB，xOutTensor_ 和 xInTensor_ 各使用双 buffer。
     constexpr uint32_t mxTempTensorBytes = 2U * 1024U;
     return resetTensorBytes + mxTempTensorBytes + 2U * quantOutputBufferBytes + 2U * quantInputBufferBytes +
            sendCountAccumulatorBytes;
+}
+
+/*
+ * 计算预量化一个 stage slot 所需的 UB。kernel 的 x/scale/weight 阶段共用同一 slot，
+ * stage 中保存完整 dispatch record，token、scale 和 weight 按记录布局相加；BF16 topK weight
+ * 的 Cast 输入与输出需要同时保留额外的源数据区。
+ */
+static uint32_t CalcPreQuantStageBytes(const MegaMoeTilingData *tilingData, uint32_t activationElementsPerByte,
+                                       uint32_t tileTokens, ge::DataType topKWeightsDataType)
+{
+    // 保存完整的 dispatch 记录，使 MTE3 能一次写出整个 tile。
+    uint64_t stageBytes =
+        static_cast<uint64_t>(CalcDispatchCopyBufferBytes(tilingData, activationElementsPerByte)) * tileTokens;
+    if (tilingData->topkWeightsPrefetch == 1 && topKWeightsDataType == ge::DT_BF16) {
+        uint64_t weightSrcRowBytes =
+            ops::CeilAlign(static_cast<uint64_t>(tilingData->topK) * ge::GetSizeByDataType(topKWeightsDataType),
+                           static_cast<uint64_t>(ALIGN_32));
+        stageBytes += weightSrcRowBytes * tileTokens;
+    }
+    return static_cast<uint32_t>(ops::CeilAlign(stageBytes, static_cast<uint64_t>(ALIGN_512)));
+}
+
+/*
+ * 计算预量化 tile 的 B 和双 buffer stage 空间。route ring 的核数及 UB 配置
+ * 由 SetTopkValidIndexBufferConfigs 统一处理。
+ */
+static void SetPreQuantTileConfig(MegaMoeTilingData *tilingData, bool isPreQuantizedX,
+                                  uint32_t activationElementsPerByte, ge::DataType topKWeightsDataType)
+{
+    tilingData->preQuantTileTokens = 0U;
+    tilingData->preQuantStageBytes = 0U;
+    if (!isPreQuantizedX || tilingData->h == 0U) {
+        return;
+    }
+
+    // PrepareLocalTokens 按 blockAivNum 个 AIV 分工，stage 不需要为 route 上界之外的 token 预留空间。
+    uint32_t maxTokensPerAiv = ops::CeilDiv(tilingData->bs, std::max(tilingData->blockAivNum, 1U));
+    // 仅以单个 token 的 scale 行宽作为 B 的性能基准。
+    uint32_t scaleRowBytes = static_cast<uint32_t>(
+        ops::CeilAlign(ops::CeilDiv(static_cast<uint64_t>(tilingData->h), static_cast<uint64_t>(ALIGN_32)),
+                       static_cast<uint64_t>(ALIGN_32)));
+    uint32_t scaleBasedTokens = std::max(1U, static_cast<uint32_t>(ops::CeilDiv(static_cast<uint64_t>(ALIGN_512),
+                                                                                static_cast<uint64_t>(scaleRowBytes))));
+    uint32_t tileTokens = std::min(scaleBasedTokens, maxTokensPerAiv);
+    tileTokens = std::max(tileTokens, 1U);
+
+    tilingData->preQuantTileTokens = tileTokens;
+    tilingData->preQuantStageBytes =
+        CalcPreQuantStageBytes(tilingData, activationElementsPerByte, tileTokens, topKWeightsDataType);
 }
 
 /*
@@ -1546,6 +1613,7 @@ static void SetAdaptiveBufferConfigs(const gert::TilingContext *context, const M
                                      uint32_t availableUbBytes)
 {
     auto topKWeightsDesc = context->GetInputDesc(config.topkWeightsIndex);
+    auto xDesc = context->GetInputDesc(config.xIndex);
 
     uint32_t activationElementsPerByte = expertParams.moe.quantOutDtype == ge::DT_FLOAT4_E2M1 ? 2U : 1U;
     uint32_t sharedActivationElementsPerByte = expertParams.shared.quantOutDtype == ge::DT_FLOAT4_E2M1 ? 2U : 1U;
@@ -1557,6 +1625,10 @@ static void SetAdaptiveBufferConfigs(const gert::TilingContext *context, const M
     // 先于 topK 有效下标配置写入：CalcHostFlagElementCount 会读这个字段累加 flag 区大小，
     // 该依赖只经 tilingData 传递，调换顺序会静默改变 flag 区尺寸。
     tilingData->combineSyncSlotCountPerExpert = CalcCombineSyncSlotCountPerExpert(tilingData);
+
+    const bool isPreQuantizedX = xDesc != nullptr && IsPreQuantizedXType(xDesc->GetDataType());
+    SetPreQuantTileConfig(tilingData, isPreQuantizedX, activationElementsPerByte,
+                          topKWeightsDesc == nullptr ? ge::DT_FLOAT : topKWeightsDesc->GetDataType());
 
     SetTopkValidIndexBufferConfigs(tilingData, activationElementsPerByte, sharedActivationElementsPerByte,
                                    tilingData->isSharedQuantIndependent == 1U, availableUbBytes);
