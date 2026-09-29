@@ -290,24 +290,9 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
                 biasCache_[i] = biasGm_.GetValue(i);
             }
         } else if (siblingAivIdx_ == 0U) {
-            if constexpr (USE_RMS_MID) {
-                LocalTensor<float> scalarBuf = bufScalar_.Get<float>();
-                DataCopyExtParams alphaCopy = {1, sizeof(float), 0, 0, 0};
-                DataCopyExtParams biasCopy = {1, N * sizeof(float), 0, 0, 0};
-                DataCopyPadExtParams<float> scalarPad = {false, 0, 0, 0};
-                DataCopyPad(scalarBuf, alpha0Gm_, alphaCopy, scalarPad);
-                DataCopyPad(scalarBuf[ALIGN8], biasGm_, biasCopy, scalarPad);
-                SetFlag<HardEvent::MTE2_S>(evtMte2toS_);
-                WaitFlag<HardEvent::MTE2_S>(evtMte2toS_);
-                alpha0_ = scalarBuf.GetValue(0);
-                for (uint32_t i = 0; i < N; ++i) {
-                    biasCache_[i] = scalarBuf.GetValue(ALIGN8 + i);
-                }
-            } else {
-                alpha0_ = alpha0Gm_.GetValue(0);
-                for (uint32_t i = 0; i < N; ++i) {
-                    biasCache_[i] = biasGm_.GetValue(i);
-                }
+            alpha0_ = alpha0Gm_.GetValue(0);
+            for (uint32_t i = 0; i < N; ++i) {
+                biasCache_[i] = biasGm_.GetValue(i);
             }
         }
 
