@@ -68,7 +68,7 @@ struct MatmulShapeInfo {
 struct CommModelInfo {
     uint64_t rankDim;                        // 通信域卡数(构造期钳位 ≥2)
     uint64_t commDtypeSize;                  // 通信每元素字节数
-    uint64_t commMatrixLen;                  // 通信矩阵另一维(K 或 N, args.commAxis 决定)
+    uint64_t commMatrixLen;                  // 通信矩阵另一维(K 或 N, dataflow.order 决定)
     uint64_t commDtypeSizeExpansionFraction; // 子字节折算分母(fp4=2)
 };
 
@@ -126,15 +126,6 @@ struct FitBalanceTilingArgs {
     ge::DataType geAType;          // ge 域 A dtype(fp4 识别——DT_FLOAT4_E2M1 无 mm 域表达)
     uint64_t inputDtypeSize;       // A 每元素字节数(glue 真实口径, fp4 时=0)
     uint64_t outputDtypeSize;      // C 每元素字节数(C 侧承载通信时的字节)
-    // —— 数据流结构参数(op 侧按算子语义直接填, 属调用事实而非实测标定) ——
-    CommAxis commAxis; // 通信承载侧: K=A 侧输入(传 A 行, 另一维取 kValue); N=C 侧输出(传 C 行, 取 nValue)
-    uint64_t mmWorksetShares; // 稳态 mm 工作集的数据份数(FindCubeUtil 的 M 跨度倍数):
-                              // 输入侧聚合且有本地块(FRONT)=rankDim−1(本地份剔出稳态、单独按单份建模);
-                              // 其余聚合/分发形态=rankDim; two-shot 单份形态=1
-    uint64_t mmRowMul;      // mm 总行数相对切分域的倍数(MatmulTime 的行数乘子):
-                            // 聚合/分发形态(切分域为本卡份, 实算全量)=rankDim; 单份形态=1
-    uint64_t commVolumeMul; // 单次通信调用的物理字节份数(单轮 256MB 上限判定):
-                            // 聚合/分发(单次调用搬全量)=rankDim; 单份调用=1
 };
 
 // ====== 通信引擎枚举与解析（三引擎统一分派的公共词汇）======
@@ -200,6 +191,18 @@ struct FitBalanceCalibration {
     static constexpr size_t MAX_COMM_FIT_ROWS = 4;   // 已标定通信形态数上限
     static constexpr size_t MAX_CUBE_CALC_ROWS = 4;  // matmul 算力档位数上限
     static constexpr size_t MAX_BASE_BLOCK_ROWS = 2; // 最优基本块档位数上限
+
+    // —— 数据流形态(算子接入时定死的结构声明; 引擎据此推导 axis 与三个倍数,
+    //    推导规则见 InitCtx) ——
+    struct DataflowShape {
+        CommComputeOrder order = CommComputeOrder::COMM_FIRST; // 通算顺序(并决定通信承载侧:
+                                                               // 通信在前=传输入 A 侧/K 轴, 在后=传输出 C 侧/N 轴)
+        LocalMMPosition localMMPosition = LocalMMPosition::NONE; // 本地 mm 块位置(决定稳态工作集
+                                                                 // 是否剔出本地份: FRONT=rankDim−1)
+        bool fullVolume = true; // 全量形态: 切分域为本卡份、实算 mm 总行数与单次通信字节均为
+                                // 切分域×rankDim(聚合/分发类); false=单份形态(本卡一份, 两者×1)
+    };
+    DataflowShape dataflow{};
 
     // —— 通信拟合（单引擎）——
     struct CommFit {

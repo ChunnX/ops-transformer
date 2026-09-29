@@ -16,8 +16,7 @@
 ### 主入口
 
 ```cpp
-CommCutResult FitBalanceCut(const FitBalanceTilingArgs &args, LocalMMPosition localMMPosition,
-                            CommComputeOrder order, TilingCommEngine commEngine,
+CommCutResult FitBalanceCut(const FitBalanceTilingArgs &args, TilingCommEngine commEngine,
                             const FitBalanceCalibration &calib);
 ```
 
@@ -50,7 +49,7 @@ const FitBalanceCalibration::CommFit::Row *FindCommFitRow(calib, engine, rankDim
 
 | 类型 | 说明 |
 |---|---|
-| `FitBalanceTilingArgs` | 引擎调度入参（13 字段：m/n/k、rankDim、aicCoreNum、dtype 四元组 + 数据流结构参数四元组） |
+| `FitBalanceTilingArgs` | 引擎调度入参（9 字段：m/n/k、rankDim、aicCoreNum、dtype 四元组）——纯运行时 shape 事实 |
 | `CommCutResult` | 切分结果（shortTileAtBack / totalTileCnt / numLongTile / numShortTile / longTileLen / shortTileLen） |
 | `FitBalanceCalibration` | 客户标定数据总集（CommProfile 结构参数 + 通信拟合行 k/b/c + matmul 算力档），算子侧唯一编辑面 |
 | `LocalMMPosition` | 流水线结构键控：FRONT（本地 mm 块前置）/ BACK（后置）/ NONE（无本地块） |
@@ -70,6 +69,12 @@ const FitBalanceCalibration::CommFit::Row *FindCommFitRow(calib, engine, rankDim
 // ── ① 标定数据: 每算子一份, 客户唯一编辑面 ─────────────────────────────────
 // profile 按本算子流水线结构填写; rows 填实测拟合值; mmFit 按 dtype 档填
 static const FitBalanceCalibration CALIBRATION = {
+    /* dataflow: 数据流形态(接入时定死的结构声明, 引擎据此推导 axis 与全部倍数) */
+    {
+        CommComputeOrder::COMM_FIRST, // 通信在前: gather 远程输入再算 → 引擎推导 K 轴/A 侧承载
+        LocalMMPosition::FRONT,       // 本卡 A 块已在手, 聚合前即可算 → 引擎推导工作集 rankDim−1
+        true,                         // 全量形态: 实算 mm 行数与单次通信字节均为切分域×rankDim
+    },
     /* aicpu 引擎通信拟合行: {卡数, k 带宽斜率(us/MB), b 每轮启动开销(us), c 一次性固定开销(us)} */
     {
         { {4, 26.5894, 33.17, 20.58} },   // 950 标卡 4P 实测; 未标定形态留空 → 分派走 miss 路径
@@ -95,11 +100,8 @@ ge::graphStatus MyOpTiling::DoTiling()
     if (IsCommCalibrated(rankDim_, commEngine, CALIBRATION)) {
         // 命中: 直接构造引擎入参(9 字段)并调用
         FitBalanceTilingArgs args = {mValue_, nValue_, kValue_, rankDim_, aicCoreNum_,
-                                     aType_, geAType_, inputDtypeSize_, outputDtypeSize_,
-                                     /* 数据流结构参数(见下表) */
-                                     CommAxis::K, rankDim_ - 1, rankDim_, rankDim_};
-        cut = FitBalanceCut(args, LocalMMPosition::FRONT,     // 本地 A 块前置(输入侧通信算子)
-                            CommComputeOrder::COMM_FIRST, commEngine, CALIBRATION);
+                                     aType_, geAType_, inputDtypeSize_, outputDtypeSize_};
+        cut = FitBalanceCut(args, commEngine, CALIBRATION);
     } else {
         // miss: 未标定形态, 走核利用率优先等策略(本例略——见 core_occupancy_first_tiling.h)
         cut = GetCutByCoreOccupancyFirst();
@@ -110,41 +112,41 @@ ge::graphStatus MyOpTiling::DoTiling()
 }
 ```
 
-接入要素就两个：**填 CALIBRATION**（标定数据）+ **选两个枚举**（LocalMMPosition / CommComputeOrder）。
+接入要素就一个：**填 CALIBRATION**——结构声明（dataflow 三元组）与实测数据（拟合行/算力档）
+都在这一处，调用侧只传运行时 shape。
 
-### 数据流结构参数（args 的后四个字段）
+### 数据流形态（CALIBRATION.dataflow 三元组）
 
-CALIBRATION 只放**实测拟合数据**（k/b/c、算力档、基本块）；而描述"本算子数据怎么流"的
-四个**结构事实**由 op 侧每次调用直接填进 args——它们不是标定值，填错属于接入 bug 而非标定偏差：
+算子接入时定死的**结构声明**，引擎据此推导其余全部结构量：
 
-| 字段 | 语义 | 典型取值 |
+| 字段 | 回答的问题 | 取值含义 |
 |---|---|---|
-| `commAxis` | 通信承载哪侧数据 | K=A 侧输入（传 A 行，另一维取 kValue）；N=C 侧输出（传 C 行，取 nValue） |
-| `mmWorksetShares` | 稳态 mm 工作集的数据份数（进 cube 利用率公式） | 输入侧聚合且有本地块（FRONT）=rankDim−1（本地份剔出稳态、单独按单份建模）；其余聚合/分发=rankDim；two-shot 单份=1 |
-| `mmRowMul` | mm 总行数相对切分域的倍数 | 聚合/分发形态（切分域为本卡份、实算全量）=rankDim；单份形态=1 |
-| `commVolumeMul` | 单次通信调用的物理字节份数（单轮 256MB 上限判定） | 聚合/分发（单次调用搬全量）=rankDim；单份调用=1 |
+| `order` | 流水线**哪段先行**？ | `COMM_FIRST` 通信在前（先收输入再算）；`COMPUTE_FIRST` 计算在前（先算再发输出） |
+| `localMMPosition` | 流水线里有没有一块**不经通信的本地 matmul**？在哪端？ | `FRONT` 本地块前置（首端——本卡数据已在手，聚合前即可算）；`BACK` 本地块后置（尾端——本地保留份无需发出）；`NONE` 无本地块 |
+| `fullVolume` | 切分域（mValue）是"本卡份"还是"本卡实算全量"？ | `true` 全量形态（实算 mm 行数与单次通信字节均为切分域×rankDim，聚合/分发类）；`false` 单份形态（本卡一份，两者×1） |
 
-判定方法：① 通信承载的是输入还是输出 → `commAxis`；② 切分域（mValue）是"本卡份"还是
-"本卡实算全量" → 聚合/分发形态 `mmRowMul=commVolumeMul=rankDim`、单份形态两者=1；
-③ 稳态工作集是否含本地块：FRONT 时剔一份（`rankDim−1`），其余按 ② 的形态取值。
+**推导规则**（引擎内部，接入方无需再填任何结构量）：
 
-### 为什么引擎不认"通信原语"、而要你传这两个枚举？
+```
+通信承载侧   axis   = (order == COMM_FIRST) ? K 轴(传 A 行, 另一维=kValue)
+                                          : N 轴(传 C 行, 另一维=nValue)
+总量倍数     rowMul = commVolumeMul = fullVolume ? rankDim : 1
+工作集份数   shares = (localMMPosition == FRONT) ? rankDim−1      // 本地份剔出稳态、单独按单份建模
+                                                : rowMul
+```
 
-引擎被设计为**不区分通信原语**（AllGather/ReduceScatter/AllReduce/AllToAll……）——
-不同原语的差异只有两类：**可标定的数值差异**（通信量口径、轴向、算力）全部收进
-CALIBRATION 的 CommProfile 与拟合行；而**流水线结构差异**无法用数值表达，必须显式声明，
-这就是两个枚举的职责：
+选错的后果：order/localMM 错 → 配平锚点错位、短块位置错、总时公式形态错（切分整体劣化）；
+fullVolume 错 → 通信量与 mm 总量估计整体偏移。
 
-| 枚举 | 回答的问题 | 取值含义 | 选错会怎样 |
-|---|---|---|---|
-| `LocalMMPosition` | 流水线里有没有一块**不经通信的本地 matmul**？在哪端？ | `FRONT` 本地块前置（首端，如输入侧通信的聚合算子——本卡数据已在手，聚合前即可算）；`BACK` 本地块后置（尾端，如输出侧通信的分发算子——本地保留份无需发出）；`NONE` 无本地块 | 配平锚点错位（长块反解目标错）、短块位置错、⑤ 的总时公式形态错——切分结果整体劣化 |
-| `CommComputeOrder` | 流水线**哪段先行**？ | `COMM_FIRST` 通信在前（先收数再算）；`COMPUTE_FIRST` 计算在前（先算再发） | 短块放端与不可重叠段位置判断颠倒 |
+判定方法（看本算子的数据流即可）：
+1. 通信的输入是不是 matmul 的输入？是 → `COMM_FIRST`；通信的输入是 matmul 的输出 → `COMPUTE_FIRST`
+2. 本卡自己的数据要不要经过通信才能参与第一次计算？不用 → `FRONT`；算完的份额有保留在本地的一份
+   → `BACK`；都不是 → `NONE`
+3. mValue 传进引擎的是"本卡份"（引擎需要 ×rankDim 才是实算量）→ `true`；mValue 本身就是本卡
+   实算全量 → `false`
 
-判定方法（看本算子的数据流即可，不需要理解引擎内部）：
-1. 通信的输入是不是 matmul 的输入？是 → 通信在前（`COMM_FIRST`）+ 本地块在首端有机会先行（→
-   试想本卡自己的数据要不要经过通信才能参与第一次计算：不用 → `FRONT`；要 → `NONE`）；
-2. 通信的输入是 matmul 的输出？→ 计算在前（`COMPUTE_FIRST`）+ 想想本卡算完的份额要不要全部
-   发出去：有保留在本地的一份 → `BACK`；全发 → `NONE`。
+> 口径备注：A2A 系老实现的工作集口径为 rankDim，与单份形态（fullVolume=false）的推导值 1 不同——
+> A2A 系当前无引擎消费者，BACK 形态实测校准时定稿。
 
 诊断打印内置：`ASCEND_GLOBAL_LOG_LEVEL=0` 时 FitBalanceCut 输出输入 shape / 最终切分 / 启动税三段。
 
@@ -188,9 +190,9 @@ FRONT/BACK 本地块时长估计用——更保守）。
 
 | 差异 | 承载 |
 |---|---|
-| 通信份数/字节口径 | 标定斜率 k + args.commVolumeMul |
-| 通信轴向（K/N）与承载侧（A/C dtype） | args.commAxis |
-| mm 工作集/总行数倍数 | args.mmWorksetShares / mmRowMul |
+| 通信份数/字节口径 | 标定斜率 k + dataflow 推导的 commVolumeMul |
+| 通信轴向（K/N）与承载侧（A/C dtype） | dataflow.order 推导 |
+| mm 工作集/总行数倍数 | dataflow 推导（localMMPosition / fullVolume） |
 | **流水线结构**（本地块在哪端/有无） | **LocalMMPosition**（引擎唯一结构键控） |
 | 通算顺序 | CommComputeOrder |
 | 通信引擎 | TilingCommEngine（CCU 触发单轮 256MB 整形） |

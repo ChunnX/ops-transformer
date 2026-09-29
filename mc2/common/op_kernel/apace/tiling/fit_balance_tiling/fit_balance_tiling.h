@@ -68,10 +68,18 @@ inline bool IsCommCalibrated(uint32_t rankDim, TilingCommEngine commEngine, cons
     return FindCommFitRow(calib, commEngine, rankDim) != nullptr;
 }
 
-inline FitBasedBalanceCtx InitCtx(const FitBalanceTilingArgs &args, LocalMMPosition localMMPosition,
-                                  CommComputeOrder order, TilingCommEngine commEngine,
+// 数据流形态推导(标定栏 dataflow 声明, 引擎内部换算——算子侧不再传结构枚举):
+//   commOnKAxis:  通信在前(COMM_FIRST)=传输入 A 侧 → K 轴; 在后 = 传输出 C 侧 → N 轴
+//   rowMul / commVolumeMul: 全量形态(切分域=本卡份, 实算 mm 行数与单次通信字节均为
+//                          切分域×rankDim)=rankDim; 单份形态=1
+//   worksetShares: FRONT(本地块前置——本地份剔出稳态、单独按单份建模)=rankDim−1; 其余随形态
+//   注: A2A 系老口径 workset=rankDim 与单份形态推导值(1)不同——A2A 系无现存消费者,
+//       BACK 形态实测校准时定稿
+inline FitBasedBalanceCtx InitCtx(const FitBalanceTilingArgs &args, TilingCommEngine commEngine,
                                   const FitBalanceCalibration &calib)
 {
+    const CommComputeOrder order = calib.dataflow.order;
+    const LocalMMPosition localMMPosition = calib.dataflow.localMMPosition;
     // ---- 标定选行(所有匹配键此刻已知: rankDim 与 dtype 均来自 args, 就地选定传纯参数) ----
     const auto *commRow = FindCommFitRow(calib, commEngine, args.rankDim);
     CommFitParams commFitParams = (commRow != nullptr) ? CommFitParams{commRow->slopeUsPerMb, commRow->roundOverheadUs,
@@ -112,14 +120,15 @@ inline FitBasedBalanceCtx InitCtx(const FitBalanceTilingArgs &args, LocalMMPosit
                            1,
                            1.0};
     ctx.tilingM.SetMaxTileCnt(MAX_COMM_ROUNDS); // 通信 API FFTS 队列轮次上限
-    // 数据流结构参数直读(args 已按算子语义填好数值)
-    ctx.commRankCntForMm = args.mmWorksetShares;
-    ctx.mmRankMul = args.mmRowMul;
-    ctx.commVolumeMul = args.commVolumeMul;
+    // 数据流形态推导出的三个倍数(规则见函数头注释)
+    const uint64_t volumeMul = calib.dataflow.fullVolume ? ctx.commPerf.rankDim() : 1U;
+    ctx.commRankCntForMm = (localMMPosition == LocalMMPosition::FRONT) ? (ctx.commPerf.rankDim() - 1U) : volumeMul;
+    ctx.mmRankMul = volumeMul;
+    ctx.commVolumeMul = volumeMul;
 
     // ---- 通算胶水 ----
-    // D4 通信矩阵另一维
-    const bool commOnKAxis = (args.commAxis == CommAxis::K);
+    // D4 通信矩阵另一维(承载侧由通算顺序推导: 通信在前=传输入 A 侧, 在后=传输出 C 侧)
+    const bool commOnKAxis = (order == CommComputeOrder::COMM_FIRST);
     ctx.commPerf.SetCommShapeLen(commOnKAxis ? ctx.matmulPerf.mmShapeInfo_.kValue : ctx.matmulPerf.mmShapeInfo_.nValue);
     // D5+D6 通信承载 dtype 与 fp4 子字节建模:
     // ① 通信 dtype 按 CommProfile.axis 承载侧: K(A 侧输入)取 A 字节, N(C 侧输出)取 C 字节——
@@ -300,11 +309,10 @@ inline void PrintTilingData(const FitBalanceTilingArgs &args, const CommCutResul
 
 // 对外唯一入口: 算子侧一行调用——上下文构造 + 键控求解的串联。
 // 诊断打印内置于本函数(debug 级), op 侧无需再写日志。
-inline CommCutResult FitBalanceCut(const FitBalanceTilingArgs &args, LocalMMPosition localMMPosition,
-                                   CommComputeOrder order, TilingCommEngine commEngine,
+inline CommCutResult FitBalanceCut(const FitBalanceTilingArgs &args, TilingCommEngine commEngine,
                                    const FitBalanceCalibration &calib)
 {
-    FitBasedBalanceCtx ctx = InitCtx(args, localMMPosition, order, commEngine, calib);
+    FitBasedBalanceCtx ctx = InitCtx(args, commEngine, calib);
     CommCutResult cut = Schedule(ctx);
     PrintTilingData(args, cut, ctx.commTimeActualUs, ctx.commTimeNoCutUs);
     return cut;

@@ -42,6 +42,12 @@ namespace optiling { // 与本目录其他 op_tiling 文件一致
 // ============================================================================
 
 static const FitBalanceCalibration CALIBRATION = {
+    /* dataflow: 数据流形态(本算子: 输入侧聚合 + 本地块前置 + 全量形态) */
+    {
+        CommComputeOrder::COMM_FIRST, // 通信在前: gather 远程输入再算(→引擎推导 K 轴/A 侧承载)
+        LocalMMPosition::FRONT, // 本卡 A 块已在手, 聚合前即可计算(→引擎推导工作集 rankDim−1)
+        true,                   // 全量形态: 切分域=本卡份, 实算与单次通信均为 ×rankDim
+    },
     /* aicpu（commMode != "ccu"）*/
     {
         /* rows: {卡数, k 带宽斜率(us/MB), b 每轮启动开销(us), c 一次性固定开销(us)} */
@@ -99,11 +105,6 @@ inline FitBalanceTilingArgs ToEngineArgs(const mc2tiling::TilingArgs &a)
     e.geAType = a.geAType;
     e.inputDtypeSize = a.inputDtypeSize;
     e.outputDtypeSize = a.outputDtypeSize;
-    // 数据流结构参数(本算子: 输入侧聚合 + 本地块前置)
-    e.commAxis = CommAxis::K;           // 通信沿 K 轴传 A 侧输入
-    e.mmWorksetShares = a.rankDim - 1U; // 远程 rankDim−1 份进稳态(本地份单独按单份建模)
-    e.mmRowMul = a.rankDim;             // 聚合后实算全量 m×rankDim 行
-    e.commVolumeMul = a.rankDim;        // 单次 gather 调用搬 rankDim 份
     return e;
 }
 
@@ -116,8 +117,7 @@ inline CutResult ToLegacyCut(const CommCutResult &c)
 // 本算子 LocalMMPosition::FRONT(本地 A 块前置) + COMM_FIRST
 inline CutResult ScheduleFitBalance(const mc2tiling::TilingArgs &args, TilingCommEngine commEngine)
 {
-    CutResult cut = ToLegacyCut(FitBalanceCut(ToEngineArgs(args), LocalMMPosition::FRONT, CommComputeOrder::COMM_FIRST,
-                                              commEngine, CALIBRATION));
+    CutResult cut = ToLegacyCut(FitBalanceCut(ToEngineArgs(args), commEngine, CALIBRATION));
     return cut;
 }
 
