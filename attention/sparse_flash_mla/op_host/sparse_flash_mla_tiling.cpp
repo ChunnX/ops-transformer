@@ -322,7 +322,7 @@ ge::graphStatus SMLAInfoParser::CheckRequiredInOutExistence() const
     OP_CHECK_IF(opParamInfo_.oriKv.tensor == nullptr,
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "ori_kv", "The tensor of ori_kv is nullptr"),
                 return ge::GRAPH_FAILED);
-    if (std::string(opParamInfo_.layoutKv) == "PA_BBND") {
+    if (std::string(opParamInfo_.layoutKv) == "PA_BBND" && *opParamInfo_.topkValueMode != 2) {
         OP_CHECK_IF(
             opParamInfo_.oriBlockTable.tensor == nullptr,
             OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
@@ -2052,11 +2052,6 @@ ge::graphStatus SMLATilingCheck::CheckFeatureShape() const
                                                           std::to_string(*opParamInfo_.cmpMaskMode).c_str(),
                                                           "Cmp_mask_mode should be {0, 3} on " + A5_PLATFORM_LOG),
                     return ge::GRAPH_FAILED);
-        OP_CHECK_IF(
-            topkValueMode_ != 1,
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "topk_value_mode", std::to_string(topkValueMode_).c_str(),
-                                                  "Topk_value_mode should be 1"),
-            return ge::GRAPH_FAILED);
         OP_CHECK_IF(oriWinLeft_ < -1,
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                         opName_, "ori_win_left", std::to_string(oriWinLeft_).c_str(),
@@ -2068,6 +2063,11 @@ ge::graphStatus SMLATilingCheck::CheckFeatureShape() const
                         "Ori_win_right should be -1(unlimited) or non-negative on " + A5_PLATFORM_LOG),
                     return ge::GRAPH_FAILED);
     } else {
+        OP_CHECK_IF(
+            topkValueMode_ != 1,
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "topk_value_mode", std::to_string(topkValueMode_).c_str(),
+                                                  "Topk_value_mode should be 1 on " + A2_A3_PLATFORM_LOG),
+            return ge::GRAPH_FAILED);
         if (smlaInfo_.perfMode == SMLATemplateMode::CSA_TEMPLATE_MODE ||
             smlaInfo_.perfMode == SMLATemplateMode::HCA_TEMPLATE_MODE) {
             OP_CHECK_IF(*opParamInfo_.cmpMaskMode != 3,
@@ -2341,10 +2341,11 @@ uint64_t SparseFlashMlaTiling::CalcVectorizeKvPhyAddrWorkspaceSize(const SMLATil
     uint64_t oriUbSize = (isPa ? paExtraUb : 0U) + static_cast<uint64_t>(alignedOriSparseBlockCount) * sizeof(int32_t) +
                          static_cast<uint64_t>(alignedOriSparseBlockCount) * sizeof(int64_t);
     uint64_t vectorizeUbSize = std::max(cmpUbSize, oriUbSize);
-    vectorizeFlag = static_cast<uint32_t>((tilingInfo->perfMode == SMLATemplateMode::CSA_TEMPLATE_MODE ||
-                                           tilingInfo->perfMode == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
-                                           tilingInfo->perfMode == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) &&
-                                          (vectorizeUbSize <= UB_SIZE) && (blocksizeFlag != 0));
+    vectorizeFlag =
+        static_cast<uint32_t>((tilingInfo->perfMode == SMLATemplateMode::CSA_TEMPLATE_MODE ||
+                               tilingInfo->perfMode == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
+                               tilingInfo->perfMode == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) &&
+                              tilingInfo->topkValueMode == 1 && (vectorizeUbSize <= UB_SIZE) && (blocksizeFlag != 0));
 
     if (vectorizeFlag == 0U) {
         return 0ULL;
@@ -2482,9 +2483,9 @@ ge::graphStatus SparseFlashMlaTiling::DoOpTiling(SMLATilingInfo *tilingInfo)
     uint32_t isDspark = static_cast<uint32_t>(tilingInfo->npuArch == NpuArch::DAV_2201 &&
                                               tilingInfo->perfMode == SMLATemplateMode::SWA_TEMPLATE_MODE &&
                                               tilingInfo->hasOriSparseIndices);
-    tilingKey =
-        GET_TPL_TILING_KEY(0U, qLayout, inputKvLayout, static_cast<uint32_t>(tilingInfo->perfMode), splitG,
-                           headRatioOne, static_cast<uint32_t>(tilingInfo->batchConsistency), vectorizeFlag, isDspark);
+    tilingKey = GET_TPL_TILING_KEY(0U, qLayout, inputKvLayout, static_cast<uint32_t>(tilingInfo->perfMode), splitG,
+                                   headRatioOne, static_cast<uint32_t>(tilingInfo->batchConsistency), vectorizeFlag,
+                                   static_cast<uint32_t>(tilingInfo->topkValueMode), isDspark);
     context_->SetScheduleMode(1);
     context_->SetTilingKey(tilingKey);
 

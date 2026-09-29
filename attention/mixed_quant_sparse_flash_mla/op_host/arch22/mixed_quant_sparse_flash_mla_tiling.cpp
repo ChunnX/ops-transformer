@@ -88,7 +88,8 @@ ge::graphStatus MixedQuantSparseFlashMlaTiling::DoTurboQuantTiling(MQSMLATilingI
 
     const uint64_t tilingKey = GET_TPL_TILING_KEY(
         0U, static_cast<uint32_t>(tilingInfo->qLayout), static_cast<uint32_t>(tilingInfo->kvLayout), CSA_TEMPLATE, 0U,
-        static_cast<uint32_t>(tilingInfo->quantMode), DTYPE_FP8_E4M3FN, 0U, 0U, 0U);
+        static_cast<uint32_t>(tilingInfo->quantMode), DTYPE_FP8_E4M3FN, 0U, 0U, 0U,
+        static_cast<uint32_t>(tilingInfo->topkValueMode));
     context_->SetTilingKey(tilingKey);
     context_->SetScheduleMode(1);
     return ge::GRAPH_SUCCESS;
