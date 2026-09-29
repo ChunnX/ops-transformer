@@ -17,9 +17,7 @@ from cann_ops_transformer.op_builder import OpBuilder, get_as_library
 
 class EngramGateOpBuilder(OpBuilder):
     def __init__(self):
-        super(EngramGateOpBuilder, self).__init__(
-            "ds41.engram_gate", category="engram"
-        )
+        super(EngramGateOpBuilder, self).__init__("ds41.engram_gate", category="engram")
 
     def sources(self):
         """Python DSL implementation; no C++ extension is compiled."""
