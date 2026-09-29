@@ -461,11 +461,9 @@ ge::graphStatus MegaMhcTiling::DoOpTiling()
     const uint64_t projectionPeak =
         mega_mhc::ProjectionUbBytes(k_, cubePlan_.l1K, projectionRows, stageUbSlots, stageRowStride);
     const uint64_t concurrentUb = projectionPeak + concurrentProducer;
-    // FP32 projection leaves Cube compute time for the previous wave's vector epilogue.
-    // Keep HF32's lighter projection on the separate epilogue schedule.
+    // Both math modes use the same wave schedule when simultaneous buffers fit in UB.
     const uint32_t waveEpilogueRows =
-        request.mode == mega_mhc::ProjectionMode::FP32 && request.wavePipeline && cubePlan_.mWaveCount > 1U &&
-                concurrentUb < availableUb ?
+        request.wavePipeline && cubePlan_.mWaveCount > 1U && concurrentUb < availableUb ?
             mega_mhc::FitReductionRows(waveProducerRows, d_, tilingData_.get_partialGroupCount(),
                                        cubePlan_.fixpipeRowStride, cubePlan_.kGrid, availableUb - concurrentUb) :
             0U;

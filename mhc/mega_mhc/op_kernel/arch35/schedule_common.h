@@ -167,7 +167,7 @@ __aicore__ inline void RunProjectionScheduleImpl(Kernel::Tensors<T> &tensors, co
             }
             if constexpr (WAVE_PRODUCER) {
                 if (tiling.waveEpilogueRows != 0U) {
-                    CrossCoreSetFlag<2, PIPE_FIX>(9U);
+                    CrossCoreSetFlag<2, PIPE_FIX>(4U + (wave & 1U));
                 }
             }
         }
@@ -254,6 +254,13 @@ __aicore__ inline void RunProjectionScheduleImpl(Kernel::Tensors<T> &tensors, co
                     rmsRows, tile, l1TileCount, kIndex);
                 StageTransfer::PublishReady();
                 if constexpr (WAVE_PRODUCER) {
+                    if (tiling.waveEpilogueRows != 0U && wave != 0U && tile == 0U) {
+                        // Prime the current wave before waiting for the previous wave's reduction inputs.
+                        // Alternating FIX flags preserve both epochs while Cube advances independently.
+                        CrossCoreWaitFlag<2, PIPE_MTE3>(4U + ((wave - 1U) & 1U));
+                        CrossCoreSetFlag<0, PIPE_MTE3>(10U);
+                        CrossCoreWaitFlag<0, PIPE_MTE2>(10U);
+                    }
                     if (wave + 1U < tiling.mWaveCount) {
                         producer.Tick(tile);
                     }
@@ -273,16 +280,16 @@ __aicore__ inline void RunProjectionScheduleImpl(Kernel::Tensors<T> &tensors, co
                     if (wave != 0U) {
                         epilogue.Finish(tensors);
                     }
-                    // FIX protects all projection partials; MTE3 protects the RMS shards.
-                    CrossCoreWaitFlag<2, PIPE_MTE3>(9U);
-                    CrossCoreSetFlag<0, PIPE_MTE3>(10U);
-                    CrossCoreWaitFlag<0, PIPE_MTE2>(10U);
                 }
             }
         }
         if constexpr (WAVE_PRODUCER) {
             producer.End();
             if (tiling.waveEpilogueRows != 0U) {
+                // The final wave has no successor to prime; consume its completion before draining outputs.
+                CrossCoreWaitFlag<2, PIPE_MTE3>(4U + ((tiling.mWaveCount - 1U) & 1U));
+                CrossCoreSetFlag<0, PIPE_MTE3>(10U);
+                CrossCoreWaitFlag<0, PIPE_MTE2>(10U);
                 epilogue.Begin(tiling.mWaveCount - 1U);
                 epilogue.Finish(tensors);
             }
