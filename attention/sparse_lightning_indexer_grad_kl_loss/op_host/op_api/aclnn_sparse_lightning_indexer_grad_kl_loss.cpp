@@ -8,10 +8,22 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+#include "aclnn_sparse_lightning_indexer_grad_kl_loss.h"
+#include "aclnnInner_sparse_lightning_indexer_grad_kl_loss.h"
+
+using namespace op;
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+namespace {
+
+#ifndef ACLNN_INNER_SPARSE_LIGHTNING_INDEXER_GRAD_KLLOSS_H_
+#define ACLNN_INNER_SPARSE_LIGHTNING_INDEXER_GRAD_KLLOSS_H_
+
 #include <cstring>
 #include "graph/types.h"
-#include "aclnn_sparse_lightning_indexer_grad_kl_loss.h"
-
 #include "opdev/make_op_executor.h"
 #include "opdev/op_dfx.h"
 #include "opdev/op_executor.h"
@@ -22,14 +34,6 @@
 #include "opdev/common_types.h"
 #include "opdev/data_type_utils.h"
 #include "opdev/format_utils.h"
-
-using namespace op;
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-namespace {
 
 extern aclnnStatus aclnnInnerSparseLightningIndexerGradKLLossGetWorkspaceSize(
     const aclTensor *query, const aclTensor *key, const aclTensor *queryIndex, const aclTensor *keyIndex,
@@ -42,6 +46,8 @@ extern aclnnStatus aclnnInnerSparseLightningIndexerGradKLLossGetWorkspaceSize(
 
 extern aclnnStatus aclnnInnerSparseLightningIndexerGradKLLoss(void *workspace, uint64_t workspaceSize,
                                                               aclOpExecutor *executor, const aclrtStream stream);
+
+#endif // ACLNN_INNER_SPARSE_LIGHTNING_INDEXER_GRAD_KLLOSS_H_
 
 aclnnStatus aclnnSparseLightningIndexerGradKLLossGetWorkspaceSize(
     const aclTensor *query, const aclTensor *key, const aclTensor *queryIndex, const aclTensor *keyIndex,
