@@ -10,7 +10,7 @@
  */
 
 /*!
- * \file vf_common_def.h
+ * \file vf_common_def_mxfp8_softmax_fp16.h
  * \brief VectorBlock 共享常量（CastTrait / 数学常量），镜像 MxFP4 参考 vf_common_def.h
  */
 

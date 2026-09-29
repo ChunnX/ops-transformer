@@ -133,7 +133,7 @@ void QuantFlashAttnTilingDn::GenTilingKey()
 
     bool hasMask = tilingInfo_->attnMaskFlag;
 
-    tilingKey_ = GET_TPL_TILING_KEY(queryOutLayout, kvStorageMode, hasMask);
+    tilingKey_ = GET_TPL_TILING_KEY(queryOutLayout, Config_DN_FIXED, QFA_MXFP4_DN, hasMask, kvStorageMode, 0);
 }
 
 void QuantFlashAttnTilingDn::CalcNumBlocks(uint32_t aicNum)

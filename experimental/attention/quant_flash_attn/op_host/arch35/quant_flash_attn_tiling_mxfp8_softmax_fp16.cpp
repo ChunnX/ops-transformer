@@ -9,8 +9,8 @@
  */
 
 /*!
- * \file quant_flash_attn_tiling_mxfp8.cpp
- * \brief QuantFlashAttn arch35 tiling implementation (A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32)
+ * \file quant_flash_attn_tiling_mxfp8_softmax_fp16.cpp
+ * \brief QuantFlashAttn arch35 tiling implementation (A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP16)
  */
 
 #include "quant_flash_attn_tiling_mxfp8_softmax_fp16.h"
@@ -19,8 +19,7 @@
 #include <vector>
 #include <graph/utils/type_utils.h>
 #include "log/log.h"
-#include "../qfa_tiling_utils_mxfp8_softmax_fp16.h"
-#include "../../op_kernel/arch35/quant_flash_attn_template_tiling_key_mxfp8_softmax_fp16.h"
+#include "../../op_kernel/arch35/quant_flash_attn_template_tiling_key.h"
 #include "../../common/op_host/fia_tiling_templates_registry.h"
 #include "../quant_flash_attn_tiling_constants.h"
 
@@ -265,8 +264,8 @@ void QuantFlashAttnMxfp8SoftmaxFp16TilingImpl::CalcWorkspaceSize()
         uint32_t faTmpAttenGmSize = numBlocks_ * 2 * mSize * dSize;
         uint32_t fatmpResLseGmSize = numBlocks_ * 2 * mSize * 8;
         workspaceSize_ += (faTmpAttenGmSize + 2 * fatmpResLseGmSize) * sizeof(float);
-        tilingData_.baseTiling.quantFlashAttnWorkspaceParams.accumOutSize = faTmpAttenGmSize;
-        tilingData_.baseTiling.quantFlashAttnWorkspaceParams.logSumExpSize = fatmpResLseGmSize;
+        tilingData_.quantTiling.quantFlashAttnWorkspaceParams.accumOutSize = faTmpAttenGmSize;
+        tilingData_.quantTiling.quantFlashAttnWorkspaceParams.logSumExpSize = fatmpResLseGmSize;
     }
 
     OP_LOGI(qfaInfo_->opName, "Workspaces: %lu", workspaceSize_);
@@ -281,81 +280,81 @@ void QuantFlashAttnMxfp8SoftmaxFp16TilingImpl::FillTiling()
 
 void QuantFlashAttnMxfp8SoftmaxFp16TilingImpl::ComputeTilingData()
 {
-    tilingData_.baseTiling.quantFlashAttnAttenMaskParams.sparseMode = qfaInfo_->maskMode;
+    tilingData_.quantTiling.quantFlashAttnAttenMaskParams.sparseMode = qfaInfo_->maskMode;
 
     if (qfaInfo_->maskMode != static_cast<int64_t>(MaskMode::NO_MASK)) {
         uint64_t maskDimNum = qfaInfo_->opParamInfo.attnMask.tensor->GetStorageShape().GetDimNum();
         uint64_t maskS1Size = qfaInfo_->opParamInfo.attnMask.tensor->GetStorageShape().GetDim(maskDimNum - 2);
         uint64_t maskS2Size = qfaInfo_->opParamInfo.attnMask.tensor->GetStorageShape().GetDim(maskDimNum - 1);
-        tilingData_.baseTiling.quantFlashAttnAttenMaskParams.attenMaskS1Size = maskS1Size;
-        tilingData_.baseTiling.quantFlashAttnAttenMaskParams.attenMaskS2Size = maskS2Size;
+        tilingData_.quantTiling.quantFlashAttnAttenMaskParams.attenMaskS1Size = maskS1Size;
+        tilingData_.quantTiling.quantFlashAttnAttenMaskParams.attenMaskS2Size = maskS2Size;
     }
 
     if (qfaInfo_->pageAttentionFlag) {
         if (qfaInfo_->kvLayout == QfaLayout::PA_BNBD) {
-            tilingData_.baseTiling.quantFlashAttnPageAttentionParams.paLayoutType = 0;
+            tilingData_.quantTiling.quantFlashAttnPageAttentionParams.paLayoutType = 0;
         } else if (qfaInfo_->kvLayout == QfaLayout::PA_BBND) {
-            tilingData_.baseTiling.quantFlashAttnPageAttentionParams.paLayoutType = 1;
+            tilingData_.quantTiling.quantFlashAttnPageAttentionParams.paLayoutType = 1;
         } else if (qfaInfo_->kvLayout == QfaLayout::PA_NZ) {
-            tilingData_.baseTiling.quantFlashAttnPageAttentionParams.paLayoutType = 2;
+            tilingData_.quantTiling.quantFlashAttnPageAttentionParams.paLayoutType = 2;
         }
     }
 }
 
 void QuantFlashAttnMxfp8SoftmaxFp16TilingImpl::SetQFATilingData()
 {
-    tilingData_.baseTiling.quantFlashAttnBaseParams.bSize = qfaInfo_->bSize;
-    tilingData_.baseTiling.quantFlashAttnBaseParams.t1Size = qfaInfo_->qTSize;
-    tilingData_.baseTiling.quantFlashAttnBaseParams.t2Size = qfaInfo_->kTSize;
-    tilingData_.baseTiling.quantFlashAttnBaseParams.n2Size = qfaInfo_->n2Size;
-    tilingData_.baseTiling.quantFlashAttnBaseParams.gSize = qfaInfo_->gSize;
-    tilingData_.baseTiling.quantFlashAttnBaseParams.s1Size = qfaInfo_->s1Size;
-    tilingData_.baseTiling.quantFlashAttnBaseParams.s2Size = qfaInfo_->s2Size;
-    tilingData_.baseTiling.quantFlashAttnBaseParams.dSize = qfaInfo_->qkHeadDim;
-    tilingData_.baseTiling.quantFlashAttnBaseParams.dSizeV = qfaInfo_->vHeadDim;
-    tilingData_.baseTiling.quantFlashAttnBaseParams.scaleValue = qfaInfo_->softmaxScale;
-    tilingData_.baseTiling.quantFlashAttnBaseParams.cuSeqLensQSize =
+    tilingData_.quantTiling.quantFlashAttnBaseParams.bSize = qfaInfo_->bSize;
+    tilingData_.quantTiling.quantFlashAttnBaseParams.t1Size = qfaInfo_->qTSize;
+    tilingData_.quantTiling.quantFlashAttnBaseParams.t2Size = qfaInfo_->kTSize;
+    tilingData_.quantTiling.quantFlashAttnBaseParams.n2Size = qfaInfo_->n2Size;
+    tilingData_.quantTiling.quantFlashAttnBaseParams.gSize = qfaInfo_->gSize;
+    tilingData_.quantTiling.quantFlashAttnBaseParams.s1Size = qfaInfo_->s1Size;
+    tilingData_.quantTiling.quantFlashAttnBaseParams.s2Size = qfaInfo_->s2Size;
+    tilingData_.quantTiling.quantFlashAttnBaseParams.dSize = qfaInfo_->qkHeadDim;
+    tilingData_.quantTiling.quantFlashAttnBaseParams.dSizeV = qfaInfo_->vHeadDim;
+    tilingData_.quantTiling.quantFlashAttnBaseParams.scaleValue = qfaInfo_->softmaxScale;
+    tilingData_.quantTiling.quantFlashAttnBaseParams.cuSeqLensQSize =
         (qfaInfo_->qLayout == QfaLayout::TND && cuSeqLenQFlag_) ? qfaInfo_->bSize : 0;
-    tilingData_.baseTiling.quantFlashAttnBaseParams.cuSeqLensKVSize =
+    tilingData_.quantTiling.quantFlashAttnBaseParams.cuSeqLensKVSize =
         (qfaInfo_->kvLayout == QfaLayout::TND && cuSeqLenKVFlag_) ? qfaInfo_->bSize : 0;
-    tilingData_.baseTiling.quantFlashAttnBaseParams.seqUsedQSize = seqUsedQFlag_ ? qfaInfo_->bSize : 0;
-    tilingData_.baseTiling.quantFlashAttnBaseParams.seqUsedKvSize = seqUsedKvFlag_ ? qfaInfo_->bSize : 0;
-    tilingData_.baseTiling.quantFlashAttnBaseParams.isKvContinuous = true;
-    tilingData_.baseTiling.quantFlashAttnBaseParams.isSoftMaxLseEnable = qfaInfo_->softmaxLseFlag;
-    tilingData_.baseTiling.quantFlashAttnBaseParams.iscuSeqLengthsNull =
+    tilingData_.quantTiling.quantFlashAttnBaseParams.seqUsedQSize = seqUsedQFlag_ ? qfaInfo_->bSize : 0;
+    tilingData_.quantTiling.quantFlashAttnBaseParams.seqUsedKvSize = seqUsedKvFlag_ ? qfaInfo_->bSize : 0;
+    tilingData_.quantTiling.quantFlashAttnBaseParams.isKvContinuous = true;
+    tilingData_.quantTiling.quantFlashAttnBaseParams.isSoftMaxLseEnable = qfaInfo_->softmaxLseFlag;
+    tilingData_.quantTiling.quantFlashAttnBaseParams.iscuSeqLengthsNull =
         !(cuSeqLenQFlag_ && qfaInfo_->qLayout == QfaLayout::TND);
-    tilingData_.baseTiling.quantFlashAttnBaseParams.iscuSeqLengthsKVNull =
+    tilingData_.quantTiling.quantFlashAttnBaseParams.iscuSeqLengthsKVNull =
         !(cuSeqLenKVFlag_ && qfaInfo_->kvLayout == QfaLayout::TND);
-    tilingData_.baseTiling.quantFlashAttnBaseParams.coreNum = numBlocks_;
-    tilingData_.baseTiling.quantFlashAttnBaseParams.outputLayout = static_cast<uint32_t>(qfaInfo_->outLayout);
+    tilingData_.quantTiling.quantFlashAttnBaseParams.coreNum = numBlocks_;
+    tilingData_.quantTiling.quantFlashAttnBaseParams.outputLayout = static_cast<uint32_t>(qfaInfo_->outLayout);
 
-    tilingData_.baseTiling.quantFlashAttnAttenMaskParams.winLefts = qfaInfo_->winLeft;
-    tilingData_.baseTiling.quantFlashAttnAttenMaskParams.winRights = qfaInfo_->winRight;
+    tilingData_.quantTiling.quantFlashAttnAttenMaskParams.winLefts = qfaInfo_->winLeft;
+    tilingData_.quantTiling.quantFlashAttnAttenMaskParams.winRights = qfaInfo_->winRight;
     if (qfaInfo_->winLeft == -1) {
-        tilingData_.baseTiling.quantFlashAttnAttenMaskParams.winLefts = MASK_MODE_INT_MAX;
+        tilingData_.quantTiling.quantFlashAttnAttenMaskParams.winLefts = MASK_MODE_INT_MAX;
     }
     if (qfaInfo_->winRight == -1) {
-        tilingData_.baseTiling.quantFlashAttnAttenMaskParams.winRights = MASK_MODE_INT_MAX;
+        tilingData_.quantTiling.quantFlashAttnAttenMaskParams.winRights = MASK_MODE_INT_MAX;
     }
-    tilingData_.baseTiling.quantFlashAttnPageAttentionParams.blockSize = qfaInfo_->blockSize;
+    tilingData_.quantTiling.quantFlashAttnPageAttentionParams.blockSize = qfaInfo_->blockSize;
     uint32_t maxBlockNumPerBatch = 0;
     if (qfaInfo_->pageAttentionFlag) {
         maxBlockNumPerBatch = qfaInfo_->maxBlockNumPerBatch;
     }
-    tilingData_.baseTiling.quantFlashAttnPageAttentionParams.maxBlockNumPerBatch = maxBlockNumPerBatch;
+    tilingData_.quantTiling.quantFlashAttnPageAttentionParams.maxBlockNumPerBatch = maxBlockNumPerBatch;
     if (qfaInfo_->hasStride) {
-        tilingData_.baseTiling.quantFlashAttnPageAttentionParams.maxBlockNumPerBatch = maxBlockNumPerBatch;
-        tilingData_.baseTiling.quantFlashAttnBaseParams.keyStrides.bnStride = qfaInfo_->keyStrides->GetStride(0);
-        tilingData_.baseTiling.quantFlashAttnBaseParams.keyStrides.n2Stride = qfaInfo_->keyStrides->GetStride(1);
-        tilingData_.baseTiling.quantFlashAttnBaseParams.valueStrides.bnStride = qfaInfo_->valueStrides->GetStride(0);
-        tilingData_.baseTiling.quantFlashAttnBaseParams.valueStrides.n2Stride = qfaInfo_->valueStrides->GetStride(1);
-        tilingData_.baseTiling.quantFlashAttnBaseParams.kDescaleStrides.bnStride =
+        tilingData_.quantTiling.quantFlashAttnPageAttentionParams.maxBlockNumPerBatch = maxBlockNumPerBatch;
+        tilingData_.quantTiling.quantFlashAttnBaseParams.keyStrides.bnStride = qfaInfo_->keyStrides->GetStride(0);
+        tilingData_.quantTiling.quantFlashAttnBaseParams.keyStrides.n2Stride = qfaInfo_->keyStrides->GetStride(1);
+        tilingData_.quantTiling.quantFlashAttnBaseParams.valueStrides.bnStride = qfaInfo_->valueStrides->GetStride(0);
+        tilingData_.quantTiling.quantFlashAttnBaseParams.valueStrides.n2Stride = qfaInfo_->valueStrides->GetStride(1);
+        tilingData_.quantTiling.quantFlashAttnBaseParams.kDescaleStrides.bnStride =
             qfaInfo_->kDescaleStrides->GetStride(0);
-        tilingData_.baseTiling.quantFlashAttnBaseParams.kDescaleStrides.n2Stride =
+        tilingData_.quantTiling.quantFlashAttnBaseParams.kDescaleStrides.n2Stride =
             qfaInfo_->kDescaleStrides->GetStride(1);
-        tilingData_.baseTiling.quantFlashAttnBaseParams.vDescaleStrides.bnStride =
+        tilingData_.quantTiling.quantFlashAttnBaseParams.vDescaleStrides.bnStride =
             qfaInfo_->vDescaleStrides->GetStride(0);
-        tilingData_.baseTiling.quantFlashAttnBaseParams.vDescaleStrides.n2Stride =
+        tilingData_.quantTiling.quantFlashAttnBaseParams.vDescaleStrides.n2Stride =
             qfaInfo_->vDescaleStrides->GetStride(1);
     }
 }
@@ -370,11 +369,11 @@ ge::graphStatus QuantFlashAttnMxfp8SoftmaxFp16TilingImpl::SetTilingData(QuantFla
 
 void QuantFlashAttnMxfp8SoftmaxFp16TilingImpl::PrintAllTilingData()
 {
-    QuantFlashAttnQuantTilingArch35 &baseTiling = tilingData_.baseTiling;
-    QuantFlashAttnBaseParams &params = baseTiling.quantFlashAttnBaseParams;
-    QuantFlashAttnAttenMaskParams &maskParams = baseTiling.quantFlashAttnAttenMaskParams;
-    QuantFlashAttnPageAttentionParams &paParams = baseTiling.quantFlashAttnPageAttentionParams;
-    QuantFlashAttnWorkspaceParams &wsParams = baseTiling.quantFlashAttnWorkspaceParams;
+    QuantFlashAttnQuantTilingArch35 &quantTiling = tilingData_.quantTiling;
+    QuantFlashAttnBaseParams &params = quantTiling.quantFlashAttnBaseParams;
+    QuantFlashAttnAttenMaskParams &maskParams = quantTiling.quantFlashAttnAttenMaskParams;
+    QuantFlashAttnPageAttentionParams &paParams = quantTiling.quantFlashAttnPageAttentionParams;
+    QuantFlashAttnWorkspaceParams &wsParams = quantTiling.quantFlashAttnWorkspaceParams;
 
     OP_LOGD(qfaInfo_->opName, "bSize:%d", params.bSize);
     OP_LOGD(qfaInfo_->opName, "t1Size:%d", params.t1Size);

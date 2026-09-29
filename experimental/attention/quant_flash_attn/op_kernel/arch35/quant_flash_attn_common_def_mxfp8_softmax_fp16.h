@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file quant_flash_attn_common_def.h
+ * \file quant_flash_attn_common_def_mxfp8_softmax_fp16.h
  * \brief QuantFlashAttn MxFP8 Softmax FP16 公共定义（tiling key 常量 + 尺寸常量 + 跨核同步 + ConstInfo/RunInfo）
  */
 
@@ -18,37 +18,7 @@
 
 #include <cstdint>
 
-#define ASCENDC_TPL_5_BW 5
-#define ASCENDC_TPL_10_BW 10
-
-// q_out layout → inputLayout
-#define InOutLayoutType_BSND 0
-#define InOutLayoutType_BNSD 1
-#define InOutLayoutType_TND 2
-#define InOutLayoutType_NTD 3
-// backward compat
-#define InOutLayoutType_BSND_BSND InOutLayoutType_BSND
-#define InOutLayoutType_BNSD_BNSD InOutLayoutType_BNSD
-#define InOutLayoutType_TND_TND InOutLayoutType_TND
-#define InOutLayoutType_NTD_TND InOutLayoutType_NTD
-
-#define KvLayoutType_NO_PA 0
-#define KvLayoutType_PA_BBND 1
-#define KvLayoutType_PA_BNBD 2
-#define KvLayoutType_PA_NZ 3
-
-#define Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64 0
-#define Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128 1
-#define Config_S1Aligned128_S2Aligned256_DAligned128_DVAligned128 2
-#define Config_S1Aligned128_S2Aligned256_DAligned256_DVAligned256 3
-#define Config_S1Aligned128_S2Aligned512_DAligned72_DVAligned72 4
-#define Config_S1Aligned256_S2Aligned256_DAligned128_DVAligned128 5
-
-#define QFA_MXFP8_FP32_PREFILL 1
-#define QFA_MXFP8_FP32_DECODE 2
-#define QFA_GQA_FP8_FULLQUANT 6
-#define QFA_HIF8_FP32 0
-#define QFA_MXFP8_SOFTMAX_FP16 3
+#include "quant_flash_attn_template_tiling_key.h"
 
 // =====================================================================
 // MxFP8 Softmax FP16 kernel 层公共定义（设计文档 design_mxfp8_pipeline.md）

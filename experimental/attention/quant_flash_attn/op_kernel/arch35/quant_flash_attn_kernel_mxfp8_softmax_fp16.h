@@ -25,7 +25,7 @@
 #include "kernel_operator.h"
 #endif
 #include "quant_flash_attn_common_def_mxfp8_softmax_fp16.h"
-#include "quant_flash_attn_tiling_data_mxfp8_softmax_fp16.h"
+#include "quant_flash_attn_tiling_data.h"
 #include "../../common/op_kernel/memcopy/attn/const_def.h"
 #include "../../common/op_kernel/memcopy/attn/parser.h"
 
@@ -161,7 +161,7 @@ public:
             constInfo_.subBlockIdx = GetSubBlockIdx();
         }
 
-        const auto &qfaBaseParams = this->tilingData_->baseTiling.quantFlashAttnBaseParams;
+        const auto &qfaBaseParams = this->tilingData_->quantTiling.quantFlashAttnBaseParams;
         constInfo_.bSize = qfaBaseParams.bSize;
         constInfo_.t1Size = qfaBaseParams.t1Size;
         constInfo_.t2Size = qfaBaseParams.t2Size;

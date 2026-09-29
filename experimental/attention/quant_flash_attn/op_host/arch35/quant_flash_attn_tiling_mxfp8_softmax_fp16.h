@@ -9,19 +9,19 @@
  */
 
 /*!
- * \file quant_flash_attn_tiling_mxfp8.h
+ * \file quant_flash_attn_tiling_mxfp8_softmax_fp16.h
  * \brief QuantFlashAttn arch35 tiling implementation
  */
-#ifndef QUANT_FLASH_ATTN_TILING_MXFP8_IMPL_H_
-#define QUANT_FLASH_ATTN_TILING_MXFP8_IMPL_H_
+#ifndef QUANT_FLASH_ATTN_TILING_MXFP8_SOFTMAX_FP16_H_
+#define QUANT_FLASH_ATTN_TILING_MXFP8_SOFTMAX_FP16_H_
 
 #include "register/tilingdata_base.h"
 #include "exe_graph/runtime/tiling_context.h"
 #include "../qfa_tiling_info.h"
 #include "../quant_flash_attn_tiling_common.h"
 #include "tiling/tiling_api.h"
-#include "../../op_kernel/arch35/quant_flash_attn_tiling_data_mxfp8_softmax_fp16.h"
-#include "../../op_kernel/arch35/quant_flash_attn_template_tiling_key_mxfp8_softmax_fp16.h"
+#include "../../op_kernel/arch35/quant_flash_attn_tiling_data.h"
+#include "../../op_kernel/arch35/quant_flash_attn_template_tiling_key.h"
 
 namespace optiling {
 namespace quant_flash_attn {

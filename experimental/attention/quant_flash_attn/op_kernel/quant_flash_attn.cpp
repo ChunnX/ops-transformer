@@ -22,6 +22,7 @@
 
 #if (ORIG_DTYPE_Q == DT_FLOAT4_E2M1) && (ORIG_DTYPE_Q_DESCALE == DT_FLOAT8_E8M0) && (ORIG_DTYPE_ATTN_OUT == DT_BF16)
 // ===================== MxFP4 DN (quant_mode=5, A4C4_QKV_MXFP4_P_MXFP4_SOFTMAX_FP16) =====================
+#include "arch35/quant_flash_attn_tiling_data.h"
 #include "arch35/quant_flash_attn_template_tiling_key.h"
 #include "arch35/quant_flash_attn_kernel_dn.h"
 #include "arch35/quant_flash_attn_block_cube_dn.h"
@@ -85,7 +86,8 @@ __aicore__ inline constexpr bool IsPageAttention()
     return (KV_STORAGE_MODE != KV_STORAGE_MODE_CONTINUE);
 }
 
-template <uint8_t Q_OUT_LAYOUT_T, uint8_t KV_STORAGE_MODE, bool HAS_MASK>
+template <uint8_t Q_OUT_LAYOUT_T, uint16_t CONFIG_T, uint8_t QUANT_MODE_T, bool HAS_MASK, uint8_t KV_STORAGE_MODE,
+          bool IS_FD_T>
 __global__ __aicore__ void
 quant_flash_attn(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *q_descale,
                  __gm__ uint8_t *k_descale, __gm__ uint8_t *v_descale, __gm__ uint8_t *blockTable,
@@ -99,6 +101,7 @@ quant_flash_attn(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *val
     (void)pScale;
 
 #if (ORIG_DTYPE_Q == DT_FLOAT4_E2M1) && (ORIG_DTYPE_Q_DESCALE == DT_FLOAT8_E8M0) && (ORIG_DTYPE_ATTN_OUT == DT_BF16)
+    if constexpr (QUANT_MODE_T == QFA_MXFP4_DN) {
     InitSocState();
     GET_TILING_DATA_MEMBER(QuantFlashAttnTilingData, baseTiling, baseTilingIn, tiling);
     const FlashAttnTilingData *__restrict tilingData = &baseTilingIn;
@@ -113,13 +116,14 @@ quant_flash_attn(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *val
             sequsedKv, attnMask, learnableSink, softmaxLse, attnOut, workspace, metadata, tilingData);
     op.Process();
     PipeBarrier<PIPE_ALL>();
+    }
 #endif
 }
 #elif (ORIG_DTYPE_Q == DT_FLOAT8_E4M3FN)
 // ===================== MxFP8 Softmax FP16 (quant_mode=3, A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP16) =====================
 #include "kernel_operator.h"
-#include "arch35/quant_flash_attn_template_tiling_key_mxfp8_softmax_fp16.h"
-#include "arch35/quant_flash_attn_tiling_data_mxfp8_softmax_fp16.h"
+#include "arch35/quant_flash_attn_tiling_data.h"
+#include "arch35/quant_flash_attn_template_tiling_key.h"
 #include "arch35/quant_flash_attn_kernel_mxfp8_softmax_fp16.h"
 
 using namespace optiling;

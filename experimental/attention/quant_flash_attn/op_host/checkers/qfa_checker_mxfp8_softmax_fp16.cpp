@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file qfa_checker.cpp
+ * \file qfa_checker_mxfp8_softmax_fp16.cpp
  * \brief QfaMxfp8SoftmaxFp16Checker 实现
  */
 

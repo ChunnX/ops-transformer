@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file qfa_checker.h
+ * \file qfa_checker_mxfp8_softmax_fp16.h
  * \brief QfaMxfp8SoftmaxFp16Checker 声明
  */
 
