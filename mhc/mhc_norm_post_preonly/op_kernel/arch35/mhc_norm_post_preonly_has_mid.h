@@ -60,6 +60,9 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         LocalTensor<float> gammaEven = bufScratchFp32_.Get<float>();
         LocalTensor<float> gammaOdd =
             dLoop_ == 1U ? bufResFp32_.Get<float>() : bufGammaFp32_.Get<float>();
+        if (tile != 0U) {
+            FenceVToMte2();
+        }
         CopyInGammaTile(gammaEven, gamma2Gm_, tOff, tD);
         LocalTensor<T> x2Cache = bufActivationLowp_.Get<T>();
         for (uint32_t n = 0; n < N; ++n) {
