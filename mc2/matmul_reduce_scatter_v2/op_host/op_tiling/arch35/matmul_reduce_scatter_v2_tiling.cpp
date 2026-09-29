@@ -135,6 +135,8 @@ ge::graphStatus MatmulReduceScatterV2Tiling::SetMc2Hcomm()
                   args_.rankDim == PEER_ONLY_RANK_SIZE && mc2tiling::Mc2TilingUtils::GetDebugMode() == 0;
     if (isPeerOnly_) {
         mc2CcTilingConfig.SetAlgConfig(PEER_ONLY_ALGORITHM);
+        OP_TILING_CHECK(mc2CcTilingConfig.SetSkipLocalRankCopy(1) != 0,
+                        OP_LOGE(opName_, "SetSkipLocalRankCopy failed for peer-only MMRS"), return ge::GRAPH_FAILED);
     } else {
         uint64_t commDataBytes = args_.orgMValue * args_.orgNValue * args_.outputDtypeSize;
         uint32_t algoCount = 0;
