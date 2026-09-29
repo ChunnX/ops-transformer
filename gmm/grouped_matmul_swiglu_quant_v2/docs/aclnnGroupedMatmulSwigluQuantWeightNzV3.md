@@ -248,8 +248,8 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3(
   - 确定性计算：
       - aclnnGroupedMatmulSwigluQuantWeightNzV3默认为确定性实现。
 
-  <!-- npu="950" id7 -->
-  - <term>Ascend 950PR/Ascend 950DT</term>：
+  <!-- npu="950" id1 -->
+  - <term>Ascend 950PR&950DT系列产品</term>：
     - 支持范围：仅支持下述 MXFP8 weightNZ 场景，不支持 per-token、MXFP4、A8W4、A4W4 或其他量化场景；`weight` 和 `weightScale` 的 TensorList 长度必须均为 1，每个唯一 Tensor 承载全部 E 个 expert，不支持按 expert 拆成多个 Tensor；`weight` 必须为三维 FRACTAL_NZ 格式，支持非转置和转置输入，`x` 仅支持非转置输入。
     - MX量化场景下需满足以下约束条件：
         - 数据类型需要满足下表：
@@ -325,14 +325,14 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3(
         - 维度与布局：`E` 是 expert 数量，范围为 [1, 1024]；`weight` 的逻辑首维及 `groupList` 长度均为 E，单 Tensor 可承载多个 expert。`M`（token 数）和 `K`（输入特征数）均大于 0；SwiGLU 拆分前的 `N` 为 64 的正整数倍，输出宽度为 `N / 2`。`weightScale` 最后一维固定为 2。`weight` 和 `weightScale` 的转置属性必须一致；仅支持上表列出的非转置或转置布局，不支持任意非连续权重 view；其他输入输出 Tensor 支持符合上述 shape 和布局约束的非连续 view。
         - 分组与可选输入：`groupListType` 仅支持 0（累计 token 数，非负、非降且不大于 `M`）和 1（各组 token 数，非负且总和不大于 `M`）；未指定的输出区域不更新。`bias`、`smoothScale` 必须为 `nullptr`；`weightAssistMatrix` 仅可为 `nullptr`、空 TensorList，或包含唯一 `nullptr`/shape (0) Tensor 的 TensorList；`tuningConfigOptional` 仅可为 `nullptr` 或空数组。
         - SwiGLU 与量化参数：`swigluMode` 仅支持 2；`clampLimit`、`gluAlpha` 和 `gluBias` 必须为有限且可表示为 `float32` 的值，`clampLimit` 还必须大于 0。`dequantMode=quantMode=2`，`dequantDtype=0`（中间计算使用 `DT_FLOAT`）；`roundMode` 仅支持 `"rint"`，`nullptr` 或空字符串等效于 `"rint"`；`scaleAlg` 仅支持 0（OCP）和 1（cuBLAS）；`dstTypeMax` 只能为有限的 0.0。
-  <!-- end id7 -->
+  <!-- end id1 -->
 
 ## 调用示例
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
-<!-- npu="950" id8 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR&950DT系列产品</term>：
 
   以下示例与[示例源码](../examples/arch35/test_aclnn_grouped_matmul_swiglu_quant_weight_nz_v3.cpp)一致，依次演示资源初始化、输入输出构造、两段式接口调用及资源释放。FP8 输入使用 E4M3FN 编码，权重按 FRACTAL_NZ 格式构造。
 
@@ -707,4 +707,4 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3(
       return ACL_SUCCESS;
   }
   ```
-<!-- end id8 -->
+<!-- end id1 -->
