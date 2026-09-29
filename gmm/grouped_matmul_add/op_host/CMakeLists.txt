@@ -11,6 +11,10 @@
 if (BUILD_OPEN_PROJECT)
     if("${ASCEND_COMPUTE_UNIT}" STREQUAL "ascend950")
         set(grouped_matmul_add_depends gmm/common CACHE INTERNAL "Dependencies for grouped_matmul_add")
+    elseif("${ASCEND_COMPUTE_UNIT}" STREQUAL "ascend960dt")
+        set(grouped_matmul_add_depends gmm/common CACHE INTERNAL "Dependencies for grouped_matmul_add")
+    elseif("${ASCEND_COMPUTE_UNIT}" STREQUAL "ascend960pr")
+        set(grouped_matmul_add_depends gmm/common CACHE INTERNAL "Dependencies for grouped_matmul_add")
     elseif("${ASCEND_COMPUTE_UNIT}" STREQUAL "ascend350")
         set(grouped_matmul_add_depends gmm/common CACHE INTERNAL "Dependencies for grouped_matmul_add")
     endif()
@@ -31,6 +35,20 @@ if (BUILD_OPS_RTY_KERNEL) # 回黄kernel
         add_ops_compile_options(
             OP_NAME GroupedMatmulAdd
             COMPUTE_UNIT Ascend950PR_9599
+            OPTIONS -mllvm -cce-aicore-dcci-before-kernel-end=false
+        )
+    elseif("${ASCEND_COMPUTE_UNIT}" STREQUAL "ascend960dt")
+        set(grouped_matmul_add_depends gmm/common CACHE INTERNAL "Dependencies for grouped_matmul_add")
+        add_ops_compile_options(
+            OP_NAME GroupedMatmulAdd
+            COMPUTE_UNIT Ascend960DT_969B5
+            OPTIONS -mllvm -cce-aicore-dcci-before-kernel-end=false
+        )
+    elseif("${ASCEND_COMPUTE_UNIT}" STREQUAL "ascend960pr")
+        set(grouped_matmul_add_depends gmm/common CACHE INTERNAL "Dependencies for grouped_matmul_add")
+        add_ops_compile_options(
+            OP_NAME GroupedMatmulAdd
+            COMPUTE_UNIT Ascend960PR_969A1
             OPTIONS -mllvm -cce-aicore-dcci-before-kernel-end=false
         )
     elseif("${ASCEND_COMPUTE_UNIT}" STREQUAL "ascend350")
