@@ -319,6 +319,10 @@ public:
         resource.pipe.Reset();
         AscendC::SyncAll<false>();
 
+        // Q128/K128 D128 fast path
+        const bool use128FastPath = QUERY_LAYOUT == 1 && KV_CACHE_LAYOUT == 1 && !PAGED_CACHE_FLAG && embed == 128 &&
+                                    qBlockX == 128 && qBlockY == 128;
+
 #ifdef __DAV_C220_CUBE__
         // Initialize hardware events for cube core
         AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID0);
@@ -488,6 +492,11 @@ public:
 
             // Q task splitting按照[qNBlockNum, qHead]
             uint32_t taskIdxCurBatch = taskIdx - preTotalTaskNum;
+            if (use128FastPath) {
+                const uint32_t queryTile = taskIdxCurBatch % curQSBlockNum;
+                const uint32_t headTile = taskIdxCurBatch / curQSBlockNum;
+                taskIdxCurBatch = queryTile * curQNBlockNum + headTile;
+            }
             uint32_t qSBlockIdx = taskIdxCurBatch / curQNBlockNum;
             uint32_t qXIdx = qSBlockIdx / qBlockInX;
             uint32_t qXInnerIdx = qSBlockIdx - qXIdx * qBlockInX;
@@ -581,7 +590,8 @@ public:
             uint32_t noSkipKvS = static_cast<uint32_t>(gatheredKvSeqlen);
             uint32_t kvSLoopNumTotal = (noSkipKvS + pagedBlockSize - 1) / pagedBlockSize; // CeilDiv
 
-            uint32_t blockStackNum = MAX_KV_STACK_LEN / pagedBlockSize;
+            const uint32_t kvStackLen = use128FastPath ? 1024 : MAX_KV_STACK_LEN;
+            uint32_t blockStackNum = kvStackLen / pagedBlockSize;
             uint32_t stackSeqTile;
             uint32_t stackSeqTilePad = blockStackNum * pagedBlockSize;
             uint32_t preKVNum = PRE_LAUNCH * blockStackNum;
