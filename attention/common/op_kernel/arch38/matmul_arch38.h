@@ -527,17 +527,6 @@ __aicore__ inline void MatmulKMx(const LocalTensor<A> &aL1Tensor, const LocalTen
     uint32_t tailK = tailSize ? tailSize : baseK;
     uint64_t L1Aoffset = param.isLeftTranspose ? baseK << 4 : ((param.singleM + 15) >> 4 << 4) * baseK;
     uint64_t L1Boffset = param.isRightTranspose ? ((param.singleN + 15) >> 4 << 4) * baseK : baseK << 4;
-#if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__)
-    if constexpr (IsSameType<A, fp8_e5m2_t>::value || IsSameType<A, fp8_e4m3fn_t>::value ||
-                  IsSameType<A, hifloat8_t>::value) {
-        L1Aoffset = ((param.singleM + 31) >> 5 << 5) * baseK;
-        L1Boffset = ((param.singleN + 31) >> 5 << 5) * baseK;
-    }
-    if constexpr (IsSameType<A, float>::value) {
-        L1Aoffset = param.isLeftTranspose ? baseK << 3 : ((param.singleM + 15) >> 4 << 4) * baseK;
-        L1Boffset = param.isRightTranspose ? ((param.singleN + 15) >> 4 << 4) * baseK : baseK << 3;
-    }
-#endif
     for (uint32_t k = 0; k < kLoops; k++) {
         uint32_t tileK = (k == (kLoops - 1)) ? tailK : baseK;
         auto l0aBuffer = aL0BuffsDb.Get();
@@ -604,12 +593,6 @@ __aicore__ inline void MatmulMMx(const LocalTensor<A> &aL1Tensor, const LocalTen
     uint32_t tailSize = param.singleM % baseM;
     uint32_t tailM = tailSize ? tailSize : baseM;
     uint64_t L1Aoffset = param.isLeftTranspose ? baseM << 4 : ((param.singleK + 15) >> 4 << 4) * baseM; // 要对齐
-#if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__)
-    if constexpr (IsSameType<A, fp8_e5m2_t>::value || IsSameType<A, fp8_e4m3fn_t>::value ||
-                  IsSameType<A, hifloat8_t>::value) {
-        L1Aoffset = ((param.singleK + 31) >> 5 << 5) * baseM;
-    }
-#endif
 
     uint64_t L0Coffset = ((param.singleN + 31) >> 5 << 5) * baseM;
     auto l0bBuffer = bL0BuffsDb.Get();
@@ -681,14 +664,7 @@ __aicore__ inline void MatmulFull(const LocalTensor<A> &aL1Tensor, const LocalTe
     auto l0bBuffer = bL0BuffsDb.Get();
     l0bBuffer.template Wait<HardEvent::M_MTE1>();
     LocalTensor<L0BDType> L0BTensor = l0bBuffer.template GetTensor<L0BDType>();
-#if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__)
-    if constexpr (IsSameType<L0BDType, mx_fp8_e4m3_t>::value) {
-        LoadDataToL0BMx<B, L0BDType>(L0BTensor, bL1Tensor, bScaleL1Tensor, param, 0, param.singleK, param.singleN);
-    } else
-#endif
-    {
-        LoadDataToL0B(L0BTensor, bL1Tensor, param, 0, param.singleK, param.singleN);
-    }
+    LoadDataToL0B(L0BTensor, bL1Tensor, param, 0, param.singleK, param.singleN);
     l0bBuffer.template Set<HardEvent::MTE1_M>();
 
     l0aBuffer.template Wait<HardEvent::MTE1_M>();
@@ -729,46 +705,19 @@ __aicore__ inline void MatmulK(const LocalTensor<A> &aL1Tensor, const LocalTenso
     uint32_t tailK = tailSize ? tailSize : baseK;
     uint64_t L1Aoffset = param.isLeftTranspose ? baseK << 4 : ((param.singleM + 15) >> 4 << 4) * baseK;
     uint64_t L1Boffset = param.isRightTranspose ? ((param.singleN + 15) >> 4 << 4) * baseK : baseK << 4;
-#if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__)
-    if constexpr (IsSameType<A, fp8_e5m2_t>::value || IsSameType<A, fp8_e4m3fn_t>::value ||
-                  IsSameType<A, hifloat8_t>::value || IsSameType<A, int8_t>::value) {
-        L1Aoffset = ((param.singleM + 31) >> 5 << 5) * baseK;
-        L1Boffset = ((param.singleN + 31) >> 5 << 5) * baseK;
-    }
-    if constexpr (IsSameType<A, float>::value) {
-        L1Aoffset = param.isLeftTranspose ? baseK << 3 : ((param.singleM + 15) >> 4 << 4) * baseK;
-        L1Boffset = param.isRightTranspose ? ((param.singleN + 15) >> 4 << 4) * baseK : baseK << 3;
-    }
-#endif
 
     for (uint32_t k = 0; k < kLoops; k++) {
         uint32_t tileK = (k == (kLoops - 1)) ? tailK : baseK;
         auto l0aBuffer = aL0BuffsDb.Get();
         l0aBuffer.template Wait<HardEvent::M_MTE1>(); // mte1等Matmul：上一轮matmul完成后才能搬运新数据到L0A
         LocalTensor<L0ADType> L0ATensor = l0aBuffer.template GetTensor<L0ADType>();
-#if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__)
-        if constexpr (IsSameType<L0ADType, mx_fp8_e4m3_t>::value) {
-            LoadDataToL0AMx<A, L0ADType, baseK>(L0ATensor, aL1Tensor, aScaleL1Tensor, param, k * L1Aoffset, tileK,
-                                                param.singleM); // s2,
-        } else
-#endif
-        {
-            LoadDataToL0A(L0ATensor, aL1Tensor, param, k * L1Aoffset, tileK, param.singleM); // s2*d,d,s2
-        }
+        LoadDataToL0A(L0ATensor, aL1Tensor, param, k * L1Aoffset, tileK, param.singleM); // s2*d,d,s2
 
         auto l0bBuffer = bL0BuffsDb.Get();
         l0bBuffer.template Wait<HardEvent::M_MTE1>(); // mte1等Matmul：上一轮matmul完成后才能搬运新数据到L0B
         LocalTensor<L0BDType> L0BTensor = l0bBuffer.template GetTensor<L0BDType>();
         uint64_t loopNum = param.isRightTranspose ? 1 : kLoops;
-#if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__)
-        if constexpr (IsSameType<L0BDType, mx_fp8_e4m3_t>::value) {
-            LoadDataToL0BMx<B, L0BDType>(L0BTensor, bL1Tensor, bScaleL1Tensor, param, k * L1Boffset, tileK,
-                                         param.singleN, loopNum); // tileK.D
-        } else
-#endif
-        {
-            LoadDataToL0B(L0BTensor, bL1Tensor, param, k * L1Boffset, tileK, param.singleN, loopNum);
-        }
+        LoadDataToL0B(L0BTensor, bL1Tensor, param, k * L1Boffset, tileK, param.singleN, loopNum);
         l0bBuffer.template Set<HardEvent::MTE1_M>(); // mte1搬运完后，通知可以开始matmul
         // l0aBuffer和l0bBuffer共用MTE1_M，在D=512场景减少同步指令数量，提升性能
         l0bBuffer.template Wait<HardEvent::MTE1_M>(); // matmul等mte1：L0B数据搬运完成后才能开始matmul
@@ -817,18 +766,6 @@ __aicore__ inline void MatmulKbias(const LocalTensor<A> &aL1Tensor, const LocalT
                              ((param.singleM + 15) >> 4 << 4) * baseK; // 给传入的s1realsize对齐到16的倍数
     uint64_t L1Boffset = param.isRightTranspose ? ((param.singleN + 15) >> 4 << 4) * baseK :
                                                   baseK << 4; // 给传入的s2realsize对齐到16的倍数
-#if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__)
-    if constexpr (IsSameType<A, fp8_e5m2_t>::value || IsSameType<A, fp8_e4m3fn_t>::value ||
-                  IsSameType<A, hifloat8_t>::value || IsSameType<A, int8_t>::value) {
-        L1Aoffset = ((param.singleM + 31) >> 5 << 5) * baseK; // 给传入的s1realsize对齐到32的倍数
-        L1Boffset = ((param.singleN + 31) >> 5 << 5) * baseK; // 给传入的s2realsize对齐到32的倍数
-    }
-    if constexpr (IsSameType<A, float>::value) {
-        L1Aoffset = param.isLeftTranspose ? baseK << 3 : ((param.singleM + 15) >> 4 << 4) * baseK;
-        L1Boffset = param.isRightTranspose ? ((param.singleN + 15) >> 4 << 4) * baseK : baseK << 3;
-    }
-#endif
-
     for (uint32_t k = 0; k < kLoops; k++) {
         uint32_t tileK = (k == (kLoops - 1)) ? tailK : baseK;
         auto l0aBuffer = aL0BuffsDb.Get();
@@ -890,12 +827,6 @@ __aicore__ inline void MatmulN(const LocalTensor<A> &aL1Tensor, const LocalTenso
     uint32_t tailSize = param.singleN % baseN;
     uint32_t tailN = tailSize ? tailSize : baseN;
     uint64_t L1Boffset = param.isRightTranspose ? (baseN << 4) : ((param.singleK + 15) >> 4 << 4) * baseN;
-#if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__)
-    if constexpr (IsSameType<A, fp8_e5m2_t>::value || IsSameType<A, fp8_e4m3fn_t>::value ||
-                  IsSameType<A, hifloat8_t>::value || IsSameType<A, int8_t>::value) {
-        L1Boffset = ((param.singleK + 31) >> 5 << 5) * baseN;
-    }
-#endif
     uint64_t L0Coffset = ((param.singleM + 15) >> 4 << 4) * baseN;
     if (param.realM != 0) {
         L0Coffset = ((param.realM + 15) >> 4 << 4) * baseN;
@@ -904,15 +835,7 @@ __aicore__ inline void MatmulN(const LocalTensor<A> &aL1Tensor, const LocalTenso
     auto l0aBuffer = aL0BuffsDb.Get();
     l0aBuffer.template Wait<HardEvent::M_MTE1>(); // mte1等Matmul：上一轮matmul完成后才能搬运新数据到L0A
     LocalTensor<L0ADType> L0ATensor = l0aBuffer.template GetTensor<L0ADType>();
-#if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__)
-    if constexpr (IsSameType<L0ADType, mx_fp8_e4m3_t>::value) {
-        LoadDataToL0AMx<A, L0ADType, baseK>(L0ATensor, aL1Tensor, aScaleL1Tensor, param, 0, param.singleK,
-                                            param.singleM); // d,s2
-    } else
-#endif
-    {
-        LoadDataToL0A(L0ATensor, aL1Tensor, param, 0, param.singleK, param.singleM); // s2*d,d,s2
-    }
+    LoadDataToL0A(L0ATensor, aL1Tensor, param, 0, param.singleK, param.singleM); // s2*d,d,s2
     for (uint32_t n = 0; n < nLoops; n++) {
         uint32_t tileN = (n == (nLoops - 1)) ? tailN : baseN;
 
@@ -920,15 +843,7 @@ __aicore__ inline void MatmulN(const LocalTensor<A> &aL1Tensor, const LocalTenso
         l0bBuffer.template Wait<HardEvent::M_MTE1>(); // mte1等Matmul：上一轮matmul完成后才能搬运新数据到L0B
         LocalTensor<L0BDType> L0BTensor = l0bBuffer.template GetTensor<L0BDType>();
         uint64_t loopNum = param.isRightTranspose ? nLoops : 1;
-#if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__)
-        if constexpr (IsSameType<L0BDType, mx_fp8_e4m3_t>::value) {
-            LoadDataToL0BMx<B, L0BDType>(L0BTensor, bL1Tensor, bScaleL1Tensor, param, n * L1Boffset, param.singleK,
-                                         tileN, loopNum); // tileK.D
-        } else
-#endif
-        {
-            LoadDataToL0B(L0BTensor, bL1Tensor, param, n * L1Boffset, param.singleK, tileN, loopNum);
-        }
+        LoadDataToL0B(L0BTensor, bL1Tensor, param, n * L1Boffset, param.singleK, tileN, loopNum);
         l0bBuffer.template Set<HardEvent::MTE1_M>(); // mte1搬运完后，通知可以开始matmul
         // l0aBuffer和l0bBuffer共用MTE1_M，在D=512场景减少同步指令数量，提升性能
         l0bBuffer.template Wait<HardEvent::MTE1_M>(); // matmul等mte1：L0B数据搬运完成后才能开始matmul
@@ -1063,11 +978,9 @@ __aicore__ inline void MatmulKPP(const LocalTensor<A> &aL1Tensor, const LocalTen
         mmadParams.fixShiftVal = MMAD_FIXED_SHIFT_VAL;
 
         Mmad(cL0Tensor, L0ATensor, L0BTensor, mmadParams);
-#if (__CCE_AICORE__ != 310) && (!(defined __DAV_310R6__))
         if ((mmadParams.m / FP16_ONE_FRACTAL_ELEMENT) * (mmadParams.n / FP16_ONE_FRACTAL_ELEMENT) < MMAD_MN_SIZE_10) {
             AscendC::PipeBarrier<PIPE_M>();
         }
-#endif
         l0aBuffer.Set<HardEvent::M_MTE1>(); // matmul完成后，通知mte1可以开始搬运新数据到L0A
     }
 }

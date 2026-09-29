@@ -271,10 +271,15 @@ __aicore__ inline void FABlockVecInfer<TEMPLATE_ARGS>::InitPostQuant(ConstInfo<i
 {
     if (postQuantScale != nullptr) {
         constInfo.postQuantScaleValue = *(reinterpret_cast<__gm__ float *>(postQuantScale));
+    } else {
+        constInfo.postQuantScaleValue = 1.0F;
     }
     if (postQuantOffset != nullptr) {
         constInfo.isPostQuantOffsetExist = true;
         constInfo.postQuantOffsetValue = *(reinterpret_cast<__gm__ float *>(postQuantOffset));
+    } else {
+        constInfo.isPostQuantOffsetExist = false;
+        constInfo.postQuantOffsetValue = 0.0F;
     }
 }
 
