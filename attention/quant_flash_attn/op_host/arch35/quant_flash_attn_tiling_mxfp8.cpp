@@ -425,7 +425,8 @@ void QuantFlashAttnTilingImpl::PrintAllTilingData()
     OP_LOGD(qfaInfo_->opName, "logSumExpSize:%d", wsParams.logSumExpSize);
 
     OP_LOGD(qfaInfo_->opName, "hasVTail:%d", tilingData_.baseTiling.quantFlashAttnVTailParams.hasVTail);
-    OP_LOGD(qfaInfo_->opName, "seqUsedKvTailSize:%d", tilingData_.baseTiling.quantFlashAttnVTailParams.seqUsedKvTailSize);
+    OP_LOGD(qfaInfo_->opName, "seqUsedKvTailSize:%d",
+            tilingData_.baseTiling.quantFlashAttnVTailParams.seqUsedKvTailSize);
     OP_LOGD(qfaInfo_->opName, "tailMaxBlockNum:%d", tilingData_.baseTiling.quantFlashAttnVTailParams.tailMaxBlockNum);
 
     OP_LOGD(qfaInfo_->opName, "tilingKey:%llu", tilingKey_);

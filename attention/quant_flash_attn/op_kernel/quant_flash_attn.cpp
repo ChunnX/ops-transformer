@@ -30,17 +30,13 @@ using namespace optiling;
 
 template <uint8_t inOutLayoutType, uint16_t config, uint8_t quantMode, bool hasAttenMask, uint8_t KvLayoutType,
           bool isFd, bool hasVTail>
-__aicore__ inline void quant_flash_attn_mxfp8(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
-                                              __gm__ uint8_t *dequantScaleQuery, __gm__ uint8_t *dequantScaleKey,
-                                              __gm__ uint8_t *dequantScaleValue, __gm__ uint8_t *blockTable,
-                                              __gm__ uint8_t *pScale, __gm__ uint8_t *cuSeqLensQ,
-                                              __gm__ uint8_t *cuSeqLensKv, __gm__ uint8_t *sequsedQ,
-                                              __gm__ uint8_t *sequsedKv, __gm__ uint8_t *sinks,
-                                              __gm__ uint8_t *attnMask, __gm__ uint8_t *metadata,
-                                              __gm__ uint8_t *vTail, __gm__ uint8_t *blockTableTail,
-                                              __gm__ uint8_t *sequsedKvTail, __gm__ uint8_t *attnOut,
-                                              __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace,
-                                              const QuantFlashAttnTilingData &tilingData)
+__aicore__ inline void quant_flash_attn_mxfp8(
+    __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *dequantScaleQuery,
+    __gm__ uint8_t *dequantScaleKey, __gm__ uint8_t *dequantScaleValue, __gm__ uint8_t *blockTable,
+    __gm__ uint8_t *pScale, __gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *cuSeqLensKv, __gm__ uint8_t *sequsedQ,
+    __gm__ uint8_t *sequsedKv, __gm__ uint8_t *sinks, __gm__ uint8_t *attnMask, __gm__ uint8_t *metadata,
+    __gm__ uint8_t *vTail, __gm__ uint8_t *blockTableTail, __gm__ uint8_t *sequsedKvTail, __gm__ uint8_t *attnOut,
+    __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace, const QuantFlashAttnTilingData &tilingData)
 {
     using INPUT_T = fp8_e4m3fn_t;
     using OUT_T = bfloat16_t;
@@ -65,8 +61,7 @@ __aicore__ inline void quant_flash_attn_mxfp8(__gm__ uint8_t *query, __gm__ uint
 
     using CubeBlock =
         BaseApi::QuantFlashAttnBlockCubeMxfp8<INPUT_T, float, inputLayoutType, s1TemplateType, s2TemplateType,
-                                              dTemplateType, dVTemplateType, KvLayoutType, useDn, isDAligned,
-                                              hasVTail>;
+                                              dTemplateType, dVTemplateType, KvLayoutType, useDn, isDAligned, hasVTail>;
     using VecFaBlock =
         BaseApi::QuantFlashAttnBlockVecMxfp8<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType, s1TemplateType,
                                              s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType,

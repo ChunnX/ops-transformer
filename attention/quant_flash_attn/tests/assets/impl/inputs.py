@@ -308,8 +308,11 @@ def generate_qfa_mxfp8_inputs(
             tail_lens.append(tail_len)
             if tail_len > 0:
                 v_quant_input[b, :, main_len : actual_seq_kv[b], :] = 0
-        logger.info("[V_TAIL] enable_v_tail=True, actual_seq_kv=%s, tail_lens=%s",
-                    actual_seq_kv, tail_lens)
+        logger.info(
+            "[V_TAIL] enable_v_tail=True, actual_seq_kv=%s, tail_lens=%s",
+            actual_seq_kv,
+            tail_lens,
+        )
 
     quant_scale_v_bnsd = mxfp8_golden_mod.get_mxfp8_per_channel_group_quant_scale(
         v_quant_input, fp8_dtype, group_size
@@ -349,18 +352,26 @@ def generate_qfa_mxfp8_inputs(
         v_tail_bnsd_list = []
         for b in range(B):
             main_len = actual_seq_kv[b] - tail_lens[b]
-            seg = v_bf16[b, :, main_len : actual_seq_kv[b], :]  # (N_kv, tail, D) bf16原值
+            seg = v_bf16[
+                b, :, main_len : actual_seq_kv[b], :
+            ]  # (N_kv, tail, D) bf16原值
             # data_range极端值(±fp32_max)时bf16表示溢出为NaN/Inf —
             # clamp到bf16安全范围(finfo), 避免NaN毒化golden(全NaN)与NPU输入
             if torch.isnan(seg.float()).any() or torch.isinf(seg.float()).any():
-                seg = seg.float().clamp(
-                    torch.finfo(torch.bfloat16).min, torch.finfo(torch.bfloat16).max
-                ).to(torch.bfloat16)
+                seg = (
+                    seg.float()
+                    .clamp(
+                        torch.finfo(torch.bfloat16).min, torch.finfo(torch.bfloat16).max
+                    )
+                    .to(torch.bfloat16)
+                )
             seg_pad = torch.zeros(N_kv, tail_capacity, D, dtype=torch.bfloat16)
             if tail_lens[b] > 0:
                 seg_pad[:, : tail_lens[b], :] = seg
             v_tail_bnsd_list.append(seg_pad)
-        v_tail_bnsd = torch.stack(v_tail_bnsd_list, dim=0).contiguous()  # (B,N_kv,Bs,D) bf16
+        v_tail_bnsd = torch.stack(
+            v_tail_bnsd_list, dim=0
+        ).contiguous()  # (B,N_kv,Bs,D) bf16
         layout_up = str(kv_cache_layout or "").upper()
         if layout_up in ("BBSND", "PA_BBND"):
             v_tail_final = v_tail_bnsd.transpose(1, 2).contiguous()
@@ -375,10 +386,12 @@ def generate_qfa_mxfp8_inputs(
             v_tail_final = v_tail_bnsd
         block_table_tail_final = torch.arange(B, dtype=torch.int32).view(B, 1)
         seqused_kv_tail_final = torch.tensor(tail_lens, dtype=torch.int32)
-        logger.info("[V_TAIL] bundle ready: v_tail=%s btt=%s tail=%s",
-                    tuple(v_tail_final.shape),
-                    tuple(block_table_tail_final.shape),
-                    tail_lens)
+        logger.info(
+            "[V_TAIL] bundle ready: v_tail=%s btt=%s tail=%s",
+            tuple(v_tail_final.shape),
+            tuple(block_table_tail_final.shape),
+            tail_lens,
+        )
 
     q_fp8_final = mxfp8_golden_mod.convert_q_bnsd_to_layout(
         q_fp8_bnsd_f32, actual_seq_q, "TND", cu_seqlens=cu_seqlens_q

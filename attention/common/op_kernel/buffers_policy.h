@@ -340,13 +340,13 @@ public:
         return buffer;
     }
 
-        // 返回上一次Get的buffer(不推进ring), 与3buff的GetPre语义一致
+    // 返回上一次Get的buffer(不推进ring), 与3buff的GetPre语义一致
     __aicore__ inline Buffer<bufferType, syncType, syncMode> &GetPre()
     {
         return Get(head_ - 1);
     }
 
-__aicore__ inline Buffer<bufferType, syncType, syncMode> &GetReused()
+    __aicore__ inline Buffer<bufferType, syncType, syncMode> &GetReused()
     {
         auto &buffer = Get(used_);
         used_ = (used_ - tail_ + 1) % (head_ - tail_) + tail_;

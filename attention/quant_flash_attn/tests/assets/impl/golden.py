@@ -105,8 +105,9 @@ def _reverse_vtail_to_bnsd(v_tail_bf16, kv_cache_layout):
     return v_tail_bf16.contiguous()
 
 
-def _extract_vtail_bundle(v_tail, block_table_tail, seqused_kv_tail, enable_pa,
-                          kv_cache_layout):
+def _extract_vtail_bundle(
+    v_tail, block_table_tail, seqused_kv_tail, enable_pa, kv_cache_layout
+):
     """从 v_tail 三件套 slot 提取 CPU 参考注入所需的 (v_tail_bnsd, tail_lens)。
 
     gate (与 NPU 侧 vtail_slots_to_npu_args 一致): 空 slot / 全零尾长 → (None, None)。
