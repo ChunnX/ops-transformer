@@ -156,6 +156,7 @@ def changed_keys(changed_file, experimental):
         if domain not in OP_DOMAINS or op_name is None:
             continue
         if op_name in ("common", "3rd"):
+            keys.add(f"{domain}/{op_name}")
             continue
         base = (
             REPO_ROOT / "experimental" / domain / op_name
