@@ -145,26 +145,6 @@ __aicore__ inline void WriteRow(GlobalTensor<T> dst, uint64_t off, LocalTensor<T
     DataCopyPad(dst[off], src, copy);
     Sync<HardEvent::MTE3_V>();
 }
-__simd_vf__ inline void Pack8(__ubuf__ int8_t *out, __ubuf__ float *in, uint32_t count)
-{
-    using namespace AscendC::MicroAPI;
-    constexpr static CastTrait trait{RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
-    auto mask = CreateMask<float, MaskPattern::ALL>();
-    for (uint32_t i = 0; i < count; i += 64) {
-        RegTensor<float> x;
-        LoadAlign(x, in + i);
-        // Round-to-nearest-even through the 32-bit lane, then truncate to INT8.
-        RegTensor<int32_t> integers;
-        Cast<int32_t, float, trait>(integers, x, mask);
-        RegTensor<int8_t> y = (RegTensor<int8_t> &)integers;
-        StoreAlign<int8_t, StoreDist::DIST_PACK4_B32>(out + i, y, mask);
-    }
-}
-__aicore__ inline float Scalar(LocalTensor<float> x)
-{
-    Sync<HardEvent::V_S>();
-    return x.GetValue(0);
-}
 __aicore__ inline uint64_t Offset(uint64_t const *strides, uint32_t b, uint32_t h, uint32_t s)
 {
     return b * strides[0] + h * strides[1] + s * strides[2];

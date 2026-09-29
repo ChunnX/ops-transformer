@@ -11,8 +11,8 @@
 #pragma once
 #include <cstdint>
 // Q/K INT8 quantization granularity, expressed as the number of consecutive
-// tokens sharing one scale. Matches the open-source CUDA thread/warp mapping:
-// one thread owns 4 Q rows and 16 K rows, one warp owns 8 times that.
+// tokens sharing one scale: one thread owns 4 Q rows and 16 K rows, one warp
+// owns 8 times that.
 enum class SageQuantGran : uint32_t { PER_THREAD = 0, PER_WARP = 1, COUNT = 2 };
 
 // PV accumulation formats. FP16 keeps the per-block partial in half precision

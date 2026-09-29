@@ -12,11 +12,38 @@
 #include "scale.h"
 #include "quant_v_mx.h"
 namespace Sage {
+// Grouped INT8 scales. The doubling collapse leaves the maximum of each
+// consecutive-token group in the group's first lane; the expansion then
+// replicates it over the group, so the per-token scale layout read by the
+// attention tiles is unchanged. GROUP divides the 64-row tile, so no group
+// straddles two tiles.
+__simd_callee__ inline void BroadcastGroupMaxima(__ubuf__ float *maxima, uint32_t group)
+{
+    using namespace AscendC::MicroAPI;
+    auto full = CreateMask<float, MaskPattern::ALL>();
+    RegTensor<float> m, shifted;
+    LoadAlign(m, maxima);
+    for (uint32_t step = 1; step < group; step <<= 1) {
+        StoreAlign(maxima, m, full);
+        LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+        LoadAlign(shifted, maxima + step);
+        Max(m, m, shifted, full);
+    }
+    StoreAlign(maxima, m, full);
+    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+    auto keep = UpdateMask<float>(group);
+    for (uint32_t start = 0; start < 64; start += group) {
+        RegTensor<float> value;
+        LoadAlign<float, LoadDist::DIST_BRC_B32>(value, maxima + start);
+        StoreAlign(maxima + start, value, keep);
+    }
+    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+}
 
 template <uint32_t DP, bool SMOOTH>
 __simd_vf__ inline void QuantRowsImpl(__ubuf__ float *x, [[maybe_unused]] __ubuf__ float *mean, __ubuf__ float *scales,
                                       __ubuf__ int8_t *out, __ubuf__ half *halfScales, __ubuf__ float *factor,
-                                      __ubuf__ float *inverseScales, uint32_t valid)
+                                      __ubuf__ float *inverseScales, uint32_t valid, uint32_t group)
 {
     using namespace AscendC::MicroAPI;
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
@@ -71,6 +98,8 @@ __simd_vf__ inline void QuantRowsImpl(__ubuf__ float *x, [[maybe_unused]] __ubuf
     }
     StoreUnAlignPost(dst, compact, 0);
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+    if (group > 1)
+        BroadcastGroupMaxima(scales, group);
     // All 64 row maxima fit in one FP32 register. Form token scales together
     // with the same division and zero-row rule as the scalar-row schedule.
     RegTensor<float> m;
@@ -128,18 +157,18 @@ __simd_vf__ inline void QuantRowsImpl(__ubuf__ float *x, [[maybe_unused]] __ubuf
 __aicore__ inline void QuantRowsVF(__ubuf__ float *x, __ubuf__ float *mean, __ubuf__ float *scales,
                                    __ubuf__ int8_t *out, __ubuf__ half *halfScales, __ubuf__ float *factor,
                                    __ubuf__ float *inverseScales, uint32_t dp,
-                                   uint32_t smooth, uint32_t valid)
+                                   uint32_t smooth, uint32_t valid, uint32_t group)
 {
     if (dp == 128) {
         if (smooth)
-            QuantRowsImpl<128, true>(x, mean, scales, out, halfScales, factor, inverseScales, valid);
+            QuantRowsImpl<128, true>(x, mean, scales, out, halfScales, factor, inverseScales, valid, group);
         else
-            QuantRowsImpl<128, false>(x, mean, scales, out, halfScales, factor, inverseScales, valid);
+            QuantRowsImpl<128, false>(x, mean, scales, out, halfScales, factor, inverseScales, valid, group);
     } else {
         if (smooth)
-            QuantRowsImpl<64, true>(x, mean, scales, out, halfScales, factor, inverseScales, valid);
+            QuantRowsImpl<64, true>(x, mean, scales, out, halfScales, factor, inverseScales, valid, group);
         else
-            QuantRowsImpl<64, false>(x, mean, scales, out, halfScales, factor, inverseScales, valid);
+            QuantRowsImpl<64, false>(x, mean, scales, out, halfScales, factor, inverseScales, valid, group);
     }
 }
 template <class T, bool PERMUTE_V>
@@ -258,7 +287,7 @@ __aicore__ void QuantBatch(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADD
                     (__ubuf__ float *)scales[slot].GetPhyAddr(), (__ubuf__ int8_t *)out[slot].GetPhyAddr(),
                     (__ubuf__ half *)halfScales[slot].GetPhyAddr(), factorPtr[info.isq ? 0 : 1],
                     (__ubuf__ float *)inverseScales[slot].GetPhyAddr(), p.dp, !info.isq && p.smoothK && info.valid,
-                    info.valid);
+                    info.valid, info.isq ? p.qg : p.kg);
         if (!info.isq) {
             PipeBarrier<PIPE_V>();
             if (info.valid < 64)
@@ -308,65 +337,60 @@ __aicore__ void Quant(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADDR mxS
     ko.SetGlobalBuffer((__gm__ int8_t *)k8);
     GlobalTensor<float8_e4m3_t> vo;
     vo.SetGlobalBuffer((__gm__ float8_e4m3_t *)v8);
+    // The fallback stages a whole 64-token tile, so padded head dimensions and
+    // unaligned sequences share QuantRowsImpl, including its scale grouping,
+    // with the batch path instead of duplicating the quantizer math.
+    constexpr uint32_t X = 16384, MU = 49152, RAW_SCALE = 49664, INVERSE_SCALE = 49920;
+    constexpr uint32_t HALF_SCALE = 50176, QK_OUTPUT = 50304, FACTORS = 58496;
+    constexpr uint32_t V_INPUT = 65536, V_MAXIMA = 81920, V_OUTPUT = 82944, MX_SCALE = 91136;
+    static_assert(MX_SCALE + 1024 <= UB_HIGH_WATER, "quant fallback exceeds UB");
     auto input = r.ubBuf.GetBufferByByte<T>(0);
-    auto x = r.ubBuf.GetBufferByByte<float>(512);
-    auto aux = r.ubBuf.GetBufferByByte<float>(1024);
-    auto ab = r.ubBuf.GetBufferByByte<float>(1536);
-    auto red = r.ubBuf.GetBufferByByte<float>(2048);
-    auto work = r.ubBuf.GetBufferByByte<float>(2560);
-    auto out = r.ubBuf.GetBufferByByte<int8_t>(4096);
-    auto halfScales = r.ubBuf.GetBufferByByte<half>(4352);
-    auto factors = r.ubBuf.GetBufferByByte<float>(4608);
+    auto x = r.ubBuf.GetBufferByByte<float>(X);
+    auto mu = r.ubBuf.GetBufferByByte<float>(MU);
+    auto scales = r.ubBuf.GetBufferByByte<float>(RAW_SCALE);
+    auto inverseScales = r.ubBuf.GetBufferByByte<float>(INVERSE_SCALE);
+    auto halfScales = r.ubBuf.GetBufferByByte<half>(HALF_SCALE);
+    auto out = r.ubBuf.GetBufferByByte<int8_t>(QK_OUTPUT);
+    auto factors = r.ubBuf.GetBufferByByte<float>(FACTORS);
     FixedScaleFactorsVF((__ubuf__ float *)factors.GetPhyAddr(), p.smScale);
-    uint64_t nq = uint64_t(p.b) * p.hq * p.qp;
-    uint64_t nk = uint64_t(p.b) * p.hk * p.kp;
-    for (uint64_t row = GetBlockIdx(); row < nq + nk; row += (2 * p.cores)) {
-        bool iskv = row < nk;
-        bool isq = !iskv;
-        uint64_t idx = iskv ? row : row - nk;
-        uint32_t seq = isq ? p.qp : p.kp, heads = isq ? p.hq : p.hk;
-        uint32_t token = idx % seq, h = (idx / seq) % heads, b = idx / seq / heads;
-        bool valid = token < (isq ? p.sq : p.sk);
-        if (valid) {
-            ReadRow(input, isq ? qg : kg, Offset(isq ? p.qs : p.ks, b, h, token), p.d, p.dp);
-            Cast(x, input, RoundMode::CAST_NONE, p.dp);
-            PipeBarrier<PIPE_V>();
-            if (!isq && p.smoothK) {
-                DataCopy(aux, mg[(uint64_t(b) * p.hk + h) * p.dp], p.dp);
-                Sync<HardEvent::MTE2_V>();
-                Sub(x, x, aux, p.dp);
-                PipeBarrier<PIPE_V>();
-            }
-        } else {
-            Duplicate(x, 0.0f, p.dp);
+    __ubuf__ float *factorPtr[2] = {(__ubuf__ float *)factors[0].GetPhyAddr(),
+                                    (__ubuf__ float *)factors[64].GetPhyAddr()};
+    const uint64_t nq = uint64_t(p.b) * p.hq * p.qp;
+    const uint64_t nk = uint64_t(p.b) * p.hk * p.kp;
+    for (uint64_t tile = GetBlockIdx(); tile < (nq + nk) / 64; tile += 2 * p.cores) {
+        const bool iskv = tile < nk / 64;
+        const bool isq = !iskv;
+        const uint64_t idx = (iskv ? tile : tile - nk / 64) * 64;
+        const uint32_t seq = isq ? p.qp : p.kp, heads = isq ? p.hq : p.hk;
+        const uint32_t token = idx % seq, h = (idx / seq) % heads, b = idx / seq / heads;
+        const uint32_t limit = isq ? p.sq : p.sk;
+        const uint32_t valid = token < limit ? Min(uint32_t(64), limit - token) : 0;
+        for (uint32_t row = 0; row < valid; ++row)
+            ReadRow(input[row * p.dp], isq ? qg : kg, Offset(isq ? p.qs : p.ks, b, h, token + row), p.d, p.dp);
+        if (valid < 64)
+            Duplicate(input[valid * p.dp], T(0), (64 - valid) * p.dp);
+        Cast(x, input, RoundMode::CAST_NONE, 64 * p.dp);
+        PipeBarrier<PIPE_V>();
+        if (!isq && p.smoothK && valid) {
+            DataCopy(mu, mg[(uint64_t(b) * p.hk + h) * p.dp], p.dp);
+            Sync<HardEvent::MTE2_V>();
         }
-        Abs(ab, x, p.dp);
-        PipeBarrier<PIPE_V>();
-        ReduceMax(red, ab, work, p.dp, false);
-        float a = Scalar(red);
-        float s = a > 0 ? a * INV_INT8_MAX : 1.0f;
-        float inv_s = a > 0 ? INT8_MAX_FLOAT / a : 1.0f;
-        Duplicate(aux, inv_s, p.dp);
-        PipeBarrier<PIPE_V>();
-        Mul(x, x, aux, p.dp);
-        PipeBarrier<PIPE_V>();
-        Pack8((__ubuf__ int8_t *)out.GetPhyAddr(), (__ubuf__ float *)x.GetPhyAddr(), p.dp);
-        WriteRow(isq ? qo : ko, idx * p.dp, out, p.dp);
-        red.SetValue(0, s);
-        Sync<HardEvent::S_V>();
-        PackFixedScaleBlock((__ubuf__ float *)red.GetPhyAddr(), (__ubuf__ half *)halfScales.GetPhyAddr(),
-                         (__ubuf__ float *)factors[isq ? 0 : 64].GetPhyAddr(), valid ? 1 : 0);
-        WriteRow(isq ? qsg : ksg, idx, halfScales, 1);
+        QuantRowsVF((__ubuf__ float *)x.GetPhyAddr(), (__ubuf__ float *)mu.GetPhyAddr(),
+                    (__ubuf__ float *)scales.GetPhyAddr(), (__ubuf__ int8_t *)out.GetPhyAddr(),
+                    (__ubuf__ half *)halfScales.GetPhyAddr(), factorPtr[isq ? 0 : 1],
+                    (__ubuf__ float *)inverseScales.GetPhyAddr(), p.dp, !isq && p.smoothK && valid, valid,
+                    isq ? p.qg : p.kg);
+        WriteRow(isq ? qo : ko, idx * p.dp, out, 64 * p.dp);
+        WriteRow(isq ? qsg : ksg, idx, halfScales, 64);
     }
-    // Preserve the scalar Q/K rounding path for padded inputs. V still uses
-    // exactly the same 32-token MX quantizer as the aligned batch path.
+    // V uses exactly the same 32-token MX quantizer as the aligned batch path.
     PipeBarrier<PIPE_ALL>();
     GlobalTensor<uint16_t> mxg;
     mxg.SetGlobalBuffer((__gm__ uint16_t *)mxScale);
-    auto vInput = r.ubBuf.GetBufferByByte<T>(8192);
-    auto maxima = r.ubBuf.GetBufferByByte<T>(32768);
-    auto vOut = r.ubBuf.GetBufferByByte<float8_e4m3_t>(33792);
-    auto mx = r.ubBuf.GetBufferByByte<uint16_t>(43008);
+    auto vInput = r.ubBuf.GetBufferByByte<T>(V_INPUT);
+    auto maxima = r.ubBuf.GetBufferByByte<T>(V_MAXIMA);
+    auto vOut = r.ubBuf.GetBufferByByte<float8_e4m3_t>(V_OUTPUT);
+    auto mx = r.ubBuf.GetBufferByByte<uint16_t>(MX_SCALE);
     for (uint64_t tile = GetBlockIdx(); tile < nk / 64; tile += 2 * p.cores) {
         const uint64_t idx = tile * 64;
         const uint32_t token = idx % p.kp, h = (idx / p.kp) % p.hk, b = idx / p.kp / p.hk;
