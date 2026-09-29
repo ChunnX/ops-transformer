@@ -17,9 +17,9 @@
  * （headMSize = ceil(usedCoreNum / nTile) * baseM），不引入任何时延模型。
  * 当通算耗时不均衡时的进一步配平，见 fit_balance_tiling.h 的 fit-balance 策略。
  *
- * 命名空间: global(2026-09-17 裁定——apace/tiling 与 mmtiling/quant_matmul_tiling 一致)。
+ * 命名空间: global(与 apace/tiling 目录约定一致)。
  *
- * 用法（三层, 2026-09-17 §4.29 全家族分派后为 miss 路径的统一走向）：
+ * 用法（三层, fit-balance 标定未命中(miss)时的统一走向）：
  *   核心推导 DeriveCommCut()——(m, n, baseM, baseN, usedCoreNum) → head/tail 切分, 纯几何;
  *   V3 形态包装 GetCommTilingFromV3()——Mc2MatMulV3TilingData(TCubeTiling) 版, AGMM 等用;
  *   SWAT 形态包装 GetCommTilingData()/GetCoreOccupancyFirstTiling()——QuantMatmulTilingData
@@ -35,7 +35,7 @@
 
 // 核心推导: 每轮通信 M 跨度 = 一个计算波 headMSize = ceil(usedCoreNum/nTile)×baseM,
 // 纯几何无时延模型。baseM/baseN/usedCoreNum 任一为 0(matmul tiling 异常)返回 false,
-// 由调用方决定回退行为(校验与日志在 op_tiling, 2026-09-17 裁定)。
+// 由调用方决定回退行为(校验与日志在 op_tiling)。
 inline bool DeriveCommCut(uint64_t m, uint64_t n, uint64_t baseM, uint64_t baseN, uint64_t usedCoreNum,
                           uint64_t &headMSize, uint64_t &headTileCnt, uint64_t &tailMSize, uint64_t &tailTileCnt)
 {
@@ -115,9 +115,6 @@ inline bool GetCommTilingFromV3(uint64_t m, uint64_t n, uint64_t baseM, uint64_t
 /*!
  * \brief 统一入口: SWAT matmul tiling → 核数守卫 → 核利用率优先通信切分 → fp4 K 轴修正
  *
- * §4.21 调用下沉(2026-09-17): 原 a2a_v2 op_tiling 中"先 GetMatmulTiling 再核利用率优先
- * GetCommTiling"的调用序列整体下沉本文件, op_tiling 只调本函数(序列逐行对应原实现)。
- *
  * \param platformInfo  平台信息(context_->GetPlatformInfo())
  * \param m/n/ka        per-rank M / N / K(AllToAll 通信 x1 的 K 维 = per-rank K)
  * \param isFp4         x1 为 MXFP4 打包存储(2 fp4/字节): SWAT 按 fp4 推导 baseK 与 L1 布局,
@@ -128,7 +125,7 @@ inline bool GetCommTilingFromV3(uint64_t m, uint64_t n, uint64_t baseM, uint64_t
  * \param[out] scaleTiling  Scale 通道通信切分
  *
  * 纯计算序列, 不含校验与日志——核数守卫(usedCoreNum>=rankSize 防 kernel 死锁、
- * min(aic,aiv)>=rankSize)与错误日志由调用方 op_tiling 负责(2026-09-17 裁定)。
+ * min(aic,aiv)>=rankSize)与错误日志由调用方 op_tiling 负责。
  */
 inline void GetCoreOccupancyFirstTiling(fe::PlatFormInfos *platformInfo, uint64_t m, uint64_t n, uint64_t ka,
                                         bool isFp4, bool hasBias, QuantMatmulTilingData &mmTiling,
@@ -152,7 +149,7 @@ inline void GetCoreOccupancyFirstTiling(fe::PlatFormInfos *platformInfo, uint64_
         tilingEngine.GetTilingData(m, n, ka, false, true, mmTiling);
     }
 
-    // ---- 通信切分: 核利用率优先(历史: aiv_urma 路径的 fit-balance tiling 已废弃, 2026-09-15) ----
+    // ---- 通信切分: 核利用率优先 ----
     CoreOccupancyFirstTiling::GetCommTilingData(m, n, ka, mmTiling, dataTiling, scaleTiling);
 
     // ---- MXFP4 打包存储(2 fp4/字节): 数据通信的 K 轴字节数需减半 ----
