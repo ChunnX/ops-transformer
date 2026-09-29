@@ -333,7 +333,28 @@ __aicore__ inline void VFPairMulAddCompact(const LocalTensor<float> &dst, const 
         Reg::RegTensor<float> ar, br, cr, dr, p0, p1, pair, acc;
         Reg::MaskReg mask = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
         Reg::Duplicate(acc, 0.0f, mask);
-        for (uint16_t i = 0; i < loops; ++i) {
+        uint16_t i = 0;
+        for (; i + 1U < loops; i += 2U) {
+            const uint32_t off = static_cast<uint32_t>(i) * VL_FP32;
+            Reg::LoadAlign(ar, a + off);
+            Reg::LoadAlign(br, b + off);
+            Reg::LoadAlign(cr, c + off);
+            Reg::LoadAlign(dr, d + off);
+            Reg::Mul(p0, ar, br, mask);
+            Reg::Mul(p1, cr, dr, mask);
+            Reg::Add(pair, p0, p1, mask);
+            Reg::Add(acc, acc, pair, mask);
+            const uint32_t nextOff = off + VL_FP32;
+            Reg::LoadAlign(ar, a + nextOff);
+            Reg::LoadAlign(br, b + nextOff);
+            Reg::LoadAlign(cr, c + nextOff);
+            Reg::LoadAlign(dr, d + nextOff);
+            Reg::Mul(p0, ar, br, mask);
+            Reg::Mul(p1, cr, dr, mask);
+            Reg::Add(pair, p0, p1, mask);
+            Reg::Add(acc, acc, pair, mask);
+        }
+        if (i < loops) {
             const uint32_t off = static_cast<uint32_t>(i) * VL_FP32;
             Reg::LoadAlign(ar, a + off);
             Reg::LoadAlign(br, b + off);
