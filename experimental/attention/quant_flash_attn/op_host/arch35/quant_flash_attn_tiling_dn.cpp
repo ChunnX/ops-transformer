@@ -27,9 +27,9 @@ using namespace ge;
 using namespace AscendC;
 namespace optiling {
 
-void QuantFlashAttnTilingDn::InitTilingInfo(TilingInfo *tilingInfo)
+void QuantFlashAttnTilingDn::InitTilingInfo(TilingInfo* tilingInfo)
 {
-    tilingInfo_ = static_cast<QuantFlashAttnTilingInfo *>(tilingInfo);
+    tilingInfo_ = static_cast<QuantFlashAttnTilingInfo*>(tilingInfo);
 }
 
 bool QuantFlashAttnTilingDn::IsCapable()
@@ -197,9 +197,9 @@ void QuantFlashAttnTilingDn::FillTiling()
     tilingData_.baseTiling.flashAttnEmptyTensorParams.needInit = false;
 }
 
-ge::graphStatus QuantFlashAttnTilingDn::SetTilingData(QuantFlashAttnTilingData &tilingData)
+ge::graphStatus QuantFlashAttnTilingDn::SetTilingData(QuantFlashAttnTilingData& tilingData)
 {
-    QuantFlashAttnTilingData *tiling = context_->GetTilingData<QuantFlashAttnTilingData>();
+    QuantFlashAttnTilingData* tiling = context_->GetTilingData<QuantFlashAttnTilingData>();
     OP_CHECK_IF(tiling == nullptr, OP_LOGE(tilingInfo_->opName, "The tiling data is nullptr"), return ge::GRAPH_FAILED);
     *tiling = tilingData;
     return ge::GRAPH_SUCCESS;
