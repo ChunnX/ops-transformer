@@ -253,6 +253,12 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::QuantGetAndConvertCommMode(gert::
     if (strncmp(commModeStr, "ai_cpu", maxLength) == 0) {
         commMode = Mc2Comm::COMM_MODE_AICPU;
     } else if (strncmp(commModeStr, "ccu", maxLength) == 0) {
+        auto platformInfo = context->GetPlatformInfo();
+        auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+        if (ascendcPlatform.GetCurNpuArch() == Ops::Base::DAV_9201) {
+            OP_LOGE(context->GetNodeName(), "ascend910_96 does not support commMode 'ccu'.");
+            return ge::GRAPH_FAILED;
+        }
         commMode = Mc2Comm::COMM_MODE_CCU;
     } else {
         OP_LOGD(context->GetNodeName(), "Currently, commMode only support 'ccu', 'ai_cpu', but got %s.", commModeStr);

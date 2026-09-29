@@ -50,7 +50,11 @@ constexpr uint16_t FLAG_ID_MAX = 16;
 constexpr uint16_t AIV_SYNC_AIC_FLAG = 6;
 constexpr uint16_t AIC_SYNC_AIV_FLAG = 8;
 constexpr uint8_t AIC_SYNC_AIV_MODE = 4;
+#if defined(__NPU_ARCH__) && __NPU_ARCH__ == 9201
+constexpr uint8_t CV_RATIO = 1;
+#else
 constexpr uint8_t CV_RATIO = 2;
+#endif
 constexpr int32_t MXFP_GROUP_SIZE = 32;
 constexpr int32_t MXFP_DIVISOR_SIZE = 64;
 constexpr int32_t MXFP_MULTI_BASE_SIZE = 2;
@@ -203,7 +207,7 @@ __aicore__ inline constexpr uint32_t GetTaskRation()
 #endif
 }
 
-#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 310
+#if (defined(__CCE_AICORE__) && __CCE_AICORE__ == 310) || (defined(__NPU_ARCH__) && __NPU_ARCH__ == 9201)
 template <typename T>
 __aicore__ inline constexpr bool IsMxType()
 {
