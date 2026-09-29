@@ -101,12 +101,16 @@ void GroupedNoQuantMatmulTiling::FormulateBasicBlock(const GMMCompileInfo *compi
     }
     mCnt = GroupedMatmul::CeilDiv(m_, baseM_);
     nCnt = GroupedMatmul::CeilDiv(n_, baseN_);
-    uint64_t kValueAlign = GroupedMatmul::CeilAlign(k_, BASIC_BLOCK_SIZE_16);
-    uint64_t kValueMax =
-        GroupedMatmul::FloorAlign(static_cast<uint64_t>(compileInfoPtr->l0ASize / DB_SIZE / GetSizeByDataType(xDType_) /
-                                                        std::max(baseM_, baseN_)),
-                                  BASIC_BLOCK_SIZE_16);
-    baseK_ = std::min(kValueAlign, kValueMax);
+    // A split-K group is allowed to have K == 0. If all groups are empty, keep the valid non-zero baseK
+    // calculated by CalBaseMMTiling; no Cube task will consume it, but the tiling data must remain valid.
+    if (k_ > 0U) {
+        uint64_t kValueAlign = GroupedMatmul::CeilAlign(k_, BASIC_BLOCK_SIZE_16);
+        uint64_t kValueMax = GroupedMatmul::FloorAlign(
+            static_cast<uint64_t>(compileInfoPtr->l0ASize / DB_SIZE / GetSizeByDataType(xDType_) /
+                                  std::max(baseM_, baseN_)),
+            BASIC_BLOCK_SIZE_16);
+        baseK_ = std::min(kValueAlign, kValueMax);
+    }
     usedCoreNum_ = std::min(static_cast<uint32_t>(mCnt * nCnt * groupNum_), compileInfoPtr->aicNum);
 }
 
@@ -321,13 +325,6 @@ bool GroupedNoQuantMatmulTiling::GetAttrs(const gert::TilingContext *context)
     if (!CheckNoQuantGroupList(context)) {
         return false;
     }
-    OP_CHECK_IF(activeType_ == ACT_TYPE_GELU_TANH && groupType_ == SPLIT_K,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                    context->GetNodeName(), "groupType", Ops::Transformer::Gmm::FormatString("%ld", groupType_).c_str(),
-                    Ops::Transformer::Gmm::FormatString("In %s case with %s enabled, the value of %s must be in %s",
-                                                        "no-quant", "GELU_TANH", "groupType", "{-1, 0}")
-                        .c_str()),
-                return false);
     return true;
 }
 
