@@ -87,22 +87,22 @@ public:
     {
         if ASCEND_IS_AIV {
             if (cuSeqlensQ != nullptr) {
-                cuSeqlensQGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensQ);
+                cuSeqlensQGm.SetGlobalBuffer((__gm__ int32_t*)cuSeqlensQ);
             }
             if (cuSeqlensOriKv != nullptr) {
-                cuSeqlensOriKvGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensOriKv);
+                cuSeqlensOriKvGm.SetGlobalBuffer((__gm__ int32_t*)cuSeqlensOriKv);
             }
             if (cuSeqlensCmpKv != nullptr) {
-                cuSeqlensCmpKvGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensCmpKv);
+                cuSeqlensCmpKvGm.SetGlobalBuffer((__gm__ int32_t*)cuSeqlensCmpKv);
             }
             if (seqUsedOriKV != nullptr) {
-                actualSeqLengthsKVGm.SetGlobalBuffer((__gm__ int32_t *)seqUsedOriKV);
+                actualSeqLengthsKVGm.SetGlobalBuffer((__gm__ int32_t*)seqUsedOriKV);
             }
             if (seqUsedCmpKV != nullptr) {
-                actualSeqLengthsCmpKVGm.SetGlobalBuffer((__gm__ int32_t *)seqUsedCmpKV);
+                actualSeqLengthsCmpKVGm.SetGlobalBuffer((__gm__ int32_t*)seqUsedCmpKV);
             }
             if (cmpResidualKV != nullptr) {
-                cmpResidualKVGm.SetGlobalBuffer((__gm__ int32_t *)cmpResidualKV);
+                cmpResidualKVGm.SetGlobalBuffer((__gm__ int32_t*)cmpResidualKV);
             }
             this->GetExtremeValue(this->negativeFloatScalar);
         }
@@ -129,8 +129,8 @@ public:
         fdStagingBase = fdStaging.template GetTensor<uint8_t>().GetPhyAddr(0);
         stagingOutGm = fdStaging.template GetTensor<float>();
     }
-    __aicore__ inline void InitS2SplitStaging(Buffer<BufferType::GM, SyncType::NO_SYNC> &intraCoreCombine,
-                                              Buffer<BufferType::GM, SyncType::NO_SYNC> &crossCoreCombine)
+    __aicore__ inline void InitS2SplitStaging(Buffer<BufferType::GM, SyncType::NO_SYNC>& intraCoreCombine,
+                                              Buffer<BufferType::GM, SyncType::NO_SYNC>& crossCoreCombine)
     {
         intraCoreCombineBase = intraCoreCombine.template GetTensor<uint8_t>().GetPhyAddr(0);
         intraCoreCombineGm = intraCoreCombine.template GetTensor<float>();
@@ -319,11 +319,11 @@ private:
     TBuf<> vselrIndexesBuf[2];
     AttentionCommon::FdBuffers<StaticBuffer<uint8_t>> fdBuffers;
     uint32_t pingPongV0 = 0;
-    __gm__ uint8_t *fdStagingBase = nullptr;
+    __gm__ uint8_t* fdStagingBase = nullptr;
     GlobalTensor<float> stagingOutGm;
-    __gm__ uint8_t *intraCoreCombineBase = nullptr;
+    __gm__ uint8_t* intraCoreCombineBase = nullptr;
     GlobalTensor<float> intraCoreCombineGm;
-    __gm__ uint8_t *crossCoreCombineBase = nullptr;
+    __gm__ uint8_t* crossCoreCombineBase = nullptr;
     GlobalTensor<float> crossCoreCombineGm;
 
     T negativeFloatScalar;
@@ -438,11 +438,14 @@ __aicore__ inline int64_t SmlaCsaBlockVector<TEMPLATE_ARGS>::GetkeyOffset(int64_
     if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
         int64_t blkTableIdx = s2Idx / blockSize;
         int64_t blkTableOffset = s2Idx % blockSize;
-        int64_t paBlockStride =
+        int64_t paBlockStride = 
             smla35VecRunInfo.isCmp ? smla35VecConstInfo.cmpKvStride : smla35VecConstInfo.oriKvStride;
+        int32_t physBlockIdx = blkTableIdx;
+        if constexpr (TOPK_VALUE_MODE == TopkValueMode::TOPK_INDEX_MODE) {
+            physBlockIdx = blockTableGm.GetValue(smla35VecRunInfo.boIdx * maxBlockNumPerBatch + blkTableIdx);
+        }
         smlaRealkeyOffset =
-            blockTableGm.GetValue(smla35VecRunInfo.boIdx * maxBlockNumPerBatch + blkTableIdx) * paBlockStride +
-            blkTableOffset * smla35VecConstInfo.dSizeVInput; // BlockNum, BlockSize, N(1), D
+            physBlockIdx * paBlockStride + blkTableOffset * smla35VecConstInfo.dSizeVInput; // BlockNum, BlockSize, N(1), D
     } else if constexpr (LAYOUT_T == SMLA_LAYOUT::BSND) {
         if (smla35VecRunInfo.isCmp) {
             smlaRealkeyOffset = smla35VecRunInfo.boIdx * smla35VecConstInfo.n2Size * smla35VecConstInfo.cmpS2Size *
@@ -1363,26 +1366,26 @@ __aicore__ inline void SmlaCsaBlockVector<TEMPLATE_ARGS>::InitGlobalBuffer(
     __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sinks,
     __gm__ uint8_t *sequsedOriKv, __gm__ uint8_t *sequsedCmpKv, __gm__ uint8_t *cmpResidualKv)
 {
-    oriKVGm.SetGlobalBuffer((__gm__ KV_T *)(oriKV));
+    oriKVGm.SetGlobalBuffer((__gm__ KV_T*)(oriKV));
     if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
-        oriBlockTableGm.SetGlobalBuffer((__gm__ int32_t *)oriBlockTable);
+        oriBlockTableGm.SetGlobalBuffer((__gm__ int32_t*)oriBlockTable);
     }
     if constexpr (TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE ||
                   TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
-        cmpKVGm.SetGlobalBuffer((__gm__ KV_T *)cmpKV);
+        cmpKVGm.SetGlobalBuffer((__gm__ KV_T*)cmpKV);
         if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
-            cmpBlockTableGm.SetGlobalBuffer((__gm__ int32_t *)cmpBlockTable);
+            cmpBlockTableGm.SetGlobalBuffer((__gm__ int32_t*)cmpBlockTable);
         }
-        cmpSparseIndicesGm.SetGlobalBuffer((__gm__ int32_t *)cmpSparseIndices);
+        cmpSparseIndicesGm.SetGlobalBuffer((__gm__ int32_t*)cmpSparseIndices);
     }
 
     if constexpr (TEMPLATE_MODE == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
                   TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
-        oriSparseIndicesGm.SetGlobalBuffer((__gm__ int32_t *)oriSparseIndices);
+        oriSparseIndicesGm.SetGlobalBuffer((__gm__ int32_t*)oriSparseIndices);
     }
 
     if (sinks != nullptr) {
-        sinksGm.SetGlobalBuffer((__gm__ T *)sinks);
+        sinksGm.SetGlobalBuffer((__gm__ T*)sinks);
         this->isSinks = true;
     }
 }
@@ -1529,7 +1532,7 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SmlaCsaBlockVector<TEMPLATE_ARGS>::GetExtremeValue(T &negativeScalar)
 {
     uint32_t tmp1 = NEGATIVE_MIN_VALUE_FP32;
-    negativeScalar = *((float *)&tmp1);
+    negativeScalar = *((float*)&tmp1);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -1927,19 +1930,19 @@ public:
     __aicore__ inline void CleanOutput(__gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse,
                                        ConstInfo &smla35VecConstInfo)
     {}
-    __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV,
-                                            __gm__ uint8_t *oriSparseIndices, __gm__ uint8_t *cmpSparseIndices,
-                                            __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable,
-                                            __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sinks,
-                                            __gm__ uint8_t *sequsedOriKv, __gm__ uint8_t *sequsedCmpKv,
-                                            __gm__ uint8_t *cmpResidualKv)
+    __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t* oriKV, __gm__ uint8_t* cmpKV,
+                                            __gm__ uint8_t* oriSparseIndices, __gm__ uint8_t* cmpSparseIndices,
+                                            __gm__ uint8_t* oriBlockTable, __gm__ uint8_t* cmpBlockTable,
+                                            __gm__ uint8_t* sequsedQ, __gm__ uint8_t* sinks,
+                                            __gm__ uint8_t* sequsedOriKv, __gm__ uint8_t* sequsedCmpKv,
+                                            __gm__ uint8_t* cmpResidualKv)
     {}
-    __aicore__ inline void InitVecBlock(__gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensOriKv,
-                                        __gm__ uint8_t *cuSeqlensCmpKv, __gm__ uint8_t *seqUsedOriKV,
-                                        __gm__ uint8_t *seqUsedCmpKV, __gm__ uint8_t *cmpResidualKV) {};
-    __aicore__ inline void InitS2SplitStaging(Buffer<BufferType::GM, SyncType::NO_SYNC> &fdStaging) {}
-    __aicore__ inline void InitS2SplitStaging(Buffer<BufferType::GM, SyncType::NO_SYNC> &intraCoreCombine,
-                                              Buffer<BufferType::GM, SyncType::NO_SYNC> &crossCoreCombine)
+    __aicore__ inline void InitVecBlock(__gm__ uint8_t* cuSeqlensQ, __gm__ uint8_t* cuSeqlensOriKv,
+                                        __gm__ uint8_t* cuSeqlensCmpKv, __gm__ uint8_t* seqUsedOriKV,
+                                        __gm__ uint8_t* seqUsedCmpKV, __gm__ uint8_t* cmpResidualKV) {};
+    __aicore__ inline void InitS2SplitStaging(Buffer<BufferType::GM, SyncType::NO_SYNC>& fdStaging) {}
+    __aicore__ inline void InitS2SplitStaging(Buffer<BufferType::GM, SyncType::NO_SYNC>& intraCoreCombine,
+                                              Buffer<BufferType::GM, SyncType::NO_SYNC>& crossCoreCombine)
     {}
     __aicore__ inline void InitLocalBuffer(ConstInfo &smla35VecConstInfo, uint32_t ubBaseAddr) {}
     __aicore__ inline void InitFDBuffers(FdRunInfo &fdRunInfo) {}
