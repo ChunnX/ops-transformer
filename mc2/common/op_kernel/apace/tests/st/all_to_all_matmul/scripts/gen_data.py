@@ -38,8 +38,6 @@ def write_artifacts(base_dir, rank_id, a_segment, b_ori, bias, out, a_after):
     #   故窗口内 self 槽位保持 memset 的 0，期望文件需将 self 槽位置 0。
     #   用于单独验证通信：对比 main.cpp dump 的 comm_buffer.bin。
     a_after.tofile(os.path.join(output_dir, "expected_comm.bin"))
-    # MATMUL_ONLY 预填窗口用：main.cpp 从 input 目录读入并写入通信窗口。
-    a_after.tofile(os.path.join(input_dir, "expected_comm.bin"))
 
 
 def gen_golden_data_all_to_all_matmul(m, k, n, rank_num):

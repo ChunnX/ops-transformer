@@ -9,6 +9,8 @@
  */
 
 #include <cmath>
+#include <chrono>
+#include <algorithm>
 #include <iostream>
 #include <iomanip>
 #include <limits.h>
@@ -53,7 +55,7 @@ inline uint64_t CeilDiv(uint32_t a, uint32_t b)
 
 void printUsage(const std::string &programName)
 {
-    std::cerr << "Usage: " << programName << " m k n rankNum [localMatmul] [headMSize]" << std::endl;
+    std::cerr << "Usage: " << programName << " m k n rankNum [localMatmul] [headMSize] [mode]" << std::endl;
     std::cerr << "Args: " << std::endl;
     std::cerr << "  m: row of matrix A" << std::endl;
     std::cerr << "  k: col of matrix A (total K, distributed across ranks)" << std::endl;
@@ -61,11 +63,13 @@ void printUsage(const std::string &programName)
     std::cerr << "  rankNum: number of ranks" << std::endl;
     std::cerr << "  localMatmul: optional, 0=REMOTE融合 | 1=DEFERRED_SYNC | 2=GM累加(LOCAL+REMOTE) (default 0)" << std::endl;
     std::cerr << "  headMSize: optional, long block M size (default 0 = auto from tiling; >0 overrides)" << std::endl;
+    std::cerr << "  mode: optional, 'precision' (default) | 'perf'" << std::endl;
     std::cerr << "Example: " << programName << " 100 200 64 4" << std::endl;
-    std::cerr << "         " << programName << " 2048 3584 4096 2 1 512" << std::endl;
+    std::cerr << "         " << programName << " 2048 3584 4096 2 1 512 perf" << std::endl;
 }
 
-void parseArguments(int argc, char *argv[], int &m, int &k, int &n, int &rankNum, int &localMatmul, int &headMSize)
+void parseArguments(int argc, char *argv[], int &m, int &k, int &n, int &rankNum, int &localMatmul, int &headMSize,
+                    std::string &mode)
 {
     if (argc >= 2 && (std::string(argv[1]) == "--help" || std::string(argv[1]) == "-h")) {
         printUsage(argv[0]);
@@ -93,6 +97,11 @@ void parseArguments(int argc, char *argv[], int &m, int &k, int &n, int &rankNum
         throw std::invalid_argument("ERROR: headMSize must be non-negative (0 = auto from tiling)");
     }
 
+    mode = (argc >= 8) ? std::string(argv[7]) : std::string("precision");
+    if (mode != "precision" && mode != "perf") {
+        throw std::invalid_argument("ERROR: mode must be 'precision' or 'perf'");
+    }
+
     if (m <= 0 || k <= 0 || n <= 0 || rankNum <= 0) {
         throw std::invalid_argument("ERROR: m k n rankNum must be positive");
     }
@@ -102,11 +111,12 @@ void parseArguments(int argc, char *argv[], int &m, int &k, int &n, int &rankNum
     }
 }
 
-int runAllToAllMatmul(int rankNum, int rankId, int m, int k, int n, int localMatmul, int headMSizeArg)
+int runAllToAllMatmul(int rankNum, int rankId, int m, int k, int n, int localMatmul, int headMSizeArg,
+                      const std::string &mode)
 {
     const char *ipport = "tcp://127.0.0.1:8998";
-    INFO_LOG("rankNum=%d, rankId=%d, ipport=%s, localMatmul=%d, headMSize=%d", rankNum, rankId, ipport, localMatmul,
-             headMSizeArg);
+    INFO_LOG("rankNum=%d, rankId=%d, ipport=%s, localMatmul=%d, headMSize=%d, mode=%s", rankNum, rankId, ipport,
+             localMatmul, headMSizeArg, mode.c_str());
 
     uint32_t ka = k / rankNum;
 
@@ -230,42 +240,73 @@ int runAllToAllMatmul(int rankNum, int rankId, int m, int k, int n, int localMat
     ACL_CHECK(aclrtMemcpy(deviceB, sizeB, hostB.data(), sizeB, ACL_MEMCPY_HOST_TO_DEVICE));
     ACL_CHECK(aclrtMemcpy(deviceBias, sizeBias, hostBias.data(), sizeBias, ACL_MEMCPY_HOST_TO_DEVICE));
 
-    // ---- MATMUL_ONLY：跳过通信，host 预填通信窗口，隔离验证矩阵计算 ----
-    const char *matmulOnlyEnv = getenv("MATMUL_ONLY");
-    if (matmulOnlyEnv != nullptr && std::string(matmulOnlyEnv) == "1") {
-        size_t commPayload = static_cast<size_t>(m) * static_cast<size_t>(k) * sizeof(uint16_t);
-        std::vector<uint16_t> hostComm(m * k, 0);
-        if (!ReadFile(inputDir + "/expected_comm.bin", hostComm.data(), commPayload)) {
-            ERROR_LOG("rank %d failed to read expected_comm.bin for MATMUL_ONLY", rankId);
-            return -1;
+    if (mode == "precision") {
+        AllToAllMmKernel_Udma<<<tilingData.tileMmTilingData.usedCoreNum, nullptr, stream>>>(
+            devContext, deviceA, deviceB, deviceOutput, deviceBias, tilingData);
+
+        ACL_CHECK(aclrtSynchronizeStream(stream));
+
+        ACL_CHECK(aclrtMemcpy(hostOutput.data(), sizeOutput, deviceOutput, sizeOutput, ACL_MEMCPY_DEVICE_TO_HOST));
+
+        WriteFile(outputDir + "/npu_out.bin", hostOutput.data(), sizeOutput);
+
+        // ---- 通信窗口 dump（仅通信验证，不影响 matmul 输出）----
+        // 窗口[r] 布局 = concat_s a_local[s][r*m:(r+1)*m, :]，即 gen_data 的
+        // a_after_alltoall_list[r]，payload 大小 = M_total*Ka*fp16 = m*k*2 字节。
+        // 用于与 expected_comm.bin 比对，单独验证通信正确性。
+        {
+            size_t commPayload = static_cast<size_t>(m) * static_cast<size_t>(k) * sizeof(uint16_t);
+            std::vector<uint16_t> hostComm(m * k, 0);
+            uint64_t winAddr = hostCtx.udmaCtx.commBufferAddrs[rankId];
+            ACL_CHECK(aclrtMemcpy(hostComm.data(), commPayload, reinterpret_cast<void *>(winAddr), commPayload,
+                                  ACL_MEMCPY_DEVICE_TO_HOST));
+            WriteFile(outputDir + "/comm_buffer.bin", hostComm.data(), commPayload);
         }
-        uint64_t winAddr = hostCtx.udmaCtx.commBufferAddrs[rankId];
-        ACL_CHECK(aclrtMemcpy(reinterpret_cast<void *>(winAddr), commPayload, hostComm.data(), commPayload,
-                              ACL_MEMCPY_HOST_TO_DEVICE));
-        tilingData.testMode = 2;
-        INFO_LOG("rank %d MATMUL_ONLY mode: prefilled comm window, skip PUT", rankId);
-    }
+    } else {
+        constexpr int64_t BOOST_ELEM_COUNT = 10000LL * 10000LL;
+        size_t boostSize = static_cast<size_t>(BOOST_ELEM_COUNT) * sizeof(uint16_t);
+        GM_ADDR boostIn = nullptr;
+        GM_ADDR boostOut = nullptr;
+        ACL_CHECK(aclrtMalloc((void **)&boostIn, boostSize, ACL_MEM_MALLOC_HUGE_ONLY));
+        ACL_CHECK(aclrtMalloc((void **)&boostOut, boostSize, ACL_MEM_MALLOC_HUGE_ONLY));
+        std::vector<uint16_t> boostHost(BOOST_ELEM_COUNT, 0x3F00);
+        ACL_CHECK(aclrtMemcpy(boostIn, boostSize, boostHost.data(), boostSize, ACL_MEMCPY_HOST_TO_DEVICE));
 
-    AllToAllMmKernel_Udma<<<tilingData.tileMmTilingData.usedCoreNum, nullptr, stream>>>(
-        devContext, deviceA, deviceB, deviceOutput, deviceBias, tilingData);
+        constexpr int64_t CACHE_FLUSH_ELEM_COUNT = 128LL * 1024 * 1024;
+        size_t cacheFlushSize = static_cast<size_t>(CACHE_FLUSH_ELEM_COUNT) * sizeof(uint16_t);
+        GM_ADDR cacheFlush = nullptr;
+        ACL_CHECK(aclrtMalloc((void **)&cacheFlush, cacheFlushSize, ACL_MEM_MALLOC_HUGE_ONLY));
+        std::vector<uint16_t> cacheFlushHost(CACHE_FLUSH_ELEM_COUNT, 0x0000);
+        ACL_CHECK(
+            aclrtMemcpy(cacheFlush, cacheFlushSize, cacheFlushHost.data(), cacheFlushSize, ACL_MEMCPY_HOST_TO_DEVICE));
 
-    ACL_CHECK(aclrtSynchronizeStream(stream));
+        constexpr int PERF_LOOP_COUNT = 10;
+        std::vector<double> durations(PERF_LOOP_COUNT);
+        for (int i = 0; i < PERF_LOOP_COUNT; ++i) {
+            auto t0 = std::chrono::steady_clock::now();
+            AllToAllMmKernel_Udma<<<tilingData.tileMmTilingData.usedCoreNum, nullptr, stream>>>(
+                devContext, deviceA, deviceB, deviceOutput, deviceBias, tilingData);
+            auto t1 = std::chrono::steady_clock::now();
+            durations[i] = std::chrono::duration<double, std::milli>(t1 - t0).count();
+        }
 
-    ACL_CHECK(aclrtMemcpy(hostOutput.data(), sizeOutput, deviceOutput, sizeOutput, ACL_MEMCPY_DEVICE_TO_HOST));
+        double sum = 0, minv = 1e9, maxv = 0;
+        for (int i = 1; i < PERF_LOOP_COUNT; ++i) {
+            sum += durations[i];
+            minv = std::min(minv, durations[i]);
+            maxv = std::max(maxv, durations[i]);
+        }
+        double avg = sum / (PERF_LOOP_COUNT - 1);
+        INFO_LOG("[Rank %d] localMatmul=%d headMSize=%u tileCnt=%u | per-iter ms: avg=%.3f min=%.3f max=%.3f "
+                 "(excl warmup)", rankId, localMatmul, headMSize, tileCnt, avg, minv, maxv);
 
-    WriteFile(outputDir + "/npu_out.bin", hostOutput.data(), sizeOutput);
+        ACL_CHECK(aclrtSynchronizeStream(stream));
+        ACL_CHECK(aclrtMemcpy(hostOutput.data(), sizeOutput, deviceOutput, sizeOutput, ACL_MEMCPY_DEVICE_TO_HOST));
+        WriteFile(outputDir + "/npu_out.bin", hostOutput.data(), sizeOutput);
 
-    // ---- 通信窗口 dump（仅通信验证，不影响 matmul 输出）----
-    // 窗口[r] 布局 = concat_s a_local[s][r*m:(r+1)*m, :]，即 gen_data 的
-    // a_after_alltoall_list[r]，payload 大小 = M_total*Ka*fp16 = m*k*2 字节。
-    // 用于与 expected_comm.bin 比对，单独验证通信正确性。
-    {
-        size_t commPayload = static_cast<size_t>(m) * static_cast<size_t>(k) * sizeof(uint16_t);
-        std::vector<uint16_t> hostComm(m * k, 0);
-        uint64_t winAddr = hostCtx.udmaCtx.commBufferAddrs[rankId];
-        ACL_CHECK(aclrtMemcpy(hostComm.data(), commPayload, reinterpret_cast<void *>(winAddr), commPayload,
-                              ACL_MEMCPY_DEVICE_TO_HOST));
-        WriteFile(outputDir + "/comm_buffer.bin", hostComm.data(), commPayload);
+        aclrtFree(boostIn);
+        aclrtFree(boostOut);
+        aclrtFree(cacheFlush);
     }
 
     aclrtFree(deviceA);
@@ -285,16 +326,17 @@ int runAllToAllMatmul(int rankNum, int rankId, int m, int k, int n, int localMat
 int main(int argc, char *argv[])
 {
     int m, k, n, rankNum, localMatmul, headMSize;
+    std::string mode;
     try {
-        parseArguments(argc, argv, m, k, n, rankNum, localMatmul, headMSize);
+        parseArguments(argc, argv, m, k, n, rankNum, localMatmul, headMSize, mode);
     } catch (const std::invalid_argument &e) {
         std::cerr << e.what() << std::endl;
         printUsage(argv[0]);
         return -1;
     }
 
-    INFO_LOG("Master (PID=%d) will fork %d processes (localMatmul=%d, headMSize=%d)", getpid(), rankNum, localMatmul,
-             headMSize);
+    INFO_LOG("Master (PID=%d) will fork %d processes (localMatmul=%d, headMSize=%d, mode=%s)", getpid(), rankNum,
+             localMatmul, headMSize, mode.c_str());
 
     std::vector<pid_t> pids(rankNum);
     for (int rankId = 0; rankId < rankNum; ++rankId) {
@@ -304,7 +346,7 @@ int main(int argc, char *argv[])
             ERROR_LOG("Fork failed for rank %d", rankId);
             exit(-1);
         } else if (pid == 0) {
-            int ret = runAllToAllMatmul(rankNum, rankId, m, k, n, localMatmul, headMSize);
+            int ret = runAllToAllMatmul(rankNum, rankId, m, k, n, localMatmul, headMSize, mode);
             exit(ret);
         } else {
             pids[rankId] = pid;

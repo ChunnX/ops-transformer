@@ -207,9 +207,7 @@ __aicore__ inline void AllToAllMmUrmaImpl<AType, BType, CType, TransA, TransB>::
     for (uint32_t tid = 0; tid < baseParams_.commTurn; ++tid) {
         // 必选保证baseParams_.rankSize <= BlockNum
         if (AscendC::GetBlockIdx() < baseParams_.rankSize) {
-            if (tilingData_->testMode != 2) {
-                allToAllA_.Commit(); // MATMUL_ONLY: 数据已由 host 预填窗口，跳过真实 PUT
-            }
+            allToAllA_.Commit();
             allToAllA_.template Wait<BARRIER_DEVICE>();
         }
 
