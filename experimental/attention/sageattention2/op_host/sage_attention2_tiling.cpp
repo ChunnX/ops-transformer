@@ -126,7 +126,7 @@ ge::graphStatus Tile(gert::TilingContext *c)
         (*causal && p.sq != p.sk)) {
         return Failure(__LINE__);
     }
-    if (*gran < 0 || *gran >= static_cast<int64_t>(SageQuantGran::COUNT) ||
+    if (*gran < 0 || *gran >= static_cast<int64_t>(SageQuantGran::COUNT) || *accum < 0 ||
         *accum >= static_cast<int64_t>(SagePvAccum::COUNT)) {
         return Failure(__LINE__);
     }
