@@ -44,17 +44,17 @@ public:
     // Constructor(soc 恒 950, 频率 1689.6 cycle/us; 选行参数由 InitCtx 按 dtype 五元组从标定选定)
     MatmulPerfModel(const FitBalanceTilingArgs &args, double computesPerCycle, MatmulBaseBlock baseBlock)
     {
-        mmShapeInfo_.coreNum = args.platform.aicCoreNum; // 每die核数
-        mmShapeInfo_.dtypeSizes.inMatrixA = args.dtype.inputDtypeSize;
-        mmShapeInfo_.dtypeSizes.inMatrixB = mmShapeInfo_.dtypeSizes.inMatrixA;
-        mmShapeInfo_.dtypeSizes.outMatrixC = args.dtype.outputDtypeSize;
-        mmShapeInfo_.shape.mValue = args.shape.mValue;
-        mmShapeInfo_.shape.nValue = args.shape.nValue;
-        mmShapeInfo_.shape.kValue = args.shape.kValue;
-        mmShapeInfo_.baseBlock.baseM = baseBlock.baseM;
-        mmShapeInfo_.baseBlock.baseN = baseBlock.baseN;
-        mmShapeInfo_.baseBlock.baseK = baseBlock.baseK;
-        isFp4_ = (args.dtype.geAType == ge::DataType::DT_FLOAT4_E2M1);
+        mmShapeInfo_.coreNum = args.aicCoreNum; // 每die核数
+        mmShapeInfo_.inMatrixADtypeSize = args.inputDtypeSize;
+        mmShapeInfo_.inMatrixBDtypeSize = mmShapeInfo_.inMatrixADtypeSize;
+        mmShapeInfo_.outMatrixCDtypeSize = args.outputDtypeSize;
+        mmShapeInfo_.mValue = args.mValue;
+        mmShapeInfo_.nValue = args.nValue;
+        mmShapeInfo_.kValue = args.kValue;
+        mmShapeInfo_.baseM = baseBlock.baseM;
+        mmShapeInfo_.baseN = baseBlock.baseN;
+        mmShapeInfo_.baseK = baseBlock.baseK;
+        isFp4_ = (args.geAType == ge::DataType::DT_FLOAT4_E2M1);
         SetCalcType(args);
         mmShapeInfo_.computesPerCycle = computesPerCycle;
         mmShapeInfo_.cyclePerMicroSec = MatmulPerfConst::CYCLE_PER_MICRO_SEC;
@@ -65,11 +65,10 @@ public:
     // fp4 经 geAType 识别(matmul_tiling::DataType 无 fp4 枚举, aType 对 fp4 为 DT_MAX, §4.17)
     void SetCalcType(const FitBalanceTilingArgs &args)
     {
-        if ((args.dtype.aType == matmul_tiling::DataType::DT_HIFLOAT8) ||
-            (args.dtype.aType == matmul_tiling::DataType::DT_FLOAT8_E4M3FN) ||
-            (args.dtype.aType == matmul_tiling::DataType::DT_FLOAT8_E5M2) ||
-            (args.dtype.aType == matmul_tiling::DataType::DT_INT8) ||
-            (args.dtype.geAType == ge::DataType::DT_FLOAT4_E2M1)) {
+        if ((args.aType == matmul_tiling::DataType::DT_HIFLOAT8) ||
+            (args.aType == matmul_tiling::DataType::DT_FLOAT8_E4M3FN) ||
+            (args.aType == matmul_tiling::DataType::DT_FLOAT8_E5M2) ||
+            (args.aType == matmul_tiling::DataType::DT_INT8) || (args.geAType == ge::DataType::DT_FLOAT4_E2M1)) {
             calcType_ = MatmulDtypeKind::QUANT;
         }
     }
@@ -82,11 +81,11 @@ public:
     //   AG 本地首块(front) 0.6(只有本卡份/流水未满, 增长平缓), 是两个口径的真实物理差别
     double FindCubeUtil(uint64_t mSize, uint64_t commRankCntForMm, double mnExponent)
     {
-        double mnharmonicMean = static_cast<double>(mSize * commRankCntForMm * mmShapeInfo_.shape.nValue) /
-                                static_cast<double>(mSize * commRankCntForMm + mmShapeInfo_.shape.nValue);
+        double mnharmonicMean = static_cast<double>(mSize * commRankCntForMm * mmShapeInfo_.nValue) /
+                                static_cast<double>(mSize * commRankCntForMm + mmShapeInfo_.nValue);
         double kExponentiated = std::min(
             MatmulPerfConst::MAX_PARTICAL_ENHANCEMENT_FACTOR_CUBE_UTIL,
-            std::pow(static_cast<double>(mmShapeInfo_.shape.kValue), MatmulPerfConst::CUBE_UTIL_EXPONENT_COEFFICIENT) /
+            std::pow(static_cast<double>(mmShapeInfo_.kValue), MatmulPerfConst::CUBE_UTIL_EXPONENT_COEFFICIENT) /
                 std::pow(MatmulPerfConst::KVALUE_THRESHOLD, MatmulPerfConst::CUBE_UTIL_EXPONENT_COEFFICIENT));
         double mnExponentiated =
             std::min(MatmulPerfConst::MAX_PARTICAL_ENHANCEMENT_FACTOR_CUBE_UTIL,
@@ -98,33 +97,33 @@ public:
     void FindCubeUtil(uint64_t commRankCntForMm)
     {
         cubeUtil_ =
-            FindCubeUtil(mmShapeInfo_.shape.mValue, commRankCntForMm, MatmulPerfConst::CUBE_UTIL_EXPONENT_COEFFICIENT);
+            FindCubeUtil(mmShapeInfo_.mValue, commRankCntForMm, MatmulPerfConst::CUBE_UTIL_EXPONENT_COEFFICIENT);
     }
     void GetMatmulGradient()
     {
-        const uint64_t tmpN = std::max<uint64_t>(mmShapeInfo_.baseBlock.baseN, mmShapeInfo_.shape.nValue);
-        const uint64_t tmpK = std::max<uint64_t>(mmShapeInfo_.baseBlock.baseK, mmShapeInfo_.shape.kValue);
+        const uint64_t tmpN = std::max<uint64_t>(mmShapeInfo_.baseN, mmShapeInfo_.nValue);
+        const uint64_t tmpK = std::max<uint64_t>(mmShapeInfo_.baseK, mmShapeInfo_.kValue);
         matmulGradient_ = (tmpN * tmpK) / (mmShapeInfo_.computesPerCycle * mmShapeInfo_.cyclePerMicroSec *
                                            mmShapeInfo_.coreNum * cubeUtil_);
     }
     uint32_t GetBaseM()
     {
-        return mmShapeInfo_.baseBlock.baseM;
+        return mmShapeInfo_.baseM;
     };
     uint32_t GetBaseN()
     {
-        return mmShapeInfo_.baseBlock.baseN;
+        return mmShapeInfo_.baseN;
     };
     // 性能预测
     double MatmulTime(uint64_t tileSize, uint64_t rowMul)
     {
-        tileSize = std::max<uint64_t>(mmShapeInfo_.baseBlock.baseM, tileSize);
+        tileSize = std::max<uint64_t>(mmShapeInfo_.baseM, tileSize);
         return static_cast<double>(tileSize) * static_cast<double>(rowMul) * matmulGradient_;
     }
     uint64_t InverseMatmulTime(double targetTime, uint64_t rowMul)
     {
         uint64_t tileSize = static_cast<uint64_t>(targetTime / (static_cast<double>(rowMul) * matmulGradient_));
-        tileSize = std::max<uint64_t>(mmShapeInfo_.baseBlock.baseM, tileSize);
+        tileSize = std::max<uint64_t>(mmShapeInfo_.baseM, tileSize);
         return tileSize;
     }
 };

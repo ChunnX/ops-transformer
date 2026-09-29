@@ -48,18 +48,17 @@ struct MatmulBaseBlock {
 };
 
 // 计算域画像(§4.40 清理: 按类型聚合, 删旧镜像死成员 socType/batchSize)
+// 计算域画像(§4.40 清理: 删旧镜像死成员 socType/batchSize; 12 成员平铺)
 struct MatmulShapeInfo {
-    struct Shape { // 计算域三围
-        uint64_t mValue;
-        uint64_t nValue;
-        uint64_t kValue;
-    } shape;
-    MatmulBaseBlock baseBlock; // matmul 最优基本块(对齐粒度/下限)
-    struct DtypeSizes {        // A/B/C 每元素字节数(L2 估算与通信胶水消费)
-        uint64_t inMatrixA;
-        uint64_t inMatrixB;
-        uint64_t outMatrixC;
-    } dtypeSizes;
+    uint64_t mValue;
+    uint64_t nValue;
+    uint64_t kValue;
+    uint64_t baseM; // matmul 最优基本块(对齐粒度/下限, 标定 baseBlock 注入)
+    uint64_t baseN;
+    uint64_t baseK;
+    uint64_t inMatrixADtypeSize; // A 每元素字节数(L2 估算与通信胶水消费)
+    uint64_t inMatrixBDtypeSize;
+    uint64_t outMatrixCDtypeSize;
     uint64_t coreNum;        // 参与计算的 AIC 核数
     double computesPerCycle; // cube 有效算力(MACs/cycle, 标定查表产出)
     double cyclePerMicroSec; // 频率
@@ -110,22 +109,18 @@ constexpr uint32_t DEFAULT_BASE_K = 64;
 
 // 引擎调度入参(§4.40 清理: 旧 33 字段镜像裁至引擎实际消费的 9 个, 按类型聚合;
 // 算子侧 ToEngineArgs 从旧 mc2tiling::TilingArgs 挑字段填充)
+// 引擎调度入参(§4.40 清理: 旧 33 字段镜像裁至引擎实际消费的 9 个, 平铺;
+// 算子侧 ToEngineArgs 从旧 mc2tiling::TilingArgs 挑字段填充)
 struct FitBalanceTilingArgs {
-    struct Shape { // 计算域三围(切分对象/通信矩阵另一维)
-        uint64_t mValue;
-        uint64_t nValue;
-        uint64_t kValue;
-    } shape;
-    struct Platform {        // 并行度
-        uint32_t rankDim;    // 通信域卡数
-        uint32_t aicCoreNum; // 计算 AIC 核数
-    } platform;
-    struct Dtype {                     // dtype 画像(算力查表键推导/通信胶水)
-        matmul_tiling::DataType aType; // mm 域 A dtype(量化类别判定)
-        ge::DataType geAType;          // ge 域 A dtype(fp4 识别——DT_FLOAT4_E2M1 无 mm 域表达)
-        uint64_t inputDtypeSize;       // A 每元素字节数(glue 真实口径, fp4 时=0)
-        uint64_t outputDtypeSize;      // C 每元素字节数(C 侧承载通信时的字节)
-    } dtype;
+    uint64_t mValue;
+    uint64_t nValue;
+    uint64_t kValue;
+    uint32_t rankDim;              // 通信域卡数
+    uint32_t aicCoreNum;           // 计算 AIC 核数
+    matmul_tiling::DataType aType; // mm 域 A dtype(量化类别判定)
+    ge::DataType geAType;          // ge 域 A dtype(fp4 识别——DT_FLOAT4_E2M1 无 mm 域表达)
+    uint64_t inputDtypeSize;       // A 每元素字节数(glue 真实口径, fp4 时=0)
+    uint64_t outputDtypeSize;      // C 每元素字节数(C 侧承载通信时的字节)
 };
 
 // ====== 通信引擎枚举与解析（三引擎统一分派的公共词汇）======

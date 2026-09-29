@@ -95,21 +95,11 @@ static const FitBalanceCalibration CALIBRATION = {
 // 二、组装与新旧切换
 // ============================================================================
 
-// 边界转换(§4.40 裁定): 旧全局类型 → 引擎入参(引擎 33 字段镜像已裁至实际消费的 9 个,
-// 按类型聚合——shape/platform/dtype 三组)
+// 边界转换(§4.40 裁定): 旧全局类型 → 引擎入参(引擎 33 字段镜像已裁至实际消费的 9 个)
 inline FitBalanceTilingArgs ToEngineArgs(const mc2tiling::TilingArgs &a)
 {
-    FitBalanceTilingArgs e = {};
-    e.shape.mValue = a.mValue;
-    e.shape.nValue = a.nValue;
-    e.shape.kValue = a.kValue;
-    e.platform.rankDim = a.rankDim;
-    e.platform.aicCoreNum = a.aicCoreNum;
-    e.dtype.aType = a.aType;
-    e.dtype.geAType = a.geAType;
-    e.dtype.inputDtypeSize = a.inputDtypeSize;
-    e.dtype.outputDtypeSize = a.outputDtypeSize;
-    return e;
+    return {a.mValue, a.nValue,  a.kValue,         a.rankDim,        a.aicCoreNum,
+            a.aType,  a.geAType, a.inputDtypeSize, a.outputDtypeSize};
 }
 
 inline CutResult ToLegacyCut(const CommCutResult &c)
@@ -137,8 +127,8 @@ inline CutResult ScheduleFitBalance(const mc2tiling::TilingArgs &args, TilingCom
     OPS_LOG_D("AllGatherMatmul",
               "Input shape {M, N, K} = {%lu, %lu, %lu}, Final cut: shortTileAtBack %d, longTileLen %lu, "
               "numLongTile %lu, shortTileLen %lu, numShortTile %lu",
-              ctx.matmulPerf.mmShapeInfo_.shape.mValue, ctx.matmulPerf.mmShapeInfo_.shape.nValue,
-              ctx.matmulPerf.mmShapeInfo_.shape.kValue, cut.shortTileAtBack, cut.longTileLen, cut.numLongTile,
+              ctx.matmulPerf.mmShapeInfo_.mValue, ctx.matmulPerf.mmShapeInfo_.nValue,
+              ctx.matmulPerf.mmShapeInfo_.kValue, cut.shortTileAtBack, cut.longTileLen, cut.numLongTile,
               cut.shortTileLen, cut.numShortTile);
     // §4.37 诊断: 实际切分 N 轮 vs 不切的总通信时(含每轮启动开销 b 与一次性 c), 差值=切分启动税
     OPS_LOG_D("AllGatherMatmul", "Comm total time: %lu rounds actual %.3fus vs no-cut %.3fus (round tax %.3fus)",

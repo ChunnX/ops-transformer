@@ -71,7 +71,7 @@ inline FitBasedBalanceCtx InitCtx(const FitBalanceTilingArgs &args, LocalMMPosit
         if (commRows[i].rankDim == 0) { // 哨兵截断
             break;
         }
-        if (commRows[i].rankDim == args.platform.rankDim) {
+        if (commRows[i].rankDim == args.rankDim) {
             commFitParams = {commRows[i].slopeUsPerMb, commRows[i].roundOverheadUs, commRows[i].fixedOverheadUs};
             break;
         }
@@ -79,16 +79,16 @@ inline FitBasedBalanceCtx InitCtx(const FitBalanceTilingArgs &args, LocalMMPosit
     // matmul 行: 按"计算形态"匹配算力行——形态键 = (量化类别, fp4 打包, A/B 字节数) 四维
     // (C 侧字节数不进键, §4.37 根治裁定: glue cType=aType 使其恒等于 aBytes, 零信息量),
     // 键推导与模型 SetCalcType 同源
-    const auto isQuant = (args.dtype.aType == matmul_tiling::DataType::DT_HIFLOAT8) ||
-                         (args.dtype.aType == matmul_tiling::DataType::DT_FLOAT8_E4M3FN) ||
-                         (args.dtype.aType == matmul_tiling::DataType::DT_FLOAT8_E5M2) ||
-                         (args.dtype.aType == matmul_tiling::DataType::DT_INT8) ||
-                         (args.dtype.geAType == ge::DataType::DT_FLOAT4_E2M1);
+    const auto isQuant = (args.aType == matmul_tiling::DataType::DT_HIFLOAT8) ||
+                         (args.aType == matmul_tiling::DataType::DT_FLOAT8_E4M3FN) ||
+                         (args.aType == matmul_tiling::DataType::DT_FLOAT8_E5M2) ||
+                         (args.aType == matmul_tiling::DataType::DT_INT8) ||
+                         (args.geAType == ge::DataType::DT_FLOAT4_E2M1);
     const MatmulDtypeKind calcType = isQuant ? MatmulDtypeKind::QUANT : MatmulDtypeKind::FP16;
-    const bool isFp4 = (args.dtype.geAType == ge::DataType::DT_FLOAT4_E2M1);
+    const bool isFp4 = (args.geAType == ge::DataType::DT_FLOAT4_E2M1);
     const auto matchesCalcProfile = [&](const auto &row) {
-        return (row.calcType == calcType) && (row.isFp4 == isFp4) && (row.aBytes == args.dtype.inputDtypeSize) &&
-               (row.bBytes == args.dtype.inputDtypeSize); // C 侧字节数不进键(§4.37 根治裁定, 见 CubeCalc 注释)
+        return (row.calcType == calcType) && (row.isFp4 == isFp4) && (row.aBytes == args.inputDtypeSize) &&
+               (row.bBytes == args.inputDtypeSize); // C 侧字节数不进键(§4.37 根治裁定, 见 CubeCalc 注释)
     };
     double computesPerCycle = calib.mmFit.defaultComputesPerCycle;
     for (size_t i = 0; i < FitBalanceCalibration::MAX_CUBE_CALC_ROWS; ++i) {
@@ -101,7 +101,7 @@ inline FitBasedBalanceCtx InitCtx(const FitBalanceTilingArgs &args, LocalMMPosit
         }
     }
     FitBasedBalanceCtx ctx{MatmulPerfModel(args, computesPerCycle, calib.mmFit.baseBlock),
-                           HCCLCommModel(args.platform.rankDim, commFitParams),
+                           HCCLCommModel(args.rankDim, commFitParams),
                            CutPlanner(args),
                            localMMPosition,
                            order,
@@ -119,36 +119,35 @@ inline FitBasedBalanceCtx InitCtx(const FitBalanceTilingArgs &args, LocalMMPosit
     // ---- 通算胶水(键控, 原散在各算子构造函数, §4.24 裁定随引擎下沉) ----
     // D4 通信矩阵另一维(§4.38: 轴向由标定层 CommProfile.axis 声明——A 侧承载沿 K 轴, C 侧沿 N 轴)
     const bool commOnKAxis = (calib.profile.axis == CommAxis::K);
-    ctx.commPerf.SetCommShapeLen(commOnKAxis ? ctx.matmulPerf.mmShapeInfo_.shape.kValue :
-                                               ctx.matmulPerf.mmShapeInfo_.shape.nValue);
+    ctx.commPerf.SetCommShapeLen(commOnKAxis ? ctx.matmulPerf.mmShapeInfo_.kValue : ctx.matmulPerf.mmShapeInfo_.nValue);
     // D5+D6 通信承载 dtype 与 fp4 子字节建模(两件独立的事, 原耦合在 AG 构造函数单分支内, §4.33 解耦):
     // ① 通信 dtype 按 CommProfile.axis 承载侧: K(A 侧输入)取 A 字节, N(C 侧输出)取 C 字节——
     //    fp4 只可能是输入 A 的 dtype, C 侧(计算输出)永远不是 fp4, 故子字节建模仅 K 轴承载时需要;
     // ② fp4(0.5B/元素)无法用 uint64 表达: 通信侧按"1 字节打包 2 元素"建模(dtypeSize=1+
     //    fraction=2 → GetRealDtypeSizes()=0.5, 复用 HCCL 子字节机制)
-    const bool isFp4Input = (args.dtype.geAType == ge::DataType::DT_FLOAT4_E2M1);
+    const bool isFp4Input = (args.geAType == ge::DataType::DT_FLOAT4_E2M1);
     if (commOnKAxis) {
         if (isFp4Input) {
             ctx.commPerf.SetCommDTypeSize(1);
             ctx.commPerf.SetCommDtypeSizeExpansionFraction(FP4_PACK_RATIO);
         } else {
-            ctx.commPerf.SetCommDTypeSize(ctx.matmulPerf.mmShapeInfo_.dtypeSizes.inMatrixA);
+            ctx.commPerf.SetCommDTypeSize(ctx.matmulPerf.mmShapeInfo_.inMatrixADtypeSize);
         }
     } else {
-        ctx.commPerf.SetCommDTypeSize(ctx.matmulPerf.mmShapeInfo_.dtypeSizes.outMatrixC);
+        ctx.commPerf.SetCommDTypeSize(ctx.matmulPerf.mmShapeInfo_.outMatrixCDtypeSize);
     }
     // ③ mm 侧 fp4 口径(与通信承载哪侧无关, 故独立于上分支): L2 工作集估算按 1B/元素保守取值
     //    (真实 0.5B 无法表达, 2x 高估防 memUsage 退化); 算力查表已由 matchesCalcProfile 的
     //    isFp4 维度接管(§4.17), 不在此处理。op 侧对 fp4 传 inputDtypeSize=1 时此两行为防御冗余
     if (isFp4Input) {
-        ctx.matmulPerf.mmShapeInfo_.dtypeSizes.inMatrixA = 1;
-        ctx.matmulPerf.mmShapeInfo_.dtypeSizes.inMatrixB = 1;
+        ctx.matmulPerf.mmShapeInfo_.inMatrixADtypeSize = 1;
+        ctx.matmulPerf.mmShapeInfo_.inMatrixBDtypeSize = 1;
     }
     // §4.29 分派后引擎不设回退模型: 标定未命中(零值行 slope=0)时置 minLen=mValue——
     // NoCut 门控即输出单块不切(防御行为, 正常分派下 op 层已引走 COF, 不可达;
     // 同时避免 InverseCommTime 除零斜率的 float→uint UB)
     if (ctx.commPerf.commEstimatePar_.slopeUsPerMb == 0.0) {
-        ctx.tilingM.SetMinLenByMax(ctx.matmulPerf.mmShapeInfo_.shape.mValue);
+        ctx.tilingM.SetMinLenByMax(ctx.matmulPerf.mmShapeInfo_.mValue);
     }
     // D7 离散对齐粒度初始化: baseM
     ctx.tilingM.SetMinLenByMax(ctx.matmulPerf.GetBaseM());
@@ -174,12 +173,11 @@ inline CommCutResult Schedule(FitBasedBalanceCtx &ctx)
     if (isLocalMMFront || isLocalMMBack) {
         // 本地块独立计算的 L2 利用率与稳态不同(单份数据、流水未满, 0.6 指数口径;
         // FRONT=首端 E5, BACK=尾端镜像——同一物理量: 本地窗口的计算时长)
-        const double localMMUtil = ctx.matmulPerf.FindCubeUtil(ctx.matmulPerf.mmShapeInfo_.shape.mValue, 1,
+        const double localMMUtil = ctx.matmulPerf.FindCubeUtil(ctx.matmulPerf.mmShapeInfo_.mValue, 1,
                                                                MatmulPerfConst::LOCAL_MM_UTIL_EXPONENT_COEFFICIENT);
-        const double localMMTime =
-            (std::abs(localMMUtil) > 1e-10) ?
-                ctx.matmulPerf.MatmulTime(ctx.matmulPerf.mmShapeInfo_.shape.mValue, 1) / localMMUtil :
-                ctx.matmulPerf.MatmulTime(ctx.matmulPerf.mmShapeInfo_.shape.mValue, 1);
+        const double localMMTime = (std::abs(localMMUtil) > 1e-10) ?
+                                       ctx.matmulPerf.MatmulTime(ctx.matmulPerf.mmShapeInfo_.mValue, 1) / localMMUtil :
+                                       ctx.matmulPerf.MatmulTime(ctx.matmulPerf.mmShapeInfo_.mValue, 1);
         if (isLocalMMFront) {
             ctx.frontMMTime = localMMTime;
             ctx.tilingM.cutRes.shortTileAtBack = true; // 本地块占启动端, 短块专职收尾(恒后置)
@@ -238,7 +236,7 @@ inline CommCutResult Schedule(FitBasedBalanceCtx &ctx)
     // 搜索实现: budget 线性枚举 [2, N₀)(每档恢复 ③ 后形态 + 收紧轮次预算 + 重跑 ④,
     // 长短结构随预算重新整形), T_cut 择优; 全部候选 ≥ T_serial → NoCut。
     // 成本: N₀ ≤ MAX_COMM_ROUNDS(63), 每档纯整数重切 O(块数)——host 侧微秒级。
-    const uint64_t mValue = ctx.matmulPerf.mmShapeInfo_.shape.mValue;
+    const uint64_t mValue = ctx.matmulPerf.mmShapeInfo_.mValue;
     const double serialTotalTime = ctx.commPerf.TotalCommTime(mValue, 1U) + estimate.totalMatmulTime;
     CommCutResult bestCut = ctx.tilingM.cutRes; // 初次切分(N₀ 轮, 配平产出)即候选
     double bestTime = EstimateCutTotalTime(ctx, bestCut, estimate.totalMatmulTime, serialTotalTime);
@@ -262,15 +260,14 @@ inline CommCutResult Schedule(FitBasedBalanceCtx &ctx)
 
     // ---- ⑥ 单轮通信量上限整形(CCU 键, §4.37): HCCL 单次调用 256MB 上限, 超限块等长重切 ----
     if (ctx.commEngine == TilingCommEngine::CCU) {
-        ApplySingleRoundCommLimit(ctx.tilingM, ctx.commPerf, ctx.commVolumeMul,
-                                  ctx.matmulPerf.mmShapeInfo_.shape.mValue);
+        ApplySingleRoundCommLimit(ctx.tilingM, ctx.commPerf, ctx.commVolumeMul, ctx.matmulPerf.mmShapeInfo_.mValue);
     }
 
     // §4.37: 按最终切分的实际轮数精算总通信时(N 轮 vs NoCut 候选 1 轮), 差值即切分
     // 多付的启动税 (N−1)·b——诊断输出供 op 侧日志
     ctx.commTimeActualUs =
-        ctx.commPerf.TotalCommTime(ctx.matmulPerf.mmShapeInfo_.shape.mValue, ctx.tilingM.cutRes.totalTileCnt);
-    ctx.commTimeNoCutUs = ctx.commPerf.TotalCommTime(ctx.matmulPerf.mmShapeInfo_.shape.mValue, 1);
+        ctx.commPerf.TotalCommTime(ctx.matmulPerf.mmShapeInfo_.mValue, ctx.tilingM.cutRes.totalTileCnt);
+    ctx.commTimeNoCutUs = ctx.commPerf.TotalCommTime(ctx.matmulPerf.mmShapeInfo_.mValue, 1);
     return ctx.tilingM.cutRes;
 }
 
