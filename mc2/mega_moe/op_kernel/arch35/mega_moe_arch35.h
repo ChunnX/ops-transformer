@@ -422,7 +422,7 @@ __aicore__ inline uint32_t MegaMoe<TemplateMegaMoeTypeFunc>::InitQuantScratchTen
     /*
      * 预量化输入已符合 dispatch 格式，使用两个 stage 槽位搬运 x、scale 和可选的 topk weight，
      * 不再分配动态量化 scratch 布局。
-    */
+     */
     if constexpr (!Std::IsSame<XType, bfloat16_t>::value) {
         const uint32_t stageBytes = params_.tilingData->preQuantStageBytes;
         quantScratch_.preQuantStage0 = LocalTensor<uint8_t>(TPosition::VECCALC, mxTempTensorAddr, stageBytes);

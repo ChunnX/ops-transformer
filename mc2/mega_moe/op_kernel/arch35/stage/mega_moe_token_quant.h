@@ -22,9 +22,6 @@ namespace MegaMoeImpl {
 
 using namespace AscendC;
 
-// DataCopyParams 的 blockLen 使用 uint16_t 表示。
-constexpr uint32_t PRE_QUANT_MAX_DATA_COPY_BLOCK_LEN = 65535U;
-
 struct QuantProcessConfig {
     uint32_t quantTokenAlignBytes;
     uint32_t quantScaleAlignBytes;
@@ -234,8 +231,8 @@ struct PreQuantizedCopyContext {
 };
 
 // GM -> UB：每个 token 占一行。对齐时使用 DataCopyParams，非对齐时由 DataCopyPad 补齐到 32B。
-__aicore__ inline void PreQuantCopyIn(LocalTensor<uint8_t> dst, GlobalTensor<uint8_t> src,
-                                      uint32_t tokenCount, uint32_t validBytes, uint32_t rowBytes)
+__aicore__ inline void PreQuantCopyIn(LocalTensor<uint8_t> dst, GlobalTensor<uint8_t> src, uint32_t tokenCount,
+                                      uint32_t validBytes, uint32_t rowBytes)
 {
     if (tokenCount == 0U || validBytes == 0U) {
         return;
@@ -247,22 +244,11 @@ __aicore__ inline void PreQuantCopyIn(LocalTensor<uint8_t> dst, GlobalTensor<uin
     if (validBytes % blockBytes == 0U && srcAligned && dstAligned) {
         /*
          * arch35 的 DataCopyParams 中 blockLen 和两个 gap 均以 32B 为单位。
-         * 当 stage 中的各行紧密排列时，将整个 tile 合并为连续突发搬运；
-         * 搬运长度超过 uint16 block 计数上限时进行拆分。
+         * 当 stage 中的各行紧密排列时，将整个 tile 合并为一次连续突发搬运。
          */
         if (rowBytes == validBytes) {
-            constexpr uint32_t maxBlockBytes = PRE_QUANT_MAX_DATA_COPY_BLOCK_LEN * blockBytes;
-            uint32_t totalBytes = tokenCount * validBytes;
-            uint32_t offset = 0U;
-            while (offset < totalBytes) {
-                uint32_t chunkBytes = totalBytes - offset;
-                if (chunkBytes > maxBlockBytes) {
-                    chunkBytes = maxBlockBytes;
-                }
-                DataCopyParams params{1U, static_cast<uint16_t>(chunkBytes / blockBytes), 0U, 0U};
-                DataCopy(dst[offset], src[offset], params);
-                offset += chunkBytes;
-            }
+            DataCopyParams params{1U, static_cast<uint16_t>(tokenCount * validBytes / blockBytes), 0U, 0U};
+            DataCopy(dst, src, params);
         } else {
             DataCopyParams params{static_cast<uint16_t>(tokenCount), static_cast<uint16_t>(validBytes / blockBytes), 0U,
                                   static_cast<uint16_t>((rowBytes - validBytes) / blockBytes)};
@@ -281,8 +267,8 @@ __aicore__ inline void PreQuantCopyIn(LocalTensor<uint8_t> dst, GlobalTensor<uin
 }
 
 // UB -> GM：stage 中已经包含完整记录，因此使用一次 MTE3 写出整个 tile。
-__aicore__ inline void PreQuantCopyOutRecords(GlobalTensor<uint8_t> dst, LocalTensor<uint8_t> src,
-                                              uint32_t tokenCount, uint32_t recordBytes)
+__aicore__ inline void PreQuantCopyOutRecords(GlobalTensor<uint8_t> dst, LocalTensor<uint8_t> src, uint32_t tokenCount,
+                                              uint32_t recordBytes)
 {
     if (tokenCount == 0U || recordBytes == 0U) {
         return;
@@ -293,26 +279,22 @@ __aicore__ inline void PreQuantCopyOutRecords(GlobalTensor<uint8_t> dst, LocalTe
     DataCopy(dst, src, params);
 }
 
-__aicore__ inline void PreQuantCastBf16Weights(LocalTensor<uint8_t> stage, uint32_t tileCount,
-                                               uint32_t topK, uint32_t weightSrcRowBytes,
-                                               uint32_t weightSrcOffset, uint32_t recordBytes,
-                                               uint32_t weightDstOffset)
+__aicore__ inline void PreQuantCastBf16Weights(LocalTensor<uint8_t> stage, uint32_t tileCount, uint32_t topK,
+                                               uint32_t weightSrcRowBytes, uint32_t weightSrcOffset,
+                                               uint32_t recordBytes, uint32_t weightDstOffset)
 {
     LocalTensor<bfloat16_t> weightSrc = stage[weightSrcOffset].template ReinterpretCast<bfloat16_t>();
     for (uint32_t row = 0U; row < tileCount; ++row) {
-        LocalTensor<float> weightDst =
-            stage[row * recordBytes + weightDstOffset].template ReinterpretCast<float>();
-        Cast(weightDst,
-             weightSrc[row * (weightSrcRowBytes / sizeof(bfloat16_t))], AscendC::RoundMode::CAST_NONE, topK);
+        LocalTensor<float> weightDst = stage[row * recordBytes + weightDstOffset].template ReinterpretCast<float>();
+        Cast(weightDst, weightSrc[row * (weightSrcRowBytes / sizeof(bfloat16_t))], AscendC::RoundMode::CAST_NONE, topK);
     }
     PipeBarrier<PIPE_V>();
 }
 
 template <typename TopkWeightsType, bool TopkWeightsPrefetch>
-__aicore__ inline void PreQuantWriteTile(LocalTensor<uint8_t> stage, TEventID event, uint32_t tileCount,
-                                          uint32_t topK, uint32_t recordBytes, uint32_t weightSrcOffset,
-                                          uint32_t weightSrcRowBytes, uint32_t weightDstOffset,
-                                          GlobalTensor<uint8_t> output)
+__aicore__ inline void PreQuantWriteTile(LocalTensor<uint8_t> stage, TEventID event, uint32_t tileCount, uint32_t topK,
+                                         uint32_t recordBytes, uint32_t weightSrcOffset, uint32_t weightSrcRowBytes,
+                                         uint32_t weightDstOffset, GlobalTensor<uint8_t> output)
 {
     if constexpr (TopkWeightsPrefetch && Std::IsSame<TopkWeightsType, bfloat16_t>::value) {
         WaitFlag<AscendC::HardEvent::MTE2_V>(event);
@@ -329,9 +311,8 @@ __aicore__ inline void PreQuantWriteTile(LocalTensor<uint8_t> stage, TEventID ev
 
 // 每个 tile 将 token、scale 和可选 weight 搬入同一个记录缓冲区，再一次性写出。
 template <typename ActivationType, typename TopkWeightsType, bool TopkWeightsPrefetch>
-__aicore__ inline void PackPreQuantizedTokenRange(const WorkRange &tokenRange,
-                                                  const MoeStageCommonConfig &common, const Params &params,
-                                                  const QuantProcessConfig &config,
+__aicore__ inline void PackPreQuantizedTokenRange(const WorkRange &tokenRange, const MoeStageCommonConfig &common,
+                                                  const Params &params, const QuantProcessConfig &config,
                                                   const PreQuantizedCopyContext &copyContext,
                                                   QuantProcessScratch<ActivationType> &scratch)
 {
@@ -339,8 +320,7 @@ __aicore__ inline void PackPreQuantizedTokenRange(const WorkRange &tokenRange,
     const uint32_t recordBytes = config.quantTokenScaleAlignBytes;
     const uint32_t weightOffset = config.quantTokenAlignBytes + config.quantScaleAlignBytes;
     const uint32_t weightValidBytes = common.topK * sizeof(TopkWeightsType);
-    const uint32_t weightSrcRowBytes =
-        Ops::Base::CeilAlign(weightValidBytes, static_cast<uint32_t>(ALIGN_32));
+    const uint32_t weightSrcRowBytes = Ops::Base::CeilAlign(weightValidBytes, static_cast<uint32_t>(ALIGN_32));
     const uint32_t weightSrcOffset = tileCapacity * recordBytes;
 
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
@@ -354,8 +334,7 @@ __aicore__ inline void PackPreQuantizedTokenRange(const WorkRange &tokenRange,
         uint32_t tileOrdinal = tileStart / tileCapacity;
         uint32_t tileCount = tileCapacity < tokenRange.count - tileStart ? tileCapacity : tokenRange.count - tileStart;
         TEventID event = (tileOrdinal % DOUBLE_BUFFER) == 0U ? EVENT_ID0 : EVENT_ID1;
-        LocalTensor<uint8_t> stage =
-            (event == EVENT_ID0) ? scratch.preQuantStage0 : scratch.preQuantStage1;
+        LocalTensor<uint8_t> stage = (event == EVENT_ID0) ? scratch.preQuantStage0 : scratch.preQuantStage1;
         uint64_t dataOffset = static_cast<uint64_t>(tileStart) * copyContext.dataValidBytes;
         uint64_t scaleOffset = static_cast<uint64_t>(tileStart) * copyContext.scaleValidBytes;
 
@@ -384,8 +363,7 @@ __aicore__ inline void PackPreQuantizedTokenRange(const WorkRange &tokenRange,
         if (hasPendingTile) {
             LocalTensor<uint8_t> pendingStage =
                 (pendingEvent == EVENT_ID0) ? scratch.preQuantStage0 : scratch.preQuantStage1;
-            uint64_t pendingOutputOffset =
-                static_cast<uint64_t>(pendingTileStart) * static_cast<uint64_t>(recordBytes);
+            uint64_t pendingOutputOffset = static_cast<uint64_t>(pendingTileStart) * static_cast<uint64_t>(recordBytes);
             PreQuantWriteTile<TopkWeightsType, TopkWeightsPrefetch>(
                 pendingStage, pendingEvent, pendingTileCount, common.topK, recordBytes, weightSrcOffset,
                 weightSrcRowBytes, weightOffset, copyContext.tokenScaleDstGlobalTensor[pendingOutputOffset]);
@@ -399,11 +377,10 @@ __aicore__ inline void PackPreQuantizedTokenRange(const WorkRange &tokenRange,
     if (hasPendingTile) {
         LocalTensor<uint8_t> pendingStage =
             (pendingEvent == EVENT_ID0) ? scratch.preQuantStage0 : scratch.preQuantStage1;
-        uint64_t pendingOutputOffset =
-            static_cast<uint64_t>(pendingTileStart) * static_cast<uint64_t>(recordBytes);
+        uint64_t pendingOutputOffset = static_cast<uint64_t>(pendingTileStart) * static_cast<uint64_t>(recordBytes);
         PreQuantWriteTile<TopkWeightsType, TopkWeightsPrefetch>(
-            pendingStage, pendingEvent, pendingTileCount, common.topK, recordBytes, weightSrcOffset,
-            weightSrcRowBytes, weightOffset, copyContext.tokenScaleDstGlobalTensor[pendingOutputOffset]);
+            pendingStage, pendingEvent, pendingTileCount, common.topK, recordBytes, weightSrcOffset, weightSrcRowBytes,
+            weightOffset, copyContext.tokenScaleDstGlobalTensor[pendingOutputOffset]);
     }
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
