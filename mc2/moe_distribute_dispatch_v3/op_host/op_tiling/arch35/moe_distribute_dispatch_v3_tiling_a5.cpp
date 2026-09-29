@@ -34,21 +34,7 @@ static ge::graphStatus TilingParseForMoeDistributeDispatchV3(gert::TilingParseCo
 static ge::graphStatus MoeDistributeDispatchV3TilingFuncImplA5(gert::TilingContext *context)
 {
     MoeDistributeDispatchV3TilingFuncA5 impl;
-    ge::graphStatus ret = impl.MoeDistributeDispatchV3TilingFunc(context);
-    if (ret != ge::GRAPH_SUCCESS) {
-        return ret;
-    }
-    // A5 上 V2/V3/V4 单算子 API 的 fullmesh 通路均路由本算子——CCU 控制面使能与 V2 入口同款
-    // （fullmesh_v2 + env MOE_DISPATCH_USE_CCU_CTRL=1 时配置，tiling key 复用不变，否则显式关）。
-    // V3 属性布局与 V2 不同：commAlg=attr12（对齐 v3_tiling.cpp attrCommAlgIndex）、无 groupEp 属性
-    // （通信绑定经 mc2Context 输入，groupEp 传空串同 SetHcommCfg 空 group 先例）
-    auto attrs = context->GetAttrs();
-    if (attrs == nullptr) {
-        return ge::GRAPH_FAILED;
-    }
-    auto commAlgPtr = attrs->GetAttrPointer<char>(12); // 12: V3 布局 commAlg 索引
-    MoeDistributeDispatchV2TilingFuncA5 v2Impl;
-    return v2Impl.TryEnableCcuCtrl(context, commAlgPtr, "");
+    return impl.MoeDistributeDispatchV3TilingFunc(context);
 }
 IMPL_OP_OPTILING(MoeDistributeDispatchV3)
     .Tiling(MoeDistributeDispatchV3TilingFuncImplA5)
