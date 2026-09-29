@@ -98,12 +98,15 @@ __aicore__ inline void StatsSumVF(LocalTensor<T> rows, LocalTensor<float> state,
 // Assign consecutive 128-row batches to each AIV within its die group.
 // A complete head has a single writer; only heads crossing an AIV boundary
 // use FP32 atomic adds. The caller synchronizes before consuming mean.
-template <class T>
-__aicore__ void StreamKStats(GM_ADDR k, GM_ADDR mean, SageParams p)
+// IS_V selects the sequence-mean of V (smooth_v) instead of the one of K
+// (smooth_k); both reduce the Sk rows of a key-value head.
+template <class T, bool IS_V>
+__aicore__ void StreamKStats(GM_ADDR src, GM_ADDR mean, SageParams p)
 {
+    const uint64_t *const strides = IS_V ? p.vs : p.ks;
     FixedResource r;
     GlobalTensor<T> kg;
-    kg.SetGlobalBuffer((__gm__ T *)k);
+    kg.SetGlobalBuffer((__gm__ T *)src);
     GlobalTensor<float> mg;
     mg.SetGlobalBuffer((__gm__ float *)mean);
     constexpr uint32_t BATCH_ROWS = 128, SLOT_BYTES = 32768;
