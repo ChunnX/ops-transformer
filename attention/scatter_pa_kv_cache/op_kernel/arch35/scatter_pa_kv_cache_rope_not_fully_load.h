@@ -17,27 +17,27 @@
 #define SCATTER_PA_KV_CACHE_ROPE_NOT_FULLY_LOAD_H_
 
 #include "kernel_operator.h"
-#include "scatter_pa_kv_cache_arch35_common.h"
+#include "common.h"
 
 namespace ScatterPaKvCache {
 using namespace AscendC;
 
 template <typename T, typename U>
-__simd_vf__ inline void CastToOriginNotFullyVf(__ubuf__ U *srcAddr, __ubuf__ T *dstAddr, uint32_t dataLen,
+__simd_vf__ inline void CastToOriginNotFullyVf(__ubuf__ U* srcAddr, __ubuf__ T* dstAddr, uint32_t dataLen,
                                                uint16_t loopTimes)
 {
-    Reg::RegTensor<U> srcValue;
-    Reg::MaskReg preg;
+    MicroAPI::RegTensor<U> srcValue;
+    MicroAPI::MaskReg preg;
     uint32_t sregMask = dataLen;
     for (uint16_t j = 0; j < loopTimes; j++) {
-        preg = Reg::UpdateMask<uint32_t>(sregMask);
-        Reg::LoadAlign<U, Reg::LoadDist::DIST_NORM>(srcValue, srcAddr + VL_B32 * j);
+        preg = MicroAPI::UpdateMask<uint32_t>(sregMask);
+        MicroAPI::DataCopy<U, MicroAPI::LoadDist::DIST_NORM>(srcValue, srcAddr + VL_B32 * j);
         if constexpr (IsSameType<T, int16_t>::value || IsSameType<T, uint16_t>::value) {
-            Reg::StoreAlign<T, Reg::StoreDist::DIST_PACK_B32>(dstAddr + VL_B32 * j, (Reg::RegTensor<T> &)srcValue,
-                                                              preg);
+            MicroAPI::DataCopy<T, MicroAPI::StoreDist::DIST_PACK_B32>(dstAddr + VL_B32 * j,
+                                                                      (MicroAPI::RegTensor<T>&)srcValue, preg);
         } else {
-            Reg::StoreAlign<T, Reg::StoreDist::DIST_PACK4_B32>(dstAddr + VL_B32 * j, (Reg::RegTensor<T> &)srcValue,
-                                                               preg);
+            MicroAPI::DataCopy<T, MicroAPI::StoreDist::DIST_PACK4_B32>(dstAddr + VL_B32 * j,
+                                                                       (MicroAPI::RegTensor<T>&)srcValue, preg);
         }
     }
 }
@@ -45,7 +45,7 @@ __simd_vf__ inline void CastToOriginNotFullyVf(__ubuf__ U *srcAddr, __ubuf__ T *
 template <typename T, typename IndexDtype, int64_t InOutMode>
 class ScatterPaKvCacheRopeNotFullyLoad {
 public:
-    __aicore__ inline ScatterPaKvCacheRopeNotFullyLoad(TPipe *pipe, const ScatterPaKvCacheTilingData *__restrict tiling)
+    __aicore__ inline ScatterPaKvCacheRopeNotFullyLoad(TPipe* pipe, const ScatterPaKvCacheTilingData* __restrict tiling)
         : pipe_(pipe),
           tilingData_(tiling){};
     __aicore__ inline void Init(GM_ADDR key, GM_ADDR key_cache_in, GM_ADDR slot_mapping, GM_ADDR value,
@@ -69,7 +69,7 @@ private:
     __aicore__ inline void HandleValueCache(int64_t iter, int64_t offsetIndex);
     __aicore__ inline void UpdateKeyCache(int64_t k, int64_t startIdx, int64_t keyOffset);
     template <typename U>
-    __aicore__ inline void CastToOrigin(LocalTensor<T> &dstLocal, LocalTensor<U> &srcLocal, uint32_t dataLen);
+    __aicore__ inline void CastToOrigin(LocalTensor<T>& dstLocal, LocalTensor<U>& srcLocal, uint32_t dataLen);
     __aicore__ inline void UpdateValueCache(int64_t k, int64_t startIdx, int64_t valueOffset);
     template <typename U>
     __aicore__ inline void ReduceMeanKeyPart(int64_t loopIdx, int64_t kStartIdx, int64_t startIdx, int64_t endIdx,
@@ -79,7 +79,7 @@ private:
                                                int64_t valueOffset, int64_t handleNum);
 
 private:
-    TPipe *pipe_;
+    TPipe* pipe_;
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> inputKeyQueue_;
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> inputValueQueue_;
     TBuf<TPosition::VECCALC> divideBuf_;
@@ -102,7 +102,7 @@ private:
     GlobalTensor<IndexDtype> compressSeqOffsetGm_;
     GlobalTensor<IndexDtype> compressLensGm_;
     GlobalTensor<IndexDtype> seqLensGm_;
-    const ScatterPaKvCacheTilingData *tilingData_;
+    const ScatterPaKvCacheTilingData* tilingData_;
     static constexpr bool isNeedCast_ =
         (IsSameType<T, bfloat16_t>::value || IsSameType<T, half>::value || IsSameType<T, hifloat8_t>::value ||
          IsSameType<T, fp8_e5m2_t>::value || IsSameType<T, fp8_e4m3fn_t>::value);
@@ -120,14 +120,14 @@ __aicore__ inline void ScatterPaKvCacheRopeNotFullyLoad<T, IndexDtype, InOutMode
     seqLen_ = tilingData_->seqLen;
     numHead_ = tilingData_->numHead;
     kvBlockOffset_ = GetBlockIdx() * tilingData_->blockFactor;
-    inputKeyGm_.SetGlobalBuffer((__gm__ T *)(key));
+    inputKeyGm_.SetGlobalBuffer((__gm__ T*)(key));
 
-    slotMappingGm_.SetGlobalBuffer((__gm__ IndexDtype *)(slot_mapping) + GetBlockIdx() * tilingData_->blockFactor);
-    compressSeqOffsetGm_.SetGlobalBuffer((__gm__ IndexDtype *)(compress_seq_offset) +
+    slotMappingGm_.SetGlobalBuffer((__gm__ IndexDtype*)(slot_mapping) + GetBlockIdx() * tilingData_->blockFactor);
+    compressSeqOffsetGm_.SetGlobalBuffer((__gm__ IndexDtype*)(compress_seq_offset) +
                                          GetBlockIdx() * tilingData_->blockFactor);
-    compressLensGm_.SetGlobalBuffer((__gm__ IndexDtype *)(compress_lens) + GetBlockIdx() * tilingData_->blockFactor);
-    seqLensGm_.SetGlobalBuffer((__gm__ IndexDtype *)(seq_lens));
-    outputKeyCacheGm_.SetGlobalBuffer((__gm__ T *)(key_cache_out));
+    compressLensGm_.SetGlobalBuffer((__gm__ IndexDtype*)(compress_lens) + GetBlockIdx() * tilingData_->blockFactor);
+    seqLensGm_.SetGlobalBuffer((__gm__ IndexDtype*)(seq_lens));
+    outputKeyCacheGm_.SetGlobalBuffer((__gm__ T*)(key_cache_out));
 
     int64_t maxKHandleNum = tilingData_->kHandleNumPerLoop > tilingData_->kTailHandleNum ?
                                 tilingData_->kHandleNumPerLoop :
@@ -142,8 +142,8 @@ __aicore__ inline void ScatterPaKvCacheRopeNotFullyLoad<T, IndexDtype, InOutMode
     pipe_->InitBuffer(inputKeyQueue_, 1, RoundUp(maxKHandleNum) * sizeof(T));
 
     if constexpr (InOutMode == DUAL_IN_OUT) {
-        inputValueGm_.SetGlobalBuffer((__gm__ T *)(value));
-        outputValueCacheGm_.SetGlobalBuffer((__gm__ T *)(value_cache_out));
+        inputValueGm_.SetGlobalBuffer((__gm__ T*)(value));
+        outputValueCacheGm_.SetGlobalBuffer((__gm__ T*)(value_cache_out));
         pipe_->InitBuffer(inputValueQueue_, 1, RoundUp(maxVHandleNum) * sizeof(T));
     }
 }
@@ -163,14 +163,14 @@ __aicore__ inline uint32_t ScatterPaKvCacheRopeNotFullyLoad<T, IndexDtype, InOut
 template <typename T, typename IndexDtype, int64_t InOutMode>
 template <typename U>
 __aicore__ inline void ScatterPaKvCacheRopeNotFullyLoad<T, IndexDtype, InOutMode>::CastToOrigin(
-    LocalTensor<T> &dstLocal, LocalTensor<U> &srcLocal, uint32_t dataLen)
+    LocalTensor<T>& dstLocal, LocalTensor<U>& srcLocal, uint32_t dataLen)
 {
-    __ubuf__ U *srcAddr = (__ubuf__ U *)srcLocal.GetPhyAddr();
-    __ubuf__ T *dstAddr = (__ubuf__ T *)dstLocal.GetPhyAddr();
+    __local_mem__ U* srcAddr = (__local_mem__ U*)srcLocal.GetPhyAddr();
+    __local_mem__ T* dstAddr = (__local_mem__ T*)dstLocal.GetPhyAddr();
 
     uint16_t loopTimes = CeilDiv(dataLen, VL_B32);
 
-    CastToOriginNotFullyVf<T, U>((__ubuf__ U *)srcAddr, (__ubuf__ T *)dstAddr, dataLen, loopTimes);
+    CastToOriginNotFullyVf<T, U>((__ubuf__ U*)srcAddr, (__ubuf__ T*)dstAddr, dataLen, loopTimes);
 }
 
 template <typename T, typename IndexDtype, int64_t InOutMode>
