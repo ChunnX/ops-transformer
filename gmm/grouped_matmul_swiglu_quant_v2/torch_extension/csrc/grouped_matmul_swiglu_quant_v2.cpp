@@ -104,7 +104,7 @@ int64_t InferLogicalN(const at::Tensor &weightScale)
 
 } // namespace
 
-std::tuple<at::Tensor, at::Tensor> grouped_matmul_swiglu_quant_v2(
+std::tuple<at::Tensor, at::Tensor> grouped_matmul_swiglu_quant(
     const at::Tensor &x, const std::vector<at::Tensor> &weight, const std::vector<at::Tensor> &weightScale,
     const at::Tensor &xScale, const at::Tensor &groupList, const c10::optional<at::Tensor> &smoothScale,
     const c10::optional<std::vector<at::Tensor>> &weightAssistMatrix,
@@ -207,7 +207,7 @@ std::tuple<at::Tensor, at::Tensor> grouped_matmul_swiglu_quant_v2(
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("grouped_matmul_swiglu_quant_v2", &grouped_matmul_swiglu_quant_v2,
+    m.def("grouped_matmul_swiglu_quant", &grouped_matmul_swiglu_quant,
           "GroupedMatmulSwigluQuant V3 MXFP8 WeightNz torch wrapper");
 }
 } // namespace op_api

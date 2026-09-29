@@ -1,4 +1,4 @@
-# grouped_matmul_swiglu_quant_v2
+# grouped_matmul_swiglu_quant
 
 ## 产品支持情况
 
@@ -25,7 +25,7 @@
 
 - **接口功能**：
 
-  `cann_ops_transformer.grouped_matmul_swiglu_quant_v2`融合GroupedMatmul、dequant、SwiGLU和quant。当前仅支持Ascend 950PR/Ascend 950DT上的单Tensor、MXFP8、weight FRACTAL_NZ场景，且`swiglu_mode`必须显式设置为2。原V2场景请使用`torch_npu.npu_grouped_matmul_swiglu_quant_v2`。
+  `cann_ops_transformer.grouped_matmul_swiglu_quant`融合GroupedMatmul、dequant、SwiGLU和quant。当前仅支持Ascend 950PR/Ascend 950DT上的单Tensor、MXFP8、weight FRACTAL_NZ场景，且`swiglu_mode`必须显式设置为2。原V2场景请使用`torch_npu.npu_grouped_matmul_swiglu_quant_v2`。
 
 - **计算公式**：
 
@@ -48,7 +48,7 @@
 ## 函数原型
 
 ```python
-cann_ops_transformer.grouped_matmul_swiglu_quant_v2(
+cann_ops_transformer.grouped_matmul_swiglu_quant(
     x,
     weight,
     weight_scale,
@@ -59,7 +59,7 @@ cann_ops_transformer.grouped_matmul_swiglu_quant_v2(
     weight_assist_matrix=None,
     bias=None,
     dequant_mode=2,
-    dequant_dtype=torch.float32,
+    dequant_dtype=6,
     quant_mode=2,
     quant_dtype=torch.float8_e4m3fn,
     group_list_type=0,
@@ -91,7 +91,7 @@ cann_ops_transformer.grouped_matmul_swiglu_quant_v2(
 | `weight_assist_matrix` | List[Tensor] | 可选 | 权重辅助矩阵，默认值为`None`。当前场景不支持，仅支持`None`或空List。 | - | - |
 | `bias` | List[Tensor] | 可选 | 矩阵乘偏置列表，默认值为`None`。接口与GroupedMatmul保持一致；当前V3场景不支持有效bias，仅支持`None`或空List。 | - | - |
 | `dequant_mode` | int | 可选 | 反量化模式，默认值为2，当前仅支持2，表示MX反量化。 | int | - |
-| `dequant_dtype` | torch.dtype/int | 可选 | GroupedMatmul中间结果类型，默认值为`torch.float32`，当前仅支持`torch.float32`或0。 | `torch.float32` | - |
+| `dequant_dtype` | torch.dtype/int | 可选 | GroupedMatmul中间结果类型，默认值为`6`（表示`torch.float32`）；也支持显式传入`torch.float32`或`0`。 | `6` | - |
 | `quant_mode` | int | 可选 | 输出量化模式，默认值为2，当前仅支持2，表示MX量化。 | int | - |
 | `quant_dtype` | torch.dtype/int | 可选 | 输出`y`的数据类型，默认值为`torch.float8_e4m3fn`，当前仅支持`torch.float8_e4m3fn`。 | `torch.float8_e4m3fn` | - |
 | `group_list_type` | int | 可选 | `group_list`的解释方式，默认值为0。0表示cumsum，1表示count。 | int | - |
@@ -161,7 +161,7 @@ cann_ops_transformer.grouped_matmul_swiglu_quant_v2(
   ).npu()
   group_list = torch.tensor([M], dtype=torch.int64).npu()
 
-  y, y_scale = cann_ops_transformer.grouped_matmul_swiglu_quant_v2(
+  y, y_scale = cann_ops_transformer.grouped_matmul_swiglu_quant(
       x,
       [weight],
       [weight_scale],
