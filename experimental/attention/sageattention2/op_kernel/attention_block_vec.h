@@ -107,6 +107,16 @@ public:
         DataCopy(pl1[subBlockIdx_ * HALF * 32], p8, cp);
         CrossCoreSetFlag<4, PIPE_MTE3>(P_READY);
     }
+    // pv_accum_dtype selects whether the per-block PV partial is rounded to
+    // FP16 before folding into the FP32 running state. The slot is owned by
+    // this AIV between PV_READY and PV_RELEASE, so it can be rewritten.
+    __aicore__ inline __attribute__((always_inline)) void RoundPvSlot(uint32_t slot)
+    {
+        if (params_.accum != uint32_t(SagePvAccum::FP32_FP16))
+            return;
+        auto pv = resource_->ubBuf.template GetBufferByByte<float>(PV_UB + slot * PV_SLOT_BYTES);
+        RoundPartialFp16VF((__ubuf__ float *)pv.GetPhyAddr(), HALF * params_.dp);
+    }
     __aicore__ inline __attribute__((always_inline)) void UpdateOutput(uint32_t index, uint32_t count)
     {
         if (index & 1) {

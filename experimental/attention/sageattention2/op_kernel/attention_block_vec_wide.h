@@ -125,6 +125,7 @@ public:
     __aicore__ inline __attribute__((always_inline)) void UpdateStreamOutput(uint32_t group, bool first)
     {
         CrossCoreWaitFlag<4, PIPE_V>(PV_READY);
+        Base::RoundPvSlot(group & 1);
         auto pv = resource_->ubBuf.template GetBufferByByte<float>(PV_UB + (group & 1) * PV_SLOT_BYTES);
         auto alpha = resource_->ubBuf.template GetBufferByByte<float>(ALPHA_UB + (group % 3) * 512);
         auto scratch = resource_->ubBuf.template GetBufferByByte<float>(SUM_UB);
@@ -150,6 +151,8 @@ public:
         if constexpr (!FIRST_READY)
             CrossCoreWaitFlag<4, PIPE_V>(PV_READY);
         CrossCoreWaitFlag<4, PIPE_V>(PV_READY);
+        Base::RoundPvSlot(group & 1);
+        Base::RoundPvSlot((group + 1) & 1);
         auto pv0 = resource_->ubBuf.template GetBufferByByte<float>(PV_UB + (group & 1) * PV_SLOT_BYTES);
         auto pv1 = resource_->ubBuf.template GetBufferByByte<float>(PV_UB + ((group + 1) & 1) * PV_SLOT_BYTES);
         auto a0 = resource_->ubBuf.template GetBufferByByte<float>(ALPHA_UB + (group % 3) * 512);
@@ -198,6 +201,7 @@ private:
     using Base::qsu_;
     using Base::subBlockIdx_;
     using Base::accum_;
+    using Base::RoundPvSlot;
     using Base::KS_UB;
     using Base::SCORE_UB;
     using Base::PV_UB;
