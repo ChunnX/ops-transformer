@@ -59,9 +59,9 @@ private:
     int64_t batch_ = 0;
     int64_t numQHeads_ = 0;
     ge::DataType qDtype_ = ge::DT_UNDEFINED;
-    uint32_t totalBlocks_ = 0;
-    uint32_t maxQb_ = 0;
-    uint32_t totalTokens_ = 0;
+    int64_t totalBlocks_ = 0;
+    int64_t maxQb_ = 0;
+    int64_t totalTokens_ = 0;
     uint64_t ubSize_ = 0;
     uint32_t coreNum_ = 0;
     uint32_t blockDim_ = 0;
