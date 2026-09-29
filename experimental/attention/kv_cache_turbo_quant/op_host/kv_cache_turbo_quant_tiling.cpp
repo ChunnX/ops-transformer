@@ -140,12 +140,14 @@ ge::graphStatus KvCacheTurboQuantTilingFunc(gert::TilingContext *context)
 
     // MIX 内核 codegen 会在 AIC 上执行 matmul::clearWorkspace(workspace)，workspace 必须 >0；
     // v6 布局：H bf16 三连(3×128×128×2) + S fp16 hi/lo(2×128×128×2) 权重区 +
-    //          numVectors×128×( X bf16 2B + Rh/Rl fp16 各2B + Z fp32 4B + P fp32 4B ) = numVectors×1792B
+    //          numVectors×128×( X bf16 2B + Rh/Rl fp16 各2B + Z fp32 4B + P fp32 三连 12B ) = numVectors×2816B
     size_t *workspaces = context->GetWorkspaceSizes(1);
     if (workspaces != nullptr) {
         const size_t weightsBytes = 5 * HEAD_DIM * HEAD_DIM * 2;
-        const size_t perVecBytes = static_cast<size_t>(HEAD_DIM) * (2 + 2 + 2 + 4 + 4);
-        const size_t layout = WS_HEAD + weightsBytes + static_cast<size_t>(numVectors) * perVecBytes;
+        // H^T / S^T 各 2 份（AIV0/AIV1 各一份，避免两个 sub-block 写同一 GM 位置），fp32
+        const size_t transBytes = 4 * HEAD_DIM * HEAD_DIM * 4;
+        const size_t perVecBytes = static_cast<size_t>(HEAD_DIM) * (2 + 2 + 2 + 4 + 12); // P 三连改 fp32（B11）
+        const size_t layout = WS_HEAD + weightsBytes + transBytes + static_cast<size_t>(numVectors) * perVecBytes;
         // 实测：框架把 kernel 的 workspace 指针垫在用户区之后 ~91MB，而 host 拿到的总量只比声明量多 75MB，
         // 因此声明量必须 > 布局尺寸，否则布局尾部（p）落在分配区外（越界写会踩坏输出张量）。
         workspaces[0] = layout + 32 * 1024 * 1024;
