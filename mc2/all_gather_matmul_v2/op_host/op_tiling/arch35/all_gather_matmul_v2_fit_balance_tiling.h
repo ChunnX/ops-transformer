@@ -48,28 +48,19 @@ static const FitBalanceCalibration CALIBRATION = {
         LocalMMPosition::FRONT, // 本卡 A 块已在手, 聚合前即可计算(→引擎推导工作集 rankDim−1)
         true,                   // 全量形态: 切分域=本卡份, 实算与单次通信均为 ×rankDim
     },
-    /* aicpu（commMode != "ccu"）*/
+    /* commRows: {通信引擎, 卡数, k 带宽斜率(us/MB), b 每轮启动开销(us), c 一次性固定开销(us)} */
     {
-        /* rows: {卡数, k 带宽斜率(us/MB), b 每轮启动开销(us), c 一次性固定开销(us)} */
-        {
-            // CommBench 实测标定(runner/calib_kbc.py, AG/aicpu/int8/rank4):
-            //   k: turn=1 尺寸扫描 8-96MB/rank 线性拟合 26.5894us/MB(R2=1.00000)。
-            //       口径消融: 引擎 x = m×K×字节数(单卡份 MB), k 直接用工具原始值——
-            //      原 commRankCnt(=rankDim) 乘子已融进 k(旧值 6.647350=26.5894/4 为含乘子口径)
-            //   b: 固定 chunk 扫轮数 T(N)=N(k*chunk+b)+c, chunk 1/4MB 一致(b=32.27/33.17,
-            //      取中位 33.17); 16MB 大块带宽略亚线性致其拟合值偏离(b=66,c=-146),弃用
-            //   c: 同拟合截距, chunk 1/4MB 值 34.42/20.58, 取中位 20.58
-            {4, 26.5894, 33.17, 20.58}, // 950 AllGather AICPU 标卡 4P 实测(CommBench, 工具口径 k)
-                                        // 8P 未标定(留空, miss 走 COF 分派); 标定后追加 {8, k, b, c}
-        },
-    },
-    /* ccu（commMode == "ccu"）*/
-    {
-        /* rows */
-        {
-            //  口径消融等价换算: 旧值(含 commRankCnt=4 乘子口径)×4 = 引擎新口径(x=单卡份)
-            {4, 23.367368, 8.590666, 0.0}, // TODO(CCU 重标): 历史共用值换算, 旧表无引擎维度
-        },
+        // CommBench 实测标定(runner/calib_kbc.py, AG/aicpu/int8/rank4):
+        //   k: turn=1 尺寸扫描 8-96MB/rank 线性拟合 26.5894us/MB(R2=1.00000)。
+        //       口径消融: 引擎 x = m×K×字节数(单卡份 MB), k 直接用工具原始值——
+        //      原 commRankCnt(=rankDim) 乘子已融进 k(旧值 6.647350=26.5894/4 为含乘子口径)
+        //   b: 固定 chunk 扫轮数 T(N)=N(k*chunk+b)+c, chunk 1/4MB 一致(b=32.27/33.17,
+        //      取中位 33.17); 16MB 大块带宽略亚线性致其拟合值偏离(b=66,c=-146),弃用
+        //   c: 同拟合截距, chunk 1/4MB 值 34.42/20.58, 取中位 20.58
+        {TilingCommEngine::AICPU, 4, 26.5894, 33.17, 20.58}, // 950 AllGather AICPU 标卡 4P 实测
+        // CCU 未标定——留空(IsCommCalibrated 恒 miss → COF 分派); CCU 环境实测后追加
+        // {TilingCommEngine::CCU, 4, k, b, c}; 8P 同理(勿填零值/换算占位——零斜率行按未填
+        // 处理不命中)。CCU 历史换算占位值已随"未标定不进命中路径"裁定删除
     },
     /* mmFit: matmul 性能拟合(算力档位/基本块) */
     {

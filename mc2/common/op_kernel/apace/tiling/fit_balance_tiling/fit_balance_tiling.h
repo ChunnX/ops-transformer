@@ -45,18 +45,19 @@
 #include "fit_balance_tiling_utils/solver.h"
 
 // 统一入口: 算子侧只传大结构体标定数据 + 键控枚举(原语/顺序/引擎; soc 恒 950)
-// 通信标定行查找: 按引擎分区(aicpu/ccu) + rankDim 匹配首个命中行; miss 返回 nullptr。
-// rankDim=0 为未填行哨兵(截断)。
-inline const FitBalanceCalibration::CommFit::Row *FindCommFitRow(const FitBalanceCalibration &calib,
-                                                                 TilingCommEngine commEngine, uint32_t rankDim)
+// 通信标定行查找: 按 (通信引擎, rankDim) 二维匹配首个命中行; miss 返回 nullptr。
+// rankDim=0 为未填行哨兵(截断); 零斜率行同样按未填处理(物理上斜率不可能为 0,
+// 占位/换算默认值一律不构成标定命中——未标定形态 miss 走其他切分策略)。
+inline const FitBalanceCalibration::CommFitRow *FindCommFitRow(const FitBalanceCalibration &calib,
+                                                                TilingCommEngine commEngine, uint32_t rankDim)
 {
-    const auto &rows = (commEngine == TilingCommEngine::CCU) ? calib.ccu.rows : calib.aicpu.rows;
     for (size_t i = 0; i < FitBalanceCalibration::MAX_COMM_FIT_ROWS; ++i) {
-        if (rows[i].rankDim == 0) {
+        const auto &row = calib.commRows[i];
+        if (row.rankDim == 0) {
             break;
         }
-        if (rows[i].rankDim == rankDim) {
-            return &rows[i];
+        if (row.commEngine == commEngine && row.rankDim == rankDim && row.slopeUsPerMb != 0.0) {
+            return &row;
         }
     }
     return nullptr;

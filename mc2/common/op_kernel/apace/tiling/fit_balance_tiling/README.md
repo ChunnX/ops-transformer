@@ -38,7 +38,7 @@ FitBalanceTilingArgs MakeFitBalanceArgs(const LegacyArgs &a, TilingCommEngine co
 bool IsCommCalibrated(uint32_t rankDim, TilingCommEngine commEngine, const FitBalanceCalibration &calib);
 ```
 
-通信标定表是否命中当前形态（引擎分区 + rankDim 匹配）。算子用它做切分策略分派：
+通信标定表是否命中当前形态（通信引擎 + 卡数二维匹配）。算子用它做切分策略分派：
 **命中 → FitBalanceCut；miss → 核利用率优先（core_occupancy_first_tiling.h）等其他策略**。
 
 ```cpp
@@ -86,18 +86,11 @@ static const FitBalanceCalibration CALIBRATION = {
         LocalMMPosition::FRONT,       // 本卡 A 块已在手, 聚合前即可算 → 引擎推导工作集 rankDim−1
         true,                         // 全量形态: 实算 mm 行数与单次通信字节均为切分域×rankDim
     },
-    /* aicpu 引擎通信拟合行: {卡数, k 带宽斜率(us/MB), b 每轮启动开销(us), c 一次性固定开销(us)} */
+    /* commRows: 通信拟合行——{通信引擎, 卡数, k 带宽斜率(us/MB), b 每轮启动开销(us), c 一次性固定开销(us)} */
     {
-        { {4, 26.5894, 33.17, 20.58},      // 950 标卡 4P 实测
-          {8, 22.7301, 33.17, 20.58} },    // 8P: <演示占位值——实测后替换; k 按 8P 的单卡数据量重新标定,
-                                           //   b/c 通常与 4P 接近(同为 AICPU 引擎)但以实测为准>
-    },
-    /* ccu 引擎通信拟合行(与 aicpu 同结构, 各引擎独立标定) */
-    {
-        { {4, 23.367368, 8.590666, 0.0},   // 4P: 历史值换算
-          {8, 0.0, 0.0, 0.0} },            // 8P: <未标定占位——三零行不会命中(IsCommCalibrated
-                                           //   对 k=0 的行仍返回 true, 引擎侧防御 NoCut), 但
-                                           //   请勿保留零值上线, CCU 重标后替换或整行删除>
+        { {TilingCommEngine::AICPU, 4, 26.5894, 33.17, 20.58} }, // 950 标卡 4P 实测
+                                                                // 8P / CCU 未标定——留空(miss → 核利用率优先),
+                                                                // 实测后追加 {引擎, 卡数, k, b, c}
     },
     /* mmFit: matmul 算力档 + 最优基本块 */
     {
@@ -251,7 +244,7 @@ NONE:  无本地块——短块兼任启动块(哪侧耗时占比大就放另一
        在前→反解其通信时长)
 ```
 
-标定查表：通信行按（引擎分区 aicpu/ccu + 卡数）匹配（`FindCommFitRow`，未命中=空行→
+标定查表：通信行按（通信引擎 + 卡数）二维匹配（`FindCommFitRow`，未命中=空行→
 防御性输出不切）；算力行按四维键匹配（键推导与模型 dtype 分类同源）。
 **未填行的识别判 `computesPerCycle == 0`**（不能用 aBytes 判空——fp4 行的 aBytes 就是合法值 0）。
 
@@ -359,7 +352,8 @@ fit_balance_tiling/
 
 ### 5.1 通信拟合行（k/b/c）——新形态（如 8P）怎么加
 
-**行结构**：`{卡数, k, b, c}`，按卡数（rankDim）匹配，每引擎（aicpu/ccu）独立一组。
+**行结构**：`{通信引擎, 卡数, k, b, c}`，按（通信引擎 + 卡数）二维匹配——引擎维度在行上，
+新增引擎（如 AIV_URMA）不改结构体、加行即可。
 
 **加 8P 行的完整步骤**：
 1. **实测**（CommBench 工具，AG/aicpu/int8/rank8 配置）：
@@ -368,17 +362,17 @@ fit_balance_tiling/
    - b：固定 chunk 扫轮数 T(N)=N(k·chunk+b)+c 拟合，取多组 chunk 交叉一致的中位值
      （16MB 以上大块带宽亚线性，拟合值偏离时应弃用）；
    - c：同拟合截距，多组取中位。
-2. **填行**：在对应引擎的 rows 里追加 `{8, k实测, b实测, c实测}`——一行即一个已标定形态，
-   与 4P 行并存，运行时按 rankDim 自动匹配。
-3. **生效路径**：填入后 `IsCommCalibrated(8, ...)` 返回 true，8P 调用自动从 miss 路径
+2. **填行**：在 commRows 里追加 `{TilingCommEngine::AICPU, 8, k实测, b实测, c实测}`——
+   一行即一个已标定形态，与 4P 行并存，运行时按（引擎, 卡数）自动匹配。
+3. **生效路径**：填入后 `IsCommCalibrated(8, ..., AICPU)` 返回 true，8P 调用自动从 miss 路径
    （核利用率优先）切到 fit-balance。
 
-**未标定形态的处理**：rows 里**不写该卡数的行**即可——分派自动走 miss（核利用率优先），
-无需任何开关。**不要用零值行占位上线**（k=0 的行会让 IsCommCalibrated 返回 true，引擎侧
-退化为防御 NoCut，切分策略悄然劣化）。
+**未标定形态的处理**：commRows 里**不写该（引擎, 卡数）组合的行**即可——分派自动走 miss
+（核利用率优先），无需任何开关。**不要用零值行占位**（零斜率行按未填处理同样不命中；
+塞占位值上线则是以假数据进 fit-balance，切分决策失真——历史上 CCU 曾以换算默认值占位，已删除）。
 
-**CCU 引擎**：与 aicpu 结构完全相同但数值独立——CCU 每轮开销与带宽特性与 AICPU 不同，
-必须分别标定，不可复用 aicpu 行。
+**CCU 引擎**：行结构与 aicpu 完全相同但数值独立——CCU 每轮开销与带宽特性与 AICPU 不同，
+必须分别标定，不可复用 aicpu 行的数值。
 
 ### 5.2 算力档（mmFit.cubeCalc）——新 dtype 怎么加
 

@@ -180,19 +180,20 @@ enum class LocalMMPosition {
 //
 // 用法（算子侧标定头, 填一个实例传给 InitCtx 即可）:
 //   static const FitBalanceCalibration CALIBRATION = {
-//       /* aicpu */  { /* rows */ { {"4_1_0_4", 斜率, 截距} } },
-//       /* ccu */    { /* rows */ { {"4_1_0_4", 斜率, 截距} } },
-//       /* matmul */ { /* cubeCalc */ { {MatmulDtypeKind, isFp4, aB, bB, cB, 算力} }, ... },
+//       /* dataflow */ { CommComputeOrder::..., LocalMMPosition::..., bool },
+//       /* commRows */ { {TilingCommEngine::..., 卡数, k, b, c}, ... },
+//       /* mmFit */    { /* cubeCalc */ { {MatmulDtypeKind, isFp4, aB, bB, 算力} }, ... },
 //   };
 //
 // 填写规则:
-//   - 通信行按 rankDim 匹配;
-//   - matmul 行按 (calcType, A/B/C 字节数) 匹配, 未填字段取 NSDMI 默认; 行按前缀填, 0 值行=未填;
+//   - 通信行按 (通信引擎, rankDim) 匹配; 未标定形态不写行(留空=miss 走其他切分策略);
+//   - matmul 行按 (calcType, A/B 字节数) 匹配, 未填字段取 NSDMI 默认; 行按前缀填, 0 值行=未填;
 //   - 通信拟合公式 y = k·x + N·b + c: 客户标定产出 k/b/c 三个数。
 // ============================================================================
 
 struct FitBalanceCalibration {
-    static constexpr size_t MAX_COMM_FIT_ROWS = 4;   // 已标定通信形态数上限
+    static constexpr size_t MAX_COMM_FIT_ROWS = 8;   // 已标定通信形态数上限(多引擎共用一表:
+                                                     // 2 引擎 × 2 卡档 + 余量)
     static constexpr size_t MAX_CUBE_CALC_ROWS = 4;  // matmul 算力档位数上限
     static constexpr size_t MAX_BASE_BLOCK_ROWS = 2; // 最优基本块档位数上限
 
@@ -208,20 +209,17 @@ struct FitBalanceCalibration {
     };
     DataflowShape dataflow{};
 
-    // —— 通信拟合（单引擎）——
-    struct CommFit {
-        struct Row {
-            uint32_t rankDim;             // 卡数(4=标卡4P, 8=8P, ...)
-            double slopeUsPerMb;          // 带宽斜率 k (us/MB)
-            double roundOverheadUs;       // 每轮启动开销 b (us)
-            double fixedOverheadUs = 0.0; // 一次性固定开销 c (us)——未标定填 0(阶段1 兼容旧截距口径)
-        };
-        Row rows[MAX_COMM_FIT_ROWS] = {}; // 已标定行, rankDim=0 表示未填(哨兵截断)
+    // —— 通信拟合（行自带通信引擎维度——新增引擎不改结构体, 加行即可）——
+    struct CommFitRow {
+        TilingCommEngine commEngine;  // 通信引擎(与运行时 args.commEngine 匹配)
+        uint32_t rankDim;             // 卡数(4=标卡4P, 8=8P, ...; 0=未填行哨兵)
+        double slopeUsPerMb;          // 带宽斜率 k (us/MB)
+        double roundOverheadUs;       // 每轮启动开销 b (us)
+        double fixedOverheadUs = 0.0; // 一次性固定开销 c (us)——未标定填 0(兼容旧截距口径)
     };
-    CommFit aicpu; // AICPU 引擎(comm_mode != "ccu")
-    CommFit ccu;   // CCU 引擎(comm_mode == "ccu")
+    CommFitRow commRows[MAX_COMM_FIT_ROWS] = {}; // 已标定行(行按前缀填), rankDim=0 表示未填(哨兵截断)
 
-    // —— matmul 性能拟合（对仗 CommFit; 字段序: 用户常改字段在前, 平台默认在后——聚合初始化
+    // —— matmul 性能拟合（对仗 CommFitRow; 字段序: 用户常改字段在前, 平台默认在后——聚合初始化
     //    可省尾部, 省略的尾部字段自动取 NSDMI 默认值）——
     struct MatmulFit {
         // 键维度裁定: 不含 C 侧字节数——glue 恒 cType=aType,
