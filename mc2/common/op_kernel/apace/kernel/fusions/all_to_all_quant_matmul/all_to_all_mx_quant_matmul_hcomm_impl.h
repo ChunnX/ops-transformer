@@ -110,7 +110,6 @@ public:
     using LayoutC = asc::te::nd_ext_layout_ptn;
     using LayoutBias = asc::te::nd_ext_layout_ptn;
     using BiasType = float;
-    using ScaleType = Blaze::Gemm::MxScaleType<X1Type>;
     using ProblemShape = asc::te::shape<int64_t, int64_t, int64_t, int64_t>;
 
     // 组件定义
@@ -130,6 +129,8 @@ public:
     using BlockSchedulerParams = typename QuantMatmulKernelImpl::BlockSchedulerParams;
     using QBMMTiling = typename QuantMatmulKernelImpl::QBMMTiling;
     using MatmulMode = typename QuantMatmulKernelImpl::MatmulMode;
+    using ScaleType = typename QuantMatmulKernelImpl::ScaleType;
+    static constexpr bool isHiF4 = BlockMmad::IS_HIF4;
 
     QuantMatmulKernelImpl quantMatmulKernelImpl_;
     HcommCommState<ServerType> commState_;
@@ -151,12 +152,9 @@ private:
     GM_ADDR commX1ScaleGM1_;
     GM_ADDR commOutGM_;
 
-    // 是否为 HiF4 scale 场景(影响 4-bit 数据 2:1 打包与 scale 单元长度)
-    static constexpr bool isHiF4Scale_ = Blaze::Gemm::IsHif4<X1Type>();
     // Scale 通信数据类型: MX 为 E8M0; HiF4 的 hif4_scale 为完整 4 字节元数据(E6M2+E1_8+E1_16),
-    // HCCL 未提供专用类型, 按 UINT32 传输
-    static constexpr uint64_t mxScaleHcclDataType_ =
-        isHiF4Scale_ ? AscendC::HCCL_DATA_TYPE_UINT32 : AscendC::HCCL_DATA_TYPE_FP8E8M0;
+    // HCCL 未提供专用类型, E8M0和hif4_scale 均按 FP8E8M0 传输, 实际传输时乘数据类型
+    static constexpr uint64_t mxScaleHcclDataType_ = AscendC::HCCL_DATA_TYPE_FP8E8M0;
     static constexpr uint64_t x1HcclDataType_ = GetX1HcclDataType<X1Type>();
     uint32_t rankId_{0};
     uint32_t rankDim_{0};
@@ -214,7 +212,7 @@ AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1, AlltoAllMa
 
     uint64_t originalRankForComm = commTiling.nonSplitAxisSize / rankDim_;
     uint64_t rankForComm = originalRankForComm;
-    if constexpr (IsMxFp4 || isHiF4Scale_) {
+    if constexpr (IsMxFp4 || isHiF4) {
         // 4-bit 打包(MXFP4/HiF4): 2 个元素共享 1 字节, 通信字节数为元素数的一半
         rankForComm = Blaze::Gemm::CeilDiv(rankForComm, MXFP_DATA_NUM_PER_BYTE);
     }
@@ -226,8 +224,9 @@ AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1, AlltoAllMa
     opStateDump_.DoDump(DUMP_FIELD_STEP, POS_COMM_BEFORE, static_cast<uint8_t>(Utils::RT_PHASE_COMM_PREPARE));
     // DoDump不统计scale commit次数
     commState_.scaleHandle_ = commState_.hccl_.template AlltoAll<true>(
-        x1Scale_, commX1ScaleGM1_, scaleSendCount,
-        static_cast<AscendC::HcclDataType>(mxScaleHcclDataType_), scaleSendCount, 1);
+        x1Scale_, commX1ScaleGM1_, scaleSendCount * static_cast<uint64_t>(sizeof(ScaleType)),
+        static_cast<AscendC::HcclDataType>(mxScaleHcclDataType_),
+        scaleSendCount * static_cast<uint64_t>(sizeof(ScaleType)), 1);
     if (commTiling.splitAxisTileCnt > 0) {
         uint64_t headSendCount = static_cast<uint64_t>(commTiling.splitAxisTileSize) * rankForComm;
         commState_.dataHeadHandle_ = commState_.hccl_.template AlltoAll<true>(
