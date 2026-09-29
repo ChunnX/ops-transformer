@@ -23,5 +23,5 @@ if (BUILD_OPEN_PROJECT)
         add_modules_sources(OPTYPE ffn_worker_batching ACLNNTYPE aclnn)
     endif()
 else() # 回黄host
-    add_modules_sources(OPTYPE ffn_worker_batching ACLNNTYPE aclnn)  
+    add_modules_sources(OPTYPE ffn_worker_batching ACLNNTYPE aclnn)
 endif()

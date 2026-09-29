@@ -14,8 +14,7 @@
 #include "infer_shape_case_executor.h"
 #include "base/registry/op_impl_space_registry_v2.h"
 
-class FfnWorkerBatchingInfershapeTest : public testing::Test
-{
+class FfnWorkerBatchingInfershapeTest : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
@@ -34,26 +33,25 @@ TEST_F(FfnWorkerBatchingInfershapeTest, ffn_worker_batching_infershape_test01)
 
     gert::InfershapeContextPara infershapeContextPara(
         "FfnWorkerBatching",
-        {   // input
-            {schedule_context_shape, ge::DT_INT8, ge::FORMAT_ND}
-        },
-        {   // output
-            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},  // y
-            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},  // group_list
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},  // session_ids
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},  // micro_batch_ids
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},  // token_ids
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},  // expert_offsets
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},  // dynamic_scale
-            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},  // actual_token_num
-        },
+        {// input
+         {schedule_context_shape, ge::DT_INT8, ge::FORMAT_ND}},
         {
-            {"expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
-            {"max_out_shape", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({16, 8, 9, 4096})},
-            {"token_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"need_schedule", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"layer_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}
-        });
-    std::vector<std::vector<int64_t>> expectOutputShape = {{1152, 4096}, {8, 2}, {1152}, {1152}, {1152}, {1152}, {1152}, {1}};
+            // output
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // y
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},   // group_list
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},   // session_ids
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},   // micro_batch_ids
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},   // token_ids
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},   // expert_offsets
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},   // dynamic_scale
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},   // actual_token_num
+        },
+        {{"expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+         {"max_out_shape", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({16, 8, 9, 4096})},
+         {"token_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"need_schedule", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+         {"layer_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}});
+    std::vector<std::vector<int64_t>> expectOutputShape = {{1152, 4096}, {8, 2}, {1152}, {1152},
+                                                           {1152},       {1152}, {1152}, {1}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
