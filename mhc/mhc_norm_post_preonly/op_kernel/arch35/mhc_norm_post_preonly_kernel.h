@@ -41,7 +41,7 @@ struct IsSameT<A, A> {
     static constexpr bool value = true;
 };
 
-#include "mhc_norm_post_preonly_kernel_compute.h"
+#include "mhc_norm_post_preonly_kernel_regbase.h"
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING = false>
 class KernelMhcNormPostPreonly {

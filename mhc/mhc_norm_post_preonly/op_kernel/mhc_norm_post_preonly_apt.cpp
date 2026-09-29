@@ -14,7 +14,7 @@
 // 文件结构：
 //   mhc_norm_post_preonly_tiling_key.h — TilingKey声明和Kernel类型选择
 //   mhc_norm_post_preonly_kernel.h       — 基础定义、Kernel类声明和共享成员实现
-//   mhc_norm_post_preonly_kernel_compute.h — 单双AIV共用的计算辅助函数
+//   mhc_norm_post_preonly_kernel_regbase.h — 单双AIV共用的寄存器计算辅助函数
 //   mhc_norm_post_preonly_no_mid.h       — no-mid的Single/Dual执行路径
 //   mhc_norm_post_preonly_has_mid.h      — has-mid的Single/Dual执行路径
 //   mhc_norm_post_preonly_apt.cpp        — Kernel入口

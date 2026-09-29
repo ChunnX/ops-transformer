@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the LICENSE.
  */
 
-#ifndef MHC_NORM_POST_PREONLY_KERNEL_COMPUTE_H_
-#define MHC_NORM_POST_PREONLY_KERNEL_COMPUTE_H_
+#ifndef MHC_NORM_POST_PREONLY_KERNEL_REGBASE_H_
+#define MHC_NORM_POST_PREONLY_KERNEL_REGBASE_H_
 
 namespace MhcNormRegBase {
 
@@ -867,4 +867,4 @@ __aicore__ inline void VFAxpyB16WithUbScalar(const LocalTensor<float> &dst, cons
 }
 // clang-format on
 
-#endif // MHC_NORM_POST_PREONLY_KERNEL_COMPUTE_H_
+#endif // MHC_NORM_POST_PREONLY_KERNEL_REGBASE_H_
