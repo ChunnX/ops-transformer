@@ -34,6 +34,11 @@ namespace Kernel {
 using namespace AscendC;
 using AscendC::Te::Get;
 
+// MX/HiF4 量化的 scale 类型、scale K 向单元数与 framing C0 统一使用 ops-tensor 公共函数
+// (blaze/gemm/utils/common_utils.h): MxScaleType<T> / MxScaleKLen<T>(k) / GetScaleC0<T>() / IsHif4<T>(),
+// 均按数据类型(AType/BType)键控: MX → fp8_e8m0(1字节, 每64元素2单元, C0=2),
+// HiF4(hifloat4x2_t) → hif4_scale(4字节: E6M2+E1_8+E1_16, 每64元素1单元, C0=1)。
+
 /**
  * The kernel computes [M, K] x [K, fullN] one destination rank at a time.
  * Each rank's [M, fullN/rankDim] result is written directly to a rank-major
@@ -48,6 +53,13 @@ public:
     using BType = typename BlockMmad::BType;
     using CType = typename BlockMmad::CType;
     using BiasType = typename BlockMmad::BiasType;
+    // Scale 元素类型由 ops-tensor 公共 MxScaleType 按数据类型导出:
+    // MX 量化 → fp8_e8m0_t, HiF4 量化(hifloat4x2_t) → hif4_scale。
+    // A/B 两侧 scale 元素类型对称共用(同 kernel_qbmm_mx.h 的单一 ScaleType), 取自 BlockMmad 成员
+    // (block_mmad_qbmm_mx.h: ScaleType = MxScaleType<AType>, 按 AType 键控)。
+    using ScaleType = typename BlockMmad::ScaleType;
+    static_assert(Std::is_same_v<MxScaleType<AType>, MxScaleType<BType>>,
+                  "A/B scale element types must be identical (MX/HiF4 symmetric quant)");
     using LayoutA = typename BlockMmad::LayoutA;
     using LayoutB = typename BlockMmad::LayoutB;
     using LayoutC = typename BlockMmad::LayoutC;
@@ -58,19 +70,19 @@ public:
     static constexpr bool transB = BlockMmad::TRANS_B;
     static constexpr int64_t C0_SIZE = IsFp4<AType>() ? C0_SIZE_B4 : C0_SIZE_B8;
     static constexpr int64_t CACHE_LINE_ALIGN_MASK = IsFp4<AType>() ? 0xff : 0x7f;
-    static constexpr int32_t SCALE_C0 = 2;
 
     using BlockShape = Te::Shape<int64_t, int64_t, int64_t, int64_t>;
     using BlockCoord = Te::Coord<int64_t, int64_t, int64_t, int64_t>;
     using MakeLayoutA = Te::FrameLayoutFormat<LayoutA, Std::Int<C0_SIZE>>;
     using MakeLayoutB = Te::FrameLayoutFormat<LayoutB, Std::Int<C0_SIZE>>;
     using MakeLayoutC = Te::FrameLayoutFormat<LayoutC, Std::Int<C0_SIZE>>;
+    // Scale framing C0 由 ops-tensor 公共 GetScaleC0 按数据类型导出(MX/E8M0 → 2, HiF4 → 1)
     using MakeLayoutScaleA =
-        Std::conditional_t<transA, Te::FrameLayoutFormat<Te::ScaleADNLayoutPtn, Std::Int<SCALE_C0>>,
-                           Te::FrameLayoutFormat<Te::ScaleANDLayoutPtn, Std::Int<SCALE_C0>>>;
+        Std::conditional_t<transA, Te::FrameLayoutFormat<Te::ScaleADNLayoutPtn, Std::Int<GetScaleC0<AType>()>>,
+                           Te::FrameLayoutFormat<Te::ScaleANDLayoutPtn, Std::Int<GetScaleC0<AType>()>>>;
     using MakeLayoutScaleB =
-        Std::conditional_t<transB, Te::FrameLayoutFormat<Te::ScaleBDNLayoutPtn, Std::Int<SCALE_C0>>,
-                           Te::FrameLayoutFormat<Te::ScaleBNDLayoutPtn, Std::Int<SCALE_C0>>>;
+        Std::conditional_t<transB, Te::FrameLayoutFormat<Te::ScaleBDNLayoutPtn, Std::Int<GetScaleC0<BType>()>>,
+                           Te::FrameLayoutFormat<Te::ScaleBNDLayoutPtn, Std::Int<GetScaleC0<BType>()>>>;
 
     struct QBMMTiling {
         uint32_t baseM;
@@ -158,26 +170,42 @@ private:
     }
 
     template <typename TensorB, typename TensorScaleB>
-    __aicore__ inline void SetL2Cache(const ProblemShape &shape, uint64_t curBaseM, uint64_t scaleKL1, TensorB &gmB,
-                                      TensorScaleB &gmScaleB);
+    __aicore__ inline void SetL2Cache(const ProblemShape &shape, uint64_t curBaseM, uint64_t curBaseN,
+                                      uint64_t scaleKL1, TensorB &gmB, TensorScaleB &gmScaleB);
 };
 
 template <class ProblemShape, class BlockMmad, class BlockScheduler>
 template <typename TensorB, typename TensorScaleB>
 __aicore__ inline void MatmulAllToAllQbmmMxKernel<ProblemShape, BlockMmad, BlockScheduler>::SetL2Cache(
-    const ProblemShape &shape, uint64_t curBaseM, uint64_t scaleKL1, TensorB &gmB, TensorScaleB &gmScaleB)
+    const ProblemShape &shape, uint64_t curBaseM, uint64_t curBaseN, uint64_t scaleKL1, TensorB &gmB,
+    TensorScaleB &gmScaleB)
 {
     const bool fullMTile = curBaseM >= Te::Get<MNK_M>(shape);
     if (!fullMTile) {
         return;
     }
 
-    const int64_t scaleKRowBytes =
-        Blaze::Gemm::CeilDiv(Te::Get<MNK_K>(shape), static_cast<int64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
-    const int64_t scaleKL1RowBytes = Blaze::Gemm::CeilDiv(scaleKL1, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
-    const bool scaleAlign =
-        (scaleKRowBytes & CACHE_LINE_ALIGN_MASK) == 0 && (scaleKL1RowBytes & CACHE_LINE_ALIGN_MASK) == 0;
-    gmScaleB.SetL2CacheHint(scaleAlign ? Te::CacheMode::CACHE_MODE_DISABLE : Te::CacheMode::CACHE_MODE_NORMAL);
+    // 每64元素的 scale 字节数: MX 为 2(E8M0), HiF4 为 4(hif4_scale), 单元数由公共 MxScaleKLen 按数据类型导出
+    const int64_t scaleBytesPerDivisor =
+        static_cast<int64_t>(MxScaleKLen<BType>(MXFP_DIVISOR_SIZE)) * static_cast<int64_t>(sizeof(ScaleType));
+    if constexpr (transB) {
+        const int64_t scaleKRowBytes =
+            static_cast<int64_t>(MxScaleKLen<BType>(Te::Get<MNK_K>(shape))) * static_cast<int64_t>(sizeof(ScaleType));
+        const int64_t scaleKL1RowBytes =
+            static_cast<int64_t>(MxScaleKLen<BType>(static_cast<uint64_t>(scaleKL1))) *
+            static_cast<int64_t>(sizeof(ScaleType));
+        // 128B cache line alignment for scale GM streaming
+        const bool scaleAlign =
+            (scaleKRowBytes & CACHE_LINE_ALIGN_MASK) == 0 && (scaleKL1RowBytes & CACHE_LINE_ALIGN_MASK) == 0;
+        gmScaleB.SetL2CacheHint(scaleAlign ? Te::CacheMode::CACHE_MODE_DISABLE : Te::CacheMode::CACHE_MODE_NORMAL);
+    } else {
+        const int64_t scaleNStrideBytes = Te::Get<MNK_N>(shape) * scaleBytesPerDivisor;
+        const int64_t scaleBaseNStrideBytes = static_cast<int64_t>(curBaseN) * scaleBytesPerDivisor;
+        // 128B cache line alignment for scale GM streaming
+        const bool scaleAlign =
+            (scaleNStrideBytes & CACHE_LINE_ALIGN_MASK) == 0 && (scaleBaseNStrideBytes & CACHE_LINE_ALIGN_MASK) == 0;
+        gmScaleB.SetL2CacheHint(scaleAlign ? Te::CacheMode::CACHE_MODE_DISABLE : Te::CacheMode::CACHE_MODE_NORMAL);
+    }
 
     if constexpr (weightNz) {
         gmB.SetL2CacheHint(Te::CacheMode::CACHE_MODE_DISABLE);
@@ -196,36 +224,31 @@ __aicore__ inline void MatmulAllToAllQbmmMxKernel<ProblemShape, BlockMmad, Block
     }
     const int64_t fullN = rankN * static_cast<int64_t>(params.rankDim);
 
+    // Scale K 方向单元数(按 scale 元素计), 由公共 MxScaleKLen 按数据类型导出:
+    // MX 为 E8M0 单元(K/64*2), HiF4 为 hif4_scale 单元(K/64)
+    const auto scaleKLen = MxScaleKLen<AType>(Te::Get<MNK_K>(params.problemShape));
     auto layoutA = MakeLayoutA{}(Te::Get<MNK_M>(params.problemShape), Te::Get<MNK_K>(params.problemShape));
-    auto layoutScaleA = MakeLayoutScaleA{}(
-        Te::Get<MNK_M>(params.problemShape),
-        Blaze::Gemm::CeilDiv(Te::Get<MNK_K>(params.problemShape), static_cast<int64_t>(MXFP_DIVISOR_SIZE)) *
-            MXFP_MULTI_BASE_SIZE);
+    auto layoutScaleA = MakeLayoutScaleA{}(Te::Get<MNK_M>(params.problemShape), scaleKLen);
     auto layoutB = MakeLayoutB{}(Te::Get<MNK_K>(params.problemShape), fullN);
-    auto layoutScaleB = MakeLayoutScaleB{}(
-        Blaze::Gemm::CeilDiv(Te::Get<MNK_K>(params.problemShape), static_cast<int64_t>(MXFP_DIVISOR_SIZE)) *
-            MXFP_MULTI_BASE_SIZE,
-        fullN);
+    auto layoutScaleB = MakeLayoutScaleB{}(MxScaleKLen<BType>(Te::Get<MNK_K>(params.problemShape)), fullN);
     auto layoutC = MakeLayoutC{}(Te::Get<MNK_M>(params.problemShape), rankN);
     auto layoutBias = Te::MakeFrameLayout<Te::NDExtLayoutPtn>(1L, fullN);
 
     auto gmA = Te::MakeTensor(
         Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ AType *>(params.mmParams.aGmAddr)), layoutA);
     auto gmScaleA = Te::MakeTensor(
-        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ::fp8_e8m0_t *>(params.mmParams.scaleAGmAddr)),
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ScaleType *>(params.mmParams.scaleAGmAddr)),
         layoutScaleA);
     auto gmB = Te::MakeTensor(
         Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ BType *>(params.mmParams.bGmAddr)), layoutB);
     auto gmScaleB = Te::MakeTensor(
-        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ::fp8_e8m0_t *>(params.mmParams.scaleBGmAddr)),
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ScaleType *>(params.mmParams.scaleBGmAddr)),
         layoutScaleB);
     auto gmBias = Te::MakeTensor(
         Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ BiasType *>(params.mmParams.biasGmAddr)), layoutBias);
 
-    const int64_t scaleKLen =
-        Blaze::Gemm::CeilDiv(Te::Get<MNK_K>(params.problemShape), static_cast<int64_t>(MXFP_DIVISOR_SIZE)) *
-        MXFP_MULTI_BASE_SIZE;
-    SetL2Cache(params.problemShape, params.qbmmParams.baseM, params.l1Params.scaleKL1, gmB, gmScaleB);
+    SetL2Cache(params.problemShape, params.qbmmParams.baseM, params.qbmmParams.baseN, params.l1Params.scaleKL1, gmB,
+               gmScaleB);
     for (uint32_t rankIdx = 0; rankIdx < params.rankDim; ++rankIdx) {
         BlockScheduler scheduler(params.problemShape, params.schedulerParams);
         if ((scheduler.GetEndBlockIdx() + 1) * params.schedulerParams.mTailTile * params.schedulerParams.nTailTile <=
@@ -249,6 +272,18 @@ __aicore__ inline void MatmulAllToAllQbmmMxKernel<ProblemShape, BlockMmad, Block
             }
             scheduler.GetTileCoord(blockIdx, mPos, nPos);
             const int64_t fullNPos = static_cast<int64_t>(rankIdx) * rankN + nPos;
+            // HiF4+非转置(ND)修复: ScaleBND 布局下 scale 的硬件搬运(asc_copy_gm2l1_nd2nz)按 e8m0
+            // 半字栅格(2字节)计列偏移, 而张量 Slice 按 hif4_scale 元素栅格(4字节)计列坐标, 列坐标>0
+            // 时该 N tile 的 scale 整体错位。正确的列字节偏移 nPos*2 恰等于列坐标 (nPos>>1) 的
+            // Slice 偏移 (nPos>>1)*4, 故对 hif4+ND 将 Slice 列坐标折半(与 AlltoAllMatmul 及
+            // ops-tensor kernel_qbmm_mx_without_batch.h 的同族修复保持同构)。
+            // 折半精确的前提是列坐标恒偶: baseN 为 GetShapeWithDataType<hif4> 对齐后的偶数(64/256),
+            // 尾拆按 CUBE_BLOCK(16) 对齐, 均偶; e8m0(C0=2, 列栅格天然 2 字节)与转置 DN(列偏移在
+            // 4 字节栅格)路径不受影响, 走原逻辑。
+            int64_t scaleBColPos = fullNPos;
+            if constexpr (IsHif4<AType>() && !transB) {
+                scaleBColPos = fullNPos >> 1;
+            }
             auto gmBlockA = gmA.Slice(Te::MakeCoord(mPos, 0L),
                                       Te::MakeShape(Get<MNK_M>(singleShape), Get<MNK_K>(params.problemShape)));
             auto gmBlockScaleA =
@@ -256,7 +291,7 @@ __aicore__ inline void MatmulAllToAllQbmmMxKernel<ProblemShape, BlockMmad, Block
             auto gmBlockB = gmB.Slice(Te::MakeCoord(0L, fullNPos),
                                       Te::MakeShape(Get<MNK_K>(params.problemShape), Get<MNK_N>(singleShape)));
             auto gmBlockScaleB =
-                gmScaleB.Slice(Te::MakeCoord(0L, fullNPos), Te::MakeShape(scaleKLen, Get<MNK_N>(singleShape)));
+                gmScaleB.Slice(Te::MakeCoord(0L, scaleBColPos), Te::MakeShape(scaleKLen, Get<MNK_N>(singleShape)));
             auto gmBlockC = gmRankC.Slice(Te::MakeCoord(mPos, nPos),
                                           Te::MakeShape(Get<MNK_M>(singleShape), Get<MNK_N>(singleShape)));
             auto gmBlockBias = gmBias.Slice(Te::MakeCoord(0L, fullNPos), Te::MakeShape(1L, Get<MNK_N>(singleShape)));
