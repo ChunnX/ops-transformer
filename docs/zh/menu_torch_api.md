@@ -16,6 +16,7 @@
 - [dense_lightning_indexer_softmax_lse](../../attention/dense_lightning_indexer_softmax_lse_v2/docs/torchapi_dense_lightning_indexer_softmax_lse.md)
 - [ElasticBuffer](../../mc2/common/docs/torchapi_ElasticBuffer.md)
 - [ffn_to_attention](../../mc2/ffn_to_attention_v2/docs/torchapi_ffn_to_attention.md)
+- [ffn_worker_batching](../../ffn/ffn_worker_batching/docs/torchapi_ffn_worker_batching.md)
 - [flash_attn](../../attention/flash_attn/docs/torchapi_flash_attn.md)
 - [flash_attn_grad](../../attention/flash_attn_grad/docs/torchapi_flash_attn_grad.md)
 - [fused_causal_conv1d](../../attention/fused_causal_conv1d/docs/torchapi_fused_causal_conv1d.md)

@@ -22,7 +22,7 @@
  * 两张掩码各做一次 GatherMask 压缩,得到**等长**的首下标列与末下标列,逐元素相减即每专家
  * token 数。全程向量:不按 expert_id 散射写,也不需要 GM 直方图与跨核原子累加。
  *
- * 为何不用 SIMT 按 expert_id 散射计数:SIMT 访问 __local_mem__ 被限制在 UB 的低 8KB
+ * 为何不用 SIMT 按 expert_id 散射计数:SIMT 访问 __ubuf__ 被限制在 UB 的低 8KB
  * (固定值,与 asc_vf_call 的 dim3 线程数无关,实测把线程数减半阈值不动),按 expert_id
  * 写 slot[cur] 在专家数超过 2048 时越界;越界写静默生效,会踩坏同一 UB 上的其它数据
  * (曾表现为编译器溢出到栈上的 totalValid 被清零,后续 gather 整段被跳过而硬件不报异常)。
@@ -82,8 +82,7 @@ public:
     {
         param_ = param;
         pipe_ = pipe;
-        const int64_t subNum = GetTaskRation() > 0 ? GetTaskRation() : 1;
-        vecId_ = GetBlockIdx() * subNum + GetSubBlockIdx();
+        vecId_ = GetFlatAivIdx();
         expertNum_ = static_cast<int64_t>(ctx->expertNum);
         totalLen_ = ctx->validGatherIdxLength;
         // 游程压缩是串行语义(相邻元素比较跨越切片边界),由 0 号核一趟流式做完;
@@ -180,9 +179,13 @@ private:
 
     // 载入一块的 cur/prev/next 三路,并按边界置哨兵:块首一律记为游程起点(缺的那段由
     // pendingCnt 承接),全局末元素一律记为游程终点。
-    __aicore__ inline void LoadChunk(A5RunLanes &ln, const DataCopyPadExtParams<int32_t> &pad, int64_t begin,
-                                     int64_t len)
+    __aicore__ inline void LoadChunk(A5RunLanes &ln, int64_t begin, int64_t len)
     {
+        // GatherMask 只消费前 len 个元素，DMA 对齐尾部无需填哨兵。
+        // 上一轮向量读取与本轮 DMA 复用 cur/prev/next，覆盖前必须等待读取完成。
+        SetWaitFlag<HardEvent::V_MTE2>(HardEvent::V_MTE2);
+
+        DataCopyPadExtParams<int32_t> pad{false, 0, 0, 0};
         DataCopyExtParams cpLen{static_cast<uint16_t>(1), static_cast<uint32_t>(len * sizeof(int32_t)), 0, 0, 0};
         DataCopyPad(ln.cur, idsGm_[begin], cpLen, pad);
         DataCopyPad(ln.prev, idsGm_[begin - 1], cpLen, pad);
@@ -205,7 +208,10 @@ private:
     __aicore__ inline int64_t BuildAndCompact(A5RunLanes &ln, int64_t len, uint64_t &startNum, uint64_t &endNum)
     {
         const int64_t cmpLen = Ceil(len, ONE_REPEAT_COMPARE_NUM) * ONE_REPEAT_COMPARE_NUM;
-        // 比较指令只吃浮点,故差值转 float 再与 0 比;差值幅度不超过专家数上界,转换精确。
+        // CompareScalar 保留 64 元素对齐长度，缓冲容量覆盖 cmpLen；Sub/Cast 只计算有效元素。
+        // 比较按元素独立执行，尾部 mask 位不保证取值，但下方三次 GatherMask 都以 len 限定
+        // 输入范围，因此尾部不会进入压缩结果或 startNum/endNum/idNum 计数。
+        // 有效 expert_id 与边界哨兵的差值可精确转成 FP32，再与 0 比较。
         Sub(ln.diff, ln.cur, ln.prev, static_cast<int32_t>(len));
         PipeBarrier<PIPE_V>();
         Cast(ln.diffF, ln.diff, RoundMode::CAST_ROUND, static_cast<int32_t>(len));
@@ -264,7 +270,7 @@ private:
         int64_t begin = 1;
         while (begin < totalLen_) {
             const int64_t len = Min(chunkElements_, totalLen_ - begin);
-            LoadChunk(ln, pad, begin, len);
+            LoadChunk(ln, begin, len);
 
             uint64_t startNum = 0;
             uint64_t endNum = 0;
