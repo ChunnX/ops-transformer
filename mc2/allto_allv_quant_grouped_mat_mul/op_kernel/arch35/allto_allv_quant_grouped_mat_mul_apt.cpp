@@ -17,20 +17,10 @@
 #else
 #include "kernel_operator.h"
 #endif
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201) && !defined(IMPL_TENSOR_API_UTILS_INT_IMPL_H)
-// A6 basic_api already provides the AscendC::Std::Int overloads. The copy in
-// ops-tensor defines the same functions and must not be included a second time.
-#define IMPL_TENSOR_API_UTILS_INT_IMPL_H
-#define A2AV_GMM_UNDEF_TENSOR_API_INT_IMPL_GUARD
-#endif
 #include "../allto_allv_quant_grouped_mat_mul_tiling_key.h"
 #include "../allto_allv_quant_grouped_mat_mul_tiling.h"
 #include "../mc2_templates/mc2_templates.h"
 #include "../../../common/op_kernel/apace/kernel/fusions/allto_allv_quant_grouped_matmul/allto_allv_quant_grouped_matmul_hcomm_impl.h"
-#if defined(A2AV_GMM_UNDEF_TENSOR_API_INT_IMPL_GUARD)
-#undef A2AV_GMM_UNDEF_TENSOR_API_INT_IMPL_GUARD
-#undef IMPL_TENSOR_API_UTILS_INT_IMPL_H
-#endif
 
 using namespace AscendC;
 using namespace MC2KernelTemplate;

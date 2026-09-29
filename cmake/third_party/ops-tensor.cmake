@@ -13,24 +13,17 @@ if(EXISTS "${PROJECT_SOURCE_DIR}/../ops-tensor")
   get_filename_component(OPTENSOR_SOURCE_PATH
                          ${PROJECT_SOURCE_DIR}/../ops-tensor REALPATH)
   message(STATUS "Find ops-tensor source dir: ${OPTENSOR_SOURCE_PATH}")
-
-  # Newer ops-tensor source trees may carry Blaze without the tensor_api
-  # submodule. Keep Blaze on the explicitly selected sibling repository and
-  # reuse the initialized tensor_api from the project's dependency cache.
-  if(EXISTS "${OPTENSOR_SOURCE_PATH}/include/tensor_api/impl/tensor_api" AND
-     EXISTS "${OPTENSOR_SOURCE_PATH}/include/tensor_api/include/tensor_api")
-    get_filename_component(TENSOR_API
-                           ${OPTENSOR_SOURCE_PATH}/include/tensor_api REALPATH)
-  elseif(EXISTS "${CANN_3RD_LIB_PATH}/ops-tensor/include/tensor_api/impl/tensor_api" AND
-         EXISTS "${CANN_3RD_LIB_PATH}/ops-tensor/include/tensor_api/include/tensor_api")
-    get_filename_component(TENSOR_API
-                           ${CANN_3RD_LIB_PATH}/ops-tensor/include/tensor_api REALPATH)
-  else()
-    message(FATAL_ERROR
-            "tensor_api is missing from both ${OPTENSOR_SOURCE_PATH}/include/tensor_api "
-            "and ${CANN_3RD_LIB_PATH}/ops-tensor/include/tensor_api")
+  set(CANN_TENSOR_API_PATH ${ASCEND_DIR}/${SYSTEM_PREFIX}/asc)
+  if(NOT EXISTS "${CANN_TENSOR_API_PATH}/impl/tensor_api" OR
+     NOT EXISTS "${CANN_TENSOR_API_PATH}/include/tensor_api" OR
+     NOT EXISTS "${CANN_TENSOR_API_PATH}/impl/c_api" OR
+     NOT EXISTS "${CANN_TENSOR_API_PATH}/include/c_api")
+    message(FATAL_ERROR "CANN Tensor API is incomplete: ${CANN_TENSOR_API_PATH}")
   endif()
-  message(STATUS "Use Tensor API source dir: ${TENSOR_API}")
+  get_filename_component(TENSOR_API
+                         ${CANN_TENSOR_API_PATH} REALPATH)
+  message(STATUS "Use CANN Tensor API source dir: ${TENSOR_API}")
+  unset(CANN_TENSOR_API_PATH)
 elseif(EXISTS "${CANN_3RD_LIB_PATH}/ops-tensor")
   get_filename_component(OPTENSOR_SOURCE_PATH
                          ${CANN_3RD_LIB_PATH}/ops-tensor REALPATH)

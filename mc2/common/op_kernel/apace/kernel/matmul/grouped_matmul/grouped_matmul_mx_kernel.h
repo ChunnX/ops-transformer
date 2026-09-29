@@ -27,6 +27,7 @@
 #include "blaze/gemm/utils/common_utils.h"
 #include "blaze/gemm/utils/layout_utils.h"
 #include "tensor_api/tensor.h"
+#include "tensor_api_compat.h"
 
 namespace Blaze {
 namespace Gemm {
@@ -58,39 +59,49 @@ public:
     using LayoutScaleB = typename BlockMmad::LayoutScaleB;
     using LayoutBias = typename BlockMmad::LayoutBias;
 
-    static_assert((IsFp4<AType>() && IsFp4<BType>()) || (IsFp8<AType>() && IsFp8<BType>()),
+    static_assert((Apace::TensorApiCompat::IsFp4<AType> && Apace::TensorApiCompat::IsFp4<BType>) ||
+                      (Apace::TensorApiCompat::IsFp8<AType> && Apace::TensorApiCompat::IsFp8<BType>),
                   "GroupedMatmulMx only supports same bit-width MXFP4/MXFP8 AType and BType.");
     static_assert(AscendC::Std::is_one_of_v<CType, half, bfloat16_t, float>,
                   "GroupedMatmulMx only supports half/bfloat16_t/float CType.");
     static_assert(AscendC::Std::is_same_v<BiasType, float>, "GroupedMatmulMx only supports float BiasType.");
-    static_assert(AscendC::Std::is_same_v<LayoutA, asc::te::nd_ext_layout_ptn>,
+    static_assert(AscendC::Std::is_same_v<LayoutA, Apace::TensorApiCompat::NDExtLayoutPtn>,
                   "GroupedMatmulMx supports ND LayoutA only (A transpose unsupported).");
-    static_assert(AscendC::Std::is_one_of_v<LayoutB, asc::te::nd_ext_layout_ptn, asc::te::dn_ext_layout_ptn,
-                                            asc::te::nz_layout_ptn, asc::te::zn_layout_ptn>,
+    static_assert(AscendC::Std::is_one_of_v<LayoutB, Apace::TensorApiCompat::NDExtLayoutPtn,
+                                            Apace::TensorApiCompat::DNExtLayoutPtn,
+                                            Apace::TensorApiCompat::NZLayoutPtn,
+                                            Apace::TensorApiCompat::ZNLayoutPtn>,
                   "GroupedMatmulMx only supports ND/DN/NZ/ZN LayoutB.");
-    static_assert(!AscendC::Std::is_one_of_v<LayoutC, asc::te::nz_layout_ptn, asc::te::zn_layout_ptn> &&
-                      !AscendC::Std::is_one_of_v<LayoutBias, asc::te::nz_layout_ptn, asc::te::zn_layout_ptn>,
+    static_assert(!AscendC::Std::is_one_of_v<LayoutC, Apace::TensorApiCompat::NZLayoutPtn,
+                                             Apace::TensorApiCompat::ZNLayoutPtn> &&
+                      !AscendC::Std::is_one_of_v<LayoutBias, Apace::TensorApiCompat::NZLayoutPtn,
+                                                 Apace::TensorApiCompat::ZNLayoutPtn>,
                   "GroupedMatmulMx does not support NZ/ZN LayoutC or LayoutBias.");
 
     static constexpr bool TRANS_A = IsTrans<LayoutA>::value;
     static constexpr bool TRANS_B = IsTrans<LayoutB>::value;
     static constexpr bool WEIGHT_NZ = IsWeightNz<LayoutB>::value;
-    static constexpr bool SCALE_NZ = IsScaleNz<LayoutScaleB>::value;
+    static constexpr bool SCALE_NZ = Apace::TensorApiCompat::IsScaleNz<LayoutScaleB>;
 
     using BlockMmadParams = typename BlockMmad::Params;
     using L1Params = typename BlockMmad::L1Params;
     using BlockShape = typename BlockMmad::BlockShape;
     using SchedulerProblemShape = typename BlockScheduler::ProblemShape;
-    using BlockCoord = asc::te::coord<int64_t, int64_t, int64_t, int64_t>;
+    using BlockCoord = Apace::TensorApiCompat::Coord<int64_t, int64_t, int64_t, int64_t>;
 
-    static constexpr uint32_t C0_SIZE = IsFp4<AType>() ? C0_SIZE_B4 : C0_SIZE_B8;
-    using MakeLayoutA = asc::te::frame_layout_format<LayoutA, AscendC::Std::Int<C0_SIZE>>;
-    using MakeLayoutB = asc::te::frame_layout_format<LayoutB, AscendC::Std::Int<C0_SIZE>>;
-    using MakeLayoutC = asc::te::frame_layout_format<LayoutC, AscendC::Std::Int<asc::te::c0_element<CType>>>;
+    static constexpr uint32_t C0_SIZE = Apace::TensorApiCompat::IsFp4<AType> ? C0_SIZE_B4 : C0_SIZE_B8;
+    using MakeLayoutA = Apace::TensorApiCompat::FrameLayoutFormat<LayoutA, AscendC::Std::Int<C0_SIZE>>;
+    using MakeLayoutB = Apace::TensorApiCompat::FrameLayoutFormat<LayoutB, AscendC::Std::Int<C0_SIZE>>;
+    using MakeLayoutC = Apace::TensorApiCompat::FrameLayoutFormat<
+        LayoutC, AscendC::Std::Int<Apace::TensorApiCompat::C0Element<CType>>>;
     using MakeLayoutScaleA = AscendC::Std::conditional_t<
-        TRANS_A, asc::te::frame_layout_format<asc::te::scalea_dn_layout_ptn, AscendC::Std::Int<SCALE_C0>>,
-        asc::te::frame_layout_format<asc::te::scalea_nd_layout_ptn, AscendC::Std::Int<SCALE_C0>>>;
-    using MakeLayoutScaleB = asc::te::frame_layout_format<LayoutScaleB, AscendC::Std::Int<SCALE_C0>>;
+        TRANS_A,
+        Apace::TensorApiCompat::FrameLayoutFormat<Apace::TensorApiCompat::ScaleADNLayoutPtn,
+                                                   AscendC::Std::Int<SCALE_C0>>,
+        Apace::TensorApiCompat::FrameLayoutFormat<Apace::TensorApiCompat::ScaleANDLayoutPtn,
+                                                   AscendC::Std::Int<SCALE_C0>>>;
+    using MakeLayoutScaleB =
+        Apace::TensorApiCompat::FrameLayoutFormat<LayoutScaleB, AscendC::Std::Int<SCALE_C0>>;
 
     // 表按 grouplist 位置对齐（table[i] 对应 grouplist 第 i 项）
     struct GroupOffsetTables {
@@ -163,10 +174,12 @@ public:
         } else {
             if constexpr (TRANS_B) {
                 groupState_.perGroupB = static_cast<int64_t>(
-                    Align16(gmmParams->n) * (IsFp4<AType>() ? Align64(gmmParams->k) : Align32(gmmParams->k)));
+                    Align16(gmmParams->n) *
+                    (Apace::TensorApiCompat::IsFp4<AType> ? Align64(gmmParams->k) : Align32(gmmParams->k)));
             } else {
                 groupState_.perGroupB = static_cast<int64_t>(
-                    (IsFp4<AType>() ? Align64(gmmParams->n) : Align32(gmmParams->n)) * Align16(gmmParams->k));
+                    (Apace::TensorApiCompat::IsFp4<AType> ? Align64(gmmParams->n) : Align32(gmmParams->n)) *
+                    Align16(gmmParams->k));
             }
         }
 
@@ -192,18 +205,19 @@ public:
         const int64_t groupListSize =
             static_cast<int64_t>(groupNum_) *
             (tiling_.groupListType == GROUP_LIST_TYPE_SPARSE ? SPARSE_GROUP_LIST_ITEM_STRIDE : 1UL);
-        const auto groupListLayout = asc::te::make_layout(asc::te::make_shape(groupListSize), asc::te::make_stride(1L));
-        const auto gmGroupList = asc::te::make_tensor(
-            asc::te::make_mem_ptr<asc::te::location::gm>(reinterpret_cast<__gm__ int64_t *>(groupListGmAddr_)),
+        const auto groupListLayout = Apace::TensorApiCompat::MakeLayout(
+            Apace::TensorApiCompat::MakeShape(groupListSize), Apace::TensorApiCompat::MakeStride(1L));
+        const auto gmGroupList = Apace::TensorApiCompat::MakeTensor(
+            Apace::TensorApiCompat::MakeGmMemPtr(reinterpret_cast<__gm__ int64_t *>(groupListGmAddr_)),
             groupListLayout);
         BlockScheduler scheduler(tiling_.baseM, tiling_.baseN, tiling_.baseK);
         SetSchedulerTailAlign(scheduler); // 设置尾块调度器能切的最小 block 大小
         const uint32_t lastGroupIdx = groupNum_ - 1;
         for (uint32_t groupIdx = 0; groupIdx < lastGroupIdx; ++groupIdx) {
             SetMNK(gmGroupList, groupIdx); // 按当前 group 的 M 重新均衡 baseM
-            const int64_t problemM = asc::te::get<MNK_M>(problemShape_);
-            const int64_t problemN = asc::te::get<MNK_N>(problemShape_);
-            const int64_t problemK = asc::te::get<MNK_K>(problemShape_);
+            const int64_t problemM = Apace::TensorApiCompat::Get<MNK_M>(problemShape_);
+            const int64_t problemN = Apace::TensorApiCompat::Get<MNK_N>(problemShape_);
+            const int64_t problemK = Apace::TensorApiCompat::Get<MNK_K>(problemShape_);
             if (problemM <= 0 || problemN <= 0 || problemK <= 0) {
                 continue;
             }
@@ -214,9 +228,9 @@ public:
         }
 
         SetMNK(gmGroupList, lastGroupIdx);
-        const int64_t problemM = asc::te::get<MNK_M>(problemShape_);
-        const int64_t problemN = asc::te::get<MNK_N>(problemShape_);
-        const int64_t problemK = asc::te::get<MNK_K>(problemShape_);
+        const int64_t problemM = Apace::TensorApiCompat::Get<MNK_M>(problemShape_);
+        const int64_t problemN = Apace::TensorApiCompat::Get<MNK_N>(problemShape_);
+        const int64_t problemK = Apace::TensorApiCompat::Get<MNK_K>(problemShape_);
         if (problemM > 0 && problemN > 0 && problemK > 0) {
             BaseMBalance(scheduler, problemM, tiling_.baseM);
             scheduler.UpdateNextProblem(SchedulerProblemShape{problemM, problemN, problemK, 0});
@@ -242,32 +256,32 @@ private:
     __aicore__ inline void SetL2CacheHint(TensorB &gmB, TensorScaleB &gmScaleB, int64_t mSize, int64_t curBaseM,
                                           int64_t baseN)
     {
-        const int64_t problemN = asc::te::get<MNK_N>(problemShape_);
-        const int64_t problemK = asc::te::get<MNK_K>(problemShape_);
+        const int64_t problemN = Apace::TensorApiCompat::Get<MNK_N>(problemShape_);
+        const int64_t problemK = Apace::TensorApiCompat::Get<MNK_K>(problemShape_);
         if constexpr (WEIGHT_NZ) {
             if (curBaseM >= mSize) {
-                gmB.set_l2_cache_hint(asc::te::cache_mode::disable);
-                gmScaleB.set_l2_cache_hint(asc::te::cache_mode::disable);
+                Apace::TensorApiCompat::SetL2CacheDisable(gmB);
+                Apace::TensorApiCompat::SetL2CacheDisable(gmScaleB);
             } else {
-                gmB.set_l2_cache_hint(asc::te::cache_mode::normal);
-                gmScaleB.set_l2_cache_hint(asc::te::cache_mode::normal);
+                Apace::TensorApiCompat::SetL2CacheNormal(gmB);
+                Apace::TensorApiCompat::SetL2CacheNormal(gmScaleB);
             }
         } else {
             if constexpr (TRANS_B) {
                 if (curBaseM >= mSize && (problemK & SCALE_CACHE_MASK) == 0) {
-                    gmB.set_l2_cache_hint(asc::te::cache_mode::disable);
-                    gmScaleB.set_l2_cache_hint(asc::te::cache_mode::disable);
+                    Apace::TensorApiCompat::SetL2CacheDisable(gmB);
+                    Apace::TensorApiCompat::SetL2CacheDisable(gmScaleB);
                 } else {
-                    gmB.set_l2_cache_hint(asc::te::cache_mode::normal);
-                    gmScaleB.set_l2_cache_hint(asc::te::cache_mode::normal);
+                    Apace::TensorApiCompat::SetL2CacheNormal(gmB);
+                    Apace::TensorApiCompat::SetL2CacheNormal(gmScaleB);
                 }
             } else {
                 if (curBaseM >= mSize && (problemN & SCALE_CACHE_MASK) == 0 && (baseN & SCALE_CACHE_MASK) == 0) {
-                    gmB.set_l2_cache_hint(asc::te::cache_mode::disable);
-                    gmScaleB.set_l2_cache_hint(asc::te::cache_mode::disable);
+                    Apace::TensorApiCompat::SetL2CacheDisable(gmB);
+                    Apace::TensorApiCompat::SetL2CacheDisable(gmScaleB);
                 } else {
-                    gmB.set_l2_cache_hint(asc::te::cache_mode::normal);
-                    gmScaleB.set_l2_cache_hint(asc::te::cache_mode::normal);
+                    Apace::TensorApiCompat::SetL2CacheNormal(gmB);
+                    Apace::TensorApiCompat::SetL2CacheNormal(gmScaleB);
                 }
             }
         }
@@ -294,8 +308,8 @@ private:
     __aicore__ inline void SetMNK(const GroupListTensor &gmGroupList, uint32_t groupIdx)
     {
         const int64_t splitValue = GetSplitValueFromGroupList(gmGroupList, groupIdx); // 当前 groupIdx 的 tokens 数量
-        const int64_t n = asc::te::get<MNK_N>(problemShape_);
-        problemShape_ = ProblemShape{splitValue, n, asc::te::get<MNK_K>(problemShape_), 0};
+        const int64_t n = Apace::TensorApiCompat::Get<MNK_N>(problemShape_);
+        problemShape_ = ProblemShape{splitValue, n, Apace::TensorApiCompat::Get<MNK_K>(problemShape_), 0};
     }
 
     template <typename GroupListTensor>
@@ -331,15 +345,16 @@ private:
             weightIdx = static_cast<uint32_t>(gmGroupList[groupIdx * SPARSE_GROUP_LIST_ITEM_STRIDE]);
         }
 
-        const int64_t m = asc::te::get<MNK_M>(problemShape_);
-        const int64_t n = asc::te::get<MNK_N>(problemShape_);
-        const int64_t k = asc::te::get<MNK_K>(problemShape_);
+        const int64_t m = Apace::TensorApiCompat::Get<MNK_M>(problemShape_);
+        const int64_t n = Apace::TensorApiCompat::Get<MNK_N>(problemShape_);
+        const int64_t k = Apace::TensorApiCompat::Get<MNK_K>(problemShape_);
         const int64_t prevSplitOffset = groupState_.preOffset - m;
 
         if (offsetTables_.aGroupAddrTable != nullptr) {
             groupOffsets_.a = static_cast<int64_t>(offsetTables_.aGroupAddrTable[groupIdx]);
         } else {
-            groupOffsets_.a = IsFp4<AType>() ? ((prevSplitOffset * k) >> 1) : (prevSplitOffset * k);
+            groupOffsets_.a = Apace::TensorApiCompat::IsFp4<AType> ? ((prevSplitOffset * k) >> 1) :
+                                                                    (prevSplitOffset * k);
         }
 
         if (offsetTables_.scaleAGroupAddrTable != nullptr) {
@@ -358,7 +373,7 @@ private:
             groupOffsets_.b = static_cast<int64_t>(offsetTables_.bGroupAddrTable[groupIdx]);
         } else {
             groupOffsets_.b = groupState_.perGroupB * static_cast<int64_t>(weightIdx);
-            if constexpr (IsFp4<BType>()) {
+            if constexpr (Apace::TensorApiCompat::IsFp4<BType>) {
                 groupOffsets_.b >>= 1;
             }
         }
@@ -389,9 +404,9 @@ private:
 
         mmadOp_.UpdateParamsForNextProblem(problemShape_);
 
-        const int64_t problemM = asc::te::get<MNK_M>(problemShape_);
-        const int64_t problemN = asc::te::get<MNK_N>(problemShape_);
-        const int64_t problemK = asc::te::get<MNK_K>(problemShape_);
+        const int64_t problemM = Apace::TensorApiCompat::Get<MNK_M>(problemShape_);
+        const int64_t problemN = Apace::TensorApiCompat::Get<MNK_N>(problemShape_);
+        const int64_t problemK = Apace::TensorApiCompat::Get<MNK_K>(problemShape_);
         const int64_t scaleK = GetScaleK(problemK);
         const int64_t baseN = static_cast<int64_t>(tiling_.baseN);
         auto layoutA = MakeLayoutA{}(problemM, problemK);
@@ -399,19 +414,19 @@ private:
         auto layoutB = MakeLayoutB{}(problemK, problemN);
         auto layoutScaleB = MakeLayoutScaleB{}(scaleK, problemN);
         auto layoutC = MakeLayoutC{}(problemM, problemN);
-        auto gmA =
-            asc::te::make_tensor(asc::te::make_mem_ptr<asc::te::location::gm>(aBasePtr_ + groupOffsets_.a), layoutA);
-        auto gmScaleA = asc::te::make_tensor(
-            asc::te::make_mem_ptr<asc::te::location::gm>(scaleABasePtr_ + groupOffsets_.scaleA), layoutScaleA);
-        auto gmB =
-            asc::te::make_tensor(asc::te::make_mem_ptr<asc::te::location::gm>(bBasePtr_ + groupOffsets_.b), layoutB);
-        auto gmScaleB = asc::te::make_tensor(
-            asc::te::make_mem_ptr<asc::te::location::gm>(scaleBBasePtr_ + groupOffsets_.scaleB), layoutScaleB);
-        auto gmC =
-            asc::te::make_tensor(asc::te::make_mem_ptr<asc::te::location::gm>(cBasePtr_ + groupOffsets_.c), layoutC);
+        auto gmA = Apace::TensorApiCompat::MakeTensor(
+            Apace::TensorApiCompat::MakeGmMemPtr(aBasePtr_ + groupOffsets_.a), layoutA);
+        auto gmScaleA = Apace::TensorApiCompat::MakeTensor(
+            Apace::TensorApiCompat::MakeGmMemPtr(scaleABasePtr_ + groupOffsets_.scaleA), layoutScaleA);
+        auto gmB = Apace::TensorApiCompat::MakeTensor(
+            Apace::TensorApiCompat::MakeGmMemPtr(bBasePtr_ + groupOffsets_.b), layoutB);
+        auto gmScaleB = Apace::TensorApiCompat::MakeTensor(
+            Apace::TensorApiCompat::MakeGmMemPtr(scaleBBasePtr_ + groupOffsets_.scaleB), layoutScaleB);
+        auto gmC = Apace::TensorApiCompat::MakeTensor(
+            Apace::TensorApiCompat::MakeGmMemPtr(cBasePtr_ + groupOffsets_.c), layoutC);
         auto biasPtr = isBias_ ? (biasBasePtr_ + groupOffsets_.bias) : nullptr;
-        auto layoutBias = asc::te::make_frame_layout<asc::te::nd_ext_layout_ptn>(static_cast<int64_t>(1), problemN);
-        auto gmBias = asc::te::make_tensor(asc::te::make_mem_ptr<asc::te::location::gm>(biasPtr), layoutBias);
+        auto layoutBias = Apace::TensorApiCompat::MakeBiasLayout(static_cast<int64_t>(1), problemN);
+        auto gmBias = Apace::TensorApiCompat::MakeTensor(Apace::TensorApiCompat::MakeGmMemPtr(biasPtr), layoutBias);
 
         if constexpr (!isLastGroupAndNeedSplit) {
             SetL2CacheHint(gmB, gmScaleB, problemM, static_cast<int64_t>(curBaseM_),
@@ -420,31 +435,39 @@ private:
 
         do {
             const auto schedulerBlockShape = scheduler.GetBlockShape(blockCoord);
-            const int64_t blockM = asc::te::get<MNK_M>(schedulerBlockShape);
-            const int64_t blockN = asc::te::get<MNK_N>(schedulerBlockShape);
+            const int64_t blockM = Apace::TensorApiCompat::Get<MNK_M>(schedulerBlockShape);
+            const int64_t blockN = Apace::TensorApiCompat::Get<MNK_N>(schedulerBlockShape);
             if (blockM <= 0 || blockN <= 0) {
                 continue;
             }
-            const int64_t mSplitOffset = asc::te::get<MNK_K>(schedulerBlockShape); // 尾块切分时，被切块内部的偏移
-            const int64_t nSplitOffset = asc::te::get<MNK_B>(schedulerBlockShape);
-            const int64_t mBlockIdx = asc::te::get<MNK_M>(blockCoord);
-            const int64_t nBlockIdx = asc::te::get<MNK_N>(blockCoord);
+            const int64_t mSplitOffset =
+                Apace::TensorApiCompat::Get<MNK_K>(schedulerBlockShape); // 尾块切分时，被切块内部的偏移
+            const int64_t nSplitOffset = Apace::TensorApiCompat::Get<MNK_B>(schedulerBlockShape);
+            const int64_t mBlockIdx = Apace::TensorApiCompat::Get<MNK_M>(blockCoord);
+            const int64_t nBlockIdx = Apace::TensorApiCompat::Get<MNK_N>(blockCoord);
             const int64_t blockK = problemK;
             BlockShape blockShape{blockM, blockN, blockK, 0};
             const int64_t mPos = mBlockIdx * curBaseM_ + mSplitOffset;
             const int64_t nPos = nBlockIdx * baseN + nSplitOffset;
 
-            auto gmBlockA =
-                gmA.slice(asc::te::make_coord(mPos, static_cast<int64_t>(0)), asc::te::make_shape(blockM, blockK));
-            auto gmBlockScaleA =
-                gmScaleA.slice(asc::te::make_coord(mPos, static_cast<int64_t>(0)), asc::te::make_shape(blockM, scaleK));
-            auto gmBlockB =
-                gmB.slice(asc::te::make_coord(static_cast<int64_t>(0), nPos), asc::te::make_shape(blockK, blockN));
-            auto gmBlockScaleB =
-                gmScaleB.slice(asc::te::make_coord(static_cast<int64_t>(0), nPos), asc::te::make_shape(scaleK, blockN));
-            auto gmBlockBias = gmBias.slice(asc::te::make_coord(static_cast<int64_t>(0), nPos),
-                                            asc::te::make_shape(static_cast<int64_t>(1), blockN));
-            auto gmBlockC = gmC.slice(asc::te::make_coord(mPos, nPos), asc::te::make_shape(blockM, blockN));
+            auto gmBlockA = Apace::TensorApiCompat::Slice(
+                gmA, Apace::TensorApiCompat::MakeCoord(mPos, static_cast<int64_t>(0)),
+                Apace::TensorApiCompat::MakeShape(blockM, blockK));
+            auto gmBlockScaleA = Apace::TensorApiCompat::Slice(
+                gmScaleA, Apace::TensorApiCompat::MakeCoord(mPos, static_cast<int64_t>(0)),
+                Apace::TensorApiCompat::MakeShape(blockM, scaleK));
+            auto gmBlockB = Apace::TensorApiCompat::Slice(
+                gmB, Apace::TensorApiCompat::MakeCoord(static_cast<int64_t>(0), nPos),
+                Apace::TensorApiCompat::MakeShape(blockK, blockN));
+            auto gmBlockScaleB = Apace::TensorApiCompat::Slice(
+                gmScaleB, Apace::TensorApiCompat::MakeCoord(static_cast<int64_t>(0), nPos),
+                Apace::TensorApiCompat::MakeShape(scaleK, blockN));
+            auto gmBlockBias = Apace::TensorApiCompat::Slice(
+                gmBias, Apace::TensorApiCompat::MakeCoord(static_cast<int64_t>(0), nPos),
+                Apace::TensorApiCompat::MakeShape(static_cast<int64_t>(1), blockN));
+            auto gmBlockC = Apace::TensorApiCompat::Slice(
+                gmC, Apace::TensorApiCompat::MakeCoord(mPos, nPos),
+                Apace::TensorApiCompat::MakeShape(blockM, blockN));
             mmadOp_(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBlockBias, gmBlockC, blockShape);
         } while (scheduler.GetNextBlockCoord(blockCoord));
     }
