@@ -148,7 +148,9 @@ public:
     static constexpr uint32_t kSliceCvHi = kSliceScratchA;
     static constexpr uint32_t kSliceCiHi = kSliceScratchB;
     static constexpr uint32_t kSliceDenom = 18U * KCTQ_BATCH_LANES;
-    static constexpr uint32_t kArenaLanes = 19U * KCTQ_BATCH_LANES;
+    static constexpr uint32_t kSlicePrimOff = 19U * KCTQ_BATCH_LANES;    // int32 byte offsets of the prim gather
+    static constexpr uint32_t kSliceLevels = 20U * KCTQ_BATCH_LANES;     // codebook table (kLevels lanes used)
+    static constexpr uint32_t kArenaLanes = kSliceLevels + 128U;
 
     __aicore__ inline KvCacheTurboQuant() = default;
 
@@ -269,14 +271,6 @@ public:
         return Slice(base + parity * KCTQ_BATCH_LANES);
     }
 
-    // Distances between neighbouring levels; the primary value is rebuilt as
-    //   level[0] + sum of selected deltas
-    // which reproduces the table lookup of the golden reference up to the final rounding step.
-    __aicore__ inline float Delta(uint32_t k) const
-    {
-        return CodeBook<BITS>::kLevel[k] - CodeBook<BITS>::kLevel[k - 1];
-    }
-
     // 2^exp as a float: AICORE forbids floating/unsigned integer casts, so build it by doubling.
     __aicore__ inline static float Pow2(uint32_t exp)
     {
@@ -344,6 +338,19 @@ public:
                 Duplicate(offB[r * KCTQ_D], static_cast<int32_t>(64U * r), static_cast<int32_t>(KCTQ_D));
             }
             PipeBarrier<PIPE_V>();
+        }
+        // Codebook table for the primary value: it is looked up as level[idx] at run time, which is
+        // the only way to be bit identical to the reference. Rebuilding it incrementally (level[0]
+        // plus the rounded differences) drifts by one ULP - 5 of 8 levels at 3 bit, 6 of 16 at 4 bit
+        // - which moves the residual and with it gamma (see the prim diagnosis in
+        // docs/evidence/repro/2026-09-30_kctq_bitexact_reverse).
+        {
+            LocalTensor<float> lv = Slice(kSliceLevels);
+            for (uint32_t k = 0; k < kLevels; ++k) {
+                lv.SetValue(k, CodeBook<BITS>::kLevel[k]);
+            }
+            SetFlag<HardEvent::S_V>(EVENT_ID2);
+            WaitFlag<HardEvent::S_V>(EVENT_ID2);
         }
     }
 
@@ -436,23 +443,40 @@ public:
     }
 
     // Row sums of a whole batch: dst[row * KCTQ_SCALAR_STRIDE] = sum of src[row * KCTQ_D .. + KCTQ_D).
-    // Two reduce intrinsics replace the eight level 2 ReduceSum calls that were measured to cost
-    // 1.4us per batch: every level 2 call runs one vcadd plus three cross pipe handshakes (V_S, S_V,
-    // S_MTE3) and a scalar write back, while the two instructions below only need the completion
-    // wait the caller issues once per batch. Stage 1 packs the eight block sums of every repeat into
-    // one destination block (dstRepStride = 1), so a row (two repeats) leaves 16 partial sums
-    // behind; stage 2 folds those 16 with one whole reduce per row.
+    // The order below is bit exact with the golden reference (torch.linalg.vector_norm on the NPU).
+    // That reduction folds a row onto one 64 lane accumulator and then reduces the accumulator with
+    // a pairwise tree, i.e. exactly
+    //     fold[i] = src[i] + src[i + 64]          (i < 64)
+    //     sum     = pairwise tree over fold[0 .. 64)
+    // The fold is stage 1 below, the tree is the two reduce intrinsics: the block sum of a 32B
+    // block is the three pairwise levels of its eight elements, and the whole reduce of the eight
+    // block sums of a row adds the three levels above them. Without the fold the same two
+    // intrinsics differ from the reference on 5806 of 16384 rows, with it on 0 (see
+    // docs/evidence/repro/2026-09-30_kctq_bitexact_reverse).
     __aicore__ inline void BatchRowSum(const LocalTensor<float> &dst, const LocalTensor<float> &tmp,
                                        const LocalTensor<float> &src)
     {
-        // tmp[8 * rep + j] = sum of src[64 * rep + 8 * j .. + 8)
-        BlockReduceSum<float>(tmp, src, static_cast<int32_t>(KCTQ_BATCH_LANES / 64U), 64, 1, 1, 8);
+        // Stage 1: fold the two 64 lane halves of every row element wise. One repeat per row (64
+        // lanes = 256B, so the full mask covers exactly one repeat) and the row strides are plain
+        // block counts: 128 lanes = 16 blocks in the source, 64 lanes = 8 blocks in the target.
+        LocalTensor<float> fold = tmp;
+        LocalTensor<float> blk = tmp[KCTQ_BATCH_ROWS * 64U];
+        uint64_t fullMask[2] = {0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL};
+        Add(fold, src, src[64U], fullMask, static_cast<uint8_t>(KCTQ_BATCH_ROWS),
+            BinaryRepeatParams(1, 1, 1, 8, 16, 16));
         PipeBarrier<PIPE_V>();
-        // dst[row * 16] = sum of tmp[row * 16 .. + 16): the whole reduce writes one result per
+        // Stage 2: the eight block sums of every folded row, packed one destination block per
+        // repeat, so a row leaves its eight partial sums behind contiguously.
+        BlockReduceSum<float>(blk, fold, static_cast<int32_t>(KCTQ_BATCH_ROWS), 64, 1, 1, 8);
+        PipeBarrier<PIPE_V>();
+        // Stage 3: one whole reduce per row over its eight block sums. It writes one result per
         // repeat and its destination repeat stride counts in elements, so stride 16 lands the sums
         // on the 16 lane grid the rest of the pipeline expects (measured on hardware, see the probe
-        // dump analysis in docs/evidence/repro/2026-09-23_kctq_v10_qstall).
-        WholeReduceSum<float>(dst, tmp, 16, static_cast<int32_t>(KCTQ_BATCH_ROWS), 16, 1, 2);
+        // dump analysis in docs/evidence/repro/2026-09-23_kctq_v10_qstall). The mask is one block,
+        // which the counting overload of this intrinsic cannot express: a count of eight is
+        // special cased to a full mask there, hence the explicit bit mask.
+        const uint64_t kBlockMask[2] = {0xFFULL, 0xFFULL};
+        WholeReduceSum<float>(dst, blk, kBlockMask, static_cast<int32_t>(KCTQ_BATCH_ROWS), 16, 1, 1);
         PipeBarrier<PIPE_V>();
     }
 
@@ -606,7 +630,6 @@ public:
             LocalTensor<float> idx = SliceP(kSliceIdx0, pb);
             LocalTensor<float> prim = Slice(kSlicePrim);
             Duplicate(idx, 0.0f, KCTQ_BATCH_LANES);
-            Duplicate(prim, CodeBook<BITS>::kLevel[0], KCTQ_BATCH_LANES);
             for (uint32_t k = 1; k < kLevels; ++k) {
                 // boundary = 0.5 * (level[k-1] + level[k]), computed exactly like the reference.
                 // Vector instructions execute in issue order on one pipe, so the back-to-back
@@ -619,7 +642,23 @@ public:
                 Maxs(mask, mask, 0.0f, KCTQ_BATCH_LANES);
                 Mins(mask, mask, 1.0f, KCTQ_BATCH_LANES);
                 Add(idx, idx, mask, KCTQ_BATCH_LANES);
-                Axpy(prim, mask, Delta(k), KCTQ_BATCH_LANES);
+            }
+            // prim = level[idx], an exact table lookup. idx is a small exact integer, so the cast and
+            // the byte offset scaling are exact and the gather returns the table entry itself. The
+            // offsets are consumed one per element (64 per repeat, KCTQ_BATCH_LANES / 64 repeats)
+            // and written back with one destination block (8 lanes) per repeat, which is the plain
+            // layout of this batch. Byte offsets, as everywhere else in this kernel.
+            {
+                LocalTensor<float> levels = Slice(kSliceLevels);
+                LocalTensor<float> offsetsF = Slice(kSlicePrimOff);
+                LocalTensor<int32_t> offsets = offsetsF.ReinterpretCast<int32_t>();
+                Cast(offsets, idx, RoundMode::CAST_RINT, KCTQ_BATCH_LANES);
+                PipeBarrier<PIPE_V>();
+                ShiftLeft(offsets, offsets, 2, KCTQ_BATCH_LANES);
+                PipeBarrier<PIPE_V>();
+                Gather(prim, levels, offsets.ReinterpretCast<uint32_t>(), 0U, 64U,
+                       static_cast<uint8_t>(KCTQ_BATCH_LANES / 64U), 8U);
+                PipeBarrier<PIPE_V>();
             }
             PackIdx(grow, validRows, idx, pb);
             const LocalTensor<float> res = idx; // the residual replaces the packed index values
