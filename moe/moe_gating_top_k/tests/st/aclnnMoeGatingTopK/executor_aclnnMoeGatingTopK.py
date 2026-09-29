@@ -38,8 +38,20 @@ class MoeGatingTopKMethod(BaseApi):
         # print(" ans:",ans)
         return ans, x_max, x_sum
 
-    def single_golden(self, x, k, bias, k_group, group_count, group_select_mode, renorm,
-                      norm_type, y2_flag, routed_scaling_factor, eps):
+    def single_golden(
+        self,
+        x,
+        k,
+        bias,
+        k_group,
+        group_count,
+        group_select_mode,
+        renorm,
+        norm_type,
+        y2_flag,
+        routed_scaling_factor,
+        eps,
+    ):
         dtype = x.dtype
         # Convert to float32 if needed
         if dtype != torch.float32:
@@ -70,21 +82,23 @@ class MoeGatingTopKMethod(BaseApi):
             else:
                 group_x = np.partition(x, -2, axis=-1)[..., -2:].sum(axis=-1)
 
-            indices = np.argsort(-group_x, axis=-1, kind='stable')[:, :k_group]
+            indices = np.argsort(-group_x, axis=-1, kind="stable")[:, :k_group]
 
             mask = np.ones((x.shape[0], group_count), dtype=bool)
             mask[np.arange(x.shape[0])[:, None], indices] = False
-            x = np.where(mask[..., None], float('-inf'), x).reshape(x.shape[0], -1)
+            x = np.where(mask[..., None], float("-inf"), x).reshape(x.shape[0], -1)
 
         # Topk indices and gather
-        _, indices = torch.sort(torch.from_numpy(x), dim=-1, stable=True, descending=True)
+        _, indices = torch.sort(
+            torch.from_numpy(x), dim=-1, stable=True, descending=True
+        )
         indices = np.asarray(indices[:, :k]).astype(np.int32)
 
         y = np.take_along_axis(original_x, indices, axis=1)
 
         # Renorm and scaling
         if norm_type == 1 or renorm == 1:
-            y /= (np.sum(y, axis=-1, keepdims=True) + eps)
+            y /= np.sum(y, axis=-1, keepdims=True) + eps
         y *= routed_scaling_factor
 
         # Process y2 if needed
@@ -117,7 +131,6 @@ class MoeGatingTopKMethod(BaseApi):
             return output
 
 
-
 @register("function_aclnnMoeGatingTopK")
 class MoeGatingTopKAclnnApi(AclnnBaseApi):
     def __call__(self):
@@ -133,4 +146,3 @@ class MoeGatingTopKAclnnApi(AclnnBaseApi):
             output.append(self.acl_tensor_to_torch(output_pack))
 
         return output
-    
