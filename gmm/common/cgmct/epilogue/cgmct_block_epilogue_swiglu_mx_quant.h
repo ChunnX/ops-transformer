@@ -424,14 +424,14 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
         AscendC::Reg::MaskReg mask1;
         AscendC::Reg::MaskReg maskEven;
         AscendC::Reg::MaskReg maskOdd;
-        AscendC::Reg::UnalignReg unalign;
+        AscendC::Reg::UnalignRegForStore unalign;
         AscendC::Reg::Duplicate(absMask, BF16_ABSOLUTE_VALUE_MASK);
         for (uint16_t i = 0; i < loopNum; ++i) {
             mask0 = AscendC::Reg::UpdateMask<bfloat16_t>(totalCountInUB);
             mask1 = AscendC::Reg::UpdateMask<bfloat16_t>(totalCountInUB);
             AscendC::Reg::MaskDeInterleave<bfloat16_t>(maskEven, maskOdd, mask0, mask1);
-            AscendC::Reg::DataCopy<bfloat16_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE,
-                                   AscendC::Reg::LoadDist::DIST_DINTLV_B16>(
+            AscendC::Reg::LoadAlign<bfloat16_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE,
+                                    AscendC::Reg::LoadDist::DIST_DINTLV_B16>(
                 value0, value1, srcAddr, vlForHalfNumber_ * CGMCT_INTERLEAVED_REG_FACTOR);
             AscendC::Reg::And(reinterpret_cast<AscendC::Reg::RegTensor<uint16_t> &>(value0),
                               reinterpret_cast<AscendC::Reg::RegTensor<uint16_t> &>(value0), absMask, maskEven);
@@ -440,10 +440,10 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
             AscendC::Reg::Max(maxValue, reinterpret_cast<AscendC::Reg::RegTensor<uint16_t> &>(value0),
                               reinterpret_cast<AscendC::Reg::RegTensor<uint16_t> &>(value1), mask0);
             AscendC::Reg::ReduceMaxWithDataBlock(maxValue, maxValue, mask0);
-            AscendC::Reg::DataCopyUnAlign<uint16_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(
+            AscendC::Reg::StoreUnAlign<uint16_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(
                 maxExpAddr, maxValue, unalign, elementAfterReduce_);
         }
-        AscendC::Reg::DataCopyUnAlignPost(maxExpAddr, unalign, 0);
+        AscendC::Reg::StoreUnAlignPost(maxExpAddr, unalign, 0);
     }
 }
 
