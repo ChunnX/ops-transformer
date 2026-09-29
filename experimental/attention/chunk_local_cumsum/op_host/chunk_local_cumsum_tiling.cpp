@@ -18,13 +18,13 @@
 
 namespace optiling {
 
-static ge::graphStatus TilingFunc(gert::TilingContext *context)
+static ge::graphStatus TilingFunc(gert::TilingContext* context)
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     auto aivNum = ascendcPlatform.GetCoreNumAiv();
 
     const int32_t chunkSize = *(context->GetAttrs()->GetAttrPointer<int32_t>(0));
-    const int64_t *cuSeqlenDictAttr = const_cast<int64_t *>(context->GetAttrs()->GetListInt(1)->GetData());
+    const int64_t* cuSeqlenDictAttr = const_cast<int64_t*>(context->GetAttrs()->GetListInt(1)->GetData());
 
     auto shape_input = context->GetInputTensor(0)->GetOriginShape();
     auto shape_cu_seqlens = context->GetInputTensor(1)->GetOriginShape();
@@ -83,7 +83,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext *context)
     context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
     size_t userWorkspaceSize = 0;
     size_t systemWorkspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
-    size_t *currentWorkspace = context->GetWorkspaceSizes(1);
+    size_t* currentWorkspace = context->GetWorkspaceSizes(1);
     currentWorkspace[0] = userWorkspaceSize + systemWorkspaceSize;
 
     return ge::GRAPH_SUCCESS;

@@ -15,7 +15,7 @@
 namespace ops {
 class ChunkLocalCumsum : public OpDef {
 public:
-    explicit ChunkLocalCumsum(const char *name)
+    explicit ChunkLocalCumsum(const char* name)
         : OpDef(name)
     {
         this->Input("input")

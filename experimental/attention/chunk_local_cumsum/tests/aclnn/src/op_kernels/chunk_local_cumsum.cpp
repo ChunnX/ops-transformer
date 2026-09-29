@@ -21,8 +21,8 @@
 #include "aclnn_chunk_local_cumsum.h"
 #include "common.h"
 
-void ChunkLocalCumsum(aclrtStream &stream, void *workspace, Tensor &input, Tensor &cu_seqlens, Tensor &output,
-                      int64_t head_num, int64_t chunk_size, const std::vector<int64_t> &cu_seqlen)
+void ChunkLocalCumsum(aclrtStream& stream, void* workspace, Tensor& input, Tensor& cu_seqlens, Tensor& output,
+                      int64_t head_num, int64_t chunk_size, const std::vector<int64_t>& cu_seqlen)
 {
     // std::vector<int64_t> ioShape{token_num, qk_head_num, head_dim};
     // std::vector<int64_t> ioShape{token_num, vo_head_num, head_dim};
@@ -34,8 +34,8 @@ void ChunkLocalCumsum(aclrtStream &stream, void *workspace, Tensor &input, Tenso
     std::vector<int64_t> ioShape{1, token_num, head_num};
     std::vector<int64_t> cuSeqLenShape{static_cast<int64_t>(cu_seqlen.size())};
 
-    aclIntArray *cuSeqlenDict = aclCreateIntArray(cu_seqlen.data(), cu_seqlen.size());
-    std::vector<aclTensor *> inputTensor, outputTensor;
+    aclIntArray* cuSeqlenDict = aclCreateIntArray(cu_seqlen.data(), cu_seqlen.size());
+    std::vector<aclTensor*> inputTensor, outputTensor;
     aclFormat format = ACL_FORMAT_ND;
     inputTensor.emplace_back(aclCreateTensor(ioShape.data(), ioShape.size(), ACL_FLOAT, nullptr, 0, format,
                                              ioShape.data(), ioShape.size(), input.device()));
@@ -47,13 +47,13 @@ void ChunkLocalCumsum(aclrtStream &stream, void *workspace, Tensor &input, Tenso
 
     // 3. 输入打包的aclTensor，调用GetWorkspaceSize
     size_t workspaceSize;
-    aclOpExecutor *handle;
+    aclOpExecutor* handle;
     auto ret = aclnnChunkLocalCumsumGetWorkspaceSize(inputTensor[0], inputTensor[1], chunk_size, cuSeqlenDict,
                                                      outputTensor[0], &workspaceSize, &handle);
 
     if (ret != ACL_SUCCESS) {
         (void)aclrtDestroyStream(stream);
-        const char *tmp_err_msg = NULL;
+        const char* tmp_err_msg = NULL;
         tmp_err_msg = aclGetRecentErrMsg();
         if (tmp_err_msg != NULL) {
             printf(" ERROR Message : %s \n ", tmp_err_msg);
@@ -69,7 +69,7 @@ void ChunkLocalCumsum(aclrtStream &stream, void *workspace, Tensor &input, Tenso
     // 4. 执行计算
     ret = aclnnChunkLocalCumsum(workspace, workspaceSize, handle, stream);
     if (ret != ACL_SUCCESS) {
-        const char *tmp_err_msg = NULL;
+        const char* tmp_err_msg = NULL;
         tmp_err_msg = aclGetRecentErrMsg();
         if (tmp_err_msg != NULL) {
             printf(" ERROR Message : %s \n ", tmp_err_msg);

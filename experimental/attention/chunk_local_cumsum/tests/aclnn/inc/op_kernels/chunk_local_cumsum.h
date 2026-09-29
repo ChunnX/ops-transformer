@@ -18,7 +18,7 @@
 #include "tensor.h"
 // #include "op_runner.h"
 
-void ChunkLocalCumsum(aclrtStream &stream, void *workspace, Tensor &input, Tensor &cu_seqlens, Tensor &output,
-                      int64_t head_num, int64_t chunk_size, const std::vector<int64_t> &cu_seqlen);
+void ChunkLocalCumsum(aclrtStream& stream, void* workspace, Tensor& input, Tensor& cu_seqlens, Tensor& output,
+                      int64_t head_num, int64_t chunk_size, const std::vector<int64_t>& cu_seqlen);
 
 #endif

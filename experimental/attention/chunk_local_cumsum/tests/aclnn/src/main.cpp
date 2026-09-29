@@ -30,7 +30,7 @@ bool g_isDevice = false;
 int deviceId = 7;
 
 template <typename T>
-bool TestTime(T &opRunner, aclrtStream &stream)
+bool TestTime(T& opRunner, aclrtStream& stream)
 {
     std::vector<int64_t> seqIdxDict{0, 1}, curlenDict{567, 567};
     int32_t warmup = 512;
@@ -53,7 +53,7 @@ bool TestTime(T &opRunner, aclrtStream &stream)
     return true;
 }
 
-bool CreateStream(aclrtStream &stream)
+bool CreateStream(aclrtStream& stream)
 {
     if (aclrtCreateStream(&stream) != ACL_SUCCESS) {
         ERROR_LOG("Create stream failed");
@@ -63,7 +63,7 @@ bool CreateStream(aclrtStream &stream)
     return true;
 }
 
-bool DestroyStream(aclrtStream &stream)
+bool DestroyStream(aclrtStream& stream)
 {
     INFO_LOG("Destroystream()");
     (void)aclrtDestroyStream(stream);
@@ -135,7 +135,7 @@ int AlignUp16(int a)
 {
     return (a + 15) & (~15);
 }
-bool RunOp(const std::vector<int64_t> &cuSeqlen, int32_t head_num, int32_t chunk_size)
+bool RunOp(const std::vector<int64_t>& cuSeqlen, int32_t head_num, int32_t chunk_size)
 {
     auto print = [](std::vector<int64_t> dict) {
         for (auto el : dict) {
@@ -150,9 +150,9 @@ bool RunOp(const std::vector<int64_t> &cuSeqlen, int32_t head_num, int32_t chunk
     int32_t tokenNum = cuSeqlen.back();
     int32_t seqNum = cuSeqlen.size() - 1;
 
-    Tensor *input = new Tensor(tokenNum * head_num * sizeof(float));
-    Tensor *cu_seqlens = new Tensor((seqNum + 1) * sizeof(int64_t));
-    Tensor *output = new Tensor(tokenNum * head_num * sizeof(float));
+    Tensor* input = new Tensor(tokenNum * head_num * sizeof(float));
+    Tensor* cu_seqlens = new Tensor((seqNum + 1) * sizeof(int64_t));
+    Tensor* output = new Tensor(tokenNum * head_num * sizeof(float));
 
     input->FromFile("../input/input.bin");
     cu_seqlens->FromFile("../input/input_cu_seqlens.bin");
@@ -160,7 +160,7 @@ bool RunOp(const std::vector<int64_t> &cuSeqlen, int32_t head_num, int32_t chunk
     std::cout << "Read data complete!" << std::endl;
 
     size_t workspaceSize = 222222222;
-    void *workspace = nullptr;
+    void* workspace = nullptr;
     if (aclrtMalloc(&workspace, workspaceSize, ACL_MEM_MALLOC_NORMAL_ONLY) != ACL_SUCCESS) {
         ERROR_LOG("Malloc device memory failed");
         return false;
@@ -171,7 +171,7 @@ bool RunOp(const std::vector<int64_t> &cuSeqlen, int32_t head_num, int32_t chunk
     // Run op
     ChunkLocalCumsum(stream, workspace, *input, *cu_seqlens, *output, head_num, chunk_size, cuSeqlen);
 
-    const char *tmp_err_msg = NULL;
+    const char* tmp_err_msg = NULL;
     tmp_err_msg = aclGetRecentErrMsg();
     if (tmp_err_msg != NULL) {
         printf(" ERROR Message : %s \n ", tmp_err_msg);
@@ -209,7 +209,7 @@ bool RunOp(const std::vector<int64_t> &cuSeqlen, int32_t head_num, int32_t chunk
     return true;
 }
 
-std::vector<int64_t> Stringsplit(const std::string &str, const char split)
+std::vector<int64_t> Stringsplit(const std::string& str, const char split)
 {
     std::vector<int64_t> res;
 
@@ -230,7 +230,7 @@ std::vector<int64_t> Stringsplit(const std::string &str, const char split)
     return res;
 }
 
-int main(int argc, char **argv)
+int main(int argc, char** argv)
 {
     if (!InitResource()) {
         ERROR_LOG("Init resource failed");

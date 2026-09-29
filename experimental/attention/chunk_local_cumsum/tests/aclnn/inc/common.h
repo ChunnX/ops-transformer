@@ -63,7 +63,7 @@
 // #define ERROR_LOG(fmt, args...) fprintf(stderr, "[ERROR]  " fmt "\n", ##args)
 
 template <typename T>
-inline void AllocTensor(Tensor *&x, size_t N)
+inline void AllocTensor(Tensor*& x, size_t N)
 {
     if (x != nullptr) {
         std::cout << "===========================" << std::endl;
@@ -74,13 +74,13 @@ inline void AllocTensor(Tensor *&x, size_t N)
 }
 
 template <typename T>
-inline Tensor *CreateTensor(size_t N)
+inline Tensor* CreateTensor(size_t N)
 {
     return new Tensor(N * sizeof(T));
 }
 
 template <typename T>
-inline void FreeTensor(T *x)
+inline void FreeTensor(T* x)
 {
     if (x != nullptr) {
         delete x;
@@ -94,7 +94,7 @@ inline void FreeTensor(T *x)
  * @param [out] fileSize: file size
  * @return read result
  */
-bool ReadFile(const std::string &filePath, size_t &fileSize, void *buffer, size_t bufferSize);
+bool ReadFile(const std::string& filePath, size_t& fileSize, void* buffer, size_t bufferSize);
 
 /**
  * @brief Write data to file
@@ -103,6 +103,6 @@ bool ReadFile(const std::string &filePath, size_t &fileSize, void *buffer, size_
  * @param [in] size: size to write
  * @return write result
  */
-bool WriteFile(const std::string &filePath, const void *buffer, size_t size);
+bool WriteFile(const std::string& filePath, const void* buffer, size_t size);
 
 #endif // COMMON_H

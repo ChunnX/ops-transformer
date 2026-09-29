@@ -19,11 +19,11 @@ class Tensor {
 public:
     Tensor(size_t capacity);
     ~Tensor();
-    inline uint8_t *device()
+    inline uint8_t* device()
     {
         return device_;
     }
-    inline uint8_t *host()
+    inline uint8_t* host()
     {
         return host_;
     }
@@ -37,8 +37,8 @@ public:
         return true;
     };
 
-    bool FromFile(const std::string &fileName = "NONE");
-    bool ToFile(const std::string &fileName = "NONE");
+    bool FromFile(const std::string& fileName = "NONE");
+    bool ToFile(const std::string& fileName = "NONE");
 
     // void SetValue(int32_t value);
     // void SetValue(float value);

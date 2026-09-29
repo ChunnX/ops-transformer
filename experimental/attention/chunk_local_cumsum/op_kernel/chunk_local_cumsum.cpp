@@ -34,15 +34,15 @@ class ChunkLocalCumsum {
 public:
     __aicore__ inline ChunkLocalCumsum(){};
     __aicore__ inline void Init(GM_ADDR input, GM_ADDR cu_seqlens, GM_ADDR output,
-                                const ChunkLocalCumsumTilingData &tilingData);
+                                const ChunkLocalCumsumTilingData& tilingData);
 
     template <int CHUNKS_PER_CORE>
-    __aicore__ inline void Process(const ChunkLocalCumsumTilingData &tilingData);
+    __aicore__ inline void Process(const ChunkLocalCumsumTilingData& tilingData);
 
     template <int N>
     __aicore__ inline void ProcessChunkGroup(const ChunkInfo (&chunk_infos)[N]);
 
-    __aicore__ inline void InitTiling(const ChunkLocalCumsumTilingData &tilingData);
+    __aicore__ inline void InitTiling(const ChunkLocalCumsumTilingData& tilingData);
     __aicore__ inline bool NeedHeadPadding() const;
     __aicore__ inline int32_t GetHeadStride() const;
     __aicore__ inline void CopyChunkToLocal(LocalTensor<float> dstLocal, int32_t dstOffset, int32_t srcOffset,
@@ -64,7 +64,7 @@ private:
     TQue<QuePosition::VECOUT, 1> outputQ;
 };
 
-__aicore__ inline void ChunkLocalCumsum::InitTiling(const ChunkLocalCumsumTilingData &tilingData)
+__aicore__ inline void ChunkLocalCumsum::InitTiling(const ChunkLocalCumsumTilingData& tilingData)
 {
     this->m_coreNum = tilingData.coreNum;
     this->m_tokenNum = tilingData.tokenNum;
@@ -77,13 +77,13 @@ __aicore__ inline void ChunkLocalCumsum::InitTiling(const ChunkLocalCumsumTiling
 }
 
 __aicore__ inline void ChunkLocalCumsum::Init(GM_ADDR input, GM_ADDR cu_seqlens, GM_ADDR output,
-                                              const ChunkLocalCumsumTilingData &tilingData)
+                                              const ChunkLocalCumsumTilingData& tilingData)
 {
     InitTiling(tilingData);
 
-    inputGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(input));
-    cuSeqlenGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t *>(cu_seqlens));
-    outputGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(output));
+    inputGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(input));
+    cuSeqlenGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t*>(cu_seqlens));
+    outputGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(output));
 
     // UB
     GetTPipePtr()->InitBuffer(inputQ, 2,
@@ -271,7 +271,7 @@ __aicore__ inline void ChunkLocalCumsum::ProcessChunkGroup(const ChunkInfo (&chu
 }
 
 template <int CHUNKS_PER_CORE>
-__aicore__ inline void ChunkLocalCumsum::Process(const ChunkLocalCumsumTilingData &tilingData)
+__aicore__ inline void ChunkLocalCumsum::Process(const ChunkLocalCumsumTilingData& tilingData)
 {
     int32_t block_id = GetBlockIdx();
     int32_t cur_batch = 0;
