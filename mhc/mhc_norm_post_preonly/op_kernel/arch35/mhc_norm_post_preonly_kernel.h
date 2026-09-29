@@ -764,15 +764,14 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
                 bufPhiFp32_.EnQue(curPhi0);
             }
 
-            uint64_t nextPhiOffset = (uint64_t)phiCols_ + (uint64_t)h0 * D_ + tOff;
             for (uint32_t o = 0; o < N; ++o) {
                 // 预取下一轮o+1的两路phi，与当前dot计算重叠。
                 LocalTensor<float> nextPhi0;
                 if (o + 1U < N) {
                     nextPhi0 = bufPhiFp32_.AllocTensor<float>();
-                    DataCopyPad(nextPhi0, phiGm_[nextPhiOffset], copyParams, copyPad);
+                    DataCopyPad(nextPhi0, phiGm_[(uint64_t)(o + 1U) * phiCols_ + (uint64_t)h0 * D_ + tOff], copyParams,
+                                copyPad);
                     bufPhiFp32_.EnQue(nextPhi0);
-                    nextPhiOffset += phiCols_;
                 }
 
                 LocalTensor<float> dotRow = reduceRows[(o + 1U) * reduceWidth];
