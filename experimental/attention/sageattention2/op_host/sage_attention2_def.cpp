@@ -39,6 +39,11 @@ public:
         this->Attr("smooth_k").AttrType(REQUIRED).Bool();
         this->Attr("is_causal").AttrType(REQUIRED).Bool();
         this->Attr("return_lse").AttrType(REQUIRED).Bool();
+        // Encoded enums from the aclnn string parameters; see SageQuantGran
+        // and SagePvAccum in op_kernel/params.h.
+        this->Attr("qk_quant_gran").AttrType(REQUIRED).Int();
+        this->Attr("pv_accum_dtype").AttrType(REQUIRED).Int();
+        this->Attr("smooth_v").AttrType(REQUIRED).Bool();
         OpAICoreConfig config;
         config.DynamicCompileStaticFlag(true)
             .DynamicShapeSupportFlag(true)

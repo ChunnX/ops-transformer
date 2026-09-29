@@ -39,7 +39,7 @@ std::tuple<at::Tensor, c10::optional<at::Tensor>> sageattention2(
     const std::string &qk_quant_gran,
     c10::optional<double> sm_scale,
     const std::string &pv_accum_dtype,
-    bool smooth_k, bool return_lse)
+    bool smooth_k, bool smooth_v, bool return_lse)
 {
     const char *layout = nullptr;
     bool is_hnd = false;
@@ -58,10 +58,8 @@ std::tuple<at::Tensor, c10::optional<at::Tensor>> sageattention2(
         gran = "per_thread";
     } else if (qk_quant_gran == "per_warp") {
         gran = "per_warp";
-    } else if (qk_quant_gran == "per_token") {
-        gran = "per_token";
     } else {
-        TORCH_CHECK(false, "qk_quant_gran must be per_thread, per_warp or per_token");
+        TORCH_CHECK(false, "qk_quant_gran must be per_thread or per_warp");
     }
 
     const char *accum = nullptr;
@@ -135,7 +133,6 @@ std::tuple<at::Tensor, c10::optional<at::Tensor>> sageattention2(
     if (return_lse) {
         lse = at::empty({b, hq, sq}, q.options().dtype(at::kFloat));
     }
-    bool smooth_v = false;
     EXEC_NPU_CMD_EXT(aclnnSageAttention2, q, k, v, layout, is_causal,
                      gran, scale, accum, smooth_k, smooth_v, return_lse, out, lse);
     return {out, lse};

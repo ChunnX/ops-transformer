@@ -14,7 +14,7 @@
 extern "C" {
 #endif
 // smoothV with fp32+fp16 or fp32+fp32 logs a warning and is ignored.
-// qkQuantGran supports per_thread (default), per_warp, and per_token.
+// qkQuantGran supports per_thread (default) and per_warp.
 // pvAccumDtype supports fp32+fp16 (default), fp32+fp32, and fp32.
 // PV always uses MXFP8.
 ACL_FUNC_VISIBILITY aclnnStatus aclnnSageAttention2GetWorkspaceSize(

@@ -47,19 +47,19 @@ wide 路径将 FP8 P 原位写入已经消费的 FP16 score 条带，再通过�
 | `k`、`v` | Tensor | HND 为 `[B,Hkv,Sk,D]`，NHD 为 `[B,Sk,Hkv,D]` |
 | `tensor_layout` | str，`HND` | 支持 `HND`、`NHD` |
 | `is_causal` | bool，`False` | 开启时要求 Sq=Sk |
-| `qk_quant_gran` | str，`per_thread` | Q/K INT8 量化粒度，支持 `per_thread`（默认）、`per_warp`、`per_token`；非法值报错 ValueError |
+| `qk_quant_gran` | str，`per_thread` | Q/K INT8 量化粒度，支持 `per_thread`（默认）、`per_warp`；非法值报错 ValueError |
 | `sm_scale` | float/None，`None` | 默认 `1/sqrt(D)`，须可表示为有限 FP32 |
 | `pv_accum_dtype` | str，`fp32+fp16` | PV 累加精度，支持 `fp32+fp16`（默认）、`fp32+fp32`、`fp32`；非法值报错 ValueError |
 | `smooth_k` | bool，`True` | 量化前减去 K 沿序列维的均值 |
 | `smooth_v` | 兼容参数，`False` | 传 `True` 且 `pv_accum_dtype` 为 `fp32+fp16` 或 `fp32+fp32` 时 warning 并忽略（对齐开源实现） |
 | `return_lse` | bool，`False` | 返回 `(out, lse)`；LSE 为 FP32、shape `[B,Hq,Sq]` |
 
-本实现按 Ascend 950 的计算和执行模型提供接口：Q/K 量化支持 `per_thread`（默认）、`per_warp` 与 `per_token`；PV 累加支持 `fp32+fp16`（默认）、`fp32+fp32` 与兼容别名 `fp32`。传入非法选项时明确报错 ValueError。
+本实现按 Ascend 950 的计算和执行模型提供接口：Q/K 量化支持 `per_thread`（默认）与 `per_warp`；PV 累加支持 `fp32+fp16`（默认）、`fp32+fp32` 与兼容别名 `fp32`。传入非法选项时明确报错 ValueError。
 
 **粒度与累加配置的 NPU 映射**（对齐任务书允许的"将开源粒度映射到 NPU Tile/Block"口径）：
 
-- `qk_quant_gran`：Q/K 按 token（warp 行）整行计算对称 INT8 scale，即开源 `per_warp` 语义映射到 64-token 量化 tile；`per_thread`/`per_token` 映射到同一 tile 粒度。V 侧 MXFP8 的细粒度分组（每 channel × 每 32 token）进一步抑制整行 scale 的截断误差。
-- `pv_accum_dtype`：950PR 的 MXFP8 MMA 在 L0C 原生以 FP32 累加，PV、O 与 softmax 分母全程 FP32，精度不低于开源两级累加配置；三种取值统一映射到该数据通路。
+- `qk_quant_gran`：Q/K 对称 INT8 scale 按连续 token 组共享，对齐开源 CUDA thread/warp 映射——`per_thread` 为每 4 个 Q token / 16 个 K token 一个 scale，`per_warp` 为其 8 倍（32/64）；组边界按序列维对齐。V 侧 MXFP8 的细粒度分组（每 channel × 每 32 token）进一步抑制截断误差。
+- `pv_accum_dtype`：参数经算子属性直通内核（`SagePvAccum`）；`fp32+fp16`（默认验收配置）将块内 PV 部分和经 FP16 归约进 FP32 全局状态，`fp32+fp32` 全程 FP32 归约，`fp32` 单级 FP32 累加并支持 `smooth_v` 生效。950PR 的 MXFP8 MMA 在 L0C 原生以 FP32 累加，PV、O 与 softmax 分母全程 FP32。
 
 当 `smooth_v=True` 且 `pv_accum_dtype` 为 `fp32+fp16` 或 `fp32+fp32` 时，按开源实现规范发出 warning 并忽略。最终 O 仍按输入 dtype 输出。
 
@@ -114,7 +114,7 @@ SAGEATTN_TEST_STANDALONE=1 \
 
 修改 kernel 后须重新完整构建、安装，再执行 NPU 测试。
 
-内核数值规格另有独立的可移植 C++ 误差一致性测试（无 AscendC 依赖，宿主机或容器均可编译运行），固化各数值构件的浮点误差界：FastReciprocal（e0^4 包络 2^-16）、per-token INT8 往返（<= scale/2）、E4M3 饱和舍入（<= 2^-4）、E8M0 分组 scale 覆盖性与紧致性、DEQF16(2^-11)×FP16 平衡 scale 的 2048 抵消恒等式（<= 2^-9）、ln(448) 平移的满量程/饱和裕量、LSE 契约（raw log2 内核值 + 开源平滑校正与 GQA 广播，双精度参考 <= 1e-5）与 smooth-K softmax 不变性（<= 1e-12）：
+内核数值规格另有独立的可移植 C++ 误差一致性测试（无 AscendC 依赖，宿主机或容器均可编译运行），固化各数值构件的浮点误差界：FastReciprocal（最差 binade 包络 2^-14）、per-token INT8 往返（<= scale/2）、E4M3 饱和舍入（<= 2^-4）、E8M0 分组 scale 覆盖性与紧致性、DEQF16(2^-11)×FP16 平衡 scale 的 2048 抵消恒等式（<= 2^-9）、ln(448) 平移的满量程/饱和裕量、LSE 契约（raw log2 内核值 + 开源平滑校正与 GQA 广播，双精度参考 <= 1e-5）与 smooth-K softmax 整行不变性（FP32 内核算术精度 <= 1e-4）：
 
 ```bash
 g++ -O2 -std=c++17 tests/numeric_error_test.cpp -o build/numeric_error_test && ./build/numeric_error_test
@@ -124,9 +124,9 @@ g++ -O2 -std=c++17 tests/numeric_error_test.cpp -o build/numeric_error_test && .
 
 CPU 参考采用 per-token Q/K 与 32-token MXFP8 V 量化，使用上述 FP16 平移 max 定义及 FP8 饱和转换；独立 SDPA 标准未改变。
 
-测试全部通过公开 ACLNN 路径运行（`python/test_python_api.py`），并对照独立 per-token QK / MXFP8 PV CPU 算法（`python/sageattention2/reference.py`）、FP32 SDPA 或可解析的常数输入结果。覆盖 dtype/layout/stride、GQA、causal、smooth_k、smooth_v warning/ignore、LSE shape/数值、head_dim padding（D=48→64、D=96→128）、非法参数报错与 SDPA 替换冒烟。
+测试全部通过公开 ACLNN 路径运行（`python/test_python_api.py`），并对照独立 QK INT8 / MXFP8 PV CPU 算法（`python/sageattention2/reference.py`，per_thread=Q4/K16、per_warp=Q32/K64 与内核同配置）、FP32 SDPA 或可解析的常数输入结果。覆盖 dtype/layout/stride、GQA、causal（含组粒度下的严格因果独立性）、smooth_k、smooth_v warning/ignore、`sageattn` 固定分发 FP8 PV（NPU 上拦截下沉实参）、LSE shape/数值、head_dim padding（D=48→64、D=96→128）、非法参数报错与 SDPA 替换冒烟。
 
-数值参考是本目录的 per-token QK / MXFP8 PV CPU 算法及独立 FP32 SDPA。CPU 同算法检查采用 FP16 rtol/atol=2^-9、BF16=2^-6、至少 99% 匹配比例；最大绝对误差通常分别限于 0.1/1。SDPA 的 max/mean/RMSE 误差比例门限为 2/1.2/1.2。
+L-B 层在宿主机套件内闭环（`test_tc04b_lb_precision_gates`）：NPU 数值通路（CPU golden）与独立的开源 sm89 FP8 路径逐配置（per_thread/per_warp 各自同配置）对比，两者相对 FP32 SDPA 的误差比须满足 max<=2、mean<=1.2、RMSE<=1.2，LSE 相对偏差 <= 5e-2。
 
 FP16 平移的舍入会改变 P 的实际缩放，因此不保证与原先 `448 * exp(score - max)` 逐位或按旧量化参考一致。零 score、V 全 1 时，FP16 输出为约 0.999512；较大且相等的 score 还可能使 P 超过 448 后饱和。独立 SDPA 检查保留原有标准。
 
@@ -139,6 +139,15 @@ FP16 平移的舍入会改变 P 的实际缩放，因此不保证与原先 `448 
 PyTorch 默认预热 50 次，参数为 `--warmup` 或 `SAGEATTN_PERF_WARMUP`；测量次数使用 `--repeats` 或 `SAGEATTN_PERF_ITERS`，默认 100 次。预热次数不按运行时间自动调整。ACLNN 使用等价的批量 ACL Event 计时，每次正常调用 GetWorkspaceSize 和执行接口，workspace/output 复用；两阶段调用均位于批量计时区间内。报告保存总耗时、调用次数和平均耗时，加速比使用 FIA 平均耗时除以 Sage 平均耗时。
 
 PyTorch 路径以 `python/test_python_api.py` 同源的公开接口调用测量；aclnn 路径每次正常调用 GetWorkspaceSize 与执行接口，两阶段调用均位于批量计时区间内。性能结果（P-01～P-07，PyTorch 与 aclnn 双路径）随自测报告提供，msprof op 采集时应用只调用一次目标算子，预热和重放由 msprof op 默认配置处理。
+
+### aclnn C++ 基准（tests/benchmark_aclnn.cpp）
+
+双路径口径对标 `aclnnFusedInferAttentionScoreV5` vs `aclnnSageAttention2`（P-01～P-07，固定 per_thread + fp32+fp16），两阶段调用均位于批量 ACL Event 计时区间内；默认 warmup=50、repeats=100（`--warmup`/`--repeats` 可覆盖），用例间 500ms 热冷却，`--output` 落盘 JSON：
+
+```bash
+g++ -O2 -std=c++17 -I$ASCEND_HOME_PATH/aarch64-linux/include     -I$ASCEND_HOME_PATH/opp/vendors/custom_transformer/op_api/include     tests/benchmark_aclnn.cpp -o build/benchmark_aclnn     -L$ASCEND_HOME_PATH/aarch64-linux/lib64 -lascendcl -lopapi
+./build/benchmark_aclnn --warmup 50 --repeats 100 --output build/aclnn_bench.json
+```
 
 ## 目录说明
 

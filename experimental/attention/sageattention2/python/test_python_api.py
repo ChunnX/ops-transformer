@@ -9,12 +9,22 @@
 """Comprehensive Python API acceptance test suite for SageAttention2 on Ascend 950PR.
 
 Covers task specification requirements (SageAttention2_task_doc.md §2.1 ~ §2.4):
-- TC-01: Basic functionality & dtype (FP16/BF16, causal/non-causal, HND/NHD)
-- TC-03: Non-contiguous stride handling (stride(-1)==1 with sliced/permuted dimensions)
-- TC-04: LSE normalization factor export & GQA broadcast correction
+- TC-00: Function signatures, default arguments, and core module exports
+- TC-01: Basic functionality & dtype (FP16/BF16, causal/non-causal, HND/NHD) and
+  dispatch fixed to the FP8 PV path
+- TC-02: qk_quant_gran x pv_accum_dtype matrix (per_thread/per_warp x fp32/fp32+fp32/fp32+fp16)
+- TC-03: smooth_k toggle and smooth_v warning/ignore behavior
+- TC-04: LSE export, GQA broadcast correction, and L-B precision gates vs the
+  open-source FP8-path emulation (error ratios max<=2 / mean<=1.2 / RMSE<=1.2)
 - TC-05: Head dimension auto-padding & unpadding/cropping (D=48->64, D=96->128, D>128 error)
-- TC-08: Strict 4-tier exception interception (D>128, non-contiguous last dim, causal mismatch, attn_mask, GQA, etc.)
-- TC-10: Seamless SDPA monkey-patch replacement (torch.nn.functional.scaled_dot_product_attention substitution)
+- TC-06: GQA + asymmetric sequence lengths
+- TC-07: Causal attention
+- TC-08: Strict exception interception (D>128, non-contiguous last dim, causal mismatch, attn_mask, GQA, illegal enums)
+- TC-09: Long sequence execution (S>=8K, 16K on NPU)
+- TC-10: Seamless SDPA monkey-patch replacement
+Note: the formal L-A comparison against GPU sageattn_qk_int8_pv_fp8_cuda and
+AscendOpTest acceptance run on real hardware; this suite bounds the numeric
+datapath end-to-end on the CPU golden path (L-B layer).
 """
 
 import math
@@ -129,6 +139,11 @@ class TestSageAttention2PythonAPI(unittest.TestCase):
         q = torch.randn(b, h, s, d, dtype=torch.float16)
         k = torch.randn(b, h, s, d, dtype=torch.float16)
         v = torch.randn(b, h, s, d, dtype=torch.float16)
+        scale = 1.0 / math.sqrt(d)
+        truth = F.scaled_dot_product_attention(
+            q.float(), k.float(), v.float(), scale=scale
+        )
+        results = {}
         for gran in ("per_thread", "per_warp"):
             for accum in ("fp32+fp16", "fp32+fp32", "fp32"):
                 with self.subTest(gran=gran, accum=accum):
@@ -138,6 +153,24 @@ class TestSageAttention2PythonAPI(unittest.TestCase):
                     self.assertEqual(out.shape, (b, h, s, d))
                     self.assertEqual(out.dtype, torch.float16)
                     self.assertFalse(torch.isnan(out).any())
+                    # Every configuration must stay inside the FP8-path error envelope.
+                    self.assertLess((out.float() - truth).abs().max().item(), 0.05)
+                    results[(gran, accum)] = out
+
+        # The knobs must take effect: coarser groups and the FP16 partial roundtrip
+        # each produce a different result rather than an alias of the same datapath.
+        for gran in ("per_thread", "per_warp"):
+            self.assertGreater(
+                (results[(gran, "fp32+fp16")] - results[(gran, "fp32")]).abs().max().item(),
+                0.0,
+                f"{gran}: fp32+fp16 aliased fp32",
+            )
+        for accum in ("fp32+fp16", "fp32+fp32", "fp32"):
+            self.assertGreater(
+                (results[("per_thread", accum)] - results[("per_warp", accum)]).abs().max().item(),
+                0.0,
+                f"{accum}: per_warp aliased per_thread",
+            )
 
     # -------------------------------------------------------------------------
     # TC-03: smooth_k / smooth_v 开关与 warning 行为
@@ -155,16 +188,23 @@ class TestSageAttention2PythonAPI(unittest.TestCase):
         self.assertEqual(out_smooth.shape, (b, h, s, d))
         self.assertEqual(out_no_smooth.shape, (b, h, s, d))
 
-        # smooth_v=True on fp32+fp16 issues warning and succeeds
+        # smooth_v=True on the two-level formats warns and is ignored
+        for accum in ("fp32+fp16", "fp32+fp32"):
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter("always")
+                out_v = sageattn_qk_int8_pv_fp8_asc(q, k, v, smooth_v=True, pv_accum_dtype=accum)
+                self.assertEqual(out_v.shape, (b, h, s, d))
+                self.assertTrue(
+                    any("smooth_v" in str(item.message) and "ignored" in str(item.message) for item in w),
+                    f"expected smooth_v ignore warning for {accum}",
+                )
+
+        # smooth_v=True on single-level fp32 is honored without warning
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
-            out_v16 = sageattn_qk_int8_pv_fp8_asc(q, k, v, smooth_v=True, pv_accum_dtype="fp32+fp16")
-            self.assertEqual(out_v16.shape, (b, h, s, d))
-            self.assertTrue(any("smooth_v is not supported" in str(item.message) for item in w))
-
-        # smooth_v=True on fp32 succeeds
-        out_v32 = sageattn_qk_int8_pv_fp8_asc(q, k, v, smooth_v=True, pv_accum_dtype="fp32")
-        self.assertEqual(out_v32.shape, (b, h, s, d))
+            out_v32 = sageattn_qk_int8_pv_fp8_asc(q, k, v, smooth_v=True, pv_accum_dtype="fp32")
+            self.assertEqual(out_v32.shape, (b, h, s, d))
+            self.assertFalse(any("smooth_v" in str(item.message) and "ignored" in str(item.message) for item in w))
 
     # -------------------------------------------------------------------------
     # 非连续跨步与 Stride 适应 (Non-contiguous strides with stride(-1)==1)
@@ -245,6 +285,145 @@ class TestSageAttention2PythonAPI(unittest.TestCase):
         self.assertEqual(out_nhd.shape, (b, sq, hq, d))
         self.assertEqual(lse_nhd.shape, (b, hq, sq))
         self.assertEqual(lse_nhd.dtype, torch.float32)
+
+    # -------------------------------------------------------------------------
+    # TC-01 补充：sageattn 固定分发到 FP8 PV 路径（pv_accum_dtype 默认下沉值）
+    # -------------------------------------------------------------------------
+    def test_tc01_dispatch_targets_fp8_pv(self):
+        """TC-01: sageattn must dispatch to the FP8 PV path with fp32+fp16 by default."""
+        from sageattention2 import _ops
+        if _ops._FORWARD_FN is None:
+            self.skipTest("NPU extension not loaded; dispatch interception requires the device build")
+        captured = {}
+        original = _ops._FORWARD_FN
+
+        def spy(*args, **kwargs):
+            captured["pv_accum_dtype"] = args[7]
+            captured["qk_quant_gran"] = args[5]
+            return original(*args, **kwargs)
+
+        q = torch.randn(1, 2, 128, 64, dtype=torch.float16, device="npu")
+        k = torch.randn(1, 2, 128, 64, dtype=torch.float16, device="npu")
+        v = torch.randn(1, 2, 128, 64, dtype=torch.float16, device="npu")
+        _ops._FORWARD_FN = spy
+        try:
+            sageattn(q, k, v)
+        finally:
+            _ops._FORWARD_FN = original
+        self.assertEqual(captured.get("pv_accum_dtype"), "fp32+fp16")
+        self.assertEqual(captured.get("qk_quant_gran"), "per_thread")
+
+    # -------------------------------------------------------------------------
+    # TC-04 补充：L-B 精度门限（vs 开源 FP8 路径数值仿真的误差比）+ LSE 数值
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def _open_source_pv_fp8(q, k, v, sm_scale, is_causal, q_group=4, k_group=16):
+        """Open-source SageAttention2 sm89 FP8-path numeric emulation (CPU).
+
+        Mirrors thu-ml/SageAttention per_thread granularity: per-4-token Q scales
+        and per-16-token K scales over the full head dim after smooth_k,
+        per-channel FP8 E4M3 V over the whole sequence, ln(448)-shifted online
+        softmax with FP16 scores, and fp32+fp16 two-level accumulation. Groups
+        are configurable so per_warp (32/64) is compared under its own config.
+        """
+        b, hq, sq, d = q.shape
+        hk, sk = k.shape[1:3]
+
+        def group_int8(x, group):
+            pad = (-x.shape[-2]) % group
+            xp = torch.nn.functional.pad(x.float(), (0, 0, 0, pad))
+            g = xp.reshape(*x.shape[:-2], -1, group, x.shape[-1])
+            amax = g.abs().amax(dim=(-2, -1), keepdim=True)
+            scale = torch.where(amax > 0, amax / 127.0, torch.ones_like(amax))
+            q8 = (g / scale).round().clamp(-127, 127)
+            row_scale = (
+                scale.expand(-1, -1, -1, group, -1)
+                .reshape(*x.shape[:-2], -1)[..., : x.shape[-2], None]
+            )
+            return q8.reshape(*x.shape[:-2], -1, x.shape[-1])[..., : x.shape[-2], :], row_scale
+
+        mean_k = k.float().mean(-2, keepdim=True)
+        q8, qs = group_int8(q, q_group)
+        k8, ks = group_int8(k.float() - mean_k, k_group)
+        vam = v.float().abs().amax(-2, keepdim=True)
+        vscale = torch.where(vam > 0, vam / 448.0, torch.ones_like(vam))
+        v_deq = (v.float() / vscale).clamp(-448, 448).to(torch.float8_e4m3fn).float() * vscale
+
+        out = torch.zeros(b, hq, sq, d, dtype=torch.float32)
+        m = torch.full((b, hq, sq, 1), -torch.inf)
+        den = torch.zeros_like(m)
+        log448 = math.log(448.0)
+        for start in range(0, sk, 128):
+            s_int = q8.float() @ k8[:, :, start : start + 128].float().transpose(-2, -1)
+            scores = (s_int * (qs * ks[:, :, start : start + 128].transpose(-2, -1)) * sm_scale).half()
+            if is_causal:
+                mask = torch.arange(start, min(start + 128, sk))[None, :] > torch.arange(sq)[:, None]
+                scores = scores.masked_fill(mask, -torch.inf)
+            bm = scores.float().amax(-1, keepdim=True) - log448
+            nm = torch.maximum(bm, m)
+            alpha = torch.where(torch.isfinite(m - nm), (m - nm).exp(), torch.zeros_like(m - nm))
+            prob = (scores.float() - nm).exp()
+            p8 = prob.clamp(max=448.0).to(torch.float8_e4m3fn).float()
+            den = den * alpha + p8.sum(-1, keepdim=True)
+            partial = (p8 @ v_deq[:, :, start : start + 128]).half().float()
+            out = out * alpha + partial
+            m = nm
+        result = (out / den).to(q.dtype).float()
+        lse = (m.squeeze(-1) + den.squeeze(-1).log()) + (q.float() * mean_k).sum(-1) * sm_scale
+        return result, lse
+
+    def test_tc04b_lb_precision_gates(self):
+        """TC-04 (L-B layer): error ratios vs FP32 SDPA within max<=2 / mean<=1.2 / RMSE<=1.2.
+
+        Compares the CPU golden datapath (the numerics registered as the CPU
+        backend) against an independent open-source FP8-path emulation, both
+        measured against the FP32 SDPA ground truth, per task spec "per_thread
+        vs per_warp are compared under their own configuration". The formal
+        L-A layer (GPU *_cuda golden via AscendOpTest) runs on real hardware
+        and is out of scope for this host-side suite.
+        """
+        try:
+            from sageattention2.reference import attention as cpu_golden
+        except ImportError:
+            self.skipTest("reference golden unavailable")
+        cases = [
+            # (heads, seq, dim, dtype, causal, gran groups)
+            (2, 512, 64, torch.float16, False, (4, 16)),
+            (2, 1024, 128, torch.float16, True, (4, 16)),
+            (1, 512, 128, torch.bfloat16, False, (4, 16)),
+            (2, 512, 128, torch.float16, False, (32, 64)),  # per_warp 同配置对标
+        ]
+        for heads, seq, dim, dtype, causal, (qg, kg) in cases:
+            with self.subTest(heads=heads, seq=seq, dim=dim, dtype=dtype, causal=causal, groups=(qg, kg)):
+                q = torch.randn(1, heads, seq, dim, dtype=dtype)
+                k = torch.randn(1, heads, seq, dim, dtype=dtype)
+                v = torch.randn(1, heads, seq, dim, dtype=dtype)
+                scale = 1.0 / math.sqrt(dim)
+
+                npu_out, npu_lse = cpu_golden(
+                    q, k, v, sm_scale=scale, is_causal=causal,
+                    qk_quant_gran="per_thread" if qg == 4 else "per_warp",
+                    return_lse=True,
+                )
+                gpu_out, gpu_lse = self._open_source_pv_fp8(q, k, v, scale, causal, qg, kg)
+
+                truth = F.scaled_dot_product_attention(
+                    q.float(), k.float(), v.float(), is_causal=causal, scale=scale
+                )
+                err = (npu_out.float() - truth).abs()
+                berr = (gpu_out - truth).abs()
+                ratio_max = (err.amax() / berr.amax().clamp_min(1e-9)).item()
+                ratio_mean = (err.mean() / berr.mean().clamp_min(1e-12)).item()
+                ratio_rmse = (
+                    err.pow(2).mean().sqrt() / berr.pow(2).mean().sqrt().clamp_min(1e-12)
+                ).item()
+                self.assertLessEqual(ratio_max, 2.0, f"L-B max ratio {ratio_max:.3f}")
+                self.assertLessEqual(ratio_mean, 1.2, f"L-B mean ratio {ratio_mean:.3f}")
+                self.assertLessEqual(ratio_rmse, 1.2, f"L-B rmse ratio {ratio_rmse:.3f}")
+
+                # LSE：两条量化路径对同一契约量的偏差（log 域，FP16 噪声量级）
+                lse_rel = ((npu_lse - gpu_lse).abs() / npu_lse.abs().clamp_min(1.0)).amax().item()
+                self.assertLessEqual(lse_rel, 5e-2, f"LSE relative deviation {lse_rel:.4f}")
 
     # -------------------------------------------------------------------------
     # TC-05: 特征维度自动补齐与裁剪 (Head dimension padding to 64 or 128)
@@ -338,20 +517,30 @@ class TestSageAttention2PythonAPI(unittest.TestCase):
                 diff = (out_causal[:, :, 0, :] - out_modified[:, :, 0, :]).abs().max()
                 self.assertLess(diff.item(), 0.05)
 
-                # Strict causality without sequence-wide meanK: past tokens strictly independent of future keys
+                # Grouped INT8 K scales span 16 tokens and MXFP8 V scales span 32,
+                # so a group's scale sees the tokens sharing that group. Exact
+                # independence therefore holds across whole scale groups: without
+                # the sequence-wide meanK, rows below a group boundary are
+                # bit-identical when only later groups change.
+                boundary = 32
+                k_future = k.clone()
+                v_future = v.clone()
+                k_future[:, :, boundary:, :] = torch.randn_like(k_future[:, :, boundary:, :])
+                v_future[:, :, boundary:, :] = torch.randn_like(v_future[:, :, boundary:, :])
                 out_exact = sageattn(q, k, v, is_causal=True, smooth_k=False)
-                out_exact_mod = sageattn(q, k_modified, v_modified, is_causal=True, smooth_k=False)
-                diff_exact = (out_exact[:, :, 0, :] - out_exact_mod[:, :, 0, :]).abs().max()
+                out_exact_mod = sageattn(q, k_future, v_future, is_causal=True, smooth_k=False)
+                diff_exact = (out_exact[:, :, :boundary, :] - out_exact_mod[:, :, :boundary, :]).abs().max()
                 self.assertEqual(diff_exact.item(), 0.0)
 
-                # Midpoint causality without smooth_k
-                mid = s // 2
+                # Midpoint causality at an aligned boundary without smooth_k
+                mid = (s // 2) // boundary * boundary
+                self.assertGreaterEqual(mid, boundary)
                 k_mid = k.clone()
                 v_mid = v.clone()
-                k_mid[:, :, mid + 1 :, :] = torch.randn_like(k_mid[:, :, mid + 1 :, :])
-                v_mid[:, :, mid + 1 :, :] = torch.randn_like(v_mid[:, :, mid + 1 :, :])
+                k_mid[:, :, mid:, :] = torch.randn_like(k_mid[:, :, mid:, :])
+                v_mid[:, :, mid:, :] = torch.randn_like(v_mid[:, :, mid:, :])
                 out_mid = sageattn(q, k_mid, v_mid, is_causal=True, smooth_k=False)
-                diff_mid = (out_exact[:, :, : mid + 1, :] - out_mid[:, :, : mid + 1, :]).abs().max()
+                diff_mid = (out_exact[:, :, :mid, :] - out_mid[:, :, :mid, :]).abs().max()
                 self.assertEqual(diff_mid.item(), 0.0)
 
     # -------------------------------------------------------------------------
@@ -372,9 +561,11 @@ class TestSageAttention2PythonAPI(unittest.TestCase):
         with self.assertRaises(ValueError):
             sageattn(q, k, v, tensor_layout="BSND")
 
-        # 3. Invalid qk_quant_gran
-        with self.assertRaises(ValueError):
-            sageattn_qk_int8_pv_fp8_asc(q, k, v, qk_quant_gran="per_head")
+        # 3. Invalid qk_quant_gran (only per_thread and per_warp are accepted)
+        for gran in ("per_head", "per_token", "per_block"):
+            with self.subTest(qk_quant_gran=gran):
+                with self.assertRaises(ValueError):
+                    sageattn_qk_int8_pv_fp8_asc(q, k, v, qk_quant_gran=gran)
 
         # 4. Invalid pv_accum_dtype
         with self.assertRaises(ValueError):
@@ -418,16 +609,20 @@ class TestSageAttention2PythonAPI(unittest.TestCase):
             sageattn_qk_int8_pv_fp8_asc(
                 q, k, v, smooth_v=True, pv_accum_dtype="fp32+fp16"
             )
-            self.assertTrue(any("smooth_v is not supported" in str(item.message) for item in w))
+            self.assertTrue(any("smooth_v is ignored" in str(item.message) for item in w))
 
     # -------------------------------------------------------------------------
     # TC-09: 长序列处理 (S >= 4096 / S >= 8192)
     # -------------------------------------------------------------------------
     def test_tc09_long_sequence_handling(self):
-        """TC-09: Verify long sequence execution (S=4096 / S=8192)."""
+        """TC-09: Verify long sequence execution (S>=8K; 16K tier on NPU).
+
+        The CPU fallback covers reduced sizes as a smoke test only; the task
+        spec's 16K tier is asserted on NPU where TC-09 is formally accepted.
+        """
         is_npu = hasattr(torch, "npu") and torch.npu.is_available()
         device = "npu" if is_npu else "cpu"
-        seq_lens = [4096, 8192] if is_npu else [512, 1024]
+        seq_lens = [4096, 8192, 16384] if is_npu else [512, 1024]
         heads = 4 if is_npu else 2
         for s in seq_lens:
             with self.subTest(seq_len=s):
@@ -546,7 +741,7 @@ class TestSageAttention2PythonAPI(unittest.TestCase):
 
 def main():
     print("=" * 80)
-    print("  [SageAttention2 Python API Acceptance Test Suite (TC-01, TC-03, TC-04, TC-05, TC-08, TC-10)]")
+    print("  [SageAttention2 Python API Acceptance Test Suite (TC-00 ~ TC-10, 含 L-B 精度门限)]")
     print("=" * 80)
     suite = unittest.TestLoader().loadTestsFromTestCase(TestSageAttention2PythonAPI)
     runner = unittest.TextTestRunner(verbosity=2)

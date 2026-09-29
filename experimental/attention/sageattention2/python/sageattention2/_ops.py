@@ -34,6 +34,7 @@ class _FastPathPlan:
         "qk_quant_gran",
         "pv_accum_dtype",
         "smooth_k",
+        "smooth_v",
         "return_lse",
         "sm_scale",
         "scale",
@@ -59,6 +60,7 @@ class _FastPathPlan:
         qk_quant_gran: str,
         pv_accum_dtype: str,
         smooth_k: bool,
+        smooth_v: bool,
         return_lse: bool,
         sm_scale: Optional[float],
         scale: float,
@@ -80,6 +82,7 @@ class _FastPathPlan:
         self.qk_quant_gran = qk_quant_gran
         self.pv_accum_dtype = pv_accum_dtype
         self.smooth_k = smooth_k
+        self.smooth_v = smooth_v
         self.return_lse = return_lse
         self.sm_scale = sm_scale
         self.scale = scale
@@ -149,8 +152,8 @@ def _validate(q, k, v, layout, causal, gran, accum, kwargs):
     """Validate input tensors and configurations. Returns canonical (HND) views."""
     if layout != "HND" and layout != "NHD":
         raise ValueError("tensor_layout must be HND or NHD")
-    if gran != "per_thread" and gran != "per_warp" and gran != "per_token":
-        raise ValueError("qk_quant_gran must be per_thread, per_warp or per_token")
+    if gran != "per_thread" and gran != "per_warp":
+        raise ValueError("qk_quant_gran must be per_thread or per_warp")
     if accum != "fp32+fp16" and accum != "fp32+fp32" and accum != "fp32":
         raise ValueError("pv_accum_dtype must be fp32+fp16, fp32+fp32 or fp32")
     if kwargs:
@@ -219,7 +222,7 @@ _library = torch.library.Library("sageattention2", "DEF")
 _library.define(
     'forward(Tensor q, Tensor k, Tensor v, *, str tensor_layout="HND", '
     'bool is_causal=False, str qk_quant_gran="per_thread", float? sm_scale=None, '
-    'str pv_accum_dtype="fp32+fp16", bool smooth_k=True, '
+    'str pv_accum_dtype="fp32+fp16", bool smooth_k=True, bool smooth_v=False, '
     'bool return_lse=False) -> (Tensor, Tensor?)'
 )
 
@@ -236,6 +239,7 @@ def _meta(
     sm_scale=None,
     pv_accum_dtype="fp32+fp16",
     smooth_k=True,
+    smooth_v=False,
     return_lse=False,
 ):
     qc, _, _ = _validate(
@@ -262,6 +266,7 @@ def _npu(
     sm_scale=None,
     pv_accum_dtype="fp32+fp16",
     smooth_k=True,
+    smooth_v=False,
     return_lse=False,
 ):
     return _get_extension().forward(
@@ -274,6 +279,7 @@ def _npu(
         sm_scale,
         pv_accum_dtype,
         smooth_k,
+        smooth_v,
         return_lse,
     )
 
@@ -290,6 +296,7 @@ def _cpu(
     sm_scale=None,
     pv_accum_dtype="fp32+fp16",
     smooth_k=True,
+    smooth_v=False,
     return_lse=False,
 ):
     from .reference import attention
@@ -302,6 +309,9 @@ def _cpu(
             sm_scale=sm_scale,
             is_causal=is_causal,
             smooth_k=smooth_k,
+            smooth_v=smooth_v,
+            qk_quant_gran=qk_quant_gran,
+            pv_accum_dtype=pv_accum_dtype,
             tensor_layout=tensor_layout,
             return_lse=True,
         )
@@ -326,6 +336,9 @@ def _cpu(
             sm_scale=sm_scale,
             is_causal=is_causal,
             smooth_k=smooth_k,
+            smooth_v=smooth_v,
+            qk_quant_gran=qk_quant_gran,
+            pv_accum_dtype=pv_accum_dtype,
             tensor_layout=tensor_layout,
             return_lse=False,
         )
@@ -333,6 +346,12 @@ def _cpu(
 
 
 _forward_op = torch.ops.sageattention2.forward
+
+
+def _effective_smooth_v(smooth_v: bool, pv_accum_dtype: str) -> bool:
+    """V centering feeds back only into a single-level FP32 PV state; the other
+    formats keep the open-source warning-and-ignore behaviour."""
+    return smooth_v and pv_accum_dtype == "fp32"
 
 
 def _build_plan(
@@ -365,12 +384,7 @@ def _build_plan(
     if not math.isfinite(scale) or abs(scale) > 3.4028234663852886e38:
         raise ValueError("invalid FP32 sm_scale")
 
-    if smooth_v and pv_accum_dtype in ("fp32+fp16", "fp32+fp32"):
-        warnings.warn(
-            f"smooth_v is not supported when pv_accum_dtype is {pv_accum_dtype}, smooth_v is ignored and set to False",
-            UserWarning,
-            stacklevel=3,
-        )
+    effective_smooth_v = _effective_smooth_v(smooth_v, pv_accum_dtype)
 
     target_d = 64 if d_orig <= 64 else 128
     need_pad = d_orig < target_d
@@ -394,6 +408,7 @@ def _build_plan(
         qk_quant_gran=qk_quant_gran,
         pv_accum_dtype=pv_accum_dtype,
         smooth_k=smooth_k,
+        smooth_v=effective_smooth_v,
         return_lse=return_lse,
         sm_scale=sm_scale,
         scale=scale,
@@ -418,6 +433,7 @@ def _plan_matches(
     sm_scale: Optional[float],
     pv_accum_dtype: str,
     smooth_k: bool,
+    smooth_v: bool,
     return_lse: bool,
 ) -> bool:
     """Whether a cached plan is valid for these exact inputs; anything else needs _validate."""
@@ -440,6 +456,7 @@ def _plan_matches(
         and return_lse == plan.return_lse
         and sm_scale == plan.sm_scale
         and smooth_k == plan.smooth_k
+        and _effective_smooth_v(smooth_v, pv_accum_dtype) == plan.smooth_v
         and qk_quant_gran == plan.qk_quant_gran
         and pv_accum_dtype == plan.pv_accum_dtype
     )
@@ -462,7 +479,16 @@ def _dispatch(
     """Dispatch with cached execution plans for repeated inference calls."""
     global _LAST_PLAN, _PLAN_CACHE
 
-    cacheable = not kwargs and not smooth_v
+    # smooth_v 的告警必须在 plan 缓存命中路径上也触发：缓存匹配用的是
+    # effective smooth_v（两段累加下恒为 False），否则告警会被缓存吞掉。
+    if smooth_v and pv_accum_dtype in ("fp32+fp16", "fp32+fp32"):
+        warnings.warn(
+            f'smooth_v is ignored unless pv_accum_dtype is "fp32", got {pv_accum_dtype}',
+            UserWarning,
+            stacklevel=3,
+        )
+
+    cacheable = not kwargs
     plan = _LAST_PLAN
     matched = (
         cacheable
@@ -478,6 +504,7 @@ def _dispatch(
             sm_scale,
             pv_accum_dtype,
             smooth_k,
+            smooth_v,
             return_lse,
         )
     )
@@ -494,6 +521,7 @@ def _dispatch(
                 qk_quant_gran,
                 pv_accum_dtype,
                 smooth_k,
+                _effective_smooth_v(smooth_v, pv_accum_dtype),
                 return_lse,
                 sm_scale,
             )
@@ -511,6 +539,7 @@ def _dispatch(
                     sm_scale,
                     pv_accum_dtype,
                     smooth_k,
+                    smooth_v,
                     return_lse,
                 )
             ):
@@ -572,6 +601,7 @@ def _dispatch(
             scale,
             pv_accum_dtype,
             smooth_k,
+            plan.smooth_v,
             return_lse,
         )
     else:
@@ -585,6 +615,7 @@ def _dispatch(
             sm_scale=scale,
             pv_accum_dtype=pv_accum_dtype,
             smooth_k=smooth_k,
+            smooth_v=plan.smooth_v,
             return_lse=return_lse,
         )
 

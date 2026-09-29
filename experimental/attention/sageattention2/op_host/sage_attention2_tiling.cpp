@@ -119,13 +119,28 @@ ge::graphStatus Tile(gert::TilingContext *c)
     auto smooth = attrs->GetAttrPointer<bool>(1);
     auto causal = attrs->GetAttrPointer<bool>(2);
     auto lse = attrs->GetAttrPointer<bool>(3);
-    if (!sm || !smooth || !causal || !lse || !std::isfinite(*sm) || (*causal && p.sq != p.sk)) {
+    auto gran = attrs->GetAttrPointer<int64_t>(4);
+    auto accum = attrs->GetAttrPointer<int64_t>(5);
+    auto smoothV = attrs->GetAttrPointer<bool>(6);
+    if (!sm || !smooth || !causal || !lse || !gran || !accum || !smoothV || !std::isfinite(*sm) ||
+        (*causal && p.sq != p.sk)) {
+        return Failure(__LINE__);
+    }
+    if (*gran < 0 || *gran >= static_cast<int64_t>(SageQuantGran::COUNT) ||
+        *accum >= static_cast<int64_t>(SagePvAccum::COUNT)) {
         return Failure(__LINE__);
     }
     p.smScale = *sm;
     p.smoothK = *smooth;
     p.causal = *causal;
     p.returnLse = *lse;
+    const bool perWarp = (*gran == static_cast<int64_t>(SageQuantGran::PER_WARP));
+    p.qg = perWarp ? 32U : 4U;
+    p.kg = perWarp ? 64U : 16U;
+    p.accum = static_cast<uint32_t>(*accum);
+    // V centering only feeds back into an FP32 PV state; the other formats
+    // keep the open-source warning-and-ignore behaviour.
+    p.smoothV = (*smoothV && p.accum == static_cast<uint32_t>(SagePvAccum::FP32)) ? 1U : 0U;
     p.qs[2] = p.d;
     p.qs[1] = uint64_t(p.sq) * p.d;
     p.qs[0] = uint64_t(p.hq) * p.qs[1];

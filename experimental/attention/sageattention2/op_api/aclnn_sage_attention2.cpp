@@ -17,15 +17,17 @@
 #include "opdev/make_op_executor.h"
 #include "opdev/op_dfx.h"
 #include "opdev/platform.h"
+#include "../op_kernel/params.h"
 using namespace op;
 namespace l0op {
 OP_TYPE_REGISTER(SageAttention2);
 
 aclnnStatus BuildSage(const aclTensor *q, const aclTensor *k, const aclTensor *v, float scale, bool smooth, bool causal,
-                      bool returnLse, const aclTensor *out, const aclTensor *lse, aclOpExecutor *executor)
+                      bool returnLse, int64_t gran, int64_t accum, bool smoothV, const aclTensor *out,
+                      const aclTensor *lse, aclOpExecutor *executor)
 {
     return ADD_TO_LAUNCHER_LIST_AICORE(SageAttention2, OP_INPUT(q, k, v), OP_OUTPUT(out, lse),
-                                       OP_ATTR(scale, smooth, causal, returnLse));
+                                       OP_ATTR(scale, smooth, causal, returnLse, gran, accum, smoothV));
 }
 } // namespace l0op
 namespace {
@@ -67,23 +69,31 @@ extern "C" aclnnStatus aclnnSageAttention2GetWorkspaceSize(const aclTensor *q, c
     }
     *workspaceSize = 0;
     *executor = nullptr;
-    const bool perToken = std::strcmp(qkQuantGran, "per_token") == 0;
-    if ((!perToken && std::strcmp(qkQuantGran, "per_thread") != 0 && std::strcmp(qkQuantGran, "per_warp") != 0) ||
-        !std::isfinite(smScale) ||
+    const int64_t gran = std::strcmp(qkQuantGran, "per_thread") == 0
+                             ? static_cast<int64_t>(SageQuantGran::PER_THREAD)
+                             : (std::strcmp(qkQuantGran, "per_warp") == 0 ? static_cast<int64_t>(SageQuantGran::PER_WARP)
+                                                                          : -1);
+    if (gran < 0 || !std::isfinite(smScale) ||
         std::abs(smScale) > static_cast<double>(std::numeric_limits<float>::max())) {
         return ACLNN_ERR_PARAM_INVALID;
     }
-    if (!pvAccumDtype || (std::strcmp(pvAccumDtype, "fp32+fp16") != 0 &&
-                          std::strcmp(pvAccumDtype, "fp32+fp32") != 0 &&
-                          std::strcmp(pvAccumDtype, "fp32") != 0)) {
+    const int64_t accum =
+        pvAccumDtype == nullptr
+            ? -1
+            : (std::strcmp(pvAccumDtype, "fp32+fp16") == 0
+                   ? static_cast<int64_t>(SagePvAccum::FP32_FP16)
+                   : (std::strcmp(pvAccumDtype, "fp32+fp32") == 0
+                          ? static_cast<int64_t>(SagePvAccum::FP32_FP32)
+                          : (std::strcmp(pvAccumDtype, "fp32") == 0 ? static_cast<int64_t>(SagePvAccum::FP32) : -1)));
+    if (accum < 0) {
         return ACLNN_ERR_PARAM_INVALID;
     }
     bool nhd = std::strcmp(tensorLayout, "NHD") == 0;
     if (!nhd && std::strcmp(tensorLayout, "HND") != 0) {
         return ACLNN_ERR_PARAM_INVALID;
     }
-    if (smoothV && (std::strcmp(pvAccumDtype, "fp32+fp16") == 0 || std::strcmp(pvAccumDtype, "fp32+fp32") == 0))
-        OP_LOGW("smooth_v is ignored: SageAttention2 uses MXFP8 PV without value centering.");
+    if (smoothV && accum != static_cast<int64_t>(SagePvAccum::FP32))
+        OP_LOGW("smooth_v is ignored unless pv_accum_dtype is \"fp32\".");
     if (!TensorValid(q) || !TensorValid(k) || !TensorValid(v) || !TensorValid(out) ||
         q->GetDataType() != k->GetDataType() || q->GetDataType() != v->GetDataType() ||
         q->GetDataType() != out->GetDataType() || q->GetViewShape() != out->GetViewShape()) {
@@ -131,8 +141,8 @@ extern "C" aclnnStatus aclnnSageAttention2GetWorkspaceSize(const aclTensor *q, c
     if (!result || !resultLse) {
         return ACLNN_ERR_INNER_NULLPTR;
     }
-    auto ret = l0op::BuildSage(qc, kc, vc, static_cast<float>(smScale), smoothK, isCausal, returnLse, result, resultLse,
-                               owner.get());
+    auto ret = l0op::BuildSage(qc, kc, vc, static_cast<float>(smScale), smoothK, isCausal, returnLse, gran, accum,
+                               smoothV, result, resultLse, owner.get());
     if (ret != ACLNN_SUCCESS) {
         return ret;
     }
