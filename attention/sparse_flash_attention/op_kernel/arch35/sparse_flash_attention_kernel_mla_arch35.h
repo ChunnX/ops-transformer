@@ -356,6 +356,11 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
     crossCoreSyncBufId++;
     l1RightBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID);
     crossCoreSyncBufId++;
+    if ASCEND_IS_AIC {
+        l1RightBuffers.Get().SetCrossCore();
+        l1RightBuffers.Get().SetCrossCore();
+        l1RightBuffers.Get().SetCrossCore();
+    }
     ubBufferManager.Init(sfaPipe, sfaMm1ResultSize * 2 + mm2ResultSize);
     bmm2Buffers.Init(ubBufferManager, mm2ResultSize);
     bmm2Buffers.Get().SetCrossCoreID(crossCoreSyncBufId, crossCoreSyncBufId);
@@ -497,6 +502,9 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
     }
     if ASCEND_IS_AIV {
         vecBlock.UninitLocalBuffer();
+        l1RightBuffers.Get().WaitCrossCore();
+        l1RightBuffers.Get().WaitCrossCore();
+        l1RightBuffers.Get().WaitCrossCore();
     }
 }
 

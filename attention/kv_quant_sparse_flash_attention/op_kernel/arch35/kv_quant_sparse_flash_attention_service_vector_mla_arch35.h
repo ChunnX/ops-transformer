@@ -534,6 +534,7 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ProcessVec0(
     Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD>& v0ResGm, const RunInfo& qsfaRunInfo,
     ConstInfo& qsfaConstInfo)
 {
+    outputL1.WaitCrossCore();
     blockSize = qsfaConstInfo.blockSize;
     maxBlockNumPerBatch = qsfaConstInfo.maxBlockNumPerBatch;
 
