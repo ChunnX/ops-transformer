@@ -12,6 +12,7 @@
 // MhcNormPostPreonly A5入口
 //
 // 文件结构：
+//   mhc_norm_post_preonly_tiling_key.h — TilingKey声明和Kernel类型选择
 //   mhc_norm_post_preonly_common.h       — 常量和类型特征
 //   mhc_norm_post_preonly_kernel.h       — 类定义、初始化、执行和共享计算模块
 //   mhc_norm_post_preonly_kernel_compute.h — 单双AIV共用的计算、IO和同步辅助函数
@@ -21,20 +22,7 @@
 // ========================================================================
 
 #include "arch35/mhc_norm_post_preonly_kernel.h"
-
-// TilingKey三位依次为[dualSibling, returnHInF32, useRmsMid]：
-// 000=单AIV/4op/不返回FP32，001=单AIV/5op/不返回FP32；
-// 010=单AIV/4op/返回FP32，  011=单AIV/5op/返回FP32；
-// 100=双sibling/4op/不返回FP32，101=双sibling/5op/不返回FP32；
-// 110=双sibling/4op/返回FP32，  111=双sibling/5op/返回FP32。
-#define TILING_KEY_SINGLE_4OP 0
-#define TILING_KEY_SINGLE_5OP 1
-#define TILING_KEY_SINGLE_4OP_RETURN_F32 2
-#define TILING_KEY_SINGLE_5OP_RETURN_F32 3
-#define TILING_KEY_DUAL_4OP 4
-#define TILING_KEY_DUAL_5OP 5
-#define TILING_KEY_DUAL_4OP_RETURN_F32 6
-#define TILING_KEY_DUAL_5OP_RETURN_F32 7
+#include "arch35/mhc_norm_post_preonly_tiling_key.h"
 
 extern "C" __global__ __aicore__ void mhc_norm_post_preonly(GM_ADDR h_out, GM_ADDR residual, GM_ADDR h_post,
                                                             GM_ADDR h_res, GM_ADDR phi, GM_ADDR alpha, GM_ADDR bias,
