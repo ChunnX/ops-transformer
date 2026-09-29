@@ -144,7 +144,7 @@ public:
             .ExtendCfgInfo("aclnnSupport.value", "support_aclnn");   // set value of aclnn support
         this->AICore().AddConfig("ascend910b", aicore_config);
         this->AICore().AddConfig("ascend910_93", aicore_config);
-        
+
         OpAICoreConfig aicore_config_95;
         aicore_config_95.Input("token_x")
             .ParamType(REQUIRED)
