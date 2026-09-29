@@ -38,11 +38,11 @@
 
 #pragma once
 
-#include "fit_balance_tiling/fit_balance_types.h"
-#include "fit_balance_tiling/comm_model.h"
-#include "fit_balance_tiling/matmul_model.h"
-#include "fit_balance_tiling/cut_planner.h"
-#include "fit_balance_tiling/solver.h"
+#include "fit_balance_tiling_utils/fit_balance_types.h"
+#include "fit_balance_tiling_utils/comm_model.h"
+#include "fit_balance_tiling_utils/matmul_model.h"
+#include "fit_balance_tiling_utils/cut_planner.h"
+#include "fit_balance_tiling_utils/solver.h"
 
 // 统一入口: 算子侧只传大结构体标定数据 + 键控枚举(原语/顺序/引擎; soc 恒 950)
 inline FitBasedBalanceCtx InitCtx(const FitBalanceTilingArgs &args, LocalMMPosition localMMPosition,

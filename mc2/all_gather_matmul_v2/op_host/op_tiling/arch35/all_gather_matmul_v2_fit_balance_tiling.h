@@ -31,7 +31,7 @@
 
 #include "all_gather_fit_balance_tiling.h"            // 老类(回退分支保留, 迁移收尾后随 P4 删除)
 #include "apace/tiling/core_occupancy_first_tiling.h" // GetCommTilingFromV3/CommTilingData(miss→COF 分派)
-#include "apace/tiling/fit_balance_tiling.h"
+#include "apace/tiling/fit_balance_tiling/fit_balance_tiling.h"
 #include "op_host/op_tiling/formulaic_tiling_datatype.h" // 旧 CutResult/KernelType/TopoType(对外接口沿用旧类型)
 #include "op_host/op_tiling/matmul_formulaic_tiling.h"   // mc2tiling::TilingArgs
 
