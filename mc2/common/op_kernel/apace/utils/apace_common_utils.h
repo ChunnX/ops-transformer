@@ -25,6 +25,7 @@ enum class DataType {
     DT_FLOAT4_E2M1,
     DT_FLOAT8_E4M3FN,
     DT_FLOAT8_E5M2,
+    DT_HIFLOAT4, // HiFloat4: S1P2 element, 2 elements/byte packing, group size 64
 };
 
 // Bias element dtype for the SWAT tiling L1 budget; width mapping mirrors the
@@ -91,7 +92,7 @@ enum class DataType {
 template <mm::DataType dataType, typename T>
 constexpr T GetShapeWithDataType(T size)
 {
-    if constexpr (dataType == mm::DataType::DT_FLOAT4_E2M1) {
+    if constexpr (dataType == mm::DataType::DT_FLOAT4_E2M1 || dataType == mm::DataType::DT_HIFLOAT4) {
         constexpr T shift = static_cast<T>(1);
         return size << shift;
     } else {
@@ -102,11 +103,47 @@ constexpr T GetShapeWithDataType(T size)
 template <mm::DataType dataType, typename T>
 constexpr T GetSizeWithDataType(T shape)
 {
-    if constexpr (dataType == mm::DataType::DT_FLOAT4_E2M1) {
+    if constexpr (dataType == mm::DataType::DT_FLOAT4_E2M1 || dataType == mm::DataType::DT_HIFLOAT4) {
         constexpr T shift = static_cast<T>(1);
         return (shape + static_cast<T>(1)) >> shift;
     } else {
         return shape;
+    }
+}
+
+// K 轴每个量化分组的元素数: MX 每 32 元素 1 组, HiF4 每 64 元素 1 组。
+// 常量名位于 apace_constant.h (MX_GROUP_SIZE / HIF4_GROUP_SIZE); 本头文件可能先于
+// apace_constant.h 被包含, 故保留局部字面值(与 GetBiasDataSize 同策略)。
+template <mm::DataType dataType>
+constexpr uint64_t GetPerGroupSize()
+{
+    if constexpr (dataType == mm::DataType::DT_HIFLOAT4) {
+        return 64UL; // HIF4_GROUP_SIZE
+    } else {
+        return 32UL; // MX_GROUP_SIZE
+    }
+}
+
+// 每分组 scale 字节数: MX 每 32 元素组 1 个 E8M0 字节;
+// HiF4 每 64 元素组 1 个 4 字节 hif4_scale (E6M2 + E1_8 + E1_16), 即 scale shape (M, K/64, 1)。
+template <mm::DataType dataType>
+constexpr uint64_t GetScaleUnitPerGroup()
+{
+    if constexpr (dataType == mm::DataType::DT_HIFLOAT4) {
+        return 4UL; // HIF4_SCALE_UNIT (sizeof(hif4_scale))
+    } else {
+        return 1UL;
+    }
+}
+
+// L1 framing 要求的 scale 单元对齐: MX 按 2 个 E8M0 配对, HiF4 无额外对齐。
+template <mm::DataType dataType>
+constexpr uint64_t GetAlignSize()
+{
+    if constexpr (dataType == mm::DataType::DT_HIFLOAT4) {
+        return 1UL; // TILING_HIF4_MULTI_BASE_SIZE
+    } else {
+        return 2UL; // TILING_MXFP_MULTI_BASE_SIZE
     }
 }
 

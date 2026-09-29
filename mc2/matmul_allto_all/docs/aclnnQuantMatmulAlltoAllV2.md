@@ -7,6 +7,9 @@
 <!-- npu="950" id1 -->
 - <term>Ascend 950PR&950DT系列产品</term>：支持
 <!-- end id1 -->
+<!-- npu="960dt" id1a -->
+- <term>Ascend 960DT</term>：支持
+<!-- end id1a -->
 <!-- npu="A3" id2 -->
 - <term>Atlas A3系列产品</term>：不支持
 <!-- end id2 -->
@@ -358,6 +361,7 @@ aclnnStatus aclnnQuantMatmulAlltoAllV2(
   * 5: perblock
   * 6: mx量化
   * 7: pertoken动态量化
+  * 8: hif4量化（HiFloat4全量化，仅<term>Ascend 960DT</term>支持）
 
 - **返回值**
 
@@ -571,6 +575,30 @@ aclnnStatus aclnnQuantMatmulAlltoAllV2(
       * mx量化场景下，x2必须转置，shape为(H2, H1)，transposeX2为True。
       * mx量化场景下，且x1和x2输入为FLOAT4_E2M1时，H1必须是偶数，且ceil(H1/32)必须是偶数。
   <!-- end id17 -->
+  <!-- npu="960dt" id18 -->
+  - <term>Ascend 960DT</term>：
+    * 量化模式：
+      * 目前支持：mx量化（x1QuantMode=6，x2QuantMode=6）；hif4量化（HiFloat4全量化，x1QuantMode=8，x2QuantMode=8，仅v2接口支持）。
+      * hif4量化场景下不支持bias，biasOptional必须传入空指针。
+    * 类型约束：
+      * 输入输出支持的数据类型组合有：
+        * mx量化：与<term>Ascend 950PR/Ascend 950DT</term>的mx量化组合一致。
+        * hif4量化：
+
+          | x1 | x2 | biasOptional | output | x1QuantMode | x2QuantMode | x1ScaleOptional | x2Scale |
+          | :------: | :------: | :------: | :------: | :------: | :------: | :------: | :------: |
+          | HIFLOAT4 | HIFLOAT4 | - | FLOAT16 | 8 | 8 | HIFLOAT4_SCALE | HIFLOAT4_SCALE |
+          | HIFLOAT4 | HIFLOAT4 | - | BFLOAT16 | 8 | 8 | HIFLOAT4_SCALE | HIFLOAT4_SCALE |
+
+    * 维度约束：
+      * H1范围仅支持[1, 65535]。
+      * hif4量化场景下，H1必须是偶数（4-bit 2:1打包），无32/64/128对齐约束。
+      * hif4量化场景下，x2支持转置（shape为(H2, H1)，transposeX2=True）与非转置（shape为(H1, H2)，transposeX2=False）两种布局；非转置时H2必须是偶数。
+      * hif4量化场景下，x1Scale shape为(BS, ceil(H1/64), 1)，x2Scale shape转置时为(H2, ceil(H1/64), 1)、非转置时为(ceil(H1/64), H2, 1)，数据类型为HIFLOAT4_SCALE（每64个元素共享1个4字节hif4_scale三级元数据）。
+      * hif4量化场景下，groupSize固定为[1, 1, 64]，对应取值4295032896，或传入0由接口自动推导。
+      * hif4量化场景下，y仅支持FLOAT16/BFLOAT16（不支持FLOAT32）。
+      * NPU卡数(rankSize)支持2、4、8、16卡；rankSize=16时comm_mode仅支持ai_cpu。
+  <!-- end id18 -->
 
 * 通算融合算子不支持并发调用，不同的通算融合算子也不支持并发调用。
 * 不支持跨超节点通信，只支持超节点内。

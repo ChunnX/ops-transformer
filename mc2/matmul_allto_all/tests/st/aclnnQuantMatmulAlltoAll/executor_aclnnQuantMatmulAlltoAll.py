@@ -257,3 +257,103 @@ class AclnnQuantMatmulAlltoAll(AclnnBaseApi):
     def __call__(self):
         self.backend.aclnn_x_get_workspace_size()
         self.backend.aclnn_x()
+
+
+# ============================ HiF4 全量化数据生成与 golden ============================
+# HiF4 格式: 64 个 S1P2(4-bit) 元素 + 32bits 三级共享元数据(1 个 hif4_scale, 4 字节)。
+#   Level-1 E6M2 (Byte0): 全局 scale, exponent(6bit, bias=48) + mantissa(2bit)
+#   Level-2 E1_8 (Byte1): 8 个 1-bit 微指数, 每 bit 覆盖 8 个元素, 0->2^0, 1->2^1
+#   Level-3 E1_16 (Byte2~3): 16 个 1-bit 微指数, 每 bit 覆盖 4 个元素(Byte2 低 8 位在前, Byte3 高 8 位在后)
+# 完整数值: V[i] = E6M2 * 2^(E1_8[i//8] + E1_16[i//4]) * S1P2[i]
+#   S1P2: |Sign(1)|Integer(1)|Fraction(2)|, 幅值 = int + frac/4 (0.25 ~ 1.75), 2:1 打包存储
+
+
+def gen_hif4_scale_meta(m, k_groups, seed=None):
+    """生成 hif4_scale 三级元数据: Byte0=E6M2, Byte1=E1_8, Byte2=E1_16_lo, Byte3=E1_16_hi"""
+    import numpy as np
+
+    rng = np.random.default_rng(seed)
+    meta = np.zeros((m, k_groups, 4), dtype=np.uint8)
+    meta[:, :, 0] = rng.integers(0, 0x80, (m, k_groups))   # E6M2
+    meta[:, :, 1] = rng.integers(0, 0x100, (m, k_groups))  # E1_8
+    meta[:, :, 2] = rng.integers(0, 0x100, (m, k_groups))  # E1_16 低 8 位
+    meta[:, :, 3] = rng.integers(0, 0x100, (m, k_groups))  # E1_16 高 8 位
+    return meta
+
+
+def hif4_dequant(data_packed, meta):
+    """HiF4 反量化: V = E6M2 * 2^(E1_8[i//8] + E1_16[i//4]) * S1P2[i], 输出 FP32 [M, K]"""
+    import numpy as np
+
+    m, k_half = data_packed.shape
+    k = k_half * 2
+    data = np.asarray(data_packed, dtype=np.uint8)
+    # 2:1 解包: 低 nibble 为偶数位元素, 高 nibble 为奇数位元素
+    lo = (data & 0x0F).astype(np.int32)
+    hi = ((data >> 4) & 0x0F).astype(np.int32)
+    s1p2_code = np.empty((m, k), dtype=np.int32)
+    s1p2_code[:, 0::2] = lo
+    s1p2_code[:, 1::2] = hi
+    # S1P2 解码: sign(1) + int(1) + frac(2)
+    sign = np.where((s1p2_code >> 3) & 0x1 == 1, -1.0, 1.0)
+    int_part = (s1p2_code >> 2) & 0x1
+    frac_part = s1p2_code & 0x3
+    s1p2_val = sign * (int_part.astype(np.float32) + frac_part.astype(np.float32) * 0.25)
+    # E6M2 解码: exponent(6bit, bias=48) + mantissa(2bit)
+    e6m2_code = meta[:, :, 0].astype(np.int32)
+    e6m2_exp = (e6m2_code >> 2) & 0x3F
+    e6m2_man = e6m2_code & 0x3
+    e6m2_val = np.power(2.0, (e6m2_exp - 48).astype(np.float32)) * (1.0 + e6m2_man.astype(np.float32) * 0.25)
+    # E1_8 / E1_16 微指数: 每 8/4 元素共享 1 bit
+    e1_8_bits = np.unpackbits(meta[:, :, 1].astype(np.uint8), axis=-1)  # (m, k_groups, 8)
+    e1_16 = (meta[:, :, 3].astype(np.uint16) << 8) | meta[:, :, 2].astype(np.uint16)
+    e1_16_bits = np.zeros((m, k_groups, 16), dtype=np.float32)
+    for bit in range(16):
+        e1_16_bits[:, :, bit] = ((e1_16 >> (15 - bit)) & 0x1).astype(np.float32)
+    # 逐元素展开为 [M, K]: 组内第 i 个元素
+    idx = np.arange(k, dtype=np.int64) % 64
+    exp_scale = (e1_8_bits[:, :, idx // 8] * 1.0 + e1_16_bits[:, :, idx // 4])  # (m, k_groups, k)?? -> 按 k 展平
+    # 展平 k_groups 维: 元素 i 属于第 (i // 64) 组
+    group_idx = np.arange(k, dtype=np.int64) // 64
+    scale = e6m2_val[:, group_idx] * np.power(2.0, exp_scale[:, group_idx, np.arange(k)])
+    return (scale * s1p2_val).astype(np.float32)
+
+
+def gen_hif4_case(m, k, n, rank_num, trans_x2=True, y_dtype="bfloat16", seed=None):
+    """生成 HiF4 全量化用例(数据/_scale 载体/反量化 golden)。
+    约束: k 为偶数(无 32/64/128 对齐约束); n % rank_num == 0; 非转置时 n 为偶数; 不支持 bias(不生成)。
+    golden = alltoall_simulate(dequant(x1) @ dequant(x2)).to(y_dtype)
+    """
+    import numpy as np
+    import torch
+
+    assert k % 2 == 0, "k must be even (4-bit 2:1 packing)"
+    assert n % rank_num == 0, "n must be divisible by rank_num"
+    if not trans_x2:
+        assert n % 2 == 0, "n must be even when x2 is non-transposed"
+    rng = np.random.default_rng(seed)
+    k_groups = (k + 63) // 64
+    # x1: (m, k) 沿 K 打包 -> (m, k//2) uint8 载体
+    x1_packed = rng.integers(0, 0x100, (m, k // 2), dtype=np.uint8)
+    x1_scale_meta = gen_hif4_scale_meta(m, k_groups, seed)                    # (m, k_groups, 4)
+    # x2: 转置 (n, k) 沿 K 打包 -> (n, k//2); 非转置 (k, n) 沿 K 逐列打包 -> (k//2, n)
+    if trans_x2:
+        x2_packed = rng.integers(0, 0x100, (n, k // 2), dtype=np.uint8)
+        x2_scale_meta = gen_hif4_scale_meta(n, k_groups, seed)                # (n, k_groups, 4)
+        x2_deq = torch.from_numpy(hif4_dequant(x2_packed, x2_scale_meta))     # (n, k)
+    else:
+        x2_packed = rng.integers(0, 0x100, (k // 2, n), dtype=np.uint8)
+        meta_nk = gen_hif4_scale_meta(n, k_groups, seed)                      # 先按 (n, k_groups) 生成
+        x2_deq = torch.from_numpy(hif4_dequant(x2_packed.T.copy(), meta_nk))  # 转置为 (n, k//2) 后解包 -> (n, k)
+        x2_scale_meta = meta_nk.transpose(1, 0, 2).copy()                     # 交付布局 (k_groups, n, 4)
+    x1_deq = torch.from_numpy(hif4_dequant(x1_packed, x1_scale_meta))         # (m, k)
+    output = torch.matmul(x1_deq, x2_deq.T)                                   # (m, n)
+    # alltoall 模拟: 按目标卡切列 -> 按源卡拼接
+    send_chunks = torch.chunk(output, rank_num, dim=1)                        # rank_num x (m, n/rank_num)
+    golden = torch.cat(list(send_chunks), dim=0)                              # (rank_num*m, n/rank_num)
+    golden = golden.to(getattr(torch, y_dtype))
+    return {
+        "x1_packed": x1_packed, "x2_packed": x2_packed,
+        "x1_scale_meta": x1_scale_meta, "x2_scale_meta": x2_scale_meta,
+        "golden": golden,
+    }
