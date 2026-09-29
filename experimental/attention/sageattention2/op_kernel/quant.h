@@ -223,6 +223,7 @@ __aicore__ void QuantBatch(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADD
         vInput[s] = r.ubBuf.template GetBufferByByte<T>(b + V_INPUT);
         x[s] = r.ubBuf.template GetBufferByByte<float>(b + FLOAT_INPUT);
         mu[s] = r.ubBuf.template GetBufferByByte<float>(b + MEAN);
+        vmean[s] = r.ubBuf.template GetBufferByByte<float>(b + V_MEAN);
         vs[s] = r.ubBuf.template GetBufferByByte<float>(b + MX_SCALE);
         out[s] = r.ubBuf.template GetBufferByByte<int8_t>(b + QK_OUTPUT);
         fp8[s] = r.ubBuf.template GetBufferByByte<float8_e4m3_t>(b + V_OUTPUT);
@@ -268,6 +269,8 @@ __aicore__ void QuantBatch(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADD
                 if (valid)
                     DataCopy(vInput[slot], vg[Offset(p.vs, b, h, token)], 64 * p.dp);
                 DataCopy(mu[slot], mg[(uint64_t(b) * p.hk + h) * p.dp], p.dp);
+                if (p.smoothV)
+                    DataCopy(vmean[slot], vmg[(uint64_t(b) * p.hk + h) * p.dp], p.dp);
             }
             SetFlag<HardEvent::MTE2_V>(static_cast<event_t>(1 + slot));
         }
@@ -295,6 +298,11 @@ __aicore__ void QuantBatch(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADD
             if (info.valid < 64)
                 Duplicate(vInput[slot][info.valid * p.dp], T(0), (64 - info.valid) * p.dp);
             PipeBarrier<PIPE_V>();
+            if (p.smoothV && info.valid) {
+                CenterVRowsVF<T>((__ubuf__ T *)vInput[slot].GetPhyAddr(),
+                                 (__ubuf__ float *)vmean[slot].GetPhyAddr(), p.dp, info.valid);
+                PipeBarrier<PIPE_V>();
+            }
             QuantVRowsMxVF<T, PERMUTE_V>((__ubuf__ T *)vInput[slot].GetPhyAddr(),
                                          (__ubuf__ T *)x[slot].GetPhyAddr(),
                                          (__ubuf__ uint16_t *)vs[slot].GetPhyAddr(),
@@ -316,12 +324,12 @@ __aicore__ void QuantBatch(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADD
     WaitFlag<HardEvent::V_MTE2>(2);
 }
 template <class T, bool PERMUTE_V>
-__aicore__ void Quant(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADDR mxScale, GM_ADDR q8, GM_ADDR k8,
-                      GM_ADDR v8, GM_ADDR qs, GM_ADDR ks, SageParams p)
+__aicore__ void Quant(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADDR vMean, GM_ADDR mxScale, GM_ADDR q8,
+                      GM_ADDR k8, GM_ADDR v8, GM_ADDR qs, GM_ADDR ks, SageParams p)
 {
     // Host tiling pins qs[2]=ks[2]=vs[2]=d, so row-contiguity reduces to d == dp.
     if (p.d == p.dp && p.sq % 64 == 0 && p.sk % 64 == 0) {
-        QuantBatch<T, PERMUTE_V>(q, k, v, mean, mxScale, q8, k8, v8, qs, ks, p);
+        QuantBatch<T, PERMUTE_V>(q, k, v, mean, vMean, mxScale, q8, k8, v8, qs, ks, p);
         return;
     }
     FixedResource r;
@@ -329,8 +337,9 @@ __aicore__ void Quant(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADDR mxS
     qg.SetGlobalBuffer((__gm__ T *)q);
     kg.SetGlobalBuffer((__gm__ T *)k);
     vg.SetGlobalBuffer((__gm__ T *)v);
-    GlobalTensor<float> mg;
+    GlobalTensor<float> mg, vmg;
     mg.SetGlobalBuffer((__gm__ float *)mean);
+    vmg.SetGlobalBuffer((__gm__ float *)vMean);
     GlobalTensor<half> qsg, ksg;
     qsg.SetGlobalBuffer((__gm__ half *)qs);
     ksg.SetGlobalBuffer((__gm__ half *)ks);
@@ -345,7 +354,9 @@ __aicore__ void Quant(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADDR mxS
     constexpr uint32_t X = 16384, MU = 49152, RAW_SCALE = 49664, INVERSE_SCALE = 49920;
     constexpr uint32_t HALF_SCALE = 50176, QK_OUTPUT = 50304, FACTORS = 58496;
     constexpr uint32_t V_INPUT = 65536, V_MAXIMA = 81920, V_OUTPUT = 82944, MX_SCALE = 91136;
+    constexpr uint32_t V_MEAN = 92160;
     static_assert(MX_SCALE + 1024 <= UB_HIGH_WATER, "quant fallback exceeds UB");
+    static_assert(V_MEAN + 128 * sizeof(float) <= UB_HIGH_WATER, "V mean exceeds fallback UB");
     auto input = r.ubBuf.GetBufferByByte<T>(0);
     auto x = r.ubBuf.GetBufferByByte<float>(X);
     auto mu = r.ubBuf.GetBufferByByte<float>(MU);
@@ -393,6 +404,7 @@ __aicore__ void Quant(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADDR mxS
     auto maxima = r.ubBuf.GetBufferByByte<T>(V_MAXIMA);
     auto vOut = r.ubBuf.GetBufferByByte<float8_e4m3_t>(V_OUTPUT);
     auto mx = r.ubBuf.GetBufferByByte<uint16_t>(MX_SCALE);
+    auto vmean = r.ubBuf.GetBufferByByte<float>(V_MEAN);
     for (uint64_t tile = GetBlockIdx(); tile < nk / 64; tile += 2 * p.cores) {
         const uint64_t idx = tile * 64;
         const uint32_t token = idx % p.kp, h = (idx / p.kp) % p.hk, b = idx / p.kp / p.hk;
