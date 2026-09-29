@@ -49,6 +49,7 @@ static const std::string ORI_TOPK_LENGTH_NAME = "ori_topk_length";
 static const std::string CMP_TOPK_LENGTH_NAME = "cmp_topk_length";
 static const std::string A2_A3_PLATFORM_LOG = "A2/A3";
 static const std::string A5_PLATFORM_LOG = "A5";
+static const std::string A6_PLATFORM_LOG = "A6";
 constexpr uint32_t FD_MAX_S2_SPLIT_NUM = 2U;
 constexpr uint32_t BATCH_CONSISTENCY_MAX_REDUCE_BLOCK_NUM = 33U;
 constexpr uint32_t FD_BROADCAST_ELEMS = 8U;
@@ -93,9 +94,49 @@ static bool IsA5Arch(NpuArch npuArch)
     return npuArch == NpuArch::DAV_3510;
 }
 
+static bool IsA6Arch(NpuArch npuArch)
+{
+    return npuArch == NpuArch::DAV_9201 || npuArch == NpuArch::DAV_9202;
+}
+
+static bool IsPowerOfTwo(uint64_t value)
+{
+    return value != 0U && (value & (value - 1U)) == 0U;
+}
+
+static void CalcMagicP(uint32_t blockSize, uint32_t &p, uint32_t &mLow, uint32_t &mHigh)
+{
+    constexpr uint32_t SHIFT_LOW_BOUND = 30U;
+    constexpr uint32_t SHIFT_UP_BOUND = 41U;
+    constexpr uint32_t HIGH_32BIT_SHIFT = 32U;
+    constexpr uint64_t X_MAX = (1ULL << 30U) - 1U;
+    uint64_t multiplier = 1U;
+    p = 0U;
+    if (IsPowerOfTwo(blockSize)) {
+        uint32_t value = blockSize;
+        while ((value >>= 1U) != 0U) {
+            ++p;
+        }
+        mLow = 1U;
+        mHigh = 0U;
+        return;
+    }
+    for (uint32_t shift = SHIFT_LOW_BOUND; shift < SHIFT_UP_BOUND; ++shift) {
+        const uint64_t power = 1ULL << shift;
+        const uint64_t remainder = power % blockSize;
+        const uint64_t error = (blockSize - remainder) % blockSize;
+        if (error == 0U || power > X_MAX * error) {
+            multiplier = (power + blockSize - 1U) / blockSize;
+            p = shift;
+        }
+    }
+    mLow = static_cast<uint32_t>(multiplier);
+    mHigh = static_cast<uint32_t>(multiplier >> HIGH_32BIT_SHIFT);
+}
+
 static bool IsPaBlockSizeSupport(NpuArch npuArch, int32_t blockSize)
 {
-    if (IsA5Arch(npuArch)) {
+    if (IsA5Arch(npuArch) || IsA6Arch(npuArch)) {
         return blockSize >= 1 && blockSize <= static_cast<int32_t>(BLOCK_SIZE_LIMIT);
     }
     return blockSize >= 16U && blockSize <= static_cast<int32_t>(BLOCK_SIZE_LIMIT) && blockSize % 16U == 0;
@@ -386,7 +427,8 @@ ge::graphStatus SMLAInfoParser::GetNpuInfo()
     OP_CHECK_IF(aicNum_ == 0 || aivNum_ == 0, OP_LOGE(opName_, "num of core obtained is 0."), return ge::GRAPH_FAILED);
 
     npuArch_ = ascendcPlatform.GetCurNpuArch();
-    if (npuArch_ != NpuArch::DAV_2201 && npuArch_ != NpuArch::DAV_3510) {
+    if (npuArch_ != NpuArch::DAV_2201 && npuArch_ != NpuArch::DAV_3510 && npuArch_ != NpuArch::DAV_9201 &&
+        npuArch_ != NpuArch::DAV_9202) {
         OP_LOGE(opName_, "Npu Arch Version[%d] is not support.", static_cast<int32_t>(npuArch_));
         return ge::GRAPH_FAILED;
     }
@@ -535,7 +577,7 @@ ge::graphStatus SMLAInfoParser::GetSMLATemplateMode()
         } else if (opParamInfo_.cmpKv.desc == nullptr && opParamInfo_.cmpSparseIndices.tensor == nullptr) {
             if (opParamInfo_.oriSparseIndices.tensor != nullptr) {
                 // A2A3此处dspark用 SWA_TEMPLATE_MODE+hasOri判断；给A5留ORI_SPARSE_TEMPLATE_MODE分支
-                if (IsA5Arch(npuArch_)) {
+                if (IsA5Arch(npuArch_) || IsA6Arch(npuArch_)) {
                     perfMode_ = SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE;
                 } else {
                     // DSpark: oriMaskMode=0 + ori_sparse_indices on SWA kernel path.
@@ -905,8 +947,35 @@ ge::graphStatus SMLAInfoParser::GetMaxBlockNumPerBatch()
 
 ge::graphStatus SMLAInfoParser::GetBlockSize()
 {
-    oriBlockSize_ = GetAxisNum(oriKvShape_, SMLAAxis::Bs, kvLayout_);
-    cmpBlockSize_ = GetAxisNum(cmpKvShape_, SMLAAxis::Bs, kvLayout_);
+    if (kvLayout_ != SMLALayout::PA_BBND) {
+        return ge::GRAPH_SUCCESS;
+    }
+    if (opParamInfo_.oriKv.tensor != nullptr) {
+        oriBlockSize_ = GetAxisNum(oriKvShape_, SMLAAxis::Bs, kvLayout_);
+    }
+    if (opParamInfo_.cmpKv.tensor != nullptr) {
+        cmpBlockSize_ = GetAxisNum(cmpKvShape_, SMLAAxis::Bs, kvLayout_);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus SMLAInfoParser::SmlaGetMagicPM()
+{
+    if (!IsA6Arch(npuArch_) || kvLayout_ != SMLALayout::PA_BBND) {
+        return ge::GRAPH_SUCCESS;
+    }
+    if (oriBlockSize_ <= 0) {
+        OP_LOGE(opName_, "ori block size(%d) must be greater than 0.", oriBlockSize_);
+        return ge::GRAPH_FAILED;
+    }
+    CalcMagicP(static_cast<uint32_t>(oriBlockSize_), oriP_, oriMLow_, oriMHigh_);
+    if (opParamInfo_.cmpKv.tensor != nullptr) {
+        if (cmpBlockSize_ <= 0) {
+            OP_LOGE(opName_, "cmp block size(%d) must be greater than 0.", cmpBlockSize_);
+            return ge::GRAPH_FAILED;
+        }
+        CalcMagicP(static_cast<uint32_t>(cmpBlockSize_), cmpP_, cmpMLow_, cmpMHigh_);
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1022,7 +1091,7 @@ ge::graphStatus SMLAInfoParser::GetActualseqInfo()
             return ge::GRAPH_FAILED;
         }
     }
-    if (!IsA5Arch(npuArch_) && IsNonEmptyOptionalTensor(opParamInfo_.cmpTopkLength.tensor)) {
+    if (!IsA5Arch(npuArch_) && !IsA6Arch(npuArch_) && IsNonEmptyOptionalTensor(opParamInfo_.cmpTopkLength.tensor)) {
         OP_LOGE(opName_, "cmp_topk_length is reserved and does not support non-empty tensor on %s.",
                 A2_A3_PLATFORM_LOG.c_str());
         return ge::GRAPH_FAILED;
@@ -1096,6 +1165,12 @@ void SMLAInfoParser::GenerateInfo(SMLATilingInfo &smlaInfo)
     smlaInfo.sparseBlockSize = 1;
     smlaInfo.oriBlockSize = oriBlockSize_;
     smlaInfo.cmpBlockSize = cmpBlockSize_;
+    smlaInfo.oriP = oriP_;
+    smlaInfo.oriMLow = oriMLow_;
+    smlaInfo.oriMHigh = oriMHigh_;
+    smlaInfo.cmpP = cmpP_;
+    smlaInfo.cmpMLow = cmpMLow_;
+    smlaInfo.cmpMHigh = cmpMHigh_;
     smlaInfo.oriMaxBlockNumPerBatch = oriMaxBlockNumPerBatch_;
     smlaInfo.cmpMaxBlockNumPerBatch = cmpMaxBlockNumPerBatch_;
 
@@ -1125,7 +1200,7 @@ void SMLAInfoParser::GenerateInfo(SMLATilingInfo &smlaInfo)
     smlaInfo.actualLenDimsCmpKV = actualLenDimsCmpKV_;
     smlaInfo.cmpResidualKVSize = cmpResidualKVSize_;
 
-    if (!IsA5Arch(npuArch_)) {
+    if (!IsA5Arch(npuArch_) && !IsA6Arch(npuArch_)) {
         smlaInfo.oriKeyStride0 = 0;
         smlaInfo.cmpKeyStride0 = 0;
     } else {
@@ -1165,9 +1240,9 @@ ge::graphStatus SMLAInfoParser::Parse(SMLATilingInfo &smlaInfo)
     }
     if (ge::GRAPH_SUCCESS != GetN1Size() || ge::GRAPH_SUCCESS != GetN2Size() || ge::GRAPH_SUCCESS != GetGSize() ||
         ge::GRAPH_SUCCESS != GetBatchSize() || ge::GRAPH_SUCCESS != GetQTSize() || ge::GRAPH_SUCCESS != GetS1Size() ||
-        ge::GRAPH_SUCCESS != GetS2Size() || ge::GRAPH_SUCCESS != GetQHeadDim() ||
-        ge::GRAPH_SUCCESS != GetValueHeadDim() || ge::GRAPH_SUCCESS != GetSparseBlockCount() ||
-        ge::GRAPH_SUCCESS != GetSinks()) {
+        ge::GRAPH_SUCCESS != GetS2Size() || ge::GRAPH_SUCCESS != SmlaGetMagicPM() ||
+        ge::GRAPH_SUCCESS != GetQHeadDim() || ge::GRAPH_SUCCESS != GetValueHeadDim() ||
+        ge::GRAPH_SUCCESS != GetSparseBlockCount() || ge::GRAPH_SUCCESS != GetSinks()) {
         return ge::GRAPH_FAILED;
     }
     if (ge::GRAPH_SUCCESS != GetActualseqInfo()) {
@@ -1464,7 +1539,7 @@ ge::graphStatus SMLATilingCheck::CheckSingleParaOriSparseIndices() const
     if (opParamInfo_.oriSparseIndices.tensor == nullptr) {
         return ge::GRAPH_SUCCESS;
     }
-    if (!IsA5Arch(npuArch_)) {
+    if (!IsA5Arch(npuArch_) && !IsA6Arch(npuArch_)) {
         OP_CHECK_IF(smlaInfo_.perfMode != SMLATemplateMode::SWA_TEMPLATE_MODE,
                     OP_LOGE(opName_, "ori_sparse_indices is only supported in SWA mode."), return ge::GRAPH_FAILED);
         OP_CHECK_IF(opParamInfo_.oriMaskMode == nullptr || *opParamInfo_.oriMaskMode != 0U,
@@ -1555,12 +1630,13 @@ ge::graphStatus SMLATilingCheck::CheckSingleParaOriBlockTable() const
                         std::to_string(opParamInfo_.oriBlockTable.tensor->GetStorageShape().GetDim(0)) +
                         ") should be equal to B(" + std::to_string(bSize_) + ")"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!IsPaBlockSizeSupport(npuArch_, oriBlockSize_),
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                    opName_, "ori_kv", ToStringRaw(opParamInfo_.oriKv.tensor->GetStorageShape()).c_str(),
-                    "OriBlockSize_ should be in [1, 1024] on " + A5_PLATFORM_LOG + " or 16-aligned [16, 1024] on " +
-                        A2_A3_PLATFORM_LOG + ", but got: " + std::to_string(oriBlockSize_)),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        !IsPaBlockSizeSupport(npuArch_, oriBlockSize_),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            opName_, "ori_kv", ToStringRaw(opParamInfo_.oriKv.tensor->GetStorageShape()).c_str(),
+            "OriBlockSize_ should be in [1, 1024] on " + (IsA6Arch(npuArch_) ? A6_PLATFORM_LOG : A5_PLATFORM_LOG) +
+                " or 16-aligned [16, 1024] on " + A2_A3_PLATFORM_LOG + ", but got: " + std::to_string(oriBlockSize_)),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1593,7 +1669,8 @@ ge::graphStatus SMLATilingCheck::CheckSingleParaCmpBlockTable() const
         OP_CHECK_IF(!IsPaBlockSizeSupport(npuArch_, cmpBlockSize_),
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                         opName_, "cmp_kv", ToStringRaw(opParamInfo_.oriKv.tensor->GetStorageShape()).c_str(),
-                        "CmpBlockSize should be in [1, 1024] on " + A5_PLATFORM_LOG + " or 16-aligned [16, 1024] on " +
+                        "CmpBlockSize should be in [1, 1024] on " +
+                            (IsA6Arch(npuArch_) ? A6_PLATFORM_LOG : A5_PLATFORM_LOG) + " or 16-aligned [16, 1024] on " +
                             A2_A3_PLATFORM_LOG + ", but got: " + std::to_string(cmpBlockSize_)),
                     return ge::GRAPH_FAILED);
     }
@@ -1731,7 +1808,7 @@ ge::graphStatus SMLATilingCheck::CheckSingleParaCmpResidualKv() const
 
 ge::graphStatus SMLATilingCheck::CheckSingleParaTopkLength() const
 {
-    if (IsA5Arch(npuArch_)) {
+    if (IsA5Arch(npuArch_) || IsA6Arch(npuArch_)) {
         if (opParamInfo_.oriTopkLength.tensor != nullptr) {
             const std::vector<size_t> dimNumList = {DIM_NUM_TWO, DIM_NUM_THREE};
             if (ge::GRAPH_SUCCESS != CheckDtypeSupport(opParamInfo_.oriTopkLength.desc, ORI_TOPK_LENGTH_NAME) ||
@@ -1889,7 +1966,7 @@ ge::graphStatus SMLATilingCheck::CheckExistenceByMap(std::map<std::string, const
 
 ge::graphStatus SMLATilingCheck::CheckParaExistence() const
 {
-    if (npuArch_ == NpuArch::DAV_3510) {
+    if (IsA5Arch(npuArch_) || IsA6Arch(npuArch_)) {
         OP_CHECK_IF((kvLayout_ == SMLALayout::TND && opParamInfo_.cuSeqLensOriKv.tensor == nullptr),
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
                         opName_, "cu_seqlens_ori_kv", "cu_seqlens_ori_kv must be provided when kv layout is TND"),
@@ -1931,13 +2008,14 @@ ge::graphStatus SMLATilingCheck::CheckFeatureShape() const
                     "T_size of q should be greater than 0, but got " + std::to_string(qTSize_)),
                 return ge::GRAPH_FAILED);
 
-    if (IsA5Arch(npuArch_)) {
-        OP_CHECK_IF(n1Size_ < 1 || n1Size_ > 128,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "q",
-                                                          ToStringRaw(opParamInfo_.q.shape->GetStorageShape()).c_str(),
-                                                          "The head num of q should be in [1, 128] on" +
-                                                              A5_PLATFORM_LOG + ", but got " + std::to_string(n1Size_)),
-                    return ge::GRAPH_FAILED);
+    if (IsA5Arch(npuArch_) || IsA6Arch(npuArch_)) {
+        OP_CHECK_IF(
+            n1Size_ < 1 || n1Size_ > 128,
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                opName_, "q", ToStringRaw(opParamInfo_.q.shape->GetStorageShape()).c_str(),
+                "The head num of q should be in [1, 128] on" +
+                    (IsA6Arch(npuArch_) ? A6_PLATFORM_LOG : A5_PLATFORM_LOG) + ", but got " + std::to_string(n1Size_)),
+            return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(!IsPowerOfTwoInRange(n1Size_, 1, 128),
                     OP_LOGE(opName_, "q_head_num should be power of two in [1, 128] on %s, but got %u",
@@ -1978,7 +2056,7 @@ ge::graphStatus SMLATilingCheck::CheckFeatureShape() const
                     return ge::GRAPH_FAILED);
     }
 
-    if (IsA5Arch(npuArch_)) {
+    if (IsA5Arch(npuArch_) || IsA6Arch(npuArch_)) {
         if (opParamInfo_.oriKv.tensor != nullptr) {
             OP_CHECK_IF(gSize_ < 1 || gSize_ > 128,
                         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
@@ -1987,7 +2065,8 @@ ge::graphStatus SMLATilingCheck::CheckFeatureShape() const
                                 Ops::Base::ToString(opParamInfo_.oriKv.tensor->GetStorageShape()),
                             "The value of (the head num of q ceildivided by the head num of ori_kv) "
                             "should be in [1, 128] on " +
-                                A5_PLATFORM_LOG + ", but got " + std::to_string(gSize_)),
+                                (IsA6Arch(npuArch_) ? A6_PLATFORM_LOG : A5_PLATFORM_LOG) + ", but got " +
+                                std::to_string(gSize_)),
                         return ge::GRAPH_FAILED);
         }
         if (opParamInfo_.cmpKv.tensor != nullptr) {
@@ -1998,7 +2077,8 @@ ge::graphStatus SMLATilingCheck::CheckFeatureShape() const
                                 Ops::Base::ToString(opParamInfo_.cmpKv.tensor->GetStorageShape()),
                             "The value of (the head num of q ceildivided by the head num of cmp_kv) "
                             "should be in [1, 128] on " +
-                                A5_PLATFORM_LOG + ", but got " + std::to_string(gSize_)),
+                                (IsA6Arch(npuArch_) ? A6_PLATFORM_LOG : A5_PLATFORM_LOG) + ", but got " +
+                                std::to_string(gSize_)),
                         return ge::GRAPH_FAILED);
         }
     } else {
@@ -2041,32 +2121,35 @@ ge::graphStatus SMLATilingCheck::CheckFeatureShape() const
                     "The dtype of q and ori_kv must be same"),
                 return ge::GRAPH_FAILED);
 
-    if (IsA5Arch(npuArch_)) {
-        OP_CHECK_IF(*opParamInfo_.oriMaskMode != 0 && *opParamInfo_.oriMaskMode != 3 && *opParamInfo_.oriMaskMode != 4,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "ori_mask_mode",
-                                                          std::to_string(*opParamInfo_.oriMaskMode).c_str(),
-                                                          "Ori_mask_mode should be {0, 3, 4} on " + A5_PLATFORM_LOG),
-                    return ge::GRAPH_FAILED);
-        OP_CHECK_IF(*opParamInfo_.cmpMaskMode != 0 && *opParamInfo_.cmpMaskMode != 3,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "cmp_mask_mode",
-                                                          std::to_string(*opParamInfo_.cmpMaskMode).c_str(),
-                                                          "Cmp_mask_mode should be {0, 3} on " + A5_PLATFORM_LOG),
-                    return ge::GRAPH_FAILED);
+    if (IsA5Arch(npuArch_) || IsA6Arch(npuArch_)) {
+        OP_CHECK_IF(
+            *opParamInfo_.oriMaskMode != 0 && *opParamInfo_.oriMaskMode != 3 && *opParamInfo_.oriMaskMode != 4,
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                opName_, "ori_mask_mode", std::to_string(*opParamInfo_.oriMaskMode).c_str(),
+                "Ori_mask_mode should be {0, 3, 4} on " + (IsA6Arch(npuArch_) ? A6_PLATFORM_LOG : A5_PLATFORM_LOG)),
+            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            *opParamInfo_.cmpMaskMode != 0 && *opParamInfo_.cmpMaskMode != 3,
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                opName_, "cmp_mask_mode", std::to_string(*opParamInfo_.cmpMaskMode).c_str(),
+                "Cmp_mask_mode should be {0, 3} on " + (IsA6Arch(npuArch_) ? A6_PLATFORM_LOG : A5_PLATFORM_LOG)),
+            return ge::GRAPH_FAILED);
         OP_CHECK_IF(
             topkValueMode_ != 1,
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "topk_value_mode", std::to_string(topkValueMode_).c_str(),
                                                   "Topk_value_mode should be 1"),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(oriWinLeft_ < -1,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                        opName_, "ori_win_left", std::to_string(oriWinLeft_).c_str(),
-                        "Ori_win_left should be -1(unlimited) or non-negative on " + A5_PLATFORM_LOG),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "ori_win_left", std::to_string(oriWinLeft_).c_str(),
+                                                          "Ori_win_left should be -1(unlimited) or non-negative on " +
+                                                              (IsA6Arch(npuArch_) ? A6_PLATFORM_LOG : A5_PLATFORM_LOG)),
                     return ge::GRAPH_FAILED);
-        OP_CHECK_IF(oriWinRight_ < -1,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                        opName_, "ori_win_right", std::to_string(oriWinRight_).c_str(),
-                        "Ori_win_right should be -1(unlimited) or non-negative on " + A5_PLATFORM_LOG),
-                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            oriWinRight_ < -1,
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "ori_win_right", std::to_string(oriWinRight_).c_str(),
+                                                  "Ori_win_right should be -1(unlimited) or non-negative on " +
+                                                      (IsA6Arch(npuArch_) ? A6_PLATFORM_LOG : A5_PLATFORM_LOG)),
+            return ge::GRAPH_FAILED);
     } else {
         if (smlaInfo_.perfMode == SMLATemplateMode::CSA_TEMPLATE_MODE ||
             smlaInfo_.perfMode == SMLATemplateMode::HCA_TEMPLATE_MODE) {
@@ -2287,7 +2370,7 @@ void SparseFlashMlaTiling::SplitBalanced(SMLATilingInfo *tilingInfo)
 
 uint32_t SparseFlashMlaTiling::CalcFdLogicalSlotCount(const SMLATilingInfo *tilingInfo, uint32_t aicNum) const
 {
-    bool isSplitG = IsA5Arch(tilingInfo->npuArch) && tilingInfo->gSize > 64;
+    bool isSplitG = (IsA5Arch(tilingInfo->npuArch) || IsA6Arch(tilingInfo->npuArch)) && tilingInfo->gSize > 64;
     if (isSplitG) {
         return aicNum >> 1U;
     }
@@ -2296,7 +2379,7 @@ uint32_t SparseFlashMlaTiling::CalcFdLogicalSlotCount(const SMLATilingInfo *tili
 
 uint64_t SparseFlashMlaTiling::CalcFdStagingWorkspaceSize(const SMLATilingInfo *tilingInfo, uint32_t aicNum) const
 {
-    if (!IsA5Arch(tilingInfo->npuArch) || aicNum == 0U) {
+    if ((!IsA5Arch(tilingInfo->npuArch) && !IsA6Arch(tilingInfo->npuArch)) || aicNum == 0U) {
         return 0ULL;
     }
 
@@ -2316,11 +2399,13 @@ uint64_t SparseFlashMlaTiling::CalcVectorizeKvPhyAddrWorkspaceSize(const SMLATil
                                                                    uint32_t &vectorizeFlag) const
 {
     vectorizeFlag = 0U;
-    if (tilingInfo->npuArch != NpuArch::DAV_3510) {
+    if (!IsA5Arch(tilingInfo->npuArch) && !IsA6Arch(tilingInfo->npuArch)) {
         return 0ULL;
     }
     constexpr uint32_t SPARSE_BLOCK_ALIGN_NUM = 128;
-    constexpr uint32_t UB_SIZE = 184 * 1024;
+    constexpr uint32_t A5_SIZE = 184 * 1024;
+    constexpr uint32_t A6_SIZE = 376 * 1024;
+    const uint32_t SIZE = IsA6Arch(tilingInfo->npuArch) ? A6_SIZE : A5_SIZE;
     uint32_t alignedOriSparseBlockCount = (tilingInfo->oriSparseBlockCount + SPARSE_BLOCK_ALIGN_NUM - 1) /
                                           SPARSE_BLOCK_ALIGN_NUM * SPARSE_BLOCK_ALIGN_NUM;
     uint32_t alignedCmpSparseBlockCount = (tilingInfo->cmpSparseBlockCount + SPARSE_BLOCK_ALIGN_NUM - 1) /
@@ -2344,7 +2429,7 @@ uint64_t SparseFlashMlaTiling::CalcVectorizeKvPhyAddrWorkspaceSize(const SMLATil
     vectorizeFlag = static_cast<uint32_t>((tilingInfo->perfMode == SMLATemplateMode::CSA_TEMPLATE_MODE ||
                                            tilingInfo->perfMode == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
                                            tilingInfo->perfMode == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) &&
-                                          (vectorizeUbSize <= UB_SIZE) && (blocksizeFlag != 0));
+                                          (vectorizeUbSize <= SIZE) && (blocksizeFlag != 0));
 
     if (vectorizeFlag == 0U) {
         return 0ULL;
@@ -2383,7 +2468,7 @@ ge::graphStatus SparseFlashMlaTiling::DoOpTiling(SMLATilingInfo *tilingInfo)
     constexpr uint32_t PRELOAD_NUM = 2;
 
     size_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
-    if (tilingInfo->npuArch == NpuArch::DAV_3510) {
+    if (IsA5Arch(tilingInfo->npuArch) || IsA6Arch(tilingInfo->npuArch)) {
         bool isSplitG = tilingInfo->gSize > 64;
         if (isSplitG || tilingInfo->perfMode == SMLATemplateMode::CSA_TEMPLATE_MODE ||
             tilingInfo->perfMode == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
@@ -2429,6 +2514,9 @@ ge::graphStatus SparseFlashMlaTiling::DoOpTiling(SMLATilingInfo *tilingInfo)
     tilingData_.baseParams.set_paBlockSize(tilingInfo->blockSize);
     tilingData_.baseParams.set_oriBlockSize(tilingInfo->oriBlockSize);
     tilingData_.baseParams.set_cmpBlockSize(tilingInfo->cmpBlockSize);
+    tilingData_.baseParams.set_oriP(tilingInfo->oriP);
+    tilingData_.baseParams.set_oriMLow(tilingInfo->oriMLow);
+    tilingData_.baseParams.set_oriMHigh(tilingInfo->oriMHigh);
     tilingData_.baseParams.set_oriMaxBlockNumPerBatch(tilingInfo->oriMaxBlockNumPerBatch);
     tilingData_.baseParams.set_actualLenDimsQ(tilingInfo->actualLenDimsQ);
     tilingData_.baseParams.set_actualLenDimsKV(tilingInfo->actualLenDimsKV);
@@ -2446,6 +2534,9 @@ ge::graphStatus SparseFlashMlaTiling::DoOpTiling(SMLATilingInfo *tilingInfo)
     tilingData_.cmpParams.set_cmpRatio(tilingInfo->cmpRatio);
     tilingData_.cmpParams.set_cmpMaskMode(tilingInfo->cmpMaskMode);
     tilingData_.cmpParams.set_cmpKvStride0(tilingInfo->cmpKvStride0);
+    tilingData_.cmpParams.set_cmpP(tilingInfo->cmpP);
+    tilingData_.cmpParams.set_cmpMLow(tilingInfo->cmpMLow);
+    tilingData_.cmpParams.set_cmpMHigh(tilingInfo->cmpMHigh);
     tilingData_.cmpParams.set_cmpKvSeqSize(tilingInfo->cmpS2Size);
     tilingData_.baseParams.set_actualLenDimsOriKV(tilingInfo->actualLenDimsOriKV);
     tilingData_.baseParams.set_actualLenDimsCmpKV(tilingInfo->actualLenDimsCmpKV);
@@ -2455,7 +2546,7 @@ ge::graphStatus SparseFlashMlaTiling::DoOpTiling(SMLATilingInfo *tilingInfo)
     tilingData_.baseParams.set_oriSparseIndexWidth(tilingInfo->oriSparseIndexWidth);
     tilingData_.cmpParams.set_cmpKeyStride0(tilingInfo->cmpKeyStride0);
 
-    if (tilingInfo->npuArch == NpuArch::DAV_3510) {
+    if (IsA5Arch(tilingInfo->npuArch) || IsA6Arch(tilingInfo->npuArch)) {
         tilingData_.baseParams.set_oriSparseBlockCount(tilingInfo->oriSparseBlockCount);
         tilingData_.baseParams.set_topkValueMode(tilingInfo->topkValueMode);
         tilingData_.cmpParams.set_cmpSparseBlockCount(tilingInfo->cmpSparseBlockCount);
@@ -2476,7 +2567,7 @@ ge::graphStatus SparseFlashMlaTiling::DoOpTiling(SMLATilingInfo *tilingInfo)
     uint32_t headRatioOne =
         static_cast<uint32_t>(tilingInfo->npuArch == NpuArch::DAV_2201 &&
                               tilingInfo->perfMode == SMLATemplateMode::CSA_TEMPLATE_MODE && tilingInfo->gSize == 1U);
-    if (tilingInfo->npuArch == NpuArch::DAV_3510) {
+    if (IsA5Arch(tilingInfo->npuArch) || IsA6Arch(tilingInfo->npuArch)) {
         splitG = static_cast<uint32_t>(tilingInfo->gSize > 64); // 64：分组拆分阈值
     }
     uint32_t isDspark = static_cast<uint32_t>(tilingInfo->npuArch == NpuArch::DAV_2201 &&
