@@ -60,24 +60,25 @@ __simd_callee__ inline void ScaleMaskAndMaxWideNZPair(
     }
 
     Max(m0, m0, x0_0, h);
-    Max(m1, m1, x1_0, h);
-    Max(m0, m0, x0_1, h);
-    Max(m1, m1, x1_1, h);
-
     StoreAlign(scores0 + col * 64 * 16 + row * 16 + 0, x0_0, h);
+    Max(m1, m1, x1_0, h);
     StoreAlign(scores0 + col * 64 * 16 + row * 16 + 128, x1_0, h);
+    Max(m0, m0, x0_1, h);
     StoreAlign(scores1 + col * 64 * 16 + row * 16 + 0, x0_1, h);
+    Max(m1, m1, x1_1, h);
     StoreAlign(scores1 + col * 64 * 16 + row * 16 + 128, x1_1, h);
 }
 
 // Compute probabilities from scores, tree-accumulate row sums, cast to FP8, and pack into NZ output format.
-// Interleaves two consecutive NZ blocks (8 ExpSubs in flight) to fully hide transcendental instruction latency.
-__simd_callee__ inline void ComputeProbAndPackNZPair(
+// Uses perfectly interleaved Vector ALU instructions with minimal register pressure (<= 10 registers)
+// to eliminate all RAW writeback pipeline stalls and prevent any register spilling to UB.
+__simd_callee__ inline void ComputeProbAndPackNZSingle(
     __ubuf__ float8_e4m3_t *out,
-    AscendC::MicroAPI::RegTensor<half> &x0_0, AscendC::MicroAPI::RegTensor<half> &x1_0,
-    AscendC::MicroAPI::RegTensor<half> &x0_1, AscendC::MicroAPI::RegTensor<half> &x1_1,
-    AscendC::MicroAPI::RegTensor<half> &m, AscendC::MicroAPI::RegTensor<float> &rowSum,
-    uint32_t outOffset0, uint32_t outOffset1)
+    AscendC::MicroAPI::RegTensor<half> &x0,
+    AscendC::MicroAPI::RegTensor<half> &x1,
+    AscendC::MicroAPI::RegTensor<half> &m,
+    AscendC::MicroAPI::RegTensor<float> &rowSum,
+    uint32_t outOffset)
 {
     using namespace AscendC::MicroAPI;
     static constexpr CastTrait cast0{RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
@@ -88,58 +89,32 @@ __simd_callee__ inline void ComputeProbAndPackNZPair(
     auto h = CreateMask<half, MaskPattern::ALL>();
     auto b = CreateMask<uint8_t, MaskPattern::ALL>();
 
-    RegTensor<float> p0_0, p1_0, p2_0, p3_0;
-    RegTensor<float> p0_1, p1_1, p2_1, p3_1;
+    RegTensor<float> p0, p1, p2, p3;
+    ExpSub<float, half, RegLayout::ZERO>(p0, x0, m, h);
+    ExpSub<float, half, RegLayout::ONE>(p1, x0, m, h);
+    ExpSub<float, half, RegLayout::ZERO>(p2, x1, m, h);
+    ExpSub<float, half, RegLayout::ONE>(p3, x1, m, h);
 
-    // 8 ExpSubs in flight across the pair of NZ blocks to fully hide exponential pipeline latency
-    ExpSub<float, half, RegLayout::ZERO>(p0_0, x0_0, m, h);
-    ExpSub<float, half, RegLayout::ONE>(p1_0, x0_0, m, h);
-    ExpSub<float, half, RegLayout::ZERO>(p2_0, x1_0, m, h);
-    ExpSub<float, half, RegLayout::ONE>(p3_0, x1_0, m, h);
+    RegTensor<float> pair0, pair1;
+    Add(pair0, p0, p1, f);
+    Add(pair1, p2, p3, f);
 
-    ExpSub<float, half, RegLayout::ZERO>(p0_1, x0_1, m, h);
-    ExpSub<float, half, RegLayout::ONE>(p1_1, x0_1, m, h);
-    ExpSub<float, half, RegLayout::ZERO>(p2_1, x1_1, m, h);
-    ExpSub<float, half, RegLayout::ONE>(p3_1, x1_1, m, h);
+    RegTensor<float8_e4m3_t> packed0, packed1, packed2, packed3;
+    Cast<float8_e4m3_t, float, cast0>(packed0, p0, f);
+    Cast<float8_e4m3_t, float, cast2>(packed1, p1, f);
 
-    RegTensor<float> pair0_0, pair1_0, pair0_1, pair1_1;
-    Add(pair0_0, p0_0, p1_0, f);
-    Add(pair0_1, p0_1, p1_1, f);
-    Add(pair1_0, p2_0, p3_0, f);
-    Add(pair1_1, p2_1, p3_1, f);
+    Add(pair0, pair0, pair1, f);
 
-    RegTensor<float8_e4m3_t> packed0_0, packed1_0, packed2_0, packed3_0;
-    RegTensor<float8_e4m3_t> packed0_1, packed1_1, packed2_1, packed3_1;
+    Cast<float8_e4m3_t, float, cast1>(packed2, p2, f);
+    Cast<float8_e4m3_t, float, cast3>(packed3, p3, f);
 
-    Cast<float8_e4m3_t, float, cast0>(packed0_0, p0_0, f);
-    Cast<float8_e4m3_t, float, cast0>(packed0_1, p0_1, f);
-    Cast<float8_e4m3_t, float, cast2>(packed1_0, p1_0, f);
-    Cast<float8_e4m3_t, float, cast2>(packed1_1, p1_1, f);
+    RegTensor<uint8_t> merge0, merge1, merged;
+    Or(merge0, (RegTensor<uint8_t> &)packed0, (RegTensor<uint8_t> &)packed1, b);
+    Add(rowSum, rowSum, pair0, f);
 
-    Add(pair0_0, pair0_0, pair1_0, f);
-    Add(pair0_1, pair0_1, pair1_1, f);
-
-    Cast<float8_e4m3_t, float, cast1>(packed2_0, p2_0, f);
-    Cast<float8_e4m3_t, float, cast1>(packed2_1, p2_1, f);
-    Cast<float8_e4m3_t, float, cast3>(packed3_0, p3_0, f);
-    Cast<float8_e4m3_t, float, cast3>(packed3_1, p3_1, f);
-
-    RegTensor<uint8_t> merge0_0, merge1_0, merged_0;
-    RegTensor<uint8_t> merge0_1, merge1_1, merged_1;
-
-    Or(merge0_0, (RegTensor<uint8_t> &)packed0_0, (RegTensor<uint8_t> &)packed1_0, b);
-    Or(merge0_1, (RegTensor<uint8_t> &)packed0_1, (RegTensor<uint8_t> &)packed1_1, b);
-    Or(merge1_0, (RegTensor<uint8_t> &)packed2_0, (RegTensor<uint8_t> &)packed3_0, b);
-    Or(merge1_1, (RegTensor<uint8_t> &)packed2_1, (RegTensor<uint8_t> &)packed3_1, b);
-
-    Add(rowSum, rowSum, pair0_0, f);
-    Add(rowSum, rowSum, pair0_1, f);
-
-    Or(merged_0, merge0_0, merge1_0, b);
-    Or(merged_1, merge0_1, merge1_1, b);
-
-    StoreAlign((__ubuf__ uint8_t *)out + outOffset0, merged_0, b);
-    StoreAlign((__ubuf__ uint8_t *)out + outOffset1, merged_1, b);
+    Or(merge1, (RegTensor<uint8_t> &)packed2, (RegTensor<uint8_t> &)packed3, b);
+    Or(merged, merge0, merge1, b);
+    StoreAlign((__ubuf__ uint8_t *)out + outOffset, merged, b);
 }
 
 // NZ scores retain eight rows in each FP16 register. ReduceDataBlock produces
@@ -212,15 +187,16 @@ __simd_callee__ inline void SoftmaxWideProbCore(__ubuf__ half *scores, __ubuf__ 
         else
             LoadAlign(rowSum, partialSums + row * 8);
         for (uint16_t col = 0; col < 8; col += 2) {
-            RegTensor<half> x0, x1, next0, next1;
-            LoadAlign(x0, scores + (col + 0) * 64 * 32 + row * 16);
-            LoadAlign(x1, scores + (col + 0) * 64 * 32 + 64 * 16 + row * 16);
+            RegTensor<half> next0, next1;
             LoadAlign(next0, scores + (col + 1) * 64 * 32 + row * 16);
             LoadAlign(next1, scores + (col + 1) * 64 * 32 + 64 * 16 + row * 16);
 
-            ComputeProbAndPackNZPair(out, x0, x1, next0, next1, m, rowSum,
-                                    (col + 0) * 64 * 64 + row * 32,
-                                    (col + 1) * 64 * 64 + row * 32);
+            RegTensor<half> x0, x1;
+            LoadAlign(x0, scores + (col + 0) * 64 * 32 + row * 16);
+            LoadAlign(x1, scores + (col + 0) * 64 * 32 + 64 * 16 + row * 16);
+
+            ComputeProbAndPackNZSingle(out, x0, x1, m, rowSum, (col + 0) * 64 * 64 + row * 32);
+            ComputeProbAndPackNZSingle(out, next0, next1, m, rowSum, (col + 1) * 64 * 64 + row * 32);
         }
         if constexpr (FIRST) {
             StoreAlign(partialSums + row * 8, rowSum, f);

@@ -250,11 +250,11 @@ template <class T>
 __aicore__ void Stats(GM_ADDR k, GM_ADDR mean, SageParams p)
 {
     if (p.smoothK && p.d == p.dp) {
-        if (p.sk <= 4096 || p.sk >= 16384 || p.hk < 32) {
-            StreamKStats<T>(k, mean, p);
+        if (p.sk <= 8192 && (p.hk >= 32 || uint64_t(p.b) * p.hk >= 32)) {
+            HeadStats<T>(k, mean, p);
             return;
         } else {
-            HeadStats<T>(k, mean, p);
+            StreamKStats<T>(k, mean, p);
             return;
         }
     }
