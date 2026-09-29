@@ -200,8 +200,12 @@ inline CommCutResult Schedule(FitBasedBalanceCtx &ctx)
         ctx.tilingM.cutRes.shortTileAtBack = (estimate.totalTpTime > estimate.totalMatmulTime);
     }
 
-    // ---- ② SetShort: 短块下限闸门(E11/E12) + 落位(NoCut 几何门在落位后) ----
+    // ---- ② SetShort: 短块下限闸门 + 落位(NoCut 几何门在落位后) ----
+    // L2 维度: 工作集超 950 L2 容量 → minLen×2 鼓励大块
     ApplyL2MinLenBoost(ctx.tilingM, ExceedsL2Cache(ctx.matmulPerf.mmShapeInfo_));
+    // 启动开销维度: 短块独立占一轮通信, 其通信时长须 ≥ 2b(一轮自身开销 + 至少等量的
+    // 有效传输)才值得成轮——由 2b 反解行数下限, 小 k 场景短块被抬大或经 NoCut 门不切
+    ctx.tilingM.SetMinLenByMax(ctx.commPerf.InverseCommTime(2.0 * ctx.commPerf.commEstimatePar_.roundOverheadUs));
     ctx.tilingM.cutRes.shortTileLen = ctx.tilingM.GetMinLen();
     ctx.tilingM.cutRes.numShortTile = 1U;
 
