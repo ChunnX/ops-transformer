@@ -333,7 +333,6 @@ __aicore__ inline void VFPairMulAddCompact(const LocalTensor<float> &dst, const 
         Reg::RegTensor<float> ar, br, cr, dr, p0, p1, pair, acc;
         Reg::MaskReg mask = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
         Reg::Duplicate(acc, 0.0f, mask);
-        #pragma unroll 2
         for (uint16_t i = 0; i < loops; ++i) {
             const uint32_t off = static_cast<uint32_t>(i) * VL_FP32;
             Reg::LoadAlign(ar, a + off);
