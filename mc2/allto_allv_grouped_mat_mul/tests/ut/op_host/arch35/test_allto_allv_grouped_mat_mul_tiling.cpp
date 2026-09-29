@@ -55,59 +55,59 @@ struct TilingParams {
                                     128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128};
 };
 
-std::unordered_map<string, std::function<void(TilingParams &tilingParams, const string &valueStr)>>
+std::unordered_map<string, std::function<void(TilingParams& tilingParams, const string& valueStr)>>
     g_tilingParamsStrHandlers = {
-        {"BSK", [](TilingParams &tilingParams, const string &valueStr) { tilingParams.BSK = std::stoi(valueStr); }},
-        {"BS", [](TilingParams &tilingParams, const string &valueStr) { tilingParams.BS = std::stoi(valueStr); }},
-        {"K", [](TilingParams &tilingParams, const string &valueStr) { tilingParams.K = std::stoi(valueStr); }},
-        {"H1", [](TilingParams &tilingParams, const string &valueStr) { tilingParams.H1 = std::stoi(valueStr); }},
-        {"H2", [](TilingParams &tilingParams, const string &valueStr) { tilingParams.H2 = std::stoi(valueStr); }},
-        {"A", [](TilingParams &tilingParams, const string &valueStr) { tilingParams.A = std::stoi(valueStr); }},
-        {"N1", [](TilingParams &tilingParams, const string &valueStr) { tilingParams.N1 = std::stoi(valueStr); }},
-        {"N2", [](TilingParams &tilingParams, const string &valueStr) { tilingParams.N2 = std::stoi(valueStr); }},
+        {"BSK", [](TilingParams& tilingParams, const string& valueStr) { tilingParams.BSK = std::stoi(valueStr); }},
+        {"BS", [](TilingParams& tilingParams, const string& valueStr) { tilingParams.BS = std::stoi(valueStr); }},
+        {"K", [](TilingParams& tilingParams, const string& valueStr) { tilingParams.K = std::stoi(valueStr); }},
+        {"H1", [](TilingParams& tilingParams, const string& valueStr) { tilingParams.H1 = std::stoi(valueStr); }},
+        {"H2", [](TilingParams& tilingParams, const string& valueStr) { tilingParams.H2 = std::stoi(valueStr); }},
+        {"A", [](TilingParams& tilingParams, const string& valueStr) { tilingParams.A = std::stoi(valueStr); }},
+        {"N1", [](TilingParams& tilingParams, const string& valueStr) { tilingParams.N1 = std::stoi(valueStr); }},
+        {"N2", [](TilingParams& tilingParams, const string& valueStr) { tilingParams.N2 = std::stoi(valueStr); }},
         {"epWorldSize",
-         [](TilingParams &tilingParams, const string &valueStr) { tilingParams.epWorldSize = std::stoi(valueStr); }},
-        {"e", [](TilingParams &tilingParams, const string &valueStr) { tilingParams.e = std::stoi(valueStr); }},
+         [](TilingParams& tilingParams, const string& valueStr) { tilingParams.epWorldSize = std::stoi(valueStr); }},
+        {"e", [](TilingParams& tilingParams, const string& valueStr) { tilingParams.e = std::stoi(valueStr); }},
         {"gmmWeightDim1",
-         [](TilingParams &tilingParams, const string &valueStr) { tilingParams.gmmWeightDim1 = std::stoi(valueStr); }},
+         [](TilingParams& tilingParams, const string& valueStr) { tilingParams.gmmWeightDim1 = std::stoi(valueStr); }},
         {"gmmYDim1",
-         [](TilingParams &tilingParams, const string &valueStr) { tilingParams.gmmYDim1 = std::stoi(valueStr); }},
+         [](TilingParams& tilingParams, const string& valueStr) { tilingParams.gmmYDim1 = std::stoi(valueStr); }},
         {"mmWeightDim0",
-         [](TilingParams &tilingParams, const string &valueStr) { tilingParams.mmWeightDim0 = std::stoi(valueStr); }},
+         [](TilingParams& tilingParams, const string& valueStr) { tilingParams.mmWeightDim0 = std::stoi(valueStr); }},
         {"transGmmWeight",
-         [](TilingParams &tilingParams, const string &valueStr) { tilingParams.transGmmWeight = valueStr == "true"; }},
+         [](TilingParams& tilingParams, const string& valueStr) { tilingParams.transGmmWeight = valueStr == "true"; }},
         {"transMmWeight",
-         [](TilingParams &tilingParams, const string &valueStr) { tilingParams.transMmWeight = valueStr == "true"; }},
+         [](TilingParams& tilingParams, const string& valueStr) { tilingParams.transMmWeight = valueStr == "true"; }},
         {"permuteOutFlag",
-         [](TilingParams &tilingParams, const string &valueStr) { tilingParams.permuteOutFlag = valueStr == "true"; }},
+         [](TilingParams& tilingParams, const string& valueStr) { tilingParams.permuteOutFlag = valueStr == "true"; }},
         {"isNeedMM",
-         [](TilingParams &tilingParams, const string &valueStr) { tilingParams.isNeedMM = valueStr == "true"; }}};
+         [](TilingParams& tilingParams, const string& valueStr) { tilingParams.isNeedMM = valueStr == "true"; }}};
 
-std::unordered_map<string, std::function<void(TilingParams &tilingParams, const std::vector<int64_t> valueVec)>>
+std::unordered_map<string, std::function<void(TilingParams& tilingParams, const std::vector<int64_t> valueVec)>>
     g_tilingParamsVecHandlers = {
         {"sendCounts",
-         [](TilingParams &tilingParams, const std::vector<int64_t> valueVec) { tilingParams.sendCounts = valueVec; }},
+         [](TilingParams& tilingParams, const std::vector<int64_t> valueVec) { tilingParams.sendCounts = valueVec; }},
         {"recvCounts",
-         [](TilingParams &tilingParams, const std::vector<int64_t> valueVec) { tilingParams.recvCounts = valueVec; }}};
+         [](TilingParams& tilingParams, const std::vector<int64_t> valueVec) { tilingParams.recvCounts = valueVec; }}};
 
-bool has_any_target_key(const std::vector<std::pair<std::string, std::string>> &params,
-                        const std::vector<std::string> &targets)
+bool has_any_target_key(const std::vector<std::pair<std::string, std::string>>& params,
+                        const std::vector<std::string>& targets)
 {
-    return std::any_of(params.begin(), params.end(), [&targets](const auto &p) {
+    return std::any_of(params.begin(), params.end(), [&targets](const auto& p) {
         return std::find(targets.begin(), targets.end(), p.first) != targets.end();
     });
 }
 
 // 提取：初始化 tilingParams
-void InitializeTilingParams(const TestParam &testParam, TilingParams &tilingParams)
+void InitializeTilingParams(const TestParam& testParam, TilingParams& tilingParams)
 {
-    for (auto &kv : testParam.tilingParamsStrPair) {
+    for (auto& kv : testParam.tilingParamsStrPair) {
         if (g_tilingParamsStrHandlers.count(kv.first) != 0) {
             g_tilingParamsStrHandlers[kv.first](tilingParams, kv.second);
         }
     }
 
-    for (auto &kv : testParam.tilingParamsVecPair) {
+    for (auto& kv : testParam.tilingParamsVecPair) {
         if (g_tilingParamsVecHandlers.count(kv.first) != 0) {
             g_tilingParamsVecHandlers[kv.first](tilingParams, kv.second);
         }
@@ -123,8 +123,8 @@ std::unique_ptr<gert::TilingContextPara::TensorDescription> CreateTensorShape(ge
 }
 
 std::vector<gert::TilingContextPara::TensorDescription> CreateInputTensors(
-    const TilingParams &tilingParams, const std::unique_ptr<gert::TilingContextPara::TensorDescription> &mmXShape,
-    const std::unique_ptr<gert::TilingContextPara::TensorDescription> &mmWeightShape)
+    const TilingParams& tilingParams, const std::unique_ptr<gert::TilingContextPara::TensorDescription>& mmXShape,
+    const std::unique_ptr<gert::TilingContextPara::TensorDescription>& mmWeightShape)
 {
     return {
         {{{tilingParams.BSK, tilingParams.H1}, {tilingParams.BSK, tilingParams.H1}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -140,7 +140,7 @@ std::vector<gert::TilingContextPara::TensorDescription> CreateInputTensors(
 }
 
 std::vector<gert::TilingContextPara::TensorDescription> CreateOutputTensors(
-    const TilingParams &tilingParams, const std::unique_ptr<gert::TilingContextPara::TensorDescription> &mmYShape)
+    const TilingParams& tilingParams, const std::unique_ptr<gert::TilingContextPara::TensorDescription>& mmYShape)
 {
     auto mmYDesc = (mmYShape->shape_.GetStorageShape().GetDimNum() == 0) ?
                        gert::TilingContextPara::TensorDescription{
@@ -186,7 +186,7 @@ TEST_P(AlltoAllvGroupedMatMulArch35TilingTest, ShapeSize)
     std::string socVersion = "Ascend950";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
 
     TilingParams tilingParams;
     InitializeTilingParams(testParam, tilingParams);
@@ -332,7 +332,7 @@ static TestParam testParams[] = {
     {"Test_no_MM", {{"permuteOutFlag", "true"}, {"isNeedMM", "false"}}, {}, {}, ge::GRAPH_SUCCESS}};
 
 INSTANTIATE_TEST_SUITE_P(AlltoAllvGroupedMatMul, AlltoAllvGroupedMatMulArch35TilingTest, testing::ValuesIn(testParams),
-                         [](const testing::TestParamInfo<AlltoAllvGroupedMatMulArch35TilingTest::ParamType> &info) {
+                         [](const testing::TestParamInfo<AlltoAllvGroupedMatMulArch35TilingTest::ParamType>& info) {
                              return info.param.testName;
                          });
 
@@ -346,7 +346,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, BasicSuccess)
     std::string socVersion = "Ascend950";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -385,7 +385,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, H4)
     std::string socVersion = "Ascend950";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -424,7 +424,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, A1)
     std::string socVersion = "Ascend950";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -463,7 +463,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, BS1)
     std::string socVersion = "Ascend950";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -502,7 +502,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, Dim1)
     std::string socVersion = "Ascend950";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -541,7 +541,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, Dim2)
     std::string socVersion = "Ascend950";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -580,7 +580,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, Dim3)
     std::string socVersion = "Ascend950";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -619,7 +619,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, Dim5)
     std::string socVersion = "Ascend950";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -658,7 +658,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, Dim6)
     std::string socVersion = "Ascend950";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -697,7 +697,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, Dim7)
     std::string socVersion = "Ascend950";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -736,7 +736,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, Dim10)
     std::string socVersion = "Ascend950";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -775,7 +775,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, TransMmWeight1)
     std::string socVersion = "Ascend950";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -814,7 +814,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, EpWorldSize2)
     std::string socVersion = "Ascend950";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     std::vector<int64_t> sendCounts2{2048, 2048};
     std::vector<int64_t> recvCounts2{2048, 2048};
     gert::TilingContextPara tilingContextPara(
@@ -855,7 +855,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, EpWorldSize16)
     std::string socVersion = "Ascend950";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     std::vector<int64_t> sendCounts16(256, 64);
     std::vector<int64_t> recvCounts16(256, 64);
     gert::TilingContextPara tilingContextPara(
@@ -896,7 +896,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, EpWorldSize32)
     std::string socVersion = "Ascend950";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     std::vector<int64_t> sendCounts32(1024, 32);
     std::vector<int64_t> recvCounts32(1024, 32);
     gert::TilingContextPara tilingContextPara(
@@ -937,7 +937,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, CommModeEmptyDefault)
     std::string socVersion = "Ascend950";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -976,7 +976,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, CommModeAiCpu)
     std::string socVersion = "Ascend950";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -1015,7 +1015,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, CommModeInvalid)
     std::string socVersion = "Ascend950";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -1054,7 +1054,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, CommModeEmptyEp16)
     std::string socVersion = "Ascend950";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     std::vector<int64_t> sendCounts16(64, 64);
     std::vector<int64_t> recvCounts16(64, 64);
     gert::TilingContextPara tilingContextPara(
@@ -1095,7 +1095,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, EpWorldSize64)
     std::string socVersion = "Ascend950";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     std::vector<int64_t> sendCounts64(4096, 16);
     std::vector<int64_t> recvCounts64(4096, 16);
     gert::TilingContextPara tilingContextPara(
