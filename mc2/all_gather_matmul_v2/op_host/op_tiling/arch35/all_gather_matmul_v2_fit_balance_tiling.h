@@ -14,11 +14,11 @@
  *
  * 命名空间 optiling(与本目录其他文件一致); 引擎符号为 global(apace/tiling 约定)。
  * 本文件只剩三样东西, 无任何算子特有逻辑（钩子机制已废除, 结构差异由 LocalMMPosition 键控）:
- *   一、客户标定数据 CALIBRATION（唯一编辑面, 重新标定只改数值;  后含 CommProfile
- *       结构参数——本算子: 通信沿 K 轴传 A 侧数据 / mm 工作集倍数 rankDim−1(本地份不经
+ *   一) 客户标定数据 CALIBRATION（唯一编辑面, 重新标定只改数值; 含 CommProfile 结构
+ *       参数——本算子: 通信沿 K 轴传 A 侧数据 / mm 工作集倍数 rankDim−1(本地份不经
  *       通信) / mm 总行数倍数 rankDim(聚合后算全量)）;
- *   二、一行组装: InitCtx(LocalMMPosition::FRONT, COMM_FIRST, commEngine, CALIBRATION) + Schedule;
- *   三、kUseNewEngine 新旧切换（置 false 重编译即回老类, 老类原样保留）。
+ *   二) 一行组装: FitBalanceCut(LocalMMPosition::FRONT, COMM_FIRST, commEngine, CALIBRATION);
+ *   三) kUseNewEngine 新旧切换（置 false 重编译即回老类, 老类原样保留）。
  *
  * 公共逻辑与 FRONT 键控分支（本地首块重叠建模/长块反解/短块收尾 + D4/D5/D6 胶水)
  * 均在 apace/tiling/fit_balance_tiling.h(global)。
@@ -38,8 +38,7 @@
 namespace optiling { // 与本目录其他 op_tiling 文件一致
 
 // ============================================================================
-// 一、客户标定数据（唯一实例; 结构与字段含义见公共文件 FitBalanceCalibration 定义。
-//     当前值提取自旧公共层全量表的本算子可达行, ）
+// 客户标定数据（唯一实例; 结构与字段含义见公共文件 FitBalanceCalibration 定义）
 // ============================================================================
 
 static const FitBalanceCalibration CALIBRATION = {
@@ -91,7 +90,7 @@ static const FitBalanceCalibration CALIBRATION = {
 };
 
 // ============================================================================
-// 二、组装与新旧切换
+// 组装与新旧切换
 // ============================================================================
 
 // 边界转换: 旧全局类型 → 引擎入参(引擎 33 字段镜像已裁至实际消费的 9 个)

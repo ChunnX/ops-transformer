@@ -18,9 +18,9 @@
 constexpr uint64_t FP4_PACK_RATIO = 2;
 
 // ============================================================================
-// 一、模型层
+// 模型层
 // ============================================================================
-// ---- 1.1 HCCL 通信模型与拟合表（自由长度分支, 950 专用）----
+// ---- 通信模型 ----
 // 本引擎仅在 950 标卡 4P/8P 生效; 其他芯片形态由算子侧分派走别的切分策略。活跃 API 面(键控分支/P2 算子实测):
 // CommTime/InverseCommTime/ SetCommShapeLen/SetCommDTypeSize/SetCommDtypeSizeExpansionFraction/
 // commTimeFactor_/commRankCnt_/commRankCntForMm_(InitCtx 内部口径参数)。

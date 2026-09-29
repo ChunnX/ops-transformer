@@ -14,7 +14,7 @@
 
 #include "fit_balance_types.h"
 
-// ---- 1.2 matmul 模型（HCCL 算力/梯度模型, 自由长度分支专用, 950）----
+// ---- matmul 模型(算力/梯度) ----
 // 剥离 310P/910_B4 分支与 4 参 FindCubeUtil(含其独占的 K 对齐修正链)——
 // 5 个消费算子经 grep 证实仅用 FindCubeUtil。
 
