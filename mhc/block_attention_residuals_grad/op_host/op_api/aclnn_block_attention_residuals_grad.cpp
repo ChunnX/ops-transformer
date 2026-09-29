@@ -37,10 +37,11 @@ constexpr size_t DIM_NUM_3D = 3;
 constexpr size_t DIM_INDEX_0 = 0;
 constexpr size_t DIM_INDEX_1 = 1;
 constexpr size_t DIM_INDEX_2 = 2;
-constexpr int64_t MIN_TOKEN_NUM = 0;
+constexpr int64_t MIN_TOKEN_NUM = 64;
 constexpr int64_t MIN_BLOCK_NUM = 0;
 constexpr int64_t MAX_BLOCK_NUM = 128;
-constexpr int64_t MIN_HIDDEN_SIZE = 0;
+constexpr int64_t MIN_HIDDEN_SIZE = 2048;
+constexpr int64_t MAX_HIDDEN_SIZE = 500000;
 constexpr int64_t PROJ_WEIGHT_ROW_NUM = 1;
 
 aclnnStatus CheckRequiredParameter(const void *parameter, const char *parameterName)
@@ -175,7 +176,7 @@ aclnnStatus CheckInputShapes(const aclTensor *partialBlock, const aclTensor *blo
     const int64_t blockNum = blockResShape.GetDim(DIM_INDEX_1);
     if (tokenNum < MIN_TOKEN_NUM) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(API_NAME, "partialBlock.shape[0]", std::to_string(tokenNum).c_str(),
-                                              "partialBlock.shape[0] must be greater than or equal to 0");
+                                              "partialBlock.shape[0] must be greater than or equal to 64");
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (blockNum < MIN_BLOCK_NUM || blockNum > MAX_BLOCK_NUM) {
@@ -183,9 +184,9 @@ aclnnStatus CheckInputShapes(const aclTensor *partialBlock, const aclTensor *blo
                                               "blockRes.shape[1] must be in [0, 128]");
         return ACLNN_ERR_PARAM_INVALID;
     }
-    if (hiddenSize < MIN_HIDDEN_SIZE) {
+    if (hiddenSize < MIN_HIDDEN_SIZE || hiddenSize > MAX_HIDDEN_SIZE) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(API_NAME, "partialBlock.shape[1]", std::to_string(hiddenSize).c_str(),
-                                              "partialBlock.shape[1] must be greater than or equal to 0");
+                                              "partialBlock.shape[1] must be in [2048, 500000]");
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (blockResShape.GetDim(DIM_INDEX_0) != tokenNum || blockResShape.GetDim(DIM_INDEX_2) != hiddenSize) {
