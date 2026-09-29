@@ -1349,7 +1349,7 @@ sym_buffer.update_group(group) -> None
     <!-- npu="950" id13 -->
      **Ascend 950PR&950DT系列产品：**
 
-    通信buffer由`get_symm_buffer_for_mega_moe`根据通信域配置、`num_max_tokens_per_rank`等参数自动计算并申请，用户无需自行计算或设置`ccl_buffer_size`。`num_max_tokens_per_rank`越大，内部申请的通信内存越多，建议按预期最大单卡token数合理设置。
+    通信buffer由`get_symm_buffer_for_mega_moe`根据通信域配置、`num_max_tokens_per_rank`等参数自动计算并申请。Ascend 950的布局为前部通信区、后部算子workspace，两者由`ccl_buffer_size`一次性申请，用户无需自行计算或设置。`num_max_tokens_per_rank`越大，内部申请的通信内存越多，建议按预期最大单卡token数合理设置。
     <!-- end id13 -->
   - 通信域各节点的驱动版本应当相同。
 
@@ -1485,7 +1485,7 @@ sym_buffer.update_group(group) -> None
     - topo_type由通信域上下文自动推导。0表示MTE拓扑，1表示URMA跨超拓扑。
     - URMA拓扑下，`activation`不支持"swiglustep"和"swigluoai"。
     - topk_weights_type取值为0或1，0表示关闭topkWeights前移，1表示开启。
-    - 通信buffer由`get_symm_buffer_for_mega_moe`自动计算并申请，用户无需自行计算或设置`ccl_buffer_size`。
+    - 通信buffer由`get_symm_buffer_for_mega_moe`自动计算并一次性申请通信区与算子workspace，用户无需自行计算或设置`ccl_buffer_size`。
     - l1_weights和l2_weights的数据类型必须一致，且仅支持FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1。
     - topk_weights数据类型仅支持BF16或FP32。
 

@@ -411,10 +411,27 @@ constexpr int64_t EXCEPTION_DUMP_REGION_SIZE = 60LL * 1024LL;
 // rankSyncInWorld 同步区
 constexpr int64_t PEERMEM_DATA_OFFSET = 60LL * 1024LL;
 constexpr int64_t PEERMEM_MTE_COUNT_REGION_SIZE = 8LL * 1024LL;
+// This JIT source is relocated into the wheel without op_kernel headers. Keep these architectural/layout bounds
+// synchronized with arch35/common/mega_moe_constants.h and arch35/common/mega_moe_workspace.h.
+constexpr int64_t ARCH35_MAX_AIC_NUM = 36LL;
+constexpr int64_t ARCH35_MAX_SHARED_EXPERT_NUM = 4LL;
+constexpr int64_t ARCH35_INT_CACHELINE = 16LL;
+constexpr int64_t ARCH35_MX_SCALE_DIVISOR = 64LL;
+constexpr int64_t ARCH35_MX_MULTI_BASE_SIZE = 2LL;
+constexpr int64_t ARCH35_TILE_M = 256LL;
+constexpr int64_t ARCH35_TILE_N = 256LL;
+constexpr int64_t ARCH35_DEDUP_PREPASS_MAX_CHUNKS = 128LL;
+constexpr int64_t ARCH35_DEDUP_ROW_DESC_HEADER_INT32 = 2LL;
+constexpr int64_t ARCH35_INT32_PER_32B = 8LL;
 
 int64_t CeilAlign(int64_t val, int64_t align)
 {
     return (val + align - 1) / align * align;
+}
+
+int64_t CeilDiv(int64_t val, int64_t divisor)
+{
+    return (val + divisor - 1) / divisor;
 }
 
 int64_t CalcLeastCclBufferSizeA2(int64_t maxRecvTokenNum, int64_t h, int64_t epWorldSize, bool isQuantRouting,
@@ -543,10 +560,143 @@ int64_t CalcUrmaCclBufferSizeA5(int64_t epWorldSize, int64_t moeExpertNum, int64
 
     return dataOffset + maskRecvSize + expertCountRecvSize + relayDataSize + relayFlagSize + combineSendSize;
 }
+
+// SymmBuffer is created before the concrete weight lists are passed to MegaMoe. Mirror WorkspaceLayout's allocation
+// order with conservative mode choices: A8W4, both dedup work areas, independent shared quantization, the arch35 core
+// upper bound, and four shared experts. Tiling computes the exact suffix and may leave part of this reservation unused.
+int64_t CalcCclWorkspaceSizeA5(int64_t epWorldSize, int64_t moeExpertNum, int64_t numMaxTokensPerRank,
+                               int64_t numTopk, int64_t hidden, int64_t intermediateHidden, int64_t maxRecvTokenNum,
+                               int64_t topkWeightsType, int64_t serverNum)
+{
+    const bool isUrma = serverNum > 0;
+    const int64_t expertPerRank = moeExpertNum / epWorldSize;
+    const int64_t hiddenDim = intermediateHidden * 2LL;
+    uint64_t defaultMaxOutputSize = static_cast<uint64_t>(numMaxTokensPerRank) * epWorldSize *
+                                    std::min(numTopk, expertPerRank);
+    uint64_t maxOutputSize = maxRecvTokenNum == 0 ? defaultMaxOutputSize : static_cast<uint64_t>(maxRecvTokenNum);
+    TORCH_CHECK(maxOutputSize <= std::numeric_limits<uint32_t>::max(),
+                "maximum receive token capacity should be <= UINT32_MAX on Ascend950, but got ", maxOutputSize);
+    const int64_t maxOutput = static_cast<int64_t>(maxOutputSize);
+    int64_t workspaceSize = 0;
+
+    // Dispatch receive data and scale.
+    workspaceSize += CeilAlign(maxOutput * hidden, ALIGN_512);
+    workspaceSize +=
+        CeilAlign(maxOutput * CeilDiv(hidden, ARCH35_MX_SCALE_DIVISOR) * ARCH35_MX_MULTI_BASE_SIZE, ALIGN_512);
+
+    // URMA always calls the weight-region planner. For MTE, the conservative combine-dedup choice uses it when
+    // topk weights are not prefetched; the prefetch path stores weights in its GMM1 result region instead.
+    if (isUrma || topkWeightsType == 0) {
+        workspaceSize += CeilAlign(maxOutput * CeilAlign(numTopk * static_cast<int64_t>(sizeof(float)), ALIGN_32),
+                                   ALIGN_512);
+    }
+
+    // Activation output, scales, receive counts, and per-token metadata.
+    workspaceSize += CeilAlign(maxOutput * intermediateHidden, ALIGN_512);
+    workspaceSize += CeilAlign(
+        maxOutput * CeilDiv(intermediateHidden, ARCH35_MX_SCALE_DIVISOR) * ARCH35_MX_MULTI_BASE_SIZE, ALIGN_512);
+    int64_t expertRecvTokenCountBytes =
+        isUrma ? expertPerRank * ALIGN_32 * ARCH35_MAX_AIC_NUM :
+                 CeilAlign(expertPerRank, ARCH35_INT_CACHELINE) * static_cast<int64_t>(sizeof(int32_t)) *
+                     ARCH35_MAX_AIC_NUM;
+    workspaceSize += CeilAlign(expertRecvTokenCountBytes, ALIGN_512);
+    workspaceSize += CeilAlign(maxOutput * ALIGN_32, ALIGN_512);
+
+    const int64_t wavesPerExpert = CeilDiv(maxOutput, ARCH35_TILE_M);
+    // Sync flags. The MTE branch includes both dedup work areas; URMA uses grouped combine counters.
+    if (isUrma) {
+        workspaceSize += static_cast<int64_t>(sizeof(int32_t)) * expertPerRank * ARCH35_INT_CACHELINE;
+        workspaceSize += static_cast<int64_t>(sizeof(int32_t)) * expertPerRank * wavesPerExpert *
+                         ARCH35_INT_CACHELINE;
+        workspaceSize += static_cast<int64_t>(sizeof(int32_t)) * ARCH35_INT_CACHELINE * expertPerRank *
+                         ARCH35_MAX_AIC_NUM;
+        workspaceSize += static_cast<int64_t>(sizeof(int32_t)) * ARCH35_MAX_AIC_NUM * ARCH35_INT_CACHELINE;
+        int64_t maxTokenGroups = CeilDiv(numMaxTokensPerRank * epWorldSize, ARCH35_TILE_M);
+        int64_t combineSyncSlots = std::max(maxTokenGroups, ARCH35_MAX_AIC_NUM);
+        workspaceSize += static_cast<int64_t>(sizeof(int32_t)) * combineSyncSlots * expertPerRank *
+                         ARCH35_INT_CACHELINE;
+    } else {
+        workspaceSize += static_cast<int64_t>(sizeof(int32_t)) * expertPerRank * wavesPerExpert *
+                         ARCH35_INT_CACHELINE;
+        workspaceSize += static_cast<int64_t>(sizeof(int32_t)) * CeilDiv(numMaxTokensPerRank, ARCH35_TILE_M) *
+                         ARCH35_INT_CACHELINE * ARCH35_MAX_SHARED_EXPERT_NUM;
+        workspaceSize += static_cast<int64_t>(sizeof(int32_t)) * expertPerRank * wavesPerExpert *
+                         ARCH35_INT_CACHELINE;
+        workspaceSize += static_cast<int64_t>(sizeof(int32_t)) * ARCH35_INT_CACHELINE * expertPerRank *
+                         ARCH35_MAX_AIC_NUM;
+        workspaceSize += static_cast<int64_t>(sizeof(int32_t)) * ARCH35_INT_CACHELINE *
+                         (1LL + epWorldSize * ARCH35_DEDUP_PREPASS_MAX_CHUNKS);
+        workspaceSize += static_cast<int64_t>(sizeof(int32_t)) * ARCH35_MAX_AIC_NUM * ARCH35_INT_CACHELINE;
+        workspaceSize += static_cast<int64_t>(sizeof(int32_t)) * expertPerRank * ARCH35_MAX_AIC_NUM *
+                         ARCH35_INT_CACHELINE;
+        workspaceSize += static_cast<int64_t>(sizeof(int32_t)) * CeilDiv(numMaxTokensPerRank, ARCH35_TILE_M) *
+                         ARCH35_MAX_SHARED_EXPERT_NUM * ARCH35_INT_CACHELINE;
+        workspaceSize += static_cast<int64_t>(sizeof(int32_t)) * ARCH35_MAX_AIC_NUM * ARCH35_INT_CACHELINE;
+    }
+
+    // Cumsum, A8W4 GMM1 result, and GMM2 result. A8W4 is the largest supported routed layout.
+    workspaceSize += CeilAlign(static_cast<int64_t>(sizeof(int32_t)) * expertPerRank * epWorldSize, ALIGN_32) *
+                     ARCH35_MAX_AIC_NUM;
+    workspaceSize += static_cast<int64_t>(sizeof(int16_t)) * maxOutput * hiddenDim;
+    if (!isUrma) {
+        workspaceSize = CeilAlign(workspaceSize, ALIGN_512);
+        workspaceSize += CeilAlign(static_cast<int64_t>(sizeof(int16_t)) * maxOutput * hidden, ALIGN_512);
+    } else {
+        workspaceSize += static_cast<int64_t>(sizeof(int16_t)) * maxOutput * hidden;
+    }
+
+    if (topkWeightsType == 1) {
+        int64_t maxTilesPerExpert =
+            CeilAlign(CeilDiv(maxOutput, ARCH35_TILE_M) * CeilDiv(hiddenDim, ARCH35_TILE_N), ARCH35_INT_CACHELINE);
+        int64_t statusSlots = expertPerRank * maxTilesPerExpert + 1LL;
+        workspaceSize += CeilAlign(static_cast<int64_t>(sizeof(int32_t)) * statusSlots * ARCH35_INT_CACHELINE,
+                                   ALIGN_512);
+    }
+
+    if (isUrma) {
+        int64_t alignedRouteCount = CeilAlign(numMaxTokensPerRank * numTopk * static_cast<int64_t>(sizeof(int32_t)),
+                                              ALIGN_256) /
+                                    static_cast<int64_t>(sizeof(int32_t));
+        int64_t maskAlignSize = CeilAlign(alignedRouteCount / 8LL, ALIGN_32);
+        workspaceSize += CeilAlign(expertPerRank * epWorldSize * (maskAlignSize + ALIGN_32), ALIGN_512);
+        workspaceSize += CeilAlign(serverNum * (ALIGN_32 + numMaxTokensPerRank * ALIGN_32), ALIGN_512);
+        workspaceSize += ARCH35_MAX_AIC_NUM * CeilAlign(ARCH35_TILE_M * static_cast<int64_t>(sizeof(uint64_t)),
+                                                        ALIGN_512);
+    } else {
+        int64_t rowDescStride =
+            CeilAlign(ARCH35_DEDUP_ROW_DESC_HEADER_INT32 + 3LL * numTopk, ARCH35_INT32_PER_32B);
+        workspaceSize +=
+            CeilAlign(static_cast<int64_t>(sizeof(int32_t)) * rowDescStride * maxOutput, ALIGN_512);
+    }
+
+    // Four shared experts cover the arch35 interface maximum. Use independent quantization, which reserves the
+    // additional MTE shared-input region.
+    workspaceSize += CeilAlign(static_cast<int64_t>(sizeof(int16_t)) * numMaxTokensPerRank *
+                                   ARCH35_MAX_SHARED_EXPERT_NUM * hidden,
+                               ALIGN_512);
+    workspaceSize += CeilAlign(static_cast<int64_t>(sizeof(int16_t)) * numMaxTokensPerRank *
+                                   ARCH35_MAX_SHARED_EXPERT_NUM * hiddenDim,
+                               ALIGN_512);
+    if (isUrma) {
+        workspaceSize += CeilAlign(numMaxTokensPerRank * hidden, ALIGN_512);
+        workspaceSize += CeilAlign(numMaxTokensPerRank * CeilDiv(hidden, ALIGN_32) * ARCH35_MX_MULTI_BASE_SIZE,
+                                   ALIGN_512);
+    } else {
+        int64_t sharedRecordBytes = CeilAlign(CeilAlign(hidden, ALIGN_256) + CeilDiv(hidden, ALIGN_32), ALIGN_32);
+        workspaceSize += CeilAlign(numMaxTokensPerRank * sharedRecordBytes, ALIGN_512);
+    }
+    workspaceSize += CeilAlign(numMaxTokensPerRank * ARCH35_MAX_SHARED_EXPERT_NUM * intermediateHidden, ALIGN_512);
+    workspaceSize += CeilAlign(numMaxTokensPerRank * ARCH35_MAX_SHARED_EXPERT_NUM *
+                                   CeilDiv(intermediateHidden, ARCH35_MX_SCALE_DIVISOR) *
+                                   ARCH35_MX_MULTI_BASE_SIZE,
+                               ALIGN_512);
+    return workspaceSize;
+}
 } // namespace
 
 int64_t GetMegaMoeCclBufferSize(int64_t epWorldSize, int64_t moeExpertNum, int64_t numMaxTokensPerRank, int64_t numTopk,
-                                int64_t hidden, int64_t maxRecvTokenNum, int64_t dispatchQuantMode,
+                                int64_t hidden, int64_t intermediateHidden, int64_t maxRecvTokenNum,
+                                int64_t dispatchQuantMode,
                                 c10::optional<int64_t> dispatchQuantOutDtype, int64_t combineQuantMode,
                                 std::string commAlg, int64_t combineCommMode, int64_t topkWeightsType,
                                 int64_t serverNum)
@@ -587,6 +737,9 @@ int64_t GetMegaMoeCclBufferSize(int64_t epWorldSize, int64_t moeExpertNum, int64
     TORCH_CHECK(epWorldSize >= 2 && epWorldSize <= 1024, "ep_world_size only support in [2, 1024], but got ",
                 epWorldSize);
     TORCH_CHECK(hidden >= 1024 && hidden <= 8192, "hidden only support in [1024, 8192], but got ", hidden);
+    TORCH_CHECK(intermediateHidden >= 256 && intermediateHidden <= 4096 && intermediateHidden % ALIGN_128 == 0,
+                "intermediate_hidden only support [256, 4096] and must be a multiple of 128, but got ",
+                intermediateHidden);
     int64_t hiddenAlignment = serverNum > 0 ? URMA_H_ALIGN : ALIGN_32;
     TORCH_CHECK(hidden % hiddenAlignment == 0, "hidden must be a multiple of ", hiddenAlignment,
                 " for the selected communication topology, but got ", hidden);
@@ -617,14 +770,22 @@ int64_t GetMegaMoeCclBufferSize(int64_t epWorldSize, int64_t moeExpertNum, int64
         TORCH_CHECK(maxRecvTokenNum <= maxOutputCapacity,
                     "max_recv_token_num should not exceed the URMA maximum receive token capacity ", maxOutputCapacity,
                     ", but got ", maxRecvTokenNum);
-        return CalcUrmaCclBufferSizeA5(epWorldSize, moeExpertNum, numMaxTokensPerRank, numTopk, hidden,
-                                       combineQuantMode, topkWeightsType, serverNum);
+        int64_t communicationBufferSize = CalcUrmaCclBufferSizeA5(
+            epWorldSize, moeExpertNum, numMaxTokensPerRank, numTopk, hidden, combineQuantMode, topkWeightsType,
+            serverNum);
+        return communicationBufferSize +
+               CalcCclWorkspaceSizeA5(epWorldSize, moeExpertNum, numMaxTokensPerRank, numTopk, hidden,
+                                      intermediateHidden, maxRecvTokenNum, topkWeightsType, serverNum);
     }
     // 与 arch35 host/kernel 的记录带权重段判定同式：tkw=1 或 combine 去重开
     // 去重位（"dedup"/"dedup_combine"）时记录尾携带 topk 权重段（tkw=0 的 combine 去重在发送端乘权）。
     int64_t layoutTopkWeights =
         (topkWeightsType == 1 || combineCommMode == 1 || commAlg == "dedup" || commAlg == "dedup_combine") ? 1 : 0;
-    return CalcMteCclBufferSizeA5(epWorldSize, moeExpertNum, numMaxTokensPerRank, numTopk, hidden, layoutTopkWeights);
+    int64_t communicationBufferSize =
+        CalcMteCclBufferSizeA5(epWorldSize, moeExpertNum, numMaxTokensPerRank, numTopk, hidden, layoutTopkWeights);
+    return communicationBufferSize +
+           CalcCclWorkspaceSizeA5(epWorldSize, moeExpertNum, numMaxTokensPerRank, numTopk, hidden, intermediateHidden,
+                                  maxRecvTokenNum, topkWeightsType, serverNum);
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
@@ -632,7 +793,8 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     m.def("npu_mega_moe", &NpuMegaMoe, "npu_mega_moe");
     m.def("get_mega_moe_ccl_buffer_size", &GetMegaMoeCclBufferSize, "get_mega_moe_ccl_buffer_size",
           py::arg("ep_world_size"), py::arg("moe_expert_num"), py::arg("num_max_tokens_per_rank"), py::arg("num_topk"),
-          py::arg("hidden"), py::arg("max_recv_token_num"), py::arg("dispatch_quant_mode"),
+          py::arg("hidden"), py::arg("intermediate_hidden"), py::arg("max_recv_token_num"),
+          py::arg("dispatch_quant_mode"),
           py::arg("dispatch_quant_out_dtype"), py::arg("combine_quant_mode"), py::arg("comm_alg"),
           py::arg("combine_comm_mode") = 0, py::arg("topk_weights_type"), py::arg("server_num") = 0);
 }

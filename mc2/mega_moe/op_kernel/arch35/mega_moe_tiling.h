@@ -232,5 +232,8 @@ struct MegaMoeTilingData {
     // 判断统一用 IsDispatchDedupOn/IsCombineDedupOn（mega_moe_peermem.h）。
     // 0 时所有路径与无该字段时逐字等价；dispatch 去重数值恒等，combine 去重为生产卡预加权合并。
     int32_t dedupMode;
+    // 本卡 CCL 对称窗口内的算子 workspace 起始偏移。窗口布局为
+    // [communication buffer][MegaMoe workspace]，workspace 不再由 tiling 单独申请。
+    uint64_t cclWorkspaceOffset;
 };
 #endif

@@ -535,9 +535,12 @@ template <TemplateMegaMoeLayeredTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::InitWorkspace(GM_ADDR workspaceGM,
                                                                                      MegaMoeTilingData *tilingData)
 {
+    (void)workspaceGM;
     {
         WorkspaceLayout workspaceLayout(tilingData, serverNum_);
-        params_.workspaceInfo.Bind(workspaceGM, workspaceLayout);
+        GM_ADDR cclWorkspace = reinterpret_cast<GM_ADDR>(mc2Context_->epHcclBuffer_[rankId_]) +
+                               tilingData->cclWorkspaceOffset;
+        params_.workspaceInfo.Bind(cclWorkspace, workspaceLayout);
     }
     params_.peermemInfo = PeermemInfo(g_winRankAddr_[rankId_], tilingData, A_ELEMS_PER_BYTE, serverNum_);
     params_.tilingData = tilingData;
