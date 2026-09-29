@@ -117,6 +117,24 @@ ge::graphStatus MyOpTiling::DoTiling()
 
 接入要素就两个：**填 CALIBRATION**（标定数据）+ **选两个枚举**（LocalMMPosition / CommComputeOrder）。
 
+### 为什么引擎不认"通信原语"、而要你传这两个枚举？
+
+引擎被设计为**不区分通信原语**（AllGather/ReduceScatter/AllReduce/AllToAll……）——
+不同原语的差异只有两类：**可标定的数值差异**（通信量口径、轴向、算力）全部收进
+CALIBRATION 的 CommProfile 与拟合行；而**流水线结构差异**无法用数值表达，必须显式声明，
+这就是两个枚举的职责：
+
+| 枚举 | 回答的问题 | 取值含义 | 选错会怎样 |
+|---|---|---|---|
+| `LocalMMPosition` | 流水线里有没有一块**不经通信的本地 matmul**？在哪端？ | `FRONT` 本地块前置（首端，如输入侧通信的聚合算子——本卡数据已在手，聚合前即可算）；`BACK` 本地块后置（尾端，如输出侧通信的分发算子——本地保留份无需发出）；`NONE` 无本地块 | 配平锚点错位（长块反解目标错）、短块位置错、⑤ 的总时公式形态错——切分结果整体劣化 |
+| `CommComputeOrder` | 流水线**哪段先行**？ | `COMM_FIRST` 通信在前（先收数再算）；`COMPUTE_FIRST` 计算在前（先算再发） | 短块放端与不可重叠段位置判断颠倒 |
+
+判定方法（看本算子的数据流即可，不需要理解引擎内部）：
+1. 通信的输入是不是 matmul 的输入？是 → 通信在前（`COMM_FIRST`）+ 本地块在首端有机会先行（→
+   试想本卡自己的数据要不要经过通信才能参与第一次计算：不用 → `FRONT`；要 → `NONE`）；
+2. 通信的输入是 matmul 的输出？→ 计算在前（`COMPUTE_FIRST`）+ 想想本卡算完的份额要不要全部
+   发出去：有保留在本地的一份 → `BACK`；全发 → `NONE`。
+
 诊断打印内置：`ASCEND_GLOBAL_LOG_LEVEL=0` 时 FitBalanceCut 输出输入 shape / 最终切分 / 启动税三段。
 
 ---
