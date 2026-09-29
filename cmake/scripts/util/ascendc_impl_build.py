@@ -757,6 +757,8 @@ class AdpBuilder(opdesc_parser.OpDesc):
                 arch_version = "arch31"
             elif compute_unit == "ascend950":
                 arch_version = "arch35"
+            elif compute_unit == "ascend910_96":
+                arch_version = "arch35"  # A6(ascend910_96)复用arch35(950)代码路径
             else:
                 arch_version = "arch22"
 

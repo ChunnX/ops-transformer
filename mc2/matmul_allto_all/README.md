@@ -5,6 +5,7 @@
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
 | <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
+| <term>Ascend 960DT</term>                                          |    √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>       |    √     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
@@ -64,8 +65,18 @@
           $$
           computeOut = \sum_{0}^{\left \lfloor \frac{k}{blockSize=32} \right \rfloor} (x1 @ x2 * (x1Scale * x2Scale)) + bias \\
           permutedOut = computeOut.view(BS, rankSize, H2 / rankSize).permute(1, 0, 2) \\
-          output = AlltoAll(permutedOut).view(rankSize * BS, H2 / rankSize)
+          output = AllToAll(permutedOut).view(rankSize * BS, H2 / rankSize)
           $$
+
+        - hif4量化场景（仅<term>Ascend 960DT</term>，v2接口）：
+
+          $$
+          computeOut = \mathrm{DeQuant}(x1, x1Scale) @ \mathrm{DeQuant}(x2, x2Scale) \\
+          permutedOut = computeOut.view(BS, rankSize, H2 / rankSize).permute(1, 0, 2) \\
+          output = AllToAll(permutedOut).view(rankSize * BS, H2 / rankSize)
+          $$
+
+          其中 x1/x2 为 HIFLOAT4（4-bit S1P2，2:1打包），x1Scale/x2Scale 为 HIFLOAT4_SCALE（每64个元素共享1个4字节三级元数据 hif4_scale：E6M2 + E1_8 + E1_16），逐元素反量化为 $V[i] = E6M2 \times 2^{E1_8[\lfloor i/8 \rfloor] + E1_16[\lfloor i/4 \rfloor]} \times S1P2[i]$。hif4量化不支持bias，y仅支持FLOAT16/BFLOAT16。
 
 ## 参数说明​
 

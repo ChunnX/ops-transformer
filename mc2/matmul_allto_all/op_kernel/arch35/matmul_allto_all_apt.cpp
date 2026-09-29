@@ -131,8 +131,19 @@ using MC2KernelTemplate::MC2AlltoAllPrimitives;
 #ifndef MATMUL_ALLTO_ALL_APACE_MX_QUANT_IMPL
 #define MATMUL_ALLTO_ALL_APACE_MX_QUANT_IMPL(tilingData, ServerType) \
     do { \
-        Apace::MatmulAllToAllMxQuantMatmulHcommImpl<DTYPE_X1, DTYPE_X2, DTYPE_Y, hcommMatmulAllToAllTilingData, \
-                                                    ServerType> \
+        Apace::MatmulAllToAllMxQuantMatmulHcommImpl<DTYPE_X1, DTYPE_X2, DTYPE_Y, AscendC::fp8_e8m0_t, \
+                                                    hcommMatmulAllToAllTilingData, ServerType, true> \
+            op(&tilingData); \
+        op.Init(x1, x2, bias, y, x1Scale, x2Scale, workspaceGM); \
+        op.Run(); \
+    } while (0)
+#endif
+
+#ifndef MATMUL_ALLTO_ALL_APACE_HIF4_QUANT_IMPL
+#define MATMUL_ALLTO_ALL_APACE_HIF4_QUANT_IMPL(tilingData, ServerType, TransB) \
+    do { \
+        Apace::MatmulAllToAllMxQuantMatmulHcommImpl<DTYPE_X1, DTYPE_X2, DTYPE_Y, hif4_scale, \
+                                                    hcommMatmulAllToAllTilingData, ServerType, TransB> \
             op(&tilingData); \
         op.Init(x1, x2, bias, y, x1Scale, x2Scale, workspaceGM); \
         op.Run(); \
@@ -167,6 +178,18 @@ __global__ __aicore__ void matmul_allto_all(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
     } else {
         GET_TILING_DATA_WITH_STRUCT(QuantMatmulAlltoAllTilingData, tilingData, tilingGM);
         MATMUL_ALLTO_ALL_APT_MX_QUANT_IMPL(tilingData, pipe, commServerType);
+    }
+#elif ((ORIG_DTYPE_X1 == DT_HIFLOAT4) && (ORIG_DTYPE_X2 == DT_HIFLOAT4))
+    // HiF4 全量化: 仅支持 Apace Hcomm 通路(纯C通信, AIC_ONLY), 无主线 pipeline 实现
+    if constexpr (USING_APACE_IMPL) {
+        GET_TILING_DATA_WITH_STRUCT(hcommMatmulAllToAllTilingData, tilingData, tilingGM);
+        // ScaleType 为 hif4_scale(devkit/blaze 提供, 4字节: E6M2+E1_8+E1_16);
+        // TransB 由 X2TRANSPOSE 决定, 支持转置/非转置两种 B 布局
+        MATMUL_ALLTO_ALL_APACE_HIF4_QUANT_IMPL(tilingData, commServerType, X2TRANSPOSE);
+    } else {
+        // HiF4 无主线 pipeline 实现, 二进制生成时 USING_APACE_IMPL 必须为 1
+        static_assert(sizeof(DTYPE_X1) == 0,
+                      "HiF4 only supports the APACE Hcomm path, USING_APACE_IMPL must be 1.");
     }
 #else
     REGISTER_TILING_DEFAULT(QuantMatmulAlltoAllTilingData);
