@@ -10,7 +10,7 @@
 
 /*!
  * \file quant_flash_attn_tiling_hifp4.cpp
- * \brief QuantFlashAttn arch9201 tiling implementation (A4C4_QKV_HIF4_P_FP8_E4M3_SOFTMAX_FP16)
+ * \brief QuantFlashAttn arch92 tiling implementation (A4C4_QKV_HIF4_P_FP8_E4M3_SOFTMAX_FP16)
  */
 
 #include "quant_flash_attn_tiling_hifp4.h"
@@ -19,7 +19,7 @@
 #include <graph/utils/type_utils.h>
 #include "log/log.h"
 #include "../quant_flash_attn_tiling_utils.h"
-#include "../../op_kernel/arch-920r1/quant_flash_attn_template_tiling_key.h"
+#include "../../op_kernel/arch92/quant_flash_attn_template_tiling_key.h"
 #include "../../../common/op_host/fia_tiling_templates_registry.h"
 #include "../qfa_adjust_sinner_souter.h"
 
