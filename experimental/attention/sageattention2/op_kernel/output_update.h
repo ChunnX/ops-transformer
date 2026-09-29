@@ -276,6 +276,10 @@ __simd_vf__ inline void FinalizeWideFp32VF(__ubuf__ T *out, __ubuf__ float *accu
                                            __ubuf__ float *alpha, __ubuf__ float *denom, __ubuf__ float *scratch,
                                            __ubuf__ float *meanV)
 {
+    // Only AttentionBlockVecWide<T, 128> instantiates this, as UpdateWidePairVF
+    // already asserts. Fixing DP here lets the row-pair split below drop its
+    // unreachable DP64 arm.
+    static_assert(DP == 128, "wide finalize folds 128-column rows only");
     using namespace AscendC::MicroAPI;
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     auto f = CreateMask<float, MaskPattern::ALL>();
@@ -351,67 +355,6 @@ __simd_vf__ inline void FinalizeWideFp32VF(__ubuf__ T *out, __ubuf__ float *accu
             StoreAlign<T, StoreDist::DIST_PACK_B32>(out + row * DP + 64, p1_0, f);
             StoreAlign<T, StoreDist::DIST_PACK_B32>(out + (row + 1) * DP, p0_1, f);
             StoreAlign<T, StoreDist::DIST_PACK_B32>(out + (row + 1) * DP + 64, p1_1, f);
-        }
-    } else {
-        RegTensor<float> mv;
-        LoadAlign(mv, meanV);
-        for (uint16_t row = 0; row < 64; row += 4) {
-            RegTensor<float> rinv0, rinv1, rinv2, rinv3;
-            LoadAlign<float, LoadDist::DIST_BRC_B32>(rinv0, scratch + row);
-            LoadAlign<float, LoadDist::DIST_BRC_B32>(rinv1, scratch + row + 1);
-            LoadAlign<float, LoadDist::DIST_BRC_B32>(rinv2, scratch + row + 2);
-            LoadAlign<float, LoadDist::DIST_BRC_B32>(rinv3, scratch + row + 3);
-
-            RegTensor<float> x0, x1, x2, x3;
-            if constexpr (FIRST) {
-                LoadAlign(x0, partial + row * DP);
-                LoadAlign(x1, partial + (row + 1) * DP);
-                LoadAlign(x2, partial + (row + 2) * DP);
-                LoadAlign(x3, partial + (row + 3) * DP);
-            } else {
-                RegTensor<float> ratio0, ratio1, ratio2, ratio3;
-                RegTensor<float> y0, y1, y2, y3;
-                LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio0, alpha + row);
-                LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio1, alpha + row + 1);
-                LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio2, alpha + row + 2);
-                LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio3, alpha + row + 3);
-
-                LoadAlign(x0, accum + row * DP);
-                LoadAlign(x1, accum + (row + 1) * DP);
-                LoadAlign(x2, accum + (row + 2) * DP);
-                LoadAlign(x3, accum + (row + 3) * DP);
-
-                LoadAlign(y0, partial + row * DP);
-                LoadAlign(y1, partial + (row + 1) * DP);
-                LoadAlign(y2, partial + (row + 2) * DP);
-                LoadAlign(y3, partial + (row + 3) * DP);
-
-                MulDstAdd(x0, ratio0, y0, f);
-                MulDstAdd(x1, ratio1, y1, f);
-                MulDstAdd(x2, ratio2, y2, f);
-                MulDstAdd(x3, ratio3, y3, f);
-            }
-
-            Mul(x0, x0, rinv0, f);
-            Mul(x1, x1, rinv1, f);
-            Mul(x2, x2, rinv2, f);
-            Mul(x3, x3, rinv3, f);
-
-            Add(x0, x0, mv, f);
-            Add(x1, x1, mv, f);
-            Add(x2, x2, mv, f);
-            Add(x3, x3, mv, f);
-
-            RegTensor<T> packed0, packed1, packed2, packed3;
-            Cast<T, float, cast>(packed0, x0, f);
-            Cast<T, float, cast>(packed1, x1, f);
-            Cast<T, float, cast>(packed2, x2, f);
-            Cast<T, float, cast>(packed3, x3, f);
-
-            StoreAlign<T, StoreDist::DIST_PACK_B32>(out + row * DP, packed0, f);
-            StoreAlign<T, StoreDist::DIST_PACK_B32>(out + (row + 1) * DP, packed1, f);
-            StoreAlign<T, StoreDist::DIST_PACK_B32>(out + (row + 2) * DP, packed2, f);
-            StoreAlign<T, StoreDist::DIST_PACK_B32>(out + (row + 3) * DP, packed3, f);
         }
     }
 }

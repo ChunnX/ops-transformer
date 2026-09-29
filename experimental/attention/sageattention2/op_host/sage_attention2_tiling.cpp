@@ -37,7 +37,10 @@ struct CompileInfo {
 // guess core counts from a device model.
 bool ResolveCoreCounts(const gert::TilingContext *c, uint32_t &cores, uint32_t &vectors)
 {
-    static uint32_t s_cachedCores = 0, s_cachedVectors = 0;
+    // Tiling runs on a worker pool, so the resolved counts are cached per
+    // thread instead of shared: a plain static here would be an unsynchronized
+    // read/write race. The value each thread computes is identical.
+    thread_local static uint32_t s_cachedCores = 0, s_cachedVectors = 0;
     if (s_cachedCores > 0 && s_cachedVectors >= 2 * s_cachedCores) {
         cores = s_cachedCores;
         vectors = s_cachedVectors;
@@ -105,6 +108,10 @@ ge::graphStatus Tile(gert::TilingContext *c)
     if (q[2] > UINT32_MAX - 127 || k[2] > UINT32_MAX - 511) {
         return Failure(__LINE__);
     }
+    // The device reads Q/K/V with an innermost stride of exactly d
+    // (qs[2] == ks[2] == vs[2] == d). sage_attention2_def.cpp pins every input
+    // to FORMAT_ND, so the graph compiler rejects any other layout before this
+    // point and no runtime format check belongs here.
     SageAttention2TilingData t{};
     auto &p = t.params;
     p.b = q[0];
@@ -129,21 +136,27 @@ ge::graphStatus Tile(gert::TilingContext *c)
     if (!IsValidQuantGran(*gran) || !IsValidPvAccum(*accum)) {
         return Failure(__LINE__);
     }
-    p.smScale = *sm;
-    const float absScale = std::abs(p.smScale);
+    // sm_scale only reaches the device through its pre-fused FP16 form, so the
+    // derived factor has to survive both the float product and the FP16 pack.
+    const float smScale = *sm;
+    const float absScale = std::abs(smScale);
+    constexpr float FP16_MAX = 65504.0f;
     const float balance = std::sqrt(absScale * 2048.0f);
+    if (!std::isfinite(balance) || balance > FP16_MAX) {
+        return Failure(__LINE__);
+    }
     p.kFactor = balance;
-    p.qFactor = (p.smScale < 0.0f) ? -balance : balance;
+    p.qFactor = (smScale < 0.0f) ? -balance : balance;
     p.smoothK = *smooth;
     p.causal = *causal;
     p.returnLse = *lse;
     const bool perWarp = (*gran == static_cast<int64_t>(SageQuantGran::PER_WARP));
     p.qg = QTokensPerScale(perWarp);
     p.kg = KTokensPerScale(perWarp);
-    p.accum = static_cast<uint32_t>(*accum);
+    p.accum = static_cast<SagePvAccum>(*accum);
     // V centering only feeds back into an FP32 PV state; the other formats
     // keep the open-source warning-and-ignore behaviour.
-    p.smoothV = (*smoothV && p.accum == static_cast<uint32_t>(SagePvAccum::FP32)) ? 1U : 0U;
+    p.smoothV = (*smoothV && p.accum == SagePvAccum::FP32) ? 1U : 0U;
     p.qs[2] = p.d;
     p.qs[1] = uint64_t(p.sq) * p.d;
     p.qs[0] = uint64_t(p.hq) * p.qs[1];
@@ -199,7 +212,8 @@ ge::graphStatus Tile(gert::TilingContext *c)
         !allocate(t.kScale, {p.b, p.hk, p.kp, sizeof(uint16_t)})) {
         return Failure(__LINE__);
     }
-    static uint64_t s_cachedReserved = 0;
+    // Same per-thread reasoning as the core counts above.
+    thread_local static uint64_t s_cachedReserved = 0;
     uint64_t reserved = s_cachedReserved;
     if (reserved == 0) {
         reserved = DEFAULT_RESERVED_WS;

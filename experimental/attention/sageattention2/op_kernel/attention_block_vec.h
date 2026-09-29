@@ -116,7 +116,7 @@ public:
     // this AIV between PV_READY and PV_RELEASE, so it can be rewritten.
     __aicore__ inline __attribute__((always_inline)) void RoundPvSlot(uint32_t slot)
     {
-        if (params_.accum != uint32_t(SagePvAccum::FP32_FP16))
+        if (params_.accum != SagePvAccum::FP32_FP16)
             return;
         auto pv = resource_->ubBuf.template GetBufferByByte<float>(Layout::PV_UB + slot * Layout::PV_SLOT_BYTES);
         RoundPartialFp16VF((__ubuf__ float *)pv.GetPhyAddr(), HALF * params_.dp);

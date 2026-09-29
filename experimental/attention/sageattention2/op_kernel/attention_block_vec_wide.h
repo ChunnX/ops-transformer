@@ -65,12 +65,17 @@ public:
         auto partialSums = resource_->ubBuf.template GetBufferByByte<float>(WideVectorLayout::PARTIAL_SUMS_UB);
         if constexpr (CAUSAL) {
             if (step + 1 == count) {
-                SoftmaxWideFirstVF<true>((__ubuf__ half *)scores.GetPhyAddr(), (__ubuf__ half *)scoresNext.GetPhyAddr(),
-                                         (__ubuf__ half *)maxima_.GetPhyAddr(),
-                                         (__ubuf__ float *)alpha.GetPhyAddr(), (__ubuf__ float8_e4m3_t *)p8.GetPhyAddr(),
-                                         (__ubuf__ half *)qsu_.GetPhyAddr(), (__ubuf__ half *)ksu.GetPhyAddr(),
-                                         (__ubuf__ float *)partialSums.GetPhyAddr(),
-                                         int32_t(qstart + subBlockIdx_ * HALF) - int32_t(step * 512));
+                // queryInGroup is the frontier row relative to this N512 group,
+                // so it always fits int16 even though qstart and step * 512
+                // individually may exceed INT32_MAX. Subtract in the wider type
+                // and narrow once instead of wrapping each operand first.
+                SoftmaxWideFirstVF<true>(
+                    (__ubuf__ half *)scores.GetPhyAddr(), (__ubuf__ half *)scoresNext.GetPhyAddr(),
+                    (__ubuf__ half *)maxima_.GetPhyAddr(),
+                    (__ubuf__ float *)alpha.GetPhyAddr(), (__ubuf__ float8_e4m3_t *)p8.GetPhyAddr(),
+                    (__ubuf__ half *)qsu_.GetPhyAddr(), (__ubuf__ half *)ksu.GetPhyAddr(),
+                    (__ubuf__ float *)partialSums.GetPhyAddr(),
+                    static_cast<int32_t>(int64_t(qstart) + int64_t(subBlockIdx_) * HALF - int64_t(step) * 512));
             } else {
                 SoftmaxWideFirstVF<false>((__ubuf__ half *)scores.GetPhyAddr(), (__ubuf__ half *)scoresNext.GetPhyAddr(),
                                           (__ubuf__ half *)maxima_.GetPhyAddr(),

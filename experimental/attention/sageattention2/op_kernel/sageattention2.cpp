@@ -40,11 +40,16 @@ __aicore__ inline __attribute__((always_inline)) void FusedAttention(GM_ADDR q, 
                        work + t.qScale, work + t.kScale, p);
     }
     // Drain preprocessing pipes and publish K/V GM writes to every AIC/AIV.
-    // When Q is decoupled (WIDE path), Q preprocessing HBM roundtrips and global
-    // sync stalls are eliminated; Q is quantized on-chip in Attention.
-    // Idle cores also reach this barrier. Its flags (11..14) do not overlap
-    // attention's MODE4 flags (0..4, where 4 is the streaming Q handoff).
+    // WIDE skips the Q HBM roundtrip (Q is quantized on-chip inside Attention),
+    // but this barrier itself stays unconditional: SyncAll only proves that the
+    // whole MIX 1:2 grid is resident, and idle cores must reach it too.
+    // Its flags (11..14) do not overlap attention's MODE4 flags (0..4, where 4
+    // is the streaming Q handoff).
     SyncAll<false>();
+    // Under WIDE the host sizes the Q staging with qBatch == 0, so t.q8 and
+    // t.qScale collapse onto t.k8 and t.kScale. That is safe only because the
+    // streaming path never dereferences the qs argument: it reads raw Q and
+    // quantizes per tile. The non-wide branch is the sole consumer.
     if constexpr (WIDE) {
         Attention<T, WIDE>(q, work + t.k8, work + t.v8, work + t.qScale, work + t.kScale,
                            work + t.vMxScale, work + t.vMean, out, lse, p);

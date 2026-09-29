@@ -12,7 +12,15 @@
 #include "common.h"
 namespace Sage {
 // Shared stats UB layout: raw 16-bit rows, FP32 rows, then the column sums.
-constexpr uint32_t STATS_RAW_UB = 0, STATS_F32_UB = 65536, STATS_SUM_UB = 131072;
+// BATCH_ROWS * DP_MAX is the widest staging slot; T is always half or
+// bfloat16_t, so the raw slot costs two bytes per element and the FP32
+// conversion stage four, one slot at a time.
+constexpr uint32_t STATS_BATCH_ROWS = 128, STATS_DP_MAX = 128;
+constexpr uint32_t STATS_SLOT_BYTES = STATS_BATCH_ROWS * STATS_DP_MAX * 2U;
+constexpr uint32_t STATS_F32_BYTES = STATS_BATCH_ROWS * STATS_DP_MAX * 4U;
+constexpr uint32_t STATS_RAW_UB = 0, STATS_F32_UB = 2 * STATS_SLOT_BYTES,
+                   STATS_SUM_UB = STATS_F32_UB + STATS_F32_BYTES;
+static_assert(STATS_SUM_UB + STATS_DP_MAX * 4U <= UB_HIGH_WATER, "stats reduction exceeds UB");
 // Load one 64-lane column slice of a 16-bit row as FP32 registers, unpacking
 // and casting in the same sequence.
 template <class T, uint32_t DP>
@@ -121,7 +129,7 @@ __aicore__ void Stats(GM_ADDR src, GM_ADDR mean, SageParams p)
         uint32_t b = bh / p.hk, h = bh % p.hk;
         Duplicate(sum, 0.0f, p.dp);
         if (p.d == p.dp) {
-            constexpr uint32_t BATCH_ROWS = 128, SLOT_BYTES = 32768;
+            constexpr uint32_t BATCH_ROWS = STATS_BATCH_ROWS, SLOT_BYTES = STATS_SLOT_BYTES;
             LocalTensor<T> slotBuf[2] = {
                 r.ubBuf.template GetBufferByByte<T>(0),
                 r.ubBuf.template GetBufferByByte<T>(SLOT_BYTES)

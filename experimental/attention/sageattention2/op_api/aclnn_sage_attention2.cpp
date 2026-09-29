@@ -56,6 +56,29 @@ bool TensorValid(const aclTensor *t)
     }
     return t->GetDataType() == DataType::DT_FLOAT16 || t->GetDataType() == DataType::DT_BF16;
 }
+// The kernel writes the output at canonical packed offsets, so it may only
+// target a caller tensor directly when that tensor really is packed. Comparing
+// storage to view shape is not enough: a permute(0,1,3,2) of a square
+// (B,H,S,D) block with S == D keeps both shapes equal while the strides are
+// transposed, which would silently corrupt the result.
+bool Packed(const aclTensor *t)
+{
+    if (t->GetViewOffset() != 0) {
+        return false;
+    }
+    const auto &shape = t->GetViewShape();
+    const auto strides = t->GetViewStrides();
+    int64_t expect = 1;
+    for (int64_t i = static_cast<int64_t>(shape.GetDimNum()) - 1; i >= 0; --i) {
+        const int dim = static_cast<int>(i);
+        // A length-1 axis may carry any stride, so only constrain the step.
+        if (shape[dim] != 1 && strides[dim] != expect) {
+            return false;
+        }
+        expect *= shape[dim];
+    }
+    return true;
+}
 } // namespace
 extern "C" aclnnStatus aclnnSageAttention2GetWorkspaceSize(const aclTensor *q, const aclTensor *k, const aclTensor *v,
                                                            const char *tensorLayout, bool isCausal,
@@ -124,9 +147,9 @@ extern "C" aclnnStatus aclnnSageAttention2GetWorkspaceSize(const aclTensor *q, c
     if (!qc || !kc || !vc) {
         return ACLNN_ERR_INNER_NULLPTR;
     }
-    const bool directOut = !nhd && (oc->GetStorageShape() == oc->GetViewShape());
+    const bool directOut = !nhd && Packed(oc);
     const aclTensor *result = directOut ? oc : owner->AllocTensor(a, q->GetDataType());
-    const bool directLse = (!returnLse) || (!nhd && (lse->GetStorageShape() == lse->GetViewShape()));
+    const bool directLse = (!returnLse) || (!nhd && Packed(lse));
     const aclTensor *resultLse = (returnLse && directLse) ? lse : owner->AllocTensor(lseShape, DataType::DT_FLOAT);
     if (!result || !resultLse) {
         return ACLNN_ERR_INNER_NULLPTR;
