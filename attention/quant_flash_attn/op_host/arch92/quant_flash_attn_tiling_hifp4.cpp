@@ -21,13 +21,13 @@
 #include "../quant_flash_attn_tiling_utils.h"
 #include "../../op_kernel/arch92/quant_flash_attn_template_tiling_key.h"
 #include "../../../common/op_host/fia_tiling_templates_registry.h"
-#include "../qfa_adjust_sinner_souter.h"
+#include "../quant_flash_attn_tiling_constants.h"
 
 using namespace ge;
 using namespace AscendC;
 namespace optiling {
 namespace quant_flash_attn {
-using namespace qfa_tiling_util;
+using namespace arch35QFA;
 
 void QuantFlashAttnHiFP4TilingImpl::InitTilingInfo(TilingInfo *tilingInfo)
 {
