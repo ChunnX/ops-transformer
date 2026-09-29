@@ -16,12 +16,12 @@
 ### 主入口
 
 ```cpp
-CommCutResult FitBalanceCut(const FitBalanceTilingArgs &args, TilingCommEngine commEngine,
-                            const FitBalanceCalibration &calib);
+CommCutResult FitBalanceCut(const FitBalanceTilingArgs &args, const FitBalanceCalibration &calib);
 ```
 
 一行完成切分：内部串联 上下文构造（InitCtx）→ 键控求解（Schedule）→ 诊断打印（debug 级）。
 返回"1 短 + N 长"的 M 轴切分方案（或退化的等分/单块）。
+通信引擎（AICPU/CCU）经 `args.commEngine` 传入——op 侧 `ParseCommEngine(comm_mode)` 解析。
 
 ### 分派判定
 
@@ -49,7 +49,7 @@ const FitBalanceCalibration::CommFit::Row *FindCommFitRow(calib, engine, rankDim
 
 | 类型 | 说明 |
 |---|---|
-| `FitBalanceTilingArgs` | 引擎调度入参（9 字段：m/n/k、rankDim、aicCoreNum、dtype 四元组）——纯运行时 shape 事实 |
+| `FitBalanceTilingArgs` | 引擎调度入参（10 字段：m/n/k、rankDim、aicCoreNum、dtype 四元组、commEngine）——纯运行时事实 |
 | `CommCutResult` | 切分结果（shortTileAtBack / totalTileCnt / numLongTile / numShortTile / longTileLen / shortTileLen） |
 | `FitBalanceCalibration` | 客户标定数据总集（CommProfile 结构参数 + 通信拟合行 k/b/c + matmul 算力档），算子侧唯一编辑面 |
 | `LocalMMPosition` | 流水线结构键控：FRONT（本地 mm 块前置）/ BACK（后置）/ NONE（无本地块） |
@@ -100,8 +100,9 @@ ge::graphStatus MyOpTiling::DoTiling()
     if (IsCommCalibrated(rankDim_, commEngine, CALIBRATION)) {
         // 命中: 直接构造引擎入参(9 字段)并调用
         FitBalanceTilingArgs args = {mValue_, nValue_, kValue_, rankDim_, aicCoreNum_,
-                                     aType_, geAType_, inputDtypeSize_, outputDtypeSize_};
-        cut = FitBalanceCut(args, commEngine, CALIBRATION);
+                                     aType_, geAType_, inputDtypeSize_, outputDtypeSize_,
+                                     ParseCommEngine(commMode_)};   // comm_mode 图属性 → 引擎枚举
+        cut = FitBalanceCut(args, CALIBRATION);
     } else {
         // miss: 未标定形态, 走核利用率优先等策略(本例略——见 core_occupancy_first_tiling.h)
         cut = GetCutByCoreOccupancyFirst();

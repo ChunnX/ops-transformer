@@ -75,13 +75,12 @@ inline bool IsCommCalibrated(uint32_t rankDim, TilingCommEngine commEngine, cons
 //   worksetShares: FRONT(本地块前置——本地份剔出稳态、单独按单份建模)=rankDim−1; 其余随形态
 //   注: A2A 系老口径 workset=rankDim 与单份形态推导值(1)不同——A2A 系无现存消费者,
 //       BACK 形态实测校准时定稿
-inline FitBasedBalanceCtx InitCtx(const FitBalanceTilingArgs &args, TilingCommEngine commEngine,
-                                  const FitBalanceCalibration &calib)
+inline FitBasedBalanceCtx InitCtx(const FitBalanceTilingArgs &args, const FitBalanceCalibration &calib)
 {
     const CommComputeOrder order = calib.dataflow.order;
     const LocalMMPosition localMMPosition = calib.dataflow.localMMPosition;
     // ---- 标定选行(所有匹配键此刻已知: rankDim 与 dtype 均来自 args, 就地选定传纯参数) ----
-    const auto *commRow = FindCommFitRow(calib, commEngine, args.rankDim);
+    const auto *commRow = FindCommFitRow(calib, args.commEngine, args.rankDim);
     CommFitParams commFitParams = (commRow != nullptr) ? CommFitParams{commRow->slopeUsPerMb, commRow->roundOverheadUs,
                                                                        commRow->fixedOverheadUs} :
                                                          CommFitParams{}; // miss=零值行(slope=0 → NoCut 防御)
@@ -114,7 +113,7 @@ inline FitBasedBalanceCtx InitCtx(const FitBalanceTilingArgs &args, TilingCommEn
                            CutPlanner(args),
                            localMMPosition,
                            order,
-                           commEngine,
+                           args.commEngine,
                            1,
                            1,
                            1,
@@ -309,10 +308,9 @@ inline void PrintTilingData(const FitBalanceTilingArgs &args, const CommCutResul
 
 // 对外唯一入口: 算子侧一行调用——上下文构造 + 键控求解的串联。
 // 诊断打印内置于本函数(debug 级), op 侧无需再写日志。
-inline CommCutResult FitBalanceCut(const FitBalanceTilingArgs &args, TilingCommEngine commEngine,
-                                   const FitBalanceCalibration &calib)
+inline CommCutResult FitBalanceCut(const FitBalanceTilingArgs &args, const FitBalanceCalibration &calib)
 {
-    FitBasedBalanceCtx ctx = InitCtx(args, commEngine, calib);
+    FitBasedBalanceCtx ctx = InitCtx(args, calib);
     CommCutResult cut = Schedule(ctx);
     PrintTilingData(args, cut, ctx.commTimeActualUs, ctx.commTimeNoCutUs);
     return cut;

@@ -113,12 +113,13 @@ inline CutResult ToLegacyCut(const CommCutResult &c)
     return {c.shortTileAtBack, c.totalTileCnt, c.numLongTile, c.numShortTile, c.longTileLen, c.shortTileLen};
 }
 
-// 统一引擎路径: 引擎对外唯一入口 FitBalanceCut(诊断打印内置于引擎, debug 级),
-// 本算子 LocalMMPosition::FRONT(本地 A 块前置) + COMM_FIRST
+// 统一引擎路径: 引擎对外唯一入口 FitBalanceCut(诊断打印内置于引擎, debug 级);
+// 结构枚举在 CALIBRATION.dataflow(本算子: COMM_FIRST + FRONT + 全量形态)
 inline CutResult ScheduleFitBalance(const mc2tiling::TilingArgs &args, TilingCommEngine commEngine)
 {
-    CutResult cut = ToLegacyCut(FitBalanceCut(ToEngineArgs(args), commEngine, CALIBRATION));
-    return cut;
+    FitBalanceTilingArgs engineArgs = ToEngineArgs(args);
+    engineArgs.commEngine = commEngine; // 图属性 comm_mode 解析产物, 旧 TilingArgs 无此字段
+    return ToLegacyCut(FitBalanceCut(engineArgs, CALIBRATION));
 }
 
 // COF 结果(head 在前/tail 在后) → CutResult(long/short) 映射; 短块(尾块)后置
@@ -134,8 +135,7 @@ inline CutResult CutResultFromCof(const CommTilingData &data)
     return r;
 }
 
-// 对外唯一入口：两个 GetTilingResult 调用点共用（commEngine 决定通信拟合选表;
-// 调用点用 ParseCommEngine(commMode_) 解析后传入, global 符号）
+// 对外唯一入口：两个 GetTilingResult 调用点共用
 inline CutResult GetFitBalanceCut(const mc2tiling::TilingArgs &args, TilingCommEngine commEngine)
 {
     return ScheduleFitBalance(args, commEngine);

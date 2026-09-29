@@ -112,30 +112,13 @@ enum class CommAxis {
     N, // C 侧(输出): 输出侧通信, 传 C 矩阵行(另一维取 nValue)
 };
 
-// 引擎调度入参( 清理: 旧 33 字段镜像裁至引擎实际消费的 9 个, 按类型聚合;
-// 算子侧 ToEngineArgs 从旧 mc2tiling::TilingArgs 挑字段填充)
-// 引擎调度入参( 清理: 旧 33 字段镜像裁至引擎实际消费的 9 个, 平铺;
-// 算子侧 ToEngineArgs 从旧 mc2tiling::TilingArgs 挑字段填充)
-struct FitBalanceTilingArgs {
-    uint64_t mValue;
-    uint64_t nValue;
-    uint64_t kValue;
-    uint32_t rankDim;              // 通信域卡数
-    uint32_t aicCoreNum;           // 计算 AIC 核数
-    matmul_tiling::DataType aType; // mm 域 A dtype(量化类别判定)
-    ge::DataType geAType;          // ge 域 A dtype(fp4 识别——DT_FLOAT4_E2M1 无 mm 域表达)
-    uint64_t inputDtypeSize;       // A 每元素字节数(glue 真实口径, fp4 时=0)
-    uint64_t outputDtypeSize;      // C 每元素字节数(C 侧承载通信时的字节)
-};
-
-// ====== 通信引擎枚举与解析（三引擎统一分派的公共词汇）======
+// 引擎调度入参(纯运行时 shape 事实: 三围/并行度/dtype/通信引擎)
 enum class TilingCommEngine {
     AICPU,
     CCU,
     AIV_URMA,
 };
 
-// comm_mode 属性解析: "aiv_urma"→AIV_URMA, "ccu"→CCU, 其余(含空指针/默认"ai_cpu")→AICPU
 inline TilingCommEngine ParseCommEngine(const char *commMode)
 {
     if (commMode == nullptr) {
@@ -149,6 +132,24 @@ inline TilingCommEngine ParseCommEngine(const char *commMode)
     }
     return TilingCommEngine::AICPU;
 }
+
+struct FitBalanceTilingArgs {
+    uint64_t mValue;
+    uint64_t nValue;
+    uint64_t kValue;
+    uint32_t rankDim;              // 通信域卡数
+    uint32_t aicCoreNum;           // 计算 AIC 核数
+    matmul_tiling::DataType aType; // mm 域 A dtype(量化类别判定)
+    ge::DataType geAType;          // ge 域 A dtype(fp4 识别——DT_FLOAT4_E2M1 无 mm 域表达)
+    uint64_t inputDtypeSize;       // A 每元素字节数(glue 真实口径, fp4 时=0)
+    uint64_t outputDtypeSize;      // C 每元素字节数(C 侧承载通信时的字节)
+    TilingCommEngine commEngine;   // 通信引擎(op 侧 ParseCommEngine(comm_mode) 解析后传入——决定
+                                   // 拟合表分区与 CCU 的单轮 256MB 整形, 每次调用可变)
+};
+
+// ====== 通信引擎枚举与解析（三引擎统一分派的公共词汇）======
+
+// comm_mode 属性解析: "aiv_urma"→AIV_URMA, "ccu"→CCU, 其余(含空指针/默认"ai_cpu")→AICPU
 
 // ====== 通算顺序枚举(键控维度: 同一原语可有相反顺序, 如 matmul_allto_all=mm→A2A /
 //       allto_all_matmul=A2A→mm; 顺序不可由原语推导, 必须显式传入) ======
