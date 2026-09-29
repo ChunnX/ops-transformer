@@ -179,6 +179,7 @@ private:
     int32_t evtVtoMte3_ = 0;
     int32_t evtMte2toS_ = 0;
     int32_t evtStoMte3_ = 0;
+    int32_t evtVtoS_ = 0;
 };
 
 
@@ -273,6 +274,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         evtVtoMte2_ = static_cast<int32_t>(pipe_.AllocEventID<HardEvent::V_MTE2>());
         evtMte3toV_ = static_cast<int32_t>(pipe_.AllocEventID<HardEvent::MTE3_V>());
         evtVtoMte3_ = static_cast<int32_t>(pipe_.AllocEventID<HardEvent::V_MTE3>());
+        evtVtoS_ = static_cast<int32_t>(pipe_.AllocEventID<HardEvent::V_S>());
         if constexpr (DUAL_SIBLING) {
             evtMte2toS_ = static_cast<int32_t>(pipe_.AllocEventID<HardEvent::MTE2_S>());
             evtStoMte3_ = static_cast<int32_t>(pipe_.AllocEventID<HardEvent::S_MTE3>());
@@ -318,6 +320,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         pipe_.ReleaseEventID<HardEvent::V_MTE2>(evtVtoMte2_);
         pipe_.ReleaseEventID<HardEvent::MTE3_V>(evtMte3toV_);
         pipe_.ReleaseEventID<HardEvent::V_MTE3>(evtVtoMte3_);
+        pipe_.ReleaseEventID<HardEvent::V_S>(evtVtoS_);
         if constexpr (DUAL_SIBLING) {
             pipe_.ReleaseEventID<HardEvent::MTE2_S>(evtMte2toS_);
             pipe_.ReleaseEventID<HardEvent::S_MTE3>(evtStoMte3_);
@@ -420,6 +423,8 @@ __aicore__ inline float KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32
         uint32_t srcShape[2] = {1, tDAligned};
         ReduceSum<float, AscendC::Pattern::Reduce::AR, true>(scBuf, src, srcShape, true);
         PipeBarrier<PIPE_V>();
+        SetFlag<HardEvent::V_S>(evtVtoS_);
+        WaitFlag<HardEvent::V_S>(evtVtoS_);
         return scBuf.GetValue(0);
     }
 
