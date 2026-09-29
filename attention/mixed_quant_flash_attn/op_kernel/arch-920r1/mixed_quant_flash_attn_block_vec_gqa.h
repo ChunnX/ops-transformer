@@ -811,12 +811,6 @@ public:
                 FlashUpdateDiv<T, T, Q_T, T, dTemplateAlign64, QUANT_COMPUTE_MODE == 0>(
                     vec2ResUb, bmm2ResBuf, sumUb, valueScaleUb, runInfo.actVecMSize, dTemplateAlign64, deSCaleVValue);
             }
-            if (constInfo.learnableSinkFlag && !runInfo.isS2SplitCore) {
-                LocalTensor<float> sinkScale = sinkScaleBuf[(runInfo.mloop % (PRELOAD_N + 1)) * SOFTMAX_BUF_BYTES]
-                                                   .template ReinterpretCast<float>();
-                MixedQuantFlashAttnSink::SinkScaleRowsVF<float>(vec2ResUb, sinkScale, runInfo.actVecMSize,
-                                                                dTemplateAlign64);
-            }
         }
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM2_0 + bmm2BufId);
 

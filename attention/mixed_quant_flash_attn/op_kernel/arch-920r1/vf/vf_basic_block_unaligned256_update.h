@@ -131,11 +131,6 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl256VF(
         LoadAlign(vreg_input_x2, srcUb + floatRepSize + i * s2BaseSize);
         LoadAlign(vreg_input_x3, srcUb + floatRepSize * 2 + i * s2BaseSize);
         LoadAlign(vreg_input_x4, srcUb + floatRepSize * 3 + i * s2BaseSize);
-        Muls(vreg_input_x1, vreg_input_x1, scale, preg_all);
-        Muls(vreg_input_x2, vreg_input_x2, scale, preg_all);
-        Muls(vreg_input_x3, vreg_input_x3, scale, preg_ori_tail_n1);
-        Muls(vreg_input_x4, vreg_input_x4, scale, preg_ori_tail_n2);
-
         if constexpr (hasAtten == 1) {
             // atten mask
             LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_DS>(
