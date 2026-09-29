@@ -110,15 +110,14 @@ ASCENDC_TPL_ARGS_DECL(QuantFlashAttn,
 // ============================== 统一特化选择：DN 笛卡尔积 + mode-3 单组合 ==============================
 ASCENDC_TPL_SEL(
     // mxfp4 DN（quant_mode=5）：layout × kv × mask 笛卡尔，Config/IsFd 固定
-    ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, LAYOUT_ENUM_BSND,
-                                              LAYOUT_ENUM_BNSD, LAYOUT_ENUM_TND, LAYOUT_ENUM_BNSD_BSND),
+    ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, LAYOUT_ENUM_BSND, LAYOUT_ENUM_BNSD,
+                                              LAYOUT_ENUM_TND, LAYOUT_ENUM_BNSD_BSND),
                          ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST, Config_DN_FIXED),
                          ASCENDC_TPL_UINT_SEL(QuantMode, ASCENDC_TPL_UI_LIST, QFA_MXFP4_DN),
                          ASCENDC_TPL_BOOL_SEL(HasAttenMask, 0, 1),
                          ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, KV_STORAGE_MODE_CONTINUE,
                                               KV_STORAGE_MODE_PA_BSND, KV_STORAGE_MODE_PA_BNSD),
-                         ASCENDC_TPL_BOOL_SEL(IsFd, 0),
-                         ASCENDC_TPL_TILING_STRUCT_SEL(QuantFlashAttnTilingData)),
+                         ASCENDC_TPL_BOOL_SEL(IsFd, 0), ASCENDC_TPL_TILING_STRUCT_SEL(QuantFlashAttnTilingData)),
     // MxFP8 Softmax FP16（quant_mode=3）：单模板组合
     ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD),
                          ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST,
@@ -126,7 +125,6 @@ ASCENDC_TPL_SEL(
                          ASCENDC_TPL_UINT_SEL(QuantMode, ASCENDC_TPL_UI_LIST, QFA_MXFP8_SOFTMAX_FP16),
                          ASCENDC_TPL_BOOL_SEL(HasAttenMask, 0),
                          ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, KvLayoutType_NO_PA),
-                         ASCENDC_TPL_BOOL_SEL(IsFd, 0),
-                         ASCENDC_TPL_TILING_STRUCT_SEL(QuantFlashAttnTilingData)));
+                         ASCENDC_TPL_BOOL_SEL(IsFd, 0), ASCENDC_TPL_TILING_STRUCT_SEL(QuantFlashAttnTilingData)));
 
 #endif // TEMPLATE_TILING_KEY_QUANT_FLASH_ATTN_H_

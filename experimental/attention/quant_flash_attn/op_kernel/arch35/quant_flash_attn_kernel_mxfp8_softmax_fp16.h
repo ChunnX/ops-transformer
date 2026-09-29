@@ -44,15 +44,17 @@ namespace QFA_KERNEL {
 
 // ===== 类型别名（单模板组合：Q/K/V mxfp8 + softmax fp16 + 输出 bf16）=====
 using QUANT_T = fp8_e4m3fn_t; // Q/K/V
-using SCALE_T = fp8_e8m0_t; // QScale/KScale/VScale/pScale
-using SOFTMAX_T = half;     // mm1Res / softmax 中间类型（FP16 方案核心）
-using OUT_T = bfloat16_t;   // 最终输出
+using SCALE_T = fp8_e8m0_t;   // QScale/KScale/VScale/pScale
+using SOFTMAX_T = half;       // mm1Res / softmax 中间类型（FP16 方案核心）
+using OUT_T = bfloat16_t;     // 最终输出
 
 template <typename CubeBlockType, typename VectorBlockType>
 class QuantFlashAttnKernelMxfp8SoftmaxFp16 {
 public:
     __aicore__ inline QuantFlashAttnKernelMxfp8SoftmaxFp16()
-        : cubeBlock_(constInfo_), vectorBlock_(constInfo_) {}
+        : cubeBlock_(constInfo_),
+          vectorBlock_(constInfo_)
+    {}
 
     ConstInfo constInfo_;
     CubeBlockType cubeBlock_;
@@ -101,12 +103,11 @@ public:
     // ============================== 函数 ==============================
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                                 __gm__ uint8_t *dequantScaleQuery, __gm__ uint8_t *dequantScaleKey,
-                                __gm__ uint8_t *dequantScaleValue, __gm__ uint8_t *blockTable,
-                                __gm__ uint8_t *pScale, __gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *cuSeqLensKv,
-                                __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedKv, __gm__ uint8_t *sinks,
-                                __gm__ uint8_t *attnMask, __gm__ uint8_t *metadata, __gm__ uint8_t *attnOut,
-                                __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace,
-                                const __gm__ QuantFlashAttnTilingData *__restrict tiling)
+                                __gm__ uint8_t *dequantScaleValue, __gm__ uint8_t *blockTable, __gm__ uint8_t *pScale,
+                                __gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *cuSeqLensKv, __gm__ uint8_t *sequsedQ,
+                                __gm__ uint8_t *sequsedKv, __gm__ uint8_t *sinks, __gm__ uint8_t *attnMask,
+                                __gm__ uint8_t *metadata, __gm__ uint8_t *attnOut, __gm__ uint8_t *softmaxLse,
+                                __gm__ uint8_t *workspace, const __gm__ QuantFlashAttnTilingData *__restrict tiling)
     {
         this->tilingData_ = tiling;
         InitConstInfo();
@@ -122,8 +123,8 @@ public:
         softmaxLsePtr_ = softmaxLse;
         workspacePtr_ = workspace;
 
-        cubeBlock_.InitInput(query, key, value, dequantScaleQuery, dequantScaleKey, dequantScaleValue,
-                             qSeqUsedParser_, kvSeqUsedParser_);
+        cubeBlock_.InitInput(query, key, value, dequantScaleQuery, dequantScaleKey, dequantScaleValue, qSeqUsedParser_,
+                             kvSeqUsedParser_);
 
         // metadata 头（AICPU 生成）
         constInfo_.needInitOutput = ((__gm__ uint32_t *)metadata)[QFA_HEAD_NEED_INIT_OUTPUT_INDEX] != 0;
@@ -131,7 +132,7 @@ public:
         metadataAicNum_ = ((__gm__ uint32_t *)metadata)[METADATA_HEADER_AIC_NUM_INDEX];
         metadataAivNum_ = ((__gm__ uint32_t *)metadata)[METADATA_HEADER_AIV_NUM_INDEX];
         faMetaDataGm_.SetGlobalBuffer((__gm__ uint32_t *)(metadata + METADATA_HEADER_OFFSET),
-                                       sectionNum_ * metadataAicNum_ * METADATA_STRIDE);
+                                      sectionNum_ * metadataAicNum_ * METADATA_STRIDE);
 
         // seqlen 解析（BNSD：seqUsed 按 batch 索引，未传入时回退 shape）
         qSeqUsedParser_.Init(sequsedQ, static_cast<uint32_t>(constInfo_.seqUsedQSize), constInfo_.s1Size);
@@ -242,8 +243,7 @@ public:
                 } else if (taskDealMode == TASK_DEAL_MODE::DEAL_ZERO) {
                     if ASCEND_IS_AIV {
                         if (constInfo_.isSoftmaxLseEnable && actSeqLensQ_ > 0) {
-                            vectorBlock_.WriteLseNegInf(bN2Cur / constInfo_.realN2Size,
-                                                        bN2Cur % constInfo_.realN2Size,
+                            vectorBlock_.WriteLseNegInf(bN2Cur / constInfo_.realN2Size, bN2Cur % constInfo_.realN2Size,
                                                         static_cast<uint32_t>(actSeqLensQ_));
                         }
                     }
@@ -474,8 +474,8 @@ public:
                 if ASCEND_IS_AIC {
                     CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_V1_P_READY + vCore * 16);
                     CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_C2_V2 + vCore * 16);
-                    ComputeMm2(runInfo2, vCore);   // V_ext[144,128]×P[128,128] → L0C[144,128]
-                    FixpipeMm2(runInfo2, vCore);   // 裁 [129,128] 单目标搬给 V(vCore)
+                    ComputeMm2(runInfo2, vCore); // V_ext[144,128]×P[128,128] → L0C[144,128]
+                    FixpipeMm2(runInfo2, vCore); // 裁 [129,128] 单目标搬给 V(vCore)
                     CrossCoreSetFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_C2_V2 + vCore * 16);
                 } else {
                     if (vCore == constInfo_.subBlockIdx) {

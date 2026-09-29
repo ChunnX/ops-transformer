@@ -1,12 +1,11 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, and you can redistribute it and/or modify it under the terms of
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
- * You should have received a copy of the License along with this program.
- * If not, see <https://www.hiascend.com/legal/cannlicense>.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FIT FOR A PARTICULAR
- * PURPOSE.
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
 
 /*!
@@ -41,8 +40,7 @@ using namespace AscendC::Reg;
  * @param [in]  subLoopMax  本 subLoop 量化指数 k_i（subLoopUsedMaxUB[i]，half 整数）
  * @param [in]  finalMax    分块最终量化指数 K_final（softmaxMaxUB[stateSlot]，half 整数）
  */
-__simd_vf__ inline void VfCalcPScaleVF(__ubuf__ uint8_t *pscaleGrid, __ubuf__ half *subLoopMax,
-                                        __ubuf__ half *finalMax)
+__simd_vf__ inline void VfCalcPScaleVF(__ubuf__ uint8_t *pscaleGrid, __ubuf__ half *subLoopMax, __ubuf__ half *finalMax)
 {
     RegTensor<half> vreg_sub_loop_max;
     RegTensor<half> vreg_final_max;
@@ -67,10 +65,8 @@ __simd_vf__ inline void VfCalcPScaleVF(__ubuf__ uint8_t *pscaleGrid, __ubuf__ ha
 
     // ③ 散布到网格 y=0 / y=1 两行（同值广播）：256B 寄存器 = 8 个 32B 块，
     //    blockStride=3（32B 单位）→ 块 x 落 base + x×96B = (3x+y)×32B
-    StoreAlign<uint8_t, Reg::DataCopyMode::DATA_BLOCK_COPY>(
-        pscaleGrid + 0U, vreg_scale_even, 3U, preg_u8);
-    StoreAlign<uint8_t, Reg::DataCopyMode::DATA_BLOCK_COPY>(
-        pscaleGrid + 32U, vreg_scale_even, 3U, preg_u8);
+    StoreAlign<uint8_t, Reg::DataCopyMode::DATA_BLOCK_COPY>(pscaleGrid + 0U, vreg_scale_even, 3U, preg_u8);
+    StoreAlign<uint8_t, Reg::DataCopyMode::DATA_BLOCK_COPY>(pscaleGrid + 32U, vreg_scale_even, 3U, preg_u8);
 }
 
 /*
@@ -84,17 +80,16 @@ __simd_vf__ inline void VfCalcPScaleVF(__ubuf__ uint8_t *pscaleGrid, __ubuf__ ha
  * @param [in] subLoopIdx    subLoop 序号（0..1，k_i 槽索引）
  * @param [in] stateSlot     accMax 状态槽（0..2）
  */
-__aicore__ inline void VfCalcPScale(const LocalTensor<uint8_t> &pscaleGridUB,
-                                     const LocalTensor<half> &usedMaxUB,
-                                     const LocalTensor<half> &softmaxMaxUB,
-                                     uint32_t ringIdx, uint32_t subLoopIdx, uint32_t stateSlot)
+__aicore__ inline void VfCalcPScale(const LocalTensor<uint8_t> &pscaleGridUB, const LocalTensor<half> &usedMaxUB,
+                                    const LocalTensor<half> &softmaxMaxUB, uint32_t ringIdx, uint32_t subLoopIdx,
+                                    uint32_t stateSlot)
 {
-    __ubuf__ uint8_t *gridPtr = reinterpret_cast<__ubuf__ uint8_t *>(pscaleGridUB.GetPhyAddr())
-                                  + ringIdx * QFA_UB_PSCALE_SLOT;
-    __ubuf__ half *subLoopMaxPtr = reinterpret_cast<__ubuf__ half *>(usedMaxUB.GetPhyAddr())
-                                     + subLoopIdx * QFA_UB_SMAX_SLOT;
-    __ubuf__ half *finalMaxPtr = reinterpret_cast<__ubuf__ half *>(softmaxMaxUB.GetPhyAddr())
-                                   + stateSlot * QFA_UB_SMAX_SLOT;
+    __ubuf__ uint8_t *gridPtr =
+        reinterpret_cast<__ubuf__ uint8_t *>(pscaleGridUB.GetPhyAddr()) + ringIdx * QFA_UB_PSCALE_SLOT;
+    __ubuf__ half *subLoopMaxPtr =
+        reinterpret_cast<__ubuf__ half *>(usedMaxUB.GetPhyAddr()) + subLoopIdx * QFA_UB_SMAX_SLOT;
+    __ubuf__ half *finalMaxPtr =
+        reinterpret_cast<__ubuf__ half *>(softmaxMaxUB.GetPhyAddr()) + stateSlot * QFA_UB_SMAX_SLOT;
     VfCalcPScaleVF(gridPtr, subLoopMaxPtr, finalMaxPtr);
 }
 

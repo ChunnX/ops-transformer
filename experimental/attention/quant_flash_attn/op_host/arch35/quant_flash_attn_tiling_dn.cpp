@@ -93,9 +93,7 @@ ge::graphStatus QuantFlashAttnTilingDn::SetPlatMemoryInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-void QuantFlashAttnTilingDn::InitImplParam()
-{
-}
+void QuantFlashAttnTilingDn::InitImplParam() {}
 
 void QuantFlashAttnTilingDn::SplitPolicy()
 {

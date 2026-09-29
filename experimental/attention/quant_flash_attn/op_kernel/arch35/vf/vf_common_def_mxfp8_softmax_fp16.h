@@ -1,12 +1,11 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, and you can redistribute it and/or modify it under the terms of
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
- * You should have received a copy of the License along with this program.
- * If not, see <https://www.hiascend.com/legal/cannlicense>.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FIT FOR A PARTICULAR
- * PURPOSE.
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
 
 /*!
@@ -98,17 +97,17 @@ constexpr static AscendC::Reg::CastTrait castTraitRintThree = {
 };
 
 // ===== 数学常量（log2 整数域量化用） =====
-constexpr half NUM_127      = static_cast<half>(127.0f);   // fp32/e8m0 指数偏置
-constexpr half ZERO_VALUE   = static_cast<half>(0.0f);     // 防御负指数
-constexpr int16_t SHIFT_VALUE = 23;                        // fp32 尾数域位宽（移位目标）
+constexpr half NUM_127 = static_cast<half>(127.0f);  // fp32/e8m0 指数偏置
+constexpr half ZERO_VALUE = static_cast<half>(0.0f); // 防御负指数
+constexpr int16_t SHIFT_VALUE = 23;                  // fp32 尾数域位宽（移位目标）
 
-constexpr half LN2    = static_cast<half>(0.6931471806f);  // P 归一化用：k·ln2
+constexpr half LN2 = static_cast<half>(0.6931471806f);     // P 归一化用：k·ln2
 constexpr half INV_LN2 = static_cast<half>(1.4426950409f); // 量化用：max/ln2
-constexpr half MIN_VALUE = static_cast<half>(-65504.0f);  // fp16 最小值（accMax 复位）
+constexpr half MIN_VALUE = static_cast<half>(-65504.0f);   // fp16 最小值（accMax 复位）
 
-constexpr uint32_t QFA_UB_PSCALE_SLOT = 768;    // 单 pscale 槽字节数（L1 网格影像同构）
-constexpr uint32_t QFA_UB_PSCALE_RINGS = 6;     // ring 槽数（loop×2+subLoopIdx，周期 6）
-constexpr uint32_t QFA_UB_SMAX_SLOT = 128;      // 单 max 槽元素数（S1 半宽 [128]）
+constexpr uint32_t QFA_UB_PSCALE_SLOT = 768; // 单 pscale 槽字节数（L1 网格影像同构）
+constexpr uint32_t QFA_UB_PSCALE_RINGS = 6;  // ring 槽数（loop×2+subLoopIdx，周期 6）
+constexpr uint32_t QFA_UB_SMAX_SLOT = 128;   // 单 max 槽元素数（S1 半宽 [128]）
 
 } // namespace QfaVectorApi
 } // namespace QFA_KERNEL

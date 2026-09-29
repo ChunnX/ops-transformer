@@ -424,19 +424,40 @@ public:
         }
     }
 
-    __aicore__ inline void ComputeMm1(RunInfo &runInfo) { cubeBlock.ComputeMm1(runInfo); }
+    __aicore__ inline void ComputeMm1(RunInfo &runInfo)
+    {
+        cubeBlock.ComputeMm1(runInfo);
+    }
 
-    __aicore__ inline void ComputeMm2(RunInfo &runInfo) { cubeBlock.ComputeMm2(runInfo); }
+    __aicore__ inline void ComputeMm2(RunInfo &runInfo)
+    {
+        cubeBlock.ComputeMm2(runInfo);
+    }
 
-    __aicore__ inline void ComputeVec1(RunInfo &runInfo) { vectorBlock.ComputeVec1(runInfo); }
+    __aicore__ inline void ComputeVec1(RunInfo &runInfo)
+    {
+        vectorBlock.ComputeVec1(runInfo);
+    }
 
-    __aicore__ inline void CopyGMaxUbToL1(RunInfo &runInfo) { vectorBlock.CopyGMaxUbToL1(runInfo); }
+    __aicore__ inline void CopyGMaxUbToL1(RunInfo &runInfo)
+    {
+        vectorBlock.CopyGMaxUbToL1(runInfo);
+    }
 
-    __aicore__ inline void CopyGMaxL1ToUb(RunInfo &runInfo) { cubeBlock.CopyGMaxL1ToUb(runInfo); }
+    __aicore__ inline void CopyGMaxL1ToUb(RunInfo &runInfo)
+    {
+        cubeBlock.CopyGMaxL1ToUb(runInfo);
+    }
 
-    __aicore__ inline void UpdatePScale(RunInfo &runInfo) { vectorBlock.UpdatePScale(runInfo); }
+    __aicore__ inline void UpdatePScale(RunInfo &runInfo)
+    {
+        vectorBlock.UpdatePScale(runInfo);
+    }
 
-    __aicore__ inline void ComputeVec2(RunInfo &runInfo) { vectorBlock.ComputeVec2(runInfo); }
+    __aicore__ inline void ComputeVec2(RunInfo &runInfo)
+    {
+        vectorBlock.ComputeVec2(runInfo);
+    }
 
     __aicore__ inline void CreateTask(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur,
                                       RunInfo taskRunInfo[PRELOAD_TASK_CACHE_SIZE])

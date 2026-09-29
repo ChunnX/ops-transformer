@@ -32,12 +32,18 @@ def _ensure_npu_imports():
     global _HAS_NPU
     if _HAS_NPU is None:
         import torch_npu  # noqa: F401
+
         try:
-            from cann_ops_transformer.ops import quant_flash_attn_metadata, quant_flash_attn
+            from cann_ops_transformer.ops import (
+                quant_flash_attn_metadata,
+                quant_flash_attn,
+            )
+
             _HAS_NPU = True
         except ImportError:
             _HAS_NPU = False
     return _HAS_NPU
+
 
 logging.basicConfig(level=logging.INFO, format="%(message)s", force=True)
 logger = logging.getLogger(__name__)
@@ -123,7 +129,9 @@ def sanitize_e8m0_scale(scale, name="scale"):
     result = torch.as_tensor(scale, dtype=torch.float32).clone()
     bad = ~torch.isfinite(result) | (result == 0)
     if int(bad.sum().item()):
-        logger.info("[WARN] %s: replace %d bad scale value(s)", name, int(bad.sum().item()))
+        logger.info(
+            "[WARN] %s: replace %d bad scale value(s)", name, int(bad.sum().item())
+        )
         result[bad] = E8M0_MIN_POSITIVE
     return result
 
@@ -138,7 +146,7 @@ def _get_qk_block_scale(tensor):
     grouped = tensor.reshape(B_, N_, S_, num_groups, QUANT_GROUP_SIZE)
     max_vals = torch.max(torch.abs(grouped), dim=-1)[0].clamp(min=1e-12)
     shared_exp = torch.floor(torch.log2(max_vals)) - 8  # e4m3fn emax=8
-    return 2 ** shared_exp  # [B,N,S,G]
+    return 2**shared_exp  # [B,N,S,G]
 
 
 def _get_v_block_scale(tensor):
@@ -157,7 +165,7 @@ def _get_v_block_scale(tensor):
     grouped = tensor.reshape(B_, N_, num_groups, QUANT_GROUP_SIZE, D_)
     max_vals = torch.max(torch.abs(grouped), dim=-2)[0].clamp(min=1e-12)
     shared_exp = torch.floor(torch.log2(max_vals)) - 8
-    return 2 ** shared_exp  # [B,N,G,D]
+    return 2**shared_exp  # [B,N,G,D]
 
 
 def _pack_scale_5d(scale):
@@ -166,13 +174,17 @@ def _pack_scale_5d(scale):
 
 
 def _quantize_qk(tensor, scale):
-    scale_exp = scale.repeat_interleave(QUANT_GROUP_SIZE, dim=-1)[..., : tensor.shape[-1]]
+    scale_exp = scale.repeat_interleave(QUANT_GROUP_SIZE, dim=-1)[
+        ..., : tensor.shape[-1]
+    ]
     return (tensor / scale_exp).clamp(-448.0, 448.0).to(FP8_DTYPE)
 
 
 def _quantize_v(tensor, scale):
     # scale [B,N,G,D] 沿 S 扩到 [B,N,S,D]
-    scale_exp = scale.repeat_interleave(QUANT_GROUP_SIZE, dim=2)[:, :, : tensor.shape[2], :]
+    scale_exp = scale.repeat_interleave(QUANT_GROUP_SIZE, dim=2)[
+        :, :, : tensor.shape[2], :
+    ]
     return (tensor / scale_exp).clamp(-448.0, 448.0).to(FP8_DTYPE)
 
 
@@ -180,15 +192,32 @@ def _quantize_v(tensor, scale):
 # 数据生成
 # ==============================================================================
 def generate_data():
-    max_sq = MAX_SEQLEN_Q if (MAX_SEQLEN_Q is not None and MAX_SEQLEN_Q > 0) else max(_get_seqused_q())
-    max_skv = MAX_SEQLEN_KV if (MAX_SEQLEN_KV is not None and MAX_SEQLEN_KV > 0) else max(_get_seqused_kv())
+    max_sq = (
+        MAX_SEQLEN_Q
+        if (MAX_SEQLEN_Q is not None and MAX_SEQLEN_Q > 0)
+        else max(_get_seqused_q())
+    )
+    max_skv = (
+        MAX_SEQLEN_KV
+        if (MAX_SEQLEN_KV is not None and MAX_SEQLEN_KV > 0)
+        else max(_get_seqused_kv())
+    )
 
     torch.manual_seed(SEED_Q)
-    q_fp16 = DATA_OFFSET_Q + (torch.rand(B, N_q, max_sq, D, dtype=torch.float16) * 2 - 1) * DATA_RANGE_Q
+    q_fp16 = (
+        DATA_OFFSET_Q
+        + (torch.rand(B, N_q, max_sq, D, dtype=torch.float16) * 2 - 1) * DATA_RANGE_Q
+    )
     torch.manual_seed(SEED_K)
-    k_fp16 = DATA_OFFSET_K + (torch.rand(B, N_kv, max_skv, D, dtype=torch.float16) * 2 - 1) * DATA_RANGE_K
+    k_fp16 = (
+        DATA_OFFSET_K
+        + (torch.rand(B, N_kv, max_skv, D, dtype=torch.float16) * 2 - 1) * DATA_RANGE_K
+    )
     torch.manual_seed(SEED_V)
-    v_fp16 = DATA_OFFSET_V + (torch.rand(B, N_kv, max_skv, D, dtype=torch.float16) * 2 - 1) * DATA_RANGE_V
+    v_fp16 = (
+        DATA_OFFSET_V
+        + (torch.rand(B, N_kv, max_skv, D, dtype=torch.float16) * 2 - 1) * DATA_RANGE_V
+    )
 
     q_scale = _get_qk_block_scale(q_fp16.float())
     k_scale = _get_qk_block_scale(k_fp16.float())
@@ -205,8 +234,18 @@ def generate_data():
 
     p_scale = torch.tensor([P_SCALE], dtype=torch.float32)
 
-    logger.info("[DATA] q=%s k=%s v=%s", tuple(q_fp8.shape), tuple(k_fp8.shape), tuple(v_fp8.shape))
-    logger.info("[DATA] q_descale=%s k_descale=%s v_descale=%s", tuple(deq_q.shape), tuple(deq_k.shape), tuple(deq_v.shape))
+    logger.info(
+        "[DATA] q=%s k=%s v=%s",
+        tuple(q_fp8.shape),
+        tuple(k_fp8.shape),
+        tuple(v_fp8.shape),
+    )
+    logger.info(
+        "[DATA] q_descale=%s k_descale=%s v_descale=%s",
+        tuple(deq_q.shape),
+        tuple(deq_k.shape),
+        tuple(deq_v.shape),
+    )
 
     # 返回 (q, k, v, deq_q, deq_k, deq_v, p_scale, qr_bf16, kr_bf16, block_table)
     return q_fp8, k_fp8, v_fp8, deq_q, deq_k, deq_v, p_scale, None, None, None
@@ -248,9 +287,15 @@ def cpu_mxfp8_golden(
     softmax_scale_hw = (softmax_scale_f32.view(torch.int32) & -8192).view(torch.float32)
 
     # 反量化：descale 取尾轴第一个有效值 [..., 0]，e8m0 -> fp32，再扩到逐元素
-    q_scale = e8m0_to_fp32(dequant_scale_q[..., 0]).repeat_interleave(QUANT_GROUP_SIZE, dim=-1)[..., : q_fp8.shape[-1]]
-    k_scale = e8m0_to_fp32(dequant_scale_k[..., 0]).repeat_interleave(QUANT_GROUP_SIZE, dim=-1)[..., : k_fp8.shape[-1]]
-    v_scale = e8m0_to_fp32(v_descale[..., 0]).repeat_interleave(QUANT_GROUP_SIZE, dim=2)[:, :, : v_fp8.shape[2], :]
+    q_scale = e8m0_to_fp32(dequant_scale_q[..., 0]).repeat_interleave(
+        QUANT_GROUP_SIZE, dim=-1
+    )[..., : q_fp8.shape[-1]]
+    k_scale = e8m0_to_fp32(dequant_scale_k[..., 0]).repeat_interleave(
+        QUANT_GROUP_SIZE, dim=-1
+    )[..., : k_fp8.shape[-1]]
+    v_scale = e8m0_to_fp32(v_descale[..., 0]).repeat_interleave(
+        QUANT_GROUP_SIZE, dim=2
+    )[:, :, : v_fp8.shape[2], :]
 
     q_t = q_fp8.float() * q_scale
     k_t = k_fp8.float() * k_scale
@@ -281,8 +326,8 @@ def cpu_mxfp8_golden(
     F16 = torch.float16
     LN2_F16 = torch.tensor(LN2, dtype=F16)
     INV_LN2_F16 = torch.tensor(1.0 / LN2, dtype=F16)
-    Q_BLOCK = 128   # V0/V1 subBlock 粒度（各自独立 k 链）
-    K_BLOCK = 256   # actSingleLoopS2Size 粒度（每块内 2 个 128-KV subLoop）
+    Q_BLOCK = 128  # V0/V1 subBlock 粒度（各自独立 k 链）
+    K_BLOCK = 256  # actSingleLoopS2Size 粒度（每块内 2 个 128-KV subLoop）
     # 外部 pScale（headroom 因子）：fp32 → half（kernel InitInput 同款舍入），
     # 在 exp 之后、fp8 量化之前乘入 P（kernel VfSoftmax 的 Muls(r0,r0,pScale) 同位）。
     # 分子分母同乘自消（attention 输出不变），但 fp8 量化网格因 pScale 偏移而不同；
@@ -307,7 +352,7 @@ def cpu_mxfp8_golden(
         for q0 in range(0, sq_b, Q_BLOCK):
             q1 = min(q0 + Q_BLOCK, sq_b)
             qi = q_t[b : b + 1, :, q0:q1, :]
-            m_acc = None                       # accMax（fp16 整数 k；None = 首块未初始化）
+            m_acc = None  # accMax（fp16 整数 k；None = 首块未初始化）
             s_acc = torch.zeros([1, n_, q1 - q0, 1], dtype=torch.float32)
             o_acc = torch.zeros([1, n_, q1 - q0, dv], dtype=torch.float32)
             for kv0 in range(0, skv_b, K_BLOCK):
@@ -315,21 +360,23 @@ def cpu_mxfp8_golden(
                 # ① mm1Res fp16：fp32 matmul（Mmad fp32 累加仿真，L0C 已证精确）→
                 #   乘 deqScalar 的 (1,8,10) 硬件格式截断标量（fp64 域乘避免中间舍入）→
                 #   标准 RNE fp16 舍入，保持 fp16 tensor
-                s_blk = torch.matmul(qi, k_t[b : b + 1, :, kv0:kv1, :].transpose(-1, -2))
+                s_blk = torch.matmul(
+                    qi, k_t[b : b + 1, :, kv0:kv1, :].transpose(-1, -2)
+                )
                 s_blk = (s_blk.double() * softmax_scale_hw.double()).to(F16)
                 m_blk_start = m_acc
                 # ② subLoop 粒度 k 链（128 KV 一节，尾节短行只取有效行）
                 sub_ps = []
                 for s0 in range(kv0, kv1, 128):
                     s1_ = min(s0 + 128, kv1)
-                    s_sub = s_blk[:, :, :, s0 - kv0:s1_ - kv0]           # fp16
+                    s_sub = s_blk[:, :, :, s0 - kv0 : s1_ - kv0]  # fp16
                     k_cur = torch.ceil(s_sub.amax(dim=-1, keepdim=True) * INV_LN2_F16)
                     k_i = k_cur if m_acc is None else torch.maximum(m_acc, k_cur)
                     m_acc = k_i
                     # ③ fp16 域 Sub+Exp
-                    norm = k_i * LN2_F16                                    # Muls(k, LN2) fp16
-                    x = s_sub - norm                                        # Sub fp16
-                    p16 = torch.exp(x) * pScale_h                     # Exp fp16 + Muls(pScale) fp16
+                    norm = k_i * LN2_F16  # Muls(k, LN2) fp16
+                    x = s_sub - norm  # Sub fp16
+                    p16 = torch.exp(x) * pScale_h  # Exp fp16 + Muls(pScale) fp16
                     sub_ps.append((p16, k_i, s0, s1_))
                 k_final = m_acc
                 # ④⑤ 本块分子/分母（累积 fp32）
@@ -339,7 +386,9 @@ def cpu_mxfp8_golden(
                     # pscale e8m0 编码-解码往返（kernel VfCalcPScale→L1 网格→Mmad e8m0 全链字面仿真）：
                     # byte = SAT(Δk+127)（Maxs 负钳 0；Δk ≤ 0 恒 ≤ 127，上界不可达），
                     # 解码 = e8m0_to_fp32 = 2^(byte-127)——与文件头输入 descale 同款解码路径
-                    ps_u8 = torch.clamp(k_i.float() - k_final.float() + 127.0, min=0.0, max=255.0).to(torch.uint8)
+                    ps_u8 = torch.clamp(
+                        k_i.float() - k_final.float() + 127.0, min=0.0, max=255.0
+                    ).to(torch.uint8)
                     ps = e8m0_to_fp32(ps_u8.view(torch.float8_e8m0fnu))
                     # kernel 字面 Cast 链（2026-09-23 对齐）：fp16 --h2iCast--> fp32（精确展宽）
                     #   --castTraitRint--> e4m3（RINT+SAT 量化）；pscale 随后在 Mmad e8m0 域施加
@@ -350,8 +399,13 @@ def cpu_mxfp8_golden(
                     den_blk = den_blk + p8.sum(dim=-1, keepdim=True)
                 # 跨块累积（factor = 2^(K_blkStart - K_final)，kernel VfCalcRescaleFactor 同值；
                 # 同款负指数饱和：ΔK < -127 时钳到 2^-127 而非下溢 0）
-                factor = torch.zeros([1, n_, q1 - q0, 1], dtype=torch.float32) if m_blk_start is None else \
-                    torch.exp2(torch.clamp(m_blk_start.float() - k_final.float(), min=-127.0))
+                factor = (
+                    torch.zeros([1, n_, q1 - q0, 1], dtype=torch.float32)
+                    if m_blk_start is None
+                    else torch.exp2(
+                        torch.clamp(m_blk_start.float() - k_final.float(), min=-127.0)
+                    )
+                )
                 o_acc = o_acc * factor + num_blk
                 s_acc = s_acc * factor + den_blk
             # 分母零保护（assets/flash_attention_cpu_golden.py 的 l_safe 同款）：
@@ -364,7 +418,9 @@ def cpu_mxfp8_golden(
             if m_acc is None:
                 lse[b : b + 1, :, q0:q1] = float("-inf")
             else:
-                lse[b : b + 1, :, q0:q1] = (m_acc.float() * LN2 + torch.log(s_safe)).squeeze(-1)
+                lse[b : b + 1, :, q0:q1] = (
+                    m_acc.float() * LN2 + torch.log(s_safe)
+                ).squeeze(-1)
 
     out = out.to(torch.bfloat16)
     logger.info("[CPU] out=%s", tuple(out.shape))
@@ -400,8 +456,16 @@ def npu_mxfp8_fa(
 
     from cann_ops_transformer.ops import quant_flash_attn_metadata, quant_flash_attn
 
-    seqused_q_t = torch.tensor(seqused_q, dtype=torch.int32).npu() if seqused_q is not None else None
-    seqused_kv_t = torch.tensor(seqused_kv, dtype=torch.int32).npu() if seqused_kv is not None else None
+    seqused_q_t = (
+        torch.tensor(seqused_q, dtype=torch.int32).npu()
+        if seqused_q is not None
+        else None
+    )
+    seqused_kv_t = (
+        torch.tensor(seqused_kv, dtype=torch.int32).npu()
+        if seqused_kv is not None
+        else None
+    )
 
     q_npu = q_fp8.npu()
     k_npu = k_fp8.npu()

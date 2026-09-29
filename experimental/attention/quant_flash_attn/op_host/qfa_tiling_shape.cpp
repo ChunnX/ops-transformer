@@ -38,12 +38,30 @@ static const std::map<QfaLayout, std::vector<QfaAxis>> QFA_LAYOUT_AXIS_MAP = {
 namespace {
 
 struct CompareFuncs {
-    static bool Equal(const int64_t &a, const int64_t &b) { return a == b; }
-    static bool Greater(const int64_t &a, const int64_t &b) { return a > b; }
-    static bool GreaterEqual(const int64_t &a, const int64_t &b) { return a >= b; }
-    static bool Less(const int64_t &a, const int64_t &b) { return a < b; }
-    static bool LessEqual(const int64_t &a, const int64_t &b) { return a <= b; }
-    static bool NotEqual(const int64_t &a, const int64_t &b) { return a != b; }
+    static bool Equal(const int64_t &a, const int64_t &b)
+    {
+        return a == b;
+    }
+    static bool Greater(const int64_t &a, const int64_t &b)
+    {
+        return a > b;
+    }
+    static bool GreaterEqual(const int64_t &a, const int64_t &b)
+    {
+        return a >= b;
+    }
+    static bool Less(const int64_t &a, const int64_t &b)
+    {
+        return a < b;
+    }
+    static bool LessEqual(const int64_t &a, const int64_t &b)
+    {
+        return a <= b;
+    }
+    static bool NotEqual(const int64_t &a, const int64_t &b)
+    {
+        return a != b;
+    }
     static bool IgnoreInput(const int64_t &a, const int64_t &b)
     {
         (void)a;

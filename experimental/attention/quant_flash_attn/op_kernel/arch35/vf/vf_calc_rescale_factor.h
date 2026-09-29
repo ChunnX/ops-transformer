@@ -1,12 +1,11 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, and you can redistribute it and/or modify it under the terms of
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
- * You should have received a copy of the License along with this program.
- * If not, see <https://www.hiascend.com/legal/cannlicense>.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FIT FOR A PARTICULAR
- * PURPOSE.
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
 
 /*!
@@ -46,13 +45,13 @@ using namespace AscendC::Reg;
  * （ZERO=取偶数位元素，ONE=取奇数位元素）——控制宽度变化时的元素路由，非舍入模式。
  */
 __simd_vf__ inline void VfCalcRescaleFactorVF(__ubuf__ float *softmaxExp, __ubuf__ half *blkStartMax,
-                                                __ubuf__ half *finalMax)
+                                              __ubuf__ half *finalMax)
 {
     RegTensor<half> vreg_blk_start;
     RegTensor<half> vreg_final;
-    RegTensor<half> vreg_delta_k;       // ΔK = K^{blkStart} - K^{final}（整数，≤ 0）
-    RegTensor<float> vreg_bits_a;       // fp32 位模式（声明 float，Cast/ShiftLefts 时强转 int32——MxFP4 同款）
-    RegTensor<float> vreg_bits_b;       // fp32 位模式（同上）
+    RegTensor<half> vreg_delta_k; // ΔK = K^{blkStart} - K^{final}（整数，≤ 0）
+    RegTensor<float> vreg_bits_a; // fp32 位模式（声明 float，Cast/ShiftLefts 时强转 int32——MxFP4 同款）
+    RegTensor<float> vreg_bits_b; // fp32 位模式（同上）
     MaskReg preg_half = CreateMask<half, MaskPattern::ALL>();
     MaskReg preg_i32 = CreateMask<int32_t, MaskPattern::ALL>();
 
@@ -79,10 +78,10 @@ __simd_vf__ inline void VfCalcRescaleFactorVF(__ubuf__ float *softmaxExp, __ubuf
     ShiftLefts((RegTensor<int32_t> &)vreg_bits_b, (RegTensor<int32_t> &)vreg_bits_b, SHIFT_VALUE, preg_i32);
 
     // ⑤ Interleave：偶奇交错重组成顺序（A=前64，B=后64），存为 fp32
-    Interleave((RegTensor<int32_t> &)vreg_bits_a, (RegTensor<int32_t> &)vreg_bits_b,
-               (RegTensor<int32_t> &)vreg_bits_a, (RegTensor<int32_t> &)vreg_bits_b);
-    StoreAlign(softmaxExp, vreg_bits_a, preg_i32);        // 输出 [0..63]
-    StoreAlign(softmaxExp + 64, vreg_bits_b, preg_i32);   // 输出 [64..127]
+    Interleave((RegTensor<int32_t> &)vreg_bits_a, (RegTensor<int32_t> &)vreg_bits_b, (RegTensor<int32_t> &)vreg_bits_a,
+               (RegTensor<int32_t> &)vreg_bits_b);
+    StoreAlign(softmaxExp, vreg_bits_a, preg_i32);      // 输出 [0..63]
+    StoreAlign(softmaxExp + 64, vreg_bits_b, preg_i32); // 输出 [64..127]
 }
 
 /*
@@ -96,16 +95,13 @@ __simd_vf__ inline void VfCalcRescaleFactorVF(__ubuf__ float *softmaxExp, __ubuf
  * @param [in] stateSlot        accMax 状态槽（0..2）
  */
 __aicore__ inline void VfCalcRescaleFactor(const LocalTensor<float> &softmaxExpUB,
-                                             const LocalTensor<half> &blockStartMaxUB,
-                                             const LocalTensor<half> &softmaxMaxUB, uint32_t taskSlot,
-                                             uint32_t stateSlot)
+                                           const LocalTensor<half> &blockStartMaxUB,
+                                           const LocalTensor<half> &softmaxMaxUB, uint32_t taskSlot, uint32_t stateSlot)
 {
-    constexpr uint32_t smaxSlot = 128;  // 单槽 half 元素数
-    __ubuf__ float *expPtr = reinterpret_cast<__ubuf__ float *>(softmaxExpUB.GetPhyAddr())
-                               + taskSlot * smaxSlot;
+    constexpr uint32_t smaxSlot = 128; // 单槽 half 元素数
+    __ubuf__ float *expPtr = reinterpret_cast<__ubuf__ float *>(softmaxExpUB.GetPhyAddr()) + taskSlot * smaxSlot;
     __ubuf__ half *blkStartPtr = reinterpret_cast<__ubuf__ half *>(blockStartMaxUB.GetPhyAddr());
-    __ubuf__ half *finalMaxPtr = reinterpret_cast<__ubuf__ half *>(softmaxMaxUB.GetPhyAddr())
-                                   + stateSlot * smaxSlot;
+    __ubuf__ half *finalMaxPtr = reinterpret_cast<__ubuf__ half *>(softmaxMaxUB.GetPhyAddr()) + stateSlot * smaxSlot;
     VfCalcRescaleFactorVF(expPtr, blkStartPtr, finalMaxPtr);
 }
 

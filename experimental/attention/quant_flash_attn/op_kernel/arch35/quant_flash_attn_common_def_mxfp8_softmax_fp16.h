@@ -25,16 +25,16 @@
 // =====================================================================
 
 // ===== 基础尺寸常量（设计文档 §2）=====
-constexpr uint32_t S1_BASE_SIZE = 256;   // gS1 分块步长（调度器 mBaseSize）
-constexpr uint32_t S2_BASE_SIZE = 256;   // S2 分块步长
-constexpr uint32_t D_BASE_SIZE = 128;    // QK reduce 轴
-constexpr uint32_t DV_BASE_SIZE = 128;   // V 输出维
-constexpr uint32_t S2_SUB_LOOP_SIZE = S2_BASE_SIZE / 2;      // 128，C1 subLoop 的 M 轴（切 S2）
-constexpr uint32_t S1_SUB_BLOCK_SIZE = S1_BASE_SIZE / 2;     // 128，V0/V1 各持 S1 半（切 S1）
-constexpr uint32_t ROWSUM_ROWS = 16;     // C2 L0A 全 1 行数（捎带计算 rowsum 分母）
+constexpr uint32_t S1_BASE_SIZE = 256;                   // gS1 分块步长（调度器 mBaseSize）
+constexpr uint32_t S2_BASE_SIZE = 256;                   // S2 分块步长
+constexpr uint32_t D_BASE_SIZE = 128;                    // QK reduce 轴
+constexpr uint32_t DV_BASE_SIZE = 128;                   // V 输出维
+constexpr uint32_t S2_SUB_LOOP_SIZE = S2_BASE_SIZE / 2;  // 128，C1 subLoop 的 M 轴（切 S2）
+constexpr uint32_t S1_SUB_BLOCK_SIZE = S1_BASE_SIZE / 2; // 128，V0/V1 各持 S1 半（切 S1）
+constexpr uint32_t ROWSUM_ROWS = 16;                     // C2 L0A 全 1 行数（捎带计算 rowsum 分母）
 
 // ===== 流水深度（设计文档 §2）=====
-constexpr uint32_t PRELOAD_N = 2;                      // 预取两轮任务，C1/V1/C2/V2 四段流水
+constexpr uint32_t PRELOAD_N = 2;                           // 预取两轮任务，C1/V1/C2/V2 四段流水
 constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = PRELOAD_N + 1; // = 3
 
 // ===== 跨核同步 flagId（设计文档 §4.2）=====
@@ -83,8 +83,8 @@ struct ConstInfo {
 struct RunInfoMxfp8SoftmaxFp16 {
     // ==================== 基础字段 ====================
 
-    uint32_t loop = 0;    // 全局任务编号，用于 PRELOAD_TASK_CACHE_SIZE 取模索引
-    uint32_t mloop = 0;   // 当前处理第几行 [bN2, gS1]，UpdateAxisInfo 中递增，softmaxStateSlot = mloop % (PRELOAD_N+1)
+    uint32_t loop = 0; // 全局任务编号，用于 PRELOAD_TASK_CACHE_SIZE 取模索引
+    uint32_t mloop = 0; // 当前处理第几行 [bN2, gS1]，UpdateAxisInfo 中递增，softmaxStateSlot = mloop % (PRELOAD_N+1)
     bool isValid = false; // 当前 RunInfo 槽位是否有效
 
     uint32_t bIdx = 0;      // batch 索引
@@ -110,8 +110,9 @@ struct RunInfoMxfp8SoftmaxFp16 {
     // 本 V 核处理的 S1 轴实际长度（截断到 S1_BASE_SIZE/2 = 128）
     uint32_t actVecS1Size = 0;
 
-    bool isFirstS2Loop = false; // 是否当前 [bN2, gS1] 行的首个 S2 分块（用于 Q/QScale 搬入、V1 accMax 初始化、V2 直接赋值分支）
-    bool isLastS2Loop = false;  // 是否当前 [bN2, gS1] 行的最后一个 S2 分块（V2 做最终除+输出）
+    bool isFirstS2Loop =
+        false; // 是否当前 [bN2, gS1] 行的首个 S2 分块（用于 Q/QScale 搬入、V1 accMax 初始化、V2 直接赋值分支）
+    bool isLastS2Loop = false; // 是否当前 [bN2, gS1] 行的最后一个 S2 分块（V2 做最终除+输出）
 
     // ==================== softmax 在线状态（V1 维护） ====================
 
@@ -125,9 +126,9 @@ struct RunInfoMxfp8SoftmaxFp16 {
     uint32_t pSlot = 0;
 };
 
-constexpr uint32_t L1_P_BUFCNT = PRELOAD_TASK_CACHE_SIZE * 2U;    // = 6（3 任务 × 2 subLoop）
+constexpr uint32_t L1_P_BUFCNT = PRELOAD_TASK_CACHE_SIZE * 2U; // = 6（3 任务 × 2 subLoop）
 
-constexpr uint32_t L1_P_SINGLE_SLOT_SIZE = 128 * 128;             // fp8 [128,128] = 16KB（subLoop 粒度）
+constexpr uint32_t L1_P_SINGLE_SLOT_SIZE = 128 * 128; // fp8 [128,128] = 16KB（subLoop 粒度）
 // e8m0 scale 网格槽（subLoop 粒度）：[8 x 单元（S1 16 列/组 × 2B 对）][2 y 单元 + 1 pad] × 32B
 // = 768B；y 单元 = 64 S2 行组，读侧 yStart 恒 0（subK → 槽选择）
 constexpr uint32_t L1_PSCALE_SINGLE_SLOT_SIZE = 768;
@@ -149,10 +150,10 @@ constexpr uint32_t L1_SHARED_REGION_SIZE = L1_P_SLOTS_BASE + 2U * L1_P_BUFCNT * 
 //   BASE 为字节地址；SLOT/SIZE 为元素数；mm1ResUB ring 槽位 = loop % UB_MM1RES_BUFCNT
 // mm1ResUB：C1 FixpipeMm1 的目标（subBlockId 寻址核），V1 softmax 的输入
 // mm2ResUB：C2 FixpipeMm2 的目标，V2 的输入（divOut/outputT 别名区见 block_vector 设计）
-constexpr uint32_t UB_MM1RES_BASE   = 0;                // 字节
-constexpr uint32_t UB_MM1RES_SLOT   = 128 * 128;        // half 元素/槽 [128,128] = 32KB
-constexpr uint32_t UB_MM1RES_BUFCNT = 2;                // ring：loop % 2
-constexpr uint32_t UB_MM2RES_BASE   = 64 * 1024;        // 字节（= mm1ResUB 2 槽 × 32KB 之后）
-constexpr uint32_t UB_MM2RES_SIZE   = (128 + 1) * 128;  // fp32 元素 [129,128] = 66,048B
+constexpr uint32_t UB_MM1RES_BASE = 0;               // 字节
+constexpr uint32_t UB_MM1RES_SLOT = 128 * 128;       // half 元素/槽 [128,128] = 32KB
+constexpr uint32_t UB_MM1RES_BUFCNT = 2;             // ring：loop % 2
+constexpr uint32_t UB_MM2RES_BASE = 64 * 1024;       // 字节（= mm1ResUB 2 槽 × 32KB 之后）
+constexpr uint32_t UB_MM2RES_SIZE = (128 + 1) * 128; // fp32 元素 [129,128] = 66,048B
 
 #endif // QUANT_FLASH_ATTN_COMMON_DEF_H_

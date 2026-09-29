@@ -194,12 +194,11 @@ aclnnStatus aclnnQuantFlashAttnMetadataGetWorkspaceSize(
         metadataRowSize = metaData->GetViewShape().GetDim(DIM_IDX_0);
     }
 
-    auto output = l0op::QuantFlashAttnMetadata(cuSeqlensQOptional, cuSeqlensKvOptional, sequsedQOptional,
-                                               sequsedKvOptional, batchSize, maxSeqlenQ, maxSeqlenKv, numHeadsQ,
-                                               numHeadsKv, headDim, headDimV, quantMode, maskMode, winLeft, winRight,
-                                               layoutQ, layoutQDescale, layoutKv, layoutOut, isGradEnabled, socVersion,
-                                               aicCoreNum, aivCoreNum, metadataDimNum, metadataRowSize, metaData,
-                                               uniqueExecutor.get());
+    auto output = l0op::QuantFlashAttnMetadata(
+        cuSeqlensQOptional, cuSeqlensKvOptional, sequsedQOptional, sequsedKvOptional, batchSize, maxSeqlenQ,
+        maxSeqlenKv, numHeadsQ, numHeadsKv, headDim, headDimV, quantMode, maskMode, winLeft, winRight, layoutQ,
+        layoutQDescale, layoutKv, layoutOut, isGradEnabled, socVersion, aicCoreNum, aivCoreNum, metadataDimNum,
+        metadataRowSize, metaData, uniqueExecutor.get());
     CHECK_RET(output != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
