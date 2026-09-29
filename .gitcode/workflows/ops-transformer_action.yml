@@ -59,22 +59,36 @@ stages:
   stage2:
     name: compile
     jobs:
-      JOB_x86_compile:
-        name: Compile_x86
+      JOB_x86_compile_arch22:
+        name: Compile_x86_arch22
         uses: .gitcode/workflows/compile_action.yml
         with:
-          task_name: 'Compile_Ascend_X86'
+          task_name: 'Compile_Ascend_X86_arch22'
           image_version: ${{ jobs.JOB_image.outputs.Compile_Ascend_X86 }}
           arch: 'x64'
-          package_name: 'cann-ops-transformer_linux-x86_64.run'
-      JOB_arm_compile:
-        name: Compile_arm
+      JOB_arm_compile_arch22:
+        name: Compile_arm_arch22
         uses: .gitcode/workflows/compile_action.yml
         with:
-          task_name: 'Compile_Ascend_ARM'
+          task_name: 'Compile_Ascend_ARM_arch22'
           image_version: ${{ jobs.JOB_image.outputs.Compile_Ascend_ARM }}
           arch: 'arm64'
-          package_name: 'cann-ops-transformer_linux-aarch64.run'
+      JOB_x86_compile_arch35:
+        name: Compile_x86_arch35
+        uses: .gitcode/workflows/compile_action.yml
+        with:
+          task_name: 'Compile_Ascend_X86_arch35'
+          image_version: ${{ jobs.JOB_image.outputs.Compile_Ascend_X86 }}
+          arch: 'x64'
+          package_name: 'cann-ops-transformer-arch35_linux-x86_64.run'
+      JOB_arm_compile_arch35:
+        name: Compile_arm_arch35
+        uses: .gitcode/workflows/compile_action.yml
+        with:
+          task_name: 'Compile_Ascend_ARM_arch35'
+          image_version: ${{ jobs.JOB_image.outputs.Compile_Ascend_ARM }}
+          arch: 'arm64'
+          package_name: 'cann-ops-transformer-arch35_linux-aarch64.run'
       JOB_experimental_compile:
         name: Compile_experimental_x86
         uses: .gitcode/workflows/compile_action.yml
