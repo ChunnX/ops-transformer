@@ -21,6 +21,8 @@
 #define NON_QUANT_MODE 0
 #define KC_QUANT_MODE 1
 #define MX_QUANT_MODE 2
+// HiF4全量化: x1/x2均为hifloat4, scale为DT_HIFLOAT4_SCALE, 仅Apace Hcomm通路
+#define HIF4_PREGROUP_QUANT_MODE 3
 
 // bias的数据类型
 #define DTYPE_BIAS_SAME_WITH_X 0
@@ -39,7 +41,7 @@
 // 模板参数范围声明
 ASCENDC_TPL_ARGS_DECL(MatmulAlltoAll,
                       ASCENDC_TPL_UINT_DECL(QUANTMODE, ASCENDC_TPL_4_BW, ASCENDC_TPL_UI_LIST, NON_QUANT_MODE,
-                                            KC_QUANT_MODE, MX_QUANT_MODE),
+                                            KC_QUANT_MODE, MX_QUANT_MODE, HIF4_PREGROUP_QUANT_MODE),
                       ASCENDC_TPL_BOOL_DECL(X2TRANSPOSE, 0, 1),
                       ASCENDC_TPL_UINT_DECL(DTYPEBIAS, ASCENDC_TPL_4_BW, ASCENDC_TPL_UI_LIST, DTYPE_BIAS_SAME_WITH_X,
                                             DTYPE_BIAS_FP32),
@@ -80,6 +82,15 @@ ASCENDC_TPL_SEL(ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_KERNEL_TYPE_SEL(ASCENDC_TPL_MIX
                 ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_KERNEL_TYPE_SEL(ASCENDC_TPL_AIC_ONLY),
                                      ASCENDC_TPL_UINT_SEL(QUANTMODE, ASCENDC_TPL_UI_LIST, MX_QUANT_MODE),
                                      ASCENDC_TPL_BOOL_SEL(X2TRANSPOSE, 1),
+                                     ASCENDC_TPL_UINT_SEL(DTYPEBIAS, ASCENDC_TPL_UI_LIST, DTYPE_BIAS_FP32),
+                                     ASCENDC_TPL_UINT_SEL(COMMMODE, ASCENDC_TPL_UI_LIST, COMMMODE_CCU, COMMMODE_AICPU),
+                                     ASCENDC_TPL_UINT_SEL(ADDBIASSPLITMODE, ASCENDC_TPL_UI_LIST, ADDBIAS_OFF),
+                                     ASCENDC_TPL_BOOL_SEL(USING_APACE_IMPL, 1)),
+                // HIF4_PREGROUP_QUANT_MODE: HiF4全量化, 仅 Apace Hcomm 纯C通信(AIC_ONLY) + USING_APACE_IMPL=1,
+                // 支持转置/非转置两种B布局, DTYPEBIAS 恒为 FP32, ADDBIASSPLITMODE 恒为 OFF
+                ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_KERNEL_TYPE_SEL(ASCENDC_TPL_AIC_ONLY),
+                                     ASCENDC_TPL_UINT_SEL(QUANTMODE, ASCENDC_TPL_UI_LIST, HIF4_PREGROUP_QUANT_MODE),
+                                     ASCENDC_TPL_BOOL_SEL(X2TRANSPOSE, 0, 1),
                                      ASCENDC_TPL_UINT_SEL(DTYPEBIAS, ASCENDC_TPL_UI_LIST, DTYPE_BIAS_FP32),
                                      ASCENDC_TPL_UINT_SEL(COMMMODE, ASCENDC_TPL_UI_LIST, COMMMODE_CCU, COMMMODE_AICPU),
                                      ASCENDC_TPL_UINT_SEL(ADDBIASSPLITMODE, ASCENDC_TPL_UI_LIST, ADDBIAS_OFF),

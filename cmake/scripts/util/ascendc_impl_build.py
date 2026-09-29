@@ -29,6 +29,7 @@ COMPUTE_UNIT = None
 ENABLE_EXPERIMENTAL = "OFF"
 PYPTO_ARCH_MAP = {
     "ascend950": "a5",
+    # TODO: ascend910_96 的 pypto arch 映射待确认（A6如有pypto二进制交付需求，确认后按需添加）
 }
 
 if const_var.CHECK_ASC_DEVKIT_VERSION:
@@ -104,6 +105,8 @@ DTYPE_MAP = {{"float32": ["DT_FLOAT", "float"],
     "float8_e8m0":["DT_FLOAT8_E8M0", "fp8_e8m0_t"],
     "float4_e2m1":["DT_FLOAT4_E2M1", "fp4x2_e2m1_t"],
     "float4_e1m2":["DT_FLOAT4_E1M2", "fp4x2_e1m2_t"],
+    "hifloat4":["DT_HIFLOAT4", "hifloat4x2_t"],
+    "hifloat4_scale":["DT_HIFLOAT4_SCALE", "hif4_scale"],
     "int2": ["DT_INT2", "int2b_t"]}}
 
 def add_dtype_fmt_option_single(x, x_n, is_ref: bool = False):
@@ -757,6 +760,8 @@ class AdpBuilder(opdesc_parser.OpDesc):
                 arch_version = "arch31"
             elif compute_unit == "ascend950":
                 arch_version = "arch35"
+            elif compute_unit == "ascend910_96":
+                arch_version = "arch35"  # A6(ascend910_96)复用arch35(950)代码路径
             else:
                 arch_version = "arch22"
 
