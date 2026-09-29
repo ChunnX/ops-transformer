@@ -148,6 +148,7 @@ _legacy_map = {
     "quant_all_reduce": "mc2.quant_all_reduce",
     "mhc_post": "mhc.mhc_post",
     "mhc_post_backward": "mhc.mhc_post_backward",
+    "mhc_norm_post_preonly": "mhc.mhc_norm_post_preonly",
     "mhc_pre_sinkhorn": "mhc.mhc_pre_sinkhorn",
     "mhc_pre_sinkhorn_backward": "mhc.mhc_pre_sinkhorn_backward",
     "mixed_quant_sparse_flash_mla": "attention.mixed_quant_sparse_flash_mla",
