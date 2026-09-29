@@ -136,11 +136,11 @@ private:
                                                           LocalTensor<float> gateBuf);
 
     // half0/half1分别覆盖展平区间[0,2D)/[2D,4D)，顶层合并由schedule执行。
-    // 长D尾块与完整tile各保留已调优的五行归约；普通短尾块的Phi预取按no-mid/has-mid编译期特化。
+    // 长D尾块与完整tile各保留已调优的五行归约。
     // dual has-mid无尾块时跨tile延迟归约，保留同一共享阶段以避免复制DMA/Vector/event序列。
     __aicore__ inline void AccumulateHalfPartials(uint32_t tOff, uint32_t tD, float (&sumSqHalf)[2],
-                                                  float (&dotHalf)[2][N], uint32_t halfBegin = 0,
-                                                  uint32_t halfEnd = 2, bool firstPhiPrefetched = false);
+                                                   float (&dotHalf)[2][N], uint32_t halfBegin = 0,
+                                                   uint32_t halfEnd = 2);
 
     TPipe pipe_;
 
@@ -671,8 +671,8 @@ __aicore__ inline float KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::AccumulateHalfPartials(uint32_t tOff, uint32_t tD, float (&sumSqHalf)[2],
-                                                  float (&dotHalf)[2][N], uint32_t halfBegin,
-                                                  uint32_t halfEnd, bool firstPhiPrefetched)
+                                                   float (&dotHalf)[2][N], uint32_t halfBegin,
+                                                   uint32_t halfEnd)
 {
         LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
         LocalTensor<float> reduceRows = bufResFp32_.Get<float>();
@@ -748,7 +748,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
             }
 
             LocalTensor<float> curPhi0;
-            if (!firstPhiPrefetched) {
+            if constexpr (!DUAL_SIBLING) {
                 curPhi0 = bufPhiFp32_.AllocTensor<float>();
                 DataCopyPad(curPhi0, phiGm_[(uint64_t)h0 * D_ + tOff], copyParams, copyPad);
                 bufPhiFp32_.EnQue(curPhi0);

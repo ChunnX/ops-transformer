@@ -241,8 +241,7 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
             x2Cache[(nStart + 1U) * D_ + tOff], x2Cache[(nStart + 1U) * D_ + tOff], gammaOdd, invRmsMid, tD);
         PipeBarrier<PIPE_V>();
         RestoreAndCopyOutX2TileForSiblingAiv(token, tOff, tD);
-        AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf, siblingAivIdx_, siblingAivIdx_ + 1U,
-                               firstPhiPrefetched);
+        AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf, siblingAivIdx_, siblingAivIdx_ + 1U);
     }
 
     // follower把五个有效partial写入独占的32B槽；leader的partial0始终留在本核。
