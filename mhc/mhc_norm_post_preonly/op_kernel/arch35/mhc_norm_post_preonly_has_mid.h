@@ -219,9 +219,7 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         LocalTensor<float> gammaOdd = bufScratchFp32_.Get<float>();
         LocalTensor<T> x2Cache = bufActivationLowp_.Get<T>();
         // 每个sibling AIV只执行自己负责的两个head，另一半由sibling并行完成。
-        // 第一个head已整段缓存；第二个head的分块MTE2与第一个head的Vector重叠。
-        CopyInGammaTile(gammaOdd, gamma2Gm_, (nStart + 1U) * D_ + tOff, tD);
-        SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
+        // 第一个head已整段缓存；首组Phi先排入MTE2，与后续head计算重叠。
         const bool firstPhiPrefetched = tD == dTile_;
         if (firstPhiPrefetched) {
             LocalTensor<float> firstPhi = bufPhiFp32_.AllocTensor<float>();
@@ -232,6 +230,8 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
             DataCopyPad(firstPhi, phiGm_[(uint64_t)nStart * D_ + tOff], phiCopy, phiPad);
             bufPhiFp32_.EnQue(firstPhi);
         }
+        CopyInGammaTile(gammaOdd, gamma2Gm_, (nStart + 1U) * D_ + tOff, tD);
+        SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
         MhcNormRegBase::VFCastB16ScaleAndMulGammaToB16(x2Cache[nStart * D_ + tOff],
                                                        x2Cache[nStart * D_ + tOff], gammaEven, invRmsMid, tD);
         PipeBarrier<PIPE_V>();
