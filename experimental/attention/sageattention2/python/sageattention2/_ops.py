@@ -107,14 +107,16 @@ _LAST_PLAN: Optional[_FastPathPlan] = None
 _PLAN_CACHE: Dict[Tuple[Any, ...], _FastPathPlan] = {}
 _MAX_CACHE_SIZE: int = 128
 _EXT_MODULE = None
+_FORWARD_FN = None
 
 
 def _get_extension():
-    global _EXT_MODULE
+    global _EXT_MODULE, _FORWARD_FN
     if _EXT_MODULE is None:
         from ._extension import load_extension
 
         _EXT_MODULE = load_extension()
+        _FORWARD_FN = _EXT_MODULE.forward
     return _EXT_MODULE
 
 
@@ -542,10 +544,10 @@ def _dispatch(
         q_in, k_in, v_in = q, k, v
 
     dev_type = q_in.device.type
-    if (dev_type == "privateuseone" or dev_type == "npu") and not (
-        hasattr(torch, "compiler") and hasattr(torch.compiler, "is_compiling") and torch.compiler.is_compiling()
-    ):
-        out, lse = _get_extension().forward(
+    if dev_type == "privateuseone" or dev_type == "npu":
+        if _FORWARD_FN is None:
+            _get_extension()
+        out, lse = _FORWARD_FN(
             q_in,
             k_in,
             v_in,

@@ -243,9 +243,14 @@ __aicore__ void HeadStats(GM_ADDR k, GM_ADDR mean, SageParams p)
 template <class T>
 __aicore__ void Stats(GM_ADDR k, GM_ADDR mean, SageParams p)
 {
-    if (p.smoothK && p.d == p.dp && p.sk >= 1024) {
-        StreamKStats<T>(k, mean, p);
-        return;
+    if (p.smoothK && p.d == p.dp) {
+        if (p.hk < 32 || p.sk <= 4096) {
+            StreamKStats<T>(k, mean, p);
+            return;
+        } else {
+            HeadStats<T>(k, mean, p);
+            return;
+        }
     }
     if (p.d == p.dp) {
         HeadStats<T>(k, mean, p);

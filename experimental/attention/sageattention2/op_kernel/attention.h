@@ -55,7 +55,7 @@ public:
         uint32_t tiles = (p.sq + M - 1) / M;
         const uint64_t taskEnd = DieTaskEnd(p, uint64_t(p.b) * p.hq * tiles, core);
         for (uint64_t task = core; task < taskEnd; task += p.cores) {
-            const uint64_t mapped = UseDieGroups(p) ? DieTask<CAUSAL>(task, uint64_t(p.b) * p.hq * tiles, p.cores) : task;
+            const uint64_t mapped = UseDieGroups(p) ? DieTask(task, uint64_t(p.b) * p.hq * tiles, p.cores) : task;
             uint32_t tile = mapped % tiles, h = (mapped / tiles) % p.hq, b = mapped / tiles / p.hq, kh = CalcKh(h, p.hq, p.hk);
             uint32_t qstart = tile * M;
             uint64_t qb = (uint64_t(b) * p.hq + h) * p.qp, kb = (uint64_t(b) * p.hk + kh) * p.kp;

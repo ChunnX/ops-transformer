@@ -25,7 +25,7 @@ __aicore__ inline __attribute__((always_inline)) WideQueryInfo DecodeWideQuery(c
     const uint32_t tiles = p.sq / M;
     info.task = task;
     if (UseDieGroups(p))
-        task = DieTask<CAUSAL>(task, uint64_t(p.b) * p.hq * tiles, p.cores);
+        task = DieTask(task, uint64_t(p.b) * p.hq * tiles, p.cores);
     info.ordinal = ordinal;
     info.qstart = (task % tiles) * M;
     info.h = (task / tiles) % p.hq;
