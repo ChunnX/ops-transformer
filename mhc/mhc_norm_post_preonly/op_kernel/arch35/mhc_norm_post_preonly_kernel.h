@@ -57,16 +57,11 @@ public:
     __aicore__ inline void Process();
 
 private:
-    __aicore__ inline void ProcessTokenSingleAiv(uint32_t token);
-    __aicore__ inline void BuildX2AndPartialsSingle4Op(uint32_t token, float invRms0,
-                                                      const float (&postVals)[N], float (&sumSqHalf)[2],
-                                                      float (&dotHalf)[2][N]);
-    __aicore__ inline void BuildX2AndPartialsSingle5Op(uint32_t token, float invRms0,
-                                                      const float (&postVals)[N], float (&sumSqHalf)[2],
-                                                      float (&dotHalf)[2][N], float (&midSqHalf)[2]);
-    __aicore__ inline void ProcessTokenDualSiblingAiv(uint32_t token);
-    __aicore__ inline void ProcessTokenDual4Op(uint32_t token);
-    __aicore__ inline void ProcessTokenDual5Op(uint32_t token);
+    __aicore__ inline void ProcessToken(uint32_t token);
+    __aicore__ inline void ProcessTokenSingleNoMid(uint32_t token);
+    __aicore__ inline void ProcessTokenDualNoMid(uint32_t token);
+    __aicore__ inline void ProcessTokenSingleHasMid(uint32_t token);
+    __aicore__ inline void ProcessTokenDualHasMid(uint32_t token);
 
     // 加载一个token的h_post[N]和h_res[N*N]。
     __aicore__ inline void CopyInTokenWeights(uint32_t token, float (&postVals)[N], uint32_t nStart = 0U,
@@ -325,11 +320,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
 
         for (uint32_t t = tStart_; t < tEnd_; ++t) {
-            if constexpr (DUAL_SIBLING) {
-                ProcessTokenDualSiblingAiv(t);
-            } else {
-                ProcessTokenSingleAiv(t);
-            }
+            ProcessToken(t);
         }
 
         pipe_.ReleaseEventID<HardEvent::MTE2_V>(evtMte2toV_);
@@ -341,6 +332,25 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
             pipe_.ReleaseEventID<HardEvent::S_MTE3>(evtStoMte3_);
         }
     }
+
+template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
+__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ProcessToken(
+    uint32_t token)
+{
+    if constexpr (USE_RMS_MID) {
+        if constexpr (DUAL_SIBLING) {
+            ProcessTokenDualHasMid(token);
+        } else {
+            ProcessTokenSingleHasMid(token);
+        }
+    } else {
+        if constexpr (DUAL_SIBLING) {
+            ProcessTokenDualNoMid(token);
+        } else {
+            ProcessTokenSingleNoMid(token);
+        }
+    }
+}
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::CopyInTokenWeights(uint32_t token, float (&postVals)[N], uint32_t nStart,
@@ -844,7 +854,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     }
 
 // 引入各执行路径的方法实现
-#include "mhc_norm_post_preonly_single_aiv.h"
-#include "mhc_norm_post_preonly_dual_sibling_aiv.h"
+#include "mhc_norm_post_preonly_no_mid.h"
+#include "mhc_norm_post_preonly_has_mid.h"
 
 #endif // MHC_NORM_POST_PREONLY_KERNEL_H_
