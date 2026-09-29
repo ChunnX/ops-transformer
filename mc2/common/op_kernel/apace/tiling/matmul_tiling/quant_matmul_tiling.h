@@ -12,8 +12,7 @@
  * \file quant_matmul_tiling.h
  * \brief MX 量化 Matmul tiling 引擎（host 侧）。
  *
- * 由 quant_matmul_tiling_common.h / quant_matmul_tiling_base.h /
- * quant_matmul_tiling_swat.h 合并而来，按三段组织：
+ * 按三段组织：
  *   1) 共享类型：平台信息 / 问题 shape / tiling 中间状态
  *   2) 公共工作流基类：状态准备 + 平台查询 + 虚函数分派
  *   3) SWAT 特化：MX 非全载路径的分块搜索 / 尾块处理 / L1 深度决策

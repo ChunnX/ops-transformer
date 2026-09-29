@@ -27,7 +27,6 @@
 #include "all_gather_matmul_tiling_v2.h"
 #include "all_gather_comm_algo_table.h"
 #include "all_gather_matmul_v2_fit_balance_tiling.h" // 统一接口头(内部已含老类头, 回退分支用)
-#include "all_gather_hccl_utils.h"
 #include "graph/utils/type_utils.h"
 #include "mc2_hcom_topo_info.h"
 #include "mc2_comm_algo_selector.h"
@@ -131,37 +130,21 @@ ge::graphStatus AllGatherMatmulTilingV2::PostTiling()
 
 CutResult AllGatherMatmulTilingV2::GetTilingResult()
 {
-    // §4.29 全家族分派: 通信标定表命中 → fit-balance 统一接口(标定数据在
-    // all_gather_matmul_v2_fit_balance_tiling.h, 公共逻辑在 apace/tiling/fit_balance_tiling.h;
-    // 回退: 该头文件 kUseNewEngine 置 false); miss(未标定 rank) → 核利用率优先(mm-first)。
-    // 三引擎统一分派: ParseCommEngine 解析 comm_mode 后传入(本算子仅 HCCL 两引擎可达)
+    // 分派: 通信标定表命中 → fit-balance; miss(未标定 rank) → 核利用率优先(mm-first)
     const auto commEngine = ParseCommEngine(commMode_);
-    uint32_t baseM = 0;
     CutResult result;
-    if (IsCommCalibrated(args_.rankDim, commEngine)) {
-        result = GetFitBalanceCut(args_, commEngine, &baseM);
+    if (IsCommCalibrated(args_.rankDim, commEngine, CALIBRATION)) {
+        result = GetFitBalanceCut(args_, commEngine);
     } else {
-        result = GetCutResByCoreOccupancyFirst(&baseM);
+        result = GetCutResByCoreOccupancyFirst();
     }
-    if (!kUseNewEngine) {
-        // 旧代码原样保留(§4.37 只新增不删除裁定): 回退老类路径的调用点后处理完整保留。
-        // 新引擎路径已由引擎内键控分支接替——CCU=Schedule ⑥ 单轮 256MB 上限整形
-        // (ApplySingleRoundCommLimit); AICPU=切分收益门控裁决轮数(b 已入模型)
-        if (commEngine == TilingCommEngine::CCU) {
-            CommSizeInfo commSize{args_.kValue, args_.inputDtypeSize, args_.rankDim};
-            AdjustCutResultForCCU(result, args_.mValue, commSize, opName_);
-        } else {
-            AdjustCutResultForAICPU(result, args_.mValue, baseM, opName_);
-        }
-    }
-
     return result;
 }
 
 // §4.29 miss 路径: 全量 V3 mm tiling → 核利用率优先推导通信切分。
 // M 口径: V3 参考与切分域同单位(per-rank m, 即本地块口径)——(rankDim-1) 远程行的展开是
 // kernel 侧语义, 波推导按 v2 同构口径; 待 miss 形态实测后如需按远程行域修正只改本函数。
-CutResult AllGatherMatmulTilingV2::GetCutResByCoreOccupancyFirst(uint32_t *baseMOut)
+CutResult AllGatherMatmulTilingV2::GetCutResByCoreOccupancyFirst()
 {
     auto platformInfo = context_->GetPlatformInfo();
     if (platformInfo == nullptr ||
@@ -192,13 +175,12 @@ CutResult AllGatherMatmulTilingV2::GetCutResByCoreOccupancyFirst(uint32_t *baseM
         OP_LOGE(opName_, "COF: mm tiling anomaly (baseM/baseN/usedCoreNum invalid), fallback no-cut.");
         return MakeNoCutResult();
     }
-    if (baseMOut != nullptr) {
-        *baseMOut = static_cast<uint32_t>(cube.baseM);
-    }
     OP_LOGI(opName_, "COF cut: baseM=%d baseN=%d usedCoreNum=%d, head=%lux%lu tail=%lux%lu", cube.baseM, cube.baseN,
             cube.usedCoreNum, comm.splitAxisTileSize, comm.splitAxisTileCnt, comm.splitAxisTailSize,
             comm.splitAxisTailCnt);
-    return CutResultFromCof(comm);
+    CommCutResult cof = CutResultFromCof(comm);
+    return {cof.shortTileAtBack, cof.totalTileCnt, cof.numLongTile,
+            cof.numShortTile,    cof.longTileLen,  cof.shortTileLen};
 }
 
 CutResult AllGatherMatmulTilingV2::MakeNoCutResult() const

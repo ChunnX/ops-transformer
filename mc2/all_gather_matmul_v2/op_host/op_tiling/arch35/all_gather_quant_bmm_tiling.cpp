@@ -16,9 +16,7 @@
 #define _ALL_GATHER_QUANT_BMM_TILING_CPP_
 #include "all_gather_quant_bmm_tiling.h"
 #include "all_gather_comm_algo_table.h"
-#include "all_gather_fit_balance_tiling.h"
 #include "all_gather_matmul_v2_fit_balance_tiling.h"
-#include "all_gather_hccl_utils.h"
 #include "common/utils/op_mc2.h"
 #include "mc2_comm_algo_selector.h"
 #include "mc2_comm_utils.h"
@@ -774,45 +772,21 @@ ge::graphStatus AllGatherQuantBmmTiling::PostTiling()
 
 CutResult AllGatherQuantBmmTiling::GetTilingResult()
 {
-    // §4.29 全家族分派: 通信标定表命中 → fit-balance 统一接口(P1 遗留补切: 本类经
-    // DoSplitMTiling 虚分派是第二个消费方; 标定数据在 all_gather_matmul_v2_fit_balance_tiling.h,
-    // 回退: kUseNewEngine 置 false); miss(未标定 rank) → 核利用率优先(mm-first)。
-    // 三引擎统一分派: ParseCommEngine 解析 comm_mode 后传入(本算子仅 HCCL 两引擎可达)
+    // 分派: 通信标定表命中 → fit-balance; miss(未标定 rank) → 核利用率优先(mm-first)
     const auto commEngine = ParseCommEngine(commMode_);
-    uint32_t baseM = 0;
     CutResult result;
-    if (IsCommCalibrated(args_.rankDim, commEngine)) {
-        result = GetFitBalanceCut(args_, commEngine, &baseM);
+    if (IsCommCalibrated(args_.rankDim, commEngine, CALIBRATION)) {
+        result = GetFitBalanceCut(args_, commEngine);
     } else {
-        result = GetCutResByCoreOccupancyFirst(&baseM);
+        result = GetCutResByCoreOccupancyFirst();
     }
-
-    auto kValue = args_.kValue;
-    auto inputDtypeSize = args_.inputDtypeSize;
-    if (isFp4_) {
-        kValue = args_.kValue / EVEN_ALIGN;
-        inputDtypeSize = 1;
-    }
-
-    if (!kUseNewEngine) {
-        // 旧代码原样保留(§4.37 只新增不删除裁定): 回退老类路径的调用点后处理完整保留
-        // (fp4 折算口径 kValue/2+dtypeSize=1 与引擎 rowBytes 的子字节折算等价);
-        // 新引擎路径由引擎内键控分支接替(CCU=⑥ 整形, AICPU=切分收益门控)
-        if (commEngine == TilingCommEngine::CCU) {
-            CommSizeInfo commSize{kValue, inputDtypeSize, args_.rankDim};
-            AdjustCutResultForCCU(result, args_.mValue, commSize, opName_);
-        } else {
-            AdjustCutResultForAICPU(result, args_.mValue, baseM, opName_);
-        }
-    }
-
     return result;
 }
 
 // §4.29 miss 路径: 全量 DequantBmm tiling 预跑(与 DoAdaptSlidWindowTiling 的 local 块完全同口径:
 // mValue=orgMValue、isLocal=true)取 matmulTiling 的 baseM/baseN/usedCoreNum → 核利用率优先推导。
 // M 口径与 TilingV2 一致(per-rank m, 切分域同单位); 栈上临时不占真实槽位, 下游 local 块重跑。
-CutResult AllGatherQuantBmmTiling::GetCutResByCoreOccupancyFirst(uint32_t *baseMOut)
+CutResult AllGatherQuantBmmTiling::GetCutResByCoreOccupancyFirst()
 {
     const uint64_t savedM = args_.mValue;
     args_.mValue = args_.orgMValue;
@@ -832,13 +806,12 @@ CutResult AllGatherQuantBmmTiling::GetCutResByCoreOccupancyFirst(uint32_t *baseM
         OP_LOGE(opName_, "COF: mm tiling anomaly (baseM/baseN/usedCoreNum invalid), fallback no-cut.");
         return MakeNoCutResult();
     }
-    if (baseMOut != nullptr) {
-        *baseMOut = static_cast<uint32_t>(cube.baseM);
-    }
     OP_LOGI(opName_, "COF cut: baseM=%d baseN=%d usedCoreNum=%d, head=%lux%lu tail=%lux%lu", cube.baseM, cube.baseN,
             cube.usedCoreNum, comm.splitAxisTileSize, comm.splitAxisTileCnt, comm.splitAxisTailSize,
             comm.splitAxisTailCnt);
-    return CutResultFromCof(comm);
+    CommCutResult cof = CutResultFromCof(comm);
+    return {cof.shortTileAtBack, cof.totalTileCnt, cof.numLongTile,
+            cof.numShortTile,    cof.longTileLen,  cof.shortTileLen};
 }
 
 CutResult AllGatherQuantBmmTiling::MakeNoCutResult() const
