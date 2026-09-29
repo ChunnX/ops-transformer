@@ -749,20 +749,19 @@ __aicore__ inline void VFGateWeightedSumQuantizeSquare(const LocalTensor<T> &dst
     __local_mem__ float *squareAddr = (__local_mem__ float *)square.GetPhyAddr();
     __local_mem__ T *srcAddr = (__local_mem__ T *)src.GetPhyAddr();
     __local_mem__ float *gateAddr = (__local_mem__ float *)gate.GetPhyAddr();
-    uint32_t remain = count;
-    const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
+    static_assert(2560U % VL_FP32 == 0U && 1024U % VL_FP32 == 0U && 2048U % VL_FP32 == 0U);
+    const uint16_t loops = static_cast<uint16_t>(count / VL_FP32);
     __VEC_SCOPE__
     {
         Reg::RegTensor<T> srcReg, quantizedReg;
         Reg::RegTensor<float> srcFp32Reg, accReg, quantizedFp32Reg, squareReg;
         Reg::RegTensor<float> g0Reg, g1Reg, g2Reg, g3Reg;
-        Reg::MaskReg mask;
+        Reg::MaskReg mask = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
         Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(g0Reg, gateAddr + 0U);
         Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(g1Reg, gateAddr + 1U);
         Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(g2Reg, gateAddr + 2U);
         Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(g3Reg, gateAddr + 3U);
         for (uint16_t i = 0; i < loops; ++i) {
-            mask = Reg::UpdateMask<float>(remain);
             const uint32_t offset = static_cast<uint32_t>(i) * VL_FP32;
             Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + 0U * headStride + offset);
             Reg::Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
