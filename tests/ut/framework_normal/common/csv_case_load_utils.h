@@ -64,6 +64,9 @@ std::vector<T> GetCasesFromCsv(const std::string &csvPath)
     }
     // lineNum = 1 是表头
     for (int lineNum = 2; std::getline(csvFile, line); ++lineNum) {
+        if (!line.empty() && line[0] == '#') {
+            continue;
+        }
         if (line.empty()) {
             std::cout << "[ERROR] " << csvPath << ":" << lineNum << " Row data is empty!" << std::endl;
             return std::vector<T>();
