@@ -203,6 +203,10 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     const uint64_t ownSlot = ((uint64_t)token * SIBLING_AIV_COUNT + siblingAivIdx_) * PARTIAL_SLOT_ELEMS;
     DataCopy(partial1Gm_[ownSlot], midBuf, PARTIAL_SLOT_ELEMS);
     CrossCoreSetFlag<0x1, PIPE_MTE3>(MID_READY_FLAG);
+    WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
+    LocalTensor<float> gammaOddCache = bufScratchFp32_.Get<float>();
+    CopyInGammaTile(gammaOddCache, gamma2Gm_, (nStart + 1U) * D_, GetTileD(0U));
+    SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
     CrossCoreWaitFlag<0x1, PIPE_MTE2>(MID_READY_FLAG);
     const uint64_t siblingSlot = ((uint64_t)token * SIBLING_AIV_COUNT + (1U - siblingAivIdx_)) * PARTIAL_SLOT_ELEMS;
     DataCopy(midBuf, partial1Gm_[siblingSlot], PARTIAL_SLOT_ELEMS);
@@ -216,12 +220,13 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dTile_;
         LocalTensor<float> gammaEven = gammaEvenCache[tOff];
-        LocalTensor<float> gammaOdd = bufScratchFp32_.Get<float>();
         LocalTensor<T> x2Cache = bufActivationLowp_.Get<T>();
         // 每个sibling AIV只执行自己负责的两个head，另一半由sibling并行完成。
-        // 第一个head已整段缓存；第二个head的分块MTE2与第一个head的Vector重叠。
-        CopyInGammaTile(gammaOdd, gamma2Gm_, (nStart + 1U) * D_ + tOff, tD);
-        SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
+        // 第一个head已整段缓存；第二个head首块在mid会合前搬入，后续块与Vector重叠。
+        if (tile != 0U) {
+            CopyInGammaTile(gammaOddCache, gamma2Gm_, (nStart + 1U) * D_ + tOff, tD);
+            SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
+        }
         const bool firstPhiPrefetched = tD == dTile_;
         if (firstPhiPrefetched) {
             LocalTensor<float> firstPhi = bufPhiFp32_.AllocTensor<float>();
@@ -236,9 +241,11 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
                                                        x2Cache[nStart * D_ + tOff], gammaEven, invRmsMid, tD);
         PipeBarrier<PIPE_V>();
 
-        WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
+        if (tile != 0U) {
+            WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
+        }
         MhcNormRegBase::VFCastB16ScaleAndMulGammaToB16(
-            x2Cache[(nStart + 1U) * D_ + tOff], x2Cache[(nStart + 1U) * D_ + tOff], gammaOdd, invRmsMid, tD);
+            x2Cache[(nStart + 1U) * D_ + tOff], x2Cache[(nStart + 1U) * D_ + tOff], gammaOddCache, invRmsMid, tD);
         PipeBarrier<PIPE_V>();
         RestoreAndCopyOutX2TileForSiblingAiv(token, tOff, tD);
         AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf, siblingAivIdx_, siblingAivIdx_ + 1U,
