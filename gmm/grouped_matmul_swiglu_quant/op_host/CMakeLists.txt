@@ -12,6 +12,7 @@ if (BUILD_OPEN_PROJECT)
     target_sources(op_host_aclnnExc PRIVATE
         grouped_matmul_swiglu_quant_def.cpp
     )
+    set(grouped_matmul_swiglu_quant_depends gmm/grouped_matmul CACHE INTERNAL "Dependencies for grouped_matmul_swiglu_quant")
     add_ops_compile_options(
         OP_NAME GroupedMatmulSwigluQuant
         OPTIONS --cce-auto-sync=off
