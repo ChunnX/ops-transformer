@@ -72,6 +72,9 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
             SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
             WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
             if (n + 1 < N) {
+                if (n != 0U) {
+                    PipeBarrier<PIPE_MTE2>();
+                }
                 CopyInGammaTile(gammaNext, gamma2Gm_, (n + 1) * D_ + tOff, tD);
             }
             MhcNormRegBase::VFCastB16ScaleAndMulGammaToB16(x2Cache[n * D_ + tOff], x2Cache[n * D_ + tOff],
