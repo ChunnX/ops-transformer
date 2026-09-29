@@ -39,7 +39,6 @@ constexpr uint32_t AIC_CORE_COUNT = 32;
 constexpr uint32_t AIV_CORE_COUNT = 64;
 constexpr uint64_t UB_BYTES = 262144;
 constexpr uint64_t L1_BYTES = 524288;
-constexpr uint64_t L0_INPUT_BYTES = 65536;
 constexpr uint64_t L0C_BYTES = 262144;
 constexpr float DEFAULT_CLAMP_LIMIT = 7.0F;
 constexpr float DEFAULT_GLU_ALPHA = 1.702F;
@@ -124,8 +123,6 @@ gert::TilingContextPara MakeContext(const RouteCase &c, optiling::GMMSwigluV2Com
     info->aivNum_ = static_cast<uint32_t>(aiv);
     info->ubSize_ = UB_BYTES;
     info->l1Size_ = L1_BYTES;
-    info->l0ASize_ = L0_INPUT_BYTES;
-    info->l0BSize_ = L0_INPUT_BYTES;
     info->l0CSize_ = L0C_BYTES;
     info->npuArch_ = static_cast<int32_t>(NpuArch::DAV_3510);
     info->supportL12BtBf16 = true;
