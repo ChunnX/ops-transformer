@@ -14,7 +14,6 @@ if (BUILD_OPEN_PROJECT)
     target_sources(op_host_aclnn PRIVATE
         attention_worker_combine_def.cpp
     )
-    set(attention_worker_combine_depends attention/attention_update CACHE INTERNAL "Dependencies for attention_worker_combine")
     if (BUILD_OPS_RTY_KERNEL) # 回黄kernel
         add_ops_compile_options(
                 OP_NAME AttentionWorkerCombine
