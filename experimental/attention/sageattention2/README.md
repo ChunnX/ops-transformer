@@ -65,7 +65,14 @@ wide 路径将 FP8 P 原位写入已经消费的 FP16 score 条带，再通过�
 
 **V 平滑（`smooth_v`）。** V 采用 MXFP8 细粒度量化，每个 channel 沿序列每 32 个 token 独立生成 scale，能够适应局部数值范围，降低整条序列共用 scale 时离群值对其他元素的影响。`pv_accum_dtype="fp32"` 时额外提供均值居中：先统计每个 KV head 沿序列维的 V 通道均值，量化前从 V 中减去，归一化输出上再补回，与开源实现的补偿方式一致。居中后的 V 由 FP32 运行状态累加，补回项不受部分和舍入影响，因此 `fp32+fp16` 与 `fp32+fp32` 不接受该开关，传 `True` 时按开源实现规范发出 warning 并忽略。
 
-`sageattn` 在 NPU 上固定分发到 `sageattn_qk_int8_pv_fp8_asc`（默认 `pv_accum_dtype="fp32+fp16"`）；可通过 kwargs 覆盖下沉参数，例如 `sageattn(q, k, v, pv_accum_dtype="fp32+fp32")`。
+`sageattn` 在 NPU 上固定分发到 `sageattn_qk_int8_pv_fp8_asc`（默认 `pv_accum_dtype="fp32+fp16"`、`qk_quant_gran="per_thread"`）。这两个参数不在开源 `sageattn` 签名里，按任务书 §2.4 通过 kwargs 或环境变量覆盖，优先级为 **显式 kwargs > 环境变量 > 默认值**：
+
+| 环境变量 | 取值 | 对应参数 |
+|---|---|---|
+| `SAGEATTN_PV_ACCUM_DTYPE` | `fp32+fp16` / `fp32+fp32` / `fp32` | `pv_accum_dtype` |
+| `SAGEATTN_QK_QUANT_GRAN` | `per_thread` / `per_warp` | `qk_quant_gran` |
+
+变量在每次调用时读取（改环境变量不需要重新导入模块），空串视为未设置；非法值与非法 kwargs 走同一套校验，抛 ValueError。程序化覆盖用 kwargs，例如 `sageattn(q, k, v, pv_accum_dtype="fp32+fp32")`；整进程/整作业的默认口径用环境变量，避免调用点被逐个改写。执行计划缓存的键包含解析后的这两个取值，因此两种设置交替调用不会互相串用对方的计划。
 
 支持 GQA（Hq 必须能被 Hkv 整除）、1≤D≤128、D padding、序列尾块、末维连续的 stride 输入。非因果模式支持 Sq≠Sk。LSE 的 K smoothing 行常数补偿由 PyTorch 层按开源契约添加（见上文 LSE 说明）。
 
@@ -108,9 +115,10 @@ PyTorch 使用本目录独立的 C++ 扩展，通过 `torch.ops.sageattention2.f
 测试使用已安装的 ACLNN 融合算子：
 
 ```bash
-SAGEATTN_TEST_STANDALONE=1 \
-    python -m pytest -q python/test_python_api.py -o junit_family=xunit1 --junitxml=build/pytest-results.xml
+python -m pytest -q python/test_python_api.py -o junit_family=xunit1 --junitxml=build/pytest-results.xml
 ```
+
+无 NPU 时同一条命令走 CPU golden 参考路径，因此宿主机也能跑通全套断言；结果目录与设备无关，验收仍以真实 NPU 运行计数。
 
 修改 kernel 后须重新完整构建、安装，再执行 NPU 测试。
 
@@ -134,9 +142,9 @@ FP16 平移的舍入会改变 P 的实际缩放，因此不保证与原先 `448 
 
 ## 性能测试
 
-验收计时与任务书配套 `test_perf.py::_time_ms` 一致：每个实现默认先执行 50 次预热（包含首次编译/初始化），预热后同步；用一对 Device Event 包住连续 100 次完整算子调用，循环内不主动同步；全部提交后同步，以总耗时除以 100 作为平均耗时。先测 FIA，再测 Sage；每个实现测量完成后间隔 10 秒。统计范围包含 Stats、Quant 和 Attention，不预先缓存量化结果。
+验收计时与任务书配套测试 `sageAttentionTest/tests/pytest/test_perf.py::_time_ms` 同口径：每个实现先预热（包含首次编译/初始化），预热后同步；用一对 Device Event 包住连续多次完整算子调用，循环内不主动同步；全部提交后同步，以总耗时除以次数作为平均耗时。先测 FIA，再测 Sage；每个实现测量完成后间隔 10 秒。统计范围包含 Stats、Quant 和 Attention，不预先缓存量化结果。
 
-PyTorch 默认预热 50 次，参数为 `--warmup` 或 `SAGEATTN_PERF_WARMUP`；测量次数使用 `--repeats` 或 `SAGEATTN_PERF_ITERS`，默认 100 次。预热次数不按运行时间自动调整。ACLNN 使用等价的批量 ACL Event 计时，每次正常调用 GetWorkspaceSize 和执行接口，workspace/output 复用；两阶段调用均位于批量计时区间内。报告保存总耗时、调用次数和平均耗时，加速比使用 FIA 平均耗时除以 Sage 平均耗时。
+任务书的 pytest 性能门禁读 `SAGEATTN_PERF_WARMUP`（默认 5）、`SAGEATTN_PERF_ITERS`（默认 20）、`SAGEATTN_SPEEDUP_TARGET`（默认 1.6）；那是任务侧脚本的开关，本算子运行期不读它们。我们自己的两套基准用命令行覆盖同一语义：PyTorch 路径 `--warmup`/`--repeats`，aclnn 路径同名参数，默认均为预热 50 次、测量 100 次，预热次数不按运行时间自动调整。ACLNN 使用等价的批量 ACL Event 计时，每次正常调用 GetWorkspaceSize 和执行接口，workspace/output 复用；两阶段调用均位于批量计时区间内。报告保存总耗时、调用次数和平均耗时，加速比使用 FIA 平均耗时除以 Sage 平均耗时。
 
 PyTorch 路径以 `python/test_python_api.py` 同源的公开接口调用测量；aclnn 路径每次正常调用 GetWorkspaceSize 与执行接口，两阶段调用均位于批量计时区间内。性能结果（P-01～P-07，PyTorch 与 aclnn 双路径）随自测报告提供，msprof op 采集时应用只调用一次目标算子，预热和重放由 msprof op 默认配置处理。
 

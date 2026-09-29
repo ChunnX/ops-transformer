@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import math
+import os
 from typing import Any, Dict, Optional, Tuple, Union
 import warnings
 
@@ -20,6 +21,23 @@ from torch.library import impl
 __all__ = ["sageattn", "sageattn_qk_int8_pv_fp8_asc", "replace_sdpa", "run"]
 
 _FP32_MAX = 3.4028234663852886e38
+
+# Task spec 2.4 lets the dispatch entry sink to a different quantization
+# granularity / PV accumulation format than its documented default, either per
+# call or through the environment, so a deployment can retune without editing
+# call sites. Precedence is explicit argument > environment > default. Legal
+# values stay defined once in _validate, so a bad environment value surfaces as
+# the same ValueError as a bad argument.
+_PV_ACCUM_DTYPE_ENV = "SAGEATTN_PV_ACCUM_DTYPE"
+_QK_QUANT_GRAN_ENV = "SAGEATTN_QK_QUANT_GRAN"
+
+
+def _env_override(name: str, explicit: Optional[str], default: str) -> str:
+    """Resolve one tunable: an argument the caller passed always wins."""
+    if explicit is not None:
+        return explicit
+    value = os.environ.get(name)
+    return default if value is None or value == "" else value
 
 
 def _check_sm_scale(scale: float) -> float:
@@ -694,39 +712,22 @@ def sageattn(
     """Automatically selects the appropriate SageAttention implementation on NPU (fixed to FP8 PV).
 
     Parameters and defaults match open-source sageattn interface with NPU backend routing.
+    ``qk_quant_gran`` and ``pv_accum_dtype`` fall back to
+    ``SAGEATTN_QK_QUANT_GRAN`` / ``SAGEATTN_PV_ACCUM_DTYPE`` when omitted.
     """
-    if not kwargs:
-        return _dispatch(
-            q,
-            k,
-            v,
-            tensor_layout,
-            is_causal,
-            "per_thread",
-            sm_scale,
-            "fp32+fp16",
-            True,
-            False,
-            return_lse,
-            None,
-        )
-    qk_quant_gran = kwargs.pop("qk_quant_gran", "per_thread")
-    pv_accum_dtype = kwargs.pop("pv_accum_dtype", "fp32+fp16")
-    smooth_k = kwargs.pop("smooth_k", True)
-    smooth_v = kwargs.pop("smooth_v", False)
     return _dispatch(
         q,
         k,
         v,
         tensor_layout,
         is_causal,
-        qk_quant_gran,
+        _env_override(_QK_QUANT_GRAN_ENV, kwargs.pop("qk_quant_gran", None), "per_thread"),
         sm_scale,
-        pv_accum_dtype,
-        smooth_k,
-        smooth_v,
+        _env_override(_PV_ACCUM_DTYPE_ENV, kwargs.pop("pv_accum_dtype", None), "fp32+fp16"),
+        kwargs.pop("smooth_k", True),
+        kwargs.pop("smooth_v", False),
         return_lse,
-        kwargs,
+        kwargs or None,
     )
 
 

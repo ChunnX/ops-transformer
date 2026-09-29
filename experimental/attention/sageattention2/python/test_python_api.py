@@ -22,16 +22,23 @@ Covers task specification requirements (SageAttention2_task_doc.md §2.1 ~ §2.4
 - TC-08: Strict exception interception (D>128, non-contiguous last dim, causal mismatch, attn_mask, GQA, illegal enums)
 - TC-09: Long sequence execution (S>=8K, 16K on NPU)
 - TC-10: Seamless SDPA monkey-patch replacement
+- TC-11: Task spec 2.4 environment-variable override of the hidden
+  qk_quant_gran / pv_accum_dtype, that an explicit argument wins, and that the
+  override never leaks through the cached execution plan
+- TC-12: Fast-path static caching and pre-validation reuse across an
+  inference loop
 Note: the formal L-A comparison against GPU sageattn_qk_int8_pv_fp8_cuda and
 AscendOpTest acceptance run on real hardware; this suite bounds the numeric
 datapath end-to-end on the CPU golden path (L-B layer).
 """
 
 import math
+import os
 import sys
 import unittest
 import warnings
 from pathlib import Path
+from unittest import mock
 
 import torch
 import torch.nn.functional as F
@@ -171,6 +178,82 @@ class TestSageAttention2PythonAPI(unittest.TestCase):
                 0.0,
                 f"{accum}: per_warp aliased per_thread",
             )
+
+        # fp32 and fp32+fp32 are deliberately one datapath here: the FP8 PV MMAD
+        # already leaves an FP32 partial, so there is no lower-precision buffer
+        # left to reduce from. The task spec keeps both spellings and README
+        # records the collapse, so pin the equivalence instead of leaving it
+        # implicit (an unasserted collapse is indistinguishable from dead code).
+        for gran in ("per_thread", "per_warp"):
+            self.assertTrue(
+                torch.equal(results[(gran, "fp32")], results[(gran, "fp32+fp32")]),
+                f"{gran}: fp32 and fp32+fp32 must share one datapath",
+            )
+
+    # -------------------------------------------------------------------------
+    # TC-11: 任务书 2.4 环境变量覆盖 sageattn 的隐含参数
+    # -------------------------------------------------------------------------
+    def test_tc11_env_var_override_of_hidden_params(self):
+        """TC-11: SAGEATTN_* env vars retune the sunk path; explicit arguments win."""
+        b, h, s, d = 1, 4, 64, 64
+        q = torch.randn(b, h, s, d, dtype=torch.float16)
+        k = torch.randn(b, h, s, d, dtype=torch.float16)
+        v = torch.randn(b, h, s, d, dtype=torch.float16)
+        env = {"SAGEATTN_PV_ACCUM_DTYPE": "fp32", "SAGEATTN_QK_QUANT_GRAN": "per_warp"}
+        with mock.patch.dict(os.environ, env):
+            # Environment must reach the kernel arguments, not just parse.
+            self.assertTrue(
+                torch.equal(
+                    sageattn(q, k, v),
+                    sageattn_qk_int8_pv_fp8_asc(
+                        q, k, v, qk_quant_gran="per_warp", pv_accum_dtype="fp32"
+                    ),
+                ),
+                "env override did not reach the datapath",
+            )
+            # An explicit argument outranks the environment.
+            self.assertTrue(
+                torch.equal(
+                    sageattn(q, k, v, pv_accum_dtype="fp32+fp16", qk_quant_gran="per_thread"),
+                    sageattn_qk_int8_pv_fp8_asc(
+                        q, k, v, qk_quant_gran="per_thread", pv_accum_dtype="fp32+fp16"
+                    ),
+                ),
+                "explicit argument lost to the environment",
+            )
+            # A bad value is rejected by the same validator as a bad argument.
+            with mock.patch.dict(os.environ, {"SAGEATTN_PV_ACCUM_DTYPE": "fp16+fp16"}, clear=True):
+                with self.assertRaises(ValueError):
+                    sageattn(q, k, v)
+            with mock.patch.dict(os.environ, {"SAGEATTN_QK_QUANT_GRAN": "per_block"}, clear=True):
+                with self.assertRaises(ValueError):
+                    sageattn(q, k, v)
+            # An empty value means "not set", so the default still applies.
+            with mock.patch.dict(os.environ, {"SAGEATTN_PV_ACCUM_DTYPE": ""}, clear=True):
+                self.assertTrue(
+                    torch.equal(sageattn(q, k, v), sageattn_qk_int8_pv_fp8_asc(q, k, v)),
+                    "empty environment value was treated as a setting",
+                )
+
+    # -------------------------------------------------------------------------
+    # TC-11b: 环境变量与 plan 缓存互不污染
+    # -------------------------------------------------------------------------
+    def test_tc11b_env_override_survives_plan_cache(self):
+        """TC-11b: The cached plan is keyed by the resolved parameters, so an
+        override between two otherwise identical calls cannot reuse the other
+        setting's plan."""
+        b, h, s, d = 1, 4, 64, 64
+        q = torch.randn(b, h, s, d, dtype=torch.float16)
+        k = torch.randn(b, h, s, d, dtype=torch.float16)
+        v = torch.randn(b, h, s, d, dtype=torch.float16)
+        with mock.patch.dict(os.environ, {}, clear=True):
+            default = sageattn(q, k, v)
+        with mock.patch.dict(os.environ, {"SAGEATTN_QK_QUANT_GRAN": "per_warp"}, clear=True):
+            widened = sageattn(q, k, v)
+        with mock.patch.dict(os.environ, {}, clear=True):
+            after = sageattn(q, k, v)
+        self.assertTrue(torch.equal(default, after), "plan cache leaked the overridden granularity")
+        self.assertFalse(torch.equal(default, widened), "per_warp produced the per_thread result")
 
     # -------------------------------------------------------------------------
     # TC-03: smooth_k / smooth_v 开关行为
@@ -698,10 +781,10 @@ class TestSageAttention2PythonAPI(unittest.TestCase):
         self.assertEqual(restored_out.shape, (b, h, s, d))
 
     # -------------------------------------------------------------------------
-    # TC-11: 快速通路 (Fast-Path) 与预校验缓存加速验证
+    # TC-12: 快速通路 (Fast-Path) 与预校验缓存加速验证
     # -------------------------------------------------------------------------
     def test_fast_path_and_prevalidation_optimization(self):
-        """TC-11: Verify fast-path static caching, inference loop consistency, and error safety."""
+        """TC-12: Verify fast-path static caching, inference loop consistency, and error safety."""
         b, h, s, d = 2, 4, 64, 64
         q = torch.randn(b, h, s, d, dtype=torch.float16)
         k = torch.randn(b, h, s, d, dtype=torch.float16)
