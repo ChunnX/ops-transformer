@@ -11,13 +11,33 @@
 #pragma once
 #include <cstdint>
 // Q/K INT8 quantization granularity, expressed as the number of consecutive
-// tokens sharing one scale: one thread owns 4 Q rows and 16 K rows, one warp
-// owns 8 times that.
+// tokens sharing one scale. Warp granularity widens Q by 8x (4 to 32) but K by
+// only 4x (16 to 64); the two axes are scaled independently, not uniformly.
 enum class SageQuantGran : uint32_t { PER_THREAD = 0, PER_WARP = 1, COUNT = 2 };
 
 // PV accumulation formats. FP16 keeps the per-block partial in half precision
 // before folding it into the FP32 running state, as the open-source default.
 enum class SagePvAccum : uint32_t { FP32_FP16 = 0, FP32_FP32 = 1, FP32 = 2, COUNT = 3 };
+
+// One INT8 scale covers `gran` consecutive tokens inside a 64-row tile, and
+// BroadcastGroupMaxima replicates it without crossing a tile edge, so every
+// granularity has to divide the tile height.
+constexpr uint32_t QUANT_TILE_ROWS = 64;
+constexpr uint32_t QTokensPerScale(bool perWarp) noexcept
+{
+    return perWarp ? 32U : 4U;
+}
+constexpr uint32_t KTokensPerScale(bool perWarp) noexcept
+{
+    return perWarp ? 64U : 16U;
+}
+constexpr bool DividesTile(uint32_t gran) noexcept
+{
+    return QUANT_TILE_ROWS % gran == 0U;
+}
+static_assert(DividesTile(QTokensPerScale(false)) && DividesTile(QTokensPerScale(true)) &&
+                  DividesTile(KTokensPerScale(false)) && DividesTile(KTokensPerScale(true)),
+              "quantization granularity must divide the 64-row tile");
 
 constexpr bool IsValidQuantGran(int64_t gran) noexcept
 {
@@ -29,30 +49,38 @@ constexpr bool IsValidPvAccum(int64_t accum) noexcept
     return accum >= 0 && accum < static_cast<int64_t>(SagePvAccum::COUNT);
 }
 
-inline int64_t ParseQuantGran(const char *str) noexcept
+// Full-string constexpr equality. Keeps the parsers libc-free (params.h is
+// shared by host and device translation units) and evaluable at compile time.
+constexpr bool StrEq(const char *a, const char *b) noexcept
 {
-    if (!str) return -1;
-    if (str[0] == 'p' && str[1] == 'e' && str[2] == 'r' && str[3] == '_') {
-        if (str[4] == 't' && str[5] == 'h' && str[6] == 'r' && str[7] == 'e' && str[8] == 'a' && str[9] == 'd' && str[10] == '\0')
-            return static_cast<int64_t>(SageQuantGran::PER_THREAD);
-        if (str[4] == 'w' && str[5] == 'a' && str[6] == 'r' && str[7] == 'p' && str[8] == '\0')
-            return static_cast<int64_t>(SageQuantGran::PER_WARP);
+    while (*a != '\0' && *a == *b) {
+        ++a;
+        ++b;
     }
+    return *a == *b;
+}
+
+constexpr int64_t ParseQuantGran(const char *str) noexcept
+{
+    if (str == nullptr)
+        return -1;
+    if (StrEq(str, "per_thread"))
+        return static_cast<int64_t>(SageQuantGran::PER_THREAD);
+    if (StrEq(str, "per_warp"))
+        return static_cast<int64_t>(SageQuantGran::PER_WARP);
     return -1;
 }
 
-inline int64_t ParsePvAccum(const char *str) noexcept
+constexpr int64_t ParsePvAccum(const char *str) noexcept
 {
-    if (!str) return -1;
-    if (str[0] == 'f' && str[1] == 'p' && str[2] == '3' && str[3] == '2') {
-        if (str[4] == '\0') return static_cast<int64_t>(SagePvAccum::FP32);
-        if (str[4] == '+') {
-            if (str[5] == 'f' && str[6] == 'p' && str[7] == '1' && str[8] == '6' && str[9] == '\0')
-                return static_cast<int64_t>(SagePvAccum::FP32_FP16);
-            if (str[5] == 'f' && str[6] == 'p' && str[7] == '3' && str[8] == '2' && str[9] == '\0')
-                return static_cast<int64_t>(SagePvAccum::FP32_FP32);
-        }
-    }
+    if (str == nullptr)
+        return -1;
+    if (StrEq(str, "fp32"))
+        return static_cast<int64_t>(SagePvAccum::FP32);
+    if (StrEq(str, "fp32+fp16"))
+        return static_cast<int64_t>(SagePvAccum::FP32_FP16);
+    if (StrEq(str, "fp32+fp32"))
+        return static_cast<int64_t>(SagePvAccum::FP32_FP32);
     return -1;
 }
 
@@ -63,6 +91,7 @@ struct SageParams {
     uint32_t qg, kg; // tokens per shared INT8 scale, for Q and K
     uint32_t accum, smoothV;
     float smScale;
+    float qFactor, kFactor; // Precomputed FP16 dequantization balancing scale factors
     uint64_t qs[3], ks[3], vs[3]; // canonical B,H,S strides, in elements
 };
 

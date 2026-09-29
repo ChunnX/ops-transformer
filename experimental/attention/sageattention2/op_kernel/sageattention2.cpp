@@ -25,13 +25,15 @@ __aicore__ inline __attribute__((always_inline)) void FusedAttention(GM_ADDR q, 
     if ASCEND_IS_AIV {
         // GetBlockIdx() enumerates both AIV sub-blocks in MIX 1:2. Stats and
         // Quant stride by 2 * p.cores, including AIVs with no assigned work.
-        Stats<T, false>(k, work + t.mean, p);
+        if (p.smoothK)
+            Stats<T, false>(k, work + t.mean, p);
         // Each head has one writer in both passes, so they share the barrier
         // below. smooth_v is off for the two-level formats, where V is
         // quantised directly and the centring term is never read.
         if (p.smoothV)
             Stats<T, true>(v, work + t.vMean, p);
-        SyncAll<true>();
+        if (p.smoothK || p.smoothV)
+            SyncAll<true>();
         // The wide N512 PV stream consumes V as interleaved row pairs, so the
         // quantiser's store layout is selected by the same WIDE flag.
         Quant<T, WIDE>(q, k, v, work + t.mean, work + t.vMean, work + t.vMxScale, work + t.q8, work + t.k8, work + t.v8,

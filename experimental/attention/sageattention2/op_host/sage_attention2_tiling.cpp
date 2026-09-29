@@ -130,12 +130,16 @@ ge::graphStatus Tile(gert::TilingContext *c)
         return Failure(__LINE__);
     }
     p.smScale = *sm;
+    const float absScale = std::abs(p.smScale);
+    const float balance = std::sqrt(absScale * 2048.0f);
+    p.kFactor = balance;
+    p.qFactor = (p.smScale < 0.0f) ? -balance : balance;
     p.smoothK = *smooth;
     p.causal = *causal;
     p.returnLse = *lse;
     const bool perWarp = (*gran == static_cast<int64_t>(SageQuantGran::PER_WARP));
-    p.qg = perWarp ? 32U : 4U;
-    p.kg = perWarp ? 64U : 16U;
+    p.qg = QTokensPerScale(perWarp);
+    p.kg = KTokensPerScale(perWarp);
     p.accum = static_cast<uint32_t>(*accum);
     // V centering only feeds back into an FP32 PV state; the other formats
     // keep the open-source warning-and-ignore behaviour.

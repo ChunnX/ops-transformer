@@ -141,7 +141,7 @@ sum_j P[i, j] * V[j, d] = sum_j P[i, j] * (V'[j, d] + mean_V[d])
 
 #### 1.2 注意力得分定点累加与硬件反量化平衡缩放推导
 
-Q/K 以 INT8 进入 Cube 后，GEMM-1 在 L0C 中以 INT32 精确累加（无舍入误差）。得分的反量化与缩放不在 AIV 上逐元素完成，而是拆分为"硬件 Fixpipe 常数反量化 + 量化期预融合 scale"两步，全部乘法融合到既有的向量乘法中（`attention_block_cube.h` 的 Fixpipe `DEQF16` 配置与 `scale.h` 的 `FixedScaleFactorsVF`）：
+Q/K 以 INT8 进入 Cube 后，GEMM-1 在 L0C 中以 INT32 精确累加（无舍入误差）。得分的反量化与缩放不在 AIV 上逐元素完成，而是拆分为"硬件 Fixpipe 常数反量化 + 量化期预融合 scale"两步，全部乘法融合到既有的向量乘法中（`attention_block_cube.h` 的 Fixpipe `DEQF16` 配置与 `scale.h` 的 `FixedScaleFactorsVF`）；式中的 `sqrt(|sm_scale|·2048)` 与符号选择由 Host tiling 一次性预计算为 `SageParams::qFactor/kFactor`，内核仅做两次 `Duplicate` 广播，AIV 不再执行 Sqrt 与符号比较：
 
 ```text
 第一步（Fixpipe 硬件反量化）：
@@ -636,7 +636,8 @@ info.count = (limit + 511) / 512;
 
 - Gemm 调用接口结构化：Cube 侧统一入口 `Gemm<T, BLayout, LocalA, BOffset, Emit, Initialize, PreloadedB>` 将全部行为差异上提为模板参数（数据类型与 B 布局、A 是否已在 L0A、B 的 L1 固定偏移、是否发射 Fixpipe、是否初始化 L0C、B 是否已由 MTE2 预取），运行期仅保留 `a/b/k/n/ubOffset/parity/loadA/mxScale/mxCache/mxK/mxStart/vParity` 等实际变化的数据形参，缺省值收敛了 QK 路径不涉及的 MX 与 V 双缓冲参数；槽位事件 `PV_EVENT/QK_EVENT` 与 L0/L0C 偏移由 `LocalA` 在编译期推导，QK 与 PV 互不干扰，消除了运行期分支与参数列复制。
 - 编译期对齐工具：`params.h` 提供 `constexpr RoundUpTo(v, align)`（32/64 位重载），tiling 的 `qp/kp` 序列补齐与 workspace 512B 突发对齐均改用该编译期函数表达，消除手写位运算魔数。
-- 分支现代化与去重：wide 流水线的运行期常数分支改写为 `if constexpr (PHASE == 0)`（编译期裁剪）；`stats.h` 以泛型 `LoadLaneF32` 统一 16 位装载转换的三处重复分支；算子输入已由 `static_assert` 限定为 FP16/BF16，故不再保留按 `float` 实例化的死分支；LSE 尾声复用 P0 槽的暂存区由静态断言约束（`2*8*128*4+1024 <= P_SLOT_BYTES`）。
+- 编译期枚举解析与校验：`qk_quant_gran`/`pv_accum_dtype` 的字符串解析（`StrEq` + `ParseQuantGran`/`ParsePvAccum`）与取值校验（`IsValidQuantGran`/`IsValidPvAccum`）全部为 `constexpr`，与量化粒度常量（`QTokensPerScale`/`KTokensPerScale`/`DividesTile` 及"粒度必须整除 64 行 tile"的 `static_assert`）同住在 Host/Kernel 共享的 `params.h` 中，非法取值在编译期可证、运行期必报错。
+- 分支现代化与去重：wide 流水线的运行期常数分支改写为 `if constexpr (PHASE == 0)`（编译期裁剪）；`stats.h` 以泛型 `LoadLaneF32` 统一 16 位装载转换的三处重复分支；算子输入由类型 trait `is_supported_input_type`（FP16/BF16 特化）在融合入口 `static_assert` 限定，不再保留按 `float` 实例化的死分支；LSE 尾声复用 P0 槽的暂存区由静态断言约束（`2*8*128*4+1024 <= P_SLOT_BYTES`）。
 - 分层边界：Python 侧公开接缝为 `_ops` 导出的 `sageattn`、`sageattn_qk_int8_pv_fp8_asc` 及其别名 `run`（`run = sageattn_qk_int8_pv_fp8_asc`），由 `__init__` 与 `core` 两级同时再导出；随仓验收测试 `python/test_python_api.py` 只依赖这组公开符号，不存在独立的兼容层模块。`_ops` 与 csrc 各自独立校验形成纵深防御，接口语义与内核模板参数（dtype × wide）一一对应。
 
 #### 3.6 张量布局规整与直通设计
@@ -709,7 +710,7 @@ p.qs[2] = p.d;  p.qs[1] = uint64_t(p.sq) * p.d;  p.qs[0] = uint64_t(p.hq) * p.qs
 #### 3.13 归一化向量双行展开微架构设计
 
 在昇腾 AIV 矢量计算核心微架构中，向量运算流水线具备固定的指令执行延迟（通常为 2 至 3 个时钟周期）。在常规的单行 Softmax 计算流程中：
-求行极大值（`vmax`）→ 减极大值平移（`vsub`）→ 编译期折叠以 2 为底指数计算（`vexp2`）→ 行和累加规约（`vadd`）
+求行极大值（`vmax`）→ 减极大值平移（`vsub`，平移常量 -ln(448) 已折叠进行极大值）→ 自然指数计算（单条 `ExpSub` 指令，直接输出 FP32）→ 行和累加规约（`vadd`）
 后序指令严格依赖前序指令的目标物理向量寄存器，形成了紧密的写后读（RAW）数据依赖链。若按单行串行执行，相邻两条指令之间必然被迫插入硬件停顿气泡，导致矢量单元处于饥饿等待状态。
 
 本算子在 `softmax.h` 与 `softmax_wide.h` 中对 Softmax 做双行展开（Dual-Row Unrolling）：

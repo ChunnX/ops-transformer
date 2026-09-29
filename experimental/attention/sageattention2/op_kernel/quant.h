@@ -40,9 +40,9 @@ __simd_callee__ inline void BroadcastGroupMaxima(__ubuf__ float *maxima, uint32_
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 }
 
-template <uint32_t DP, bool SMOOTH>
+template <uint32_t DP, bool SMOOTH, typename FactorT = float>
 __simd_vf__ inline void QuantRowsImpl(__ubuf__ float *x, [[maybe_unused]] __ubuf__ float *mean, __ubuf__ float *scales,
-                                      __ubuf__ int8_t *out, __ubuf__ half *halfScales, __ubuf__ float *factor,
+                                      __ubuf__ int8_t *out, __ubuf__ half *halfScales, FactorT factor,
                                       __ubuf__ float *inverseScales, uint32_t valid, uint32_t group)
 {
     using namespace AscendC::MicroAPI;
@@ -154,21 +154,22 @@ __simd_vf__ inline void QuantRowsImpl(__ubuf__ float *x, [[maybe_unused]] __ubuf
     }
     PackFixedScaleBlock(scales, halfScales, factor, valid);
 }
+template <typename FactorT = float>
 __aicore__ inline void QuantRowsVF(__ubuf__ float *x, __ubuf__ float *mean, __ubuf__ float *scales,
-                                   __ubuf__ int8_t *out, __ubuf__ half *halfScales, __ubuf__ float *factor,
+                                   __ubuf__ int8_t *out, __ubuf__ half *halfScales, FactorT factor,
                                    __ubuf__ float *inverseScales, uint32_t dp,
                                    uint32_t smooth, uint32_t valid, uint32_t group)
 {
     if (dp == 128) {
         if (smooth)
-            QuantRowsImpl<128, true>(x, mean, scales, out, halfScales, factor, inverseScales, valid, group);
+            QuantRowsImpl<128, true, FactorT>(x, mean, scales, out, halfScales, factor, inverseScales, valid, group);
         else
-            QuantRowsImpl<128, false>(x, mean, scales, out, halfScales, factor, inverseScales, valid, group);
+            QuantRowsImpl<128, false, FactorT>(x, mean, scales, out, halfScales, factor, inverseScales, valid, group);
     } else {
         if (smooth)
-            QuantRowsImpl<64, true>(x, mean, scales, out, halfScales, factor, inverseScales, valid, group);
+            QuantRowsImpl<64, true, FactorT>(x, mean, scales, out, halfScales, factor, inverseScales, valid, group);
         else
-            QuantRowsImpl<64, false>(x, mean, scales, out, halfScales, factor, inverseScales, valid, group);
+            QuantRowsImpl<64, false, FactorT>(x, mean, scales, out, halfScales, factor, inverseScales, valid, group);
     }
 }
 template <class T, bool PERMUTE_V>
@@ -204,12 +205,7 @@ __aicore__ void QuantBatch(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADD
     constexpr uint32_t MEAN = 81920, MX_SCALE = 82432, RAW_SCALE = 82944, HALF_SCALE = 83200;
     constexpr uint32_t INVERSE_SCALE = 83456, V_MEAN = 83712;
     static_assert(INVERSE_SCALE + 64 * sizeof(float) <= SLOT_BYTES, "inverse scale exceeds slot");
-    static_assert(V_MEAN + 128 * sizeof(float) <= SLOT_BYTES, "V mean exceeds slot");
-    static_assert(2 * SLOT_BYTES + 512 <= UB_HIGH_WATER, "quant pipeline exceeds UB");
-    auto factors = r.ubBuf.GetBufferByByte<float>(2 * SLOT_BYTES);
-    FixedScaleFactorsVF((__ubuf__ float *)factors.GetPhyAddr(), p.smScale);
-    __ubuf__ float *factorPtr[2] = {(__ubuf__ float *)factors[0].GetPhyAddr(),
-                                   (__ubuf__ float *)factors[64].GetPhyAddr()};
+    static_assert(2 * SLOT_BYTES <= UB_HIGH_WATER, "quant pipeline exceeds UB");
 
     // Pre-allocate slot buffers to eliminate per-iteration UB address resolution overhead
     LocalTensor<T> input[2], vInput[2];
@@ -290,7 +286,7 @@ __aicore__ void QuantBatch(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADD
         PipeBarrier<PIPE_V>();
         QuantRowsVF((__ubuf__ float *)x[slot].GetPhyAddr(), (__ubuf__ float *)mu[slot].GetPhyAddr(),
                     (__ubuf__ float *)scales[slot].GetPhyAddr(), (__ubuf__ int8_t *)out[slot].GetPhyAddr(),
-                    (__ubuf__ half *)halfScales[slot].GetPhyAddr(), factorPtr[info.isq ? 0 : 1],
+                    (__ubuf__ half *)halfScales[slot].GetPhyAddr(), info.isq ? p.qFactor : p.kFactor,
                     (__ubuf__ float *)inverseScales[slot].GetPhyAddr(), p.dp, !info.isq && p.smoothK && info.valid,
                     info.valid, info.isq ? p.qg : p.kg);
         if (!info.isq) {
@@ -352,7 +348,7 @@ __aicore__ void Quant(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADDR vMe
     // unaligned sequences share QuantRowsImpl, including its scale grouping,
     // with the batch path instead of duplicating the quantizer math.
     constexpr uint32_t X = 16384, MU = 49152, RAW_SCALE = 49664, INVERSE_SCALE = 49920;
-    constexpr uint32_t HALF_SCALE = 50176, QK_OUTPUT = 50304, FACTORS = 58496;
+    constexpr uint32_t HALF_SCALE = 50176, QK_OUTPUT = 50304;
     constexpr uint32_t V_INPUT = 65536, V_MAXIMA = 81920, V_OUTPUT = 82944, MX_SCALE = 91136;
     constexpr uint32_t V_MEAN = 92160;
     static_assert(MX_SCALE + 1024 <= UB_HIGH_WATER, "quant fallback exceeds UB");
@@ -364,10 +360,6 @@ __aicore__ void Quant(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADDR vMe
     auto inverseScales = r.ubBuf.GetBufferByByte<float>(INVERSE_SCALE);
     auto halfScales = r.ubBuf.GetBufferByByte<half>(HALF_SCALE);
     auto out = r.ubBuf.GetBufferByByte<int8_t>(QK_OUTPUT);
-    auto factors = r.ubBuf.GetBufferByByte<float>(FACTORS);
-    FixedScaleFactorsVF((__ubuf__ float *)factors.GetPhyAddr(), p.smScale);
-    __ubuf__ float *factorPtr[2] = {(__ubuf__ float *)factors[0].GetPhyAddr(),
-                                    (__ubuf__ float *)factors[64].GetPhyAddr()};
     const uint64_t nq = PERMUTE_V ? 0 : (uint64_t(p.b) * p.hq * p.qp);
     const uint64_t nk = uint64_t(p.b) * p.hk * p.kp;
     for (uint64_t tile = GetBlockIdx(); tile < (nq + nk) / 64; tile += 2 * p.cores) {
@@ -390,7 +382,7 @@ __aicore__ void Quant(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADDR vMe
         }
         QuantRowsVF((__ubuf__ float *)x.GetPhyAddr(), (__ubuf__ float *)mu.GetPhyAddr(),
                     (__ubuf__ float *)scales.GetPhyAddr(), (__ubuf__ int8_t *)out.GetPhyAddr(),
-                    (__ubuf__ half *)halfScales.GetPhyAddr(), factorPtr[isq ? 0 : 1],
+                    (__ubuf__ half *)halfScales.GetPhyAddr(), isq ? p.qFactor : p.kFactor,
                     (__ubuf__ float *)inverseScales.GetPhyAddr(), p.dp, !isq && p.smoothK && valid, valid,
                     isq ? p.qg : p.kg);
         WriteRow(isq ? qo : ko, idx * p.dp, out, 64 * p.dp);

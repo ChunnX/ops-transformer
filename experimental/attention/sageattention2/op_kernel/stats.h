@@ -95,98 +95,13 @@ __aicore__ inline void StatsSumVF(LocalTensor<T> rows, LocalTensor<float> state,
     else
         StatsSumImpl<T, 64>(input, sum, count);
 }
-// Assign consecutive 128-row batches to each AIV within its die group.
-// A complete head has a single writer; only heads crossing an AIV boundary
-// use FP32 atomic adds. The caller synchronizes before consuming mean.
-// IS_V selects the sequence-mean of V (smooth_v) instead of the one of K
-// (smooth_k); both reduce the Sk rows of a key-value head.
-template <class T, bool IS_V>
-__aicore__ void StreamKStats(GM_ADDR src, GM_ADDR mean, SageParams p)
-{
-    const uint64_t *const strides = IS_V ? p.vs : p.ks;
-    FixedResource r;
-    GlobalTensor<T> kg;
-    kg.SetGlobalBuffer((__gm__ T *)src);
-    GlobalTensor<float> mg;
-    mg.SetGlobalBuffer((__gm__ float *)mean);
-    constexpr uint32_t BATCH_ROWS = 128, SLOT_BYTES = 32768;
-    auto sum = r.ubBuf.template GetBufferByByte<float>(STATS_SUM_UB);
-    const bool grouped = UseDieGroups(p);
-    const uint32_t workers = grouped ? p.cores : 2 * p.cores;
-    const uint32_t rank = GetBlockIdx() % workers;
-    const uint32_t group = GetBlockIdx() / workers;
-    const uint64_t heads = uint64_t(p.b) * p.hk / (grouped ? 2 : 1);
-    const uint64_t firstHead = group * heads;
-    const uint32_t headBatches = (p.sk + BATCH_ROWS - 1) / BATCH_ROWS;
-    const uint64_t totalBatches = heads * headBatches;
-    const uint64_t first = totalBatches * rank / workers;
-    const uint64_t last = totalBatches * (rank + 1) / workers;
-
-    // Workspace is uninitialized/reused. Publish zeros before any atomics.
-    Duplicate(sum, 0.0f, p.dp);
-    for (uint64_t head = rank; head < heads; head += workers)
-        WriteRow(mg, (firstHead + head) * p.dp, sum, p.dp);
-    SyncAll<true>();
-
-    const float invSk = 1.0f / float(p.sk);
-    LocalTensor<T> slotBuf[2] = {
-        r.ubBuf.template GetBufferByByte<T>(0),
-        r.ubBuf.template GetBufferByByte<T>(SLOT_BYTES)
-    };
-    for (uint64_t cursor = first; cursor < last;) {
-        const uint64_t head = cursor / headBatches;
-        const uint64_t stop = Min(last, (head + 1) * headBatches);
-        const uint64_t bh = firstHead + head;
-        const uint32_t b = bh / p.hk, h = bh % p.hk;
-        const uint64_t headBase = Offset(strides, b, h, 0);
-        const uint32_t begin = (cursor - head * headBatches) * BATCH_ROWS;
-        const uint32_t end = Min(p.sk, uint32_t(stop - head * headBatches) * BATCH_ROWS);
-        const bool exclusive = begin == 0 && end == p.sk;
-        Duplicate(sum, 0.0f, p.dp);
-        const uint32_t batches = (end - begin + BATCH_ROWS - 1) / BATCH_ROWS;
-        SetFlag<HardEvent::V_MTE2>(1);
-        SetFlag<HardEvent::V_MTE2>(2);
-        for (uint32_t batch = 0; batch <= batches; ++batch) {
-            if (batch < batches) {
-                const uint32_t slot = batch & 1, start = begin + batch * BATCH_ROWS;
-                const uint32_t rows = Min(BATCH_ROWS, end - start);
-                const event_t event = static_cast<event_t>(1 + slot);
-                WaitFlag<HardEvent::V_MTE2>(event);
-                DataCopy(slotBuf[slot], kg[headBase + uint64_t(start) * p.dp], rows * p.dp);
-                SetFlag<HardEvent::MTE2_V>(event);
-            }
-            if (batch == 0)
-                continue;
-            const uint32_t slot = (batch - 1) & 1;
-            const uint32_t rows = Min(BATCH_ROWS, end - begin - (batch - 1) * BATCH_ROWS);
-            const event_t event = static_cast<event_t>(1 + slot);
-            WaitFlag<HardEvent::MTE2_V>(event);
-            StatsSumVF(slotBuf[slot], sum, rows, p.dp);
-            SetFlag<HardEvent::V_MTE2>(event);
-        }
-        WaitFlag<HardEvent::V_MTE2>(1);
-        WaitFlag<HardEvent::V_MTE2>(2);
-
-        PipeBarrier<PIPE_V>();
-        Muls(sum, sum, invSk, p.dp);
-        if (!exclusive)
-            SetAtomicAdd<float>();
-        WriteRow(mg, bh * p.dp, sum, p.dp);
-        if (!exclusive)
-            SetAtomicNone();
-        cursor = stop;
-    }
-}
-
 template <class T, bool IS_V>
 __aicore__ void Stats(GM_ADDR src, GM_ADDR mean, SageParams p)
 {
     const uint64_t *const strides = IS_V ? p.vs : p.ks;
     const bool center = IS_V ? bool(p.smoothV) : bool(p.smoothK);
-    if (center && p.d == p.dp && p.sk >= 1024) {
-        StreamKStats<T, IS_V>(src, mean, p);
+    if (!center)
         return;
-    }
     const bool grouped = UseDieGroups(p);
     const uint32_t workers = grouped ? p.cores : 2 * p.cores;
     const uint64_t heads = uint64_t(p.b) * p.hk / (grouped ? 2 : 1);
@@ -205,47 +120,45 @@ __aicore__ void Stats(GM_ADDR src, GM_ADDR mean, SageParams p)
         const uint64_t bh = firstHead + local;
         uint32_t b = bh / p.hk, h = bh % p.hk;
         Duplicate(sum, 0.0f, p.dp);
-        if (center) {
-            if (p.d == p.dp) {
-                constexpr uint32_t BATCH_ROWS = 128, SLOT_BYTES = 32768;
-                LocalTensor<T> slotBuf[2] = {
-                    r.ubBuf.template GetBufferByByte<T>(0),
-                    r.ubBuf.template GetBufferByByte<T>(SLOT_BYTES)
-                };
-                const uint32_t batches = (p.sk + BATCH_ROWS - 1) / BATCH_ROWS;
-                SetFlag<HardEvent::V_MTE2>(1);
-                SetFlag<HardEvent::V_MTE2>(2);
-                for (uint32_t batch = 0; batch <= batches; ++batch) {
-                    if (batch < batches) {
-                        const uint32_t slot = batch & 1, start = batch * BATCH_ROWS;
-                        const uint32_t rows = Min(BATCH_ROWS, p.sk - start);
-                        const event_t event = static_cast<event_t>(1 + slot);
-                        WaitFlag<HardEvent::V_MTE2>(event);
-                        DataCopy(slotBuf[slot], kg[Offset(strides, b, h, start)], rows * p.dp);
-                        SetFlag<HardEvent::MTE2_V>(event);
-                    }
-                    if (batch == 0)
-                        continue;
-                    const uint32_t slot = (batch - 1) & 1;
-                    const uint32_t rows = Min(BATCH_ROWS, p.sk - (batch - 1) * BATCH_ROWS);
+        if (p.d == p.dp) {
+            constexpr uint32_t BATCH_ROWS = 128, SLOT_BYTES = 32768;
+            LocalTensor<T> slotBuf[2] = {
+                r.ubBuf.template GetBufferByByte<T>(0),
+                r.ubBuf.template GetBufferByByte<T>(SLOT_BYTES)
+            };
+            const uint32_t batches = (p.sk + BATCH_ROWS - 1) / BATCH_ROWS;
+            SetFlag<HardEvent::V_MTE2>(1);
+            SetFlag<HardEvent::V_MTE2>(2);
+            for (uint32_t batch = 0; batch <= batches; ++batch) {
+                if (batch < batches) {
+                    const uint32_t slot = batch & 1, start = batch * BATCH_ROWS;
+                    const uint32_t rows = Min(BATCH_ROWS, p.sk - start);
                     const event_t event = static_cast<event_t>(1 + slot);
-                    WaitFlag<HardEvent::MTE2_V>(event);
-                    StatsSumVF(slotBuf[slot], sum, rows, p.dp);
-                    SetFlag<HardEvent::V_MTE2>(event);
+                    WaitFlag<HardEvent::V_MTE2>(event);
+                    DataCopy(slotBuf[slot], kg[Offset(strides, b, h, start)], rows * p.dp);
+                    SetFlag<HardEvent::MTE2_V>(event);
                 }
-                WaitFlag<HardEvent::V_MTE2>(1);
-                WaitFlag<HardEvent::V_MTE2>(2);
-            } else {
-                for (uint32_t row = 0; row < p.sk; ++row) {
-                    ReadRow(input, kg, Offset(strides, b, h, row), p.d, p.dp);
-                    Cast(x, input, RoundMode::CAST_NONE, p.dp);
-                    PipeBarrier<PIPE_V>();
-                    Add(sum, sum, x, p.dp);
-                }
+                if (batch == 0)
+                    continue;
+                const uint32_t slot = (batch - 1) & 1;
+                const uint32_t rows = Min(BATCH_ROWS, p.sk - (batch - 1) * BATCH_ROWS);
+                const event_t event = static_cast<event_t>(1 + slot);
+                WaitFlag<HardEvent::MTE2_V>(event);
+                StatsSumVF(slotBuf[slot], sum, rows, p.dp);
+                SetFlag<HardEvent::V_MTE2>(event);
             }
-            PipeBarrier<PIPE_V>();
-            Muls(sum, sum, invSk, p.dp);
+            WaitFlag<HardEvent::V_MTE2>(1);
+            WaitFlag<HardEvent::V_MTE2>(2);
+        } else {
+            for (uint32_t row = 0; row < p.sk; ++row) {
+                ReadRow(input, kg, Offset(strides, b, h, row), p.d, p.dp);
+                Cast(x, input, RoundMode::CAST_NONE, p.dp);
+                PipeBarrier<PIPE_V>();
+                Add(sum, sum, x, p.dp);
+            }
         }
+        PipeBarrier<PIPE_V>();
+        Muls(sum, sum, invSk, p.dp);
         WriteRow(mg, bh * p.dp, sum, p.dp);
     }
 }

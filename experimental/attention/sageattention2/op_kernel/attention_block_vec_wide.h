@@ -131,10 +131,9 @@ public:
             constexpr uint32_t Q_INT8_UB = Q_FP32_UB + HALF * DP * sizeof(float);
             constexpr uint32_t Q_RAW_SCALE = Q_INT8_UB + HALF * DP * sizeof(int8_t);
             constexpr uint32_t Q_INV_SCALE = Q_RAW_SCALE + HALF * sizeof(float);
-            constexpr uint32_t Q_FACTORS = Q_INV_SCALE + HALF * sizeof(float);
             // The scratch borrows the two even-ring score stripes, so it must stay
             // clear of stripe 2 where an odd-ring group is still live.
-            static_assert(Q_FACTORS + 128 * sizeof(float) <= SCORE_UB + 2 * HALF * N * 2,
+            static_assert(Q_INV_SCALE + HALF * sizeof(float) <= SCORE_UB + 2 * HALF * N * 2,
                           "streaming Q exceeds the retired score stripes");
 
             auto input = resource_->ubBuf.template GetBufferByByte<T>(Q_IN_UB);
@@ -142,7 +141,6 @@ public:
             auto out = resource_->ubBuf.template GetBufferByByte<int8_t>(Q_INT8_UB);
             auto scales = resource_->ubBuf.template GetBufferByByte<float>(Q_RAW_SCALE);
             auto inverseScales = resource_->ubBuf.template GetBufferByByte<float>(Q_INV_SCALE);
-            auto factors = resource_->ubBuf.template GetBufferByByte<float>(Q_FACTORS);
 
             // The previous group's MTE3 copy may still be reading stripes 0 and 1,
             // which the Q scratch overwrites; drain it along with the pending V reads.
@@ -155,11 +153,9 @@ public:
             Cast(x, input, RoundMode::CAST_NONE, HALF * DP);
             PipeBarrier<PIPE_V>();
 
-            FixedScaleFactorsVF((__ubuf__ float *)factors.GetPhyAddr(), params_.smScale);
-
             QuantRowsVF((__ubuf__ float *)x.GetPhyAddr(), (__ubuf__ float *)x.GetPhyAddr(),
                         (__ubuf__ float *)scales.GetPhyAddr(), (__ubuf__ int8_t *)out.GetPhyAddr(),
-                        (__ubuf__ half *)qsu_.GetPhyAddr(), (__ubuf__ float *)factors.GetPhyAddr(),
+                        (__ubuf__ half *)qsu_.GetPhyAddr(), params_.qFactor,
                         (__ubuf__ float *)inverseScales.GetPhyAddr(), DP, 0, HALF, params_.qg);
 
             Sync<HardEvent::V_MTE3>();
