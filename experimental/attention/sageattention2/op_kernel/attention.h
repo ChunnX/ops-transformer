@@ -20,7 +20,8 @@ class AttentionKernel {
 public:
     __aicore__ inline __attribute__((always_inline)) void Init(GM_ADDR q8, GM_ADDR k8, GM_ADDR v8,
                                                                GM_ADDR qs, GM_ADDR ks, GM_ADDR mxScale,
-                                                               GM_ADDR out, GM_ADDR lse, SageParams params)
+                                                               GM_ADDR vMean, GM_ADDR out, GM_ADDR lse,
+                                                               SageParams params)
     {
         static_assert(DP == 64 || DP == 128, "unsupported padded head dimension");
         params_ = params;
@@ -29,7 +30,7 @@ public:
         k8_ = k8;
         v8_ = v8;
         vsmx_ = mxScale;
-        vector_.Init(resource_, qs, ks, out, lse, params_);
+        vector_.Init(resource_, qs, ks, vMean, out, lse, params_);
     }
     __aicore__ inline __attribute__((always_inline)) void Process()
     {
@@ -134,34 +135,36 @@ private:
 template <class T, uint32_t DP, bool CAUSAL = false>
 __aicore__ inline __attribute__((always_inline)) void AttentionImpl(GM_ADDR q8, GM_ADDR k8, GM_ADDR v8,
                                                                     GM_ADDR qs, GM_ADDR ks, GM_ADDR mxScale,
-                                                                    GM_ADDR out, GM_ADDR lse, SageParams params)
+                                                                    GM_ADDR vMean, GM_ADDR out, GM_ADDR lse,
+                                                                    SageParams params)
 {
     AttentionKernel<T, DP, CAUSAL> kernel;
-    kernel.Init(q8, k8, v8, qs, ks, mxScale, out, lse, params);
+    kernel.Init(q8, k8, v8, qs, ks, mxScale, vMean, out, lse, params);
     kernel.Process();
 }
 template <class T, bool WIDE>
 __aicore__ inline __attribute__((always_inline)) void Attention(GM_ADDR q8, GM_ADDR k8, GM_ADDR v8,
                                                                 GM_ADDR qs, GM_ADDR ks, GM_ADDR mxScale,
-                                                                GM_ADDR out, GM_ADDR lse, SageParams p)
+                                                                GM_ADDR vMean, GM_ADDR out, GM_ADDR lse,
+                                                                SageParams p)
 {
     // Joint N512 uses NZ softmax on aligned prefill, including the causal frontier.
     if constexpr (WIDE) {
         if (p.causal)
-            AttentionWideStream<T, true>(q8, k8, v8, qs, ks, mxScale, out, lse, p);
+            AttentionWideStream<T, true>(q8, k8, v8, qs, ks, mxScale, vMean, out, lse, p);
         else
-            AttentionWideStream<T, false>(q8, k8, v8, qs, ks, mxScale, out, lse, p);
+            AttentionWideStream<T, false>(q8, k8, v8, qs, ks, mxScale, vMean, out, lse, p);
     } else {
         if (p.causal) {
             if (p.dp == 128)
-                AttentionImpl<T, 128, true>(q8, k8, v8, qs, ks, mxScale, out, lse, p);
+                AttentionImpl<T, 128, true>(q8, k8, v8, qs, ks, mxScale, vMean, out, lse, p);
             else
-                AttentionImpl<T, 64, true>(q8, k8, v8, qs, ks, mxScale, out, lse, p);
+                AttentionImpl<T, 64, true>(q8, k8, v8, qs, ks, mxScale, vMean, out, lse, p);
         } else {
             if (p.dp == 128)
-                AttentionImpl<T, 128, false>(q8, k8, v8, qs, ks, mxScale, out, lse, p);
+                AttentionImpl<T, 128, false>(q8, k8, v8, qs, ks, mxScale, vMean, out, lse, p);
             else
-                AttentionImpl<T, 64, false>(q8, k8, v8, qs, ks, mxScale, out, lse, p);
+                AttentionImpl<T, 64, false>(q8, k8, v8, qs, ks, mxScale, vMean, out, lse, p);
         }
     }
 }

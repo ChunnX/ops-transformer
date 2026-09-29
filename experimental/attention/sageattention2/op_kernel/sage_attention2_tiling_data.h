@@ -14,5 +14,5 @@
 // Byte offsets relative to GetUserWorkspace(), aligned to 512 bytes.
 struct SageAttention2TilingData {
     SageParams params;
-    uint64_t mean, vMxScale, q8, k8, v8, qScale, kScale;
+    uint64_t mean, vMean, vMxScale, q8, k8, v8, qScale, kScale;
 };

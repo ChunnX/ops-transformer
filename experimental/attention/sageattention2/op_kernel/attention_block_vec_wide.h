@@ -20,7 +20,8 @@ struct WideVectorLayout {
     static constexpr uint32_t KS_UB = P_UB + P_SLOT_BYTES, QS_UB = KS_UB + 2 * 512 * 2;
     static constexpr uint32_t MAX_UB = QS_UB + 512, DEN_UB = MAX_UB + 512, ALPHA_UB = DEN_UB + 512;
     static constexpr uint32_t SUM_UB = ALPHA_UB + 3 * 512;
-    static constexpr uint32_t PARTIAL_SUMS_UB = P_UB, END = SUM_UB + HALF * 4;
+    static constexpr uint32_t VM_UB = SUM_UB + HALF * 4;
+    static constexpr uint32_t PARTIAL_SUMS_UB = P_UB, END = VM_UB + 128 * sizeof(float);
     static_assert(PV_SLOT_BYTES >= HALF * 128 * 4, "PV slot cannot hold FP32 PV");
     static_assert(P_SLOT_BYTES >= HALF * 8 * 4, "output scratch cannot hold softmax partial sums");
     static_assert(END <= UB_HIGH_WATER, "wide softmax exceeds UB");
@@ -122,10 +123,12 @@ public:
             PipeBarrier<PIPE_V>();
         }
     }
-    __aicore__ inline __attribute__((always_inline)) void UpdateStreamOutput(uint32_t group, bool first)
+    __aicore__ inline __attribute__((always_inline)) void UpdateStreamOutput(uint32_t group, bool first,
+                                                                            uint32_t b, uint32_t h)
     {
         CrossCoreWaitFlag<4, PIPE_V>(PV_READY);
         Base::RoundPvSlot(group & 1);
+        Base::LoadVMean(b, h);
         auto pv = resource_->ubBuf.template GetBufferByByte<float>(PV_UB + (group & 1) * PV_SLOT_BYTES);
         auto alpha = resource_->ubBuf.template GetBufferByByte<float>(ALPHA_UB + (group % 3) * 512);
         auto scratch = resource_->ubBuf.template GetBufferByByte<float>(SUM_UB);
@@ -133,12 +136,14 @@ public:
             FinalizeWideFp32VF<T, DP, true>(
                 (__ubuf__ T *)Base::qo_.GetPhyAddr(), (__ubuf__ float *)accum_.GetPhyAddr(),
                 (__ubuf__ float *)pv.GetPhyAddr(), (__ubuf__ float *)alpha.GetPhyAddr(),
-                (__ubuf__ float *)denom_.GetPhyAddr(), (__ubuf__ float *)scratch.GetPhyAddr());
+                (__ubuf__ float *)denom_.GetPhyAddr(), (__ubuf__ float *)scratch.GetPhyAddr(),
+                (__ubuf__ float *)Base::vmean_.GetPhyAddr());
         else
             FinalizeWideFp32VF<T, DP, false>(
                 (__ubuf__ T *)Base::qo_.GetPhyAddr(), (__ubuf__ float *)accum_.GetPhyAddr(),
                 (__ubuf__ float *)pv.GetPhyAddr(), (__ubuf__ float *)alpha.GetPhyAddr(),
-                (__ubuf__ float *)denom_.GetPhyAddr(), (__ubuf__ float *)scratch.GetPhyAddr());
+                (__ubuf__ float *)denom_.GetPhyAddr(), (__ubuf__ float *)scratch.GetPhyAddr(),
+                (__ubuf__ float *)Base::vmean_.GetPhyAddr());
         CrossCoreSetFlag<4, PIPE_V>(PV_RELEASE);
     }
     __aicore__ inline __attribute__((always_inline)) void AcquireStreamPv()
@@ -146,13 +151,16 @@ public:
         CrossCoreWaitFlag<4, PIPE_V>(PV_READY);
     }
     template <bool FIRST, bool LAST, bool FIRST_READY>
-    __aicore__ inline __attribute__((always_inline)) void UpdateStreamPairImpl(uint64_t group)
+    __aicore__ inline __attribute__((always_inline)) void UpdateStreamPairImpl(uint64_t group, uint32_t b,
+                                                                              uint32_t h)
     {
         if constexpr (!FIRST_READY)
             CrossCoreWaitFlag<4, PIPE_V>(PV_READY);
         CrossCoreWaitFlag<4, PIPE_V>(PV_READY);
         Base::RoundPvSlot(group & 1);
         Base::RoundPvSlot((group + 1) & 1);
+        if constexpr (LAST)
+            Base::LoadVMean(b, h);
         auto pv0 = resource_->ubBuf.template GetBufferByByte<float>(PV_UB + (group & 1) * PV_SLOT_BYTES);
         auto pv1 = resource_->ubBuf.template GetBufferByByte<float>(PV_UB + ((group + 1) & 1) * PV_SLOT_BYTES);
         auto a0 = resource_->ubBuf.template GetBufferByByte<float>(ALPHA_UB + (group % 3) * 512);
@@ -162,23 +170,25 @@ public:
             (__ubuf__ T *)Base::qo_.GetPhyAddr(), (__ubuf__ float *)accum_.GetPhyAddr(),
             (__ubuf__ float *)pv0.GetPhyAddr(), (__ubuf__ float *)pv1.GetPhyAddr(),
             (__ubuf__ float *)a0.GetPhyAddr(), (__ubuf__ float *)a1.GetPhyAddr(),
-            (__ubuf__ float *)denom_.GetPhyAddr(), (__ubuf__ float *)scratch.GetPhyAddr());
+            (__ubuf__ float *)denom_.GetPhyAddr(), (__ubuf__ float *)scratch.GetPhyAddr(),
+            (__ubuf__ float *)Base::vmean_.GetPhyAddr());
         CrossCoreSetFlag<4, PIPE_V>(PV_RELEASE);
         CrossCoreSetFlag<4, PIPE_V>(PV_RELEASE);
     }
     template <bool FIRST_READY = false>
-    __aicore__ inline __attribute__((always_inline)) void UpdateStreamPair(uint64_t group, bool first, bool last)
+    __aicore__ inline __attribute__((always_inline)) void UpdateStreamPair(uint64_t group, bool first, bool last,
+                                                                           uint32_t b, uint32_t h)
     {
         if (first) {
             if (last)
-                UpdateStreamPairImpl<true, true, FIRST_READY>(group);
+                UpdateStreamPairImpl<true, true, FIRST_READY>(group, b, h);
             else
-                UpdateStreamPairImpl<true, false, FIRST_READY>(group);
+                UpdateStreamPairImpl<true, false, FIRST_READY>(group, b, h);
         } else {
             if (last)
-                UpdateStreamPairImpl<false, true, FIRST_READY>(group);
+                UpdateStreamPairImpl<false, true, FIRST_READY>(group, b, h);
             else
-                UpdateStreamPairImpl<false, false, FIRST_READY>(group);
+                UpdateStreamPairImpl<false, false, FIRST_READY>(group, b, h);
         }
     }
     __aicore__ inline __attribute__((always_inline)) void FinishStreamQuery(uint32_t ordinal, uint32_t qstart,
@@ -202,6 +212,7 @@ private:
     using Base::subBlockIdx_;
     using Base::accum_;
     using Base::RoundPvSlot;
+    using Base::LoadVMean;
     using Base::KS_UB;
     using Base::SCORE_UB;
     using Base::PV_UB;

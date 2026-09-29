@@ -11,6 +11,39 @@
 #pragma once
 #include "common.h"
 namespace Sage {
+// smooth_v removes the per-channel sequence mean before the MX scale is
+// derived. The subtraction happens in FP32 registers and only touches the
+// valid rows, so the sequence padding and the channel padding stay zero.
+template <class T, uint32_t DP>
+__simd_vf__ inline void CenterVRowsImpl(__ubuf__ T *v, __ubuf__ float *meanV, uint32_t rows)
+{
+    using namespace AscendC::MicroAPI;
+    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+    auto f = CreateMask<float, MaskPattern::ALL>();
+    static constexpr CastTrait toFloat{RegLayout::ZERO, SatMode::UNKNOWN, MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+    static constexpr CastTrait back{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+    for (uint16_t row = 0; row < rows; ++row) {
+        for (uint16_t col = 0; col < DP; col += 64) {
+            RegTensor<T> raw, packed;
+            RegTensor<float> x, mv;
+            LoadAlign<T, LoadDist::DIST_UNPACK_B16>(raw, v + row * DP + col);
+            Cast<float, T, toFloat>(x, raw, f);
+            LoadAlign(mv, meanV + col);
+            Sub(x, x, mv, f);
+            Cast<T, float, back>(packed, x, f);
+            StoreAlign<T, StoreDist::DIST_PACK_B32>(v + row * DP + col, packed, f);
+        }
+    }
+    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+}
+template <class T>
+__aicore__ inline void CenterVRowsVF(__ubuf__ T *v, __ubuf__ float *meanV, uint32_t dp, uint32_t rows)
+{
+    if (dp == 128)
+        CenterVRowsImpl<T, 128>(v, meanV, rows);
+    else
+        CenterVRowsImpl<T, 64>(v, meanV, rows);
+}
 // One 64-row tile contains two independent MX groups per value channel.
 // Scales are stored as [channel, two consecutive sequence groups].
 template <class T, bool PERMUTE_V>

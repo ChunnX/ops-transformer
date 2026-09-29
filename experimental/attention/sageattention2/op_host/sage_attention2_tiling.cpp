@@ -182,7 +182,9 @@ ge::graphStatus Tile(gert::TilingContext *c)
         bytes += size;
         return true;
     };
-    if (!allocate(t.mean, {p.b, p.hk, p.dp, sizeof(float)}) || !allocate(t.vMxScale, {p.b, p.hk, p.kp / 32, p.dp}) ||
+    if (!allocate(t.mean, {p.b, p.hk, p.dp, sizeof(float)}) ||
+        !allocate(t.vMean, {p.b, p.hk, p.dp, sizeof(float)}) ||
+        !allocate(t.vMxScale, {p.b, p.hk, p.kp / 32, p.dp}) ||
         !allocate(t.q8, {p.b, p.hq, p.qp, p.dp}) || !allocate(t.k8, {p.b, p.hk, p.kp, p.dp}) ||
         !allocate(t.v8, {p.b, p.hk, p.kp, p.dp}) || !allocate(t.qScale, {p.b, p.hq, p.qp, sizeof(uint16_t)}) ||
         !allocate(t.kScale, {p.b, p.hk, p.kp, sizeof(uint16_t)})) {

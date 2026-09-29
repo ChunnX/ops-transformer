@@ -69,8 +69,12 @@ template <class T>
 __aicore__ inline __attribute__((always_inline)) void FinishWideOutput(
     AttentionBlockVecWide<T, 128> &vector, const WideOutputInfo &info, uint64_t group)
 {
-    vector.UpdateStreamOutput(group, info.first);
+    // A retired group that is not its query's last one always has a live
+    // sibling, so RetireWideOutput pairs it and both PV tokens are consumed
+    // there. A single retire is therefore always terminal and owns the
+    // normalize-and-store pass.
     if (info.last) {
+        vector.UpdateStreamOutput(group, info.first, info.b, info.h);
         vector.FinishStreamQuery(info.ordinal, info.qstart, info.b, info.h);
     }
 }
@@ -83,7 +87,7 @@ __aicore__ inline __attribute__((always_inline)) void RetireWideOutput(
     const auto first = pending[retired % 3];
     if (retired + 1 < produced && first.ordinal == pending[(retired + 1) % 3].ordinal) {
         const auto second = pending[(retired + 1) % 3];
-        vector.template UpdateStreamPair<FIRST_READY>(retired, first.first, second.last);
+        vector.template UpdateStreamPair<FIRST_READY>(retired, first.first, second.last, second.b, second.h);
         if (second.last)
             vector.FinishStreamQuery(second.ordinal, second.qstart, second.b, second.h);
         retired += 2;
@@ -143,12 +147,13 @@ __aicore__ inline __attribute__((always_inline)) void ProcessWideCubeStep(
 template <class T, bool CAUSAL = false>
 __aicore__ inline __attribute__((always_inline)) void AttentionWideStream(GM_ADDR q8, GM_ADDR k8, GM_ADDR v8,
                                                                           GM_ADDR qs, GM_ADDR ks, GM_ADDR mxScale,
-                                                                          GM_ADDR out, GM_ADDR lse, SageParams p)
+                                                                          GM_ADDR vMean, GM_ADDR out, GM_ADDR lse,
+                                                                          SageParams p)
 {
     FixedResource r;
     MxScaleCache mxCache;
     AttentionBlockVecWide<T, 128> vector;
-    vector.Init(r, qs, ks, out, lse, p);
+    vector.Init(r, qs, ks, vMean, out, lse, p);
     uint32_t core = GetBlockIdx();
     if ASCEND_IS_AIV {
         core /= 2;

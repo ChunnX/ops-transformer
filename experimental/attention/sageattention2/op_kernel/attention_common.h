@@ -34,7 +34,10 @@ constexpr uint32_t QS_UB = KS_UB + 2 * N * 2;
 constexpr uint32_t GROUP_STAT_BYTES = N * 2;
 constexpr uint32_t MAX_UB = QS_UB + GROUP_STAT_BYTES, DEN_UB = MAX_UB + GROUP_STAT_BYTES,
                    ALPHA_UB = DEN_UB + GROUP_STAT_BYTES;
-constexpr uint32_t SUM_UB = ALPHA_UB + ALPHA_SLOTS * GROUP_STAT_BYTES, UB_END = SUM_UB + HALF * 4;
+constexpr uint32_t SUM_UB = ALPHA_UB + ALPHA_SLOTS * GROUP_STAT_BYTES;
+// Per-query-tile V centering term. smooth_v off leaves it zero, so the
+// output stage keeps one unconditional add.
+constexpr uint32_t VM_UB = SUM_UB + HALF * 4, UB_END = VM_UB + 128 * sizeof(float);
 // The final LSE epilogue draws its vector scratch from the retired P0 slot
 // (see AttentionBlockVec::StoreTileLse); it must not touch the score area,
 // which the AIC may already be refilling for the next query tile.

@@ -23,6 +23,7 @@ struct DefaultVectorLayout {
     static constexpr uint32_t SCORE_UB = Sage::SCORE_UB;
     static constexpr uint32_t ALPHA_UB = Sage::ALPHA_UB;
     static constexpr uint32_t SUM_UB = Sage::SUM_UB;
+    static constexpr uint32_t VM_UB = Sage::VM_UB;
     static constexpr uint32_t PV_UB = Sage::PV_UB;
     static constexpr uint32_t PV_SLOT_BYTES = Sage::PV_SLOT_BYTES;
 };
@@ -32,7 +33,8 @@ template <class T, uint32_t DP, class Layout = DefaultVectorLayout>
 class AttentionBlockVec {
 public:
     __aicore__ inline __attribute__((always_inline)) void Init(FixedResource &resource, GM_ADDR qs,
-                                                               GM_ADDR ks, GM_ADDR out, GM_ADDR lse, SageParams params)
+                                                               GM_ADDR ks, GM_ADDR vMean, GM_ADDR out,
+                                                               GM_ADDR lse, SageParams params)
     {
         resource_ = &resource;
         params_ = params;
@@ -40,6 +42,7 @@ public:
         qsg_.SetGlobalBuffer((__gm__ half *)qs);
         ksg_.SetGlobalBuffer((__gm__ half *)ks);
         lg_.SetGlobalBuffer((__gm__ float *)lse);
+        vmg_.SetGlobalBuffer((__gm__ float *)vMean);
         og_.SetGlobalBuffer((__gm__ T *)out);
 
         accum_ = resource_->ubBuf.GetBufferByByte<float>(ACCUM_UB);
@@ -47,6 +50,7 @@ public:
         qsu_ = resource_->ubBuf.GetBufferByByte<half>(QS_UB);
         maxima_ = resource_->ubBuf.GetBufferByByte<half>(MAX_UB);
         denom_ = resource_->ubBuf.GetBufferByByte<float>(DEN_UB);
+        vmean_ = resource_->ubBuf.GetBufferByByte<float>(VM_UB);
     }
     __aicore__ inline __attribute__((always_inline)) void BeginTile(uint64_t qb, uint32_t qstart)
     {
@@ -144,14 +148,29 @@ public:
             CrossCoreSetFlag<4, PIPE_V>(PV_RELEASE);
         }
     }
+    // Publish the centring term of this query tile's key-value head. smooth_v
+    // leaves it zero, so the normalize pass keeps one unconditional add.
+    __aicore__ inline __attribute__((always_inline)) void LoadVMean(uint32_t b, uint32_t h)
+    {
+        Sync<HardEvent::V_MTE2>();
+        if (params_.smoothV) {
+            uint32_t kh = CalcKh(h, params_.hq, params_.hk);
+            DataCopy(vmean_, vmg_[(uint64_t(b) * params_.hk + kh) * params_.dp], params_.dp);
+        } else {
+            Duplicate(vmean_, 0.0f, 128);
+        }
+        Sync<HardEvent::MTE2_V>();
+    }
     __aicore__ inline __attribute__((always_inline)) void FinalizeTile(uint32_t qstart, uint32_t b, uint32_t h)
     {
         WaitFlag<HardEvent::V_MTE2>(SCALE_EVENT_BASE);
         WaitFlag<HardEvent::V_MTE2>(static_cast<event_t>(SCALE_EVENT_BASE + 1));
+        LoadVMean(b, h);
         NormalizeCastVF<T, DP>(
             (__ubuf__ T *)qo_.GetPhyAddr(), (__ubuf__ float *)accum_.GetPhyAddr(),
             (__ubuf__ float *)denom_.GetPhyAddr(),
-            (__ubuf__ float *)resource_->ubBuf.template GetBufferByByte<float>(SUM_UB).GetPhyAddr());
+            (__ubuf__ float *)resource_->ubBuf.template GetBufferByByte<float>(SUM_UB).GetPhyAddr(),
+            (__ubuf__ float *)vmean_.GetPhyAddr());
         StoreTileOutput(qstart, b, h);
     }
     __aicore__ inline __attribute__((always_inline)) void StoreTileOutput(uint32_t qstart, uint32_t b, uint32_t h)
@@ -219,13 +238,14 @@ protected:
     static constexpr uint32_t SUM_UB = Layout::SUM_UB;
     static constexpr uint32_t PV_UB = Layout::PV_UB;
     static constexpr uint32_t PV_SLOT_BYTES = Layout::PV_SLOT_BYTES;
+    static constexpr uint32_t VM_UB = Layout::VM_UB;
     FixedResource *resource_;
     SageParams params_;
     uint32_t subBlockIdx_;
     GlobalTensor<half> qsg_, ksg_;
-    GlobalTensor<float> lg_;
+    GlobalTensor<float> lg_, vmg_;
     GlobalTensor<T> og_;
-    LocalTensor<float> accum_, denom_;
+    LocalTensor<float> accum_, denom_, vmean_;
     LocalTensor<half> qsu_, maxima_;
     LocalTensor<T> qo_;
 };
