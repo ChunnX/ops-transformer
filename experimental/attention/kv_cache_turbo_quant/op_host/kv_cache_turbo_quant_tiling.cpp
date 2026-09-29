@@ -48,14 +48,14 @@ static uint64_t GetTilingKeyByBits(int64_t bits)
     }
 }
 
-ge::graphStatus KvCacheTurboQuantTilingFunc(gert::TilingContext *context)
+ge::graphStatus KvCacheTurboQuantTilingFunc(gert::TilingContext* context)
 {
     OP_CHECK_IF(context == nullptr, OP_LOGE("KvCacheTurboQuant", "TilingContext is nullptr!"), return ge::GRAPH_FAILED);
 
     // ---- shape: [num_tokens, num_kv_heads, 128] ----
-    const gert::StorageShape *kvShape = context->GetInputShape(0);
+    const gert::StorageShape* kvShape = context->GetInputShape(0);
     OP_CHECK_IF(kvShape == nullptr, OP_LOGE("KvCacheTurboQuant", "input shape is nullptr!"), return ge::GRAPH_FAILED);
-    const gert::Shape &shape = kvShape->GetStorageShape();
+    const gert::Shape& shape = kvShape->GetStorageShape();
     OP_CHECK_IF(shape.GetDimNum() != DIMS_LIMIT || shape.GetDim(2) != HEAD_DIM,
                 OP_LOGE("KvCacheTurboQuant", "kv_vectors must be 3D [num_tokens, num_kv_heads, 128]."),
                 return ge::GRAPH_FAILED);
@@ -68,23 +68,23 @@ ge::graphStatus KvCacheTurboQuantTilingFunc(gert::TilingContext *context)
     const int64_t numVectors = numTokens * numHeads;
 
     // ---- 属性 mse_bits / out_dtype ----
-    const gert::RuntimeAttrs *attrs = context->GetAttrs();
+    const gert::RuntimeAttrs* attrs = context->GetAttrs();
     OP_CHECK_IF(attrs == nullptr, OP_LOGE("KvCacheTurboQuant", "attrs is nullptr!"), return ge::GRAPH_FAILED);
-    const int64_t *pBits = attrs->GetAttrPointer<int64_t>(ATTR_MSE_BITS_INDEX);
+    const int64_t* pBits = attrs->GetAttrPointer<int64_t>(ATTR_MSE_BITS_INDEX);
     const int64_t mseBits = (pBits != nullptr) ? *pBits : 3;
     OP_CHECK_IF(mseBits != 2 && mseBits != 3 && mseBits != 4,
                 OP_LOGE("KvCacheTurboQuant", "mse_bits only supports 2/3/4."), return ge::GRAPH_FAILED);
-    const int64_t *pOutDtype = attrs->GetAttrPointer<int64_t>(ATTR_OUT_DTYPE_INDEX);
+    const int64_t* pOutDtype = attrs->GetAttrPointer<int64_t>(ATTR_OUT_DTYPE_INDEX);
     const int64_t outDtype = (pOutDtype != nullptr) ? *pOutDtype : 0;
     OP_CHECK_IF(outDtype != 0 && outDtype != 1,
                 OP_LOGE("KvCacheTurboQuant", "out_dtype only supports 0(bfloat16)/1(float16)."),
                 return ge::GRAPH_FAILED);
 
     // ---- 矩阵元素类型：0=float32，1=bfloat16 ----
-    const gert::StorageShape *matShape = context->GetInputShape(1);
+    const gert::StorageShape* matShape = context->GetInputShape(1);
     OP_CHECK_IF(matShape == nullptr, OP_LOGE("KvCacheTurboQuant", "rotation_matrix shape is nullptr!"),
                 return ge::GRAPH_FAILED);
-    const gert::Shape &hShape = matShape->GetStorageShape();
+    const gert::Shape& hShape = matShape->GetStorageShape();
     OP_CHECK_IF(hShape.GetDimNum() != MAT_DIM_NUM || hShape.GetDim(0) != HEAD_DIM || hShape.GetDim(1) != HEAD_DIM,
                 OP_LOGE("KvCacheTurboQuant", "rotation_matrix must be [128, 128]."), return ge::GRAPH_FAILED);
     uint32_t matDtype = 0;
@@ -125,7 +125,7 @@ ge::graphStatus KvCacheTurboQuantTilingFunc(gert::TilingContext *context)
     const uint32_t vecsPerCore = static_cast<uint32_t>(numVectors / usedCoreNum);
     const uint32_t formerCoreNum = static_cast<uint32_t>(numVectors % usedCoreNum);
 
-    auto *td = context->GetTilingData<KvCacheTurboQuant::KvCacheTurboQuantTilingData>();
+    auto* td = context->GetTilingData<KvCacheTurboQuant::KvCacheTurboQuantTilingData>();
     OP_CHECK_IF(td == nullptr, OP_LOGE("KvCacheTurboQuant", "tiling data is nullptr!"), return ge::GRAPH_FAILED);
     td->numVectors = numVectors;
     td->usedCoreNum = usedCoreNum;
@@ -141,7 +141,7 @@ ge::graphStatus KvCacheTurboQuantTilingFunc(gert::TilingContext *context)
     // MIX 内核 codegen 会在 AIC 上执行 matmul::clearWorkspace(workspace)，workspace 必须 >0；
     // v6 布局：H bf16 三连(3×128×128×2) + S fp16 hi/lo(2×128×128×2) 权重区 +
     //          numVectors×128×( X bf16 2B + Rh/Rl fp16 各2B + Z fp32 4B + P fp32 三连 12B ) = numVectors×2816B
-    size_t *workspaces = context->GetWorkspaceSizes(1);
+    size_t* workspaces = context->GetWorkspaceSizes(1);
     if (workspaces != nullptr) {
         const size_t weightsBytes = 5 * HEAD_DIM * HEAD_DIM * 2;
         // H^T / S^T 各 2 份（AIV0/AIV1 各一份，避免两个 sub-block 写同一 GM 位置），fp32
@@ -156,7 +156,7 @@ ge::graphStatus KvCacheTurboQuantTilingFunc(gert::TilingContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TilingPrepareForKvCacheTurboQuant(gert::TilingParseContext *context)
+ge::graphStatus TilingPrepareForKvCacheTurboQuant(gert::TilingParseContext* context)
 {
     if (context == nullptr || context->GetPlatformInfo() == nullptr) {
         return ge::GRAPH_FAILED;

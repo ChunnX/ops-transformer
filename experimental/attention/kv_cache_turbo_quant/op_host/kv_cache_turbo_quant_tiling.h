@@ -29,9 +29,9 @@ struct KvCacheTurboQuantCompileInfo {
     uint32_t aicNum; // AIC 核数（TilingPrepare 阶段填充，tiling 阶段只读，避免函数级 static 的多线程竞争）
 };
 
-ge::graphStatus KvCacheTurboQuantTilingFunc(gert::TilingContext *context);
+ge::graphStatus KvCacheTurboQuantTilingFunc(gert::TilingContext* context);
 
-ge::graphStatus TilingPrepareForKvCacheTurboQuant(gert::TilingParseContext *context);
+ge::graphStatus TilingPrepareForKvCacheTurboQuant(gert::TilingParseContext* context);
 
 } // namespace optiling
 

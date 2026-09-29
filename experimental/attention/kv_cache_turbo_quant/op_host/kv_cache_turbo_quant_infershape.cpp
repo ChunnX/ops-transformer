@@ -32,32 +32,32 @@ constexpr int64_t QJL_BYTES = KvCacheTurboQuant::QJL_BYTES; // qjl_dim=128, 1 bi
 
 // 构建期 opbuild 执行 infer 函数时不提供 attrs：取不到时回落 def 默认值（3 / 0），
 // 非法显式值仍由后面的校验拒绝（运行期 attrs 恒存在，不影响严格性）。
-static int64_t GetMseBits(gert::InferShapeContext *context)
+static int64_t GetMseBits(gert::InferShapeContext* context)
 {
-    const gert::RuntimeAttrs *attrs = context->GetAttrs();
+    const gert::RuntimeAttrs* attrs = context->GetAttrs();
     if (attrs == nullptr) {
         return 3;
     }
-    const int64_t *pBits = attrs->GetAttrPointer<int64_t>(ATTR_MSE_BITS_INDEX);
+    const int64_t* pBits = attrs->GetAttrPointer<int64_t>(ATTR_MSE_BITS_INDEX);
     return (pBits != nullptr) ? *pBits : 3;
 }
 
 template <typename Ctx>
-static int64_t GetOutDtype(Ctx *context)
+static int64_t GetOutDtype(Ctx* context)
 {
-    const gert::RuntimeAttrs *attrs = context->GetAttrs();
+    const gert::RuntimeAttrs* attrs = context->GetAttrs();
     if (attrs == nullptr) {
         return 0;
     }
-    const int64_t *pDtype = attrs->GetAttrPointer<int64_t>(ATTR_OUT_DTYPE_INDEX);
+    const int64_t* pDtype = attrs->GetAttrPointer<int64_t>(ATTR_OUT_DTYPE_INDEX);
     return (pDtype != nullptr) ? *pDtype : 0;
 }
 
-ge::graphStatus InferShapeKvCacheTurboQuant(gert::InferShapeContext *context)
+ge::graphStatus InferShapeKvCacheTurboQuant(gert::InferShapeContext* context)
 {
     OP_CHECK_IF(context == nullptr, OP_LOGE("KvCacheTurboQuant", "InferShapeContext is nullptr!"),
                 return ge::GRAPH_FAILED);
-    const gert::Shape *kvShape = context->GetInputShape(KV_VECTORS_INDEX);
+    const gert::Shape* kvShape = context->GetInputShape(KV_VECTORS_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, kvShape);
     OP_CHECK_IF(kvShape->GetDimNum() != DIMS_LIMIT,
                 OP_LOGE("KvCacheTurboQuant", "kv_vectors must be a 3D tensor [num_tokens, num_kv_heads, head_dim]."),
@@ -82,14 +82,14 @@ ge::graphStatus InferShapeKvCacheTurboQuant(gert::InferShapeContext *context)
     // 构建期 opbuild 会以 mock shape 执行本函数，范围校验在构建期会误伤；此处仅推导 shape。
     const int64_t idxBytes = HEAD_DIM * mseBits / 8; // 128*b/8 = 32/48/64
 
-    gert::Shape *idxShape = context->GetOutputShape(IDX_OUTPUT_INDEX);
+    gert::Shape* idxShape = context->GetOutputShape(IDX_OUTPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, idxShape);
     idxShape->SetDimNum(DIMS_LIMIT);
     idxShape->SetDim(0, numTokens);
     idxShape->SetDim(1, numHeads);
     idxShape->SetDim(2, idxBytes);
 
-    gert::Shape *qjlShape = context->GetOutputShape(QJL_OUTPUT_INDEX);
+    gert::Shape* qjlShape = context->GetOutputShape(QJL_OUTPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, qjlShape);
     qjlShape->SetDimNum(DIMS_LIMIT);
     qjlShape->SetDim(0, numTokens);
@@ -97,7 +97,7 @@ ge::graphStatus InferShapeKvCacheTurboQuant(gert::InferShapeContext *context)
     qjlShape->SetDim(2, QJL_BYTES);
 
     for (uint32_t out : {NORM_OUTPUT_INDEX, GAMMA_OUTPUT_INDEX}) {
-        gert::Shape *shape = context->GetOutputShape(out);
+        gert::Shape* shape = context->GetOutputShape(out);
         OP_CHECK_NULL_WITH_CONTEXT(context, shape);
         shape->SetDimNum(2);
         shape->SetDim(0, numTokens);
@@ -106,7 +106,7 @@ ge::graphStatus InferShapeKvCacheTurboQuant(gert::InferShapeContext *context)
     return GRAPH_SUCCESS;
 }
 
-ge::graphStatus InferDataTypeKvCacheTurboQuant(gert::InferDataTypeContext *context)
+ge::graphStatus InferDataTypeKvCacheTurboQuant(gert::InferDataTypeContext* context)
 {
     OP_CHECK_IF(context == nullptr, OP_LOGE("KvCacheTurboQuant", "InferDataTypeContext is nullptr!"),
                 return ge::GRAPH_FAILED);

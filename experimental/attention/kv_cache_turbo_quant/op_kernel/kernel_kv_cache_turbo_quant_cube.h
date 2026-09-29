@@ -85,7 +85,7 @@ public:
 
     __aicore__ inline void Init(GM_ADDR kvVectors, GM_ADDR rotationMatrix, GM_ADDR qjlMatrix, GM_ADDR quantIdx,
                                 GM_ADDR quantQjl, GM_ADDR quantNorm, GM_ADDR quantGamma, GM_ADDR workspace,
-                                const KvCacheTurboQuantTilingData *td, TPipe *pipe)
+                                const KvCacheTurboQuantTilingData* td, TPipe* pipe)
     {
         // MIX 核映射：AIC blockIdx ∈ [0,N)，AIV blockIdx ∈ [0,2N)
         if ASCEND_IS_AIV {
@@ -102,13 +102,13 @@ public:
         vecCount_ = td->vecsPerCore + (aiCoreIdx_ < former ? 1 : 0);
         tiles_ = static_cast<uint32_t>((vecCount_ + CUBE_TILE_V - 1) / CUBE_TILE_V);
 
-        kvGm_.SetGlobalBuffer((__gm__ bfloat16_t *)kvVectors);
-        idxGm_.SetGlobalBuffer((__gm__ uint8_t *)quantIdx);
-        qjlOutGm_.SetGlobalBuffer((__gm__ uint8_t *)quantQjl);
-        normGm_.SetGlobalBuffer((__gm__ bfloat16_t *)quantNorm);
-        gamGm_.SetGlobalBuffer((__gm__ bfloat16_t *)quantGamma);
-        normGmF16_.SetGlobalBuffer((__gm__ half *)quantNorm);
-        gamGmF16_.SetGlobalBuffer((__gm__ half *)quantGamma);
+        kvGm_.SetGlobalBuffer((__gm__ bfloat16_t*)kvVectors);
+        idxGm_.SetGlobalBuffer((__gm__ uint8_t*)quantIdx);
+        qjlOutGm_.SetGlobalBuffer((__gm__ uint8_t*)quantQjl);
+        normGm_.SetGlobalBuffer((__gm__ bfloat16_t*)quantNorm);
+        gamGm_.SetGlobalBuffer((__gm__ bfloat16_t*)quantGamma);
+        normGmF16_.SetGlobalBuffer((__gm__ half*)quantNorm);
+        gamGmF16_.SetGlobalBuffer((__gm__ half*)quantGamma);
         matDtype_ = td->matDtype;
         outDtype_ = td->outDtype;
         // fp32 矩阵 + 大 case：tie 重算走 H^T/S^T 预转置 + j 维 128 路并行 FMA 的向量化路径；
@@ -152,26 +152,26 @@ public:
         offP3_ = off;
         off += numVectors_ * HEAD_DIM * 4;
 
-        hHhGm_.SetGlobalBuffer((__gm__ bfloat16_t *)(wsBase + offHh_));
-        hHlGm_.SetGlobalBuffer((__gm__ bfloat16_t *)(wsBase + offHl_));
-        hHllGm_.SetGlobalBuffer((__gm__ bfloat16_t *)(wsBase + offHll_));
-        sHiGm_.SetGlobalBuffer((__gm__ half *)(wsBase + offSh_));
-        sLoGm_.SetGlobalBuffer((__gm__ half *)(wsBase + offSl_));
+        hHhGm_.SetGlobalBuffer((__gm__ bfloat16_t*)(wsBase + offHh_));
+        hHlGm_.SetGlobalBuffer((__gm__ bfloat16_t*)(wsBase + offHl_));
+        hHllGm_.SetGlobalBuffer((__gm__ bfloat16_t*)(wsBase + offHll_));
+        sHiGm_.SetGlobalBuffer((__gm__ half*)(wsBase + offSh_));
+        sLoGm_.SetGlobalBuffer((__gm__ half*)(wsBase + offSl_));
         htGm_.SetGlobalBuffer(
-            (__gm__ float *)(wsBase + offHT_ + static_cast<uint64_t>(aivSubIdx_) * HEAD_DIM * HEAD_DIM * 4));
+            (__gm__ float*)(wsBase + offHT_ + static_cast<uint64_t>(aivSubIdx_) * HEAD_DIM * HEAD_DIM * 4));
         stGm_.SetGlobalBuffer(
-            (__gm__ float *)(wsBase + offST_ + static_cast<uint64_t>(aivSubIdx_) * HEAD_DIM * HEAD_DIM * 4));
-        xGm_.SetGlobalBuffer((__gm__ bfloat16_t *)(wsBase + offX_));
-        rHiGm_.SetGlobalBuffer((__gm__ half *)(wsBase + offRh_));
-        rLoGm_.SetGlobalBuffer((__gm__ half *)(wsBase + offRl_));
-        zGm_.SetGlobalBuffer((__gm__ float *)(wsBase + offZ_));
-        p1Gm_.SetGlobalBuffer((__gm__ float *)(wsBase + offP1_));
-        p2Gm_.SetGlobalBuffer((__gm__ float *)(wsBase + offP2_));
-        p3Gm_.SetGlobalBuffer((__gm__ float *)(wsBase + offP3_));
-        rotSrcGm_.SetGlobalBuffer((__gm__ float *)rotationMatrix);
-        qjlSrcGm_.SetGlobalBuffer((__gm__ float *)qjlMatrix);
-        rotSrcBf16Gm_.SetGlobalBuffer((__gm__ bfloat16_t *)rotationMatrix);
-        qjlSrcBf16Gm_.SetGlobalBuffer((__gm__ bfloat16_t *)qjlMatrix);
+            (__gm__ float*)(wsBase + offST_ + static_cast<uint64_t>(aivSubIdx_) * HEAD_DIM * HEAD_DIM * 4));
+        xGm_.SetGlobalBuffer((__gm__ bfloat16_t*)(wsBase + offX_));
+        rHiGm_.SetGlobalBuffer((__gm__ half*)(wsBase + offRh_));
+        rLoGm_.SetGlobalBuffer((__gm__ half*)(wsBase + offRl_));
+        zGm_.SetGlobalBuffer((__gm__ float*)(wsBase + offZ_));
+        p1Gm_.SetGlobalBuffer((__gm__ float*)(wsBase + offP1_));
+        p2Gm_.SetGlobalBuffer((__gm__ float*)(wsBase + offP2_));
+        p3Gm_.SetGlobalBuffer((__gm__ float*)(wsBase + offP3_));
+        rotSrcGm_.SetGlobalBuffer((__gm__ float*)rotationMatrix);
+        qjlSrcGm_.SetGlobalBuffer((__gm__ float*)qjlMatrix);
+        rotSrcBf16Gm_.SetGlobalBuffer((__gm__ bfloat16_t*)rotationMatrix);
+        qjlSrcBf16Gm_.SetGlobalBuffer((__gm__ bfloat16_t*)qjlMatrix);
 
         if ASCEND_IS_AIC {
             InitAic(pipe);
@@ -281,8 +281,8 @@ private:
     }
 
     // fp32 → fp16 hi/lo 拆：hi=RNE(x)，lo=RNE(x-hi)（hi+lo 覆盖 ~22bit，供 p 平面修正项）
-    __aicore__ inline void SplitFp16HiLo(const LocalTensor<float> &srcFp, const LocalTensor<half> &dstHi,
-                                         const LocalTensor<half> &dstLo, const LocalTensor<float> &tmpFp,
+    __aicore__ inline void SplitFp16HiLo(const LocalTensor<float>& srcFp, const LocalTensor<half>& dstHi,
+                                         const LocalTensor<half>& dstLo, const LocalTensor<float>& tmpFp,
                                          uint32_t elems)
     {
         Cast(dstHi, srcFp, RoundMode::CAST_RINT, elems);
@@ -292,7 +292,7 @@ private:
     }
 
     // ---------------- AIV 侧 ----------------
-    __aicore__ inline void InitAiv(TPipe *pipe)
+    __aicore__ inline void InitAiv(TPipe* pipe)
     {
         pipe_ = pipe;
         pipe->InitBuffer(sqBuf_, SUB_ELEMS * sizeof(float));     // 16KB
@@ -374,8 +374,8 @@ private:
     }
 
     // H(fp32) → bf16 三连，16 行一块；hi/mid/lo 三平面同驻 UB，一次写出（省 2/3 的 MTE3 同步）。
-    __aicore__ inline void StageHTriple(const GlobalTensor<float> &srcGm, const GlobalTensor<bfloat16_t> &hiGm,
-                                        const GlobalTensor<bfloat16_t> &midGm, const GlobalTensor<bfloat16_t> &loGm)
+    __aicore__ inline void StageHTriple(const GlobalTensor<float>& srcGm, const GlobalTensor<bfloat16_t>& hiGm,
+                                        const GlobalTensor<bfloat16_t>& midGm, const GlobalTensor<bfloat16_t>& loGm)
     {
         for (int32_t chunk = 0; chunk < HEAD_DIM / 16; chunk++) {
             {
@@ -401,8 +401,8 @@ private:
     }
 
     // H(bf16 输入) → 直接作 hi，mid/lo 补零（bf16 已是精确表示，无需三连）
-    __aicore__ inline void StageHTripleBf16(const GlobalTensor<bfloat16_t> &srcGm, const GlobalTensor<bfloat16_t> &hiGm,
-                                            const GlobalTensor<bfloat16_t> &midGm, const GlobalTensor<bfloat16_t> &loGm)
+    __aicore__ inline void StageHTripleBf16(const GlobalTensor<bfloat16_t>& srcGm, const GlobalTensor<bfloat16_t>& hiGm,
+                                            const GlobalTensor<bfloat16_t>& midGm, const GlobalTensor<bfloat16_t>& loGm)
     {
         for (int32_t chunk = 0; chunk < HEAD_DIM / 16; chunk++) {
             {
@@ -422,8 +422,8 @@ private:
     }
 
     // S(fp32) → fp16 hi/lo，16 行一块
-    __aicore__ inline void StageSHiLo(const GlobalTensor<float> &srcGm, const GlobalTensor<half> &hiGm,
-                                      const GlobalTensor<half> &loGm)
+    __aicore__ inline void StageSHiLo(const GlobalTensor<float>& srcGm, const GlobalTensor<half>& hiGm,
+                                      const GlobalTensor<half>& loGm)
     {
         for (int32_t chunk = 0; chunk < HEAD_DIM / 16; chunk++) {
             {
@@ -445,8 +445,8 @@ private:
     }
 
     // S(bf16 输入) → fp16 hi=cast(bf16)，lo=0（bf16 8bit 尾数可被 fp16 精确表示）
-    __aicore__ inline void StageSHiLoBf16(const GlobalTensor<bfloat16_t> &srcGm, const GlobalTensor<half> &hiGm,
-                                          const GlobalTensor<half> &loGm)
+    __aicore__ inline void StageSHiLoBf16(const GlobalTensor<bfloat16_t>& srcGm, const GlobalTensor<half>& hiGm,
+                                          const GlobalTensor<half>& loGm)
     {
         for (int32_t chunk = 0; chunk < HEAD_DIM / 16; chunk++) {
             {
@@ -470,7 +470,7 @@ private:
     // fp32 [128,128] 行主序 → 转置行主序写 GM：16 行一块读入 yhatT_，标量转成 [k][16] 布局
     // （rT_/dupT_ 双缓冲交替，隐藏 MTE3），再一次 DataCopyPad（128 个 64B 块、dst 跨行 448B）写出。
     // 供重算 y=unit@H / qjl=r_hat@S 改走 H^T/S^T 的 j 维 128 路并行 FMA（k 升序与 golden 逐位一致）。
-    __aicore__ inline void StageTranspose(const GlobalTensor<float> &srcGm, const GlobalTensor<float> &dstGm)
+    __aicore__ inline void StageTranspose(const GlobalTensor<float>& srcGm, const GlobalTensor<float>& dstGm)
     {
         const int32_t D = HEAD_DIM;
         for (int32_t rb = 0; rb < D; rb += 16) {
@@ -600,9 +600,9 @@ private:
 
     // 从检测 Compare 的位图（maskT_，bit i = 元素 i）收集向量 v 的命中元素下标（≤cap），
     // 返回命中数（可超 cap，由调用方判级联）。比逐元素 GetValue(0/1 浮点) 快 ~8×。
-    __aicore__ inline int32_t CollectHitsFromMask(int32_t v, int32_t *out, int32_t cap)
+    __aicore__ inline int32_t CollectHitsFromMask(int32_t v, int32_t* out, int32_t cap)
     {
-        __ubuf__ uint8_t *mb = reinterpret_cast<__ubuf__ uint8_t *>(maskT_.GetPhyAddr()) + v * (HEAD_DIM / 8);
+        __ubuf__ uint8_t* mb = reinterpret_cast<__ubuf__ uint8_t*>(maskT_.GetPhyAddr()) + v * (HEAD_DIM / 8);
         int32_t nh = 0;
         for (int32_t b = 0; b < HEAD_DIM / 8; b++) {
             uint32_t byte = mb[b];
@@ -795,7 +795,7 @@ private:
     // fp32 视图，自然布局），prod 入 sqT_ 32 行（gi*8+e），16 路交织 k 升序求和（2 向量 ×
     // 8 j 行 × 16 累加器），结果写 yhatT_ 行 gi。每个点积仍严格 k 升序（fp32 乘/加舍入序列
     // 与 ComputeGolden 完全一致）；H 行块只读一次，nv 个向量共享，省去 (nv-1)×64KB GM 与同步。
-    __aicore__ inline void ExactYBatch(const int32_t *uRow, int32_t nv)
+    __aicore__ inline void ExactYBatch(const int32_t* uRow, int32_t nv)
     {
         const int32_t D = HEAD_DIM;
         // 16 行块（双缓冲 2×16）：staging 改 yT_（本函数仅在尾声被调用，yT_ 空闲），
@@ -823,8 +823,8 @@ private:
                 SyncVS();
                 float accA[8] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
                 float accB[8] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
-                __ubuf__ float *pa = reinterpret_cast<__ubuf__ float *>(sqT_.GetPhyAddr());
-                __ubuf__ float *pb2 = pa + 8 * D;
+                __ubuf__ float* pa = reinterpret_cast<__ubuf__ float*>(sqT_.GetPhyAddr());
+                __ubuf__ float* pb2 = pa + 8 * D;
                 for (int32_t k = 0; k < D; k++) {
                     for (int32_t t = 0; t < 8; t++) {
                         accA[t] = accA[t] + pa[t * D + k];
@@ -860,8 +860,8 @@ private:
                 if (nw == 2) { // 两组 acc8（16 路会超寄存器预算溢出到栈；8 路是实测最优）
                     float accA[8] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
                     float accB[8] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
-                    __ubuf__ float *pa = reinterpret_cast<__ubuf__ float *>(sqT_.GetPhyAddr()) + gi * 8 * D;
-                    __ubuf__ float *pb2 = pa + 8 * D;
+                    __ubuf__ float* pa = reinterpret_cast<__ubuf__ float*>(sqT_.GetPhyAddr()) + gi * 8 * D;
+                    __ubuf__ float* pb2 = pa + 8 * D;
                     for (int32_t k = 0; k < D; k++) {
                         for (int32_t t = 0; t < 8; t++) {
                             accA[t] = accA[t] + pa[t * D + k];
@@ -874,7 +874,7 @@ private:
                     }
                 } else {
                     float acc8[8] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
-                    __ubuf__ float *pa = reinterpret_cast<__ubuf__ float *>(sqT_.GetPhyAddr()) + gi * 8 * D;
+                    __ubuf__ float* pa = reinterpret_cast<__ubuf__ float*>(sqT_.GetPhyAddr()) + gi * 8 * D;
                     for (int32_t k = 0; k < D; k++) {
                         for (int32_t t = 0; t < 8; t++) {
                             acc8[t] = acc8[t] + pa[t * D + k];
@@ -931,9 +931,9 @@ private:
     // 点积（自然布局 H 行 + Mul + 8 路交织 k 升序求和，与 golden 逐位一致）。
     // hits/nh/gamRow/forceCasc 均在级联前由调用方收集（级联会覆盖 yT_/qjlBT_ 前 128 元素）；
     // gamma 标记向量走 yExact 全量精确 y。判定失败者函数内直接级联并置 cascVec_。
-    __aicore__ inline void SurgicalGroup(int64_t vecBase, int32_t s, const int32_t *cand, int32_t gc,
-                                         const int32_t (*hits)[8], int32_t *nh, const int32_t *gamRow,
-                                         const bool *forceCasc)
+    __aicore__ inline void SurgicalGroup(int64_t vecBase, int32_t s, const int32_t* cand, int32_t gc,
+                                         const int32_t (*hits)[8], int32_t* nh, const int32_t* gamRow,
+                                         const bool* forceCasc)
     {
         const int32_t D = HEAD_DIM;
         // ---- 1. x 行直接用 UploadX 驻留 xT_ 的本子批数据（免 GM 重读；时序上 xT_ 在
@@ -1059,8 +1059,8 @@ private:
     // qjlExact 批量（≤4 个 |p'|≤guard 候选）：x 行批量重载（P 相 xT_ 无驻留）→ 成批 unit →
     // ExactYBatch 共享 H 行块 → 逐候选 r/r_hat（yhatT_ 行原地）→ 命中元素 S 行点积 → 翻 bit。
     // p'' 逐位 = golden p（unit/y/r 全链 golden 语序）。
-    __aicore__ inline void SurgicalQjlBatch(int64_t vecBase, const int32_t *cand, const int32_t (*hits)[8],
-                                            const int32_t *nh, int32_t nv)
+    __aicore__ inline void SurgicalQjlBatch(int64_t vecBase, const int32_t* cand, const int32_t (*hits)[8],
+                                            const int32_t* nh, int32_t nv)
     {
         const int32_t D = HEAD_DIM;
         // ---- 1. x 行批量 + 成批 TreeDot unit ----
@@ -1129,7 +1129,7 @@ private:
             SyncVS();
             float pex[8];
             SumRowsConst(dupT_, 0, nh[u], pex);
-            __ubuf__ uint8_t *qdst = reinterpret_cast<__ubuf__ uint8_t *>(outQjlT_.GetPhyAddr()) + cand[u] * QJL_BYTES;
+            __ubuf__ uint8_t* qdst = reinterpret_cast<__ubuf__ uint8_t*>(outQjlT_.GetPhyAddr()) + cand[u] * QJL_BYTES;
             for (int32_t e = 0; e < nh[u]; e++) {
                 int32_t j = hits[u][e];
                 int32_t bit = (pex[e] >= 0.0f) ? 1 : 0;
@@ -1145,8 +1145,8 @@ private:
     // 对 |p|<thr 命中元素精确点积（8 路交织 k 升序）。|p'|>3e-6 时 p' 符号即 golden 符号：
     // 与 cube bit 不一致直接翻 outQjlT_ 对应 bit（免级联）；|p'|≤3e-6 才级联。
     // hits/nh/forceCasc 由调用方在级联前收集（级联会覆盖 qjlBT_ 前 128 元素）。
-    __aicore__ inline void SurgicalGroupQjl(int64_t vecBase, int32_t s, const int32_t *cand, int32_t gc,
-                                            const int32_t (*hits)[8], const int32_t *nh, const bool *forceCasc)
+    __aicore__ inline void SurgicalGroupQjl(int64_t vecBase, int32_t s, const int32_t* cand, int32_t gc,
+                                            const int32_t (*hits)[8], const int32_t* nh, const bool* forceCasc)
     {
         const int32_t D = HEAD_DIM;
         // ---- 1. rh/rl 行 + S 行前置发射（命中下标已知），只等一次同步 ----
@@ -1204,8 +1204,8 @@ private:
                 }
                 float pex[8];
                 SumRowsConst(sqT_, rb, nh[i], pex);
-                __ubuf__ uint8_t *qdst =
-                    reinterpret_cast<__ubuf__ uint8_t *>(outQjlT_.GetPhyAddr()) + cand[i] * QJL_BYTES;
+                __ubuf__ uint8_t* qdst =
+                    reinterpret_cast<__ubuf__ uint8_t*>(outQjlT_.GetPhyAddr()) + cand[i] * QJL_BYTES;
                 for (int32_t e = 0; e < nh[i]; e++) {
                     float p2 = pex[e];
                     float ap = (p2 < 0.0f) ? -p2 : p2;
@@ -1267,25 +1267,25 @@ private:
 
     // 命中行求和：sq 的 [rb, rb+nh) 行各自做 128 元素 k 升序线性求和（与 golden 逐位一致）。
     // 按 nh 分档字面量展开——运行时上界的数组累加循环会把累加器溢出到栈（实测慢 3×）。
-    __aicore__ inline void SumRowsConst(const LocalTensor<float> &sq, int32_t rb, int32_t nh, float *out)
+    __aicore__ inline void SumRowsConst(const LocalTensor<float>& sq, int32_t rb, int32_t nh, float* out)
     {
         const int32_t D = HEAD_DIM;
         // int64 双字装载版：一次 UB 读取相邻两 float（小端：低 32=偶 k，高 32=奇 k），
         // 链内加法顺序 lo->hi 与标量 k 升序逐位等价；nh 链交错保持（填流水）。
         // UB 读次数减半 —— 标量 UB 读端口是求和链瓶颈（~1.1cyc/op）。
-        __ubuf__ uint64_t *p64[8];
+        __ubuf__ uint64_t* p64[8];
         float acc8[8] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
-        __ubuf__ float *baseF = reinterpret_cast<__ubuf__ float *>(sq.GetPhyAddr()) + rb * D;
+        __ubuf__ float* baseF = reinterpret_cast<__ubuf__ float*>(sq.GetPhyAddr()) + rb * D;
         for (int32_t t = 0; t < nh; t++) {
-            p64[t] = reinterpret_cast<__ubuf__ uint64_t *>(baseF + t * D);
+            p64[t] = reinterpret_cast<__ubuf__ uint64_t*>(baseF + t * D);
         }
         for (int32_t k2 = 0; k2 < D / 2; k2++) {
             for (int32_t t = 0; t < nh; t++) {
                 uint64_t w = p64[t][k2];
                 uint32_t wlo = static_cast<uint32_t>(w);
                 uint32_t whi = static_cast<uint32_t>(w >> 32);
-                acc8[t] = acc8[t] + *reinterpret_cast<const float *>(&wlo);
-                acc8[t] = acc8[t] + *reinterpret_cast<const float *>(&whi);
+                acc8[t] = acc8[t] + *reinterpret_cast<const float*>(&wlo);
+                acc8[t] = acc8[t] + *reinterpret_cast<const float*>(&whi);
             }
         }
         for (int32_t t = 0; t < nh; t++) {
@@ -1388,7 +1388,7 @@ private:
         Select(qjlBT_, maskT_, dupT_, yhatT_, SELMODE::VSEL_TENSOR_TENSOR_MODE, D);
         SyncSV();
         // ---- 写回（同标量版）：qjl → tieQjlT_，idx 已在 idxFT_ 局部槽位，norm/gamma → normArrT_/gamArrT_ ----
-        __ubuf__ uint8_t *tieQjl = reinterpret_cast<__ubuf__ uint8_t *>(tieQjlT_.GetPhyAddr()) + lv * QJL_BYTES;
+        __ubuf__ uint8_t* tieQjl = reinterpret_cast<__ubuf__ uint8_t*>(tieQjlT_.GetPhyAddr()) + lv * QJL_BYTES;
         for (int32_t g = 0; g < D / 8; g++) {
             uint32_t qword = 0;
             for (int32_t lane = 0; lane < 8; lane++) {
@@ -1450,8 +1450,8 @@ private:
             SyncVS();
             float accA[8] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
             float accB[8] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
-            __ubuf__ float *pa = reinterpret_cast<__ubuf__ float *>(dupT_.GetPhyAddr());
-            __ubuf__ float *pb2 = pa + 8 * D;
+            __ubuf__ float* pa = reinterpret_cast<__ubuf__ float*>(dupT_.GetPhyAddr());
+            __ubuf__ float* pb2 = pa + 8 * D;
             for (int32_t k = 0; k < D; k++) {
                 for (int32_t e = 0; e < 8; e++) {
                     accA[e] = accA[e] + pa[e * D + k];
@@ -1507,8 +1507,8 @@ private:
             SyncVS();
             float accA[8] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
             float accB[8] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
-            __ubuf__ float *pa = reinterpret_cast<__ubuf__ float *>(dupT_.GetPhyAddr());
-            __ubuf__ float *pb2 = pa + 8 * D;
+            __ubuf__ float* pa = reinterpret_cast<__ubuf__ float*>(dupT_.GetPhyAddr());
+            __ubuf__ float* pb2 = pa + 8 * D;
             for (int32_t k = 0; k < D; k++) {
                 for (int32_t e = 0; e < 8; e++) {
                     accA[e] = accA[e] + pa[e * D + k];
@@ -1528,7 +1528,7 @@ private:
         SyncSV();
         // ---- 写回：qjl → tieQjlT_（idx 已写 idxFT_ 局部槽位、norm/gamma 写 normArrT_/gamArrT_，
         // 统一由 PackIdx/FlushIdxNormGamma 打包写出，避免标量 SetValue 直接写 GM 冲相邻向量）----
-        __ubuf__ uint8_t *tieQjl = reinterpret_cast<__ubuf__ uint8_t *>(tieQjlT_.GetPhyAddr()) + lv * QJL_BYTES;
+        __ubuf__ uint8_t* tieQjl = reinterpret_cast<__ubuf__ uint8_t*>(tieQjlT_.GetPhyAddr()) + lv * QJL_BYTES;
         for (int32_t g = 0; g < D / 8; g++) {
             uint32_t qword = 0;
             for (int32_t lane = 0; lane < 8; lane++) {
@@ -1549,9 +1549,9 @@ private:
     __aicore__ inline void PackIdx(int32_t n, int32_t s)
     {
         uint32_t elems = static_cast<uint32_t>(n) * HEAD_DIM;
-        __ubuf__ uint32_t *dst32 =
-            reinterpret_cast<__ubuf__ uint32_t *>(outIdxT_.GetPhyAddr()) + (s * CUBE_SUBBATCH) * (IDX_BYTES / 4);
-        __ubuf__ float *srcF = reinterpret_cast<__ubuf__ float *>(dupT_.GetPhyAddr());
+        __ubuf__ uint32_t* dst32 =
+            reinterpret_cast<__ubuf__ uint32_t*>(outIdxT_.GetPhyAddr()) + (s * CUBE_SUBBATCH) * (IDX_BYTES / 4);
+        __ubuf__ float* srcF = reinterpret_cast<__ubuf__ float*>(dupT_.GetPhyAddr());
         if (BITS == 4) {
             uint64_t mLo[1] = {0x0F0F0F0F0F0F0F0FULL};
             uint64_t mHi[1] = {0xF0F0F0F0F0F0F0F0ULL};
@@ -1562,7 +1562,7 @@ private:
                 BlockReduceSum(dupT_[SUB_ELEMS / 2 + ch / 8], sqT_[ch], static_cast<int32_t>(cn / 64), mHi, 1, 1, 8);
             }
             SyncVS();
-            __ubuf__ float *srcHi = srcF + SUB_ELEMS / 2;
+            __ubuf__ float* srcHi = srcF + SUB_ELEMS / 2;
             for (int32_t i = 0; i < n * (HEAD_DIM / 8); i++) {
                 uint32_t lo = static_cast<uint32_t>(static_cast<int32_t>(srcF[i]));
                 uint32_t hi = static_cast<uint32_t>(static_cast<int32_t>(srcHi[i]));
@@ -1580,8 +1580,8 @@ private:
         if (BITS == 3) {
             // 24-bit word → 3 字节；4 个 word(12B) → 3 个 int32
             for (int32_t v = 0; v < n; v++) {
-                __ubuf__ uint32_t *dstv = dst32 + v * (IDX_BYTES / 4); // 12 int32/行
-                __ubuf__ float *srcv = srcF + v * (HEAD_DIM / 8);      // 16 word/行
+                __ubuf__ uint32_t* dstv = dst32 + v * (IDX_BYTES / 4); // 12 int32/行
+                __ubuf__ float* srcv = srcF + v * (HEAD_DIM / 8);      // 16 word/行
                 for (int32_t g = 0; g < 4; g++) {
                     uint32_t w0 = static_cast<uint32_t>(static_cast<int32_t>(srcv[g * 4 + 0]));
                     uint32_t w1 = static_cast<uint32_t>(static_cast<int32_t>(srcv[g * 4 + 1]));
@@ -1957,7 +1957,7 @@ private:
                         }
                     }
                     if (dirty) { // 写 GM 只读 outQjlT_，不碰批内共享状态 → 批内直接写安全
-                        __ubuf__ uint32_t *qdst = reinterpret_cast<__ubuf__ uint32_t *>(outQjlT_.GetPhyAddr());
+                        __ubuf__ uint32_t* qdst = reinterpret_cast<__ubuf__ uint32_t*>(outQjlT_.GetPhyAddr());
                         for (int32_t t = 0; t < QJL_BYTES / 4; t++) {
                             qdst[t] = qrow[t];
                         }
@@ -2061,7 +2061,7 @@ private:
                     }
                 }
                 if (dirty) {
-                    __ubuf__ uint32_t *qdst = reinterpret_cast<__ubuf__ uint32_t *>(outQjlT_.GetPhyAddr());
+                    __ubuf__ uint32_t* qdst = reinterpret_cast<__ubuf__ uint32_t*>(outQjlT_.GetPhyAddr());
                     for (int32_t t = 0; t < QJL_BYTES / 4; t++) {
                         qdst[t] = qrow[t];
                     }
@@ -2163,7 +2163,7 @@ private:
                 Compare<float>(maskT_, rT_, qjlBT_, CMPMODE::GE, D);
                 Select(rT_, maskT_, dupT_, qjlBT_, SELMODE::VSEL_TENSOR_TENSOR_MODE, D);
                 SyncSV();
-                __ubuf__ uint8_t *tieQjl = reinterpret_cast<__ubuf__ uint8_t *>(tieQjlT_.GetPhyAddr());
+                __ubuf__ uint8_t* tieQjl = reinterpret_cast<__ubuf__ uint8_t*>(tieQjlT_.GetPhyAddr());
                 for (int32_t g = 0; g < D / 8; g++) {
                     uint32_t qword = 0;
                     for (int32_t lane = 0; lane < 8; lane++) {
@@ -2349,8 +2349,8 @@ private:
                 SyncVS();
                 // int32 一次写 4 字节（4 个 packed 字节合成 1 个 int32），避免逐字节 SetValue 的标量管道开销
                 const int32_t nb = n * QJL_BYTES;
-                __ubuf__ uint32_t *dst32 = reinterpret_cast<__ubuf__ uint32_t *>(outQjlT_.GetPhyAddr());
-                __ubuf__ float *srcF = reinterpret_cast<__ubuf__ float *>(dupT_.GetPhyAddr());
+                __ubuf__ uint32_t* dst32 = reinterpret_cast<__ubuf__ uint32_t*>(outQjlT_.GetPhyAddr());
+                __ubuf__ float* srcF = reinterpret_cast<__ubuf__ float*>(dupT_.GetPhyAddr());
                 for (int32_t i = 0; i < nb / 4; i++) {
                     uint32_t b0 = static_cast<uint32_t>(static_cast<int32_t>(srcF[4 * i + 0]));
                     uint32_t b1 = static_cast<uint32_t>(static_cast<int32_t>(srcF[4 * i + 1]));
@@ -2388,7 +2388,7 @@ private:
                     int32_t tmpHits[8];
                     int32_t ovQ_[CUBE_SUBBATCH];
                     int32_t nOvQ_ = 0;
-                    __ubuf__ uint32_t *qsrc32 = reinterpret_cast<__ubuf__ uint32_t *>(outQjlT_.GetPhyAddr());
+                    __ubuf__ uint32_t* qsrc32 = reinterpret_cast<__ubuf__ uint32_t*>(outQjlT_.GetPhyAddr());
                     for (int32_t v = 0; v < n; v++) {
                         if (!rcFlag[v]) {
                             continue;
@@ -2439,10 +2439,10 @@ private:
                 // 级联向量 qjl 覆盖为精确重算值（外科翻 bit 的已直接写在 outQjlT_）
                 for (int32_t v = 0; v < n; v++) {
                     if (cascVec_[s * CUBE_SUBBATCH + v]) {
-                        __ubuf__ uint8_t *qsrc = reinterpret_cast<__ubuf__ uint8_t *>(tieQjlT_.GetPhyAddr()) +
+                        __ubuf__ uint8_t* qsrc = reinterpret_cast<__ubuf__ uint8_t*>(tieQjlT_.GetPhyAddr()) +
                                                  (s * CUBE_SUBBATCH + v) * QJL_BYTES;
-                        __ubuf__ uint8_t *qdst =
-                            reinterpret_cast<__ubuf__ uint8_t *>(outQjlT_.GetPhyAddr()) + v * QJL_BYTES;
+                        __ubuf__ uint8_t* qdst =
+                            reinterpret_cast<__ubuf__ uint8_t*>(outQjlT_.GetPhyAddr()) + v * QJL_BYTES;
                         for (int32_t b = 0; b < QJL_BYTES; b++) {
                             qdst[b] = qsrc[b];
                         }
@@ -2463,7 +2463,7 @@ private:
     }
 
     // ---------------- AIC 侧 ----------------
-    __aicore__ inline void InitAic(TPipe *pipe)
+    __aicore__ inline void InitAic(TPipe* pipe)
     {
         pipe_ = pipe;
         pipe->InitBuffer(hHhNzBuf_, HEAD_DIM * HEAD_DIM * sizeof(bfloat16_t));
@@ -2512,7 +2512,7 @@ private:
     // 统一按满 tile 装载/计算：尾部不足的行越过本区末尾读入相邻数据，只有 Fixpipe 出图用真实行数
     // —— 这样 Cube 侧永远走 probe 验证过的形状（m=CUBE_MMAD_M）。越界读落在 workspace 内紧邻的
     // 下一个分区（host 侧布局顺序 X→Rh→Rl→Z→P1→P2→P3 不可调换），读到的值被丢弃、不回写，无正确性影响。
-    __aicore__ inline void Nd2NzTileBf16(const GlobalTensor<bfloat16_t> &srcGm, int64_t vecBase)
+    __aicore__ inline void Nd2NzTileBf16(const GlobalTensor<bfloat16_t>& srcGm, int64_t vecBase)
     {
         Nd2NzParams nz;
         nz.ndNum = 1;
@@ -2526,7 +2526,7 @@ private:
         DataCopy(a1T_, srcGm[vecBase * HEAD_DIM], nz);
         SyncMte2Mte1();
     }
-    __aicore__ inline void Nd2NzTileF16(const GlobalTensor<half> &srcGm, int64_t vecBase)
+    __aicore__ inline void Nd2NzTileF16(const GlobalTensor<half>& srcGm, int64_t vecBase)
     {
         Nd2NzParams nz;
         nz.ndNum = 1;
@@ -2582,7 +2582,7 @@ private:
         return mp;
     }
 
-    __aicore__ inline void FixTile(const GlobalTensor<float> &dstGm, int64_t vecBase, int32_t nRows)
+    __aicore__ inline void FixTile(const GlobalTensor<float>& dstGm, int64_t vecBase, int32_t nRows)
     {
         SyncMFix();
         FixpipeParamsV220 fp;
@@ -2599,7 +2599,7 @@ private:
 
     // fp32 L0C → fp16 GM（F322F16 就地量化出 fp16）。用 CFG_ROW_MAJOR 的模板 Fixpipe
     // 让输出按行主序落 GM（默认 CFG_NZ 的 fp16 是 fractal 排布，AIV 按行主序读会错位）。
-    __aicore__ inline void FixTileF16(const GlobalTensor<half> &dstGm, int64_t vecBase, int32_t nRows)
+    __aicore__ inline void FixTileF16(const GlobalTensor<half>& dstGm, int64_t vecBase, int32_t nRows)
     {
         SyncMFix();
         FixpipeParamsV220 fp;
@@ -2725,7 +2725,7 @@ private:
     GlobalTensor<float> p1Gm_, p2Gm_, p3Gm_;
     GlobalTensor<float> htGm_, stGm_; // H^T/S^T（fp32，向量化重算用；仅 useVecRc_ 时有效）
 
-    TPipe *pipe_ = nullptr;
+    TPipe* pipe_ = nullptr;
     // AIV 缓冲
     TBuf<QuePosition::VECCALC> sqBuf_, xBuf_;
     TBuf<QuePosition::VECCALC> yBuf_, yhatBuf_, rBuf_, idxFBuf_, qjlBBuf_;

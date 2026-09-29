@@ -56,7 +56,7 @@ const float CENT4[16] = {-0.2414890379f,  -0.1828317791f,  -0.1429702938f,  -0.1
                          -0.08325428516f, -0.05802082643f, -0.03428063914f, -0.01134236995f,
                          0.01134236995f,  0.03428063914f,  0.05802082643f,  0.08325428516f,
                          0.1109927073f,   0.1429702938f,   0.1828317791f,   0.2414890379f};
-const float *Centroids(int bits)
+const float* Centroids(int bits)
 {
     return bits == 2 ? CENT2 : (bits == 3 ? CENT3 : CENT4);
 }
@@ -89,7 +89,7 @@ float RneBf16(float v)
 }
 
 // fp32 pairwise 归约树点积（与 kernel TreeReduce 一致）
-float TreeDot(const float *a, const float *b)
+float TreeDot(const float* a, const float* b)
 {
     // 与 kernel 一致：pairwise 树只折叠到 8 个部分和（64/32/16/8，全程 32B 对齐），
     // 然后顺序累加 8 个部分和（S 域标量）
@@ -109,7 +109,7 @@ float TreeDot(const float *a, const float *b)
     return s;
 }
 
-void PackBits(const uint8_t *vals, int n, int bitWidth, uint8_t *out)
+void PackBits(const uint8_t* vals, int n, int bitWidth, uint8_t* out)
 {
     int groups = (n + 7) / 8;
     uint8_t padded[128] = {0};
@@ -194,11 +194,11 @@ static uint32_t F16ToF32Bits(uint16_t h)
 }
 
 // ---- host golden（与 sim_kernel_vs_golden.py 的 kernel_sim 同算法）----
-void ComputeGolden(const float *x, int n, const float *H, const float *S, int bits, std::vector<uint8_t> &idx,
-                   std::vector<uint8_t> &qjl, std::vector<uint16_t> &normBits, std::vector<uint16_t> &gamBits,
-                   std::vector<float> &normF, std::vector<float> &gamF)
+void ComputeGolden(const float* x, int n, const float* H, const float* S, int bits, std::vector<uint8_t>& idx,
+                   std::vector<uint8_t>& qjl, std::vector<uint16_t>& normBits, std::vector<uint16_t>& gamBits,
+                   std::vector<float>& normF, std::vector<float>& gamF)
 {
-    const float *cent = Centroids(bits);
+    const float* cent = Centroids(bits);
     const int centCnt = 1 << bits;
     float bound[15];
     for (int k = 0; k < centCnt - 1; k++) {
@@ -213,7 +213,7 @@ void ComputeGolden(const float *x, int n, const float *H, const float *S, int bi
     gamF.resize(n);
 
     for (int v = 0; v < n; v++) {
-        const float *xv = x + static_cast<size_t>(v) * D;
+        const float* xv = x + static_cast<size_t>(v) * D;
         float norm = std::sqrt(TreeDot(xv, xv));
         float invNorm = 1.0f / (norm > 1e-30f ? norm : 1e-30f);
         float u[D];
@@ -278,7 +278,7 @@ struct Case {
     bool zeroRows; // 部分行置零
 };
 
-bool RunCase(const Case &c, const std::vector<float> &H, const std::vector<float> &S, aclrtStream stream)
+bool RunCase(const Case& c, const std::vector<float>& H, const std::vector<float>& S, aclrtStream stream)
 {
     const int64_t T = c.tokens, HN = c.heads, bits = c.bits;
     const int64_t n = T * HN;
@@ -288,10 +288,10 @@ bool RunCase(const Case &c, const std::vector<float> &H, const std::vector<float
     // 语义 = 以该 bf16 值为精确矩阵参与 fp32 数学）
     std::vector<float> Hm = H, Sm = S;
     if (gMatBf16) {
-        for (float &v : Hm) {
+        for (float& v : Hm) {
             v = RneBf16(v);
         }
-        for (float &v : Sm) {
+        for (float& v : Sm) {
             v = RneBf16(v);
         }
     }
@@ -336,7 +336,7 @@ bool RunCase(const Case &c, const std::vector<float> &H, const std::vector<float
     void *kvDev = nullptr, *hDev = nullptr, *sDev = nullptr, *idxDev = nullptr, *qjlDev = nullptr, *normDev = nullptr,
          *gamDev = nullptr;
     const size_t matBytes = D * D * (gMatBf16 ? 2u : 4u);
-    auto toBf16Bytes = [](const std::vector<float> &src) {
+    auto toBf16Bytes = [](const std::vector<float>& src) {
         std::vector<uint8_t> out(src.size() * 2);
         for (size_t i = 0; i < src.size(); i++) {
             uint32_t u;
@@ -375,24 +375,24 @@ bool RunCase(const Case &c, const std::vector<float> &H, const std::vector<float
     std::vector<int64_t> shape2 = {T, HN};
     aclDataType matDtype = gMatBf16 ? ACL_BF16 : ACL_FLOAT;
     aclDataType ngDtype = gOutF16 ? ACL_FLOAT16 : ACL_BF16;
-    aclTensor *kvT = aclCreateTensor(shape3.data(), 3, ACL_BF16, nullptr, 0, ACL_FORMAT_ND, shape3.data(), 3, kvDev);
+    aclTensor* kvT = aclCreateTensor(shape3.data(), 3, ACL_BF16, nullptr, 0, ACL_FORMAT_ND, shape3.data(), 3, kvDev);
     int64_t matShape[2] = {D, D};
-    aclTensor *hT = aclCreateTensor(matShape, 2, matDtype, nullptr, 0, ACL_FORMAT_ND, matShape, 2, hDev);
-    aclTensor *sT = aclCreateTensor(matShape, 2, matDtype, nullptr, 0, ACL_FORMAT_ND, matShape, 2, sDev);
-    aclTensor *idxT =
+    aclTensor* hT = aclCreateTensor(matShape, 2, matDtype, nullptr, 0, ACL_FORMAT_ND, matShape, 2, hDev);
+    aclTensor* sT = aclCreateTensor(matShape, 2, matDtype, nullptr, 0, ACL_FORMAT_ND, matShape, 2, sDev);
+    aclTensor* idxT =
         aclCreateTensor(shapeIdx.data(), 3, ACL_UINT8, nullptr, 0, ACL_FORMAT_ND, shapeIdx.data(), 3, idxDev);
-    aclTensor *qjlT =
+    aclTensor* qjlT =
         aclCreateTensor(shapeQjl.data(), 3, ACL_UINT8, nullptr, 0, ACL_FORMAT_ND, shapeQjl.data(), 3, qjlDev);
-    aclTensor *normT = aclCreateTensor(shape2.data(), 2, ngDtype, nullptr, 0, ACL_FORMAT_ND, shape2.data(), 2, normDev);
-    aclTensor *gamT = aclCreateTensor(shape2.data(), 2, ngDtype, nullptr, 0, ACL_FORMAT_ND, shape2.data(), 2, gamDev);
+    aclTensor* normT = aclCreateTensor(shape2.data(), 2, ngDtype, nullptr, 0, ACL_FORMAT_ND, shape2.data(), 2, normDev);
+    aclTensor* gamT = aclCreateTensor(shape2.data(), 2, ngDtype, nullptr, 0, ACL_FORMAT_ND, shape2.data(), 2, gamDev);
     CHECK(kvT && hT && sT && idxT && qjlT && normT && gamT, c.name + ": create tensor");
 
     uint64_t workspaceSize = 0;
-    aclOpExecutor *executor = nullptr;
+    aclOpExecutor* executor = nullptr;
     aclnnStatus st = aclnnKvCacheTurboQuantGetWorkspaceSize(kvT, hT, sT, bits, gOutF16 ? 1 : 0, idxT, qjlT, normT, gamT,
                                                             &workspaceSize, &executor);
     CHECK(st == ACL_SUCCESS, c.name + ": GetWorkspaceSize ret=" + std::to_string(st));
-    void *workspace = nullptr;
+    void* workspace = nullptr;
     if (workspaceSize > 0) {
         CHECK(aclrtMalloc(&workspace, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST) == ACL_SUCCESS,
               c.name + ": malloc workspace");
@@ -403,7 +403,7 @@ bool RunCase(const Case &c, const std::vector<float> &H, const std::vector<float
     CHECK(st == ACL_SUCCESS, c.name + ": aclnnKvCacheTurboQuant ret=" + std::to_string(st));
     {
         aclError syncErr = aclrtSynchronizeStream(stream);
-        const char *errMsg = aclGetRecentErrMsg();
+        const char* errMsg = aclGetRecentErrMsg();
         CHECK(syncErr == ACL_SUCCESS,
               c.name + ": sync ret=" + std::to_string(syncErr) + " msg=" + (errMsg ? errMsg : "(null)"));
     }
@@ -555,7 +555,7 @@ bool RunCase(const Case &c, const std::vector<float> &H, const std::vector<float
     //   u 是单位球面向量 ⇒ 逐维 σ²=1/d ⇒ 相对 MSE 的下限即该常数（bits=2 时 >0.05，任务书 0.05 在该档不可达）。
     double relMSE = 0.0, relMSEQjl = 0.0, ip95raw = 0.0, ipRmsRel = 0.0;
     if (n > 0) {
-        const float *cent = Centroids(bits);
+        const float* cent = Centroids(bits);
         const double qjlScale = std::sqrt(3.14159265358979323846 / 2.0) / static_cast<double>(D);
         std::vector<double> xhat(static_cast<size_t>(n) * D), xhatQ(static_cast<size_t>(n) * D);
         std::vector<double> sgn(D), z(D), zq(D);
@@ -761,11 +761,11 @@ bool RunCase(const Case &c, const std::vector<float> &H, const std::vector<float
             std::memcpy(&f, &u, 4);
             return f;
         };
-        CHECK(aclrtMemcpy(ybuf.data(), 32, (char *)workspace + offY, 32, ACL_MEMCPY_DEVICE_TO_HOST) == ACL_SUCCESS,
+        CHECK(aclrtMemcpy(ybuf.data(), 32, (char*)workspace + offY, 32, ACL_MEMCPY_DEVICE_TO_HOST) == ACL_SUCCESS,
               "d2h y");
-        CHECK(aclrtMemcpy(ubuf.data(), 16, (char *)workspace + offUbHi, 16, ACL_MEMCPY_DEVICE_TO_HOST) == ACL_SUCCESS,
+        CHECK(aclrtMemcpy(ubuf.data(), 16, (char*)workspace + offUbHi, 16, ACL_MEMCPY_DEVICE_TO_HOST) == ACL_SUCCESS,
               "d2h ub");
-        CHECK(aclrtMemcpy(hbuf.data(), 8, (char *)workspace + offW, 8, ACL_MEMCPY_DEVICE_TO_HOST) == ACL_SUCCESS,
+        CHECK(aclrtMemcpy(hbuf.data(), 8, (char*)workspace + offW, 8, ACL_MEMCPY_DEVICE_TO_HOST) == ACL_SUCCESS,
               "d2h hbuf");
         std::cout << "  [WDBG] ybuf[0..3] = " << ybuf[0] << " " << ybuf[1] << " " << ybuf[2] << " " << ybuf[3]
                   << " | host yexp0=" << yexp0 << " yexp1=" << yexp1 << std::endl;
@@ -844,10 +844,10 @@ bool RunCase(const Case &c, const std::vector<float> &H, const std::vector<float
                     uint64_t delta = hOff - offW;
                     std::cout << "  [WSG] hbuf at 0x" << std::hex << hOff << std::dec << " delta=" << delta
                               << std::endl;
-                    auto rdAt = [&](uint64_t off, void *dst, size_t bytes) -> bool {
+                    auto rdAt = [&](uint64_t off, void* dst, size_t bytes) -> bool {
                         if (off + bytes > wsBytes)
                             return false;
-                        return aclrtMemcpy(dst, bytes, static_cast<char *>(workspace) + off, bytes,
+                        return aclrtMemcpy(dst, bytes, static_cast<char*>(workspace) + off, bytes,
                                            ACL_MEMCPY_DEVICE_TO_HOST) == ACL_SUCCESS;
                     };
                     const int rows = 32;
@@ -856,7 +856,7 @@ bool RunCase(const Case &c, const std::vector<float> &H, const std::vector<float
                         long nz = 0, bitEq = 0;
                         double mx = 0.0;
                         for (int v = 0; v < rows; v++) {
-                            const float *xv = x.data() + static_cast<size_t>(v) * D;
+                            const float* xv = x.data() + static_cast<size_t>(v) * D;
                             float nv = std::sqrt(TreeDot(xv, xv));
                             float iv = 1.0f / (nv > 1e-30f ? nv : 1e-30f);
                             float su[D];
@@ -962,7 +962,7 @@ bool RunCase(const Case &c, const std::vector<float> &H, const std::vector<float
                             int64_t nGt1e5 = 0, nGt1e4 = 0, nGt1e3 = 0;
                             std::vector<double> rowMax(static_cast<size_t>(n), 0.0);
                             for (int64_t v = 0; v < n; v++) {
-                                const float *xv = x.data() + static_cast<size_t>(v) * D;
+                                const float* xv = x.data() + static_cast<size_t>(v) * D;
                                 float nv = std::sqrt(TreeDot(xv, xv));
                                 float iv = 1.0f / (nv > 1e-30f ? nv : 1e-30f);
                                 float su[D];
@@ -1064,7 +1064,7 @@ bool RunCase(const Case &c, const std::vector<float> &H, const std::vector<float
                                     int64_t hiBad = 0, loBad = 0, loZero = 0, loZeroExp = 0;
                                     int64_t hiZero = 0;
                                     for (int64_t v = 0; v < n; v++) {
-                                        const float *xv = x.data() + static_cast<size_t>(v) * D;
+                                        const float* xv = x.data() + static_cast<size_t>(v) * D;
                                         float nv = std::sqrt(TreeDot(xv, xv));
                                         float iv = 1.0f / (nv > 1e-30f ? nv : 1e-30f);
                                         for (int k = 0; k < D; k++) {
@@ -1091,7 +1091,7 @@ bool RunCase(const Case &c, const std::vector<float> &H, const std::vector<float
                                     // 第一个坏行的 u 抽样（16 个元素）
                                     for (int64_t v = 0; v < n; v++) {
                                         bool bad = false;
-                                        const float *xv = x.data() + static_cast<size_t>(v) * D;
+                                        const float* xv = x.data() + static_cast<size_t>(v) * D;
                                         float nv = std::sqrt(TreeDot(xv, xv));
                                         float iv = 1.0f / (nv > 1e-30f ? nv : 1e-30f);
                                         for (int k = 0; k < D; k++) {
@@ -1191,10 +1191,10 @@ bool RunCase(const Case &c, const std::vector<float> &H, const std::vector<float
 int main()
 {
     // dtype 变体开关（覆盖任务书参数表中的全部 dtype 组合）
-    if (const char *e = std::getenv("KVTQ_MAT_DTYPE")) {
+    if (const char* e = std::getenv("KVTQ_MAT_DTYPE")) {
         gMatBf16 = (std::string(e) == "bf16");
     }
-    if (const char *e = std::getenv("KVTQ_OUT_DTYPE")) {
+    if (const char* e = std::getenv("KVTQ_OUT_DTYPE")) {
         gOutF16 = (std::string(e) == "fp16");
     }
     if (aclInit(nullptr) != ACL_SUCCESS) {
@@ -1211,13 +1211,13 @@ int main()
     std::vector<float> H(D * D), S(D * D), tmp(D * D);
     bool matLoaded = false;
     {
-        const char *env = std::getenv("KVTQ_MAT_DIR");
+        const char* env = std::getenv("KVTQ_MAT_DIR");
         std::string mdir = env ? std::string(env) : std::string(".");
         std::ifstream fh(mdir + "/rotation_matrix.bin", std::ios::binary);
         std::ifstream fs(mdir + "/qjl_matrix.bin", std::ios::binary);
         if (fh && fs) {
-            fh.read(reinterpret_cast<char *>(H.data()), static_cast<std::streamsize>(H.size() * 4));
-            fs.read(reinterpret_cast<char *>(S.data()), static_cast<std::streamsize>(S.size() * 4));
+            fh.read(reinterpret_cast<char*>(H.data()), static_cast<std::streamsize>(H.size() * 4));
+            fs.read(reinterpret_cast<char*>(S.data()), static_cast<std::streamsize>(S.size() * 4));
             matLoaded = fh.gcount() == static_cast<std::streamsize>(H.size() * 4) &&
                         fs.gcount() == static_cast<std::streamsize>(S.size() * 4);
         }
@@ -1267,7 +1267,7 @@ int main()
     };
 
     int passed = 0, failed = 0;
-    for (auto &c : cases) {
+    for (auto& c : cases) {
         if (RunCase(c, H, S, stream)) {
             ++passed;
         } else {
