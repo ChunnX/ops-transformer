@@ -13,12 +13,13 @@
  * \brief AllGatherMatmulV2 fit-balance 算子侧零特有代码形态
  *
  * 命名空间 optiling(与本目录其他文件一致); 引擎符号为 global(apace/tiling 约定)。
- * 本文件只剩三样东西, 无任何算子特有逻辑（钩子机制已废除, 结构差异由 LocalMMPosition 键控）:
+ * 本文件是"算子接入 fit-balance 引擎"的参考模板, 只含四样东西:
  *   一) 客户标定数据 CALIBRATION（唯一编辑面, 重新标定只改数值; 含 CommProfile 结构
  *       参数——本算子: 通信沿 K 轴传 A 侧数据 / mm 工作集倍数 rankDim−1(本地份不经
  *       通信) / mm 总行数倍数 rankDim(聚合后算全量)）;
- *   二) 一行组装: FitBalanceCut(LocalMMPosition::FRONT, COMM_FIRST, commEngine, CALIBRATION);
- *   三) kUseNewEngine 新旧切换（置 false 重编译即回老类, 老类原样保留）。
+ *   二) 边界转换: 旧全局类型(mc2tiling::TilingArgs/CutResult) ↔ 引擎入参;
+ *   三) 一行组装 ScheduleFitBalance: 引擎入口 FitBalanceCut(LocalMMPosition::FRONT, ...);
+ *   四) 标定命中判定 IsCommCalibrated(miss→核利用率优先分派) + COF 结果转换。
  *
  * 公共逻辑与 FRONT 键控分支（本地首块重叠建模/长块反解/短块收尾 + D4/D5/D6 胶水)
  * 均在 apace/tiling/fit_balance_tiling.h(global)。
@@ -29,7 +30,6 @@
 
 #pragma once
 
-#include "all_gather_fit_balance_tiling.h"            // 老类(回退分支保留, 迁移收尾后随 P4 删除)
 #include "apace/tiling/core_occupancy_first_tiling.h" // GetCommTilingFromV3/CommTilingData(miss→COF 分派)
 #include "apace/tiling/fit_balance_tiling/fit_balance_tiling.h"
 #include "op_host/op_tiling/formulaic_tiling_datatype.h" // 旧 CutResult/KernelType/TopoType(对外接口沿用旧类型)
@@ -106,10 +106,8 @@ inline CutResult ToLegacyCut(const CommCutResult &c)
 }
 
 // 统一引擎路径: 引擎对外唯一入口 FitBalanceCut(诊断打印内置于引擎, debug 级),
-// 本算子 LocalMMPosition::FRONT(本地 A 块前置) + COMM_FIRST。
-// baseMOut(可空): 仅回退老类路径填充(调用点后处理 AdjustCutResultForAICPU 消费)
-inline CutResult ScheduleFitBalance(const mc2tiling::TilingArgs &args, TilingCommEngine commEngine,
-                                    uint32_t *baseMOut = nullptr)
+// 本算子 LocalMMPosition::FRONT(本地 A 块前置) + COMM_FIRST
+inline CutResult ScheduleFitBalance(const mc2tiling::TilingArgs &args, TilingCommEngine commEngine)
 {
     CutResult cut = ToLegacyCut(FitBalanceCut(ToEngineArgs(args), LocalMMPosition::FRONT, CommComputeOrder::COMM_FIRST,
                                               commEngine, CALIBRATION));
@@ -145,22 +143,11 @@ inline CutResult CutResultFromCof(const CommTilingData &data)
     return r;
 }
 
-// 新旧切换开关: 置 false 并重新编译即整体回退老类路径（出问题时的回退手段）
-constexpr bool kUseNewEngine = true;
-
-// 对外唯一入口：两个 GetTilingResult 调用点共用（commEngine 决定通信拟合选表; 三引擎
-// 统一分派模式——调用点用 ParseCommEngine(commMode_) 解析后传入(global 符号)）
-inline CutResult GetFitBalanceCut(const mc2tiling::TilingArgs &args, TilingCommEngine commEngine,
-                                  uint32_t *baseMOut = nullptr)
+// 对外唯一入口：两个 GetTilingResult 调用点共用（commEngine 决定通信拟合选表;
+// 调用点用 ParseCommEngine(commMode_) 解析后传入, global 符号）
+inline CutResult GetFitBalanceCut(const mc2tiling::TilingArgs &args, TilingCommEngine commEngine)
 {
-    if (kUseNewEngine) {
-        return ScheduleFitBalance(args, commEngine, baseMOut);
-    }
-    AllGatherMMFitBalanceTiling tileFormulate(args, KernelType::ALL_GATHER, TopoType::STANDARD_CARD);
-    if (baseMOut != nullptr) {
-        *baseMOut = tileFormulate.matmulPerf_.GetBaseM();
-    }
-    return tileFormulate.GetTiling();
+    return ScheduleFitBalance(args, commEngine);
 }
 
 } // namespace optiling
