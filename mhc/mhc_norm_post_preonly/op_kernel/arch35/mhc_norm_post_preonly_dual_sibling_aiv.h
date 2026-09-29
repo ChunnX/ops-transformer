@@ -147,17 +147,28 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
             // 每个lane只执行自己负责的两个head，另一半由sibling并行完成。
             // 第一个head已整段缓存；第二个head的分块MTE2与第一个head的Vector重叠。
             LoadGammaInto(gammaOdd, gamma2Gm_, (headBegin + 1U) * D_ + tOff, tD);
+            SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
+            const bool firstPhiPrefetched = tD == dTile_;
+            if (firstPhiPrefetched) {
+                LocalTensor<float> firstPhi = bufPhiFp32_.AllocTensor<float>();
+                DataCopyExtParams phiCopy = {2, 0, 0, 0, 0};
+                phiCopy.blockLen = tD * sizeof(float);
+                phiCopy.srcStride = (D_ - tD) * sizeof(float);
+                DataCopyPadExtParams<float> phiPad = {false, 0, 0, 0};
+                DataCopyPad(firstPhi, phiGm_[(uint64_t)headBegin * D_ + tOff], phiCopy, phiPad);
+                bufPhiFp32_.EnQue(firstPhi);
+            }
             MhcNormRegBase::VFCastB16ScaleAndMulGammaToB16(x2Cache[headBegin * D_ + tOff],
                                                            x2Cache[headBegin * D_ + tOff], gammaEven, invRmsMid, tD);
             PipeBarrier<PIPE_V>();
 
-            SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
             WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
             MhcNormRegBase::VFCastB16ScaleAndMulGammaToB16(
                 x2Cache[(headBegin + 1U) * D_ + tOff], x2Cache[(headBegin + 1U) * D_ + tOff], gammaOdd, invRmsMid, tD);
             PipeBarrier<PIPE_V>();
             CacheX2TileForLane(token, tOff, tD, true);
-            AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf, siblingAivIdx_, siblingAivIdx_ + 1U);
+            AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf, siblingAivIdx_, siblingAivIdx_ + 1U,
+                                   firstPhiPrefetched);
         }
     }
 

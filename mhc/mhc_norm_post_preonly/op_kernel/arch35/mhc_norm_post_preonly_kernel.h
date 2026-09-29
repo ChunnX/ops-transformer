@@ -487,10 +487,15 @@ private:
     // half1固定覆盖[2D,4D)，调用方只执行一次顶层合并partial0+partial1。
     __aicore__ inline void AccumulateHalfPartials(uint32_t tOff, uint32_t tD, float (&sumSqHalf)[2],
                                                   float (&dotHalf)[2][N_MAX], uint32_t halfBegin = 0,
-                                                  uint32_t halfEnd = 2)
+                                                  uint32_t halfEnd = 2, bool firstPhiPrefetched = false)
     {
         LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
         LocalTensor<float> reduceRows = bufResFp32_.Get<float>();
+        const bool deferReduce = DUAL_SIBLING && USE_RMS_MID && lastDTile_ == 0U;
+        const bool accumulateRows = deferReduce && tOff != 0U;
+        const bool compactRows = DUAL_SIBLING && USE_RMS_MID && tD == dTile_ &&
+                                 tD % MhcNormRegBase::VL_FP32 == 0U;
+        const uint32_t reduceWidth = compactRows ? MhcNormRegBase::VL_FP32 : tD;
 
         DataCopyExtParams copyParams = {2, 0, 0, 0, 0};
         copyParams.blockLen = tD * sizeof(float);
@@ -596,11 +601,26 @@ private:
 
             // 五行依次保存{sumSqPre,dot0,dot1,dot2,dot3}，一次按行归约，
             // 避免每个标量结果都单独触发一次Vector到Scalar的等待。
-            MhcNormRegBase::VFPairSquareAdd(reduceRows, x2[x2h0 * dTile_], x2[x2h1 * dTile_], tD);
+            if (compactRows) {
+                if (accumulateRows) {
+                    MhcNormRegBase::VFPairMulAddCompact<true>(reduceRows, x2[x2h0 * dTile_], x2[x2h0 * dTile_],
+                                                               x2[x2h1 * dTile_], x2[x2h1 * dTile_], tD);
+                } else {
+                    MhcNormRegBase::VFPairMulAddCompact(reduceRows, x2[x2h0 * dTile_], x2[x2h0 * dTile_],
+                                                        x2[x2h1 * dTile_], x2[x2h1 * dTile_], tD);
+                }
+            } else if (accumulateRows) {
+                MhcNormRegBase::VFPairSquareAdd<true>(reduceRows, x2[x2h0 * dTile_], x2[x2h1 * dTile_], tD);
+            } else {
+                MhcNormRegBase::VFPairSquareAdd(reduceRows, x2[x2h0 * dTile_], x2[x2h1 * dTile_], tD);
+            }
 
-            LocalTensor<float> curPhi0 = bufPhiFp32_.AllocTensor<float>();
-            DataCopyPad(curPhi0, phiGm_[(uint64_t)h0 * D_ + tOff], copyParams, copyPad);
-            bufPhiFp32_.EnQue(curPhi0);
+            LocalTensor<float> curPhi0;
+            if (!firstPhiPrefetched) {
+                curPhi0 = bufPhiFp32_.AllocTensor<float>();
+                DataCopyPad(curPhi0, phiGm_[(uint64_t)h0 * D_ + tOff], copyParams, copyPad);
+                bufPhiFp32_.EnQue(curPhi0);
+            }
 
             for (uint32_t o = 0; o < N_MAX; ++o) {
                 // 预取下一轮o+1的两路phi，与当前dot计算重叠。
@@ -612,10 +632,23 @@ private:
                     bufPhiFp32_.EnQue(nextPhi0);
                 }
 
-                LocalTensor<float> dotRow = reduceRows[(o + 1) * dTile_];
+                LocalTensor<float> dotRow = reduceRows[(o + 1U) * reduceWidth];
                 curPhi0 = bufPhiFp32_.DeQue<float>();
-                MhcNormRegBase::VFPairMulAdd(dotRow, x2[x2h0 * dTile_], curPhi0, x2[x2h1 * dTile_],
-                                             curPhi0[dTile_], tD);
+                if (compactRows) {
+                    if (accumulateRows) {
+                        MhcNormRegBase::VFPairMulAddCompact<true>(dotRow, x2[x2h0 * dTile_], curPhi0,
+                                                                   x2[x2h1 * dTile_], curPhi0[dTile_], tD);
+                    } else {
+                        MhcNormRegBase::VFPairMulAddCompact(dotRow, x2[x2h0 * dTile_], curPhi0,
+                                                            x2[x2h1 * dTile_], curPhi0[dTile_], tD);
+                    }
+                } else if (accumulateRows) {
+                    MhcNormRegBase::VFPairMulAdd<true>(dotRow, x2[x2h0 * dTile_], curPhi0, x2[x2h1 * dTile_],
+                                                       curPhi0[dTile_], tD);
+                } else {
+                    MhcNormRegBase::VFPairMulAdd(dotRow, x2[x2h0 * dTile_], curPhi0, x2[x2h1 * dTile_],
+                                                 curPhi0[dTile_], tD);
+                }
                 bufPhiFp32_.FreeTensor(curPhi0);
 
                 if (o + 1U < N_MAX) {
@@ -624,8 +657,11 @@ private:
             }
 
             PipeBarrier<PIPE_V>();
+            if (deferReduce && tOff + tD < D_) {
+                continue;
+            }
             LocalTensor<float> scBuf = bufScalar_.Get<float>();
-            uint32_t reduceShape[2] = {N_MAX + 1, tD};
+            uint32_t reduceShape[2] = {N_MAX + 1U, reduceWidth};
             // 五行输入在归约后不再使用，允许接口复用源缓冲，避免额外申请UB。
             ReduceSum<float, AscendC::Pattern::Reduce::AR, true>(scBuf, reduceRows, reduceShape, true);
             PipeBarrier<PIPE_V>();
