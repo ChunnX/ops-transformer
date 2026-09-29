@@ -1220,23 +1220,14 @@ def cpu_mxfp8_golden(
     k_tensor = k_fp8.to(torch.float32)
     v_tensor = v_fp8.to(torch.float32)
 
-    # GQA: 广播 K/V 到与 Q 相同的 head 数
-    if N_q != N_kv:
-        logger.info("[INFO] GQA 广播")
-        k_tensor = broadcast_kv(N_q, N_kv, k_tensor)
-        v_tensor = broadcast_kv(N_q, N_kv, v_tensor)
-        dequant_scale_k = broadcast_kv(N_q, N_kv, dequant_scale_k)
-        dequant_scale_v = broadcast_kv(N_q, N_kv, dequant_scale_v)
-
-    b, n, s, d = q_tensor.shape
-
     if softmax_scale is None:
-        softmax_scale = 1.0 / math.sqrt(d)
-    dv = v_tensor.shape[-1]
-    Sq, Skv = q_tensor.shape[2], k_tensor.shape[2]
+        softmax_scale = 1.0 / math.sqrt(q_tensor.shape[-1])
 
     # 尝试按 kernel SectionStreamK 分核调度模拟 (对齐 P 的 fp8 量化网格);
-    # metadata 解码失败或计算异常时回退全局 online softmax 语义
+    # metadata 解码失败或计算异常时回退全局 online softmax 语义。
+    # 注意: 必须在下方 GQA 广播之前分发 —— sectioned 按 kv head 索引
+    # dequant_scale_k/v, 广播后的 scale 按 q head 排布, decode GQA 下
+    # kv head 1..N_kv-1 会错拿 kv head 0 的 scale。
     section_info = get_qfa_section_info(actual_seq_q, actual_seq_kv)
     if section_info is not None:
         try:
@@ -1255,6 +1246,19 @@ def cpu_mxfp8_golden(
             )
         except Exception as exc:  # pylint: disable=broad-except
             logger.warning("[Section] 分段 golden 计算失败(%s), 回退全局量化语义", exc)
+
+    # GQA: 广播 K/V 到与 Q 相同的 head 数
+    if N_q != N_kv:
+        logger.info("[INFO] GQA 广播")
+        k_tensor = broadcast_kv(N_q, N_kv, k_tensor)
+        v_tensor = broadcast_kv(N_q, N_kv, v_tensor)
+        dequant_scale_k = broadcast_kv(N_q, N_kv, dequant_scale_k)
+        dequant_scale_v = broadcast_kv(N_q, N_kv, dequant_scale_v)
+
+    b, n, s, d = q_tensor.shape
+
+    dv = v_tensor.shape[-1]
+    Sq, Skv = q_tensor.shape[2], k_tensor.shape[2]
 
     minValue = torch.tensor(-3.402823466e38, dtype=torch.float32)
     out = torch.zeros([b, n, Sq, dv], dtype=torch.float32)
