@@ -110,6 +110,7 @@ ge::graphStatus FFNToAttentionV2TilingFunc(gert::TilingContext *context)
     config.attrTokenDataShapeIndex = 3U;
     config.attrCclBufferSizeIndex = 4U;
     config.isMc2Context = true;
+    config.allowMultiMicroBatch = true;
 
     auto ret = FFNToAttentionTilingFuncBase(context, config);
     if (ret != ge::GRAPH_SUCCESS) {

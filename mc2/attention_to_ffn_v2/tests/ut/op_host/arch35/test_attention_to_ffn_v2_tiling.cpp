@@ -76,12 +76,19 @@ std::vector<OpAttr> BuildAttrs(int64_t quantMode, bool sync)
     };
 }
 
+static std::string MakeAscend950SocInfo()
+{
+    return R"({"hardware_info": {"UB_SIZE": 196608, "cube_core_cnt": 24, "vector_core_cnt": 48}})";
+}
+
 void ExecuteTilingCase(const std::vector<TensorDescription> &inputs, int64_t quantMode, bool sync,
                        ge::graphStatus expectedStatus, uint64_t expectedTilingKey = 0UL)
 {
     AttentionToFfnV2CompileInfo compileInfo;
+    // MX/MX_CLIP 模式显式 buffer 需求约 151.5KB，须小于平台 UB（196608B，与其他 arch35 UT 口径一致）。
     gert::TilingContextPara tilingContextPara("AttentionToFfnV2", inputs, {{{}, ge::DT_INT64, ge::FORMAT_ND}},
-                                              BuildAttrs(quantMode, sync), &compileInfo, "3510");
+                                              BuildAttrs(quantMode, sync), &compileInfo, "3510", 48U, 196608U, 4096U,
+                                              MakeAscend950SocInfo());
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     if (expectedStatus == ge::GRAPH_SUCCESS) {
         Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, expectedStatus, expectedTilingKey);

@@ -303,53 +303,47 @@ ge::graphStatus CheckUrmaUbCapacity(gert::TilingContext *context, const Attentio
         if (tilingKeyQuantMode == ATTN_FFN_TILINGKEY_PERTOKEN_INT8) {
             xInBytes = CeilAlignSize(axisH * TOKEN_BYTES, ubAlign);
         } else {
-            // MX/MX_CLIP stage the input per 128-element groups.
+            // MX/MX_CLIP stage the input per 128-element groups; the group count is a ceiling
+            // division (kernel: Ceil(axisH, PERGROUP_BLOCK_SIZE)), NOT an align-up of axisH.
             xInBytes = CeilAlignSize(
-                CeilAlignSize(axisH, MX_PERGROUP_BLOCK_SIZE) * MX_PERGROUP_BLOCK_SIZE * TOKEN_BYTES, ubAlign);
+                (axisH + MX_PERGROUP_BLOCK_SIZE - 1U) / MX_PERGROUP_BLOCK_SIZE * MX_PERGROUP_BLOCK_SIZE * TOKEN_BYTES,
+                ubAlign);
         }
         const size_t xOutBytes = CeilAlignSize(GetUrmaCommuBytes(tilingKeyQuantMode, outDtype, axisH), ubAlign);
         queueBytes = URMA_BUFFER_NUM * (xInBytes + xOutBytes) +
                      2U * CeilAlignSize(axisH * sizeof(float), ubAlign); // receiveDataCastFloat + smoothScales
     }
-    if (tilingKeyQuantMode == ATTN_FFN_TILINGKEY_PERTOKEN_INT8) {
-        return axisH * sizeof(int8_t) + SCALE_PARAM_PAD_SIZE;
+
+    // isSync: ffnStatusBuf_ on every AIV plus the SetFlagToFFN syncStatusWorkspaceBuf (aivNum rows).
+    size_t syncBytes = 0U;
+    if (info.syncFlag == 1U) {
+        const size_t ffnNum = static_cast<size_t>(info.worldSize) - info.attentionWorkerNum;
+        const size_t ffnNumAlign = CeilAlignSize(ffnNum * sizeof(int32_t), ubAlign);
+        syncBytes = (aivNum + 1U) * ffnNumAlign;
     }
-    const size_t outDataBytes = (outDtype == ATTN_FFN_TILINGKEY_OUT_E2M1) ? (axisH + 1U) / 2U : axisH * sizeof(int8_t);
-    const size_t hOutSizeAlign = (outDataBytes + MX_PARAM_PAD_SIZE - 1U) / MX_PARAM_PAD_SIZE * MX_PARAM_PAD_SIZE;
-    const size_t mxScaleNum = ((axisH + 31U) / 32U + 1U) / 2U * 2U; // E8M0 scales, 1 byte each
-    return hOutSizeAlign + mxScaleNum;
-}
 
-// isSync: ffnStatusBuf_ on every AIV plus the SetFlagToFFN syncStatusWorkspaceBuf (aivNum rows).
-size_t syncBytes = 0U;
-if (info.syncFlag == 1U) {
-    const size_t ffnNum = static_cast<size_t>(info.worldSize) - info.attentionWorkerNum;
-    const size_t ffnNumAlign = CeilAlignSize(ffnNum * sizeof(int32_t), ubAlign);
-    syncBytes = (aivNum + 1U) * ffnNumAlign;
-}
-
-// isActiveMask: activeMaskBuf_ (BS bools); castTempBuf_/sumOutBuf_ only exist in non-quant mode.
-size_t activeMaskBytes = 0U;
-if (info.isActiveMask) {
-    activeMaskBytes = CeilAlignSize(static_cast<size_t>(info.BS), ubAlign);
-    if (tilingKeyQuantMode == ATTN_FFN_TILINGKEY_NO_QUANT) {
-        activeMaskBytes += 2U * CeilAlignSize(static_cast<size_t>(info.BS) * sizeof(uint16_t), ubAlign);
+    // isActiveMask: activeMaskBuf_ (BS bools); castTempBuf_/sumOutBuf_ only exist in non-quant mode.
+    size_t activeMaskBytes = 0U;
+    if (info.isActiveMask) {
+        activeMaskBytes = CeilAlignSize(static_cast<size_t>(info.BS), ubAlign);
+        if (tilingKeyQuantMode == ATTN_FFN_TILINGKEY_NO_QUANT) {
+            activeMaskBytes += 2U * CeilAlignSize(static_cast<size_t>(info.BS) * sizeof(uint16_t), ubAlign);
+        }
     }
-}
 
-const uint64_t requiredUbBytes = static_cast<uint64_t>(
-    expertIdsBytes + statusBytes + flagValueBytes + flagOffsetBytes + tokenRankStashBytes + BUCKET_BUFFER_SIZE +
-    rankInfoBytes + queueBytes + syncBytes + activeMaskBytes + URMA_HCOMM_INIT_SIZE + URMA_BATCH_BUFFER_SIZE);
-auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
-uint64_t availableUbBytes = 0U;
-ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, availableUbBytes);
-OP_TILING_CHECK(requiredUbBytes > availableUbBytes,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                    context->GetNodeName(), "requiredUbBytes",
-                    (std::to_string(requiredUbBytes) + " > " + std::to_string(availableUbBytes)).c_str(),
-                    "URMA explicit buffers must fit in available UB"),
-                return ge::GRAPH_FAILED);
-return ge::GRAPH_SUCCESS;
+    const uint64_t requiredUbBytes = static_cast<uint64_t>(
+        expertIdsBytes + statusBytes + flagValueBytes + flagOffsetBytes + tokenRankStashBytes + BUCKET_BUFFER_SIZE +
+        rankInfoBytes + queueBytes + syncBytes + activeMaskBytes + URMA_HCOMM_INIT_SIZE + URMA_BATCH_BUFFER_SIZE);
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
+    uint64_t availableUbBytes = 0U;
+    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, availableUbBytes);
+    OP_TILING_CHECK(requiredUbBytes > availableUbBytes,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        context->GetNodeName(), "requiredUbBytes",
+                        (std::to_string(requiredUbBytes) + " > " + std::to_string(availableUbBytes)).c_str(),
+                        "URMA explicit buffers must fit in available UB"),
+                    return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
 }
 
 // Extend workspace for the relay rank tables. Phase 1 (all AIVs) counts its remote records per

@@ -131,7 +131,7 @@ static bool CheckAttrShapes(const char *nodeName, const T *tokenInfoTable, const
 
 template <typename T>
 static bool CheckAttrLimits(const char *nodeName, const int64_t worldSize, const T *tokenInfoTableShape,
-                            const T *tokenDataShape)
+                            const T *tokenDataShape, const bool allowMultiMicroBatch)
 {
     OP_TILING_CHECK(
         (worldSize < MIN_WORLD_SIZE) || (worldSize > MAX_WORLD_SIZE),
@@ -139,23 +139,33 @@ static bool CheckAttrLimits(const char *nodeName, const int64_t worldSize, const
             nodeName, "worldSize", std::to_string(worldSize).c_str(),
             (std::string("[") + std::to_string(MIN_WORLD_SIZE) + ", " + std::to_string(MAX_WORLD_SIZE) + "]").c_str()),
         return false);
-    // microBatchNum (= dim0, shared with tokenDataShape[0] via CheckAttrShapes) drives the window layout;
-    // it must be positive and must survive the int64 -> uint32 narrowing at the tilingData assignment.
-    OP_TILING_CHECK(
-        (tokenInfoTableShape[INDEX_ZERO] < 1) || (tokenInfoTableShape[INDEX_ZERO] > MICRO_BATCH_NUM_UPPER_BOUND),
-        OP_LOGE_FOR_INVALID_VALUE(nodeName, "tokenInfoTableShape",
-                                  (std::string("dim0=") + std::to_string(tokenInfoTableShape[INDEX_ZERO])).c_str(),
-                                  (std::string("[1, ") + std::to_string(MICRO_BATCH_NUM_UPPER_BOUND) + "]").c_str()),
-        return false);
-    OP_TILING_CHECK(
-        (tokenInfoTableShape[TOKEN_INFO_TABLE_SHAPE_EXPERT_NUM_INDEX] < 1) ||
-            (tokenInfoTableShape[TOKEN_INFO_TABLE_SHAPE_EXPERT_NUM_INDEX] > EXPERT_NUM_PER_TOKEN_UPPER_BOUND),
-        OP_LOGE_FOR_INVALID_VALUE(
-            nodeName, "tokenInfoTableShape",
-            (std::string("dim2=") + std::to_string(tokenInfoTableShape[TOKEN_INFO_TABLE_SHAPE_EXPERT_NUM_INDEX]))
-                .c_str(),
-            (std::string("[1, ") + std::to_string(EXPERT_NUM_PER_TOKEN_UPPER_BOUND) + "]").c_str()),
-        return false);
+    if (allowMultiMicroBatch) {
+        // Multi micro-batch mode: microBatchNum (= dim0, shared with tokenDataShape[0] via CheckAttrShapes)
+        // drives the window layout; it must be positive and must survive the int64 -> uint32 narrowing at the
+        // tilingData assignment.
+        OP_TILING_CHECK(
+            (tokenInfoTableShape[INDEX_ZERO] < 1) || (tokenInfoTableShape[INDEX_ZERO] > MICRO_BATCH_NUM_UPPER_BOUND),
+            OP_LOGE_FOR_INVALID_VALUE(
+                nodeName, "tokenInfoTableShape",
+                (std::string("dim0=") + std::to_string(tokenInfoTableShape[INDEX_ZERO])).c_str(),
+                (std::string("[1, ") + std::to_string(MICRO_BATCH_NUM_UPPER_BOUND) + "]").c_str()),
+            return false);
+        OP_TILING_CHECK(
+            (tokenInfoTableShape[TOKEN_INFO_TABLE_SHAPE_EXPERT_NUM_INDEX] < 1) ||
+                (tokenInfoTableShape[TOKEN_INFO_TABLE_SHAPE_EXPERT_NUM_INDEX] > EXPERT_NUM_PER_TOKEN_UPPER_BOUND),
+            OP_LOGE_FOR_INVALID_VALUE(
+                nodeName, "tokenInfoTableShape",
+                (std::string("dim2=") + std::to_string(tokenInfoTableShape[TOKEN_INFO_TABLE_SHAPE_EXPERT_NUM_INDEX]))
+                    .c_str(),
+                (std::string("[1, ") + std::to_string(EXPERT_NUM_PER_TOKEN_UPPER_BOUND) + "]").c_str()),
+            return false);
+    } else {
+        OP_TILING_CHECK(tokenInfoTableShape[INDEX_ZERO] != 1,
+                        OP_LOGE_FOR_INVALID_VALUE(
+                            nodeName, "tokenInfoTableShape",
+                            (std::string("dim0=") + std::to_string(tokenInfoTableShape[INDEX_ZERO])).c_str(), "dim0=1"),
+                        return false);
+    }
     OP_TILING_CHECK((tokenDataShape[TOKEN_DATA_SHAPE_BS_INDEX] > BS_UPPER_BOUND) ||
                         (tokenDataShape[TOKEN_DATA_SHAPE_BS_INDEX] <= 0),
                     OP_LOGE_FOR_INVALID_VALUE(
@@ -201,8 +211,9 @@ static bool CheckAndSetAttrs(const gert::TilingContext *context, const char *nod
     OP_TILING_CHECK(!CheckAttrShapes(nodeName, tokenInfoTable, tokenData), static_cast<void>(0), return false);
     // 判断是否满足其他限制
     int64_t worldSize = *worldSizePtr;
-    OP_TILING_CHECK(!CheckAttrLimits(nodeName, worldSize, tokenInfoTableShape, tokenDataShape), static_cast<void>(0),
-                    return false);
+    OP_TILING_CHECK(
+        !CheckAttrLimits(nodeName, worldSize, tokenInfoTableShape, tokenDataShape, config.allowMultiMicroBatch),
+        static_cast<void>(0), return false);
 
     tilingData.ffnToAttentionInfo.worldSize = *worldSizePtr;
     tilingData.ffnToAttentionInfo.microBatchNum = tokenDataShape[TOKEN_DATA_SHAPE_MICRO_BATCH_NUM_INDEX];
