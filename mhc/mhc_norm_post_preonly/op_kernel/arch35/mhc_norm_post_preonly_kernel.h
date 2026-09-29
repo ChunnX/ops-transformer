@@ -222,7 +222,10 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         }
 
         // 单AIV按token分区；双sibling通过aivIdx奇偶映射相邻sibling AIV，并在后半段收敛到偶数leader。
-        if (coreIdx < remainderT_) {
+        if (T_ == usedCoreNum_) {
+            tStart_ = coreIdx;
+            tEnd_ = coreIdx + 1U;
+        } else if (coreIdx < remainderT_) {
             tStart_ = coreIdx * (baseTPerCore_ + 1U);
             tEnd_ = tStart_ + baseTPerCore_ + 1U;
         } else {
