@@ -16,8 +16,7 @@
 #define _ALL_GATHER_QUANT_BMM_TILING_CPP_
 #include "all_gather_quant_bmm_tiling.h"
 #include "all_gather_comm_algo_table.h"
-#include "all_gather_fit_balance_tiling.h"
-#include "all_gather_hccl_utils.h"
+#include "all_gather_matmul_v2_fit_balance_tiling.h"
 #include "common/utils/op_mc2.h"
 #include "mc2_comm_algo_selector.h"
 #include "mc2_comm_utils.h"
@@ -773,26 +772,58 @@ ge::graphStatus AllGatherQuantBmmTiling::PostTiling()
 
 CutResult AllGatherQuantBmmTiling::GetTilingResult()
 {
-    AllGatherMMFitBalanceTiling tileFormulate(args_, KernelType::ALL_GATHER, TopoType::STANDARD_CARD);
-    CutResult result = tileFormulate.GetTiling();
-
-    bool isCcuMode = (std::strncmp(commMode_, "ccu", CMP_MAX_LEN) == 0);
-
-    auto kValue = args_.kValue;
-    auto inputDtypeSize = args_.inputDtypeSize;
-    if (isFp4_) {
-        kValue = args_.kValue / EVEN_ALIGN;
-        inputDtypeSize = 1;
-    }
-
-    if (isCcuMode) {
-        CommSizeInfo commSize{kValue, inputDtypeSize, args_.rankDim};
-        AdjustCutResultForCCU(result, args_.mValue, commSize, opName_);
+    // 分派: 通信标定表命中 → fit-balance; miss(未标定 rank) → 核利用率优先(mm-first)
+    const auto commEngine = ParseCommEngine(commMode_);
+    CutResult result;
+    if (IsCommCalibrated(args_.rankDim, commEngine, CALIBRATION)) {
+        result = GetFitBalanceCut(args_, commEngine);
     } else {
-        AdjustCutResultForAICPU(result, args_.mValue, tileFormulate.matmulPerf_.GetBaseM(), opName_);
+        result = GetCutResByCoreOccupancyFirst();
     }
-
     return result;
+}
+
+// §4.29 miss 路径: 全量 DequantBmm tiling 预跑(与 DoAdaptSlidWindowTiling 的 local 块完全同口径:
+// mValue=orgMValue、isLocal=true)取 matmulTiling 的 baseM/baseN/usedCoreNum → 核利用率优先推导。
+// M 口径与 TilingV2 一致(per-rank m, 切分域同单位); 栈上临时不占真实槽位, 下游 local 块重跑。
+CutResult AllGatherQuantBmmTiling::GetCutResByCoreOccupancyFirst()
+{
+    const uint64_t savedM = args_.mValue;
+    args_.mValue = args_.orgMValue;
+    DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams fullMm = {};
+    AllGatherQuantBmmHelper mmFull(*this, fullMm, true);
+    if (args_.nValue != 0 && mmFull.DoTiling() != ge::GRAPH_SUCCESS) {
+        OP_LOGE(opName_, "COF: full-m dequant bmm tiling failed, fallback no-cut.");
+        args_.mValue = savedM;
+        return MakeNoCutResult();
+    }
+    args_.mValue = savedM;
+
+    const auto &cube = fullMm.matmulTiling;
+    CommTilingData comm = {};
+    if (!GetCommTilingFromV3(args_.mValue, args_.nValue, static_cast<uint64_t>(cube.baseM),
+                             static_cast<uint64_t>(cube.baseN), static_cast<uint64_t>(cube.usedCoreNum), comm)) {
+        OP_LOGE(opName_, "COF: mm tiling anomaly (baseM/baseN/usedCoreNum invalid), fallback no-cut.");
+        return MakeNoCutResult();
+    }
+    OP_LOGI(opName_, "COF cut: baseM=%d baseN=%d usedCoreNum=%d, head=%lux%lu tail=%lux%lu", cube.baseM, cube.baseN,
+            cube.usedCoreNum, comm.splitAxisTileSize, comm.splitAxisTileCnt, comm.splitAxisTailSize,
+            comm.splitAxisTailCnt);
+    CommCutResult cof = CutResultFromCof(comm);
+    return {cof.shortTileAtBack, cof.totalTileCnt, cof.numLongTile,
+            cof.numShortTile,    cof.longTileLen,  cof.shortTileLen};
+}
+
+CutResult AllGatherQuantBmmTiling::MakeNoCutResult() const
+{
+    CutResult r;
+    r.shortTileAtBack = true;
+    r.totalTileCnt = 1;
+    r.numLongTile = 1;
+    r.numShortTile = 0;
+    r.longTileLen = args_.mValue;
+    r.shortTileLen = 0;
+    return r;
 }
 
 Mc2Tiling::RCSTiling &AllGatherQuantBmmTiling::MutableRCSTilingDataA5()
