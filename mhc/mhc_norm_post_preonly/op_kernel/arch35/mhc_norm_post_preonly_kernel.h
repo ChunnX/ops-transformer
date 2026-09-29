@@ -690,7 +690,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         DataCopyPadExtParams<float> copyPad = {false, 0, 0, 0};
 
         // 当前支持的尾块仅来自D=6144/7168，使用紧凑五行结果做二维归约。
-        if (tD != dTile_) {
+        if (__builtin_expect(tD != dTile_, 0)) {
             for (uint32_t half = halfBegin; half < halfEnd; ++half) {
                 const uint32_t h0 = half * 2;
                 const uint32_t h1 = h0 + 1;
