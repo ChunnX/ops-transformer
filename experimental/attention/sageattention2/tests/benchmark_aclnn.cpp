@@ -23,22 +23,35 @@ struct CaseConfig {
     int64_t b, hq, hk, s, d;
     bool isBf16;
     bool isCausal;
-    const char *desc;
 };
 
+// P-01 ~ P-07 标准矩阵（与任务书基准用例一致；固定 per_thread + fp32+fp16）。
 static const std::vector<CaseConfig> BENCHMARK_CASES = {
-    {"P-01", 1, 32, 32, 4096,  128, false, false, "Standard FP16 4K"},
-    {"P-02", 1, 32, 32, 8192,  128, false, false, "Standard FP16 8K"},
-    {"P-03", 1, 32, 32, 8192,  128, false, true,  "Causal Mask FP16 8K"},
-    {"P-04", 2, 32, 32, 8192,  128, false, false, "Batch=2 FP16 8K"},
-    {"P-05", 1, 32, 8,  4096,  128, false, false, "GQA Hq=32 Hk=8 4K"},
-    {"P-06", 1, 32, 32, 4096,  128, true,  false, "BF16 4K"},
-    {"P-07", 1, 32, 32, 16384, 128, false, false, "Long Context FP16 16K"},
+    {"P-01", 1, 32, 32, 4096,  128, false, false},
+    {"P-02", 1, 32, 32, 8192,  128, false, false},
+    {"P-03", 1, 32, 32, 8192,  128, false, true },
+    {"P-04", 2, 32, 32, 8192,  128, false, false},
+    {"P-05", 1, 32, 8,  4096,  128, false, false},
+    {"P-06", 1, 32, 32, 4096,  128, true,  false},
+    {"P-07", 1, 32, 32, 16384, 128, false, false},
 };
+
+// 验收计时口径默认值（与 README 一致）：warmup 50 次，Event 包住连续 100 次取均值。
+#define GATE_SPEEDUP 1.6f
+
+
+// GetWorkspaceSize/执行失败时立即报错退出，避免对 nullptr executor 继续调用（UB）。
+#define REQUIRE_EXEC(exec, impl)                                                       \
+    do {                                                                               \
+        if ((exec) == nullptr) {                                                       \
+            std::cerr << "[ERROR] " << (impl) << " GetWorkspaceSize failed" << std::endl; \
+            return 1;                                                                  \
+        }                                                                              \
+    } while (0)
 
 int main(int argc, char **argv) {
-    int warmup = 20;
-    int repeats = 50;
+    int warmup = 50;
+    int repeats = 100;
     const char *outJsonPath = nullptr;
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--warmup") == 0 && i + 1 < argc) warmup = std::atoi(argv[++i]);
@@ -121,7 +134,8 @@ int main(int argc, char **argv) {
         int64_t preTokens = cfg.isCausal ? 0 : 2147483647;
         int64_t nextTokens = cfg.isCausal ? 0 : 2147483647;
 
-        // Causal mask for FIA if needed (2048 x 2048 template)
+        // FIA 因果用 mask：sparse_mode=2（下三角因果）配合 2048x2048 bool 模板
+        // （1 = 屏蔽位；FIA 按其文档对超模板长度的序列做内部处理）。
         aclTensor *maskTensor = nullptr;
         void *maskDev = nullptr;
         if (cfg.isCausal) {
@@ -166,6 +180,7 @@ int main(int argc, char **argv) {
                 hq, smScale, preTokens, nextTokens, layout, hk, sparseMode, 0, 0, 0, false, 0, 0, 0, 0,
                 outFiaTensor, nullptr, &fiaWsSize, &exec
             );
+            REQUIRE_EXEC(exec, "aclnnFusedInferAttentionScoreV5");
             aclnnFusedInferAttentionScoreV5(fiaWs, fiaWsSize, exec, stream);
         }
         aclrtSynchronizeStream(stream);
@@ -185,6 +200,7 @@ int main(int argc, char **argv) {
                 hq, smScale, preTokens, nextTokens, layout, hk, sparseMode, 0, 0, 0, false, 0, 0, 0, 0,
                 outFiaTensor, nullptr, &fiaWsSize, &exec
             );
+            REQUIRE_EXEC(exec, "aclnnFusedInferAttentionScoreV5");
             aclnnFusedInferAttentionScoreV5(fiaWs, fiaWsSize, exec, stream);
         }
         aclrtRecordEvent(endFia, stream);
@@ -204,6 +220,7 @@ int main(int argc, char **argv) {
             qTensor, kTensor, vTensor, "HND", cfg.isCausal, "per_thread", smScale, "fp32+fp16", true, false, false,
             outSageTensor, nullptr, &sageWsSize, &sageExec
         );
+    REQUIRE_EXEC(sageExec, "aclnnSageAttention2");
         void *sageWs = nullptr;
         if (sageWsSize > 0) aclrtMalloc(&sageWs, sageWsSize, ACL_MEM_MALLOC_HUGE_FIRST);
         for (int i = 0; i < warmup; ++i) {
@@ -212,6 +229,7 @@ int main(int argc, char **argv) {
                 qTensor, kTensor, vTensor, "HND", cfg.isCausal, "per_thread", smScale, "fp32+fp16", true, false, false,
                 outSageTensor, nullptr, &sageWsSize, &exec
             );
+            REQUIRE_EXEC(exec, "aclnnSageAttention2");
             aclnnSageAttention2(sageWs, sageWsSize, exec, stream);
         }
         aclrtSynchronizeStream(stream);
@@ -226,6 +244,7 @@ int main(int argc, char **argv) {
                 qTensor, kTensor, vTensor, "HND", cfg.isCausal, "per_thread", smScale, "fp32+fp16", true, false, false,
                 outSageTensor, nullptr, &sageWsSize, &exec
             );
+            REQUIRE_EXEC(exec, "aclnnSageAttention2");
             aclnnSageAttention2(sageWs, sageWsSize, exec, stream);
         }
         aclrtRecordEvent(endSage, stream);
@@ -236,8 +255,8 @@ int main(int argc, char **argv) {
         aclrtDestroyEvent(startSage);
         aclrtDestroyEvent(endSage);
 
-        float speedup = fiaTimeMs / sageTimeMs;
-        bool pass = speedup >= 1.6f;
+        float speedup = sageTimeMs > 0.0f ? fiaTimeMs / sageTimeMs : 0.0f;
+        bool pass = speedup >= GATE_SPEEDUP;
 
         std::string shapeStr = "[" + std::to_string(b) + "," + std::to_string(hq) + "," + std::to_string(s) + "," + std::to_string(d) + "]";
         std::cout << std::left << std::setw(8) << cfg.caseId

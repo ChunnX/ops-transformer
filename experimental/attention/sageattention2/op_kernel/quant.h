@@ -174,7 +174,7 @@ __aicore__ void QuantBatch(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADD
     constexpr uint32_t MEAN = 81920, MX_SCALE = 82432, RAW_SCALE = 82944, HALF_SCALE = 83200;
     constexpr uint32_t INVERSE_SCALE = 83456;
     static_assert(INVERSE_SCALE + 64 * sizeof(float) <= SLOT_BYTES, "inverse scale exceeds slot");
-    static_assert(2 * SLOT_BYTES + 512 <= 248 * 1024, "quant pipeline exceeds UB");
+    static_assert(2 * SLOT_BYTES + 512 <= UB_HIGH_WATER, "quant pipeline exceeds UB");
     auto factors = r.ubBuf.GetBufferByByte<float>(2 * SLOT_BYTES);
     FixedScaleFactorsVF((__ubuf__ float *)factors.GetPhyAddr(), p.smScale);
     __ubuf__ float *factorPtr[2] = {(__ubuf__ float *)factors[0].GetPhyAddr(),
@@ -288,7 +288,8 @@ template <class T, bool PERMUTE_V>
 __aicore__ void Quant(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADDR mxScale, GM_ADDR q8, GM_ADDR k8,
                       GM_ADDR v8, GM_ADDR qs, GM_ADDR ks, SageParams p)
 {
-    if (p.d == p.dp && p.sq % 64 == 0 && p.sk % 64 == 0 && p.qs[2] == p.dp && p.ks[2] == p.dp && p.vs[2] == p.dp) {
+    // Host tiling pins qs[2]=ks[2]=vs[2]=d, so row-contiguity reduces to d == dp.
+    if (p.d == p.dp && p.sq % 64 == 0 && p.sk % 64 == 0) {
         QuantBatch<T, PERMUTE_V>(q, k, v, mean, mxScale, q8, k8, v8, qs, ks, p);
         return;
     }
@@ -353,7 +354,7 @@ __aicore__ void Quant(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADDR mxS
         WriteRow(isq ? qo : ko, idx * p.dp, out, p.dp);
         red.SetValue(0, s);
         Sync<HardEvent::S_V>();
-        PackFixedScaleVF((__ubuf__ float *)red.GetPhyAddr(), (__ubuf__ half *)halfScales.GetPhyAddr(),
+        PackFixedScaleBlock((__ubuf__ float *)red.GetPhyAddr(), (__ubuf__ half *)halfScales.GetPhyAddr(),
                          (__ubuf__ float *)factors[isq ? 0 : 64].GetPhyAddr(), valid ? 1 : 0);
         WriteRow(isq ? qsg : ksg, idx, halfScales, 1);
     }

@@ -23,7 +23,7 @@ struct WideVectorLayout {
     static constexpr uint32_t PARTIAL_SUMS_UB = P_UB, END = SUM_UB + HALF * 4;
     static_assert(PV_SLOT_BYTES >= HALF * 128 * 4, "PV slot cannot hold FP32 PV");
     static_assert(P_SLOT_BYTES >= HALF * 8 * 4, "output scratch cannot hold softmax partial sums");
-    static_assert(END <= 248 * 1024, "wide softmax exceeds UB");
+    static_assert(END <= UB_HIGH_WATER, "wide softmax exceeds UB");
 };
 
 template <class T, uint32_t DP>
@@ -32,11 +32,9 @@ class AttentionBlockVecWide : public AttentionBlockVec<T, DP, WideVectorLayout> 
 
 public:
     template <bool CAUSAL>
-    __aicore__ inline __attribute__((always_inline)) void SoftmaxWide(uint32_t step, uint32_t count,
-                                                                      uint32_t qstart = 0, uint32_t group = 0,
-                                                                      uint64_t nextScale = ~uint64_t(0))
+    __aicore__ inline __attribute__((always_inline)) void SoftmaxWide(uint32_t step, uint32_t count, uint32_t qstart,
+                                                                      uint32_t ring, uint64_t nextScale)
     {
-        const uint32_t ring = group;
         auto scores = resource_->ubBuf.template GetBufferByByte<half>(SCORE_UB + (ring & 1) * 2 * HALF * N * 2);
         // Each FP8 NZ block replaces the consumed first FP16 stripe of its
         // 32-column score block. Keep the second stripe as a 2048-byte gap.
@@ -124,29 +122,22 @@ public:
             PipeBarrier<PIPE_V>();
         }
     }
-    __aicore__ inline __attribute__((always_inline)) void UpdateStreamOutput(uint32_t group, bool first, bool last)
+    __aicore__ inline __attribute__((always_inline)) void UpdateStreamOutput(uint32_t group, bool first)
     {
         CrossCoreWaitFlag<4, PIPE_V>(PV_READY);
         auto pv = resource_->ubBuf.template GetBufferByByte<float>(PV_UB + (group & 1) * PV_SLOT_BYTES);
         auto alpha = resource_->ubBuf.template GetBufferByByte<float>(ALPHA_UB + (group % 3) * 512);
-        if (last) {
-            auto scratch = resource_->ubBuf.template GetBufferByByte<float>(SUM_UB);
-            if (first)
-                FinalizeWideFp32VF<T, DP, true>(
-                    (__ubuf__ T *)Base::qo_.GetPhyAddr(), (__ubuf__ float *)accum_.GetPhyAddr(),
-                    (__ubuf__ float *)pv.GetPhyAddr(), (__ubuf__ float *)alpha.GetPhyAddr(),
-                    (__ubuf__ float *)denom_.GetPhyAddr(), (__ubuf__ float *)scratch.GetPhyAddr());
-            else
-                FinalizeWideFp32VF<T, DP, false>(
-                    (__ubuf__ T *)Base::qo_.GetPhyAddr(), (__ubuf__ float *)accum_.GetPhyAddr(),
-                    (__ubuf__ float *)pv.GetPhyAddr(), (__ubuf__ float *)alpha.GetPhyAddr(),
-                    (__ubuf__ float *)denom_.GetPhyAddr(), (__ubuf__ float *)scratch.GetPhyAddr());
-        } else if (first)
-            InitializeWideFp32VF<DP>((__ubuf__ float *)accum_.GetPhyAddr(), (__ubuf__ float *)pv.GetPhyAddr(),
-                                     (__ubuf__ float *)alpha.GetPhyAddr(), (__ubuf__ float *)denom_.GetPhyAddr());
+        auto scratch = resource_->ubBuf.template GetBufferByByte<float>(SUM_UB);
+        if (first)
+            FinalizeWideFp32VF<T, DP, true>(
+                (__ubuf__ T *)Base::qo_.GetPhyAddr(), (__ubuf__ float *)accum_.GetPhyAddr(),
+                (__ubuf__ float *)pv.GetPhyAddr(), (__ubuf__ float *)alpha.GetPhyAddr(),
+                (__ubuf__ float *)denom_.GetPhyAddr(), (__ubuf__ float *)scratch.GetPhyAddr());
         else
-            AccumulateWideFp32VF<DP>((__ubuf__ float *)accum_.GetPhyAddr(), (__ubuf__ float *)pv.GetPhyAddr(),
-                                     (__ubuf__ float *)alpha.GetPhyAddr(), (__ubuf__ float *)denom_.GetPhyAddr());
+            FinalizeWideFp32VF<T, DP, false>(
+                (__ubuf__ T *)Base::qo_.GetPhyAddr(), (__ubuf__ float *)accum_.GetPhyAddr(),
+                (__ubuf__ float *)pv.GetPhyAddr(), (__ubuf__ float *)alpha.GetPhyAddr(),
+                (__ubuf__ float *)denom_.GetPhyAddr(), (__ubuf__ float *)scratch.GetPhyAddr());
         CrossCoreSetFlag<4, PIPE_V>(PV_RELEASE);
     }
     __aicore__ inline __attribute__((always_inline)) void AcquireStreamPv()

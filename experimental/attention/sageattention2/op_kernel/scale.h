@@ -51,10 +51,4 @@ __simd_callee__ inline void PackFixedScaleBlock(__ubuf__ float *input, __ubuf__ 
     StoreAlign<half, StoreDist::DIST_PACK_B32>(output, h, full);
 }
 
-__simd_vf__ inline void PackFixedScaleVF(__ubuf__ float *input, __ubuf__ half *output, __ubuf__ float *factor,
-                                         uint32_t valid)
-{
-    PackFixedScaleBlock(input, output, factor, valid);
-}
-
 } // namespace Sage

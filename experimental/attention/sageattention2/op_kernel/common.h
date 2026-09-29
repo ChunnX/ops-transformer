@@ -35,6 +35,9 @@ constexpr uint32_t EXPONENT_MASK = 0x7f800000;
 constexpr uint32_t RECIPROCAL_EXP_BIAS = 0x7f000000;
 constexpr uint16_t FP16_ABS_MASK = 0x7fff;
 constexpr float MIN_POSITIVE_FLOAT = 1.0e-30f;
+// Static UB budget every layout must prove itself against (leaves headroom to
+// the 256 KiB physical UB for queue/stack bookkeeping).
+constexpr uint32_t UB_HIGH_WATER = 248 * 1024;
 
 __aicore__ inline uint32_t CalcKh(uint32_t h, uint32_t hq, uint32_t hk) {
     if (hq == hk) return h;
@@ -67,8 +70,9 @@ __aicore__ inline uint64_t DieTaskEnd(const SageParams &p, uint64_t total, uint3
 // Newton-Raphson Fast Reciprocal (approx 3 cycles: initial estimate + 2 iterations)
 // Eliminates the 32-cycle hardware vector division (vdiv). The magic-number seed's
 // relative error swings with the binade (worst ~2^-4), so after two iterations the
-// envelope is e0^4 ~ 2^-16 -- far below the FP16 rounding (2^-11) and P/V
-// quantization noise (~2^-5) it feeds in normalization and token scales.
+// worst-case envelope is ~2^-14 -- far below the FP16 rounding (2^-11) and P/V
+// quantization noise (~2^-5) it feeds into normalization and token scales.
+// tests/numeric_error_test.cpp asserts the 2^-14 bound.
 __simd_callee__ inline void FastReciprocal(AscendC::MicroAPI::RegTensor<float> &dst,
                                            AscendC::MicroAPI::RegTensor<float> &src,
                                            AscendC::MicroAPI::MaskReg &mask)
@@ -98,7 +102,7 @@ using Arch = Catlass::Arch::Ascend950;
 // bookkeeping and its runtime event switch (jump tables during DBI replay).
 template <TPosition POSITION, uint32_t BYTES>
 struct FixedBuffer {
-    template <class T = half>
+    template <class T>
     __aicore__ inline LocalTensor<T> GetBufferByByte(uint32_t offset) const
     {
         return LocalTensor<T>(POSITION, offset, (BYTES - offset) / sizeof(T));

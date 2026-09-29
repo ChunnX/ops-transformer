@@ -12,6 +12,9 @@
 #include "attention_cube_split_qk.h"
 #include "attention_block_vec_wide.h"
 namespace Sage {
+// Wide-pipeline L1 window: P_L1 holds the QK score stripes, the 4*M*N tail
+// ping-pongs K/V tiles (K_L1 naming kept for readability at call sites).
+constexpr uint32_t WIDE_B_L1 = P_L1 + 4 * M * N;
 // Query metadata is decoded once; Cube uses N256 fragments, Vector uses N512 groups.
 struct WideQueryInfo {
     uint64_t task, qb, kb;
@@ -61,10 +64,10 @@ template <class T>
 __aicore__ inline __attribute__((always_inline)) void FinishWideOutput(
     AttentionBlockVecWide<T, 128> &vector, const WideOutputInfo &info, uint64_t group)
 {
-    if (info.last)
-        vector.UpdateStreamOutput(group, info.first, info.last);
-    if (info.last)
+    if (info.last) {
+        vector.UpdateStreamOutput(group, info.first);
         vector.FinishStreamQuery(info.ordinal, info.qstart, info.b, info.h);
+    }
 }
 // FIRST_READY means the caller consumed exactly the first PV token before
 // supplying S(g). Tail draining consumes both tokens here.
@@ -95,7 +98,7 @@ __aicore__ inline __attribute__((always_inline)) void ProcessWideCubeStep(
     GM_ADDR k8, GM_ADDR v8, GM_ADDR vsmx, MxScaleCache &mxCache, const SageParams &p,
     uint32_t count, bool prefetchPv = true)
 {
-    constexpr uint32_t DP = 128, WIDE_B_L1 = P_L1 + 4 * M * N;
+    constexpr uint32_t DP = 128;
     if (hasQk) {
         const auto &current = pending[fragment & 3];
         GemmQkSplit<WIDE_B_L1>(r, q, (fragment & 3) * HALF * N * 2,
@@ -174,9 +177,8 @@ __aicore__ inline __attribute__((always_inline)) void AttentionWideStream(GM_ADD
     for (uint64_t task = core; task < totalTasks; task += p.cores, ++ordinal) {
         auto current = DecodeWideQuery<CAUSAL>(p, task, ordinal);
         if ASCEND_IS_AIC {
-            constexpr uint32_t K_L1 = P_L1 + 4 * M * N;
-            PrefetchWideK<K_L1>(r, k8 + current.kb * 128, 0);
-            PrefetchWideK<K_L1>(r, k8 + (current.kb + N) * 128, 1);
+            PrefetchWideK<WIDE_B_L1>(r, k8 + current.kb * 128, 0);
+            PrefetchWideK<WIDE_B_L1>(r, k8 + (current.kb + N) * 128, 1);
         }
         GM_ADDR qTile = q8 + (current.qb + current.qstart) * 128;
         if ASCEND_IS_AIC {

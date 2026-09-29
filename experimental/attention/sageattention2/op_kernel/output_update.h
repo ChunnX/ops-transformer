@@ -12,21 +12,6 @@
 #include "common.h"
 namespace Sage {
 
-// Denominator update for a continuation PV tile: denom = denom * alpha + sum.
-// The first tile of a query takes InitializeWideFp32VF instead, which seeds
-// denom directly from the block sum in alpha + 64.
-__simd_callee__ inline void UpdateWideDenominator(__ubuf__ float *denom, __ubuf__ float *alpha,
-                                                  AscendC::MicroAPI::MaskReg &f)
-{
-    using namespace AscendC::MicroAPI;
-    RegTensor<float> den, sum, ratio;
-    LoadAlign(sum, alpha + 64);
-    LoadAlign(den, denom);
-    LoadAlign(ratio, alpha);
-    MulDstAdd(den, ratio, sum, f);
-    StoreAlign(denom, den, f);
-}
-
 // Accumulate a 64-row PV tile into the running FP32 O with the alpha ratio FMA.
 template <uint32_t DP>
 __simd_vf__ inline void AccumulateFp32VF(__ubuf__ float *accum, __ubuf__ float *partial, __ubuf__ float *alpha)
@@ -48,47 +33,6 @@ __simd_vf__ inline void AccumulateFp32VF(__ubuf__ float *accum, __ubuf__ float *
             MulDstAdd(x1, ratio, y1, f);
             StoreAlign(accum + row * DP + 64, x1, f);
         }
-    }
-}
-
-// Wide P1 publishes its FP32 block sum in the unused half of its alpha slot.
-template <uint32_t DP>
-__simd_vf__ inline void AccumulateWideFp32VF(__ubuf__ float *accum, __ubuf__ float *partial, __ubuf__ float *alpha,
-                                             __ubuf__ float *denom)
-{
-    using namespace AscendC::MicroAPI;
-    auto f = CreateMask<float, MaskPattern::ALL>();
-    UpdateWideDenominator(denom, alpha, f);
-    for (uint16_t row = 0; row < 64; ++row) {
-        RegTensor<float> ratio, x0, y0;
-        LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio, alpha + row);
-        LoadAlign(x0, accum + row * DP);
-        LoadAlign(y0, partial + row * DP);
-        MulDstAdd(x0, ratio, y0, f);
-        StoreAlign(accum + row * DP, x0, f);
-        if constexpr (DP == 128) {
-            RegTensor<float> x1, y1;
-            LoadAlign(x1, accum + row * DP + 64);
-            LoadAlign(y1, partial + row * DP + 64);
-            MulDstAdd(x1, ratio, y1, f);
-            StoreAlign(accum + row * DP + 64, x1, f);
-        }
-    }
-}
-
-// First PV of a query initializes O and its denominator.
-template <uint32_t DP>
-__simd_vf__ inline void InitializeWideFp32VF(__ubuf__ float *accum, __ubuf__ float *partial, __ubuf__ float *alpha,
-                                             __ubuf__ float *denom)
-{
-    using namespace AscendC::MicroAPI;
-    auto f = CreateMask<float, MaskPattern::ALL>();
-    RegTensor<float> value;
-    LoadAlign(value, alpha + 64);
-    StoreAlign(denom, value, f);
-    for (uint16_t offset = 0; offset < 64 * DP; offset += 64) {
-        LoadAlign(value, partial + offset);
-        StoreAlign(accum + offset, value, f);
     }
 }
 

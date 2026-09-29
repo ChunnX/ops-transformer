@@ -14,9 +14,9 @@
  *   3. E4M3 饱和舍入相对误差（3 位尾数）                        ≤ 2^-4
  *   4. E8M0 分组 scale 覆盖性（2^ceil(log2(amax/448))）        无饱和且 ≤2×
  *   5. DEQF16(2^-11) × FP16 平衡 scale 的 2048 抵消恒等式       ≤ 2^-9
- *   6. ln(448) 平移后 P 的满量程与饱和裕量                      (224, 448·(1+2^-7)]
+ *   6. FP16(-ln448) 平移常量位级一致 + P 满量程利用/饱和裕量     [224, 448·(1+2^-5)]
  *   7. LSE 契约（raw log2 内核值 + 开源平滑校正, GQA 广播）     ≤ 1e-5（双精度参考）
- *   8. smooth-K softmax 不变性（含校正项）                      ≤ 1e-12（双精度）
+ *   8. smooth-K softmax 不变性（FP32 内核算术精度, 整行）        ≤ 1e-4
  *   9. Causal Mask NZ 拓扑剪枝零精度损失与算力压缩 (≥95% bypass) bit-exact == 0
  *
  * 编译运行：
@@ -133,8 +133,8 @@ void TestFastReciprocal(std::mt19937 &rng)
         worst = std::fmax(worst, err);
     }
     std::printf("[1] FastReciprocal (magic 0x7EEF370B + 2 NR steps)\n");
-    // 魔数初值相对误差随 binade 摆动（最差 ~2^-4），两次牛顿迭代后为 e0^4，
-    // 包络 2^-16；远小于 FP16 舍入(2^-11)与 P/V 量化噪声(2^-5)的下游影响。
+    // 魔数初值相对误差随 binade 摆动（最差 ~2^-4），两次牛顿迭代后的最差
+    // 包络 ~2^-14；远小于 FP16 舍入(2^-11)与 P/V 量化噪声(2^-5)的下游影响。
     Report("relative error", worst, 1.0 / 16384.0, worst <= 1.0 / 16384.0);
 }
 
@@ -268,101 +268,110 @@ void TestDeqf16BalancedScales(std::mt19937 &rng)
 
 void TestLn448Shift(std::mt19937 &rng)
 {
-    // 平移后的概率 p = exp(x - m_hat)，m_hat 含 fp16(-ln448)。要求：
-    // 行最大元素 p > 224（满量程利用率），且 p <= 448*(1+2^-7)（饱和裕量内）。
+    // 内核以 FP16 常量 SOFTMAX_FP8_SHIFT = -ln(448) 平移块最大值：m_hat 保存于
+    // FP16，P = exp(rowMax - m_hat)。设计性质：
+    //   1) 平移常量逐位等于 FP16(-ln448) = -6.10546875（内核装载值）；
+    //   2) m_hat 的 FP16 舍入有界，行最大元素的未截断 P 贴近满量程
+    //      （>224，无欠利用），且超出 448 的部分由 E4M3 SAT cast 精确钳位，
+    //      偏差限制在一个 E4M3 相对步长（2^-4 量级）内，不会无界溢出。
     std::normal_distribution<float> gauss(0.0f, 1.0f);
-    const float shift = -6.104793232414985f;
-    bool utilizationOk = true, headroomOk = true;
+    constexpr float kLn448F32 = 6.104793232414985f;
+    const float shift16 = RoundToFp16(-kLn448F32);
+    constexpr float kExpectedShift16 = -6.10546875f;
+    const bool constOk = (shift16 == kExpectedShift16);
+    float worstLow = 1e30f, worstHigh = -1e30f;
     for (int t = 0; t < 20000; ++t) {
         float rowMax = -1e30f;
         for (int i = 0; i < 64; ++i) {
             rowMax = std::fmax(rowMax, gauss(rng) * 3.0f);
         }
-        float mHat = rowMax + shift;  // fp16 状态的 float 镜像
-        float pMax = std::exp(rowMax - mHat);
-        if (!(pMax > 224.0f)) {
-            utilizationOk = false;
-        }
-        if (!(pMax <= 448.0f * (1.0 + 1.0 / 128.0))) {
-            headroomOk = false;
-        }
+        float mHat = RoundToFp16(rowMax + shift16);  // FP16 max 状态镜像
+        float pMax = std::exp(rowMax - mHat);        // 未截断概率
+        worstLow = std::fmin(worstLow, pMax);
+        worstHigh = std::fmax(worstHigh, pMax);
     }
+    const bool utilizationOk = worstLow > 224.0f;
+    const bool saturationOk = worstHigh <= 448.0f * (1.0f + 1.0f / 32.0f);
     std::printf("[6] ln(448) shifted softmax range utilization\n");
-    Report("p_max utilization > 224", utilizationOk ? 0.0 : 1.0, 0.0, utilizationOk);
-    Report("p_max headroom <= 448*(1+2^-7)", headroomOk ? 0.0 : 1.0, 0.0, headroomOk);
+    Report("fp16(-ln448) bit-equals -6.10546875", constOk ? 0.0 : 1.0, 0.0, constOk);
+    Report("p_max utilization > 224", worstLow, 224.0, utilizationOk);
+    Report("p_max within E4M3 saturation step", worstHigh, 448.0f * (1.0f + 1.0f / 32.0f), saturationOk);
 }
 
 void TestLseIdentity(std::mt19937 &rng)
 {
     // 内核输出 raw log2 域 LSE：lse_raw = (m_hat + log(den)) * log2(e)（未校正）。
-    // PyTorch 层按开源契约还原：lse = lse_raw / log2(e) + sm_scale * dot(q, mean_k)，
-    // GQA 广播 kh = h / (hq/hk) 等价 repeat_interleave。
+    // PyTorch 层按开源契约还原：lse = lse_raw / log2(e) + sm_scale * dot(q, mean_k)；
+    // GQA 下头 h 广播其 KV 组 kh = h/(hq/hk) 的 mean_k（等价 repeat_interleave）。
+    // 两组 KV 均值彼此不同，广播取错组会立即放大误差，因此本断言是实质性的。
     std::normal_distribution<float> gauss(0.0f, 1.0f);
     constexpr double kLog2E = 1.4426950408889634;
     const int d = 128;
     const double smScale = 1.0 / std::sqrt(128.0);
     double worst = 0.0;
-    bool gqaOk = true;
-    const int hq = 8, hk = 2;
+    const int hq = 8, hk = 2, rows = 4;
     for (int t = 0; t < 200; ++t) {
-        std::vector<double> q(d), meanK(d), kSmooth(d);
+        std::vector<double> q(d), kSmooth(d);
         for (auto &x : q) {
             x = gauss(rng);
         }
         for (auto &x : kSmooth) {
             x = gauss(rng);
         }
-        for (auto &x : meanK) {
-            x = 0.1 * gauss(rng);
-        }
-        double dotQM = 0.0;
-        for (int j = 0; j < d; ++j) {
-            dotQM += q[j] * meanK[j];
-        }
-        const int rows = 4;
-        std::vector<double> smoothScores(rows), rawScores(rows);
-        for (int r = 0; r < rows; ++r) {
-            double ss = 0.0;
-            for (int j = 0; j < d; ++j) {
-                ss += q[j] * (kSmooth[j] + 0.01 * r);  // 同一平滑行 + 微扰
+        std::vector<std::vector<double>> meanKv(hk, std::vector<double>(d));
+        for (auto &m : meanKv) {
+            for (auto &x : m) {
+                x = 0.1 * gauss(rng);
             }
-            smoothScores[r] = ss * smScale;
-            rawScores[r] = smoothScores[r] + smScale * dotQM;  // 行常数还原
         }
-        // 参考：未平滑分数的真值 logsumexp。
-        double reference = LogSumExp(rawScores);
-        // 内核侧：平移 max 状态 + den，换底 log2 后输出 raw 值（不含平滑校正）。
-        double m = -1e300;
-        for (double s : smoothScores) {
-            m = std::fmax(m, s - std::log(448.0));
-        }
-        double den = 0.0;
-        for (double s : smoothScores) {
-            den += std::exp(s - m);
-        }
-        double kernelRaw = (m + std::log(den)) * kLog2E;
-        double returned = kernelRaw / kLog2E + smScale * dotQM;
-        double rel = std::fabs(returned - reference) / (std::fabs(reference) + 1.0);
-        worst = std::fmax(worst, rel);
         for (int h = 0; h < hq; ++h) {
-            int kh = h / (hq / hk);
-            if (kh < 0 || kh >= hk) {
-                gqaOk = false;
+            const int kh = h / (hq / hk);  // repeat_interleave 广播映射
+            const auto &meanK = meanKv[kh];
+            double dotQM = 0.0;
+            for (int j = 0; j < d; ++j) {
+                dotQM += q[j] * meanK[j];
             }
+            std::vector<double> smoothScores(rows), rawScores(rows);
+            for (int r = 0; r < rows; ++r) {
+                double ss = 0.0;
+                for (int j = 0; j < d; ++j) {
+                    ss += q[j] * (kSmooth[j] + 0.01 * r);  // 同一平滑行 + 微扰
+                }
+                smoothScores[r] = ss * smScale;
+                rawScores[r] = smoothScores[r] + smScale * dotQM;  // 行常数还原
+            }
+            // 参考：未平滑分数的真值 logsumexp。
+            double reference = LogSumExp(rawScores);
+            // 内核侧：平移 max 状态 + den，换底 log2 后输出 raw 值（不含平滑校正）。
+            double m = -1e300;
+            for (double s : smoothScores) {
+                m = std::fmax(m, s - std::log(448.0));
+            }
+            double den = 0.0;
+            for (double s : smoothScores) {
+                den += std::exp(s - m);
+            }
+            double kernelRaw = (m + std::log(den)) * kLog2E;
+            double returned = kernelRaw / kLog2E + smScale * dotQM;
+            double rel = std::fabs(returned - reference) / (std::fabs(reference) + 1.0);
+            worst = std::fmax(worst, rel);
         }
     }
     std::printf("[7] LSE contract (raw log2 kernel + open-source smooth correction)\n");
-    Report("relative error vs double reference", worst, 1e-5, worst <= 1e-5);
-    Report("GQA kh = h/(hq/hk) mapping", gqaOk ? 0.0 : 1.0, 0.0, gqaOk);
+    Report("relative error vs double reference (per-head GQA broadcast)", worst, 1e-5, worst <= 1e-5);
 }
 
 void TestSmoothKInvariance(std::mt19937 &rng)
 {
+    // smooth-K 是行常数平移。以 FP32（内核 stats/quant 路径的算术精度）对整行
+    // 计算两种分数并各自归一化：exp(sRaw)/Z == exp(sSmooth + dot(q,m)/s)/Z'。
+    // 双精度下该恒等式平凡成立；本断言在 FP32 点积噪声水平上验证行不变性。
     std::normal_distribution<float> gauss(0.0f, 1.0f);
-    const int d = 128;
-    double worst = 0.0;
+    const int d = 128, rows = 64;
+    const float smScale = 1.0f / std::sqrt(128.0f);
+    float worst = 0.0f;
     for (int t = 0; t < 200; ++t) {
-        std::vector<double> q(d), meanK(d), kSmooth(d);
+        std::vector<float> q(d), meanK(d), kSmooth(d);
         for (auto &x : q) {
             x = gauss(rng);
         }
@@ -372,24 +381,34 @@ void TestSmoothKInvariance(std::mt19937 &rng)
         for (auto &x : kSmooth) {
             x = gauss(rng);
         }
-        double sRaw = 0.0, sSmooth = 0.0, dotQM = 0.0;
+        std::vector<float> raw(rows), smooth(rows);
+        float dotQM = 0.0f;
         for (int j = 0; j < d; ++j) {
-            sRaw += q[j] * (kSmooth[j] + meanK[j]);
-            sSmooth += q[j] * kSmooth[j];
             dotQM += q[j] * meanK[j];
         }
-        sRaw *= 1.0 / std::sqrt(128.0);
-        sSmooth *= 1.0 / std::sqrt(128.0);
-        dotQM *= 1.0 / std::sqrt(128.0);
-        // softmax 行不变性：exp(sRaw)/Z == exp(sSmooth)/Z'，由行常数 dotQM 保证
-        const double shift = 20.0;
-        double p1 = std::exp(sRaw - shift);
-        double p2 = std::exp(sSmooth - shift) * std::exp(dotQM);
-        double rel = std::fabs(p1 - p2) / (std::fabs(p1) + 1e-300);
-        worst = std::fmax(worst, rel);
+        dotQM *= smScale;
+        for (int r = 0; r < rows; ++r) {
+            float sr = 0.0f, ss = 0.0f;
+            for (int j = 0; j < d; ++j) {
+                // 行间微扰使各行分数不同，排除“全部相同行”退化为恒真比较
+                sr += q[j] * (kSmooth[j] + 0.01f * r + meanK[j]);
+                ss += q[j] * (kSmooth[j] + 0.01f * r);
+            }
+            raw[r] = sr * smScale;
+            smooth[r] = ss * smScale + dotQM;
+        }
+        // 各自做 online softmax 归一化（logsumexp 用双精度仅作精确归一化器）
+        std::vector<double> rawD(raw.begin(), raw.end()), smoothD(smooth.begin(), smooth.end());
+        double zRaw = LogSumExp(rawD), zSmooth = LogSumExp(smoothD);
+        for (int r = 0; r < rows; ++r) {
+            double pRaw = std::exp(rawD[r] - zRaw);
+            double pSmooth = std::exp(smoothD[r] - zSmooth);
+            float rel = static_cast<float>(std::fabs(pRaw - pSmooth) / pRaw);
+            worst = std::fmax(worst, rel);
+        }
     }
-    std::printf("[8] smooth-K softmax invariance (constant shift)\n");
-    Report("relative discrepancy", worst, 1e-12, worst <= 1e-12);
+    std::printf("[8] smooth-K softmax invariance (FP32 kernel arithmetic)\n");
+    Report("row-wise probability discrepancy", worst, 1e-4, worst <= 1e-4);
 }
 
 void TestCausalMaskTopologyPruning()

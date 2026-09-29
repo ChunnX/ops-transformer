@@ -48,8 +48,7 @@ public:
         maxima_ = resource_->ubBuf.GetBufferByByte<half>(MAX_UB);
         denom_ = resource_->ubBuf.GetBufferByByte<float>(DEN_UB);
     }
-    __aicore__ inline __attribute__((always_inline)) void BeginTile(uint32_t b, uint32_t kh, uint64_t qb,
-                                                                    uint32_t qstart)
+    __aicore__ inline __attribute__((always_inline)) void BeginTile(uint64_t qb, uint32_t qstart)
     {
         Sync<HardEvent::V_MTE2>();
         Duplicate(accum_, 0.0f, HALF * params_.dp);
@@ -63,7 +62,7 @@ public:
     {
         PrefetchKScales<N>(*resource_, ksg_, kb, count, KS_UB);
     }
-    template <bool CAUSAL = false>
+    template <bool CAUSAL>
     __aicore__ inline __attribute__((always_inline)) void Softmax(uint32_t step, uint32_t qstart, uint64_t kb,
                                                                   uint32_t count)
     {
@@ -178,7 +177,6 @@ protected:
         if (!validRows) {
             return;
         }
-        static_assert(2 * HALF * sizeof(float) <= P_SLOT_BYTES, "LSE scratch exceeds retired P0");
         auto lse = resource_->ubBuf.template GetBufferByByte<float>(P_UB);
         auto maxF = resource_->ubBuf.template GetBufferByByte<float>(P_UB + HALF * sizeof(float));
         // lse = ln(denom) + float(maxima), then one Muls converts to log2 domain.

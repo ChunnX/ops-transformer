@@ -142,7 +142,7 @@ __simd_callee__ inline __attribute__((always_inline)) void ComputeProbAndPackNZS
 template <bool MASK>
 __simd_callee__ inline void SoftmaxWideMaxCore(__ubuf__ half *scores, __ubuf__ half *scoresNext, __ubuf__ half *maxima,
                                                __ubuf__ float *alpha, __ubuf__ half *qhalf, __ubuf__ half *khalf,
-                                               int32_t queryInGroup = 0)
+                                               int32_t queryInGroup)
 {
     using namespace AscendC::MicroAPI;
     // QK_READY and the scale MTE2_V event make input scores/scales visible.
@@ -227,11 +227,11 @@ __simd_callee__ inline void SoftmaxWideProbCore(__ubuf__ half *scores, __ubuf__ 
     }
 }
 
-template <bool MASK = false>
+template <bool MASK>
 __simd_vf__ inline void SoftmaxWideFirstVF(__ubuf__ half *scores, __ubuf__ half *scoresNext, __ubuf__ half *maxima,
                                            __ubuf__ float *alpha, __ubuf__ float8_e4m3_t *out, __ubuf__ half *qhalf,
                                            __ubuf__ half *khalf, __ubuf__ float *partialSums,
-                                           int32_t queryInGroup = 0)
+                                           int32_t queryInGroup)
 {
     SoftmaxWideMaxCore<MASK>(scores, scoresNext, maxima, alpha, qhalf, khalf, queryInGroup);
     SoftmaxWideProbCore<true>(scores, maxima, out, partialSums);

@@ -16,7 +16,7 @@ constexpr uint32_t M = 128, N = 256, HALF = M / 2, PIPE_SLOTS = 3, LOOKAHEAD = P
 constexpr uint32_t P_NZ_PAD_ROWS = 1, P_SLOT_BYTES = (HALF + P_NZ_PAD_ROWS) * N;
 constexpr uint32_t ALPHA_SLOTS = 4;
 constexpr uint32_t P_L1 = 65536, B_L1 = P_L1 + PIPE_SLOTS * M * N;
-static_assert(M * 128 <= P_L1 && P_L1 + PIPE_SLOTS * M * N <= B_L1, "L1 A/P/B buffers overlap");
+static_assert(M * 128 <= P_L1, "L1 A/P/B buffers overlap");
 static_assert(B_L1 + 2 * N * 128 <= 512 * 1024, "L1 B exceeds capacity");
 static_assert(M * N <= 32 * 1024 && N * 128 <= 32 * 1024 && M * 128 <= 32 * 1024,
               "L0 operands exceed their 32 KiB slots");
@@ -30,13 +30,16 @@ static_assert(LOOKAHEAD == 2 && PV_SLOTS == 2 && ALPHA_SLOTS == 4, "paired O own
 constexpr uint32_t SCORE_UB = 0, PV_UB = PIPE_SLOTS * HALF * N * 2, ACCUM_UB = PV_UB + PV_SLOTS * PV_SLOT_BYTES;
 constexpr uint32_t P_UB = ACCUM_UB + HALF * 128 * 4, KS_UB = P_UB + PIPE_SLOTS * P_SLOT_BYTES;
 constexpr uint32_t QS_UB = KS_UB + 2 * N * 2;
-constexpr uint32_t MAX_UB = QS_UB + 512, DEN_UB = MAX_UB + 512, ALPHA_UB = DEN_UB + 512;
-constexpr uint32_t SUM_UB = ALPHA_UB + ALPHA_SLOTS * 512, UB_END = SUM_UB + HALF * 4;
+// Per-group scale/stat slot: one N=256 FP16 vector (max/den/alpha rings).
+constexpr uint32_t GROUP_STAT_BYTES = N * 2;
+constexpr uint32_t MAX_UB = QS_UB + GROUP_STAT_BYTES, DEN_UB = MAX_UB + GROUP_STAT_BYTES,
+                   ALPHA_UB = DEN_UB + GROUP_STAT_BYTES;
+constexpr uint32_t SUM_UB = ALPHA_UB + ALPHA_SLOTS * GROUP_STAT_BYTES, UB_END = SUM_UB + HALF * 4;
 // The final LSE epilogue draws its vector scratch from the retired P0 slot
 // (see AttentionBlockVec::StoreTileLse); it must not touch the score area,
 // which the AIC may already be refilling for the next query tile.
 static_assert(2 * HALF * sizeof(float) <= P_SLOT_BYTES, "LSE scratch exceeds retired P0");
-static_assert(UB_END <= 248 * 1024, "UB exceeds capacity");
+static_assert(UB_END <= UB_HIGH_WATER, "UB exceeds capacity");
 static_assert(HALF * N >= HALF * 128 * 2, "P buffer cannot hold final FP16/BF16 output");
 static_assert(M * N * 4 <= 128 * 1024 && M * 128 * 4 <= 128 * 1024, "L0C exceeds its 128 KiB slot");
 // MODE4 counted notifications, shared by all Cube/Vector groups.

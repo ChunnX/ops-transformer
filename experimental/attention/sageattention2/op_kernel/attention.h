@@ -60,7 +60,7 @@ public:
             uint32_t qstart = tile * M;
             uint64_t qb = (uint64_t(b) * p.hq + h) * p.qp, kb = (uint64_t(b) * p.hk + kh) * p.kp;
             if ASCEND_IS_AIV {
-                vector_.BeginTile(b, kh, qb, qstart);
+                vector_.BeginTile(qb, qstart);
             }
             uint32_t limit = CAUSAL ? Min(p.sk, qstart + M) : p.sk;
             // Two-block QK lookahead. Drain the final two PV/O updates.
