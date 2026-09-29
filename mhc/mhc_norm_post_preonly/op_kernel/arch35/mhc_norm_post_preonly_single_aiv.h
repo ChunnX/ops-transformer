@@ -34,67 +34,10 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     }
     const float invRms0 = ComputeInvRms(sumSq0, invD_);
 
-    // 第二遍：计算输入归一化、残差融合及第一处x2低精度边界。完整x2以输出dtype常驻UB，
-    // 避免后续两遍从GM回读，同时不分配完整FP32 x2工作空间。
-    for (uint32_t tile = 0; tile < dLoop_; ++tile) {
-        const uint32_t tD = GetTileD(tile);
-        const uint32_t tOff = tile * dTile_;
-        ComputeX2PostTile(token, tOff, tD, invRms0, postVals);
-        PrepareX2Tile(token, tOff, tD, !USE_RMS_MID);
-
-        if constexpr (USE_RMS_MID) {
-            LocalTensor<float> out = bufResFp32_.Get<float>()[N * dTile_];
-            LocalTensor<T> x2Cache = bufActivationLowp_.Get<T>();
-            for (uint32_t half = 0; half < 2; ++half) {
-                const uint32_t h0 = half * 2;
-                const uint32_t h1 = h0 + 1;
-                MhcNormRegBase::VFPairSquareB16ToFp32(out, x2Cache[h0 * D_ + tOff], x2Cache[h1 * D_ + tOff], tD);
-                PipeBarrier<PIPE_V>();
-                midSqHalf[half] += ReduceSumPrecise(out, tD);
-            }
-        } else {
-            AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf);
-        }
-    }
-
-    // 可选中间归一化沿完整N*D向量计算，不按head分别归一化。
     if constexpr (USE_RMS_MID) {
-        const float totalMidSq = midSqHalf[0] + midSqHalf[1];
-        const float invRmsMid = 1.0f / sqrt(totalMidSq * invK_ + normEps_);
-        for (uint32_t tile = 0; tile < dLoop_; ++tile) {
-            const uint32_t tD = GetTileD(tile);
-            const uint32_t tOff = tile * dTile_;
-            // 单分块时复用残差融合结束后已空闲的residual scratch作为第二个gamma2槽，
-            // 保留Process预载的gamma0供后续token复用；多分块仍复用gamma0缓冲。
-            // 首个gamma2搬运和x2缓存恢复重叠，后续搬运与前一head的Vector计算重叠。
-            LocalTensor<float> gammaEven = bufScratchFp32_.Get<float>();
-            LocalTensor<float> gammaOdd =
-                dLoop_ == 1U ? bufResFp32_.Get<float>() : bufGammaFp32_.Get<float>();
-            CopyInGammaTile(gammaEven, gamma2Gm_, tOff, tD);
-            LocalTensor<T> x2Cache = bufActivationLowp_.Get<T>();
-            for (uint32_t n = 0; n < N; ++n) {
-                LocalTensor<float> gammaCurrent = gammaEven;
-                LocalTensor<float> gammaNext = gammaOdd;
-                if ((n & 1U) != 0) {
-                    gammaCurrent = gammaOdd;
-                    gammaNext = gammaEven;
-                }
-                SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
-                WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
-                if (n + 1 < N) {
-                    CopyInGammaTile(gammaNext, gamma2Gm_, (n + 1) * D_ + tOff, tD);
-                }
-                MhcNormRegBase::VFCastB16ScaleAndMulGammaToB16(x2Cache[n * D_ + tOff], x2Cache[n * D_ + tOff],
-                                                               gammaCurrent, invRmsMid, tD);
-                PipeBarrier<PIPE_V>();
-                // 当前缓存会在两轮后再次由MTE2写入，前两轮显式建立V到MTE2依赖。
-                if (n + 2 < N) {
-                    FenceVToMte2();
-                }
-            }
-            PrepareX2Tile(token, tOff, tD, true);
-            AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf);
-        }
+        BuildX2AndPartialsSingle5Op(token, invRms0, postVals, sumSqHalf, dotHalf, midSqHalf);
+    } else {
+        BuildX2AndPartialsSingle4Op(token, invRms0, postVals, sumSqHalf, dotHalf);
     }
     FenceMte3ToV();
 
@@ -136,6 +79,84 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
             ComputeAndCopyOutHInPrimeTile(hInCache, gamma1, invRms1,
                                        (uint64_t)token * D_ + tOff, tD);
         }
+    }
+}
+
+template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
+__aicore__ inline void
+KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::BuildX2AndPartialsSingle4Op(
+    uint32_t token, float invRms0, const float (&postVals)[N], float (&sumSqHalf)[2], float (&dotHalf)[2][N])
+{
+    // 每个tile输出低精度x2后立即计算Phi partial。
+    for (uint32_t tile = 0; tile < dLoop_; ++tile) {
+        const uint32_t tD = GetTileD(tile);
+        const uint32_t tOff = tile * dTile_;
+        ComputeX2PostTile(token, tOff, tD, invRms0, postVals);
+        PrepareX2Tile(token, tOff, tD, true);
+        AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf);
+    }
+}
+
+template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
+__aicore__ inline void
+KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::BuildX2AndPartialsSingle5Op(
+    uint32_t token, float invRms0, const float (&postVals)[N], float (&sumSqHalf)[2], float (&dotHalf)[2][N],
+    float (&midSqHalf)[2])
+{
+    // 第一遍计算x2低精度边界和中间归一化平方和。
+    for (uint32_t tile = 0; tile < dLoop_; ++tile) {
+        const uint32_t tD = GetTileD(tile);
+        const uint32_t tOff = tile * dTile_;
+        ComputeX2PostTile(token, tOff, tD, invRms0, postVals);
+        PrepareX2Tile(token, tOff, tD, false);
+
+        LocalTensor<float> out = bufResFp32_.Get<float>()[N * dTile_];
+        LocalTensor<T> x2Cache = bufActivationLowp_.Get<T>();
+        for (uint32_t half = 0; half < 2; ++half) {
+            const uint32_t h0 = half * 2;
+            const uint32_t h1 = h0 + 1;
+            MhcNormRegBase::VFPairSquareB16ToFp32(out, x2Cache[h0 * D_ + tOff], x2Cache[h1 * D_ + tOff], tD);
+            PipeBarrier<PIPE_V>();
+            midSqHalf[half] += ReduceSumPrecise(out, tD);
+        }
+    }
+
+    // 中间归一化沿完整N*D向量计算，不按head分别归一化。
+    const float totalMidSq = midSqHalf[0] + midSqHalf[1];
+    const float invRmsMid = 1.0f / sqrt(totalMidSq * invK_ + normEps_);
+    for (uint32_t tile = 0; tile < dLoop_; ++tile) {
+        const uint32_t tD = GetTileD(tile);
+        const uint32_t tOff = tile * dTile_;
+        // 单分块时复用残差融合结束后已空闲的residual scratch作为第二个gamma2槽，
+        // 保留Process预载的gamma0供后续token复用；多分块仍复用gamma0缓冲。
+        // 首个gamma2搬运和x2缓存恢复重叠，后续搬运与前一head的Vector计算重叠。
+        LocalTensor<float> gammaEven = bufScratchFp32_.Get<float>();
+        LocalTensor<float> gammaOdd =
+            dLoop_ == 1U ? bufResFp32_.Get<float>() : bufGammaFp32_.Get<float>();
+        CopyInGammaTile(gammaEven, gamma2Gm_, tOff, tD);
+        LocalTensor<T> x2Cache = bufActivationLowp_.Get<T>();
+        for (uint32_t n = 0; n < N; ++n) {
+            LocalTensor<float> gammaCurrent = gammaEven;
+            LocalTensor<float> gammaNext = gammaOdd;
+            if ((n & 1U) != 0) {
+                gammaCurrent = gammaOdd;
+                gammaNext = gammaEven;
+            }
+            SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
+            WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
+            if (n + 1 < N) {
+                CopyInGammaTile(gammaNext, gamma2Gm_, (n + 1) * D_ + tOff, tD);
+            }
+            MhcNormRegBase::VFCastB16ScaleAndMulGammaToB16(x2Cache[n * D_ + tOff], x2Cache[n * D_ + tOff],
+                                                           gammaCurrent, invRmsMid, tD);
+            PipeBarrier<PIPE_V>();
+            // 当前缓存会在两轮后再次由MTE2写入，前两轮显式建立V到MTE2依赖。
+            if (n + 2 < N) {
+                FenceVToMte2();
+            }
+        }
+        PrepareX2Tile(token, tOff, tD, true);
+        AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf);
     }
 }
 

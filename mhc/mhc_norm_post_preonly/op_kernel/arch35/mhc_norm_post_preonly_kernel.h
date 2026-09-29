@@ -166,6 +166,12 @@ public:
 
 private:
     __aicore__ inline void ProcessTokenSingleAiv(uint32_t token);
+    __aicore__ inline void BuildX2AndPartialsSingle4Op(uint32_t token, float invRms0,
+                                                      const float (&postVals)[N], float (&sumSqHalf)[2],
+                                                      float (&dotHalf)[2][N]);
+    __aicore__ inline void BuildX2AndPartialsSingle5Op(uint32_t token, float invRms0,
+                                                      const float (&postVals)[N], float (&sumSqHalf)[2],
+                                                      float (&dotHalf)[2][N], float (&midSqHalf)[2]);
     __aicore__ inline void ProcessTokenDualSiblingAiv(uint32_t token);
     __aicore__ inline void ProcessTokenDual4Op(uint32_t token);
     __aicore__ inline void ProcessTokenDual5Op(uint32_t token);
