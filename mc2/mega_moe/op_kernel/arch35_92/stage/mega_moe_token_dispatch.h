@@ -480,7 +480,7 @@ __aicore__ inline void PrepareMoeExpertTokenCountTable(const MoeStageCommonConfi
     if constexpr (g_coreType == AIC) {
         return;
     }
-    if (GetSubBlockIdx() != 1U) {
+    if (!MegaMoeHardwarePolicy::RunsDispatchVectorWork()) {
         // AIV0 不读取 count，但 mode 0 需要全部 AIV 每轮各上报一次；参与去重建表的 AIV0
         // 经 PrepareDedupPrepassAiv0Local -> LoadAndComputeExpertCountTable 已上报，此处不得重复。
         // 条件必须与 PrepareDedupPrepassAiv0Local 的启用门严格互补（含 hiddenDim 档位），
@@ -520,7 +520,7 @@ __aicore__ inline void ReloadDispatchCumsumRange(const MoeStageCommonConfig& com
     if constexpr (g_coreType == AIC) {
         return;
     }
-    if (GetSubBlockIdx() != 1U) {
+    if (!MegaMoeHardwarePolicy::RunsDispatchVectorWork()) {
         return;
     }
 
@@ -548,7 +548,7 @@ __aicore__ inline void ExportExpertTokenCounts(const MoeStageCommonConfig& commo
     if constexpr (g_coreType == AIC) {
         return;
     }
-    if (GetSubBlockIdx() != 1U || countWorkspace.blockIdx != 0U) {
+    if (!MegaMoeHardwarePolicy::RunsDispatchVectorWork() || countWorkspace.blockIdx != 0U) {
         return;
     }
 

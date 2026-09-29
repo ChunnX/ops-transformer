@@ -23,6 +23,7 @@
 #include "lib/matmul_intf.h"
 #include "tensor_api/tensor.h"
 #include "adv_api/reduce/reduce.h"
+#include "../common/mega_moe_arch_policy.h"
 #include "../common/mega_moe_gmm_common.h"
 #include "../common/mega_moe_utils.h"
 #include "../common/mega_moe_mxfp8_utils.h"
@@ -290,7 +291,7 @@ __aicore__ inline WaveCombineBufferConfig InitWaveCombineBuffers(const MoeStageC
     if constexpr (g_coreType == AIC) {
         return bufferConfig;
     }
-    if (!IncludeAiv0 && GetSubBlockIdx() != 1U) {
+    if (!IncludeAiv0 && !MegaMoeHardwarePolicy::RunsDispatchVectorWork()) {
         return bufferConfig;
     }
     bufferConfig.rowBytes = common.tokenHiddenDim * sizeof(bfloat16_t);
@@ -342,7 +343,7 @@ __aicore__ inline WaveCombineBufferConfig PrepareFinalWaveCombineBuffers(
     if constexpr (g_coreType == AIC) {
         return currentBufferConfig;
     }
-    if (ReinitializeAllAiv || GetSubBlockIdx() == 0U) {
+    if (ReinitializeAllAiv || MegaMoeHardwarePolicy::RunsComputeVectorWork()) {
         return InitWaveCombineBuffers<CombineMode, true>(common, scratch);
     }
     return currentBufferConfig;
@@ -370,10 +371,11 @@ __aicore__ inline WorkRange GetWaveCombineOwnedRange(const AivJobContext& job, u
     }
     AivJobContext combineJob = job;
     if constexpr (IncludeAiv0) {
-        constexpr uint32_t AIV_CORE_COUNT_PER_AIC = 2U;
-        uint32_t subBlockIdx = static_cast<uint32_t>(GetSubBlockIdx());
-        combineJob = {job.jobIndex * AIV_CORE_COUNT_PER_AIC + subBlockIdx, job.totalJobs * AIV_CORE_COUNT_PER_AIC};
-    } else if (GetSubBlockIdx() != 1U) {
+        constexpr uint32_t AIV_CORE_COUNT_PER_AIC = MegaMoeHardwarePolicy::VECTOR_CORE_COUNT_PER_CUBE;
+        uint32_t vectorRoleIdx = MegaMoeHardwarePolicy::GetVectorRoleIdx();
+        combineJob = {job.jobIndex * AIV_CORE_COUNT_PER_AIC + vectorRoleIdx,
+                      job.totalJobs * AIV_CORE_COUNT_PER_AIC};
+    } else if (!MegaMoeHardwarePolicy::RunsDispatchVectorWork()) {
         return {};
     }
     if (combineJob.totalJobs == 0U || combineJob.jobIndex >= combineJob.totalJobs) {
@@ -794,7 +796,7 @@ __aicore__ inline void Gmm2ExecGeneric(Scheduler& scheduler, const GMMAddrInfo& 
     } else if constexpr (NotifyCombineTileReady) {
         // NotifyCombineTileReady 为真时 AIV1 逐 tile 锁步消费。combine 去重的独立消费路径
         // （RunWaveCombineStageDedup）由调用方把本参数实例化为 false，整个分支编译期裁掉。
-        if (GetSubBlockIdx() == 1U) {
+        if (MegaMoeHardwarePolicy::RunsDispatchVectorWork()) {
             using MakeLayoutC = typename KernelConfig::MakeLayoutC;
             CombineTokenRange<ElementC, MakeLayoutC>(workSet.scheduler, workSet.gmC, *params, gmmAddrInfo, config,
                                                      startLoopIdx, tileNum);
@@ -853,7 +855,7 @@ __aicore__ inline void Gmm2ExecA8W4(Scheduler& scheduler, const GMMAddrInfo& gmm
             blockMmad, workSet.scheduler, workSet.gmA, workSet.gmScaleA, workSet.gmScaleB, workSet.gmC, gmmAddrInfo,
             config, startLoopIdx, tileNum, expertTokenCount, rowOffsetInExpert);
     } else {
-        if (GetSubBlockIdx() == 0U) {
+        if (MegaMoeHardwarePolicy::RunsComputeVectorWork()) {
             Gmm2Aiv0PrologueA8W4(*pipeline.block, workSet.scheduler, workSet.gmB, config, startLoopIdx, tileNum);
         } else if constexpr (NotifyCombineTileReady) {
             // 同上：W4 路径去重开关走运行时判断（嵌套模板参数触发编译器代码生成问题）。
@@ -918,8 +920,7 @@ __aicore__ inline void RunGmm2Generic(const AscendC::Shape<int64_t, int64_t, int
                                       void* blockMmadContext = nullptr, bool allowWeightL2Bypass = false,
                                       uint32_t rowOffsetInExpert = 0U, const Params* params = nullptr)
 {
-    BlockJobContext blockJob{static_cast<uint32_t>(GetBlockIdx() / GetTaskRation()),
-                             static_cast<uint32_t>(GetBlockNum())};
+    BlockJobContext blockJob{MegaMoeHardwarePolicy::GetLogicalBlockIdx(), static_cast<uint32_t>(GetBlockNum())};
     RunGmm2Generic<CombineQuantMode, ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB, IsWeightNZ,
                    IsLayered, Gmm1TileM, TopkWeightsPrefetch, IsShared, IsWaveFlagGrained, NotifyCombineTileReady>(
         problemShape, gmmAddrInfo, startBlockIdx, blockJob, blockMmadContext, allowWeightL2Bypass, rowOffsetInExpert,
@@ -975,8 +976,7 @@ __aicore__ inline void RunGmm2A8W4(const BlockContext& pipeline,
                                    const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx,
                                    const Params* params = nullptr)
 {
-    BlockJobContext blockJob{static_cast<uint32_t>(GetBlockIdx() / GetTaskRation()),
-                             static_cast<uint32_t>(GetBlockNum())};
+    BlockJobContext blockJob{MegaMoeHardwarePolicy::GetLogicalBlockIdx(), static_cast<uint32_t>(GetBlockNum())};
     RunGmm2A8W4<ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB, Gmm1TileM, TopkWeightsPrefetch,
                 IsShared, IsLayered, IsWaveFlagGrained, NotifyCombineTileReady>(
         pipeline, problemShape, gmmAddrInfo, startBlockIdx, blockJob, static_cast<uint32_t>(Get<M_VALUE>(problemShape)),

@@ -21,6 +21,7 @@
 #include "kernel_operator.h"
 #include "op_kernel/math_util.h"
 #include "mega_moe_constants.h"
+#include "mega_moe_arch_policy.h"
 #include "mega_moe_gmm_epilogue_sync.h"
 #include "mega_moe_types.h"
 
@@ -214,7 +215,7 @@ __aicore__ inline WorkRange GetRotatedBalancedWorkRange(uint32_t totalWorkItems,
     return GetBalancedWorkRange(totalWorkItems, {.jobIndex = logicalWorkerIdx, .totalJobs = workerCount});
 }
 
-#if defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__)
+#if defined(MEGA_MOE_IS_KERNEL_COMPILE)
 // 使用调用方准备的全零 UB Tensor 清理指定范围；range 以 int32 元素为单位。
 __aicore__ inline void ResetWorkspaceRegion(const WorkRange& range, GM_ADDR regionPtr, int32_t batchElementCount,
                                             LocalTensor<int32_t>& resetTensor)
@@ -244,8 +245,8 @@ __aicore__ inline void ResetWorkspaceRegion(const AivJobContext& job, GM_ADDR re
 
 __aicore__ inline void TilingByCore(int32_t totalLen, int32_t& coreLen, int32_t& coreOffset, int32_t align = ALIGN_32)
 {
-    int32_t coreIdx = GetBlockIdx();
-    int32_t coreNum = GetBlockNum() * 2;
+    int32_t coreIdx = static_cast<int32_t>(MegaMoeHardwarePolicy::GetVectorJobIdx());
+    int32_t coreNum = static_cast<int32_t>(MegaMoeHardwarePolicy::GetVectorJobCount());
     int32_t lenPerCore = Ops::Base::CeilDiv(static_cast<uint32_t>(totalLen), static_cast<uint32_t>(coreNum));
     int32_t lenPerCoreAlign = Ops::Base::CeilAlign(static_cast<uint32_t>(lenPerCore), static_cast<uint32_t>(align));
     coreLen = lenPerCoreAlign;

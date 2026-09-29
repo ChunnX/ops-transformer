@@ -443,7 +443,8 @@ __aicore__ inline void DispatchOwnedExpertRowsDedup(const TokenDispatchConfig& c
 }
 __aicore__ inline void WaitDedupPrepassPublishGate(const TokenDispatchConfig& context, const Params& params)
 {
-    if (context.dedup.dedupMode == 0 || params.tilingData->hiddenDim > DEDUP_AIV0_PREPASS_MAX_HIDDEN_DIM) {
+    if (MegaMoeHardwarePolicy::VECTOR_CORE_COUNT_PER_CUBE == 1U || context.dedup.dedupMode == 0 ||
+        params.tilingData->hiddenDim > DEDUP_AIV0_PREPASS_MAX_HIDDEN_DIM) {
         return;
     }
     // 为什么要这道门：AIV0 建表用的 UB 区，会在 GMM1 开始算之后被 AIC 覆写。而 GMM1 是
@@ -489,7 +490,7 @@ __aicore__ inline void DispatchTokenRange(const TokenDispatchConfig& context, co
     if constexpr (g_coreType == AIC) {
         return;
     }
-    if (GetSubBlockIdx() != 1U || blockJob.totalJobs == 0U) {
+    if (!MegaMoeHardwarePolicy::RunsDispatchVectorWork() || blockJob.totalJobs == 0U) {
         return;
     }
     WaitDedupPrepassPublishGate(context, params);
@@ -553,7 +554,8 @@ __aicore__ inline void PrepareDedupPrepassAiv0Local(const DedupConfig& dedup, co
     if constexpr (g_coreType == AIC) {
         return;
     }
-    if (dedup.dedupMode == 0 || GetSubBlockIdx() != 0U ||
+    if (MegaMoeHardwarePolicy::VECTOR_CORE_COUNT_PER_CUBE == 1U ||
+        dedup.dedupMode == 0 || GetSubBlockIdx() != 0U ||
         params.tilingData->hiddenDim > DEDUP_AIV0_PREPASS_MAX_HIDDEN_DIM) {
         return;
     }

@@ -104,7 +104,7 @@ __aicore__ inline WaveCombineBufferConfig InitWaveCombineBuffersDedup(const MoeS
     if constexpr (g_coreType == AIC) {
         return bufferConfig;
     }
-    if (!IncludeAiv0 && GetSubBlockIdx() != 1U) {
+    if (!IncludeAiv0 && !MegaMoeHardwarePolicy::RunsDispatchVectorWork()) {
         return bufferConfig;
     }
     bufferConfig.rowBytes = common.tokenHiddenDim * static_cast<uint32_t>(sizeof(bfloat16_t));
@@ -270,6 +270,7 @@ __aicore__ inline void DrainCombineRowBuffersDedup(uint32_t &issuedRowCount, uin
 __aicore__ inline void WaitDedupPrepassAllDone(const Params &params)
 {
     WaitUntilGmFlagEquals(reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.dedupPrepassReadyPtr),
+                          MegaMoeHardwarePolicy::VECTOR_CORE_COUNT_PER_CUBE == 2U &&
                           params.tilingData->hiddenDim <= DEDUP_AIV0_PREPASS_MAX_HIDDEN_DIM ?
                               (static_cast<int32_t>(GetBlockNum()) | (static_cast<int32_t>(GetBlockNum()) << 16)) :
                               static_cast<int32_t>(GetBlockNum()));

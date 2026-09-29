@@ -19,7 +19,12 @@
 #ifndef MEGA_MOE_PEERMEM_H
 #define MEGA_MOE_PEERMEM_H
 
-#if defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__)
+#if defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__) || defined(__DAV_310R6_CUBE__) || \
+    defined(__DAV_310R6_VEC__) || defined(__DAV_920R1_CUBE__) || defined(__DAV_920R1_VEC__) || \
+    defined(__NPU_ARCH__)
+#ifndef MEGA_MOE_IS_KERNEL_COMPILE
+#define MEGA_MOE_IS_KERNEL_COMPILE
+#endif
 #include "kernel_operator.h"
 #include "op_kernel/math_util.h"
 #define HOST_DEVICE __forceinline__[aicore]
@@ -243,7 +248,7 @@ HOST_DEVICE int64_t CalcPeermemLeastSize(const PeermemSizeParams &params)
            sizes.combineSendSize;
 }
 
-#if defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__)
+#if defined(MEGA_MOE_IS_KERNEL_COMPILE)
 // device 侧窗口各区基址；偏移推进顺序即上方 CalcPeermemLeastSize 的分段顺序。
 struct PeermemInfo {
     GM_ADDR rankSyncInWorldPtr{nullptr};

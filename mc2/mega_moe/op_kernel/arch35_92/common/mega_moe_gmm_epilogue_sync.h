@@ -11,6 +11,7 @@
 #define MEGA_MOE_GMM_EPILOGUE_SYNC_H
 
 #include "kernel_operator.h"
+#include "mega_moe_arch_policy.h"
 #include "mega_moe_constants.h"
 
 namespace MegaMoeImpl {
@@ -287,11 +288,13 @@ private:
     uint32_t activationSubBlockIdx_;
 };
 
-// GMM2 -> 非量化 Combine：固定使用 AIV1，事件和计数独立于 GMM1/Activation。
+// GMM2 -> 非量化 Combine：arch35 使用 AIV1，arch92 使用唯一 AIV，事件和计数独立于 GMM1/Activation。
 class Gmm2CombineSync {
 private:
     static constexpr uint16_t GMM2_FINISHED_FLAG = static_cast<uint16_t>(GmmEventPair::MOE_GMM2);
     static constexpr uint16_t COMBINE_FINISHED_FLAG = GMM2_FINISHED_FLAG + 1U;
+    static constexpr uint16_t COMBINE_AIV_FLAG_OFFSET =
+        (MegaMoeHardwarePolicy::VECTOR_CORE_COUNT_PER_CUBE - 1U) * GMM_AIV_FLAG_OFFSET;
 
 public:
     // AIC：提交前预留额度。累计第 16 个 tile 起，每次消费一个 ACK；已到达的 ACK 可直接通过。
@@ -300,7 +303,7 @@ public:
     __aicore__ inline void WaitForCombine()
     {
         if (pendingTiles_ == GMM_MAX_PENDING_TILES) {
-            AscendC::CrossCoreWaitFlag<AIC_SINGLE_AIV_SYNC_MODE, PIPE_S>(COMBINE_FINISHED_FLAG + GMM_AIV_FLAG_OFFSET);
+            AscendC::CrossCoreWaitFlag<AIC_SINGLE_AIV_SYNC_MODE, PIPE_S>(COMBINE_FINISHED_FLAG + COMBINE_AIV_FLAG_OFFSET);
             --pendingTiles_;
         }
         ++pendingTiles_;
@@ -308,7 +311,7 @@ public:
 
     __aicore__ inline void NotifyCombine()
     {
-        AscendC::CrossCoreSetFlag<AIC_SINGLE_AIV_SYNC_MODE, PIPE_FIX>(GMM2_FINISHED_FLAG + GMM_AIV_FLAG_OFFSET);
+        AscendC::CrossCoreSetFlag<AIC_SINGLE_AIV_SYNC_MODE, PIPE_FIX>(GMM2_FINISHED_FLAG + COMBINE_AIV_FLAG_OFFSET);
     }
 
     __aicore__ inline void WaitForGmm2()
@@ -316,7 +319,7 @@ public:
         AscendC::CrossCoreWaitFlag<AIC_SINGLE_AIV_SYNC_MODE, PIPE_MTE2>(GMM2_FINISHED_FLAG);
     }
 
-    // AIV1：Combine 输出写回后，归还一个额度。
+    // Combine AIV 输出写回后，归还一个额度。
     __aicore__ inline void NotifyGmm2()
     {
         AscendC::CrossCoreSetFlag<AIC_SINGLE_AIV_SYNC_MODE, PIPE_MTE3>(COMBINE_FINISHED_FLAG);
@@ -326,8 +329,7 @@ public:
     {
         if constexpr (g_coreType == AscendC::AIC) {
             while (pendingTiles_ != 0U) {
-                AscendC::CrossCoreWaitFlag<AIC_SINGLE_AIV_SYNC_MODE, PIPE_S>(COMBINE_FINISHED_FLAG +
-                                                                             GMM_AIV_FLAG_OFFSET);
+                AscendC::CrossCoreWaitFlag<AIC_SINGLE_AIV_SYNC_MODE, PIPE_S>(COMBINE_FINISHED_FLAG + COMBINE_AIV_FLAG_OFFSET);
                 --pendingTiles_;
             }
         }

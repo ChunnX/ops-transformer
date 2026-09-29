@@ -404,11 +404,12 @@ __aicore__ inline void DedupStoreRowDescChunk(DedupPrepassWorker<TopkIndexType> 
 __aicore__ inline bool GetDedupPrepassWorkerSlot(const BlockJobContext &blockJob, const Params &params,
                                                  uint32_t &workerIndex, uint32_t &totalWorkers)
 {
-    const bool aiv0Joins = params.tilingData->hiddenDim <= DEDUP_AIV0_PREPASS_MAX_HIDDEN_DIM;
-    if (GetSubBlockIdx() != 1U && !aiv0Joins) {
+    const bool aiv0Joins = MegaMoeHardwarePolicy::VECTOR_CORE_COUNT_PER_CUBE == 2U &&
+                          params.tilingData->hiddenDim <= DEDUP_AIV0_PREPASS_MAX_HIDDEN_DIM;
+    if (!MegaMoeHardwarePolicy::RunsDispatchVectorWork() && !aiv0Joins) {
         return false;
     }
-    workerIndex = GetSubBlockIdx() == 1U ? blockJob.jobIndex : blockJob.jobIndex + blockJob.totalJobs;
+    workerIndex = MegaMoeHardwarePolicy::RunsDispatchVectorWork() ? blockJob.jobIndex : blockJob.jobIndex + blockJob.totalJobs;
     totalWorkers = aiv0Joins ? blockJob.totalJobs * 2U : blockJob.totalJobs;
     return true;
 }
@@ -501,7 +502,7 @@ __aicore__ inline void BuildDedupRowDescTable(const DedupConfig &dedup, const Mo
     // 槽 0 = done 计数，AIV1 计低 16 位、AIV0 计高 16 位。dispatch 发布 gate 只等高位（全体 AIV0）：
     // 每个 AIV1 发布前自己必然已建完，AIV1 互等会打断 prepass 与 dispatch 的流水交叠（实测大形状
     // 明显劣化）；combine 兜底等全值。本核不等任何人。
-    AtomicAdd(readyBase, GetSubBlockIdx() == 1U ? static_cast<int32_t>(1) : static_cast<int32_t>(1) << 16);
+    AtomicAdd(readyBase, MegaMoeHardwarePolicy::RunsDispatchVectorWork() ? static_cast<int32_t>(1) : static_cast<int32_t>(1) << 16);
 }
 
 } // namespace MegaMoeImpl
