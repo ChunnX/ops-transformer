@@ -60,7 +60,8 @@ protected:
     }
 };
 
-TEST_F(SparseFlashMlaTiling, test_tiling_swa_only_ori_kv_fp16_tnd_pa_nd)
+namespace {
+void RunA2SwaOnlyOriKvFp16(int64_t topkValueMode, ge::graphStatus expectedStatus, uint64_t expectedTilingKey = UINT64_MAX)
 {
     SMLACompileInfo compileInfo = {};
     int64_t cuSeqLensQData[] = {0, 128, 256, 384, 512};
@@ -102,11 +103,22 @@ TEST_F(SparseFlashMlaTiling, test_tiling_swa_only_ori_kv_fp16_tnd_pa_nd)
             {"ori_win_right", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"layout_q", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
             {"layout_kv", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BBND")},
-            {"topk_value_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"topk_value_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(topkValueMode)},
             {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         },
         &compileInfo, "Ascend910B", 40, 196608);
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, smla_ut::kTndPaBnbdSwaTilingKey);
+    ExecuteTestCase(tilingContextPara, expectedStatus, expectedTilingKey);
+}
+} // namespace
+
+TEST_F(SparseFlashMlaTiling, test_tiling_swa_only_ori_kv_fp16_tnd_pa_nd)
+{
+    RunA2SwaOnlyOriKvFp16(1, ge::GRAPH_SUCCESS, smla_ut::kTndPaBnbdSwaTilingKey);
+}
+
+TEST_F(SparseFlashMlaTiling, test_tiling_topk_offset_rejected_on_a2)
+{
+    RunA2SwaOnlyOriKvFp16(2, ge::GRAPH_FAILED);
 }
 
 TEST_F(SparseFlashMlaTiling, test_tiling_swa_only_ori_kv_bf16_tnd_pa_nd)
@@ -848,7 +860,13 @@ TEST(SparseFlashMlaChecker, RejectsInvalidCompressionParams)
     }
     {
         CheckContext context = MakeSparseContext();
+        context.npuArch = NpuArch::DAV_3510;
         context.topkValueMode = 2;
+        EXPECT_EQ(compressionChecker.CheckSinglePara(context), ge::GRAPH_SUCCESS);
+    }
+    {
+        CheckContext context = MakeSparseContext();
+        context.topkValueMode = 3;
         EXPECT_EQ(compressionChecker.CheckSinglePara(context), ge::GRAPH_FAILED);
     }
     {
