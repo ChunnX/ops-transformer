@@ -296,6 +296,24 @@ __aicore__ inline void MoeDistributeDispatchA5<TemplateMoeDistributeDispatchA5Ty
     hccl_.InitV2((GM_ADDR)context, tilingData);
     hccl_.SetCcTilingV2(offsetof(MoeDistributeDispatchV2TilingData, mc2CcTiling1));
 
+    // 临时诊断（验证后删除）：纯 CCU 生产配方（SetCommTiling：HALFALLTOALLV+fullmesh/pairwise+A5_CCU_ENGINE）
+    // 下注入上下文的窗口表转储——核心判据 cuOut1/cuOut2 是否携带远端 rank 窗口映射（数据面换源候选）。
+    // 两行独立打印按风险递增（任一行 fault 不殃及前行）；rankId & 63U 掩码防异常值越界读表（容量 64）
+    if (GetBlockIdx() == 0) {
+        if ((unsigned long long)(uintptr_t)context != 0ULL) {
+            uint32_t selfIdx = context->rankId & 63U;
+            AscendC::printf("[CCU_PURE0] ctx=0x%llx selfIn=0x%llx in0=0x%llx in1=0x%llx\n",
+                            (unsigned long long)(uintptr_t)context, (unsigned long long)context->windowsIn[selfIdx],
+                            (unsigned long long)context->windowsIn[0], (unsigned long long)context->windowsIn[1]);
+            AscendC::printf("[CCU_PURE1] cuOut0=0x%llx cuOut1=0x%llx cuOut2=0x%llx winSize=%llu rank=%u dim=%u\n",
+                            (unsigned long long)context->windowsOut[0], (unsigned long long)context->windowsOut[1],
+                            (unsigned long long)context->windowsOut[2], (unsigned long long)context->winSize,
+                            context->rankId, context->rankDim);
+        } else {
+            AscendC::printf("[CCU_PURE0] ctx=NULL\n");
+        }
+    }
+
     sendBufGM_ = workspaceGM;
     sendSizeGM_ = sendBufGM_ + perRankDataSize_ * epWorldSize_;
     sendOffsetGM_ = sendSizeGM_ + epWorldSize_ * sizeof(uint64_t) * DUAL_DATA;
