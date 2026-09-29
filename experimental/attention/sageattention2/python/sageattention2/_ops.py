@@ -19,6 +19,15 @@ from torch.library import impl
 
 __all__ = ["sageattn", "sageattn_qk_int8_pv_fp8_asc", "replace_sdpa", "run"]
 
+_FP32_MAX = 3.4028234663852886e38
+
+
+def _check_sm_scale(scale: float) -> float:
+    """Reject non-finite or out-of-FP32-range softmax scales."""
+    if not math.isfinite(scale) or abs(scale) > _FP32_MAX:
+        raise ValueError("invalid FP32 sm_scale")
+    return scale
+
 
 class _FastPathPlan:
     """Pre-validated execution plan caching static shapes, layouts, and scaling."""
@@ -178,21 +187,12 @@ def _validate(q, k, v, layout, causal, gran, accum, kwargs):
     qs = q.shape
     ks = k.shape
     vs = v.shape
-    for n in qs:
-        if n <= 0:
-            raise ValueError("empty dimensions are unsupported")
-        if n >= 4294967232:  # 2**32 - 64
-            raise ValueError("dimensions exceed the kernel uint32 range")
-    for n in ks:
-        if n <= 0:
-            raise ValueError("empty dimensions are unsupported")
-        if n >= 4294967232:
-            raise ValueError("dimensions exceed the kernel uint32 range")
-    for n in vs:
-        if n <= 0:
-            raise ValueError("empty dimensions are unsupported")
-        if n >= 4294967232:
-            raise ValueError("dimensions exceed the kernel uint32 range")
+    for t in (qs, ks, vs):
+        for n in t:
+            if n <= 0:
+                raise ValueError("empty dimensions are unsupported")
+            if n >= 4294967232:  # 2**32 - 64
+                raise ValueError("dimensions exceed the kernel uint32 range")
 
     if layout == "HND":
         b, h, s, d = qs
@@ -245,10 +245,8 @@ def _meta(
     qc, _, _ = _validate(
         q, k, v, tensor_layout, is_causal, qk_quant_gran, pv_accum_dtype, {}
     )
-    if sm_scale is not None and (
-        not math.isfinite(sm_scale) or abs(sm_scale) > 3.4028234663852886e38
-    ):
-        raise ValueError("invalid FP32 sm_scale")
+    if sm_scale is not None:
+        _check_sm_scale(sm_scale)
     out = q.new_empty(q.shape)
     lse = q.new_empty(qc.shape[:3], dtype=torch.float32) if return_lse else None
     return out, lse
@@ -380,9 +378,7 @@ def _build_plan(
         kwargs if kwargs else {},
     )
     d_orig = q.shape[-1]
-    scale = 1.0 / math.sqrt(d_orig) if sm_scale is None else float(sm_scale)
-    if not math.isfinite(scale) or abs(scale) > 3.4028234663852886e38:
-        raise ValueError("invalid FP32 sm_scale")
+    scale = _check_sm_scale(1.0 / math.sqrt(d_orig) if sm_scale is None else float(sm_scale))
 
     effective_smooth_v = _effective_smooth_v(smooth_v, pv_accum_dtype)
 

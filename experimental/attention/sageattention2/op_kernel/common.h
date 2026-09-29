@@ -91,7 +91,10 @@ __simd_callee__ inline void FastReciprocal(AscendC::MicroAPI::RegTensor<float> &
     Sub(term, two, term, mask);
     Mul(dst, y0, term, mask);
 
-    // Second Newton-Raphson iteration: achieves full IEEE-754 FP32 machine precision (< 1 ULP error)
+    // Second Newton-Raphson iteration. The seed error swings across binades,
+    // so two iterations land in the ~2^-14 worst-case envelope asserted by
+    // tests/numeric_error_test.cpp -- far below the FP16/quantization noise
+    // this reciprocal feeds into (see the function header above).
     Mul(term, src, dst, mask);
     Sub(term, two, term, mask);
     Mul(dst, dst, term, mask);

@@ -10,27 +10,13 @@
 #include "softmax.h"
 namespace Sage {
 
-// Pure branchless SIMD causal mask: eliminates all scalar branch stalls on DaVinci VLIW Vector Core.
-// Bit-exact mathematical identity: for any laneOffset in [-7, 15], CompareScalar(laneOffset <= thresh)
-// is identical to thresh >= 15 ? true : (thresh < -7 ? false : (laneOffset <= thresh)) -- i.e. the
-// saturated thresholds (whole tile kept / whole tile masked) are already the single Select's
-// all-true / all-false outcomes, so no scalar fast path is needed (or legal: early returns inside
-// a __simd_callee__ crash the bisheng backend with "Do not know how to split the result").
-template <class RegT>
-__simd_callee__ inline __attribute__((always_inline)) void ApplyCausalMaskSubBlock(
-    RegT &x, int32_t thresh,
-    AscendC::MicroAPI::RegTensor<int16_t> &laneOffset,
-    AscendC::MicroAPI::RegTensor<half> &negative,
-    AscendC::MicroAPI::MaskReg &h)
-{
-    using namespace AscendC::MicroAPI;
-    MaskReg valid;
-    CompareScalar<int16_t, CMPMODE::LE>(valid, laneOffset, int16_t(thresh), h);
-    Select(x, x, negative, valid);
-}
-
 // Scale a pair of NZ score blocks across group halves by Q and K factors, apply optional causal mask, and accumulate block maximums.
 // Interleaves 4 rows across both blocks to ensure >= 3 independent instructions between Mul and consumers.
+// Masking is branchless SIMD: for any lane offset in [-7, 15], CompareScalar(laneOffset <= thresh)
+// equals thresh >= 15 ? true : (thresh < -7 ? false : laneOffset <= thresh) -- the saturated thresholds
+// (whole tile kept / whole tile masked) are already the single Select's all-true / all-false outcomes,
+// so no scalar fast path is needed (or legal: early returns inside a __simd_callee__ crash the bisheng
+// backend with "Do not know how to split the result"). Bit-exactness is locked by numeric test [9].
 template <bool MASK>
 __simd_callee__ inline __attribute__((always_inline)) void ScaleMaskAndMaxWideNZPair(
     __ubuf__ half *scores0, __ubuf__ half *scores1,
