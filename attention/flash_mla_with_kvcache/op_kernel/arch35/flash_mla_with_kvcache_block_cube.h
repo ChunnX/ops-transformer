@@ -19,6 +19,10 @@
 #include "../../../common/op_kernel/const_def.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "../utils/flash_mla_with_kvcache_type.h"
+#include "../../../common/op_kernel/memcopy/fa_gm_tensor.h"
+#include "../../../common/op_kernel/memcopy/fa_l1_tensor.h"
+#include "../../../common/op_kernel/memcopy/gm_coord.h"
+#include "../../../common/op_kernel/memcopy/attn_copy_gm_to_l1.h"
 using namespace AscendC;
 using namespace AscendC::Impl::Detail;
 using namespace regbaseutil;

@@ -20,7 +20,6 @@
 
 #include "flash_attn_block_cube_dn_unmerged.h"
 #include "flash_attn_block_vec_dn_unmerged.h"
-#include "memory_copy_arch35.h"
 #include "flash_attn_block_vec_flashdecode.h"
 
 #if ASC_DEVKIT_MAJOR >= 9

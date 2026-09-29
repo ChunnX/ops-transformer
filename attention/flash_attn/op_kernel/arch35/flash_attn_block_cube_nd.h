@@ -19,6 +19,10 @@
 #include "../../../common/op_kernel/matmul.h"
 #include "../../../common/op_kernel/const_def.h"
 #include "../../../common/op_kernel/arch_info.h"
+#include "../../../common/op_kernel/memcopy/fa_gm_tensor.h"
+#include "../../../common/op_kernel/memcopy/fa_l1_tensor.h"
+#include "../../../common/op_kernel/memcopy/gm_coord.h"
+#include "../../../common/op_kernel/memcopy/attn_copy_gm_to_l1.h"
 
 using namespace fa_base_matmul;
 

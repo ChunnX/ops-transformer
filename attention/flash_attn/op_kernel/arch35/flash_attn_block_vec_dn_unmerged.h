@@ -25,10 +25,13 @@
 #include "../../../common/op_kernel/const_def.h"
 #include "../../../common/op_kernel/vector_common.h"
 #include "../../../common/op_kernel/init_output.h"
-#include "memory_copy_arch35.h"
+#include "../../../common/op_kernel/memcopy/copy_ub_to_gm.h"
 #include "../utils/attn_sink_gs1.h"
 #include "../utils/attenmask_gs1.h"
 #include "../../../common/op_kernel/arch_info.h"
+#include "../../../common/op_kernel/memcopy/fa_gm_tensor.h"
+#include "../../../common/op_kernel/memcopy/fa_ub_tensor.h"
+#include "../../../common/op_kernel/memcopy/gm_coord.h"
 
 using namespace AscendC;
 using namespace FaVectorApi;
@@ -422,9 +425,9 @@ public:
                            HAS_MASK ? negativeIntScalar_ : NEGATIVE_MIN_VALUE_FP32);
         Mutex::Unlock<PIPE_V>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId_);
         Mutex::Lock<PIPE_MTE3>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId_);
-        DataCopySoftmaxLseS1Only<LAYOUT_T>(softmaxLseGm_, lseUb, runInfo.bIdx, runInfo.n2Idx, runInfo.gIdx,
-                                           runInfo.s1Idx + runInfo.vecMbaseIdx, runInfo.actVecMSize, constInfo_,
-                                           qSeqLensTool_);
+        uint64_t lseOffset = GetSoftmaxLseS1Offset<LAYOUT_T>(
+            runInfo.bIdx, runInfo.n2Idx, runInfo.gIdx, runInfo.s1Idx + runInfo.vecMbaseIdx, constInfo_, qSeqLensTool_);
+        CopyLseUbToGm<UbFormat::S1_ONLY>()(softmaxLseGm_, lseUb, lseOffset, runInfo.actVecMSize);
         Mutex::Unlock<PIPE_MTE3>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId_);
         lseOutUbBufId_ = (lseOutUbBufId_ + 1) % UB_LSE_OUT_BUFCNT;
     }
