@@ -1,5 +1,0 @@
-mode,M,tileM,K,N,loop
-precision,512,128,256,256,1
-precision,512,64,256,256,1
-precision,512,128,512,256,1
-perf,8192,512,2048,3584,10
