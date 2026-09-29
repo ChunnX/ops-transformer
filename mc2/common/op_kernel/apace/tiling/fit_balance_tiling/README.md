@@ -173,40 +173,63 @@ fullVolume 错 → 通信量与 mm 总量估计整体偏移。
 本引擎的模型：把 M 轴切成 1 短 + N 长，长块的通信时长恰好掩盖相邻块的计算时长（配平）；
 每多切一轮多付一份启动开销 b，用轮数搜索择优。
 
-### 3.2 通信模型：y = k·x + N·b + c
+配平的**锚点 = 流水线的垫片块**（先动起来打破串行依赖的那块）：
+有本地块的算子垫片是本地块（FRONT 首端 / BACK 尾端，比短块更好——零通信依赖或无 deadline）；
+无本地块的算子垫片是短块（通信 bound 前置先发、计算 bound 后置垫尾）。长块长度
+= 反解垫片块的时长——这是 FRONT/BACK/NONE 三态配平公式的统一原理。
 
-| 口径 | 公式 | 用途 |
-|---|---|---|
-| 单轮 | `k·x + b` | 配平反解的语义单位 |
-| 反解 | `x = (t − b) / k` | 长块长度 = 反解"要掩盖的时长" |
-| 总量 | `k·X + N·b + c` | 轮数搜索/门控的估值器（N 轮 vs 不切之差 = (N−1)·b 启动税） |
+### 3.2 通信模型（comm_model.h）
 
-k 一律按"引擎 x 口径（m × 通信矩阵另一维 × 有效字节数的 MB）"标定——通信份数口径已融进 k
-（AG 行直接填工具原始值，无需 ÷rankDim 预换算）。b=每轮启动开销（单轮全款），c=一次性固定开销。
+```
+x 的口径: m × commMatrixLen × realDtypeSize 的 MB(单份口径——份数已融进斜率 k)
+realDtypeSize = commDtypeSize / expansionFraction   // fp4 子字节: 1/2 = 0.5 B/元素
 
-### 3.3 计算模型
+单轮 CommTime(m)          = k·x + b
+反解 InverseCommTime(t)   = (t − b) / k            // b 整额扣除, 换算回 M 行数
+总量 TotalCommTime(m, N)  = k·X + N·b + c
+```
+
+- **k**（带宽斜率）：按引擎 x 口径拟合，通信份数口径已融进 k——聚合类算子标定行直接填
+  工具原始值（如 26.5894），无需 ÷rankDim 预换算；
+- **b**（每轮启动开销）：单轮全款——反解时从目标时间整额扣除，配平天然感知它；
+- **c**（一次性固定开销）：只进总量口径，不进单轮/反解（整个算子只付一次）；
+- **消费链**：单轮→配平反解（③）与 ⑤ 门控的首末块；总量→Estimate 通算比、⑤ 轮数搜索、
+  诊断打印（(N−1)·b = 启动税）；
+- **坑**：fp4 子字节建模只在 K 轴承载（A 侧输入）时需要——C 侧（计算输出）永远不是 fp4。
+
+### 3.3 计算模型（matmul_model.h）
 
 ```
 util = min(0.95, 0.75 × (K/1280)^0.7 × (调和平均/820)^mnExp)
-gradient = max(baseN,n) × max(baseK,k) / (算力 × 频率 × 核数 × util)
+调和平均 = (m × worksetShares × n) / (m × worksetShares + n)
+gradient = max(baseN,n) × max(baseK,k) / (computesPerCycle × 频率 × 核数 × util)
 MatmulTime(块长, rowMul) = max(baseM, 块长) × rowMul × gradient
+InverseMatmulTime(t, rowMul) = t / (rowMul × gradient), 抬到 baseM 下限
 ```
 
-mnExp 双口径：**0.7 聚合稳态**（数据齐/流水满，Estimate 用）；**0.6 本地窗口**（单份数据/流水未满，
-FRONT/BACK 本地块时长估计用——更保守）。
+逐项物理意义：
+- **基准 0.75**：shape 恰好达到阈值（K=1280、调和平均=820）时的平均利用率（两因子=1 的锚点）；
+- **K 因子 `^0.7`**：K 越大每元素 MAC 越多，装载/流水填充等固定开销摊得越薄；指数缓和增长
+  （线性太陡），单因子封顶 1.4；
+- **MN 调和平均**：**惩罚偏斜**——M/N 都够大才能铺满 baseM×baseN 的 cube 分块；m 巨大 n 极小
+  时被短板拖住。比几何平均更贴合分块阵列的实际填充率；`worksetShares` 乘进 m 是因为利用率
+  建模对象是稳态流水的工作集形状（不是单卡裸 m）；
+- **mnExp 双口径**：0.7 聚合稳态（数据齐/流水满，Estimate 用）；**0.6 本地窗口**（单份数据/
+  流水未满，增长更平缓 → FRONT/BACK 本地块时长估计更保守）；
+- **baseM/N/K 下限**（max）：小于基本块的 tile 也按基本块耗时计（阵列粒度）——防小 shape
+  耗时趋于 0；算力 `computesPerCycle` 按 (量化类别, isFp4, A/B 字节数) 四维键查标定档，
+  miss 落 defaultComputesPerCycle。
 
-### 3.4 键控维度（引擎不区分通信原语）
+### 3.4 数据流形态推导（InitCtx，calibration.h 的 dataflow 栏）
 
-原语的语义差异全部终结在标定层与两个结构枚举：
-
-| 差异 | 承载 |
-|---|---|
-| 通信份数/字节口径 | 标定斜率 k + dataflow 推导的 commVolumeMul |
-| 通信轴向（K/N）与承载侧（A/C dtype） | dataflow.order 推导 |
-| mm 工作集/总行数倍数 | dataflow 推导（localMMPosition / fullVolume） |
-| **流水线结构**（本地块在哪端/有无） | **LocalMMPosition**（引擎唯一结构键控） |
-| 通算顺序 | CommComputeOrder |
-| 通信引擎 | TilingCommEngine（CCU 触发单轮 256MB 整形） |
+```
+commOnKAxis    = (order == COMM_FIRST)          // 通信在前=传输入 A 侧→K 轴; 在后=传输出 C 侧→N 轴
+volumeMul      = fullVolume ? rankDim : 1        // 全量形态: 实算 mm 行数与单次通信字节均为切分域×rankDim
+mmRowMul       = volumeMul                        // mm 总行数倍数(MatmulTime 的 rowMul)
+commVolumeMul  = volumeMul                        // ⑥ 的 256MB 物理字节判定用(与 k 的口径融合无关)
+worksetShares  = (localMMPosition == FRONT) ? rankDim−1 : volumeMul
+                                                  // FRONT: 本地份剔出稳态工作集(单独按单份建模)
+```
 
 `LocalMMPosition` 三态的物理含义：
 
@@ -216,25 +239,80 @@ FRONT: 本地 mm 块在流水线首端——启动端被本地块免费占据(�
 BACK:  本地 mm 块在流水线尾端——本地保留份无通信 deadline, 与末块通信重叠,
        短块前置专职启动通信管道; 长块 = 反解本地块计算时长(末块通信恰好掩盖它)
 NONE:  无本地块——短块作流水线垫片(按 bound 判定放首/尾),
-       长块 = 反解短块的通信/计算时长(双向配平)
+       长块 = 反解短块的通信/计算时长(双向配平: 短块在后→反解其计算时长,
+       在前→反解其通信时长)
 ```
 
-### 3.5 求解流水（Schedule 六段）
+标定查表：通信行按（引擎分区 aicpu/ccu + rankDim）匹配（`FindCommFitRow`，miss=零值行→
+防御 NoCut）；算力行按四维形态键匹配（键推导与模型 dtype 分类同源）。
+**算力行哨兵判 `computesPerCycle == 0`**（勿用 aBytes——fp4 的 glue 真实口径 aBytes=0 合法）。
+
+### 3.5 离散切分引擎（cut_planner.h，CutPlanner 七步）
+
+把 ③ 反解出的连续长短种子整形成**合法、对齐、轮次受限**的整数块方案（总长守恒的守门人）：
 
 ```
-① Estimate     总量估计(通算比/bound 判定); FRONT/BACK 算本地窗口时长
-② SetShort     短块 = baseM 落位; NoCut 几何门(总长摆不下两块 → 不切)
-③ SetLong      长块反解: FRONT/BACK 反解本地窗口时长; NONE 双向配平反解短块
-④ 离散化       长短种子 → 合法整数块方案(块数/对齐/尾块/等分判定, CutPlanner 七步)
-⑤ 轮数搜索     budget ∈ [2, N₀) 线性枚举: 收紧轮次预算重跑④, 按"流水线总时
-   +门控       (含 N·b)"择优; 全部候选不敌全串行 → NoCut
-⑥ CCU 整形     单轮通信字节超 256MB → 候选表等长重切(仅 CCU)
+① GenerateInitialPartition  连续长块→离散块数
+   夹取 longTileLen ∈ [shortTileLen, totalLen − shortTileLen];
+   对齐到 mAlignLen(=baseM), 余数 > 对齐长×tol 才 ceil 进位;
+   tol 双值: 短块后置(计算 bound) 0.5——长块规整更重要; 前置(通信 bound) 0.75——倾向向下保块大;
+   numLongTile = (totalLen − shortTileLen×0.75) / longTileLen   ← 0.75 权重折算短块占位
+② 残余判定 + balanceCut     残余够大且长短接近且块数少(≤2)且线性度好 → 索性全等分
+   (等分 = 通信轮次最规整的保底形态)
+③ RedistributeTile          恰好两块且无本地块保护时残余均摊(头轻脚重修正);
+   FRONT/BACK 跳过——均摊会破坏含本地块的端部结构
+④ moreFrontTile             残余还装得下一个长块 → 多切一块比留巨大尾块好
+⑤ 轮次约束(整除改写)        totalTileCnt > maxTileCnt 且恰好整除对齐 → 改写纯等长块
+⑥ MaxTileCntUniform         任意超限兜底: ceil 对齐均分(少一块给尾块留位), 尾块吸收余数
+⑦ 尾块重算 + 对齐收尾       shortTileLen = 纯余数(守恒);
+   longTileLen > 1KB → AlignTileLarge(短块 ceil 对齐优先——它独立占一轮通信, 不对齐会粒度破碎);
+   ≤ 1KB → AlignTileSmall(碎尾吸收: 尾块 < 半块时从每长块借一格凑大; 大尾校正: 尾>主时重排)
+```
+
+### 3.6 求解流水（Schedule 六段）
+
+```
+① Estimate     总量估计: FindCubeUtil(聚合 0.7) → gradient → 总 mm/通时间 → 通算比;
+               FRONT/BACK 算本地窗口时长(FindCubeUtil(m, 1, 0.6), 除以更保守的本地利用率);
+               短块位置: FRONT→恒后置 / BACK→恒前置 / NONE→先行段为瓶颈侧则后置
+② SetShort     短块 = minTileLen(种子 = baseM) 落位; NoCut 几何门(总长 < 短块×2 → 不切)
+③ SetLong      长块反解: FRONT/BACK = InverseCommTime(本地窗口时长);
+               NONE = 双向配平(短块在后→反解其 mm 时长, 在前→反解其通信时长)
+④ 离散化       CutPlanner 七步(3.5); 本地块形态恒信线性段 + 保护端部结构
+⑤ 轮数搜索     budget ∈ [2, N₀) 线性枚举: 恢复 ③ 后形态(反解与轮数无关, 复用) +
+   +门控       收紧轮次预算重跑 ④ → 流水线总时择优; 全部候选不敌全串行 → NoCut
+⑥ CCU 整形     单轮通信字节 = 块长 × 另一维 × 字节 × commVolumeMul 超 256MB →
+               候选表 {2048,1024,512,256} 等长重切(大块优先=少轮次); 轮次预算 = 63−1;
+               两约束冲突放弃整形
 ```
 
 决策层次：**③④ 管块怎么切（配平），⑤ 管切几轮（启动税 vs 重叠收益），⑥ 管硬件上限**。
 
-⑤ 的流水线总时近似（EstimateCutTotalTime）按 LocalMMPosition/顺序分三形态，
-不可重叠段在流水线两端（通信在前的首块通信、计算在前的末块通信、BACK 的本地窗口归末段）。
+⑤ 的动机：配平产出的轮数 N₀ 是"配平衡最优"而非全局最优——通信重时 T(N) 随轮数单调增
+（启动税吃收益）、计算重时单调降（至首块通信≈b 触底），最优常在中间，二值判定会错过。
+成本：N₀≤63 档 × 纯整数重切 = host 微秒级。
+
+⑤ 的流水线总时近似（EstimateCutTotalTime，三形态，不可重叠段在流水线两端）：
+```
+FRONT:  T = T_comm(首块) + max(T_comm(其余轮), T_mm − T_mm(末块)) + T_mm(末块)
+BACK:   T = T_mm(首块) + max(T_mm − T_mm(首块) − 本地窗口, T_comm(除末轮)) + max(T_comm(末轮), 本地窗口)
+NONE:   T = T_mm(首块) + max(T_mm − T_mm(首块), T_comm(除末轮)) + T_comm(末轮)   [计算在前]
+```
+
+### 3.7 方法-消费方速查
+
+| 方法 | 消费方 |
+|---|---|
+| CommTime / InverseCommTime | ③ 配平反解 / ⑤ 门控首末块 |
+| TotalCommTime | ① Estimate / ⑤ 搜索与门控 / 诊断打印 |
+| FindCubeUtil(0.7) / gradient / MatmulTime / InverseMatmulTime | ① Estimate / ③ 配平 / ⑤ 门控 |
+| FindCubeUtil(m, 1, 0.6) | ① 本地窗口（FRONT/BACK） |
+| CutPlanner 全部离散方法 | ④ / ⑤ 搜索重跑 / NoCut |
+| EstimateCutTotalTime | ⑤ 搜索/门控估值器 |
+| ApplySingleRoundCommLimit | ⑥（CCU 键） |
+| FindCommFitRow / IsCommCalibrated | 标定查表 / op 分派 |
+| MakeFitBalanceArgs | 存量算子旧 args 转换 |
+| CutResultFromCof | miss 分派（COF 结果 → 引擎切分形态） |
 
 ---
 
