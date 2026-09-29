@@ -11,6 +11,7 @@
 #pragma once
 #include "attention_block_vec.h"
 #include "softmax_wide.h"
+#include "quant.h"
 namespace Sage {
 struct WideVectorLayout {
     static constexpr uint32_t SCORE_UB = 0, PV_UB = 4 * HALF * N * 2;
@@ -32,6 +33,15 @@ class AttentionBlockVecWide : public AttentionBlockVec<T, DP, WideVectorLayout> 
     using Base = AttentionBlockVec<T, DP, WideVectorLayout>;
 
 public:
+    using Base::Init;
+    __aicore__ inline __attribute__((always_inline)) void Init(FixedResource &resource, GM_ADDR q, GM_ADDR qs,
+                                                               GM_ADDR ks, GM_ADDR vMean, GM_ADDR out,
+                                                               GM_ADDR lse, SageParams params)
+    {
+        Base::Init(resource, qs, ks, vMean, out, lse, params);
+        qg_.SetGlobalBuffer((__gm__ T *)q);
+        qg_.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
+    }
     template <bool CAUSAL>
     __aicore__ inline __attribute__((always_inline)) void SoftmaxWide(uint32_t step, uint32_t count, uint32_t qstart,
                                                                       uint32_t ring, uint64_t nextScale)
@@ -116,9 +126,53 @@ public:
         // MAX_UB already reserves 512 bytes: two independent 256-byte slots.
         maxima_ = resource_->ubBuf.template GetBufferByByte<half>(Base::MAX_UB + (ordinal & 1) * 256);
         if (first) {
+            constexpr uint32_t Q_IN_UB = WideVectorLayout::SCORE_UB;
+            constexpr uint32_t Q_FP32_UB = Q_IN_UB + HALF * DP * sizeof(T);
+            constexpr uint32_t Q_INT8_UB = Q_FP32_UB + HALF * DP * sizeof(float);
+            constexpr uint32_t Q_RAW_SCALE = Q_INT8_UB + HALF * DP * sizeof(int8_t);
+            constexpr uint32_t Q_INV_SCALE = Q_RAW_SCALE + HALF * sizeof(float);
+            constexpr uint32_t Q_FACTORS = Q_INV_SCALE + HALF * sizeof(float);
+            // The scratch borrows the two even-ring score stripes, so it must stay
+            // clear of stripe 2 where an odd-ring group is still live.
+            static_assert(Q_FACTORS + 128 * sizeof(float) <= SCORE_UB + 2 * HALF * N * 2,
+                          "streaming Q exceeds the retired score stripes");
+
+            auto input = resource_->ubBuf.template GetBufferByByte<T>(Q_IN_UB);
+            auto x = resource_->ubBuf.template GetBufferByByte<float>(Q_FP32_UB);
+            auto out = resource_->ubBuf.template GetBufferByByte<int8_t>(Q_INT8_UB);
+            auto scales = resource_->ubBuf.template GetBufferByByte<float>(Q_RAW_SCALE);
+            auto inverseScales = resource_->ubBuf.template GetBufferByByte<float>(Q_INV_SCALE);
+            auto factors = resource_->ubBuf.template GetBufferByByte<float>(Q_FACTORS);
+
+            // The previous group's MTE3 copy may still be reading stripes 0 and 1,
+            // which the Q scratch overwrites; drain it along with the pending V reads.
+            Sync<HardEvent::MTE3_MTE2>();
             Sync<HardEvent::V_MTE2>();
-            DataCopy(qsu_, Base::qsg_[qb + qstart + subBlockIdx_ * HALF], HALF);
+            uint64_t qToken = qb + qstart + subBlockIdx_ * HALF;
+            DataCopy(input, qg_[qToken * DP], HALF * DP);
             Sync<HardEvent::MTE2_V>();
+
+            Cast(x, input, RoundMode::CAST_NONE, HALF * DP);
+            PipeBarrier<PIPE_V>();
+
+            FixedScaleFactorsVF((__ubuf__ float *)factors.GetPhyAddr(), params_.smScale);
+
+            QuantRowsVF((__ubuf__ float *)x.GetPhyAddr(), (__ubuf__ float *)x.GetPhyAddr(),
+                        (__ubuf__ float *)scales.GetPhyAddr(), (__ubuf__ int8_t *)out.GetPhyAddr(),
+                        (__ubuf__ half *)qsu_.GetPhyAddr(), (__ubuf__ float *)factors.GetPhyAddr(),
+                        (__ubuf__ float *)inverseScales.GetPhyAddr(), DP, 0, HALF, params_.qg);
+
+            Sync<HardEvent::V_MTE3>();
+            // Cube reads Q as zN: each 32-column block is a plane of 128 rows spaced
+            // 32 bytes apart, planes 4096 bytes apart. Gather one plane per copy;
+            // UB-to-L1 counts are in 32-byte units and gaps exclude the burst.
+            auto ql1 = resource_->l1Buf.template GetBufferByByte<int8_t>(subBlockIdx_ * HALF * 32);
+            DataCopyParams plane{HALF, 1, DP / 32 - 1, 0};
+            #pragma unroll
+            for (uint32_t cb = 0; cb < DP / 32; ++cb)
+                DataCopy(ql1[cb * M * 32], out[cb * 32], plane);
+            CrossCoreSetFlag<4, PIPE_MTE3>(Q_READY);
+
             Duplicate(maxima_, half(FP16_MIN), 128);
             PipeBarrier<PIPE_V>();
         }
@@ -219,5 +273,8 @@ private:
     using Base::PV_SLOT_BYTES;
     using Base::ALPHA_UB;
     using Base::SUM_UB;
+    using Base::params_;
+
+    GlobalTensor<T> qg_;
 };
 } // namespace Sage

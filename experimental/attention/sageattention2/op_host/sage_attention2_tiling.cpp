@@ -156,7 +156,9 @@ ge::graphStatus Tile(gert::TilingContext *c)
     c->SetBlockDim(p.cores);
     p.qp = RoundUpTo(p.sq, 128U);
     p.kp = RoundUpTo(p.sk, 512U);
-    const bool wide = p.dp == 128 && p.sq % 128 == 0 && p.sk % 512 == 0 && p.sk >= 4096;
+    // Streaming Q reads the raw Q tensor with a DP pitch, so it needs the padded
+    // head width to equal the logical one; qp == sq follows from sq % 128 == 0.
+    const bool wide = p.dp == 128 && p.d == p.dp && p.sq % 128 == 0 && p.sk % 512 == 0 && p.sk >= 4096;
     c->SetTilingKey(GET_TPL_TILING_KEY(static_cast<uint32_t>(dt), wide));
     // SyncAll requires the entire MIX 1:2 grid to be resident together.
     c->SetScheduleMode(1);
@@ -182,11 +184,15 @@ ge::graphStatus Tile(gert::TilingContext *c)
         bytes += size;
         return true;
     };
+    // When wide is true, On-Chip Streaming Q Quantization is active: q8 and
+    // qScale are streamed directly on-chip in L1 and UB, requiring zero Global
+    // Memory workspace and saving tens to hundreds of megabytes of HBM.
+    const uint64_t qBatch = wide ? 0ULL : p.b;
     if (!allocate(t.mean, {p.b, p.hk, p.dp, sizeof(float)}) ||
         !allocate(t.vMean, {p.b, p.hk, p.dp, sizeof(float)}) ||
         !allocate(t.vMxScale, {p.b, p.hk, p.kp / 32, p.dp}) ||
-        !allocate(t.q8, {p.b, p.hq, p.qp, p.dp}) || !allocate(t.k8, {p.b, p.hk, p.kp, p.dp}) ||
-        !allocate(t.v8, {p.b, p.hk, p.kp, p.dp}) || !allocate(t.qScale, {p.b, p.hq, p.qp, sizeof(uint16_t)}) ||
+        !allocate(t.q8, {qBatch, p.hq, p.qp, p.dp}) || !allocate(t.k8, {p.b, p.hk, p.kp, p.dp}) ||
+        !allocate(t.v8, {p.b, p.hk, p.kp, p.dp}) || !allocate(t.qScale, {qBatch, p.hq, p.qp, sizeof(uint16_t)}) ||
         !allocate(t.kScale, {p.b, p.hk, p.kp, sizeof(uint16_t)})) {
         return Failure(__LINE__);
     }
