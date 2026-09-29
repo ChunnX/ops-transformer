@@ -2052,11 +2052,6 @@ ge::graphStatus SMLATilingCheck::CheckFeatureShape() const
                                                           std::to_string(*opParamInfo_.cmpMaskMode).c_str(),
                                                           "Cmp_mask_mode should be {0, 3} on " + A5_PLATFORM_LOG),
                     return ge::GRAPH_FAILED);
-        OP_CHECK_IF(
-            topkValueMode_ != 1,
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "topk_value_mode", std::to_string(topkValueMode_).c_str(),
-                                                  "Topk_value_mode should be 1"),
-            return ge::GRAPH_FAILED);
         OP_CHECK_IF(oriWinLeft_ < -1,
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                         opName_, "ori_win_left", std::to_string(oriWinLeft_).c_str(),
@@ -2068,6 +2063,11 @@ ge::graphStatus SMLATilingCheck::CheckFeatureShape() const
                         "Ori_win_right should be -1(unlimited) or non-negative on " + A5_PLATFORM_LOG),
                     return ge::GRAPH_FAILED);
     } else {
+        OP_CHECK_IF(
+            topkValueMode_ != 1,
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "topk_value_mode", std::to_string(topkValueMode_).c_str(),
+                                                  "Topk_value_mode should be 1 on " + A2_A3_PLATFORM_LOG),
+            return ge::GRAPH_FAILED);
         if (smlaInfo_.perfMode == SMLATemplateMode::CSA_TEMPLATE_MODE ||
             smlaInfo_.perfMode == SMLATemplateMode::HCA_TEMPLATE_MODE) {
             OP_CHECK_IF(*opParamInfo_.cmpMaskMode != 3,
