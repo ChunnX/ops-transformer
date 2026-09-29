@@ -172,8 +172,8 @@ __aicore__ inline void QuantRowsVF(__ubuf__ float *x, __ubuf__ float *mean, __ub
     }
 }
 template <class T, bool PERMUTE_V>
-__aicore__ void QuantBatch(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADDR mxScale, GM_ADDR q8, GM_ADDR k8,
-                           GM_ADDR v8, GM_ADDR qs, GM_ADDR ks, SageParams p)
+__aicore__ void QuantBatch(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADDR vMean, GM_ADDR mxScale,
+                           GM_ADDR q8, GM_ADDR k8, GM_ADDR v8, GM_ADDR qs, GM_ADDR ks, SageParams p)
 {
     FixedResource r;
     GlobalTensor<T> qg, kg, vg;
@@ -184,8 +184,9 @@ __aicore__ void QuantBatch(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADD
     vg.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
     GlobalTensor<uint16_t> mxg;
     mxg.SetGlobalBuffer((__gm__ uint16_t *)mxScale);
-    GlobalTensor<float> mg;
+    GlobalTensor<float> mg, vmg;
     mg.SetGlobalBuffer((__gm__ float *)mean);
+    vmg.SetGlobalBuffer((__gm__ float *)vMean);
     GlobalTensor<half> qsg, ksg;
     qsg.SetGlobalBuffer((__gm__ half *)qs);
     ksg.SetGlobalBuffer((__gm__ half *)ks);
@@ -201,8 +202,9 @@ __aicore__ void QuantBatch(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADD
     constexpr uint32_t V_INPUT = 16384, FLOAT_INPUT = 32768;
     constexpr uint32_t QK_OUTPUT = 65536, V_OUTPUT = 73728;
     constexpr uint32_t MEAN = 81920, MX_SCALE = 82432, RAW_SCALE = 82944, HALF_SCALE = 83200;
-    constexpr uint32_t INVERSE_SCALE = 83456;
+    constexpr uint32_t INVERSE_SCALE = 83456, V_MEAN = 83712;
     static_assert(INVERSE_SCALE + 64 * sizeof(float) <= SLOT_BYTES, "inverse scale exceeds slot");
+    static_assert(V_MEAN + 128 * sizeof(float) <= SLOT_BYTES, "V mean exceeds slot");
     static_assert(2 * SLOT_BYTES + 512 <= UB_HIGH_WATER, "quant pipeline exceeds UB");
     auto factors = r.ubBuf.GetBufferByByte<float>(2 * SLOT_BYTES);
     FixedScaleFactorsVF((__ubuf__ float *)factors.GetPhyAddr(), p.smScale);
@@ -211,7 +213,7 @@ __aicore__ void QuantBatch(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADD
 
     // Pre-allocate slot buffers to eliminate per-iteration UB address resolution overhead
     LocalTensor<T> input[2], vInput[2];
-    LocalTensor<float> x[2], mu[2], vs[2], scales[2], inverseScales[2];
+    LocalTensor<float> x[2], mu[2], vmean[2], vs[2], scales[2], inverseScales[2];
     LocalTensor<int8_t> out[2];
     LocalTensor<float8_e4m3_t> fp8[2];
     LocalTensor<half> halfScales[2];
