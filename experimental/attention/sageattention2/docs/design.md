@@ -141,7 +141,7 @@ sum_j P[i, j] * V[j, d] = sum_j P[i, j] * (V'[j, d] + mean_V[d])
 
 #### 1.2 注意力得分定点累加与硬件反量化平衡缩放推导
 
-Q/K 以 INT8 进入 Cube 后，GEMM-1 在 L0C 中以 INT32 精确累加（无舍入误差）。得分的反量化与缩放不在 AIV 上逐元素完成，而是拆分为"硬件 Fixpipe 常数反量化 + 量化期预融合 scale"两步，全部乘法融合到既有的向量乘法中（`attention_block_cube.h` 的 Fixpipe `DEQF16` 配置与 `scale.h` 的 `FixedScaleFactorsVF`）；式中的 `sqrt(|sm_scale|·2048)` 与符号选择由 Host tiling 一次性预计算为 `SageParams::qFactor/kFactor`，内核仅做两次 `Duplicate` 广播，AIV 不再执行 Sqrt 与符号比较：
+Q/K 以 INT8 进入 Cube 后，GEMM-1 在 L0C 中以 INT32 精确累加（无舍入误差）。得分的反量化与缩放不在 AIV 上逐元素完成，而是拆分为"硬件 Fixpipe 常数反量化 + 量化期预融合 scale"两步，全部乘法融合到既有的向量乘法中（`attention_block_cube.h` 的 Fixpipe `DEQF16` 配置与 `scale.h` 的 `PackFixedScaleBlock`）；式中的 `sqrt(|sm_scale|·2048)` 与符号选择由 Host tiling 一次性预计算为 `SageParams::qFactor/kFactor`，内核仅把该标量广播进向量寄存器（`PackFixedScaleBlock` 的单条 `Duplicate`）并在量化器遍历该行时顺带完成 FP16 打包，AIV 不再执行 Sqrt 与符号比较，也不额外占一趟向量化：
 
 ```text
 第一步（Fixpipe 硬件反量化）：
@@ -637,6 +637,10 @@ info.count = (limit + 511) / 512;
 - Gemm 调用接口结构化：Cube 侧统一入口 `Gemm<T, BLayout, LocalA, BOffset, Emit, Initialize, PreloadedB>` 将全部行为差异上提为模板参数（数据类型与 B 布局、A 是否已在 L0A、B 的 L1 固定偏移、是否发射 Fixpipe、是否初始化 L0C、B 是否已由 MTE2 预取），运行期仅保留 `a/b/k/n/ubOffset/parity/loadA/mxScale/mxCache/mxK/mxStart/vParity` 等实际变化的数据形参，缺省值收敛了 QK 路径不涉及的 MX 与 V 双缓冲参数；槽位事件 `PV_EVENT/QK_EVENT` 与 L0/L0C 偏移由 `LocalA` 在编译期推导，QK 与 PV 互不干扰，消除了运行期分支与参数列复制。
 - 编译期对齐工具：`params.h` 提供 `constexpr RoundUpTo(v, align)`（32/64 位重载），tiling 的 `qp/kp` 序列补齐与 workspace 512B 突发对齐均改用该编译期函数表达，消除手写位运算魔数。
 - 编译期枚举解析与校验：`qk_quant_gran`/`pv_accum_dtype` 的字符串解析（`StrEq` + `ParseQuantGran`/`ParsePvAccum`）与取值校验（`IsValidQuantGran`/`IsValidPvAccum`）全部为 `constexpr`，与量化粒度常量（`QTokensPerScale`/`KTokensPerScale`/`DividesTile` 及"粒度必须整除 64 行 tile"的 `static_assert`）同住在 Host/Kernel 共享的 `params.h` 中，非法取值在编译期可证、运行期必报错。
+- Tiling 载荷的编译期契约：`SageParams` 由 Host memcpy 原样送到设备，故 `static_assert(is_trivially_copyable_v && is_standard_layout_v)` 拦住任何使其失去 POD 性质的成员改动，`static_assert(sizeof(SageParams) % 8 == 0)` 拦住尾部填充；累加格式成员直接声明为 `SagePvAccum` 枚举（而非 `uint32_t` + 散落强转），内核比较不再依赖隐式的整型↔枚举约定。`RoundUpTo` 的位运算只对 2 的幂对齐成立，由 `constexpr IsPow2` + `static_assert` 固化，避免返回"看似合理的错误补齐值"。
+- 设备无关状态的线程化：host tiling 中缓存核心数/平台信息的两处 `static` 改为 `thread_local`——CANN 可在多线程中并发构图，普通函数静态局部变量会让一个线程的探测结果被另一个线程的异构平台静默复用。
+- 存储格式单一裁决点：输入/输出布局只在 `sage_attention2_def.cpp` 以 `.Format({ge::FORMAT_ND, ge::FORMAT_ND})` 声明一次，host tiling 不重复做运行期格式比对，避免两处判据随框架演进分叉。
+- 死代码清除：宽块收尾 `FinalizeWideFp32VF` 只有 DP=128 实例可达（tile 高度固定 64 行、两半拼 128 列），非 128 分支连同其整段向量序列删除并以 `static_assert(DP == 128)` 固化前提；`scale.h` 中已被量化期内联乘法取代的 `FixedScaleFactorsVF` 与 `PackFixedScaleBlock` 的 UB 指针重载删除，`QuantRowsVF`/`QuantRowsImpl` 随之收回 `FactorT` 模板形参（全部调用点传 Host 预计算的标量 `qFactor`/`kFactor`）；`SageParams::smScale` 字段删除——内核只消费其预融合 FP16 形式，保留它等于在每份 tiling 载荷里放一个设备指令永不读取的成员。设计文档与内核符号保持逐项可 grep 对应。
 - 分支现代化与去重：wide 流水线的运行期常数分支改写为 `if constexpr (PHASE == 0)`（编译期裁剪）；`stats.h` 以泛型 `LoadLaneF32` 统一 16 位装载转换的三处重复分支；算子输入由类型 trait `is_supported_input_type`（FP16/BF16 特化）在融合入口 `static_assert` 限定，不再保留按 `float` 实例化的死分支；LSE 尾声复用 P0 槽的暂存区由静态断言约束（`2*8*128*4+1024 <= P_SLOT_BYTES`）。
 - 分层边界：Python 侧公开接缝为 `_ops` 导出的 `sageattn`、`sageattn_qk_int8_pv_fp8_asc` 及其别名 `run`（`run = sageattn_qk_int8_pv_fp8_asc`），由 `__init__` 与 `core` 两级同时再导出；随仓验收测试 `python/test_python_api.py` 只依赖这组公开符号，不存在独立的兼容层模块。`_ops` 与 csrc 各自独立校验形成纵深防御，接口语义与内核模板参数（dtype × wide）一一对应。
 
@@ -819,8 +823,9 @@ def sageattn(
     """
     SageAttention2 自动分发统一入口。
     在 Atlas 950PR 上固定路由至原生优化的 INT8 QK + MXFP8 PV 内核
-    （sageattn_qk_int8_pv_fp8_asc，默认 pv_accum_dtype="fp32+fp16"）；
-    可经 kwargs 覆盖 pv_accum_dtype 等下沉参数。
+    （sageattn_qk_int8_pv_fp8_asc，默认 pv_accum_dtype="fp32+fp16"、qk_quant_gran="per_thread"）；
+    这两个不在开源签名内的参数可经 kwargs 或环境变量覆盖（§2.4），
+    优先级为显式 kwargs > 环境变量 > 默认值。
 
     参数说明:
     - q: Query 张量，形状为 [B, Hq, Sq, D] (HND) 或 [B, Sq, Hq, D] (NHD)。
@@ -867,7 +872,16 @@ def sageattn_qk_int8_pv_fp8_asc(
 | `qk_quant_gran` | `per_thread`（默认）/ `per_warp` | 直通内核（`SageParams::qg/kg`）。Q/K 沿 head_dim 取 amax 生成对称 INT8 scale，scale 在连续 token 组内共享：`per_thread` 为每 4 个 Q token / 16 个 K token 一组，`per_warp` 为 32 / 64 一组，组边界沿序列维对齐（`quant.h` 的 `BroadcastGroupMaxima`）。非法取值报错。 |
 | `pv_accum_dtype` | `fp32+fp16`（默认）/ `fp32+fp32` / `fp32` | 直通内核（`SageParams::accum`）。选择块内 PV 部分和折入 FP32 运行状态前是否舍入到 FP16：`fp32+fp16` 舍入，`fp32+fp32` 与 `fp32` 不舍入；块内第一级在 950PR 上恒为 L0C FP32 累加（见 §1.4）。非法取值报错。 |
 | `smooth_k` | True（默认）/ False | 开启时执行 K 序列均值平滑与 LSE 补偿（§1.1 / §1.5）。 |
-| `smooth_v` | True / False（默认） | 直通内核（`SageParams::smoothV`）。`pv_accum_dtype="fp32"` 时统计 V 通道均值、量化前居中并在归一化输出上补回（§1.1）；其余取值在 aclnn 层告警并忽略，内核不执行 V 均值统计。 |
+| `smooth_v` | True / False（默认） | 直通内核（`SageParams::smoothV`）。`pv_accum_dtype="fp32"` 时统计 V 通道均值、量化前居中并在归一化输出上补回（§1.1）；其余取值在 Python 适配层与 aclnn 层各告警一次并忽略，内核不执行 V 均值统计。 |
+
+`sageattn` 未公开但受任务书 §2.4 允许的两个参数，解析优先级为**显式 kwargs > 环境变量 > 默认值**；变量在每次调用时读取（无需重新导入模块），空串按未设置处理，非法值与非法实参共用 `_validate` 的同一条校验，抛同样的 `ValueError`：
+
+| 环境变量 | 接受值 | 对应参数（默认值） |
+| --- | --- | --- |
+| `SAGEATTN_QK_QUANT_GRAN` | `per_thread` / `per_warp` | `qk_quant_gran`（`per_thread`） |
+| `SAGEATTN_PV_ACCUM_DTYPE` | `fp32+fp16` / `fp32+fp32` / `fp32` | `pv_accum_dtype`（`fp32+fp16`） |
+
+环境变量只在分发入口解析一次，解析结果作为 `_dispatch` 的显式入参进入执行计划缓存的键，因此两种取值交替调用不会复用对方的计划（随仓测试 TC-11/TC-11b 固化）。
 
 > 上述映射的 NPU 取舍口径见 README"粒度与累加配置的 NPU 映射"。
 
@@ -1058,7 +1072,7 @@ OP_ADD(SageAttention2);
 ### 3. 验证手段
 
 - **随仓 Python 回归**（`python/test_python_api.py`）：以 `reference.py`（QK INT8 / MXFP8 / FP16 平移 max 的独立 CPU 实现，per_thread=Q4/K16、per_warp=Q32/K64 与内核同配置）为 golden，覆盖 dtype、layout、stride、GQA、causal（含组粒度严格因果独立性）、`smooth_k`、`smooth_v`（`fp32` 下生效、其余取值告警忽略，并断言生效时确实改变输出）、`sageattn` 固定分发 FP8 PV、LSE 形状与数值、head_dim padding、非法参数报错与 SDPA 替换冒烟。L-B 层在套件内闭环：与独立开源 sm89 FP8 路径仿真逐配置对比，相对 FP32 SDPA 的误差比 max<=2 / mean<=1.2 / RMSE<=1.2，LSE 相对偏差 <= 5e-2（`test_tc04b_lb_precision_gates`）。
-- **随仓 C++ 浮点误差断言**（`tests/numeric_error_test.cpp`）：把内核数值规格固化为 13 项独立可执行断言，覆盖 FastReciprocal 倒数包络、per-token INT8 量化往返误差、E4M3 饱和 RNE、E8M0 分组 scale 覆盖范围、DEQF16 与 FP16 平衡 scale 的抵消、ln(448) 平移满量程、LSE 契约、Smooth-K 的 softmax 不变性、因果 Mask NZ 拓扑剪枝零精度损失与算力压缩、`qk_quant_gran` 组共享 scale 的覆盖性与半步长误差、`pv_accum_dtype="fp32+fp16"` 部分和 FP16 往返的折入误差界、`smooth_v` 居中加补回在 MXFP8 分组量化下的重建误差界、以及 WIDE 模式片上流式 Query 量化与离线量化的位级严格等价性。可由 g++/clang++ 直接编译运行（13/13 PASS）。
+- **随仓 C++ 浮点误差断言**（`tests/numeric_error_test.cpp`）：把内核数值规格固化为 13 大类共 29 项独立可执行断言，覆盖 FastReciprocal 倒数包络、per-token INT8 量化往返误差、E4M3 饱和 RNE、E8M0 分组 scale 覆盖范围、DEQF16 与 FP16 平衡 scale 的抵消、ln(448) 平移满量程、LSE 契约、Smooth-K 的 softmax 不变性、因果 Mask NZ 拓扑剪枝零精度损失与算力压缩、`qk_quant_gran` 组共享 scale 的覆盖性与半步长误差、`pv_accum_dtype="fp32+fp16"` 部分和 FP16 往返的折入误差界、`smooth_v` 居中加补回在 MXFP8 分组量化下的重建误差界、以及 WIDE 模式片上流式 Query 量化与离线量化的位级严格等价性。可由 g++/clang++ 直接编译运行（13 类 29 项全 PASS，每项打印实测误差与解析上界）。
 - **L-A 真机对标**：以 GPU 端 `sageattn_qk_int8_pv_fp8_cuda` 同参数输出为 golden，在验收环境执行。
 - **L-B 真机对标**：以 FP32 SDPA 为真值，计算误差比值并对照 §2 门限。
 

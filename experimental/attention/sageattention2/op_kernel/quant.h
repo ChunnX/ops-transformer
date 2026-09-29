@@ -40,9 +40,9 @@ __simd_callee__ inline void BroadcastGroupMaxima(__ubuf__ float *maxima, uint32_
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 }
 
-template <uint32_t DP, bool SMOOTH, typename FactorT = float>
+template <uint32_t DP, bool SMOOTH>
 __simd_vf__ inline void QuantRowsImpl(__ubuf__ float *x, [[maybe_unused]] __ubuf__ float *mean, __ubuf__ float *scales,
-                                      __ubuf__ int8_t *out, __ubuf__ half *halfScales, FactorT factor,
+                                      __ubuf__ int8_t *out, __ubuf__ half *halfScales, float factor,
                                       __ubuf__ float *inverseScales, uint32_t valid, uint32_t group)
 {
     using namespace AscendC::MicroAPI;
@@ -154,22 +154,21 @@ __simd_vf__ inline void QuantRowsImpl(__ubuf__ float *x, [[maybe_unused]] __ubuf
     }
     PackFixedScaleBlock(scales, halfScales, factor, valid);
 }
-template <typename FactorT = float>
 __aicore__ inline void QuantRowsVF(__ubuf__ float *x, __ubuf__ float *mean, __ubuf__ float *scales,
-                                   __ubuf__ int8_t *out, __ubuf__ half *halfScales, FactorT factor,
+                                   __ubuf__ int8_t *out, __ubuf__ half *halfScales, float factor,
                                    __ubuf__ float *inverseScales, uint32_t dp,
                                    uint32_t smooth, uint32_t valid, uint32_t group)
 {
     if (dp == 128) {
         if (smooth)
-            QuantRowsImpl<128, true, FactorT>(x, mean, scales, out, halfScales, factor, inverseScales, valid, group);
+            QuantRowsImpl<128, true>(x, mean, scales, out, halfScales, factor, inverseScales, valid, group);
         else
-            QuantRowsImpl<128, false, FactorT>(x, mean, scales, out, halfScales, factor, inverseScales, valid, group);
+            QuantRowsImpl<128, false>(x, mean, scales, out, halfScales, factor, inverseScales, valid, group);
     } else {
         if (smooth)
-            QuantRowsImpl<64, true, FactorT>(x, mean, scales, out, halfScales, factor, inverseScales, valid, group);
+            QuantRowsImpl<64, true>(x, mean, scales, out, halfScales, factor, inverseScales, valid, group);
         else
-            QuantRowsImpl<64, false, FactorT>(x, mean, scales, out, halfScales, factor, inverseScales, valid, group);
+            QuantRowsImpl<64, false>(x, mean, scales, out, halfScales, factor, inverseScales, valid, group);
     }
 }
 template <class T, bool PERMUTE_V>
