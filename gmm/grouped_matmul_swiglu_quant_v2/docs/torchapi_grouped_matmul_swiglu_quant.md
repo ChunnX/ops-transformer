@@ -43,7 +43,21 @@
 
   $$S_i=x_{glu}\cdot sigmoid(gluAlpha\cdot x_{glu})\cdot(x_{linear}+gluBias)$$
 
-  最后对$S_i$执行MXFP8动态量化，输出`y`和`y_scale`。
+  最后将$S_i$按最近偶数舍入转为BF16，沿输出N轴每32个元素构成一组并执行MXFP8动态量化，输出`y`和`y_scale`；每64个元素存储两个E8M0 scale。设组内BF16值为$V_j$，最大绝对值为$a=\max_j|V_j|$。输出类型固定为`torch.float8_e4m3fn`，其最大有限值为448。对处于正常可表示范围的非零有限$a$，`scale_alg`决定共享scale的计算方式：
+
+  - `scale_alg=0`（OCP）：使用最大值的指数，不向上进位。
+
+    $$e_{\mathrm{OCP}}=\lfloor\log_2 a\rfloor-8,\qquad y\_scale=2^{e_{\mathrm{OCP}}}$$
+
+  - `scale_alg=1`（cuBLAS）：先除以目标类型最大有限值，再对缩放比的指数向上取整。
+
+    $$r=\frac{a}{448},\qquad e_{\mathrm{cuBLAS}}=\lceil\log_2 r\rceil,\qquad y\_scale=2^{e_{\mathrm{cuBLAS}}}$$
+
+  两种算法均使用各组的共享scale量化每个元素：
+
+  $$y_j=\operatorname{cast}_{\mathrm{E4M3FN},\mathrm{rint}}\!\left(V_j\times\operatorname{BF16}\!\left(\frac{1}{y\_scale}\right)\right)$$
+
+  scale以`torch_npu.float8_e8m0fnu`存储；低于E8M0编码下界时截断到编码0。全零组使用编码0（解码值为$2^{-127}$），含Inf/NaN的组使用编码255。实际计算使用BF16倒数乘法，公式中的倒数不能替换为无限精度除法。`dst_type_max=0.0`表示使用E4M3FN默认最大值448，并非以0为除数。
 
 ## 函数原型
 
