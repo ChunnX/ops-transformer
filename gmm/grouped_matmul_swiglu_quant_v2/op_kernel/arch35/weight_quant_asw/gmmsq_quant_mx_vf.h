@@ -15,17 +15,16 @@
 
 #pragma once
 
-#if ASC_DEVKIT_MAJOR >= 9
-#include "kernel_basic_intf.h"
-#else
-#include "kernel_operator.h"
-#include "kernel_operator_intf.h"
-#endif
+#define GMMSQ_VF_USE_MICRO_API
+#include "../weight_quant_basic_block/gmmsq_quant_mx_vf.h"
+#undef GMMSQ_VF_USE_MICRO_API
 
 namespace WeightQuantGroupedMatmul::Arch35 {
-
-namespace Reg = AscendC::MicroAPI;
 using AscendC::BLOCK_CUBE;
-#include "../weight_quant_basic_block/gmmsq_quant_mx_vf_common.inc"
+using GMMSQWeightQuant::GmmSwigluVf;
+using GMMSQWeightQuant::ComputeMaxExpVf;
+using GMMSQWeightQuant::ComputeScaleVf;
+using GMMSQWeightQuant::TransMxScaleLayoutVf;
+using GMMSQWeightQuant::ComputeDataForQuantTargetFp8Vf;
 
 } // namespace WeightQuantGroupedMatmul::Arch35
