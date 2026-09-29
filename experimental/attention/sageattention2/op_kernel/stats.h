@@ -100,7 +100,7 @@ __aicore__ inline void StatsSumVF(LocalTensor<T> rows, LocalTensor<float> state,
 // use FP32 atomic adds. The caller synchronizes before consuming mean.
 // IS_V selects the sequence-mean of V (smooth_v) instead of the one of K
 // (smooth_k); both reduce the Sk rows of a key-value head.
-template <class T, bool IS_V>
+template <class T, bool IS_V = false>
 __aicore__ void StreamKStats(GM_ADDR src, GM_ADDR mean, SageParams p)
 {
     const uint64_t *const strides = IS_V ? p.vs : p.ks;
@@ -138,7 +138,7 @@ __aicore__ void StreamKStats(GM_ADDR src, GM_ADDR mean, SageParams p)
         const uint64_t stop = Min(last, (head + 1) * headBatches);
         const uint64_t bh = firstHead + head;
         const uint32_t b = bh / p.hk, h = bh % p.hk;
-        const uint64_t headBase = Offset(p.ks, b, h, 0);
+        const uint64_t headBase = Offset(strides, b, h, 0);
         const uint32_t begin = (cursor - head * headBatches) * BATCH_ROWS;
         const uint32_t end = Min(p.sk, uint32_t(stop - head * headBatches) * BATCH_ROWS);
         const bool exclusive = begin == 0 && end == p.sk;
@@ -178,11 +178,13 @@ __aicore__ void StreamKStats(GM_ADDR src, GM_ADDR mean, SageParams p)
     }
 }
 
-template <class T>
-__aicore__ void Stats(GM_ADDR k, GM_ADDR mean, SageParams p)
+template <class T, bool IS_V>
+__aicore__ void Stats(GM_ADDR src, GM_ADDR mean, SageParams p)
 {
-    if (p.smoothK && p.d == p.dp && p.sk >= 1024) {
-        StreamKStats<T>(k, mean, p);
+    const uint64_t *const strides = IS_V ? p.vs : p.ks;
+    const bool center = IS_V ? bool(p.smoothV) : bool(p.smoothK);
+    if (center && p.d == p.dp && p.sk >= 1024) {
+        StreamKStats<T, IS_V>(src, mean, p);
         return;
     }
     const bool grouped = UseDieGroups(p);
@@ -190,7 +192,7 @@ __aicore__ void Stats(GM_ADDR k, GM_ADDR mean, SageParams p)
     const uint64_t heads = uint64_t(p.b) * p.hk / (grouped ? 2 : 1);
     FixedResource r;
     GlobalTensor<T> kg;
-    kg.SetGlobalBuffer((__gm__ T *)k);
+    kg.SetGlobalBuffer((__gm__ T *)src);
     GlobalTensor<float> mg;
     mg.SetGlobalBuffer((__gm__ float *)mean);
     auto input = r.ubBuf.template GetBufferByByte<T>(STATS_RAW_UB);
@@ -203,7 +205,7 @@ __aicore__ void Stats(GM_ADDR k, GM_ADDR mean, SageParams p)
         const uint64_t bh = firstHead + local;
         uint32_t b = bh / p.hk, h = bh % p.hk;
         Duplicate(sum, 0.0f, p.dp);
-        if (p.smoothK) {
+        if (center) {
             if (p.d == p.dp) {
                 constexpr uint32_t BATCH_ROWS = 128, SLOT_BYTES = 32768;
                 LocalTensor<T> slotBuf[2] = {
@@ -219,7 +221,7 @@ __aicore__ void Stats(GM_ADDR k, GM_ADDR mean, SageParams p)
                         const uint32_t rows = Min(BATCH_ROWS, p.sk - start);
                         const event_t event = static_cast<event_t>(1 + slot);
                         WaitFlag<HardEvent::V_MTE2>(event);
-                        DataCopy(slotBuf[slot], kg[Offset(p.ks, b, h, start)], rows * p.dp);
+                        DataCopy(slotBuf[slot], kg[Offset(strides, b, h, start)], rows * p.dp);
                         SetFlag<HardEvent::MTE2_V>(event);
                     }
                     if (batch == 0)
@@ -235,7 +237,7 @@ __aicore__ void Stats(GM_ADDR k, GM_ADDR mean, SageParams p)
                 WaitFlag<HardEvent::V_MTE2>(2);
             } else {
                 for (uint32_t row = 0; row < p.sk; ++row) {
-                    ReadRow(input, kg, Offset(p.ks, b, h, row), p.d, p.dp);
+                    ReadRow(input, kg, Offset(strides, b, h, row), p.d, p.dp);
                     Cast(x, input, RoundMode::CAST_NONE, p.dp);
                     PipeBarrier<PIPE_V>();
                     Add(sum, sum, x, p.dp);
