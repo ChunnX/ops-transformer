@@ -20,16 +20,12 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     float dotHalf[2][N_MAX] = {{0.0f, 0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 0.0f}};
     float midSqHalf[2] = {0.0f, 0.0f};
     CacheHOut((uint64_t)token * D_);
-    // 单分块gamma0通常由Process预载；5op会在中间归一化复用该缓冲缓存gamma2，
-    // 因此同一核处理后续token时需恢复gamma0。4op不增加重复搬运。
     if (dLoop_ != 1U || (USE_RMS_MID && token != tStart_)) {
         CacheGamma0();
     }
     const uint32_t headBegin = siblingAivIdx_ * 2U;
     LoadTokenWeights(token, postVals, headBegin, headBegin + 2U);
 
-    // Start the first residual tile before 输入归一化. Its queue storage is disjoint
-    // from the 输入归一化 square scratch, so MTE2 can overlap the reduction/Scalar work.
     if constexpr (USE_RMS_MID) {
         LocalTensor<T> firstResidual = bufResidualBf16_.AllocTensor<T>();
         const uint32_t firstTD = GetTileD(0U);
