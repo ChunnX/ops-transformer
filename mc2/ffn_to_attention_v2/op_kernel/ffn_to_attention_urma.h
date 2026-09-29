@@ -103,8 +103,10 @@ private:
                                                  const RemoteAddressEntry &addressEntry, bool enableCqe);
     template <typename BatchHandleType>
     __aicore__ inline void AppendRemoteFlagWrite(BatchHandleType &batchHandle, GM_ADDR remoteWindowAddr,
-                                                 const RemoteAddressEntry &addressEntry, bool firstFlag,
-                                                 bool enableCqe);
+                                                 const RemoteAddressEntry &addressEntry, bool lastFlag);
+    template <typename BatchHandleType>
+    __aicore__ inline void ClearRemoteFlags(BatchHandleType &batchHandle, GM_ADDR remoteWindowAddr,
+                                            GlobalTensor<uint64_t> rankAddressTable, uint32_t entryCount);
     __aicore__ inline void BuildAddressTable();
     __aicore__ inline uint32_t GetAddressTableCount(uint32_t targetRank);
     __aicore__ inline void SendAddressTable(uint32_t targetRank, uint32_t entryCount);
@@ -122,6 +124,7 @@ private:
 
     GM_ADDR inputDataAddr_{nullptr};
     GM_ADDR localFlagAddr_{nullptr};
+    GM_ADDR zeroFlagAddr_{nullptr};
     GM_ADDR localWinAddr_{nullptr};
     GM_ADDR addressTableWinAddr_{nullptr};
     GM_ADDR totalRankCountWinAddr_{nullptr};
@@ -214,6 +217,9 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::I
     // Keep flag sources in place; address-table metadata follows all per-core flag slots.
     GM_ADDR localScratchAddr = GetWindowAddr(rankId_) + flagWindowOffset;
     localFlagAddr_ = localScratchAddr + static_cast<uint64_t>(aivId_) * URMA_FLAG_SLOT_SIZE;
+    // Zero source for the per-round flag-clear phase; lives inside this AIV's own 32B source slot
+    // (word1), so the reserved flag window size stays unchanged.
+    zeroFlagAddr_ = localFlagAddr_ + sizeof(int32_t);
 
     // Follow MoeEpCombine's layout: one independent compact address table per rank, followed by the total-count row
     // and the per-core count matrix. Every core publishes only its own count row.
@@ -268,7 +274,11 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::I
 {
     constexpr uint32_t flagSlotElementNum = URMA_FLAG_SLOT_SIZE / sizeof(int32_t);
     Duplicate<int32_t>(statusTensor_, URMA_FLAG_VALUE, flagSlotElementNum);
+    // word0 keeps the flag value (1) used by the flag phase; word1 becomes the constant zero
+    // source consumed by the per-round clear phase (ClearRemoteFlags / SendToLocal).
+    statusTensor_.SetValue(1, 0);
     SyncFunc<HardEvent::V_MTE3>();
+    SyncFunc<HardEvent::S_MTE3>();
     GlobalTensor<int32_t> localFlagGMTensor;
     localFlagGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(localFlagAddr_));
     DataCopy(localFlagGMTensor, statusTensor_, flagSlotElementNum);
@@ -339,15 +349,20 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::S
     xQueue_.EnQue(xTmpTensor_);
     xTmpTensor_ = xQueue_.DeQue<xType>();
 
+    // Per-round flag clear for self-delivered tokens: write 0 (statusTensor_ word1) into the local
+    // window slot before data/flag, so the consumer sees a fresh 0->1 edge every round. MTE3 is
+    // in-order, so clear lands before data and data lands before the flag.
+    GlobalTensor<int32_t> tokenInfoTableGMTensor;
+    tokenInfoTableGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(remoteFlagAddr));
+    DataCopyExtParams flagCopyParams = {1U, sizeof(int32_t), 0U, 0U, 0U};
+    DataCopyPad(tokenInfoTableGMTensor, statusTensor_[1], flagCopyParams);
+
     GlobalTensor<xType> tokenDataGMTensor;
     tokenDataGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ xType *>(remoteDataAddr));
     DataCopyPad(tokenDataGMTensor, xTmpTensor_, xCopyParams);
     PipeBarrier<PIPE_MTE3>();
     xQueue_.FreeTensor<xType>(xTmpTensor_);
 
-    GlobalTensor<int32_t> tokenInfoTableGMTensor;
-    tokenInfoTableGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(remoteFlagAddr));
-    DataCopyExtParams flagCopyParams = {1U, sizeof(int32_t), 0U, 0U, 0U};
     DataCopyPad(tokenInfoTableGMTensor, statusTensor_, flagCopyParams);
     SyncFunc<HardEvent::MTE3_S>();
 }
@@ -372,26 +387,18 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::A
 template <TemplateFFNToAttentionUrmaTypeClass>
 template <typename BatchHandleType>
 __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::AppendRemoteFlagWrite(
-    BatchHandleType &batchHandle, GM_ADDR remoteWindowAddr, const RemoteAddressEntry &addressEntry, bool firstFlag,
-    bool enableCqe)
+    BatchHandleType &batchHandle, GM_ADDR remoteWindowAddr, const RemoteAddressEntry &addressEntry, bool lastFlag)
 {
     uint64_t remoteFlagOffset = addressEntry.tokenSlot * sizeof(int32_t);
-    if (firstFlag) {
-        if (enableCqe) {
-            (void)hcomm_.WriteNbi<REMOTE_ORDERED_FLAG_CQE_WQE_CONFIG>(batchHandle, remoteWindowAddr + remoteFlagOffset,
-                                                                      localFlagAddr_,
-                                                                      static_cast<uint32_t>(sizeof(int32_t)));
-        } else {
-            (void)hcomm_.WriteNbi<REMOTE_ORDERED_FLAG_WQE_CONFIG>(batchHandle, remoteWindowAddr + remoteFlagOffset,
-                                                                  localFlagAddr_,
-                                                                  static_cast<uint32_t>(sizeof(int32_t)));
-        }
-    } else if (enableCqe) {
-        (void)hcomm_.WriteNbi<REMOTE_CQE_WQE_CONFIG>(batchHandle, remoteWindowAddr + remoteFlagOffset, localFlagAddr_,
-                                                     static_cast<uint32_t>(sizeof(int32_t)));
+    // Flag writes keep the ordered config so they land after this round's data WQEs; only the
+    // channel's LAST flag carries a CQE, which the tail Drain waits on. Intermediate flags stay
+    // CQE-free to keep completion traffic minimal.
+    if (lastFlag) {
+        (void)hcomm_.WriteNbi<REMOTE_ORDERED_FLAG_CQE_WQE_CONFIG>(
+            batchHandle, remoteWindowAddr + remoteFlagOffset, localFlagAddr_, static_cast<uint32_t>(sizeof(int32_t)));
     } else {
-        (void)hcomm_.WriteNbi<REMOTE_WQE_CONFIG>(batchHandle, remoteWindowAddr + remoteFlagOffset, localFlagAddr_,
-                                                 static_cast<uint32_t>(sizeof(int32_t)));
+        (void)hcomm_.WriteNbi<REMOTE_ORDERED_FLAG_WQE_CONFIG>(batchHandle, remoteWindowAddr + remoteFlagOffset,
+                                                              localFlagAddr_, static_cast<uint32_t>(sizeof(int32_t)));
     }
 }
 
@@ -564,6 +571,51 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::C
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
+template <typename BatchHandleType>
+__aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::ClearRemoteFlags(
+    BatchHandleType &batchHandle, GM_ADDR remoteWindowAddr, GlobalTensor<uint64_t> rankAddressTable,
+    uint32_t entryCount)
+{
+    if (entryCount == 0U) {
+        return;
+    }
+    LocalTensor<uint64_t> entriesLocal = metadataBuf_.Get<uint64_t>();
+    constexpr uint32_t entryElements = REMOTE_ADDRESS_ENTRY_SIZE / sizeof(uint64_t);
+    constexpr uint32_t entryChunkMax = METADATA_CHUNK_BUFFER_SIZE / REMOTE_ADDRESS_ENTRY_SIZE;
+    const DataCopyPadExtParams<uint64_t> padParams{false, 0U, 0U, 0UL};
+    uint32_t preparedWqeCount = 0U;
+
+    // Per-round flag clear: zero the remote flag slots this channel is about to use BEFORE the
+    // data/flag phases, so the receiver sees a fresh 0->1 edge on every slot every round. All
+    // clears use the ordered config so they land after the previous round's data/flag WQEs on
+    // this channel and can never stomp an unconsumed round. Completion anchoring is carried by
+    // the channel's last flag (cqe=1) plus the tail drain, so no clears carry a CQE here.
+    for (uint32_t chunkStart = 0U; chunkStart < entryCount; chunkStart += entryChunkMax) {
+        uint32_t curEntries = (chunkStart + entryChunkMax > entryCount) ? entryCount - chunkStart : entryChunkMax;
+        DataCopyExtParams copyParams{1U, curEntries * REMOTE_ADDRESS_ENTRY_SIZE, 0U, 0U, 0U};
+        SyncFunc<HardEvent::S_MTE2>();
+        DataCopyPad(entriesLocal, rankAddressTable[static_cast<uint64_t>(chunkStart) * entryElements], copyParams,
+                    padParams);
+        SyncFunc<HardEvent::MTE2_S>();
+        for (uint32_t i = 0U; i < curEntries; ++i) {
+            uint32_t entryOffset = i * entryElements;
+            uint64_t remoteFlagOffset = entriesLocal.GetValue(entryOffset) * sizeof(int32_t);
+            (void)hcomm_.WriteNbi<REMOTE_ORDERED_FLAG_WQE_CONFIG>(batchHandle, remoteWindowAddr + remoteFlagOffset,
+                                                                  zeroFlagAddr_,
+                                                                  static_cast<uint32_t>(sizeof(int32_t)));
+            ++preparedWqeCount;
+            if (preparedWqeCount == URMA_BATCH_WQE_CAPACITY) {
+                (void)hcomm_.BatchCommit(batchHandle);
+                preparedWqeCount = 0U;
+            }
+        }
+    }
+    if (preparedWqeCount != 0U) {
+        (void)hcomm_.BatchCommit(batchHandle);
+    }
+}
+
+template <TemplateFFNToAttentionUrmaTypeClass>
 __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::SendAddressTable(uint32_t targetRank,
                                                                                                 uint32_t entryCount)
 {
@@ -582,6 +634,10 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::S
     const DataCopyPadExtParams<uint64_t> padParams{false, 0U, 0U, 0UL};
     uint32_t preparedWqeCount = 0U;
     uint32_t sqWriteCount = 0U;
+
+    // Per-round flag clear before this round's data/flag phases (see ClearRemoteFlags): the
+    // receiver observes a fresh 0->1 edge per round on every flag slot.
+    ClearRemoteFlags(batchHandle, remoteWindowAddr, rankAddressTable, entryCount);
 
     // Preserve the existing protocol: all data WQEs for this rank are submitted before any flag WQE.
     for (uint32_t chunkStart = 0U; chunkStart < entryCount; chunkStart += entryChunkMax) {
@@ -608,7 +664,6 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::S
         }
     }
 
-    bool firstFlag = true;
     for (uint32_t chunkStart = 0U; chunkStart < entryCount; chunkStart += entryChunkMax) {
         uint32_t curEntries = (chunkStart + entryChunkMax > entryCount) ? entryCount - chunkStart : entryChunkMax;
         DataCopyExtParams copyParams{1U, curEntries * REMOTE_ADDRESS_ENTRY_SIZE, 0U, 0U, 0U};
@@ -620,23 +675,22 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::S
             uint32_t entryOffset = i * entryElements;
             RemoteAddressEntry addressEntry{entriesLocal.GetValue(entryOffset),
                                             entriesLocal.GetValue(entryOffset + 1U)};
-            bool enableCqe = sqWriteCount + 1U >= HCOMM_SQ_MAX_PENDING;
-            AppendRemoteFlagWrite(batchHandle, remoteWindowAddr, addressEntry, firstFlag, enableCqe);
-            firstFlag = false;
+            // chunkStart + i is the global entry index of this channel; only the LAST flag of the
+            // channel carries a CQE, which the tail Drain waits on.
+            bool lastFlag = (chunkStart + i + 1U == entryCount);
+            AppendRemoteFlagWrite(batchHandle, remoteWindowAddr, addressEntry, lastFlag);
             ++preparedWqeCount;
             ++sqWriteCount;
-            if (enableCqe) {
-                CommitAndDrainChannel(batchHandle, channel, preparedWqeCount, sqWriteCount);
-            } else if (preparedWqeCount == URMA_BATCH_WQE_CAPACITY) {
+            if (preparedWqeCount == URMA_BATCH_WQE_CAPACITY) {
                 (void)hcomm_.BatchCommit(batchHandle);
                 preparedWqeCount = 0U;
             }
         }
     }
 
-    if (preparedWqeCount != 0U) {
-        (void)hcomm_.BatchCommit(batchHandle);
-    }
+    // Per-channel drain after the send: wait until every WQE (data + flag) of this channel has
+    // landed; the channel's last flag carries the CQE this drain completes on.
+    CommitAndDrainChannel(batchHandle, channel, preparedWqeCount, sqWriteCount);
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
