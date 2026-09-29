@@ -305,7 +305,7 @@ bool CheckAttrs([[maybe_unused]] const gert::TilingContext &context, const GMMSQ
     return true;
 }
 
-bool CheckDtypes(const gert::TilingContext &context)
+bool CheckDtypes(const gert::TilingContext &context, bool isAsw, NpuArch npuArch)
 {
     const auto *xDesc = context.GetInputDesc(X_INDEX);
     const auto *wDesc = context.GetDynamicInputDesc(WEIGHT_INDEX, 0);
@@ -323,10 +323,13 @@ bool CheckDtypes(const gert::TilingContext &context)
         return false;
     }
 
-    if (unlikely(wDesc->GetDataType() != ge::DataType::DT_FLOAT4_E2M1)) {
+    const auto weightDtype = wDesc->GetDataType();
+    const bool validWeightDtype = weightDtype == ge::DT_FLOAT4_E2M1 ||
+                                  (isAsw && npuArch == NpuArch::DAV_9201 && weightDtype == ge::DT_HIFLOAT4);
+    if (unlikely(!validWeightDtype)) {
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
             OP_NAME, "weight", ge::TypeUtils::DataTypeToSerialString(wDesc->GetDataType()),
-            "The dtype of weight must be " + ge::TypeUtils::DataTypeToSerialString(ge::DataType::DT_FLOAT4_E2M1));
+            "The dtype of weight must be FLOAT4_E2M1, or HIFLOAT4 on DAV_9201 ASW");
         return false;
     }
 
@@ -337,10 +340,12 @@ bool CheckDtypes(const gert::TilingContext &context)
         return false;
     }
 
-    if (unlikely(wScaleDesc->GetDataType() != ge::DataType::DT_FLOAT8_E8M0)) {
+    const auto expectedWeightScaleDtype = weightDtype == ge::DT_HIFLOAT4 ?
+                                               ge::DT_HIFLOAT4_SCALE : ge::DT_FLOAT8_E8M0;
+    if (unlikely(wScaleDesc->GetDataType() != expectedWeightScaleDtype)) {
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
             OP_NAME, "weightScale", ge::TypeUtils::DataTypeToSerialString(wScaleDesc->GetDataType()),
-            "The dtype of weightScale must be " + ge::TypeUtils::DataTypeToSerialString(ge::DataType::DT_FLOAT8_E8M0));
+            "weightScale dtype must match the weight quantization type");
         return false;
     }
 
@@ -406,7 +411,8 @@ bool GetInputs(GMMSQWeightQuantInputParams &params, const gert::TilingContext &c
     return true;
 }
 
-bool CheckInputFormats(const gert::TilingContext &context, const GMMSQWeightQuantInputParams &params)
+bool CheckInputFormats(const gert::TilingContext &context, const GMMSQWeightQuantInputParams &params, bool isAsw,
+                       NpuArch npuArch)
 {
     const auto *xDesc = context.GetInputDesc(X_INDEX);
     auto xFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(xDesc->GetFormat().GetStorageFormat()));
@@ -431,6 +437,20 @@ bool CheckInputFormats(const gert::TilingContext &context, const GMMSQWeightQuan
 
     OP_CHECK_IF(!CheckWeightScaleFormat(context, 0, params.opName.c_str()),
                 OP_LOGE(OP_NAME, "Check weightScale format failed."), return false);
+
+    if (isAsw) {
+        const auto *weightDesc = context.GetDynamicInputDesc(WEIGHT_INDEX, 0);
+        const auto *weightScaleDesc = context.GetDynamicInputDesc(WEIGHT_SCALE_INDEX, 0);
+        OP_CHECK_IF(weightDesc == nullptr || weightScaleDesc == nullptr,
+                    OP_LOGE(OP_NAME, "Dynamic weight or weightScale desc is null."), return false);
+        const auto weightFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(weightDesc->GetStorageFormat()));
+        const auto scaleFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(weightScaleDesc->GetStorageFormat()));
+        OP_CHECK_IF(weightFormat != ge::FORMAT_FRACTAL_NZ &&
+                        !(npuArch == NpuArch::DAV_3510 && weightFormat == ge::FORMAT_FRACTAL_NZ_C0_32),
+                    OP_LOGE(OP_NAME, "Unsupported ASW weight storage format."), return false);
+        OP_CHECK_IF(scaleFormat != ge::FORMAT_ND && scaleFormat != ge::FORMAT_NCHW,
+                    OP_LOGE(OP_NAME, "Unsupported ASW weightScale storage format."), return false);
+    }
 
     return true;
 }
@@ -560,13 +580,13 @@ static bool CheckScaleAndGroupListShapes(gert::TilingContext &context, const GMM
     return true;
 }
 
-bool CheckInputs(gert::TilingContext &context, const GMMSQWeightQuantInputParams &params)
+bool CheckInputs(gert::TilingContext &context, const GMMSQWeightQuantInputParams &params, bool isAsw, NpuArch npuArch)
 {
     if (!IsInputShapeValid(context, params)) {
         return false;
     }
 
-    if (!CheckInputFormats(context, params)) {
+    if (!CheckInputFormats(context, params, isAsw, npuArch)) {
         return false;
     }
 
@@ -602,16 +622,27 @@ bool CheckInputs(gert::TilingContext &context, const GMMSQWeightQuantInputParams
 
     if (params.wFormat == ge::FORMAT_FRACTAL_NZ || params.wFormat == ge::FORMAT_FRACTAL_NZ_C0_32) {
         const gert::Shape &wStorageShape = weightShapePtr->GetStorageShape();
+        int64_t c0Size = C0_SIZE;
+        if (isAsw && params.wFormat == ge::FORMAT_FRACTAL_NZ) {
+            c0Size <<= 1; // FP4 and HIF4 store two values per byte.
+        }
         const std::vector<int64_t> expectedWeightShape = {
-            static_cast<int64_t>(params.groupNum), GroupedMatmul::CeilDiv<int64_t>(params.kSize, C0_SIZE),
-            GroupedMatmul::CeilDiv<int64_t>(params.nSize, CUBE_BLOCK), CUBE_BLOCK, C0_SIZE};
+            static_cast<int64_t>(params.groupNum), GroupedMatmul::CeilDiv<int64_t>(params.kSize, c0Size),
+            GroupedMatmul::CeilDiv<int64_t>(params.nSize, CUBE_BLOCK), CUBE_BLOCK, c0Size};
         if (!CheckInputShape("weight", wStorageShape, expectedWeightShape)) {
             return false;
         }
     }
 
     auto &weightScaleShape = weightScaleShapePtr->GetOriginShape();
-    return CheckScaleAndGroupListShapes(context, params, xScaleShape, groupListShape, weightScaleShape);
+    if (!isAsw) {
+        return CheckScaleAndGroupListShapes(context, params, xScaleShape, groupListShape, weightScaleShape);
+    }
+    const auto *weightScaleDesc = context.GetDynamicInputDesc(WEIGHT_SCALE_INDEX, 0);
+    OP_CHECK_IF(weightScaleDesc == nullptr, OP_LOGE(OP_NAME, "Dynamic weightScale desc is null."), return false);
+    const int64_t scaleLastDim = weightScaleDesc->GetDataType() == ge::DT_HIFLOAT4_SCALE ? 1 : MX_INNER_DIM;
+    return CheckInputShape("weightScale", weightScaleShape,
+                           {params.groupNum, params.nSize, scaleKSize, scaleLastDim});
 }
 
 void PrintInputParams(gert::TilingContext &context, const GMMSQWeightQuantInputParams &params)
@@ -622,6 +653,35 @@ void PrintInputParams(gert::TilingContext &context, const GMMSQWeightQuantInputP
             static_cast<long long>(params.mSize), static_cast<long long>(params.kSize),
             static_cast<long long>(params.nSize), static_cast<long long>(params.groupNum),
             params.wTrans ? "true" : "false", static_cast<long long>(params.groupListType));
+}
+
+bool CheckWeightQuantAswCoreNum(NpuArch npuArch, uint32_t aicNum, uint32_t aivNum)
+{
+    constexpr uint32_t AIC_AIV_CORE_RATIO_ASW = 1;
+    const uint32_t ratio = npuArch == NpuArch::DAV_3510 ? AIC_AIV_CORE_RATIO : AIC_AIV_CORE_RATIO_ASW;
+    OP_CHECK_IF(aicNum == 0 || aivNum == 0 || aicNum * ratio != aivNum,
+                OP_LOGE(OP_NAME, "ASW requires cube:vector core ratio 1:%u; got %u:%u.", ratio, aicNum, aivNum),
+                return false);
+    return true;
+}
+
+ge::graphStatus ValidateWeightQuantAsw(gert::TilingContext &context, GMMSQWeightQuantInputParams &params,
+                                       NpuArch npuArch, uint64_t tilingDataSize)
+{
+    OP_CHECK_IF(context.GetInputShape(X_INDEX) == nullptr || context.GetInputShape(X_SCALE_INDEX) == nullptr ||
+                    context.GetInputShape(GROUPLIST_INDEX) == nullptr,
+                OP_LOGE(OP_NAME, "ASW requires x, xScale and groupList shapes."), return ge::GRAPH_FAILED);
+    if (!GetContext(params, context) || !CheckContext(context, tilingDataSize) ||
+        !GetAttrs(params, context) || !CheckAttrs(context, params) || !CheckDtypes(context, true, npuArch) ||
+        !GetInputs(params, context)) {
+        return ge::GRAPH_FAILED;
+    }
+    // The ASW kernel consumes one tensor-list element with an explicit expert axis.
+    OP_CHECK_IF(params.isSingleMultiSingle || GetDynamicInputTensorListSize(context, WEIGHT_INDEX) != 1 ||
+                    GetDynamicInputTensorListSize(context, WEIGHT_SCALE_INDEX) != 1,
+                OP_LOGE(OP_NAME, "ASW requires one weight and one weightScale tensor-list element."),
+                return ge::GRAPH_FAILED);
+    return CheckInputs(context, params, true, npuArch) ? ge::GRAPH_SUCCESS : ge::GRAPH_FAILED;
 }
 
 bool GroupedMatmulSwigluQuantV2WeightQuantTiling::IsCapable()
@@ -658,13 +718,13 @@ ge::graphStatus GroupedMatmulSwigluQuantV2WeightQuantTiling::GetShapeAttrsInfo()
     if (!CheckAttrs(*context_, inputParams_)) {
         return ge::GRAPH_FAILED;
     }
-    if (!CheckDtypes(*context_)) {
+    if (!CheckDtypes(*context_, false, compileInfoPtr_->npuArch_)) {
         return ge::GRAPH_FAILED;
     }
     if (!GetInputs(inputParams_, *context_)) {
         return ge::GRAPH_FAILED;
     }
-    if (!CheckInputs(*context_, inputParams_)) {
+    if (!CheckInputs(*context_, inputParams_, false, compileInfoPtr_->npuArch_)) {
         return ge::GRAPH_FAILED;
     }
 

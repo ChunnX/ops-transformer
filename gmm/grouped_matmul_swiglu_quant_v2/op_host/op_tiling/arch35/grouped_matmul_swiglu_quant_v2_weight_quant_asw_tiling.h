@@ -25,7 +25,7 @@
 #include "tiling/tiling_api.h"
 #include "op_host/tiling_base.h"
 #include "../grouped_matmul_swiglu_quant_v2_tiling.h"
-#include "grouped_matmul_swiglu_quant_v2_weight_quant_checker.h"
+#include "grouped_matmul_swiglu_quant_v2_weight_quant_tiling.h"
 #include "../../../op_kernel/arch35/weight_quant_asw/grouped_matmul_swiglu_quant_v2_weight_quant_asw_tiling_data.h"
 
 namespace optiling {
@@ -57,7 +57,7 @@ protected:
     ge::graphStatus PostTiling() override;
     void Reset();
 
-    GMMSQWeightQuantChecker::GMMSQWeightQuantInputParams inputParams_;
+    GMMSQWeightQuantInputParams inputParams_;
 
 private:
     const GMMSwigluV2CompileInfo *compileInfoPtr_ = nullptr;

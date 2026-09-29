@@ -29,8 +29,8 @@
 #include "../block/block_scheduler_gmm_aswt_with_tail_split.h"
 #include "../epilogue/block_epilogue_swiglu_hif4_quant.h"
 
-#include "../utils/common_utils.h"
-#include "../utils/layout_utils.h"
+#include "../utils/cgmct_common_utils.h"
+#include "../utils/cgmct_layout_utils.h"
 #include "../utils/tuple_utils.h"
 #include "../utils/coord_utils.h"
 #include "../utils/tensor_utils.h"

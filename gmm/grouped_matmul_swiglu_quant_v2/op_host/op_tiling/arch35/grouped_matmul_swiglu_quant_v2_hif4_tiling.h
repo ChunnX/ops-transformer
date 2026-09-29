@@ -62,7 +62,7 @@ private:
     bool AnalyzeInputs() override;
     bool CheckCoreNum() const override;
     bool CheckDtype() const;
-    bool SetQuantModeForGMMSwigluQuant(const gert::Shape &wScaleShape, const gert::Shape &xScaleShape);
+    bool SetQuantModeForGMMSwigluQuant();
     bool IsHifp4(ge::DataType dtype) const;
     bool IsHifp4Input() const;
     bool IsHif4Scale() const;
