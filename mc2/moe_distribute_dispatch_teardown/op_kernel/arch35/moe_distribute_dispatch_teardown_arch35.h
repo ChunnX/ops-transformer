@@ -554,8 +554,7 @@ __aicore__ __attribute__((noinline)) void MoeDistributeDispatchTeardown<Template
     GetCumSum(outCountLocal, aivId_);
     uint32_t beginIdx = outCountLocal.GetValue(0);
     statusTensor_ = waitStatusBuf_.Get<int32_t>();
-    DataCopyPadExtParams<ExpandXOutType> copyPadExtParams{false, 0U, 0U,
-                                                          *reinterpret_cast<ExpandXOutType *>(uint8_t(0))};
+    DataCopyPadParams copyPadExtParams{false, 0U, 0U, 0U};
     DataCopyExtParams dataCopyOutParams{1U, static_cast<uint32_t>(sendExpertNum_ * sizeof(int32_t)), 0U, 0U, 0U};
     for (uint32_t index = startExpertId_; index < endExpertId_; index++) {
         uint32_t i = index - startExpertId_;
