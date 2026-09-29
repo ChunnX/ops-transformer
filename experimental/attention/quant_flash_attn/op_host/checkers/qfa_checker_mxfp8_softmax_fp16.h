@@ -28,8 +28,8 @@ public:
     QfaMxfp8SoftmaxFp16Checker() = default;
     ~QfaMxfp8SoftmaxFp16Checker() = default;
 
-    ge::graphStatus Init(const QfaTilingInfo &qfaInfo);
-    ge::graphStatus Process(const QfaTilingInfo &qfaInfo);
+    ge::graphStatus Init(const QfaTilingInfo& qfaInfo);
+    ge::graphStatus Process(const QfaTilingInfo& qfaInfo);
 };
 
 } // namespace quant_flash_attn

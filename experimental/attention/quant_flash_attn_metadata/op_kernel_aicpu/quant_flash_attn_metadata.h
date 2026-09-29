@@ -79,14 +79,14 @@ __aicore__ inline uint32_t GetAttrAbsIndex(uint32_t sectionIdx, uint32_t coreIdx
 namespace detail {
 struct QFaMetaData {
     uint32_t sectionNum;
-    uint32_t *qfaMetadata; // [sectionNum][AIC_CORE_NUM][QFA_METADATA_SIZE];
-    uint32_t *qfdMetadata; // [sectionNum][AIV_CORE_NUM][QFD_METADATA_SIZE];
-    QFaMetaData(void *metadataPtr, uint32_t sectionNum)
+    uint32_t* qfaMetadata; // [sectionNum][AIC_CORE_NUM][QFA_METADATA_SIZE];
+    uint32_t* qfdMetadata; // [sectionNum][AIV_CORE_NUM][QFD_METADATA_SIZE];
+    QFaMetaData(void* metadataPtr, uint32_t sectionNum)
         : sectionNum(sectionNum),
-          qfaMetadata(static_cast<uint32_t *>(metadataPtr) + 16U),
-          qfdMetadata(static_cast<uint32_t *>(metadataPtr) + 16U + sectionNum * AIC_CORE_NUM * QFA_METADATA_SIZE)
+          qfaMetadata(static_cast<uint32_t*>(metadataPtr) + 16U),
+          qfdMetadata(static_cast<uint32_t*>(metadataPtr) + 16U + sectionNum * AIC_CORE_NUM * QFA_METADATA_SIZE)
     {
-        static_cast<uint32_t *>(metadataPtr)[0] = sectionNum;
+        static_cast<uint32_t*>(metadataPtr)[0] = sectionNum;
     }
     void setQFaMetadata(uint32_t sectionIdx, uint32_t aicIdx, uint32_t metaIdx, uint32_t val)
     {
@@ -155,14 +155,14 @@ struct FaMetaData {
     uint32_t sectionNum;
     uint32_t aicNum;
     uint32_t aivNum;
-    FA_METADATA_T *headMedata; // [METADATA_STRIDE];
-    FA_METADATA_T *faMetadata; // [sectionNum][aicNum][METADATA_STRIDE];
-    FA_METADATA_T *fdMetadata; // [sectionNum][aivNum][METADATA_STRIDE];
-    FaMetaData(uint32_t aicNum, uint32_t aivNum, uint32_t sectionNum, void *metadataPtr)
+    FA_METADATA_T* headMedata; // [METADATA_STRIDE];
+    FA_METADATA_T* faMetadata; // [sectionNum][aicNum][METADATA_STRIDE];
+    FA_METADATA_T* fdMetadata; // [sectionNum][aivNum][METADATA_STRIDE];
+    FaMetaData(uint32_t aicNum, uint32_t aivNum, uint32_t sectionNum, void* metadataPtr)
         : sectionNum(sectionNum),
           aicNum(aicNum),
           aivNum(aivNum),
-          headMedata(static_cast<FA_METADATA_T *>(metadataPtr)),
+          headMedata(static_cast<FA_METADATA_T*>(metadataPtr)),
           faMetadata(headMedata + METADATA_STRIDE),
           fdMetadata(faMetadata + sectionNum * aicNum * METADATA_STRIDE)
     {
@@ -228,12 +228,12 @@ struct FaMetaData {
 };
 
 struct QuantFAGMetaData {
-    uint32_t *data;
+    uint32_t* data;
     // metadata shape 为 (2, dim0)，第一维存正向 FA 调度数据，
     // 第二维存反向 QuantFAG 调度数据，偏移 dim0 个元素到达第二维起始。
     // dim0 由 torch 层按 sectionNum 最坏值动态分配，从输出 tensor shape 读取。
-    QuantFAGMetaData(void *metadataPtr, uint32_t fagOffset)
-        : data(static_cast<uint32_t *>(metadataPtr) + fagOffset)
+    QuantFAGMetaData(void* metadataPtr, uint32_t fagOffset)
+        : data(static_cast<uint32_t*>(metadataPtr) + fagOffset)
     {}
 
     void SetDeterMaxRound(uint32_t metaIdx, int64_t val)

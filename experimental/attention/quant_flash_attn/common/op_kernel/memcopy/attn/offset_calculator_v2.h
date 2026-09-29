@@ -203,13 +203,13 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_Q_OUT_BNGSD, ACTLEN_T> {
         gmLayout.MakeLayout(b, n2, g, s1, d);
     }
 
-    __aicore__ inline void Init(const ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, ACTLEN_T> &parser)
+    __aicore__ inline void Init(const ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, ACTLEN_T>& parser)
     {
         actualSeqLensQParser = parser;
     }
 
     __aicore__ inline void Init(uint32_t b, uint32_t n2, uint32_t g, uint32_t s1, uint32_t d,
-                                const ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, ACTLEN_T> &parser)
+                                const ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, ACTLEN_T>& parser)
     {
         actualSeqLensQParser = parser;
         gmLayout.MakeLayout(b, n2, g, s1, d);
@@ -293,7 +293,7 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_Q_OUT_TND, ACTLEN_T, WITH
         gmLayout.MakeLayout(actualSeqLensQParser.GetTSize(), n2, g, d);
     }
 
-    __aicore__ inline void Init(uint32_t n2, uint32_t g, uint32_t d, const SeqLensQParserType &parser)
+    __aicore__ inline void Init(uint32_t n2, uint32_t g, uint32_t d, const SeqLensQParserType& parser)
     {
         actualSeqLensQParser = parser;
         gmLayout.MakeLayout(actualSeqLensQParser.GetTSize(), n2, g, d);
@@ -381,7 +381,7 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_KV_BNSD, ACTLEN_T> {
     }
 
     __aicore__ inline void Init(uint32_t b, uint32_t n2, uint32_t s2, uint32_t d,
-                                const ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, ACTLEN_T> &parser)
+                                const ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, ACTLEN_T>& parser)
     {
         actualSeqLensKVParser = parser;
         gmLayout.MakeLayout(b, n2, s2, d);
@@ -455,7 +455,7 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_KV_TND, ACTLEN_T, WITH_ZE
         gmLayout.MakeLayout(actualSeqLensKVParser.GetTSize(), n2, d);
     }
 
-    __aicore__ inline void Init(uint32_t n2, uint32_t d, const SeqLensKVParserType &parser)
+    __aicore__ inline void Init(uint32_t n2, uint32_t d, const SeqLensKVParserType& parser)
     {
         actualSeqLensKVParser = parser;
         gmLayout.MakeLayout(actualSeqLensKVParser.GetTSize(), n2, d);
@@ -521,7 +521,7 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_V_SCALE_TND, ACTLEN_T, WI
         gmLayout.MakeLayout(actualSeqLensKVParser.GetTSize(), n2, d);
     }
 
-    __aicore__ inline void Init(uint32_t n2, uint32_t d, const SeqLensKVParserType &parser)
+    __aicore__ inline void Init(uint32_t n2, uint32_t d, const SeqLensKVParserType& parser)
     {
         actualSeqLensKVParser = parser;
         gmLayout.MakeLayout(actualSeqLensKVParser.GetTSize(), n2, d);
@@ -1090,7 +1090,7 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_ANTIQ_NT, ACTLEN_T, WITH_
         gmLayout.MakeLayout(actualSeqLensQParser.GetTSize(), n2, g);
     }
 
-    __aicore__ inline void Init(uint32_t n2, uint32_t g, const SeqLensQParserType &parser)
+    __aicore__ inline void Init(uint32_t n2, uint32_t g, const SeqLensQParserType& parser)
     {
         actualSeqLensQParser = parser;
         gmLayout.MakeLayout(actualSeqLensQParser.GetTSize(), n2, g);
@@ -1156,7 +1156,7 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_ANTIQ_TN, ACTLEN_T, WITH_
         gmLayout.MakeLayout(actualSeqLensQParser.GetTSize(), n2, g);
     }
 
-    __aicore__ inline void Init(uint32_t n2, uint32_t g, const SeqLensQParserType &parser)
+    __aicore__ inline void Init(uint32_t n2, uint32_t g, const SeqLensQParserType& parser)
     {
         actualSeqLensQParser = parser;
         gmLayout.MakeLayout(actualSeqLensQParser.GetTSize(), n2, g);
@@ -1230,7 +1230,7 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_PSE_BN2GS1S2, ACTLEN_T> {
     }
 
     __aicore__ inline void Init(uint32_t b, uint32_t n2, uint32_t g, uint32_t s1, uint32_t s2,
-                                const ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, ACTLEN_T> &parser)
+                                const ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, ACTLEN_T>& parser)
     {
         actualSeqLensQParser = parser;
         gmLayout.MakeLayout(b, n2, g, s1, s2);

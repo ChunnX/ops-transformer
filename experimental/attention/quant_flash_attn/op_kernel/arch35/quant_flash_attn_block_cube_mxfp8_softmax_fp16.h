@@ -93,7 +93,7 @@ private:
     using QSeqParser = ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, int32_t>;
     using KvSeqParser = ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, int32_t>;
 
-    const ConstInfo &constInfo_;
+    const ConstInfo& constInfo_;
 
     CopyQueryGmToL1<QUANT_T, GmFormat::BNGSD, L1Format::NZ> copyQueryGmToL1_;
     CopyQueryScaleGmToL1<SCALE_T, GmFormat::BNGSD> copyQueryScaleGmToL1_;
@@ -166,50 +166,50 @@ private:
 
     // ===== Q/K 搬运 helper（BNSD 布局，GM→L1）=====
     __aicore__ inline void InitQBuffer(uint32_t b, uint32_t n2, uint32_t g, uint32_t s1, uint32_t d,
-                                       FaGmTensor<QUANT_T, GmFormat::BNGSD, int32_t> &qGmTensor, __gm__ uint8_t *gm,
-                                       QSeqParser &qSeqParser)
+                                       FaGmTensor<QUANT_T, GmFormat::BNGSD, int32_t>& qGmTensor, __gm__ uint8_t* gm,
+                                       QSeqParser& qSeqParser)
     {
-        qGmTensor.gmTensor.SetGlobalBuffer((__gm__ QUANT_T *)gm);
+        qGmTensor.gmTensor.SetGlobalBuffer((__gm__ QUANT_T*)gm);
         qGmTensor.offsetCalculator.Init(b, n2, g, s1, d, qSeqParser);
     }
 
     __aicore__ inline void InitQScaleBuffer(uint32_t b, uint32_t n2, uint32_t g, uint32_t s1, uint32_t d,
-                                            FaGmTensor<SCALE_T, GmFormat::BNGSD, int32_t> &qScaleGmTensor,
-                                            __gm__ uint8_t *gm, QSeqParser &qSeqParser)
+                                            FaGmTensor<SCALE_T, GmFormat::BNGSD, int32_t>& qScaleGmTensor,
+                                            __gm__ uint8_t* gm, QSeqParser& qSeqParser)
     {
-        qScaleGmTensor.gmTensor.SetGlobalBuffer((__gm__ SCALE_T *)gm);
+        qScaleGmTensor.gmTensor.SetGlobalBuffer((__gm__ SCALE_T*)gm);
         qScaleGmTensor.offsetCalculator.Init(b, n2, g, s1, d, qSeqParser);
     }
 
     __aicore__ inline void InitKBuffer(uint32_t b, uint32_t n2, uint32_t s2, uint32_t d,
-                                       FaGmTensor<QUANT_T, GmFormat::BNSD, int32_t> &kVGmTensor, __gm__ uint8_t *gm,
-                                       KvSeqParser &kvSeqParser)
+                                       FaGmTensor<QUANT_T, GmFormat::BNSD, int32_t>& kVGmTensor, __gm__ uint8_t* gm,
+                                       KvSeqParser& kvSeqParser)
     {
-        kVGmTensor.gmTensor.SetGlobalBuffer((__gm__ QUANT_T *)gm);
+        kVGmTensor.gmTensor.SetGlobalBuffer((__gm__ QUANT_T*)gm);
         kVGmTensor.offsetCalculator.Init(b, n2, s2, d, kvSeqParser);
     }
 
     __aicore__ inline void InitKScaleBuffer(uint32_t b, uint32_t n2, uint32_t s2, uint32_t d,
-                                            FaGmTensor<SCALE_T, GmFormat::BNSD, int32_t> &kScaleGmTensor,
-                                            __gm__ uint8_t *gm, KvSeqParser &kvSeqParser)
+                                            FaGmTensor<SCALE_T, GmFormat::BNSD, int32_t>& kScaleGmTensor,
+                                            __gm__ uint8_t* gm, KvSeqParser& kvSeqParser)
     {
-        kScaleGmTensor.gmTensor.SetGlobalBuffer((__gm__ SCALE_T *)gm);
+        kScaleGmTensor.gmTensor.SetGlobalBuffer((__gm__ SCALE_T*)gm);
         kScaleGmTensor.offsetCalculator.Init(b, n2, s2, d, kvSeqParser);
     }
 
     __aicore__ inline void InitVBuffer(uint32_t b, uint32_t n2, uint32_t s2, uint32_t d,
-                                       FaGmTensor<QUANT_T, GmFormat::BNSD, int32_t> &vGmTensor, __gm__ uint8_t *gm,
-                                       KvSeqParser &kvSeqParser)
+                                       FaGmTensor<QUANT_T, GmFormat::BNSD, int32_t>& vGmTensor, __gm__ uint8_t* gm,
+                                       KvSeqParser& kvSeqParser)
     {
-        vGmTensor.gmTensor.SetGlobalBuffer((__gm__ QUANT_T *)gm);
+        vGmTensor.gmTensor.SetGlobalBuffer((__gm__ QUANT_T*)gm);
         vGmTensor.offsetCalculator.Init(b, n2, s2, d, kvSeqParser);
     }
 
     __aicore__ inline void InitVScaleBuffer(uint32_t b, uint32_t n2, uint32_t s2, uint32_t d,
-                                            FaGmTensor<SCALE_T, GmFormat::BNSD, int32_t> &vScaleGmTensor,
-                                            __gm__ uint8_t *gm, KvSeqParser &kvSeqParser)
+                                            FaGmTensor<SCALE_T, GmFormat::BNSD, int32_t>& vScaleGmTensor,
+                                            __gm__ uint8_t* gm, KvSeqParser& kvSeqParser)
     {
-        vScaleGmTensor.gmTensor.SetGlobalBuffer((__gm__ SCALE_T *)gm);
+        vScaleGmTensor.gmTensor.SetGlobalBuffer((__gm__ SCALE_T*)gm);
         vScaleGmTensor.offsetCalculator.Init(b, n2, s2, d, kvSeqParser);
     }
 
@@ -252,14 +252,14 @@ private:
     }
 
 public:
-    __aicore__ inline explicit QuantFlashAttnBlockCubeMxfp8SoftmaxFp16(ConstInfo &constInfo)
+    __aicore__ inline explicit QuantFlashAttnBlockCubeMxfp8SoftmaxFp16(ConstInfo& constInfo)
         : constInfo_(constInfo)
     {}
 
-    __aicore__ inline void InitInput(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
-                                     __gm__ uint8_t *dequantScaleQuery, __gm__ uint8_t *dequantScaleKey,
-                                     __gm__ uint8_t *dequantScaleValue, QSeqParser &qSeqParser,
-                                     KvSeqParser &kvSeqParser)
+    __aicore__ inline void InitInput(__gm__ uint8_t* query, __gm__ uint8_t* key, __gm__ uint8_t* value,
+                                     __gm__ uint8_t* dequantScaleQuery, __gm__ uint8_t* dequantScaleKey,
+                                     __gm__ uint8_t* dequantScaleValue, QSeqParser& qSeqParser,
+                                     KvSeqParser& kvSeqParser)
     {
         // Q/Qscale 用折叠头维（realN2 = n2×G, realG = 1，与 kernel 不合轴调度一致）：
         // 拷贝坐标传 realN2Idx（扁平头索引），gS1Idx 为纯 s1 索引（g 恒为 0）——
@@ -362,7 +362,7 @@ public:
         FreeEventID();
     }
 
-    __aicore__ inline void ComputeMm1(RunInfoMxfp8SoftmaxFp16 &runInfo, uint32_t subLoopIdx, bool isLastSubLoop)
+    __aicore__ inline void ComputeMm1(RunInfoMxfp8SoftmaxFp16& runInfo, uint32_t subLoopIdx, bool isLastSubLoop)
     {
         // ———— Q 常驻载入（行首一次，同一行所有 K subLoop 复用）————
         if (unlikely(runInfo.isFirstS2Loop && subLoopIdx == 0)) {
@@ -417,7 +417,7 @@ public:
         }
     }
 
-    __aicore__ inline void FixpipeMm1(RunInfoMxfp8SoftmaxFp16 &runInfo, uint32_t subLoopIdx, uint32_t subBlockId)
+    __aicore__ inline void FixpipeMm1(RunInfoMxfp8SoftmaxFp16& runInfo, uint32_t subLoopIdx, uint32_t subBlockId)
     {
         // subBlockId=0 消耗唯一一次 M_FIX，subBlockId=1 不再等待（L0C 未变）
         if (subBlockId == 0U) {
@@ -438,7 +438,7 @@ public:
         fixpipeParams.srcStride = ((actKSize + 15U) / 16U) * 16U;
         fixpipeParams.dstStride = S1_SUB_BLOCK_SIZE; // 固定 pitch 128，nSize 恒 ≤ pitch，杜绝行覆盖
         fixpipeParams.quantPre = QuantMode_t::QF322F16_PRE;
-        fixpipeParams.deqScalar = static_cast<uint64_t>(*reinterpret_cast<const int32_t *>(&constInfo_.scaleValue));
+        fixpipeParams.deqScalar = static_cast<uint64_t>(*reinterpret_cast<const int32_t*>(&constInfo_.scaleValue));
         fixpipeParams.dualDstCtl = 0; // 单目标模式（CANN PTO GetDualDstCtl 权威定义：0=Single/1=SplitM/2=SplitN）
         fixpipeParams.subBlockId = static_cast<bool>(subBlockId); // 函数参数：0→V0(S1前半)、1→V1(S1后半)
 
@@ -467,7 +467,7 @@ public:
         }
     }
 
-    __aicore__ inline void ComputeMm2(RunInfoMxfp8SoftmaxFp16 &runInfo, uint32_t vCore)
+    __aicore__ inline void ComputeMm2(RunInfoMxfp8SoftmaxFp16& runInfo, uint32_t vCore)
     {
         // S1 尾行（actMSize ≤ 128）时 vCore=1 无有效列：跳过计算与 L0C 搬运（不赌 Mmad n=0
         // 的硬件行为）；V 拷贝（vCore=0 恒有效）与 V 槽归还（vCore=1 分支）保持无条件执行
@@ -521,7 +521,7 @@ public:
         }
     }
 
-    __aicore__ inline void FixpipeMm2(RunInfoMxfp8SoftmaxFp16 &runInfo, uint32_t vCore)
+    __aicore__ inline void FixpipeMm2(RunInfoMxfp8SoftmaxFp16& runInfo, uint32_t vCore)
     {
         // 与 ComputeMm2 同守卫：S1 尾行时 vCore=1 跳过（其 Wait<M_FIX>/Set<FIX_M> 与
         // ComputeMm2 的 Set<M_FIX>/Wait<FIX_M> 在守卫内成对跳过，flag 保持配平；
@@ -555,7 +555,7 @@ public:
         l0cBufId_ = (l0cBufId_ + 1U) % 2U;
     }
 
-    __aicore__ inline void CopyQGmToL1(const RunInfoMxfp8SoftmaxFp16 &runInfo)
+    __aicore__ inline void CopyQGmToL1(const RunInfoMxfp8SoftmaxFp16& runInfo)
     {
         uint32_t l1BaseOffset = qBufId_ * L1_Q_SINGLE_SLOT_SIZE;
         uint32_t dstStride = (runInfo.actMSize + 31U) / 32U * 32U;
@@ -571,7 +571,7 @@ public:
         copyQueryGmToL1_(l1Tensor, queryGm_, gmCoord);
     }
 
-    __aicore__ inline void CopyQScaleGmToL1(const RunInfoMxfp8SoftmaxFp16 &runInfo)
+    __aicore__ inline void CopyQScaleGmToL1(const RunInfoMxfp8SoftmaxFp16& runInfo)
     {
         uint32_t l1BaseOffset = qBufId_ * L1_QSCALE_SINGLE_SLOT_SIZE;
         uint32_t dstStride = (runInfo.actMSize + 31U) / 32U * 32U;
@@ -591,7 +591,7 @@ public:
     // K 整块拷贝（每 task 一次）：[actSingleLoopS2Size, dBaseSize] → kvL1 槽；
     // rowCount 与 LoadKToL0A 的 srcStride 同基准（actSingleLoopS2SizeAlign，DN 同款），
     // subLoop 切片由 LoadKToL0A 的 mStartPosition 在槽内寻址
-    __aicore__ inline void CopyKGmToL1(const RunInfoMxfp8SoftmaxFp16 &runInfo)
+    __aicore__ inline void CopyKGmToL1(const RunInfoMxfp8SoftmaxFp16& runInfo)
     {
         uint32_t l1BaseOffset = kvBufId_ * L1_KV_SINGLE_SLOT_SIZE;
         uint32_t dstStride = runInfo.actSingleLoopS2SizeAlign;
@@ -606,7 +606,7 @@ public:
         copyKvGmToL1_(l1Tensor, keyGm_, gmCoord);
     }
 
-    __aicore__ inline void CopyKScaleGmToL1(const RunInfoMxfp8SoftmaxFp16 &runInfo)
+    __aicore__ inline void CopyKScaleGmToL1(const RunInfoMxfp8SoftmaxFp16& runInfo)
     {
         uint32_t dDealSize = dBaseSize / MXFP_GROUP_SIZE;
         uint32_t l1BaseOffset = kvBufId_ * L1_KVSCALE_SINGLE_SLOT_SIZE;
@@ -622,7 +622,7 @@ public:
         copyKeyScaleGmToL1_(l1Tensor, keyScaleGm_, gmCoord);
     }
 
-    __aicore__ inline void CopyVGmToL1(const RunInfoMxfp8SoftmaxFp16 &runInfo)
+    __aicore__ inline void CopyVGmToL1(const RunInfoMxfp8SoftmaxFp16& runInfo)
     {
         uint32_t l1BaseOffset = kvBufId_ * L1_KV_SINGLE_SLOT_SIZE;
         uint32_t dstStride = (runInfo.actSingleLoopS2Size + 63U) / 64U * 64U;
@@ -637,7 +637,7 @@ public:
         copyKvGmToL1_(l1Tensor, valueGm_, gmCoord);
     }
 
-    __aicore__ inline void CopyVScaleGmToL1(const RunInfoMxfp8SoftmaxFp16 &runInfo)
+    __aicore__ inline void CopyVScaleGmToL1(const RunInfoMxfp8SoftmaxFp16& runInfo)
     {
         uint32_t l1BaseOffset = kvBufId_ * L1_KVSCALE_SINGLE_SLOT_SIZE;
         uint32_t s2GroupCount = (runInfo.actSingleLoopS2Size + 63U) / 64U; // S2/64 组行数
@@ -652,7 +652,7 @@ public:
         copyValueScaleGmToL1_(l1Tensor, valueScaleGm_, gmCoord);
     }
 
-    __aicore__ inline void LoadQToL0B(const RunInfoMxfp8SoftmaxFp16 &runInfo)
+    __aicore__ inline void LoadQToL0B(const RunInfoMxfp8SoftmaxFp16& runInfo)
     {
         LoadData2DParamsV2 dataParams;
         dataParams.mStartPosition = 0U;
@@ -676,7 +676,7 @@ public:
         LoadData(qL0BTensor_, qL1Tensor_[qL1Offset], qScaleL1Tensor_[qScaleL1Offset], dataParams, scaleParams);
     }
 
-    __aicore__ inline void LoadKToL0A(const RunInfoMxfp8SoftmaxFp16 &runInfo, uint32_t subLoopIdx)
+    __aicore__ inline void LoadKToL0A(const RunInfoMxfp8SoftmaxFp16& runInfo, uint32_t subLoopIdx)
     {
         uint32_t actKSize = (subLoopIdx + 1 == AttentionCommon::CeilDiv(runInfo.actSingleLoopS2Size, S2_SPLIT_SIZE)) ?
                                 runInfo.actSingleLoopS2Size - subLoopIdx * S2_SPLIT_SIZE :
@@ -708,7 +708,7 @@ public:
                  dataParams, scaleParams);
     }
 
-    __aicore__ inline void MatmulKQ(const RunInfoMxfp8SoftmaxFp16 &runInfo, uint32_t actKSize)
+    __aicore__ inline void MatmulKQ(const RunInfoMxfp8SoftmaxFp16& runInfo, uint32_t actKSize)
     {
         MmadParams mmadParams;
         mmadParams.m = actKSize;
@@ -723,7 +723,7 @@ public:
         Mmad(mmL0CTensor_[l0cOffset], mm1L0ATensor_[l0aOffset], qL0BTensor_, mmadParams);
     }
 
-    __aicore__ inline void LoadPToL0B(const RunInfoMxfp8SoftmaxFp16 &runInfo, uint32_t vCore, uint32_t subKIdx,
+    __aicore__ inline void LoadPToL0B(const RunInfoMxfp8SoftmaxFp16& runInfo, uint32_t vCore, uint32_t subKIdx,
                                       uint32_t actSubKSize)
     {
         // m/k 方向对齐 DN LoadPToL0（量产）：m 沿 S2（subK 切片）、k 沿 S1、ifTranspose=true。
@@ -758,12 +758,12 @@ public:
         scaleParams.dstStride = scaleParams.yStep;
 
         uint32_t l0bOffset = 0U;
-        LocalTensor<SCALE_T> &pScaleL1Tensor = (vCore == 0U) ? pScaleL1V0Tensor_ : pScaleL1V1Tensor_;
+        LocalTensor<SCALE_T>& pScaleL1Tensor = (vCore == 0U) ? pScaleL1V0Tensor_ : pScaleL1V1Tensor_;
         LoadData(pL0BTensor_[l0bOffset], l1SharedTensor_[pL1Offset], pScaleL1Tensor[pScaleL1Offset], dataParams,
                  scaleParams);
     }
 
-    __aicore__ inline void LoadVToL0A(const RunInfoMxfp8SoftmaxFp16 &runInfo, uint32_t subKIdx, uint32_t actSubKSize)
+    __aicore__ inline void LoadVToL0A(const RunInfoMxfp8SoftmaxFp16& runInfo, uint32_t subKIdx, uint32_t actSubKSize)
     {
         uint32_t actSubKSizeAlign = (actSubKSize + 63U) / 64U * 64U;
 
@@ -790,7 +790,7 @@ public:
         LoadData(mm2L0ATensor_, kvL1Tensor_[kvL1Offset], kvScaleL1Tensor_[kvScaleL1Offset], dataParams, scaleParams);
     }
 
-    __aicore__ inline void MatmulVP(const RunInfoMxfp8SoftmaxFp16 &runInfo, uint32_t vCore, uint32_t subKSize,
+    __aicore__ inline void MatmulVP(const RunInfoMxfp8SoftmaxFp16& runInfo, uint32_t vCore, uint32_t subKSize,
                                     bool isFirstSubK)
     {
         MmadParams mmadParams;

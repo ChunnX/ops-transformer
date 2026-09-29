@@ -170,13 +170,13 @@ std::string QfaQuantModeToSerialString(QfaQuantMode qfaQuantMode);
 // ============================================================
 
 struct QfaRequiredParaInfo {
-    const gert::CompileTimeTensorDesc *desc;
-    const gert::StorageShape *shape;
+    const gert::CompileTimeTensorDesc* desc;
+    const gert::StorageShape* shape;
 };
 
 struct QfaOptionalParaInfo {
-    const gert::CompileTimeTensorDesc *desc;
-    const gert::Tensor *tensor;
+    const gert::CompileTimeTensorDesc* desc;
+    const gert::Tensor* tensor;
 };
 
 struct QfaParaInfo {
@@ -197,18 +197,18 @@ struct QfaParaInfo {
     QfaOptionalParaInfo metadata = {nullptr, nullptr};
     QfaOptionalParaInfo attnMask = {nullptr, nullptr};
 
-    const int64_t *quantMode = nullptr;
-    const float *softmaxScale = nullptr;
-    const int64_t *maskMode = nullptr;
-    const int64_t *winLeft = nullptr;
-    const int64_t *winRight = nullptr;
-    const int64_t *maxSeqlenQ = nullptr;
-    const int64_t *maxSeqlenKV = nullptr;
-    const char *layoutQ = nullptr;
-    const char *layoutQDescale = nullptr;
-    const char *layoutKV = nullptr;
-    const char *layoutOut = nullptr;
-    const bool *returnSoftMaxLse = nullptr;
+    const int64_t* quantMode = nullptr;
+    const float* softmaxScale = nullptr;
+    const int64_t* maskMode = nullptr;
+    const int64_t* winLeft = nullptr;
+    const int64_t* winRight = nullptr;
+    const int64_t* maxSeqlenQ = nullptr;
+    const int64_t* maxSeqlenKV = nullptr;
+    const char* layoutQ = nullptr;
+    const char* layoutQDescale = nullptr;
+    const char* layoutKV = nullptr;
+    const char* layoutOut = nullptr;
+    const bool* returnSoftMaxLse = nullptr;
 
     QfaRequiredParaInfo attnOut = {nullptr, nullptr};
     QfaRequiredParaInfo lseOut = {nullptr, nullptr};
@@ -220,8 +220,8 @@ struct QfaParaInfo {
 
 class QfaTilingInfo : public TilingInfo {
 public:
-    const char *opName = nullptr;
-    fe::PlatFormInfos *platformInfo = nullptr;
+    const char* opName = nullptr;
+    fe::PlatFormInfos* platformInfo = nullptr;
     QfaParaInfo opParamInfo;
 
     // Base Param
@@ -280,10 +280,10 @@ public:
     QfaLayout layoutQDescale = QfaLayout::BSND;
 
     // Strides (for non-contiguous tensor check)
-    const gert::Stride *keyStrides = nullptr;
-    const gert::Stride *valueStrides = nullptr;
-    const gert::Stride *kDescaleStrides = nullptr;
-    const gert::Stride *vDescaleStrides = nullptr;
+    const gert::Stride* keyStrides = nullptr;
+    const gert::Stride* valueStrides = nullptr;
+    const gert::Stride* kDescaleStrides = nullptr;
+    const gert::Stride* vDescaleStrides = nullptr;
     bool hasStride = false;
 };
 

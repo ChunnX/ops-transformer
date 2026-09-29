@@ -98,7 +98,7 @@ private:
     LocalTensor<SCALE_T> pScaleL1V1Tensor_; // V1 的 pscale（[4608, 9216B) 窗口内）
 
     // ===== 依赖注入 =====
-    const ConstInfo &constInfo_; // 核信息（subBlockIdx、scaleValue 等）
+    const ConstInfo& constInfo_; // 核信息（subBlockIdx、scaleValue 等）
 
     // ===== GM 输出（BNSD 布局 + S1_ONLY 行拷贝——realGSize=1 语义下 GS1 退化为 S1）=====
     GlobalTensor<OUT_T> attentionOutGm_;                      // GM 输出 tensor
@@ -116,7 +116,7 @@ private:
     static constexpr uint32_t EVT_LSE_OUT = 3;  // V→MTE3：LSE 计算就绪后放行 GM 拷贝
 
 public:
-    __aicore__ inline explicit QuantFlashAttnBlockVectorMxfp8SoftmaxFp16(ConstInfo &constInfo)
+    __aicore__ inline explicit QuantFlashAttnBlockVectorMxfp8SoftmaxFp16(ConstInfo& constInfo)
         : constInfo_(constInfo)
     {}
 
@@ -124,19 +124,19 @@ public:
      * GM 输出初始化（kernel InitInput 阶段调用）
      * 注意：parser 必须已 Init 完成后再调用（OffsetCalculator 内部为拷贝语义，早调会拷到空 parser）
      */
-    __aicore__ inline void InitInput(__gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *pScale,
-                                     const ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, int32_t> &parser)
+    __aicore__ inline void InitInput(__gm__ uint8_t* attentionOut, __gm__ uint8_t* softmaxLse, __gm__ uint8_t* pScale,
+                                     const ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, int32_t>& parser)
     {
-        attentionOutGm_.SetGlobalBuffer(reinterpret_cast<__gm__ OUT_T *>(attentionOut));
+        attentionOutGm_.SetGlobalBuffer(reinterpret_cast<__gm__ OUT_T*>(attentionOut));
         if (constInfo_.isSoftmaxLseEnable) {
-            softmaxLseGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(softmaxLse));
+            softmaxLseGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(softmaxLse));
         }
         outGmTensor_.gmTensor = attentionOutGm_;
         outGmTensor_.offsetCalculator.Init(constInfo_.bSize, constInfo_.realN2Size, constInfo_.realGSize,
                                            constInfo_.s1Size, constInfo_.dSizeV, parser);
         // 外部 pScale（headroom 因子，外部动态输入）：GM fp32 标量 → half 存成员
         if (pScale != nullptr) {
-            pScaleHalf_ = static_cast<half>(*reinterpret_cast<__gm__ float *>(pScale));
+            pScaleHalf_ = static_cast<half>(*reinterpret_cast<__gm__ float*>(pScale));
         }
     }
 
@@ -182,7 +182,7 @@ public:
         SetFlag<HardEvent::MTE3_V>(EVT_P_COPY);
     }
 
-    __aicore__ inline void ComputeVec1(RunInfoMxfp8SoftmaxFp16 &runInfo, uint32_t subLoopIdx)
+    __aicore__ inline void ComputeVec1(RunInfoMxfp8SoftmaxFp16& runInfo, uint32_t subLoopIdx)
     {
         // S1 尾行（actMSize ≤ 128）时本核（V1）没有自己的 S1 列，直接返回：
         // S1 按 V0=前半 / V1=后半分给两个核，行尾块的 S1 总数不足 256 时 V1 分不到列。
@@ -244,7 +244,7 @@ public:
             // pscale：所有 subLoop 统一计算 + 网格直落（末 subLoop 的 k_i = K_final——
             // accMax 单调累积 → Δk 恒 0 → 127，走通用路径无需特判；读侧每个被读的 y 行
             // 都由本任务的 V1 写过，无陈旧读取，不需要 cube 侧预填）
-            LocalTensor<SCALE_T> &pScaleL1Target =
+            LocalTensor<SCALE_T>& pScaleL1Target =
                 (constInfo_.subBlockIdx == 0U) ? pScaleL1V0Tensor_ : pScaleL1V1Tensor_;
             LocalTensor<uint8_t> pscaleGridU8 = pscaleGridUB_.template ReinterpretCast<uint8_t>();
             for (uint32_t i = 0; i < c1v1Loop; i++) {
@@ -263,7 +263,7 @@ public:
         }
     }
 
-    __aicore__ inline void ComputeVec2(RunInfoMxfp8SoftmaxFp16 &runInfo)
+    __aicore__ inline void ComputeVec2(RunInfoMxfp8SoftmaxFp16& runInfo)
     {
         // V1 半无有效列（actVecS1Size==0）：C2 由 cube 侧防御跳过，V2 同步早退
         // （外层 C2_V2 flag 无条件 Set，早退不破坏跨核配平）
@@ -369,7 +369,7 @@ public:
     __aicore__ inline void WriteLseNegInf(uint32_t bIdx, uint32_t realN2Idx, uint32_t rowCount)
     {
         static constexpr int32_t NEG_INF_BITS = static_cast<int32_t>(0xFF800000U); // fp32 -inf 位模式
-        const float negInfValue = *reinterpret_cast<const float *>(&NEG_INF_BITS);
+        const float negInfValue = *reinterpret_cast<const float*>(&NEG_INF_BITS);
         Duplicate(lseInfUb_, negInfValue, UB_LSE_SIZE);
         SetFlag<HardEvent::V_MTE3>(EVT_LSE_OUT);
         WaitFlag<HardEvent::V_MTE3>(EVT_LSE_OUT);

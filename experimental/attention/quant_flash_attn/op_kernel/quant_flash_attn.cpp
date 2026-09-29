@@ -89,11 +89,11 @@ __aicore__ inline constexpr bool IsPageAttention()
 template <uint8_t Q_OUT_LAYOUT_T, uint16_t CONFIG_T, uint8_t QUANT_MODE_T, bool HAS_MASK, uint8_t KV_STORAGE_MODE,
           bool IS_FD_T>
 __global__ __aicore__ void quant_flash_attn(
-    __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *q_descale,
-    __gm__ uint8_t *k_descale, __gm__ uint8_t *v_descale, __gm__ uint8_t *blockTable, __gm__ uint8_t *pScale,
-    __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensKv, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedKv,
-    __gm__ uint8_t *learnableSink, __gm__ uint8_t *attnMask, __gm__ uint8_t *metadata, __gm__ uint8_t *attnOut,
-    __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
+    __gm__ uint8_t* query, __gm__ uint8_t* key, __gm__ uint8_t* value, __gm__ uint8_t* q_descale,
+    __gm__ uint8_t* k_descale, __gm__ uint8_t* v_descale, __gm__ uint8_t* blockTable, __gm__ uint8_t* pScale,
+    __gm__ uint8_t* cuSeqlensQ, __gm__ uint8_t* cuSeqlensKv, __gm__ uint8_t* sequsedQ, __gm__ uint8_t* sequsedKv,
+    __gm__ uint8_t* learnableSink, __gm__ uint8_t* attnMask, __gm__ uint8_t* metadata, __gm__ uint8_t* attnOut,
+    __gm__ uint8_t* softmaxLse, __gm__ uint8_t* workspace, __gm__ uint8_t* tiling)
 {
     REGISTER_TILING_DEFAULT(QuantFlashAttnTilingData);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
@@ -103,7 +103,7 @@ __global__ __aicore__ void quant_flash_attn(
     if constexpr (QUANT_MODE_T == QFA_MXFP4_DN) {
         InitSocState();
         GET_TILING_DATA_MEMBER(QuantFlashAttnTilingData, baseTiling, baseTilingIn, tiling);
-        const FlashAttnTilingData *__restrict tilingData = &baseTilingIn;
+        const FlashAttnTilingData* __restrict tilingData = &baseTilingIn;
 
         using QFA_T = QFAType<fp4x2_e2m1_t, fp8_e8m0_t, bfloat16_t, IsPageAttention<KV_STORAGE_MODE>(),
                               GetQueryLayout<Q_OUT_LAYOUT_T>(), GetKvLayout<Q_OUT_LAYOUT_T, KV_STORAGE_MODE>(),
@@ -134,15 +134,15 @@ using namespace optiling;
 template <uint8_t inOutLayoutType, uint16_t config, uint8_t quantMode, bool hasAttenMask, uint8_t KvLayoutType,
           bool isFd>
 __aicore__ inline void quant_flash_attn_mxfp8_softmax_fp16(
-    __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *dequantScaleQuery,
-    __gm__ uint8_t *dequantScaleKey, __gm__ uint8_t *dequantScaleValue, __gm__ uint8_t *blockTable,
-    __gm__ uint8_t *pScale, __gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *cuSeqLensKv, __gm__ uint8_t *sequsedQ,
-    __gm__ uint8_t *sequsedKv, __gm__ uint8_t *sinks, __gm__ uint8_t *attnMask, __gm__ uint8_t *metadata,
-    __gm__ uint8_t *attnOut, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
+    __gm__ uint8_t* query, __gm__ uint8_t* key, __gm__ uint8_t* value, __gm__ uint8_t* dequantScaleQuery,
+    __gm__ uint8_t* dequantScaleKey, __gm__ uint8_t* dequantScaleValue, __gm__ uint8_t* blockTable,
+    __gm__ uint8_t* pScale, __gm__ uint8_t* cuSeqLensQ, __gm__ uint8_t* cuSeqLensKv, __gm__ uint8_t* sequsedQ,
+    __gm__ uint8_t* sequsedKv, __gm__ uint8_t* sinks, __gm__ uint8_t* attnMask, __gm__ uint8_t* metadata,
+    __gm__ uint8_t* attnOut, __gm__ uint8_t* softmaxLse, __gm__ uint8_t* workspace, __gm__ uint8_t* tiling)
 {
     InitSocState();
-    const __gm__ QuantFlashAttnTilingData *__restrict tilingData =
-        (const __gm__ QuantFlashAttnTilingData *__restrict)tiling;
+    const __gm__ QuantFlashAttnTilingData* __restrict tilingData =
+        (const __gm__ QuantFlashAttnTilingData* __restrict)tiling;
     using CubeBlock = QFA_KERNEL::QuantFlashAttnBlockCubeMxfp8SoftmaxFp16<QFA_KERNEL::QUANT_T, QFA_KERNEL::SCALE_T>;
     using VectorBlock = QFA_KERNEL::QuantFlashAttnBlockVectorMxfp8SoftmaxFp16<QFA_KERNEL::QUANT_T, QFA_KERNEL::SCALE_T,
                                                                               QFA_KERNEL::OUT_T>;
@@ -156,11 +156,11 @@ __aicore__ inline void quant_flash_attn_mxfp8_softmax_fp16(
 template <uint8_t inOutLayoutType, uint16_t config, uint8_t quantMode, bool hasAttenMask, uint8_t KvLayoutType,
           bool isFd>
 __global__ __aicore__ void quant_flash_attn(
-    __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *dequantScaleQuery,
-    __gm__ uint8_t *dequantScaleKey, __gm__ uint8_t *dequantScaleValue, __gm__ uint8_t *blockTable,
-    __gm__ uint8_t *pScale, __gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *cuSeqLensKv, __gm__ uint8_t *sequsedQ,
-    __gm__ uint8_t *sequsedKv, __gm__ uint8_t *sinks, __gm__ uint8_t *attnMask, __gm__ uint8_t *metadata,
-    __gm__ uint8_t *attnOut, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
+    __gm__ uint8_t* query, __gm__ uint8_t* key, __gm__ uint8_t* value, __gm__ uint8_t* dequantScaleQuery,
+    __gm__ uint8_t* dequantScaleKey, __gm__ uint8_t* dequantScaleValue, __gm__ uint8_t* blockTable,
+    __gm__ uint8_t* pScale, __gm__ uint8_t* cuSeqLensQ, __gm__ uint8_t* cuSeqLensKv, __gm__ uint8_t* sequsedQ,
+    __gm__ uint8_t* sequsedKv, __gm__ uint8_t* sinks, __gm__ uint8_t* attnMask, __gm__ uint8_t* metadata,
+    __gm__ uint8_t* attnOut, __gm__ uint8_t* softmaxLse, __gm__ uint8_t* workspace, __gm__ uint8_t* tiling)
 {
     REGISTER_TILING_DEFAULT(QuantFlashAttnTilingData);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);

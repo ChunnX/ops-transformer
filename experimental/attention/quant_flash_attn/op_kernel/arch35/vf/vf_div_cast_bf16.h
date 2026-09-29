@@ -38,7 +38,7 @@ using namespace AscendC::Reg;
  * @param [in]  src     stage2OutUB（[DV,S1] fp32，V2 末块累积分子）
  * @param [in]  rowsum  accRowsumUB（[128] fp32，per S1，累积分母）
  */
-__simd_vf__ inline void VfDivAndCastVF(__ubuf__ bfloat16_t *dstT, __ubuf__ float *src, __ubuf__ float *rowsum)
+__simd_vf__ inline void VfDivAndCastVF(__ubuf__ bfloat16_t* dstT, __ubuf__ float* src, __ubuf__ float* rowsum)
 {
     // ===== 融合转置写 =====
     // src [DV,S1] fp32 → dstT 转置带 pad [S1,DV] bf16（mm2Res 别名区）
@@ -99,36 +99,36 @@ __simd_vf__ inline void VfDivAndCastVF(__ubuf__ bfloat16_t *dstT, __ubuf__ float
             // 8 对跨行 Cast+Or：第 2t 行（Zero 放偶数位）与第 2t+1 行（One 放奇数位）交织进
             Cast<bfloat16_t, float, castTraitZero>(vreg_bf16_1, vreg_src_1, preg_f32);
             Cast<bfloat16_t, float, castTraitOne>(vreg_bf16_2, vreg_src_2, preg_f32);
-            Or((RegTensor<uint16_t> &)vreg_src_1, (RegTensor<uint16_t> &)vreg_bf16_1,
-               (RegTensor<uint16_t> &)vreg_bf16_2, preg_bf16);
+            Or((RegTensor<uint16_t>&)vreg_src_1, (RegTensor<uint16_t>&)vreg_bf16_1, (RegTensor<uint16_t>&)vreg_bf16_2,
+               preg_bf16);
             Cast<bfloat16_t, float, castTraitZero>(vreg_bf16_1, vreg_src_3, preg_f32);
             Cast<bfloat16_t, float, castTraitOne>(vreg_bf16_2, vreg_src_4, preg_f32);
-            Or((RegTensor<uint16_t> &)vreg_src_2, (RegTensor<uint16_t> &)vreg_bf16_1,
-               (RegTensor<uint16_t> &)vreg_bf16_2, preg_bf16);
+            Or((RegTensor<uint16_t>&)vreg_src_2, (RegTensor<uint16_t>&)vreg_bf16_1, (RegTensor<uint16_t>&)vreg_bf16_2,
+               preg_bf16);
             Cast<bfloat16_t, float, castTraitZero>(vreg_bf16_1, vreg_src_5, preg_f32);
             Cast<bfloat16_t, float, castTraitOne>(vreg_bf16_2, vreg_src_6, preg_f32);
-            Or((RegTensor<uint16_t> &)vreg_src_3, (RegTensor<uint16_t> &)vreg_bf16_1,
-               (RegTensor<uint16_t> &)vreg_bf16_2, preg_bf16);
+            Or((RegTensor<uint16_t>&)vreg_src_3, (RegTensor<uint16_t>&)vreg_bf16_1, (RegTensor<uint16_t>&)vreg_bf16_2,
+               preg_bf16);
             Cast<bfloat16_t, float, castTraitZero>(vreg_bf16_1, vreg_src_7, preg_f32);
             Cast<bfloat16_t, float, castTraitOne>(vreg_bf16_2, vreg_src_8, preg_f32);
-            Or((RegTensor<uint16_t> &)vreg_src_4, (RegTensor<uint16_t> &)vreg_bf16_1,
-               (RegTensor<uint16_t> &)vreg_bf16_2, preg_bf16);
+            Or((RegTensor<uint16_t>&)vreg_src_4, (RegTensor<uint16_t>&)vreg_bf16_1, (RegTensor<uint16_t>&)vreg_bf16_2,
+               preg_bf16);
             Cast<bfloat16_t, float, castTraitZero>(vreg_bf16_1, vreg_src_9, preg_f32);
             Cast<bfloat16_t, float, castTraitOne>(vreg_bf16_2, vreg_src_10, preg_f32);
-            Or((RegTensor<uint16_t> &)vreg_src_5, (RegTensor<uint16_t> &)vreg_bf16_1,
-               (RegTensor<uint16_t> &)vreg_bf16_2, preg_bf16);
+            Or((RegTensor<uint16_t>&)vreg_src_5, (RegTensor<uint16_t>&)vreg_bf16_1, (RegTensor<uint16_t>&)vreg_bf16_2,
+               preg_bf16);
             Cast<bfloat16_t, float, castTraitZero>(vreg_bf16_1, vreg_src_11, preg_f32);
             Cast<bfloat16_t, float, castTraitOne>(vreg_bf16_2, vreg_src_12, preg_f32);
-            Or((RegTensor<uint16_t> &)vreg_src_6, (RegTensor<uint16_t> &)vreg_bf16_1,
-               (RegTensor<uint16_t> &)vreg_bf16_2, preg_bf16);
+            Or((RegTensor<uint16_t>&)vreg_src_6, (RegTensor<uint16_t>&)vreg_bf16_1, (RegTensor<uint16_t>&)vreg_bf16_2,
+               preg_bf16);
             Cast<bfloat16_t, float, castTraitZero>(vreg_bf16_1, vreg_src_13, preg_f32);
             Cast<bfloat16_t, float, castTraitOne>(vreg_bf16_2, vreg_src_14, preg_f32);
-            Or((RegTensor<uint16_t> &)vreg_src_7, (RegTensor<uint16_t> &)vreg_bf16_1,
-               (RegTensor<uint16_t> &)vreg_bf16_2, preg_bf16);
+            Or((RegTensor<uint16_t>&)vreg_src_7, (RegTensor<uint16_t>&)vreg_bf16_1, (RegTensor<uint16_t>&)vreg_bf16_2,
+               preg_bf16);
             Cast<bfloat16_t, float, castTraitZero>(vreg_bf16_1, vreg_src_15, preg_f32);
             Cast<bfloat16_t, float, castTraitOne>(vreg_bf16_2, vreg_src_16, preg_f32);
-            Or((RegTensor<uint16_t> &)vreg_src_8, (RegTensor<uint16_t> &)vreg_bf16_1,
-               (RegTensor<uint16_t> &)vreg_bf16_2, preg_bf16);
+            Or((RegTensor<uint16_t>&)vreg_src_8, (RegTensor<uint16_t>&)vreg_bf16_1, (RegTensor<uint16_t>&)vreg_bf16_2,
+               preg_bf16);
             // Interleave 三轮蝶形（寄存器间距 4→2→1，转置网络核心，8×8 单元网格转置：寄存器号与单元组号互换）
             Interleave(vreg_src_1, vreg_src_5, vreg_src_1, vreg_src_5);
             Interleave(vreg_src_2, vreg_src_6, vreg_src_2, vreg_src_6);
@@ -146,28 +146,28 @@ __simd_vf__ inline void VfDivAndCastVF(__ubuf__ bfloat16_t *dstT, __ubuf__ float
             // 落位（float 单位）：列分组基址 colHalf·4608 + 块内 8·block + 寄存器跨度 576·q
             // （576=(8+1)·8·8 个 float=2304B；4608 float=18432B=一组 64 行×288B）
             StoreAlign<float, Reg::DataCopyMode::DATA_BLOCK_COPY>(
-                (__ubuf__ float *)dstT + colHalf * 4608 + 8 * block + 576 * 0, (RegTensor<float> &)vreg_src_1, 8 + 1,
+                (__ubuf__ float*)dstT + colHalf * 4608 + 8 * block + 576 * 0, (RegTensor<float>&)vreg_src_1, 8 + 1,
                 preg_f32);
             StoreAlign<float, Reg::DataCopyMode::DATA_BLOCK_COPY>(
-                (__ubuf__ float *)dstT + colHalf * 4608 + 8 * block + 576 * 1, (RegTensor<float> &)vreg_src_2, 8 + 1,
+                (__ubuf__ float*)dstT + colHalf * 4608 + 8 * block + 576 * 1, (RegTensor<float>&)vreg_src_2, 8 + 1,
                 preg_f32);
             StoreAlign<float, Reg::DataCopyMode::DATA_BLOCK_COPY>(
-                (__ubuf__ float *)dstT + colHalf * 4608 + 8 * block + 576 * 2, (RegTensor<float> &)vreg_src_3, 8 + 1,
+                (__ubuf__ float*)dstT + colHalf * 4608 + 8 * block + 576 * 2, (RegTensor<float>&)vreg_src_3, 8 + 1,
                 preg_f32);
             StoreAlign<float, Reg::DataCopyMode::DATA_BLOCK_COPY>(
-                (__ubuf__ float *)dstT + colHalf * 4608 + 8 * block + 576 * 3, (RegTensor<float> &)vreg_src_4, 8 + 1,
+                (__ubuf__ float*)dstT + colHalf * 4608 + 8 * block + 576 * 3, (RegTensor<float>&)vreg_src_4, 8 + 1,
                 preg_f32);
             StoreAlign<float, Reg::DataCopyMode::DATA_BLOCK_COPY>(
-                (__ubuf__ float *)dstT + colHalf * 4608 + 8 * block + 576 * 4, (RegTensor<float> &)vreg_src_5, 8 + 1,
+                (__ubuf__ float*)dstT + colHalf * 4608 + 8 * block + 576 * 4, (RegTensor<float>&)vreg_src_5, 8 + 1,
                 preg_f32);
             StoreAlign<float, Reg::DataCopyMode::DATA_BLOCK_COPY>(
-                (__ubuf__ float *)dstT + colHalf * 4608 + 8 * block + 576 * 5, (RegTensor<float> &)vreg_src_6, 8 + 1,
+                (__ubuf__ float*)dstT + colHalf * 4608 + 8 * block + 576 * 5, (RegTensor<float>&)vreg_src_6, 8 + 1,
                 preg_f32);
             StoreAlign<float, Reg::DataCopyMode::DATA_BLOCK_COPY>(
-                (__ubuf__ float *)dstT + colHalf * 4608 + 8 * block + 576 * 6, (RegTensor<float> &)vreg_src_7, 8 + 1,
+                (__ubuf__ float*)dstT + colHalf * 4608 + 8 * block + 576 * 6, (RegTensor<float>&)vreg_src_7, 8 + 1,
                 preg_f32);
             StoreAlign<float, Reg::DataCopyMode::DATA_BLOCK_COPY>(
-                (__ubuf__ float *)dstT + colHalf * 4608 + 8 * block + 576 * 7, (RegTensor<float> &)vreg_src_8, 8 + 1,
+                (__ubuf__ float*)dstT + colHalf * 4608 + 8 * block + 576 * 7, (RegTensor<float>&)vreg_src_8, 8 + 1,
                 preg_f32);
         }
     }
@@ -181,12 +181,12 @@ __simd_vf__ inline void VfDivAndCastVF(__ubuf__ bfloat16_t *dstT, __ubuf__ float
  * @param [in] stage2OutUB 累积分子（[DV,S1] fp32）
  * @param [in] accRowsumUB 累积分母（[128] per 查询位置，fp32）
  */
-__aicore__ inline void VfDivAndCast(const LocalTensor<bfloat16_t> &outputT, const LocalTensor<float> &stage2OutUB,
-                                    const LocalTensor<float> &accRowsumUB)
+__aicore__ inline void VfDivAndCast(const LocalTensor<bfloat16_t>& outputT, const LocalTensor<float>& stage2OutUB,
+                                    const LocalTensor<float>& accRowsumUB)
 {
-    __ubuf__ bfloat16_t *dstTPtr = reinterpret_cast<__ubuf__ bfloat16_t *>(outputT.GetPhyAddr());
-    __ubuf__ float *srcPtr = reinterpret_cast<__ubuf__ float *>(stage2OutUB.GetPhyAddr());
-    __ubuf__ float *rowsumPtr = reinterpret_cast<__ubuf__ float *>(accRowsumUB.GetPhyAddr());
+    __ubuf__ bfloat16_t* dstTPtr = reinterpret_cast<__ubuf__ bfloat16_t*>(outputT.GetPhyAddr());
+    __ubuf__ float* srcPtr = reinterpret_cast<__ubuf__ float*>(stage2OutUB.GetPhyAddr());
+    __ubuf__ float* rowsumPtr = reinterpret_cast<__ubuf__ float*>(accRowsumUB.GetPhyAddr());
     VfDivAndCastVF(dstTPtr, srcPtr, rowsumPtr);
 }
 

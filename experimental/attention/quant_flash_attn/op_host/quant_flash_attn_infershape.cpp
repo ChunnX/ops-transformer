@@ -48,26 +48,26 @@ static constexpr size_t OUTPUT_IDX_SOFTMAX_LSE = 1;
 
 static constexpr int FA_SOFTMAX_LSE_LAST_DIM = 1; // softmax_lse最后一维元素数（每head一个float）
 
-ge::graphStatus InferShapeFlashAttn(gert::InferShapeContext *context)
+ge::graphStatus InferShapeFlashAttn(gert::InferShapeContext* context)
 {
     OP_LOGI(context, "FlashAttn InferShape start.");
     if (context == nullptr) {
         return ge::GRAPH_FAILED;
     }
 
-    const gert::Shape *qShape = context->GetInputShape(INPUT_IDX_Q);
+    const gert::Shape* qShape = context->GetInputShape(INPUT_IDX_Q);
     OP_CHECK_NULL_WITH_CONTEXT(context, qShape);
-    const gert::Shape *kShape = context->GetInputShape(INPUT_IDX_K);
+    const gert::Shape* kShape = context->GetInputShape(INPUT_IDX_K);
     OP_CHECK_NULL_WITH_CONTEXT(context, kShape);
-    const gert::Shape *vShape = context->GetInputShape(INPUT_IDX_V);
+    const gert::Shape* vShape = context->GetInputShape(INPUT_IDX_V);
     OP_CHECK_NULL_WITH_CONTEXT(context, vShape);
 
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
 
-    const char *layoutQ = attrs->GetAttrPointer<char>(ATTR_IDX_LAYOUT_Q);
-    const char *layoutKv = attrs->GetAttrPointer<char>(ATTR_IDX_LAYOUT_KV);
-    const char *layoutOut = attrs->GetAttrPointer<char>(ATTR_IDX_LAYOUT_OUT);
+    const char* layoutQ = attrs->GetAttrPointer<char>(ATTR_IDX_LAYOUT_Q);
+    const char* layoutKv = attrs->GetAttrPointer<char>(ATTR_IDX_LAYOUT_KV);
+    const char* layoutOut = attrs->GetAttrPointer<char>(ATTR_IDX_LAYOUT_OUT);
     OP_CHECK_NULL_WITH_CONTEXT(context, layoutQ);
     OP_CHECK_NULL_WITH_CONTEXT(context, layoutKv);
     OP_CHECK_NULL_WITH_CONTEXT(context, layoutOut);
@@ -78,7 +78,7 @@ ge::graphStatus InferShapeFlashAttn(gert::InferShapeContext *context)
 
     // 读取 quant_mode：mode 3（MxFP8 Softmax FP16）的形状语义与 mxfp4（mode 5）不同：
     // 输出末维 headDimV（fp8 按元素存储）vs 2*headDimV（fp4 打包存储，需还原逻辑 D）
-    const int64_t *quantModePtr = attrs->GetAttrPointer<int64_t>(ATTR_IDX_QUANT_MODE);
+    const int64_t* quantModePtr = attrs->GetAttrPointer<int64_t>(ATTR_IDX_QUANT_MODE);
     const int64_t quantMode = (quantModePtr != nullptr) ? *quantModePtr : 0;
     const bool isMxfp8SoftmaxFp16 = (quantMode == QFA_QUANT_MODE_MXFP8_SOFTMAX_FP16);
 
@@ -87,10 +87,10 @@ ge::graphStatus InferShapeFlashAttn(gert::InferShapeContext *context)
     std::string layoutOutStr = std::string(layoutOut);
 
     // 转为大写以便统一比较
-    for (auto &c : layoutQStr) {
+    for (auto& c : layoutQStr) {
         c = static_cast<char>(toupper(static_cast<unsigned char>(c)));
     }
-    for (auto &c : layoutOutStr) {
+    for (auto& c : layoutOutStr) {
         c = static_cast<char>(toupper(static_cast<unsigned char>(c)));
     }
 
@@ -162,7 +162,7 @@ ge::graphStatus InferShapeFlashAttn(gert::InferShapeContext *context)
         headDimV = vShape->GetDim(2) * vShape->GetDim(4);
     }
 
-    gert::Shape *attnOutShape = context->GetOutputShape(OUTPUT_IDX_ATTN_OUT);
+    gert::Shape* attnOutShape = context->GetOutputShape(OUTPUT_IDX_ATTN_OUT);
     OP_CHECK_NULL_WITH_CONTEXT(context, attnOutShape);
 
     // 输出末维：mode 5（mxfp4，V 为 nibble 打包）需 2*headDimV 还原逻辑 D；mode 3（fp8 按元素）直接 headDimV
@@ -189,7 +189,7 @@ ge::graphStatus InferShapeFlashAttn(gert::InferShapeContext *context)
         return ge::GRAPH_FAILED;
     }
 
-    gert::Shape *lseShape = context->GetOutputShape(OUTPUT_IDX_SOFTMAX_LSE);
+    gert::Shape* lseShape = context->GetOutputShape(OUTPUT_IDX_SOFTMAX_LSE);
     if (lseShape != nullptr) {
         if (returnSoftmaxLse != 0) {
             if (isTND) {
@@ -219,7 +219,7 @@ ge::graphStatus InferShapeFlashAttn(gert::InferShapeContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus InferDataTypeFlashAttn(gert::InferDataTypeContext *context)
+ge::graphStatus InferDataTypeFlashAttn(gert::InferDataTypeContext* context)
 {
     if (context == nullptr) {
         return ge::GRAPH_FAILED;

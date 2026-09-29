@@ -47,35 +47,35 @@ class QuantFlashAttnMetadataCpuKernel : public CpuKernel {
 public:
     QuantFlashAttnMetadataCpuKernel() = default;
     ~QuantFlashAttnMetadataCpuKernel() = default;
-    uint32_t Compute(CpuKernelContext &ctx) override;
+    uint32_t Compute(CpuKernelContext& ctx) override;
 
 private:
-    bool Prepare(CpuKernelContext &ctx);
-    bool BalanceSchedule(SectionStreamKResult &splitRes);
-    bool GenMetaData(SectionStreamKResult &splitRes);
-    bool GenMetaDataDefault(SectionStreamKResult &splitRes);
-    bool GenMetaDataMxfp8SoftmaxFp16(SectionStreamKResult &splitRes);
-    void SetMetadataHead(const SectionStreamKResult &splitRes, optiling::detail::FaMetaData &faMetadata);
-    void SetMetadataFa(const SectionStreamKResult &splitRes, optiling::detail::FaMetaData &faMetadata);
-    void SetMetadataFd(const SectionStreamKResult &splitRes, optiling::detail::FaMetaData &faMetadata);
+    bool Prepare(CpuKernelContext& ctx);
+    bool BalanceSchedule(SectionStreamKResult& splitRes);
+    bool GenMetaData(SectionStreamKResult& splitRes);
+    bool GenMetaDataDefault(SectionStreamKResult& splitRes);
+    bool GenMetaDataMxfp8SoftmaxFp16(SectionStreamKResult& splitRes);
+    void SetMetadataHead(const SectionStreamKResult& splitRes, optiling::detail::FaMetaData& faMetadata);
+    void SetMetadataFa(const SectionStreamKResult& splitRes, optiling::detail::FaMetaData& faMetadata);
+    void SetMetadataFd(const SectionStreamKResult& splitRes, optiling::detail::FaMetaData& faMetadata);
     bool ParamsInit();
     bool ParamsInitDefault();
     bool ParamsInitMxfp8SoftmaxFp16();
     bool CheckNeedInitOutput();
-    std::vector<int64_t> GetTensorDataAsInt64(Tensor *tensor, size_t size);
+    std::vector<int64_t> GetTensorDataAsInt64(Tensor* tensor, size_t size);
     uint32_t GetS1SeqSize(uint32_t bIdx);
     uint32_t GetS2SeqSize(uint32_t bIdx);
     int64_t CalDeterMaxRound();
 
 private:
-    CpuKernelContext *context_ = nullptr;
+    CpuKernelContext* context_ = nullptr;
     // input tensor
-    Tensor *cuSeqlensQ_ = nullptr;
-    Tensor *cuSeqlensKv_ = nullptr;
-    Tensor *sequsedQ_ = nullptr;
-    Tensor *sequsedKv_ = nullptr;
+    Tensor* cuSeqlensQ_ = nullptr;
+    Tensor* cuSeqlensKv_ = nullptr;
+    Tensor* sequsedQ_ = nullptr;
+    Tensor* sequsedKv_ = nullptr;
     // output tensor
-    Tensor *metaData_ = nullptr;
+    Tensor* metaData_ = nullptr;
 
     // input attr
     int32_t batchSize_ = 0;

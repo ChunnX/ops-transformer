@@ -40,7 +40,7 @@ constexpr float LN2_F32 = 0.6931471824645996f;
  *
  * 注：全宽 [128] 处理，[dealCount, 128) 为垃圾值但不拷出（GM 拷贝按有效行数截断）
  */
-__simd_vf__ inline void VfCalcLseVF(__ubuf__ float *dst, __ubuf__ half *srcK, __ubuf__ float *srcSum)
+__simd_vf__ inline void VfCalcLseVF(__ubuf__ float* dst, __ubuf__ half* srcK, __ubuf__ float* srcSum)
 {
     RegTensor<half> vreg_k;
     RegTensor<float> vreg_kf_a;  // k 展宽 fp32[64]（偶位）
@@ -54,8 +54,8 @@ __simd_vf__ inline void VfCalcLseVF(__ubuf__ float *dst, __ubuf__ half *srcK, __
     LoadAlign(vreg_k, srcK);
     Cast<float, half, h2iZero>(vreg_kf_a, vreg_k, preg_half);
     Cast<float, half, h2iOne>(vreg_kf_b, vreg_k, preg_half);
-    Interleave((RegTensor<int32_t> &)vreg_kf_a, (RegTensor<int32_t> &)vreg_kf_b, (RegTensor<int32_t> &)vreg_kf_a,
-               (RegTensor<int32_t> &)vreg_kf_b);
+    Interleave((RegTensor<int32_t>&)vreg_kf_a, (RegTensor<int32_t>&)vreg_kf_b, (RegTensor<int32_t>&)vreg_kf_a,
+               (RegTensor<int32_t>&)vreg_kf_b);
 
     // ② rowsum：fp32[128] 两寄存器载入
     LoadAlign(vreg_sum_a, srcSum);
@@ -82,13 +82,13 @@ __simd_vf__ inline void VfCalcLseVF(__ubuf__ float *dst, __ubuf__ half *srcK, __
  * @param [in]  accRowsumUB    V2 跨块累积分母（[128] fp32 终值）
  * @param [in]  stateSlot      accMax 状态槽（mloop % 3）
  */
-__aicore__ inline void VfCalcLse(const LocalTensor<float> &lseUb, const LocalTensor<half> &softmaxMaxUB,
-                                 const LocalTensor<float> &accRowsumUB, uint32_t stateSlot)
+__aicore__ inline void VfCalcLse(const LocalTensor<float>& lseUb, const LocalTensor<half>& softmaxMaxUB,
+                                 const LocalTensor<float>& accRowsumUB, uint32_t stateSlot)
 {
     constexpr uint32_t smaxSlot = 128;
-    __ubuf__ float *dstPtr = reinterpret_cast<__ubuf__ float *>(lseUb.GetPhyAddr());
-    __ubuf__ half *kPtr = reinterpret_cast<__ubuf__ half *>(softmaxMaxUB.GetPhyAddr()) + stateSlot * smaxSlot;
-    __ubuf__ float *sumPtr = reinterpret_cast<__ubuf__ float *>(accRowsumUB.GetPhyAddr());
+    __ubuf__ float* dstPtr = reinterpret_cast<__ubuf__ float*>(lseUb.GetPhyAddr());
+    __ubuf__ half* kPtr = reinterpret_cast<__ubuf__ half*>(softmaxMaxUB.GetPhyAddr()) + stateSlot * smaxSlot;
+    __ubuf__ float* sumPtr = reinterpret_cast<__ubuf__ float*>(accRowsumUB.GetPhyAddr());
     VfCalcLseVF(dstPtr, kPtr, sumPtr);
 }
 

@@ -42,13 +42,13 @@ struct QuantFlashAttnCompileInfo {
 };
 
 // ===== MxFP8 Softmax FP16（quant_mode=3）tiling 路径 =====
-static bool QfaMxfp8SoftmaxFp16IsEmptyInput(gert::TilingContext *context)
+static bool QfaMxfp8SoftmaxFp16IsEmptyInput(gert::TilingContext* context)
 {
     (void)context;
     return false;
 }
 
-static ge::graphStatus TilingQuantFlashAttnMxfp8SoftmaxFp16(gert::TilingContext *context)
+static ge::graphStatus TilingQuantFlashAttnMxfp8SoftmaxFp16(gert::TilingContext* context)
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
@@ -72,7 +72,7 @@ static ge::graphStatus TilingQuantFlashAttnMxfp8SoftmaxFp16(gert::TilingContext 
     return FiaTilingRegistry::GetInstance().DoTilingImpl(context, &qfaInfo);
 }
 
-ASCENDC_EXTERN_C ge::graphStatus TilingQuantFlashAttn(gert::TilingContext *context)
+ASCENDC_EXTERN_C ge::graphStatus TilingQuantFlashAttn(gert::TilingContext* context)
 {
     OP_LOGW(context, "QuantFlashAttn TilingQuantFlashAttn start.");
 
@@ -82,7 +82,7 @@ ASCENDC_EXTERN_C ge::graphStatus TilingQuantFlashAttn(gert::TilingContext *conte
     // 读取 quant_mode（attr idx 0）：mode 3（A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP16）走独立 tiling 路径
     auto attrs = context->GetAttrs();
     OP_CHECK_IF(attrs == nullptr, OP_LOGE(context, "attrs is null"), return ge::GRAPH_FAILED);
-    const int64_t *quantModeAttr = attrs->GetAttrPointer<int64_t>(ATTR_QUANT_MODE_INDEX);
+    const int64_t* quantModeAttr = attrs->GetAttrPointer<int64_t>(ATTR_QUANT_MODE_INDEX);
     OP_CHECK_IF(quantModeAttr == nullptr, OP_LOGE(context, "quant_mode attr is null"), return ge::GRAPH_FAILED);
     const int64_t quantMode = *quantModeAttr;
     if (quantMode == static_cast<int64_t>(QfaQuantMode::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP16)) {
@@ -106,7 +106,7 @@ ASCENDC_EXTERN_C ge::graphStatus TilingQuantFlashAttn(gert::TilingContext *conte
     return FiaTilingRegistry::GetInstance().DoTilingImpl(context, &faInfo);
 }
 
-ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForQuantFlashAttn(gert::TilingParseContext *context)
+ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForQuantFlashAttn(gert::TilingParseContext* context)
 {
     auto platformInfoPtr = context->GetPlatformInfo();
     OP_CHECK_IF(platformInfoPtr == nullptr, OP_LOGE(context, "platformInfoPtr is null"), return ge::GRAPH_FAILED);

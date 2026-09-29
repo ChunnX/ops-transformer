@@ -31,7 +31,7 @@ namespace quant_flash_attn {
 
 ge::graphStatus QfaInfoParser::GetEmptyTensorFlag()
 {
-    auto checkEmptyTensor = [this](const gert::StorageShape *shape, const std::string &name) -> bool {
+    auto checkEmptyTensor = [this](const gert::StorageShape* shape, const std::string& name) -> bool {
         if (shape == nullptr) {
             return false;
         }
@@ -112,7 +112,7 @@ ge::graphStatus QfaInfoParser::CheckRequiredParaExistence() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QfaInfoParser::GetCuSeqLenQSize(int64_t &size)
+ge::graphStatus QfaInfoParser::GetCuSeqLenQSize(int64_t& size)
 {
     if (opParamInfo_.cuSeqlensQ.tensor == nullptr) {
         OP_LOGE_WITH_INVALID_INPUT(opName_, CU_SEQLENS_Q_NAME.c_str());
@@ -531,7 +531,7 @@ ge::graphStatus QfaInfoParser::GetActualSeqInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-void QfaInfoParser::GenerateFeatureInfo(QfaTilingInfo &qfaInfo)
+void QfaInfoParser::GenerateFeatureInfo(QfaTilingInfo& qfaInfo)
 {
     qfaInfo.pageAttentionFlag = (kvStorageMode_ == KvStorageMode::PAGE_ATTENTION);
     qfaInfo.blockSize = blockSize_;
@@ -551,7 +551,7 @@ void QfaInfoParser::GenerateFeatureInfo(QfaTilingInfo &qfaInfo)
     qfaInfo.maxSeqKv = maxSeqKv_;
 }
 
-void QfaInfoParser::GenerateLayoutInfo(QfaTilingInfo &qfaInfo)
+void QfaInfoParser::GenerateLayoutInfo(QfaTilingInfo& qfaInfo)
 {
     qfaInfo.qLayout = layoutQ_;
     qfaInfo.kvLayout = layoutKV_;
@@ -559,12 +559,12 @@ void QfaInfoParser::GenerateLayoutInfo(QfaTilingInfo &qfaInfo)
     qfaInfo.layoutQDescale = layoutQDescale_;
 }
 
-void QfaInfoParser::GenerateQuantInfo(QfaTilingInfo &qfaInfo)
+void QfaInfoParser::GenerateQuantInfo(QfaTilingInfo& qfaInfo)
 {
     qfaInfo.quantMode = quantMode_;
 }
 
-void QfaInfoParser::GenerateAxisInfo(QfaTilingInfo &qfaInfo)
+void QfaInfoParser::GenerateAxisInfo(QfaTilingInfo& qfaInfo)
 {
     qfaInfo.bSize = bSize_;
     qfaInfo.n1Size = n1Size_;
@@ -578,7 +578,7 @@ void QfaInfoParser::GenerateAxisInfo(QfaTilingInfo &qfaInfo)
     qfaInfo.kTSize = keyTSize_;
 }
 
-void QfaInfoParser::GenerateDtypeInfo(QfaTilingInfo &qfaInfo)
+void QfaInfoParser::GenerateDtypeInfo(QfaTilingInfo& qfaInfo)
 {
     qfaInfo.inputQType = inputQType_;
     qfaInfo.inputKvType = inputKvType_;
@@ -588,7 +588,7 @@ void QfaInfoParser::GenerateDtypeInfo(QfaTilingInfo &qfaInfo)
     qfaInfo.vDescaleType = vDescaleType_;
 }
 
-void QfaInfoParser::GenerateInfo(QfaTilingInfo &qfaInfo)
+void QfaInfoParser::GenerateInfo(QfaTilingInfo& qfaInfo)
 {
     qfaInfo.opName = opName_;
     qfaInfo.platformInfo = platformInfo_;
@@ -699,7 +699,7 @@ ge::graphStatus QfaInfoParser::ParseFeatureInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QfaInfoParser::Parse(QfaTilingInfo &qfaInfo)
+ge::graphStatus QfaInfoParser::Parse(QfaTilingInfo& qfaInfo)
 {
     OP_LOGI(qfaInfo.opName, "enter QfaInfoParser::Parse!");
     if (context_ == nullptr) {

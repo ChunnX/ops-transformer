@@ -40,7 +40,7 @@ using namespace AscendC::Reg;
  * @param [in]  subLoopMax  本 subLoop 量化指数 k_i（subLoopUsedMaxUB[i]，half 整数）
  * @param [in]  finalMax    分块最终量化指数 K_final（softmaxMaxUB[stateSlot]，half 整数）
  */
-__simd_vf__ inline void VfCalcPScaleVF(__ubuf__ uint8_t *pscaleGrid, __ubuf__ half *subLoopMax, __ubuf__ half *finalMax)
+__simd_vf__ inline void VfCalcPScaleVF(__ubuf__ uint8_t* pscaleGrid, __ubuf__ half* subLoopMax, __ubuf__ half* finalMax)
 {
     RegTensor<half> vreg_sub_loop_max;
     RegTensor<half> vreg_final_max;
@@ -80,16 +80,16 @@ __simd_vf__ inline void VfCalcPScaleVF(__ubuf__ uint8_t *pscaleGrid, __ubuf__ ha
  * @param [in] subLoopIdx    subLoop 序号（0..1，k_i 槽索引）
  * @param [in] stateSlot     accMax 状态槽（0..2）
  */
-__aicore__ inline void VfCalcPScale(const LocalTensor<uint8_t> &pscaleGridUB, const LocalTensor<half> &usedMaxUB,
-                                    const LocalTensor<half> &softmaxMaxUB, uint32_t ringIdx, uint32_t subLoopIdx,
+__aicore__ inline void VfCalcPScale(const LocalTensor<uint8_t>& pscaleGridUB, const LocalTensor<half>& usedMaxUB,
+                                    const LocalTensor<half>& softmaxMaxUB, uint32_t ringIdx, uint32_t subLoopIdx,
                                     uint32_t stateSlot)
 {
-    __ubuf__ uint8_t *gridPtr =
-        reinterpret_cast<__ubuf__ uint8_t *>(pscaleGridUB.GetPhyAddr()) + ringIdx * QFA_UB_PSCALE_SLOT;
-    __ubuf__ half *subLoopMaxPtr =
-        reinterpret_cast<__ubuf__ half *>(usedMaxUB.GetPhyAddr()) + subLoopIdx * QFA_UB_SMAX_SLOT;
-    __ubuf__ half *finalMaxPtr =
-        reinterpret_cast<__ubuf__ half *>(softmaxMaxUB.GetPhyAddr()) + stateSlot * QFA_UB_SMAX_SLOT;
+    __ubuf__ uint8_t* gridPtr =
+        reinterpret_cast<__ubuf__ uint8_t*>(pscaleGridUB.GetPhyAddr()) + ringIdx * QFA_UB_PSCALE_SLOT;
+    __ubuf__ half* subLoopMaxPtr =
+        reinterpret_cast<__ubuf__ half*>(usedMaxUB.GetPhyAddr()) + subLoopIdx * QFA_UB_SMAX_SLOT;
+    __ubuf__ half* finalMaxPtr =
+        reinterpret_cast<__ubuf__ half*>(softmaxMaxUB.GetPhyAddr()) + stateSlot * QFA_UB_SMAX_SLOT;
     VfCalcPScaleVF(gridPtr, subLoopMaxPtr, finalMaxPtr);
 }
 

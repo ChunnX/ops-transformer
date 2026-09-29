@@ -19,13 +19,13 @@
 namespace optiling {
 namespace quant_flash_attn {
 
-ge::graphStatus QfaMxfp8SoftmaxFp16Checker::Init(const QfaTilingInfo &qfaInfo)
+ge::graphStatus QfaMxfp8SoftmaxFp16Checker::Init(const QfaTilingInfo& qfaInfo)
 {
     (void)qfaInfo;
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QfaMxfp8SoftmaxFp16Checker::Process(const QfaTilingInfo &qfaInfo)
+ge::graphStatus QfaMxfp8SoftmaxFp16Checker::Process(const QfaTilingInfo& qfaInfo)
 {
     (void)qfaInfo;
     return ge::GRAPH_SUCCESS;

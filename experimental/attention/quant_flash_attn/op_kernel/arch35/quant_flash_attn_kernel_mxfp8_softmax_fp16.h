@@ -59,18 +59,18 @@ public:
     ConstInfo constInfo_;
     CubeBlockType cubeBlock_;
     VectorBlockType vectorBlock_;
-    const __gm__ QuantFlashAttnTilingData *__restrict tilingData_ = nullptr;
+    const __gm__ QuantFlashAttnTilingData* __restrict tilingData_ = nullptr;
 
     // ============================== GM 输入暂存 ==============================
-    __gm__ uint8_t *queryPtr_ = nullptr;
-    __gm__ uint8_t *keyPtr_ = nullptr;
-    __gm__ uint8_t *valuePtr_ = nullptr;
-    __gm__ uint8_t *dequantScaleQPtr_ = nullptr;
-    __gm__ uint8_t *dequantScaleKPtr_ = nullptr;
-    __gm__ uint8_t *dequantScaleVPtr_ = nullptr;
-    __gm__ uint8_t *attnOutPtr_ = nullptr;
-    __gm__ uint8_t *softmaxLsePtr_ = nullptr;
-    __gm__ uint8_t *workspacePtr_ = nullptr;
+    __gm__ uint8_t* queryPtr_ = nullptr;
+    __gm__ uint8_t* keyPtr_ = nullptr;
+    __gm__ uint8_t* valuePtr_ = nullptr;
+    __gm__ uint8_t* dequantScaleQPtr_ = nullptr;
+    __gm__ uint8_t* dequantScaleKPtr_ = nullptr;
+    __gm__ uint8_t* dequantScaleVPtr_ = nullptr;
+    __gm__ uint8_t* attnOutPtr_ = nullptr;
+    __gm__ uint8_t* softmaxLsePtr_ = nullptr;
+    __gm__ uint8_t* workspacePtr_ = nullptr;
 
     // ============================== 调度状态 ==============================
     uint64_t actSeqLensQ_ = 0;
@@ -101,13 +101,13 @@ public:
     ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, int32_t> kvSeqUsedParser_;
 
     // ============================== 函数 ==============================
-    __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
-                                __gm__ uint8_t *dequantScaleQuery, __gm__ uint8_t *dequantScaleKey,
-                                __gm__ uint8_t *dequantScaleValue, __gm__ uint8_t *blockTable, __gm__ uint8_t *pScale,
-                                __gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *cuSeqLensKv, __gm__ uint8_t *sequsedQ,
-                                __gm__ uint8_t *sequsedKv, __gm__ uint8_t *sinks, __gm__ uint8_t *attnMask,
-                                __gm__ uint8_t *metadata, __gm__ uint8_t *attnOut, __gm__ uint8_t *softmaxLse,
-                                __gm__ uint8_t *workspace, const __gm__ QuantFlashAttnTilingData *__restrict tiling)
+    __aicore__ inline void Init(__gm__ uint8_t* query, __gm__ uint8_t* key, __gm__ uint8_t* value,
+                                __gm__ uint8_t* dequantScaleQuery, __gm__ uint8_t* dequantScaleKey,
+                                __gm__ uint8_t* dequantScaleValue, __gm__ uint8_t* blockTable, __gm__ uint8_t* pScale,
+                                __gm__ uint8_t* cuSeqLensQ, __gm__ uint8_t* cuSeqLensKv, __gm__ uint8_t* sequsedQ,
+                                __gm__ uint8_t* sequsedKv, __gm__ uint8_t* sinks, __gm__ uint8_t* attnMask,
+                                __gm__ uint8_t* metadata, __gm__ uint8_t* attnOut, __gm__ uint8_t* softmaxLse,
+                                __gm__ uint8_t* workspace, const __gm__ QuantFlashAttnTilingData* __restrict tiling)
     {
         this->tilingData_ = tiling;
         InitConstInfo();
@@ -127,11 +127,11 @@ public:
                              kvSeqUsedParser_);
 
         // metadata 头（AICPU 生成）
-        constInfo_.needInitOutput = ((__gm__ uint32_t *)metadata)[QFA_HEAD_NEED_INIT_OUTPUT_INDEX] != 0;
-        sectionNum_ = ((__gm__ uint32_t *)metadata)[METADATA_HEADER_SECTION_NUM_INDEX];
-        metadataAicNum_ = ((__gm__ uint32_t *)metadata)[METADATA_HEADER_AIC_NUM_INDEX];
-        metadataAivNum_ = ((__gm__ uint32_t *)metadata)[METADATA_HEADER_AIV_NUM_INDEX];
-        faMetaDataGm_.SetGlobalBuffer((__gm__ uint32_t *)(metadata + METADATA_HEADER_OFFSET),
+        constInfo_.needInitOutput = ((__gm__ uint32_t*)metadata)[QFA_HEAD_NEED_INIT_OUTPUT_INDEX] != 0;
+        sectionNum_ = ((__gm__ uint32_t*)metadata)[METADATA_HEADER_SECTION_NUM_INDEX];
+        metadataAicNum_ = ((__gm__ uint32_t*)metadata)[METADATA_HEADER_AIC_NUM_INDEX];
+        metadataAivNum_ = ((__gm__ uint32_t*)metadata)[METADATA_HEADER_AIV_NUM_INDEX];
+        faMetaDataGm_.SetGlobalBuffer((__gm__ uint32_t*)(metadata + METADATA_HEADER_OFFSET),
                                       sectionNum_ * metadataAicNum_ * METADATA_STRIDE);
 
         // seqlen 解析（BNSD：seqUsed 按 batch 索引，未传入时回退 shape）
@@ -162,7 +162,7 @@ public:
             constInfo_.subBlockIdx = GetSubBlockIdx();
         }
 
-        const auto &qfaBaseParams = this->tilingData_->quantTiling.quantFlashAttnBaseParams;
+        const auto& qfaBaseParams = this->tilingData_->quantTiling.quantFlashAttnBaseParams;
         constInfo_.bSize = qfaBaseParams.bSize;
         constInfo_.t1Size = qfaBaseParams.t1Size;
         constInfo_.t2Size = qfaBaseParams.t2Size;
@@ -334,8 +334,8 @@ public:
         }
     }
 
-    __aicore__ inline void UpdateAxisInfo(TASK_DEAL_MODE taskDealMode, uint32_t &bN2Cur, uint32_t &gS1Cur,
-                                          uint32_t &s2Cur)
+    __aicore__ inline void UpdateAxisInfo(TASK_DEAL_MODE taskDealMode, uint32_t& bN2Cur, uint32_t& gS1Cur,
+                                          uint32_t& s2Cur)
     {
         uint64_t s2LoopTimes = (actSeqLensKv_ + S2_BASE_SIZE - 1) / S2_BASE_SIZE;
         uint64_t gS1Size = actSeqLensQ_ * constInfo_.realGSize;
@@ -369,13 +369,13 @@ public:
     __aicore__ inline void CreateTask(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur,
                                       RunInfoMxfp8SoftmaxFp16 taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
     {
-        RunInfoMxfp8SoftmaxFp16 &runInfo = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE]; // 本轮任务
+        RunInfoMxfp8SoftmaxFp16& runInfo = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE]; // 本轮任务
         CalcParams(loop, bN2Cur, gS1Cur, s2Cur, runInfo);
         runInfo.isValid = true;
     }
 
     __aicore__ inline void CalcParams(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur,
-                                      RunInfoMxfp8SoftmaxFp16 &info)
+                                      RunInfoMxfp8SoftmaxFp16& info)
     {
         info.loop = loop;
         info.mloop = mloop_;
@@ -436,8 +436,8 @@ public:
     // ============================== ExecuteTask：C1/V1/C2/V2 核间流水 ==============================
     __aicore__ inline void ExecuteTask(uint64_t loop, RunInfoMxfp8SoftmaxFp16 taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
     {
-        RunInfoMxfp8SoftmaxFp16 &runInfo0 = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE]; // 本轮任务
-        RunInfoMxfp8SoftmaxFp16 &runInfo2 =
+        RunInfoMxfp8SoftmaxFp16& runInfo0 = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE]; // 本轮任务
+        RunInfoMxfp8SoftmaxFp16& runInfo2 =
             taskRunInfo[(loop - PRELOAD_N) % PRELOAD_TASK_CACHE_SIZE]; // 上 PRELOAD_N 轮任务
 
         // ====== Phase 1: C1/V1（本任务）======
@@ -493,17 +493,17 @@ public:
         }
     }
 
-    __aicore__ inline void ComputeMm1(RunInfoMxfp8SoftmaxFp16 &runInfo, uint32_t subLoopIdx, bool isLastSubLoop)
+    __aicore__ inline void ComputeMm1(RunInfoMxfp8SoftmaxFp16& runInfo, uint32_t subLoopIdx, bool isLastSubLoop)
     {
         cubeBlock_.ComputeMm1(runInfo, subLoopIdx, isLastSubLoop);
     }
 
-    __aicore__ inline void FixpipeMm1(RunInfoMxfp8SoftmaxFp16 &runInfo, uint32_t subLoopIdx, uint32_t subBlockId)
+    __aicore__ inline void FixpipeMm1(RunInfoMxfp8SoftmaxFp16& runInfo, uint32_t subLoopIdx, uint32_t subBlockId)
     {
         cubeBlock_.FixpipeMm1(runInfo, subLoopIdx, subBlockId);
     }
 
-    __aicore__ inline void ComputeVec1(RunInfoMxfp8SoftmaxFp16 &runInfo, uint32_t subLoopIdx)
+    __aicore__ inline void ComputeVec1(RunInfoMxfp8SoftmaxFp16& runInfo, uint32_t subLoopIdx)
     {
 #if QFA_SF16_DEBUG_PRINTF
         AscendC::printf("[V1][AIV%u] loop=%u subLoop=%u slot=%u\n", constInfo_.aivIdx, runInfo.loop, subLoopIdx,
@@ -512,17 +512,17 @@ public:
         vectorBlock_.ComputeVec1(runInfo, subLoopIdx);
     }
 
-    __aicore__ inline void ComputeMm2(RunInfoMxfp8SoftmaxFp16 &runInfo, uint32_t vCore)
+    __aicore__ inline void ComputeMm2(RunInfoMxfp8SoftmaxFp16& runInfo, uint32_t vCore)
     {
         cubeBlock_.ComputeMm2(runInfo, vCore);
     }
 
-    __aicore__ inline void FixpipeMm2(RunInfoMxfp8SoftmaxFp16 &runInfo, uint32_t vCore)
+    __aicore__ inline void FixpipeMm2(RunInfoMxfp8SoftmaxFp16& runInfo, uint32_t vCore)
     {
         cubeBlock_.FixpipeMm2(runInfo, vCore);
     }
 
-    __aicore__ inline void ComputeVec2(RunInfoMxfp8SoftmaxFp16 &runInfo)
+    __aicore__ inline void ComputeVec2(RunInfoMxfp8SoftmaxFp16& runInfo)
     {
 #if QFA_SF16_DEBUG_PRINTF
         AscendC::printf("[V2][AIV%u] loop=%u slot=%u\n", constInfo_.aivIdx, runInfo.loop, runInfo.softmaxStateSlot);

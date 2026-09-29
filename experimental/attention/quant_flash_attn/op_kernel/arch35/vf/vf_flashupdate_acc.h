@@ -42,8 +42,8 @@ using namespace AscendC::Reg;
  * @param [in]     factor   softmaxExpUB[loop%3] fp32（VfCalcRescaleFactor 输出）
  */
 template <bool isUpdate>
-__simd_vf__ inline void VfFlashUpdateAccVF(__ubuf__ float *dstOut, __ubuf__ float *dstSum, __ubuf__ float *cur,
-                                           __ubuf__ float *rowsum, __ubuf__ float *factor)
+__simd_vf__ inline void VfFlashUpdateAccVF(__ubuf__ float* dstOut, __ubuf__ float* dstSum, __ubuf__ float* cur,
+                                           __ubuf__ float* rowsum, __ubuf__ float* factor)
 {
     RegTensor<float> vreg_factor_a; // factor[0..63]，列前半，全程复用（仅 isUpdate）
     RegTensor<float> vreg_factor_b; // factor[64..127]，列后半，全程复用（仅 isUpdate）
@@ -170,17 +170,17 @@ __simd_vf__ inline void VfFlashUpdateAccVF(__ubuf__ float *dstOut, __ubuf__ floa
  * @param [in]     taskSlot     任务槽（runInfo.loop % 3）
  */
 template <bool isUpdate>
-__aicore__ inline void VfFlashUpdateAcc(const LocalTensor<float> &stage2OutUB, const LocalTensor<float> &accRowsumUB,
-                                        const LocalTensor<float> &mm2ResUB, const LocalTensor<float> &softmaxExpUB,
+__aicore__ inline void VfFlashUpdateAcc(const LocalTensor<float>& stage2OutUB, const LocalTensor<float>& accRowsumUB,
+                                        const LocalTensor<float>& mm2ResUB, const LocalTensor<float>& softmaxExpUB,
                                         uint32_t taskSlot)
 {
     constexpr uint32_t rowsumOff = 128 * 128; // rowsum = mm2Res 第 128 行
     constexpr uint32_t expSlot = 128;         // softmaxExpUB 每 task 槽 128 float
-    __ubuf__ float *dstOutPtr = reinterpret_cast<__ubuf__ float *>(stage2OutUB.GetPhyAddr());
-    __ubuf__ float *dstSumPtr = reinterpret_cast<__ubuf__ float *>(accRowsumUB.GetPhyAddr());
-    __ubuf__ float *curPtr = reinterpret_cast<__ubuf__ float *>(mm2ResUB.GetPhyAddr());
-    __ubuf__ float *rowsumPtr = curPtr + rowsumOff;
-    __ubuf__ float *factorPtr = reinterpret_cast<__ubuf__ float *>(softmaxExpUB.GetPhyAddr()) + taskSlot * expSlot;
+    __ubuf__ float* dstOutPtr = reinterpret_cast<__ubuf__ float*>(stage2OutUB.GetPhyAddr());
+    __ubuf__ float* dstSumPtr = reinterpret_cast<__ubuf__ float*>(accRowsumUB.GetPhyAddr());
+    __ubuf__ float* curPtr = reinterpret_cast<__ubuf__ float*>(mm2ResUB.GetPhyAddr());
+    __ubuf__ float* rowsumPtr = curPtr + rowsumOff;
+    __ubuf__ float* factorPtr = reinterpret_cast<__ubuf__ float*>(softmaxExpUB.GetPhyAddr()) + taskSlot * expSlot;
     VfFlashUpdateAccVF<isUpdate>(dstOutPtr, dstSumPtr, curPtr, rowsumPtr, factorPtr);
 }
 

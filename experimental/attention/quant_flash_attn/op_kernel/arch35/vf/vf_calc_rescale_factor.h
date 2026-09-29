@@ -44,8 +44,8 @@ using namespace AscendC::Reg;
  * RegLayout 说明：h2iZero/h2iOne 的舍入模式相同（CAST_ROUND），区别在 RegLayout 字段
  * （ZERO=取偶数位元素，ONE=取奇数位元素）——控制宽度变化时的元素路由，非舍入模式。
  */
-__simd_vf__ inline void VfCalcRescaleFactorVF(__ubuf__ float *softmaxExp, __ubuf__ half *blkStartMax,
-                                              __ubuf__ half *finalMax)
+__simd_vf__ inline void VfCalcRescaleFactorVF(__ubuf__ float* softmaxExp, __ubuf__ half* blkStartMax,
+                                              __ubuf__ half* finalMax)
 {
     RegTensor<half> vreg_blk_start;
     RegTensor<half> vreg_final;
@@ -69,17 +69,17 @@ __simd_vf__ inline void VfCalcRescaleFactorVF(__ubuf__ float *softmaxExp, __ubuf
     // ③ 宽度展开：half[128] → int32[64]×2
     //    RegLayout::ZERO 取偶数位元素（e0, e2, ...），RegLayout::ONE 取奇数位（e1, e3, ...）
     //    （两次 Cast 各填一个 256B int32 寄存器，舍入模式相同，非双舍入）
-    Cast<int32_t, half, h2iZero>((RegTensor<int32_t> &)vreg_bits_a, vreg_delta_k, preg_half);
-    Cast<int32_t, half, h2iOne>((RegTensor<int32_t> &)vreg_bits_b, vreg_delta_k, preg_half);
+    Cast<int32_t, half, h2iZero>((RegTensor<int32_t>&)vreg_bits_a, vreg_delta_k, preg_half);
+    Cast<int32_t, half, h2iOne>((RegTensor<int32_t>&)vreg_bits_b, vreg_delta_k, preg_half);
 
     // ④ ShiftLefts 23：整数值移入 fp32 指数域位置
     //    (ΔK + 127) << 23 = fp32 位模式，尾数全零，指数域 = ΔK + 127
-    ShiftLefts((RegTensor<int32_t> &)vreg_bits_a, (RegTensor<int32_t> &)vreg_bits_a, SHIFT_VALUE, preg_i32);
-    ShiftLefts((RegTensor<int32_t> &)vreg_bits_b, (RegTensor<int32_t> &)vreg_bits_b, SHIFT_VALUE, preg_i32);
+    ShiftLefts((RegTensor<int32_t>&)vreg_bits_a, (RegTensor<int32_t>&)vreg_bits_a, SHIFT_VALUE, preg_i32);
+    ShiftLefts((RegTensor<int32_t>&)vreg_bits_b, (RegTensor<int32_t>&)vreg_bits_b, SHIFT_VALUE, preg_i32);
 
     // ⑤ Interleave：偶奇交错重组成顺序（A=前64，B=后64），存为 fp32
-    Interleave((RegTensor<int32_t> &)vreg_bits_a, (RegTensor<int32_t> &)vreg_bits_b, (RegTensor<int32_t> &)vreg_bits_a,
-               (RegTensor<int32_t> &)vreg_bits_b);
+    Interleave((RegTensor<int32_t>&)vreg_bits_a, (RegTensor<int32_t>&)vreg_bits_b, (RegTensor<int32_t>&)vreg_bits_a,
+               (RegTensor<int32_t>&)vreg_bits_b);
     StoreAlign(softmaxExp, vreg_bits_a, preg_i32);      // 输出 [0..63]
     StoreAlign(softmaxExp + 64, vreg_bits_b, preg_i32); // 输出 [64..127]
 }
@@ -94,14 +94,14 @@ __simd_vf__ inline void VfCalcRescaleFactorVF(__ubuf__ float *softmaxExp, __ubuf
  * @param [in] taskSlot         任务槽（0..2）
  * @param [in] stateSlot        accMax 状态槽（0..2）
  */
-__aicore__ inline void VfCalcRescaleFactor(const LocalTensor<float> &softmaxExpUB,
-                                           const LocalTensor<half> &blockStartMaxUB,
-                                           const LocalTensor<half> &softmaxMaxUB, uint32_t taskSlot, uint32_t stateSlot)
+__aicore__ inline void VfCalcRescaleFactor(const LocalTensor<float>& softmaxExpUB,
+                                           const LocalTensor<half>& blockStartMaxUB,
+                                           const LocalTensor<half>& softmaxMaxUB, uint32_t taskSlot, uint32_t stateSlot)
 {
     constexpr uint32_t smaxSlot = 128; // 单槽 half 元素数
-    __ubuf__ float *expPtr = reinterpret_cast<__ubuf__ float *>(softmaxExpUB.GetPhyAddr()) + taskSlot * smaxSlot;
-    __ubuf__ half *blkStartPtr = reinterpret_cast<__ubuf__ half *>(blockStartMaxUB.GetPhyAddr());
-    __ubuf__ half *finalMaxPtr = reinterpret_cast<__ubuf__ half *>(softmaxMaxUB.GetPhyAddr()) + stateSlot * smaxSlot;
+    __ubuf__ float* expPtr = reinterpret_cast<__ubuf__ float*>(softmaxExpUB.GetPhyAddr()) + taskSlot * smaxSlot;
+    __ubuf__ half* blkStartPtr = reinterpret_cast<__ubuf__ half*>(blockStartMaxUB.GetPhyAddr());
+    __ubuf__ half* finalMaxPtr = reinterpret_cast<__ubuf__ half*>(softmaxMaxUB.GetPhyAddr()) + stateSlot * smaxSlot;
     VfCalcRescaleFactorVF(expPtr, blkStartPtr, finalMaxPtr);
 }
 
