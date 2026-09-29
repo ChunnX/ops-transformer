@@ -69,38 +69,38 @@ private:
     using MegaMoeBase::waveCombineDedupScratch_;
     using MegaMoeBase::syncWorkspaceLayout_;
 
-    __aicore__ inline bool IsPositionWithinWave(const ExpertTokenPosition &position, uint32_t waveMGroupCount) const
+    __aicore__ inline bool IsPositionWithinWave(const ExpertTokenPosition& position, uint32_t waveMGroupCount) const
     {
         return position.expertIdx < commonConfig_.moeExpertPerRank && waveMGroupCount < mGroupsPerWave_;
     }
 
-    __aicore__ inline void RunGmm1ActivationForExpert(ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo,
-                                                      GmmRuntimeState &runtimeState, uint32_t tokenStartIndexInExpert,
+    __aicore__ inline void RunGmm1ActivationForExpert(ExpertLoopState& state, GMMAddrInfo& gmmAddrInfo,
+                                                      GmmRuntimeState& runtimeState, uint32_t tokenStartIndexInExpert,
                                                       uint32_t sliceTokenCount, uint32_t gmm1TilesPerMGroup);
     __aicore__ inline ExpertTokenPosition DispatchFirstWave();
-    __aicore__ inline void DispatchNextWaveExpertSlice(ExpertTokenPosition &dispatchPosition,
-                                                       uint32_t &nextDispatchWaveMGroupCount);
+    __aicore__ inline void DispatchNextWaveExpertSlice(ExpertTokenPosition& dispatchPosition,
+                                                       uint32_t& nextDispatchWaveMGroupCount);
     __aicore__ inline ExpertTokenRange ProcessNextDispatchAndCurrentGmm1(
-        const ExpertTokenPosition &waveBeginPosition, ExpertTokenPosition &dispatchPosition, ExpertLoopState &gmm1State,
-        GMMAddrInfo &gmm1AddrInfo, GmmRuntimeState &runtimeState, uint32_t gmm1TilesPerMGroup);
-    __aicore__ inline void ProcessCurrentWaveGmm2Loop(const ExpertTokenRange &waveRange, ExpertLoopState &gmm2State,
-                                                      GMMAddrInfo &gmm2AddrInfo,
-                                                      WaveCombineBufferConfig &combineBufferConfig,
-                                                      uint32_t &combineRowSequence,
-                                                      const typename MegaMoeBase::A8W4BlockContext &context);
-    __aicore__ inline void ProcessCurrentWaveGmm2(const ExpertTokenRange &waveRange, ExpertLoopState &gmm2State,
-                                                  GMMAddrInfo &gmm2AddrInfo,
-                                                  WaveCombineBufferConfig &combineBufferConfig,
-                                                  uint32_t &combineRowSequence);
+        const ExpertTokenPosition& waveBeginPosition, ExpertTokenPosition& dispatchPosition, ExpertLoopState& gmm1State,
+        GMMAddrInfo& gmm1AddrInfo, GmmRuntimeState& runtimeState, uint32_t gmm1TilesPerMGroup);
+    __aicore__ inline void ProcessCurrentWaveGmm2Loop(const ExpertTokenRange& waveRange, ExpertLoopState& gmm2State,
+                                                      GMMAddrInfo& gmm2AddrInfo,
+                                                      WaveCombineBufferConfig& combineBufferConfig,
+                                                      uint32_t& combineRowSequence,
+                                                      const typename MegaMoeBase::A8W4BlockContext& context);
+    __aicore__ inline void ProcessCurrentWaveGmm2(const ExpertTokenRange& waveRange, ExpertLoopState& gmm2State,
+                                                  GMMAddrInfo& gmm2AddrInfo,
+                                                  WaveCombineBufferConfig& combineBufferConfig,
+                                                  uint32_t& combineRowSequence);
     __aicore__ inline void SyncBeforeMoeExpertStages();
-    __aicore__ inline void ProcessMoeExpertStages(Gmm1ActivationSync &gmm1ActivationSync,
-                                                  Gmm2CombineSync &gmm2CombineSync);
+    __aicore__ inline void ProcessMoeExpertStages(Gmm1ActivationSync& gmm1ActivationSync,
+                                                  Gmm2CombineSync& gmm2CombineSync);
 };
 
 // A4W4 的 GMM1 使用 generic kernel，Activation 将中间结果提升为 FP8 后供 GMM2 使用。
 template <TemplateMegaMoeA4W4WaveTypeClass>
 __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::RunGmm1ActivationForExpert(
-    ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo, GmmRuntimeState &runtimeState, uint32_t tokenStartIndexInExpert,
+    ExpertLoopState& state, GMMAddrInfo& gmmAddrInfo, GmmRuntimeState& runtimeState, uint32_t tokenStartIndexInExpert,
     uint32_t sliceTokenCount, uint32_t gmm1TilesPerMGroup)
 {
     uint32_t problemTileCount = GetMGroupCountForRows(sliceTokenCount, GMM1_TILE_M) * gmm1TilesPerMGroup;
@@ -154,7 +154,7 @@ __aicore__ inline ExpertTokenPosition MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTyp
 
 template <TemplateMegaMoeA4W4WaveTypeClass>
 __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::DispatchNextWaveExpertSlice(
-    ExpertTokenPosition &dispatchPosition, uint32_t &nextDispatchWaveMGroupCount)
+    ExpertTokenPosition& dispatchPosition, uint32_t& nextDispatchWaveMGroupCount)
 {
     if constexpr (g_coreType == AIV) {
         if (GetSubBlockIdx() != 1U) {
@@ -179,8 +179,8 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Dispatc
 
 template <TemplateMegaMoeA4W4WaveTypeClass>
 __aicore__ inline ExpertTokenRange MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::ProcessNextDispatchAndCurrentGmm1(
-    const ExpertTokenPosition &waveBeginPosition, ExpertTokenPosition &dispatchPosition, ExpertLoopState &gmm1State,
-    GMMAddrInfo &gmm1AddrInfo, GmmRuntimeState &runtimeState, uint32_t gmm1TilesPerMGroup)
+    const ExpertTokenPosition& waveBeginPosition, ExpertTokenPosition& dispatchPosition, ExpertLoopState& gmm1State,
+    GMMAddrInfo& gmm1AddrInfo, GmmRuntimeState& runtimeState, uint32_t gmm1TilesPerMGroup)
 {
     ExpertTokenRange waveRange{waveBeginPosition, waveBeginPosition};
     uint32_t currentWaveMGroupCount = 0U;
@@ -219,9 +219,9 @@ __aicore__ inline ExpertTokenRange MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFu
 
 template <TemplateMegaMoeA4W4WaveTypeClass>
 __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::ProcessCurrentWaveGmm2Loop(
-    const ExpertTokenRange &waveRange, ExpertLoopState &gmm2State, GMMAddrInfo &gmm2AddrInfo,
-    WaveCombineBufferConfig &combineBufferConfig, uint32_t &combineRowSequence,
-    const typename MegaMoeBase::A8W4BlockContext &context)
+    const ExpertTokenRange& waveRange, ExpertLoopState& gmm2State, GMMAddrInfo& gmm2AddrInfo,
+    WaveCombineBufferConfig& combineBufferConfig, uint32_t& combineRowSequence,
+    const typename MegaMoeBase::A8W4BlockContext& context)
 {
     uint32_t waveGmm2ExpertEndExclusive = waveRange.end.expertIdx + (waveRange.end.tokenIndexInExpert == 0U ? 0U : 1U);
     for (uint32_t expertIdx = waveRange.begin.expertIdx; expertIdx < waveGmm2ExpertEndExclusive; ++expertIdx) {
@@ -248,8 +248,8 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
 
 template <TemplateMegaMoeA4W4WaveTypeClass>
 __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::ProcessCurrentWaveGmm2(
-    const ExpertTokenRange &waveRange, ExpertLoopState &gmm2State, GMMAddrInfo &gmm2AddrInfo,
-    WaveCombineBufferConfig &combineBufferConfig, uint32_t &combineRowSequence)
+    const ExpertTokenRange& waveRange, ExpertLoopState& gmm2State, GMMAddrInfo& gmm2AddrInfo,
+    WaveCombineBufferConfig& combineBufferConfig, uint32_t& combineRowSequence)
 {
     // 去重 combine：进 wave 前预挂事件（与函数尾的 Drain 配对，条件逐字一致）。
     if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
@@ -299,7 +299,7 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::SyncBef
  */
 template <TemplateMegaMoeA4W4WaveTypeClass>
 __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::ProcessMoeExpertStages(
-    Gmm1ActivationSync &gmm1ActivationSync, Gmm2CombineSync &gmm2CombineSync)
+    Gmm1ActivationSync& gmm1ActivationSync, Gmm2CombineSync& gmm2CombineSync)
 {
     // GMM1/GMM2 交错流水只记录一次阶段入口，各 Wave 完成轮次由独立计数记录。
     exceptionDump_.UpdateStage(MegaMoeImpl::Stage::MOE_GMM1_ACTIVATION);
