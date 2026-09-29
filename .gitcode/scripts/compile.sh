@@ -109,6 +109,23 @@ GET_PR_RELATED_OPS()
     echo "${ops}"
 }
 
+# 判定当前PR在指定soc上是否需要分布式编译（命中长耗时算子字典），结果写入ATOMGIT_OUTPUT供后续步骤/调度消费
+REPORT_DISTRIBUTED_COMPILE()
+{
+    local soc="$1"
+    local need="false"
+    if [ -f "${WORKSPACE}/pr_filelist.txt" ]; then
+        need=$(bash "${WORKSPACE}/scripts/ci/check_distributed_compile.sh" "${soc}" "${WORKSPACE}/pr_filelist.txt") || need="false"
+        [ -z "${need}" ] && need="false"
+    else
+        echo "pr_filelist.txt not found" >&2
+    fi
+    LOG_INFO "distributed_compile(${soc})=${need}"
+    if [[ -n "${ATOMGIT_OUTPUT:-}" ]]; then
+        echo "distributed_compile_${soc}=${need}" >> "${ATOMGIT_OUTPUT}"
+    fi
+}
+
 LOG_HEAD "Build ${REPOSITORY_NAME}."
 cd "${WORKSPACE}/" || exit 1
 
@@ -197,6 +214,33 @@ else
             touch build_out/cann-ops-math-experimental_linux-${OS_TYPE}.run
             exit 0
         fi
+    elif [[ "${task_name}" == "Compile_Ascend_X86_A2" ]]; then
+        LOG_DO bash build.sh --soc=ascend910b --PR_COMPILE "pr_filelist.txt" --vendor_name=custom910b --jit --cann_3rd_lib_path=${ASCEND_3RD_LIB_PATH} -j16
+        BUILD_EXIT_CODE=$?
+        DP_ASSERT_CHECK_SKIP "${BUILD_EXIT_CODE}" "0" "exec cmd: [bash build.sh --soc=ascend910b --PR_COMPILE --jit --vendor_name=custom910b -j16]"
+    elif [[ "${task_name}" == "Compile_Ascend_X86_A3" ]]; then
+        LOG_DO bash build.sh --soc=ascend910_93 --PR_COMPILE "pr_filelist.txt" --vendor_name=custom910_93 --jit --cann_3rd_lib_path=${ASCEND_3RD_LIB_PATH} -j16
+        BUILD_EXIT_CODE=$?
+        DP_ASSERT_CHECK_SKIP "${BUILD_EXIT_CODE}" "0" "exec cmd: [bash build.sh --soc=ascend910_93 --PR_COMPILE --jit --vendor_name=custom910_93 -j16]"
+    elif [[ "${task_name}" == "Compile_Ascend_X86_A5" ]]; then
+        LOG_DO bash build.sh --soc=ascend950 --PR_COMPILE "pr_filelist.txt" --vendor_name=custom950 --jit --cann_3rd_lib_path=${ASCEND_3RD_LIB_PATH} -j16
+        BUILD_EXIT_CODE=$?
+        DP_ASSERT_CHECK_SKIP "${BUILD_EXIT_CODE}" "0" "exec cmd: [bash build.sh --soc=ascend950 --PR_COMPILE --jit --vendor_name=custom950 -j16]"
+    elif [[ "${task_name}" == "Compile_Ascend_ARM_A2" ]]; then
+        REPORT_DISTRIBUTED_COMPILE ascend910b
+        LOG_DO bash build.sh --soc=ascend910b --PR_COMPILE "pr_filelist.txt" --vendor_name=custom910b --cann_3rd_lib_path=${ASCEND_3RD_LIB_PATH} -j16
+        BUILD_EXIT_CODE=$?
+        DP_ASSERT_CHECK_SKIP "${BUILD_EXIT_CODE}" "0" "exec cmd: [bash build.sh --soc=ascend910b --PR_COMPILE --vendor_name=custom910b -j16]"
+    elif [[ "${task_name}" == "Compile_Ascend_ARM_A3" ]]; then
+        REPORT_DISTRIBUTED_COMPILE ascend910_93
+        LOG_DO bash build.sh --soc=ascend910_93 --PR_COMPILE "pr_filelist.txt" --vendor_name=custom910_93 --cann_3rd_lib_path=${ASCEND_3RD_LIB_PATH} -j16
+        BUILD_EXIT_CODE=$?
+        DP_ASSERT_CHECK_SKIP "${BUILD_EXIT_CODE}" "0" "exec cmd: [bash build.sh --soc=ascend910_93 --PR_COMPILE --vendor_name=custom910_93 -j16]"
+    elif [[ "${task_name}" == "Compile_Ascend_ARM_A5" ]]; then
+        REPORT_DISTRIBUTED_COMPILE ascend950
+        LOG_DO bash build.sh --soc=ascend950 --PR_COMPILE "pr_filelist.txt" --vendor_name=custom950 --cann_3rd_lib_path=${ASCEND_3RD_LIB_PATH} -j16
+        BUILD_EXIT_CODE=$?
+        DP_ASSERT_CHECK_SKIP "${BUILD_EXIT_CODE}" "0" "exec cmd: [bash build.sh --soc=ascend950 --PR_COMPILE --vendor_name=custom950 -j16]"
     elif [[ "${task_name}" =~ monitor ]]; then
         if [ "${GIT_TARGET_BRANCH}" = "master" ]; then
             if [[ "${task_name}" =~ "910c" ]]; then
