@@ -1,0 +1,13 @@
+===================================
+OAT Scan Result Summary
+===================================
+Scan Time: 2026-09-29 11:00:17
+Project: ops-transformer
+Files Checked: 8
+
+-----------------------------------
+Invalid File Type Total Count: 0
+
+-----------------------------------
+License Header Invalid Total Count: 0
+===================================
