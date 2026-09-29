@@ -86,11 +86,14 @@ static const FitBalanceCalibration CALIBRATION = {
         LocalMMPosition::FRONT,       // 本卡 A 块已在手, 聚合前即可算 → 引擎推导工作集 rankDim−1
         true,                         // 全量形态: 实算 mm 行数与单次通信字节均为切分域×rankDim
     },
-    /* commRows: 通信拟合行——{通信引擎, 卡数, k 带宽斜率(us/MB), b 每轮启动开销(us), c 一次性固定开销(us)} */
+    /* commRows: 通信拟合行——{通信引擎, 卡数, k 带宽斜率(us/MB), b 每轮启动开销(us), c 一次性固定开销(us)};
+     * 一行 = 一个已标定 (引擎, 卡数) 形态; 未标定形态不写行(miss → 核利用率优先) */
     {
-        { {TilingCommEngine::AICPU, 4, 26.5894, 33.17, 20.58} }, // 950 标卡 4P 实测
-                                                                // 8P / CCU 未标定——留空(miss → 核利用率优先),
-                                                                // 实测后追加 {引擎, 卡数, k, b, c}
+        { {TilingCommEngine::AICPU, 4, 26.5894, 33.17, 20.58}, // 950 标卡 4P 实测(在网行)
+          // ↓ 两行新增标定填法演示(数值为演示数——上线前替换为实测值, 未标定则删行留空):
+          {TilingCommEngine::AICPU, 8, 22.7301, 33.17, 20.58}, // 新卡档: 同引擎追加一行(8P 实测后照此)
+          {TilingCommEngine::AIV_URMA, 4, 3.2, 4.45, 1.8} },   // 新引擎: 引擎维度在行上, 同表加行即可
+                                                               // (AIV_URMA 档当前预留, 生产 URMA 走核利用率优先)
     },
     /* mmFit: matmul 算力档 + 最优基本块 */
     {
