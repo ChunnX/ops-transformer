@@ -66,7 +66,8 @@ __aicore__ inline void GmmTensorApiSwigluQuantMxFp8Kernel(GM_ADDR x, GM_ADDR wei
     using SwigluBlockMmad = Blaze::Gemm::Block::BlockMmad<BlockMmadPolicy, AType, LayoutA, BType, LayoutB, C1Type,
                                                           LayoutC1, BiasType, LayoutBias>;
 
-    using BlockEpilogue = Blaze::Epilogue::Block::BlockEpilogueSwigluMxQuant<CType, C1Type, weightscaleType>;
+    using BlockEpilogue = Blaze::Epilogue::Block::BlockEpilogueSwigluMxQuant<
+        CType, C1Type, weightscaleType, EnableSwigluAttrs && AscendC::IsSameType<CType, bfloat16_t>::value>;
 
     using BlockScheduler = Blaze::Gemm::Block::BlockSchedulerGmmSwatWithTailSplit;
 

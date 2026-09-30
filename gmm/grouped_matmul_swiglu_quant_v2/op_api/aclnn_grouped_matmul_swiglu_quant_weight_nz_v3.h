@@ -14,6 +14,9 @@
 #include "aclnn/aclnn_base.h"
 #include "aclnn_util.h"
 
+// Ascend 950 V3 WeightNZ supports MXFP8 E4M3/E4M3 quantized output and
+// MXFP4 E2M1/E2M1 direct BF16 output. outputScale is nullptr for direct BF16.
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -22,11 +25,15 @@ extern "C" {
  * @brief aclnnGroupedMatmulSwigluQuantWeightNzV3 的第一段接口，根据具体的计算流程，计算workspace大小。
  * @domain aclnn_ops_infer
  *
- * 当前仅支持 Ascend 950 的单 Tensor MXFP8 weight FRACTAL_NZ 场景。
+ * 当前仅支持 Ascend 950 的单 Tensor weight FRACTAL_NZ 场景：MXFP8
+ * E4M3/E4M3量化输出，以及MXFP4
+ * E2M1/E2M1直接BF16输出。
  *
- * @param [in] x: 激活矩阵，FLOAT8_E4M3FN、ND。
- * @param [in] weight: 权重 TensorList，FLOAT8_E4M3FN、FRACTAL_NZ。
- * @param [in] weightScale: 权重量化因子 TensorList，FLOAT8_E8M0、ND。
+ * @param [in] x: 激活矩阵，FLOAT8_E4M3FN或FLOAT4_E2M1、ND。
+ * @param [in] weight: 权重
+ * TensorList，FLOAT8_E4M3FN或FLOAT4_E2M1、FRACTAL_NZ。
+ * @param [in] weightScale: 权重量化因子
+ * TensorList，FLOAT8_E8M0、ND。
  * @param [in] weightAssistMatrix: 权重辅助矩阵，当前仅支持空值。
  * @param [in] bias: 偏置，当前不支持。
  * @param [in] xScale: 激活矩阵量化因子，FLOAT8_E8M0、ND。
@@ -44,9 +51,11 @@ extern "C" {
  * @param [in] roundMode: MX 量化舍入模式，当前仅支持 "rint"。
  * @param [in] scaleAlg: MX 量化 scale 算法，支持 0（OCP）和 1（cuBLAS）。
  * @param [in] dstTypeMax: MX 量化目标类型最大值，当前仅支持 0.0。
- * @param [out] output: 量化结果，FLOAT8_E4M3FN、ND。
- * @param [out] outputScale: 输出量化因子，FLOAT8_E8M0、ND。
- * @param [out] workspaceSize: 在 NPU device 侧申请的 workspace 大小。
+ * @param [out] output: MXFP8场景为FLOAT8_E4M3FN，MXFP4 A4W4场景为BF16、ND。
+ * @param [out] outputScale:
+ * MXFP8场景为FLOAT8_E8M0、ND；MXFP4 A4W4场景必须为nullptr。
+ * @param [out] workspaceSize: 在 NPU device
+ * 侧申请的 workspace 大小。
  * @param [out] executor: 算子执行器，包含计算流程。
  * @return aclnnStatus: 返回状态码。
  */
