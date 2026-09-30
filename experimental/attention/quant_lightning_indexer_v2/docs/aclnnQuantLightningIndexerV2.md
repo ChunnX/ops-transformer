@@ -484,6 +484,21 @@ aclnnStatus aclnnQuantLightningIndexerV2(
       <td>x</td>
     </tr>
     <tr>
+      <td>candidateBlockLengthOutOptional</td>
+      <td>输出</td>
+      <td>两级TopK第一级的预留输出（候选块长度），恒为空tensor，本期不产出实际值。</td>
+      <td>
+          <ul>
+                <li>与candidateTopkBlocks取值无关，恒输出shape为(0,)的空tensor。</li>
+                <li>为后续接口扩展预留；第二级算子aclnnQuantSparseLightningIndexer的对应输入当前只接受空tensor，传入非空tensor会在其tiling报错。</li>
+          </ul>
+      </td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td>恒为(0,)。</td>
+      <td>x</td>
+    </tr>
+    <tr>
       <td>workspaceSize</td>
       <td>输出</td>
       <td>返回需要在Device侧申请的workspace大小。</td>
