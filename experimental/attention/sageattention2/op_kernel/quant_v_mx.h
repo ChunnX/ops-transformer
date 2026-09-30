@@ -59,19 +59,30 @@ __simd_vf__ inline void QuantVRowsMxVF(__ubuf__ T *x, __ubuf__ T *maxima, __ubuf
     RegTensor<uint16_t> sign;
     Duplicate(sign, FP16_ABS_MASK);
     for (uint16_t group = 0; group < 2; ++group) {
-        RegTensor<T> mx0, mx1;
+        RegTensor<T> mx0, mx1, mx2, mx3;
         Duplicate(mx0, T(0));
         Duplicate(mx1, T(0));
-        for (uint16_t row = 0; row < 32; row += 2) {
-            RegTensor<T> a0, a1;
-            LoadAlign(a0, x + (group * 32 + row) * dp);
-            LoadAlign(a1, x + (group * 32 + row + 1) * dp);
+        Duplicate(mx2, T(0));
+        Duplicate(mx3, T(0));
+        __ubuf__ T *grpBase = x + (group * 32) * dp;
+        for (uint16_t row = 0; row < 32; row += 4) {
+            RegTensor<T> a0, a1, a2, a3;
+            LoadAlign(a0, grpBase + (row + 0) * dp);
+            LoadAlign(a1, grpBase + (row + 1) * dp);
+            LoadAlign(a2, grpBase + (row + 2) * dp);
+            LoadAlign(a3, grpBase + (row + 3) * dp);
             And((RegTensor<uint16_t> &)a0, (RegTensor<uint16_t> &)a0, sign, h);
             And((RegTensor<uint16_t> &)a1, (RegTensor<uint16_t> &)a1, sign, h);
+            And((RegTensor<uint16_t> &)a2, (RegTensor<uint16_t> &)a2, sign, h);
+            And((RegTensor<uint16_t> &)a3, (RegTensor<uint16_t> &)a3, sign, h);
             Max(mx0, mx0, a0, h);
             Max(mx1, mx1, a1, h);
+            Max(mx2, mx2, a2, h);
+            Max(mx3, mx3, a3, h);
         }
         Max(mx0, mx0, mx1, h);
+        Max(mx2, mx2, mx3, h);
+        Max(mx0, mx0, mx2, h);
         StoreAlign(maxima + group * dp, mx0, h);
     }
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();

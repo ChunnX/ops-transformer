@@ -74,22 +74,34 @@ __simd_vf__ inline void AccumulateFp32VF(__ubuf__ float *accum, __ubuf__ float *
             StoreAlign(accum + (row + 1) * DP + 64, x1_1, f);
         }
     } else {
-        for (uint16_t row = 0; row < 64; row += 2) {
-            RegTensor<float> ratio0, ratio1;
-            LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio0, alpha + row);
+        for (uint16_t row = 0; row < 64; row += 4) {
+            RegTensor<float> ratio0, ratio1, ratio2, ratio3;
+            LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio0, alpha + row + 0);
             LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio1, alpha + row + 1);
+            LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio2, alpha + row + 2);
+            LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio3, alpha + row + 3);
 
-            RegTensor<float> x0, x1, y0, y1;
-            LoadAlign(x0, accum + row * DP);
+            RegTensor<float> x0, x1, x2, x3;
+            RegTensor<float> y0, y1, y2, y3;
+            LoadAlign(x0, accum + (row + 0) * DP);
             LoadAlign(x1, accum + (row + 1) * DP);
-            LoadAlign(y0, partial + row * DP);
+            LoadAlign(x2, accum + (row + 2) * DP);
+            LoadAlign(x3, accum + (row + 3) * DP);
+
+            LoadAlign(y0, partial + (row + 0) * DP);
             LoadAlign(y1, partial + (row + 1) * DP);
+            LoadAlign(y2, partial + (row + 2) * DP);
+            LoadAlign(y3, partial + (row + 3) * DP);
 
             MulDstAdd(x0, ratio0, y0, f);
             MulDstAdd(x1, ratio1, y1, f);
+            MulDstAdd(x2, ratio2, y2, f);
+            MulDstAdd(x3, ratio3, y3, f);
 
-            StoreAlign(accum + row * DP, x0, f);
+            StoreAlign(accum + (row + 0) * DP, x0, f);
             StoreAlign(accum + (row + 1) * DP, x1, f);
+            StoreAlign(accum + (row + 2) * DP, x2, f);
+            StoreAlign(accum + (row + 3) * DP, x3, f);
         }
     }
 }
@@ -147,33 +159,50 @@ __simd_vf__ inline void AccumulateFp32PairVF(__ubuf__ float *accum, __ubuf__ flo
             StoreAlign(accum + (row + 1) * DP + 64, x1_1, f);
         }
     } else {
-        for (uint16_t row = 0; row < 64; row += 2) {
-            RegTensor<float> a0_0, a0_1;
-            LoadAlign<float, LoadDist::DIST_BRC_B32>(a0_0, alpha0 + row);
+        for (uint16_t row = 0; row < 64; row += 4) {
+            RegTensor<float> a0_0, a0_1, a0_2, a0_3;
+            LoadAlign<float, LoadDist::DIST_BRC_B32>(a0_0, alpha0 + row + 0);
             LoadAlign<float, LoadDist::DIST_BRC_B32>(a0_1, alpha0 + row + 1);
+            LoadAlign<float, LoadDist::DIST_BRC_B32>(a0_2, alpha0 + row + 2);
+            LoadAlign<float, LoadDist::DIST_BRC_B32>(a0_3, alpha0 + row + 3);
 
-            RegTensor<float> x0, x1, y0, y1;
-            LoadAlign(x0, accum + row * DP);
+            RegTensor<float> x0, x1, x2, x3;
+            RegTensor<float> y0, y1, y2, y3;
+            LoadAlign(x0, accum + (row + 0) * DP);
             LoadAlign(x1, accum + (row + 1) * DP);
-            LoadAlign(y0, partial0 + row * DP);
+            LoadAlign(x2, accum + (row + 2) * DP);
+            LoadAlign(x3, accum + (row + 3) * DP);
+            LoadAlign(y0, partial0 + (row + 0) * DP);
             LoadAlign(y1, partial0 + (row + 1) * DP);
+            LoadAlign(y2, partial0 + (row + 2) * DP);
+            LoadAlign(y3, partial0 + (row + 3) * DP);
 
             MulDstAdd(x0, a0_0, y0, f);
             MulDstAdd(x1, a0_1, y1, f);
+            MulDstAdd(x2, a0_2, y2, f);
+            MulDstAdd(x3, a0_3, y3, f);
 
-            RegTensor<float> a1_0, a1_1;
-            LoadAlign<float, LoadDist::DIST_BRC_B32>(a1_0, alpha1 + row);
+            RegTensor<float> a1_0, a1_1, a1_2, a1_3;
+            LoadAlign<float, LoadDist::DIST_BRC_B32>(a1_0, alpha1 + row + 0);
             LoadAlign<float, LoadDist::DIST_BRC_B32>(a1_1, alpha1 + row + 1);
+            LoadAlign<float, LoadDist::DIST_BRC_B32>(a1_2, alpha1 + row + 2);
+            LoadAlign<float, LoadDist::DIST_BRC_B32>(a1_3, alpha1 + row + 3);
 
-            RegTensor<float> z0, z1;
-            LoadAlign(z0, partial1 + row * DP);
+            RegTensor<float> z0, z1, z2, z3;
+            LoadAlign(z0, partial1 + (row + 0) * DP);
             LoadAlign(z1, partial1 + (row + 1) * DP);
+            LoadAlign(z2, partial1 + (row + 2) * DP);
+            LoadAlign(z3, partial1 + (row + 3) * DP);
 
             MulDstAdd(x0, a1_0, z0, f);
             MulDstAdd(x1, a1_1, z1, f);
+            MulDstAdd(x2, a1_2, z2, f);
+            MulDstAdd(x3, a1_3, z3, f);
 
-            StoreAlign(accum + row * DP, x0, f);
+            StoreAlign(accum + (row + 0) * DP, x0, f);
             StoreAlign(accum + (row + 1) * DP, x1, f);
+            StoreAlign(accum + (row + 2) * DP, x2, f);
+            StoreAlign(accum + (row + 3) * DP, x3, f);
         }
     }
 }

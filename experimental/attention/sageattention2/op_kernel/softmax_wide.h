@@ -73,14 +73,13 @@ __simd_callee__ inline __attribute__((always_inline)) void ScaleMaskAndMaxWideNZ
     StoreAlign(scores0 + col * 64 * 16 + row * 16 + 0, x0_0, h);
     StoreAlign(scores0 + col * 64 * 16 + row * 16 + 128, x1_0, h);
 
-    RegTensor<half> pair_max0, pair_max1;
-    Max(pair_max0, x0_0, x0_1, h);
+    Max(m0, m0, x0_0, h);
     StoreAlign(scores1 + col * 64 * 16 + row * 16 + 0, x0_1, h);
-    Max(pair_max1, x1_0, x1_1, h);
+    Max(m1, m1, x1_0, h);
     StoreAlign(scores1 + col * 64 * 16 + row * 16 + 128, x1_1, h);
 
-    Max(m0, m0, pair_max0, h);
-    Max(m1, m1, pair_max1, h);
+    Max(m0, m0, x0_1, h);
+    Max(m1, m1, x1_1, h);
 }
 
 // Compute probabilities from scores, tree-accumulate row sums, cast to FP8, and pack into NZ output format.
@@ -170,8 +169,8 @@ __simd_callee__ inline void SoftmaxWideMaxCore(__ubuf__ half *scores, __ubuf__ h
                                            laneOffset, negative, m0, m1, h);
         }
         ReduceDataBlock<ReduceType::MAX>(m0, m0, h);
-        StoreUnAlign<half, PostLiteral::POST_MODE_UPDATE>(blockMax, m0, maxStore, 8);
         ReduceDataBlock<ReduceType::MAX>(m1, m1, h);
+        StoreUnAlign<half, PostLiteral::POST_MODE_UPDATE>(blockMax, m0, maxStore, 8);
         StoreUnAlign<half, PostLiteral::POST_MODE_UPDATE>(blockMax, m1, maxStore, 8);
     }
     StoreUnAlignPost(blockMax, maxStore, 0);

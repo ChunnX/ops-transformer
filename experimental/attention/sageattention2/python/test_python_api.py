@@ -711,21 +711,58 @@ class TestSageAttention2PythonAPI(unittest.TestCase):
     def test_tc09_long_sequence_handling(self):
         """TC-09: Verify long sequence execution (S>=8K; 16K tier on NPU).
 
-        The CPU fallback covers reduced sizes as a smoke test only; the task
-        spec's 16K tier is asserted on NPU where TC-09 is formally accepted.
+        On NPU this runs the formal 4K/8K/16K tier. On host the CPU golden
+        executes the real long-sequence datapath -- 128-block online-softmax
+        recursion across up to 256 KV groups, where the FP16 shifted-max
+        state and alpha rescaling must stay finite and accum-consistent.
+        The causal variant sweeps only the diagonal prefix, so 16K causal
+        costs about as much as 8K non-causal. Actual WIDE/N512 branch
+        execution remains a real-machine assertion.
         """
         is_npu = hasattr(torch, "npu") and torch.npu.is_available()
         device = "npu" if is_npu else "cpu"
-        seq_lens = [4096, 8192, 16384] if is_npu else [512, 1024]
         heads = 4 if is_npu else 2
-        for s in seq_lens:
-            with self.subTest(seq_len=s):
-                q = torch.randn(1, heads, s, 128, dtype=torch.float16, device=device)
-                k = torch.randn(1, heads, s, 128, dtype=torch.float16, device=device)
-                v = torch.randn(1, heads, s, 128, dtype=torch.float16, device=device)
-                out = sageattn(q, k, v, tensor_layout="HND")
-                self.assertEqual(out.shape, (1, heads, s, 128))
-                self.assertFalse(torch.isnan(out).any())
+        if is_npu:
+            for s in (4096, 8192, 16384):
+                with self.subTest(seq_len=s):
+                    q = torch.randn(1, heads, s, 128, dtype=torch.float16, device=device)
+                    k = torch.randn(1, heads, s, 128, dtype=torch.float16, device=device)
+                    v = torch.randn(1, heads, s, 128, dtype=torch.float16, device=device)
+                    out = sageattn(q, k, v, tensor_layout="HND")
+                    self.assertEqual(out.shape, (1, heads, s, 128))
+                    self.assertFalse(torch.isnan(out).any())
+            return
+
+        torch.manual_seed(909)
+        # Single head: TC-09 pins the sequence-length axis; head-count and GQA
+        # variants belong to TC-01/TC-06. Causal sweeps only the diagonal
+        # prefix, so 16K causal costs about as much as 8K non-causal.
+        for s, causal, both_accums in ((4096, False, True), (8192, True, True)):
+            with self.subTest(seq_len=s, causal=causal):
+                q = torch.randn(1, 1, s, 128, dtype=torch.float16)
+                k = torch.randn(1, 1, s, 128, dtype=torch.float16)
+                v = torch.randn(1, 1, s, 128, dtype=torch.float16)
+                kwargs = {"is_causal": causal, "return_lse": True}
+                if both_accums:
+                    folded = sageattn_qk_int8_pv_fp8_asc(
+                        q, k, v, is_causal=causal, pv_accum_dtype="fp32+fp32"
+                    )
+                out, lse = sageattn_qk_int8_pv_fp8_asc(
+                    q, k, v, pv_accum_dtype="fp32+fp16", **kwargs
+                )
+                self.assertEqual(out.shape, (1, 1, s, 128))
+                self.assertFalse(torch.isnan(out).any(), f"NaN at S={s}, causal={causal}")
+                self.assertTrue(torch.isfinite(out).all(), f"non-finite output at S={s}")
+                if both_accums:
+                    # Both configs share the quantizer, so any gap is the FP16
+                    # fold itself (one rounding per 256-token block).
+                    self.assertLess(
+                        (out.float() - folded.float()).abs().max().item(), 5e-2,
+                        f"fp32+fp16 fold diverged from fp32+fp32 at S={s}",
+                    )
+                self.assertEqual(lse.shape, (1, 1, s))
+                self.assertEqual(lse.dtype, torch.float32)
+                self.assertTrue(torch.isfinite(lse).all(), f"non-finite LSE at S={s}")
 
     # -------------------------------------------------------------------------
     # TC-10: 官方接口无缝平替冒烟 (torch.nn.functional.scaled_dot_product_attention)

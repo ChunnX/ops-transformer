@@ -60,21 +60,21 @@ __simd_vf__ inline void QuantRowsImpl(__ubuf__ float *x, [[maybe_unused]] __ubuf
     auto dst = scales;
     UnalignReg compact;
     // 2-row interleaved reduction pipeline hiding RAW dependency latency
-    for (uint16_t row = 0; row < 64; row += 2) {
-        RegTensor<float> a0, a1, ab0, ab1, m0, m1;
-        LoadAlign(a0, x + row * DP);
-        LoadAlign(a1, x + (row + 1) * DP);
-        if constexpr (SMOOTH) {
-            Sub(a0, a0, ma, full);
-            Sub(a1, a1, ma, full);
-        }
-        Abs(ab0, a0, full);
-        Abs(ab1, a1, full);
-        if constexpr (SMOOTH) {
-            StoreAlign(x + row * DP, a0, full);
-            StoreAlign(x + (row + 1) * DP, a1, full);
-        }
-        if constexpr (DP == 128) {
+    if constexpr (DP == 128) {
+        for (uint16_t row = 0; row < 64; row += 2) {
+            RegTensor<float> a0, a1, ab0, ab1, m0, m1;
+            LoadAlign(a0, x + row * DP);
+            LoadAlign(a1, x + (row + 1) * DP);
+            if constexpr (SMOOTH) {
+                Sub(a0, a0, ma, full);
+                Sub(a1, a1, ma, full);
+            }
+            Abs(ab0, a0, full);
+            Abs(ab1, a1, full);
+            if constexpr (SMOOTH) {
+                StoreAlign(x + row * DP, a0, full);
+                StoreAlign(x + (row + 1) * DP, a1, full);
+            }
             RegTensor<float> b0, b1, bb0, bb1;
             LoadAlign(b0, x + row * DP + 64);
             LoadAlign(b1, x + (row + 1) * DP + 64);
@@ -90,11 +90,45 @@ __simd_vf__ inline void QuantRowsImpl(__ubuf__ float *x, [[maybe_unused]] __ubuf
                 StoreAlign(x + row * DP + 64, b0, full);
                 StoreAlign(x + (row + 1) * DP + 64, b1, full);
             }
+            ReduceMax(m0, ab0, full);
+            ReduceMax(m1, ab1, full);
+            StoreUnAlign<float, PostLiteral::POST_MODE_UPDATE>(dst, m0, compact, 1);
+            StoreUnAlign<float, PostLiteral::POST_MODE_UPDATE>(dst, m1, compact, 1);
         }
-        ReduceMax(m0, ab0, full);
-        ReduceMax(m1, ab1, full);
-        StoreUnAlign<float, PostLiteral::POST_MODE_UPDATE>(dst, m0, compact, 1);
-        StoreUnAlign<float, PostLiteral::POST_MODE_UPDATE>(dst, m1, compact, 1);
+    } else {
+        for (uint16_t row = 0; row < 64; row += 4) {
+            RegTensor<float> a0, a1, a2, a3;
+            RegTensor<float> ab0, ab1, ab2, ab3;
+            RegTensor<float> m0, m1, m2, m3;
+            LoadAlign(a0, x + (row + 0) * DP);
+            LoadAlign(a1, x + (row + 1) * DP);
+            LoadAlign(a2, x + (row + 2) * DP);
+            LoadAlign(a3, x + (row + 3) * DP);
+            if constexpr (SMOOTH) {
+                Sub(a0, a0, ma, full);
+                Sub(a1, a1, ma, full);
+                Sub(a2, a2, ma, full);
+                Sub(a3, a3, ma, full);
+            }
+            Abs(ab0, a0, full);
+            Abs(ab1, a1, full);
+            Abs(ab2, a2, full);
+            Abs(ab3, a3, full);
+            if constexpr (SMOOTH) {
+                StoreAlign(x + (row + 0) * DP, a0, full);
+                StoreAlign(x + (row + 1) * DP, a1, full);
+                StoreAlign(x + (row + 2) * DP, a2, full);
+                StoreAlign(x + (row + 3) * DP, a3, full);
+            }
+            ReduceMax(m0, ab0, full);
+            ReduceMax(m1, ab1, full);
+            ReduceMax(m2, ab2, full);
+            ReduceMax(m3, ab3, full);
+            StoreUnAlign<float, PostLiteral::POST_MODE_UPDATE>(dst, m0, compact, 1);
+            StoreUnAlign<float, PostLiteral::POST_MODE_UPDATE>(dst, m1, compact, 1);
+            StoreUnAlign<float, PostLiteral::POST_MODE_UPDATE>(dst, m2, compact, 1);
+            StoreUnAlign<float, PostLiteral::POST_MODE_UPDATE>(dst, m3, compact, 1);
+        }
     }
     StoreUnAlignPost(dst, compact, 0);
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
@@ -116,11 +150,11 @@ __simd_vf__ inline void QuantRowsImpl(__ubuf__ float *x, [[maybe_unused]] __ubuf
     StoreAlign(inverseScales, inverse, full);
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     static constexpr CastTrait trait{RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
-    for (uint16_t row = 0; row < 64; row += 2) {
-        RegTensor<float> m0, m1;
-        LoadAlign<float, LoadDist::DIST_BRC_B32>(m0, inverseScales + row);
-        LoadAlign<float, LoadDist::DIST_BRC_B32>(m1, inverseScales + row + 1);
-        if constexpr (DP == 128) {
+    if constexpr (DP == 128) {
+        for (uint16_t row = 0; row < 64; row += 2) {
+            RegTensor<float> m0, m1;
+            LoadAlign<float, LoadDist::DIST_BRC_B32>(m0, inverseScales + row);
+            LoadAlign<float, LoadDist::DIST_BRC_B32>(m1, inverseScales + row + 1);
             RegTensor<float> a0_0, a0_1, a1_0, a1_1;
             RegTensor<int32_t> p0_0, p0_1, p1_0, p1_1;
             LoadAlign(a0_0, x + row * DP);
@@ -139,17 +173,36 @@ __simd_vf__ inline void QuantRowsImpl(__ubuf__ float *x, [[maybe_unused]] __ubuf
             StoreAlign<int8_t, StoreDist::DIST_PACK4_B32>(out + row * DP + 64, (RegTensor<int8_t> &)p0_1, full);
             StoreAlign<int8_t, StoreDist::DIST_PACK4_B32>(out + (row + 1) * DP, (RegTensor<int8_t> &)p1_0, full);
             StoreAlign<int8_t, StoreDist::DIST_PACK4_B32>(out + (row + 1) * DP + 64, (RegTensor<int8_t> &)p1_1, full);
-        } else {
-            RegTensor<float> a0, a1;
-            RegTensor<int32_t> p0, p1;
-            LoadAlign(a0, x + row * DP);
+        }
+    } else {
+        for (uint16_t row = 0; row < 64; row += 4) {
+            RegTensor<float> m0, m1, m2, m3;
+            LoadAlign<float, LoadDist::DIST_BRC_B32>(m0, inverseScales + row + 0);
+            LoadAlign<float, LoadDist::DIST_BRC_B32>(m1, inverseScales + row + 1);
+            LoadAlign<float, LoadDist::DIST_BRC_B32>(m2, inverseScales + row + 2);
+            LoadAlign<float, LoadDist::DIST_BRC_B32>(m3, inverseScales + row + 3);
+
+            RegTensor<float> a0, a1, a2, a3;
+            RegTensor<int32_t> p0, p1, p2, p3;
+            LoadAlign(a0, x + (row + 0) * DP);
             LoadAlign(a1, x + (row + 1) * DP);
+            LoadAlign(a2, x + (row + 2) * DP);
+            LoadAlign(a3, x + (row + 3) * DP);
+
             Mul(a0, a0, m0, full);
             Mul(a1, a1, m1, full);
+            Mul(a2, a2, m2, full);
+            Mul(a3, a3, m3, full);
+
             Cast<int32_t, float, trait>(p0, a0, full);
             Cast<int32_t, float, trait>(p1, a1, full);
-            StoreAlign<int8_t, StoreDist::DIST_PACK4_B32>(out + row * DP, (RegTensor<int8_t> &)p0, full);
+            Cast<int32_t, float, trait>(p2, a2, full);
+            Cast<int32_t, float, trait>(p3, a3, full);
+
+            StoreAlign<int8_t, StoreDist::DIST_PACK4_B32>(out + (row + 0) * DP, (RegTensor<int8_t> &)p0, full);
             StoreAlign<int8_t, StoreDist::DIST_PACK4_B32>(out + (row + 1) * DP, (RegTensor<int8_t> &)p1, full);
+            StoreAlign<int8_t, StoreDist::DIST_PACK4_B32>(out + (row + 2) * DP, (RegTensor<int8_t> &)p2, full);
+            StoreAlign<int8_t, StoreDist::DIST_PACK4_B32>(out + (row + 3) * DP, (RegTensor<int8_t> &)p3, full);
         }
     }
     PackFixedScaleBlock(scales, halfScales, factor, valid);
