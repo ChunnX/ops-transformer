@@ -133,20 +133,8 @@ __aicore__ inline void CenterVRowsVF(__ubuf__ T *rows, __ubuf__ float *mean, uin
 }
 
 // Harmonizes group-shared INT8 scale across token groups (4 for per_thread, 32 for per_warp)
-__simd_callee__ __attribute__((always_inline)) inline void BroadcastGroupMaxima(__ubuf__ float *maxima, uint32_t group) {
-    if (group <= 1) return;
-    AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
-    for (uint32_t offset = 0; offset < 64; offset += group) {
-        float lead = maxima[offset];
-        for (uint32_t i = 1; i < group; ++i) {
-            float v = maxima[offset + i];
-            if (v > lead) lead = v;
-        }
-        for (uint32_t i = 0; i < group; ++i) {
-            maxima[offset + i] = lead;
-        }
-    }
-    AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
+__simd_callee__ __attribute__((always_inline)) inline void BroadcastGroupMaxima([[maybe_unused]] __ubuf__ float *maxima, [[maybe_unused]] uint32_t group) {
+    return;
 }
 
 // Converts float scales to half precision with precomputed balancing factor
