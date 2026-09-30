@@ -41,13 +41,13 @@
 | 参数名          | 输入/输出/属性 | 描述                                | 数据类型 | 数据格式 |
 | --------------- | -------------- | ----------------------------------- | -------- | -------- |
 | kv_vectors      | 输入           | 待量化的 K 或 V 向量                | BF16     | ND，`[T, H_kv, 128]` |
-| rotation_matrix | 输入           | 正交旋转矩阵 `H`，推理期固定        | FP32     | ND，`[128, 128]` |
-| qjl_matrix      | 输入           | 残差高斯投影矩阵 `S`，推理期固定    | FP32     | ND，`[128, 128]` |
+| rotation_matrix | 输入           | 正交旋转矩阵 `H`，推理期固定        | FP32 / BF16（接口扩展） | ND，`[128, 128]` |
+| qjl_matrix      | 输入           | 残差高斯投影矩阵 `S`，推理期固定    | FP32 / BF16（接口扩展） | ND，`[128, 128]` |
 | mse_bits        | 属性（可选）   | 主量化位宽，默认 3，支持 2/3/4      | INT      | -        |
 | quant_idx       | 输出           | 主量化码字（bit-packed）            | UINT8    | ND，`[T, H_kv, 16 * mse_bits]` |
 | quant_qjl       | 输出           | 残差 QJL 符号（bit-packed）         | UINT8    | ND，`[T, H_kv, 16]` |
-| quant_norm      | 输出           | `\lVert x \rVert_2`                 | BF16     | ND，`[T, H_kv]` |
-| quant_gamma     | 输出           | 原尺度残差范数 `n · \lVert r \rVert_2` | BF16  | ND，`[T, H_kv]` |
+| quant_norm      | 输出           | `\lVert x \rVert_2`                 | BF16 / FP16（接口扩展） | ND，`[T, H_kv]` |
+| quant_gamma     | 输出           | 原尺度残差范数 `n · \lVert r \rVert_2` | BF16 / FP16（接口扩展） | ND，`[T, H_kv]` |
 
 ## 约束说明
 
@@ -55,7 +55,13 @@
 - `head_dim` 固定 128；`qjl_dim` 固定 128；`num_kv_heads` 支持 4 ~ 32。
 - `mse_bits` 仅支持 2 / 3 / 4，默认 3；不支持 3.5-bit outlier 混合模式。
 - 旋转/投影矩阵在一次推理内不变，由调用方传入。
-- 空 tensor 不支持；非连续输入在算子定义中声明 `AutoContiguous`。
+- **dtype 口径**（按任务书 §2.3 与官方 2026-09-30 口径）：正式用例固定 kv=BF16、矩阵=FP32、
+  metadata=BF16；**矩阵 BF16 与 metadata FP16 属于接口扩展，通过功能回归验证，不纳入性能门槛**。
+  矩阵为 bf16 时算子内部**上转 fp32**（bf16 值在 fp32 中精确，与参考实现 `golden.py` 的上转
+  一致）；metadata 为 fp16 时两个标量按 fp32 值 RNE 舍入到 fp16。矩阵 bf16/fp32 必须与
+  qjl 一致（不允许混用）；metadata 两个输出必须同为 bf16 或同为 fp16。
+- 空 tensor 不支持；非连续输入在算子定义中声明 `AutoContiguous`（官方口径：非连续输入不在
+  本次直接 ACLNN 验收范围，此声明为超集）。
 
 ## 调用说明
 

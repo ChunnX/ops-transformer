@@ -39,6 +39,10 @@ TILING_DATA_FIELD_DEF(uint64_t, wsR);
 TILING_DATA_FIELD_DEF(uint64_t, wsP);
 TILING_DATA_FIELD_DEF(uint64_t, wsNorm);
 TILING_DATA_FIELD_DEF(uint64_t, wsBytes);
+TILING_DATA_FIELD_DEF(uint32_t, matrixBf16);
+TILING_DATA_FIELD_DEF(uint32_t, metadataFp16);
+TILING_DATA_FIELD_DEF(uint64_t, wsRotMat);
+TILING_DATA_FIELD_DEF(uint64_t, wsQjlMat);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(KvCacheTurboQuant, KvCacheTurboQuantTilingDef)

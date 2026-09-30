@@ -80,7 +80,16 @@ python tests/gen_test_data.py --out data        # 归一化 Hadamard 旋转矩�
 python tests/gen_case_input.py --out data/kctq_case_b1 --tokens 1    --heads 8
 python tests/gen_case_input.py --out data/kctq_case_b64 --tokens 64  --heads 8
 python tests/gen_case_input.py --out data/kctq_case_t2048 --tokens 2048 --heads 8
-# 三个 t2048 档共用同一份 kv 输入，仅 mse_bits 不同（见 case.json）```
+# 生成器按 case 名产出独立输入；官方件优先（见下方 KCTQ_OFFICIAL_DATA）
+```
+
+> case 输入以**官方件为准**：`run_all.sh` 优先读 `$KCTQ_OFFICIAL_DATA/<case_name>/`
+> 下的 `kv_vectors.bin` / `ip_query.bin`（官方 `generate_data.py` 的产物），
+> **三个 t2048 形态 case 各用自己那一份**（不再是共用一份），仅在拿不到官方件时才退回
+> `gen_case_input.py` 生成的等价输入。
+
+接口扩展回归（矩阵 bf16 / metadata fp16）与正式回归共用同一份矩阵：
+`$KCTQ_MATRIX_DIR`（默认 `tests/_out/data`，缺失时自动由 `gen_test_data.py` 生成）。
 
 输入按 `case.json` 声明的 `value_range` 生成（`kv_vectors` 为 `[-2, 2]` 均匀、BF16 舍入）。
 

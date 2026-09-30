@@ -7,8 +7,14 @@
  *
  * usage: test_aclnn_kv_cache_turbo_quant --kv kv.bin --rot rot.bin --qjl qjl.bin --out outdir
  *        --tokens T --heads H --bits B [--warmup W] [--repeat R] [--device D] [--label NAME]
+ *        [--matrix-dtype fp32|bf16] [--meta-dtype bf16|fp16]
+ *
+ * --matrix-dtype bf16 / --meta-dtype fp16 对应任务书 §2.3 允许的接口扩展：矩阵按 bf16 传入
+ * （驱动器按 RNE 转换成 bf16 并把实际使用的矩阵存为 rot_used.bin / qjl_used.bin），
+ * metadata 输出为 fp16。默认值（fp32 / bf16）即正式五用例的口径。
  *
  * outputs written into outdir: quant_idx.bin, quant_qjl.bin, quant_norm.bin, quant_gamma.bin
+ *                             (+ rot_used.bin / qjl_used.bin)
  *
  * 构建与完整自测步骤见同目录 build_and_run.sh 与 ../tests/README.md。
  */
@@ -36,6 +42,8 @@ struct Args {
     std::string out;
     std::string label = "case";
     std::string neg;  // 非法输入自测模式（见 tests/invalid_cases.py）；非空时期望被拒绝
+    std::string matrixDtype = "fp32";  // fp32（正式口径）| bf16（接口扩展）
+    std::string metaDtype = "bf16";    // bf16（正式口径）| fp16（接口扩展）
     int64_t tokens = 0;
     int64_t heads = 0;
     int64_t bits = 3;
@@ -91,6 +99,14 @@ bool ParseArgs(int argc, char **argv, Args *args)
             if (!need("--neg")) return false;
             args->neg = value;
             ++i;
+        } else if (key == "--matrix-dtype") {
+            if (!need("--matrix-dtype")) return false;
+            args->matrixDtype = value;
+            ++i;
+        } else if (key == "--meta-dtype") {
+            if (!need("--meta-dtype")) return false;
+            args->metaDtype = value;
+            ++i;
         } else if (key == "--warmup") {
             if (!need("--warmup")) return false;
             args->warmup = std::atoll(value);
@@ -109,7 +125,26 @@ bool ParseArgs(int argc, char **argv, Args *args)
         }
     }
     return args->tokens > 0 && args->heads > 0 && !args->kv.empty() && !args->rot.empty() &&
-           !args->qjl.empty() && !args->out.empty();
+           !args->qjl.empty() && !args->out.empty() &&
+           (args->matrixDtype == "fp32" || args->matrixDtype == "bf16") &&
+           (args->metaDtype == "bf16" || args->metaDtype == "fp16");
+}
+
+// fp32 -> bf16，舍入到最近的偶数（与 numpy / ml_dtypes 的 bfloat16 转换一致）。
+// bf16 在 fp32 中可精确表示，所以参考实现（golden.py 的 _npu_fp32）读 bf16 矩阵时得到的就是这些值。
+std::vector<uint8_t> ToBf16(const std::vector<uint8_t> &fp32Bytes)
+{
+    const size_t count = fp32Bytes.size() / sizeof(float);
+    const float *src = reinterpret_cast<const float *>(fp32Bytes.data());
+    std::vector<uint8_t> out(count * sizeof(uint16_t));
+    uint16_t *dst = reinterpret_cast<uint16_t *>(out.data());
+    for (size_t i = 0; i < count; ++i) {
+        uint32_t bits = 0;
+        std::memcpy(&bits, src + i, sizeof(bits));
+        const uint32_t lsb = (bits >> 16) & 1U;
+        dst[i] = static_cast<uint16_t>((bits + 0x7FFFU + lsb) >> 16);
+    }
+    return out;
 }
 
 bool ReadFile(const std::string &path, std::vector<uint8_t> *buf)
@@ -191,6 +226,7 @@ int main(int argc, char **argv)
     if (!ParseArgs(argc, argv, &args)) {
         printf("usage: %s --kv kv.bin --rot rot.bin --qjl qjl.bin --out dir --tokens T --heads H --bits B\n",
                argv[0]);
+        printf("       [--matrix-dtype fp32|bf16] [--meta-dtype bf16|fp16]\n");
         return 2;
     }
     // ---- 非法输入自测（--neg <mode>）：只改属性/张量描述符，期望 GetWorkspaceSize 非 0 拒绝 ----
@@ -221,6 +257,13 @@ int main(int argc, char **argv)
                static_cast<size_t>(rows) * kHeadDim * sizeof(uint16_t));
         return 3;
     }
+    // 接口扩展：矩阵按 bf16 传入（驱动器负责转换，并把实际使用的矩阵落盘供对拍）
+    const bool matrixBf16 = (args.matrixDtype == "bf16");
+    const bool metaFp16 = (args.metaDtype == "fp16");
+    if (matrixBf16) {
+        rotHost = ToBf16(rotHost);
+        qjlHost = ToBf16(qjlHost);
+    }
 
     if (aclInit(nullptr) != ACL_SUCCESS || aclrtSetDevice(args.device) != ACL_SUCCESS) {
         printf("acl init failed: %s\n", aclGetRecentErrMsg());
@@ -243,8 +286,8 @@ int main(int argc, char **argv)
     std::vector<int64_t> matShapeT = matShape;
     std::vector<int64_t> qjlShapeT = matShape;
     aclDataType kvDtype = ACL_BF16;
-    aclDataType rotDtype = ACL_FLOAT;
-    aclDataType qjlDtype = ACL_FLOAT;
+    aclDataType rotDtype = matrixBf16 ? ACL_BF16 : ACL_FLOAT;
+    aclDataType qjlDtype = matrixBf16 ? ACL_BF16 : ACL_FLOAT;
     if (args.neg == "kv-rank2") {
         kvShapeT = {args.tokens * args.heads, kHeadDim};
     } else if (args.neg == "head-dim-64") {
@@ -290,8 +333,9 @@ int main(int argc, char **argv)
     aclTensor *qjlTensor = MakeTensor(qjlShapeT, qjlDtype, qjlDev);
     aclTensor *idxTensor = MakeTensor(idxShape, ACL_UINT8, idxDev);
     aclTensor *qjlOutTensor = MakeTensor(qjlShape, ACL_UINT8, qjlOutDev);
-    aclTensor *normTensor = MakeTensor(scalarShape, ACL_BF16, normDev);
-    aclTensor *gammaTensor = MakeTensor(scalarShape, ACL_BF16, gammaDev);
+    const aclDataType metaType = metaFp16 ? ACL_FLOAT16 : ACL_BF16;
+    aclTensor *normTensor = MakeTensor(scalarShape, metaType, normDev);
+    aclTensor *gammaTensor = MakeTensor(scalarShape, metaType, gammaDev);
 
     std::vector<double> fullMs;
     std::vector<double> execMs;
@@ -338,6 +382,10 @@ int main(int argc, char **argv)
     }
 
     if (!failed) {
+        // 实际送进算子的矩阵（bf16 转换后 / fp32 原样），供对拍脚本使用
+        // （注意：必须在下面重新声明 qjlHost 之前写，否则会被输出的同名局部变量遮蔽）
+        ok = WriteFile(args.out + "/rot_used.bin", rotHost.data(), rotHost.size()) &&
+             WriteFile(args.out + "/qjl_used.bin", qjlHost.data(), qjlHost.size());
         // pull the outputs back and store them for the python comparison
         std::vector<uint8_t> idxHost(idxBytesTotal);
         std::vector<uint8_t> qjlHost(qjlBytesTotal);
@@ -347,15 +395,20 @@ int main(int argc, char **argv)
         aclrtMemcpy(qjlHost.data(), qjlHost.size(), qjlOutDev, qjlHost.size(), ACL_MEMCPY_DEVICE_TO_HOST);
         aclrtMemcpy(normHost.data(), normHost.size(), normDev, normHost.size(), ACL_MEMCPY_DEVICE_TO_HOST);
         aclrtMemcpy(gammaHost.data(), gammaHost.size(), gammaDev, gammaHost.size(), ACL_MEMCPY_DEVICE_TO_HOST);
-        ok = WriteFile(args.out + "/quant_idx.bin", idxHost.data(), idxHost.size()) &&
+        ok = ok && WriteFile(args.out + "/quant_idx.bin", idxHost.data(), idxHost.size()) &&
              WriteFile(args.out + "/quant_qjl.bin", qjlHost.data(), qjlHost.size()) &&
              WriteFile(args.out + "/quant_norm.bin", normHost.data(), normHost.size()) &&
              WriteFile(args.out + "/quant_gamma.bin", gammaHost.data(), gammaHost.size());
+        if (!ok) {
+            printf("failed to write outputs into %s\n", args.out.c_str());
+            failed = true;
+        }
     }
 
     printf("RESULT: %s\n", failed ? "FAIL" : "PASS");
-    printf("label: %s tokens=%ld heads=%ld rows=%ld bits=%ld warmup=%ld repeat=%ld\n", args.label.c_str(),
-           args.tokens, args.heads, rows, args.bits, args.warmup, args.repeat);
+    printf("label: %s tokens=%ld heads=%ld rows=%ld bits=%ld matrix_dtype=%s meta_dtype=%s warmup=%ld repeat=%ld\n",
+           args.label.c_str(), args.tokens, args.heads, rows, args.bits, args.matrixDtype.c_str(),
+           args.metaDtype.c_str(), args.warmup, args.repeat);
     if (!failed) {
         printf("latency_ms_full seq: ");
         for (double v : fullMs) {

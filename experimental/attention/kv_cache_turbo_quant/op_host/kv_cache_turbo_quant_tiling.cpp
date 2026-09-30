@@ -31,6 +31,8 @@ namespace {
 constexpr size_t IN_KV_VECTORS = 0;
 constexpr size_t IN_ROTATION = 1;
 constexpr size_t IN_QJL = 2;
+constexpr size_t OUT_QUANT_NORM = 2;
+constexpr size_t OUT_QUANT_GAMMA = 3;
 constexpr size_t ATTR_MSE_BITS = 0;
 constexpr uint32_t ALIGN_ROWS = 16;   // the GEMM tile needs the row count to be 16 aligned
 constexpr uint64_t WS_ALIGN = 512;
@@ -57,8 +59,10 @@ ge::graphStatus CheckMatrixInput(gert::TilingContext *context, size_t index, con
                 return ge::GRAPH_FAILED);
     const auto *desc = context->GetInputDesc(index);
     OP_CHECK_NULL_WITH_CONTEXT(context, desc);
-    OP_CHECK_IF(desc->GetDataType() != ge::DT_FLOAT,
-                OP_LOGE(context, "%s must be float32", name), return ge::GRAPH_FAILED);
+    // The task book allows "float32 / bfloat16" for both matrices; the bf16 case is an interface
+    // extension that the kernel serves by upcasting once into the workspace.
+    OP_CHECK_IF(desc->GetDataType() != ge::DT_FLOAT && desc->GetDataType() != ge::DT_BF16,
+                OP_LOGE(context, "%s must be float32 or bfloat16", name), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 } // namespace
@@ -90,6 +94,31 @@ static ge::graphStatus KvCacheTurboQuantTilingFunc(gert::TilingContext *context)
     OP_CHECK_IF(CheckMatrixInput(context, IN_ROTATION, "rotation_matrix") != ge::GRAPH_SUCCESS ||
                     CheckMatrixInput(context, IN_QJL, "qjl_matrix") != ge::GRAPH_SUCCESS,
                 OP_LOGE(context, "matrix input check failed"), return ge::GRAPH_FAILED);
+
+    // Interface extensions (task book §2.3 lists "float32 / bfloat16" for the matrices and
+    // "float16 / bfloat16" for the metadata): a bf16 matrix is upcast to fp32 once inside the
+    // kernel, an fp16 metadata only changes the store dtype. The formal cases use index 0 of the
+    // OpDef dtype lists (float32 + bfloat16) and are not affected by either branch.
+    const auto *rotDesc = context->GetInputDesc(IN_ROTATION);
+    const auto *qjlDesc = context->GetInputDesc(IN_QJL);
+    OP_CHECK_NULL_WITH_CONTEXT(context, rotDesc);
+    OP_CHECK_NULL_WITH_CONTEXT(context, qjlDesc);
+    OP_CHECK_IF(rotDesc->GetDataType() != qjlDesc->GetDataType(),
+                OP_LOGE(context, "rotation_matrix and qjl_matrix must share one dtype"),
+                return ge::GRAPH_FAILED);
+    const bool matrixBf16 = (rotDesc->GetDataType() == ge::DT_BF16);
+    const auto *normDesc = context->GetOutputDesc(OUT_QUANT_NORM);
+    const auto *gammaDesc = context->GetOutputDesc(OUT_QUANT_GAMMA);
+    OP_CHECK_NULL_WITH_CONTEXT(context, normDesc);
+    OP_CHECK_NULL_WITH_CONTEXT(context, gammaDesc);
+    // An unspecified (inference only) dtype keeps the formal default: bf16.
+    OP_CHECK_IF(normDesc->GetDataType() != gammaDesc->GetDataType(),
+                OP_LOGE(context, "quant_norm/quant_gamma must share one dtype"), return ge::GRAPH_FAILED);
+    const ge::DataType metaDtype = normDesc->GetDataType();
+    OP_CHECK_IF(metaDtype != ge::DT_BF16 && metaDtype != ge::DT_FLOAT16 && metaDtype != ge::DT_UNDEFINED,
+                OP_LOGE(context, "quant_norm/quant_gamma must be bfloat16 or float16"),
+                return ge::GRAPH_FAILED);
+    const bool metadataFp16 = (metaDtype == ge::DT_FLOAT16);
 
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
@@ -158,8 +187,21 @@ static ge::graphStatus KvCacheTurboQuantTilingFunc(gert::TilingContext *context)
     // So wsR aliases wsU and wsP aliases wsY. That halves the user workspace, which also keeps the
     // per call aclrtMalloc request under the ~35MB pooled fast path threshold of the runtime (the
     // aclnn harness allocates the reported workspace every call and pays for the slow path above it).
+    td->set_matrixBf16(matrixBf16 ? 1U : 0U);
+    td->set_metadataFp16(metadataFp16 ? 1U : 0U);
     const uint64_t rowBytes = static_cast<uint64_t>(wsRows) * KCTQ_HEAD_DIM * sizeof(float);
+    const uint64_t matBytes = static_cast<uint64_t>(KCTQ_HEAD_DIM) * KCTQ_HEAD_DIM * sizeof(float);
     uint64_t offset = 0;
+    if (matrixBf16) {
+        // fp32 copies of the bf16 matrices (the kernel upcasts them in place of the input read)
+        td->set_wsRotMat(offset);
+        offset += matBytes;
+        td->set_wsQjlMat(offset);
+        offset += matBytes;
+    } else {
+        td->set_wsRotMat(0);
+        td->set_wsQjlMat(0);
+    }
     td->set_wsU(offset);
     offset += rowBytes;
     td->set_wsY(offset);

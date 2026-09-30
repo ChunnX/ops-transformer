@@ -172,20 +172,42 @@ public:
 
         kvGm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(kvVectors),
                               static_cast<uint64_t>(td->totalRows) * KCTQ_D);
-        rotGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(rotationMatrix),
-                               static_cast<uint64_t>(KCTQ_D) * KCTQ_D);
-        qjlGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(qjlMatrix),
-                               static_cast<uint64_t>(KCTQ_D) * KCTQ_D);
+        const uint64_t matElems = static_cast<uint64_t>(KCTQ_D) * KCTQ_D;
+        // Default interface: fp32 matrices. Interface extension: bf16 matrices, which this kernel
+        // upcasts once into the workspace. bf16 values are exact in fp32, so the upcast reproduces
+        // the reference implementation's _npu_fp32() step bit for bit.
+        if (td->matrixBf16 != 0U) {
+            rotBf16Gm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(rotationMatrix), matElems);
+            qjlBf16Gm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(qjlMatrix), matElems);
+        } else {
+            rotGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(rotationMatrix), matElems);
+            qjlGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(qjlMatrix), matElems);
+        }
         idxGm_.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t *>(quantIdx),
                                static_cast<uint64_t>(td->totalRows) * kIdxBytesPerRow);
         qjlOutGm_.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t *>(quantQjl),
                                   static_cast<uint64_t>(td->totalRows) * td->qjlBytesPerRow);
-        normGm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(quantNorm),
-                                static_cast<uint64_t>(td->totalRows));
-        gammaGm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(quantGamma),
-                                 static_cast<uint64_t>(td->totalRows));
+        // Metadata extension: fp16 norm / gamma instead of the default bf16.
+        if (td->metadataFp16 != 0U) {
+            normFp16Gm_.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(quantNorm),
+                                        static_cast<uint64_t>(td->totalRows));
+            gammaFp16Gm_.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(quantGamma),
+                                         static_cast<uint64_t>(td->totalRows));
+        } else {
+            normGm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(quantNorm),
+                                    static_cast<uint64_t>(td->totalRows));
+            gammaGm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(quantGamma),
+                                     static_cast<uint64_t>(td->totalRows));
+        }
 
         __gm__ uint8_t *user = AscendC::GetUserWorkspace(workspace);
+        if (td->matrixBf16 != 0U) {
+            // the GEMMs read the fp32 copies, never the bf16 inputs
+            wsRotMatGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(user + td->wsRotMat), matElems);
+            wsQjlMatGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(user + td->wsQjlMat), matElems);
+            rotGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(user + td->wsRotMat), matElems);
+            qjlGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(user + td->wsQjlMat), matElems);
+        }
         wsUNormGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(user + td->wsU),
                                    static_cast<uint64_t>(wsRows_) * KCTQ_D);
         wsYNormGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(user + td->wsY),
@@ -218,6 +240,7 @@ public:
 
         if (g_coreType == AIV) {
             pipe_.InitBuffer(inQue_, 1, KCTQ_BATCH_ROWS * KCTQ_D * sizeof(bfloat16_t));
+            pipe_.InitBuffer(outQue_, 1, KCTQ_BATCH_ROWS * KCTQ_D * sizeof(float));
             pipe_.InitBuffer(scalarBuf_, (kParity + 2U) * KCTQ_SCALAR_SLOTS * sizeof(float));
             pipe_.InitBuffer(bf16Buf_, kParity * KCTQ_SCALAR_SLOTS * sizeof(bfloat16_t));
             pipe_.InitBuffer(weightBuf_, KCTQ_BATCH_LANES * sizeof(float));
@@ -236,6 +259,7 @@ public:
 
         if (g_coreType == AIV) {
             InitWeightTables();
+            CastMatrices(); // interface extension: no-op unless the matrices arrive as bf16
             NormalizeRows();
         }
 
@@ -538,14 +562,12 @@ public:
             BroadcastDivisors(denom, norm);
             Div(x, x, denom, KCTQ_BATCH_LANES); // x := unit vector
 
-            LocalTensor<bfloat16_t> nb = bf16Buf_.Get<bfloat16_t>()[pb * KCTQ_SCALAR_SLOTS];
-            Cast(nb, norm, RoundMode::CAST_RINT, KCTQ_SCALAR_SLOTS);
-            SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
-            WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
+            if (td_->metadataFp16 != 0U) {
+                StoreMetaRows<half>(normFp16Gm_, norm, row0, validRows, pb);
+            } else {
+                StoreMetaRows<bfloat16_t>(normGm_, norm, row0, validRows, pb);
+            }
             if (validRows > 0U) {
-                // the valid norms sit on 32B block boundaries, so one call emits the row scalars
-                DataCopyExtParams cpNorm{static_cast<uint16_t>(validRows), 2U, 0, 0, 0};
-                DataCopyPad(normGm_[row0], nb, cpNorm);
                 // fp32 norms for the quantize stage: 4 bytes out of every other 32B block
                 DataCopyExtParams cpNormF{static_cast<uint16_t>(KCTQ_BATCH_ROWS), 4U, 1U, 0, 0};
                 DataCopyPad(wsNormGm_[WsRow(row0)], norm, cpNormF);
@@ -561,7 +583,77 @@ public:
         PipeBarrier<PIPE_ALL>();
     }
 
-    // ---- AIC: steps 3 and 7, dense fp32 GEMM ------------------------------------------------
+    // ---- AIV: interface extension, bf16 matrices upcast to fp32 -----------------------------------
+    // The formal interface hands the matrices over as fp32. When they arrive as bf16 (the task book
+    // allows "float32 / bfloat16" for both) the AIVs upcast them into the workspace once, so both
+    // GEMMs keep running on fp32 operands and every number downstream stays identical. bf16 -> fp32
+    // is exact, so the upcast cannot change a single bit of the result.
+    //
+    // Every AIV converts the WHOLE matrix, not a share of it, and that redundancy is the
+    // synchronisation: the cube reads the matrix itself while the vector cores write it, and the
+    // only ordering edge the framework gives us is "the cube waits for its own AIVs before it
+    // consumes their tiles". By making each AIV publish the complete matrix before it publishes any
+    // A tile, whichever pair the cube waits for has already written every row it will ever read.
+    // Concurrent writers store the same value into the same address, so overlapping copies are
+    // harmless. Splitting the rows over the cores instead (the first version) left rows that no AIV
+    // of that cube's pair had written yet - measured as run to run varying idx/qjl mismatches. A
+    // block wide barrier (SyncAll<false>) is not usable here: with 1 AIC : 2 AIV and only
+    // usedCoreNum cores launched it traps the device.
+    __aicore__ inline void CastMatrices()
+    {
+        if (td_->matrixBf16 == 0U) {
+            return;
+        }
+        constexpr uint32_t chunks = KCTQ_D / KCTQ_BATCH_ROWS;
+        for (uint32_t chunk = 0U; chunk < chunks; ++chunk) {
+            const uint32_t row0 = chunk * KCTQ_BATCH_ROWS;
+            CastMatrixChunk(rotBf16Gm_, wsRotMatGm_, row0);
+            CastMatrixChunk(qjlBf16Gm_, wsQjlMatGm_, row0);
+        }
+        // downstream stages reuse kSliceCv, so the last store must have read it
+        PipeBarrier<PIPE_ALL>();
+    }
+
+    __aicore__ inline void CastMatrixChunk(const GlobalTensor<bfloat16_t> &srcGm,
+                                           const GlobalTensor<float> &dstGm, uint32_t row0)
+    {
+        LocalTensor<bfloat16_t> in = inQue_.AllocTensor<bfloat16_t>();
+        DataCopyExtParams cpIn{1, static_cast<uint32_t>(KCTQ_BATCH_ROWS * KCTQ_D * sizeof(bfloat16_t)),
+                               0, 0, 0};
+        DataCopyPadExtParams<bfloat16_t> padIn{false, 0, 0, 0};
+        DataCopyPad(in, srcGm[static_cast<uint64_t>(row0) * KCTQ_D], cpIn, padIn);
+        inQue_.EnQue(in);
+        in = inQue_.DeQue<bfloat16_t>();
+        LocalTensor<float> out = outQue_.AllocTensor<float>();
+        Cast(out, in, RoundMode::CAST_NONE, KCTQ_BATCH_ROWS * KCTQ_D);
+        PipeBarrier<PIPE_V>();
+        inQue_.FreeTensor(in);
+        outQue_.EnQue(out);
+        out = outQue_.DeQue<float>();
+        DataCopyExtParams cpOut{1, static_cast<uint32_t>(KCTQ_BATCH_ROWS * KCTQ_D * sizeof(float)),
+                                0, 0, 0};
+        DataCopyPad(dstGm[static_cast<uint64_t>(row0) * KCTQ_D], out, cpOut);
+        outQue_.FreeTensor(out);
+    }
+
+    // norm / gamma store: bf16 on the formal interface, fp16 for the metadata extension. Both are
+    // 16 bit wide, so the parity staging buffer is shared; only the element type differs and the
+    // fp16 case rounds the same fp32 value to nearest even.
+    template <typename TOut>
+    __aicore__ inline void StoreMetaRows(const GlobalTensor<TOut> &dst, const LocalTensor<float> &src,
+                                         uint32_t row0, uint32_t validRows, uint32_t pb)
+    {
+        LocalTensor<TOut> out = bf16Buf_.Get<TOut>()[pb * KCTQ_SCALAR_SLOTS];
+        Cast(out, src, RoundMode::CAST_RINT, KCTQ_SCALAR_SLOTS);
+        SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
+        WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
+        if (validRows > 0U) {
+            // the valid scalars sit on 32B block boundaries, so one call emits the row scalars
+            DataCopyExtParams cp{static_cast<uint16_t>(validRows), 2U, 0, 0, 0};
+            DataCopyPad(dst[row0], out, cp);
+        }
+    }
+
     // ---- AIC: steps 3 and 7, dense fp32 GEMM ------------------------------------------------
     // The cube writes every C tile straight into the workspace (enSequentialWrite = true, so the
     // address handed over is used as is): no UB staging and no client side copy, which keeps the
@@ -678,13 +770,10 @@ public:
             BroadcastDivisors(denom, sq);
             Div(res, res, denom, KCTQ_BATCH_LANES); // residual unit vector (0 when residual is 0)
 
-            LocalTensor<bfloat16_t> gb = bf16Buf_.Get<bfloat16_t>()[pb * KCTQ_SCALAR_SLOTS];
-            Cast(gb, gamma, RoundMode::CAST_RINT, KCTQ_SCALAR_SLOTS);
-            SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
-            WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
-            if (validRows > 0U) {
-                DataCopyExtParams cpG{static_cast<uint16_t>(validRows), 2U, 0, 0, 0};
-                DataCopyPad(gammaGm_[grow], gb, cpG);
+            if (td_->metadataFp16 != 0U) {
+                StoreMetaRows<half>(gammaFp16Gm_, gamma, grow, validRows, pb);
+            } else {
+                StoreMetaRows<bfloat16_t>(gammaGm_, gamma, grow, validRows, pb);
             }
             DataCopyExtParams cpR{1, static_cast<uint32_t>(KCTQ_BATCH_LANES * sizeof(float)), 0, 0, 0};
             DataCopyPad(wsRNormGm_[base], res, cpR);
@@ -827,6 +916,10 @@ private:
 
     TPipe pipe_;
     TQue<TPosition::VECIN, 1> inQue_;
+    // fp32 staging of the bf16 matrices (interface extension). A queue, not a raw arena lane: the
+    // queue owns the V -> MTE3 and MTE3 -> V syncs, so the next Cast can never overwrite the buffer
+    // while the previous DataCopyPad is still reading it.
+    TQue<TPosition::VECOUT, 1> outQue_;
     ArenaBuf arenaBuf_;                                     // C tile + vector staging, see kSlice*
     TBuf<TPosition::VECCALC> mmLocalWsBuf_;
     TBuf<TPosition::VECCALC> scalarBuf_;                    // per row scalars and reduce work
@@ -844,15 +937,21 @@ private:
     GlobalTensor<bfloat16_t> kvGm_;
     GlobalTensor<float> rotGm_;
     GlobalTensor<float> qjlGm_;
+    GlobalTensor<bfloat16_t> rotBf16Gm_;
+    GlobalTensor<bfloat16_t> qjlBf16Gm_;
     GlobalTensor<uint8_t> idxGm_;
     GlobalTensor<uint8_t> qjlOutGm_;
     GlobalTensor<bfloat16_t> normGm_;
     GlobalTensor<bfloat16_t> gammaGm_;
+    GlobalTensor<half> normFp16Gm_;
+    GlobalTensor<half> gammaFp16Gm_;
     GlobalTensor<float> wsUNormGm_;
     GlobalTensor<float> wsYNormGm_;
     GlobalTensor<float> wsRNormGm_;
     GlobalTensor<float> wsPNormGm_;
     GlobalTensor<float> wsNormGm_;
+    GlobalTensor<float> wsRotMatGm_;
+    GlobalTensor<float> wsQjlMatGm_;
     GlobalTensor<float> wsUSliceGm_;
     GlobalTensor<float> wsYSliceGm_;
     GlobalTensor<float> wsRSliceGm_;

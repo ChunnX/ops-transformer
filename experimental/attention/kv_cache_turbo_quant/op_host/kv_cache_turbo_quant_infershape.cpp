@@ -79,8 +79,15 @@ ge::graphStatus InferDataTypeKvCacheTurboQuant(gert::InferDataTypeContext *conte
 {
     context->SetOutputDataType(OUT_QUANT_IDX, ge::DT_UINT8);
     context->SetOutputDataType(OUT_QUANT_QJL, ge::DT_UINT8);
-    context->SetOutputDataType(OUT_QUANT_NORM, ge::DT_BF16);
-    context->SetOutputDataType(OUT_QUANT_GAMMA, ge::DT_BF16);
+    // The formal interface emits bf16 metadata. The task book also allows fp16 metadata, so when the
+    // caller asks for it the two scalars keep that dtype (an unspecified dtype keeps the default).
+    ge::DataType metaDtype = ge::DT_BF16;
+    const auto *normDesc = context->GetOutputDesc(OUT_QUANT_NORM);
+    if (normDesc != nullptr && normDesc->GetDataType() == ge::DT_FLOAT16) {
+        metaDtype = ge::DT_FLOAT16;
+    }
+    context->SetOutputDataType(OUT_QUANT_NORM, metaDtype);
+    context->SetOutputDataType(OUT_QUANT_GAMMA, metaDtype);
     return ge::GRAPH_SUCCESS;
 }
 } // namespace

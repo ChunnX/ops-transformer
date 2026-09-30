@@ -55,6 +55,10 @@ struct KvCacheTurboQuantTilingData {
     uint64_t wsP;            // residual projections  (fp32) [wsRows, headDim] (aliases wsY)
     uint64_t wsNorm;         // per row L2 norm   (fp32)  [wsRows]
     uint64_t wsBytes;        // total user workspace bytes
+    uint32_t matrixBf16;     // 1 = rotation_matrix / qjl_matrix arrive as bf16 and are upcast to fp32
+    uint32_t metadataFp16;   // 1 = quant_norm / quant_gamma are fp16 instead of bf16
+    uint64_t wsRotMat;       // fp32 copy of rotation_matrix (matrixBf16 only) [headDim, headDim]
+    uint64_t wsQjlMat;       // fp32 copy of qjl_matrix     (matrixBf16 only) [headDim, headDim]
 };
 
 } // namespace optiling
