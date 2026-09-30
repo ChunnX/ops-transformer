@@ -103,6 +103,7 @@ __simd_vf__ inline void WeightedBinaryReduceFull(__ubuf__ float *qFP32Ptr, __ubu
     MaskReg maskAll = CreateMask<float, MaskPattern::ALL>();
     RegTensor<float> regA;
     RegTensor<float> regB;
+    RegTensor<float> regC;
 
     uint16_t rMain = 1;
     while ((rMain << 1) <= R) {
