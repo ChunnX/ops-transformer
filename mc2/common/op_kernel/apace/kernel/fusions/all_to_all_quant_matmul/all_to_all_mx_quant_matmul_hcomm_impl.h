@@ -81,7 +81,7 @@ struct HcommCommState {
 
 template <AscendC::HcclServerType ServerType, bool EnableHcommAllToAllOut>
 struct HcommCommWaitPolicy {
-    HcommCommState<ServerType> *state_{nullptr};
+    HcommCommState<ServerType>* state_{nullptr};
     uint32_t slotNum{0};
 
     __aicore__ inline void Release(uint32_t) {}
@@ -137,12 +137,12 @@ template <typename X1Type, typename X2Type, typename YType, typename CommDataTyp
           bool EnableHcommAllToAllOut>
 class AllToAllMxQuantMatmulHcommImpl {
 public:
-    explicit __aicore__ inline AllToAllMxQuantMatmulHcommImpl(AlltoAllMatmulTilingDataType *tilingData)
+    explicit __aicore__ inline AllToAllMxQuantMatmulHcommImpl(AlltoAllMatmulTilingDataType* tilingData)
         : tilingData_(tilingData)
     {}
 
     __aicore__ inline void Init(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR y, GM_ADDR all2all_out, GM_ADDR x1_scale,
-                                GM_ADDR x2_scale, GM_ADDR workspaceGM, AscendC::TPipe *pipe);
+                                GM_ADDR x2_scale, GM_ADDR workspaceGM, AscendC::TPipe* pipe);
     __aicore__ inline void Run();
 
     // Layout 定义
@@ -180,7 +180,7 @@ private:
     static constexpr uint8_t POS_COMP_LOCAL_BEFORE = 1U;
     static constexpr uint8_t POS_COMP_REMOTE_BEFORE = 2U;
     static constexpr uint8_t POS_FINALIZE_BEFORE = 3U;
-    AlltoAllMatmulTilingDataType *tilingData_;
+    AlltoAllMatmulTilingDataType* tilingData_;
 
     GM_ADDR x1_;
     GM_ADDR x2_;
@@ -192,7 +192,7 @@ private:
     GM_ADDR commX1ScaleGM1_;
     GM_ADDR commOutGM_;
     GM_ADDR permuteOutGM_{nullptr};
-    AscendC::TPipe *pipe_{nullptr};
+    AscendC::TPipe* pipe_{nullptr};
 
     static constexpr uint64_t mxScaleHcclDataType_ = AscendC::HCCL_DATA_TYPE_FP8E8M0;
     static constexpr uint64_t x1HcclDataType_ = GetX1HcclDataType<X1Type>();
@@ -208,7 +208,7 @@ private:
 
     Mc2Kernel::OpStateDump opStateDump_;
 
-    __aicore__ inline void SetupParams(Params &out, MatmulMode matmulMode);
+    __aicore__ inline void SetupParams(Params& out, MatmulMode matmulMode);
     __aicore__ inline void MatmulProcess(MatmulMode matmulMode);
     __aicore__ inline void WaitOutputTiles();
 };
@@ -220,10 +220,10 @@ __aicore__ inline void
 AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1, AlltoAllMatmulTilingDataType, ServerType, IsMxFp4,
                                EnableHcommAllToAllOut>::Init(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR y,
                                                              GM_ADDR all2all_out, GM_ADDR x1_scale, GM_ADDR x2_scale,
-                                                             GM_ADDR workspaceGM, AscendC::TPipe *pipe)
+                                                             GM_ADDR workspaceGM, AscendC::TPipe* pipe)
 {
     pipe_ = pipe;
-    auto &&commTiling = tilingData_->commTilingData;
+    auto&& commTiling = tilingData_->commTilingData;
     splitAxisSize_ = commTiling.splitAxisTileSize * commTiling.splitAxisTileCnt +
                      commTiling.splitAxisTailSize * commTiling.splitAxisTailCnt;
     rankDim_ = tilingData_->rankDim;
@@ -351,7 +351,7 @@ __aicore__ inline void
 AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1, AlltoAllMatmulTilingDataType, ServerType, IsMxFp4,
                                EnableHcommAllToAllOut>::WaitOutputTiles()
 {
-    auto &&commTiling = tilingData_->commTilingData;
+    auto&& commTiling = tilingData_->commTilingData;
     const uint64_t elementsPerRank = commTiling.nonSplitAxisSize / rankDim_;
     const uint64_t bytesPerRank = IsMxFp4 ? elementsPerRank / MXFP_DATA_NUM_PER_BYTE : elementsPerRank;
     // MIX_AIC_1_2: AIV GetBlockIdx is already in [0, 2 * GetBlockNum()).
@@ -384,10 +384,10 @@ template <typename X1Type, typename X2Type, typename YType, typename CommDataTyp
           bool EnableHcommAllToAllOut>
 __aicore__ inline void
 AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1, AlltoAllMatmulTilingDataType, ServerType, IsMxFp4,
-                               EnableHcommAllToAllOut>::SetupParams(Params &out, MatmulMode matmulMode)
+                               EnableHcommAllToAllOut>::SetupParams(Params& out, MatmulMode matmulMode)
 {
-    auto &&commTiling = tilingData_->commTilingData;
-    const auto &mmTile = tilingData_->tileQbmmTilingData;
+    auto&& commTiling = tilingData_->commTilingData;
+    const auto& mmTile = tilingData_->tileQbmmTilingData;
 
     ProblemShape problemShape{mmTile.m, mmTile.n, mmTile.k, 1UL};
 

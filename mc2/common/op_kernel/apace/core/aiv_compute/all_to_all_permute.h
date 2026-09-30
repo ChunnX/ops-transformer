@@ -21,7 +21,7 @@ public:
     static constexpr uint32_t BUFFER_BYTES = 16 * 1024;
 
     __aicore__ inline void Init(GM_ADDR rawInput, GM_ADDR output, uint64_t rows, uint32_t ranks, uint64_t bytesPerRank,
-                                uint32_t workerId, uint32_t workerCount, AscendC::TPipe *pipe)
+                                uint32_t workerId, uint32_t workerCount, AscendC::TPipe* pipe)
     {
         // The caller provides valid buffers, a 32-byte-aligned rank segment and a MIX_AIC_1_2 worker assignment.
         rows_ = rows;
@@ -30,8 +30,8 @@ public:
         workerId_ = workerId;
         workerCount_ = workerCount;
         chunkCount_ = (bytesPerRank - 1) / BUFFER_BYTES + 1;
-        input_.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t *>(rawInput));
-        output_.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t *>(output));
+        input_.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t*>(rawInput));
+        output_.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t*>(output));
         pipe_ = pipe;
         pipe_->InitBuffer(buffer_, BUFFER_BYTES);
         inputReady_ = pipe_->AllocEventID<AscendC::HardEvent::MTE2_MTE3>();
@@ -80,7 +80,7 @@ private:
     AscendC::GlobalTensor<uint8_t> input_;
     AscendC::GlobalTensor<uint8_t> output_;
     AscendC::TBuf<AscendC::TPosition::VECCALC> buffer_;
-    AscendC::TPipe *pipe_{nullptr};
+    AscendC::TPipe* pipe_{nullptr};
     AscendC::TEventID inputReady_{};
     AscendC::TEventID bufferFree_{};
     AscendC::TEventID tileDone_{};
