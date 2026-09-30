@@ -85,6 +85,7 @@ constexpr uint64_t A5_CUMSUM_WS_FLAG_OFFSET = 32UL * 1024UL; // 32*32*32=32KB
 constexpr uint64_t A5_CUMSUM_WORKSPACE_MAX_CORE_NUM = 32U;
 constexpr uint32_t A5_CUMSUM_MAX_CORE_NUM = 8U;
 constexpr uint32_t A5_SERIAL_MODE_BS_THRESHOLD = 32U;
+constexpr uint32_t A5_SERIAL_MODE_MAX_STATUS_NUM = 4095U;
 constexpr uint64_t UB_ALIGN_VAL = 32U;
 constexpr uint32_t UB_ALIGN_INT32_NUM = UB_ALIGN_VAL / sizeof(int32_t);
 constexpr uint32_t RANK_LIST_NUM = 2;
@@ -1662,7 +1663,7 @@ static uint32_t SendToMoeExpertUsedBuffer(const gert::TilingContext *context,
     uint32_t expertMaskBufSize = maskSizePerExpert * Ceil(moeExpertNum, moeUsedAivNum, nodeName) / moeUsedAivNum;
     UbForMoe = UbForMoe + expertMaskBufSize;                                        // expertMaskBuf
     UbForMoe = UbForMoe + Ceil(moeExpertNum * sizeof(int32_t), UB_ALIGN, nodeName); // tokenNumToExpertBuf
-    if (maxBs < A5_SERIAL_MODE_BS_THRESHOLD) {
+    if (maxBs < A5_SERIAL_MODE_BS_THRESHOLD && rscvStatusNum <= A5_SERIAL_MODE_MAX_STATUS_NUM) {
         // 串行模式下各核按rank分片统计专家count，statusBuf_只需容纳本核分片
         uint32_t countNumPerCore = Ceil(totalExpertNum, aivNum, nodeName) / aivNum;
         uint32_t rankNumPerCore = Ceil(epWorldSize, aivNum, nodeName) / aivNum;

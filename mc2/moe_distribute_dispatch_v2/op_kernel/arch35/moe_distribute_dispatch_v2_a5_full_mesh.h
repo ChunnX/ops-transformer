@@ -373,7 +373,7 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
 {
     SetTilingData(tilingData);
     SetTilingDataAndCalParam();
-    useSerialMode_ = axisMaxBS_ < SERIAL_MODE_BS_THRESHOLD;
+    useSerialMode_ = (axisMaxBS_ < SERIAL_MODE_BS_THRESHOLD) && (rscvStatusNum_ <= DATA_COPY_MAX_BLOCK_COUNT);
     // 仅CumSum核计算并发送专家计数，发送核全部用于token发送
     aivUsedCumSum_ = totalExpertNum_ / 16; // 单核处理16个专家cnt发送
     aivUsedCumSum_ = (aivUsedCumSum_ == 0) ? 1 : aivUsedCumSum_;
@@ -989,6 +989,10 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     uint64_t recvWinBlockNumSpace = epWorldSize_ * moeExpertNumPerRank_ * sizeof(float);
     uint64_t gatherMaskOutSize =
         (recStatusNumPerCoreSpace > recvWinBlockNumSpace) ? recStatusNumPerCoreSpace : recvWinBlockNumSpace;
+    if (useSerialMode_) {
+        uint64_t serialCountReadSize = Ceil(rscvStatusNum_ * STATE_OFFSET, UB_ALIGN) * UB_ALIGN;
+        gatherMaskOutSize = gatherMaskOutSize > serialCountReadSize ? gatherMaskOutSize : serialCountReadSize;
+    }
     uint32_t expertTokenPrefixNum = Ceil(recStatusNumPerCore_, epWorldSize_);
     uint64_t sumContinueAlignSize = Ceil((aivNum_ * sizeof(float)), UB_ALIGN) * UB_ALIGN;
     uint64_t expertTokenPrefixSize = Ceil(expertTokenPrefixNum * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
@@ -1632,6 +1636,9 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
         }
         --maxCopyTokenCnt;
     }
+    if (maxCopyTokenCnt == 0) {
+        return;
+    }
 
     LocalTensor<XOutType> xTmpPingTensor = tBuf.GetWithOffset<XOutType>(dataBufferSize / sizeof(XOutType), 0);
     LocalTensor<XOutType> xTmpPongTensor =
@@ -1864,21 +1871,21 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     uint32_t expertNum = endLocalExpertId - startLocalExpertId;
     uint32_t statusNum = expertNum * epWorldSize_;
     LocalTensor<float> countTensorFp32 = recvCountTensor_.ReinterpretCast<float>();
-    DataCopyExtParams countCopyParams{static_cast<uint16_t>(statusNum), sizeof(float), STATE_OFFSET - sizeof(float), 0U,
-                                      0U};
-    DataCopyPadExtParams<float> countCopyPadParams{false, 0U, 0U, 0.0f};
-    DataCopyPad<float, PaddingMode::Compact>(
-        countTensorFp32,
-        windowInstatusFp32Tensor_[startLocalExpertId * epWorldSize_ * STATE_OFFSET / sizeof(float) +
-                                  STATUS_BLOCK_COUNT_FIELD_OFFSET],
-        countCopyParams, countCopyPadParams);
+    DataCopyParams fullCountCopyParams{static_cast<uint16_t>(statusNum), 1, 0, 0};
+    DataCopy(countTensorFp32,
+             windowInstatusFp32Tensor_[startLocalExpertId * epWorldSize_ * STATE_OFFSET / sizeof(float)],
+             fullCountCopyParams);
+    SyncFunc<AscendC::HardEvent::MTE2_V>();
     SyncFunc<AscendC::HardEvent::MTE2_S>();
+    LocalTensor<int32_t> statusBlocksTensor = countTensorFp32.ReinterpretCast<int32_t>();
     LocalTensor<int64_t> expertTokenNumsLocalTensor = tokenNumBuf_.Get<int64_t>();
     int64_t expertTokenNumCumsum = 0;
     for (uint32_t localExpertIdx = 0; localExpertIdx < expertNum; ++localExpertIdx) {
         int64_t expertTokenNum = 0;
         for (uint32_t rankIdx = 0; rankIdx < epWorldSize_; ++rankIdx) {
-            expertTokenNum += static_cast<int64_t>(recvCountTensor_.GetValue(localExpertIdx * epWorldSize_ + rankIdx));
+            expertTokenNum += static_cast<int64_t>(statusBlocksTensor.GetValue(
+                localExpertIdx * epWorldSize_ * UB_ALIGN_DATA_COUNT + rankIdx * UB_ALIGN_DATA_COUNT +
+                STATUS_BLOCK_COUNT_FIELD_OFFSET));
         }
         if (expertTokenNumsType_ == 0) {
             expertTokenNumCumsum += expertTokenNum;
