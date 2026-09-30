@@ -141,6 +141,16 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     const float sumSq0 = ReduceSumSqFromCache(0U, D_);
     const float invRms0 = ComputeInvRms(sumSq0, invD_);
 
+    // Initcheck diagnostic: MTE2-initialize heads not covered by the h_out copy before VF overwrites them.
+    LocalTensor<T> x2InitCache = bufActivationLowp_.Get<T>();
+    const uint64_t x2InitGmBase = (uint64_t)token * N_ * D_;
+    for (uint32_t n = nStart; n < nStart + HEADS_PER_SIBLING; ++n) {
+        if (n != 0U) {
+            DataCopy(x2InitCache[n * D_], residualGm_[x2InitGmBase + (uint64_t)n * D_], D_);
+        }
+    }
+    PipeBarrier<PIPE_ALL>();
+
     // 两个sibling AIV分别构造自己负责的两个x2 head。
     for (uint32_t tile = 0; tile < dLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
