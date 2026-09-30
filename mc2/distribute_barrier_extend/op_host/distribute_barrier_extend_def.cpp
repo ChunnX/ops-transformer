@@ -67,6 +67,7 @@ public:
             .ExtendCfgInfo("opFile.value", "distribute_barrier_extend_apt");
 
         this->AICore().AddConfig("ascend950", aicore_config_apt);
+        this->AICore().AddConfig("ascend960dt", aicore_config_apt);
     }
 };
 
