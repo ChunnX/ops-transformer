@@ -976,14 +976,7 @@ ge::graphStatus GBSATiling::SetTilingData(gert::TilingContext* context,
         context->GetRawTilingData() == nullptr,
         OPS_REPORT_VECTOR_INNER_ERR("GenericBlockSparseAttention", "RawTilingData got from GE context is nullptr."),
         return ge::GRAPH_FAILED);
-    if (tilingData.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity()) !=
-        ge::GRAPH_SUCCESS) {
-        OPS_REPORT_VECTOR_INNER_ERR("GenericBlockSparseAttention",
-                                    "Save tiling data to buffer failed, tiling data size=%zu, buffer capacity=%zu.",
-                                    static_cast<size_t>(tilingData.GetDataSize()),
-                                    context->GetRawTilingData()->GetCapacity());
-        return ge::GRAPH_FAILED;
-    }
+    tilingData.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(tilingData.GetDataSize());
     return ge::GRAPH_SUCCESS;
 }
