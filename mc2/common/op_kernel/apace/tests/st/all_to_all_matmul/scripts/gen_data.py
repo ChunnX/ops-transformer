@@ -176,8 +176,8 @@ if __name__ == "__main__":
         print(f"ERROR: dtype must be 'fp16' or 'bf16', got {dtype}")
         sys.exit(1)
     lm = int(sys.argv[6]) if len(sys.argv) == 7 else 0
-    if lm not in (0, 2):
-        print(f"ERROR: lm must be 0 or 2, got {lm}")
+    if lm not in (0, 1, 2):
+        print(f"ERROR: lm must be 0/1/2, got {lm}")
         sys.exit(1)
 
     gen_golden_data_all_to_all_matmul(m, k, n, rank_num, dtype, lm)
