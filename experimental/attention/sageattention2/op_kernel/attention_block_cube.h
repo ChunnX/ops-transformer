@@ -14,9 +14,13 @@
 #include "catlass/gemm/tile/tile_mmad.hpp"
 #include "catlass/gemm/tile/copy_l0c_to_ub.hpp"
 namespace Sage {
-// P uses a unit E8M0 scale resident in L0A. V scales occupy the L1 gap
-// above the QK/PV operand slots; oversized heads are copied tile by tile.
+// P carries a constant 2^-PV_PARTIAL_SHIFT E8M0 scale resident in L0A, which
+// keeps the widest possible PV block partial inside the FP16 fold range; every
+// finalize multiplies it back out. V scales occupy the L1 gap above the QK/PV
+// operand slots; oversized heads are copied tile by tile.
 constexpr uint32_t MX_P_L1 = 496 * 1024, MX_V_L1 = 320 * 1024;
+static_assert(MX_FP8_MAX * N / PV_PARTIAL_UNDO <= SAGE_FP16_MAX,
+              "the shifted PV block partial must fit the FP16 fold range");
 constexpr uint32_t MX_P_BLOCK_NUM = M * N / 32 / 32;
 constexpr uint32_t MX_P_M_BLOCKS = M / 16;
 constexpr uint32_t MX_P_N_BLOCKS = N / 64;
@@ -29,7 +33,7 @@ __aicore__ inline void InitMxP(FixedResource &r)
     InitConstValueParams<int16_t> cp;
     cp.repeatTimes = 1;
     cp.blockNum = MX_P_BLOCK_NUM;
-    cp.initValue = 0x7f7f;
+    cp.initValue = static_cast<int16_t>(PV_PARTIAL_E8M0_PAIR);
     cp.dstGap = 0;
     InitConstValue(r.l1Buf.GetBufferByByte<int16_t>(MX_P_L1), cp);
     Sync<HardEvent::MTE2_MTE1>();

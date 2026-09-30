@@ -27,6 +27,8 @@ Covers task specification requirements (SageAttention2_task_doc.md §2.1 ~ §2.4
   override never leaks through the cached execution plan
 - TC-12: Fast-path static caching and pre-validation reuse across an
   inference loop
+- TC-13: The fp32+fp16 PV partial stays inside the half-precision range for a
+  full-width block of ceiling probabilities, at every sequence length
 Note: the formal L-A comparison against GPU sageattn_qk_int8_pv_fp8_cuda and
 AscendOpTest acceptance run on real hardware; this suite bounds the numeric
 datapath end-to-end on the CPU golden path (L-B layer).
@@ -831,9 +833,51 @@ class TestSageAttention2PythonAPI(unittest.TestCase):
             self.assertTrue(torch.equal(lse_gqa1, lse_gqa_fast))
 
 
+    # -------------------------------------------------------------------------
+    # TC-13: fp32+fp16 折叠的部分和溢出包络
+    # -------------------------------------------------------------------------
+    def test_tc13_fp16_partial_overflow_envelope(self):
+        """TC-13: A full-width 256-token PV block must not overflow the FP16 fold.
+
+        Every probability in a flat row reaches the E4M3 ceiling (448), so the
+        raw partial is 448 * block_k * max|V| and overflows half precision at
+        |V| = 1. The kernel carries 2^-8 on the PV MMA's P-scale constant and
+        undoes it on the row reciprocal, which makes the fold bound
+        length-independent at 448 * max|V| (|V| <= 146.2).
+        """
+        d = 64
+        for s in (256, 1024, 4096):
+            for mag in (1.0, 10.0, 100.0):
+                q = torch.zeros(1, 1, s, d, dtype=torch.float16)
+                k = torch.zeros(1, 1, s, d, dtype=torch.float16)
+                v = torch.full((1, 1, s, d), mag, dtype=torch.float16)
+                folded = sageattn_qk_int8_pv_fp8_asc(q, k, v, pv_accum_dtype="fp32+fp32")
+                for accum in ("fp32+fp16", "fp32+fp32"):
+                    with self.subTest(s=s, mag=mag, accum=accum):
+                        out = sageattn_qk_int8_pv_fp8_asc(q, k, v, pv_accum_dtype=accum)
+                        self.assertTrue(
+                            torch.isfinite(out).all(),
+                            f"{accum} overflowed at S={s}, max|V|={mag}",
+                        )
+                        # Both configs share the quantizer, so any gap is the
+                        # FP16 fold itself: one 2^-11 rounding per block.
+                        self.assertLess(
+                            (out.float() - folded.float()).abs().max().item() / mag, 1e-2
+                        )
+
+        # Above the documented envelope the fold is the only path that saturates:
+        # fp32+fp32 must keep working, which is what the README points users to.
+        big = 1024
+        q = torch.zeros(1, 1, big, d, dtype=torch.float16)
+        k = torch.zeros(1, 1, big, d, dtype=torch.float16)
+        v = torch.full((1, 1, big, d), 1024.0, dtype=torch.float16)
+        out_fp32 = sageattn_qk_int8_pv_fp8_asc(q, k, v, pv_accum_dtype="fp32+fp32")
+        self.assertTrue(torch.isfinite(out_fp32).all(), "fp32+fp32 must not overflow")
+
+
 def main():
     print("=" * 80)
-    print("  [SageAttention2 Python API Acceptance Test Suite (TC-00 ~ TC-10, 含 L-B 精度门限)]")
+    print("  [SageAttention2 Python API Acceptance Test Suite (TC-00 ~ TC-13, 含 L-B 精度门限)]")
     print("=" * 80)
     suite = unittest.TestLoader().loadTestsFromTestCase(TestSageAttention2PythonAPI)
     runner = unittest.TextTestRunner(verbosity=2)

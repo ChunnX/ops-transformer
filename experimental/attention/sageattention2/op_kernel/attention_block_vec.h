@@ -58,7 +58,7 @@ public:
         Duplicate(accum_, 0.0f, HALF * params_.dp);
         DataCopy(qsu_, qsg_[qb + qstart + subBlockIdx_ * HALF], HALF);
         Sync<HardEvent::MTE2_S>();
-        Duplicate(maxima_, half(FP16_MIN), 128);
+        Duplicate(maxima_, half(SAGE_FP16_MIN), 128);
         Duplicate(denom_, 0.0f, 64);
         PipeBarrier<PIPE_V>();
     }

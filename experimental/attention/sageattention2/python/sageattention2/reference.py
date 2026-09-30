@@ -18,6 +18,14 @@ import torch
 # Tokens sharing one INT8 scale, mirroring the kernel's SageParams qg/kg.
 QUAN_GRAN_GROUPS = {"per_thread": (4, 16), "per_warp": (32, 64)}
 
+# The kernel's PV MMA carries 2^-PV_PARTIAL_SHIFT on P's E8M0 scale so that a
+# full 256-token block of ceiling probabilities cannot overflow the fp32+fp16
+# fold; the reciprocal at finalize multiplies it back. A power of two, so the
+# golden stays bit-exact everywhere except the FP16 fold it models.
+PV_PARTIAL_SHIFT = 8
+PV_PARTIAL_SCALE = 2.0**-PV_PARTIAL_SHIFT
+PV_PARTIAL_UNDO = 2.0**PV_PARTIAL_SHIFT
+
 
 def quantize_v_mx(v):
     """Independent MX reference: E4M3 data and one E8M0 scale per 32 tokens/channel.
@@ -143,12 +151,12 @@ def attention(
                 # Device FP8 Cast saturates; torch's E4M3 conversion alone can
                 # produce NaN when a rounded FP16 max makes P exceed its range.
                 p8 = prob.clamp(max=448.0).to(torch.float8_e4m3fn).float()
-                partial = p8 @ v_dequant[:, kh, j:je]
+                partial = (p8 * PV_PARTIAL_SCALE) @ v_dequant[:, kh, j:je]
                 if fp16_partial:
                     partial = partial.half().float()
                 acc = acc * alpha + partial
                 m = nm
-            result = acc / den
+            result = acc * (PV_PARTIAL_UNDO / den)
             if smooth_v:
                 result = result + mean_v[:, kh, None, :]
             output[:, h, start:end] = result.to(q.dtype)

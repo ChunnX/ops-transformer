@@ -34,12 +34,24 @@ inline constexpr bool is_supported_input_type_v = is_supported_input_type<T>::va
 constexpr float LOG2_E = 1.4426950408889634f;
 constexpr float LN_448 = 6.104793232414985f;
 constexpr half SOFTMAX_FP8_SHIFT = half(-LN_448);
-constexpr float FP16_MIN = -65504.0f;
 constexpr uint64_t DEQ_SCALAR_DEQF16 = 0x3a000000ULL; // 2^-11
 constexpr float INT8_MAX_FLOAT = 127.0f;
 constexpr float INV_INT8_MAX = 1.0f / INT8_MAX_FLOAT;
 constexpr float MX_FP8_MAX = 448.0f;
 constexpr float INV_MX_FP8_MAX = 1.0f / MX_FP8_MAX;
+// One PV block sums up to N=256 probabilities that all reach the E4M3 ceiling,
+// so a raw partial is bounded by 448 * N * max|V| and the fp32+fp16 fold
+// (SatMode::NO_SAT) overflows the half range at |V| = 1. The PV MMA's P operand
+// therefore carries a shared E8M0 scale of 2^-PV_PARTIAL_SHIFT instead of 1.0 --
+// a pure exponent decrement, so every product and L0C sum stays bit-exact
+// against the unscaled datapath -- and each finalize undoes it on the row
+// reciprocal, costing one multiply per 64-row tile instead of one per PV slot.
+// The bound then reads 448 * max|V| and stops growing with sequence length.
+constexpr uint32_t PV_PARTIAL_SHIFT = 8;
+constexpr uint16_t PV_PARTIAL_E8M0 = 127U - PV_PARTIAL_SHIFT;
+constexpr uint16_t PV_PARTIAL_E8M0_PAIR = static_cast<uint16_t>(PV_PARTIAL_E8M0 * 0x0101U);
+constexpr float PV_PARTIAL_UNDO = static_cast<float>(1U << PV_PARTIAL_SHIFT);
+static_assert(PV_PARTIAL_E8M0_PAIR == 0x7777U, "both P-scale bytes must carry 2^-shift");
 constexpr uint32_t FAST_RECIPROCAL_MAGIC = 0x7EEF370B;
 constexpr uint32_t EXPONENT_ROUND_BIAS = 0x007fffff;
 constexpr uint32_t EXPONENT_MASK = 0x7f800000;
@@ -50,7 +62,7 @@ constexpr float MIN_POSITIVE_FLOAT = 1.0e-30f;
 // the 256 KiB physical UB for queue/stack bookkeeping).
 constexpr uint32_t UB_HIGH_WATER = 248 * 1024;
 
-__aicore__ inline uint32_t CalcKh(uint32_t h, uint32_t hq, uint32_t hk) {
+__aicore__ inline constexpr uint32_t CalcKh(uint32_t h, uint32_t hq, uint32_t hk) noexcept {
     if (hq == hk) return h;
     const uint32_t ratio = hq / hk;
     return (ratio == 4) ? (h >> 2) :
@@ -59,18 +71,18 @@ __aicore__ inline uint32_t CalcKh(uint32_t h, uint32_t hq, uint32_t hk) {
            (ratio == 16) ? (h >> 4) : (h / ratio);
 }
 
-__aicore__ inline bool UseDieGroups(const SageParams &p) {
+__aicore__ inline constexpr bool UseDieGroups(const SageParams &p) noexcept {
     return p.cores > 0 && p.cores % 2 == 0 && (uint64_t(p.b) * p.hk) % 2 == 0 &&
            p.sq % 128 == 0;
 }
 
-__aicore__ inline uint64_t DieTask(uint64_t task, uint64_t total, uint32_t cores) {
+__aicore__ inline constexpr uint64_t DieTask(uint64_t task, uint64_t total, uint32_t cores) noexcept {
     const uint32_t half = cores / 2;
     return (task % cores / half) * (total / 2) + (task / cores) * half + task % half;
 }
 
 // Per-core end in the virtual cyclic task space, including a partial final wave.
-__aicore__ inline uint64_t DieTaskEnd(const SageParams &p, uint64_t total, uint32_t core) {
+__aicore__ inline constexpr uint64_t DieTaskEnd(const SageParams &p, uint64_t total, uint32_t core) noexcept {
     if (!UseDieGroups(p)) return total;
     const uint32_t half = p.cores / 2, rank = core % half;
     const uint64_t local = total / 2;
@@ -159,7 +171,7 @@ __aicore__ inline void WriteRow(GlobalTensor<T> dst, uint64_t off, LocalTensor<T
     DataCopyPad(dst[off], src, copy);
     Sync<HardEvent::MTE3_V>();
 }
-__aicore__ inline uint64_t Offset(uint64_t const *strides, uint32_t b, uint32_t h, uint32_t s)
+__aicore__ inline constexpr uint64_t Offset(uint64_t const *strides, uint32_t b, uint32_t h, uint32_t s) noexcept
 {
     return b * strides[0] + h * strides[1] + s * strides[2];
 }

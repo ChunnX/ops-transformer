@@ -176,7 +176,7 @@ public:
             // slot is therefore enough; a second one would not shorten the wait.
             CrossCoreSetFlag<4, PIPE_MTE3>(Q_READY);
 
-            Duplicate(maxima_, half(FP16_MIN), 128);
+            Duplicate(maxima_, half(SAGE_FP16_MIN), 128);
             PipeBarrier<PIPE_V>();
         }
     }

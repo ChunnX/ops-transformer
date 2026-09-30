@@ -22,13 +22,14 @@ __simd_vf__ inline void CenterVRowsImpl(__ubuf__ T *v, __ubuf__ float *meanV, ui
     auto f = CreateMask<float, MaskPattern::ALL>();
     static constexpr CastTrait toFloat{RegLayout::ZERO, SatMode::UNKNOWN, MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
     static constexpr CastTrait back{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
-    for (uint16_t row = 0; row < rows; ++row) {
-        for (uint16_t col = 0; col < DP; col += 64) {
+    for (uint16_t col = 0; col < DP; col += 64) {
+        RegTensor<float> mv;
+        LoadAlign(mv, meanV + col);
+        for (uint16_t row = 0; row < rows; ++row) {
             RegTensor<T> raw, packed;
-            RegTensor<float> x, mv;
+            RegTensor<float> x;
             LoadAlign<T, LoadDist::DIST_UNPACK_B16>(raw, v + row * DP + col);
             Cast<float, T, toFloat>(x, raw, f);
-            LoadAlign(mv, meanV + col);
             Sub(x, x, mv, f);
             Cast<T, float, back>(packed, x, f);
             StoreAlign<T, StoreDist::DIST_PACK_B32>(v + row * DP + col, packed, f);

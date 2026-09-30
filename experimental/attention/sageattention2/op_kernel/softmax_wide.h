@@ -160,10 +160,10 @@ __simd_callee__ inline void SoftmaxWideMaxCore(__ubuf__ half *scores, __ubuf__ h
     for (uint16_t row = 0; row < 64; row += 16) {
         RegTensor<half> q0, m0;
         LoadAlign<half, LoadDist::DIST_E2B_B16>(q0, qhalf + row + 0);
-        Duplicate(m0, half(FP16_MIN));
+        Duplicate(m0, half(SAGE_FP16_MIN));
         RegTensor<half> q1, m1;
         LoadAlign<half, LoadDist::DIST_E2B_B16>(q1, qhalf + row + 8);
-        Duplicate(m1, half(FP16_MIN));
+        Duplicate(m1, half(SAGE_FP16_MIN));
         for (uint16_t col = 0; col < 16; ++col) {
             ScaleMaskAndMaxWideNZPair<MASK>(scores, scoresNext, q0, q1, khalf + 0, khalf + 256,
                                            col, row, queryInGroup, queryInGroup - 256,

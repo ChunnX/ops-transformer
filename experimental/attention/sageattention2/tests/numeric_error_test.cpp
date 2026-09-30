@@ -19,7 +19,7 @@
  *   8. smooth-K softmax 不变性（FP32 内核算术精度, 整行）        ≤ 1e-4
  *   9. Causal Mask NZ 拓扑剪枝零精度损失与算力压缩 (≥95% bypass) bit-exact == 0
  *  10. qk_quant_gran 组共享 INT8 scale 覆盖性与半步长误差                  ≤ scale/2
- *  11. pv_accum_dtype="fp32+fp16" 部分和 FP16 往返的折入误差               ≤ Σ|O_j|·2^-11
+ *  11. pv_accum_dtype="fp32+fp16" 部分和 FP16 往返折入误差 + 满块溢出包络   ≤ Σ|O_j|·2^-11
  *  12. smooth_v 居中 + 输出补回的 MXFP8 重建误差，及包络不放大             ≤ amax·2^-4
  *  13. on-chip streaming query INT8 量化与全量离线量化位级严格等价性       bit-exact == 0
  *
@@ -541,6 +541,8 @@ void TestQuantGranularityGroups(std::mt19937 &rng)
 // output_update.h RoundPartialFp16VF：pv_accum_dtype="fp32+fp16" 时，块内 PV 部分和
 // 折入 FP32 运行状态前做一次 FP32->FP16->FP32 往返。逐块加权和的误差以
 // sum_j |O_j| / den * 2^-11 为界（每块一次相对舍入，块权重归一化后 <=1）。
+// 同一往返用 SatMode::NO_SAT，所以还要证明它落在半精度可表示区间内：折叠前
+// 的幅度由 attention_block_cube.h 的 P 侧 2^-8 常量尺度限定（common.h PV_PARTIAL_SHIFT）。
 void TestFp16PartialRoundtrip(std::mt19937 &rng)
 {
     std::normal_distribution<float> gauss(0.0f, 1.0f);
@@ -586,6 +588,41 @@ void TestFp16PartialRoundtrip(std::mt19937 &rng)
     std::printf("[11] pv_accum_dtype fp32+fp16 partial roundtrip\n");
     Report("FP16 partial changes the folded addend", inert ? 1.0 : 0.0, 0.0, !inert);
     Report("accumulated error vs sum |O_j| * 2^-11", worstRatio, boundRatio, worstRatio <= boundRatio);
+
+    // 溢出包络：一个 PV 块最多容纳 kBlock 个概率同时取到 E4M3 满量程，未平移的
+    // 部分和为 448 * kBlock * max|V|，|V| = 1 时即 114688 > 65504，而
+    // RoundPartialFp16VF 用 SatMode::NO_SAT，溢出为 Inf 并污染整行输出。
+    // 内核把 2^-8 记在 PV MMA 的 P 侧 E8M0 常量尺度上（纯指数平移），折叠后上界
+    // 变为 448 * max|V|，与块宽、序列长度都无关；finalize 再乘回同一 2 的幂。
+    constexpr float kCeiling = 448.0f;
+    constexpr int kBlock = 256;
+    constexpr int kShift = 8;
+    const float unshifted = RoundToFp16(kCeiling * kBlock);
+    Report("unshifted full block overflows half range", std::isinf(unshifted) ? 1.0 : 0.0,
+           1.0, std::isinf(unshifted));
+    bool shiftedFits = true;
+    for (int used = 1; used <= kBlock; ++used) {
+        for (float mag : {1.0f, 10.0f, 100.0f, 146.0f}) {
+            if (!std::isfinite(RoundToFp16(std::ldexp(kCeiling * used * mag, -kShift)))) {
+                shiftedFits = false;
+            }
+        }
+    }
+    Report("shifted full block fits for max|V| <= 146", shiftedFits ? 0.0 : 1.0, 0.0, shiftedFits);
+    // 平移与还原都是指数运算：折叠前后与 FP32 通路逐位一致，只有 FP16 舍入本身残留。
+    bool shiftExact = true;
+    std::uniform_real_distribution<float> broad(-1.0e4f, 1.0e4f);
+    for (int i = 0; i < 100000; ++i) {
+        const float x = broad(rng);
+        if (std::fabs(x) < 1.0e-30f) {
+            continue;
+        }
+        if (std::ldexp(std::ldexp(x, -kShift), kShift) != x) {
+            shiftExact = false;
+            break;
+        }
+    }
+    Report("2^-8/2^8 round-trip is bit-exact", shiftExact ? 0.0 : 1.0, 0.0, shiftExact);
 }
 
 // stats.h / quant_v_mx.h / output_update.h 的 smooth_v 通路：V 沿序列维取通道均值，

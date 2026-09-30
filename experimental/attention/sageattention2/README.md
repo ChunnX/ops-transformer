@@ -21,19 +21,19 @@
 
 V 量化采用 `scale = 2^ceil(log2(max(abs(V_group))/448))`，全零分组使用有限的正 scale。FP16/BF16 的绝对值最大值直接在 16 位中归约，只将分组最大值转换为 FP32 以生成 scale。V 不再做全序列 per-channel 量化或减均值处理。
 
-smooth_k/smooth_v 开启时 Stats→Quant 使用 `SyncAll<true>()` 同步所有 AIV；Quant→Core 使用 `SyncAll<false>()` 同步所有 AIC/AIV，确保量化数据写入 GM 后才开始 Attention。预处理按 `2 * cores` 分配 AIV 任务，空闲核也参与屏障。满足核数、KV 头数为偶数及 Sq 对齐条件时，Stats、Quant 和 Attention 按同一 KV head 分组到两组核，改善双 die 的 L2 局部性；实际收益取决于设备的逻辑核映射，正确性不依赖物理映射。每个 KV head 由单个 AIV 独占累加写回 workspace，无跨核原子加，输出与调用次数无关、逐位确定。Host 使用 `SetScheduleMode(1)` 的 batch 调度，保证全核同步所需的同时驻留。
+smooth_k/smooth_v 开启时 Stats→Quant 使用 `SyncAll<true>()` 同步所有 AIV；Quant→Core 使用 `SyncAll<false>()` 同步所有 AIC/AIV，确保量化数据写入 GM 后才开始 Attention。预处理按 `2 * cores` 分配 AIV 任务，空闲核也参与屏障。满足核数为偶数、`B×Hkv` 乘积为偶数及 Sq 按 128 对齐三个条件时，Stats、Quant 和 Attention 按同一 KV head 分组到两组核，改善双 die 的 L2 局部性；实际收益取决于设备的逻辑核映射，正确性不依赖物理映射。每个 KV head 由单个 AIV 独占累加写回 workspace，无跨核原子加，输出与调用次数无关、逐位确定。Host 使用 `SetScheduleMode(1)` 的 batch 调度，保证全核同步所需的同时驻留。
 
 dtype 和 wide 通过 `ASCENDC_TPL_ARGS_DECL` 声明为模板参数，Host 用 `GET_TPL_TILING_KEY(input_dtype, wide)` 选择入口。FP16/BF16 与普通/wide 共四种模板组合，tiling key 分别为 1/27/257/283（dtype 占低 8 位，wide 占第 8 位）。每次调用仍只启动一个融合 kernel。`WIDE` 同时传给 Quant 的 V 排列和 Attention 的 N256/N512 路径，融合设备代码不再按 dtype 或 shape 执行这两处分发；公共 `attention.h` 只提供 `Attention<T, WIDE>`。
 
 中间结果仅保存在算子 workspace：K 均值、E8M0 V scale、Q8/K8/V8、FP16 Q/K scale 。各区域按 512 字节对齐，tiling 检查大小溢出并加上 CANN 系统 workspace 前缀；每次调用独立分配，无跨调用全局状态。ACLNN 只注册和启动一个融合算子，接口签名不变。
 
-QK 在 Cube 中累加为 INT32，经固定 `2^-11` DEQF16 转为 FP16，再乘预处理的 Q/K scale；score 与 max 使用 FP16，ExpSub 输出 FP32。每个块的 max 在 FP16 中减去 `FP16(ln(448))`，与旧的平移后 max 取最大值；概率、online alpha 和 LSE 共用这一状态，因此省去概率逐元素乘 448。kernel 输出的 LSE 为 raw log2 域值 `(shifted_max + log(denom)) * log2(e)`，不含平滑校正；PyTorch 层按开源契约换算 `lse / log2(e) + sm_scale * <q, mean_k>`（`smooth_k=False` 时仅换算），与开源 `core.py` 返回值逐项对齐。V 使用 E4M3 数据与 E8M0 分组 scale；P 的 MX scale 固定为 1。PV、持续累加的 O 和 softmax 分母全部使用 FP32；量化 scale 倒数与输出归一化一律用 `FastReciprocal`（魔数初值 + 两次牛顿迭代）替代向量除法，内核不含 `Div` 指令。
+QK 在 Cube 中累加为 INT32，经固定 `2^-11` DEQF16 转为 FP16，再乘预处理的 Q/K scale；score 与 max 使用 FP16，ExpSub 输出 FP32。每个块的 max 在 FP16 中减去 `FP16(ln(448))`，与旧的平移后 max 取最大值；概率、online alpha 和 LSE 共用这一状态，因此省去概率逐元素乘 448。kernel 输出的 LSE 为 raw log2 域值 `(shifted_max + log(denom)) * log2(e)`，不含平滑校正；PyTorch 层按开源契约换算 `lse / log2(e) + sm_scale * <q, mean_k>`（`smooth_k=False` 时仅换算），与开源 `core.py` 返回值逐项对齐。V 使用 E4M3 数据与 E8M0 分组 scale；P 的 MX scale 是常量 `2^-8`（`PV_PARTIAL_E8M0`），用于把默认配置的 FP16 部分和折叠约束在半程内，归一化时在同一次行倒数运算里乘回 `2^8`（`NormalizerReciprocal`），因此分母与 LSE 仍为原始量纲。两级的累加状态（L0C 块内、UB 跨块 O）与 softmax 分母全部使用 FP32；量化 scale 倒数与输出归一化一律用 `FastReciprocal`（魔数初值 + 两次牛顿迭代）替代向量除法，内核不含 `Div` 指令。
 
 连续对齐输入的 Q/V 原始读取使用 bypass L2 的 cache hint，保留 K 与量化输出的默认缓存策略，减少一次性读取对后续数据的挤占。连续对齐输入按 64 行双缓冲量化，Q/K 复用每 token 的 FP32 scale 倒数；非对齐输入保留原有 Q/K 舍入路径。两类输入都使用同一个 V MX 分组量化实现，不足 32 个 token 的尾组补零。V scale 在 workspace 中按 `[B,Hkv,Kp/64,Dp,2]` 保存，每个 E8M0 scale 占一字节。
 
-PV 通过 CATLASS 的 MX scale 布局和搬运接口加载 L0B scale，使用硬件 MXFP8 MMA。P 的单位 scale 在 L0A 初始化一次。V scale 按 KV head 缓存在 L1，容量为 176 KiB；超过容量时按 PV tile 搬运，仍为同一 MXFP8 算法。
+PV 通过 CATLASS 的 MX scale 布局和搬运接口加载 L0B scale，使用硬件 MXFP8 MMA。P 的常量 `2^-8` scale 由 `InitMxP` 在 L0A 一次性初始化（纯指数平移，不改变逐位结果，只把 FP16 折叠上界压到与序列长度无关）。V scale 按 KV head 缓存在 L1，容量为 176 KiB；超过容量时按 PV tile 搬运，仍为同一 MXFP8 算法。
 
-通用路径采用 M128/N256 分块、四个 score 槽和两个 P/PV 共享槽。D padding 为 128、Sq 为 128 的倍数且 Sk 为 512 的倍数并不少于 4096 时，使用 N512 路径：两个 N256 Cube 片段共享一次 softmax，流水跨 query 连续执行。O 常驻 UB，P 经 UB→L1 交给 Cube，QK/PV 经 L0C→UB 交给 Vector。wide 路径的 K/V 各使用两个 L1 缓冲区预取；Cube 按 N256 片段推进，Vector 按 N512 分组推进。
+通用路径采用 M128/N256 分块、三个 score/P 槽（`PIPE_SLOTS`，提供两块前视）与两个 PV 输出槽（`PV_SLOTS`），另有四个 alpha 槽（`ALPHA_SLOTS`）保留配对所需的上一组缩放。D padding 为 128、Sq 为 128 的倍数且 Sk 为 512 的倍数并不少于 4096 时，使用 N512 路径：两个 N256 Cube 片段共享一次 softmax，流水跨 query 连续执行。O 常驻 UB，P 经 UB→L1 交给 Cube，QK/PV 经 L0C→UB 交给 Vector。wide 路径的 K/V 各使用两个 L1 缓冲区预取；Cube 按 N256 片段推进，Vector 按 N512 分组推进。
 
 wide 路径将 FP8 P 原位写入已经消费的 FP16 score 条带，再通过带源间隔的 UB→L1 搬运保持既有 L1 布局，使两个 PV 槽能保留待合并的结果。同一 query 的相邻两组输出配对更新，在两次 PV 等待之间先计算下一组 softmax 并供 P；读取完成后才释放两个 PV 槽，保持两次 FP32 FMA 的舍入顺序。alpha 和延迟输出记录各用三个槽，跨 query 无法配对及奇数组尾部退回单组更新。P_READY 后的 Cube 计算依赖保护 score 槽复用，UB 静态预算高水位为 248 KiB（物理 256 KiB，余量留给队列与栈），各段的偏移由 `static_assert` 逐条对该高水位证明。
 
@@ -59,7 +59,7 @@ wide 路径将 FP8 P 原位写入已经消费的 FP16 score 条带，再通过�
 **粒度与累加配置的 NPU 映射**（对齐任务书允许的"将开源粒度映射到 NPU Tile/Block"口径）：
 
 - `qk_quant_gran`：Q/K 对称 INT8 scale 按连续 token 组共享，对齐开源 CUDA thread/warp 映射——`per_thread` 为每 4 个 Q token / 16 个 K token 一个 scale，`per_warp` 为其 8 倍（32/64）；组边界按序列维对齐。V 侧 MXFP8 的细粒度分组（每 channel × 每 32 token）进一步抑制截断误差。
-- `pv_accum_dtype`：参数经算子属性直通内核（`SagePvAccum`），选择块内 PV 部分和折入 FP32 运行状态前的存储精度。`fp32+fp16`（默认验收配置）把部分和舍入到 FP16 再折入；`fp32+fp32` 与 `fp32` 折入时不舍入，二者在 950PR 上共用同一数据通路，`fp32` 额外允许 `smooth_v` 生效。950PR 的 MXFP8 MMA 在 L0C 原生以 FP32 累加，PV、O 与 softmax 分母全程 FP32。
+- `pv_accum_dtype`：参数经算子属性直通内核（`SagePvAccum`），选择块内 PV 部分和折入 FP32 运行状态前的存储精度。`fp32+fp16`（默认验收配置）把部分和舍入到 FP16 再折入，P 侧 `2^-8` 常量尺度保证该折叠在 `max|V| <= 146.2` 内不越界；`fp32+fp32` 与 `fp32` 折入时不舍入，二者在 950PR 上共用同一数据通路，`fp32` 额外允许 `smooth_v` 生效。950PR 的 MXFP8 MMA 在 L0C 原生以 FP32 累加，两级的累加状态（L0C 与 UB）和 softmax 分母恒为 FP32。
 
 最终 O 仍按输入 dtype 输出。
 
@@ -122,7 +122,7 @@ python -m pytest -q python/test_python_api.py -o junit_family=xunit1 --junitxml=
 
 修改 kernel 后须重新完整构建、安装，再执行 NPU 测试。
 
-内核数值规格另有独立的可移植 C++ 误差一致性测试（无 AscendC 依赖，宿主机或容器均可编译运行），固化各数值构件的浮点误差界（13 大类 29 项断言）：FastReciprocal（最差 binade 包络 2^-14）、per-token INT8 往返（<= scale/2）、E4M3 饱和舍入（<= 2^-4）、E8M0 分组 scale 覆盖性与紧致性、DEQF16(2^-11)×FP16 平衡 scale 的 2048 抵消恒等式（<= 2^-9）、ln(448) 平移的满量程/饱和裕量、LSE 契约（raw log2 内核值 + 开源平滑校正与 GQA 广播，双精度参考 <= 1e-5）、smooth-K softmax 整行不变性（FP32 内核算术精度 <= 1e-4）、`qk_quant_gran` 分组共享 scale（BroadcastGroupMaxima）、`fp32+fp16` 部分和 FP16 舍入往返界、smooth_v 居中补偿不展宽 MXFP8 误差包络、片上 Streaming Q 量化 bit-exact 等价：
+内核数值规格另有独立的可移植 C++ 误差一致性测试（无 AscendC 依赖，宿主机或容器均可编译运行），固化各数值构件的浮点误差界（13 大类 32 项断言）：FastReciprocal（最差 binade 包络 2^-14）、per-token INT8 往返（<= scale/2）、E4M3 饱和舍入（<= 2^-4）、E8M0 分组 scale 覆盖性与紧致性、DEQF16(2^-11)×FP16 平衡 scale 的 2048 抵消恒等式（<= 2^-9）、ln(448) 平移的满量程/饱和裕量、LSE 契约（raw log2 内核值 + 开源平滑校正与 GQA 广播，双精度参考 <= 1e-5）、smooth-K softmax 整行不变性（FP32 内核算术精度 <= 1e-4）、causal 掩码的 NZ 拓扑剪枝（下/上三角旁路逐位一致）、`qk_quant_gran` 分组共享 scale（BroadcastGroupMaxima）、`fp32+fp16` 部分和 FP16 舍入往返界与满块溢出包络（未平移上溢为 Inf、平移后 `max|V| <= 146` 有界、`2^-8/2^8` 往返逐位一致）、smooth_v 居中补偿不展宽 MXFP8 误差包络、片上 Streaming Q 量化 bit-exact 等价：
 
 ```bash
 g++ -O2 -std=c++17 tests/numeric_error_test.cpp -o build/numeric_error_test && ./build/numeric_error_test
@@ -136,7 +136,11 @@ CPU 参考采用 per-token Q/K 与 32-token MXFP8 V 量化，使用上述 FP16 �
 
 L-B 层在宿主机套件内闭环（`test_tc04b_lb_precision_gates`）：NPU 数值通路（CPU golden）与独立的开源 sm89 FP8 路径逐配置（per_thread/per_warp 各自同配置）对比，两者相对 FP32 SDPA 的误差比须满足 max<=2、mean<=1.2、RMSE<=1.2，LSE 相对偏差 <= 5e-2。
 
-FP16 平移的舍入会改变 P 的实际缩放，因此不保证与原先 `448 * exp(score - max)` 逐位或按旧量化参考一致。零 score、V 全 1 时，FP16 输出为约 0.999512；较大且相等的 score 还可能使 P 超过 448 后饱和。独立 SDPA 检查保留原有标准。
+FP16 平移的舍入会改变 P 的实际缩放，因此不保证与原先 `448 * exp(score - max)` 逐位或按旧量化参考一致。较大且相等的 score 还可能使 P 超过 448 后饱和。独立 SDPA 检查保留原有标准。
+
+`fp32+fp16` 的每块部分和处于**真值单位**并带 448 概率缩放：一个块最多容纳 256 个概率同时取到 E4M3 满量程，折叠前的原始上界为 `448 · 256 · max|V|`，而 `RoundPartialFp16VF` 采用 `SatMode::NO_SAT`，越界即得 `±inf` 并污染整行输出。因此 PV MMA 的 P 侧常量 E8M0 尺度取 `2^-8`（`PV_PARTIAL_SHIFT`）而非 1.0，归一化求倒数时再乘回同一 2 的幂：纯指数平移，折叠前后的 FP32 通路逐位一致，只有 FP16 舍入本身残留；折叠上界随之变为与序列长度无关的 `448 · max|V|`，即 `max|V| <= 146.2`（`65504/448`）内保证不溢出。超出该包络时 `fp32+fp16` 会饱和上溢，需改用 `fp32+fp32`（该配置的累加器为 FP32，不存在半精度折叠点）。回归用例见 `python/test_python_api.py::test_tc13_fp16_partial_overflow_envelope` 与 `tests/numeric_error_test.cpp` 第 [11] 类。
+
+任务书 §5.4 另要求 `fp32+fp16` 路径下 V 的 FP8 `scale_max` 对齐开源（如 2.25，其它 accum 多为 448.0）。开源的 FP16 累加器工作在**码字单位**（P 码字 × V 码字），把 V 的量化满量程收紧到 2.25 就等于直接缩小它的 FP16 部分和；本内核的 PV MMA 在 L0C 内已应用 E8M0 的 V 尺度，部分和本身就是真值单位，照抄 2.25 不会收窄任何溢出边界。故本仓以「P 侧 `2^-8` 常量尺度 + 归一化时乘回」达成同一目标，这是对该条的等价替换而非遗漏。
 
 上述结果不等同于原始 GPU per-thread/per-warp L-A/L-B 或正式 AscendOpTest 验收；这些对照尚未执行。
 

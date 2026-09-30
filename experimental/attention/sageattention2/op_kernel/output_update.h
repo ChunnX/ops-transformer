@@ -178,6 +178,21 @@ __simd_vf__ inline void AccumulateFp32PairVF(__ubuf__ float *accum, __ubuf__ flo
     }
 }
 
+// Row reciprocal of the softmax denominator, with the PV block partial's
+// 2^-PV_PARTIAL_SHIFT P-scale undone. Multiplying here rather than the partial
+// itself costs one vector multiply per 64-row tile instead of one per PV slot,
+// and leaves denom_ in its natural units for the LSE.
+__simd_callee__ inline void NormalizerReciprocal(AscendC::MicroAPI::RegTensor<float> &inv,
+                                                 AscendC::MicroAPI::RegTensor<float> &den,
+                                                 AscendC::MicroAPI::MaskReg &mask)
+{
+    using namespace AscendC::MicroAPI;
+    RegTensor<float> undo;
+    FastReciprocal(inv, den, mask);
+    Duplicate(undo, PV_PARTIAL_UNDO);
+    Mul(inv, inv, undo, mask);
+}
+
 // Finalize the complete 64-row wide tile. Compute all reciprocals together with FastReciprocal,
 // and cast directly into the output buffer.
 template <class T, uint32_t DP>
@@ -189,7 +204,7 @@ __simd_vf__ inline void NormalizeCastVF(__ubuf__ T *out, __ubuf__ float *accum, 
     auto f = CreateMask<float, MaskPattern::ALL>();
     RegTensor<float> den, inv;
     LoadAlign(den, denom);
-    FastReciprocal(inv, den, f);
+    NormalizerReciprocal(inv, den, f);
     StoreAlign(scratch, inv, f);
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     static constexpr CastTrait cast{RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
@@ -294,7 +309,7 @@ __simd_vf__ inline void FinalizeWideFp32VF(__ubuf__ T *out, __ubuf__ float *accu
         MulDstAdd(den, ratio, sum, f);
     }
     StoreAlign(denom, den, f);
-    FastReciprocal(inv, den, f);
+    NormalizerReciprocal(inv, den, f);
     StoreAlign(scratch, inv, f);
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     static constexpr CastTrait cast{RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
@@ -385,7 +400,7 @@ __simd_vf__ inline void UpdateWidePairVF(__ubuf__ T *out, __ubuf__ float *accum,
     StoreAlign(denom, den, f);
     if constexpr (LAST) {
         RegTensor<float> inv;
-        FastReciprocal(inv, den, f);
+        NormalizerReciprocal(inv, den, f);
         StoreAlign(scratch, inv, f);
         LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     }
