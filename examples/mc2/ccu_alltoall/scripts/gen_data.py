@@ -11,28 +11,24 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------------------------------------
 
-"""CCU AllToAll + MXFP8 MatMul 示例数据生成器（纯 stdlib：argparse + struct + os）。
+"""CCU AllToAll + MXFP8 MatMul 示例数据生成器（纯 stdlib）。
 
 位型闭式与原 apace ST C++ 生成器（test_data_utils.h）逐位一致：
   FP8_E4M3FN_POW2 = [0x38, 0x40, 0x48, 0x50]（2^0~2^3 的 E4M3FN 编码）
   enc4(v) = FP8_E4M3FN_POW2[v % 4]；enc2(v) = 偶 -> 0x38 / 奇 -> 0x40
 
-数据语义（K-并行 GEMM）：x1=[M,K] FP8 E4M3FN（token 轴均分 R 块做 A2A），
-workspace=[recvData|recvScale]，x2=[R*K,N] 完整权重不通信，
-Y=[M/R,N] BF16 = sum_r recvData[r块,:] @ x2[r*K段,:]（L0C 跨源累加，self 项直读 x1）。
+数据语义（K-并行 GEMM）：x1=[M,K] FP8 E4M3FN（token 轴均分 R 块做 A2A），x2=[R*K,N]
+完整权重不通信，Y=[M/R,N] BF16 = sum_r recvData[r块,:] @ x2[r*K段,:]。
 
 产物（--out 目录，默认 data；scaleKLen = K//64*2，blockRows = M//R）：
   meta.txt              一行 "M K N R"
   x1_rank{s}.bin        [M,K]：行 (j*blockRows+m) 整行常量 enc4(2*j+s+m)
-                        （j=目标路由块，s=源 rank，m=块内行号）
   x1_scale_rank{s}.bin  M*scaleKLen 字节 0x7F（E8M0 1.0）
-  x2.bin                [R*K,N] DN 列主序：字节 (k + n*R*K) = enc2(k//K)；
-                        即 列 = join(enc2(r)*K for r in R)，文件 = 列 * N
+  x2.bin                [R*K,N] DN 列主序：字节 (k + n*R*K) = enc2(k//K)，文件 = 列 * N
   x2_scale.bin          R*scaleKLen*N 字节 0x7F
-  y_expect_rank{s}.bin  [blockRows,N] BF16：行 m 整行 = expect_y_bf16_bits(s, m, R, K) 的位型
+  y_expect_rank{s}.bin  [blockRows,N] BF16：行 m 整行 = expect_y_bf16_bits(s, m, R, K) 位型
 
-用法：
-  python3 gen_data.py --M 512 --K 256 --N 256 --ranks 4 --out data
+用法：python3 gen_data.py --M 512 --K 256 --N 256 --ranks 4 --out data
 """
 
 import argparse

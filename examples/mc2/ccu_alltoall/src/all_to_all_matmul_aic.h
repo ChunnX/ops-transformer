@@ -4,7 +4,7 @@
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
@@ -12,34 +12,19 @@
  * \file all_to_all_matmul_aic.h
  * \brief AIC 侧融合计算——CCU 事件同步原语 + WaitPolicy 逐 tile 等待 + Blaze MXFP8 matmul 编排
  *
- * 由原 core/ccu_comm/all_to_all/ccu_all_to_all_aic.h（§1，AIC 同步原语）与
- * kernel/fusions/all_to_all_quant_matmul/all_to_all_mx_quant_matmul_ccu_impl.h
- * （§2，WaitPolicy + 融合 impl + AIC 编排）合并；matmul kernel 为 apace 仓内
- * 实现，原位引用不拷入。
+ * matmul kernel 为 apace 仓内实现，原位引用不拷入。
  */
 
 #pragma once
 
-#include "ccu_all_to_all.asc"             // CCU 通信服务（§1 原语的依赖底座：契约 + MMIO 地址映射）
-#include "all_to_all_matmul_tiling_data.h" // ccuAllToAllMatmulTilingData（统一 tiling）
+#include "ccu_all_to_all.asc"             // CCU 通信服务（同步原语的依赖底座）
+#include "all_to_all_matmul_tiling_data.h" // ccuAllToAllMatmulTilingData
 
-// ══════════ §1 原 core/ccu_comm/all_to_all/ccu_all_to_all_aic.h —— AIC 侧同步原语 ══════════
+// ══════════ §1 AIC 侧同步原语（__aicore__）══════════
 
-/*!
- * \file ccu_all_to_all_aic.h
- * \brief CCU AllToAll——AIC 侧同步原语（device 代码，__aicore__）
- *
- * 消费方接入（AIC kernel）：融合 kernel block 0 调 AllToAllProcess 发起
- * （帧首事件清扫 → commit 唤醒）；计算核逐轮 WaitCcuCommDone
- * （或经 CommPolicy 逐 tile 等待，见融合层 CcuCommWaitPolicy）。
- * 通信参数不经 AIC：host 经 GM staging 直达 CCU（见 ccu_comm.h / _tiling.h）。
- */
+// 融合 kernel block 0 调 AllToAllProcess 发起（清扫 → commit），计算核逐轮 WaitCcuCommDone
 
-
-
-// ---- AIC 侧同步原语 ----
-
-// AIC 侧同步第 1 步【commit】：写 wake event，通知 CCU 启动通信（block 0 调用）
+// commit：写 wake event 通知 CCU 启动通信（block 0 调用）
 __aicore__ inline void CommitCcuComm(const CcuMappedAddrs &mappedAddrs)
 {
     __gm__ uint64_t *wakeAddr = reinterpret_cast<__gm__ uint64_t *>(mappedAddrs.eventVa[0]);
@@ -47,9 +32,7 @@ __aicore__ inline void CommitCcuComm(const CcuMappedAddrs &mappedAddrs)
     AscendC::DataSyncBarrier<AscendC::MemDsbT::ALL>();
 }
 
-// AIC 侧 AllToAll 通信处理（与融合侧 MatmulProcess 对应）：帧首 CKE 事件残值清扫 →
-// commit（顺序约束：CCU 只唤醒一次，清零必须在 commit 之前，否则吞 round-done）。
-// block 0 调用（守卫内置），每帧一次
+// 帧首 CKE 事件残值清扫 → commit（清零必须在 commit 之前，否则吞 round-done）；block 0 调用
 __aicore__ inline void AllToAllProcess(const CcuCommTilingData &comm)
 {
     if (static_cast<uint32_t>(AscendC::GetBlockIdx()) != 0) {
@@ -68,8 +51,7 @@ __aicore__ inline void AllToAllProcess(const CcuCommTilingData &comm)
     CommitCcuComm(comm.mappedAddrs);
 }
 
-// AIC 侧同步第 3 步【wait】：等待 CCU 某轮通信完成（计算核逐轮调用）：
-// 绕 DCache 直读 CKE 寄存器槽位（MMIO uncached 语义）
+// 等待 CCU 某轮通信完成：绕 DCache 直读 CKE 寄存器槽位（MMIO uncached 语义）
 __aicore__ inline void WaitCcuCommDone(uint64_t eventVa)
 {
     __gm__ uint64_t *doneAddr = reinterpret_cast<__gm__ uint64_t *>(eventVa);
@@ -79,19 +61,7 @@ __aicore__ inline void WaitCcuCommDone(uint64_t eventVa)
     }
 }
 
-// ══════════ §2 原 kernel/fusions/.../all_to_all_mx_quant_matmul_ccu_impl.h —— WaitPolicy + 融合 matmul 编排 ══════════
-
-/*!
- * \file all_to_all_mx_quant_matmul_ccu_impl.h
- * \brief AllToAll MX Quant Matmul（CCU 版）AIC 侧融合实现
- *
- * 通信同步原语（AllToAllProcess 帧首清扫+commit / WaitCcuCommDone 逐轮等待）在
- * 本文件 §1；CCU 侧 kernel 见 ccu_all_to_all.asc §4（通信参数经 GM staging 直达）。
- * 本文件：CcuCommWaitPolicy（qbmm CommPolicy 注入位，逐 tile 轮询 round-done，
- * 与 matmul 消费节奏耦合——tile 级通算 overlap 的来源）+ 融合 matmul impl +
- * AllToAllMatmulProcess（AIC 编排：workspace 切分 → AllToAllProcess（通信侧）→ matmul）。
- */
-
+// ══════════ §2 WaitPolicy + 融合 matmul 编排 ══════════
 
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
@@ -111,9 +81,7 @@ __aicore__ inline void WaitCcuCommDone(uint64_t eventVa)
 
 namespace Apace {
 
-// CCU 直调版通信等待策略（注入 AllToAllQbmmMxKernel 的 CommPolicy 位）：
-// 等待 data 轮 tileIdx done（eventVa[tileIdx+1]）——轮 0 已含 tile0 所需的
-// scale 全量（整块随轮 0 搭载），无需单独等待 scale
+// 等待 data 轮 tileIdx done（eventVa[tileIdx+1]；轮 0 已含 tile0 所需的 scale 全量）
 struct CcuCommWaitPolicy {
     const CcuMappedAddrs *mappedAddrs_{nullptr};
 
@@ -123,8 +91,8 @@ struct CcuCommWaitPolicy {
     }
 };
 
-// CCU 直调版 AllToAll + MXFP8 MatMul 融合 impl（镜像 AllToAllMxQuantMatmulHcommImpl，
-// Init/Run 去 HCCL 化——通信由 streamCcu 上的 CCU kernel 独立执行）
+// CCU 直调版 AllToAll + MXFP8 MatMul 融合 impl（Init/Run 去 HCCL 化，通信由
+// streamCcu 上的 CCU kernel 独立执行）
 template <typename X1Type, typename X2Type, typename YType>
 class AllToAllMxQuantMatmulCcuImpl {
 public:
@@ -208,8 +176,7 @@ __aicore__ inline void AllToAllMxQuantMatmulCcuImpl<X1Type, X2Type, YType>::Init
     tileM_ = tileM;
     originalM_ = static_cast<uint64_t>(tilingData_->m);
     quantMatmulKernelImpl_.GetCommPolicy().mappedAddrs_ = &mappedAddrs_;
-    // CCU 版暂不接入 DFX 状态 dump（无独立 dump workspace；nullptr Init 在
-    // MC2_DFX_ENABLE 开/关两种实现下均为安全空操作）
+    // CCU 版暂不接入 DFX 状态 dump（nullptr Init 为安全空操作）
     opStateDump_.Init(nullptr, nullptr, 0);
 }
 
@@ -259,8 +226,8 @@ __aicore__ inline void AllToAllMxQuantMatmulCcuImpl<X1Type, X2Type, YType>::Matm
 
 } // namespace Apace
 
-// AIC 侧融合编排：workspace 切分 [recvData|recvScale] → AllToAllProcess（block 0
-// 发起通信，core）→ 全核融合 matmul（逐 tile WaitTile 与 CCU 通信 overlap）
+// AIC 侧融合编排：workspace 切分 [recvData|recvScale] → AllToAllProcess（block 0 发起）→
+// 全核融合 matmul（逐 tile WaitTile 与 CCU 通信 overlap）
 __aicore__ inline void AllToAllMatmulProcess(
     __gm__ void *x1, __gm__ void *x1Scale,
     __gm__ void *x2, __gm__ void *x2Scale,
@@ -274,7 +241,7 @@ __aicore__ inline void AllToAllMatmulProcess(
     __gm__ void *recvScaleBuf = reinterpret_cast<__gm__ void *>(
         wsBytes + comm.workspaceScaleOffset);
 
-    // 通信参数经 GM staging 直达 CCU，AIC 只发令（清扫+commit），不再转交地址
+    // 通信参数经 GM staging 直达 CCU，AIC 只发令（清扫+commit）
     AllToAllProcess(comm);
 
     Apace::AllToAllMxQuantMatmulCcuImpl<fp8_e4m3fn_t, fp8_e4m3fn_t, bfloat16_t> matmulImpl(

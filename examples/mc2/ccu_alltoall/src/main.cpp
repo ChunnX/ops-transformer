@@ -10,28 +10,15 @@
 
 /*!
  * \file main.cpp
- * \brief CCU 直调 AllToAll + Blaze MXFP8 MatMul 双流通算融合——示例入口（单翻译单元编译源，-xasc）
+ * \brief CCU 直调 AllToAll + Blaze MXFP8 MatMul 双流通算融合——示例入口（单翻译单元，-xasc）
  *
- * 用例参数：
- *   ./ccu_alltoall                                     # precision 模式，默认参数
- *   ./ccu_alltoall precision [M] [tileM] [K] [N]
- *   ./ccu_alltoall perf [M] [tileM] [K] [N] [loop]
- *   ./ccu_alltoall --data <dir> ...                    # 指定数据目录（默认 data）
- *   默认: M=512, tileM=128, K=256, N=256, loop=10
+ * 用法：./ccu_alltoall [--data <dir>] [precision|perf] [M] [tileM] [K] [N] [loop]
+ * 默认：M=512, tileM=128, K=256, N=256, loop=10；数据目录 data/（scripts/gen_data.py
+ * 生成，文件清单见其文件头；perf 模式跳过期望文件读取）
  *
- * 数据文件（scripts/gen_data.py 预生成，格式见其文件头；perf 模式跳过期望文件读取）：
- *   meta.txt              一行 "M K N R"（shape 与 rank 数的一致性契约）
- *   x1_rank{r}.bin        [M,K] FP8 E4M3FN，rank r 的输入
- *   x1_scale_rank{r}.bin  M*(K/64*2) 字节 E8M0（全 1.0）
- *   x2.bin                [R*K,N] FP8 E4M3FN DN 列主序权重（各 rank 共享）
- *   x2_scale.bin          R*(K/64*2)*N 字节 E8M0
- *   y_expect_rank{r}.bin  [M/R,N] BF16 期望输出（precision 逐位比对）
- *
- * 主干流程（调用算子的全部所需）：
- *   main（参数解析 + aclInit + 每 device 一线程）→ RunAllToAllMatmul（设备/通信组/双流/显存
- *   + 数据文件加载 + tiling 构造）→ InvokeAllToAllMatmul（AllToAllMatmulCustom + 双流 sync）→
- *   ReleaseAllToAllMatmulContext（循环外一次）。
- * 退出码：precision 所有 rank 校验 PASS → 0，否则非 0。
+ * 主干流程：main（参数解析 + aclInit + 每 device 一线程）→ RunAllToAllMatmul（初始化 +
+ * 数据加载 + tiling 构造）→ InvokeAllToAllMatmul（Custom + 双流 sync）→
+ * ReleaseAllToAllMatmulContext（循环外一次）。precision 全 rank 校验 PASS → 退出码 0。
  */
 
 #include <functional>
@@ -43,7 +30,6 @@
 // 单翻译单元：CCU kernel + AIC kernel + host 编排 + tiling 构造（见 .asc 文件头说明）
 #include "all_to_all_matmul_ccu.asc"
 
-// 运行模式
 enum class RunMode {
     PRECISION,
     PERF
@@ -64,7 +50,6 @@ struct ThreadContext {
     int ret{0};
 };
 
-// 命令行用法（含 --data 说明与默认值）
 static void PrintUsage(const char *prog)
 {
     std::cout << "Usage:\n"
@@ -76,10 +61,8 @@ static void PrintUsage(const char *prog)
               << std::endl;
 }
 
-// 命令行入参解析 + 静态合法性检查：先扫 argv 抽取 --data <dir> 对（任意位置，缺参报错），
-// 剩余按位置参数走原逻辑；无位置参数时全部取 ctx 成员默认值；模式词非法 / 数字解析失败 /
-// K 非 64 倍数 / tileM 为 0 → 打印 usage 返回 false。rankSize 相关的整除检查依赖设备查询，
-// 留在 main 内
+// 先抽取 --data <dir>（任意位置，缺参报错），剩余按位置参数解析；
+// K 须为 64 倍数、tileM>0。rankSize 整除检查依赖设备查询，留在 main
 static bool ParseCommandLine(int argc, char *argv[], ThreadContext &ctx)
 {
     std::vector<char *> positional;
@@ -92,7 +75,7 @@ static bool ParseCommandLine(int argc, char *argv[], ThreadContext &ctx)
                 return false;
             }
             ctx.dataDir = argv[i + 1];
-            i++; // 已消费 --data 的目录参数
+            i++;
             continue;
         }
         positional.push_back(argv[i]);
@@ -135,10 +118,7 @@ static bool ParseCommandLine(int argc, char *argv[], ThreadContext &ctx)
     return true;
 }
 
-// ---- 数据文件加载辅助（gen_data.py 预生成文件的读取）----
-
-// 读 dir/meta.txt（首行 "M K N R"）：与请求 shape/rank 数不匹配则报错并打印正确的
-// gen_data.py 再生成命令
+// 读 dir/meta.txt（首行 "M K N R"）：不匹配则报错并打印 gen_data.py 再生成命令
 static bool LoadCaseMeta(const std::string &dir, uint64_t M, uint64_t K, uint64_t N, uint32_t rankSize)
 {
     std::ifstream ifs(dir + "/meta.txt");
@@ -161,8 +141,7 @@ static bool LoadCaseMeta(const std::string &dir, uint64_t M, uint64_t K, uint64_
     return true;
 }
 
-// 文件 → device：aclrtMallocHost → ifstream 精确读 size 字节 → aclrtMemcpy H2D → FreeHost
-// （结构对齐原生成器的 host→device 通路；打开失败/读取不足报错）
+// 文件 → device：mallocHost → 精确读 size 字节 → memcpy H2D → free
 static int LoadFileToDevice(const std::string &path, void *devPtr, uint64_t size)
 {
     void *hostBuf = nullptr;
@@ -189,7 +168,7 @@ static int LoadFileToDevice(const std::string &path, void *devPtr, uint64_t size
     return 0;
 }
 
-// 文件 → host buffer（期望文件比对用）：同 LoadFileToDevice 去掉 memcpy
+// 文件 → host buffer（期望文件比对用）
 static int LoadFileToHost(const std::string &path, std::vector<uint8_t> &hostBuf, uint64_t size)
 {
     hostBuf.resize(static_cast<size_t>(size));
@@ -207,8 +186,7 @@ static int LoadFileToHost(const std::string &path, std::vector<uint8_t> &hostBuf
     return 0;
 }
 
-// 调用一次完整通算融合（Custom → 双流 launch → sync）。
-// CCU 资源经 a2aCtx 跨迭代复用：首帧在 Prepare 内分配，循环外统一 Release
+// 调用一次完整通算融合；CCU 资源经 a2aCtx 跨迭代复用（首帧 Prepare 分配，循环外统一 Release）
 static HcclResult InvokeAllToAllMatmul(HcclComm comm, aclrtStream streamAicore, aclrtStream streamCcu,
                                        AllToAllMatmulContext &a2aCtx,
                                        void *x1, void *x1Scale,
@@ -229,9 +207,8 @@ static HcclResult InvokeAllToAllMatmul(HcclComm comm, aclrtStream streamAicore, 
     return HCCL_SUCCESS;
 }
 
-// precision 模式校验：读回 output（BF16）→ 与期望文件内容（expectHost）逐元素位型比对 →
-// 首错定位 → 落地 bin（无论成败）。返回 0 = PASS；非 0 = FAIL（供 RunAllToAllMatmul
-// 透传为进程退出码）
+// precision 校验：D2H 读回 → 与期望文件逐元素 BF16 位型比对 → 首错定位 →
+// 落盘 output/<rank>/npu_out.bin（无论成败）；0 = PASS
 static int VerifyOutputAgainstExpect(uint32_t myRank, uint64_t blockRows, uint64_t N,
                                      void *output, uint64_t outputSize,
                                      const std::vector<uint8_t> &expectHost)
@@ -296,9 +273,8 @@ static int VerifyOutputAgainstExpect(uint32_t myRank, uint64_t blockRows, uint64
     return (errCount == 0) ? 0 : 1;
 }
 
-// 单 rank 的执行入口（每个 rank 一个线程调用本函数）：
-// 设备/通信组/双流初始化 → 7 buffer 分配 → 数据文件加载 → 构造 tiling →
-// 循环执行 InvokeAllToAllMatmul（precision 1 次；perf loop 次）→ precision 校验 → 释放
+// 单 rank 执行入口（每 rank 一线程）：初始化 → 分配 → 加载数据 → tiling →
+// 循环 Invoke → precision 校验 → 释放
 int RunAllToAllMatmul(ThreadContext &ctx)
 {
     if (ctx.rankSize > CCU_MAX_RANK_SIZE) {
@@ -338,8 +314,7 @@ int RunAllToAllMatmul(ThreadContext &ctx)
     aclrtStream streamCcu;
     ACLCHECK(aclrtCreateStream(&streamCcu));
 
-    // 立即调用 lambda：执行体内的 return（如 ACLCHECK）只带错误码退出本执行体并
-    // 经返回值写入 ctx.ret，下方通信组/流/设备释放仍必然执行（替代 goto cleanup）
+    // lambda 内 return 仅退出执行体，下方通信组/流/设备释放仍必然执行
     ctx.ret = [&]() -> int {
         void *x1 = nullptr;
         void *x1Scale = nullptr;
@@ -363,9 +338,7 @@ int RunAllToAllMatmul(ThreadContext &ctx)
             (void)aclrtFree(x1);
         };
 
-        // 数据文件加载（gen_data.py 预生成）：meta 一致性检查 + 四个输入文件（x1/x1_scale
-        // 按 rank，x2/x2_scale 各 rank 共享）；precision 模式另读期望输出
-        // （blockRows*N*2 字节 BF16）；任一失败走 freeAll 返回
+        // 数据文件加载：x1/x1_scale 按 rank，x2/x2_scale 共享；precision 另读期望输出
         int loadRet = 0;
         std::vector<uint8_t> expectHost;
         do {
@@ -393,10 +366,7 @@ int RunAllToAllMatmul(ThreadContext &ctx)
             return loadRet;
         }
 
-        // 构造统一 tiling：comm 仅 tileM（其余由 Validate/Prepare 填充）；matmul 由
-        // FillAllToAllMatmulTilingData（SWAT 引擎按 shape 现算——板上验证的配置：
-        // stepK/scaleKL1 随 k 自适应，L1 深度搜索把 A/B K 暂存窗用满，大 K 段相对
-        // 写死值 −27.8%）
+        // 构造统一 tiling：comm 仅 tileM（其余由 Validate/Prepare 填充）；matmul 由 SWAT 按shape 现算
         ccuAllToAllMatmulTilingData tilingData{};
         FillAllToAllMatmulTilingData(blockRows, N, K, tileM, tilingData);
 
@@ -424,15 +394,12 @@ int RunAllToAllMatmul(ThreadContext &ctx)
 
         AllToAllMatmulContext a2aCtx;
         const uint32_t totalRuns = (ctx.mode == RunMode::PERF) ? ctx.loopCount : 1;
-        // event 计时旁证（对齐 quant_matmul_all_to_all 家族口径）：串行迭代下 event 间隔
-        // = 端到端单次调用耗时（含 launch/同步间隙），与 profiler Task Duration 互补，
-        // 两者之差即串行帧的 host 间隙税
+        // event 计时旁证：串行迭代间隔 = 端到端单次耗时（含 launch/同步间隙）
         aclrtEvent iterStartEvent = nullptr;
         aclrtEvent iterEndEvent = nullptr;
         float eventElapsedTotalMs = 0.0F;
-        // 重型算子 buffer（吸收 host launch gap：迭代间在 streamAicore 上插入大块
-        // memset，设备忙 ~300us 期间各 rank host 线程完成下一帧提交，消除 host
-        // bound 导致的 rank 间起跑偏斜——参考 mc2_test.py 的 Exp 重型算子方法）
+        // 重型算子：迭代间插入 4×128MB memset（~430us），设备忙期间各 rank host 完成
+        // 下一帧提交，消除 rank 间起跑偏斜
         void *heavyBuf = nullptr;
         constexpr uint64_t HEAVY_BUF_SIZE = 128UL * 1024 * 1024; // 128MB
         constexpr uint32_t HEAVY_MEMSET_COUNT = 4;               // ~4×107us ≈ 430us
@@ -465,7 +432,6 @@ int RunAllToAllMatmul(ThreadContext &ctx)
                 }
                 std::cout << "rankId: " << myRank << ", perf iter " << (iter + 1) << "/" << totalRuns
                           << " event=" << (iterMs * 1000.0F) << "us" << std::endl;
-                // 插入重型算子（非阻塞：设备忙期间 host 完成下一帧提交；尾帧不插）
                 if (iter < totalRuns - 1) {
                     for (uint32_t j = 0; j < HEAVY_MEMSET_COUNT; j++) {
                         ACLCHECK(aclrtMemsetAsync(heavyBuf, HEAVY_BUF_SIZE, 0,
@@ -513,8 +479,8 @@ int RunAllToAllMatmul(ThreadContext &ctx)
     return ctx.ret;
 }
 
-// 程序入口：解析参数 → aclInit + 查询 device 数量（rankSize）→ rootRank 获取
-// HcclRootInfo → 每 device 一线程执行 RunAllToAllMatmul → join 聚合（任一失败 → 退出码非 0）
+// 程序入口：参数解析 → aclInit + 查询 device 数（rankSize）→ rootInfo →
+// 每 device 一线程 → join 聚合（任一失败 → 退出码非 0）
 int main(int argc, char *argv[])
 {
     ThreadContext cliParams; // 成员默认值 = 默认 case，CLI 覆盖
