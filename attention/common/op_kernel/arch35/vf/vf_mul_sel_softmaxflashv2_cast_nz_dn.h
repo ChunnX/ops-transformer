@@ -1905,25 +1905,7 @@ __aicore__ inline void ProcessVec1DnCausal(
         m, n, originN, scale, deScaleQK, minValue, keepProb, needAtten, dScale, blockStride, repeatStride, pScale,
         sinkValue);
 }
-/*
- * @ingroup ProcessVec1Vf
- * @brief compute max = reducemax, exp(x-max)/sum(exp(x-max))
- * @param [out] dstTensor, output LocalTensor
- * @param [out] expSumTensor, out sum(exp(x-max)) of last axis
- * @param [out] maxTensor, out max value of last axis
- * @param [in] srcTensor, input LocalTensor
- * @param [out] expMaxTensor, output expmax LocalTensor
- * @param [in] sharedTmpBuffer, input local temporary Tensor
- * @param [in] m, input rows
- * @param [in] n, input colums, should be 256 bytes aligned, the value is originN aligned to 64
- * @param [in] originN, input origin colums, support range: 0 < originN <= 128
- * @param [in] scale, scale value
- * @param [in] minValue, minimum value
- * @param [in] isUpdate, enable flash mode
- * @param [in] oriNRange, originN range
- */
-
-// DN尾task NoUpdate VF: 非量化bf16几何 + Mxfp8状态机(ln2格点化max)
+// DN tail softmax initialization with BF16 P output.
 template <typename T, typename T2, uint16_t ubN = 128>
 __simd_vf__ inline void ProcessVec1DnTailNoUpdateMxfp8VF(__ubuf__ T2* x_exp, __ubuf__ float* input_x_local_UB,
                                                          __ubuf__ float* exp_max_fp32, __ubuf__ float* new_global_sum,
@@ -1960,6 +1942,11 @@ __simd_vf__ inline void ProcessVec1DnTailNoUpdateMxfp8VF(__ubuf__ T2* x_exp, __u
     MaskReg preg_108 = CreateMask<uint16_t, MaskPattern::ALL>();
     MaskReg preg_134 = CreateMask<uint8_t, MaskPattern::ALL>();
     MaskReg preg_135 = CreateMask<T, MaskPattern::ALL>();
+    // C1 uses a dynamic row pitch (m <= 64). Only the first m lanes belong
+    // to this score row; full-vector stores overlap the following rows and
+    // can overwrite their causal mask with predicates for different queries.
+    uint32_t scoreRowWidth = m;
+    MaskReg scoreRowMask = UpdateMask<T>(scoreRowWidth);
     uint32_t sreg_92 = (uint32_t)128ULL;
     MaskReg preg_136 = UpdateMask<uint16_t>(sreg_92);
     RegTensor<float> src0, src1, src2, src3;
@@ -1983,14 +1970,13 @@ __simd_vf__ inline void ProcessVec1DnTailNoUpdateMxfp8VF(__ubuf__ T2* x_exp, __u
     Duplicate(max3, minValue);
     Duplicate(vreg_min, minValue);
     for (uint16_t i = originN; i < ubN; ++i) {
-        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T*&)input_x_local_UB + i * m, vreg_min, preg_135);
+        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T*&)input_x_local_UB + i * m, vreg_min,
+                                                          scoreRowMask);
     }
     mem_bar(VST_VLD);
+    // Remaining score rows are padding initialized to minValue above.
+    const uint16_t scoreLoopNum = static_cast<uint16_t>((originN + 3U) / 4U);
 
-    // 4路Load: 步进m*4铺满全部s2行{4i+k}(生产参考: 非量化NoUpdate/Mxfp8主路径)
-    // 尾窗causal掩码与主路径同款(车道Arange(maskLine)+s2行阈值递增
-    // Compare/Select, 掩码位写minValue并回存, 参与后续max/exp): 此前尾VF无mask输入,
-    // prefill+causal(sparse_mode=3)尾窗softmax未掩码致数值错(实测28%超差)
     RegTensor<float> vreg_chunk0;
     RegTensor<float> vreg_thresh;
     MaskReg preg_compare0;
@@ -2000,7 +1986,7 @@ __simd_vf__ inline void ProcessVec1DnTailNoUpdateMxfp8VF(__ubuf__ T2* x_exp, __u
     if (needAtten) {
         Arange(vreg_chunk0, (float)maskLine);
         Duplicate(vreg_thresh, 0.0f);
-        for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
+        for (uint16_t iter_m = 0; iter_m < scoreLoopNum; ++iter_m) {
             LoadAlign(src0, src_ub0 + iter_m * m * 4);
             LoadAlign(src1, src_ub1 + iter_m * m * 4);
             LoadAlign(src2, src_ub2 + iter_m * m * 4);
@@ -2017,17 +2003,17 @@ __simd_vf__ inline void ProcessVec1DnTailNoUpdateMxfp8VF(__ubuf__ T2* x_exp, __u
             Select(src1, src1, vreg_min, preg_compare1);
             Select(src2, src2, vreg_min, preg_compare2);
             Select(src3, src3, vreg_min, preg_compare3);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub0 + iter_m * m * 4, src0, preg_108);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub1 + iter_m * m * 4, src1, preg_108);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub2 + iter_m * m * 4, src2, preg_108);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub3 + iter_m * m * 4, src3, preg_108);
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub0 + iter_m * m * 4, src0, scoreRowMask);
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub1 + iter_m * m * 4, src1, scoreRowMask);
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub2 + iter_m * m * 4, src2, scoreRowMask);
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub3 + iter_m * m * 4, src3, scoreRowMask);
             Max(max0, max0, src0, preg_108);
             Max(max1, max1, src1, preg_108);
             Max(max2, max2, src2, preg_108);
             Max(max3, max3, src3, preg_108);
         }
     } else {
-        for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
+        for (uint16_t iter_m = 0; iter_m < scoreLoopNum; ++iter_m) {
             LoadAlign(src0, src_ub0 + iter_m * m * 4);
             LoadAlign(src1, src_ub1 + iter_m * m * 4);
             LoadAlign(src2, src_ub2 + iter_m * m * 4);
@@ -2050,14 +2036,19 @@ __simd_vf__ inline void ProcessVec1DnTailNoUpdateMxfp8VF(__ubuf__ T2* x_exp, __u
 
     Duplicate(vreg_p_scale, pScale);
     Ln(vreg_ln_p_scale, vreg_p_scale, preg_108);
-    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>((__ubuf__ T*&)new_global_max, max0, preg_108);
+    // Match the main MXFP8 path: persist max after folding -ln(pScale).
     Sub(max0, max0, vreg_ln_p_scale, preg_108);
+    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>((__ubuf__ T*&)new_global_max, max0, preg_108);
 
     Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vreg_x_sum_0, 0, preg_134);
     Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vreg_x_sum_1, 0, preg_134);
     Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vreg_x_sum_2, 0, preg_134);
     Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vreg_x_sum_3, 0, preg_134);
     uint16_t loopNum = ubN / 4;
+    if (needAtten) {
+        // Exp reloads the scores written by the causal-mask loop.
+        mem_bar(VST_VLD);
+    }
 
     for (uint16_t i0 = 0; i0 < loopNum; ++i0) {
         LoadAlign(vreg_x_f32_0, input_x_local_UB + i0 * m);
@@ -2102,7 +2093,7 @@ __simd_vf__ inline void ProcessVec1DnTailNoUpdateMxfp8VF(__ubuf__ T2* x_exp, __u
     (void)pScaleSubLoop0; // NoUpdate无pScale更新(与Mxfp8 NoUpdate一致)
 }
 
-// DN尾task Update VF: 非量化bf16几何 + Mxfp8状态机(preLoop三件套+e8m0 pScale)
+// DN tail softmax update with BF16 P output.
 template <typename T, typename T2, uint16_t ubN = 128>
 __simd_vf__ inline void ProcessVec1DnTailUpdateMxfp8VF(
     __ubuf__ T2* x_exp, __ubuf__ float* input_x_local_UB, __ubuf__ float* exp_max_fp32, __ubuf__ float* new_global_sum,
@@ -2142,6 +2133,11 @@ __simd_vf__ inline void ProcessVec1DnTailUpdateMxfp8VF(
     MaskReg preg_108 = CreateMask<uint16_t, MaskPattern::ALL>();
     MaskReg preg_134 = CreateMask<uint8_t, MaskPattern::ALL>();
     MaskReg preg_135 = CreateMask<T, MaskPattern::ALL>();
+    // C1 uses a dynamic row pitch (m <= 64). Only the first m lanes belong
+    // to this score row; full-vector stores overlap the following rows and
+    // can overwrite their causal mask with predicates for different queries.
+    uint32_t scoreRowWidth = m;
+    MaskReg scoreRowMask = UpdateMask<T>(scoreRowWidth);
     uint32_t sreg_92 = (uint32_t)128ULL;
     MaskReg preg_136 = UpdateMask<uint16_t>(sreg_92);
     RegTensor<float> src0, src1, src2, src3;
@@ -2164,12 +2160,13 @@ __simd_vf__ inline void ProcessVec1DnTailUpdateMxfp8VF(
     Duplicate(max3, minValue);
     Duplicate(vreg_min, minValue);
     for (uint16_t i = originN; i < ubN; ++i) {
-        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T*&)input_x_local_UB + i * m, vreg_min, preg_135);
+        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T*&)input_x_local_UB + i * m, vreg_min,
+                                                          scoreRowMask);
     }
     mem_bar(VST_VLD);
+    // Remaining score rows are padding initialized to minValue above.
+    const uint16_t scoreLoopNum = static_cast<uint16_t>((originN + 3U) / 4U);
 
-    // 同NoUpdate: 步进m*4铺满全部s2行(原漏*4只读行[0,34])
-    // 尾窗causal掩码同NoUpdate尾(主路径同款Arange/Compare/Select)
     RegTensor<float> vreg_chunk0;
     RegTensor<float> vreg_thresh;
     MaskReg preg_compare0;
@@ -2179,7 +2176,7 @@ __simd_vf__ inline void ProcessVec1DnTailUpdateMxfp8VF(
     if (needAtten) {
         Arange(vreg_chunk0, (float)maskLine);
         Duplicate(vreg_thresh, 0.0f);
-        for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
+        for (uint16_t iter_m = 0; iter_m < scoreLoopNum; ++iter_m) {
             LoadAlign(src0, src_ub0 + iter_m * m * 4);
             LoadAlign(src1, src_ub1 + iter_m * m * 4);
             LoadAlign(src2, src_ub2 + iter_m * m * 4);
@@ -2196,17 +2193,17 @@ __simd_vf__ inline void ProcessVec1DnTailUpdateMxfp8VF(
             Select(src1, src1, vreg_min, preg_compare1);
             Select(src2, src2, vreg_min, preg_compare2);
             Select(src3, src3, vreg_min, preg_compare3);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub0 + iter_m * m * 4, src0, preg_108);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub1 + iter_m * m * 4, src1, preg_108);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub2 + iter_m * m * 4, src2, preg_108);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub3 + iter_m * m * 4, src3, preg_108);
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub0 + iter_m * m * 4, src0, scoreRowMask);
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub1 + iter_m * m * 4, src1, scoreRowMask);
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub2 + iter_m * m * 4, src2, scoreRowMask);
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub3 + iter_m * m * 4, src3, scoreRowMask);
             Max(max0, max0, src0, preg_108);
             Max(max1, max1, src1, preg_108);
             Max(max2, max2, src2, preg_108);
             Max(max3, max3, src3, preg_108);
         }
     } else {
-        for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
+        for (uint16_t iter_m = 0; iter_m < scoreLoopNum; ++iter_m) {
             LoadAlign(src0, src_ub0 + iter_m * m * 4);
             LoadAlign(src1, src_ub1 + iter_m * m * 4);
             LoadAlign(src2, src_ub2 + iter_m * m * 4);
@@ -2218,7 +2215,6 @@ __simd_vf__ inline void ProcessVec1DnTailUpdateMxfp8VF(
         }
     }
 
-    // 跨task max接力 + ln2格点化 + preLoop三件套
     LoadAlign(vreg_x_max_f32_b, new_global_max);
     Max(max0, max0, max2, preg_108);
     Max(max0, max0, max1, preg_108);
@@ -2227,16 +2223,17 @@ __simd_vf__ inline void ProcessVec1DnTailUpdateMxfp8VF(
     Muls(max0, max0, INV_LN2, preg_108);
     Truncate<T, RoundMode::CAST_CEIL>(max0, max0, preg_108);
     Muls(max0, max0, LN2, preg_108);
+    // The previous max already includes -ln(pScale). Adjust the local max
+    // before merging so main and tail use the same softmax state.
+    Duplicate(vreg_p_scale, pScale);
+    Ln(vreg_ln_p_scale, vreg_p_scale, preg_108);
+    Sub(max0, max0, vreg_ln_p_scale, preg_108);
     Max(max0, max0, vreg_x_max_f32_b, preg_108);
 
-    // 尾task恒走subLoop==0分支(task内唯一一段)
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>((__ubuf__ T*&)pre_loop_max, vreg_x_max_f32_b, preg_108);
     FusedExpSub(vreg_x_max_f32_b, vreg_x_max_f32_b, max0, preg_134);
 
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>((__ubuf__ T*&)new_global_max, max0, preg_108);
-    Duplicate(vreg_p_scale, pScale);
-    Ln(vreg_ln_p_scale, vreg_p_scale, preg_108);
-    Sub(max0, max0, vreg_ln_p_scale, preg_108);
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>((__ubuf__ T*&)exp_max_fp32, vreg_x_max_f32_b, preg_108);
 
     Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vreg_x_sum_0, 0, preg_134);
@@ -2244,6 +2241,10 @@ __simd_vf__ inline void ProcessVec1DnTailUpdateMxfp8VF(
     Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vreg_x_sum_2, 0, preg_134);
     Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vreg_x_sum_3, 0, preg_134);
     uint16_t loopNum = ubN / 4;
+    if (needAtten) {
+        // Exp reloads the scores written by the causal-mask loop.
+        mem_bar(VST_VLD);
+    }
 
     for (uint16_t i0 = 0; i0 < loopNum; ++i0) {
         LoadAlign(vreg_x_f32_0, input_x_local_UB + i0 * m);
@@ -2294,10 +2295,7 @@ __simd_vf__ inline void ProcessVec1DnTailUpdateMxfp8VF(
     (void)pScaleSubLoop0;
 }
 
-// PREFILL DN尾task专用VF: P输出几何照抄非量化DN bf16生产路径
-// (ubN=128基: 4路Load/DeInterleave双pack/DATA_BLOCK_COPY段式blockStride=65 — 与flash_attn
-// DN config2完全同构, L1直搬参数配套), max/sum状态机保留Mxfp8语义(ln2格点化max + preLoop
-// 三件套 + e8m0 pScale), 与前序主体task无缝接力。dScale=scale*deScaleQK(Mxfp8反量化)。
+// DN tail softmax with BF16 P output and MXFP8 max/sum state.
 template <typename T, typename T2, bool isUpdate = false>
 __aicore__ inline void ProcessVec1VfDnTailMxfp8(
     const LocalTensor<T2>& dstTensor, const LocalTensor<T>& expSumTensor, const LocalTensor<T>& maxTensor,

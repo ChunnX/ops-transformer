@@ -248,7 +248,7 @@ def run(
     metadata=None,
     v_tail=None,
     block_table_tail=None,
-    seqused_kv_tail=None,
+    seqused_v_tail=None,
     softmax_scale=1.0,
     mask_mode=0,
     win_left=-1,

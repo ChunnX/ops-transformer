@@ -45,7 +45,7 @@ const std::string SINKS_NAME = "sinks";
 const std::string METADATA_NAME = "metadata";
 const std::string V_TAIL_NAME = "v_tail";
 const std::string BLOCK_TABLE_TAIL_NAME = "block_table_tail";
-const std::string SEQUSED_KV_TAIL_NAME = "seqused_kv_tail";
+const std::string SEQUSED_V_TAIL_NAME = "seqused_v_tail";
 const std::string ATTN_MASK_NAME = "attn_mask";
 const std::string SOFTMAX_SCALE_NAME = "softmax_scale";
 const std::string MASK_MODE_NAME = "mask_mode";
@@ -84,7 +84,7 @@ constexpr uint32_t ATTN_MASK_INDEX = 13;
 constexpr uint32_t METADATA_INDEX = 14;
 constexpr uint32_t V_TAIL_INDEX = 15;
 constexpr uint32_t BLOCK_TABLE_TAIL_INDEX = 16;
-constexpr uint32_t SEQUSED_KV_TAIL_INDEX = 17;
+constexpr uint32_t SEQUSED_V_TAIL_INDEX = 17;
 
 // Attributes Index
 constexpr uint32_t ATTR_QUANT_MODE_INDEX = 0;
@@ -203,7 +203,7 @@ struct QfaParaInfo {
     QfaOptionalParaInfo attnMask = {nullptr, nullptr};
     QfaOptionalParaInfo vTail = {nullptr, nullptr};
     QfaOptionalParaInfo blockTableTail = {nullptr, nullptr};
-    QfaOptionalParaInfo sequsedKvTail = {nullptr, nullptr};
+    QfaOptionalParaInfo sequsedVTail = {nullptr, nullptr};
 
     const int64_t* quantMode = nullptr;
     const float* softmaxScale = nullptr;

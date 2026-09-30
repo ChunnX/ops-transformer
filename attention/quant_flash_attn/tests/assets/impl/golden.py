@@ -106,7 +106,7 @@ def _reverse_vtail_to_bnsd(v_tail_bf16, kv_cache_layout):
 
 
 def _extract_vtail_bundle(
-    v_tail, block_table_tail, seqused_kv_tail, enable_pa, kv_cache_layout
+    v_tail, block_table_tail, seqused_v_tail, enable_pa, kv_cache_layout
 ):
     """从 v_tail 三件套 slot 提取 CPU 参考注入所需的 (v_tail_bnsd, tail_lens)。
 
@@ -120,10 +120,10 @@ def _extract_vtail_bundle(
         raise ValueError(
             "[GOLDEN] v_tail slot 非空但 enable_pa=False — v_tail 仅支持 PA 场景 (checker 契约)"
         )
-    skt = _to_torch_int32(seqused_kv_tail) if seqused_kv_tail is not None else None
+    skt = _to_torch_int32(seqused_v_tail) if seqused_v_tail is not None else None
     if skt is None or skt.numel() == 0:
         raise ValueError(
-            "[GOLDEN] v_tail slot 非空但 seqused_kv_tail slot 为空 — CSV slot 不一致"
+            "[GOLDEN] v_tail slot 非空但 seqused_v_tail slot 为空 — CSV slot 不一致"
         )
     tail_lens = [int(x) for x in skt.flatten().tolist()]
     if all(t == 0 for t in tail_lens):
@@ -409,7 +409,7 @@ def cpu_qfa_mxfp8(
     metadata_t: torch.Tensor,
     v_tail: torch.Tensor = None,
     block_table_tail: torch.Tensor = None,
-    seqused_kv_tail: torch.Tensor = None,
+    seqused_v_tail: torch.Tensor = None,
     softmax_scale: float = 1.0,
     mask_mode: int = 0,
     win_left: int = -1,
@@ -659,7 +659,7 @@ def cpu_qfa_mxfp8(
 
     # ----- v_tail 尾块高精窗口: 从 slot 反算 BNSD bf16 + 尾长 (slot 驱动 gate) -----
     vtail_bnsd, vtail_tail_lens = _extract_vtail_bundle(
-        v_tail, block_table_tail, seqused_kv_tail, enable_pa, kv_cache_layout
+        v_tail, block_table_tail, seqused_v_tail, enable_pa, kv_cache_layout
     )
 
     # ----- 调 cpu_mxfp8_golden (BNSD fp8 + group 维 fp32 scale) -----
@@ -745,7 +745,7 @@ def cpu_qfa_gqa_fp8(
     metadata_t: torch.Tensor,
     v_tail: torch.Tensor = None,
     block_table_tail: torch.Tensor = None,
-    seqused_kv_tail: torch.Tensor = None,
+    seqused_v_tail: torch.Tensor = None,
     softmax_scale: float = 1.0,
     mask_mode: int = 0,
     win_left: int = -1,
@@ -950,7 +950,7 @@ def cpu_qfa_hif8(
     metadata_t: torch.Tensor,
     v_tail: torch.Tensor = None,
     block_table_tail: torch.Tensor = None,
-    seqused_kv_tail: torch.Tensor = None,
+    seqused_v_tail: torch.Tensor = None,
     softmax_scale: float = 1.0,
     mask_mode: int = 0,
     win_left: int = -1,

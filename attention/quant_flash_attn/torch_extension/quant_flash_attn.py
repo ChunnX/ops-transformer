@@ -207,7 +207,7 @@ class QuantFlashAttnOpBuilder(OpBuilder):
             "Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_kv=None, "
             "Tensor? seqused_q=None, Tensor? seqused_kv=None, "
             "Tensor? sinks=None, Tensor? attn_mask=None, Tensor? metadata=None, "
-            "Tensor? v_tail=None, Tensor? block_table_tail=None, Tensor? seqused_kv_tail=None, "
+            "Tensor? v_tail=None, Tensor? block_table_tail=None, Tensor? seqused_v_tail=None, "
             "float softmax_scale=1.0, int mask_mode=0, int win_left=-1, int win_right=-1, "
             "int max_seqlen_q=-1, int max_seqlen_kv=-1, "
             'str layout_q="BSND", str layout_q_descale="BSND", str layout_kv="BSND", str layout_out="BSND", '
@@ -267,7 +267,7 @@ class QuantFlashAttnOpBuilder(OpBuilder):
             metadata: Optional[torch.Tensor] = None,
             v_tail: Optional[torch.Tensor] = None,
             block_table_tail: Optional[torch.Tensor] = None,
-            seqused_kv_tail: Optional[torch.Tensor] = None,
+            seqused_v_tail: Optional[torch.Tensor] = None,
             softmax_scale: Optional[float] = 1.0,
             mask_mode: Optional[Union[MaskMode, int]] = MaskMode.NO_MASK,
             win_left: Optional[int] = -1,
@@ -505,7 +505,7 @@ def quant_flash_attn(
     metadata: Optional[torch.Tensor] = None,
     v_tail: Optional[torch.Tensor] = None,
     block_table_tail: Optional[torch.Tensor] = None,
-    seqused_kv_tail: Optional[torch.Tensor] = None,
+    seqused_v_tail: Optional[torch.Tensor] = None,
     softmax_scale: Optional[float] = 1.0,
     mask_mode: Optional[Union[MaskMode, int]] = MaskMode.NO_MASK,
     win_left: Optional[int] = -1,
@@ -618,7 +618,7 @@ def quant_flash_attn(
         metadata,
         v_tail,
         block_table_tail,
-        seqused_kv_tail,
+        seqused_v_tail,
         softmax_scale,
         mask_mode,
         win_left,
