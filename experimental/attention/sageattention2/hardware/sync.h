@@ -33,47 +33,46 @@ enum class TokenSignal : uint32_t {
 // Strongly-Typed Hardware Event Slots and Cross-Core Handshake State Machine
 // ============================================================================
 struct EventHandshake {
-    static constexpr uint32_t QK_READY = static_cast<uint32_t>(TokenSignal::QK_READY);
-    static constexpr uint32_t P_READY = static_cast<uint32_t>(TokenSignal::P_READY);
-    static constexpr uint32_t PV_READY = static_cast<uint32_t>(TokenSignal::PV_READY);
-    static constexpr uint32_t PV_RELEASE = static_cast<uint32_t>(TokenSignal::PV_RELEASE);
-    static constexpr uint32_t Q_READY = static_cast<uint32_t>(TokenSignal::Q_READY);
-    static constexpr uint32_t AIV_FLAG_OFFSET = static_cast<uint32_t>(TokenSignal::AIV_FLAG_OFFSET);
-
+    // MTE1 slot events arbitrating the shared QK / PV L1 tile regions on the AIC
     static constexpr uint32_t QK_EVENT = 2;
     static constexpr uint32_t PV_EVENT = 3;
+    // AIC MTE2 parity slots for the wide-pipeline GM->L1 prefetch engines (K then V)
+    static constexpr uint32_t K_PREFETCH_EVENT_BASE = 4;
+    static constexpr uint32_t V_PREFETCH_EVENT_BASE = 6;
+    // AIV MTE2 slots double-buffering the per-group K scale tiles (AIV-local domain)
     static constexpr uint32_t SCALE_EVENT_BASE = 4;
+    // FIX slot event pairing the second QK sub-block fixpipe with its MMA
     static constexpr uint32_t QK_SECOND_FIX_EVENT = 1;
 
 #if defined(__CCE__)
     // Explicit cross-core synchronization primitives
     template <auto PIPE>
     __aicore__ static inline void NotifyAiv(TokenSignal sig, uint32_t aivIdx = 0) {
-        AscendC::CrossCoreSetFlag<4, PIPE>(static_cast<uint32_t>(sig) + aivIdx * AIV_FLAG_OFFSET);
+        AscendC::CrossCoreSetFlag<4, PIPE>(static_cast<uint32_t>(sig) + aivIdx * static_cast<uint32_t>(TokenSignal::AIV_FLAG_OFFSET));
     }
 
     template <auto PIPE>
     __aicore__ static inline void NotifyBothAiv(TokenSignal sig) {
         AscendC::CrossCoreSetFlag<4, PIPE>(static_cast<uint32_t>(sig));
-        AscendC::CrossCoreSetFlag<4, PIPE>(static_cast<uint32_t>(sig) + AIV_FLAG_OFFSET);
+        AscendC::CrossCoreSetFlag<4, PIPE>(static_cast<uint32_t>(sig) + static_cast<uint32_t>(TokenSignal::AIV_FLAG_OFFSET));
     }
 
     template <auto PIPE>
     __aicore__ static inline void WaitFromCube(TokenSignal sig) {
         uint32_t subBlock = AscendC::GetSubBlockIdx();
-        AscendC::CrossCoreWaitFlag<4, PIPE>(static_cast<uint32_t>(sig) + subBlock * AIV_FLAG_OFFSET);
+        AscendC::CrossCoreWaitFlag<4, PIPE>(static_cast<uint32_t>(sig) + subBlock * static_cast<uint32_t>(TokenSignal::AIV_FLAG_OFFSET));
     }
 
     template <auto PIPE>
     __aicore__ static inline void NotifyCube(TokenSignal sig) {
         uint32_t subBlock = AscendC::GetSubBlockIdx();
-        AscendC::CrossCoreSetFlag<4, PIPE>(static_cast<uint32_t>(sig) + subBlock * AIV_FLAG_OFFSET);
+        AscendC::CrossCoreSetFlag<4, PIPE>(static_cast<uint32_t>(sig) + subBlock * static_cast<uint32_t>(TokenSignal::AIV_FLAG_OFFSET));
     }
 
     template <auto PIPE>
     __aicore__ static inline void WaitFromBothAiv(TokenSignal sig) {
         AscendC::CrossCoreWaitFlag<4, PIPE>(static_cast<uint32_t>(sig));
-        AscendC::CrossCoreWaitFlag<4, PIPE>(static_cast<uint32_t>(sig) + AIV_FLAG_OFFSET);
+        AscendC::CrossCoreWaitFlag<4, PIPE>(static_cast<uint32_t>(sig) + static_cast<uint32_t>(TokenSignal::AIV_FLAG_OFFSET));
     }
 #endif
 };

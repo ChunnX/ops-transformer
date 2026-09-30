@@ -59,7 +59,7 @@ __aicore__ inline __attribute__((always_inline)) void PrefetchWideK(hardware::Fi
     using namespace tla;
     using T = int8_t;
     using Copy = Catlass::Gemm::Tile::PackedTileCopyTla<hardware::Arch, T, layout::RowMajor, T, layout::ColumnMajor, float, layout::RowMajor>;
-    event_t ev = static_cast<event_t>(4 + parity);
+    event_t ev = static_cast<event_t>(EventHandshake::K_PREFETCH_EVENT_BASE + parity);
     WaitFlag<HardEvent::MTE1_MTE2>(ev);
     GlobalTensor<T> bg;
     bg.SetGlobalBuffer((__gm__ T *)b);
@@ -78,7 +78,7 @@ __aicore__ inline __attribute__((always_inline)) void PrefetchWideV(hardware::Fi
     using namespace tla;
     using T = float8_e4m3_t;
     using Copy = Catlass::Gemm::Tile::PackedTileCopyTla<hardware::Arch, T, layout::RowMajor, T, layout::RowMajor, float, layout::RowMajor>;
-    event_t ev = static_cast<event_t>(6 + (parity & 1));
+    event_t ev = static_cast<event_t>(EventHandshake::V_PREFETCH_EVENT_BASE + (parity & 1));
     WaitFlag<HardEvent::MTE1_MTE2>(ev);
     GlobalTensor<T> bg;
     bg.SetGlobalBuffer((__gm__ T *)b);
@@ -126,7 +126,7 @@ __aicore__ inline __attribute__((always_inline)) void GemmQkSplit(hardware::Fixe
     if (loadA) {
         EventHandshake::WaitFromBothAiv<PIPE_MTE1>(TokenSignal::Q_READY);
     }
-    event_t kEvent = static_cast<event_t>(4 + kParity);
+    event_t kEvent = static_cast<event_t>(EventHandshake::K_PREFETCH_EVENT_BASE + kParity);
     WaitFlag<HardEvent::MTE2_MTE1>(kEvent);
     WaitFlag<HardEvent::M_MTE1>(EventHandshake::QK_EVENT);
     auto bb = tla::MakeTensor(r.l0BBuf.template GetBufferByByte<T>(0),
@@ -230,8 +230,36 @@ __aicore__ inline __attribute__((always_inline)) void Gemm(hardware::FixedResour
         }
     }
 
+    // Standard pipeline: B (and the first-call A) tiles arrive straight from the
+    // quantized GM workspace, so stage them into the L1 slot here; the trailing
+    // Sync<HardEvent::MTE2_MTE1> orders the copies before MTE1 consumes them. The
+    // wide pipeline never instantiates these branches — its QK^T runs through
+    // GemmQkSplit and its PV B tiles are co-streamed by PrefetchWideV (PreloadedB).
+    // Without this staging the Cube would read uninitialized L1 on every shape
+    // outside the wide envelope (head-dim pad, unaligned or short sequences).
+    if constexpr (!LocalA) {
+        if (loadA) {
+            GlobalTensor<T> ag;
+            ag.SetGlobalBuffer((__gm__ T *)a);
+            auto ga = tla::MakeTensor(ag, tla::MakeLayout<T, layout::RowMajor>(M, k), Catlass::Arch::PositionGM{});
+            typename Copy::template CopyGmToL1A<decltype(ga)> copyA;
+            copyA(la, ga);
+        }
+        GlobalTensor<T> bg;
+        bg.SetGlobalBuffer((__gm__ T *)b);
+        auto gb = tla::MakeTensor(bg, tla::MakeLayout<T, BLayout>(k, n), Catlass::Arch::PositionGM{});
+        typename Copy::template CopyGmToL1B<decltype(gb)> copyB;
+        copyB(lb, gb);
+    } else if constexpr (!PreloadedB) {
+        GlobalTensor<T> bv;
+        bv.SetGlobalBuffer((__gm__ T *)b);
+        auto gv = tla::MakeTensor(bv, tla::MakeLayout<T, BLayout>(k, n), Catlass::Arch::PositionGM{});
+        typename Copy::template CopyGmToL1B<decltype(gv)> copyB;
+        copyB(lb, gv);
+    }
+
     if constexpr (PreloadedB)
-        WaitFlag<HardEvent::MTE2_MTE1>(static_cast<event_t>(6 + (vParity & 1)));
+        WaitFlag<HardEvent::MTE2_MTE1>(static_cast<event_t>(EventHandshake::V_PREFETCH_EVENT_BASE + (vParity & 1)));
     else
         Sync<HardEvent::MTE2_MTE1>();
 
@@ -253,7 +281,7 @@ __aicore__ inline __attribute__((always_inline)) void Gemm(hardware::FixedResour
         c0b(bb, tla::GetTile(lb, tla::MakeCoord(0, 0), tla::MakeShape(k, n)));
     }
 
-    if constexpr (PreloadedB) SetFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(6 + (vParity & 1)));
+    if constexpr (PreloadedB) SetFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(EventHandshake::V_PREFETCH_EVENT_BASE + (vParity & 1)));
     SetFlag<HardEvent::MTE1_MTE2>(slot);
     Sync<HardEvent::MTE1_M>();
 

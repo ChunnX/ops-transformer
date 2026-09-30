@@ -84,8 +84,11 @@ struct WideVectorLayout {
     static_assert(END <= UB_HIGH_WATER, "Wide softmax layout exceeds UB 248KB budget");
 };
 
-// Wide-pipeline L1 buffer allocations & constants
-constexpr uint32_t MX_V_L1 = V_SCALE_L1_PING;
+// Wide-pipeline L1 buffer allocations & constants.
+// Note: MX_V_L1 (the fixed standard-path MX scale-cache slot, 320 KB) is owned
+// by common/constants.h in namespace sage; the wide path streams scales through
+// V_SCALE_L1_PING/PONG instead, so no alias is defined here — redefining the
+// name in sage::hardware with a different value would silently fork the plan.
 constexpr uint32_t MX_P_BLOCK_NUM = M * N / 32 / 32;
 constexpr uint32_t MX_P_M_BLOCKS = M / 16;
 constexpr uint32_t MX_P_N_BLOCKS = N / 64;

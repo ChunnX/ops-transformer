@@ -126,10 +126,10 @@ __aicore__ inline __attribute__((always_inline)) void ExecuteWideStream(
 
     if ASCEND_IS_AIC {
         InitMxP(r);
-        SetFlag<HardEvent::MTE1_MTE2>(4);
-        SetFlag<HardEvent::MTE1_MTE2>(5);
-        SetFlag<HardEvent::MTE1_MTE2>(6);
-        SetFlag<HardEvent::MTE1_MTE2>(7);
+        SetFlag<HardEvent::MTE1_MTE2>(EventHandshake::K_PREFETCH_EVENT_BASE);
+        SetFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(EventHandshake::K_PREFETCH_EVENT_BASE + 1));
+        SetFlag<HardEvent::MTE1_MTE2>(EventHandshake::V_PREFETCH_EVENT_BASE);
+        SetFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(EventHandshake::V_PREFETCH_EVENT_BASE + 1));
         SetFlag<HardEvent::MTE1_MTE2>(EventHandshake::QK_EVENT);
         SetFlag<HardEvent::MTE1_MTE2>(EventHandshake::PV_EVENT);
         SetFlag<HardEvent::M_MTE1>(EventHandshake::QK_EVENT);
@@ -322,82 +322,115 @@ __aicore__ inline __attribute__((always_inline)) void ExecuteWideStream(
                 DataCopy(pl1_1[subBlock * HALF * 32], p8[64 * 32], cp1);
                 EventHandshake::NotifyCube<PIPE_MTE3>(TokenSignal::P_READY);
 
-                auto oldDenom = r.ubBuf.template GetBufferByByte<float>(WideVectorLayout::DEN_UB);
-                auto scratch = r.ubBuf.template GetBufferByByte<float>(WideVectorLayout::SUM_UB);
-                auto ratio = r.ubBuf.template GetBufferByByte<float>(WideVectorLayout::ALPHA_UB + (group % 3) * 512);
-                auto sum1 = r.ubBuf.template GetBufferByByte<float>(WideVectorLayout::ALPHA_UB + (group % 3) * 512 + 64);
-                auto maskF = AscendC::MicroAPI::CreateMask<float, AscendC::MicroAPI::MaskPattern::ALL>();
-                AscendC::MicroAPI::RegTensor<float> den, rVal, s1;
-                AscendC::MicroAPI::LoadAlign(den, (__ubuf__ float *)oldDenom.GetPhyAddr());
-                AscendC::MicroAPI::LoadAlign(rVal, (__ubuf__ float *)ratio.GetPhyAddr());
-                AscendC::MicroAPI::LoadAlign(s1, (__ubuf__ float *)sum1.GetPhyAddr());
-                AscendC::MicroAPI::MulDstAdd(den, rVal, s1, maskF);
-                AscendC::MicroAPI::StoreAlign((__ubuf__ float *)oldDenom.GetPhyAddr(), den, maskF);
-
                 outputPending[group % 3] = {current.ordinal, current.b, current.h, current.qstart, first, last};
 
                 if (deferPair) {
+                    const auto firstInfo = outputPending[retired % 3];
+                    const auto secondInfo = outputPending[(retired + 1) % 3];
+                    Sync<HardEvent::V_MTE2>();
+                    if (p.smoothV) {
+                        uint32_t kh = CalcKh(secondInfo.h, p.hq, p.hk);
+                        DataCopy(vmean, vmg[(uint64_t(secondInfo.b) * p.hk + kh) * p.dp], p.dp);
+                    } else {
+                        Duplicate(vmean, 0.0f, 128);
+                    }
+                    Sync<HardEvent::MTE2_V>();
                     auto pv0 = r.ubBuf.template GetBufferByByte<float>(WideVectorLayout::PV_UB + (retired & 1) * WideVectorLayout::PV_SLOT_BYTES);
                     auto pv1 = r.ubBuf.template GetBufferByByte<float>(WideVectorLayout::PV_UB + ((retired + 1) & 1) * WideVectorLayout::PV_SLOT_BYTES);
-                    auto alpha0 = r.ubBuf.template GetBufferByByte<float>(WideVectorLayout::ALPHA_UB + (retired % 3) * 512);
-                    auto alpha1 = r.ubBuf.template GetBufferByByte<float>(WideVectorLayout::ALPHA_UB + ((retired + 1) % 3) * 512);
-                    const auto &old = outputPending[retired % 3];
-                    const auto &nextOld = outputPending[(retired + 1) % 3];
-                    if (nextOld.last) {
-                        Sync<HardEvent::V_MTE2>();
-                        if (p.smoothV) {
-                            uint32_t kh = CalcKh(nextOld.h, p.hq, p.hk);
-                            DataCopy(vmean, vmg[(uint64_t(nextOld.b) * p.hk + kh) * p.dp], p.dp);
-                        } else {
-                            Duplicate(vmean, 0.0f, 128);
-                        }
-                        Sync<HardEvent::MTE2_V>();
-                    }
-                    if (old.first) {
+                    auto a0 = r.ubBuf.template GetBufferByByte<float>(WideVectorLayout::ALPHA_UB + (retired % 3) * 512);
+                    auto a1 = r.ubBuf.template GetBufferByByte<float>(WideVectorLayout::ALPHA_UB + ((retired + 1) % 3) * 512);
+                    auto scratch = r.ubBuf.template GetBufferByByte<float>(WideVectorLayout::SUM_UB);
+
+                    if (firstInfo.first && secondInfo.last) {
+                        OutAccumulator::UpdateWidePair<T, 128, true, true>(
+                            (__ubuf__ T *)qo.GetPhyAddr(), (__ubuf__ float *)accum.GetPhyAddr(),
+                            (__ubuf__ float *)pv0.GetPhyAddr(), (__ubuf__ float *)pv1.GetPhyAddr(),
+                            (__ubuf__ float *)a0.GetPhyAddr(), (__ubuf__ float *)a1.GetPhyAddr(),
+                            (__ubuf__ float *)denom.GetPhyAddr(), (__ubuf__ float *)scratch.GetPhyAddr(),
+                            (__ubuf__ float *)vmean.GetPhyAddr());
+                    } else if (firstInfo.first) {
                         OutAccumulator::UpdateWidePair<T, 128, true, false>(
                             (__ubuf__ T *)qo.GetPhyAddr(), (__ubuf__ float *)accum.GetPhyAddr(),
                             (__ubuf__ float *)pv0.GetPhyAddr(), (__ubuf__ float *)pv1.GetPhyAddr(),
-                            (__ubuf__ float *)alpha0.GetPhyAddr(), (__ubuf__ float *)alpha1.GetPhyAddr(),
+                            (__ubuf__ float *)a0.GetPhyAddr(), (__ubuf__ float *)a1.GetPhyAddr(),
                             (__ubuf__ float *)denom.GetPhyAddr(), (__ubuf__ float *)scratch.GetPhyAddr(),
                             (__ubuf__ float *)vmean.GetPhyAddr());
-                    } else if (nextOld.last) {
+                    } else if (secondInfo.last) {
                         OutAccumulator::UpdateWidePair<T, 128, false, true>(
                             (__ubuf__ T *)qo.GetPhyAddr(), (__ubuf__ float *)accum.GetPhyAddr(),
                             (__ubuf__ float *)pv0.GetPhyAddr(), (__ubuf__ float *)pv1.GetPhyAddr(),
-                            (__ubuf__ float *)alpha0.GetPhyAddr(), (__ubuf__ float *)alpha1.GetPhyAddr(),
+                            (__ubuf__ float *)a0.GetPhyAddr(), (__ubuf__ float *)a1.GetPhyAddr(),
                             (__ubuf__ float *)denom.GetPhyAddr(), (__ubuf__ float *)scratch.GetPhyAddr(),
                             (__ubuf__ float *)vmean.GetPhyAddr());
-                        PipeBarrier<PIPE_V>();
-                        uint32_t firstRow = nextOld.qstart + subBlock * HALF;
-                        uint32_t validRows = firstRow < p.sq ? (p.sq - firstRow < HALF ? p.sq - firstRow : HALF) : 0;
-                        if (validRows)
-                            WriteRow(og, ((uint64_t(nextOld.b) * p.hq + nextOld.h) * p.sq + firstRow) * p.d, qo, validRows * p.d);
-                        if (p.returnLse) {
-                            auto lseScratch = r.ubBuf.template GetBufferByByte<float>(WideVectorLayout::P_UB);
-                            auto maximaOld = r.ubBuf.template GetBufferByByte<half>(WideVectorLayout::MAX_UB + (nextOld.ordinal & 1) * 256);
-                            compute::StoreTileLse(lg, denom, maximaOld, lseScratch, firstRow, validRows, nextOld.b, nextOld.h, p);
-                        }
                     } else {
                         OutAccumulator::UpdateWidePair<T, 128, false, false>(
                             (__ubuf__ T *)qo.GetPhyAddr(), (__ubuf__ float *)accum.GetPhyAddr(),
                             (__ubuf__ float *)pv0.GetPhyAddr(), (__ubuf__ float *)pv1.GetPhyAddr(),
-                            (__ubuf__ float *)alpha0.GetPhyAddr(), (__ubuf__ float *)alpha1.GetPhyAddr(),
+                            (__ubuf__ float *)a0.GetPhyAddr(), (__ubuf__ float *)a1.GetPhyAddr(),
                             (__ubuf__ float *)denom.GetPhyAddr(), (__ubuf__ float *)scratch.GetPhyAddr(),
                             (__ubuf__ float *)vmean.GetPhyAddr());
                     }
-                    EventHandshake::NotifyCube<PIPE_V>(TokenSignal::PV_RELEASE);
-                    EventHandshake::NotifyCube<PIPE_V>(TokenSignal::PV_RELEASE);
+                    if (secondInfo.last) {
+                        PipeBarrier<PIPE_V>();
+                        uint32_t firstRow = secondInfo.qstart + subBlock * HALF;
+                        uint32_t validRows = firstRow < p.sq ? (p.sq - firstRow < HALF ? p.sq - firstRow : HALF) : 0;
+                        if (validRows)
+                            WriteRow(og, ((uint64_t(secondInfo.b) * p.hq + secondInfo.h) * p.sq + firstRow) * p.d, qo, validRows * p.d);
+                        if (p.returnLse) {
+                            auto lseScratch = r.ubBuf.template GetBufferByByte<float>(WideVectorLayout::P_UB);
+                            auto maximaOld = r.ubBuf.template GetBufferByByte<half>(WideVectorLayout::MAX_UB + (secondInfo.ordinal & 1) * 256);
+                            compute::StoreTileLse(lg, denom, maximaOld, lseScratch, firstRow, validRows, secondInfo.b, secondInfo.h, p);
+                        }
+                    }
                     retired += 2;
-                } else if (group >= 2 && retired <= group - 2) {
-                    EventHandshake::NotifyCube<PIPE_V>(TokenSignal::PV_RELEASE);
                 }
             }
         }
     }
 
     if ASCEND_IS_AIC {
-        for (uint32_t step = 0; step < 3; ++step, ++fragment) {
-            ProcessWideCubeStep<0>(r, cubePending, fragment, false, k8, v8, mxScale, mxCache, p, 0, false);
+        ProcessWideCubeStep<0>(r, cubePending, fragment, false, k8, v8, mxScale, mxCache, p, 0);
+        ProcessWideCubeStep<1>(r, cubePending, fragment + 1, false, k8, v8, mxScale, mxCache, p, 0);
+        ProcessWideCubeStep<0>(r, cubePending, fragment + 2, false, k8, v8, mxScale, mxCache, p, 0, false);
+    } else {
+        const uint64_t groups = fragment / 2;
+        while (retired < groups) {
+            const auto old = outputPending[retired % 3];
+            if (old.last) {
+                EventHandshake::WaitFromCube<PIPE_V>(TokenSignal::PV_READY);
+                Sync<HardEvent::V_MTE2>();
+                if (p.smoothV) {
+                    uint32_t kh = CalcKh(old.h, p.hq, p.hk);
+                    DataCopy(vmean, vmg[(uint64_t(old.b) * p.hk + kh) * p.dp], p.dp);
+                } else {
+                    Duplicate(vmean, 0.0f, 128);
+                }
+                Sync<HardEvent::MTE2_V>();
+                auto pv = r.ubBuf.template GetBufferByByte<float>(WideVectorLayout::PV_UB + (retired & 1) * WideVectorLayout::PV_SLOT_BYTES);
+                auto alpha = r.ubBuf.template GetBufferByByte<float>(WideVectorLayout::ALPHA_UB + (retired % 3) * 512);
+                auto scratch = r.ubBuf.template GetBufferByByte<float>(WideVectorLayout::SUM_UB);
+                OutAccumulator::FinalizeWideFp32<T, 128, false>(
+                    (__ubuf__ T *)qo.GetPhyAddr(), (__ubuf__ float *)accum.GetPhyAddr(),
+                    (__ubuf__ float *)pv.GetPhyAddr(), (__ubuf__ float *)alpha.GetPhyAddr(),
+                    (__ubuf__ float *)denom.GetPhyAddr(), (__ubuf__ float *)scratch.GetPhyAddr(),
+                    (__ubuf__ float *)vmean.GetPhyAddr());
+                PipeBarrier<PIPE_V>();
+                uint32_t firstRow = old.qstart + subBlock * HALF;
+                uint32_t validRows = firstRow < p.sq ? (p.sq - firstRow < HALF ? p.sq - firstRow : HALF) : 0;
+                if (validRows)
+                    WriteRow(og, ((uint64_t(old.b) * p.hq + old.h) * p.sq + firstRow) * p.d, qo, validRows * p.d);
+                if (p.returnLse) {
+                    auto lseScratch = r.ubBuf.template GetBufferByByte<float>(WideVectorLayout::P_UB);
+                    auto maximaOld = r.ubBuf.template GetBufferByByte<half>(WideVectorLayout::MAX_UB + (old.ordinal & 1) * 256);
+                    compute::StoreTileLse(lg, denom, maximaOld, lseScratch, firstRow, validRows, old.b, old.h, p);
+                }
+            }
+            ++retired;
+        }
+    }
+
+    if ASCEND_IS_AIC {
+        for (uint32_t i = 0; i < (fragment / 2 < 2 ? fragment / 2 : 2); ++i) {
             EventHandshake::WaitFromBothAiv<PIPE_FIX>(TokenSignal::PV_RELEASE);
         }
         WaitFlag<HardEvent::MTE1_MTE2>(4);
@@ -411,52 +444,6 @@ __aicore__ inline __attribute__((always_inline)) void ExecuteWideStream(
         WaitFlag<HardEvent::FIX_M>(EventHandshake::QK_EVENT);
         WaitFlag<HardEvent::FIX_M>(EventHandshake::QK_SECOND_FIX_EVENT);
         WaitFlag<HardEvent::FIX_M>(EventHandshake::PV_EVENT);
-    } else {
-        const uint64_t totalGroups = fragment / 2;
-        while (retired < totalGroups) {
-            EventHandshake::WaitFromCube<PIPE_V>(TokenSignal::PV_READY);
-            const auto &old = outputPending[retired % 3];
-            if (old.last) {
-                Sync<HardEvent::V_MTE2>();
-                if (p.smoothV) {
-                    uint32_t kh = CalcKh(old.h, p.hq, p.hk);
-                    DataCopy(vmean, vmg[(uint64_t(old.b) * p.hk + kh) * p.dp], p.dp);
-                } else {
-                    Duplicate(vmean, 0.0f, 128);
-                }
-                Sync<HardEvent::MTE2_V>();
-                auto pv = r.ubBuf.template GetBufferByByte<float>(WideVectorLayout::PV_UB + (retired & 1) * WideVectorLayout::PV_SLOT_BYTES);
-                auto alpha = r.ubBuf.template GetBufferByByte<float>(WideVectorLayout::ALPHA_UB + (retired % 3) * 512);
-                auto scratch = r.ubBuf.template GetBufferByByte<float>(WideVectorLayout::SUM_UB);
-                if (old.first) {
-                    OutAccumulator::FinalizeWideFp32<T, 128, true>(
-                        (__ubuf__ T *)qo.GetPhyAddr(), (__ubuf__ float *)accum.GetPhyAddr(),
-                        (__ubuf__ float *)pv.GetPhyAddr(), (__ubuf__ float *)alpha.GetPhyAddr(),
-                        (__ubuf__ float *)denom.GetPhyAddr(), (__ubuf__ float *)scratch.GetPhyAddr(),
-                        (__ubuf__ float *)vmean.GetPhyAddr());
-                } else {
-                    OutAccumulator::FinalizeWideFp32<T, 128, false>(
-                        (__ubuf__ T *)qo.GetPhyAddr(), (__ubuf__ float *)accum.GetPhyAddr(),
-                        (__ubuf__ float *)pv.GetPhyAddr(), (__ubuf__ float *)alpha.GetPhyAddr(),
-                        (__ubuf__ float *)denom.GetPhyAddr(), (__ubuf__ float *)scratch.GetPhyAddr(),
-                        (__ubuf__ float *)vmean.GetPhyAddr());
-                }
-                PipeBarrier<PIPE_V>();
-                uint32_t firstRow = old.qstart + subBlock * HALF;
-                uint32_t validRows = firstRow < p.sq ? (p.sq - firstRow < HALF ? p.sq - firstRow : HALF) : 0;
-                if (validRows)
-                    WriteRow(og, ((uint64_t(old.b) * p.hq + old.h) * p.sq + firstRow) * p.d, qo, validRows * p.d);
-                if (p.returnLse) {
-                    auto lseScratch = r.ubBuf.template GetBufferByByte<float>(WideVectorLayout::P_UB);
-                    auto maximaOld = r.ubBuf.template GetBufferByByte<half>(WideVectorLayout::MAX_UB + (old.ordinal & 1) * 256);
-                    compute::StoreTileLse(lg, denom, maximaOld, lseScratch, firstRow, validRows, old.b, old.h, p);
-                }
-            }
-            EventHandshake::NotifyCube<PIPE_V>(TokenSignal::PV_RELEASE);
-            ++retired;
-        }
-        WaitFlag<HardEvent::V_MTE2>(EventHandshake::SCALE_EVENT_BASE);
-        WaitFlag<HardEvent::V_MTE2>(static_cast<event_t>(EventHandshake::SCALE_EVENT_BASE + 1));
     }
     PipeBarrier<PIPE_ALL>();
 }

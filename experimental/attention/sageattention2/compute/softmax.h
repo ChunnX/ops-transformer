@@ -471,8 +471,15 @@ public:
 // ============================================================================
 // In-Kernel Fused LSE Calculation Microkernel
 // ============================================================================
-// Directly computes LSE in natural log domain: ln(denom) + max(scores),
-// written directly to Global Memory, eliminating Python post-processing glue layer.
+// The softmax denominator carries the ln(448) full-scale shift, which cancels
+// exactly against the -ln(448) offset tracked in the maxima register, so
+// ln(denom) + max is the true natural-log LSE of the smoothed scores. The
+// public contract (upstream core.py, applied in python _ops.py) divides this
+// kernel value by log2(e) again and adds the smooth_k correction, so the value
+// written to GM must be that natural-domain LSE scaled by log2(e). The multiply
+// therefore happens AFTER the max add: scaling earlier would skew the max by
+// log2(e); omitting it would double-convert with the Python layer. Numeric
+// test [7] pins the whole chain to 1e-5 against a double-precision reference.
 __aicore__ inline void StoreTileLse(
     AscendC::GlobalTensor<float> &lg, AscendC::LocalTensor<float> denom,
     AscendC::LocalTensor<half> maxima, AscendC::LocalTensor<float> scratch,
@@ -491,8 +498,9 @@ __aicore__ inline void StoreTileLse(
     PipeBarrier<PIPE_V>();
     Cast(maxF, maxima, RoundMode::CAST_NONE, HALF);
     PipeBarrier<PIPE_V>();
-    // Native in-kernel fused LSE: ln(denom) + max(scores), directly in natural log domain
     Add(lse, lse, maxF, HALF);
+    PipeBarrier<PIPE_V>();
+    Muls(lse, lse, LOG2_E, HALF);
     PipeBarrier<PIPE_V>();
     Sync<HardEvent::V_MTE3>();
     DataCopyExtParams cp{1, validRows * uint32_t(sizeof(float)), 0, 0, 0};
