@@ -16,6 +16,7 @@
 #define MOE_V2_SORT_BASE_ARCH35_H
 
 #include "kernel_operator.h"
+#include "moe_init_routing_v2_arch35_tiling_def.h"
 
 namespace MoeInitRoutingV2 {
 using namespace AscendC;
@@ -28,7 +29,7 @@ protected:
     __aicore__ inline void SyncAll();
 
 protected:
-    TPipe *pipe;
+    TPipe* pipe;
     TQue<QuePosition::VECIN, 1> sortDataCopyInQueue;
     TQue<QuePosition::VECOUT, 1> sortDataCopyOutQueue;
     TBuf<TPosition::VECCALC> tempBuffer;

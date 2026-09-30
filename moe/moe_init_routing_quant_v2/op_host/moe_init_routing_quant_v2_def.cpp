@@ -89,6 +89,8 @@ public:
             .DynamicShapeSupportFlag(true)
             .ExtendCfgInfo("opFile.value", "moe_init_routing_quant_v2_apt");
         this->AICore().AddConfig("ascend950", regbaseCfg);
+        this->AICore().AddConfig("ascend960pr", regbaseCfg);
+        this->AICore().AddConfig("ascend960dt", regbaseCfg);
     }
 };
 

@@ -37,12 +37,13 @@ static const int64_t MAX_EXPERT_NUM = 2048;
 static const int64_t BLOCK_BYTES = 32;
 static const int64_t B32_BLOCK_COUNT = 8;
 static const int64_t CONSTANT_TWO = 2;
+static const int64_t MAX_SORT32_ROW_COUNT = 255;
 
 class MoeGatingTopKSoftmaxRegbaseTiling : public MoeGatingTopKSoftmaxBaseTiling {
 public:
-    explicit MoeGatingTopKSoftmaxRegbaseTiling(gert::TilingContext *context) : MoeGatingTopKSoftmaxBaseTiling(context)
-    {
-    }
+    explicit MoeGatingTopKSoftmaxRegbaseTiling(gert::TilingContext* context)
+        : MoeGatingTopKSoftmaxBaseTiling(context)
+    {}
 
 protected:
     bool IsCapable() override;
@@ -52,7 +53,7 @@ protected:
     ge::graphStatus GetWorkspaceSize() override;
     ge::graphStatus PostTiling() override;
     int64_t CalcMaxRowCountInUb();
-    void SplitRowInUb(int64_t &perLoopRowCount, int64_t &lastLoopRowCount, int64_t &loopCount, int64_t rowCount,
+    void SplitRowInUb(int64_t& perLoopRowCount, int64_t& lastLoopRowCount, int64_t& loopCount, int64_t rowCount,
                       int64_t maxRowCountInUb);
 
 private:
@@ -74,7 +75,7 @@ private:
     int64_t padNegInfCount_{0};
     int64_t sortRepeatTimes_{0};
 
-    MoeGatingTopKSoftmaxRegbaseTilingData *tilingData_{nullptr};
+    MoeGatingTopKSoftmaxRegbaseTilingData* tilingData_{nullptr};
 };
 
 bool MoeGatingTopKSoftmaxRegbaseTiling::IsCapable()
@@ -85,22 +86,23 @@ bool MoeGatingTopKSoftmaxRegbaseTiling::IsCapable()
     return true;
 }
 
-
 int64_t MoeGatingTopKSoftmaxRegbaseTiling::CalcMaxRowCountInUb()
 {
     int64_t maxRowCountInUb = 0;
     int64_t inQueue = static_cast<int64_t>(expertCountAlign_ * sizeof(float) + BLOCK_BYTES);
-    int64_t outQueue = static_cast<int64_t>(kAlign_ * sizeof(float) + kAlign_ * sizeof(float) + kAlign_ * sizeof(float));
-    int64_t bufQueue = static_cast<int64_t>(expertCountAlign_ * sizeof(float) + expertCountAlign_ * sizeof(float) + expertCountAlign_ * sizeof(float));
-    int64_t sortTmpQueue =  static_cast<int64_t>(expertCountAlign_ * sizeof(float) * CONSTANT_TWO * CONSTANT_TWO);
+    int64_t outQueue =
+        static_cast<int64_t>(kAlign_ * sizeof(float) + kAlign_ * sizeof(float) + kAlign_ * sizeof(float));
+    int64_t bufQueue = static_cast<int64_t>(expertCountAlign_ * sizeof(float) + expertCountAlign_ * sizeof(float) +
+                                            expertCountAlign_ * sizeof(float));
+    int64_t sortTmpQueue = static_cast<int64_t>(expertCountAlign_ * sizeof(float) * CONSTANT_TWO * CONSTANT_TWO);
     int64_t sortedQueue = static_cast<int64_t>(expertCountAlign_ * sizeof(float) * CONSTANT_TWO);
     maxRowCountInUb = static_cast<int64_t>((ubSize - sortedQueue) / (inQueue + outQueue + bufQueue + sortTmpQueue));
     OP_LOGD(context_, "maxRowCountInUb is: %ld", maxRowCountInUb);
     return maxRowCountInUb;
 }
 
-void MoeGatingTopKSoftmaxRegbaseTiling::SplitRowInUb(int64_t &perLoopRowCount, int64_t &lastLoopRowCount,
-                                                     int64_t &loopCount, int64_t rowCount, int64_t maxRowCountInUb)
+void MoeGatingTopKSoftmaxRegbaseTiling::SplitRowInUb(int64_t& perLoopRowCount, int64_t& lastLoopRowCount,
+                                                     int64_t& loopCount, int64_t rowCount, int64_t maxRowCountInUb)
 {
     loopCount = (rowCount + maxRowCountInUb - 1) / maxRowCountInUb;
     perLoopRowCount = (rowCount + loopCount - 1) / loopCount;
@@ -127,6 +129,9 @@ ge::graphStatus MoeGatingTopKSoftmaxRegbaseTiling::DoOpTiling()
     sortRepeatTimes_ = expertCountAlign_ / ONE_REPEAT_SORT_NUM;
 
     int64_t maxRowCountInUb = CalcMaxRowCountInUb();
+    if (expertCountAlign_ == ONE_REPEAT_SORT_NUM && maxRowCountInUb > MAX_SORT32_ROW_COUNT) {
+        maxRowCountInUb = MAX_SORT32_ROW_COUNT;
+    }
     SplitRowInUb(perCorePerLoopRowCount_, perCoreLastLoopRowCount_, perCoreLoopCount_, perCoreRowCount_,
                  maxRowCountInUb);
     SplitRowInUb(lastCorePerLoopRowCount_, lastCoreLastLoopRowCount_, lastCoreLoopCount_, lastCoreRowCount_,
@@ -155,7 +160,7 @@ uint64_t MoeGatingTopKSoftmaxRegbaseTiling::GetTilingKey() const
 ge::graphStatus MoeGatingTopKSoftmaxRegbaseTiling::GetWorkspaceSize()
 {
     workspaceSize_ = DEFAULT_WORKSPACE_SIZE;
-    size_t *workspaces = context_->GetWorkspaceSizes(1);
+    size_t* workspaces = context_->GetWorkspaceSizes(1);
     workspaces[0] = workspaceSize_;
     OP_LOGD(context_, "workspace size is: %ld", workspaceSize_);
     return ge::GRAPH_SUCCESS;

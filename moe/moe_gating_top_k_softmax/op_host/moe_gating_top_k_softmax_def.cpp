@@ -57,6 +57,8 @@ public:
             .DynamicShapeSupportFlag(true)
             .ExtendCfgInfo("opFile.value", "moe_gating_top_k_softmax_apt");
         this->AICore().AddConfig("ascend950", regbaseCfg);
+        this->AICore().AddConfig("ascend960pr", regbaseCfg);
+        this->AICore().AddConfig("ascend960dt", regbaseCfg);
 
         OpAICoreConfig config310p;
         config310p.Input("x")

@@ -28,7 +28,7 @@ public:
     __aicore__ inline MoeV2SortMultiCore(){};
     __aicore__ inline void Init(GM_ADDR expertIdx, GM_ADDR expertTokensCountOrCumsum,
                                 GM_ADDR expertTokensBeforeCapacity, GM_ADDR workspace,
-                                const MoeInitRoutingV2TilingData *tilingData, TPipe *tPipe);
+                                const MoeInitRoutingV2Arch35TilingData* tilingData, TPipe* tPipe);
     __aicore__ inline void Process();
 
 private:
@@ -40,9 +40,9 @@ private:
     __aicore__ inline void VBSCopyIn(int64_t progress, int64_t size, int64_t sortNum);
     __aicore__ inline void UBSortCompute(int64_t progress, int64_t size, int64_t sortNum);
     __aicore__ inline void VBSCopyOut(int64_t progress, int64_t size, int64_t sortNum);
-    __aicore__ inline void InitMoeMrgSort(MoeV2Mrgsort *sorter, int64_t listNum, int64_t coreOffset,
+    __aicore__ inline void InitMoeMrgSort(MoeV2Mrgsort* sorter, int64_t listNum, int64_t coreOffset,
                                           int64_t loopOffset);
-    __aicore__ inline void InitMoeMrgSortOut(MoeV2MrgsortOut *sorter, int64_t listNum, int64_t coreOffset);
+    __aicore__ inline void InitMoeMrgSortOut(MoeV2MrgsortOut* sorter, int64_t listNum, int64_t coreOffset);
     __aicore__ inline void InitExpertTokensGlobalMemory();
     __aicore__ inline void InitBuffers(GM_ADDR expertIdx, GM_ADDR expertTokensCountOrCumsum,
                                        GM_ADDR expertTokensBeforeCapacity, GM_ADDR workspace);
@@ -51,9 +51,9 @@ private:
     GlobalTensor<T> expertIdxGm;
     GlobalTensor<float> workspaceGms[2];
 
-    const MoeV2VBSComputeTilingData *vbsTilingData;
-    const MoeV2VMSMiddleComputeTilingData *vmsTilingData;
-    const MoeV2SortOutComputeTilingData *sortOutTilingData;
+    const MoeV2Arch35VBSComputeTilingData* vbsTilingData;
+    const MoeV2Arch35VMSMiddleComputeTilingData* vmsTilingData;
+    const MoeV2Arch35SortOutComputeTilingData* sortOutTilingData;
 
     // for MoeMrgsort
     MoeV2Mrgsort mrgsorter;
@@ -95,12 +95,12 @@ template <typename T>
 __aicore__ inline void MoeV2SortMultiCore<T>::InitBuffers(GM_ADDR expertIdx, GM_ADDR expertTokensCountOrCumsum,
                                                           GM_ADDR expertTokensBeforeCapacity, GM_ADDR workspace)
 {
-    expertIdxGm.SetGlobalBuffer((__gm__ T *)expertIdx + this->blockIdx * this->vbsTilingData->perCoreElements,
+    expertIdxGm.SetGlobalBuffer((__gm__ T*)expertIdx + this->blockIdx * this->vbsTilingData->perCoreElements,
                                 this->sortTotalLength);
-    sortedexpertIdxGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(workspace),
+    sortedexpertIdxGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(workspace),
                                       Align(this->totalLength, sizeof(int32_t)));
     expandDstToSrcRowGm.SetGlobalBuffer(
-        reinterpret_cast<__gm__ int32_t *>(workspace) + Align(this->totalLength, sizeof(int32_t)),
+        reinterpret_cast<__gm__ int32_t*>(workspace) + Align(this->totalLength, sizeof(int32_t)),
         Align(this->totalLength, sizeof(int32_t)));
 
     if (this->expertTokensCountOrCumsumFlag > EXERPT_TOKENS_NONE ||
@@ -114,20 +114,19 @@ __aicore__ inline void MoeV2SortMultiCore<T>::InitBuffers(GM_ADDR expertIdx, GM_
     }
     if (this->expertTokensCountOrCumsumFlag > EXERPT_TOKENS_NONE) {
         expertTokensCountOrCumsumGm.SetGlobalBuffer(
-            (__gm__ int32_t *)expertTokensCountOrCumsum + this->blockIdx * this->perCoreExpert,
-            this->currentCoreExpert);
+            (__gm__ int32_t*)expertTokensCountOrCumsum + this->blockIdx * this->perCoreExpert, this->currentCoreExpert);
     }
     if (this->expertTokensBeforeCapacityFlag == EXERPT_TOKENS_BEFORE_CAPACITY) {
         expertTokensBeforeCapacityGm.SetGlobalBuffer(
-            (__gm__ int32_t *)expertTokensBeforeCapacity + this->blockIdx * this->perCoreExpert,
+            (__gm__ int32_t*)expertTokensBeforeCapacity + this->blockIdx * this->perCoreExpert,
             this->currentCoreExpert);
     }
 
     int64_t kvFactor = 2;
-    workspaceGms[0].SetGlobalBuffer((__gm__ float *)workspace + Align(this->totalLength, sizeof(int32_t)) * 2,
+    workspaceGms[0].SetGlobalBuffer((__gm__ float*)workspace + Align(this->totalLength, sizeof(int32_t)) * 2,
                                     Align(this->totalLength, sizeof(int32_t)) * kvFactor);
     workspaceGms[1].SetGlobalBuffer(
-        (__gm__ float *)workspace + Align(this->totalLength, sizeof(int32_t)) * (kvFactor + 2),
+        (__gm__ float*)workspace + Align(this->totalLength, sizeof(int32_t)) * (kvFactor + 2),
         Align(this->totalLength, sizeof(int32_t)) * kvFactor);
 
     int64_t bufferSize = Ceil(Max(this->sortOutTilingData->oneLoopMaxElements * MAX_MRGSORT_LIST, sortCoreLoopElements),
@@ -140,7 +139,8 @@ __aicore__ inline void MoeV2SortMultiCore<T>::InitBuffers(GM_ADDR expertIdx, GM_
     }
     pipe->InitBuffer(sortDataCopyOutQueue, bufferNum, bufferSize);
     pipe->InitBuffer(sortedBuffer, bufferSize);
-#if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)) && !defined(__DAV_C220__)
+#if !(defined(__NPU_ARCH__) && ((__NPU_ARCH__ == 3510) || (__NPU_ARCH__ == 9201) || (__NPU_ARCH__ == 9202))) && \
+    !defined(__DAV_C220__)
     pipe->InitBuffer(tempBuffer, bufferSize);
 #endif
 }
@@ -183,7 +183,8 @@ __aicore__ inline void MoeV2SortMultiCore<T>::UBSortCompute(int64_t progress, in
     }
 
     LocalTensor<float> concatLocal;
-#if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)) && !defined(__DAV_C220__)
+#if !(defined(__NPU_ARCH__) && ((__NPU_ARCH__ == 3510) || (__NPU_ARCH__ == 9201) || (__NPU_ARCH__ == 9202))) && \
+    !defined(__DAV_C220__)
     LocalTensor<float> tempTensor = tempBuffer.Get<float>(GetSortLen<float>(sortNum));
     Concat(concatLocal, expertForSourceRowLocalFp32, tempTensor, sortNum / ONE_REPEAT_SORT_NUM);
 #else
@@ -211,7 +212,7 @@ __aicore__ inline void MoeV2SortMultiCore<T>::VBSCopyOut(int64_t progress, int64
 }
 
 template <typename T>
-__aicore__ inline void MoeV2SortMultiCore<T>::InitMoeMrgSort(MoeV2Mrgsort *sorter, int64_t listNum, int64_t coreOffset,
+__aicore__ inline void MoeV2SortMultiCore<T>::InitMoeMrgSort(MoeV2Mrgsort* sorter, int64_t listNum, int64_t coreOffset,
                                                              int64_t loopOffset)
 {
     GlobalTensor<float> srcWsGm = workspaceGms[srcWsIndex][blockIdx * coreOffset + loopOffset];
@@ -228,7 +229,7 @@ __aicore__ inline void MoeV2SortMultiCore<T>::InitMoeMrgSort(MoeV2Mrgsort *sorte
 }
 
 template <typename T>
-__aicore__ inline void MoeV2SortMultiCore<T>::InitMoeMrgSortOut(MoeV2MrgsortOut *sorter, int64_t listNum,
+__aicore__ inline void MoeV2SortMultiCore<T>::InitMoeMrgSortOut(MoeV2MrgsortOut* sorter, int64_t listNum,
                                                                 int64_t coreOffset)
 {
     GlobalTensor<float> srcWsGm = workspaceGms[srcWsIndex];
@@ -372,7 +373,7 @@ __aicore__ inline void MoeV2SortMultiCore<T>::SortOutProcess()
 template <typename T>
 __aicore__ inline void MoeV2SortMultiCore<T>::Init(GM_ADDR expertIdx, GM_ADDR expertTokensCountOrCumsum,
                                                    GM_ADDR expertTokensBeforeCapacity, GM_ADDR workspace,
-                                                   const MoeInitRoutingV2TilingData *tilingData, TPipe *tPipe)
+                                                   const MoeInitRoutingV2Arch35TilingData* tilingData, TPipe* tPipe)
 {
     this->totalLength = tilingData->n * tilingData->k;
     this->coreNum = tilingData->coreNum;
