@@ -740,28 +740,12 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
 
 ## 调用示例
 
-- 环境变量配置：
-
-    ```bash
-    # 运行前需设置一个环境变量
-    ## ENV_DEV_NUM说明：根据当前机器的卡数设置该变量，以两机16卡为例，将两台机器设置为16
-    export ENV_DEV_NUM=16
-    ```
-
-- 机器数量设置：
-
-    两机16卡场景中，需将参数MACHINE_NUM设置为2，即
-
-    ```Cpp
-    const uint32_t MACHINE_NUM = 2;
-    ```
-
-    单机16卡场景则无需修改。
-
 <!-- npu="910b" id24 -->
 - <term>Atlas A2系列产品</term>：
 
     无需配置ranktable文件以及环境变量RANK_TABLE_FILE、FIRST_RANK_ID。
+
+    Ascend 950DT 可直接运行算子 [examples/arch35](../examples/arch35/) 目录下的 A5 场景版示例 [test_aclnn_moe_distribute_dispatch_v2.cpp](../examples/arch35/test_aclnn_moe_distribute_dispatch_v2.cpp)（`--soc=ascend950` 时优先执行 arch35 目录下的示例文件）。
 
     本示例支持A2算子运行在卡数为[2, 8]的单机环境中，运行前需要将示例代码中的IS_TEST_A2设置为true，确保执行A2分支。
     同时，用户可以根据需要在示例代码中设置EP_WORLD_SIZE_A2为卡数，并更改launchOneThreadDispatchV2AndCombineV2_A2函数中的moeExpertNum，使得moeExpertNum可以被EP_WORLD_SIZE_A2整除。
@@ -783,6 +767,8 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
 - <term>Atlas A3系列产品</term>  、<term>Ascend 950DT系列产品</term>：
 
     无需配置ranktable文件以及环境变量RANK_TABLE_FILE、FIRST_RANK_ID。
+
+    Ascend 950DT 可直接运行算子 [examples/arch35](../examples/arch35/) 目录下的 A5 场景版示例 [test_aclnn_moe_distribute_dispatch_v2.cpp](../examples/arch35/test_aclnn_moe_distribute_dispatch_v2.cpp)（`--soc=ascend950` 时优先执行 arch35 目录下的示例文件）。
 
 <!-- end id25 -->
 
@@ -827,14 +813,12 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
         aclrtContext context;
     };
 
-    const uint32_t MACHINE_NUM = 1;
-    const char* env_dev_num = std::getenv("ENV_DEV_NUM");
 
     const uint32_t EP_WORLD_SIZE = 2;
     const uint32_t DEV_NUM = EP_WORLD_SIZE;
 
     const bool IS_TEST_A2 = false;
-    const bool IS_TEST_A3A5 = true;
+    const bool IS_TEST_A3 = true;
     const uint32_t EP_WORLD_SIZE_A2 = 8;
     const uint32_t DEV_NUM_A2 = EP_WORLD_SIZE_A2;
 
@@ -879,7 +863,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
         }
     }
 
-    int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
+    int launchOneThreadDispatchV2AndCombineV2_A3(Args &args)
     {
         int ret = aclrtSetCurrentContext(args.context);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSetCurrentContext failed. ret: %d\n", ret); return ret);
@@ -1444,7 +1428,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
         return 0;
     }
 
-    int run_example_on_A3A5()
+    int run_example_on_A3()
     {
         int ret = aclInit(nullptr);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d\n", ret); return ret);
@@ -1487,7 +1471,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
             args[rankId].dispatchV2Stream = dispatchV2Stream[rankId];
             args[rankId].combineV2Stream = combineV2Stream[rankId];
             args[rankId].context = context[rankId];
-            threads[rankId].reset(new (std::nothrow) std::thread(&launchOneThreadDispatchV2AndCombineV2_A3A5, std::ref(args[rankId])));
+            threads[rankId].reset(new (std::nothrow) std::thread(&launchOneThreadDispatchV2AndCombineV2_A3, std::ref(args[rankId])));
         }
         for (uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
             threads[rankId]->join();
@@ -1500,22 +1484,13 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
 
     int main(int argc, char *argv[])
     {
-        if (!env_dev_num) {
-            LOG_PRINT("[WARNING] Please check whether environment variable ENV_DEV_NUM is set correctly.\n");
-            return 0;
-        }
-        int actual_env_dev_num = std::stoi(std::string(env_dev_num));
-        if (actual_env_dev_num < DEV_NUM) {
-            LOG_PRINT("[INFO] ENV_DEV_NUM = %d is less than %d, currently not supported\n", actual_env_dev_num, DEV_NUM);
-            return 0;
-        }
         if (IS_TEST_A2) {
             LOG_PRINT("Example on <Atlas A2> will be executed!\n");
             int ret = run_example_on_A2();
         }
-        else if (IS_TEST_A3A5) {
-            LOG_PRINT("Example on <Atlas A3> or <Atlas A5> will be executed!\n");
-            int ret = run_example_on_A3A5();
+        else if (IS_TEST_A3) {
+            LOG_PRINT("Example on <Atlas A3> will be executed!\n");
+            int ret = run_example_on_A3();
         }
 
         return 0;

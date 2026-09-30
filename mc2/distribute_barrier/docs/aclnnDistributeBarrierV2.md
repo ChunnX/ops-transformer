@@ -267,6 +267,8 @@ aclnnStatus aclnnDistributeBarrierV2(
 
     具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
+    Ascend 950DT 可直接运行算子 [examples/arch35](../examples/arch35/) 目录下的 A5 场景版示例 [test_aclnn_distribute_barrier_v2.cpp](../examples/arch35/test_aclnn_distribute_barrier_v2.cpp)（`--soc=ascend950` 时优先执行 arch35 目录下的示例文件）。
+
 <!-- end id10 -->
 - 示例代码如下，仅供参考
 
