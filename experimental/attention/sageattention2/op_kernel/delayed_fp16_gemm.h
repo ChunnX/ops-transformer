@@ -21,9 +21,10 @@ struct MxScaleCache {
 
 template <AscendC::CO2Layout OutLayout>
 __aicore__ static inline AscendC::FixpipeParamsArch3510<OutLayout> BuildDequantFixpipeParams(
-    const uint16_t rowCount, const uint16_t colCount, const bool isSubBlock)
+    const uint16_t rowCount, const uint16_t colCount, const bool isSubBlock, const uint16_t srcStride = 0U)
 {
-    AscendC::FixpipeParamsArch3510<OutLayout> fp(colCount, rowCount, rowCount, rowCount * 16U);
+    const uint16_t stride = (srcStride == 0U) ? rowCount : srcStride;
+    AscendC::FixpipeParamsArch3510<OutLayout> fp(colCount, rowCount, stride, rowCount * 16U);
     fp.quantPre = QuantMode_t::DEQF16;
     fp.deqScalar = sage::core::DEQ_SCALAR_DEQF16;
     fp.dualDstCtl = 0U;
@@ -239,10 +240,17 @@ public:
             // Retain partial sum in L0C
         } else if constexpr (std::is_same_v<Element, int8_t>) {
             static constexpr AscendC::FixpipeConfig pipeCfg{AscendC::CO2Layout::NZ, true};
-            const auto fpParams = BuildDequantFixpipeParams<AscendC::CO2Layout::NZ>(sage::core::M, nDim, false);
             auto ubDestination = res.ubBuf.template GetBufferByByte<half>(ubOffset);
-            auto l0cSource = res.l0CBuf.template GetBufferByByte<int32_t>(L0C_ACCUMULATOR_OFFSET);
-            AscendC::Fixpipe<half, int32_t, pipeCfg>(ubDestination, l0cSource, fpParams);
+
+            // SubBlock 0 (AIV 0): rows 0..63
+            const auto fpParams0 = BuildDequantFixpipeParams<AscendC::CO2Layout::NZ>(sage::core::HALF, nDim, false, sage::core::M);
+            auto l0cSource0 = res.l0CBuf.template GetBufferByByte<int32_t>(L0C_ACCUMULATOR_OFFSET);
+            AscendC::Fixpipe<half, int32_t, pipeCfg>(ubDestination, l0cSource0, fpParams0);
+
+            // SubBlock 1 (AIV 1): rows 64..127 (starts at fractal 4 = 1024 int32 elements in L0C NZ layout)
+            const auto fpParams1 = BuildDequantFixpipeParams<AscendC::CO2Layout::NZ>(sage::core::HALF, nDim, true, sage::core::M);
+            auto l0cSource1 = res.l0CBuf.template GetBufferByByte<int32_t>(L0C_ACCUMULATOR_OFFSET + 1024U * sizeof(int32_t));
+            AscendC::Fixpipe<half, int32_t, pipeCfg>(ubDestination, l0cSource1, fpParams1);
         } else {
             auto ubFloatTensor = tla::MakeTensor(res.ubBuf.template GetBufferByByte<float>(ubOffset), tla::MakeLayout<float, Catlass::layout::RowMajor>(sage::core::M, nDim), Catlass::Arch::PositionUB{});
             Catlass::Gemm::Tile::CopyL0CToUBTla<ArchTag, decltype(l0AccumulatorC), decltype(ubFloatTensor), Catlass::Gemm::Tile::CopyL0CToUBMode::SPLIT_M>()(ubFloatTensor, l0AccumulatorC);
