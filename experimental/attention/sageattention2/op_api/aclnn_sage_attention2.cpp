@@ -31,8 +31,6 @@ aclnnStatus BuildSage(const aclTensor *q, const aclTensor *k, const aclTensor *v
 }
 } // namespace l0op
 namespace {
-constexpr int64_t MAX_HEAD_DIM = 128;
-
 const aclTensor *Canonical(const aclTensor *t, bool nhd, aclOpExecutor *executor)
 {
     if (!nhd) {

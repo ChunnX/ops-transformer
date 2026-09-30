@@ -13,11 +13,13 @@
 #include <torch/extension.h>
 #include "op_plugin/utils/op_api_common_base.h"
 #include "torch_npu/csrc/aten/CustomFunctions.h"
+// Single source of truth for the head-dim envelope, shared with host tiling
+// and the aclnn entry.
+#include "../../../op_kernel/params.h"
 
 namespace op_api {
 namespace {
 constexpr int64_t RANK = 4;
-constexpr int64_t MAX_HEAD_DIM = 128;
 constexpr int64_t ND_FORMAT = 2;
 constexpr int64_t NCHW_FORMAT = 0;
 constexpr int64_t MAX_DIM = (int64_t{1} << 32) - 64;

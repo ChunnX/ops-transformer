@@ -101,8 +101,8 @@ ge::graphStatus Tile(gert::TilingContext *c)
     const auto &v = c->GetInputShape(2)->GetStorageShape();
     auto dt = c->GetInputDesc(0)->GetDataType();
     if ((dt != ge::DT_FLOAT16 && dt != ge::DT_BF16) || c->GetInputDesc(1)->GetDataType() != dt ||
-        c->GetInputDesc(2)->GetDataType() != dt || k != v || q[0] != k[0] || q[3] != k[3] || q[3] > 128 ||
-        q[1] % k[1] || uint64_t(k[0]) * k[1] >= UINT32_MAX) {
+        c->GetInputDesc(2)->GetDataType() != dt || k != v || q[0] != k[0] || q[3] != k[3] ||
+        q[3] > MAX_HEAD_DIM || q[1] % k[1] || uint64_t(k[0]) * k[1] >= UINT32_MAX) {
         return Failure(__LINE__);
     }
     if (q[2] > UINT32_MAX - 127 || k[2] > UINT32_MAX - 511) {
@@ -120,7 +120,7 @@ ge::graphStatus Tile(gert::TilingContext *c)
     p.sq = q[2];
     p.sk = k[2];
     p.d = q[3];
-    p.dp = p.d <= 64 ? 64 : 128;
+    p.dp = PaddedHeadDim(p.d);
     const auto *attrs = c->GetAttrs();
     auto sm = attrs->GetAttrPointer<float>(0);
     auto smooth = attrs->GetAttrPointer<bool>(1);
@@ -140,9 +140,8 @@ ge::graphStatus Tile(gert::TilingContext *c)
     // derived factor has to survive both the float product and the FP16 pack.
     const float smScale = *sm;
     const float absScale = std::abs(smScale);
-    constexpr float FP16_MAX = 65504.0f;
     const float balance = std::sqrt(absScale * 2048.0f);
-    if (!std::isfinite(balance) || balance > FP16_MAX) {
+    if (!std::isfinite(balance) || balance > SAGE_FP16_MAX) {
         return Failure(__LINE__);
     }
     p.kFactor = balance;

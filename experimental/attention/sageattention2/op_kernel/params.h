@@ -99,6 +99,25 @@ struct SageParams {
     uint64_t qs[3], ks[3], vs[3]; // canonical B,H,S strides, in elements
 };
 
+// Task-spec head-dim envelope: raw D must lie in (0, MAX_HEAD_DIM] and is
+// padded up to one of the two supported widths. Defined once here because
+// host tiling, the aclnn entry and the torch bridge all enforce it.
+constexpr int64_t MAX_HEAD_DIM = 128;
+// The kernel's two supported padded head widths; DP64 also covers every D < 64.
+constexpr uint32_t PaddedHeadDim(uint32_t d)
+{
+    return d <= 64U ? 64U : 128U;
+}
+static_assert(PaddedHeadDim(1U) == 64U && PaddedHeadDim(64U) == 64U &&
+                  PaddedHeadDim(65U) == 128U && PaddedHeadDim(128U) == 128U,
+              "padded head widths must match the spec pad points");
+
+// Widest finite value representable in the FP16 format (bounds checks on the
+// host side and the PV partial-fold envelope on the device side share it).
+// Sage-prefixed: CANN headers define bare FP16_MAX/FP16_MIN macros.
+constexpr float SAGE_FP16_MAX = 65504.0f;
+constexpr float SAGE_FP16_MIN = -SAGE_FP16_MAX;
+
 // op_host copies this struct to the device with a plain memcpy, so any member
 // that stops being POD would silently corrupt the payload rather than fail.
 static_assert(std::is_trivially_copyable_v<SageParams> && std::is_standard_layout_v<SageParams>,

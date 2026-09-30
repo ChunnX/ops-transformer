@@ -54,18 +54,28 @@ public:
             SetFlag<HardEvent::FIX_M>(PV_EVENT);
         }
         uint32_t tiles = (p.sq + M - 1) / M;
-        const uint64_t taskEnd = DieTaskEnd(p, uint64_t(p.b) * p.hq * tiles, core);
+        const bool dieGroups = UseDieGroups(p);
+        const uint64_t total = uint64_t(p.b) * p.hq * tiles;
+        const uint64_t taskEnd = DieTaskEnd(p, total, core);
         for (uint64_t task = core; task < taskEnd; task += p.cores) {
-            const uint64_t mapped = UseDieGroups(p) ? DieTask(task, uint64_t(p.b) * p.hq * tiles, p.cores) : task;
+            const uint64_t mapped = dieGroups ? DieTask(task, total, p.cores) : task;
             uint32_t raw_tile = mapped % tiles, h = (mapped / tiles) % p.hq, b = mapped / tiles / p.hq;
-            uint32_t tile = (CAUSAL && (h & 1)) ? (tiles - 1 - raw_tile) : raw_tile;
+            uint32_t tile = raw_tile;
+            if constexpr (CAUSAL) {
+                if (h & 1) {
+                    tile = tiles - 1 - raw_tile;
+                }
+            }
             uint32_t kh = CalcKh(h, p.hq, p.hk);
             uint32_t qstart = tile * M;
             uint64_t qb = (uint64_t(b) * p.hq + h) * p.qp, kb = (uint64_t(b) * p.hk + kh) * p.kp;
             if ASCEND_IS_AIV {
                 vector_.BeginTile(qb, qstart);
             }
-            uint32_t limit = CAUSAL ? Min(p.sk, qstart + M) : p.sk;
+            uint32_t limit = p.sk;
+            if constexpr (CAUSAL) {
+                limit = Min(p.sk, qstart + M);
+            }
             // Two-block QK lookahead. Drain the final two PV/O updates.
             uint32_t count = (limit + N - 1) / N;
             if ASCEND_IS_AIV {
