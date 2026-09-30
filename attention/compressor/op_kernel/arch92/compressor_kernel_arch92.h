@@ -275,11 +275,17 @@ __aicore__ inline void CompressorKernel<COMP, IS_FULL_LOAD>::SplitK()
         kStartIdx_ = constInfo.curGroupIdx % constInfo.kBaseNum;
         if (kStartIdx_ + 1 < constInfo.kBaseNum) {
             dealKSize_ = constInfo.kBaseSize;
-            hStart_ = kStartIdx_ * dealKSize_;
         } else {
-            dealKSize_ = kStartIdx_ < constInfo.kBaseNum ? constInfo.hSize - kStartIdx_ * constInfo.kBaseSize : 0;
-            hStart_ = kStartIdx_ * constInfo.kBaseSize;
+            dealKSize_ = constInfo.hSize - kStartIdx_ * constInfo.kBaseSize;
         }
+        // [与库上 arch35 一致] 残组核（curGroupIdx >= coreGroupNum，usedCoreNum 非
+        // dBasicBlockNum 整数倍时尾部多出的核组）无 K 段归属：置 dealKSize_=0 令 cube
+        // 空转（ComputeMm1 的 h 循环不执行，不访问带 curGroupIdx 偏移的 mm1KvResGm，
+        // 规避越界；vector 仍按"全 AIV 均分全程 TC"参与）。不砍核，避免 AIC/AIV 浪费。
+        if (constInfo.curGroupIdx >= constInfo.coreGroupNum) {
+            dealKSize_ = 0;
+        }
+        hStart_ = kStartIdx_ * constInfo.kBaseSize;
     } else {
         kStartIdx_ = 0;
         dealKSize_ = constInfo.hSize;
@@ -529,7 +535,7 @@ __aicore__ inline void CompressorKernel<COMP, IS_FULL_LOAD>::ComputeVec1(const V
     CrossCoreWaitFlag<SYNC_MODE2, PIPE_MTE2>(SYNC_C1_V1_FLAG + info.c1v1DbIdx);
     CrossCoreWaitFlag<SYNC_MODE0, PIPE_MTE2>(SYNC_V1_FLAG2 + info.c1v1DbIdx);
     if constexpr (IS_FULL_LOAD) {
-        blockVec_.UpdateMRange(constInfo.mStart, constInfo.mEnd);
+        // [AIV 对 M 段切分透明] vec 不再接收 M 段范围（已改为全局分工 + 全局行读取）
         blockVec_.ComputeVec1(info.c1v1DbIdx);
     } else {
         blockVec_.ComputeVec1(info);

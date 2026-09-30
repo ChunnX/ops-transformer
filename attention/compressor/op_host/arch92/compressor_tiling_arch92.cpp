@@ -357,27 +357,13 @@ ge::graphStatus CompressorTiling::SetInnerSplitInfo()
     if (context_->templateId == TemplateId::FULL_LOAD) {
         return SetFullLoadSplitInfo();
     }
-    ge::graphStatus ret = SetNormalSplitInfo();
-    if (ret != ge::GRAPH_SUCCESS) {
-        return ret;
-    }
-    // 核数(usedCoreNum/aicNum_)可能不是 dBasicBlockNum 的整数倍（如 54 核、headdim=512
-    // 时 dBasicBlockNum=8 → 54%8=6）。若放任 54 个核全部下发，会多出第 7 个"残组"
-    // （curGroupIdx=6 >= coreGroupNum=6），该组 cube 无 K 片可算(dealKSize==0)但
-    // vector 仍会运行，用非法组几何推导 workspace 偏移 → aicore "UB access overflow"(341)。
-    // 将 usedCoreNum 向下取整到 dBasicBlockNum 的整数倍，让残组核(48~53)不再下发。
-    uint32_t dBasicBlockNum = baseParams_->headDim / innerSplitParams_->dBaseSize;
-    if (dBasicBlockNum != 0) {
-        uint32_t alignedCoreNum = (baseParams_->usedCoreNum / dBasicBlockNum) * dBasicBlockNum;
-        if (alignedCoreNum == 0) {
-            alignedCoreNum = dBasicBlockNum;
-        }
-        if (alignedCoreNum > aivNum_) {
-            alignedCoreNum = (aivNum_ / dBasicBlockNum) * dBasicBlockNum;
-        }
-        baseParams_->usedCoreNum = alignedCoreNum;
-    }
-    return ge::GRAPH_SUCCESS;
+    // 不做核数对齐（不再把 usedCoreNum 向下取整到 dBasicBlockNum 的整数倍）：
+    // usedCoreNum 非 dBasicBlockNum 整数倍时尾部会产生"残组核"，改由 kernel 侧空转处理——
+    // CalcC1V1Params 对残组核（curGroupIdx >= mGroupNum*kBaseNum / coreGroupNum）置
+    // dealSeqCnt=0，使 cube 入口早退（不访问带 curGroupIdx 偏移的 mm1KvResGm，无越界）；
+    // 其 AIV 仍按"全 AIV 均分全程 TC"参与（vec 读槽位 0 基址 + 全局行，无核组几何依赖）。
+    // 砍核会造成 AIC/AIV 利用率损失（如 54 核 headDim=512 时 54→48）。
+    return SetNormalSplitInfo();
 }
 
 ge::graphStatus CompressorTiling::CalcWorkSpace()
