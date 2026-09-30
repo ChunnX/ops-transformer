@@ -42,8 +42,8 @@ struct Tiling4GatherPaKvCacheCompileInfo {
     uint32_t sysWorkspaceSize;
 };
 
-ge::graphStatus Tiling4GatherPaKvCache(gert::TilingContext *context);
-ge::graphStatus TilingPrepare4GatherPaKvCache(gert::TilingParseContext *context);
+ge::graphStatus Tiling4GatherPaKvCache(gert::TilingContext* context);
+ge::graphStatus TilingPrepare4GatherPaKvCache(gert::TilingParseContext* context);
 
 BEGIN_TILING_DATA_DEF(GatherPaKvCacheTilingDataV35)
 TILING_DATA_FIELD_DEF(uint32_t, seqLenAccumSize);
@@ -127,7 +127,7 @@ struct GatherPaKvCacheCompileInfo {
 
 class GatherPaKvCacheTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit GatherPaKvCacheTiling(gert::TilingContext *context)
+    explicit GatherPaKvCacheTiling(gert::TilingContext* context)
         : TilingBaseClass(context)
     {}
     ~GatherPaKvCacheTiling() override {}
@@ -168,6 +168,7 @@ protected:
     bool isCacheModeNorm_;
     bool isSeqLenCumSum_;
     bool hasSeqOffset_;
+    bool isAscend96_ = false;
 
 private:
     ge::graphStatus GetAttrs();
@@ -188,8 +189,8 @@ private:
     gert::Stride keyOutStride_;
     gert::Stride valueOutStride_;
 
-    ge::graphStatus GetContiguousTensorInfo(gert::Shape &shape, gert::Stride &stride, size_t idx);
-    ge::graphStatus GetTensorInfo(gert::Shape &shape, gert::Stride &stride, size_t idx);
+    ge::graphStatus GetContiguousTensorInfo(gert::Shape& shape, gert::Stride& stride, size_t idx);
+    ge::graphStatus GetTensorInfo(gert::Shape& shape, gert::Stride& stride, size_t idx);
 
     bool isKCacheContiguous_ = true;
     bool isVCacheContiguous_ = true;

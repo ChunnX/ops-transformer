@@ -105,8 +105,8 @@ aclnnStatus aclnnGatherPaKvCache(
       <td class="tg-0pky">keyCache（aclTensor*）</td>
       <td class="tg-0pky">输入</td>
       <td class="tg-0pky">表示在当前层存储的key向量缓存。</td>
-      <td class="tg-0pky">当cacheMode为"Norm"时，shape为[num_blocks, block_size, num_heads, head_size_k]，数据格式必须是ND。<br>当cacheMode为"PA_NZ"时，shape为[num_blocks, num_heads * head_size_k // elenum_aligned, block_size, elenum_aligned](b8场景：elenum_aligned=32，b16场景为16，b32场景为8。b8表示每个数据元素位宽是8bit，如INT8；b16表示每个数据元素位宽是16bit，如INT16；b32表示每个数据元素位宽是32bit，如INT32)，数据格式必须是FRACTAL_NZ。</td>
-      <td class="tg-0pky">INT8、FLOAT16、BFLOAT16、FLOAT、UINT8、INT16、UINT16、INT32、UINT32、HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN</td>
+      <td class="tg-0pky">当cacheMode为"Norm"时，shape为[num_blocks, block_size, num_heads, head_size_k]，数据格式必须时ND。<br>当cacheMode为"PA_NZ"时，shape为[num_blocks, num_heads * head_size_k // elenum_aligned, block_size, elenum_aligned](b4场景 ：elenum_aligned=64，b8场景 ：elenum_aligned=32，b16场景为16，b32场景为8。b4表示每个数据元素位宽是4bit，如HIFLOAT4；b8表示每个数据元素位宽是8bit，如INT8；b16表示每个数据元素位宽是16bit，如INT16；b32表示每个数据元素位宽是32bit，如INT32)，数据格式必须时FRACTAL_NZ。</td>
+      <td class="tg-0pky">INT8、FLOAT16、BFLOAT16、FLOAT、UINT8、INT16、UINT16、INT32、UINT32、HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT4、FLOAT4_E1M2、FLOAT4_E2M1</td>
       <td class="tg-0pky">ND、FRACTAL_NZ</td>
       <td class="tg-0pky">4</td>
       <td class="tg-0pky">√</td>
@@ -115,7 +115,7 @@ aclnnStatus aclnnGatherPaKvCache(
       <td class="tg-0pky">valueCache（aclTensor*）</td>
       <td class="tg-0pky">输入</td>
       <td class="tg-0pky">表示在当前层存储的value向量缓存。</td>
-      <td class="tg-0pky">当cacheMode为"Norm"时，shape为[num_blocks, block_size, num_heads, head_size_v]，数据格式必须是ND。<br>当cacheMode为"PA_NZ"时，shape为[num_blocks, num_heads * head_size_v // elenum_aligned, block_size, elenum_aligned](b8场景：elenum_aligned=32，b16场景为16，b32场景为8。b8表示每个数据元素位宽是8bit，如INT8；b16表示每个数据元素位宽是16bit，如INT16；b32表示每个数据元素位宽是32bit，如INT32)，数据格式必须是FRACTAL_NZ。</td>
+      <td class="tg-0pky">当cacheMode为"Norm"时，shape为[num_blocks, block_size, num_heads, head_size_v]，数据格式必须时ND。<br>当cacheMode为"PA_NZ"时，shape为[num_blocks, num_heads * head_size_v // elenum_aligned, block_size, elenum_aligned](b4场景 ：elenum_aligned=64，b8场景 ：elenum_aligned=32，b16场景为16，b32场景为8。b4表示每个数据元素位宽是4bit，如HIFLOAT4；b8表示每个数据元素位宽是8bit，如INT8；b16表示每个数据元素位宽是16bit，如INT16；b32表示每个数据元素位宽是32bit，如INT32)，数据格式必须时FRACTAL_NZ。</td>
       <td class="tg-0pky">INT8、FLOAT16、BFLOAT16、FLOAT、UINT8、INT16、UINT16、INT32、UINT32、HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN</td>
       <td class="tg-0pky">ND、FRACTAL_NZ</td>
       <td class="tg-0pky">4</td>
@@ -306,6 +306,7 @@ aclnnStatus aclnnGatherPaKvCache(
 
 - 确定性计算：
   - aclnnGatherPaKvCache默认确定性实现。
+  - 当keyCache/valueCache/keyRef/valueRef数据类型为HIFLOAT4/FLOAT4_E1M2/FLOAT4_E2M1时，head_size_k和head_size_v必须是偶数。
 
 ## 调用示例
 
