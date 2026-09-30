@@ -37,10 +37,10 @@ bool FiaExecutorCacheEnabled()
 } // namespace
 
 std::string FiaPrepareExecutorCache(const aclTensorList *key, const aclTensorList *value,
-                                  std::initializer_list<const aclTensor *> tensors)
+                                    std::initializer_list<const aclTensor *> tensors)
 {
-    if (!FiaExecutorCacheEnabled() || key == nullptr || value == nullptr ||
-        key->Size() == 0 || key->Size() != value->Size()) {
+    if (!FiaExecutorCacheEnabled() || key == nullptr || value == nullptr || key->Size() == 0 ||
+        key->Size() != value->Size()) {
         return {};
     }
     std::vector<const aclTensor *> inputs(tensors);
@@ -66,8 +66,8 @@ std::string FiaPrepareExecutorCache(const aclTensorList *key, const aclTensorLis
         }
         const auto placement = tensor->GetPlacement();
         const bool isHost = placement == gert::kOnHost || placement == gert::kFollowing;
-        if (!tensor->IsEmpty() && ((placement != gert::kOnDeviceHbm && !isHost) ||
-                                  tensor->GetStorageAddr() == nullptr)) {
+        if (!tensor->IsEmpty() &&
+            ((placement != gert::kOnDeviceHbm && !isHost) || tensor->GetStorageAddr() == nullptr)) {
             return {};
         }
         append(placement);
@@ -75,8 +75,8 @@ std::string FiaPrepareExecutorCache(const aclTensorList *key, const aclTensorLis
             // Host constants can be embedded in the cached plan. opdev's Tensor
             // key omits their values. Include the bounded storage span so
             // strided views and offsets remain valid without copying the view.
-            const auto bytes = op::CalcShapeBytes(tensor->GetStorageShape().GetShapeSize(),
-                                                 tensor->GetDataType(), true);
+            const auto bytes =
+                op::CalcShapeBytes(tensor->GetStorageShape().GetShapeSize(), tensor->GetDataType(), true);
             if (bytes < 0 || bytes > 4096 || (bytes != 0 && tensor->GetStorageAddr() == nullptr)) {
                 return {};
             }
@@ -135,8 +135,8 @@ void TensorPreProcess(const aclTensorList *&tensorListKey, const aclTensorList *
         OP_LOGD("tensorListValue is nullptr,TensorPreProcess exit.");
         return;
     }
-    if (tensorListKey->Size() == 0 || tensorListValue->Size() == 0 ||
-        (*tensorListKey)[0] == nullptr || (*tensorListValue)[0] == nullptr) {
+    if (tensorListKey->Size() == 0 || tensorListValue->Size() == 0 || (*tensorListKey)[0] == nullptr ||
+        (*tensorListValue)[0] == nullptr) {
         return;
     }
     if ((*tensorListKey)[0]->GetDataType() != DataType::DT_INT32) {

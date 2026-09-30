@@ -17,7 +17,7 @@
 #include <string>
 
 std::string FiaPrepareExecutorCache(const aclTensorList *key, const aclTensorList *value,
-                                  std::initializer_list<const aclTensor *> tensors);
+                                    std::initializer_list<const aclTensor *> tensors);
 
 #ifdef __cplusplus
 extern "C" {

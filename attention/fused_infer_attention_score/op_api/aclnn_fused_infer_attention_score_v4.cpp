@@ -158,16 +158,35 @@ aclnnStatus aclnnFusedInferAttentionScoreV4GetWorkspaceSize(
     PrefixTensorPreProcess(tensorKeySharedPrefixOptional, tensorValueSharedPrefixOptional);
 
     const std::string executorCacheKey =
-        query != nullptr && attentionOut != nullptr && workspaceSize != nullptr && executor != nullptr
-        ? FiaPrepareExecutorCache(key, value,
-            {query, pseShiftOptional, attenMaskOptional, deqScale1Optional, quantScale1Optional,
-             deqScale2Optional, quantScale2Optional, quantOffset2Optional, antiquantScaleOptional,
-             antiquantOffsetOptional, blockTableOptional, queryPaddingSizeOptional, kvPaddingSizeOptional,
-             keyAntiquantScaleOptional, keyAntiquantOffsetOptional, valueAntiquantScaleOptional,
-             valueAntiquantOffsetOptional, keySharedPrefixOptional, valueSharedPrefixOptional,
-             queryRopeOptional, keyRopeOptional, keyRopeAntiquantScaleOptional, dequantScaleQueryOptional,
-             learnableSinkOptional, attentionOut, softmaxLse})
-        : std::string{};
+        query != nullptr && attentionOut != nullptr && workspaceSize != nullptr && executor != nullptr ?
+            FiaPrepareExecutorCache(key, value,
+                                    {query,
+                                     pseShiftOptional,
+                                     attenMaskOptional,
+                                     deqScale1Optional,
+                                     quantScale1Optional,
+                                     deqScale2Optional,
+                                     quantScale2Optional,
+                                     quantOffset2Optional,
+                                     antiquantScaleOptional,
+                                     antiquantOffsetOptional,
+                                     blockTableOptional,
+                                     queryPaddingSizeOptional,
+                                     kvPaddingSizeOptional,
+                                     keyAntiquantScaleOptional,
+                                     keyAntiquantOffsetOptional,
+                                     valueAntiquantScaleOptional,
+                                     valueAntiquantOffsetOptional,
+                                     keySharedPrefixOptional,
+                                     valueSharedPrefixOptional,
+                                     queryRopeOptional,
+                                     keyRopeOptional,
+                                     keyRopeAntiquantScaleOptional,
+                                     dequantScaleQueryOptional,
+                                     learnableSinkOptional,
+                                     attentionOut,
+                                     softmaxLse}) :
+            std::string{};
 
     L2_DFX_PHASE_1(
         aclnnFusedInferAttentionScoreV4,
