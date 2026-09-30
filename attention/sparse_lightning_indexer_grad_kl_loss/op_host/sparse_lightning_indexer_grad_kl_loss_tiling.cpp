@@ -24,11 +24,7 @@
 #include "../op_kernel/arch92/sparse_lightning_indexer_grad_kl_loss_tiling_regbase.h"
 #include "sparse_lightning_indexer_grad_kl_loss_tiling_common.h"
 
-#if defined(NPU_ARCH) && ((NPU_ARCH == 9201) || (NPU_ARCH == 9202))
 #include "tiling_base/tiling_templates_registry.h"
-#else
-#include "op_host/tiling_templates_registry.h"
-#endif
 
 using std::map;
 using std::string;
