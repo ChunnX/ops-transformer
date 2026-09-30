@@ -415,7 +415,8 @@ template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline float KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ReduceSumPrecise(LocalTensor<float> src, uint32_t tD)
 {
         LocalTensor<float> scBuf = bufScalar_.Get<float>();
-        // Initcheck diagnostic: isolate the effect of synchronization without pre-initialization.
+        // Initcheck diagnostic: initialize the reduction destination via MTE2 before Vector overwrites it.
+        DataCopy(scBuf, gamma0Gm_, 8U);
         PipeBarrier<PIPE_ALL>();
         constexpr uint32_t REDUCE_ALIGN = 16; // ReduceSum要求16个元素对齐
         uint32_t tDAligned = (tD + REDUCE_ALIGN - 1) / REDUCE_ALIGN * REDUCE_ALIGN;
