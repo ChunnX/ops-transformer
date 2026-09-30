@@ -153,7 +153,7 @@ private:
     TBuf<TPosition::VECCALC> bufResFp32_;
     TBuf<TPosition::VECCALC> bufPostComb_;
     TQue<TPosition::VECIN, 2> bufPhiFp32_;
-    TQue<TPosition::VECOUT, BUFFER_NUM_ONE> bufHInPrimeBf16_;
+    TBuf<TPosition::VECCALC> bufHInPrimeBf16_;
     TBuf<TPosition::VECCALC> bufScalar_;
 
     GlobalTensor<T> hOutGm_, residualGm_, hInPrimeGm_, x2OutGm_;
@@ -320,6 +320,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         }
         if constexpr (RETURN_H_IN_F32) {
             DataCopy(bufResFp32_.Get<float>()[N * dTile_], gamma0Gm_, dTile_);
+            DataCopy(bufHInPrimeBf16_.Get<T>(), hOutGm_[(uint64_t)tStart_ * D_], dTile_);
         }
 
         SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
@@ -528,17 +529,12 @@ template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::CopyOutLowPrecisionTile(GlobalTensor<T> &dst, uint64_t gmOffset, LocalTensor<float> src,
                                                     uint32_t count)
 {
-        LocalTensor<T> tmp = bufHInPrimeBf16_.AllocTensor<T>();
-        DataCopy(tmp, hOutGm_[gmOffset], count);
-        SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
-        WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
+        LocalTensor<T> tmp = bufHInPrimeBf16_.Get<T>();
         CastToIO(tmp, src, count);
         SetFlag<HardEvent::V_MTE3>(evtVtoMte3_);
         WaitFlag<HardEvent::V_MTE3>(evtVtoMte3_);
-        bufHInPrimeBf16_.EnQue(tmp);
-        tmp = bufHInPrimeBf16_.DeQue<T>();
         DataCopy(dst[gmOffset], tmp, count);
-        bufHInPrimeBf16_.FreeTensor(tmp);
+        FenceMte3ToV();
     }
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
