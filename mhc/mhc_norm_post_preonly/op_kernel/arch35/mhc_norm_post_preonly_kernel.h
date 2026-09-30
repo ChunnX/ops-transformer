@@ -533,6 +533,8 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
         WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
         CastToIO(tmp, src, count);
+        SetFlag<HardEvent::V_MTE3>(evtVtoMte3_);
+        WaitFlag<HardEvent::V_MTE3>(evtVtoMte3_);
         bufHInPrimeBf16_.EnQue(tmp);
         tmp = bufHInPrimeBf16_.DeQue<T>();
         DataCopy(dst[gmOffset], tmp, count);
