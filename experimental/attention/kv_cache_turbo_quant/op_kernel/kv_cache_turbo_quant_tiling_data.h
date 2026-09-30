@@ -22,17 +22,11 @@ namespace optiling {
 
 // The codebook of this operator is the d=128 Lloyd-Max table, so headDim is fixed by design.
 constexpr uint32_t KCTQ_HEAD_DIM = 128;
-constexpr uint32_t KCTQ_QJL_DIM = 128;
 // Task scope: standard MHA/GQA KV heads live in [4, 32]; out-of-scope inputs are rejected by tiling.
 constexpr uint32_t KCTQ_MIN_HEADS = 4;
 constexpr uint32_t KCTQ_MAX_HEADS = 32;
 // One cube core serves this many vector cores (the kernel is declared MIX_AIC_1_2).
 constexpr uint32_t KCTQ_AIV_PER_AIC = 2;
-
-// Tiling key == mse_bits: one template instantiation per supported primary width.
-constexpr uint64_t KCTQ_TILING_KEY_MSE2 = 2;
-constexpr uint64_t KCTQ_TILING_KEY_MSE3 = 3;
-constexpr uint64_t KCTQ_TILING_KEY_MSE4 = 4;
 
 // Workspace layout (byte offsets from the user workspace base), all 512B aligned.
 // The workspace reserves aivRowStride rows per AIV (baseM aligned), not rowsPerCore / AIV per AIC:

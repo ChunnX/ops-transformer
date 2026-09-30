@@ -114,11 +114,9 @@ struct CodeBook<4> {
 template <uint8_t BITS>
 struct PackCfg {
     static constexpr uint32_t kChunkLanes = (BITS == 1) ? 16U : 8U;
-    static constexpr uint32_t kChunkBytes = BITS * kChunkLanes / 8U;
     // 2bit and 4bit chunks are wider than one 16bit half, so they are folded as two halves which
     // are recombined in the integer domain. 2bit halves are a byte each, 4bit halves a halfword.
     static constexpr bool kSplitChunk = (BITS == 2) || (BITS == 4);
-    static constexpr uint32_t kMergeShift = (BITS == 4) ? 16U : 8U;
 };
 
 template <uint8_t BITS>

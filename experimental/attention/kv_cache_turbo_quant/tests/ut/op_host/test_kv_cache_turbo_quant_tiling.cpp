@@ -199,6 +199,20 @@ TEST_F(KvCacheTurboQuantTilingTest, InvalidEmptyTokens)
     EXPECT_FALSE(ExecuteTiling(para, tilingInfo));
 }
 
+// 行数上界：token×head 必须落在「16 对齐 + usedCoreNum 分块都不回绕」的范围内。
+// 536870792 × 8 = 4,294,966,336：仍然 <= UINT32_MAX（旧的 `> UINT32_MAX` 拦不住），
+// 但 rowsPerCore × usedCoreNum 会越过 uint32 → alignedRows 回绕成 0 → 工作区退化、
+// 内核按 0 行工作区写 3300 万行。收紧后的上界必须在 tiling 阶段就拒掉它。
+// 注意：上界 = UINT32_MAX − 16×aicNum，本用例的输入按 UT 平台桩的 coreNum=64
+// （tests/ut/framework_normal/common/tiling_context_faker.h 的默认值）落在界外；
+// 若平台桩核数变成 <= 41，该输入会落到界内、此用例将失去区分度。
+TEST_F(KvCacheTurboQuantTilingTest, InvalidTotalRowsTooLarge)
+{
+    TilingInfo tilingInfo;
+    auto para = MakePara({536870792, 8, kHeadDim}, kMatrixDims, kMatrixDims, 3);
+    EXPECT_FALSE(ExecuteTiling(para, tilingInfo));
+}
+
 TEST_F(KvCacheTurboQuantTilingTest, InvalidKvDtypeFp32)
 {
     TilingInfo tilingInfo;

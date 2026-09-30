@@ -128,11 +128,20 @@ static ge::graphStatus KvCacheTurboQuantTilingFunc(gert::TilingContext *context)
                 OP_LOGE(context, "mse_bits must be 2, 3 or 4, got %ld", mseBits), return ge::GRAPH_FAILED);
 
     const uint64_t totalRows = static_cast<uint64_t>(numTokens) * static_cast<uint64_t>(numHeads);
-    OP_CHECK_IF(totalRows > std::numeric_limits<uint32_t>::max(),
-                OP_LOGE(context, "token*head count overflows"), return ge::GRAPH_FAILED);
 
     const int64_t aicNum = platform.GetCoreNumAic();
     OP_CHECK_IF(aicNum <= 0, OP_LOGE(context, "aic core number is zero"), return ge::GRAPH_FAILED);
+    // Every row count derived below is a 16 aligned uint32: `usedCoreNum` (<= aicNum) blocks of
+    // `rowsPerCore` rows have to fit, and neither the alignment itself nor
+    // `rowsPerCore * usedCoreNum` may wrap. The four buffers are indexed with those counts, so a
+    // wrap would leave the workspace (alignedRows / wsRows) inconsistent with the rows the kernel
+    // walks and the device would write outside the buffer. Reject the request here instead.
+    const uint64_t maxRows = static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()) -
+                             static_cast<uint64_t>(ALIGN_ROWS) * static_cast<uint64_t>(aicNum);
+    OP_CHECK_IF(totalRows > maxRows,
+                OP_LOGE(context, "token*head count %lu exceeds the supported maximum %lu", totalRows, maxRows),
+                return ge::GRAPH_FAILED);
+
     const uint32_t rowUnits = CeilAlignU32(static_cast<uint32_t>(totalRows), ALIGN_ROWS) / ALIGN_ROWS;
     uint32_t usedCoreNum = std::min<uint32_t>(static_cast<uint32_t>(aicNum), rowUnits);
     usedCoreNum = std::max<uint32_t>(usedCoreNum, 1U);

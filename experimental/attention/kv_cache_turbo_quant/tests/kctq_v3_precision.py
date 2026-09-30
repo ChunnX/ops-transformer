@@ -1,4 +1,12 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+
 """kctq_v3_precision.py — KCTQ 端到端 decode 精度（V3，按任务书 §3.2 字面口径统计）。
 
 口径（任务书 §3.2 原文 + 官方 2026-09-28 discussions/14 补充说明）：
@@ -10,8 +18,10 @@
 指标（阈值均取自任务书 §3.2 字面式，另含官方为 2-bit 单列的逐向量阈值）：
     ① relMSE          = Σ‖x−x̂‖² / Σ‖x‖²                      阈值 < 0.05
     ② 内积 p95        = p95( |<q,x̂>−<q,x>| / max(|<q,x>|,1e-6) )  阈值 < 0.1（**字面分母**）
-    ③ 逐向量 NMSE max = max_i ‖x_i−x̂_i‖²/‖x_i‖²               阈值：3/4-bit < 0.05；2-bit < 0.10
-    ④ 逐向量 NMSE P95                                         阈值：2-bit < 0.06
+    ③ 逐向量 NMSE mean = mean_i ‖x_i−x̂_i‖²/max(‖x_i‖²,1e-12)   官方 Q3/Q8 要求输出（不判定）
+    ④ 逐向量 NMSE max = max_i ‖x_i−x̂_i‖²/max(‖x_i‖²,1e-12)    阈值：3/4-bit < 0.05；2-bit < 0.10
+    ⑤ 逐向量 NMSE P95                                         阈值：2-bit < 0.06
+    ⑥ 逐向量通过率    = #ri<thr / 向量数（thr 同 ④）            官方 Q3/Q8 要求输出（不判定）
     对照行：仅主量化（不含 QJL 残差）的 relMSE —— 用于展示 QJL 的作用，不参与判定。
 
 q 的来源：`--ip-query`（官方件）优先；缺省按官方说明自采 q = BF16(BF16(x) + 0.5·N(0,1))。
@@ -153,13 +163,17 @@ def main() -> int:
     x_hat = (norm[:, None] * primary + gamma[:, None] * r_hat) @ rot
     x_hat_mse_only = (norm[:, None] * primary) @ rot                # 对照：仅主量化
 
-    # ---- 指标① 相对 MSE（aggregate）与指标③/④ 逐向量 NMSE 分布 ----
+    # ---- 指标① 相对 MSE（aggregate）与指标③④⑤⑥ 逐向量 NMSE 分布 ----
     err2 = ((x - x_hat) ** 2).sum(axis=1)                           # ‖x_i − x̂_i‖²
     x2 = (x * x).sum(axis=1)                                        # ‖x_i‖²
     rel_mse = float(err2.sum() / x2.sum())                          # aggregate（任务书式）
-    vec_nmse = err2 / np.maximum(x2, 1e-30)
+    # 官方 Q8：逐向量 r_i = ‖x_i−x̂_i‖² / max(‖x_i‖², 1e-12)
+    vec_thr = 0.10 if args.bits == 2 else 0.05                      # 逐向量阈值（官方分级）
+    vec_nmse = err2 / np.maximum(x2, 1e-12)
+    vec_mean = float(vec_nmse.mean())                               # 官方 Q3/Q8：mean
     vec_max = float(vec_nmse.max())
     vec_p95 = float(np.percentile(vec_nmse, 95))
+    pass_rate = float((vec_nmse < vec_thr).sum()) / float(rows)     # 官方 Q3/Q8：通过率
     rel_mse_mse_only = float(((x - x_hat_mse_only) ** 2).sum() / x2.sum())
 
     # ---- 指标② 内积误差（任务书字面分母；q 用官方件或按官方说明自采）----
@@ -196,6 +210,7 @@ def main() -> int:
     print(f"{'relMSE (仅主量化，对照不判定)':<40}{rel_mse_mse_only:>12.6f}{'—':>10}  —")
     print(f"{'内积 p95 (任务书字面分母)':<40}{ip_p95:>12.6f}{'<0.1':>10}  "
           f"{'PASS' if ip_p95 < 0.1 else 'FAIL'}")
+    print(f"{'逐向量 NMSE mean':<40}{vec_mean:>12.6f}{'—':>10}  —")
     print(f"{'逐向量 NMSE max':<40}{vec_max:>12.6f}{('<0.10' if bits2 else '<0.05'):>10}  "
           f"{'PASS' if (vec_max < (0.10 if bits2 else 0.05)) else 'FAIL'}")
     if bits2:
@@ -203,6 +218,8 @@ def main() -> int:
               f"{'PASS' if vec_p95 < 0.06 else 'FAIL'}")
     else:
         print(f"{'逐向量 NMSE P95（参考）':<40}{vec_p95:>12.6f}{'—':>10}  —")
+    thr_lbl = '0.10' if bits2 else '0.05'
+    print(f"{'逐向量通过率（NMSE<' + thr_lbl + '）':<40}{pass_rate * 100:>11.2f}%{'—':>10}  —")
     print("判定：" + "、".join(f"{k} {'PASS' if v else 'FAIL'}" for k, v in checks.items()))
 
     if args.json:
@@ -211,7 +228,9 @@ def main() -> int:
             "qSource": q_src,
             "relMse": rel_mse, "relMseMseOnly": rel_mse_mse_only,
             "ipP95LiteralDenom": ip_p95, "ipDenominator": "max(|<q,x>|,1e-6)",
-            "vecNmseMax": vec_max, "vecNmseP95": vec_p95,
+            "vecNmseMean": vec_mean, "vecNmseMax": vec_max, "vecNmseP95": vec_p95,
+            "vecPassRate": pass_rate, "vecPassThreshold": vec_thr,
+            "vecDenominatorFloor": 1e-12,
             "checks": checks, "pass": passed,
         }, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
