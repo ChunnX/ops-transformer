@@ -13,7 +13,11 @@
  * \brief
  */
 #include "sparse_lightning_indexer_grad_kl_loss_tiling_general.h"
+#if defined(NPU_ARCH) && ((NPU_ARCH == 9201) || (NPU_ARCH == 9202))
+#include "tiling_base/tiling_templates_registry.h"
+#else
 #include "op_host/tiling_templates_registry.h"
+#endif
 #include <tiling/tiling_api.h>
 using namespace ge;
 using namespace AscendC;

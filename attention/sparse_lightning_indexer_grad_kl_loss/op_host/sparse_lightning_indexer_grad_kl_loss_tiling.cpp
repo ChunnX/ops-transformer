@@ -20,10 +20,15 @@
 #include <graph/utils/type_utils.h>
 #include "register/op_def_registry.h"
 #include "platform/platform_info.h"
-#include "tiling_base/tiling_templates_registry.h"
 #include "../op_kernel/arch92/sparse_lightning_indexer_grad_kl_loss_template_tiling_key_regbase.h"
 #include "../op_kernel/arch92/sparse_lightning_indexer_grad_kl_loss_tiling_regbase.h"
 #include "sparse_lightning_indexer_grad_kl_loss_tiling_common.h"
+
+#if defined(NPU_ARCH) && ((NPU_ARCH == 9201) || (NPU_ARCH == 9202))
+#include "tiling_base/tiling_templates_registry.h"
+#else
+#include "op_host/tiling_templates_registry.h"
+#endif
 
 using std::map;
 using std::string;
@@ -43,7 +48,7 @@ ge::graphStatus TilingSparseLightningIndexerGradKLLoss(gert::TilingContext *cont
     auto sligPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
     if (sligPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
         OP_LOGW(context, "Current npu arch is dav-3510.");
-    } else if (npuarch == NpuArch::DAV_9201 || npuarch == NpuArch::DAV_9202) {
+    } else if (NpuArch == NpuArch::DAV_9201 || NpuArch == NpuArch::DAV_9202) {
         OP_LOGW(context, "Current npu arch is dav-9201 or dav-9202.");
     } else {
         OP_LOGW(context, "Current npu arch is not dav3510 or dav9201 or dav9202.");
@@ -59,7 +64,7 @@ ge::graphStatus TilingPrepareForSparseLightningIndexerGradKLLoss(gert::TilingPar
         OP_LOGE(context, "compileInfoPtr is null"),
         return ge::GRAPH_FAILED);
 
-    fe::platformInfos *platformInfoPtr = context->GetPlatformInfo();
+    fe::PlatformInfos *platformInfoPtr = context->GetPlatformInfo();
     OP_CHECK_IF(platformInfoPtr == nullptr,
         OP_LOGE(context, "platformInfoPtr is null"),
         return ge::GRAPH_FAILED);
@@ -71,7 +76,7 @@ ge::graphStatus TilingPrepareForSparseLightningIndexerGradKLLoss(gert::TilingPar
     compileInfoPtr->socVersion = ascendcPlatform.GetSocVersion();
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, compileInfoPtr->ubSize);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L1, compileInfoPtr->l1Size);
-    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, compileInfoPtr->l0Size);
+    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, compileInfoPtr->l0cSize);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L2, compileInfoPtr->l2CacheSize);
 
     return ge::GRAPH_SUCCESS;
