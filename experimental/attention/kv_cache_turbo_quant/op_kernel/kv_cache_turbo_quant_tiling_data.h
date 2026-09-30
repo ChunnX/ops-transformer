@@ -51,8 +51,8 @@ struct KvCacheTurboQuantTilingData {
     uint32_t qjlBytesPerRow; // headDim / 8
     uint64_t wsU;            // normalized vectors (fp32)  [wsRows, headDim]
     uint64_t wsY;            // rotated vectors   (fp32)  [wsRows, headDim]
-    uint64_t wsR;            // residual unit vectors (fp32) [wsRows, headDim]
-    uint64_t wsP;            // residual projections  (fp32) [wsRows, headDim]
+    uint64_t wsR;            // residual unit vectors (fp32) [wsRows, headDim] (aliases wsU)
+    uint64_t wsP;            // residual projections  (fp32) [wsRows, headDim] (aliases wsY)
     uint64_t wsNorm;         // per row L2 norm   (fp32)  [wsRows]
     uint64_t wsBytes;        // total user workspace bytes
 };

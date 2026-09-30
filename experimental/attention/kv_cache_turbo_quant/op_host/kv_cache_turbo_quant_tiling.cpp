@@ -148,16 +148,24 @@ static ge::graphStatus KvCacheTurboQuantTilingFunc(gert::TilingContext *context)
     td->set_idxBytesPerRow(KCTQ_HEAD_DIM * static_cast<uint32_t>(mseBits) / 8U);
     td->set_qjlBytesPerRow(KCTQ_HEAD_DIM / 8U);
 
+    // Only two of the four row matrices have to exist at any moment: the four buffers are used in
+    // strictly disjoint phases of the pipeline and every phase boundary is a full GEMM drain.
+    //   wsU : written by NormalizeRows, read as the GEMM1 A operand -> dead once GEMM1 drained,
+    //         which is when QuantizeRows starts writing the GEMM2 A operand wsR;
+    //   wsY : written as the GEMM1 C tile, read by QuantizeRows -> dead once QuantizeRows drained,
+    //         which is when GEMM2 starts writing its C tile wsP (GEMM2 can only write C after the
+    //         AIV copied the A tile, i.e. after QuantizeRows returned).
+    // So wsR aliases wsU and wsP aliases wsY. That halves the user workspace, which also keeps the
+    // per call aclrtMalloc request under the ~35MB pooled fast path threshold of the runtime (the
+    // aclnn harness allocates the reported workspace every call and pays for the slow path above it).
     const uint64_t rowBytes = static_cast<uint64_t>(wsRows) * KCTQ_HEAD_DIM * sizeof(float);
     uint64_t offset = 0;
     td->set_wsU(offset);
     offset += rowBytes;
     td->set_wsY(offset);
     offset += rowBytes;
-    td->set_wsR(offset);
-    offset += rowBytes;
-    td->set_wsP(offset);
-    offset += rowBytes;
+    td->set_wsR(td->get_wsU());
+    td->set_wsP(td->get_wsY());
     const uint64_t wsNorm = CeilAlignU64(offset, WS_ALIGN);
     td->set_wsNorm(wsNorm);
     offset = wsNorm + static_cast<uint64_t>(wsRows) * sizeof(float);
