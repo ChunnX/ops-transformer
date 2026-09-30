@@ -174,7 +174,7 @@ public:
         uint32_t core, uint64_t totalTasks, GM_ADDR q,
         GM_ADDR qs, GM_ADDR ks, GM_ADDR vMean, GM_ADDR out, GM_ADDR lse, const sage::core::SageParams &p)
     {
-        const uint32_t subBlock = AscendC::GetSubBlockIdx();
+        const uint32_t subBlock = ASCEND_IS_AIV ? (static_cast<uint32_t>(AscendC::GetBlockIdx()) & 1U) : 0U;
         AscendC::GlobalTensor<T> qg, og;
         qg.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(q));
         qg.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);

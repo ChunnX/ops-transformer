@@ -309,7 +309,7 @@ public:
         p_ = params;
         p_.dp = DP;
         addrs_ = StandardKernelAddresses{q8, k8, v8, mxScale};
-        subBlock_ = AscendC::GetSubBlockIdx();
+        subBlock_ = ASCEND_IS_AIV ? (static_cast<uint32_t>(AscendC::GetBlockIdx()) & 1U) : 0U;
 
         qsg_.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(qs));
         ksg_.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(ks));

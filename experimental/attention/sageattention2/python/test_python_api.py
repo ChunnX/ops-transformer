@@ -23,7 +23,11 @@ from sageattention2 import replace_sdpa, run, sageattn, sageattn_qk_int8_pv_fp8_
 # C code, which no in-process signal can interrupt) fails that subtest in
 # bounded time instead of hanging the whole gate pipeline.
 _TC09_SEQ_LENS_NPU = (4096, 8192, 16384)
-_TC09_PROBE_TIMEOUT_S = 300
+# Watchdog budget per tier: spawned child re-imports torch + CANN (~30s on the
+# 950 box) and a correct wide-path call returns in well under a second; a hung
+# kernel shows NPU at 100% within seconds. 90s bounds a fully stuck tier at
+# 90s x 3 instead of stalling the whole gate pipeline.
+_TC09_PROBE_TIMEOUT_S = 90
 
 
 def _tc09_npu_probe(seq_len: int) -> None:

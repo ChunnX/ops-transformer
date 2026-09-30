@@ -68,14 +68,14 @@ struct EventHandshake final {
         // exactly its own half, or one Vector core starves on a flag that is
         // never re-set. Symmetrically, NotifyCube lets Cube's WaitFromBothAiv
         // observe both AIV readiness reports.
-        const uint32_t subBlock = AscendC::GetSubBlockIdx();
+        const uint32_t subBlock = ASCEND_IS_AIV ? (static_cast<uint32_t>(AscendC::GetBlockIdx()) & 1U) : 0U;
         const uint32_t ticket = static_cast<uint32_t>(sig) + subBlock * kAivFlagOffset;
         AscendC::CrossCoreWaitFlag<4, PIPE>(ticket);
     }
 
     template <auto PIPE>
     __aicore__ static inline void NotifyCube(TokenSignal sig) noexcept {
-        const uint32_t subBlock = AscendC::GetSubBlockIdx();
+        const uint32_t subBlock = ASCEND_IS_AIV ? (static_cast<uint32_t>(AscendC::GetBlockIdx()) & 1U) : 0U;
         const uint32_t ticket = static_cast<uint32_t>(sig) + subBlock * kAivFlagOffset;
         AscendC::CrossCoreSetFlag<4, PIPE>(ticket);
     }
