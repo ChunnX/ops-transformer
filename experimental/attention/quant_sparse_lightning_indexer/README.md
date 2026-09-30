@@ -90,9 +90,3 @@
 |----------|----------|------|
 | PyTorch API | [quant_sparse_lightning_indexer.py](torch_extension/quant_sparse_lightning_indexer.py) | 通过`torch.ops.cann_ops_transformer.quant_sparse_lightning_indexer`调用本算子（入参为`candidate_topk_index`，即第一级算子输出的块级候选索引）。图模式暂不支持。 `metadata` 需先用 metadata 算子生成后传入（本扩展不跨算子自动构建）。 |
 | aclnn API | [test_aclnn_quant_sparse_lightning_indexer](examples/test_aclnn_quant_sparse_lightning_indexer.cpp) | 通过[aclnnQuantSparseLightningIndexer](docs/aclnnQuantSparseLightningIndexer.md)两段式接口调用本算子。 |
-
-## 相关文档
-
-- 第一级算子：[QuantLightningIndexerV2](../quant_lightning_indexer_v2/README.md)
-- 分核信息算子：[QuantLightningIndexerV2Metadata](../quant_lightning_indexer_v2_metadata/README.md)
-- 两级TopK设计文档：[qli_v2_two_level_topk_design.md](../quant_lightning_indexer_v2/docs/qli_v2_two_level_topk_design.md)（该文档描述拆分前的单算子设计，其中`candidate_mode`相关章节为历史记录：该属性已删除、开关语义并入`candidate_topk_blocks`，consumer 实现已迁至本算子）
