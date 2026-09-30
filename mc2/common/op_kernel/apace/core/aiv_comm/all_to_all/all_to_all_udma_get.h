@@ -35,6 +35,7 @@ private:
     template <uint8_t BarrierMode>
     __aicore__ inline void DoCommit(uint32_t targetRankId, uint64_t tileByteSize, uint64_t bufferOffset)
     {
+        (void)bufferOffset;
         if constexpr (BarrierMode & BARRIER_CORE) {
             this->barrier_.CrossCore();
         }
@@ -45,10 +46,8 @@ private:
             return;
         }
 
-        // GM_ADDR srcAddr = reinterpret_cast<GM_ADDR>(this->udmaCtx_->commBufferAddrs[targetRankId] + this->winOffset_) +
-        //                   this->slotByteOffset_ + this->udmaCtx_->rankId * this->tileMaxByteSize_;
         GM_ADDR srcAddr = reinterpret_cast<GM_ADDR>(this->udmaCtx_->commBufferAddrs[targetRankId] + this->winOffset_) +
-                          bufferOffset + this->udmaCtx_->rankId * this->tileMaxByteSize_; // 对端卡win区首地址 + slot offset + 当前slot指定卡的offset
+                          this->slotByteOffset_ + this->udmaCtx_->rankId * this->tileMaxByteSize_;
 
         GM_ADDR dstAddr = this->localAddr_ + targetRankId * this->chunkBytes_ + this->tileByteOffset_;
 

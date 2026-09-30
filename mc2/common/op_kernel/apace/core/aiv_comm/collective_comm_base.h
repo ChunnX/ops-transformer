@@ -83,6 +83,7 @@ public:
         currentTileIdx_ = 0;
         tileByteOffset_ = 0;
         remainingChunkSize_ = chunkSize;
+        slotByteOffset_ = 0;
         chunkByteOffset_ = 0;
         static_cast<Impl *>(this)->template PostInit<BarrierMode>();
     }
@@ -106,6 +107,7 @@ public:
 
         uint64_t nonSplitAxisBytes = tilingData_->nonSplitAxisSize * sizeof(Dtype);
         uint64_t currentTileByteSize = currentTileSize * nonSplitAxisBytes;
+        uint64_t slotBytes = udmaCtx_->rankSize * tileMaxByteSize_;
         if (targetRankCnt_ > 0) {
             const uint32_t targetRankStart = targetRankStart_;
             const uint32_t targetRankCnt = targetRankCnt_;
@@ -118,6 +120,7 @@ public:
         }
 
         currentTileIdx_++;
+        slotByteOffset_ += slotBytes;
         tileByteOffset_ += currentTileByteSize;
         chunkByteOffset_ += chunkBytes_;
         remainingChunkSize_ -= currentTileSize;
@@ -162,6 +165,7 @@ protected:
     uint64_t tileByteOffset_;
     uint64_t remainingChunkSize_;
     uint64_t tileMaxByteSize_;
+    uint64_t slotByteOffset_;
     uint64_t chunkByteOffset_;
 
     uint32_t targetRankStart_;
