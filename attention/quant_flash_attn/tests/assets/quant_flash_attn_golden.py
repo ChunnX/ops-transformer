@@ -718,34 +718,34 @@ def _build_attention_mask(b, Sq, Skv, actual_seq_q, actual_seq_kv, sparse_mode):
 
 
 def _compute_s_block(Qi, Kj, deq_scale_q_i, deq_scale_k_j, softmax_scale):
-    """计算单个 S block (attention score)"""
-    S_ij = torch.matmul(Qi * deq_scale_q_i, (Kj * deq_scale_k_j).permute(0, 1, 3, 2))
-    return S_ij * softmax_scale
+    # Apply the MX scales after each raw 32-element dot product.
+    score = None
+    for c0 in range(0, Qi.shape[-1], QUANT_GROUP_SIZE):
+        dot = torch.matmul(
+            Qi[..., c0 : c0 + QUANT_GROUP_SIZE],
+            Kj[..., c0 : c0 + QUANT_GROUP_SIZE].transpose(-1, -2),
+        )
+        scale = deq_scale_q_i[..., c0, None] * deq_scale_k_j[..., c0].unsqueeze(-2)
+        term = dot * scale
+        score = term if score is None else score + term
+    return score * softmax_scale
 
 
 def _online_softmax_update(S_ij, mask_j, mi, si, oi, ln_p_scale, tail_mask=None):
-    """Online softmax: 计算 m, P, s 更新 (MXFP8: stored max 不含 -ln(p_scale), P 含 p_scale 因子)
-
-    ceil(m / LN2) 除法对齐 + stored max 不含 -ln(pScale) + P = exp(S - m + ln_p_scale),
-    与 kernel UpdateMinCheckValueVF(CAST_CEIL) 语义一致 (pytest 256 + TTK 20 用例验证)。
-    尾列(tail_mask=True)不量化到e4m3, 直存bf16 — 模拟纯尾task VF bf16直出语义。
-    """
-    LN2 = 0.6931471824645996
+    """Keep the rounded, p_scale-adjusted maximum used by the kernel."""
+    ln2 = 0.6931471824645996
+    inv_ln2 = 1.4426950408889634
     S_ij = S_ij.masked_fill(mask_j, float("-inf"))
-
     m_block_j, _ = torch.max(S_ij, dim=-1, keepdims=True)
-    m_block_j = torch.ceil(m_block_j / LN2) * LN2
-    # NPU 语义: stored max 不含 -ln(pScale), P 计算用 adjusted max (含)
+    m_block_j = torch.ceil(m_block_j * inv_ln2) * ln2 - ln_p_scale
     m_block_j = torch.max(mi, m_block_j)
-
-    P_ij_raw = torch.exp(S_ij - m_block_j + ln_p_scale)
+    P_ij_raw = torch.exp(S_ij - m_block_j)
     s_block_j = torch.sum(P_ij_raw, dim=-1, keepdims=True)
     P_ij_drop = P_ij_raw.to(FP8_DTYPE).to(torch.float32)
     if tail_mask is not None:
         P_ij_drop = torch.where(
             tail_mask, P_ij_raw.to(torch.bfloat16).to(torch.float32), P_ij_drop
         )
-
     return m_block_j, s_block_j, P_ij_drop
 
 

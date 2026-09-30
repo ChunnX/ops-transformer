@@ -198,7 +198,7 @@ struct RunInfoX {
     uint32_t actSingleLoopS2SizeAlign;
     bool isS2SplitCore = false;
     uint32_t faTmpOutWsPos = 0;
-    uint32_t kvTailLen = 0; // 当前batch的V尾块长度(<64), 定义A: 主体 = actS2Size - kvTailLen
+    uint32_t kvTailLen = 0; // Number of BF16 V tail tokens in the current batch (<64).
     // 本task为v_tail尾task(纯尾或拆分尾半步): 强制按ND范式执行
     // (Mmad0/FixpipeMm1/VF bf16直出/L1直搬/尾片乘全部复用decode已验证路径),
     // 主体task保持DN; DN的FixpipeMm1Dn双核交错布局不适用于尾task的P直搬链

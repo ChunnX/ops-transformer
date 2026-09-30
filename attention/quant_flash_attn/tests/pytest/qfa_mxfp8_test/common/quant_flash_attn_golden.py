@@ -127,7 +127,7 @@ ENABLE_LSE = False
 
 # V尾块高精窗口: 尾段(非64对齐部分)以bf16直存独立cache, 不参与量化
 ENABLE_V_TAIL = False
-_VTAIL_BUNDLE = None  # generate_data产出: {v_tail_bnsd, v_tail_pa, block_table_tail, seqused_kv_tail}
+_VTAIL_BUNDLE = None  # generate_data产出: {v_tail_bnsd, v_tail_pa, block_table_tail, seqused_v_tail}
 
 # e8m0fnu 最小正数: 2^(-127)，用于替换 scale 中的 0 和非有限值
 # e8m0fnu 没有 0 值语义，0 的 biased exponent 会被 NPU 解释为 NaN
@@ -953,7 +953,7 @@ def generate_data():
             )
         else:
             v_tail_pa = v_tail_bnsd
-        seqused_kv_tail = torch.tensor(tail_lens, dtype=torch.int32)
+        seqused_v_tail = torch.tensor(tail_lens, dtype=torch.int32)
         _VTAIL_BUNDLE = {
             # 各batch尾长可能不同(0<tail<64), 用list按batch存放原值, CPU参考逐batch切片替换
             "v_tail_bnsd_fp16": [
@@ -961,7 +961,7 @@ def generate_data():
             ],
             "v_tail_pa": v_tail_pa,
             "block_table_tail": block_table_tail,
-            "seqused_kv_tail": seqused_kv_tail,
+            "seqused_v_tail": seqused_v_tail,
         }
         logger.info(
             "[V_TAIL] bundle ready: v_tail_pa=%s btt=%s tail=%s",
@@ -1045,12 +1045,12 @@ def _compute_s_block(
 
 
 def _online_softmax_update(S_ij, mask_j, mi, si, oi, ln_p_scale, LN2, tail_mask=None):
-    """Online softmax: 计算 m, P, s 更新 (MXFP8: stored max 不含 -ln(p_scale), P 含 p_scale 因子)
+    """Online softmax: golden 保留未折叠的 m，P 含 p_scale 因子。NPU 保存 m-ln(p_scale)。
     1. mask 位置填 -inf
     2. 求 block 内 max (m_block_j)
     3. m 对齐到 ln2 整数倍 (ceil)，模拟 NPU MXFP8 量化精度损失
     4. 与前一个 block 的 m 取 max (stored max 不含 -ln(p_scale))
-    5. 计算 P = exp(S - m + ln_p_scale)，模拟 NPU: exp 用 adjusted max (含 -ln(p_scale))，但 stored max 不含
+    5. 计算 P = exp(S - m + ln_p_scale)，等价于 NPU 使用折叠后的 max
     6. 求 s = sum(P)
     7. P 转 FP8 再转回 FP32，模拟 NPU 侧 P 的量化损失
        尾列(tail_mask=True)不量化到e4m3, 直存bf16 —
@@ -1060,7 +1060,7 @@ def _online_softmax_update(S_ij, mask_j, mi, si, oi, ln_p_scale, LN2, tail_mask=
 
     m_block_j, _ = torch.max(S_ij, dim=-1, keepdims=True)
     m_block_j = torch.ceil(m_block_j / LN2) * LN2
-    # NPU 语义: stored max 不含 -ln(pScale), P 计算用 adjusted max (含)
+    # Golden keeps the raw max; the kernel stores max - ln(pScale).
     m_block_j = torch.max(mi, m_block_j)
 
     P_ij_raw = torch.exp(S_ij - m_block_j + ln_p_scale)
@@ -1168,16 +1168,14 @@ def cpu_mxfp8_golden(
     vtail_tail_lens = None
     vtail_tail_start = None
     if ENABLE_V_TAIL and _VTAIL_BUNDLE is not None:
-        tail_lens = _VTAIL_BUNDLE["seqused_kv_tail"].tolist()
+        tail_lens = _VTAIL_BUNDLE["seqused_v_tail"].tolist()
         vtail_tail_lens = tail_lens
         for b_i in range(v_tensor.shape[0]):
             kv_len = actual_seq_kv[b_i]
             tail_len = tail_lens[b_i]
             main_len = kv_len - tail_len
             if tail_len > 0 and main_len < v_tensor.shape[2]:
-                # op的v_tail输入为bf16(接口契约), CPU参考必须注入同精度值:
-                # fp16原值(10位尾数)直接注入会比kernel多出~0.39%/项的V精度 — 实测Δnum std 3.4e-3
-                # 与ΣP·δV(fp16→bf16差)随机游走精确吻合, 致纯尾用例PctRlt~95%误判kernel误差
+                # Match the BF16 precision of the VTAIL input.
                 tail_seg = (
                     _VTAIL_BUNDLE["v_tail_bnsd_fp16"][b_i]
                     .to(torch.bfloat16)
@@ -1317,7 +1315,8 @@ def cpu_mxfp8_golden(
     lse = torch.where(
         all_masked,
         torch.full_like(o_max, float("inf")),
-        o_max + torch.log(out_sum + EPSILON),
+        # out_sum includes p_scale; LSE is logsumexp of the original scores.
+        o_max + torch.log(out_sum + EPSILON) - ln_p_scale,
     )
     out = torch.where(all_masked, torch.zeros_like(out), out)
     logger.info("[CPU Golden] output=%s", out.shape)
@@ -1362,7 +1361,7 @@ def _call_npu_fa_op(
     out_dtype,
     v_tail=None,
     block_table_tail=None,
-    seqused_kv_tail=None,
+    seqused_v_tail=None,
 ):
     """调用 NPU 双算子 (QFA: quant_flash_attn_metadata + quant_flash_attn)"""
     if not _HAS_NPU:
@@ -1444,7 +1443,7 @@ def _call_npu_fa_op(
     # v_tail args exist only in newer cann_ops_transformer interface; skip for older ones
     if v_tail is not None:
         main_kwargs["v_tail"] = v_tail
-        main_kwargs["seqused_kv_tail"] = seqused_kv_tail
+        main_kwargs["seqused_v_tail"] = seqused_v_tail
         if block_table_tail is not None:  # TND(PREFILL)无btt: v_tail为(B,N2,64,D)直存
             main_kwargs["block_table_tail"] = block_table_tail
     main_kwargs.update(_get_npu_fa_kwargs())
@@ -1455,7 +1454,7 @@ def _call_npu_fa_op(
             "[VT_DATA] vt dev ptr=%s first4=%s tailLen=%s btt=%s",
             hex(vt_dev.data_ptr()),
             vt_dev.flatten()[:4].float().tolist(),
-            main_kwargs["seqused_kv_tail"].flatten().tolist(),
+            main_kwargs["seqused_v_tail"].flatten().tolist(),
             btt_dev.flatten().tolist() if btt_dev is not None else None,
         )
     atten_out, lse_out = quant_flash_attn(**main_kwargs)
@@ -1504,6 +1503,9 @@ class Network(nn.Module):
         out_dtype,
         max_seqlen_q,
         max_seqlen_kv,
+        v_tail=None,
+        block_table_tail=None,
+        seqused_v_tail=None,
     ):
         metadata = quant_flash_attn_metadata(
             num_heads_q=q_n,
@@ -1549,7 +1551,7 @@ class Network(nn.Module):
             max_seqlen_kv=max_seqlen_kv,
             v_tail=v_tail,
             block_table_tail=block_table_tail,
-            seqused_kv_tail=seqused_kv_tail,
+            seqused_v_tail=seqused_v_tail,
         )
         main_kwargs.update(_get_npu_fa_kwargs())
         atten_out, lse_out = quant_flash_attn(**main_kwargs)
@@ -1798,7 +1800,6 @@ def prepare_npu_inputs(
         import os as _os_amp
 
         if _vtail_pa is not None and _os_amp.environ.get("VTAIL_AMP", "0") == "1":
-            # 临时放大尾块V, 判定尾乘链路通断(输出变=链路通)
             _vtail_pa = dict(_vtail_pa)
             _vtail_pa["v_tail_pa"] = (_vtail_pa["v_tail_pa"].float() * 10000.0).to(
                 torch.bfloat16
@@ -1836,7 +1837,7 @@ def prepare_npu_inputs(
             block_table_tail=_vtail_pa["block_table_tail"].npu()
             if _vtail_pa is not None
             else None,
-            seqused_kv_tail=_vtail_pa["seqused_kv_tail"].npu()
+            seqused_v_tail=_vtail_pa["seqused_v_tail"].npu()
             if _vtail_pa is not None
             else None,
         )
@@ -1926,7 +1927,7 @@ def prepare_npu_inputs(
             if _vtail is not None and _vtail["block_table_tail"] is not None
             else None
         ),  # TND(PREFILL)无btt: v_tail为(B,N2,64,D)直存
-        seqused_kv_tail=_vtail["seqused_kv_tail"].npu() if _vtail is not None else None,
+        seqused_v_tail=_vtail["seqused_v_tail"].npu() if _vtail is not None else None,
     )
 
 
@@ -2018,7 +2019,7 @@ def mxfp8_fa_torch_npu(
     out_dtype,
     v_tail=None,
     block_table_tail=None,
-    seqused_kv_tail=None,
+    seqused_v_tail=None,
 ):
     """NPU 调用入口, 支持 GRAPH_PATH=0 (单算子) 和 GRAPH_PATH=7 (aclgraph)"""
     if GRAPH_PATH == 0:
@@ -2053,7 +2054,7 @@ def mxfp8_fa_torch_npu(
             out_dtype,
             v_tail,
             block_table_tail,
-            seqused_kv_tail,
+            seqused_v_tail,
         )
 
     # GRAPH_PATH == 7: aclgraph
@@ -2112,6 +2113,9 @@ def mxfp8_fa_torch_npu(
             out_dtype,
             max_seqlen_q,
             max_seqlen_kv,
+            v_tail,
+            block_table_tail,
+            seqused_v_tail,
         )
 
         # aclgraph: 直接使用 npugraph_ex backend
@@ -2137,6 +2141,9 @@ def mxfp8_fa_torch_npu(
             v_descale,
             p_scale,
             block_table,
+            v_tail,
+            block_table_tail,
+            seqused_v_tail,
         ):
             if t is not None:
                 torch._dynamo.mark_static(t)

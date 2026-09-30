@@ -502,7 +502,7 @@ TEST_PARAMS = {
         "enable_lse": [False],
         "enable_v_tail": [True],
     },
-    # 消灭混合task用例: 末块含尾窗拆两task(主体kMain + 纯尾BF16), 覆盖三种kMain形状:
+    # Cover final KV blocks split into main and BF16 tail tasks.
     #   KVS642_T2:  末块130 = kMain 128(单subLoop, EQ_128) + 尾2
     #   KVS710_T6:  末块198 = kMain 192(单subLoop, GT_128) + 尾6
     #   KVS968_T56: 末块456 = kMain 448(双subLoop 256+192) + 尾56

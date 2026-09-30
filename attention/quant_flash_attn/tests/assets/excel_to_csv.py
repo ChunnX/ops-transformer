@@ -43,7 +43,7 @@ tensor 顺序（共 18 个，与 wrapper 签名位置参数对齐）：
   14 metadata        metadata_shape / metadata_dtype / metadata_datarange
   15 v_tail          enable_v_tail 时由 attributes 推导 (B/N_kv/block_size/D/layout_kv)
   16 block_table_tail 同上推导 (B, ceil(64/bs))，int32
-  17 seqused_kv_tail 同上推导 (B,)，int32
+  17 seqused_v_tail 同上推导 (B,)，int32
 
   上述 shape 从 attributes 抽出成为 tensor 入参；无 shape（Excel 空）→ (0,)。
   v_tail 三件套 (15-17) 无 Excel 列：enable_v_tail=TRUE/1 时按 checker 布局契约推导
@@ -144,7 +144,7 @@ DTYPE_MAP = {
 ABSOLUTE_PRECISION_DEFAULT = 1e-8
 
 # tensor 顺序（Excel 驱动 15 个 + v_tail 三件套推导 3 个 = 18 个），与 wrapper 位置参数 /
-# tensor_view_shapes 一致。slot 15-17 (v_tail/block_table_tail/seqused_kv_tail) 无 Excel 列,
+# tensor_view_shapes 一致。slot 15-17 (v_tail/block_table_tail/seqused_v_tail) 无 Excel 列,
 # 由 _derive_vtail_slots 按 attributes 推导 (enable_v_tail 时)。
 # 每项：(shape 列名, dtype 列名, datarange 列名, dtype 缺省值, 是否读 Excel datarange)。
 #   use_real_drange=True  → 取 Excel datarange（q/k/v 参与真实数据生成）
@@ -494,7 +494,7 @@ def _derive_vtail_slots(attrs, quant_mode):
     形状契约与 checker CheckVTailShape 一致 (v_tail 与主 KV cache 同布局, PA 专属):
       PA_BNBD(BnNBsD): (Bn, N2, Bs, D) / PA_BBND(BnBsND): (Bn, Bs, N2, D)
       PA_NZ: (Bn, N2, D/16, Bs, 16)(bf16 的 32B 分形内径=16)
-      block_table_tail: (B, ceil(64/bs)) — bs>=64 时 (B,1); seqused_kv_tail: (B,)
+      block_table_tail: (B, ceil(64/bs)) — bs>=64 时 (B,1); seqused_v_tail: (B,)
     dtypes: bfloat16 / int32 / int32。未启用时返回 3 个空 slot ((0,))。
     无效组合在此 fail-fast (与 checker/golden 拦截一致):
       非 PA / quant_mode!=1 / PA_NZ 且 D%16!=0。

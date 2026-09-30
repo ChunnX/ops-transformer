@@ -163,7 +163,7 @@ def generate_qfa_mxfp8_inputs(
     metadata_t: torch.Tensor,
     v_tail: torch.Tensor = None,
     block_table_tail: torch.Tensor = None,
-    seqused_kv_tail: torch.Tensor = None,
+    seqused_v_tail: torch.Tensor = None,
     softmax_scale: float = 1.0,
     mask_mode: int = 0,
     win_left: int = -1,
@@ -346,7 +346,7 @@ def generate_qfa_mxfp8_inputs(
     # PA_BBND(BnBsND)=(Bn,Bs,N2,D) / PA_NZ=(Bn,N2,D/16,Bs,16)(bf16的32B分形内径16)
     v_tail_final = None
     block_table_tail_final = None
-    seqused_kv_tail_final = None
+    seqused_v_tail_final = None
     if enable_v_tail:
         tail_capacity = block_size
         v_tail_bnsd_list = []
@@ -385,7 +385,7 @@ def generate_qfa_mxfp8_inputs(
         else:  # BNSD / BNNBSD / PA_BNBD (BnNBsD)
             v_tail_final = v_tail_bnsd
         block_table_tail_final = torch.arange(B, dtype=torch.int32).view(B, 1)
-        seqused_kv_tail_final = torch.tensor(tail_lens, dtype=torch.int32)
+        seqused_v_tail_final = torch.tensor(tail_lens, dtype=torch.int32)
         logger.info(
             "[V_TAIL] bundle ready: v_tail=%s btt=%s tail=%s",
             tuple(v_tail_final.shape),
@@ -560,7 +560,7 @@ def generate_qfa_mxfp8_inputs(
             block_table_tail_final.tolist(),
             "block_table_tail (slot 16)",
         )
-        _write_int32_list(seqused_kv_tail, tail_lens, "seqused_kv_tail (slot 17)")
+        _write_int32_list(seqused_v_tail, tail_lens, "seqused_v_tail (slot 17)")
 
     logger.info(
         "[INPUTS] in-place wrote fp8 q/k/v (q=%s), e8m0 descale (dq=%s, dk=%s, dv=%s), "
