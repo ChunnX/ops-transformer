@@ -192,6 +192,18 @@ bool IsTndDeterSwizzleSupported(const FuzzyBaseInfoParamsRegbase &params)
     return IsTndDeterSwizzlePerformanceEnough(params);
 }
 
+bool IsShortTndNonDeterSwizzleBeneficial(const FuzzyBaseInfoParamsRegbase &params, const TndBaseInfo &tndBaseInfo)
+{
+    if (params.b <= 0 || params.b >= TND_SWIZZLE_PREFIX_NUM || tndBaseInfo.normalMaxValidBlockCount == 0) {
+        return false;
+    }
+
+    const uint64_t swizzleMaxLoop = tndBaseInfo.tndS2BlockPrefixSum[params.b];
+    // Keep a 20% margin to cover short-sequence swizzle indexing, padding, and locality overhead.
+    return swizzleMaxLoop > 0 && swizzleMaxLoop * TND_NONDETER_SWIZZLE_PERCENT_BASE <=
+                                     tndBaseInfo.normalMaxValidBlockCount * TND_NONDETER_SWIZZLE_MAX_LOAD_PERCENT;
+}
+
 void ConfigureTndDeterBn2S2Swizzle(FuzzyBaseInfoParamsRegbase &params, const TndBaseInfo &tndBaseInfo)
 {
     // Mode 2 keeps every (B, N2, S2) column on one core, so dK/dV never need a cross-core tail merge.
@@ -425,16 +437,17 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
 
     // get rope
     auto queryRope = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::QUERY_ROPE_IDX));
-    const gert::Shape *queryRopeShape = &queryRope->GetStorageShape();
-    bool hasQueryRope = queryRope != nullptr && queryRopeShape->GetDimNum() != 0;
+    const gert::Shape *queryRopeShape = queryRope == nullptr ? nullptr : &queryRope->GetStorageShape();
+    bool hasQueryRope = queryRopeShape != nullptr && queryRopeShape->GetDimNum() != 0;
     auto keyRope = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::KEY_ROPE_IDX));
-    const gert::Shape *keyRopeShape = &keyRope->GetStorageShape();
+    const gert::Shape *keyRopeShape = keyRope == nullptr ? nullptr : &keyRope->GetStorageShape();
+    bool hasKeyRope = keyRopeShape != nullptr && keyRopeShape->GetDimNum() != 0;
 
     // get dy/attentionIn
     auto dy = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::DY));
     const gert::Shape *dyShape = &dy->GetStorageShape();
     auto attentionIn = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::ATTENTION_IN));
-    const gert::Shape *attentionInShape = &attentionIn->GetStorageShape();
+    const gert::Shape *attentionInShape = attentionIn == nullptr ? nullptr : &attentionIn->GetStorageShape();
     const gert::Shape &qShape = queryShape->GetStorageShape();
     const gert::Shape &kShape = keyShape->GetStorageShape();
     const gert::Shape &vShape = valueShape->GetStorageShape();
@@ -444,14 +457,13 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
     std::string vdyShapesMsg = "{" + Ops::Base::ToString(vShape) + ", " + Ops::Base::ToString(*dyShape) + "}";
 
     if (!IsSameShape(dy, attentionIn)) {
-        std::string shapesMsg =
-            "{" + Ops::Base::ToString(*dyShape) + ", " + Ops::Base::ToString(*attentionInShape) + "}";
+        std::string attentionInShapeMsg = attentionInShape == nullptr ? "null" : Ops::Base::ToString(*attentionInShape);
+        std::string shapesMsg = "{" + Ops::Base::ToString(*dyShape) + ", " + attentionInShapeMsg + "}";
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "dy, attentionInOptional", shapesMsg.c_str(),
                                                "The shapes of dy and attentionInOptional must be the same");
         return ge::GRAPH_PARAM_INVALID;
     }
 
-    bool hasKeyRope = keyRope != nullptr && keyRopeShape->GetDimNum() != 0;
     if (hasQueryRope ^ hasKeyRope) {
         std::string qrShape = hasQueryRope ? Ops::Base::ToString(*queryRopeShape) : "null";
         std::string krShape = hasKeyRope ? Ops::Base::ToString(*keyRopeShape) : "null";
@@ -463,6 +475,8 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
         return ge::GRAPH_PARAM_INVALID;
     }
     fBaseParams.hasRope = hasQueryRope && hasKeyRope;
+    int64_t qHeadDim = 0;
+    int64_t kHeadDim = 0;
     int64_t qRopeD = 0;
     int64_t kRopeD = 0;
 
@@ -478,6 +492,8 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
             fBaseParams.hasRope ? ROPE_D_192 : queryShape->GetStorageShape().GetDim(INPUT_DIM_2) / headNum; // H=N*D
         fBaseParams.d1 = valueShape->GetStorageShape().GetDim(INPUT_DIM_2) / fBaseParams.n2;                // H=N2*D1
         fBaseParams.s2 = keyShape->GetStorageShape().GetDim(INPUT_DIM_0);
+        qHeadDim = fBaseParams.hasRope ? queryShape->GetStorageShape().GetDim(INPUT_DIM_2) / headNum : 0;
+        kHeadDim = fBaseParams.hasRope ? keyShape->GetStorageShape().GetDim(INPUT_DIM_2) / fBaseParams.n2 : 0;
         qRopeD = fBaseParams.hasRope ? queryRopeShape->GetDim(INPUT_DIM_2) / headNum : 0;
         kRopeD = fBaseParams.hasRope ? keyRopeShape->GetDim(INPUT_DIM_2) / fBaseParams.n2 : 0;
 
@@ -519,6 +535,8 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
             fBaseParams.hasRope ? ROPE_D_192 : queryShape->GetStorageShape().GetDim(INPUT_DIM_2) / headNum; // H=N*D
         fBaseParams.d1 = valueShape->GetStorageShape().GetDim(INPUT_DIM_2) / fBaseParams.n2;                // H=N2*D1
         fBaseParams.s2 = keyShape->GetStorageShape().GetDim(INPUT_DIM_1);
+        qHeadDim = fBaseParams.hasRope ? queryShape->GetStorageShape().GetDim(INPUT_DIM_2) / headNum : 0;
+        kHeadDim = fBaseParams.hasRope ? keyShape->GetStorageShape().GetDim(INPUT_DIM_2) / fBaseParams.n2 : 0;
         qRopeD = fBaseParams.hasRope ? queryRopeShape->GetDim(INPUT_DIM_2) / headNum : 0;
         kRopeD = fBaseParams.hasRope ? keyRopeShape->GetDim(INPUT_DIM_2) / fBaseParams.n2 : 0;
 
@@ -559,6 +577,8 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
         fBaseParams.d = fBaseParams.hasRope ? ROPE_D_192 : queryShape->GetStorageShape().GetDim(INPUT_DIM_3);
         fBaseParams.d1 = valueShape->GetStorageShape().GetDim(INPUT_DIM_3);
         fBaseParams.s2 = keyShape->GetStorageShape().GetDim(INPUT_DIM_2);
+        qHeadDim = fBaseParams.hasRope ? queryShape->GetStorageShape().GetDim(INPUT_DIM_3) : 0;
+        kHeadDim = fBaseParams.hasRope ? keyShape->GetStorageShape().GetDim(INPUT_DIM_3) : 0;
         qRopeD = fBaseParams.hasRope ? queryRopeShape->GetDim(INPUT_DIM_3) : 0;
         kRopeD = fBaseParams.hasRope ? keyRopeShape->GetDim(INPUT_DIM_3) : 0;
         OP_LOGD(context_, "inputLayout == BNSD queryShape", "%ld, %ld, %ld, %ld,",
@@ -670,6 +690,8 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
             queryShape->GetStorageShape().GetDim(INPUT_DIM_1) / keyShape->GetStorageShape().GetDim(INPUT_DIM_1);
         fBaseParams.d = fBaseParams.hasRope ? ROPE_D_192 : queryShape->GetStorageShape().GetDim(INPUT_DIM_2);
         fBaseParams.d1 = valueShape->GetStorageShape().GetDim(INPUT_DIM_2);
+        qHeadDim = fBaseParams.hasRope ? queryShape->GetStorageShape().GetDim(INPUT_DIM_2) : 0;
+        kHeadDim = fBaseParams.hasRope ? keyShape->GetStorageShape().GetDim(INPUT_DIM_2) : 0;
         qRopeD = fBaseParams.hasRope ? queryRopeShape->GetDim(INPUT_DIM_2) : 0;
         kRopeD = fBaseParams.hasRope ? keyRopeShape->GetDim(INPUT_DIM_2) : 0;
 
@@ -706,6 +728,8 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
         fBaseParams.d = fBaseParams.hasRope ? ROPE_D_192 : queryShape->GetStorageShape().GetDim(INPUT_DIM_3);
         fBaseParams.d1 = valueShape->GetStorageShape().GetDim(INPUT_DIM_3);
         fBaseParams.s2 = keyShape->GetStorageShape().GetDim(INPUT_DIM_1);
+        qHeadDim = fBaseParams.hasRope ? queryShape->GetStorageShape().GetDim(INPUT_DIM_3) : 0;
+        kHeadDim = fBaseParams.hasRope ? keyShape->GetStorageShape().GetDim(INPUT_DIM_3) : 0;
         qRopeD = fBaseParams.hasRope ? queryRopeShape->GetDim(INPUT_DIM_3) : 0;
         kRopeD = fBaseParams.hasRope ? keyRopeShape->GetDim(INPUT_DIM_3) : 0;
 
@@ -742,6 +766,19 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
 
     // check rope
     if (fBaseParams.hasRope) {
+        if (qHeadDim != ROPE_D_128 || kHeadDim != ROPE_D_128) {
+            std::string shapesMsg = Ops::Base::ToString(qShape) + ", " + Ops::Base::ToString(kShape);
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                "FlashAttentionScoreGrad", "query, keyIn", shapesMsg.c_str(),
+                "D of query and keyIn must both be equal to 128 when rope inputs exist");
+            return ge::GRAPH_PARAM_INVALID;
+        }
+        if (fBaseParams.d1 != ROPE_D_128) {
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                "FlashAttentionScoreGrad", "value, dy", vdyShapesMsg.c_str(),
+                "D of value and dy must both be equal to 128 when rope inputs exist");
+            return ge::GRAPH_PARAM_INVALID;
+        }
         if (qRopeD != kRopeD || qRopeD != ROPE_D_64) {
             std::string shapesMsg = Ops::Base::ToString(*queryRopeShape) + ", " + Ops::Base::ToString(*keyRopeShape);
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "queryRopeOptional, keyRopeOptional",
@@ -839,15 +876,18 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::DoOpTiling()
     // Mode 2 pads every batch's (N2, S2) columns to a full AIC group. Reject schedules whose aggregate
     // valid-slot ratio is too low; otherwise short tail groups serialize batches while most cores stay idle.
     const bool deterTndSwizzleSupported = !fBaseParams.isDeterministic || IsTndDeterSwizzleSupported(fBaseParams);
+    const bool isLongSeqTndSwizzle = fBaseParams.s1 >= TND_SWIZZLE_MIN_S1_SIZE ||
+                                     (fBaseParams.s2 > static_cast<uint32_t>(ConstAxisTemplateNum::NUM128) &&
+                                      fBaseParams.s1 >= TND_SWIZZLE_MIN_S1_SIZE_1);
+    const bool isShortSeqTndSwizzle = !fBaseParams.isDeterministic && !isLongSeqTndSwizzle &&
+                                      IsShortTndNonDeterSwizzleBeneficial(fBaseParams, tndBaseInfo);
     const bool templateSupportCond =
         (fBaseParams.isDeterministic &&
          (fBaseParams.splitAxis == SplitAxisEnum::BN2GS1S2 || fBaseParams.splitAxis == SplitAxisEnum::BN2S2) &&
          fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_DENSE) && fBaseParams.g == 1 &&
          deterTndSwizzleSupported) ||
         (!fBaseParams.isDeterministic && fBaseParams.splitAxis == SplitAxisEnum::BN2S2 &&
-         (fBaseParams.s1 >= TND_SWIZZLE_MIN_S1_SIZE ||
-          (fBaseParams.s2 > static_cast<uint32_t>(ConstAxisTemplateNum::NUM128) &&
-           fBaseParams.s1 >= TND_SWIZZLE_MIN_S1_SIZE_1)) &&
+         (isLongSeqTndSwizzle || isShortSeqTndSwizzle) &&
          (fBaseParams.sparseType != static_cast<uint8_t>(SparseType::UNSUPPORTED)));
     tndBaseInfo.isTndSwizzle = fBaseParams.enableSwizzle && fBaseParams.layoutType == INPUT_FORMAT_TND &&
                                templateSupportCond && fBaseParams.b < TND_SWIZZLE_PREFIX_NUM &&
@@ -857,10 +897,10 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::DoOpTiling()
     }
     OP_LOGI(context_,
             "isExceedL2Cache=[%d], sparseType=[%d], enableSwizzle=[%d], "
-            "deterTndSwizzleSupported=[%d], isTndSwizzle=[%d], isNzOut=[%d].",
+            "deterTndSwizzleSupported=[%d], shortSeqTndSwizzle=[%d], isTndSwizzle=[%d], isNzOut=[%d].",
             static_cast<int>(isExceedL2Cache), static_cast<int>(fBaseParams.sparseType),
             static_cast<int>(fBaseParams.enableSwizzle), static_cast<int>(deterTndSwizzleSupported),
-            tndBaseInfo.isTndSwizzle, fBaseParams.isNzOut);
+            static_cast<int>(isShortSeqTndSwizzle), tndBaseInfo.isTndSwizzle, fBaseParams.isNzOut);
 
     ret = InitTilingData();
     if (ret != ge::GRAPH_SUCCESS) {

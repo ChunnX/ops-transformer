@@ -67,7 +67,7 @@ class QuantBlockSparseAttnMetadataBuilder:
 
     @staticmethod
     def batch_size(q, layout_q, cu_seqlens_q, seqused_q, sparse_indices=None):
-        if layout_q == "BSND":
+        if layout_q in ("BSND", "BNSD"):
             return int(q.shape[0])
         if seqused_q is not None:
             return int(seqused_q.numel())
@@ -111,6 +111,9 @@ class QuantBlockSparseAttnMetadataBuilder:
         if layout_q == "BSND":
             num_heads_q = int(query.shape[2])
             q_fallback = int(query.shape[1])
+        elif layout_q == "BNSD":
+            num_heads_q = int(query.shape[1])
+            q_fallback = int(query.shape[2])
         elif layout_q == "NTD":
             num_heads_q = int(query.shape[0])
             q_fallback = int(query.shape[1])
@@ -126,7 +129,7 @@ class QuantBlockSparseAttnMetadataBuilder:
             num_heads_q,
             num_heads_kv,
             int(query.shape[-1]),
-            cu_seqlens_q=cu_seqlens_q,
+            cu_seqlens_q=_none_if_empty(cu_seqlens_q),
             cu_seqlens_kv=_none_if_empty(cu_seqlens_kv),
             seqused_q=_none_if_empty(seqused_q),
             seqused_kv=seqused_kv,
@@ -186,7 +189,7 @@ def _prepare_operator_inputs(
             sparse_indices,
             sparse_seq_len,
             atten_mask,
-            cu_seqlens_q=cu_seqlens_q,
+            cu_seqlens_q=_none_if_empty(cu_seqlens_q),
             cu_seqlens_kv=_none_if_empty(cu_seqlens_kv),
             seqused_q=_none_if_empty(seqused_q),
             seqused_kv=seqused_kv,
@@ -285,7 +288,7 @@ class QuantBlockSparseAttnGraph(torch.nn.Module):
             ("p_scale", p_scale),
             ("sparse_indices", sparse_indices),
             ("sparse_seq_len", sparse_seq_len),
-            ("cu_seqlens_q", cu_seqlens_q),
+            ("cu_seqlens_q", _none_if_empty(cu_seqlens_q)),
             ("cu_seqlens_kv", _none_if_empty(cu_seqlens_kv)),
             ("seqused_q", _none_if_empty(seqused_q)),
             ("seqused_kv", seqused_kv),
@@ -411,7 +414,7 @@ def quant_block_sparse_attn(
         sparse_indices,
         sparse_seq_len,
         atten_mask,
-        cu_seqlens_q=cu_seqlens_q,
+        cu_seqlens_q=_none_if_empty(cu_seqlens_q),
         cu_seqlens_kv=_none_if_empty(cu_seqlens_kv),
         seqused_q=_none_if_empty(seqused_q),
         seqused_kv=seqused_kv,

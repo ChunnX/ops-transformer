@@ -28,6 +28,7 @@ namespace optiling {
 
 CMP_EXTERN_C ge::graphStatus TilingCompressorArch22(gert::TilingContext *context);
 CMP_EXTERN_C ge::graphStatus TilingCompressorArch35(gert::TilingContext *context);
+CMP_EXTERN_C ge::graphStatus TilingCompressorArch92(gert::TilingContext *context);
 
 struct CompressorCompileInfo {
     int64_t core_num;
@@ -35,22 +36,23 @@ struct CompressorCompileInfo {
 
 CMP_EXTERN_C ge::graphStatus TilingCompressor(gert::TilingContext *context)
 {
-    OP_CHECK_IF(context == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("Compressor", "context", "is nullptr"),
+    OP_CHECK_IF(context == nullptr, OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("Compressor", "context", "is nullptr"),
                 return ge::GRAPH_FAILED);
     auto platformInfoPtr = context->GetPlatformInfo();
     OP_CHECK_IF(platformInfoPtr == nullptr,
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("Compressor", "platformInfo", "is nullptr"),
                 return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
-    if (ascendcPlatform.GetSocVersion() == platform_ascendc::SocVersion::ASCEND950) {
+    if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
         return TilingCompressorArch35(context);
+    } else if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_9201) {
+        return TilingCompressorArch92(context);
     } else {
         return TilingCompressorArch22(context);
     }
 }
 
-ge::graphStatus TilingPrepareForCompressor(gert::TilingParseContext *context)
+ge::graphStatus TilingPrepareForCompressor(gert::TilingParseContext *const context)
 {
     (void)context;
     return ge::GRAPH_SUCCESS;

@@ -16,6 +16,7 @@
 #include "allto_allv_mx_quant_grouped_mat_mul_tiling.h"
 #include "mc2_tiling_utils.h"
 #include "mc2_comm_utils.h"
+#include "../../../op_kernel/allto_allv_quant_grouped_mat_mul_tiling_key.h"
 
 using namespace ge;
 using namespace AscendC;
@@ -536,8 +537,9 @@ void AlltoAllvMXQuantGmmTiling::GetPermuteOutSize()
     permuteOutSize_ = Ops::Base::CeilAlign(permuteOutSize_, static_cast<uint64_t>(BASIC_BLOCK_SIZE_512));
     // permutscaleout size
     uint64_t hSize = Ops::Base::CeilDiv(h1_, MX_BASIC_FACTOR);
-    permuteScaleOutSize_ = Ops::Base::CeilAlign((a_ * hSize * 2 * GetSizeByDataType(gmmWeightDataType_)),
-                                                static_cast<uint64_t>(BASIC_BLOCK_SIZE_512));
+    permuteScaleOutSize_ = Ops::Base::CeilAlign(
+        (a_ * hSize * 2 * GetSizeByDataType(context_->GetRequiredInputDesc(GMM_X_SCALE_INDEX)->GetDataType())),
+        static_cast<uint64_t>(BASIC_BLOCK_SIZE_512));
     // 如果单卡专家数大于等于32时，需要额外申请scale重排空间
     if (e_ >= SCALE_BATCH_THRESHOLD) {
         permuteScaleOutSize_ = permuteScaleOutSize_ * 2;
@@ -580,12 +582,16 @@ ge::graphStatus AlltoAllvMXQuantGmmTilingHelper::SetInputParams(uint64_t M, uint
     inputParams_.scaleDtype = ge::DT_FLOAT8_E8M0;
     inputParams_.perTokenScaleDtype = ge::DT_FLOAT8_E8M0;
 
-    OP_TILING_CHECK(gmmGroupNum_ > optiling::Mc2GroupedMatmul::MAX_TENSOR_CONT,
-                    OP_LOGE_FOR_INVALID_VALUE(
-                        inputParams_.opName, "gmmGroupNum_", std::to_string(gmmGroupNum_).c_str(),
-                        (std::string("<=") + std::to_string(optiling::Mc2GroupedMatmul::MAX_TENSOR_CONT)).c_str()),
+    OP_TILING_CHECK(gmmGroupNum_ > GMM_ARRAY_MAX_NUM,
+                    OP_LOGE_FOR_INVALID_VALUE(inputParams_.opName, "gmmGroupNum_", std::to_string(gmmGroupNum_).c_str(),
+                                              (std::string("<=") + std::to_string(GMM_ARRAY_MAX_NUM)).c_str()),
                     return ge::GRAPH_FAILED);
-    for (uint32_t i = 0; i < gmmGroupNum_; i++) {
+    // groupNum由标量传递，kernel按SPLIT_M+singleW仅读取mList[0]/kList[0]/nList[0]，
+    // 每组M实际来自运行时groupList，故填充截断至数组容量MAX_TENSOR_CONT
+    uint32_t fillNum = (gmmGroupNum_ < static_cast<uint32_t>(optiling::Mc2GroupedMatmul::MAX_TENSOR_CONT)) ?
+                           gmmGroupNum_ :
+                           static_cast<uint32_t>(optiling::Mc2GroupedMatmul::MAX_TENSOR_CONT);
+    for (uint32_t i = 0; i < fillNum; i++) {
         mList_[i] = static_cast<int32_t>(M);
     }
     kList_[0] = static_cast<int32_t>(K);

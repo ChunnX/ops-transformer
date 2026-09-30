@@ -340,7 +340,9 @@ def fill_none_params(params_dict):
             seqused_cmp_kv = gen_seqused_cmp_kv(seqused_ori_kv, cmp_ratio)
         if cu_seqlens_cmp_kv is None:
             cu_seqlens_cmp_kv = gen_cu_seqlens_cmp_kv(seqused_cmp_kv)
-        if cmp_residual_kv is None:
+        if cmp_mask_mode == 0 or cmp_ratio == 1:
+            cmp_residual_kv = None
+        elif cmp_residual_kv is None:
             cmp_residual_kv = [0] * B
         for i in range(B):
             slot_len = cu_seqlens_cmp_kv[i + 1] - cu_seqlens_cmp_kv[i]
@@ -443,6 +445,10 @@ def fill_none_params(params_dict):
         "ori_topk_length": params_dict.get("ori_topk_length", None),
         "cmp_topk_length": params_dict.get("cmp_topk_length", None),
         "batch_consistency": params_dict.get("batch_consistency"),
+        "fd_mode": params_dict.get("fd_mode"),
+        "fd_aic_core_num": params_dict.get("fd_aic_core_num"),
+        "fd_aiv_core_num": params_dict.get("fd_aiv_core_num"),
+        "fd_require_split": params_dict.get("fd_require_split"),
         "batch_consistency_seed": params_dict.get("batch_consistency_seed"),
         "batch_consistency_order": params_dict.get("batch_consistency_order"),
         "batch_consistency_batch_split": params_dict.get(

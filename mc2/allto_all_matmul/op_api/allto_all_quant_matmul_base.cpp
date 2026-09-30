@@ -234,7 +234,7 @@ static bool CheckAllDtypesValid(const aclTensor *x1, const aclTensor *x2, int64_
     return true;
 }
 
-// 950数据类型校验
+// A5数据类型校验
 // 量化模式下X支持的FP16数据类型（PerToken动态量化）(A5)
 static const std::initializer_list<op::DataType> X_DTYPE_FP16_SUPPORT_LIST_A5 = {op::DataType::DT_FLOAT16,
                                                                                  op::DataType::DT_BF16};
@@ -403,15 +403,15 @@ static bool ReFormatNotND(const aclTensor *x1, const aclTensor *x2, const aclTen
                           const aclTensor *alltoAllOutOptional)
 {
     // 内部只处理ND格式，这里做reformat操作
-    if (x1->GetStorageFormat() != op::Format::FORMAT_ND) {
-        OP_LOGW("x1 origin format is %s.", op::ToString(x1->GetStorageFormat()).GetString());
-        x1 = l0op::ReFormat(x1, op::Format::FORMAT_ND);
-        CHECK_RET(x1 != nullptr, false);
-    }
     if (x2->GetStorageFormat() != op::Format::FORMAT_ND) {
         OP_LOGW("x2 origin format is %s.", op::ToString(x2->GetStorageFormat()).GetString());
         x2 = l0op::ReFormat(x2, op::Format::FORMAT_ND);
         CHECK_RET(x2 != nullptr, false);
+    }
+    if (x1->GetStorageFormat() != op::Format::FORMAT_ND) {
+        OP_LOGW("x1 origin format is %s.", op::ToString(x1->GetStorageFormat()).GetString());
+        x1 = l0op::ReFormat(x1, op::Format::FORMAT_ND);
+        CHECK_RET(x1 != nullptr, false);
     }
     if (biasOptional != nullptr) {
         if (biasOptional->GetStorageFormat() != op::Format::FORMAT_ND) {
@@ -433,11 +433,6 @@ static bool ReFormatNotND(const aclTensor *x1, const aclTensor *x2, const aclTen
         x2Scale = l0op::ReFormat(x2Scale, op::Format::FORMAT_ND);
         CHECK_RET(x2Scale != nullptr, false);
     }
-    if (output->GetStorageFormat() != op::Format::FORMAT_ND) {
-        OP_LOGW("output origin format is %s.", op::ToString(output->GetStorageFormat()).GetString());
-        output = l0op::ReFormat(output, op::Format::FORMAT_ND);
-        CHECK_RET(output != nullptr, false);
-    }
     if (alltoAllOutOptional != nullptr) {
         if (alltoAllOutOptional->GetStorageFormat() != op::Format::FORMAT_ND) {
             OP_LOGW("alltoallout origin format is %s.",
@@ -445,6 +440,11 @@ static bool ReFormatNotND(const aclTensor *x1, const aclTensor *x2, const aclTen
             alltoAllOutOptional = l0op::ReFormat(alltoAllOutOptional, op::Format::FORMAT_ND);
             CHECK_RET(alltoAllOutOptional != nullptr, false);
         }
+    }
+    if (output->GetStorageFormat() != op::Format::FORMAT_ND) {
+        OP_LOGW("output origin format is %s.", op::ToString(output->GetStorageFormat()).GetString());
+        output = l0op::ReFormat(output, op::Format::FORMAT_ND);
+        CHECK_RET(output != nullptr, false);
     }
     return true;
 }

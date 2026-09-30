@@ -18,6 +18,7 @@
 #include "checkers/sparse_flash_mla_checker.h"
 #include "../op_kernel/sparse_flash_mla_template_tiling_key.h"
 #include "register/op_def_registry.h"
+#include "err/ops_err.h"
 
 using namespace ge;
 using namespace AscendC;
@@ -53,26 +54,15 @@ constexpr uint32_t BATCH_CONSISTENCY_MAX_REDUCE_BLOCK_NUM = 33U;
 constexpr uint32_t FD_BROADCAST_ELEMS = 8U;
 constexpr int64_t BATCH_CONSISTENCY_LEVEL = 3;
 
-static std::vector<int64_t> ToVector(const gert::Shape &shape)
-{
-    size_t shapeSize = shape.GetDimNum();
-    std::vector<int64_t> shapeVec(shapeSize, 0);
-
-    for (size_t i = 0; i < shapeSize; i++) {
-        shapeVec[i] = shape.GetDim(i);
-    }
-    return shapeVec;
-}
-
 static std::string ToStringRaw(const gert::Shape &shape)
 {
     std::ostringstream oss;
-    auto v = ToVector(shape);
-    if (v.size() > 0) {
-        for (size_t i = 0; i < v.size() - 1; ++i) {
-            oss << v[i] << ", ";
+    const size_t dimCount = shape.GetDimNum();
+    for (size_t dimIndex = 0; dimIndex < dimCount; ++dimIndex) {
+        if (dimIndex != 0U) {
+            oss << ", ";
         }
-        oss << v[v.size() - 1];
+        oss << shape.GetDim(dimIndex);
     }
     return oss.str();
 }
@@ -646,19 +636,19 @@ size_t SMLAInfoParser::GetAxisIdx(const SMLAAxis &axis, const SMLALayout &layout
     return std::distance(axes.begin(), axisIt);
 }
 
-uint32_t SMLAInfoParser::GetAxisNum(const gert::Shape &shape, const SMLAAxis &axis, const SMLALayout &layout) const
+int64_t SMLAInfoParser::GetAxisNum(const gert::Shape &shape, const SMLAAxis &axis, const SMLALayout &layout) const
 {
-    return HasAxis(axis, layout, shape) ? static_cast<uint32_t>(shape.GetDim(GetAxisIdx(axis, layout))) :
-                                          invalidDimValue_;
+    return HasAxis(axis, layout, shape) ? shape.GetDim(GetAxisIdx(axis, layout)) : invalidDimValue_;
 }
 
-void SMLAInfoParser::SetSMLAShape()
+ge::graphStatus SMLAInfoParser::SetSMLAShape()
 {
     qShape_ = opParamInfo_.q.shape->GetStorageShape();
     if (opParamInfo_.oriKv.tensor != nullptr) {
         oriKvShape_ = opParamInfo_.oriKv.tensor->GetStorageShape();
     } else {
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "q", "Q is nullptr, please check input parameters");
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "oriKv", "OriKv is nullptr, please check input parameters");
+        return ge::GRAPH_FAILED;
     }
     if (opParamInfo_.cmpKv.tensor != nullptr) {
         cmpKvShape_ = opParamInfo_.cmpKv.tensor->GetStorageShape();
@@ -675,6 +665,7 @@ void SMLAInfoParser::SetSMLAShape()
         } else {
             OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "cmp_sparse_indices",
                                                      "Cmp_sparse_indices is nullptr, please check input parameters");
+            return ge::GRAPH_FAILED;
         }
     }
 
@@ -684,6 +675,8 @@ void SMLAInfoParser::SetSMLAShape()
             oriSparseIndicesShape_ = opParamInfo_.oriSparseIndices.tensor->GetStorageShape();
         }
     }
+
+    return ge::GRAPH_SUCCESS;
 }
 
 // 根据layout计算期望的连续stride
@@ -773,7 +766,7 @@ ge::graphStatus SMLAInfoParser::GetGSize()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus SMLAInfoParser::GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor, SMLALayout &layout,
+ge::graphStatus SMLAInfoParser::GetActualSeqLenSize(int64_t &size, const gert::Tensor *tensor, SMLALayout &layout,
                                                     const std::string &name) const
 {
     if ((tensor == nullptr)) {
@@ -788,11 +781,11 @@ ge::graphStatus SMLAInfoParser::GetActualSeqLenSize(uint32_t &size, const gert::
                                                   "The shape size of " + name + " should be greater than 0");
         return ge::GRAPH_FAILED;
     }
-    size = static_cast<uint32_t>(shapeSize) - 1;
+    size = shapeSize - 1;
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus SMLAInfoParser::GetActualSeqLenQSize(uint32_t &size)
+ge::graphStatus SMLAInfoParser::GetActualSeqLenQSize(int64_t &size)
 {
     return GetActualSeqLenSize(size, opParamInfo_.cuSeqLensQ.tensor, qLayout_, "cu_seqlens_q");
 }
@@ -1156,7 +1149,9 @@ ge::graphStatus SMLAInfoParser::Parse(SMLATilingInfo &smlaInfo)
         return ge::GRAPH_FAILED;
     }
 
-    SetSMLAShape();
+    if (ge::GRAPH_SUCCESS != SetSMLAShape()) {
+        return ge::GRAPH_FAILED;
+    }
     if (ge::GRAPH_SUCCESS != GetN1Size() || ge::GRAPH_SUCCESS != GetN2Size() || ge::GRAPH_SUCCESS != GetGSize() ||
         ge::GRAPH_SUCCESS != GetBatchSize() || ge::GRAPH_SUCCESS != GetQTSize() || ge::GRAPH_SUCCESS != GetS1Size() ||
         ge::GRAPH_SUCCESS != GetS2Size() || ge::GRAPH_SUCCESS != GetQHeadDim() ||
@@ -1511,6 +1506,12 @@ ge::graphStatus SMLATilingCheck::CheckSingleParaCmpSparseIndices() const
                                                             CMP_SPARSE_INDICES)) {
             return ge::GRAPH_FAILED;
         }
+        const auto &indicesShape = opParamInfo_.cmpSparseIndices.tensor->GetStorageShape();
+        const int64_t topk = indicesShape.GetDim(indicesShape.GetDimNum() - 1);
+        OP_CHECK_IF(npuArch_ == NpuArch::DAV_2201 && (topk < 1 || topk > TOPK_LIMIT),
+                    OP_LOGE(opName_, "cmp_sparse_indices last dimension must be in [1, %u], but got %lld.", TOPK_LIMIT,
+                            static_cast<long long>(topk)),
+                    return ge::GRAPH_FAILED);
         if (cmpSparseIndicesLayout_ == SMLALayout::BSND) {
             OP_CHECK_IF(
                 opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(0) != bSize_,
@@ -1639,33 +1640,24 @@ ge::graphStatus SMLATilingCheck::CheckSingleParaMetadata() const
 
 ge::graphStatus SMLATilingCheck::CheckSingleParaCmpRatio() const
 {
-    if (IsA5Arch(npuArch_)) {
-        if (opParamInfo_.cmpKv.tensor != nullptr) {
-            OP_CHECK_IF(
-                cmpRatio_ < 1 || cmpRatio_ > 128,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "cmp_ratio", std::to_string(cmpRatio_).c_str(),
-                                                      "Cmp_ratio should be in range [1, 128] on " + A5_PLATFORM_LOG),
-                return ge::GRAPH_FAILED);
-        }
-    } else {
-        uint32_t expectedCmpRatio = 1;
-        const char *modeName = "SWA";
-        const char *modeReason = "when cmp_kv is not provided";
-        if (smlaInfo_.perfMode == SMLATemplateMode::CSA_TEMPLATE_MODE) {
-            expectedCmpRatio = 4; // 4：CSA模式下的固定压缩比
-            modeName = "CSA";
-            modeReason = "when cmp_sparse_indices is provided";
-        } else if (smlaInfo_.perfMode == SMLATemplateMode::HCA_TEMPLATE_MODE) {
-            expectedCmpRatio = 128; // 128：HCA模式下的最大压缩比
-            modeName = "HCA";
-            modeReason = "when cmp_sparse_indices is not provided";
-        }
-        OP_CHECK_IF(cmpRatio_ != expectedCmpRatio,
-                    OP_LOGE(opName_, "cmpRatio should be %u in %s on %s %s, but got %ld.", expectedCmpRatio, modeName,
+    const auto checkRatio = [this](bool isSupported, const char *expectedRatios, const char *modeName,
+                                   const char *modeReason) {
+        OP_CHECK_IF(!isSupported,
+                    OP_LOGE(opName_, "cmpRatio should be %s in %s on %s %s, but got %ld.", expectedRatios, modeName,
                             A2_A3_PLATFORM_LOG.c_str(), modeReason, cmpRatio_),
                     return ge::GRAPH_FAILED);
+        return ge::GRAPH_SUCCESS;
+    };
+
+    switch (smlaInfo_.perfMode) {
+        case SMLATemplateMode::CSA_TEMPLATE_MODE:
+            return checkRatio(cmpRatio_ == 1 || cmpRatio_ == 2 || cmpRatio_ == 4, "1, 2 or 4", "CSA",
+                              "when cmp_sparse_indices is provided");
+        case SMLATemplateMode::HCA_TEMPLATE_MODE:
+            return checkRatio(cmpRatio_ == 128, "128", "HCA", "when cmp_sparse_indices is not provided");
+        default:
+            return ge::GRAPH_SUCCESS;
     }
-    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus SMLATilingCheck::CheckSingleParaOriMaskMode() const
@@ -2231,7 +2223,7 @@ ge::graphStatus SMLATilingCheck::CheckActualSeqLens() const
     }
     return ge::GRAPH_SUCCESS;
 }
-ge::graphStatus SMLATilingCheck::CheckMultiParaConsistency()
+ge::graphStatus SMLATilingCheck::CheckMultiParaConsistency() const
 {
     if (ge::GRAPH_SUCCESS != CheckOriAndCmpKv() || ge::GRAPH_SUCCESS != CheckAttenOut() ||
         ge::GRAPH_SUCCESS != CheckActualSeqLensQ() || ge::GRAPH_SUCCESS != CheckActualSeqLens()) {
@@ -2323,10 +2315,10 @@ uint64_t SparseFlashMlaTiling::CalcVectorizeKvPhyAddrWorkspaceSize(const SMLATil
     uint32_t alignedCmpSparseBlockCount = (tilingInfo->cmpSparseBlockCount + SPARSE_BLOCK_ALIGN_NUM - 1) /
                                           SPARSE_BLOCK_ALIGN_NUM * SPARSE_BLOCK_ALIGN_NUM;
     bool isPa = (tilingInfo->kvLayout == SMLALayout::PA_BBND);
-    uint32_t oriBlocksizeFlag =
-        static_cast<uint32_t>(tilingInfo->oriBlockSize & static_cast<uint32_t>(tilingInfo->oriBlockSize - 1)) == 0;
-    uint32_t cmpBlocksizeFlag =
-        static_cast<uint32_t>(tilingInfo->cmpBlockSize & static_cast<uint32_t>(tilingInfo->cmpBlockSize - 1)) == 0;
+    uint32_t oriBlockSize = static_cast<uint32_t>(tilingInfo->oriBlockSize);
+    uint32_t cmpBlockSize = static_cast<uint32_t>(tilingInfo->cmpBlockSize);
+    uint32_t oriBlocksizeFlag = static_cast<uint32_t>(oriBlockSize & (oriBlockSize - 1)) == 0;
+    uint32_t cmpBlocksizeFlag = static_cast<uint32_t>(cmpBlockSize & (cmpBlockSize - 1)) == 0;
     uint32_t blocksizeFlag = isPa ? ((tilingInfo->perfMode == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE) ?
                                          oriBlocksizeFlag :
                                          (oriBlocksizeFlag != 0 && cmpBlocksizeFlag != 0)) :
@@ -2476,8 +2468,12 @@ ge::graphStatus SparseFlashMlaTiling::DoOpTiling(SMLATilingInfo *tilingInfo)
     if (tilingInfo->npuArch == NpuArch::DAV_3510) {
         splitG = static_cast<uint32_t>(tilingInfo->gSize > 64); // 64：分组拆分阈值
     }
-    tilingKey = GET_TPL_TILING_KEY(0U, qLayout, inputKvLayout, static_cast<uint32_t>(tilingInfo->perfMode), splitG,
-                                   headRatioOne, static_cast<uint32_t>(tilingInfo->batchConsistency), vectorizeFlag);
+    uint32_t isDspark = static_cast<uint32_t>(tilingInfo->npuArch == NpuArch::DAV_2201 &&
+                                              tilingInfo->perfMode == SMLATemplateMode::SWA_TEMPLATE_MODE &&
+                                              tilingInfo->hasOriSparseIndices);
+    tilingKey =
+        GET_TPL_TILING_KEY(0U, qLayout, inputKvLayout, static_cast<uint32_t>(tilingInfo->perfMode), splitG,
+                           headRatioOne, static_cast<uint32_t>(tilingInfo->batchConsistency), vectorizeFlag, isDspark);
     context_->SetScheduleMode(1);
     context_->SetTilingKey(tilingKey);
 

@@ -24,6 +24,14 @@ QUANT_MODE_MXFP4 = 5
 QUANT_MODE_MXFP8 = 3
 QUANT_MODE_HIF4 = 6
 
+NUMPY_CUSTOM_TORCH_DTYPES = {
+    "bfloat16": "bfloat16",
+    "float8_e4m3fn": "float8_e4m3fn",
+    "float8_e5m2": "float8_e5m2",
+    "float8_e8m0": "float8_e8m0fnu",
+    "float4_e2m1": "float4_e2m1fn_x2",
+}
+
 
 def restore_mx_input_dtypes(query, key, query_scale, key_scale, quant_mode):
     """Restore packed MX dtypes needed by the existing replay compare path."""
@@ -189,7 +197,10 @@ class QuantLightningIndexerV2InputAdapter:
     def tensor_dtype(tensor):
         if torch.is_tensor(tensor):
             return tensor.dtype
-        if "hifloat8" in str(tensor.dtype):
+        dtype_name = str(tensor.dtype)
+        if dtype_name in NUMPY_CUSTOM_TORCH_DTYPES:
+            return getattr(torch, NUMPY_CUSTOM_TORCH_DTYPES[dtype_name])
+        if "hifloat8" in dtype_name:
             return torch.uint8
         return torch.from_numpy(np.asarray(tensor)).dtype
 
@@ -199,10 +210,23 @@ class QuantLightningIndexerV2InputAdapter:
             return None
         if torch.is_tensor(tensor):
             return tensor.detach().cpu()
-        array = np.asarray(tensor)
-        if "hifloat8" in str(array.dtype):
+        array = np.array(tensor, copy=True, order="C")
+        dtype_name = str(array.dtype)
+        if dtype_name in NUMPY_CUSTOM_TORCH_DTYPES:
+            torch_dtype = getattr(torch, NUMPY_CUSTOM_TORCH_DTYPES[dtype_name])
+            if dtype_name == "float4_e2m1":
+                if array.ndim == 0 or array.shape[-1] % 2:
+                    raise ValueError("QLI_V2 FP4 input requires an even last dimension")
+                # NumPy stores one FP4 code per byte; normalize to Torch's x2
+                # storage so replay uses the same unpacking path as E2E.
+                codes = array.view(np.uint8) & 0x0F
+                array = codes[..., ::2] | (codes[..., 1::2] << 4)
+            else:
+                array = array.view(np.uint16 if dtype_name == "bfloat16" else np.uint8)
+            return torch.from_numpy(array).view(torch_dtype)
+        if "hifloat8" in dtype_name:
             array = array.view(np.uint8)
-        return torch.from_numpy(np.array(array, copy=True))
+        return torch.from_numpy(array)
 
     @staticmethod
     def prefix_lengths(value):
@@ -811,7 +835,13 @@ class QuantLightningIndexerV2InputAdapter:
         batch_module = self.load_batch_consistency()
         with batch_module.CaseRandomContext(kwargs):
             data = pytest_golden.generate_qliv2_test_data(params, generate_golden=False)
-        batch_module.normalize_indexer_inputs(data, kwargs, "QLI_V2", quantized=True)
+        batch_module.normalize_indexer_inputs(
+            data,
+            kwargs,
+            "QLI_V2",
+            quantized=True,
+            hifloat8_encoder=pytest_golden.trans_float_tensor_to_hifuint8,
+        )
         for name, dst, src_name in (
             ("query", query, "query"),
             ("key", key, "key"),
@@ -846,8 +876,8 @@ class QuantLightningIndexerV2InputAdapter:
 INPUT_ADAPTER = QuantLightningIndexerV2InputAdapter()
 
 
-def is_negative_case(kwargs):
-    value = kwargs.get("is_negative_case", False)
+def expect_error(kwargs):
+    value = kwargs.get("expect_error", False)
     if isinstance(value, str):
         return value.strip().lower() in ("1", "true", "yes", "on")
     return bool(value)
@@ -890,7 +920,7 @@ def generate_qli_v2_inputs(
     **kwargs,
 ):
     """Populate pytest-derived inputs; metadata is filled by npu_preprocess."""
-    if is_negative_case(kwargs):
+    if expect_error(kwargs):
         return None
 
     if metadata is None:

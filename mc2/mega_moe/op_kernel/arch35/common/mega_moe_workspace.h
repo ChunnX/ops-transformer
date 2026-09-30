@@ -51,14 +51,15 @@ struct WorkspaceLayout {
     int64_t dispatchRevWeightsOffset{INVALID_WORKSPACE_OFFSET};
     int64_t activationQuantDataOffset{INVALID_WORKSPACE_OFFSET};
     int64_t activationQuantScaleOffset{INVALID_WORKSPACE_OFFSET};
-    int64_t expertRevTokenNumsOffset{INVALID_WORKSPACE_OFFSET};
+    int64_t expertRecvTokenCountOffset{INVALID_WORKSPACE_OFFSET};
     int64_t metaInfoOffset{INVALID_WORKSPACE_OFFSET};
     int64_t flagActivationToGmm2Offset{INVALID_WORKSPACE_OFFSET};
     int64_t sharedActivationToGmm2Offset{INVALID_WORKSPACE_OFFSET};
     int64_t flagDispatchToGmm1Offset{INVALID_WORKSPACE_OFFSET};
     int64_t flagSendCntCalToUpdParamsOffset{INVALID_WORKSPACE_OFFSET};
     int64_t flagGmmToEpilogueOffset{INVALID_WORKSPACE_OFFSET};
-    int64_t flagTopkValidIndexSyncOffset{INVALID_WORKSPACE_OFFSET}; // 每个 block 的 AIV1 子组同步阶段。
+    // 仅 MTE 启用共享专家时使用：AIV1 子组分别在 topk 有效下标发送完成、跨卡握手完成后同步。
+    int64_t flagAiv1TopkValidIndexSyncOffset{INVALID_WORKSPACE_OFFSET};
     int64_t gmm2ReadyOffset{INVALID_WORKSPACE_OFFSET};
     int64_t gmm2CombineSyncCounterOffset{INVALID_WORKSPACE_OFFSET};
     int64_t cumsumInfoOffset{INVALID_WORKSPACE_OFFSET};
@@ -73,7 +74,9 @@ struct WorkspaceLayout {
     int64_t sharedExpertActivationScaleOffset{INVALID_WORKSPACE_OFFSET};
     int64_t gmm1TileStatusOffset{INVALID_WORKSPACE_OFFSET}; // GMM1 tile 就绪状态位区（仅 prefetch 软同步分配）
     int64_t sharedExpertGmm2TileCounterOffset{INVALID_WORKSPACE_OFFSET};
-    int64_t maskSlotOffset{INVALID_WORKSPACE_OFFSET};               // urma发送mask临时GM
+    int64_t dedupPrepassReadyOffset{INVALID_WORKSPACE_OFFSET}; // 去重 prepass 完成计数（flag 区内，自动清零）
+    int64_t dedupRowDescOffset{INVALID_WORKSPACE_OFFSET};      // 去重 rowDesc 表（仅 MTE 且 dedupMode!=0）
+    int64_t maskSlotOffset{INVALID_WORKSPACE_OFFSET};          // urma发送mask临时GM
     int64_t dispatchRelaySendQueueOffset{INVALID_WORKSPACE_OFFSET}; // 按目标 Server 划分的一级中继发送队列
     int64_t dispatchRemoteReadyFlagSnapshotOffset{
         INVALID_WORKSPACE_OFFSET}; // 各逻辑核的固定 256-token 远端就绪标志窗口
@@ -102,8 +105,73 @@ private:
     HOST_DEVICE void Initialize(const MegaMoeTilingData *tilingData, uint32_t serverNum)
     {
         workspaceSize = 0;
+        // Tiling admits only MTE and URMA. Each path preserves its original allocation order.
+        if (tilingData->topoType == TOPO_TYPE_MTE) {
+            InitializeMte(tilingData);
+        } else {
+            InitializeUrma(tilingData, serverNum);
+        }
+    }
+
+    HOST_DEVICE void InitializeMte(const MegaMoeTilingData *tilingData)
+    {
+        InitializeDispatchBuffers(tilingData);
+        // tkw=0 且 combine 去重：dispatch 把 LAST 行整 token 权重段落 revWeights 区、merge 读回乘权，
+        // MTE 同样依赖本区。漏分配则 dispatchRevWeightsPtr 为 nullptr，首 launch 即 MTE invalid GM。
+        // tkw=1 与去重关闭态在 MTE 下不使用本区，保持既有布局不变。
+        if (tilingData->topkWeightsPrefetch == 0 && IsCombineDedupOn(tilingData->dedupMode)) {
+            InitializeDispatchRevWeights(tilingData);
+        }
+        // Stride per AIC, measured in int32_t elements.
+        int64_t expertRecvTokenCountStride = static_cast<int64_t>(
+            Ops::Base::CeilAlign(tilingData->moeExpertPerRank, static_cast<uint32_t>(INT_CACHELINE)));
+        int64_t expertRecvTokenCountBytes =
+            expertRecvTokenCountStride * static_cast<int64_t>(sizeof(int32_t)) * tilingData->aicNum;
+        InitializeActivationBuffers(tilingData);
+        InitializeRoutingMetadata(tilingData, expertRecvTokenCountBytes);
+        InitializeMteSyncFlags(tilingData);
+        const bool needsReloadCumsum = IsW4GmmMode(tilingData->moeGmmMode);
+        InitializeGmmIntermediateBuffers(tilingData, needsReloadCumsum, true);
+        InitializeGmm1TileStatus(tilingData);
+        InitializeDedupRowDesc(tilingData);
+        if (tilingData->sharedExpertNum > 0) {
+            InitializeSharedExpertGmmOutputs(tilingData);
+            if (tilingData->isSharedQuantIndependent == 1U) {
+                InitializeMteSharedExpertInput(tilingData);
+            }
+            InitializeSharedExpertActivationBuffers(tilingData);
+        }
+    }
+
+    HOST_DEVICE void InitializeUrma(const MegaMoeTilingData *tilingData, uint32_t serverNum)
+    {
+        InitializeDispatchBuffers(tilingData);
+        InitializeDispatchRevWeights(tilingData);
+        int64_t expertRecvTokenCountBytes =
+            static_cast<int64_t>(tilingData->moeExpertPerRank) * ALIGN_32 * tilingData->aicNum;
+        InitializeActivationBuffers(tilingData);
+        InitializeRoutingMetadata(tilingData, expertRecvTokenCountBytes);
+        InitializeUrmaSyncFlags(tilingData);
+        // All URMA GMM modes retain dispatch cumsum across activation.
+        InitializeGmmIntermediateBuffers(tilingData, true, false);
+        InitializeGmm1TileStatus(tilingData);
+        InitializeDedupRowDesc(tilingData);
+        InitializeUrmaDispatchBuffers(tilingData, serverNum);
+        if (tilingData->sharedExpertNum > 0) {
+            InitializeSharedExpertGmmOutputs(tilingData);
+            InitializeUrmaSharedExpertInput(tilingData);
+            InitializeSharedExpertActivationBuffers(tilingData);
+        }
+    }
+
+    HOST_DEVICE void InitializeDispatchBuffers(const MegaMoeTilingData *tilingData)
+    {
         dispatchRevDataOffset = workspaceSize;
-        workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize * tilingData->h, ALIGN_512);
+        // dispatchRevData 按 GMM1 激活的实际物理字节数分配：FP8 每字节 1 个元素，FP4 每字节 2 个元素。
+        const int64_t dispatchDataElementsPerByte = IsA4W4GmmMode(tilingData->moeGmmMode) ? 2LL : 1LL;
+        const int64_t dispatchDataBytesPerToken = static_cast<int64_t>(tilingData->h) / dispatchDataElementsPerByte;
+        workspaceSize += Ops::Base::CeilAlign(
+            static_cast<int64_t>(tilingData->maxOutputSize) * dispatchDataBytesPerToken, ALIGN_512);
         dispatchRevScaleOffset = workspaceSize;
 
         int64_t dispatchScaleElementsPerToken =
@@ -111,15 +179,26 @@ private:
             MXFP_MULTI_BASE_SIZE;
         workspaceSize +=
             Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize * dispatchScaleElementsPerToken, ALIGN_512);
+    }
 
-        if (tilingData->topkWeightsPrefetch == 1 && tilingData->topoType == TOPO_TYPE_URMA) {
+    HOST_DEVICE void InitializeDispatchRevWeights(const MegaMoeTilingData *tilingData)
+    {
+        // dispatch 接收侧权重区，两种场景共用、MTE 与 URMA 两条初始化路径都必须调用：
+        // tkw=1 的权重预取；tkw=0 且 combine 去重——dispatch 侧把 LAST 行
+        // 整 token 的 topK 权重段落在这里，merge 一次连续读取后按成员 topkIndex 乘权。
+        const bool dedupCombineWeights =
+            tilingData->topkWeightsPrefetch == 0 && IsCombineDedupOn(tilingData->dedupMode);
+        if (tilingData->topkWeightsPrefetch == 1 || dedupCombineWeights) {
             dispatchRevWeightsOffset = workspaceSize;
             uint32_t weightAlignBytes = Ops::Base::CeilAlign(static_cast<uint32_t>(tilingData->topK * sizeof(float)),
                                                              static_cast<uint32_t>(ALIGN_32));
             workspaceSize += Ops::Base::CeilAlign(
                 static_cast<int64_t>(tilingData->maxOutputSize) * static_cast<int64_t>(weightAlignBytes), ALIGN_512);
         }
+    }
 
+    HOST_DEVICE void InitializeActivationBuffers(const MegaMoeTilingData *tilingData)
+    {
         activationQuantDataOffset = workspaceSize;
         workspaceSize += Ops::Base::CeilAlign(
             SIZE_INT_8 * tilingData->maxOutputSize * tilingData->hiddenDim / ACTIVATION_N_HALF, ALIGN_512);
@@ -131,98 +210,106 @@ private:
                                                         static_cast<int64_t>(MXFP_DIVISOR_SIZE)) *
                                      MXFP_MULTI_BASE_SIZE,
                                  ALIGN_512);
+    }
 
-        expertRevTokenNumsOffset = workspaceSize;
-        int64_t expertMajorPaddedCountBytes =
-            static_cast<int64_t>(tilingData->moeExpertPerRank) * ALIGN_32 * tilingData->aicNum;
-        int64_t blockMajorCountStride = static_cast<int64_t>(
-            Ops::Base::CeilAlign(tilingData->moeExpertPerRank, static_cast<uint32_t>(INT_CACHELINE)));
-        int64_t blockMajorCountBytes =
-            blockMajorCountStride * static_cast<int64_t>(sizeof(int32_t)) * tilingData->aicNum;
-        int64_t expertCountWorkspaceBytes =
-            tilingData->topoType == TOPO_TYPE_MTE ? blockMajorCountBytes : expertMajorPaddedCountBytes;
-        workspaceSize += Ops::Base::CeilAlign(expertCountWorkspaceBytes, ALIGN_512);
+    HOST_DEVICE void InitializeRoutingMetadata(const MegaMoeTilingData *tilingData, int64_t expertRecvTokenCountBytes)
+    {
+        expertRecvTokenCountOffset = workspaceSize;
+        workspaceSize += Ops::Base::CeilAlign(expertRecvTokenCountBytes, ALIGN_512);
 
         metaInfoOffset = workspaceSize;
         workspaceSize += Ops::Base::CeilAlign(tilingData->maxOutputSize * ALIGN_32, ALIGN_512);
+    }
 
-        // MoE 与共享专家的 Activation->GMM2 flag 分区独立，避免并发流水串用计数。
-        const bool useMteWaveCombine = tilingData->topoType == TOPO_TYPE_MTE;
+    HOST_DEVICE void InitializeMteSyncFlags(const MegaMoeTilingData *tilingData)
+    {
+        // Keep all scalar flags contiguous for ResetFlagList.
+        int64_t flagRegionBeginOffset = workspaceSize;
+        int64_t moeExpertCount = static_cast<int64_t>(tilingData->moeExpertPerRank);
+        flagActivationToGmm2Offset = workspaceSize;
+        int64_t wavesPerExpert =
+            Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->maxOutputSize), static_cast<int64_t>(L1_TILE_M_256));
+        workspaceSize += SIZE_INT_32 * moeExpertCount * wavesPerExpert * INT_CACHELINE;
+        if (tilingData->sharedExpertNum > 0) {
+            sharedActivationToGmm2Offset = workspaceSize;
+            workspaceSize += SIZE_INT_32 *
+                             CalcSharedActivationFlagElementsPerExpert(static_cast<int64_t>(tilingData->bs)) *
+                             static_cast<int64_t>(tilingData->sharedExpertNum);
+        }
+        InitializeRoutingFlags(tilingData);
+        // 去重 prepass 完成标记（flag 连续区内，随 ResetSyncStatus 每 launch 自动清零）：
+        // 槽 0 = 每核 done 计数（AIV1 完成全部认领项后 +1；combine 消费 desc 前等其到齐）；
+        // 槽 1+item = 该工作项 ready（dispatch 每批只等自己覆盖的 (srcRank,chunk) 项）。
+        // 按 worldSize*DEDUP_PREPASS_MAX_CHUNKS 上界分配，每槽独占一个 cache line。
+        if (tilingData->dedupMode != 0) {
+            dedupPrepassReadyOffset = workspaceSize;
+            workspaceSize += SIZE_INT_32 * INT_CACHELINE *
+                             (1 + static_cast<int64_t>(tilingData->epWorldSize) * DEDUP_PREPASS_MAX_CHUNKS);
+        }
+        const bool isMoeW4 = IsW4GmmMode(tilingData->moeGmmMode);
+        const bool hasSharedW4 = tilingData->sharedExpertNum > 0 && IsW4GmmMode(tilingData->sharedGmmMode);
+        if (isMoeW4 || hasSharedW4 || tilingData->combineQuantMode == COMBINE_NO_QUANT) {
+            flagGmmToEpilogueOffset = workspaceSize;
+            workspaceSize += static_cast<int64_t>(tilingData->aicNum) * INT_CACHELINE * SIZE_INT_32;
+        }
+        // 量化 Combine 在完整专家结束后等待每个 AIC 的完成标记；combine 去重下非量化路径的
+        // 合并驱动行也要等组内成员所在专家的 GMM2 全部落地，同样需要该 per-expert 标记区。
+        if (tilingData->combineQuantMode != COMBINE_NO_QUANT || IsCombineDedupOn(tilingData->dedupMode)) {
+            gmm2ReadyOffset = workspaceSize;
+            workspaceSize += SIZE_INT_32 * moeExpertCount * tilingData->aicNum * INT_CACHELINE;
+        }
+        if (tilingData->sharedExpertNum > 0) {
+            sharedExpertGmm2TileCounterOffset = workspaceSize;
+            int64_t tokenGroupCount =
+                Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->bs), static_cast<int64_t>(L1_TILE_M_256));
+            workspaceSize +=
+                SIZE_INT_32 * tokenGroupCount * static_cast<int64_t>(tilingData->sharedExpertNum) * INT_CACHELINE;
+
+            flagAiv1TopkValidIndexSyncOffset = workspaceSize;
+            workspaceSize += static_cast<int64_t>(tilingData->aicNum) * INT_CACHELINE * SIZE_INT_32;
+        }
+        flagResetElementCount = (workspaceSize - flagRegionBeginOffset) / SIZE_INT_32;
+    }
+
+    HOST_DEVICE void InitializeUrmaSyncFlags(const MegaMoeTilingData *tilingData)
+    {
+        // Keep all scalar flags contiguous for ResetFlagList.
+        int64_t flagRegionBeginOffset = workspaceSize;
+        int64_t moeExpertCount = static_cast<int64_t>(tilingData->moeExpertPerRank);
+        flagActivationToGmm2Offset = workspaceSize;
+        // URMA activation uses only the first slot of each expert.
+        workspaceSize += SIZE_INT_32 * moeExpertCount * INT_CACHELINE;
+        InitializeRoutingFlags(tilingData);
+        const bool isMoeW4 = IsW4GmmMode(tilingData->moeGmmMode);
+        const bool hasSharedW4 = tilingData->sharedExpertNum > 0 && IsW4GmmMode(tilingData->sharedGmmMode);
+        if (isMoeW4 || hasSharedW4) {
+            flagGmmToEpilogueOffset = workspaceSize;
+            workspaceSize += static_cast<int64_t>(tilingData->aicNum) * INT_CACHELINE * SIZE_INT_32;
+        }
+        gmm2CombineSyncCounterOffset = workspaceSize;
+        workspaceSize += static_cast<int64_t>(tilingData->combineSyncSlotCountPerExpert) * moeExpertCount *
+                         INT_CACHELINE * SIZE_INT_32;
+        flagResetElementCount = (workspaceSize - flagRegionBeginOffset) / SIZE_INT_32;
+    }
+
+    HOST_DEVICE void InitializeRoutingFlags(const MegaMoeTilingData *tilingData)
+    {
+        int64_t moeExpertCount = static_cast<int64_t>(tilingData->moeExpertPerRank);
         int64_t maxWavesPerExpert =
             Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->maxOutputSize), static_cast<int64_t>(L1_TILE_M_256));
         int64_t waveFlagSlotsPerExpert = maxWavesPerExpert * static_cast<int64_t>(INT_CACHELINE);
-        // MTE GMM2 按 256-token M group 消费 activation；URMA 只使用每个专家的首槽。
-        int64_t activationFlagSlotsPerExpert =
-            tilingData->topoType == TOPO_TYPE_MTE ? waveFlagSlotsPerExpert : static_cast<int64_t>(INT_CACHELINE);
-        int64_t moeExpertCount = static_cast<int64_t>(tilingData->moeExpertPerRank);
-
-        // 所有 Scalar 通知都放在同一段连续 workspace 中。每个逻辑槽独占一个 64B cache line，
-        // 因而 ResetFlagList 可以按任务分区一次清理完整区域。
-        int64_t flagRegionBeginOffset = workspaceSize;
-        flagActivationToGmm2Offset = workspaceSize;
-        workspaceSize += SIZE_INT_32 * moeExpertCount * activationFlagSlotsPerExpert;
-        if (tilingData->sharedExpertNum > 0 && tilingData->topoType == TOPO_TYPE_MTE) {
-            sharedActivationToGmm2Offset = workspaceSize;
-            int64_t sharedFlagElementsPerExpert =
-                CalcSharedActivationFlagElementsPerExpert(static_cast<int64_t>(tilingData->bs));
-            workspaceSize +=
-                SIZE_INT_32 * sharedFlagElementsPerExpert * static_cast<int64_t>(tilingData->sharedExpertNum);
-        }
         flagDispatchToGmm1Offset = workspaceSize;
         workspaceSize += SIZE_INT_32 * moeExpertCount * waveFlagSlotsPerExpert;
 
         // 每(expert, aiCore)单独占一个cache_line
         flagSendCntCalToUpdParamsOffset = workspaceSize;
         workspaceSize += SIZE_INT_32 * INT_CACHELINE * moeExpertCount * tilingData->aicNum;
+    }
 
-        // 每个 AIC 的就绪序列与前面的 flag 连续存放，使 ResetFlagList 能用同一次 MTE reset 清理；
-        // 每个序列独占一个 64B cache line。
-        // W4 GMM1 activation 始终使用该序号；非量化 GMM2/Combine 也复用它做 tile 一对一通知。
-        bool hasSharedW4Gmm = tilingData->sharedExpertNum > 0 && IsW4GmmMode(tilingData->sharedGmmMode);
-        bool isW4Mode = IsW4GmmMode(tilingData->moeGmmMode) || hasSharedW4Gmm;
-        if (isW4Mode || (tilingData->topoType == TOPO_TYPE_MTE && tilingData->combineQuantMode == COMBINE_NO_QUANT)) {
-            flagGmmToEpilogueOffset = workspaceSize;
-            workspaceSize += static_cast<int64_t>(tilingData->aicNum) * INT_CACHELINE * SIZE_INT_32;
-        }
-
-        if (tilingData->topoType == TOPO_TYPE_MTE && tilingData->combineQuantMode != COMBINE_NO_QUANT) {
-            // 量化 Combine 在完整专家结束后等待每个 AIC 的完成标记。
-            gmm2ReadyOffset = workspaceSize;
-            workspaceSize += SIZE_INT_32 * moeExpertCount * tilingData->aicNum * INT_CACHELINE;
-        }
-
-        if (tilingData->topoType == TOPO_TYPE_URMA) {
-            gmm2CombineSyncCounterOffset = workspaceSize;
-            workspaceSize += static_cast<int64_t>(tilingData->combineSyncSlotCountPerExpert) * moeExpertCount *
-                             INT_CACHELINE * SIZE_INT_32;
-        }
-
-        // URMA Layered 共享专家由全核同步收口；仅 MTE 共享专家需要 tile counter。
-        if (tilingData->sharedExpertNum > 0 && tilingData->topoType == TOPO_TYPE_MTE) {
-            sharedExpertGmm2TileCounterOffset = workspaceSize;
-            int64_t tokenGroupCount =
-                Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->bs), static_cast<int64_t>(L1_TILE_M_256));
-            workspaceSize +=
-                SIZE_INT_32 * tokenGroupCount * static_cast<int64_t>(tilingData->sharedExpertNum) * INT_CACHELINE;
-        }
-        if (tilingData->sharedExpertNum > 0 && tilingData->topoType == TOPO_TYPE_MTE) {
-            flagTopkValidIndexSyncOffset = workspaceSize;
-            workspaceSize += static_cast<int64_t>(tilingData->aicNum) * INT_CACHELINE * SIZE_INT_32;
-        }
-        flagResetElementCount = (workspaceSize - flagRegionBeginOffset) / SIZE_INT_32;
-
-        // 按 GMM 实现路径和 Combine 量化模式分配条件 workspace；host 侧 GMM mode 与 kernel 的
-        // QuantConfig::AXW_MODE 由同一组量化 dtype、权重 dtype 和 format 推导，并由 TilingKey 保证匹配。
-        // W4 Wave-ahead Dispatch 与 layered A8W4 都会跨 Activation 保留 cumsum；Activation 会覆盖对应 UB，
-        // 因此需要逐物理 block 的 GM 备份；URMA Layered 的 A8W8/A8W4/A4W4 均使用该 Wave 状态机。
-        cumsumInfoOffset = INVALID_WORKSPACE_OFFSET;
-        gmm1MmadResOffset = INVALID_WORKSPACE_OFFSET;
-        gmm2MmadResOffset = INVALID_WORKSPACE_OFFSET;
-        bool activationOverwritesDispatchCumsum =
-            tilingData->moeGmmMode == GMM_MODE_A8W4_NZ || tilingData->topoType == TOPO_TYPE_URMA ||
-            (tilingData->topoType == TOPO_TYPE_MTE &&
-             (tilingData->moeGmmMode == GMM_MODE_A4W4_ND || tilingData->moeGmmMode == GMM_MODE_A4W4_NZ));
-        if (activationOverwritesDispatchCumsum) {
+    HOST_DEVICE void InitializeGmmIntermediateBuffers(const MegaMoeTilingData *tilingData, bool reserveCumsum,
+                                                      bool alignGmm2Output)
+    {
+        if (reserveCumsum) {
             // cumsumInfo：逐核备份 cumsum 状态，每核 moeExpertPerRank × epWorldSize 个 int32。
             cumsumInfoOffset = workspaceSize;
             workspaceSize += Ops::Base::CeilAlign(static_cast<int64_t>(SIZE_INT_32 * tilingData->moeExpertPerRank *
@@ -235,16 +322,30 @@ private:
             gmm1MmadResOffset = workspaceSize;
             workspaceSize += SIZE_BF_16 * tilingData->maxOutputSize * tilingData->hiddenDim;
         }
-        // 合法拓扑只有 MTE/URMA，两条 Wave 路径都先将 GMM2 输出落到 GM，再由 Combine 消费。
-        if (useMteWaveCombine) {
+        // gmm2MmadRes：GMM2 输出，布局为 maxOutputSize × h 个 BF16。
+        int64_t outputBytes = SIZE_BF_16 * tilingData->maxOutputSize * tilingData->h;
+        if (alignGmm2Output) {
             workspaceSize = Ops::Base::CeilAlign(workspaceSize, static_cast<int64_t>(ALIGN_512));
+            outputBytes = Ops::Base::CeilAlign(outputBytes, static_cast<int64_t>(ALIGN_512));
         }
         gmm2MmadResOffset = workspaceSize;
-        int64_t gmm2OutputBytes = static_cast<int64_t>(SIZE_BF_16) * static_cast<int64_t>(tilingData->maxOutputSize) *
-                                  static_cast<int64_t>(tilingData->h);
-        workspaceSize += useMteWaveCombine ? Ops::Base::CeilAlign(gmm2OutputBytes, static_cast<int64_t>(ALIGN_512)) :
-                                             gmm2OutputBytes;
+        workspaceSize += outputBytes;
+    }
 
+    // 去重 rowDesc 表：每个接收行一条定长描述符。无需清零——prepass 在 dispatch 读取前
+    // 覆盖写全部有效行，超出实际接收计数的行不会被读取。
+    HOST_DEVICE void InitializeDedupRowDesc(const MegaMoeTilingData *tilingData)
+    {
+        if (tilingData->topoType == TOPO_TYPE_MTE && tilingData->dedupMode != 0) {
+            dedupRowDescOffset = workspaceSize;
+            int64_t rowDescStrideInt32 = CalcDedupRowDescStrideInt32(static_cast<int64_t>(tilingData->topK));
+            workspaceSize += Ops::Base::CeilAlign(
+                SIZE_INT_32 * rowDescStrideInt32 * static_cast<int64_t>(tilingData->maxOutputSize), ALIGN_512);
+        }
+    }
+
+    HOST_DEVICE void InitializeGmm1TileStatus(const MegaMoeTilingData *tilingData)
+    {
         // GMM1 tile 状态位区（仅 prefetch 路径分配，用于 AIC→AIV 软同步）。
         // 每个 tile 状态和末尾 allDone 状态都独占一条 64B cache line。
         gmm1TileStatusOffset = INVALID_WORKSPACE_OFFSET;
@@ -256,74 +357,83 @@ private:
             int64_t statusBytes = SIZE_INT_32 * statusSlots * INT_CACHELINE;
             workspaceSize += Ops::Base::CeilAlign(statusBytes, ALIGN_512);
         }
-        if (tilingData->topoType == TOPO_TYPE_URMA) {
-            maskSlotOffset = workspaceSize;
-            // 远端 mask 槽的 count 位于全卡共用的容量尾部，本地发送暂存必须使用相同槽宽。
-            const int64_t maskAlignSize = CalcDispatchMaskAlignSize(tilingData);
-            int64_t maskSlotSize = maskAlignSize + static_cast<int64_t>(ALIGN_32); // mask + 32B count
+    }
 
-            workspaceSize += Ops::Base::CeilAlign(
-                static_cast<int64_t>(tilingData->moeExpertPerRank) * tilingData->epWorldSize * maskSlotSize,
-                static_cast<int64_t>(ALIGN_512));
+    HOST_DEVICE void InitializeUrmaDispatchBuffers(const MegaMoeTilingData *tilingData, uint32_t serverNum)
+    {
+        maskSlotOffset = workspaceSize;
+        // 远端 mask 槽的 count 位于全卡共用的容量尾部，本地发送暂存必须使用相同槽宽。
+        const int64_t maskAlignSize = CalcDispatchMaskAlignSize(tilingData);
+        int64_t maskSlotSize = maskAlignSize + static_cast<int64_t>(ALIGN_32); // mask + 32B count
 
-            dispatchRelaySendQueueOffset = workspaceSize;
-            int64_t serverWorkspaceBytes =
-                static_cast<int64_t>(ALIGN_32) + static_cast<int64_t>(tilingData->bs) * ALIGN_32;
-            workspaceSize += Ops::Base::CeilAlign(static_cast<int64_t>(serverNum) * serverWorkspaceBytes,
-                                                  static_cast<int64_t>(ALIGN_512));
+        workspaceSize += Ops::Base::CeilAlign(
+            static_cast<int64_t>(tilingData->moeExpertPerRank) * tilingData->epWorldSize * maskSlotSize,
+            static_cast<int64_t>(ALIGN_512));
 
-            dispatchRemoteReadyFlagSnapshotOffset = workspaceSize;
-            // 每个逻辑核只缓存当前 256-token 窗口；稀疏 token 按命中的窗口分块读取。
-            int64_t flagSnapshotBytes = static_cast<int64_t>(L1_TILE_M_256) * sizeof(uint64_t);
-            int64_t relayFlagSnapshotBytesPerBlock =
-                Ops::Base::CeilAlign(flagSnapshotBytes, static_cast<int64_t>(ALIGN_512));
-            workspaceSize += static_cast<int64_t>(tilingData->aicNum) * relayFlagSnapshotBytesPerBlock;
-        }
+        dispatchRelaySendQueueOffset = workspaceSize;
+        int64_t serverWorkspaceBytes = static_cast<int64_t>(ALIGN_32) + static_cast<int64_t>(tilingData->bs) * ALIGN_32;
+        workspaceSize += Ops::Base::CeilAlign(static_cast<int64_t>(serverNum) * serverWorkspaceBytes,
+                                              static_cast<int64_t>(ALIGN_512));
 
-        // 共享专家 workspace buffer。
-        if (tilingData->sharedExpertNum > 0) {
-            // sharedExpertResult：共享专家 GMM2 输出 [sharedExpertNum × bs × h]。
-            sharedExpertResultOffset = workspaceSize;
-            workspaceSize += Ops::Base::CeilAlign(
-                SIZE_BF_16 * tilingData->bs * tilingData->sharedExpertNum * tilingData->h, ALIGN_512);
-            // sharedExpertGmm1Out：共享专家 GMM1 输出 [sharedExpertNum × bs × hiddenDim]。
-            sharedExpertGmm1OutOffset = workspaceSize;
-            workspaceSize += Ops::Base::CeilAlign(
-                SIZE_BF_16 * tilingData->bs * tilingData->sharedExpertNum * tilingData->hiddenDim, ALIGN_512);
-            if (tilingData->topoType == TOPO_TYPE_MTE) {
-                // MTE shared GMM1 统一读取逐 token 交织记录 [Align256(data) | Align32(scale)]。
-                sharedExpertInputOffset = workspaceSize;
-                uint32_t elementsPerByte = IsA4W4GmmMode(tilingData->sharedGmmMode) ? 2U : 1U;
-                int64_t recordBytes =
-                    CalcQuantTokenScaleBytes(static_cast<int64_t>(tilingData->h), elementsPerByte, 0LL, false);
-                workspaceSize += Ops::Base::CeilAlign(static_cast<int64_t>(tilingData->bs) * recordBytes,
-                                                      static_cast<int64_t>(ALIGN_512));
-            } else {
-                // URMA layered kernel 仍使用连续 data/scale，两块地址契约保持不变。
-                sharedExpertInputDataOffset = workspaceSize;
-                workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->bs * tilingData->h, ALIGN_512);
-                sharedExpertInputScaleOffset = workspaceSize;
-                workspaceSize +=
-                    Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->bs *
-                                             Ops::Base::CeilDiv(static_cast<uint32_t>(tilingData->h),
-                                                                static_cast<uint32_t>(MXFP_SCALE_GROUP_NUM)) *
-                                             MXFP_MULTI_BASE_SIZE,
-                                         ALIGN_512);
-            }
-            // sharedExpertActivationData：SwiGLU 量化输出 [sharedExpertNum × bs × hiddenDim / 2] FP8。
-            sharedExpertActivationDataOffset = workspaceSize;
-            workspaceSize += Ops::Base::CeilAlign(
-                SIZE_INT_8 * tilingData->bs * tilingData->sharedExpertNum * tilingData->hiddenDim / ACTIVATION_N_HALF,
-                ALIGN_512);
-            // sharedExpertActivationScale：每个 MXFP scale group 保存两个 multi-base 分量。
-            sharedExpertActivationScaleOffset = workspaceSize;
-            workspaceSize += Ops::Base::CeilAlign(
-                SIZE_INT_8 * tilingData->bs * tilingData->sharedExpertNum *
-                    Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->hiddenDim / ACTIVATION_N_HALF),
-                                       static_cast<int64_t>(MXFP_DIVISOR_SIZE)) *
-                    MXFP_MULTI_BASE_SIZE,
-                ALIGN_512);
-        }
+        dispatchRemoteReadyFlagSnapshotOffset = workspaceSize;
+        // 每个逻辑核只缓存当前 256-token 窗口；稀疏 token 按命中的窗口分块读取。
+        int64_t flagSnapshotBytes = static_cast<int64_t>(L1_TILE_M_256) * sizeof(uint64_t);
+        int64_t relayFlagSnapshotBytesPerBlock =
+            Ops::Base::CeilAlign(flagSnapshotBytes, static_cast<int64_t>(ALIGN_512));
+        workspaceSize += static_cast<int64_t>(tilingData->aicNum) * relayFlagSnapshotBytesPerBlock;
+    }
+
+    HOST_DEVICE void InitializeSharedExpertGmmOutputs(const MegaMoeTilingData *tilingData)
+    {
+        // sharedExpertResult：共享专家 GMM2 输出 [sharedExpertNum × bs × h]。
+        sharedExpertResultOffset = workspaceSize;
+        workspaceSize +=
+            Ops::Base::CeilAlign(SIZE_BF_16 * tilingData->bs * tilingData->sharedExpertNum * tilingData->h, ALIGN_512);
+        // sharedExpertGmm1Out：共享专家 GMM1 输出 [sharedExpertNum × bs × hiddenDim]。
+        sharedExpertGmm1OutOffset = workspaceSize;
+        workspaceSize += Ops::Base::CeilAlign(
+            SIZE_BF_16 * tilingData->bs * tilingData->sharedExpertNum * tilingData->hiddenDim, ALIGN_512);
+    }
+
+    HOST_DEVICE void InitializeMteSharedExpertInput(const MegaMoeTilingData *tilingData)
+    {
+        // MTE 共享专家使用逐 token 交织数据 [Align256(data) | Align32(scale)]，仅独立量化时分配。
+        sharedExpertInputOffset = workspaceSize;
+        uint32_t elementsPerByte = IsA4W4GmmMode(tilingData->sharedGmmMode) ? 2U : 1U;
+        int64_t recordBytes =
+            CalcQuantTokenScaleBytes(static_cast<int64_t>(tilingData->h), elementsPerByte, 0LL, false);
+        workspaceSize +=
+            Ops::Base::CeilAlign(static_cast<int64_t>(tilingData->bs) * recordBytes, static_cast<int64_t>(ALIGN_512));
+    }
+
+    HOST_DEVICE void InitializeUrmaSharedExpertInput(const MegaMoeTilingData *tilingData)
+    {
+        // URMA layered kernel 仍使用连续 data/scale，两块地址契约保持不变。
+        sharedExpertInputDataOffset = workspaceSize;
+        workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->bs * tilingData->h, ALIGN_512);
+        sharedExpertInputScaleOffset = workspaceSize;
+        workspaceSize += Ops::Base::CeilAlign(
+            SIZE_INT_8 * tilingData->bs *
+                Ops::Base::CeilDiv(static_cast<uint32_t>(tilingData->h), static_cast<uint32_t>(MXFP_SCALE_GROUP_NUM)) *
+                MXFP_MULTI_BASE_SIZE,
+            ALIGN_512);
+    }
+
+    HOST_DEVICE void InitializeSharedExpertActivationBuffers(const MegaMoeTilingData *tilingData)
+    {
+        // sharedExpertActivationData：SwiGLU 量化输出 [sharedExpertNum × bs × hiddenDim / 2] FP8。
+        sharedExpertActivationDataOffset = workspaceSize;
+        workspaceSize += Ops::Base::CeilAlign(
+            SIZE_INT_8 * tilingData->bs * tilingData->sharedExpertNum * tilingData->hiddenDim / ACTIVATION_N_HALF,
+            ALIGN_512);
+        // sharedExpertActivationScale：每个 MXFP scale group 保存两个 multi-base 分量。
+        sharedExpertActivationScaleOffset = workspaceSize;
+        workspaceSize +=
+            Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->bs * tilingData->sharedExpertNum *
+                                     Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->hiddenDim / ACTIVATION_N_HALF),
+                                                        static_cast<int64_t>(MXFP_DIVISOR_SIZE)) *
+                                     MXFP_MULTI_BASE_SIZE,
+                                 ALIGN_512);
     }
 };
 
@@ -333,14 +443,14 @@ struct WorkspaceInfo {
     GM_ADDR dispatchRevWeightsPtr{nullptr};
     GM_ADDR activationQuantDataPtr{nullptr};
     GM_ADDR activationQuantScalePtr{nullptr};
-    GM_ADDR expertRevTokenNumsPtr{nullptr};
+    GM_ADDR expertRecvTokenCountPtr{nullptr};
     GM_ADDR metaInfoPtr{nullptr};
     GM_ADDR flagActivationToGmm2Ptr{nullptr};
     GM_ADDR sharedActivationToGmm2Ptr{nullptr};
     GM_ADDR flagDispatchToGmm1Ptr{nullptr};
     GM_ADDR flagSendCntCalToUpdParamsPtr{nullptr};
     GM_ADDR flagGmmToEpiloguePtr{nullptr};
-    GM_ADDR flagTopkValidIndexSyncPtr{nullptr};
+    GM_ADDR flagAiv1TopkValidIndexSyncPtr{nullptr};
     GM_ADDR gmm2ReadyPtr{nullptr};
     GM_ADDR gmm2CombineSyncCounterPtr{nullptr};
     GM_ADDR cumsumInfoPtr{nullptr};
@@ -355,6 +465,9 @@ struct WorkspaceInfo {
     GM_ADDR sharedExpertActivationScalePtr{nullptr};
     GM_ADDR gmm1TileStatusPtr{nullptr};
     GM_ADDR sharedExpertGmm2TileCounterPtr{nullptr};
+
+    GM_ADDR dedupPrepassReadyPtr{nullptr};
+    GM_ADDR dedupRowDescPtr{nullptr};
 
     GM_ADDR maskSlotPtr{nullptr};
     GM_ADDR dispatchRelaySendQueuePtr{nullptr};
@@ -381,14 +494,14 @@ public:
         dispatchRevWeightsPtr = ResolveWorkspaceAddress(base, layout.dispatchRevWeightsOffset);
         activationQuantDataPtr = ResolveWorkspaceAddress(base, layout.activationQuantDataOffset);
         activationQuantScalePtr = ResolveWorkspaceAddress(base, layout.activationQuantScaleOffset);
-        expertRevTokenNumsPtr = ResolveWorkspaceAddress(base, layout.expertRevTokenNumsOffset);
+        expertRecvTokenCountPtr = ResolveWorkspaceAddress(base, layout.expertRecvTokenCountOffset);
         metaInfoPtr = ResolveWorkspaceAddress(base, layout.metaInfoOffset);
         flagActivationToGmm2Ptr = ResolveWorkspaceAddress(base, layout.flagActivationToGmm2Offset);
         sharedActivationToGmm2Ptr = ResolveWorkspaceAddress(base, layout.sharedActivationToGmm2Offset);
         flagDispatchToGmm1Ptr = ResolveWorkspaceAddress(base, layout.flagDispatchToGmm1Offset);
         flagSendCntCalToUpdParamsPtr = ResolveWorkspaceAddress(base, layout.flagSendCntCalToUpdParamsOffset);
         flagGmmToEpiloguePtr = ResolveWorkspaceAddress(base, layout.flagGmmToEpilogueOffset);
-        flagTopkValidIndexSyncPtr = ResolveWorkspaceAddress(base, layout.flagTopkValidIndexSyncOffset);
+        flagAiv1TopkValidIndexSyncPtr = ResolveWorkspaceAddress(base, layout.flagAiv1TopkValidIndexSyncOffset);
         gmm2ReadyPtr = ResolveWorkspaceAddress(base, layout.gmm2ReadyOffset);
         gmm2CombineSyncCounterPtr = ResolveWorkspaceAddress(base, layout.gmm2CombineSyncCounterOffset);
         cumsumInfoPtr = ResolveWorkspaceAddress(base, layout.cumsumInfoOffset);
@@ -403,6 +516,8 @@ public:
         sharedExpertActivationScalePtr = ResolveWorkspaceAddress(base, layout.sharedExpertActivationScaleOffset);
         gmm1TileStatusPtr = ResolveWorkspaceAddress(base, layout.gmm1TileStatusOffset);
         sharedExpertGmm2TileCounterPtr = ResolveWorkspaceAddress(base, layout.sharedExpertGmm2TileCounterOffset);
+        dedupPrepassReadyPtr = ResolveWorkspaceAddress(base, layout.dedupPrepassReadyOffset);
+        dedupRowDescPtr = ResolveWorkspaceAddress(base, layout.dedupRowDescOffset);
         maskSlotPtr = ResolveWorkspaceAddress(base, layout.maskSlotOffset);
         dispatchRelaySendQueuePtr = ResolveWorkspaceAddress(base, layout.dispatchRelaySendQueueOffset);
         dispatchRemoteReadyFlagSnapshotPtr =

@@ -461,21 +461,22 @@ __aicore__ inline uint64_t ComputeAttenMaskOffsetCompressDn(MaskInfo &info)
 }
 
 template <typename T, MaskFormat maskFormat, bool isReconstructTemp, uint32_t s2BaseSize>
-__aicore__ inline void AttentionmaskCopyInDn(LocalTensor<T> &attenMaskUb, GlobalTensor<T> &srcGmAddr, MaskInfo &info)
+__aicore__ inline void AttentionmaskCopyInDn(LocalTensor<T> &attenMaskUb, GlobalTensor<T> &srcGmAddr, MaskInfo &info,
+                                             uint32_t gs1CopyRows)
 {
     uint64_t maskOffset = ComputeAttenMaskOffsetCompressDn(info);
     if (info.s2Size % 32U == 0) { // 32： datablock size is 32B
         DataCopyParams dataCopyParams;
         dataCopyParams.blockCount = info.s2dealNum;
-        dataCopyParams.blockLen = (info.gs1dealNum >> 1) >> 5;
-        dataCopyParams.srcStride = (info.attenMaskS1Stride - (info.gs1dealNum >> 1)) >> 5;
+        dataCopyParams.blockLen = gs1CopyRows >> 5;
+        dataCopyParams.srcStride = (info.attenMaskS1Stride - gs1CopyRows) >> 5;
         dataCopyParams.dstStride = info.attenMaskDstStride;
         DataCopy(attenMaskUb, srcGmAddr[maskOffset], dataCopyParams);
     } else {
         DataCopyExtParams dataCopyParams;
         dataCopyParams.blockCount = info.s2dealNum;
-        dataCopyParams.blockLen = info.gs1dealNum >> 1;
-        dataCopyParams.srcStride = info.attenMaskS1Stride - (info.gs1dealNum >> 1);
+        dataCopyParams.blockLen = gs1CopyRows;
+        dataCopyParams.srcStride = info.attenMaskS1Stride - gs1CopyRows;
         dataCopyParams.dstStride = info.attenMaskDstStride;
         DataCopyPadExtParams<T> padParams;
         DataCopyPad(attenMaskUb, srcGmAddr[maskOffset], dataCopyParams, padParams);

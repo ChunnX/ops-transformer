@@ -38,6 +38,7 @@ extern "C" {
 
 namespace {
 
+static const uint64_t DIM_NUM_3 = 3;
 static const uint64_t DIM_NUM_2 = 2;
 static const uint64_t DIM_NUM_1 = 1;
 static const uint64_t DIM_NUM_0 = 0;
@@ -62,7 +63,7 @@ struct CompressShapeInfo {
 };
 
 static aclnnStatus CheckNsaCompressParam(const aclTensor *input, const aclTensor *weight, const aclTensor *output,
-                                         const uint64_t *workspaceSize, aclOpExecutor ** const executor)
+                                         const uint64_t *workspaceSize, aclOpExecutor **const executor)
 {
     // 必须的参数指针判空
     CHECK_RET(input != nullptr, ACLNN_ERR_PARAM_NULLPTR);
@@ -101,6 +102,11 @@ static aclnnStatus AnalysisAxis(const aclTensor *input, const aclTensor *weight,
 {
     Shape inputShape = input->GetViewShape();
     Shape weightShape = weight->GetViewShape();
+    if (inputShape.GetDimNum() != DIM_NUM_3 || weightShape.GetDimNum() != DIM_NUM_2) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "input must be 3D and weight must be 2D, but got inputDim=%zu, weightDim=%zu",
+                inputShape.GetDimNum(), weightShape.GetDimNum());
+        return ACLNN_ERR_PARAM_INVALID;
+    }
 
     shapeInfo.compressBlockSize = compressBlockSize;
     shapeInfo.compressStride = compressStride;
@@ -149,9 +155,9 @@ static aclnnStatus AnalysisInput(const aclTensor *input, const aclTensor *weight
                                  CompressShapeInfo &shapeInfo, const aclIntArray *actSeqLenOptional = nullptr)
 {
     // 从shape中取需要的值到shapeInfo
-    CHECK_RET(AnalysisAxis(input, weight, layoutOptional, compressBlockSize, compressStride, shapeInfo) ==
-                  ACLNN_SUCCESS,
-              ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(
+        AnalysisAxis(input, weight, layoutOptional, compressBlockSize, compressStride, shapeInfo) == ACLNN_SUCCESS,
+        ACLNN_ERR_PARAM_INVALID);
 
     if (actSeqLenOptional == nullptr || actSeqLenOptional->Size() == 0) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "actSeqLenOptional is not currently support null");

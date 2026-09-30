@@ -10,9 +10,24 @@
 
 set(CMAKE_LIBRARY_OUTPUT_DIRECTOR ${PROJECT_SOURCE_DIR}/build)
 
+set(MC2_LEGACY_DECOUPLED OFF)
+if(ARCH_DIRECTORY)
+    set(MC2_LEGACY_DECOUPLED ON)
+    foreach(MC2_ARCH_DIR IN LISTS ARCH_DIRECTORY)
+        string(REGEX MATCH "^arch([0-9]+)$" MC2_ARCH_MATCH "${MC2_ARCH_DIR}")
+        if(NOT MC2_ARCH_MATCH OR CMAKE_MATCH_1 LESS 35)
+            set(MC2_LEGACY_DECOUPLED OFF)
+        endif()
+    endforeach()
+endif()
+
 file(GLOB_RECURSE OP_TILING_FILES "*.cpp")
 if(UT_TEST_ALL OR OP_HOST_UT)
     list(FILTER OP_TILING_FILES EXCLUDE REGEX "op_cache_tiling.cpp")
+endif()
+if(MC2_LEGACY_DECOUPLED)
+    list(FILTER OP_TILING_FILES EXCLUDE REGEX "legacy_common_manager.cpp")
+    target_compile_definitions(${OPHOST_NAME}_tiling_obj PRIVATE MC2_LEGACY_DECOUPLED=1)
 endif()
 
 target_sources(${OPHOST_NAME}_tiling_obj PRIVATE ${OP_TILING_FILES})

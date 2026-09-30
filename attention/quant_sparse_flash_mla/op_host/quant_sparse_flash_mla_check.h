@@ -15,17 +15,7 @@
 #ifndef QUANT_SPARSE_FLASH_MLA_CHECK_H
 #define QUANT_SPARSE_FLASH_MLA_CHECK_H
 
-#include <graph/utils/type_utils.h>
-#include <exe_graph/runtime/tiling_context.h>
-#include <tiling/platform/platform_ascendc.h>
-#include "register/tilingdata_base.h"
-#include "register/op_def_registry.h"
 #include "tiling/tiling_api.h"
-#include "log/log.h"
-#include "log/error_code.h"
-#include "err/ops_err.h"
-#include "platform/platform_info.h"
-#include "op_host/tiling_util.h"
 #include "../../sparse_flash_mla/op_host/common/smla_host_common_defs.h"
 
 namespace optiling {
@@ -181,6 +171,7 @@ public:
     int32_t sparseMode = 0;
     // Others Flag
     uint32_t sparseCount = 0;
+    bool batchConsistency = false;
 
     // PageAttention
     uint32_t blockTypeSize = 0;
@@ -215,9 +206,9 @@ public:
     ge::graphStatus CheckRequiredAttrExistence() const;
     ge::graphStatus CheckRequiredParaExistence() const;
 
-    ge::graphStatus GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor, QSMLALayout &layout,
+    ge::graphStatus GetActualSeqLenSize(int64_t &size, const gert::Tensor *tensor, QSMLALayout &layout,
                                         const std::string &name) const;
-    ge::graphStatus GetActualSeqLenQSize(uint32_t &size);
+    ge::graphStatus GetActualSeqLenQSize(int64_t &size);
     ge::graphStatus GetOpName();
     ge::graphStatus GetNpuInfo();
     void GetOptionalInputParaInfo();
@@ -252,51 +243,52 @@ public:
 
 public:
     gert::TilingContext *context_ = nullptr;
-    const char *opName_;
-    fe::PlatFormInfos *platformInfo_;
-    QSMLAParaInfo opParamInfo_;
+    const char *qsmlaOpName_;
+    fe::PlatFormInfos *qsmlaPlatformInfo_;
+    QSMLAParaInfo qsmlaParams_;
 
     bool HasAxis(const QSMLAAxis &axis, const QSMLALayout &layout, const gert::Shape &shape) const;
     size_t GetAxisIdx(const QSMLAAxis &axis, const QSMLALayout &layout) const;
-    uint32_t GetAxisNum(const gert::Shape &shape, const QSMLAAxis &axis, const QSMLALayout &layout) const;
+    int64_t GetAxisNum(const gert::Shape &shape, const QSMLAAxis &axis, const QSMLALayout &layout) const;
     static constexpr int64_t invalidDimValue_ = std::numeric_limits<int64_t>::min();
 
     // BaseParams
-    uint32_t bSize_ = 0;
-    uint32_t n1Size_ = 0;
-    uint32_t n2Size_ = 0;
-    uint32_t gSize_ = 0;
-    uint32_t s1Size_ = 0;
-    int64_t s2Size_ = 0;
-    int64_t cmpS2Size_ = 0;
-    uint32_t headDim_ = 0;
-    uint32_t qTSize_ = 0;
-    uint32_t qkHeadDim_ = 0;
+    int64_t qsmlaBatchSize_ = 0;
+    int64_t qsmlaQueryHeads_ = 0;
+    int64_t qsmlaKvHeads_ = 0;
+    int64_t qsmlaGroupSize_ = 0;
+    int64_t qsmlaQuerySeqSize_ = 0;
+    int64_t qsmlaKvSeqSize_ = 0;
+    int64_t qsmlaCmpKvSeqSize_ = 0;
+    int64_t headDim_ = 0;
+    int64_t qsmlaQueryTokenSize_ = 0;
+    int64_t qsmlaQkHeadDim_ = 0;
     int64_t sparseBlockSize_ = 0;
-    int64_t oriSparseBlockCount_ = 0;
-    int64_t cmpSparseBlockCount_ = 0;
-    uint32_t maxActualseq_ = 0;
+    int64_t qsmlaOriSparseBlockCount_ = 0;
+    int64_t qsmlaCmpSparseBlockCount_ = 0;
+    int64_t maxActualseq_ = 0;
     bool isSameSeqAllKVTensor_ = true;
-    uint32_t dSizeQ_ = 0;
-    uint32_t dSizeKV_ = 0;
-    uint32_t oriKvStride_ = 0;
-    uint32_t cmpKvStride_ = 0;
-    std::vector<int64_t> oriKvStridesVec_;
-    std::vector<int64_t> cmpKvStridesVec_;
+    bool batchConsistency_ = false;
+    int64_t qsmlaQueryDim_ = 0;
+    int64_t qsmlaKvDim_ = 0;
+    int64_t qsmlaOriKvStride_ = 0;
+    int64_t qsmlaCmpKvStride_ = 0;
+    std::vector<int64_t> qsmlaOriKvStrides_;
+    std::vector<int64_t> qsmlaCmpKvStrides_;
     // Layout
-    QSMLALayout qLayout_ = QSMLALayout::BSND;
-    QSMLALayout outLayout_ = QSMLALayout::BSND;
-    QSMLALayout kvLayout_ = QSMLALayout::PA_BBND;
+    QSMLALayout qsmlaQLayout_ = QSMLALayout::BSND;
+    QSMLALayout qsmlaOutputLayout_ = QSMLALayout::BSND;
+    QSMLALayout qsmlaKvLayout_ = QSMLALayout::PA_BBND;
     // PageAttention
-    uint32_t oriMaxBlockNumPerBatch_ = 0;
-    uint32_t cmpMaxBlockNumPerBatch_ = 0;
-    int32_t oriBlockSize_ = 0;
-    int32_t cmpBlockSize_ = 0;
+    uint32_t qsmlaOriMaxBlocksPerBatch_ = 0;
+    uint32_t qsmlaCmpMaxBlocksPerBatch_ = 0;
+    int64_t qsmlaOriBlockSize_ = 0;
+    int64_t qsmlaCmpBlockSize_ = 0;
     platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910B;
     NpuArch npuArch_ = NpuArch::DAV_2201;
-    ge::DataType qType_ = ge::DT_FLOAT16;
-    ge::DataType oriKvType_ = ge::DT_FLOAT16;
-    ge::DataType cmpKvType_ = ge::DT_FLOAT16;
+    ge::DataType qsmlaQType_ = ge::DT_FLOAT16;
+    ge::DataType qsmlaOriKvType_ = ge::DT_FLOAT16;
+    ge::DataType qsmlaCmpKvType_ = ge::DT_FLOAT16;
     ge::DataType cmpSparseIndicesType_ = ge::DT_INT32;
     ge::DataType oriBlockTableType_ = ge::DT_INT32;
     ge::DataType cmpBlockTableType_ = ge::DT_INT32;
@@ -304,13 +296,13 @@ public:
     ge::DataType seqsedKvType_ = ge::DT_INT32;
     ge::DataType sinksType_ = ge::DT_INT32;
     ge::DataType metadataType_ = ge::DT_INT32;
-    ge::DataType outputType_ = ge::DT_FLOAT16;
+    ge::DataType qsmlaOutputType_ = ge::DT_FLOAT16;
 
-    gert::Shape qShape_{};
-    gert::Shape oriKvShape_{};
-    gert::Shape cmpKvShape_{};
-    gert::Shape oriSparseIndicesShape_{};
-    gert::Shape cmpSparseIndicesShape_{};
+    gert::Shape qsmlaQShape_{};
+    gert::Shape qsmlaOriKvShape_{};
+    gert::Shape qsmlaCmpKvShape_{};
+    gert::Shape qsmlaOriSparseIndicesShape_{};
+    gert::Shape qsmlaCmpSparseIndicesShape_{};
 };
 
 } // namespace optiling

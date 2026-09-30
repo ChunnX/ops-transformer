@@ -40,6 +40,8 @@ struct GMMNoQuantBaseParams {
     uint32_t mTailCnt = 0;
     uint32_t nTailCnt = 0;
     uint32_t weightNoL2Cache = 0;
+    uint32_t activeType = 0; // 0: none, 2: gelu tanh, same as GMMActType
+    uint32_t splitM = 1;     // 0: one AIV with staged M copy-out, 1: two AIVs split along M
     uint32_t placeHolder = 0;
 };
 #pragma pack(pop)
@@ -116,6 +118,14 @@ struct GMMQuantTilingData {
 struct GMMQuantBasicApiTilingData {
     GMMQuantParams gmmQuantParams;
     QuantBasicApiMMTiling mmTilingData;
+};
+#pragma pack(pop)
+
+#pragma pack(push, 8)
+struct GMMQuantCubeBasicApiTilingData {
+    GMMQuantParams gmmQuantParams;
+    QuantBasicApiMMTiling mmTilingData;
+    GMMArray gmmArray;
 };
 #pragma pack(pop)
 

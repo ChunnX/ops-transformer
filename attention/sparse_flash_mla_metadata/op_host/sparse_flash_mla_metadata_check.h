@@ -50,13 +50,10 @@ inline bool IsPowerOfTwoInRangeSmla(int64_t value, int64_t minValue, int64_t max
 
 inline bool IsCmpRatioSupportSmla(const char *socVersion, bool hasCmpKv, int64_t cmpTopk, int64_t cmpRatio)
 {
-    if (!hasCmpKv) {
-        return cmpRatio == 1;
-    }
     if (socVersion != nullptr && strstr(socVersion, "Ascend950") != nullptr) {
         return cmpRatio >= SMLA_CMP_RATIO_LOWER_BOUND && cmpRatio <= SMLA_CMP_RATIO_UPPER_BOUND;
     }
-    return (cmpTopk > 0) ? (cmpRatio == 4) : (cmpRatio == 128);
+    return (cmpTopk > 0) ? (cmpRatio == 1 || cmpRatio == 2 || cmpRatio == 4) : (cmpRatio == 128);
 }
 
 inline bool IsTensorExistSmla(const aclTensor *tensor)
@@ -265,11 +262,10 @@ aclnnStatus CheckSingleParamSmla(int64_t batchSize, int64_t maxSeqlenQ, int64_t 
                                                   "greater than or equal to 0");
             return ACLNN_ERR_PARAM_INVALID;
         }
-        if (!(socVersion != nullptr && strstr(socVersion, "Ascend950") != nullptr) && cmpTopk != 0 && cmpTopk != 512 &&
-            cmpTopk != 1024) {
+        if (!(socVersion != nullptr && strstr(socVersion, "Ascend950") != nullptr) && cmpTopk > 8192) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SMLA_ACLNN_OP_NAME, "cmp_topk", std::to_string(cmpTopk),
                                                   "When has_cmp_kv is true, the value of cmp_topk must be "
-                                                  "in [0, 512, 1024]");
+                                                  "in [1, 8192]");
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (socVersion != nullptr && strstr(socVersion, "Ascend950") != nullptr) {
@@ -298,7 +294,7 @@ aclnnStatus CheckSingleParamSmla(int64_t batchSize, int64_t maxSeqlenQ, int64_t 
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SMLA_ACLNN_OP_NAME, "cmp_ratio", std::to_string(cmpRatio),
                                                           "When has_cmp_kv is true and cmp_topk is non-zero"
                                                           "(CSA with cmp_sparse_indices), "
-                                                          "the value of cmp_ratio must be " +
+                                                          "the value of cmp_ratio must be 1, 2 or " +
                                                               std::to_string(expectedCmpRatio));
                 } else {
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SMLA_ACLNN_OP_NAME, "cmp_ratio", std::to_string(cmpRatio),
@@ -310,11 +306,6 @@ aclnnStatus CheckSingleParamSmla(int64_t batchSize, int64_t maxSeqlenQ, int64_t 
             }
             return ACLNN_ERR_PARAM_INVALID;
         }
-    } else if (!(socVersion != nullptr && strstr(socVersion, "Ascend950") != nullptr) &&
-               !IsCmpRatioSupportSmla(socVersion, hasCmpKv, cmpTopk, cmpRatio)) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SMLA_ACLNN_OP_NAME, "cmp_ratio", std::to_string(cmpRatio),
-                                              "When has_cmp_kv is false, the value of cmp_ratio must be 1");
-        return ACLNN_ERR_PARAM_INVALID;
     }
     if (layoutQOptional == nullptr) {
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(SMLA_ACLNN_OP_NAME, "layout_q", "layout_q cannot be empty");
@@ -638,6 +629,10 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
     aclDataType dataType = aclDataType::ACL_DT_UNDEFINED;
     int64_t dimNum = -1;
     if (!(socVersion != nullptr && strstr(socVersion, "Ascend950") != nullptr)) {
+        if (oriTopk == 0 &&
+            CheckReservedOptionalTensorSmla(oriTopkLengthOptional, "ori_topk_length") != ACLNN_SUCCESS) {
+            return ACLNN_ERR_PARAM_INVALID;
+        }
         if (CheckReservedOptionalTensorSmla(cmpTopkLengthOptional, "cmp_topk_length") != ACLNN_SUCCESS) {
             return ACLNN_ERR_PARAM_INVALID;
         }

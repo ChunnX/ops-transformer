@@ -3,22 +3,22 @@
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：支持
+- <term>Ascend 950PR&950DT系列产品</term>：支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
+- <term>Atlas A3系列产品</term>：不支持
 <!-- end id2 -->
 <!-- npu="910b" id3 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
+- <term>Atlas A2系列产品</term>：不支持
 <!-- end id3 -->
 <!-- npu="310b" id4 -->
-- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+- <term>Atlas 200I/500 A2推理产品</term>：不支持
 <!-- end id4 -->
 <!-- npu="310p" id5 -->
-- <term>Atlas 推理系列产品</term>：不支持
+- <term>Atlas推理系列产品</term>：不支持
 <!-- end id5 -->
 <!-- npu="910" id6 -->
-- <term>Atlas 训练系列产品</term>：不支持
+- <term>Atlas训练系列产品</term>：不支持
 <!-- end id6 -->
 
 ## 功能说明
@@ -155,6 +155,7 @@ cann_ops_transformer.moe_init_routing(
     quant_mode: int = -1,
     active_expert_range: Optional[List[int]] = None,
     row_idx_type: int = 0,
+    x_dtype: Optional[int] = None,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]
 ```
 
@@ -162,24 +163,26 @@ cann_ops_transformer.moe_init_routing(
 
 |  参数名   | 参数类型 |  可选/必选 |    描述    |     数据类型    |   维度(shape)   |
 |---------|----------|----------|---------------|---------------|------------|
-|  x  |  Tensor |  必选  |  表示MoE的输入即token特征输入，对应公式中x。shape为(NUM_ROWS, H)。  |   float16、bfloat16、float32、int8   |  2  |
+|  x  |  Tensor |  必选  |  表示MoE的输入即token特征输入，对应公式中x。shape为(NUM_ROWS, H)。数据类型支持float16、bfloat16、float32、int8、hifloat8、float8_e5m2、float8_e4m3fn、float4_e2m1（PyTorch原生dtype无法表达的类型以`torch.uint8`等原生dtype存储，需通过`x_dtype`参数指定）。  |   float16、bfloat16、float32、int8、hifloat8、float8_e5m2、float8_e4m3fn、float4_e2m1   |  2  |
 |  expert_idx  |  Tensor |  必选  |  表示moe_gating_top_k_softmax输出每一行特征对应的K个处理专家，对应公式中expertIdx。shape为(NUM_ROWS, K)，且专家id不能超过专家数。  |  int32   | 2  |
 |  scale  |  Tensor |  可选  |  用于计算量化结果的参数，对应公式中scaleOptional。默认值为None，不输入表示计算时不使用scale，且输出`expanded_scale`中的值无意义。不同场景下的输入要求见下方说明。  |  float32、float8_e8m0   | 1-3  |
 |  offset  |  Tensor |  可选  |  用于计算量化结果的偏移值，对应公式中offsetOptional。默认值为None。  |  float32   | 1  |
 |  topk_weight  |  Tensor |  可选  |  表示topk专家的路由权重，用于按排序索引重排以与`expanded_x`一一对应。默认值为None，不输入表示不输出`expanded_topk_weight`。shape为(NUM_ROWS, K)，与`expanded_topk_weight`联动：必须同时传入或同时不传入。  |  float32   | 2  |
 |  active_num  |  Union[int, torch.SymInt] |  可选  |  表示总的最大处理row数，输出`expanded_x`只有这么多行是有效的，约束所有专家共同处理tokens总量。默认值为-1，入参校验需大于等于0，0表示Dropless场景，大于0时表示Active场景。仅支持值等于NUM_ROWS*K。支持`int`或`torch.SymInt`类型，图模式下传入`torch.SymInt`（如`x.size(0) * k`）可避免被固化为常量，实现动态shape编译缓存复用。eager模式下传入`int`即可，上层调用脚本无需感知类型差异，同一份代码在两种模式下均可正常运行。  |  int  | - |
 |  expert_capacity  |  int |  可选  |  表示每个专家能够处理的tokens数。默认值为-1，入参校验大于0小于NUM_ROWS。Dropless场景下仅校验其值，不使用该参数；DropPad场景下取值范围为(0, NUM_ROWS]。  |  -  | - |
-|  expert_num  |  int |  可选  |  表示专家数。默认值为-1，必须大于0。`expert_tokens_num_type`为key_value模式时，取值范围为[0, 5120]；其他模式取值范围为[0, 10240]。  |  -  | - |
+|  expert_num  |  int |  可选  |  表示专家数。默认值为-1，必须大于0。`expert_tokens_num_type`为key_value模式时，取值范围为[1, 5120]；其他模式取值范围为[1, 10240]。  |  -  | - |
 |  drop_pad_mode  |  int |  可选  |  表示是否为drop_pad场景。默认值为0，0表示Dropless场景，该场景下不校验`expert_capacity`；1表示Drop_Pad场景。  |  -  | - |
 |  expert_tokens_num_type  |  int |  可选  |  表示直方图的不同模式。默认值为0，取值为0、1和2。0表示cumsum模式；1表示count模式；2表示key_value模式。  |  -  | - |
 |  expert_tokens_num_flag  |  bool |  可选  |  表示是否输出`expert_token_cumsum_or_count`。默认值为False，仅支持取值为true。  |  -  | - |
 |  quant_mode  |  int |  可选  |  表示量化模式。默认值为-1，支持取值见下方说明。  |  -  | - |
 |  active_expert_range  |  List[int] |  可选  |  表示活跃expert的范围。默认值为None，长度为2，数组内的值为[expert_start, expert_end]，左闭右开，要求值大于等于0，并且expert_end不大于`expert_num`。Drop/Pad场景下，expert_start等于0，expert_end等于`expert_num`。传入None时，视为活跃的expert范围在0到`expert_num`之间。  |  -  | - |
 |  row_idx_type  |  int |  可选  |  表示输出`expanded_row_idx`使用的索引类型。默认值为0，取值为0和1。0表示gather类型的索引；1表示scatter类型的索引。DropPad场景下仅支持0。  |  -  | - |
+|  x_dtype  |  int |  可选  |  用于指定`x`的非原生数据类型（PyTorch原生dtype无法表达、以`torch.uint8`等原生dtype存储的类型），取值为`torch_npu`的dtype枚举。默认值为None，支持的全部枚举值为：`torch_npu.hifloat8`、`torch_npu.float4_e2m1fn_x2`、`torch_npu.int4`。不同quant_mode下的取值约束见下方说明。  |  -  | - |
 
 **scale参数不同场景下的输入要求：**
 
 - 非量化场景下，如果输入则要求为1维张量，shape为(NUM_ROWS,)。
+- 非量化场景且`x`数据类型为`float8_e5m2`、`float8_e4m3fn`或`float4_e2m1`（通过`x_dtype`指定）时，要求为3维张量，shape为(NUM_ROWS, CeilDiv(H, 64), 2)，数据类型为`float8_e8m0`。
 - 静态量化场景必须输入，输入要求为1D的Tensor，shape为(1,)。
 - 动态量化场景下，如果输入则要求为2维张量，shape为(expert_end-expert_start, H)或(1, H)。
 - quantMode为1的INT8动态量化场景下为可选输入，如果输入则要求为2D的Tensor，shape为(expert_end-expert_start, H)；quantMode为13的INT4动态量化场景下为可选输入，如果输入则要求shape为(1, H)，表示按H维广播的smooth scale。
@@ -208,12 +211,17 @@ cann_ops_transformer.moe_init_routing(
 - 16：表示MXFP8 RoundScale+Amax量化场景，`expanded_x`量化到float8_e5m2。
 - 17：表示MXFP8 RoundScale+Amax量化场景，`expanded_x`量化到float8_e4m3fn。
 
+**x_dtype不同场景下的取值约束：**
+
+- `quant_mode`为-1（不量化透传）时，`x_dtype`支持`torch_npu.hifloat8`、`torch_npu.float4_e2m1fn_x2`。`torch.float8_e5m2`、`torch.float8_e4m3fn`为PyTorch原生dtype，直接作为`x`的数据类型传入即可，无需通过`x_dtype`指定。
+- `quant_mode`为13（INT4动态量化）时，`x_dtype`仅支持`torch_npu.int4`或None。
+
 ## 返回值说明
 
 |  参数名   | 参数类型 |  可选/必选 |    描述    |     数据类型    |   维度(shape)   |
 |---------|----------|----------|---------------|---------------|------------|
-|  expanded_x  |  Tensor |  必选  |  根据expert_idx进行扩展过的特征。非量化场景下数据类型同`x`；量化场景下数据类型根据quant_mode确定。量化场景下，当`x`的数据类型为`int8`时，输出值无意义。Dropless场景shape为[NUM_ROWS *K, H]，Active场景shape为[min(activeNum, NUM_ROWS* K), H]，Drop/Pad场景下shape为[expertNum * expertCapacity, H]。  |  float16、bfloat16、float32、int8、float8_e5m2、float8_e4m3fn、hifloat8、float4_e2m1、int4   | 2-3  |
-|  expanded_row_idx  |  Tensor |  必选  |  expanded_x和x的映射关系，shape与expanded_x第一维一致。前availableIdxNum个元素为有效数据，其余无效数据由`row_idx_type`决定：为0时由-1填充，为1时未初始化。  |  int32   | 1-2  |
+|  expanded_x  |  Tensor |  必选  |  根据expert_idx进行扩展过的特征。非量化场景下数据类型同`x`；量化场景下数据类型根据quant_mode确定。量化场景下，当`x`的数据类型为`int8`时，输出值无意义。Dropless场景shape为[NUM_ROWS *K, H]，Active场景shape为[min(activeNum, NUM_ROWS* K), H]，Drop/Pad场景下要求是一个3D的Tensor，shape为[expertNum, expertCapacity, H]。  |  float16、bfloat16、float32、int8、float8_e5m2、float8_e4m3fn、hifloat8、float4_e2m1、int4   | 2-3  |
+|  expanded_row_idx  |  Tensor |  必选  |  expanded_x和x的映射关系，shape为[NUM_ROWS*K]。前availableIdxNum个元素为有效数据，其余无效数据由`row_idx_type`决定：为0时由-1填充，为1时未初始化。  |  int32   | 1-2  |
 |  expert_token_cumsum_or_count  |  Tensor |  必选  |  表示每个专家处理的token数量的统计结果或累加值。  |  int64   | 1-2  |
 |  expanded_scale  |  Tensor |  必选  |  输出不同量化过程中scale的中间值。不同场景下的输出shape和数据类型见下方说明。  |  float32、float8_e8m0   | 1-3  |
 |  expanded_topk_weight  |  Tensor |  可选  |  按排序索引重排后的路由权重，与`expanded_x`一一对应。`topk_weight`输入时必须同时输出；`topk_weight`未输入时输出为空tensor（shape为(0,)）。不同场景下的输出shape见下方说明。  |  float32   | 2  |
@@ -226,10 +234,10 @@ cann_ops_transformer.moe_init_routing(
 
 **expanded_scale不同场景下的输出shape和数据类型：**
 
-- 非量化场景下，当`scale`输入时，shape为[NUM_ROWS*K, 1]，前availableIdxNum个元素为有效数据，输出`float32`类型。当输入x数据类型为`float8_e5m2`、`float8_e4m3fn`或`float4_e2m1`时，如果`scale`输入，则shape为[NUM_ROWS*K, CeilDiv(H, 64), 2]，输出`float8_e8m0`类型。
+- 非量化场景下，当`scale`输入时，shape为[NUM_ROWS*K]，前availableIdxNum个元素为有效数据，输出`float32`类型。当输入x数据类型为`float8_e5m2`、`float8_e4m3fn`或`float4_e2m1`时，如果`scale`输入，则shape为[NUM_ROWS*K, CeilDiv(H, 64), 2]，输出`float8_e8m0`类型。
 - 动态量化场景下，当`scale`输入时，前availableIdxNum个元素为有效数据。
 - 静态量化场景下、HIF8直转量化场景下、HIF8 PERTENSOR量化场景下，输出为空tensor。
-- HIF8 PERTOKEN量化场景下，shape为[NUM_ROWS*K, 1]，输出`float32`类型。
+- HIF8 PERTOKEN量化场景下，shape为[NUM_ROWS*K]，输出`float32`类型。
 - MXFP8量化场景下（quantMode为2、3、16、17），输出`float8_e8m0`类型，Shape为[NUM_ROWS*K, M]，其中M=CeilAlign(CeilDiv(H, 32), 2)，前availableIdxNum行为有效数据。
 - MXFP4量化场景下，输出`float8_e8m0`类型，Shape为[NUM_ROWS*K, M, 2]，其中M=CeilDiv(H, 64)，前availableIdxNum行为有效数据。
 - FP8 PerGroup量化场景下（quantMode为4、5、14、15），输出`float32`类型，Shape为[NUM_ROWS*K, CeilDiv(H, 128)]，前availableIdxNum行为有效数据。
@@ -246,11 +254,11 @@ cann_ops_transformer.moe_init_routing(
 - 该接口支持单算子模式和TorchAir图模式调用。
 - `topk_weight`不受`quant_mode`影响，`expanded_topk_weight`数据类型始终为`float32`。
 - `expert_num`必须大于0。
-- `drop_pad_mode=1`时，`row_idx_type`仅支持取值为0（gather索引），`quant_mode`仅支持-1（非量化）。
+- `drop_pad_mode=1`时，`row_idx_type`仅支持取值为0（gather索引），`quant_mode`仅支持-1（非量化），且`x`数据类型仅支持`float16`、`bfloat16`、`float32`、`int8`、`hifloat8`。
 - `expert_tokens_num_flag`仅支持取值为true。
 - `active_num`仅支持值等于NUM_ROWS*K。
-- quantMode为13的INT4动态量化场景，需同时满足：`x`数据类型为`float32`或`bfloat16`；H为偶数。
-- 空tensor处理：当输入的x首个维度的值为0时，DropPadMode必须为0，expanded_x、expanded_row_idx和expanded_scale为空tensor，expert_token_cumsum_or_count返回全0的tensor。
+- quantMode为9或13的MXFP4/INT4动态量化场景，以及quantMode为-1且`x`数据类型为`float4_e2m1`（通过`x_dtype`指定）的非量化透传场景，`x`的最后一维H要求为偶数。quantMode为13的INT4动态量化场景还需满足：`x`数据类型为`float32`或`bfloat16`，`drop_pad_mode`为0，不支持输入`offset`。
+- 空tensor处理：NUM_ROWS=0或K=0时没有路由元素，进入空Tensor处理路径，专家计数为0；输出shape仍需满足相应模式的约束。NUM_ROWS*K>0且H=0时仍走正常路由流程，生成`expanded_row_idx`和`expert_token_cumsum_or_count`。
 - **自动反向（autograd）约束**：自动反向仅在正向退化为aclnnMoeInitRoutingV2场景时支持，即不使用aclnnMoeInitRoutingV4特有特性。具体要求：`scale`不传入、`offset`不传入、`topk_weight`不传入、`quant_mode=-1`（非量化）、`row_idx_type=0`（gather索引）、`x_dtype`为None、`drop_pad_mode`为0或1。当使用了aclnnMoeInitRoutingV4特有特性（量化、`scale`、`offset`、`topk_weight`、`x_dtype`、`row_idx_type`非0等）时，调用自动反向会抛出`NotImplementedError`。`active_expert_range`不影响反向，不视为aclnnMoeInitRoutingV4特有特性。
 - 自动反向仅对`x`求梯度，`expert_idx`为整数索引张量无梯度，`expanded_row_idx`及其他整数/统计输出无梯度。
 

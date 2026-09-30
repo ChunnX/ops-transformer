@@ -265,17 +265,18 @@ private:
             // [preSumDispatch][preSumCombine]），低地址区为既有临时缓冲区（SendTokensV3 / epilogue /
             // CombineV2 rdma），互不踩踏；每 chunk 在 allgather + cumsum 完成后由 CacheRouteTablesToUb 刷新。
             routeCacheNum = params.EP * params.expertPerRank;
+            expertPerRankAligned = AlignUp(params.expertPerRank, 8);
             uint32_t routeCacheBytes = AlignUp(routeCacheNum * sizeof(int32_t), BYTE_PER_BLK);
-            uint32_t routeCacheUbOffset = ArchTag::UB_SIZE - kRouteCacheBufCnt * routeCacheBytes;
+            uint32_t tpeCacheBytes = AlignUp(params.EP * expertPerRankAligned * sizeof(int32_t), BYTE_PER_BLK);
+            uint32_t routeCacheUbOffset = ArchTag::UB_SIZE - 3 * routeCacheBytes - tpeCacheBytes;
             ubTpeSendCache = resource.ubBuf.template GetBufferByByte<int32_t>(routeCacheUbOffset);
             ubTpeSendCache.SetSize(routeCacheNum);
             ubTpeRecvCache = resource.ubBuf.template GetBufferByByte<int32_t>(routeCacheUbOffset + routeCacheBytes);
-            ubTpeRecvCache.SetSize(routeCacheNum);
             ubPreSumDispatchCache =
-                resource.ubBuf.template GetBufferByByte<int32_t>(routeCacheUbOffset + 2 * routeCacheBytes);
+                resource.ubBuf.template GetBufferByByte<int32_t>(routeCacheUbOffset + routeCacheBytes + tpeCacheBytes);
             ubPreSumDispatchCache.SetSize(routeCacheNum);
-            ubPreSumCombineCache =
-                resource.ubBuf.template GetBufferByByte<int32_t>(routeCacheUbOffset + 3 * routeCacheBytes);
+            ubPreSumCombineCache = resource.ubBuf.template GetBufferByByte<int32_t>(
+                routeCacheUbOffset + 2 * routeCacheBytes + tpeCacheBytes);
             ubPreSumCombineCache.SetSize(routeCacheNum);
         }
     }
@@ -564,11 +565,11 @@ private:
             for (int32_t i = 0; i < rankId * expertPerRank; i++) {
                 cursum += tokenPerExpert(tokenPerExpertLayout(coreIdx, 0, i));
             }
-            result.SetValue(coreIdx * 16, cursum);
+            result.SetValue(coreIdx * PRE_SUM_SLOT_STRIDE, cursum);
 
             __asm__ __volatile__("");
             DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
-                result[coreIdx * 16]);
+                result[coreIdx * PRE_SUM_SLOT_STRIDE]);
             __asm__ __volatile__("");
         }
     }
@@ -607,7 +608,7 @@ private:
     void GMM1(Params const &params)
     {
         const int32_t rank = RuntimeRank(params);
-        icache_preload(8);
+        icache_preload(ICACHE_PRELOAD_LINES);
         BlockScheduler blockScheduler;
         BlockMmad blockMmad(resource);
 
@@ -714,7 +715,7 @@ private:
     void GMM2(Params const &params)
     {
         const int32_t rank = RuntimeRank(params);
-        icache_preload(8);
+        icache_preload(ICACHE_PRELOAD_LINES);
         BlockScheduler blockScheduler;
         BlockMmad blockMmad(resource);
 
@@ -1049,7 +1050,7 @@ private:
     void DispatchAndCombine(Params const &params)
     {
         const int32_t rank = RuntimeRank(params);
-        icache_preload(8);
+        icache_preload(ICACHE_PRELOAD_LINES);
         exceptionDump_.Dump(shmem() + peermemInfo.offsetPeerTokenPerExpert,
                             static_cast<size_t>(AlignUp(params.EP * params.expertPerRank, ALIGN_128)) *
                                 params.expertPerRank * static_cast<uint32_t>(shmem.RankSize()) * sizeof(int32_t));
@@ -1078,10 +1079,14 @@ private:
             if (coreIdx == 0) {
                 AscendC::LocalTensor<int32_t> zeroBuf = resource.ubBuf.template GetBufferByByte<int32_t>(0);
                 AscendC::Duplicate(zeroBuf, 0, params.expertPerRank);
-                AscendC::PipeBarrier<PIPE_V>();
-                AscendC::DataCopy(gmExpertTokenNums[0], zeroBuf, params.expertPerRank);
+                // V 流水写完 zeroBuf 后，MTE3 才能发起 DataCopyPad，否则存在跨流水竞态
                 AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
                 AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+                AscendC::DataCopyPad(gmExpertTokenNums[0], zeroBuf,
+                                     {1, static_cast<uint16_t>(params.expertPerRank * sizeof(int32_t)), 0, 0});
+                // 等待清零落盘，保证后续 chunk 累加读改写读到正确初值
+                AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
+                AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
             }
         }
 
@@ -1099,11 +1104,13 @@ private:
             // chunk（MAX_TOKENS=1024）分配，numTokens 必须按 chunk 传入，不得使用全量 bs。
             exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::MOE_INIT_ROUTING);
             {
-                // prologue 模板首参为 UB 流水级数（样例取值 2），后续为 Policy/Src/Dst
-                typename MoePermute::MoePermutePrologue<2, ProloguePolicy, PrologueSrc, PrologueDst>::Params
-                    prologueParams(chunkTokens, hidden, topK, params.expertPerRank * params.EP);
-                MoePermute::MoePermutePrologue<2, ProloguePolicy, PrologueSrc, PrologueDst> prologue(resource,
-                                                                                                     prologueParams);
+                // prologue 模板首参为 UB 流水级数，后续为 Policy/Src/Dst
+                typename MoePermute::MoePermutePrologue<PROLOGUE_UB_STAGES, ProloguePolicy, PrologueSrc,
+                                                        PrologueDst>::Params prologueParams(chunkTokens, hidden, topK,
+                                                                                            params.expertPerRank *
+                                                                                                params.EP);
+                MoePermute::MoePermutePrologue<PROLOGUE_UB_STAGES, ProloguePolicy, PrologueSrc, PrologueDst> prologue(
+                    resource, prologueParams);
                 AscendC::GlobalTensor<PrologueSrc> gmPermX;
                 gmPermX.SetGlobalBuffer(reinterpret_cast<__gm__ PrologueSrc *>(
                     reinterpret_cast<GM_ADDR>(params.ptrA) + tokenBase * hidden * sizeof(PrologueSrc)));
@@ -1146,15 +1153,17 @@ private:
                     AscendC::LocalTensor<int32_t> ubSum = resource.ubBuf.template GetBufferByByte<int32_t>(0);
                     AscendC::LocalTensor<int32_t> ubOut = resource.ubBuf.template GetBufferByByte<int32_t>(
                         AlignUp(params.expertPerRank * sizeof(int32_t), UB_ALIGN));
-                    AscendC::DataCopy(ubSum, cumsumMM[tokenPerExpertLayout(params.EP - 1, rank, 0)],
-                                      params.expertPerRank);
-                    AscendC::DataCopy(ubOut, gmExpertTokenNums[0], params.expertPerRank);
+                    AscendC::DataCopyPad(ubSum, cumsumMM[tokenPerExpertLayout(params.EP - 1, rank, 0)],
+                                         {1, static_cast<uint16_t>(params.expertPerRank * sizeof(int32_t)), 0, 0}, {});
+                    AscendC::DataCopyPad(ubOut, gmExpertTokenNums[0],
+                                         {1, static_cast<uint16_t>(params.expertPerRank * sizeof(int32_t)), 0, 0}, {});
                     AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
                     AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
                     AscendC::Add(ubOut, ubOut, ubSum, params.expertPerRank);
                     AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
                     AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
-                    AscendC::DataCopy(gmExpertTokenNums[0], ubOut, params.expertPerRank);
+                    AscendC::DataCopyPad(gmExpertTokenNums[0], ubOut,
+                                         {1, static_cast<uint16_t>(params.expertPerRank * sizeof(int32_t)), 0, 0});
                     AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
                     AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
                 }
@@ -1173,7 +1182,7 @@ private:
             uint32_t dequantSum1 = 0;
             uint32_t dequantSum2 = 0;
             uint32_t prevGroupSum2 = 0;
-            icache_preload(8);
+            icache_preload(ICACHE_PRELOAD_LINES);
             exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::DISPATCH);
             for (int32_t groupIdx = 0; groupIdx < params.expertPerRank; ++groupIdx) {
                 // rank 本轮专家组接收的 token 总数（所有 source rank 之和）
@@ -1232,7 +1241,7 @@ private:
                              static_cast<uint32_t>(cumsumMM(tokenPerExpertLayout(srcEpIdx - 1, rank, groupIdx))));
                     if (rowStart2 < params.maxOutputSize) {
                         uint32_t rows2 =
-                            static_cast<uint32_t>(ubTpeRecvCache.GetValue(srcEpIdx * params.expertPerRank + groupIdx));
+                            static_cast<uint32_t>(ubTpeRecvCache.GetValue(srcEpIdx * expertPerRankAligned + groupIdx));
                         if (rows2 + rowStart2 > params.maxOutputSize) {
                             rows2 = params.maxOutputSize - rowStart2;
                         }
@@ -1281,6 +1290,7 @@ private:
             // epilogue 内 tokenPerExpert / preSumBeforeRank 标量读取走本核 UB 缓存
             // （每 chunk 已由 CacheRouteTablesToUb 刷新，规避跨 chunk GM 标量读 D-Cache 陈旧）
             epilogueParams.useUbRouteCache = true;
+            epilogueParams.ubRouteStride = expertPerRankAligned;
             epilogueParams.ubTokenPerExpert = ubTpeRecvCache;
             epilogueParams.ubPreSumBeforeRank = ubPreSumCombineCache;
 
@@ -1355,7 +1365,7 @@ private:
             if (get_subblockid() == 1) {
                 exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::UNPERMUTE);
                 MoeTokenUnpermuteTilingData tilingData;
-                MoeTokenUnpermuteTiling(chunkTokens * topK, n2, topK, tilingData, coreNum / 2);
+                MoeTokenUnpermuteTiling(chunkTokens * topK, n2, topK, tilingData, coreNum / AIV_PER_AIC);
                 KernelMoeTokenUnpermute<ElementD2, int32_t, float, true> kernelMoeTokenUnpermuteOp;
                 kernelMoeTokenUnpermuteOp.Init(
                     shmem() + peermemInfo.offsetD, workspaceInfo.expandedRowIdx,
@@ -1376,20 +1386,21 @@ private:
         BlockScheduler blockScheduler;
         int32_t syncLoopIdx = 0;
         uint32_t startCoreIdx = 0;
-        uint32_t aicCoreNum = coreNum / 2;
+        uint32_t aicCoreNum = coreNum / AIV_PER_AIC;
         uint32_t aicCoreIdx = get_block_idx();
         uint32_t aivSubCoreIdx = get_subblockid();
         uint32_t preSrcExpertSum = 0;
 
         uint32_t n2 = params.problemShape.k();
         uint32_t k2 = params.problemShape.n() / 2;
-        AscendC::LocalTensor<uint64_t> rdmaUbLocal = resource.ubBuf.template GetBufferByByte<uint64_t>(128 * 1024);
+        AscendC::LocalTensor<uint64_t> rdmaUbLocal =
+            resource.ubBuf.template GetBufferByByte<uint64_t>(RDMA_UB_OFFSET_BYTES);
         AscendC::LocalTensor<uint32_t> rdmaUbLocalHead =
-            resource.ubBuf.template GetBufferByByte<uint32_t>(128 * 1024 + UB_ALIGN);
+            resource.ubBuf.template GetBufferByByte<uint32_t>(RDMA_UB_OFFSET_BYTES + UB_ALIGN);
         AscendC::GlobalTensor<ElementD2> gmLocalWindowsOut;
         gmLocalWindowsOut.SetGlobalBuffer(
             reinterpret_cast<__gm__ ElementD2 *>(shmem.windowsOutAddr() + peermemInfo.offsetWinOutD));
-        icache_preload(8);
+        icache_preload(ICACHE_PRELOAD_LINES);
         for (uint32_t groupIdx = 0; groupIdx < params.expertPerRank; ++groupIdx) {
             uint32_t currentExpertM = cumsumMM(tokenPerExpertLayout(params.EP - 1, rank, groupIdx));
             if (preSrcExpertSum >= params.maxOutputSize) {
@@ -1409,13 +1420,13 @@ private:
 
                 int32_t m0 = 32;
                 int32_t m_rows = (actualBlockShape.m() + m0 - 1) / m0;
-                int32_t aiv_m_rows = m_rows / 2;
-                if (aivSubCoreIdx == 1 && aiv_m_rows * 2 < m_rows) {
+                int32_t aiv_m_rows = m_rows / SUBBLOCK_NUM_PER_AIC;
+                if (aivSubCoreIdx == 1 && aiv_m_rows * SUBBLOCK_NUM_PER_AIC < m_rows) {
                     aiv_m_rows += 1;
                 }
                 uint32_t m_offset = blockCoord.m() * L1TileShape::M; // blockOffset
                 if (aivSubCoreIdx == 1) {
-                    m_offset += (m_rows / 2) * m0;
+                    m_offset += (m_rows / SUBBLOCK_NUM_PER_AIC) * m0;
                 }
                 for (; syncLoopIdx <= groupIdx; syncLoopIdx++) {
                     int32_t flag_id = syncLoopIdx / CROSS_CORE_FLAG_MAX_SET_COUNT;
@@ -1426,7 +1437,7 @@ private:
                     GemmCoord realTileCoord{m_offset, blockCoord.n() * L1TileShape::N, 1};
                     uint32_t actualm = m0;
                     if (aivSubCoreIdx == 1 && cur_row == aiv_m_rows - 1) {
-                        actualm = actualBlockShape.m() - (m_rows / 2) * m0 - cur_row * m0;
+                        actualm = actualBlockShape.m() - (m_rows / SUBBLOCK_NUM_PER_AIC) * m0 - cur_row * m0;
                     }
                     GemmCoord realTileShape{actualm, actualBlockShape.n(), 1};
                     blockEpilogue(gmC2, realTileCoord, realTileShape, groupIdx, preSrcExpertSum,
@@ -1438,7 +1449,7 @@ private:
             int32_t preSumRankInExpert = 0;
             for (int32_t dstEpIdx = 0; dstEpIdx < params.EP; ++dstEpIdx) {
                 // chunk 模式：路由表读走本核 UB 缓存（CacheRouteTablesToUb 每 chunk 刷新）
-                int32_t lenRankInExpert = ubTpeRecvCache.GetValue(dstEpIdx * params.expertPerRank + groupIdx);
+                int32_t lenRankInExpert = ubTpeRecvCache.GetValue(dstEpIdx * expertPerRankAligned + groupIdx);
                 int32_t stRankInExpert = preSumRankInExpert;
                 int32_t edRankInExpert = stRankInExpert + lenRankInExpert;
                 preSumRankInExpert += lenRankInExpert;
@@ -1635,6 +1646,7 @@ private:
     // 紧凑索引均为 [dstEpIdx * expertPerRank + groupIdx]，每 chunk 由 CacheRouteTablesToUb 刷新
     static constexpr int32_t kRouteCacheBufCnt = 4; // 路由表 4 份独立 UB 缓存：send/recv 的 tokenPerExpert 与 preSum
     int32_t routeCacheNum = 0;
+    int32_t expertPerRankAligned = 0;
     AscendC::LocalTensor<int32_t> ubTpeSendCache;
     AscendC::LocalTensor<int32_t> ubTpeRecvCache;
     AscendC::LocalTensor<int32_t> ubPreSumDispatchCache;

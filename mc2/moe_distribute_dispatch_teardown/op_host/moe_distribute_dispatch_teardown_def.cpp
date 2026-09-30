@@ -18,8 +18,14 @@
 namespace ops {
 class MoeDistributeDispatchTeardown : public OpDef {
 public:
-    explicit MoeDistributeDispatchTeardown(const char *name) : OpDef(name)
+    explicit MoeDistributeDispatchTeardown(const char *name)
+        : OpDef(name)
     {
+        this->Input("context")
+            .ParamType(REQUIRED)
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
         this->Input("x")
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16,
@@ -63,10 +69,10 @@ public:
             .FormatList({ge::FORMAT_ND});
         this->Output("expert_token_nums").ParamType(REQUIRED).DataTypeList({ge::DT_INT64}).FormatList({ge::FORMAT_ND});
 
-        this->Attr("group_ep").AttrType(REQUIRED).String();
         this->Attr("ep_world_size").AttrType(REQUIRED).Int();
         this->Attr("ep_rank_id").AttrType(REQUIRED).Int();
         this->Attr("moe_expert_num").AttrType(REQUIRED).Int();
+        this->Attr("ccl_buffer_size").AttrType(REQUIRED).Int();
         this->Attr("expert_shard_type").AttrType(OPTIONAL).Int(0);
         this->Attr("shared_expert_num").AttrType(OPTIONAL).Int(1);
         this->Attr("shared_expert_rank_num").AttrType(OPTIONAL).Int(0);
@@ -75,6 +81,7 @@ public:
         this->Attr("expert_token_nums_type").AttrType(OPTIONAL).Int(1);
         this->Attr("comm_type").AttrType(OPTIONAL).Int(0);
         this->Attr("comm_alg").AttrType(OPTIONAL).String("");
+
 
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)
@@ -89,7 +96,6 @@ public:
             .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel");
 
         this->AICore().AddConfig("ascend950", aicore_config);
-        this->MC2().HcclGroup({"group_ep"});
     }
 };
 

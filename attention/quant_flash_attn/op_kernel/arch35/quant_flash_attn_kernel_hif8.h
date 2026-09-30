@@ -21,11 +21,7 @@
 #include "quant_flash_attn_block_vec_hif8.h"
 #include "quant_flash_attn_block_vec_flashdecode.h"
 #include "memory_copy_arch35_quant_flash_attn.h"
-#if __has_include("../../../common/op_kernel/vector_common.h")
 #include "../../../common/op_kernel/vector_common.h"
-#else
-#include "../../common/op_kernel/vector_common.h"
-#endif
 
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
@@ -94,8 +90,6 @@ public:
     __gm__ uint8_t *valuePtr_ = nullptr;
 
     ConstInfoX constInfo_;
-
-    const __gm__ QuantFlashAttnTilingData *__restrict tilingData_;
     TPipe *pipe_ = nullptr;
     CubeBlockType cubeBlock_;
     VecFaBlockType vecFaBlock_;
@@ -152,12 +146,11 @@ public:
                                 __gm__ uint8_t *dequantScaleValue, __gm__ uint8_t *pScale, __gm__ uint8_t *softmaxLse,
                                 __gm__ uint8_t *attnOut, __gm__ uint8_t *workspace, __gm__ uint8_t *metadata,
                                 __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedKv,
-                                const __gm__ QuantFlashAttnTilingData *__restrict tiling, TPipe *tPipe)
+                                const QuantFlashAttnTilingData &tiling, TPipe *tPipe)
     {
         this->pipe_ = tPipe;
-        this->tilingData_ = tiling;
 
-        InitConstInfo();
+        InitConstInfo(tiling);
 
         keyPtr_ = key;
         valuePtr_ = value;
@@ -245,7 +238,7 @@ public:
         bmm1Buffers_.Init(ubBufferManager_, mm1ResultSize);
     }
 
-    __aicore__ inline void InitConstInfo()
+    __aicore__ inline void InitConstInfo(const QuantFlashAttnTilingData &tiling)
     {
         if ASCEND_IS_AIC {
             constInfo_.aicIdx = GetBlockIdx();
@@ -255,10 +248,10 @@ public:
             constInfo_.subBlockIdx = GetSubBlockIdx();
         }
 
-        const auto &qfaBaseParams = this->tilingData_->baseTiling.quantFlashAttnBaseParams;
-        const auto &qfaAttenMaskParams = this->tilingData_->baseTiling.quantFlashAttnAttenMaskParams;
-        const auto &qfaPageAttentionParams = this->tilingData_->baseTiling.quantFlashAttnPageAttentionParams;
-        const auto &qfaWorkspaceParams = this->tilingData_->baseTiling.quantFlashAttnWorkspaceParams;
+        const auto &qfaBaseParams = tiling.baseTiling.quantFlashAttnBaseParams;
+        const auto &qfaAttenMaskParams = tiling.baseTiling.quantFlashAttnAttenMaskParams;
+        const auto &qfaPageAttentionParams = tiling.baseTiling.quantFlashAttnPageAttentionParams;
+        const auto &qfaWorkspaceParams = tiling.baseTiling.quantFlashAttnWorkspaceParams;
 
         constInfo_.bSize = qfaBaseParams.bSize;
         constInfo_.t1Size = qfaBaseParams.t1Size;
@@ -281,7 +274,6 @@ public:
         constInfo_.seqUsedQSize = qfaBaseParams.seqUsedQSize;
         constInfo_.seqUsedKvSize = qfaBaseParams.seqUsedKvSize;
         constInfo_.scaleValue = static_cast<float>(qfaBaseParams.scaleValue);
-        constInfo_.isKvContinuous = true;
         constInfo_.coreNum = qfaBaseParams.coreNum;
         constInfo_.needInitOutput = qfaBaseParams.needInitOutput;
         constInfo_.outputLayout = static_cast<FA_LAYOUT>(qfaBaseParams.outputLayout);

@@ -21,7 +21,7 @@
 
 对于无昇腾设备的开发者，可直接使用CANNLab云开发环境，即“**一站式开发平台**”，该平台为您提供在线可直接运行的昇腾环境，环境中已安装必备的驱动、软件包和依赖，无需手动安装。
 
-> **说明**：环境默认安装最新版本CANN包，源码下载时注意与软件配套。更多关于开发平台的介绍请参考[CANNLab指导](https://gitcode.com/org/cann/discussions/54)。
+> **说明**：环境默认安装最新版本CANN包，源码下载时注意与软件配套。更多关于开发平台的介绍请参考[CANNLab指导](https://atomgit.com/cann/cann-learning-hub/blob/master/docs/CANNLab_env_experience_guide.md)。
 
 1. 进入开源项目，单击“`CANNLab`”按钮，使用已认证过的华为云账号登录。若未注册或认证，请根据页面提示进行注册和认证。
 
@@ -42,11 +42,7 @@
 
 1.**安装驱动（运行态依赖）**
 
-驱动是运行态依赖，若仅编译算子，可以不安装。使用`npu-smi info`检查是否有NPU相关信息，若没有，请参考《[CANN快速安装](https://www.hiascend.com/cann/download)》完成驱动安装：
-
-   - 步骤1：在页面中选择自己的产品系列、CPU架构、操作系统，安装方式选择"在线安装（Yum）"。
-   - 步骤2：按照页面指引依次完成"配置用户属组"、"安装依赖&配源"、"安装NPU驱动"三个环节。
-   - 步骤3：执行`npu-smi info`，若能正常显示NPU设备信息，则说明驱动安装成功。
+驱动是运行态依赖，若仅编译算子，可以不安装。使用`npu-smi info`检查是否有NPU相关信息，若没有，请参考《[CANN快速安装](https://www.hiascend.com/cann/download)》完成驱动安装。
 
 2.**下载镜像**
 
@@ -55,12 +51,12 @@
 
   示例如下，请自行替换CANN版本号、芯片系列、操作系统、python版本等信息，各字段支持的取值可在上述昇腾镜像仓库页面查询。
 
-    ```bash
-    # 以cann:9.1.0-beta.1版本为例
-    docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:9.1.0-beta.1-910b-openeuler24.03-py3.12-devel
-    ```
+  ```bash
+  # 以cann:9.1.0-beta.1版本为例
+  docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:9.1.0-beta.1-910b-openeuler24.03-py3.12-devel
+  ```
 
-    > **说明**：镜像标签格式为`<CANN版本>-<芯片系列>-<操作系统>-<Python版本>-devel`。带`-devel`后缀的镜像为算子开发镜像，内含算子开发编译依赖。
+  > **说明**：镜像标签格式为`<CANN版本>-<芯片系列>-<操作系统>-<Python版本>-devel`。带`-devel`后缀的镜像为算子开发镜像，内含算子开发编译依赖。
 
 3.**运行Docker**
 
@@ -122,7 +118,7 @@ docker run --name cann_container --device /dev/davinci0 --device /dev/davinci_ma
     下载与CANN版本配套的分支源码，命令如下，`${tag_version}`替换为分支标签名。
 
     ```bash
-    git clone -b ${tag_version} https://gitcode.com/cann/ops-transformer.git
+    git clone -b ${tag_version} https://atomgit.com/cann/ops-transformer.git
     ```
 
 2. 安装依赖。

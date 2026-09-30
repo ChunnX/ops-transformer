@@ -54,6 +54,7 @@ private:
     void InitLoadBalanceParams();
     void LoadActualQuerySeq();
     void LoadActualKvSeq();
+    static int64_t CostFunc(uint32_t basicM, uint32_t basicS2);
 
     void SetMetadataHead(const load_balance::SectionStreamKResult &splitRes, optiling::detail::FaMetadata &faMetadata);
     void SetMetadataFa(const load_balance::SectionStreamKResult &splitRes, optiling::detail::FaMetadata &faMetadata);
@@ -78,8 +79,8 @@ private:
     int32_t headDim_ = 0;
     int32_t headDimV_ = -1; // -1: 未指定, 归一化后等于 headDim_
     int32_t maskMode_ = 1;
-    int32_t winLeft_ = -1;
-    int32_t winRight_ = -1;
+    int64_t winLeft_ = -1;
+    int64_t winRight_ = -1;
     std::string layoutQ_ = "BSND";
     std::string layoutKv_ = "BSND";
     std::string layoutOut_ = "BSND";

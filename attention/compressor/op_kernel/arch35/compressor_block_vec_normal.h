@@ -18,9 +18,9 @@
 
 #include "compressor_block_vec.h"
 #include "compressor_tools.h"
-#include "vf/vf_softmax.h"
-#include "vf/vf_add.h"
-#include "vf/vf_mul.h"
+#include "vf/compressor_vf_softmax.h"
+#include "vf/compressor_vf_add.h"
+#include "vf/compressor_vf_mul.h"
 #include "limits"
 
 using namespace AscendC;
@@ -100,6 +100,7 @@ __aicore__ inline void CompressorBlockVectorNormal<COMP>::CopyInApe(const LocalT
 
     this->DataCopyWithInputQue(this->apeUb, this->apeGm_[gmOffset], copyRowCount, copyColCount, srcSingleRowCount,
                                dstSingleRowCount);
+    PipeBarrier<PIPE_V>();
 
     prevApeDStartIdx_ = dStartIdx;
     prevApeDDealSize_ = dDealSize;

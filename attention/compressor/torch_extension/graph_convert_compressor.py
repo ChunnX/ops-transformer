@@ -57,7 +57,7 @@ if _TORCHAIR_AVAILABLE:
         cu_seqlens: Optional[Tensor],
         seqused: Optional[Tensor],
         start_pos: Optional[Tensor],
-        cmp_ratio: int = 4,
+        cmp_ratio: int,
         *,
         coff: int = 1,
         cache_mode: int = 1,
@@ -71,21 +71,8 @@ if _TORCHAIR_AVAILABLE:
         torch.ops.cann_ops_transformer._compressor_forward.default
     )
     def convert_compressor(
-        x: Tensor,
-        wkv: Tensor,
-        wgate: Tensor,
-        state_cache: Tensor,
-        ape: Tensor,
-        state_block_table: Tensor = None,
-        cu_seqlens: Tensor = None,
-        seqused: Tensor = None,
-        start_pos: Tensor = None,
-        cmp_ratio: int = 4,
-        *,
-        coff: int = 1,
-        cache_mode: int = 1,
-        grad_enabled: bool = False,
-        state_cache_stride_dim0: int = 0,
+        *args,
+        **kwargs,
     ):
         raise AssertionError(
             "compressor is not supported in GE graph mode. Please use aclgraph mode instead."
