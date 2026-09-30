@@ -186,7 +186,12 @@ class ElasticBufferOpBuilder(OpBuilder):
             dtype,
             sf_table,
             fetched_sf,
-            fetch_mode,
+            # The trailing default must mirror the schema's `int fetch_mode=0`:
+            # torch (2.7.1) drops schema-defaulted args (omitted OR equal to the
+            # default value) before invoking Python kernels, so without this
+            # default a call with fetch_mode=0 raises
+            # "engram_fetch() missing 1 required positional argument: 'fetch_mode'".
+            fetch_mode=FETCH_MODE_SLICED,
         ):
             return torch.empty(
                 (indices.size(0), hidden_size),
@@ -289,7 +294,19 @@ _elastic_buffer_op_builder._ensure_initialized()
 
 @impl(get_as_library(), "engram_fetch", "PrivateUse1")
 def engram_fetch(
-    context, indices, hidden_size, num_entries, dtype, sf_table, fetched_sf, fetch_mode
+    context,
+    indices,
+    hidden_size,
+    num_entries,
+    dtype,
+    sf_table,
+    fetched_sf,
+    # Must mirror the schema's `int fetch_mode=0`: torch (2.7.1) drops
+    # schema-defaulted args (omitted OR equal to the default value) before
+    # invoking Python kernels; without this default, sliced inference
+    # (fetch_mode=0 == default) fails with
+    # "engram_fetch() missing 1 required positional argument: 'fetch_mode'".
+    fetch_mode=FETCH_MODE_SLICED,
 ):
     op_module = _elastic_buffer_op_builder.load()
     return op_module.ElasticBuffer.engram_fetch(
