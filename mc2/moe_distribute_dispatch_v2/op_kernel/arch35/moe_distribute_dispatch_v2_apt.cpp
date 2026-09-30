@@ -20,8 +20,8 @@
 #include "../moe_distribute_dispatch_v2.h"
 #include "moe_distribute_dispatch_v2_a5_full_mesh.h"
 #include "moe_distribute_dispatch_v2_apt_tiling_key.h"
-#include "moe_distribute_dispatch_v2_a5_ccu.h"
-using namespace MoeDistributeDispatchA5Impl;
+#include "moe_distribute_dispatch_v2_a5_ccu_mte.h"
+using namespace MoeDistributeDispatchV2A5CcuMteImpl;
 using namespace MoeDistributeDispatchV2A5FullMeshImpl;
 using namespace Mc2Kernel;
 using namespace Mc2Tiling;
@@ -44,9 +44,12 @@ __global__ __aicore__ void moe_distribute_dispatch_v2(GM_ADDR x, GM_ADDR expertI
 #if ((ORIG_DTYPE_EXPAND_X == DT_BF16) || (ORIG_DTYPE_EXPAND_X == DT_FLOAT16))
     if constexpr (ArchTag == TILINGKEY_TPL_A5) {
         if constexpr (CommMode == TILINGKEY_TPL_CCU) {
-            MoeDistributeDispatchA5<DTYPE_X, DTYPE_EXPAND_X, Mc2Kernel::UNQUANT, false> op;
-            op.Init(x, expertIds, scales, xActiveMask, expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut,
-                    epSendCountsOut, workspaceGM, &pipe, &tilingData);
+            // CCU 模式固定走混合内核：数据面 = CCU 注入 context（GetHcclContext<0>）的 windowsIn[远端]/
+            // windowsOut[0][本端] IPC 窗口 MTE 直写，count 面 = 唯一核 CCU 等长 AlltoAll
+            MoeDistributeDispatchV2A5CcuMte<DTYPE_X, DTYPE_EXPAND_X, Mc2Kernel::UNQUANT, false> op;
+            op.Init(x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo, expandXOut,
+                    dynamicScalesOut, assistInfoOut, expandScalesOut, expertTokenNumsOut, epSendCountsOut, workspaceGM,
+                    &pipe, &tilingData);
             op.Process();
         } else if constexpr (CommMode == TILINGKEY_TPL_MTE) {
             if constexpr (FullMesh == TILINGKEY_ENABLE_FULLMESH) {
@@ -99,9 +102,11 @@ __global__ __aicore__ void moe_distribute_dispatch_v2(GM_ADDR x, GM_ADDR expertI
     if constexpr (ArchTag == TILINGKEY_TPL_A5) {
         if constexpr (QuantMode != TILINGKEY_NO_QUANT) {
             if constexpr (CommMode == TILINGKEY_TPL_CCU) {
-                MoeDistributeDispatchA5<DTYPE_X, DTYPE_EXPAND_X, QuantMode, ScaleMode> op;
-                op.Init(x, expertIds, scales, xActiveMask, expandXOut, dynamicScalesOut, assistInfoOut,
-                        expertTokenNumsOut, epSendCountsOut, workspaceGM, &pipe, &tilingData);
+                // CCU 模式固定走混合内核：数据面 = CCU 注入 context IPC 窗口 MTE 直写，count 面 = CCU AlltoAll
+                MoeDistributeDispatchV2A5CcuMte<DTYPE_X, DTYPE_EXPAND_X, QuantMode, ScaleMode> op;
+                op.Init(x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo, expandXOut,
+                        dynamicScalesOut, assistInfoOut, expandScalesOut, expertTokenNumsOut, epSendCountsOut,
+                        workspaceGM, &pipe, &tilingData);
                 op.Process();
             } else if constexpr (CommMode == TILINGKEY_TPL_MTE) {
                 if constexpr (FullMesh == TILINGKEY_ENABLE_FULLMESH) {
@@ -127,9 +132,11 @@ __global__ __aicore__ void moe_distribute_dispatch_v2(GM_ADDR x, GM_ADDR expertI
     ((ORIG_DTYPE_X == DT_FLOAT16) && (ORIG_DTYPE_EXPAND_X == DT_HIFLOAT8))
     if constexpr (ArchTag == TILINGKEY_TPL_A5) {
         if constexpr (CommMode == TILINGKEY_TPL_CCU) {
-            MoeDistributeDispatchA5<DTYPE_X, DTYPE_EXPAND_X, Mc2Kernel::STATIC_QUANT, true> op;
-            op.Init(x, expertIds, scales, xActiveMask, expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut,
-                    epSendCountsOut, workspaceGM, &pipe, &tilingData);
+            // CCU 模式固定走混合内核：数据面 = CCU 注入 context IPC 窗口 MTE 直写，count 面 = CCU AlltoAll
+            MoeDistributeDispatchV2A5CcuMte<DTYPE_X, DTYPE_EXPAND_X, Mc2Kernel::STATIC_QUANT, true> op;
+            op.Init(x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo, expandXOut,
+                    dynamicScalesOut, assistInfoOut, expandScalesOut, expertTokenNumsOut, epSendCountsOut, workspaceGM,
+                    &pipe, &tilingData);
             op.Process();
         } else if constexpr (CommMode == TILINGKEY_TPL_MTE) {
             if constexpr (FullMesh == TILINGKEY_ENABLE_FULLMESH) {
