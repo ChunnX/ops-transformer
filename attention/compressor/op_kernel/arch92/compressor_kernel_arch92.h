@@ -489,14 +489,14 @@ __aicore__ inline void CompressorKernel<COMP, IS_FULL_LOAD>::InitWorkspace(__gm_
     // 段内行由 mRowBase 提供全局行号，故 vec 读到的是连续的全 M 行。
     uint32_t kIdx = constInfo.curGroupIdx % constInfo.kBaseNum;
     // mm1KvResGm
-    mm1KvResGm.SetGlobalBuffer((__gm__ MM1_OUT_T *)(workspace + offset +
-                                                   (uint64_t)kIdx * constInfo.mm1KvResSize * sizeof(MM1_OUT_T)));
+    mm1KvResGm.SetGlobalBuffer(
+        (__gm__ MM1_OUT_T*)(workspace + offset + (uint64_t)kIdx * constInfo.mm1KvResSize * sizeof(MM1_OUT_T)));
     offset += (uint64_t)constInfo.dbWorkspaceRatio * constInfo.dbSize * sizeof(MM1_OUT_T);
 
     uint64_t mm1ScoreResStartOffset = offset;
     // mm1ScoreResGm
-    mm1ScoreResGm.SetGlobalBuffer((__gm__ MM1_OUT_T *)(workspace + offset +
-                                                      (uint64_t)kIdx * constInfo.mm1ScoreResSize * sizeof(MM1_OUT_T)));
+    mm1ScoreResGm.SetGlobalBuffer(
+        (__gm__ MM1_OUT_T*)(workspace + offset + (uint64_t)kIdx * constInfo.mm1ScoreResSize * sizeof(MM1_OUT_T)));
     offset += (uint64_t)constInfo.dbWorkspaceRatio * constInfo.dbSize * sizeof(MM1_OUT_T);
 
     Vec1InputKvGm.SetGlobalBuffer((__gm__ MM1_OUT_T*)(workspace + mm1KvResStartOffset));

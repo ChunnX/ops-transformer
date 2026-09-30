@@ -266,10 +266,9 @@ ge::graphStatus CompressorTiling::SetFullLoadSplitInfo()
     // 当前参数下 tokenSize<=512 且 mBaseSize>=255 → mBaseNum<=3，而 coreGroupNum>=8，恒成立，
     // 此处仅作显式防护（宁可报错，不要静默丢尾）。
     OP_CHECK_IF(baseParams_->coreGroupNum < mBaseNum,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->opName, "coreGroupNum",
-                                                      std::to_string(baseParams_->coreGroupNum),
-                                                      "each M block needs one core group, but mBaseNum=" +
-                                                          std::to_string(mBaseNum) + " > coreGroupNum"),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context_->opName, "coreGroupNum", std::to_string(baseParams_->coreGroupNum),
+                    "each M block needs one core group, but mBaseNum=" + std::to_string(mBaseNum) + " > coreGroupNum"),
                 return ge::GRAPH_FAILED);
     baseParams_->kBaseNum = 1;
     baseParams_->kBaseSize = baseParams_->hiddenSize;

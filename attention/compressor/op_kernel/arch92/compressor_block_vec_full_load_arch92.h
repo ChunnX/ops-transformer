@@ -432,8 +432,8 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::ComputeVec1(uint32_t
         uint32_t globalRowOffset = this->constInfo_.mStart + splitInfo.dealSeqStartIdx;
         this->FromWokrSpaceToUb(scoreUb, scoreDbGm, globalRowOffset, curLoopBatchNum * this->constInfo_.sSize,
                                 baseOffset, splitInfo.dBaseSize);
-        this->FromWokrSpaceToUb(kvUb, kvDbGm, globalRowOffset, curLoopBatchNum * this->constInfo_.sSize,
-                                baseOffset, splitInfo.dBaseSize);
+        this->FromWokrSpaceToUb(kvUb, kvDbGm, globalRowOffset, curLoopBatchNum * this->constInfo_.sSize, baseOffset,
+                                splitInfo.dBaseSize);
         this->inputQue1.template EnQue(scoreUb);
         this->inputQue1.template DeQue<T>();
         splitInfo.dealTcNum = 0;
