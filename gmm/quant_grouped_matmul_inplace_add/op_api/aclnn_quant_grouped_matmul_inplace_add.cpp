@@ -13,6 +13,7 @@
 #include <dlfcn.h>
 #include <new>
 #include <sstream>
+#include <vector>
 
 #include "aclnn_kernels/transdata.h"
 #include "aclnn_kernels/contiguous.h"
@@ -240,8 +241,23 @@ static aclnnStatus CheckShape(QGmmInPlaceAdd::QuantGroupedMatmulInplaceAddParams
 
 static aclnnStatus CheckDtype(QGmmInPlaceAdd::QuantGroupedMatmulInplaceAddParams params)
 {
+    static const std::vector<DataType> commonInputTypes = {
+        DataType::DT_FLOAT8_E4M3FN, DataType::DT_FLOAT8_E5M2, DataType::DT_HIFLOAT8};
+    static const std::vector<DataType> a6InputTypes = {
+        DataType::DT_FLOAT8_E4M3FN, DataType::DT_FLOAT8_E5M2, DataType::DT_HIFLOAT8, DataType::DT_HIFLOAT4};
+    const auto &supportedInputTypes = op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_9201 ?
+                                         a6InputTypes : commonInputTypes;
     auto x1Dtype = params.x1->GetDataType();
     auto x2Dtype = params.x2->GetDataType();
+    QGMM_INPLACE_ADD_CHECK_REPORT(
+        gmm::CheckDTypeInVector(x1Dtype, supportedInputTypes) &&
+            gmm::CheckDTypeInVector(x2Dtype, supportedInputTypes),
+        return ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+            QGMM_INPLACE_ADD_ACLNN_OP_NAME, "x1 and x2",
+            "x1=" + std::string(op::ToString(x1Dtype).GetString()) +
+                ", x2=" + op::ToString(x2Dtype).GetString(),
+            "supported input types on the current platform: " + gmm::DTypeVectorToString(supportedInputTypes)));
     QGMM_INPLACE_ADD_CHECK_REPORT(
         params.yRef->GetDataType() == DataType::DT_FLOAT, return ACLNN_ERR_PARAM_INVALID,
         OP_LOGE_FOR_INVALID_DTYPE(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "yRef",

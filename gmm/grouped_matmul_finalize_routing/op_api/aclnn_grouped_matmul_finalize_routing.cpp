@@ -242,7 +242,7 @@ static inline bool CheckDimRange(const GroupedMatmulParams &params)
     OP_CHECK_MIN_DIM(params.x1, MIN_DIM_NUM_ND, return false);
     OP_CHECK_MIN_DIM(params.out, MIN_DIM_NUM_ND, return false);
 
-    if (gmm::CheckDTypeInVector(params.x2->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_MX)) {
+    if (IsMxDataTypeSupported(params.x2->GetDataType())) {
         OP_CHECK_WRONG_DIMENSION(params.scale, MX_SCALE_DIM, return false);
         if (params.bias != nullptr) {
             OP_CHECK_WRONG_DIMENSION(params.bias, TWO_DIM_NUM, return false);
@@ -259,7 +259,7 @@ static inline bool CheckDimRange(const GroupedMatmulParams &params)
         OP_CHECK_WRONG_DIMENSION(params.scale, SCALE_DIM, return false);
     }
 
-    if (gmm::CheckDTypeInVector(params.x1->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_MX)) {
+    if (IsMxDataTypeSupported(params.x1->GetDataType())) {
         OP_CHECK_WRONG_DIMENSION(params.pertokenScaleOptional, MX_PERTOKEN_SCALE_DIM, return false);
     } else if (params.pertokenScaleOptional != nullptr) {
         OP_CHECK_WRONG_DIMENSION(params.pertokenScaleOptional, 1, return false);
@@ -928,8 +928,8 @@ static aclnnStatus PreMatmulCalcProcess(GroupedMatmulParams &params, aclOpExecut
     auto ret = WeightNZCaseProcess(x2, transposeX2, executor);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
-    if (scale != nullptr && gmm::CheckDTypeInVector(x1->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_MX) &&
-        gmm::CheckDTypeInVector(scale->GetDataType(), SCALE_TYPE_SUPPORT_LIST_MX)) {
+    if (scale != nullptr && IsMxDataTypeSupported(x1->GetDataType()) &&
+        IsMxScaleTypeSupported(scale->GetDataType())) {
         bool transposeScale = false;
         ret = WeightNZCaseProcessForMXScale(scale, transposeScale, executor);
         CHECK_RET(ret == ACLNN_SUCCESS, ret);
@@ -1617,15 +1617,16 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize(
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
-    bool isMXValid = gmm::CheckDTypeInVector(x1->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_MX) &&
-                     gmm::CheckDTypeInVector(tmpWeightV3->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_MX);
+    bool isMXValid = IsMxDataTypeSupported(x1->GetDataType()) &&
+                     IsMxDataTypeSupported(tmpWeightV3->GetDataType());
     if ((op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 ||
          op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_9201) && !isMXValid) {
         OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
             "aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize", "x and weight",
             "x=" + std::string(op::ToString(x1->GetDataType()).GetString()) +
                 ", weight=" + op::ToString(tmpWeightV3->GetDataType()).GetString(),
-            "for mx, the dtypes of x and weight must be within the range {FLOAT8_E5M2, FLOAT8_E4M3FN, FLOAT4_E2M1}");
+            "for mx, x and weight must be FLOAT8_E5M2, FLOAT8_E4M3FN or FLOAT4_E2M1; "
+            "HIFLOAT4 is only supported on DAV_9201");
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (dtype != ACLNN_OUT_DTYPE_FLOAT32) {
