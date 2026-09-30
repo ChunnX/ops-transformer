@@ -75,7 +75,7 @@ class ModelConfig:
     # 必须保证实际 batch_tokens 小于每条使用的 SQ 和 CQ 深度；mode 0/1/2 的 0 选最大值（最高 2048）。
     # URMA 还须保证 drain_threshold 不超过实际可用 SQ/CQ 容量；kernel 不查询队列余量。
     # device kernel 直接使用 host tiling 选出的批量；误配会使测试结果无效。
-    batch_tokens: int = 0  # roce 必须为0（无Batch）；URMA mode 3忽略，mode 4取min(配置或BS, BS, tiling上限)
+    batch_tokens: int = 0  # ROCE必须为0（固定每次提交1个多SGE WQE）；URMA mode 3忽略，mode 4按容量截断
     peers_per_jetty: int = 0  # 非共享 URMA mode 3 必须为 0；mode 3 中 0=全部远端，正数指定轮转对端数。
     drain_threshold: int = 7168  # 每个 URMA Jetty/持锁通道的累计在途 WQE 上限（含 flag/count）；下一批将超过时先 Drain。
     static_kernel_path: str = "./static_kernel"  # aclgraph 静态内核构建目录，相对启动目录

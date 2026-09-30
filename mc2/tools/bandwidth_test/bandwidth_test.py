@@ -15,6 +15,10 @@ import os
 import socket
 import logging
 import shutil
+import argparse
+import sys
+import time
+from dataclasses import replace
 from queue import Empty
 from pathlib import Path
 
@@ -29,6 +33,50 @@ if __package__:
     from .config import CONFIG
 else:
     from config import CONFIG
+
+
+def configure_roce_functional_test(config):
+    parser = argparse.ArgumentParser(description="Bandwidth test; --roce-multi-sge runs exact functional checks.")
+    parser.add_argument("--roce-multi-sge", action="store_true")
+    for name in ("server-num", "rank-per-dev", "server-index", "master-port"):
+        parser.add_argument("--" + name, type=int, default=getattr(config.parallel, name.replace("-", "_")))
+    parser.add_argument("--master-ip", default=config.parallel.master_ip)
+    parser.add_argument("--iterations", type=int, default=3, help="Calls per case on the same registered Win (default: 3)")
+    parser.add_argument("--timeout-seconds", type=int, default=600, help="Local worker deadline including setup (default: 600)")
+    args = parser.parse_args()
+    if os.environ.get("BANDWIDTH_TEST_CASE"):
+        parser.error("unset BANDWIDTH_TEST_CASE before running the ROCE functional test")
+    size = args.server_num * args.rank_per_dev
+    if args.server_num < 1 or args.rank_per_dev < 1 or not 2 <= size <= 1024:
+        parser.error("ROCE multi-SGE requires 2..1024 ranks and positive server/device counts")
+    if not 0 <= args.server_index < args.server_num or not 1 <= args.master_port <= 65535:
+        parser.error("invalid server-index or master-port")
+    if args.iterations < 1:
+        parser.error("iterations must be positive")
+    if args.timeout_seconds < 1:
+        parser.error("timeout-seconds must be positive")
+    cases = [("single", 1, 16, "ring"), ("two_sge", 3, 32, "ring"),
+             ("three_sge_tail", 7, 272, "ring"), ("four_sge_tail", 9, 1024, "ring"),
+             ("scattered", 8 * size + 1, 272, "striped"),
+             ("id_chunk_hotspot", 513, 272, "hotspot"), ("local_only", 5, 16, "self")]
+    shapes = [dict(name=name, bs=bs, max_bs=bs, data_size=h, route=route) for name, bs, h, route in cases]
+    return replace(
+        config,
+        parallel=replace(config.parallel, is_cloud=False, server_num=args.server_num, rank_per_dev=args.rank_per_dev,
+                         server_index=args.server_index, master_ip=args.master_ip, master_port=args.master_port),
+        shape=replace(config.shape, x_dtype="fp16", test_configs=shapes),
+        model=replace(config.model, comm_alg="roce", mode=0, graph_type=0, shared_jetty=False,
+                      shared_jetty_num=1, batch_tokens=0, peers_per_jetty=0),
+        run=replace(config.run, sweep_enabled=False, is_single_test=False,
+                    is_precision_test=True, is_bandwidth_test=False),
+    ), args.iterations, args.timeout_seconds
+
+
+ROCE_FUNCTIONAL = "--roce-multi-sge" in sys.argv
+roce_iterations = 0
+roce_timeout_seconds = None
+if ROCE_FUNCTIONAL or "--help" in sys.argv or "-h" in sys.argv:
+    CONFIG, roce_iterations, roce_timeout_seconds = configure_roce_functional_test(CONFIG)
 
 # Launch topology sweeps before loading Torch/NPU in the coordinator process.
 if __name__ == "__main__" and CONFIG.run.sweep_enabled:
@@ -105,7 +153,7 @@ if mode is None:
 if CONFIG.model.comm_alg == "roce" and mode != 0:
     raise ValueError("roce only supports mode=0")
 if CONFIG.model.comm_alg == "roce" and CONFIG.model.batch_tokens != 0:
-    raise ValueError("roce has no batch interface; batch_tokens must be 0")
+    raise ValueError("ROCE functional test fixes one WQE per commit; batch_tokens must be 0")
 if mode not in (0, 1, 2, 3, 4):
     raise ValueError("mode must be in [0, 4]")
 if mode in WIN_STREAM_MODES and CONFIG.model.comm_alg != "urma":
@@ -907,10 +955,13 @@ def run_bandwidth_test_npu_multi_config(queue, rank, configs):
 # region 主测试函数
 
 
-def collect_local_results(processes, result_queue):
+def collect_local_results(processes, result_queue, timeout_seconds=None):
     """Require one successful result for each local worker before reporting this server's results."""
+    deadline = None if timeout_seconds is None else time.monotonic() + timeout_seconds
     try:
         while True:
+            if deadline is not None and time.monotonic() >= deadline:
+                raise TimeoutError(f"Local workers exceeded {timeout_seconds}s; check all servers' logs")
             for rank, process in zip(local_ranks, processes):
                 if process.exitcode not in (None, 0):
                     raise RuntimeError(f"Rank {rank} worker failed with exit code {process.exitcode}")
@@ -1248,10 +1299,96 @@ def print_summary_table(results: List[Dict[str, Any]]):
 # region Main
 
 
+def make_roce_functional_input(rank, case, iteration):
+    rows = torch.arange(case["bs"], dtype=torch.int32)
+    columns = torch.arange(case["data_size"], dtype=torch.int32)
+    # Small integers are represented exactly in FP16; each rank, row, column and iteration changes the payload.
+    x = ((rows[:, None] * 31 + columns[None, :] * 17 + rank * 73 + iteration * 101) % 2047 - 1023)
+    if case["route"] == "ring":
+        dst = torch.full_like(rows, (rank + 1) % world_size)
+    elif case["route"] == "striped":
+        dst = (rows + rank) % world_size
+    elif case["route"] == "hotspot":
+        dst = torch.zeros_like(rows)
+    elif case["route"] == "self":
+        dst = torch.full_like(rows, rank)
+    else:
+        raise ValueError(f"Unknown ROCE route: {case['route']}")
+    return x.to(torch.float16), dst
+
+
+def check_roce_functional_output(rank, case, iteration, y, receive_cnt):
+    chunks, counts = [], []
+    for src_rank in range(world_size):
+        x, dst = make_roce_functional_input(src_rank, case, iteration)
+        selected = x[dst == rank]
+        chunks.append(selected)
+        counts.append(selected.size(0))
+    expected_counts = torch.tensor(counts, dtype=torch.int32)
+    if not torch.equal(receive_cnt, expected_counts):
+        raise RuntimeError(f"rank={rank} case={case['name']} iteration={iteration}: "
+                           f"receive_cnt={receive_cnt.tolist()}, expected={counts}")
+    expected = torch.cat(chunks, dim=0)
+    actual = y[:expected.size(0)]
+    if not torch.equal(actual, expected):
+        mismatch = (actual != expected).nonzero()[0].tolist()
+        raise RuntimeError(f"rank={rank} case={case['name']} iteration={iteration}: "
+                           f"payload mismatch at row/column={mismatch}")
+
+
+def run_roce_functional_rank(result_queue, rank):
+    set_device(rank)
+    sym_buffer = None
+    try:
+        sym_buffer, _ = init_hccl_comm(rank, world_size)
+        completed = 0
+        for case in test_configs:
+            for iteration in range(roce_iterations):
+                x, dst = make_roce_functional_input(rank, case, iteration)
+                x_npu, dst_npu = prepare_npu_inputs(x, dst, 0)
+                y, receive_cnt = bandwidth_test(
+                    sym_buffer=sym_buffer, x=x_npu, dstrank_id=dst_npu, world_size=world_size,
+                    max_bs=case["max_bs"], mode=0, comm_alg="roce", aiv_num=aiv_num,
+                    batch_tokens=0, shared_jetty=False, shared_jetty_num=1, peers_per_jetty=0)
+                torch.npu.synchronize()
+                check_roce_functional_output(rank, case, iteration, y.cpu(), receive_cnt.cpu())
+                # All receivers finish consuming this epoch before any rank reuses the registered Win.
+                dist.barrier()
+                completed += 1
+            logger.info("[PASS] rank=%d case=%s BS=%d H=%d iterations=%d (exact)",
+                        rank, case["name"], case["bs"], case["data_size"], roce_iterations)
+    finally:
+        # Keep the registered Win owner alive until the communicator has been destroyed.
+        if dist.is_initialized():
+            dist.destroy_process_group()
+    result_queue.put([rank, completed])
+
+
+def run_roce_functional_test():
+    logger.info("ROCE multi-SGE functional test: <=4 source Win slots/WQE, 1 WQE/commit + Drain; no profiling")
+    with Manager() as manager:
+        result_queue = manager.Queue()
+        processes = []
+        for rank in local_ranks:
+            process = Process(target=run_roce_functional_rank, args=(result_queue, rank))
+            process.start()
+            processes.append(process)
+        outputs = collect_local_results(processes, result_queue, roce_timeout_seconds)
+    expected = len(test_configs) * roce_iterations
+    if any(count != expected for count in outputs.values()):
+        raise RuntimeError(f"Incomplete ROCE functional results: {outputs}")
+    logger.info("ROCE multi-SGE: PASS; server_index=%d, ranks=%s, %d checks/rank",
+                server_index, list(local_ranks), expected)
+
+
 def main():
     print_setting()
     if CONFIG.run.is_check_setting:
         check_setting()
+
+    if ROCE_FUNCTIONAL:
+        run_roce_functional_test()
+        return
 
     if CONFIG.run.is_bandwidth_test and (len(test_configs) > 1 or os.environ.get("BANDWIDTH_TEST_CASE")):
         all_results = run_multi_config_bandwidth_test()

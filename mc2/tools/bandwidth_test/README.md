@@ -30,6 +30,73 @@ Torch 接口、context 生命周期和 `aclnn_graph` 示例见
 python bandwidth_test.py
 ```
 
+## ROCE 多 SGE 功能测试
+
+入口仍为本目录的 `bandwidth_test.py`，增加 `--roce-multi-sge` 后自动选择 ROCE、mode 0、
+eager、FP16、非共享 channel，关闭拓扑扫描和 profiling。通信拓扑默认读取 `config.py` 的
+`parallel` 字段，也可用下面的命令行参数覆盖；此入口不读取云环境拓扑变量。
+
+**先编译并安装这版算子。** 目标 asc-comm/CANN 必须提供用户约定的 ROCE BatchHandle 接口：
+`MakeBatchHandle(channel, ub, bytes, remoteWin, localWin)`、
+`WriteNbi(batch, dst, const AscendC::BufDesc *, count)`、`BatchCommit(batch)`、`Drain(batch)`。
+本地参考 asc-comm 的现有实现只在 URMA 上支持这些操作；旧 ROCE SDK 不能编译本版，
+不会自动降级为单 SGE。先让编译环境使用新增 ROCE 实现的头文件/库，再重新生成并安装
+`bandwidth_test` 算子包（host tiling 和 kernel）；Torch 包的安装步骤见
+[Torch 扩展构建说明](../../../torch_extension/README.md)。
+确认实际加载的是此次生成的算子包，旧 kernel 的数值结果相同，不能凭脚本 PASS 判断旧包执行了多 SGE。
+
+发送时每个 SGE 指向一个注册 Win token 槽，同一目标 rank 最多 4 个槽合成一个 WQE。
+槽宽为 `align_up(H * 2, 512)` 字节，padding 在发送前清零；接收侧仍只输出每行有效的 H 个元素。
+交错路由使源槽之间存在空隙，而远端按 SGE 顺序连续落地。保持原有两核依次发送、核 0 接收的流程，
+每个 WQE 都执行 `BatchCommit + Drain`，不积累在途请求；count 完成后才发布 ready flag。
+这版用于功能验证，不用于带宽比较。新增独立的 256B batch UB（参考 URMA 最大 WQE 容量），
+目标 ROCE SDK 需满足 1～4 SGE、单请求及 Drain scratch 能容纳于该缓冲区的约定；接口出错会 Trap。
+
+单机两卡（同机两卡间必须有 ROCE link）：
+
+```bash
+cd mc2/tools/bandwidth_test
+unset BANDWIDTH_TEST_CASE
+python -u bandwidth_test.py --roce-multi-sge \
+  --server-num 1 --rank-per-dev 2 --server-index 0 \
+  --master-ip 127.0.0.1 --master-port 5001
+```
+
+双机、每机 8 卡：两台机器分别执行，`MASTER_IP` 都填机器 0 的可达 IP：
+
+```bash
+# 机器 0
+python -u bandwidth_test.py --roce-multi-sge \
+  --server-num 2 --rank-per-dev 8 --server-index 0 \
+  --master-ip "$MASTER_IP" --master-port 5001
+
+# 机器 1
+python -u bandwidth_test.py --roce-multi-sge \
+  --server-num 2 --rank-per-dev 8 --server-index 1 \
+  --master-ip "$MASTER_IP" --master-port 5001
+```
+
+脚本自行启动本机 rank 进程，不要再套 `torchrun`。所有 rank 对都需要支持 ROCE，包括同机卡之间。
+默认 7 个用例，每个用例连续调用 3 次，复用同一通信域和注册 Win，并改变每次的输入值；
+可通过 `--iterations N` 修改次数。每次检查 `receive_cnt` 和有效输出数据与 CPU golden 完全一致。
+
+| 用例 | BS | H | 覆盖内容 |
+| --- | ---: | ---: | --- |
+| single | 1 | 16 | 单段尾部，第二发送核没有 payload |
+| two_sge | 3 | 32 | 2 段请求及单段尾部 |
+| three_sge_tail | 7 | 272 | 4 段请求及 3 段尾部，行 padding |
+| four_sge_tail | 9 | 1024 | 多个 4 段请求及 1 段尾部 |
+| scattered | 8 × world_size + 1 | 272 | 非连续源地址、多个 peer、自发自收 |
+| id_chunk_hotspot | 513 | 272 | 跨 256 条路由读取边界、全发 rank 0、空接收 rank |
+| local_only | 5 | 16 | 全本地拷贝、远端零计数通知 |
+
+每台机器最后应打印 `ROCE multi-SGE: PASS`，默认每 rank 21 次检查。
+本机子进程报错、计数或数据不一致均以非零状态退出；双机时两台机器都 PASS 才表示全部 rank 通过。
+功能入口默认给本机 worker 共 600 秒（含初始化和全部用例），超时会终止本机 worker 并以非零状态退出，
+用于发现对端失败或设备等待卡住；首次 JIT 构建较慢时可用 `--timeout-seconds N` 放宽。
+`HCCL_BUFFSIZE` 在创建通信组前按全套用例的最大窗口需求自动设置。
+本地 Windows 环境的静态检查不等于 CANN 编译或多卡 NPU 功能验证。
+
 ## 全 UB_RTP 连续批跑
 
 当前默认开启 sweep，按原有拓扑矩阵和全部 shape 连续运行；所有用例统一使用

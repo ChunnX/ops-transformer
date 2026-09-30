@@ -50,6 +50,17 @@ public:
 
 private:
     __aicore__ inline void SendToMoeExpert();
+    __aicore__ inline void SendToRank(uint32_t rankId);
+    __aicore__ inline uint32_t LoadRankIds(uint32_t chunkStart);
+    __aicore__ inline void StageToken(uint32_t rankId, uint32_t tokenIndex, uint32_t destinationIndex);
+    __aicore__ inline void FlushSgeWrites(uint32_t rankId);
+    __aicore__ inline void WriteSegments(uint32_t rankId, GM_ADDR dst, const BufDesc *src, uint32_t count);
+    __aicore__ inline void CheckCommResult(int32_t result)
+    {
+        if (result != HCOMM_SUCCESS) {
+            AscendC::Trap();
+        }
+    }
     __aicore__ inline void SetStatus();
     __aicore__ inline void WaitDispatch();
     __aicore__ inline void LocalWindowCopy();
@@ -118,6 +129,10 @@ private:
     uint64_t totalWinSizeEp_{0};      // 总窗口大小
     Hcomm<COMM_PROTOCOL_ROCE> hcomm_;
     TBuf<> hcommBuf_;
+    TBuf<> sgeBatchBuf_;
+    BufDesc pendingSges_[BandwidthTestTiling::ROCE_MAX_SGE_NUM];
+    uint32_t pendingSgeCount_{0};
+    GM_ADDR pendingDst_{nullptr};
     ChannelHandle hcommHandle_[HCCL_MAX_RANK_SIZE];
     float sumTarget_;                 // 状态同步目标值 (1.0)
 
@@ -213,9 +228,10 @@ __aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::Ini
     // ============ 初始化其他缓冲区 ============
     tpipe_->InitBuffer(dstRankIdsBuf_, BandwidthTestTiling::ROCE_ID_CHUNK_TOKENS * sizeof(int32_t));
     dstRankIdsTensor_ = dstRankIdsBuf_.Get<int32_t>();
-    tpipe_->InitBuffer(xQueue_, BUFFER_SINGLE, hOutAlignUbSize_);
+    tpipe_->InitBuffer(xQueue_, BUFFER_SINGLE, hAlignWinSize_);
     tpipe_->InitBuffer(hcommBuf_, BandwidthTestTiling::ROCE_HCOMM_UB_BYTES);
-    hcomm_.Init(hcommBuf_.Get<uint8_t>(), BandwidthTestTiling::ROCE_HCOMM_UB_BYTES);
+    CheckCommResult(hcomm_.Init(hcommBuf_.Get<uint8_t>(), BandwidthTestTiling::ROCE_HCOMM_UB_BYTES));
+    tpipe_->InitBuffer(sgeBatchBuf_, BandwidthTestTiling::ROCE_SGE_BATCH_BYTES);
     startRankId_ = 0;
     endRankId_ = epWorldSize_;
     for (uint32_t rankId = startRankId_; rankId < endRankId_; ++rankId) {
@@ -236,10 +252,13 @@ __aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::Pro
 
     DataCopyPadParams padParams = {true, 0, 0, 0};
     DataCopyParams xCopyParams = {1U, static_cast<uint16_t>(axisH_ * sizeof(XType)), 0U, 0U};
-    DataCopyParams hCommuCopyOutParams = {1U, static_cast<uint16_t>(hAlignSize_), 0U, 0U};
+    DataCopyExtParams hCommuCopyOutParams = {1U, hAlignWinSize_, 0U, 0U, 0U};
 
     // 从GM读取token到UB
     xTmpTensor_ = xQueue_.AllocTensor<XType>();
+    // Multi-SGE transfers include the full slot, so padding must not retain data from earlier calls.
+    Duplicate<XType>(xTmpTensor_, static_cast<XType>(0), hAlignWinCnt_);
+    SyncFunc<HardEvent::V_MTE2>();
     DataCopyPad(xTmpTensor_, xGMTensor_[static_cast<uint64_t>(tokenIndex) * axisH_], xCopyParams, padParams);
     xQueue_.EnQue(xTmpTensor_);
     xTmpTensor_ = xQueue_.DeQue<XType>();
@@ -252,61 +271,100 @@ __aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::Pro
 }
 
 template <TemplateBandwidthTestRoceTypeClass>
-__aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::SendToMoeExpert()
+__aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::WriteSegments(
+    uint32_t rankId, GM_ADDR dst, const BufDesc *src, uint32_t count)
 {
-    // Split input rows, not channels: core 1 must reuse channels unlocked by core 0.
+    auto batch = hcomm_.MakeBatchHandle(hcommHandle_[rankId], sgeBatchBuf_.Get<uint8_t>(),
+        BandwidthTestTiling::ROCE_SGE_BATCH_BYTES, reinterpret_cast<GM_ADDR>(context_->epHcclBuffer_[rankId]),
+        reinterpret_cast<GM_ADDR>(context_->epHcclBuffer_[epRankId_]));
+    CheckCommResult(hcomm_.WriteNbi(batch, dst, src, count));
+    CheckCommResult(hcomm_.BatchCommit(batch));
+    // Functional test: finish this WQE before reusing UB or handing the channel to the other core.
+    CheckCommResult(hcomm_.Drain(batch));
+}
+
+template <TemplateBandwidthTestRoceTypeClass>
+__aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::FlushSgeWrites(uint32_t rankId)
+{
+    if (pendingSgeCount_ == 0) {
+        return;
+    }
+    WriteSegments(rankId, pendingDst_, pendingSges_, pendingSgeCount_);
+    pendingSgeCount_ = 0;
+}
+
+template <TemplateBandwidthTestRoceTypeClass>
+__aicore__ inline uint32_t BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::LoadRankIds(uint32_t chunkStart)
+{
+    uint32_t count = axisBS_ - chunkStart;
+    count = count < BandwidthTestTiling::ROCE_ID_CHUNK_TOKENS ? count : BandwidthTestTiling::ROCE_ID_CHUNK_TOKENS;
+    DataCopyExtParams copyParams{1U, static_cast<uint32_t>(count * sizeof(int32_t)), 0U, 0U, 0U};
+    DataCopyPadExtParams<int32_t> padParams{false, 0U, 0U, 0U};
+    SyncFunc<HardEvent::S_MTE2>();
+    DataCopyPad(dstRankIdsTensor_, dstRankIdGMTensor_[chunkStart], copyParams, padParams);
+    SyncFunc<HardEvent::MTE2_S>();
+    return count;
+}
+
+template <TemplateBandwidthTestRoceTypeClass>
+__aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::StageToken(
+    uint32_t rankId, uint32_t tokenIndex, uint32_t destinationIndex)
+{
+    const bool isRemote = rankId != static_cast<uint32_t>(epRankId_);
+    GM_ADDR dst = GetWindAddrByRankId(rankId) + epRankId_ * expertPerSizeOnWin_ +
+        static_cast<uint64_t>(destinationIndex) * hAlignWinSize_;
+    GM_ADDR src = windowGM_ - expertPerSizeOnWin_ + static_cast<uint64_t>(tokenIndex) * hAlignWinSize_;
+    GlobalTensor<XType> token;
+    token.SetGlobalBuffer(reinterpret_cast<__gm__ XType *>(isRemote ? src : dst));
+    token.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
+    ProcessToken(token, tokenIndex);
+    if (!isRemote) {
+        return;
+    }
+    if (pendingSgeCount_ == 0) {
+        pendingDst_ = dst;
+    }
+    // Gather whole Win slots, including padding, so the receiver keeps its existing 512-byte row stride.
+    // Interleaved destinations produce non-adjacent source slots within the registered staging region.
+    pendingSges_[pendingSgeCount_++] = BufDesc{src, hAlignWinSize_};
+    if (pendingSgeCount_ == BandwidthTestTiling::ROCE_MAX_SGE_NUM) {
+        FlushSgeWrites(rankId);
+    }
+}
+
+template <TemplateBandwidthTestRoceTypeClass>
+__aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::SendToRank(uint32_t rankId)
+{
     const uint32_t splitToken = axisBS_ / 2 + axisBS_ % 2;
     const uint32_t tokenBegin = aivId_ == 0 ? 0 : splitToken;
     const uint32_t tokenEnd = aivId_ == 0 ? splitToken : axisBS_;
-    GM_ADDR stagingGM = windowGM_ - expertPerSizeOnWin_;
-    GlobalTensor<XType> dstWinGMTensor;
+    uint32_t destinationIndex = 0;
+    pendingSgeCount_ = 0;
+    for (uint32_t chunkStart = 0; chunkStart < axisBS_;) {
+        uint32_t chunkTokens = LoadRankIds(chunkStart);
+        for (uint32_t i = 0; i < chunkTokens; ++i) {
+            if (dstRankIdsTensor_(i) != static_cast<int32_t>(rankId)) {
+                continue;
+            }
+            uint32_t tokenIndex = chunkStart + i;
+            // Both cores count the complete route to preserve compact destination offsets and total counts.
+            if (tokenIndex >= tokenBegin && tokenIndex < tokenEnd) {
+                StageToken(rankId, tokenIndex, destinationIndex);
+            }
+            ++destinationIndex;
+        }
+        chunkStart += chunkTokens;
+    }
+    FlushSgeWrites(rankId);
+    statusTensor_((rankId - startRankId_) * 8 + 1) = destinationIndex;
+}
+
+template <TemplateBandwidthTestRoceTypeClass>
+__aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::SendToMoeExpert()
+{
     SyncFunc<HardEvent::V_S>();
     for (uint32_t rankId = startRankId_; rankId < endRankId_; ++rankId) {
-        bool isRemote = rankId != static_cast<uint32_t>(epRankId_);
-        uint32_t curExpertCnt = 0;
-        if (isRemote) {
-            // hcomm_.Lock(hcommHandle_[rankId]);
-        }
-        for (uint32_t chunkStart = 0; chunkStart < axisBS_;) {
-            uint32_t chunkTokens = axisBS_ - chunkStart;
-            chunkTokens = chunkTokens < BandwidthTestTiling::ROCE_ID_CHUNK_TOKENS ?
-                chunkTokens : BandwidthTestTiling::ROCE_ID_CHUNK_TOKENS;
-            DataCopyExtParams idCopyParams{1U, static_cast<uint32_t>(chunkTokens * sizeof(int32_t)), 0U, 0U, 0U};
-            DataCopyPadExtParams<int32_t> idPadParams{false, 0U, 0U, 0U};
-            SyncFunc<HardEvent::S_MTE2>();
-            DataCopyPad(dstRankIdsTensor_, dstRankIdGMTensor_[chunkStart], idCopyParams, idPadParams);
-            SyncFunc<HardEvent::MTE2_S>();
-            for (uint32_t i = 0; i < chunkTokens; ++i) {
-                if (dstRankIdsTensor_(i) != static_cast<int32_t>(rankId)) {
-                    continue;
-                }
-                uint32_t tokenIndex = chunkStart + i;
-                // Count both halves to retain the original compact destination offsets and total counts.
-                uint32_t destinationIndex = curExpertCnt++;
-                if (tokenIndex < tokenBegin || tokenIndex >= tokenEnd) {
-                    continue;
-                }
-                GM_ADDR remoteAddr = GetWindAddrByRankId(rankId) + epRankId_ * expertPerSizeOnWin_ +
-                    static_cast<uint64_t>(destinationIndex) * hAlignWinSize_;
-                GM_ADDR localAddr = stagingGM + static_cast<uint64_t>(tokenIndex) * hAlignWinSize_;
-                dstWinGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ XType *>(isRemote ? localAddr : remoteAddr));
-                dstWinGMTensor.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
-                ProcessToken(dstWinGMTensor, tokenIndex);
-                if (isRemote) {
-                    hcomm_.WriteNbi(hcommHandle_[rankId], remoteAddr, localAddr, hOutSize_);
-                }
-                // The destination index spans both cores, so the capacity count survives Unlock/Lock.
-                if (isRemote && curExpertCnt % BandwidthTestTiling::ROCE_MAX_PENDING_WRITES == 0) {
-                    hcomm_.Drain(hcommHandle_[rankId]);
-                }
-            }
-            chunkStart += chunkTokens;
-        }
-        statusTensor_((rankId - startRankId_) * 8 + 1) = curExpertCnt;
-        // Unlock publishes counters without waiting; staging remains live across the sender handoff.
-        if (isRemote) {
-            // hcomm_.Unlock(hcommHandle_[rankId]);
-        }
+        SendToRank(rankId);
     }
 }
 
@@ -332,20 +390,11 @@ __aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::Set
         DataCopy(rankGMTensor, statusTensor_[(rankId - startRankId_) * 8], 8U);
         SyncFunc<HardEvent::MTE3_S>();
         if (isRemote) {
-            ChannelHandle channel = hcommHandle_[rankId];
-            // hcomm_.Lock(channel);
-            // Publish count before flag; both sources are in the registered local Win.
-            hcomm_.WriteNbi(channel, remoteAddr + sizeof(int32_t), localAddr + sizeof(int32_t),
-                                sizeof(int32_t));
-            // Count and flag also consume WQEs. Make room for flag only if count filled the capacity.
-            uint32_t totalTokens = statusTensor_.GetValue((rankId - startRankId_) * 8 + 1);
-            if (totalTokens % BandwidthTestTiling::ROCE_MAX_PENDING_WRITES ==
-                BandwidthTestTiling::ROCE_MAX_PENDING_WRITES - 1) {
-                hcomm_.Drain(channel);
-            }
-            hcomm_.WriteNbi(channel, remoteAddr, localAddr, sizeof(int32_t));
-            hcomm_.Drain(channel);
-            // hcomm_.Unlock(channel);
+            // Payload is complete on both cores. Complete count before publishing the ready flag.
+            const BufDesc countDesc{localAddr + sizeof(int32_t), sizeof(int32_t)};
+            WriteSegments(rankId, remoteAddr + sizeof(int32_t), &countDesc, 1U);
+            const BufDesc flagDesc{localAddr, sizeof(int32_t)};
+            WriteSegments(rankId, remoteAddr, &flagDesc, 1U);
         }
     }
     SyncFunc<AscendC::HardEvent::MTE3_S>();

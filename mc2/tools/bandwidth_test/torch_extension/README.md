@@ -37,16 +37,19 @@ ROCE 会检查全部 rank 对（包括同机卡之间）的 ROCE link，仅跨�
 
 ## ROCE mode 0
 
-在 `config.py` 中设置 `comm_alg="roce"`、`mode=0`、`shared_jetty=False`，脚本会选择
-ROCE context 和独立的 ROCE tiling 分支。`mode=None` 时 ROCE 默认使用 mode 0；显式设置
-其他 mode 会报错。当前 ROCE 调试路径固定使用 AIV 0、1：核 0 发送输入前 `ceil(BS/2)` 个
-token，Unlock 后通过核间同步交接，核 1 发送剩余 token 并发布完整接收计数和通知。
-最后由核 0 等待全部 peer 的通知并搬运接收数据，保持原有精度输出顺序。
-核 2 及以上在 `Init()` 前直接返回，不初始化、不打印。
-`aiv_num` 建议设为 `-1`：参数仍需通过原有合法性检查，ROCE tiling 随后固定实际核数为 2，
-平台至少需要两个 AIV。`batch_tokens` 必须为 0，ROCE 不支持 Batch 接口。
-该路径用于测试同一 channel 从核 0 到核 1 的 Lock/Unlock 交接，不用于性能对比。
-BS 为奇数时核 0 多发一条；BS=1 时核 1 不发送 payload，但仍执行远端 channel 的加锁、解锁和通知。
+ROCE mode 0 现在是多 SGE 功能测试版本。推荐使用
+[主测试脚本的 ROCE 功能入口](../README.md#roce-多-sge-功能测试)：
+
+```bash
+python bandwidth_test.py --roce-multi-sge --server-num 1 --rank-per-dev 2 \
+  --server-index 0 --master-ip 127.0.0.1
+```
+
+入口会覆盖为 `comm_alg="roce"`、`mode=0`、`shared_jetty=False`、`batch_tokens=0`、
+`graph_type=0`，并关闭默认 URMA 拓扑扫描。`aiv_num` 建议保持 `-1`，tiling 固定启动两个 AIV。
+核 0 发送前 `ceil(BS/2)` 条 token，核间同步后由核 1 发送其余 token 并发布计数和通知；
+核 0 等待通知并拷贝输出。BS=1 时核 1 没有 payload，但仍发送完整计数和通知。
+网络请求在交接前全部 Drain，不使用旧的 Lock/Unlock cache 交接实验逻辑。
 
 ```python
 sym_buffer = BandwidthTestBuffer(group, comm_alg="roce")
@@ -64,24 +67,21 @@ Channel 的 `memHandles=customMemHandle_`、`memHandleNum=1`，远端 Win 通过
 需在创建通信组前设置足够大的 `HCCL_BUFFSIZE`，mode 0 每卡至少需要
 `1 MiB + 2 * (world_size + 1) * max_bs * align_up(hidden * 2, 512)` 字节。
 
-`bandwidth_test_roce.h` 是独立的 mode 0 模板，使用 `Hcomm<COMM_PROTOCOL_ROCE>` 的
-`Init`、`Lock(ChannelHandle)`、普通 `WriteNbi(ChannelHandle, dst, src, len)`、
-`Drain(ChannelHandle)` 和 `Unlock(ChannelHandle)`，不使用 `BatchHandle`、`MakeBatchHandle`、
-`BatchCommit`。需要目标 SDK 已支持 ROCE Lock/Unlock。两核依次对全部远端 channel 执行
-Lock、当前半段的逐 token 写入（默认立即提交）、Unlock；本 rank 的拷贝不调用锁接口。
-核 1 另行加锁后依次发布 count、ready flag、Drain，最后 Unlock。
-每条 channel 的未完成写入上限按 8192 条计算，跨核累计，包含 count 和 flag 两条通知写入。
-不触及容量边界时只在最终 flag 后显式 Drain；payload 累计每满 8192 条，或 count 恰好填满
-剩余容量时，先 Drain 再继续提交，避免超出上限。交接时本地 staging 不复用，保留到最终 Drain。
-每核都扫描完整路由，跳过另一半的发送但保留目标偏移计数，避免覆盖或遗漏接收数据。
-SDK 负责普通写入的队列空间管理；当前 cache 测试版本不调用设备侧 `printf` 或 `Trap()`，
-接口返回值不触发额外错误处理，避免打印干扰 Lock/Unlock 的 cache 行为测试。
-网络写入的数据和通知的源地址、目的地址全部位于 HCCL 注册 Win；输入先经 UB 拷贝到本地 Win，
-接收完成后再从本地 Win 拷贝到输出 tensor。
+`bandwidth_test_roce.h` 使用 `Hcomm<COMM_PROTOCOL_ROCE>`，按参考 URMA 的接口调用
+`MakeBatchHandle → WriteNbi(batch, dst, BufDesc[], count) → BatchCommit → Drain(batch)`。
+目标 SDK 必须提供这些 ROCE 接口；当前本地参考 asc-comm 仅实现了 URMA 版本，旧 ROCE SDK 无法编译。
+每个 SGE 指向注册 staging Win 内一个 token 槽，长度为 `align_up(H * 2, 512)` 字节，padding 在发送前清零。
+同一目标 rank 最多 4 个 token 合成一个 WQE，源槽可以不连续，远端按数组顺序连续拼接。
+接收侧忽略槽中 padding，保留按源 rank、源 token 顺序的输出契约。
+每个请求提交后立即 Drain，满 4 段或当前核对该 peer 的最后 1～3 段都会发送；
+不会在 256 条路由分块边界额外拆分请求。count 和 ready flag 使用单 SGE 请求，count Drain 后才发送 flag。
+`Init`、`WriteNbi`、`BatchCommit`、`Drain` 返回错误时 Trap，不打印设备调试日志。
 
-ROCE 使用 512 字节 Hcomm 初始化 UB 和 256 个 rank ID 的分块扫描缓冲，BS 超过 256 时继续
-分块扫描，不限制总 token 数。该分块仅用于读取路由，不是通信 Batch；tiling 的 Batch 字段为 0，
-性能表的 Batch 列显示 N/A。URMA 保留原来的 Batch 接口和批量设置。
+每核使用 512B Hcomm UB、256 个 rank ID 的扫描缓冲和新增的 256B batch UB，host tiling 同步计入开销。
+256B 是参考 URMA API 的最大 WQE 容量；部署的 ROCE 实现需保证单个 1～4 SGE WQE 和 Drain scratch
+不超出这个缓冲区。`batch_tokens=0` 保持原有调用契约，内部固定一次提交一个 WQE，
+与 URMA 可配置的批量大小不同。payload、count 和 flag 的网络地址全部来自 HCCL 注册 Win；
+`workspaceGM` 不作为网络地址。此版本只验证功能，不适合进行带宽比较。
 
 窗口由 context manager 分配并持有，复用原有注册、建链和释放流程，context tensor 使用原有布局。
 每个 buffer 使用独立的注册 tag；窗口在首次申请时清零，再注册和建链。所有 rank 都要在图捕获前

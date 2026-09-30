@@ -484,7 +484,7 @@ static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
     }
     if (IsRoce(context)) {
         OP_TILING_CHECK(platformAivNum < 2,
-                        OP_LOGE(nodeName, "ROCE lock handoff requires two AIV cores."), return ge::GRAPH_FAILED);
+                        OP_LOGE(nodeName, "ROCE sequential senders require two AIV cores."), return ge::GRAPH_FAILED);
         aivNum = 2;
         OP_LOGI(nodeName, "ROCE debug: requested aiv_num=%ld, selected=2; core 0 then core 1 send, core 0 receives.",
                 *aivNumPtr);
@@ -529,9 +529,9 @@ static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
     bool directWin = IsWinStreamMode(tilingData->mode);
     if (IsRoce(context)) {
         OP_TILING_CHECK(*batchTokensPtr != 0,
-                        OP_LOGE(nodeName, "roce has no batch interface; batch_tokens must be 0."),
+                        OP_LOGE(nodeName, "ROCE functional test fixes one WQE per commit; batch_tokens must be 0."),
                         return ge::GRAPH_FAILED);
-        requiredUb = 32 + statusBytes + rowBytes + ROCE_HCOMM_UB_BYTES +
+        requiredUb = 32 + statusBytes + alignUp(rowBytes, 512) + ROCE_HCOMM_UB_BYTES + ROCE_SGE_BATCH_BYTES +
             ROCE_ID_CHUNK_TOKENS * sizeof(int32_t);
     } else if (IsUrma(context)) {
         // Direct Win streaming only needs WQEs; business modes also stage one row and a chunk of IDs.

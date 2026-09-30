@@ -201,7 +201,7 @@ def bandwidth_test(sym_buffer: BandwidthTestBuffer, x: torch.Tensor,
             shared mode 4 creates one Jetty per remote rank and sends all BS rows.
         comm_alg: "mte", "", "urma" or "roce" (mode 0 only); must match the context owner.
         aiv_num: -1 selects platform defaults; otherwise a positive AIV count.
-        batch_tokens: URMA tokens per commit; ROCE requires 0 and uses no batch interface.
+        batch_tokens: URMA tokens per commit; ROCE requires 0 and commits one multi-SGE WQE at a time.
             Mode 3 ignores it and uses the largest feasible batch.
             In mode 4, 0 selects BS and the result is capped by BS and the tiling maximum.
         peers_per_jetty: Mode 3 remote count per Jetty; 0 selects all remotes.
