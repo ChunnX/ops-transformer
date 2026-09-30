@@ -87,3 +87,15 @@ case.json 已同步新版附件：gqa_decode_kv32k 改为 gqa_decode_kv64k（KV=
 覆盖 2/3/4 bit、BF16/FP16 norm、GQA 3/4、query token 分组边界、7/8/9、31/32/33、63/65
 长度，以及多 batch 的不同有效长度和全掩码输出。页表乱序，page/head/token 内容可区分，
 输出预填 NaN，沿用既有比较器，不修改误差阈值。
+
+## norm/gamma 连续搬运与回退路径回归
+
+```bash
+python test_norm_regression.py --output norm.json
+```
+
+覆盖 2/3/4-bit、BF16/FP16 norm、KV heads=1/2/3/7/8/15/16/17/32，
+以及长度 1/31/32/33/127/128/129，共 378 个安装包用例。KV heads 不超过 16 时，
+内核连续搬运包含目标 head 的 norm/gamma 区间，并在 UB 中选取对应元素；更大 head 数使用原有逐行搬运。
+测试使用可区分的 norm/gamma 值、乱序页表、batch=3 的不同有效长度及全掩码请求，
+检查 16/17 路径切换、32-key tile 尾部和物理页边界，输出预填 NaN，沿用独立参考及既有误差阈值。

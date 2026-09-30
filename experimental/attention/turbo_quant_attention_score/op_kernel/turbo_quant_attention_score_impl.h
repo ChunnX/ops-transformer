@@ -198,7 +198,7 @@ private:
         const uint32_t stride = bits_ == 2 ? 32 : 64;
         const float inversePowers[] = {1.0F, 0.5F, 0.25F, 0.125F, 0.0625F, 0.03125F, 0.015625F, 0.0078125F};
         for (uint32_t r = 0; r < ROWS; ++r) {
-            normOffsets_.SetValue(r, r * 16 * 4);
+            normOffsets_.SetValue(r, r * (kvHeads_ <= 16 ? kvHeads_ : 16) * 4);
         }
         // Build one dimension pattern, then replicate with vector row offsets.
         for (uint32_t d = 0; d < DIM; ++d) {
@@ -286,19 +286,24 @@ private:
         Muls(signs_, a_, 2.0F, ELEMS);
         PipeBarrier<PIPE_V>();
         Adds(signs_, signs_, -1.0F, ELEMS);
-        DataCopyExtParams copy{static_cast<uint16_t>(rows), 2, (kvHeads_ - 1) * 2, 0, 0};
+        // A contiguous span replaces ROWS tiny strided transfers when it fits.
+        // Stop at the last selected head: do not read past the physical cache.
+        const uint32_t normStride = kvHeads_ <= 16 ? kvHeads_ : 16;
+        DataCopyExtParams copy = kvHeads_ <= 16 ?
+                                     DataCopyExtParams{1, ((rows - 1) * kvHeads_ + 1) * 2, 0, 0, 0} :
+                                     DataCopyExtParams{static_cast<uint16_t>(rows), 2, (kvHeads_ - 1) * 2, 0, 0};
         DataCopyPad(normRaw_, norm_[row], copy, DataCopyPadExtParams<NormType>{false, 0, 0, 0});
         DataCopyPad(gammaRaw_, gamma_[row], copy, DataCopyPadExtParams<NormType>{false, 0, 0, 0});
         PipeBarrier<PIPE_ALL>();
         if (rows < ROWS) {
-            for (uint32_t i = rows * 16; i < ROWS * 16; ++i) {
+            for (uint32_t i = rows * normStride; i < ROWS * normStride; ++i) {
                 normRaw_.SetValue(i, static_cast<NormType>(0.0F));
                 gammaRaw_.SetValue(i, static_cast<NormType>(0.0F));
             }
             PipeBarrier<PIPE_ALL>();
         }
-        Cast(normFloat_, normRaw_, RoundMode::CAST_NONE, ROWS * 16);
-        Cast(gammaFloat_, gammaRaw_, RoundMode::CAST_NONE, ROWS * 16);
+        Cast(normFloat_, normRaw_, RoundMode::CAST_NONE, ROWS * normStride);
+        Cast(gammaFloat_, gammaRaw_, RoundMode::CAST_NONE, ROWS * normStride);
         PipeBarrier<PIPE_V>();
         Gather(normCompact_, normFloat_, normOffsets_, 0, ROWS);
         Gather(gammaCompact_, gammaFloat_, normOffsets_, 0, ROWS);
