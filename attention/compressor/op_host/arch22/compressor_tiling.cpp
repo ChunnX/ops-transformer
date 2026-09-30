@@ -17,6 +17,7 @@
 #include <functional>
 #include <algorithm>
 #include <unordered_map>
+#include <cstdio>
 #include <graph/utils/type_utils.h>
 #include "log/log.h"
 #include "register/op_def_registry.h"
@@ -100,6 +101,8 @@ ge::graphStatus CompressorTiling::ConvertContext(gert::TilingContext &context, C
     compressorContext.cacheMode = attrs->GetAttrPointer<int>(CACHE_MODE_ATTR_INDEX);
     compressorContext.stateCacheStrideDim0 = attrs->GetAttrPointer<int>(STATE_CACHE_STRIDE_DIM0_ATTR_INDEX);
     compressorContext.gradEnabled = attrs->GetAttrPointer<bool>(GRAD_ENABLED_ATTR_INDEX);
+    compressorContext.batchConsistency = context.GetDeterministicLevel();
+    OP_LOGD(context.GetNodeName(), "deterministic_level=%d", context.GetDeterministicLevel());
 
     OP_CHECK_IF(
         context.GetWorkspaceSizes(1) == nullptr,
@@ -179,6 +182,7 @@ ge::graphStatus CompressorTiling::SetBaseInfo()
     baseParams_->stateCacheStrideDim0 = static_cast<uint64_t>(*context_->stateCacheStrideDim0);
     baseParams_->nSize = 2; // 2:每个核处理两个基本块后做全核同步
     baseParams_->usedCoreNum = aicNum_;
+    baseParams_->batchConsistency = static_cast<uint32_t>(context_->batchConsistency);
 
     OP_LOGI(context_->opName, "[TILING] bSize:%u  tSize:%u cmpRatio:%u coff:%u", baseParams_->batchSize,
             baseParams_->tokenSize, baseParams_->cmpRatio, coff);
@@ -239,7 +243,8 @@ ge::graphStatus CompressorTiling::SetInnerSplitInfo()
         baseParams_->coreGroupNum = baseParams_->usedCoreNum / dBaseNum;
         baseParams_->kBaseNum = 1;
         baseParams_->kBaseSize = baseParams_->hiddenSize;
-        if ((dBaseNum * mBaseNum) < baseParams_->usedCoreNum) {
+        // batch一致性模式下不切K: 切K会改变MM1的K轴归约树(部分和+vec求和), 导致结果与batch大小相关
+        if ((dBaseNum * mBaseNum) < baseParams_->usedCoreNum && baseParams_->batchConsistency != BATCH_CONSISTENCY) {
             baseParams_->kBaseNum = baseParams_->usedCoreNum / dBaseNum;
             baseParams_->kBaseSize = kAlignNum / baseParams_->kBaseNum * 128;
         }
@@ -263,6 +268,18 @@ ge::graphStatus CompressorTiling::SetInnerSplitInfo()
                 baseParams_->splitCoreParam[i].mStart = 0;
                 baseParams_->splitCoreParam[i].mEnd = baseParams_->tokenSize;
                 baseParams_->mLoopNum = 1;
+            } else if (baseParams_->batchConsistency == BATCH_CONSISTENCY) {
+                // batch一致性模式(不切K): 每核全M全K; FULL_LOAD kernel无M分组机制(mStart直接作GM偏移),
+                // 高组核重复计算写入本组workspace槽位, vec侧kBaseNum==1只读组0槽位, 冗余无害;
+                // 组号超界(curGroupIdx>=coreGroupNum)的核置mEnd=0空转, 防止workspace越区写
+                baseParams_->splitCoreParam[i].kStart = 0;
+                baseParams_->splitCoreParam[i].kEnd = baseParams_->hiddenSize;
+                baseParams_->splitCoreParam[i].mStart = 0;
+                baseParams_->splitCoreParam[i].mEnd = baseParams_->tokenSize;
+                if ((i / dBaseNum) >= baseParams_->coreGroupNum) {
+                    baseParams_->splitCoreParam[i].mEnd = 0; // 空转(dealSeqCnt=0, kernel提前返回)
+                }
+                baseParams_->mLoopNum = 1;
             } else {
                 baseParams_->splitCoreParam[i].kStart = 0;
                 baseParams_->splitCoreParam[i].kEnd = baseParams_->hiddenSize;
@@ -272,6 +289,14 @@ ge::graphStatus CompressorTiling::SetInnerSplitInfo()
                 baseParams_->mLoopNum = mBaseNum / baseParams_->coreGroupNum;
             }
         }
+        // [临时调试探针] FULL_LOAD模板的核间切分信息: kBaseNum>1即发生K轴核间切分
+        fprintf(stderr,
+                "[SetInnerSplitInfo][FULL_LOAD] tokenSize=%u, mBaseNum=%u, dBaseNum=%u, coreGroupNum=%u, "
+                "kBaseNum=%u, kBaseSize=%u, batchConsistency=%u (kBaseNum>1: K轴核间切分; "
+                "batchConsistency==3: 不切K全M, 超界组空转)\n",
+                baseParams_->tokenSize, mBaseNum, dBaseNum, baseParams_->coreGroupNum, baseParams_->kBaseNum,
+                baseParams_->kBaseSize, baseParams_->batchConsistency);
+        fflush(stderr);
     } else {
         if (coff == 2) {
             innerSplitParams_->mBaseSize = 128;
@@ -279,6 +304,14 @@ ge::graphStatus CompressorTiling::SetInnerSplitInfo()
             innerSplitParams_->mBaseSize = 256;
         }
         innerSplitParams_->dBaseSize = 64;
+        // [临时调试探针] NORMAL/EMPTY_X模板: 只设置mBaseSize/dBaseSize初值, 不设置kBaseNum(K轴不做核间切分,
+        // 由单核内部按K_L1_BASE=256分段完整遍历; D方向动态细切32由kernel侧SetBaseSize决定, 不在此处)
+        fprintf(stderr,
+                "[SetInnerSplitInfo][NORMAL] templateId=%hhu, tokenSize=%u, seqSize=%u, coff=%u, mBaseSize=%u, "
+                "dBaseSize=64, batchConsistency=%u (kBaseNum不设置, K轴不切分; 悬崖细切在kernel侧)\n",
+                static_cast<uint8_t>(context_->templateId), baseParams_->tokenSize, baseParams_->seqSize,
+                static_cast<uint32_t>(coff), innerSplitParams_->mBaseSize, baseParams_->batchConsistency);
+        fflush(stderr);
     }
     return ge::GRAPH_SUCCESS;
 }
