@@ -1,6 +1,6 @@
 # QuantLightningIndexerV2
 
-本算子是两级 TopK（two-level TopK，先按块粗筛再在块内精筛）方案的**第一级**（source，候选块筛选级）：`candidate_topk_blocks` 取 2048（当前唯一有效值）时开启 source，按块粒度选出候选块并输出块级索引 `candidate_topk_index_out`；取 -1（默认）时关闭，为现网行为。第二级（consumer，在候选块内选 token 级 TopK）已拆分为独立算子 [QuantSparseLightningIndexer](../quant_sparse_lightning_indexer/README.md)。
+本算子是两级 TopK（two-level TopK，先按块粗筛再在块内精筛）方案的**第一级**（source，候选块筛选级）：`candidate_topk_blocks` 取 2048（当前唯一有效值）时开启 source，按块粒度选出候选块并输出块级索引 `candidate_topk_index_out`；取 -1（默认）时关闭，为现网行为。
 
 ## 产品支持情况
 
