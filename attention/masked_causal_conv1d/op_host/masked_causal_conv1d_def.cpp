@@ -19,8 +19,7 @@ namespace ops {
 
 class MaskedCausalConv1d : public OpDef {
 public:
-    explicit MaskedCausalConv1d(const char *name)
-        : OpDef(name)
+    explicit MaskedCausalConv1d(const char *name) : OpDef(name)
     {
         this->Input("x")
             .ParamType(REQUIRED)
@@ -49,7 +48,6 @@ public:
             .PrecisionReduceFlag(true)
             .ExtendCfgInfo("opFile.value", "masked_causal_conv1d_apt");
         this->AICore().AddConfig("ascend950", config_950);
-        this->AICore().AddConfig("ascend350", config_950);
     }
 };
 

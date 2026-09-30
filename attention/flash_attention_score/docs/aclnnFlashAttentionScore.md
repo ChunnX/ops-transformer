@@ -3,22 +3,22 @@
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
-- <term>Ascend 950PR&950DT系列产品</term>：支持
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
-- <term>Atlas A3系列产品</term>：支持
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
 <!-- end id2 -->
 <!-- npu="910b" id3 -->
-- <term>Atlas A2系列产品</term>：支持
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
 <!-- end id3 -->
 <!-- npu="310b" id4 -->
-- <term>Atlas 200I/500 A2推理产品</term>：不支持
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
 <!-- end id4 -->
 <!-- npu="310p" id5 -->
-- <term>Atlas推理系列产品</term>：不支持
+- <term>Atlas 推理系列产品</term>：不支持
 <!-- end id5 -->
 <!-- npu="910" id6 -->
-- <term>Atlas训练系列产品</term>：不支持
+- <term>Atlas 训练系列产品</term>：不支持
 <!-- end id6 -->
 
 ## 功能说明
@@ -588,7 +588,7 @@ int main() {
   int64_t innerPrecise = 0;
   int64_t sparseMode = 0;
 
-  char inputLayout[5] = {'S', 'B', 'H', 0};
+  char layOut[5] = {'S', 'B', 'H', 0};
 
   // 3. 调用CANN算子库API，需要修改为具体的Api名称
   uint64_t workspaceSize = 0;
@@ -597,7 +597,7 @@ int main() {
   // 调用aclnnFlashAttentionScore第一段接口
   ret = aclnnFlashAttentionScoreGetWorkspaceSize(
             q, k, v, pse, dropMask, padding, attenmask, prefix, scaleValue,
-            keepProb, preTokens, nextTokens, headNum, inputLayout, innerPrecise,
+            keepProb, preTokens, nextTokens, headNum, layOut, innerPrecise,
             sparseMode, softmaxMax, softmaxSum, softmaxOut, attentionOut, &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnFlashAttentionScoreGetWorkspaceSize failed. ERROR: %d.\n[ERROR msg]%s", ret, aclGetRecentErrMsg()); return ret);
 
