@@ -297,6 +297,19 @@ aclnnStatus Mc2Context::GetHcclCommResource(const HcclComm &hcclHandle, const Co
 
         mc2ContextStruct->epHcclBuffer_[i] = reinterpret_cast<uint64_t>(tempBuffer) + i * EP_RANK_OFFSET_STEP;
     }
+    // ===== CCU×Mc2Context 并存探测②（验证后删除）：打印 AIV channel 面窗口表前若干项，
+    // 与 kernel 侧 [CCU_PROBE_K] 的 cuOut0（= CCU 注入 windowsOut[0]）比对是否同块内存：
+    // 相同/重叠 → 混合方案数据面与 CCU recv 同块，需分区设计；不同 → 可独立分区使用。
+    // 仅在环境变量 MC2_CCU_PROBE 置位时输出，避免现役路径日志噪声。
+    static const bool ccuProbeEnabled = (std::getenv("MC2_CCU_PROBE") != nullptr);
+    if (ccuProbeEnabled) {
+        const uint32_t probeRankNum = (epRankSize_ < 8U) ? epRankSize_ : 8U;
+        for (uint32_t i = 0; i < probeRankNum; ++i) {
+            OP_LOGI("[Mc2CcuProbe][CCU_PROBE_H] rank=%u epHcclBuffer_[%u]=0x%llx step=0x%x", rankId, i,
+                    static_cast<unsigned long long>(mc2ContextStruct->epHcclBuffer_[i]),
+                    static_cast<unsigned int>(EP_RANK_OFFSET_STEP));
+        }
+    }
     OP_LOGD("Get HCCL CommResource success");
     return ACLNN_SUCCESS;
 }

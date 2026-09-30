@@ -52,6 +52,9 @@ constexpr uint32_t ATTR_GLOBAL_BS_INDEX = 11;
 constexpr uint32_t ATTR_EXPERT_TOKEN_NUMS_TYPE_INDEX = 12;
 constexpr uint32_t ATTR_Y_DATATYPE_INDEX = 13;
 constexpr uint32_t ATTR_COMM_ALG_INDEX = 13;
+// def.cpp attr 表尾追加序（group_ep=0 ... const_expert_num=16, y_dtype=17, mc2_context_addr=18）：
+// CCU 混合模式的 Mc2MoeContext 设备地址，host 侧 GetMc2ContextTensor 成功后递送，0=纯 CCU 路径
+constexpr uint32_t ATTR_MC2_CONTEXT_ADDR_INDEX = 18;
 
 const size_t MAX_GROUP_NAME_LENGTH = 128UL;
 const int64_t BS_UPPER_BOUND = 512;
@@ -69,6 +72,14 @@ constexpr uint32_t NUM_1 = 1;
 constexpr uint32_t NUM_10 = 10;
 constexpr uint32_t NUM_100 = 100;
 constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16U * 1024U * 1024U;
+// full_mesh 内核用户区软同步表基址步长（与 kernel 侧 moe_distribute_v2_constant.h 的
+// WORKSPACE_ELEMENT_OFFSET 同值）：用户区 = 512B * aivNum * aivNum（cumsumWs 基址在其后）
+constexpr uint32_t FULLMESH_WS_ELEM_OFFSET = 512U;
+// 与 tiling.cpp 的 SetMaxSizeForUbBuffer 同名同值（该函数 static 不可跨 TU 复用，CCU 混合路径在
+// SetCcuHybridTiling 内按同公式就地补写 maxSizeForUbBuffer）
+constexpr uint32_t SIZE_ALIGN_256 = 256U;
+constexpr uint32_t HALF_TYPE_SIZE = 2U;
+constexpr uint32_t LOCAL_EXPERT_MAX_NUM = 2048U;
 
 constexpr uint32_t EP_WORLD_SIZE_FOUR = 4;
 constexpr uint32_t EP_WORLD_SIZE_TWO = 2;
@@ -926,6 +937,87 @@ static ge::graphStatus SetCommTiling(const gert::TilingContext *context, MoeDist
     return ge::GRAPH_SUCCESS;
 }
 
+// CCU 混合模式使能（host 侧 GetMc2ContextTensor 成功并经 attr 递送地址，见 base.cpp ccu 分支）：数据面
+// 切 Mc2MoeContext 窗口的 MTE 直写（kernel 内运行时分发到 a5_ccu_mte 变体），count 面改等长 AlltoAll。
+// attr 缺省/为 0 时直接成功返回（走原纯 CCU 路径；旧版本调用方不传该 attr，GetAttrPointer 返回 nullptr）。
+// 使能时三件事：①地址透传至 tilingData.mc2ContextAddr；②workspace 取 max(纯 CCU 公式, full_mesh 容量
+// + CCU count 缓冲)——只增不减，旧内核二进制配新 tiling（图缓存残留错配）亦在界内；③mc2CcTiling 覆写为
+// AllToAll 配置（SetCommTiling 默认的 HALFALLTOALLV 配的是纯 CCU 内核的 AlltoAllvWrite；引擎为实例
+// 字段，新 config 实例须重设 A5_CCU_ENGINE，否则覆写会把 CCU 引擎冲成默认值）。
+static ge::graphStatus SetCcuHybridTiling(gert::TilingContext *context, MoeDistributeDispatchV2TilingData &tilingData,
+                                          const std::string &groupEp)
+{
+    const char *nodeName = context->GetNodeName();
+    auto attrs = context->GetAttrs();
+    auto mc2ContextAddrPtr = (attrs != nullptr) ? attrs->GetAttrPointer<int64_t>(ATTR_MC2_CONTEXT_ADDR_INDEX) : nullptr;
+    if ((mc2ContextAddrPtr == nullptr) || (*mc2ContextAddrPtr == 0)) {
+        return ge::GRAPH_SUCCESS;
+    }
+    tilingData.moeDistributeDispatchV2Info.mc2ContextAddr = static_cast<uint64_t>(*mc2ContextAddrPtr);
+    const uint32_t moeExpertRankNum =
+        tilingData.moeDistributeDispatchV2Info.epWorldSize - tilingData.moeDistributeDispatchV2Info.sharedExpertRankNum;
+    OP_TILING_CHECK(moeExpertRankNum == 0, OP_LOGE(nodeName, "moeExpertRankNum is 0."), return ge::GRAPH_FAILED);
+    const uint32_t moeExpertNumPerRank = tilingData.moeDistributeDispatchV2Info.moeExpertNum / moeExpertRankNum;
+    // SIMT 前缀 scan 的 chunk 定长（CCU_SIMT_CHUNK_MAX=8）与 scan 段 UB 预算均以 Pe×W ≤ 2048 为前提
+    //（与 A3 路径 LOCAL_EXPERT_MAX_SIZE 校验同界），CCU 配房此前无此校验——补齐
+    OP_TILING_CHECK((moeExpertNumPerRank == 0U) ||
+                        (moeExpertNumPerRank * tilingData.moeDistributeDispatchV2Info.epWorldSize >
+                         LOCAL_EXPERT_MAX_NUM),
+                    OP_LOGE(nodeName,
+                            "hybrid moeExpertNumPerRank * epWorldSize must be in (0, 2048], but got %u * %u.",
+                            moeExpertNumPerRank, tilingData.moeDistributeDispatchV2Info.epWorldSize),
+                    return ge::GRAPH_FAILED);
+    // 混合内核 UB 规划字段补写：maxSizeForUbBuffer 的唯一赋值点 SetMaxSizeForUbBuffer（tiling.cpp，
+    // static）仅 fullmesh_v2(MTE) 配方路径可达，CCU 配房不经过——而混合内核无条件消费该字段
+    //（CalCumSum 计数段与量化/mask 链的 InitBuffer），缺省 0 将 UB 越界，按同公式就地补写；
+    // 公式 PERGROUP 分支所需的 isScales 与外层判定同源，函数内自查（不改签名）
+    const bool isScales = context->GetOptionalInputShape(SCALES_INDEX) != nullptr;
+    const uint32_t hSize = tilingData.moeDistributeDispatchV2Info.h;
+    const uint32_t expertIdsCnt = tilingData.moeDistributeDispatchV2Info.bs * tilingData.moeDistributeDispatchV2Info.k;
+    uint32_t hFp32Size = static_cast<uint32_t>(ops::CeilAlign(hSize * sizeof(float), UB_ALIGN));
+    if ((tilingData.moeDistributeDispatchV2Info.quantMode ==
+         static_cast<uint32_t>(QuantModeA5::PERGROUP_DYNAMIC_QUANT)) &&
+        isScales) {
+        hFp32Size = static_cast<uint32_t>(ops::CeilAlign(hSize, PERGROUP_BLOCK_SIZE)) * sizeof(float);
+    }
+    const uint32_t bsKAlign256 =
+        static_cast<uint32_t>(ops::CeilAlign(expertIdsCnt * HALF_TYPE_SIZE, SIZE_ALIGN_256));
+    const uint32_t expertIdsSize = static_cast<uint32_t>(ops::CeilAlign(expertIdsCnt * sizeof(int32_t), UB_ALIGN));
+    const uint32_t xActivateMaskSize = tilingData.moeDistributeDispatchV2Info.bs *
+                                       static_cast<uint32_t>(ops::CeilAlign(
+                                           tilingData.moeDistributeDispatchV2Info.k * sizeof(bool), UB_ALIGN)) *
+                                       HALF_TYPE_SIZE;
+    uint32_t maxSizeForUb = hFp32Size > expertIdsSize ? hFp32Size : expertIdsSize;
+    maxSizeForUb = maxSizeForUb > xActivateMaskSize ? maxSizeForUb : xActivateMaskSize;
+    maxSizeForUb = maxSizeForUb > bsKAlign256 ? maxSizeForUb : bsKAlign256;
+    tilingData.moeDistributeDispatchV2Info.maxSizeForUbBuffer = maxSizeForUb;
+    const uint32_t segWords = ((moeExpertNumPerRank + 7U) / 8U) * 8U;
+    // CCU count 缓冲：[sendBuf: W*segWords*4B][recvBuf 半区0][半区1]（recvBuf 双半区跟 dataState_
+    // 乒乓，防相邻两轮 launch 间对端引擎写入与本端读取踩踏）；用户区头部，kernel 侧按同公式寻址
+    const uint64_t ccuBufSize = static_cast<uint64_t>(tilingData.moeDistributeDispatchV2Info.epWorldSize) * segWords *
+                                sizeof(uint32_t) * 3U;
+    size_t *workSpaces = context->GetWorkspaceSizes(1);
+    OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "workSpaces"),
+                    return ge::GRAPH_FAILED);
+    const uint64_t fullMeshNeed = static_cast<uint64_t>(SYSTEM_NEED_WORKSPACE) +
+                                  static_cast<uint64_t>(FULLMESH_WS_ELEM_OFFSET) *
+                                      tilingData.moeDistributeDispatchV2Info.aivNum *
+                                      tilingData.moeDistributeDispatchV2Info.aivNum +
+                                  ccuBufSize;
+    workSpaces[0] = (workSpaces[0] > static_cast<size_t>(fullMeshNeed)) ? workSpaces[0]
+                                                                        : static_cast<size_t>(fullMeshNeed);
+    // count 面等长 AllToAll 的 CCU tiling 覆写
+    const uint32_t alltoAllOpType = static_cast<uint32_t>(mc2tiling::AicpuComType::HCCL_CMD_ALLTOALL);
+    const std::string alltoAllAlgConfig = "AlltoAll=level0:fullmesh";
+    AscendC::Mc2CcTilingConfig ccuAlltoAllTilingConfig(groupEp, alltoAllOpType, alltoAllAlgConfig);
+    ccuAlltoAllTilingConfig.SetCommEngine(mc2tiling::A5_CCU_ENGINE);
+    ccuAlltoAllTilingConfig.GetTiling(tilingData.mc2InitTiling);
+    ccuAlltoAllTilingConfig.GetTiling(tilingData.mc2CcTiling1);
+    OP_LOGI(nodeName, "CCU hybrid mode enabled: mc2ContextAddr=0x%llx, segWords=%u.",
+            static_cast<unsigned long long>(tilingData.moeDistributeDispatchV2Info.mc2ContextAddr), segWords);
+    return ge::GRAPH_SUCCESS;
+}
+
 static ge::graphStatus GenTilingKey(gert::TilingContext *context, uint32_t quantMode, bool isScales)
 {
     uint32_t tilingKeyQuantMode = quantMode;
@@ -1054,6 +1146,9 @@ ge::graphStatus MoeDistributeDispatchTilingImpl(gert::TilingContext *context, ui
     // Workspace
     OP_TILING_CHECK(SetWorkSpace(context, *tilingData, localMoeExpertNum) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "SetWorkSpace failed."), return ge::GRAPH_FAILED);
+    // CCU 混合模式使能（attr 递送地址时；未使能则函数内直接返回，走原纯 CCU 路径）
+    OP_TILING_CHECK(SetCcuHybridTiling(context, *tilingData, groupEp) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(nodeName, "SetCcuHybridTiling failed."), return ge::GRAPH_FAILED);
     // Tiling Key
     OP_TILING_CHECK(GenTilingKey(context, quantMode, isScales) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Fail to get tiling key."), return ge::GRAPH_FAILED);

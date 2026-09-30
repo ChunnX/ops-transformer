@@ -21,7 +21,9 @@
 #include "moe_distribute_dispatch_v2_a5_full_mesh.h"
 #include "moe_distribute_dispatch_v2_apt_tiling_key.h"
 #include "moe_distribute_dispatch_v2_a5_ccu.h"
+#include "moe_distribute_dispatch_v2_a5_ccu_mte.h"
 using namespace MoeDistributeDispatchA5Impl;
+using namespace MoeDistributeDispatchV2A5CcuMteImpl;
 using namespace MoeDistributeDispatchV2A5FullMeshImpl;
 using namespace Mc2Kernel;
 using namespace Mc2Tiling;
@@ -44,10 +46,22 @@ __global__ __aicore__ void moe_distribute_dispatch_v2(GM_ADDR x, GM_ADDR expertI
 #if ((ORIG_DTYPE_EXPAND_X == DT_BF16) || (ORIG_DTYPE_EXPAND_X == DT_FLOAT16))
     if constexpr (ArchTag == TILINGKEY_TPL_A5) {
         if constexpr (CommMode == TILINGKEY_TPL_CCU) {
-            MoeDistributeDispatchA5<DTYPE_X, DTYPE_EXPAND_X, Mc2Kernel::UNQUANT, false> op;
-            op.Init(x, expertIds, scales, xActiveMask, expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut,
-                    epSendCountsOut, workspaceGM, &pipe, &tilingData);
-            op.Process();
+            // CCU 混合模式（host 递送 mc2ContextAddr≠0）：数据面走 Mc2MoeContext 窗口的 MTE 直写 +
+            // 唯一核 CCU AlltoAll 发 count；否则回退原 a5_ccu 纯 CCU 内核
+            if (tilingData.moeDistributeDispatchV2Info.mc2ContextAddr != 0) {
+                MoeDistributeDispatchV2A5CcuMte<Mc2Kernel::Mc2MoeContextHolder, DTYPE_X, DTYPE_EXPAND_X,
+                                                Mc2Kernel::UNQUANT, false>
+                    op;
+                op.Init(x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo, expandXOut,
+                        dynamicScalesOut, assistInfoOut, expandScalesOut, expertTokenNumsOut, epSendCountsOut,
+                        workspaceGM, &pipe, &tilingData);
+                op.Process();
+            } else {
+                MoeDistributeDispatchA5<DTYPE_X, DTYPE_EXPAND_X, Mc2Kernel::UNQUANT, false> op;
+                op.Init(x, expertIds, scales, xActiveMask, expandXOut, dynamicScalesOut, assistInfoOut,
+                        expertTokenNumsOut, epSendCountsOut, workspaceGM, &pipe, &tilingData);
+                op.Process();
+            }
         } else if constexpr (CommMode == TILINGKEY_TPL_MTE) {
             if constexpr (FullMesh == TILINGKEY_ENABLE_FULLMESH) {
                 MoeDistributeDispatchV2A5FullMesh<Mc2Kernel::HcclContextHolder, DTYPE_X, DTYPE_EXPAND_X,
@@ -99,10 +113,21 @@ __global__ __aicore__ void moe_distribute_dispatch_v2(GM_ADDR x, GM_ADDR expertI
     if constexpr (ArchTag == TILINGKEY_TPL_A5) {
         if constexpr (QuantMode != TILINGKEY_NO_QUANT) {
             if constexpr (CommMode == TILINGKEY_TPL_CCU) {
-                MoeDistributeDispatchA5<DTYPE_X, DTYPE_EXPAND_X, QuantMode, ScaleMode> op;
-                op.Init(x, expertIds, scales, xActiveMask, expandXOut, dynamicScalesOut, assistInfoOut,
-                        expertTokenNumsOut, epSendCountsOut, workspaceGM, &pipe, &tilingData);
-                op.Process();
+                // CCU 混合模式：同上，数据面 MTE + count 面 CCU（mc2ContextAddr≠0 分发）
+                if (tilingData.moeDistributeDispatchV2Info.mc2ContextAddr != 0) {
+                    MoeDistributeDispatchV2A5CcuMte<Mc2Kernel::Mc2MoeContextHolder, DTYPE_X, DTYPE_EXPAND_X, QuantMode,
+                                                    ScaleMode>
+                        op;
+                    op.Init(x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo, expandXOut,
+                            dynamicScalesOut, assistInfoOut, expandScalesOut, expertTokenNumsOut, epSendCountsOut,
+                            workspaceGM, &pipe, &tilingData);
+                    op.Process();
+                } else {
+                    MoeDistributeDispatchA5<DTYPE_X, DTYPE_EXPAND_X, QuantMode, ScaleMode> op;
+                    op.Init(x, expertIds, scales, xActiveMask, expandXOut, dynamicScalesOut, assistInfoOut,
+                            expertTokenNumsOut, epSendCountsOut, workspaceGM, &pipe, &tilingData);
+                    op.Process();
+                }
             } else if constexpr (CommMode == TILINGKEY_TPL_MTE) {
                 if constexpr (FullMesh == TILINGKEY_ENABLE_FULLMESH) {
                     MoeDistributeDispatchV2A5FullMesh<Mc2Kernel::HcclContextHolder, DTYPE_X, DTYPE_EXPAND_X, QuantMode,
@@ -127,10 +152,21 @@ __global__ __aicore__ void moe_distribute_dispatch_v2(GM_ADDR x, GM_ADDR expertI
     ((ORIG_DTYPE_X == DT_FLOAT16) && (ORIG_DTYPE_EXPAND_X == DT_HIFLOAT8))
     if constexpr (ArchTag == TILINGKEY_TPL_A5) {
         if constexpr (CommMode == TILINGKEY_TPL_CCU) {
-            MoeDistributeDispatchA5<DTYPE_X, DTYPE_EXPAND_X, Mc2Kernel::STATIC_QUANT, true> op;
-            op.Init(x, expertIds, scales, xActiveMask, expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut,
-                    epSendCountsOut, workspaceGM, &pipe, &tilingData);
-            op.Process();
+            // CCU 混合模式：同上，数据面 MTE + count 面 CCU（mc2ContextAddr≠0 分发）
+            if (tilingData.moeDistributeDispatchV2Info.mc2ContextAddr != 0) {
+                MoeDistributeDispatchV2A5CcuMte<Mc2Kernel::Mc2MoeContextHolder, DTYPE_X, DTYPE_EXPAND_X,
+                                                Mc2Kernel::STATIC_QUANT, true>
+                    op;
+                op.Init(x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo, expandXOut,
+                        dynamicScalesOut, assistInfoOut, expandScalesOut, expertTokenNumsOut, epSendCountsOut,
+                        workspaceGM, &pipe, &tilingData);
+                op.Process();
+            } else {
+                MoeDistributeDispatchA5<DTYPE_X, DTYPE_EXPAND_X, Mc2Kernel::STATIC_QUANT, true> op;
+                op.Init(x, expertIds, scales, xActiveMask, expandXOut, dynamicScalesOut, assistInfoOut,
+                        expertTokenNumsOut, epSendCountsOut, workspaceGM, &pipe, &tilingData);
+                op.Process();
+            }
         } else if constexpr (CommMode == TILINGKEY_TPL_MTE) {
             if constexpr (FullMesh == TILINGKEY_ENABLE_FULLMESH) {
                 MoeDistributeDispatchV2A5FullMesh<Mc2Kernel::HcclContextHolder, DTYPE_X, DTYPE_EXPAND_X, QuantMode,
