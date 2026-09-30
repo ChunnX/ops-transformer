@@ -35,7 +35,7 @@ public:
                                       const optiling::SparseLightningIndexerGradKLLossRegBaseTilingData *tiling);
     __aicore__ inline void InitGlobalBuffer(GM_ADDR key, GM_ADDR keyIndex, GM_ADDR weight, GM_ADDR sparseIndices,
                                             GM_ADDR softmaxMax, GM_ADDR softmaxSum, GM_ADDR keyRope, GM_ADDR dKeyIndex,
-                                            GM_ADDR dWeight, GM_ADDR loss, GM_ADDR sinks, GM_ADDR psinkSync,
+                                            GM_ADDR dWeight, GM_ADDR loss, GM_ADDR sinks, GlobalTensor<T> &psinkSync,
                                             GlobalTensor<INPUT_T> &gatherSYRes, GlobalTensor<T> &relu,
                                             GlobalTensor<T> &reduceSumRes, GlobalTensor<T> &scatterAddRes,
                                             GlobalTensor<T> &scatterAddResPong, GlobalTensor<T> &bmm3ResGm,
@@ -906,7 +906,7 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::ProcessVector7Deter(
         int64_t vCoreKOffset;
 
         perCoreKSize = CeilDiv(runInfo.kRealSize, coreNum);
-        // perCoreSize = AlignTo(perCoreSize, 4);
+        // perCoreSize = AlignTo(perCoreKSize, 4);
         int32_t usedCoreNum = CeilDiv(runInfo.kRealSize, perCoreKSize);
         if (constInfo.aicIdx >= usedCoreNum) {
             if (idx % MODE_NUM_2 == 0) {
