@@ -318,6 +318,9 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
                 DataCopy(x2Cache[n * D_], residualGm_[residualBase + (uint64_t)n * D_], D_);
             }
         }
+        if constexpr (RETURN_H_IN_F32) {
+            DataCopy(bufResFp32_.Get<float>()[N * dTile_], gamma0Gm_, dTile_);
+        }
 
         SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
         WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
@@ -526,6 +529,9 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
                                                     uint32_t count)
 {
         LocalTensor<T> tmp = bufHInPrimeBf16_.AllocTensor<T>();
+        DataCopy(tmp, hOutGm_[gmOffset], count);
+        SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
+        WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
         CastToIO(tmp, src, count);
         bufHInPrimeBf16_.EnQue(tmp);
         tmp = bufHInPrimeBf16_.DeQue<T>();
