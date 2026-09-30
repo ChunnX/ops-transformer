@@ -482,6 +482,40 @@ TEST(grouped_matmul_swiglu_quant_weight_nz_v3_opapi, host_group_list_contiguous_
               ACLNN_ERR_PARAM_INVALID);
 }
 
+TEST(grouped_matmul_swiglu_quant_weight_nz_v3_opapi, a4w4_bf16_output_does_not_require_output_scale)
+{
+    SetupPlatformForCase();
+    auto x = BuildAclTensorDescFromSpec("32:128", "FLOAT4_E2M1", "ND").ToAclType();
+    auto weightTensor =
+        BuildAclTensorDescFromSpec("1:128:128#16384:128:1#1:2:8:16:64", "FLOAT4_E2M1", "FRACTAL_NZ").ToAclType();
+    auto weightScaleTensor = BuildAclTensorDescFromSpec("1:2:128:2", "FLOAT8_E8M0", "ND").ToAclType();
+    auto xScale = BuildAclTensorDescFromSpec("32:2:2", "FLOAT8_E8M0", "ND").ToAclType();
+    auto groupList = BuildAclTensorDescFromSpec("1", "INT64", "ND").ToAclType();
+    auto output = BuildAclTensorDescFromSpec("32:64", "BF16", "ND").ToAclType();
+
+    const aclTensor* weightElements[] = {weightTensor.get()};
+    unique_ptr<aclTensorList, decltype(&aclDestroyTensorList)> weight(
+        aclCreateTensorList(weightElements, SINGLE_TENSOR_COUNT), aclDestroyTensorList);
+    ASSERT_NE(weight.get(), nullptr);
+    (void)weightTensor.release();
+    const aclTensor* weightScaleElements[] = {weightScaleTensor.get()};
+    unique_ptr<aclTensorList, decltype(&aclDestroyTensorList)> weightScale(
+        aclCreateTensorList(weightScaleElements, SINGLE_TENSOR_COUNT), aclDestroyTensorList);
+    ASSERT_NE(weightScale.get(), nullptr);
+    (void)weightScaleTensor.release();
+
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    const aclnnStatus ret = aclnnGroupedMatmulSwigluQuantWeightNzV3GetWorkspaceSize(
+        x.get(), weight.get(), weightScale.get(), nullptr, nullptr, xScale.get(), nullptr, groupList.get(),
+        MX_QUANT_MODE, 0, MX_QUANT_MODE, 0, nullptr, SPLIT_SWIGLU_MODE, DEFAULT_CLAMP_LIMIT, DEFAULT_GLU_ALPHA,
+        DEFAULT_GLU_BIAS, "rint", 0, 0.0, output.get(), nullptr, &workspaceSize, &executor);
+    EXPECT_EQ(ret, ACLNN_SUCCESS);
+    if (executor != nullptr) {
+        (void)aclDestroyAclOpExecutor(executor);
+    }
+}
+
 TEST(grouped_matmul_swiglu_quant_weight_nz_v3_opapi, tensor_list_elements_return_param_nullptr)
 {
     EXPECT_EQ(RunPhase1NullPointerCase(Phase1NullPointerTarget::kWeightElement), ACLNN_ERR_PARAM_NULLPTR);
