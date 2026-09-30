@@ -5,7 +5,7 @@
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：支持
+- <term>Ascend 950PR/Ascend 950DT</term>：不支持（本分支已移除 arch35/950 实现，仅保留 arch22）
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
@@ -43,35 +43,39 @@ $$
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用"aclnnQuantLightningIndexerV2GetWorkspaceSize"接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用"aclnnQuantLightningIndexerV2"接口执行计算。
+每个算子分为[两段式接口](../../../../docs/zh/context/two_phase_api.md)，必须先调用"aclnnQuantLightningIndexerV2GetWorkspaceSize"接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用"aclnnQuantLightningIndexerV2"接口执行计算。
 
 ```Cpp
 aclnnStatus aclnnQuantLightningIndexerV2GetWorkspaceSize(
-    const aclTensor *query,
-    const aclTensor *key,
-    const aclTensor *weights,
-    const aclTensor *queryDequantScale,
-    const aclTensor *keyDequantScale,
-    const aclTensor *cuSeqLensQOptional,
-    const aclTensor *cuSeqLensKOptional,
+    const aclTensor *q,
+    const aclTensor *k,
+    const aclTensor *w,
+    const aclTensor *qDescale,
+    const aclTensor *kDescale,
+    const aclTensor *cuSeqlensQOptional,
+    const aclTensor *cuSeqlensKOptional,
     const aclTensor *sequsedQOptional,
     const aclTensor *sequsedKOptional,
     const aclTensor *cmpResidualKOptional,
     const aclTensor *blockTableOptional,
     const aclTensor *outputIdxOffsetOptional,
     const aclTensor *metadataOptional,
-    int64_t          topk,
-    int64_t          quantMode,
-    int64_t          maxSeqlenQOptional,
-    char            *layoutQOptional,
-    char            *layoutKOptional,
-    int64_t          maskModeOptional,
-    int64_t          cmpRatioOptional,
-    int64_t          returnValueOptional,
+    int64_t topk,
+    int64_t quantMode,
+    int64_t maxSeqlenQ,
+    char *layoutQOptional,
+    char *layoutKOptional,
+    int64_t maskMode,
+    int64_t cmpRatio,
+    int64_t returnValue,
+    int64_t candidateTopkBlocks,
+    int64_t candidateBlockSize,
     const aclTensor *sparseIndicesOut,
     const aclTensor *sparseValuesOut,
-    uint64_t        *workspaceSize,
-    aclOpExecutor  **executor)
+    const aclTensor *candidateTopkIndexOutOutOptional,
+    const aclTensor *candidateBlockLengthOutOptional,
+    uint64_t *workspaceSize,
+    aclOpExecutor **executor);
 ```
 
 ```Cpp
@@ -115,11 +119,11 @@ aclnnStatus aclnnQuantLightningIndexerV2(
     </tr></thead>
   <tbody>
     <tr>
-      <td>query</td>
+      <td>q</td>
       <td>输入</td>
       <td>公式中量化后的 Query。</td>
       <td>不支持空tensor。</td>
-      <td>INT8、FLOAT8_e4m3fn、HIFLOAT8、FLOAT4_e2m1</td>
+      <td>INT8</td>
       <td>ND</td>
       <td>
           <ul>
@@ -130,9 +134,9 @@ aclnnStatus aclnnQuantLightningIndexerV2(
       <td>x</td>
     </tr>
     <tr>
-      <td>key</td>
+      <td>k</td>
       <td>输入</td>
-      <td>公式中量化后的 Key。</td>
+      <td>公式中量化后的 Key，支持0轴padding型非连续（仅PA_BBND布局，其余轴必须连续；stride由输入描述符携带，kernel按块号×stride寻址）。</td>
       <td>
           <ul>
                 <li>不支持空tensor。</li>
@@ -141,7 +145,7 @@ aclnnStatus aclnnQuantLightningIndexerV2(
                 <li>layout_key为BSND时，shape为(B, K_S, N2, D)，layout_key为TND时，shape为(K_T, N2, D)。</li>
           </ul>
       </td>
-      <td>INT8、FLOAT8_e4m3fn、HIFLOAT8、FLOAT4_e2m1</td>
+      <td>INT8</td>
       <td>ND</td>
       <td>
           <ul>
@@ -151,7 +155,7 @@ aclnnStatus aclnnQuantLightningIndexerV2(
       <td>支持0轴非连续</td>
     </tr>
     <tr>
-      <td>weights</td>
+      <td>w</td>
       <td>输入</td>
       <td>公式中的权重系数 W。</td>
       <td>不支持空tensor。</td>
@@ -166,15 +170,14 @@ aclnnStatus aclnnQuantLightningIndexerV2(
       <td>x</td>
     </tr>
     <tr>
-      <td>queryDequantScale</td>
+      <td>qDescale</td>
       <td>输入</td>
       <td>公式中 Query 的反量化系数。</td>
       <td>不支持空tensor。</td>
-      <td>FLOAT16、FLOAT32、FLOAT8_e8m0</td>
+      <td>FLOAT16</td>
       <td>ND</td>
       <td>
           <ul>
-                <li>quantMode为3/5时，layout_query为BSND时shape为(B,S1,N1,D/64,2)，layout_query为TND时shape为(T1,N1,D/64,2)。</li>
                 <li>quantMode为4时，shape为(1,)。</li>
                 <li>其他场景shape与weights保持一致。</li>
           </ul>
@@ -182,15 +185,14 @@ aclnnStatus aclnnQuantLightningIndexerV2(
       <td>x</td>
     </tr>
     <tr>
-      <td>keyDequantScale</td>
+      <td>kDescale</td>
       <td>输入</td>
       <td>公式中 Key 的反量化系数。</td>
       <td>不支持空tensor。</td>
-      <td>FLOAT16、FLOAT32、FLOAT8_e8m0</td>
+      <td>FLOAT16</td>
       <td>ND</td>
       <td>
           <ul>
-                <li>quantMode为3/5时，layout_key为PA_BSND、BSND、TND对应的shape分别为(block_num,block_size,N2,D/64,2)、(B,K_S,N2,D/64,2)、(K_T,N2,D/64,2)。</li>
                 <li>quantMode为4时，shape为(1,)。</li>
                 <li>其他场景下，layout_key为PA_BSND、BSND、TND对应的shape分别为(block_num,block_size,N2)、(B,K_S,N2)、(K_T,N2)。</li>
           </ul>
@@ -198,7 +200,7 @@ aclnnStatus aclnnQuantLightningIndexerV2(
       <td>支持0轴非连续</td>
     </tr>
     <tr>
-      <td>cuSeqLensQOptional</td>
+      <td>cuSeqlensQOptional</td>
       <td>输入</td>
       <td>每个Batch中，Query的有效token数（TND场景使用cu_seqlens格式）。</td>
       <td>
@@ -212,7 +214,7 @@ aclnnStatus aclnnQuantLightningIndexerV2(
       <td>x</td>
     </tr>
     <tr>
-      <td>cuSeqLensKOptional</td>
+      <td>cuSeqlensKOptional</td>
       <td>输入</td>
       <td>每个Batch中，Key的有效token数（TND场景使用cu_seqlens格式）。</td>
       <td>
@@ -316,7 +318,7 @@ aclnnStatus aclnnQuantLightningIndexerV2(
       <td>量化模式。</td>
       <td>
           <ul>
-                <li>支持传入 1（FLOAT8_e4m3fn量化）、2（Per-Token-Head量化）、3（MXFP8量化）、4（HIFLOAT8量化）、5（MXFP4量化）。</li>
+                <li>仅支持 2（Per-Token-Head 量化）。</li>
           </ul>
       </td>
       <td>INT64</td>
@@ -325,7 +327,7 @@ aclnnStatus aclnnQuantLightningIndexerV2(
       <td>-</td>
     </tr>
     <tr>
-      <td>maxSeqlenQOptional</td>
+      <td>maxSeqlenQ</td>
       <td>输入</td>
       <td>Query的最大序列长度。</td>
       <td>-</td>
@@ -363,7 +365,7 @@ aclnnStatus aclnnQuantLightningIndexerV2(
       <td>-</td>
     </tr>
     <tr>
-      <td>maskModeOptional</td>
+      <td>maskMode</td>
       <td>输入</td>
       <td>表示sparse的模式。</td>
       <td>
@@ -378,7 +380,7 @@ aclnnStatus aclnnQuantLightningIndexerV2(
       <td>-</td>
     </tr>
     <tr>
-      <td>cmpRatioOptional</td>
+      <td>cmpRatio</td>
       <td>输入</td>
       <td>key的压缩倍数。</td>
       <td>
@@ -392,12 +394,57 @@ aclnnStatus aclnnQuantLightningIndexerV2(
       <td>-</td>
     </tr>
     <tr>
-      <td>returnValueOptional</td>
+      <td>returnValue</td>
       <td>输入</td>
       <td>表示是否输出sparseValuesOut。</td>
       <td>
           <ul>
                 <li>1表示输出，0表示不输出。</li>
+          </ul>
+      </td>
+      <td>INT64</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>candidateMode</td>
+      <td>属性</td>
+      <td>两级TopK（two-level topk，先按块粗筛再在块内精筛）第一级开关。</td>
+      <td>
+          <ul>
+                <li>1表示source：输出块级候选索引candidateTopkIndexOut，供aclnnQuantSparseLightningIndexer消费。</li>
+                <li>3表示关闭（默认值）。</li>
+                <li>取值2（consumer）已拆分为独立算子aclnnQuantSparseLightningIndexer，本接口对取值2会报错拒绝。</li>
+                <li>仅在910B/910_93（arch22）上支持。</li>
+          </ul>
+      </td>
+      <td>INT64</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>candidateTopkBlocks</td>
+      <td>属性</td>
+      <td>块级TopK的候选块个数。</td>
+      <td>
+          <ul>
+                <li>当前仅支持 -1（关闭，默认）与 2048（开启 source）。</li>
+          </ul>
+      </td>
+      <td>INT64</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>candidateBlockSize</td>
+      <td>属性</td>
+      <td>候选块大小（每个块包含的位置数）。</td>
+      <td>
+          <ul>
+                <li>`candidate_topk_blocks` 为 -1（关闭）时必须为 -1（默认值）；开启时必须 > 0，当前仅支持 8。</li>
           </ul>
       </td>
       <td>INT64</td>
@@ -435,6 +482,25 @@ aclnnStatus aclnnQuantLightningIndexerV2(
       <td>x</td>
     </tr>
     <tr>
+      <td>candidateTopkIndexOutOutOptional</td>
+      <td>输出</td>
+      <td>两级TopK第一级的输出：块级候选索引（无序，槽位语义为块号或-1无效槽）。</td>
+      <td>
+          <ul>
+                <li>candidateMode为1时输出有效值；为3（默认）时输出shape为(0,)的空tensor。</li>
+          </ul>
+      </td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td>
+          <ul>
+                <li>layout_query为"BSND"时输出shape为[B, S1, N2, candidateTopkBlocks]。</li>
+                <li>layout_query为"TND"时输出shape为[T1, N2, candidateTopkBlocks]。</li>
+          </ul>
+      </td>
+      <td>x</td>
+    </tr>
+    <tr>
       <td>workspaceSize</td>
       <td>输出</td>
       <td>返回需要在Device侧申请的workspace大小。</td>
@@ -457,17 +523,6 @@ aclnnStatus aclnnQuantLightningIndexerV2(
   </tbody>
   </table>
 
-<!-- npu="950" id10 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：
-  - `layout_key` 额外支持 BSND 和 TND；支持 PA_BSND、BSND、TND。
-  - `quant_mode` 支持 1（FLOAT8_e4m3fn量化）、2（INT8量化）、3（MXFP8量化）、4（HIFLOAT8量化）和 5（MXFP4量化）。
-  - `cmp_ratio` 支持 (0, 128] 内任意正整数。
-  - 支持 `return_value`。
-  - query 和 key：`quant_mode` 为 1/3 时支持 FLOAT8_e4m3fn，`quant_mode` 为 2 时支持 INT8，`quant_mode` 为 4 时支持 HIFLOAT8，`quant_mode` 为 5 时支持 FLOAT4_e2m1。
-  - query_dequant_scale 和 key_dequant_scale：`quant_mode` 为 1/4 时支持 FLOAT32，`quant_mode` 为 2 时支持 FLOAT16，`quant_mode` 为 3/5 时支持 FLOAT8_e8m0。
-  - weights：`quant_mode` 为 2 时支持 FLOAT16，`quant_mode` 为 1/3/4/5 时支持 FLOAT32。
-  - query Q_N 支持 [1, 64]。
-<!-- end id10 -->
 <!-- npu="A3,910b" id11 -->
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
   - `layout_key` 仅支持 PA_BSND。
@@ -478,13 +533,17 @@ aclnnStatus aclnnQuantLightningIndexerV2(
   - query 和 key：支持 INT8，不支持 FLOAT8_e4m3fn、HIFLOAT8 和 FLOAT4_e2m1。
   - query_dequant_scale 和 key_dequant_scale：支持 FLOAT16，不支持 FLOAT32 和 FLOAT8_e8m0。
   - weights：支持 FLOAT16，不支持 FLOAT32。
-  - query Q_N 仅支持 64。
+  - key 的 N 仅支持 1；query Q_N 与 key 的 N 之比仅支持 64 或 32（即 query Q_N 支持 64 或 32）。
   - topk 仅支持 [1, 2048]。
+  - 两级TopK第一级（`candidateMode`）当前仅在910B/910_93（arch22）上实现：
+    - `candidateMode`仅支持 1（source，输出 `candidateTopkIndexOutOutOptional`）与 3（关闭，默认值）；取值 2（consumer，候选块内选token级topk）已拆分为独立算子 `aclnnQuantSparseLightningIndexer`，本接口对取值 2 会报错拒绝。
+    - `candidateMode` 为 1 时，`layoutQOptional` 支持 BSND 与 TND（TND 需传入 `cuSeqlensQOptional`，且 `layoutKOptional` 必须为 PA_BBND）。
+    - `candidateTopkBlocks` 当前仅支持 -1（关闭，默认）与 2048（开启 source）；`candidateBlockSize` 在关闭时必须为 -1、开启时必须 > 0（当前仅支持 8）。
 <!-- end id11 -->
 
 - **返回值：**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口会完成入参校验，出现以下场景时报错：
 
@@ -507,7 +566,7 @@ aclnnStatus aclnnQuantLightningIndexerV2(
             <tr>
                 <td>ACLNN_ERR_PARAM_INVALID</td>
                 <td>161002</td>
-                <td>query、key、weights、queryDequantScale、keyDequantScale、cuSeqLensQOptional、cuSeqLensKOptional、sequsedQOptional、sequsedKOptional、cmpResidualKOptional、blockTableOptional、metadataOptional、layoutQOptional、layoutKOptional、topk、quantMode、maskModeOptional、cmpRatioOptional、returnValueOptional、sparseIndicesOut、sparseValuesOut的数据类型和数据格式不在支持的范围内。</td>
+                <td>q、k、w、qDescale、kDescale、cuSeqlensQOptional、cuSeqlensKOptional、sequsedQOptional、sequsedKOptional、cmpResidualKOptional、blockTableOptional、outputIdxOffsetOptional、metadataOptional、layoutQOptional、layoutKOptional、topk、quantMode、maskMode、cmpRatio、returnValue、candidateTopkBlocks、candidateBlockSize、sparseIndicesOut、sparseValuesOut、candidateTopkIndexOutOutOptional、candidateBlockLengthOutOptional的数据类型、数据格式或取值不在支持的范围内。</td>
             </tr>
         </tbody>
     </table>
@@ -553,7 +612,7 @@ aclnnStatus aclnnQuantLightningIndexerV2(
 
 - **返回值：**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -566,333 +625,6 @@ aclnnStatus aclnnQuantLightningIndexerV2(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../../docs/zh/context/compile_and_run_sample.md)。
 
-```Cpp
-/**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
-
-/*!
- * \file test_aclnn_quant_lightning_indexer_v2.cpp
- * \brief
- */
-#include <iostream>
-#include <vector>
-#include <cmath>
-#include <cstring>
-#include "securec.h"
-#include "acl/acl.h"
-#include "aclnnop/aclnn_quant_lightning_indexer_v2.h"
-#include "aclnn/opdev/platform.h"
-
-using namespace std;
-
-namespace {
-
-#define CHECK_RET(cond) ((cond) ? true :(false))
-
-#define LOG_PRINT(message, ...)     \
-  do {                              \
-    (void)printf(message, ##__VA_ARGS__); \
-  } while (0)
-
-int64_t GetShapeSize(const std::vector<int64_t>& shape) {
-  int64_t shapeSize = 1;
-  for (auto i : shape) {
-    shapeSize *= i;
-  }
-  return shapeSize;
-}
-
-int Init(int32_t deviceId, aclrtStream* stream) {
-  auto ret = aclInit(nullptr);
-  if (!CHECK_RET(ret == ACL_SUCCESS)) {
-    LOG_PRINT("aclInit failed. ERROR: %d\n", ret);
-    return ret;
-  }
-  ret = aclrtSetDevice(deviceId);
-  if (!CHECK_RET(ret == ACL_SUCCESS)) {
-    LOG_PRINT("aclrtSetDevice failed. ERROR: %d\n", ret);
-    return ret;
-  }
-  ret = aclrtCreateStream(stream);
-  if (!CHECK_RET(ret == ACL_SUCCESS)) {
-    LOG_PRINT("aclrtCreateStream failed. ERROR: %d\n", ret);
-    return ret;
-  }
-  return 0;
-}
-
-template <typename T>
-int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& shape, void** deviceAddr,
-                    aclDataType dataType, aclTensor** tensor) {
-  auto size = GetShapeSize(shape) * sizeof(T);
-  auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
-  if (!CHECK_RET(ret == ACL_SUCCESS)) {
-    LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret);
-    return ret;
-  }
-
-  ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
-  if (!CHECK_RET(ret == ACL_SUCCESS)) {
-    LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret);
-    return ret;
-  }
-
-  std::vector<int64_t> strides(shape.size(), 1);
-  for (int64_t i = shape.size() - 2; i >= 0; i--) {
-    strides[i] = shape[i + 1] * strides[i + 1];
-  }
-
-  *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
-                            shape.data(), shape.size(), *deviceAddr);
-  return 0;
-}
-
-struct TensorResources {
-    void* queryDeviceAddr = nullptr;
-    void* keyDeviceAddr = nullptr;
-    void* weightsDeviceAddr = nullptr;
-    void* qScaleDeviceAddr = nullptr;
-    void* kScaleDeviceAddr = nullptr;
-    void* metadataDeviceAddr = nullptr;
-    void* sparseIndicesDeviceAddr = nullptr;
-    void* sparseValuesDeviceAddr = nullptr;
-
-    aclTensor* queryTensor = nullptr;
-    aclTensor* keyTensor = nullptr;
-    aclTensor* weightsTensor = nullptr;
-    aclTensor* qScaleTensor = nullptr;
-    aclTensor* kScaleTensor = nullptr;
-    aclTensor* metadataTensor = nullptr;
-    aclTensor* sparseIndicesTensor = nullptr;
-    aclTensor* sparseValuesTensor = nullptr;
-};
-
-int InitializeTensors(TensorResources& resources) {
-    int64_t B = 2;
-    int64_t S1 = 4;
-    int64_t S2 = 8;
-    int64_t N1 = 64;
-    int64_t N2 = 1;
-    int64_t D = 128;
-    int64_t topk = 512;
-
-    std::vector<int64_t> queryShape = {B, S1, N1, D};
-    std::vector<int64_t> keyShape = {B, S2, N2, D};
-    std::vector<int64_t> weightsShape = {B, S1, N1};
-    std::vector<int64_t> qScaleShape = {B, S1, N1};
-    std::vector<int64_t> kScaleShape = {B, S2, N2};
-    std::vector<int64_t> metadataShape = {1024};
-    std::vector<int64_t> sparseIndicesShape = {B, S1, N2, topk};
-    std::vector<int64_t> sparseValuesShape = {B, S1, N2, topk};
-
-    int64_t queryShapeSize = GetShapeSize(queryShape);
-    int64_t keyShapeSize = GetShapeSize(keyShape);
-    int64_t weightsShapeSize = GetShapeSize(weightsShape);
-    int64_t qScaleShapeSize = GetShapeSize(qScaleShape);
-    int64_t kScaleShapeSize = GetShapeSize(kScaleShape);
-    int64_t metadataShapeSize = GetShapeSize(metadataShape);
-    int64_t sparseIndicesShapeSize = GetShapeSize(sparseIndicesShape);
-    int64_t sparseValuesShapeSize = GetShapeSize(sparseValuesShape);
-
-    std::vector<uint8_t> queryHostData(queryShapeSize, 0x38);
-    std::vector<uint8_t> keyHostData(keyShapeSize, 0x38);
-    std::vector<float> weightsHostData(weightsShapeSize, 0.01f);
-    std::vector<float> qScaleHostData(qScaleShapeSize, 1.0f);
-    std::vector<float> kScaleHostData(kScaleShapeSize, 1.0f);
-    std::vector<int32_t> metadataHostData(metadataShapeSize, 0);
-    std::vector<int32_t> sparseIndicesHostData(sparseIndicesShapeSize, 0);
-    std::vector<uint16_t> sparseValuesHostData(sparseValuesShapeSize, 0);
-
-    int ret = CreateAclTensor(queryHostData, queryShape, &resources.queryDeviceAddr,
-                              aclDataType::ACL_FLOAT8_E4M3FN, &resources.queryTensor);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) { return ret; }
-
-    ret = CreateAclTensor(keyHostData, keyShape, &resources.keyDeviceAddr,
-                          aclDataType::ACL_FLOAT8_E4M3FN, &resources.keyTensor);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) { return ret; }
-
-    ret = CreateAclTensor(weightsHostData, weightsShape, &resources.weightsDeviceAddr,
-                          aclDataType::ACL_FLOAT, &resources.weightsTensor);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) { return ret; }
-
-    ret = CreateAclTensor(qScaleHostData, qScaleShape, &resources.qScaleDeviceAddr,
-                          aclDataType::ACL_FLOAT, &resources.qScaleTensor);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) { return ret; }
-
-    ret = CreateAclTensor(kScaleHostData, kScaleShape, &resources.kScaleDeviceAddr,
-                          aclDataType::ACL_FLOAT, &resources.kScaleTensor);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) { return ret; }
-
-    ret = CreateAclTensor(metadataHostData, metadataShape, &resources.metadataDeviceAddr,
-                          aclDataType::ACL_INT32, &resources.metadataTensor);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) { return ret; }
-
-    ret = CreateAclTensor(sparseIndicesHostData, sparseIndicesShape, &resources.sparseIndicesDeviceAddr,
-                          aclDataType::ACL_INT32, &resources.sparseIndicesTensor);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) { return ret; }
-
-    ret = CreateAclTensor(sparseValuesHostData, sparseValuesShape, &resources.sparseValuesDeviceAddr,
-                          aclDataType::ACL_BF16, &resources.sparseValuesTensor);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) { return ret; }
-
-    return ACL_SUCCESS;
-}
-
-int ExecuteQuantLightningIndexerV2(TensorResources& resources, aclrtStream stream,
-                                   void** workspaceAddr, uint64_t* workspaceSize) {
-    int64_t topk = 512;
-    int64_t quantMode = 1;
-    int64_t maskMode = 0;
-    int64_t cmpRatio = 1;
-    int64_t returnValue = 1;
-    constexpr const char layoutQStr[] = "BSND";
-    constexpr const char layoutKStr[] = "BSND";
-    constexpr size_t layoutQLen = sizeof(layoutQStr);
-    constexpr size_t layoutKLen = sizeof(layoutKStr);
-    char layoutQ[layoutQLen];
-    char layoutK[layoutKLen];
-    errno_t memcpyRet = memcpy_s(layoutQ, sizeof(layoutQ), layoutQStr, layoutQLen);
-    if (!CHECK_RET(memcpyRet == 0)) {
-        LOG_PRINT("memcpy_s layoutQ failed. ERROR: %d\n", memcpyRet);
-        return -1;
-    }
-    memcpyRet = memcpy_s(layoutK, sizeof(layoutK), layoutKStr, layoutKLen);
-    if (!CHECK_RET(memcpyRet == 0)) {
-        LOG_PRINT("memcpy_s layoutK failed. ERROR: %d\n", memcpyRet);
-        return -1;
-    }
-    aclOpExecutor* executor;
-
-    int ret = aclnnQuantLightningIndexerV2GetWorkspaceSize(
-        resources.queryTensor, resources.keyTensor, resources.weightsTensor,
-        resources.qScaleTensor, resources.kScaleTensor,
-        nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-        resources.metadataTensor,
-        topk, quantMode, -1, layoutQ, layoutK, maskMode, cmpRatio, returnValue,
-        resources.sparseIndicesTensor, resources.sparseValuesTensor,
-        workspaceSize, &executor);
-
-    if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        LOG_PRINT("aclnnQuantLightningIndexerV2GetWorkspaceSize failed. ERROR: %d\n", ret);
-        return ret;
-    }
-
-    if (*workspaceSize > 0ULL) {
-        ret = aclrtMalloc(workspaceAddr, *workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
-        if (!CHECK_RET(ret == ACL_SUCCESS)) {
-            LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret);
-            return ret;
-        }
-    }
-
-    ret = aclnnQuantLightningIndexerV2(*workspaceAddr, *workspaceSize, executor, stream);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        LOG_PRINT("aclnnQuantLightningIndexerV2 failed. ERROR: %d\n", ret);
-        return ret;
-    }
-
-    return ACL_SUCCESS;
-}
-
-int PrintOutResult(const std::vector<int64_t>& shape, void* deviceAddr) {
-  auto size = GetShapeSize(shape);
-  std::vector<int32_t> resultData(size, 0);
-  auto ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]),
-                         deviceAddr, size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
-  if (!CHECK_RET(ret == ACL_SUCCESS)) {
-    LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret);
-    return ret;
-  }
-  LOG_PRINT("sparse_indices result (first 10 elements):\n");
-  for (int64_t i = 0; i < size && i < 10; i++) {
-    LOG_PRINT("  [%ld] = %d\n", i, resultData[i]);
-  }
-  return ACL_SUCCESS;
-}
-
-void CleanupResources(TensorResources& resources, void* workspaceAddr,
-                     aclrtStream stream, int32_t deviceId) {
-    if (resources.queryTensor) { aclDestroyTensor(resources.queryTensor); }
-    if (resources.keyTensor) { aclDestroyTensor(resources.keyTensor); }
-    if (resources.weightsTensor) { aclDestroyTensor(resources.weightsTensor); }
-    if (resources.qScaleTensor) { aclDestroyTensor(resources.qScaleTensor); }
-    if (resources.kScaleTensor) { aclDestroyTensor(resources.kScaleTensor); }
-    if (resources.metadataTensor) { aclDestroyTensor(resources.metadataTensor); }
-    if (resources.sparseIndicesTensor) { aclDestroyTensor(resources.sparseIndicesTensor); }
-    if (resources.sparseValuesTensor) { aclDestroyTensor(resources.sparseValuesTensor); }
-
-    if (resources.queryDeviceAddr) { aclrtFree(resources.queryDeviceAddr); }
-    if (resources.keyDeviceAddr) { aclrtFree(resources.keyDeviceAddr); }
-    if (resources.weightsDeviceAddr) { aclrtFree(resources.weightsDeviceAddr); }
-    if (resources.qScaleDeviceAddr) { aclrtFree(resources.qScaleDeviceAddr); }
-    if (resources.kScaleDeviceAddr) { aclrtFree(resources.kScaleDeviceAddr); }
-    if (resources.metadataDeviceAddr) { aclrtFree(resources.metadataDeviceAddr); }
-    if (resources.sparseIndicesDeviceAddr) { aclrtFree(resources.sparseIndicesDeviceAddr); }
-    if (resources.sparseValuesDeviceAddr) { aclrtFree(resources.sparseValuesDeviceAddr); }
-
-    if (workspaceAddr) { aclrtFree(workspaceAddr); }
-    if (stream) { aclrtDestroyStream(stream); }
-    aclrtResetDevice(deviceId);
-    aclFinalize();
-}
-
-} // namespace
-
-int main() {
-    if (op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_3510) {
-        return 0;
-    }
-    int32_t deviceId = 0;
-    aclrtStream stream = nullptr;
-    TensorResources resources = {};
-    void* workspaceAddr = nullptr;
-    uint64_t workspaceSize = 0;
-    int64_t B = 2;
-    int64_t S1 = 4;
-    int64_t N2 = 1;
-    int64_t topk = 512;
-    std::vector<int64_t> sparseIndicesShape = {B, S1, N2, topk};
-    int ret = ACL_SUCCESS;
-
-    ret = Init(deviceId, &stream);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        LOG_PRINT("Init acl failed. ERROR: %d\n", ret);
-        return ret;
-    }
-
-    ret = InitializeTensors(resources);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        LOG_PRINT("InitializeTensors failed. ERROR: %d\n", ret);
-        CleanupResources(resources, workspaceAddr, stream, deviceId);
-        return ret;
-    }
-
-    ret = ExecuteQuantLightningIndexerV2(resources, stream, &workspaceAddr, &workspaceSize);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        LOG_PRINT("ExecuteQuantLightningIndexerV2 failed. ERROR: %d\n", ret);
-        CleanupResources(resources, workspaceAddr, stream, deviceId);
-        return ret;
-    }
-
-    ret = aclrtSynchronizeStream(stream);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret);
-        CleanupResources(resources, workspaceAddr, stream, deviceId);
-        return ret;
-    }
-
-    PrintOutResult(sparseIndicesShape, resources.sparseIndicesDeviceAddr);
-
-    CleanupResources(resources, workspaceAddr, stream, deviceId);
-    return 0;
-}
-```
+本算子示例见 [test_aclnn_quant_lightning_indexer_v2.cpp](../examples/test_aclnn_quant_lightning_indexer_v2.cpp)（arch22/910B 用例: INT8 量化, BSND query + PA_BBND 分页 key, candidate_topk_blocks=2048 开启 source 并输出候选块索引）。

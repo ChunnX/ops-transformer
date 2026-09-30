@@ -76,6 +76,11 @@ public:
         this->Output("sparse_indices").ParamType(REQUIRED).DataTypeList({ge::DT_INT32}).FormatList({ge::FORMAT_ND});
         this->Output("sparse_values").ParamType(REQUIRED).DataTypeList({ge::DT_BF16}).FormatList({ge::FORMAT_ND});
         this->Output("candidate_topk_index_out").ParamType(OPTIONAL).DataTypeList({ge::DT_INT32}).FormatList({ge::FORMAT_ND});
+        // candidate_block_length: 预留接口, 恒输出空 tensor
+        this->Output("candidate_block_length")
+            .ParamType(OPTIONAL)
+            .DataType({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND});
         this->Attr("topk").AttrType(REQUIRED).Int(2048);       // 2048: 筛选前2048个作为输出index
         this->Attr("quant_mode").AttrType(REQUIRED).Int(1);    // 1: per-token-head
         this->Attr("max_seqlen_q").AttrType(OPTIONAL).Int(-1); // -1: 默认值，表示任意可能长度
@@ -84,11 +89,14 @@ public:
         this->Attr("mask_mode").AttrType(OPTIONAL).Int(0); // 0: 默认值，无mask
         this->Attr("cmp_ratio").AttrType(OPTIONAL).Int(1);
         this->Attr("return_value").AttrType(OPTIONAL).Int(0); //  0: 默认值
-        this->Attr("candidate_mode").AttrType(OPTIONAL).Int(3);              // 3: 默认关闭; 本算子仅支持 1(source)/3
-        this->Attr("candidate_topk_blocks").AttrType(OPTIONAL).Int(2048);    // 块级topk个数, 当前仅支持2048
-        this->Attr("candidate_block_size").AttrType(OPTIONAL).Int(8);        // 候选块大小(位置数)
-        this->Attr("key_stride0").AttrType(OPTIONAL).Int(0);                 // A11: key 第0维 stride (0=紧凑; aclnn 动态调用下 tiling 拿不到 tensor stride, 由 csrc 自动传入)
-        this->Attr("key_dequant_scale_stride0").AttrType(OPTIONAL).Int(0);   // A11: k_scale 第0维 stride
+        // candidate (两级TopK 第一级): 开关由 candidate_topk_blocks 承载, 无独立 mode 属性 ——
+        // -1 = 关闭(现网行为, 默认); 2048 = 开启 source 模式 (当前仅支持这两个取值)
+        this->Attr("candidate_topk_blocks").AttrType(OPTIONAL).Int(-1);
+        // candidate_block_size: candidate_topk_blocks=-1(关闭) 时必须为 -1; 开启时必须 > 0
+        // (当前仅支持 8: 块内归约 BlockReduceMax 以 32B 块即 8 个 fp32 为粒度)
+        this->Attr("candidate_block_size").AttrType(OPTIONAL).Int(-1);
+        // 0 轴非连续支持不注册属性: stride 由输入描述符经 GetDynamicInputStride 进入 tiling
+        // (对齐上游 PR 12740 / 稳定算子 9.2.0 机制), kernel 侧 keyStride0==0 时兜底紧凑公式
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)
@@ -99,88 +107,7 @@ public:
         this->AICore().AddConfig("ascend910b", aicore_config);
         this->AICore().AddConfig("ascend910_93", aicore_config);
 
-        OpAICoreConfig aicore_config_95;
-        // fp8/mxfp8/hif8/mxfp4
-        aicore_config_95.Input("q")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8, ge::DT_FLOAT4_E2M1, ge::DT_INT8})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-        aicore_config_95.Input("k")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8, ge::DT_FLOAT4_E2M1, ge::DT_INT8})
-            .FormatList({ge::FORMAT_ND})
-            .IgnoreContiguous();
-        aicore_config_95.Input("w")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT16})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-        aicore_config_95.Input("q_descale")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT16})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-        aicore_config_95.Input("k_descale")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT16})
-            .FormatList({ge::FORMAT_ND})
-            .IgnoreContiguous();
-        aicore_config_95.Input("cu_seqlens_q")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-        aicore_config_95.Input("cu_seqlens_k")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-        aicore_config_95.Input("seqused_q")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-        aicore_config_95.Input("seqused_k")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-        aicore_config_95.Input("cmp_residual_k")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-        aicore_config_95.Input("block_table")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-        aicore_config_95.Input("output_idx_offset")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-        aicore_config_95.Input("metadata")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-        aicore_config_95.Output("sparse_indices")
-            .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND});
-        aicore_config_95.Output("sparse_values")
-            .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_BF16})
-            .FormatList({ge::FORMAT_ND});
-        aicore_config_95.DynamicCompileStaticFlag(true)
-            .DynamicFormatFlag(true)
-            .DynamicRankSupportFlag(true)
-            .DynamicShapeSupportFlag(true)
-            .NeedCheckSupportFlag(false)
-            .PrecisionReduceFlag(true);
-        this->AICore().AddConfig("ascend950", aicore_config_95);
+        // arch35 (Ascend 950) 配置已移除: 本算子仅支持 arch22 (910B/910_93)
     }
 };
 OP_ADD(QuantLightningIndexerV2);

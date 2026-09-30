@@ -66,9 +66,9 @@ public:
                                 __gm__ uint8_t *cuSeqlensK, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedK,
                                 __gm__ uint8_t *cmpResidualK, __gm__ uint8_t *blockTable,
                                 __gm__ uint8_t *outputIdxOffset, __gm__ uint8_t *metadata,
-                                __gm__ uint8_t *sparseIndices,
-                                __gm__ uint8_t *sparseValues, __gm__ uint8_t *candidateTopkIndexOut,
-                                __gm__ uint8_t *workspace, const QLIV2TilingData *__restrict tiling, TPipe *tPipe);
+                                __gm__ uint8_t *sparseIndices, __gm__ uint8_t *sparseValues,
+                                __gm__ uint8_t *candidateTopkIndexOut, __gm__ uint8_t *workspace,
+                                const QLIV2TilingData *__restrict tiling, TPipe *tPipe);
     __aicore__ inline void Process();
 
     // =================================类型定义区=================================
@@ -112,7 +112,7 @@ protected:
     uint64_t weightsCoreOffset = 0ULL;
     uint64_t indiceOutCoreOffset = 0ULL;
     uint64_t candidateOutCoreOffset = 0ULL;
-    uint64_t outputIdxOffsetCoreOffset = 0ULL;  // A15
+    uint64_t outputIdxOffsetCoreOffset = 0ULL; // A15
     uint32_t coreZeroEnable = 1U;
 
     // ================================Global Buffer区=================================
@@ -123,7 +123,7 @@ protected:
     GlobalTensor<int32_t> indiceOutGm;
     GlobalTensor<int32_t> candidateTopkIndexOutGm;
     GlobalTensor<int32_t> blockTableGm;
-    GlobalTensor<int32_t> outputIdxOffsetGm;  // A15: 每行输出索引偏移
+    GlobalTensor<int32_t> outputIdxOffsetGm; // A15: 每行输出索引偏移
 
     GlobalTensor<uint32_t> actualSeqLengthsGmQ;
     GlobalTensor<uint32_t> actualSeqLengthsGm;
@@ -181,7 +181,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::InitTilingData(const QLIV2TilingDat
     constInfo.attenMaskFlag = (tilingData->sparseMode == 3);
     constInfo.kCacheBlockSize = tilingData->blockSize;
     constInfo.maxBlockNumPerBatch = tilingData->maxBlockNumPerBatch;
-    constInfo.keyStride0 = tilingData->keyStride0;                     // A11: key 0轴非连续
+    constInfo.keyStride0 = tilingData->keyStride0; // A11: key 0轴非连续
     constInfo.keyDequantScaleStride0 = tilingData->keyDequantScaleStride0;
     constInfo.sparseCount = tilingData->sparseCount;
     constInfo.cmpRatio = tilingData->cmpRatio;
@@ -411,6 +411,11 @@ __aicore__ void inline QLIV2Preload<QLIV2T>::SplitCore()
             actualSeqQPrefixSum * constInfo.kHeadNum * constInfo.sparseCount +
             static_cast<uint64_t>(ldInfo.n2Idx) * constInfo.sparseCount +
             static_cast<uint64_t>(ldInfo.mIdx) * constInfo.s1BaseSize * constInfo.kHeadNum * constInfo.sparseCount;
+        // candidate(两级TopK 第一级) 块级候选输出的同构偏移 (宽度换成 candidateTopkBlocks)
+        ldInfo.candidateOutCoreOffset = actualSeqQPrefixSum * constInfo.kHeadNum * constInfo.candidateTopkBlocks +
+                                        static_cast<uint64_t>(ldInfo.n2Idx) * constInfo.candidateTopkBlocks +
+                                        static_cast<uint64_t>(ldInfo.mIdx) * constInfo.s1BaseSize * constInfo.kHeadNum *
+                                            constInfo.candidateTopkBlocks;
     }
 }
 
@@ -443,13 +448,15 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::DealActSeqLenIsZero(uint32_t bIdx, 
 }
 
 template <typename QLIV2T>
-__aicore__ inline void QLIV2Preload<QLIV2T>::Init(
-    __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *weights, __gm__ uint8_t *queryScale,
-    __gm__ uint8_t *keyScale, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensK, __gm__ uint8_t *sequsedQ,
-    __gm__ uint8_t *sequsedK, __gm__ uint8_t *cmpResidualK, __gm__ uint8_t *blockTable, __gm__ uint8_t *outputIdxOffset,
-    __gm__ uint8_t *metadata, __gm__ uint8_t *sparseIndices,
-    __gm__ uint8_t *sparseValues, __gm__ uint8_t *candidateTopkIndexOut, __gm__ uint8_t *workspace,
-    const QLIV2TilingData *__restrict tiling, TPipe *tPipe)
+__aicore__ inline void QLIV2Preload<QLIV2T>::Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *weights,
+                                                  __gm__ uint8_t *queryScale, __gm__ uint8_t *keyScale,
+                                                  __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensK,
+                                                  __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedK,
+                                                  __gm__ uint8_t *cmpResidualK, __gm__ uint8_t *blockTable,
+                                                  __gm__ uint8_t *outputIdxOffset, __gm__ uint8_t *metadata,
+                                                  __gm__ uint8_t *sparseIndices, __gm__ uint8_t *sparseValues,
+                                                  __gm__ uint8_t *candidateTopkIndexOut, __gm__ uint8_t *workspace,
+                                                  const QLIV2TilingData *__restrict tiling, TPipe *tPipe)
 {
     if ASCEND_IS_AIV {
         tmpBlockIdx = GetBlockIdx(); // vec:0-47
@@ -491,6 +498,13 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::Init(
     vec1ResGm.SetGlobalBuffer((__gm__ float *)(workspace + offset));
     offset += GetBlockNum() * constInfo.s1BaseSize * WS_DOUBLE * WS_DOUBLE * BASE_TOPK * sizeof(float);
 
+    // candidate(两级TopK 第一级) 跨核归约工作区: 与 vec1Res 同布局同规格
+    // [工作槽, s1BaseSize, (value, idx) 对, candidateTopkBlocks]，槽号 = saveWorkSpaceIdx。
+    // 用途: s2 被 metadata 切给多核的行, 各核把块级 topk 部分结果落这里, 由 LD 核归并后直出。
+    GlobalTensor<float> candidateResGm;
+    candidateResGm.SetGlobalBuffer((__gm__ float *)(workspace + offset));
+    offset += GetBlockNum() * constInfo.s1BaseSize * WS_DOUBLE * WS_DOUBLE * BASE_TOPK * sizeof(float);
+
     GlobalTensor<half> qScaleGm;
     GlobalTensor<half> kScaleGm;
     if ASCEND_IS_AIV {
@@ -503,15 +517,14 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::Init(
         if (constInfo.candidateMode == CANDIDATE_MODE_SOURCE && candidateTopkIndexOut != nullptr) {
             candidateTopkIndexOutGm.SetGlobalBuffer((__gm__ int32_t *)candidateTopkIndexOut);
         }
-        if (outputIdxOffset != nullptr) {  // A15: 使能 output_idx_offset (参照 arch35)
+        if (outputIdxOffset != nullptr) { // A15: 使能 output_idx_offset (参照 arch35)
             outputIdxOffsetGm.SetGlobalBuffer((__gm__ int32_t *)outputIdxOffset);
         }
         // A15: 有效标志须与 tensor 一并传给 vector (InitParams 已先值拷贝 constInfo, 此处再改标志不生效)
         bool outputIdxOffsetValid = (outputIdxOffset != nullptr);
         vectorService.InitVecInputTensor(weightsGm, qScaleGm, kScaleGm, indiceOutGm, blockTableGm);
-        vectorService.InitVecCandidateTensor(candidateTopkIndexOutGm, outputIdxOffsetGm,
-                                             outputIdxOffsetValid);
-        vectorService.InitVecWorkspaceTensor(weightWorkspaceGm, mm1ResGm, vec1ResGm);
+        vectorService.InitVecCandidateTensor(candidateTopkIndexOutGm, outputIdxOffsetGm, outputIdxOffsetValid);
+        vectorService.InitVecWorkspaceTensor(weightWorkspaceGm, mm1ResGm, vec1ResGm, candidateResGm);
     } else {
         matmulService.InitParams(constInfo);
         queryGm.SetGlobalBuffer((__gm__ Q_T *)query);
@@ -823,6 +836,10 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::ProcessDecode()
         SyncAll();
         if (ldInfo.isLdCoreEnable) {
             vectorService.ProcessLD();
+            // s2 被切分的行: 块级候选跨核归并后直出 (未被切分的行仍走 ProcessVec1 里的直出)
+            if (constInfo.candidateMode == CANDIDATE_MODE_SOURCE) {
+                vectorService.ProcessLDCand();
+            }
         }
     }
 }
