@@ -1,0 +1,12 @@
+==== KvCacheTurboQuant aclnn self-test ====
+[debug] gqa_decode_b1 workspaceSize=0 expect=4096
+[PASS] gqa_decode_b1 idx_mismatch=0/384 qjl_mismatch=0/128 norm_mismatch=0/8 gamma_mismatch=0/8 | perf=47.7869 us, baseline=1491.68 us, speedup=31.2152x
+[debug] gqa_decode_b64 workspaceSize=0 expect=262144
+[PASS] gqa_decode_b64 idx_mismatch=0/24576 qjl_mismatch=0/8192 norm_mismatch=0/512 gamma_mismatch=0/512 | perf=74.6826 us, baseline=1552.78 us, speedup=20.7918x
+[debug] gqa_prefill_t2048 workspaceSize=0 expect=8388608
+[FAIL] gqa_prefill_t2048 idx_mismatch=0/786432 qjl_mismatch=0/262144 norm_mismatch=0/16384 gamma_mismatch=2/16384 | perf=1429.84 us, baseline=3855.42 us, speedup=2.69641x
+[debug] gqa_mse2_t2048 workspaceSize=0 expect=8388608
+[FAIL] gqa_mse2_t2048 idx_mismatch=0/524288 qjl_mismatch=0/262144 norm_mismatch=0/16384 gamma_mismatch=0/16384 | perf=1329.4 us, baseline=3607.96 us, speedup=2.71398x
+[debug] gqa_mse4_t2048 workspaceSize=0 expect=8388608
+[FAIL] gqa_mse4_t2048 idx_mismatch=3/1048576 qjl_mismatch=28/262144 norm_mismatch=0/16384 gamma_mismatch=0/16384 | perf=1626.98 us, baseline=5286.5 us, speedup=3.24928x
+==== summary: 2 passed, 3 failed ====
