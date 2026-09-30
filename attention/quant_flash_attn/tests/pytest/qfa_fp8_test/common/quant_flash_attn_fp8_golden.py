@@ -1051,9 +1051,10 @@ def fa_run_npu(
         dequant_scale_v.dtype,
         dequant_scale_v.shape,
     )
-    # k = k.contiguous().npu()
-    # v = v.contiguous().npu()
-    # dequant_scale_k = dequant_scale_k.contiguous().npu()
+    if IS_CONTIGUOUS:
+        k = k.contiguous()
+        v = v.contiguous()
+        dequant_scale_k = dequant_scale_k.contiguous()
     logger.info(
         "[NPU] layout_q: %s, layout_kv: %s, mask_mode: %s",
         LAYOUT_Q,

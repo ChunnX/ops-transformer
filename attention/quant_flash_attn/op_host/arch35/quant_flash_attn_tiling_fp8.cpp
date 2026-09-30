@@ -300,14 +300,20 @@ void QuantFlashAttnTilingFp8Impl::SetQFATilingData()
     }
     tilingData_.baseTiling.quantFlashAttnPageAttentionParams.maxBlockNumPerBatch = maxBlockNumPerBatch;
 
-    tilingData_.baseTiling.quantFlashAttnBaseParams.keyStrides.bnStride = qfaInfo_->keyStrides->GetStride(0);
-    tilingData_.baseTiling.quantFlashAttnBaseParams.keyStrides.n2Stride = qfaInfo_->keyStrides->GetStride(1);
-    tilingData_.baseTiling.quantFlashAttnBaseParams.valueStrides.bnStride = qfaInfo_->valueStrides->GetStride(0);
-    tilingData_.baseTiling.quantFlashAttnBaseParams.valueStrides.n2Stride = qfaInfo_->valueStrides->GetStride(1);
-    tilingData_.baseTiling.quantFlashAttnBaseParams.kDescaleStrides.bnStride = qfaInfo_->kDescaleStrides->GetStride(0);
-    tilingData_.baseTiling.quantFlashAttnBaseParams.kDescaleStrides.n2Stride = qfaInfo_->kDescaleStrides->GetStride(1);
-    tilingData_.baseTiling.quantFlashAttnBaseParams.vDescaleStrides.bnStride = qfaInfo_->vDescaleStrides->GetStride(0);
-    tilingData_.baseTiling.quantFlashAttnBaseParams.vDescaleStrides.n2Stride = qfaInfo_->vDescaleStrides->GetStride(1);
+    if (qfaInfo_->hasStride) {
+        tilingData_.baseTiling.quantFlashAttnBaseParams.keyStrides.bnStride = qfaInfo_->keyStrides->GetStride(0);
+        tilingData_.baseTiling.quantFlashAttnBaseParams.keyStrides.n2Stride = qfaInfo_->keyStrides->GetStride(1);
+        tilingData_.baseTiling.quantFlashAttnBaseParams.valueStrides.bnStride = qfaInfo_->valueStrides->GetStride(0);
+        tilingData_.baseTiling.quantFlashAttnBaseParams.valueStrides.n2Stride = qfaInfo_->valueStrides->GetStride(1);
+        tilingData_.baseTiling.quantFlashAttnBaseParams.kDescaleStrides.bnStride =
+            qfaInfo_->kDescaleStrides->GetStride(0);
+        tilingData_.baseTiling.quantFlashAttnBaseParams.kDescaleStrides.n2Stride =
+            qfaInfo_->kDescaleStrides->GetStride(1);
+        tilingData_.baseTiling.quantFlashAttnBaseParams.vDescaleStrides.bnStride =
+            qfaInfo_->vDescaleStrides->GetStride(0);
+        tilingData_.baseTiling.quantFlashAttnBaseParams.vDescaleStrides.n2Stride =
+            qfaInfo_->vDescaleStrides->GetStride(1);
+    }
 }
 
 bool QuantFlashAttnTilingFp8Impl::CheckNeedInitOutput() const
