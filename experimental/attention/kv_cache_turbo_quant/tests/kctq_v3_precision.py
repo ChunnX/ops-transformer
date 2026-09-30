@@ -1,30 +1,26 @@
 #!/usr/bin/env python3
-"""kctq_v3_precision.py — KCTQ 端到端 decode 精度（V3，双路径 × 双口径）。
+"""kctq_v3_precision.py — KCTQ 端到端 decode 精度（V3，按任务书 §3.2 字面口径统计）。
 
-口径来源：`docs/verification.md` §2/§3 指定的参考实现 `docs/evidence/tools/verify4_precision.py`
-（复现《调研分析报告》§5 的数字）与 golden 的编码语义。decode 公式：
+口径（任务书 §3.2 原文 + 官方 2026-09-28 discussions/14 补充说明）：
+    重构（主量化 + 1-bit QJL 残差完整重构）：
+        x̂ = (‖x‖·centroid[idx] + γ·sqrt(π/2)/d·(sign @ S)) @ H
+    其中 H = rotation_matrix（golden 的 `rotated = unit @ rotation.T` ⇒ 反变换乘 H）、
+    S = qjl_matrix、sign = ±1（由 1-bit 打包位还原）、‖x‖/γ 为算子 bf16 输出。
 
-    x̂_mse = ‖x‖ · (c[idx] @ H)                     主量化重构（MSE-only 路径）
-    x̂     = x̂_mse + sqrt(π/2) · γ/d · (signs @ S)  完整 decode（MSE+QJL 路径）
+指标（阈值均取自任务书 §3.2 字面式，另含官方为 2-bit 单列的逐向量阈值）：
+    ① relMSE          = Σ‖x−x̂‖² / Σ‖x‖²                      阈值 < 0.05
+    ② 内积 p95        = p95( |<q,x̂>−<q,x>| / max(|<q,x>|,1e-6) )  阈值 < 0.1（**字面分母**）
+    ③ 逐向量 NMSE max = max_i ‖x_i−x̂_i‖²/‖x_i‖²               阈值：3/4-bit < 0.05；2-bit < 0.10
+    ④ 逐向量 NMSE P95                                         阈值：2-bit < 0.06
+    对照行：仅主量化（不含 QJL 残差）的 relMSE —— 用于展示 QJL 的作用，不参与判定。
 
-其中 H = rotation_matrix（golden 的 `rotated = unit @ rotation.T` ⇒ 反变换为 `c @ H`）、
-c = centroid 表、idx = 主编码、signs = ±1（由 1-bit 打包的 `1[p >= 0]` 位还原）、
-S = qjl_matrix、‖x‖/γ = bf16 输出。
-
-指标（双口径并列，主口径加粗）：
-    relMSE    = E‖x−x̂‖² / E‖x‖²                       （报告 §5：3-bit MSE-only 0.0339）
-    内积 p95  归一化口径 = p95( |⟨q,x̂⟩−⟨q,x⟩| / (‖q‖‖x‖) )  （阈值 < 0.1，报告 3-bit 0.0603）
-    内积 p95  字面口径   = p95( |⟨q,x̂⟩−⟨q,x⟩| / |⟨q,x⟩| )   （对照列，病态归一化，报告 3-bit 2.26）
-
-判定（按《调研分析报告》结论 C5：relMSE<0.05 仅 3-bit MSE-only 路径成立，2-bit 目标数学不可达）：
-    * bits ∈ {3,4}：要求 relMSE(MSE-only) < 0.05 且 归一化口径 p95(含 QJL) < 0.1
-    * bits = 2     ：口径不适用（数学不可达），只报告实测值（不影响 RESULT）
+q 的来源：`--ip-query`（官方件）优先；缺省按官方说明自采 q = BF16(BF16(x) + 0.5·N(0,1))。
 
 用法：
-    python tools/pipelines/kctq_v3_precision.py --workdir .runtime/kctq_case_t2048 \
-        --rot data/rotation_matrix.bin --qjl data/qjl_matrix.bin \
-        --tokens 2048 --heads 8 --bits 3 [--samples 2048] [--json out.json]
-输出：末行 RESULT: PASS / FAIL（仅针对上述判定）；`--json` 落盘结构化结果。
+    python3 kctq_v3_precision.py --workdir <out_dir> --rot <H.bin> --qjl <S.bin> \
+        --tokens T --heads H --bits B [--kv <kv.bin>] [--ip-query <ip_query.bin>] \
+        [--golden <golden.py>] [--json <out.json>]
+输出：末行 RESULT: PASS / FAIL；`--json` 落盘结构化结果。
 """
 
 from __future__ import annotations
@@ -40,8 +36,6 @@ import numpy as np
 
 HEAD_DIM = 128
 SEED = 20260923
-# 报告 §5 参考值（同口径、不同数据/实现），用于对照：{bits: (relMSE_mse_only, p95_norm_mse_qjl)}
-REPORT_REF = {2: (0.1159, 0.1116), 3: (0.0339, 0.0603), 4: (0.0093, 0.0316)}
 
 
 def find_repo_root(start: Path) -> Path:
@@ -82,6 +76,18 @@ def load_kv(path: Path, rows: int) -> np.ndarray:
     return bf16_to_fp32(raw).reshape(rows, HEAD_DIM).astype(np.float64)
 
 
+def bf16_round_round_half_even(a: np.ndarray) -> np.ndarray:
+    """fp64 → BF16 舍入（round-to-nearest-even）再回到 fp64。
+
+    用于按官方说明自采 q = BF16(BF16(x) + 0.5·N(0,1))；bf16 = fp32 高 16 位，
+    加 0x7FFF + lsb 后截断即得 RNE。
+    """
+    bits = a.astype(np.float32).view(np.uint32).astype(np.uint64)
+    lsb = (bits >> np.uint64(16)) & np.uint64(1)
+    rounded = (bits + np.uint64(0x7FFF) + lsb) & np.uint64(0xFFFF0000)
+    return rounded.astype(np.uint32).view(np.float32).astype(np.float64)
+
+
 def unpack_bits(raw: np.ndarray, bit_width: int, lanes: int) -> np.ndarray:
     """C2 语义：每 8 通道一组、组内 LSB 优先小端。"""
     idx = np.zeros(lanes, dtype=np.int64)
@@ -112,12 +118,13 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--workdir", required=True, help="含 quant_*.bin 与 kv_vectors.bin 的目录")
     ap.add_argument("--kv", default=None, help="kv_vectors.bin 路径（默认取 workdir 下同名文件）")
+    ap.add_argument("--ip-query", default=None,
+                    help="官方 ip_query.bin（bf16）；缺省按 q = BF16(x + 0.5*N(0,1)) 自采")
     ap.add_argument("--rot", required=True)
     ap.add_argument("--qjl", required=True)
     ap.add_argument("--tokens", type=int, required=True)
     ap.add_argument("--heads", type=int, required=True)
     ap.add_argument("--bits", type=int, required=True, choices=(2, 3, 4))
-    ap.add_argument("--samples", type=int, default=2048, help="内积口径的随机 q 条数")
     ap.add_argument("--seed", type=int, default=SEED)
     ap.add_argument("--golden", default=None,
                     help="任务包 golden.py 路径（默认 $KCTQ_GOLDEN 或仓库内搜索）")
@@ -138,55 +145,74 @@ def main() -> int:
     idx = unpack_bits(idx_raw, args.bits, rows * HEAD_DIM).reshape(rows, HEAD_DIM)
     signs = unpack_signs(qjl_raw, rows * HEAD_DIM).reshape(rows, HEAD_DIM)
     centroids = np.asarray(load_centroids(args.golden)[args.bits], dtype=np.float64)
-    x_hat_mse = norm[:, None] * (centroids[idx] @ rot)
-    x_hat = x_hat_mse + np.sqrt(np.pi / 2.0) * (gamma / HEAD_DIM)[:, None] * (signs @ qjl_mat)
 
-    x_norm2 = (x * x).sum(axis=1)
-    rel_mse_only = float(((x - x_hat_mse) ** 2).sum(axis=1).mean() / x_norm2.mean())
-    rel_mse_qjl = float(((x - x_hat) ** 2).sum(axis=1).mean() / x_norm2.mean())
+    # ---- 重构：主量化 + QJL 残差完整重构（官方 2026-09-28 口径）----
+    #     算子侧 gamma 已含 ‖x‖ 因子：x̂ = (‖x‖·primary + γ·sqrt(π/2)/d·(sign@S)) @ H
+    primary = centroids[idx]                                        # [rows, d]（旋转域）
+    r_hat = np.sqrt(np.pi / 2.0) / HEAD_DIM * (signs @ qjl_mat)     # [rows, d]（旋转域）
+    x_hat = (norm[:, None] * primary + gamma[:, None] * r_hat) @ rot
+    x_hat_mse_only = (norm[:, None] * primary) @ rot                # 对照：仅主量化
 
-    rng = np.random.default_rng(args.seed)
-    sample_rows = rng.choice(rows, size=min(args.samples, rows), replace=False)
-    q = rng.standard_normal((sample_rows.size, HEAD_DIM))
-    q_norm = np.linalg.norm(q, axis=1)
-    xs = x[sample_rows]
-    xs_norm = np.sqrt((xs * xs).sum(axis=1))
-    ip_true = (q * xs).sum(axis=1)
-    err_mse = np.abs((q * x_hat_mse[sample_rows]).sum(axis=1) - ip_true)
-    err_qjl = np.abs((q * x_hat[sample_rows]).sum(axis=1) - ip_true)
-    p95_norm_mse_only = float(np.percentile(err_mse / (q_norm * xs_norm), 95))
-    p95_norm_qjl = float(np.percentile(err_qjl / (q_norm * xs_norm), 95))
-    p95_literal_qjl = float(np.percentile(err_qjl / np.abs(ip_true), 95))
+    # ---- 指标① 相对 MSE（aggregate）与指标③/④ 逐向量 NMSE 分布 ----
+    err2 = ((x - x_hat) ** 2).sum(axis=1)                           # ‖x_i − x̂_i‖²
+    x2 = (x * x).sum(axis=1)                                        # ‖x_i‖²
+    rel_mse = float(err2.sum() / x2.sum())                          # aggregate（任务书式）
+    vec_nmse = err2 / np.maximum(x2, 1e-30)
+    vec_max = float(vec_nmse.max())
+    vec_p95 = float(np.percentile(vec_nmse, 95))
+    rel_mse_mse_only = float(((x - x_hat_mse_only) ** 2).sum() / x2.sum())
 
-    ref_rel, ref_p95 = REPORT_REF[args.bits]
-    applicable = args.bits in (3, 4)
-    ok_rel = rel_mse_only < 0.05
-    ok_p95 = p95_norm_qjl < 0.1
-    passed = (ok_rel and ok_p95) if applicable else True
+    # ---- 指标② 内积误差（任务书字面分母；q 用官方件或按官方说明自采）----
+    if args.ip_query:
+        q_raw = np.fromfile(args.ip_query, dtype=np.uint16)
+        if q_raw.size != rows * HEAD_DIM:
+            raise SystemExit(f"ip_query 元素数 {q_raw.size} != {rows * HEAD_DIM}")
+        q = bf16_to_fp32(q_raw).reshape(rows, HEAD_DIM)
+        q_src = f"官方件 {Path(args.ip_query).name}"
+    else:
+        rng = np.random.default_rng(args.seed)
+        q = bf16_round_round_half_even(x + 0.5 * rng.standard_normal((rows, HEAD_DIM)))
+        q_src = f"自采 BF16(BF16(x)+0.5·N(0,1))，seed={args.seed}"
+    ip_true = (q * x).sum(axis=1)
+    ip_hat = (q * x_hat).sum(axis=1)
+    ip_err = np.abs(ip_hat - ip_true) / np.maximum(np.abs(ip_true), 1e-6)
+    ip_p95 = float(np.percentile(ip_err, 95))
 
-    print(f"=== KCTQ V3 精度（decode 双路径 × 双口径） ===")
-    print(f"workdir={workdir} rows={rows} bits={args.bits} "
-          f"（内积抽样 {sample_rows.size} 行，seed={args.seed}）")
-    print(f"{'指标':<34}{'实测':>12}{'报告参考':>12}{'阈值':>10}")
-    print(f"{'relMSE  (MSE-only，主口径)':<34}{rel_mse_only:>12.4f}{ref_rel:>12.4f}{'<0.05':>10}")
-    print(f"{'relMSE  (MSE+QJL，对照)':<34}{rel_mse_qjl:>12.4f}{'—':>12}{'—':>10}")
-    print(f"{'内积 p95 归一化（含 QJL，主口径)':<34}{p95_norm_qjl:>12.4f}{ref_p95:>12.4f}{'<0.1':>10}")
-    print(f"{'内积 p95 归一化（MSE-only）':<34}{p95_norm_mse_only:>12.4f}{'—':>12}{'—':>10}")
-    print(f"{'内积 p95 字面口径（含 QJL，对照)':<34}{p95_literal_qjl:>12.4f}{'—':>12}{'—':>10}")
-    if not applicable:
-        print("注：bits=2 的精度目标数学上不可达（《调研分析报告》结论 C5）→ 只报告实测值，不参与判定。")
-    print(f"判定：relMSE(MSE-only) {'PASS' if ok_rel else 'FAIL'}、"
-          f"p95 归一化(含 QJL) {'PASS' if ok_p95 else 'FAIL'}"
-          f"{'（bits=2 不适用）' if not applicable else ''}")
+    # ---- 判定（任务书 §3.2 字面式 + 官方为 2-bit 单列的逐向量阈值）----
+    bits2 = args.bits == 2
+    checks = {"relMSE < 0.05": rel_mse < 0.05,
+              "内积 p95 < 0.1（字面分母）": ip_p95 < 0.1,
+              "逐向量 max < " + ("0.10" if bits2 else "0.05"): vec_max < (0.10 if bits2 else 0.05)}
+    if bits2:
+        checks["逐向量 P95 < 0.06"] = vec_p95 < 0.06
+    passed = all(checks.values())
+
+    print(f"=== KCTQ V3 精度（任务书 §3.2 字面口径；规范 = 完整重构） ===")
+    print(f"workdir={workdir} rows={rows} bits={args.bits}（内积用全部 {rows} 行）")
+    print(f"q 生成：{q_src}；分母 max(|<q,x>|,1e-6)")
+    print(f"{'指标':<40}{'实测':>12}{'阈值':>10}  判定")
+    print(f"{'relMSE (完整重构 主量化+QJL)':<40}{rel_mse:>12.6f}{'<0.05':>10}  "
+          f"{'PASS' if rel_mse < 0.05 else 'FAIL'}")
+    print(f"{'relMSE (仅主量化，对照不判定)':<40}{rel_mse_mse_only:>12.6f}{'—':>10}  —")
+    print(f"{'内积 p95 (任务书字面分母)':<40}{ip_p95:>12.6f}{'<0.1':>10}  "
+          f"{'PASS' if ip_p95 < 0.1 else 'FAIL'}")
+    print(f"{'逐向量 NMSE max':<40}{vec_max:>12.6f}{('<0.10' if bits2 else '<0.05'):>10}  "
+          f"{'PASS' if (vec_max < (0.10 if bits2 else 0.05)) else 'FAIL'}")
+    if bits2:
+        print(f"{'逐向量 NMSE P95':<40}{vec_p95:>12.6f}{'<0.06':>10}  "
+              f"{'PASS' if vec_p95 < 0.06 else 'FAIL'}")
+    else:
+        print(f"{'逐向量 NMSE P95（参考）':<40}{vec_p95:>12.6f}{'—':>10}  —")
+    print("判定：" + "、".join(f"{k} {'PASS' if v else 'FAIL'}" for k, v in checks.items()))
 
     if args.json:
         Path(args.json).write_text(json.dumps({
             "workdir": str(workdir), "rows": rows, "bits": args.bits,
-            "relMseMseOnly": rel_mse_only, "relMseWithQjl": rel_mse_qjl,
-            "p95NormWithQjl": p95_norm_qjl, "p95NormMseOnly": p95_norm_mse_only,
-            "p95LiteralWithQjl": p95_literal_qjl,
-            "referenceRelMse": ref_rel, "referenceP95Norm": ref_p95,
-            "applicable": applicable, "pass": passed,
+            "qSource": q_src,
+            "relMse": rel_mse, "relMseMseOnly": rel_mse_mse_only,
+            "ipP95LiteralDenom": ip_p95, "ipDenominator": "max(|<q,x>|,1e-6)",
+            "vecNmseMax": vec_max, "vecNmseP95": vec_p95,
+            "checks": checks, "pass": passed,
         }, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
     print(f"RESULT: {'PASS' if passed else 'FAIL'}")

@@ -49,22 +49,40 @@ PY
 SUMMARY=()
 for line in "${CASES[@]}"; do
     read -r name tokens heads bits <<<"$line"
-    inp="$WORK/inputs/t${tokens}_h${heads}"
-    if [[ ! -f "$inp/kv_vectors.bin" ]]; then
+    # 输入解析优先级（官方件 per-case 优先，避免多个同 shape 的 case 共用一份输入）：
+    #   1) $KCTQ_OFFICIAL_DATA/<case_name>/{kv_vectors.bin,ip_query.bin}
+    #   2) $WORK/inputs/<case_name>/{kv_vectors.bin,ip_query.bin}
+    #   3) $WORK/inputs/t<tokens>_h<heads>/kv_vectors.bin（历史布局，兼容旧工作目录）
+    #   4) 由 gen_case_input.py 生成（固定 seed，统计等价）
+    inp="$WORK/inputs/$name"
+    ipq=""
+    off="${KCTQ_OFFICIAL_DATA:-}"
+    if [[ -n "$off" && -f "$off/$name/kv_vectors.bin" ]]; then
+        inp="$off/$name"
+    elif [[ -f "$inp/kv_vectors.bin" ]]; then
+        :
+    elif [[ -f "$WORK/inputs/t${tokens}_h${heads}/kv_vectors.bin" ]]; then
+        inp="$WORK/inputs/t${tokens}_h${heads}"
+    else
         mkdir -p "$inp"
         "$PY" "$HERE/gen_case_input.py" --out "$inp" --tokens "$tokens" --heads "$heads"
     fi
+    [[ -f "$inp/ip_query.bin" ]] && ipq="$inp/ip_query.bin"
     out="$WORK/out/${name}_b${bits}"
     mkdir -p "$out"
     echo "===== ${name} (tokens=${tokens}, heads=${heads}, bits=${bits}) ====="
+    echo "input=${inp}/kv_vectors.bin sha256=$(sha256sum "$inp/kv_vectors.bin" | cut -d' ' -f1)"
+    [[ -n "$ipq" ]] && echo "ip_query=${ipq} sha256=$(sha256sum "$ipq" | cut -d' ' -f1)"
     "$BIN" --kv "$inp/kv_vectors.bin" --rot "$ROT" --qjl "$QJL" --out "$out" \
         --tokens "$tokens" --heads "$heads" --bits "$bits" --warmup 3 --repeat 10 \
         | tee "$out/run.log"
     "$PY" "$HERE/kctq_compare.py" --workdir "$out" --kv "$inp/kv_vectors.bin" --rot "$ROT" --qjl "$QJL" \
         --tokens "$tokens" --heads "$heads" --bits "$bits" --material "$MATERIAL" \
         | tee "$out/compare.log"
+    V3EXTRA=()
+    [[ -n "$ipq" ]] && V3EXTRA=(--ip-query "$ipq")
     "$PY" "$HERE/kctq_v3_precision.py" --workdir "$out" --kv "$inp/kv_vectors.bin" --rot "$ROT" --qjl "$QJL" \
-        --tokens "$tokens" --heads "$heads" --bits "$bits" --golden "$GOLDEN" \
+        --tokens "$tokens" --heads "$heads" --bits "$bits" "${V3EXTRA[@]}" --golden "$GOLDEN" \
         --json "$out/v3.json" | tee "$out/v3.log"
     # 4) 生态算子开源精度标准的混合容差判定（补充层，不替代任务书 §3.2 指标）
     "$PY" "$HERE/kctq_std_tolerance.py" --workdir "$out" --kv "$inp/kv_vectors.bin" --rot "$ROT" --qjl "$QJL" \

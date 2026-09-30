@@ -80,8 +80,7 @@ python tests/gen_test_data.py --out data        # 归一化 Hadamard 旋转矩�
 python tests/gen_case_input.py --out data/kctq_case_b1 --tokens 1    --heads 8
 python tests/gen_case_input.py --out data/kctq_case_b64 --tokens 64  --heads 8
 python tests/gen_case_input.py --out data/kctq_case_t2048 --tokens 2048 --heads 8
-# 三个 t2048 档共用同一份 kv 输入，仅 mse_bits 不同（见 case.json）
-```
+# 三个 t2048 档共用同一份 kv 输入，仅 mse_bits 不同（见 case.json）```
 
 输入按 `case.json` 声明的 `value_range` 生成（`kv_vectors` 为 `[-2, 2]` 均匀、BF16 舍入）。
 
@@ -170,8 +169,13 @@ python tests/kctq_v3_precision.py --workdir out/t2048_b3 --rot data/rotation_mat
   语义一致：`norm=inf`、`gamma=nan`）。因此 `kctq_compare.py` 对**非有限输入行
   不参与 idx/qjl 判定**（单独打印行数与不判定处数），`norm`/`gamma` 则按“逐位一致 **或** 同为 nan”
   判定；有限行（声明域）仍要求逐字节一致。对应用例：`extreme_rows_t8_h8_b3`。
-- **V3 精度**：`relMSE` 与内积误差均给**两种口径**（MSE-only / 含 QJL；分母归一化 / 字面），
-  主口径与阈值依据见报告；`REPORT_REF` 为调研报告的同口径参考值。
+- **V3 精度**：主口径即**任务书 §3.2 字面式** —— relMSE = Σ‖x−x̂‖²/Σ‖x‖²（主量化 + 1-bit QJL
+  完整重构）、内积 p95 用**字面分母** `max(|<q,x>|,1e-6)`（q 为官方 `ip_query`，与 x 相关）；
+  另给“仅主量化”对照行（2-bit 该行 ≈0.116 = 标量量化理论下界），并给出逐向量 NMSE max/P95
+  （2-bit 按官方单列阈值判 max<0.10、P95<0.06）。
+- **输入按 case 区分**：`run_all.sh` 优先用 `KCTQ_OFFICIAL_DATA/<case_name>/{kv_vectors,ip_query}.bin`
+  （官方件 per-case 输入），其次 `$KCTQ_WORK/inputs/<case_name>/`，再回落旧布局与生成器；
+  日志逐行给出 `input=` / `ip_query=` 的 sha256（三个同 shape 的 t2048 档各用各的输入）。
 - **生态标准层**（`kctq_std_tolerance.py`）：按《生态算子开源精度标准》
   （`third_party/opbase/docs/zh/ops_precision_standard/experimental_standard.md`，上游文件名
   `mixed_tolerance_standard.md`）的**混合容差**逐元素判定：`|a-g| ≤ atol + rtol·|g|`，
@@ -189,7 +193,7 @@ python tests/kctq_v3_precision.py --workdir out/t2048_b3 --rot data/rotation_mat
 | `gen_test_data.py` | 生成旋转/投影矩阵与 `data/meta.json`（含 sha256、来源说明） |
 | `gen_case_input.py` | 生成某个 case 的 `kv_vectors.bin`（BF16） |
 | `kctq_compare.py` | 与 `golden.py` 逐字节对拍（`--material` 指定任务包目录） |
-| `kctq_v3_precision.py` | V3 双口径精度（decode 两条路径 × 两种分母；`--golden` 指定 `golden.py`） |
+| `kctq_v3_precision.py` | V3 精度（任务书 §3.2 字面口径：relMSE = Σ‖x−x̂‖²/Σ‖x‖²，主量化 + 1-bit QJL 完整重构；内积 p95 用**字面分母** `max(|<q,x>|,1e-6)`，q 取官方 `ip_query`（`--ip-query`）或缺省自采 `BF16(x+0.5N(0,1))`；另报逐向量 NMSE max/P95。`--golden` 指定 `golden.py`） |
 | `kctq_std_tolerance.py` | 生态标准混合容差逐元素判定（bf16 输出按标准行；位打包输出按匹配率） |
 | `run_all.sh` | 一键跑 5 个 case 的对拍 + V3 + 计时汇总（套件①） |
 | `edge_cases.json` | 边界用例形状表（套件②） |

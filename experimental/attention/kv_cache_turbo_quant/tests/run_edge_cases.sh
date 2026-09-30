@@ -46,8 +46,8 @@ for line in "${CASES[@]}"; do
     grep -q "RESULT: PASS" "$out/compare.log" || { compare_ok=0; FAILED=1; }
     if [[ "$pattern" == "uniform" ]]; then
         "$PY" "$HERE/kctq_v3_precision.py" --workdir "$out" --kv "$inp/kv_vectors.bin" --rot "$ROT" --qjl "$QJL" \
-            --tokens "$tokens" --heads "$heads" --bits "$bits" --samples 64 --golden "$GOLDEN" \
-            --json "$out/v3.json" | tee "$out/v3.log" | grep -E "relMSE|p95|判定" || true
+            --tokens "$tokens" --heads "$heads" --bits "$bits" --golden "$GOLDEN" \
+            --json "$out/v3.json" | tee "$out/v3.log" | grep -E "relMSE|内积 p95|判定" || true
     else
         echo "（pattern=${pattern}：跳过 V3 统计口径，逐字节对拍已覆盖该行内语义）"
     fi
