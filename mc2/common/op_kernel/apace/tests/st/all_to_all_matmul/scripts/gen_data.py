@@ -67,16 +67,16 @@ def gen_golden_data_all_to_all_matmul(m, k, n, rank_num, dtype="fp16", lm=0):
     # fp16/bf16 输入取 [0.5, 1)，避免 K 较大时中间累加溢出
     a_local_f32 = [
         #np.random.uniform(0.5, 1.0, (M_total, Ka)).astype(np.float32)
-        #np.random.uniform(-5.0, 5.0, (M_total, Ka)).astype(np.float32)
-        np.random.uniform(0, 10.0, (M_total, Ka)).astype(np.float32)
+        np.random.uniform(-5.0, 5.0, (M_total, Ka)).astype(np.float32)
+        #np.random.uniform(0, 10.0, (M_total, Ka)).astype(np.float32)
         for _ in range(rank_num)
     ]
     #b_ori_f32 = np.random.uniform(0.5, 1.0, (N, K)).astype(np.float32)
-    #b_ori_f32 = np.random.uniform(-3.0, 3.0, (N, K)).astype(np.float32)
-    b_ori_f32 = np.random.uniform(0, 10.0, (N, K)).astype(np.float32)
+    b_ori_f32 = np.random.uniform(-3.0, 3.0, (N, K)).astype(np.float32)
+    #b_ori_f32 = np.random.uniform(0, 10.0, (N, K)).astype(np.float32)
     #bias_f32 = np.random.uniform(-0.5, 0.5, (N,)).astype(np.float32)
-    #bias_f32 = np.random.uniform(-3.0, 3.0, (N,)).astype(np.float32)
-    bias_f32 = np.random.uniform(0.0, 10.0, (N,)).astype(np.float32)
+    bias_f32 = np.random.uniform(-3.0, 3.0, (N,)).astype(np.float32)
+    #bias_f32 = np.random.uniform(0.0, 10.0, (N,)).astype(np.float32)
 
     # 量化到目标 dtype（kernel 输入与 golden 必须用同一份量化值）
     a_local_list = [torch.from_numpy(x).to(target) for x in a_local_f32]
@@ -132,7 +132,8 @@ def gen_golden_data_all_to_all_matmul(m, k, n, rank_num, dtype="fp16", lm=0):
 
             self_q = (self_partial + bias).to(target)
             remote_q = remote_partial.to(target)
-            out = (self_q.float() + remote_q.float()).to(target)
+            # 实验：self 和 remote 两个 fp16 直接加（不转 fp32），模拟原子加在输出 dtype 上相加
+            out = self_q + remote_q
 
         out_all_ranks.append(out)
 
