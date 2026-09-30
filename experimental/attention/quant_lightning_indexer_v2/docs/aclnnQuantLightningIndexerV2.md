@@ -406,29 +406,14 @@ aclnnStatus aclnnQuantLightningIndexerV2(
       <td>-</td>
     </tr>
     <tr>
-      <td>candidateMode</td>
-      <td>属性</td>
-      <td>两级TopK（two-level topk，先按块粗筛再在块内精筛）第一级开关。</td>
-      <td>
-          <ul>
-                <li>1表示source：输出块级候选索引candidateTopkIndexOut，供aclnnQuantSparseLightningIndexer消费。</li>
-                <li>3表示关闭（默认值）。</li>
-                <li>取值2（consumer）已拆分为独立算子aclnnQuantSparseLightningIndexer，本接口对取值2会报错拒绝。</li>
-                <li>仅在910B/910_93（arch22）上支持。</li>
-          </ul>
-      </td>
-      <td>INT64</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
       <td>candidateTopkBlocks</td>
       <td>属性</td>
-      <td>块级TopK的候选块个数。</td>
+      <td>两级TopK（two-level topk，先按块粗筛再在块内精筛）第一级开关，同时给出候选块个数。</td>
       <td>
           <ul>
-                <li>当前仅支持 -1（关闭，默认）与 2048（开启 source）。</li>
+                <li>-1表示关闭（默认值，现网行为）；2048表示开启第一级（source），输出块级候选索引candidateTopkIndexOut，供aclnnQuantSparseLightningIndexer消费。当前仅支持这两个取值。</li>
+                <li>第二级（consumer，候选块内选token级topk）已拆分为独立算子aclnnQuantSparseLightningIndexer，不再由本接口的属性取值表达（本接口无独立的模式属性）。</li>
+                <li>仅在910B/910_93（arch22）上支持。</li>
           </ul>
       </td>
       <td>INT64</td>
@@ -485,7 +470,7 @@ aclnnStatus aclnnQuantLightningIndexerV2(
       <td>两级TopK第一级的输出：块级候选索引（无序，槽位语义为块号或-1无效槽）。</td>
       <td>
           <ul>
-                <li>candidateMode为1时输出有效值；为3（默认）时输出shape为(0,)的空tensor。</li>
+                <li>candidateTopkBlocks为2048（开启第一级）时输出有效值；为-1（默认，关闭）时输出shape为(0,)的空tensor。</li>
           </ul>
       </td>
       <td>INT32</td>
@@ -533,10 +518,10 @@ aclnnStatus aclnnQuantLightningIndexerV2(
   - weights：支持 FLOAT16，不支持 FLOAT32。
   - key 的 N 仅支持 1；query Q_N 与 key 的 N 之比仅支持 64 或 32（即 query Q_N 支持 64 或 32）。
   - topk 仅支持 [1, 2048]。
-  - 两级TopK第一级（`candidateMode`）当前仅在910B/910_93（arch22）上实现：
-    - `candidateMode`仅支持 1（source，输出 `candidateTopkIndexOutOutOptional`）与 3（关闭，默认值）；取值 2（consumer，候选块内选token级topk）已拆分为独立算子 `aclnnQuantSparseLightningIndexer`，本接口对取值 2 会报错拒绝。
-    - `candidateMode` 为 1 时，`layoutQOptional` 支持 BSND 与 TND（TND 需传入 `cuSeqlensQOptional`，且 `layoutKOptional` 必须为 PA_BBND）。
-    - `candidateTopkBlocks` 当前仅支持 -1（关闭，默认）与 2048（开启 source）；`candidateBlockSize` 在关闭时必须为 -1、开启时必须 > 0（当前仅支持 8）。
+  - 两级TopK第一级由 `candidateTopkBlocks` 开关控制（本接口无独立的模式属性），当前仅在910B/910_93（arch22）上实现：
+    - `candidateTopkBlocks` 仅支持 -1（关闭，默认值）与 2048（开启第一级/source，输出 `candidateTopkIndexOutOutOptional`）；`candidateBlockSize` 在关闭时必须为 -1、开启时必须 > 0（当前仅支持 8）。
+    - 开启时 `layoutQOptional` 支持 BSND 与 TND（TND 需传入 `cuSeqlensQOptional`，且 `layoutKOptional` 必须为 PA_BBND）。
+    - 第二级（consumer，候选块内选token级topk）已拆分为独立算子 `aclnnQuantSparseLightningIndexer`：本接口不再有表达它的属性取值，其输入即本接口输出的 `candidateTopkIndexOutOutOptional`。
 <!-- end id11 -->
 
 - **返回值：**
