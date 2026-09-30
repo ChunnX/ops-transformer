@@ -594,21 +594,22 @@ __aicore__ inline void StoreTileLse(
 //      * Vector Parallelism: 64 queries are processed concurrently across 2 AIVs
 //        (32 queries per AIV). To comply with Atlas 950PR BiSheng AIV lowering constraints
 //        (prohibiting dynamic scalar branching and branch-local register allocation inside
-//        unrolled SIMD vector loops), FlashMLA fast accumulation is realized via compile-time
-//        template specialization (HAS_RESCALE=false / AccumulateFp32Fast), completely
-//        bypassing vector multiply-add via fast addition (vapi::Add) without pipeline bubbles.
+//        unrolled SIMD vector loops), the rescale is issued as an unconditional
+//        broadcast-load plus vapi::MulDstAdd per row.
 //    - Decoding Stream (M=1):
 //      * Compute Intensity: Memory/bandwidth-bound on streaming KV cache.
 //      * Scalar Control: Single query row allows scalar thresholding in SS buffer
 //        (e.g., RESCALE_THRESHOLD). Rescaling can be deferred until cumulative
 //        delta-m exceeds a threshold, keeping O in L0C across multiple steps.
 //      * In Prefill, batching M=64 queries makes deferred scalar thresholding
-//        inefficient due to divergence across rows; therefore, template-specialized
-//        HAS_RESCALE fast-path addition represents the optimal Pareto boundary
-//        for Atlas 950PR Prefill attention.
-template <uint32_t DP, bool HAS_RESCALE = true>
+//        inefficient due to divergence across rows, so every Prefill block enters the
+//        multiply-add path. An identity-rescale (alpha == 1.0f) bypass would therefore
+//        need a call site that can prove alpha == 1; no such site exists in this kernel
+//        (alpha is produced by the online max update of the same block), so the branch
+//        was removed rather than left as unreachable specialization.
+template <uint32_t DP>
 __simd_vf__ inline void AccumulateFp32VF(__ubuf__ float *accum, __ubuf__ float *partial,
-                                         __ubuf__ float *alpha = nullptr) {
+                                         __ubuf__ float *alpha) {
     vapi::LocalMemBar<vapi::MemType::VEC_STORE, vapi::MemType::VEC_LOAD>();
     auto f = vapi::CreateMask<float, vapi::MaskPattern::ALL>();
     if constexpr (DP == 128) {
@@ -620,16 +621,9 @@ __simd_vf__ inline void AccumulateFp32VF(__ubuf__ float *accum, __ubuf__ float *
             vapi::LoadAlign(y0, partial + row * DP);
             vapi::LoadAlign(y1, partial + row * DP + 64);
 
-            if constexpr (HAS_RESCALE) {
-                vapi::LoadAlign<float, vapi::LoadDist::DIST_BRC_B32>(a0, alpha + row);
-                vapi::MulDstAdd(y0, a0, x0, f);
-                vapi::MulDstAdd(y1, a0, x1, f);
-            } else {
-                // FlashMLA Fast Path: alpha == 1.0f (no rescale needed)
-                // Bypass vector multiply-add via fast addition/免乘法通路
-                vapi::Add(y0, y0, x0, f);
-                vapi::Add(y1, y1, x1, f);
-            }
+            vapi::LoadAlign<float, vapi::LoadDist::DIST_BRC_B32>(a0, alpha + row);
+            vapi::MulDstAdd(y0, a0, x0, f);
+            vapi::MulDstAdd(y1, a0, x1, f);
             vapi::StoreAlign(accum + row * DP, y0, f);
             vapi::StoreAlign(accum + row * DP + 64, y1, f);
 
@@ -638,15 +632,9 @@ __simd_vf__ inline void AccumulateFp32VF(__ubuf__ float *accum, __ubuf__ float *
             vapi::LoadAlign(y0, partial + (row + 1) * DP);
             vapi::LoadAlign(y1, partial + (row + 1) * DP + 64);
 
-            if constexpr (HAS_RESCALE) {
-                vapi::LoadAlign<float, vapi::LoadDist::DIST_BRC_B32>(a1, alpha + row + 1);
-                vapi::MulDstAdd(y0, a1, x0, f);
-                vapi::MulDstAdd(y1, a1, x1, f);
-            } else {
-                // FlashMLA Fast Path: alpha == 1.0f
-                vapi::Add(y0, y0, x0, f);
-                vapi::Add(y1, y1, x1, f);
-            }
+            vapi::LoadAlign<float, vapi::LoadDist::DIST_BRC_B32>(a1, alpha + row + 1);
+            vapi::MulDstAdd(y0, a1, x0, f);
+            vapi::MulDstAdd(y1, a1, x1, f);
             vapi::StoreAlign(accum + (row + 1) * DP, y0, f);
             vapi::StoreAlign(accum + (row + 1) * DP + 64, y1, f);
         }
@@ -665,22 +653,14 @@ __simd_vf__ inline void AccumulateFp32VF(__ubuf__ float *accum, __ubuf__ float *
             vapi::LoadAlign(y2, partial + (row + 2) * DP);
             vapi::LoadAlign(y3, partial + (row + 3) * DP);
 
-            if constexpr (HAS_RESCALE) {
-                vapi::LoadAlign<float, vapi::LoadDist::DIST_BRC_B32>(a0, alpha + row + 0);
-                vapi::MulDstAdd(y0, a0, x0, f);
-                vapi::LoadAlign<float, vapi::LoadDist::DIST_BRC_B32>(a1, alpha + row + 1);
-                vapi::MulDstAdd(y1, a1, x1, f);
-                vapi::LoadAlign<float, vapi::LoadDist::DIST_BRC_B32>(a2, alpha + row + 2);
-                vapi::MulDstAdd(y2, a2, x2, f);
-                vapi::LoadAlign<float, vapi::LoadDist::DIST_BRC_B32>(a3, alpha + row + 3);
-                vapi::MulDstAdd(y3, a3, x3, f);
-            } else {
-                // FlashMLA Fast Path: alpha == 1.0f
-                vapi::Add(y0, y0, x0, f);
-                vapi::Add(y1, y1, x1, f);
-                vapi::Add(y2, y2, x2, f);
-                vapi::Add(y3, y3, x3, f);
-            }
+            vapi::LoadAlign<float, vapi::LoadDist::DIST_BRC_B32>(a0, alpha + row + 0);
+            vapi::MulDstAdd(y0, a0, x0, f);
+            vapi::LoadAlign<float, vapi::LoadDist::DIST_BRC_B32>(a1, alpha + row + 1);
+            vapi::MulDstAdd(y1, a1, x1, f);
+            vapi::LoadAlign<float, vapi::LoadDist::DIST_BRC_B32>(a2, alpha + row + 2);
+            vapi::MulDstAdd(y2, a2, x2, f);
+            vapi::LoadAlign<float, vapi::LoadDist::DIST_BRC_B32>(a3, alpha + row + 3);
+            vapi::MulDstAdd(y3, a3, x3, f);
 
             vapi::StoreAlign(accum + (row + 0) * DP, y0, f);
             vapi::StoreAlign(accum + (row + 1) * DP, y1, f);
@@ -690,10 +670,10 @@ __simd_vf__ inline void AccumulateFp32VF(__ubuf__ float *accum, __ubuf__ float *
     }
 }
 
-template <uint32_t DP, bool HAS_RESCALE0 = true, bool HAS_RESCALE1 = true>
+template <uint32_t DP>
 __simd_vf__ inline void AccumulateFp32PairVF(__ubuf__ float *accum, __ubuf__ float *partial0,
-                                             __ubuf__ float *partial1, __ubuf__ float *alpha0 = nullptr,
-                                             __ubuf__ float *alpha1 = nullptr) {
+                                             __ubuf__ float *partial1, __ubuf__ float *alpha0,
+                                             __ubuf__ float *alpha1) {
     vapi::LocalMemBar<vapi::MemType::VEC_STORE, vapi::MemType::VEC_LOAD>();
     auto f = vapi::CreateMask<float, vapi::MaskPattern::ALL>();
 
@@ -715,40 +695,24 @@ __simd_vf__ inline void AccumulateFp32PairVF(__ubuf__ float *accum, __ubuf__ flo
             vapi::LoadAlign(y0_1, partial0 + (row + 1) * DP);
             vapi::LoadAlign(y1_1, partial0 + (row + 1) * DP + 64);
 
-            if constexpr (HAS_RESCALE0) {
-                vapi::LoadAlign<float, vapi::LoadDist::DIST_BRC_B32>(a0_0, alpha0 + row);
-                vapi::MulDstAdd(x0_0, a0_0, y0_0, f);
-                vapi::MulDstAdd(x1_0, a0_0, y1_0, f);
-                vapi::LoadAlign<float, vapi::LoadDist::DIST_BRC_B32>(a0_1, alpha0 + row + 1);
-                vapi::MulDstAdd(x0_1, a0_1, y0_1, f);
-                vapi::MulDstAdd(x1_1, a0_1, y1_1, f);
-            } else {
-                // FlashMLA Fast Path: alpha0 == 1.0f
-                vapi::Add(x0_0, x0_0, y0_0, f);
-                vapi::Add(x1_0, x1_0, y1_0, f);
-                vapi::Add(x0_1, x0_1, y0_1, f);
-                vapi::Add(x1_1, x1_1, y1_1, f);
-            }
+            vapi::LoadAlign<float, vapi::LoadDist::DIST_BRC_B32>(a0_0, alpha0 + row);
+            vapi::MulDstAdd(x0_0, a0_0, y0_0, f);
+            vapi::MulDstAdd(x1_0, a0_0, y1_0, f);
+            vapi::LoadAlign<float, vapi::LoadDist::DIST_BRC_B32>(a0_1, alpha0 + row + 1);
+            vapi::MulDstAdd(x0_1, a0_1, y0_1, f);
+            vapi::MulDstAdd(x1_1, a0_1, y1_1, f);
 
             vapi::LoadAlign(z0_0, partial1 + row * DP);
             vapi::LoadAlign(z1_0, partial1 + row * DP + 64);
             vapi::LoadAlign(z0_1, partial1 + (row + 1) * DP);
             vapi::LoadAlign(z1_1, partial1 + (row + 1) * DP + 64);
 
-            if constexpr (HAS_RESCALE1) {
-                vapi::LoadAlign<float, vapi::LoadDist::DIST_BRC_B32>(a1_0, alpha1 + row);
-                vapi::MulDstAdd(x0_0, a1_0, z0_0, f);
-                vapi::MulDstAdd(x1_0, a1_0, z1_0, f);
-                vapi::LoadAlign<float, vapi::LoadDist::DIST_BRC_B32>(a1_1, alpha1 + row + 1);
-                vapi::MulDstAdd(x0_1, a1_1, z0_1, f);
-                vapi::MulDstAdd(x1_1, a1_1, z1_1, f);
-            } else {
-                // FlashMLA Fast Path: alpha1 == 1.0f
-                vapi::Add(x0_0, x0_0, z0_0, f);
-                vapi::Add(x1_0, x1_0, z1_0, f);
-                vapi::Add(x0_1, x0_1, z0_1, f);
-                vapi::Add(x1_1, x1_1, z1_1, f);
-            }
+            vapi::LoadAlign<float, vapi::LoadDist::DIST_BRC_B32>(a1_0, alpha1 + row);
+            vapi::MulDstAdd(x0_0, a1_0, z0_0, f);
+            vapi::MulDstAdd(x1_0, a1_0, z1_0, f);
+            vapi::LoadAlign<float, vapi::LoadDist::DIST_BRC_B32>(a1_1, alpha1 + row + 1);
+            vapi::MulDstAdd(x0_1, a1_1, z0_1, f);
+            vapi::MulDstAdd(x1_1, a1_1, z1_1, f);
 
             vapi::StoreAlign(accum + row * DP, x0_0, f);
             vapi::StoreAlign(accum + row * DP + 64, x1_0, f);
@@ -773,42 +737,28 @@ __simd_vf__ inline void AccumulateFp32PairVF(__ubuf__ float *accum, __ubuf__ flo
             vapi::LoadAlign(y2, partial0 + (row + 2) * DP);
             vapi::LoadAlign(y3, partial0 + (row + 3) * DP);
 
-            if constexpr (HAS_RESCALE0) {
-                vapi::LoadAlign<float, vapi::LoadDist::DIST_BRC_B32>(a0_0, alpha0 + row + 0);
-                vapi::MulDstAdd(x0, a0_0, y0, f);
-                vapi::LoadAlign<float, vapi::LoadDist::DIST_BRC_B32>(a0_1, alpha0 + row + 1);
-                vapi::MulDstAdd(x1, a0_1, y1, f);
-                vapi::LoadAlign<float, vapi::LoadDist::DIST_BRC_B32>(a0_2, alpha0 + row + 2);
-                vapi::MulDstAdd(x2, a0_2, y2, f);
-                vapi::LoadAlign<float, vapi::LoadDist::DIST_BRC_B32>(a0_3, alpha0 + row + 3);
-                vapi::MulDstAdd(x3, a0_3, y3, f);
-            } else {
-                vapi::Add(x0, x0, y0, f);
-                vapi::Add(x1, x1, y1, f);
-                vapi::Add(x2, x2, y2, f);
-                vapi::Add(x3, x3, y3, f);
-            }
+            vapi::LoadAlign<float, vapi::LoadDist::DIST_BRC_B32>(a0_0, alpha0 + row + 0);
+            vapi::MulDstAdd(x0, a0_0, y0, f);
+            vapi::LoadAlign<float, vapi::LoadDist::DIST_BRC_B32>(a0_1, alpha0 + row + 1);
+            vapi::MulDstAdd(x1, a0_1, y1, f);
+            vapi::LoadAlign<float, vapi::LoadDist::DIST_BRC_B32>(a0_2, alpha0 + row + 2);
+            vapi::MulDstAdd(x2, a0_2, y2, f);
+            vapi::LoadAlign<float, vapi::LoadDist::DIST_BRC_B32>(a0_3, alpha0 + row + 3);
+            vapi::MulDstAdd(x3, a0_3, y3, f);
 
             vapi::LoadAlign(z0, partial1 + (row + 0) * DP);
             vapi::LoadAlign(z1, partial1 + (row + 1) * DP);
             vapi::LoadAlign(z2, partial1 + (row + 2) * DP);
             vapi::LoadAlign(z3, partial1 + (row + 3) * DP);
 
-            if constexpr (HAS_RESCALE1) {
-                vapi::LoadAlign<float, vapi::LoadDist::DIST_BRC_B32>(a1_0, alpha1 + row + 0);
-                vapi::MulDstAdd(x0, a1_0, z0, f);
-                vapi::LoadAlign<float, vapi::LoadDist::DIST_BRC_B32>(a1_1, alpha1 + row + 1);
-                vapi::MulDstAdd(x1, a1_1, z1, f);
-                vapi::LoadAlign<float, vapi::LoadDist::DIST_BRC_B32>(a1_2, alpha1 + row + 2);
-                vapi::MulDstAdd(x2, a1_2, z2, f);
-                vapi::LoadAlign<float, vapi::LoadDist::DIST_BRC_B32>(a1_3, alpha1 + row + 3);
-                vapi::MulDstAdd(x3, a1_3, z3, f);
-            } else {
-                vapi::Add(x0, x0, z0, f);
-                vapi::Add(x1, x1, z1, f);
-                vapi::Add(x2, x2, z2, f);
-                vapi::Add(x3, x3, z3, f);
-            }
+            vapi::LoadAlign<float, vapi::LoadDist::DIST_BRC_B32>(a1_0, alpha1 + row + 0);
+            vapi::MulDstAdd(x0, a1_0, z0, f);
+            vapi::LoadAlign<float, vapi::LoadDist::DIST_BRC_B32>(a1_1, alpha1 + row + 1);
+            vapi::MulDstAdd(x1, a1_1, z1, f);
+            vapi::LoadAlign<float, vapi::LoadDist::DIST_BRC_B32>(a1_2, alpha1 + row + 2);
+            vapi::MulDstAdd(x2, a1_2, z2, f);
+            vapi::LoadAlign<float, vapi::LoadDist::DIST_BRC_B32>(a1_3, alpha1 + row + 3);
+            vapi::MulDstAdd(x3, a1_3, z3, f);
 
             vapi::StoreAlign(accum + (row + 0) * DP, x0, f);
             vapi::StoreAlign(accum + (row + 1) * DP, x1, f);
@@ -1151,28 +1101,17 @@ __simd_vf__ inline void UpdateWidePairVF(__ubuf__ T *out, __ubuf__ float *accum,
 
 class OutAccumulator {
 public:
-    template <uint32_t DP, bool HAS_RESCALE = true>
+    template <uint32_t DP>
     __aicore__ static inline void AccumulateFp32(__ubuf__ float *accum, __ubuf__ float *partial,
-                                                  __ubuf__ float *alpha = nullptr) {
-        AccumulateFp32VF<DP, HAS_RESCALE>(accum, partial, alpha);
+                                                  __ubuf__ float *alpha) {
+        AccumulateFp32VF<DP>(accum, partial, alpha);
     }
 
     template <uint32_t DP>
-    __aicore__ static inline void AccumulateFp32Fast(__ubuf__ float *accum, __ubuf__ float *partial) {
-        AccumulateFp32VF<DP, false>(accum, partial, nullptr);
-    }
-
-    template <uint32_t DP, bool HAS_RESCALE0 = true, bool HAS_RESCALE1 = true>
     __aicore__ static inline void AccumulateFp32Pair(__ubuf__ float *accum, __ubuf__ float *partial0,
-                                                      __ubuf__ float *partial1, __ubuf__ float *alpha0 = nullptr,
-                                                      __ubuf__ float *alpha1 = nullptr) {
-        AccumulateFp32PairVF<DP, HAS_RESCALE0, HAS_RESCALE1>(accum, partial0, partial1, alpha0, alpha1);
-    }
-
-    template <uint32_t DP>
-    __aicore__ static inline void AccumulateFp32PairFast(__ubuf__ float *accum, __ubuf__ float *partial0,
-                                                          __ubuf__ float *partial1) {
-        AccumulateFp32PairVF<DP, false, false>(accum, partial0, partial1, nullptr, nullptr);
+                                                      __ubuf__ float *partial1, __ubuf__ float *alpha0,
+                                                      __ubuf__ float *alpha1) {
+        AccumulateFp32PairVF<DP>(accum, partial0, partial1, alpha0, alpha1);
     }
 
     // Two-level PV accumulation policy shared by both datapaths. `fp32+fp16` (the default

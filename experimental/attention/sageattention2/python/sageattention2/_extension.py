@@ -50,8 +50,9 @@ class AscendExtensionRegistry:
             "-fvisibility=hidden",
             "-Wno-deprecated-declarations",
         ]
-        if sys.platform == "linux":
-            compiler_flags.append("-D_GLIBCXX_USE_CXX11_ABI=0")
+        import torch
+        cxx11_abi = "1" if getattr(torch._C, "_GLIBCXX_USE_CXX11_ABI", True) else "0"
+        compiler_flags.append(f"-D_GLIBCXX_USE_CXX11_ABI={cxx11_abi}")
 
         linker_flags = [
             f"-L{npu_root}/lib",

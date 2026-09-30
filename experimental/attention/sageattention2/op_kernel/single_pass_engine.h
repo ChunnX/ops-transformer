@@ -407,7 +407,7 @@ public:
             microkernel::FastQuant<T, WIDE>::ProcessStats(
                 k, v, workspace + tilingData.mean, workspace + tilingData.vMean, params);
 
-            AscendC::SyncAll<true>();
+            AscendC::SyncAll<false>();
 
             microkernel::FastQuant<T, WIDE>::Quantize(
                 q, k, v, workspace + tilingData.mean, workspace + tilingData.vMean,
@@ -418,7 +418,7 @@ public:
             AscendC::PipeBarrier<PIPE_ALL>();
         }
 
-        AscendC::SyncAll<false>();
+        AscendC::SyncAll<true>();
 
         if constexpr (WIDE) {
             ExecuteWideStream<T, CAUSAL>(
