@@ -136,8 +136,6 @@ __aicore__ inline void CenterVRowsVF(__ubuf__ T *rows, __ubuf__ float *mean, uin
 __simd_callee__ __attribute__((always_inline)) inline void BroadcastGroupMaxima(__ubuf__ float *maxima, uint32_t group) {
     if (group <= 1) return;
     AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
-    AscendC::SetFlag<AscendC::HardEvent::V_S>(0);
-    AscendC::WaitFlag<AscendC::HardEvent::V_S>(0);
     for (uint32_t offset = 0; offset < 64; offset += group) {
         float lead = maxima[offset];
         for (uint32_t i = 1; i < group; ++i) {
@@ -148,8 +146,6 @@ __simd_callee__ __attribute__((always_inline)) inline void BroadcastGroupMaxima(
             maxima[offset + i] = lead;
         }
     }
-    AscendC::SetFlag<AscendC::HardEvent::S_V>(0);
-    AscendC::WaitFlag<AscendC::HardEvent::S_V>(0);
     AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
 }
 
