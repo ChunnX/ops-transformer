@@ -128,8 +128,8 @@ def gen_golden_data_all_to_all_matmul(m, k, n, rank_num, dtype="fp16", lm=0):
                 remote_partial = remote_partial + torch.matmul(seg_a, seg_b.t())
 
             self_q = (self_partial + bias).to(target)
-            remote_q = remote_partial.to(target)
-            out = (self_q.float() + remote_q.float()).to(target)
+            # remote 保持 fp32 直接加（假设 fixpipe 原子加在 fp32 做，共 2 次取整）
+            out = (self_q.float() + remote_partial).to(target)
 
         out_all_ranks.append(out)
 
