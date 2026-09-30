@@ -123,9 +123,11 @@ static ge::graphStatus KvCacheTurboQuantTilingFunc(gert::TilingContext *context)
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
     const int64_t *mseBitsPtr = attrs->GetAttrPointer<int64_t>(ATTR_MSE_BITS);
-    const int64_t mseBits = (mseBitsPtr == nullptr) ? 3 : *mseBitsPtr;
-    OP_CHECK_IF(mseBits != 2 && mseBits != 3 && mseBits != 4,
-                OP_LOGE(context, "mse_bits must be 2, 3 or 4, got %ld", mseBits), return ge::GRAPH_FAILED);
+    const int64_t mseBits = (mseBitsPtr == nullptr) ? KCTQ_MSE_BITS_DEFAULT : *mseBitsPtr;
+    OP_CHECK_IF(mseBits < KCTQ_MSE_BITS_MIN || mseBits > KCTQ_MSE_BITS_MAX,
+                OP_LOGE(context, "mse_bits must be in [%ld, %ld], got %ld", KCTQ_MSE_BITS_MIN,
+                        KCTQ_MSE_BITS_MAX, mseBits),
+                return ge::GRAPH_FAILED);
 
     const uint64_t totalRows = static_cast<uint64_t>(numTokens) * static_cast<uint64_t>(numHeads);
 
@@ -228,13 +230,15 @@ static ge::graphStatus KvCacheTurboQuantTilingFunc(gert::TilingContext *context)
     OP_CHECK_NULL_WITH_CONTEXT(context, workspace);
     workspace[0] = static_cast<size_t>(platform.GetLibApiWorkSpaceSize() + td->get_wsBytes());
 
-    const size_t capacity = context->GetRawTilingData()->GetCapacity();
+    auto *rawTilingData = context->GetRawTilingData();
+    OP_CHECK_NULL_WITH_CONTEXT(context, rawTilingData);
+    const size_t capacity = rawTilingData->GetCapacity();
     OP_CHECK_IF(static_cast<size_t>(td->GetDataSize()) > capacity,
                 OP_LOGE(context, "tiling data (%zu) exceeds the buffer capacity (%zu)",
                         static_cast<size_t>(td->GetDataSize()), capacity),
                 return ge::GRAPH_FAILED);
-    td->SaveToBuffer(context->GetRawTilingData()->GetData(), capacity);
-    context->GetRawTilingData()->SetDataSize(td->GetDataSize());
+    td->SaveToBuffer(rawTilingData->GetData(), capacity);
+    rawTilingData->SetDataSize(td->GetDataSize());
     return ge::GRAPH_SUCCESS;
 }
 

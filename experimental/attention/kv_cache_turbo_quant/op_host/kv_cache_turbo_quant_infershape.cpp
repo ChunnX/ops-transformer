@@ -15,6 +15,7 @@
 
 #include "register/op_impl_registry.h"
 #include "log/log.h"
+#include "../op_kernel/kv_cache_turbo_quant_tiling_data.h"
 
 namespace ops {
 namespace {
@@ -42,9 +43,11 @@ ge::graphStatus InferShapeKvCacheTurboQuant(gert::InferShapeContext *context)
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
     const int64_t *mseBitsPtr = attrs->GetAttrPointer<int64_t>(ATTR_MSE_BITS);
-    const int64_t mseBits = (mseBitsPtr == nullptr) ? 3 : *mseBitsPtr;
-    OP_CHECK_IF(mseBits != 2 && mseBits != 3 && mseBits != 4,
-                OP_LOGE(context, "mse_bits must be 2, 3 or 4, got %ld", mseBits), return ge::GRAPH_FAILED);
+    const int64_t mseBits = (mseBitsPtr == nullptr) ? optiling::KCTQ_MSE_BITS_DEFAULT : *mseBitsPtr;
+    OP_CHECK_IF(mseBits < optiling::KCTQ_MSE_BITS_MIN || mseBits > optiling::KCTQ_MSE_BITS_MAX,
+                OP_LOGE(context, "mse_bits must be in [%ld, %ld], got %ld", optiling::KCTQ_MSE_BITS_MIN,
+                        optiling::KCTQ_MSE_BITS_MAX, mseBits),
+                return ge::GRAPH_FAILED);
 
     gert::Shape *idxShape = context->GetOutputShape(OUT_QUANT_IDX);
     gert::Shape *qjlShape = context->GetOutputShape(OUT_QUANT_QJL);

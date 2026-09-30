@@ -20,39 +20,38 @@
 
 namespace optiling {
 
-// The codebook of this operator is the d=128 Lloyd-Max table, so headDim is fixed by design.
 constexpr uint32_t KCTQ_HEAD_DIM = 128;
-// Task scope: standard MHA/GQA KV heads live in [4, 32]; out-of-scope inputs are rejected by tiling.
 constexpr uint32_t KCTQ_MIN_HEADS = 4;
 constexpr uint32_t KCTQ_MAX_HEADS = 32;
-// One cube core serves this many vector cores (the kernel is declared MIX_AIC_1_2).
 constexpr uint32_t KCTQ_AIV_PER_AIC = 2;
+constexpr int64_t KCTQ_MSE_BITS_MIN = 2;
+constexpr int64_t KCTQ_MSE_BITS_MAX = 4;
+constexpr int64_t KCTQ_MSE_BITS_DEFAULT = 3;
 
-// Workspace layout (byte offsets from the user workspace base), all 512B aligned.
-// The workspace reserves aivRowStride rows per AIV (baseM aligned), not rowsPerCore / AIV per AIC:
-// the C tiles are written by the cube straight into the workspace, so the last, partial tile of an
-// AIV still occupies a whole baseM block and must not reach into the next AIV's rows.
+// Device-side POD mirror. Field order and types must match the host TilingData.
+// The ws* fields are byte offsets into the user workspace (512B aligned); wsR aliases wsU,
+// wsP aliases wsY (the four row buffers are used in disjoint phases of the pipeline).
 struct KvCacheTurboQuantTilingData {
-    TCubeTiling cubeTiling;  // single-core view of the (rowsPerCore x headDim) x (headDim x headDim) GEMM
-    uint32_t mseBits;        // 2 / 3 / 4
-    uint32_t usedCoreNum;    // AI core blocks (AIC and AIV are 1:1)
-    uint32_t totalRows;      // numTokens * numKvHeads
-    uint32_t rowsPerCore;    // rows owned by one core (16 aligned)
-    uint32_t alignedRows;    // rowsPerCore * usedCoreNum
-    uint32_t aivRowStride;   // rows reserved per AIV in the workspace (baseM aligned)
-    uint32_t headDim;        // 128
-    uint32_t idxBytesPerRow; // headDim * mseBits / 8
-    uint32_t qjlBytesPerRow; // headDim / 8
-    uint64_t wsU;            // normalized vectors (fp32)  [wsRows, headDim]
-    uint64_t wsY;            // rotated vectors   (fp32)  [wsRows, headDim]
-    uint64_t wsR;            // residual unit vectors (fp32) [wsRows, headDim] (aliases wsU)
-    uint64_t wsP;            // residual projections  (fp32) [wsRows, headDim] (aliases wsY)
-    uint64_t wsNorm;         // per row L2 norm   (fp32)  [wsRows]
-    uint64_t wsBytes;        // total user workspace bytes
-    uint32_t matrixBf16;     // 1 = rotation_matrix / qjl_matrix arrive as bf16 and are upcast to fp32
-    uint32_t metadataFp16;   // 1 = quant_norm / quant_gamma are fp16 instead of bf16
-    uint64_t wsRotMat;       // fp32 copy of rotation_matrix (matrixBf16 only) [headDim, headDim]
-    uint64_t wsQjlMat;       // fp32 copy of qjl_matrix     (matrixBf16 only) [headDim, headDim]
+    TCubeTiling cubeTiling;
+    uint32_t mseBits;
+    uint32_t usedCoreNum;
+    uint32_t totalRows;
+    uint32_t rowsPerCore;      // 16 aligned
+    uint32_t alignedRows;
+    uint32_t aivRowStride;
+    uint32_t headDim;
+    uint32_t idxBytesPerRow;
+    uint32_t qjlBytesPerRow;
+    uint64_t wsU;              // [wsRows, headDim]
+    uint64_t wsY;
+    uint64_t wsR;
+    uint64_t wsP;
+    uint64_t wsNorm;           // [wsRows]
+    uint64_t wsBytes;
+    uint32_t matrixBf16;       // 1 = matrices arrive as bf16, upcast to fp32
+    uint32_t metadataFp16;     // 1 = quant_norm / quant_gamma are fp16
+    uint64_t wsRotMat;         // fp32 copy of rotation_matrix (matrixBf16 only)
+    uint64_t wsQjlMat;         // fp32 copy of qjl_matrix      (matrixBf16 only)
 };
 
 } // namespace optiling
