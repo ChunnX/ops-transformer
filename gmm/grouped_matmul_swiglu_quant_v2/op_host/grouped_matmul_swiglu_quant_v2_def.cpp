@@ -365,8 +365,63 @@ public:
             .ExtendCfgInfo("coreType.value", "AiCore")
             .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
             .ExtendCfgInfo("opFile.value", "grouped_matmul_swiglu_quant_v2_apt");
+
+        OpAICoreConfig config950A4W4Bf16;
+        config950A4W4Bf16.Input("x")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_FLOAT4_E2M1})
+            .Format({ge::FORMAT_ND});
+        config950A4W4Bf16.Input("x_scale")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_FLOAT8_E8M0})
+            .Format({ge::FORMAT_ND});
+        config950A4W4Bf16.Input("group_list")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_INT64})
+            .Format({ge::FORMAT_ND});
+        config950A4W4Bf16.Input("weight")
+            .ParamType(DYNAMIC)
+            .DataType({ge::DT_FLOAT4_E2M1})
+            .Format({ge::FORMAT_FRACTAL_NZ});
+        config950A4W4Bf16.Input("weight_scale")
+            .ParamType(DYNAMIC)
+            .DataType({ge::DT_FLOAT8_E8M0})
+            .Format({ge::FORMAT_ND});
+        config950A4W4Bf16.Input("weight_assist_matrix")
+            .ParamType(DYNAMIC)
+            .DataType({ge::DT_FLOAT})
+            .Format({ge::FORMAT_ND});
+        config950A4W4Bf16.Input("bias")
+            .ParamType(OPTIONAL)
+            .DataType({ge::DT_FLOAT})
+            .Format({ge::FORMAT_ND});
+        config950A4W4Bf16.Input("smooth_scale")
+            .ParamType(OPTIONAL)
+            .DataType({ge::DT_FLOAT})
+            .Format({ge::FORMAT_ND});
+        config950A4W4Bf16.Output("y")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_BF16})
+            .Format({ge::FORMAT_ND});
+        // The internal V2 graph retains y_scale for ABI compatibility. The V3 ACLNN BF16 path does not expose it.
+        config950A4W4Bf16.Output("y_scale")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_FLOAT8_E8M0})
+            .Format({ge::FORMAT_ND});
+        config950A4W4Bf16.DynamicCompileStaticFlag(true)
+            .DynamicFormatFlag(true)
+            .DynamicRankSupportFlag(true)
+            .DynamicShapeSupportFlag(true)
+            .NeedCheckSupportFlag(false)
+            .PrecisionReduceFlag(true)
+            .ExtendCfgInfo("prebuildPattern.value", "Opaque")
+            .ExtendCfgInfo("coreType.value", "AiCore")
+            .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
+            .ExtendCfgInfo("opFile.value", "grouped_matmul_swiglu_quant_v2_apt");
         this->AICore().AddConfig("ascend950", config91095);
         this->AICore().AddConfig("ascend350", config91095);
+        this->AICore().AddConfig("ascend950", config950A4W4Bf16);
+        this->AICore().AddConfig("ascend350", config950A4W4Bf16);
     }
 };
 

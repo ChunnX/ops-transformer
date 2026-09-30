@@ -63,7 +63,8 @@ constexpr int64_t V3_MX_GROUP_SIZE = 64;
 constexpr int64_t V3_MX_SCALE_PAIR = 2;
 constexpr int64_t V3_MXFP8_N_ALIGN = 64;
 constexpr uint64_t V3_MAX_BASE_N = 256;
-constexpr int64_t V3_NZ_C0_SIZE = 32;
+constexpr int64_t V3_NZ_C0_SIZE_B8 = 32;
+constexpr int64_t V3_NZ_C0_SIZE_B4 = 64;
 constexpr int64_t V3_NZ_K0_SIZE = 16;
 constexpr int64_t V3_SWIGLU_SPLIT = 2;
 // This iteration intentionally exposes only the mode-2 SwiGLU formula.
@@ -1394,15 +1395,23 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeV3Dtype()
     inputParams_.aQuantMode = QuantMode::MX_PERGROUP_MODE;
     inputParams_.bQuantMode = QuantMode::MX_PERGROUP_MODE;
 
-    OP_CHECK_IF(inputParams_.aDtype != ge::DT_FLOAT8_E4M3FN || inputParams_.bDtype != ge::DT_FLOAT8_E4M3FN,
-                OP_LOGE(context_->GetNodeName(), "x and weight must be FLOAT8_E4M3FN"), return false);
+    const bool isMxfp8 = inputParams_.aDtype == ge::DT_FLOAT8_E4M3FN && inputParams_.bDtype == ge::DT_FLOAT8_E4M3FN;
+    const bool isMxfp4A4W4 = inputParams_.aDtype == ge::DT_FLOAT4_E2M1 && inputParams_.bDtype == ge::DT_FLOAT4_E2M1;
+    OP_CHECK_IF(
+        !isMxfp8 && !isMxfp4A4W4,
+        OP_LOGE(context_->GetNodeName(), "x and weight must be FLOAT8_E4M3FN/FLOAT8_E4M3FN or FLOAT4_E2M1/FLOAT4_E2M1"),
+        return false);
     OP_CHECK_IF(inputParams_.scaleDtype != ge::DT_FLOAT8_E8M0 || inputParams_.perTokenScaleDtype != ge::DT_FLOAT8_E8M0,
                 OP_LOGE(context_->GetNodeName(), "x_scale and weight_scale must be FLOAT8_E8M0"), return false);
     OP_CHECK_IF(groupListDesc->GetDataType() != ge::DT_INT64,
                 OP_LOGE(context_->GetNodeName(), "group_list must be INT64"), return false);
-    OP_CHECK_IF(inputParams_.outDataDtype != ge::DT_FLOAT8_E4M3FN || inputParams_.outScaleDtype != ge::DT_FLOAT8_E8M0,
-                OP_LOGE(context_->GetNodeName(), "V3 output must be FLOAT8_E4M3FN with FLOAT8_E8M0 scale"),
-                return false);
+    OP_CHECK_IF(inputParams_.outScaleDtype != ge::DT_FLOAT8_E8M0,
+                OP_LOGE(context_->GetNodeName(), "V3 internal output scale must be FLOAT8_E8M0"), return false);
+    OP_CHECK_IF(
+        (isMxfp8 && inputParams_.outDataDtype != ge::DT_FLOAT8_E4M3FN) ||
+            (isMxfp4A4W4 && inputParams_.outDataDtype != ge::DT_BF16),
+        OP_LOGE(context_->GetNodeName(), "V3 output must be FLOAT8_E4M3FN for MXFP8 or BF16 for FLOAT4_E2M1 A4W4"),
+        return false);
     OP_CHECK_IF(
         inputParams_.aFormat != ge::FORMAT_ND || inputParams_.bFormat != ge::FORMAT_FRACTAL_NZ ||
             inputParams_.scaleFormat != ge::FORMAT_ND || inputParams_.cFormat != ge::FORMAT_ND ||
@@ -1442,18 +1451,25 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckV3ShapeAndScale(const gert::Shape
         weightShape.GetDim(0) != e || weightK != k || n <= 0,
         OP_LOGE(context_->GetNodeName(), "weight view must be (E, K, N) or transposed (E, N, K), with positive N"),
         return false);
-    // FRACTAL_NZ follows the V2 MXFP8 contract: non-transposed (E, K, N)
-    // views use storage (E, ceil(N/32), ceil(K/16), 16, 32), while
-    // transposed (E, N, K) views use (E, ceil(K/32), ceil(N/16), 16, 32).
+    const bool isMxfp4A4W4 = IsFp4(inputParams_.aDtype);
+    const int64_t nAlignment = isMxfp4A4W4 ? V3_MXFP8_N_ALIGN * V3_SWIGLU_SPLIT : V3_MXFP8_N_ALIGN;
+    OP_CHECK_IF(n % nAlignment != 0, OP_LOGE(context_->GetNodeName(), "N must be divisible by %ld", nAlignment),
+                return false);
+    OP_CHECK_IF(isMxfp4A4W4 && (k % V3_SWIGLU_SPLIT != 0 || k == V3_SWIGLU_SPLIT),
+                OP_LOGE(context_->GetNodeName(), "FLOAT4_E2M1 requires an even K other than 2 for packed storage"),
+                return false);
+    const int64_t nzC0Size = IsFp4(inputParams_.aDtype) ? V3_NZ_C0_SIZE_B4 : V3_NZ_C0_SIZE_B8;
+    // FRACTAL_NZ uses C0=32 for FP8 and C0=64 for FP4. Non-transposed
+    // (E, K, N) views use storage (E, ceil(N/C0), ceil(K/16), 16, C0).
     const int64_t expectedStorageDim1 =
-        inputParams_.transB ? GroupedMatmul::CeilDiv(k, V3_NZ_C0_SIZE) : GroupedMatmul::CeilDiv(n, V3_NZ_C0_SIZE);
+        inputParams_.transB ? GroupedMatmul::CeilDiv(k, nzC0Size) : GroupedMatmul::CeilDiv(n, nzC0Size);
     const int64_t expectedStorageDim2 =
         inputParams_.transB ? GroupedMatmul::CeilDiv(n, V3_NZ_K0_SIZE) : GroupedMatmul::CeilDiv(k, V3_NZ_K0_SIZE);
     OP_CHECK_IF(weightStorageShape.GetDimNum() != V3_WEIGHT_STORAGE_DIM_NUM || weightStorageShape.GetDim(0) != e ||
                     weightStorageShape.GetDim(BATCHED_MATRIX_ROW_DIM) != expectedStorageDim1 ||
                     weightStorageShape.GetDim(BATCHED_MATRIX_COLUMN_DIM) != expectedStorageDim2 ||
                     weightStorageShape.GetDim(NZ_K0_DIM) != V3_NZ_K0_SIZE ||
-                    weightStorageShape.GetDim(NZ_C0_DIM) != V3_NZ_C0_SIZE,
+                    weightStorageShape.GetDim(NZ_C0_DIM) != nzC0Size,
                 OP_LOGE(context_->GetNodeName(),
                         "weight storage shape is not the expected FRACTAL_NZ shape for the transpose setting"),
                 return false);
