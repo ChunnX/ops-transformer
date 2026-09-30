@@ -269,17 +269,17 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScaleGetWorkspaceSize(
     const char* qQuantMode, const char* kQuantMode, aclTensor* qOut, aclTensor* qScaleOptional, uint64_t* workspaceSize,
     aclOpExecutor** executor)
 {
-    const char* layoutQkvAttr = QkvRmsNormRopeCacheWithKScale::GetLayoutQkvOrDefault(layoutQkv);
-    const char* layoutQOutAttr = QkvRmsNormRopeCacheWithKScale::GetLayoutQOutOrDefault(layoutQOut);
-    const auto parsedQQuantMode = QkvRmsNormRopeCacheWithKScale::ParseQQuantMode(qQuantMode);
-    const auto parsedKQuantMode = QkvRmsNormRopeCacheWithKScale::ParseKQuantMode(kQuantMode);
     L2_DFX_PHASE_1(
         aclnnQkvRmsNormRopeCacheWithKScale,
         DFX_IN(qkv, qGamma, kGamma, cosSin, slotMapping, kCacheRef, vCacheRef, kScaleCacheRef, queryStartLocOptional,
                seqLensOptional, rotationOptional, vScaleOptional, mropePositionOptional, headNums, layoutQkv,
                layoutQOut, epsilon, mropeSectionOptional, qQuantMode, kQuantMode),
-        DFX_OUT(kCacheRef, vCacheRef, kScaleCacheRef, qOut, qScaleOptional));
+        DFX_OUT(qOut, qScaleOptional, kCacheRef, vCacheRef, kScaleCacheRef));
 
+    const char* layoutQkvAttr = QkvRmsNormRopeCacheWithKScale::GetLayoutQkvOrDefault(layoutQkv);
+    const char* layoutQOutAttr = QkvRmsNormRopeCacheWithKScale::GetLayoutQOutOrDefault(layoutQOut);
+    const auto parsedQQuantMode = QkvRmsNormRopeCacheWithKScale::ParseQQuantMode(qQuantMode);
+    const auto parsedKQuantMode = QkvRmsNormRopeCacheWithKScale::ParseKQuantMode(kQuantMode);
     auto params = QkvRmsNormRopeCacheWithKScale::MakeParams(
         qkv, qGamma, kGamma, cosSin, slotMapping, kCacheRef, vCacheRef, kScaleCacheRef, queryStartLocOptional,
         seqLensOptional, rotationOptional, vScaleOptional, mropePositionOptional, headNums, layoutQkvAttr,
