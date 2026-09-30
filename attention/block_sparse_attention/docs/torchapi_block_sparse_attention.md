@@ -24,7 +24,7 @@
 > [!NOTE]
 >
 > <!-- npu="950" id10 -->
-> <term>Ascend 950PR&950DT系列产品</term>支持`quant_mode=0`（非量化的float16/bfloat16）、`quant_mode=1`（FP8量化）、`quant_mode=2/3`（MXFP4量化）。
+> <term>Ascend 950PR&950DT系列产品</term>支持`quant_mode=0`（非量化的float16/bfloat16）、`quant_mode=1`（FP8量化）、`quant_mode=2/3`（MXFP4量化）、`quant_mode=4`（MXFP8 OCP量化）。
 > <!-- end id10 -->
 > <!-- npu="910b,A3" id11 -->
 > <term>Atlas A2系列产品</term>、<term>Atlas A3系列产品</term>仅支持`quant_mode=0`（非量化的float16/bfloat16输入）。
@@ -41,6 +41,7 @@
   - **非量化场景**（`quant_mode=0`，默认）：Q/K/V 均为 float16 或 bfloat16；
   - **FP8场景**（`quant_mode=1`）：Q/K/V 均为 float8_e4m3fn，携带 FP32 反量化缩放因子，输出反量化为 float16 或 bfloat16；
   - **MXFP4场景**（`quant_mode=2/3`）：Q/K/V 为 float4_e2m1fn_x2（以 uint8 传入），携带 float8_e8m0fnu descale 张量，输出反量化为 float16 或 bfloat16。
+  - **MXFP8场景**（`quant_mode=4`）：Q/K/V 为 float8_e4m3fn，携带 float8_e8m0fnu descale 张量，输出反量化为 float16 或 bfloat16。
 
 - **计算公式**：
 
@@ -114,7 +115,7 @@ cann_ops_transformer.block_sparse_attention(
 | actual_seq_lengths_kv | list[int] | TND时必选/其余可选 | 每个batch对应的key/value实际序列长度 | int64 | - | 长度为B | - |
 | return_softmax_lse | bool | 可选 | 是否使能softmaxLse输出，默认False | BOOL | - | - | - |
 | mask_type | int | 可选 | attention计算中的掩码类型，默认0，当前仅支持0 | int64 | - | - | - |
-| quant_mode | int | 可选 | 量化模式，默认0。取值含义：0-非量化；1-FP8量化，Q/K/V为float8_e4m3fn；2-MXFP4 OCP量化，量化scale向下截断；3-MXFP4 CX量化，自定义量化量程，量化scale向上截断。MXFP4量化公式见「约束说明」 | int64 | - | - | - |
+| quant_mode | int | 可选 | 量化模式，默认0。取值含义：0-非量化；1-FP8量化，Q/K/V为float8_e4m3fn；2-MXFP4 OCP量化，量化scale向下截断；3-MXFP4 CX量化，自定义量化量程，量化scale向上截断；4-MXFP8 OCP量化，Q/K/V为float8_e4m3fn，scale为float8_e8m0fnu。量化公式见「约束说明」 | int64 | - | - | - |
 | block_size | int | 可选 | PagedAttention的block大小，默认0，当前不支持PagedAttention，仅支持0 | int64 | - | - | - |
 | pre_tokens | int | 可选 | 滑窗attention需要向前包含的token数，默认2147483647，当前仅支持2147483647 | int64 | - | - | - |
 | next_tokens | int | 可选 | 滑窗attention需要向后包含的token数，默认2147483647，当前仅支持2147483647 | int64 | - | - | - |
@@ -137,12 +138,12 @@ cann_ops_transformer.block_sparse_attention(
 ## 约束说明
 
 - q_input_layout与kv_input_layout必须保持一致，且仅支持"TND"、"BNSD"、"BSND"。
-- query、key、value的数据类型必须一致，支持float16和bfloat16；FP8（`quant_mode=1`）时三者必须同时为float8_e4m3fn；MXFP4（`quant_mode=2/3`）时三者必须同时为uint8（float4_e2m1fn_x2伪装，每字节打包2个fp4数值）。
+- query、key、value的数据类型必须一致，支持float16和bfloat16；FP8（`quant_mode=1`）与MXFP8（`quant_mode=4`）时三者必须同时为float8_e4m3fn；MXFP4（`quant_mode=2/3`）时三者必须同时为uint8（float4_e2m1fn_x2伪装，每字节打包2个fp4数值）。
 - query、key、value的D轴当前仅支持64或128。
 - query的头数N1（由query的shape推断，接口不显式传入）与num_key_value_heads（N2）需满足 N1 >= N2 && N1 % N2 == 0。
 - block_shape必须包含两个元素[block_x, block_y]，值必须大于0，各产品倍数约束如下：
   <!-- npu="950" id7 -->
-  - 在<term>Ascend 950PR&950DT系列产品</term>上：block_y须为16的倍数；MXFP4量化（`quant_mode=2/3`）时，block_x和block_y均只支持64的倍数。
+  - 在<term>Ascend 950PR&950DT系列产品</term>上：block_y须为16的倍数；MXFP4量化（`quant_mode=2/3`）与MXFP8量化（`quant_mode=4`）时，block_x和block_y均只支持64的倍数。
   <!-- end id7 -->
   <!-- npu="910b,A3" id8 -->
   - 在<term>Atlas A2系列产品</term>、<term>Atlas A3系列产品</term>上：block_y须为128的倍数。
@@ -207,6 +208,19 @@ cann_ops_transformer.block_sparse_attention(
     $$
 
 - 暂不支持atten_mask、PagedAttention、softmaxLse等高阶特性。
+
+### quant_mode=4（MXFP8 OCP量化）相关约束
+
+- 仅<term>Ascend 950PR&950DT系列产品</term>支持。
+- query、key、value为float8_e4m3fn（最后一维为逻辑headDim，不翻倍），需要提供float8_e8m0fnu类型的descale张量，shape与MXFP4相同。
+- attention_out_dtype必须为float16或bfloat16，attentionOut的shape与query一致。
+- block_x和block_y均须为64的倍数。
+- inner_precise必须为4。softmaxLse可以输出；暂不支持atten_mask、PagedAttention。
+- **量化公式**（e4m3的emax=8）：以P的量化为例，$P_{\text{max}}$为一个group（32个元素）内元素绝对值的最大值。
+
+    $$
+    P_{\text{Scale}} = 2^{\lfloor \log_2 P_{\text{max}} \rfloor - 8}
+    $$
 
 ## 调用示例
 

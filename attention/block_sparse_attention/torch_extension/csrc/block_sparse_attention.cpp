@@ -16,7 +16,7 @@ namespace op_api {
 const int64_t FLOAT4_E2M1 = static_cast<int64_t>(296);
 const int64_t FLOAT8_E8M0 = static_cast<int64_t>(293);
 
-TensorWrapper make_wrapper(const at::Tensor &tensor, const int64_t real_dtype)
+TensorWrapper make_wrapper(const at::Tensor& tensor, const int64_t real_dtype)
 {
     TensorWrapper wrapper = {tensor, ACL_DT_UNDEFINED};
     if (kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(tensor.scalar_type())] == ACL_UINT8) {
@@ -36,18 +36,19 @@ enum QuantMode : int64_t {
     FP8_QUANT = 1,
     MXFP4_OCP_QUANT = 2,
     MXFP4_CX_QUANT = 3,
+    MXFP8_OCP_QUANT = 4,
 };
 
 std::tuple<at::Tensor, at::Tensor> npu_block_sparse_attention(
-    const at::Tensor &query, const at::Tensor &key, const at::Tensor &value, const at::Tensor &block_sparse_mask,
+    const at::Tensor& query, const at::Tensor& key, const at::Tensor& value, const at::Tensor& block_sparse_mask,
     std::vector<int64_t> block_shape, c10::string_view q_input_layout, c10::string_view kv_input_layout,
     int64_t num_key_value_heads, double scale_value, int64_t inner_precise,
-    const c10::optional<std::vector<int64_t>> &actual_seq_lengths,
-    const c10::optional<std::vector<int64_t>> &actual_seq_lengths_kv, int64_t softmax_lse_flag, int64_t mask_type,
+    const c10::optional<std::vector<int64_t>>& actual_seq_lengths,
+    const c10::optional<std::vector<int64_t>>& actual_seq_lengths_kv, int64_t softmax_lse_flag, int64_t mask_type,
     int64_t quant_mode, int64_t block_size, int64_t pre_tokens, int64_t next_tokens, double dst_type_max,
-    const c10::optional<at::Tensor> &atten_mask, const c10::optional<at::Tensor> &block_table,
-    const c10::optional<at::Tensor> &q_dequant_scale, const c10::optional<at::Tensor> &k_dequant_scale,
-    const c10::optional<at::Tensor> &v_dequant_scale, const c10::optional<at::Tensor> &p_quant_scale,
+    const c10::optional<at::Tensor>& atten_mask, const c10::optional<at::Tensor>& block_table,
+    const c10::optional<at::Tensor>& q_dequant_scale, const c10::optional<at::Tensor>& k_dequant_scale,
+    const c10::optional<at::Tensor>& v_dequant_scale, const c10::optional<at::Tensor>& p_quant_scale,
     c10::optional<at::ScalarType> attention_out_dtype)
 {
     // pybind 按值收下 std::vector<int64_t>（真实拷贝），再在本函数作用域内构建
@@ -99,12 +100,23 @@ std::tuple<at::Tensor, at::Tensor> npu_block_sparse_attention(
 
     std::string q_layout(q_input_layout);
     std::string kv_layout(kv_input_layout);
-    char *q_layout_ptr = const_cast<char *>(q_layout.c_str());
-    char *kv_layout_ptr = const_cast<char *>(kv_layout.c_str());
+    char* q_layout_ptr = const_cast<char*>(q_layout.c_str());
+    char* kv_layout_ptr = const_cast<char*>(kv_layout.c_str());
 
     // block_shape_ref / actual_seq_lengths_ref / actual_seq_lengths_kv_ref 为指向
     // 本作用域存活数据的 IntArrayRef，ACLNN_CMD 内部 ConvertType 会转成 aclIntArray。
-    if (quant_mode == MXFP4_OCP_QUANT || quant_mode == MXFP4_CX_QUANT) {
+    if (quant_mode == MXFP8_OCP_QUANT) {
+        // MXFP8: QKV 已是 float8_e4m3fn，ACL dtype 与存储一致，不再包一层。
+        // descale 必须包成 ACL_FLOAT8_E8M0。输出最后一维不翻倍。
+        TensorWrapper q_descale_wrapper = make_wrapper(*q_dequant_scale, FLOAT8_E8M0);
+        TensorWrapper k_descale_wrapper = make_wrapper(*k_dequant_scale, FLOAT8_E8M0);
+        TensorWrapper v_descale_wrapper = make_wrapper(*v_dequant_scale, FLOAT8_E8M0);
+        ACLNN_CMD(aclnnBlockSparseAttentionV3, query, key, value, block_sparse_mask, atten_mask, block_shape_ref,
+                  actual_seq_lengths_ref, actual_seq_lengths_kv_ref, block_table, q_descale_wrapper, k_descale_wrapper,
+                  v_descale_wrapper, p_quant_scale, q_layout_ptr, kv_layout_ptr, num_key_value_heads, mask_type,
+                  scale_value, inner_precise, block_size, pre_tokens, next_tokens, softmax_lse_flag, quant_mode,
+                  dst_type_max, attention_out, softmax_lse);
+    } else if (quant_mode == MXFP4_OCP_QUANT || quant_mode == MXFP4_CX_QUANT) {
         TensorWrapper q_wrapper = make_wrapper(query, FLOAT4_E2M1);
         TensorWrapper k_wrapper = make_wrapper(key, FLOAT4_E2M1);
         TensorWrapper v_wrapper = make_wrapper(value, FLOAT4_E2M1);
