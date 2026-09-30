@@ -696,7 +696,7 @@ private:
     }
 
     // 注册窗口到 HCCL 通信域, 返回 HCCL 结果码, 模式语义由调用方分流:
-    // - local 推理只读本 rank 窗口、无跨卡访问, 注册失败可降级为告警并继续(无 memHandle);
+    // - local 推理只读本 rank 窗口、无跨卡访问, 不注册通信域(无 memHandle);
     // - with_grad 的外部存储注册失败必须硬失败(无拷贝回退路径);
     // - sliced 推理的远端 rank 依赖通信域按 tag 发现本 rank 窗口, 外部存储注册失败需回退自建
     //   窗口(回退必须发生在集合地址交换之前)。
@@ -728,30 +728,28 @@ private:
             aclError mapRet = aclrtHostGetDevicePointer(externalHostPtr, &extDevPtr, 0);
             bool externalUsable = false;
             if (mapRet == ACL_SUCCESS) {
-                HcclResult commRet =
-                    RegisterBufferToComm(commHandle, memBufferTag, extDevPtr, externalBytes, resources);
-                if (commRet == HCCL_SUCCESS) {
-                    externalUsable = true;
-                } else if (withGrad_) {
-                    TORCH_CHECK(false, "HcclCommMemReg(tag='", memBufferTag, "', size=", externalBytes,
-                                ") failed for with_grad external storage, ret=", commRet);
-                } else if (fetchMode_ == ENGRAM_FETCH_MODE_LOCAL) {
-                    // local 推理只读本 rank 窗口、无跨卡访问: 无通信域注册也可用, 降级告警继续。
-                    ASCEND_LOGW("HcclCommMemReg(tag='%s', size=%llu) failed in local fetch mode, ret=%d, "
-                                "continue without comm-domain registration",
-                                memBufferTag.c_str(), static_cast<unsigned long long>(externalBytes),
-                                static_cast<int>(commRet));
-                    resources.memHandle = nullptr;
+                if (!withGrad_ && fetchMode_ == ENGRAM_FETCH_MODE_LOCAL) {
+                    // Local inference only reads this rank's mapped table; skip the large
+                    // comm-domain registration and its per-page HCCL overhead.
                     externalUsable = true;
                 } else {
-                    // sliced 推理: 远端 rank 经通信域按 tag 发现本 rank 窗口(HcclChannelGetRemoteMems),
-                    // 注册失败则零拷贝不可用 → 回退自建窗口 + memcpy。回退发生在集合地址交换之前,
-                    // 各 rank 仍以各自最终的窗口地址完成交换, 保持跨 rank 一致。
-                    ASCEND_LOGW("HcclCommMemReg(tag='%s', size=%llu) failed for sliced-mode external storage, "
-                                "ret=%d, falling back to a self-allocated copy window",
-                                memBufferTag.c_str(), static_cast<unsigned long long>(externalBytes),
-                                static_cast<int>(commRet));
-                    resources.memHandle = nullptr;
+                    HcclResult commRet =
+                        RegisterBufferToComm(commHandle, memBufferTag, extDevPtr, externalBytes, resources);
+                    if (commRet == HCCL_SUCCESS) {
+                        externalUsable = true;
+                    } else if (withGrad_) {
+                        TORCH_CHECK(false, "HcclCommMemReg(tag='", memBufferTag, "', size=", externalBytes,
+                                    ") failed for with_grad external storage, ret=", commRet);
+                    } else {
+                        // sliced 推理: 远端 rank 经通信域按 tag 发现本 rank 窗口(HcclChannelGetRemoteMems),
+                        // 注册失败则零拷贝不可用 → 回退自建窗口 + memcpy。回退发生在集合地址交换之前,
+                        // 各 rank 仍以各自最终的窗口地址完成交换, 保持跨 rank 一致。
+                        ASCEND_LOGW("HcclCommMemReg(tag='%s', size=%llu) failed for sliced-mode external storage, "
+                                    "ret=%d, falling back to a self-allocated copy window",
+                                    memBufferTag.c_str(), static_cast<unsigned long long>(externalBytes),
+                                    static_cast<int>(commRet));
+                        resources.memHandle = nullptr;
+                    }
                 }
             } else {
                 // 外部内存完全无法映射: with_grad 无拷贝回退路径必须硬失败;
@@ -796,9 +794,13 @@ private:
         TORCH_CHECK(ar == ACL_SUCCESS, "aclrtHostGetDevicePointer failed, ret=", ar,
                     ", host memory cannot be mapped to device");
 
-        HcclResult commRet = RegisterBufferToComm(commHandle, memBufferTag, devPtr, numCpuBytes, resources);
-        TORCH_CHECK(commRet == HCCL_SUCCESS, "HcclCommMemReg(tag='", memBufferTag, "', size=", numCpuBytes,
-                    ") failed, ret=", commRet);
+        if (!withGrad_ && fetchMode_ == ENGRAM_FETCH_MODE_LOCAL) {
+            resources.memHandle = nullptr;
+        } else {
+            HcclResult commRet = RegisterBufferToComm(commHandle, memBufferTag, devPtr, numCpuBytes, resources);
+            TORCH_CHECK(commRet == HCCL_SUCCESS, "HcclCommMemReg(tag='", memBufferTag, "', size=", numCpuBytes,
+                        ") failed, ret=", commRet);
+        }
         resources.hostBufPtr = guard.hostPtr;
         resources.deviceBufPtr = devPtr;
     }
