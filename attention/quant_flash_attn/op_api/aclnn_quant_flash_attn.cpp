@@ -34,7 +34,7 @@ extern aclnnStatus aclnnInnerQuantFlashAttnGetWorkspaceSize(
     const aclTensor* cuSeqlensQOptional, const aclTensor* cuSeqlensKvOptional, const aclTensor* sequsedQOptional,
     const aclTensor* sequsedKvOptional, const aclTensor* sinksOptional, const aclTensor* attnMaskOptional,
     const aclTensor* metadataOptional, const aclTensor* vTailOptional, const aclTensor* blockTableTailOptional,
-    const aclTensor* sequsedKvTailOptional, int64_t quantMode, double softmaxScale, int64_t maskMode, int64_t winLeft,
+    const aclTensor* sequsedVTailOptional, int64_t quantMode, double softmaxScale, int64_t maskMode, int64_t winLeft,
     int64_t winRight, int64_t maxSeqlenQ, int64_t maxSeqlenKV, const char* layoutQ, const char* layoutQDescale,
     const char* layoutKv, const char* layoutOut, bool returnSoftmaxLse, const aclTensor* attnOut,
     const aclTensor* softmaxLse, uint64_t* workspaceSize, aclOpExecutor** executor);
@@ -106,7 +106,7 @@ aclnnStatus aclnnQuantFlashAttnGetWorkspaceSize(
     const aclTensor* cuSeqlensQOptional, const aclTensor* cuSeqlensKvOptional, const aclTensor* sequsedQOptional,
     const aclTensor* sequsedKvOptional, const aclTensor* sinksOptional, const aclTensor* attnMaskOptional,
     const aclTensor* metadataOptional, const aclTensor* vTailOptional, const aclTensor* blockTableTailOptional,
-    const aclTensor* sequsedKvTailOptional, int64_t quantMode, double softmaxScale, int64_t maskMode, int64_t winLeft,
+    const aclTensor* sequsedVTailOptional, int64_t quantMode, double softmaxScale, int64_t maskMode, int64_t winLeft,
     int64_t winRight, int64_t maxSeqlenQ, int64_t maxSeqlenKV, const char* layoutQ, const char* layoutQDescale,
     const char* layoutKv, const char* layoutOut, bool returnSoftmaxLse, const aclTensor* attnOut,
     const aclTensor* softmaxLseOptional, uint64_t* workspaceSize, aclOpExecutor** executor)
@@ -135,7 +135,7 @@ aclnnStatus aclnnQuantFlashAttnGetWorkspaceSize(
     ret = aclnnInnerQuantFlashAttnGetWorkspaceSize(
         q, k, v, qDescale, kDescale, vDescale, blockTableOptional, pScaleOptional, cuSeqlensQOptional,
         cuSeqlensKvOptional, sequsedQOptional, sequsedKvOptional, sinksOptional, attnMaskOptional, metadataOptional,
-        vTailOptional, blockTableTailOptional, sequsedKvTailOptional, quantMode, softmaxScale, maskMode, winLeft,
+        vTailOptional, blockTableTailOptional, sequsedVTailOptional, quantMode, softmaxScale, maskMode, winLeft,
         winRight, maxSeqlenQ, maxSeqlenKV, layoutQ, layoutQDescale, layoutKv, layoutOut, returnSoftmaxLse, attnOut,
         placeHolder, workspaceSize, executor);
 

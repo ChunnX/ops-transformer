@@ -195,8 +195,8 @@ void QfaInfoParser::GetOptionalInputParaVTailInfo()
     opParamInfo_.vTail.desc = context_->GetOptionalInputDesc(V_TAIL_INDEX);
     opParamInfo_.blockTableTail.tensor = context_->GetOptionalInputTensor(BLOCK_TABLE_TAIL_INDEX);
     opParamInfo_.blockTableTail.desc = context_->GetOptionalInputDesc(BLOCK_TABLE_TAIL_INDEX);
-    opParamInfo_.sequsedKvTail.tensor = context_->GetOptionalInputTensor(SEQUSED_KV_TAIL_INDEX);
-    opParamInfo_.sequsedKvTail.desc = context_->GetOptionalInputDesc(SEQUSED_KV_TAIL_INDEX);
+    opParamInfo_.sequsedVTail.tensor = context_->GetOptionalInputTensor(SEQUSED_V_TAIL_INDEX);
+    opParamInfo_.sequsedVTail.desc = context_->GetOptionalInputDesc(SEQUSED_V_TAIL_INDEX);
 }
 
 void QfaInfoParser::GetOptionalInputParaInfo()
@@ -568,7 +568,7 @@ void QfaInfoParser::GenerateVTailInfo(QfaTilingInfo& qfaInfo)
         return (para.tensor == nullptr) || (para.desc == nullptr) ||
                (para.tensor->GetStorageShape().GetShapeSize() == 0);
     };
-    qfaInfo.hasVTail = !isEmptyOptional(opParamInfo_.vTail) && !isEmptyOptional(opParamInfo_.sequsedKvTail);
+    qfaInfo.hasVTail = !isEmptyOptional(opParamInfo_.vTail) && !isEmptyOptional(opParamInfo_.sequsedVTail);
     qfaInfo.tailMaxBlockNum = 0;
     if (qfaInfo.hasVTail && !isEmptyOptional(opParamInfo_.blockTableTail) &&
         (opParamInfo_.blockTableTail.tensor->GetStorageShape().GetDimNum() >= arch35QFA::DIM_NUM_2)) {
