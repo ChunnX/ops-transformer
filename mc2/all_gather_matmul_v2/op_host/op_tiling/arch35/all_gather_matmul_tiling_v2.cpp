@@ -133,11 +133,17 @@ CutResult AllGatherMatmulTilingV2::GetTilingResult()
     // 分派: 通信标定表命中 → fit-balance; miss(未标定 rank) → 核利用率优先(mm-first)
     const auto commEngine = ParseCommEngine(commMode_);
     CutResult result;
-    if (IsCommCalibrated(args_.rankDim, commEngine, CALIBRATION)) {
+    const bool commCalibrated = IsCommCalibrated(args_.rankDim, commEngine, CALIBRATION);
+    if (commCalibrated) {
         result = GetFitBalanceCut(args_, commEngine);
     } else {
         result = GetCutResByCoreOccupancyFirst();
     }
+    OP_LOGD(opName_, "GetTilingResult commMode:%s engine:%d dispatch:%s cut: totalCnt=%lu %lux%lu+%lux%lu atBack=%d",
+            commMode_, static_cast<int32_t>(commEngine),
+            commCalibrated ? "fitBalance" : "coreOccupancyFirst", result.totalTileCnt, result.numLongTile,
+            result.longTileLen, result.numShortTile, result.shortTileLen,
+            static_cast<int32_t>(result.shortTileAtBack));
     return result;
 }
 
