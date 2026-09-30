@@ -21,8 +21,7 @@
  *
  * 1 AIC : 2 AIV walk the same call sequence (the framework turns the AIV call into the KFC
  * client), so SyncAll must not be inserted between phases. KCTQ_BATCH_ROWS rows are pipelined
- * together because per row sync dominated: measured on t2048 a row costs ~8700 AIV cycles of
- * which only ~900 are vector work.
+ * together.
  */
 
 #ifndef KV_CACHE_TURBO_QUANT_IMPL_HPP
@@ -37,14 +36,12 @@ using namespace AscendC;
 using namespace matmul;
 
 constexpr uint32_t KCTQ_D = optiling::KCTQ_HEAD_DIM;
-// Matmul framework local workspace: 8KB and 64KB measure identically on 910B3 / CANN 9.1.0.
-constexpr uint32_t KCTQ_MM_LOCAL_WS_BYTES = 8U * 1024U;
+constexpr uint32_t KCTQ_MM_LOCAL_WS_BYTES = 8U * 1024U; // matmul framework local workspace
 
-// 1 AIC : 2 AIV. Probe on 910B3: an AIV sees its global index in GetBlockIdx(), so one AIV owns
-// rowsPerCore / KCTQ_AIV_PER_AIC rows.
+// 1 AIC : 2 AIV; one AIV owns rowsPerCore / KCTQ_AIV_PER_AIC rows.
 constexpr uint32_t KCTQ_AIV_PER_AIC = optiling::KCTQ_AIV_PER_AIC;
 
-// Rows per pipeline iteration (the arena is shared with the matmul C tile, dead while stages run).
+// Rows per pipeline iteration (the arena is shared with the matmul C tile).
 constexpr uint32_t KCTQ_BATCH_ROWS = 8U;
 constexpr uint32_t KCTQ_BATCH_LANES = KCTQ_BATCH_ROWS * KCTQ_D;
 
@@ -52,8 +49,7 @@ constexpr uint32_t KCTQ_BATCH_LANES = KCTQ_BATCH_ROWS * KCTQ_D;
 constexpr uint32_t KCTQ_SCALAR_STRIDE = 16U;
 constexpr uint32_t KCTQ_SCALAR_SLOTS = KCTQ_BATCH_ROWS * KCTQ_SCALAR_STRIDE; // 128 fp32
 
-// stepGt(x) = clamp(x*S - 1, 0, 1), stepGe(x) = clamp(x*S + 1, 0, 1). 2^40 separates fp32
-// operands of order 1e-1 (non zero diff >= 1e-8) far above the clamp rounding.
+// stepGt(x) = clamp(x*S - 1, 0, 1), stepGe(x) = clamp(x*S + 1, 0, 1).
 constexpr float KCTQ_STEP_SCALE = 1099511627776.0f; // 2^40
 
 constexpr float KCTQ_MIN_DIVISOR = 1e-30f;                // max(norm, 1e-30) of the golden
@@ -107,8 +103,7 @@ public:
     static constexpr uint32_t kChunksPerRow = KCTQ_D / PackCfg<BITS>::kChunkLanes;
     static constexpr uint32_t kChunksPerBatch = KCTQ_BATCH_ROWS * kChunksPerRow;
 
-    // Arena slices (lane offsets). Buffers an async store reads from have kParity copies, so the
-    // drain runs once every kParity batches.
+    // Arena slices (lane offsets). Buffers an async store reads from have kParity copies.
     static constexpr uint32_t kParity = 4U;
     static constexpr uint32_t kSliceIdx0 = 0U;                            // 4 x idx / residual
     static constexpr uint32_t kSliceTmp = 4U * KCTQ_BATCH_LANES;          // mask, intra batch
@@ -148,9 +143,7 @@ public:
         kvGm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(kvVectors),
                               static_cast<uint64_t>(td->totalRows) * KCTQ_D);
         const uint64_t matElems = static_cast<uint64_t>(KCTQ_D) * KCTQ_D;
-        // Default interface: fp32 matrices. Interface extension: bf16 matrices, which this kernel
-        // upcasts once into the workspace. bf16 values are exact in fp32, so the upcast reproduces
-        // the reference implementation's _npu_fp32() step bit for bit.
+        // Default interface: fp32 matrices; bf16 arrives via the matrixBf16 interface extension.
         if (td->matrixBf16 != 0U) {
             rotBf16Gm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(rotationMatrix), matElems);
             qjlBf16Gm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(qjlMatrix), matElems);
@@ -177,7 +170,6 @@ public:
 
         __gm__ uint8_t *user = AscendC::GetUserWorkspace(workspace);
         if (td->matrixBf16 != 0U) {
-            // the GEMMs read the fp32 copies, never the bf16 inputs
             wsRotMatGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(user + td->wsRotMat), matElems);
             wsQjlMatGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(user + td->wsQjlMat), matElems);
             rotGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(user + td->wsRotMat), matElems);
@@ -204,8 +196,7 @@ public:
         wsPSliceGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(user + td->wsP) + rowOffset,
                                     static_cast<uint64_t>(rowsToCompute_) * KCTQ_D);
 
-        // The C tile staging and the vector staging buffers live in disjoint pipeline phases, so
-        // they share one arena. Both sub cores need the framework workspace (KFC handshake).
+        // The C tile staging and the vector staging buffers live in disjoint pipeline phases.
         SetSysWorkspace(workspace);
         pipe_.InitBuffer(arenaBuf_, kArenaLanes * sizeof(float));
         pipe_.InitBuffer(mmLocalWsBuf_, KCTQ_MM_LOCAL_WS_BYTES);
@@ -276,15 +267,13 @@ public:
         return value;
     }
 
-    // Weighting lane l of a group by 2^(BITS*l) and summing one 32B block with BlockReduceSum
-    // yields the packed chunk value (< 2^24, exact in fp32).
+    // Weighting lane l of a group by 2^(BITS*l); one 32B block sum yields the packed chunk value.
     __aicore__ inline void InitWeightTables()
     {
         LocalTensor<float> w = weightBuf_.Get<float>();
         LocalTensor<float> wh = weightHiBuf_.Get<float>();
         LocalTensor<float> wq = qjlWeightBuf_.Get<float>();
-        // Scalar-write one packing group, replicate the rest with vector copies (scalar for all
-        // KCTQ_BATCH_LANES lanes costs more than the whole batch pipeline on decode cases).
+        // Scalar-write one packing group, replicate the rest with vector copies.
         constexpr uint32_t kGroup = PackCfg<BITS>::kChunkLanes;
         for (uint32_t i = 0; i < kGroup; ++i) {
             wq.SetValue(i, Pow2(i)); // qjl packs 8 sign bits into one byte
@@ -307,8 +296,7 @@ public:
             PipeBarrier<PIPE_V>();
         }
         if constexpr (BITS == 3) {
-            // Gather offset tables for the 3bit stream packing (see PackStream3Bit).
-            // The offsets are byte offsets into the source UB buffer (verified on hardware).
+            // Gather offset tables for the 3bit stream packing (see PackStream3Bit), in bytes.
             LocalTensor<uint32_t> off = offsetBuf_.Get<uint32_t>();
             for (uint32_t i = 0; i < KCTQ_D; ++i) {
                 off.SetValue(i, 4U * ((i + 1U < KCTQ_D) ? (i + 1U) : (KCTQ_D - 1U))); // +1 chunk view (tail clamped)
@@ -320,9 +308,8 @@ public:
             SetFlag<HardEvent::S_V>(EVENT_ID2);
             WaitFlag<HardEvent::S_V>(EVENT_ID2);
         }
-        // The per row divisors (max(rho, 1e-30) of every row) sit on the 16 element grid; the lane
-        // wise divisor a whole batch needs is that grid read back by row, which is a plain gather
-        // over a byte offset table (row r owns lanes [128 r, 128 r + 128) and reads byte 64 r).
+        // Per row divisors from the 16 element grid, gathered by row: row r owns lanes
+        // [128 r, 128 r + 128) and reads byte 64 r.
         {
             LocalTensor<int32_t> offB = offsetBuf_.Get<int32_t>()[KCTQ_OFFSET_TABLES];
             for (uint32_t r = 0; r < KCTQ_BATCH_ROWS; ++r) {
@@ -330,8 +317,7 @@ public:
             }
             PipeBarrier<PIPE_V>();
         }
-        // Codebook is looked up (level[idx]) to stay bit identical to the reference; rebuilding it
-        // incrementally drifts by 1 ULP (5 of 8 levels at 3bit), which moves gamma.
+        // level[idx] lookup table for the primary value.
         {
             LocalTensor<float> lv = Slice(kSliceLevels);
             for (uint32_t k = 0; k < kLevels; ++k) {
@@ -343,8 +329,7 @@ public:
     }
 
     // ---- bits=3 packing: 4 chunks -> 3 words, assembled in place so the batch leaves in one copy ---
-    // A 24bit chunk has no packed container and 3 bytes per 32B block costs ~8.7us/batch. lane L < 96
-    // holds word L: class k (L%4==k) takes ci[L] >> 8k and ci[L+1] << (24-8k); class 3 is junk.
+    // lane L < 96 holds word L: class k (L%4==k) takes ci[L] >> 8k and ci[L+1] << (24-8k); class 3 is junk.
     __aicore__ inline void PackStream3Bit(uint32_t row0, uint32_t validRows,
                                           const LocalTensor<int32_t> &ci)
     {
@@ -404,8 +389,7 @@ public:
         PipeBarrier<PIPE_V>();
     }
 
-    // Per row divisors from the 16 element grid: vector clamp (bit identical to the scalar compare)
-    // + one gather. Staying on the vector pipe avoids the reduce latency (measured 1.1us/batch).
+    // Per row divisors from the 16 element grid: vector clamp + one gather, all on the vector pipe.
     __aicore__ inline void BroadcastDivisors(const LocalTensor<float> &dst, const LocalTensor<float> &scalars)
     {
         LocalTensor<float> clamped = Slice(kSliceCvHi);
@@ -416,9 +400,8 @@ public:
         PipeBarrier<PIPE_V>();
     }
 
-    // Row sums of a whole batch. The order is bit exact with torch.linalg.vector_norm on the NPU:
-    // fold[i] = src[i] + src[i + 64], then a pairwise tree over fold[0..64) — the two reduce
-    // intrinsics below. Without the fold they differ on 5806 of 16384 rows, with it on 0.
+    // Row sums of a whole batch: fold[i] = src[i] + src[i + 64], then a pairwise tree over
+    // fold[0..64) — the two reduce intrinsics below.
     __aicore__ inline void BatchRowSum(const LocalTensor<float> &dst, const LocalTensor<float> &tmp,
                                        const LocalTensor<float> &src)
     {
@@ -452,16 +435,13 @@ public:
     }
 
     // ---- AIV: steps 1 and 2 ---------------------------------------------------------------------
-    // One batch at a time: a single strided load, one cast, one division over the whole batch and
-    // two strided stores replace the per row pipeline. The padded rows of the last batch feed the
-    // GEMM tile but are never stored.
+    // One batch at a time: one strided load, one cast, one division and two strided stores.
     __aicore__ inline void NormalizeRows()
     {
         LocalTensor<float> sq = scalarBuf_.Get<float>();                  // ||x||^2 at [16*row]
 
         for (uint32_t row0 = rowBegin_; row0 < rowBegin_ + rowsToCompute_; row0 += KCTQ_BATCH_ROWS) {
-            // same KCTQ_PARITY way staging as QuantizeRows: the store sources alternate between the
-            // copies, so the drain only has to run every KCTQ_PARITY batches
+            // same KCTQ_PARITY way staging as QuantizeRows
             const uint32_t pb = ((row0 - rowBegin_) / KCTQ_BATCH_ROWS) % kParity;
             LocalTensor<float> norm = scalarBuf_.Get<float>()[KCTQ_SCALAR_SLOTS * (pb + 1U)];
             const uint32_t validRows = (row0 + KCTQ_BATCH_ROWS <= rowEnd_)
@@ -488,7 +468,6 @@ public:
             Mul(tmp, x, x, KCTQ_BATCH_LANES);
             PipeBarrier<PIPE_V>();
             BatchRowSum(sq, work, tmp);
-            // see QuantizeRows: the reduce has to complete before the sums are consumed
             SetFlag<HardEvent::V_S>(EVENT_ID0);
             WaitFlag<HardEvent::V_S>(EVENT_ID0);
             Sqrt(norm, sq, KCTQ_SCALAR_SLOTS);
@@ -510,20 +489,16 @@ public:
             DataCopyExtParams cpU{1, static_cast<uint32_t>(KCTQ_BATCH_LANES * sizeof(float)), 0, 0, 0};
             DataCopyPad(wsUNormGm_[static_cast<uint64_t>(WsRow(row0)) * KCTQ_D], x, cpU);
             if (pb + 1U == kParity) {
-                // the copies written by the previous KCTQ_PARITY batches are about to be rewritten
+                // drain before the parity copies are rewritten
                 PipeBarrier<PIPE_ALL>();
             }
         }
-        // phase end: the last batch's stores have to be visible to the cube before Gemm is called
+        // phase end: stores must be visible to the cube before Gemm
         PipeBarrier<PIPE_ALL>();
     }
 
     // ---- AIV: interface extension, bf16 matrices upcast to fp32 -----------------------------------
-    // bf16 -> fp32 is exact, so the upcast keeps every downstream number identical. Every AIV converts
-    // the WHOLE matrix (not a share): that redundancy IS the synchronisation — the cube reads the
-    // matrix while the AIVs write it, and per-AIV row splitting left rows no AIV of that cube's pair
-    // had written yet (run to run varying idx/qjl mismatches). SyncAll<false> is not usable here:
-    // with 1 AIC : 2 AIV and only usedCoreNum cores launched it traps the device.
+    // Each AIV upcasts the whole matrix into the workspace; the GEMMs read the fp32 copy.
     __aicore__ inline void CastMatrices()
     {
         if (td_->matrixBf16 == 0U) {
@@ -535,7 +510,6 @@ public:
             CastMatrixChunk(rotBf16Gm_, wsRotMatGm_, row0);
             CastMatrixChunk(qjlBf16Gm_, wsQjlMatGm_, row0);
         }
-        // downstream stages reuse kSliceCv, so the last store must have read it
         PipeBarrier<PIPE_ALL>();
     }
 
@@ -571,30 +545,26 @@ public:
         SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
         WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
         if (validRows > 0U) {
-            // the valid scalars sit on 32B block boundaries, so one call emits the row scalars
+            // the valid scalars sit on 32B block boundaries
             DataCopyExtParams cp{static_cast<uint16_t>(validRows), 2U, 0, 0, 0};
             DataCopyPad(dst[row0], out, cp);
         }
     }
 
     // ---- AIC: steps 3 and 7, dense fp32 GEMM -----------------------------------------------------
-    // The cube writes every C tile straight into the workspace (enSequentialWrite = true, so the
-    // address handed over is used as is): no UB staging, no client side copy. The partial last tile
-    // stays inside this AIV's own reserved rows (aivRowStride).
+    // The cube writes every C tile straight into the workspace (enSequentialWrite = true).
     __aicore__ inline void Gemm(const GlobalTensor<float> &aGm, const GlobalTensor<float> &bGm,
                                 const GlobalTensor<float> &cGm)
     {
         mm_.SetOrgShape(static_cast<int32_t>(rowsToCompute_), static_cast<int32_t>(KCTQ_D),
                         static_cast<int32_t>(KCTQ_D));
-        mm_.SetHF32(false); // indices are decided on fp32 values, so HF32 must stay off
+        mm_.SetHF32(false); // indices are decided on fp32 values
         mm_.SetTensorA(aGm);
-        // The runtime flag drives the transpose unit; the template argument alone does not.
         mm_.SetTensorB(bGm, true);
 
         const uint32_t baseM = static_cast<uint32_t>(td_->cubeTiling.baseM);
         uint32_t done = 0;
-        // An AIV owns only half of its core's rows: stop once they are delivered instead of running
-        // the remaining iterations as empty round trips.
+        // An AIV owns only half of its core's rows: stop once they are delivered.
         while (done < rowsToCompute_) {
             if (!mm_.template Iterate<true>()) {
                 break;
@@ -618,8 +588,7 @@ public:
         LocalTensor<float> gamma = scalarBuf_.Get<float>()[KCTQ_SCALAR_SLOTS * 3U];
         LocalTensor<float> denom = Slice(kSliceDenom);
         for (uint32_t row0 = rowBegin_; row0 < rowBegin_ + rowsToCompute_; row0 += KCTQ_BATCH_ROWS) {
-            // Batches alternate between the two copies of the residual slice, so the store issued
-            // by batch k only blocks k+2: the drain below then runs every other batch.
+            // Batches alternate between the two copies of the residual slice.
             const uint32_t grow = row0;
             const uint32_t pb = ((row0 - rowBegin_) / KCTQ_BATCH_ROWS) % kParity;
             const uint32_t validRows = (row0 + KCTQ_BATCH_ROWS <= rowEnd_)
@@ -641,9 +610,7 @@ public:
             LocalTensor<float> prim = Slice(kSlicePrim);
             Duplicate(idx, 0.0f, KCTQ_BATCH_LANES);
             for (uint32_t k = 1; k < kLevels; ++k) {
-                // boundary = 0.5 * (level[k-1] + level[k]), computed exactly like the reference.
-                // Vector instructions execute in issue order on one pipe, so the back-to-back
-                // steps below need no barrier; only the scalar constant changes per segment.
+                // boundary = 0.5 * (level[k-1] + level[k])
                 const float boundary =
                     (CodeBook<BITS>::kLevel[k - 1] + CodeBook<BITS>::kLevel[k]) * 0.5f;
                 Adds(mask, y, -boundary, KCTQ_BATCH_LANES);
@@ -653,8 +620,7 @@ public:
                 Mins(mask, mask, 1.0f, KCTQ_BATCH_LANES);
                 Add(idx, idx, mask, KCTQ_BATCH_LANES);
             }
-            // prim = level[idx], an exact table lookup: idx is a small exact integer, so the cast
-            // and the byte offset scaling are exact and the gather returns the table entry itself.
+            // prim = level[idx], an exact integer table lookup
             {
                 LocalTensor<float> levels = Slice(kSliceLevels);
                 LocalTensor<float> offsetsF = Slice(kSlicePrimOff);
@@ -674,8 +640,7 @@ public:
             Mul(mask, res, res, KCTQ_BATCH_LANES);
             PipeBarrier<PIPE_V>();
             BatchRowSum(sq, work, mask);
-            // Reduce intrinsics are long latency: a vector pipe barrier only orders issue, so the
-            // sums must be waited for explicitly before anything reads or rewrites their slices.
+            // Reduce intrinsics are long latency: wait for the sums before their slices are reused.
             SetFlag<HardEvent::V_S>(EVENT_ID0);
             WaitFlag<HardEvent::V_S>(EVENT_ID0);
             Sqrt(sq, sq, KCTQ_SCALAR_SLOTS);
@@ -692,11 +657,11 @@ public:
             DataCopyExtParams cpR{1, static_cast<uint32_t>(KCTQ_BATCH_LANES * sizeof(float)), 0, 0, 0};
             DataCopyPad(wsRNormGm_[base], res, cpR);
             if (pb + 1U == kParity) {
-                // the copies written by the previous KCTQ_PARITY batches are about to be rewritten
+                // drain before the parity copies are rewritten
                 PipeBarrier<PIPE_ALL>();
             }
         }
-        // phase end: the last batch's stores have to be visible to the cube before Gemm is called
+        // phase end: stores must be visible to the cube before Gemm
         PipeBarrier<PIPE_ALL>();
     }
 
@@ -712,12 +677,11 @@ public:
 
         FoldChunks(cv, wv, idx, w, KCTQ_BATCH_LANES);
         if constexpr (PackCfg<BITS>::kSplitChunk) {
-            // 2bit / 4bit chunks are wider than one 16bit half: fold the halves separately and
-            // recombine in int. The words then carry exactly the little endian output bytes.
+            // 2bit / 4bit chunks are wider than one 16bit half: fold separately, recombine in int.
             LocalTensor<float> wh = weightHiBuf_.Get<float>();
             LocalTensor<float> cvh = Slice(kSliceCvHi);
             LocalTensor<float> wvh = Slice(kSliceWork);
-            LocalTensor<float> cihF = Slice(kSliceCiHi); // intra batch only, no parity copy needed
+            LocalTensor<float> cihF = Slice(kSliceCiHi); // intra batch only
             FoldChunks(cvh, wvh, idx, wh, KCTQ_BATCH_LANES);
             if constexpr (BITS == 4) {
                 LocalTensor<int32_t> ci = ciF.ReinterpretCast<int32_t>();
@@ -766,8 +730,7 @@ public:
                             validRows * kChunksPerRow, kIdxBytesPerRow / kChunksPerRow);
             }
         }
-        // No drain here: the store reads slices the next batch only rewrites after the end-of-batch
-        // drain in QuantizeRows, which overlaps this copy with the residual work of the same batch.
+        // No drain here: the next batch rewrites these slices only after the QuantizeRows drain.
     }
 
     // ---- AIV: step 8 ------------------------------------------------------------------------------
@@ -788,7 +751,7 @@ public:
             DataCopyExtParams cpP{1, static_cast<uint32_t>(KCTQ_BATCH_LANES * sizeof(float)), 0, 0, 0};
             DataCopyPadExtParams<float> padP{false, 0, 0, 0};
             DataCopyPad(p, wsPNormGm_[static_cast<uint64_t>(WsRow(row0)) * KCTQ_D], cpP, padP);
-            // The GM -> UB copy is async: without this drain the vector ops read the previous batch.
+            // drain the async GM -> UB copy
             SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
             WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
 
@@ -798,10 +761,9 @@ public:
             Adds(mask, mask, 1.0f, KCTQ_BATCH_LANES);
             Maxs(mask, mask, 0.0f, KCTQ_BATCH_LANES);
             Mins(mask, mask, 1.0f, KCTQ_BATCH_LANES); // 1[p >= 0]
-            // The 8 sign bits of a chunk fold into one byte (same block reduction as the packer).
+            // The 8 sign bits of a chunk fold into one byte.
             FoldChunks(cv, wv, mask, wq, KCTQ_BATCH_LANES);
-            // A packed sign byte is 2 bytes wide, so the batch narrows through half (exact) into a
-            // contiguous byte run — avoids the per chunk 32B block store of the 3bit layout.
+            // A packed sign byte is 2 bytes wide: narrow through half into a contiguous byte run.
             Cast(h8, cv, RoundMode::CAST_RINT, KCTQ_BATCH_LANES);
             PipeBarrier<PIPE_V>();
             Cast(u8, h8, RoundMode::CAST_NONE, KCTQ_BATCH_LANES);
@@ -821,7 +783,7 @@ private:
 
     TPipe pipe_;
     TQue<TPosition::VECIN, 1> inQue_;
-    // fp32 staging of the bf16 matrices. A queue, not an arena lane: it owns the V <-> MTE3 syncs.
+    // fp32 staging of the bf16 matrices; the queue owns the V <-> MTE3 syncs.
     TQue<TPosition::VECOUT, 1> outQue_;
     ArenaBuf arenaBuf_;                                     // C tile + vector staging, see kSlice*
     TBuf<TPosition::VECCALC> mmLocalWsBuf_;

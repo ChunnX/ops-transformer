@@ -59,8 +59,7 @@ ge::graphStatus CheckMatrixInput(gert::TilingContext *context, size_t index, con
                 return ge::GRAPH_FAILED);
     const auto *desc = context->GetInputDesc(index);
     OP_CHECK_NULL_WITH_CONTEXT(context, desc);
-    // The task book allows "float32 / bfloat16" for both matrices; the bf16 case is an interface
-    // extension that the kernel serves by upcasting once into the workspace.
+    // float32 or bfloat16; a bf16 matrix is upcast to fp32 inside the kernel.
     OP_CHECK_IF(desc->GetDataType() != ge::DT_FLOAT && desc->GetDataType() != ge::DT_BF16,
                 OP_LOGE(context, "%s must be float32 or bfloat16", name), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -95,10 +94,7 @@ static ge::graphStatus KvCacheTurboQuantTilingFunc(gert::TilingContext *context)
                     CheckMatrixInput(context, IN_QJL, "qjl_matrix") != ge::GRAPH_SUCCESS,
                 OP_LOGE(context, "matrix input check failed"), return ge::GRAPH_FAILED);
 
-    // Interface extensions (task book §2.3 lists "float32 / bfloat16" for the matrices and
-    // "float16 / bfloat16" for the metadata): a bf16 matrix is upcast to fp32 once inside the
-    // kernel, an fp16 metadata only changes the store dtype. The formal cases use index 0 of the
-    // OpDef dtype lists (float32 + bfloat16) and are not affected by either branch.
+    // bf16 matrices are upcast to fp32 in the kernel; fp16 metadata only changes the store dtype.
     const auto *rotDesc = context->GetInputDesc(IN_ROTATION);
     const auto *qjlDesc = context->GetInputDesc(IN_QJL);
     OP_CHECK_NULL_WITH_CONTEXT(context, rotDesc);
@@ -133,11 +129,7 @@ static ge::graphStatus KvCacheTurboQuantTilingFunc(gert::TilingContext *context)
 
     const int64_t aicNum = platform.GetCoreNumAic();
     OP_CHECK_IF(aicNum <= 0, OP_LOGE(context, "aic core number is zero"), return ge::GRAPH_FAILED);
-    // Every row count derived below is a 16 aligned uint32: `usedCoreNum` (<= aicNum) blocks of
-    // `rowsPerCore` rows have to fit, and neither the alignment itself nor
-    // `rowsPerCore * usedCoreNum` may wrap. The four buffers are indexed with those counts, so a
-    // wrap would leave the workspace (alignedRows / wsRows) inconsistent with the rows the kernel
-    // walks and the device would write outside the buffer. Reject the request here instead.
+    // Bound that keeps `ceil(totalRows/16)*16` and `rowsPerCore * usedCoreNum` below 2^32.
     const uint64_t maxRows = static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()) -
                              static_cast<uint64_t>(ALIGN_ROWS) * static_cast<uint64_t>(aicNum);
     OP_CHECK_IF(totalRows > maxRows,
@@ -160,10 +152,8 @@ static ge::graphStatus KvCacheTurboQuantTilingFunc(gert::TilingContext *context)
     cubeTiling.SetBType(TPosition::GM, CubeFormat::ND, DataType::DT_FLOAT, true);
     cubeTiling.SetCType(TPosition::LCM, CubeFormat::ND, DataType::DT_FLOAT);
     cubeTiling.SetBias(false);
-    // The single core GEMM of the tiling is one *vector* core (an AIV owns rowsPerCore / 2 rows and
-    // is the KFC client of its own cube server instance), so the M shape is the AIV's row count:
-    // that makes the framework end its M loop on the AIV's last row and hands the partial last tile
-    // over as the tail (32 rows on the t2048 case) instead of a whole baseM block.
+    // GEMM M = the AIV's row count, so the framework ends its M loop on the AIV's last row and hands
+    // the partial last tile over as the tail instead of a whole baseM block.
     const uint32_t rowsPerAiv = rowsPerCore / KCTQ_AIV_PER_AIC;
     cubeTiling.SetShape(static_cast<int32_t>(rowsPerAiv), static_cast<int32_t>(KCTQ_HEAD_DIM),
                         static_cast<int32_t>(KCTQ_HEAD_DIM));
@@ -180,24 +170,14 @@ static ge::graphStatus KvCacheTurboQuantTilingFunc(gert::TilingContext *context)
     td->set_rowsPerCore(rowsPerCore);
     td->set_alignedRows(alignedRows);
     td->set_headDim(KCTQ_HEAD_DIM);
-    // The framework applies its M tail to the AIV's last tile, so an AIV slice only needs its own
-    // rows: the workspace keeps the plain rowsPerCore / KCTQ_AIV_PER_AIC rows per AIV.
+    // An AIV slice only needs its own rows; the workspace keeps rowsPerAiv rows per AIV.
     const uint32_t aivRowStride = rowsPerAiv;
     td->set_aivRowStride(aivRowStride);
     const uint32_t wsRows = usedCoreNum * KCTQ_AIV_PER_AIC * aivRowStride;
     td->set_idxBytesPerRow(KCTQ_HEAD_DIM * static_cast<uint32_t>(mseBits) / 8U);
     td->set_qjlBytesPerRow(KCTQ_HEAD_DIM / 8U);
 
-    // Only two of the four row matrices have to exist at any moment: the four buffers are used in
-    // strictly disjoint phases of the pipeline and every phase boundary is a full GEMM drain.
-    //   wsU : written by NormalizeRows, read as the GEMM1 A operand -> dead once GEMM1 drained,
-    //         which is when QuantizeRows starts writing the GEMM2 A operand wsR;
-    //   wsY : written as the GEMM1 C tile, read by QuantizeRows -> dead once QuantizeRows drained,
-    //         which is when GEMM2 starts writing its C tile wsP (GEMM2 can only write C after the
-    //         AIV copied the A tile, i.e. after QuantizeRows returned).
-    // So wsR aliases wsU and wsP aliases wsY. That halves the user workspace, which also keeps the
-    // per call aclrtMalloc request under the ~35MB pooled fast path threshold of the runtime (the
-    // aclnn harness allocates the reported workspace every call and pays for the slow path above it).
+    // The four row buffers are used in disjoint phases, so wsR aliases wsU and wsP aliases wsY.
     td->set_matrixBf16(matrixBf16 ? 1U : 0U);
     td->set_metadataFp16(metadataFp16 ? 1U : 0U);
     const uint64_t rowBytes = static_cast<uint64_t>(wsRows) * KCTQ_HEAD_DIM * sizeof(float);
