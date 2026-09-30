@@ -86,3 +86,18 @@ A2 最终数据（commit 42729ea25，per-call executor 暖态）：decode b1 56.
 6. m=64 大 tile、L0C 双缓冲、相位融合（v7）：本栈全部零增益或更慢，勿再试。**L0C 累加对 p 两次实证致死**（93%+ qjl 翻），z 可以 p 不行。
 
 **竞对 12860 画像（供 A3 对照）**：其注册 aclnn 核是空桩，计时路径=host 侧 11 次裸 launch（kvtq_* + stock aclnnLinalgVectorNorm/Div/Mul + AIC-only fp32 GEMM 模板）；910B1 实测 190/189/191/190/195us（decode 两 case 过不了 10x 上限），A3 上 39/69/326/272/411us。其 quantize 内核单测 113/120/133us（bits 2/3/4，Gather ~8us/轮/launch）。
+
+## 【A2 @ 2026-09-29】给 A3：推送前必跑 clang-format！！
+
+CI 的 CodeCheck_precommit 用 **clang-format v18.1.8**（repo `.clang-format`，`--style=file`）查所有变更源文件；不过会挂整条流水线（下游编译/UT 级联不跑）。"A3 接力提交的 631f9b263 + A2 的 748f54604" 曾因 tiling.cpp 一行尾注释对齐问题挂 CI（run#9394）。
+
+```bash
+# 本机取 clang-format 18.1.8（manylinux aarch64 轮子）：
+pip download clang-format==18.1.8 --no-deps -d /tmp/cfmt && cd /tmp/cfmt && unzip -q -o clang_format-18.1.8-*.whl -d cf
+CF=/tmp/cfmt/cf/clang_format/data/bin/clang-format
+# 推送前格式化（在仓根）：
+find experimental/attention/kv_cache_turbo_quant -name '*.cpp' -o -name '*.h' | while read f; do $CF --style=file -i "$f"; done
+# 验证（应零输出）：
+find experimental/attention/kv_cache_turbo_quant -name '*.cpp' -o -name '*.h' | while read f; do $CF --style=file --dry-run --Werror "$f" || echo "DIRTY: $f"; done
+# 注：`*_def.cpp` 在 pre-commit 的 exclude 名单里，不查。
+```

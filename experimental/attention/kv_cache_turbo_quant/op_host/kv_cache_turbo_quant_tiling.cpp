@@ -54,7 +54,7 @@ constexpr int64_t CUBE_MIN_VEC = 1024;
 // mix kernel limits: 128-row chunks, round-robin over 24 groups, 22 chunks per
 // group max (flag-cell capacity) -> totalVec <= 67584
 constexpr int64_t CUBE_CHUNK_ROWS = 128;
-constexpr int64_t CUBE_MAX_LOCAL_CHUNKS = 22;   // per-group flag-cell capacity in the kernel
+constexpr int64_t CUBE_MAX_LOCAL_CHUNKS = 22; // per-group flag-cell capacity in the kernel
 
 static ge::graphStatus TilingKvCacheTurboQuant(gert::TilingContext *context)
 {
