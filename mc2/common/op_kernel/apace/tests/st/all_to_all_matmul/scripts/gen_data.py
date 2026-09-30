@@ -133,8 +133,10 @@ def gen_golden_data_all_to_all_matmul(m, k, n, rank_num, dtype="fp16", lm=0):
 
             self_q = (self_partial + bias).to(target)
             remote_q = remote_partial.to(target)
-            # 实验：self 和 remote 两个 fp16 直接加（不转 fp32），模拟原子加在输出 dtype 上相加
-            out = self_q + remote_q
+            # 显式 .to(target)：保证输出为 fp16/bf16 写盘（避免部分 torch 版本 half+half 返回 fp32）
+            out = (self_q + remote_q).to(target)
+        else:
+            out = out.to(target)
 
         out_all_ranks.append(out)
 
