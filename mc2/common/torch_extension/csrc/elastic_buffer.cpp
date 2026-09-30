@@ -543,13 +543,14 @@ public:
             // 入池成功前不解除 guard 所有权，入池抛异常时由 guard 析构兜底释放自建 buffer，防资源失联。
             try {
                 EngramSharedBufferEntry& entry = gEngramSharedBuffers[contextTag];
+                // 外部注册可能回退为自建窗口: 以 hostBufPtr 是否仍指向外部内存判定真实零拷贝结果
+                bool zeroCopy = (externalHostPtr != nullptr && resources.hostBufPtr == externalHostPtr);
                 entry.hostBufPtr = resources.hostBufPtr;
                 entry.deviceBufPtr = resources.deviceBufPtr;
                 entry.memHandle = resources.memHandle;
-                entry.external = (externalHostPtr != nullptr);
+                entry.external = zeroCopy;
                 entry.externalRegistered = resources.externalRegistered;
-                entry.registeredBytes =
-                    resources.hostBufPtr != nullptr ? ((externalHostPtr != nullptr) ? externalBytes : numCpuBytes) : 0;
+                entry.registeredBytes = resources.hostBufPtr != nullptr ? (zeroCopy ? externalBytes : numCpuBytes) : 0;
                 entry.commBufferSize = resources.commBufferSize;
                 entry.fetchMode = fetchMode_;
                 entry.withGrad = withGrad_;
@@ -616,12 +617,14 @@ public:
             resources.contextTensor = CreateCommContextTensor(resources.context);
             try {
                 EngramSharedBufferEntry& poolEntry = gEngramSharedBuffers[contextTag];
+                bool zeroCopy = (externalHostPtr != nullptr && resources.hostBufPtr == externalHostPtr);
                 poolEntry.hostBufPtr = resources.hostBufPtr;
                 poolEntry.deviceBufPtr = resources.deviceBufPtr;
                 poolEntry.memHandle = resources.memHandle;
-                poolEntry.external = (externalHostPtr != nullptr);
+                poolEntry.external = zeroCopy;
                 poolEntry.externalRegistered = resources.externalRegistered;
-                poolEntry.registeredBytes = (externalHostPtr != nullptr) ? externalBytes : numCpuBytes;
+                poolEntry.registeredBytes =
+                    (externalHostPtr != nullptr) ? (zeroCopy ? externalBytes : numCpuBytes) : numCpuBytes;
                 poolEntry.commBufferSize = resources.commBufferSize;
                 poolEntry.fetchMode = fetchMode_;
                 poolEntry.withGrad = withGrad_;
@@ -638,11 +641,23 @@ public:
             return resources;
         }
         if (externalHostPtr != nullptr) {
-            TORCH_CHECK(entry.external && externalHostPtr == entry.hostBufPtr && externalBytes == entry.registeredBytes,
-                        "Engram comm context of group '", contextTag, "' has registered external storage at address ",
-                        entry.hostBufPtr, ", size ", entry.registeredBytes,
-                        "; zero-copy rebuild requires the same pinned storage address and size, please use a new "
-                        "comm group");
+            if (entry.external) {
+                TORCH_CHECK(externalHostPtr == entry.hostBufPtr && externalBytes == entry.registeredBytes,
+                            "Engram comm context of group '", contextTag,
+                            "' has registered external storage at "
+                            "address ",
+                            entry.hostBufPtr, ", size ", entry.registeredBytes,
+                            "; zero-copy rebuild requires the same storage address and size, please use a new "
+                            "comm group");
+            } else {
+                // 池中为自建窗口(零拷贝注册失败回退或常规创建): 复用窗口, 本实例经 engram_write
+                // memcpy 回填数据; 声明容量不得超过窗口实际大小。
+                TORCH_CHECK(numCpuBytes <= entry.registeredBytes,
+                            "engram buffer size exceeds the existing window of this group, requested ", numCpuBytes,
+                            ", allocated ", entry.registeredBytes,
+                            "; the shared engram storage is sized by the first ElasticBuffer created on this group, "
+                            "please use a new comm group");
+            }
         } else {
             TORCH_CHECK(!entry.external, "Engram comm context of group '", contextTag,
                         "' has registered external (zero-copy) storage; self-allocated buffer rebuild is not "
@@ -680,19 +695,32 @@ private:
                     HCCL_MAX_RANK_SIZE);
     }
 
-    static void AllocateAndRegisterBuffer(const HcclComm& commHandle, const std::string& memBufferTag,
-                                          int64_t numCpuBytes, EngramContextResources& resources,
-                                          HostBufferGuard& guard, void* externalHostPtr = nullptr,
-                                          int64_t externalBytes = 0)
+    // 注册窗口到 HCCL 通信域。local 模式只读本 rank 窗口、无跨卡访问，注册失败时降级为
+    // 告警并继续(无 memHandle)；其余模式保持硬失败。
+    void RegisterBufferToComm(const HcclComm& commHandle, const std::string& memBufferTag, void* devPtr, int64_t bytes,
+                              EngramContextResources& resources)
     {
-        if (externalHostPtr == nullptr) {
-            aclError ar = aclrtMallocHost(&guard.hostPtr, static_cast<uint64_t>(numCpuBytes));
-            TORCH_CHECK(ar == ACL_SUCCESS, "aclrtMallocHost(", numCpuBytes, " B) failed, ret=", ar);
+        CommMem mem;
+        mem.type = COMM_MEM_TYPE_DEVICE;
+        mem.addr = devPtr;
+        mem.size = static_cast<uint64_t>(bytes);
+        auto hcclRet = HcclCommMemRegFunc(commHandle, memBufferTag.c_str(), &mem, &resources.memHandle);
+        if (hcclRet != HCCL_SUCCESS && !withGrad_ && fetchMode_ == ENGRAM_FETCH_MODE_LOCAL) {
+            ASCEND_LOGW("HcclCommMemReg(tag='%s', size=%llu) failed in local fetch mode, ret=%d, "
+                        "continue without comm-domain registration",
+                        memBufferTag.c_str(), static_cast<unsigned long long>(mem.size), static_cast<int>(hcclRet));
+            resources.memHandle = nullptr;
+            return;
+        }
+        TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HcclCommMemReg(tag='", memBufferTag, "', size=", mem.size,
+                    ") failed, ret=", hcclRet);
+    }
 
-            ar = aclrtHostRegisterV2(guard.hostPtr, static_cast<uint64_t>(numCpuBytes), ACL_HOST_REG_MAPPED);
-            TORCH_CHECK(ar == ACL_SUCCESS, "aclrtHostRegisterV2(", numCpuBytes, " B) failed, ret=", ar);
-            guard.registered = true;
-        } else {
+    void AllocateAndRegisterBuffer(const HcclComm& commHandle, const std::string& memBufferTag, int64_t numCpuBytes,
+                                   EngramContextResources& resources, HostBufferGuard& guard,
+                                   void* externalHostPtr = nullptr, int64_t externalBytes = 0)
+    {
+        if (externalHostPtr != nullptr) {
             // Map caller-owned storage memory directly (zero-copy): plain memory is supported
             aclError ar =
                 aclrtHostRegisterV2(externalHostPtr, static_cast<uint64_t>(externalBytes), ACL_HOST_REG_MAPPED);
@@ -701,23 +729,48 @@ private:
                             externalBytes, static_cast<int>(ar));
             }
             resources.externalRegistered = (ar == ACL_SUCCESS);
-        }
 
-        void* hostPtr = (externalHostPtr != nullptr) ? externalHostPtr : guard.hostPtr;
+            void* extDevPtr = nullptr;
+            aclError mapRet = aclrtHostGetDevicePointer(externalHostPtr, &extDevPtr, 0);
+            if (mapRet == ACL_SUCCESS) {
+                RegisterBufferToComm(commHandle, memBufferTag, extDevPtr, externalBytes, resources);
+                resources.hostBufPtr = externalHostPtr;
+                resources.deviceBufPtr = extDevPtr;
+                return;
+            }
+            // 外部内存完全无法映射: with_grad 无拷贝回退路径必须硬失败;
+            // local 推理模式回退到自建窗口 + memcpy, 保持对任意(不可注册)张量的兼容。
+            TORCH_CHECK(!withGrad_, "aclrtHostGetDevicePointer failed, ret=", mapRet,
+                        ", host memory cannot be mapped to device");
+            if (resources.externalRegistered) {
+                (void)aclrtHostUnregister(externalHostPtr);
+                resources.externalRegistered = false;
+            }
+            TORCH_CHECK(numCpuBytes > 0,
+                        "local-mode zero-copy registration of the storage host memory failed (register ret=", ar,
+                        ", map ret=", mapRet,
+                        ") and num_cpu_bytes is 0 so no copy window can be allocated; "
+                        "provide device-registerable host memory (e.g. a shared file mmap) or a positive "
+                        "num_cpu_bytes");
+            ASCEND_LOGW("zero-copy registration of the local-mode storage failed (register ret=%d, map ret=%d), "
+                        "falling back to a self-allocated copy window of %lld bytes",
+                        static_cast<int>(ar), static_cast<int>(mapRet), numCpuBytes);
+        }
+        // 自建窗口路径(默认; 也是 local 零拷贝失败的回退)。
+        aclError ar = aclrtMallocHost(&guard.hostPtr, static_cast<uint64_t>(numCpuBytes));
+        TORCH_CHECK(ar == ACL_SUCCESS, "aclrtMallocHost(", numCpuBytes, " B) failed, ret=", ar);
+
+        ar = aclrtHostRegisterV2(guard.hostPtr, static_cast<uint64_t>(numCpuBytes), ACL_HOST_REG_MAPPED);
+        TORCH_CHECK(ar == ACL_SUCCESS, "aclrtHostRegisterV2(", numCpuBytes, " B) failed, ret=", ar);
+        guard.registered = true;
+
         void* devPtr = nullptr;
-        aclError ar = aclrtHostGetDevicePointer(hostPtr, &devPtr, 0);
+        ar = aclrtHostGetDevicePointer(guard.hostPtr, &devPtr, 0);
         TORCH_CHECK(ar == ACL_SUCCESS, "aclrtHostGetDevicePointer failed, ret=", ar,
                     ", host memory cannot be mapped to device");
 
-        CommMem mem;
-        mem.type = COMM_MEM_TYPE_DEVICE;
-        mem.addr = devPtr;
-        mem.size = static_cast<uint64_t>((externalHostPtr != nullptr) ? externalBytes : numCpuBytes);
-        auto hcclRet = HcclCommMemRegFunc(commHandle, memBufferTag.c_str(), &mem, &resources.memHandle);
-        TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HcclCommMemReg(tag='", memBufferTag, "', size=", mem.size,
-                    ") failed, ret=", hcclRet);
-
-        resources.hostBufPtr = hostPtr;
+        RegisterBufferToComm(commHandle, memBufferTag, devPtr, numCpuBytes, resources);
+        resources.hostBufPtr = guard.hostPtr;
         resources.deviceBufPtr = devPtr;
     }
 
@@ -1686,6 +1739,16 @@ public:
     {
         return engramCommContext_.rankSize;
     }
+    // host 窗口指针: 零拷贝注册时即调用方存储的 data_ptr, 各 rank 相同即共享同一份 vocab。
+    int64_t GetHostBufPtr() const
+    {
+        return reinterpret_cast<int64_t>(engramHostBufPtr_);
+    }
+    // 存储是否为零拷贝注册(而非回退的自建拷贝窗口)。
+    bool GetStorageZeroCopy() const
+    {
+        return engramStorageExternal_;
+    }
     static at::Tensor EngramFetch(const at::Tensor& context, const at::Tensor& indices, int64_t hiddenSize,
                                   int64_t numEntries, int64_t dtypeEnum, const at::Tensor& sfTable,
                                   at::Tensor& fetchedSf, int64_t fetchMode);
@@ -1831,14 +1894,20 @@ ElasticBuffer::~ElasticBuffer()
 void ElasticBuffer::EnsureEngramContext(void* externalHostPtr, int64_t externalBytes, void* sfHostPtr, int64_t sfBytes)
 {
     TORCH_CHECK(!destroyed_, "ElasticBuffer cannot be used after destroy, please create a new ElasticBuffer instance");
-    if (engramContextInitialized_) {
+    if (engramContextInitialized_ && (engramHostBufPtr_ != nullptr || externalHostPtr == nullptr)) {
         return;
     }
     commStream_ = c10_npu::getNPUStreamFromPool().stream(false);
     TORCH_CHECK(commStream_ != nullptr, "Failed to get NPU stream from pool for comm stream");
+    int64_t numCpuBytes = withGrad_ ? 0 : engramNumCpuBytes_;
+    if (!withGrad_ && fetchMode_ == ENGRAM_FETCH_MODE_LOCAL && externalHostPtr == nullptr) {
+        // local 模式先 barrier 初始化时暂不自建窗口: 后续 engram_write 可能将调用方存储原地
+        // 零拷贝注册(4 rank 共享同一份 vocab), 自建窗口与整表拷贝均可省去。
+        numCpuBytes = 0;
+    }
     EngramContextBuilder builder;
-    EngramContextResources resources = builder.Build(groupName_, withGrad_ ? 0 : engramNumCpuBytes_, withGrad_,
-                                                     fetchMode_, externalHostPtr, externalBytes, sfHostPtr, sfBytes);
+    EngramContextResources resources = builder.Build(groupName_, numCpuBytes, withGrad_, fetchMode_, externalHostPtr,
+                                                     externalBytes, sfHostPtr, sfBytes);
     engramHcclComm_ = resources.hcclComm;
     engramMemHandle_ = resources.memHandle;
     engramHostBufPtr_ = resources.hostBufPtr;
@@ -1846,7 +1915,8 @@ void ElasticBuffer::EnsureEngramContext(void* externalHostPtr, int64_t externalB
     engramCommContext_ = resources.context;
     engramContextTensor_ = resources.contextTensor;
     commBufferSize_ = resources.commBufferSize;
-    engramStorageExternal_ = (externalHostPtr != nullptr);
+    // 外部注册可能回退为自建窗口: 仅当 hostBufPtr 仍指向外部内存时才视为零拷贝存储
+    engramStorageExternal_ = (externalHostPtr != nullptr && resources.hostBufPtr == externalHostPtr);
     engramExternalRegisteredByUs_ = resources.externalRegistered;
     sfDeviceBufPtr_ = resources.sfDeviceBufPtr;
     sfExternalRegistered_ = resources.sfExternalRegistered;
@@ -1855,7 +1925,7 @@ void ElasticBuffer::EnsureEngramContext(void* externalHostPtr, int64_t externalB
         auto hostSfAddrTensor = at::full({1}, sfAddrValue, at::TensorOptions().dtype(at::kLong));
         localSfTableTensor_ = hostSfAddrTensor.to(c10::DeviceType::PrivateUse1);
     }
-    engramExternalBytes_ = externalBytes;
+    engramExternalBytes_ = engramStorageExternal_ ? externalBytes : 0;
     engramBufferPooled_ = (engramHostBufPtr_ != nullptr);
     int64_t addrValue = reinterpret_cast<int64_t>(engramDeviceBufPtr_);
     auto hostAddrTensor = at::full({1}, addrValue, at::TensorOptions().dtype(at::kLong));
@@ -1930,10 +2000,28 @@ void ElasticBuffer::EngramWrite(const at::Tensor& storage, const c10::optional<a
                 sfBytes = static_cast<int64_t>(sf.value().nbytes());
             }
         }
+    } else if (fetchMode_ == ENGRAM_FETCH_MODE_LOCAL) {
+        // local 推理模式: 将调用方传入的整表 host 内存原地零拷贝注册。共享同一块 host 内存的
+        // 各 rank(如 fork 继承同一份 vocab mmap)因此把同一份表映射到各自 device 上, 不再各自
+        // 持有私有拷贝; host 内存不可注册时, 上下文构建会回退自建窗口并经下方 memcpy 拷入。
+        if (engramContextInitialized_) {
+            if (engramStorageExternal_) {
+                TORCH_CHECK(
+                    engramHostBufPtr_ == storage.data_ptr() &&
+                        engramExternalBytes_ == static_cast<int64_t>(storage.nbytes()),
+                    "engram_write: local-mode storage was already zero-copy registered from ptr=", engramHostBufPtr_,
+                    " (", engramExternalBytes_, " bytes), got ptr=", storage.data_ptr(), " (", storage.nbytes(),
+                    " bytes); the registered host memory must stay alive and keep its address and size");
+            }
+            // 回退窗口实例: 经下方 memcpy 回填, 允许换源张量。
+        } else {
+            externalHostPtr = storage.data_ptr();
+            externalBytes = static_cast<int64_t>(storage.nbytes());
+        }
     }
     EnsureEngramContext(externalHostPtr, externalBytes, sfHostPtr, sfBytes);
 
-    if (!withGrad_) {
+    if (!withGrad_ && !engramStorageExternal_) {
         TORCH_CHECK(storage.nbytes() <= static_cast<size_t>(engramNumCpuBytes_), "storage size ", storage.nbytes(),
                     " exceeds buffer capacity ", engramNumCpuBytes_);
     }
@@ -1956,7 +2044,9 @@ void ElasticBuffer::EngramWrite(const at::Tensor& storage, const c10::optional<a
     engramNumEntries_ = storage.size(0);
     engramDtype_ = storage.scalar_type();
 
-    if (!withGrad_ && engramNumEntries_ > 0) {
+    if (!withGrad_ && !engramStorageExternal_ && engramNumEntries_ > 0) {
+        // 零拷贝注册(engramStorageExternal_)时存储即窗口, 无需拷贝; 存储的就地更新对
+        // 后续 engram_fetch 天然可见。
         constexpr size_t MEMCPY_MAX_BYTES = 0x7fffffff;
         size_t totalBytes = storage.nbytes();
         size_t remaining = totalBytes;
@@ -2444,6 +2534,8 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
         .def("get_local_sf_table_addr", &Mc2Api::ElasticBuffer::GetLocalSfTableAddrTensor)
         .def("get_comm_buffer_size", &Mc2Api::ElasticBuffer::GetCommBufferSize)
         .def("get_rank_size", &Mc2Api::ElasticBuffer::GetRankSize)
+        .def("get_host_buf_ptr", &Mc2Api::ElasticBuffer::GetHostBufPtr)
+        .def("get_storage_zero_copy", &Mc2Api::ElasticBuffer::GetStorageZeroCopy)
         .def("moe_ep_dispatch", &Mc2Api::ElasticBuffer::MoeEpDispatch)
         .def("moe_ep_dispatch_epilogue", &Mc2Api::ElasticBuffer::MoeEpDispatchEpilogue)
         .def("moe_ep_combine", &Mc2Api::ElasticBuffer::MoeEpCombine)
