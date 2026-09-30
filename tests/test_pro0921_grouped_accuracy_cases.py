@@ -812,3 +812,147 @@ def test_quant_batch_loader_verifies_grouped_readback(monkeypatch, tmp_path):
     run(li_pt, li_data, "ok")
     with pytest.raises(AssertionError, match="x_cache"):
         run(li_pt, li_data, "li_write")
+
+
+# ---------------------------------------------------------------------------
+# S16 regression: the on-device accuracy ring check must round its expectation
+# to the op dtype before the strict np.array_equal.  The builders leave a
+# float32 0.1 sentinel in a ring row that bf16/fp16 cannot represent (it reads
+# back as 0.10009765625), so an fp32 expectation failed even a correct operator.
+# These tests drive ``_run_one_accuracy`` with a CPU stand-in for the kernel's
+# in-place ring write and never touch npu/``cann_ops_transformer``.
+# ---------------------------------------------------------------------------
+def test_round_to_op_dtype_matches_device_readback():
+    sentinel = np.array([0.1, -0.25, 3.5, 1e-8], dtype=np.float32)
+    bf16 = COMPRESSOR._round_to_op_dtype(sentinel, "bfloat16")
+    fp16 = COMPRESSOR._round_to_op_dtype(sentinel, "float16")
+    assert COMPRESSOR._round_to_op_dtype(None, "bfloat16") is None
+    # the sentinel really is unrepresentable, otherwise the regression is a no-op
+    assert bf16[0] != np.float32(0.1)
+    assert fp16[0] != np.float32(0.1)
+    torch = pytest.importorskip("torch")
+    bf16_readback = (torch.from_numpy(sentinel).to(torch.bfloat16)
+                     .detach().cpu().to(torch.float32).numpy())
+    fp16_readback = (torch.from_numpy(sentinel).to(torch.float16)
+                     .detach().cpu().to(torch.float32).numpy())
+    assert np.array_equal(bf16, bf16_readback), (bf16, bf16_readback)
+    assert np.array_equal(fp16, fp16_readback), (fp16, fp16_readback)
+
+
+def _materialize_one(module, tmp_path, base_name, target_name, dtype=None):
+    case_set = module.default_case_set()
+    selected = []
+    for case in case_set["cases"]:
+        if case["name"] == base_name:
+            case = dict(case, name=target_name)
+            if dtype is not None:
+                case["dtype"] = dtype
+            selected.append(case)
+    assert selected, base_name
+    manifest = module.materialize(dict(case_set, cases=selected), tmp_path / target_name)
+    return next(e for e in manifest["cases"] if e["name"] == target_name)
+
+
+def _ring_op(torch, entry, mode):
+    """CPU stand-in for the compressor kernel's in-place x_cache ring write.
+
+    ``ok`` honours the ``x_cache_update`` flag, ``no_write`` skips the write,
+    ``wrong_token`` always writes the current token perturbed so a spurious
+    write into a read-only cache is caught too.
+    """
+    def op(x, wkv, wgate, state_cache, ape, **kwargs):
+        ring = kwargs.get("x_cache")
+        if ring is not None:
+            slot = int(kwargs["x_cache_slot_mapping"].detach().cpu().numpy().reshape(-1)[0])
+            rows = ring.shape[1]
+            write = bool(kwargs.get("x_cache_update", True))
+            if mode == "no_write":
+                write = False
+            elif mode == "wrong_token":
+                write = True
+            if write and slot >= 0:
+                used = int(kwargs["seqused"].detach().cpu().numpy().reshape(-1)[0])
+                token = x.detach().reshape(-1, x.shape[-1])[used - 1].clone()
+                if mode == "wrong_token":
+                    token = token + 1.0
+                ring[slot // rows, slot % rows] = token
+        return torch.zeros(1, 1, entry["head_dim"], dtype=torch.bfloat16)
+
+    return op
+
+
+def _run_accuracy_cpu(monkeypatch, entry, mode):
+    torch = pytest.importorskip("torch")
+    import types
+
+    # the harness builds "npu:0" tensors; keep them on the CPU for this test
+    monkeypatch.setattr(
+        COMPRESSOR, "_to_device",
+        lambda t, value, dtype, device: None if value is None else
+        torch.from_numpy(np.ascontiguousarray(value)).to(dtype))
+    monkeypatch.setattr(torch, "npu", types.SimpleNamespace(
+        set_device=lambda *a, **k: None, synchronize=lambda *a, **k: None),
+        raising=False)
+    return COMPRESSOR._run_one_accuracy(torch, _ring_op(torch, entry, mode), entry, 0)
+
+
+def _ring_check(result):
+    check = next(c for c in result["checks"]
+                 if c["check"].endswith(":x_cache_side_effect"))
+    return check["ok"], check["metric"]
+
+
+def test_accuracy_ring_accepts_correct_write_with_unrepresentable_sentinel(
+        monkeypatch, tmp_path):
+    entry = _materialize_one(COMPRESSOR, tmp_path, "hca_grouped_update_only",
+                             "hca_grouped_update_only_s16")
+    # the fixture ring really carries a value the op dtype cannot represent, so a
+    # raw float32 expectation is what the pre-fix code compared against
+    raw = np.load(Path(entry["dir"]) / "x_cache.npy")
+    assert not np.array_equal(raw, COMPRESSOR._round_to_op_dtype(raw, entry["dtype"]))
+    ok, metric = _ring_check(_run_accuracy_cpu(monkeypatch, entry, "ok"))
+    assert ok, metric
+    assert metric["modified"] is True and metric["expected_modified"] is True, metric
+
+
+def test_accuracy_ring_rejects_missing_and_wrong_ring_write(monkeypatch, tmp_path):
+    entry = _materialize_one(COMPRESSOR, tmp_path, "hca_grouped_update_only",
+                             "hca_grouped_update_only_s16_neg")
+    ok, _ = _ring_check(_run_accuracy_cpu(monkeypatch, entry, "no_write"))
+    assert ok is False
+    ok, _ = _ring_check(_run_accuracy_cpu(monkeypatch, entry, "wrong_token"))
+    assert ok is False
+
+
+def test_accuracy_ring_boundary_write_passes(monkeypatch, tmp_path):
+    entry = _materialize_one(COMPRESSOR, tmp_path, "hca_grouped_boundary",
+                             "hca_grouped_boundary_s16")
+    ok, metric = _ring_check(_run_accuracy_cpu(monkeypatch, entry, "ok"))
+    assert ok, metric
+    assert metric["modified"] is True, metric
+    ok, _ = _ring_check(_run_accuracy_cpu(monkeypatch, entry, "wrong_token"))
+    assert ok is False
+
+
+def test_accuracy_ring_read_only_cache_keeps_its_semantics(monkeypatch, tmp_path):
+    entry = _materialize_one(COMPRESSOR, tmp_path, "csa_grouped_li_read_shared",
+                             "csa_grouped_li_s16")
+    assert entry["x_cache_update"] is False
+    ok, metric = _ring_check(_run_accuracy_cpu(monkeypatch, entry, "ok"))
+    assert ok, metric
+    assert metric["modified"] is False and metric["expected_modified"] is False, metric
+    # a spurious write into the shared cache is still caught
+    ok, _ = _ring_check(_run_accuracy_cpu(monkeypatch, entry, "wrong_token"))
+    assert ok is False
+
+
+def test_accuracy_ring_fp16_path_rounds_the_fixture(monkeypatch, tmp_path):
+    entry = _materialize_one(COMPRESSOR, tmp_path, "hca_grouped_update_only",
+                             "hca_grouped_update_only_fp16", dtype="float16")
+    assert entry["dtype"] == "float16"
+    raw = np.load(Path(entry["dir"]) / "x_cache.npy")
+    assert not np.array_equal(raw, COMPRESSOR._round_to_op_dtype(raw, "float16"))
+    ok, metric = _ring_check(_run_accuracy_cpu(monkeypatch, entry, "ok"))
+    assert ok, metric
+    bad, _ = _ring_check(_run_accuracy_cpu(monkeypatch, entry, "no_write"))
+    assert bad is False

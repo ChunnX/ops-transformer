@@ -687,6 +687,24 @@ def _load_npu_runtime():
     return torch, compressor
 
 
+def _round_to_op_dtype(array, dtype):
+    """Round a float array to the exact values the operator's buffer holds.
+
+    numpy has no bfloat16, so the fixtures are stored as float32, but the device
+    buffer is created with the op dtype.  A value that the op dtype cannot
+    represent (the 0.1 sentinel the builders leave in the ring, read back as
+    0.10009765625 in bf16) is therefore stored rounded, and the expected ring and
+    its ``modified`` baseline must be rounded the same way before the strict
+    ``np.array_equal``.  This is a dtype alignment, never a tolerance compare.
+    """
+    if array is None:
+        return None
+    if dtype == "bfloat16":
+        _, latent_ref = _smoke()
+        return latent_ref.to_bf16(array)
+    return np.asarray(array, dtype=np.float32).astype(np.float16).astype(np.float32)
+
+
 def _to_device(torch, array, dtype, device):
     if array is None:
         return None
@@ -735,9 +753,10 @@ def _run_one_accuracy(torch, compressor, entry, device_id):
         kwargs["x_cache_update"] = bool(entry["x_cache_update"])
     cmp_kv = compressor(dev("x"), dev("wkv"), dev("wgate"), state_cache, dev("ape"), **kwargs)
     torch.npu.synchronize()
-    # numpy has no bfloat16: cast on-device to float32 before .numpy().  The
-    # golden on disk is already bf16-rounded (to_bf16), so the fp32 readback is
-    # bit-for-bit equal to it; a raw .numpy() on a bf16 tensor raises.
+    # numpy has no bfloat16: widen the device tensor to float32 before .numpy()
+    # (a raw .numpy() on a bf16 tensor raises).  The readback is therefore the
+    # on-device op-dtype values widened to float32, so the ring check below must
+    # round its expectation to the op dtype instead of comparing raw float32.
     cmp_kv_cpu = cmp_kv.detach().cpu().to(torch.float32).numpy()
     state_cpu = state_cache.detach().cpu().to(torch.float32).numpy()
     x_cache_cpu = None if x_cache is None else x_cache.detach().cpu().to(torch.float32).numpy()
@@ -753,21 +772,25 @@ def _run_one_accuracy(torch, compressor, entry, device_id):
                        _compare_state(goldens["state_cache"], state_cpu,
                                       payload["state_cache"])))
     if entry["path"] == "grouped":
-        expect_cache = None
+        # The device buffer holds the op dtype, so a fixture row the operator
+        # never touches still reads back rounded; the unchanged baseline and the
+        # written token are rounded the same way before the exact compare.
+        ring_baseline = _round_to_op_dtype(payload["x_cache"], entry["dtype"])
         if entry["x_cache_update"] and int(payload["x_cache_slot_mapping"].reshape(-1)[0]) >= 0:
             rows = payload["x_cache"].shape[1]
             slot = int(payload["x_cache_slot_mapping"].reshape(-1)[0])
-            expect_cache = payload["x_cache"].copy()
-            expect_cache[slot // rows, slot % rows] = \
+            token = _round_to_op_dtype(
                 payload["x"].reshape(-1, payload["x"].shape[-1])[
-                    int(payload["seqused"].reshape(-1)[0]) - 1]
+                    int(payload["seqused"].reshape(-1)[0]) - 1], entry["dtype"])
+            expect_cache = ring_baseline.copy()
+            expect_cache[slot // rows, slot % rows] = token
         else:
-            expect_cache = payload["x_cache"]
+            expect_cache = ring_baseline
         same = np.array_equal(x_cache_cpu, expect_cache)
         checks.append((entry["name"] + ":x_cache_side_effect",
                        {"pass": bool(same), "modified": bool(not np.array_equal(
-                           x_cache_cpu, payload["x_cache"])), "expected_modified": bool(
-                           not np.array_equal(expect_cache, payload["x_cache"]))}))
+                           x_cache_cpu, ring_baseline)), "expected_modified": bool(
+                           not np.array_equal(expect_cache, ring_baseline))}))
     return {
         "name": entry["name"],
         "path": entry["path"],
