@@ -32,7 +32,6 @@
 #endif
 #include "../mega_moe_tiling.h"
 #include "mega_moe_constants.h"
-#include "mega_moe_count_layout.h"
 
 namespace MegaMoeImpl {
 
@@ -40,8 +39,6 @@ namespace MegaMoeImpl {
 // URMA 的 rank 槽位超过预留区时动态扩展；MTE 保持原 60 KiB 固定布局。
 constexpr int64_t PEERMEM_MIN_RANK_SYNC_SIZE = 1024 * 48LL;
 constexpr int64_t PEERMEM_DATA_OFFSET = 1024 * 60LL;
-// MTE count 区固定预留 2048 个 512B 槽，每槽仅首个 int32 有效。
-constexpr int64_t PEERMEM_MTE_COUNT_REGION_SIZE = MegaMoeCountLayout::REGION_BYTES;
 constexpr int64_t PEERMEM_SYNC_COUNT_REGION_SIZE = PEERMEM_DATA_OFFSET - PEERMEM_MIN_RANK_SYNC_SIZE;
 constexpr int64_t PEERMEM_SYNC_SLOT_SIZE = static_cast<int64_t>(INT_CACHELINE) * sizeof(int32_t);
 

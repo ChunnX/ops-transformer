@@ -21,7 +21,6 @@
 #include "kernel_operator.h"
 #include "op_kernel/math_util.h"
 #include "mega_moe_constants.h"
-#include "mega_moe_count_layout.h"
 #include "mega_moe_gmm_epilogue_sync.h"
 #include "mega_moe_types.h"
 
@@ -34,7 +33,7 @@ constexpr uint32_t UINT64_BYTE_OFFSET_SHIFT = 3U;
 // All MTE count/epoch words use independent 512-byte GM regions.
 __aicore__ inline uint32_t GetExpertCountSlotBytes()
 {
-    return MegaMoeCountLayout::SLOT_BYTES;
+    return MTE_COUNT_SLOT_BYTES;
 }
 
 __aicore__ inline __gm__ int32_t* GetSyncCountAddress(GM_ADDR rankSyncBase, uint32_t aivCoreIdx)
@@ -234,9 +233,9 @@ __aicore__ inline void ResetExpertCountSlots(const WorkRange& range, GM_ADDR reg
         const uint32_t remaining = range.count - offset;
         const uint32_t batchCount = remaining < batchCapacity ? remaining : batchCapacity;
         const uint64_t dstElement =
-            static_cast<uint64_t>(range.start + offset) * (MegaMoeCountLayout::SLOT_BYTES / sizeof(int32_t));
+            static_cast<uint64_t>(range.start + offset) * (MTE_COUNT_SLOT_BYTES / sizeof(int32_t));
         DataCopyExtParams copyParams{static_cast<uint16_t>(batchCount), sizeof(int32_t), 0U,
-                                     MegaMoeCountLayout::SLOT_BYTES - sizeof(int32_t), 0U};
+                                     MTE_COUNT_SLOT_BYTES - sizeof(int32_t), 0U};
         DataCopyPad<int32_t, PaddingMode::Compact>(regionGm[dstElement], resetTensor, copyParams);
         offset += batchCount;
     }
