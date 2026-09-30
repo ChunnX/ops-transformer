@@ -252,22 +252,8 @@ public:
             auto l0cSource1 = res.l0CBuf.template GetBufferByByte<int32_t>(L0C_ACCUMULATOR_OFFSET + 1024U * sizeof(int32_t));
             AscendC::Fixpipe<half, int32_t, pipeCfg>(ubDestination, l0cSource1, fpParams1);
         } else {
-            static constexpr AscendC::FixpipeConfig pipeCfg{AscendC::CO2Layout::ROW_MAJOR, true};
-            auto ubDestination = res.ubBuf.template GetBufferByByte<float>(ubOffset);
-
-            // SubBlock 0 (AIV 0): rows 0..63
-            AscendC::FixpipeParamsArch3510<AscendC::CO2Layout::ROW_MAJOR> fpParams0(nDim, sage::core::HALF, sage::core::M, nDim);
-            fpParams0.dualDstCtl = 0U;
-            fpParams0.subBlockId = false;
-            auto l0cSource0 = res.l0CBuf.template GetBufferByByte<float>(L0C_ACCUMULATOR_OFFSET);
-            AscendC::Fixpipe<float, float, pipeCfg>(ubDestination, l0cSource0, fpParams0);
-
-            // SubBlock 1 (AIV 1): rows 64..127 (starts at fractal 4 = 1024 float elements in L0C NZ layout)
-            AscendC::FixpipeParamsArch3510<AscendC::CO2Layout::ROW_MAJOR> fpParams1(nDim, sage::core::HALF, sage::core::M, nDim);
-            fpParams1.dualDstCtl = 0U;
-            fpParams1.subBlockId = true;
-            auto l0cSource1 = res.l0CBuf.template GetBufferByByte<float>(L0C_ACCUMULATOR_OFFSET + 1024U * sizeof(float));
-            AscendC::Fixpipe<float, float, pipeCfg>(ubDestination, l0cSource1, fpParams1);
+            auto ubFloatTensor = tla::MakeTensor(res.ubBuf.template GetBufferByByte<float>(ubOffset), tla::MakeLayout<float, Catlass::layout::RowMajor>(sage::core::M, nDim), Catlass::Arch::PositionUB{});
+            Catlass::Gemm::Tile::CopyL0CToUBTla<ArchTag, decltype(l0AccumulatorC), decltype(ubFloatTensor), Catlass::Gemm::Tile::CopyL0CToUBMode::SPLIT_M>()(ubFloatTensor, l0AccumulatorC);
         }
 
         AscendC::SetFlag<AscendC::HardEvent::FIX_M>(SYNC_SLOT);
