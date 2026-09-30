@@ -50,6 +50,10 @@ struct MoeDistributeDispatchV2Info {
     uint32_t scalesTypeSize;
     uint64_t scalesCount;
     uint32_t cumsumTmpMinSize; // cumsum min tmp size, 0 means no cumsum
+    // CCU 混合模式：Mc2MoeContext 设备地址（host 侧 GetMc2ContextTensor 创建后经 attr 递送，tiling 写入）。
+    // 0 = 纯 CCU 路径（原 a5_ccu 内核）；非 0 = 数据面走 epHcclBuffer_ 窗口的 MTE 直写。尾部追加保证
+    // 旧内核二进制配新 tiling 时只读前缀字段，布局兼容。
+    uint64_t mc2ContextAddr;
 };
 
 struct MoeDistributeDispatchV2TilingData {
