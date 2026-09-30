@@ -13,7 +13,7 @@
  * \brief BufferChannel：本卡内 AIC(读)/AIV(写) 共用的 buffer 复用环形分配器。
  *
  * 只负责"给出下一块可用 buffer 的逻辑偏移 + flagId"：
- *   - slotIdxRaw 在内部编号 0..slotNum-1，环形回绕（用于寻址）；
+ *   - slotIdxRaw 在内部编号 0..slotNum-1，环形回绕1（用于寻址）；
  *   - GetNextSlot 返回 {offset = slotIdxRaw*slotSize, slotIdx = slotIdxRaw % FLAG_ID_MODULO}；
  *   - slotIdx 字段直接可作 CrossCoreSetFlag/WaitFlag 的 flagId，永远落在 [0, FLAG_ID_MODULO-1]；
  *   - FLAG_ID_MODULO = 11，避开 SyncAll 占用的 flagId 11~14。
