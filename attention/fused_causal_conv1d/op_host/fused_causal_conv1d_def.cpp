@@ -64,6 +64,7 @@ public:
             .PrecisionReduceFlag(true)
             .ExtendCfgInfo("opFile.value", "fused_causal_conv1d_apt");
         this->AICore().AddConfig("ascend950", config_950);
+        this->AICore().AddConfig("ascend350", config_950);
     }
 };
 

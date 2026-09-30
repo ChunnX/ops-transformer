@@ -48,18 +48,18 @@ class AclnnEngramFetchGradTest : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
-        op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
+        op::SetPlatformNpuArch(Ops::Base::DAV_3510);
         std::cout << "EngramFetchGrad AclnnTest SetUp" << std::endl;
     }
 
     static void TearDownTestCase()
     {
-        op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
+        op::SetPlatformNpuArch(Ops::Base::DAV_3510);
         std::cout << "EngramFetchGrad AclnnTest TearDown" << std::endl;
     }
 };
 
-TEST_F(AclnnEngramFetchGradTest, ascend950_success)
+TEST_F(AclnnEngramFetchGradTest, dav3510_success)
 {
     auto commContext_desc = TensorDesc({6146}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 1);
     auto gradFetched_desc = TensorDesc({8, 512}, ACL_BF16, ACL_FORMAT_ND);
@@ -88,7 +88,7 @@ TEST_F(AclnnEngramFetchGradTest, ascend950_success)
     EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
-TEST_F(AclnnEngramFetchGradTest, ascend950_nullptr_commContext)
+TEST_F(AclnnEngramFetchGradTest, dav3510_nullptr_commContext)
 {
     auto gradFetched_desc = TensorDesc({8, 512}, ACL_BF16, ACL_FORMAT_ND);
     auto perm_desc = TensorDesc({8}, ACL_INT32, ACL_FORMAT_ND);
@@ -115,7 +115,7 @@ TEST_F(AclnnEngramFetchGradTest, ascend950_nullptr_commContext)
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
 }
 
-TEST_F(AclnnEngramFetchGradTest, ascend950_nullptr_gradFetched)
+TEST_F(AclnnEngramFetchGradTest, dav3510_nullptr_gradFetched)
 {
     auto commContext_desc = TensorDesc({6146}, ACL_INT32, ACL_FORMAT_ND);
     auto perm_desc = TensorDesc({8}, ACL_INT32, ACL_FORMAT_ND);
@@ -142,7 +142,7 @@ TEST_F(AclnnEngramFetchGradTest, ascend950_nullptr_gradFetched)
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
 }
 
-TEST_F(AclnnEngramFetchGradTest, ascend950_nullptr_gradUniqueOut)
+TEST_F(AclnnEngramFetchGradTest, dav3510_nullptr_gradUniqueOut)
 {
     auto commContext_desc = TensorDesc({6146}, ACL_INT32, ACL_FORMAT_ND);
     auto gradFetched_desc = TensorDesc({8, 512}, ACL_BF16, ACL_FORMAT_ND);
@@ -169,7 +169,7 @@ TEST_F(AclnnEngramFetchGradTest, ascend950_nullptr_gradUniqueOut)
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
 }
 
-TEST_F(AclnnEngramFetchGradTest, ascend950_execute_entry)
+TEST_F(AclnnEngramFetchGradTest, dav3510_execute_entry)
 {
     aclnnStatus ret = aclnnEngramFetchGrad(nullptr, 0, nullptr, nullptr);
     EXPECT_THAT(ret, testing::AnyOf(testing::Eq(ACLNN_SUCCESS), testing::Eq(ACLNN_ERR_PARAM_NULLPTR),

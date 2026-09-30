@@ -31,6 +31,9 @@ using GMMS8S4BasicApiTilingData = GroupedMatmulTilingData::GMMS8S4BasicApiTiling
 #include "arch35/quant_adaptive_sliding_window_templates/gqmm_tiling_key.h"
 #if defined(V310_GMM_QUANT_CUBE) || defined(V310_GMM_QUANT_PERTENSOR_CUBE)
 #include "arch35/quant_adaptive_sliding_window_templates/gqmm_cube_on_the_fly.h"
+#if IS_BLAZE
+#include "arch35/quant_adaptive_sliding_window_templates/gqmm_cube_tensor_api_kernel.h"
+#endif
 #endif
 #if defined(V310_GMM_QUANT_MX) && IS_BLAZE
 #include "arch35/quant_adaptive_sliding_window_templates/gqmm_tensor_api_mx_kernel.h"
@@ -268,7 +271,7 @@ template <int8_t W_TYPE, int8_t OFFSET_OR_BIAS_EXIT, int8_t C_QUANT_TYPE, int8_t
           int8_t WQ_A_TRANS, int8_t TEMPLATE_CUSTOM_SC, bool IS_SINGLE_MULTI_SINGLE, int8_t ALGORITHM_SUB_CATEGORY,
           int8_t ALGORITHM_CATEGORY>
 #else
-template <int8_t NO_QUANT_B_TRANS, int8_t NO_QUANT_A_TRANS>
+template <int8_t NO_QUANT_B_TRANS, int8_t NO_QUANT_A_TRANS, int8_t NO_QUANT_ACT>
 #endif
 __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM_ADDR scale, GM_ADDR offset,
                                           GM_ADDR antiquantScale, GM_ADDR antiquantOffset, GM_ADDR groupList,
@@ -333,6 +336,43 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
 #endif
 
 #if defined(V310_GMM_QUANT_CUBE) || defined(V310_GMM_QUANT_PERTENSOR_CUBE) // scale64/perTensor/double perTensor
+#if IS_BLAZE
+    if constexpr (QUANT_A_TRANS == GMM_NO_TRANS && (QUANT_B_TRANS == GMM_NO_TRANS || QUANT_B_TRANS == GMM_TRANS) &&
+                  KERNEL_TYPE == GMM_DEQUANT_FIXP) {
+        // Keep this predicate in sync with GroupedQmmBasicApiTiling::IsCubeBasicApi().
+        constexpr bool isInt8 =
+            AscendC::IsSameType<DTYPE_X, int8_t>::value && AscendC::IsSameType<DTYPE_WEIGHT, int8_t>::value;
+        constexpr bool isHiFloat8 = ORIG_DTYPE_X == DT_HIFLOAT8 && ORIG_DTYPE_WEIGHT == DT_HIFLOAT8;
+        constexpr bool isFp8X = ORIG_DTYPE_X == DT_FLOAT8_E4M3FN || ORIG_DTYPE_X == DT_FLOAT8_E5M2;
+        constexpr bool isFp8W = ORIG_DTYPE_WEIGHT == DT_FLOAT8_E4M3FN || ORIG_DTYPE_WEIGHT == DT_FLOAT8_E5M2;
+        constexpr bool outputSupported =
+            AscendC::IsSameType<DTYPE_Y, half>::value || AscendC::IsSameType<DTYPE_Y, bfloat16_t>::value ||
+            (isInt8 ? (AscendC::IsSameType<DTYPE_Y, int8_t>::value || AscendC::IsSameType<DTYPE_Y, int32_t>::value) :
+                      AscendC::IsSameType<DTYPE_Y, float>::value);
+        constexpr bool scaleSupported =
+            AscendC::IsSameType<DTYPE_Y, int32_t>::value || AscendC::IsSameType<DTYPE_SCALE, uint64_t>::value ||
+            AscendC::IsSameType<DTYPE_SCALE, int64_t>::value || AscendC::IsSameType<DTYPE_SCALE, bfloat16_t>::value ||
+            AscendC::IsSameType<DTYPE_SCALE, float>::value;
+        if constexpr ((isInt8 || isHiFloat8 || (isFp8X && isFp8W)) && outputSupported && scaleSupported) {
+            // Both layouts start with GMMQuantParams. Do not read mmTilingData before selecting the layout.
+            GET_TILING_DATA_MEMBER(GMMQuantTilingData, gmmQuantParams, cubeRouteParams, tiling);
+            using NativeBiasType = AscendC::Std::conditional_t<isInt8, int32_t, float>;
+            constexpr bool biasSupported = AscendC::IsSameType<DTYPE_BIAS, NativeBiasType>::value;
+            if (!cubeRouteParams.hasBias || biasSupported) {
+                using CubeWLayout = AscendC::Std::conditional_t<
+                    wFormat == CubeFormat::NZ,
+                    AscendC::Std::conditional_t<QUANT_B_TRANS == GMM_TRANS, AscendC::Te::ZNLayoutPtn,
+                                                AscendC::Te::NZLayoutPtn>,
+                    AscendC::Std::conditional_t<QUANT_B_TRANS == GMM_TRANS, AscendC::Te::DNExtLayoutPtn,
+                                                AscendC::Te::NDExtLayoutPtn>>;
+                GmmCubeTensorApiKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, DTYPE_Y,
+                                       AscendC::Te::NDExtLayoutPtn, CubeWLayout, AscendC::Te::NDExtLayoutPtn>(
+                    x, weight, bias, scale, groupList, perTokenScale, y, user1, tiling);
+                return;
+            }
+        }
+    }
+#endif
     if constexpr (QUANT_B_TRANS == GMM_NO_TRANS && QUANT_A_TRANS == GMM_NO_TRANS && KERNEL_TYPE == GMM_DEQUANT_FIXP) {
         GET_TILING_DATA_WITH_STRUCT(GMMQuantTilingData, tilingData, tiling);
         GMM_QUANT_IMPL_CLASS(false, false, GmmASWKernel);
@@ -548,29 +588,32 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
 #endif
 #else
     REGISTER_TILING_DEFAULT(GMMNoQuantTilingData);
+    if constexpr (NO_QUANT_ACT == GMM_ACT_GELU_TANH) {
+        KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2); // GELU epilogue 需 1:2 AIC:AIV
+    }
     if constexpr (NO_QUANT_B_TRANS == GMM_NO_TRANS && NO_QUANT_A_TRANS == GMM_NO_TRANS) {
         if constexpr (wFormat == CubeFormat::NZ) {
-            GroupedMatMulKernel<asc::te::nd_ext_layout_ptn, asc::te::nz_layout_ptn>(x, weight, bias, groupList, y,
-                                                                                    tiling);
+            GroupedMatMulKernel<asc::te::nd_ext_layout_ptn, asc::te::nz_layout_ptn, NO_QUANT_ACT == GMM_ACT_GELU_TANH>(
+                x, weight, bias, groupList, y, tiling);
         } else {
-            GroupedMatMulKernel<asc::te::nd_ext_layout_ptn, asc::te::nd_ext_layout_ptn>(x, weight, bias, groupList, y,
-                                                                                        tiling);
+            GroupedMatMulKernel<asc::te::nd_ext_layout_ptn, asc::te::nd_ext_layout_ptn,
+                                NO_QUANT_ACT == GMM_ACT_GELU_TANH>(x, weight, bias, groupList, y, tiling);
         }
     } else if constexpr (NO_QUANT_B_TRANS == GMM_NO_TRANS && NO_QUANT_A_TRANS == GMM_TRANS) { // x transposed
         if constexpr (wFormat == CubeFormat::NZ) {
-            GroupedMatMulKernel<asc::te::dn_ext_layout_ptn, asc::te::nz_layout_ptn>(x, weight, bias, groupList, y,
-                                                                                    tiling);
+            GroupedMatMulKernel<asc::te::dn_ext_layout_ptn, asc::te::nz_layout_ptn, NO_QUANT_ACT == GMM_ACT_GELU_TANH>(
+                x, weight, bias, groupList, y, tiling);
         } else {
-            GroupedMatMulKernel<asc::te::dn_ext_layout_ptn, asc::te::nd_ext_layout_ptn>(x, weight, bias, groupList, y,
-                                                                                        tiling);
+            GroupedMatMulKernel<asc::te::dn_ext_layout_ptn, asc::te::nd_ext_layout_ptn,
+                                NO_QUANT_ACT == GMM_ACT_GELU_TANH>(x, weight, bias, groupList, y, tiling);
         }
     } else if constexpr (NO_QUANT_B_TRANS == GMM_TRANS && NO_QUANT_A_TRANS == GMM_NO_TRANS) { // weight transposed
         if constexpr (wFormat == CubeFormat::NZ) {
-            GroupedMatMulKernel<asc::te::nd_ext_layout_ptn, asc::te::zn_layout_ptn>(x, weight, bias, groupList, y,
-                                                                                    tiling);
+            GroupedMatMulKernel<asc::te::nd_ext_layout_ptn, asc::te::zn_layout_ptn, NO_QUANT_ACT == GMM_ACT_GELU_TANH>(
+                x, weight, bias, groupList, y, tiling);
         } else {
-            GroupedMatMulKernel<asc::te::nd_ext_layout_ptn, asc::te::dn_ext_layout_ptn>(x, weight, bias, groupList, y,
-                                                                                        tiling);
+            GroupedMatMulKernel<asc::te::nd_ext_layout_ptn, asc::te::dn_ext_layout_ptn,
+                                NO_QUANT_ACT == GMM_ACT_GELU_TANH>(x, weight, bias, groupList, y, tiling);
         }
     }
 #endif

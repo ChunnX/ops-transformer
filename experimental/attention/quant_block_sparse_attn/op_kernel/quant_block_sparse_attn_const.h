@@ -16,6 +16,7 @@
 #ifndef QUANT_BLOCK_SPARSE_ATTN_CONST_H
 #define QUANT_BLOCK_SPARSE_ATTN_CONST_H
 
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 
@@ -25,6 +26,8 @@ enum class QBSALayout : uint32_t {
     PA_BNBD = 3,
     PA_BSND = 4,
     NTD = 5,
+    BSND = 6,
+    BNSD = 7,
 };
 
 // === Q layout values (derived from QBSALayout enum, used in tiling data layoutQ field) ===
@@ -45,7 +48,9 @@ enum class QBSAAxis : size_t {
     MAX_BLOCK_NUM, // block_table dim1: max blocks per batch
 };
 
-// === Layout-aware axis index mapping for Q/KV (QBSALayout::TND/NTD/PA_BNBD) ===
+// Host shape parsing: map a semantic axis to its position in the public tensor shape.
+// Q supports TND/NTD/BSND/BNSD; QBSAAxis::T also denotes S for padded layouts.
+// Kernel layout specialization is selected separately through the tiling key.
 constexpr size_t QBSAGetAxisIdx(QBSALayout layout, QBSAAxis axis)
 {
     switch (layout) {
@@ -69,6 +74,21 @@ constexpr size_t QBSAGetAxisIdx(QBSALayout layout, QBSAAxis axis)
                     return 1U;
                 case QBSAAxis::D:
                     return 2U;
+                default:
+                    break;
+            }
+            break;
+        case QBSALayout::BSND:
+        case QBSALayout::BNSD:
+            switch (axis) {
+                case QBSAAxis::B:
+                    return 0U;
+                case QBSAAxis::T:
+                    return layout == QBSALayout::BSND ? 1U : 2U;
+                case QBSAAxis::N:
+                    return layout == QBSALayout::BSND ? 2U : 1U;
+                case QBSAAxis::D:
+                    return 3U;
                 default:
                     break;
             }

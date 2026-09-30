@@ -39,7 +39,7 @@ protected:
     ge::graphStatus GetShapeAttrsInfo() override;
     // 3、计算数据切分TilingData
     ge::graphStatus DoOpTiling() override;
-    // 4、计算高阶API的TilingData
+    // 4、计算低阶API的TilingData
     ge::graphStatus DoLibApiTiling() override;
     // 7、保存Tiling数据
     ge::graphStatus PostTiling() override;
@@ -47,6 +47,12 @@ protected:
     ge::graphStatus CalL1Tiling();
 
 private:
+    bool IsCubeBasicApi() const;
+    // Selected in IsCapable; reused by computation and serialization until Reset.
+    bool useCubeBasicApi_ = false;
+    ge::graphStatus CalCubeL1Tiling();
+    GroupedMatmulTilingData::GMMQuantCubeBasicApiTilingData cubeTilingData_;
+
     struct L1SearchResult {
         uint64_t depthA1 = 0UL;
         uint64_t depthB1 = 0UL;

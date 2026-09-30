@@ -44,6 +44,27 @@ struct Bmm2ResBuffSel {
 
 namespace BaseApi {
 
+template <bool useDn>
+__simd_vf__ inline void UpdateMinCheckValueVF(__ubuf__ float *dstUb, const float minValue, const float scaleValue,
+                                              const float pScale)
+{
+    RegTensor<float> vregMin;
+    RegTensor<float> vregPScale;
+    RegTensor<float> vregLnPScale;
+    MaskReg pregAll = CreateMask<uint16_t, MaskPattern::ALL>();
+    Duplicate(vregMin, minValue);
+    Duplicate(vregPScale, pScale);
+    Ln(vregLnPScale, vregPScale, pregAll);
+    if constexpr (useDn) {
+        Muls(vregMin, vregMin, scaleValue, pregAll);
+    }
+    Muls(vregMin, vregMin, INV_LN2, pregAll);
+    Truncate<float, RoundMode::CAST_CEIL>(vregMin, vregMin, pregAll);
+    Muls(vregMin, vregMin, LN2, pregAll);
+    Sub(vregMin, vregMin, vregLnPScale, pregAll);
+    StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ float *&)dstUb, vregMin, pregAll);
+}
+
 template <
     typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout = LayOutTypeEnum::None,
     LayOutTypeEnum outLayout = LayOutTypeEnum::None, S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
@@ -64,7 +85,7 @@ public:
     static constexpr uint32_t vec1ScmBlockFp32 = mBaseSize * 4;
     static constexpr uint32_t vec1ScmBlockFp8 = mBaseSize * 16;
     static constexpr uint32_t vec1ResOffsetDn = s2BaseSize * 32 + 64;
-    static constexpr uint32_t vec1Srcstride = (mBaseSize >> 1) + 1;
+    static constexpr uint32_t vec1Srcstride = (mBaseSize / ArchInfo::CV_RATIO) + 1;
     static constexpr uint32_t dTemplateAlign64 = Align64Func((uint16_t)dVTemplateType);
     static constexpr bool isFp8 = IsSameType<INPUT_T, fp8_e5m2_t>::value || IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
                                   IsSameType<INPUT_T, hifloat8_t>::value;
@@ -175,10 +196,6 @@ public:
         tPipe = pipe;
         uint32_t tmp1 = NEGATIVE_MIN_VALUE_FP32_LN2;
         this->negativeFloatScalar = *((T *)&tmp1);
-        if constexpr (USE_DN) {
-            minValue = NEGATIVE_MIN_VALUE_FP32;
-            UpdateMinCheckValue();
-        }
 
         InitVecInput(actualSeqQlenAddr, actualSeqKvlenAddr, pScale, attenMask, softmaxLse, attentionOut, workspace);
     }
@@ -264,7 +281,7 @@ public:
             totalOutputSize /= 2;
         }
         int64_t singleCoreSize =
-            (totalOutputSize + (2 * constInfo.coreNum) - 1) / (2 * constInfo.coreNum); // 2 means c:v = 1:2
+            (totalOutputSize + (ArchInfo::CV_RATIO * constInfo.coreNum) - 1) / (ArchInfo::CV_RATIO * constInfo.coreNum);
         int64_t tailSize = totalOutputSize - constInfo.aivIdx * singleCoreSize;
         int64_t singleInitOutputSize = tailSize < singleCoreSize ? tailSize : singleCoreSize;
 
@@ -290,7 +307,7 @@ public:
         }
         int64_t totalOutputSize = tSize * constInfo.realN2Size * constInfo.realGSize;
         int64_t singleCoreSize =
-            (totalOutputSize + (2 * constInfo.coreNum) - 1) / (2 * constInfo.coreNum); // 2 means c:v = 1:2
+            (totalOutputSize + (ArchInfo::CV_RATIO * constInfo.coreNum) - 1) / (ArchInfo::CV_RATIO * constInfo.coreNum);
         int64_t tailSize = totalOutputSize - constInfo.aivIdx * singleCoreSize;
         int64_t singleInitOutputSize = tailSize < singleCoreSize ? tailSize : singleCoreSize;
 
@@ -312,7 +329,7 @@ public:
         if constexpr (HAS_MASK) {
             maskLine = ComputeMaskLineDN(runInfo, subLoop);
         }
-        if (isFullMask) {
+        if (unlikely(isFullMask)) {
             maskLine = -256;
         }
         uint32_t softmaxBufIdx = runInfo.mloop % PRELOAD_N;
@@ -334,6 +351,7 @@ public:
 
         float descaleQK = 1.0;
         static constexpr int32_t s2BaseSizeCur = s2BaseSize >> 1;
+        uint32_t actMSizeAlign64ForVf = ((runInfo.actMSizeAlign / ArchInfo::CV_RATIO) + 63) >> 6 << 6; // 对齐64
         uint32_t s2CalcSize = runInfo.actSingleLoopS2Size;
         if (runInfo.actSingleLoopS2Size > s2SplitSize) {
             s2CalcSize = subLoop == 0 ? s2BaseSizeCur : runInfo.actSingleLoopS2Size - s2BaseSizeCur;
@@ -343,13 +361,13 @@ public:
             if (unlikely(!isSkipMask)) {
                 FaVectorApi::ProcessVec1VfDnMxfp8<T, INPUT_T, false, hasAtten, s2BaseSizeCur>(
                     stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, pScaleSubLoop0Tensor,
-                    ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign / 2, s2CalcSize,
+                    actMSizeAlign64ForVf, runInfo.actSingleLoopS2SizeAlign / 2, s2CalcSize,
                     static_cast<T>(constInfo.scaleValue), descaleQK, pScaleValue, negativeFloatScalar, 0.0F,
                     preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop, maskLine);
             } else {
                 FaVectorApi::ProcessVec1VfDnMxfp8<T, INPUT_T, false, false, s2BaseSizeCur>(
                     stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, pScaleSubLoop0Tensor,
-                    ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign / 2, s2CalcSize,
+                    actMSizeAlign64ForVf, runInfo.actSingleLoopS2SizeAlign / 2, s2CalcSize,
                     static_cast<T>(constInfo.scaleValue), descaleQK, pScaleValue, negativeFloatScalar, 0.0F,
                     preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop, maskLine);
             }
@@ -357,13 +375,13 @@ public:
             if (unlikely(!isSkipMask)) {
                 FaVectorApi::ProcessVec1VfDnMxfp8<T, INPUT_T, true, hasAtten, s2BaseSizeCur>(
                     stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, pScaleSubLoop0Tensor,
-                    ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign / 2, s2CalcSize,
+                    actMSizeAlign64ForVf, runInfo.actSingleLoopS2SizeAlign / 2, s2CalcSize,
                     static_cast<T>(constInfo.scaleValue), descaleQK, pScaleValue, negativeFloatScalar, 0.0F,
                     preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop, maskLine);
             } else {
                 FaVectorApi::ProcessVec1VfDnMxfp8<T, INPUT_T, true, false, s2BaseSizeCur>(
                     stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, pScaleSubLoop0Tensor,
-                    ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign / 2, s2CalcSize,
+                    actMSizeAlign64ForVf, runInfo.actSingleLoopS2SizeAlign / 2, s2CalcSize,
                     static_cast<T>(constInfo.scaleValue), descaleQK, pScaleValue, negativeFloatScalar, 0.0F,
                     preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop, maskLine);
             }
@@ -375,7 +393,7 @@ public:
         //-------------------------Data copy to l1-------------------------
         uint64_t pScaleL1Offset = mBaseSize * s2BaseSize; // PScale在L1P的偏移量（单位：元素）
         LocalTensor<fp8_e8m0_t> mm2AScaleL1Tensor = outputBuf.GetTensor<fp8_e8m0_t>(pScaleL1Offset);
-        constexpr uint64_t pScaleDataLen = (mBaseSize >> 1) * s2BaseSizeCur / MXFP_GROUP_SIZE;
+        constexpr uint64_t pScaleDataLen = (mBaseSize / ArchInfo::CV_RATIO) * s2BaseSizeCur / MXFP_GROUP_SIZE;
         constexpr uint16_t pScaleDstStride = s2BaseSizeCur / MXFP_GROUP_SIZE / 2 - 1;
         uint64_t vecOffset = constInfo.subBlockIdx * pScaleDataLen;
         if ((runInfo.actSingleLoopS2Size > s2SplitSize) && (subLoop % 2 == 1)) {
@@ -388,14 +406,13 @@ public:
         LocalTensor<INPUT_T> mm2AL1Tensor = outputBuf.GetTensor<INPUT_T>();
         int64_t subLoopOffset = s2BaseSizeCur * mBaseSize * subLoop;
         constexpr uint16_t elementSize = 32;
-        constexpr uint32_t singleProcessSOuterSize = mBaseSize >> 1;
+        constexpr uint32_t singleProcessSOuterSize = mBaseSize / ArchInfo::CV_RATIO;
         constexpr uint32_t actCopyCount = (singleProcessSOuterSize + elementSize - 1) / elementSize;
-        constexpr uint32_t actVec0Align32 = mBaseSize >> 1;
         uint32_t s2RealSizeAlign = (((runInfo.actSingleLoopS2Size + 63) >> 6) << 6);
         for (uint32_t i = 0; i < actCopyCount; i++) {
             uint32_t dstOffset = 32 * s2BaseSizeCur * i + subLoopOffset;
             if (constInfo.subBlockIdx == 1) {
-                dstOffset += s2BaseSizeCur * actVec0Align32;
+                dstOffset += s2BaseSizeCur * singleProcessSOuterSize;
             }
             uint32_t srcOffset = i * (65 << 5);
             DataCopy(mm2AL1Tensor[dstOffset], stage1CastTensor[srcOffset],
@@ -435,18 +452,13 @@ public:
 
     __aicore__ inline void UpdateMinCheckValue()
     {
-        float min = *((float *)&minValue);
-        if constexpr (USE_DN) {
-            min *= constInfo.scaleValue;
-        }
-        float tmp = min * INV_LN2;
-        // int32_t 范围 [-2147483648, 2147483647]，下限约 -2.1e9
-        // 若 tmp 小于 int32 最小值，float 精度丢失，直接原样计算
-        if (tmp > -2147483648.0f) {
-            min = static_cast<int32_t>(tmp) * LN2;
-        } else {
-            min = tmp * LN2;
-        }
+        LocalTensor<float> minValueUb = commonTBuf.template Get<float>();
+        TEventID minCheckEventId = GetTPipePtr()->FetchEventID(HardEvent::V_S);
+        UpdateMinCheckValueVF<USE_DN>((__ubuf__ float *)minValueUb.GetPhyAddr(), *((float *)&minValue),
+                                      constInfo.scaleValue, pScaleValue);
+        SetFlag<HardEvent::V_S>(minCheckEventId);
+        WaitFlag<HardEvent::V_S>(minCheckEventId);
+        float min = minValueUb.GetValue(0);
         minValue = static_cast<uint32_t>(*reinterpret_cast<int32_t *>(&min));
     }
 
@@ -457,11 +469,14 @@ public:
             return;
         }
 
-        uint32_t vecMSize = USE_DN ? runInfo.actVecMSize : (runInfo.actMSizeAlign32 / 2);
+        uint32_t vecMSize = USE_DN ? runInfo.actVecMSize : (runInfo.actMSizeAlign / ArchInfo::CV_RATIO);
         uint32_t gmDealRowCount;
         if constexpr (USE_DN) {
             gmDealRowCount = runInfo.actVecMSize;
         } else {
+#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201 || __NPU_ARCH__ == 9202))
+            gmDealRowCount = runInfo.actMSize;
+#else
             uint32_t groupsOf32 = (runInfo.actMSize + 31) / 32;
             if (constInfo.subBlockIdx == 0) {
                 gmDealRowCount = groupsOf32 * 16 > runInfo.actMSize ? runInfo.actMSize : groupsOf32 * 16;
@@ -469,6 +484,7 @@ public:
                 int32_t vec1RemainRows = runInfo.actMSize - 16 * groupsOf32;
                 gmDealRowCount = 0 > vec1RemainRows ? 0 : vec1RemainRows;
             }
+#endif
         }
         if (gmDealRowCount == 0) {
             return;
@@ -520,7 +536,7 @@ public:
         float slopes = 0.0f;
         float posShift = 0.0f;
         uint32_t pseStride = 0;
-        uint32_t actVecMSizeAlign16 = runInfo.actMSizeAlign32 >> 1;
+        uint32_t actVecMSizeAlign16 = runInfo.actMSizeAlign / ArchInfo::CV_RATIO;
 
         LocalTensor<uint8_t> attenMaskUb;
         if constexpr (HAS_MASK) {
@@ -645,7 +661,7 @@ public:
         LocalTensor<fp8_e8m0_t> mm2AScaleL1Tensor = outputBuf.GetTensor<fp8_e8m0_t>(pScaleL1Offset);
         uint64_t pScaleDataLen = actVecMSizeAlign16 * s2BaseSizeCur / MXFP_GROUP_SIZE;
         constexpr uint16_t pScaleDstStride = s2BaseSizeCur / MXFP_GROUP_SIZE / 2 - 1;
-        uint64_t pScaleSubLoopOffset = pScaleDataLen * 2;
+        uint64_t pScaleSubLoopOffset = pScaleDataLen * ArchInfo::CV_RATIO;
         uint16_t copyCount = actVecMSizeAlign16 / 16;
         uint64_t vecOffset = constInfo.subBlockIdx * pScaleDataLen;
         uint16_t dstStride = s2BaseSizeCur / MXFP_GROUP_SIZE / 2 - 1;
@@ -693,7 +709,7 @@ public:
             return;
         }
 
-        uint32_t vecMSize = USE_DN ? runInfo.actVecMSize : (runInfo.actMSizeAlign32 / 2);
+        uint32_t vecMSize = USE_DN ? runInfo.actVecMSize : (runInfo.actMSizeAlign / ArchInfo::CV_RATIO);
         int64_t vec2CalcSize = vecMSize * dTemplateAlign64;
         constexpr float deSCaleVValue = 1.0f;
 
@@ -723,23 +739,27 @@ public:
                 LastDivNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false>(vec2ResUb, vec2ResUb, sumUb, vecMSize,
                                                                           (uint16_t)dTemplateAlign64, deSCaleVValue);
             }
-            uint32_t DealRowCount;
+            uint32_t dealRowCount;
             if constexpr (USE_DN) {
-                DealRowCount = runInfo.actVecMSize;
+                dealRowCount = runInfo.actVecMSize;
             } else {
+#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201 || __NPU_ARCH__ == 9202))
+                dealRowCount = runInfo.actMSize;
+#else
                 uint32_t groupsOf32 = (runInfo.actMSize + 31) / 32;
                 if (constInfo.subBlockIdx == 0) {
-                    DealRowCount = groupsOf32 * 16 > runInfo.actMSize ? runInfo.actMSize : groupsOf32 * 16;
+                    dealRowCount = groupsOf32 * 16 > runInfo.actMSize ? runInfo.actMSize : groupsOf32 * 16;
                 } else {
                     int32_t vec1RemainRows = runInfo.actMSize - 16 * groupsOf32;
-                    DealRowCount = 0 > vec1RemainRows ? 0 : vec1RemainRows;
+                    dealRowCount = 0 > vec1RemainRows ? 0 : vec1RemainRows;
                 }
+#endif
             }
-            if (DealRowCount == 0) {
+            if (dealRowCount == 0) {
                 SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
                 return;
             }
-            CopyOutAttentionOut(runInfo, vec2ResUb, 0, vecMSize, DealRowCount);
+            CopyOutAttentionOut(runInfo, vec2ResUb, 0, vecMSize, dealRowCount);
         }
         SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
     }
@@ -915,7 +935,7 @@ public:
     {
         // Copy sum to gm
         LocalTensor<float> sumOutTensor = sumBrdcst.template AllocTensor<float>();
-        uint32_t vecMSize = USE_DN ? runInfo.actVecMSize : (runInfo.actMSizeAlign32 / 2);
+        uint32_t vecMSize = USE_DN ? runInfo.actVecMSize : (runInfo.actMSizeAlign / ArchInfo::CV_RATIO);
         FaVectorApi::BroadcastMaxSum(sumOutTensor, sumUb, vecMSize);
         sumBrdcst.template EnQue(sumOutTensor);
         sumBrdcst.template DeQue<float>();
@@ -937,11 +957,9 @@ public:
         if (unlikely(runInfo.actVecMSize == 0)) {
             return;
         }
-        uint32_t vecMSize = USE_DN ? runInfo.actVecMSize : (runInfo.actMSizeAlign32 / 2);
+        uint32_t vecMSize = USE_DN ? runInfo.actVecMSize : (runInfo.actMSizeAlign / ArchInfo::CV_RATIO);
         int64_t calculateSize = vecMSize * fp32BaseSize;
-        // 是否要改成halfMRealSize
         int64_t gmOffset = runInfo.faTmpOutWsPos * mBaseSize * fp32BaseSize + runInfo.vecMbaseIdx * fp32BaseSize;
-        // flashDecodeS2Idx?nBufferStartM?
         // Copy sum to gm
         BroadCastAndCopyOut(runInfo, sumUb, maxUb, gmOffset, calculateSize);
     }
@@ -997,8 +1015,8 @@ public:
 
     __aicore__ inline void InitBuffers()
     {
-        uint32_t mm1ResultSize = mBaseSize / CV_RATIO * s2BaseSize * sizeof(T);
-        uint32_t mm2ResultSize = mBaseSize / CV_RATIO * dTemplateAlign64 * sizeof(T);
+        uint32_t mm1ResultSize = mBaseSize / ArchInfo::CV_RATIO * s2BaseSize * sizeof(T);
+        uint32_t mm2ResultSize = mBaseSize / ArchInfo::CV_RATIO * dTemplateAlign64 * sizeof(T);
         if constexpr (!bmm2Write2Ub) {
             tPipe->InitBuffer(mm2InBuf, 32768); // bmm2结果在Gm，vector2开启多层循环，每次处理32KB
         }
@@ -1013,7 +1031,7 @@ public:
 
         if (constInfo.isSoftmaxLseEnable) {
             // 8: 适配TND，每行的结果存为8个重复lse元素（32B对齐）
-            this->tPipe->InitBuffer(softmaxLseQueue, 1, (mBaseSize >> 1U) * sizeof(float) * 8);
+            this->tPipe->InitBuffer(softmaxLseQueue, 1, (mBaseSize / ArchInfo::CV_RATIO) * sizeof(float) * 8);
         }
         if constexpr (isFp8) {
             if constexpr (USE_DN) {
@@ -1026,6 +1044,7 @@ public:
                         vselrIndexesTensor.SetValue(i * (256 >> 2) + j, i + (j << 2));
                     }
                 }
+                UpdateMinCheckValue();
             } else {
                 tPipe->InitBuffer(vselrIndexesBuf[static_cast<int>(VselrIndexEnum::GT_64_AND_LTE_128_INDEX)],
                                   128); // s2realsize (64, 128]
@@ -1123,7 +1142,7 @@ public:
         }
         int64_t maskLine = nextToken + static_cast<int64_t>(s1StartIdx) - static_cast<int64_t>(s2StartIdx);
         if (maskLine < 0) {
-            isFullMask = -maskLine >= (mBaseSize / 2);
+            isFullMask = -maskLine >= (mBaseSize / ArchInfo::CV_RATIO);
         } else {
             isFullMask = maskLine >= s2BaseSizeCur;
         }

@@ -26,6 +26,7 @@
 using namespace ge;
 using namespace AscendC;
 namespace optiling {
+namespace {
 
 ge::graphStatus QuantCompressorTiling::ConvertRequiredParams(gert::TilingContext &context,
                                                              QuantCompressorContext &quantCompressorContext)
@@ -127,6 +128,7 @@ ge::graphStatus QuantCompressorTiling::GetNpuInfo()
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->platformInfo);
     socVersion_ = ascendcPlatform.GetSocVersion();
+    npuArch_ = ascendcPlatform.GetCurNpuArch();
 
     libapiSize_ = ascendcPlatform.GetLibApiWorkSpaceSize();
 
@@ -206,7 +208,7 @@ ge::graphStatus QuantCompressorTiling::SetTemplateId() const
     if (context_->templateId == TemplateId::EMPTY_X) {
         return ge::GRAPH_SUCCESS;
     }
-    if (socVersion_ == platform_ascendc::SocVersion::ASCEND950) {
+    if (npuArch_ == NpuArch::DAV_3510) {
         // 设置高性能模板
         // 4: max S; 256: max tokensize
         if (context_->layout == LayoutType::LAYOUT_BSH && baseParams_->seqSize <= FULL_LOAD_MAX_SEQ_SIZE &&
@@ -1026,7 +1028,9 @@ ge::graphStatus QuantCompressorTiling::CheckMultiParaConsistency() const
     return ge::GRAPH_SUCCESS;
 }
 
-CMP_EXTERN_C ge::graphStatus TilingQuantCompressor(gert::TilingContext *context)
+} // namespace
+
+CMP_EXTERN_C ge::graphStatus TilingQuantCompressorArch35(gert::TilingContext *context)
 {
     OP_CHECK_IF(context == nullptr,
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("QuantCompressor", "context", "is nullptr"),
@@ -1057,13 +1061,4 @@ CMP_EXTERN_C ge::graphStatus TilingQuantCompressor(gert::TilingContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TilingPrepareForQuantCompressor(gert::TilingParseContext *const context)
-{
-    (void)context;
-    return ge::GRAPH_SUCCESS;
-}
-
-IMPL_OP_OPTILING(QuantCompressor)
-    .Tiling(TilingQuantCompressor)
-    .TilingParse<QuantCompressorCompileInfo>(TilingPrepareForQuantCompressor);
 } // namespace optiling

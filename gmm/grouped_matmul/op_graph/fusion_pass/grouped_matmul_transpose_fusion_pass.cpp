@@ -61,7 +61,8 @@ constexpr char kTransposeWeightAttr[] = "transpose_weight";
 constexpr char kXInputName[] = "x";
 constexpr char kWeightInputName[] = "weight";
 constexpr char kFixPipeIntrinsic[] = "Intrinsic_fix_pipe_l0c2out";
-constexpr char kDav3510ShortSocVersion[] = "Ascend950";
+constexpr char kAscend350ShortSocVersion[] = "Ascend350";
+constexpr char kAscend950ShortSocVersion[] = "Ascend950";
 
 constexpr int32_t kXIndex = 0;
 constexpr int32_t kWeightIndex = 1;
@@ -87,6 +88,11 @@ struct GmmReshapePatternMatchInfo {
     bool isBitcastReshapePattern = false;
 };
 
+struct GmmPlatformSupport {
+    bool transposeFusion = false;
+    bool reshapePattern = false;
+};
+
 struct GmmInputPattern {
     GNodePtr immediateInput = nullptr;
     GNodePtr bitcastNode = nullptr;
@@ -100,10 +106,10 @@ struct GmmInputPattern {
     bool isBitcastReshapePattern = false;
 };
 
-bool IsGraphFusionRuntimeSupported()
+bool IsTargetVersion()
 {
     int32_t version = 0;
-    if (aclsysGetVersionNum("ge_compiler", &version) != ACL_SUCCESS) {
+    if (aclsysGetVersionNum("ge-compiler", &version) != ACL_SUCCESS) {
         OP_LOGW(kPassName, "Failed to get ge compiler version.");
         return false;
     }
@@ -248,27 +254,18 @@ bool IsMxFp4QuantMode(const GNode &groupedMatmulNode)
            IsFloat4DataType(xDesc.GetDataType()) && IsFloat4DataType(weightDesc.GetDataType());
 }
 
-bool CheckPlatformIsDav3510ForGmm()
+GmmPlatformSupport GetGmmPlatformSupport()
 {
     fe::PlatformInfo platformInfo;
     fe::OptionalInfo optionalInfo;
     if (fe::PlatformInfoManager::Instance().GetPlatformInfoWithOutSocVersion(platformInfo, optionalInfo) != SUCCESS) {
         OP_LOGW(kPassName, "Get platform information failed.");
-        return false;
+        return {};
     }
-    return platformInfo.str_info.short_soc_version == kDav3510ShortSocVersion;
-}
-
-bool CheckPlatformSupportReshapePattern()
-{
-    fe::PlatformInfo platformInfo;
-    fe::OptionalInfo optionalInfo;
-    if (fe::PlatformInfoManager::Instance().GetPlatformInfoWithOutSocVersion(platformInfo, optionalInfo) != SUCCESS) {
-        OP_LOGW(kPassName, "Get platform information failed.");
-        return false;
-    }
-    return platformInfo.ai_core_intrinsic_dtype_map.find(kFixPipeIntrinsic) !=
-           platformInfo.ai_core_intrinsic_dtype_map.end();
+    const auto &shortSocVersion = platformInfo.str_info.short_soc_version;
+    return {shortSocVersion == kAscend350ShortSocVersion || shortSocVersion == kAscend950ShortSocVersion,
+            platformInfo.ai_core_intrinsic_dtype_map.find(kFixPipeIntrinsic) !=
+                platformInfo.ai_core_intrinsic_dtype_map.end()};
 }
 
 bool IsWeightQuant(const GNode &groupedMatmulNode)
@@ -581,7 +578,8 @@ Status CheckGmmNode(GNode &groupedMatmulNode)
     return SUCCESS;
 }
 
-void DetectReshapePattern(GNode &groupedMatmulNode, std::vector<GmmReshapePatternMatchInfo> &reshapePattern)
+void DetectReshapePattern(GNode &groupedMatmulNode, std::vector<GmmReshapePatternMatchInfo> &reshapePattern,
+                          const GmmPlatformSupport &platformSupport)
 {
     reshapePattern.assign(kPertokenScaleIndex + 1, GmmReshapePatternMatchInfo());
     reshapePattern[kXIndex] = AnalyzeNodePattern(GetInputNode(groupedMatmulNode, kXIndex));
@@ -590,9 +588,8 @@ void DetectReshapePattern(GNode &groupedMatmulNode, std::vector<GmmReshapePatter
     reshapePattern[kAntiquantScaleIndex] = AnalyzeNodePattern(GetInputNode(groupedMatmulNode, kAntiquantScaleIndex));
     reshapePattern[kPertokenScaleIndex] = AnalyzeNodePattern(GetInputNode(groupedMatmulNode, kPertokenScaleIndex));
 
-    const bool isDav3510 = CheckPlatformIsDav3510ForGmm();
     const bool isWeightQuant = IsWeightQuant(groupedMatmulNode);
-    if (isDav3510 && !isWeightQuant) {
+    if (platformSupport.transposeFusion && !isWeightQuant) {
         return;
     }
 
@@ -603,7 +600,7 @@ void DetectReshapePattern(GNode &groupedMatmulNode, std::vector<GmmReshapePatter
         return;
     }
 
-    if (!CheckPlatformSupportReshapePattern()) {
+    if (!platformSupport.reshapePattern) {
         reshapePattern.assign(reshapePattern.size(), GmmReshapePatternMatchInfo());
         return;
     }
@@ -881,9 +878,9 @@ Status FusionTransposeNode(GraphPtr &graph, GNode &groupedMatmulNode, int32_t in
 
 Status FusionNodeX(GraphPtr &graph, GNode &groupedMatmulNode,
                    const std::vector<GmmReshapePatternMatchInfo> &reshapePattern,
-                   std::vector<GmmInputPattern> &fusedPatterns)
+                   std::vector<GmmInputPattern> &fusedPatterns, const GmmPlatformSupport &platformSupport)
 {
-    if (!CheckPlatformIsDav3510ForGmm() || IsWeightQuant(groupedMatmulNode)) {
+    if (!platformSupport.transposeFusion || IsWeightQuant(groupedMatmulNode)) {
         return GRAPH_NOT_CHANGED;
     }
 
@@ -921,7 +918,7 @@ Status FusionNodeX(GraphPtr &graph, GNode &groupedMatmulNode,
 
 Status FusionNodeWeight(GraphPtr &graph, GNode &groupedMatmulNode,
                         const std::vector<GmmReshapePatternMatchInfo> &reshapePattern,
-                        std::vector<GmmInputPattern> &fusedPatterns)
+                        std::vector<GmmInputPattern> &fusedPatterns, const GmmPlatformSupport &platformSupport)
 {
     GmmInputPattern weightPattern;
     if (!BuildInputPattern(groupedMatmulNode, kWeightIndex, reshapePattern, weightPattern) ||
@@ -929,9 +926,8 @@ Status FusionNodeWeight(GraphPtr &graph, GNode &groupedMatmulNode,
         return GRAPH_NOT_CHANGED;
     }
 
-    const bool isDav3510 = CheckPlatformIsDav3510ForGmm();
     const bool isWeightQuant = IsWeightQuant(groupedMatmulNode);
-    if (isDav3510 && !isWeightQuant && GetInputNode(groupedMatmulNode, kScaleIndex) != nullptr) {
+    if (platformSupport.transposeFusion && !isWeightQuant && GetInputNode(groupedMatmulNode, kScaleIndex) != nullptr) {
         GmmInputPattern scalePattern;
         if (BuildInputPattern(groupedMatmulNode, kScaleIndex, reshapePattern, scalePattern) &&
             IsType(scalePattern.transposeNode, kOpTypeReshape) &&
@@ -947,7 +943,7 @@ Status FusionNodeWeight(GraphPtr &graph, GNode &groupedMatmulNode,
         return fusionNodeWeightResult;
     }
 
-    if (!isDav3510) {
+    if (!platformSupport.transposeFusion) {
         return SUCCESS;
     }
 
@@ -966,7 +962,8 @@ Status FusionNodeWeight(GraphPtr &graph, GNode &groupedMatmulNode,
     return SUCCESS;
 }
 
-Status Fusion(GraphPtr &graph, GNode &groupedMatmulNode, CustomPassContext &passContext)
+Status Fusion(GraphPtr &graph, GNode &groupedMatmulNode, CustomPassContext &passContext,
+              const GmmPlatformSupport &platformSupport)
 {
     auto checkResult = CheckGmmNode(groupedMatmulNode);
     if (checkResult != SUCCESS) {
@@ -974,15 +971,16 @@ Status Fusion(GraphPtr &graph, GNode &groupedMatmulNode, CustomPassContext &pass
     }
 
     std::vector<GmmReshapePatternMatchInfo> reshapePattern;
-    DetectReshapePattern(groupedMatmulNode, reshapePattern);
+    DetectReshapePattern(groupedMatmulNode, reshapePattern, platformSupport);
     std::vector<GmmInputPattern> fusedPatterns;
 
-    auto fusionNodeXResult = FusionNodeX(graph, groupedMatmulNode, reshapePattern, fusedPatterns);
+    auto fusionNodeXResult = FusionNodeX(graph, groupedMatmulNode, reshapePattern, fusedPatterns, platformSupport);
     if (fusionNodeXResult == GRAPH_FAILED) {
         return GRAPH_FAILED;
     }
 
-    auto fusionNodeWeightResult = FusionNodeWeight(graph, groupedMatmulNode, reshapePattern, fusedPatterns);
+    auto fusionNodeWeightResult =
+        FusionNodeWeight(graph, groupedMatmulNode, reshapePattern, fusedPatterns, platformSupport);
     if (fusionNodeWeightResult == GRAPH_FAILED) {
         return GRAPH_FAILED;
     }
@@ -1007,10 +1005,6 @@ Status Fusion(GraphPtr &graph, GNode &groupedMatmulNode, CustomPassContext &pass
 Status RunGroupedMatmulTransposeFusion(GraphPtr &graph, CustomPassContext &passContext)
 {
     OP_LOGD(kPassName, "Enter GroupedMatmul transpose fusion pass.");
-    if (!IsGraphFusionRuntimeSupported()) {
-        OP_LOGD(kPassName, "Skip GroupedMatmul transpose fusion pass because graph fusion runtime is unsupported.");
-        return GRAPH_NOT_CHANGED;
-    }
     if (graph == nullptr || !graph->IsValid()) {
         OP_LOGW(kPassName, "Graph is null or invalid.");
         return GRAPH_NOT_CHANGED;
@@ -1026,10 +1020,11 @@ Status RunGroupedMatmulTransposeFusion(GraphPtr &graph, CustomPassContext &passC
         return GRAPH_NOT_CHANGED;
     }
 
-    passContext.SetPassName(kPassName);
+    // Query once per pass run; the platform may differ in another compilation or UT run.
+    const auto platformSupport = GetGmmPlatformSupport();
     bool changed = false;
     for (auto &groupedMatmulNode : groupedMatmulNodes) {
-        auto status = Fusion(graph, groupedMatmulNode, passContext);
+        auto status = Fusion(graph, groupedMatmulNode, passContext, platformSupport);
         if (status == SUCCESS) {
             changed = true;
             continue;
@@ -1047,11 +1042,16 @@ Status RunGroupedMatmulTransposeFusion(GraphPtr &graph, CustomPassContext &passC
 
 Status GroupedMatmulTransFusionPass::Run(GraphPtr &graph, CustomPassContext &passContext)
 {
+    if (!IsTargetVersion()) {
+        OP_LOGD(kPassName, "Skip GroupedMatmul transpose fusion pass because graph fusion runtime is unsupported.");
+        return GRAPH_NOT_CHANGED;
+    }
     return RunGroupedMatmulTransposeFusion(graph, passContext);
 }
 
 #if GE_COMPILER_VERSION_NUM >= 90100000
-REG_FUSION_PASS(GroupedMatmulTransFusionPass).Stage(CustomPassStage::kCompatibleInherited);
+REG_FUSION_PASS(GroupedMatmulTransFusionPass)
+    .Stage(IsTargetVersion() ? CustomPassStage::kCompatibleInherited : CustomPassStage::kAfterInferShape);
 #endif
 } // namespace ops
 #endif // CANN_VERSION_NUM >= GROUPED_MATMUL_GRAPH_FUSION_SUPPORT_VERSION

@@ -3159,6 +3159,10 @@ __aicore__ inline void CalTNDCausalLineRunIndex(const __gm__ uint8_t *actualSeqQ
             bIdx = runEnd + 1;
             continue;
         }
+        if (m <= 0 || n <= 0 || (m == 1 && n == 1)) {
+            bIdx = runEnd + 1;
+            continue;
+        }
         int64_t virtM = 0;
         int64_t virtN = 0;
         if (LEFT_UP) {
@@ -3212,9 +3216,32 @@ __aicore__ inline void CalTNDCausalLineRunIndex(const __gm__ uint8_t *actualSeqQ
 template <const int64_t CUBE_BASEM, const int64_t CUBE_BASEN>
 __aicore__ inline void CalTNDCausalLineIndex(const __gm__ uint8_t *actualSeqQlenAddr,
                                              const __gm__ uint8_t *actualSeqKvlenAddr, const __gm__ int64_t *prefix0,
-                                             int64_t b, int64_t N1, int64_t k, int64_t j, int64_t r, int64_t step,
-                                             int64_t sparseMode, CoordinateInfo &coordinateInfo)
+                                             const __gm__ int64_t *prefixSingle, int64_t b, int64_t N1, int64_t k,
+                                             int64_t j, int64_t r, int64_t step, int64_t sparseMode,
+                                             CoordinateInfo &coordinateInfo)
 {
+    if (r <= prefix0[0]) {
+        coordinateInfo.batchId = -1;
+        const int64_t task = (r - 1) * k + j;
+        const int64_t bucket = BinarySearch(prefixSingle, b, task, step);
+        int64_t remaining = task - prefixSingle[bucket];
+        for (int64_t batch = bucket * step; batch < b; ++batch) {
+            int64_t m = 0;
+            int64_t n = 0;
+            LoadTNDOuterMN<CUBE_BASEM, CUBE_BASEN>(actualSeqQlenAddr, actualSeqKvlenAddr, batch, m, n, coordinateInfo);
+            TrimTNDCausalMN(m, n, sparseMode != RIGHT_DOWN_CAUSAL);
+            if (m != 1 || n != 1) {
+                continue;
+            }
+            if (remaining <= N1) {
+                BindTNDCausalMappedBatch<CUBE_BASEM, CUBE_BASEN, true>(actualSeqQlenAddr, actualSeqKvlenAddr, batch, N1,
+                                                                       remaining, 1, 1, coordinateInfo);
+                return;
+            }
+            remaining -= N1;
+        }
+        return;
+    }
     if (sparseMode == RIGHT_DOWN_CAUSAL) {
         CalTNDCausalLineRunIndex<CUBE_BASEM, CUBE_BASEN, false>(actualSeqQlenAddr, actualSeqKvlenAddr, prefix0, b, N1,
                                                                 k, j, r, step, coordinateInfo);

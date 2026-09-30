@@ -69,7 +69,7 @@ aclnnStatus CallBaseGetWorkspaceSize(const char *groupTp, const char *commAlg)
 }
 } // namespace
 
-TEST(MoeDistributeCombineV2BaseCoverageTest, TestBaseGetWorkspaceSize950Ccu)
+TEST(MoeDistributeCombineV2BaseCoverageTest, TestBaseGetWorkspaceSizeA5Ccu)
 {
     EXPECT_EXIT(
         {

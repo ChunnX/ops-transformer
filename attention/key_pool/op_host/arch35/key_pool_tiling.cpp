@@ -108,6 +108,7 @@ ge::graphStatus KeyPoolTiling::GetNpuInfo()
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->platformInfo);
     socVersion_ = ascendcPlatform.GetSocVersion();
+    npuArch_ = ascendcPlatform.GetCurNpuArch();
 
     libapiSize_ = ascendcPlatform.GetLibApiWorkSpaceSize();
 
@@ -176,7 +177,7 @@ ge::graphStatus KeyPoolTiling::SetTemplateId()
     if (context_->templateId == TemplateId::EMPTY_HIDDEN_STATES) {
         return ge::GRAPH_SUCCESS;
     }
-    if (socVersion_ == platform_ascendc::SocVersion::ASCEND950) {
+    if (npuArch_ == NpuArch::DAV_3510) {
         // 设置高性能模板
         if (context_->normWeight.desc == nullptr && context_->layout == LayoutType::LAYOUT_BSH &&
             baseParams_->seqSize <= 4 && baseParams_->tokenSize <= 256) {
@@ -198,7 +199,9 @@ ge::graphStatus KeyPoolTiling::SetInnerSplitInfo()
         baseParams_->kBaseNum = 1;
         baseParams_->kBaseSize = baseParams_->hiddenSize;
         if ((dBaseNum * mBaseNum) < baseParams_->usedCoreNum && baseParams_->batchConsistency != BATCH_CONSISTENCY) {
-            baseParams_->kBaseNum = baseParams_->usedCoreNum / dBaseNum;
+            uint32_t candidateKBaseNum = baseParams_->usedCoreNum / dBaseNum;
+            uint32_t kBlockNum = (baseParams_->hiddenSize + 15) / 16;
+            baseParams_->kBaseNum = candidateKBaseNum < kBlockNum ? candidateKBaseNum : kBlockNum;
             uint32_t kAlignSize = (baseParams_->hiddenSize + baseParams_->kBaseNum - 1) / baseParams_->kBaseNum;
             baseParams_->kBaseSize = kAlignSize / 16 * 16; // 切k的size需要16对齐
         }

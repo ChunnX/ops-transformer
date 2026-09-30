@@ -12,14 +12,23 @@
 import numpy as np
 
 __golden__ = {
-    "kernel": {"scatter_kv_cache_with_k_scale": "scatter_kv_cache_with_k_scale_golden"},
+    "kernel": {
+        "scatter_pa_kv_cache_with_k_scale": "scatter_pa_kv_cache_with_k_scale_golden"
+    },
     "aclnn": {
         "aclnnScatterPaKvCacheWithKScale": "aclnnScatterPaKvCacheWithKScaleGolden"
     },
 }
 
 
-def scatter_kv_cache_with_k_scale_golden(
+def _clone_tensor(x):
+    """拷贝 inplace tensor，避免 golden 修改原始输入导致 kernel 假通过"""
+    if hasattr(x, "clone"):
+        return x.clone()
+    return np.copy(x)
+
+
+def scatter_pa_kv_cache_with_k_scale_golden(
     key,
     value,
     key_cache,
@@ -49,8 +58,13 @@ def scatter_kv_cache_with_k_scale_golden(
     - cache_layout:    str, default "BNBD"
 
     Returns:
-        tuple: (key_cache, value_cache, key_scale_cache) - inplace-modified inputs
+        tuple: (key_cache, value_cache, key_scale_cache) - copies of inputs with scattered results
     """
+    # 本算子为 inplace 语义，golden 在拷贝上计算，防止污染 runner 后续喂给 kernel 的原始输入
+    key_cache = _clone_tensor(key_cache)
+    value_cache = _clone_tensor(value_cache)
+    key_scale_cache = _clone_tensor(key_scale_cache)
+
     num_tokens = key.shape[0]
     num_head = key.shape[1]
     k_head_size = key.shape[2]
@@ -106,12 +120,14 @@ def aclnnScatterPaKvCacheWithKScaleGolden(
     cache_layout="BNBD",
     **kwargs,
 ):
+    # aclnn 模式下 TTK 在 aclnn 调用之后才执行 golden，原地写不会污染 device 输入；
+    # 原地写序（逐 token 顺序、后写覆盖）与 kernel 写序一致，别名 view 用例也能对齐
     num_tokens = key.shape[0]
     num_head = key.shape[1]
     k_head_size = key.shape[2]
     v_head_size = value.shape[2]
-    num_blocks = key_cache.shape[0]
-    block_size = key_cache.shape[2]
+    num_blocks = key_cache_ref.shape[0]
+    block_size = key_cache_ref.shape[2]
 
     max_slot = num_blocks * block_size
 
@@ -128,3 +144,5 @@ def aclnnScatterPaKvCacheWithKScaleGolden(
             key_cache_ref[block_idx, j, block_offset, :] = key[i, j, :]
             value_cache_ref[block_idx, j, block_offset, :] = value[i, j, :]
             key_scale_cache_ref[block_idx, j, block_offset, 0] = key_scale[i, j]
+
+    return key_cache_ref, value_cache_ref, key_scale_cache_ref

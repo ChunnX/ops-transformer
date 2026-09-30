@@ -662,5 +662,5 @@ def prepare_npu_inputs_gqa_fp8(
         layout_out=LAYOUT_OUT,
         block_size=BLOCK_SIZE,
         sparse_mode=SPARSE_MODE,
-        out_dtype=OUTPUT_DETYPE,
+        out_dtype=torch.float16,
     )

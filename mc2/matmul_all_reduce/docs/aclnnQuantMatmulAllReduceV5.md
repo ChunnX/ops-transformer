@@ -1,26 +1,26 @@
 # aclnnQuantMatmulAllReduceV5
 
-[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/mc2/matmul_all_reduce)
+[📄 查看源码](https://atomgit.com/cann/ops-transformer/tree/master/mc2/matmul_all_reduce)
 
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：支持
+- <term>Ascend 950PR&950DT系列产品</term>：支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
+- <term>Atlas A3系列产品</term>：不支持
 <!-- end id2 -->
 <!-- npu="910b" id3 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+- <term>Atlas A2系列产品</term>：支持
 <!-- end id3 -->
 <!-- npu="310b" id4 -->
-- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+- <term>Atlas 200I/500 A2推理产品</term>：不支持
 <!-- end id4 -->
 <!-- npu="310p" id5 -->
-- <term>Atlas 推理系列产品</term>：不支持
+- <term>Atlas推理系列产品</term>：不支持
 <!-- end id5 -->
 <!-- npu="910" id6 -->
-- <term>Atlas 训练系列产品</term>：不支持
+- <term>Atlas训练系列产品</term>：不支持
 <!-- end id6 -->
 
 ## 功能说明
@@ -354,10 +354,10 @@ aclnnStatus aclnnQuantMatmulAllReduceV5(
 - 通信引擎commMode支持度：
 
   <!-- npu="910b" id7 -->
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：目前不支持指定通信引擎，commMode仅允许输入为"ai_cpu"，使用AICPU通信引擎。
+  - <term>Atlas A2系列产品</term>：目前不支持指定通信引擎，commMode仅允许输入为"ai_cpu"，使用AICPU通信引擎。
   <!-- end id7 -->
   <!-- npu="950" id8 -->
-  - <term>Ascend 950PR/Ascend 950DT</term>：目前通信引擎支持AICPU和CCU，commMode允许输入为"ai_cpu"或者"ccu"。CCU仅支持单机UB域内互联，AICPU可支持跨机UB域内互联。
+  - <term>Ascend 950PR&950DT系列产品</term>：目前通信引擎支持AICPU和CCU，commMode允许输入为"ai_cpu"或者"ccu"。CCU仅支持单机UB域内互联，AICPU可支持跨机UB域内互联。
   <!-- end id8 -->
   - 同一条通信链路内，只能选择同一种通信引擎。
   - AICPU和CCU通信引擎简单介绍：
@@ -367,10 +367,10 @@ aclnnStatus aclnnQuantMatmulAllReduceV5(
 - 确定性计算：
 
   <!-- npu="910b" id9 -->
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：`aclnnQuantMatmulAllReduceV5`默认非确定性实现，支持通过配置`HCCL_DETERMINISTIC`环境变量为true开启确定性计算。
+  - <term>Atlas A2系列产品</term>：`aclnnQuantMatmulAllReduceV5`默认非确定性实现，支持通过配置`HCCL_DETERMINISTIC`环境变量为true开启确定性计算。
   <!-- end id9 -->
   <!-- npu="950" id10 -->
-  - Ascend 950PR/Ascend 950DT：`aclnnQuantMatmulAllReduceV5`默认确定性实现。
+  - Ascend 950PR&950DT系列产品：`aclnnQuantMatmulAllReduceV5`默认确定性实现。
   <!-- end id10 -->
 
 - 增量场景不使能MC2，全量场景使能MC2。
@@ -382,10 +382,10 @@ aclnnStatus aclnnQuantMatmulAllReduceV5(
 - 仅支持hccs链路all mesh组网。
 
     <!-- npu="910b" id11 -->
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持1、2、4、8卡。
+    - <term>Atlas A2系列产品</term>：支持1、2、4、8卡。
     <!-- end id11 -->
     <!-- npu="950" id12 -->
-    - <term>Ascend 950PR/Ascend 950DT</term>：支持1、2、4、8、16、32、64卡。
+    - <term>Ascend 950PR&950DT系列产品</term>：支持1、2、4、8、16、32、64卡。
     <!-- end id12 -->
 
 - 一个模型中的通算融合MC2算子，仅支持相同通信域。
@@ -402,7 +402,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV5(
 输入和输出支持以下数据类型组合
 
 <!-- npu="910b" id13 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+- <term>Atlas A2系列产品</term>：
     <table>
     <thead>
         <tr>
@@ -460,7 +460,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV5(
 
 <!-- end id13 -->
 <!-- npu="950" id14 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：
+- <term>Ascend 950PR&950DT系列产品</term>：
 
     int8输入时，支持pertoken-perchannel量化 && pertensor-perchannel量化
     <table>
@@ -668,10 +668,10 @@ aclnnStatus aclnnQuantMatmulAllReduceV5(
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
-说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy,请参考[<<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
+说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy，请参考[《HCCL API (C)》](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
 
 <!-- npu="950,910b" id15 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：
+- <term>Atlas A2系列产品</term>、<term>Ascend 950PR&950DT系列产品</term>：
 
   ```Cpp
   #include <iostream>
@@ -680,7 +680,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV5(
   #include "hccl/hccl.h"
   #include "aclnn/opdev/fp16_t.h"
   #include "aclnnop/aclnn_trans_matmul_weight.h"
-  #include "aclnnop/aclnn_quant_matmul_all_reduce_v4.h"
+  #include "aclnnop/aclnn_quant_matmul_all_reduce_v5.h"
 
   #define ACL_CHECK(ret)                                                                                     \
       do {                                                                                                   \
@@ -814,17 +814,17 @@ aclnnStatus aclnnQuantMatmulAllReduceV5(
       aclTensor *x2 = nullptr;
       aclTensor *bias = nullptr;
       aclTensor *x2ScaleOptional = nullptr;
-      aclTensor *x1Scale = nullptr;
+      aclTensor *x1ScaleOptional = nullptr;
       aclTensor *commQuantScale1 = nullptr;
       aclTensor *commQuantScale2 = nullptr;
-      aclTensor *x3 = nullptr;
+      aclTensor *x3Optional = nullptr;
       aclTensor *out = nullptr;
 
       int64_t commTurn = 0;
       int64_t streamMode = 1;
       uint64_t workspaceSize = 0;
       aclOpExecutor *executor;
-      void *workspaceAddr = nullptr;
+      void *workspace = nullptr;
 
       long long x1ShapeSize = GetShapeSize(x1Shape);
       long long x2ShapeSize = GetShapeSize(x2Shape);
@@ -860,7 +860,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV5(
                             aclDataType::ACL_FLOAT, &x2ScaleOptional);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
       ret = CreateAclTensor(x1ScaleHostData, x1ScaleShape, &x1ScaleDeviceAddr,
-                            aclDataType::ACL_FLOAT, &x1Scale);
+                            aclDataType::ACL_FLOAT, &x1ScaleOptional);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
       ret = CreateAclTensor(commQuantScale1HostData, commQuantScale1Shape, &commQuantScale1DeviceAddr,
                             aclDataType::ACL_FLOAT16, &commQuantScale1);
@@ -868,24 +868,24 @@ aclnnStatus aclnnQuantMatmulAllReduceV5(
       ret = CreateAclTensor(commQuantScale2HostData, commQuantScale2Shape, &commQuantScale2DeviceAddr,
                             aclDataType::ACL_FLOAT16, &commQuantScale2);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
-      ret = CreateAclTensor(x3HostData, x3Shape, &x3DeviceAddr, aclDataType::ACL_FLOAT16, &x3);
+      ret = CreateAclTensor(x3HostData, x3Shape, &x3DeviceAddr, aclDataType::ACL_FLOAT16, &x3Optional);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
       ret = CreateAclTensor(outHostData, outShape, &outDeviceAddr, aclDataType::ACL_FLOAT16, &out);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
       // 调用第一段接口
-      ret = aclnnQuantMatmulAllReduceV5GetWorkspaceSize(x1, x2, bias, x3, x1Scale, x2ScaleOptional,
+      ret = aclnnQuantMatmulAllReduceV5GetWorkspaceSize(x1, x2, bias, x3Optional, x1ScaleOptional, x2ScaleOptional,
                                                         commQuantScale1, commQuantScale2, hcom_name,
-                                                        "sum", "", commTurn, streamMode, 0, 0, out,
+                                                        "sum", "ai_cpu", commTurn, streamMode, 0, 0, out,
                                                         &workspaceSize, &executor);
       CHECK_RET(ret == ACL_SUCCESS,
                 LOG_PRINT("aclnnQuantMatmulAllReduceV5GetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
       // 根据第一段接口计算出的workspaceSize申请device内存
       if (workspaceSize > 0) {
-          ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
+          ret = aclrtMalloc(&workspace, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
           CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
       }
       // 调用第二段接口
-      ret = aclnnQuantMatmulAllReduceV5(workspaceAddr, workspaceSize, executor, args.stream);
+      ret = aclnnQuantMatmulAllReduceV5(workspace, workspaceSize, executor, args.stream);
       CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnQuantMatmulAllReduceV5 failed. ERROR: %d\n", ret); return ret);
       //（固定写法）同步等待任务执行结束
       ret = aclrtSynchronizeStreamWithTimeout(args.stream, 10000);
@@ -904,8 +904,8 @@ aclnnStatus aclnnQuantMatmulAllReduceV5(
       if (x2ScaleOptional != nullptr) {
           aclDestroyTensor(x2ScaleOptional);
       }
-      if (x1Scale != nullptr) {
-          aclDestroyTensor(x1Scale);
+      if (x1ScaleOptional != nullptr) {
+          aclDestroyTensor(x1ScaleOptional);
       }
       if (commQuantScale1 != nullptr) {
           aclDestroyTensor(commQuantScale1);
@@ -913,8 +913,8 @@ aclnnStatus aclnnQuantMatmulAllReduceV5(
       if (commQuantScale2 != nullptr) {
           aclDestroyTensor(commQuantScale2);
       }
-      if (x3 != nullptr) {
-          aclDestroyTensor(x3);
+      if (x3Optional != nullptr) {
+          aclDestroyTensor(x3Optional);
       }
       if (out != nullptr) {
           aclDestroyTensor(out);
@@ -947,7 +947,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV5(
           aclrtFree(outDeviceAddr);
       }
       if (workspaceSize > 0) {
-          aclrtFree(workspaceAddr);
+          aclrtFree(workspace);
       }
       aclrtDestroyStream(args.stream);
       HcclCommDestroy(args.hcclComm);
