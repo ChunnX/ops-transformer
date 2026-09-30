@@ -82,6 +82,12 @@ std::tuple<at::Tensor, at::Tensor> quant_flash_attn(
     int64_t max_seqlen_kv, std::string layout_q, std::string layout_q_descale, std::string layout_kv,
     std::string layout_out, bool return_softmax_lse)
 {
+    static const bool hasV2Api = GetOpApiFuncAddr("aclnnQuantFlashAttnV2GetWorkspaceSize") != nullptr &&
+                                 GetOpApiFuncAddr("aclnnQuantFlashAttnV2") != nullptr;
+    TORCH_CHECK(hasV2Api, "quant_flash_attn requires a custom package exporting aclnnQuantFlashAttnV2. "
+                          "Rebuild and install the matching custom package, check the custom library paths, "
+                          "and restart the Python process.");
+
     int64_t tSize = 0;
     int64_t nSize = 0;
     int64_t dSize = 0;
@@ -143,7 +149,7 @@ std::tuple<at::Tensor, at::Tensor> quant_flash_attn(
         TensorWrapper q_descale_wrapper = make_wrapper(q_descale, FLOAT8_E8M0);
         TensorWrapper k_descale_wrapper = make_wrapper(k_descale, FLOAT8_E8M0);
         TensorWrapper v_descale_wrapper = make_wrapper(v_descale, FLOAT8_E8M0);
-        ACLNN_CMD(aclnnQuantFlashAttn, q_wrapper, k_wrapper, v_wrapper, q_descale_wrapper, k_descale_wrapper,
+        ACLNN_CMD(aclnnQuantFlashAttnV2, q_wrapper, k_wrapper, v_wrapper, q_descale_wrapper, k_descale_wrapper,
                   v_descale_wrapper, block_table, p_scale, cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, sinks,
                   attn_mask, metadata, v_tail, block_table_tail, seqused_v_tail, quant_mode, softmax_scale, mask_mode,
                   win_left, win_right, max_seqlen_q, max_seqlen_kv, layout_q_ptr, layout_q_descale_ptr, layout_kv_ptr,
@@ -152,13 +158,13 @@ std::tuple<at::Tensor, at::Tensor> quant_flash_attn(
         TensorWrapper q_wrapper = make_wrapper(q, HIFLOAT8);
         TensorWrapper k_wrapper = make_wrapper(k, HIFLOAT8);
         TensorWrapper v_wrapper = make_wrapper(v, HIFLOAT8);
-        ACLNN_CMD(aclnnQuantFlashAttn, q_wrapper, k_wrapper, v_wrapper, q_descale, k_descale, v_descale, block_table,
+        ACLNN_CMD(aclnnQuantFlashAttnV2, q_wrapper, k_wrapper, v_wrapper, q_descale, k_descale, v_descale, block_table,
                   p_scale, cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, sinks, attn_mask, metadata, v_tail,
                   block_table_tail, seqused_v_tail, quant_mode, softmax_scale, mask_mode, win_left, win_right,
                   max_seqlen_q, max_seqlen_kv, layout_q_ptr, layout_q_descale_ptr, layout_kv_ptr, layout_out_ptr,
                   return_softmax_lse, attentionOutput, softmaxLse);
     } else {
-        ACLNN_CMD(aclnnQuantFlashAttn, q, k, v, q_descale, k_descale, v_descale, block_table, p_scale, cu_seqlens_q,
+        ACLNN_CMD(aclnnQuantFlashAttnV2, q, k, v, q_descale, k_descale, v_descale, block_table, p_scale, cu_seqlens_q,
                   cu_seqlens_kv, seqused_q, seqused_kv, sinks, attn_mask, metadata, v_tail, block_table_tail,
                   seqused_v_tail, quant_mode, softmax_scale, mask_mode, win_left, win_right, max_seqlen_q,
                   max_seqlen_kv, layout_q_ptr, layout_q_descale_ptr, layout_kv_ptr, layout_out_ptr, return_softmax_lse,

@@ -100,7 +100,7 @@ aclnnStatus QuantFlashAttnCheckTensorContiguous(const aclTensor* k, const aclTen
 } // namespace
 
 // 第一段接口：计算workspace大小
-aclnnStatus aclnnQuantFlashAttnGetWorkspaceSize(
+aclnnStatus aclnnQuantFlashAttnV2GetWorkspaceSize(
     const aclTensor* q, const aclTensor* k, const aclTensor* v, const aclTensor* qDescale, const aclTensor* kDescale,
     const aclTensor* vDescale, const aclTensor* blockTableOptional, const aclTensor* pScaleOptional,
     const aclTensor* cuSeqlensQOptional, const aclTensor* cuSeqlensKvOptional, const aclTensor* sequsedQOptional,
@@ -111,7 +111,7 @@ aclnnStatus aclnnQuantFlashAttnGetWorkspaceSize(
     const char* layoutKv, const char* layoutOut, bool returnSoftmaxLse, const aclTensor* attnOut,
     const aclTensor* softmaxLseOptional, uint64_t* workspaceSize, aclOpExecutor** executor)
 {
-    OP_LOGD("start aclnnQuantFlashAttnGetWorkspaceSize");
+    OP_LOGD("start aclnnQuantFlashAttnV2GetWorkspaceSize");
 
     // sinks shape为{0}时置nullptr
     QuantFlashAttnProcessSinks(sinksOptional);
@@ -145,6 +145,31 @@ aclnnStatus aclnnQuantFlashAttnGetWorkspaceSize(
     }
 
     return ret;
+}
+
+// Preserve the original ABI for extensions built without V-tail inputs.
+aclnnStatus aclnnQuantFlashAttnGetWorkspaceSize(
+    const aclTensor* q, const aclTensor* k, const aclTensor* v, const aclTensor* qDescale, const aclTensor* kDescale,
+    const aclTensor* vDescale, const aclTensor* blockTableOptional, const aclTensor* pScaleOptional,
+    const aclTensor* cuSeqlensQOptional, const aclTensor* cuSeqlensKvOptional, const aclTensor* sequsedQOptional,
+    const aclTensor* sequsedKvOptional, const aclTensor* sinksOptional, const aclTensor* attnMaskOptional,
+    const aclTensor* metadataOptional, int64_t quantMode, double softmaxScale, int64_t maskMode, int64_t winLeft,
+    int64_t winRight, int64_t maxSeqlenQ, int64_t maxSeqlenKV, const char* layoutQ, const char* layoutQDescale,
+    const char* layoutKv, const char* layoutOut, bool returnSoftmaxLse, const aclTensor* attnOut,
+    const aclTensor* softmaxLseOptional, uint64_t* workspaceSize, aclOpExecutor** executor)
+{
+    return aclnnQuantFlashAttnV2GetWorkspaceSize(
+        q, k, v, qDescale, kDescale, vDescale, blockTableOptional, pScaleOptional, cuSeqlensQOptional,
+        cuSeqlensKvOptional, sequsedQOptional, sequsedKvOptional, sinksOptional, attnMaskOptional, metadataOptional,
+        nullptr, nullptr, nullptr, quantMode, softmaxScale, maskMode, winLeft, winRight, maxSeqlenQ, maxSeqlenKV,
+        layoutQ, layoutQDescale, layoutKv, layoutOut, returnSoftmaxLse, attnOut, softmaxLseOptional, workspaceSize,
+        executor);
+}
+
+aclnnStatus aclnnQuantFlashAttnV2(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
+                                  const aclrtStream stream)
+{
+    return aclnnInnerQuantFlashAttn(workspace, workspaceSize, executor, stream);
 }
 
 // 第二段接口：执行计算
