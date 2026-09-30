@@ -694,25 +694,19 @@ private:
                     HCCL_MAX_RANK_SIZE);
     }
 
-    // 注册窗口到 HCCL 通信域。local 模式只读本 rank 窗口、无跨卡访问，注册失败时降级为
-    // 告警并继续(无 memHandle)；其余模式保持硬失败。
-    void RegisterBufferToComm(const HcclComm& commHandle, const std::string& memBufferTag, void* devPtr, int64_t bytes,
-                              EngramContextResources& resources)
+    // 注册窗口到 HCCL 通信域, 返回 HCCL 结果码, 模式语义由调用方分流:
+    // - local 推理只读本 rank 窗口、无跨卡访问, 注册失败可降级为告警并继续(无 memHandle);
+    // - with_grad 的外部存储注册失败必须硬失败(无拷贝回退路径);
+    // - sliced 推理的远端 rank 依赖通信域按 tag 发现本 rank 窗口, 外部存储注册失败需回退自建
+    //   窗口(回退必须发生在集合地址交换之前)。
+    HcclResult RegisterBufferToComm(const HcclComm& commHandle, const std::string& memBufferTag, void* devPtr,
+                                    int64_t bytes, EngramContextResources& resources)
     {
         CommMem mem;
         mem.type = COMM_MEM_TYPE_DEVICE;
         mem.addr = devPtr;
         mem.size = static_cast<uint64_t>(bytes);
-        auto hcclRet = HcclCommMemRegFunc(commHandle, memBufferTag.c_str(), &mem, &resources.memHandle);
-        if (hcclRet != HCCL_SUCCESS && !withGrad_ && fetchMode_ == ENGRAM_FETCH_MODE_LOCAL) {
-            ASCEND_LOGW("HcclCommMemReg(tag='%s', size=%llu) failed in local fetch mode, ret=%d, "
-                        "continue without comm-domain registration",
-                        memBufferTag.c_str(), static_cast<unsigned long long>(mem.size), static_cast<int>(hcclRet));
-            resources.memHandle = nullptr;
-            return;
-        }
-        TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HcclCommMemReg(tag='", memBufferTag, "', size=", mem.size,
-                    ") failed, ret=", hcclRet);
+        return HcclCommMemRegFunc(commHandle, memBufferTag.c_str(), &mem, &resources.memHandle);
     }
 
     void AllocateAndRegisterBuffer(const HcclComm& commHandle, const std::string& memBufferTag, int64_t numCpuBytes,
@@ -731,31 +725,64 @@ private:
 
             void* extDevPtr = nullptr;
             aclError mapRet = aclrtHostGetDevicePointer(externalHostPtr, &extDevPtr, 0);
+            bool externalUsable = false;
             if (mapRet == ACL_SUCCESS) {
-                RegisterBufferToComm(commHandle, memBufferTag, extDevPtr, externalBytes, resources);
+                HcclResult commRet =
+                    RegisterBufferToComm(commHandle, memBufferTag, extDevPtr, externalBytes, resources);
+                if (commRet == HCCL_SUCCESS) {
+                    externalUsable = true;
+                } else if (withGrad_) {
+                    TORCH_CHECK(false, "HcclCommMemReg(tag='", memBufferTag, "', size=", externalBytes,
+                                ") failed for with_grad external storage, ret=", commRet);
+                } else if (fetchMode_ == ENGRAM_FETCH_MODE_LOCAL) {
+                    // local 推理只读本 rank 窗口、无跨卡访问: 无通信域注册也可用, 降级告警继续。
+                    ASCEND_LOGW("HcclCommMemReg(tag='%s', size=%llu) failed in local fetch mode, ret=%d, "
+                                "continue without comm-domain registration",
+                                memBufferTag.c_str(), static_cast<unsigned long long>(externalBytes),
+                                static_cast<int>(commRet));
+                    resources.memHandle = nullptr;
+                    externalUsable = true;
+                } else {
+                    // sliced 推理: 远端 rank 经通信域按 tag 发现本 rank 窗口(HcclChannelGetRemoteMems),
+                    // 注册失败则零拷贝不可用 → 回退自建窗口 + memcpy。回退发生在集合地址交换之前,
+                    // 各 rank 仍以各自最终的窗口地址完成交换, 保持跨 rank 一致。
+                    ASCEND_LOGW("HcclCommMemReg(tag='%s', size=%llu) failed for sliced-mode external storage, "
+                                "ret=%d, falling back to a self-allocated copy window",
+                                memBufferTag.c_str(), static_cast<unsigned long long>(externalBytes),
+                                static_cast<int>(commRet));
+                    resources.memHandle = nullptr;
+                }
+            } else {
+                // 外部内存完全无法映射: with_grad 无拷贝回退路径必须硬失败;
+                // 推理模式(local/sliced)回退到自建窗口 + memcpy, 保持对任意(不可注册)张量的兼容。
+                TORCH_CHECK(!withGrad_, "aclrtHostGetDevicePointer failed, ret=", mapRet,
+                            ", host memory cannot be mapped to device");
+            }
+            if (externalUsable) {
                 resources.hostBufPtr = externalHostPtr;
                 resources.deviceBufPtr = extDevPtr;
                 return;
             }
-            // 外部内存完全无法映射: with_grad 无拷贝回退路径必须硬失败;
-            // local 推理模式回退到自建窗口 + memcpy, 保持对任意(不可注册)张量的兼容。
-            TORCH_CHECK(!withGrad_, "aclrtHostGetDevicePointer failed, ret=", mapRet,
-                        ", host memory cannot be mapped to device");
             if (resources.externalRegistered) {
                 (void)aclrtHostUnregister(externalHostPtr);
                 resources.externalRegistered = false;
             }
             TORCH_CHECK(numCpuBytes > 0,
-                        "local-mode zero-copy registration of the storage host memory failed (register ret=", ar,
+                        "zero-copy registration of the storage host memory did not succeed (register ret=", ar,
                         ", map ret=", mapRet,
                         ") and num_cpu_bytes is 0 so no copy window can be allocated; "
                         "provide device-registerable host memory (e.g. a shared file mmap) or a positive "
                         "num_cpu_bytes");
-            ASCEND_LOGW("zero-copy registration of the local-mode storage failed (register ret=%d, map ret=%d), "
-                        "falling back to a self-allocated copy window of %lld bytes",
-                        static_cast<int>(ar), static_cast<int>(mapRet), numCpuBytes);
+            if (mapRet != ACL_SUCCESS) {
+                ASCEND_LOGW("zero-copy registration of the inference-mode storage failed (register ret=%d, map "
+                            "ret=%d), falling back to a self-allocated copy window of %lld bytes",
+                            static_cast<int>(ar), static_cast<int>(mapRet), numCpuBytes);
+            } else {
+                // 注册/映射本身成功, 由上方模式分支给出具体失败原因(如 sliced 通信域注册失败)。
+                ASCEND_LOGW("falling back to a self-allocated copy window of %lld bytes", numCpuBytes);
+            }
         }
-        // 自建窗口路径(默认; 也是 local 零拷贝失败的回退)。
+        // 自建窗口路径(默认; 也是推理零拷贝失败的回退)。
         aclError ar = aclrtMallocHost(&guard.hostPtr, static_cast<uint64_t>(numCpuBytes));
         TORCH_CHECK(ar == ACL_SUCCESS, "aclrtMallocHost(", numCpuBytes, " B) failed, ret=", ar);
 
@@ -768,7 +795,9 @@ private:
         TORCH_CHECK(ar == ACL_SUCCESS, "aclrtHostGetDevicePointer failed, ret=", ar,
                     ", host memory cannot be mapped to device");
 
-        RegisterBufferToComm(commHandle, memBufferTag, devPtr, numCpuBytes, resources);
+        HcclResult commRet = RegisterBufferToComm(commHandle, memBufferTag, devPtr, numCpuBytes, resources);
+        TORCH_CHECK(commRet == HCCL_SUCCESS, "HcclCommMemReg(tag='", memBufferTag, "', size=", numCpuBytes,
+                    ") failed, ret=", commRet);
         resources.hostBufPtr = guard.hostPtr;
         resources.deviceBufPtr = devPtr;
     }
@@ -1902,6 +1931,10 @@ void ElasticBuffer::EnsureEngramContext(void* externalHostPtr, int64_t externalB
     if (!withGrad_ && fetchMode_ == ENGRAM_FETCH_MODE_LOCAL && externalHostPtr == nullptr) {
         // local 模式先 barrier 初始化时暂不自建窗口: 后续 engram_write 可能将调用方存储原地
         // 零拷贝注册(4 rank 共享同一份 vocab), 自建窗口与整表拷贝均可省去。
+        // 注意: 该延迟不扩展到 sliced —— sliced 的通道构建(BuildChannelDescs/AcquireChannels)与
+        // HcclBarrier 均为集合操作, 若各 rank 首个调用不一致(一 rank 先 write、另一 rank 先
+        // barrier), 延迟方跳过通道构建直接进 barrier、非延迟方在通道构建处等待, 会死锁。
+        // sliced 的零拷贝仅覆盖标准 write-first 流程; barrier-first 的 sliced 流程走既有窗口 + memcpy。
         numCpuBytes = 0;
     }
     EngramContextBuilder builder;
@@ -1999,18 +2032,19 @@ void ElasticBuffer::EngramWrite(const at::Tensor& storage, const c10::optional<a
                 sfBytes = static_cast<int64_t>(sf.value().nbytes());
             }
         }
-    } else if (fetchMode_ == ENGRAM_FETCH_MODE_LOCAL) {
-        // local 推理模式: 将调用方传入的整表 host 内存原地零拷贝注册。共享同一块 host 内存的
-        // 各 rank(如 fork 继承同一份 vocab mmap)因此把同一份表映射到各自 device 上, 不再各自
-        // 持有私有拷贝; host 内存不可注册时, 上下文构建会回退自建窗口并经下方 memcpy 拷入。
+    } else {
+        // 推理模式(local 整表 / sliced 本 rank 分片): 将调用方传入的 host 存储原地零拷贝注册。
+        // 共享同一块 host 内存的各 rank(如 fork 继承同一份 vocab mmap 及其分片)因此把同一份内存
+        // 映射到各自 device 上, 不再各自持有私有拷贝; host 内存不可注册(或 sliced 下通信域注册
+        // 失败)时, 上下文构建会回退自建窗口并经下方 memcpy 拷入。
         if (engramContextInitialized_) {
             if (engramStorageExternal_) {
-                TORCH_CHECK(
-                    engramHostBufPtr_ == storage.data_ptr() &&
-                        engramExternalBytes_ == static_cast<int64_t>(storage.nbytes()),
-                    "engram_write: local-mode storage was already zero-copy registered from ptr=", engramHostBufPtr_,
-                    " (", engramExternalBytes_, " bytes), got ptr=", storage.data_ptr(), " (", storage.nbytes(),
-                    " bytes); the registered host memory must stay alive and keep its address and size");
+                TORCH_CHECK(engramHostBufPtr_ == storage.data_ptr() &&
+                                engramExternalBytes_ == static_cast<int64_t>(storage.nbytes()),
+                            "engram_write: inference-mode storage was already zero-copy registered from ptr=",
+                            engramHostBufPtr_, " (", engramExternalBytes_, " bytes), got ptr=", storage.data_ptr(),
+                            " (", storage.nbytes(),
+                            " bytes); the registered host memory must stay alive and keep its address and size");
             }
             // 回退窗口实例: 经下方 memcpy 回填, 允许换源张量。
         } else {
