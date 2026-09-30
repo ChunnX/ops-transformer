@@ -53,6 +53,10 @@ namespace ge {
 * @li copy_expert_num: Input copy expert num, dtype: int64. Default: 0
 * @li const_expert_num: Input const expert num, dtype: int64. Default: 0
 * @li y_dtype: Input output dtype, dtype: int64. Default: 28
+* @li mc2_context_addr: Mc2MoeContext device address for the CCU hybrid data plane (0 = pure CCU path).
+  Delivered by host op_api (GetMc2ContextTensor) via the Inner adapter; read by tiling into
+  tilingData.mc2ContextAddr. dtype: int64. Default: 0. Appended at the tail (attr index 18) to keep
+  the attribute order consistent with moe_distribute_dispatch_v2_def.cpp.
 
 * @par Outputs
 * Seven outputs, including:
@@ -102,6 +106,7 @@ REG_OP(MoeDistributeDispatchV2)
     .ATTR(copy_expert_num, Int, 0)
     .ATTR(const_expert_num, Int, 0)
     .ATTR(y_dtype, Int, 28)
+    .ATTR(mc2_context_addr, Int, 0)
     .OP_END_FACTORY_REG(MoeDistributeDispatchV2)
 
 } // namespace ge
