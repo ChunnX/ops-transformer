@@ -9,6 +9,8 @@
 # -----------------------------------------------------------------------------------------------------------
 message(STATUS "=== Debug: start ops.attention.scatter_pa_kv_cache.op_host.CMakeLists.txt")
 
+set(scatter_pa_kv_cache_ascend960dt_arch_directory arch35 arch92 CACHE INTERNAL "scatter_pa_kv_cache ascend960dt arch")
+
 if (BUILD_OPEN_PROJECT)
     target_sources(op_host_aclnnExc PRIVATE
         scatter_pa_kv_cache_def.cpp
@@ -29,7 +31,7 @@ if (BUILD_OPEN_PROJECT)
     elseif("${ASCEND_COMPUTE_UNIT}" STREQUAL "ascend960dt")
         add_ops_compile_options(
             OP_NAME ScatterPaKvCache
-            COMPUTE_UNIT ascend960dt_968B7
+            COMPUTE_UNIT Ascend960DT_968B7
             OPTIONS -mllvm -cce-aicore-dcci-before-kernel-end=false
         )
     else()
