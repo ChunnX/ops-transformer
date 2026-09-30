@@ -69,6 +69,19 @@ constexpr uint32_t NUM_1 = 1;
 constexpr uint32_t NUM_10 = 10;
 constexpr uint32_t NUM_100 = 100;
 constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16U * 1024U * 1024U;
+// full_mesh 内核用户区软同步表基址步长（与 kernel 侧 moe_distribute_v2_constant.h 的
+// WORKSPACE_ELEMENT_OFFSET 同值）：用户区 = 512B * aivNum * aivNum（cumsumWs 基址在其后）
+constexpr uint32_t FULLMESH_WS_ELEM_OFFSET = 512U;
+// 与 tiling.cpp 的 SetMaxSizeForUbBuffer 同名同值（该函数 static 不可跨 TU 复用，CCU 混合路径在
+// SetCcuHybridTiling 内按同公式就地补写 maxSizeForUbBuffer）
+constexpr uint32_t SIZE_ALIGN_256 = 256U;
+constexpr uint32_t HALF_TYPE_SIZE = 2U;
+constexpr uint32_t LOCAL_EXPERT_MAX_NUM = 2048U;
+// 可选输入下标（V2 IR 输入序，与 tiling.cpp/arch22 同值；helper.h 未收录）：expertScales=4、elasticInfo=5
+constexpr uint32_t EXPERT_SCALES_INDEX = 4U;
+constexpr uint32_t ELASTIC_INFO_INDEX = 5U;
+// attr 下标（V2 原型，与 arch22 同值）：zero_expert_num=14
+constexpr uint32_t ATTR_ZERO_EXPERT_NUM_INDEX = 14;
 
 constexpr uint32_t EP_WORLD_SIZE_FOUR = 4;
 constexpr uint32_t EP_WORLD_SIZE_TWO = 2;
@@ -911,18 +924,97 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, MoeDistributeD
 static ge::graphStatus SetCommTiling(const gert::TilingContext *context, MoeDistributeDispatchV2TilingData &tilingData,
                                      std::string &groupEp)
 {
+    // 与基线同构的单点写入（基线原位、原字段序）；唯一差异：opType HALFALLTOALLV → ALLTOALL——本仓
+    // CCU 混合内核 count 面调用 Hccl<CCU>::AlltoAll（等长），配对 HCCL_CMD_ALLTOALL（apace A5 先例：
+    // allto_all_*_tilting_base.cpp 注册 HCCL_CMD_ALLTOALL + 内核 AlltoAll 6 参调用）；HALFALLTOALLV 配对
+    // 的是纯 CCU 内核 a5_ccu.h 的 AlltoAllvWrite，本仓已无消费方。注意基线原注释警示"Setting op types
+    // other than HalfAllToAllV will result in an error"——ALLTOALL 在 hcomm CCU 选择器有默认算法
+    // （mc2_selector.cc：CcuAlltoAllMesh1D），以本轮联调实测裁决。SetCcuHybridTiling 不再二次写
+    // comm tiling（二次 GetTiling 覆写/追加语义不确定）
     const char *nodeName = context->GetNodeName();
     OP_LOGD(nodeName, "MoeDistributeDispatchV2 groupEp = %s", groupEp.c_str());
-    // Only HalfAllToAllV is set, as A5 does not support TP communication.
-    // Setting op types other than HalfAllToAllV will result in an error.
-    uint32_t opType = static_cast<uint32_t>(mc2tiling::AicpuComType::HCCL_CMD_HALFALLTOALLV);
+    // v6：升级 6 参构造（对齐 mrs A2A 出货姿势 matmul_reduce_scatter_v2_tiling.cpp:107-119：CCU 引擎 +
+    // 等长 ALLTOALL + dataType 显式传入）。此前 3 参构造把 srcDataType/dstDataType 留默认（1B 档），
+    // hcomm CCU 编排层（FillCollOperatorV2）按 tiling dataType 折算，实测 sliceSize/srcStride=1024、
+    // inputAddr==outputAddr（内部 inputMem），与内核 8×4B 段布局脱节——self 行仅 16B/32B 残达、远端行
+    // 全零。count 按 u32 交换：src=dst=INT32；等长 A2A 的 reduceType 无语义，占位 SUM 与 mrs 一致；
+    // algConfig 保留原基线的 level1:pairwise（combine_v2 出货同款：跨机层算法，单机不触发；保留可使
+    // 本轮唯一变量锁定为 dataType，与前序 plog 证据条件一致）
+    const uint32_t reduceType = HcclReduceOp::HCCL_REDUCE_SUM;
+    uint32_t opType = static_cast<uint32_t>(mc2tiling::AicpuComType::HCCL_CMD_ALLTOALL);
     std::string algConfigStr = "AlltoAll=level0:fullmesh;level1:pairwise";
+    uint32_t ccuCntDataType = static_cast<uint32_t>(mc2tiling::HcclDataType::HCCL_DATA_TYPE_INT32);
 
-    AscendC::Mc2CcTilingConfig mc2CcTilingConfig(groupEp, opType, algConfigStr);
+    AscendC::Mc2CcTilingConfig mc2CcTilingConfig(groupEp, opType, algConfigStr, reduceType, ccuCntDataType,
+                                                 ccuCntDataType);
     mc2CcTilingConfig.SetCommEngine(mc2tiling::A5_CCU_ENGINE);
     mc2CcTilingConfig.GetTiling(tilingData.mc2InitTiling);
     mc2CcTilingConfig.GetTiling(tilingData.mc2CcTiling1);
+    OP_LOGI(nodeName, "SetCommTiling: opType=ALLTOALL dtype=INT32, engine=A5_CCU_ENGINE."); // 联调打点（稳定后可删）
+    return ge::GRAPH_SUCCESS;
+}
 
+// CCU 混合模式配房（CCU 模式无条件使能 a5_ccu_mte 混合内核）：数据面走 CCU 注入 context 窗口的 MTE
+// 直写，count 面走等长 AlltoAll。三件事：①Pe×W 上界与 UB 规划字段校验/补写；②workspace 取 max(纯 CCU
+// 公式, full_mesh 容量 + CCU count 缓冲)——只增不减，旧内核二进制配新 tiling（图缓存残留错配）亦在界内；
+// ③不写 comm tiling——count 面 tiling 由 SetCommTiling 以 ALLTOALL 配置在基线原位单点写入。
+static ge::graphStatus SetCcuHybridTiling(gert::TilingContext *context, MoeDistributeDispatchV2TilingData &tilingData)
+{
+    const char *nodeName = context->GetNodeName();
+    const uint32_t moeExpertRankNum =
+        tilingData.moeDistributeDispatchV2Info.epWorldSize - tilingData.moeDistributeDispatchV2Info.sharedExpertRankNum;
+    OP_TILING_CHECK(moeExpertRankNum == 0, OP_LOGE(nodeName, "moeExpertRankNum is 0."), return ge::GRAPH_FAILED);
+    const uint32_t moeExpertNumPerRank = tilingData.moeDistributeDispatchV2Info.moeExpertNum / moeExpertRankNum;
+    // SIMT 前缀 scan 的 chunk 定长（CCU_SIMT_CHUNK_MAX=8）与 scan 段 UB 预算均以 Pe×W ≤ 2048 为前提
+    //（与 A3 路径 LOCAL_EXPERT_MAX_SIZE 校验同界），CCU 配房此前无此校验——补齐
+    OP_TILING_CHECK((moeExpertNumPerRank == 0U) ||
+                        (moeExpertNumPerRank * tilingData.moeDistributeDispatchV2Info.epWorldSize >
+                         LOCAL_EXPERT_MAX_NUM),
+                    OP_LOGE(nodeName,
+                            "hybrid moeExpertNumPerRank * epWorldSize must be in (0, 2048], but got %u * %u.",
+                            moeExpertNumPerRank, tilingData.moeDistributeDispatchV2Info.epWorldSize),
+                    return ge::GRAPH_FAILED);
+    // 混合内核 UB 规划字段补写：maxSizeForUbBuffer 的唯一赋值点 SetMaxSizeForUbBuffer（tiling.cpp，
+    // static）仅 fullmesh_v2(MTE) 配方路径可达，CCU 配房不经过——而混合内核无条件消费该字段
+    // （CalCumSum 计数段与量化/mask 链的 InitBuffer），缺省 0 将 UB 越界，按同公式就地补写；
+    // 公式 PERGROUP 分支所需的 isScales 与外层判定同源，函数内自查（不改签名）
+    const bool isScales = context->GetOptionalInputShape(SCALES_INDEX) != nullptr;
+    const uint32_t hSize = tilingData.moeDistributeDispatchV2Info.h;
+    const uint32_t expertIdsCnt = tilingData.moeDistributeDispatchV2Info.bs * tilingData.moeDistributeDispatchV2Info.k;
+    uint32_t hFp32Size = static_cast<uint32_t>(ops::CeilAlign(hSize * sizeof(float), UB_ALIGN));
+    if ((tilingData.moeDistributeDispatchV2Info.quantMode ==
+         static_cast<uint32_t>(QuantModeA5::PERGROUP_DYNAMIC_QUANT)) &&
+        isScales) {
+        hFp32Size =
+            static_cast<uint32_t>(ops::CeilAlign(static_cast<uint64_t>(hSize), PERGROUP_BLOCK_SIZE)) * sizeof(float);
+    }
+    const uint32_t bsKAlign256 = static_cast<uint32_t>(ops::CeilAlign(expertIdsCnt * HALF_TYPE_SIZE, SIZE_ALIGN_256));
+    const uint32_t expertIdsSize = static_cast<uint32_t>(ops::CeilAlign(expertIdsCnt * sizeof(int32_t), UB_ALIGN));
+    const uint32_t xActivateMaskSize =
+        tilingData.moeDistributeDispatchV2Info.bs *
+        static_cast<uint32_t>(ops::CeilAlign(tilingData.moeDistributeDispatchV2Info.k * sizeof(bool), UB_ALIGN)) *
+        HALF_TYPE_SIZE;
+    uint32_t maxSizeForUb = hFp32Size > expertIdsSize ? hFp32Size : expertIdsSize;
+    maxSizeForUb = maxSizeForUb > xActivateMaskSize ? maxSizeForUb : xActivateMaskSize;
+    maxSizeForUb = maxSizeForUb > bsKAlign256 ? maxSizeForUb : bsKAlign256;
+    tilingData.moeDistributeDispatchV2Info.maxSizeForUbBuffer = maxSizeForUb;
+    const uint32_t segWords = ((moeExpertNumPerRank + 7U) / 8U) * 8U;
+    // CCU count 缓冲：[sendBuf: W*segWords*4B][recvBuf 半区0][半区1]（recvBuf 双半区跟 dataState_
+    // 乒乓，防相邻两轮 launch 间对端引擎写入与本端读取踩踏）；用户区头部，kernel 侧按同公式寻址
+    const uint64_t ccuBufSize = static_cast<uint64_t>(tilingData.moeDistributeDispatchV2Info.epWorldSize) * segWords *
+                                sizeof(uint32_t) * 3U;
+    size_t *workSpaces = context->GetWorkspaceSizes(1);
+    OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "workSpaces"),
+                    return ge::GRAPH_FAILED);
+    const uint64_t fullMeshNeed = static_cast<uint64_t>(SYSTEM_NEED_WORKSPACE) +
+                                  static_cast<uint64_t>(FULLMESH_WS_ELEM_OFFSET) *
+                                      tilingData.moeDistributeDispatchV2Info.aivNum *
+                                      tilingData.moeDistributeDispatchV2Info.aivNum +
+                                  ccuBufSize;
+    workSpaces[0] = (workSpaces[0] > static_cast<size_t>(fullMeshNeed)) ? workSpaces[0]
+                                                                        : static_cast<size_t>(fullMeshNeed);
+    // comm tiling 不在此写（由 SetCommTiling 以 ALLTOALL 单点写入，见其注释）
+    OP_LOGI(nodeName, "CCU hybrid tiling enabled: segWords=%u.", segWords);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1016,10 +1108,29 @@ ge::graphStatus MoeDistributeDispatchTilingImpl(gert::TilingContext *context, ui
     uint32_t realMode = CheckQuantModeAndExpandXType(context, nodeName);
     OP_TILING_CHECK(realMode == static_cast<uint32_t>(RealModeA5::INVALID_MODE),
                     OP_LOGE(nodeName, "CheckQuantModeAndExpandXType failed."), return ge::GRAPH_FAILED);
-    // X active mask
-    const gert::StorageShape *xActiveMaskStorageShape = context->GetOptionalInputShape(X_ACTIVE_MASK_INDEX);
-    bool isTokenMask = (xActiveMaskStorageShape != nullptr);
+    // X active mask：按维度区分 1D token mask / 2D expert mask（对齐 tiling.cpp CheckAndGetOptionalInput
+    // 的语义）。此前仅判存在性、无维度区分，且 isExpertMask/hasElasticInfo/hasExpertScales/
+    // zeroComputeExpertNum 在 CCU 路径从未赋值（既有赋值点均在 V3/full_mesh 流程），混合内核读取到
+    // 未定义值——2D mask 会被误当 1D 处理。此处一并补齐
+    const gert::StorageShape* xActiveMaskStorageShape = context->GetOptionalInputShape(X_ACTIVE_MASK_INDEX);
+    bool isActiveMask = (xActiveMaskStorageShape != nullptr);
+    uint32_t activeMaskDimNum = isActiveMask ? xActiveMaskStorageShape->GetStorageShape().GetDimNum() : 0U;
+    bool isTokenMask = isActiveMask && (activeMaskDimNum == ONE_DIM);
     tilingData->moeDistributeDispatchV2Info.isTokenMask = isTokenMask;
+    tilingData->moeDistributeDispatchV2Info.isExpertMask = isActiveMask && (activeMaskDimNum == TWO_DIMS);
+    tilingData->moeDistributeDispatchV2Info.hasElasticInfo =
+        (context->GetOptionalInputShape(ELASTIC_INFO_INDEX) != nullptr);
+    tilingData->moeDistributeDispatchV2Info.hasExpertScales =
+        (context->GetOptionalInputShape(EXPERT_SCALES_INDEX) != nullptr);
+    // zero_expert_num 为 V2 原型 attr（index 14，V2 aclnn 恒传 0、V4 透传用户值），arch22 同式 guarded 读取
+    auto attrs = context->GetAttrs();
+    auto zeroExpertNumPtr = attrs->GetAttrPointer<int64_t>(static_cast<int>(ATTR_ZERO_EXPERT_NUM_INDEX));
+    OP_TILING_CHECK((zeroExpertNumPtr != nullptr) && (*zeroExpertNumPtr < 0),
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "zeroExpertNum", std::to_string(*zeroExpertNumPtr).c_str(),
+                                              "should be >= 0."),
+                    return ge::GRAPH_FAILED);
+    tilingData->moeDistributeDispatchV2Info.zeroComputeExpertNum =
+        (zeroExpertNumPtr != nullptr) ? static_cast<uint32_t>(*zeroExpertNumPtr) : 0U;
     // Scales and Quant
     const gert::StorageShape *scalesStorageShape = context->GetOptionalInputShape(SCALES_INDEX);
     bool isScales = (scalesStorageShape != nullptr);
@@ -1054,6 +1165,9 @@ ge::graphStatus MoeDistributeDispatchTilingImpl(gert::TilingContext *context, ui
     // Workspace
     OP_TILING_CHECK(SetWorkSpace(context, *tilingData, localMoeExpertNum) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "SetWorkSpace failed."), return ge::GRAPH_FAILED);
+    // CCU 混合模式配房（无条件：CCU 模式固定进 a5_ccu_mte 混合内核）
+    OP_TILING_CHECK(SetCcuHybridTiling(context, *tilingData) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(nodeName, "SetCcuHybridTiling failed."), return ge::GRAPH_FAILED);
     // Tiling Key
     OP_TILING_CHECK(GenTilingKey(context, quantMode, isScales) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Fail to get tiling key."), return ge::GRAPH_FAILED);
