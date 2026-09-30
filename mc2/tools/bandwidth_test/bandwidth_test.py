@@ -1338,8 +1338,10 @@ def check_roce_functional_output(rank, case, iteration, y, receive_cnt):
     actual = y[:expected.size(0)]
     if not torch.equal(actual, expected):
         mismatch = (actual != expected).nonzero()[0].tolist()
+        row, column = mismatch
         raise RuntimeError(f"rank={rank} case={case['name']} iteration={iteration}: "
-                           f"payload mismatch at row/column={mismatch}")
+                           f"payload mismatch at row/column={mismatch}, "
+                           f"actual={actual[row, column].item()}, expected={expected[row, column].item()}")
 
 
 def run_roce_functional_rank(result_queue, rank):

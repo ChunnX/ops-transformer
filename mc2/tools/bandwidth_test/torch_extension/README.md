@@ -49,7 +49,7 @@ python bandwidth_test.py
 `aiv_num` 建议保持 `-1`，tiling 固定启动两个 AIV。
 核 0 发送前 `ceil(BS/2)` 条 token，核间同步后由核 1 发送其余 token 并发布计数和通知；
 核 0 等待通知并拷贝输出。BS=1 时核 1 没有 payload，但仍发送完整计数和通知。
-网络请求在交接前全部 Drain，不使用旧的 Lock/Unlock cache 交接实验逻辑。
+每个请求均在 `Lock/Unlock` 保护内完成，交接前已经 Drain 并通过 Unlock 写回通道计数。
 
 ```python
 sym_buffer = BandwidthTestBuffer(group, comm_alg="roce")
@@ -68,14 +68,14 @@ Channel 的 `memHandles=customMemHandle_`、`memHandleNum=1`，远端 Win 通过
 `1 MiB + 2 * (world_size + 1) * max_bs * align_up(hidden * 2, 512)` 字节。
 
 `bandwidth_test_roce.h` 使用 `Hcomm<COMM_PROTOCOL_ROCE>`，按参考 URMA 的接口调用
-`MakeBatchHandle → WriteNbi(batch, dst, BufDesc[], count) → BatchCommit → Drain(batch)`。
+`Lock(channel) → MakeBatchHandle → WriteNbi(batch, dst, BufDesc[], count) → BatchCommit → Drain(batch) → Unlock(channel)`。
 目标 SDK 必须提供这些 ROCE 接口；当前本地参考 asc-comm 仅实现了 URMA 版本，旧 ROCE SDK 无法编译。
 每个 SGE 指向注册 staging Win 内一个 token 槽，长度为 `align_up(H * 2, 512)` 字节，padding 在发送前清零。
 同一目标 rank 最多 4 个 token 合成一个 WQE，源槽可以不连续，远端按数组顺序连续拼接。
 接收侧忽略槽中 padding，保留按源 rank、源 token 顺序的输出契约。
 每个请求提交后立即 Drain，满 4 段或当前核对该 peer 的最后 1～3 段都会发送；
 不会在 256 条路由分块边界额外拆分请求。count 和 ready flag 使用单 SGE 请求，count Drain 后才发送 flag。
-`Init`、`WriteNbi`、`BatchCommit`、`Drain` 返回错误时 Trap，不打印设备调试日志。
+`Init`、`Lock/Unlock`、`WriteNbi`、`BatchCommit`、`Drain` 返回错误时 Trap，不打印设备调试日志。
 
 每核使用 512B Hcomm UB、256 个 rank ID 的扫描缓冲和新增的 256B batch UB，host tiling 同步计入开销。
 256B 是参考 URMA API 的最大 WQE 容量；部署的 ROCE 实现需保证单个 1～4 SGE WQE 和 Drain scratch

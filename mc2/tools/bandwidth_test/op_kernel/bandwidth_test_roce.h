@@ -274,13 +274,16 @@ template <TemplateBandwidthTestRoceTypeClass>
 __aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::WriteSegments(
     uint32_t rankId, GM_ADDR dst, const BufDesc *src, uint32_t count)
 {
-    auto batch = hcomm_.MakeBatchHandle(hcommHandle_[rankId], sgeBatchBuf_.Get<uint8_t>(),
+    ChannelHandle channel = hcommHandle_[rankId];
+    CheckCommResult(hcomm_.Lock(channel));
+    auto batch = hcomm_.MakeBatchHandle(channel, sgeBatchBuf_.Get<uint8_t>(),
         BandwidthTestTiling::ROCE_SGE_BATCH_BYTES, reinterpret_cast<GM_ADDR>(context_->epHcclBuffer_[rankId]),
         reinterpret_cast<GM_ADDR>(context_->epHcclBuffer_[epRankId_]));
     CheckCommResult(hcomm_.WriteNbi(batch, dst, src, count));
     CheckCommResult(hcomm_.BatchCommit(batch));
-    // Functional test: finish this WQE before reusing UB or handing the channel to the other core.
+    // Drain completes this WQE; Unlock publishes channel counters before another core builds its batch.
     CheckCommResult(hcomm_.Drain(batch));
+    CheckCommResult(hcomm_.Unlock(channel));
 }
 
 template <TemplateBandwidthTestRoceTypeClass>

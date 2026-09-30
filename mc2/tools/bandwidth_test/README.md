@@ -39,7 +39,8 @@ eager、FP16、非共享 channel，关闭拓扑扫描和 profiling。直接运�
 
 **先编译并安装这版算子。** 目标 asc-comm/CANN 必须提供用户约定的 ROCE BatchHandle 接口：
 `MakeBatchHandle(channel, ub, bytes, remoteWin, localWin)`、
-`WriteNbi(batch, dst, const AscendC::BufDesc *, count)`、`BatchCommit(batch)`、`Drain(batch)`。
+`WriteNbi(batch, dst, const AscendC::BufDesc *, count)`、`BatchCommit(batch)`、`Drain(batch)`，
+以及支持跨核状态交接的 `Lock(channel)` / `Unlock(channel)`。
 本地参考 asc-comm 的现有实现只在 URMA 上支持这些操作；旧 ROCE SDK 不能编译本版，
 不会自动降级为单 SGE。先让编译环境使用新增 ROCE 实现的头文件/库，再重新生成并安装
 `bandwidth_test` 算子包（host tiling 和 kernel）；Torch 包的安装步骤见
@@ -49,7 +50,9 @@ eager、FP16、非共享 channel，关闭拓扑扫描和 profiling。直接运�
 发送时每个 SGE 指向一个注册 Win token 槽，同一目标 rank 最多 4 个槽合成一个 WQE。
 槽宽为 `align_up(H * 2, 512)` 字节，padding 在发送前清零；接收侧仍只输出每行有效的 H 个元素。
 交错路由使源槽之间存在空隙，而远端按 SGE 顺序连续落地。保持原有两核依次发送、核 0 接收的流程，
-每个 WQE 都执行 `BatchCommit + Drain`，不积累在途请求；count 完成后才发布 ready flag。
+每个请求均按 `Lock → MakeBatchHandle → WriteNbi → BatchCommit → Drain → Unlock` 执行，
+不积累在途请求；count 完成后才发布 ready flag。`Unlock` 写回通道队列计数，
+使另一核后续创建 batch 时能够使用更新后的状态；`Drain` 和核间同步不能代替这一步。
 这版用于功能验证，不用于带宽比较。新增独立的 256B batch UB（参考 URMA 最大 WQE 容量），
 目标 ROCE SDK 需满足 1～4 SGE、单请求及 Drain scratch 能容纳于该缓冲区的约定；接口出错会 Trap。
 
