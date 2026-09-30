@@ -16,13 +16,23 @@
 using namespace AscendC;
 
 
-#if (__CCE_AICORE__ == 310) || (defined(NPU_ARCH) && ((NPU_ARCH == 9201) || (NPU_ARCH == 9202)))
+#if defined(NPU_ARCH) && ((NPU_ARCH == 9201) || (NPU_ARCH == 9202))
 #include "arch92/sparse_lightning_indexer_grad_kl_loss_regbase_common.h"
 #include "arch92/sparse_lightning_indexer_grad_kl_loss_tiling_regbase.h"
 #include "arch92/sparse_lightning_indexer_grad_kl_loss_template_tiling_key_regbase.h"
 #include "arch92/sparse_lightning_indexer_grad_kl_loss_vector_block.h"
 #include "arch92/sparse_lightning_indexer_grad_kl_loss_cube_block.h"
 #include "arch92/sparse_lightning_indexer_grad_kl_loss_kernel_base.h"
+#elif __CCE_AICORE__ == 310
+#include "arch35/sparse_lightning_indexer_grad_kl_loss_regbase_common.h"
+#include "arch35/sparse_lightning_indexer_grad_kl_loss_tiling_regbase.h"
+#include "arch35/sparse_lightning_indexer_grad_kl_loss_template_tiling_key_regbase.h"
+#include "arch35/sparse_lightning_indexer_grad_kl_loss_vector_block.h"
+#include "arch35/sparse_lightning_indexer_grad_kl_loss_cube_block.h"
+#include "arch35/sparse_lightning_indexer_grad_kl_loss_kernel_base.h"
+#endif
+
+#if (defined(NPU_ARCH) && ((NPU_ARCH == 9201) || (NPU_ARCH == 9202))) || (__CCE_AICORE__ == 310)
 using namespace SligKlLoss;
 #define SLI_OP_IMPL(templateClass, tilingdataClass, ...) \
     do { \
@@ -40,7 +50,6 @@ using namespace SligKlLoss;
                 tiling_data, &tPipe); \
         op.Process(); \
     } while (0)
-
 #else
 #include "arch22/sparse_lightning_indexer_grad_kl_loss_template_tiling_key.h"
 #include "arch22/sparse_lightning_indexer_grad_kl_loss_base.h"
@@ -57,7 +66,7 @@ using namespace SligKlLoss;
     } while (0)
 #endif
 
-#if (__CCE_AICORE__ == 310) || (defined(NPU_ARCH) && ((NPU_ARCH == 9201) || (NPU_ARCH == 9202)))
+#if (defined(NPU_ARCH) && ((NPU_ARCH == 9201) || (NPU_ARCH == 9202))) || (__CCE_AICORE__ == 310)
 template<bool HasRope, int TopKRange, int LayoutT_QT, int LayoutT_KT, int SparseMode, bool Deterministic, bool HasSink>
 __global__ __aicore__ void sparse_lightning_indexer_grad_kl_loss(
     __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *queryIndex, __gm__ uint8_t *keyIndex,
@@ -89,7 +98,7 @@ __global__ __aicore__ void sparse_lightning_indexer_grad_kl_loss(
     }
 }
 #else
-template<bool HasRope, int TopKRange, int LayoutT_QT, int LayoutT_KT, int SparseMode, bool Deterministic, bool HasSink>
+template<bool HasRope, int TopKRange, int LayoutT_QT, int LayoutT_KT, int SparseMode, bool Deterministic>
 __global__ __aicore__ void sparse_lightning_indexer_grad_kl_loss(
     __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *queryIndex, __gm__ uint8_t *keyIndex,
     __gm__ uint8_t *weight, __gm__ uint8_t *sparseIndices, __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxMum,
@@ -98,21 +107,20 @@ __global__ __aicore__ void sparse_lightning_indexer_grad_kl_loss(
     __gm__ uint8_t *dWeight, __gm__ uint8_t *loss, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-    REGISTER_TILING_DEFAULT(optiling::SparseLightningIndexerGradKLLossRegBaseTilingData);
+    REGISTER_TILING_DEFAULT(optiling::SparseLightningIndexerGradKLLossTilingData);
     TPipe tPipe;
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
 
     if constexpr (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_FLOAT16) {
-        SLI_OP_IMPL(SparseLightningIndexerGradKLLossKernelBase,
-                    optiling::SparseLightningIndexerGradKLLossRegBaseTilingData, half, half, DTYPE_WEIGHT, float,
-                    static_cast<SLILayout>(LayoutT_QT), static_cast<SLILayout>(LayoutT_KT), SLISparseMode::RightDown,
-                    HasRope, Deterministic, HasSink);
+        SLI_OP_IMPL(SparseLightningIndexerGradKLLossBase, optiling::SparseLightningIndexerGradKLLossTilingData, half,
+                    half, DTYPE_WEIGHT, half, static_cast<SLITopKRange>(TopKRange), static_cast<SLILayout>(LayoutT_QT),
+                    static_cast<SLILayout>(LayoutT_KT), SLISparseMode::RightDown, HasRope, Deterministic);
     }
     if constexpr (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_BF16) {
-        SLI_OP_IMPL(SparseLightningIndexerGradKLLossKernelBase,
-                    optiling::SparseLightningIndexerGradKLLossRegBaseTilingData, bfloat16_t, bfloat16_t, DTYPE_WEIGHT,
-                    float, static_cast<SLILayout>(LayoutT_QT), static_cast<SLILayout>(LayoutT_KT),
-                    SLISparseMode::RightDown, HasRope, Deterministic, HasSink);
+        SLI_OP_IMPL(SparseLightningIndexerGradKLLossBase, optiling::SparseLightningIndexerGradKLLossTilingData,
+                    bfloat16_t, bfloat16_t, DTYPE_WEIGHT, bfloat16_t, static_cast<SLITopKRange>(TopKRange),
+                    static_cast<SLILayout>(LayoutT_QT), static_cast<SLILayout>(LayoutT_KT), SLISparseMode::RightDown,
+                    HasRope, Deterministic);
     }
 }
 #endif
