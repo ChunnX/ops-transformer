@@ -42,6 +42,7 @@
 #include "fit_balance_tiling_utils/matmul_model.h"
 #include "fit_balance_tiling_utils/cut_planner.h"
 #include "fit_balance_tiling_utils/solver.h"
+#include "../tiling_data_struct_define.h" // CommTilingData(CutResultFromCof 的入参类型, 核利用率优先结果)
 
 // 统一入口: 算子侧只传大结构体标定数据 + 键控枚举(原语/顺序/引擎; soc 恒 950)
 // 通信标定行查找: 按 (通信引擎, rankDim) 二维匹配首个命中行; miss 返回 nullptr。
