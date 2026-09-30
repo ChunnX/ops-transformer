@@ -41,7 +41,10 @@
 #include "../prompt_flash_attention/prompt_flash_attention.cpp"
 #endif
 #include "arch22/fused_infer_attention_score_v3.cpp"
+#if ((ORIG_DTYPE_QUERY == DT_FLOAT16) && (ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16) && (ORIG_DTYPE_KEY == DT_FLOAT16)) || \
+    ((ORIG_DTYPE_QUERY == DT_BF16) && (ORIG_DTYPE_ATTENTION_OUT == DT_BF16) && (ORIG_DTYPE_KEY == DT_BF16))
 #include "arch22/flash_attention_interface.cpp"
+#endif
 #endif
 
 #define FullQuantTiling 15
@@ -67,6 +70,8 @@ extern "C" __global__ __aicore__ void fused_infer_attention_score(
         softmaxLse, workspace, tiling);
 #else
     if (TILING_KEY_VAR >= FAI_FLAG_TILING) {
+#if ((ORIG_DTYPE_QUERY == DT_FLOAT16) && (ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16) && (ORIG_DTYPE_KEY == DT_FLOAT16)) || \
+    ((ORIG_DTYPE_QUERY == DT_BF16) && (ORIG_DTYPE_ATTENTION_OUT == DT_BF16) && (ORIG_DTYPE_KEY == DT_BF16))
         __gm__ uint8_t *user = GetUserWorkspace(workspace);
         KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
         FIA_COPY_TILING_DATA(FAInferTilingData, tiling);
@@ -1334,6 +1339,7 @@ extern "C" __global__ __aicore__ void fused_infer_attention_score(
                                    NpuArch::Epilogue::SinkMode::DISABLE, true>(
             query, key, value, pse_shift, attenMask, blocktable, attentionOut, softmaxLse, actualSeqLengths,
             actualSeqLengthsKV, user, tiling, learnableSink);
+#endif
 #endif
 #endif
     } else if (TILING_KEY_VAR >= PFA_FlAG_TILING) {
