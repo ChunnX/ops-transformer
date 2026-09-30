@@ -27,7 +27,7 @@
 
   `flash_attn`是基于`TorchNPU`的`cann_ops_transformer`扩展接口，用于调用`FlashAttn`算子完成共享KV（Key和Value使用同一份输入）的非量化注意力计算，训练推理归一化。
 
-  `flash_attn_metadata`是`flash_attn`的元数据生成接口，用于在主算子执行前生成metadata。metadata记录AICore/AIVCore的任务切分结果，主算子可选择传入该metadata以优化调度。典型调用流程如下：
+  `flash_attn_metadata`是`flash_attn`的元数据生成接口，用于在主算子执行前生成metadata。metadata记录AICore/AIVCore的任务切分结果，主算子须传入该metadata以完成负载均衡调度。典型调用流程如下：
 
   1. 准备`q`、`k`、`v`等输入。
   2. 调用`flash_attn_metadata`生成`metadata`。
@@ -182,7 +182,7 @@ cann_ops_transformer.flash_attn(
 | seqused_q | Tensor | 可选 | 指定每batch中实际使用的序列长度，截断冗余运算 | int32 | ND | (B,) |
 | seqused_kv | Tensor | 可选 | 指定每batch中实际使用的序列长度，截断冗余运算 | int32 | ND | (B,) |
 | sinks | Tensor | 可选 | 注意力汇聚（sink）参数，用于改善自注意力计算的数值稳定性 | float32 | ND | (Q_N,) |
-| metadata | Tensor | 可选 | `flash_attn_metadata`生成的任务切分结果，传入后可优化调度 | int32 | ND | (max_schedule_size,) |
+| metadata | Tensor | 必选 | `flash_attn_metadata`生成的任务切分结果（当前须传入） | int32 | ND | (max_schedule_size,) |
 | softmax_scale | float | 可选 | 可显式设置缩放因子，覆盖默认计算 | float32 | - | - |
 | mask_mode | int | 可选 | 掩码模式 | int32 | - | - |
 | attn_mask | Tensor | 可选 | 掩码矩阵 | int8 | ND | (2048, 2048)
@@ -227,7 +227,7 @@ cann_ops_transformer.flash_attn(
 |      公共参数组      |         q         |      INPUT      |   Tensor   |
 |                      |          k          |      INPUT      | Tensor |
 |                      |         v         |      INPUT      | Tensor |
-|                      |         metadata        |      INPUT(OPTIONAL)      | Tensor |
+|                      |         metadata        |           INPUT            | Tensor |
 |                      |      softmax_scale      | ATTR(OPTIONAL) |   float   |
 |                      |      layout_q      | ATTR(OPTIONAL) |   string   |
 |                      |      layout_kv      | ATTR(OPTIONAL) |   string   |
@@ -453,7 +453,7 @@ cann_ops_transformer.flash_attn(
                         <li>当前不支持不传入，未传入将发出拦截报警</li>
                     </ul>
                 </td>
-                <td>可选参数</td>
+                <td>必须存在</td>
                 <td>无</td>
                 <td>传入时需与flash_attn_metadata生成的结果一致</td>
             </tr>
