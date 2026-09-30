@@ -412,8 +412,7 @@ constexpr int64_t EXCEPTION_DUMP_REGION_SIZE = 60LL * 1024LL;
 // rankSyncInWorld 同步区
 constexpr int64_t PEERMEM_DATA_OFFSET = 60LL * 1024LL;
 // setup.py 将本文件独立打包到 csrc/mc2，不能依赖仓库中的 kernel 头文件。
-// 与 MegaMoeImpl::PEERMEM_MTE_COUNT_REGION_SIZE 保持一致，由 test_count_slots.py 校验两侧布局。
-constexpr int64_t PEERMEM_MTE_COUNT_REGION_SIZE = 2048LL * 512LL;
+constexpr int64_t PEERMEM_MTE_COUNT_REGION_SIZE = 1 * 1024 * 1024;
 
 int64_t CeilAlign(int64_t val, int64_t align)
 {
