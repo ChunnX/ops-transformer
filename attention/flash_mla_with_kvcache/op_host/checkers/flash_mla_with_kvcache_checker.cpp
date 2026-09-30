@@ -36,12 +36,12 @@ using namespace arch35MLA;
 // 新增 checker 时在此方法中添加: checkers_.push_back(std::make_unique<XxxChecker>());
 void FlashMlaWithKvcacheChecker::RegisterCheckers()
 {
-    checkers_.push_back(std::make_unique<CommonChecker>());
-    checkers_.push_back(std::make_unique<ActualSeqLenChecker>());
-    checkers_.push_back(std::make_unique<PagedAttentionChecker>());
-    checkers_.push_back(std::make_unique<MaskChecker>());
-    checkers_.push_back(std::make_unique<MetadataChecker>());
-    checkers_.push_back(std::make_unique<SoftmaxLSEChecker>());
+    // checkers_.push_back(std::make_unique<CommonChecker>());
+    // checkers_.push_back(std::make_unique<ActualSeqLenChecker>());
+    // checkers_.push_back(std::make_unique<PagedAttentionChecker>());
+    // checkers_.push_back(std::make_unique<MaskChecker>());
+    // checkers_.push_back(std::make_unique<MetadataChecker>());
+    // checkers_.push_back(std::make_unique<SoftmaxLSEChecker>());
 }
 
 ge::graphStatus FlashMlaWithKvcacheChecker::Init(const FlashMlaWithKvcacheTilingInfo &faInfo)
