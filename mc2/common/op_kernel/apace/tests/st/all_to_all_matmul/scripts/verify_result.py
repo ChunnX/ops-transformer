@@ -18,9 +18,10 @@ import sys
 import numpy as np
 import torch
 
-# fp16 输入 + fp16 输出，fp32 中间累加，理论相对误差 ~1e-3。
-# atol/rtol 取 1e-2 对齐低精度算子通用验收门槛。
-ERROR_TOL = 1e-2
+# 与量化版一致的"双千分之一"精度标准（适用于所有模式）：
+#   单元素相对误差超 ERROR_TOL(1e-3) 的元素占比 ≤ FAIL_RATE_LIMIT(1e-3) 算过。
+ERROR_TOL = 1e-3
+FAIL_RATE_LIMIT = 1e-3
 DATA_TYPE = np.float16
 FULL_TENSOR_PRINT_MAX_ELEMENTS = 1024
 CORNER_ROWS = 4
@@ -413,9 +414,16 @@ def verify_single_rank(m, n, rank_id, base_dir="./output", opts=None, dtype="fp1
     if opts is not None and opts.visual == "on":
         render_visual(golden_tensor, npu_output_tensor, m, n, opts)
 
-    return torch.allclose(
-        golden_tensor, npu_output_tensor, rtol=ERROR_TOL, atol=ERROR_TOL, equal_nan=True
+    # 双千分之一（与量化版一致，适用所有模式）：
+    # 相对误差 > ERROR_TOL 的元素占比 ≤ FAIL_RATE_LIMIT 算过。
+    diff = (npu_output_tensor.float() - golden_tensor.float()).abs()
+    thr = ERROR_TOL + ERROR_TOL * golden_tensor.float().abs()
+    fail_rate = (diff > thr).float().mean().item()
+    print(
+        f"[Rank {rank_id}] 双千分之一: fail_rate={fail_rate*100:.5f}% "
+        f"(limit {FAIL_RATE_LIMIT*100}%)"
     )
+    return fail_rate <= FAIL_RATE_LIMIT
 
 
 def verify_result(m, n, rank_num, base_dir="./output", opts=None, dtype="fp16"):
@@ -432,13 +440,14 @@ def verify_result(m, n, rank_num, base_dir="./output", opts=None, dtype="fp16"):
         try:
             res = verify_single_rank(m, n, rank_id, base_dir, opts, dtype)
             results.append(
-                (rank_id, bool(res), None if res else "allclose returned False")
+                (rank_id, bool(res), None if res else "fail_rate exceeded limit")
             )
             if res:
                 print(f"[PASS] Rank {rank_id}: NPU results match CPU golden")
             else:
                 print(
-                    f"[FAIL] Rank {rank_id}: allclose returned False (rtol=atol={ERROR_TOL})"
+                    f"[FAIL] Rank {rank_id}: 双千分之一 fail_rate exceeded "
+                    f"(ERROR_TOL={ERROR_TOL}, limit={FAIL_RATE_LIMIT})"
                 )
                 all_pass = False
         except Exception as e:
