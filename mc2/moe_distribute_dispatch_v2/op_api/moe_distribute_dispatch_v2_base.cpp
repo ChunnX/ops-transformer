@@ -197,6 +197,21 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
 
     int64_t ydtype = expandXOut->GetDataType();
     if (!isA5 || (commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0)) { // ccu暂时不支持mc2Context
+#if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+        // ===== CCU×Mc2Context 并存探测①（验证后删除）：在 CCU 注册链上追加 AIV channel 面
+        // context 创建（GetMc2ContextTensor 内部执行 HcclChannelAcquire(engine=AIV, UB协议)）。
+        // 判读：ret=0 且 host 日志出现 [CCU_PROBE_H] → 同 HcclComm 上 CCU 注入域与 AIV channel 域
+        // 并存被允许（双上下文方案探测点①通过）；报错/异常 → ①不通，双上下文方案否决。
+        // 探测 tag 独立（ccuprobe），不污染现役 "moe_distribute_v2" 缓存。
+        if (isA5 && (commAlg != nullptr) && (std::strcmp(commAlg, "ccu") == 0)) {
+            const char *probeTag = "moe_distribute_v2_ccuprobe";
+            uint64_t probeBuffSize = 0;
+            aclTensor *probeContext = nullptr;
+            auto probeRet = Mc2Aclnn::Mc2Context::GetMc2ContextTensor(groupEp, probeTag, probeBuffSize, probeContext);
+            OP_LOGI("[Mc2CcuProbe][CCU_PROBE_A] ccu-branch GetMc2ContextTensor ret=%d buffSize=%llu",
+                    static_cast<int32_t>(probeRet), static_cast<unsigned long long>(probeBuffSize));
+        }
+#endif
         getWorkspaceSizesRes = aclnnInnerMoeDistributeDispatchV2GetWorkspaceSize(
             x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional, elasticInfoOptional,
             performanceInfoOptional, groupEpBuf, epWorldSize, epRankId, moeExpertNum, groupTpBuf, tpWorldSize, tpRankId,
