@@ -131,7 +131,7 @@ class GroupedMatmulSwigluQuantOpBuilder(OpBuilder):
             "int? group_list_type=0, int[]? tuning_config=None, int? x_dtype=None, int? weight_dtype=None, "
             "int? weight_scale_dtype=None, int? x_scale_dtype=None, int? swiglu_mode=None, "
             "float? clamp_limit=None, float? glu_alpha=None, float? glu_bias=None, "
-            'str round_mode="rint", int scale_alg=0, float dst_type_max=0.0) -> (Tensor, Tensor)'
+            'str round_mode="rint", int scale_alg=0, float dst_type_max=0.0) -> (Tensor, Tensor?)'
         )
 
     def register_meta(self):
@@ -188,10 +188,10 @@ class GroupedMatmulSwigluQuantOpBuilder(OpBuilder):
                     dtype=torch.bfloat16 if is_a4w4 else torch.float8_e4m3fn,
                     device="meta",
                 ),
-                torch.empty(
-                    (0,)
-                    if is_a4w4
-                    else (
+                None
+                if is_a4w4
+                else torch.empty(
+                    (
                         m,
                         (
                             (n // SWIGLU_SPLIT_FACTOR)
@@ -296,7 +296,7 @@ def grouped_matmul_swiglu_quant(
     round_mode: str = "rint",
     scale_alg: int = 0,
     dst_type_max: float = 0.0,
-) -> Tuple[torch.Tensor, torch.Tensor]:
+) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
     """调用 GroupedMatmulSwigluQuantWeightNzV3。
 
     当前扩展仅支持 ``swiglu_mode=2`` 的 Ascend 950 单 Tensor MX WeightNZ

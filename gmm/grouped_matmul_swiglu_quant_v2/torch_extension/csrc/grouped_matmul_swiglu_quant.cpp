@@ -26,7 +26,6 @@ constexpr int64_t kSwigluSplitFactor = 2;
 constexpr int64_t kMxScalePairSize = 2;
 constexpr int64_t kMxQuantMode = 2;
 constexpr int64_t kDim0 = 0;
-constexpr int64_t kDim1 = 1;
 constexpr int64_t kDim2 = 2;
 constexpr int64_t kMxGroupSize = 64;
 constexpr int64_t kGeDtypeFloat8E4M3Fn = 36;
@@ -152,9 +151,9 @@ std::tuple<at::Tensor, at::Tensor> grouped_matmul_swiglu_quant(
     const aclDataType xScaleAclDtype = GetMxScaleAclDtype(xScaleDtype, xScale, "x_scale");
 
     const bool isA4W4 = xAclDtype == ACL_FLOAT4_E2M1 && weightAclDtype == ACL_FLOAT4_E2M1;
-    TORCH_CHECK(!isA4W4 || (n % (kMxGroupSize * kMxScalePairSize) == 0 && x.size(kDim1) % kMxScalePairSize == 0 &&
-                            x.size(kDim1) != kMxScalePairSize),
-                "FLOAT4_E2M1 A4W4 requires N divisible by 128 and an even K other than 2.");
+    // FP4 uses byte-packed Torch storage. The wrapper shape is therefore not
+    // the logical K dimension; ACLNN validates logical K after descriptor conversion.
+    TORCH_CHECK(!isA4W4 || n % (kMxGroupSize * kMxScalePairSize) == 0, "FLOAT4_E2M1 A4W4 requires N divisible by 128.");
     TORCH_CHECK(!quantDtype.has_value() || (isA4W4 ? GetAclDtypeFromValue(quantDtype.value()) == ACL_BF16 :
                                                      NormalizeGeDtype(quantDtype.value()) == kGeDtypeFloat8E4M3Fn),
                 isA4W4 ? "FLOAT4_E2M1 A4W4 only supports BF16 output." :
