@@ -25,7 +25,7 @@
 // channel from scratch on a zeroed workspace - verified: warmup loops pass
 // with per-launch workspaces, crash with a reused one).
 namespace matmul {
-__aicore__ inline void clearWorkspace(__gm__ uint8_t *workspace)
+__aicore__ inline void clearWorkspace(__gm__ uint8_t* workspace)
 {
     (void)workspace;
 }
@@ -41,7 +41,7 @@ extern "C" __global__ __aicore__ void kv_cache_turbo_quant(GM_ADDR kv_vectors, G
     if (tilingData.totalVec >= 1024 && tilingData.qjlDim == 128) {
         // prefill path: AIC/AIV hybrid cube kernel. The MIX runtime owns the
         // leading libapi bytes of the workspace; user data starts after it.
-        __gm__ uint8_t *user = GetUserWorkspace(workspace);
+        __gm__ uint8_t* user = GetUserWorkspace(workspace);
         KernelKvCacheTurboQuantMix op;
         op.Init(kv_vectors, rotation_matrix, qjl_matrix, quant_idx, quant_qjl, quant_norm, quant_gamma, user,
                 &tilingData);

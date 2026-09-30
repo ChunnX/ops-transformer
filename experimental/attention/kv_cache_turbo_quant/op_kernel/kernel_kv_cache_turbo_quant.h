@@ -57,7 +57,7 @@ public:
 
     __aicore__ inline void Init(GM_ADDR kvVectors, GM_ADDR rotationMatrix, GM_ADDR qjlMatrix, GM_ADDR quantIdx,
                                 GM_ADDR quantQjl, GM_ADDR quantNorm, GM_ADDR quantGamma,
-                                const KvCacheTurboQuantTilingData *tiling)
+                                const KvCacheTurboQuantTilingData* tiling)
     {
         if ASCEND_IS_AIC {
             vecNum_ = 0;
@@ -97,13 +97,13 @@ public:
             return;
         }
 
-        kvGm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(kvVectors), totalVec_ * HEAD_DIM);
-        rotGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(rotationMatrix), HEAD_DIM * HEAD_DIM);
-        qjlGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(qjlMatrix), qjlDim_ * HEAD_DIM);
-        idxGm_.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t *>(quantIdx), totalVec_ * idxBytesPerVec_);
-        qjlOutGm_.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t *>(quantQjl), totalVec_ * qjlBytesPerVec_);
-        normGm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(quantNorm), totalVec_);
-        gammaGm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(quantGamma), totalVec_);
+        kvGm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(kvVectors), totalVec_ * HEAD_DIM);
+        rotGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(rotationMatrix), HEAD_DIM * HEAD_DIM);
+        qjlGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(qjlMatrix), qjlDim_ * HEAD_DIM);
+        idxGm_.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t*>(quantIdx), totalVec_ * idxBytesPerVec_);
+        qjlOutGm_.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t*>(quantQjl), totalVec_ * qjlBytesPerVec_);
+        normGm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(quantNorm), totalVec_);
+        gammaGm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(quantGamma), totalVec_);
 
         pipe_.InitBuffer(matHBuf_, HEAD_DIM * HEAD_DIM * sizeof(float));  // 64K rotation H
         pipe_.InitBuffer(matSBuf_, HEAD_DIM * HEAD_DIM * sizeof(float));  // 64K projection S
@@ -300,7 +300,7 @@ private:
                                              -0.083254285f, -0.058020826f, -0.03428064f, -0.01134237f,
                                              0.01134237f,   0.03428064f,   0.058020826f, 0.083254285f,
                                              0.11099271f,   0.1429703f,    0.18283178f,  0.24148904f};
-        const float *cent = (mseBits_ == 2) ? CENT4 : (mseBits_ == 3 ? CENT8 : CENT16);
+        const float* cent = (mseBits_ == 2) ? CENT4 : (mseBits_ == 3 ? CENT8 : CENT16);
         for (int32_t i = 0; i < nCent_; ++i) {
             cent_[i] = cent[i];
         }
@@ -330,8 +330,8 @@ private:
     // then one Mul call per 16 rows (16 repeats x 64 elems; mat advances 16
     // blocks/repeat, b16 8 blocks) fills the half-width products mh[rows, 64], and
     // a WholeReduceSum pass (64 elems/row, dst stride 1) yields the half row-sums.
-    __aicore__ inline void MatVecHalf(const LocalTensor<float> &dst, const LocalTensor<float> &mat,
-                                      const LocalTensor<float> &src, int32_t rows)
+    __aicore__ inline void MatVecHalf(const LocalTensor<float>& dst, const LocalTensor<float>& mat,
+                                      const LocalTensor<float>& src, int32_t rows)
     {
         LocalTensor<float> mh = mhBuf_.Get<float>();
         LocalTensor<float> b16 = b16Buf_.Get<float>();
@@ -361,8 +361,8 @@ private:
 
     // batched MSE quantization of b vectors starting at vb: y = z*inv, boundary
     // compares, y_hat, residual into zTile slots, residual norms, idx pack words.
-    __aicore__ inline void QuantizeBatch(int32_t vb, int32_t b, const LocalTensor<float> &zTile,
-                                         const LocalTensor<float> &normVec, const LocalTensor<float> &rnVec)
+    __aicore__ inline void QuantizeBatch(int32_t vb, int32_t b, const LocalTensor<float>& zTile,
+                                         const LocalTensor<float>& normVec, const LocalTensor<float>& rnVec)
     {
         LocalTensor<float> y = yBuf_.Get<float>();
         LocalTensor<float> yhat = yhatBuf_.Get<float>();
@@ -473,9 +473,9 @@ private:
     }
 
     // scalar tail flush (< CHUNK_VEC vectors, only at the global end)
-    __aicore__ inline void FlushScalar(int64_t g0, int32_t stageOff, int32_t nv, const LocalTensor<bfloat16_t> &normBF,
-                                       const LocalTensor<bfloat16_t> &gammaBF, const LocalTensor<uint8_t> &idxStage,
-                                       const LocalTensor<uint8_t> &qjlStage)
+    __aicore__ inline void FlushScalar(int64_t g0, int32_t stageOff, int32_t nv, const LocalTensor<bfloat16_t>& normBF,
+                                       const LocalTensor<bfloat16_t>& gammaBF, const LocalTensor<uint8_t>& idxStage,
+                                       const LocalTensor<uint8_t>& qjlStage)
     {
         for (int32_t v = 0; v < nv; ++v) {
             const int64_t g = g0 + v;

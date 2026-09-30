@@ -64,7 +64,7 @@ const std::vector<CaseInfo> kCases = {
 };
 
 template <typename T>
-bool LoadBin(const std::string &path, std::vector<T> &out)
+bool LoadBin(const std::string& path, std::vector<T>& out)
 {
     std::ifstream ifs(path, std::ios::binary | std::ios::ate);
     if (!ifs) {
@@ -74,7 +74,7 @@ bool LoadBin(const std::string &path, std::vector<T> &out)
     const size_t bytes = static_cast<size_t>(ifs.tellg());
     out.resize(bytes / sizeof(T));
     ifs.seekg(0);
-    ifs.read(reinterpret_cast<char *>(out.data()), static_cast<std::streamsize>(bytes));
+    ifs.read(reinterpret_cast<char*>(out.data()), static_cast<std::streamsize>(bytes));
     return static_cast<bool>(ifs);
 }
 
@@ -108,7 +108,7 @@ struct CaseResult {
     double avgUs = 0.0;
 };
 
-bool RunCase(const std::string &dataDir, CaseInfo ci, int perfIters, aclrtStream stream, CaseResult &res)
+bool RunCase(const std::string& dataDir, CaseInfo ci, int perfIters, aclrtStream stream, CaseResult& res)
 {
     if (getenv("KVTQ_BITS") != nullptr) {
         ci.mseBits = atoi(getenv("KVTQ_BITS"));
@@ -166,24 +166,24 @@ bool RunCase(const std::string &dataDir, CaseInfo ci, int perfIters, aclrtStream
     std::vector<int64_t> qjlShape = {ci.numTokens, ci.numKvHeads, qjlBytes};
     std::vector<int64_t> normShape = {ci.numTokens, ci.numKvHeads};
 
-    aclTensor *kvT = aclCreateTensor(kvShape.data(), kvShape.size(), ACL_BF16, nullptr, 0, ACL_FORMAT_ND,
+    aclTensor* kvT = aclCreateTensor(kvShape.data(), kvShape.size(), ACL_BF16, nullptr, 0, ACL_FORMAT_ND,
                                      kvShape.data(), kvShape.size(), kvDev);
-    aclTensor *rotT = aclCreateTensor(matShape.data(), matShape.size(), ACL_FLOAT, nullptr, 0, ACL_FORMAT_ND,
+    aclTensor* rotT = aclCreateTensor(matShape.data(), matShape.size(), ACL_FLOAT, nullptr, 0, ACL_FORMAT_ND,
                                       matShape.data(), matShape.size(), rotDev);
-    aclTensor *qjlT = aclCreateTensor(matShape.data(), matShape.size(), ACL_FLOAT, nullptr, 0, ACL_FORMAT_ND,
+    aclTensor* qjlT = aclCreateTensor(matShape.data(), matShape.size(), ACL_FLOAT, nullptr, 0, ACL_FORMAT_ND,
                                       matShape.data(), matShape.size(), qjlDev);
-    aclTensor *idxT = aclCreateTensor(idxShape.data(), idxShape.size(), ACL_UINT8, nullptr, 0, ACL_FORMAT_ND,
+    aclTensor* idxT = aclCreateTensor(idxShape.data(), idxShape.size(), ACL_UINT8, nullptr, 0, ACL_FORMAT_ND,
                                       idxShape.data(), idxShape.size(), idxDev);
-    aclTensor *qjlOutT = aclCreateTensor(qjlShape.data(), qjlShape.size(), ACL_UINT8, nullptr, 0, ACL_FORMAT_ND,
+    aclTensor* qjlOutT = aclCreateTensor(qjlShape.data(), qjlShape.size(), ACL_UINT8, nullptr, 0, ACL_FORMAT_ND,
                                          qjlShape.data(), qjlShape.size(), qjlOutDev);
-    aclTensor *normT = aclCreateTensor(normShape.data(), normShape.size(), ACL_BF16, nullptr, 0, ACL_FORMAT_ND,
+    aclTensor* normT = aclCreateTensor(normShape.data(), normShape.size(), ACL_BF16, nullptr, 0, ACL_FORMAT_ND,
                                        normShape.data(), normShape.size(), normDev);
-    aclTensor *gammaT = aclCreateTensor(normShape.data(), normShape.size(), ACL_BF16, nullptr, 0, ACL_FORMAT_ND,
+    aclTensor* gammaT = aclCreateTensor(normShape.data(), normShape.size(), ACL_BF16, nullptr, 0, ACL_FORMAT_ND,
                                         normShape.data(), normShape.size(), gammaDev);
     CHECK_RET(kvT && rotT && qjlT && idxT && qjlOutT && normT && gammaT, "create tensor");
 
     uint64_t workspaceSize = 0;
-    aclOpExecutor *executor = nullptr;
+    aclOpExecutor* executor = nullptr;
     aclnnStatus st = aclnnKvCacheTurboQuantGetWorkspaceSize(kvT, rotT, qjlT, ci.mseBits, idxT, qjlOutT, normT, gammaT,
                                                             &workspaceSize, &executor);
     CHECK_RET(st == ACL_SUCCESS, ci.name + " GetWorkspaceSize ret=" + std::to_string(st));
@@ -191,7 +191,7 @@ bool RunCase(const std::string &dataDir, CaseInfo ci, int perfIters, aclrtStream
     if (getenv("KVTQ_WS_PAD") != nullptr) {
         workspaceSize += static_cast<uint64_t>(atol(getenv("KVTQ_WS_PAD"))) * 1024 * 1024;
     }
-    void *workspace = nullptr;
+    void* workspace = nullptr;
     if (workspaceSize > 0) {
         CHECK_RET(aclrtMalloc(&workspace, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST) == ACL_SUCCESS, "malloc ws");
         // zero the workspace: recycled GM holds stale debug cells from earlier
@@ -199,7 +199,7 @@ bool RunCase(const std::string &dataDir, CaseInfo ci, int perfIters, aclrtStream
         CHECK_RET(aclrtMemset(workspace, workspaceSize, 0, workspaceSize) == ACL_SUCCESS, "memset ws");
         if (getenv("KVTQ_PEEK") != nullptr && totalVec >= 1024) {
             std::vector<int32_t> chk(4000, -1);
-            aclrtMemcpy(chk.data(), 4000 * 4, reinterpret_cast<uint8_t *>(workspace) + 16UL * 1024 * 1024, 4000 * 4,
+            aclrtMemcpy(chk.data(), 4000 * 4, reinterpret_cast<uint8_t*>(workspace) + 16UL * 1024 * 1024, 4000 * 4,
                         ACL_MEMCPY_DEVICE_TO_HOST);
             printf("[MEMCHK] cell3584..3587 = %d %d %d %d; cell3592..3596 = %d %d %d %d %d\n", chk[3584], chk[3585],
                    chk[3586], chk[3587], chk[3592], chk[3593], chk[3594], chk[3595], chk[3596]);
@@ -228,61 +228,61 @@ bool RunCase(const std::string &dataDir, CaseInfo ci, int perfIters, aclrtStream
                                    s2) == ACL_SUCCESS,
                   "peek memcpy");
         CHECK_RET(aclrtSynchronizeStream(s2) == ACL_SUCCESS, "peek sync");
-        const uint8_t *u = wsHost.data() + 16UL * 1024 * 1024; // user workspace (libapi skip)
-        const uint8_t *f = u;                                  // flag area at user workspace offset 0
+        const uint8_t* u = wsHost.data() + 16UL * 1024 * 1024; // user workspace (libapi skip)
+        const uint8_t* f = u;                                  // flag area at user workspace offset 0
         printf("[PEEK] %s flags (libapi tail):\n", ci.name.c_str());
         for (int g = 0; g < 3; ++g) {
             for (int k = 0; k < 8; ++k) {
-                printf("[PEEK] g%d slot%d = 0x%08x\n", g, k, *reinterpret_cast<const int32_t *>(f + (g * 8 + k) * 64));
+                printf("[PEEK] g%d slot%d = 0x%08x\n", g, k, *reinterpret_cast<const int32_t*>(f + (g * 8 + k) * 64));
             }
         }
-        const int32_t *mrk = reinterpret_cast<const int32_t *>(u);
+        const int32_t* mrk = reinterpret_cast<const int32_t*>(u);
         printf("[PEEK] AIC: %d %d %d %d | AIV: %d %d %d %d %d | init: %d %d %d %d %d %d %d\n", mrk[0], mrk[1], mrk[2],
                mrk[3], mrk[8], mrk[9], mrk[10], mrk[11], mrk[12], mrk[16], mrk[17], mrk[18], mrk[19], mrk[20], mrk[21],
                mrk[22]);
-        const uint16_t *splits = reinterpret_cast<const uint16_t *>(u + 16 * 1024);
+        const uint16_t* splits = reinterpret_cast<const uint16_t*>(u + 16 * 1024);
         printf("[PEEK] Hh[0..3] = %04x %04x %04x %04x\n", splits[0], splits[1], splits[2], splits[3]);
-        const uint16_t *xh = reinterpret_cast<const uint16_t *>(u + 144 * 1024 + static_cast<size_t>(16384) * 512 * 2 +
-                                                                2UL * 16384 * 256 + 4UL * 16384 * 512);
+        const uint16_t* xh = reinterpret_cast<const uint16_t*>(u + 144 * 1024 + static_cast<size_t>(16384) * 512 * 2 +
+                                                               2UL * 16384 * 256 + 4UL * 16384 * 512);
         printf("[PEEK] xh[0..3] = %04x %04x %04x %04x\n", xh[0], xh[1], xh[2], xh[3]);
         printf("[PEEK] xh(g1)[688*128..+3] = %04x %04x %04x %04x | [704*128..+3] = %04x %04x %04x %04x\n",
                xh[688 * 128], xh[688 * 128 + 1], xh[688 * 128 + 2], xh[688 * 128 + 3], xh[704 * 128], xh[704 * 128 + 1],
                xh[704 * 128 + 2], xh[704 * 128 + 3]);
-        const float *z1 = reinterpret_cast<const float *>(u + 144 * 1024);
-        const float *p1 =
-            reinterpret_cast<const float *>(u + 144UL * 1024 + 2UL * totalVec * 512 + 2UL * totalVec * 256);
+        const float* z1 = reinterpret_cast<const float*>(u + 144 * 1024);
+        const float* p1 =
+            reinterpret_cast<const float*>(u + 144UL * 1024 + 2UL * totalVec * 512 + 2UL * totalVec * 256);
         printf("[PEEK] p1[0..3] = %f %f %f %f\n", p1[0], p1[1], p1[2], p1[3]);
         printf("[PEEK] p1(v16)[16*128..+3] = %f %f %f %f | p2(v16) = %f %f\n", p1[16 * 128], p1[16 * 128 + 1],
                p1[16 * 128 + 2], p1[16 * 128 + 3], p1[16 * 128 + 16384 * 128], p1[16 * 128 + 16384 * 128 + 1]);
         printf("[PEEK] p3(v16) = %f %f | p4(v16) = %f %f\n", p1[16 * 128 + 2 * 16384 * 128],
                p1[16 * 128 + 2 * 16384 * 128 + 1], p1[16 * 128 + 3 * 16384 * 128], p1[16 * 128 + 3 * 16384 * 128 + 1]);
-        const uint16_t *rh = reinterpret_cast<const uint16_t *>(u + 144UL * 1024 + 2UL * totalVec * 512);
+        const uint16_t* rh = reinterpret_cast<const uint16_t*>(u + 144UL * 1024 + 2UL * totalVec * 512);
         printf("[PEEK] rh[0..5] = %04x %04x %04x %04x %04x %04x\n", rh[0], rh[1], rh[2], rh[3], rh[4], rh[5]);
-        const uint16_t *rl = rh + static_cast<size_t>(16384) * 128;
+        const uint16_t* rl = rh + static_cast<size_t>(16384) * 128;
         printf("[PEEK] rl[0..5] = %04x %04x %04x %04x %04x %04x | rl(v16)[16*128..+1] = %04x %04x\n", rl[0], rl[1],
                rl[2], rl[3], rl[4], rl[5], rl[16 * 128], rl[16 * 128 + 1]);
-        const int32_t *dbg = reinterpret_cast<const int32_t *>(u + 3584 * 4);
-        const int32_t *up = reinterpret_cast<const int32_t *>(u);
+        const int32_t* dbg = reinterpret_cast<const int32_t*>(u + 3584 * 4);
+        const int32_t* up = reinterpret_cast<const int32_t*>(u);
         printf("[PEEK] user-ptr AIC=0x%08x AIV=0x%08x\n", up[3960], up[3961]);
-        printf("[PEEK] normVec[0..3] = %f %f %f %f\n", *reinterpret_cast<const float *>(&dbg[100]),
-               *reinterpret_cast<const float *>(&dbg[101]), *reinterpret_cast<const float *>(&dbg[102]),
-               *reinterpret_cast<const float *>(&dbg[103]));
+        printf("[PEEK] normVec[0..3] = %f %f %f %f\n", *reinterpret_cast<const float*>(&dbg[100]),
+               *reinterpret_cast<const float*>(&dbg[101]), *reinterpret_cast<const float*>(&dbg[102]),
+               *reinterpret_cast<const float*>(&dbg[103]));
         printf("[PEEK] xTile u16[0..5] = %04x %04x %04x %04x %04x %04x\n", dbg[112], dbg[113], dbg[114], dbg[115],
                dbg[116], dbg[117]);
         printf("[PEEK] zTile[0..7] = %f %f %f %f %f %f %f %f | x[0],[1] = %f %f\n",
-               *reinterpret_cast<const float *>(&dbg[124]), *reinterpret_cast<const float *>(&dbg[125]),
-               *reinterpret_cast<const float *>(&dbg[126]), *reinterpret_cast<const float *>(&dbg[127]),
-               *reinterpret_cast<const float *>(&dbg[128]), *reinterpret_cast<const float *>(&dbg[129]),
-               *reinterpret_cast<const float *>(&dbg[130]), *reinterpret_cast<const float *>(&dbg[131]),
-               *reinterpret_cast<const float *>(&dbg[132]), *reinterpret_cast<const float *>(&dbg[133]));
-        printf("[PEEK-OLD] zTile[0],[1] = %f %f | x[0],[1] = %f %f\n", *reinterpret_cast<const float *>(&dbg[124]),
-               *reinterpret_cast<const float *>(&dbg[125]), *reinterpret_cast<const float *>(&dbg[126]),
-               *reinterpret_cast<const float *>(&dbg[127]));
+               *reinterpret_cast<const float*>(&dbg[124]), *reinterpret_cast<const float*>(&dbg[125]),
+               *reinterpret_cast<const float*>(&dbg[126]), *reinterpret_cast<const float*>(&dbg[127]),
+               *reinterpret_cast<const float*>(&dbg[128]), *reinterpret_cast<const float*>(&dbg[129]),
+               *reinterpret_cast<const float*>(&dbg[130]), *reinterpret_cast<const float*>(&dbg[131]),
+               *reinterpret_cast<const float*>(&dbg[132]), *reinterpret_cast<const float*>(&dbg[133]));
+        printf("[PEEK-OLD] zTile[0],[1] = %f %f | x[0],[1] = %f %f\n", *reinterpret_cast<const float*>(&dbg[124]),
+               *reinterpret_cast<const float*>(&dbg[125]), *reinterpret_cast<const float*>(&dbg[126]),
+               *reinterpret_cast<const float*>(&dbg[127]));
         printf("[PEEK] evtIDs m2m1=%d m1m=%d mm1=%d m1m2=%d fixs=%d fixm=%d mfix=%d\n", dbg[32], dbg[33], dbg[34],
                dbg[35], dbg[36], dbg[37], dbg[38]);
         printf("[PEEK] L0A[0,1,256]=%04x %04x %04x L0B[0]=%04x | cL0[0..2]=%f %f %f\n", dbg[200], dbg[201], dbg[202],
-               dbg[203], *reinterpret_cast<const float *>(&dbg[204]), *reinterpret_cast<const float *>(&dbg[205]),
-               *reinterpret_cast<const float *>(&dbg[206]));
+               dbg[203], *reinterpret_cast<const float*>(&dbg[204]), *reinterpret_cast<const float*>(&dbg[205]),
+               *reinterpret_cast<const float*>(&dbg[206]));
         printf("[PEEK] cycles: AIC x0=%d x1=%d xr=%d rp=%d pend=%d | AIV up=%d rset=%d\n", dbg[300], dbg[301], dbg[302],
                dbg[303], dbg[305], dbg[306], dbg[307]);
         {
@@ -314,15 +314,15 @@ bool RunCase(const std::string &dataDir, CaseInfo ci, int perfIters, aclrtStream
                dbg[42], dbg[45], dbg[44], dbg[47], dbg[46]);
         printf("[PEEK] AICg1 A(t0)=%04x %04x A(t16)=%04x %04x\n", dbg[64], dbg[65], dbg[68], dbg[69]);
         printf("[PEEK] AIVg1 zTile(t80)=%f %f %f %f | rnVec(t80)=%f %f %f %f\n",
-               *reinterpret_cast<const float *>(&dbg[88]), *reinterpret_cast<const float *>(&dbg[89]),
-               *reinterpret_cast<const float *>(&dbg[90]), *reinterpret_cast<const float *>(&dbg[91]),
-               *reinterpret_cast<const float *>(&dbg[100]), *reinterpret_cast<const float *>(&dbg[101]),
-               *reinterpret_cast<const float *>(&dbg[102]), *reinterpret_cast<const float *>(&dbg[103]));
-        printf("[PEEK] AIVg1 zTile(t0)=%f %f %f %f | (t16)=%f %f %f %f\n", *reinterpret_cast<const float *>(&dbg[72]),
-               *reinterpret_cast<const float *>(&dbg[73]), *reinterpret_cast<const float *>(&dbg[74]),
-               *reinterpret_cast<const float *>(&dbg[75]), *reinterpret_cast<const float *>(&dbg[80]),
-               *reinterpret_cast<const float *>(&dbg[81]), *reinterpret_cast<const float *>(&dbg[82]),
-               *reinterpret_cast<const float *>(&dbg[83]));
+               *reinterpret_cast<const float*>(&dbg[88]), *reinterpret_cast<const float*>(&dbg[89]),
+               *reinterpret_cast<const float*>(&dbg[90]), *reinterpret_cast<const float*>(&dbg[91]),
+               *reinterpret_cast<const float*>(&dbg[100]), *reinterpret_cast<const float*>(&dbg[101]),
+               *reinterpret_cast<const float*>(&dbg[102]), *reinterpret_cast<const float*>(&dbg[103]));
+        printf("[PEEK] AIVg1 zTile(t0)=%f %f %f %f | (t16)=%f %f %f %f\n", *reinterpret_cast<const float*>(&dbg[72]),
+               *reinterpret_cast<const float*>(&dbg[73]), *reinterpret_cast<const float*>(&dbg[74]),
+               *reinterpret_cast<const float*>(&dbg[75]), *reinterpret_cast<const float*>(&dbg[80]),
+               *reinterpret_cast<const float*>(&dbg[81]), *reinterpret_cast<const float*>(&dbg[82]),
+               *reinterpret_cast<const float*>(&dbg[83]));
         printf("[PEEK] normBF(t80)[0..7] = %04x %04x %04x %04x %04x %04x %04x %04x | gammaBF[0..3] = %04x %04x %04x "
                "%04x\n",
                dbg[48], dbg[49], dbg[50], dbg[51], dbg[52], dbg[53], dbg[54], dbg[55], dbg[96], dbg[97], dbg[98],
@@ -330,20 +330,20 @@ bool RunCase(const std::string &dataDir, CaseInfo ci, int perfIters, aclrtStream
         printf("[PEEK] h-addr norm=%p gamma=%p idx=%p qjl=%p ws=%p\n", normDev, gammaDev, idxDev, qjlOutDev, workspace);
         printf("[PEEK] aic-ztile=%d tile=%d vb=%d rset=%d %d %d %d | mmtile-step=%d\n", dbg[4], dbg[170], dbg[180],
                dbg[181], dbg[182], dbg[183], dbg[184], dbg[24]);
-        printf("[PEEK] prev-launch z[0],[1] = %f %f\n", *reinterpret_cast<const float *>(&dbg[135]),
-               *reinterpret_cast<const float *>(&dbg[136]));
-        printf("[PEEK] z-latency: spins=%d z0=%f z1=%f\n", dbg[132], *reinterpret_cast<const float *>(&dbg[133]),
-               *reinterpret_cast<const float *>(&dbg[134]));
-        printf("[PEEK] z-scalar[0..3] = %f %f %f %f\n", *reinterpret_cast<const float *>(&dbg[126]),
-               *reinterpret_cast<const float *>(&dbg[127]), *reinterpret_cast<const float *>(&dbg[128]),
-               *reinterpret_cast<const float *>(&dbg[129]));
+        printf("[PEEK] prev-launch z[0],[1] = %f %f\n", *reinterpret_cast<const float*>(&dbg[135]),
+               *reinterpret_cast<const float*>(&dbg[136]));
+        printf("[PEEK] z-latency: spins=%d z0=%f z1=%f\n", dbg[132], *reinterpret_cast<const float*>(&dbg[133]),
+               *reinterpret_cast<const float*>(&dbg[134]));
+        printf("[PEEK] z-scalar[0..3] = %f %f %f %f\n", *reinterpret_cast<const float*>(&dbg[126]),
+               *reinterpret_cast<const float*>(&dbg[127]), *reinterpret_cast<const float*>(&dbg[128]),
+               *reinterpret_cast<const float*>(&dbg[129]));
         printf("[PEEK] x-scalar[0],[1] = %04x %04x\n", dbg[130], dbg[131]);
-        printf("[PEEK] sqG[0],[1],[128] = %f %f %f\n", *reinterpret_cast<const float *>(&dbg[120]),
-               *reinterpret_cast<const float *>(&dbg[121]), *reinterpret_cast<const float *>(&dbg[122]));
-        printf("[PEEK] rnVec[0..3] = %f %f %f %f\n", *reinterpret_cast<const float *>(&dbg[108]),
-               *reinterpret_cast<const float *>(&dbg[109]), *reinterpret_cast<const float *>(&dbg[110]),
-               *reinterpret_cast<const float *>(&dbg[111]));
-        const uint16_t *pz = reinterpret_cast<const uint16_t *>(u + 48UL * 1024 * 1024);
+        printf("[PEEK] sqG[0],[1],[128] = %f %f %f\n", *reinterpret_cast<const float*>(&dbg[120]),
+               *reinterpret_cast<const float*>(&dbg[121]), *reinterpret_cast<const float*>(&dbg[122]));
+        printf("[PEEK] rnVec[0..3] = %f %f %f %f\n", *reinterpret_cast<const float*>(&dbg[108]),
+               *reinterpret_cast<const float*>(&dbg[109]), *reinterpret_cast<const float*>(&dbg[110]),
+               *reinterpret_cast<const float*>(&dbg[111]));
+        const uint16_t* pz = reinterpret_cast<const uint16_t*>(u + 48UL * 1024 * 1024);
         printf("[PEEK] probeZ(bulk)[0..5] = %04x %04x %04x %04x %04x %04x\n", pz[0], pz[1], pz[2], pz[3], pz[4], pz[5]);
         printf("[PEEK] probeX(bulk)[32..37] = %04x %04x %04x %04x %04x %04x\n", pz[32], pz[33], pz[34], pz[35], pz[36],
                pz[37]);
@@ -353,7 +353,7 @@ bool RunCase(const std::string &dataDir, CaseInfo ci, int perfIters, aclrtStream
         printf("[PEEK] z1(g1)[688*128..+7] = %f %f %f %f %f %f %f %f\n", z1[688 * 128], z1[688 * 128 + 1],
                z1[688 * 128 + 2], z1[688 * 128 + 3], z1[688 * 128 + 4], z1[688 * 128 + 5], z1[688 * 128 + 6],
                z1[688 * 128 + 7]);
-        const float *z2 = reinterpret_cast<const float *>(u + 144 * 1024 + static_cast<size_t>(16384) * 512);
+        const float* z2 = reinterpret_cast<const float*>(u + 144 * 1024 + static_cast<size_t>(16384) * 512);
         printf("[PEEK] z2(g1)[688*128..+7] = %f %f %f %f %f %f %f %f\n", z2[688 * 128], z2[688 * 128 + 1],
                z2[688 * 128 + 2], z2[688 * 128 + 3], z2[688 * 128 + 4], z2[688 * 128 + 5], z2[688 * 128 + 6],
                z2[688 * 128 + 7]);
@@ -367,8 +367,8 @@ bool RunCase(const std::string &dataDir, CaseInfo ci, int perfIters, aclrtStream
             printf("[PEEK] z1scan slot%d = %f %f\n", 688 + k * 16, z1[(688 + k * 16) * 128],
                    z1[(688 + k * 16) * 128 + 1]);
         }
-        const float *pe = reinterpret_cast<const float *>(u + 3776 * 4);
-        const float *pl = reinterpret_cast<const float *>(u + 3792 * 4);
+        const float* pe = reinterpret_cast<const float*>(u + 3776 * 4);
+        const float* pl = reinterpret_cast<const float*>(u + 3792 * 4);
         printf("[PEEK] probeEARLY(ws 3776, want 13.5) = %f %f %f %f | probeLATE(ws 3792, want 7.75) = %f %f %f %f\n",
                pe[0], pe[1], pe[2], pe[3], pl[0], pl[1], pl[2], pl[3]);
         exit(0);
@@ -427,24 +427,24 @@ bool RunCase(const std::string &dataDir, CaseInfo ci, int perfIters, aclrtStream
     // ---- post-completion marker dump (final state, no mid-flight races) ----
     if (getenv("KVTQ_MARK") != nullptr && workspace != nullptr && totalVec >= 1024) {
         std::vector<int32_t> mrk(4160, 0);
-        aclrtMemcpy(mrk.data(), 4160 * 4, reinterpret_cast<uint8_t *>(workspace) + 16UL * 1024 * 1024, 4160 * 4,
+        aclrtMemcpy(mrk.data(), 4160 * 4, reinterpret_cast<uint8_t*>(workspace) + 16UL * 1024 * 1024, 4160 * 4,
                     ACL_MEMCPY_DEVICE_TO_HOST);
-        const int32_t *d = mrk.data() + 3584;
-        printf("[MARK] sg=%f %f %f %f yhat=%f %f %f %f y=%f %f z=%f %f\n", *reinterpret_cast<const float *>(&d[40]),
-               *reinterpret_cast<const float *>(&d[41]), *reinterpret_cast<const float *>(&d[42]),
-               *reinterpret_cast<const float *>(&d[43]), *reinterpret_cast<const float *>(&d[44]),
-               *reinterpret_cast<const float *>(&d[45]), *reinterpret_cast<const float *>(&d[46]),
-               *reinterpret_cast<const float *>(&d[47]), *reinterpret_cast<const float *>(&d[48]),
-               *reinterpret_cast<const float *>(&d[49]), *reinterpret_cast<const float *>(&d[52]),
-               *reinterpret_cast<const float *>(&d[53]));
-        printf("[MARK] pAll(t16)=%f %f %f %f\n", *reinterpret_cast<const float *>(&d[172]),
-               *reinterpret_cast<const float *>(&d[173]), *reinterpret_cast<const float *>(&d[174]),
-               *reinterpret_cast<const float *>(&d[175]));
+        const int32_t* d = mrk.data() + 3584;
+        printf("[MARK] sg=%f %f %f %f yhat=%f %f %f %f y=%f %f z=%f %f\n", *reinterpret_cast<const float*>(&d[40]),
+               *reinterpret_cast<const float*>(&d[41]), *reinterpret_cast<const float*>(&d[42]),
+               *reinterpret_cast<const float*>(&d[43]), *reinterpret_cast<const float*>(&d[44]),
+               *reinterpret_cast<const float*>(&d[45]), *reinterpret_cast<const float*>(&d[46]),
+               *reinterpret_cast<const float*>(&d[47]), *reinterpret_cast<const float*>(&d[48]),
+               *reinterpret_cast<const float*>(&d[49]), *reinterpret_cast<const float*>(&d[52]),
+               *reinterpret_cast<const float*>(&d[53]));
+        printf("[MARK] pAll(t16)=%f %f %f %f\n", *reinterpret_cast<const float*>(&d[172]),
+               *reinterpret_cast<const float*>(&d[173]), *reinterpret_cast<const float*>(&d[174]),
+               *reinterpret_cast<const float*>(&d[175]));
         printf("[MARK] zTile(t80)=%f %f | y(t80)=%f %f | rn(t80)=%f %f | norm(t80)=%f %f\n",
-               *reinterpret_cast<const float *>(&d[88]), *reinterpret_cast<const float *>(&d[89]),
-               *reinterpret_cast<const float *>(&d[168]), *reinterpret_cast<const float *>(&d[169]),
-               *reinterpret_cast<const float *>(&d[160]), *reinterpret_cast<const float *>(&d[161]),
-               *reinterpret_cast<const float *>(&d[164]), *reinterpret_cast<const float *>(&d[165]));
+               *reinterpret_cast<const float*>(&d[88]), *reinterpret_cast<const float*>(&d[89]),
+               *reinterpret_cast<const float*>(&d[168]), *reinterpret_cast<const float*>(&d[169]),
+               *reinterpret_cast<const float*>(&d[160]), *reinterpret_cast<const float*>(&d[161]),
+               *reinterpret_cast<const float*>(&d[164]), *reinterpret_cast<const float*>(&d[165]));
     }
     // ---- KVTQ_DUMPWS: dump the user workspace after the accuracy run ----
     if (getenv("KVTQ_DUMPWS") != nullptr && workspace != nullptr && totalVec >= 1024) {
@@ -453,7 +453,7 @@ bool RunCase(const std::string &dataDir, CaseInfo ci, int perfIters, aclrtStream
             ACL_SUCCESS) {
             const std::string dd = dataDir + "/" + ci.name + "/ws.bin";
             std::ofstream ofs(dd, std::ios::binary);
-            ofs.write(reinterpret_cast<const char *>(wsHost.data() + 16UL * 1024 * 1024),
+            ofs.write(reinterpret_cast<const char*>(wsHost.data() + 16UL * 1024 * 1024),
                       static_cast<std::streamsize>(workspaceSize - 16UL * 1024 * 1024));
             ofs.close();
             printf("[DUMPWS] %s wrote %zu bytes\n", dd.c_str(), workspaceSize - 16UL * 1024 * 1024);
@@ -461,13 +461,13 @@ bool RunCase(const std::string &dataDir, CaseInfo ci, int perfIters, aclrtStream
     }
     // ---- optional dump of outputs for offline comparison ----
     if (getenv("KVTQ_DUMP") != nullptr) {
-        auto dumpU8 = [&](const char *path, const std::vector<uint8_t> &buf) {
+        auto dumpU8 = [&](const char* path, const std::vector<uint8_t>& buf) {
             std::ofstream ofs(path, std::ios::binary);
-            ofs.write(reinterpret_cast<const char *>(buf.data()), static_cast<std::streamsize>(buf.size()));
+            ofs.write(reinterpret_cast<const char*>(buf.data()), static_cast<std::streamsize>(buf.size()));
         };
-        auto dumpU16 = [&](const char *path, const std::vector<uint16_t> &buf) {
+        auto dumpU16 = [&](const char* path, const std::vector<uint16_t>& buf) {
             std::ofstream ofs(path, std::ios::binary);
-            ofs.write(reinterpret_cast<const char *>(buf.data()), static_cast<std::streamsize>(buf.size() * 2));
+            ofs.write(reinterpret_cast<const char*>(buf.data()), static_cast<std::streamsize>(buf.size() * 2));
         };
         const std::string dd = dataDir + "/" + ci.name + "/dev_";
         dumpU8((dd + "quant_idx.bin").c_str(), idxOut);
@@ -478,11 +478,11 @@ bool RunCase(const std::string &dataDir, CaseInfo ci, int perfIters, aclrtStream
 
     // ---- minimal E2E bisect: one tile, z1/x copied straight to outputs ----
     if (getenv("KVTQ_BISECT") != nullptr && workspace != nullptr && totalVec >= 1024) {
-        aclOpExecutor *ex8 = nullptr;
+        aclOpExecutor* ex8 = nullptr;
         uint64_t ws8 = 0;
         // probe with qjlDim=96 (tiling accepts it; kernel branches to bisect)
         int64_t q96Shape[2] = {96, 128};
-        aclTensor *q96T = aclCreateTensor(q96Shape, 2, ACL_FLOAT, nullptr, 0, ACL_FORMAT_ND, q96Shape, 2, qjlDev);
+        aclTensor* q96T = aclCreateTensor(q96Shape, 2, ACL_FLOAT, nullptr, 0, ACL_FORMAT_ND, q96Shape, 2, qjlDev);
         aclnnStatus st8 = aclnnKvCacheTurboQuantGetWorkspaceSize(kvT, rotT, q96T, ci.mseBits, idxT, qjlOutT, normT,
                                                                  gammaT, &ws8, &ex8);
         printf("[BISECT] GetWorkspaceSize st=%d\n", static_cast<int>(st8));
@@ -496,7 +496,7 @@ bool RunCase(const std::string &dataDir, CaseInfo ci, int perfIters, aclrtStream
                 std::vector<int32_t> ab(8, 0);
                 aclrtMemcpy(
                     ab.data(), 32,
-                    reinterpret_cast<const uint8_t *>(workspace) + 16UL * 1024 * 1024 + (12UL * 1024 * 1024) + 64 * 4,
+                    reinterpret_cast<const uint8_t*>(workspace) + 16UL * 1024 * 1024 + (12UL * 1024 * 1024) + 64 * 4,
                     32, ACL_MEMCPY_DEVICE_TO_HOST);
                 printf("[BISECT] zAddr=0x%08x%08x flagBase=0x%08x%08x hostUserBase+144K=0x%016lx\n", ab[1], ab[0],
                        ab[3], ab[2], reinterpret_cast<uint64_t>(workspace) + 16UL * 1024 * 1024 + 144 * 1024);
@@ -515,29 +515,29 @@ bool RunCase(const std::string &dataDir, CaseInfo ci, int perfIters, aclrtStream
     // that dumps the previous launch's z. KVTQ_D2D additionally relays the z
     // through a host D2D copy first. ----
     if (getenv("KVTQ_XLAUNCH") != nullptr && workspace != nullptr && totalVec >= 1024) {
-        aclOpExecutor *ex9 = nullptr;
+        aclOpExecutor* ex9 = nullptr;
         uint64_t ws9 = 0;
         if (aclnnKvCacheTurboQuantGetWorkspaceSize(kvT, rotT, qjlT, 9, idxT, qjlOutT, normT, gammaT, &ws9, &ex9) ==
             ACL_SUCCESS) {
-            void *ws9buf = nullptr;
+            void* ws9buf = nullptr;
             if (ws9 > 0) {
                 aclrtMalloc(&ws9buf, ws9, ACL_MEM_MALLOC_HUGE_FIRST);
             }
             if (getenv("KVTQ_D2D") != nullptr && ws9buf != nullptr) {
                 // relay z1+z2 into the same offset of the probe workspace
                 const size_t zBytes = static_cast<size_t>(totalVec) * 512 * 2;
-                aclrtMemcpyAsync(reinterpret_cast<uint8_t *>(ws9buf) + 16UL * 1024 * 1024 + 144 * 1024, zBytes,
-                                 reinterpret_cast<uint8_t *>(workspace) + 16UL * 1024 * 1024 + 144 * 1024, zBytes,
+                aclrtMemcpyAsync(reinterpret_cast<uint8_t*>(ws9buf) + 16UL * 1024 * 1024 + 144 * 1024, zBytes,
+                                 reinterpret_cast<uint8_t*>(workspace) + 16UL * 1024 * 1024 + 144 * 1024, zBytes,
                                  ACL_MEMCPY_DEVICE_TO_DEVICE, stream);
             }
             aclnnKvCacheTurboQuant(ws9buf != nullptr ? ws9buf : workspace, ws9, ex9, stream);
             aclrtSynchronizeStream(stream);
-            const uint8_t *u9 =
-                reinterpret_cast<const uint8_t *>(ws9buf != nullptr ? ws9buf : workspace) + 16UL * 1024 * 1024;
-            const int32_t *c9 = reinterpret_cast<const int32_t *>(u9 + 3968 * 4);
-            printf("[XLAUNCH] prev z[0..3] = %f %f %f %f\n", *reinterpret_cast<const float *>(&c9[160]),
-                   *reinterpret_cast<const float *>(&c9[161]), *reinterpret_cast<const float *>(&c9[162]),
-                   *reinterpret_cast<const float *>(&c9[163]));
+            const uint8_t* u9 =
+                reinterpret_cast<const uint8_t*>(ws9buf != nullptr ? ws9buf : workspace) + 16UL * 1024 * 1024;
+            const int32_t* c9 = reinterpret_cast<const int32_t*>(u9 + 3968 * 4);
+            printf("[XLAUNCH] prev z[0..3] = %f %f %f %f\n", *reinterpret_cast<const float*>(&c9[160]),
+                   *reinterpret_cast<const float*>(&c9[161]), *reinterpret_cast<const float*>(&c9[162]),
+                   *reinterpret_cast<const float*>(&c9[163]));
             if (ws9buf) {
                 aclrtFree(ws9buf);
             }
@@ -548,7 +548,7 @@ bool RunCase(const std::string &dataDir, CaseInfo ci, int perfIters, aclrtStream
     // ---- host touch: pull the z areas through the host DMA path to test
     // whether an external touch materializes the cube's writes for AIV reads
     if (getenv("KVTQ_TOUCH") != nullptr && workspace != nullptr && totalVec >= 1024) {
-        uint8_t *u = reinterpret_cast<uint8_t *>(workspace) + 16UL * 1024 * 1024 + 144 * 1024;
+        uint8_t* u = reinterpret_cast<uint8_t*>(workspace) + 16UL * 1024 * 1024 + 144 * 1024;
         const size_t zBytes = static_cast<size_t>(totalVec) * 512 * 2;
         std::vector<uint8_t> sink(zBytes);
         aclrtMemcpy(sink.data(), zBytes, u, zBytes, ACL_MEMCPY_DEVICE_TO_HOST);
@@ -561,16 +561,16 @@ bool RunCase(const std::string &dataDir, CaseInfo ci, int perfIters, aclrtStream
     // zeroing. Discriminates "stale content" (ring crashes) from "workspace
     // identity / just-used state" (ring works) as the repeat-launch root cause.
     const int wsRing = getenv("KVTQ_WS_RING") != nullptr ? atoi(getenv("KVTQ_WS_RING")) : 0;
-    std::vector<void *> wsRingBufs;
+    std::vector<void*> wsRingBufs;
     if (wsRing > 1 && workspace != nullptr) {
         for (int r = 0; r < wsRing; ++r) {
-            void *wsp = nullptr;
+            void* wsp = nullptr;
             CHECK_RET(aclrtMalloc(&wsp, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST) == ACL_SUCCESS, "ring malloc");
             wsRingBufs.push_back(wsp);
         }
     }
     for (int i = 0; i < warmup; ++i) {
-        void *wsIter = workspace;
+        void* wsIter = workspace;
         if (wsRing > 1 && !wsRingBufs.empty()) {
             wsIter = wsRingBufs[i % wsRingBufs.size()];
             // serialize FIRST: drain any in-flight launch (esp. the one that
@@ -594,7 +594,7 @@ bool RunCase(const std::string &dataDir, CaseInfo ci, int perfIters, aclrtStream
         }
         if (getenv("KVTQ_REUSE_EXEC") == nullptr) {
             // probe mode: brand-new executor per launch to bisect repeat-launch crashes
-            aclOpExecutor *ex2 = nullptr;
+            aclOpExecutor* ex2 = nullptr;
             uint64_t ws2 = 0;
             CHECK_RET(aclnnKvCacheTurboQuantGetWorkspaceSize(kvT, rotT, qjlT, ci.mseBits, idxT, qjlOutT, normT, gammaT,
                                                              &ws2, &ex2) == ACL_SUCCESS,
@@ -617,70 +617,70 @@ bool RunCase(const std::string &dataDir, CaseInfo ci, int perfIters, aclrtStream
                                    s2) == ACL_SUCCESS,
                   "peek2 memcpy");
         CHECK_RET(aclrtSynchronizeStream(s2) == ACL_SUCCESS, "peek2 sync");
-        const uint8_t *u = wsHost.data() + 16UL * 1024 * 1024;
+        const uint8_t* u = wsHost.data() + 16UL * 1024 * 1024;
         for (int g = 0; g < 3; ++g) {
             printf("[PEEK2] g%d:", g);
             for (int k = 0; k < 8; ++k) {
-                printf(" %08x", *reinterpret_cast<const int32_t *>(u + (g * 8 + k) * 64));
+                printf(" %08x", *reinterpret_cast<const int32_t*>(u + (g * 8 + k) * 64));
             }
             printf("\n");
         }
-        const float *z1 = reinterpret_cast<const float *>(u + 144 * 1024);
-        const float *p1 =
-            reinterpret_cast<const float *>(u + 144UL * 1024 + 2UL * totalVec * 512 + 2UL * totalVec * 256);
+        const float* z1 = reinterpret_cast<const float*>(u + 144 * 1024);
+        const float* p1 =
+            reinterpret_cast<const float*>(u + 144UL * 1024 + 2UL * totalVec * 512 + 2UL * totalVec * 256);
         printf("[PEEK] p1[0..3] = %f %f %f %f\n", p1[0], p1[1], p1[2], p1[3]);
-        const uint16_t *rh = reinterpret_cast<const uint16_t *>(u + 144UL * 1024 + 2UL * totalVec * 512);
+        const uint16_t* rh = reinterpret_cast<const uint16_t*>(u + 144UL * 1024 + 2UL * totalVec * 512);
         printf("[PEEK] rh[0..5] = %04x %04x %04x %04x %04x %04x\n", rh[0], rh[1], rh[2], rh[3], rh[4], rh[5]);
-        const int32_t *dbg = reinterpret_cast<const int32_t *>(u + 3584 * 4);
-        const int32_t *up = reinterpret_cast<const int32_t *>(u);
+        const int32_t* dbg = reinterpret_cast<const int32_t*>(u + 3584 * 4);
+        const int32_t* up = reinterpret_cast<const int32_t*>(u);
         printf("[PEEK] user-ptr AIC=0x%08x AIV=0x%08x\n", up[3960], up[3961]);
-        printf("[PEEK] normVec[0..3] = %f %f %f %f\n", *reinterpret_cast<const float *>(&dbg[100]),
-               *reinterpret_cast<const float *>(&dbg[101]), *reinterpret_cast<const float *>(&dbg[102]),
-               *reinterpret_cast<const float *>(&dbg[103]));
+        printf("[PEEK] normVec[0..3] = %f %f %f %f\n", *reinterpret_cast<const float*>(&dbg[100]),
+               *reinterpret_cast<const float*>(&dbg[101]), *reinterpret_cast<const float*>(&dbg[102]),
+               *reinterpret_cast<const float*>(&dbg[103]));
         printf("[PEEK] xTile u16[0..5] = %04x %04x %04x %04x %04x %04x\n", dbg[112], dbg[113], dbg[114], dbg[115],
                dbg[116], dbg[117]);
         printf("[PEEK] zTile[0..7] = %f %f %f %f %f %f %f %f | x[0],[1] = %f %f\n",
-               *reinterpret_cast<const float *>(&dbg[124]), *reinterpret_cast<const float *>(&dbg[125]),
-               *reinterpret_cast<const float *>(&dbg[126]), *reinterpret_cast<const float *>(&dbg[127]),
-               *reinterpret_cast<const float *>(&dbg[128]), *reinterpret_cast<const float *>(&dbg[129]),
-               *reinterpret_cast<const float *>(&dbg[130]), *reinterpret_cast<const float *>(&dbg[131]),
-               *reinterpret_cast<const float *>(&dbg[132]), *reinterpret_cast<const float *>(&dbg[133]));
-        printf("[PEEK-OLD] zTile[0],[1] = %f %f | x[0],[1] = %f %f\n", *reinterpret_cast<const float *>(&dbg[124]),
-               *reinterpret_cast<const float *>(&dbg[125]), *reinterpret_cast<const float *>(&dbg[126]),
-               *reinterpret_cast<const float *>(&dbg[127]));
+               *reinterpret_cast<const float*>(&dbg[124]), *reinterpret_cast<const float*>(&dbg[125]),
+               *reinterpret_cast<const float*>(&dbg[126]), *reinterpret_cast<const float*>(&dbg[127]),
+               *reinterpret_cast<const float*>(&dbg[128]), *reinterpret_cast<const float*>(&dbg[129]),
+               *reinterpret_cast<const float*>(&dbg[130]), *reinterpret_cast<const float*>(&dbg[131]),
+               *reinterpret_cast<const float*>(&dbg[132]), *reinterpret_cast<const float*>(&dbg[133]));
+        printf("[PEEK-OLD] zTile[0],[1] = %f %f | x[0],[1] = %f %f\n", *reinterpret_cast<const float*>(&dbg[124]),
+               *reinterpret_cast<const float*>(&dbg[125]), *reinterpret_cast<const float*>(&dbg[126]),
+               *reinterpret_cast<const float*>(&dbg[127]));
         printf("[PEEK] aic-ztile=%d tile=%d vb=%d rset=%d %d %d %d | mmtile-step=%d\n", dbg[4], dbg[170], dbg[180],
                dbg[181], dbg[182], dbg[183], dbg[184], dbg[24]);
-        printf("[PEEK] prev-launch z[0],[1] = %f %f\n", *reinterpret_cast<const float *>(&dbg[135]),
-               *reinterpret_cast<const float *>(&dbg[136]));
-        printf("[PEEK] z-latency: spins=%d z0=%f z1=%f\n", dbg[132], *reinterpret_cast<const float *>(&dbg[133]),
-               *reinterpret_cast<const float *>(&dbg[134]));
-        printf("[PEEK] z-scalar[0..3] = %f %f %f %f\n", *reinterpret_cast<const float *>(&dbg[126]),
-               *reinterpret_cast<const float *>(&dbg[127]), *reinterpret_cast<const float *>(&dbg[128]),
-               *reinterpret_cast<const float *>(&dbg[129]));
+        printf("[PEEK] prev-launch z[0],[1] = %f %f\n", *reinterpret_cast<const float*>(&dbg[135]),
+               *reinterpret_cast<const float*>(&dbg[136]));
+        printf("[PEEK] z-latency: spins=%d z0=%f z1=%f\n", dbg[132], *reinterpret_cast<const float*>(&dbg[133]),
+               *reinterpret_cast<const float*>(&dbg[134]));
+        printf("[PEEK] z-scalar[0..3] = %f %f %f %f\n", *reinterpret_cast<const float*>(&dbg[126]),
+               *reinterpret_cast<const float*>(&dbg[127]), *reinterpret_cast<const float*>(&dbg[128]),
+               *reinterpret_cast<const float*>(&dbg[129]));
         printf("[PEEK] x-scalar[0],[1] = %04x %04x\n", dbg[130], dbg[131]);
-        printf("[PEEK] sqG[0],[1],[128] = %f %f %f\n", *reinterpret_cast<const float *>(&dbg[120]),
-               *reinterpret_cast<const float *>(&dbg[121]), *reinterpret_cast<const float *>(&dbg[122]));
-        printf("[PEEK] rnVec[0..3] = %f %f %f %f\n", *reinterpret_cast<const float *>(&dbg[108]),
-               *reinterpret_cast<const float *>(&dbg[109]), *reinterpret_cast<const float *>(&dbg[110]),
-               *reinterpret_cast<const float *>(&dbg[111]));
+        printf("[PEEK] sqG[0],[1],[128] = %f %f %f\n", *reinterpret_cast<const float*>(&dbg[120]),
+               *reinterpret_cast<const float*>(&dbg[121]), *reinterpret_cast<const float*>(&dbg[122]));
+        printf("[PEEK] rnVec[0..3] = %f %f %f %f\n", *reinterpret_cast<const float*>(&dbg[108]),
+               *reinterpret_cast<const float*>(&dbg[109]), *reinterpret_cast<const float*>(&dbg[110]),
+               *reinterpret_cast<const float*>(&dbg[111]));
         printf("[PEEK2] z1[0..3] = %f %f %f %f\n", z1[0], z1[1], z1[2], z1[3]);
-        const int32_t *dbg2 = reinterpret_cast<const int32_t *>(u + 3584 * 4);
-        printf("[PEEK2] prev-probe = %f %f\n", *reinterpret_cast<const float *>(&dbg2[135]),
-               *reinterpret_cast<const float *>(&dbg2[136]));
+        const int32_t* dbg2 = reinterpret_cast<const int32_t*>(u + 3584 * 4);
+        printf("[PEEK2] prev-probe = %f %f\n", *reinterpret_cast<const float*>(&dbg2[135]),
+               *reinterpret_cast<const float*>(&dbg2[136]));
         exit(0);
     }
     {
         aclnnStatus syncSt = aclrtSynchronizeStream(stream);
         if (syncSt != ACL_SUCCESS) {
-            const char *em = aclGetRecentErrMsg();
+            const char* em = aclGetRecentErrMsg();
             {
                 std::vector<int32_t> lc(8, -1);
                 aclrtMemcpy(lc.data(), 32,
-                            reinterpret_cast<const uint8_t *>(workspace) + 16UL * 1024 * 1024 + 3584 * 4 + 300 * 4, 32,
+                            reinterpret_cast<const uint8_t*>(workspace) + 16UL * 1024 * 1024 + 3584 * 4 + 300 * 4, 32,
                             ACL_MEMCPY_DEVICE_TO_HOST);
                 std::vector<int32_t> ev(16, -1);
                 aclrtMemcpy(ev.data(), 64,
-                            reinterpret_cast<const uint8_t *>(workspace) + 16UL * 1024 * 1024 + 3584 * 4 + 310 * 4, 64,
+                            reinterpret_cast<const uint8_t*>(workspace) + 16UL * 1024 * 1024 + 3584 * 4 + 310 * 4, 64,
                             ACL_MEMCPY_DEVICE_TO_HOST);
                 std::cerr << "[CRASHDUMP] launchNo=" << lc[0] << " x=" << lc[1] << " xhi=" << lc[2] << " z=" << lc[3]
                           << " p=" << lc[4] << "\n";
@@ -693,7 +693,7 @@ bool RunCase(const std::string &dataDir, CaseInfo ci, int perfIters, aclrtStream
     }
     const auto t0 = std::chrono::steady_clock::now();
     for (int i = 0; i < perfIters; ++i) {
-        void *wsPerf = workspace;
+        void* wsPerf = workspace;
         if (wsRing > 1 && !wsRingBufs.empty()) {
             wsPerf = wsRingBufs[i % wsRingBufs.size()];
         }
@@ -704,7 +704,7 @@ bool RunCase(const std::string &dataDir, CaseInfo ci, int perfIters, aclrtStream
             // fresh executor per launch: the MIX runtime's executor caches
             // per-launch state that corrupts on reuse (repeat launch dies at
             // grid init). A new executor re-inits cleanly.
-            aclOpExecutor *exP = nullptr;
+            aclOpExecutor* exP = nullptr;
             uint64_t wsP = 0;
             aclnnKvCacheTurboQuantGetWorkspaceSize(kvT, rotT, qjlT, ci.mseBits, idxT, qjlOutT, normT, gammaT, &wsP,
                                                    &exP);
@@ -721,7 +721,7 @@ bool RunCase(const std::string &dataDir, CaseInfo ci, int perfIters, aclrtStream
         printf("[ENQ] %s host-enqueue=%.2f us/call, device-total=%.2f us/call\n", ci.name.c_str(),
                std::chrono::duration<double, std::micro>(tEnq - t0).count() / perfIters, res.avgUs);
     }
-    for (void *wsp : wsRingBufs) {
+    for (void* wsp : wsRingBufs) {
         aclrtFree(wsp);
     }
 
@@ -747,7 +747,7 @@ bool RunCase(const std::string &dataDir, CaseInfo ci, int perfIters, aclrtStream
 
 } // namespace
 
-int main(int argc, char **argv)
+int main(int argc, char** argv)
 {
     if (argc < 2) {
         std::cerr << "usage: " << argv[0] << " <data_dir> [perf_iters]" << std::endl;
@@ -768,7 +768,7 @@ int main(int argc, char **argv)
     // bf16 norm/gamma mismatch ratio <= 1e-3 (fp32 accumulation-order noise only)
     int failed = 0;
     std::cout << "==== KvCacheTurboQuant aclnn self-test ====" << std::endl;
-    for (const auto &ci : kCases) {
+    for (const auto& ci : kCases) {
         if (getenv("KVTQ_ONLY") != nullptr && std::string(ci.name).find(getenv("KVTQ_ONLY")) == std::string::npos) {
             continue;
         }

@@ -33,15 +33,15 @@ constexpr int64_t MIN_KV_HEADS = 4;
 constexpr int64_t MAX_KV_HEADS = 32;
 constexpr int64_t QJL_DIM_ALIGN = 8;
 
-ge::graphStatus InferShapeKvCacheTurboQuant(gert::InferShapeContext *context)
+ge::graphStatus InferShapeKvCacheTurboQuant(gert::InferShapeContext* context)
 {
     OP_CHECK_IF(context == nullptr, OP_LOGE("KvCacheTurboQuant", "InferShapeContext is nullptr!"),
                 return ge::GRAPH_FAILED);
-    const gert::Shape *kvShape = context->GetInputShape(KV_INPUT_INDEX);
+    const gert::Shape* kvShape = context->GetInputShape(KV_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, kvShape);
-    const gert::Shape *rotShape = context->GetInputShape(ROT_INPUT_INDEX);
+    const gert::Shape* rotShape = context->GetInputShape(ROT_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, rotShape);
-    const gert::Shape *qjlShape = context->GetInputShape(QJL_INPUT_INDEX);
+    const gert::Shape* qjlShape = context->GetInputShape(QJL_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, qjlShape);
 
     // kv_vectors: [num_tokens, num_kv_heads, head_dim]
@@ -74,9 +74,9 @@ ge::graphStatus InferShapeKvCacheTurboQuant(gert::InferShapeContext *context)
 
     // mse_bits attr: 2/3/4
     int64_t mseBits = 3;
-    const gert::RuntimeAttrs *attrs = context->GetAttrs();
+    const gert::RuntimeAttrs* attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
-    const int64_t *pBits = attrs->GetAttrPointer<int64_t>(ATTR_MSE_BITS_INDEX);
+    const int64_t* pBits = attrs->GetAttrPointer<int64_t>(ATTR_MSE_BITS_INDEX);
     if (pBits != nullptr) {
         mseBits = *pBits;
     }
@@ -88,13 +88,13 @@ ge::graphStatus InferShapeKvCacheTurboQuant(gert::InferShapeContext *context)
         mseBits = 3;
     }
 
-    gert::Shape *idxShape = context->GetOutputShape(IDX_OUTPUT_INDEX);
+    gert::Shape* idxShape = context->GetOutputShape(IDX_OUTPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, idxShape);
-    gert::Shape *qjlOutShape = context->GetOutputShape(QJL_OUTPUT_INDEX);
+    gert::Shape* qjlOutShape = context->GetOutputShape(QJL_OUTPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, qjlOutShape);
-    gert::Shape *normShape = context->GetOutputShape(NORM_OUTPUT_INDEX);
+    gert::Shape* normShape = context->GetOutputShape(NORM_OUTPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, normShape);
-    gert::Shape *gammaShape = context->GetOutputShape(GAMMA_OUTPUT_INDEX);
+    gert::Shape* gammaShape = context->GetOutputShape(GAMMA_OUTPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, gammaShape);
 
     // quant_idx: [num_tokens, num_kv_heads, ceil(head_dim * mse_bits / 8)] = head_dim/8 * mse_bits
@@ -118,7 +118,7 @@ ge::graphStatus InferShapeKvCacheTurboQuant(gert::InferShapeContext *context)
     return GRAPH_SUCCESS;
 }
 
-ge::graphStatus InferDataTypeKvCacheTurboQuant(gert::InferDataTypeContext *context)
+ge::graphStatus InferDataTypeKvCacheTurboQuant(gert::InferDataTypeContext* context)
 {
     OP_CHECK_IF(context == nullptr, OP_LOGE("KvCacheTurboQuant", "InferDataTypeContext is nullptr!"),
                 return ge::GRAPH_FAILED);

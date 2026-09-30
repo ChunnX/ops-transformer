@@ -53,7 +53,7 @@ public:
 
     __aicore__ inline void Init(GM_ADDR kvVectors, GM_ADDR rotationMatrix, GM_ADDR qjlMatrix, GM_ADDR quantIdx,
                                 GM_ADDR quantQjl, GM_ADDR quantNorm, GM_ADDR quantGamma, GM_ADDR workspace,
-                                const KvCacheTurboQuantTilingData *tiling)
+                                const KvCacheTurboQuantTilingData* tiling)
     {
         totalVec_ = tiling->totalVec;
         qjlDim_ = tiling->qjlDim;
@@ -63,9 +63,9 @@ public:
         qjlBytesPerVec_ = qjlDim_ / 8;
         coreNum_ = tiling->coreNum; // logical tri-core groups used
 
-        flagRaw_ = reinterpret_cast<__gm__ int32_t *>(workspace);
+        flagRaw_ = reinterpret_cast<__gm__ int32_t*>(workspace);
         flagGm_.SetGlobalBuffer(flagRaw_, FLAG_ELEMS);
-        flagU64_.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t *>(workspace), FLAG_ELEMS / 8);
+        flagU64_.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t*>(workspace), FLAG_ELEMS / 8);
         isAic_ = false;
         int64_t logicalIdx = 0;
         if ASCEND_IS_AIC {
@@ -81,13 +81,13 @@ public:
         chunkNum_ = (totalVec_ + CHUNK_ROWS - 1) / CHUNK_ROWS;
         myChunks_ = (logicalIdx < chunkNum_) ? ((chunkNum_ - 1 - logicalIdx) / static_cast<int64_t>(coreNum_) + 1) : 0;
 
-        kvGm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(kvVectors), totalVec_ * HEAD_DIM);
-        rotGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(rotationMatrix), HEAD_DIM * HEAD_DIM);
-        qjlGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(qjlMatrix), qjlDim_ * HEAD_DIM);
-        idxGm_.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t *>(quantIdx), totalVec_ * idxBytesPerVec_);
-        qjlOutGm_.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t *>(quantQjl), totalVec_ * qjlBytesPerVec_);
-        normGm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(quantNorm), totalVec_);
-        gammaGm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(quantGamma), totalVec_);
+        kvGm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(kvVectors), totalVec_ * HEAD_DIM);
+        rotGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(rotationMatrix), HEAD_DIM * HEAD_DIM);
+        qjlGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(qjlMatrix), qjlDim_ * HEAD_DIM);
+        idxGm_.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t*>(quantIdx), totalVec_ * idxBytesPerVec_);
+        qjlOutGm_.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t*>(quantQjl), totalVec_ * qjlBytesPerVec_);
+        normGm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(quantNorm), totalVec_);
+        gammaGm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(quantGamma), totalVec_);
 
         // workspace layout (bytes), wsVec = totalVec padded up to one chunk:
         //   0..264K     cross-core GM spin flags (64B-strided int32 cells)
@@ -98,22 +98,22 @@ public:
         // (v10: x is read DIRECTLY by the AIC in bf16 - no xh upload plane,
         // and bf16 splits capture fp32 H exactly (3 x 8-bit mantissa = 24))
         wsVec_ = chunkNum_ * CHUNK_ROWS;
-        __gm__ uint8_t *wsSplit = workspace + WS_SPLIT_OFF;
-        wsHhGmB_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(wsSplit + 0 * SPLIT_BYTES), SPLIT_ELEMS);
-        wsHlGmB_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(wsSplit + 1 * SPLIT_BYTES), SPLIT_ELEMS);
-        wsHllGmB_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(wsSplit + 2 * SPLIT_BYTES), SPLIT_ELEMS);
-        wsShGm_.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(wsSplit + 3 * SPLIT_BYTES), SPLIT_ELEMS);
-        wsSlGm_.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(wsSplit + 4 * SPLIT_BYTES), SPLIT_ELEMS);
-        __gm__ uint8_t *wsB = workspace + WS_Z_OFF;
-        wsZGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(wsB), wsVec_ * HEAD_DIM);
+        __gm__ uint8_t* wsSplit = workspace + WS_SPLIT_OFF;
+        wsHhGmB_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(wsSplit + 0 * SPLIT_BYTES), SPLIT_ELEMS);
+        wsHlGmB_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(wsSplit + 1 * SPLIT_BYTES), SPLIT_ELEMS);
+        wsHllGmB_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(wsSplit + 2 * SPLIT_BYTES), SPLIT_ELEMS);
+        wsShGm_.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(wsSplit + 3 * SPLIT_BYTES), SPLIT_ELEMS);
+        wsSlGm_.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(wsSplit + 4 * SPLIT_BYTES), SPLIT_ELEMS);
+        __gm__ uint8_t* wsB = workspace + WS_Z_OFF;
+        wsZGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(wsB), wsVec_ * HEAD_DIM);
         wsB += static_cast<int64_t>(wsVec_) * HEAD_DIM * 4;
-        wsRhat2Gm_.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(wsB), 2 * wsVec_ * HEAD_DIM);
+        wsRhat2Gm_.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(wsB), 2 * wsVec_ * HEAD_DIM);
         wsB += static_cast<int64_t>(wsVec_) * HEAD_DIM * 2 * 2;
-        wsP1Gm_.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(wsB), wsVec_ * HEAD_DIM);
+        wsP1Gm_.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(wsB), wsVec_ * HEAD_DIM);
         wsB += static_cast<int64_t>(wsVec_) * HEAD_DIM * 2;
-        wsP2Gm_.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(wsB), wsVec_ * HEAD_DIM);
+        wsP2Gm_.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(wsB), wsVec_ * HEAD_DIM);
         wsB += static_cast<int64_t>(wsVec_) * HEAD_DIM * 2;
-        wsP3Gm_.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(wsB), wsVec_ * HEAD_DIM);
+        wsP3Gm_.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(wsB), wsVec_ * HEAD_DIM);
 
         if (isAic_) {
             pipe_.InitBuffer(l1ABuf_, L1_A_BYTES);
@@ -326,7 +326,7 @@ private:
     __aicore__ inline void GmFlagSet(int32_t slotElem, int32_t magic)
     {
         if (isAic_) {
-            volatile __gm__ int32_t *slot = flagRaw_ + slotElem;
+            volatile __gm__ int32_t* slot = flagRaw_ + slotElem;
             *slot = magic;
             __asm__ __volatile__("" ::: "memory");
             DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(flagGm_[slotElem]);
@@ -348,7 +348,7 @@ private:
 
     __aicore__ inline void GmFlagWait(int32_t slotElem, int32_t magic)
     {
-        volatile __gm__ int32_t *slot = flagRaw_ + slotElem;
+        volatile __gm__ int32_t* slot = flagRaw_ + slotElem;
         if (isAic_) {
             // KFC RcvMessageImpl recipe: invalidate the stale local line, then
             // preload, then re-read. Without the invalidate the preload keeps
@@ -441,7 +441,7 @@ private:
                                              -0.083254285f, -0.058020826f, -0.03428064f, -0.01134237f,
                                              0.01134237f,   0.03428064f,   0.058020826f, 0.083254285f,
                                              0.11099271f,   0.1429703f,    0.18283178f,  0.24148904f};
-        const float *cent = (mseBits_ == 2) ? CENT4 : (mseBits_ == 3 ? CENT8 : CENT16);
+        const float* cent = (mseBits_ == 2) ? CENT4 : (mseBits_ == 3 ? CENT8 : CENT16);
         for (int32_t i = 0; i < nCent_; ++i) {
             cent_[i] = cent[i];
         }
@@ -790,7 +790,7 @@ private:
     // never touch input rows past totalVec (pad rows compute garbage in L0,
     // which the AIV never consumes)
     template <typename T>
-    __aicore__ inline void CopyGmNDToL1(const LocalTensor<T> &l1Tensor, const GlobalTensor<T> &gmTensor,
+    __aicore__ inline void CopyGmNDToL1(const LocalTensor<T>& l1Tensor, const GlobalTensor<T>& gmTensor,
                                         uint32_t rowAct, uint32_t colStride)
     {
         Nd2NzParams nd2nzPara;
@@ -806,7 +806,7 @@ private:
     }
 
     // load one split matrix pair [128,128] x 2 into L1 B and L0 B (resident)
-    __aicore__ inline void LoadSplitToL1(const GlobalTensor<half> &ws0, const GlobalTensor<half> &ws1)
+    __aicore__ inline void LoadSplitToL1(const GlobalTensor<half>& ws0, const GlobalTensor<half>& ws1)
     {
         CopyGmNDToL1(l1BBuf_.Get<half>(), ws0, HEAD_DIM, HEAD_DIM);
         CopyGmNDToL1(l1BBuf_.Get<half>()[SPLIT_ELEMS], ws1, HEAD_DIM, HEAD_DIM);
@@ -885,7 +885,7 @@ private:
     //   already exact - 0 idx flips offline). Hll is staged in L1B and swapped
     //   into L0B[0] between the accumulating Mmads (Hh restored after), since
     //   L0B holds only two 32KB planes.
-    __aicore__ inline void MmTileQ(const GlobalTensor<bfloat16_t> &aGm, const GlobalTensor<float> &outGm,
+    __aicore__ inline void MmTileQ(const GlobalTensor<bfloat16_t>& aGm, const GlobalTensor<float>& outGm,
                                    int32_t rowAct)
     {
         const int32_t bufSel = mmCtr_ & 3;
@@ -982,9 +982,9 @@ private:
     // p2 = rl@Sh. All three planes fp16 fixpipe out (relative out-rounding
     // ~2^-12|p| never flips a sign; the flip floor is the fp16 correction
     // plane noise ~1e-7 sigma, same as fp32 p1). AIV sums in fp32.
-    __aicore__ inline void MmTilePQ(const GlobalTensor<half> &rhGm, const GlobalTensor<half> &rlGm,
-                                    const GlobalTensor<half> &p1Gm, const GlobalTensor<half> &p2Gm,
-                                    const GlobalTensor<half> &p3Gm, int32_t rowAct)
+    __aicore__ inline void MmTilePQ(const GlobalTensor<half>& rhGm, const GlobalTensor<half>& rlGm,
+                                    const GlobalTensor<half>& p1Gm, const GlobalTensor<half>& p2Gm,
+                                    const GlobalTensor<half>& p3Gm, int32_t rowAct)
     {
         const int32_t bufSel = mmCtr_ & 3;
         ++mmCtr_;
@@ -1073,7 +1073,7 @@ private:
         }
     }
 
-    __aicore__ inline void FixpipeOut(const GlobalTensor<float> &gmOut, const LocalTensor<float> &cL0)
+    __aicore__ inline void FixpipeOut(const GlobalTensor<float>& gmOut, const LocalTensor<float>& cL0)
     {
         FixpipeParamsV220 fp;
         fp.nSize = HEAD_DIM;
@@ -1086,7 +1086,7 @@ private:
     }
 
     // quad-tile (m=64) variants: 64x128 fp32 (32KB) / fp16 (16KB) per op
-    __aicore__ inline void FixpipeOutQ(const GlobalTensor<float> &gmOut, const LocalTensor<float> &cL0)
+    __aicore__ inline void FixpipeOutQ(const GlobalTensor<float>& gmOut, const LocalTensor<float>& cL0)
     {
         FixpipeParamsV220 fp;
         fp.nSize = HEAD_DIM;
@@ -1098,7 +1098,7 @@ private:
         Fixpipe(gmOut, cL0, fp);
     }
 
-    __aicore__ inline void FixpipeOutQF16(const GlobalTensor<half> &gmOut, const LocalTensor<float> &cL0)
+    __aicore__ inline void FixpipeOutQF16(const GlobalTensor<half>& gmOut, const LocalTensor<float>& cL0)
     {
         FixpipeParamsV220 fp;
         fp.nSize = HEAD_DIM;
@@ -1112,7 +1112,7 @@ private:
     }
 
     // fp32 L0C -> fp16 GM (F322F16, no scale): for the p2 correction plane
-    __aicore__ inline void FixpipeOutF16(const GlobalTensor<half> &gmOut, const LocalTensor<float> &cL0)
+    __aicore__ inline void FixpipeOutF16(const GlobalTensor<half>& gmOut, const LocalTensor<float>& cL0)
     {
         FixpipeParamsV220 fp;
         fp.nSize = HEAD_DIM;
@@ -1144,8 +1144,8 @@ private:
     // binary search over the strict-greater midpoints (bits rounds), yhat from
     // a centroid table gather - provably the same decisions as golden.
     // writes residual y-yhat into zTile and rn^2 into rnVec; idx stays in idxFBuf
-    __aicore__ inline void QuantizeBatch(int32_t vb, int32_t b, const LocalTensor<float> &zTile,
-                                         const LocalTensor<float> &rnVec, const LocalTensor<float> &y)
+    __aicore__ inline void QuantizeBatch(int32_t vb, int32_t b, const LocalTensor<float>& zTile,
+                                         const LocalTensor<float>& rnVec, const LocalTensor<float>& y)
     {
         LocalTensor<float> yhat = yhatBuf_.Get<float>();
         LocalTensor<float> idxF = idxFBuf_.Get<float>();
@@ -1290,12 +1290,12 @@ private:
             // regrouping measured SLOWER than this short walk (6 gathers/tile
             // ~ the walk's whole cost - build279 regression).
             PipeBarrier<PIPE_ALL>();
-            __ubuf__ int32_t *wm = reinterpret_cast<__ubuf__ int32_t *>(wM.GetPhyAddr());
-            __ubuf__ int32_t *ow = reinterpret_cast<__ubuf__ int32_t *>(
+            __ubuf__ int32_t* wm = reinterpret_cast<__ubuf__ int32_t*>(wM.GetPhyAddr());
+            __ubuf__ int32_t* ow = reinterpret_cast<__ubuf__ int32_t*>(
                 idxStageBuf_.Get<uint8_t>()[bufSel * TILE_VEC * MAX_IDX_BYTES].GetPhyAddr());
             for (int32_t v = 0; v < nv; ++v) {
-                __ubuf__ int32_t *owv = ow + v * 12;
-                const __ubuf__ int32_t *wr = wm + v * WORDS_PER_VEC;
+                __ubuf__ int32_t* owv = ow + v * 12;
+                const __ubuf__ int32_t* wr = wm + v * WORDS_PER_VEC;
                 for (int32_t g = 0; g < 4; ++g) {
                     const uint32_t w0 = static_cast<uint32_t>(wr[g * 4]);
                     const uint32_t w1 = static_cast<uint32_t>(wr[g * 4 + 1]);
@@ -1313,7 +1313,7 @@ private:
     // r_hat zTile tile -> rh/rl fp16 tiles into GM, chunk-major layout:
     // per chunk [rh: CHUNK_ROWS x 128 | rl: CHUNK_ROWS x 128] so the AIC reads
     // 64-row contiguous quad-tiles (Nd2Nz stride 128) from either section
-    __aicore__ inline void UploadRhat(int64_t chunkId, int64_t localRow, int32_t nv, const LocalTensor<float> &zTile,
+    __aicore__ inline void UploadRhat(int64_t chunkId, int64_t localRow, int32_t nv, const LocalTensor<float>& zTile,
                                       int32_t bufSel = 0)
     {
         // dedicated full-tile buffers: the 1KB BATCH_VEC scratch buffers here
@@ -1345,23 +1345,23 @@ private:
     // explicit clean+invalidate covers their lines (bisected 2026-09-26).
     // Used only for the scalar-written partial-tile tails.
     template <typename T>
-    __aicore__ inline void FlushOutLines(const GlobalTensor<T> &gm, int64_t elemOff, int64_t bytes)
+    __aicore__ inline void FlushOutLines(const GlobalTensor<T>& gm, int64_t elemOff, int64_t bytes)
     {
-        __gm__ uint8_t *base =
-            reinterpret_cast<__gm__ uint8_t *>(const_cast<__gm__ T *>(gm.GetPhyAddr())) + elemOff * sizeof(T);
+        __gm__ uint8_t* base =
+            reinterpret_cast<__gm__ uint8_t*>(const_cast<__gm__ T*>(gm.GetPhyAddr())) + elemOff * sizeof(T);
         const uint64_t aligned = reinterpret_cast<uint64_t>(base) & ~63ULL;
         const int64_t skip = reinterpret_cast<uint64_t>(base) - aligned;
         const int64_t lines = (bytes + skip + 63) / 64;
         GlobalTensor<int64_t> lineT;
         for (int64_t li = 0; li < lines; ++li) {
-            lineT.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t *>(aligned + li * 64), 8);
+            lineT.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t*>(aligned + li * 64), 8);
             DataCacheCleanAndInvalid<int64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(lineT[0]);
         }
     }
 
-    __aicore__ inline void FlushScalar(int64_t g0, int32_t stageOff, int32_t nv, const LocalTensor<bfloat16_t> &normBF,
-                                       const LocalTensor<bfloat16_t> &gammaBF, const LocalTensor<uint8_t> &idxStage,
-                                       const LocalTensor<uint8_t> &qjlStage, bool phase1, bool phase2)
+    __aicore__ inline void FlushScalar(int64_t g0, int32_t stageOff, int32_t nv, const LocalTensor<bfloat16_t>& normBF,
+                                       const LocalTensor<bfloat16_t>& gammaBF, const LocalTensor<uint8_t>& idxStage,
+                                       const LocalTensor<uint8_t>& qjlStage, bool phase1, bool phase2)
     {
         for (int32_t v = 0; v < nv; ++v) {
             const int64_t g = g0 + v;
@@ -1433,7 +1433,7 @@ private:
     GlobalTensor<half> wsP1Gm_;
     GlobalTensor<half> wsP2Gm_;
     GlobalTensor<half> wsP3Gm_;
-    __gm__ int32_t *flagRaw_ = nullptr;
+    __gm__ int32_t* flagRaw_ = nullptr;
     GlobalTensor<int32_t> flagGm_;
     GlobalTensor<uint64_t> flagU64_;
     TBuf<TPosition::A1> l1ABuf_;

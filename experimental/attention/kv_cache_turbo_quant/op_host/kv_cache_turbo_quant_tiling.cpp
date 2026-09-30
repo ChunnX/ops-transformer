@@ -23,7 +23,7 @@ namespace optiling {
 // Cube tiling for the matmul-lib calls: z = x @ (Hh|Hl)^T and p = r @ (Sh|Sl)^T
 // per tri-core group, fp16 in / fp32 out, C straight to GM. Mirrors the
 // conservative 64-capped tile shape proven by compute_wy on dav m200.
-static ge::graphStatus FillCubeTiling(gert::TilingContext *context, TCubeTiling &out)
+static ge::graphStatus FillCubeTiling(gert::TilingContext* context, TCubeTiling& out)
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     matmul_tiling::MatmulApiTiling mm(ascendcPlatform);
@@ -56,17 +56,17 @@ constexpr int64_t CUBE_MIN_VEC = 1024;
 constexpr int64_t CUBE_CHUNK_ROWS = 128;
 constexpr int64_t CUBE_MAX_LOCAL_CHUNKS = 22; // per-group flag-cell capacity in the kernel
 
-static ge::graphStatus TilingKvCacheTurboQuant(gert::TilingContext *context)
+static ge::graphStatus TilingKvCacheTurboQuant(gert::TilingContext* context)
 {
     if (context == nullptr) {
         return ge::GRAPH_FAILED;
     }
 
-    const gert::StorageShape *kvShape = context->GetInputShape(KV_INPUT_INDEX);
+    const gert::StorageShape* kvShape = context->GetInputShape(KV_INPUT_INDEX);
     if (kvShape == nullptr) {
         return ge::GRAPH_FAILED;
     }
-    const gert::Shape &kv = kvShape->GetStorageShape();
+    const gert::Shape& kv = kvShape->GetStorageShape();
     if (kv.GetDimNum() != KV_DIMS || kv.GetDim(2) != HEAD_DIM) {
         return ge::GRAPH_FAILED;
     }
@@ -77,11 +77,11 @@ static ge::graphStatus TilingKvCacheTurboQuant(gert::TilingContext *context)
     }
     const int64_t totalVec = numTokens * numKvHeads;
 
-    const gert::StorageShape *qjlShape = context->GetInputShape(QJL_INPUT_INDEX);
+    const gert::StorageShape* qjlShape = context->GetInputShape(QJL_INPUT_INDEX);
     if (qjlShape == nullptr) {
         return ge::GRAPH_FAILED;
     }
-    const gert::Shape &qjl = qjlShape->GetStorageShape();
+    const gert::Shape& qjl = qjlShape->GetStorageShape();
     if (qjl.GetDimNum() != MATRIX_DIMS || qjl.GetDim(1) != HEAD_DIM) {
         return ge::GRAPH_FAILED;
     }
@@ -90,11 +90,11 @@ static ge::graphStatus TilingKvCacheTurboQuant(gert::TilingContext *context)
         return ge::GRAPH_FAILED;
     }
 
-    const gert::RuntimeAttrs *attrs = context->GetAttrs();
+    const gert::RuntimeAttrs* attrs = context->GetAttrs();
     if (attrs == nullptr) {
         return ge::GRAPH_FAILED;
     }
-    const int64_t *pBits = attrs->GetAttrPointer<int64_t>(ATTR_MSE_BITS_INDEX);
+    const int64_t* pBits = attrs->GetAttrPointer<int64_t>(ATTR_MSE_BITS_INDEX);
     const int64_t mseBits = (pBits != nullptr) ? *pBits : 3;
     if (mseBits != 2 && mseBits != 3 && mseBits != 4) {
         return ge::GRAPH_FAILED;
@@ -134,7 +134,7 @@ static ge::graphStatus TilingKvCacheTurboQuant(gert::TilingContext *context)
     tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
 
-    size_t *workspaces = context->GetWorkspaceSizes(1);
+    size_t* workspaces = context->GetWorkspaceSizes(1);
     if (workspaces == nullptr) {
         return ge::GRAPH_FAILED;
     }

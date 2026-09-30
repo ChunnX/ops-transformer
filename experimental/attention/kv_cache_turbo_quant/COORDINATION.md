@@ -95,8 +95,13 @@ CI 的 CodeCheck_precommit 用 **clang-format v18.1.8**（repo `.clang-format`�
 # 本机取 clang-format 18.1.8（manylinux aarch64 轮子）：
 pip download clang-format==18.1.8 --no-deps -d /tmp/cfmt && cd /tmp/cfmt && unzip -q -o clang_format-18.1.8-*.whl -d cf
 CF=/tmp/cfmt/cf/clang_format/data/bin/clang-format
-# 推送前格式化（在仓根）：
+# 推送前格式化（在仓根）——**必须用 cann/ops-transformer master 的 .clang-format**
+# （CI 在合并预览树上跑，用的是目标仓配置：其 PointerAlignment=Left 与我们分支里
+#  的 Right 不同！用错配置本地"干净"CI 也挂——run#9665 实证）：
+git show origin/master:.clang-format > /tmp/cf_master
+\cp -f /tmp/cf_master .clang-format
 find experimental/attention/kv_cache_turbo_quant -name '*.cpp' -o -name '*.h' | while read f; do $CF --style=file -i "$f"; done
+git checkout -- .clang-format
 # 验证（应零输出）：
 find experimental/attention/kv_cache_turbo_quant -name '*.cpp' -o -name '*.h' | while read f; do $CF --style=file --dry-run --Werror "$f" || echo "DIRTY: $f"; done
 # 注：`*_def.cpp` 在 pre-commit 的 exclude 名单里，不查。
