@@ -161,7 +161,7 @@
     ]
   },
   {
-    "case_name": "gqa_decode_kv32k",
+    "case_name": "gqa_decode_kv64k",
     "op_name": "TurboQuantAttentionScore",
     "case_path": "/home/operator/ascendOpTest/turbo_quant_attention_score",
     "expect_func": "/home/operator/ascendOpTest/turbo_quant_attention_score/golden.py:calc_expect_func",
@@ -180,7 +180,7 @@
           1
         ],
         "name": "query_rotated",
-        "data_path": ""
+        "data_path": "data/gqa_decode_kv64k_query_rotated.bin"
       },
       {
         "format": "ND",
@@ -196,14 +196,14 @@
           1
         ],
         "name": "query_qjl",
-        "data_path": ""
+        "data_path": "data/gqa_decode_kv64k_query_qjl.bin"
       },
       {
         "format": "ND",
         "data_type": "uint8",
         "param_type": "required",
         "shape": [
-          256,
+          512,
           128,
           8,
           48
@@ -213,14 +213,14 @@
           255
         ],
         "name": "key_cache_idx",
-        "data_path": ""
+        "data_path": "data/gqa_decode_kv64k_key_cache_idx.bin"
       },
       {
         "format": "ND",
         "data_type": "uint8",
         "param_type": "required",
         "shape": [
-          256,
+          512,
           128,
           8,
           16
@@ -230,14 +230,14 @@
           255
         ],
         "name": "key_cache_qjl",
-        "data_path": ""
+        "data_path": "data/gqa_decode_kv64k_key_cache_qjl.bin"
       },
       {
         "format": "ND",
         "data_type": "bfloat16",
         "param_type": "required",
         "shape": [
-          256,
+          512,
           128,
           8
         ],
@@ -246,14 +246,14 @@
           2
         ],
         "name": "key_cache_norm",
-        "data_path": ""
+        "data_path": "data/gqa_decode_kv64k_key_cache_norm.bin"
       },
       {
         "format": "ND",
         "data_type": "bfloat16",
         "param_type": "required",
         "shape": [
-          256,
+          512,
           128,
           8
         ],
@@ -262,7 +262,7 @@
           2
         ],
         "name": "key_cache_gamma",
-        "data_path": ""
+        "data_path": "data/gqa_decode_kv64k_key_cache_gamma.bin"
       },
       {
         "format": "ND",
@@ -270,14 +270,14 @@
         "param_type": "required",
         "shape": [
           1,
-          256
+          512
         ],
         "value_range": [
           0,
-          255
+          511
         ],
         "name": "block_table",
-        "data_path": "data/gqa_decode_kv32k_block_table.bin"
+        "data_path": "data/gqa_decode_kv64k_block_table.bin"
       },
       {
         "format": "ND",
@@ -287,11 +287,11 @@
           1
         ],
         "value_range": [
-          32768,
-          32768
+          65536,
+          65536
         ],
         "name": "seq_lens",
-        "data_path": "data/gqa_decode_kv32k_seq_lens.bin"
+        "data_path": "data/gqa_decode_kv64k_seq_lens.bin"
       }
     ],
     "output_desc": [
@@ -302,7 +302,7 @@
         "shape": [
           1,
           32,
-          32768
+          65536
         ],
         "name": "attn_scores",
         "data_path": "",

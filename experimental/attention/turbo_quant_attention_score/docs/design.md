@@ -98,8 +98,16 @@ batch 大于 1 时每个请求只能有一个 query token；缺少 query 边界�
 | Decode 延迟 | aclnn 实际执行，与任务书给定三组 baseline 对照；另列主机调用耗时 |
 | Key cache 压缩 | 默认 3 bit 主编码 + 1 bit 符号 + 两个 16 bit 范数，共 68 B/key，原 BF16 Key 为 256 B，压缩比约 3.765 |
 | 总显存 | 单独列出输出大小、cache 和 workspace，不能将 Key 压缩比宣称为进程整体压缩比 |
-| KL / PPL | 需发布者提供编码器、模型/数据集及算子2联测条件，随机编码附件不能完成该验收 |
+| KL | 新附件提供配对原始 Q/K，可执行配对 score/softmax 比较；缩放、方向及聚合规则仍待确认。新版已删除 PPL 要求 |
 
 ## 兼容性分析
 
 新增独立算子，不修改其他算子行为。使用仓库默认 experimental 自动发现和 aclnn 生成机制。
+
+## 2026-09-30 任务附件更新
+
+新版 decode 32K 用例调整为 64K；性能比较对象明确为 BF16 Paged Full-QK 原始 score，五组 baseline 依次为 126.892 / 2321.657 / 5386.388 / 627.391 / 5910.060 μs。旧性能基线与通过结论不再适用。
+
+新增 generate_data.py 明确 NumPy PCG64、rotation seed=42、QJL seed=137。旋转矩阵为 QR 正交矩阵，QJL 矩阵为正交矩阵乘 `0.63*sqrt(128)`。行向量输入先计算 `query@H.T` 并舍入 BF16，再乘 `S.T` 并舍入 BF16。gamma 为原始 key 范数乘主量化残差范数；QJL 符号对零取正，量化边界使用严格大于，packed 数据低位优先。
+
+新附件解决了生成 score 配对输入的矩阵与编码约定缺口，不等于独立上游编码算子已完成联测。golden 公式没有变化，`err_threshold=[0.001,0]` 的正式比较器仍未明确。KL 的缩放、方向与聚合规则仍须确认；PPL 已删除，不再列为本任务阻塞项。

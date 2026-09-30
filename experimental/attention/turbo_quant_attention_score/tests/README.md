@@ -73,3 +73,9 @@ python test_gqa_regression.py --output gqa.json
 覆盖 GQA 分组 1/2/3/4/5/8，KV heads=2，2/3/4-bit、BF16/FP16 norm、两种长度接口；单序列 query token 数为 7/8/9（覆盖 8-token 分组边界），另含 batch=3 decode，共 288 组配置。Tensor 长度在不同 token 配置下覆盖 INT32/INT64，并非两种 dtype 的全交叉组合。
 每组连续调用三次，每次重新创建 executor、将输出预填 NaN；检查所有输出均被写入、有效位置逐元素匹配独立 CPU 参考、无效位置为负无穷，并要求重复结果完全一致。页表倒序，输入区分 page/head/token。该测试可以检出漏写及导致输出错误的跨组映射，但重复结果一致不等同于证明不存在任何数据竞争。
 另有 24 组负向测试：分别将 query、query residual 或两者的末维设为 64/127/129/256，在两种长度接口下均要求 GetWorkspaceSize 阶段拒绝。两者同时改变的用例排除仅因 query 形状不一致而被拒绝的情况。
+
+## 2026-09-30 用例版本
+
+case.json 已同步新版附件：gqa_decode_kv32k 改为 gqa_decode_kv64k（KV=65536），其它四组形状不变；golden 公式未变。历史 9 月 26 日的 32K 结果不能改名为 64K 结果。主测试脚本按 case.json 读取形状，自行生成随机压缩域输入，不读取 data_path；配对 Q/K 验证需要另外加载新版 generate_data.py 产物。
+
+新版 baseline 为 BF16 Paged Full-QK score：decode 4K/64K/128K 为 126.892/2321.657/5386.388 μs，prefill 4K/32K 为 627.391/5910.060 μs。decode 要求不超过 1.2 倍；不能再沿用旧基线的通过结论。PPL 已删除，KL<0.01 仍保留，但未明确其缩放和统计方式。
