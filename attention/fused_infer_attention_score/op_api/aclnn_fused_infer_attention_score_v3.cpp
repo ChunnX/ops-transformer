@@ -31,36 +31,31 @@ namespace {
 extern "C" void UnInitPTACacheThreadLocal() __attribute__((weak));
 // Select opdev's complete argument key for the validated dense GQA decode path.
 // Executor ownership, cached launch data, and address updates remain in opdev.
-bool IsDenseCacheInput(const aclTensor *tensor)
+bool IsDenseCacheInput(const aclTensor* tensor)
 {
     if (tensor == nullptr || tensor->IsEmpty() || tensor->GetPlacement() != gert::kOnDeviceHbm ||
-        tensor->GetStorageAddr() == nullptr ||
-        tensor->GetViewOffset() != 0 || tensor->GetStorageOffset() != 0 || !IsContiguous(tensor)) {
+        tensor->GetStorageAddr() == nullptr || tensor->GetViewOffset() != 0 || tensor->GetStorageOffset() != 0 ||
+        !IsContiguous(tensor)) {
         return false;
     }
     const auto format = tensor->GetViewFormat();
-    return !IsPrivateFormat(format) && tensor->GetStorageFormat() == format &&
-           tensor->GetOriginalFormat() == format &&
+    return !IsPrivateFormat(format) && tensor->GetStorageFormat() == format && tensor->GetOriginalFormat() == format &&
            tensor->GetOriginalShape() == tensor->GetStorageShape() &&
            tensor->GetStorageShape().GetShapeSize() == tensor->GetViewShape().GetShapeSize();
 }
 
-bool CanUseDenseFiaExecutorCache(const aclTensor *query, const aclTensorList *key,
-                                const aclTensorList *value, const aclTensor *mask,
-                                const aclTensor *blockTable, const aclTensor *output,
-                                const char *layout, int64_t heads, int64_t kvHeads,
-                                int64_t blockSize, int64_t sparseMode,
-                                const aclIntArray *queryLengths, const aclIntArray *kvLengths)
+bool CanUseDenseFiaExecutorCache(const aclTensor* query, const aclTensorList* key, const aclTensorList* value,
+                                 const aclTensor* mask, const aclTensor* blockTable, const aclTensor* output,
+                                 const char* layout, int64_t heads, int64_t kvHeads, int64_t blockSize,
+                                 int64_t sparseMode, const aclIntArray* queryLengths, const aclIntArray* kvLengths)
 {
-    if (UnInitPTACacheThreadLocal == nullptr ||
-        op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_2201 ||
-        layout == nullptr || std::strcmp(layout, "TND") != 0 || heads <= 0 || kvHeads != 1 ||
-        queryLengths == nullptr || kvLengths == nullptr ||
-        blockSize != 128 || (sparseMode != 0 && sparseMode != 3) ||
-        key == nullptr || value == nullptr || key->Size() != 1 || value->Size() != 1) {
+    if (UnInitPTACacheThreadLocal == nullptr || op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_2201 ||
+        layout == nullptr || std::strcmp(layout, "TND") != 0 || heads <= 0 || kvHeads != 1 || queryLengths == nullptr ||
+        kvLengths == nullptr || blockSize != 128 || (sparseMode != 0 && sparseMode != 3) || key == nullptr ||
+        value == nullptr || key->Size() != 1 || value->Size() != 1) {
         return false;
     }
-    const aclTensor *inputs[] = {query, (*key)[0], (*value)[0], blockTable, output, mask};
+    const aclTensor* inputs[] = {query, (*key)[0], (*value)[0], blockTable, output, mask};
     for (size_t i = 0; i < sizeof(inputs) / sizeof(inputs[0]); ++i) {
         if (i == 5 && inputs[i] == nullptr && sparseMode == 0) {
             continue;
@@ -76,18 +71,17 @@ bool CanUseDenseFiaExecutorCache(const aclTensor *query, const aclTensorList *ke
         }
     }
     const auto dtype = query->GetDataType();
-    if ((dtype != DataType::DT_FLOAT16 && dtype != DataType::DT_BF16) ||
-        (*key)[0]->GetDataType() != dtype || (*value)[0]->GetDataType() != dtype ||
-        output->GetDataType() != dtype) {
+    if ((dtype != DataType::DT_FLOAT16 && dtype != DataType::DT_BF16) || (*key)[0]->GetDataType() != dtype ||
+        (*value)[0]->GetDataType() != dtype || output->GetDataType() != dtype) {
         return false;
     }
-    const auto &q = query->GetViewShape();
-    const auto &k = (*key)[0]->GetViewShape();
-    const auto &v = (*value)[0]->GetViewShape();
-    if (q.GetDimNum() != 3 || q.GetDim(1) != heads || q.GetDim(2) != 128 ||
-        k.GetDimNum() != 3 || k.GetDim(1) != blockSize || k.GetDim(2) != 128 ||
-        k != v || q != output->GetViewShape() || blockTable->GetDataType() != DataType::DT_INT32 ||
-        blockTable->GetViewShape().GetDimNum() != 2 || blockTable->GetViewShape().GetDim(0) != q.GetDim(0) ||
+    const auto& q = query->GetViewShape();
+    const auto& k = (*key)[0]->GetViewShape();
+    const auto& v = (*value)[0]->GetViewShape();
+    if (q.GetDimNum() != 3 || q.GetDim(1) != heads || q.GetDim(2) != 128 || k.GetDimNum() != 3 ||
+        k.GetDim(1) != blockSize || k.GetDim(2) != 128 || k != v || q != output->GetViewShape() ||
+        blockTable->GetDataType() != DataType::DT_INT32 || blockTable->GetViewShape().GetDimNum() != 2 ||
+        blockTable->GetViewShape().GetDim(0) != q.GetDim(0) ||
         queryLengths->Size() != static_cast<uint64_t>(q.GetDim(0)) || kvLengths->Size() != queryLengths->Size()) {
         return false;
     }
@@ -105,36 +99,36 @@ bool CanUseDenseFiaExecutorCache(const aclTensor *query, const aclTensorList *ke
  * @domain aclnn_ops_infer
  */
 __attribute__((visibility("default"))) aclnnStatus aclnnFusedInferAttentionScoreV3GetMaxWorkspaceSize(
-    const aclTensor *query, const aclTensorList *tensorListKey, const aclTensorList *tensorListValue,
-    const aclTensor *pseShiftOptional, const aclTensor *attenMaskOptional, const aclIntArray *actualSeqLengthsOptional,
-    const aclIntArray *actualSeqLengthsKvOptional, const aclTensor *deqScale1Optional,
-    const aclTensor *quantScale1Optional, const aclTensor *deqScale2Optional, const aclTensor *quantScale2Optional,
-    const aclTensor *quantOffset2Optional, const aclTensor *antiquantScaleOptional,
-    const aclTensor *antiquantOffsetOptional, const aclTensor *blockTableOptional,
-    const aclTensor *queryPaddingSizeOptional, const aclTensor *kvPaddingSizeOptional,
-    const aclTensor *keyAntiquantScaleOptional, const aclTensor *keyAntiquantOffsetOptional,
-    const aclTensor *valueAntiquantScaleOptional, const aclTensor *valueAntiquantOffsetOptional,
-    const aclTensor *tensorKeySharedPrefixOptional, const aclTensor *tensorValueSharedPrefixOptional,
-    const aclIntArray *actualSharedPrefixLenOptional, const aclTensor *queryRopeOptional,
-    const aclTensor *keyRopeOptional, const aclTensor *keyRopeAntiquantScaleOptional, int64_t numHeads,
-    double scaleValue, int64_t preTokens, int64_t nextTokens, char *inputLayout, int64_t numKeyValueHeads,
+    const aclTensor* query, const aclTensorList* tensorListKey, const aclTensorList* tensorListValue,
+    const aclTensor* pseShiftOptional, const aclTensor* attenMaskOptional, const aclIntArray* actualSeqLengthsOptional,
+    const aclIntArray* actualSeqLengthsKvOptional, const aclTensor* deqScale1Optional,
+    const aclTensor* quantScale1Optional, const aclTensor* deqScale2Optional, const aclTensor* quantScale2Optional,
+    const aclTensor* quantOffset2Optional, const aclTensor* antiquantScaleOptional,
+    const aclTensor* antiquantOffsetOptional, const aclTensor* blockTableOptional,
+    const aclTensor* queryPaddingSizeOptional, const aclTensor* kvPaddingSizeOptional,
+    const aclTensor* keyAntiquantScaleOptional, const aclTensor* keyAntiquantOffsetOptional,
+    const aclTensor* valueAntiquantScaleOptional, const aclTensor* valueAntiquantOffsetOptional,
+    const aclTensor* tensorKeySharedPrefixOptional, const aclTensor* tensorValueSharedPrefixOptional,
+    const aclIntArray* actualSharedPrefixLenOptional, const aclTensor* queryRopeOptional,
+    const aclTensor* keyRopeOptional, const aclTensor* keyRopeAntiquantScaleOptional, int64_t numHeads,
+    double scaleValue, int64_t preTokens, int64_t nextTokens, char* inputLayout, int64_t numKeyValueHeads,
     int64_t sparseMode, int64_t innerPrecise, int64_t blockSize, int64_t antiquantMode, bool softmaxLseFlag,
-    int64_t keyAntiquantMode, int64_t valueAntiquantMode, const aclTensor *attentionOut, const aclTensor *softmaxLse,
-    uint64_t *workspaceSize, aclOpExecutor **executor);
+    int64_t keyAntiquantMode, int64_t valueAntiquantMode, const aclTensor* attentionOut, const aclTensor* softmaxLse,
+    uint64_t* workspaceSize, aclOpExecutor** executor);
 
 struct FiaActualSeqInArrays {
-    const aclIntArray *actualSeqLengthsOptional = nullptr;
-    const aclIntArray *actualSeqLengthsKvOptional = nullptr;
-    const aclIntArray *actualSharedPrefixLenOptional = nullptr;
+    const aclIntArray* actualSeqLengthsOptional = nullptr;
+    const aclIntArray* actualSeqLengthsKvOptional = nullptr;
+    const aclIntArray* actualSharedPrefixLenOptional = nullptr;
 };
 
 struct FiaActualSeqOutTensors {
-    aclTensor *actualSeqLengthsOptional = nullptr;
-    aclTensor *actualSeqLengthsKvOptional = nullptr;
-    aclTensor *actualSharedPrefixLenOptional = nullptr;
+    aclTensor* actualSeqLengthsOptional = nullptr;
+    aclTensor* actualSeqLengthsKvOptional = nullptr;
+    aclTensor* actualSharedPrefixLenOptional = nullptr;
 };
 
-aclnnStatus FakeFiaActualSeqArrays(const FiaActualSeqInArrays &inArrays, FiaActualSeqOutTensors &outTensors)
+aclnnStatus FakeFiaActualSeqArrays(const FiaActualSeqInArrays& inArrays, FiaActualSeqOutTensors& outTensors)
 {
     // nullptr不处理， nullptr是空指针，这样不会影响原来就不传入actual seq length为空的逻辑
     aclnnStatus ret = FakeArray(inArrays.actualSeqLengthsOptional, outTensors.actualSeqLengthsOptional);
@@ -158,22 +152,22 @@ aclnnStatus FakeFiaActualSeqArrays(const FiaActualSeqInArrays &inArrays, FiaActu
 }
 
 aclnnStatus aclnnFusedInferAttentionScoreV3GetMaxWorkspaceSize(
-    const aclTensor *query, const aclTensorList *tensorListKey, const aclTensorList *tensorListValue,
-    const aclTensor *pseShiftOptional, const aclTensor *attenMaskOptional, const aclIntArray *actualSeqLengthsOptional,
-    const aclIntArray *actualSeqLengthsKvOptional, const aclTensor *deqScale1Optional,
-    const aclTensor *quantScale1Optional, const aclTensor *deqScale2Optional, const aclTensor *quantScale2Optional,
-    const aclTensor *quantOffset2Optional, const aclTensor *antiquantScaleOptional,
-    const aclTensor *antiquantOffsetOptional, const aclTensor *blockTableOptional,
-    const aclTensor *queryPaddingSizeOptional, const aclTensor *kvPaddingSizeOptional,
-    const aclTensor *keyAntiquantScaleOptional, const aclTensor *keyAntiquantOffsetOptional,
-    const aclTensor *valueAntiquantScaleOptional, const aclTensor *valueAntiquantOffsetOptional,
-    const aclTensor *tensorKeySharedPrefixOptional, const aclTensor *tensorValueSharedPrefixOptional,
-    const aclIntArray *actualSharedPrefixLenOptional, const aclTensor *queryRopeOptional,
-    const aclTensor *keyRopeOptional, const aclTensor *keyRopeAntiquantScaleOptional, int64_t numHeads,
-    double scaleValue, int64_t preTokens, int64_t nextTokens, char *inputLayout, int64_t numKeyValueHeads,
+    const aclTensor* query, const aclTensorList* tensorListKey, const aclTensorList* tensorListValue,
+    const aclTensor* pseShiftOptional, const aclTensor* attenMaskOptional, const aclIntArray* actualSeqLengthsOptional,
+    const aclIntArray* actualSeqLengthsKvOptional, const aclTensor* deqScale1Optional,
+    const aclTensor* quantScale1Optional, const aclTensor* deqScale2Optional, const aclTensor* quantScale2Optional,
+    const aclTensor* quantOffset2Optional, const aclTensor* antiquantScaleOptional,
+    const aclTensor* antiquantOffsetOptional, const aclTensor* blockTableOptional,
+    const aclTensor* queryPaddingSizeOptional, const aclTensor* kvPaddingSizeOptional,
+    const aclTensor* keyAntiquantScaleOptional, const aclTensor* keyAntiquantOffsetOptional,
+    const aclTensor* valueAntiquantScaleOptional, const aclTensor* valueAntiquantOffsetOptional,
+    const aclTensor* tensorKeySharedPrefixOptional, const aclTensor* tensorValueSharedPrefixOptional,
+    const aclIntArray* actualSharedPrefixLenOptional, const aclTensor* queryRopeOptional,
+    const aclTensor* keyRopeOptional, const aclTensor* keyRopeAntiquantScaleOptional, int64_t numHeads,
+    double scaleValue, int64_t preTokens, int64_t nextTokens, char* inputLayout, int64_t numKeyValueHeads,
     int64_t sparseMode, int64_t innerPrecise, int64_t blockSize, int64_t antiquantMode, bool softmaxLseFlag,
-    int64_t keyAntiquantMode, int64_t valueAntiquantMode, const aclTensor *attentionOut, const aclTensor *softmaxLse,
-    uint64_t *workspaceSize, aclOpExecutor **executor)
+    int64_t keyAntiquantMode, int64_t valueAntiquantMode, const aclTensor* attentionOut, const aclTensor* softmaxLse,
+    uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
         OP_LOGE(ACLNN_ERR_RUNTIME_ERROR,
@@ -192,8 +186,8 @@ aclnnStatus aclnnFusedInferAttentionScoreV3GetMaxWorkspaceSize(
         return ret;
     }
 
-    const aclTensor *placeHolder = nullptr;
-    const aclTensor *tempTensor = nullptr;
+    const aclTensor* placeHolder = nullptr;
+    const aclTensor* tempTensor = nullptr;
     ret = FusedInferAttentionScoreProcessSoftmaxLse(softmaxLseFlag, softmaxLse, tempTensor, placeHolder);
     if (ret != ACLNN_SUCCESS) {
         aclDestroyTensor(fakeActualSeqTensors.actualSeqLengthsOptional);
@@ -223,38 +217,37 @@ aclnnStatus aclnnFusedInferAttentionScoreV3GetMaxWorkspaceSize(
 }
 
 aclnnStatus aclnnFusedInferAttentionScoreV3GetWorkspaceSize(
-    const aclTensor *query, const aclTensorList *key, const aclTensorList *value, const aclTensor *pseShiftOptional,
-    const aclTensor *attenMaskOptional, const aclIntArray *actualSeqLengthsOptional,
-    const aclIntArray *actualSeqLengthsKvOptional, const aclTensor *deqScale1Optional,
-    const aclTensor *quantScale1Optional, const aclTensor *deqScale2Optional, const aclTensor *quantScale2Optional,
-    const aclTensor *quantOffset2Optional, const aclTensor *antiquantScaleOptional,
-    const aclTensor *antiquantOffsetOptional, const aclTensor *blockTableOptional,
-    const aclTensor *queryPaddingSizeOptional, const aclTensor *kvPaddingSizeOptional,
-    const aclTensor *keyAntiquantScaleOptional, const aclTensor *keyAntiquantOffsetOptional,
-    const aclTensor *valueAntiquantScaleOptional, const aclTensor *valueAntiquantOffsetOptional,
-    const aclTensor *keySharedPrefixOptional, const aclTensor *valueSharedPrefixOptional,
-    const aclIntArray *actualSharedPrefixLenOptional, const aclTensor *queryRopeOptional,
-    const aclTensor *keyRopeOptional, const aclTensor *keyRopeAntiquantScaleOptional, int64_t numHeads,
-    double scaleValue, int64_t preTokens, int64_t nextTokens, char *inputLayout, int64_t numKeyValueHeads,
+    const aclTensor* query, const aclTensorList* key, const aclTensorList* value, const aclTensor* pseShiftOptional,
+    const aclTensor* attenMaskOptional, const aclIntArray* actualSeqLengthsOptional,
+    const aclIntArray* actualSeqLengthsKvOptional, const aclTensor* deqScale1Optional,
+    const aclTensor* quantScale1Optional, const aclTensor* deqScale2Optional, const aclTensor* quantScale2Optional,
+    const aclTensor* quantOffset2Optional, const aclTensor* antiquantScaleOptional,
+    const aclTensor* antiquantOffsetOptional, const aclTensor* blockTableOptional,
+    const aclTensor* queryPaddingSizeOptional, const aclTensor* kvPaddingSizeOptional,
+    const aclTensor* keyAntiquantScaleOptional, const aclTensor* keyAntiquantOffsetOptional,
+    const aclTensor* valueAntiquantScaleOptional, const aclTensor* valueAntiquantOffsetOptional,
+    const aclTensor* keySharedPrefixOptional, const aclTensor* valueSharedPrefixOptional,
+    const aclIntArray* actualSharedPrefixLenOptional, const aclTensor* queryRopeOptional,
+    const aclTensor* keyRopeOptional, const aclTensor* keyRopeAntiquantScaleOptional, int64_t numHeads,
+    double scaleValue, int64_t preTokens, int64_t nextTokens, char* inputLayout, int64_t numKeyValueHeads,
     int64_t sparseMode, int64_t innerPrecise, int64_t blockSize, int64_t antiquantMode, bool softmaxLseFlag,
-    int64_t keyAntiquantMode, int64_t valueAntiquantMode, const aclTensor *attentionOut, const aclTensor *softmaxLse,
-    uint64_t *workspaceSize, aclOpExecutor **executor)
+    int64_t keyAntiquantMode, int64_t valueAntiquantMode, const aclTensor* attentionOut, const aclTensor* softmaxLse,
+    uint64_t* workspaceSize, aclOpExecutor** executor)
 {
-    const bool useLocalExecutorCache = executor != nullptr && workspaceSize != nullptr &&
-        !softmaxLseFlag &&
-        antiquantMode == 0 && keyAntiquantMode == 0 && valueAntiquantMode == 0 &&
-        pseShiftOptional == nullptr && deqScale1Optional == nullptr && quantScale1Optional == nullptr &&
-        deqScale2Optional == nullptr && quantScale2Optional == nullptr && quantOffset2Optional == nullptr &&
-        antiquantScaleOptional == nullptr && antiquantOffsetOptional == nullptr &&
-        queryPaddingSizeOptional == nullptr && kvPaddingSizeOptional == nullptr &&
+    const bool useLocalExecutorCache =
+        executor != nullptr && workspaceSize != nullptr && !softmaxLseFlag && antiquantMode == 0 &&
+        keyAntiquantMode == 0 && valueAntiquantMode == 0 && pseShiftOptional == nullptr &&
+        deqScale1Optional == nullptr && quantScale1Optional == nullptr && deqScale2Optional == nullptr &&
+        quantScale2Optional == nullptr && quantOffset2Optional == nullptr && antiquantScaleOptional == nullptr &&
+        antiquantOffsetOptional == nullptr && queryPaddingSizeOptional == nullptr && kvPaddingSizeOptional == nullptr &&
         keyAntiquantScaleOptional == nullptr && keyAntiquantOffsetOptional == nullptr &&
         valueAntiquantScaleOptional == nullptr && valueAntiquantOffsetOptional == nullptr &&
         keySharedPrefixOptional == nullptr && valueSharedPrefixOptional == nullptr &&
-        actualSharedPrefixLenOptional == nullptr && queryRopeOptional == nullptr &&
-        keyRopeOptional == nullptr && keyRopeAntiquantScaleOptional == nullptr &&
-        CanUseDenseFiaExecutorCache(query, key, value, attenMaskOptional, blockTableOptional,
-                                    attentionOut, inputLayout, numHeads, numKeyValueHeads, blockSize, sparseMode,
-                                    actualSeqLengthsOptional, actualSeqLengthsKvOptional);
+        actualSharedPrefixLenOptional == nullptr && queryRopeOptional == nullptr && keyRopeOptional == nullptr &&
+        keyRopeAntiquantScaleOptional == nullptr &&
+        CanUseDenseFiaExecutorCache(query, key, value, attenMaskOptional, blockTableOptional, attentionOut, inputLayout,
+                                    numHeads, numKeyValueHeads, blockSize, sparseMode, actualSeqLengthsOptional,
+                                    actualSeqLengthsKvOptional);
     if (useLocalExecutorCache) {
         // A caller-supplied empty PTA key disables plan reuse. Let the following
         // L2 macro build its full key, including sequence values, strides and offsets.
@@ -286,16 +279,16 @@ aclnnStatus aclnnFusedInferAttentionScoreV3GetWorkspaceSize(
                 "We apologize for any inconvenience caused and appreciate your timely migration to the new interface.");
         isFirstCall = false;
     }
-    const aclTensorList *tensorListKey = key;
-    const aclTensorList *tensorListValue = value;
+    const aclTensorList* tensorListKey = key;
+    const aclTensorList* tensorListValue = value;
     TensorPreProcess(tensorListKey, tensorListValue);
 
-    const aclTensor *tensorKeySharedPrefixOptional = keySharedPrefixOptional;
-    const aclTensor *tensorValueSharedPrefixOptional = valueSharedPrefixOptional;
+    const aclTensor* tensorKeySharedPrefixOptional = keySharedPrefixOptional;
+    const aclTensor* tensorValueSharedPrefixOptional = valueSharedPrefixOptional;
     PrefixTensorPreProcess(tensorKeySharedPrefixOptional, tensorValueSharedPrefixOptional);
 
-    const aclTensor *placeHolder = nullptr;
-    const aclTensor *tempTensor = nullptr;
+    const aclTensor* placeHolder = nullptr;
+    const aclTensor* tempTensor = nullptr;
     aclnnStatus ret = FusedInferAttentionScoreProcessSoftmaxLse(softmaxLseFlag, softmaxLse, tempTensor, placeHolder);
     if (ret != ACLNN_SUCCESS) {
         return ret;
@@ -317,7 +310,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV3GetWorkspaceSize(
     return ret;
 }
 
-aclnnStatus aclnnFusedInferAttentionScoreV3(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+aclnnStatus aclnnFusedInferAttentionScoreV3(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
                                             const aclrtStream stream)
 {
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
