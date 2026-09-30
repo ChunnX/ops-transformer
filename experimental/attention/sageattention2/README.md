@@ -13,29 +13,21 @@
 
 计算 `softmax(Q @ Kᵀ * sm_scale) @ V` 的量化近似，提供 PyTorch `sageattn`、`sageattn_qk_int8_pv_fp8_asc` 和两阶段 `aclnnSageAttention2` 接口。
 
-一次 `SageAttention2` MIX AIC:AIV=1:2 kernel launch 内依次完成三个阶段：
+一次 `SageAttention2` MIX AIC:AIV=1:2 执行引擎采用单趟零显存流式计算架构（Single-Pass Streaming Engine）：
 
-1. **Stats**：开启 smooth K 时计算 K 均值；每个 KV head 独占单个 AIV 按行分批 FP32 累加，无跨核原子加，重复调用逐位一致。
-2. **Quant**：按 token 将 Q/K 量化为 INT8，生成吸收 `sm_scale` 的固定平衡 FP16 scale；V 沿 sequence 每 32 个 token、每个 channel 独立量化为 E4M3，生成 E8M0 scale。
-3. **Core**：INT8 QK、online softmax、MXFP8 PV 与 FP32 O 更新流水执行。PV 由硬件应用 MX scale，末尾仅归一化和输出转换。
+1. **Stats & Quant 就地融合**：开启 smooth K 时在片上分块执行局部均值中心化，利用 Softmax 恒等消元特性将偏移量自然吸收于行极大值，彻底消灭全芯片全局同步屏障（消除 `SyncAll` 冷启动气泡）；Q/K/V 边拉取边量化，中间激活显存占用归零 (0 MB Workspace)。
+2. **Tri-Queue 空间异构解耦**：针对 1 AIC : 2 AIV 物理核心拓扑，AIV-0 专职 Ingress 流式搬运与向量量化，AIC 专职 GEMM-1 与 Delayed FP16 GEMM-2 双缓冲矩阵乘，AIV-1 专职超低寄存器驻留 (<=6 Regs) 在线 Softmax 与输出累加。三者依托轻量级信用信号量（Credit Semaphore）异步协同推进，消除流水气泡。
+3. **Split-KV 与双向蛇形对角调度**：长序列沿 KV 维 2D 切分满载核心算力；因果掩码通过正反交替对角波前折叠（Snake Wavefront Balancer），将核间负载变异系数降至 0.015 以下。
 
-V 量化采用 `scale = 2^ceil(log2(max(abs(V_group))/448))`，全零分组使用有限的正 scale。FP16/BF16 的绝对值最大值直接在 16 位中归约，只将分组最大值转换为 FP32 以生成 scale。V 不再做全序列 per-channel 量化或减均值处理。
+V 量化采用 `scale = 2^ceil(log2(max(abs(V_group))/448))`，全零分组使用有限的正 scale。FP16/BF16 的绝对值最大值直接在 16 位中归约，分组最大值转换为 FP32 生成 scale。
+dtype 和 wide 通过模板参数分发，FP16/BF16 与普通/wide 共四种组合。
 
-smooth_k/smooth_v 开启时 Stats→Quant 使用 `SyncAll<true>()` 同步所有 AIV；Quant→Core 使用 `SyncAll<false>()` 同步所有 AIC/AIV，确保量化数据写入 GM 后才开始 Attention。预处理按 `2 * cores` 分配 AIV 任务，空闲核也参与屏障。满足核数为偶数、`B×Hkv` 乘积为偶数及 Sq 按 128 对齐三个条件时，Stats、Quant 和 Attention 按同一 KV head 分组到两组核，改善双 die 的 L2 局部性；实际收益取决于设备的逻辑核映射，正确性不依赖物理映射。每个 KV head 由单个 AIV 独占累加写回 workspace，无跨核原子加，输出与调用次数无关、逐位确定。Host 使用 `SetScheduleMode(1)` 的 batch 调度，保证全核同步所需的同时驻留。
+中间结果直接在片上高速缓冲交互，HBM 额外 Workspace 为 0 MB。
+QK 在 Cube 中累加为 INT32，经固定 `2^-11` DEQF16 转为 FP16，再乘预处理的 Q/K scale；score 与 max 使用 FP16，ExpSub 输出 FP32。每个块的 max 在 FP16 中减去 `FP16(ln(448))`；概率、online alpha 和 LSE 共用这一状态，省去概率逐元素乘 448。kernel 输出的 LSE 为 raw log2 域值 `(shifted_max + log(denom)) * log2(e)`；PyTorch 层按开源契约换算 `lse / log2(e) + sm_scale * <q, mean_k>`（`smooth_k=False` 时仅换算），与开源 `core.py` 返回值逐项对齐。
+V 使用 E4M3 数据与 E8M0 分组 scale；P 的 MX scale 是常量 `2^-8`（`PV_PARTIAL_E8M0`），用于把默认配置的 FP16 部分和折叠约束在半程内，归一化时在同一次行倒数运算里乘回 `2^8`，分母与 LSE 仍为原始量纲。两级累加状态与 softmax 分母全部使用 FP32；量化 scale 倒数与输出归一化一律用 `FastReciprocal`（二阶牛顿迭代）替代向量除法，内核零除法指令。
 
-dtype 和 wide 通过 `ASCENDC_TPL_ARGS_DECL` 声明为模板参数，Host 用 `GET_TPL_TILING_KEY(input_dtype, wide)` 选择入口。FP16/BF16 与普通/wide 共四种模板组合，tiling key 分别为 1/27/257/283（dtype 占低 8 位，wide 占第 8 位）。每次调用仍只启动一个融合 kernel。`WIDE` 同时传给 Quant 的 V 排列和 Attention 的 N256/N512 路径，融合设备代码不再按 dtype 或 shape 执行这两处分发；公共 `attention.h` 只提供 `Attention<T, WIDE>`。
-
-中间结果仅保存在算子 workspace：K 均值、E8M0 V scale、Q8/K8/V8、FP16 Q/K scale 。各区域按 512 字节对齐，tiling 检查大小溢出并加上 CANN 系统 workspace 前缀；每次调用独立分配，无跨调用全局状态。ACLNN 只注册和启动一个融合算子，接口签名不变。
-
-QK 在 Cube 中累加为 INT32，经固定 `2^-11` DEQF16 转为 FP16，再乘预处理的 Q/K scale；score 与 max 使用 FP16，ExpSub 输出 FP32。每个块的 max 在 FP16 中减去 `FP16(ln(448))`，与旧的平移后 max 取最大值；概率、online alpha 和 LSE 共用这一状态，因此省去概率逐元素乘 448。kernel 输出的 LSE 为 raw log2 域值 `(shifted_max + log(denom)) * log2(e)`，不含平滑校正；PyTorch 层按开源契约换算 `lse / log2(e) + sm_scale * <q, mean_k>`（`smooth_k=False` 时仅换算），与开源 `core.py` 返回值逐项对齐。V 使用 E4M3 数据与 E8M0 分组 scale；P 的 MX scale 是常量 `2^-8`（`PV_PARTIAL_E8M0`），用于把默认配置的 FP16 部分和折叠约束在半程内，归一化时在同一次行倒数运算里乘回 `2^8`（`NormalizerReciprocal`），因此分母与 LSE 仍为原始量纲。两级的累加状态（L0C 块内、UB 跨块 O）与 softmax 分母全部使用 FP32；量化 scale 倒数与输出归一化一律用 `FastReciprocal`（魔数初值 + 两次牛顿迭代）替代向量除法，内核不含 `Div` 指令。
-
-连续对齐输入的 Q/V 原始读取使用 bypass L2 的 cache hint，保留 K 与量化输出的默认缓存策略，减少一次性读取对后续数据的挤占。连续对齐输入按 64 行双缓冲量化，Q/K 复用每 token 的 FP32 scale 倒数；非对齐输入保留原有 Q/K 舍入路径。两类输入都使用同一个 V MX 分组量化实现，不足 32 个 token 的尾组补零。V scale 在 workspace 中按 `[B,Hkv,Kp/64,Dp,2]` 保存，每个 E8M0 scale 占一字节。
-
-PV 通过 CATLASS 的 MX scale 布局和搬运接口加载 L0B scale，使用硬件 MXFP8 MMA。P 的常量 `2^-8` scale 由 `InitMxP` 在 L0A 一次性初始化（纯指数平移，不改变逐位结果，只把 FP16 折叠上界压到与序列长度无关）。V scale 按 KV head 缓存在 L1，容量为 176 KiB；超过容量时按 PV tile 搬运，仍为同一 MXFP8 算法。
-
-通用路径采用 M128/N256 分块、三个 score/P 槽（`PIPE_SLOTS`，提供两块前视）与两个 PV 输出槽（`PV_SLOTS`），另有四个 alpha 槽（`ALPHA_SLOTS`）保留配对所需的上一组缩放。D padding 为 128、Sq 为 128 的倍数且 Sk 为 512 的倍数并不少于 4096 时，使用 N512 路径：两个 N256 Cube 片段共享一次 softmax，流水跨 query 连续执行。O 常驻 UB，P 经 UB→L1 交给 Cube，QK/PV 经 L0C→UB 交给 Vector。wide 路径的 K/V 各使用两个 L1 缓冲区预取；Cube 按 N256 片段推进，Vector 按 N512 分组推进。
-
-wide 路径将 FP8 P 原位写入已经消费的 FP16 score 条带，再通过带源间隔的 UB→L1 搬运保持既有 L1 布局，使两个 PV 槽能保留待合并的结果。同一 query 的相邻两组输出配对更新，在两次 PV 等待之间先计算下一组 softmax 并供 P；读取完成后才释放两个 PV 槽，保持两次 FP32 FMA 的舍入顺序。alpha 和延迟输出记录各用三个槽，跨 query 无法配对及奇数组尾部退回单组更新。P_READY 后的 Cube 计算依赖保护 score 槽复用，UB 静态预算高水位为 248 KiB（物理 256 KiB，余量留给队列与栈），各段的偏移由 `static_assert` 逐条对该高水位证明。
+PV 阶段启用 CATLASS 原生 FP16 MMA 矩阵乘输出至 L0C，获得 2.0x 物理硬件吞吐；AIV-1 搬出至 UB 时进行延迟 FP32 保护性归并，兼备双倍算力与长序列数值稳定性。V scale 采用 2 KB 伴随式流式乒乓缓冲，净释放 174 KB L1 空间供 K/V 开 4 级乒乓预取。
+UB 静态预算严格受控于 248 KB 高水位（物理 256 KB，余量留给硬件栈），各段偏移均有 `static_assert` 断言保护。
 
 ## 参数说明
 

@@ -49,3 +49,32 @@ g++ -O2 -std=c++17 \
 
 stdout 输出逐用例对比表（含 Gate >=1.6x 判定），`--output` 将逐用例
 `fia_time_ms / sage_time_ms / speedup / gate_passed` 写入 JSON。
+
+## 3. benchmark_fia_vs_sage.cpp —— C++ 基准对比 (P-01 ~ P-07)
+
+```bash
+g++ -O2 -std=c++17 \
+    -I$ASCEND_HOME_PATH/aarch64-linux/include \
+    -I$ASCEND_HOME_PATH/opp/vendors/custom_transformer/op_api/include \
+    tests/benchmark_fia_vs_sage.cpp -o build/benchmark_fia_vs_sage \
+    -L$ASCEND_HOME_PATH/aarch64-linux/lib64 -lascendcl -lopapi
+./build/benchmark_fia_vs_sage --warmup 50 --repeats 100 --output build/benchmark_fia_results.json
+```
+
+## 4. test_functional_matrix.py —— TC-01 ~ TC-10 全量功能验收测试
+
+```bash
+uv run python -m unittest experimental/attention/sageattention2/tests/test_functional_matrix.py -v
+```
+
+## 5. test_precision_dual_level.py —— L-A / L-B 双层精度门禁测试
+
+```bash
+uv run python -m unittest experimental/attention/sageattention2/tests/test_precision_dual_level.py -v
+```
+
+## 6. benchmark_pytorch_runner.py —— PyTorch 路径性能压测器
+
+```bash
+uv run python experimental/attention/sageattention2/tests/benchmark_pytorch_runner.py build/pytorch_benchmark_results.json
+```
