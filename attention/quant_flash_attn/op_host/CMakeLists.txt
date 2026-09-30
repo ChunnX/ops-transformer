@@ -28,6 +28,7 @@ if("${CONDITION_UNIT}" STREQUAL "ascend950")
     )
 elseif("${CONDITION_UNIT}" STREQUAL "ascend960dt")
     set(quant_flash_attn_depends attention/common CACHE INTERNAL "Dependencies for quant_flash_attn")
+    set_property(SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/quant_flash_attn_def.cpp APPEND PROPERTY COMPILE_DEFINITIONS ENABLE_HIFLOAT4)
 endif()
 
 file(GLOB_RECURSE ARCH35_CHECKER_SRC_FILES

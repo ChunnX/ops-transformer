@@ -28,7 +28,7 @@
 #include "kernel_operator.h"
 #endif
 
-#include "quant_flash_attn_tiling_data.h"
+#include "quant_flash_attn_tiling_data_arch92.h"
 
 using namespace AscendC;
 using namespace optiling;
