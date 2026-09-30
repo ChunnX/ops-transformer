@@ -1,8 +1,5 @@
-/*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
- */
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -10,12 +7,12 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
-/*!
- * \file vf_softmax_dn_cast_nz_mxfp8.h
- * \brief qs128 热路径：OCP 后用 3510 vexpdif（FusedExpSub half→float ZERO/ONE）
- *        替换 Sub+fp16 Exp+Cast；Interleave 仍收成连续 qs64 再 RINT pack。
- */
 
+/*!
+ * \file vf_softmax_dn_cast_nz_mxfp8_qs128_kvs128.h
+ * \brief qs128: OCP path uses FusedExpSub to split half into two float lanes (ZERO / ONE), then Interleave into
+ * consecutive qs64 and pack with CAST_RINT.
+ */
 #ifndef VF_SOFTMAX_DN_CAST_NZ_MXFP8_QS128_KVS128_H_
 #define VF_SOFTMAX_DN_CAST_NZ_MXFP8_QS128_KVS128_H_
 #include "kernel_tensor.h"
@@ -28,9 +25,9 @@ using namespace MicroAPI;
 
 template <MXQuantMode MX_QUANT_MODE = MXQuantMode::OCP, bool clear_gmax, typename T, typename T2,
           uint16_t KvsBase = 128, uint16_t QsBase = 128>
-__simd_vf__ inline void softmax_with_group_max_qs128_kvs128_vf(__ubuf__ T2 *pDest, __ubuf__ T *s,
-                                                               __ubuf__ T *local_group_max, __ubuf__ T *global_max,
-                                                               __ubuf__ uint8_t *indexesUb)
+__simd_vf__ inline void softmax_with_group_max_qs128_kvs128_vf(__ubuf__ T2* pDest, __ubuf__ T* s,
+                                                               __ubuf__ T* local_group_max, __ubuf__ T* global_max,
+                                                               __ubuf__ uint8_t* indexesUb)
 {
     // ====================== 寄存器定义 ======================
     RegTensor<half> src_c0, src_c1, src_c2, src_c3;
@@ -166,17 +163,17 @@ __simd_vf__ inline void softmax_with_group_max_qs128_kvs128_vf(__ubuf__ T2 *pDes
 
 template <MXQuantMode MX_QUANT_MODE = MXQuantMode::OCP, bool clear_gmax, typename T, typename T2,
           uint16_t KvsBase = 128, uint16_t QsBase = 128>
-__aicore__ inline void SoftmaxWithGroupMaxQs128Kvs128CallVF(const LocalTensor<T2> &dstTensor,
-                                                            const LocalTensor<T> &srcTensor,
-                                                            const LocalTensor<T> &local_group_max,
-                                                            const LocalTensor<T> &global_max,
-                                                            const LocalTensor<uint8_t> &indexesBuf)
+__aicore__ inline void SoftmaxWithGroupMaxQs128Kvs128CallVF(const LocalTensor<T2>& dstTensor,
+                                                            const LocalTensor<T>& srcTensor,
+                                                            const LocalTensor<T>& local_group_max,
+                                                            const LocalTensor<T>& global_max,
+                                                            const LocalTensor<uint8_t>& indexesBuf)
 {
-    __ubuf__ T2 *pDest = (__ubuf__ T2 *)dstTensor.GetPhyAddr();
-    __ubuf__ T *input_x_local_UB = (__ubuf__ T *)srcTensor.GetPhyAddr();
-    __ubuf__ T *localGroupMax = (__ubuf__ T *)local_group_max.GetPhyAddr();
-    __ubuf__ T *globalMax = (__ubuf__ T *)global_max.GetPhyAddr();
-    __ubuf__ uint8_t *indexesUb = (__ubuf__ uint8_t *)indexesBuf.GetPhyAddr();
+    __ubuf__ T2* pDest = (__ubuf__ T2*)dstTensor.GetPhyAddr();
+    __ubuf__ T* input_x_local_UB = (__ubuf__ T*)srcTensor.GetPhyAddr();
+    __ubuf__ T* localGroupMax = (__ubuf__ T*)local_group_max.GetPhyAddr();
+    __ubuf__ T* globalMax = (__ubuf__ T*)global_max.GetPhyAddr();
+    __ubuf__ uint8_t* indexesUb = (__ubuf__ uint8_t*)indexesBuf.GetPhyAddr();
 
     softmax_with_group_max_qs128_kvs128_vf<MX_QUANT_MODE, clear_gmax, T, T2, KvsBase, QsBase>(
         pDest, input_x_local_UB, localGroupMax, globalMax, indexesUb);

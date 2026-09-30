@@ -1,8 +1,5 @@
-/*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
- */
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -10,11 +7,6 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
-/*!
- * \file vf_nd2nz_indexes_dn_mxfp8.h
- * \brief
- */
-
 #ifndef ND2NZ_INDEXES_DN_MXFP8_H_
 #define ND2NZ_INDEXES_DN_MXFP8_H_
 #include "kernel_tensor.h"
@@ -25,21 +17,21 @@ using namespace AscendC;
 using namespace MicroAPI;
 
 template <typename T>
-__simd_vf__ void inline vf_init_indexs_and_duplicate(__ubuf__ uint8_t *index_nd2xz, __ubuf__ T *dupDest)
+__simd_vf__ void inline vf_init_indexs_and_duplicate(__ubuf__ uint8_t* index_nd2xz, __ubuf__ T* dupDest)
 {
     // Index
     RegTensor<uint8_t> index_reg, index_reg_1, index_reg_2;
     MaskReg mask_32 = CreateMask<int8_t, MaskPattern::VL32>();
 
-    Arange((RegTensor<int8_t> &)index_reg, 0);
+    Arange((RegTensor<int8_t>&)index_reg, 0);
 
     // DN_INDEX：index[i*64+j] = i + (j<<2)，四路 e4m3（与 ProcessVec1DnMxfp8 一致）
     ShiftLefts(index_reg, index_reg, NUM_2, mask_32);
     for (uint16_t i = 0; i < 4; ++i) {
         Adds(index_reg_1, index_reg, i, mask_32);
         Adds(index_reg_2, index_reg_1, NUM_128, mask_32);
-        StoreAlign(index_nd2xz + indexSubLength * i, (RegTensor<uint8_t> &)index_reg_1, mask_32);
-        StoreAlign(index_nd2xz + indexSubLength * i + NUM_128, (RegTensor<uint8_t> &)index_reg_2, mask_32);
+        StoreAlign(index_nd2xz + indexSubLength * i, (RegTensor<uint8_t>&)index_reg_1, mask_32);
+        StoreAlign(index_nd2xz + indexSubLength * i + NUM_128, (RegTensor<uint8_t>&)index_reg_2, mask_32);
     }
 
     // Duplicate
@@ -52,12 +44,12 @@ __simd_vf__ void inline vf_init_indexs_and_duplicate(__ubuf__ uint8_t *index_nd2
 }
 
 template <typename T>
-__aicore__ inline void InitIndexesAndDuplicateCallVF(LocalTensor<uint8_t> &nd2nzIndexes,
-                                                     const LocalTensor<T> &localGlobalMaxUB)
+__aicore__ inline void InitIndexesAndDuplicateCallVF(LocalTensor<uint8_t>& nd2nzIndexes,
+                                                     const LocalTensor<T>& localGlobalMaxUB)
 {
-    __ubuf__ uint8_t *index_nd2xz = (__ubuf__ uint8_t *)nd2nzIndexes.GetPhyAddr();
+    __ubuf__ uint8_t* index_nd2xz = (__ubuf__ uint8_t*)nd2nzIndexes.GetPhyAddr();
 
-    __ubuf__ T *localGlobalMax1Buf = (__ubuf__ T *)localGlobalMaxUB.GetPhyAddr();
+    __ubuf__ T* localGlobalMax1Buf = (__ubuf__ T*)localGlobalMaxUB.GetPhyAddr();
 
     vf_init_indexs_and_duplicate<T>(index_nd2xz, localGlobalMax1Buf);
 }

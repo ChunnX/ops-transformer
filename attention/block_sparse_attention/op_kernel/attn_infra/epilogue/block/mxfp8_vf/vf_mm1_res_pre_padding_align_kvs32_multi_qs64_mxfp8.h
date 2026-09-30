@@ -1,8 +1,5 @@
-/*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
- */
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -10,11 +7,6 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
-/*!
- * \file vf_softmax_dn_cast_nz_mxfp8.h
- * \brief
- */
-
 #ifndef VF_MM1_RES_PRE_PADDING_ALIGN_KVS32_MULTI_QS64_MXFP8_H
 #define VF_MM1_RES_PRE_PADDING_ALIGN_KVS32_MULTI_QS64_MXFP8_H
 
@@ -26,7 +18,7 @@ using namespace AscendC;
 using namespace MicroAPI;
 
 template <typename T, uint16_t QsBase = 128>
-__simd_vf__ inline void mm1_res_pre_padding_align_kvs32_multi_qs64_vf(__ubuf__ T *s, uint16_t actSingleLoopS2Size,
+__simd_vf__ inline void mm1_res_pre_padding_align_kvs32_multi_qs64_vf(__ubuf__ T* s, uint16_t actSingleLoopS2Size,
                                                                       uint16_t actSingleLoopS2SizeAlign32)
 {
     // ====================== 寄存器定义 ======================
@@ -46,11 +38,11 @@ __simd_vf__ inline void mm1_res_pre_padding_align_kvs32_multi_qs64_vf(__ubuf__ T
 }
 
 template <typename T>
-__aicore__ inline void Mm1ResPrePaddingAlignKvs32MultiQs64CallVF(const LocalTensor<T> &srcTensor,
+__aicore__ inline void Mm1ResPrePaddingAlignKvs32MultiQs64CallVF(const LocalTensor<T>& srcTensor,
                                                                  uint16_t actSingleLoopS2Size,
                                                                  uint16_t actSingleLoopS2SizeAlign32)
 {
-    __ubuf__ T *input_x_local_UB = (__ubuf__ T *)srcTensor.GetPhyAddr();
+    __ubuf__ T* input_x_local_UB = (__ubuf__ T*)srcTensor.GetPhyAddr();
 
     mm1_res_pre_padding_align_kvs32_multi_qs64_vf<T>(input_x_local_UB, actSingleLoopS2Size, actSingleLoopS2SizeAlign32);
 }
