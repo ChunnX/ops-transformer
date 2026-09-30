@@ -41,12 +41,12 @@ ROCE mode 0 现在是多 SGE 功能测试版本。推荐使用
 [主测试脚本的 ROCE 功能入口](../README.md#roce-多-sge-功能测试)：
 
 ```bash
-python bandwidth_test.py --roce-multi-sge --server-num 1 --rank-per-dev 2 \
-  --server-index 0 --master-ip 127.0.0.1
+python bandwidth_test.py
 ```
 
-入口会覆盖为 `comm_alg="roce"`、`mode=0`、`shared_jetty=False`、`batch_tokens=0`、
-`graph_type=0`，并关闭默认 URMA 拓扑扫描。`aiv_num` 建议保持 `-1`，tiling 固定启动两个 AIV。
+当前 `config.py` 默认单机两卡 ROCE 精度配置，无参数启动即运行多 SGE 功能用例：
+`comm_alg="roce"`、`mode=0`、`shared_jetty=False`、`batch_tokens=0`、`graph_type=0`，关闭拓扑扫描。
+`aiv_num` 建议保持 `-1`，tiling 固定启动两个 AIV。
 核 0 发送前 `ceil(BS/2)` 条 token，核间同步后由核 1 发送其余 token 并发布计数和通知；
 核 0 等待通知并拷贝输出。BS=1 时核 1 没有 payload，但仍发送完整计数和通知。
 网络请求在交接前全部 Drain，不使用旧的 Lock/Unlock cache 交接实验逻辑。

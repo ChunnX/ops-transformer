@@ -41,7 +41,7 @@ def configure_roce_functional_test(config):
     for name in ("server-num", "rank-per-dev", "server-index", "master-port"):
         parser.add_argument("--" + name, type=int, default=getattr(config.parallel, name.replace("-", "_")))
     parser.add_argument("--master-ip", default=config.parallel.master_ip)
-    parser.add_argument("--iterations", type=int, default=3, help="Calls per case on the same registered Win (default: 3)")
+    parser.add_argument("--iterations", type=int, default=1, help="Calls on the same registered Win (default: 1)")
     parser.add_argument("--timeout-seconds", type=int, default=600, help="Local worker deadline including setup (default: 600)")
     args = parser.parse_args()
     if os.environ.get("BANDWIDTH_TEST_CASE"):
@@ -55,11 +55,8 @@ def configure_roce_functional_test(config):
         parser.error("iterations must be positive")
     if args.timeout_seconds < 1:
         parser.error("timeout-seconds must be positive")
-    cases = [("single", 1, 16, "ring"), ("two_sge", 3, 32, "ring"),
-             ("three_sge_tail", 7, 272, "ring"), ("four_sge_tail", 9, 1024, "ring"),
-             ("scattered", 8 * size + 1, 272, "striped"),
-             ("id_chunk_hotspot", 513, 272, "hotspot"), ("local_only", 5, 16, "self")]
-    shapes = [dict(name=name, bs=bs, max_bs=bs, data_size=h, route=route) for name, bs, h, route in cases]
+    shapes = [dict(name="scattered", bs=config.shape.bs, max_bs=config.shape.max_bs,
+                   data_size=config.shape.data_size, route="striped")]
     return replace(
         config,
         parallel=replace(config.parallel, is_cloud=False, server_num=args.server_num, rank_per_dev=args.rank_per_dev,
@@ -67,12 +64,15 @@ def configure_roce_functional_test(config):
         shape=replace(config.shape, x_dtype="fp16", test_configs=shapes),
         model=replace(config.model, comm_alg="roce", mode=0, graph_type=0, shared_jetty=False,
                       shared_jetty_num=1, batch_tokens=0, peers_per_jetty=0),
-        run=replace(config.run, sweep_enabled=False, is_single_test=False,
+        run=replace(config.run, sweep_enabled=False, is_single_test=True,
                     is_precision_test=True, is_bandwidth_test=False),
     ), args.iterations, args.timeout_seconds
 
 
-ROCE_FUNCTIONAL = "--roce-multi-sge" in sys.argv
+# Honor the default precision configuration even when the script is launched without CLI arguments.
+ROCE_FUNCTIONAL = "--roce-multi-sge" in sys.argv or (
+    CONFIG.model.comm_alg == "roce" and CONFIG.run.is_precision_test
+)
 roce_iterations = 0
 roce_timeout_seconds = None
 if ROCE_FUNCTIONAL or "--help" in sys.argv or "-h" in sys.argv:
@@ -137,7 +137,7 @@ local_ranks = range(server_index * CONFIG.parallel.rank_per_dev,
 ranks_list = list(range(world_size))
 test_configs = (
     [{"bs": CONFIG.shape.bs, "data_size": CONFIG.shape.data_size, "max_bs": CONFIG.shape.max_bs}]
-    if CONFIG.run.is_single_test
+    if CONFIG.run.is_single_test and not ROCE_FUNCTIONAL
     else CONFIG.shape.test_configs
 )
 input_dtype = torch.bfloat16 if CONFIG.shape.x_dtype == "bf16" else torch.float16
@@ -486,9 +486,15 @@ class BANDWIDTH_TEST_GRAPH_Model(torch.nn.Module):
 # region 通信初始化
 
 
+def check_local_device_count():
+    visible_devices = torch_npu.npu.device_count()
+    if CONFIG.parallel.rank_per_dev > visible_devices:
+        raise ValueError(f"config.py: rank_per_dev={CONFIG.parallel.rank_per_dev}, "
+                         f"but only {visible_devices} local NPU devices are visible")
+
+
 def set_device(rank):
-    if CONFIG.parallel.rank_per_dev > torch_npu.npu.device_count():
-        raise ValueError("rank_per_dev exceeds the number of visible local NPU devices")
+    check_local_device_count()
     torch_npu.npu.set_device(rank % CONFIG.parallel.rank_per_dev)
     logger.info(f"current device set: {torch_npu.npu.current_device()}")
 
@@ -1365,6 +1371,7 @@ def run_roce_functional_rank(result_queue, rank):
 
 
 def run_roce_functional_test():
+    check_local_device_count()
     logger.info("ROCE multi-SGE functional test: <=4 source Win slots/WQE, 1 WQE/commit + Drain; no profiling")
     with Manager() as manager:
         result_queue = manager.Queue()

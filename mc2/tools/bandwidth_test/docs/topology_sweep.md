@@ -10,7 +10,9 @@
 python bandwidth_test.py
 ```
 
-`config.py` 默认 `RunConfig.sweep_enabled=True`。所有服务器使用相同 shape、核数、协议、batch、Drain 阈值、master IP 和初始端口；非云环境的 `server_index` 分别设为 0、1。
+`config.py` 当前默认单机两卡 ROCE 功能测试。运行本扫描前，切换为 URMA 带宽配置并设置
+`RunConfig.sweep_enabled=True`、`is_precision_test=False`、`is_bandwidth_test=True`。
+所有服务器使用相同 shape、核数、协议、batch、Drain 阈值、master IP 和初始端口；非云环境的 `server_index` 分别设为 0、1。
 当前 `shared_jetty_comm_level=2` 为全 UB_RTP。`batch_tokens`、`drain_threshold`、图模式和采样设置沿用配置。
 
 协调进程为每组拓扑启动新的测试进程和通信 context。组内复用通信域，顺序执行全部 `ShapeConfig.test_configs`。

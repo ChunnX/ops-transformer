@@ -9,7 +9,7 @@
 
 """带宽测试的用户配置入口。运行时派生值由 bandwidth_test.py 统一计算。
 
-修改下方各配置类的字段默认值，再运行同目录的 bandwidth_test.py。
+当前默认单机两卡 ROCE 多 SGE 功能测试，直接运行同目录的 bandwidth_test.py。
 """
 
 import json
@@ -20,9 +20,9 @@ from typing import Dict, List, Optional
 
 @dataclass(frozen=True)
 class ShapeConfig:
-    bs: int = 2  # 单配置时每个 rank 发送的 token 数，须 >= 1
+    bs: int = 512  # 单配置时每个 rank 发送的 token 数，须 >= 1
     data_size: int = 8192  # 单配置时每个 token 的元素数 H，须 >= 1
-    max_bs: int = 2  # 与 bs 相等；总 token 数不受 URMA 单批提交容量限制
+    max_bs: int = 512  # 与 bs 相等；总 token 数不受 URMA 单批提交容量限制
     # 多配置带宽测试的用例列表；字段含义同上。注释大小为 bs * H * 2 字节。
     test_configs: List[Dict[str, int]] = field(
         default_factory=lambda: [
@@ -51,12 +51,12 @@ class ShapeConfig:
 
 @dataclass(frozen=True)
 class ParallelConfig:
-    server_num: int = 2  # 参与通信的服务器数量，world_size = server_num * rank_per_dev
-    rank_per_dev: int = 8  # 每台服务器的 NPU 数量，用于 world_size 和本地设备编号取模
+    server_num: int = 1  # 参与通信的服务器数量，world_size = server_num * rank_per_dev
+    rank_per_dev: int = 2  # 每台服务器的 NPU 数量，用于 world_size 和本地设备编号取模
     is_cloud: bool = False  # True：从 VC_TASK_INDEX / VC_WORKER_HOSTS 解析服务器信息
-    server_index: int = 1  # 非云环境的服务器编号，范围 [0, server_num)
+    server_index: int = 0  # 非云环境的服务器编号，范围 [0, server_num)
     # 非云环境主节点 IP；None 沿用默认：单机 127.0.0.1，多机 71.20.45.123。
-    master_ip: Optional[str] = "7.246.125.11"
+    master_ip: Optional[str] = "127.0.0.1"
     master_port: int = 5001  # HCCL 初始化使用的 TCP 端口，各参与进程须一致
     is_full_core: bool = True  # True：使用 32 个 AIC / 64 个 AIV；False：使用 partial_core_num
     partial_core_num: int = 16  # 非全核时的 AIC 数量，AIV 数量自动取其两倍
@@ -65,12 +65,12 @@ class ParallelConfig:
 
 @dataclass(frozen=True)
 class ModelConfig:
-    graph_type: int = 3  # 0：单算子；3：aclgraph（当前编译路径仅支持全核）
-    comm_alg: str = "urma"  # mte、urma 或 roce；roce 的 mode 只能为 0/None，shared_jetty=False
-    shared_jetty: bool = True  # 共享 jetty：仅 comm_alg=urma 时生效
-    shared_jetty_num: int = 16  # 共享 jetty 数量；mode 4 忽略此项并固定为 world_size - 1
+    graph_type: int = 0  # 0：单算子；3：aclgraph（当前编译路径仅支持全核）
+    comm_alg: str = "roce"  # mte、urma 或 roce；ROCE精度配置直接运行多SGE功能用例
+    shared_jetty: bool = False  # 共享 jetty：仅 comm_alg=urma 时生效
+    shared_jetty_num: int = 1  # 共享 jetty 数量；mode 4 忽略此项并固定为 world_size - 1
     shared_jetty_comm_level: int = 2  # 共享 jetty 建链：0=域内UB_CTP/域间UB_RTP，1=全UB_CTP，2=全UB_RTP
-    mode: Optional[int] = 3  # 0=精度模式，2=原Win打流，3=每Jetty发所有卡，4=每远端卡一个Jetty；3/4仅共享Jetty
+    mode: Optional[int] = 0  # 0=精度模式，2=原Win打流，3=每Jetty发所有卡，4=每远端卡一个Jetty；3/4仅共享Jetty
     # 带宽测试由调用方保证通信参数正确：有效 channel、rank ID、Win 容量及各 rank 配置一致。
     # 必须保证实际 batch_tokens 小于每条使用的 SQ 和 CQ 深度；mode 0/1/2 的 0 选最大值（最高 2048）。
     # URMA 还须保证 drain_threshold 不超过实际可用 SQ/CQ 容量；kernel 不查询队列余量。
@@ -83,11 +83,11 @@ class ModelConfig:
 
 @dataclass(frozen=True)
 class RunConfig:
-    sweep_enabled: bool = True  # 一次运行两组拓扑扫描和 mode 4 基线；False 恢复原来的单拓扑测试。
+    sweep_enabled: bool = False  # True：URMA拓扑扫描；当前关闭，运行ROCE功能测试。
     sweep_output_path: str = "./Bandwidth_Sweep_Results"
-    is_precision_test: bool = False  # 是否对比 CPU golden；请开启单配置并关闭带宽测试
-    is_bandwidth_test: bool = True  # 是否采集执行耗时并计算带宽；与精度测试分别运行
-    is_single_test: bool = False  # True：使用 shape 的 bs/H/max_bs；False：使用 test_configs
+    is_precision_test: bool = True  # ROCE时按shape的bs/H/max_bs运行一组多SGE功能用例
+    is_bandwidth_test: bool = False  # 是否采集执行耗时并计算带宽；与精度测试分别运行
+    is_single_test: bool = True  # True：使用 shape 的 bs/H/max_bs；False：使用 test_configs
     loop: int = 100  # 单算子性能采集总迭代数；图模式每次 forward 固定调用一次算子
     repeat: int = 1  # 单算子 profiler 采集周期数，须 >= 1，且 loop // repeat > warmup
     warmup: int = 5  # 单算子 profiler 每个周期的预热迭代数，不计入正式采集

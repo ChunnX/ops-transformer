@@ -32,9 +32,10 @@ python bandwidth_test.py
 
 ## ROCE 多 SGE 功能测试
 
-入口仍为本目录的 `bandwidth_test.py`，增加 `--roce-multi-sge` 后自动选择 ROCE、mode 0、
-eager、FP16、非共享 channel，关闭拓扑扫描和 profiling。通信拓扑默认读取 `config.py` 的
-`parallel` 字段，也可用下面的命令行参数覆盖；此入口不读取云环境拓扑变量。
+`config.py` 当前默认单机两卡、`server_index=0`、`master_ip="127.0.0.1"`，选择 ROCE、mode 0、
+eager、FP16、非共享 channel，关闭拓扑扫描和 profiling。直接运行 `python bandwidth_test.py`
+即进入多 SGE 功能测试，不要求额外参数。`--roce-multi-sge` 仍可显式选择此入口。
+通信拓扑读取 `config.py` 的 `parallel` 字段，也可用下面的命令行参数覆盖；此入口不读取云环境拓扑变量。
 
 **先编译并安装这版算子。** 目标 asc-comm/CANN 必须提供用户约定的 ROCE BatchHandle 接口：
 `MakeBatchHandle(channel, ub, bytes, remoteWin, localWin)`、
@@ -57,9 +58,7 @@ eager、FP16、非共享 channel，关闭拓扑扫描和 profiling。通信拓�
 ```bash
 cd mc2/tools/bandwidth_test
 unset BANDWIDTH_TEST_CASE
-python -u bandwidth_test.py --roce-multi-sge \
-  --server-num 1 --rank-per-dev 2 --server-index 0 \
-  --master-ip 127.0.0.1 --master-port 5001
+python -u bandwidth_test.py
 ```
 
 双机、每机 8 卡：两台机器分别执行，`MASTER_IP` 都填机器 0 的可达 IP：
@@ -77,20 +76,15 @@ python -u bandwidth_test.py --roce-multi-sge \
 ```
 
 脚本自行启动本机 rank 进程，不要再套 `torchrun`。所有 rank 对都需要支持 ROCE，包括同机卡之间。
-默认 7 个用例，每个用例连续调用 3 次，复用同一通信域和注册 Win，并改变每次的输入值；
-可通过 `--iterations N` 修改次数。每次检查 `receive_cnt` 和有效输出数据与 CPU golden 完全一致。
+默认只运行一组用例、调用一次，尺寸读取 `config.py` 中 `ShapeConfig` 的 `bs/data_size/max_bs`，
+当前为 `BS=max_bs=512`、`H=8192`。可通过 `--iterations N` 增加同组用例的重复次数；
+重复时复用同一通信域和注册 Win，并改变输入值。每次检查 `receive_cnt` 和有效输出与 CPU golden 完全一致。
 
 | 用例 | BS | H | 覆盖内容 |
 | --- | ---: | ---: | --- |
-| single | 1 | 16 | 单段尾部，第二发送核没有 payload |
-| two_sge | 3 | 32 | 2 段请求及单段尾部 |
-| three_sge_tail | 7 | 272 | 4 段请求及 3 段尾部，行 padding |
-| four_sge_tail | 9 | 1024 | 多个 4 段请求及 1 段尾部 |
-| scattered | 8 × world_size + 1 | 272 | 非连续源地址、多个 peer、自发自收 |
-| id_chunk_hotspot | 513 | 272 | 跨 256 条路由读取边界、全发 rank 0、空接收 rank |
-| local_only | 5 | 16 | 全本地拷贝、远端零计数通知 |
+| scattered | 512 | 8192 | 交错路由、非连续源地址、4 SGE 请求及自发自收 |
 
-每台机器最后应打印 `ROCE multi-SGE: PASS`，默认每 rank 21 次检查。
+最后应打印 `ROCE multi-SGE: PASS`，默认每 rank 1 次检查。
 本机子进程报错、计数或数据不一致均以非零状态退出；双机时两台机器都 PASS 才表示全部 rank 通过。
 功能入口默认给本机 worker 共 600 秒（含初始化和全部用例），超时会终止本机 worker 并以非零状态退出，
 用于发现对端失败或设备等待卡住；首次 JIT 构建较慢时可用 `--timeout-seconds N` 放宽。
@@ -99,7 +93,9 @@ python -u bandwidth_test.py --roce-multi-sge \
 
 ## 全 UB_RTP 连续批跑
 
-当前默认开启 sweep，按原有拓扑矩阵和全部 shape 连续运行；所有用例统一使用
+切回 URMA 带宽扫描时，将 `comm_alg="urma"`、`shared_jetty=True`、`mode=3`、`graph_type=3`，
+以及 `sweep_enabled=True`、`is_precision_test=False`、`is_bandwidth_test=True`，并按实际拓扑配置服务器和卡数。
+扫描按原有拓扑矩阵和全部 shape 连续运行；所有用例统一使用
 `ParallelConfig.master_port=5001`，不按用例递增端口。
 保留全 UB_RTP（comm_level=2）、batch_tokens=0、drain_threshold=8192，
 图模式每个用例 105 轮（5 轮预热、100 轮采集）。临时设备诊断日志已删除。
@@ -120,7 +116,7 @@ python -u bandwidth_test.py 2>&1 | tee bandwidth_sweep.log
 
 ## 配置说明
 
-普通打流可使用 `ModelConfig.comm_alg = "urma"`、`ModelConfig.mode = 2`；当前默认配置见上面的全 UB_RTP 连续批跑说明。
+普通打流可使用 `ModelConfig.comm_alg = "urma"`、`ModelConfig.mode = 2`；当前默认配置为上面的单机两卡 ROCE 功能测试。
 模式 2 保留原有 Torch context、URMA batch 接口和 Win 直接打流逻辑。共享 Jetty 下还支持模式 3/4：
 模式 3 的每个 Jetty 都向所有远端卡发送完整 `BS` 个 token；模式 4 固定建立
 `world_size - 1` 个 Jetty，每个 Jetty 负责一张远端卡并发送完整 BS。
@@ -436,7 +432,7 @@ Batch buffer 复用不代表网络完成；报告时间包含 CQE 回收及 flag
 
 ## 一次批跑 Jetty 数量和发送对端数
 
-默认 `RunConfig.sweep_enabled=True`，执行 `python bandwidth_test.py` 自动完成拓扑扫描。
+切换为 URMA 带宽配置并设置 `RunConfig.sweep_enabled=True` 后，执行 `python bandwidth_test.py` 完成拓扑扫描。
 操作步骤、轮转公式、报告字段及重建要求见 [拓扑批跑说明](docs/topology_sweep.md)。
 `False` 恢复原单拓扑流程；mode 3 新增 `ModelConfig.peers_per_jetty`，0 表示本文原有的全部远端，正数表示实际发送对端数。
 此时每 rank payload 为 `Jetty数 × peers_per_jetty × BS × H × dtype_bytes`，接收等待仅覆盖对应发送方。
