@@ -418,9 +418,6 @@ __aicore__ inline float KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32
         constexpr uint32_t REDUCE_ALIGN = 16; // ReduceSum要求16个元素对齐
         uint32_t tDAligned = (tD + REDUCE_ALIGN - 1) / REDUCE_ALIGN * REDUCE_ALIGN;
         uint32_t srcShape[2] = {1, tDAligned};
-        // 诊断：预先初始化归约输出槽，区分未写入与检测器未追踪到归约写入。
-        Duplicate(scBuf, 0.0f, REDUCE_ALIGN);
-        PipeBarrier<PIPE_V>();
         ReduceSum<float, AscendC::Pattern::Reduce::AR, true>(scBuf, src, srcShape, true);
         PipeBarrier<PIPE_V>();
         return scBuf.GetValue(0);
