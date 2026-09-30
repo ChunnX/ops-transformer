@@ -264,7 +264,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         pipe_.InitBuffer(bufResFp32_, (N_ + 1) * dTile_ * sizeof(float));
         pipe_.InitBuffer(bufPostComb_, POST_COMB_SIZE * sizeof(float));
         pipe_.InitBuffer(bufPhiFp32_, 2, 2U * dTile_ * sizeof(float));
-        pipe_.InitBuffer(bufHInPrimeBf16_, BUFFER_NUM_ONE, dTile_ * sizeof(T));
+        pipe_.InitBuffer(bufHInPrimeBf16_, dTile_ * sizeof(T));
         pipe_.InitBuffer(bufScalar_, SCALAR_BUF_SIZE);
         const uint32_t gamma1CacheElems = (DUAL_SIBLING && USE_RMS_MID) || D_ <= GAMMA1_CACHE_MAX_D ? D_ : dTile_;
         pipe_.InitBuffer(bufScratchFp32_, gamma1CacheElems * sizeof(float));
