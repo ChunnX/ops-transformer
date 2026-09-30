@@ -1411,6 +1411,11 @@ def _cpu_mxfp8_golden_sectioned(
                             for item, weight in zip(diag_segments, weights_raw)
                         ]
                     ).sum(0)
+                # Match kernel InvalidRows for RIGHT_DOWN_CAUSAL. Rows
+                # before q_len - kv_len have no valid keys, including those
+                # inside a scheduled tile. Do not clear valid overflow rows.
+                if causal_bound is not None:
+                    res_rows = res_rows.masked_fill(causal_bound < 0, 0.0)
                 out[bi, head_idx, s1_idx, :] = res_rows
                 lse_rows = torch.where(
                     all_masked | no_valid_score,
