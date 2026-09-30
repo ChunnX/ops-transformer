@@ -24,7 +24,7 @@ __aicore__ static inline AscendC::FixpipeParamsArch3510<OutLayout> BuildDequantF
     const uint16_t rowCount, const uint16_t colCount, const bool isSubBlock)
 {
     AscendC::FixpipeParamsArch3510<OutLayout> fp(colCount, rowCount, rowCount, rowCount * 16U);
-    fp.quantPre = AscendC::QuantMode_t::DEQF16;
+    fp.quantPre = QuantMode_t::DEQF16;
     fp.deqScalar = sage::core::DEQ_SCALAR_DEQF16;
     fp.dualDstCtl = 0U;
     fp.subBlockId = isSubBlock;
@@ -46,7 +46,7 @@ public:
 
     template <uint32_t SubPart, typename L0BType>
     __aicore__ static inline void ComputeSubTileAndFixpipe(memory::FixedResource &res, const L0BType &l0TensorB, uint32_t ubOffset) {
-        constexpr auto syncEvt = static_cast<AscendC::event_t>(SubPart == 0U ? EventHandshake::QK_EVENT : EventHandshake::QK_SECOND_FIX_EVENT);
+        constexpr auto syncEvt = static_cast<event_t>(SubPart == 0U ? EventHandshake::QK_EVENT : EventHandshake::QK_SECOND_FIX_EVENT);
         AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(syncEvt);
 
         auto l0SubA = tla::MakeTensor(res.l0ABuf.template GetBufferByByte<Element>(SubPart * SUB_M * K_DIM), tla::MakeLayout<Element, typename TileCopy::LayoutTagL0A>(SUB_M, K_DIM), Catlass::Arch::PositionL0A{});
@@ -65,7 +65,7 @@ public:
         AscendC::Fixpipe<half, Accumulator, pipeCfg>(ubDestination, l0cSource, fpParams);
 
         AscendC::SetFlag<AscendC::HardEvent::FIX_M>(syncEvt);
-        EventHandshake::NotifyAiv<AscendC::PIPE_FIX>(TokenSignal::QK_READY, SubPart);
+        EventHandshake::NotifyAiv<PIPE_FIX>(TokenSignal::QK_READY, SubPart);
     }
 
     __aicore__ static inline void Execute(memory::FixedResource &res, uint32_t ubOffset, bool loadA, uint32_t kParity) {
@@ -73,9 +73,9 @@ public:
         auto l1TensorA = tla::MakeTensor(res.l1Buf.template GetBufferByByte<Element>(0U), tla::MakeLayout<Element, typename TileCopy::LayoutTagL1A>(sage::core::M, K_DIM), Catlass::Arch::PositionL1{});
         auto l1TensorB = tla::MakeTensor(res.l1Buf.template GetBufferByByte<Element>(BOffset + kParity * 65536U), tla::MakeLayout<Element, typename TileCopy::LayoutTagL1B>(K_DIM, N_DIM), Catlass::Arch::PositionL1{});
 
-        if (loadA != false) EventHandshake::WaitFromBothAiv<AscendC::PIPE_MTE1>(TokenSignal::Q_READY);
+        if (loadA != false) EventHandshake::WaitFromBothAiv<PIPE_MTE1>(TokenSignal::Q_READY);
 
-        const auto kFetchEvt = static_cast<AscendC::event_t>(EventHandshake::K_PREFETCH_EVENT_BASE + kParity);
+        const auto kFetchEvt = static_cast<event_t>(EventHandshake::K_PREFETCH_EVENT_BASE + kParity);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(kFetchEvt);
         AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(EventHandshake::QK_EVENT);
 
@@ -109,7 +109,7 @@ public:
     using ElementAccumulator = typename TileCopy::ElementAccumulator;
     using L0OperandTypeA = std::conditional_t<IsLocalA, AscendC::mx_fp8_e4m3_t, Element>;
 
-    static constexpr AscendC::event_t SYNC_SLOT = static_cast<AscendC::event_t>(IsLocalA ? EventHandshake::PV_EVENT : EventHandshake::QK_EVENT);
+    static constexpr event_t SYNC_SLOT = static_cast<event_t>(IsLocalA ? EventHandshake::PV_EVENT : EventHandshake::QK_EVENT);
     static constexpr uint32_t L0_OPERAND_OFFSET = IsLocalA ? 32768U : 0U;
     static constexpr uint32_t L0C_ACCUMULATOR_OFFSET = IsLocalA ? 131072U : 0U;
 
@@ -138,14 +138,14 @@ public:
         GM_ADDR scaleBaseAddr = (isCacheValid != false) ? (mxScale - static_cast<uint64_t>(mxStart) / 32U * nDim) : mxScale;
         const uint32_t scaleBufferOffset = IsPreloadedB ? ((vParity & 1U) ? sage::core::V_SCALE_L1_PONG : sage::core::V_SCALE_L1_PING) : sage::core::MX_V_L1;
 
-        auto l1ScaleTensor = tla::MakeTensor(res.l1Buf.template GetBufferByByte<AscendC::float8_e8m0_t>(scaleBufferOffset), tla::MakeMxScaleLayout<AscendC::float8_e8m0_t, Catlass::layout::nN, true>(IsPreloadedB ? kDim / 32U : scaleDimK / 32U, nDim), tla::MakeCoord(0U, 0U), Catlass::Arch::PositionL1{});
+        auto l1ScaleTensor = tla::MakeTensor(res.l1Buf.template GetBufferByByte<float8_e8m0_t>(scaleBufferOffset), tla::MakeMxScaleLayout<float8_e8m0_t, Catlass::layout::nN, true>(IsPreloadedB ? kDim / 32U : scaleDimK / 32U, nDim), tla::MakeCoord(0U, 0U), Catlass::Arch::PositionL1{});
 
         if constexpr (IsLocalA == true) {
             if constexpr (IsPreloadedB == false) {
                 if (!isCacheValid || mxCache->base != scaleBaseAddr) {
-                    AscendC::GlobalTensor<AscendC::float8_e8m0_t> globalScaleTensor;
-                    globalScaleTensor.SetGlobalBuffer(reinterpret_cast<__gm__ AscendC::float8_e8m0_t *>(scaleBaseAddr));
-                    auto gmScaleLayout = tla::MakeTensor(globalScaleTensor, tla::MakeMxScaleLayout<AscendC::float8_e8m0_t, Catlass::layout::RowMajor, true>(scaleDimK / 32U, nDim), Catlass::Arch::PositionGM{});
+                    AscendC::GlobalTensor<float8_e8m0_t> globalScaleTensor;
+                    globalScaleTensor.SetGlobalBuffer(reinterpret_cast<__gm__ float8_e8m0_t *>(scaleBaseAddr));
+                    auto gmScaleLayout = tla::MakeTensor(globalScaleTensor, tla::MakeMxScaleLayout<float8_e8m0_t, Catlass::layout::RowMajor, true>(scaleDimK / 32U, nDim), Catlass::Arch::PositionGM{});
                     Catlass::Gemm::Tile::TileCopyTla<ArchTag, decltype(gmScaleLayout), decltype(l1ScaleTensor)>()(l1ScaleTensor, gmScaleLayout);
                     if (isCacheValid) mxCache->base = scaleBaseAddr;
                 }
@@ -165,7 +165,7 @@ public:
         }
 
         if constexpr (IsPreloadedB == true) {
-            const auto prefetchEvt = static_cast<AscendC::event_t>(EventHandshake::V_PREFETCH_EVENT_BASE + (vParity & 1U));
+            const auto prefetchEvt = static_cast<event_t>(EventHandshake::V_PREFETCH_EVENT_BASE + (vParity & 1U));
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(prefetchEvt);
         } else {
             memory::Sync<AscendC::HardEvent::MTE2_MTE1>();
@@ -185,7 +185,7 @@ public:
         }
 
         if constexpr (IsPreloadedB == true) {
-            AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(static_cast<AscendC::event_t>(EventHandshake::V_PREFETCH_EVENT_BASE + (vParity & 1U)));
+            AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(static_cast<event_t>(EventHandshake::V_PREFETCH_EVENT_BASE + (vParity & 1U)));
         }
         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(SYNC_SLOT);
         memory::Sync<AscendC::HardEvent::MTE1_M>();

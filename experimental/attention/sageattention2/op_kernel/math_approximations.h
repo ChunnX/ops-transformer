@@ -38,13 +38,13 @@ struct ReciprocalApproximationPipeline {
     template <int N_STEPS = 2>
     __simd_callee__ static inline void VectorApproximation(
         vapi::RegTensor<float> &out_inv,
-        const vapi::RegTensor<float> &in_den,
-        const vapi::MaskReg &exec_mask,
+        vapi::RegTensor<float> &in_den,
+        vapi::MaskReg &exec_mask,
         float post_scale = 1.0f) noexcept {
 
         vapi::RegTensor<uint32_t> magic_reg, u32_den, u32_est;
         vapi::Duplicate(magic_reg, FAST_RECIPROCAL_MAGIC);
-        u32_den = (const vapi::RegTensor<uint32_t> &)in_den;
+        u32_den = (vapi::RegTensor<uint32_t> &)in_den;
         vapi::Sub(u32_est, magic_reg, u32_den, exec_mask);
 
         vapi::RegTensor<float> est_f32, two_reg, step_res;

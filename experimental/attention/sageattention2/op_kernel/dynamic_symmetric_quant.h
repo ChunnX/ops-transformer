@@ -411,7 +411,7 @@ struct BatchQuantSchedule {
 
     __aicore__ inline void Init(const SageParams &p, bool wideMode) {
         totalCores = 2U * p.cores;
-        coreId = GetBlockIdx() % totalCores;
+        coreId = AscendC::GetBlockIdx() % totalCores;
         const uint64_t numQ = (static_cast<uint64_t>(p.b) * p.hq * p.qp) / 64ULL;
         const uint64_t numK = (static_cast<uint64_t>(p.b) * p.hk * p.kp) / 64ULL;
         activeQ = wideMode ? 0ULL : numQ;
@@ -483,7 +483,7 @@ public:
         auto rawBuf = r.ubBuf.template GetBufferByByte<T>(RAW_OFFSET);
         auto f32Buf = r.ubBuf.template GetBufferByByte<float>(F32_OFFSET);
         auto sumBuf = r.ubBuf.template GetBufferByByte<float>(SUM_OFFSET);
-        const uint32_t coreRank = GetBlockIdx() % workers;
+        const uint32_t coreRank = AscendC::GetBlockIdx() % workers;
         const float invLength = 1.0f / static_cast<float>(p.sk);
 
         for (uint64_t headIdx = coreRank; headIdx < totalHeads; headIdx += workers) {
@@ -679,7 +679,7 @@ private:
         const uint64_t nq = WIDE ? 0 : (uint64_t(p.b) * p.hq * p.qp);
         const uint64_t nk = uint64_t(p.b) * p.hk * p.kp;
 
-        for (uint64_t tile = GetBlockIdx(); tile < (nq + nk) / 64; tile += 2 * p.cores) {
+        for (uint64_t tile = AscendC::GetBlockIdx(); tile < (nq + nk) / 64; tile += 2 * p.cores) {
             const bool isKv = tile < nk / 64;
             const bool isQ = !isKv;
             const uint64_t linIdx = (isKv ? tile : tile - nk / 64) * 64;
@@ -730,7 +730,7 @@ private:
 
         const uint64_t nk = uint64_t(p.b) * p.hk * p.kp;
 
-        for (uint64_t tile = GetBlockIdx(); tile < nk / 64; tile += 2 * p.cores) {
+        for (uint64_t tile = AscendC::GetBlockIdx(); tile < nk / 64; tile += 2 * p.cores) {
             const uint64_t linIdx = tile * 64;
             const uint32_t tokIdx = linIdx % p.kp, h = (linIdx / p.kp) % p.hk, b = linIdx / p.kp / p.hk;
             const uint32_t valid = tokIdx < p.sk ? Min(uint32_t(64), p.sk - tokIdx) : 0;

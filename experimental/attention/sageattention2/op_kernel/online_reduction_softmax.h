@@ -22,13 +22,13 @@ struct WideNZScoreProcessor {
     __simd_callee__ static inline void ProcessSlot(
         __ubuf__ half *scores_base,
         uint32_t element_offset,
-        const vapi::RegTensor<half> &q_factor,
-        const vapi::RegTensor<half> &k_elem,
+        vapi::RegTensor<half> &q_factor,
+        vapi::RegTensor<half> &k_elem,
         int32_t causal_threshold,
-        const vapi::RegTensor<int16_t> &lane_offset,
-        const vapi::RegTensor<half> &neg_inf,
+        vapi::RegTensor<int16_t> &lane_offset,
+        vapi::RegTensor<half> &neg_inf,
         vapi::RegTensor<half> &row_max,
-        const vapi::MaskReg &mask_h) noexcept {
+        vapi::MaskReg &mask_h) noexcept {
 
         vapi::RegTensor<half> c_scale, score_val;
         vapi::Mul(c_scale, q_factor, k_elem, mask_h);
@@ -84,11 +84,11 @@ struct HomologousProbabilityPacker {
     __simd_callee__ static inline void FoldSubLane(
         vapi::RegTensor<float> &row_sum_acc,
         vapi::RegTensor<float8_e4m3_t> &pk_dest,
-        const vapi::RegTensor<half> &score_chunk,
-        const vapi::RegTensor<half> &max_chunk,
-        const vapi::MaskReg &mask_f32,
-        const vapi::MaskReg &mask_f16,
-        const vapi::MaskReg &mask_byte,
+        vapi::RegTensor<half> &score_chunk,
+        vapi::RegTensor<half> &max_chunk,
+        vapi::MaskReg &mask_f32,
+        vapi::MaskReg &mask_f16,
+        vapi::MaskReg &mask_byte,
         bool is_initial) noexcept {
 
         static constexpr vapi::CastTrait kCastSatRint{OUT_LAYOUT, vapi::SatMode::SAT, vapi::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
@@ -103,7 +103,9 @@ struct HomologousProbabilityPacker {
         if (is_initial) {
             pk_dest = pk_current;
         } else {
-            vapi::Or((vapi::RegTensor<uint8_t> &)pk_dest, (const vapi::RegTensor<uint8_t> &)pk_dest, (const vapi::RegTensor<uint8_t> &)pk_current, mask_byte);
+            auto &dest_u8 = (vapi::RegTensor<uint8_t> &)pk_dest;
+            auto &curr_u8 = (vapi::RegTensor<uint8_t> &)pk_current;
+            vapi::Or(dest_u8, dest_u8, curr_u8, mask_byte);
         }
 
         // Task 3.4: Dequantize saturated/rounded E4M3 back to FP32 for homologous normalizer sum
@@ -135,7 +137,8 @@ __simd_callee__ inline __attribute__((always_inline)) void ComputeProbAndPackNZS
     HomologousProbabilityPacker::FoldSubLane<vapi::RegLayout::ONE,  vapi::RegLayout::THREE>(
         rowSum, packed_result, x1, m, mask_f, mask_h, mask_b, false);
 
-    vapi::StoreAlign((__ubuf__ uint8_t *)out + outOffset, (const vapi::RegTensor<uint8_t> &)packed_result, mask_b);
+    auto &res_u8 = (vapi::RegTensor<uint8_t> &)packed_result;
+    vapi::StoreAlign((__ubuf__ uint8_t *)out + outOffset, res_u8, mask_b);
 }
 
 // ============================================================================
@@ -144,8 +147,8 @@ __simd_callee__ inline __attribute__((always_inline)) void ComputeProbAndPackNZS
 
 struct RescaleFactorTracker {
     __simd_callee__ static inline vapi::RegTensor<float> UpdateFactors(
-        __ubuf__ half *maxima, const __ubuf__ half *blockMax, __ubuf__ float *alpha,
-        const vapi::MaskReg &f_mask, const vapi::MaskReg &h_mask) noexcept {
+        __ubuf__ half *maxima, __ubuf__ half *blockMax, __ubuf__ float *alpha,
+        vapi::MaskReg &f_mask, vapi::MaskReg &h_mask) noexcept {
 
         vapi::RegTensor<half> old_peak, new_peak;
         vapi::LoadAlign<half, vapi::LoadDist::DIST_UNPACK_B16>(old_peak, maxima);

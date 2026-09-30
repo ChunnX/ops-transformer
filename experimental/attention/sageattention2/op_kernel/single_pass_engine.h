@@ -74,31 +74,31 @@ private:
         microkernel::Gemm<int8_t, Catlass::layout::ColumnMajor, false, microkernel::B_L1>(
             res_, q8 + (task.qb + task.qstart) * p.dp, k8 + (task.kb + colOffset) * p.dp,
             p.dp, sage::core::N, memory::SCORE_UB + parity * sage::core::HALF * sage::core::N * 2, 0, step == 0);
-        microkernel::EventHandshake::NotifyBothAiv<AscendC::PIPE_FIX>(microkernel::TokenSignal::QK_READY);
+        microkernel::EventHandshake::NotifyBothAiv<PIPE_FIX>(microkernel::TokenSignal::QK_READY);
     }
 
     __aicore__ inline void DispatchPvMatmul(
         uint32_t step, const StandardTileTask &task, GM_ADDR v8, GM_ADDR vsmx, const sage::core::SageParams &p)
     {
-        microkernel::EventHandshake::WaitFromBothAiv<AscendC::PIPE_MTE1>(microkernel::TokenSignal::P_READY);
+        microkernel::EventHandshake::WaitFromBothAiv<PIPE_MTE1>(microkernel::TokenSignal::P_READY);
         if (step >= sage::core::LOOKAHEAD + sage::core::PV_SLOTS) {
-            microkernel::EventHandshake::WaitFromBothAiv<AscendC::PIPE_FIX>(microkernel::TokenSignal::PV_RELEASE);
+            microkernel::EventHandshake::WaitFromBothAiv<PIPE_FIX>(microkernel::TokenSignal::PV_RELEASE);
         }
         const uint32_t pvIdx = step - sage::core::LOOKAHEAD;
         const uint32_t parity = (step + sage::core::PIPE_SLOTS - sage::core::LOOKAHEAD) % sage::core::PIPE_SLOTS;
         const uint32_t pvOffset = memory::PV_UB + (pvIdx % sage::core::PV_SLOTS) * memory::PV_SLOT_BYTES;
         const uint32_t colOffset = pvIdx * sage::core::N;
-        microkernel::Gemm<microkernel::float8_e4m3_t, Catlass::layout::RowMajor, true, microkernel::B_L1>(
+        microkernel::Gemm<float8_e4m3_t, Catlass::layout::RowMajor, true, microkernel::B_L1>(
             res_, v8, v8 + (task.kb + colOffset) * p.dp, sage::core::N, p.dp,
             pvOffset, parity, true,
             vsmx + (task.kb + colOffset) / 32 * p.dp, &mxCache_, p.kp, colOffset);
-        microkernel::EventHandshake::NotifyBothAiv<AscendC::PIPE_FIX>(microkernel::TokenSignal::PV_READY);
+        microkernel::EventHandshake::NotifyBothAiv<PIPE_FIX>(microkernel::TokenSignal::PV_READY);
     }
 
     __aicore__ inline void DrainPvTokens(uint32_t count) {
         const uint32_t tokensToDrain = count < sage::core::PV_SLOTS ? count : sage::core::PV_SLOTS;
         for (uint32_t i = 0; i < tokensToDrain; ++i) {
-            microkernel::EventHandshake::WaitFromBothAiv<AscendC::PIPE_FIX>(microkernel::TokenSignal::PV_RELEASE);
+            microkernel::EventHandshake::WaitFromBothAiv<PIPE_FIX>(microkernel::TokenSignal::PV_RELEASE);
         }
     }
 
@@ -128,20 +128,20 @@ public:
         memory::Sync<AscendC::HardEvent::MTE2_S>();
         AscendC::Duplicate(maxima_, half(sage::core::SAGE_FP16_MIN), 128);
         AscendC::Duplicate(denom_, 0.0f, 64);
-        AscendC::PipeBarrier<AscendC::PIPE_V>();
+        AscendC::PipeBarrier<PIPE_V>();
     }
 
     __aicore__ inline void SeedScalePrefetch(const StandardTileTask &task) {
         AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(microkernel::EventHandshake::SCALE_EVENT_BASE);
-        AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(static_cast<AscendC::event_t>(microkernel::EventHandshake::SCALE_EVENT_BASE + 1));
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(static_cast<event_t>(microkernel::EventHandshake::SCALE_EVENT_BASE + 1));
         if (task.count > 0) {
-            const auto ev0 = static_cast<AscendC::event_t>(microkernel::EventHandshake::SCALE_EVENT_BASE);
+            const auto ev0 = static_cast<event_t>(microkernel::EventHandshake::SCALE_EVENT_BASE);
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(ev0);
             AscendC::DataCopy(res_.ubBuf.template GetBufferByByte<half>(memory::KS_UB), ksg_[task.kb], sage::core::N);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(ev0);
         }
         if (task.count > 1) {
-            const auto ev1 = static_cast<AscendC::event_t>(microkernel::EventHandshake::SCALE_EVENT_BASE + 1);
+            const auto ev1 = static_cast<event_t>(microkernel::EventHandshake::SCALE_EVENT_BASE + 1);
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(ev1);
             AscendC::DataCopy(res_.ubBuf.template GetBufferByByte<half>(memory::KS_UB + sage::core::N * 2),
                               ksg_[task.kb + sage::core::N], sage::core::N);
@@ -153,12 +153,12 @@ public:
         const uint32_t parity = step % sage::core::PIPE_SLOTS;
         const uint32_t colOffset = step * sage::core::N;
         auto scores = res_.ubBuf.template GetBufferByByte<half>(memory::SCORE_UB + parity * sage::core::HALF * sage::core::N * 2);
-        auto p8 = res_.ubBuf.template GetBufferByByte<microkernel::float8_e4m3_t>(memory::P_UB + parity * memory::P_SLOT_BYTES);
+        auto p8 = res_.ubBuf.template GetBufferByByte<float8_e4m3_t>(memory::P_UB + parity * memory::P_SLOT_BYTES);
         auto alpha = res_.ubBuf.template GetBufferByByte<float>(memory::ALPHA_UB + (step % sage::core::ALPHA_SLOTS) * 512);
 
-        microkernel::EventHandshake::WaitFromCube<AscendC::PIPE_V>(microkernel::TokenSignal::QK_READY);
+        microkernel::EventHandshake::WaitFromCube<PIPE_V>(microkernel::TokenSignal::QK_READY);
         auto ksu = res_.ubBuf.template GetBufferByByte<half>(memory::KS_UB + (step & 1) * sage::core::N * 2);
-        const auto scaleEv = static_cast<AscendC::event_t>(microkernel::EventHandshake::SCALE_EVENT_BASE + (step & 1));
+        const auto scaleEv = static_cast<event_t>(microkernel::EventHandshake::SCALE_EVENT_BASE + (step & 1));
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(scaleEv);
 
         const uint32_t qOffset = task.qstart + subBlock_ * sage::core::HALF;
@@ -170,7 +170,7 @@ public:
         auto pMax = reinterpret_cast<__ubuf__ half *>(maxima_.GetPhyAddr());
         auto pDen = reinterpret_cast<__ubuf__ float *>(denom_.GetPhyAddr());
         auto pAlpha = reinterpret_cast<__ubuf__ float *>(alpha.GetPhyAddr());
-        auto pOut8 = reinterpret_cast<__ubuf__ microkernel::float8_e4m3_t *>(p8.GetPhyAddr());
+        auto pOut8 = reinterpret_cast<__ubuf__ float8_e4m3_t *>(p8.GetPhyAddr());
         auto pQs = reinterpret_cast<__ubuf__ half *>(qsu_.GetPhyAddr());
         auto pKs = reinterpret_cast<__ubuf__ half *>(ksu.GetPhyAddr());
         auto pScratch = reinterpret_cast<__ubuf__ float *>(scratch.GetPhyAddr());
@@ -191,17 +191,17 @@ public:
         }
 
         memory::Sync<AscendC::HardEvent::V_MTE3>();
-        auto pl1 = res_.l1Buf.template GetBufferByByte<microkernel::float8_e4m3_t>(memory::P_L1 + parity * sage::core::M * sage::core::N);
+        auto pl1 = res_.l1Buf.template GetBufferByByte<float8_e4m3_t>(memory::P_L1 + parity * sage::core::M * sage::core::N);
         AscendC::DataCopyParams cp{sage::core::N / 32, sage::core::HALF, sage::core::P_NZ_PAD_ROWS, sage::core::HALF};
         AscendC::DataCopy(pl1[subBlock_ * sage::core::HALF * 32], p8, cp);
-        microkernel::EventHandshake::NotifyCube<AscendC::PIPE_MTE3>(microkernel::TokenSignal::P_READY);
+        microkernel::EventHandshake::NotifyCube<PIPE_MTE3>(microkernel::TokenSignal::P_READY);
     }
 
     __aicore__ inline void StepAccumulate(uint32_t step, uint32_t totalCount, const sage::core::SageParams &p) {
         const uint32_t pvIndex = step - sage::core::LOOKAHEAD;
         if (pvIndex & 1) {
-            microkernel::EventHandshake::WaitFromCube<AscendC::PIPE_V>(microkernel::TokenSignal::PV_READY);
-            microkernel::EventHandshake::WaitFromCube<AscendC::PIPE_V>(microkernel::TokenSignal::PV_READY);
+            microkernel::EventHandshake::WaitFromCube<PIPE_V>(microkernel::TokenSignal::PV_READY);
+            microkernel::EventHandshake::WaitFromCube<PIPE_V>(microkernel::TokenSignal::PV_READY);
             auto pv0 = res_.ubBuf.template GetBufferByByte<float>(memory::PV_UB);
             auto pv1 = res_.ubBuf.template GetBufferByByte<float>(memory::PV_UB + memory::PV_SLOT_BYTES);
             if (p.accum == sage::core::SagePvAccum::FP32_PLUS_FP16) {
@@ -216,10 +216,10 @@ public:
                 reinterpret_cast<__ubuf__ float *>(pv1.GetPhyAddr()),
                 reinterpret_cast<__ubuf__ float *>(alpha0.GetPhyAddr()),
                 reinterpret_cast<__ubuf__ float *>(alpha1.GetPhyAddr()));
-            microkernel::EventHandshake::NotifyCube<AscendC::PIPE_V>(microkernel::TokenSignal::PV_RELEASE);
-            microkernel::EventHandshake::NotifyCube<AscendC::PIPE_V>(microkernel::TokenSignal::PV_RELEASE);
+            microkernel::EventHandshake::NotifyCube<PIPE_V>(microkernel::TokenSignal::PV_RELEASE);
+            microkernel::EventHandshake::NotifyCube<PIPE_V>(microkernel::TokenSignal::PV_RELEASE);
         } else if (pvIndex + 1 == totalCount) {
-            microkernel::EventHandshake::WaitFromCube<AscendC::PIPE_V>(microkernel::TokenSignal::PV_READY);
+            microkernel::EventHandshake::WaitFromCube<PIPE_V>(microkernel::TokenSignal::PV_READY);
             auto pv0 = res_.ubBuf.template GetBufferByByte<float>(memory::PV_UB);
             if (p.accum == sage::core::SagePvAccum::FP32_PLUS_FP16) {
                 microkernel::OutAccumulator::RoundPartialFp16(reinterpret_cast<__ubuf__ float *>(pv0.GetPhyAddr()), sage::core::HALF * p.dp);
@@ -229,13 +229,13 @@ public:
                 reinterpret_cast<__ubuf__ float *>(accum_.GetPhyAddr()),
                 reinterpret_cast<__ubuf__ float *>(pv0.GetPhyAddr()),
                 reinterpret_cast<__ubuf__ float *>(alpha.GetPhyAddr()));
-            microkernel::EventHandshake::NotifyCube<AscendC::PIPE_V>(microkernel::TokenSignal::PV_RELEASE);
+            microkernel::EventHandshake::NotifyCube<PIPE_V>(microkernel::TokenSignal::PV_RELEASE);
         }
     }
 
     __aicore__ inline void EpilogueTile(const StandardTileTask &task, const sage::core::SageParams &p) {
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(microkernel::EventHandshake::SCALE_EVENT_BASE);
-        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(static_cast<AscendC::event_t>(microkernel::EventHandshake::SCALE_EVENT_BASE + 1));
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(static_cast<event_t>(microkernel::EventHandshake::SCALE_EVENT_BASE + 1));
         memory::Sync<AscendC::HardEvent::V_MTE2>();
         if (p.smoothV) {
             const uint32_t kh = sage::core::CalcKh(task.h, p.hq, p.hk);
@@ -251,7 +251,7 @@ public:
             reinterpret_cast<__ubuf__ float *>(denom_.GetPhyAddr()),
             reinterpret_cast<__ubuf__ float *>(scratch.GetPhyAddr()),
             reinterpret_cast<__ubuf__ float *>(vmean_.GetPhyAddr()));
-        AscendC::PipeBarrier<AscendC::PIPE_V>();
+        AscendC::PipeBarrier<PIPE_V>();
         const uint32_t first = task.qstart + subBlock_ * sage::core::HALF;
         const uint32_t validRows = first < p.sq ? (p.sq - first < sage::core::HALF ? p.sq - first : sage::core::HALF) : 0;
         if (p.d == p.dp) {
@@ -378,7 +378,7 @@ public:
                 vecEngine.EpilogueTile(tileTask, p);
             }
         }
-        AscendC::PipeBarrier<AscendC::PIPE_ALL>();
+        AscendC::PipeBarrier<PIPE_ALL>();
     }
 
 private:

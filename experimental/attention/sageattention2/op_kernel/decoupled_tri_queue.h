@@ -61,16 +61,16 @@ public:
 
 private:
     __aicore__ inline void PrimeTileKeyPrefetch(GM_ADDR keyBaseAddr) {
-        microkernel::PrefetchWideK<microkernel::WIDE_B_L1>(res_, keyBaseAddr, 0);
-        microkernel::PrefetchWideK<microkernel::WIDE_B_L1>(res_, keyBaseAddr + sage::core::N * 128, 1);
+        memory::PrefetchWideK<sage::core::WIDE_B_L1>(res_, keyBaseAddr, 0);
+        memory::PrefetchWideK<sage::core::WIDE_B_L1>(res_, keyBaseAddr + sage::core::N * 128, 1);
     }
 
     __aicore__ inline void InitializeSyncFlags() {
         microkernel::InitMxP(res_);
         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(microkernel::EventHandshake::K_PREFETCH_EVENT_BASE);
-        AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(static_cast<AscendC::event_t>(microkernel::EventHandshake::K_PREFETCH_EVENT_BASE + 1));
+        AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(static_cast<event_t>(microkernel::EventHandshake::K_PREFETCH_EVENT_BASE + 1));
         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(microkernel::EventHandshake::V_PREFETCH_EVENT_BASE);
-        AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(static_cast<AscendC::event_t>(microkernel::EventHandshake::V_PREFETCH_EVENT_BASE + 1));
+        AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(static_cast<event_t>(microkernel::EventHandshake::V_PREFETCH_EVENT_BASE + 1));
         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(microkernel::EventHandshake::QK_EVENT);
         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(microkernel::EventHandshake::PV_EVENT);
         AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(microkernel::EventHandshake::QK_EVENT);
@@ -88,7 +88,7 @@ private:
         constexpr bool INIT_ACCUM = (PHASE == 0);
         constexpr bool IS_LAST = (PHASE != 0);
         constexpr uint32_t PREV_PARITY = (1 - PHASE);
-        microkernel::Gemm<microkernel::float8_e4m3_t, Catlass::layout::RowMajor, true, microkernel::WIDE_B_L1, INIT_ACCUM, IS_LAST, true>(
+        microkernel::Gemm<float8_e4m3_t, Catlass::layout::RowMajor, true, sage::core::WIDE_B_L1, INIT_ACCUM, IS_LAST, true>(
             res_, v8, nullptr, sage::core::N, 128, pvOffset, parity, true,
             scaleBase + (slot.keyBase + slot.fragmentPart * sage::core::N) / 32 * 128,
             &mxCache_, p.kp, slot.fragmentPart * sage::core::N, PREV_PARITY);
@@ -102,14 +102,14 @@ private:
         constexpr uint32_t DP = 128;
         if (hasQk) {
             const auto &curSlot = pendingQueue_[fragIdx & 3];
-            microkernel::GemmQkSplit<microkernel::WIDE_B_L1>(res_, (fragIdx & 3) * sage::core::HALF * sage::core::N * 2, curSlot.fragmentPart == 0, PHASE);
+            microkernel::GemmQkSplit<sage::core::WIDE_B_L1>(res_, (fragIdx & 3) * sage::core::HALF * sage::core::N * 2, curSlot.fragmentPart == 0, PHASE);
             if (curSlot.fragmentPart + 2 < count * 2) {
-                microkernel::PrefetchWideK<microkernel::WIDE_B_L1>(res_, k8 + (curSlot.keyBase + (curSlot.fragmentPart + 2) * sage::core::N) * DP, PHASE);
+                memory::PrefetchWideK<sage::core::WIDE_B_L1>(res_, k8 + (curSlot.keyBase + (curSlot.fragmentPart + 2) * sage::core::N) * DP, PHASE);
             }
         }
         if (fragIdx >= 2 && prefetchPv) {
             const auto &vSlot = pendingQueue_[(fragIdx - 2) & 3];
-            microkernel::PrefetchWideV<microkernel::WIDE_B_L1>(
+            memory::PrefetchWideV<sage::core::WIDE_B_L1>(
                 res_, v8 + (vSlot.keyBase + vSlot.fragmentPart * sage::core::N) * DP,
                 vsmx + (vSlot.keyBase + vSlot.fragmentPart * sage::core::N) / 32 * DP, PHASE);
         }
@@ -117,15 +117,15 @@ private:
             const uint64_t prevIdx = fragIdx - 3;
             const auto &oldSlot = pendingQueue_[prevIdx & 3];
             const uint32_t grp = prevIdx / 2;
-            microkernel::EventHandshake::WaitFromBothAiv<AscendC::PIPE_MTE1>(microkernel::TokenSignal::P_READY);
+            microkernel::EventHandshake::WaitFromBothAiv<PIPE_MTE1>(microkernel::TokenSignal::P_READY);
             const uint32_t parity = prevIdx & 3;
             const uint32_t pvOffset = memory::WideVectorLayout::PV_UB + (grp & 1) * memory::WideVectorLayout::PV_SLOT_BYTES;
             if constexpr (PHASE == 0) {
                 if (grp >= 2) {
-                    microkernel::EventHandshake::WaitFromBothAiv<AscendC::PIPE_FIX>(microkernel::TokenSignal::PV_RELEASE);
+                    microkernel::EventHandshake::WaitFromBothAiv<PIPE_FIX>(microkernel::TokenSignal::PV_RELEASE);
                 }
                 ExecutePvGemmStage<0>(v8, vsmx, pvOffset, parity, oldSlot, p);
-                microkernel::EventHandshake::NotifyBothAiv<AscendC::PIPE_FIX>(microkernel::TokenSignal::PV_READY);
+                microkernel::EventHandshake::NotifyBothAiv<PIPE_FIX>(microkernel::TokenSignal::PV_READY);
             } else {
                 ExecutePvGemmStage<1>(v8, vsmx, pvOffset, parity, oldSlot, p);
             }
@@ -143,7 +143,7 @@ private:
     __aicore__ inline void FinalizeSyncFlags(uint64_t fragment) {
         const uint32_t drainLimit = (fragment / 2 < 2 ? fragment / 2 : 2);
         for (uint32_t i = 0; i < drainLimit; ++i) {
-            microkernel::EventHandshake::WaitFromBothAiv<AscendC::PIPE_FIX>(microkernel::TokenSignal::PV_RELEASE);
+            microkernel::EventHandshake::WaitFromBothAiv<PIPE_FIX>(microkernel::TokenSignal::PV_RELEASE);
         }
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(4);
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(5);
@@ -236,16 +236,16 @@ private:
         const uint64_t firstScale = first.kb;
         const uint64_t secondScale = dispatch::SnakeScheduler<CAUSAL>::LookaheadScale(p, first, 1, totalTasks);
         AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(microkernel::EventHandshake::SCALE_EVENT_BASE);
-        AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(static_cast<AscendC::event_t>(microkernel::EventHandshake::SCALE_EVENT_BASE + 1));
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(static_cast<event_t>(microkernel::EventHandshake::SCALE_EVENT_BASE + 1));
 
         if (firstScale != ~uint64_t(0)) {
-            const auto ev0 = static_cast<AscendC::event_t>(microkernel::EventHandshake::SCALE_EVENT_BASE);
+            const auto ev0 = static_cast<event_t>(microkernel::EventHandshake::SCALE_EVENT_BASE);
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(ev0);
             AscendC::DataCopy(res_.ubBuf.template GetBufferByByte<half>(memory::WideVectorLayout::KS_UB), ksg[firstScale], 512);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(ev0);
         }
         if (secondScale != ~uint64_t(0)) {
-            const auto ev1 = static_cast<AscendC::event_t>(microkernel::EventHandshake::SCALE_EVENT_BASE + 1);
+            const auto ev1 = static_cast<event_t>(microkernel::EventHandshake::SCALE_EVENT_BASE + 1);
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(ev1);
             AscendC::DataCopy(res_.ubBuf.template GetBufferByByte<half>(memory::WideVectorLayout::KS_UB + 1024), ksg[secondScale], 512);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(ev1);
@@ -276,7 +276,7 @@ private:
         memory::Sync<AscendC::HardEvent::MTE2_V>();
 
         AscendC::Cast(x, input, AscendC::RoundMode::CAST_NONE, sage::core::HALF * 128);
-        AscendC::PipeBarrier<AscendC::PIPE_V>();
+        AscendC::PipeBarrier<PIPE_V>();
 
         auto pX = reinterpret_cast<__ubuf__ float *>(x.GetPhyAddr());
         auto pScales = reinterpret_cast<__ubuf__ float *>(scales.GetPhyAddr());
@@ -294,9 +294,9 @@ private:
             AscendC::DataCopy(ql1[cb * sage::core::M * 32], qOut[cb * 32], plane);
         }
 
-        microkernel::EventHandshake::NotifyCube<AscendC::PIPE_MTE3>(microkernel::TokenSignal::Q_READY);
+        microkernel::EventHandshake::NotifyCube<PIPE_MTE3>(microkernel::TokenSignal::Q_READY);
         AscendC::Duplicate(maxima, half(sage::core::SAGE_FP16_MIN), 128);
-        AscendC::PipeBarrier<AscendC::PIPE_V>();
+        AscendC::PipeBarrier<PIPE_V>();
     }
 
     __aicore__ inline void ExecuteDualStageSoftmax(
@@ -305,14 +305,14 @@ private:
         AscendC::LocalTensor<half> &maxima, uint64_t totalTasks, const sage::core::SageParams &p)
     {
         auto scores = res_.ubBuf.template GetBufferByByte<half>(memory::WideVectorLayout::SCORE_UB + (group & 1) * 2 * sage::core::HALF * sage::core::N * 2);
-        auto p8 = scores.template ReinterpretCast<microkernel::float8_e4m3_t>();
+        auto p8 = scores.template ReinterpretCast<float8_e4m3_t>();
         auto alpha = res_.ubBuf.template GetBufferByByte<float>(memory::WideVectorLayout::ALPHA_UB + (group % 3) * 512);
 
-        microkernel::EventHandshake::WaitFromCube<AscendC::PIPE_V>(microkernel::TokenSignal::QK_READY);
-        microkernel::EventHandshake::WaitFromCube<AscendC::PIPE_V>(microkernel::TokenSignal::QK_READY);
+        microkernel::EventHandshake::WaitFromCube<PIPE_V>(microkernel::TokenSignal::QK_READY);
+        microkernel::EventHandshake::WaitFromCube<PIPE_V>(microkernel::TokenSignal::QK_READY);
 
         auto ksu = res_.ubBuf.template GetBufferByByte<half>(memory::WideVectorLayout::KS_UB + (group & 1) * 1024);
-        const auto scaleEvent = static_cast<AscendC::event_t>(microkernel::EventHandshake::SCALE_EVENT_BASE + (group & 1));
+        const auto scaleEvent = static_cast<event_t>(microkernel::EventHandshake::SCALE_EVENT_BASE + (group & 1));
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(scaleEvent);
 
         const int32_t qStartInSk = static_cast<int32_t>(current.qstart + subBlock * sage::core::HALF);
@@ -323,7 +323,7 @@ private:
         auto pScores = reinterpret_cast<__ubuf__ half *>(scores.GetPhyAddr());
         auto pMax = reinterpret_cast<__ubuf__ half *>(maxima.GetPhyAddr());
         auto pAlpha = reinterpret_cast<__ubuf__ float *>(alpha.GetPhyAddr());
-        auto pOut8 = reinterpret_cast<__ubuf__ microkernel::float8_e4m3_t *>(p8.GetPhyAddr());
+        auto pOut8 = reinterpret_cast<__ubuf__ float8_e4m3_t *>(p8.GetPhyAddr());
         auto pQs = reinterpret_cast<__ubuf__ half *>(qsu.GetPhyAddr());
         auto pKs = reinterpret_cast<__ubuf__ half *>(ksu.GetPhyAddr());
         auto pSums = reinterpret_cast<__ubuf__ float *>(partialSums.GetPhyAddr());
@@ -350,19 +350,19 @@ private:
         }
 
         memory::Sync<AscendC::HardEvent::V_MTE3>();
-        auto pl1_0 = res_.l1Buf.template GetBufferByByte<microkernel::float8_e4m3_t>(fragment * sage::core::M * sage::core::N);
+        auto pl1_0 = res_.l1Buf.template GetBufferByByte<float8_e4m3_t>(fragment * sage::core::M * sage::core::N);
         AscendC::DataCopyParams cp0{sage::core::N / 32, sage::core::HALF, 0, sage::core::HALF};
         AscendC::DataCopy(pl1_0[subBlock * sage::core::HALF * 32], p8, cp0);
-        microkernel::EventHandshake::NotifyCube<AscendC::PIPE_MTE3>(microkernel::TokenSignal::P_READY);
+        microkernel::EventHandshake::NotifyCube<PIPE_MTE3>(microkernel::TokenSignal::P_READY);
 
         microkernel::SimdSoftmax::SoftmaxWideSecondVF(
             pScores + 64 * 32, pMax, pAlpha, pOut8 + 64 * 32, pSums);
 
         memory::Sync<AscendC::HardEvent::V_MTE3>();
-        auto pl1_1 = res_.l1Buf.template GetBufferByByte<microkernel::float8_e4m3_t>((fragment + 1) * sage::core::M * sage::core::N);
+        auto pl1_1 = res_.l1Buf.template GetBufferByByte<float8_e4m3_t>((fragment + 1) * sage::core::M * sage::core::N);
         AscendC::DataCopyParams cp1{sage::core::N / 32, sage::core::HALF, 0, sage::core::HALF};
         AscendC::DataCopy(pl1_1[subBlock * sage::core::HALF * 32], p8[64 * 32], cp1);
-        microkernel::EventHandshake::NotifyCube<AscendC::PIPE_MTE3>(microkernel::TokenSignal::P_READY);
+        microkernel::EventHandshake::NotifyCube<PIPE_MTE3>(microkernel::TokenSignal::P_READY);
     }
 
     __aicore__ inline void RetirePendingStep(
@@ -377,11 +377,11 @@ private:
             const auto &oldTile = tileHistory_[retired % 3];
             deferPair = (retired + 1 < group && oldTile.tileOrdinal == tileHistory_[(retired + 1) % 3].tileOrdinal);
             if (deferPair) {
-                microkernel::EventHandshake::WaitFromCube<AscendC::PIPE_V>(microkernel::TokenSignal::PV_READY);
-                microkernel::EventHandshake::WaitFromCube<AscendC::PIPE_V>(microkernel::TokenSignal::PV_READY);
+                microkernel::EventHandshake::WaitFromCube<PIPE_V>(microkernel::TokenSignal::PV_READY);
+                microkernel::EventHandshake::WaitFromCube<PIPE_V>(microkernel::TokenSignal::PV_READY);
             } else {
                 if (oldTile.isQueryLast) {
-                    microkernel::EventHandshake::WaitFromCube<AscendC::PIPE_V>(microkernel::TokenSignal::PV_READY);
+                    microkernel::EventHandshake::WaitFromCube<PIPE_V>(microkernel::TokenSignal::PV_READY);
                     memory::Sync<AscendC::HardEvent::V_MTE2>();
                     if (p.smoothV) {
                         const uint32_t kh = sage::core::CalcKh(oldTile.headIdx, p.hq, p.hk);
@@ -404,7 +404,7 @@ private:
 
                     microkernel::OutAccumulator::FinalizeWideFp32<T, 128, false>(
                         pQo, pAccum, pPv, pAlpha, pDen, pScratch, pVmean);
-                    AscendC::PipeBarrier<AscendC::PIPE_V>();
+                    AscendC::PipeBarrier<PIPE_V>();
                     const uint32_t firstRow = oldTile.qOffsetStart + subBlock * sage::core::HALF;
                     const uint32_t validRows = firstRow < p.sq ? (p.sq - firstRow < sage::core::HALF ? p.sq - firstRow : sage::core::HALF) : 0;
                     if (validRows) {
@@ -475,7 +475,7 @@ private:
         }
 
         if (secondInfo.isQueryLast) {
-            AscendC::PipeBarrier<AscendC::PIPE_V>();
+            AscendC::PipeBarrier<PIPE_V>();
             const uint32_t firstRow = secondInfo.qOffsetStart + subBlock * sage::core::HALF;
             const uint32_t validRows = firstRow < p.sq ? (p.sq - firstRow < sage::core::HALF ? p.sq - firstRow : sage::core::HALF) : 0;
             if (validRows) {
@@ -500,7 +500,7 @@ private:
         while (retired < groups) {
             const auto oldTile = tileHistory_[retired % 3];
             if (oldTile.isQueryLast) {
-                microkernel::EventHandshake::WaitFromCube<AscendC::PIPE_V>(microkernel::TokenSignal::PV_READY);
+                microkernel::EventHandshake::WaitFromCube<PIPE_V>(microkernel::TokenSignal::PV_READY);
                 memory::Sync<AscendC::HardEvent::V_MTE2>();
                 if (p.smoothV) {
                     const uint32_t kh = sage::core::CalcKh(oldTile.headIdx, p.hq, p.hk);
@@ -523,7 +523,7 @@ private:
 
                 microkernel::OutAccumulator::FinalizeWideFp32<T, 128, false>(
                     pQo, pAccum, pPv, pAlpha, pDen, pScratch, pVmean);
-                AscendC::PipeBarrier<AscendC::PIPE_V>();
+                AscendC::PipeBarrier<PIPE_V>();
                 const uint32_t firstRow = oldTile.qOffsetStart + subBlock * sage::core::HALF;
                 const uint32_t validRows = firstRow < p.sq ? (p.sq - firstRow < sage::core::HALF ? p.sq - firstRow : sage::core::HALF) : 0;
                 if (validRows) {
@@ -565,7 +565,7 @@ __aicore__ inline __attribute__((always_inline)) void ExecuteWideStream(
         vectorEngine.Execute(core, totalTasks, q, k8, v8, qs, ks, mxScale, vMean, out, lse, p);
     }
 
-    AscendC::PipeBarrier<AscendC::PIPE_ALL>();
+    AscendC::PipeBarrier<PIPE_ALL>();
 }
 
 #endif // __CCE__

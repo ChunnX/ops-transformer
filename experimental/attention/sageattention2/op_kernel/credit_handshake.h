@@ -67,6 +67,11 @@ struct EventHandshake {
 
 } // namespace sage::orchestration
 
+namespace sage::microkernel {
+using orchestration::TokenSignal;
+using orchestration::EventHandshake;
+}
+
 namespace sage {
 using orchestration::TokenSignal;
 using orchestration::EventHandshake;

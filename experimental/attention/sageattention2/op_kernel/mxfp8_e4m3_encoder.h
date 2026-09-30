@@ -26,7 +26,7 @@ __aicore__ inline void InitMxP(memory::FixedResource &resource) {
     const auto l1ScaleAddr = resource.l1Buf.template GetBufferByByte<float8_e8m0_t>(sage::core::MX_P_L1).GetPhyAddr();
     const uint64_t targetUnitOffset = reinterpret_cast<uint64_t>(l0aByteAddr) / 16ULL;
 
-    load_cbuf_to_ca_mx(targetUnitOffset, static_cast<__cbuf__ void *>(l1ScaleAddr), 0, 0,
+    load_cbuf_to_ca_mx(targetUnitOffset, (__cbuf__ void *)l1ScaleAddr, 0, 0,
                        sage::core::MX_P_M_BLOCKS, sage::core::MX_P_N_BLOCKS,
                        sage::core::MX_P_N_BLOCKS, sage::core::MX_P_N_BLOCKS);
     memory::Sync<AscendC::HardEvent::MTE1_M>();
@@ -37,8 +37,8 @@ __simd_callee__ inline void DeriveMxfp8ScaleAndReciprocal(
     AscendC::MicroAPI::RegTensor<float> &outInv,
     AscendC::MicroAPI::RegTensor<uint32_t> &outExponentBits,
     AscendC::MicroAPI::RegTensor<float> &colMaxF32,
-    const AscendC::MicroAPI::RegTensor<uint32_t> &expMask,
-    const AscendC::MicroAPI::RegTensor<uint32_t> &invBias,
+    AscendC::MicroAPI::RegTensor<uint32_t> &expMask,
+    AscendC::MicroAPI::RegTensor<uint32_t> &invBias,
     MaskType &mask)
 {
     AscendC::MicroAPI::Muls(colMaxF32, colMaxF32, sage::core::INV_MX_FP8_MAX, mask);
