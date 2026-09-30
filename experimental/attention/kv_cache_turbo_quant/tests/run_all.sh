@@ -29,12 +29,22 @@ fi
 
 mkdir -p "$WORK/data" "$WORK/inputs" "$WORK/out"
 
-# 1) 矩阵（旋转/投影）：任务包未随附，按固定种子生成（统计等价，sha256 见 data/meta.json）
-if [[ ! -f "$WORK/data/meta.json" ]]; then
-    "$PY" "$HERE/gen_test_data.py" --out "$WORK/data"
+# 1) 矩阵（旋转/投影）：
+#    - 有官方共享件时优先用它（KCTQ_MATRIX_DIR，或 $KCTQ_OFFICIAL_DATA/shared）——
+#      交付口径固定用官方件（sha256 见 2.2 日志抬头）；
+#    - 否则按固定种子生成统计等价矩阵（seed 见 meta.json）。
+MATDIR=${KCTQ_MATRIX_DIR:-}
+if [[ -z "$MATDIR" && -n "${KCTQ_OFFICIAL_DATA:-}" && -f "$KCTQ_OFFICIAL_DATA/shared/rotation_matrix.bin" ]]; then
+    MATDIR="$KCTQ_OFFICIAL_DATA/shared"
 fi
-ROT="$WORK/data/rotation_matrix.bin"
-QJL="$WORK/data/qjl_matrix.bin"
+if [[ -z "$MATDIR" ]]; then
+    if [[ ! -f "$WORK/data/meta.json" ]]; then
+        "$PY" "$HERE/gen_test_data.py" --out "$WORK/data"
+    fi
+    MATDIR="$WORK/data"
+fi
+ROT="$MATDIR/rotation_matrix.bin"
+QJL="$MATDIR/qjl_matrix.bin"
 
 # 2) case 列表来自 case.json（shape[0]=tokens、shape[1]=heads、attr mse_bits）
 mapfile -t CASES < <("$PY" - "$HERE/case.json" <<'PY'
