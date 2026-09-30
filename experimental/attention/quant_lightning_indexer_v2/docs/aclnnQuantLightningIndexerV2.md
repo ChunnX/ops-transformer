@@ -1,11 +1,9 @@
 # aclnnQuantLightningIndexerV2
 
-[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/attention/quant_lightning_indexer_v2)
-
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：不支持（本分支已移除 arch35/950 实现，仅保留 arch22）
+- <term>Ascend 950PR/Ascend 950DT</term>：不支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
