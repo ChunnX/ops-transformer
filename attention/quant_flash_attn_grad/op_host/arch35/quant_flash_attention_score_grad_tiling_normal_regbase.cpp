@@ -246,6 +246,9 @@ ge::graphStatus QuantFlashAttentionScoreGradTilingNormalRegbase::DoSparse()
             const int64_t nTiles = CeilDivideBy(fBaseParams.s2, static_cast<int64_t>(QUANT_BLOCK_S2_SIZE));
             fBaseParams.deterMaxRound = bSize * CeilDivideBy(nTiles * n1, kNum) * mTiles;
         }
+        const int64_t swizzleRows = std::max(s1Outer, std::min(kNum, s2Outer));
+        const int64_t swizzleMaxRound = bSize * CeilDivideBy(s2Outer * n1, kNum) * swizzleRows;
+        fBaseParams.deterMaxRound = std::max(fBaseParams.deterMaxRound, swizzleMaxRound);
         if (fBaseParams.deterMaxRound < 1) {
             fBaseParams.deterMaxRound = 1;
         }
