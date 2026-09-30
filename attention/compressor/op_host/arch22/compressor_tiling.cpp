@@ -294,14 +294,6 @@ ge::graphStatus CompressorTiling::SetInnerSplitInfo()
                 baseParams_->mLoopNum = mBaseNum / baseParams_->coreGroupNum;
             }
         }
-        // [临时调试探针] FULL_LOAD模板的核间切分信息: kBaseNum>1即发生K轴核间切分
-        fprintf(stderr,
-                "[SetInnerSplitInfo][FULL_LOAD] tokenSize=%u, mBaseNum=%u, dBaseNum=%u, coreGroupNum=%u, "
-                "kBaseNum=%u, kBaseSize=%u, batchConsistency=%u (kBaseNum>1: K轴核间切分; "
-                "batchConsistency==3: 不切K全M, 超界组空转)\n",
-                baseParams_->tokenSize, mBaseNum, dBaseNum, baseParams_->coreGroupNum, baseParams_->kBaseNum,
-                baseParams_->kBaseSize, baseParams_->batchConsistency);
-        fflush(stderr);
     } else {
         if (coff == 2) {
             innerSplitParams_->mBaseSize = 128;
@@ -309,14 +301,6 @@ ge::graphStatus CompressorTiling::SetInnerSplitInfo()
             innerSplitParams_->mBaseSize = 256;
         }
         innerSplitParams_->dBaseSize = 64;
-        // [临时调试探针] NORMAL/EMPTY_X模板: 只设置mBaseSize/dBaseSize初值, 不设置kBaseNum(K轴不做核间切分,
-        // 由单核内部按K_L1_BASE=256分段完整遍历; D方向动态细切32由kernel侧SetBaseSize决定, 不在此处)
-        fprintf(stderr,
-                "[SetInnerSplitInfo][NORMAL] templateId=%hhu, tokenSize=%u, seqSize=%u, coff=%u, mBaseSize=%u, "
-                "dBaseSize=64, batchConsistency=%u (kBaseNum不设置, K轴不切分; 悬崖细切在kernel侧)\n",
-                static_cast<uint8_t>(context_->templateId), baseParams_->tokenSize, baseParams_->seqSize,
-                static_cast<uint32_t>(coff), innerSplitParams_->mBaseSize, baseParams_->batchConsistency);
-        fflush(stderr);
     }
     return ge::GRAPH_SUCCESS;
 }
