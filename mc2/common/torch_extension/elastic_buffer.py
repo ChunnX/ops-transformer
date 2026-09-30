@@ -909,6 +909,12 @@ class ElasticBuffer:
             `num_cpu_bytes` is used instead and the table is memcpy'd into it (the
             current `storage` no longer needs to outlive the write). Whether zero-copy
             is active can be queried via `engram_storage_zero_copy`.
+            In sliced inference mode (fetch_mode=0), the same applies to the per-rank
+            `storage` shard: when its host memory is device-registerable and the comm
+            domain accepts the registration, the shard is mapped in place (no per-rank
+            window, no memcpy) and in-place updates of `storage` are visible to
+            subsequent engram_fetch calls from every rank; otherwise a per-rank copy
+            window is used as in local mode.
         """
         torch._check(
             storage.is_cpu,
@@ -979,12 +985,11 @@ class ElasticBuffer:
                 lambda: f"sf dtype must be one of {_ENGRAM_SF_DTYPES}, got: {sf.dtype}",
             )
         self._runtime.engram_write(storage, sf)
-        if self._with_grad or self._fetch_mode == FETCH_MODE_LOCAL:
-            # with_grad: 存储 host 内存被直接映射 (零拷贝); local: 存储可能被原地零拷贝注册。
-            # 两种情形都持有引用保证映射内存存活 (local 回退拷贝路径下持有无害)。
-            self._engram_storage_ref = storage
-            if self._with_grad and sf is not None:
-                self._engram_sf_ref = sf
+        # 推理模式(local 整表 / sliced 分片)存储可能被原地零拷贝注册, with_grad 模式存储 host 内存
+        # 被直接映射: 都必须持有引用保证映射内存存活 (回退拷贝路径下持有无害)。
+        self._engram_storage_ref = storage
+        if self._with_grad and sf is not None:
+            self._engram_sf_ref = sf
         self._engram_context_tensor = self._runtime.get_context_tensor()
         self._engram_hidden_size = storage.size(1)
         self._engram_num_entries = storage.size(0)
@@ -1001,9 +1006,10 @@ class ElasticBuffer:
         """Whether the engram storage host memory is registered in place (zero-copy).
 
         True when the storage passed to ``engram_write`` is mapped directly as the
-        engram window (with_grad mode, or local mode with device-registerable host
-        memory); False when a per-rank copy window is used instead. In local mode,
-        ranks sharing the same host memory report True with identical
+        engram window (with_grad mode, or local/sliced inference mode with
+        device-registerable host memory and a successful comm-domain registration);
+        False when a per-rank copy window is used instead. In local mode, ranks
+        sharing the same host memory report True with identical
         ``engram_host_buf_ptr`` values, i.e. the SAME vocab is mapped on every NPU.
         """
         return bool(self._runtime.get_storage_zero_copy())
