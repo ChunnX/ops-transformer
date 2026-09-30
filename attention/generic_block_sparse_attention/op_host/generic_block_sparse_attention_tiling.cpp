@@ -428,6 +428,7 @@ ge::graphStatus GBSATiling::ParseQueryKeyShapes(gert::TilingContext* context)
         return ge::GRAPH_FAILED;
     }
 
+    // Query 3D / key 4D dim-num guards are enforced by InferShape, which runs before tiling.
     numHeads_ = static_cast<uint32_t>(queryShape->GetStorageShape().GetDim(TND_DIM_N));
     embeddingSize_ = static_cast<uint32_t>(queryShape->GetStorageShape().GetDim(TND_DIM_D));
     if (embeddingSize_ != 128) {
@@ -553,6 +554,11 @@ ge::graphStatus GBSATiling::ParseBlockTable(gert::TilingContext* context)
     }
     batch_ = static_cast<uint32_t>(blockTableShape->GetStorageShape().GetDim(BLOCK_TABLE_DIM_BATCH));
     maxBlocksPerBatch_ = static_cast<uint32_t>(blockTableShape->GetStorageShape().GetDim(BLOCK_TABLE_DIM_MAX_BLOCKS));
+    if (batch_ == 0 || maxBlocksPerBatch_ == 0) {
+        OP_LOGE(context->GetNodeName(), "blockTable dims must be positive, got batch=%u, maxBlocksPerBatch=%u.", batch_,
+                maxBlocksPerBatch_);
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -735,6 +741,11 @@ ge::graphStatus GBSATiling::CheckCuSeqLengths(gert::TilingContext* context)
         OP_LOGE(context->GetNodeName(), "cuSeqLengthsQ shape is nullptr.");
         return ge::GRAPH_FAILED;
     }
+    if (cuSeqLengthsQShape->GetStorageShape().GetDimNum() != 1) {
+        OP_LOGE(context->GetNodeName(), "cuSeqLengthsQ must be 1D [batch+1], but got %zu dims.",
+                cuSeqLengthsQShape->GetStorageShape().GetDimNum());
+        return ge::GRAPH_FAILED;
+    }
     if (cuSeqLengthsQShape->GetStorageShape().GetShapeSize() != static_cast<int64_t>(batch_) + 1) {
         OP_LOGE(context->GetNodeName(), "cuSeqLengthsQ size=%ld must equal blockTable batch+1=%u.",
                 cuSeqLengthsQShape->GetStorageShape().GetShapeSize(), batch_ + 1);
@@ -757,6 +768,11 @@ ge::graphStatus GBSATiling::CheckCuSeqLengths(gert::TilingContext* context)
     const gert::StorageShape* sequsedKvShape = context->GetOptionalInputShape(SEQUSED_KV_INDEX);
     if (sequsedKvShape == nullptr) {
         OP_LOGE(context->GetNodeName(), "sequsedKv shape is nullptr.");
+        return ge::GRAPH_FAILED;
+    }
+    if (sequsedKvShape->GetStorageShape().GetDimNum() != 1) {
+        OP_LOGE(context->GetNodeName(), "sequsedKv must be 1D [batch], but got %zu dims.",
+                sequsedKvShape->GetStorageShape().GetDimNum());
         return ge::GRAPH_FAILED;
     }
     if (sequsedKvShape->GetStorageShape().GetShapeSize() != static_cast<int64_t>(batch_)) {
@@ -960,7 +976,14 @@ ge::graphStatus GBSATiling::SetTilingData(gert::TilingContext* context,
         context->GetRawTilingData() == nullptr,
         OPS_REPORT_VECTOR_INNER_ERR("GenericBlockSparseAttention", "RawTilingData got from GE context is nullptr."),
         return ge::GRAPH_FAILED);
-    tilingData.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
+    if (tilingData.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity()) !=
+        ge::GRAPH_SUCCESS) {
+        OPS_REPORT_VECTOR_INNER_ERR("GenericBlockSparseAttention",
+                                    "Save tiling data to buffer failed, tiling data size=%zu, buffer capacity=%zu.",
+                                    static_cast<size_t>(tilingData.GetDataSize()),
+                                    context->GetRawTilingData()->GetCapacity());
+        return ge::GRAPH_FAILED;
+    }
     context->GetRawTilingData()->SetDataSize(tilingData.GetDataSize());
     return ge::GRAPH_SUCCESS;
 }
