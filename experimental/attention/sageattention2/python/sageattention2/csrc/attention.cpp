@@ -15,7 +15,8 @@
 #include "torch_npu/csrc/aten/CustomFunctions.h"
 // Single source of truth for the head-dim envelope, shared with host tiling
 // and the aclnn entry.
-#include "../../core/types.h"
+#include "../../common/types.h"
+#include "../../common/constants.h"
 
 namespace op_api {
 namespace {

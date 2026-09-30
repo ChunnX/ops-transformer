@@ -2,29 +2,41 @@
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
 #pragma once
 
-#include "../types.h"
+#include <cstdint>
+#include "../common/constants.h"
+#include "../common/types.h"
+#include "grid_2d.h"
 
 namespace sage::scheduler {
 
-// Tile metadata for one Query tile evaluation in the attention loop
+// ============================================================================
+// Tile Task Information for Attention Execution
+// ============================================================================
 struct TileTaskInfo {
-    uint64_t task, qb, kb;
-    uint32_t ordinal, b, h, kh, qstart, count;
+    uint64_t task;
+    uint64_t qb;
+    uint64_t kb;
+    uint32_t ordinal;
+    uint32_t b;
+    uint32_t h;
+    uint32_t kh;
+    uint32_t qstart;
+    uint32_t count;
 };
 
-// Snake-Folded Wavefront Scheduler
+// ============================================================================
+// Snake-Folded Wavefront Scheduler (Task 4.2)
+// ============================================================================
 // For causal attention, pairs symmetric light (front) and heavy (rear) tiles
 // onto the same physical core: TaskPair(core) = {Tile_i, Tile_{T - 1 - i}}.
-// This equalizes the triangular GEMM workload sum to constant (T - 1),
-// eliminating the ~50% tail core starvation bubble.
+// Odd heads sweep reverse direction (T - 1 - raw_tile) so that cores receiving
+// light tiles on even heads receive heavy tiles on odd heads.
+// This reduces triangular GEMM workload variance by > 19x, eliminating tail starvation bubbles.
 template <bool CAUSAL>
 class SnakeScheduler {
 public:
@@ -45,10 +57,7 @@ public:
         uint32_t tile = raw_tile;
 
         if constexpr (CAUSAL) {
-            // Snake-Folded Wavefront Balancing:
-            // Odd heads sweep reverse direction (T - 1 - raw_tile) so that cores receiving
-            // light tiles on even heads receive heavy tiles on odd heads.
-            // This drops workload variance by > 19x, equalizing core workloads.
+            // Snake-Folded Wavefront Balancing
             if (info.h & 1) {
                 tile = tiles - 1 - raw_tile;
             }
@@ -77,3 +86,8 @@ public:
 };
 
 } // namespace sage::scheduler
+
+namespace sage {
+using scheduler::TileTaskInfo;
+using scheduler::SnakeScheduler;
+} // namespace sage

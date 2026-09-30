@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include "../core/types.h"
+#include "../common/types.h"
 
 // Bring SageAttention2TilingData into global namespace for CANN REGISTER_TILING_DEFAULT
 using SageAttention2TilingData = sage::SageAttention2TilingData;

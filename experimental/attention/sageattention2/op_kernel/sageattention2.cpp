@@ -5,7 +5,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include "../core/attention_engine.h"
+#include "../pipeline/specialization.h"
 #include "sage_attention2_tiling_data.h"
 #include "sage_attention2_template_tiling_key.h"
 
@@ -21,8 +21,8 @@ __global__ __aicore__ void sage_attention2(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_A
     static_assert(INPUT_DTYPE == SAGE_TPL_FP16 || INPUT_DTYPE == SAGE_TPL_BF16, "Unsupported input dtype for SageAttention2");
 
     if constexpr (INPUT_DTYPE == SAGE_TPL_BF16) {
-        sage::core::AttentionEngine<bfloat16_t, WIDE>::Execute(q, k, v, out, lse, work, tilingData);
+        sage::pipeline::AttentionEngine<bfloat16_t, WIDE>::Execute(q, k, v, out, lse, work, tilingData);
     } else {
-        sage::core::AttentionEngine<half, WIDE>::Execute(q, k, v, out, lse, work, tilingData);
+        sage::pipeline::AttentionEngine<half, WIDE>::Execute(q, k, v, out, lse, work, tilingData);
     }
 }

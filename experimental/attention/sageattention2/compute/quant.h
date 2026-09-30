@@ -7,20 +7,25 @@
 
 #pragma once
 
-#include "../types.h"
-#include "../fast_math.h"
-#if defined(__CCE__)
-#include "../device_resource.h"
-#endif
+#include "../common/constants.h"
+#include "../common/types.h"
+#include "../common/math.h"
+#include "../hardware/memory.h"
+#include "../hardware/sync.h"
+#include "../hardware/layout.h"
+#include "smooth.h"
 
 namespace sage::compute {
 
 #if defined(__CCE__)
 using AscendC::RoundMode;
 using AscendC::CMPMODE;
-#endif
 
-// Broadcast grouped INT8 scale across token groups
+// ============================================================================
+// Symmetrical INT8 Quantization Microkernel Primitives
+// ============================================================================
+
+// Broadcast grouped INT8 scale across token groups (4 for per_thread, 32 for per_warp)
 __simd_callee__ inline void BroadcastGroupMaxima(__ubuf__ float *maxima, uint32_t group) {
     using namespace AscendC::MicroAPI;
     auto full = CreateMask<float, MaskPattern::ALL>();
@@ -43,7 +48,7 @@ __simd_callee__ inline void BroadcastGroupMaxima(__ubuf__ float *maxima, uint32_
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 }
 
-// Convert FP32 scales to half precision with pre-fused factor
+// Convert FP32 scales to half precision with pre-fused dequant factor
 __simd_callee__ inline void PackFixedScaleBlock(__ubuf__ float *scales, __ubuf__ half *halfScales,
                                                 float factor, uint32_t valid) {
     using namespace AscendC::MicroAPI;
@@ -253,7 +258,10 @@ __aicore__ inline void QuantRowsVF(__ubuf__ float *x, __ubuf__ float *mean, __ub
     }
 }
 
-// MXFP8 Value Quantization with 4-way unrolling
+// ============================================================================
+// MXFP8 Value Quantization Microkernel with 4-Way Unrolling
+// ============================================================================
+
 template <class T, bool PERMUTE_V>
 __simd_vf__ inline void QuantVRowsMxVF(__ubuf__ T *x, __ubuf__ T *maxima, __ubuf__ uint16_t *scales,
                                        __ubuf__ float8_e4m3_t *out, uint32_t dp) {
@@ -386,113 +394,15 @@ __simd_vf__ inline void QuantVRowsMxVF(__ubuf__ T *x, __ubuf__ T *maxima, __ubuf
     }
 }
 
-// Smooth-V sequence mean subtraction
-template <class T, uint32_t DP>
-__simd_vf__ inline void CenterVRowsImpl(__ubuf__ T *v, __ubuf__ float *meanV, uint32_t rows) {
-    using namespace AscendC::MicroAPI;
-    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
-    auto f = CreateMask<float, MaskPattern::ALL>();
-    static constexpr CastTrait toFloat{RegLayout::ZERO, SatMode::UNKNOWN, MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
-    static constexpr CastTrait back{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
-    for (uint16_t col = 0; col < DP; col += 64) {
-        RegTensor<float> mv;
-        LoadAlign(mv, meanV + col);
-        for (uint16_t row = 0; row < rows; ++row) {
-            RegTensor<T> raw, packed;
-            RegTensor<float> x;
-            LoadAlign<T, LoadDist::DIST_UNPACK_B16>(raw, v + row * DP + col);
-            Cast<float, T, toFloat>(x, raw, f);
-            Sub(x, x, mv, f);
-            Cast<T, float, back>(packed, x, f);
-            StoreAlign<T, StoreDist::DIST_PACK_B32>(v + row * DP + col, packed, f);
-        }
-    }
-    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
-}
+// ============================================================================
+// FastQuant Engine Class
+// ============================================================================
 
-template <class T>
-__aicore__ inline void CenterVRowsVF(__ubuf__ T *v, __ubuf__ float *meanV, uint32_t dp, uint32_t rows) {
-    if (dp == 128)
-        CenterVRowsImpl<T, 128>(v, meanV, rows);
-    else
-        CenterVRowsImpl<T, 64>(v, meanV, rows);
-}
-
-// 4-way unrolled reduction for sequence-level channel stats
-template <class T, uint32_t DP>
-__simd_callee__ inline void LoadLaneF32(AscendC::MicroAPI::RegTensor<float> &x, __ubuf__ T *addr, uint32_t row,
-                                        uint32_t col) {
-    using namespace AscendC::MicroAPI;
-    auto mask = CreateMask<float, MaskPattern::ALL>();
-    RegTensor<T> raw;
-    static constexpr CastTrait cast{RegLayout::ZERO, SatMode::UNKNOWN, MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
-    LoadAlign<T, LoadDist::DIST_UNPACK_B16>(raw, addr + row * DP + col);
-    Cast<float, T, cast>(x, raw, mask);
-}
-
-template <class T, uint32_t DP>
-__simd_vf__ inline void StatsSumImpl(__ubuf__ T *rows, __ubuf__ float *state, uint32_t count) {
-    using namespace AscendC::MicroAPI;
-    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
-    auto mask = CreateMask<float, MaskPattern::ALL>();
-    for (uint32_t col = 0; col < DP; col += 64) {
-        RegTensor<float> acc0, acc1, acc2, acc3;
-        LoadAlign(acc0, state + col);
-        Duplicate(acc1, 0.0f);
-        Duplicate(acc2, 0.0f);
-        Duplicate(acc3, 0.0f);
-        uint32_t row = 0;
-        for (; row + 3 < count; row += 4) {
-            RegTensor<float> x0, x1, x2, x3;
-            RegTensor<T> raw0, raw1, raw2, raw3;
-            static constexpr CastTrait cast{RegLayout::ZERO, SatMode::UNKNOWN, MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
-            LoadAlign<T, LoadDist::DIST_UNPACK_B16>(raw0, rows + (row + 0) * DP + col);
-            LoadAlign<T, LoadDist::DIST_UNPACK_B16>(raw1, rows + (row + 1) * DP + col);
-            Cast<float, T, cast>(x0, raw0, mask);
-            LoadAlign<T, LoadDist::DIST_UNPACK_B16>(raw2, rows + (row + 2) * DP + col);
-            Cast<float, T, cast>(x1, raw1, mask);
-            LoadAlign<T, LoadDist::DIST_UNPACK_B16>(raw3, rows + (row + 3) * DP + col);
-            Cast<float, T, cast>(x2, raw2, mask);
-            Add(acc0, acc0, x0, mask);
-            Cast<float, T, cast>(x3, raw3, mask);
-            Add(acc1, acc1, x1, mask);
-            Add(acc2, acc2, x2, mask);
-            Add(acc3, acc3, x3, mask);
-        }
-        for (; row + 1 < count; row += 2) {
-            RegTensor<float> x0, x1;
-            LoadLaneF32<T, DP>(x0, rows, row, col);
-            LoadLaneF32<T, DP>(x1, rows, row + 1, col);
-            Add(acc0, acc0, x0, mask);
-            Add(acc1, acc1, x1, mask);
-        }
-        if (row < count) {
-            RegTensor<float> x_tail;
-            LoadLaneF32<T, DP>(x_tail, rows, row, col);
-            Add(acc0, acc0, x_tail, mask);
-        }
-        Add(acc0, acc0, acc1, mask);
-        Add(acc2, acc2, acc3, mask);
-        Add(acc0, acc0, acc2, mask);
-        StoreAlign(state + col, acc0, mask);
-    }
-}
-
-template <class T>
-__aicore__ inline void StatsSumVF(AscendC::LocalTensor<T> rows, AscendC::LocalTensor<float> state, uint32_t count, uint32_t dp) {
-    auto input = (__ubuf__ T *)rows.GetPhyAddr();
-    auto sum = (__ubuf__ float *)state.GetPhyAddr();
-    if (dp == 128)
-        StatsSumImpl<T, 128>(input, sum, count);
-    else
-        StatsSumImpl<T, 64>(input, sum, count);
-}
-
-// Clean-Room FastQuant Engine encapsulating Stats & Quant microkernels
 template <class T, bool WIDE>
 class FastQuant {
 public:
-    __aicore__ static inline void ProcessStats(GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADDR vMean, const SageParams &p) {
+    __aicore__ static inline void ProcessStats(GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADDR vMean,
+                                               const SageParams &p) {
         if (p.smoothK) {
             Stats<false>(k, mean, p);
         }
@@ -508,10 +418,9 @@ public:
         const bool center = IS_V ? bool(p.smoothV) : bool(p.smoothK);
         if (!center) return;
 
-        const bool grouped = UseDieGroups(p);
-        const uint32_t workers = grouped ? p.cores : 2 * p.cores;
-        const uint64_t heads = uint64_t(p.b) * p.hk / (grouped ? 2 : 1);
-        FixedResource r;
+        const uint32_t workers = 2 * p.cores;
+        const uint64_t heads = uint64_t(p.b) * p.hk;
+        hardware::FixedResource r;
         GlobalTensor<T> kg;
         kg.SetGlobalBuffer((__gm__ T *)src);
         GlobalTensor<float> mg;
@@ -527,11 +436,9 @@ public:
         auto x = r.ubBuf.template GetBufferByByte<float>(STATS_F32_UB);
         auto sum = r.ubBuf.template GetBufferByByte<float>(STATS_SUM_UB);
         const uint32_t rank = GetBlockIdx() % workers;
-        const uint64_t firstHead = grouped ? GetBlockIdx() / p.cores * heads : 0;
         const float invSk = 1.0f / float(p.sk);
 
-        for (uint64_t local = rank; local < heads; local += workers) {
-            const uint64_t bh = firstHead + local;
+        for (uint64_t bh = rank; bh < heads; bh += workers) {
             uint32_t b = bh / p.hk, h = bh % p.hk;
             Duplicate(sum, 0.0f, p.dp);
             if (p.d == p.dp) {
@@ -575,12 +482,23 @@ public:
         }
     }
 
+    __aicore__ static void Quantize(
+        GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADDR vMean, GM_ADDR mxScale,
+        GM_ADDR q8, GM_ADDR k8, GM_ADDR v8, GM_ADDR qs, GM_ADDR ks, const SageParams &p)
+    {
+        if (p.d == p.dp) {
+            QuantBatch(q, k, v, mean, vMean, mxScale, q8, k8, v8, qs, ks, p);
+        } else {
+            QuantFallback(q, k, v, mean, vMean, mxScale, q8, k8, v8, qs, ks, p);
+        }
+    }
+
     __aicore__ static void QuantBatch(
         GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADDR vMean, GM_ADDR mxScale,
         GM_ADDR q8, GM_ADDR k8, GM_ADDR v8, GM_ADDR qs, GM_ADDR ks, const SageParams &p)
     {
         using namespace AscendC;
-        FixedResource r;
+        hardware::FixedResource r;
         GlobalTensor<T> qg, kg, vg;
         qg.SetGlobalBuffer((__gm__ T *)q);
         kg.SetGlobalBuffer((__gm__ T *)k);
@@ -629,10 +547,9 @@ public:
 
         const uint64_t nq = uint64_t(p.b) * p.hq * p.qp / 64;
         const uint64_t nk = uint64_t(p.b) * p.hk * p.kp / 64;
-        const bool grouped = UseDieGroups(p);
-        const uint32_t cores = grouped ? p.cores : 2 * p.cores;
-        const uint32_t core = GetBlockIdx() % cores, group = GetBlockIdx() / cores;
-        const uint64_t localNq = WIDE ? 0 : (nq / (grouped ? 2 : 1)), localNk = nk / (grouped ? 2 : 1);
+        const uint32_t cores = 2 * p.cores;
+        const uint32_t core = GetBlockIdx() % cores;
+        const uint64_t localNq = WIDE ? 0 : nq, localNk = nk;
         if (core >= localNq + localNk) return;
         const uint64_t iterations = (localNq + localNk - core + cores - 1) / cores;
 
@@ -650,7 +567,7 @@ public:
                 const uint64_t task = core + iteration * cores;
                 const bool iskv = task < localNk;
                 const bool isq = !iskv;
-                const uint64_t idx = (iskv ? group * localNk + task : group * localNq + (task - localNk)) * 64;
+                const uint64_t idx = (iskv ? task : (task - localNk)) * 64;
                 const uint32_t seq = isq ? p.qp : p.kp, heads = isq ? p.hq : p.hk;
                 const uint32_t token = idx % seq, h = (idx / seq) % heads, b = idx / seq / heads;
                 const uint32_t valid = token < (isq ? p.sq : p.sk) ? 64 : 0;
@@ -721,7 +638,7 @@ public:
         GM_ADDR q8, GM_ADDR k8, GM_ADDR v8, GM_ADDR qs, GM_ADDR ks, const SageParams &p)
     {
         using namespace AscendC;
-        FixedResource r;
+        hardware::FixedResource r;
         GlobalTensor<T> qg, kg, vg;
         qg.SetGlobalBuffer((__gm__ T *)q);
         kg.SetGlobalBuffer((__gm__ T *)k);
@@ -808,28 +725,19 @@ public:
             if (p.smoothV && valid) {
                 DataCopy(vmean, vmg[(uint64_t(b) * p.hk + h) * p.dp], p.dp);
                 Sync<HardEvent::MTE2_V>();
-                CenterVRowsVF<T>((__ubuf__ T *)vInput.GetPhyAddr(), (__ubuf__ float *)vmean.GetPhyAddr(),
-                                 p.dp, valid);
+                CenterVRowsVF<T>((__ubuf__ T *)vInput.GetPhyAddr(), (__ubuf__ float *)vmean.GetPhyAddr(), p.dp, valid);
                 PipeBarrier<PIPE_V>();
             }
             QuantVRowsMxVF<T, WIDE>((__ubuf__ T *)vInput.GetPhyAddr(), (__ubuf__ T *)maxima.GetPhyAddr(),
-                                    (__ubuf__ uint16_t *)mx.GetPhyAddr(), (__ubuf__ float8_e4m3_t *)vOut.GetPhyAddr(),
-                                    p.dp);
+                                    (__ubuf__ uint16_t *)mx.GetPhyAddr(),
+                                    (__ubuf__ float8_e4m3_t *)vOut.GetPhyAddr(), p.dp);
             WriteRow(vo, idx * p.dp, vOut, 64 * p.dp);
-            WriteRow(mxg, tile * p.dp, mx, p.dp);
+            WriteRow(mxg, idx / 64 * p.dp, mx, p.dp);
         }
-    }
-
-    __aicore__ static inline void Quantize(
-        GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADDR vMean, GM_ADDR mxScale,
-        GM_ADDR q8, GM_ADDR k8, GM_ADDR v8, GM_ADDR qs, GM_ADDR ks, const SageParams &p)
-    {
-        if (p.d == p.dp && p.sq % 64 == 0 && p.sk % 64 == 0) {
-            QuantBatch(q, k, v, mean, vMean, mxScale, q8, k8, v8, qs, ks, p);
-        } else {
-            QuantFallback(q, k, v, mean, vMean, mxScale, q8, k8, v8, qs, ks, p);
-        }
+        PipeBarrier<PIPE_ALL>();
     }
 };
+
+#endif // __CCE__
 
 } // namespace sage::compute

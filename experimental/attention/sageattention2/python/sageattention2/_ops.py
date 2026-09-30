@@ -22,6 +22,10 @@ __all__ = ["sageattn", "sageattn_qk_int8_pv_fp8_asc", "replace_sdpa", "run"]
 
 _FP32_MAX = 3.4028234663852886e38
 
+# Upstream core.py truncates log2(e) to 1.44269504 when converting its
+# exp2-domain LSE to natural log; keep the exact same constant for bit parity.
+_UPSTREAM_LOG2E = 1.44269504
+
 # Task spec 2.4 lets the dispatch entry sink to a different quantization
 # granularity / PV accumulation format than its documented default, either per
 # call or through the environment, so a deployment can retune without editing
@@ -340,9 +344,9 @@ def _cpu(
                 b, hq, sq, d = q.shape
                 hk = k.shape[1]
             lse_corr = _compute_lse_correction(q, k, tensor_layout, b, hq, hk, sq, d)
-            raw_lse = (ref_lse - lse_corr * scale) * 1.44269504
+            raw_lse = (ref_lse - lse_corr * scale) * _UPSTREAM_LOG2E
         else:
-            raw_lse = ref_lse * 1.44269504
+            raw_lse = ref_lse * _UPSTREAM_LOG2E
         return out, raw_lse
     else:
         out = attention(
@@ -641,9 +645,9 @@ def _dispatch(
             lse_correction = _compute_lse_correction(
                 q, k, tensor_layout, plan.b, plan.hq, plan.hk, plan.sq, d_orig
             )
-            lse_final = lse / 1.44269504 + lse_correction * scale
+            lse_final = lse / _UPSTREAM_LOG2E + lse_correction * scale
         else:
-            lse_final = lse / 1.44269504
+            lse_final = lse / _UPSTREAM_LOG2E
         return out, lse_final
     return out
 

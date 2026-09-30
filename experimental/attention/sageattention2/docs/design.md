@@ -308,17 +308,36 @@ aclnnStatus aclnnSageAttention2(
 
 本算子严格遵循社区开源规范，交付合入至 `cann/ops-transformer` 仓库的 `experimental/attention/sageattention2/` 目录：
 
-- `core/`：现代 C++ 计算引擎与微内核
-  - `attention_engine.h`：统一单入口注意力调度引擎；
-  - `types.h`：算子全局静态规格、安全常量与枚举；
-  - `fast_math.h`：二阶牛顿-拉夫逊零除法快速倒数；
-  - `compute/`：纯数学向量与累加微内核（包含细粒度对称量化、在线归一化与两级累加器）；
-  - `pipeline/`：异步多级流水线与硬件事件握手；
-  - `scheduler/`：蛇形波前折叠对角均衡调度器；
-- `op_api/`：底两段式 C 接口实现（`aclnn_sage_attention2.cpp`）；
-- `op_host/`：分块切分规划与参数序列化；
-- `python/`：深度学习框架适配层（`sageattn` 与 `sageattn_qk_int8_pv_fp8_asc`）；
-- `tests/`：独立可移植数值真值单元测试集（14 大类 35 项严格断言全通过）；
+- `common/`：基础层，纯净类型、数值常量与数学原语（零外部依赖，宿主/设备全共享）
+  - `types.h`：基础枚举（SageQuantGran, SagePvAccum）、结构体与尺寸校验；
+  - `constants.h`：硬件常量、拓扑限制、对齐边界与数学魔法数；
+  - `math.h`：泰勒-牛顿无除法求倒（FastReciprocal）、对数转换与标量微积分；
+- `hardware/`：硬件抽象层，物理资源拓扑与异步原语（隔离 AscendC / CATLASS 底层细节）
+  - `memory.h`：静态片上缓冲拓扑 (L1/L0A/L0B/L0C/UB 布局与高水位断言，释放 174 KB L1)；
+  - `sync.h`：异步流水信用量与信号量机制 (Credit-based Semaphore / Event)；
+  - `layout.h`：Catlass 原生 zN 分形排布转换与无转置搬运封装；
+- `compute/`：微内核计算层，无状态 SIMD/Cube 计算函数（高内聚数学逻辑，不感知流水线）
+  - `smooth.h`：Chunk-wise 局部均值统计与打分矩阵常数项展开；
+  - `quant.h`：片上流式 INT8 对称量化与 MXFP8 (E4M3/E8M0) 动态量化；
+  - `softmax.h`：在线 Softmax、因果三角比对、行常数自适应吸收与核内融合 LSE；
+  - `mma.h`：Cube 矩阵乘封装 (支持原生 FP16 MMA 与 FP32 累加切换)；
+- `pipeline/`：流水编排层，异构多级流水线驱动（组合 hardware 与 compute）
+  - `streaming_pipe.h`：单趟零显存异步主流水线 (Single-Pass Streaming Engine)；
+  - `specialization.h`：AIC 计算专家与 AIV 量化/更新专家的生产者-消费者解耦流；
+- `scheduler/`：调度映射层，空间网格与任务坐标映射（纯数学变换，高内聚）
+  - `grid_2d.h`：Split-KV 2D 网格划分 (长序列/解码阶段多核并行扩展)；
+  - `wavefront.h`：蛇形波前折叠调度器 (消灭因果三角负载不均与 Die 对称调度)；
+- `host/`：Host 运行时，拓扑自适应、参数校验与 Tiling 规划
+  - `tiling.cpp`：硬件拓扑感知、核数解析、动态分块与平衡系数预计算；
+  - `op_def.cpp`：算子原型定义与属性注册；
+- `api/`：对外接口层，统一标准两段式 C API (aclnn 规范)
+  - `aclnn_api.cpp`：内存连续性校验、布局转换与算子图构筑；
+  - `aclnn_api.h`：C 导出接口声明 (aclnnSageAttention2GetWorkspaceSize / aclnnSageAttention2)；
+- `python/`：Python 胶水层，PyTorch 前端与参考实现
+  - `_ops.py`：Torch Library Dispatcher 注册、计划缓存与环境变量覆写；
+  - `reference.py`：CPU 纯数学参考实现 (Golden 基准)；
+  - `csrc/attention.cpp`：PyTorch C++ 扩展绑定；
+- `tests/`：独立可移植数值真值单元测试集（16 大类严格断言全通过）；
 - `docs/`：设计规格说明书（`design.md`）；
 - `README.md`：编译构建、安装测试与快速上手指南。
 

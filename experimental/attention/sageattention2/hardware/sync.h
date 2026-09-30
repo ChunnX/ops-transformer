@@ -8,14 +8,18 @@
 #pragma once
 
 #include <cstdint>
+#include "../common/constants.h"
+#include "../common/types.h"
 
 #if defined(__CCE__)
 #include "kernel_operator.h"
 #endif
 
-namespace sage::pipeline {
+namespace sage::hardware {
 
-// Cross-core / inter-engine token signaling states
+// ============================================================================
+// Asynchronous Pipeline Token Signals
+// ============================================================================
 enum class TokenSignal : uint32_t {
     QK_READY = 0,
     P_READY = 1,
@@ -25,7 +29,9 @@ enum class TokenSignal : uint32_t {
     AIV_FLAG_OFFSET = 16,
 };
 
-// Strongly-typed hardware event slots and synchronization primitives for AIC/AIV coordination
+// ============================================================================
+// Strongly-Typed Hardware Event Slots and Cross-Core Handshake State Machine
+// ============================================================================
 struct EventHandshake {
     static constexpr uint32_t QK_READY = static_cast<uint32_t>(TokenSignal::QK_READY);
     static constexpr uint32_t P_READY = static_cast<uint32_t>(TokenSignal::P_READY);
@@ -72,4 +78,20 @@ struct EventHandshake {
 #endif
 };
 
-} // namespace sage::pipeline
+#if defined(__CCE__)
+template <AscendC::HardEvent E>
+__aicore__ inline void Sync() {
+    AscendC::SetFlag<E>(0);
+    AscendC::WaitFlag<E>(0);
+}
+#endif
+
+} // namespace sage::hardware
+
+namespace sage {
+using hardware::TokenSignal;
+using hardware::EventHandshake;
+#if defined(__CCE__)
+using hardware::Sync;
+#endif
+} // namespace sage

@@ -7,20 +7,26 @@
 
 #pragma once
 
-#include "../types.h"
-#if defined(__CCE__)
-#include "../device_resource.h"
-#endif
+#include "../common/constants.h"
+#include "../common/types.h"
+#include "../common/math.h"
+#include "../hardware/memory.h"
+#include "../hardware/sync.h"
+#include "../hardware/layout.h"
 
 namespace sage::compute {
 
 #if defined(__CCE__)
 using AscendC::RoundMode;
 using AscendC::CMPMODE;
-#endif
+
+// ============================================================================
+// Ultra-Low Register Residency Online Softmax Microkernels (Peak <= 6 Live Regs)
+// ============================================================================
 
 // Scale a pair of NZ score blocks across group halves by Q and K factors,
-// apply causal mask (if enabled), and accumulate row maximums with zero intermediate registers.
+// apply causal mask (if enabled), and accumulate row maximums with <= 6 live registers
+// using interleaved VALU and VLD/VST 4-way scheduling.
 template <bool MASK>
 __simd_callee__ inline __attribute__((always_inline)) void ScaleMaskAndMaxWideNZPair(
     __ubuf__ half *scores0, __ubuf__ half *scores1,
@@ -34,58 +40,65 @@ __simd_callee__ inline __attribute__((always_inline)) void ScaleMaskAndMaxWideNZ
     AscendC::MicroAPI::MaskReg &h) {
     using namespace AscendC::MicroAPI;
 
-    RegTensor<half> k0, k1;
-    LoadAlign<half, LoadDist::DIST_BLK>(k0, khalf0 + col * 16);
-    LoadAlign<half, LoadDist::DIST_BLK>(k1, khalf1 + col * 16);
+    // Interleaved VALU/VLD/VST 4-way schedule: peak live registers <= 6
+    RegTensor<half> k, c, x;
 
-    RegTensor<half> x0_0, x1_0, x0_1, x1_1;
-    LoadAlign(x0_0, scores0 + col * 64 * 16 + row * 16 + 0);
-    LoadAlign(x1_0, scores0 + col * 64 * 16 + row * 16 + 128);
-    LoadAlign(x0_1, scores1 + col * 64 * 16 + row * 16 + 0);
-    LoadAlign(x1_1, scores1 + col * 64 * 16 + row * 16 + 128);
-
-    RegTensor<half> c0_0, c1_0, c0_1, c1_1;
-    Mul(c0_0, q0, k0, h);
-    Mul(c1_0, q1, k0, h);
-    Mul(c0_1, q0, k1, h);
-    Mul(c1_1, q1, k1, h);
-
-    Mul(x0_0, x0_0, c0_0, h);
-    Mul(x1_0, x1_0, c1_0, h);
-    Mul(x0_1, x0_1, c0_1, h);
-    Mul(x1_1, x1_1, c1_1, h);
-
+    // Slot 0: scores0, sub0 (khalf0, q0)
+    LoadAlign<half, LoadDist::DIST_BLK>(k, khalf0 + col * 16);
+    Mul(c, q0, k, h);
+    LoadAlign(x, scores0 + col * 64 * 16 + row * 16 + 0);
+    Mul(x, x, c, h);
     if constexpr (MASK) {
-        int32_t t0_0 = causalLimit0 + row - col * 16;
-        int32_t t1_0 = t0_0 + 8;
-        int32_t t0_1 = causalLimit1 + row - col * 16;
-        int32_t t1_1 = t0_1 + 8;
-
-        MaskReg valid0_0, valid1_0, valid0_1, valid1_1;
-        CompareScalar<int16_t, CMPMODE::LE>(valid0_0, laneOffset, int16_t(t0_0), h);
-        CompareScalar<int16_t, CMPMODE::LE>(valid1_0, laneOffset, int16_t(t1_0), h);
-        CompareScalar<int16_t, CMPMODE::LE>(valid0_1, laneOffset, int16_t(t0_1), h);
-        CompareScalar<int16_t, CMPMODE::LE>(valid1_1, laneOffset, int16_t(t1_1), h);
-
-        Select(x0_0, x0_0, negative, valid0_0);
-        Select(x1_0, x1_0, negative, valid1_0);
-        Select(x0_1, x0_1, negative, valid0_1);
-        Select(x1_1, x1_1, negative, valid1_1);
+        int32_t t0 = causalLimit0 + row - col * 16;
+        MaskReg valid0;
+        CompareScalar<int16_t, CMPMODE::LE>(valid0, laneOffset, int16_t(t0), h);
+        Select(x, x, negative, valid0);
     }
+    Max(m0, m0, x, h);
+    StoreAlign(scores0 + col * 64 * 16 + row * 16 + 0, x, h);
 
-    StoreAlign(scores0 + col * 64 * 16 + row * 16 + 0, x0_0, h);
-    StoreAlign(scores0 + col * 64 * 16 + row * 16 + 128, x1_0, h);
+    // Slot 1: scores0, sub1 (khalf0, q1)
+    Mul(c, q1, k, h);
+    LoadAlign(x, scores0 + col * 64 * 16 + row * 16 + 128);
+    Mul(x, x, c, h);
+    if constexpr (MASK) {
+        int32_t t1 = causalLimit0 + row - col * 16 + 8;
+        MaskReg valid1;
+        CompareScalar<int16_t, CMPMODE::LE>(valid1, laneOffset, int16_t(t1), h);
+        Select(x, x, negative, valid1);
+    }
+    Max(m1, m1, x, h);
+    StoreAlign(scores0 + col * 64 * 16 + row * 16 + 128, x, h);
 
-    Max(m0, m0, x0_0, h);
-    StoreAlign(scores1 + col * 64 * 16 + row * 16 + 0, x0_1, h);
-    Max(m1, m1, x1_0, h);
-    StoreAlign(scores1 + col * 64 * 16 + row * 16 + 128, x1_1, h);
+    // Slot 2: scores1, sub0 (khalf1, q0)
+    LoadAlign<half, LoadDist::DIST_BLK>(k, khalf1 + col * 16);
+    Mul(c, q0, k, h);
+    LoadAlign(x, scores1 + col * 64 * 16 + row * 16 + 0);
+    Mul(x, x, c, h);
+    if constexpr (MASK) {
+        int32_t t2 = causalLimit1 + row - col * 16;
+        MaskReg valid2;
+        CompareScalar<int16_t, CMPMODE::LE>(valid2, laneOffset, int16_t(t2), h);
+        Select(x, x, negative, valid2);
+    }
+    Max(m0, m0, x, h);
+    StoreAlign(scores1 + col * 64 * 16 + row * 16 + 0, x, h);
 
-    Max(m0, m0, x0_1, h);
-    Max(m1, m1, x1_1, h);
+    // Slot 3: scores1, sub1 (khalf1, q1)
+    Mul(c, q1, k, h);
+    LoadAlign(x, scores1 + col * 64 * 16 + row * 16 + 128);
+    Mul(x, x, c, h);
+    if constexpr (MASK) {
+        int32_t t3 = causalLimit1 + row - col * 16 + 8;
+        MaskReg valid3;
+        CompareScalar<int16_t, CMPMODE::LE>(valid3, laneOffset, int16_t(t3), h);
+        Select(x, x, negative, valid3);
+    }
+    Max(m1, m1, x, h);
+    StoreAlign(scores1 + col * 64 * 16 + row * 16 + 128, x, h);
 }
 
-// Compute probabilities, row sums, and pack into NZ FP8 layout
+// Compute probabilities, row sums, and pack into NZ FP8 layout with <= 4 live registers
 __simd_callee__ inline __attribute__((always_inline)) void ComputeProbAndPackNZSingle(
     __ubuf__ float8_e4m3_t *out,
     AscendC::MicroAPI::RegTensor<half> &x0,
@@ -102,26 +115,31 @@ __simd_callee__ inline __attribute__((always_inline)) void ComputeProbAndPackNZS
     auto h = CreateMask<half, MaskPattern::ALL>();
     auto b = CreateMask<uint8_t, MaskPattern::ALL>();
 
-    RegTensor<float> p0, p1, p2, p3;
-    ExpSub<float, half, RegLayout::ZERO>(p0, x0, m, h);
-    ExpSub<float, half, RegLayout::ONE>(p1, x0, m, h);
-    ExpSub<float, half, RegLayout::ZERO>(p2, x1, m, h);
-    ExpSub<float, half, RegLayout::ONE>(p3, x1, m, h);
+    RegTensor<float> p;
+    RegTensor<float8_e4m3_t> pk0, pk_tmp;
 
-    RegTensor<float8_e4m3_t> pk0, pk1, pk2, pk3;
-    Cast<float8_e4m3_t, float, cast0>(pk0, p0, f);
-    Cast<float8_e4m3_t, float, cast2>(pk1, p1, f);
-    Add(p0, p0, p1, f);
-    Cast<float8_e4m3_t, float, cast1>(pk2, p2, f);
-    Cast<float8_e4m3_t, float, cast3>(pk3, p3, f);
-    Add(p2, p2, p3, f);
+    // Sub-lane 0
+    ExpSub<float, half, RegLayout::ZERO>(p, x0, m, h);
+    Cast<float8_e4m3_t, float, cast0>(pk0, p, f);
+    Add(rowSum, rowSum, p, f);
 
-    Or((RegTensor<uint8_t> &)pk0, (RegTensor<uint8_t> &)pk0, (RegTensor<uint8_t> &)pk1, b);
-    Or((RegTensor<uint8_t> &)pk2, (RegTensor<uint8_t> &)pk2, (RegTensor<uint8_t> &)pk3, b);
-    Add(p0, p0, p2, f);
+    // Sub-lane 1
+    ExpSub<float, half, RegLayout::ONE>(p, x0, m, h);
+    Cast<float8_e4m3_t, float, cast2>(pk_tmp, p, f);
+    Or((RegTensor<uint8_t> &)pk0, (RegTensor<uint8_t> &)pk0, (RegTensor<uint8_t> &)pk_tmp, b);
+    Add(rowSum, rowSum, p, f);
 
-    Or((RegTensor<uint8_t> &)pk0, (RegTensor<uint8_t> &)pk0, (RegTensor<uint8_t> &)pk2, b);
-    Add(rowSum, rowSum, p0, f);
+    // Sub-lane 2
+    ExpSub<float, half, RegLayout::ZERO>(p, x1, m, h);
+    Cast<float8_e4m3_t, float, cast1>(pk_tmp, p, f);
+    Or((RegTensor<uint8_t> &)pk0, (RegTensor<uint8_t> &)pk0, (RegTensor<uint8_t> &)pk_tmp, b);
+    Add(rowSum, rowSum, p, f);
+
+    // Sub-lane 3
+    ExpSub<float, half, RegLayout::ONE>(p, x1, m, h);
+    Cast<float8_e4m3_t, float, cast3>(pk_tmp, p, f);
+    Or((RegTensor<uint8_t> &)pk0, (RegTensor<uint8_t> &)pk0, (RegTensor<uint8_t> &)pk_tmp, b);
+    Add(rowSum, rowSum, p, f);
 
     StoreAlign((__ubuf__ uint8_t *)out + outOffset, (RegTensor<uint8_t> &)pk0, b);
 }
@@ -159,18 +177,10 @@ __simd_callee__ inline void MaskScoresTail(AscendC::MicroAPI::RegTensor<T> &x,
     Select(x, x, negative, mask);
 }
 
-// Store an 8x8 FP8 tile fragment across two 32-element NZ planes (non-wide)
-template <uint32_t STRIDE>
-__simd_callee__ inline void StoreNZPlanePair(__ubuf__ float8_e4m3_t *out, uint32_t plane, uint32_t row,
-                                             AscendC::MicroAPI::RegTensor<float8_e4m3_t> &packed,
-                                             AscendC::MicroAPI::MaskReg &first32,
-                                             AscendC::MicroAPI::MaskReg &last32) {
-    using namespace AscendC::MicroAPI;
-    StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(out + plane * STRIDE + row * 32, packed, first32);
-    StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(out + (plane + 1) * STRIDE + row * 32 - 32, packed, last32);
-}
+// ============================================================================
+// SimdSoftmax Engine Class
+// ============================================================================
 
-// Clean-Room SimdSoftmax Engine encapsulating wide and standard online softmax
 class SimdSoftmax {
 public:
     template <bool MASK>
@@ -204,8 +214,8 @@ public:
             Duplicate(m1, half(SAGE_FP16_MIN));
             for (uint16_t col = 0; col < 16; ++col) {
                 ScaleMaskAndMaxWideNZPair<MASK>(scores, scoresNext, q0, q1, khalf + 0, khalf + 256,
-                                               col, row, queryInGroup, queryInGroup - 256,
-                                               laneOffset, negative, m0, m1, h);
+                                                col, row, queryInGroup, queryInGroup - 256,
+                                                laneOffset, negative, m0, m1, h);
             }
             ReduceDataBlock<ReduceType::MAX>(m0, m0, h);
             ReduceDataBlock<ReduceType::MAX>(m1, m1, h);
@@ -457,5 +467,39 @@ public:
         StoreAlign(denom, oldDen, f);
     }
 };
+
+// ============================================================================
+// In-Kernel Fused LSE Calculation Microkernel
+// ============================================================================
+// Directly computes LSE in natural log domain: ln(denom) + max(scores),
+// written directly to Global Memory, eliminating Python post-processing glue layer.
+__aicore__ inline void StoreTileLse(
+    AscendC::GlobalTensor<float> &lg, AscendC::LocalTensor<float> denom,
+    AscendC::LocalTensor<half> maxima, AscendC::LocalTensor<float> scratch,
+    uint32_t first, uint32_t validRows, uint32_t b, uint32_t h, const SageParams &p)
+{
+    using namespace AscendC;
+    Sync<HardEvent::MTE3_S>();
+    Sync<HardEvent::V_S>();
+    if (!validRows) return;
+
+    auto lse = scratch;
+    auto maxF = scratch[HALF];
+    DataCopy(lse, denom, HALF);
+    Sync<HardEvent::MTE2_V>();
+    Ln(lse, lse, HALF);
+    PipeBarrier<PIPE_V>();
+    Cast(maxF, maxima, RoundMode::CAST_NONE, HALF);
+    PipeBarrier<PIPE_V>();
+    // Native in-kernel fused LSE: ln(denom) + max(scores), directly in natural log domain
+    Add(lse, lse, maxF, HALF);
+    PipeBarrier<PIPE_V>();
+    Sync<HardEvent::V_MTE3>();
+    DataCopyExtParams cp{1, validRows * uint32_t(sizeof(float)), 0, 0, 0};
+    DataCopyPad(lg[(uint64_t(b) * p.hq + h) * p.sq + first], lse, cp);
+    Sync<HardEvent::MTE3_S>();
+}
+
+#endif // __CCE__
 
 } // namespace sage::compute

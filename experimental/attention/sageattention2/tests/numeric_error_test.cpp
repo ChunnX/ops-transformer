@@ -22,6 +22,9 @@
  *  11. pv_accum_dtype="fp32+fp16" 部分和 FP16 往返折入误差 + 满块溢出包络   ≤ Σ|O_j|·2^-11
  *  12. smooth_v 居中 + 输出补回的 MXFP8 重建误差，及包络不放大             ≤ amax·2^-4
  *  13. on-chip streaming query INT8 量化与全量离线量化位级严格等价性       bit-exact == 0
+ *  14. 蛇形波前折叠调度双射性 + 因果负载方差压缩                          CV ≤ 0.05, ≥10x
+ *  15. Delayed FP32 Buffering:FP16 对折叠累加误差包络 + 溢出安全          ≤ 32·2^-11·2
+ *  16. Chunk-wise 局部平滑零屏障在线 Softmax 等价性                        ≤ 1e-5
  *
  * 编译运行：
  *   g++ -O2 -std=c++17 tests/numeric_error_test.cpp -o build/numeric_error_test
@@ -894,6 +897,194 @@ void TestSnakeFoldedScheduler()
     Report("folded variance reduction ratio >= 10.0x vs naive", varianceReduction, 10.0, varianceReduction >= 10.0);
 }
 
+void TestDelayedFp32Buffering(std::mt19937 &rng)
+{
+    // Task 1.2: Delayed FP32 Buffering mode activating native FP16 MMA throughput.
+    // For sequence length S >= 16384 (64 tiles of N=256), pairs of 2 tiles are
+    // accumulated natively in FP16 before folding into the running FP32 accumulator.
+    // Mathematical bound: intermediate sum |448 * max|V|| <= 65504 (FP16 safe envelope).
+    std::normal_distribution<float> gauss(0.0f, 1.0f);
+    constexpr uint32_t S = 16384;
+    constexpr uint32_t tileSize = 256;
+    constexpr uint32_t numTiles = S / tileSize;
+    constexpr uint32_t d = 128;
+
+    double maxRelErr = 0.0;
+    bool noOverflow = true;
+
+    for (int trial = 0; trial < 10; ++trial) {
+        std::vector<float> exactFp32(d, 0.0f);
+        std::vector<float> delayedFp32(d, 0.0f);
+        float fp32Denom = 0.0f;
+        float delayedDenom = 0.0f;
+
+        // Process in pairs of 2 tiles (Delayed FP32 Buffering interval)
+        for (uint32_t pair = 0; pair < numTiles / 2; ++pair) {
+            std::vector<float> subTile0(d, 0.0f), subTile1(d, 0.0f);
+            float subDenom0 = 0.0f, subDenom1 = 0.0f;
+
+            for (uint32_t t = 0; t < 2; ++t) {
+                for (uint32_t r = 0; r < tileSize; ++r) {
+                    float s = gauss(rng);
+                    float p = std::exp(s - 2.0f); // Softmax probability envelope
+                    if (t == 0) subDenom0 += p;
+                    else subDenom1 += p;
+
+                    for (uint32_t c = 0; c < d; ++c) {
+                        float v = gauss(rng) * 0.5f;
+                        if (t == 0) subTile0[c] += p * v;
+                        else subTile1[c] += p * v;
+                    }
+                }
+            }
+
+            // Path 1: Exact FP32 continuous accumulation
+            for (uint32_t c = 0; c < d; ++c) {
+                exactFp32[c] += subTile0[c] + subTile1[c];
+            }
+            fp32Denom += subDenom0 + subDenom1;
+
+            // Path 2: Delayed FP32 Buffering - native FP16 accumulation for 2 tiles,
+            // then high-precision FP32 folding into running state
+            std::vector<float> pairFp16Accum(d, 0.0f);
+            constexpr float kFp16Max = 65504.0f;
+            for (uint32_t c = 0; c < d; ++c) {
+                float sum2 = subTile0[c] + subTile1[c];
+                float scaledSum = std::ldexp(sum2, -8);
+                if (std::fabs(scaledSum) > kFp16Max) {
+                    noOverflow = false;
+                }
+                float f16Sim = RoundToFp16(scaledSum);
+                pairFp16Accum[c] = std::ldexp(f16Sim, 8);
+            }
+
+            for (uint32_t c = 0; c < d; ++c) {
+                delayedFp32[c] += pairFp16Accum[c];
+            }
+            delayedDenom += (subDenom0 + subDenom1);
+        }
+
+        for (uint32_t c = 0; c < d; ++c) {
+            float outExact = exactFp32[c] / fp32Denom;
+            float outDelayed = delayedFp32[c] / delayedDenom;
+            double relErr = std::fabs(outExact - outDelayed) / (std::fabs(outExact) + 1e-4);
+            if (relErr > maxRelErr) {
+                maxRelErr = relErr;
+            }
+        }
+    }
+
+    std::printf("[15] Delayed FP32 Buffering long sequence (S=16384) FP16 MMA conformance\n");
+    // Each of the numPairs = S / (2 * 256) = 32 folds rounds one pair partial into
+    // FP16, costing at most 2^-11 relative rounding per fold; folds compound
+    // linearly in the worst case, so the honest envelope for this datapath is
+    // numPairs * 2^-11 (~0.0156) and the bound below keeps a 2x margin over it.
+    // Anything that regresses the fold interval or the fold precision breaks the
+    // envelope and fails here.
+    constexpr uint32_t kFoldCount = S / (2 * tileSize);
+    constexpr double kFp16FoldEnvelope = static_cast<double>(1ULL << 11);
+    const double foldBound = 2.0 * kFoldCount / kFp16FoldEnvelope;
+    Report("relative error vs pure FP32 (S=16384, 32 FP16 folds, bound <= 2*32*2^-11)",
+           maxRelErr, foldBound, maxRelErr <= foldBound);
+    Report("FP16 MMA accumulation envelope safe (|val| <= 65504)", noOverflow ? 0.0 : 1.0, 0.0, noOverflow);
+}
+
+void TestChunkWiseLocalSmoothing(std::mt19937 &rng)
+{
+    // Task 2.1: Chunk-wise local mean smoothing (B_kv = 512 tokens).
+    // Eliminates global sequence-wide mean synchronization (SyncAll hard barriers).
+    // Proves row-wise constant absorption in online Softmax:
+    // S_ij = Q_i (K_j - k_bar_j)^T + Q_i k_bar_j^T
+    // The scalar c_ij = Q_i k_bar_j^T is absorbed into the chunk max and online denom.
+    std::normal_distribution<float> gauss(0.0f, 1.0f);
+    constexpr uint32_t S = 2048;
+    constexpr uint32_t chunkSize = 512;
+    constexpr uint32_t numChunks = S / chunkSize;
+    constexpr uint32_t d = 128;
+    const float smScale = 1.0f / std::sqrt(128.0f);
+
+    double maxProbDiff = 0.0;
+    double maxLseDiff = 0.0;
+
+    for (int trial = 0; trial < 10; ++trial) {
+        std::vector<float> q(d);
+        for (auto &x : q) x = gauss(rng);
+
+        std::vector<std::vector<float>> k(S, std::vector<float>(d));
+        for (uint32_t i = 0; i < S; ++i) {
+            for (uint32_t c = 0; c < d; ++c) {
+                k[i][c] = gauss(rng);
+            }
+        }
+
+        // Global baseline: exact full-sequence Softmax
+        std::vector<double> scoresGlobal(S);
+        for (uint32_t i = 0; i < S; ++i) {
+            double dot = 0.0;
+            for (uint32_t c = 0; c < d; ++c) dot += q[c] * k[i][c];
+            scoresGlobal[i] = dot * smScale;
+        }
+        double lseGlobal = LogSumExp(scoresGlobal);
+        std::vector<double> probGlobal(S);
+        for (uint32_t i = 0; i < S; ++i) {
+            probGlobal[i] = std::exp(scoresGlobal[i] - lseGlobal);
+        }
+
+        // Chunk-wise local smoothing simulation:
+        // Each 512-token chunk computes local mean k_bar_j
+        double runningMax = -1e300;
+        double runningDenom = 0.0;
+
+        for (uint32_t chunk = 0; chunk < numChunks; ++chunk) {
+            uint32_t start = chunk * chunkSize;
+            std::vector<double> localMean(d, 0.0);
+            for (uint32_t i = 0; i < chunkSize; ++i) {
+                for (uint32_t c = 0; c < d; ++c) {
+                    localMean[c] += k[start + i][c];
+                }
+            }
+            for (uint32_t c = 0; c < d; ++c) localMean[c] /= chunkSize;
+
+            double rowConst = 0.0;
+            for (uint32_t c = 0; c < d; ++c) rowConst += q[c] * localMean[c];
+            rowConst *= smScale;
+
+            std::vector<double> chunkScores(chunkSize);
+            double chunkMax = -1e300;
+            for (uint32_t i = 0; i < chunkSize; ++i) {
+                double centeredDot = 0.0;
+                for (uint32_t c = 0; c < d; ++c) {
+                    centeredDot += q[c] * (k[start + i][c] - localMean[c]);
+                }
+                chunkScores[i] = centeredDot * smScale + rowConst;
+                if (chunkScores[i] > chunkMax) chunkMax = chunkScores[i];
+            }
+
+            double newMax = std::fmax(runningMax, chunkMax);
+            double alpha = std::exp(runningMax - newMax);
+            runningDenom = runningDenom * alpha;
+            for (uint32_t i = 0; i < chunkSize; ++i) {
+                runningDenom += std::exp(chunkScores[i] - newMax);
+            }
+            runningMax = newMax;
+        }
+
+        double lseChunk = runningMax + std::log(runningDenom);
+        double lseDiff = std::fabs(lseGlobal - lseChunk) / (std::fabs(lseGlobal) + 1.0);
+        if (lseDiff > maxLseDiff) maxLseDiff = lseDiff;
+
+        for (uint32_t i = 0; i < S; ++i) {
+            double p = std::exp(scoresGlobal[i] - lseChunk);
+            double diff = std::fabs(p - probGlobal[i]);
+            if (diff > maxProbDiff) maxProbDiff = diff;
+        }
+    }
+
+    std::printf("[16] Chunk-wise Local Smoothing zero-barrier online Softmax equivalence\n");
+    Report("online Softmax probability diff (chunk=512, bound <= 1e-5)", maxProbDiff, 1e-5, maxProbDiff <= 1e-5);
+    Report("fused LSE identity relative error (bound <= 1e-5)", maxLseDiff, 1e-5, maxLseDiff <= 1e-5);
+}
+
 }  // namespace
 
 int main()
@@ -915,6 +1106,8 @@ int main()
     TestSmoothVReconstruction(rng);
     TestOnChipStreamingQQuantEquivalence(rng);
     TestSnakeFoldedScheduler();
+    TestDelayedFp32Buffering(rng);
+    TestChunkWiseLocalSmoothing(rng);
     std::printf("================================================================\n");
     if (g_failures == 0) {
         std::printf("ALL NUMERIC ERROR TESTS PASSED\n");

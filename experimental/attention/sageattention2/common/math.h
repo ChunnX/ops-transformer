@@ -7,38 +7,46 @@
 
 #pragma once
 
-#include "types.h"
 #include <cstring>
+#include "constants.h"
+#include "types.h"
+
 #if defined(__CCE__) || defined(__DAV_C220_VEC__) || defined(__DAV_C310_VEC__) || defined(__DAV_C350_VEC__)
 #include "kernel_operator.h"
 #endif
 
-namespace sage {
-namespace math {
+namespace sage::math {
 
-// Portable two-stage Taylor-Newton Reciprocal: eliminates 32-cycle hardware vector division.
-// Initial reciprocal seed magic constant: 0x7EEF370B
-inline float FastReciprocalScalar(float d) noexcept
-{
+// ============================================================================
+// Portable Two-Stage Taylor-Newton Reciprocal (Host and Device)
+// ============================================================================
+// Replaces 32-cycle hardware vector division instruction `vdiv` with
+// an initial seed lookup (0x7EEF370B) followed by 2 iterations of Newton-Raphson:
+// x_0 = as_float(0x7EEF370B - as_uint(d))
+// x_{n+1} = x_n * (2 - d * x_n)
+// Relative precision error strictly <= 2^-14 (< 1e-4).
+inline float FastReciprocalScalar(float d) noexcept {
     if (d == 0.0f) return 1.0f;
     uint32_t bits;
     std::memcpy(&bits, &d, sizeof(bits));
-    uint32_t estBits = 0x7EEF370BU - bits;
+    uint32_t estBits = FAST_RECIPROCAL_MAGIC - bits;
     float x;
     std::memcpy(&x, &estBits, sizeof(x));
-    // Newton-Raphson Step 1: x = x * (2 - d * x)
+    // Newton-Raphson Iteration 1
     x = x * (2.0f - d * x);
-    // Newton-Raphson Step 2: x = x * (2 - d * x)
+    // Newton-Raphson Iteration 2
     x = x * (2.0f - d * x);
     return x;
 }
 
 #if defined(__CCE__) || defined(__DAV_C220_VEC__) || defined(__DAV_C310_VEC__) || defined(__DAV_C350_VEC__)
-// AscendC MicroAPI FastReciprocal with magic seed 0x7EEF370B and two Newton-Raphson iterations
+// ============================================================================
+// AscendC MicroAPI Vectorized Fast Reciprocal Primitives
+// ============================================================================
+
 __simd_callee__ inline void FastReciprocal(AscendC::MicroAPI::RegTensor<float> &dst,
                                            AscendC::MicroAPI::RegTensor<float> &src,
-                                           AscendC::MicroAPI::MaskReg &mask)
-{
+                                           AscendC::MicroAPI::MaskReg &mask) {
     using namespace AscendC::MicroAPI;
     RegTensor<uint32_t> magic, ix, iy;
     RegTensor<float> y0, term, two;
@@ -53,25 +61,22 @@ __simd_callee__ inline void FastReciprocal(AscendC::MicroAPI::RegTensor<float> &
     Sub(term, two, term, mask);
     Mul(dst, y0, term, mask);
 
-    // Second Newton-Raphson iteration
+    // Second Newton-Raphson iteration: y2 = y1 * (2.0f - src * y1)
     Mul(term, src, dst, mask);
     Sub(term, two, term, mask);
     Mul(dst, dst, term, mask);
 }
 
-// AscendC Vector SIMD implementation of two-stage Taylor-Newton Reciprocal
 __simd_callee__ inline void FastVectorReciprocal(AscendC::MicroAPI::RegTensor<float> &inv,
                                                  AscendC::MicroAPI::RegTensor<float> &den,
-                                                 AscendC::MicroAPI::MaskReg &mask) noexcept
-{
+                                                 AscendC::MicroAPI::MaskReg &mask) noexcept {
     FastReciprocal(inv, den, mask);
 }
 
 // Normalizer reciprocal with fused 2^8 exponent undo scale
 __simd_callee__ inline void FastNormalizerReciprocal(AscendC::MicroAPI::RegTensor<float> &inv,
                                                      AscendC::MicroAPI::RegTensor<float> &den,
-                                                     AscendC::MicroAPI::MaskReg &mask) noexcept
-{
+                                                     AscendC::MicroAPI::MaskReg &mask) noexcept {
     using namespace AscendC::MicroAPI;
     FastReciprocal(inv, den, mask);
     RegTensor<float> undo;
@@ -80,12 +85,13 @@ __simd_callee__ inline void FastNormalizerReciprocal(AscendC::MicroAPI::RegTenso
 }
 #endif
 
-} // namespace math
+} // namespace sage::math
 
+namespace sage {
 using math::FastReciprocalScalar;
 #if defined(__CCE__) || defined(__DAV_C220_VEC__) || defined(__DAV_C310_VEC__) || defined(__DAV_C350_VEC__)
 using math::FastReciprocal;
+using math::FastVectorReciprocal;
 using math::FastNormalizerReciprocal;
 #endif
-
 } // namespace sage
