@@ -657,10 +657,16 @@ class ElasticBuffer:
             group: the distributed process group.
             num_cpu_bytes: the CPU buffer size in bytes (must be 2MB-aligned).
                 In sliced mode (fetch_mode=0) it only needs to hold this
-                rank's shard of the table. In local mode (fetch_mode=1) it
-                must hold a full replica of the global table for every rank
-                (engram_write fails fast when the capacity is insufficient);
-                pass 0 to auto-size it via
+                rank's shard of the table. In local mode (fetch_mode=1) it is
+                only used as the capacity of the copy fallback window:
+                ``engram_write`` first tries to register the caller's storage
+                host memory in place (zero-copy, no window and no copy at
+                all, all ranks sharing the same host memory map the SAME
+                table onto their devices); when that host memory is not
+                device-registerable, a per-rank window of ``num_cpu_bytes``
+                is allocated and the full table is memcpy'd into it
+                (engram_write fails fast when the capacity is insufficient).
+                Pass 0 to auto-size it via
                 ``ElasticBuffer.get_engram_storage_size_hint`` (the computed
                 size already includes the per-row aligned SF overhead).
             num_max_tokens_per_rank: maximum MoE dispatch tokens per rank.
@@ -676,8 +682,14 @@ class ElasticBuffer:
             fetch_mode: engram fetch mode. 0 (FETCH_MODE_SLICED, default):
                 global table is sharded across ranks, fetching goes through
                 cross-NPU communication (RDMA / a2a); 1 (FETCH_MODE_LOCAL,
-                inference only): the full global table is replicated on every
-                NPU, fetching is purely local with no cross-NPU communication;
+                inference only): the full global table is mapped on every
+                NPU, fetching is purely local with no cross-NPU
+                communication; ``engram_write`` registers the caller's
+                storage host memory in place (zero-copy) when it is
+                device-registerable, so ranks sharing the same host memory
+                (e.g. a fork-shared mmap of one vocab file) register the
+                SAME table on every NPU with a single host copy; otherwise it
+                falls back to per-rank table replication;
                 not supported together with with_grad=True.
         """
         moe_args = (num_max_tokens_per_rank, hidden, num_topk)
@@ -868,6 +880,15 @@ class ElasticBuffer:
             `storage` must be pinned (e.g. allocated via `storage.pin_memory()` or
             `torch.empty(..., pin_memory=True)`); plain (non-pinned) CPU memory is not
             supported by the driver's host-register path.
+            In local inference mode (fetch_mode=1), the same zero-copy mapping is applied
+            to the full-table `storage` when its host memory is device-registerable (e.g.
+            a shared file mmap, read-write); ranks sharing the same host memory then
+            register the SAME table on every NPU (one host copy in total) and in-place
+            updates of `storage` are visible to subsequent engram_fetch calls. When the
+            host memory is not registerable, a per-rank copy window sized by
+            `num_cpu_bytes` is used instead and the table is memcpy'd into it (the
+            current `storage` no longer needs to outlive the write). Whether zero-copy
+            is active can be queried via `engram_storage_zero_copy`.
         """
         torch._check(
             storage.is_cpu,
@@ -938,9 +959,11 @@ class ElasticBuffer:
                 lambda: f"sf dtype must be one of {_ENGRAM_SF_DTYPES}, got: {sf.dtype}",
             )
         self._runtime.engram_write(storage, sf)
-        if self._with_grad:
+        if self._with_grad or self._fetch_mode == FETCH_MODE_LOCAL:
+            # with_grad: 存储 host 内存被直接映射 (零拷贝); local: 存储可能被原地零拷贝注册。
+            # 两种情形都持有引用保证映射内存存活 (local 回退拷贝路径下持有无害)。
             self._engram_storage_ref = storage
-            if sf is not None:
+            if self._with_grad and sf is not None:
                 self._engram_sf_ref = sf
         self._engram_context_tensor = self._runtime.get_context_tensor()
         self._engram_hidden_size = storage.size(1)
@@ -952,6 +975,27 @@ class ElasticBuffer:
             self._local_sf_table_addr = self._runtime.get_local_sf_table_addr()
         self._comm_buffer_size = self._runtime.get_comm_buffer_size()
         self._rank_size = self._runtime.get_rank_size()
+
+    @property
+    def engram_storage_zero_copy(self) -> bool:
+        """Whether the engram storage host memory is registered in place (zero-copy).
+
+        True when the storage passed to ``engram_write`` is mapped directly as the
+        engram window (with_grad mode, or local mode with device-registerable host
+        memory); False when a per-rank copy window is used instead. In local mode,
+        ranks sharing the same host memory report True with identical
+        ``engram_host_buf_ptr`` values, i.e. the SAME vocab is mapped on every NPU.
+        """
+        return bool(self._runtime.get_storage_zero_copy())
+
+    @property
+    def engram_host_buf_ptr(self) -> int:
+        """Host address of the engram window (0 before engram_write).
+
+        Zero-copy: the data_ptr of the registered storage (identical across ranks that
+        share the same host memory). Copy fallback: this rank's private window.
+        """
+        return int(self._runtime.get_host_buf_ptr())
 
     def engram_fetch(self, indices: torch.Tensor) -> Callable:
         """
