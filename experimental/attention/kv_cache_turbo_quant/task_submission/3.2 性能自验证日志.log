@@ -1,0 +1,100 @@
+## KCTQ 性能自验证日志
+## 算子仓：ops-transformer（分支 kv_cache_turbo_quant；目录 experimental/attention/kv_cache_turbo_quant）
+## 环境：Atlas 800T A2（910B3）×1，CANN 9.1.0，torch 2.7.1 / torch_npu 2.7.1.post4，Python 3.11.4
+## 基线：任务书 §3.5 给定 PyTorch eager baseline（只读，禁止修改）；门槛：加速比 ≥ 10×。
+## 【主口径】官方 Q6 协议：warmup=20、repeat=100、3 轮取中位数；**不计输入准备、数据搬运、首次编译及 workspace 申请**。
+## 命令：./.runtime/op_test/kctq_run --kv <case>/kv_vectors.bin --rot shared/rotation_matrix.bin \
+##         --qjl shared/qjl_matrix.bin --out <dir> --tokens <T> --heads 8 --bits <B> --warmup 20 --repeat 100
+## 【附表】示例驱动口径：warmup=3、repeat=10，取中位数；**计时环内含 workspace 申请（aclrtMalloc）**
+##         + kernel launch + stream 同步。该口径比官方口径更严（多算一次 malloc），
+##         作为保守下界并列上报，避免“换口径提分”质疑；命令：bash tests/run_all.sh（与 2.2 精度日志同一轮）。
+## 本轮运行：2026-09-30 14:49（UTC+8）
+## 说明：本日志为**逐位对齐内核**（2026-09-30 版）在本环境的实测输出。
+
+########## 【主口径】官方 Q6 协议：20 次预热 / 100 次设备计时 / 3 轮取中位数 / workspace 申请在环外 ##########
+
+轮次                           decode_b1    decode_b64 prefill_t2048    mse2_t2048    mse4_t2048
+官方协议轮次 1                          42.0          73.7         263.5         210.0         299.6
+官方协议轮次 2                          47.7          72.7         266.1         211.9         300.9
+官方协议轮次 3                          43.1          74.8         263.7         207.7         322.6
+3 轮中位数（判定用）                       43.1          73.7         263.7         210.0         300.9
+（单位 µs；中位数 = 3 轮中位数的中位数）
+
+case               mse_bits  baseline(µs)     10x目标       3轮中位数(µs)       加速比  判定
+gqa_decode_b1             3      1491.676     149.2            43.1     34.61x  通过
+gqa_decode_b64            3      1552.784     155.3            73.7     21.07x  通过
+gqa_prefill_t2048         3      3855.422     385.5           263.7     14.62x  通过
+gqa_mse2_t2048            2      3607.963     360.8           210.0     17.18x  通过
+gqa_mse4_t2048            4      5286.502     528.7           300.9     17.57x  通过
+（基线数字逐字取自任务书 §3.5；10x 目标 = 基线 ÷ 10；加速比保留 2 位小数）
+
+结论：5/5 case 达标（≥10×）；最小余量为 gqa_prefill_t2048(bits=3)：14.62x
+      （较 10x 门槛余量 46.2%）。
+
+########## 【附表】示例驱动口径：各 case 计时原始行（本轮 stdout；已去掉 [V1]/[V2]/[V3]/[STD] 段落，完整版见 2.2 日志） ##########
+
+### gqa_decode_b1（tokens=1, heads=8, bits=3, rows=8） ###
+label: case tokens=1 heads=8 rows=8 bits=3 matrix_dtype=fp32 meta_dtype=bf16 warmup=3 repeat=10
+latency_ms_full seq: 0.0668 0.0659 0.0622 0.0635 0.0647 0.0617 0.0615 0.0633 0.0613 0.0612
+latency_ms_median: 0.0627
+latency_ms_min: 0.0612
+
+### gqa_decode_b64（tokens=64, heads=8, bits=3, rows=512） ###
+label: case tokens=64 heads=8 rows=512 bits=3 matrix_dtype=fp32 meta_dtype=bf16 warmup=3 repeat=10
+latency_ms_full seq: 0.0910 0.0903 0.0807 0.0825 0.0791 0.0804 0.0795 0.0779 0.0782 0.0808
+latency_ms_median: 0.0806
+latency_ms_min: 0.0779
+
+### gqa_prefill_t2048（tokens=2048, heads=8, bits=3, rows=16384） ###
+label: case tokens=2048 heads=8 rows=16384 bits=3 matrix_dtype=fp32 meta_dtype=bf16 warmup=3 repeat=10
+latency_ms_full seq: 0.2845 0.2874 0.2750 0.2837 0.2773 0.2746 0.2720 0.2727 0.2712 0.2684
+latency_ms_median: 0.2748
+latency_ms_min: 0.2684
+
+### gqa_mse2_t2048（tokens=2048, heads=8, bits=2, rows=16384） ###
+label: case tokens=2048 heads=8 rows=16384 bits=2 matrix_dtype=fp32 meta_dtype=bf16 warmup=3 repeat=10
+latency_ms_full seq: 0.2322 0.2291 0.2428 0.2285 0.2223 0.2256 0.2210 0.2208 0.2219 0.2197
+latency_ms_median: 0.224
+latency_ms_min: 0.2197
+
+### gqa_mse4_t2048（tokens=2048, heads=8, bits=4, rows=16384） ###
+label: case tokens=2048 heads=8 rows=16384 bits=4 matrix_dtype=fp32 meta_dtype=bf16 warmup=3 repeat=10
+latency_ms_full seq: 0.3528 0.3667 0.3545 0.3439 0.3421 0.3404 0.3413 0.3400 0.3405 0.3445
+latency_ms_median: 0.343
+latency_ms_min: 0.34
+
+### 交叉档位（同轮紧接执行） ###
+
+########## 汇总（run_all.sh 原始输出） ##########
+gqa_decode_b1 bits=3 median=0.0627ms
+gqa_decode_b64 bits=3 median=0.0806ms
+gqa_prefill_t2048 bits=3 median=0.2748ms
+gqa_mse2_t2048 bits=2 median=0.224ms
+gqa_mse4_t2048 bits=4 median=0.343ms
+工作目录: /tmp/kctq_selftest
+
+########## 【附表】加速比（示例驱动口径：baseline ÷ 本轮中位数） ##########
+case               mse_bits  baseline(µs)     10x目标       实测中位数(µs)       加速比  判定
+gqa_decode_b1             3      1491.676     149.2            62.7     23.79x  通过
+gqa_decode_b64            3      1552.784     155.3            80.6     19.27x  通过
+gqa_prefill_t2048         3      3855.422     385.5           274.8     14.03x  通过
+gqa_mse2_t2048            2      3607.963     360.8           224.0     16.11x  通过
+gqa_mse4_t2048            4      5286.502     528.7           343.0     15.41x  通过
+（基线数字逐字取自任务书 §3.5；10x 目标 = 基线 ÷ 10；加速比保留 2 位小数）
+
+结论（示例驱动口径）：5/5 case 达标（≥10×）；最小余量为 gqa_prefill_t2048(bits=3)：14.03x
+      （较 10x 门槛余量 40.3%；实测 274.8µs 较 10x 目标 385.5µs 低 28.7%）。
+
+########## 【附表】多轮复跑对照（示例驱动口径；同条件同机器，单位 µs，取中位数） ##########
+轮次                                decode_b1       decode_b64    prefill_t2048       mse2_t2048       mse4_t2048
+复跑轮次 1（同条件）                            60.3             81.3            272.8            219.8            312.1
+复跑轮次 2（同条件）                            69.7             81.0            271.0            220.2            307.0
+本轮（本日志数据）                              62.7             80.6            274.8            224.0            343.0
+极差（相对均值）                               14.6%              0.9%              1.4%              1.9%             11.2%
+最差轮加速比                                21.40x            19.10x            14.03x            16.11x            15.41x
+
+说明：
+- 波动原因：计时环内含 workspace 分配与 kernel launch，设备内存分配器状态与调度会使轮间中位数产生抖动；上表即为同条件复跑的实测范围。
+- workspace 规模：t2048 档 33.88MB（= LibApi 16MB 固定段 + 2×8192KB 行缓冲 + 65KB 行范数）；行缓冲已按「阶段互斥」原则把 residual 别名到 unit 缓冲、projection 别名到 rotated 缓冲。实测该请求落在运行时 aclrtMalloc 内存池快路径（≤35MB 档 ~2µs；50.9MB 档会掉到 ~53µs 慢路径），故 t2048 三档的耗时主要由 kernel 本身构成。详见 alias/README.md 与 alias/wsbytes_cost.log。
+- 取各轮最差中位数计算，加速比最低仍为 14.03x（gqa_prefill_t2048），满足 ≥10x。
+- 单 case 复跑命令：见 `1 自验证步骤说明.md` 第 4/5 节（单 case 手跑示例）。

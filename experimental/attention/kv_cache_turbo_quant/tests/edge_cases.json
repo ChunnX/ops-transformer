@@ -1,0 +1,74 @@
+[
+  {
+    "name": "heads4_t32_b3",
+    "tokens": 32,
+    "heads": 4,
+    "bits": 3,
+    "why": "head 数下边界（任务约束 4~32）"
+  },
+  {
+    "name": "heads32_t8_b3",
+    "tokens": 8,
+    "heads": 32,
+    "bits": 3,
+    "why": "head 数上边界"
+  },
+  {
+    "name": "heads4_t1_b2",
+    "tokens": 1,
+    "heads": 4,
+    "bits": 2,
+    "why": "最小规模（rows=4）+ 2-bit"
+  },
+  {
+    "name": "heads32_t1_b4",
+    "tokens": 1,
+    "heads": 32,
+    "bits": 4,
+    "why": "单 token 32 头（rows=32）+ 4-bit"
+  },
+  {
+    "name": "tail_t3_h8_b3",
+    "tokens": 3,
+    "heads": 8,
+    "bits": 3,
+    "why": "rows=24：不足一个 64 行批，且 16 行对齐尾块"
+  },
+  {
+    "name": "tail_t9_h8_b4",
+    "tokens": 9,
+    "heads": 8,
+    "bits": 4,
+    "why": "rows=72 = 64 + 8：批内尾块"
+  },
+  {
+    "name": "tail_t17_h8_b2",
+    "tokens": 17,
+    "heads": 8,
+    "bits": 2,
+    "why": "rows=136 = 2×64 + 8：多批尾块 + 2-bit"
+  },
+  {
+    "name": "wave_t2081_h8_b3",
+    "tokens": 2081,
+    "heads": 8,
+    "bits": 3,
+    "why": "rows=16648 > 20 核 × 832（tiling 对齐后 16640）：核波次 + 部分核尾块"
+  },
+  {
+    "name": "edge_rows_t8_h8_b3",
+    "tokens": 8,
+    "heads": 8,
+    "bits": 3,
+    "pattern": "edge-rows",
+    "why": "行内特例：全零行、近零行、单元素稀疏行 + 普通行（零向量语义）"
+  },
+  {
+    "name": "extreme_rows_t8_h8_b3",
+    "tokens": 8,
+    "heads": 8,
+    "bits": 3,
+    "pattern": "extreme",
+    "why": "特殊值行：+inf / -inf / nan / 大值（1e4），对应生态标准 §1.4 的 INF/-INF/NAN 场景；位打包输出在该域未定义，只判声明域（见 kctq_compare 的非有限行说明）"
+  }
+]
