@@ -1686,7 +1686,6 @@ public:
     {
         return engramCommContext_.rankSize;
     }
-
     static at::Tensor EngramFetch(const at::Tensor& context, const at::Tensor& indices, int64_t hiddenSize,
                                   int64_t numEntries, int64_t dtypeEnum, const at::Tensor& sfTable,
                                   at::Tensor& fetchedSf, int64_t fetchMode);
@@ -2415,8 +2414,8 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
              pybind11::arg("sf") = pybind11::none())
         .def_static(
             "engram_fetch",
-            static_cast<at::Tensor (*)(const at::Tensor &, const at::Tensor &, int64_t, int64_t, int64_t,
-                                       const at::Tensor &, at::Tensor &, int64_t)>(&Mc2Api::ElasticBuffer::EngramFetch),
+            static_cast<at::Tensor (*)(const at::Tensor&, const at::Tensor&, int64_t, int64_t, int64_t,
+                                       const at::Tensor&, at::Tensor&, int64_t)>(&Mc2Api::ElasticBuffer::EngramFetch),
             pybind11::arg("context"), pybind11::arg("indices"), pybind11::arg("hidden_size"),
             pybind11::arg("num_entries"), pybind11::arg("dtype"), pybind11::arg("sf_table"),
             pybind11::arg("fetched_sf"), pybind11::arg("fetch_mode") = Mc2Api::ENGRAM_FETCH_MODE_SLICED)
