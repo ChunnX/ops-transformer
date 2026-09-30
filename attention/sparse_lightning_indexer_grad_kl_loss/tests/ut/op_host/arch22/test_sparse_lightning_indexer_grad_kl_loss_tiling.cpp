@@ -13,7 +13,7 @@
 #include <string>
 #include <vector>
 
-#include "../../../../op_host/sparse_lightning_indexer_grad_kl_loss_tiling_common.h"
+#include "../../../../tiling_base/sparse_lightning_indexer_grad_kl_loss_tiling_common.h"
 #include "../../../../op_kernel/arch22/sparse_lightning_indexer_grad_kl_loss_tiling.h"
 #include "../../../../op_kernel/arch22/sparse_lightning_indexer_grad_kl_loss_template_tiling_key.h"
 #include "tiling_case_executor.h"
