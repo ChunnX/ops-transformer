@@ -1,5 +1,9 @@
 # aclnnGroupedMatmulSwigluQuantWeightNzV3
 
+> Ascend 950PR/Ascend 950DT supports two V3 WeightNZ MX paths: `FLOAT8_E4M3FN` x/weight produces
+> `FLOAT8_E4M3FN` output with `FLOAT8_E8M0` `outputScale`; `FLOAT4_E2M1` x/weight produces `BFLOAT16`
+> output and `outputScale` must be `nullptr`.
+
 [📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/gmm/grouped_matmul_swiglu_quant_v2)
 
 ## 产品支持情况
@@ -25,21 +29,21 @@
 
 ## 功能说明
 
-- 接口功能：融合GroupedMatmul、dequant、SwiGLU和quant。该接口为weight NZ特化版本，调用者必须传入FRACTAL_NZ格式的`weight`。当前仅支持Ascend 950PR/Ascend 950DT的单Tensor MXFP8场景。
+- 接口功能：融合GroupedMatmul、dequant和SwiGLU。该接口为weight NZ特化版本，调用者必须传入FRACTAL_NZ格式的`weight`。当前仅支持Ascend 950PR/Ascend 950DT的单Tensor MXFP8量化输出场景，以及MXFP4 A4W4直接BF16输出场景。
 
 - 与V2接口的主要区别：增加SwiGLU计算参数`swigluMode`、`clampLimit`、`gluAlpha`和`gluBias`，以及MX量化参数`roundMode`、`scaleAlg`和`dstTypeMax`。当前`swigluMode`仅支持2。
 
 - 计算公式：
 
   1. 根据 `groupList` 和 `groupListType` 将 `x` 划分为不同的分组，并为每个分组选择对应的权重切片。
-  2. 执行 grouped matmul，并结合 `xScale` 和 `weightScale` 完成 MXFP8 反量化，得到待进行 SwiGLU 计算的矩阵 `x_i`：
+  2. 执行 grouped matmul，并结合 `xScale` 和 `weightScale` 完成 MX 反量化，得到待进行 SwiGLU 计算的矩阵 `x_i`：
 
      $$x_i[m,n] = \sum_{k=0}^{K-1} \left(X_i[m,k] \cdot s_i^X[m,\lfloor k/32\rfloor]\right) \left(W_i[k,n] \cdot s_i^W[\lfloor k/32\rfloor,n]\right)$$
 
      其中 `W_i` 表示逻辑上的 `[K,N]` 权重，$s_i^X$、$s_i^W$ 是解码后的逻辑缩放因子，按MX block规则在K方向每32个元素一组广播，每64个元素存储两个E8M0 scale。缩放发生在K方向求和之前，不能将随K变化的scale移到矩阵乘法结果之后相乘。
 
   3. 沿最后一维前后分半，对前半部分执行带clamp和alpha的SiLU，对后半部分执行带clamp和bias的线性分支，再逐元素相乘，得到`swigluOut_i`。
-  4. 对 `swigluOut_i` 执行 MXFP8 动态量化，输出量化结果 `output` 和 E8M0 格式的 `outputScale`：
+  4. MXFP8 E4M3FN 输入场景对 `swigluOut_i` 执行 MXFP8 动态量化，输出量化结果 `output` 和 E8M0 格式的 `outputScale`；MXFP4 A4W4 场景跳过该量化步骤，直接输出 BF16 `output`，`outputScale` 必须为 `nullptr`：
 
      $$output, outputScale = DynamicMxQuant(swigluOut_i)$$
 
@@ -57,7 +61,7 @@
 
   本接口当前固定沿最后一维拆分，具体约束见“约束说明”。
 
-  - MX 量化先将 `swigluOut_i` 按最近偶数舍入转为 BF16，再沿输出的 N 轴每 32 个元素组成一个量化组；每 64 个元素在 `outputScale` 中存储两个 E8M0 scale。设该组的 BF16 元素为 $V_j$，最大绝对值为 $a=\max_j |V_j|$。输出类型固定为 FLOAT8_E4M3FN，其最大有限值为 448。对处于正常可表示范围的非零有限 $a$，两种 `scaleAlg` 的计算公式分别为：
+  - 对 MXFP8 E4M3FN 输入场景，MX 量化先将 `swigluOut_i` 按最近偶数舍入转为 BF16，再沿输出的 N 轴每 32 个元素组成一个量化组；每 64 个元素在 `outputScale` 中存储两个 E8M0 scale。设该组的 BF16 元素为 $V_j$，最大绝对值为 $a=\max_j |V_j|$。输出类型固定为 FLOAT8_E4M3FN，其最大有限值为 448。对处于正常可表示范围的非零有限 $a$，两种 `scaleAlg` 的计算公式分别为：
 
     - `scaleAlg=0`（OCP）：共享指数不向上进位。
 
@@ -147,8 +151,8 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3(
       </tr>
     </thead>
     <tbody>
-      <tr><td>x</td><td>输入</td><td>激活矩阵。</td><td>MXFP8 输入；当前仅支持 FLOAT8_E4M3FN。</td><td>FLOAT8_E4M3FN</td><td>ND</td><td>2 维，(M, K)</td><td>√</td></tr>
-      <tr><td>weight</td><td>输入</td><td>分组权重矩阵。</td><td>TensorList长度必须为1；非转置和转置的API入口view shape均为(E, K, N)。支持下文规定的非转置和转置weight的view、stride和storage shape，包括转置形成的非连续view；接口保留其FRACTAL_NZ物理存储，不执行任意非连续weight的转连续操作。</td><td>FLOAT8_E4M3FN</td><td>FRACTAL_NZ</td><td>3维，(E, K, N)</td><td>仅支持约束说明中的转置weight view</td></tr>
+      <tr><td>x</td><td>输入</td><td>激活矩阵。</td><td>MXFP8仅支持 FLOAT8_E4M3FN；A4W4仅支持 FLOAT4_E2M1。</td><td>FLOAT8_E4M3FN、FLOAT4_E2M1</td><td>ND</td><td>2 维，(M, K)</td><td>√</td></tr>
+      <tr><td>weight</td><td>输入</td><td>分组权重矩阵。</td><td>TensorList长度必须为1；非转置和转置的API入口view shape均为(E, K, N)。支持下文规定的非转置和转置weight的view、stride和storage shape，包括转置形成的非连续view；接口保留其FRACTAL_NZ物理存储，不执行任意非连续weight的转连续操作。</td><td>FLOAT8_E4M3FN、FLOAT4_E2M1</td><td>FRACTAL_NZ</td><td>3维，(E, K, N)</td><td>仅支持约束说明中的转置weight view</td></tr>
       <tr><td>weightScale</td><td>输入</td><td>权重量化因子。</td><td>TensorList 长度必须为 1，与 weight 的唯一 Tensor 对应；非转置和转置的API入口view shape均为(E, ceil(K / 64), N, 2)，转置属性必须与weight一致。</td><td>FLOAT8_E8M0</td><td>ND</td><td>4 维，(E, ceil(K / 64), N, 2)</td><td>√</td></tr>
       <tr><td>weightAssistMatrix</td><td>可选输入</td><td>权重辅助矩阵。</td><td>当前不支持有效数据；可传nullptr、长度为0的TensorList，或长度为1且唯一元素为nullptr/shape (0)的TensorList。</td><td>-</td><td>-</td><td>-</td><td>-</td></tr>
       <tr><td>bias</td><td>可选输入</td><td>矩阵乘偏置。</td><td>当前不支持，必须传 nullptr。</td><td>-</td><td>-</td><td>-</td><td>-</td></tr>
@@ -167,8 +171,8 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3(
       <tr><td>roundMode</td><td>输入</td><td>MX量化舍入模式。</td><td>可选参数，传入nullptr或空字符串时按`"rint"`处理；当前仅支持`"rint"`。</td><td>const char *</td><td>-</td><td>-</td><td>-</td></tr>
       <tr><td>scaleAlg</td><td>输入</td><td>MX 量化 scale 算法。</td><td>当前接口支持 0（OCP）和 1（cuBLAS）；其他值会报错。</td><td>INT64</td><td>-</td><td>-</td><td>-</td></tr>
       <tr><td>dstTypeMax</td><td>输入</td><td>MX 量化目标类型最大值。</td><td>当前 MXFP8 输出仅支持 0.0。</td><td>DOUBLE</td><td>-</td><td>-</td><td>-</td></tr>
-      <tr><td>output</td><td>输出</td><td>MXFP8 量化结果。</td><td>调用方创建并传入，当前仅支持 FLOAT8_E4M3FN。</td><td>FLOAT8_E4M3FN</td><td>ND</td><td>2 维，(M, N / 2)</td><td>√</td></tr>
-      <tr><td>outputScale</td><td>输出</td><td>MXFP8 输出 scale。</td><td>调用方创建并传入。</td><td>FLOAT8_E8M0</td><td>ND</td><td>3 维，(M, ceil((N / 2) / 64), 2)</td><td>√</td></tr>
+      <tr><td>output</td><td>输出</td><td>结果矩阵。</td><td>MXFP8输出为 FLOAT8_E4M3FN；A4W4直接输出 BF16。</td><td>FLOAT8_E4M3FN、BFLOAT16</td><td>ND</td><td>2 维，(M, N / 2)</td><td>√</td></tr>
+      <tr><td>outputScale</td><td>输出</td><td>MXFP8 输出 scale。</td><td>MXFP8场景调用方创建并传入；A4W4直接BF16输出场景必须传 nullptr。</td><td>FLOAT8_E8M0</td><td>ND</td><td>3 维，(M, ceil((N / 2) / 64), 2)</td><td>√</td></tr>
       <tr><td>workspaceSize</td><td>输出</td><td>Device 侧 workspace 大小。</td><td>返回值。</td><td>uint64_t *</td><td>-</td><td>-</td><td>-</td></tr>
       <tr><td>executor</td><td>输出</td><td>算子执行器。</td><td>返回值，传给第二段接口。</td><td>aclOpExecutor **</td><td>-</td><td>-</td><td>-</td></tr>
     </tbody>
@@ -196,12 +200,12 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3(
   <tr>
     <td>ACLNN_ERR_PARAM_NULLPTR</td>
     <td>161001</td>
-    <td>x、weight、weightScale、xScale、groupList、output、outputScale、workspaceSize或executor为空指针，或者weight或weightScale的TensorList中包含空Tensor。</td>
+    <td>x、weight、weightScale、xScale、groupList、output、workspaceSize或executor为空指针，或者weight或weightScale的TensorList中包含空Tensor；MXFP8场景的outputScale不能为空。</td>
   </tr>
   <tr>
     <td rowspan="7">ACLNN_ERR_PARAM_INVALID</td>
     <td rowspan="7">161002</td>
-    <td>输入或输出的数据类型不在支持范围内；当前 MXFP8 weightNZ 场景要求 x、weight 和 output 为 FLOAT8_E4M3FN，xScale、weightScale 和 outputScale 为 FLOAT8_E8M0，groupList 为 INT64。</td>
+    <td>输入或输出的数据类型不在支持范围内；MXFP8 weightNZ 场景要求 x、weight 和 output 为 FLOAT8_E4M3FN，xScale、weightScale 和 outputScale 为 FLOAT8_E8M0；A4W4场景要求 x、weight 为 FLOAT4_E2M1、output 为 BFLOAT16且outputScale为空；groupList 为 INT64。</td>
   </tr>
   <tr>
     <td>输入或输出的参数维度、shape或format不满足约束，例如weight不是三维FRACTAL_NZ格式，或输出shape不匹配。</td>
@@ -250,7 +254,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3(
 
   <!-- npu="950" id7 -->
   - <term>Ascend 950PR&950DT系列产品</term>：
-    - 支持范围：仅支持下述 MXFP8 weightNZ 场景，不支持 per-token、MXFP4、A8W4、A4W4 或其他量化场景；`weight` 和 `weightScale` 的 TensorList 长度必须均为 1，每个唯一 Tensor 承载全部 E 个 expert，不支持按 expert 拆成多个 Tensor；`weight` 必须为三维 FRACTAL_NZ 格式，支持非转置和转置输入，`x` 仅支持非转置输入。
+    - 支持范围：仅支持下述单Tensor weightNZ场景：MXFP8 E4M3FN/E4M3FN量化输出，以及MXFP4 A4W4 E2M1/E2M1直接BF16输出；不支持 per-token、A8W4或其他量化场景。`weight` 和 `weightScale` 的 TensorList 长度必须均为 1，每个唯一 Tensor 承载全部 E 个 expert，不支持按 expert 拆成多个 Tensor；`weight` 必须为三维 FRACTAL_NZ格式，支持非转置和转置输入，`x` 仅支持非转置输入。
     - MX量化场景下需满足以下约束条件：
         - 数据类型需要满足下表：
           <table style="undefined;table-layout: fixed; width: 1134px"><colgroup>
@@ -281,6 +285,15 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3(
               <td>FLOAT8_E8M0</td>
               <td>FLOAT8_E4M3FN</td>
               <td>FLOAT8_E8M0</td>
+            </tr>
+            <tr>
+              <td>MXFP4 A4W4</td>
+              <td>FLOAT4_E2M1</td>
+              <td>FLOAT4_E2M1</td>
+              <td>FLOAT8_E8M0</td>
+              <td>FLOAT8_E8M0</td>
+              <td>BFLOAT16</td>
+              <td>nullptr</td>
             </tr>
           </tbody>
           </table>
@@ -319,10 +332,23 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3(
               <td>(M, N / 2)</td>
               <td>(M, ceil((N / 2) / 64), 2)</td>
             </tr>
+            <tr>
+              <td>MXFP4 A4W4</td>
+              <td>(M, K)</td>
+              <td>API入口view：(E, K, N)<br>
+              非转置storage：(E, ceil(N / 64), ceil(K / 16), 16, 64)<br>
+              转置storage：(E, ceil(K / 64), ceil(N / 16), 16, 64)</td>
+              <td>API入口view：(E, ceil(K / 64), N, 2)<br>
+              非转置source/storage与入口view相同<br>
+              转置source/storage：(E, N, ceil(K / 64), 2)</td>
+              <td>(M, ceil(K / 64), 2)</td>
+              <td>(M, N / 2)</td>
+              <td>nullptr</td>
+            </tr>
           </tbody>
           </table>
 
-        - 维度与布局：`E` 是 expert 数量，范围为 [1, 1024]；`weight` 的逻辑首维及 `groupList` 长度均为 E，单 Tensor 可承载多个 expert。`M`（token 数）和 `K`（输入特征数）均大于 0；SwiGLU 拆分前的 `N` 为 64 的正整数倍，输出宽度为 `N / 2`。`weightScale` 最后一维固定为 2。`weight` 和 `weightScale` 的转置属性必须一致；仅支持上表列出的非转置或转置布局，不支持任意非连续权重 view；其他输入输出 Tensor 支持符合上述 shape 和布局约束的非连续 view。
+        - 维度与布局：`E` 是 expert 数量，范围为 [1, 1024]；`weight` 的逻辑首维及 `groupList` 长度均为 E，单 Tensor 可承载多个 expert。`M`（token 数）和 `K`（输入特征数）均大于 0；MXFP8的SwiGLU拆分前`N`为64的正整数倍，MXFP4 A4W4的`N`为128的正整数倍且`K`为偶数，输出宽度均为`N / 2`。`weightScale` 最后一维固定为 2。`weight` 和 `weightScale` 的转置属性必须一致；仅支持上表列出的非转置或转置布局，不支持任意非连续权重 view；其他输入输出 Tensor 支持符合上述 shape 和布局约束的非连续 view。
         - 分组与可选输入：`groupListType` 仅支持 0（累计 token 数，非负、非降且不大于 `M`）和 1（各组 token 数，非负且总和不大于 `M`）；未指定的输出区域不更新。`bias`、`smoothScale` 必须为 `nullptr`；`weightAssistMatrix` 仅可为 `nullptr`、空 TensorList，或包含唯一 `nullptr`/shape (0) Tensor 的 TensorList；`tuningConfigOptional` 仅可为 `nullptr` 或空数组。
         - SwiGLU 与量化参数：`swigluMode` 仅支持 2；`clampLimit`、`gluAlpha` 和 `gluBias` 必须为有限且可表示为 `float32` 的值，`clampLimit` 还必须大于 0。`dequantMode=quantMode=2`，`dequantDtype=0`（中间计算使用 `DT_FLOAT`）；`roundMode` 仅支持 `"rint"`，`nullptr` 或空字符串等效于 `"rint"`；`scaleAlg` 仅支持 0（OCP）和 1（cuBLAS）；`dstTypeMax` 只能为有限的 0.0。
   <!-- end id7 -->
