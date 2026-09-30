@@ -128,3 +128,34 @@ def test_aclgraph_forward_passes_optional_tail_inputs(with_tail):
     actual, _ = model.forward(**arguments)
     for name in tail_names:
         assert actual[name] is arguments[name]
+
+
+@pytest.mark.parametrize("kv_len", [31, 319, 335])
+@pytest.mark.parametrize("p_scale", [0.5, 2.0])
+def test_sectioned_tail_matches_uniform_attention(golden, kv_len, p_scale):
+    q_len, dim = 8, 64
+    tail_len = kv_len % 64
+    main_len = kv_len - tail_len
+    chunks = [(i, i + 1) for i in range((kv_len + 255) // 256)]
+    section_info = (64, 256, [[chunks]], 1, False)
+    out, lse = golden._cpu_mxfp8_golden_sectioned(
+        torch.zeros(1, 1, q_len, dim).to(torch.float8_e4m3fn),
+        torch.ones(1, 1, kv_len, dim).to(torch.float8_e4m3fn),
+        torch.ones(1, 1, kv_len, dim).to(torch.float8_e4m3fn),
+        torch.ones(1, 1, q_len, 2),
+        torch.ones(1, 1, kv_len, 2),
+        torch.full((1, 1, (kv_len + 31) // 32, dim), 2.0),
+        p_scale,
+        [q_len],
+        [kv_len],
+        section_info,
+        v_tail_bnsd=torch.full((1, 1, tail_len, dim), 6.0).bfloat16(),
+        tail_lens=[tail_len],
+    )
+    counts = torch.arange(kv_len - q_len + 1, kv_len + 1).float()
+    tail_counts = (counts - main_len).clamp(min=0)
+    expected = (2 * (counts - tail_counts) + 6 * tail_counts) / counts
+    torch.testing.assert_close(
+        out[0, 0], expected[:, None].expand(-1, dim), rtol=1e-6, atol=1e-6
+    )
+    torch.testing.assert_close(lse[0, 0, :, 0], counts.log(), rtol=0, atol=1e-6)
