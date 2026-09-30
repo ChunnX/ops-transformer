@@ -109,6 +109,7 @@ public:
 
 private:
     static constexpr int64_t UB_ROW_SIZE = 8;
+    static constexpr int64_t N_INDEX_SIZE_12 = 12;
     static constexpr event_t EVENT_ID0 = (event_t)4;
 
     template <bool gatherRope>
@@ -225,19 +226,19 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::InitBuffers(TPipe *pip
     pipe->InitBuffer(this->gatherTbuf, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_9K * 2);
     pipe->InitBuffer(this->gatherOutQue, 1, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_9K * 2);
     pipe->InitBuffer(this->reduceSumOutQue, 1, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_32K);
-    pipe->InitBuffer(this->weightInQue, 1, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_256);
-    pipe->InitBuffer(this->maxInQue, 1, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_512);
-    pipe->InitBuffer(this->sumInQue, 1, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_512);
+    pipe->InitBuffer(this->weightInQue, 1, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_128);
+    pipe->InitBuffer(this->maxInQue, 1, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_256);
+    pipe->InitBuffer(this->sumInQue, 1, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_256);
     if constexpr (HAS_SINK) {
-        pipe->InitBuffer(this->sinksInQue, 1, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_512);
+        pipe->InitBuffer(this->sinksInQue, 1, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_256);
         pipe->InitBuffer(this->psinkScalarQue, 1, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_32);
     }
     pipe->InitBuffer(this->mulsResQue, 1, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_512);
     pipe->InitBuffer(this->mulsInQue, 1, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_512);
     pipe->InitBuffer(this->reluQue, 1, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_32K);
-    pipe->InitBuffer(this->reluGradQue, 1, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_32K);
-    pipe->InitBuffer(this->dwQue, 1, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_256);
-    pipe->InitBuffer(this->dwOutQue, 1, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_256);
+    pipe->InitBuffer(this->reluGradQue, 1, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_16K);
+    pipe->InitBuffer(this->dwQue, 1, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_128);
+    pipe->InitBuffer(this->dwOutQue, 1, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_128);
     pipe->InitBuffer(this->lossSumQue, 1, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_32);
     pipe->InitBuffer(this->zeroRowQue, 1, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_2K);
     gatherKeyUb = gatherTbuf.Get<INPUT_T>();
@@ -246,7 +247,7 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::InitBuffers(TPipe *pip
     auto dwUb = this->dwQue.template AllocTensor<T>();
     auto zeroRowUb = this->zeroRowQue.template AllocTensor<INPUT_T>();
     Duplicate(lossSumUb, 0.0f, 8);
-    Duplicate(dwUb, 0.0f, 64);
+    Duplicate(dwUb, 0.0f, 32);
     Duplicate(zeroRowUb, static_cast<INPUT_T>(0), 2048); // 8*256
     this->lossSumQue.template FreeTensor(lossSumUb);
     this->dwQue.template FreeTensor(dwUb);
@@ -473,14 +474,18 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::MergeKv(
     SLIGradKLLossKRunInfo &kRunInfo, GlobalTensor<INPUT_T> srcTensor, GlobalTensor<INPUT_T> srcRopeTensor)
 {
     int64_t s2ProcessSize = kRunInfo.s2RealBaseSize;
+    int64_t s2Pair = CeilDiv(s2ProcessSize, 2L);
     int64_t mergeMte3Idx = 0;
     int64_t mte2Size = 0;
     int64_t mte3Size = 0;
     int64_t s2IdxArray0 = -1;
     int64_t s2IdxArray1 = -1;
     bool needWaitMte3ToMte2 = true;
-    int64_t s2GmStartOffset = 0;
-    int64_t s2GmLimit = s2ProcessSize;
+    int64_t s2GmStartOffset = GetSubBlockIdx() == 0 ? 0 : CeilDiv(s2Pair, 2L) * 2;
+    int64_t s2GmLimit = GetSubBlockIdx() == 0 ? CeilDiv(s2Pair, 2L) * 2 : s2ProcessSize;
+    if (s2GmLimit > s2ProcessSize) {
+        s2GmLimit = s2ProcessSize;
+    }
     for (int64_t s2GmOffsetArray = s2GmStartOffset; s2GmOffsetArray < s2GmLimit; s2GmOffsetArray += 2) {
         if (needWaitMte3ToMte2) {
             WaitFlag<HardEvent::MTE3_MTE2>(mergeMte3Idx + IdStart);
@@ -545,6 +550,13 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::ProcessVector1(
     if (kRunInfo.isS2end) {
         this->reduceSumOutQue.template EnQue(reduceSumTensor);
         this->reduceSumOutQue.template DeQue<T>();
+        DataCopyExtParams dataCopyParams;
+        dataCopyParams.blockCount = 1;
+        dataCopyParams.blockLen = runInfo.s2RealSize * sizeof(T);
+        dataCopyParams.srcStride = 0;
+        dataCopyParams.dstStride = 0;
+        DataCopyPad(reduceSumResGm[constInfo.subBlockIdx * constInfo.kSize], reduceSumTensor, dataCopyParams);
+        CrossCoreSetFlag<1, PIPE_MTE3>(SYNC_AIV_INNER_FLAG1);
     }
     this->weightInQue.template FreeTensor(weightInUb);
     this->reduceSumOutQue.template FreeTensor(reduceSumTensor);
@@ -556,7 +568,18 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::ProcessVector2(
 {
     auto reduceSumTensor = this->reduceSumOutQue.template AllocTensor<T>();
     LocalTensor<T> reduceOtherSumTensor = bmm1ResBuf.template GetTensor<T>();
-    Duplicate(reduceOtherSumTensor, 0.0f, AlignTo(runInfo.s2RealSize, static_cast<int32_t>(FP32_ALIGN_NUM)));
+    DataCopyExtParams dataCopyParams;
+    dataCopyParams.blockCount = 1;
+    dataCopyParams.blockLen = runInfo.s2RealSize * sizeof(T);
+    dataCopyParams.srcStride = 0;
+    dataCopyParams.dstStride = 0;
+    DataCopyPadExtParams<T> padParams;
+    CrossCoreWaitFlag<1, PIPE_MTE2>(SYNC_AIV_INNER_FLAG1);
+    DataCopyPad(reduceOtherSumTensor, reduceSumResGm[(1 - constInfo.subBlockIdx) * constInfo.kSize], dataCopyParams,
+                padParams);
+    event_t eventIdMte2ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
+    SetFlag<HardEvent::MTE2_V>(eventIdMte2ToV);
+    WaitFlag<HardEvent::MTE2_V>(eventIdMte2ToV);
     if (runInfo.s2TailSize == VEC_SY_BASESIZE) {
         ProcessVec2Vf<T, true>(reduceSumTensor, reduceSumTensor, reduceOtherSumTensor, runInfo.s2RealSize);
     } else {
@@ -616,7 +639,8 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::ProcessVectorSink(SLIG
         dataCopyParams.srcStride = 0;
         dataCopyParams.dstStride = 0;
         DataCopyPadExtParams<T> padParams;
-        DataCopyPad(sinkTensor, sinksGm, dataCopyParams, padParams);
+        int32_t offset = constInfo.subBlockIdx == 0 ? 0 : (constInfo.gSizeQuery - runInfo.nVecSize);
+        DataCopyPad(sinkTensor, sinksGm[offset], dataCopyParams, padParams);
         this->sinksInQue.template EnQue(sinkTensor);
         this->sinksInQue.template DeQue<T>();
         auto maxTensor = this->maxInQue.template AllocTensor<T>();
@@ -627,14 +651,18 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::ProcessVectorSink(SLIG
         event_t eventIDVToMTE3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
         SetFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
         WaitFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
-        DataCopyPad(psinkSyncGm, psinkScalar, scalarParams);
+        DataCopyPad(psinkSyncGm[constInfo.subBlockIdx], psinkScalar, scalarParams);
+        CrossCoreSetFlag<1, PIPE_MTE3>(SYNC_AIV_INNER_FLAG3);
+        CrossCoreWaitFlag<1, PIPE_MTE3>(SYNC_AIV_INNER_FLAG3);
         event_t eventIDMTE3ToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_S));
         SetFlag<HardEvent::MTE3_S>(eventIDMTE3ToS);
         WaitFlag<HardEvent::MTE3_S>(eventIDMTE3ToS);
         DataCacheCleanAndInvalid<float, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(psinkSyncGm);
-        float myPsink = psinkSyncGm.GetValue(0);
+        float myPsink = psinkSyncGm.GetValue(constInfo.subBlockIdx);
+        float peerPsink = psinkSyncGm.GetValue(1 - constInfo.subBlockIdx);
+        float totalPsink = myPsink + peerPsink;
         float gSize = static_cast<float>(constInfo.gSizeQuery);
-        runInfo.pScaler = 1.0f / (gSize - myPsink);
+        runInfo.pScaler = 1.0f / (gSize - totalPsink);
         this->sinksInQue.template FreeTensor(sinkTensor);
         this->maxInQue.template FreeTensor(maxTensor);
         this->sumInQue.template FreeTensor(sumTensor);
@@ -672,6 +700,14 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::ProcessVector4(
     if (kRunInfo.s2SingleIdx >= kRunInfo.s2SingleLoopTimes - 1) {
         CrossCoreSetFlag<2, PIPE_V>(SYNC_MM2_TO_V1_FLAG[kRunInfo.kTaskIdMod2]);
     }
+    DataCopyExtParams dataCopyGmParams;
+    dataCopyGmParams.blockCount = 1;
+    dataCopyGmParams.blockLen = kRunInfo.s2RealBaseSize * sizeof(T);
+    dataCopyGmParams.srcStride = 0;
+    dataCopyGmParams.dstStride = 0;
+    CrossCoreWaitFlag<1, PIPE_MTE3>(SYNC_AIV_INNER_FLAG2);
+    DataCopyPad(reduceSumResGm[constInfo.subBlockIdx * constInfo.pKBaseSize], mulsResUb, dataCopyGmParams);
+    CrossCoreSetFlag<1, PIPE_MTE3>(SYNC_AIV_INNER_FLAG1);
     this->maxInQue.template FreeTensor(maxTensor);
     this->sumInQue.template FreeTensor(sumTensor);
     this->mulsResQue.template FreeTensor(mulsResUb);
@@ -685,7 +721,16 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::ProcessVector5(SLIGrad
     auto mulsResUb = this->mulsResQue.template AllocTensor<T>();
     auto lossSumUb = this->lossSumQue.template AllocTensor<T>();
     auto reduceSumTensor = this->reduceSumOutQue.template AllocTensor<T>();
-    Duplicate(mulsInUb, 0.0f, AlignTo(kRunInfo.s2RealBaseSize, static_cast<int32_t>(FP32_ALIGN_NUM)));
+    DataCopyExtParams dataCopyParams;
+    dataCopyParams.blockCount = 1;
+    dataCopyParams.blockLen = kRunInfo.s2RealBaseSize * sizeof(T);
+    dataCopyParams.srcStride = 0;
+    dataCopyParams.dstStride = 0;
+    DataCopyPadExtParams<T> padParams;
+    CrossCoreWaitFlag<1, PIPE_MTE2>(SYNC_AIV_INNER_FLAG1);
+    DataCopyPad(mulsInUb, reduceSumResGm[(1 - constInfo.subBlockIdx) * constInfo.pKBaseSize], dataCopyParams,
+                padParams);
+    CrossCoreSetFlag<1, PIPE_MTE2>(SYNC_AIV_INNER_FLAG2);
     this->mulsInQue.template EnQue(mulsInUb);
     this->mulsInQue.template DeQue<T>();
     if (kRunInfo.isAlign64) {
@@ -695,7 +740,7 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::ProcessVector5(SLIGrad
         ProcessVec5Vf<T, false>(lossSumUb, mulsResUb, mulsInUb, reduceSumTensor[runInfo.s2CurSize],
                                 kRunInfo.s2RealBaseSize);
     }
-    if (kRunInfo.isS2end && runInfo.isLastK) {
+    if (kRunInfo.isS2end && runInfo.isLastK && constInfo.subBlockIdx == 0) {
         DataCopyExtParams dataCopyGmParams;
         dataCopyGmParams.blockCount = 1;
         dataCopyGmParams.blockLen = sizeof(T);
@@ -740,7 +785,8 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::ProcessVector6(
     dataCopyParams.srcStride = (constInfo.kSize - VEC_P_BASESIZE) * sizeof(T);
     dataCopyParams.dstStride = 0;
     DataCopyPadExtParams<T> padParams;
-    DataCopyPad(reluUb, reluGm[runInfo.s2CurSize], dataCopyParams, padParams);
+    DataCopyPad(reluUb, reluGm[runInfo.s2CurSize + runInfo.nIndexSize * constInfo.subBlockIdx * constInfo.kSize],
+                dataCopyParams, padParams);
     this->reluQue.template EnQue(reluUb);
     this->reluQue.template DeQue<T>();
     if (kRunInfo.isAlign64) {
@@ -756,15 +802,18 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::ProcessVector6(
         this->reluGradQue.template EnQue(reluGradUb);
         this->reluGradQue.template DeQue<INPUT_T>();
         LocalTensor<INPUT_T> mm3AL1Tensor = outputBuf.GetTensor<INPUT_T>();
-        uint32_t gRealSizeAlignTo16 = AlignTo(constInfo.gSizeQueryIndex, static_cast<uint32_t>(BLOCK_SINGLE_LEN));
-        uint16_t dstGap = static_cast<uint16_t>(gRealSizeAlignTo16 - runInfo.nIndexSize);
-        DataCopy(mm3AL1Tensor, reluGradUb,
+        uint32_t gRealSizeAlignTo16 = (constInfo.gSizeQueryIndex + 15) / 16 * 16;
+        uint16_t dstGap = constInfo.gSizeQueryIndex == G_SIZE_QUERY_INDEX_24 ?
+                              (static_cast<uint16_t>(AlignTo(runInfo.nIndexSize, 16) * 2 - runInfo.nIndexSize)) :
+                              (static_cast<uint16_t>(gRealSizeAlignTo16 - runInfo.nIndexSize));
+        DataCopy(mm3AL1Tensor[constInfo.subBlockIdx * runInfo.nIndexSize * BLOCK_SINGLE_LEN], reluGradUb,
                  {static_cast<uint16_t>(constInfo.pKBaseSize / BLOCK_SINGLE_LEN),
                   static_cast<uint16_t>(runInfo.nIndexSize), 0, dstGap});
-        if (dstGap > 0) {
-            DataCopy(mm3AL1Tensor[runInfo.nIndexSize * BLOCK_SINGLE_LEN], zeroRowTensor,
-                     {static_cast<uint16_t>(constInfo.pKBaseSize / BLOCK_SINGLE_LEN), dstGap, 0,
-                      static_cast<uint16_t>(gRealSizeAlignTo16 - dstGap)});
+        if (runInfo.nIndexSize == N_INDEX_SIZE_12 && constInfo.subBlockIdx == 0) { // 空行置零
+            uint16_t zeroRow = static_cast<uint16_t>((AlignTo(runInfo.nIndexSize, 16) - runInfo.nIndexSize) * 2);
+            uint16_t zeroRowGap = static_cast<uint16_t>(AlignTo(runInfo.nIndexSize, 16) * 2 - zeroRow);
+            DataCopy(mm3AL1Tensor[2 * runInfo.nIndexSize * BLOCK_SINGLE_LEN], zeroRowTensor,
+                     {static_cast<uint16_t>(constInfo.pKBaseSize / BLOCK_SINGLE_LEN), zeroRow, 0, zeroRowGap});
         }
         CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_V6_TO_C3_FLAG);
     }
@@ -912,13 +961,17 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::ProcessVector7Deter(
         }
         GetRunInfo(runInfo.taskId, bIdx, s1Idx, runInfo, accumS1Len, accumS2Len, actualSeqLensQ, actualSeqLensK);
 
+        int32_t v0RealKSize;
+        int32_t v1RealKSize;
         int32_t vRealKSize;
         int32_t perCoreKSize;
         int32_t tailCoreKSize;
         int32_t curCoreKSize;
         int64_t coreKOffset;
+        int64_t vCoreKOffset;
 
         perCoreKSize = CeilDiv(runInfo.kRealSize, coreNum);
+        // perCoreKSize = AlignTo(perCoreKSize, 4);
         int32_t usedCoreNum = CeilDiv(runInfo.kRealSize, perCoreKSize);
         if (constInfo.aicIdx >= usedCoreNum) {
             if (idx % MODE_NUM_2 == 0) {
@@ -931,8 +984,17 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::ProcessVector7Deter(
         }
         tailCoreKSize = runInfo.kRealSize - (usedCoreNum - 1) * perCoreKSize;
         curCoreKSize = constInfo.aicIdx == usedCoreNum - 1 ? tailCoreKSize : perCoreKSize;
+        v0RealKSize = CeilDiv(curCoreKSize, MODE_NUM_2);
+        v0RealKSize = Min(AlignTo(v0RealKSize, static_cast<int32_t>(MODE_NUM_2)), curCoreKSize);
+        v1RealKSize = curCoreKSize - v0RealKSize;
         coreKOffset = constInfo.aicIdx * perCoreKSize;
-        vRealKSize = curCoreKSize;
+        if (constInfo.subBlockIdx == 0) {
+            vRealKSize = v0RealKSize;
+            vCoreKOffset = coreKOffset;
+        } else {
+            vRealKSize = v1RealKSize;
+            vCoreKOffset = coreKOffset + v0RealKSize;
+        }
         if (vRealKSize <= 0) {
             if (idx % MODE_NUM_2 == 0) {
                 CrossCoreWaitFlag<0, PIPE_MTE3>(SYNC_C3_TO_V7_DETER_SA_FLAG);
@@ -944,9 +1006,9 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::ProcessVector7Deter(
         }
 
         int64_t mm3GmBaseOffset = idx * constInfo.kSize * constInfo.dSizeQueryIndex * MODE_NUM_2;
-        GlobalTensor<T> srcGm = mm3DeterResGm[mm3GmBaseOffset + (runInfo.taskIdMod2 * constInfo.kSize + coreKOffset) *
+        GlobalTensor<T> srcGm = mm3DeterResGm[mm3GmBaseOffset + (runInfo.taskIdMod2 * constInfo.kSize + vCoreKOffset) *
                                                                     constInfo.dSizeQueryIndex];
-        DeterScatterAdd(vRealKSize, srcGm, tmpBuf, coreKOffset, runInfo, idx, scatterAddGm[idx % MODE_NUM_2]);
+        DeterScatterAdd(vRealKSize, srcGm, tmpBuf, vCoreKOffset, runInfo, idx, scatterAddGm[idx % MODE_NUM_2]);
         if (idx % MODE_NUM_2 == 1 || bS1Index == bS1IndexEnd) {
             CrossCoreSetFlag<0, PIPE_MTE3>(SYNC_C3_TO_V7_DETER_SA_FLAG);
         }
@@ -1072,8 +1134,15 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::ProcessVector7(
         return;
     }
     CrossCoreWaitFlag<2, PIPE_MTE3>(SYNC_C3_TO_V7_FLAG[kRunInfo.kTaskIdMod2]);
-    int32_t vRealKSize = kRunInfo.s2RealBaseSize;
-    int64_t coreKOffset = 0;
+    int32_t vRealKSize;
+    int64_t coreKOffset;
+    if (constInfo.subBlockIdx == 0) {
+        vRealKSize = AlignTo(kRunInfo.s2RealBaseSize, MODE_NUM_2) / 2;
+        coreKOffset = 0;
+    } else {
+        vRealKSize = kRunInfo.s2RealBaseSize - AlignTo(kRunInfo.s2RealBaseSize, MODE_NUM_2) / 2;
+        coreKOffset = AlignTo(kRunInfo.s2RealBaseSize, MODE_NUM_2) / 2;
+    }
     if (vRealKSize <= 0) {
         CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_C3_TO_V7_FLAG[kRunInfo.kTaskIdMod2]);
         return;

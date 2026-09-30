@@ -1334,9 +1334,9 @@ ge::graphStatus SparseLightningIndexerGradKLLossTilingBaseRegbase::GetWorkspaceS
     int64_t bmm3Size = kSize * dSizeQueryIndex * sizeof(float) * PING_PONG_VALUE; // 确定性计算场景开pingpong
 
     int64_t usedCoreNum = static_cast<int64_t>(sliGradkllossMultiCoreParams_->get_coreNum());
-    int64_t singlecoreTotalSize = reduceSumOffset + reluOffset + gatherSYOffset;
+    int64_t singlecoreTotalSize = PING_PONG_VALUE * reduceSumOffset + reluOffset + gatherSYOffset;
     if (hasSink) {
-        singlecoreTotalSize += sizeof(float); // psinkSync
+        singlecoreTotalSize += 2 * sizeof(float); // psinkSync: one float per subBlock
     }
     int64_t multicoreTotalsize = 0;
     if (deterministic) {

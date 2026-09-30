@@ -23,7 +23,7 @@ using OpAttr = gert::TilingContextPara::OpAttr;
 
 constexpr const char *kOpName = "SparseLightningIndexerGradKLLoss";
 constexpr uint32_t kCoreNum = 1U;
-constexpr uint64_t kUbSize = 393216ULL;
+constexpr uint64_t kUbSize = 196608ULL;
 constexpr uint64_t kL1Size = 524288ULL;
 constexpr uint64_t kL0CSize = 131072ULL;
 constexpr uint64_t kL2Size = 33554432ULL;
@@ -38,14 +38,14 @@ const std::string kA5SocInfo = "{\n"
                                "    \"Intrinsic_data_move_l12ub\": true,\n"
                                "    \"Intrinsic_data_move_l0c2ub\": true,\n"
                                "    \"Intrinsic_data_move_out2l1_nd2nz\": false,\n"
-                               "    \"UB_SIZE\": 393216,\n"
+                               "    \"UB_SIZE\": 196608,\n"
                                "    \"L2_SIZE\": 33554432,\n"
                                "    \"L1_SIZE\": 524288,\n"
                                "    \"L0A_SIZE\": 65536,\n"
                                "    \"L0B_SIZE\": 65536,\n"
                                "    \"L0C_SIZE\": 131072,\n"
-                               "    \"vector_core_cnt\": 80,\n"
-                               "    \"cube_core_cnt\": 80,\n"
+                               "    \"vector_core_cnt\": 40,\n"
+                               "    \"cube_core_cnt\": 20,\n"
                                "    \"socVersion\": \"Ascend950\"\n"
                                "  }\n"
                                "}";

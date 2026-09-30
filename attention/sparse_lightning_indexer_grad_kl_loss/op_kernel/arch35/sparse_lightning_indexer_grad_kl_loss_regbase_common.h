@@ -32,13 +32,14 @@ enum class SLISparseMode {
 
 constexpr uint32_t L0_MAX_SIZE = 64 * 1024;
 constexpr uint32_t L1_MAX_SIZE = 512 * 1024;
-constexpr uint32_t UB_MAX_SIZE = 384 * 1024;
+constexpr uint32_t UB_MAX_SIZE = 128 * 1024;
 constexpr uint32_t L0C_MAX_SIZE = 256 * 1024;
 constexpr uint32_t MODE_NUM_2 = 2;
 constexpr uint32_t MODE_NUM_3 = 3;
 constexpr uint32_t ALIGN_NUM_2 = 2;
 constexpr uint32_t BLOCK_SINGLE_LEN = 16;
 constexpr uint32_t FP32_ALIGN_NUM = 8;
+constexpr uint32_t G_SIZE_QUERY_INDEX_24 = 24;
 
 struct GatherParams {
     int32_t s2ProcessSize;
@@ -182,6 +183,9 @@ struct SLIGradKLLossPRunInfo {
 
 constexpr uint8_t SYNC_GATHER_TO_MM12_FLAG[2] = {9, 10};
 constexpr uint8_t SYNC_MM2_TO_V1_FLAG[2] = {0, 1};
+constexpr uint8_t SYNC_AIV_INNER_FLAG1 = 7;
+constexpr uint8_t SYNC_AIV_INNER_FLAG2 = 11;
+constexpr uint8_t SYNC_AIV_INNER_FLAG3 = 12;
 constexpr uint8_t SYNC_V6_TO_C3_FLAG = 8;
 constexpr uint8_t SYNC_C3_TO_V7_FLAG[2] = {3, 4};
 

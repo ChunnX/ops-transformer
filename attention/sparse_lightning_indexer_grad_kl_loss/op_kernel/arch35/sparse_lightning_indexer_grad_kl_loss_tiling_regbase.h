@@ -20,8 +20,8 @@
 namespace optiling {
 
 // ------------------公共定义--------------------------
-const uint32_t SLI_MAX_AIC_CORE_NUM_REGBASE = 80;
-constexpr uint32_t MAX_CORE_NUM_REGBASE = 80; // 目前使用AIC核的最大值为80
+const uint32_t SLI_MAX_AIC_CORE_NUM_REGBASE = 36;
+constexpr uint32_t MAX_CORE_NUM_REGBASE = 36; // 目前使用AIC核的最大值为36
 
 // -----------算子TilingData定义---------------
 class SLIGradKLLossBaseParamsRegbase {

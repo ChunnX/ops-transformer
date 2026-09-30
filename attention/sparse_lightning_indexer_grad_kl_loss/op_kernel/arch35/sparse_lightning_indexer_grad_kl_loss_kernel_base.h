@@ -92,7 +92,7 @@ public:
     BufferManager<BufferType::L1> l1BufferManager;
 
     BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm1Buffers;
-    BuffersPolicySingleBuffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm3Buffer;
+    BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm3Buffer;
     BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> sYL1Buf;
     BuffersPolicySingleBuffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> reluGradResL1Buf;
 
@@ -358,19 +358,28 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
         runInfo.queryIndexTensorOffset = runInfo.accumS1Idx * constInfo.gSizeQueryIndex * constInfo.dSizeQueryIndex;
     }
 
-    runInfo.nIndexSize = constInfo.gSizeQueryIndex;
-    runInfo.nVecSize = constInfo.gSizeQuery;
+    if (constInfo.subBlockIdx == 0) {
+        runInfo.nIndexSize = AlignTo(constInfo.gSizeQueryIndex, ALIGN_NUM_2) / ALIGN_NUM_2;
+        runInfo.nVecSize = AlignTo(constInfo.gSizeQuery, ALIGN_NUM_2) / ALIGN_NUM_2;
+    } else {
+        runInfo.nIndexSize = constInfo.gSizeQueryIndex - AlignTo(constInfo.gSizeQueryIndex, ALIGN_NUM_2) / ALIGN_NUM_2;
+        runInfo.nVecSize = constInfo.gSizeQuery - AlignTo(constInfo.gSizeQuery, ALIGN_NUM_2) / ALIGN_NUM_2;
+    }
 
     if constexpr (LAYOUT_Q == SLILayout::TND) {
         runInfo.topkGmBaseOffset = runInfo.accumS1Idx * constInfo.kSize;
-        runInfo.weightOffset = runInfo.accumS1Idx * constInfo.gSizeQueryIndex;
-        runInfo.softmaxInputOffset = runInfo.accumS1Idx * constInfo.gSizeQuery;
+        runInfo.weightOffset = runInfo.accumS1Idx * constInfo.gSizeQueryIndex +
+                               AlignTo(constInfo.gSizeQueryIndex, ALIGN_NUM_2) * constInfo.subBlockIdx / ALIGN_NUM_2;
+        runInfo.softmaxInputOffset = runInfo.accumS1Idx * constInfo.gSizeQuery +
+                                     AlignTo(constInfo.gSizeQuery, ALIGN_NUM_2) * constInfo.subBlockIdx / ALIGN_NUM_2;
     } else {
         runInfo.topkGmBaseOffset = runInfo.bIdx * constInfo.s1Size * constInfo.kSize + runInfo.s1Idx * constInfo.kSize;
         runInfo.weightOffset = runInfo.bIdx * constInfo.s1Size * constInfo.gSizeQueryIndex +
-                               runInfo.s1Idx * constInfo.gSizeQueryIndex;
+                               runInfo.s1Idx * constInfo.gSizeQueryIndex +
+                               AlignTo(constInfo.gSizeQueryIndex, ALIGN_NUM_2) * constInfo.subBlockIdx / ALIGN_NUM_2;
         runInfo.softmaxInputOffset = runInfo.bIdx * constInfo.s1Size * constInfo.gSizeQuery +
-                                     runInfo.s1Idx * constInfo.gSizeQuery;
+                                     runInfo.s1Idx * constInfo.gSizeQuery +
+                                     AlignTo(constInfo.gSizeQuery, ALIGN_NUM_2) * constInfo.subBlockIdx / ALIGN_NUM_2;
     }
     runInfo.isLastK = bS1Idx + coreNum >= s1IdxEnd;
     runInfo.isValid = true;
@@ -541,19 +550,28 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
         runInfo.queryIndexTensorOffset = runInfo.accumS1Idx * constInfo.gSizeQueryIndex * constInfo.dSizeQueryIndex;
     }
 
-    runInfo.nIndexSize = constInfo.gSizeQueryIndex;
-    runInfo.nVecSize = constInfo.gSizeQuery;
+    if (constInfo.subBlockIdx == 0) {
+        runInfo.nIndexSize = AlignTo(constInfo.gSizeQueryIndex, ALIGN_NUM_2) / 2;
+        runInfo.nVecSize = AlignTo(constInfo.gSizeQuery, ALIGN_NUM_2) / 2;
+    } else {
+        runInfo.nIndexSize = constInfo.gSizeQueryIndex - AlignTo(constInfo.gSizeQueryIndex, ALIGN_NUM_2) / 2;
+        runInfo.nVecSize = constInfo.gSizeQuery - AlignTo(constInfo.gSizeQuery, ALIGN_NUM_2) / 2;
+    }
 
     if constexpr (LAYOUT_Q == SLILayout::TND) {
         runInfo.topkGmBaseOffset = runInfo.accumS1Idx * constInfo.kSize;
-        runInfo.weightOffset = runInfo.accumS1Idx * constInfo.gSizeQueryIndex;
-        runInfo.softmaxInputOffset = runInfo.accumS1Idx * constInfo.gSizeQuery;
+        runInfo.weightOffset = runInfo.accumS1Idx * constInfo.gSizeQueryIndex +
+                               AlignTo(constInfo.gSizeQueryIndex, ALIGN_NUM_2) * constInfo.subBlockIdx / 2;
+        runInfo.softmaxInputOffset = runInfo.accumS1Idx * constInfo.gSizeQuery +
+                                     AlignTo(constInfo.gSizeQuery, ALIGN_NUM_2) * constInfo.subBlockIdx / 2;
     } else if constexpr (LAYOUT_Q == SLILayout::BSND) {
         runInfo.topkGmBaseOffset = runInfo.bIdx * constInfo.s1Size * constInfo.kSize + runInfo.s1Idx * constInfo.kSize;
         runInfo.weightOffset = runInfo.bIdx * constInfo.s1Size * constInfo.gSizeQueryIndex +
-                               runInfo.s1Idx * constInfo.gSizeQueryIndex;
+                               runInfo.s1Idx * constInfo.gSizeQueryIndex +
+                               AlignTo(constInfo.gSizeQueryIndex, ALIGN_NUM_2) * constInfo.subBlockIdx / 2;
         runInfo.softmaxInputOffset = runInfo.bIdx * constInfo.s1Size * constInfo.gSizeQuery +
-                                     runInfo.s1Idx * constInfo.gSizeQuery;
+                                     runInfo.s1Idx * constInfo.gSizeQuery +
+                                     AlignTo(constInfo.gSizeQuery, ALIGN_NUM_2) * constInfo.subBlockIdx / 2;
     }
     runInfo.isLastK = isLastB && s1Idx == s1IdxEnd - 1;
 }
@@ -632,8 +650,8 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
 {
     if ASCEND_IS_AIV {
         constInfo.aivIdx = GetBlockIdx();
-        constInfo.aicIdx = constInfo.aivIdx;
-        constInfo.subBlockIdx = 0;
+        constInfo.aicIdx = constInfo.aivIdx / 2;
+        constInfo.subBlockIdx = constInfo.aivIdx % MODE_NUM_2;
     } else {
         constInfo.aicIdx = GetBlockIdx();
     }
@@ -653,7 +671,7 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
     constInfo.sparseMode = static_cast<SLISparseMode>(baseInfo.sparseMode);
     constInfo.scaleValue = baseInfo.scaleValue;
     constInfo.sparseBlockSize = 1;
-    constInfo.gatherKBaseSize = 128; // gather每次处理的行数
+    constInfo.gatherKBaseSize = 128; // gather每次处理的行数(v0+v1)
     constInfo.syKBaseSize = tilingData->multiCoreParams.syKTotalSize / (constInfo.n2Size * constInfo.gSizeQueryIndex);
     constInfo.pKBaseSize = tilingData->multiCoreParams.pKTotalSize / (constInfo.n2Size * constInfo.gSizeQuery);
     constInfo.syKBaseSize = Min(1024, constInfo.syKBaseSize);
@@ -671,11 +689,12 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
     sYL1Buf.Init(l1BufferManager, 128 * 576 * sizeof(INPUT_T));
     reluGradResL1Buf.Init(l1BufferManager, 64 * 256 * sizeof(INPUT_T));
     ubBufferManager.Init(pipe, UB_MAX_SIZE);
-    bmm1Buffers.Init(ubBufferManager, 64 * 256 * sizeof(T));
-    bmm3Buffer.Init(ubBufferManager, 128 * 128 * sizeof(T));
+    bmm1Buffers.Init(ubBufferManager, 32 * 256 * sizeof(T));
+    bmm3Buffer.Init(ubBufferManager, 64 * 128 * sizeof(T));
     if ASCEND_IS_AIV {
         CrossCoreSetFlag<2, PIPE_V>(SYNC_MM2_TO_V1_FLAG[0]);
         CrossCoreSetFlag<2, PIPE_V>(SYNC_MM2_TO_V1_FLAG[1]);
+        CrossCoreSetFlag<1, PIPE_MTE2>(SYNC_AIV_INNER_FLAG2);
         if constexpr (!IS_DETER) {
             CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_C3_TO_V7_FLAG[0]);
             CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_C3_TO_V7_FLAG[1]);
@@ -694,6 +713,7 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
         CrossCoreWaitFlag<2, PIPE_MTE3>(SYNC_GATHER_TO_MM12_FLAG[0]);
         CrossCoreWaitFlag<2, PIPE_MTE3>(SYNC_GATHER_TO_MM12_FLAG[1]);
         CrossCoreWaitFlag<2, PIPE_MTE3>(SYNC_V6_TO_C3_FLAG);
+        CrossCoreWaitFlag<1, PIPE_MTE3>(SYNC_AIV_INNER_FLAG2);
     } else if ASCEND_IS_AIC {
         CrossCoreWaitFlag<2, PIPE_FIX>(SYNC_MM2_TO_V1_FLAG[0]);
         CrossCoreWaitFlag<2, PIPE_FIX>(SYNC_MM2_TO_V1_FLAG[1]);
@@ -708,10 +728,10 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
     __gm__ uint8_t *workspace)
 {
     aicNum = GetBlockNum();
-    int64_t reduceSumOffset = constInfo.kSize * sizeof(float);
+    int64_t reduceSumOffset = 2 * constInfo.kSize * sizeof(float); // * 2
     int64_t reluOffset = constInfo.gSizeQueryIndex * constInfo.kSize * sizeof(float);
     int64_t gatherSYOffset = constInfo.kSize * constInfo.dSizeQueryIndex * sizeof(INPUT_T);
-    constexpr int64_t psinkSyncSize = HAS_SINK ? sizeof(float) : 0;
+    constexpr int64_t psinkSyncSize = HAS_SINK ? 2 * sizeof(float) : 0;
 
     int64_t coreTotalOffset = constInfo.aicIdx * (reduceSumOffset + reluOffset + gatherSYOffset + psinkSyncSize);
     int64_t totalOffset = aicNum * (reduceSumOffset + reluOffset + gatherSYOffset + psinkSyncSize);
@@ -723,7 +743,7 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
     gatherSYRes.SetGlobalBuffer((__gm__ INPUT_T *)(workspace + offset + coreTotalOffset));
     offset += gatherSYOffset;
     if constexpr (HAS_SINK) {
-        psinkSyncGm.SetGlobalBuffer((__gm__ T *)(workspace + offset + coreTotalOffset), 1);
+        psinkSyncGm.SetGlobalBuffer((__gm__ T *)(workspace + offset + coreTotalOffset), 2);
     }
     scatterAddResGm.SetGlobalBuffer((__gm__ T *)(workspace + totalOffset));
     if constexpr (LAYOUT_Q == SLILayout::TND) {
