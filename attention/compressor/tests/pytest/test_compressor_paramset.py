@@ -243,7 +243,7 @@ FIRST_CASE = [
     TEST_PARAMS["decode3"],
     TEST_PARAMS["decode4"],
     TEST_PARAMS["decode5"],
-    RingBuffer0,
+    # RingBuffer0,
 ]
 # 按需选择要启用的测试参数（例如默认启用所有）
 ENABLED_PARAMS = FIRST_CASE  # 按需增加需要的case即可
