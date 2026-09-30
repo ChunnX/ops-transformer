@@ -3,7 +3,6 @@
 #include <cstring>
 #include <cstdint>
 #include "platform_traits.h"
-#include "sage_attention2_tiling_data.h"
 
 #if defined(__CCE__) || defined(__DAV_C220_VEC__) || defined(__DAV_C310_VEC__) || defined(__DAV_C350_VEC__)
 #include "kernel_operator.h"
@@ -32,12 +31,6 @@ inline float FastReciprocalScalar(float denom) noexcept {
     return est_val;
 }
 
-template <typename TScalar = float>
-struct ReciprocalApproximationPipeline {
-    static inline float EvaluateScalar(float denom) noexcept {
-        return FastReciprocalScalar(denom);
-    }
-};
 
 #if defined(__CCE__) || defined(__DAV_C220_VEC__) || defined(__DAV_C310_VEC__) || defined(__DAV_C350_VEC__)
 template <int N_STEPS = 2>
@@ -72,12 +65,6 @@ __simd_callee__ __attribute__((always_inline)) inline void FastReciprocal(vapi::
     VectorReciprocalNewton<2>(dst, src, mask);
 }
 
-__simd_callee__ __attribute__((always_inline)) inline void FastVectorReciprocal(vapi::RegTensor<float> &inv,
-                                                 vapi::RegTensor<float> &den,
-                                                 vapi::MaskReg &mask) noexcept {
-    VectorReciprocalNewton<2>(inv, den, mask);
-}
-
 __simd_callee__ __attribute__((always_inline)) inline void FastNormalizerReciprocal(vapi::RegTensor<float> &inv,
                                                      vapi::RegTensor<float> &den,
                                                      vapi::MaskReg &mask) noexcept {
@@ -85,12 +72,6 @@ __simd_callee__ __attribute__((always_inline)) inline void FastNormalizerRecipro
     vapi::RegTensor<float> undo_reg;
     vapi::Duplicate(undo_reg, PV_PARTIAL_UNDO);
     vapi::Mul(inv, inv, undo_reg, mask);
-}
-
-__simd_callee__ __attribute__((always_inline)) inline void NormalizerReciprocal(vapi::RegTensor<float> &inv,
-                                                 vapi::RegTensor<float> &den,
-                                                 vapi::MaskReg &mask) noexcept {
-    FastNormalizerReciprocal(inv, den, mask);
 }
 #endif
 
@@ -107,21 +88,9 @@ __simd_callee__ __attribute__((always_inline)) inline void FastReciprocal(Ascend
     core::VectorReciprocalNewton<2>(dst, src, mask);
 }
 
-__simd_callee__ __attribute__((always_inline)) inline void FastVectorReciprocal(AscendC::MicroAPI::RegTensor<float> &inv,
-                                                 AscendC::MicroAPI::RegTensor<float> &den,
-                                                 AscendC::MicroAPI::MaskReg &mask) noexcept {
-    core::VectorReciprocalNewton<2>(inv, den, mask);
-}
-
 __simd_callee__ __attribute__((always_inline)) inline void FastNormalizerReciprocal(AscendC::MicroAPI::RegTensor<float> &inv,
                                                      AscendC::MicroAPI::RegTensor<float> &den,
                                                      AscendC::MicroAPI::MaskReg &mask) noexcept {
-    core::FastNormalizerReciprocal(inv, den, mask);
-}
-
-__simd_callee__ __attribute__((always_inline)) inline void NormalizerReciprocal(AscendC::MicroAPI::RegTensor<float> &inv,
-                                                 AscendC::MicroAPI::RegTensor<float> &den,
-                                                 AscendC::MicroAPI::MaskReg &mask) noexcept {
     core::FastNormalizerReciprocal(inv, den, mask);
 }
 #endif
