@@ -10,7 +10,8 @@
 add_op_to_compiled_list()
 
 if (BUILD_OPEN_PROJECT)
-    set(quant_lightning_indexer_v2_depends attention/lightning_indexer_v2 CACHE INTERNAL "Dependencies for quant_lightning_indexer_v2")
+    # 本算子不依赖其它算子: 源码未引用任何跨算子头文件, 因此不声明 depends
+    # (实验分支下 depends 会被加上 experimental/ 前缀, 主树同名依赖路径不存在 -> 构建报 copy 错误)
     target_sources(op_host_aclnn PRIVATE
         quant_lightning_indexer_v2_def.cpp
     )
