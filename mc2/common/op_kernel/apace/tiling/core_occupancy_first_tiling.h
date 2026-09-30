@@ -37,7 +37,7 @@
 // 纯几何无时延模型。baseM/baseN/usedCoreNum 任一为 0(matmul tiling 异常)返回 false,
 // 由调用方决定回退行为(校验与日志在 op_tiling)。
 inline bool DeriveCommCut(uint64_t m, uint64_t n, uint64_t baseM, uint64_t baseN, uint64_t usedCoreNum,
-                          uint64_t &headMSize, uint64_t &headTileCnt, uint64_t &tailMSize, uint64_t &tailTileCnt)
+                          uint64_t& headMSize, uint64_t& headTileCnt, uint64_t& tailMSize, uint64_t& tailTileCnt)
 {
     if (baseM == 0UL || baseN == 0UL || usedCoreNum == 0UL) {
         return false;
@@ -65,8 +65,8 @@ public:
      * \param dataTiling   [out] 数据通信切分
      * \param scaleTiling  [out] Scale 通信切分（nonSplitAxisSize = ka / 32）
      */
-    static void GetCommTilingData(uint64_t m, uint64_t n, uint64_t ka, const QuantMatmulTilingData &mmTiling,
-                                  CommTilingData &dataTiling, CommTilingData &scaleTiling)
+    static void GetCommTilingData(uint64_t m, uint64_t n, uint64_t ka, const QuantMatmulTilingData& mmTiling,
+                                  CommTilingData& dataTiling, CommTilingData& scaleTiling)
     {
         uint64_t headMSize = 0;
         uint64_t headTileCnt = 0;
@@ -95,7 +95,7 @@ public:
 // AGMM 等 HCCL 通信算子无 scale 通道; nonSplitAxisSize(通信轴长度)由调用方按自身通信轴设置。
 // 返回 false = matmul tiling 异常(零值 tiling 已给出), 调用方决定回退(校验日志在 op_tiling)。
 inline bool GetCommTilingFromV3(uint64_t m, uint64_t n, uint64_t baseM, uint64_t baseN, uint64_t usedCoreNum,
-                                CommTilingData &dataTiling)
+                                CommTilingData& dataTiling)
 {
     uint64_t headMSize = 0;
     uint64_t headTileCnt = 0;
@@ -127,9 +127,9 @@ inline bool GetCommTilingFromV3(uint64_t m, uint64_t n, uint64_t baseM, uint64_t
  * 纯计算序列, 不含校验与日志——核数守卫(usedCoreNum>=rankSize 防 kernel 死锁、
  * min(aic,aiv)>=rankSize)与错误日志由调用方 op_tiling 负责。
  */
-inline void GetCoreOccupancyFirstTiling(fe::PlatFormInfos *platformInfo, uint64_t m, uint64_t n, uint64_t ka,
-                                        bool isFp4, bool hasBias, QuantMatmulTilingData &mmTiling,
-                                        CommTilingData &dataTiling, CommTilingData &scaleTiling)
+inline void GetCoreOccupancyFirstTiling(fe::PlatFormInfos* platformInfo, uint64_t m, uint64_t n, uint64_t ka,
+                                        bool isFp4, bool hasBias, QuantMatmulTilingData& mmTiling,
+                                        CommTilingData& dataTiling, CommTilingData& scaleTiling)
 {
     // ---- matmul tiling(SWAT): MXFP4 按 fp4 推导 baseK(256 vs 128)与 L1 布局, 其余按 fp8 ----
     if (isFp4) {

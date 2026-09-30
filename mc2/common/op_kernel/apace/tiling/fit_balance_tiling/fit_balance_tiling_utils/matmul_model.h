@@ -41,7 +41,7 @@ public:
     double matmulGradient_ = 1.0;
 
     // Constructor(soc 恒 950, 频率 1689.6 cycle/us; 选行参数由 InitCtx 按 dtype 五元组从标定选定)
-    MatmulPerfModel(const FitBalanceTilingArgs &args, double computesPerCycle, MatmulBaseBlock baseBlock)
+    MatmulPerfModel(const FitBalanceTilingArgs& args, double computesPerCycle, MatmulBaseBlock baseBlock)
     {
         mmShapeInfo_.coreNum = args.aicCoreNum; // 每die核数
         mmShapeInfo_.inMatrixADtypeSize = args.inputDtypeSize;
@@ -62,7 +62,7 @@ public:
     // dtype 分类(选行匹配键的推导; 查表选行已在 InitCtx 完成):
     // 950 量化语义: fp4/fp8/HIF8 或 A8W8 量化, 其余按 FP16 建模;
     // fp4 经 geAType 识别
-    void SetCalcType(const FitBalanceTilingArgs &args)
+    void SetCalcType(const FitBalanceTilingArgs& args)
     {
         if ((args.aType == matmul_tiling::DataType::DT_HIFLOAT8) ||
             (args.aType == matmul_tiling::DataType::DT_FLOAT8_E4M3FN) ||

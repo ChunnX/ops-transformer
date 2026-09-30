@@ -34,7 +34,7 @@ public:
     double backTileRatio = BACK_TILE_RATIO; // 计算长块个数使用的参数
 
     // Constructor
-    explicit CutPlanner(const FitBalanceTilingArgs &args)
+    explicit CutPlanner(const FitBalanceTilingArgs& args)
     {
         totalLen = args.mValue;
         tileArgs.mAlignLen = DEFAULT_BASE_M; // 切分长度照顾mm性能，对齐baseM

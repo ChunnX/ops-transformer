@@ -47,7 +47,7 @@ struct FitBasedBalanceCtx {
 // ============================================================================
 
 // 短长块等长归一(等长时"长短"结构退化为纯等分, 去掉多余的块类型标记)
-inline void MergeEqualTiles(CutPlanner &tilingM)
+inline void MergeEqualTiles(CutPlanner& tilingM)
 {
     if (tilingM.cutRes.shortTileLen == tilingM.cutRes.longTileLen) {
         tilingM.cutRes.shortTileLen = 0U;
@@ -57,7 +57,7 @@ inline void MergeEqualTiles(CutPlanner &tilingM)
 }
 
 // 线性度好的 shape（k×n 较大, 通信拟合更可信）
-inline bool IsGoodLinearityShape(const MatmulShapeInfo &mmInfo)
+inline bool IsGoodLinearityShape(const MatmulShapeInfo& mmInfo)
 {
     return mmInfo.kValue * mmInfo.nValue >= GOOD_LINEARITY_NK_BYTES * BYTES_PER_MB;
 }
@@ -65,7 +65,7 @@ inline bool IsGoodLinearityShape(const MatmulShapeInfo &mmInfo)
 // 双向配平长块(无本地块形态): 短块是流水线垫片, 长块按它反解——
 //   短块后置(计算 bound) → 长块 = 反解通信时长(掩盖短块计算);
 //   短块前置(通信 bound) → 长块 = 反解计算时长(掩盖短块通信)。
-inline void BalanceLongTileLen(FitBasedBalanceCtx &ctx)
+inline void BalanceLongTileLen(FitBasedBalanceCtx& ctx)
 {
     if (ctx.tilingM.cutRes.shortTileAtBack) {
         const double targetTime = ctx.matmulPerf.MatmulTime(ctx.tilingM.cutRes.shortTileLen, ctx.mmRankMul);
@@ -86,7 +86,7 @@ struct EstimateTimesResult {
     double totalMatmulTime = 0.0;
     double totalTpTime = 0.0;
 };
-inline EstimateTimesResult EstimateTotalTimes(FitBasedBalanceCtx &ctx)
+inline EstimateTimesResult EstimateTotalTimes(FitBasedBalanceCtx& ctx)
 {
     ctx.matmulPerf.FindCubeUtil(ctx.commRankCntForMm);
     ctx.matmulPerf.GetMatmulGradient();
@@ -100,7 +100,7 @@ inline EstimateTimesResult EstimateTotalTimes(FitBasedBalanceCtx &ctx)
 }
 
 // L2 占用判定: A+B 权重工作集超 950 L2 容量(L2_CACHE_BYTES)时切分收益变化
-inline bool ExceedsL2Cache(const MatmulShapeInfo &mmInfo)
+inline bool ExceedsL2Cache(const MatmulShapeInfo& mmInfo)
 {
     const uint64_t l2UseSize = mmInfo.mValue * mmInfo.kValue * mmInfo.inMatrixADtypeSize +
                                mmInfo.kValue * mmInfo.nValue * mmInfo.inMatrixBDtypeSize;
@@ -108,7 +108,7 @@ inline bool ExceedsL2Cache(const MatmulShapeInfo &mmInfo)
 }
 
 // L2 超限鼓励大块: minLen×2——超限的工作集切成小块会令 L2 反复换入换出, 抬下限让块变大
-inline void ApplyL2MinLenBoost(CutPlanner &tilingM, bool exceedsL2)
+inline void ApplyL2MinLenBoost(CutPlanner& tilingM, bool exceedsL2)
 {
     if (exceedsL2) {
         tilingM.SetMinLenByMax(tilingM.GetMinLen() * 2U);
@@ -128,7 +128,7 @@ inline void ApplyL2MinLenBoost(CutPlanner &tilingM, bool exceedsL2)
 //   通信在后(RS/AR/A2A): T_cut ≈ T_mm(首块) + max(T_mm − T_mm(首块), T_comm(除末轮)) + T_comm(末轮)
 // 单块(含 NoCut 候选)返回 serialTotalTime(全串行基准)。totalMmTime/serialTotalTime 由调用方
 // 一次算好传入(搜索循环内不变, 免重复求值)。
-inline double EstimateCutTotalTime(FitBasedBalanceCtx &ctx, const CommCutResult &cut, double totalMmTime,
+inline double EstimateCutTotalTime(FitBasedBalanceCtx& ctx, const CommCutResult& cut, double totalMmTime,
                                    double serialTotalTime)
 {
     if (cut.totalTileCnt <= 1U) {
@@ -157,7 +157,7 @@ inline double EstimateCutTotalTime(FitBasedBalanceCtx &ctx, const CommCutResult 
     return mmFirst + std::max(totalMmTime - mmFirst, totalCommTime - commLast) + commLast;
 }
 
-inline void ApplySingleRoundCommLimit(CutPlanner &tilingM, const HCCLCommModel &commPerf, uint64_t volumeMul,
+inline void ApplySingleRoundCommLimit(CutPlanner& tilingM, const HCCLCommModel& commPerf, uint64_t volumeMul,
                                       uint64_t mValue)
 {
     constexpr uint64_t MAX_ROUND_COMM_BYTES = 268435456;               // HCCL 单次调用通信量上限 (256MB)

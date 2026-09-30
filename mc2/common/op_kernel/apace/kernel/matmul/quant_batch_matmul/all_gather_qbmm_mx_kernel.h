@@ -123,7 +123,7 @@ public:
      * @brief 顶层参数结构
      */
     struct Params {
-        const QuantMatmulTilingData *mmTile{nullptr};
+        const QuantMatmulTilingData* mmTile{nullptr};
         QBMMTiling qbmmParams;
         FragmentParams fragParams;
 
@@ -146,32 +146,32 @@ public:
         uint64_t cBytesPerM{0};
     };
 
-    __aicore__ inline void Run(const Params &params, Mc2Kernel::OpStateDump &opStateDump);
-    __aicore__ inline void operator()(const Params &params, Mc2Kernel::OpStateDump &opStateDump)
+    __aicore__ inline void Run(const Params& params, Mc2Kernel::OpStateDump& opStateDump);
+    __aicore__ inline void operator()(const Params& params, Mc2Kernel::OpStateDump& opStateDump)
     {
         Run(params, opStateDump);
     }
-    __aicore__ inline CommPolicy &GetCommPolicy()
+    __aicore__ inline CommPolicy& GetCommPolicy()
     {
         return commPolicy_;
     }
 
 private:
-    __aicore__ inline void Init(const Params &params);
-    __aicore__ inline void Process(const Params &params, const ProblemShape &problemShape, BlockScheduler &bs,
-                                   BlockMmadFragC &mmadFrag, Mc2Kernel::OpStateDump &opStateDump);
+    __aicore__ inline void Init(const Params& params);
+    __aicore__ inline void Process(const Params& params, const ProblemShape& problemShape, BlockScheduler& bs,
+                                   BlockMmadFragC& mmadFrag, Mc2Kernel::OpStateDump& opStateDump);
 
     // ---- L2 cache optimization ----
     template <typename TensorB, typename TensorScaleB>
-    __aicore__ inline void SetL2Cache(const ProblemShape &problemShape, int64_t baseM, int64_t baseN, TensorB &gmB,
-                                      TensorScaleB &gmScaleB);
+    __aicore__ inline void SetL2Cache(const ProblemShape& problemShape, int64_t baseM, int64_t baseN, TensorB& gmB,
+                                      TensorScaleB& gmScaleB);
 
     // ---- FragmentTensor builders ----
-    __aicore__ inline void BuildFragmentTensors(const Params &params);
-    __aicore__ inline void EnsureWinRankBasesReady(const Params &params);
-    __aicore__ inline void BuildMainFragment(const Params &params, uint32_t roundIdx);
-    __aicore__ inline void BuildTailFragment(const Params &params);
-    __aicore__ inline void UpdateMainRoundAddrs(const Params &params, uint32_t roundIdx);
+    __aicore__ inline void BuildFragmentTensors(const Params& params);
+    __aicore__ inline void EnsureWinRankBasesReady(const Params& params);
+    __aicore__ inline void BuildMainFragment(const Params& params, uint32_t roundIdx);
+    __aicore__ inline void BuildTailFragment(const Params& params);
+    __aicore__ inline void UpdateMainRoundAddrs(const Params& params, uint32_t roundIdx);
     __aicore__ inline Apace::Basic::FragmentParam<DIMS_NUM> MakeFragParam(uint64_t fragSize, uint64_t realFragSize,
                                                                           uint32_t fragCnt, uint64_t shape1) const;
 
@@ -181,21 +181,21 @@ private:
         uint32_t roundIdx;
         RegionTag region;
         int64_t regionMPos;
-        const FragTensorA *fragA;
-        const FragScaleA *fragScaleA;
-        const FragTensorC *fragC;
+        const FragTensorA* fragA;
+        const FragScaleA* fragScaleA;
+        const FragTensorC* fragC;
         uint64_t rankCnt;
     };
     __aicore__ inline TileCtx ResolveTileCtx(int64_t mPos, int64_t headMainRows, int64_t mainRoundRows,
                                              int64_t mainSectionRows, uint32_t rankSize, uint32_t commTurn) const;
 
     // ---- GM addresses ----
-    __gm__ AType *aGmAddr_{nullptr};
-    __gm__ AscendC::fp8_e8m0_t *scaleAGmAddr_{nullptr};
-    __gm__ BType *bGmAddr_{nullptr};
-    __gm__ AscendC::fp8_e8m0_t *scaleBGmAddr_{nullptr};
-    __gm__ CType *cGmAddr_{nullptr};
-    __gm__ float *biasGmAddr_{nullptr};
+    __gm__ AType* aGmAddr_{nullptr};
+    __gm__ AscendC::fp8_e8m0_t* scaleAGmAddr_{nullptr};
+    __gm__ BType* bGmAddr_{nullptr};
+    __gm__ AscendC::fp8_e8m0_t* scaleBGmAddr_{nullptr};
+    __gm__ CType* cGmAddr_{nullptr};
+    __gm__ float* biasGmAddr_{nullptr};
 
     // ---- FragmentTensor state ----
     FragTensorA headFragA_{};
@@ -239,23 +239,23 @@ private:
 };
 
 template <typename AType, typename BType, typename CType, typename CommPolicy>
-__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy>::Init(const Params &params)
+__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy>::Init(const Params& params)
 {
     if ASCEND_IS_AIV {
         return;
     }
-    aGmAddr_ = reinterpret_cast<__gm__ AType *>(params.aGM);
-    bGmAddr_ = reinterpret_cast<__gm__ BType *>(params.bGM);
-    cGmAddr_ = reinterpret_cast<__gm__ CType *>(params.cGM);
-    scaleAGmAddr_ = reinterpret_cast<__gm__ AscendC::fp8_e8m0_t *>(params.aScaleGM);
-    scaleBGmAddr_ = reinterpret_cast<__gm__ AscendC::fp8_e8m0_t *>(params.bScaleGM);
-    biasGmAddr_ = reinterpret_cast<__gm__ float *>(params.biasGM);
+    aGmAddr_ = reinterpret_cast<__gm__ AType*>(params.aGM);
+    bGmAddr_ = reinterpret_cast<__gm__ BType*>(params.bGM);
+    cGmAddr_ = reinterpret_cast<__gm__ CType*>(params.cGM);
+    scaleAGmAddr_ = reinterpret_cast<__gm__ AscendC::fp8_e8m0_t*>(params.aScaleGM);
+    scaleBGmAddr_ = reinterpret_cast<__gm__ AscendC::fp8_e8m0_t*>(params.bScaleGM);
+    biasGmAddr_ = reinterpret_cast<__gm__ float*>(params.biasGM);
 }
 
 template <typename AType, typename BType, typename CType, typename CommPolicy>
 template <typename TensorB, typename TensorScaleB>
 __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy>::SetL2Cache(
-    const ProblemShape &problemShape, int64_t baseM, int64_t baseN, TensorB &gmB, TensorScaleB &gmScaleB)
+    const ProblemShape& problemShape, int64_t baseM, int64_t baseN, TensorB& gmB, TensorScaleB& gmScaleB)
 {
     const bool fullMBlock = (baseM >= asc::te::get<Blaze::Gemm::MNK_M>(problemShape));
 
@@ -279,13 +279,13 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy>::S
 }
 
 template <typename AType, typename BType, typename CType, typename CommPolicy>
-__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy>::Run(const Params &params,
-                                                                                   Mc2Kernel::OpStateDump &opStateDump)
+__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy>::Run(const Params& params,
+                                                                                   Mc2Kernel::OpStateDump& opStateDump)
 {
     Init(params);
 
-    const auto &mmT = *params.mmTile;
-    const auto &fp = params.fragParams;
+    const auto& mmT = *params.mmTile;
+    const auto& fp = params.fragParams;
     const int64_t Ki = static_cast<int64_t>(fp.k);
     const int64_t Ni = static_cast<int64_t>(fp.n);
     const int64_t scaleKLen = static_cast<int64_t>(fp.scaleKLen);
@@ -326,11 +326,11 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy>::R
 
 template <typename AType, typename BType, typename CType, typename CommPolicy>
 __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy>::Process(
-    const Params &params, const ProblemShape &problemShape, BlockScheduler &sch, BlockMmadFragC &mmadFrag,
-    Mc2Kernel::OpStateDump &opStateDump)
+    const Params& params, const ProblemShape& problemShape, BlockScheduler& sch, BlockMmadFragC& mmadFrag,
+    Mc2Kernel::OpStateDump& opStateDump)
 {
-    const auto &mmT = *params.mmTile;
-    const auto &fp = params.fragParams;
+    const auto& mmT = *params.mmTile;
+    const auto& fp = params.fragParams;
     const int64_t Ki = static_cast<int64_t>(fp.k);
     const int64_t Ni = static_cast<int64_t>(fp.n);
     const int64_t scaleKLen = static_cast<int64_t>(fp.scaleKLen);
@@ -343,13 +343,13 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy>::P
     auto gmB = asc::te::make_tensor(asc::te::make_mem_ptr<asc::te::location::gm>(bGmAddr_), MakeLayoutB{}(Ki, Ni));
     auto gmScaleB = asc::te::make_tensor(asc::te::make_mem_ptr<asc::te::location::gm>(scaleBGmAddr_),
                                          MakeLayoutScaleB{}(scaleKLen, Ni));
-    __gm__ float *biasNull = nullptr;
-    __gm__ float *biasPtr = params.isBias ? biasGmAddr_ : biasNull;
+    __gm__ float* biasNull = nullptr;
+    __gm__ float* biasPtr = params.isBias ? biasGmAddr_ : biasNull;
     auto gmBias = asc::te::make_tensor(asc::te::make_mem_ptr<asc::te::location::gm>(biasPtr),
                                        asc::te::make_frame_layout<asc::te::nd_ext_layout_ptn>(1L, Ni));
 
-    const auto &mTailTile = mmT.mTailTile;
-    const auto &nTailTile = mmT.nTailTile;
+    const auto& mTailTile = mmT.mTailTile;
+    const auto& nTailTile = mmT.nTailTile;
     // 尾块拆分：需核数(尾块数×M拆分×N拆分)≤总核数才拆分；mTailTile=nTailTile=1时等价no-op。
     if ((sch.GetEndBlockIdx() + 1) * mTailTile * nTailTile <= AscendC::GetBlockNum()) {
         sch.UpdateTailTile(mTailTile, nTailTile);
@@ -440,9 +440,9 @@ AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy>::MakeFragParam(uint64_t f
 
 template <typename AType, typename BType, typename CType, typename CommPolicy>
 __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy>::BuildFragmentTensors(
-    const Params &params)
+    const Params& params)
 {
-    const auto &fp = params.fragParams;
+    const auto& fp = params.fragParams;
 
     for (uint32_t r = 0; r < fp.rankSize; ++r) {
         cFragAddrs_[r] = params.cGM + static_cast<uint64_t>(r) * fp.mPerRank * params.cBytesPerM;
@@ -467,12 +467,12 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy>::B
 
 template <typename AType, typename BType, typename CType, typename CommPolicy>
 __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy>::EnsureWinRankBasesReady(
-    const Params &params)
+    const Params& params)
 {
     if (winBasesReady_) {
         return;
     }
-    const auto &fp = params.fragParams;
+    const auto& fp = params.fragParams;
     for (uint32_t r = 0; r < fp.rankSize; ++r) {
         winDataRankBase_[r] = params.winDataBase + static_cast<uint64_t>(r) * fp.mPerRank * params.dataBytesPerMRow;
         winScaleRankBase_[r] = params.winScaleBase + static_cast<uint64_t>(r) * fp.mPerRank * params.scaleBytesPerMRow;
@@ -481,11 +481,11 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy>::E
 }
 
 template <typename AType, typename BType, typename CType, typename CommPolicy>
-__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy>::BuildMainFragment(const Params &params,
+__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy>::BuildMainFragment(const Params& params,
                                                                                                  uint32_t roundIdx)
 {
     EnsureWinRankBasesReady(params);
-    const auto &fp = params.fragParams;
+    const auto& fp = params.fragParams;
 
     curRoundDataOff_ = static_cast<uint64_t>(roundIdx) * tileMDataStride_;
     curRoundScaleOff_ = static_cast<uint64_t>(roundIdx) * tileMScaleStride_;
@@ -511,10 +511,10 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy>::B
 }
 
 template <typename AType, typename BType, typename CType, typename CommPolicy>
-__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy>::BuildTailFragment(const Params &params)
+__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy>::BuildTailFragment(const Params& params)
 {
     EnsureWinRankBasesReady(params);
-    const auto &fp = params.fragParams;
+    const auto& fp = params.fragParams;
 
     uint64_t tailRowOff = fp.headRows;
     uint64_t tailDataOff = tailRowOff * params.dataBytesPerMRow;
@@ -541,9 +541,9 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy>::B
 
 template <typename AType, typename BType, typename CType, typename CommPolicy>
 __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy>::UpdateMainRoundAddrs(
-    const Params &params, uint32_t roundIdx)
+    const Params& params, uint32_t roundIdx)
 {
-    const auto &fp = params.fragParams;
+    const auto& fp = params.fragParams;
     uint32_t delta = roundIdx - curMainRoundIdx_;
     curRoundDataOff_ += static_cast<uint64_t>(delta) * tileMDataStride_;
     curRoundScaleOff_ += static_cast<uint64_t>(delta) * tileMScaleStride_;

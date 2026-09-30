@@ -48,9 +48,9 @@ template <typename AType, typename BType, typename CType>
 class AllGatherMxMatmulUrmaImpl {
 public:
     __aicore__ inline AllGatherMxMatmulUrmaImpl() {}
-    __aicore__ inline void Init(__gm__ CommContext *hcommCtx, GM_ADDR aGM, GM_ADDR aScaleGM, GM_ADDR bGM,
+    __aicore__ inline void Init(__gm__ CommContext* hcommCtx, GM_ADDR aGM, GM_ADDR aScaleGM, GM_ADDR bGM,
                                 GM_ADDR bScaleGM, GM_ADDR cGM, GM_ADDR biasGM, GM_ADDR workspaceGM,
-                                const AllGatherMxMatmulUrmaTilingData *tilingData);
+                                const AllGatherMxMatmulUrmaTilingData* tilingData);
     __aicore__ inline void Process();
 
     using QuantMatmulKernelImpl = AllGatherQbmmMxKernel<AType, BType, CType, UrmaCommWaitPolicy>;
@@ -61,7 +61,7 @@ public:
     QuantMatmulKernelImpl quantMatmulKernelImpl_;
 
 private:
-    __aicore__ inline void InitBaseParams(const AllGatherMxMatmulUrmaTilingData *td);
+    __aicore__ inline void InitBaseParams(const AllGatherMxMatmulUrmaTilingData* td);
 
     __aicore__ inline void AllGatherProcess();
     __aicore__ inline void MatmulProcess();
@@ -83,9 +83,9 @@ private:
 
     static constexpr uint32_t kPaddingLength = 16;
 
-    __gm__ CommContext *hcommCtx_{};
-    __gm__ CommUdmaContext *udmaCtx_{};
-    __gm__ CommUbmemContext *ubmemCtx_{};
+    __gm__ CommContext* hcommCtx_{};
+    __gm__ CommUdmaContext* udmaCtx_{};
+    __gm__ CommUbmemContext* ubmemCtx_{};
 
     GM_ADDR aGM_{};
     GM_ADDR aScaleGM_{};
@@ -114,7 +114,7 @@ private:
     uint64_t dataRegionBytes_{};
     uint64_t scaleRegionBytes_{};
 
-    const AllGatherMxMatmulUrmaTilingData *tilingData_{};
+    const AllGatherMxMatmulUrmaTilingData* tilingData_{};
     Mc2Kernel::OpStateDump opStateDump_{};
     static constexpr uint8_t POS_COMM_BEFORE = 0U;
     static constexpr uint8_t POS_COMP_CUBE_MATMUL_BEFORE = 1U;
@@ -122,8 +122,8 @@ private:
 
 template <typename AType, typename BType, typename CType>
 __aicore__ inline void AllGatherMxMatmulUrmaImpl<AType, BType, CType>::Init(
-    __gm__ CommContext *hcommCtx, GM_ADDR aGM, GM_ADDR aScaleGM, GM_ADDR bGM, GM_ADDR bScaleGM, GM_ADDR cGM,
-    GM_ADDR biasGM, GM_ADDR workspaceGM, const AllGatherMxMatmulUrmaTilingData *tilingData)
+    __gm__ CommContext* hcommCtx, GM_ADDR aGM, GM_ADDR aScaleGM, GM_ADDR bGM, GM_ADDR bScaleGM, GM_ADDR cGM,
+    GM_ADDR biasGM, GM_ADDR workspaceGM, const AllGatherMxMatmulUrmaTilingData* tilingData)
 {
     tilingData_ = tilingData;
     hcommCtx_ = hcommCtx;
@@ -183,9 +183,9 @@ __aicore__ inline void AllGatherMxMatmulUrmaImpl<AType, BType, CType>::Init(
 
 template <typename AType, typename BType, typename CType>
 __aicore__ inline void AllGatherMxMatmulUrmaImpl<AType, BType, CType>::InitBaseParams(
-    const AllGatherMxMatmulUrmaTilingData *td)
+    const AllGatherMxMatmulUrmaTilingData* td)
 {
-    const auto &ct = td->commTile;
+    const auto& ct = td->commTile;
     tileCnt_ = static_cast<uint32_t>(ct.splitAxisTileCnt);
     tileM_ = static_cast<uint32_t>(ct.splitAxisTileSize);
     tailCnt_ = static_cast<uint32_t>(ct.splitAxisTailCnt);
@@ -289,13 +289,13 @@ __aicore__ inline void AllGatherMxMatmulUrmaImpl<AType, BType, CType>::AllGather
     opStateDump_.DoDump(DUMP_FIELD_PHASE, 0, static_cast<uint8_t>(Utils::RT_PHASE_COMM_FINALIZE));
     // 通信接口使用了 channel 内的字段，需要刷新 GM 地址保证跨 kernel launch 的 GM 状态与 aiCore cache 一致
     // 后续通信接口会内置刷 cache 机制，届时可移除此处调用
-    dcci(reinterpret_cast<__gm__ void *>(udmaCtx_->commBufferAddrs),
-         static_cast<uint64_t>(CacheLine::ENTIRE_DATA_CACHE), static_cast<uint64_t>(DcciDst::CACHELINE_OUT));
+    dcci(reinterpret_cast<__gm__ void*>(udmaCtx_->commBufferAddrs), static_cast<uint64_t>(CacheLine::ENTIRE_DATA_CACHE),
+         static_cast<uint64_t>(DcciDst::CACHELINE_OUT));
 }
 
 } // namespace Apace
 
-__global__ __aicore__ void AllGatherQuantMatmulKernel(__gm__ Apace::AivComm::CommContext *hcommCtx, GM_ADDR aGM,
+__global__ __aicore__ void AllGatherQuantMatmulKernel(__gm__ Apace::AivComm::CommContext* hcommCtx, GM_ADDR aGM,
                                                       GM_ADDR aScaleGM, GM_ADDR bGM, GM_ADDR bScaleGM, GM_ADDR cGM,
                                                       GM_ADDR biasGM, AllGatherMxMatmulUrmaTilingData tilingData)
 {

@@ -122,7 +122,7 @@ enum class TilingCommEngine {
     AIV_URMA,
 };
 
-inline TilingCommEngine ParseCommEngine(const char *commMode)
+inline TilingCommEngine ParseCommEngine(const char* commMode)
 {
     if (commMode == nullptr) {
         return TilingCommEngine::AICPU;

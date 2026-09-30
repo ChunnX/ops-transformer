@@ -53,7 +53,7 @@ static constexpr uint32_t TILE_M = 512;
         } \
     } while (0)
 
-void ParseArgs(int argc, char *argv[], int *m, int *k, int *n, int *rankNum, std::string &mode)
+void ParseArgs(int argc, char* argv[], int* m, int* k, int* n, int* rankNum, std::string& mode)
 {
     if (argc >= 2 && (std::string(argv[1]) == "--help" || std::string(argv[1]) == "-h")) {
         std::cerr << "Usage: " << argv[0] << " m k n rankNum [mode]" << std::endl;
@@ -72,7 +72,7 @@ void ParseArgs(int argc, char *argv[], int *m, int *k, int *n, int *rankNum, std
         *k = std::stoi(argv[2]);
         *n = std::stoi(argv[3]);
         *rankNum = std::stoi(argv[4]);
-    } catch (const std::invalid_argument &) {
+    } catch (const std::invalid_argument&) {
         throw std::invalid_argument("ERROR: m k n rankNum must be Integer");
     }
     if (*m <= 0 || *k <= 0 || *n <= 0 || *rankNum <= 0) {
@@ -90,18 +90,18 @@ void ParseArgs(int argc, char *argv[], int *m, int *k, int *n, int *rankNum, std
     }
 }
 
-int LaunchKernel(uint32_t usedCoreNum, aclrtStream stream, CommContext *devContext, GM_ADDR deviceA,
+int LaunchKernel(uint32_t usedCoreNum, aclrtStream stream, CommContext* devContext, GM_ADDR deviceA,
                  GM_ADDR deviceScaleA, GM_ADDR deviceB, GM_ADDR deviceScaleB, GM_ADDR deviceOutput,
-                 AllGatherMxMatmulUrmaTilingData &tilingData)
+                 AllGatherMxMatmulUrmaTilingData& tilingData)
 {
     AllGatherQuantMatmulKernel<<<usedCoreNum, nullptr, stream>>>(devContext, deviceA, deviceScaleA, deviceB,
                                                                  deviceScaleB, deviceOutput, nullptr, tilingData);
     return 0;
 }
 
-int RunAllGatherQuantMatmul(int rankNum, int rankId, int m, int k, int n, const std::string &mode)
+int RunAllGatherQuantMatmul(int rankNum, int rankId, int m, int k, int n, const std::string& mode)
 {
-    const char *ipport = "tcp://127.0.0.1:8998";
+    const char* ipport = "tcp://127.0.0.1:8998";
     INFO_LOG("rankNum=%d, rankId=%d", rankNum, rankId);
 
     AllGatherMxMatmulUrmaTilingData tilingData;
@@ -161,9 +161,9 @@ int RunAllGatherQuantMatmul(int rankNum, int rankId, int m, int k, int n, const 
     CommChannelBuilder<> builder(comm);
     CommContext hostCtx = {};
 
-    const char *ctxTag = "all_gather_quant_matmul";
+    const char* ctxTag = "all_gather_quant_matmul";
 
-    CommContext *devContext = reinterpret_cast<CommContext *>(
+    CommContext* devContext = reinterpret_cast<CommContext*>(
         builder.CreateDeviceContext(&hostCtx, sizeof(CommContext), ctxTag, &hostCtx.udmaCtx, &hostCtx.ubmemCtx));
     if (devContext == nullptr) {
         ERROR_LOG("rank %d CreateDeviceContext failed", rankId);
@@ -188,11 +188,11 @@ int RunAllGatherQuantMatmul(int rankNum, int rankId, int m, int k, int n, const 
     GM_ADDR deviceScaleA = nullptr;
     GM_ADDR deviceScaleB = nullptr;
     GM_ADDR deviceOutput = nullptr;
-    ACL_CHECK(aclrtMalloc((void **)&deviceA, sizeA, ACL_MEM_MALLOC_HUGE_ONLY));
-    ACL_CHECK(aclrtMalloc((void **)&deviceB, sizeB, ACL_MEM_MALLOC_HUGE_ONLY));
-    ACL_CHECK(aclrtMalloc((void **)&deviceScaleA, sizeScaleA, ACL_MEM_MALLOC_HUGE_ONLY));
-    ACL_CHECK(aclrtMalloc((void **)&deviceScaleB, sizeScaleB, ACL_MEM_MALLOC_HUGE_ONLY));
-    ACL_CHECK(aclrtMalloc((void **)&deviceOutput, sizeOutput, ACL_MEM_MALLOC_HUGE_ONLY));
+    ACL_CHECK(aclrtMalloc((void**)&deviceA, sizeA, ACL_MEM_MALLOC_HUGE_ONLY));
+    ACL_CHECK(aclrtMalloc((void**)&deviceB, sizeB, ACL_MEM_MALLOC_HUGE_ONLY));
+    ACL_CHECK(aclrtMalloc((void**)&deviceScaleA, sizeScaleA, ACL_MEM_MALLOC_HUGE_ONLY));
+    ACL_CHECK(aclrtMalloc((void**)&deviceScaleB, sizeScaleB, ACL_MEM_MALLOC_HUGE_ONLY));
+    ACL_CHECK(aclrtMalloc((void**)&deviceOutput, sizeOutput, ACL_MEM_MALLOC_HUGE_ONLY));
 
     // ---- Load data ----
     std::vector<uint8_t> hostA(sizeA, 0), hostB(sizeB, 0);
@@ -283,13 +283,13 @@ int RunAllGatherQuantMatmul(int rankNum, int rankId, int m, int k, int n, const 
     return 0;
 }
 
-int main(int argc, char *argv[])
+int main(int argc, char* argv[])
 {
     int m = 0, k = 0, n = 0, rankNum = 0;
     std::string mode;
     try {
         ParseArgs(argc, argv, &m, &k, &n, &rankNum, mode);
-    } catch (const std::invalid_argument &e) {
+    } catch (const std::invalid_argument& e) {
         std::cerr << e.what() << std::endl;
         return -1;
     }

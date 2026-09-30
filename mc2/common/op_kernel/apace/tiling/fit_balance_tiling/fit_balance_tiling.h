@@ -48,11 +48,11 @@
 // 通信标定行查找: 按 (通信引擎, rankDim) 二维匹配首个命中行; miss 返回 nullptr。
 // rankDim=0 为未填行哨兵(截断); 零斜率行同样按未填处理(物理上斜率不可能为 0,
 // 占位/换算默认值一律不构成标定命中——未标定形态 miss 走其他切分策略)。
-inline const FitBalanceCalibration::CommFitRow *FindCommFitRow(const FitBalanceCalibration &calib,
-                                                                TilingCommEngine commEngine, uint32_t rankDim)
+inline const FitBalanceCalibration::CommFitRow* FindCommFitRow(const FitBalanceCalibration& calib,
+                                                               TilingCommEngine commEngine, uint32_t rankDim)
 {
     for (size_t i = 0; i < FitBalanceCalibration::MAX_COMM_FIT_ROWS; ++i) {
-        const auto &row = calib.commRows[i];
+        const auto& row = calib.commRows[i];
         if (row.rankDim == 0) {
             break;
         }
@@ -64,7 +64,7 @@ inline const FitBalanceCalibration::CommFitRow *FindCommFitRow(const FitBalanceC
 }
 
 // 标定命中判定(算子分派查询): 命中 → fit-balance; miss → 走核利用率优先等其他切分策略
-inline bool IsCommCalibrated(uint32_t rankDim, TilingCommEngine commEngine, const FitBalanceCalibration &calib)
+inline bool IsCommCalibrated(uint32_t rankDim, TilingCommEngine commEngine, const FitBalanceCalibration& calib)
 {
     return FindCommFitRow(calib, commEngine, rankDim) != nullptr;
 }
@@ -76,12 +76,12 @@ inline bool IsCommCalibrated(uint32_t rankDim, TilingCommEngine commEngine, cons
 //   worksetShares: FRONT(本地块前置——本地份剔出稳态、单独按单份建模)=rankDim−1; 其余随形态
 //   注: A2A 系老口径 workset=rankDim 与单份形态推导值(1)不同——A2A 系无现存消费者,
 //       BACK 形态实测校准时定稿
-inline FitBasedBalanceCtx InitCtx(const FitBalanceTilingArgs &args, const FitBalanceCalibration &calib)
+inline FitBasedBalanceCtx InitCtx(const FitBalanceTilingArgs& args, const FitBalanceCalibration& calib)
 {
     const CommComputeOrder order = calib.dataflow.order;
     const LocalMMPosition localMMPosition = calib.dataflow.localMMPosition;
     // ---- 标定选行(所有匹配键此刻已知: rankDim 与 dtype 均来自 args, 就地选定传纯参数) ----
-    const auto *commRow = FindCommFitRow(calib, args.commEngine, args.rankDim);
+    const auto* commRow = FindCommFitRow(calib, args.commEngine, args.rankDim);
     CommFitParams commFitParams = (commRow != nullptr) ? CommFitParams{commRow->slopeUsPerMb, commRow->roundOverheadUs,
                                                                        commRow->fixedOverheadUs} :
                                                          CommFitParams{}; // miss=零值行(slope=0 → NoCut 防御)
@@ -95,7 +95,7 @@ inline FitBasedBalanceCtx InitCtx(const FitBalanceTilingArgs &args, const FitBal
                          (args.geAType == ge::DataType::DT_FLOAT4_E2M1);
     const MatmulDtypeKind calcType = isQuant ? MatmulDtypeKind::QUANT : MatmulDtypeKind::FP16;
     const bool isFp4 = (args.geAType == ge::DataType::DT_FLOAT4_E2M1);
-    const auto matchesCalcProfile = [&](const auto &row) {
+    const auto matchesCalcProfile = [&](const auto& row) {
         return (row.calcType == calcType) && (row.isFp4 == isFp4) && (row.aBytes == args.inputDtypeSize) &&
                (row.bBytes == args.inputDtypeSize); // C 侧字节数不进键
     };
@@ -172,7 +172,7 @@ inline FitBasedBalanceCtx InitCtx(const FitBalanceTilingArgs &args, const FitBal
 // BACK:  本地 mm 块在流水线尾端(本地保留份无需发出、无通信 deadline)——收尾端被本地块
 //        占据(与末块通信重叠), 短块前置专职启动通信管道, 长块通信掩盖本地尾块计算;
 // NONE:  无本地块——短块作流水线垫片, 按 bound 判定放首/尾。
-inline CommCutResult Schedule(FitBasedBalanceCtx &ctx)
+inline CommCutResult Schedule(FitBasedBalanceCtx& ctx)
 {
     const bool isLocalMMFront = (ctx.localMMPosition == LocalMMPosition::FRONT);
     const bool isLocalMMBack = (ctx.localMMPosition == LocalMMPosition::BACK);
@@ -254,7 +254,7 @@ inline CommCutResult Schedule(FitBasedBalanceCtx &ctx)
     CommCutResult bestCut = ctx.tilingM.cutRes; // 初次切分(N₀ 轮, 配平产出)即候选
     double bestTime = EstimateCutTotalTime(ctx, bestCut, estimate.totalMatmulTime, serialTotalTime);
     const uint64_t initialTileCnt = bestCut.totalTileCnt; // 搜索上界 N₀ 固定: bestCut 在循环内会被
-                                                           // 更优候选替换(轮数可降), 不能充当循环界
+                                                          // 更优候选替换(轮数可降), 不能充当循环界
     for (uint64_t budget = 2U; budget < initialTileCnt; ++budget) {
         ctx.tilingM.cutRes = afterLong;    // 恢复 ③ 后形态(反解值复用)
         ctx.tilingM.SetMaxTileCnt(budget); // 收紧轮次预算
@@ -289,10 +289,10 @@ inline CommCutResult Schedule(FitBasedBalanceCtx &ctx)
 // ============================================================================
 // 诊断打印(日志级别为 debug 即 ASCEND_GLOBAL_LOG_LEVEL=0 时输出, 纯 printf 零日志库依赖):
 // 输入 shape / 最终切分 / 启动税(N 轮 vs 不切的总通信时之差 = (N−1)·b)。
-inline void PrintTilingData(const FitBalanceTilingArgs &args, const CommCutResult &cut, double commTimeActualUs,
+inline void PrintTilingData(const FitBalanceTilingArgs& args, const CommCutResult& cut, double commTimeActualUs,
                             double commTimeNoCutUs)
 {
-    const char *level = std::getenv("ASCEND_GLOBAL_LOG_LEVEL");
+    const char* level = std::getenv("ASCEND_GLOBAL_LOG_LEVEL");
     if (level == nullptr || level[0] != '0') {
         return;
     }
@@ -317,7 +317,7 @@ inline void PrintTilingData(const FitBalanceTilingArgs &args, const CommCutResul
 // COF 切分结果(head/tail 形态) → 引擎切分结果(1 短 + N 长)转换:
 // COF 的 head 为主体块、tail 为尾块 → 长块/短块; 尾块天然后置。
 // 供"标定 miss → 核利用率优先"分派的算子在两种切分策略间统一输出形态。
-inline CommCutResult CutResultFromCof(const CommTilingData &data)
+inline CommCutResult CutResultFromCof(const CommTilingData& data)
 {
     CommCutResult r;
     r.shortTileAtBack = true;
@@ -333,7 +333,7 @@ inline CommCutResult CutResultFromCof(const CommTilingData &data)
 // commEngine 旧结构无对应字段(算子图属性 comm_mode), 由调用方解析后经 commEngine 参数补入。
 // 新算子直接构造 FitBalanceTilingArgs, 无需本函数。
 template <typename LegacyArgs>
-inline FitBalanceTilingArgs MakeFitBalanceArgs(const LegacyArgs &a, TilingCommEngine commEngine)
+inline FitBalanceTilingArgs MakeFitBalanceArgs(const LegacyArgs& a, TilingCommEngine commEngine)
 {
     FitBalanceTilingArgs e = {};
     e.mValue = a.mValue;
@@ -351,7 +351,7 @@ inline FitBalanceTilingArgs MakeFitBalanceArgs(const LegacyArgs &a, TilingCommEn
 
 // 对外唯一入口: 算子侧一行调用——上下文构造 + 键控求解的串联。
 // 诊断打印内置于本函数(debug 级), op 侧无需再写日志。
-inline CommCutResult FitBalanceCut(const FitBalanceTilingArgs &args, const FitBalanceCalibration &calib)
+inline CommCutResult FitBalanceCut(const FitBalanceTilingArgs& args, const FitBalanceCalibration& calib)
 {
     FitBasedBalanceCtx ctx = InitCtx(args, calib);
     CommCutResult cut = Schedule(ctx);

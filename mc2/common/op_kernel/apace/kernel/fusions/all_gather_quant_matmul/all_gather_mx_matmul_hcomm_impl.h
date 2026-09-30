@@ -57,7 +57,7 @@ struct HcommCommState {
 
 template <AscendC::HcclServerType ServerType>
 struct HcommCommWaitPolicy {
-    HcommCommState<ServerType> *state_{nullptr};
+    HcommCommState<ServerType>* state_{nullptr};
 
     __aicore__ inline void WaitTile(uint32_t tileIdx)
     {
@@ -82,7 +82,7 @@ struct HcommCommWaitPolicy {
 template <typename AType, typename BType, typename CType, AscendC::HcclServerType ServerType, bool IsMxFp4>
 class AllGatherMxQuantMatmulHcommImpl {
 public:
-    explicit __aicore__ inline AllGatherMxQuantMatmulHcommImpl(Apace::hcommAllGatherMatmulTilingData *tilingData)
+    explicit __aicore__ inline AllGatherMxQuantMatmulHcommImpl(Apace::hcommAllGatherMatmulTilingData* tilingData)
         : tilingData_(tilingData)
     {}
 
@@ -100,9 +100,9 @@ public:
 private:
     __aicore__ inline void InitBaseParams();
     __aicore__ inline void CommitAllGather();
-    __aicore__ inline void SetupKernelParams(KernelParams &params);
+    __aicore__ inline void SetupKernelParams(KernelParams& params);
 
-    Apace::hcommAllGatherMatmulTilingData *tilingData_;
+    Apace::hcommAllGatherMatmulTilingData* tilingData_;
 
     GM_ADDR aGM_{};
     GM_ADDR aScaleGM_{};
@@ -144,7 +144,7 @@ private:
 template <typename AType, typename BType, typename CType, AscendC::HcclServerType ServerType, bool IsMxFp4>
 __aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, ServerType, IsMxFp4>::InitBaseParams()
 {
-    const auto &ct = tilingData_->commTile;
+    const auto& ct = tilingData_->commTile;
     tileCnt_ = static_cast<uint32_t>(ct.splitAxisTileCnt);
     tileM_ = static_cast<uint32_t>(ct.splitAxisTileSize);
     tailCnt_ = static_cast<uint32_t>(ct.splitAxisTailCnt);
@@ -242,7 +242,7 @@ __aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, Serv
 
 template <typename AType, typename BType, typename CType, AscendC::HcclServerType ServerType, bool IsMxFp4>
 __aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, ServerType, IsMxFp4>::SetupKernelParams(
-    KernelParams &params)
+    KernelParams& params)
 {
     params.mmTile = &(tilingData_->mmTile);
     params.qbmmParams = {tilingData_->mmTile.baseM, tilingData_->mmTile.baseN, tilingData_->mmTile.baseK,
