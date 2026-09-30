@@ -30,12 +30,6 @@ using namespace AscendC;
 
 constexpr uint32_t UINT64_BYTE_OFFSET_SHIFT = 3U;
 
-// All MTE count/epoch words use independent 512-byte GM regions.
-__aicore__ inline uint32_t GetExpertCountSlotBytes()
-{
-    return MTE_COUNT_SLOT_BYTES;
-}
-
 __aicore__ inline __gm__ int32_t* GetSyncCountAddress(GM_ADDR rankSyncBase, uint32_t aivCoreIdx)
 {
     return reinterpret_cast<__gm__ int32_t*>(rankSyncBase + RANK_SYNC_COUNTER_OFFSET_BYTES +
