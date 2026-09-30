@@ -36,7 +36,8 @@ struct CommContext {
 
 #pragma pack(push, 8)
 // 8 means 8 bytes aligned
-// DFX 头部约定: dumpInfo 必须是第一个成员(offset 0)
+// DFX 约定: dumpInfo 位于 Mc2InitTiling/Mc2CcTiling 之后，否则放在最前面
+// 异常 dump 回调按调用方传入的 offsetof(..., dumpInfo) 偏移解析 DfxDumpInfo
 struct alignas(8) AllGatherMxMatmulUrmaTilingData {
     Utils::DfxDumpInfo dumpInfo{};
     QuantMatmulTilingData mmTile;
@@ -48,11 +49,10 @@ struct alignas(8) AllGatherMxMatmulUrmaTilingData {
 // Hcomm/CCU 路径 tiling 结构体（apace 自有，不依赖外部算子 tiling）
 namespace Apace {
 struct hcommAllGatherMatmulTilingData {
-    // DFX 头部约定: dumpInfo 必须是第一个成员(offset 0)
-    Utils::DfxDumpInfo dumpInfo{};
-    Mc2InitTiling mc2InitTiling;  // HCCL 初始化参数
-    Mc2CcTiling mc2CcTiling;      // HCCL CC task 配置
-    CommTilingData commTile;      // AllGather 切分参数（splitAxis=M_per_rank, nonSplitAxis=K）
+    Mc2InitTiling mc2InitTiling;   // HCCL 初始化参数
+    Mc2CcTiling mc2CcTiling;       // HCCL CC task 配置
+    Utils::DfxDumpInfo dumpInfo{}; // DFX 约定: dumpInfo 位于 Mc2InitTiling/Mc2CcTiling 之后，否则放在最前面
+    CommTilingData commTile;       // AllGather 切分参数（splitAxis=M_per_rank, nonSplitAxis=K）
     QuantMatmulTilingData mmTile; // Matmul tiling 参数
     uint64_t gatherLen;           // 0: gather_out 输出可用，通信写入 gatherOut; >0: 用 workspace
 };
