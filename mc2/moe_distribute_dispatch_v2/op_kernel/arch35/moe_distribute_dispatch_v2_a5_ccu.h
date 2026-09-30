@@ -296,6 +296,19 @@ __aicore__ inline void MoeDistributeDispatchA5<TemplateMoeDistributeDispatchA5Ty
     hccl_.InitV2((GM_ADDR)context, tilingData);
     hccl_.SetCcTilingV2(offsetof(MoeDistributeDispatchV2TilingData, mc2CcTiling1));
 
+    // ===== CCU×Mc2Context 并存探测②（验证后删除）：打印 CCU 注入的本卡 recv 窗口基址，
+    // 与 host 侧 [CCU_PROBE_H] 打印的 epHcclBuffer_[self] 比对是否同块内存（双上下文方案探测点②）。
+    // 判读：地址相同/重叠 → 数据面与 CCU recv 同块，混合方案需分区设计；不同 → 可直接分区使用。
+    if (GetBlockIdx() == 0) {
+        if ((unsigned long long)(uintptr_t)context != 0ULL) {
+            AscendC::printf("[CCU_PROBE_K] cuOut0=0x%llx cuOut1=0x%llx winSize=%llu rank=%u dim=%u\n",
+                            (unsigned long long)context->windowsOut[0], (unsigned long long)context->windowsOut[1],
+                            (unsigned long long)context->winSize, context->rankId, context->rankNum);
+        } else {
+            AscendC::printf("[CCU_PROBE_K] ctx=NULL\n");
+        }
+    }
+
     sendBufGM_ = workspaceGM;
     sendSizeGM_ = sendBufGM_ + perRankDataSize_ * epWorldSize_;
     sendOffsetGM_ = sendSizeGM_ + epWorldSize_ * sizeof(uint64_t) * DUAL_DATA;

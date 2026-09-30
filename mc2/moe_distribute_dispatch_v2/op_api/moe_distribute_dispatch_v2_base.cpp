@@ -196,13 +196,34 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
     }
 
     int64_t ydtype = expandXOut->GetDataType();
-    if (!isA5 || (commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0)) { // ccu暂时不支持mc2Context
+    if (!isA5 || (commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0)) { // ccu 配方走 V2/Inner（CCU 注册注入）
+        int64_t mc2ContextAddr = 0; // 0=未递送：走原纯 CCU 内核（非 A5 / context 创建失败 / 低版本 hcomm）
+#if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+        // CCU 混合模式：ccu 配方下创建/复用 AIV channel 面 Mc2MoeContext（独立 tag，与 MTE 现役
+        // "moe_distribute_v2" 缓存隔离；CCU 注入域与 AIV channel 域并存已实测）。设备地址经 attr 递送：
+        // InnerV2（构建期按 def attr 序生成参数）→ tiling 读取写入 tilingData.mc2ContextAddr → kernel
+        // 据此启用 MTE 数据面（epHcclBuffer_ 窗口直写）。tag 缓存保证进程内地址恒定，tiling/图固化安全。
+        if (isA5 && (commAlg != nullptr) && (std::strcmp(commAlg, "ccu") == 0)) {
+            const char *hybridContextTag = "moe_distribute_v2_ccu";
+            uint64_t hcclBuffSize = 0;
+            aclTensor *mc2Context = nullptr;
+            auto mc2Ret =
+                Mc2Aclnn::Mc2Context::GetMc2ContextTensor(groupEp, hybridContextTag, hcclBuffSize, mc2Context);
+            if ((mc2Ret == ACLNN_SUCCESS) && (mc2Context != nullptr)) {
+                mc2ContextAddr = static_cast<int64_t>(mc2Context->GetViewOffset());
+            } else {
+                OP_LOGW("GetMc2ContextTensor for ccu hybrid failed ret=%d, fallback to pure ccu kernel.",
+                        static_cast<int32_t>(mc2Ret));
+            }
+        }
+#endif
         getWorkspaceSizesRes = aclnnInnerMoeDistributeDispatchV2GetWorkspaceSize(
             x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional, elasticInfoOptional,
             performanceInfoOptional, groupEpBuf, epWorldSize, epRankId, moeExpertNum, groupTpBuf, tpWorldSize, tpRankId,
             expertShardType, sharedExpertNum, sharedExpertRankNum, quantMode, globalBs, expertTokenNumsType, commAlgBuf,
-            zeroExpertNum, copyExpertNum, constExpertNum, ydtype, expandXOut, dynamicScalesOut, assistInfoForCombineOut,
-            expertTokenNumsOut, epRecvCountsOut, tpRecvCountsOut, expandScalesOut, workspaceSize, executor);
+            zeroExpertNum, copyExpertNum, constExpertNum, ydtype, mc2ContextAddr, expandXOut, dynamicScalesOut,
+            assistInfoForCombineOut, expertTokenNumsOut, epRecvCountsOut, tpRecvCountsOut, expandScalesOut,
+            workspaceSize, executor);
     } else {
 #if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
         uint64_t hcclBuffSize = 0;

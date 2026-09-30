@@ -160,6 +160,9 @@ private:
         this->Attr("copy_expert_num").AttrType(OPTIONAL).Int(0);
         this->Attr("const_expert_num").AttrType(OPTIONAL).Int(0);
         this->Attr("y_dtype").AttrType(OPTIONAL).Int(ge::DT_UNDEFINED);
+        // CCU 混合模式：Mc2MoeContext 设备地址（host 侧 GetMc2ContextTensor 创建后递送，tiling 读出写入
+        // tilingData.mc2ContextAddr；0=未递送，走原纯 CCU 路径）。尾部追加，attr 索引 18。
+        this->Attr("mc2_context_addr").AttrType(OPTIONAL).Int(0);
     }
 };
 
