@@ -1525,6 +1525,12 @@ def _cpu_mxfp8_golden_sectioned(
                             for (o, st, _), weight in zip(segment_stats, weights)
                         ]
                     ).sum(0)
+                # Match kernel InvalidRows: RIGHT_DOWN_CAUSAL queries before
+                # q_len - kv_len have no valid keys, even inside a scheduled
+                # tile. Clear by position, not by softmax sum/max: valid rows
+                # with overflowed scores must retain their IEEE NaN results.
+                if causal_bound is not None:
+                    res_rows = res_rows.masked_fill(causal_bound < 0, 0.0)
                 out[bi, head_idx, s1_idx, :] = res_rows
                 no_valid_score = m_valid_g <= mask_fill
                 lse_rows = torch.where(
