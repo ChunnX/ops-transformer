@@ -30,7 +30,7 @@
  *
  *   2. CopyInScalesBulk:
  *      GM → UB: qscale[cu_off + qb*B : cu_off + qb*B + B, h]
- *      scalesQue: [B] FP32 (行内最多搬 SCALE_PAD_SIZE 列, 不越张量边界)
+ *      scalesQue: [B] FP32
  *
  *   3. CastBlockToFP32:
  *      UB: qBlockQue [B, D] FP8 → qBlockFP32Que [B, D] FP32
@@ -63,7 +63,7 @@ constexpr uint32_t DIM_QK = 128;
 constexpr uint32_t DOUBLE_BUFFER_DEPTH = 2;
 constexpr uint32_t SCALE_PAD_SIZE = 8;
 
-__simd_callee__ inline void MulsOnAllRows(__ubuf__ float *qFP32Ptr, __ubuf__ float *scalePtr, uint16_t R, uint16_t S,
+__simd_callee__ inline void MulsOnAllRows(__ubuf__ float* qFP32Ptr, __ubuf__ float* scalePtr, uint16_t R, uint16_t S,
                                           uint16_t D, uint16_t scaleStride)
 {
     using namespace AscendC::Reg;
@@ -90,7 +90,7 @@ __simd_callee__ inline void MulsOnAllRows(__ubuf__ float *qFP32Ptr, __ubuf__ flo
     }
 }
 
-__simd_vf__ inline void WeightedBinaryReduceFull(__ubuf__ float *qFP32Ptr, __ubuf__ float *scalePtr, uint16_t R,
+__simd_vf__ inline void WeightedBinaryReduceFull(__ubuf__ float* qFP32Ptr, __ubuf__ float* scalePtr, uint16_t R,
                                                  uint16_t S, uint16_t D, uint16_t scaleStride)
 {
     MulsOnAllRows(qFP32Ptr, scalePtr, R, S, D, scaleStride);
@@ -133,7 +133,7 @@ public:
     __aicore__ inline StemOamPrepVarlenQ() {}
 
     __aicore__ inline void Init(GM_ADDR q, GM_ADDR qscale, GM_ADDR cuSeqlensQ, GM_ADDR qflat,
-                                const StemPrepQTilingData *tiling)
+                                const StemPrepQTilingData* tiling)
     {
         this->tiling = tiling;
         taskId = GetBlockIdx();
@@ -209,7 +209,7 @@ public:
     __aicore__ inline void CopyInQBlock()
     {
         LocalTensor<fp8_e4m3fn_t> qBlockLocal = qBlockQue.AllocTensor<fp8_e4m3fn_t>();
-        Duplicate((LocalTensor<int8_t> &)qBlockLocal, (int8_t)0, B * dimQk);
+        Duplicate((LocalTensor<int8_t>&)qBlockLocal, (int8_t)0, B * dimQk);
         event_t vmte2Event = static_cast<event_t>(pipe.FetchEventID(HardEvent::V_MTE2));
         SetFlag<HardEvent::V_MTE2>(vmte2Event);
         WaitFlag<HardEvent::V_MTE2>(vmte2Event);
@@ -226,7 +226,7 @@ public:
             copyParams.dstStride = 0;
             copyParams.rsv = 0;
             GlobalTensor<int8_t> qGmBytes = qGm.ReinterpretCast<int8_t>();
-            DataCopyPad((LocalTensor<int8_t> &)qBlockLocal, qGmBytes[qOff], copyParams,
+            DataCopyPad((LocalTensor<int8_t>&)qBlockLocal, qGmBytes[qOff], copyParams,
                         DataCopyPadExtParams<int8_t>{false, 0, 0, static_cast<int8_t>(0)});
         }
         qBlockQue.EnQue(qBlockLocal);
@@ -257,7 +257,7 @@ public:
         if (validRows > 0) {
             int64_t baseOffset = (cuOff + startRow) * numQHeads + headIdx;
             int64_t gmRange = validRows * numQHeads;
-            qscaleGm.SetGlobalBuffer((__gm__ float *)qscaleBase + baseOffset, gmRange);
+            qscaleGm.SetGlobalBuffer((__gm__ float*)qscaleBase + baseOffset, gmRange);
             LocalTensor<float> bulkBuf = scaleBulkBuf.Get<float>();
             if (validRows < B) {
                 Duplicate(bulkBuf, 0.0f, B * SCALE_PAD_SIZE);
@@ -265,12 +265,7 @@ public:
                 SetFlag<HardEvent::V_MTE2>(vsEvent);
                 WaitFlag<HardEvent::V_MTE2>(vsEvent);
             }
-            // 只拷贝本 head 起、不超过张量边界的列, 修复行内越尾读
-            int64_t availHeads = numQHeads - headIdx;
-            uint32_t copyCount = static_cast<uint32_t>(availHeads < SCALE_PAD_SIZE ? availHeads : SCALE_PAD_SIZE);
-            uint32_t blockBytes = copyCount * sizeof(float);
-            // H < 8 时单次搬运不足 32B, 用右侧 pad 在 UB 侧补齐, GM 不越读
-            uint32_t rightPad = (blockBytes % 32 == 0) ? 0 : (32 - blockBytes % 32);
+            uint32_t copyCount = (numQHeads < SCALE_PAD_SIZE) ? numQHeads : SCALE_PAD_SIZE;
             LoopModeParams loopParams;
             loopParams.loop1Size = validRows;
             loopParams.loop1SrcStride = numQHeads * sizeof(float);
@@ -279,8 +274,8 @@ public:
             loopParams.loop2SrcStride = 0;
             loopParams.loop2DstStride = 0;
             SetLoopModePara(loopParams, DataCopyMVType::OUT_TO_UB);
-            DataCopyExtParams copyParams = {1, blockBytes, 0, 0, 0};
-            DataCopyPadExtParams<float> padParams = {rightPad > 0, 0, static_cast<uint8_t>(rightPad), 0};
+            DataCopyExtParams copyParams = {1, static_cast<uint32_t>(copyCount * sizeof(float)), 0, 0, 0};
+            DataCopyPadExtParams<float> padParams = {false, 0, 0, 0};
             DataCopyPad(bulkBuf, qscaleGm[0], copyParams, padParams);
             ResetLoopModePara(DataCopyMVType::OUT_TO_UB);
         }
@@ -292,8 +287,8 @@ public:
         WaitFlag<HardEvent::MTE2_S>(mte2sScaleEventId);
         LocalTensor<float> fp32Buf = qBlockFP32Que.DeQue<float>();
         LocalTensor<float> scaleBuf = scaleBulkBuf.Get<float>();
-        __ubuf__ float *qFP32Ptr = (__ubuf__ float *)fp32Buf.GetPhyAddr();
-        __ubuf__ float *scalePtr = (__ubuf__ float *)scaleBuf.GetPhyAddr();
+        __ubuf__ float* qFP32Ptr = (__ubuf__ float*)fp32Buf.GetPhyAddr();
+        __ubuf__ float* scalePtr = (__ubuf__ float*)scaleBuf.GetPhyAddr();
 
         VF_CALL<WeightedBinaryReduceFull>(qFP32Ptr, scalePtr, static_cast<uint16_t>(R), static_cast<uint16_t>(S),
                                           static_cast<uint16_t>(dimQk), static_cast<uint16_t>(SCALE_PAD_SIZE));
@@ -346,10 +341,10 @@ private:
 
     __aicore__ inline void InitGlobalBuffers(GM_ADDR q, GM_ADDR qscale, GM_ADDR cuSeqlensQ, GM_ADDR qflat)
     {
-        qGm.SetGlobalBuffer((__gm__ fp8_e4m3fn_t *)q);
+        qGm.SetGlobalBuffer((__gm__ fp8_e4m3fn_t*)q);
         qscaleBase = qscale;
-        cuSeqLensGm.SetGlobalBuffer((__gm__ int64_t *)cuSeqlensQ);
-        qflatGm.SetGlobalBuffer((__gm__ bfloat16_t *)qflat);
+        cuSeqLensGm.SetGlobalBuffer((__gm__ int64_t*)cuSeqlensQ);
+        qflatGm.SetGlobalBuffer((__gm__ bfloat16_t*)qflat);
     }
 
     __aicore__ inline void InitUBBuffers()
@@ -371,7 +366,7 @@ private:
     }
 
     TPipe pipe;
-    const StemPrepQTilingData *tiling = nullptr;
+    const StemPrepQTilingData* tiling = nullptr;
 
     uint32_t taskId = 0;
     int64_t batchIdx = 0;
