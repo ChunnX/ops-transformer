@@ -14,8 +14,14 @@
 namespace TurboQuant {
 using namespace AscendC;
 constexpr uint32_t DIM = 128;
-constexpr uint32_t ROWS = 16;
+constexpr uint32_t ROWS = 32;
 constexpr uint32_t ELEMS = ROWS * DIM;
+constexpr uint32_t UB_BYTES = 185 * 1024;
+constexpr uint32_t QUERY_CACHE_ELEMS = 32 * DIM;
+// Eight full tile buffers, compact decode scratch, and two query caches.
+constexpr uint32_t UB_FLOATS =
+    8 * ELEMS + 2 * DIM + 112 * ROWS + 3 * DIM + 48 * ROWS + 14 * ROWS + 96 + 2 * QUERY_CACHE_ELEMS;
+static_assert(UB_FLOATS * sizeof(float) <= UB_BYTES, "UB layout exceeds its allocation");
 constexpr float COEFFICIENT = 0.009791516697777346F;
 
 template <typename NormType>
@@ -43,7 +49,7 @@ public:
         table_.SetGlobalBuffer((__gm__ int32_t *)table);
         lens_.SetGlobalBuffer((__gm__ DTYPE_SEQ_LENS *)lens);
         out_.SetGlobalBuffer((__gm__ float *)out);
-        pipe_.InitBuffer(storage_, 160 * 1024);
+        pipe_.InitBuffer(storage_, UB_BYTES);
         auto mem = storage_.Get<float>();
         primary_ = mem[0];
         signs_ = mem[ELEMS];
@@ -53,29 +59,50 @@ public:
         offset0_ = mem[5 * ELEMS].ReinterpretCast<uint32_t>();
         offset1_ = mem[6 * ELEMS].ReinterpretCast<uint32_t>();
         offsetSign_ = mem[7 * ELEMS].ReinterpretCast<uint32_t>();
-        scale_ = mem[8 * ELEMS];
-        scaleSign_ = mem[9 * ELEMS];
-        bytesFloat_ = mem[10 * ELEMS];
-        bytesHalf_ = mem[11 * ELEMS].ReinterpretCast<half>();
-        bytes_ = mem[12 * ELEMS].ReinterpretCast<uint8_t>();
-        query_ = mem[13 * ELEMS];
-        queryResidual_ = query_[DIM];
-        queryRaw_ = query_[2 * DIM].ReinterpretCast<bfloat16_t>();
-        normFloat_ = mem[14 * ELEMS];
-        gammaFloat_ = normFloat_[256];
-        normRaw_ = normFloat_[512].ReinterpretCast<NormType>();
-        gammaRaw_ = normFloat_[768].ReinterpretCast<NormType>();
-        reducedMain_ = mem[15 * ELEMS];
-        reducedSign_ = reducedMain_[64];
-        output_ = reducedMain_[128];
-        centroids_ = reducedMain_[160];
-        normCompact_ = reducedMain_[192];
-        gammaCompact_ = reducedMain_[224];
-        evenOffsets_ = reducedMain_[256].ReinterpretCast<uint32_t>();
-        oddOffsets_ = reducedMain_[288].ReinterpretCast<uint32_t>();
-        normOffsets_ = reducedMain_[320].ReinterpretCast<uint32_t>();
-        queryCache_ = mem[16 * ELEMS];
-        queryResidualCache_ = queryCache_[4096];
+        // All offsets below are in FP32 elements and remain 32-byte aligned.
+        uint32_t offset = 8 * ELEMS;
+        scale_ = mem[offset];
+        offset += DIM;
+        scaleSign_ = mem[offset];
+        offset += DIM;
+        bytesFloat_ = mem[offset];
+        offset += ROWS * 64;
+        bytesHalf_ = mem[offset].ReinterpretCast<half>();
+        offset += ROWS * 32;
+        bytes_ = mem[offset].ReinterpretCast<uint8_t>();
+        offset += ROWS * 16;
+        query_ = mem[offset];
+        queryResidual_ = mem[offset + DIM];
+        offset += 2 * DIM;
+        queryRaw_ = mem[offset].ReinterpretCast<bfloat16_t>();
+        queryResidualRaw_ = mem[offset + DIM / 2].ReinterpretCast<bfloat16_t>();
+        offset += DIM;
+        normFloat_ = mem[offset];
+        offset += ROWS * 16;
+        gammaFloat_ = mem[offset];
+        offset += ROWS * 16;
+        normRaw_ = mem[offset].ReinterpretCast<NormType>();
+        offset += ROWS * 8;
+        gammaRaw_ = mem[offset].ReinterpretCast<NormType>();
+        offset += ROWS * 8;
+        reducedMain_ = mem[offset];
+        offset += 4 * ROWS;
+        reducedSign_ = mem[offset];
+        offset += 4 * ROWS;
+        output_ = mem[offset];
+        offset += 4 * ROWS;
+        centroids_ = mem[offset];
+        offset += 32;
+        normCompact_ = mem[offset];
+        offset += ROWS;
+        gammaCompact_ = mem[offset];
+        offset += ROWS;
+        normOffsets_ = mem[offset].ReinterpretCast<uint32_t>();
+        offset += 64;
+        queryCache_ = mem[offset];
+        offset += QUERY_CACHE_ELEMS;
+        queryResidualCache_ = mem[offset];
+        offset += QUERY_CACHE_ELEMS;
         InitDecode();
     }
 
@@ -86,6 +113,7 @@ public:
         // Prefill is split into groups of 8 queries to expose enough parallelism.
         const uint32_t queryGroups = batch_ == 1 ? (tokens_ + 7) / 8 : batch_;
         const uint64_t tasks = tiles * kvHeads_ * queryGroups;
+        uint64_t cachedQuery = static_cast<uint64_t>(-1);
         for (uint64_t task = GetBlockIdx(); task < tasks; task += GetBlockNum()) {
             const uint32_t start = (task % tiles) * ROWS;
             const uint32_t head = (task / tiles) % kvHeads_;
@@ -106,27 +134,44 @@ public:
             }
             const uint32_t first = batch_ == 1 ? group * 8 : group;
             const uint32_t end = batch_ == 1 ? (first + 8 < tokens_ ? first + 8 : tokens_) : first + 1;
-            if (valid && qHeads_ / kvHeads_ <= 4) {
+            if (valid && qHeads_ / kvHeads_ <= 4 && cachedQuery != static_cast<uint64_t>(group) * kvHeads_ + head) {
                 LoadQueries(first, end - first, head);
+                cachedQuery = static_cast<uint64_t>(group) * kvHeads_ + head;
             }
+            const uint32_t groups = qHeads_ / kvHeads_;
+            const bool batchedOutput = groups <= 4 && maxLen_ <= 0x3fffffffU;
+            const uint32_t validRows = valid ? (length - start < count ? length - start : count) : 0;
             for (uint32_t token = first; token < end; ++token) {
-                for (uint32_t g = 0; g < qHeads_ / kvHeads_; ++g) {
-                    const uint64_t queryRow = static_cast<uint64_t>(token) * qHeads_ + head * (qHeads_ / kvHeads_) + g;
-                    if (valid) {
-                        Compute(queryRow, (token - first) * (qHeads_ / kvHeads_) + g);
+                const uint64_t firstQuery = static_cast<uint64_t>(token) * qHeads_ + head * groups;
+                if (valid && batchedOutput) {
+                    ComputeGroup((token - first) * groups, groups);
+                }
+                for (uint32_t g = 0; g < groups; ++g) {
+                    auto result = output_[batchedOutput ? g * ROWS : 0];
+                    if (valid && !batchedOutput) {
+                        Compute(firstQuery + g, (token - first) * groups + g, result);
                     }
-                    const uint32_t validRows = valid ? (length - start < count ? length - start : count) : 0;
                     if (validRows < count) {
                         PipeBarrier<PIPE_ALL>();
                         const uint32_t negativeInfinity = 0xff800000U;
                         const float fill = *reinterpret_cast<const float *>(&negativeInfinity);
-                        for (uint32_t r = validRows; r < count; ++r) {
-                            output_.SetValue(r, fill);
+                        for (uint32_t row = validRows; row < count; ++row) {
+                            result.SetValue(row, fill);
                         }
                     }
+                    if (!batchedOutput) {
+                        PipeBarrier<PIPE_ALL>();
+                        DataCopyExtParams copy{1, count * 4U, 0, 0, 0};
+                        DataCopyPad(out_[(firstQuery + g) * maxLen_ + start], result, copy);
+                        PipeBarrier<PIPE_ALL>();
+                    }
+                }
+                if (batchedOutput) {
                     PipeBarrier<PIPE_ALL>();
-                    DataCopyExtParams copy{1, count * 4U, 0, 0, 0};
-                    DataCopyPad(out_[queryRow * maxLen_ + start], output_, copy);
+                    const uint32_t srcStride = (ROWS - (count + 7) / 8 * 8) / 8;
+                    DataCopyExtParams copy{static_cast<uint16_t>(groups), count * 4U, srcStride, (maxLen_ - count) * 4U,
+                                           0};
+                    DataCopyPad(out_[firstQuery * maxLen_ + start], output_, copy);
                     PipeBarrier<PIPE_ALL>();
                 }
             }
@@ -137,8 +182,8 @@ private:
     __aicore__ inline void InitDecode()
     {
         // Gather reads a full vector of offsets even for a short output count.
-        // Initialize the padding spanning the three short offset tables.
-        Duplicate(evenOffsets_, static_cast<uint32_t>(0), 128);
+        // Initialize padding in the short norm/gamma offset table.
+        Duplicate(normOffsets_, static_cast<uint32_t>(0), 64);
         PipeBarrier<PIPE_ALL>();
         const float c2[] = {-0.1335033178F, -0.04002048075F, 0.04002048075F, 0.1335033178F};
         const float c3[] = {-0.19020693F,   -0.1187859178F, -0.06682205945F, -0.02166347019F,
@@ -153,39 +198,40 @@ private:
         const uint32_t stride = bits_ == 2 ? 32 : 64;
         const float inversePowers[] = {1.0F, 0.5F, 0.25F, 0.125F, 0.0625F, 0.03125F, 0.015625F, 0.0078125F};
         for (uint32_t r = 0; r < ROWS; ++r) {
-            evenOffsets_.SetValue(r, r * 2 * 4);
-            oddOffsets_.SetValue(r, (r * 2 + 1) * 4);
             normOffsets_.SetValue(r, r * 16 * 4);
-            for (uint32_t d = 0; d < DIM; ++d) {
-                const uint32_t i = r * DIM + d, byte = d * bits_ / 8;
-                const uint32_t next = byte + 1 < bits_ * 16 ? byte + 1 : byte;
-                offset0_.SetValue(i, (r * stride + byte) * 4);
-                offset1_.SetValue(i, (r * stride + next) * 4);
-                offsetSign_.SetValue(i, (r * 32 + d / 8) * 4);
-                scale_.SetValue(i, inversePowers[d * bits_ % 8]);
-                scaleSign_.SetValue(i, inversePowers[d % 8]);
-            }
+        }
+        // Build one dimension pattern, then replicate with vector row offsets.
+        for (uint32_t d = 0; d < DIM; ++d) {
+            const uint32_t byte = d * bits_ / 8;
+            const uint32_t next = byte + 1 < bits_ * 16 ? byte + 1 : byte;
+            offset0_.SetValue(d, byte * 4);
+            offset1_.SetValue(d, next * 4);
+            offsetSign_.SetValue(d, (d / 8) * 4);
+            scale_.SetValue(d, inversePowers[d * bits_ % 8]);
+            scaleSign_.SetValue(d, inversePowers[d % 8]);
+        }
+        PipeBarrier<PIPE_ALL>();
+        for (uint32_t r = 1; r < ROWS; ++r) {
+            Adds(offset0_[r * DIM].ReinterpretCast<int32_t>(), offset0_.ReinterpretCast<int32_t>(),
+                 static_cast<int32_t>(r * stride * 4), DIM);
+            Adds(offset1_[r * DIM].ReinterpretCast<int32_t>(), offset1_.ReinterpretCast<int32_t>(),
+                 static_cast<int32_t>(r * stride * 4), DIM);
+            Adds(offsetSign_[r * DIM].ReinterpretCast<int32_t>(), offsetSign_.ReinterpretCast<int32_t>(),
+                 static_cast<int32_t>(r * 32 * 4), DIM);
         }
         PipeBarrier<PIPE_ALL>();
     }
 
-    // Integer division/modulo via exact binary FP32 operations. Inputs are at
-    // most 65535, so unpacking is exact, including codes spanning two bytes.
+    // Floor nonnegative unpack values, then mask their low integer bits.
+    // Values are at most 65535; conversion is exact after rounding down.
     __aicore__ inline void Modulo(float divisor)
     {
         Cast(c_.ReinterpretCast<int32_t>(), a_, RoundMode::CAST_FLOOR, ELEMS);
+        Duplicate(b_.ReinterpretCast<int32_t>(), static_cast<int32_t>(divisor) - 1, ELEMS);
+        PipeBarrier<PIPE_V>();
+        And(c_.ReinterpretCast<uint16_t>(), c_.ReinterpretCast<uint16_t>(), b_.ReinterpretCast<uint16_t>(), ELEMS * 2);
         PipeBarrier<PIPE_V>();
         Cast(a_, c_.ReinterpretCast<int32_t>(), RoundMode::CAST_NONE, ELEMS);
-        PipeBarrier<PIPE_V>();
-        Muls(b_, a_, 1.0F / divisor, ELEMS);
-        PipeBarrier<PIPE_V>();
-        Cast(c_.ReinterpretCast<int32_t>(), b_, RoundMode::CAST_FLOOR, ELEMS);
-        PipeBarrier<PIPE_V>();
-        Cast(b_, c_.ReinterpretCast<int32_t>(), RoundMode::CAST_NONE, ELEMS);
-        PipeBarrier<PIPE_V>();
-        Muls(b_, b_, divisor, ELEMS);
-        PipeBarrier<PIPE_V>();
-        Sub(a_, a_, b_, ELEMS);
         PipeBarrier<PIPE_V>();
     }
 
@@ -218,19 +264,23 @@ private:
         PipeBarrier<PIPE_V>();
         Add(a_, a_, b_, ELEMS);
         PipeBarrier<PIPE_V>();
-        Mul(a_, a_, scale_, ELEMS);
+        Mul(a_, a_, scale_, 64, ROWS, {1, 1, 1, 16, 16, 0});
+        Mul(a_[64], a_[64], scale_[64], 64, ROWS, {1, 1, 1, 16, 16, 0});
         PipeBarrier<PIPE_V>();
-        Modulo(bits_ == 2 ? 4.0F : (bits_ == 3 ? 8.0F : 16.0F));
-        Muls(a_, a_, 4.0F, ELEMS);
+        Cast(c_.ReinterpretCast<int32_t>(), a_, RoundMode::CAST_FLOOR, ELEMS);
+        Duplicate(b_.ReinterpretCast<int32_t>(), static_cast<int32_t>((1U << bits_) - 1), ELEMS);
         PipeBarrier<PIPE_V>();
-        Cast(c_.ReinterpretCast<int32_t>(), a_, RoundMode::CAST_RINT, ELEMS);
+        And(c_.ReinterpretCast<uint16_t>(), c_.ReinterpretCast<uint16_t>(), b_.ReinterpretCast<uint16_t>(), ELEMS * 2);
+        PipeBarrier<PIPE_V>();
+        ShiftLeft(c_.ReinterpretCast<uint32_t>(), c_.ReinterpretCast<uint32_t>(), 2U, ELEMS);
         PipeBarrier<PIPE_V>();
         Gather(primary_, centroids_, c_.ReinterpretCast<uint32_t>(), 0, ELEMS);
         PipeBarrier<PIPE_ALL>();
         LoadBytes(sign_[row * 16], 16, rows);
         Gather(a_, bytesFloat_, offsetSign_, 0, ELEMS);
         PipeBarrier<PIPE_V>();
-        Mul(a_, a_, scaleSign_, ELEMS);
+        Mul(a_, a_, scaleSign_, 64, ROWS, {1, 1, 1, 16, 16, 0});
+        Mul(a_[64], a_[64], scaleSign_[64], 64, ROWS, {1, 1, 1, 16, 16, 0});
         PipeBarrier<PIPE_V>();
         Modulo(2);
         Muls(signs_, a_, 2.0F, ELEMS);
@@ -241,14 +291,14 @@ private:
         DataCopyPad(gammaRaw_, gamma_[row], copy, DataCopyPadExtParams<NormType>{false, 0, 0, 0});
         PipeBarrier<PIPE_ALL>();
         if (rows < ROWS) {
-            for (uint32_t i = rows * 16; i < 256; ++i) {
+            for (uint32_t i = rows * 16; i < ROWS * 16; ++i) {
                 normRaw_.SetValue(i, static_cast<NormType>(0.0F));
                 gammaRaw_.SetValue(i, static_cast<NormType>(0.0F));
             }
             PipeBarrier<PIPE_ALL>();
         }
-        Cast(normFloat_, normRaw_, RoundMode::CAST_NONE, 256);
-        Cast(gammaFloat_, gammaRaw_, RoundMode::CAST_NONE, 256);
+        Cast(normFloat_, normRaw_, RoundMode::CAST_NONE, ROWS * 16);
+        Cast(gammaFloat_, gammaRaw_, RoundMode::CAST_NONE, ROWS * 16);
         PipeBarrier<PIPE_V>();
         Gather(normCompact_, normFloat_, normOffsets_, 0, ROWS);
         Gather(gammaCompact_, gammaFloat_, normOffsets_, 0, ROWS);
@@ -261,7 +311,9 @@ private:
         Mul(a_, keys, query, 64, ROWS, {1, 1, 1, 16, 16, 0});
         Mul(a_[64], keys[64], query[64], 64, ROWS, {1, 1, 1, 16, 16, 0});
         PipeBarrier<PIPE_V>();
-        WholeReduceSum(result, a_, 64, ROWS * 2, 1, 1, 8);
+        Add(a_, a_, a_[64], 64, ROWS, {1, 1, 1, 16, 16, 16});
+        PipeBarrier<PIPE_V>();
+        WholeReduceSum(result, a_, 64, ROWS, 1, 1, 16);
         PipeBarrier<PIPE_V>();
     }
 
@@ -269,10 +321,10 @@ private:
     {
         const uint32_t groups = qHeads_ / kvHeads_;
         const uint64_t offset = (static_cast<uint64_t>(first) * qHeads_ + head * groups) * DIM;
-        // Byte decode temporaries are dead until the next key tile; reuse them
-        // for batched BF16 query loads without increasing the UB footprint.
-        auto raw = bytesFloat_.ReinterpretCast<bfloat16_t>();
-        auto residualRaw = bytesHalf_.ReinterpretCast<bfloat16_t>();
+        // Decode arithmetic scratch is dead until Dot; use it for the
+        // batched BF16 loads before converting into persistent query caches.
+        auto raw = a_.ReinterpretCast<bfloat16_t>();
+        auto residualRaw = b_.ReinterpretCast<bfloat16_t>();
         DataCopyExtParams copy{static_cast<uint16_t>(tokens), groups * DIM * 2, (qHeads_ - groups) * DIM * 2, 0, 0};
         DataCopyPad(raw, q_[offset], copy, DataCopyPadExtParams<bfloat16_t>{false, 0, 0, 0});
         DataCopyPad(residualRaw, qr_[offset], copy, DataCopyPadExtParams<bfloat16_t>{false, 0, 0, 0});
@@ -282,35 +334,41 @@ private:
         PipeBarrier<PIPE_V>();
     }
 
-    __aicore__ inline void Compute(uint64_t row, uint32_t slot)
+    __aicore__ inline void ComputeGroup(uint32_t slot, uint32_t groups)
+    {
+        for (uint32_t g = 0; g < groups; ++g) {
+            Dot(primary_, queryCache_[(slot + g) * DIM], reducedMain_[g * ROWS]);
+            Dot(signs_, queryResidualCache_[(slot + g) * DIM], reducedSign_[g * ROWS]);
+        }
+        Mul(output_, reducedMain_, normCompact_, ROWS, groups, {1, 1, 1, ROWS / 8, ROWS / 8, 0});
+        Mul(b_, reducedSign_, gammaCompact_, ROWS, groups, {1, 1, 1, ROWS / 8, ROWS / 8, 0});
+        PipeBarrier<PIPE_V>();
+        Muls(b_, b_, COEFFICIENT, groups * ROWS);
+        PipeBarrier<PIPE_V>();
+        Add(output_, output_, b_, groups * ROWS);
+        PipeBarrier<PIPE_V>();
+    }
+
+    __aicore__ inline void Compute(uint64_t row, uint32_t slot, const LocalTensor<float> &result)
     {
         if (qHeads_ / kvHeads_ <= 4) {
             Dot(primary_, queryCache_[slot * DIM], reducedMain_);
             Dot(signs_, queryResidualCache_[slot * DIM], reducedSign_);
         } else {
             DataCopy(queryRaw_, q_[row * DIM], DIM);
-            DataCopy(queryRaw_[DIM], qr_[row * DIM], DIM);
+            DataCopy(queryResidualRaw_, qr_[row * DIM], DIM);
             PipeBarrier<PIPE_ALL>();
-            Cast(query_, queryRaw_, RoundMode::CAST_NONE, DIM);
-            Cast(queryResidual_, queryRaw_[DIM], RoundMode::CAST_NONE, DIM);
+            Cast(query_, queryRaw_, RoundMode::CAST_NONE, 2 * DIM);
             PipeBarrier<PIPE_V>();
             Dot(primary_, query_, reducedMain_);
             Dot(signs_, queryResidual_, reducedSign_);
         }
-        Gather(output_, reducedMain_, evenOffsets_, 0, ROWS);
-        Gather(a_, reducedMain_, oddOffsets_, 0, ROWS);
-        Gather(b_, reducedSign_, evenOffsets_, 0, ROWS);
-        Gather(c_, reducedSign_, oddOffsets_, 0, ROWS);
-        PipeBarrier<PIPE_V>();
-        Add(output_, output_, a_, ROWS);
-        Add(b_, b_, c_, ROWS);
-        PipeBarrier<PIPE_V>();
-        Mul(output_, output_, normCompact_, ROWS);
-        Mul(b_, b_, gammaCompact_, ROWS);
+        Mul(result, reducedMain_, normCompact_, ROWS);
+        Mul(b_, reducedSign_, gammaCompact_, ROWS);
         PipeBarrier<PIPE_V>();
         Muls(b_, b_, COEFFICIENT, ROWS);
         PipeBarrier<PIPE_V>();
-        Add(output_, output_, b_, ROWS);
+        Add(result, result, b_, ROWS);
         PipeBarrier<PIPE_V>();
     }
 
@@ -325,12 +383,12 @@ private:
     LocalTensor<float> primary_, signs_, a_, b_, c_, scale_, scaleSign_, bytesFloat_;
     LocalTensor<float> query_, queryResidual_, normFloat_, gammaFloat_, reducedMain_, reducedSign_, output_, centroids_;
     LocalTensor<uint32_t> offset0_, offset1_, offsetSign_;
-    LocalTensor<uint32_t> evenOffsets_, oddOffsets_, normOffsets_;
+    LocalTensor<uint32_t> normOffsets_;
     LocalTensor<float> normCompact_, gammaCompact_;
     LocalTensor<float> queryCache_, queryResidualCache_;
     LocalTensor<half> bytesHalf_;
     LocalTensor<uint8_t> bytes_;
-    LocalTensor<bfloat16_t> queryRaw_;
+    LocalTensor<bfloat16_t> queryRaw_, queryResidualRaw_;
     LocalTensor<NormType> normRaw_, gammaRaw_;
     uint32_t tokens_, qHeads_, kvHeads_, batch_, blocks_, width_, maxLen_, bits_;
 };

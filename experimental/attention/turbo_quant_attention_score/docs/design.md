@@ -60,7 +60,7 @@ tiling 检查 rank、形状关系、GQA 整除、batch/token 映射、属性和 
 
 ### kernel 侧设计
 
-每个任务处理某一 KV head 的 16 个连续 key 位置。单页为 128 个 token，因此 tile 不跨页。
+每个任务处理某一 KV head 的 32 个连续 key 位置。单页为 128 个 token，因此 tile 不跨页。
 prefill 每组最多八个 query，共享 tile 解码结果；同组所有 GQA head 同样复用解码结果。
 核间按 task index 跨步分配，每块输出仅有一个写入者。
 
@@ -69,10 +69,12 @@ prefill 每组最多八个 query，共享 tile 解码结果；同组所有 GQA h
 3. 乘以精确的二进制倒数、向下取整和取模，得到精确量化索引；再 Gather centroid。
 4. QJL 分支按同样方法解出符号。实数 query 参与点积，不使用错误的 popcount 等价替换。
 5. query 转 FP32 后进行向量乘法和树形归约，分别乘 norm/gamma 并叠加修正项。
-6. 写出 16 个或尾部不足 16 个分数。越过当前请求长度的元素写负无穷。
+6. 写出 32 个或尾部不足 32 个分数。越过当前请求长度的元素写负无穷。
 
-每核固定分配 160 KiB UB，包含索引、二进制缩放向量、解码块、query 缓存和归约临时空间。
+每核固定分配 185 KiB UB，包含索引、128 维重复使用的二进制缩放向量、解码块、query 缓存和归约临时空间。
 GQA 比例不超过 4 时一次搬入最多八个 query token 的全部同组 head，向量化归约合并及范数缩放；
+连续 key tile 复用同一 query 缓存；同组最多四个 head 的范数缩放和输出搬运批量执行。
+Gather 的偏移单位仍为字节，保留 FP32 元素的四倍偏移及 byte 搬入后的 32 字节行对齐。
 更大 GQA 比例走逐 head 搬运路径，避免越过 query 缓存容量。
 所有向量缓冲区 32 字节对齐。跨流水使用显式 barrier；尾部搬运只访问有效行。
 当前实现使用 Vector Core，避免 Cube BF16 centroid 舍入导致精度偏离 golden。

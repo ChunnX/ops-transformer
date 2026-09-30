@@ -79,3 +79,11 @@ python test_gqa_regression.py --output gqa.json
 case.json 已同步新版附件：gqa_decode_kv32k 改为 gqa_decode_kv64k（KV=65536），其它四组形状不变；golden 公式未变。历史 9 月 26 日的 32K 结果不能改名为 64K 结果。主测试脚本按 case.json 读取形状，自行生成随机压缩域输入，不读取 data_path；配对 Q/K 验证需要另外加载新版 generate_data.py 产物。
 
 新版 baseline 为 BF16 Paged Full-QK score：decode 4K/64K/128K 为 126.892/2321.657/5386.388 μs，prefill 4K/32K 为 627.391/5910.060 μs。decode 要求不超过 1.2 倍；不能再沿用旧基线的通过结论。PPL 已删除，KL<0.01 仍保留，但未明确其缩放和统计方式。
+
+
+## 32-key tile 与批量输出回归
+
+`python test_tile_regression.py --output tile.json` 使用最终安装包运行 108 个用例，
+覆盖 2/3/4 bit、BF16/FP16 norm、GQA 3/4、query token 分组边界、7/8/9、31/32/33、63/65
+长度，以及多 batch 的不同有效长度和全掩码输出。页表乱序，page/head/token 内容可区分，
+输出预填 NaN，沿用既有比较器，不修改误差阈值。

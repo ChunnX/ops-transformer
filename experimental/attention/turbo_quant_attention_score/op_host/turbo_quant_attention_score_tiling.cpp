@@ -101,7 +101,7 @@ static ge::graphStatus Tiling(gert::TilingContext *context)
     const uint32_t cores = platform.GetCoreNumAiv();
     uint64_t ubSize = 0;
     platform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
-    if (!cores || ubSize < 160 * 1024) {
+    if (!cores || ubSize < 185 * 1024) {
         return ge::GRAPH_FAILED;
     }
     TurboQuantAttentionScoreTilingData tiling;
