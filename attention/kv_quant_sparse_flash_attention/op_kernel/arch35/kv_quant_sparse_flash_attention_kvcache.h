@@ -76,7 +76,7 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr &runParam, const ConstInfo
     runParam.actualS2Size = qsfaActualS2Size;
     runParam.preTokensPerBatch = runParam.actualS1Size;
     if (constInfo.sparseMode == sparseModeZero) {
-        runParam.nextTokensPerBatch = SFA_MAX_WINDOW_TOKENS;
+        runParam.nextTokensPerBatch = MAX_PRE_NEXT_TOKENS;
     } else {
         runParam.nextTokensPerBatch = runParam.actualS2Size - runParam.actualS1Size;
     }

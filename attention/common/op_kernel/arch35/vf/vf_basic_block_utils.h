@@ -40,9 +40,9 @@ using namespace Reg;
 
 constexpr static AscendC::Reg::CastTrait castTraitNoneZero = {
     AscendC::Reg::RegLayout::ZERO,
-    AscendC::Reg::SatMode::SAT,
+    AscendC::Reg::SatMode::UNKNOWN,
     AscendC::Reg::MaskMergeMode::ZEROING,
-    AscendC::RoundMode::CAST_TRUNC,
+    AscendC::RoundMode::CAST_NONE,
 };
 
 constexpr static AscendC::Reg::CastTrait castTraitZero = {
