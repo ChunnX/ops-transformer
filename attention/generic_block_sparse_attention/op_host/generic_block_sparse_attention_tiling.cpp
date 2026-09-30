@@ -730,6 +730,16 @@ ge::graphStatus GBSATiling::CheckCuSeqLengths(gert::TilingContext* context)
                 static_cast<int32_t>(cuSeqLengthsQDesc->GetDataType()));
         return ge::GRAPH_FAILED;
     }
+    const gert::StorageShape* cuSeqLengthsQShape = context->GetOptionalInputShape(CU_SEQ_LENGTHS_Q_INDEX);
+    if (cuSeqLengthsQShape == nullptr) {
+        OP_LOGE(context->GetNodeName(), "cuSeqLengthsQ shape is nullptr.");
+        return ge::GRAPH_FAILED;
+    }
+    if (cuSeqLengthsQShape->GetStorageShape().GetShapeSize() != static_cast<int64_t>(batch_) + 1) {
+        OP_LOGE(context->GetNodeName(), "cuSeqLengthsQ size=%ld must equal blockTable batch+1=%u.",
+                cuSeqLengthsQShape->GetStorageShape().GetShapeSize(), batch_ + 1);
+        return ge::GRAPH_FAILED;
+    }
     if (context->GetOptionalInputTensor(SEQUSED_KV_INDEX) == nullptr) {
         OP_LOGE(context->GetNodeName(), "sequsedKv cannot be empty when layoutKv is PA_BBND.");
         return ge::GRAPH_FAILED;
