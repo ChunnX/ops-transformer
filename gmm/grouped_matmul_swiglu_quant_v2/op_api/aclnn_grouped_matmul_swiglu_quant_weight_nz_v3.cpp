@@ -434,12 +434,10 @@ aclnnStatus CheckShape(const aclTensor* x, const aclTensorList* weight, const ac
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(API_NAME, "N", std::to_string(n),
                                               isMxfp4A4W4 ? "must be greater than 0 and divisible by 128" :
                                                             "must be greater than 0 and divisible by 64"));
-    GMM_SWIGLU_V3_CHECK_WITH_LOG(
-        !isMxfp4A4W4 ||
-            (k % gmm_swiglu_quant_v3::SWIGLU_SPLIT_FACTOR == 0 && k != gmm_swiglu_quant_v3::SWIGLU_SPLIT_FACTOR),
-        ACLNN_ERR_PARAM_INVALID,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(API_NAME, "K", std::to_string(k),
-                                              "FLOAT4_E2M1 requires an even K other than 2 for packed storage"));
+    GMM_SWIGLU_V3_CHECK_WITH_LOG(!isMxfp4A4W4 || k % (2 * gmm_swiglu_quant_v3::MXFP8_N_ALIGN) == 0,
+                                 ACLNN_ERR_PARAM_INVALID,
+                                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(API_NAME, "K", std::to_string(k),
+                                                                       "FLOAT4_E2M1 V3 requires K divisible by 128"));
     GMM_SWIGLU_V3_CHECK_WITH_LOG(
         weightE == e, ACLNN_ERR_PARAM_INVALID,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(

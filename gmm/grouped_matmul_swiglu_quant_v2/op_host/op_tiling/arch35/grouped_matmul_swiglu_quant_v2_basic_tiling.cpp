@@ -743,7 +743,17 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckCoreNum() const
 
 ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::DoOpTiling()
 {
-    useTensorApi_ = IsSplitSwigluMode() && IsTensorApiCapable();
+    // A4W4 BF16 is an incremental V3 scenario. It must not fall back to the
+    // legacy FP4 epilogue, which always generates an MX output scale.
+    if (IsSplitSwigluMode() && IsMxFp4WeightNz()) {
+        OP_CHECK_IF(
+            !IsTensorApiCapable(),
+            OP_LOGE(context_->GetNodeName(), "A4W4 BF16 V3 requires the TensorAPI MX shape and platform constraints"),
+            return ge::GRAPH_FAILED);
+        useTensorApi_ = true;
+    } else {
+        useTensorApi_ = IsSplitSwigluMode() && IsTensorApiCapable();
+    }
     if (useTensorApi_) {
         GroupedMatmulSwigluQuantTensorApiTiling::FillQuantParams(tensorApiTilingData_.gmmQuantParams, inputParams_);
         tensorApiTilingData_.swigluParams = swigluParams_;
@@ -1455,8 +1465,9 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckV3ShapeAndScale(const gert::Shape
     const int64_t nAlignment = isMxfp4A4W4 ? V3_MXFP8_N_ALIGN * V3_SWIGLU_SPLIT : V3_MXFP8_N_ALIGN;
     OP_CHECK_IF(n % nAlignment != 0, OP_LOGE(context_->GetNodeName(), "N must be divisible by %ld", nAlignment),
                 return false);
-    OP_CHECK_IF(isMxfp4A4W4 && (k % V3_SWIGLU_SPLIT != 0 || k == V3_SWIGLU_SPLIT),
-                OP_LOGE(context_->GetNodeName(), "FLOAT4_E2M1 requires an even K other than 2 for packed storage"),
+    OP_CHECK_IF(isMxfp4A4W4 && k % GroupedMatmulSwigluQuantTensorApiTiling::K_ALIGN != 0,
+                OP_LOGE(context_->GetNodeName(), "FLOAT4_E2M1 V3 requires K divisible by %lu",
+                        GroupedMatmulSwigluQuantTensorApiTiling::K_ALIGN),
                 return false);
     const int64_t nzC0Size = IsFp4(inputParams_.aDtype) ? V3_NZ_C0_SIZE_B4 : V3_NZ_C0_SIZE_B8;
     // FRACTAL_NZ uses C0=32 for FP8 and C0=64 for FP4. Non-transposed
@@ -1556,6 +1567,12 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeV3Inputs()
 
 bool GroupedMatmulSwigluQuantV2Tiling950::IsTensorApiCapable() const
 {
+    if (IsSplitSwigluMode() && IsMxFp4WeightNz()) {
+        return aicoreParams_.l1Size != 0 && aicoreParams_.l0cSize != 0 && aicoreParams_.aicNum != 0 && aivNum_ != 0 &&
+               aivNum_ == GroupedMatmulSwigluQuantTensorApiTiling::AIC_AIV_CORE_RATIO * aicoreParams_.aicNum &&
+               inputParams_.nSize % (GroupedMatmulSwigluQuantTensorApiTiling::FP8_N_ALIGN * V3_SWIGLU_SPLIT) == 0 &&
+               inputParams_.kSize % GroupedMatmulSwigluQuantTensorApiTiling::K_ALIGN == 0;
+    }
     // Match V2 BasicApiTiling950::IsCapable after the V3-specific FP8/NZ,
     // single-tensor and MX scale shape checks above.
     if (aicoreParams_.l1Size == 0 || aicoreParams_.l0cSize == 0 || aivNum_ == 0) {
