@@ -307,6 +307,18 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
             // gamma_2的形状为[N*D]，在RMSNorm_mid中按head加载
         }
 
+        // 为initcheck建立一次性的MTE2初始化；后续Vector结果会覆盖这些槽位。
+        DataCopy(bufScalar_.Get<float>(), gamma0Gm_, PARTIAL_SLOT_ELEMS);
+        LocalTensor<T> x2Cache = bufActivationLowp_.Get<T>();
+        const uint32_t nBegin = DUAL_SIBLING ? siblingAivIdx_ * HEADS_PER_SIBLING : 0U;
+        const uint32_t nEnd = DUAL_SIBLING ? nBegin + HEADS_PER_SIBLING : N;
+        const uint64_t residualBase = (uint64_t)tStart_ * N_ * D_;
+        for (uint32_t n = nBegin; n < nEnd; ++n) {
+            if (n != 0U) {
+                DataCopy(x2Cache[n * D_], residualGm_[residualBase + (uint64_t)n * D_], D_);
+            }
+        }
+
         SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
         WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
 
