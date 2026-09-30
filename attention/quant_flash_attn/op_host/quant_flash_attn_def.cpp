@@ -26,32 +26,74 @@ public:
     {
         this->Input("q")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8, ge::DT_HIFLOAT4})
+            .DataType({
+                ge::DT_FLOAT8_E4M3FN, 
+                ge::DT_FLOAT8_E4M3FN, 
+                ge::DT_HIFLOAT8, 
+#ifdef ENABLE_HIFLOAT4
+                ge::DT_HIFLOAT4,
+#endif
+            })
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("k")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8, ge::DT_HIFLOAT4})
+            .DataType({
+                ge::DT_FLOAT8_E4M3FN, 
+                ge::DT_FLOAT8_E4M3FN, 
+                ge::DT_HIFLOAT8, 
+#ifdef ENABLE_HIFLOAT4
+                ge::DT_HIFLOAT4,
+#endif
+            })
             .FormatList({ge::FORMAT_ND})
             .IgnoreContiguous();
         this->Input("v")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8, ge::DT_HIFLOAT4})
+            .DataType({
+                ge::DT_FLOAT8_E4M3FN, 
+                ge::DT_FLOAT8_E4M3FN, 
+                ge::DT_HIFLOAT8, 
+#ifdef ENABLE_HIFLOAT4
+                ge::DT_HIFLOAT4,
+#endif
+            })
             .FormatList({ge::FORMAT_ND})
             .IgnoreContiguous();
         this->Input("q_descale")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT8_E8M0, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_HIFLOAT4_SCALE})
+            .DataType({
+                ge::DT_FLOAT8_E8M0, 
+                ge::DT_FLOAT, 
+                ge::DT_FLOAT, 
+#ifdef ENABLE_HIFLOAT4
+                ge::DT_HIFLOAT4_SCALE,
+#endif
+            })
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("k_descale")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT8_E8M0, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_HIFLOAT4_SCALE})
+            .DataType({
+                ge::DT_FLOAT8_E8M0, 
+                ge::DT_FLOAT, 
+                ge::DT_FLOAT, 
+#ifdef ENABLE_HIFLOAT4
+                ge::DT_HIFLOAT4_SCALE,
+#endif
+            })
             .FormatList({ge::FORMAT_ND})
             .IgnoreContiguous();
         this->Input("v_descale")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT8_E8M0, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_HIFLOAT4_SCALE})
+            .DataType({
+                ge::DT_FLOAT8_E8M0, 
+                ge::DT_FLOAT, 
+                ge::DT_FLOAT, 
+#ifdef ENABLE_HIFLOAT4
+                ge::DT_HIFLOAT4_SCALE,
+#endif
+            })
             .FormatList({ge::FORMAT_ND})
             .IgnoreContiguous();
         this->Input("block_table")
@@ -101,7 +143,14 @@ public:
             .AutoContiguous();
         this->Output("attn_out")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16})
+            .DataType({
+                ge::DT_BF16, 
+                ge::DT_BF16, 
+                ge::DT_BF16, 
+#ifdef ENABLE_HIFLOAT4               
+                ge::DT_BF16,
+#endif
+            })
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Output("softmax_lse")
