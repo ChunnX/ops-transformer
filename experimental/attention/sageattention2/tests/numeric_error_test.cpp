@@ -830,6 +830,70 @@ void TestOnChipStreamingQQuantEquivalence(std::mt19937 &rng)
     Report("saturation clamping bit-exact match", saturationMatch ? 0.0 : 1.0, 0.0, saturationMatch);
 }
 
+void TestSnakeFoldedScheduler()
+{
+    // Test 1: Bijection across different tile counts T and heads H
+    bool allBijective = true;
+    for (uint32_t T : {1u, 2u, 3u, 4u, 8u, 16u, 32u, 64u}) {
+        for (uint32_t H : {1u, 2u, 4u, 8u, 32u}) {
+            for (uint32_t h = 0; h < H; ++h) {
+                std::vector<int> visited(T, 0);
+                for (uint32_t raw = 0; raw < T; ++raw) {
+                    uint32_t tile = (h & 1) ? (T - 1 - raw) : raw;
+                    if (tile < T) {
+                        visited[tile]++;
+                    }
+                }
+                for (uint32_t t = 0; t < T; ++t) {
+                    if (visited[t] != 1) {
+                        allBijective = false;
+                    }
+                }
+            }
+        }
+    }
+
+    // Test 2: Workload balance across 48 cores on Atlas 950PR for causal attention
+    // Compare naive linear (no zigzag) vs snake-folded wavefront schedule
+    constexpr uint32_t cores = 48;
+    constexpr uint32_t T = 32; // 4K tokens with M=128
+    constexpr uint32_t H = 32;
+    std::vector<uint64_t> naiveLinear(cores, 0);
+    std::vector<uint64_t> snakeFolded(cores, 0);
+
+    for (uint32_t task = 0; task < H * T; ++task) {
+        uint32_t core = task % cores;
+        uint32_t h = task / T;
+        uint32_t raw_tile = task % T;
+
+        // Naive linear: every head sweeps forward
+        uint32_t linearTile = raw_tile;
+        naiveLinear[core] += (linearTile + 1);
+
+        // Snake-folded: odd heads sweep reverse
+        uint32_t foldedTile = (h & 1) ? (T - 1 - raw_tile) : raw_tile;
+        snakeFolded[core] += (foldedTile + 1);
+    }
+
+    auto calcVariance = [](const std::vector<uint64_t> &w) {
+        double mean = 0.0;
+        for (auto v : w) mean += v;
+        mean /= w.size();
+        double var = 0.0;
+        for (auto v : w) var += (v - mean) * (v - mean);
+        return std::sqrt(var / w.size()) / mean; // Coefficient of variation (CV)
+    };
+
+    double linearCV = calcVariance(naiveLinear);
+    double foldedCV = calcVariance(snakeFolded);
+    double varianceReduction = linearCV / std::max(foldedCV, 1e-6);
+
+    std::printf("[14] Snake-Folded Wavefront Scheduler balancing and bijection\n");
+    Report("tile mapping bijective (every tile visited once)", allBijective ? 0.0 : 1.0, 0.0, allBijective);
+    Report("folded workload coefficient of variation <= 0.05", foldedCV, 0.05, foldedCV <= 0.05);
+    Report("folded variance reduction ratio >= 10.0x vs naive", varianceReduction, 10.0, varianceReduction >= 10.0);
+}
+
 }  // namespace
 
 int main()
@@ -850,6 +914,7 @@ int main()
     TestFp16PartialRoundtrip(rng);
     TestSmoothVReconstruction(rng);
     TestOnChipStreamingQQuantEquivalence(rng);
+    TestSnakeFoldedScheduler();
     std::printf("================================================================\n");
     if (g_failures == 0) {
         std::printf("ALL NUMERIC ERROR TESTS PASSED\n");

@@ -8,12 +8,6 @@
 #pragma once
 
 #include "types.h"
-#include "fast_math.h"
-#include "scheduler/snake_scheduler.h"
-#include "compute/fast_quant.h"
-#include "compute/simd_softmax.h"
-#include "compute/out_accumulator.h"
-#include "pipeline/async_megapipe.h"
 
 #include "../op_kernel/stats.h"
 #include "../op_kernel/quant.h"

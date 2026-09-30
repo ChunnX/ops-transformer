@@ -54,21 +54,14 @@ public:
             SetFlag<HardEvent::FIX_M>(PV_EVENT);
         }
         uint32_t tiles = (p.sq + M - 1) / M;
-        const bool dieGroups = UseDieGroups(p);
         const uint64_t total = uint64_t(p.b) * p.hq * tiles;
         const uint64_t taskEnd = DieTaskEnd(p, total, core);
-        for (uint64_t task = core; task < taskEnd; task += p.cores) {
-            const uint64_t mapped = dieGroups ? DieTask(task, total, p.cores) : task;
-            uint32_t raw_tile = mapped % tiles, h = (mapped / tiles) % p.hq, b = mapped / tiles / p.hq;
-            uint32_t tile = raw_tile;
-            if constexpr (CAUSAL) {
-                if (h & 1) {
-                    tile = tiles - 1 - raw_tile;
-                }
-            }
-            uint32_t kh = CalcKh(h, p.hq, p.hk);
-            uint32_t qstart = tile * M;
-            uint64_t qb = (uint64_t(b) * p.hq + h) * p.qp, kb = (uint64_t(b) * p.hk + kh) * p.kp;
+        uint32_t ordinal = 0;
+        for (uint64_t task = core; task < taskEnd; task += p.cores, ++ordinal) {
+            auto taskInfo = sage::scheduler::SnakeScheduler<CAUSAL>::Decode(p, task, ordinal);
+            uint32_t b = taskInfo.b, h = taskInfo.h;
+            uint32_t qstart = taskInfo.qstart;
+            uint64_t qb = taskInfo.qb, kb = taskInfo.kb;
             if ASCEND_IS_AIV {
                 vector_.BeginTile(qb, qstart);
             }

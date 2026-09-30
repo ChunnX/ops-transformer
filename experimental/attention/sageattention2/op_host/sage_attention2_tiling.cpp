@@ -21,8 +21,6 @@
 namespace optiling {
 namespace {
 
-using namespace sage;
-
 constexpr uint64_t WORKSPACE_MEMORY_ALIGNMENT = 512ULL;
 constexpr uint64_t DEFAULT_SYSTEM_WORKSPACE = 16ULL * 1024ULL * 1024ULL;
 
@@ -152,7 +150,7 @@ ge::graphStatus ComputeSageAttention2Tiling(gert::TilingContext *context)
         context->GetInputDesc(1)->GetDataType() != inputDataType ||
         context->GetInputDesc(2)->GetDataType() != inputDataType ||
         kShape != vShape || qShape[0] != kShape[0] || qShape[3] != kShape[3] ||
-        qShape[3] > 128 || (qShape[1] % kShape[1] != 0) ||
+        qShape[3] > MAX_HEAD_DIM || (qShape[1] % kShape[1] != 0) ||
         uint64_t(kShape[0]) * kShape[1] >= UINT32_MAX) {
         return LogTilingFailure(__LINE__);
     }
@@ -264,25 +262,36 @@ ge::graphStatus ComputeSageAttention2Tiling(gert::TilingContext *context)
         return LogTilingFailure(__LINE__);
     }
 
-    size_t *workspacePtr = context->GetWorkspacePointers(1);
-    if (!workspacePtr) {
+    auto workspaceSizes = context->GetWorkspaceSizes(1);
+    auto rawPayload = context->GetRawTilingData();
+    if (!workspaceSizes || !rawPayload || rawPayload->GetCapacity() < sizeof(tilingPayload)) {
         return LogTilingFailure(__LINE__);
     }
-    workspacePtr[0] = static_cast<size_t>(totalWorkspaceBytes + systemReserved);
+    std::memcpy(rawPayload->GetData(), &tilingPayload, sizeof(tilingPayload));
+    rawPayload->SetDataSize(sizeof(tilingPayload));
+    workspaceSizes[0] = static_cast<size_t>(totalWorkspaceBytes + systemReserved);
+    return ge::GRAPH_SUCCESS;
+}
 
-    auto rawPayload = context->GetRawTilingDataWithStruct<SageAttention2TilingData>();
-    if (!rawPayload) {
+// Same per-thread reasoning as the topology cache: tiling runs on a worker
+// pool, so the resolved platform spec is cached per thread.
+ge::graphStatus ParseHardwareSpec(gert::TilingParseContext *context)
+{
+    if (!context || !context->GetPlatformInfo()) {
         return LogTilingFailure(__LINE__);
     }
-    *rawPayload = tilingPayload;
-    context->SetTilingDataLength(sizeof(SageAttention2TilingData));
+    auto *spec = context->GetCompiledInfo<PlatformHardwareSpec>();
+    if (!spec) {
+        return LogTilingFailure(__LINE__);
+    }
+    auto platform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
+    spec->aicCoreCount = platform.GetCoreNumAic();
+    spec->aivCoreCount = platform.GetCoreNumAiv();
     return ge::GRAPH_SUCCESS;
 }
 
 } // namespace
 } // namespace optiling
 
-extern "C" ge::graphStatus TilingForSageAttention2(gert::TilingContext *context)
-{
-    return optiling::ComputeSageAttention2Tiling(context);
-}
+IMPL_OP_OPTILING(SageAttention2).Tiling(optiling::ComputeSageAttention2Tiling)
+    .TilingParse<optiling::PlatformHardwareSpec>(optiling::ParseHardwareSpec);

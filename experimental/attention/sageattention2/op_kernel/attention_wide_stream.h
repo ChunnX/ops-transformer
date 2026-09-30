@@ -11,53 +11,28 @@
 #pragma once
 #include "attention_cube_split_qk.h"
 #include "attention_block_vec_wide.h"
+#include "../core/scheduler/snake_scheduler.h"
+
 namespace Sage {
 // Wide-pipeline L1 window: P_L1 holds the QK score stripes, the 4*M*N tail
 // ping-pongs K/V tiles (K_L1 naming kept for readability at call sites).
 constexpr uint32_t WIDE_B_L1 = P_L1 + 4 * M * N;
-// Query metadata is decoded once; Cube uses N256 fragments, Vector uses N512 groups.
-struct WideQueryInfo {
-    uint64_t task, qb, kb;
-    uint32_t ordinal, b, h, kh, qstart, count;
-};
+
+// Unified query metadata mapped to clean-room SnakeScheduler
+using WideQueryInfo = sage::scheduler::TileTaskInfo;
+
 template <bool CAUSAL>
 __aicore__ inline __attribute__((always_inline)) WideQueryInfo DecodeWideQuery(const SageParams &p, uint64_t task,
-                                                                                  uint32_t ordinal)
+                                                                               uint32_t ordinal)
 {
-    WideQueryInfo info;
-    const uint32_t tiles = p.sq / M;
-    info.task = task;
-    if (UseDieGroups(p))
-        task = DieTask(task, uint64_t(p.b) * p.hq * tiles, p.cores);
-    info.ordinal = ordinal;
-    info.h = (task / tiles) % p.hq;
-    info.b = task / tiles / p.hq;
-    uint32_t tile = task % tiles;
-    if constexpr (CAUSAL) {
-        if (info.h & 1)
-            tile = tiles - 1 - tile;
-    }
-    info.qstart = tile * M;
-    info.kh = CalcKh(info.h, p.hq, p.hk);
-    info.qb = (uint64_t(info.b) * p.hq + info.h) * p.qp;
-    info.kb = (uint64_t(info.b) * p.hk + info.kh) * p.kp;
-    const uint32_t limit = CAUSAL ? Min(p.sk, info.qstart + M) : p.sk;
-    info.count = (limit + 511) / 512;
-    return info;
+    return sage::scheduler::SnakeScheduler<CAUSAL>::Decode(p, task, ordinal);
 }
+
 template <bool CAUSAL>
 __aicore__ inline __attribute__((always_inline)) uint64_t WideScaleAhead(const SageParams &p, WideQueryInfo info,
                                                                          uint32_t group, uint64_t totalTasks)
 {
-    if (info.task >= totalTasks)
-        return ~uint64_t(0);
-    while (group >= info.count) {
-        group -= info.count;
-        if (info.task + p.cores >= totalTasks)
-            return ~uint64_t(0);
-        info = DecodeWideQuery<CAUSAL>(p, info.task + p.cores, info.ordinal + 1);
-    }
-    return info.kb + group * 512;
+    return sage::scheduler::SnakeScheduler<CAUSAL>::LookaheadScale(p, info, group, totalTasks);
 }
 // A deferred pair retires after S(g); retain metadata and alpha for all
 // three live groups g-2, g-1 and g. PV itself still uses two slots.
