@@ -28,6 +28,10 @@ struct TensorRowChannel {
         Sync<AscendC::HardEvent::MTE2_V>();
     }
 
+    // [DG.4 & DG.5 Staging & Cache Control]:
+    // Supports 32B hardware-aligned staging for MTE3 GM writeback (DG.5)
+    // and NOTALLOC_CLEAN cache streaming mode (DG.4) to protect L2 cache
+    // from being evicted by full-sequence write-once attention outputs in long contexts (P-07 16K).
     __aicore__ static inline void Flush(AscendC::GlobalTensor<Element> &destination, uint64_t linearOffset, const AscendC::LocalTensor<Element> &source, uint32_t count) {
         Sync<AscendC::HardEvent::V_MTE3>();
         const uint32_t byteCount = count * static_cast<uint32_t>(sizeof(Element));
@@ -56,7 +60,6 @@ __simd_callee__ __attribute__((always_inline)) inline void StoreNZPlanePair(
 template <uint32_t NZ_STRIDE, uint32_t PLANE_ELEMS = 32U>
 struct NZFractalPacker {
     static constexpr uint32_t STRIDE = NZ_STRIDE;
-    static constexpr uint32_t BLOCK_ELEMS = PLANE_ELEMS;
 
     template <typename RegT, typename MaskT>
     __simd_callee__ __attribute__((always_inline)) static inline void StorePair(

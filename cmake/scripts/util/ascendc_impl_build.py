@@ -207,13 +207,20 @@ def {}({}, kernel_name="{}"{}):
     if bisheng is not None:
         bisheng_path = os.path.dirname(bisheng)
         tikcpp_path = os.path.realpath(os.path.join(bisheng_path, "..", "..", "tikcpp"))
+        if not os.path.exists(tikcpp_path):
+            tikcpp_path = os.path.realpath(os.path.join(bisheng_path, "..", "tikcpp"))
     else:
         tikcpp_path = os.path.realpath("/usr/local/Ascend/latest/compiler/tikcpp")
+        if not os.path.exists(tikcpp_path):
+            tikcpp_path = os.path.realpath("/usr/local/Ascend/latest/tikcpp")
     options.append("-I" + os.path.join(PYF_PATH, "..", "ascendc", "common", "catlass", "include"))
     options.append("-I" + os.path.join(PYF_PATH, "..", "ascendc", "common", "tensor_api", "include"))
     options.append("-I" + os.path.join(PYF_PATH, "..", "ascendc", "common", "tensor_api"))
     options.append("-I" + tikcpp_path)
     options.append("-I" + os.path.join(tikcpp_path, "..", "..", "include"))
+    options.append("-I" + os.path.join(tikcpp_path, "..", "include"))
+    options.append("-I" + os.path.join(tikcpp_path, "..", "include", "ascendc"))
+    options.append("-I" + os.path.join(tikcpp_path, "..", "include", "ascendc", "basic_api"))
     options.append("-I" + os.path.join(tikcpp_path, "tikcfw"))
     options.append("-I" + os.path.join(tikcpp_path, "tikcfw", "impl"))
     options.append("-I" + os.path.join(tikcpp_path, "tikcfw", "interface"))

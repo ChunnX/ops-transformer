@@ -95,6 +95,11 @@ __simd_vf__ inline void QuantVRowsMxVF(__ubuf__ T *x, __ubuf__ T *maxima, __ubuf
             AscendC::MicroAPI::Sub(invBitPattern, invBiasReg, biasedBits, fullMask);
             invScaleF32 = (AscendC::MicroAPI::RegTensor<float> &)invBitPattern;
 
+            // [DG.6 UE8M0 Hardware Mutual Recognition]:
+            // Ascend 950 hardware layout packs a pair of UE8M0 scales (one per 32 elements)
+            // into a single uint16_t (64 K-elements per SF pair, MN-major order).
+            // Group 0 occupies [0..7], Group 1 occupies [8..15] via ShiftLefts 8 + Or.
+            // This is bit-exact with DeepGEMM-Ascend MX_SF_DIVISOR format.
             if (gIdx == 1) {
                 AscendC::MicroAPI::ShiftLefts(exponentField, exponentField, static_cast<int16_t>(8), fullMask);
             }

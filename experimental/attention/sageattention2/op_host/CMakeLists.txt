@@ -12,6 +12,6 @@ if(NOT EXISTS "${CATLASS_ROOT}/include/catlass/catlass.hpp")
     message(FATAL_ERROR "Set CATLASS_ROOT to a CATLASS checkout with Ascend950 support")
 endif()
 add_ops_compile_options(OP_NAME SageAttention2
-    OPTIONS -DCATLASS_ARCH=3510 -I${CATLASS_ROOT}/include --cce-auto-sync=on -O2 -DNDEBUG)
+    OPTIONS -DCATLASS_ARCH=3510 -I${CATLASS_ROOT}/include --cce-auto-sync=on -O2 -DNDEBUG -mllvm --cce-vf-affine2vag=false)
 add_modules_sources(OP_API_INDEPENDENT ON OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api
     OPTYPE sage_attention2 ACLNNTYPE aclnn_exclude)

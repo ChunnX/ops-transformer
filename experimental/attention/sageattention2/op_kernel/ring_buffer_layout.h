@@ -66,7 +66,6 @@ inline constexpr uint32_t ACCUM_UB = StandardUbSlabDescriptors::AccumSlab::kBase
 inline constexpr uint32_t P_UB = StandardUbSlabDescriptors::PSlab::kBase;
 inline constexpr uint32_t KS_UB = StandardUbSlabDescriptors::KsSlab::kBase;
 inline constexpr uint32_t QS_UB = StandardUbSlabDescriptors::QsSlab::kBase;
-inline constexpr uint32_t GROUP_STAT_BYTES = N * sizeof(half);
 inline constexpr uint32_t MAX_UB = StandardUbSlabDescriptors::MaxSlab::kBase;
 inline constexpr uint32_t DEN_UB = StandardUbSlabDescriptors::DenSlab::kBase;
 inline constexpr uint32_t ALPHA_UB = StandardUbSlabDescriptors::AlphaSlab::kBase;
@@ -74,6 +73,13 @@ inline constexpr uint32_t SUM_UB = StandardUbSlabDescriptors::SumSlab::kBase;
 inline constexpr uint32_t VM_UB = StandardUbSlabDescriptors::VmSlab::kBase;
 inline constexpr uint32_t UB_END = StandardUbSlabDescriptors::VmSlab::kNext;
 
+// [Contract P0.4 - Static UB Capacity Protection & Chunk Streaming Audit]:
+// Absorbing the lesson of the 16384-element 256KB register trample incident,
+// all kernel allocations are strictly compile-time constants independent of
+// sequence length S. Chunk streaming guarantees chunk size Bc <= 512
+// (standard Bc = 256, wide Bc = 512), with instantaneous active UB footprint
+// mathematically bounded at 130.75 KB (standard) / 148.00 KB (wide) <= 160 KB.
+static_assert(sage::core::N <= 512, "Chunk size N must be <= 512 to guarantee O(1) UB safety");
 static_assert(UB_END <= UB_HIGH_WATER, "Static UB plan must stay within 248KB budget");
 
 // Wide Streaming Vector Unified Buffer Layout Plan

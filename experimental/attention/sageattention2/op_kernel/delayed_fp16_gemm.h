@@ -68,6 +68,50 @@ public:
         EventHandshake::NotifyAiv<PIPE_FIX>(TokenSignal::QK_READY, SubPart);
     }
 
+    template <typename L0BType>
+    __aicore__ static inline void ExecutePipelinedMmadAndFixpipe(memory::FixedResource &res, const L0BType &l0TensorB, uint32_t ubOffset) {
+        constexpr auto syncEvt0 = static_cast<event_t>(EventHandshake::QK_EVENT);
+        constexpr auto syncEvt1 = static_cast<event_t>(EventHandshake::QK_SECOND_FIX_EVENT);
+
+        // Stage 0: MMAD for SubPart 0 on Cube core
+        AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(syncEvt0);
+        auto l0SubA0 = tla::MakeTensor(res.l0ABuf.template GetBufferByByte<Element>(0U),
+            tla::MakeLayout<Element, typename TileCopy::LayoutTagL0A>(SUB_M, K_DIM), Catlass::Arch::PositionL0A{});
+        auto l0SubC0 = tla::MakeTensor(res.l0CBuf.template GetBufferByByte<Accumulator>(0U),
+            tla::MakeLayout<Accumulator, Catlass::layout::L0C>(SUB_M, N_DIM), Catlass::Arch::PositionL0C{});
+        Catlass::Gemm::Tile::TileMmadTla<ArchTag, Element, typename TileCopy::LayoutTagL1A>()(
+            l0SubC0, l0SubA0, l0TensorB, SUB_M, N_DIM, K_DIM, true);
+        AscendC::SetFlag<AscendC::HardEvent::M_FIX>(syncEvt0);
+
+        // Stage 1: Overlapped Fixpipe for SubPart 0 with MMAD for SubPart 1
+        AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(syncEvt0);
+        static constexpr AscendC::FixpipeConfig pipeCfg{AscendC::CO2Layout::NZ, true};
+        const auto fpParams0 = BuildDequantFixpipeParams<AscendC::CO2Layout::NZ>(SUB_M, N_DIM, false);
+        auto ubDestination = res.ubBuf.template GetBufferByByte<half>(ubOffset);
+        auto l0cSource0 = res.l0CBuf.template GetBufferByByte<Accumulator>(0U);
+        AscendC::Fixpipe<half, Accumulator, pipeCfg>(ubDestination, l0cSource0, fpParams0);
+        AscendC::SetFlag<AscendC::HardEvent::FIX_M>(syncEvt0);
+        EventHandshake::NotifyAiv<PIPE_FIX>(TokenSignal::QK_READY, 0U);
+
+        // Concurrently run MMAD for SubPart 1 on Cube
+        AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(syncEvt1);
+        auto l0SubA1 = tla::MakeTensor(res.l0ABuf.template GetBufferByByte<Element>(SUB_M * K_DIM),
+            tla::MakeLayout<Element, typename TileCopy::LayoutTagL0A>(SUB_M, K_DIM), Catlass::Arch::PositionL0A{});
+        auto l0SubC1 = tla::MakeTensor(res.l0CBuf.template GetBufferByByte<Accumulator>(SUB_M * N_DIM * sizeof(Accumulator)),
+            tla::MakeLayout<Accumulator, Catlass::layout::L0C>(SUB_M, N_DIM), Catlass::Arch::PositionL0C{});
+        Catlass::Gemm::Tile::TileMmadTla<ArchTag, Element, typename TileCopy::LayoutTagL1A>()(
+            l0SubC1, l0SubA1, l0TensorB, SUB_M, N_DIM, K_DIM, true);
+        AscendC::SetFlag<AscendC::HardEvent::M_FIX>(syncEvt1);
+
+        // Stage 2: Fixpipe for SubPart 1
+        AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(syncEvt1);
+        const auto fpParams1 = BuildDequantFixpipeParams<AscendC::CO2Layout::NZ>(SUB_M, N_DIM, true);
+        auto l0cSource1 = res.l0CBuf.template GetBufferByByte<Accumulator>(SUB_M * N_DIM * sizeof(Accumulator));
+        AscendC::Fixpipe<half, Accumulator, pipeCfg>(ubDestination, l0cSource1, fpParams1);
+        AscendC::SetFlag<AscendC::HardEvent::FIX_M>(syncEvt1);
+        EventHandshake::NotifyAiv<PIPE_FIX>(TokenSignal::QK_READY, 1U);
+    }
+
     __aicore__ static inline void Execute(memory::FixedResource &res, uint32_t ubOffset, bool loadA, uint32_t kParity) {
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(EventHandshake::QK_EVENT);
         auto l1TensorA = tla::MakeTensor(res.l1Buf.template GetBufferByByte<Element>(0U), tla::MakeLayout<Element, typename TileCopy::LayoutTagL1A>(sage::core::M, K_DIM), Catlass::Arch::PositionL1{});
@@ -93,8 +137,7 @@ public:
         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EventHandshake::QK_EVENT);
         memory::Sync<AscendC::HardEvent::MTE1_M>();
 
-        ComputeSubTileAndFixpipe<0U>(res, l0TensorB, ubOffset);
-        ComputeSubTileAndFixpipe<1U>(res, l0TensorB, ubOffset);
+        ExecutePipelinedMmadAndFixpipe(res, l0TensorB, ubOffset);
     }
 };
 

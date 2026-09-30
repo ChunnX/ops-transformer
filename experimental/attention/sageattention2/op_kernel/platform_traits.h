@@ -80,7 +80,6 @@ inline constexpr float SAGE_FP16_MAX = MathematicalPolicyTable<>::Fp16Max();
 inline constexpr float SAGE_FP16_MIN = MathematicalPolicyTable<>::Fp16Min();
 
 inline constexpr uint32_t PV_PARTIAL_SHIFT = DelayedScalingPolicyTable<>::PvPartialShift();
-inline constexpr uint16_t PV_PARTIAL_E8M0 = DelayedScalingPolicyTable<>::PvPartialE8M0();
 inline constexpr uint16_t PV_PARTIAL_E8M0_PAIR = DelayedScalingPolicyTable<>::PvPartialE8M0Pair();
 inline constexpr float PV_PARTIAL_UNDO = DelayedScalingPolicyTable<>::PvPartialUndo();
 inline constexpr uint64_t DEQ_SCALAR_DEQF16 = DelayedScalingPolicyTable<>::DeqScalarDeqF16();

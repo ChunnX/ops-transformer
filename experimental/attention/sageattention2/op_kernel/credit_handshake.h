@@ -9,11 +9,11 @@
 
 namespace sage::orchestration {
 
-// Decoupled synchronization token primitive
-struct SyncTokenDescriptor final {
-    uint32_t signalCode{0U};
-    constexpr explicit SyncTokenDescriptor(uint32_t code = 0U) noexcept : signalCode(code) {}
-    constexpr operator uint32_t() const noexcept { return signalCode; }
+template <uint32_t kSubblock>
+struct IntraBlockEvent final {
+    uint32_t base{0};
+    constexpr explicit IntraBlockEvent(uint32_t b = 0) noexcept : base(b) {}
+    constexpr operator uint32_t() const noexcept { return base; }
 };
 
 enum class TokenSignal : uint32_t {
@@ -25,7 +25,7 @@ enum class TokenSignal : uint32_t {
     AIV_FLAG_OFFSET = 16U * 1U,
 };
 
-// Ticket-based cross-core handshake protocol
+// Strong-typed ticket-based cross-core handshake protocol
 struct EventHandshake final {
     static inline constexpr uint32_t QK_READY = static_cast<uint32_t>(TokenSignal::QK_READY);
     static inline constexpr uint32_t P_READY = static_cast<uint32_t>(TokenSignal::P_READY);
@@ -40,6 +40,18 @@ struct EventHandshake final {
     static inline constexpr uint32_t QK_SECOND_FIX_EVENT = 1U;
     static inline constexpr uint32_t K_PREFETCH_EVENT_BASE = 4U;
     static inline constexpr uint32_t V_PREFETCH_EVENT_BASE = 6U;
+
+    // Strong-typed IntraBlock cross-core events (1 AIC + 2 AIV)
+    static inline constexpr IntraBlockEvent<0> kQkReadyAiv0{QK_READY};
+    static inline constexpr IntraBlockEvent<1> kQkReadyAiv1{QK_READY + AIV_FLAG_OFFSET};
+    static inline constexpr IntraBlockEvent<0> kPReadyAiv0{P_READY};
+    static inline constexpr IntraBlockEvent<1> kPReadyAiv1{P_READY + AIV_FLAG_OFFSET};
+    static inline constexpr IntraBlockEvent<0> kPvReadyAiv0{PV_READY};
+    static inline constexpr IntraBlockEvent<1> kPvReadyAiv1{PV_READY + AIV_FLAG_OFFSET};
+    static inline constexpr IntraBlockEvent<0> kPvReleaseAiv0{PV_RELEASE};
+    static inline constexpr IntraBlockEvent<1> kPvReleaseAiv1{PV_RELEASE + AIV_FLAG_OFFSET};
+    static inline constexpr IntraBlockEvent<0> kQReadyAiv0{Q_READY};
+    static inline constexpr IntraBlockEvent<1> kQReadyAiv1{Q_READY + AIV_FLAG_OFFSET};
 
 #if defined(__CCE__)
     template <auto PIPE>

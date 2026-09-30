@@ -145,10 +145,10 @@ private:
         for (uint32_t i = 0; i < drainLimit; ++i) {
             EventHandshake::WaitFromBothAiv<PIPE_FIX>(TokenSignal::PV_RELEASE);
         }
-        AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(4);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(5);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(6);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(7);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(static_cast<event_t>(EventHandshake::K_PREFETCH_EVENT_BASE));
+        AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(static_cast<event_t>(EventHandshake::K_PREFETCH_EVENT_BASE + 1U));
+        AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(static_cast<event_t>(EventHandshake::V_PREFETCH_EVENT_BASE));
+        AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(static_cast<event_t>(EventHandshake::V_PREFETCH_EVENT_BASE + 1U));
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(EventHandshake::QK_EVENT);
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(EventHandshake::PV_EVENT);
         AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(EventHandshake::QK_EVENT);

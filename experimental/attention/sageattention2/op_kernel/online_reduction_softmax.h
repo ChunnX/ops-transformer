@@ -484,6 +484,16 @@ __simd_callee__ __attribute__((always_inline)) inline void MaskScoresTail(vapi::
 
 // ============================================================================
 // 6. In-Kernel Fused LSE Calculation Microkernel
+// ----------------------------------------------------------------------------
+// [Contract P0.3 - By-Design Contract for LSE Output]:
+// StoreTileLse outputs raw log2-domain LSE to Global Memory:
+//   lse_raw = (ln(denom) + maxF) * LOG2_E = (ln(denom) + m_hat) * log2(e)
+// This is the uncorrected raw log2 representation. The final mathematical LSE
+// is recovered on the Python / host caller side according to:
+//   lse_final = lse_raw / 1.44269504 + lse_correction * sm_scale
+// where lse_correction is the smooth-K correction term (with GQA repeat_interleave
+// head broadcast if Hq != Hkv), and 1.44269504 is log2(e).
+// Conformance reference: numeric_error_test.cpp [7] & [18].
 // ============================================================================
 
 __aicore__ inline void StoreTileLse(
