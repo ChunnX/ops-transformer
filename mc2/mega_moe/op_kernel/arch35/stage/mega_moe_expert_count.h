@@ -66,7 +66,7 @@ __aicore__ inline void WaitForCountTable(const AscendC::GlobalTensor<int32_t> &c
         AscendC::DataCopyPad<int32_t, AscendC::PaddingMode::Compact>(
             counts, countGm,
             {static_cast<uint16_t>(elementCount), sizeof(int32_t),
-             static_cast<int64_t>(GetExpertCountSlotBytes()) - static_cast<int64_t>(sizeof(int32_t)), 0U, 0U},
+             static_cast<int64_t>(MTE_COUNT_SLOT_BYTES) - static_cast<int64_t>(sizeof(int32_t)), 0U, 0U},
             {true, 0U, 0U, 0U});
         SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID2>();
         asc_vf_call<CheckCountRoundTagsVF>(reinterpret_cast<__ubuf__ uint32_t *>(counts.GetPhyAddr()),
