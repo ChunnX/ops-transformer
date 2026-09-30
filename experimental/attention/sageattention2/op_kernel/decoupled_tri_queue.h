@@ -168,9 +168,11 @@ class WideVectorStreamEngine {
 public:
     __aicore__ inline explicit WideVectorStreamEngine(memory::FixedResource &res) : res_(res) {}
 
+    // AIV 宽路径只消费原始 Q、随路 scale（QS/KS）、V 均值与 O/LSE 写回；
+    // K8/V8/MXFP8 scale 由 Cube 侧与量化段消费，不进入本签名。
     __aicore__ inline void Execute(
-        uint32_t core, uint64_t totalTasks, GM_ADDR q, GM_ADDR k8, GM_ADDR v8,
-        GM_ADDR qs, GM_ADDR ks, GM_ADDR mxScale, GM_ADDR vMean, GM_ADDR out, GM_ADDR lse, const sage::core::SageParams &p)
+        uint32_t core, uint64_t totalTasks, GM_ADDR q,
+        GM_ADDR qs, GM_ADDR ks, GM_ADDR vMean, GM_ADDR out, GM_ADDR lse, const sage::core::SageParams &p)
     {
         const uint32_t subBlock = AscendC::GetSubBlockIdx();
         AscendC::GlobalTensor<T> qg, og;
@@ -589,7 +591,7 @@ __aicore__ inline __attribute__((always_inline)) void ExecuteWideStream(
         cubeEngine.Execute<CAUSAL>(core, totalTasks, k8, v8, mxScale, p);
     } else {
         WideVectorStreamEngine<T, CAUSAL> vectorEngine(r);
-        vectorEngine.Execute(core, totalTasks, q, k8, v8, qs, ks, mxScale, vMean, out, lse, p);
+        vectorEngine.Execute(core, totalTasks, q, qs, ks, vMean, out, lse, p);
     }
 
     AscendC::PipeBarrier<PIPE_ALL>();
