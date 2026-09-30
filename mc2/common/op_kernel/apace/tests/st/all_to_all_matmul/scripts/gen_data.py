@@ -52,7 +52,7 @@ def write_artifacts(base_dir, rank_id, a_segment, b_ori, bias, out, a_after):
     write_tensor(a_after, os.path.join(output_dir, "expected_comm.bin"))
 
 
-def gen_golden_data_all_to_all_matmul(m, k, n, rank_num, dtype="fp16"):
+def gen_golden_data_all_to_all_matmul(m, k, n, rank_num, dtype="fp16", lm=0):
     M_total = m * rank_num
     K = k
     N = n
@@ -105,7 +105,33 @@ def gen_golden_data_all_to_all_matmul(m, k, n, rank_num, dtype="fp16"):
         b_cpu = b_dequant  # (N, K)，逻辑 B = [K,N] 取转置
         out = torch.matmul(a_cpu, b_cpu.t())  # (m, N)
         out = out + bias
-        out_all_ranks.append(out.to(target))
+
+        if lm == 2:
+            # lm=2（GM累加）：golden 按 kernel 实际算法模拟，用于验证 kernel 机制正确性。
+            # kernel：LOCAL 在 L0C fp32 算 self部分和+bias → 取整成输出 dtype 写 GM；
+            # REMOTE 把其余 rank 部分和在 fp32 累加 → 原子加（取整）到 GM。
+            # 故：self_q=round(self+bias); remote_q=round(Σ_remote); out=round(self_q+remote_q)。
+            self_partial = torch.zeros(m, N, dtype=torch.float32)
+            for src_rank in range(rank_num):
+                if src_rank != dst_rank:
+                    continue
+                seg_a = a_after[src_rank * m:(src_rank + 1) * m, :]
+                seg_b = b_dequant[:, src_rank * Ka:(src_rank + 1) * Ka]
+                self_partial = self_partial + torch.matmul(seg_a, seg_b.t())
+
+            remote_partial = torch.zeros(m, N, dtype=torch.float32)
+            for src_rank in range(rank_num):
+                if src_rank == dst_rank:
+                    continue
+                seg_a = a_after[src_rank * m:(src_rank + 1) * m, :]
+                seg_b = b_dequant[:, src_rank * Ka:(src_rank + 1) * Ka]
+                remote_partial = remote_partial + torch.matmul(seg_a, seg_b.t())
+
+            self_q = (self_partial + bias).to(target)
+            remote_q = remote_partial.to(target)
+            out = (self_q.float() + remote_q.float()).to(target)
+
+        out_all_ranks.append(out)
 
     current_dir = os.getcwd()
     for rank_id in range(rank_num):
@@ -124,22 +150,27 @@ def gen_golden_data_all_to_all_matmul(m, k, n, rank_num, dtype="fp16"):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) not in (5, 6):
-        print("Usage: python3 gen_data.py m k n rank_num [dtype]")
+    if len(sys.argv) not in (5, 6, 7):
+        print("Usage: python3 gen_data.py m k n rank_num [dtype] [lm]")
         print("  m: matrix M dimension (per-rank output rows)")
         print("  k: matrix K dimension (total, must be divisible by rank_num)")
         print("  n: matrix N dimension")
         print("  rank_num: number of ranks")
         print("  dtype: optional, fp16 (default) | bf16")
+        print("  lm: optional, localMatmul mode (0 default | 2: golden 模拟 GM 累加取整)")
         sys.exit(1)
 
     m = int(sys.argv[1])
     k = int(sys.argv[2])
     n = int(sys.argv[3])
     rank_num = int(sys.argv[4])
-    dtype = sys.argv[5] if len(sys.argv) == 6 else "fp16"
+    dtype = sys.argv[5] if len(sys.argv) >= 6 else "fp16"
     if dtype not in ("fp16", "bf16"):
         print(f"ERROR: dtype must be 'fp16' or 'bf16', got {dtype}")
         sys.exit(1)
+    lm = int(sys.argv[6]) if len(sys.argv) == 7 else 0
+    if lm not in (0, 2):
+        print(f"ERROR: lm must be 0 or 2, got {lm}")
+        sys.exit(1)
 
-    gen_golden_data_all_to_all_matmul(m, k, n, rank_num, dtype)
+    gen_golden_data_all_to_all_matmul(m, k, n, rank_num, dtype, lm)

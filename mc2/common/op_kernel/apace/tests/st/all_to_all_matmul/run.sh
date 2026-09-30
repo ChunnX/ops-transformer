@@ -107,8 +107,8 @@ run_single() {
     rm -rf input output
 
     # ---- 1. 生成数据 ----
-    echo "[1/4] Generate CPU golden + input data (dtype=$DTYPE)..."
-    python3 scripts/gen_data.py "$M" "$K" "$N" "$RANK_NUM" "$DTYPE"
+    echo "[1/4] Generate CPU golden + input data (dtype=$DTYPE lm=$LOCAL_MATMUL)..."
+    python3 scripts/gen_data.py "$M" "$K" "$N" "$RANK_NUM" "$DTYPE" "$LOCAL_MATMUL"
 
     if [ "$GEN_ONLY" -eq 1 ]; then return 0; fi
 
