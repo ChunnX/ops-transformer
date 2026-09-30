@@ -583,11 +583,13 @@ __aicore__ inline void CompressorKernel<COMP, IS_FULL_LOAD>::CalcC1V1Params(RunI
     vec1Info.sStart = batchInfo.sIdx;
     vec1Info.c1v1DbIdx = (vec1Loop++ & (constInfo.dbWorkspaceRatio - 1));
     BasicBlockInfo basicBlockInfo = SkipOneLoop(batchInfo);
-    // 超范围核(尾部轮块数不足 / curGroupIdx >= mGroupNum*kBaseNum)：
-    // SkipOneLoop 已置 dealSeqCnt=0，但其 dealTcNum 累积了全程，需清零避免 AIV 空转核误处理
-    if (basicBlockInfo.dealSeqCnt == 0) {
-        basicBlockInfo.dealTcNum = 0;
-    }
+    // 超范围核(尾部轮块数不足 / curGroupIdx >= mGroupNum*kBaseNum)：SkipOneLoop 已置
+    // dealSeqCnt=0，但其 dealTcNum 累积了全程 TC。M×K 叠加下 vec 对 M 段切分透明
+    // （从 K 段槽位基址按【全局行】读取，数据由有效核组的 cube 写全），且 vec 侧已按
+    // "全 AIV 均分轮次内全程 TC" 分工——闲置核组的 AIV 同样分到了 TC 份额，
+    // 故此处【不能清零 dealTcNum】：清零会使该份额的 TC 无人处理，导致 cmp_kv /
+    // stateCache 部分数据缺失（误差比例 ≈ 闲置核组数 / 总核组数）。
+    // 注：闲置核的 cube 仍不执行（IsNeedExcuteC1 判 bStart），只做跨核同步。
     info.cubeDbIdx = (cubeLoop++ & (constInfo.dbWorkspaceRatio - 1));
     info.dealSeqCnt = basicBlockInfo.dealSeqCnt;
     info.dealTcNum = basicBlockInfo.dealTcNum;
