@@ -58,7 +58,6 @@ constexpr uint32_t CMP_RESIDUAL_K_INDEX = 9;
 constexpr uint32_t BLOCK_TABLE_INDEX = 10;
 constexpr uint32_t OUTPUT_IDX_OFFSET_INDEX = 11;
 constexpr uint32_t METADATA_INDEX = 12;
-constexpr uint32_t CANDIDATE_TOPK_INDEX_INPUT_INDEX = 13;
 constexpr uint32_t SPARSE_INDICES_INDEX = 0;
 constexpr uint32_t SPARSE_VALUES_INDEX = 1;
 constexpr uint32_t CANDIDATE_TOPK_INDEX_OUTPUT_INDEX = 2;
@@ -71,11 +70,10 @@ constexpr uint32_t ATTR_KEY_LAYOUT_INDEX = 4;
 constexpr uint32_t ATTR_MASK_MODE_INDEX = 5;
 constexpr uint32_t ATTR_CMP_RATIO_INDEX = 6;
 constexpr uint32_t ATTR_RETURN_VALUE_INDEX = 7;
-constexpr uint32_t ATTR_CANDIDATE_MODE_INDEX = 8;
-constexpr uint32_t ATTR_CANDIDATE_TOPK_BLOCKS_INDEX = 9;
-constexpr uint32_t ATTR_CANDIDATE_BLOCK_SIZE_INDEX = 10;
-constexpr uint32_t ATTR_KEY_STRIDE0_INDEX = 11;                 // A11: key 第0维 stride
-constexpr uint32_t ATTR_KEY_DEQUANT_SCALE_STRIDE0_INDEX = 12;   // A11: k_scale 第0维 stride
+// 注: candidate_mode 属性已删除 —— 开关语义并入 candidate_topk_blocks (-1=关闭/现网行为)
+constexpr uint32_t ATTR_CANDIDATE_TOPK_BLOCKS_INDEX = 8;
+constexpr uint32_t ATTR_CANDIDATE_BLOCK_SIZE_INDEX = 9;
+// key/k_descale 的 0 轴 stride 不走属性 (PR 12740: 描述符 stride 机制)
 
 // Dim Index
 constexpr uint32_t DIM_IDX_ZERO = 0;
@@ -107,10 +105,9 @@ constexpr uint32_t MXFP4_PACK_NUM = 2;         // 每个uint8承载2个FP4 E2M1�
 constexpr uint32_t MX_SCALE_GROUP_SIZE = 32;   // MX量化每32个D维元素对应1个E8M0 scale
 
 // ------------------candidate 两级TopK 常量------------------
-constexpr uint32_t CANDIDATE_MODE_SOURCE = 1;      // is_candidate_source: 输出候选块索引
-constexpr uint32_t CANDIDATE_MODE_CONSUMER = 2;    // use_candidate: 输入候选块索引, 候选内选topk
-constexpr uint32_t CANDIDATE_MODE_OFF = 3;         // 关闭candidate功能(默认)
-constexpr uint32_t CANDIDATE_TOPK_BLOCKS_FIX = 2048;      // O2决策: 当前仅支持2048
+constexpr uint32_t CANDIDATE_MODE_SOURCE = 1;        // is_candidate_source: 输出候选块索引
+constexpr uint32_t CANDIDATE_MODE_OFF = 3;           // 关闭(默认; 由 candidate_topk_blocks == -1 推导)
+constexpr uint32_t CANDIDATE_TOPK_BLOCKS_FIX = 2048; // O2决策: 当前仅支持2048
 constexpr uint32_t CANDIDATE_BLOCK_SIZE_DEFAULT = 8;
 constexpr uint32_t CANDIDATE_BLOCK_SIZE_MAX = 64;
 
@@ -157,7 +154,6 @@ struct QLIV2ParaInfo {
     TilingOptionalParaInfo blockTable = {nullptr, nullptr};
     TilingOptionalParaInfo outputIdxOffset = {nullptr, nullptr};
     TilingOptionalParaInfo metadata = {nullptr, nullptr};
-    TilingOptionalParaInfo candidateTopkIndex = {nullptr, nullptr};
     TilingRequiredParaInfo attenOut = {nullptr, nullptr};
     TilingRequiredParaInfo sparseValues = {nullptr, nullptr};
 
@@ -170,11 +166,8 @@ struct QLIV2ParaInfo {
     const int32_t *sparseCount = nullptr;
     const int32_t *cmpRatio = nullptr;
     const int32_t *returnValue = nullptr;
-    const int32_t *candidateMode = nullptr;
     const int32_t *candidateTopkBlocks = nullptr;
     const int32_t *candidateBlockSize = nullptr;
-    const int32_t *keyStride0Attr = nullptr;               // A11: key 第0维 stride 显式属性
-    const int32_t *keyDequantScaleStride0Attr = nullptr;   // A11: k_scale 第0维 stride 显式属性
 };
 
 // -----------算子Tiling入参信息类---------------
