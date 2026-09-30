@@ -252,7 +252,9 @@ inline CommCutResult Schedule(FitBasedBalanceCtx &ctx)
     const double serialTotalTime = ctx.commPerf.TotalCommTime(mValue, 1U) + estimate.totalMatmulTime;
     CommCutResult bestCut = ctx.tilingM.cutRes; // 初次切分(N₀ 轮, 配平产出)即候选
     double bestTime = EstimateCutTotalTime(ctx, bestCut, estimate.totalMatmulTime, serialTotalTime);
-    for (uint64_t budget = 2U; budget < bestCut.totalTileCnt; ++budget) {
+    const uint64_t initialTileCnt = bestCut.totalTileCnt; // 搜索上界 N₀ 固定: bestCut 在循环内会被
+                                                           // 更优候选替换(轮数可降), 不能充当循环界
+    for (uint64_t budget = 2U; budget < initialTileCnt; ++budget) {
         ctx.tilingM.cutRes = afterLong;    // 恢复 ③ 后形态(反解值复用)
         ctx.tilingM.SetMaxTileCnt(budget); // 收紧轮次预算
         ctx.tilingM.FitTileLengthDiscrete(goodLinearity, isLocalMMFront || isLocalMMBack);
