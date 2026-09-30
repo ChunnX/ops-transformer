@@ -285,6 +285,22 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         if (tStart_ >= tEnd_) {
             return;
         }
+        // 在Scalar读取alpha/bias期间提前排入initcheck所需的MTE2预初始化。
+        DataCopy(bufScalar_.Get<float>(), gamma0Gm_, PARTIAL_SLOT_ELEMS);
+        LocalTensor<T> x2Cache = bufActivationLowp_.Get<T>();
+        const uint32_t nBegin = DUAL_SIBLING ? siblingAivIdx_ * HEADS_PER_SIBLING : 0U;
+        const uint32_t nEnd = DUAL_SIBLING ? nBegin + HEADS_PER_SIBLING : N;
+        const uint64_t residualBase = (uint64_t)tStart_ * N_ * D_;
+        for (uint32_t n = nBegin; n < nEnd; ++n) {
+            if (n != 0U) {
+                DataCopy(x2Cache[n * D_], residualGm_[residualBase + (uint64_t)n * D_], D_);
+            }
+        }
+        if constexpr (RETURN_H_IN_F32) {
+            DataCopy(bufResFp32_.Get<float>()[N * dTile_], gamma0Gm_, dTile_);
+            DataCopy(bufHInPrimeBf16_.Get<T>(), hOutGm_[(uint64_t)tStart_ * D_], dTile_);
+        }
+
         // 双AIV的follower在会合后退出，不参与gate计算，省去五次无效标量GM读取。
         if constexpr (!DUAL_SIBLING) {
             alpha0_ = alpha0Gm_.GetValue(0);
@@ -305,22 +321,6 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
             DataCopyPadExtParams<float> gPad = {false, 0, 0, 0};
             DataCopyPad(bufGammaFp32_.Get<float>(), gamma0Gm_[0], gP, gPad);
             // gamma_2的形状为[N*D]，在RMSNorm_mid中按head加载
-        }
-
-        // 为initcheck建立一次性的MTE2初始化；后续Vector结果会覆盖这些槽位。
-        DataCopy(bufScalar_.Get<float>(), gamma0Gm_, PARTIAL_SLOT_ELEMS);
-        LocalTensor<T> x2Cache = bufActivationLowp_.Get<T>();
-        const uint32_t nBegin = DUAL_SIBLING ? siblingAivIdx_ * HEADS_PER_SIBLING : 0U;
-        const uint32_t nEnd = DUAL_SIBLING ? nBegin + HEADS_PER_SIBLING : N;
-        const uint64_t residualBase = (uint64_t)tStart_ * N_ * D_;
-        for (uint32_t n = nBegin; n < nEnd; ++n) {
-            if (n != 0U) {
-                DataCopy(x2Cache[n * D_], residualGm_[residualBase + (uint64_t)n * D_], D_);
-            }
-        }
-        if constexpr (RETURN_H_IN_F32) {
-            DataCopy(bufResFp32_.Get<float>()[N * dTile_], gamma0Gm_, dTile_);
-            DataCopy(bufHInPrimeBf16_.Get<T>(), hOutGm_[(uint64_t)tStart_ * D_], dTile_);
         }
 
         SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
