@@ -9,7 +9,7 @@
  */
 /*!
  * \file bsa_vector_service.h
- * \brief
+ * \brief Vector 核服务聚合：一次 pool、online softmax（融合 post pool）
  */
 #ifndef BSA_VECTOR_SERVICE_H
 #define BSA_VECTOR_SERVICE_H
@@ -21,7 +21,6 @@
 #include "bsa_select_block_mask_tiling_data.h"
 #include "bsa_vec_pool_service.h"
 #include "bsa_vec_sm_service.h"
-#include "bsa_vec_post_pool_service.h"
 
 template <typename BSAT>
 class BSAVectorService {
@@ -36,81 +35,83 @@ public:
     static constexpr BSALayout LAYOUT_KV = BSAT::layoutKV;
 
     __aicore__ inline BSAVectorService(){};
-    __aicore__ inline void InitParams(const BSAConstInfo &constInfo,
-                                      const optiling::BSASelectBlockMaskTilingData *__restrict tilingData);
-    __aicore__ inline void InitBuffers(TPipe *pipe);
-    __aicore__ inline void InitGM(GlobalTensor<POOL_OUT_T> &qCmpGm, GlobalTensor<POOL_OUT_T> &kCmpGm,
-                                  GlobalTensor<half> &attnScorFp16eGm, GlobalTensor<T> &ScoreFp32Gm,
-                                  GlobalTensor<IN_T> &queryGm, GlobalTensor<IN_T> &keyGm,
-                                  GlobalTensor<int64_t> &actualBlockLenQGm, GlobalTensor<int64_t> &actualBlockLenKVGm,
-                                  GlobalTensor<int64_t> &actualSeqLensQGm, GlobalTensor<int64_t> &actualSeqLensKVGm);
+    __aicore__ inline void InitParams(const BSAConstInfo& constInfo,
+                                      const optiling::BSASelectBlockMaskTilingData* __restrict tilingData);
+    __aicore__ inline void InitBuffers(TPipe* pipe);
+    __aicore__ inline void InitGM(GlobalTensor<POOL_OUT_T>& qCmpGm, GlobalTensor<POOL_OUT_T>& kCmpGm,
+                                  GlobalTensor<half>& attnScorFp16eGm, GlobalTensor<T>& ScoreFp32Gm,
+                                  GlobalTensor<half>& attnScoreGm, GlobalTensor<T>& postStagingGm,
+                                  GlobalTensor<IN_T>& queryGm, GlobalTensor<IN_T>& keyGm,
+                                  GlobalTensor<int64_t>& actualBlockLenQGm, GlobalTensor<int64_t>& actualBlockLenKVGm,
+                                  GlobalTensor<int64_t>& actualSeqLensQGm, GlobalTensor<int64_t>& actualSeqLensKVGm,
+                                  GlobalTensor<T>& partSumGm, GlobalTensor<T>& partMaxGm);
 
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
 
     __aicore__ inline void PoolingSingleQBlock(uint32_t batchIdx, uint32_t headIdx, uint32_t qBlockIdx,
-                                               GlobalTensor<IN_T> &queryGm, GlobalTensor<int64_t> &actualBlockLenQGm,
-                                               GlobalTensor<POOL_OUT_T> &qCmpGm, uint64_t seqPrefixSumQ,
+                                               GlobalTensor<IN_T>& queryGm, GlobalTensor<int64_t>& actualBlockLenQGm,
+                                               GlobalTensor<POOL_OUT_T>& qCmpGm, uint64_t seqPrefixSumQ,
                                                uint64_t blockPrefixSumQ);
     __aicore__ inline void PoolingSingleKBlock(uint32_t batchIdx, uint32_t headIdx, uint32_t kBlockIdx,
-                                               GlobalTensor<IN_T> &keyGm, GlobalTensor<int64_t> &actualBlockLenKVGm,
-                                               GlobalTensor<POOL_OUT_T> &kCmpGm, uint64_t seqPrefixSumKV,
+                                               GlobalTensor<IN_T>& keyGm, GlobalTensor<int64_t>& actualBlockLenKVGm,
+                                               GlobalTensor<POOL_OUT_T>& kCmpGm, uint64_t seqPrefixSumKV,
                                                uint64_t blockPrefixSumKV);
+    __aicore__ inline bool FastPoolingQRange(uint32_t batchIdx, uint32_t headIdx, uint32_t startQBlockIdx,
+                                             uint32_t endQBlockIdx, uint64_t seqPrefixSumQ);
+    __aicore__ inline bool FastPoolingKRange(uint32_t batchIdx, uint32_t headIdx, uint32_t startKBlock,
+                                             uint32_t endKBlock, uint64_t seqPrefixSumKV);
     __aicore__ inline void OnlineSoftmaxFirstPassChunk(uint32_t qChunkStart, uint32_t qChunkSize, uint32_t kChunkStart,
-                                                       uint32_t kChunkSize, uint32_t validYBlocks);
+                                                       uint32_t kChunkSize, uint32_t validXBlocks,
+                                                       uint32_t validYBlocks);
+    __aicore__ inline bool TakePreWaitedNextReady();
+    __aicore__ inline bool TakeReceiptSent();
     __aicore__ inline void SoftmaxSecondPassAndCast(uint32_t qChunkStart, uint32_t qChunkSize, uint32_t kChunkStart,
                                                     uint32_t kChunkSize, uint32_t batchIdx, uint32_t headIdx,
-                                                    uint32_t validYBlocks);
-    __aicore__ inline void PostPoolRange(uint32_t batchIdx, uint32_t headIdx, uint32_t validXBlocks,
-                                         uint32_t validYBlocks);
-    __aicore__ inline void InitPostPoolBuffers();
-    __aicore__ inline void InitPostPoolGM(GlobalTensor<half> &attnScoreGm, GlobalTensor<half> &pooledScoreGm);
-    __aicore__ inline LocalTensor<half> GetPostPoolScalarScratch();
+                                                    uint32_t validXBlocks, uint32_t validYBlocks);
+    __aicore__ inline void SoftmaxFinalize(uint32_t qChunkStart, uint32_t qChunkSize, uint32_t batchIdx,
+                                           uint32_t headIdx, uint32_t validXBlocks, uint32_t validYBlocks);
 
 private:
     BSAConstInfo constInfo;
-    const optiling::BSASelectBlockMaskTilingData *__restrict tilingData;
+    const optiling::BSASelectBlockMaskTilingData* __restrict tilingData;
 
     TBuf<> uBuf_;
 
     // vector op
     BSAVecPoolService<BSAT> poolOP;
-    BSAVecSmService<BSAT> softmaxOP;
-    BSAVecPostPoolService<BSAT> postPoolOP;
+    BSAVecSmService<BSAT> softmaxOP; // post pool 折叠融合于 softmax 二趟内
 };
 
 template <typename BSAT>
 __aicore__ inline void BSAVectorService<BSAT>::InitParams(
-    const BSAConstInfo &constInfo, const optiling::BSASelectBlockMaskTilingData *__restrict tilingData)
+    const BSAConstInfo& constInfo, const optiling::BSASelectBlockMaskTilingData* __restrict tilingData)
 {
     this->constInfo = constInfo;
     this->tilingData = tilingData;
     poolOP.InitParams(constInfo, tilingData);
     softmaxOP.InitParams(constInfo, tilingData);
-    postPoolOP.InitParams(constInfo, tilingData);
 }
 
 template <typename BSAT>
-__aicore__ inline void BSAVectorService<BSAT>::InitBuffers(TPipe *pipe)
+__aicore__ inline void BSAVectorService<BSAT>::InitBuffers(TPipe* pipe)
 {
     pipe->InitBuffer(uBuf_, BSAConstInfo::BUFFER_SIZE_BYTE_192K);
     poolOP.InitBuffers(&uBuf_);
     softmaxOP.InitBuffers(&uBuf_);
-    if (constInfo.usePostBlockShape) {
-        postPoolOP.InitBuffers(&uBuf_);
-    }
 }
 
 template <typename BSAT>
 __aicore__ inline void BSAVectorService<BSAT>::InitGM(
-    GlobalTensor<POOL_OUT_T> &qCmpGm, GlobalTensor<POOL_OUT_T> &kCmpGm, GlobalTensor<half> &attnScorFp16eGm,
-    GlobalTensor<T> &ScoreFp32Gm, GlobalTensor<IN_T> &queryGm, GlobalTensor<IN_T> &keyGm,
-    GlobalTensor<int64_t> &actualBlockLenQGm, GlobalTensor<int64_t> &actualBlockLenKVGm,
-    GlobalTensor<int64_t> &actualSeqLensQGm, GlobalTensor<int64_t> &actualSeqLensKVGm)
+    GlobalTensor<POOL_OUT_T>& qCmpGm, GlobalTensor<POOL_OUT_T>& kCmpGm, GlobalTensor<half>& attnScorFp16eGm,
+    GlobalTensor<T>& ScoreFp32Gm, GlobalTensor<half>& attnScoreGm, GlobalTensor<T>& postStagingGm,
+    GlobalTensor<IN_T>& queryGm, GlobalTensor<IN_T>& keyGm, GlobalTensor<int64_t>& actualBlockLenQGm,
+    GlobalTensor<int64_t>& actualBlockLenKVGm, GlobalTensor<int64_t>& actualSeqLensQGm,
+    GlobalTensor<int64_t>& actualSeqLensKVGm, GlobalTensor<T>& partSumGm, GlobalTensor<T>& partMaxGm)
 {
     poolOP.InitGM(qCmpGm, kCmpGm, queryGm, keyGm, actualBlockLenQGm, actualBlockLenKVGm, actualSeqLensQGm,
                   actualSeqLensKVGm);
-    softmaxOP.InitGM(ScoreFp32Gm, attnScorFp16eGm);
+    softmaxOP.InitGM(ScoreFp32Gm, attnScorFp16eGm, attnScoreGm, postStagingGm, partSumGm, partMaxGm);
 }
 
 template <typename BSAT>
@@ -127,9 +128,9 @@ __aicore__ inline void BSAVectorService<BSAT>::FreeEventID()
 
 template <typename BSAT>
 __aicore__ inline void BSAVectorService<BSAT>::PoolingSingleQBlock(uint32_t batchIdx, uint32_t headIdx,
-                                                                   uint32_t qBlockIdx, GlobalTensor<IN_T> &queryGm,
-                                                                   GlobalTensor<int64_t> &actualBlockLenQGm,
-                                                                   GlobalTensor<POOL_OUT_T> &qCmpGm,
+                                                                   uint32_t qBlockIdx, GlobalTensor<IN_T>& queryGm,
+                                                                   GlobalTensor<int64_t>& actualBlockLenQGm,
+                                                                   GlobalTensor<POOL_OUT_T>& qCmpGm,
                                                                    uint64_t seqPrefixSumQ, uint64_t blockPrefixSumQ)
 {
     poolOP.PoolingSingleQBlock(batchIdx, headIdx, qBlockIdx, queryGm, actualBlockLenQGm, qCmpGm, seqPrefixSumQ,
@@ -138,9 +139,9 @@ __aicore__ inline void BSAVectorService<BSAT>::PoolingSingleQBlock(uint32_t batc
 
 template <typename BSAT>
 __aicore__ inline void BSAVectorService<BSAT>::PoolingSingleKBlock(uint32_t batchIdx, uint32_t headIdx,
-                                                                   uint32_t kBlockIdx, GlobalTensor<IN_T> &keyGm,
-                                                                   GlobalTensor<int64_t> &actualBlockLenKVGm,
-                                                                   GlobalTensor<POOL_OUT_T> &kCmpGm,
+                                                                   uint32_t kBlockIdx, GlobalTensor<IN_T>& keyGm,
+                                                                   GlobalTensor<int64_t>& actualBlockLenKVGm,
+                                                                   GlobalTensor<POOL_OUT_T>& kCmpGm,
                                                                    uint64_t seqPrefixSumKV, uint64_t blockPrefixSumKV)
 {
     poolOP.PoolingSingleKBlock(batchIdx, headIdx, kBlockIdx, keyGm, actualBlockLenKVGm, kCmpGm, seqPrefixSumKV,
@@ -148,47 +149,61 @@ __aicore__ inline void BSAVectorService<BSAT>::PoolingSingleKBlock(uint32_t batc
 }
 
 template <typename BSAT>
+__aicore__ inline bool BSAVectorService<BSAT>::FastPoolingQRange(uint32_t batchIdx, uint32_t headIdx,
+                                                                 uint32_t startQBlockIdx, uint32_t endQBlockIdx,
+                                                                 uint64_t seqPrefixSumQ)
+{
+    return poolOP.FastPoolingQRange(batchIdx, headIdx, startQBlockIdx, endQBlockIdx, seqPrefixSumQ);
+}
+
+template <typename BSAT>
+__aicore__ inline bool BSAVectorService<BSAT>::FastPoolingKRange(uint32_t batchIdx, uint32_t headIdx,
+                                                                 uint32_t startKBlock, uint32_t endKBlock,
+                                                                 uint64_t seqPrefixSumKV)
+{
+    return poolOP.FastPoolingKRange(batchIdx, headIdx, startKBlock, endKBlock, seqPrefixSumKV);
+}
+
+template <typename BSAT>
 __aicore__ inline void BSAVectorService<BSAT>::OnlineSoftmaxFirstPassChunk(uint32_t qChunkStart, uint32_t qChunkSize,
                                                                            uint32_t kChunkStart, uint32_t kChunkSize,
-                                                                           uint32_t validYBlocks)
+                                                                           uint32_t validXBlocks, uint32_t validYBlocks)
 {
-    softmaxOP.OnlineSoftmaxFirstPassChunk(qChunkStart, qChunkSize, kChunkStart, kChunkSize, validYBlocks);
+    softmaxOP.OnlineSoftmaxFirstPassChunk(qChunkStart, qChunkSize, kChunkStart, kChunkSize, validXBlocks, validYBlocks);
+}
+
+template <typename BSAT>
+__aicore__ inline bool BSAVectorService<BSAT>::TakePreWaitedNextReady()
+{
+    const bool v = softmaxOP.preWaitedNextReady;
+    softmaxOP.preWaitedNextReady = false;
+    return v;
+}
+
+template <typename BSAT>
+__aicore__ inline bool BSAVectorService<BSAT>::TakeReceiptSent()
+{
+    const bool v = softmaxOP.receiptSentByPass1;
+    softmaxOP.receiptSentByPass1 = false;
+    return v;
+}
+
+template <typename BSAT>
+__aicore__ inline void BSAVectorService<BSAT>::SoftmaxFinalize(uint32_t qChunkStart, uint32_t qChunkSize,
+                                                               uint32_t batchIdx, uint32_t headIdx,
+                                                               uint32_t validXBlocks, uint32_t validYBlocks)
+{
+    softmaxOP.SoftmaxFinalize(qChunkStart, qChunkSize, batchIdx, headIdx, validXBlocks, validYBlocks);
 }
 
 template <typename BSAT>
 __aicore__ inline void BSAVectorService<BSAT>::SoftmaxSecondPassAndCast(uint32_t qChunkStart, uint32_t qChunkSize,
                                                                         uint32_t kChunkStart, uint32_t kChunkSize,
                                                                         uint32_t batchIdx, uint32_t headIdx,
-                                                                        uint32_t validYBlocks)
+                                                                        uint32_t validXBlocks, uint32_t validYBlocks)
 {
     softmaxOP.SoftmaxSecondPassAndCast(qChunkStart, qChunkSize, kChunkStart, kChunkSize, batchIdx, headIdx,
-                                       validYBlocks);
-}
-
-template <typename BSAT>
-__aicore__ inline void BSAVectorService<BSAT>::InitPostPoolBuffers()
-{
-    postPoolOP.InitBuffers(&uBuf_);
-}
-
-template <typename BSAT>
-__aicore__ inline void BSAVectorService<BSAT>::InitPostPoolGM(GlobalTensor<half> &attnScoreGm,
-                                                              GlobalTensor<half> &pooledScoreGm)
-{
-    postPoolOP.InitPostPoolGM(attnScoreGm, pooledScoreGm);
-}
-
-template <typename BSAT>
-__aicore__ inline LocalTensor<half> BSAVectorService<BSAT>::GetPostPoolScalarScratch()
-{
-    return postPoolOP.GetScalarScratch();
-}
-
-template <typename BSAT>
-__aicore__ inline void BSAVectorService<BSAT>::PostPoolRange(uint32_t batchIdx, uint32_t headIdx, uint32_t validXBlocks,
-                                                             uint32_t validYBlocks)
-{
-    postPoolOP.PostPoolRange(batchIdx, headIdx, validXBlocks, validYBlocks);
+                                       validXBlocks, validYBlocks);
 }
 
 #endif // BSA_VECTOR_SERVICE_H

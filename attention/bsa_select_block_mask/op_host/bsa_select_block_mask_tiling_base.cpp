@@ -99,9 +99,9 @@ bool BSASelectBlockMaskTilingBase::AnalyzeAttrs()
 
     auto blockShapeTensor = context_->GetOptionalInputTensor(BLOCK_SHAPE_INPUT_INDEX);
     if (blockShapeTensor != nullptr) {
-        auto &blockShapeShape = blockShapeTensor->GetShape().GetStorageShape();
+        auto& blockShapeShape = blockShapeTensor->GetShape().GetStorageShape();
         if (blockShapeShape.GetDimNum() != 0) {
-            const int64_t *blockShapeData = blockShapeTensor->GetData<int64_t>();
+            const int64_t* blockShapeData = blockShapeTensor->GetData<int64_t>();
             if (blockShapeData != nullptr) {
                 blockShapeX = static_cast<uint64_t>(blockShapeData[0]);
                 blockShapeY = static_cast<uint64_t>(blockShapeData[1]);
@@ -128,7 +128,7 @@ bool BSASelectBlockMaskTilingBase::AnalyzeAttrs()
     auto postBlockShapeTensor = context_->GetOptionalInputTensor(POST_BLOCK_SHAPE_INPUT_INDEX);
     OP_LOGD(opName, "postBlockShapeTensor ptr=%p", postBlockShapeTensor);
     if (postBlockShapeTensor != nullptr && postBlockShapeTensor->GetShape().GetStorageShape().GetDimNum() != 0) {
-        const int64_t *postBlockShapeData = postBlockShapeTensor->GetData<int64_t>();
+        const int64_t* postBlockShapeData = postBlockShapeTensor->GetData<int64_t>();
         OP_LOGD(opName, "postBlockShapeData ptr=%p", postBlockShapeData);
         if (postBlockShapeData != nullptr) {
             postBlockShapeX = static_cast<uint16_t>(postBlockShapeData[0]);
@@ -175,8 +175,8 @@ bool BSASelectBlockMaskTilingBase::AnalyzeDtype()
 
 bool BSASelectBlockMaskTilingBase::AnalyzeLayout()
 {
-    auto &queryShape = context_->GetInputShape(QUERY_INPUT_INDEX)->GetStorageShape();
-    auto &keyShape = context_->GetInputShape(KEY_INPUT_INDEX)->GetStorageShape();
+    auto& queryShape = context_->GetInputShape(QUERY_INPUT_INDEX)->GetStorageShape();
+    auto& keyShape = context_->GetInputShape(KEY_INPUT_INDEX)->GetStorageShape();
 
     size_t qDimNum = queryShape.GetDimNum();
     size_t kvDimNum = keyShape.GetDimNum();
@@ -282,8 +282,8 @@ bool BSASelectBlockMaskTilingBase::AnalyzeLayout()
 
 bool BSASelectBlockMaskTilingBase::CrossShapeVerify()
 {
-    auto &queryShape = context_->GetInputShape(QUERY_INPUT_INDEX)->GetStorageShape();
-    auto &keyShape = context_->GetInputShape(KEY_INPUT_INDEX)->GetStorageShape();
+    auto& queryShape = context_->GetInputShape(QUERY_INPUT_INDEX)->GetStorageShape();
+    auto& keyShape = context_->GetInputShape(KEY_INPUT_INDEX)->GetStorageShape();
 
     if (tilingKeyLayoutQ == LayoutType::LAYOUT_BNSD) {
         OP_CHECK_IF(keyShape.GetDim(0) != static_cast<int64_t>(batchSize),
@@ -330,13 +330,24 @@ void BSASelectBlockMaskTilingBase::CalcOutputParams()
 {
     uint64_t qCmpSize = static_cast<uint64_t>(xBlocks) * dSize * (sizeof(float) / 2);
     uint64_t kCmpSize = static_cast<uint64_t>(yBlocks) * dSize * (sizeof(float) / 2);
-    uint64_t attnScoreFp16Size = static_cast<uint64_t>(xBlocks) * yBlocks * (sizeof(float) / 2);
+    // 统一 TopK 输入分数缓冲：单 (b,h) 槽，B/N 顺序外循环复用
+    // 统一 TopK 输入分数缓冲：单 (b,h) 槽，B/N 顺序外循环复用
+    // 非 post：块级分数 xBlocks*yBlocks；post：post-pool 折叠分 postX*postY（同一 attnScore 槽）
+    uint64_t attnScoreFp16Size = usePostBlockShape ? static_cast<uint64_t>(batchSize) * numHeads * postXBlocks *
+                                                         postYBlocks * (sizeof(float) / 2) // DEBUG-BN: 恢复B*N槽
+                                                     :
+                                                     static_cast<uint64_t>(xBlocks) * yBlocks * (sizeof(float) / 2);
 
-    uint64_t pooledScoreSize = usePostBlockShape ? static_cast<uint64_t>(batchSize) * numHeads * postXBlocks *
-                                                       postYBlocks * (sizeof(float) / 2) :
-                                                   0;
+    // 跨 chunk 行组部分和（仅 qChunkSize 不整除 postXBlock 时需要：post 行组跨 qChunk 边界）
+    // 槽位：每 AIV 2 个（chunk 奇偶各一），行宽为最大粗粒度网格列数 postYBlocks
+    uint64_t postStagingSize = 0;
+    if (usePostBlockShape && Q_CHUNK_SIZE % postBlockShapeX != 0) {
+        postStagingSize = static_cast<uint64_t>(aivNum) * 2 * postYBlocks * sizeof(float);
+    }
 
-    uint64_t scoreFp32Size = Q_CHUNK_SIZE * aicNum * yBlocks * sizeof(float);
+    // scratch tile 环形槽（2 槽：与 flag 环 N=2 精确满员，无余量）
+    constexpr uint32_t SCRATCH_RING_TILES = 2;
+    uint64_t scoreFp32Size = static_cast<uint64_t>(SCRATCH_RING_TILES) * aicNum * Q_CHUNK_SIZE * 512 * sizeof(float);
 
     uint64_t sortLen =
         usePostBlockShape ? static_cast<uint64_t>(postXBlocks) * postYBlocks : static_cast<uint64_t>(xBlocks) * yBlocks;
@@ -349,19 +360,41 @@ void BSASelectBlockMaskTilingBase::CalcOutputParams()
     uint64_t topkWorkspaceSize = topkHeaderSize + topkTileDataSize;
 
     uint64_t totalWorkspaceSize = qCmpSize + kCmpSize + attnScoreFp16Size + scoreFp32Size + topkWorkspaceSize;
-    uint64_t pooledScoreOffset = 0;
+    uint64_t postStagingOffset = 0;
     if (usePostBlockShape) {
-        pooledScoreOffset = attnScoreFp16Size;
-        totalWorkspaceSize += pooledScoreSize;
+        // kernel 布局：qCmp | kCmp | attnScore(单槽=post-pool 折叠分) | [512B对齐] postStaging | softmaxTmp | topkWS |
+        // partSum | partMax softmaxTmp 为 Cube fixpipe CFG_NZ 目的地址，必须 512B 对齐
+        postStagingOffset = (qCmpSize + kCmpSize + attnScoreFp16Size + 511) / 512 * 512;
+        // 对齐 kernel 侧链：postStagingSize 之后 softmaxTmp 前还有一次 ALIGN512，须计入总账
+        const uint64_t softmaxTmpPad =
+            (postStagingOffset + postStagingSize + 511) / 512 * 512 - (postStagingOffset + postStagingSize);
+        totalWorkspaceSize +=
+            postStagingOffset - (qCmpSize + kCmpSize + attnScoreFp16Size) + postStagingSize + softmaxTmpPad;
     }
+
+    // softmax 单趟化：per-tile 列组部分和（每 AIV 16 个 kTile 槽，每槽 128 行×foldG 列组 fp32）
+    // + per-tile 局部行 max（128 fp32/槽）
+    // foldW 由实际 postBlockShapeY 决定（%16==0 用 16 与客户场景快路径一致，否则 8），
+    // BLOCK_SHAPE_ALIGN=8 已保证 postBlockShapeY 为 8 的倍数
+    constexpr uint32_t KTILE_COLS = 4 * 128; // = kernel 侧 CV_EXEC_RATIO*K_CHUNK_SIZE
+    const uint32_t foldW = (usePostBlockShape && postBlockShapeY % 16 != 0) ? 8u : 16u;
+    const uint32_t foldG = KTILE_COLS / foldW;
+    uint32_t ktilesPerChunk = static_cast<uint32_t>((yBlocks + KTILE_COLS - 1) / KTILE_COLS);
+    // 槽数必须与 kernel 一致：kernel 用 GetBlockNum()*AIC_AIV_RATIO（MIX_AIC_1_2 下 = aicNum*2）
+    uint32_t aivSubCoreNum = aicNum * 2;
+    uint64_t partSumSize = static_cast<uint64_t>(aivSubCoreNum) * ktilesPerChunk * Q_CHUNK_SIZE * foldG * sizeof(float);
+    uint64_t partMaxSize = static_cast<uint64_t>(aivSubCoreNum) * ktilesPerChunk * Q_CHUNK_SIZE * sizeof(float);
+    totalWorkspaceSize += partSumSize + partMaxSize;
 
     outputParams_->set_qCmpSize(qCmpSize);
     outputParams_->set_kCmpSize(kCmpSize);
     outputParams_->set_attnScoreSize(attnScoreFp16Size);
     outputParams_->set_softmaxTmpSize(scoreFp32Size);
     outputParams_->set_topkWorkspaceSize(topkWorkspaceSize);
-    outputParams_->set_pooledScoreSize(pooledScoreSize);
-    outputParams_->set_pooledScoreOffset(pooledScoreOffset);
+    outputParams_->set_postStagingSize(postStagingSize);
+    outputParams_->set_postStagingOffset(postStagingOffset);
+    outputParams_->set_partSumSize(partSumSize);
+    outputParams_->set_partMaxSize(partMaxSize);
     outputParams_->set_totalWorkspaceSize(totalWorkspaceSize);
 }
 
@@ -419,7 +452,7 @@ ge::graphStatus BSASelectBlockMaskTilingBase::GetPlatformInfo()
 {
     auto platformInfoPtr = context_->GetPlatformInfo();
     if (platformInfoPtr == nullptr) {
-        auto compileInfoPtr = reinterpret_cast<const BSASelectBlockMaskCompileInfo *>(context_->GetCompileInfo());
+        auto compileInfoPtr = reinterpret_cast<const BSASelectBlockMaskCompileInfo*>(context_->GetCompileInfo());
         OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(opName, "compileInfoPtr is null."), return ge::GRAPH_FAILED);
         aivNum = compileInfoPtr->aivNum;
         aicNum = compileInfoPtr->aicNum;
@@ -471,7 +504,7 @@ ge::graphStatus BSASelectBlockMaskTilingBase::DoOpTiling()
 
 ge::graphStatus BSASelectBlockMaskTilingBase::GetWorkspaceSize()
 {
-    size_t *workspaces = context_->GetWorkspaceSizes(1);
+    size_t* workspaces = context_->GetWorkspaceSizes(1);
     OP_CHECK_NULL_WITH_CONTEXT(context_, workspaces);
 
     workspaces[0] = static_cast<size_t>(outputParams_->get_totalWorkspaceSize()) + WORK_SPACE_RESERVE_SIZE;

@@ -33,11 +33,11 @@ public:
     static constexpr uint64_t COMPARES_ALIGN_LEN = REPEAT_SIZE / sizeof(SCORE_T);
 
     __aicore__ inline BSARadixTopKService(){};
-    __aicore__ inline void InitParams(const BSAConstInfo &constInfo,
-                                      const optiling::BSASelectBlockMaskTilingData *__restrict tilingData);
-    __aicore__ inline void InitBuffers(TPipe *pipe);
-    __aicore__ inline void InitGM(GlobalTensor<SCORE_T> &attnScoreGm, GlobalTensor<int32_t> &topkWorkspaceGm,
-                                  GlobalTensor<uint8_t> &maskOutGmU8);
+    __aicore__ inline void InitParams(const BSAConstInfo& constInfo,
+                                      const optiling::BSASelectBlockMaskTilingData* __restrict tilingData);
+    __aicore__ inline void InitBuffers(TPipe* pipe);
+    __aicore__ inline void InitGM(GlobalTensor<SCORE_T>& attnScoreGm, GlobalTensor<int32_t>& topkWorkspaceGm,
+                                  GlobalTensor<uint8_t>& maskOutGmU8);
     __aicore__ inline void UpdateRuntimeParams(uint32_t validXBlocks, uint32_t validYBlocks);
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
@@ -47,20 +47,20 @@ public:
 private:
     __aicore__ inline void ConfigureTopKParams(uint64_t sortLen, uint64_t kValue);
     __aicore__ inline void BindWorkspaceViews();
-    __aicore__ inline void NegateDataForLargest(TBuf<TPosition::VECIN> &xBuf, uint64_t curTileLen);
-    __aicore__ inline void TwiddleInB16(TBuf<TPosition::VECIN> &xBuf, uint64_t curTileLen, int32_t roundId,
+    __aicore__ inline void NegateDataForLargest(TBuf<TPosition::VECIN>& xBuf, uint64_t curTileLen);
+    __aicore__ inline void TwiddleInB16(TBuf<TPosition::VECIN>& xBuf, uint64_t curTileLen, int32_t roundId,
                                         int32_t tileId);
-    __aicore__ inline void DoAndMask(TBuf<TPosition::VECIN> &xBuf, uint64_t curTileLen);
-    __aicore__ inline void CalcCumsumHistogram(TBuf<TPosition::VECIN> &xBuf, int32_t roundId, int32_t tileId,
+    __aicore__ inline void DoAndMask(TBuf<TPosition::VECIN>& xBuf, uint64_t curTileLen);
+    __aicore__ inline void CalcCumsumHistogram(TBuf<TPosition::VECIN>& xBuf, int32_t roundId, int32_t tileId,
                                                uint64_t curTileLen);
-    __aicore__ inline void CopyIn(TBuf<TPosition::VECIN> &xBuf, uint64_t dataNum, uint64_t xOffset);
+    __aicore__ inline void CopyIn(TBuf<TPosition::VECIN>& xBuf, uint64_t dataNum, uint64_t xOffset);
     __aicore__ inline void ClearTileTopKInWs();
     __aicore__ inline void ClearTileHistInWs(uint32_t dstOffset, uint32_t dataNum);
-    __aicore__ inline void CopyTileHistWs2Ub(LocalTensor<int32_t> &dstTensor, uint32_t srcOffset, uint32_t dataNum);
-    __aicore__ inline void CopyTileTopKWs2Ub(LocalTensor<int32_t> &dstTensor, uint32_t srcOffset, uint32_t dataNum);
-    __aicore__ inline void CopyTileTopKUb2Ws(LocalTensor<int32_t> &srcTensor, uint32_t dstOffset, uint32_t dataNum);
+    __aicore__ inline void CopyTileHistWs2Ub(LocalTensor<int32_t>& dstTensor, uint32_t srcOffset, uint32_t dataNum);
+    __aicore__ inline void CopyTileTopKWs2Ub(LocalTensor<int32_t>& dstTensor, uint32_t srcOffset, uint32_t dataNum);
+    __aicore__ inline void CopyTileTopKUb2Ws(LocalTensor<int32_t>& srcTensor, uint32_t dstOffset, uint32_t dataNum);
     __aicore__ inline void CopyTileHistInWs(uint32_t dstOffset, uint32_t srcOffset);
-    __aicore__ inline void SubTileHistWs2Ub(LocalTensor<int32_t> &dstTensor, LocalTensor<int32_t> &srcTensor,
+    __aicore__ inline void SubTileHistWs2Ub(LocalTensor<int32_t>& dstTensor, LocalTensor<int32_t>& srcTensor,
                                             uint32_t srcOffset0, uint32_t srcOffset1, uint32_t dataNum);
     __aicore__ inline void SubTileHistInWs(uint32_t dstOffset, uint32_t srcOffset0, uint32_t srcOffset1,
                                            uint32_t dataNum);
@@ -70,25 +70,26 @@ private:
     template <bool isInit>
     __aicore__ inline void CopyOutHistToWs(uint64_t maskLen, uint64_t gmOffset);
     __aicore__ inline bool Update(int32_t roundId);
-    __aicore__ inline void CopyInGlobalHist(LocalTensor<int32_t> &globalHist);
-    __aicore__ inline void ReduceGlobalHist(LocalTensor<int32_t> &globalHist);
-    __aicore__ inline void FindBoundaryBin(const LocalTensor<int32_t> &globalHist, int32_t roundId);
-    __aicore__ inline void AddTileHistToTileTopK(LocalTensor<int32_t> &globalHist);
-    __aicore__ inline void HandleLastRoundBoundary(LocalTensor<int32_t> &resTensor, LocalTensor<float> &tileHistFp32);
-    __aicore__ inline void WriteCoreTopKFromWs(LocalTensor<int32_t> &resTensor, LocalTensor<float> &tileHistFp32);
-    __aicore__ inline void CopyOutBoundaryBinCumSum(LocalTensor<int32_t> &resTensor);
-    __aicore__ inline void ComputeCumSumPrev(LocalTensor<int32_t> &resTensor, uint64_t &cumSumValuePrev);
-    __aicore__ inline void CopyOutCoreTopK(LocalTensor<int32_t> &resTensor, int32_t totalTileTopKInCore);
-    __aicore__ inline void SubTopKAndWriteMaskGT(LocalTensor<half> &xLocal, half boundaryHalf, uint64_t curTileLen,
-                                                 uint64_t outputGmOffset, int32_t &curTileK);
-    __aicore__ inline void SubTopKAndWriteMaskEQ(LocalTensor<half> &xLocal, half boundaryHalf, uint64_t curTileLen,
-                                                 uint64_t outputGmOffset, int32_t &curTileK);
-    __aicore__ inline void SubTopKAndWriteMaskGTTnd(LocalTensor<half> &xLocal, half boundaryHalf, uint64_t curTileLen,
+    __aicore__ inline void CopyInGlobalHist(LocalTensor<int32_t>& globalHist);
+    __aicore__ inline void ReduceGlobalHist(LocalTensor<int32_t>& globalHist);
+    __aicore__ inline void FindBoundaryBin(const LocalTensor<int32_t>& globalHist, int32_t roundId);
+    __aicore__ inline void AddTileHistToTileTopK(LocalTensor<int32_t>& globalHist);
+    __aicore__ inline void HandleLastRoundBoundary(LocalTensor<int32_t>& resTensor, LocalTensor<float>& tileHistFp32);
+    __aicore__ inline void WriteCoreTopKFromWs(LocalTensor<int32_t>& resTensor, LocalTensor<float>& tileHistFp32);
+    __aicore__ inline void CopyOutBoundaryBinCumSum(LocalTensor<int32_t>& resTensor);
+    __aicore__ inline void ComputeCumSumPrev(LocalTensor<int32_t>& resTensor, uint64_t& cumSumValuePrev);
+    __aicore__ inline void CopyOutCoreTopK(LocalTensor<int32_t>& resTensor, int32_t totalTileTopKInCore);
+    __aicore__ inline void CreateTopKVecIndex(LocalTensor<int32_t>& vecIndex, uint32_t dataNum);
+    __aicore__ inline void SubTopKAndWriteMaskGT(LocalTensor<half>& xLocal, half boundaryHalf, uint64_t curTileLen,
+                                                 uint64_t outputGmOffset, int32_t& curTileK);
+    __aicore__ inline void SubTopKAndWriteMaskEQ(LocalTensor<half>& xLocal, half boundaryHalf, uint64_t curTileLen,
+                                                 uint64_t outputGmOffset, int32_t& curTileK);
+    __aicore__ inline void SubTopKAndWriteMaskGTTnd(LocalTensor<half>& xLocal, half boundaryHalf, uint64_t curTileLen,
                                                     uint64_t compactTileOffset, uint64_t outputHeadOffset,
-                                                    int32_t &curTileK);
-    __aicore__ inline void SubTopKAndWriteMaskEQTnd(LocalTensor<half> &xLocal, half boundaryHalf, uint64_t curTileLen,
+                                                    int32_t& curTileK);
+    __aicore__ inline void SubTopKAndWriteMaskEQTnd(LocalTensor<half>& xLocal, half boundaryHalf, uint64_t curTileLen,
                                                     uint64_t compactTileOffset, uint64_t outputHeadOffset,
-                                                    int32_t &curTileK);
+                                                    int32_t& curTileK);
     __aicore__ inline void ProcessSingleElementMask(uint32_t batchIdx, uint32_t headIdx);
     __aicore__ inline void TileTopK(uint32_t batchIdx, uint32_t headIdx);
     __aicore__ inline void VToSSync();
@@ -103,7 +104,7 @@ private:
     __aicore__ inline void SToMTE3Sync();
 
     BSAConstInfo constInfo;
-    const optiling::BSASelectBlockMaskTilingData *__restrict tilingData;
+    const optiling::BSASelectBlockMaskTilingData* __restrict tilingData;
 
     GlobalTensor<SCORE_T> attnScoreGmLocal;
     GlobalTensor<int32_t> topkWorkspaceGmLocal;
@@ -172,7 +173,7 @@ private:
 
 template <typename BSAT>
 __aicore__ inline void BSARadixTopKService<BSAT>::InitParams(
-    const BSAConstInfo &constInfo, const optiling::BSASelectBlockMaskTilingData *__restrict tilingData)
+    const BSAConstInfo& constInfo, const optiling::BSASelectBlockMaskTilingData* __restrict tilingData)
 {
     this->constInfo = constInfo;
     this->tilingData = tilingData;
@@ -266,14 +267,14 @@ __aicore__ inline void BSARadixTopKService<BSAT>::UpdateRuntimeParams(uint32_t v
 }
 
 template <typename BSAT>
-__aicore__ inline void BSARadixTopKService<BSAT>::InitBuffers(TPipe *pipe)
+__aicore__ inline void BSARadixTopKService<BSAT>::InitBuffers(TPipe* pipe)
 {
     pipe->Reset();
     pipe->InitBuffer(xBufPing_, maxTileLenScoreAlign_ * sizeof(float));
     pipe->InitBuffer(xBufPong_, maxTileLenScoreAlign_ * sizeof(float));
     pipe->InitBuffer(outValueBuf_, maxTileLenScoreAlign_ * sizeof(float));
     pipe->InitBuffer(outIndexBuf_, maxTileLenScoreAlign_ * sizeof(float));
-    pipe->InitBuffer(tileHistAndTopKBuf_, MAX_TILE_NUM_IN_UB * sizeof(int32_t));
+    pipe->InitBuffer(tileHistAndTopKBuf_, (MAX_TILE_NUM_IN_UB + MAX_TILE_NUM_IN_UB_BY3) * sizeof(int32_t));
 
     uint32_t cmpMaskSize = BSAAlignTo(maxTileLen_, static_cast<uint64_t>(VEC_ALIGN_SIZE)) * sizeof(uint8_t) / BYTE_SIZE;
     pipe->InitBuffer(tempBuf_, cmpMaskSize);
@@ -284,9 +285,9 @@ __aicore__ inline void BSARadixTopKService<BSAT>::InitBuffers(TPipe *pipe)
 }
 
 template <typename BSAT>
-__aicore__ inline void BSARadixTopKService<BSAT>::InitGM(GlobalTensor<SCORE_T> &attnScoreGm,
-                                                         GlobalTensor<int32_t> &topkWorkspaceGm,
-                                                         GlobalTensor<uint8_t> &maskOutGmU8)
+__aicore__ inline void BSARadixTopKService<BSAT>::InitGM(GlobalTensor<SCORE_T>& attnScoreGm,
+                                                         GlobalTensor<int32_t>& topkWorkspaceGm,
+                                                         GlobalTensor<uint8_t>& maskOutGmU8)
 {
     this->attnScoreGmLocal = attnScoreGm;
     this->topkWorkspaceGmLocal = topkWorkspaceGm;
@@ -300,19 +301,19 @@ __aicore__ inline void BSARadixTopKService<BSAT>::BindWorkspaceViews()
 {
     uint32_t coreNum = constInfo.aivNum;
     uint32_t headerSize = (numValue_ * coreNum + coreNum + coreNum);
-    this->globalHistGm_.SetGlobalBuffer((__gm__ int32_t *)topkWorkspaceGmLocal.GetPhyAddr());
+    this->globalHistGm_.SetGlobalBuffer((__gm__ int32_t*)topkWorkspaceGmLocal.GetPhyAddr());
     this->boundaryBinCumSumGm_.SetGlobalBuffer(
-        (__gm__ int32_t *)(topkWorkspaceGmLocal.GetPhyAddr() + numValue_ * coreNum));
+        (__gm__ int32_t*)(topkWorkspaceGmLocal.GetPhyAddr() + numValue_ * coreNum));
     this->coreTopKGm_.SetGlobalBuffer(
-        (__gm__ int32_t *)(topkWorkspaceGmLocal.GetPhyAddr() + numValue_ * coreNum + coreNum));
+        (__gm__ int32_t*)(topkWorkspaceGmLocal.GetPhyAddr() + numValue_ * coreNum + coreNum));
 
     uint64_t tileTopKOffset = tileStartId_;
     uint64_t tileHistOffset = numValue_ * tileTopKOffset;
 
     this->tileTopKGm_.SetGlobalBuffer(
-        (__gm__ int32_t *)(topkWorkspaceGmLocal.GetPhyAddr() + headerSize + tileTopKOffset));
+        (__gm__ int32_t*)(topkWorkspaceGmLocal.GetPhyAddr() + headerSize + tileTopKOffset));
     this->tileHistGm_.SetGlobalBuffer(
-        (__gm__ int32_t *)(topkWorkspaceGmLocal.GetPhyAddr() + headerSize + totalTileNum_ + tileHistOffset));
+        (__gm__ int32_t*)(topkWorkspaceGmLocal.GetPhyAddr() + headerSize + totalTileNum_ + tileHistOffset));
 }
 
 template <typename BSAT>
@@ -335,8 +336,8 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
         return;
     }
     // 1. Calculate blockOffset
+    // DEBUG-BN: post 恢复 per-head 槽位（B*N 槽）；非 post 单格复用偏移 0
     if (constInfo.usePostBlockShape) {
-        // pooledScore 按最大粗粒度网格 (postXBlocks * postYBlocks) 逐 head 布局（与写入侧一致）
         this->headScoreOffset_ = (static_cast<uint64_t>(batchIdx) * constInfo.numHeads + headIdx) *
                                  constInfo.postXBlocks * constInfo.postYBlocks;
     } else {
@@ -397,8 +398,8 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
 
             for (int32_t tileId = startTileId; tileId < endTileId; tileId++) {
                 uint64_t curTileLen = (tileId == static_cast<int32_t>(tileNum_) - 1) ? tailTileLen_ : tileLen_;
-                TBuf<TPosition::VECIN> &curBuf = pingPongFlag ? xBufPing_ : xBufPong_;
-                TBuf<TPosition::VECIN> &nextBuf = pingPongFlag ? xBufPong_ : xBufPing_;
+                TBuf<TPosition::VECIN>& curBuf = pingPongFlag ? xBufPing_ : xBufPong_;
+                TBuf<TPosition::VECIN>& nextBuf = pingPongFlag ? xBufPong_ : xBufPing_;
 
                 // Prefetch next tile (double buffering)
                 if (tileId < static_cast<int32_t>(tileNum_) - 1) {
@@ -429,9 +430,9 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
             SToMTE3Sync();
             LocalTensor<int32_t> tileHist = tileHistAndTopKBuf_.Get<int32_t>();
             if (endTileId > startTileId) {
-                for (int32_t binMask = numValue_ - 1; binMask > 0; binMask--) {
+                for (int32_t binMask = numValue_ - 1; binMask >= 0; binMask--) {
                     uint32_t tileHistOffset = binMask * tileNum_ + repeatId * MAX_TILE_NUM_IN_UB_BY3;
-                    DataCopyPad(tileHistGm_[tileHistOffset], tileHist[(binMask - 1) * MAX_TILE_NUM_IN_UB_BY3],
+                    DataCopyPad(tileHistGm_[tileHistOffset], tileHist[binMask * MAX_TILE_NUM_IN_UB_BY3],
                                 DataCopyParams(1, sizeof(int32_t) * (endTileId - startTileId), 0, 0));
                 }
             }
@@ -467,7 +468,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
 }
 
 template <typename BSAT>
-__aicore__ inline void BSARadixTopKService<BSAT>::NegateDataForLargest(TBuf<TPosition::VECIN> &xBuf,
+__aicore__ inline void BSARadixTopKService<BSAT>::NegateDataForLargest(TBuf<TPosition::VECIN>& xBuf,
                                                                        uint64_t curTileLen)
 {
     if (constInfo.sparsityMode == BSASparseMode::BottomK) {
@@ -485,7 +486,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::NegateDataForLargest(TBuf<TPos
 }
 
 template <typename BSAT>
-__aicore__ inline void BSARadixTopKService<BSAT>::TwiddleInB16(TBuf<TPosition::VECIN> &xBuf, uint64_t curTileLen,
+__aicore__ inline void BSARadixTopKService<BSAT>::TwiddleInB16(TBuf<TPosition::VECIN>& xBuf, uint64_t curTileLen,
                                                                int32_t roundId, int32_t tileId)
 {
     (void)roundId;
@@ -515,7 +516,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TwiddleInB16(TBuf<TPosition::V
 }
 
 template <typename BSAT>
-__aicore__ inline void BSARadixTopKService<BSAT>::DoAndMask(TBuf<TPosition::VECIN> &xBuf, uint64_t curTileLen)
+__aicore__ inline void BSARadixTopKService<BSAT>::DoAndMask(TBuf<TPosition::VECIN>& xBuf, uint64_t curTileLen)
 {
     LocalTensor<int16_t> xLocalInt16 = xBuf.Get<int16_t>();
     uint64_t curTileLenAlign = BSAAlignTo(curTileLen, COMPARES_ALIGN_LEN);
@@ -529,7 +530,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::DoAndMask(TBuf<TPosition::VECI
 }
 
 template <typename BSAT>
-__aicore__ inline void BSARadixTopKService<BSAT>::CalcCumsumHistogram(TBuf<TPosition::VECIN> &xBuf, int32_t roundId,
+__aicore__ inline void BSARadixTopKService<BSAT>::CalcCumsumHistogram(TBuf<TPosition::VECIN>& xBuf, int32_t roundId,
                                                                       int32_t tileId, uint64_t curTileLen)
 {
     LocalTensor<int16_t> xLocalInt16 = xBuf.Get<int16_t>();
@@ -550,7 +551,9 @@ __aicore__ inline void BSARadixTopKService<BSAT>::CalcCumsumHistogram(TBuf<TPosi
     const int32_t tileHistBinOffset = MAX_TILE_NUM_IN_UB_BY3;
 
     int32_t cumSumOne = 0;
-    for (int16_t binMask = numValue_ - 1; binMask > 0; binMask--) {
+    // bin0 也必须计数（历史实现跳过 bin0：globalHist[0] 恒 0，boundary 落 bin0 时
+    // FindBoundaryBin 找不到边界 → boundaryBin=-1 越界 → 高排名位丢失）
+    for (int16_t binMask = numValue_ - 1; binMask >= 0; binMask--) {
         int32_t involvedMaskTemp =
             static_cast<int32_t>(involvedMask16_ | static_cast<int16_t>(binMask << (roundId * bitsPerRound_)));
 
@@ -565,7 +568,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::CalcCumsumHistogram(TBuf<TPosi
 
         cumSumOne += rsvdCnt;
 
-        tileHist[binMask * tileHistBinStride - tileHistBinOffset].SetValue(tileId, cumSumOne);
+        tileHist[binMask * tileHistBinStride].SetValue(tileId, cumSumOne);
 
         globalHist.SetValue(binMask, globalHist.GetValue(binMask) + cumSumOne);
     }
@@ -652,7 +655,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SToMTE3Sync()
 }
 
 template <typename BSAT>
-__aicore__ inline void BSARadixTopKService<BSAT>::CopyIn(TBuf<TPosition::VECIN> &xBuf, uint64_t dataNum,
+__aicore__ inline void BSARadixTopKService<BSAT>::CopyIn(TBuf<TPosition::VECIN>& xBuf, uint64_t dataNum,
                                                          uint64_t xOffset)
 {
     LocalTensor<SCORE_T> xLocal = xBuf.Get<SCORE_T>();
@@ -665,12 +668,12 @@ __aicore__ inline void BSARadixTopKService<BSAT>::CopyIn(TBuf<TPosition::VECIN> 
     DataCopyExtParams xCopyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(SCORE_T) * dataNum), 0, 0, 0};
     DataCopyPadExtParams<SCORE_T> xPadParams{true, 0, xPadNum, 0};
     GlobalTensor<SCORE_T> attnScoreTileGm;
-    attnScoreTileGm.SetGlobalBuffer((__gm__ SCORE_T *)(attnScoreGmLocal.GetPhyAddr() + headScoreOffset_ + xOffset));
+    attnScoreTileGm.SetGlobalBuffer((__gm__ SCORE_T*)(attnScoreGmLocal.GetPhyAddr() + headScoreOffset_ + xOffset));
     DataCopyPad(xLocal[ubOffset], attnScoreTileGm[0], xCopyParams, xPadParams);
 }
 
 template <typename BSAT>
-__aicore__ inline void BSARadixTopKService<BSAT>::CopyTileHistWs2Ub(LocalTensor<int32_t> &dstTensor, uint32_t srcOffset,
+__aicore__ inline void BSARadixTopKService<BSAT>::CopyTileHistWs2Ub(LocalTensor<int32_t>& dstTensor, uint32_t srcOffset,
                                                                     uint32_t dataNum)
 {
     DataCopyExtParams params{static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(int32_t) * dataNum), 0, 0, 0};
@@ -679,7 +682,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::CopyTileHistWs2Ub(LocalTensor<
 }
 
 template <typename BSAT>
-__aicore__ inline void BSARadixTopKService<BSAT>::CopyTileTopKWs2Ub(LocalTensor<int32_t> &dstTensor, uint32_t srcOffset,
+__aicore__ inline void BSARadixTopKService<BSAT>::CopyTileTopKWs2Ub(LocalTensor<int32_t>& dstTensor, uint32_t srcOffset,
                                                                     uint32_t dataNum)
 {
     DataCopyExtParams params{static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(int32_t) * dataNum), 0, 0, 0};
@@ -688,7 +691,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::CopyTileTopKWs2Ub(LocalTensor<
 }
 
 template <typename BSAT>
-__aicore__ inline void BSARadixTopKService<BSAT>::CopyTileTopKUb2Ws(LocalTensor<int32_t> &srcTensor, uint32_t dstOffset,
+__aicore__ inline void BSARadixTopKService<BSAT>::CopyTileTopKUb2Ws(LocalTensor<int32_t>& srcTensor, uint32_t dstOffset,
                                                                     uint32_t dataNum)
 {
     DataCopyExtParams params{static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(int32_t) * dataNum), 0, 0, 0};
@@ -752,8 +755,8 @@ __aicore__ inline void BSARadixTopKService<BSAT>::CopyTileHistInWs(uint32_t dstO
 }
 
 template <typename BSAT>
-__aicore__ inline void BSARadixTopKService<BSAT>::SubTileHistWs2Ub(LocalTensor<int32_t> &dstTensor,
-                                                                   LocalTensor<int32_t> &srcTensor, uint32_t srcOffset0,
+__aicore__ inline void BSARadixTopKService<BSAT>::SubTileHistWs2Ub(LocalTensor<int32_t>& dstTensor,
+                                                                   LocalTensor<int32_t>& srcTensor, uint32_t srcOffset0,
                                                                    uint32_t srcOffset1, uint32_t dataNum)
 {
     DataCopyExtParams params{static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(int32_t) * dataNum), 0, 0, 0};
@@ -817,10 +820,10 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ClearHistInWs(int32_t roundId)
 
     if (roundId == static_cast<int32_t>(round_) - 1) {
         for (int i = 0; i < static_cast<int>(tileNumRepeatTimes_); i++) {
-            Duplicate<int32_t>(tileHist, static_cast<int32_t>(tileLen_), MAX_TILE_NUM_IN_UB);
+            Duplicate<int32_t>(tileHist, static_cast<int32_t>(tileLen_), MAX_TILE_NUM_IN_UB + MAX_TILE_NUM_IN_UB_BY3);
             if (tileNumRemain_ == 0 && tailTileLen_ != tileLen_) {
                 VToSSync();
-                tileHist.SetValue(MAX_TILE_NUM_IN_UB - 1, static_cast<int32_t>(tailTileLen_));
+                tileHist.SetValue(MAX_TILE_NUM_IN_UB + MAX_TILE_NUM_IN_UB_BY3 - 1, static_cast<int32_t>(tailTileLen_));
                 SToMTE3Sync();
             } else {
                 VToMTE3Sync();
@@ -882,7 +885,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::CopyOutHistToWs(uint64_t maskL
 }
 
 template <typename BSAT>
-__aicore__ inline void BSARadixTopKService<BSAT>::CopyInGlobalHist(LocalTensor<int32_t> &globalHist)
+__aicore__ inline void BSARadixTopKService<BSAT>::CopyInGlobalHist(LocalTensor<int32_t>& globalHist)
 {
     DataCopyExtParams copyParams{static_cast<uint16_t>(1),
                                  static_cast<uint32_t>(sizeof(int32_t) * numValue_ * constInfo.aivNum), 0, 0, 0};
@@ -891,7 +894,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::CopyInGlobalHist(LocalTensor<i
 }
 
 template <typename BSAT>
-__aicore__ inline void BSARadixTopKService<BSAT>::ReduceGlobalHist(LocalTensor<int32_t> &globalHist)
+__aicore__ inline void BSARadixTopKService<BSAT>::ReduceGlobalHist(LocalTensor<int32_t>& globalHist)
 {
     if (sortLen_ <= static_cast<uint64_t>(INT32_MAX)) {
         int32_t coresInBlock = UB_BLOCK_SIZE / sizeof(int32_t) / numValue_;
@@ -929,7 +932,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ReduceGlobalHist(LocalTensor<i
 }
 
 template <typename BSAT>
-__aicore__ inline void BSARadixTopKService<BSAT>::FindBoundaryBin(const LocalTensor<int32_t> &globalHist,
+__aicore__ inline void BSARadixTopKService<BSAT>::FindBoundaryBin(const LocalTensor<int32_t>& globalHist,
                                                                   int32_t roundId)
 {
     boundaryBin = -1;
@@ -948,7 +951,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::FindBoundaryBin(const LocalTen
 }
 
 template <typename BSAT>
-__aicore__ inline void BSARadixTopKService<BSAT>::AddTileHistToTileTopK(LocalTensor<int32_t> &globalHist)
+__aicore__ inline void BSARadixTopKService<BSAT>::AddTileHistToTileTopK(LocalTensor<int32_t>& globalHist)
 {
     if (sortLen_ <= static_cast<uint64_t>(INT32_MAX)) {
         if (globalHist.GetValue(boundaryBin) == static_cast<int32_t>(remainK_)) {
@@ -971,7 +974,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::AddTileHistToTileTopK(LocalTen
 }
 
 template <typename BSAT>
-__aicore__ inline void BSARadixTopKService<BSAT>::CopyOutBoundaryBinCumSum(LocalTensor<int32_t> &resTensor)
+__aicore__ inline void BSARadixTopKService<BSAT>::CopyOutBoundaryBinCumSum(LocalTensor<int32_t>& resTensor)
 {
     DataCopyExtParams boundaryBinSumCopyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(int32_t) * 1), 0,
                                                0, 0};
@@ -979,8 +982,8 @@ __aicore__ inline void BSARadixTopKService<BSAT>::CopyOutBoundaryBinCumSum(Local
 }
 
 template <typename BSAT>
-__aicore__ inline void BSARadixTopKService<BSAT>::ComputeCumSumPrev(LocalTensor<int32_t> &resTensor,
-                                                                    uint64_t &cumSumValuePrev)
+__aicore__ inline void BSARadixTopKService<BSAT>::ComputeCumSumPrev(LocalTensor<int32_t>& resTensor,
+                                                                    uint64_t& cumSumValuePrev)
 {
     DataCopyExtParams copyInParams{static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(int32_t) * constInfo.aivNum),
                                    0, 0, 0};
@@ -994,7 +997,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ComputeCumSumPrev(LocalTensor<
 }
 
 template <typename BSAT>
-__aicore__ inline void BSARadixTopKService<BSAT>::CopyOutCoreTopK(LocalTensor<int32_t> &resTensor,
+__aicore__ inline void BSARadixTopKService<BSAT>::CopyOutCoreTopK(LocalTensor<int32_t>& resTensor,
                                                                   int32_t totalTileTopKInCore)
 {
     resTensor.SetValue(0, totalTileTopKInCore);
@@ -1004,8 +1007,45 @@ __aicore__ inline void BSARadixTopKService<BSAT>::CopyOutCoreTopK(LocalTensor<in
 }
 
 template <typename BSAT>
-__aicore__ inline void BSARadixTopKService<BSAT>::HandleLastRoundBoundary(LocalTensor<int32_t> &resTensor,
-                                                                          LocalTensor<float> &tileHistFp32)
+__aicore__ inline void BSARadixTopKService<BSAT>::CreateTopKVecIndex(LocalTensor<int32_t>& vecIndex, uint32_t dataNum)
+{
+    if (dataNum == 0) {
+        return;
+    }
+
+    uint32_t baseDataNum;
+    if (dataNum < 32) {
+        baseDataNum = dataNum;
+    } else if (dataNum < 256) {
+        baseDataNum = 32;
+    } else if (dataNum < 2048) {
+        baseDataNum = 256;
+    } else if (dataNum < 7680) {
+        baseDataNum = 512;
+    } else {
+        baseDataNum = 1024;
+    }
+
+    CreateVecIndex(vecIndex, static_cast<int32_t>(0), baseDataNum);
+    if (dataNum == baseDataNum) {
+        return;
+    }
+
+    uint32_t repeatTimes = dataNum / baseDataNum;
+    for (uint32_t i = 1; i < repeatTimes; ++i) {
+        Adds(vecIndex[i * baseDataNum], vecIndex, static_cast<int32_t>(i * baseDataNum),
+             static_cast<int32_t>(baseDataNum));
+    }
+    uint32_t remain = dataNum % baseDataNum;
+    if (remain > 0) {
+        Adds(vecIndex[repeatTimes * baseDataNum], vecIndex, static_cast<int32_t>(repeatTimes * baseDataNum),
+             static_cast<int32_t>(remain));
+    }
+}
+
+template <typename BSAT>
+__aicore__ inline void BSARadixTopKService<BSAT>::HandleLastRoundBoundary(LocalTensor<int32_t>& resTensor,
+                                                                          LocalTensor<float>& tileHistFp32)
 {
     uint32_t reduceSumValue = 0;
     for (int32_t i = 0; i <= static_cast<int32_t>(tileNumBy2RepeatTimes_); i++) {
@@ -1074,6 +1114,31 @@ __aicore__ inline void BSARadixTopKService<BSAT>::HandleLastRoundBoundary(LocalT
             CopyTileTopKWs2Ub(tileTopK, startTileId, dataNum);
             MTE2ToSSync();
 
+            uint64_t batchBoundaryNum = 0;
+            for (uint32_t batchIdx = 0; batchIdx < dataNum; batchIdx++) {
+                int32_t curTileBoundaryNum = tileHistBoundary.GetValue(batchIdx);
+                if (boundaryBinPrev < static_cast<int32_t>(numValue_)) {
+                    curTileBoundaryNum -= tileHistBoundaryPrev.GetValue(batchIdx);
+                }
+                batchBoundaryNum += static_cast<uint32_t>(curTileBoundaryNum);
+            }
+
+            if (batchBoundaryNum <= remainCoreBoundaryNum) {
+                if (boundaryBinPrev < static_cast<int32_t>(numValue_)) {
+                    SToVSync();
+                    Sub(tileHistBoundary, tileHistBoundary, tileHistBoundaryPrev, dataNum);
+                    PipeBarrier<PIPE_V>();
+                } else {
+                    SToVSync();
+                }
+                Add(tileTopK, tileTopK, tileHistBoundary, dataNum);
+                VToMTE3Sync();
+                CopyTileTopKUb2Ws(tileTopK, startTileId, dataNum);
+                MTE3ToMTE2Sync();
+                remainCoreBoundaryNum -= batchBoundaryNum;
+                continue;
+            }
+
             for (int32_t tileId = static_cast<int32_t>(startTileId); tileId < static_cast<int32_t>(endTileId);
                  tileId++) {
                 int32_t curTileBoundaryNum = tileHistBoundary.GetValue(tileId - static_cast<int32_t>(startTileId));
@@ -1098,13 +1163,16 @@ __aicore__ inline void BSARadixTopKService<BSAT>::HandleLastRoundBoundary(LocalT
             SToMTE3Sync();
             CopyTileTopKUb2Ws(tileTopK, startTileId, dataNum);
             MTE3ToMTE2Sync();
+            if (remainCoreBoundaryNum == 0) {
+                break;
+            }
         }
     }
 }
 
 template <typename BSAT>
-__aicore__ inline void BSARadixTopKService<BSAT>::WriteCoreTopKFromWs(LocalTensor<int32_t> &resTensor,
-                                                                      LocalTensor<float> &tileHistFp32)
+__aicore__ inline void BSARadixTopKService<BSAT>::WriteCoreTopKFromWs(LocalTensor<int32_t>& resTensor,
+                                                                      LocalTensor<float>& tileHistFp32)
 {
     LocalTensor<int32_t> tileTopK = tileHistAndTopKBuf_.Get<int32_t>();
     int32_t totalTileTopKInCore = 0;
@@ -1169,9 +1237,9 @@ __aicore__ inline bool BSARadixTopKService<BSAT>::Update(int32_t roundId)
 }
 
 template <typename BSAT>
-__aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskGT(LocalTensor<half> &xLocal, half boundaryHalf,
+__aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskGT(LocalTensor<half>& xLocal, half boundaryHalf,
                                                                         uint64_t curTileLen, uint64_t outputGmOffset,
-                                                                        int32_t &curTileK)
+                                                                        int32_t& curTileK)
 {
     uint64_t alignLen = BSAAlignTo(curTileLen, static_cast<uint64_t>(VEC_ALIGN_SIZE));
 
@@ -1195,14 +1263,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskGT(LocalTen
                 ++writeCnt;
             }
         }
-
-        GlobalTensor<uint8_t> maskOutTileGm;
-        maskOutTileGm.SetGlobalBuffer((__gm__ uint8_t *)(maskOutGmU8Local.GetPhyAddr() + outputGmOffset));
-
-        SToMTE3Sync();
-        DataCopyPad(maskOutTileGm[0], maskLocal,
-                    DataCopyParams(1, static_cast<uint16_t>(curTileLen * sizeof(uint8_t)), 0, 0));
-        MTE3ToMTE2Sync();
 
         curTileK -= static_cast<int32_t>(writeCnt);
         return;
@@ -1236,39 +1296,24 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskGT(LocalTen
     }
     PipeBarrier<PIPE_V>();
 
-    LocalTensor<uint8_t> maskU8 = outIndexBuf_.Get<uint8_t>();
-    Cast<uint8_t, half>(maskU8, maskHalf, RoundMode::CAST_NONE, alignLen);
+    LocalTensor<uint8_t> maskLocal = maskLocalBuf_.Get<uint8_t>();
+    Cast<uint8_t, half>(maskLocal, maskHalf, RoundMode::CAST_NONE, alignLen);
     PipeBarrier<PIPE_V>();
-
-    GlobalTensor<uint8_t> maskOutTileGm;
-    maskOutTileGm.SetGlobalBuffer((__gm__ uint8_t *)(maskOutGmU8Local.GetPhyAddr() + outputGmOffset));
-
-    VToMTE3Sync();
-    DataCopyPad(maskOutTileGm[0], maskU8, DataCopyParams(1, static_cast<uint16_t>(curTileLen * sizeof(uint8_t)), 0, 0));
-    MTE3ToSSync();
-    MTE3ToMTE2Sync();
-
     VToSSync();
 
     curTileK -= static_cast<int32_t>(rsvdCnt);
 }
 
 template <typename BSAT>
-__aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskEQ(LocalTensor<half> &xLocal, half boundaryHalf,
+__aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskEQ(LocalTensor<half>& xLocal, half boundaryHalf,
                                                                         uint64_t curTileLen, uint64_t outputGmOffset,
-                                                                        int32_t &curTileK)
+                                                                        int32_t& curTileK)
 {
     uint64_t alignLen = BSAAlignTo(curTileLen, static_cast<uint64_t>(VEC_ALIGN_SIZE));
 
     // The count overload of Compares only processes complete 256-byte blocks.
     if (sortLen_ <= 64 || alignLen % COMPARES_ALIGN_LEN != 0) {
         LocalTensor<uint8_t> maskLocal = maskLocalBuf_.Get<uint8_t>();
-        GlobalTensor<uint8_t> maskOutTileGm;
-        maskOutTileGm.SetGlobalBuffer((__gm__ uint8_t *)(maskOutGmU8Local.GetPhyAddr() + outputGmOffset));
-        DataCopyPad(maskLocal, maskOutTileGm[0],
-                    DataCopyExtParams(1, static_cast<uint32_t>(curTileLen * sizeof(uint8_t)), 0, 0, 0),
-                    DataCopyPadExtParams<uint8_t>(false, 0, static_cast<uint8_t>(alignLen - curTileLen), 0));
-        MTE2ToSSync();
 
         uint8_t writeValue = (constInfo.sparsityMode == BSASparseMode::TopK) ? 1 : 0;
         uint32_t writeCnt = 0;
@@ -1280,11 +1325,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskEQ(LocalTen
             }
         }
 
-        SToMTE3Sync();
-        DataCopyPad(maskOutTileGm[0], maskLocal,
-                    DataCopyParams(1, static_cast<uint16_t>(curTileLen * sizeof(uint8_t)), 0, 0));
-        MTE3ToMTE2Sync();
-
         curTileK -= static_cast<int32_t>(writeCnt);
         return;
     }
@@ -1293,26 +1333,103 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskEQ(LocalTen
     Compares<half, uint8_t>(cmpMask, xLocal, boundaryHalf, AscendC::CMPMODE::EQ, alignLen);
     PipeBarrier<PIPE_V>();
 
-    LocalTensor<int32_t> vecIndex = outIndexBuf_.Get<int32_t>();
-    for (uint64_t i = 0; i < curTileLen; i++) {
-        vecIndex.SetValue(i, static_cast<int32_t>(i));
-    }
-    SToVSync();
-
+    // Gather values only to obtain the EQ count. Index generation is deferred so
+    // the common all-EQ case avoids building the index tensor twice.
+    LocalTensor<half> tempHalf = outValueBuf_.Get<half>();
     uint64_t eqRsvdCnt = 0;
-    GatherMask(vecIndex, vecIndex, cmpMask.template ReinterpretCast<uint32_t>(), true, curTileLen, {1, 1, 0, 0},
+    GatherMask(tempHalf, xLocal, cmpMask.template ReinterpretCast<uint16_t>(), true, curTileLen, {1, 1, 0, 0},
                eqRsvdCnt);
     VToSSync();
 
     uint32_t writeCnt = BSAMin(static_cast<uint32_t>(curTileK), static_cast<uint32_t>(eqRsvdCnt));
+    if (writeCnt == 0) {
+        return;
+    }
+
+    // An all-EQ tile has no GT elements, so reconstructing the mask locally
+    // avoids the GM read, index gather, and scalar scatter.
+    if (eqRsvdCnt == curTileLen) {
+        LocalTensor<uint8_t> maskLocal = maskLocalBuf_.Get<uint8_t>();
+        uint8_t defaultValue = (constInfo.sparsityMode == BSASparseMode::TopK) ? 0 : 1;
+        uint8_t writeValue = (constInfo.sparsityMode == BSASparseMode::TopK) ? 1 : 0;
+        LocalTensor<uint16_t> maskLocalU16 = maskLocal.ReinterpretCast<uint16_t>();
+        uint32_t evenLen = static_cast<uint32_t>(curTileLen) & ~1U;
+
+        if (writeCnt == static_cast<uint32_t>(curTileLen)) {
+            SToVSync();
+            Duplicate<uint16_t>(maskLocalU16, writeValue == 0 ? 0 : 0x0101, evenLen / 2);
+            PipeBarrier<PIPE_V>();
+            if (evenLen != static_cast<uint32_t>(curTileLen)) {
+                VToSSync();
+                maskLocal.SetValue(evenLen, writeValue);
+            }
+
+            curTileK -= static_cast<int32_t>(writeCnt);
+            return;
+        }
+
+        SToVSync();
+        Duplicate<uint16_t>(maskLocalU16, defaultValue == 0 ? 0 : 0x0101, evenLen / 2);
+        PipeBarrier<PIPE_V>();
+        if (evenLen != static_cast<uint32_t>(curTileLen)) {
+            VToSSync();
+            maskLocal.SetValue(evenLen, defaultValue);
+        }
+        if (writeCnt >= 2) {
+            SToVSync();
+            Duplicate<uint16_t>(maskLocalU16, writeValue == 0 ? 0 : 0x0101, writeCnt / 2);
+            PipeBarrier<PIPE_V>();
+        }
+        if ((writeCnt & 1U) != 0) {
+            VToSSync();
+            maskLocal.SetValue(writeCnt - 1, writeValue);
+        }
+
+        curTileK -= static_cast<int32_t>(writeCnt);
+        return;
+    }
+
+    if (writeCnt == static_cast<uint32_t>(eqRsvdCnt)) {
+        AscendC::CMPMODE cmpMode =
+            (constInfo.sparsityMode == BSASparseMode::BottomK) ? AscendC::CMPMODE::LE : AscendC::CMPMODE::GE;
+        SToVSync();
+        Compares<half, uint8_t>(cmpMask, xLocal, boundaryHalf, cmpMode, alignLen);
+        PipeBarrier<PIPE_V>();
+
+        LocalTensor<half> maskHalf = outValueBuf_.Get<half>();
+        LocalTensor<half> selectHalf = outIndexBuf_.Get<half>();
+        if (constInfo.sparsityMode == BSASparseMode::TopK) {
+            Duplicate<half>(maskHalf, (half)0, alignLen);
+            Duplicate<half>(selectHalf, (half)1, alignLen);
+            PipeBarrier<PIPE_V>();
+            Select<half>(maskHalf, cmpMask, selectHalf, (half)0, SELMODE::VSEL_TENSOR_SCALAR_MODE, alignLen);
+        } else {
+            Duplicate<half>(maskHalf, (half)1, alignLen);
+            Duplicate<half>(selectHalf, (half)0, alignLen);
+            PipeBarrier<PIPE_V>();
+            Select<half>(maskHalf, cmpMask, selectHalf, (half)1, SELMODE::VSEL_TENSOR_SCALAR_MODE, alignLen);
+        }
+        PipeBarrier<PIPE_V>();
+
+        LocalTensor<uint8_t> maskLocal = maskLocalBuf_.Get<uint8_t>();
+        Cast<uint8_t, half>(maskLocal, maskHalf, RoundMode::CAST_NONE, alignLen);
+        PipeBarrier<PIPE_V>();
+        VToSSync();
+
+        curTileK -= static_cast<int32_t>(writeCnt);
+        return;
+    }
+
+    LocalTensor<int32_t> vecIndex = outIndexBuf_.Get<int32_t>();
+    SToVSync();
+    CreateTopKVecIndex(vecIndex, static_cast<uint32_t>(curTileLen));
+    PipeBarrier<PIPE_V>();
+    uint64_t eqIndexCnt = 0;
+    GatherMask(vecIndex, vecIndex, cmpMask.template ReinterpretCast<uint32_t>(), true, curTileLen, {1, 1, 0, 0},
+               eqIndexCnt);
+    VToSSync();
 
     LocalTensor<uint8_t> maskLocal = maskLocalBuf_.Get<uint8_t>();
-    GlobalTensor<uint8_t> maskOutTileGm;
-    maskOutTileGm.SetGlobalBuffer((__gm__ uint8_t *)(maskOutGmU8Local.GetPhyAddr() + outputGmOffset));
-    DataCopyPad(maskLocal, maskOutTileGm[0],
-                DataCopyExtParams(1, static_cast<uint32_t>(curTileLen * sizeof(uint8_t)), 0, 0, 0),
-                DataCopyPadExtParams<uint8_t>(false, 0, static_cast<uint8_t>(alignLen - curTileLen), 0));
-    MTE2ToSSync();
 
     uint8_t writeValue = (constInfo.sparsityMode == BSASparseMode::TopK) ? 1 : 0;
     for (uint32_t i = 0; i < writeCnt; i++) {
@@ -1320,19 +1437,14 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskEQ(LocalTen
         maskLocal.SetValue(idx, writeValue);
     }
 
-    SToMTE3Sync();
-    DataCopyPad(maskOutTileGm[0], maskLocal,
-                DataCopyParams(1, static_cast<uint16_t>(curTileLen * sizeof(uint8_t)), 0, 0));
-    MTE3ToMTE2Sync();
-
     curTileK -= static_cast<int32_t>(writeCnt);
 }
 
 template <typename BSAT>
-__aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskGTTnd(LocalTensor<half> &xLocal, half boundaryHalf,
+__aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskGTTnd(LocalTensor<half>& xLocal, half boundaryHalf,
                                                                            uint64_t curTileLen,
                                                                            uint64_t compactTileOffset,
-                                                                           uint64_t outputHeadOffset, int32_t &curTileK)
+                                                                           uint64_t outputHeadOffset, int32_t& curTileK)
 {
     LocalTensor<uint8_t> maskLocal = maskLocalBuf_.Get<uint8_t>();
     uint8_t defaultValue = (constInfo.sparsityMode == BSASparseMode::TopK) ? 0 : 1;
@@ -1363,7 +1475,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskGTTnd(Local
 
         uint64_t outputOffset = outputHeadOffset + static_cast<uint64_t>(row) * maskOutRowStride_ + col;
         GlobalTensor<uint8_t> maskOutSegmentGm;
-        maskOutSegmentGm.SetGlobalBuffer((__gm__ uint8_t *)(maskOutGmU8Local.GetPhyAddr() + outputOffset));
+        maskOutSegmentGm.SetGlobalBuffer((__gm__ uint8_t*)(maskOutGmU8Local.GetPhyAddr() + outputOffset));
         SToMTE3Sync();
         DataCopyPad(maskOutSegmentGm[0], maskLocal, DataCopyExtParams(1, segmentLen * sizeof(uint8_t), 0, 0, 0));
         MTE3ToSSync();
@@ -1375,10 +1487,10 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskGTTnd(Local
 }
 
 template <typename BSAT>
-__aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskEQTnd(LocalTensor<half> &xLocal, half boundaryHalf,
+__aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskEQTnd(LocalTensor<half>& xLocal, half boundaryHalf,
                                                                            uint64_t curTileLen,
                                                                            uint64_t compactTileOffset,
-                                                                           uint64_t outputHeadOffset, int32_t &curTileK)
+                                                                           uint64_t outputHeadOffset, int32_t& curTileK)
 {
     LocalTensor<uint8_t> maskLocal = maskLocalBuf_.Get<uint8_t>();
     uint8_t writeValue = (constInfo.sparsityMode == BSASparseMode::TopK) ? 1 : 0;
@@ -1393,7 +1505,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskEQTnd(Local
             static_cast<uint32_t>(BSAMin(curTileLen - processed, static_cast<uint64_t>(validYBlocks_ - col)));
         uint64_t outputOffset = outputHeadOffset + static_cast<uint64_t>(row) * maskOutRowStride_ + col;
         GlobalTensor<uint8_t> maskOutSegmentGm;
-        maskOutSegmentGm.SetGlobalBuffer((__gm__ uint8_t *)(maskOutGmU8Local.GetPhyAddr() + outputOffset));
+        maskOutSegmentGm.SetGlobalBuffer((__gm__ uint8_t*)(maskOutGmU8Local.GetPhyAddr() + outputOffset));
         DataCopyPad(maskLocal, maskOutSegmentGm[0], DataCopyExtParams(1, segmentLen * sizeof(uint8_t), 0, 0, 0),
                     DataCopyPadExtParams<uint8_t>(false, 0, 0, 0));
         MTE2ToSSync();
@@ -1428,7 +1540,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessSingleElementMask(uint3
     LocalTensor<uint8_t> maskLocal = maskLocalBuf_.Get<uint8_t>();
     maskLocal.SetValue(0, 1);
     GlobalTensor<uint8_t> maskOutSingleGm;
-    maskOutSingleGm.SetGlobalBuffer((__gm__ uint8_t *)(maskOutGmU8Local.GetPhyAddr() + outputOffset));
+    maskOutSingleGm.SetGlobalBuffer((__gm__ uint8_t*)(maskOutGmU8Local.GetPhyAddr() + outputOffset));
     SToMTE3Sync();
     DataCopyPad(maskOutSingleGm[0], maskLocal, DataCopyExtParams(1, 1, 0, 0, 0));
     MTE3ToSSync();
@@ -1451,7 +1563,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, ui
 
     // Restore boundary value (twiddle inverse transform)
     int16_t boundaryInt16 = involvedMask16_ ^ ((~(involvedMask16_ >> 15)) | 0x8000);
-    half boundaryHalf = *reinterpret_cast<half *>(&boundaryInt16);
+    half boundaryHalf = *reinterpret_cast<half*>(&boundaryInt16);
     if (constInfo.sparsityMode == BSASparseMode::BottomK) {
         boundaryHalf = static_cast<half>(-static_cast<float>(boundaryHalf));
     }
@@ -1483,8 +1595,8 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, ui
             uint64_t tileGmOffset = blockOffset_ + tileId * tileLen_;
             uint64_t outputGmOffset = outputOffset + tileGmOffset;
 
-            TBuf<TPosition::VECIN> &curBuf = pingPongFlag ? xBufPing_ : xBufPong_;
-            TBuf<TPosition::VECIN> &nextBuf = pingPongFlag ? xBufPong_ : xBufPing_;
+            TBuf<TPosition::VECIN>& curBuf = pingPongFlag ? xBufPing_ : xBufPong_;
+            TBuf<TPosition::VECIN>& nextBuf = pingPongFlag ? xBufPong_ : xBufPing_;
 
             // Prefetch next tile
             if (i < dataNum - 1) {
@@ -1499,18 +1611,40 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, ui
 
             LocalTensor<half> xLocal = curBuf.template Get<half>()[tileLenScoreAlign_].template ReinterpretCast<half>();
 
-            if (compactWrite) {
-                SubTopKAndWriteMaskGTTnd(xLocal, boundaryHalf, curTileLen, tileGmOffset, outputOffset, curTileK);
-            } else {
-                SubTopKAndWriteMaskGT(xLocal, boundaryHalf, curTileLen, outputGmOffset, curTileK);
-            }
-
             if (curTileK > 0) {
+                if (compactWrite) {
+                    SubTopKAndWriteMaskGTTnd(xLocal, boundaryHalf, curTileLen, tileGmOffset, outputOffset, curTileK);
+                } else {
+                    SubTopKAndWriteMaskGT(xLocal, boundaryHalf, curTileLen, outputGmOffset, curTileK);
+                }
                 if (compactWrite) {
                     SubTopKAndWriteMaskEQTnd(xLocal, boundaryHalf, curTileLen, tileGmOffset, outputOffset, curTileK);
                 } else {
                     SubTopKAndWriteMaskEQ(xLocal, boundaryHalf, curTileLen, outputGmOffset, curTileK);
                 }
+            } else {
+                LocalTensor<uint8_t> maskLocal = maskLocalBuf_.Get<uint8_t>();
+                uint8_t defaultValue = (constInfo.sparsityMode == BSASparseMode::TopK) ? 0 : 1;
+                LocalTensor<uint16_t> maskLocalU16 = maskLocal.ReinterpretCast<uint16_t>();
+                uint32_t curTileLen32 = static_cast<uint32_t>(curTileLen);
+                uint32_t evenLen = curTileLen32 & ~1U;
+                SToVSync();
+                Duplicate<uint16_t>(maskLocalU16, defaultValue == 0 ? 0 : 0x0101, evenLen / 2);
+                PipeBarrier<PIPE_V>();
+                if (evenLen != curTileLen32) {
+                    VToSSync();
+                    maskLocal.SetValue(evenLen, defaultValue);
+                }
+            }
+
+            if (!useCompactTopKMapping_) {
+                LocalTensor<uint8_t> maskLocal = maskLocalBuf_.Get<uint8_t>();
+                GlobalTensor<uint8_t> maskOutTileGm;
+                maskOutTileGm.SetGlobalBuffer((__gm__ uint8_t*)(maskOutGmU8Local.GetPhyAddr() + outputGmOffset));
+                SToMTE3Sync();
+                DataCopyPad(maskOutTileGm[0], maskLocal,
+                            DataCopyParams(1, static_cast<uint16_t>(curTileLen * sizeof(uint8_t)), 0, 0));
+                MTE3ToMTE2Sync();
             }
 
             if (i < dataNum - 1) {
