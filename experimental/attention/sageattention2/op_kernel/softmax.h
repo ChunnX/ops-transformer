@@ -10,14 +10,14 @@
 namespace Sage {
 
 // Mask trailing elements for sequence padding and causal attention.
-template <class T>
+template <bool CAUSAL = false, class T>
 __simd_callee__ inline void MaskScoresTail(AscendC::MicroAPI::RegTensor<T> &x,
                                            AscendC::MicroAPI::RegTensor<T> &negative, uint32_t pos, uint32_t at,
-                                           uint32_t sk, uint32_t sq, uint32_t causal)
+                                           uint32_t sk, uint32_t sq)
 {
     using namespace AscendC::MicroAPI;
     uint32_t valid = at < sk ? Min(uint32_t(128), sk - at) : 0;
-    if (causal) {
+    if constexpr (CAUSAL) {
         valid = Min(valid, pos >= at ? pos - at + 1 : 0);
     }
     if (pos >= sq) {
@@ -61,11 +61,11 @@ __simd_callee__ inline void StoreNZPlanePair(__ubuf__ float8_e4m3_t *out, uint32
 // Production consumes prebalanced FP16 scales. Scores/max remain FP16.
 // Probabilities are packed into the NZ (32x16 inner-outer) FP8 layout consumed
 // by the PV MMAD, with one padding row between adjacent NZ planes.
-template <uint32_t ROWS, uint32_t COLS, bool FULL, uint32_t NZ_PAD_ROWS>
+template <uint32_t ROWS, uint32_t COLS, bool FULL, uint32_t NZ_PAD_ROWS, bool CAUSAL = false>
 __simd_vf__ inline void SoftmaxHalfVF(__ubuf__ half *scores, __ubuf__ half *maxima, __ubuf__ float *denom,
                                       __ubuf__ float *alpha, __ubuf__ float8_e4m3_t *out, __ubuf__ half *qhalf,
                                       __ubuf__ half *khalf, __ubuf__ float *scratch, uint32_t qstart, uint32_t sq,
-                                      uint32_t start, uint32_t sk, uint32_t causal)
+                                      uint32_t start, uint32_t sk)
 {
     static_assert(ROWS == 64 && COLS == 256, "half softmax requires a 64x256 AIV tile");
     using namespace AscendC::MicroAPI;
@@ -127,14 +127,14 @@ __simd_vf__ inline void SoftmaxHalfVF(__ubuf__ half *scores, __ubuf__ half *maxi
             const uint32_t pos1 = qstart + r1;
             const uint32_t pos2 = qstart + r2;
             const uint32_t pos3 = qstart + r3;
-            MaskScoresTail(x0_0, negative, pos0, start + 0, sk, sq, causal);
-            MaskScoresTail(x0_1, negative, pos1, start + 0, sk, sq, causal);
-            MaskScoresTail(x0_2, negative, pos2, start + 0, sk, sq, causal);
-            MaskScoresTail(x0_3, negative, pos3, start + 0, sk, sq, causal);
-            MaskScoresTail(x1_0, negative, pos0, start + 128, sk, sq, causal);
-            MaskScoresTail(x1_1, negative, pos1, start + 128, sk, sq, causal);
-            MaskScoresTail(x1_2, negative, pos2, start + 128, sk, sq, causal);
-            MaskScoresTail(x1_3, negative, pos3, start + 128, sk, sq, causal);
+            MaskScoresTail<CAUSAL>(x0_0, negative, pos0, start + 0, sk, sq);
+            MaskScoresTail<CAUSAL>(x0_1, negative, pos1, start + 0, sk, sq);
+            MaskScoresTail<CAUSAL>(x0_2, negative, pos2, start + 0, sk, sq);
+            MaskScoresTail<CAUSAL>(x0_3, negative, pos3, start + 0, sk, sq);
+            MaskScoresTail<CAUSAL>(x1_0, negative, pos0, start + 128, sk, sq);
+            MaskScoresTail<CAUSAL>(x1_1, negative, pos1, start + 128, sk, sq);
+            MaskScoresTail<CAUSAL>(x1_2, negative, pos2, start + 128, sk, sq);
+            MaskScoresTail<CAUSAL>(x1_3, negative, pos3, start + 128, sk, sq);
         }
 
         StoreAlign(scores + r0 * COLS + 0, x0_0, h);

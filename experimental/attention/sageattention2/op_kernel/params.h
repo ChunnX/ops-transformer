@@ -104,7 +104,7 @@ struct SageParams {
 // host tiling, the aclnn entry and the torch bridge all enforce it.
 constexpr int64_t MAX_HEAD_DIM = 128;
 // The kernel's two supported padded head widths; DP64 also covers every D < 64.
-constexpr uint32_t PaddedHeadDim(uint32_t d)
+constexpr uint32_t PaddedHeadDim(uint32_t d) noexcept
 {
     return d <= 64U ? 64U : 128U;
 }
@@ -132,11 +132,11 @@ constexpr bool IsPow2(uint32_t v) noexcept
 // RoundUpTo's mask trick is only defined for power-of-two alignments; every
 // call site passes a tile height or a byte boundary, so catch the mistake here
 // instead of returning a silently wrong padding.
-constexpr uint32_t RoundUpTo(uint32_t v, uint32_t align)
+constexpr uint32_t RoundUpTo(uint32_t v, uint32_t align) noexcept
 {
     return (v + align - 1U) & ~(align - 1U);
 }
-constexpr uint64_t RoundUpTo(uint64_t v, uint64_t align)
+constexpr uint64_t RoundUpTo(uint64_t v, uint64_t align) noexcept
 {
     return (v + align - 1ULL) & ~(align - 1ULL);
 }

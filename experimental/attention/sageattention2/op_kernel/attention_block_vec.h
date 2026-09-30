@@ -91,13 +91,13 @@ public:
         const uint32_t qOffset = qstart + subBlockIdx_ * HALF;
 
         if (isFull) {
-            SoftmaxHalfVF<HALF, N, true, P_NZ_PAD_ROWS>(
+            SoftmaxHalfVF<HALF, N, true, P_NZ_PAD_ROWS, CAUSAL>(
                 scoresPtr, maxPtr, denPtr, alphaPtr, p8Ptr, qsPtr, ksPtr, sumPtr,
-                qOffset, params_.sq, start, params_.sk, CAUSAL);
+                qOffset, params_.sq, start, params_.sk);
         } else {
-            SoftmaxHalfVF<HALF, N, false, P_NZ_PAD_ROWS>(
+            SoftmaxHalfVF<HALF, N, false, P_NZ_PAD_ROWS, CAUSAL>(
                 scoresPtr, maxPtr, denPtr, alphaPtr, p8Ptr, qsPtr, ksPtr, sumPtr,
-                qOffset, params_.sq, start, params_.sk, CAUSAL);
+                qOffset, params_.sq, start, params_.sk);
         }
         SetFlag<HardEvent::V_MTE2>(scaleEvent);
         if (step + 2 < count) {
