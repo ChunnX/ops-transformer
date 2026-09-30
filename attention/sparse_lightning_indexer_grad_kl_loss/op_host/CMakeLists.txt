@@ -72,7 +72,7 @@ if(NOT BUILD_OPS_RTY_KERNEL)
         ./arch22/sparse_lightning_indexer_grad_kl_loss_tiling_general.h
         ./arch35/sparse_lightning_indexer_grad_kl_loss_tiling_general_regbase.cpp
         ./arch35/sparse_lightning_indexer_grad_kl_loss_tiling_general_regbase.h
-        ./arch92/sparse_lightning_indexer_grad_kl_loss_tiling_general_regbase.cpp
-        ./arch92/sparse_lightning_indexer_grad_kl_loss_tiling_general_regbase.h
+        ./arch92/sparse_lightning_indexer_grad_kl_loss_tiling_general_arch92_regbase.cpp
+        ./arch92/sparse_lightning_indexer_grad_kl_loss_tiling_general_arch92_regbase.h
     )
 endif()
