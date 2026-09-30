@@ -268,8 +268,14 @@ ge::graphStatus GenericLightningIndexerTiling::ParseAndCheckParams(GenericLightn
     OP_CHECK_NULL_WITH_CONTEXT(context_, kDesc);
     info.keyDtype = kDesc->GetDataType();
     const bool mixedFp16Int8 = isMsa && info.queryDtype == ge::DT_FLOAT16 && info.keyDtype == ge::DT_INT8;
-    OP_CHECK_IF(info.keyDtype != info.queryDtype && !mixedFp16Int8,
-                OP_LOGE(context_, "query and key dtype must match, except MSA FP16×INT8"), return ge::GRAPH_FAILED);
+    const bool qFp = (info.queryDtype == ge::DT_FLOAT16 || info.queryDtype == ge::DT_BF16);
+    const bool mixedFp8Key = qFp && info.keyDtype == ge::DT_FLOAT8_E4M3FN;
+    OP_CHECK_IF(info.keyDtype != info.queryDtype && !mixedFp16Int8 && !mixedFp8Key,
+                OP_LOGE(context_, "query and key dtype must match, except MSA FP16×INT8 and Qwen FP8 key"),
+                return ge::GRAPH_FAILED);
+    if (info.quantMode < 0 && mixedFp8Key) {
+        info.quantMode = 0;
+    }
     if (info.quantMode < 0 && (info.queryDtype == ge::DT_INT8 || info.keyDtype == ge::DT_INT8)) {
         info.quantMode = 2;
     }
@@ -375,12 +381,14 @@ ge::graphStatus GenericLightningIndexerTiling::ParseAndCheckParams(GenericLightn
                     return ge::GRAPH_FAILED);
     }
 
-    const bool needResidual = (info.cmpRatio > 1 && info.sparseMode != 0 && info.keyReduceMode == 0);
+    // sparse_mode=4 的尾部由 query 下标推出，不依赖 cmp_residual_k。
+    const bool needResidual = (info.cmpRatio > 1 && info.sparseMode == 3 && info.keyReduceMode == 0);
+    const bool residualForbidden = (info.cmpRatio <= 1 || info.sparseMode == 0 || info.keyReduceMode != 0);
     OP_CHECK_IF(needResidual && residualTensor == nullptr,
                 OP_LOGE(context_, "cmp_residual_k required when cmp_ratio!=1 and sparse_mode!=0"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!needResidual && residualTensor != nullptr,
-                OP_LOGE(context_, "cmp_residual_k must be omitted unless cmp_ratio!=1 and sparse_mode!=0"),
+    OP_CHECK_IF(residualForbidden && residualTensor != nullptr,
+                OP_LOGE(context_, "cmp_residual_k must be omitted unless cmp_ratio!=1 and sparse_mode is 3 or 4"),
                 return ge::GRAPH_FAILED);
 
     const bool needQuantScale = (info.quantMode >= 0);
@@ -388,7 +396,10 @@ ge::graphStatus GenericLightningIndexerTiling::ParseAndCheckParams(GenericLightn
     const gert::Tensor *kScale = context_->GetOptionalInputTensor(GLI_K_DESCALE_INDEX);
     if (needQuantScale) {
         OP_CHECK_IF(kScale == nullptr, OP_LOGE(context_, "quant_mode>=0 requires k_descale"), return ge::GRAPH_FAILED);
-        OP_CHECK_IF(!mixedFp16Int8 && qScale == nullptr, OP_LOGE(context_, "quant_mode>=0 requires q_descale"),
+        const bool keyOnlyScale =
+            mixedFp16Int8 || ((info.queryDtype == ge::DT_FLOAT16 || info.queryDtype == ge::DT_BF16) &&
+                              info.keyDtype == ge::DT_FLOAT8_E4M3FN);
+        OP_CHECK_IF(!keyOnlyScale && qScale == nullptr, OP_LOGE(context_, "quant_mode>=0 requires q_descale"),
                     return ge::GRAPH_FAILED);
     }
 
@@ -464,7 +475,9 @@ ge::graphStatus GenericLightningIndexerTiling::CalcWorkspaceSize(GenericLightnin
     offset += ldIdxSize;
 
     uint64_t kCastSize = 0;
-    if (info.queryDtype == ge::DT_FLOAT16 && info.keyDtype == ge::DT_INT8) {
+    const bool castKey = (info.queryDtype == ge::DT_FLOAT16 || info.queryDtype == ge::DT_BF16) &&
+                         (info.keyDtype == ge::DT_INT8 || info.keyDtype == ge::DT_FLOAT8_E4M3FN);
+    if (castKey) {
         kCastSize = RoundUp64(static_cast<uint64_t>(aicNum) * GLI_S2_BASE_SIZE * GLI_HEAD_DIM * sizeof(uint16_t),
                               GLI_GM_ALIGN_BYTES);
     }

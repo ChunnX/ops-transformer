@@ -166,9 +166,15 @@ def generic_lightning_indexer_golden(
                     else:
                         expanded.extend([int(p) * r + o for o in range(r)])
                 if append_tail:
-                    tail = int(residual[bi])
-                    start = l_orig - tail
-                    extra = list(range(start, l_orig)) if tail > 0 else []
+                    if sparse_mode == 4:
+                        gq = l_orig - s1 + qi
+                        mod = (gq + 1) % r
+                        start = (gq + 1) - mod
+                        extra = list(range(start, start + mod))
+                    else:
+                        tail = int(residual[bi])
+                        start = l_orig - tail
+                        extra = list(range(start, l_orig)) if tail > 0 else []
                     extra += [-1] * (r - 1 - len(extra))
                     expanded.extend(extra[: r - 1])
                 out_idx.append(expanded)

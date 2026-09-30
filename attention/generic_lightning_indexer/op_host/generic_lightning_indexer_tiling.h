@@ -130,8 +130,8 @@ END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(GenericLightningIndexer, GenericLightningIndexerTilingData)
 
 struct GenericLightningIndexerCompileInfo {
-    platform_ascendc::SocVersion socVersion = platform_ascendc::SocVersion::ASCEND910B;
-    NpuArch npuArch = NpuArch::DAV_2201;
+    platform_ascendc::SocVersion socVersion = platform_ascendc::SocVersion::ASCEND950;
+    NpuArch npuArch = NpuArch::DAV_3510;
     uint64_t aicNum = 0;
     uint64_t aivNum = 0;
     uint64_t ubSize = 0;

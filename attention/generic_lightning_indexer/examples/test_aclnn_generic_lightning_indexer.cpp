@@ -198,6 +198,126 @@ int RunLiWeightedTopk(aclrtStream stream)
     return 0;
 }
 
+int RunQwenFp8Key(aclrtStream stream)
+{
+    constexpr int64_t kB = 1;
+    constexpr int64_t kS1 = 4;
+    constexpr int64_t kG = 8;
+    constexpr int64_t kD = 128;
+    constexpr int64_t kR = 4;
+    constexpr int64_t kS2 = 1;
+    constexpr int64_t kTopk = 1;
+    const int64_t outLen = kTopk * kR + (kR - 1);
+    std::vector<int64_t> qShape = {kB, kS1, kG, kD};
+    std::vector<int64_t> kShape = {kB, kS2, 1, kD};
+    std::vector<int64_t> scaleShape = {kB, kS2};
+    std::vector<int64_t> idxShape = {kB, kS1, outLen};
+    std::vector<int64_t> valShape = {kB, kS1, kTopk};
+    const uint16_t fp16One = FloatToFp16(1.0f);
+    const uint8_t fp8One = 0x38;
+    std::vector<uint16_t> qHost(GetShapeSize(qShape), fp16One);
+    std::vector<uint8_t> kHost(GetShapeSize(kShape), fp8One);
+    std::vector<float> scaleHost(GetShapeSize(scaleShape), 1.0f);
+    std::vector<int32_t> idxHost(GetShapeSize(idxShape), 0);
+    std::vector<float> valHost(GetShapeSize(valShape), 0.0f);
+    void *qAddr = nullptr;
+    void *kAddr = nullptr;
+    void *scaleAddr = nullptr;
+    void *idxAddr = nullptr;
+    void *valAddr = nullptr;
+    aclTensor *q = nullptr;
+    aclTensor *k = nullptr;
+    aclTensor *scale = nullptr;
+    aclTensor *idx = nullptr;
+    aclTensor *val = nullptr;
+    if (CreateAclTensor(qHost, qShape, &qAddr, aclDataType::ACL_FLOAT16, &q) != 0 ||
+        CreateAclTensor(kHost, kShape, &kAddr, aclDataType::ACL_FLOAT8_E4M3FN, &k) != 0 ||
+        CreateAclTensor(scaleHost, scaleShape, &scaleAddr, aclDataType::ACL_FLOAT, &scale) != 0 ||
+        CreateAclTensor(idxHost, idxShape, &idxAddr, aclDataType::ACL_INT32, &idx) != 0 ||
+        CreateAclTensor(valHost, valShape, &valAddr, aclDataType::ACL_FLOAT, &val) != 0) {
+        LOG_PRINT("Qwen FP8 CreateAclTensor failed\n");
+        return -1;
+    }
+
+    char layoutQ[] = "BSND";
+    char layoutK[] = "BSND";
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    auto ret = aclnnGenericLightningIndexerGetWorkspaceSize(
+        q, k, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, scale, nullptr, nullptr, nullptr,
+        kTopk, kR, layoutQ, layoutK, 4, 0, false, true, true, -1, true, 0, 0, 1.0f, -1, -1, -1, 0, 0, idx, val,
+        &workspaceSize, &executor);
+    if (!CHECK_RET(ret == ACL_SUCCESS)) {
+        LOG_PRINT("Qwen FP8 GetWorkspaceSize failed. ERROR: %d\n", ret);
+        return ret;
+    }
+    void *workspace = nullptr;
+    if (workspaceSize > 0) {
+        aclrtMalloc(&workspace, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
+    }
+    ret = aclnnGenericLightningIndexer(workspace, workspaceSize, executor, stream);
+    if (!CHECK_RET(ret == ACL_SUCCESS)) {
+        LOG_PRINT("Qwen FP8 execute failed. ERROR: %d\n", ret);
+        return ret;
+    }
+    aclrtSynchronizeStream(stream);
+
+    std::vector<int32_t> idxOut(GetShapeSize(idxShape), -2);
+    std::vector<float> valOut(GetShapeSize(valShape), 0.0f);
+    ret = aclrtMemcpy(idxOut.data(), idxOut.size() * sizeof(int32_t), idxAddr, idxOut.size() * sizeof(int32_t),
+                      ACL_MEMCPY_DEVICE_TO_HOST);
+    if (!CHECK_RET(ret == ACL_SUCCESS)) {
+        return ret;
+    }
+    ret = aclrtMemcpy(valOut.data(), valOut.size() * sizeof(float), valAddr, valOut.size() * sizeof(float),
+                      ACL_MEMCPY_DEVICE_TO_HOST);
+    if (!CHECK_RET(ret == ACL_SUCCESS)) {
+        return ret;
+    }
+    const int32_t expectIdx[4][7] = {
+        {-1, -1, -1, -1, 0, -1, -1},
+        {-1, -1, -1, -1, 0, 1, -1},
+        {-1, -1, -1, -1, 0, 1, 2},
+        {0, 1, 2, 3, -1, -1, -1},
+    };
+    int32_t badIdx = 0;
+    for (int64_t row = 0; row < kS1; ++row) {
+        for (int64_t col = 0; col < outLen; ++col) {
+            const int32_t got = idxOut[row * outLen + col];
+            if (got != expectIdx[row][col]) {
+                ++badIdx;
+            }
+            if (row == kS1 - 1 || col < 8) {
+                LOG_PRINT("qwen row %ld col %ld idx=%d expect=%d\n", row, col, got, expectIdx[row][col]);
+            }
+        }
+        LOG_PRINT("qwen row %ld val=%f\n", row, valOut[row]);
+    }
+    const float expectVal = 1024.0f;
+    const bool lastValOk = fabsf(valOut[kS1 - 1] - expectVal) <= 8.0f;
+    const bool earlyValOk = !std::isfinite(valOut[0]) && valOut[0] < 0.0f;
+    aclDestroyTensor(q);
+    aclDestroyTensor(k);
+    aclDestroyTensor(scale);
+    aclDestroyTensor(idx);
+    aclDestroyTensor(val);
+    aclrtFree(qAddr);
+    aclrtFree(kAddr);
+    aclrtFree(scaleAddr);
+    aclrtFree(idxAddr);
+    aclrtFree(valAddr);
+    if (workspace) {
+        aclrtFree(workspace);
+    }
+    if (badIdx > 0 || !lastValOk || !earlyValOk) {
+        LOG_PRINT("Qwen FP8 precision check failed: badIdx=%d lastValOk=%d earlyValOk=%d\n", badIdx, lastValOk,
+                  earlyValOk);
+        return -1;
+    }
+    LOG_PRINT("Qwen FP8 key example passed.\n");
+    return 0;
+}
+
 int RunMsaMaxpool(aclrtStream stream)
 {
     std::vector<int64_t> qShape = {1, 2, 8, 128};
@@ -408,6 +528,9 @@ int main()
     }
     if (ret == 0) {
         ret = RunMsaMixedFp16Int8(stream);
+    }
+    if (ret == 0) {
+        ret = RunQwenFp8Key(stream);
     }
     aclrtDestroyStream(stream);
     aclrtResetDevice(deviceId);

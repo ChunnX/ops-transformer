@@ -406,3 +406,37 @@ TEST_F(GenericLightningIndexerTilingArch35, P_MSA_mixed_fp16_int8)
         262144, 16384);
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, SKIP_TILING_KEY);
 }
+
+TEST_F(GenericLightningIndexerTilingArch35, P_QWEN_fp8_key)
+{
+    optiling::GenericLightningIndexerCompileInfo compileInfo;
+    gert::TilingContextPara para("GenericLightningIndexer",
+                                 GliInputs({{{1, 16, 8, 128}, {1, 16, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                           {{{1, 8, 1, 128}, {1, 8, 1, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
+                                           NullIn(ge::DT_FLOAT16), NullIn(), NullIn(), NullIn(), NullIn(ge::DT_FLOAT),
+                                           {{{1, 8, 1}, {1, 8, 1}}, ge::DT_FLOAT, ge::FORMAT_ND}),
+                                 {
+                                     {{{1, 16, 8 * 4 + 3}, {1, 16, 8 * 4 + 3}}, ge::DT_INT32, ge::FORMAT_ND},
+                                     {{{1, 16, 8}, {1, 16, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                 },
+                                 MakeAttrs(8, 4, "BSND", "BSND", 4, false, true, true, -1, true), &compileInfo,
+                                 "Ascend950", 56, 262144, 16384);
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, SKIP_TILING_KEY);
+}
+
+TEST_F(GenericLightningIndexerTilingArch35, P_QWEN_fp8_key_bf16)
+{
+    optiling::GenericLightningIndexerCompileInfo compileInfo;
+    gert::TilingContextPara para("GenericLightningIndexer",
+                                 GliInputs({{{1, 16, 8, 128}, {1, 16, 8, 128}}, ge::DT_BF16, ge::FORMAT_ND},
+                                           {{{1, 8, 1, 128}, {1, 8, 1, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
+                                           NullIn(ge::DT_BF16), NullIn(), NullIn(), NullIn(), NullIn(ge::DT_FLOAT),
+                                           {{{1, 8, 1}, {1, 8, 1}}, ge::DT_FLOAT, ge::FORMAT_ND}),
+                                 {
+                                     {{{1, 16, 8 * 4 + 3}, {1, 16, 8 * 4 + 3}}, ge::DT_INT32, ge::FORMAT_ND},
+                                     {{{1, 16, 8}, {1, 16, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                 },
+                                 MakeAttrs(8, 4, "BSND", "BSND", 4, false, true, true, 0, false), &compileInfo,
+                                 "Ascend950", 56, 262144, 16384);
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, SKIP_TILING_KEY);
+}

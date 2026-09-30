@@ -596,13 +596,13 @@ __aicore__ inline void GenericLightningIndexerKernel<LIT>::Init(
         }
         vectorService.InitVecWorkspaceTensor(scoreGm);
         if constexpr (LIT::isMixedInt8Key) {
-            uint64_t tileBytes = static_cast<uint64_t>(constInfo.s2BaseSize) * constInfo.headDim * sizeof(half);
-            GlobalTensor<K_T> keyI8Gm;
-            GlobalTensor<half> keyCastGm;
-            keyI8Gm.SetGlobalBuffer((__gm__ K_T *)key);
+            uint64_t tileBytes = static_cast<uint64_t>(constInfo.s2BaseSize) * constInfo.headDim * sizeof(Q_T);
+            GlobalTensor<int8_t> keyBytes;
+            GlobalTensor<Q_T> keyCastGm;
+            keyBytes.SetGlobalBuffer(reinterpret_cast<__gm__ int8_t *>(key));
             keyCastGm.SetGlobalBuffer(
-                reinterpret_cast<__gm__ half *>(workspace + constInfo.wsOffKCast + aiCoreIdx * tileBytes));
-            vectorService.SetKeyCastTensors(keyI8Gm, keyCastGm);
+                reinterpret_cast<__gm__ Q_T *>(workspace + constInfo.wsOffKCast + aiCoreIdx * tileBytes));
+            vectorService.SetKeyCastTensors(keyBytes, keyCastGm);
         }
     } else {
         matmulService.InitParams(constInfo);
@@ -620,10 +620,10 @@ __aicore__ inline void GenericLightningIndexerKernel<LIT>::Init(
             matmulService.InitMm1GlobalTensor(blockTableGm, keyGm, queryGm);
         }
         if constexpr (LIT::isMixedInt8Key) {
-            uint64_t tileBytes = static_cast<uint64_t>(constInfo.s2BaseSize) * constInfo.headDim * sizeof(half);
-            GlobalTensor<half> keyCastGm;
+            uint64_t tileBytes = static_cast<uint64_t>(constInfo.s2BaseSize) * constInfo.headDim * sizeof(Q_T);
+            GlobalTensor<Q_T> keyCastGm;
             keyCastGm.SetGlobalBuffer(
-                reinterpret_cast<__gm__ half *>(workspace + constInfo.wsOffKCast + aiCoreIdx * tileBytes));
+                reinterpret_cast<__gm__ Q_T *>(workspace + constInfo.wsOffKCast + aiCoreIdx * tileBytes));
             matmulService.SetKeyCastGm(keyCastGm);
         }
     }

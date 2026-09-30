@@ -122,25 +122,15 @@ public:
         this->Attr("init_blocks").AttrType(OPTIONAL).Int(0);
         this->Attr("local_blocks").AttrType(OPTIONAL).Int(0);
 
-        OpAICoreConfig aicoreConfig;
-        aicoreConfig.DynamicCompileStaticFlag(true)
-            .DynamicFormatFlag(true)
-            .DynamicRankSupportFlag(true)
-            .DynamicShapeSupportFlag(true)
-            .NeedCheckSupportFlag(false)
-            .PrecisionReduceFlag(true)
-            .ExtendCfgInfo("aclnnSupport.value", "support_aclnn");
-        this->AICore().AddConfig("ascend910b", aicoreConfig);
-        this->AICore().AddConfig("ascend910_93", aicoreConfig);
-
-        // 950 union of LI/LIv2/QLI/QLIv2/PKI/MSA dtype combos. See design §5.6.
+        // 仅 950。A2/A3 不注册。
         OpAICoreConfig aicoreConfig950;
         aicoreConfig950.Input("query")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT8_E4M3FN,
                        ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN,
                        ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8, ge::DT_HIFLOAT8, ge::DT_INT8,
-                       ge::DT_INT8, ge::DT_FLOAT4_E2M1, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT16})
+                       ge::DT_INT8, ge::DT_FLOAT4_E2M1, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT16,
+                       ge::DT_FLOAT16, ge::DT_BF16})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         aicoreConfig950.Input("key")
@@ -148,14 +138,16 @@ public:
             .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT8_E4M3FN,
                        ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN,
                        ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8, ge::DT_HIFLOAT8, ge::DT_INT8,
-                       ge::DT_INT8, ge::DT_FLOAT4_E2M1, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E5M2, ge::DT_INT8})
+                       ge::DT_INT8, ge::DT_FLOAT4_E2M1, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E5M2, ge::DT_INT8,
+                       ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN})
             .FormatList({ge::FORMAT_ND})
             .IgnoreContiguous();
         aicoreConfig950.Input("weights")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_FLOAT16,
                        ge::DT_BF16, ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT, ge::DT_BF16, ge::DT_FLOAT,
-                       ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16})
+                       ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16,
+                       ge::DT_FLOAT16, ge::DT_BF16})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         aicoreConfig950.Input("q_descale")
@@ -163,7 +155,7 @@ public:
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT16,
                        ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,
                        ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT,
-                       ge::DT_FLOAT, ge::DT_FLOAT})
+                       ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         aicoreConfig950.Input("k_descale")
@@ -171,7 +163,7 @@ public:
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT16,
                        ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,
                        ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT,
-                       ge::DT_FLOAT, ge::DT_FLOAT})
+                       ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
             .IgnoreContiguous();
         aicoreConfig950.DynamicCompileStaticFlag(true)

@@ -5,15 +5,15 @@
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
 |<term>Ascend 950PR/Ascend 950DT</term>|      √     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
+|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      ×     |
+|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      ×     |
 |<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
 |<term>Atlas 推理系列产品</term>|      ×     |
 |<term>Atlas 训练系列产品</term>|      ×     |
 
 ## 功能说明
 
-- 算子功能：`generic_lightning_indexer`对**已经完成前处理**的 Index Query / Index Key 做打分与选择。TopK 路径为 `Matmul → 激活 → 沿 head 规约 → 掩码 → TopK →（可选 Expand / 追加尾 token）`；MSA 路径为 `Matmul → Identity → 保留 head → 沿 Key 分段 Maxpool`，输出 block score、不融合 TopK。不包含 RoPE、RMSNorm、AvgPool、KeyPool、CSA 压缩等 Q/K 前处理。该算子用于收编 `lightning_indexer`、`lightning_indexer_v2`、`quant_lightning_indexer`、`quant_lightning_indexer_v2`、`pool_key_indexer`、Qwen Compressed Lightweight Indexer，以及 `MsaIndexScore`。
+- 算子功能：`generic_lightning_indexer`对**已经完成前处理**的 Index Query / Index Key 做打分与选择。计算分成四段：相关性、逐元素变换、沿 head 规约、TopK（含可选展开与拼接）。当前优先实现 Qwen Compressed Lightweight Indexer：ReLU、不加权求和、`sparse_mode=4`、展开后拼接当前未完成的 micro-block。不包含 RoPE、RMSNorm、AvgPool。仅支持 Ascend 950。
 
 - 计算公式：
 
@@ -102,10 +102,7 @@
 - <term>Ascend 950PR/Ascend 950DT</term>：
   - query、key 支持 FLOAT16、BFLOAT16、INT8、FLOAT8_E4M3FN、HIFLOAT8、FLOAT4_E2M1、FLOAT8_E5M2。
   - quant_mode 支持 -1 / 0 / 1 / 2 / 3 / 4 / 5。
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
-  - query、key 支持 FLOAT16、BFLOAT16、INT8。
-  - 不支持 FLOAT8_E4M3FN、HIFLOAT8、FLOAT4_E2M1、FLOAT8_E5M2 与 FLOAT8_E8M0。
-  - quant_mode 支持 -1（不量化）与 2（INT8）。
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持。
 
 ## 调用说明
 

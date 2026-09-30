@@ -97,9 +97,9 @@ public:
         qScaleGmFp16 = qScaleGm;
         kScaleGmFp16 = kScaleGm;
     }
-    __aicore__ inline void SetKeyCastTensors(GlobalTensor<K_T> keyI8Gm, GlobalTensor<half> keyCastGm)
+    __aicore__ inline void SetKeyCastTensors(GlobalTensor<int8_t> keyBytes, GlobalTensor<Q_T> keyCastGm)
     {
-        keyI8Gm_ = keyI8Gm;
+        keyI8Gm_ = keyBytes;
         keyCastGm_ = keyCastGm;
     }
     __aicore__ inline void SetOutputIdxOffsetGm(GlobalTensor<int32_t> gm)
@@ -164,8 +164,8 @@ protected:
     GlobalTensor<float> kScaleGm;
     GlobalTensor<half> qScaleGmFp16;
     GlobalTensor<half> kScaleGmFp16;
-    GlobalTensor<K_T> keyI8Gm_;
-    GlobalTensor<half> keyCastGm_;
+    GlobalTensor<int8_t> keyI8Gm_;
+    GlobalTensor<Q_T> keyCastGm_;
     GlobalTensor<int32_t> outputIdxOffsetGm;
     GlobalTensor<int32_t> startLocGm;
     GlobalTensor<int64_t> startLocGmI64;
@@ -468,13 +468,15 @@ __aicore__ inline void GenericLightningIndexerServiceVector<LIT>::CastKeyTile(co
     const uint32_t s2Real = info.actualSingleProcessSInnerSize;
     const uint32_t headDim = constInfo_.headDim;
     LocalTensor<int8_t> ubI8 = resMm1UB_.template ReinterpretCast<int8_t>();
-    const uint32_t chunkS2 = static_cast<uint32_t>(s2BaseSize_);
+    uint32_t chunkS2 = static_cast<uint32_t>(s2BaseSize_);
+    if constexpr (std::is_same<K_T, fp8_e4m3fn_t>::value) {
+        chunkS2 = 32;
+    }
     for (uint32_t s2Off = 0; s2Off < s2Real; s2Off += chunkS2) {
         uint32_t rows = (s2Off + chunkS2 > s2Real) ? (s2Real - s2Off) : chunkS2;
         uint32_t nElem = rows * headDim;
         uint32_t i8Align = GliCommon::Align(nElem, 32U);
-        LocalTensor<half> ubFp =
-            resMm1UB_.template ReinterpretCast<half>()[i8Align / static_cast<uint32_t>(sizeof(half))];
+        LocalTensor<Q_T> ubQ = resMm1UB_.template ReinterpretCast<Q_T>()[i8Align / static_cast<uint32_t>(sizeof(Q_T))];
 
         AscendC::DataCopyExtParams copyIn;
         copyIn.blockCount = 1;
@@ -506,18 +508,29 @@ __aicore__ inline void GenericLightningIndexerServiceVector<LIT>::CastKeyTile(co
         event_t evIn = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
         SetFlag<HardEvent::MTE2_V>(evIn);
         WaitFlag<HardEvent::MTE2_V>(evIn);
-        Cast(ubFp, ubI8, RoundMode::CAST_NONE, nElem);
+        if constexpr (std::is_same<K_T, fp8_e4m3fn_t>::value) {
+            // 950 的 Cast 只支持 fp8_e4m3 → float，再转到 query dtype。
+            LocalTensor<float> ubF = resMm1UB_[i8Align / static_cast<uint32_t>(sizeof(float))];
+            Cast(ubF, ubI8.template ReinterpretCast<fp8_e4m3fn_t>(), RoundMode::CAST_NONE, nElem);
+            PipeBarrier<PIPE_V>();
+            uint32_t qOff =
+                (i8Align + nElem * static_cast<uint32_t>(sizeof(float))) / static_cast<uint32_t>(sizeof(Q_T));
+            ubQ = resMm1UB_.template ReinterpretCast<Q_T>()[qOff];
+            Cast(ubQ, ubF, RoundMode::CAST_RINT, nElem);
+        } else {
+            Cast(ubQ, ubI8, RoundMode::CAST_NONE, nElem);
+        }
         PipeBarrier<PIPE_V>();
         event_t evOut = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
         SetFlag<HardEvent::V_MTE3>(evOut);
         WaitFlag<HardEvent::V_MTE3>(evOut);
         AscendC::DataCopyExtParams copyOut;
         copyOut.blockCount = 1;
-        copyOut.blockLen = nElem * sizeof(half);
+        copyOut.blockLen = nElem * sizeof(Q_T);
         copyOut.srcStride = 0;
         copyOut.dstStride = 0;
         copyOut.rsv = 0;
-        AscendC::DataCopyPad(keyCastGm_[s2Off * headDim], ubFp, copyOut);
+        AscendC::DataCopyPad(keyCastGm_[s2Off * headDim], ubQ, copyOut);
     }
     event_t evDone = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_V));
     SetFlag<HardEvent::MTE3_V>(evDone);
@@ -605,15 +618,23 @@ __aicore__ inline void GenericLightningIndexerServiceVector<LIT>::ExpandAndAppen
     uint32_t totalOut = topk + poolSize - 1;
     uint32_t alignedTotalOut = GliCommon::Align(totalOut, (uint32_t)8);
 
-    // 尾块可见 token 数(两条路径共用)
+    // sparse_mode=4（Qwen）：拼接当前 query 未完成的 micro-block，不使用 key 尾残余。
+    // 其它 mask：沿用 PKI，拼接 key 序列尾部 poolTailK 个 token。
     int32_t visibleTailK = 0;
-    if (poolTailK > 0) {
+    int32_t tailBase = 0;
+    int32_t globalPosQ = L_orig - static_cast<int32_t>(curS1Size) + static_cast<int32_t>(curS1Idx);
+    if (constInfo_.maskMode == 4) {
+        int32_t r = static_cast<int32_t>(poolSize);
+        int32_t mod = (r <= 0) ? 0 : (globalPosQ + 1) % r;
+        visibleTailK = mod;
+        tailBase = (globalPosQ + 1) - mod;
+    } else if (poolTailK > 0) {
         if (constInfo_.maskMode == 0) {
             visibleTailK = poolTailK;
         } else {
-            int32_t globalPosQ = L_orig - static_cast<int32_t>(curS1Size) + static_cast<int32_t>(curS1Idx);
             visibleTailK = GliCommon::Max(0, GliCommon::Min(poolTailK, globalPosQ - static_cast<int32_t>(topk) + 1));
         }
+        tailBase = L_orig - poolTailK;
     }
 
     // pow2 pool_size(2/4/.../64)走 gather 向量展开(见 vf/generic_lightning_indexer_vf_expand.h):
@@ -657,7 +678,7 @@ __aicore__ inline void GenericLightningIndexerServiceVector<LIT>::ExpandAndAppen
             // V→S: -1 向量填充先落地, 再标量精确写尾 token(不可对齐写, 防越出尾区容量)
             VToSSync();
             for (int32_t t = 0; t < visibleTailK; t++) {
-                tokenIndices.SetValue(tailPos + t, L_orig - poolTailK + t);
+                tokenIndices.SetValue(tailPos + t, tailBase + t);
             }
             // SCALAR(SetValue) 写 UB 后由 MTE3(DataCopyPad) 读出, 需硬同步
             SToMTE3Sync();
@@ -682,7 +703,7 @@ __aicore__ inline void GenericLightningIndexerServiceVector<LIT>::ExpandAndAppen
             }
         }
         for (int32_t t = 0; t < visibleTailK; t++) {
-            tokenIndices.SetValue(topk + static_cast<uint32_t>(t), L_orig - poolTailK + t);
+            tokenIndices.SetValue(topk + static_cast<uint32_t>(t), tailBase + t);
         }
         // SCALAR(SetValue) 写 UB 后由 MTE3(DataCopyPad) 读出, 需硬同步
         SToMTE3Sync();
@@ -727,7 +748,7 @@ __aicore__ inline void GenericLightningIndexerServiceVector<LIT>::ExpandAndAppen
         // V→S: -1 向量填充必须先于标量 SetValue 落地
         VToSSync();
         for (int32_t t = 0; t < visibleTailK; t++) {
-            tokenIndices.SetValue(tailPos + t, L_orig - poolTailK + t);
+            tokenIndices.SetValue(tailPos + t, tailBase + t);
         }
         // SCALAR(SetValue) 写 UB 后由 MTE3(DataCopyPad) 读出, 需硬同步
         SToMTE3Sync();
@@ -833,7 +854,10 @@ __aicore__ inline void GenericLightningIndexerServiceVector<LIT>::ProcessVec1(co
     }
 
     if constexpr (LIT::isFp8PerToken) {
-        if constexpr (LIT::isFp16Scale) {
+        if constexpr (std::is_same<K_T, fp8_e4m3fn_t>::value && sizeof(Q_T) == 2) {
+            Duplicate(qScaleUB_[pingpong * CeilDiv(s1BaseSize_, 2) * 128], 1.0f,
+                      static_cast<uint32_t>(curAivS1ProcNum * 128));
+        } else if constexpr (LIT::isFp16Scale) {
             DataCopyPadExtParams<half> padQScaleParams{true, 0, 0, 0};
             DataCopyExtParams qScaleDataCopyExtParams;
             qScaleDataCopyExtParams.blockCount = curAivS1ProcNum;
@@ -984,7 +1008,16 @@ __aicore__ inline void GenericLightningIndexerServiceVector<LIT>::ProcessTopK(co
         }
         if (validS2Len <= 0) {
             WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
-            if (expandMode_ != 0) {
+            if (expandMode_ != 0 && constInfo_.maskMode == 4) {
+                ExpandAndAppendIndices(indicesOutLocal_.ReinterpretCast<int32_t>(), expandOutLocal_, workLocal_,
+                                       topkCount_, poolSize_, 0, info.poolTailK,
+                                       static_cast<int32_t>(info.actS2SizeOrig), static_cast<uint32_t>(curAivS1Idx + i),
+                                       info.actS1Size);
+                SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
+                WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
+                AscendC::DataCopyPad(indiceOutGm[info.indiceOutOffset + (curS1Idx + rowIdx) * outputLen_],
+                                     expandOutLocal_, copyOutParams);
+            } else if (expandMode_ != 0) {
                 Duplicate(expandOutLocal_, neg, GliCommon::Align(outputLen_, (uint32_t)8));
                 SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
                 WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
