@@ -107,6 +107,39 @@
     <td>该算子为quant_lightning_indexer算子提供分核结果。<br/>算子torch接口调用依赖torch_ops_extension，具体安装方法见<a href="https://gitcode.com/cann/cann-recipes-infer/tree/master/ops/ascendc#torch_ops_extension%E7%AE%97%E5%AD%90%E5%8C%85%E7%BC%96%E8%AF%91%E4%B8%8E%E5%AE%89%E8%A3%85">安装指导</a>。</td>
   </tr>
   <tr>
+    <td>quant_lightning_indexer_v2</td>
+    <td><a href="./quant_lightning_indexer_v2/README.md">文档</a></td>
+    <td>√</td>
+    <td>√</td>
+    <td>√</td>
+    <td>×</td>
+    <td>√</td>
+    <td>AI Core</td>
+    <td>该算子是推理场景下稀疏Attention前处理的计算，选出关键的稀疏token，并对输入query和key进行量化实现存8算8。支持两级TopK（two-level topk）第一级：candidate_topk_blocks=2048时开启 source，按块粒度选出候选块并输出块级索引candidate_topk_index_out；取-1（默认）关闭。<br/>算子torch接口调用依赖torch_ops_extension，具体安装方法见<a href="https://gitcode.com/cann/cann-recipes-infer/tree/master/ops/ascendc#torch_ops_extension%E7%AE%97%E5%AD%90%E5%8C%85%E7%BC%96%E8%AF%91%E4%B8%8E%E5%AE%89%E8%A3%85">安装指导</a>。</td>
+  </tr>
+  <tr>
+    <td>quant_lightning_indexer_v2_metadata</td>
+    <td><a href="./quant_lightning_indexer_v2_metadata/README.md">文档</a></td>
+    <td>√</td>
+    <td>√</td>
+    <td>√</td>
+    <td>×</td>
+    <td>√</td>
+    <td>AI Cpu</td>
+    <td>该算子为quant_lightning_indexer_v2算子提供分核结果。<br/>算子torch接口调用依赖torch_ops_extension，具体安装方法见<a href="https://gitcode.com/cann/cann-recipes-infer/tree/master/ops/ascendc#torch_ops_extension%E7%AE%97%E5%AD%90%E5%8C%85%E7%BC%96%E8%AF%91%E4%B8%8E%E5%AE%89%E8%A3%85">安装指导</a>。</td>
+  </tr>
+  <tr>
+    <td>quant_sparse_lightning_indexer</td>
+    <td><a href="./quant_sparse_lightning_indexer/README.md">文档</a></td>
+    <td>√</td>
+    <td>√</td>
+    <td>√</td>
+    <td>×</td>
+    <td>√</td>
+    <td>AI Core</td>
+    <td>两级TopK（two-level topk）第二级（consumer）：以第一级算子输出的块级候选索引candidate_topk_index为必传输入，在候选块内选token级topk。仅支持Atlas A2/A3（910B/910_93，arch22）——本分支已移除 arch35/950 实现。<br/>算子torch接口调用依赖torch_ops_extension，具体安装方法见<a href="https://gitcode.com/cann/cann-recipes-infer/tree/master/ops/ascendc#torch_ops_extension%E7%AE%97%E5%AD%90%E5%8C%85%E7%BC%96%E8%AF%91%E4%B8%8E%E5%AE%89%E8%A3%85">安装指导</a>。</td>
+  </tr>
+  <tr>
     <td>sparse_attn_sharedkv</td>
     <td><a href="./sparse_attn_sharedkv/README.md">文档</a></td>
     <td>√</td>
@@ -272,6 +305,10 @@ torch_ops_extension包为自定义算子提供了torch.ops的拓展接口，具�
   <tr>
     <td>quant_lightning_indexer</td>
     <td><a href="./quant_lightning_indexer/tests/pytest/README.md">示例</a></td>
+  </tr>
+  <tr>
+    <td>quant_lightning_indexer_v2</td>
+    <td><a href="./quant_lightning_indexer_v2/tests/pytest/README.md">示例</a></td>
   </tr>
   <tr>
     <td>sparse_attn_sharedkv</td>

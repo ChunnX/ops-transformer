@@ -552,6 +552,7 @@ decode step  (start_pos>0):   每步调用 QLI 1 次 (S1=1)   → mask_mode=0, b
 | R9（§11.6） | **output_idx_offset 在 arch22 为死参数**（入口收指针未绑定未消费，host 校验完整但合法值被静默忽略）；调用方传非零偏移时 sparse_indices 不含偏移 → 上层绝对位置还原错误 | A15 对齐 arch35 使能；与 candidate 的契约：offset 仅作用于 sparse_indices，candidate_topk_index 保持相对块号（source 输出取加 offset 前），避免 mode=2 掩蔽整行错位 |
 | ~~R10（2026-09-08 实测，**当日已解**）~~ | mode=1 大 shape（总块数>candidate_topk_blocks）vl（行级有效长度）尾 tile 块分数 stale：`brmRepeat = blkLen/64` 整除截断，blkLen=96（AlignS2 在 (64,128] 段唯一非 64 倍数输出）时只归约 [0,64)，块 8..11 残留上一 tile/行分数 | 实测 big128k_b2_varlen b1 行 73：块 14344 拿 stale 3.5568（真值 1.1753）虚高挤掉第 2048 名边界块 2760（3.0918）；**小 shape 总块数≤2048 时候选集合=全部块，stale 分数不改变集合故漏检**；B=1 大 shape 抽样未踩中窗口行（尾 tile cuS2Len∈(64,96] 即行号 i∈[64,95] 每 batch 仅 32 行） | **修复：brmRepeat 改 `CeilDiv(blkLen, 64)`**（多归约的 [96,128) stale 只落 pad 块槽位，被 -inf 位型链位精确覆盖，无害）；harness 新增 force_rows 确定性锚点（§6.6），B=2 锚 6 行、B=4 锚 12 行覆盖各 batch 窗口 |
 | ~~R11（2026-09-09 决策 leak，**2026-09-10 已实施**）~~ | mode=2 选择池语义分歧：kernel/golden 为 restrict（候选外索引置 -1，service_vector :878-884），模型参考为 leak（候选外可达位置作 topk 填充保留有效索引）；候选缺可达块 ∧ topk>候选内数时输出集合不同（实测缺块候选 row90 缺 72..87 共 16 个，-1 槽 +16） | v41 NaN 事件中 restrict 把 R10 缺块翻译成 gap → 触发 sparse attention 非相邻对路径 NaN（§1.6.1 层②）；正确上游下两语义一致，故 87 用例未暴露 | **已实施**：删 idxPen 链 + golden NEG_HUGE 泄漏语义（§1.6.4 实施结果）；验收 leak_equiv_check 全一致 + 92 用例全绿；**2026-09-11 全量比对（§6.6）再背书**——leak 语义全行验证通过（最高单例 138.3 万行仲裁），小上下文 gap 触发路径消除 |
+| ~~R14（2026-09-29 发现，**2026-09-30 已修**）~~ | **单行 query（s1=1）且位置块数 nb>1280 时，第一级候选输出 candidate_topk_index_out 从不写入**：候选直出挂在行级直写守卫 `needCopyOutGm = (blockS2StartIdx_ == 0 && isS2End)` 内（service_vector_arch22.h:800/829），该守卫要求**单核独占整行 s2**；metadata 对「单行 + s2>10240（≥6 个 2048 位置块）」的行按块把 s2 切给多核（AIC k 取 s2[k,k+1)），首核到不了行尾、尾核 blockS2StartIdx_≠0 → 无人写，GM 保持分配器残留（全 0 / 浮点位型 / 上一用例旧内容），pin 块缺失；`sparse_indices` 不受影响（被切分行走 isNeedLD 工作区归约链路） | 生产 DS4.1 decode（s1=1）s2>10240 即触发；既有 harness 未覆盖该组合（其 s1=1 用例最大 nb=1024（s2=8192），nb>2048 的用例 s1 均为 16K/128K/1M）→ 87 用例全绿仍漏检；**拆分前的融合算子同一格同症状**（非 P13 引入）；第 4 输出（LD 直出）缺失时 consumer 会在坏候选上选 token | **修复（方式1：跨核归约）**：分段核把块级候选落新工作区 `candidateResGm`（与 vec1Res 同布局同规格；tiling workspace 增加同规格一项），LD 核在 `SyncAll` 后调用 `ProcessLDCand()` 用 MrgSort4 归并后按 `candidateOutCoreOffset` 直出（LD 归并缓冲按 `max(位置级, 候选级)` 宽度分配，UB ≤144KB）；另修 LD 尾段「多块单次拷贝漏最后一槽」→ 逐槽拷贝（位置级与候选级两处）。验证：s1=1×s2=131072（nb=16384）、s2=16392（nb=2049=容量+1，考 pin）与 14 用例精度矩阵（含 decode_long_m1 新增锚点）全绿，非连续三入口 A/B + 预留端口三探针回归全绿 |
 | **R5（标红，O3 未决）** | **mid-chunk prefill（start_pos≠0 且 S1>1）形态下模型不做行内因果 mask，与常规认知相反**；该调用形态是否存在未确认 | 若误当作 bug "修复"（擅自加行级 mask）将引入语义变更；测试碰 mode0+S1>1 数据可能误报精度问题 | **暂不测试该用例，问题保留**（§5.0 O3 标红段）；三不准：不准顺手加 mask / 不准以"常规认知"为 golden / 处理前必须先与模型侧确认调用形态 |
 
 已决策记录：
@@ -625,6 +626,7 @@ decode step  (start_pos>0):   每步调用 QLI 1 次 (S1=1)   → mask_mode=0, b
 - **k_scale**（vector `GetKeyScale`）：`blockId * constInfo_.keyDequantScaleStride0 + startBlockTableOffset`（arch35/..._service_vector_arch35.h:456）；
 - **host 侧**：tiling.cpp 从 acl tensor `keyStridesVec_[0]` / `keyDequantScaleStridesVec_[0]` 取真实 stride 经 `set_keyStride0`/`set_keyDequantScaleStride0` 下发（tiling.h 字段已存在）；
 - **arch22 现状差异**：`KeyNd2NzForPA` 硬编码 `blk * kCacheBlockSize * kHeadNum * headDim`（service_cube_arch22.h:317）、`GetKeyScale` 硬编码 `blockId * kCacheBlockSize_`（service_vector_arch22.h:157）——均假设紧凑存储；tiling 字段已下发但 **arch22 kernel 未消费**。
+- **2026-09 取代说明：本节描述的 stride 显式属性机制（`key_stride0`/`key_dequant_scale_stride0`）已废弃，切换为上游 PR 12740 的描述符 stride 方案——不注册属性，stride 由输入描述符经 `GetDynamicInputStride` 进入 tiling 并下发 tilingData，kernel 侧寻址与 0 兜底紧凑公式不变。以下为属性机制的历史设计记录。**
 - **实施补丁（A11）**：kernel 两处寻址改用 `keyStride0`/`keyDequantScaleStride0`（0 时兜底原紧凑公式，现网行为不变）；host `CheckKeyContiguous` 的 0 轴放行从仅 arch35 扩展到全部 PA_BBND。**关键发现：aclnn 动态调用下 `GetDynamicInputStride` 恒为空**（仅 TensorV2 图模式携带非连续描述，exe_graph TensorV1 的 GetStride 亦为空）——新增可选属性 `key_stride0`/`key_dequant_scale_stride0`（def.cpp + tiling 下发，csrc 自动取 `key.stride(0)` 传入，调用方无感），GetDynamicInputStride 有值时优先。
 
 ### 11.3 适配点（A11–A14，见 §8 表）
@@ -684,11 +686,13 @@ decode step  (start_pos>0):   每步调用 QLI 1 次 (S1=1)   → mask_mode=0, b
 
 ## 12. 新接口规范 py 适配层（2026-09-09）
 
+**2026-09-29 取代说明：本节描述的 py 适配层已整体删除** —— source 侧 `quant_lightning_indexer_candidate_source`（含其 `_qli_newapi_*` helper）与 consumer 侧 `quant_sparse_lightning_indexer`（含 helper）两侧的规范封装都已删除，两算子各自只保留一个 torch 入口：主算子 `quant_lightning_indexer_candidate`、consumer 算子 `quant_sparse_lightning_indexer`。删除理由：分支内无任何调用点；source 侧封装还有默认值映射（`candidate_topk_blocks=-1 → 2048`、`candidate_block_size=-1 → 8`）与现行开关契约（`-1`=关闭、关闭态 `candidate_block_size` 必为 `-1`）语义相反，其第 4 个返回值（py 现算的逐行长度）也已由主算子的预留输出 `candidate_block_length` 取代、且 consumer 侧只接受空 tensor，无处可递。本节余下内容（映射约定表 / 限制 / 验证记录）作为历史记录保留。
+
 面向新芯片接口规范（mxfp4/uint8/e8m0 descale、candidate_block_indices/candidate_block_length 命名）的 **py 分发封装**：按规范签名收参，内部映射到已注册的 `quant_lightning_indexer_candidate`（分别固定 candidate_mode=1/2），**不改 csrc / 算子校验 / 数据类型**；调用侧按芯片选择接口（本后端 910b 走本适配层，新芯片走其自带实现）。
 
 **新增入口**（`torch_extension/quant_lightning_indexer.py` 末尾；pip 包 `cann_ops_transformer.ops` 与源仓库 `torch_extension/__init__.py` 同步导出）：
-- `quant_lightning_indexer_candidate_source(...)` — 规范接口1（source）：返回 4 元组 `(sparse_indices (T1,N2,k), sparse_values, candidate_block_indices (T1,N2,cb), candidate_block_length (T1,N2))`；
-- `quant_lightning_indexer_candidate_consumer(...)` — 规范接口2（consumer）：输入 `candidate_block_indices (T1,N2,cb)` + `candidate_block_length`，返回 2 元组 `(sparse_indices, sparse_values)`（布局随内部：B=1 BSND 4 维 / TND 3 维）。
+- ~~`quant_lightning_indexer_candidate_source(...)`~~ — 规范接口1（source）：返回 4 元组 `(sparse_indices (T1,N2,k), sparse_values, candidate_block_indices (T1,N2,cb), candidate_block_length (T1,N2))`。**已删除（2026-09-29）**，理由见本节开头取代说明；主算子的 torch 出口保留 `quant_lightning_indexer`（现网）、`quant_lightning_indexer_metadata`、`quant_lightning_indexer_candidate`（两级 TopK 第一级，开关由 `candidate_topk_blocks` 承载）；
+- ~~`quant_lightning_indexer_candidate_consumer(...)`~~ — 规范接口2（consumer）。**P13 拆分后已删除**：consumer 的 torch 入口由独立算子 QuantSparseLightningIndexer 自己的 torch_extension 提供，两算子的 torch 接口互不耦合。该独立扩展里那个同名规范封装（也叫 `quant_sparse_lightning_indexer`）已于 2026-09-29 删除；同日其底层入口 `quant_sparse_lightning_indexer_candidate` 改名为 `quant_sparse_lightning_indexer`（入参为块级候选索引 `candidate_topk_index`），即本算子现在对外只有一个 torch 入口。
 
 **映射约定（规范项 → 内部接口）**：
 | 规范项 | 映射 |

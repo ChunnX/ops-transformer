@@ -24,9 +24,15 @@ inline TensorWrapper MakeWrapper(const at::Tensor &tensor)
     return {tensor, ConvertToAclDataType(tensor.scalar_type())};
 }
 
-inline bool IsMxQuantMode(int64_t quantMode) { return quantMode == 3 || quantMode == 5; }
+inline bool IsMxQuantMode(int64_t quantMode)
+{
+    return quantMode == 3 || quantMode == 5;
+}
 
-inline bool IsE8M0Tensor(const at::Tensor &tensor) { return tensor.scalar_type() == at::kFloat8_e8m0fnu; }
+inline bool IsE8M0Tensor(const at::Tensor &tensor)
+{
+    return tensor.scalar_type() == at::kFloat8_e8m0fnu;
+}
 
 inline bool IsFp4CompatibleTensor(const at::Tensor &tensor)
 {
@@ -191,29 +197,36 @@ std::tuple<at::Tensor, at::Tensor> QuantLightningIndexer(
     auto keyScaleWrapper = MakeWrapper(keyDequantScale);
     FixQLIV2AclDtypes(quantMode, queryWrapper, keyWrapper, queryScaleWrapper, keyScaleWrapper);
 
-    int64_t keyStride0Disabled = 0;   // A11: 旧入口不启用 stride 显式属性 (保持现网行为)
-    int64_t keyScaleStride0Disabled = 0;
+    // 基础入口不开两级TopK: candidate_topk_blocks=-1(关闭);
+    // 关闭态下候选索引输出为 shape (0,) 的空 tensor (与 infershape 的关闭分支一致)。
+    // 注: 这三个属性与第三个输出必须显式传入 — aclnn 签名里它们位于 returnValue 与
+    // sparseIndicesOut 之间/之后, 漏传会让后续实参整体错位 (读栈上垃圾值)。
+    int64_t candidateTopkBlocks = -1;
+    int64_t candidateBlockSize = -1; // 关闭态必须为 -1 (与 candidate_topk_blocks=-1 配套)
+    at::Tensor candidateTopkIndexOut = at::empty({0}, query.options().dtype(at::kInt));
+    // candidate_block_length: 预留接口输出, 恒为空 tensor
+    at::Tensor candidateBlockLengthOut = at::empty({0}, query.options().dtype(at::kInt));
+
+    // 0 轴非连续由输入描述符携带 stride (PR 12740 机制), 无需显式传参
     ACLNN_CMD(aclnnQuantLightningIndexerV2, queryWrapper, keyWrapper, weights, queryScaleWrapper, keyScaleWrapper,
               cuSeqlensQ, cuSeqlensK, sequsedQ, sequsedK, cmpResidualK, blockTable, outputIdxOffset, metadata, topk,
-              quantMode, maxSeqlenQ, queryLayoutPtr, keyLayoutPtr, maskMode, cmpRatio, returnValue,
-              keyStride0Disabled, keyScaleStride0Disabled, sparseIndicesOut,
-              sparseValuesOut);
+              quantMode, maxSeqlenQ, queryLayoutPtr, keyLayoutPtr, maskMode, cmpRatio, returnValue, candidateTopkBlocks,
+              candidateBlockSize, sparseIndicesOut, sparseValuesOut, candidateTopkIndexOut, candidateBlockLengthOut);
 
     return std::tuple<at::Tensor, at::Tensor>(sparseIndicesOut, sparseValuesOut);
 }
 
 // 两级TopK candidate 接口 (O1 方案b: 新增入口, 旧接口不变)
-// candidate_mode: 1=source 输出 candidate_topk_index; 3=关闭 (mode2 已拆至 QuantLightningIndexerV2Consumer)
+// 两级TopK 第一级开关: candidate_topk_blocks == 2048 (当前唯一有效值) 时输出
+// candidate_topk_index_out; -1=关闭; 候选消费级见 QuantSparseLightningIndexer 算子
 std::tuple<at::Tensor, at::Tensor, at::Tensor> QuantLightningIndexerCandidate(
     const at::Tensor &query, const at::Tensor &key, const at::Tensor &weights, const at::Tensor &queryDequantScale,
-    const at::Tensor &keyDequantScale, int64_t topk, int64_t quantMode,
-    const c10::optional<at::Tensor> &cuSeqlensQ,
+    const at::Tensor &keyDequantScale, int64_t topk, int64_t quantMode, const c10::optional<at::Tensor> &cuSeqlensQ,
     const c10::optional<at::Tensor> &cuSeqlensK, const c10::optional<at::Tensor> &sequsedQ,
     const c10::optional<at::Tensor> &sequsedK, const c10::optional<at::Tensor> &cmpResidualK,
     const c10::optional<at::Tensor> &blockTable, const c10::optional<at::Tensor> &outputIdxOffset,
-    const c10::optional<at::Tensor> &metadata, int64_t maxSeqlenQ, c10::string_view layoutQ,
-    c10::string_view layoutK, int64_t maskMode, int64_t cmpRatio, int64_t candidateMode,
-    int64_t candidateTopkBlocks, int64_t candidateBlockSize)
+    const c10::optional<at::Tensor> &metadata, int64_t maxSeqlenQ, c10::string_view layoutQ, c10::string_view layoutK,
+    int64_t maskMode, int64_t cmpRatio, int64_t candidateTopkBlocks, int64_t candidateBlockSize)
 {
     TORCH_CHECK(query.numel() > 0, "Tensor query is empty.")
     TORCH_CHECK(key.numel() > 0, "Tensor key is empty.")
@@ -228,7 +241,9 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> QuantLightningIndexerCandidate(
 
     int64_t keyHeadNum = (keyLayoutStr == "TND") ? key.size(DIM_1) : key.size(DIM_2);
     at::Tensor candidateTopkIndexOut;
-    if (candidateMode == 1) {
+    // candidate_block_length: 预留接口输出, 恒为空 tensor
+    at::Tensor candidateBlockLengthOut = at::empty({0}, query.options().dtype(at::kInt));
+    if (candidateTopkBlocks != -1) {
         at::SmallVector<int64_t, SIZE> candSize;
         if (queryLayoutStr == "BSND") {
             candSize = {query.size(DIM_0), query.size(DIM_1), keyHeadNum, candidateTopkBlocks};
@@ -250,16 +265,11 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> QuantLightningIndexerCandidate(
     auto keyScaleWrapper = MakeWrapper(keyDequantScale);
     FixQLIV2AclDtypes(quantMode, queryWrapper, keyWrapper, queryScaleWrapper, keyScaleWrapper);
 
-    // A11: key 0 轴非连续 — aclnn 动态调用下 tiling 拿不到 tensor stride (仅 TensorV2/图模式可见),
-    // 从 key/k_scale 的 torch stride(0) 自动显式传入 (紧凑存储时等于紧凑值, 走 kernel 兜底语义)
-    int64_t keyStride0 = key.stride(0);
-    int64_t keyScaleStride0 = keyDequantScale.stride(0);
-
+    // 0 轴非连续由输入描述符携带 stride (PR 12740 机制), 无需显式传参
     ACLNN_CMD(aclnnQuantLightningIndexerV2, queryWrapper, keyWrapper, weights, queryScaleWrapper, keyScaleWrapper,
-              cuSeqlensQ, cuSeqlensK, sequsedQ, sequsedK, cmpResidualK, blockTable, outputIdxOffset,
-              metadata, topk, quantMode, maxSeqlenQ, queryLayoutPtr, keyLayoutPtr, maskMode,
-              cmpRatio, returnValue, candidateMode, candidateTopkBlocks, candidateBlockSize, keyStride0,
-              keyScaleStride0, sparseIndicesOut, sparseValuesOut, candidateTopkIndexOut);
+              cuSeqlensQ, cuSeqlensK, sequsedQ, sequsedK, cmpResidualK, blockTable, outputIdxOffset, metadata, topk,
+              quantMode, maxSeqlenQ, queryLayoutPtr, keyLayoutPtr, maskMode, cmpRatio, returnValue, candidateTopkBlocks,
+              candidateBlockSize, sparseIndicesOut, sparseValuesOut, candidateTopkIndexOut, candidateBlockLengthOut);
 
     return std::tuple<at::Tensor, at::Tensor, at::Tensor>(sparseIndicesOut, sparseValuesOut, candidateTopkIndexOut);
 }
@@ -268,7 +278,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     m.def("quant_lightning_indexer_metadata", &QuantLightningIndexerMetadata, "quant_lightning_indexer_metadata");
     m.def("quant_lightning_indexer", &QuantLightningIndexer, "quant_lightning_indexer");
-    m.def("quant_lightning_indexer_candidate", &QuantLightningIndexerCandidate,
-          "quant_lightning_indexer_candidate");
+    m.def("quant_lightning_indexer_candidate", &QuantLightningIndexerCandidate, "quant_lightning_indexer_candidate");
 }
 } // namespace op_api

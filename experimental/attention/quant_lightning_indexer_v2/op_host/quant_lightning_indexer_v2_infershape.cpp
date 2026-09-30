@@ -27,10 +27,10 @@ constexpr uint32_t ATTR_SPARSE_COUNT_INDEX = 0;
 constexpr uint32_t ATTR_QUERY_LAYOUT_INDEX = 3;
 constexpr uint32_t ATTR_KV_LAYOUT_INDEX = 4;
 constexpr uint32_t ATTR_RETURN_VALUE_INDEX = 7;
-constexpr uint32_t ATTR_CANDIDATE_MODE_INDEX = 8;
-constexpr uint32_t ATTR_CANDIDATE_TOPK_BLOCKS_INDEX = 9;
-constexpr uint32_t CANDIDATE_MODE_SOURCE = 1;
+// 注: candidate_mode 属性已删除 —— 开关语义并入 candidate_topk_blocks (-1=关闭/现网行为)
+constexpr uint32_t ATTR_CANDIDATE_TOPK_BLOCKS_INDEX = 8;
 constexpr uint32_t CANDIDATE_TOPK_INDEX_OUTPUT_INDEX = 2;
+constexpr uint32_t CANDIDATE_BLOCK_LENGTH_OUTPUT_INDEX = 3;
 constexpr uint32_t CANDIDATE_TOPK_BLOCKS_FIX = 2048;
 constexpr uint32_t DIM_NUM_3 = 3;
 constexpr uint32_t DIM_NUM_4 = 4;
@@ -88,25 +88,33 @@ static ge::graphStatus InferShapeQuantLightningIndexerV2(gert::InferShapeContext
         sparseValuesShape->SetDim(0, 0);
     }
 
-    // candidate_topk_index: 仅 candidate_mode=1(source) 时输出, BSND 布局 [B, S1, N2, candidate_topk_blocks]
+    // candidate_topk_index_out: candidate_topk_blocks != -1 (source 模式) 时输出;
+    // BSND 布局 [B, S1, N2, candidate_topk_blocks], TND 布局 [T, N2, candidate_topk_blocks];
+    // -1 (默认, 关闭) 时输出 shape (0,)
     gert::Shape *candidateTopkIndexShape = context->GetOutputShape(CANDIDATE_TOPK_INDEX_OUTPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, candidateTopkIndexShape);
-    const int32_t *candidate_mode = attrs->GetAttrPointer<int32_t>(ATTR_CANDIDATE_MODE_INDEX);
-    uint32_t candidateMode = (candidate_mode != nullptr) ? static_cast<uint32_t>(*candidate_mode) : 3U;
-    if (candidateMode == CANDIDATE_MODE_SOURCE) {
-        OP_CHECK_IF(inputLayoutQueryPtrStr != "BSND",
+    const int64_t *candidate_topk_blocks = attrs->GetAttrPointer<int64_t>(ATTR_CANDIDATE_TOPK_BLOCKS_INDEX);
+    int64_t candBlocks = (candidate_topk_blocks != nullptr) ? *candidate_topk_blocks : -1;
+    if (candBlocks != -1) {
+        // A12: candidate 输出对 TND 同样成立 (kernel 按行前缀和写 candidateTopkIndexOut, TND 下行为 T 索引),
+        // 与 tiling 的 layout_q=BSND/TND 校验保持一致
+        OP_CHECK_IF(inputLayoutQueryPtrStr != "BSND" && inputLayoutQueryPtrStr != "TND",
                     OP_LOGE("QuantLightningIndexerV2",
-                            "candidate_mode=1 only supports layout_q=BSND, but got %s.",
+                            "candidate_topk_blocks != -1 only supports layout_q=BSND/TND, but got %s.",
                             inputLayoutQueryPtrStr.c_str()),
                     return GRAPH_FAILED);
-        const int64_t *candidate_topk_blocks = attrs->GetAttrPointer<int64_t>(ATTR_CANDIDATE_TOPK_BLOCKS_INDEX);
-        int64_t candBlocks = (candidate_topk_blocks != nullptr) ? *candidate_topk_blocks : CANDIDATE_TOPK_BLOCKS_FIX;
         *candidateTopkIndexShape = *sparseIndicesShape;
         candidateTopkIndexShape->SetDim(sparseIndicesShape->GetDimNum() - 1, candBlocks);
     } else {
         candidateTopkIndexShape->SetDimNum(1);
         candidateTopkIndexShape->SetDim(0, 0);
     }
+
+    // candidate_block_length: 预留接口, 恒输出空 tensor
+    gert::Shape *candidateBlockLengthShape = context->GetOutputShape(CANDIDATE_BLOCK_LENGTH_OUTPUT_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, candidateBlockLengthShape);
+    candidateBlockLengthShape->SetDimNum(1);
+    candidateBlockLengthShape->SetDim(0, 0);
 
     OP_LOGD(context->GetNodeName(), "QuantLightningIndexerV2 InferShape end.");
     return ge::GRAPH_SUCCESS;
