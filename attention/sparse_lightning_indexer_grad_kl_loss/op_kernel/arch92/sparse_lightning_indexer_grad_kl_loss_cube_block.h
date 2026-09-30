@@ -84,7 +84,7 @@ public:
                                        BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &sYL1Buf,
                                        SLIGradKLLossRunInfo &runInfo, SLIGradKLLossConstInfo &constInfo,
                                        SLIGradKLLossKRunInfo &syRunInfo);
-    __aicore__ inline void ComputeMm3(BuffersPolicySingleBuffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm3Buf,
+    __aicore__ inline void ComputeMm3(BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm3Buf,
                                       Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &reluGradResL1Buf,
                                       SLIGradKLLossRunInfo &runInfo, SLIGradKLLossConstInfo &constInfo,
                                       SLIGradKLLossKRunInfo &pRunInfo);
@@ -342,7 +342,7 @@ __aicore__ inline void SligKlLossBlockCube<TEMPLATE_ARGS>::ComputeMmSy(
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SligKlLossBlockCube<TEMPLATE_ARGS>::ComputeMm3(
-    BuffersPolicySingleBuffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm3Buf,
+    BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm3Buf,
     Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &reluGradResL1Buf, SLIGradKLLossRunInfo &runInfo,
     SLIGradKLLossConstInfo &constInfo, SLIGradKLLossKRunInfo &pRunInfo)
 {

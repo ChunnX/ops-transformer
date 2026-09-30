@@ -15,24 +15,13 @@
 #include "kernel_operator.h"
 using namespace AscendC;
 
-
-#if defined(NPU_ARCH) && ((NPU_ARCH == 9201) || (NPU_ARCH == 9202))
+#if (__CCE_AICORE__ == 310) || (defined(__NPU_ARCH__) && ((__NPU_ARCH__ == 9201) || (__NPU_ARCH__ == 9202)))
 #include "arch92/sparse_lightning_indexer_grad_kl_loss_regbase_common.h"
 #include "arch92/sparse_lightning_indexer_grad_kl_loss_tiling_regbase.h"
 #include "arch92/sparse_lightning_indexer_grad_kl_loss_template_tiling_key_regbase.h"
 #include "arch92/sparse_lightning_indexer_grad_kl_loss_vector_block.h"
 #include "arch92/sparse_lightning_indexer_grad_kl_loss_cube_block.h"
 #include "arch92/sparse_lightning_indexer_grad_kl_loss_kernel_base.h"
-#elif __CCE_AICORE__ == 310
-#include "arch35/sparse_lightning_indexer_grad_kl_loss_regbase_common.h"
-#include "arch35/sparse_lightning_indexer_grad_kl_loss_tiling_regbase.h"
-#include "arch35/sparse_lightning_indexer_grad_kl_loss_template_tiling_key_regbase.h"
-#include "arch35/sparse_lightning_indexer_grad_kl_loss_vector_block.h"
-#include "arch35/sparse_lightning_indexer_grad_kl_loss_cube_block.h"
-#include "arch35/sparse_lightning_indexer_grad_kl_loss_kernel_base.h"
-#endif
-
-#if (defined(NPU_ARCH) && ((NPU_ARCH == 9201) || (NPU_ARCH == 9202))) || (__CCE_AICORE__ == 310)
 using namespace SligKlLoss;
 #define SLI_OP_IMPL(templateClass, tilingdataClass, ...) \
     do { \
@@ -50,6 +39,7 @@ using namespace SligKlLoss;
                 tiling_data, &tPipe); \
         op.Process(); \
     } while (0)
+
 #else
 #include "arch22/sparse_lightning_indexer_grad_kl_loss_template_tiling_key.h"
 #include "arch22/sparse_lightning_indexer_grad_kl_loss_base.h"
@@ -66,8 +56,8 @@ using namespace SligKlLoss;
     } while (0)
 #endif
 
-#if (defined(NPU_ARCH) && ((NPU_ARCH == 9201) || (NPU_ARCH == 9202))) || (__CCE_AICORE__ == 310)
-template<bool HasRope, int TopKRange, int LayoutT_QT, int LayoutT_KT, int SparseMode, bool Deterministic, bool HasSink>
+#if (__CCE_AICORE__ == 310) || (defined(__NPU_ARCH__) && ((__NPU_ARCH__ == 9201) || (__NPU_ARCH__ == 9202)))
+template <bool HasRope, int TopKRange, int LayoutT_QT, int LayoutT_KT, int SparseMode, bool Deterministic, bool HasSink>
 __global__ __aicore__ void sparse_lightning_indexer_grad_kl_loss(
     __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *queryIndex, __gm__ uint8_t *keyIndex,
     __gm__ uint8_t *weight, __gm__ uint8_t *sparseIndices, __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxMum,
@@ -75,7 +65,7 @@ __global__ __aicore__ void sparse_lightning_indexer_grad_kl_loss(
     __gm__ uint8_t *actualSeqLengthsKey, __gm__ uint8_t *sinks, __gm__ uint8_t *dQueryIndex, __gm__ uint8_t *dKeyIndex,
     __gm__ uint8_t *dWeight, __gm__ uint8_t *loss, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
 {
-#if defined(NPU_ARCH) && ((NPU_ARCH == 9201) || (NPU_ARCH == 9202))
+#if defined(__NPU_ARCH__) && ((__NPU_ARCH__ == 9201) || (__NPU_ARCH__ == 9202))
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
 #else
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
@@ -98,7 +88,7 @@ __global__ __aicore__ void sparse_lightning_indexer_grad_kl_loss(
     }
 }
 #else
-template<bool HasRope, int TopKRange, int LayoutT_QT, int LayoutT_KT, int SparseMode, bool Deterministic>
+template <bool HasRope, int TopKRange, int LayoutT_QT, int LayoutT_KT, int SparseMode, bool Deterministic>
 __global__ __aicore__ void sparse_lightning_indexer_grad_kl_loss(
     __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *queryIndex, __gm__ uint8_t *keyIndex,
     __gm__ uint8_t *weight, __gm__ uint8_t *sparseIndices, __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxMum,

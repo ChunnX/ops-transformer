@@ -20,11 +20,11 @@
 #include <graph/utils/type_utils.h>
 #include "register/op_def_registry.h"
 #include "platform/platform_info.h"
+#include "tiling_base/tiling_templates_registry.h"
 #include "../op_kernel/arch92/sparse_lightning_indexer_grad_kl_loss_template_tiling_key_regbase.h"
 #include "../op_kernel/arch92/sparse_lightning_indexer_grad_kl_loss_tiling_regbase.h"
 #include "sparse_lightning_indexer_grad_kl_loss_tiling_common.h"
 
-#include "tiling_base/tiling_templates_registry.h"
 
 using std::map;
 using std::string;

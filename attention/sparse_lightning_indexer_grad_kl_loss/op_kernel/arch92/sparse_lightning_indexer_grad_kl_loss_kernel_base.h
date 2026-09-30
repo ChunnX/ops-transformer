@@ -92,7 +92,7 @@ public:
     BufferManager<BufferType::L1> l1BufferManager;
 
     BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm1Buffers;
-    BuffersPolicySingleBuffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm3Buffer;
+    BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm3Buffer;
     BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> sYL1Buf;
     BuffersPolicySingleBuffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> reluGradResL1Buf;
 
@@ -708,7 +708,7 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
     __gm__ uint8_t *workspace)
 {
     aicNum = GetBlockNum();
-    int64_t reduceSumOffset = constInfo.kSize * sizeof(float);
+    int64_t reduceSumOffset = 2 * constInfo.kSize * sizeof(float);
     int64_t reluOffset = constInfo.gSizeQueryIndex * constInfo.kSize * sizeof(float);
     int64_t gatherSYOffset = constInfo.kSize * constInfo.dSizeQueryIndex * sizeof(INPUT_T);
     constexpr int64_t psinkSyncSize = HAS_SINK ? static_cast<int64_t>(2 * sizeof(float)) : 0;
@@ -723,7 +723,7 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
     gatherSYRes.SetGlobalBuffer((__gm__ INPUT_T *)(workspace + offset + coreTotalOffset));
     offset += gatherSYOffset;
     if constexpr (HAS_SINK) {
-        psinkSyncGm.SetGlobalBuffer((__gm__ T *)(workspace + offset + coreTotalOffset), 1);
+        psinkSyncGm.SetGlobalBuffer((__gm__ T *)(workspace + offset + coreTotalOffset), 2);
     }
     scatterAddResGm.SetGlobalBuffer((__gm__ T *)(workspace + totalOffset));
     if constexpr (LAYOUT_Q == SLILayout::TND) {

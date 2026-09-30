@@ -11,8 +11,6 @@
 #include "aclnn_sparse_lightning_indexer_grad_kl_loss.h"
 #include "aclnnInner_sparse_lightning_indexer_grad_kl_loss.h"
 
-using namespace op;
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -34,6 +32,8 @@ namespace {
 #include "opdev/common_types.h"
 #include "opdev/data_type_utils.h"
 #include "opdev/format_utils.h"
+
+using namespace op;
 
 extern aclnnStatus aclnnInnerSparseLightningIndexerGradKLLossGetWorkspaceSize(
     const aclTensor *query, const aclTensor *key, const aclTensor *queryIndex, const aclTensor *keyIndex,

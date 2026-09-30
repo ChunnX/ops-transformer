@@ -35,7 +35,7 @@ public:
                                       const optiling::SparseLightningIndexerGradKLLossRegBaseTilingData *tiling);
     __aicore__ inline void InitGlobalBuffer(GM_ADDR key, GM_ADDR keyIndex, GM_ADDR weight, GM_ADDR sparseIndices,
                                             GM_ADDR softmaxMax, GM_ADDR softmaxSum, GM_ADDR keyRope, GM_ADDR dKeyIndex,
-                                            GM_ADDR dWeight, GM_ADDR loss,
+                                            GM_ADDR dWeight, GM_ADDR loss, GM_ADDR sinks, GM_ADDR psinkSync,
                                             GlobalTensor<INPUT_T> &gatherSYRes, GlobalTensor<T> &relu,
                                             GlobalTensor<T> &reduceSumRes, GlobalTensor<T> &scatterAddRes,
                                             GlobalTensor<T> &scatterAddResPong, GlobalTensor<T> &bmm3ResGm,
@@ -246,7 +246,7 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::InitBuffers(TPipe *pip
     auto dwUb = this->dwQue.template AllocTensor<T>();
     auto zeroRowUb = this->zeroRowQue.template AllocTensor<INPUT_T>();
     Duplicate(lossSumUb, 0.0f, 8);
-    Duplicate(dwUb, 0.0f, constInfo.dSizeQueryIndex);
+    Duplicate(dwUb, 0.0f, constInfo.gSizeQueryIndex);
     Duplicate(zeroRowUb, static_cast<INPUT_T>(0), SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_2K / sizeof(INPUT_T));
     this->lossSumQue.template FreeTensor(lossSumUb);
     this->dwQue.template FreeTensor(dwUb);
@@ -494,7 +494,7 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::MergeKv(
             mergeMte3Idx = 1 - mergeMte3Idx;
             break;
         }
-        if (s2GmOffsetArray + constInfo.sparseBlockSize >= s2GmLimit) {
+        if (s2GmOffsetArray + constInfo.sparseBlockSize < s2GmLimit) {
             GetRealS2Idx(s2GmOffsetArray + constInfo.sparseBlockSize, s2IdxArray1, runInfo, kRunInfo);
         } else {
             s2IdxArray1 = -1;
@@ -724,8 +724,8 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::ProcessVector6(
     dataCopyParams.srcStride = (constInfo.kSize - VEC_P_BASESIZE) * sizeof(T);
     dataCopyParams.dstStride = 0;
     DataCopyPadExtParams<T> padParams;
-    DataCopyPad(reluUb, reluGm[runInfo.s2CurSize], dataCopyParams, padParams);
-
+    DataCopyPad(reluUb, reluGm[runInfo.s2CurSize],
+                dataCopyParams, padParams);
     this->reluQue.template EnQue(reluUb);
     this->reluQue.template DeQue<T>();
     if (kRunInfo.isAlign64) {
@@ -741,7 +741,7 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::ProcessVector6(
         this->reluGradQue.template EnQue(reluGradUb);
         this->reluGradQue.template DeQue<INPUT_T>();
         LocalTensor<INPUT_T> mm3AL1Tensor = outputBuf.GetTensor<INPUT_T>();
-        uint32_t gRealSizeAlignTo16 = AlignTo(constInfo.gSizeQueryIndex, static_cast<uint32_t>(BLOCK_SINGLE_LEN));
+        uint32_t gRealSizeAlignTo16 = (constInfo.gSizeQueryIndex + 15) / 16 * 16;
         uint16_t dstGap = static_cast<uint16_t>(gRealSizeAlignTo16 - runInfo.nIndexSize);
         DataCopy(mm3AL1Tensor, reluGradUb,
                  {static_cast<uint16_t>(constInfo.pKBaseSize / BLOCK_SINGLE_LEN),
@@ -906,7 +906,7 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::ProcessVector7Deter(
         int64_t vCoreKOffset;
 
         perCoreKSize = CeilDiv(runInfo.kRealSize, coreNum);
-
+        // perCoreSize = AlignTo(perCoreSize, 4);
         int32_t usedCoreNum = CeilDiv(runInfo.kRealSize, perCoreKSize);
         if (constInfo.aicIdx >= usedCoreNum) {
             if (idx % MODE_NUM_2 == 0) {
@@ -933,9 +933,9 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::ProcessVector7Deter(
         }
 
         int64_t mm3GmBaseOffset = idx * constInfo.kSize * constInfo.dSizeQueryIndex * MODE_NUM_2;
-        GlobalTensor<T> srcGm = mm3DeterResGm[mm3GmBaseOffset + (runInfo.taskIdMod2 * constInfo.kSize + coreKOffset) *
+        GlobalTensor<T> srcGm = mm3DeterResGm[mm3GmBaseOffset + (runInfo.taskIdMod2 * constInfo.kSize + vCoreKOffset) *
                                                                     constInfo.dSizeQueryIndex];
-        DeterScatterAdd(vRealKSize, srcGm, tmpBuf, coreKOffset, runInfo, idx, scatterAddGm[idx % MODE_NUM_2]);
+        DeterScatterAdd(vRealKSize, srcGm, tmpBuf, vCoreKOffset, runInfo, idx, scatterAddGm[idx % MODE_NUM_2]);
         if (idx % MODE_NUM_2 == 1 || bS1Index == bS1IndexEnd) {
             CrossCoreSetFlag<0, PIPE_MTE3>(SYNC_C3_TO_V7_DETER_SA_FLAG);
         }
