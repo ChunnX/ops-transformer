@@ -424,7 +424,7 @@ static aclnnStatus CheckAndHandleCommMode(const char *group, const char *commMod
             commModeEnum = Mc2Comm::COMM_MODE_AICPU;
         } else if (strncmp(commModeStr, "ccu", maxLength) == 0) {
             if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_9201) {
-                // A6(ascend910_96)无CCU引擎，v2的commMode为显式入参，直接拒绝
+                // A6(ascend960dt)无CCU引擎，v2的commMode为显式入参，直接拒绝
                 OP_LOGE(ACLNN_ERR_PARAM_INVALID, "A6 only support commMode 'ai_cpu', but got %s.", commModeStr);
                 return ACLNN_ERR_PARAM_INVALID;
             }
