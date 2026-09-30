@@ -136,25 +136,20 @@ __aicore__ inline void CenterVRowsVF(__ubuf__ T *rows, __ubuf__ float *mean, uin
 __simd_callee__ __attribute__((always_inline)) inline void BroadcastGroupMaxima(__ubuf__ float *maxima, uint32_t group) {
     if (group <= 1) return;
     AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
-    auto fullMask = AscendC::MicroAPI::CreateMask<float, AscendC::MicroAPI::MaskPattern::ALL>();
-    AscendC::MicroAPI::RegTensor<float> curPeak, neighbor;
-    AscendC::MicroAPI::LoadAlign(curPeak, maxima);
-
-    for (uint32_t span = 1; span < group; span <<= 1) {
-        AscendC::MicroAPI::StoreAlign(maxima, curPeak, fullMask);
-        AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
-        AscendC::MicroAPI::LoadAlign(neighbor, maxima + span);
-        AscendC::MicroAPI::Max(curPeak, curPeak, neighbor, fullMask);
-    }
-    AscendC::MicroAPI::StoreAlign(maxima, curPeak, fullMask);
-    AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
-
-    auto grpMask = AscendC::MicroAPI::UpdateMask<float>(group);
+    AscendC::SetFlag<AscendC::HardEvent::V_S>(0);
+    AscendC::WaitFlag<AscendC::HardEvent::V_S>(0);
     for (uint32_t offset = 0; offset < 64; offset += group) {
-        AscendC::MicroAPI::RegTensor<float> leadVal;
-        AscendC::MicroAPI::LoadAlign<float, AscendC::MicroAPI::LoadDist::DIST_BRC_B32>(leadVal, maxima + offset);
-        AscendC::MicroAPI::StoreAlign(maxima + offset, leadVal, grpMask);
+        float lead = maxima[offset];
+        for (uint32_t i = 1; i < group; ++i) {
+            float v = maxima[offset + i];
+            if (v > lead) lead = v;
+        }
+        for (uint32_t i = 0; i < group; ++i) {
+            maxima[offset + i] = lead;
+        }
     }
+    AscendC::SetFlag<AscendC::HardEvent::S_V>(0);
+    AscendC::WaitFlag<AscendC::HardEvent::S_V>(0);
     AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
 }
 
@@ -222,8 +217,8 @@ __simd_vf__ inline void QuantRowsImpl(__ubuf__ float *x, [[maybe_unused]] __ubuf
             AscendC::MicroAPI::RegTensor<float> peak0, peak1;
             AscendC::MicroAPI::Max(peak0, v0_lo, v0_hi, full);
             AscendC::MicroAPI::Max(peak1, v1_lo, v1_hi, full);
-            AscendC::MicroAPI::ReduceDataBlock<AscendC::MicroAPI::ReduceType::MAX>(peak0, peak0, full);
-            AscendC::MicroAPI::ReduceDataBlock<AscendC::MicroAPI::ReduceType::MAX>(peak1, peak1, full);
+            AscendC::MicroAPI::ReduceMax(peak0, peak0, full);
+            AscendC::MicroAPI::ReduceMax(peak1, peak1, full);
 
             AscendC::MicroAPI::StoreUnAlign<float, AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE>(
                 dstScale, peak0, packState, 1);
@@ -243,8 +238,8 @@ __simd_vf__ inline void QuantRowsImpl(__ubuf__ float *x, [[maybe_unused]] __ubuf
             }
             AscendC::MicroAPI::Abs(v0, v0, full);
             AscendC::MicroAPI::Abs(v1, v1, full);
-            AscendC::MicroAPI::ReduceDataBlock<AscendC::MicroAPI::ReduceType::MAX>(v0, v0, full);
-            AscendC::MicroAPI::ReduceDataBlock<AscendC::MicroAPI::ReduceType::MAX>(v1, v1, full);
+            AscendC::MicroAPI::ReduceMax(v0, v0, full);
+            AscendC::MicroAPI::ReduceMax(v1, v1, full);
             AscendC::MicroAPI::StoreUnAlign<float, AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE>(
                 dstScale, v0, packState, 1);
             AscendC::MicroAPI::StoreUnAlign<float, AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE>(

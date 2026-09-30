@@ -51,7 +51,7 @@ __simd_callee__ __attribute__((always_inline)) inline void StoreNZPlanePair(
     AscendC::MicroAPI::MaskReg &maskUpper) {
     using namespace AscendC::MicroAPI;
     const uint32_t primaryOffset = planeIdx * STRIDE + rowIdx * PLANE_ELEMS;
-    const uint32_t secondaryOffset = (planeIdx + 1U) * STRIDE + rowIdx * PLANE_ELEMS - PLANE_ELEMS;
+    const uint32_t secondaryOffset = (planeIdx + 1U) * STRIDE + rowIdx * PLANE_ELEMS;
 
     StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(outPtr + primaryOffset, regTensor, maskLower);
     StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(outPtr + secondaryOffset, regTensor, maskUpper);

@@ -622,10 +622,10 @@ __simd_vf__ inline void AccumulateFp32VF(__ubuf__ float *accum, __ubuf__ float *
             vapi::LoadAlign(y1, partial + row * DP + 64);
 
             vapi::LoadAlign<float, vapi::LoadDist::DIST_BRC_B32>(a0, alpha + row);
-            vapi::MulDstAdd(y0, a0, x0, f);
-            vapi::MulDstAdd(y1, a0, x1, f);
-            vapi::StoreAlign(accum + row * DP, y0, f);
-            vapi::StoreAlign(accum + row * DP + 64, y1, f);
+            vapi::MulDstAdd(x0, a0, y0, f);
+            vapi::MulDstAdd(x1, a0, y1, f);
+            vapi::StoreAlign(accum + row * DP, x0, f);
+            vapi::StoreAlign(accum + row * DP + 64, x1, f);
 
             vapi::LoadAlign(x0, accum + (row + 1) * DP);
             vapi::LoadAlign(x1, accum + (row + 1) * DP + 64);
@@ -633,10 +633,10 @@ __simd_vf__ inline void AccumulateFp32VF(__ubuf__ float *accum, __ubuf__ float *
             vapi::LoadAlign(y1, partial + (row + 1) * DP + 64);
 
             vapi::LoadAlign<float, vapi::LoadDist::DIST_BRC_B32>(a1, alpha + row + 1);
-            vapi::MulDstAdd(y0, a1, x0, f);
-            vapi::MulDstAdd(y1, a1, x1, f);
-            vapi::StoreAlign(accum + (row + 1) * DP, y0, f);
-            vapi::StoreAlign(accum + (row + 1) * DP + 64, y1, f);
+            vapi::MulDstAdd(x0, a1, y0, f);
+            vapi::MulDstAdd(x1, a1, y1, f);
+            vapi::StoreAlign(accum + (row + 1) * DP, x0, f);
+            vapi::StoreAlign(accum + (row + 1) * DP + 64, x1, f);
         }
     } else {
         for (uint16_t row = 0; row < 64; row += 4) {
@@ -654,18 +654,18 @@ __simd_vf__ inline void AccumulateFp32VF(__ubuf__ float *accum, __ubuf__ float *
             vapi::LoadAlign(y3, partial + (row + 3) * DP);
 
             vapi::LoadAlign<float, vapi::LoadDist::DIST_BRC_B32>(a0, alpha + row + 0);
-            vapi::MulDstAdd(y0, a0, x0, f);
+            vapi::MulDstAdd(x0, a0, y0, f);
             vapi::LoadAlign<float, vapi::LoadDist::DIST_BRC_B32>(a1, alpha + row + 1);
-            vapi::MulDstAdd(y1, a1, x1, f);
+            vapi::MulDstAdd(x1, a1, y1, f);
             vapi::LoadAlign<float, vapi::LoadDist::DIST_BRC_B32>(a2, alpha + row + 2);
-            vapi::MulDstAdd(y2, a2, x2, f);
+            vapi::MulDstAdd(x2, a2, y2, f);
             vapi::LoadAlign<float, vapi::LoadDist::DIST_BRC_B32>(a3, alpha + row + 3);
-            vapi::MulDstAdd(y3, a3, x3, f);
+            vapi::MulDstAdd(x3, a3, y3, f);
 
-            vapi::StoreAlign(accum + (row + 0) * DP, y0, f);
-            vapi::StoreAlign(accum + (row + 1) * DP, y1, f);
-            vapi::StoreAlign(accum + (row + 2) * DP, y2, f);
-            vapi::StoreAlign(accum + (row + 3) * DP, y3, f);
+            vapi::StoreAlign(accum + (row + 0) * DP, x0, f);
+            vapi::StoreAlign(accum + (row + 1) * DP, x1, f);
+            vapi::StoreAlign(accum + (row + 2) * DP, x2, f);
+            vapi::StoreAlign(accum + (row + 3) * DP, x3, f);
         }
     }
 }
