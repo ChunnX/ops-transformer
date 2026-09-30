@@ -56,7 +56,8 @@ inline aclnnStatus CheckRequiredTensorList(const aclTensorList* tensorList, cons
 inline aclnnStatus CheckRequiredInputs(const char* apiName, const aclTensor* x, const aclTensorList* weight,
                                        const aclTensorList* weightScale, const aclTensor* xScale,
                                        const aclTensor* groupList, const aclTensor* output,
-                                       const aclTensor* outputScale, size_t expectedWeightSize = 0)
+                                       const aclTensor* outputScale, size_t expectedWeightSize = 0,
+                                       bool requireOutputScale = true)
 {
     auto status = CheckRequiredPointer(x, apiName, "x");
     if (status != ACLNN_SUCCESS) {
@@ -73,13 +74,15 @@ inline aclnnStatus CheckRequiredInputs(const char* apiName, const aclTensor* x, 
     const struct {
         const void* pointer;
         const char* name;
-    } requiredInputs[] = {
-        {xScale, "xScale"}, {groupList, "groupList"}, {output, "output"}, {outputScale, "outputScale"}};
+    } requiredInputs[] = {{xScale, "xScale"}, {groupList, "groupList"}, {output, "output"}};
     for (const auto& input : requiredInputs) {
         status = CheckRequiredPointer(input.pointer, apiName, input.name);
         if (status != ACLNN_SUCCESS) {
             return status;
         }
+    }
+    if (requireOutputScale) {
+        return CheckRequiredPointer(outputScale, apiName, "outputScale");
     }
     return ACLNN_SUCCESS;
 }

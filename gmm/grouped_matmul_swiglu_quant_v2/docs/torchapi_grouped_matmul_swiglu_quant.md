@@ -25,7 +25,7 @@
 
 - **接口功能**：
 
-  `cann_ops_transformer.grouped_matmul_swiglu_quant`融合GroupedMatmul、dequant、SwiGLU和quant。当前仅支持Ascend 950PR/Ascend 950DT上的单Tensor、MXFP8、weight FRACTAL_NZ场景，且`swiglu_mode`必须显式设置为2。原V2场景请使用`torch_npu.npu_grouped_matmul_swiglu_quant_v2`。
+  `cann_ops_transformer.grouped_matmul_swiglu_quant`融合GroupedMatmul、dequant、SwiGLU和可选输出量化。当前仅支持Ascend 950PR/Ascend 950DT上的单Tensor、weight FRACTAL_NZ场景：MXFP8 E4M3FN/E4M3FN输出MXFP8，或MXFP4 A4W4 E2M1/E2M1直接输出BF16。`swiglu_mode`必须显式设置为2。原V2场景请使用`torch_npu.npu_grouped_matmul_swiglu_quant_v2`。
 
 - **计算公式**：
 
@@ -43,7 +43,7 @@
 
   $$S_i=x_{glu}\cdot sigmoid(gluAlpha\cdot x_{glu})\cdot(x_{linear}+gluBias)$$
 
-  最后将$S_i$按最近偶数舍入转为BF16，沿输出N轴每32个元素构成一组并执行MXFP8动态量化，输出`y`和`y_scale`；每64个元素存储两个E8M0 scale。设组内BF16值为$V_j$，最大绝对值为$a=\max_j|V_j|$。输出类型固定为`torch.float8_e4m3fn`，其最大有限值为448。对处于正常可表示范围的非零有限$a$，`scale_alg`决定共享scale的计算方式：
+  MXFP8 E4M3FN输入场景最后将$S_i$按最近偶数舍入转为BF16，沿输出N轴每32个元素构成一组并执行MXFP8动态量化，输出`y`和`y_scale`；每64个元素存储两个E8M0 scale。MXFP4 A4W4输入场景跳过该量化步骤，直接输出BF16 `y`，第二个返回Tensor为未定义Tensor。设MXFP8场景组内BF16值为$V_j$，最大绝对值为$a=\max_j|V_j|$。输出类型固定为`torch.float8_e4m3fn`，其最大有限值为448。对处于正常可表示范围的非零有限$a$，`scale_alg`决定共享scale的计算方式：
 
   - `scale_alg=0`（OCP）：使用最大值的指数，不向上进位。
 
@@ -96,8 +96,8 @@ cann_ops_transformer.grouped_matmul_swiglu_quant(
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
 | --- | --- | --- | --- | --- | --- |
-| `x` | Tensor | 必选 | 左矩阵，仅支持非转置输入。 | `torch.float8_e4m3fn` | `(M, K)` |
-| `weight` | List[Tensor] | 必选 | 右矩阵TensorList，长度必须为1，且唯一Tensor必须为FRACTAL_NZ格式。非转置和转置的API入口view均为`(E, K, N)`；转置场景由`(E, N, K)` source执行末两轴转置得到。仅支持约束说明中的NZ/ZN stride和storage shape。 | `torch.float8_e4m3fn` | API入口view：`(E, K, N)` |
+| `x` | Tensor | 必选 | 左矩阵，仅支持非转置输入。MXFP4 A4W4使用`torch.int8`或`torch.uint8`承载打包数据，并通过`x_dtype=40`或296声明逻辑类型。 | `torch.float8_e4m3fn`；或打包的`torch.int8`/`torch.uint8` | `(M, K)` |
+| `weight` | List[Tensor] | 必选 | 右矩阵TensorList，长度必须为1，且唯一Tensor必须为FRACTAL_NZ格式。非转置和转置的API入口view均为`(E, K, N)`；转置场景由`(E, N, K)` source执行末两轴转置得到。仅支持约束说明中的NZ/ZN stride和storage shape。MXFP4 A4W4通过`weight_dtype=40`或296声明逻辑类型。 | `torch.float8_e4m3fn`；或打包的`torch.int8`/`torch.uint8` | API入口view：`(E, K, N)` |
 | `weight_scale` | List[Tensor] | 必选 | `weight`的MX量化scale，TensorList长度必须为1。Tensor使用`torch.int8`或`torch.uint8`承载，通过`weight_scale_dtype`按E8M0解析；转置属性需与`weight`一致。转置场景由`(E, N, ceil(K / 64), 2)` source交换中间两轴得到入口view。 | `torch.int8`或`torch.uint8`（逻辑类型为`torch_npu.float8_e8m0fnu`） | API入口view：`(E, ceil(K / 64), N, 2)` |
 | `x_scale` | Tensor | 必选 | `x`的MX量化scale。Tensor使用`torch.int8`或`torch.uint8`承载，通过`x_scale_dtype`按E8M0解析。 | `torch.int8`或`torch.uint8`（逻辑类型为`torch_npu.float8_e8m0fnu`） | `(M, ceil(K / 64), 2)` |
 | `group_list` | Tensor | 必选 | 分组信息，长度为expert数E，其语义由`group_list_type`决定。 | `torch.int64` | `(E,)` |
@@ -107,11 +107,11 @@ cann_ops_transformer.grouped_matmul_swiglu_quant(
 | `dequant_mode` | int | 可选 | 反量化模式，默认值为2，当前仅支持2，表示MX反量化。 | int | - |
 | `dequant_dtype` | torch.dtype/int | 可选 | GroupedMatmul中间结果类型，默认值为`6`（表示`torch.float32`）；也支持显式传入`torch.float32`或`0`。 | `6` | - |
 | `quant_mode` | int | 可选 | 输出量化模式，默认值为2，当前仅支持2，表示MX量化。 | int | - |
-| `quant_dtype` | torch.dtype/int | 可选 | 输出`y`的数据类型，默认值为`torch.float8_e4m3fn`，当前仅支持`torch.float8_e4m3fn`。 | `torch.float8_e4m3fn` | - |
+| `quant_dtype` | torch.dtype/int | 可选 | 输出`y`的数据类型。默认值为`None`，MXFP8 E4M3场景自动使用`torch.float8_e4m3fn`，A4W4场景自动使用`torch.bfloat16`。显式传入时必须与对应场景一致。 | `torch.float8_e4m3fn`、`torch.bfloat16` | - |
 | `group_list_type` | int | 可选 | `group_list`的解释方式，默认值为0。0表示cumsum，1表示count。 | int | - |
 | `tuning_config` | List[int] | 可选 | 调优参数，默认值为`None`。当前场景不支持，仅支持`None`或空List。 | int | - |
-| `x_dtype` | torch.dtype/int | 可选 | `x`的逻辑数据类型，默认值为`None`。MXFP8场景无需传入；显式传入时仅支持`torch.float8_e4m3fn`。 | `torch.float8_e4m3fn` | - |
-| `weight_dtype` | torch.dtype/int | 可选 | `weight`的逻辑数据类型，默认值为`None`。MXFP8场景无需传入；显式传入时仅支持`torch.float8_e4m3fn`。 | `torch.float8_e4m3fn` | - |
+| `x_dtype` | torch.dtype/int | 可选 | `x`的逻辑数据类型，默认值为`None`。MXFP8场景无需传入；A4W4场景必须传入40（FLOAT4_E2M1）或其ACL编码296。 | `torch.float8_e4m3fn`、`40`、`296` | - |
+| `weight_dtype` | torch.dtype/int | 可选 | `weight`的逻辑数据类型，默认值为`None`。MXFP8场景无需传入；A4W4场景必须传入40（FLOAT4_E2M1）或其ACL编码296。 | `torch.float8_e4m3fn`、`40`、`296` | - |
 | `weight_scale_dtype` | torch.dtype/int | 可选 | `weight_scale`的逻辑数据类型，默认值为`torch_npu.float8_e8m0fnu`，当前仅支持该类型。 | `torch_npu.float8_e8m0fnu` | - |
 | `x_scale_dtype` | torch.dtype/int | 可选 | `x_scale`的逻辑数据类型，默认值为`torch_npu.float8_e8m0fnu`，当前仅支持该类型。 | `torch_npu.float8_e8m0fnu` | - |
 | `swiglu_mode` | int | 可选 | SwiGLU计算模式，默认值为`None`。当前Torch Extension要求显式传入2：沿最后一维前后分半，前半为激活分支，后半为线性分支。 | int | - |
@@ -126,22 +126,22 @@ cann_ops_transformer.grouped_matmul_swiglu_quant(
 
 | 返回值名 | 返回值类型 | 必选/可选 | 描述 | 数据类型 | 维度(shape) |
 | --- | --- | --- | --- | --- | --- |
-| `y` | Tensor | 必选 | SwiGLU计算后的MXFP8量化结果。 | `torch.float8_e4m3fn` | `(M, N / 2)` |
-| `y_scale` | Tensor | 必选 | `y`对应的MX量化scale。 | `torch_npu.float8_e8m0fnu` | `(M, ceil((N / 2) / 64), 2)` |
+| `y` | Tensor | 必选 | SwiGLU结果；MXFP8场景量化输出，A4W4场景直接BF16输出。 | `torch.float8_e4m3fn`、`torch.bfloat16` | `(M, N / 2)` |
+| `y_scale` | Tensor | 可选 | MXFP8场景为`y`对应的MX量化scale；A4W4场景返回未定义Tensor。 | `torch_npu.float8_e8m0fnu` | `(M, ceil((N / 2) / 64), 2)` |
 
 ## 约束说明
 
 - 适用场景：支持训练和推理场景。
 - 调用方式：支持单算子模式调用。
-- 仅支持MXFP8 weight FRACTAL_NZ场景，`x`和`weight`仅支持`torch.float8_e4m3fn`；`weight_scale`和`x_scale`使用`torch.int8`或`torch.uint8`承载`torch_npu.float8_e8m0fnu`数据。
+- 仅支持weight FRACTAL_NZ场景：MXFP8 E4M3FN/E4M3FN输入，或MXFP4 A4W4 E2M1/E2M1输入。MXFP4数据使用`torch.int8`或`torch.uint8`承载打包结果，且必须通过`x_dtype`和`weight_dtype`传入40（或ACL编码296）声明逻辑类型；`weight_scale`和`x_scale`使用`torch.int8`或`torch.uint8`承载`torch_npu.float8_e8m0fnu`数据。
 - `weight`和`weight_scale`的List长度必须均为1；唯一Tensor的第一维包含全部E个expert，不要将各expert拆成多个Tensor。
-- `E`取值范围为[1, 1024]。`M`和`K`必须大于0。`N`必须大于0且为64的整数倍。
+- `E`取值范围为[1, 1024]。`M`和`K`必须大于0。MXFP8的`N`必须为64的整数倍；A4W4的`N`必须为128的整数倍，`K`必须为偶数且不能为2。
 - 非转置和转置`weight`的API入口view shape均为`(E, K, N)`。非转置使用连续stride `(K * N, N, 1)`，storage shape为`(E, ceil(N / 32), ceil(K / 16), 16, 32)`；转置场景先构造`(E, N, K)` source并转换为FRACTAL_NZ，再交换末两轴形成stride `(K * N, 1, K)`的入口view，storage shape为`(E, ceil(K / 32), ceil(N / 16), 16, 32)`。
 - 非转置和转置`weight_scale`的API入口view shape均为`(E, ceil(K / 64), N, 2)`。非转置source/storage与入口view相同，stride为`(ceil(K / 64) * N * 2, N * 2, 2, 1)`；转置场景先构造`(E, N, ceil(K / 64), 2)` source/storage，再交换中间两轴形成stride `(N * ceil(K / 64) * 2, 2, ceil(K / 64) * 2, 1)` 的入口view。
 - 转置场景中，`weight`和`weight_scale`的转置属性必须一致；即使`K=N`，也通过Tensor的view stride识别。`weight`不支持规定NZ/ZN布局之外的任意非连续view。
 - `group_list_type=0`时，`group_list`表示每个group在M轴上的累计结束位置，数值必须非负、单调不递减且不大于M；`group_list_type=1`时，`group_list`表示每个group的M轴长度，数值必须非负且总和不大于M。`group_list`未指定的输出区域不会被更新。
-- `dequant_mode=2`、`dequant_dtype=torch.float32`、`quant_mode=2`、`quant_dtype=torch.float8_e4m3fn`、`swiglu_mode=2`。
-- `quant_dtype`显式传入`None`时使用默认的`torch.float8_e4m3fn`输出类型；不支持`torch.int8`、`torch.float8_e5m2`及其对应的数值枚举，数值`1`也不作为FP8输出的别名。
+- `dequant_mode=2`、`dequant_dtype=torch.float32`、`quant_mode=2`、`swiglu_mode=2`。MXFP8使用`quant_dtype=torch.float8_e4m3fn`；A4W4使用`quant_dtype=torch.bfloat16`。
+- `quant_dtype`为`None`时根据输入自动选择输出类型：MXFP8使用`torch.float8_e4m3fn`，A4W4使用`torch.bfloat16`；不支持`torch.int8`、`torch.float8_e5m2`及其对应的数值枚举，数值`1`也不作为FP8输出的别名。
 - `weight_assist_matrix`、`bias`、`smooth_scale`和`tuning_config`当前不支持有效数据。
 - `round_mode`仅支持`"rint"`；底层ACLNN接口传入`nullptr`或空字符串时等效于`"rint"`。
 
