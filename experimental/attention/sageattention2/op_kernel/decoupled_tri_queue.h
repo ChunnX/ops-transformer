@@ -395,20 +395,6 @@ private:
 
         microkernel::OutAccumulator::FoldPartial(pPv, p);
 
-        // TODO(debug): temporary wide-path retire instrumentation — remove after
-        // the fp32+fp16 multi-step NaN is root-caused.
-        if (subBlock == 0U && retired < 8U && static_cast<uint32_t>(AscendC::GetBlockIdx()) < 2U) {
-            // Device printf has no float formatting: print int-truncated magnitudes
-            // plus NaN flags (NaN != NaN).
-            AscendC::printf("[rs] blk%u retired=%u ord=%u qF=%d qL=%d a0=%d a64=%d pv0=%d acc0=%d den0=%d nanA=%d nanPv=%d nanAcc=%d nanDen=%d\n",
-                static_cast<uint32_t>(AscendC::GetBlockIdx()), static_cast<uint32_t>(retired),
-                oldTile.tileOrdinal, static_cast<int>(oldTile.isQueryFirst), static_cast<int>(oldTile.isQueryLast),
-                static_cast<int>(pAlpha[0]), static_cast<int>(pAlpha[64]),
-                static_cast<int>(pPv[0]), static_cast<int>(pAccum[0]), static_cast<int>(pDen[0]),
-                static_cast<int>(pAlpha[0] != pAlpha[0]), static_cast<int>(pPv[0] != pPv[0]),
-                static_cast<int>(pAccum[0] != pAccum[0]), static_cast<int>(pDen[0] != pDen[0]));
-        }
-
         if (oldTile.isQueryLast) {
             memory::Sync<AscendC::HardEvent::V_MTE2>();
             if (p.smoothV) {
@@ -428,6 +414,17 @@ private:
                     pQo, pAccum, pPv, pAlpha, pDen, pScratch, pVmean);
             }
             AscendC::PipeBarrier<PIPE_V>();
+            // TODO(debug): stash NaN diagnosis values into output row 0 — remove
+            // after root-cause. [alphaRatio, alphaSum, pv0, acc0, den0, marker]
+            if (subBlock == 0U && oldTile.qOffsetStart == 0U) {
+                auto pQoH = reinterpret_cast<__ubuf__ half *>(pQo);
+                pQoH[0] = static_cast<half>(pAlpha[0]);
+                pQoH[1] = static_cast<half>(pAlpha[64]);
+                pQoH[2] = static_cast<half>(pPv[0]);
+                pQoH[3] = static_cast<half>(pAccum[0]);
+                pQoH[4] = static_cast<half>(pDen[0]);
+                pQoH[5] = static_cast<half>(1.0f);
+            }
             const uint32_t firstRow = oldTile.qOffsetStart + subBlock * sage::core::HALF;
             const uint32_t validRows = firstRow < p.sq ? (p.sq - firstRow < sage::core::HALF ? p.sq - firstRow : sage::core::HALF) : 0;
             if (validRows) {
@@ -507,6 +504,7 @@ private:
 
         microkernel::OutAccumulator::FoldPartial(pPv0, p);
         microkernel::OutAccumulator::FoldPartial(pPv1, p);
+
         const uint32_t dispatchTag = (firstInfo.isQueryFirst ? 2 : 0) | (secondInfo.isQueryLast ? 1 : 0);
         switch (dispatchTag) {
         case 3:
@@ -529,6 +527,17 @@ private:
 
         if (secondInfo.isQueryLast) {
             AscendC::PipeBarrier<PIPE_V>();
+            // TODO(debug): stash NaN diagnosis values into output row 0 — remove
+            // after root-cause. [a0Ratio, a0Sum, pv0, acc0, den0, marker]
+            if (subBlock == 0U && secondInfo.qOffsetStart == 0U && firstInfo.isQueryFirst) {
+                auto pQoH = reinterpret_cast<__ubuf__ half *>(pQo);
+                pQoH[0] = static_cast<half>(pA0[0]);
+                pQoH[1] = static_cast<half>(pA0[64]);
+                pQoH[2] = static_cast<half>(pPv0[0]);
+                pQoH[3] = static_cast<half>(pAccum[0]);
+                pQoH[4] = static_cast<half>(pDen[0]);
+                pQoH[5] = static_cast<half>(2.0f);
+            }
             const uint32_t firstRow = secondInfo.qOffsetStart + subBlock * sage::core::HALF;
             const uint32_t validRows = firstRow < p.sq ? (p.sq - firstRow < sage::core::HALF ? p.sq - firstRow : sage::core::HALF) : 0;
             if (validRows) {
