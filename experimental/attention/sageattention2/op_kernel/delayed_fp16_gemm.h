@@ -99,12 +99,19 @@ public:
     }
 
     template <uint32_t SubPartId>
-    __aicore__ static inline void ExecuteSubFixpipe(memory::FixedResource &res, uint32_t ubOffset, event_t syncEvt) {
+    __aicore__ static inline void ExecuteSubFixpipe(memory::FixedResource &res, uint32_t ubOffset, event_t syncEvt, bool notifyAiv = true) {
         constexpr uint32_t cOffset = SubPartId * (SUB_M * N_DIM * sizeof(Accumulator));
         auto ubDestination = res.ubBuf.template GetBufferByByte<half>(ubOffset);
         auto l0cSource = res.l0CBuf.template GetBufferByByte<Accumulator>(cOffset);
-        DispatchDequantFixpipe(
-            ubDestination, l0cSource, SUB_M, N_DIM, SubPartId != 0U, SUB_M, syncEvt, SubPartId);
+        if (notifyAiv) {
+            DispatchDequantFixpipe(
+                ubDestination, l0cSource, SUB_M, N_DIM, SubPartId != 0U, SUB_M, syncEvt, SubPartId);
+        } else {
+            AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(syncEvt);
+            DispatchDequantFixpipe(
+                ubDestination, l0cSource, SUB_M, N_DIM, SubPartId != 0U, SUB_M);
+            AscendC::SetFlag<AscendC::HardEvent::FIX_M>(syncEvt);
+        }
     }
 
     // ========================================================================
@@ -117,7 +124,7 @@ public:
     // fully hidden beneath the compute latency of SubPart 1 MMAD.
     // ========================================================================
     template <typename L0BType>
-    __aicore__ static inline void ExecutePipelinedMmadAndFixpipe(memory::FixedResource &res, const L0BType &l0TensorB, uint32_t ubOffset) {
+    __aicore__ static inline void ExecutePipelinedMmadAndFixpipe(memory::FixedResource &res, const L0BType &l0TensorB, uint32_t ubOffset, bool notifyAiv = true) {
         constexpr auto syncEvt0 = static_cast<event_t>(orchestration::EventHandshake::QK_EVENT);
         constexpr auto syncEvt1 = static_cast<event_t>(orchestration::EventHandshake::QK_SECOND_FIX_EVENT);
 
@@ -125,14 +132,14 @@ public:
         ExecuteSubMmad<0U>(res, l0TensorB, syncEvt0);
 
         // Stage 1: Dual-Issue Async Overlap — Fixpipe (SubPart 0 on PIPE_FIX) || MMAD (SubPart 1 on PIPE_M)
-        ExecuteSubFixpipe<0U>(res, ubOffset, syncEvt0);
+        ExecuteSubFixpipe<0U>(res, ubOffset, syncEvt0, notifyAiv);
         ExecuteSubMmad<1U>(res, l0TensorB, syncEvt1);
 
         // Stage 2: Fixpipe for SubPart 1 on PIPE_FIX upon MMAD 1 completion
-        ExecuteSubFixpipe<1U>(res, ubOffset, syncEvt1);
+        ExecuteSubFixpipe<1U>(res, ubOffset, syncEvt1, notifyAiv);
     }
 
-    __aicore__ static inline void Execute(memory::FixedResource &res, uint32_t ubOffset, bool loadA, uint32_t kParity) {
+    __aicore__ static inline void Execute(memory::FixedResource &res, uint32_t ubOffset, bool loadA, uint32_t kParity, bool notifyAiv = true) {
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(orchestration::EventHandshake::QK_EVENT);
         auto l1TensorB = tla::MakeTensor(res.l1Buf.template GetBufferByByte<Element>(BOffset + kParity * 65536U), tla::MakeLayout<Element, typename TileCopy::LayoutTagL1B>(K_DIM, N_DIM), Catlass::Arch::PositionL1{});
 
@@ -158,7 +165,7 @@ public:
         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(orchestration::EventHandshake::QK_EVENT);
         memory::Sync<AscendC::HardEvent::MTE1_M>();
 
-        ExecutePipelinedMmadAndFixpipe(res, l0TensorB, ubOffset);
+        ExecutePipelinedMmadAndFixpipe(res, l0TensorB, ubOffset, notifyAiv);
     }
 };
 
@@ -283,8 +290,8 @@ public:
 };
 
 template <uint32_t BOffset>
-__aicore__ inline __attribute__((always_inline)) void GemmQkSplit(memory::FixedResource &r, uint32_t ubOffset, bool loadA, uint32_t kParity) {
-    SplitQkGemmPipeline<BOffset>::Execute(r, ubOffset, loadA, kParity);
+__aicore__ inline __attribute__((always_inline)) void GemmQkSplit(memory::FixedResource &r, uint32_t ubOffset, bool loadA, uint32_t kParity, bool notifyAiv = true) {
+    SplitQkGemmPipeline<BOffset>::Execute(r, ubOffset, loadA, kParity, notifyAiv);
 }
 
 template <class T, class BLayout, bool LocalA = false, uint32_t BOffset = sage::core::WIDE_B_L1, bool Emit = true, bool Initialize = true, bool PreloadedB = false>

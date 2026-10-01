@@ -102,7 +102,7 @@ private:
         constexpr uint32_t DP = 128;
         if (hasQk) {
             const auto &curSlot = pendingQueue_[fragIdx & 3];
-            microkernel::GemmQkSplit<sage::core::WIDE_B_L1>(res_, (fragIdx & 3) * sage::core::HALF * sage::core::N * 2, curSlot.fragmentPart == 0, PHASE);
+            microkernel::GemmQkSplit<sage::core::WIDE_B_L1>(res_, (fragIdx & 3) * sage::core::HALF * sage::core::N * 2, curSlot.fragmentPart == 0, PHASE, PHASE != 0);
             if (curSlot.fragmentPart + 2 < count * 2) {
                 memory::PrefetchWideK<sage::core::WIDE_B_L1>(res_, k8 + (curSlot.keyBase + (curSlot.fragmentPart + 2) * sage::core::N) * DP, PHASE);
             }
@@ -317,7 +317,6 @@ private:
         auto p8 = scores.template ReinterpretCast<float8_e4m3_t>();
         auto alpha = res_.ubBuf.template GetBufferByByte<float>(memory::WideVectorLayout::ALPHA_UB + (group % 3) * 512);
 
-        EventHandshake::WaitFromCube<PIPE_V>(TokenSignal::QK_READY);
         EventHandshake::WaitFromCube<PIPE_V>(TokenSignal::QK_READY);
 
         auto ksu = res_.ubBuf.template GetBufferByByte<half>(memory::WideVectorLayout::KS_UB + (group & 1) * 1024);
