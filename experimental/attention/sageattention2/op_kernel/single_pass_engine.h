@@ -263,19 +263,6 @@ public:
             reinterpret_cast<__ubuf__ float *>(scratch.GetPhyAddr()),
             reinterpret_cast<__ubuf__ float *>(vmean_.GetPhyAddr()));
         AscendC::PipeBarrier<PIPE_V>();
-        // TODO(debug): standard-engine marker into output row 0 (col 0..7) —
-        // remove after root-cause. [0]=path 2 [1]=lane [2]=den0 [3]=acc0
-        // [4]=acc1 [5]=max0 [7]=DP
-        if (task.qstart == 0U && subBlock_ == 0U) {
-            auto pQoH = reinterpret_cast<__ubuf__ half *>(qo_.GetPhyAddr());
-            pQoH[0] = static_cast<half>(2.0f);
-            pQoH[1] = static_cast<half>(static_cast<float>(subBlock_));
-            pQoH[2] = static_cast<half>(reinterpret_cast<__ubuf__ float *>(denom_.GetPhyAddr())[0]);
-            pQoH[3] = static_cast<half>(reinterpret_cast<__ubuf__ float *>(accum_.GetPhyAddr())[0]);
-            pQoH[4] = static_cast<half>(reinterpret_cast<__ubuf__ float *>(accum_.GetPhyAddr())[1]);
-            pQoH[5] = static_cast<half>(reinterpret_cast<__ubuf__ half *>(maxima_.GetPhyAddr())[0]);
-            pQoH[7] = static_cast<half>(static_cast<float>(DP));
-        }
         const uint32_t first = task.qstart + subBlock_ * sage::core::HALF;
         const uint32_t validRows = first < p.sq ? (p.sq - first < sage::core::HALF ? p.sq - first : sage::core::HALF) : 0;
         if (p.d == p.dp) {
@@ -292,19 +279,7 @@ public:
         // the Python layer restores the smooth-K term. See online_reduction_softmax.h.
         if (p.returnLse) {
             auto lseScratch = res_.ubBuf.template GetBufferByByte<float>(memory::P_UB);
-
             microkernel::StoreTileLse(lg_, denom_, maxima_, lseScratch, first, validRows, task.b, task.h, p);
-            // TODO(debug): lg marker — remove after root-cause. Overwrites
-            // lse[row0][0..15] with [7.0, lane, ...] after the real store, then
-            // re-copies so a marker surviving in python's lse proves lg binding.
-            if (task.qstart == 0U && subBlock_ == 0U) {
-                auto pLseF = reinterpret_cast<__ubuf__ float *>(lseScratch.GetPhyAddr());
-                pLseF[0] = 7.0f;
-                pLseF[1] = static_cast<float>(subBlock_);
-                memory::Sync<AscendC::HardEvent::V_MTE3>();
-                AscendC::DataCopy(lg_, lseScratch, 128);
-                memory::Sync<AscendC::HardEvent::MTE3_V>();
-            }
         }
     }
 

@@ -414,20 +414,6 @@ private:
                     pQo, pAccum, pPv, pAlpha, pDen, pScratch, pVmean);
             }
             AscendC::PipeBarrier<PIPE_V>();
-            // TODO(debug): unconditional stash, last-retire-wins. Layout:
-            // [0]=path(1=Single) [1]=lane [2]=alphaRatio0 [3]=alphaSum0
-            // [4]=pv0 [5]=acc0 [6]=den0 [7]=tileOrdinal&1023
-            {
-                auto pQoH = reinterpret_cast<__ubuf__ half *>(pQo);
-                pQoH[0] = static_cast<half>(1.0f);
-                pQoH[1] = static_cast<half>(static_cast<float>(subBlock));
-                pQoH[2] = static_cast<half>(pAlpha[0]);
-                pQoH[3] = static_cast<half>(pAlpha[64]);
-                pQoH[4] = static_cast<half>(pPv[0]);
-                pQoH[5] = static_cast<half>(pAccum[0]);
-                pQoH[6] = static_cast<half>(pDen[0]);
-                pQoH[7] = static_cast<half>(static_cast<float>(oldTile.tileOrdinal & 1023U));
-            }
             const uint32_t firstRow = oldTile.qOffsetStart + subBlock * sage::core::HALF;
             const uint32_t validRows = firstRow < p.sq ? (p.sq - firstRow < sage::core::HALF ? p.sq - firstRow : sage::core::HALF) : 0;
             if (validRows) {
@@ -437,22 +423,6 @@ private:
                 auto lseScratch = res_.ubBuf.template GetBufferByByte<float>(memory::WideVectorLayout::P_UB);
                 auto maximaOld = res_.ubBuf.template GetBufferByByte<half>(memory::WideVectorLayout::MAX_UB + (oldTile.tileOrdinal & 1) * 256);
                 microkernel::StoreTileLse(lg, denom, maximaOld, lseScratch, firstRow, validRows, oldTile.batchIdx, oldTile.headIdx, p);
-                // TODO(debug): lg mirror of the og stash — if these values reach
-                // python's lse while the og stash above does not reach out, the
-                // WriteRow/og chain is the broken side.
-                if (oldTile.batchIdx == 0U && oldTile.headIdx == 0U && oldTile.qOffsetStart == 0U && oldTile.isQueryLast) {
-                    auto pLseF = reinterpret_cast<__ubuf__ float *>(lseScratch.GetPhyAddr());
-                    pLseF[0] = 7.0f;
-                    pLseF[1] = static_cast<float>(subBlock);
-                    pLseF[2] = pAlpha[0];
-                    pLseF[3] = pAlpha[64];
-                    pLseF[4] = pPv[0];
-                    pLseF[5] = pAccum[0];
-                    pLseF[6] = pDen[0];
-                    memory::Sync<AscendC::HardEvent::V_MTE3>();
-                    AscendC::DataCopy(lg, lseScratch, 128);
-                    memory::Sync<AscendC::HardEvent::MTE3_V>();
-                }
             }
         } else if (oldTile.isQueryFirst) {
             microkernel::OutAccumulator::InitializeWideFp32<128>(pAccum, pPv, pAlpha, pDen);
@@ -546,20 +516,6 @@ private:
 
         if (secondInfo.isQueryLast) {
             AscendC::PipeBarrier<PIPE_V>();
-            // TODO(debug): unconditional stash, last-retire-wins. Layout:
-            // [0]=path(3=Pair) [1]=lane [2]=alphaRatio0 [3]=alphaSum0
-            // [4]=pv0 [5]=acc0 [6]=den0 [7]=tileOrdinal&1023
-            {
-                auto pQoH = reinterpret_cast<__ubuf__ half *>(pQo);
-                pQoH[0] = static_cast<half>(3.0f);
-                pQoH[1] = static_cast<half>(static_cast<float>(subBlock));
-                pQoH[2] = static_cast<half>(pA0[0]);
-                pQoH[3] = static_cast<half>(pA0[64]);
-                pQoH[4] = static_cast<half>(pPv0[0]);
-                pQoH[5] = static_cast<half>(pAccum[0]);
-                pQoH[6] = static_cast<half>(pDen[0]);
-                pQoH[7] = static_cast<half>(static_cast<float>(secondInfo.tileOrdinal & 1023U));
-            }
             const uint32_t firstRow = secondInfo.qOffsetStart + subBlock * sage::core::HALF;
             const uint32_t validRows = firstRow < p.sq ? (p.sq - firstRow < sage::core::HALF ? p.sq - firstRow : sage::core::HALF) : 0;
             if (validRows) {
