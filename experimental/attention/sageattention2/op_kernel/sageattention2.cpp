@@ -11,8 +11,8 @@ __aicore__ inline constexpr bool IsPrecisionSupported() noexcept {
 }
 
 // Routes kernel parameters to the unified AttentionEngine with workspace resolution.
-// Template order mirrors the tiling-key declaration order (dtype, causal, dp128, wide).
-template <int DTypeCode, bool CausalAttention, bool Dp128, bool WidePipeline>
+// Template order mirrors the tiling-key declaration order (dtype, wide, dp128, causal).
+template <int DTypeCode, bool WidePipeline, bool Dp128, bool CausalAttention>
 __aicore__ inline void RouteAttentionEngine(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR out, GM_ADDR lse, GM_ADDR workspace, const SageAttention2TilingData &td) {
     static_assert(IsPrecisionSupported<DTypeCode>(), "Unsupported precision dtype for SageAttention2");
     GM_ADDR userWorkspace = AscendC::GetUserWorkspace(workspace);
@@ -27,11 +27,11 @@ __aicore__ inline void RouteAttentionEngine(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_
 
 } // namespace sage::entry
 
-template <int INPUT_DTYPE, bool CAUSAL, bool DP128, bool WIDE>
+template <int INPUT_DTYPE, bool WIDE, bool DP128, bool CAUSAL>
 __global__ __aicore__ void sage_attention2(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR out, GM_ADDR lse, GM_ADDR workspace, GM_ADDR tiling) {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     REGISTER_TILING_DEFAULT(SageAttention2TilingData);
     GET_TILING_DATA_WITH_STRUCT(SageAttention2TilingData, tilingData, tiling);
 
-    sage::entry::RouteAttentionEngine<INPUT_DTYPE, CAUSAL, DP128, WIDE>(q, k, v, out, lse, workspace, tilingData);
+    sage::entry::RouteAttentionEngine<INPUT_DTYPE, WIDE, DP128, CAUSAL>(q, k, v, out, lse, workspace, tilingData);
 }

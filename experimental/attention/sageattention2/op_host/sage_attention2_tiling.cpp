@@ -233,7 +233,7 @@ struct SageAttention2TilingPipeline {
         const bool isWideStreamMode = IsWideStreamMode(params.dp, params.sq, params.sk);
         const bool isDp128 = (params.dp == 128U);
         const bool isCausal = (params.causal != 0U);
-        const uint64_t operatorTilingKey = GET_TPL_TILING_KEY(uint32_t(inputDtype), isCausal, isDp128, isWideStreamMode);
+        const uint64_t operatorTilingKey = GET_TPL_TILING_KEY(uint32_t(inputDtype), isWideStreamMode, isDp128, isCausal);
         context->SetTilingKey(operatorTilingKey);
         context->SetScheduleMode(1U);
 
