@@ -705,9 +705,9 @@ def _check_correctness(our_fn: Callable, ref_fn: Callable, b: int, h: int, s_q: 
     out_ref = ref_fn(q, k, v, seq, seqkv).cpu()
 
     if PRINT_OUTPUTS:
-        logger.info("OURS: ", out_our.shape)
+        logger.info("OURS: %s", out_our.shape)
         logger.info(out_our)
-        logger.info("REF:  ", out_ref.shape)
+        logger.info("REF: %s", out_ref.shape)
         logger.info(out_ref)
 
     equal = torch.allclose(out_our, out_ref, rtol=0.01, atol=0.001)
