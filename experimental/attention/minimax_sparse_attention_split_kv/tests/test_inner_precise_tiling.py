@@ -161,10 +161,6 @@ class InnerPreciseTilingTest(unittest.TestCase):
         ok, reason = check_tiling(128, 128, 64, 1, 0)
         self.assertTrue(ok, reason)
 
-    def test_high_prec_group128_rejected_by_tmp_and_stats(self):
-        ok, reason = check_tiling(128, 128, 128, 1, 0)
-        self.assertFalse(ok)
-        self.assertEqual(reason, "stats")  # stats checked first (128 > 64)
 
     def test_high_prec_group128_rejected_by_tmp_and_stats(self):
         ok, reason = check_tiling(128, 128, 128, 1, 0)
