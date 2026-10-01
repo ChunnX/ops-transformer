@@ -335,7 +335,7 @@ __simd_callee__ __attribute__((always_inline)) inline void MaskScoresTail(vapi::
             vapi::Mul(c1_3, qh3, kh1, h);
 
             vapi::Mul(x0_0, x0_0, c0_0, h);
-            vapi::Mul(x0_1, x0_1, c0_0, h);
+            vapi::Mul(x0_1, x0_1, c0_1, h);
             vapi::Mul(x0_2, x0_2, c0_2, h);
             vapi::Mul(x0_3, x0_3, c0_3, h);
             vapi::Mul(x1_0, x1_0, c1_0, h);
@@ -527,16 +527,14 @@ __aicore__ inline void StoreTileLse(
     AscendC::LocalTensor<half> maxima, AscendC::LocalTensor<float> scratch,
     uint32_t first, uint32_t validRows, uint32_t b, uint32_t h, const SageParams &p)
 {
-    memory::Sync<AscendC::HardEvent::MTE3_S>();
-    memory::Sync<AscendC::HardEvent::V_S>();
     if (!validRows) {
         return;
     }
 
     AscendC::LocalTensor<float> lse = scratch;
     AscendC::LocalTensor<float> maxF = scratch[HALF];
-    AscendC::DataCopy(lse, denom, HALF);
-    memory::Sync<AscendC::HardEvent::MTE2_V>();
+    AscendC::Copy(lse, denom, HALF);
+    AscendC::PipeBarrier<PIPE_V>();
     AscendC::Ln(lse, lse, HALF);
     AscendC::PipeBarrier<PIPE_V>();
     AscendC::Cast(maxF, maxima, AscendC::RoundMode::CAST_NONE, HALF);
@@ -548,7 +546,7 @@ __aicore__ inline void StoreTileLse(
     AscendC::DataCopyExtParams cp{1, validRows * static_cast<uint32_t>(sizeof(float)), 0, 0, 0};
     const uint64_t target_idx = (static_cast<uint64_t>(b) * p.hq + h) * p.sq + first;
     AscendC::DataCopyPad(lg[target_idx], lse, cp);
-    memory::Sync<AscendC::HardEvent::MTE3_S>();
+    memory::Sync<AscendC::HardEvent::MTE3_V>();
 }
 
 // ============================================================================
@@ -775,7 +773,7 @@ __simd_vf__ inline void AccumulateFp32PairVF(__ubuf__ float *accum, __ubuf__ flo
 __simd_vf__ inline void RoundPartialFp16VF(__ubuf__ float *partial, uint32_t count) {
     vapi::LocalMemBar<vapi::MemType::VEC_STORE, vapi::MemType::VEC_LOAD>();
     auto f = vapi::CreateMask<float, vapi::MaskPattern::ALL>();
-    static constexpr vapi::CastTrait narrow{vapi::RegLayout::ZERO, vapi::SatMode::NO_SAT, vapi::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
+    static constexpr vapi::CastTrait narrow{vapi::RegLayout::ZERO, vapi::SatMode::SAT, vapi::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
     static constexpr vapi::CastTrait widen{vapi::RegLayout::ZERO, vapi::SatMode::UNKNOWN, vapi::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
     for (uint32_t i = 0; i < count; i += 128) {
         vapi::RegTensor<float> x0, x1;

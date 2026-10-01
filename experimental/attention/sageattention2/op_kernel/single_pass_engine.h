@@ -165,14 +165,6 @@ public:
     }
 
     __aicore__ inline void StepSoftmax(uint32_t step, const StandardTileTask &task, const sage::core::SageParams &p) {
-        // TODO(debug): softmax step marker into lse[0,0,1000+step*8] — remove after root-cause.
-        if (task.qb == 0U && task.h == 0U && task.qstart == 0U && step < 60U) {
-            auto dbg = res_.ubBuf.template GetBufferByByte<float>(memory::SUM_UB);
-            dbg.SetValue(0, static_cast<float>(1000 + step));
-            memory::Sync<AscendC::HardEvent::V_MTE3>();
-            AscendC::DataCopy(lg_[1000 + step * 8], dbg, 8);
-            memory::Sync<AscendC::HardEvent::MTE3_V>();
-        }
         const uint32_t parity = step % sage::core::PIPE_SLOTS;
         const uint32_t colOffset = step * sage::core::N;
         auto scores = res_.ubBuf.template GetBufferByByte<half>(memory::SCORE_UB + parity * sage::core::HALF * sage::core::N * 2);
@@ -222,45 +214,19 @@ public:
 
     __aicore__ inline void StepAccumulate(uint32_t step, uint32_t totalCount, const StandardTileTask &task, const sage::core::SageParams &p) {
         const uint32_t pvIndex = step - sage::core::LOOKAHEAD;
-        // TODO(debug): per-step state dump into lse[0,0,step*8] — remove after root-cause.
-        if (task.qb == 0U && task.h == 0U && task.qstart == 0U && step < 60U) {
-            auto dbg = res_.ubBuf.template GetBufferByByte<float>(memory::SUM_UB);
-            dbg.SetValue(0, static_cast<float>(step));
-            dbg.SetValue(1, static_cast<float>(pvIndex));
-            dbg.SetValue(2, static_cast<float>((pvIndex & 1) != 0));
-            dbg.SetValue(3, static_cast<float>(pvIndex + 1 == totalCount));
-            memory::Sync<AscendC::HardEvent::V_MTE3>();
-            AscendC::DataCopy(lg_[step * 8], dbg, 8);
-            memory::Sync<AscendC::HardEvent::MTE3_V>();
-        }
-        if (pvIndex & 1) {
-            EventHandshake::WaitFromCube<PIPE_V>(TokenSignal::PV_READY);
-            EventHandshake::WaitFromCube<PIPE_V>(TokenSignal::PV_READY);
-            auto pv0 = res_.ubBuf.template GetBufferByByte<float>(memory::PV_UB);
-            auto pv1 = res_.ubBuf.template GetBufferByByte<float>(memory::PV_UB + memory::PV_SLOT_BYTES);
-            microkernel::OutAccumulator::FoldPartial(reinterpret_cast<__ubuf__ float *>(pv0.GetPhyAddr()), p);
-            microkernel::OutAccumulator::FoldPartial(reinterpret_cast<__ubuf__ float *>(pv1.GetPhyAddr()), p);
-            auto alpha0 = res_.ubBuf.template GetBufferByByte<float>(memory::ALPHA_UB + ((pvIndex - 1) % sage::core::ALPHA_SLOTS) * 512);
-            auto alpha1 = res_.ubBuf.template GetBufferByByte<float>(memory::ALPHA_UB + (pvIndex % sage::core::ALPHA_SLOTS) * 512);
-            microkernel::OutAccumulator::AccumulateFp32Pair<DP>(
-                reinterpret_cast<__ubuf__ float *>(accum_.GetPhyAddr()),
-                reinterpret_cast<__ubuf__ float *>(pv0.GetPhyAddr()),
-                reinterpret_cast<__ubuf__ float *>(pv1.GetPhyAddr()),
-                reinterpret_cast<__ubuf__ float *>(alpha0.GetPhyAddr()),
-                reinterpret_cast<__ubuf__ float *>(alpha1.GetPhyAddr()));
-            EventHandshake::NotifyCube<PIPE_V>(TokenSignal::PV_RELEASE);
-            EventHandshake::NotifyCube<PIPE_V>(TokenSignal::PV_RELEASE);
-        } else if (pvIndex + 1 == totalCount) {
-            EventHandshake::WaitFromCube<PIPE_V>(TokenSignal::PV_READY);
-            auto pv0 = res_.ubBuf.template GetBufferByByte<float>(memory::PV_UB);
-            microkernel::OutAccumulator::FoldPartial(reinterpret_cast<__ubuf__ float *>(pv0.GetPhyAddr()), p);
-            auto alpha = res_.ubBuf.template GetBufferByByte<float>(memory::ALPHA_UB + (pvIndex % sage::core::ALPHA_SLOTS) * 512);
-            microkernel::OutAccumulator::AccumulateFp32<DP>(
-                reinterpret_cast<__ubuf__ float *>(accum_.GetPhyAddr()),
-                reinterpret_cast<__ubuf__ float *>(pv0.GetPhyAddr()),
-                reinterpret_cast<__ubuf__ float *>(alpha.GetPhyAddr()));
-            EventHandshake::NotifyCube<PIPE_V>(TokenSignal::PV_RELEASE);
-        }
+        // 严格一对一：每 tile 消费自己的 PV_READY 并释放自己的槽位；
+        // 不做奇偶配对合并（1-bit 标志两次 Set 会在 Wait 前合并成一次，
+        // 第二个 Wait 永远等不到 —— 即本函数原先的死锁）。
+        EventHandshake::WaitFromCube<PIPE_V>(TokenSignal::PV_READY);
+        const uint32_t slot = (pvIndex & 1U) * memory::PV_SLOT_BYTES;
+        auto pv = res_.ubBuf.template GetBufferByByte<float>(memory::PV_UB + slot);
+        auto alpha = res_.ubBuf.template GetBufferByByte<float>(memory::ALPHA_UB + (pvIndex % sage::core::ALPHA_SLOTS) * 512);
+        microkernel::OutAccumulator::FoldPartial(reinterpret_cast<__ubuf__ float *>(pv.GetPhyAddr()), p);
+        microkernel::OutAccumulator::AccumulateFp32<DP>(
+            reinterpret_cast<__ubuf__ float *>(accum_.GetPhyAddr()),
+            reinterpret_cast<__ubuf__ float *>(pv.GetPhyAddr()),
+            reinterpret_cast<__ubuf__ float *>(alpha.GetPhyAddr()));
+        EventHandshake::NotifyCube<PIPE_V>(TokenSignal::PV_RELEASE);
     }
 
     __aicore__ inline void EpilogueTile(const StandardTileTask &task, const sage::core::SageParams &p) {

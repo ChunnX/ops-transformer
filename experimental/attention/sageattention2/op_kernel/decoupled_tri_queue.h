@@ -80,15 +80,15 @@ private:
         AscendC::SetFlag<AscendC::HardEvent::FIX_M>(EventHandshake::PV_EVENT);
     }
 
-    template <uint32_t PHASE>
+    template <uint32_t PV_STAGE>
     __aicore__ inline void ExecutePvGemmStage(
         GM_ADDR v8, GM_ADDR scaleBase, uint32_t pvOffset, uint32_t parity,
         const WideFragmentSlot &slot, const sage::core::SageParams &p)
     {
-        constexpr bool INIT_ACCUM = (PHASE == 0);
-        constexpr bool IS_LAST = (PHASE != 0);
-        constexpr uint32_t PREV_PARITY = (1 - PHASE);
-        microkernel::Gemm<float8_e4m3_t, Catlass::layout::RowMajor, true, sage::core::WIDE_B_L1, INIT_ACCUM, IS_LAST, true>(
+        constexpr bool INIT_ACCUM = (PV_STAGE == 0);
+        constexpr bool IS_LAST = (PV_STAGE != 0);
+        constexpr uint32_t PREV_PARITY = (1 - PV_STAGE);
+        microkernel::Gemm<float8_e4m3_t, Catlass::layout::RowMajor, true, sage::core::WIDE_B_L1, IS_LAST, INIT_ACCUM, true>(
             res_, v8, nullptr, sage::core::N, 128, pvOffset, parity, true,
             scaleBase + (slot.keyBase + slot.fragmentPart * sage::core::N) / 32 * 128,
             &mxCache_, p.kp, slot.fragmentPart * sage::core::N, PREV_PARITY);
@@ -120,14 +120,17 @@ private:
             EventHandshake::WaitFromBothAiv<PIPE_MTE1>(TokenSignal::P_READY);
             const uint32_t parity = prevIdx & 3;
             const uint32_t pvOffset = memory::WideVectorLayout::PV_UB + (grp & 1) * memory::WideVectorLayout::PV_SLOT_BYTES;
-            if constexpr (PHASE == 0) {
+            const uint32_t pvStage = static_cast<uint32_t>(prevIdx & 1);
+            if (pvStage == 0) {
                 if (grp >= 2) {
                     EventHandshake::WaitFromBothAiv<PIPE_FIX>(TokenSignal::PV_RELEASE);
                 }
                 ExecutePvGemmStage<0>(v8, vsmx, pvOffset, parity, oldSlot, p);
-                EventHandshake::NotifyBothAiv<PIPE_FIX>(TokenSignal::PV_READY);
             } else {
                 ExecutePvGemmStage<1>(v8, vsmx, pvOffset, parity, oldSlot, p);
+                // PV_READY after the full-group emit: notifying at the second half (pvStage == 1)
+                // ensures the complete 512-token group is in UB before AIV consumes it.
+                EventHandshake::NotifyBothAiv<PIPE_FIX>(TokenSignal::PV_READY);
             }
         }
     }
