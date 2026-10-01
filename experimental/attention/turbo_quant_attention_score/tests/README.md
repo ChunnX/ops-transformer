@@ -99,3 +99,19 @@ python test_norm_regression.py --output norm.json
 内核连续搬运包含目标 head 的 norm/gamma 区间，并在 UB 中选取对应元素；更大 head 数使用原有逐行搬运。
 测试使用可区分的 norm/gamma 值、乱序页表、batch=3 的不同有效长度及全掩码请求，
 检查 16/17 路径切换、32-key tile 尾部和物理页边界，输出预填 NaN，沿用独立参考及既有误差阈值。
+
+## Decode packed QJL 与预取回归
+
+```bash
+python test_packed_qjl.py --output packed_qjl.json
+```
+
+覆盖 2/3/4-bit、BF16/FP16 norm、GQA 1/3/4/5/8，以及长度
+31/32/33/127/128/129/4095/4096/4097，共 270 个配置，每组重复调用两次。
+QJL cache 使用遍历字节值的模式，query residual 同时包含正负值和第 63/64/127 维的非零值。
+输出预填 NaN，验证 mask 两半、最高位、页尾、长预取链、所有 head 输出与重复调用稳定性。
+
+单 token decode 的 QJL 路径直接用 packed bit 选择正负 query residual，保持原来的 FP32 归约顺序。
+压缩 idx 输入使用独立 2 KiB UB 缓冲区预取下一 tile，并在消费前等待 MTE2 到 Vector 的事件。
+decode UB 总量为 187 KiB，prefill 保留原来的 185 KiB 路径；GM workspace 仍为零。
+3-bit 独立整数解包试验没有纳入此实现，2/3/4-bit 的主量化解包仍使用已验证的公共路径。

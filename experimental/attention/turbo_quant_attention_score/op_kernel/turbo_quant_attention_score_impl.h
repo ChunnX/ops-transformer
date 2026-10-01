@@ -24,7 +24,7 @@ constexpr uint32_t UB_FLOATS =
 static_assert(UB_FLOATS * sizeof(float) <= UB_BYTES, "UB layout exceeds its allocation");
 constexpr float COEFFICIENT = 0.009791516697777346F;
 
-template <typename NormType>
+template <typename NormType, bool PackedSign = false>
 class Kernel {
 public:
     __aicore__ inline void Init(GM_ADDR q, GM_ADDR qr, GM_ADDR idx, GM_ADDR sign, GM_ADDR norm, GM_ADDR gamma,
@@ -50,6 +50,8 @@ public:
         lens_.SetGlobalBuffer((__gm__ DTYPE_SEQ_LENS *)lens);
         out_.SetGlobalBuffer((__gm__ float *)out);
         pipe_.InitBuffer(storage_, UB_BYTES);
+        if constexpr (PackedSign)
+            pipe_.InitBuffer(prefetchStorage_, ROWS * 64);
         auto mem = storage_.Get<float>();
         primary_ = mem[0];
         signs_ = mem[ELEMS];
@@ -104,6 +106,15 @@ public:
         queryResidualCache_ = mem[offset];
         offset += QUERY_CACHE_ELEMS;
         InitDecode();
+        if constexpr (PackedSign) {
+            for (uint32_t r = 0; r < ROWS; ++r) {
+                offsetSign_.SetValue(2 * r, r * 32);
+                offsetSign_.SetValue(2 * r + 1, r * 32 + 4);
+                offsetSign_.SetValue(2 * ROWS + 2 * r, r * 32 + 8);
+                offsetSign_.SetValue(2 * ROWS + 2 * r + 1, r * 32 + 12);
+            }
+            PipeBarrier<PIPE_ALL>();
+        }
     }
 
     __aicore__ inline void Process()
@@ -141,6 +152,8 @@ public:
             const uint32_t groups = qHeads_ / kvHeads_;
             const bool batchedOutput = groups <= 4 && maxLen_ <= 0x3fffffffU;
             const uint32_t validRows = valid ? (length - start < count ? length - start : count) : 0;
+            if constexpr (PackedSign)
+                PrefetchNext(task + GetBlockNum(), tasks, tiles);
             for (uint32_t token = first; token < end; ++token) {
                 const uint64_t firstQuery = static_cast<uint64_t>(token) * qHeads_ + head * groups;
                 if (valid && batchedOutput) {
@@ -206,9 +219,11 @@ private:
             const uint32_t next = byte + 1 < bits_ * 16 ? byte + 1 : byte;
             offset0_.SetValue(d, byte * 4);
             offset1_.SetValue(d, next * 4);
-            offsetSign_.SetValue(d, (d / 8) * 4);
+            if constexpr (!PackedSign)
+                offsetSign_.SetValue(d, (d / 8) * 4);
             scale_.SetValue(d, inversePowers[d * bits_ % 8]);
-            scaleSign_.SetValue(d, inversePowers[d % 8]);
+            if constexpr (!PackedSign)
+                scaleSign_.SetValue(d, inversePowers[d % 8]);
         }
         PipeBarrier<PIPE_ALL>();
         for (uint32_t r = 1; r < ROWS; ++r) {
@@ -216,10 +231,37 @@ private:
                  static_cast<int32_t>(r * stride * 4), DIM);
             Adds(offset1_[r * DIM].ReinterpretCast<int32_t>(), offset1_.ReinterpretCast<int32_t>(),
                  static_cast<int32_t>(r * stride * 4), DIM);
-            Adds(offsetSign_[r * DIM].ReinterpretCast<int32_t>(), offsetSign_.ReinterpretCast<int32_t>(),
-                 static_cast<int32_t>(r * 32 * 4), DIM);
+            if constexpr (!PackedSign) {
+                Adds(offsetSign_[r * DIM].ReinterpretCast<int32_t>(), offsetSign_.ReinterpretCast<int32_t>(),
+                     static_cast<int32_t>(r * 32 * 4), DIM);
+            }
         }
         PipeBarrier<PIPE_ALL>();
+    }
+
+    __aicore__ inline void PrefetchNext(uint64_t next, uint64_t tasks, uint64_t tiles)
+    {
+        prefetched_ = false;
+        if (next >= tasks)
+            return;
+        const uint32_t start = (next % tiles) * ROWS;
+        const uint32_t head = (next / tiles) % kvHeads_;
+        const uint32_t group = next / (tiles * kvHeads_);
+        const uint32_t batch = batch_ == 1 ? 0 : group;
+        const int64_t raw = lens_.GetValue(batch);
+        if (raw <= 0 || raw > maxLen_ || start >= raw)
+            return;
+        const int32_t physical = table_.GetValue(static_cast<uint64_t>(batch) * width_ + start / DIM);
+        if (physical < 0 || static_cast<uint32_t>(physical) >= blocks_)
+            return;
+        const uint32_t rows = raw - start < ROWS ? static_cast<uint32_t>(raw - start) : ROWS;
+        const uint64_t row = (static_cast<uint64_t>(physical) * DIM + start % DIM) * kvHeads_ + head;
+        const uint32_t rowBytes = bits_ * 16;
+        DataCopyExtParams copy{static_cast<uint16_t>(rows), rowBytes, (kvHeads_ - 1) * rowBytes, 0, 0};
+        DataCopyPad(prefetchStorage_.Get<uint8_t>(), idx_[row * rowBytes], copy,
+                    DataCopyPadExtParams<uint8_t>{false, 0, 0, 0});
+        SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
+        prefetched_ = true;
     }
 
     // Floor nonnegative unpack values, then mask their low integer bits.
@@ -235,10 +277,20 @@ private:
         PipeBarrier<PIPE_V>();
     }
 
-    __aicore__ inline void LoadBytes(const GlobalTensor<uint8_t> &src, uint32_t rowBytes, uint32_t rows)
+    __aicore__ inline void LoadBytes(const GlobalTensor<uint8_t> &src, uint32_t rowBytes, uint32_t rows,
+                                     bool prefetched = false)
     {
         DataCopyExtParams copy{static_cast<uint16_t>(rows), rowBytes, (kvHeads_ - 1) * rowBytes, 0, 0};
-        DataCopyPad(bytes_, src, copy, DataCopyPadExtParams<uint8_t>{false, 0, 0, 0});
+        if constexpr (PackedSign) {
+            if (prefetched) {
+                WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
+                DataCopy(bytes_, prefetchStorage_.Get<uint8_t>(), rows * ((rowBytes + 31) / 32 * 32));
+            } else {
+                DataCopyPad(bytes_, src, copy, DataCopyPadExtParams<uint8_t>{false, 0, 0, 0});
+            }
+        } else {
+            DataCopyPad(bytes_, src, copy, DataCopyPadExtParams<uint8_t>{false, 0, 0, 0});
+        }
         PipeBarrier<PIPE_ALL>();
         const uint32_t rowStride = (rowBytes + 31) / 32 * 32;
         const uint32_t count = ROWS * rowStride;
@@ -256,7 +308,7 @@ private:
 
     __aicore__ inline void Decode(uint64_t row, uint32_t rows)
     {
-        LoadBytes(idx_[row * bits_ * 16], bits_ * 16, rows);
+        LoadBytes(idx_[row * bits_ * 16], bits_ * 16, rows, prefetched_);
         Gather(a_, bytesFloat_, offset0_, 0, ELEMS);
         Gather(b_, bytesFloat_, offset1_, 0, ELEMS);
         PipeBarrier<PIPE_V>();
@@ -276,16 +328,30 @@ private:
         PipeBarrier<PIPE_V>();
         Gather(primary_, centroids_, c_.ReinterpretCast<uint32_t>(), 0, ELEMS);
         PipeBarrier<PIPE_ALL>();
-        LoadBytes(sign_[row * 16], 16, rows);
-        Gather(a_, bytesFloat_, offsetSign_, 0, ELEMS);
-        PipeBarrier<PIPE_V>();
-        Mul(a_, a_, scaleSign_, 64, ROWS, {1, 1, 1, 16, 16, 0});
-        Mul(a_[64], a_[64], scaleSign_[64], 64, ROWS, {1, 1, 1, 16, 16, 0});
-        PipeBarrier<PIPE_V>();
-        Modulo(2);
-        Muls(signs_, a_, 2.0F, ELEMS);
-        PipeBarrier<PIPE_V>();
-        Adds(signs_, signs_, -1.0F, ELEMS);
+        if constexpr (PackedSign) {
+            DataCopyExtParams signCopy{static_cast<uint16_t>(rows), 16, (kvHeads_ - 1) * 16, 0, 0};
+            DataCopyPad(bytes_, sign_[row * 16], signCopy, DataCopyPadExtParams<uint8_t>{false, 0, 0, 0});
+            PipeBarrier<PIPE_ALL>();
+            if (rows < ROWS) {
+                for (uint32_t i = rows * 32; i < ROWS * 32; ++i)
+                    bytes_.SetValue(i, 0);
+                PipeBarrier<PIPE_ALL>();
+            }
+            Gather(bytesFloat_, bytes_.ReinterpretCast<float>(), offsetSign_, 0, ROWS * 2);
+            Gather(bytesFloat_[ROWS * 2], bytes_.ReinterpretCast<float>(), offsetSign_[ROWS * 2], 0, ROWS * 2);
+            PipeBarrier<PIPE_V>();
+        } else {
+            LoadBytes(sign_[row * 16], 16, rows);
+            Gather(a_, bytesFloat_, offsetSign_, 0, ELEMS);
+            PipeBarrier<PIPE_V>();
+            Mul(a_, a_, scaleSign_, 64, ROWS, {1, 1, 1, 16, 16, 0});
+            Mul(a_[64], a_[64], scaleSign_[64], 64, ROWS, {1, 1, 1, 16, 16, 0});
+            PipeBarrier<PIPE_V>();
+            Modulo(2);
+            Muls(signs_, a_, 2.0F, ELEMS);
+            PipeBarrier<PIPE_V>();
+            Adds(signs_, signs_, -1.0F, ELEMS);
+        }
         // A contiguous span replaces ROWS tiny strided transfers when it fits.
         // Stop at the last selected head: do not read past the physical cache.
         const uint32_t normStride = kvHeads_ <= 16 ? kvHeads_ : 16;
@@ -322,6 +388,24 @@ private:
         PipeBarrier<PIPE_V>();
     }
 
+    __aicore__ inline void DotSign(const LocalTensor<float> &query, const LocalTensor<float> &negative,
+                                   const LocalTensor<float> &result)
+    {
+        if constexpr (!PackedSign) {
+            Dot(signs_, query, result);
+            return;
+        }
+        Select(a_, bytesFloat_.ReinterpretCast<uint8_t>(), query, negative, SELMODE::VSEL_TENSOR_TENSOR_MODE, 64, ROWS,
+               {1, 1, 1, 16, 0, 0});
+        Select(a_[64], bytesFloat_[ROWS * 2].ReinterpretCast<uint8_t>(), query[64], negative[64],
+               SELMODE::VSEL_TENSOR_TENSOR_MODE, 64, ROWS, {1, 1, 1, 16, 0, 0});
+        PipeBarrier<PIPE_V>();
+        Add(a_, a_, a_[64], 64, ROWS, {1, 1, 1, 16, 16, 16});
+        PipeBarrier<PIPE_V>();
+        WholeReduceSum(result, a_, 64, ROWS, 1, 1, 16);
+        PipeBarrier<PIPE_V>();
+    }
+
     __aicore__ inline void LoadQueries(uint32_t first, uint32_t tokens, uint32_t head)
     {
         const uint32_t groups = qHeads_ / kvHeads_;
@@ -337,13 +421,17 @@ private:
         Cast(queryCache_, raw, RoundMode::CAST_NONE, tokens * groups * DIM);
         Cast(queryResidualCache_, residualRaw, RoundMode::CAST_NONE, tokens * groups * DIM);
         PipeBarrier<PIPE_V>();
+        if constexpr (PackedSign) {
+            Muls(signs_, queryResidualCache_, -1.0F, tokens * groups * DIM);
+            PipeBarrier<PIPE_V>();
+        }
     }
 
     __aicore__ inline void ComputeGroup(uint32_t slot, uint32_t groups)
     {
         for (uint32_t g = 0; g < groups; ++g) {
             Dot(primary_, queryCache_[(slot + g) * DIM], reducedMain_[g * ROWS]);
-            Dot(signs_, queryResidualCache_[(slot + g) * DIM], reducedSign_[g * ROWS]);
+            DotSign(queryResidualCache_[(slot + g) * DIM], signs_[(slot + g) * DIM], reducedSign_[g * ROWS]);
         }
         Mul(output_, reducedMain_, normCompact_, ROWS, groups, {1, 1, 1, ROWS / 8, ROWS / 8, 0});
         Mul(b_, reducedSign_, gammaCompact_, ROWS, groups, {1, 1, 1, ROWS / 8, ROWS / 8, 0});
@@ -358,7 +446,7 @@ private:
     {
         if (qHeads_ / kvHeads_ <= 4) {
             Dot(primary_, queryCache_[slot * DIM], reducedMain_);
-            Dot(signs_, queryResidualCache_[slot * DIM], reducedSign_);
+            DotSign(queryResidualCache_[slot * DIM], signs_[slot * DIM], reducedSign_);
         } else {
             DataCopy(queryRaw_, q_[row * DIM], DIM);
             DataCopy(queryResidualRaw_, qr_[row * DIM], DIM);
@@ -366,7 +454,11 @@ private:
             Cast(query_, queryRaw_, RoundMode::CAST_NONE, 2 * DIM);
             PipeBarrier<PIPE_V>();
             Dot(primary_, query_, reducedMain_);
-            Dot(signs_, queryResidual_, reducedSign_);
+            if constexpr (PackedSign) {
+                Muls(signs_, queryResidual_, -1.0F, DIM);
+                PipeBarrier<PIPE_V>();
+            }
+            DotSign(queryResidual_, signs_, reducedSign_);
         }
         Mul(result, reducedMain_, normCompact_, ROWS);
         Mul(b_, reducedSign_, gammaCompact_, ROWS);
@@ -379,6 +471,8 @@ private:
 
     TPipe pipe_;
     TBuf<TPosition::VECCALC> storage_;
+    TBuf<TPosition::VECCALC> prefetchStorage_;
+    bool prefetched_ = false;
     GlobalTensor<bfloat16_t> q_, qr_;
     GlobalTensor<uint8_t> idx_, sign_;
     GlobalTensor<NormType> norm_, gamma_;

@@ -71,8 +71,9 @@ prefill 每组最多八个 query，共享 tile 解码结果；同组所有 GQA h
 5. query 转 FP32 后进行向量乘法和树形归约，分别乘 norm/gamma 并叠加修正项。
 6. 写出 32 个或尾部不足 32 个分数。越过当前请求长度的元素写负无穷。
 
-每核固定分配 185 KiB UB，包含索引、128 维重复使用的二进制缩放向量、解码块、query 缓存和归约临时空间。
+prefill 每核使用 185 KiB UB；单 token decode 额外分配 2 KiB 压缩输入预取缓冲区，共 187 KiB。基础空间包含索引、128 维重复使用的二进制缩放向量、解码块、query 缓存和归约临时空间。
 GQA 比例不超过 4 时一次搬入最多八个 query token 的全部同组 head，向量化归约合并及范数缩放；
+单 token decode 使用 packed QJL bit 直接选择正负 query residual，保持原 FP32 归约顺序；下一 tile 的压缩 idx 在独立缓冲区预取，消费前等待 MTE2 到 Vector 的事件。
 连续 key tile 复用同一 query 缓存；同组最多四个 head 的范数缩放和输出搬运批量执行。
 Gather 的偏移单位仍为字节，保留 FP32 元素的四倍偏移及 byte 搬入后的 32 字节行对齐。
 更大 GQA 比例走逐 head 搬运路径，避免越过 query 缓存容量。
