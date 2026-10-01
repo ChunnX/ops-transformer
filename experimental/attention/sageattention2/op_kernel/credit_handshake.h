@@ -70,7 +70,7 @@ struct EventHandshake final {
         // observe both AIV readiness reports.
         uint32_t subBlock = 0U;
         if ASCEND_IS_AIV {
-            subBlock = static_cast<uint32_t>(AscendC::GetBlockIdx()) & 1U;
+            subBlock = static_cast<uint32_t>(AscendC::GetSubBlockIdx());
         }
         const uint32_t ticket = static_cast<uint32_t>(sig) + subBlock * kAivFlagOffset;
         AscendC::CrossCoreWaitFlag<4, PIPE>(ticket);
@@ -80,7 +80,7 @@ struct EventHandshake final {
     __aicore__ static inline void NotifyCube(TokenSignal sig) noexcept {
         uint32_t subBlock = 0U;
         if ASCEND_IS_AIV {
-            subBlock = static_cast<uint32_t>(AscendC::GetBlockIdx()) & 1U;
+            subBlock = static_cast<uint32_t>(AscendC::GetSubBlockIdx());
         }
         const uint32_t ticket = static_cast<uint32_t>(sig) + subBlock * kAivFlagOffset;
         AscendC::CrossCoreSetFlag<4, PIPE>(ticket);

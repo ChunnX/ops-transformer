@@ -198,6 +198,18 @@ public:
                 pScores, pMax, pDen, pAlpha, pOut8, pQs, pKs, pScratch, qOffset, p.sq, colOffset, p.sk);
         }
 
+        // TODO(debug): dump post-scale scores tile (rows 0-63, cols 0-127) into out rows
+        // [first, first+64) of head 0 qb 0 step 0 — remove after root-cause.
+        if constexpr (std::is_same_v<T, half>) {
+            if (task.h == 0U && task.qb == 0U && step == 0U && subBlock_ == 0U) {
+                memory::Sync<AscendC::HardEvent::V_MTE3>();
+                const uint64_t ogBase = (uint64_t(task.b) * p.hq) * p.sq * p.d + (uint64_t)qOffset * p.d;
+                for (uint32_t r = 0; r < sage::core::HALF; ++r) {
+                    AscendC::DataCopy(og_[ogBase + (uint64_t)r * p.d], scores[r * sage::core::N], p.d);
+                }
+            }
+        }
+
         AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(scaleEv);
         if (step + 2 < task.count) {
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(scaleEv);
@@ -241,21 +253,6 @@ public:
         }
         memory::Sync<AscendC::HardEvent::MTE2_V>();
         auto scratch = res_.ubBuf.template GetBufferByByte<float>(memory::SUM_UB);
-        // TODO(debug): epilogue state dump into out row0 cols 0-7 — remove after root-cause.
-        if (task.qb == 0U && task.h == 0U && task.qstart == 0U && subBlock_ == 0U) {
-            auto qoF = qo_.ReinterpretCast<float>();
-            qoF.SetValue(0, denom_.GetPhyAddr() != nullptr ? 1.0f : 0.0f);
-            auto pDenF = reinterpret_cast<__ubuf__ float *>(denom_.GetPhyAddr());
-            auto pAccF = reinterpret_cast<__ubuf__ float *>(accum_.GetPhyAddr());
-            auto pMaxH = reinterpret_cast<__ubuf__ half *>(maxima_.GetPhyAddr());
-            qo_.SetValue(1, static_cast<T>(pDenF[0]));
-            qo_.SetValue(2, static_cast<T>(pAccF[0]));
-            qo_.SetValue(3, static_cast<T>(pAccF[1]));
-            qo_.SetValue(4, static_cast<T>(pDenF[1]));
-            qo_.SetValue(5, static_cast<T>(static_cast<float>(pMaxH[0])));
-            qo_.SetValue(6, static_cast<T>(static_cast<float>(task.count)));
-            qo_.SetValue(7, static_cast<T>(static_cast<float>(subBlock_)));
-        }
         microkernel::OutAccumulator::NormalizeCast<T, DP>(
             reinterpret_cast<__ubuf__ T *>(qo_.GetPhyAddr()),
             reinterpret_cast<__ubuf__ float *>(accum_.GetPhyAddr()),
@@ -263,14 +260,40 @@ public:
             reinterpret_cast<__ubuf__ float *>(scratch.GetPhyAddr()),
             reinterpret_cast<__ubuf__ float *>(vmean_.GetPhyAddr()));
         AscendC::PipeBarrier<PIPE_V>();
+        if constexpr (std::is_same_v<T, half>) {
+            qo_.SetValue(0, half(static_cast<float>(AscendC::GetBlockIdx())));
+            qo_.SetValue(1, half(static_cast<float>(AscendC::GetSubBlockIdx())));
+            qo_.SetValue(2, half(static_cast<float>(task.b)));
+            qo_.SetValue(3, half(static_cast<float>(task.h)));
+            qo_.SetValue(4, half(static_cast<float>(task.qstart)));
+            qo_.SetValue(5, half(static_cast<float>(task.count)));
+            qo_.SetValue(6, half(static_cast<float>(subBlock_)));
+            qo_.SetValue(7, half(99.0f));
+            // diag cols 8-15: softmax running state at epilogue (den fp32→half, max half, accum fp32→half)
+            const auto pDenD = reinterpret_cast<__ubuf__ float *>(denom_.GetPhyAddr());
+            const auto pAccD = reinterpret_cast<__ubuf__ float *>(accum_.GetPhyAddr());
+            const auto pMaxD = reinterpret_cast<__ubuf__ half *>(maxima_.GetPhyAddr());
+            qo_.SetValue(8, static_cast<half>(pDenD[0]));
+            qo_.SetValue(9, static_cast<half>(pDenD[1]));
+            qo_.SetValue(10, static_cast<half>(static_cast<float>(pMaxD[0])));
+            qo_.SetValue(11, static_cast<half>(static_cast<float>(pMaxD[1])));
+            qo_.SetValue(12, static_cast<half>(pAccD[0]));
+            qo_.SetValue(13, static_cast<half>(pAccD[1]));
+            qo_.SetValue(14, half(0.0f));
+            qo_.SetValue(15, half(0.0f));
+        }
+        AscendC::PipeBarrier<PIPE_V>();
         const uint32_t first = task.qstart + subBlock_ * sage::core::HALF;
         const uint32_t validRows = first < p.sq ? (p.sq - first < sage::core::HALF ? p.sq - first : sage::core::HALF) : 0;
+        // TODO(debug): head 0 qb 0 skips epilogue write-out so the StepSoftmax scores dump
+        // written into out rows [first, first+64) survives — remove after root-cause.
+        const bool diagSkipWrite = (task.h == 0U && task.qb == 0U);
         if (p.d == p.dp) {
-            if (validRows) {
+            if (validRows && !diagSkipWrite) {
                 memory::WriteRow(og_, ((uint64_t(task.b) * p.hq + task.h) * p.sq + first) * p.d, qo_, validRows * p.d);
             }
         } else {
-            for (uint32_t i = 0; i < validRows; ++i) {
+            for (uint32_t i = 0; i < validRows && !diagSkipWrite; ++i) {
                 memory::WriteRow(og_, ((uint64_t(task.b) * p.hq + task.h) * p.sq + first + i) * p.d, qo_[i * p.dp], p.d);
             }
         }
