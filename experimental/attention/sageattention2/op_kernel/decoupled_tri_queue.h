@@ -395,6 +395,20 @@ private:
 
         microkernel::OutAccumulator::FoldPartial(pPv, p);
 
+        // TODO(debug): temporary wide-path retire instrumentation — remove after
+        // the fp32+fp16 multi-step NaN is root-caused.
+        if (subBlock == 0U && retired < 8U && static_cast<uint32_t>(AscendC::GetBlockIdx()) < 2U) {
+            // Device printf has no float formatting: print int-truncated magnitudes
+            // plus NaN flags (NaN != NaN).
+            AscendC::printf("[rs] blk%u retired=%u ord=%u qF=%d qL=%d a0=%d a64=%d pv0=%d acc0=%d den0=%d nanA=%d nanPv=%d nanAcc=%d nanDen=%d\n",
+                static_cast<uint32_t>(AscendC::GetBlockIdx()), static_cast<uint32_t>(retired),
+                oldTile.tileOrdinal, static_cast<int>(oldTile.isQueryFirst), static_cast<int>(oldTile.isQueryLast),
+                static_cast<int>(pAlpha[0]), static_cast<int>(pAlpha[64]),
+                static_cast<int>(pPv[0]), static_cast<int>(pAccum[0]), static_cast<int>(pDen[0]),
+                static_cast<int>(pAlpha[0] != pAlpha[0]), static_cast<int>(pPv[0] != pPv[0]),
+                static_cast<int>(pAccum[0] != pAccum[0]), static_cast<int>(pDen[0] != pDen[0]));
+        }
+
         if (oldTile.isQueryLast) {
             memory::Sync<AscendC::HardEvent::V_MTE2>();
             if (p.smoothV) {
