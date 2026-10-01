@@ -414,16 +414,19 @@ private:
                     pQo, pAccum, pPv, pAlpha, pDen, pScratch, pVmean);
             }
             AscendC::PipeBarrier<PIPE_V>();
-            // TODO(debug): stash NaN diagnosis values into output row 0 — remove
-            // after root-cause. [alphaRatio, alphaSum, pv0, acc0, den0, marker]
-            if (subBlock == 0U && oldTile.qOffsetStart == 0U) {
+            // TODO(debug): unconditional stash, last-retire-wins. Layout:
+            // [0]=path(1=Single) [1]=lane [2]=alphaRatio0 [3]=alphaSum0
+            // [4]=pv0 [5]=acc0 [6]=den0 [7]=tileOrdinal&1023
+            {
                 auto pQoH = reinterpret_cast<__ubuf__ half *>(pQo);
-                pQoH[0] = static_cast<half>(pAlpha[0]);
-                pQoH[1] = static_cast<half>(pAlpha[64]);
-                pQoH[2] = static_cast<half>(pPv[0]);
-                pQoH[3] = static_cast<half>(pAccum[0]);
-                pQoH[4] = static_cast<half>(pDen[0]);
-                pQoH[5] = static_cast<half>(1.0f);
+                pQoH[0] = static_cast<half>(1.0f);
+                pQoH[1] = static_cast<half>(static_cast<float>(subBlock));
+                pQoH[2] = static_cast<half>(pAlpha[0]);
+                pQoH[3] = static_cast<half>(pAlpha[64]);
+                pQoH[4] = static_cast<half>(pPv[0]);
+                pQoH[5] = static_cast<half>(pAccum[0]);
+                pQoH[6] = static_cast<half>(pDen[0]);
+                pQoH[7] = static_cast<half>(static_cast<float>(oldTile.tileOrdinal & 1023U));
             }
             const uint32_t firstRow = oldTile.qOffsetStart + subBlock * sage::core::HALF;
             const uint32_t validRows = firstRow < p.sq ? (p.sq - firstRow < sage::core::HALF ? p.sq - firstRow : sage::core::HALF) : 0;
@@ -527,16 +530,19 @@ private:
 
         if (secondInfo.isQueryLast) {
             AscendC::PipeBarrier<PIPE_V>();
-            // TODO(debug): stash NaN diagnosis values into output row 0 — remove
-            // after root-cause. [a0Ratio, a0Sum, pv0, acc0, den0, marker]
-            if (subBlock == 0U && secondInfo.qOffsetStart == 0U && firstInfo.isQueryFirst) {
+            // TODO(debug): unconditional stash, last-retire-wins. Layout:
+            // [0]=path(3=Pair) [1]=lane [2]=alphaRatio0 [3]=alphaSum0
+            // [4]=pv0 [5]=acc0 [6]=den0 [7]=tileOrdinal&1023
+            {
                 auto pQoH = reinterpret_cast<__ubuf__ half *>(pQo);
-                pQoH[0] = static_cast<half>(pA0[0]);
-                pQoH[1] = static_cast<half>(pA0[64]);
-                pQoH[2] = static_cast<half>(pPv0[0]);
-                pQoH[3] = static_cast<half>(pAccum[0]);
-                pQoH[4] = static_cast<half>(pDen[0]);
-                pQoH[5] = static_cast<half>(2.0f);
+                pQoH[0] = static_cast<half>(3.0f);
+                pQoH[1] = static_cast<half>(static_cast<float>(subBlock));
+                pQoH[2] = static_cast<half>(pA0[0]);
+                pQoH[3] = static_cast<half>(pA0[64]);
+                pQoH[4] = static_cast<half>(pPv0[0]);
+                pQoH[5] = static_cast<half>(pAccum[0]);
+                pQoH[6] = static_cast<half>(pDen[0]);
+                pQoH[7] = static_cast<half>(static_cast<float>(secondInfo.tileOrdinal & 1023U));
             }
             const uint32_t firstRow = secondInfo.qOffsetStart + subBlock * sage::core::HALF;
             const uint32_t validRows = firstRow < p.sq ? (p.sq - firstRow < sage::core::HALF ? p.sq - firstRow : sage::core::HALF) : 0;
