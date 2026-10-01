@@ -437,6 +437,22 @@ private:
                 auto lseScratch = res_.ubBuf.template GetBufferByByte<float>(memory::WideVectorLayout::P_UB);
                 auto maximaOld = res_.ubBuf.template GetBufferByByte<half>(memory::WideVectorLayout::MAX_UB + (oldTile.tileOrdinal & 1) * 256);
                 microkernel::StoreTileLse(lg, denom, maximaOld, lseScratch, firstRow, validRows, oldTile.batchIdx, oldTile.headIdx, p);
+                // TODO(debug): lg mirror of the og stash — if these values reach
+                // python's lse while the og stash above does not reach out, the
+                // WriteRow/og chain is the broken side.
+                if (oldTile.batchIdx == 0U && oldTile.headIdx == 0U && oldTile.qOffsetStart == 0U && oldTile.isQueryLast) {
+                    auto pLseF = reinterpret_cast<__ubuf__ float *>(lseScratch.GetPhyAddr());
+                    pLseF[0] = 7.0f;
+                    pLseF[1] = static_cast<float>(subBlock);
+                    pLseF[2] = pAlpha[0];
+                    pLseF[3] = pAlpha[64];
+                    pLseF[4] = pPv[0];
+                    pLseF[5] = pAccum[0];
+                    pLseF[6] = pDen[0];
+                    memory::Sync<AscendC::HardEvent::V_MTE3>();
+                    AscendC::DataCopy(lg, lseScratch, 128);
+                    memory::Sync<AscendC::HardEvent::MTE3_V>();
+                }
             }
         } else if (oldTile.isQueryFirst) {
             microkernel::OutAccumulator::InitializeWideFp32<128>(pAccum, pPv, pAlpha, pDen);
