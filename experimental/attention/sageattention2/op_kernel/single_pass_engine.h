@@ -168,7 +168,7 @@ public:
         // TODO(debug): softmax step marker into lse[0,0,1000+step*8] — remove after root-cause.
         if (task.qb == 0U && task.h == 0U && task.qstart == 0U && step < 60U) {
             auto dbg = res_.ubBuf.template GetBufferByByte<float>(memory::SUM_UB);
-            dbg[0] = static_cast<float>(1000 + step);
+            dbg.SetValue(0, static_cast<float>(1000 + step));
             memory::Sync<AscendC::HardEvent::V_MTE3>();
             AscendC::DataCopy(lg_[1000 + step * 8], dbg, 8);
             memory::Sync<AscendC::HardEvent::MTE3_V>();
@@ -225,10 +225,10 @@ public:
         // TODO(debug): per-step state dump into lse[0,0,step*8] — remove after root-cause.
         if (task.qb == 0U && task.h == 0U && task.qstart == 0U && step < 60U) {
             auto dbg = res_.ubBuf.template GetBufferByByte<float>(memory::SUM_UB);
-            dbg[0] = static_cast<float>(step);
-            dbg[1] = static_cast<float>(pvIndex);
-            dbg[2] = static_cast<float>((pvIndex & 1) != 0);
-            dbg[3] = static_cast<float>(pvIndex + 1 == totalCount);
+            dbg.SetValue(0, static_cast<float>(step));
+            dbg.SetValue(1, static_cast<float>(pvIndex));
+            dbg.SetValue(2, static_cast<float>((pvIndex & 1) != 0));
+            dbg.SetValue(3, static_cast<float>(pvIndex + 1 == totalCount));
             memory::Sync<AscendC::HardEvent::V_MTE3>();
             AscendC::DataCopy(lg_[step * 8], dbg, 8);
             memory::Sync<AscendC::HardEvent::MTE3_V>();
@@ -389,7 +389,7 @@ public:
                         vecEngine.StepSoftmax(step, tileTask, p);
                     }
                     if (step >= sage::core::LOOKAHEAD) {
-                        vecEngine.StepAccumulate(step, tileTask, tileTask.count, p);
+                        vecEngine.StepAccumulate(step, tileTask.count, tileTask, p);
                     }
                 }
                 vecEngine.EpilogueTile(tileTask, p);
