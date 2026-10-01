@@ -241,6 +241,21 @@ public:
         }
         memory::Sync<AscendC::HardEvent::MTE2_V>();
         auto scratch = res_.ubBuf.template GetBufferByByte<float>(memory::SUM_UB);
+        // TODO(debug): epilogue state dump into out row0 cols 0-7 — remove after root-cause.
+        if (task.qb == 0U && task.h == 0U && task.qstart == 0U && subBlock_ == 0U) {
+            auto qoF = qo_.ReinterpretCast<float>();
+            qoF.SetValue(0, denom_.GetPhyAddr() != nullptr ? 1.0f : 0.0f);
+            auto pDenF = reinterpret_cast<__ubuf__ float *>(denom_.GetPhyAddr());
+            auto pAccF = reinterpret_cast<__ubuf__ float *>(accum_.GetPhyAddr());
+            auto pMaxH = reinterpret_cast<__ubuf__ half *>(maxima_.GetPhyAddr());
+            qo_.SetValue(1, static_cast<T>(pDenF[0]));
+            qo_.SetValue(2, static_cast<T>(pAccF[0]));
+            qo_.SetValue(3, static_cast<T>(pAccF[1]));
+            qo_.SetValue(4, static_cast<T>(pDenF[1]));
+            qo_.SetValue(5, static_cast<T>(static_cast<float>(pMaxH[0])));
+            qo_.SetValue(6, static_cast<T>(static_cast<float>(task.count)));
+            qo_.SetValue(7, static_cast<T>(static_cast<float>(subBlock_)));
+        }
         microkernel::OutAccumulator::NormalizeCast<T, DP>(
             reinterpret_cast<__ubuf__ T *>(qo_.GetPhyAddr()),
             reinterpret_cast<__ubuf__ float *>(accum_.GetPhyAddr()),
