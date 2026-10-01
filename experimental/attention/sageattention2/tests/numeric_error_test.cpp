@@ -96,7 +96,7 @@ float QuantE4M3(float x)
     return sign * q;
 }
 
-// quant_v_mx.h 的 E8M0 scale：2^ceil(log2(amax/MX_FP8_MAX))，下限 2^-100。
+// platform_traits.h MX_FP8_MAX + mxfp8_e4m3_encoder.h 的 E8M0 scale：2^ceil(log2(amax/MX_FP8_MAX))，下限 2^-100。
 float MxScale(float amax)
 {
     const float floorScale = std::ldexp(1.0f, -100);
@@ -548,11 +548,11 @@ void TestQuantGranularityGroups(std::mt19937 &rng)
            worstHalfStep <= 1.0 + 1e-5);
 }
 
-// output_update.h RoundPartialFp16VF：pv_accum_dtype="fp32+fp16" 时，块内 PV 部分和
+// online_reduction_softmax.h RoundPartialFp16VF：pv_accum_dtype="fp32+fp16" 时，块内 PV 部分和
 // 折入 FP32 运行状态前做一次 FP32->FP16->FP32 往返。逐块加权和的误差以
 // sum_j |O_j| / den * 2^-11 为界（每块一次相对舍入，块权重归一化后 <=1）。
 // 同一往返用 SatMode::NO_SAT，所以还要证明它落在半精度可表示区间内：折叠前
-// 的幅度由 attention_block_cube.h 的 P 侧 2^-8 常量尺度限定（platform_traits.h PV_PARTIAL_SHIFT）。
+// 的幅度由 platform_traits.h 的 P 侧 2^-8 常量尺度限定（PV_PARTIAL_SHIFT）。
 void TestFp16PartialRoundtrip(std::mt19937 &rng)
 {
     std::normal_distribution<float> gauss(0.0f, 1.0f);
@@ -635,7 +635,7 @@ void TestFp16PartialRoundtrip(std::mt19937 &rng)
     Report("2^-8/2^8 round-trip is bit-exact", shiftExact ? 0.0 : 1.0, 0.0, shiftExact);
 }
 
-// stats.h / quant_v_mx.h / output_update.h 的 smooth_v 通路：V 沿序列维取通道均值，
+// dynamic_symmetric_quant.h 的 smooth_v 通路：V 沿序列维取通道均值，
 // 量化前居中，归一化输出上补回。补回项在归一化之后加，不参与跨块累加。
 // E4M3 + E8M0 分组量化下每个元素的绝对误差不超过该组 amax 的 2^-4，权重和为 1，
 // 因此整行重建误差以 2^-4 * max_group_amax 为界；居中降低该 amax，即降低包络本身。

@@ -113,16 +113,29 @@ SAGE_DEVICE_FUNC constexpr uint64_t Offset(const uint64_t *s, uint64_t b, uint64
 // Core Execution Parameter Structs
 
 // Runtime shape, layout, and execution parameters shared across Host and Device.
-// Trivially copyable without tail padding.
+// Fields are grouped geometry -> policy -> derived so the tiling payload reads
+// the same way on both sides of the blob copy; accessors are by name only.
 struct SageParams {
-    uint32_t b, hq, hk, sq, sk, d, dp, qp, kp, cores;
-    uint32_t causal, smoothK, returnLse;
+    // Geometry: problem shape as seen by the kernel.
+    uint32_t b, hq, hk, sq, sk, d, dp;
+    uint32_t qp, kp;                // Sequence lengths padded to tile quantization
+    uint64_t qs[3], ks[3], vs[3];   // Canonical B, H, S strides, in elements
+    // Policy: host-resolved attribute payload.
+    uint32_t causal, smoothK, smoothV, returnLse;
     uint32_t qg, kg;                // Tokens per shared INT8 scale (Q and K)
     SagePvAccum accum;
-    uint32_t smoothV;
     float qFactor, kFactor;         // Precomputed FP16 dequantization balancing factors
-    uint64_t qs[3], ks[3], vs[3];   // Canonical B, H, S strides, in elements
+    // Derived: execution resources resolved on the host.
+    uint32_t cores;
 };
+
+// The tiling payload crosses the host/device boundary as a flat byte blob, so
+// the layout contract is pinned here: standard layout, trivially copyable, and
+// free of tail-padding surprises.
+static_assert(std::is_standard_layout_v<SageParams>,
+              "SageParams crosses the host/device blob boundary and must stay standard layout");
+static_assert(std::is_trivially_copyable_v<SageParams>,
+              "SageParams is copied as raw bytes into the tiling buffer");
 
 // Byte offsets relative to GetUserWorkspace(), aligned to 512 bytes
 struct SageAttention2TilingData {
