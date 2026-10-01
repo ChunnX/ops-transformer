@@ -168,11 +168,11 @@ class WideVectorStreamEngine {
 public:
     __aicore__ inline explicit WideVectorStreamEngine(memory::FixedResource &res) : res_(res) {}
 
-    // AIV 宽路径只消费原始 Q、随路 scale（QS/KS）、V 均值与 O/LSE 写回；
+    // AIV 宽路径消费原始 Q（片上动态量化并生成 QS）、随路 KS、V 均值以及 O/LSE 写回；
     // K8/V8/MXFP8 scale 由 Cube 侧与量化段消费，不进入本签名。
     __aicore__ inline void Execute(
         uint32_t core, uint64_t totalTasks, GM_ADDR q,
-        GM_ADDR qs, GM_ADDR ks, GM_ADDR vMean, GM_ADDR out, GM_ADDR lse, const sage::core::SageParams &p)
+        GM_ADDR ks, GM_ADDR vMean, GM_ADDR out, GM_ADDR lse, const sage::core::SageParams &p)
     {
         uint32_t subBlock = 0U;
         if ASCEND_IS_AIV {
@@ -185,8 +185,7 @@ public:
         // DG.4: write-once output streams through L2 (P-07 16K protection).
         og.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
 
-        AscendC::GlobalTensor<half> qsg, ksg;
-        qsg.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(qs));
+        AscendC::GlobalTensor<half> ksg;
         ksg.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(ks));
         ksg.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
 
@@ -277,7 +276,6 @@ private:
         auto scales = res_.ubBuf.template GetBufferByByte<float>(Q_RAW_SCALE);
         auto inverseScales = res_.ubBuf.template GetBufferByByte<float>(Q_INV_SCALE);
 
-        memory::Sync<AscendC::HardEvent::MTE3_MTE2>();
         memory::Sync<AscendC::HardEvent::V_MTE2>();
         const uint64_t qToken = current.qb + current.qstart + subBlock * sage::core::HALF;
         AscendC::DataCopy(input, qg[qToken * 128], sage::core::HALF * 128);
@@ -373,6 +371,44 @@ private:
         EventHandshake::NotifyCube<PIPE_MTE3>(TokenSignal::P_READY);
     }
 
+    __aicore__ inline void PrepareTileMeanV(
+        const WideTileHistoryEntry &info,
+        AscendC::LocalTensor<float> &vmean,
+        AscendC::GlobalTensor<float> &vmg,
+        const sage::core::SageParams &p)
+    {
+        memory::Sync<AscendC::HardEvent::V_MTE2>();
+        if (p.smoothV) {
+            const uint32_t kh = dispatch::CalcKh(info.headIdx, p.hq, p.hk);
+            AscendC::DataCopy(vmean, vmg[(uint64_t(info.batchIdx) * p.hk + kh) * p.dp], p.dp);
+        } else {
+            AscendC::Duplicate(vmean, 0.0f, 128);
+        }
+        memory::Sync<AscendC::HardEvent::MTE2_V>();
+    }
+
+    __aicore__ inline void EmitTileOutputAndLse(
+        const WideTileHistoryEntry &info,
+        AscendC::LocalTensor<T> &qo,
+        AscendC::LocalTensor<float> &denom,
+        AscendC::GlobalTensor<T> &og,
+        AscendC::GlobalTensor<float> &lg,
+        uint32_t subBlock,
+        const sage::core::SageParams &p)
+    {
+        AscendC::PipeBarrier<PIPE_V>();
+        const uint32_t firstRow = info.qOffsetStart + subBlock * sage::core::HALF;
+        const uint32_t validRows = firstRow < p.sq ? (p.sq - firstRow < sage::core::HALF ? p.sq - firstRow : sage::core::HALF) : 0;
+        if (validRows) {
+            memory::WriteRow(og, ((uint64_t(info.batchIdx) * p.hq + info.headIdx) * p.sq + firstRow) * p.d, qo, validRows * p.d);
+        }
+        if (p.returnLse) {
+            auto lseScratch = res_.ubBuf.template GetBufferByByte<float>(memory::WideVectorLayout::P_UB);
+            auto maximaOld = res_.ubBuf.template GetBufferByByte<half>(memory::WideVectorLayout::MAX_UB + (info.tileOrdinal & 1) * 256);
+            microkernel::StoreTileLse(lg, denom, maximaOld, lseScratch, firstRow, validRows, info.batchIdx, info.headIdx, p);
+        }
+    }
+
     __aicore__ inline void RetireSingleStep(
         uint64_t &retired,
         AscendC::LocalTensor<float> &vmean, AscendC::GlobalTensor<float> &vmg,
@@ -396,14 +432,7 @@ private:
         microkernel::OutAccumulator::FoldPartial(pPv, p);
 
         if (oldTile.isQueryLast) {
-            memory::Sync<AscendC::HardEvent::V_MTE2>();
-            if (p.smoothV) {
-                const uint32_t kh = dispatch::CalcKh(oldTile.headIdx, p.hq, p.hk);
-                AscendC::DataCopy(vmean, vmg[(uint64_t(oldTile.batchIdx) * p.hk + kh) * p.dp], p.dp);
-            } else {
-                AscendC::Duplicate(vmean, 0.0f, 128);
-            }
-            memory::Sync<AscendC::HardEvent::MTE2_V>();
+            PrepareTileMeanV(oldTile, vmean, vmg, p);
             auto pVmean = reinterpret_cast<__ubuf__ float *>(vmean.GetPhyAddr());
 
             if (oldTile.isQueryFirst) {
@@ -413,17 +442,7 @@ private:
                 microkernel::OutAccumulator::FinalizeWideFp32<T, 128, false>(
                     pQo, pAccum, pPv, pAlpha, pDen, pScratch, pVmean);
             }
-            AscendC::PipeBarrier<PIPE_V>();
-            const uint32_t firstRow = oldTile.qOffsetStart + subBlock * sage::core::HALF;
-            const uint32_t validRows = firstRow < p.sq ? (p.sq - firstRow < sage::core::HALF ? p.sq - firstRow : sage::core::HALF) : 0;
-            if (validRows) {
-                memory::WriteRow(og, ((uint64_t(oldTile.batchIdx) * p.hq + oldTile.headIdx) * p.sq + firstRow) * p.d, qo, validRows * p.d);
-            }
-            if (p.returnLse) {
-                auto lseScratch = res_.ubBuf.template GetBufferByByte<float>(memory::WideVectorLayout::P_UB);
-                auto maximaOld = res_.ubBuf.template GetBufferByByte<half>(memory::WideVectorLayout::MAX_UB + (oldTile.tileOrdinal & 1) * 256);
-                microkernel::StoreTileLse(lg, denom, maximaOld, lseScratch, firstRow, validRows, oldTile.batchIdx, oldTile.headIdx, p);
-            }
+            EmitTileOutputAndLse(oldTile, qo, denom, og, lg, subBlock, p);
         } else if (oldTile.isQueryFirst) {
             microkernel::OutAccumulator::InitializeWideFp32<128>(pAccum, pPv, pAlpha, pDen);
         } else {
@@ -467,14 +486,10 @@ private:
 
         const auto firstInfo = tileHistory_[retired % 3];
         const auto secondInfo = tileHistory_[(retired + 1) % 3];
-        memory::Sync<AscendC::HardEvent::V_MTE2>();
-        if (p.smoothV) {
-            const uint32_t kh = dispatch::CalcKh(secondInfo.headIdx, p.hq, p.hk);
-            AscendC::DataCopy(vmean, vmg[(uint64_t(secondInfo.batchIdx) * p.hk + kh) * p.dp], p.dp);
-        } else {
-            AscendC::Duplicate(vmean, 0.0f, 128);
+        if (secondInfo.isQueryLast) {
+            PrepareTileMeanV(secondInfo, vmean, vmg, p);
         }
-        memory::Sync<AscendC::HardEvent::MTE2_V>();
+
         auto pv0 = res_.ubBuf.template GetBufferByByte<float>(memory::WideVectorLayout::PV_UB + (retired & 1) * memory::WideVectorLayout::PV_SLOT_BYTES);
         auto pv1 = res_.ubBuf.template GetBufferByByte<float>(memory::WideVectorLayout::PV_UB + ((retired + 1) & 1) * memory::WideVectorLayout::PV_SLOT_BYTES);
         auto a0 = res_.ubBuf.template GetBufferByByte<float>(memory::WideVectorLayout::ALPHA_UB + (retired % 3) * 512);
@@ -515,17 +530,7 @@ private:
         }
 
         if (secondInfo.isQueryLast) {
-            AscendC::PipeBarrier<PIPE_V>();
-            const uint32_t firstRow = secondInfo.qOffsetStart + subBlock * sage::core::HALF;
-            const uint32_t validRows = firstRow < p.sq ? (p.sq - firstRow < sage::core::HALF ? p.sq - firstRow : sage::core::HALF) : 0;
-            if (validRows) {
-                memory::WriteRow(og, ((uint64_t(secondInfo.batchIdx) * p.hq + secondInfo.headIdx) * p.sq + firstRow) * p.d, qo, validRows * p.d);
-            }
-            if (p.returnLse) {
-                auto lseScratch = res_.ubBuf.template GetBufferByByte<float>(memory::WideVectorLayout::P_UB);
-                auto maximaOld = res_.ubBuf.template GetBufferByByte<half>(memory::WideVectorLayout::MAX_UB + (secondInfo.tileOrdinal & 1) * 256);
-                microkernel::StoreTileLse(lg, denom, maximaOld, lseScratch, firstRow, validRows, secondInfo.batchIdx, secondInfo.headIdx, p);
-            }
+            EmitTileOutputAndLse(secondInfo, qo, denom, og, lg, subBlock, p);
         }
         EventHandshake::NotifyCube<PIPE_V>(TokenSignal::PV_RELEASE);
         EventHandshake::NotifyCube<PIPE_V>(TokenSignal::PV_RELEASE);
@@ -555,7 +560,7 @@ private:
 
 template <class T, bool CAUSAL = false>
 __aicore__ inline __attribute__((always_inline)) void ExecuteWideStream(
-    GM_ADDR q, GM_ADDR k8, GM_ADDR v8, GM_ADDR qs, GM_ADDR ks, GM_ADDR mxScale,
+    GM_ADDR q, GM_ADDR k8, GM_ADDR v8, GM_ADDR ks, GM_ADDR mxScale,
     GM_ADDR vMean, GM_ADDR out, GM_ADDR lse, const sage::core::SageParams &p)
 {
     memory::FixedResource r;
@@ -575,10 +580,8 @@ __aicore__ inline __attribute__((always_inline)) void ExecuteWideStream(
         cubeEngine.Execute<CAUSAL>(core, totalTasks, k8, v8, mxScale, p);
     } else {
         WideVectorStreamEngine<T, CAUSAL> vectorEngine(r);
-        vectorEngine.Execute(core, totalTasks, q, qs, ks, vMean, out, lse, p);
+        vectorEngine.Execute(core, totalTasks, q, ks, vMean, out, lse, p);
     }
-
-    AscendC::PipeBarrier<PIPE_ALL>();
 }
 
 #endif // __CCE__

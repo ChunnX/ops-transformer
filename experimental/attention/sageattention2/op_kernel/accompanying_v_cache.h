@@ -13,8 +13,8 @@ namespace sage::memory {
 
 // Hardware handshake event channels for wide double-buffered staging
 struct WidePipelineSync {
-    static constexpr event_t K_SYNC_CHANNEL_BASE = static_cast<event_t>(4);
-    static constexpr event_t V_SYNC_CHANNEL_BASE = static_cast<event_t>(6);
+    static constexpr event_t K_SYNC_CHANNEL_BASE = static_cast<event_t>(orchestration::EventHandshake::K_PREFETCH_EVENT_BASE);
+    static constexpr event_t V_SYNC_CHANNEL_BASE = static_cast<event_t>(orchestration::EventHandshake::V_PREFETCH_EVENT_BASE);
 
     static __aicore__ inline event_t ResolveKeySyncEvent(uint32_t slotParity) noexcept {
         return static_cast<event_t>(K_SYNC_CHANNEL_BASE + (slotParity & 1U));
@@ -24,6 +24,44 @@ struct WidePipelineSync {
         return static_cast<event_t>(V_SYNC_CHANNEL_BASE + (slotParity & 1U));
     }
 };
+
+// Generic Global-to-L1 matrix tile transfer helper
+template <typename Element, typename LayoutB>
+struct GlobalToL1TileTransfer {
+    using CopyPlan = Catlass::Gemm::Tile::PackedTileCopyTla<
+        Catlass::Arch::Ascend950, Element, Catlass::layout::RowMajor,
+        Element, LayoutB, float, Catlass::layout::RowMajor>;
+
+    __aicore__ static inline void Transfer(
+        FixedResource &res, GM_ADDR gmAddr, uint32_t l1ByteAddr, uint32_t rows, uint32_t cols)
+    {
+        AscendC::GlobalTensor<Element> srcGmTensor;
+        srcGmTensor.SetGlobalBuffer(reinterpret_cast<__gm__ Element *>(gmAddr));
+        auto gmTile = tla::MakeTensor(srcGmTensor, tla::MakeLayout<Element, LayoutB>(rows, cols), Catlass::Arch::PositionGM{});
+        auto l1Tile = tla::MakeTensor(res.l1Buf.template GetBufferByByte<Element>(l1ByteAddr),
+            tla::MakeLayout<Element, typename CopyPlan::LayoutTagL1B>(rows, cols), Catlass::Arch::PositionL1{});
+        typename CopyPlan::template CopyGmToL1B<decltype(gmTile)>{}(l1Tile, gmTile);
+    }
+};
+
+template <typename Element, typename LayoutB>
+__aicore__ static inline void CopyGlobalTileToL1(
+    FixedResource &res, GM_ADDR gmAddr, uint32_t l1ByteAddr, uint32_t rows, uint32_t cols)
+{
+    GlobalToL1TileTransfer<Element, LayoutB>::Transfer(res, gmAddr, l1ByteAddr, rows, cols);
+}
+
+// Global-to-L1 MX scale slice transfer helper
+template <typename ScaleType = float8_e8m0_t>
+__aicore__ static inline void CopyGlobalMxScaleToL1(
+    FixedResource &res, GM_ADDR gmScaleAddr, uint32_t l1ByteAddr, uint32_t rows, uint32_t cols)
+{
+    AscendC::GlobalTensor<ScaleType> scaleGmTensor;
+    scaleGmTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ScaleType *>(gmScaleAddr));
+    auto gmScaleTile = tla::MakeTensor(scaleGmTensor, tla::MakeMxScaleLayout<ScaleType, Catlass::layout::RowMajor, true>(rows, cols), Catlass::Arch::PositionGM{});
+    auto l1ScaleTile = tla::MakeTensor(res.l1Buf.template GetBufferByByte<ScaleType>(l1ByteAddr), tla::MakeMxScaleLayout<ScaleType, Catlass::layout::nN, true>(rows, cols), tla::MakeCoord(0U, 0U), Catlass::Arch::PositionL1{});
+    Catlass::Gemm::Tile::TileCopyTla<Catlass::Arch::Ascend950, decltype(gmScaleTile), decltype(l1ScaleTile)>{}(l1ScaleTile, gmScaleTile);
+}
 
 // Accompanying V-cache streaming coordinator
 // Co-streams per-tile V scale slice directly into ping-pong buffer, releasing 174 KB L1
@@ -42,56 +80,30 @@ public:
     }
 
     static constexpr uint32_t ComputeScaleSlotOffset(uint32_t phase) noexcept {
-        return (phase & 1U) ? V_SCALE_L1_PONG : V_SCALE_L1_PING;
+        return (phase & 1U) ? sage::core::V_SCALE_L1_PONG : sage::core::V_SCALE_L1_PING;
     }
 
     static __aicore__ inline __attribute__((always_inline))
     void StreamKeyTile(FixedResource &res, GM_ADDR gmKey, uint32_t phase) {
-        using KeyCopyPlan = Catlass::Gemm::Tile::PackedTileCopyTla<
-            Catlass::Arch::Ascend950, int8_t, Catlass::layout::RowMajor,
-            int8_t, Catlass::layout::ColumnMajor, float, Catlass::layout::RowMajor>;
-
         const event_t syncEvent = WidePipelineSync::ResolveKeySyncEvent(phase);
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(syncEvent);
 
-        AscendC::GlobalTensor<int8_t> srcGmTensor;
-        srcGmTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int8_t *>(gmKey));
-        auto gmTile = tla::MakeTensor(srcGmTensor, tla::MakeLayout<int8_t, Catlass::layout::ColumnMajor>(128, sage::core::N), Catlass::Arch::PositionGM{});
-
-        const uint32_t l1ByteAddr = ComputeKeySlotOffset(phase);
-        auto l1Tile = tla::MakeTensor(res.l1Buf.template GetBufferByByte<int8_t>(l1ByteAddr), tla::MakeLayout<int8_t, typename KeyCopyPlan::LayoutTagL1B>(128, sage::core::N), Catlass::Arch::PositionL1{});
-
-        typename KeyCopyPlan::template CopyGmToL1B<decltype(gmTile)>{}(l1Tile, gmTile);
+        CopyGlobalTileToL1<int8_t, Catlass::layout::ColumnMajor>(
+            res, gmKey, ComputeKeySlotOffset(phase), 128U, sage::core::N);
 
         AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(syncEvent);
     }
 
     static __aicore__ inline __attribute__((always_inline))
     void StreamValueTileWithScale(FixedResource &res, GM_ADDR gmVal, GM_ADDR gmValScale, uint32_t phase) {
-        using ValCopyPlan = Catlass::Gemm::Tile::PackedTileCopyTla<
-            Catlass::Arch::Ascend950, float8_e4m3_t, Catlass::layout::RowMajor,
-            float8_e4m3_t, Catlass::layout::RowMajor, float, Catlass::layout::RowMajor>;
-
         const event_t syncEvent = WidePipelineSync::ResolveValSyncEvent(phase);
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(syncEvent);
 
-        AscendC::GlobalTensor<float8_e4m3_t> srcGmTensor;
-        srcGmTensor.SetGlobalBuffer(reinterpret_cast<__gm__ float8_e4m3_t *>(gmVal));
-        auto gmTile = tla::MakeTensor(srcGmTensor, tla::MakeLayout<float8_e4m3_t, Catlass::layout::RowMajor>(sage::core::N, 128), Catlass::Arch::PositionGM{});
-
-        const uint32_t l1ByteAddr = ComputeValSlotOffset(phase);
-        auto l1Tile = tla::MakeTensor(res.l1Buf.template GetBufferByByte<float8_e4m3_t>(l1ByteAddr), tla::MakeLayout<float8_e4m3_t, typename ValCopyPlan::LayoutTagL1B>(sage::core::N, 128), Catlass::Arch::PositionL1{});
-
-        typename ValCopyPlan::template CopyGmToL1B<decltype(gmTile)>{}(l1Tile, gmTile);
+        CopyGlobalTileToL1<float8_e4m3_t, Catlass::layout::RowMajor>(
+            res, gmVal, ComputeValSlotOffset(phase), sage::core::N, 128U);
 
         if (gmValScale != nullptr) {
-            const uint32_t scaleOffset = ComputeScaleSlotOffset(phase);
-            AscendC::GlobalTensor<float8_e8m0_t> scaleGmTensor;
-            scaleGmTensor.SetGlobalBuffer(reinterpret_cast<__gm__ float8_e8m0_t *>(gmValScale));
-            auto gmScaleTile = tla::MakeTensor(scaleGmTensor, tla::MakeMxScaleLayout<float8_e8m0_t, Catlass::layout::RowMajor, true>(sage::core::N / 32, 128), Catlass::Arch::PositionGM{});
-            auto l1ScaleTile = tla::MakeTensor(res.l1Buf.template GetBufferByByte<float8_e8m0_t>(scaleOffset), tla::MakeMxScaleLayout<float8_e8m0_t, Catlass::layout::nN, true>(sage::core::N / 32, 128), tla::MakeCoord(0, 0), Catlass::Arch::PositionL1{});
-
-            Catlass::Gemm::Tile::TileCopyTla<Catlass::Arch::Ascend950, decltype(gmScaleTile), decltype(l1ScaleTile)>{}(l1ScaleTile, gmScaleTile);
+            CopyGlobalMxScaleToL1(res, gmValScale, ComputeScaleSlotOffset(phase), sage::core::N / 32U, 128U);
         }
 
         AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(syncEvent);

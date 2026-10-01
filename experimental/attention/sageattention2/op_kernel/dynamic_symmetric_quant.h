@@ -4,60 +4,74 @@
 #include "sage_attention2_tiling_data.h"
 #include "math_approximations.h"
 #include "ring_buffer_layout.h"
-#include "catlass_fractal_packer.h"
-#include "credit_handshake.h"
 #include "mxfp8_e4m3_encoder.h"
 
 namespace sage::microkernel {
 
 #if defined(__CCE__)
 
+template <class T>
+__simd_callee__ __attribute__((always_inline)) inline void LoadRowF32(
+    AscendC::MicroAPI::RegTensor<float> &out, __ubuf__ T *ptr,
+    AscendC::MicroAPI::MaskReg &mask)
+{
+    static constexpr AscendC::MicroAPI::CastTrait unpackToF32{
+        AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::UNKNOWN,
+        AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
+    if constexpr (AscendC::IsSameType<T, float>::value) {
+        AscendC::MicroAPI::LoadAlign(out, ptr);
+    } else {
+        AscendC::MicroAPI::RegTensor<T> raw;
+        AscendC::MicroAPI::LoadAlign<T, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(raw, ptr);
+        AscendC::MicroAPI::Cast<float, T, unpackToF32>(out, raw, mask);
+    }
+}
+
+template <class T>
+__simd_callee__ __attribute__((always_inline)) inline void StatsAccumPair(
+    AscendC::MicroAPI::RegTensor<float> &acc,
+    __ubuf__ T *r0,
+    __ubuf__ T *r1,
+    AscendC::MicroAPI::MaskReg &mask)
+{
+    AscendC::MicroAPI::RegTensor<float> v0, v1;
+    LoadRowF32(v0, r0, mask);
+    LoadRowF32(v1, r1, mask);
+    AscendC::MicroAPI::Add(acc, acc, v0, mask);
+    AscendC::MicroAPI::Add(acc, acc, v1, mask);
+}
+
+template <class T>
+__simd_callee__ __attribute__((always_inline)) inline void StatsAccumSingle(
+    AscendC::MicroAPI::RegTensor<float> &acc,
+    __ubuf__ T *r,
+    AscendC::MicroAPI::MaskReg &mask)
+{
+    AscendC::MicroAPI::RegTensor<float> v;
+    LoadRowF32(v, r, mask);
+    AscendC::MicroAPI::Add(acc, acc, v, mask);
+}
+
 // Channel-wise Column Sum Reduction for Sequence Statistics
 template <class T, uint32_t DP>
 __simd_vf__ inline void StatsSumImpl(__ubuf__ T *rows, __ubuf__ float *state, uint32_t count) {
     AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
     auto maskF32 = AscendC::MicroAPI::CreateMask<float, AscendC::MicroAPI::MaskPattern::ALL>();
-    static constexpr AscendC::MicroAPI::CastTrait unpackToF32{
-        AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::UNKNOWN,
-        AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
 
     for (uint32_t colOffset = 0; colOffset < DP; colOffset += 64) {
         AscendC::MicroAPI::RegTensor<float> totalAcc;
         AscendC::MicroAPI::LoadAlign(totalAcc, state + colOffset);
         uint32_t rIdx = 0;
         for (; rIdx + 1 < count; rIdx += 2) {
-            if constexpr (AscendC::IsSameType<T, float>::value) {
-                AscendC::MicroAPI::RegTensor<float> elem0, elem1;
-                AscendC::MicroAPI::LoadAlign(elem0, rows + static_cast<uint64_t>(rIdx) * DP + colOffset);
-                AscendC::MicroAPI::LoadAlign(elem1, rows + static_cast<uint64_t>(rIdx + 1) * DP + colOffset);
-                AscendC::MicroAPI::Add(totalAcc, totalAcc, elem0, maskF32);
-                AscendC::MicroAPI::Add(totalAcc, totalAcc, elem1, maskF32);
-            } else {
-                AscendC::MicroAPI::RegTensor<T> raw0, raw1;
-                AscendC::MicroAPI::RegTensor<float> fVal0, fVal1;
-                AscendC::MicroAPI::LoadAlign<T, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(
-                    raw0, rows + static_cast<uint64_t>(rIdx) * DP + colOffset);
-                AscendC::MicroAPI::LoadAlign<T, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(
-                    raw1, rows + static_cast<uint64_t>(rIdx + 1) * DP + colOffset);
-                AscendC::MicroAPI::Cast<float, T, unpackToF32>(fVal0, raw0, maskF32);
-                AscendC::MicroAPI::Cast<float, T, unpackToF32>(fVal1, raw1, maskF32);
-                AscendC::MicroAPI::Add(totalAcc, totalAcc, fVal0, maskF32);
-                AscendC::MicroAPI::Add(totalAcc, totalAcc, fVal1, maskF32);
-            }
+            StatsAccumPair(totalAcc,
+                           rows + static_cast<uint64_t>(rIdx) * DP + colOffset,
+                           rows + static_cast<uint64_t>(rIdx + 1) * DP + colOffset,
+                           maskF32);
         }
         if (rIdx < count) {
-            if constexpr (AscendC::IsSameType<T, float>::value) {
-                AscendC::MicroAPI::RegTensor<float> elemLast;
-                AscendC::MicroAPI::LoadAlign(elemLast, rows + static_cast<uint64_t>(rIdx) * DP + colOffset);
-                AscendC::MicroAPI::Add(totalAcc, totalAcc, elemLast, maskF32);
-            } else {
-                AscendC::MicroAPI::RegTensor<T> rawLast;
-                AscendC::MicroAPI::RegTensor<float> fValLast;
-                AscendC::MicroAPI::LoadAlign<T, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(
-                    rawLast, rows + static_cast<uint64_t>(rIdx) * DP + colOffset);
-                AscendC::MicroAPI::Cast<float, T, unpackToF32>(fValLast, rawLast, maskF32);
-                AscendC::MicroAPI::Add(totalAcc, totalAcc, fValLast, maskF32);
-            }
+            StatsAccumSingle(totalAcc,
+                             rows + static_cast<uint64_t>(rIdx) * DP + colOffset,
+                             maskF32);
         }
         AscendC::MicroAPI::StoreAlign(state + colOffset, totalAcc, maskF32);
     }
@@ -75,11 +89,13 @@ __aicore__ inline void StatsSumVF(AscendC::LocalTensor<T> rows, AscendC::LocalTe
     }
 }
 
-// Subtracts channel means from rows in Unified Buffer
-template <class T, uint32_t DP>
-__simd_vf__ inline void CenterVImpl(__ubuf__ T *rows, __ubuf__ float *mean, uint32_t count) {
-    AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
-    auto maskF32 = AscendC::MicroAPI::CreateMask<float, AscendC::MicroAPI::MaskPattern::ALL>();
+template <class T>
+__simd_callee__ __attribute__((always_inline)) inline void CenterRowPair(
+    __ubuf__ T *r0,
+    __ubuf__ T *r1,
+    AscendC::MicroAPI::RegTensor<float> &meanCol,
+    AscendC::MicroAPI::MaskReg &mask)
+{
     static constexpr AscendC::MicroAPI::CastTrait castToFloat{
         AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::UNKNOWN,
         AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
@@ -87,38 +103,59 @@ __simd_vf__ inline void CenterVImpl(__ubuf__ T *rows, __ubuf__ float *mean, uint
         AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::SAT,
         AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
 
+    AscendC::MicroAPI::RegTensor<T> raw0, raw1;
+    AscendC::MicroAPI::RegTensor<float> valF32_0, valF32_1;
+    AscendC::MicroAPI::LoadAlign<T, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(raw0, r0);
+    AscendC::MicroAPI::LoadAlign<T, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(raw1, r1);
+    AscendC::MicroAPI::Cast<float, T, castToFloat>(valF32_0, raw0, mask);
+    AscendC::MicroAPI::Cast<float, T, castToFloat>(valF32_1, raw1, mask);
+    AscendC::MicroAPI::Sub(valF32_0, valF32_0, meanCol, mask);
+    AscendC::MicroAPI::Sub(valF32_1, valF32_1, meanCol, mask);
+    AscendC::MicroAPI::Cast<T, float, castToTarget>(raw0, valF32_0, mask);
+    AscendC::MicroAPI::Cast<T, float, castToTarget>(raw1, valF32_1, mask);
+    AscendC::MicroAPI::StoreAlign<T, AscendC::MicroAPI::StoreDist::DIST_PACK_B32>(r0, raw0, mask);
+    AscendC::MicroAPI::StoreAlign<T, AscendC::MicroAPI::StoreDist::DIST_PACK_B32>(r1, raw1, mask);
+}
+
+template <class T>
+__simd_callee__ __attribute__((always_inline)) inline void CenterRowSingle(
+    __ubuf__ T *r,
+    AscendC::MicroAPI::RegTensor<float> &meanCol,
+    AscendC::MicroAPI::MaskReg &mask)
+{
+    static constexpr AscendC::MicroAPI::CastTrait castToFloat{
+        AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::UNKNOWN,
+        AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
+    static constexpr AscendC::MicroAPI::CastTrait castToTarget{
+        AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::SAT,
+        AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
+
+    AscendC::MicroAPI::RegTensor<T> raw;
+    AscendC::MicroAPI::RegTensor<float> valF32;
+    AscendC::MicroAPI::LoadAlign<T, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(raw, r);
+    AscendC::MicroAPI::Cast<float, T, castToFloat>(valF32, raw, mask);
+    AscendC::MicroAPI::Sub(valF32, valF32, meanCol, mask);
+    AscendC::MicroAPI::Cast<T, float, castToTarget>(raw, valF32, mask);
+    AscendC::MicroAPI::StoreAlign<T, AscendC::MicroAPI::StoreDist::DIST_PACK_B32>(r, raw, mask);
+}
+
+// Subtracts channel means from rows in Unified Buffer
+template <class T, uint32_t DP>
+__simd_vf__ inline void CenterVImpl(__ubuf__ T *rows, __ubuf__ float *mean, uint32_t count) {
+    AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
+    auto maskF32 = AscendC::MicroAPI::CreateMask<float, AscendC::MicroAPI::MaskPattern::ALL>();
+
     for (uint32_t c = 0; c < DP; c += 64) {
         AscendC::MicroAPI::RegTensor<float> meanCol;
         AscendC::MicroAPI::LoadAlign(meanCol, mean + c);
         uint32_t rIdx = 0;
         for (; rIdx + 1 < count; rIdx += 2) {
-            AscendC::MicroAPI::RegTensor<T> raw0, raw1;
-            AscendC::MicroAPI::RegTensor<float> valF32_0, valF32_1;
-            AscendC::MicroAPI::LoadAlign<T, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(
-                raw0, rows + static_cast<uint64_t>(rIdx) * DP + c);
-            AscendC::MicroAPI::LoadAlign<T, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(
-                raw1, rows + static_cast<uint64_t>(rIdx + 1) * DP + c);
-            AscendC::MicroAPI::Cast<float, T, castToFloat>(valF32_0, raw0, maskF32);
-            AscendC::MicroAPI::Cast<float, T, castToFloat>(valF32_1, raw1, maskF32);
-            AscendC::MicroAPI::Sub(valF32_0, valF32_0, meanCol, maskF32);
-            AscendC::MicroAPI::Sub(valF32_1, valF32_1, meanCol, maskF32);
-            AscendC::MicroAPI::Cast<T, float, castToTarget>(raw0, valF32_0, maskF32);
-            AscendC::MicroAPI::Cast<T, float, castToTarget>(raw1, valF32_1, maskF32);
-            AscendC::MicroAPI::StoreAlign<T, AscendC::MicroAPI::StoreDist::DIST_PACK_B32>(
-                rows + static_cast<uint64_t>(rIdx) * DP + c, raw0, maskF32);
-            AscendC::MicroAPI::StoreAlign<T, AscendC::MicroAPI::StoreDist::DIST_PACK_B32>(
-                rows + static_cast<uint64_t>(rIdx + 1) * DP + c, raw1, maskF32);
+            CenterRowPair(rows + static_cast<uint64_t>(rIdx) * DP + c,
+                          rows + static_cast<uint64_t>(rIdx + 1) * DP + c,
+                          meanCol, maskF32);
         }
         if (rIdx < count) {
-            AscendC::MicroAPI::RegTensor<T> rawLast;
-            AscendC::MicroAPI::RegTensor<float> valF32Last;
-            AscendC::MicroAPI::LoadAlign<T, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(
-                rawLast, rows + static_cast<uint64_t>(rIdx) * DP + c);
-            AscendC::MicroAPI::Cast<float, T, castToFloat>(valF32Last, rawLast, maskF32);
-            AscendC::MicroAPI::Sub(valF32Last, valF32Last, meanCol, maskF32);
-            AscendC::MicroAPI::Cast<T, float, castToTarget>(rawLast, valF32Last, maskF32);
-            AscendC::MicroAPI::StoreAlign<T, AscendC::MicroAPI::StoreDist::DIST_PACK_B32>(
-                rows + static_cast<uint64_t>(rIdx) * DP + c, rawLast, maskF32);
+            CenterRowSingle(rows + static_cast<uint64_t>(rIdx) * DP + c, meanCol, maskF32);
         }
     }
 }
@@ -154,6 +191,57 @@ __simd_callee__ __attribute__((always_inline)) inline void PackFixedScaleBlock(_
     AscendC::MicroAPI::StoreAlign<half, AscendC::MicroAPI::StoreDist::DIST_PACK_B32>(halfScales, h0, mask);
 }
 
+template <bool SMOOTH>
+__simd_callee__ __attribute__((always_inline)) inline void QuantRowChunk(
+    AscendC::MicroAPI::RegTensor<float> &v0,
+    AscendC::MicroAPI::RegTensor<float> &v1,
+    __ubuf__ float *x0,
+    __ubuf__ float *x1,
+    AscendC::MicroAPI::RegTensor<float> &meanVal,
+    AscendC::MicroAPI::MaskReg &mask)
+{
+    AscendC::MicroAPI::LoadAlign(v0, x0);
+    AscendC::MicroAPI::LoadAlign(v1, x1);
+    if constexpr (SMOOTH) {
+        AscendC::MicroAPI::Sub(v0, v0, meanVal, mask);
+        AscendC::MicroAPI::Sub(v1, v1, meanVal, mask);
+        AscendC::MicroAPI::StoreAlign(x0, v0, mask);
+        AscendC::MicroAPI::StoreAlign(x1, v1, mask);
+    }
+    AscendC::MicroAPI::Abs(v0, v0, mask);
+    AscendC::MicroAPI::Abs(v1, v1, mask);
+}
+
+__simd_callee__ __attribute__((always_inline)) inline void QuantizeRowPairChunk(
+    __ubuf__ int8_t *dst0,
+    __ubuf__ int8_t *dst1,
+    __ubuf__ float *src0,
+    __ubuf__ float *src1,
+    AscendC::MicroAPI::RegTensor<float> &inv0,
+    AscendC::MicroAPI::RegTensor<float> &inv1,
+    AscendC::MicroAPI::MaskReg &mask)
+{
+    static constexpr AscendC::MicroAPI::CastTrait castToInt32{
+        AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::SAT,
+        AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
+
+    AscendC::MicroAPI::RegTensor<float> val0, val1;
+    AscendC::MicroAPI::LoadAlign(val0, src0);
+    AscendC::MicroAPI::LoadAlign(val1, src1);
+
+    AscendC::MicroAPI::Mul(val0, val0, inv0, mask);
+    AscendC::MicroAPI::Mul(val1, val1, inv1, mask);
+
+    AscendC::MicroAPI::RegTensor<int32_t> i0, i1;
+    AscendC::MicroAPI::Cast<int32_t, float, castToInt32>(i0, val0, mask);
+    AscendC::MicroAPI::Cast<int32_t, float, castToInt32>(i1, val1, mask);
+
+    AscendC::MicroAPI::StoreAlign<int8_t, AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(
+        dst0, (AscendC::MicroAPI::RegTensor<int8_t> &)i0, mask);
+    AscendC::MicroAPI::StoreAlign<int8_t, AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(
+        dst1, (AscendC::MicroAPI::RegTensor<int8_t> &)i1, mask);
+}
+
 // High-performance INT8 Symmetric Quantization Implementation
 template <uint32_t DP, bool SMOOTH>
 __simd_vf__ inline void QuantRowsImpl(__ubuf__ float *x, [[maybe_unused]] __ubuf__ float *mean,
@@ -174,61 +262,26 @@ __simd_vf__ inline void QuantRowsImpl(__ubuf__ float *x, [[maybe_unused]] __ubuf
     auto dstScale = scales;
     AscendC::MicroAPI::UnalignReg packState;
 
-    if constexpr (DP == 128) {
-        for (uint16_t r = 0; r < 64; r += 2) {
-            AscendC::MicroAPI::RegTensor<float> v0_lo, v1_lo, v0_hi, v1_hi;
-            AscendC::MicroAPI::LoadAlign(v0_lo, x + static_cast<uint32_t>(r) * DP);
-            AscendC::MicroAPI::LoadAlign(v1_lo, x + static_cast<uint32_t>(r + 1) * DP);
-            AscendC::MicroAPI::LoadAlign(v0_hi, x + static_cast<uint32_t>(r) * DP + 64);
-            AscendC::MicroAPI::LoadAlign(v1_hi, x + static_cast<uint32_t>(r + 1) * DP + 64);
+    for (uint16_t r = 0; r < 64; r += 2) {
+        const uint32_t r0 = static_cast<uint32_t>(r) * DP;
+        const uint32_t r1 = static_cast<uint32_t>(r + 1) * DP;
+        AscendC::MicroAPI::RegTensor<float> peak0, peak1;
+        QuantRowChunk<SMOOTH>(peak0, peak1, x + r0, x + r1, mean0, full);
 
-            if constexpr (SMOOTH) {
-                AscendC::MicroAPI::Sub(v0_lo, v0_lo, mean0, full);
-                AscendC::MicroAPI::Sub(v1_lo, v1_lo, mean0, full);
-                AscendC::MicroAPI::Sub(v0_hi, v0_hi, mean1, full);
-                AscendC::MicroAPI::Sub(v1_hi, v1_hi, mean1, full);
-                AscendC::MicroAPI::StoreAlign(x + static_cast<uint32_t>(r) * DP, v0_lo, full);
-                AscendC::MicroAPI::StoreAlign(x + static_cast<uint32_t>(r) * DP + 64, v0_hi, full);
-                AscendC::MicroAPI::StoreAlign(x + static_cast<uint32_t>(r + 1) * DP, v1_lo, full);
-                AscendC::MicroAPI::StoreAlign(x + static_cast<uint32_t>(r + 1) * DP + 64, v1_hi, full);
-            }
-
-            AscendC::MicroAPI::Abs(v0_lo, v0_lo, full);
-            AscendC::MicroAPI::Abs(v1_lo, v1_lo, full);
-            AscendC::MicroAPI::Abs(v0_hi, v0_hi, full);
-            AscendC::MicroAPI::Abs(v1_hi, v1_hi, full);
-
-            AscendC::MicroAPI::RegTensor<float> peak0, peak1;
-            AscendC::MicroAPI::Max(peak0, v0_lo, v0_hi, full);
-            AscendC::MicroAPI::Max(peak1, v1_lo, v1_hi, full);
-            AscendC::MicroAPI::ReduceMax(peak0, peak0, full);
-            AscendC::MicroAPI::ReduceMax(peak1, peak1, full);
-
-            AscendC::MicroAPI::StoreUnAlign<float, AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-                dstScale, peak0, packState, 1);
-            AscendC::MicroAPI::StoreUnAlign<float, AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-                dstScale, peak1, packState, 1);
+        if constexpr (DP == 128) {
+            AscendC::MicroAPI::RegTensor<float> v0_hi, v1_hi;
+            QuantRowChunk<SMOOTH>(v0_hi, v1_hi, x + r0 + 64, x + r1 + 64, mean1, full);
+            AscendC::MicroAPI::Max(peak0, peak0, v0_hi, full);
+            AscendC::MicroAPI::Max(peak1, peak1, v1_hi, full);
         }
-    } else {
-        for (uint16_t r = 0; r < 64; r += 2) {
-            AscendC::MicroAPI::RegTensor<float> v0, v1;
-            AscendC::MicroAPI::LoadAlign(v0, x + static_cast<uint32_t>(r) * DP);
-            AscendC::MicroAPI::LoadAlign(v1, x + static_cast<uint32_t>(r + 1) * DP);
-            if constexpr (SMOOTH) {
-                AscendC::MicroAPI::Sub(v0, v0, mean0, full);
-                AscendC::MicroAPI::Sub(v1, v1, mean0, full);
-                AscendC::MicroAPI::StoreAlign(x + static_cast<uint32_t>(r) * DP, v0, full);
-                AscendC::MicroAPI::StoreAlign(x + static_cast<uint32_t>(r + 1) * DP, v1, full);
-            }
-            AscendC::MicroAPI::Abs(v0, v0, full);
-            AscendC::MicroAPI::Abs(v1, v1, full);
-            AscendC::MicroAPI::ReduceMax(v0, v0, full);
-            AscendC::MicroAPI::ReduceMax(v1, v1, full);
-            AscendC::MicroAPI::StoreUnAlign<float, AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-                dstScale, v0, packState, 1);
-            AscendC::MicroAPI::StoreUnAlign<float, AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-                dstScale, v1, packState, 1);
-        }
+
+        AscendC::MicroAPI::ReduceMax(peak0, peak0, full);
+        AscendC::MicroAPI::ReduceMax(peak1, peak1, full);
+
+        AscendC::MicroAPI::StoreUnAlign<float, AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+            dstScale, peak0, packState, 1);
+        AscendC::MicroAPI::StoreUnAlign<float, AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+            dstScale, peak1, packState, 1);
     }
 
     AscendC::MicroAPI::StoreUnAlignPost(dstScale, packState, 0);
@@ -256,31 +309,17 @@ __simd_vf__ inline void QuantRowsImpl(__ubuf__ float *x, [[maybe_unused]] __ubuf
     AscendC::MicroAPI::StoreAlign(inverseScales, invScaleVec, full);
     AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
 
-    static constexpr AscendC::MicroAPI::CastTrait castToInt32{
-        AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::SAT,
-        AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
-
     for (uint16_t r = 0; r < 64; r += 2) {
         AscendC::MicroAPI::RegTensor<float> inv0, inv1;
         AscendC::MicroAPI::LoadAlign<float, AscendC::MicroAPI::LoadDist::DIST_BRC_B32>(inv0, inverseScales + r);
         AscendC::MicroAPI::LoadAlign<float, AscendC::MicroAPI::LoadDist::DIST_BRC_B32>(inv1, inverseScales + r + 1);
 
         for (uint16_t c = 0; c < DP; c += 64) {
-            AscendC::MicroAPI::RegTensor<float> val0, val1;
-            AscendC::MicroAPI::LoadAlign(val0, x + static_cast<uint32_t>(r) * DP + c);
-            AscendC::MicroAPI::LoadAlign(val1, x + static_cast<uint32_t>(r + 1) * DP + c);
-
-            AscendC::MicroAPI::Mul(val0, val0, inv0, full);
-            AscendC::MicroAPI::Mul(val1, val1, inv1, full);
-
-            AscendC::MicroAPI::RegTensor<int32_t> i0, i1;
-            AscendC::MicroAPI::Cast<int32_t, float, castToInt32>(i0, val0, full);
-            AscendC::MicroAPI::Cast<int32_t, float, castToInt32>(i1, val1, full);
-
-            AscendC::MicroAPI::StoreAlign<int8_t, AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(
-                out + static_cast<uint32_t>(r) * DP + c, (AscendC::MicroAPI::RegTensor<int8_t> &)i0, full);
-            AscendC::MicroAPI::StoreAlign<int8_t, AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(
-                out + static_cast<uint32_t>(r + 1) * DP + c, (AscendC::MicroAPI::RegTensor<int8_t> &)i1, full);
+            QuantizeRowPairChunk(out + static_cast<uint32_t>(r) * DP + c,
+                                 out + static_cast<uint32_t>(r + 1) * DP + c,
+                                 x + static_cast<uint32_t>(r) * DP + c,
+                                 x + static_cast<uint32_t>(r + 1) * DP + c,
+                                 inv0, inv1, full);
         }
     }
 

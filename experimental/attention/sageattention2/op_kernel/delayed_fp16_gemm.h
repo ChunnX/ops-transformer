@@ -19,7 +19,7 @@ struct MxScaleCache {
     GM_ADDR base = nullptr;
 };
 
-template <AscendC::CO2Layout OutLayout>
+template <AscendC::CO2Layout OutLayout = AscendC::CO2Layout::NZ>
 __aicore__ static inline AscendC::FixpipeParamsArch3510<OutLayout> BuildDequantFixpipeParams(
     const uint16_t rowCount, const uint16_t colCount, const bool isSubBlock, const uint16_t srcStride = 0U)
 {
@@ -30,6 +30,38 @@ __aicore__ static inline AscendC::FixpipeParamsArch3510<OutLayout> BuildDequantF
     fp.dualDstCtl = 0U;
     fp.subBlockId = isSubBlock;
     return fp;
+}
+
+template <AscendC::CO2Layout OutLayout = AscendC::CO2Layout::NZ>
+__aicore__ static inline void DispatchDequantFixpipe(
+    AscendC::LocalTensor<half> ubDst,
+    AscendC::LocalTensor<int32_t> l0cSrc,
+    const uint16_t rowCount,
+    const uint16_t colCount,
+    const bool isSubBlock,
+    const uint16_t srcStride = 0U)
+{
+    static constexpr AscendC::FixpipeConfig pipeCfg{OutLayout, true};
+    const auto fpParams = BuildDequantFixpipeParams<OutLayout>(rowCount, colCount, isSubBlock, srcStride);
+    AscendC::Fixpipe<half, int32_t, pipeCfg>(ubDst, l0cSrc, fpParams);
+}
+
+template <AscendC::CO2Layout OutLayout = AscendC::CO2Layout::NZ>
+__aicore__ static inline void DispatchDequantFixpipe(
+    AscendC::LocalTensor<half> ubDst,
+    AscendC::LocalTensor<int32_t> l0cSrc,
+    const uint16_t rowCount,
+    const uint16_t colCount,
+    const bool isSubBlock,
+    const uint16_t srcStride,
+    const event_t syncEvt,
+    const uint32_t aivSubBlock,
+    const orchestration::TokenSignal signal = orchestration::TokenSignal::QK_READY)
+{
+    AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(syncEvt);
+    DispatchDequantFixpipe<OutLayout>(ubDst, l0cSrc, rowCount, colCount, isSubBlock, srcStride);
+    AscendC::SetFlag<AscendC::HardEvent::FIX_M>(syncEvt);
+    orchestration::EventHandshake::NotifyAiv<PIPE_FIX>(signal, aivSubBlock);
 }
 
 // Architectural Invariant Verification:
@@ -52,6 +84,29 @@ public:
     static constexpr uint32_t N_DIM = sage::core::N;
     static constexpr uint32_t SUB_M = sage::core::HALF;
 
+    template <uint32_t SubPartId, typename L0BType>
+    __aicore__ static inline void ExecuteSubMmad(memory::FixedResource &res, const L0BType &l0TensorB, event_t syncEvt) {
+        AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(syncEvt);
+        constexpr uint32_t aOffset = SubPartId * (SUB_M * K_DIM);
+        constexpr uint32_t cOffset = SubPartId * (SUB_M * N_DIM * sizeof(Accumulator));
+        auto l0SubA = tla::MakeTensor(res.l0ABuf.template GetBufferByByte<Element>(aOffset),
+            tla::MakeLayout<Element, typename TileCopy::LayoutTagL0A>(SUB_M, K_DIM), Catlass::Arch::PositionL0A{});
+        auto l0SubC = tla::MakeTensor(res.l0CBuf.template GetBufferByByte<Accumulator>(cOffset),
+            tla::MakeLayout<Accumulator, Catlass::layout::L0C>(SUB_M, N_DIM), Catlass::Arch::PositionL0C{});
+        Catlass::Gemm::Tile::TileMmadTla<ArchTag, Element, typename TileCopy::LayoutTagL1A>()(
+            l0SubC, l0SubA, l0TensorB, SUB_M, N_DIM, K_DIM, true);
+        AscendC::SetFlag<AscendC::HardEvent::M_FIX>(syncEvt);
+    }
+
+    template <uint32_t SubPartId>
+    __aicore__ static inline void ExecuteSubFixpipe(memory::FixedResource &res, uint32_t ubOffset, event_t syncEvt) {
+        constexpr uint32_t cOffset = SubPartId * (SUB_M * N_DIM * sizeof(Accumulator));
+        auto ubDestination = res.ubBuf.template GetBufferByByte<half>(ubOffset);
+        auto l0cSource = res.l0CBuf.template GetBufferByByte<Accumulator>(cOffset);
+        DispatchDequantFixpipe(
+            ubDestination, l0cSource, SUB_M, N_DIM, SubPartId != 0U, SUB_M, syncEvt, SubPartId);
+    }
+
     // ========================================================================
     // DeepEP & DeepGEMM Asynchronous Pipelining (Fixpipe 0 || MMAD 1 Concurrency):
     // On Atlas 950PR (C310/A5), MMAD operates on PIPE_M while Fixpipe operates
@@ -63,72 +118,44 @@ public:
     // ========================================================================
     template <typename L0BType>
     __aicore__ static inline void ExecutePipelinedMmadAndFixpipe(memory::FixedResource &res, const L0BType &l0TensorB, uint32_t ubOffset) {
-        constexpr auto syncEvt0 = static_cast<event_t>(EventHandshake::QK_EVENT);
-        constexpr auto syncEvt1 = static_cast<event_t>(EventHandshake::QK_SECOND_FIX_EVENT);
+        constexpr auto syncEvt0 = static_cast<event_t>(orchestration::EventHandshake::QK_EVENT);
+        constexpr auto syncEvt1 = static_cast<event_t>(orchestration::EventHandshake::QK_SECOND_FIX_EVENT);
 
         // Stage 0: MMAD for SubPart 0 on Cube core (PIPE_M)
-        AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(syncEvt0);
-        auto l0SubA0 = tla::MakeTensor(res.l0ABuf.template GetBufferByByte<Element>(0U),
-            tla::MakeLayout<Element, typename TileCopy::LayoutTagL0A>(SUB_M, K_DIM), Catlass::Arch::PositionL0A{});
-        auto l0SubC0 = tla::MakeTensor(res.l0CBuf.template GetBufferByByte<Accumulator>(0U),
-            tla::MakeLayout<Accumulator, Catlass::layout::L0C>(SUB_M, N_DIM), Catlass::Arch::PositionL0C{});
-        Catlass::Gemm::Tile::TileMmadTla<ArchTag, Element, typename TileCopy::LayoutTagL1A>()(
-            l0SubC0, l0SubA0, l0TensorB, SUB_M, N_DIM, K_DIM, true);
-        AscendC::SetFlag<AscendC::HardEvent::M_FIX>(syncEvt0);
+        ExecuteSubMmad<0U>(res, l0TensorB, syncEvt0);
 
-        // Stage 1: Dual-Issue Async Overlap — Fixpipe (SubPart 0) || MMAD (SubPart 1)
-        // 1. Dispatch Fixpipe for SubPart 0 to PIPE_FIX
-        AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(syncEvt0);
-        static constexpr AscendC::FixpipeConfig pipeCfg{AscendC::CO2Layout::NZ, true};
-        const auto fpParams0 = BuildDequantFixpipeParams<AscendC::CO2Layout::NZ>(SUB_M, N_DIM, false);
-        auto ubDestination = res.ubBuf.template GetBufferByByte<half>(ubOffset);
-        auto l0cSource0 = res.l0CBuf.template GetBufferByByte<Accumulator>(0U);
-        AscendC::Fixpipe<half, Accumulator, pipeCfg>(ubDestination, l0cSource0, fpParams0);
-        AscendC::SetFlag<AscendC::HardEvent::FIX_M>(syncEvt0);
-        EventHandshake::NotifyAiv<PIPE_FIX>(TokenSignal::QK_READY, 0U);
+        // Stage 1: Dual-Issue Async Overlap — Fixpipe (SubPart 0 on PIPE_FIX) || MMAD (SubPart 1 on PIPE_M)
+        ExecuteSubFixpipe<0U>(res, ubOffset, syncEvt0);
+        ExecuteSubMmad<1U>(res, l0TensorB, syncEvt1);
 
-        // 2. Concurrently dispatch MMAD for SubPart 1 to PIPE_M (non-blocking overlap)
-        AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(syncEvt1);
-        auto l0SubA1 = tla::MakeTensor(res.l0ABuf.template GetBufferByByte<Element>(SUB_M * K_DIM),
-            tla::MakeLayout<Element, typename TileCopy::LayoutTagL0A>(SUB_M, K_DIM), Catlass::Arch::PositionL0A{});
-        auto l0SubC1 = tla::MakeTensor(res.l0CBuf.template GetBufferByByte<Accumulator>(SUB_M * N_DIM * sizeof(Accumulator)),
-            tla::MakeLayout<Accumulator, Catlass::layout::L0C>(SUB_M, N_DIM), Catlass::Arch::PositionL0C{});
-        Catlass::Gemm::Tile::TileMmadTla<ArchTag, Element, typename TileCopy::LayoutTagL1A>()(
-            l0SubC1, l0SubA1, l0TensorB, SUB_M, N_DIM, K_DIM, true);
-        AscendC::SetFlag<AscendC::HardEvent::M_FIX>(syncEvt1);
-
-        // Stage 2: Fixpipe for SubPart 1 (dispatched to PIPE_FIX upon MMAD 1 completion)
-        AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(syncEvt1);
-        const auto fpParams1 = BuildDequantFixpipeParams<AscendC::CO2Layout::NZ>(SUB_M, N_DIM, true);
-        auto l0cSource1 = res.l0CBuf.template GetBufferByByte<Accumulator>(SUB_M * N_DIM * sizeof(Accumulator));
-        AscendC::Fixpipe<half, Accumulator, pipeCfg>(ubDestination, l0cSource1, fpParams1);
-        AscendC::SetFlag<AscendC::HardEvent::FIX_M>(syncEvt1);
-        EventHandshake::NotifyAiv<PIPE_FIX>(TokenSignal::QK_READY, 1U);
+        // Stage 2: Fixpipe for SubPart 1 on PIPE_FIX upon MMAD 1 completion
+        ExecuteSubFixpipe<1U>(res, ubOffset, syncEvt1);
     }
 
     __aicore__ static inline void Execute(memory::FixedResource &res, uint32_t ubOffset, bool loadA, uint32_t kParity) {
-        AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(EventHandshake::QK_EVENT);
-        auto l1TensorA = tla::MakeTensor(res.l1Buf.template GetBufferByByte<Element>(0U), tla::MakeLayout<Element, typename TileCopy::LayoutTagL1A>(sage::core::M, K_DIM), Catlass::Arch::PositionL1{});
+        AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(orchestration::EventHandshake::QK_EVENT);
         auto l1TensorB = tla::MakeTensor(res.l1Buf.template GetBufferByByte<Element>(BOffset + kParity * 65536U), tla::MakeLayout<Element, typename TileCopy::LayoutTagL1B>(K_DIM, N_DIM), Catlass::Arch::PositionL1{});
 
-        if (loadA) EventHandshake::WaitFromBothAiv<PIPE_MTE1>(TokenSignal::Q_READY);
+        if (loadA) orchestration::EventHandshake::WaitFromBothAiv<PIPE_MTE1>(orchestration::TokenSignal::Q_READY);
 
-        const auto kFetchEvt = static_cast<event_t>(EventHandshake::K_PREFETCH_EVENT_BASE + kParity);
+        const auto kFetchEvt = static_cast<event_t>(orchestration::EventHandshake::K_PREFETCH_EVENT_BASE + kParity);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(kFetchEvt);
-        AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(EventHandshake::QK_EVENT);
+        AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(orchestration::EventHandshake::QK_EVENT);
 
         auto l0TensorB = tla::MakeTensor(res.l0BBuf.template GetBufferByByte<Element>(0U), tla::MakeLayout<Element, typename TileCopy::LayoutTagL0B>(K_DIM, N_DIM), Catlass::Arch::PositionL0B{});
         typename TileCopy::CopyL1ToL0B()(l0TensorB, tla::GetTile(l1TensorB, tla::MakeCoord(0U, 0U), tla::MakeShape(K_DIM, N_DIM)));
 
-        auto l0A_Part0 = tla::MakeTensor(res.l0ABuf.template GetBufferByByte<Element>(0U), tla::MakeLayout<Element, typename TileCopy::LayoutTagL0A>(SUB_M, K_DIM), Catlass::Arch::PositionL0A{});
-        auto l0A_Part1 = tla::MakeTensor(res.l0ABuf.template GetBufferByByte<Element>(SUB_M * K_DIM), tla::MakeLayout<Element, typename TileCopy::LayoutTagL0A>(SUB_M, K_DIM), Catlass::Arch::PositionL0A{});
         if (loadA) {
-            typename TileCopy::CopyL1ToL0A()(l0A_Part0, tla::GetTile(l1TensorA, tla::MakeCoord(0U, 0U), tla::MakeShape(SUB_M, K_DIM)));
-            typename TileCopy::CopyL1ToL0A()(l0A_Part1, tla::GetTile(l1TensorA, tla::MakeCoord(SUB_M, 0U), tla::MakeShape(SUB_M, K_DIM)));
+            auto l1TensorA = tla::MakeTensor(res.l1Buf.template GetBufferByByte<Element>(0U), tla::MakeLayout<Element, typename TileCopy::LayoutTagL1A>(sage::core::M, K_DIM), Catlass::Arch::PositionL1{});
+            #pragma unroll
+            for (uint32_t part = 0U; part < 2U; ++part) {
+                auto l0A_Part = tla::MakeTensor(res.l0ABuf.template GetBufferByByte<Element>(part * (SUB_M * K_DIM)), tla::MakeLayout<Element, typename TileCopy::LayoutTagL0A>(SUB_M, K_DIM), Catlass::Arch::PositionL0A{});
+                typename TileCopy::CopyL1ToL0A()(l0A_Part, tla::GetTile(l1TensorA, tla::MakeCoord(part * SUB_M, 0U), tla::MakeShape(SUB_M, K_DIM)));
+            }
         }
 
         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(kFetchEvt);
-        AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EventHandshake::QK_EVENT);
+        AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(orchestration::EventHandshake::QK_EVENT);
         memory::Sync<AscendC::HardEvent::MTE1_M>();
 
         ExecutePipelinedMmadAndFixpipe(res, l0TensorB, ubOffset);
@@ -239,18 +266,13 @@ public:
         if constexpr (EmitToUB == false) {
             // Retain partial sum in L0C
         } else if constexpr (std::is_same_v<Element, int8_t>) {
-            static constexpr AscendC::FixpipeConfig pipeCfg{AscendC::CO2Layout::NZ, true};
             auto ubDestination = res.ubBuf.template GetBufferByByte<half>(ubOffset);
-
-            // SubBlock 0 (AIV 0): rows 0..63
-            const auto fpParams0 = BuildDequantFixpipeParams<AscendC::CO2Layout::NZ>(sage::core::HALF, nDim, false, sage::core::M);
-            auto l0cSource0 = res.l0CBuf.template GetBufferByByte<int32_t>(L0C_ACCUMULATOR_OFFSET);
-            AscendC::Fixpipe<half, int32_t, pipeCfg>(ubDestination, l0cSource0, fpParams0);
-
-            // SubBlock 1 (AIV 1): rows 64..127 (starts at fractal 4 = 1024 int32 elements in L0C NZ layout)
-            const auto fpParams1 = BuildDequantFixpipeParams<AscendC::CO2Layout::NZ>(sage::core::HALF, nDim, true, sage::core::M);
-            auto l0cSource1 = res.l0CBuf.template GetBufferByByte<int32_t>(L0C_ACCUMULATOR_OFFSET + 1024U * sizeof(int32_t));
-            AscendC::Fixpipe<half, int32_t, pipeCfg>(ubDestination, l0cSource1, fpParams1);
+            #pragma unroll
+            for (uint32_t subBlock = 0U; subBlock < 2U; ++subBlock) {
+                const uint32_t l0cByteOffset = L0C_ACCUMULATOR_OFFSET + subBlock * (1024U * sizeof(int32_t));
+                auto l0cSource = res.l0CBuf.template GetBufferByByte<int32_t>(l0cByteOffset);
+                DispatchDequantFixpipe(ubDestination, l0cSource, sage::core::HALF, nDim, subBlock != 0U, sage::core::M);
+            }
         } else {
             auto ubFloatTensor = tla::MakeTensor(res.ubBuf.template GetBufferByByte<float>(ubOffset), tla::MakeLayout<float, Catlass::layout::RowMajor>(sage::core::M, nDim), Catlass::Arch::PositionUB{});
             Catlass::Gemm::Tile::CopyL0CToUBTla<ArchTag, decltype(l0AccumulatorC), decltype(ubFloatTensor), Catlass::Gemm::Tile::CopyL0CToUBMode::SPLIT_M>()(ubFloatTensor, l0AccumulatorC);

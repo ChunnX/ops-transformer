@@ -2,6 +2,8 @@
 #include <cmath>
 #include <limits>
 #include <string_view>
+#include <tuple>
+#include <utility>
 #include "aclnn_kernels/contiguous.h"
 #include "opdev/make_op_executor.h"
 #include "opdev/op_dfx.h"
@@ -24,27 +26,41 @@ using sage::core::SagePvAccum;
 
 struct TensorShape4D {
     int64_t b = 0, h = 0, s = 0, d = 0;
-    explicit TensorShape4D(const aclTensor *t) {
-        const auto &view = t->GetViewShape();
-        b = view[0]; h = view[1]; s = view[2]; d = view[3];
+    explicit TensorShape4D(const aclTensor *t) noexcept {
+        if (t) {
+            const auto &view = t->GetViewShape();
+            if (view.GetDimNum() == 4) {
+                b = view[0]; h = view[1]; s = view[2]; d = view[3];
+            }
+        }
     }
 };
 
-inline bool ValidateTensorMeta(const aclTensor *tensor) noexcept
-{
-    if (!tensor) return false;
-    const auto &shapeView = tensor->GetViewShape();
-    if (shapeView.GetDimNum() != 4) return false;
-    const auto elemType = tensor->GetDataType();
-    if (elemType != DataType::DT_FLOAT16 && elemType != DataType::DT_BF16) return false;
-    for (int idx = 0; idx < 4; ++idx) {
-        if (shapeView[idx] <= 0 || shapeView[idx] >= static_cast<int64_t>(UINT32_MAX - 64)) return false;
-    }
-    return true;
+template <typename... Tensors>
+inline bool ValidateTensorsMeta(const aclTensor *first, const Tensors *...rest) noexcept {
+    auto validateSingle = [](const aclTensor *tensor) noexcept -> bool {
+        if (!tensor) return false;
+        const auto &view = tensor->GetViewShape();
+        if (view.GetDimNum() != 4) return false;
+        const auto elemType = tensor->GetDataType();
+        if (elemType != DataType::DT_FLOAT16 && elemType != DataType::DT_BF16) return false;
+        for (int idx = 0; idx < 4; ++idx) {
+            if (view[idx] <= 0 || view[idx] >= static_cast<int64_t>(UINT32_MAX - 64)) return false;
+        }
+        // 末维连续性校验：必须满足 stride(-1) == 1
+        const auto &strides = tensor->GetViewStrides();
+        if (strides.size() != 4 || strides[3] != 1) return false;
+        return true;
+    };
+    if (!validateSingle(first)) return false;
+    const auto leadDtype = first->GetDataType();
+    auto validateAndMatch = [leadDtype, &validateSingle](const aclTensor *t) noexcept -> bool {
+        return validateSingle(t) && (t->GetDataType() == leadDtype);
+    };
+    return (validateAndMatch(rest) && ...);
 }
 
-inline bool ValidateStorageContiguity(const aclTensor *tensor) noexcept
-{
+inline bool ValidateStorageContiguity(const aclTensor *tensor) noexcept {
     if (!tensor || tensor->GetViewOffset() != 0) return false;
     const auto &shapeView = tensor->GetViewShape();
     const auto &strideView = tensor->GetViewStrides();
@@ -56,14 +72,23 @@ inline bool ValidateStorageContiguity(const aclTensor *tensor) noexcept
     return true;
 }
 
-inline const aclTensor *TransposeToHnd(const aclTensor *tensor, bool nhdLayout, aclOpExecutor *exec)
-{
-    if (!nhdLayout) return tensor;
-    const auto &sv = tensor->GetViewShape();
-    const auto &stv = tensor->GetViewStrides();
-    const op::Shape hndShape{sv[0], sv[2], sv[1], sv[3]};
-    const op::Strides hndStrides{stv[0], stv[2], stv[1], stv[3]};
-    return exec->CreateView(tensor, hndShape, tensor->GetStorageShape(), hndStrides, tensor->GetViewOffset());
+template <typename... Tensors>
+inline auto TransposeToHndAll(bool isNhd, aclOpExecutor *exec, const Tensors *... tensors) noexcept {
+    auto toHnd = [isNhd, exec](const aclTensor *t) noexcept -> const aclTensor * {
+        if (!isNhd || !t) return t;
+        const auto &sv = t->GetViewShape();
+        const auto &stv = t->GetViewStrides();
+        return exec->CreateView(t, op::Shape{sv[0], sv[2], sv[1], sv[3]},
+                                t->GetStorageShape(),
+                                op::Strides{stv[0], stv[2], stv[1], stv[3]},
+                                t->GetViewOffset());
+    };
+    return std::make_tuple(toHnd(tensors)...);
+}
+
+template <typename... Tensors>
+inline auto MakeContiguousAll(aclOpExecutor *exec, const Tensors *... tensors) noexcept {
+    return std::make_tuple(l0op::Contiguous(tensors, exec)...);
 }
 
 } // namespace
@@ -117,11 +142,8 @@ aclnnStatus aclnnSageAttention2GetWorkspaceSize(
         OP_LOGW("smooth_v is ignored unless pv_accum_dtype is \"fp32\".");
     }
 
-    const auto qDtype = q->GetDataType();
-    const bool inputsValid = ValidateTensorMeta(q) && ValidateTensorMeta(k) && ValidateTensorMeta(v) && ValidateTensorMeta(out)
-                          && (k->GetDataType() == qDtype) && (v->GetDataType() == qDtype) && (out->GetDataType() == qDtype)
-                          && (q->GetViewShape() == out->GetViewShape());
-    VALIDATE_TRUE(inputsValid, ACLNN_ERR_PARAM_INVALID);
+    VALIDATE_TRUE(ValidateTensorsMeta(q, k, v, out) && (q->GetViewShape() == out->GetViewShape()),
+                  ACLNN_ERR_PARAM_INVALID);
 
     const bool platformValid = (op::GetCurrentPlatformInfo().GetSocLongVersion().rfind("Ascend950", 0) == 0);
     VALIDATE_TRUE(platformValid, ACLNN_ERR_PARAM_INVALID);
@@ -134,10 +156,7 @@ aclnnStatus aclnnSageAttention2GetWorkspaceSize(
     auto execContext = CREATE_EXECUTOR();
     VALIDATE_TRUE(execContext.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
-    const aclTensor *hndQ = TransposeToHnd(q, isNhd, execContext.get());
-    const aclTensor *hndK = TransposeToHnd(k, isNhd, execContext.get());
-    const aclTensor *hndV = TransposeToHnd(v, isNhd, execContext.get());
-    const aclTensor *hndOut = TransposeToHnd(out, isNhd, execContext.get());
+    auto [hndQ, hndK, hndV, hndOut] = TransposeToHndAll(isNhd, execContext.get(), q, k, v, out);
     VALIDATE_TRUE(hndQ && hndK && hndV && hndOut, ACLNN_ERR_INNER_NULLPTR);
 
     TensorShape4D qDims(hndQ), kDims(hndK), vDims(hndV);
@@ -154,14 +173,11 @@ aclnnStatus aclnnSageAttention2GetWorkspaceSize(
         VALIDATE_TRUE(lse->GetDataType() == DataType::DT_FLOAT && lse->GetViewShape() == lseShape, ACLNN_ERR_PARAM_INVALID);
     }
 
-    auto toContig = [&](const aclTensor *t) { return l0op::Contiguous(t, execContext.get()); };
-    const aclTensor *cQ = toContig(hndQ);
-    const aclTensor *cK = toContig(hndK);
-    const aclTensor *cV = toContig(hndV);
+    auto [cQ, cK, cV] = MakeContiguousAll(execContext.get(), hndQ, hndK, hndV);
     VALIDATE_TRUE(cQ && cK && cV, ACLNN_ERR_INNER_NULLPTR);
 
     const bool directOut = !isNhd && ValidateStorageContiguity(hndOut);
-    const aclTensor *targetOut = directOut ? hndOut : execContext->AllocTensor(hndQ->GetViewShape(), qDtype);
+    const aclTensor *targetOut = directOut ? hndOut : execContext->AllocTensor(hndQ->GetViewShape(), q->GetDataType());
 
     const bool directLse = (!returnLse) || (!isNhd && ValidateStorageContiguity(lse));
     const aclTensor *targetLse = (returnLse && directLse) ? lse : execContext->AllocTensor(lseShape, DataType::DT_FLOAT);

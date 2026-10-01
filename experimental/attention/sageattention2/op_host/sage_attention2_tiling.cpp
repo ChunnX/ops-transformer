@@ -1,6 +1,7 @@
 #include <cmath>
 #include <cstdint>
 #include <dlfcn.h>
+#include <utility>
 #include "acl/acl_rt.h"
 #include "register/op_def_registry.h"
 #include "tiling/platform/platform_ascendc.h"
@@ -16,21 +17,29 @@ struct DeviceHardwareMetrics {
     uint32_t aivCoreCount = 0U;
 };
 
+template <uint64_t Alignment = 512ULL>
 struct BufferAllocationManager {
     uint64_t currentOffset = 0ULL;
 
-    inline bool AllocateAligned(uint64_t &targetOffset, uint64_t totalElements, uint64_t unitBytes = 1ULL) {
-        if (unitBytes > 0 && totalElements > UINT64_MAX / unitBytes) {
-            return (false);
+    template <typename... DimTs>
+    inline bool AllocateAligned(uint64_t &targetOffset, DimTs... dimensions) noexcept {
+        uint64_t totalBytes = 1ULL;
+        auto multiplyFactor = [&](uint64_t factor) noexcept -> bool {
+            if (factor == 0ULL) return true;
+            if (totalBytes > UINT64_MAX / factor) return false;
+            totalBytes *= factor;
+            return true;
+        };
+        if (!(multiplyFactor(static_cast<uint64_t>(dimensions)) && ...)) {
+            return false;
         }
-        const uint64_t rawByteSize = totalElements * unitBytes;
-        const uint64_t alignedByteSize = RoundUpTo(rawByteSize, 512ULL);
-        if (currentOffset > UINT64_MAX - alignedByteSize) {
-            return (false);
+        const uint64_t alignedBytes = sage::core::RoundUpTo(totalBytes, Alignment);
+        if (currentOffset > UINT64_MAX - alignedBytes) {
+            return false;
         }
-        targetOffset = (currentOffset + 0ULL);
-        currentOffset += alignedByteSize;
-        return (true);
+        targetOffset = currentOffset;
+        currentOffset += alignedBytes;
+        return true;
     }
 };
 
@@ -38,9 +47,9 @@ struct RuntimeCoreResolver {
     static bool ResolveCores(const gert::TilingContext *ctx, uint32_t &aicResult, uint32_t &aivResult) {
         thread_local static uint32_t localAic = 0U, localAiv = 0U;
         if (localAic > 0U && localAiv >= (localAic * 2U)) {
-            aicResult = (localAic + 0U);
-            aivResult = (localAiv + 0U);
-            return (true);
+            aicResult = localAic;
+            aivResult = localAiv;
+            return true;
         }
 
         if (ctx && ctx->GetPlatformInfo()) {
@@ -48,8 +57,8 @@ struct RuntimeCoreResolver {
             const uint32_t queriedAic = uint32_t(ascPlatform.GetCoreNumAic());
             const uint32_t queriedAiv = uint32_t(ascPlatform.GetCoreNumAiv());
             if (queriedAic > 0U && queriedAiv >= (queriedAic * 2U)) {
-                aicResult = (queriedAic + 0U);
-                aivResult = (queriedAiv + 0U);
+                aicResult = queriedAic;
+                aivResult = queriedAiv;
             }
         }
 
@@ -81,17 +90,43 @@ struct RuntimeCoreResolver {
         }
 
         if (aicResult > 0U && aivResult >= (aicResult * 2U)) {
-            localAic = (aicResult + 0U);
-            localAiv = (aivResult + 0U);
-            return (true);
+            localAic = aicResult;
+            localAiv = aivResult;
+            return true;
         }
-        return (false);
+        return false;
     }
 };
 
-template <typename T>
-static inline const T* FetchAttributePointer(const gert::RuntimeAttrs *attrs, size_t attrIndex) {
-    return (attrs != nullptr) ? attrs->GetAttrPointer<T>(attrIndex) : nullptr;
+template <typename... AttrTypes>
+inline bool ExtractRuntimeAttributes(const gert::RuntimeAttrs *attrs, const AttrTypes* &... outPtrs) noexcept {
+    if (!attrs) return false;
+    size_t attrIdx = 0;
+    return (((outPtrs = attrs->GetAttrPointer<AttrTypes>(attrIdx++)), outPtrs != nullptr) && ...);
+}
+
+template <size_t... Indices>
+inline bool ValidateTensorInputs(const gert::TilingContext *ctx, std::index_sequence<Indices...>) noexcept {
+    auto checkOne = [ctx](size_t idx) noexcept -> bool {
+        const auto *shape = ctx->GetInputShape(idx);
+        const auto *desc = ctx->GetInputDesc(idx);
+        if (!shape || !desc) return false;
+        const auto &storage = shape->GetStorageShape();
+        if (storage.GetDimNum() != 4) return false;
+        for (size_t d = 0; d < 4; ++d) {
+            if (storage[d] <= 0 || storage[d] >= UINT32_MAX - 64) return false;
+        }
+        if (const auto *stride = ctx->GetInputStride(idx); stride != nullptr) {
+            if (stride->GetDimNum() != 4 || (*stride)[3] != 1) return false;
+        }
+        return true;
+    };
+    return (checkOne(Indices) && ...);
+}
+
+template <size_t... Indices>
+inline bool MatchInputDataTypes(const gert::TilingContext *ctx, ge::DataType expectedType, std::index_sequence<Indices...>) noexcept {
+    return ((ctx->GetInputDesc(Indices)->GetDataType() == expectedType) && ...);
 }
 
 static inline void ComputeCanonicalStrides(uint64_t (&strideArr)[3], uint32_t headCount, uint32_t seqLen, uint32_t headDim) {
@@ -100,53 +135,39 @@ static inline void ComputeCanonicalStrides(uint64_t (&strideArr)[3], uint32_t he
     strideArr[0] = uint64_t(headCount) * strideArr[1];
 }
 
+inline constexpr bool IsWideStreamMode(uint32_t dp, uint32_t sq, uint32_t sk) noexcept {
+    return (dp == 128U) && (sk >= 512U) && ((sk % 512U) == 0U) && ((sq % 64U) == 0U);
+}
+
 struct SageAttention2TilingPipeline {
     static bool Execute(gert::TilingContext *context) {
         if (!context || !context->GetAttrs()) {
-            return (false);
+            return false;
         }
 
-        const auto *shapeQ = context->GetInputShape(0);
-        const auto *shapeK = context->GetInputShape(1);
-        const auto *shapeV = context->GetInputShape(2);
-        const auto *descQ = context->GetInputDesc(0);
-        const auto *descK = context->GetInputDesc(1);
-        const auto *descV = context->GetInputDesc(2);
-
-        if (!shapeQ || !shapeK || !shapeV || !descQ || !descK || !descV) {
-            return (false);
+        if (!ValidateTensorInputs(context, std::index_sequence<0, 1, 2>{})) {
+            return false;
         }
 
-        const auto &sQ = (*shapeQ).GetStorageShape();
-        const auto &sK = (*shapeK).GetStorageShape();
-        const auto &sV = (*shapeV).GetStorageShape();
-
-        if (sQ.GetDimNum() != 4 || sK.GetDimNum() != 4 || sV.GetDimNum() != 4) {
-            return (false);
-        }
-
-        for (size_t axis = 0; axis < 4; ++axis) {
-            if (sQ[axis] <= 0 || sK[axis] <= 0 || sV[axis] <= 0 ||
-                sQ[axis] >= UINT32_MAX - 64 || sK[axis] >= UINT32_MAX - 64 || sV[axis] >= UINT32_MAX - 64) {
-                return (false);
-            }
-        }
-
-        const auto inputDtype = descQ->GetDataType();
+        const auto inputDtype = context->GetInputDesc(0)->GetDataType();
         const bool validDtype = (inputDtype == ge::DT_FLOAT16 || inputDtype == ge::DT_BF16);
-        if (!validDtype || descK->GetDataType() != inputDtype || descV->GetDataType() != inputDtype) {
-            return (false);
+        if (!validDtype || !MatchInputDataTypes(context, inputDtype, std::index_sequence<1, 2>{})) {
+            return false;
         }
+
+        const auto &sQ = context->GetInputShape(0)->GetStorageShape();
+        const auto &sK = context->GetInputShape(1)->GetStorageShape();
+        const auto &sV = context->GetInputShape(2)->GetStorageShape();
 
         const bool shapesCompatible = (sK == sV) && (sQ[0] == sK[0]) && (sQ[3] == sK[3]) &&
                                       (sQ[3] <= sage::core::MAX_HEAD_DIM) && ((sQ[1] % sK[1]) == 0);
         if (!shapesCompatible) {
-            return (false);
+            return false;
         }
 
         const uint64_t batchHeadProduct = uint64_t(sK[0]) * uint64_t(sK[1]);
         if (batchHeadProduct >= UINT32_MAX || sQ[2] > UINT32_MAX - 127 || sK[2] > UINT32_MAX - 511) {
-            return (false);
+            return false;
         }
 
         sage::core::SageAttention2TilingData tilingPayload{};
@@ -159,29 +180,29 @@ struct SageAttention2TilingPipeline {
         params.d = uint32_t(sQ[3]);
         params.dp = sage::core::PaddedHeadDim(params.d);
 
-        const auto *opAttrs = (*context).GetAttrs();
-        const float *attrSmScale = FetchAttributePointer<float>(opAttrs, 0);
-        const bool *attrSmoothK = FetchAttributePointer<bool>(opAttrs, 1);
-        const bool *attrCausal = FetchAttributePointer<bool>(opAttrs, 2);
-        const bool *attrReturnLse = FetchAttributePointer<bool>(opAttrs, 3);
-        const int64_t *attrQuantGran = FetchAttributePointer<int64_t>(opAttrs, 4);
-        const int64_t *attrPvAccum = FetchAttributePointer<int64_t>(opAttrs, 5);
-        const bool *attrSmoothV = FetchAttributePointer<bool>(opAttrs, 6);
+        const float *attrSmScale = nullptr;
+        const bool *attrSmoothK = nullptr;
+        const bool *attrCausal = nullptr;
+        const bool *attrReturnLse = nullptr;
+        const int64_t *attrQuantGran = nullptr;
+        const int64_t *attrPvAccum = nullptr;
+        const bool *attrSmoothV = nullptr;
 
-        if (!attrSmScale || !attrSmoothK || !attrCausal || !attrReturnLse || !attrQuantGran || !attrPvAccum || !attrSmoothV) {
-            return (false);
+        if (!ExtractRuntimeAttributes(context->GetAttrs(), attrSmScale, attrSmoothK, attrCausal,
+                                      attrReturnLse, attrQuantGran, attrPvAccum, attrSmoothV)) {
+            return false;
         }
         if (!std::isfinite(*attrSmScale) || (*attrCausal && params.sq != params.sk)) {
-            return (false);
+            return false;
         }
         if (!sage::core::IsValidQuantGran(*attrQuantGran) || !sage::core::IsValidPvAccum(*attrPvAccum)) {
-            return (false);
+            return false;
         }
 
         const float scaleMagnitude = std::abs(*attrSmScale);
         const float sqrtBalanced = std::sqrt(scaleMagnitude * 2048.0f);
         if (!std::isfinite(sqrtBalanced) || sqrtBalanced > sage::core::SAGE_FP16_MAX) {
-            return (false);
+            return false;
         }
 
         params.kFactor = float(sqrtBalanced);
@@ -202,37 +223,35 @@ struct SageAttention2TilingPipeline {
 
         uint32_t vectorCoreCount = 0U;
         if (!RuntimeCoreResolver::ResolveCores(context, params.cores, vectorCoreCount)) {
-            return (false);
+            return false;
         }
-        const uint32_t blockDimVal = params.cores;
-        context->SetBlockDim(blockDimVal);
+        context->SetBlockDim(params.cores);
 
         params.qp = sage::core::RoundUpTo(params.sq, 128U);
         params.kp = sage::core::RoundUpTo(params.sk, 512U);
 
-        const bool isWideStreamMode = false;
+        const bool isWideStreamMode = IsWideStreamMode(params.dp, params.sq, params.sk);
         const bool isDp128 = (params.dp == 128U);
         const bool isCausal = (params.causal != 0U);
         const uint64_t operatorTilingKey = GET_TPL_TILING_KEY(uint32_t(inputDtype), isCausal, isDp128, isWideStreamMode);
         context->SetTilingKey(operatorTilingKey);
-        const uint32_t defaultScheduleMode = 1U;
-        context->SetScheduleMode(defaultScheduleMode);
+        context->SetScheduleMode(1U);
 
-        BufferAllocationManager memPlanner{0ULL};
+        BufferAllocationManager<512ULL> memPlanner{};
         const uint64_t queryStagingBatches = isWideStreamMode ? 0ULL : uint64_t(params.b);
 
-        bool planValid = true;
-        planValid = planValid && memPlanner.AllocateAligned(tilingPayload.mean, uint64_t(params.b) * params.hk * params.dp, sizeof(float));
-        planValid = planValid && memPlanner.AllocateAligned(tilingPayload.vMean, uint64_t(params.b) * params.hk * params.dp, sizeof(float));
-        planValid = planValid && memPlanner.AllocateAligned(tilingPayload.vMxScale, uint64_t(params.b) * params.hk * (params.kp / 32U) * params.dp, 1ULL);
-        planValid = planValid && memPlanner.AllocateAligned(tilingPayload.q8, queryStagingBatches * params.hq * params.qp * params.dp, 1ULL);
-        planValid = planValid && memPlanner.AllocateAligned(tilingPayload.k8, uint64_t(params.b) * params.hk * params.kp * params.dp, 1ULL);
-        planValid = planValid && memPlanner.AllocateAligned(tilingPayload.v8, uint64_t(params.b) * params.hk * params.kp * params.dp, 1ULL);
-        planValid = planValid && memPlanner.AllocateAligned(tilingPayload.qScale, queryStagingBatches * params.hq * params.qp, sizeof(uint16_t));
-        planValid = planValid && memPlanner.AllocateAligned(tilingPayload.kScale, uint64_t(params.b) * params.hk * params.kp, sizeof(uint16_t));
+        const bool planValid =
+            memPlanner.AllocateAligned(tilingPayload.mean, params.b, params.hk, params.dp, sizeof(float)) &&
+            memPlanner.AllocateAligned(tilingPayload.vMean, params.b, params.hk, params.dp, sizeof(float)) &&
+            memPlanner.AllocateAligned(tilingPayload.vMxScale, params.b, params.hk, params.kp / 32U, params.dp, 1ULL) &&
+            memPlanner.AllocateAligned(tilingPayload.q8, queryStagingBatches, params.hq, params.qp, params.dp, 1ULL) &&
+            memPlanner.AllocateAligned(tilingPayload.k8, params.b, params.hk, params.kp, params.dp, 1ULL) &&
+            memPlanner.AllocateAligned(tilingPayload.v8, params.b, params.hk, params.kp, params.dp, 1ULL) &&
+            memPlanner.AllocateAligned(tilingPayload.qScale, queryStagingBatches, params.hq, params.qp, sizeof(uint16_t)) &&
+            memPlanner.AllocateAligned(tilingPayload.kScale, params.b, params.hk, params.kp, sizeof(uint16_t));
 
         if (!planValid) {
-            return (false);
+            return false;
         }
 
         uint64_t systemReservedWorkspace = (16ULL << 20);
@@ -243,26 +262,25 @@ struct SageAttention2TilingPipeline {
 
         const uint64_t totalWorkspaceRequired = memPlanner.currentOffset;
         if (totalWorkspaceRequired > UINT64_MAX - systemReservedWorkspace) {
-            return (false);
+            return false;
         }
 
-        auto workspaceSizes = (*context).GetWorkspaceSizes(1U);
-        auto rawData = (*context).GetRawTilingData();
+        auto workspaceSizes = context->GetWorkspaceSizes(1U);
+        auto rawData = context->GetRawTilingData();
         const uint64_t payloadByteSize = sizeof(SageAttention2TilingData);
         if (!workspaceSizes || !rawData || rawData->GetCapacity() < payloadByteSize) {
-            return (false);
+            return false;
         }
 
         *reinterpret_cast<SageAttention2TilingData *>(rawData->GetData()) = tilingPayload;
         rawData->SetDataSize(payloadByteSize);
         workspaceSizes[0] = static_cast<size_t>(totalWorkspaceRequired + systemReservedWorkspace);
-        return (true);
+        return true;
     }
 };
 
 inline ge::graphStatus ComputeSageAttention2Tiling(gert::TilingContext *context) {
-    const bool isTilingOk = SageAttention2TilingPipeline::Execute(context);
-    return isTilingOk ? ge::GRAPH_SUCCESS : ge::GRAPH_FAILED;
+    return SageAttention2TilingPipeline::Execute(context) ? ge::GRAPH_SUCCESS : ge::GRAPH_FAILED;
 }
 
 inline ge::graphStatus ParseHardwareSpec(gert::TilingParseContext *context) {

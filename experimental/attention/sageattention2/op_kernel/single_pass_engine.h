@@ -427,9 +427,8 @@ public:
         if constexpr (WIDE) {
             ExecuteWideStream<T, CAUSAL>(
                 q, workspace + tilingData.k8, workspace + tilingData.v8,
-                workspace + tilingData.qScale, workspace + tilingData.kScale,
-                workspace + tilingData.vMxScale, workspace + tilingData.vMean,
-                out, lse, params);
+                workspace + tilingData.kScale, workspace + tilingData.vMxScale,
+                workspace + tilingData.vMean, out, lse, params);
         } else {
             InvokeStandardKernel<DP128 ? 128U : 64U, CAUSAL>(workspace, out, lse, params, tilingData);
         }
