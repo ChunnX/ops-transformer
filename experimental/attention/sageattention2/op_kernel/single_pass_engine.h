@@ -165,6 +165,14 @@ public:
     }
 
     __aicore__ inline void StepSoftmax(uint32_t step, const StandardTileTask &task, const sage::core::SageParams &p) {
+        // TODO(debug): softmax step marker into lse[0,0,1000+step*8] — remove after root-cause.
+        if (task.qb == 0U && task.h == 0U && task.qstart == 0U && step < 60U) {
+            auto dbg = res_.ubBuf.template GetBufferByByte<float>(memory::SUM_UB);
+            dbg[0] = static_cast<float>(1000 + step);
+            memory::Sync<AscendC::HardEvent::V_MTE3>();
+            AscendC::DataCopy(lg_[1000 + step * 8], dbg, 8);
+            memory::Sync<AscendC::HardEvent::MTE3_V>();
+        }
         const uint32_t parity = step % sage::core::PIPE_SLOTS;
         const uint32_t colOffset = step * sage::core::N;
         auto scores = res_.ubBuf.template GetBufferByByte<half>(memory::SCORE_UB + parity * sage::core::HALF * sage::core::N * 2);
@@ -212,8 +220,19 @@ public:
         EventHandshake::NotifyCube<PIPE_MTE3>(TokenSignal::P_READY);
     }
 
-    __aicore__ inline void StepAccumulate(uint32_t step, uint32_t totalCount, const sage::core::SageParams &p) {
+    __aicore__ inline void StepAccumulate(uint32_t step, uint32_t totalCount, const StandardTileTask &task, const sage::core::SageParams &p) {
         const uint32_t pvIndex = step - sage::core::LOOKAHEAD;
+        // TODO(debug): per-step state dump into lse[0,0,step*8] — remove after root-cause.
+        if (task.qb == 0U && task.h == 0U && task.qstart == 0U && step < 60U) {
+            auto dbg = res_.ubBuf.template GetBufferByByte<float>(memory::SUM_UB);
+            dbg[0] = static_cast<float>(step);
+            dbg[1] = static_cast<float>(pvIndex);
+            dbg[2] = static_cast<float>((pvIndex & 1) != 0);
+            dbg[3] = static_cast<float>(pvIndex + 1 == totalCount);
+            memory::Sync<AscendC::HardEvent::V_MTE3>();
+            AscendC::DataCopy(lg_[step * 8], dbg, 8);
+            memory::Sync<AscendC::HardEvent::MTE3_V>();
+        }
         if (pvIndex & 1) {
             EventHandshake::WaitFromCube<PIPE_V>(TokenSignal::PV_READY);
             EventHandshake::WaitFromCube<PIPE_V>(TokenSignal::PV_READY);
@@ -370,7 +389,7 @@ public:
                         vecEngine.StepSoftmax(step, tileTask, p);
                     }
                     if (step >= sage::core::LOOKAHEAD) {
-                        vecEngine.StepAccumulate(step, tileTask.count, p);
+                        vecEngine.StepAccumulate(step, tileTask, tileTask.count, p);
                     }
                 }
                 vecEngine.EpilogueTile(tileTask, p);

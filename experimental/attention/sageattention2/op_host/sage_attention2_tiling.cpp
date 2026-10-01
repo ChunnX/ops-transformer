@@ -110,14 +110,22 @@ inline bool ValidateTensorInputs(const gert::TilingContext *ctx, std::index_sequ
     auto checkOne = [ctx](size_t idx) noexcept -> bool {
         const auto *shape = ctx->GetInputShape(idx);
         const auto *desc = ctx->GetInputDesc(idx);
-        if (!shape || !desc) return false;
-        const auto &storage = shape->GetStorageShape();
-        if (storage.GetDimNum() != 4) return false;
-        for (size_t d = 0; d < 4; ++d) {
-            if (storage[d] <= 0 || storage[d] >= UINT32_MAX - 64) return false;
+        if (!shape || !desc) {
+            return false;
         }
-        if (const auto *stride = ctx->GetInputStride(idx); stride != nullptr) {
-            if (stride->GetDimNum() != 4 || (*stride)[3] != 1) return false;
+        const auto &storage = shape->GetStorageShape();
+        if (storage.GetDimNum() != 4) {
+            return false;
+        }
+        for (size_t d = 0; d < 4; ++d) {
+            if (storage[d] <= 0 || storage[d] >= UINT32_MAX - 64) {
+                return false;
+            }
+        }
+        if (const auto *stride = ctx->GetInputStride(idx); stride != nullptr && stride->GetDimNum() > 0) {
+            if (stride->GetDimNum() != 4 || (*stride)[3] != 1) {
+                return false;
+            }
         }
         return true;
     };
