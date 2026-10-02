@@ -20,7 +20,7 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List
 
 import torch
 import torch.nn.functional as F
@@ -47,7 +47,6 @@ for candidate in [
     if candidate.exists() and str(candidate) not in sys.path:
         sys.path.insert(0, str(candidate))
 
-import sageattention2
 from sageattention2 import sageattn_qk_int8_pv_fp8_asc
 
 

@@ -11,7 +11,6 @@
 # 已知口径差（对拍用容差而非逐位，见 sa2_host_e2e.cpp 头注）：per_thread 的 S 舍入点与
 # FP16 scale 存储。两者均为 M4.3 L-A golden 反推收口项。
 import shutil
-import struct
 import subprocess
 import sys
 from pathlib import Path
