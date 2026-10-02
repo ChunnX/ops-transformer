@@ -1,0 +1,169 @@
+# THIRD PARTY SOFTWARE LICENSES AND ATTRIBUTIONS
+
+本文件集中登记 SageAttention2 算子研发过程中吸收与参考的第三方开源代码资产、算法思想与数据结构约定。根据项目交付红线（禁止在代码文件头分散书写版权头），所有被引用的开源项目其版权声明与许可声明统一在此集中登记。
+
+---
+
+## 1. FlashMLA (FlashMLA-Ascend)
+
+- 项目地址: https://github.com/deepseek-ai/FlashMLA
+- 许可类型: MIT License
+- 吸收与参考要点:
+  - 三状态 Online Softmax 算法（running max、denom、O_acc）。
+  - RESCALE_THRES 阈值法 skip-scale 机制（D-R1：max 漂移小于阈值时跳过 O 重缩放）。
+  - O 累加器驻留 AIV UB 架构设计（D-R2）。
+  - 1C2V 混合核流水线与软件 systolic stage 阶段激活顺序。
+  - 单指令复合原语（exp_sub、madd、reduce_max_datablock）及 icache 控制纪律（D-R6）。
+
+### 版权与许可声明:
+```text
+Copyright (c) 2025 DeepSeek
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+---
+
+## 2. DeepGEMM (DeepGEMM-Ascend)
+
+- 项目地址: https://github.com/deepseek-ai/DeepGEMM
+- 许可类型: MIT License
+- 吸收与参考要点:
+  - Atlas 950 平台 MX Scale Factor (SF) 打包约定（D-R4）：K 维相邻两个 32-token 组的 UE8M0 指数打包为 int16，采用 MN-major 格式存储（出处：DeepGEMM README:56 与 transform_sf.hpp）。
+  - 细粒度 L2 Cache Hint 调度规则（D-R5）：常驻数据使用 NORMAL_LAST_VICTIM，流式数据使用 NOTALLOC_KEEP/CLEAN。
+  - AIC 与 AIV 跨核旗号对账与镜像跳块设计思想。
+
+### 版权与许可声明:
+```text
+Copyright (c) 2025 DeepSeek
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+---
+
+## 3. TileKernels
+
+- 项目地址: https://github.com/tile-ai/TileKernels
+- 许可类型: MIT License
+- 吸收与参考要点:
+  - V 矩阵 MX 量化算法（32 token × channel 分组）：基于指数提取、round-to-ceiling 向上取 2 的幂（scale = 2^ceil(log2(amax/448))）、全零组安全下界防护及 packed ue8m0 双 scale 打包（per_token_cast_asc.py）。
+
+### 版权与许可声明:
+```text
+Copyright (c) 2025 Tile-AI
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+---
+
+## 4. TileLang
+
+- 项目地址: https://github.com/tile-ai/tilelang
+- 许可类型: MIT License
+- 吸收与参考要点:
+  - 作为算法原型验证与手写 AscendC 硬件发射序列的比对参考轨（§2.3），验证 INT8 MMA 尾 16 对齐与 MX FP8 blockscaled 计算流。生成产物不进入正式交付分支。
+
+### 版权与许可声明:
+```text
+Copyright (c) 2024-2025 Tile-AI and DeepSeek
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+---
+
+## 5. DeepSelect
+
+- 项目地址: https://github.com/deepseek-ai/DeepSelect
+- 许可类型: MIT License
+- 吸收与参考要点:
+  - 编译期 UB 布局静态预算规划、整数加与浮点加指令错峰发射思想（D-R6）。
+
+### 版权与许可声明:
+```text
+Copyright (c) 2025 DeepSeek
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```

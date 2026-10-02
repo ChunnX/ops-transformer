@@ -1,0 +1,58 @@
+// sa2_template_key.h — SageAttention2 v2 模板维声明与 tiling key 组合（8 特化；key 位序冻结于 DESIGN_SPEC §8）。
+//
+// key 位序（低位在前）：[0:8) DTYPE、[8] GRAN、[9] CAUSAL；声明序即打包序（CANN codegen 约定）。
+// DTYPE 取字面 ge::DataType 值（FP16=1、BF16=27）；GRAN/CAUSAL 为 BOOL 维（1 bit，下标即值）。
+// 预期 key：FP16 = {WARP:1, THREAD:257} × {非因果, +512 因果} → 1/513/257/769；BF16 同式 → 27/539/283/795。
+//
+// 入口约定（配套，详见 sa2_spec.h 注释块）：op 类型 SageAttention2、opFile.value="sa2_kernel"、
+// opInterface.value="sa2_attention2"、入口函数 sa2_attention2、REGISTER_TILING_DEFAULT(Sa2TilingData)、
+// KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2)。
+#ifndef SA2_TEMPLATE_KEY_H_
+#define SA2_TEMPLATE_KEY_H_
+
+#if __has_include("ascendc/host_api/tiling/template_argument.h")
+#include "ascendc/host_api/tiling/template_argument.h"
+#else
+#ifndef ASCENDC_TPL_ARGS_DECL
+#define ASCENDC_TPL_ARGS_DECL(...)
+#define ASCENDC_TPL_DTYPE_DECL(...)
+#define ASCENDC_TPL_BOOL_DECL(...)
+#define ASCENDC_TPL_SEL(...)
+#define ASCENDC_TPL_ARGS_SEL(...)
+#define ASCENDC_TPL_DTYPE_SEL(...)
+#define ASCENDC_TPL_BOOL_SEL(...)
+#endif
+#endif
+
+// 模板取值宏（值随 ge::DataType：DT_FLOAT16=1、DT_BF16=27）
+#define SA2_TPL_FP16 1
+#define SA2_TPL_BF16 27
+#define SA2_TPL_GRAN_WARP 0
+#define SA2_TPL_GRAN_THREAD 1
+
+// 模板维：DTYPE × GRAN × CAUSAL（DP 与 accum 为运行期参数，R.0.4，不进 key）
+ASCENDC_TPL_ARGS_DECL(SageAttention2,
+                      ASCENDC_TPL_DTYPE_DECL(INPUT_DTYPE, SA2_TPL_FP16, SA2_TPL_BF16),
+                      ASCENDC_TPL_BOOL_DECL(GRAN, SA2_TPL_GRAN_WARP, SA2_TPL_GRAN_THREAD),
+                      ASCENDC_TPL_BOOL_DECL(CAUSAL, 0, 1));
+
+// 支持的模板参数组合（8 特化全可达：dtype×gran×causal）
+ASCENDC_TPL_SEL(
+    ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_DTYPE_SEL(INPUT_DTYPE, SA2_TPL_FP16),
+                         ASCENDC_TPL_BOOL_SEL(GRAN, SA2_TPL_GRAN_WARP), ASCENDC_TPL_BOOL_SEL(CAUSAL, 0)),
+    ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_DTYPE_SEL(INPUT_DTYPE, SA2_TPL_FP16),
+                         ASCENDC_TPL_BOOL_SEL(GRAN, SA2_TPL_GRAN_WARP), ASCENDC_TPL_BOOL_SEL(CAUSAL, 1)),
+    ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_DTYPE_SEL(INPUT_DTYPE, SA2_TPL_FP16),
+                         ASCENDC_TPL_BOOL_SEL(GRAN, SA2_TPL_GRAN_THREAD), ASCENDC_TPL_BOOL_SEL(CAUSAL, 0)),
+    ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_DTYPE_SEL(INPUT_DTYPE, SA2_TPL_FP16),
+                         ASCENDC_TPL_BOOL_SEL(GRAN, SA2_TPL_GRAN_THREAD), ASCENDC_TPL_BOOL_SEL(CAUSAL, 1)),
+    ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_DTYPE_SEL(INPUT_DTYPE, SA2_TPL_BF16),
+                         ASCENDC_TPL_BOOL_SEL(GRAN, SA2_TPL_GRAN_WARP), ASCENDC_TPL_BOOL_SEL(CAUSAL, 0)),
+    ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_DTYPE_SEL(INPUT_DTYPE, SA2_TPL_BF16),
+                         ASCENDC_TPL_BOOL_SEL(GRAN, SA2_TPL_GRAN_WARP), ASCENDC_TPL_BOOL_SEL(CAUSAL, 1)),
+    ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_DTYPE_SEL(INPUT_DTYPE, SA2_TPL_BF16),
+                         ASCENDC_TPL_BOOL_SEL(GRAN, SA2_TPL_GRAN_THREAD), ASCENDC_TPL_BOOL_SEL(CAUSAL, 0)),
+    ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_DTYPE_SEL(INPUT_DTYPE, SA2_TPL_BF16),
+                         ASCENDC_TPL_BOOL_SEL(GRAN, SA2_TPL_GRAN_THREAD), ASCENDC_TPL_BOOL_SEL(CAUSAL, 1)));
+
+#endif  // SA2_TEMPLATE_KEY_H_
