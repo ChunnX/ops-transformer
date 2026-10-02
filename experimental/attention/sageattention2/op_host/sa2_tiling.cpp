@@ -29,7 +29,9 @@
 namespace optiling {
 namespace {
 
-// 输入/输出/attr 位序与 sa2_def.cpp 声明序严格一致（attr 序即 aclnn/python 传参序）
+// 输入/输出/attr 位序与 sa2_def.cpp 声明序严格一致（attr 序 = tiling 索引序，禁增删改序；
+// aclnn/python 形参序为各自 API 签名——见 op_api/aclnn_sage_attention2.cpp 与
+// python csrc EXEC_NPU_CMD，按名映射到本序，两套顺序不得混淆）
 constexpr size_t IN_Q = 0;
 constexpr size_t IN_K = 1;
 constexpr size_t IN_V = 2;

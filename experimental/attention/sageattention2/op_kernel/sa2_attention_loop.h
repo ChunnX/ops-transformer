@@ -64,8 +64,8 @@ struct Sa2VfSoftmaxArgs {
     __ubuf__ half *scoreWarp;    // per_warp：deqScore 行基址（per_thread 传 nullptr）
     __ubuf__ float *scoreThread; // per_thread：score 行基址（per_warp 传 nullptr）
     __ubuf__ half *kScaleRow;    // per_warp：kh 行 MTE 暂存
-    __ubuf__ half *qScaleRow;    // qh half 位型源（64 half，wrapper 自 L1 标量暂存）
-    __ubuf__ float *qhF32;       // qh f32 展开行（wrapper 由 qScaleRow 位运算展开；per_thread 未用）
+    __ubuf__ float *qhF32;       // qh f32 展开行（wrapper 自 L1 qScale 行做 half 位型→f32 位运算
+                                 // 展开；per_thread 未用。VF 内禁标量位强转，探针 p33f/p33g）
     __ubuf__ float *scalarSlot;  // 归约标量提取槽（[0]=max、[1]=sum、[2]=alpha 位型提取）
     int64_t validRows;
     int64_t m0;
@@ -427,7 +427,7 @@ __simd_vf__ inline void Sa2VfFinishRun(Sa2VfFinishArgs a)
         vapi::RegTensor<float> dReg, oneReg, invReg;
         vapi::LoadAlign(dReg, a.denom);
         vapi::Duplicate(oneReg, 1.0f);
-        vapi::Div(invReg, dReg, oneReg, rowMaskAll);
+        vapi::Div(invReg, oneReg, dReg, rowMaskAll);
         __ubuf__ float *invRow = reinterpret_cast<__ubuf__ float *>(
             reinterpret_cast<uint64_t>(a.stageRow) + 1024);  // scratch +1024..1279（256B 空段）
         vapi::StoreAlign(invRow, invReg, rowMaskAll);
@@ -474,15 +474,6 @@ __simd_vf__ inline void Sa2VfFinishRun(Sa2VfFinishArgs a)
 // 类非静态成员函数体内，AIV pass 后端报 "Unsupported scalar instruction in AIV loop"
 //（成员上下文的调用序列不被 AIV loop 降低接受）；自由函数调用点同形验证可过
 //（本文件 VF 探针对照实测）。故成员 wrapper 一律经本组 thunk 间接调用。
-__aicore__ inline void Sa2VfSoftmaxInvoke(Sa2VfSoftmaxArgs a)
-{
-    if (a.isThreadGran) {
-        Sa2VfSoftmaxRun<true, false>(a);
-    } else {
-        Sa2VfSoftmaxRun<false, false>(a);
-    }
-}
-
 template <bool IsCausal>
 __aicore__ inline void Sa2VfSoftmaxInvokeC(Sa2VfSoftmaxArgs a)
 {
@@ -597,14 +588,6 @@ inline void Sa2VfFinishRun(Sa2VfFinishArgs a)
     }
 }
 
-__aicore__ inline void Sa2VfSoftmaxInvoke(Sa2VfSoftmaxArgs a)
-{
-    if (a.isThreadGran) {
-        Sa2VfSoftmaxRun<true, false>(a);
-    } else {
-        Sa2VfSoftmaxRun<false, false>(a);
-    }
-}
 template <bool IsCausal>
 __aicore__ inline void Sa2VfSoftmaxInvokeC(Sa2VfSoftmaxArgs a)
 {
@@ -633,26 +616,39 @@ __aicore__ inline void Sa2VfFinishInvoke(Sa2VfFinishArgs a) { Sa2VfFinishRun(a);
 //           [方向切换] = UB 装载/写回方向切换（V 计算 ↔ MTE 搬运），需 pipe_barrier/LocalMemBar 收口；
 //           [跨引擎边] = AIC ↔ AIV，一律走 sa2_events 计数旗号对，禁止以私加屏障替代。
 //
-// 阶段一 KV 预处理（sa2_kv_prep.h，全 AIV、KV head 单写者分头，无事件无屏障）：
-//   K1 ProcessKMeanHost  ：GM K 读 → V 归累 → GM 写回 wsKMean            | 纯 V 计算段 [免屏障]
-//   K2 ProcessKQuantHost ：K 中心化 → amax/127 量化 → L1/GM 写回          | 纯 V [免屏障]（依赖 K1 程序序）
-//   K3 ProcessVQuantHost ：V MX 组 amax → ComputeE8m0Exponent 位技巧 → FP8 | 纯 V [免屏障]
-//   阶段收口（跨阶段边）：AIV 写 GM 队列排空 PipeBarrier(PIPE_ALL) → SyncAll()
-//   （sa2_kernel.cpp：全栅格 AIC+AIV 驻留同步，全局唯一屏障，必要非冗余）
+// 阶段一 KV 预处理（sa2_kv_prep.h，全 AIV、KV head 单写者分头 + M2c-A5 128 行分块网格，无事件）：
+//   K1 ProcessKMeanDevice        ：GM K 读 → 分块树归累 → GM 写回 wsKMean   | 纯 V 计算段 [免屏障]
+//   K1' ProcessVMeanDevice       ：smooth_v 且 fp32 档 → GM V 读归累 → wsVMean | 纯 V [免屏障]
+//   K2 ProcessKQuantChunkDevice  ：K 中心化 → amax/127 量化 → GM 写回        | 纯 V [免屏障]（依赖 K1 程序序）
+//   K3 ProcessVQuantChunkDevice  ：V MX 组 amax → ComputeE8m0Exponent 位技巧 → FP8 | 纯 V [免屏障]
+//   阶段收口（跨阶段边）：SyncAll()（sa2_kernel.cpp：均值 pass → 量化 pass → 注意力 pass 共
+//   2~3 次全栅格 AIC+AIV 驻留同步；原「SyncAll 前 PIPE_ALL 排空」已按 M2b 实测删除，跨核
+//   可见性由 SyncAll 收口，见 sa2_kernel.cpp Process 注记）
 //
-// 阶段二 注意力主循环（本文件，AIV 流水线 V1 → (V2 → V3)×steps → V4）：
+// 阶段二 注意力主循环（本文件，AIV 流水线 V1 → (S0 → V2 → V3)×steps → V4）：
 //   段 V1 StepVectorQQuant：GM q 读 → UB 状态初始化（corr/rowStat/denom/oAcc）+ L1 q8/qScale 写
 //       [计算+写回，仿真单队列免屏障]
 //       出口跨引擎边：kQ8Ok NotifyV(PIPE_V 生产) → AIC StepCubeQk step==0 AwaitMte1（消费管道 MTE1：L1→L0）
+//   段 S0 PrefetchKScaleDevice（M2c-B3，仅 per_warp 接线；per_thread 两侧编译期剪除、旗号同零守恒）：
+//       AIV MTE2 异步 GM→UB kScale 双缓冲预取（scratch KScaleBase ping/pong）；
+//       step≥2 先 AwaitScaleConsumed（V_MTE2 本地事件，WAR 守卫）再重载，
+//       DataCopy 后 PipeBarrier<PIPE_MTE2> 收口 + NotifyScaleLoaded（MTE2_V 本地事件）
+//       —— [方向切换] 类收口，必要非冗余（本地 HardEvent 票 kEvScale0/1，见 sa2_events.h）
 //   段 V2 StepVectorSoftmax（宿主标量 / vapi 设备双轨同构）：
 //       入口跨引擎边：kScoreOk AwaitFix（AIC PIPE_FIX 生产 → PIPE_V 消费，CrossEnginePending 类型态门）
+//       入口本地边：kEvScale AwaitScaleLoaded（MTE2_V，消费 S0 预取的 kh 行）
 //       段内：UB score 装载 → 缩放/因果掩码 → ReduceMax → θ-skip(mNew=mOld) → ExpSub/ReduceSum →
-//             P 双槽写（UB ND + L1 NZ），全程纯 PIPE_V ⇒ [免屏障]（D-R9 零 pipe_barrier 纪律段）
+//             P 双槽写（UB ND + L1 NZ 64 位块搬），计算段纯 PIPE_V ⇒ [免屏障]（D-R9 纪律段）
+//       出口本地边：NotifyScaleConsumed（V_MTE2，放行 S0 复用该槽）
 //       出口跨引擎边：kQkFree NotifyV → AIC AwaitV(PIPE_FIX 重填 score 槽)；
 //                     kPTaken NotifyMte3 → AIC AwaitMte1（MTE1 取 P 入 L0A）
 //       ⚠ M2b 真机落地注记：P 由 PIPE_V 产出而旗号走 PIPE_MTE3（C.4 口径 = "UB→L1 搬运退休后"）；
 //         真机若以 DataCopy(UB→L1, MTE3) 产 P 的 L1 副本，须在 SetFlag 前插入 V→MTE3 方向收口
 //         （[方向切换] 点）；当前双轨仿真直写 L1 槽、无 MTE 段，桩序已保证消费可见性。
+//         布局耦合义务（v31 迭代 1 登记）：现行分形行 = 16B 数据 + 16B pad，而 MTE3 2D
+//         间隔搬运的块粒度下限为 32B ⇒ 本布局不可由单条带间隔 MTE3 拷贝表达；M2b 改造须
+//         连带评估「32B 连续数据行 + 面间 32B 间隔」NZ 变体（MTE3 跳 pad 与 MTE1 消费侧
+//         分形语义同步改），非纯搬运指令替换。
 //   段 V3 StepVectorPvFold（宿主 / vapi 双轨）：
 //       入口跨引擎边：kPvOk AwaitFix（AIC FIX → V）
 //       段内：UB pv 装载 →（fp32+fp16 档 half 往返折叠）→ Add → oAcc 写回，纯 PIPE_V ⇒ [免屏障]
@@ -668,13 +664,16 @@ __aicore__ inline void Sa2VfFinishInvoke(Sa2VfFinishArgs a) { Sa2VfFinishRun(a);
 //   （MTE1 搬 L0A → MTE2 预取 L1 → MTE1 搬 L0B → M 矩乘 → FIX 写 UB；各 PipeBarrier 为
 //   [方向切换] 类队列间收口，必要非冗余——AIC 单核内跨队列必须显式排空）。
 //
-// 审计结论（迭代 5，grep 全量对账，对应最终态：宿主/vapi AIV + CATLASS AIC 双轨）：
-//   1. AIV 侧同引擎段内（V2/V3/V4 与 sa2_kv_prep.h K1~K3）0 个 pipe_barrier/LocalMemBar —— 零屏障
+// 审计结论（迭代 5 落地，v31 迭代 1 随 M2c-B3/M2c-A5 刷新，grep 全量对账）：
+//   1. AIV 侧同引擎 V2/V3/V4 计算段（与 sa2_kv_prep.h K1~K3）0 个 pipe_barrier/LocalMemBar —— 零屏障
 //      纪律成立，无同引擎冗余屏障可删；
-//   2. 屏障全量清单 = sa2_kernel.cpp SyncAll 前 PIPE_ALL（跨阶段收口）+ AIC 设备分支每 GEMM 步
-//      5 处队列切换收口（见上，[方向切换] 类）——全部必要，无同引擎冗余屏障；
+//   2. 屏障全量清单 = sa2_kernel.cpp 阶段间 SyncAll（跨阶段收口）+ PrefetchKScaleDevice 每步
+//      1 处 PIPE_MTE2 收口（[方向切换] 类）+ AIC 设备分支每 GEMM 步 5 处队列切换收口
+//      （见上，[方向切换] 类）——全部必要，无同引擎冗余屏障；
 //   3. 跨引擎边 6 旗号（kQ8Ok/kScoreOk/kQkFree/kPvOk/kPvFree/kPTaken）每任务 1:1 计数守恒，
 //      生产/消费管道配对符合 sa2_events.h 附录 C.4 口径（V 产 V 旗 / FIX 产 FIX 旗 / MTE3 产 MTE1 收）；
+//      本地边 kEvScale0/1 对（MTE2_V/V_MTE2）每步 1 Set + 1 Wait，仅 per_warp 活跃（v31 迭代 1
+//      恢复粒度剪除：per_thread 步尺度 4KB > 256B 槽，接线挂 M2b）；
 //   4. 唯一遗留注记 = V2 出口 kPTaken 的 V→MTE3 方向收口（M2b 真机落地项，见上 ⚠）。
 // =============================================================================
 
@@ -897,44 +896,38 @@ public:
 
 
     /**
-     * @brief M2c-B3 AIV 负责：K-scale 双缓冲异步预取（与 kEvScale0/1 本地事件映射）
+     * @brief M2c-B3 AIV 负责：K-scale 双缓冲异步预取（与 kEvScale0/1 本地事件映射）。
+     * 仅 per_warp 接线：本步消费方 = Sa2VfSoftmaxRun 的 per_warp kh 行（128 half = 256B，
+     * 恰为 KScaleBase 槽容量）。per_thread 的分段尺度消费由 kUbSegSlot 组合路径承载，
+     * 且其步尺度 2048 half（4KB）独立于 256B Warp 槽——维持针对 per_warp 槽位的编译期剪除，
+     * 防止向 256B Warp 槽越界写入（v31 迭代 1 复核固化）。
      */
-    __aicore__ inline void PrefetchKScale(const Sa2Task &task, int64_t step, int64_t streamId)
-    {
-        PrefetchKScaleDevice(task, step, streamId);
-    }
-
     __aicore__ inline void PrefetchKScaleDevice(const Sa2Task &task, int64_t step, int64_t streamId)
     {
         (void)streamId;
         if (step >= task.steps) {
             return;
         }
-        int64_t parity = step % 2;
-        if (step >= 2) {
-            AwaitScaleConsumed(parity);
+        constexpr bool isThreadGran = (G == Gran::kPerThread);
+        if constexpr (!isThreadGran) {
+            int64_t parity = step % 2;
+            if (step >= 2) {
+                AwaitScaleConsumed(parity);
+            }
+            const Sa2Params &p = td_->params;
+            const Sa2KvHeadView kvView = KvHeadView(p, task.b, task.kh);
+            // 步内寻址取 planner 唯一算式（B-26：engine 禁自书偏移算式）
+            __gm__ half *kScaleStep = reinterpret_cast<__gm__ half *>(
+                userWs_ + KScaleStepByteOff(td_->kScale + kvView.wsKScale, step, p.segWidth));
+
+            AscendC::LocalTensor<half> kScaleUb =
+                UbTensor<half>(Sa2DeviceRes<G>::KScaleBase(parity));
+            AscendC::GlobalTensor<half> gmKScale;
+            gmKScale.SetGlobalBuffer(kScaleStep);
+            AscendC::DataCopy(kScaleUb, gmKScale, static_cast<uint32_t>(kKvStep * p.segWidth));
+            AscendC::PipeBarrier<PIPE_MTE2>();
+            NotifyScaleLoaded(parity);
         }
-        const Sa2Params &p = td_->params;
-        const Sa2KvHeadView kvView = KvHeadView(p, task.b, task.kh);
-        __gm__ half *wsKScaleBase = reinterpret_cast<__gm__ half *>(
-            userWs_ + td_->kScale + kvView.wsKScale);
-        __gm__ half *kScaleStep = wsKScaleBase + step * kKvStep * p.segWidth;
-
-        AscendC::LocalTensor<half> kScaleUb =
-            UbTensor<half>(Sa2DeviceRes<G>::KScaleBase(parity));
-        AscendC::GlobalTensor<half> gmKScale;
-        gmKScale.SetGlobalBuffer(kScaleStep);
-        AscendC::DataCopy(kScaleUb, gmKScale, static_cast<uint32_t>(kKvStep * p.segWidth));
-        AscendC::PipeBarrier<PIPE_MTE2>();
-        NotifyScaleLoaded(parity);
-    }
-
-    /**
-     * @brief AIV 负责：等待 AIC QK 完成，执行在线 Softmax（含 θ 阈值跳过），生成 P 写入 L1 并通知 AIC
-     */
-    __aicore__ inline void StepVectorSoftmax(const Sa2Task &task, int64_t step, int64_t streamId)
-    {
-        StepVectorSoftmaxDevice(task, step, streamId);
     }
 
     /**
@@ -976,8 +969,11 @@ public:
             qhBitsStage[r] = Sa2HalfBitsToF32Bits(qhHalfBits);
         }
 
-        // 等待异步 PrefetchKScaleDevice 将 Scale 加载完成
-        AwaitScaleLoaded(parity);
+        // M2c-B3：等待异步 PrefetchKScaleDevice 将 kh Scale 行加载完成（仅 per_warp 接线，
+        // 与 PrefetchKScaleDevice 的编译期剪除对偶——per_thread 旗号两侧同零，计数守恒不破）
+        if constexpr (!isThreadGran) {
+            AwaitScaleLoaded(parity);
+        }
 
         Sa2VfSoftmaxArgs args{};
         args.rowStat = ub_.GetStateRowStat(streamId);
@@ -987,8 +983,7 @@ public:
         args.pSlotUb = ub_.GetPSlot(parity);
         args.scoreWarp = isThreadGran ? nullptr : ub_.GetScoreSlotWarp(parity);
         args.scoreThread = isThreadGran ? ub_.GetScoreSlotThread(parity) : nullptr;
-        args.kScaleRow = kScaleStage;
-        args.qScaleRow = reinterpret_cast<__ubuf__ half *>(qhF32Stage);
+        args.kScaleRow = isThreadGran ? nullptr : kScaleStage;
         args.qhF32 = qhF32Stage;
         args.scalarSlot = scalarSlot;
         args.validRows = validRows;
@@ -1006,12 +1001,15 @@ public:
             Sa2VfSoftmaxInvokeC<false>(args);
         }
 
-        // Vector 消费 Scale 完成，释放该 slot 供后续步预取
-        NotifyScaleConsumed(parity);
+        // Vector 消费 Scale 完成，释放该 slot 供后续步预取（仅 per_warp，理由同上）
+        if constexpr (!isThreadGran) {
+            NotifyScaleConsumed(parity);
+        }
 
         // L1 NZ 分形打包写入：16×16 分形、行块主序，4 行块 × 8 列块 = 32 块；
         // 分形行 32B = 16 码 + 16B pad，以 16 字节对齐块（两个 64 位无符号整数字）直接搬运，
-        // 彻底根除逐字节标量寻址开销，与 PNzFractalIndex 冻结映射数学等价。
+        // 彻底根除逐字节标量寻址开销；与 PNzFractalIndex 冻结映射的逐字节等价由宿主
+        // conformance 用例 p_nz_fractal_index_guard 以独立复算断言闭环（非仅注释口径）。
         __ubuf__ const uint8_t *pSlotUbR = ub_.GetPSlot(parity);
         uint8_t *pSlotL1 = l1_.GetPNzSlot(streamId);
         for (int64_t r = 0; r < validRows; ++r) {
@@ -1029,14 +1027,6 @@ public:
 
         NotifyV(streamId, Sa2CrossFlag::kQkFree);
         NotifyMte3(streamId, Sa2CrossFlag::kPTaken);
-    }
-
-    /**
-     * @brief AIV 负责：等待 AIC PV 完成，将部分和折叠进 O 累加器并释放 PV 槽
-     */
-    __aicore__ inline void StepVectorPvFold(const Sa2Task &task, int64_t step, int64_t streamId)
-    {
-        StepVectorPvFoldDevice(task, step, streamId);
     }
 
     /**
@@ -1119,14 +1109,6 @@ public:
         // 分别释放两步的 PV 槽，各回退 1 个 kPvFree 信用，维持严格 1:1 计数守恒
         ReleaseSlot<Sa2CrossFlag::kPvFree>(aicMove(pvFull0));
         ReleaseSlot<Sa2CrossFlag::kPvFree>(aicMove(pvFull1));
-    }
-
-    /**
-     * @brief AIV 负责：Epilogue 输出归一化、smooth_v 补偿及 GM 写回与 LSE 闭环
-     */
-    __aicore__ inline void FinishTileVector(const Sa2Task &task, int64_t streamId)
-    {
-        FinishTileVectorDevice(task, streamId);
     }
 
     /**
@@ -1249,9 +1231,9 @@ public:
         int64_t parity = step % 2;
 
         const Sa2KvHeadView kvView = KvHeadView(p, task.b, task.kh);
-        __gm__ int8_t *wsK8Base = reinterpret_cast<__gm__ int8_t *>(
-            userWs_ + td_->k8 + kvView.wsK8);
-        __gm__ int8_t *k8Step = wsK8Base + step * kKvStep * p.dp;
+        // 步内寻址取 planner 唯一算式（B-26：engine 禁自书偏移算式）
+        __gm__ int8_t *k8Step = reinterpret_cast<__gm__ int8_t *>(
+            userWs_ + K8StepByteOff(td_->k8 + kvView.wsK8, step, p.dp));
 
         // 1. 搬运 Q8 从 L1 到 L0A (MTE1)。M2b-0：真实 LocalTensor 无 (ptr,size,pos) 构造
         //（hoststub 假想 API），一律经 TBuf::Get()[字节偏移].ReinterpretCast<T>() 构建，
@@ -1311,7 +1293,7 @@ public:
             fixpipeParams.srcStride = static_cast<uint16_t>(kKvStep / 16);
             fixpipeParams.dstStride = static_cast<uint32_t>(kKvStep);
             fixpipeParams.quantPre = QuantMode_t::DEQF16;
-            // ⚠ M2b 核实项（todo：Fixpipe DEQ 模式枚举核实，D-R13-(1) 前提）：真实
+            // 硬件核实项（Fixpipe DEQ 模式枚举核实，D-R13-(1) 前提）：真实
             // deqScalar 载体为 uint64_t（hoststub 假想为 float），950 fixpipe 的 DEQ 标量
             // 编码（fp32 位型/双 fp16 打包/移位格式）未经真机核实，暂以 2^-14 的 fp32 位型装入。
             const float kSa2DeqScalar = 1.0f / 16384.0f;
@@ -1358,11 +1340,11 @@ public:
 
         const Sa2Params &p = td_->params;
         const Sa2KvHeadView kvView = KvHeadView(p, task.b, task.kh);
-        __gm__ int8_t *wsV8Base = reinterpret_cast<__gm__ int8_t *>(
-            userWs_ + td_->v8 + kvView.wsV8);
         __gm__ int16_t *wsVScaleBase = reinterpret_cast<__gm__ int16_t *>(
             userWs_ + td_->vScale + kvView.wsVScale);
-        __gm__ int8_t *v8Step = wsV8Base + step * kKvStep * p.dp;
+        // 步内寻址取 planner 唯一算式（B-26：engine 禁自书偏移算式）
+        __gm__ int8_t *v8Step = reinterpret_cast<__gm__ int8_t *>(
+            userWs_ + V8StepByteOff(td_->v8 + kvView.wsV8, step, p.dp));
 
         // 1. 搬运 P (FP8 E4M3) 从 L1 到 L0A (MTE1)。M2b-0：张量构建走 TBuf 链（见 StepCubeQk）。
         AscendC::LocalTensor<float8_e4m3_t> l1PTensor =
@@ -1397,20 +1379,31 @@ public:
         // M2c-B4 V MX Scale L1 缓存命中检查：
         const int64_t totalScaleBytes = (p.kp * p.dp) / 32;
         const bool canCacheHead = (totalScaleBytes <= kL1MxScaleCacheBytes);
-        const int64_t stepScaleOffset = step * (kKvStep / 32) * p.dp;
+        // 步偏移取 planner 唯一算式（B-26）。
+        const int64_t stepScaleOffset = VScaleStepByteOff(0, step, p.dp);
+        // v31 迭代 2 布局契约闭合：GM 写像 = 逐步 nN 窗序列化（kv_prep VScalePairWordOff），
+        // 与本处 tla::MakeMxScaleLayout<e8m0, nN, true>(kKvStep/32, dp) 视图的平面化字节像
+        // 逐字节一致（catlass layout.hpp nN 分支 + copy_l1_to_l0b.hpp 三操作数派生为源码依据，
+        // 宿主 conformance 以独立 nN 模型断言）；残余 M2b 真机核实项收窄为 LoadData2DMxParams
+        // 硬件行为本身。本处仅冻结界内性——拷贝长度钳制在 head 尺度区剩余字节内（两操作数
+        // 均为 4·dp 倍数 ≥ 256B，32B MTE 对齐保持），杜绝 kL1VScaleSlot=1024B 直拷对
+        // workspace 尾部 head 的越界读。
+        const int64_t scaleCopyBytes =
+            (kL1VScaleSlot < totalScaleBytes - stepScaleOffset) ? kL1VScaleSlot
+                                                                : (totalScaleBytes - stepScaleOffset);
 
         if (canCacheHead && mxScaleCache_.IsHit(task.b, task.kh, wsVScaleBase)) {
             // L1 缓存命中：直接从 Head 级 L1 缓存区复制当前 step 的尺度张量到双缓冲槽
             AscendC::LocalTensor<float8_e8m0_t> cachedScaleTensor =
                 L1TensorF8E8M0(kL1MxScaleCacheBase + stepScaleOffset);
-            AscendC::DataCopy(l1VScaleTensor, cachedScaleTensor, static_cast<uint32_t>(kL1VScaleSlot));
+            AscendC::DataCopy(l1VScaleTensor, cachedScaleTensor, static_cast<uint32_t>(scaleCopyBytes));
         } else {
             // 未命中或超容量：从 GM 加载并附带 CACHE_HINT_NORMAL_LAST_VICTIM
             AscendC::GlobalTensor<float8_e8m0_t> gmVScaleTensor;
             gmVScaleTensor.SetGlobalBuffer(reinterpret_cast<__gm__ float8_e8m0_t *>(wsVScaleBase),
-                                          static_cast<uint64_t>(kL1VScaleSlot));
+                                          static_cast<uint64_t>(scaleCopyBytes));
             gmVScaleTensor.SetL2CacheHint(Sa2CacheModeOf(Sa2BufferCachePolicy::kScaleHint));
-            AscendC::DataCopy(l1VScaleTensor, gmVScaleTensor, static_cast<uint32_t>(kL1VScaleSlot));
+            AscendC::DataCopy(l1VScaleTensor, gmVScaleTensor, static_cast<uint32_t>(scaleCopyBytes));
 
             if (canCacheHead && step == 0) {
                 // 首步预热本 Head 的全部 L1 缓存
@@ -1564,14 +1557,6 @@ public:
             StepVectorPvFoldDevice(task, step, streamId);
         }
         FinishTileVectorDevice(task, streamId);
-    }
-
-    /**
-     * @brief 兼容执行入口：分发至 Vector 流程
-     */
-    __aicore__ inline void ProcessTile(const Sa2Task &task, int64_t streamId)
-    {
-        ProcessTileVector(task, streamId);
     }
 
 private:

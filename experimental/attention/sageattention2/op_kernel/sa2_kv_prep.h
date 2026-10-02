@@ -115,18 +115,19 @@ private:
     //      「与全量两遍逐位一致」契约）或额外部分和交换旗号（MODE4 预算 12/16 已冻结，无余量）；
     //   2) 确定性加法序：datablock 归约树（block 内 lane 序 + block 间行序）完全静态可复现，
     //      可与 conformance 位一致断言兼容；跨核合并序随核间到达序波动，不可冻结；
-    //   3) GM 读 1×：pass1(本函数)与 pass2(ProcessKQuantHost) 同 AIV 背靠背（L2-replay 融合，
-    //      §6 单屏障结构不动），pass2 命中 L2 ⇒ GM 有效读 1×；跨核归约需部分和 GM 往返，
+    //   3) GM 读 1×：pass1(本函数)与 pass2(ProcessKQuantChunkDevice) 同 AIV 背靠背（L2-replay 融合，
+    //      分块网格结构不动），pass2 命中 L2 ⇒ GM 有效读 1×；跨核归约需部分和 GM 往返，
     //      与 D-R2/D-R13 零 GM 驻留原则冲突。
-    // 义务注记（M2b）：本 oracle 为纯行序标量累加；向量化落 64-lane datablock 树时，FP32 加法
-    // 非结合 ⇒ oracle 须在同一提交内换成同构分块树镜像并保持位一致断言（§4.7 注记同步）。
+    // 义务注记（v31 迭代 1 收口）：设备标量载体现为 128 行分块 × 64 行子块的两级树
+    //（ProcessKMeanStreamKDevice），FP32 加法非结合 ⇒ sim oracle（sa2_sim_kv_prep.h
+    // ProcessKMean）已在本轮改为语句序同构的分块树镜像，「宿主 oracle 逐位镜像」契约恢复；
+    // 向量化落 64-lane datablock 树时，同构义务延续：oracle 与设备须同一提交内换树。
 
     /**
-     * @brief M2c-A5 Stream-K 批量分块与双缓冲 K 均值统计（D-R8 融合形态）
-     * 引入 128 行分块批量处理与双缓冲机制：
-     * 1. 完整 head 独写：单写者持有完整 head，直接执行独占式行块累加与倒数乘写回，零原子操作；
-     * 2. 跨界 head 汇聚：支持跨分界片段分块汇聚与部分和聚合；
-     * 3. 深度结合 D-R8 AIV 内 64-lane datablock 归约树，消除长序列下 Stage 1 KV 预处理的长尾串行开销。
+     * @brief M2c-A5 K 均值 128 行分块统计（D-R8 形态；跨界汇聚分支 = Stream-K 预留，不可达）
+     * 1. 完整 head 独写：单写者持有完整 head，直接执行分块行累加与倒数乘写回，零原子操作；
+     * 2. 跨界 head 汇聚：为 Stream-K 跨核分块预留的接口形态（当前唯一调用 = 全量区间独写）；
+     * 3. 加法树 = 128 行块 → 64 行子块 → 全头折叠，与 sim oracle 同构（见义务注记）。
      */
     __aicore__ inline void ProcessKMeanStreamKDevice(
         __gm__ const Dtype *gmK, __gm__ float *wsKMean, const Sa2Params &p,
@@ -328,12 +329,10 @@ private:
         }
     }
 
-    __aicore__ inline void ProcessKQuantDevice(
-        __gm__ const Dtype *gmK, __gm__ const float *wsKMean,
-        __gm__ int8_t *wsK8, __gm__ half *wsKScale, const Sa2Params &p)
-    {
-        ProcessKQuantChunkDevice(gmK, wsKMean, wsK8, wsKScale, p, 0, p.kp);
-    }
+    // v31 迭代 1 裁决（P2-1 同款纪律）：零调用点整头包装 ProcessKQuantDevice /
+    // ProcessVQuantDevice 删除——Stage 1 入口恒经 ProcessHeadDevice（Pass1 均值 +
+    // Pass2 分块量化，分块粒度由 sa2_kernel.cpp 网格给定）；重引入条件 = 量化阶段
+    // 需要绕过分块网格的整头单核路径（如单核诊断模式）时按需恢复。
 
     __aicore__ inline void ProcessVQuantChunkDevice(
         __gm__ const Dtype *gmV, __gm__ const float *wsVMean,
@@ -387,19 +386,14 @@ private:
                 }
             }
 
+            // v31 迭代 2 布局契约闭合：写像 = 逐步 nN 窗序列化（VScalePairWordOff 唯一算式），
+            // 与 attention_loop 消费窗（tla nN MX 布局平面化字节像）逐字节一致；
+            // 旧「通道主序 [c][pair]」写像在多步窗下与消费窗错位，已废弃。
             for (int64_t c = 0; c < p.dp; ++c) {
                 uint16_t packedU = static_cast<uint16_t>(expSub[0][c]) | (static_cast<uint16_t>(expSub[1][c]) << 8);
-                wsVScale[c * numPairs + pairIdx] = static_cast<int16_t>(packedU);
+                wsVScale[VScalePairWordOff(pairIdx, c, p.dp)] = static_cast<int16_t>(packedU);
             }
         }
-    }
-
-    __aicore__ inline void ProcessVQuantDevice(
-        __gm__ const Dtype *gmV, __gm__ float *wsVMean,
-        __gm__ int8_t *wsV8, __gm__ int16_t *wsVScale, const Sa2Params &p)
-    {
-        ProcessVMeanDevice(gmV, wsVMean, p);
-        ProcessVQuantChunkDevice(gmV, wsVMean, wsV8, wsVScale, p, 0, p.kp);
     }
 
 };

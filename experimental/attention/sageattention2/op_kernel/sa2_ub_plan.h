@@ -211,21 +211,22 @@ struct Sa2DeviceRes {
 
   // L1 槽位（模式无关，见上方链常量）；流 s 的 Q 槽：
   static constexpr int64_t L1Q8Base(int64_t stream) { return stream == 0 ? kL1Q8S0 : kL1Q8S1; }
-  static constexpr int64_t L1QScaleBase(int64_t stream) { return stream == 0 ? kL1QScale0 : kL1QScale1; }
+  // v31 迭代 2 裁决：零调用点助手 L1QScaleBase 删除（Q8/Scale 槽当前无 Cube 消费路径，
+  // kL1QScale0/1 常量本体保留作偏移链 static_assert 锚点）；重引入条件 = per_thread
+  // K-scale L1 驻留路径（StepCubeQk 直读槽位）落地时按需接线。
   // L0C 象限：流 s × 槽奇偶 p → 0 / 32K / 64K / 96K（附录 C.3）。
   static constexpr int64_t L0cQuadBase(int64_t stream, int64_t parity) {
     return (stream * 2 + parity) * kL0CQuadBytes;
   }
 
-  // 槽位访问助手（奇偶槽索引：parity ∈ {0, 1}）
+  // 槽位访问助手（奇偶槽索引：parity ∈ {0, 1}）。
+  // v31 迭代 1 裁决（P2-1 同款纪律）：零调用点助手 SegBase / L1KStepBase / L1VStepBase /
+  // L1VScaleBase / L1PNzBase 删除——engine 对 L1 槽按 kL1* 链常量直接寻址（StepCubeQk/Pv、
+  // 预取路径），重引入条件 = 对应 M2b 路径（per_thread 分段组合 / K·V·scale MTE 预取封装）
+  // 落地时按需接线；kSegBase0/1 与 kL1* 常量本体保留（链 static_assert 锚点）。
   static constexpr int64_t ScoreBase(int64_t parity) { return parity == 0 ? kScoreBase0 : kScoreBase1; }
   static constexpr int64_t PBase(int64_t parity) { return parity == 0 ? kPBase0 : kPBase1; }
   static constexpr int64_t PvBase(int64_t parity) { return parity == 0 ? kPvBase0 : kPvBase1; }
-  static constexpr int64_t SegBase(int64_t parity) { return parity == 0 ? kSegBase0 : kSegBase1; }
-  static constexpr int64_t L1KStepBase(int64_t parity) { return parity == 0 ? kL1KStep0 : kL1KStep1; }
-  static constexpr int64_t L1VStepBase(int64_t parity) { return parity == 0 ? kL1VStep0 : kL1VStep1; }
-  static constexpr int64_t L1VScaleBase(int64_t parity) { return parity == 0 ? kL1VScale0 : kL1VScale1; }
-  static constexpr int64_t L1PNzBase(int64_t stream) { return stream == 0 ? kL1PNz0 : kL1PNz1; }
 
   // M2c-B3 K-scale 双缓冲暂存槽（每槽 128 half = 256B，共 512B，容纳于 scratch 内）
   static constexpr int64_t kKScaleStageSlotBytes = kKvStep * 2; // 256B
@@ -285,11 +286,13 @@ struct Sa2UbBuffer {
   __aicore__ inline __ubuf__ half* GetKScaleSlot(int64_t parity) const {
     return reinterpret_cast<__ubuf__ half*>(base + Res::KScaleBase(parity));
   }
-  // 共合 scratch 中预留的 LSE m 值装配暂存（+768 起每流 256B；布局契约见
+  // 共合 scratch 中预留的 LSE m 值装配暂存（finish 段 +768 起 256B；布局契约见
   // sa2_attention_loop.h VF 计算核段 scratch 表）：FinishTileVectorDevice 把跨步
-  // rowStat 装配成连续行供 LoadAlign。
-  __aicore__ inline __ubuf__ float* GetStateMStage(int64_t stream) const {
-    return reinterpret_cast<__ubuf__ float*>(base + Res::kScratchBase + 768 + stream * 0);
+  // rowStat 装配成连续行供 LoadAlign。每 AIV 核独立 UB，双流各在自己的核上跑，
+  // 故单槽即可（stream 形参仅保持调用侧签名；softmax 段 +768 为 kScale ping 槽，
+  // 两段函数不交错、同流串行复用）。
+  __aicore__ inline __ubuf__ float* GetStateMStage(int64_t /*stream*/) const {
+    return reinterpret_cast<__ubuf__ float*>(base + Res::kScratchBase + 768);
   }
 };
 
@@ -299,15 +302,10 @@ struct Sa2L1Buffer {
   __aicore__ inline explicit Sa2L1Buffer(uint8_t* b = nullptr) : base(b) {}
   __aicore__ inline void SetBase(uint8_t* b) { base = b; }
 
-  __aicore__ inline int8_t* GetKStepSlot(int64_t parity) const {
-    return reinterpret_cast<int8_t*>(base + (parity == 0 ? kL1KStep0 : kL1KStep1));
-  }
-  __aicore__ inline int8_t* GetVStepSlot(int64_t parity) const {
-    return reinterpret_cast<int8_t*>(base + (parity == 0 ? kL1VStep0 : kL1VStep1));
-  }
-  __aicore__ inline int16_t* GetVScaleSlot(int64_t parity) const {
-    return reinterpret_cast<int16_t*>(base + (parity == 0 ? kL1VScale0 : kL1VScale1));
-  }
+  // v31 迭代 1 裁决（P2-1 同款纪律）：零调用点助手 GetKStepSlot / GetVStepSlot /
+  // GetVScaleSlot / GetKMeanSlot 删除——K/V 步 tile 与 vScale 经 TBuf 链构建
+  //（StepCubeQk/PvDevice），K 均值走 GM workspace（kL1KMean/kL1Aux 槽常量本体保留，
+  // 链 static_assert 锚点不依赖本封装）；重引入条件 = 对应 M2b MTE 预取封装落地。
   __aicore__ inline int8_t* GetQ8Slot(int64_t stream) const {
     return reinterpret_cast<int8_t*>(base + (stream == 0 ? kL1Q8S0 : kL1Q8S1));
   }
@@ -316,9 +314,6 @@ struct Sa2L1Buffer {
   }
   __aicore__ inline uint8_t* GetPNzSlot(int64_t stream) const {
     return base + (stream == 0 ? kL1PNz0 : kL1PNz1);
-  }
-  __aicore__ inline float* GetKMeanSlot() const {
-    return reinterpret_cast<float*>(base + kL1KMean);
   }
   __aicore__ inline uint8_t* GetMxScaleCacheBase() const {
     return base + kL1MxScaleCacheBase;

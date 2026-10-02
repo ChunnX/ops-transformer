@@ -11,9 +11,9 @@
 
 using namespace optiling;
 
-// 1. 验证动态 Shape 自动分块计算（覆盖 S 从 128 到 16384 与非对齐序列）
+// 1. 验证动态 Shape 自动分块计算（覆盖 S 从 128 到 131072 与非对齐序列）
 void TestAutoTilingDynamicShapes() {
-    std::cout << "[Test 1] Testing Auto-Tiling Dynamic Shapes (S=128 to S=16384, P-01~P-07)..." << std::endl;
+    std::cout << "[Test 1] Testing Auto-Tiling Dynamic Shapes (S=128 to S=131072, P-01~P-07)..." << std::endl;
 
     struct TestCase {
         const char *name;
@@ -28,6 +28,7 @@ void TestAutoTilingDynamicShapes() {
         {"P-02 (S=8192)", 1, 32, 32, 8192, 8192, 128, 128, 64},
         {"P-05 GQA 4:1", 1, 32, 8, 4096, 4096, 128, 64, 32},
         {"P-07 Ultra-Long (S=16384)", 1, 32, 32, 16384, 16384, 128, 256, 128},
+        {"Extreme Ultra-Long (S=131072)", 1, 32, 32, 131072, 131072, 128, 2048, 1024},
         {"Unaligned Sq=129, Sk=250", 2, 32, 8, 129, 250, 96, 3, 2},
         {"GQA 8:1 (64:8)", 1, 64, 8, 4096, 4096, 128, 64, 32},
         {"MQA 32:1 (32:1)", 1, 32, 1, 2048, 2048, 128, 32, 16},
@@ -42,11 +43,12 @@ void TestAutoTilingDynamicShapes() {
         uint32_t dp = dims.PaddedD();
         assert(dp == 64 || dp == 128);
 
-        // 验证 O(1) UB 驻留安全
+        // 验证 O(1) UB 驻留安全与硬件控制寄存器安全余量（>= 44160 B）
         Sa2TileConfig cfg = Sa2Optiling::DeriveTileConfig(dims, 1, dp);
         assert(cfg.ubInstantaneousPeak <= cfg.ubHardSafetyLimit);
         assert(cfg.ubFootprintPerStep <= cfg.ubHighWater);
         assert(cfg.ubFootprintPerStep + cfg.hardwareReservedHeadroom <= cfg.ubPhysicalLimit);
+        assert(cfg.ubPhysicalLimit - cfg.ubFootprintPerStep >= 44160ULL);
     }
     std::cout << "  -> Auto-Tiling dynamic shape computation PASSED." << std::endl;
 }

@@ -85,7 +85,7 @@ struct Sa2WorkspaceLayout {
     uint64_t k8Size = 0;         // B·Hk·kp·dp：K INT8 量化结果
     uint64_t kScaleSize = 0;    // B·Hk·kp·segWidth·2：K 分段因子 FP16
     uint64_t v8Size = 0;         // B·Hk·kp·dp：V FP8 量化结果
-    uint64_t vScaleSize = 0;    // B·Hk·(kp/64)·dp·2：E8M0 双组 u16 打包
+    uint64_t vScaleSize = 0;    // B·Hk·(kp/64)·dp·2：E8M0 双组 u16 打包（2-D 序 = 逐步 nN 窗序，见 planner VScalePairWordOff）
     uint64_t sysWsSize = 0;     // 系统 Workspace 大小
 
     uint64_t kMeanOffset = 0;

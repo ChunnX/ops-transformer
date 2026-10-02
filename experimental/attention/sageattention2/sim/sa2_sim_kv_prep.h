@@ -50,25 +50,46 @@ public:
     }
 
 private:
+    // K 均值 oracle：语句序同构镜像设备标量载体（op_kernel/sa2_kv_prep.h
+    // ProcessKMeanStreamKDevice）——128 行块 → 64 行子块（D-R8 datablock 基数）→ 全头折叠
+    // 两级 FP32 加法树。v31 迭代 1 收口：旧版纯行序累加与设备分块树在 FP32 非结合语义下
+    // ulp 级漂移，违反「宿主 oracle 逐位镜像」契约；本轮起同构，向量化换树时须同提交同步
+    //（设备侧义务注记同步）。smooth 关闭路径与设备一致：只落零值、不读 GM。
     inline void ProcessKMean(
         const Dtype *gmK, float *wsKMean, const Sa2Params &p)
     {
-        float sumBuf[kMaxHeadDim] = {0.0f};
-        if (p.smoothK && p.sk > 0) {
-            for (int64_t s = 0; s < p.sk; ++s) {
-                const Dtype *row = gmK + s * p.kStride[2];
-                for (int64_t c = 0; c < p.d; ++c) {
-                    sumBuf[c] += static_cast<float>(row[c]);
-                }
-            }
-            float invSk = 1.0f / static_cast<float>(p.sk);
-            for (int64_t c = 0; c < p.d; ++c) {
-                wsKMean[c] = sumBuf[c] * invSk;
-            }
-        } else {
-            for (int64_t c = 0; c < p.d; ++c) {
+        if (!p.smoothK || p.sk <= 0) {
+            for (int64_t c = 0; c < p.dp; ++c) {
                 wsKMean[c] = 0.0f;
             }
+            return;
+        }
+        float totalSum[kMaxHeadDim] = {0.0f};
+        float chunkBuf[kKMeanDoubleBufSlots][kMaxHeadDim];
+        int64_t currentSlot = 0;
+        for (int64_t sBlock = 0; sBlock < p.sk; sBlock += kKMeanBlockRows) {
+            const int64_t blockEnd = std::min(sBlock + kKMeanBlockRows, p.sk);
+            for (int64_t c = 0; c < p.d; ++c) {
+                chunkBuf[currentSlot][c] = 0.0f;
+            }
+            for (int64_t subBlock = sBlock; subBlock < blockEnd; subBlock += kKMeanDataBlockLanes) {
+                const int64_t subEnd = std::min(subBlock + kKMeanDataBlockLanes, blockEnd);
+                for (int64_t s = subBlock; s < subEnd; ++s) {
+                    const Dtype *row = gmK + s * p.kStride[2];
+                    for (int64_t c = 0; c < p.d; ++c) {
+                        chunkBuf[currentSlot][c] += static_cast<float>(row[c]);
+                    }
+                }
+            }
+            for (int64_t c = 0; c < p.d; ++c) {
+                totalSum[c] += chunkBuf[currentSlot][c];
+            }
+            currentSlot = 1 - currentSlot;
+        }
+        // 全头独写（设备侧唯一可达分支；跨界汇聚 = Stream-K 预留，oracle 不镜像不可达分支）
+        const float invSk = 1.0f / static_cast<float>(p.sk);
+        for (int64_t c = 0; c < p.d; ++c) {
+            wsKMean[c] = totalSum[c] * invSk;
         }
         for (int64_t c = p.d; c < p.dp; ++c) {
             wsKMean[c] = 0.0f;
@@ -239,9 +260,10 @@ private:
                 }
             }
 
+            // v31 迭代 2 布局契约闭合：与设备写像同构（逐步 nN 窗序列化，VScalePairWordOff 唯一算式）。
             for (int64_t c = 0; c < p.dp; ++c) {
                 int16_t packed = static_cast<int16_t>(expSub[0][c] | (static_cast<uint16_t>(expSub[1][c]) << 8));
-                wsVScale[c * numPairs + pairIdx] = packed;
+                wsVScale[VScalePairWordOff(pairIdx, c, p.dp)] = packed;
             }
         }
     }

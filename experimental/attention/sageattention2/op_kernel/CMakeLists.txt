@@ -25,12 +25,14 @@
 #    故 CATLASS_ARCH=3510（-D 宏）与 catlass ArchTag（catlass/arch/arch.hpp Ascend950、
 #    gemm/tile/ascend950/）口径一致，保持不变；bisheng 架构串改用 dav-c310。
 #
-# 【M2b-0 结果（2026-10-02，容器 cann_dev_950 实测；迭代 2 修订为已证实口径）】
+# 【M2b-0 结果（2026-10-02，容器 cann_dev_950 实测）】
 # 62 处 API 形状错误全部清零（0 前端错误，-ferror-limit=0 实测）。拆分编译口径（对齐
 # ascendc_kernel_cmake 的 c310_aiv/aic_intf_pub）：
 #   AIC pass：bisheng -xcce --cce-aicore-arch=dav-c310-cube --cce-aicore-only --cce-auto-sync
-#             --cce-mask-opt → EXIT=0（对象 .text 48,416B + .ascendc_tiling 节）。
-#   AIV pass：同形 -vec → EXIT=0（迭代 2 达成；对象 .text 197,472B + .ascendc_tiling 节）。
+#             --cce-mask-opt → EXIT=0（对象 .text 48,576B + .ascendc_tiling 节）。
+#   AIV pass：同形 -vec → EXIT=0（对象 .text 232,032B + .ascendc_tiling 节；迭代 2 打通
+#             attention loop 三 VF 后，Q 量化/KV 预处理标量浮点核心与 P NZ 分形打包/GM
+#             块写回亦已全向量化）。
 # 【AIV 阻塞根因（迭代 2 控制变量探针矩阵钉死，存 tests/aiv_backend_probe.cpp）】
 # 原注记「调用链 ≤1 层 / 入口形态」两条根因均被探针否证（2 层链 + 类层次包装探针全 PASS；
 # 同一函数体 __global__/__aicore__ 形态差异实为死代码伪 PASS——无 __global__ 引用时后端
@@ -44,15 +46,16 @@
 #   同款）、half/bf16 展开「纯整数位型 + u32 通道过桥」、float 侧只允许直接标量装载。
 # 迭代 2 已按 R1/R2 完成 attention loop 三 VF（softmax 状态数学/fold alpha 条件乘）向量化
 # 改写 + wrapper qh 位型展开，两 pass EXIT=0（证据 = 上方两对象非空 .text）。
-# 【遗留（精确到符号，迭代 2 实测）】merge（ld.lld -m aicorelinux，对齐框架 merge_obj.sh
-# 的 AIC 先序 + 双 pass 各持引擎私有入口副本，--allow-multiple-definition 仲裁）报
-# undefined symbol: rintf / ldexpf（各 30 次引用级）——来自 StepVectorQQuantDevice 的
-# __builtin_rintf（aicNearbyInt）与 Sa2KvPreprocessor 的 __builtin_ldexpf
-#（AmlaScaleMultiply 次正规支路）：Q 量化/KV 预处理（sa2_kv_prep.h + StepVectorQQuantDevice）
-# 的标量浮点核心（abs/nearbyint/fdiv/fcmp）构成 R1 剩余面，逐行修法不存在
-#（近旁整数量化可位运算、但结果回 float 必触发 R2），必须按 M2b Vector 通路整体向量化
-#（amax=向量 Abs/ReduceMax、scale=向量 Div、nearbyint=向量 Cast(RINT)、K 均值=分块树
-# + oracle 同提交换镜像，见 todo §四 M2b）。真机执行仍未验证（M3）。
+# 【merge 结果（2026-10-02 容器实测，llvm-objcopy localize + ld.lld 合并 EXIT=0）】
+# 双 pass 对象各持引擎私有入口副本与 g_tilingKey（拆分编译预期形态而非冲突）：先以
+# llvm-objcopy --localize-symbol=g_tilingKey 双对象本地化，再按 merge_obj.sh 的 AIC 先序
+# ld.lld -x -m aicorelinux --allow-multiple-definition -Ttext=0 <aic.o> <aiv.o> -static 合并
+# → EXIT=0，合并对象 .text 280,672B + .ascendc_tiling 节，nm -u 未定义符号面 = 0——旧
+# 「undefined rintf / ldexpf（各 30 次引用级）」阻塞面已随 Q 量化/KV 预处理
+#（StepVectorQQuantDevice 的 aicNearbyInt=__builtin_rintf 与 Sa2KvPreprocessor 的
+# __builtin_ldexpf 次正规支路）Vector 通路整体向量化清零。M2b-0 出口判据推进：两 pass 0 错
+#（达成）→ merge 0 错（达成）→ 含非空代码节的可合并对象（达成）；双 pass 入口/g_tilingKey
+# 仲裁与各引擎私有副本的真机语义验证挂 M3（真机执行仍未验证）。
 #
 cmake_minimum_required(VERSION 3.16)
 project(sa2_kernel_build LANGUAGES CXX)

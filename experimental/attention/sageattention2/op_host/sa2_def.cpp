@@ -35,7 +35,8 @@ public:
             .Format({ge::FORMAT_ND})
             .AutoContiguous();
 
-        // attr 声明序即 aclnn/python 传参序，禁止增删改序；括号内为原型值，REQUIRED 由调用方必传
+        // attr 声明序 = tiling 索引序（op_host/sa2_tiling.cpp ATTR_* 常量逐一对应），禁止增删改序；
+        // aclnn/python 形参序为各自 API 签名，按名映射到本序（括号内为原型值，REQUIRED 由调用方必传）
         this->Attr("sm_scale").AttrType(REQUIRED).Float(0.0F);
         this->Attr("smooth_k").AttrType(REQUIRED).Bool(true);
         this->Attr("is_causal").AttrType(REQUIRED).Bool(false);

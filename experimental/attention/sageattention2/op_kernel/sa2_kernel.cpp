@@ -127,15 +127,16 @@ private:
             int64_t aivId = (coreId_ >= p.cores) ? (coreId_ % 2) : streamId_;
             int64_t totalKvHeads = p.b * p.hk;
 
-            // Pass 1: 均值预统计（仅当 smooth_k 或 smooth_v 激活时）
-            if (p.smoothK || p.smoothV) {
-                for (int64_t kvIdx = aivId; kvIdx < totalKvHeads; kvIdx += 2) {
-                    int64_t b = kvIdx / p.hk;
-                    int64_t kh = kvIdx % p.hk;
-                    kvPrep.ProcessHeadMeans(k_, v_, userWorkspace_, *tilingData_, b, kh);
-                }
-                AscendC::SyncAll();
+            // Pass 1: 均值预统计（无条件执行）。smooth 关闭时 ProcessK/VMeanDevice 只落零值
+            //（不读 GM）：Pass 2 的 K 中心化（ProcessKQuantChunkDevice 减 wsKMean）与 AIV 侧
+            // corr = q·μ（StepVectorQQuantDevice）都无条件消费 wsKMean，而 workspace 不由框架
+            // 清零——按 smooth 条件跳过本 pass 会让 smooth_k=False 路径读到未初始化 μ。
+            for (int64_t kvIdx = aivId; kvIdx < totalKvHeads; kvIdx += 2) {
+                int64_t b = kvIdx / p.hk;
+                int64_t kh = kvIdx % p.hk;
+                kvPrep.ProcessHeadMeans(k_, v_, userWorkspace_, *tilingData_, b, kh);
             }
+            AscendC::SyncAll();
 
             // Pass 2: 128 行 Token 分块网格并行量化，平铺到核内双 AIV
             int64_t totalTiles = totalKvHeads * chunksPerHead;
@@ -165,18 +166,17 @@ private:
         int64_t pairCols = PairCols(p.hk);
         int64_t totalPairs = p.b * pairCols;
 
-        // Pass 1: 均值预统计（严格归属本 Die 的 KV 头：kh = pCol * 2 + dieId）
-        if (p.smoothK || p.smoothV) {
-            for (int64_t pairIdx = aivInDie; pairIdx < totalPairs; pairIdx += aivsPerDie) {
-                int64_t b = pairIdx / pairCols;
-                int64_t pCol = pairIdx % pairCols;
-                int64_t kh = pCol * 2 + dieId;
-                if (kh < p.hk) {
-                    kvPrep.ProcessHeadMeans(k_, v_, userWorkspace_, *tilingData_, b, kh);
-                }
+        // Pass 1: 均值预统计（严格归属本 Die 的 KV 头：kh = pCol * 2 + dieId；无条件执行，
+        // smooth 关闭时仅落零值不读 GM——理由同单核分支注记）
+        for (int64_t pairIdx = aivInDie; pairIdx < totalPairs; pairIdx += aivsPerDie) {
+            int64_t b = pairIdx / pairCols;
+            int64_t pCol = pairIdx % pairCols;
+            int64_t kh = pCol * 2 + dieId;
+            if (kh < p.hk) {
+                kvPrep.ProcessHeadMeans(k_, v_, userWorkspace_, *tilingData_, b, kh);
             }
-            AscendC::SyncAll();
         }
+        AscendC::SyncAll();
 
         // Pass 2: 128 行 Token 分块网格并行量化
         // 彻底根除 GQA 小头数场景（如 Hk=8 时仅 4 对）导致的 40 核空转长尾！
@@ -417,9 +417,12 @@ __global__ __aicore__ void sa2_attention2(
     sa2::Sa2TilingData tilingData;
     sa2::Sa2CopyTilingDataFromGm(tilingGm, &tilingData);
 
-    // tiling key 读一次进标量（TILING_KEY_IS 每次都是 workgroup_local GM 读；AIV loop
-    // 内 8 次全局读 + 8 份内核体实例曾触发后端 "Unsupported scalar instruction in AIV
-    // loop"，实测定位为入口形态问题而非 VF 调用问题——见本函数头注记）。
+    // tiling key 读一次进标量（TILING_KEY_IS 每次都是 workgroup_local GM 读，循环外单读
+    // 避免逐分支重复 GM 读与内核体膨胀）。旧注记「后端报错实测定位为入口形态问题」已被
+    // 控制变量探针否证：真实判别条件 = AIV 编译单元内标量浮点 ALU/fcmp/浮点库调用（R1）、
+    // 「计算值/装载值 → float」标量位强转（R2，ISel Cannot select）、循环内标量参向量指令
+    // 须循环不变（R3）——与入口形态/调用链深度/读次数无关；标量 tiling key 于循环外单读
+    // 为合法形态（见本函数头注记与 tests/aiv_backend_probe.cpp）。
     const uint64_t tilingKey = TILING_KEY_VAR;
     if (tilingKey == 1) {          // FP16 + per_warp + 非因果
         sa2::SageAttention2Kernel<half, false, false> kernel;

@@ -363,7 +363,6 @@ private:
         float *pvSlot = ub_.GetPvSlot(parity);
         const int64_t validRows = QTileValidRows(p, task.m0);
         const int64_t kvTokenStart = step * kKvStep;
-        const int64_t headPairs = p.kp / (kMxGroupTokens * kMxScalePack);
 
         for (int64_t r = 0; r < kStreamRows; ++r) {
             for (int64_t c = 0; c < p.dp; ++c) {
@@ -380,7 +379,8 @@ private:
             int64_t subIdx = (step * (kKvStep / kMxGroupTokens) + groupIdx) % kMxScalePack;
 
             for (int64_t c = 0; c < p.dp; ++c) {
-                int16_t packed = wsVScaleBase[c * headPairs + pairIdx];
+                // 消费与设备 StepCubePvDevice 同构：逐步 nN 窗序列化（VScalePairWordOff 唯一算式）。
+                int16_t packed = wsVScaleBase[VScalePairWordOff(pairIdx, c, p.dp)];
                 uint8_t uexp = (subIdx == 0) ? (packed & 0xFF) : ((packed >> 8) & 0xFF);
                 int32_t expVal = static_cast<int32_t>(uexp) - 127;
                 float vRaw = Fp8E4M3ToFloat(static_cast<uint8_t>(v8Step[col * p.dp + c]));

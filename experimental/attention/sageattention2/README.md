@@ -1,6 +1,6 @@
 # SageAttention2 算子实现
 
-本目录是 SageAttention2（INT8 QK^T + FP8 PV 路径）在华为昇腾 Atlas 950PR 架构下的算子交付工程。当前进展口径（2026-10-02 实测，证据链见下）：接口层（PyTorch 适配 / aclnn 两段式 / op_host 定义与 Tiling）与内核标量数值骨架（算法正确性载体与差分测试 oracle，纯 C++ 循环实现）已就绪——宿主四链全绿（C++ 数值契约断言 569,252 项 checks 0 失败 18 用例、pytest 31 项、host-tiling 5 项、M2.7 架构断言 3 项）。设备侧：1 AIC + 2 AIV 混合核 AscendC + CATLASS 实现按 dav-c310 拆分编译（bisheng -xcce，对齐 ascendc_kernel_cmake 口径）——AIC pass（dav-c310-cube）编译 0 错（对象 .text 48,416B + .ascendc_tiling 节）；AIV pass（dav-c310-vec）编译 0 错（对象 .text 197,472B，迭代 2 打通：attention loop 三 VF（softmax 状态数学 / 配对 PV 折叠 / epilogue）已为全向量指令形态，AIV 后端拒绝判别条件已被探针矩阵钉死，见 tests/aiv_backend_probe.cpp 与 op_kernel/CMakeLists.txt 头注）。合并（ld.lld -m aicorelinux）当前阻塞于 Q 量化 / KV 预处理的标量浮点核心（undefined rintf / ldexpf）——该剩余面须按 M2b Vector 通路整体向量化后收口。真机（Atlas 950PR NPU）执行尚未验证，属 M3 真机串联阶段。
+本目录是 SageAttention2（INT8 QK^T + FP8 PV 路径）在华为昇腾 Atlas 950PR 架构下的算子交付工程。当前进展口径（2026-10-02 实测，证据链见下）：接口层（PyTorch 适配 / aclnn 两段式 / op_host 定义与 Tiling）与内核标量数值骨架（算法正确性载体与差分测试 oracle，纯 C++ 循环实现）已就绪——宿主五链全绿（C++ 数值契约断言 0 失败——checks 总数与用例数唯一权威口径见 tests/README.md 第三节 §2、pytest 全量 0 失败——总数与构成唯一权威口径见 tests/README.md 第三节 §1、host-tiling / M2.7 架构断言 / aclnn 两段式入口测试全绿，覆盖面见 tests/README.md 第一节与第三节）。设备侧：1 AIC + 2 AIV 混合核 AscendC + CATLASS 实现按 dav-c310 拆分编译（bisheng -xcce，对齐 ascendc_kernel_cmake 口径）——AIC pass（dav-c310-cube）编译 0 错（对象 .text 48,576B + .ascendc_tiling 节）；AIV pass（dav-c310-vec）编译 0 错（对象 .text 232,032B + .ascendc_tiling 节；attention loop 三 VF 与 Q 量化 / KV 预处理标量浮点核心均已按全向量指令形态改写，AIV 后端拒绝判别条件已被探针矩阵钉死，见 tests/aiv_backend_probe.cpp 与 op_kernel/CMakeLists.txt 头注）。合并（llvm-objcopy --localize-symbol=g_tilingKey 双对象 + ld.lld -x -m aicorelinux --allow-multiple-definition -Ttext=0，AIC 先序）EXIT=0：合并对象 .text 280,672B，nm -u 未定义符号面 = 0（旧 rintf / ldexpf 阻塞面已随 Q 量化 / KV 预处理向量化清零）；双 pass 入口 / g_tilingKey 仲裁与各引擎私有副本的真机语义验证挂 M3。真机（Atlas 950PR NPU）执行尚未验证，属 M3 真机串联阶段。
 
 ## 一、目录结构与任务书建议目录映射
 
@@ -23,7 +23,7 @@
   - 内容：PyTorch Dispatcher 适配层 [sageattention2](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/python/sageattention2)（包含自动分发 `_ops.py`、CSRC C++ 绑定 `csrc/attention.cpp` 与纯 CPU 数值参考实现 `reference.py`）。
 - `tests/`
   - 对应任务书：`tests/`
-  - 内容：端到端功能验收矩阵 [test_functional_matrix.py](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/tests/test_functional_matrix.py)（TC-01 ~ TC-10 全覆盖，含零填充数值等价与负测试全面扩充）、宿主机数值断言与仿真对齐 [test_host_assertions.py](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/tests/test_host_assertions.py)、C++ 数值契约断言桩 [sa2_numeric_conformance.cpp](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/tests/sa2_numeric_conformance.cpp)（569,252 项 checks 0 失败，含 M4.4 数理证明、M2.7.2 UB 防护与 M2c-C2 极限分值域防御）、C++ 两段式接口与异常防御全量验证 [test_aclnn.cpp](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/tests/test_aclnn.cpp)（覆盖正例 2 项 + 负例 8 项共 10 组全量校验防御）与套件说明 [tests/README.md](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/tests/README.md)。
+  - 内容：端到端功能验收矩阵 [test_functional_matrix.py](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/tests/test_functional_matrix.py)（TC-01 ~ TC-10 全覆盖，含零填充数值等价与负测试全面扩充）、宿主机数值断言与仿真对齐 [test_host_assertions.py](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/tests/test_host_assertions.py)、C++ 数值契约断言桩 [sa2_numeric_conformance.cpp](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/tests/sa2_numeric_conformance.cpp)（0 失败，checks 总数唯一权威口径见 tests/README.md 第三节 §2，含 M4.4 数理证明、M2.7.2 UB 防护、M2c-C2 极限分值域防御、双 Die NUMA 拓扑亲和/GQA L2 Cache 原地复用断言、vScale 窗口化 nN 布局契约与 Softmax 在线更新数值稳定性及 FTZ 冲零断言）、C++ 两段式接口与异常防御全量验证 [test_aclnn.cpp](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/tests/test_aclnn.cpp)（覆盖正例 2 项 + 负例 8 项共 10 组全量校验防御）与套件说明 [tests/README.md](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/tests/README.md)。
 - `tools/`
   - 对应任务书：`tools/`
   - 内容：真 GPU golden 导出工具 [export_gpu_golden.py](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/tools/export_gpu_golden.py)，用于在真实 NVIDIA GPU 环境下一键导出 L-A 验证数据（覆盖 TC-02 全组合 × P-01 ~ P-07 形状）。【澄清】：导出工具已就绪 ≠ 真机 golden 已取得，L-A 验收标准以真 GPU 环境实际导出并落库的 golden 数据为最终准绳。
@@ -107,14 +107,14 @@ bash build.sh -b custom_build --soc ascend950
 
 ### 2. 运行测试
 
-- 执行 Python 验收与仿真断言测试（全量 31 项）：
+- 执行 Python 验收与仿真断言测试（全量用例，总数与构成唯一权威口径见 tests/README.md 第三节 §1）：
 
 ```bash
 cd ops-transformer
 pytest experimental/attention/sageattention2/tests/ -v
 ```
 
-- 执行 C++ 数值契约断言桩（569,252 项 checks 100% 通过，含 M4.4 数理定源、M2.7.2 UB 计划 O(1) 硬防护与 M2c-C2 极限分数值域防御编译期/运行期用例）：
+- 执行 C++ 数值契约断言桩（100% 通过 0 失败，checks 总数唯一权威口径见 tests/README.md 第三节 §2，含 M4.4 数理定源、M2.7.2 UB 计划 O(1) 硬防护、M2c-C2 极限分数值域防御、双 Die NUMA 拓扑亲和/GQA L2 Cache 原地复用断言、vScale 窗口化 nN 布局契约与 Softmax 在线更新数值稳定性及 FTZ 冲零断言编译期/运行期用例）：
 
 ```bash
 clang++ -std=c++17 -O3 -Wall -Wextra \
@@ -123,7 +123,7 @@ clang++ -std=c++17 -O3 -Wall -Wextra \
     -o /tmp/sa2_numeric_conformance && /tmp/sa2_numeric_conformance
 ```
 
-- 执行 C++ aclnn 全量防御与接口测试（覆盖 10 组全量用例，0 失败）：
+- 执行 C++ aclnn 全量防御与接口测试（全量用例 0 失败，构成唯一权威口径见 tests/README.md 第三节 §3）：
 
 ```bash
 # 宿主机独立编译与运行（无需 CANN 依赖即可全量验证 10 组接口防御）
@@ -142,7 +142,7 @@ clang++ -std=c++17 -Wall -Wextra -Werror \
 - FlashMLA（DeepSeek，MIT 许可）
   - 借用点：三状态 online softmax 状态机、θ 阈值法 skip-scale 调度、UB 累加器驻留与 MMA 重缩放解耦设计。
 - DeepGEMM-Ascend（DeepSeek，MIT 许可）
-  - 借用点：MX SF UE8M0 打包约定（相邻两元素 pack 为 int16、MN-major）、L2 hint 缓存命中优化策略。
+  - 借用点：MX SF UE8M0 K 维相邻两元素 pack 为 int16 的打包约定、L2 hint 缓存命中优化策略。
 - TileKernels（Tile-AI，MIT 许可）
   - 借用点：MX 格式 32-token 量化算法与指数域位操作设计。
 - tilelang（Tile-AI / DeepSeek，MIT 许可）

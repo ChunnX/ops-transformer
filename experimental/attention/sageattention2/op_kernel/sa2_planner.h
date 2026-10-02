@@ -90,9 +90,9 @@ struct Sa2KvHeadView {
   int64_t wsK8 = 0;     // 字节偏移：k8  int8  [B·Hk, Kp, DP]
   int64_t wsKScale = 0; // 字节偏移：kScale fp16 [B·Hk, Kp, segWidth]（per_warp 时 segWidth=1）
   int64_t wsV8 = 0;     // 字节偏移：v8  int8  [B·Hk, Kp, DP]
-  int64_t wsVScale = 0; // 字节偏移：vScale int16 [B·Hk, DP, Kp/64]
-                        //   （D-R4 950 口径：K 维相邻两个 32-token 组 UE8M0 打包 int16、MN-major，
-                        //    出处 DeepGEMM-Ascend README:56 + transform_sf.hpp）
+  int64_t wsVScale = 0; // 字节偏移：vScale int16 [B·Hk, Kp/64, DP]（2-D 序 = 逐步 nN 窗序，见 VScalePairWordOff）
+                        //   （D-R4 950 口径：K 维相邻两个 32-token 组 UE8M0 打包 int16；出处
+                        //    DeepGEMM-Ascend transform_sf.hpp k-major 双行打包 + catlass nN C0 块序）
   int64_t wsKMean = 0;  // 字节偏移：kMean fp32 [B·Hk, DP]
   int64_t wsVMean = 0;  // 字节偏移：vMean fp32 [B·Hk, DP]（仅 smooth_v 且 fp32 档语义非零）
 };
@@ -124,9 +124,24 @@ SA2_AICORE constexpr int64_t KScaleStepByteOff(int64_t wsKScale, int64_t step, i
 SA2_AICORE constexpr int64_t V8StepByteOff(int64_t wsV8, int64_t step, int64_t dp) {
   return wsV8 + step * kKvStep * dp;
 }
-// vScale：每步推进 Kp/64 中的 2 个打包 int16/通道（MN-major，通道为外维）。
+// vScale：每步窗（kKvStep/32 个 32-token 组 = 2 个打包 int16/通道）字节连续，窗长 = 2·dp·2 字节。
 SA2_AICORE constexpr int64_t VScaleStepByteOff(int64_t wsVScale, int64_t step, int64_t dp) {
   return wsVScale + step * (kKvStep / (kMxGroupTokens * kMxScalePack)) * dp * 2;
+}
+// vScale 打包 int16 头内字偏移（逐步 nN 窗序列化，B-26 唯一算式；写像 = kv_prep/sim，
+// 消费窗 = attention_loop nN MX 视图）：
+//   word = (pairIdx/每窗对数)·(每窗对数·dp)      —— 步窗基址（窗长 = 每窗对数·dp 个 int16）
+//        + (c/16)·(每窗对数·16)                  —— 16 通道 C0 块（32B = 16 通道 × 2 组 e8m0）
+//        + (pairIdx%每窗对数)·16 + (c%16)        —— 块内 pair 外层、通道内层
+// 与 tla::MakeMxScaleLayout<float8_e8m0_t, layout::nN, true>(kKvStep/32, dp) 的平面化字节像
+// 逐字节一致（catlass layout.hpp nN 分支：shape ((2,⌈rows/2⌉),(16,⌈cols/16⌉))、
+// stride ((1,32),(2,RoundUp(rows,2)·16))；copy_l1_to_l0b.hpp 三操作数特化即按该布局派生
+// LoadData2DMxParams）。
+SA2_AICORE constexpr int64_t VScalePairWordOff(int64_t pairIdx, int64_t c, int64_t dp) {
+  const int64_t pairsPerWin = kKvStep / (kMxGroupTokens * kMxScalePack);  // 每步窗打包对数（=2）
+  return (pairIdx / pairsPerWin) * (pairsPerWin * dp) +
+         (c / kMxScaleC0Channels) * (pairsPerWin * kMxScaleC0Channels) +
+         (pairIdx % pairsPerWin) * kMxScaleC0Channels + (c % kMxScaleC0Channels);
 }
 
 // ---- Q tile / 输出 / LSE 寻址（附录 C.5 公式落地）----
@@ -224,6 +239,18 @@ static_assert(LseOffset(kPlannerProbe, 1, 3, 192) == (1 * 28 + 3) * 256 + 192,
               "LSE 行偏移 = (b·hq+qh)·sq + m0 = 8128");
 static_assert(VScaleStepByteOff(0, 1, 128) == 512 && KScaleStepByteOff(0, 1, 16) == 4096,
               "步内 scale 偏移：vScale 打包 512B/步（D-R4）、kScale per_thread 4KB/步");
+// vScale nN 窗序字偏移工作例（dp=128：窗 0 = [0,256) 字 = 16 通道块 × [pair][ch]；窗 1 基址 256 字）：
+static_assert(VScalePairWordOff(0, 0, 128) == 0 && VScalePairWordOff(0, 15, 128) == 15 &&
+                  VScalePairWordOff(1, 0, 128) == 16 && VScalePairWordOff(0, 16, 128) == 32 &&
+                  VScalePairWordOff(1, 127, 128) == 255 && VScalePairWordOff(2, 0, 128) == 256 &&
+                  VScalePairWordOff(3, 127, 128) == 511,
+              "逐步 nN 窗序：窗内 16 通道块外层、pair 中层、通道内层；窗间按 VScaleStepByteOff 连续");
+static_assert(VScalePairWordOff(0, 0, 64) == 0 && VScalePairWordOff(1, 0, 64) == 16 &&
+                  VScalePairWordOff(0, 63, 64) == 111 && VScalePairWordOff(1, 63, 64) == 127,
+              "dp=64：窗长 128 字，4 个 16 通道块步进 32 字");
+static_assert(VScalePairWordOff(2, 0, 128) * 2 == VScaleStepByteOff(0, 1, 128) &&
+                  VScalePairWordOff(2, 0, 64) * 2 == VScaleStepByteOff(0, 1, 64),
+              "窗基址字偏移×2 = 步字节偏移（写像与消费窗按构造重合）");
 
 // KvHeadView 工作例：b=1、kh=5 → idx=12；kp=1024、dp=128、segWidth=16、kp/64=16。
 inline constexpr Sa2KvHeadView kProbeView = KvHeadView(kPlannerProbe, 1, 5);

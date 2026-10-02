@@ -150,9 +150,8 @@ void ReleaseType(aclTensor *tensor)
 }
 
 template <typename T>
-void ReleaseType(T value)
+void ReleaseType(T /*value*/)
 {
-    (void)value;
 }
 
 template <typename Tuple, size_t... I>

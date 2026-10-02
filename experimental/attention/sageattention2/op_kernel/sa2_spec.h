@@ -255,12 +255,14 @@ SA2_AICORE inline half Sa2ScalarFromFloat<half>(float f)
 #endif
 #if (defined(__AICORE__) && defined(__NPU_ARCH__)) || defined(__CCE_KT_TEST__) || !defined(__NPU_ARCH__)
 // f16 位型 → f32 位型（纯整数，无任何浮点指令/位强转）。迭代 2 实测补充：
-// Sa2HalfBitsToFloat 末端的「位型 → float」强转在 AIV 编译单元内不可选中（ISel
+// 「位型 → float」的标量强转在 AIV 编译单元内不可选中（ISel
 // "Cannot select: f32 = bitcast"，p33f/p33g 探针），wrapper 侧展开也同罪（内联后同单元）。
 // 本变体只产位型，调用方经 u32 装载/存储过桥，float 侧由「直接标量装载」重建
 //（bitcast(load) 可选中，p33e 探针）。次正规分支以 CLZ 整数归一化替代 __builtin_ldexpf
 //（AIV 禁标量浮点库调用）：mant × 2^-24 在 f32 为精确正规数（mant ≤ 2^10-1 < 2^24，
 // 无舍入），位型 = (103 + k) << 23 | (mant << (23 - k)) & 0x7FFFFF，k = 最高有效位。
+// 门禁口径同 kSa2CfgRowMajorUb/Sa2CacheModeOf（sa2_attention_loop.h）：plain/stub 态与
+// 3510 arch pass / __CCE_KT_TEST__ 同权开放，使用点无条件解析、定义不得缺席。
 __simd_callee__ inline uint32_t Sa2HalfBitsToF32Bits(uint16_t u)
 {
     uint32_t sign = static_cast<uint32_t>(u & 0x8000u) << 16;
@@ -279,30 +281,10 @@ __simd_callee__ inline uint32_t Sa2HalfBitsToF32Bits(uint16_t u)
     }
     return sign | ((exp + 112u) << 23) | (mant << 13);
 }
-
-// f16 位型 → f32 展开（纯整数位运算，无 f16 cast 指令）：符号 | 指数重偏置 | 尾数移位。
-// 次正规 f16 输入乘 2^24 缩放（与 hostbits::HalfF32::operator float 同式，逐位一致）。
-// 注意：末端含「位型 → float」强转，仅供 AIC/宿主语境调用；AIV 编译单元内一律改用
-// Sa2HalfBitsToF32Bits（见上注记）。
-__simd_callee__ inline float Sa2HalfBitsToFloat(uint16_t u)
-{
-    uint32_t bits = Sa2HalfBitsToF32Bits(u);
-    return *reinterpret_cast<const float *>(&bits);
-}
 #endif
 // 标量 half 读入统一入口：设备走位运算展开（AIV loop 禁 f16 cast 指令），宿主原生。
 template <typename T>
 SA2_AICORE inline float Sa2ScalarToFloat(T v) { return static_cast<float>(v); }
-#if (defined(__AICORE__) && defined(__NPU_ARCH__)) || defined(__CCE_KT_TEST__)
-// VF 专用入口（独立命名，避免与非 simd_callee 的重载集在同命名空间冲突：
-// ccec 实测 —— VF 体内重载决议会因非 simd_callee 候选存在而整体不可达）
-__simd_callee__ inline float Sa2HalfScalarToFloat(half v)
-{
-    uint16_t u;
-    std::memcpy(&u, &v, sizeof(u));
-    return Sa2HalfBitsToFloat(u);
-}
-#endif
 #if (defined(__AICORE__) && defined(__NPU_ARCH__)) || defined(__CCE_KT_TEST__)
 template <>
 SA2_AICORE inline bfloat16_t Sa2ScalarFromFloat<bfloat16_t>(float f) { return Sa2ScalarFromFloatBf16(f); }
@@ -481,6 +463,13 @@ constexpr float kMinGroupMax = 1.0e-30f;    // V MX 组 amax 下限：全零组 
 constexpr float kFp16NegMax = -65504.0f;    // running max 初始化以 -65504 替代 -inf（§3.3 状态初始化，FP16 域安全）
 constexpr int64_t kMxGroupTokens = 32;      // V MX 组：32 token × channel（§4.8）
 constexpr int64_t kMxScalePack = 2;         // D-R4：K 维相邻 2 个 32-token 组的 UE8M0 打包进一个 int16
+// vScale nN C0 块：32B = 16 通道 × 2 组 e8m0（catlass C0_NUM_PER_FRACTAL=16、ELE_NUM_PER_C0=2）。
+// workspace vScale 布局契约（写像-消费窗闭合，v31 迭代 2）：逐步 nN 窗序列化——每步窗
+// （kKvStep/32 个 32-token 组 = kKvStep/64 个打包 int16/通道）内部按
+//   word = 窗基址 + (c/16)·(每窗对数·16) + (pair%每窗对数)·16 + (c%16)
+// 排列，与消费侧 tla::MakeMxScaleLayout<float8_e8m0_t, layout::nN, true>(kKvStep/32, dp)
+// 的平面化字节像逐字节一致（唯一算式见 sa2_planner.h VScalePairWordOff）。
+constexpr int64_t kMxScaleC0Channels = 16;  // 每个 32B C0 块承载的通道数（nN 尺度块内层宽）
 
 // ---- M2c-A1 N512 Wide 路径常量与参数契约规划（长序列超宽流水线）----
 constexpr int64_t kWideKvStep = 512;        // BC_WIDE：超宽 KV 块步长（两 N256 Cube 片段共享一次 Softmax）
@@ -504,6 +493,10 @@ constexpr bool IsWidePathEligible(int64_t sq, int64_t sk, int64_t d) {
 // ---- M2c-A3 Q/K 混流三级流水批量量化管线契约（QuantBatch 流水架构）----
 // 规划 64 行 tile 的三级重叠流水（MTE2 装载切片 i+1 / Vector 核心量化切片 i / MTE3 写回切片 i-1）
 // 以及 Q/K Scale 倒数复用机制（以 1 次倒数 + D 次向量乘法消除内层高延迟除法）。
+// 接线状态（v31 迭代 1 注明）：Sa2QuantScaleReciprocal 已接入设备 Q 量化（sa2_attention_loop.h
+// StepVectorQQuantDevice）；Sa2QuantBatchPipeline / ExecuteQuantBatchPipeline 为宿主 conformance
+// 用例 quant_scale_reciprocal_and_pipeline_guard 验证的调度骨架，设备 AIV 三级流水接线
+// （替换 StepVectorQQuantDevice 串行循环）挂 M2b Vector 通路改造，勿视为已接线。
 constexpr int64_t kQuantTileRows = 64;       // 64 行 Tile 切片大小（BR 维对齐）
 constexpr int64_t kQuantPipelineStages = 3;  // MTE2 装载 / Vector 量化 / MTE3 写回 3 级重叠
 constexpr int64_t kQuantBufferSlots = 2;     // Ping-Pong 双缓冲槽位数
@@ -558,7 +551,6 @@ struct Sa2QuantSliceDesc {
 // 阶段 2: MTE3 异步写回 Tile i - 1 产物至目标槽 (槽 (i-1)%2)
 template <typename LoadFn, typename ComputeFn, typename StoreFn>
 struct Sa2QuantBatchPipeline {
-    static constexpr int64_t kStages = kQuantPipelineStages;
     static constexpr int64_t kSlots = kQuantBufferSlots;
     static constexpr int64_t kTileRows = kQuantTileRows;
 
@@ -631,6 +623,9 @@ static_assert(kKMeanBlockRows % kKvStep == 0, "K 均值分块行数必须为 kKv
 static_assert(kKMeanDataBlockLanes == 64, "AIV 向量寄存器单次归约 lane 数必须为 64 (256B / 4B)");
 static_assert(kKMeanDoubleBufSlots == 2, "Stream-K 均值统计采用 ping-pong 双缓冲");
 
+// M2c-A5 预留描述符（v31 迭代 1 裁决：原位保留并注明预留口径）：当前 K 均值 = 单写者
+// 整 head 统计（sa2_kv_prep.h ProcessKMeanStreamKDevice 全量区间调用），跨界分块/汇聚
+// 分支不可达；重引入条件 = Stream-K 跨核分块落地且 sim oracle 同树镜像提交（D-R8 义务）。
 struct Sa2StreamKMeanTile {
     int64_t headIdx{0};         // 归属的 KV head 索引
     int64_t chunkStart{0};      // 本分块在序列中的起始 token 行
@@ -642,11 +637,12 @@ struct Sa2StreamKMeanTile {
 };
 
 // ---- M2c-B1 L2 Cache Hint 逐 Buffer 策略枚举（D-R5 落地）----
+// v31 迭代 1 裁决（P2-1 同款纪律）：零调用点枚举值 NORMAL_FIRST_VICTIM /
+// NORMAL_PERSISTENT 删除，禁止无调用点枚举值回潮；NOTALLOC_KEEP 为 P2-1 注记的
+// 重引入锚点（见下），随 Sa2CacheModeOf 映射保留。
 enum Sa2L2CacheHint : uint8_t {
-    CACHE_HINT_NORMAL_FIRST_VICTIM = 0,
     CACHE_HINT_NORMAL_LAST_VICTIM = 1,   // 用于 K8/V8/Scale：指示 L2 优先常驻，供 GQA 多 Query Head 反复命中
-    CACHE_HINT_NORMAL_PERSISTENT = 2,
-    CACHE_HINT_NOTALLOC_KEEP = 4,        // 用于单次流式 Q 与写回 Output：避免污染 L2 缓存行
+    CACHE_HINT_NOTALLOC_KEEP = 4,        // 预留（P2-1 注记）：单次流式 Q / Output 批量写回接入 MTE 后挂用
     CACHE_HINT_NOTALLOC_CLEAN = 5,
 };
 
@@ -722,11 +718,11 @@ constexpr int64_t kL1Size = 512 * 1024;       // 524288
 constexpr int64_t kL0CSize = 256 * 1024;      // 262144
 constexpr int64_t kL0ABBytes = 32 * 1024;     // L0A / L0B 各 32KB
 
-// ---- D-R6 AIV 指令纪律（常量与注释层；VF 实现文件必须遵循）----
-// icache 仅 8KB：VF 主循环 #pragma unroll 1 + VLOOP 控制；优先单指令复合原语
+// ---- D-R6 AIV 指令纪律（注释层纪律；VF 实现文件必须遵循）----
+// VF icache 容量上限 8KB（8192B）：VF 主循环 #pragma unroll 1 + VLOOP 控制；优先单指令复合原语
 //（exp_sub / madd / reduce_max_datablock）；掩码合并走 MODE_MERGING；指针走 postupdate；
 // 归约类与算术类 V 指令端口错峰（整数加↔浮点加错峰）；NZ 缓冲保留 pad 行防 bank conflict。
-constexpr int64_t kVfIcacheBytes = 8 * 1024;  // 8192：VF icache 容量上限
+//（v31 迭代 1：零引用常数 kVfIcacheBytes 删除，8KB 事实由本注释承载。）
 
 // ---- 量化粒度与 PV 累加档（任务书 §2.3/§功能定义；模板/运行期取值见 sa2_template_key.h）----
 enum class Gran : int64_t {
@@ -761,10 +757,15 @@ struct Sa2Params {
   int64_t cores;    // AIC 核数（SplitRange 均分用）
 };
 
-// ---- tiling 数据块（kernel 侧 GET_TILING_DATA_WITH_STRUCT 载体）----
+// ---- tiling 数据块（跨 host/kernel 的 tiling 序列化载体）----
+// 读回机制（与 sa2_kernel.cpp 头注一致）：本 CANN 版本（9.2.0-beta.1 dav-c310）内核侧
+// 无 GET_TILING_DATA_WITH_STRUCT 宏可用，实际为字段级 __gm__ 标量搬运
+//（sa2_kernel.cpp Sa2CopyTilingDataFromGm）；hoststub 供宿主轨提供同名宏替身。
 // workspace 六区由 host 按 §5.3 分配（512B 对齐），地址语义见 sa2_planner.h KvHeadView；
 // kScale 为 fp16 纯量（不参与 UE8M0 打包）；vScale 打包遵循 D-R4 950 口径：
-// K 维相邻两个 32-token 组的 UE8M0 打包 int16、MN-major 存储（出处 DeepGEMM-Ascend README:56 + transform_sf.hpp）。
+// K 维相邻两个 32-token 组的 UE8M0 打包 int16（出处 DeepGEMM-Ascend README:56 +
+// transform_sf.hpp k-major 双行打包）；2-D 序 = 逐步 nN 窗序列化（VScalePairWordOff 唯一算式，
+// 与消费侧 tla::MakeMxScaleLayout<e8m0, nN, true> 平面化字节像逐字节一致，v31 迭代 2 闭合）。
 struct Sa2TilingData {
   Sa2Params params;
   uint64_t kMean;   // B·Hk·DP·f32
