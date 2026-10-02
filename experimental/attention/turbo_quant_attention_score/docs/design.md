@@ -87,15 +87,19 @@ Vector 路径保持原 FP32 解码和归约顺序。
 
 输入、输出、bit packing、centroid、QJL 修正系数和测试阈值保持原定义。
 Vector 每次解码 32 行，先计算主项 `centroid * norm` 和残差项 `sign * gamma * coefficient`。
-每项系数拆成两个 FP16 分量：高分量为 FP16 舍入值，低分量为 FP32 残差的 FP16 舍入值。
-query 的两份主项和两份 QJL 输入组成 K=512 的矩阵；Cube 以 FP32 累加，直接写入
+每项系数拆成两个 FP16 分量：高分量为 FP16 舍入值，低分量为 FP32 残差乘以 256 后的 FP16 舍入值。
+对应低分量的 query 除以 256；这减少低位系数落入 FP16 非规格化范围造成的舍入损失。
+K=512 的顺序为主项高位、QJL 高位、主项低位、QJL 低位；Cube 以 FP32 累加，直接写入
 `[T, Hq, maxLen]` 的最终跨 head 行 stride，不生成完整中间 score 矩阵，也不再进行 GM score 后处理。
-该拆分并非逐位保留全部 FP32 信息；BF16 query 在 FP16 正常范围内可精确转换，近零时转换误差至多为 `2^-25`。
+该拆分并非逐位保留全部 FP32 信息，系数预乘、query 转换、低位缩放和归约仍存在舍入误差。
 因此必须继续对完整输出执行原独立 CPU 和附件 golden 的精度检查，不能仅用“采用 FP32 累加”推导精度合格。
 
 每个准备任务拥有一个 KV head 的 256-key 块，该块供同组所有 query head 复用。
 查询准备完成并统一发布检查结果后，Vector 准备下一阶段的 key 系数，Cube 计算上一阶段。
 每阶段末使用 `SyncAll<false>()` 显式跨 AIC/AIV 同步；矩阵乘对象在整个阶段循环中复用。
+B 系数采用双阶段环形缓冲：阶段 w 写入之前，阶段 w-2 的全部 Cube 读取已在前一屏障完成。
+每阶段 AIC 仅枚举该阶段的 key tile 与 GQA head 组合，避免每轮扫描完整序列。
+query 打包跨越 b_/c_ 两段 UB；缩放 query 必须保存在独立 queryCache_/queryResidualCache_ 中。
 支持 128×256×64 基础 tile 时，L1 的 A/B stepK 均取 4、depth 均取 8，总占用 384 KiB；
 host 核对实际 tile 和 L1 容量后才采用该配置。
 
@@ -104,14 +108,17 @@ host 核对实际 tile 和 L1 容量后才采用该配置。
 所有 Cube 写入完成并同步后，AIV 使用原 Vector 路径覆盖整个输出；因此回退不会与 Cube 竞争写出。
 MIX 模式的 AIV task stride 使用 `GetBlockNum() * GetTaskRation()`，避免两倍 Vector 核重复处理同一任务。
 
-用户工作区字节数为 `(Hq*T + Hkv*maxLen)*1024 + (1 + Hkv*maxLen/256)*512`，
+设 AIC 核数为 C，用户工作区字节数为 `(Hq*T + 4*C*256)*1024 + (1 + Hkv*maxLen/256)*512`，
 另加平台 `GetLibApiWorkSpaceSize()` 返回的系统工作区。
-官方 T=512、Hq=32、Hkv=8、maxLen=4096 用例的用户工作区为 50,397,696 字节；
-当前 A2 安装包总 workspace 为 67,174,912 字节，另有独立的 256 MiB FP32 输出。
+当前 20-AIC A2 上，官方 T=512、Hq=32、Hkv=8 的 4K/32K 用例总 workspace 分别为
+54,592,000 / 55,050,752 字节（含 16 MiB 系统区）；输出分别独立占用 256 MiB / 2 GiB。
+32K 不再因完整 B 展开的工作区上限而退回 Vector。用户工作区 128 MiB 上限仍保留。
 此处是临时计算开销，不能计入持久 KV cache 压缩比。
 
 专项测试为 `tests/test_prefill_regression.py`：覆盖两种 norm dtype、两种长度 dtype、bits=2/3/4、
 GQA=1/2/3/4/5/8、host 长度接口、异常后恢复正常和非对齐形状回退。
+`test_prefill_ring_regression.py` 额外覆盖 88 个 key tile（20-AIC 时跨两个缓冲槽复用且最后一波不满）、
+GQA 1/2/3/4/5/8、两种 norm dtype、两种长度 dtype、2/3/4 bit、乱序页表及三次连续调用。
 `test_golden_nonfinite.py` 额外验证 golden 包装器拒绝有限参考位置上的 NaN/Inf，防止 NaN 比较静默漏检。
 纯相对误差近零分母及模型验收结论仍需与组织方规则区分，混合误差自测通过不等于完成任务验收。
 

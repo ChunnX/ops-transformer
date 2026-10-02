@@ -113,5 +113,26 @@ QJL cache 使用遍历字节值的模式，query residual 同时包含正负值�
 
 单 token decode 的 QJL 路径直接用 packed bit 选择正负 query residual，保持原来的 FP32 归约顺序。
 压缩 idx 输入使用独立 2 KiB UB 缓冲区预取下一 tile，并在消费前等待 MTE2 到 Vector 的事件。
-decode UB 总量为 187 KiB，prefill 保留原来的 185 KiB 路径；GM workspace 仍为零。
+decode UB 总量为 187 KiB，Vector prefill 保留原来的 185 KiB 路径；这些 Vector 分派的 GM workspace 仍为零。
 3-bit 独立整数解包试验没有纳入此实现，2/3/4-bit 的主量化解包仍使用已验证的公共路径。
+
+
+## 对齐 prefill 的 Cube 流水与环形缓冲回归
+
+```bash
+python test_prefill_regression.py --output prefill.json
+python test_prefill_ring_regression.py --output prefill_ring.json
+python test_golden_nonfinite.py
+```
+
+第一组覆盖 120 个分派、dtype、GQA、数值/页面/长度回退及异常后恢复配置。
+第二组覆盖 12 个较长配置，每组重新创建 executor 连续调用三次，输出预填 NaN，
+检查全部输出、原混合阈值及逐位稳定性。每组有 88 个 256-key 准备任务：
+在 20-AIC/40-AIV A2 上超过两个环形槽的容量，包含复用、KV head 切换和不完整尾波。
+测试覆盖 2/3/4 bit、BF16/FP16 norm、INT32/INT64 长度，GQA 比例 1/2/3/4/5/8 分布于这些配置，
+并非 GQA 与所有 dtype 的全交叉矩阵。必须返回非零 workspace，避免 Vector 回退掩盖 Cube 问题。
+
+CPU 参考与附件 golden 的混合阈值维持 `abs(error) <= 1e-5 + 1e-3*abs(reference)`；
+同时保留纯相对超限计数。两个 FP32 参考的归约顺序可能不同，在近零相消位置彼此也可能超限，
+不得将更换参考、添加分母下限或放宽阈值作为修复。必要时保留坐标与全部操作数，以 FP64 重算归因。
+使用任务附件的配对输入时，应先验证输入 manifest 的 SHA256；随机压缩域回归不能替代官方数据测试或 KL 验收。

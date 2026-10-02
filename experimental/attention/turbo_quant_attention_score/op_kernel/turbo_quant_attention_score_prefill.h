@@ -14,9 +14,11 @@
 #include "turbo_quant_attention_score_impl.h"
 
 namespace TurboQuant {
-// The two FP16 components retain substantially more coefficient precision than
-// a single FP16/BF16 conversion; accumulation and the public output stay FP32.
-// BF16 queries within FP16 range are exact except for <= 2^-25 near zero.
+// Store high components first, then low components scaled by 256. Scaling
+// avoids losing low coefficients to FP16 subnormal rounding; the matching
+// query components are divided by 256, preserving the intended dot product.
+// Conversion and FP32 accumulation remain approximate, so near-zero scores
+// are checked separately against CPU, task golden, and FP64 in the tests.
 template <typename NormType>
 class PrefillPrepare {
 public:
@@ -50,9 +52,18 @@ public:
             PipeBarrier<PIPE_V>();
             if (!SafeQueries())
                 return false;
+            // Packed rows span b_ and c_; neither may hold a source here.
+            auto lowQ = k_.queryCache_.template ReinterpretCast<half>();
+            auto lowR = k_.queryResidualCache_.template ReinterpretCast<half>();
+            Muls(k_.primary_, k_.primary_, 1.0F / 256.0F, ELEMS);
+            Muls(k_.signs_, k_.signs_, 1.0F / 256.0F, ELEMS);
+            PipeBarrier<PIPE_V>();
+            Cast(lowQ, k_.primary_, RoundMode::CAST_RINT, ELEMS);
+            Cast(lowR, k_.signs_, RoundMode::CAST_RINT, ELEMS);
+            PipeBarrier<PIPE_V>();
             auto packed = k_.b_.template ReinterpretCast<half>();
             for (uint32_t part = 0; part < 4; ++part) {
-                DataCopy(packed[part * DIM], part < 2 ? halfQ : halfR,
+                DataCopy(packed[part * DIM], part == 0 ? halfQ : (part == 1 ? halfR : (part == 2 ? lowQ : lowR)),
                          DataCopyParams{ROWS, DIM * 2 / 32, 0, DIM * 6 / 32});
             }
             PipeBarrier<PIPE_ALL>();
@@ -62,7 +73,7 @@ public:
         return true;
     }
     __aicore__ inline bool PrepareBlock(uint32_t h, uint32_t k, const GlobalTensor<half> &bm,
-                                        const LocalTensor<uint32_t> &expanded)
+                                        const LocalTensor<uint32_t> &expanded, uint32_t packedRow)
     {
         int32_t physical = k_.table_.GetValue(k / DIM);
         if (physical < 0 || static_cast<uint32_t>(physical) >= k_.blocks_)
@@ -94,20 +105,22 @@ public:
         PipeBarrier<PIPE_V>();
         auto packed = k_.b_.template ReinterpretCast<half>();
         for (uint32_t part = 0; part < 4; ++part) {
-            auto value = part < 2 ? k_.primary_ : k_.signs_;
+            auto value = part % 2 == 0 ? k_.primary_ : k_.signs_;
             Cast(raw, value, RoundMode::CAST_RINT, ELEMS);
             PipeBarrier<PIPE_V>();
             DataCopy(packed[part * DIM], raw, DataCopyParams{ROWS, DIM * 2 / 32, 0, DIM * 6 / 32});
             PipeBarrier<PIPE_V>();
-            if (part % 2 == 0) {
+            if (part < 2) {
                 Cast(k_.queryResidualCache_, raw, RoundMode::CAST_NONE, ELEMS);
                 PipeBarrier<PIPE_V>();
                 Sub(value, value, k_.queryResidualCache_, ELEMS);
                 PipeBarrier<PIPE_V>();
+                Muls(value, value, 256.0F, ELEMS);
+                PipeBarrier<PIPE_V>();
             }
         }
         PipeBarrier<PIPE_ALL>();
-        DataCopy(bm[(static_cast<uint64_t>(h) * k_.maxLen_ + k) * 512], packed, ROWS * 512);
+        DataCopy(bm[static_cast<uint64_t>(packedRow) * 512], packed, ROWS * 512);
         PipeBarrier<PIPE_ALL>();
         return true;
     }
@@ -129,7 +142,8 @@ public:
             PipeBarrier<PIPE_V>();
             bool safe = true;
             for (uint32_t offset = 0; offset < tileN && safe; offset += ROWS)
-                safe = PrepareBlock(h, k + offset, bm, expanded);
+                safe = PrepareBlock(h, k + offset, bm, expanded,
+                                    (task % (2 * GetBlockNum() * GetTaskRation())) * tileN + offset);
             PipeBarrier<PIPE_ALL>();
             safe = safe && k_.reducedMain_.template ReinterpretCast<uint32_t>().GetValue(0) == 0xffffffffU &&
                    k_.reducedMain_.template ReinterpretCast<uint32_t>().GetValue(1) == 0xffffffffU;
@@ -206,12 +220,16 @@ __aicore__ inline void PrefillCompute(GM_ADDR ap, GM_ADDR bp, GM_ADDR out, const
     const uint32_t waves = (data.kvHeads * nt + GetBlockNum() * 2 - 1) / (GetBlockNum() * 2);
     for (uint32_t wave = 0; wave <= waves; ++wave) {
         if (querySafe && wave > 0) {
-            for (uint32_t task = GetBlockIdx(); task < data.qHeads * nt; task += GetBlockNum()) {
-                const uint32_t h = task / nt, n = task % nt * cube.singleCoreN, kh = h / (data.qHeads / data.kvHeads);
-                const uint32_t keyTask = kh * nt + n / cube.singleCoreN;
-                const uint32_t waveSize = GetBlockNum() * 2;
-                if (keyTask < (wave - 1) * waveSize || keyTask >= wave * waveSize)
-                    continue;
+            const uint32_t waveSize = GetBlockNum() * 2;
+            const uint32_t groups = data.qHeads / data.kvHeads;
+            const uint32_t first = (wave - 1) * waveSize;
+            // Enumerate only this wave, rather than scanning the full sequence.
+            const uint32_t remaining = data.kvHeads * nt - first;
+            const uint32_t count = waveSize < remaining ? waveSize : remaining;
+            for (uint32_t task = GetBlockIdx(); task < count * groups; task += GetBlockNum()) {
+                const uint32_t keyTask = first + task / groups;
+                const uint32_t kh = keyTask / nt, n = keyTask % nt * cube.singleCoreN;
+                const uint32_t h = kh * groups + task % groups;
                 const uint32_t flagIndex = (keyTask + 1) * 128;
                 DataCacheCleanAndInvalid<uint32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_ALL>(
                     flags[flagIndex]);
@@ -220,7 +238,7 @@ __aicore__ inline void PrefillCompute(GM_ADDR ap, GM_ADDR bp, GM_ADDR out, const
                 mm.SetOrgShape(data.tokens, data.qHeads * data.maxLen, 512);
                 mm.SetSingleShape(data.tokens, cube.singleCoreN, 512);
                 mm.SetTensorA(am[(uint64_t)h * data.tokens * 512]);
-                mm.SetTensorB(bm[((uint64_t)kh * data.maxLen + n) * 512], true);
+                mm.SetTensorB(bm[(uint64_t)(keyTask % (2 * waveSize)) * cube.singleCoreN * 512], true);
                 mm.IterateAll(output[(uint64_t)h * data.maxLen + n]);
                 mm.End();
             }
@@ -237,7 +255,9 @@ __aicore__ inline void RunPrefill(GM_ADDR q, GM_ADDR qr, GM_ADDR idx, GM_ADDR si
     const uint32_t kvheads = t.kvHeads, blocks = t.blocks, width = t.tableWidth;
     auto ap = user;
     auto bp = ap + (uint64_t)heads * tokens * 512 * 2;
-    auto fp = bp + (uint64_t)kvheads * length * 512 * 2;
+    // Two AIV waves share B scratch. The barrier after wave w-1 completes
+    // consumption of wave w-2 before its slots are reused in wave w.
+    auto fp = bp + (uint64_t)2 * GetBlockNum() * 2 * 256 * 512 * 2;
     GlobalTensor<uint32_t> flags;
     flags.SetGlobalBuffer((__gm__ uint32_t *)fp);
     uint32_t nt = length / 256;

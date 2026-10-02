@@ -25,7 +25,9 @@ static bool PrefillTiling(gert::TilingContext *context, platform_ascendc::Platfo
     if (data.get_batch() != 1 || tokens < 128 || tokens > 512 || tokens % 32 || !length || length % 256 ||
         heads * length > INT_MAX || ubSize < 187U * 1024 || !platform.GetCoreNumAic())
         return false;
-    const uint64_t rows = heads * tokens + kvHeads * length;
+    // Each AIC has two AIV producers; retain two waves of 256-key tiles.
+    const uint64_t keyRows = 4ULL * platform.GetCoreNumAic() * 256;
+    const uint64_t rows = heads * tokens + keyRows;
     const uint64_t flagBytes = (1 + kvHeads * (length / 256)) * 512;
     if (flagBytes > LIMIT || rows > (LIMIT - flagBytes) / 1024)
         return false;
