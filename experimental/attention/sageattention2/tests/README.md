@@ -9,6 +9,12 @@
 - `test_functional_matrix.py`
   - 路径：[test_functional_matrix.py](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/tests/test_functional_matrix.py)
   - 说明：基于 pytest 的端到端功能测试矩阵，覆盖任务书规定的全部 TC-01 至 TC-10 验收用例（用例数唯一权威于第三节 §1；含 TC-01 dtype 维与 TC-02 gran×accum 全组合的参数化展开，以及 TC-05 零填充等价与 TC-08 负测试全量扩充）。
+- `test_pytorch_integration.py`（M2c-N1/N2 新增）
+  - 路径：[test_pytorch_integration.py](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/tests/test_pytorch_integration.py)
+  - 说明：PyTorch 集成深度套件——dispatcher schema 契约（kwonly 参数序与默认值逐项对齐任务书 §2.3）、
+    Meta 设备与 FakeTensorMode 的 shape/dtype 推导与 fake 域校验拦截、`torch.compile(backend="eager",
+    fullgraph=True)` 全图捕获（算子级 + 入口级，输出与 eager 逐位一致）、重复调用逐位一致确定性契约
+    （gran × accum 参数化；对应 D-R8 单写者无 atomic 设计）。
 - `test_host_assertions.py`
   - 路径：[test_host_assertions.py](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/tests/test_host_assertions.py)
   - 说明：基于 pytest 的宿主机数值断言与仿真对齐套件，覆盖 κ 双档位（2.25 vs 448.0）、粒度非零差异、LSE 等价契约（§4.6 修正口径，不加 lnκ）以及 P-01 ~ P-07 任务书性能典型形状以 FP32 SDPA 为基准（用例数唯一权威于第三节 §1）。
@@ -100,11 +106,14 @@ pytest experimental/attention/sageattention2/tests/ -v
 # 执行 TC-01 ~ TC-10 端到端功能测试（19 项）
 pytest experimental/attention/sageattention2/tests/test_functional_matrix.py -v
 
+# 执行 PyTorch 集成深度测试（schema / Meta·FakeTensor / torch.compile / 重复调用逐位一致，7 项）
+pytest experimental/attention/sageattention2/tests/test_pytorch_integration.py -v
+
 # 执行宿主机数值断言与 P-01 ~ P-07 仿真精度验证（13 项）
 pytest experimental/attention/sageattention2/tests/test_host_assertions.py -v
 ```
 
-全部 34 项用例（19 + 13 + 差分桥 2）均应通过。本行是 pytest 总数与构成的唯一权威口径，其余文档只引用此处。
+全部 41 项用例（19 + 集成 7 + 13 + 差分桥 2）均应通过。本行是 pytest 总数与构成的唯一权威口径，其余文档只引用此处（2026-10-02 实测 41 passed / 45.6s）。
 
 ### 2. C++ 数值契约断言桩执行（宿主机，无 NPU 依赖）
 
