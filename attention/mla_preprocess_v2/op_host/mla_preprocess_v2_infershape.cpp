@@ -104,8 +104,8 @@ static ge::graphStatus InferShapeMlaPreprocessV2(gert::InferShapeContext *contex
     qOutShape->SetDim(1, headNum);
 
     qDownOutShape->SetDimNum(DIM_TWO);
-    qOutShape->SetDim(0, tokenNum);
-    qOutShape->SetDim(1, DIM_SHAPE_Q_DOWN);
+    qDownOutShape->SetDim(0, tokenNum);
+    qDownOutShape->SetDim(1, DIM_SHAPE_Q_DOWN);
 
     if (cacheMode != 0) {
         gert::Shape *qRopeOutShape = context->GetOutputShape(OUTPUT_Q_ROPE_OUT);

@@ -117,7 +117,7 @@ TEST_P(MlaPreprocessV2Proto, mla_preprocess_v2_infershape_1)
             {{{blockNum, blockSize, 1, 512}, {blockNum, blockSize, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{tokenNum, headNum, 64}, {tokenNum, headNum, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{blockNum, blockSize, 1, 64}, {blockNum, blockSize, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{tokenNum, 1536}, {tokenNum, 1536}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{0, 0}, {0, 0}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         },
         {
             {"wdqDim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
@@ -135,8 +135,11 @@ TEST_P(MlaPreprocessV2Proto, mla_preprocess_v2_infershape_1)
             {"wdkvSplitCount", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"qDownOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
         });
-    std::vector<std::vector<int64_t>> expectOutputShape = {
-        {tokenNum, 1536, 512}, {blockNum, blockSize, 1, 576}, {tokenNum, headNum, 64}, {blockNum, blockSize, 1, 64}};
+    std::vector<std::vector<int64_t>> expectOutputShape = {{tokenNum, headNum, 512},
+                                                           {blockNum, blockSize, 1, 576},
+                                                           {tokenNum, headNum, 64},
+                                                           {blockNum, blockSize, 1, 64},
+                                                           {tokenNum, 1536}};
     ExecuteTestCase(infershapeContextPara, ropeInputMode == 2 || ropeInputMode == 3 ? ge::GRAPH_FAILED
                                                                                    : ge::GRAPH_SUCCESS,
                     expectOutputShape);
