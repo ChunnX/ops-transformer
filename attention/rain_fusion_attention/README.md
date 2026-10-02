@@ -19,24 +19,26 @@ RainFusionAttention是一个基于CATLASS模板库实现的高性能稀疏注意
 
 ```cpp
 aclnnStatus aclnnRainFusionAttentionGetWorkspaceSize(
-    const aclTensor *query,                    // Query输入 [B, S, H] or [T, N, D] or [B, N, S, D]
-    const aclTensor *key,                      // Key输入(TND or BNSD格式)
-    const aclTensor *value,                    // Value输入(TND or BNSD格式)
-    const aclTensor *attenMask,                // Attention mask (可选)
-    const aclIntArray *actualSeqLengths,       // 实际Q序列长度(可选)
-    const aclIntArray *actualSeqLengthsKv,     // 实际KV序列长度(可选)
-    const aclTensor *blockTable,               // Block表(可选，用于PagedAttention)
-    const aclTensor *selectIdx,                // 稀疏块索引 [T, headNum, maxKvBlockNum]
-    const aclTensor *selectNumIdx,             // 每个Q块的KV块数量 [T, headNum]
-    const char *qInputLayout,                  // Q输入布局: "BSH", "TND", "BNSD"
-    const char *kvInputLayout,                 // KV输入布局: "TND", "BNSD"
-    int64_t numKeyValueHeads,                  // KV头数
-    int64_t maskType,                          // Mask类型
-    double scaleValue,                         // 缩放因子
-    const aclIntArray *blockShape,             // 块形状 [blockShapeX, blockShapeY]
-    const aclTensor *attentionOut,             // 输出tensor
-    const aclTensor *softmaxLse,               // Softmax LSE输出(可选)
-    uint64_t *workspaceSize,                   // 返回workspace大小
+    const aclTensor *query,
+    const aclTensor *key,
+    const aclTensor *value,
+    const aclTensor *selectIdx,
+    const aclTensor *selectNumIdx,
+    const aclIntArray *blockShape,
+    const aclTensor *attenMaskOptional,
+    const aclIntArray *actualSeqLengthsOptional,
+    const aclIntArray *actualSeqLengthsKvOptional,
+    const aclTensor *blockTableOptional,
+    char *qInputLayout,
+    char *kvInputLayout,
+    int64_t numKeyValueHeads,
+    int64_t maskType,
+    double scaleValue,
+    int64_t innerPrecise,
+    int64_t blockSize,
+    const aclTensor *attentionOut,
+    const aclTensor *softmaxLseOptional,
+    uint64_t *workspaceSize,
     aclOpExecutor **executor);                 // 返回executor
 ```
 
@@ -83,6 +85,8 @@ aclnnStatus aclnnRainFusionAttention(
 ## 使用示例
 
 ```cpp
+#include <cmath>
+
 // 1. 准备输入数据
 int64_t batch = 1;
 int64_t qSeqlen = 256;
@@ -100,21 +104,24 @@ int64_t blockShapeData[2] = {blockShapeX, blockShapeY};
 aclIntArray *blockShape = aclCreateIntArray(blockShapeData, 2);
 
 // 4. 调用算子
+char qInputLayout[] = "BSH";
+char kvInputLayout[] = "TND";
+double scaleValue = 1.0 / std::sqrt(static_cast<double>(headDim));
 uint64_t workspaceSize = 0;
 aclOpExecutor *executor = nullptr;
 
 aclnnStatus ret = aclnnRainFusionAttentionGetWorkspaceSize(
-    query, key, value, nullptr, nullptr, nullptr, nullptr,
-    selectIdx, selectNumIdx, "BSH", "TND",
-    numKvHeads, 0, scaleValue, blockShape,
+    query, key, value, selectIdx, selectNumIdx, blockShape,
+    nullptr, nullptr, nullptr, nullptr, qInputLayout, kvInputLayout,
+    numKvHeads, 0, scaleValue, 0, 128,
     attentionOut, nullptr, &workspaceSize, &executor);
 
 if (ret == ACLNN_SUCCESS) {
     void *workspace = nullptr;
     aclrtMalloc(&workspace, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
-    
+
     ret = aclnnRainFusionAttention(workspace, workspaceSize, executor, stream);
-    
+
     aclrtFree(workspace);
 }
 ```
