@@ -33,7 +33,6 @@
 
 #include <cstdint>
 #include <cstring>
-#include <cstdio>
 
 #include "sa2_spec.h"
 #include "sa2_planner.h"
