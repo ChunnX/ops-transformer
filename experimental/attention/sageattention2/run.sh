@@ -122,6 +122,10 @@ run_python_tests() {
         echo "Running test_quant.py..."
         "${PY_BIN}" "${WORK_DIR}/tests/test_quant.py"
     fi
+    if [ -f "${WORK_DIR}/tests/test_kernel_twin.py" ]; then
+        echo "Running test_kernel_twin.py (宿主孪生执行器与 kernel 宿主串行分支 vs golden)..."
+        "${PY_BIN}" "${WORK_DIR}/tests/test_kernel_twin.py"
+    fi
     echo ">>> Python Tests Completed!"
 }
 

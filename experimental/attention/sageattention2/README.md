@@ -41,7 +41,7 @@ bash build.sh --pkg --experimental --soc=ascend950 --vendor_name=customize --ops
 
 - `bash run.sh host`：编译并运行 `tests/test_aclnn_host.cpp`（TilingData 布局、Host Tiling、Die 亲和性、参数校验）、`tests/test_op_host.cpp`（REG_OP/InferShape）、`tests/test_output_queue.cpp`（OutputRetireQueue 成对归约）
 - `bash run.sh kernel`：设备 kernel 源码语法检查（主机编译器语法级）
-- `bash run.sh python`：`tests/test_tiling_struct.py`（ctypes 镜像与 `tiling.h` 逐字段对齐）与 `tests/test_quant.py`（量化内核 ctypes 行为验证）
+- `bash run.sh python`：`tests/test_tiling_struct.py`（ctypes 镜像与 `tiling.h` 逐字段对齐）、`tests/test_quant.py`（量化内核 ctypes 行为验证）与 `tests/test_kernel_twin.py`（宿主孪生执行器 + kernel 宿主串行分支对 golden 落盘数据的 L-A/L-B 功能交叉验证）
 - `bash run.sh opp`：custom OPP 打包 dry-run 与 mock 安装测试
 - `bash run.sh container`：容器内 BiSheng 设备二进制编译（`dav-3510`）
 - `bash run.sh all`：以上全部
@@ -128,6 +128,7 @@ SAGE_PYTHON=... pytest tests/ -q（或 run.sh python）
 
 - `bash run.sh host` 输出三段 `[SUCCESS]`（ACLNN Host 7 例、OP_HOST 5 例、OutputQueue 7 例）且退出码为 0
 - `SAGE_PYTHON=... pytest tests/ -q` 全部用例通过（含 `tests/test_tiling_struct.py` 的 TilingData ctypes 镜像对 160 字节总长、32 字节对齐与逐字段偏移的断言）；`run.sh python` 仅覆盖 test_tiling_struct.py 与 test_quant.py 两个快速项（DEFECT-A10-2 随动修正：不再吞失败退出码），全量口径以 pytest 为准
+- `tests/test_kernel_twin.py`（已纳入 `run.sh python`）：宿主孪生全流水执行器（twin_reference RunSequential）与 kernel 宿主串行分支（op_kernel SageAttnKernel + SimMemory，TilingData 直驱 `sage_attention2` C 入口）对 golden 25 桶落盘 out/lse 的功能交叉验证——22 桶整桶 + 3 大桶 128 对齐行窗口（P-05/P-07/TC-09，非因果行独立性如实标注；TC-03_smooth_v_fp32 为 smooth_v 建模边界由 test_function.py 覆盖），判据 L-A（matched_ratio ≥ 0.99、max_abs ≤ 0.1/1.0、LSE ≤ 1e-3）+ L-B（对 SDPA 误差比 ≤ 2.0/1.2/1.2），并附 P-01 量化中间态（q/k INT8、v FP8、scale）位级比对；P-01/TC-05/TC-07 三代表桶另以 kernel 宿主串行分支复验
 - 仓库级数值门（kernel 宿主串行路径 vs 孪生参考十用例位级一致、golden 25 桶 L-A/L-B）：由工程根 `ci/local_test.sh` 承载，依赖仓库外 `./tests/` 与 `./sageAttention2/sageAttentionTest`（DEFECT-A10-3：交付包内不自带，复现须在完整工程根执行）
 - `bash run.sh opp` 完成 dry-run 打包与 mock 安装且退出码为 0
 - 真机验收另行执行 `bash benchmarks/build_aclnn_benchmark.sh` 并以真机报告的 `verdict: PASS` 为准；`mode: SIMULATION` 的报告一律无效

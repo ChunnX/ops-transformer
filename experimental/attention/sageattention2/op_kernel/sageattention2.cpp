@@ -180,8 +180,10 @@ struct SimMemory {
  *    （进域预置"消费者已归还"许可、退域回收残余许可，防跨任务波次残留死锁，task/02_code.md B-2）
  *
  * 数值架构契约（Step-C 标量基线，与 twin_reference.h RunSequential 唯一真值逐位一致，
- * 数值验证入口为 tests/test_golden_precision.py（GPU golden 对标）与 tests/test_function.py
- * （功能用例），OutputRetireQueue 由 tests/test_output_queue.cpp 单测锁定）：
+ * 数值验证入口为 tests/test_kernel_twin.py（宿主串行分支 + 孪生执行器对 golden 25 桶
+ * L-A/L-B 交叉验证，即本文件宿主分支的 golden 级回归）、tests/test_golden_precision.py
+ * （GPU golden 对标）与 tests/test_function.py（功能用例），OutputRetireQueue 由
+ * tests/test_output_queue.cpp 单测锁定）：
  * a. 逐行 Softmax：OnlineSoftmaxState 按逻辑行（r = g*cur_q_len + i）维护，行 max/行分母/
  *    行 rescale/行 LSE/行 lse_correction 全部独立——softmax 是行级语义；
  * b. P 逐块锚定：每块以 is_force_rescale=true 强制重缩放（m_scale 恒等于 m_run），P 在
