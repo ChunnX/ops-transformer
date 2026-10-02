@@ -1,4 +1,16 @@
 // sa2_sim_kv_prep.h — SageAttention2 宿主仿真 KV 预处理（纯标准 C++17，零硬件依赖）
+//
+// 与设备侧（op_kernel/sa2_kv_prep.h）的镜像关系（2026-10-02 三级流水收口）：
+//   1. ProcessKMean：K 均值 oracle——128 行块 → 64 行子块 → 全头折叠两级 FP32 加法树。
+//      设备已落地「MTE2 行块双缓冲 + 64-lane 纵向 Cast/Add 归约」，列 lane 内仍按行序逐次
+//      相加 ⇒ 加法树未换，本 oracle 语句序继续逐位镜像（v31 迭代 1 义务注记延续成立）。
+//   2. ProcessHeadChunkPipeline：K/V 混流三级切片流水镜像——与设备共用
+//      ExecuteQuantBatchPipeline 骨架与 Sa2QuantSliceDesc 槽位调度（Load i+1 / Compute i /
+//      Store i-1，输入/输出槽独立双缓冲），Stage2 公式与设备逐位同源（Sa2QuantScaleReciprocal
+//      一次倒数 + aicNearbyInt（≡ 设备 CAST_RINT）钳制量化；V 组 E8M0 位技巧 + 2^-e 精确
+//      二次幂倒数行 + FloatToFp8E4M3 铸码）。
+//   3. ProcessKQuantScalarRef / ProcessVQuantScalarRef：流水线引入前的标量 oracle（v31 前
+//      形态逐语句保留），供 conformance 证明流水线路径与标量路径逐位一致（三方对账的基准腿）。
 #ifndef SA2_SIM_KV_PREP_H_
 #define SA2_SIM_KV_PREP_H_
 
@@ -20,7 +32,7 @@ public:
     inline Sa2KvPreprocessorSim() = default;
 
     /**
-     * @brief 宿主机纯标量仿真：对指定 KV head 执行完整的 K/V 预处理（均值统计与量化写入）。
+     * @brief 宿主仿真：对指定 KV head 执行完整的 K/V 预处理（均值统计与量化写入）。
      */
     inline void ProcessHead(
         uint8_t *kGmBase, uint8_t *vGmBase, uint8_t *userWs,
@@ -39,22 +51,18 @@ public:
         int8_t *wsV8 = reinterpret_cast<int8_t *>(userWs + td.v8 + view.wsV8);
         int16_t *wsVScale = reinterpret_cast<int16_t *>(userWs + td.vScale + view.wsVScale);
 
-        // 1. K 均值统计（smooth_k=True 时）
+        // 1. K 均值统计（smooth_k=True 时；与设备 ProcessKMeanDevice 同树）
         ProcessKMean(gmK, wsKMean, p);
 
-        // 2. K 中心化与 INT8 对称量化
-        ProcessKQuant(gmK, wsKMean, wsK8, wsKScale, p);
+        // 2. V 均值统计（smooth_v=True 且 fp32 累加时；与设备 ProcessVMeanDevice 同序）
+        ProcessVMean(gmV, wsVMean, p);
 
-        // 3. V MX 分组量化与 E8M0 双打包（D-R4 口径）
-        ProcessVQuant(gmV, wsVMean, wsV8, wsVScale, p);
+        // 3. K/V 混流三级切片流水量化（与设备 ProcessHeadChunk 同骨架同公式）
+        ProcessHeadChunkPipeline(gmK, gmV, wsKMean, wsVMean, wsK8, wsKScale, wsV8, wsVScale, p,
+                                 0, p.kp);
     }
 
-private:
-    // K 均值 oracle：语句序同构镜像设备标量载体（op_kernel/sa2_kv_prep.h
-    // ProcessKMeanStreamKDevice）——128 行块 → 64 行子块（D-R8 datablock 基数）→ 全头折叠
-    // 两级 FP32 加法树。v31 迭代 1 收口：旧版纯行序累加与设备分块树在 FP32 非结合语义下
-    // ulp 级漂移，违反「宿主 oracle 逐位镜像」契约；本轮起同构，向量化换树时须同提交同步
-    //（设备侧义务注记同步）。smooth 关闭路径与设备一致：只落零值、不读 GM。
+    // ---- K 均值 oracle（设备 64-lane 纵向归约的逐位镜像：列内行序 FP32 加法树）----
     inline void ProcessKMean(
         const Dtype *gmK, float *wsKMean, const Sa2Params &p)
     {
@@ -96,7 +104,128 @@ private:
         }
     }
 
-    inline void ProcessKQuant(
+    // ---- V 均值镜像（smooth_v 且 fp32 档；行主序与设备 ProcessVMeanDevice 同序）----
+    inline void ProcessVMean(
+        const Dtype *gmV, float *wsVMean, const Sa2Params &p)
+    {
+        const bool smoothVActive = p.smoothV && (p.accum == static_cast<int64_t>(PvAccum::kFp32));
+        if (smoothVActive && p.sk > 0) {
+            float sumVBuf[kMaxHeadDim] = {0.0f};
+            for (int64_t s = 0; s < p.sk; ++s) {
+                const Dtype *row = gmV + s * p.vStride[2];
+                for (int64_t c = 0; c < p.d; ++c) {
+                    sumVBuf[c] += static_cast<float>(row[c]);
+                }
+            }
+            float invSk = 1.0f / static_cast<float>(p.sk);
+            for (int64_t c = 0; c < p.d; ++c) {
+                wsVMean[c] = sumVBuf[c] * invSk;
+            }
+        } else {
+            for (int64_t c = 0; c < p.d; ++c) {
+                wsVMean[c] = 0.0f;
+            }
+        }
+        for (int64_t c = p.d; c < p.dp; ++c) {
+            wsVMean[c] = 0.0f;
+        }
+    }
+
+    // ---- K/V 混流三级切片流水镜像（与设备共用 ExecuteQuantBatchPipeline 骨架）----
+    // 槽位语义与设备一致：Load 写入槽 (i+1)%2、Compute 读输入槽 i%2 写输出槽 i%2、
+    // Store 读输出槽 (i-1)%2；输入/输出独立双缓冲 ⇒ 三级两两不同槽（无竞争调度的
+    // 形式化断言见 conformance kv_prep_three_stage_pipeline_guard）。
+    inline void ProcessHeadChunkPipeline(
+        const Dtype *gmK, const Dtype *gmV, const float *wsKMean, const float *wsVMean,
+        int8_t *wsK8, half *wsKScale, int8_t *wsV8, int16_t *wsVScale,
+        const Sa2Params &p, int64_t chunkStart, int64_t chunkLen)
+    {
+        struct SimChunkCtx {
+            const Dtype *gmK;
+            const Dtype *gmV;
+            const float *wsKMean;
+            const float *wsVMean;
+            int8_t *wsK8;
+            half *wsKScale;
+            int8_t *wsV8;
+            int16_t *wsVScale;
+            const Sa2Params *p;
+            int64_t chunkStart;
+            int64_t chunkLen;
+            // Stage1/2/3 切片暂存（输入/输出独立双缓冲，槽 = desc.bufferSlot）
+            float kIn[2][kKvPrepSliceRows * kMaxHeadDim];
+            float vIn[2][kKvPrepSliceRows * kMaxHeadDim];
+            uint8_t kOut[2][kKvPrepSliceRows * kMaxHeadDim];
+            uint8_t vOut[2][kKvPrepSliceRows * kMaxHeadDim];
+            half kScaleOut[2][kKvPrepSliceRows * kSegCols];  // 槽内行距 = segWidth 上界（与 GM 同构）
+            uint8_t expSub[2][kMxScalePack][kMaxHeadDim];
+        } ctx;
+
+        ctx.gmK = gmK;
+        ctx.gmV = gmV;
+        ctx.wsKMean = wsKMean;
+        ctx.wsVMean = wsVMean;
+        ctx.wsK8 = wsK8;
+        ctx.wsKScale = wsKScale;
+        ctx.wsV8 = wsV8;
+        ctx.wsVScale = wsVScale;
+        ctx.p = &p;
+        ctx.chunkStart = chunkStart;
+        ctx.chunkLen = chunkLen;
+
+        auto loadFn = [&](const Sa2QuantSliceDesc &desc) {
+            const int64_t slot = desc.bufferSlot;
+            const int64_t rows = std::min<int64_t>(kKvPrepSliceRows, ctx.chunkLen - desc.rowOffset);
+            const int64_t tokenStart = ctx.chunkStart + desc.rowOffset;
+            // Stage1 镜像：无效 token 行与 pad 列确定性清零后回填 [0,d)（与设备 LoadRowsToUb 一致）
+            for (int64_t i = 0; i < rows * p.dp; ++i) {
+                ctx.kIn[slot][i] = 0.0f;
+                ctx.vIn[slot][i] = 0.0f;
+            }
+            for (int64_t r = 0; r < rows; ++r) {
+                if (tokenStart + r >= p.sk) {
+                    continue;
+                }
+                const Dtype *kRow = ctx.gmK + (tokenStart + r) * p.kStride[2];
+                const Dtype *vRow = ctx.gmV + (tokenStart + r) * p.vStride[2];
+                for (int64_t c = 0; c < p.d; ++c) {
+                    ctx.kIn[slot][r * p.dp + c] = static_cast<float>(kRow[c]);
+                    ctx.vIn[slot][r * p.dp + c] = static_cast<float>(vRow[c]);
+                }
+            }
+        };
+        auto computeFn = [&](const Sa2QuantSliceDesc &desc) {
+            const int64_t slot = desc.bufferSlot;
+            const int64_t rows = std::min<int64_t>(kKvPrepSliceRows, ctx.chunkLen - desc.rowOffset);
+            const int64_t tokenStart = ctx.chunkStart + desc.rowOffset;
+            SimKQuantCompute(ctx, slot, rows, tokenStart);
+            SimVQuantCompute(ctx, slot, rows, tokenStart);
+        };
+        auto storeFn = [&](const Sa2QuantSliceDesc &desc) {
+            const int64_t slot = desc.bufferSlot;
+            const int64_t rows = std::min<int64_t>(kKvPrepSliceRows, ctx.chunkLen - desc.rowOffset);
+            const int64_t tokenStart = ctx.chunkStart + desc.rowOffset;
+            for (int64_t i = 0; i < rows * p.dp; ++i) {
+                ctx.wsK8[tokenStart * p.dp + i] = static_cast<int8_t>(ctx.kOut[slot][i]);
+                ctx.wsV8[tokenStart * p.dp + i] = static_cast<int8_t>(ctx.vOut[slot][i]);
+            }
+            for (int64_t i = 0; i < rows * p.segWidth; ++i) {
+                ctx.wsKScale[tokenStart * p.segWidth + i] = ctx.kScaleOut[slot][i];
+            }
+            // vScale：逐步 nN 窗序列化（VScalePairWordOff 唯一算式，与设备 Stage3 同式）
+            const int64_t pairIdx = tokenStart / (kMxGroupTokens * kMxScalePack);
+            for (int64_t c = 0; c < p.dp; ++c) {
+                const uint16_t packedU = static_cast<uint16_t>(ctx.expSub[slot][0][c]) |
+                                         static_cast<uint16_t>(static_cast<uint16_t>(ctx.expSub[slot][1][c]) << 8);
+                ctx.wsVScale[VScalePairWordOff(pairIdx, c, p.dp)] = static_cast<int16_t>(packedU);
+            }
+        };
+
+        ExecuteQuantBatchPipeline(chunkLen, p.d, p.dp, loadFn, computeFn, storeFn);
+    }
+
+    // ---- 标量 oracle（v31 前形态逐语句保留；conformance 三方对账基准腿）----
+    inline void ProcessKQuantScalarRef(
         const Dtype *gmK, const float *wsKMean,
         int8_t *wsK8, half *wsKScale, const Sa2Params &p)
     {
@@ -177,7 +306,8 @@ private:
         }
     }
 
-    inline void ProcessVQuant(
+    // ---- V 量化标量 oracle（v31 前形态逐语句保留，含内联 V 均值）----
+    inline void ProcessVQuantScalarRef(
         const Dtype *gmV, float *wsVMean,
         int8_t *wsV8, int16_t *wsVScale, const Sa2Params &p)
     {
@@ -267,6 +397,113 @@ private:
             }
         }
     }
+
+private:
+    // Stage2 镜像（K）：中心化 → 行/段 amax → Sa2QuantScaleReciprocal 一次倒数 →
+    // 倒数向量乘（标量镜像为逐元素乘同一 invScale）→ aicNearbyInt（≡ 设备 CAST_RINT）→ 钳制。
+    template <typename Ctx>
+    inline void SimKQuantCompute(Ctx &ctx, int64_t slot, int64_t rows, int64_t tokenStart)
+    {
+        const Sa2Params &p = *ctx.p;
+        constexpr bool isThreadGran = (G == Gran::kPerThread);
+        const float kFactor = p.kFactor;
+
+        for (int64_t r = 0; r < rows; ++r) {
+            const int64_t token = tokenStart + r;
+            const bool validToken = (token < p.sk);
+            const float *rowIn = ctx.kIn[slot] + r * p.dp;
+            uint8_t *rowOut = ctx.kOut[slot] + r * p.dp;
+            float rowDiff[kMaxHeadDim] = {0.0f};
+            for (int64_t c = 0; c < p.d; ++c) {
+                rowDiff[c] = rowIn[c] - ctx.wsKMean[c];
+            }
+            if constexpr (!isThreadGran) {
+                float amax = 0.0f;
+                for (int64_t c = 0; c < p.d; ++c) {
+                    amax = aicMax(amax, aicAbs(rowDiff[c]));
+                }
+                const Sa2QuantScaleReciprocal kRecip(amax, kFactor);
+                for (int64_t c = 0; c < p.dp; ++c) {
+                    rowOut[c] = (validToken && c < p.d)
+                                    ? static_cast<uint8_t>(kRecip.Quantize(rowDiff[c]))
+                                    : 0;
+                }
+                ctx.kScaleOut[slot][r * p.segWidth] = Sa2ScalarFromFloat<half>(kRecip.scaledFactor);
+            } else {
+                const int64_t numSegs = p.dp / kSegCols;
+                for (int64_t seg = 0; seg < numSegs; ++seg) {
+                    const int64_t segBase = seg * kSegCols;
+                    const int64_t segEnd = aicMin(segBase + kSegCols, p.d);
+                    float amax = 0.0f;
+                    for (int64_t c = segBase; c < segEnd; ++c) {
+                        amax = aicMax(amax, aicAbs(rowDiff[c]));
+                    }
+                    const Sa2QuantScaleReciprocal kRecip(amax, kFactor);
+                    for (int64_t c = segBase; c < segBase + kSegCols; ++c) {
+                        rowOut[c] = (validToken && c < p.d)
+                                        ? static_cast<uint8_t>(kRecip.Quantize(rowDiff[c]))
+                                        : 0;
+                    }
+                    ctx.kScaleOut[slot][r * p.segWidth + seg] = Sa2ScalarFromFloat<half>(kRecip.scaledFactor);
+                }
+            }
+        }
+    }
+
+    // Stage2 镜像（V）：组 per-channel amax → E8M0 位技巧 → 2^-e 精确二次幂倒数行 →
+    // 逐元素倒数乘 → FloatToFp8E4M3 铸码（与设备 vapi 序列逐位同源）。
+    template <typename Ctx>
+    inline void SimVQuantCompute(Ctx &ctx, int64_t slot, int64_t rows, int64_t tokenStart)
+    {
+        const Sa2Params &p = *ctx.p;
+        const int64_t pairIdx = tokenStart / (kMxGroupTokens * kMxScalePack);
+        const int64_t chunkEnd = ctx.chunkStart + ctx.chunkLen;
+
+        for (int64_t sub = 0; sub < kMxScalePack; ++sub) {
+            const int64_t g = pairIdx * kMxScalePack + sub;
+            const int64_t tStart = g * kMxGroupTokens;
+            if (tStart >= chunkEnd) {
+                break;  // 组越出分块（与设备同款防御分支；现网网格恒 128 不可达）
+            }
+            float amaxRow[kMaxHeadDim] = {0.0f};
+            float scaleRow[kMaxHeadDim] = {0.0f};
+            for (int64_t i = 0; i < kMxGroupTokens; ++i) {
+                const int64_t token = tStart + i;
+                if (token >= p.sk) {
+                    continue;  // 无效行零贡献（与设备纵向 Max 阵列 skip 一致）
+                }
+                const float *row = ctx.vIn[slot] + (tStart - tokenStart + i) * p.dp;
+                for (int64_t c = 0; c < p.d; ++c) {
+                    amaxRow[c] = aicMax(amaxRow[c], aicAbs(row[c] - ctx.wsVMean[c]));
+                }
+            }
+            for (int64_t c = 0; c < p.dp; ++c) {
+                const uint8_t uexp = ComputeE8m0Exponent(amaxRow[c]);
+                ctx.expSub[slot][sub][c] = uexp;
+                scaleRow[c] = AmlaScaleMultiply(1.0f, -(static_cast<int32_t>(uexp) - 127));
+            }
+            for (int64_t i = 0; i < kMxGroupTokens; ++i) {
+                const int64_t token = tStart + i;
+                const int64_t rowLocal = tStart - tokenStart + i;
+                if (rowLocal >= rows) {
+                    break;
+                }
+                uint8_t *rowOut = ctx.vOut[slot] + rowLocal * p.dp;
+                if (token >= p.sk) {
+                    for (int64_t c = 0; c < p.dp; ++c) {
+                        rowOut[c] = 0;
+                    }
+                    continue;
+                }
+                const float *row = ctx.vIn[slot] + rowLocal * p.dp;
+                for (int64_t c = 0; c < p.dp; ++c) {
+                    const float centered = row[c] - ctx.wsVMean[c];
+                    rowOut[c] = FloatToFp8E4M3(centered * scaleRow[c]);
+                }
+            }
+        }
+    }
+
 };
 
 } // namespace sim

@@ -250,9 +250,11 @@ private:
     {
         return UbAt<half>(slot == 0 ? kKvPrepKScale0 : kKvPrepKScale1);
     }
-    __aicore__ inline __ubuf__ uint8_t *ExpSubOf(int64_t sub)
+    __aicore__ inline __ubuf__ uint8_t *ExpSubOf(int64_t slot, int64_t sub)
     {
-        return UbAt<uint8_t>(sub == 0 ? kKvPrepExpSub0 : kKvPrepExpSub1);
+        // 槽局部（防跨切片覆写竞态：Store(i-1) 读的一定是本切片槽写入的阶码）
+        const int64_t base = (slot == 0) ? kKvPrepExpSub0 : kKvPrepExpSub1;
+        return UbAt<uint8_t>(base + sub * kKvPrepExpSubBytes);
     }
     static __aicore__ inline uint16_t EvOf(int64_t slot)
     {
@@ -283,9 +285,11 @@ private:
             }
             AscendC::GlobalTensor<Dtype> gmSrc;
             gmSrc.SetGlobalBuffer(const_cast<__gm__ Dtype *>(gmRows + r * gmRowStride));
-            AscendC::LocalTensor<Dtype> ubDst = ubBuf_.template Get<uint8_t>()[
-                static_cast<uint32_t>((ubRows + r * dp) - reinterpret_cast<__ubuf__ Dtype *>(ub_))]
-                .template ReinterpretCast<Dtype>();
+            const int64_t rowByteOff =
+                reinterpret_cast<__ubuf__ uint8_t *>(ubRows + r * dp) - ub_;
+            AscendC::LocalTensor<Dtype> ubDst =
+                ubBuf_.template Get<uint8_t>()[static_cast<uint32_t>(rowByteOff)]
+                    .template ReinterpretCast<Dtype>();
             AscendC::DataCopy(ubDst, gmSrc, static_cast<uint32_t>(cVec));
         }
         AscendC::PipeBarrier<PIPE_MTE2>();
@@ -307,6 +311,7 @@ private:
         __ubuf__ const Dtype *slice, int64_t rows, int64_t d, int64_t dp)
     {
         __ubuf__ float *totalUb = UbAt<float>(kKvPrepMeanTotal);
+        (void)d;
 #if SA2_KV_PREP_VAPI
         vapi::MaskReg m64 = vapi::CreateMask<float, vapi::MaskPattern::ALL>();
         vapi::RegTensor<float> tot0;
@@ -577,7 +582,7 @@ private:
                 scalarSlot[0] = kRecip.invScale;
                 vapi::LoadAlign<float, vapi::LoadDist::DIST_BRC_B32>(invBrc, scalarSlot);
                 for (int64_t seg = 0; seg < p.dp; seg += kKvPrepVlF32) {
-                    QuantRowSeg(rowIn + seg, meanRow + seg, rowOut + seg, invBrc, kRecip.invScale);
+                    QuantRowSeg(rowIn + seg, meanRow + seg, rowOut + seg, invBrc, pos127, neg127);
                 }
                 kScaleOut[r * p.segWidth] = Sa2ScalarFromFloat<half>(kRecip.scaledFactor);
             } else {
@@ -605,7 +610,7 @@ private:
                     scalarSlot[0] = kRecip.invScale;
                     vapi::LoadAlign<float, vapi::LoadDist::DIST_BRC_B32>(invBrc, scalarSlot);
                     QuantRowSegMasked(rowIn + segBase, meanRow + segBase, rowOut + segBase,
-                                      invBrc, kRecip.invScale);
+                                      invBrc, pos127, neg127);
                     kScaleOut[r * p.segWidth + seg] = Sa2ScalarFromFloat<half>(kRecip.scaledFactor);
                 }
             }
@@ -657,11 +662,13 @@ private:
 
 #if SA2_KV_PREP_VAPI
     // 单行 64-lane 段量化：q = diff × invScale（向量乘）→ CAST_RINT 取整 → ±127 钳制 → int8。
-    // 与 Sa2QuantScaleReciprocal::Quantize 逐位同源（aicNearbyInt ≡ CAST_RINT，浮点钳制与
-    // 整型钳制在 |x| ≤ 127.5 域等价，见 conformance kv_quant_reciprocal_e8m0_guard）。
+    // 与 Sa2QuantScaleReciprocal::Quantize 逐位同源（aicNearbyInt ≡ CAST_RINT；浮点钳制与
+    // 整型钳制在 RNE 域 {…,-128→-127, +128→+127} 等价，见 conformance kv_quant_reciprocal_e8m0_guard）。
+    // pos127/neg127 由调用方以循环不变寄存器传入（vloop 标量参指令外提纪律，p33d）。
     __aicore__ inline void QuantRowSeg(
         __ubuf__ const Dtype *rowSeg, __ubuf__ const float *meanSeg, __ubuf__ uint8_t *outSeg,
-        vapi::RegTensor<float> &invBrc, float invScale)
+        vapi::RegTensor<float> &invBrc,
+        vapi::RegTensor<int16_t> &pos127, vapi::RegTensor<int16_t> &neg127)
     {
         vapi::MaskReg m64 = vapi::CreateMask<float, vapi::MaskPattern::ALL>();
         vapi::RegTensor<Dtype> h;
@@ -675,17 +682,17 @@ private:
         vapi::RegTensor<int16_t> r16;
         vapi::Cast<int16_t, float, kKvCastRint>(r16, f, m64);
         vapi::RegTensor<int16_t> clamped;
-        vapi::Max(clamped, r16, kNeg127(), m64);
-        vapi::Min(clamped, clamped, kPos127(), m64);
+        vapi::Max(clamped, r16, neg127, m64);
+        vapi::Min(clamped, clamped, pos127, m64);
         vapi::RegTensor<uint8_t> c8;
         vapi::Cast<uint8_t, int16_t>(c8, clamped, m64);
         vapi::StoreAlign(outSeg, c8, m64);
-        (void)invScale;
     }
 
     __aicore__ inline void QuantRowSegMasked(
         __ubuf__ const Dtype *rowSeg, __ubuf__ const float *meanSeg, __ubuf__ uint8_t *outSeg,
-        vapi::RegTensor<float> &invBrc, float invScale)
+        vapi::RegTensor<float> &invBrc,
+        vapi::RegTensor<int16_t> &pos127, vapi::RegTensor<int16_t> &neg127)
     {
         uint32_t cnt16 = static_cast<uint32_t>(kSegCols);
         vapi::MaskReg act16 = vapi::UpdateMask<uint32_t>(cnt16);
@@ -700,25 +707,11 @@ private:
         vapi::RegTensor<int16_t> r16;
         vapi::Cast<int16_t, float, kKvCastRint>(r16, f, act16);
         vapi::RegTensor<int16_t> clamped;
-        vapi::Max(clamped, r16, kNeg127(), act16);
-        vapi::Min(clamped, clamped, kPos127(), act16);
+        vapi::Max(clamped, r16, neg127, act16);
+        vapi::Min(clamped, clamped, pos127, act16);
         vapi::RegTensor<uint8_t> c8;
         vapi::Cast<uint8_t, int16_t>(c8, clamped, act16);
         vapi::StoreAlign(outSeg, c8, act16);
-        (void)invScale;
-    }
-
-    static __aicore__ inline vapi::RegTensor<int16_t> kPos127()
-    {
-        vapi::RegTensor<int16_t> r;
-        vapi::Duplicate(r, 127);
-        return r;
-    }
-    static __aicore__ inline vapi::RegTensor<int16_t> kNeg127()
-    {
-        vapi::RegTensor<int16_t> r;
-        vapi::Duplicate(r, -127);
-        return r;
     }
 #endif
 
@@ -741,7 +734,7 @@ private:
             if (tStart >= chunkEnd) {
                 break;  // 组越出分块（chunkLen 非 128 对齐的防御分支；现网网格恒 128 不可达）
             }
-            __ubuf__ uint8_t *expSub = ExpSubOf(sub);
+            __ubuf__ uint8_t *expSub = ExpSubOf(slot, sub);
 #if SA2_KV_PREP_VAPI
             vapi::MaskReg m64 = vapi::CreateMask<float, vapi::MaskPattern::ALL>();
             // per-channel amax：32 token 行纵向 Max 阵列（64 lane 并行）；无效行零贡献
@@ -824,17 +817,12 @@ private:
                     vapi::StoreAlign(rowOut + seg, c8, m64);
                 }
 #else
-                for (int64_t c = 0; c < p.d; ++c) {
-                    const float centered = static_cast<float>(row_vinv(c)) - meanRow[c];
-                    (void)centered;
-                }
+                // MIX 第三 pass 标量解析轨（运行期不可达）：Amla 指数平移与倒数行乘逐位同源
+                __ubuf__ const Dtype *row = vIn + rowLocal * p.dp;
                 for (int64_t c = 0; c < p.dp; ++c) {
-                    const float centered = static_cast<float>(0) - meanRow[c];
-                    (void)centered;
-                }
-                for (int64_t c = 0; c < p.dp; ++c) {
+                    const float centered = static_cast<float>(row[c]) - meanRow[c];
                     const int32_t expVal = static_cast<int32_t>(expSub[c]) - 127;
-                    rowOut[c] = FloatToFp8E4M3(AmlaScaleMultiply(0.0f, -expVal));
+                    rowOut[c] = FloatToFp8E4M3(AmlaScaleMultiply(centered, -expVal));
                 }
 #endif
             }
@@ -851,8 +839,8 @@ private:
         __ubuf__ uint8_t *kOut = KOutOf(slot);
         __ubuf__ uint8_t *vOut = VOutOf(slot);
         __ubuf__ half *kScaleOut = KScaleOf(slot);
-        __ubuf__ uint8_t *expSub0 = ExpSubOf(0);
-        __ubuf__ uint8_t *expSub1 = ExpSubOf(1);
+        __ubuf__ uint8_t *expSub0 = ExpSubOf(slot, 0);
+        __ubuf__ uint8_t *expSub1 = ExpSubOf(slot, 1);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EvOf(slot));
         const int64_t k8Bytes = rows * p.dp;
 #if __has_include("kernel_operator.h")

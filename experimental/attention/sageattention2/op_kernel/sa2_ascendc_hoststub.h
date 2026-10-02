@@ -831,7 +831,7 @@ inline void Cast(RegTensor<DstT> &dst, const RegTensor<SrcT> &src, MaskReg mask)
     }
 }
 
-template <typename DstT, typename SrcT, auto Trait>
+template <typename DstT, typename SrcT, const auto &Trait>
 inline void Cast(RegTensor<DstT> &dst, const RegTensor<SrcT> &src, MaskReg mask) {
     Cast<DstT, SrcT>(dst, src, mask);
 }
@@ -904,6 +904,7 @@ inline void StoreUnAlignPost(DstPtrT *&dst, UnalignRegForStore &ureg, uint32_t c
 }  // namespace MicroAPI
 
 using float8_e4m3_t = ::float8_e4m3_t;
+using RoundMode = MicroAPI::RoundMode;
 namespace vapi = MicroAPI;
 
 }  // namespace AscendC

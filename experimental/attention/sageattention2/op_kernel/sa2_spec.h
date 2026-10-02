@@ -669,7 +669,7 @@ constexpr int64_t kL0ABBytes = 32 * 1024;     // L0A / L0B 各 32KB
 constexpr int64_t kKvPrepSliceRows = kQuantTileRows;                       // 64：切片行数（MTE2 预取粒度）
 constexpr int64_t kKvPrepSliceBytes = kKvPrepSliceRows * kMaxHeadDim * 2;  // 16384：half/bf16 行块槽
 constexpr int64_t kKvPrepK8SliceBytes = kKvPrepSliceRows * kMaxHeadDim;    // 8192：int8 码字槽
-constexpr int64_t kKvPrepKScaleSliceBytes = kKvPrepSliceRows * kSegsFull * 2;  // 2048：kScale 槽（per_thread 上界）
+constexpr int64_t kKvPrepKScaleSliceBytes = kKvPrepSliceRows * kSegCols * 2;   // 2048：kScale 槽（行距 = segWidth 上界 kSegCols）
 constexpr int64_t kKvPrepExpSubBytes = kMxScalePack * kMaxHeadDim;         // 256：E8M0 阶码暂存/槽
 constexpr int64_t kKvPrepRowF32Bytes = kMaxHeadDim * 4;                    // 512：fp32 行槽（μ/amax/2^-e 倒数行）
 constexpr int64_t kKvPrepScalarBytes = 64;                                 // 归约标量提取槽
@@ -687,15 +687,15 @@ constexpr int64_t kKvPrepVOut0 = kKvPrepKOut1 + kKvPrepK8SliceBytes;           /
 constexpr int64_t kKvPrepVOut1 = kKvPrepVOut0 + kKvPrepK8SliceBytes;
 constexpr int64_t kKvPrepKScale0 = kKvPrepVOut1 + kKvPrepK8SliceBytes;         // kScale 输出槽 ping (2048B)
 constexpr int64_t kKvPrepKScale1 = kKvPrepKScale0 + kKvPrepKScaleSliceBytes;
-constexpr int64_t kKvPrepExpSub0 = kKvPrepKScale1 + kKvPrepKScaleSliceBytes;   // E8M0 阶码 ping (256B)
-constexpr int64_t kKvPrepExpSub1 = kKvPrepExpSub0 + kKvPrepExpSubBytes;
-constexpr int64_t kKvPrepMeanRow = kKvPrepExpSub1 + kKvPrepExpSubBytes;        // μ 行装载暂存 (512B)
+constexpr int64_t kKvPrepExpSub0 = kKvPrepKScale1 + kKvPrepKScaleSliceBytes;   // E8M0 阶码 slot0（sub0|sub1 各 256B）
+constexpr int64_t kKvPrepExpSub1 = kKvPrepExpSub0 + 2 * kKvPrepExpSubBytes;    // E8M0 阶码 slot1（槽局部防跨切片覆写）
+constexpr int64_t kKvPrepMeanRow = kKvPrepExpSub1 + 2 * kKvPrepExpSubBytes;    // μ 行装载暂存 (512B)
 constexpr int64_t kKvPrepAmaxRow = kKvPrepMeanRow + kKvPrepRowF32Bytes;        // V 组 per-channel amax 行
 constexpr int64_t kKvPrepScaleRow = kKvPrepAmaxRow + kKvPrepRowF32Bytes;       // V 2^-e 精确倒数行
 constexpr int64_t kKvPrepScalarSlot = kKvPrepScaleRow + kKvPrepRowF32Bytes;    // 归约标量提取 (64B)
-constexpr int64_t kKvPrepUbBytes = kKvPrepScalarSlot + kKvPrepScalarBytes;     // 137792 ≤ 248KB 高水位
+constexpr int64_t kKvPrepUbBytes = kKvPrepScalarSlot + kKvPrepScalarBytes;     // 138304 ≤ 248KB 高水位
 static_assert(kKvPrepSliceRows == kKMeanDataBlockLanes, "量化切片行数 = K 均值 64 行子块基数");
-static_assert(kKvPrepKScaleSliceBytes == 1024, "kScale 槽 = 64 行 × 8 段 × fp16 = 1024B");
+static_assert(kKvPrepKScaleSliceBytes == 2048, "kScale 槽 = 64 行 × segWidth 上界 16 half（槽内行距与 GM 同构）");
 static_assert(kKvPrepMeanTotal % 512 == 0 && kKvPrepScalarSlot % 64 == 0, "UB 槽偏移 32B 对齐链");
 static_assert(kKvPrepUbBytes <= kUbHighWater, "KV 预处理 UB 计划 ≤ 248KB 高水位");
 
