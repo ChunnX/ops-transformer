@@ -175,9 +175,7 @@ static ge::graphStatus InferShapeSageAttention2(gert::InferShapeContext *context
     // 6. 若存在 LSE 输出，推导并设置 LSE 形状
     gert::Shape *lseShape = context->GetOutputShape(sage_attn2_idx::OUT_LSE);
     if (lseShape != nullptr) {
-        // LSE 布局恒为 [B, Hq, Sq]（与任务书 2.2 返回值契约、核内扁平写址
-        // op_kernel/sageattention2.cpp FinalizeAndStoreOutput 一致；收敛轮 B/STYLE-2：
-        // 原 NHD 分支 {b,sq,hq} 与核内寻址错位）
+        // LSE 布局恒为 [B, Hq, Sq]（对齐任务书 §2.2 返回值契约与核内寻址）
         *lseShape = {b, hq, sq};
     }
 
@@ -196,9 +194,7 @@ static ge::graphStatus InferShapeSageAttention2(gert::InferShapeContext *context
     const gert::Shape *lseCorrShape = context->GetInputShape(sage_attn2_idx::IN_LSE_CORRECTION);
     if (lseCorrShape != nullptr && lseCorrShape->GetDimNum() > 0) {
         if (lseCorrShape->GetDimNum() == 3) {
-            // DEFECT-A6-5：lse_correction 契约恒为 [B, Hq, Sq]（def.cpp/proto.h 接口
-            // 文档、核内扁平行语义与 STYLE-2 后的 lse 输出契约一致，不随 tensor_layout
-            // 翻转）；原 NHD 分支按 [B, Sq, Hq] 校验会把合规入参误拒（GRAPH_FAILED）。
+            // lse_correction 契约恒为 [B, Hq, Sq]（对齐接口规范与核内行语义，不随 tensor_layout 翻转）
             if (lseCorrShape->GetDim(0) != b || lseCorrShape->GetDim(1) != hq || lseCorrShape->GetDim(2) != sq) {
                 std::cerr << "[SageAttention2][InferShape] lse_correction shape mismatch! Expected ["
                           << b << ", " << hq << ", " << sq << "]" << std::endl;
@@ -226,9 +222,7 @@ static ge::graphStatus InferDataTypeSageAttention2(gert::InferDataTypeContext *c
     auto keyDtype = context->GetInputDataType(sage_attn2_idx::IN_KEY);
     auto valDtype = context->GetInputDataType(sage_attn2_idx::IN_VALUE);
 
-    // 校验输入数据类型
-    // 任务书 §3：输入 dtype 仅 FP16/BF16（收敛轮 B/STYLE-3：原放行 DT_FLOAT 与
-    // def 注册、op_api TensorValid、核内 2 字节读取三方矛盾）
+    // 校验输入数据类型（任务书 §3：输入 dtype 仅 FP16/BF16）
     if (queryDtype != ge::DT_FLOAT16 && queryDtype != ge::DT_BF16) {
         std::cerr << "[SageAttention2][InferDataType] Unsupported Query dtype: " << queryDtype << std::endl;
         return ge::GRAPH_FAILED;

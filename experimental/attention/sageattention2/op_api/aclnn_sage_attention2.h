@@ -31,7 +31,7 @@ aclnnStatus aclnnSageAttention2GetWorkspaceSize(
     const aclTensor *query, const aclTensor *key, const aclTensor *value,
     const aclTensor *keyMeanOptional, const aclTensor *lseCorrectionOptional,
     const char *tensorLayout, bool isCausal, const char *qkQuantGran, double smScale,
-    const char *pvAccumDtype, bool smoothK, bool smoothV, bool returnLse,
+    const char *pvAccumDtype, bool smoothK, bool smoothV,
     const aclTensor *attentionOut, const aclTensor *softmaxLse,
     uint64_t *workspaceSize, aclOpExecutor **executor);
 

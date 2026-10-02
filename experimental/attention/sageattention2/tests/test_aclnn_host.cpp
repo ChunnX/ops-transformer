@@ -104,7 +104,8 @@ bool TestTilingDataLayout()
     TEST_CHECK(reinterpret_cast<uintptr_t>(&data.die_num) - base == 144, "die_num offset == 144");
     TEST_CHECK(reinterpret_cast<uintptr_t>(&data.cores_per_die) - base == 148, "cores_per_die offset == 148");
     TEST_CHECK(reinterpret_cast<uintptr_t>(&data.tasks_per_die) - base == 152, "tasks_per_die offset == 152");
-    TEST_CHECK(reinterpret_cast<uintptr_t>(&data.reserved) - base == 156, "reserved offset == 156");
+    TEST_CHECK(reinterpret_cast<uintptr_t>(&data.input_dtype) - base == 156, "input_dtype offset == 156");
+    TEST_CHECK(reinterpret_cast<uintptr_t>(&data.reserved) - base == 157, "reserved offset == 157 (dtype 占 156)");
 
     std::cout << "[PASS] TestTilingDataLayout" << std::endl;
     return true;
@@ -154,7 +155,7 @@ bool TestHostTilingStandardGqa()
     sage_attn::SageAttention2TilingData td;
     uint64_t calculated_ws = 0;
     aclnnStatus t_ret = sage_attn::ComputeHostTiling(
-        2, 1024, 1024, 32, 8, 128,
+        2, 1024, 1024, 32, 8, /*dtype_mode*/ 1, 128,
         sm_scale, qk_quant_gran, pv_accum_dtype,
         is_causal, tensor_layout, smooth_k, smooth_v,
         false, true,
@@ -163,7 +164,7 @@ bool TestHostTilingStandardGqa()
     TEST_CHECK(td.enable_die_affinity == 1, "enable_die_affinity must be 1 for standard GQA");
     TEST_CHECK(td.die_num == 2, "die_num must be 2 for Atlas 950PR");
     TEST_CHECK(td.cores_per_die == 16, "cores_per_die must be 16 (32 / 2)");
-    // DEFECT-A6-1 修复后：gqa=4 → m_per_core=32（gqa·m_per_core<=128 行容量约束）
+    // 约束：gqa=4 → m_per_core=32（gqa·m_per_core<=128 行容量约束）
     // → q_blk = 1024/32 = 32 → tasks = b*hkv*q_blk = 512 → per die 256
     TEST_CHECK(td.m_per_core == 32, "m_per_core must be 32 (gqa=4, 4*32<=128 row capacity)");
     TEST_CHECK(td.tasks_per_die == 256, "tasks_per_die must be 256 (512 / 2)");
@@ -250,7 +251,7 @@ bool TestHostTilingSplitKvTrigger()
     return true;
 }
 
-// 5. 测试 28 核动态兼容性 (设置 SAGEATTN_NUM_CORES=28)
+// 5. 测试 28 核动态支持能力 (设置 SAGEATTN_NUM_CORES=28)
 bool TestCoreCompatibility28()
 {
     std::cout << "[RUN] TestCoreCompatibility28..." << std::endl;
@@ -379,7 +380,7 @@ bool TestDieAffinityScheduling()
         TEST_CHECK(small_covered[i], "All small tasks must be covered");
     }
 
-    // 3. 验证 28 核动态兼容性 (Atlas 950PR 减配拓扑，每 Die 14 核)
+    // 3. 验证 28 核动态支持能力 (Atlas 950PR 减配拓扑，每 Die 14 核)
     uint32_t cores_28 = 28;
     uint64_t total_28 = 28;
     for (uint32_t c = 0; c < cores_28; ++c) {
@@ -397,7 +398,7 @@ bool TestDieAffinityScheduling()
     // B=1, Hq=35, Hkv=1, Sq=128 (total_tasks = 1 * 1 * 1 = 1 < 2 或其它奇数场景)
     // 构造 total_tasks = 35 (B=1, Hkv=35, Hq=35, Sq=64, M=64 -> q_blk=1, total_tasks=35)
     aclnnStatus t_ret_odd = sage_attn::ComputeHostTiling(
-        1, 64, 128, 35, 35, 128,
+        1, 64, 128, 35, 35, /*dtype_mode*/ 1, 128,
         0.125, sage_attn::QUANT_GRAN_PER_THREAD, sage_attn::PV_ACCUM_FP32_FP16,
         false, sage_attn::LAYOUT_HND, false, false,
         false, false,

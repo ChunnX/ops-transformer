@@ -274,7 +274,7 @@ inline int RunSequential(const TwinIo& io, TwinQuantDump* dump = nullptr) {
         }
     }
 
-    // 2. smooth_k 的 km（double 累加求均值后舍入回输入 dtype，对齐 torch.mean 行为；收敛轮 B/STYLE-9 注释随实修正）
+    // 2. smooth_k 的 km（double 累加求均值后舍入回输入 dtype，对齐 torch.mean 行为）
     std::vector<float> km;
     if (smooth_k) {
         if (io.key_mean != nullptr) {
@@ -480,7 +480,7 @@ inline void ExportQuantDump(const signed char** q8, const signed char** k8,
                             const unsigned char** v8, const float** qs,
                             const float** ks, const float** vs,
                             unsigned* d_pad, unsigned* pad_sk_v) noexcept {
-    // 静态缓冲由 RunSequential 维护；此处经 TwinQuantDump 兼容层读取
+    // 静态缓冲由 RunSequential 维护；此处经 TwinQuantDump 读取
     *q8 = reinterpret_cast<const signed char*>(g_last_dump.q_int8);
     *k8 = reinterpret_cast<const signed char*>(g_last_dump.k_int8);
     *v8 = g_last_dump.v_fp8;

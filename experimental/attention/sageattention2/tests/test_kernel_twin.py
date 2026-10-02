@@ -480,7 +480,7 @@ class TestKernelHostSerialBranchVsGolden(GoldenTwinTestBase):
     以 TilingData 直驱 extern "C" sage_attention2 入口（SAGE_ATTN_DEVICE_COMPILE=0
     路径），验证 V0 量化 prologue（含 km 减法与 lse_correction）、V1 块内 logit/
     softmax/P 量化/PV 与 GM 出入口；KV ping-pong 槽的宿主整段时序约束由
-    RestageKvBlockHost 修复（见 op_kernel 契约冲突记录），本测试即其 golden 级回归。
+    RestageKvBlockHost 保证，本测试即其 golden 级回归。
     """
 
     def _run_kernel_host_bucket(self, case_id: str) -> dict:

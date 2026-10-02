@@ -127,9 +127,6 @@ public:
         retire_queue_.Flush();
     }
 
-    // 清理记录（2026-10-03 R5 收敛清扫）：原 FinalizeRetireQueue 包装（转调
-    // retire_queue_.Finalize）全仓库零调用——设备主流水走 Flush，单测直用
-    // OutputRetireQueue::Finalize（tests/test_output_queue.cpp），删除该中间层。
 
     /**
      * 加载 Softmax 概率矩阵 S 分块至 L0A

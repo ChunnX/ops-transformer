@@ -60,6 +60,7 @@ constexpr uint32_t ATLAS_950_DIE_NUM = 2;              // Atlas 950PR 标配 2 �
 constexpr uint32_t ATLAS_950_GROUPS_PER_DIE = 4;       // Atlas 950PR 每 Die 包含 4 个 Core Group (全片 8-Group)
 constexpr uint32_t ATLAS_950_CORES_PER_DIE = 16;       // Atlas 950PR 满配单 Die 16 个 AI Core
 constexpr float S_FP8_OFFSET = 8.807354922057604f;      // log2(448.0f) P 矩阵 e4m3 偏置常数 (task/01_design 2.4)
+constexpr float LN_448 = 6.104793232414985f;            // ln(448.0f) = S_FP8_OFFSET * INV_LOG2E，以加代乘偏置
 
 /**
  * 共享数学与量化常量（全仓唯一定义点；quant_host.h / online_softmax.h /
@@ -167,10 +168,10 @@ struct __attribute__((packed, aligned(32))) SageAttention2TilingData {
     uint32_t cores_per_die;        // 每个计算 Die 包含的核心数 (core_num_used / die_num, 标配 16 或 14)
     uint32_t tasks_per_die;        // 每个计算 Die 分配的基础任务数 ((total_tasks + 1) / die_num)
 
-    // 8. 补齐保留字段 (4 字节) 使结构体总大小严格为 160 字节 (32 字节整数倍)
-    // 布局变更说明 (2026-10-02, I1 lane)：新增第 3 节数值字段 s_fp8_offset (4 字节) 后，
-    // reserved 由 8 字节缩为 4 字节，结构体总大小与 32B 对齐不变 (static_assert 锁定)。
-    uint8_t reserved[4];
+    // 8. dtype 与补齐保留字段：输入位型分派（任务书 §3 支持 FP16/BF16）。
+    // 编码：0=float32(保留), 1=float16, 2=bfloat16
+    uint8_t input_dtype;  // 1=fp16（缺省）, 2=bf16
+    uint8_t reserved[3];
 
     // 便捷访问辅助函数
     bool IsCausal() const noexcept {

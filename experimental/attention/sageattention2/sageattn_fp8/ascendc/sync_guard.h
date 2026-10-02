@@ -44,10 +44,6 @@
 
 namespace sage_attn {
 
-// 清理记录（2026-10-03 R5 收敛清扫）：原 PipeId 管线枚举、BufferIds 缓冲 ID 映射与
-// GetBuffer/RelBuffer 空操作桩（::get_buf/::rls_buf 为臆测签名，CANN 头无此接口）
-// 全仓库零调用，一并删除；BufferID (get_buf/rel_buf) 语义待 950 头文件提供实证签名后重入。
-
 /**
  * 跨核同步方向与信号量定义 (1C2V 架构)
  */
@@ -61,7 +57,7 @@ enum class CrossCoreDirection : uint32_t {
 };
 
 /**
- * 跨核 flag 语义表（每个 flag 的 set/wait 均须 1:1 配对，task/02_code.md 同步条款）
+ * 跨核 flag 语义表（每个 flag 的 set/wait 均须 1:1 配对，符合同步规范）
  * 生命周期 = 单个任务（DecodeTask 一次解码到 Finalize 输出），跨任务波次的
  * 进域预置 / 退域回收纪律见 op_kernel/sageattention2.cpp 各 Process 入口与出口。
  */
@@ -78,8 +74,6 @@ namespace CrossCoreFlags {
     constexpr uint32_t FLAG_KV_PONG_FREE         = 8;  // Pong 槽 KV 已消费，V0 可覆写 (Cube set → V0 wait)
     constexpr uint32_t FLAG_SOFTMAX_S_PING_FREE  = 9;  // Ping 槽 S 已消费，V1 可覆写 (Cube set → V1 wait)
     constexpr uint32_t FLAG_SOFTMAX_S_PONG_FREE  = 10; // Pong 槽 S 已消费，V1 可覆写 (Cube set → V1 wait)
-    // 清理记录：原 FLAG_SOFTMAX_S_READY 单槽标志已被 S_PING/S_PONG 双缓冲对取代；
-    // 原 FLAG_SKIP_SCALE_SIG 全仓库零调用，一并删除。
 }
 
 /**
@@ -88,13 +82,9 @@ namespace CrossCoreFlags {
  * 设备端映射 CANN 官方接口（dav-3510 头文件实测签名）：
  *   CrossCoreSetFlag<uint8_t modeId, pipe_t pipe>(uint16_t flagId)
  *   CrossCoreWaitFlag<uint8_t modeId = 0, pipe_t pipe = PIPE_S>(uint16_t flagId)
- * modeId 4 = 块内 (intra-block) 同步：dav-3510 实测仅该模式放行全部 flagId [0,15]
- *（modeId 0x2 的 ffts 通路对 flagId 有 [2,5]∪[10] / [1]∪[4,5] 的编译期硬范围约束）；
- * 1C2V 的 Cube/V0/V1 本就同属一个 AI Core，块内信号灯语义精确匹配。
- * PIPE_S 为全局作用域常量（非 AscendC:: 成员），不可加名字空间限定。
- * 清理记录：原 GetBuffer/RelBuffer（::get_buf/::rls_buf 为臆测签名，CANN 头无此接口）
- * 及 ScopedBufferGuard/ScopedCrossCoreSignalGuard/ScopedPipeEventGuard/SAGE_GUARD_* 宏
- * 全部零调用，已删除；BufferID (get_buf/rel_buf) 迁移待 950 头文件提供实证签名后重入。
+ * modeId 4 = 块内 (intra-block) 同步：支持全部 flagId [0,15]；
+ * 1C2V 的 Cube/V0/V1 同属一个 AI Core，块内信号灯语义精确匹配。
+ * PIPE_S 为全局作用域常量，不可加名字空间限定。
  */
 __aicore__ inline void CrossCoreSet(CrossCoreDirection dir, uint32_t flag_id) {
 #if SAGE_ATTN_DEVICE_COMPILE || defined(__CCE_KT_TEST__) || defined(__DAV_C220_VEC__) || defined(__DAV_C220_CUBE__)

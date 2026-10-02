@@ -141,7 +141,7 @@ public:
      * 运行时资源台账检查（RES-01，host 发射前 fail-fast 的唯一判据）：
      * total_rows 为 GQA 聚合后的 M 打包宽（gqa_ratio * m_per_core，即 kernel 侧
      * TotalRows），不是 m_per_core 本身——O 累加器、S 双槽、L0C 均按聚合宽计。
-     * 纯 constexpr 整数算术，host 热路径零堆分配（DEFECT-A5-7 微秒级发射纪律）。
+     * 纯 constexpr 整数算术，host 热路径零堆分配，微秒级发射。
      * 各区域容量唯一定义点：L1DoubleBankContract / Vector0UbBudget /
      * Vector1UbBudget / HardwareResourceQuota（本文件与 sage_tile.hpp）。
      */

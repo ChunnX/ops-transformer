@@ -21,7 +21,7 @@
 /**
  * \file quant_common.h
  * \brief INT8 (Q/K) 与 FP8 (V) 两条量化路径共享的宿主机参考实现基础件：
- *        1. __aicore__ 宏桩（本地编译 / CCE 测试环境兼容）
+ *        1. __aicore__ 宏桩（本地编译 / CCE 测试环境支持）
  *        2. FP16 / BF16 位级转换 (RNE 舍入)
  *        3. 输入读取抽象 Reader (float / fp16 / bf16 减法语义对齐)
  *        唯一来源：quant_int8.cpp 与 quant_fp8.cpp 均从此包含，禁止再各自复制。
@@ -89,8 +89,7 @@ __aicore__ __host__ inline uint16_t Fp32ToFp16(float f) noexcept {
     int32_t new_exp = static_cast<int32_t>(exp) - 127 + 15;
     if (new_exp >= 31) return static_cast<uint16_t>((sign << 15) | 0x7c00);
     if (new_exp <= 0) {
-        // 次正规域：shift 可达 37（exp∈[89,112]），有符号 int 移位超 31 位为 UB
-        //（收敛轮 B/STYLE-1），统一 uint32 移位并对 shift>24 直接舍入到零
+        // 次正规域：统一 uint32 移位并对 shift>24 直接舍入到零
         const uint32_t shift = static_cast<uint32_t>(1 - new_exp) + 13u;
         if (shift > 24u) return static_cast<uint16_t>(sign << 15);
         mant |= 0x800000u;
@@ -125,6 +124,37 @@ __aicore__ __host__ inline uint16_t Fp32ToBf16(float f) noexcept {
     uint32_t rounding_bias = 0x7fff + lsb;
     u += rounding_bias;
     return static_cast<uint16_t>(u >> 16);
+}
+
+/**
+ * AMLA 以加代乘核心原语（引理 1 / 公式 12）：
+ * 对单精度浮点数 F，乘以 2^n（n 为整数阶码偏移）在二进制位级严格等价于整型指数加法：
+ * AS_INT32(F * 2^n) = AS_INT32(F) + n * 2^23
+ * 本原语服务于 base-2 (exp2) 域的重缩放 (Rescale) 与指数位更新，消除浮点乘法开销。
+ */
+__aicore__ __host__ inline float FloatMulPow2Int(float f, int32_t n) noexcept {
+    if (f == 0.0f || n == 0) return f;
+    uint32_t u;
+    std::memcpy(&u, &f, sizeof(float));
+    const uint32_t exp = (u >> 23) & 0xffu;
+    if (exp == 0 || exp == 255) {
+        return f;
+    }
+    const int32_t new_exp = static_cast<int32_t>(exp) + n;
+    if (new_exp <= 0) {
+        return 0.0f;
+    }
+    if (new_exp >= 255) {
+        const uint32_t inf_bits = (u & 0x80000000u) | 0x7f800000u;
+        float res;
+        std::memcpy(&res, &inf_bits, sizeof(float));
+        return res;
+    }
+    // 指数替换更新：保持符号位与尾数不变，更新阶码段
+    u = (u & 0x807FFFFFu) | (static_cast<uint32_t>(new_exp) << 23);
+    float res;
+    std::memcpy(&res, &u, sizeof(float));
+    return res;
 }
 
 /**

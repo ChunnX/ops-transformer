@@ -68,8 +68,7 @@ constexpr float MIN_FLOAT_VAL = -3.402823466e+38F;  // -FLT_MAX，float 最小�
  * exp2 域 Online Softmax 状态描述符
  */
 struct OnlineSoftmaxState {
-    // NSDMI 缺省初始化（收敛轮 B/STYLE-8）：设备分支 row_states_ 数组构造后
-    // 不经 Reset 也无未定值读取；Reset 语义与缺省值一致
+    // 结构体成员缺省初始化，确保状态确定性
     float m_run = MIN_FLOAT_VAL;       // running max（exp2 域当前全局最大值）
     float d_run = 0.0f;                // running denominator（exp2 域分母累加和）
     float m_cur = MIN_FLOAT_VAL;       // 当前分块的局部最大值
@@ -256,7 +255,7 @@ public:
      *   出口先补扣 s_fp8_offset，再 /1.44269504 换回自然对数域：
      *   lse_out = (lse_exp2 - s_fp8_offset) / log2(e) + (smooth_k ? lse_correction * sm_scale : 0)
      *
-     * @param s_fp8_offset P 矩阵 e4m3 放大偏置（tiling 携带，缺省 0 兼容未启用偏置的调用方）
+     * @param s_fp8_offset P 矩阵 e4m3 放大偏置（tiling 携带，缺省 0）
      */
     __aicore__ static inline float ConvertLseToHost(
         float lse_exp2,
@@ -284,12 +283,6 @@ public:
         return 0.0f;
     }
 };
-
-// 清理记录（2026-10-03 R5 收敛清扫）：原 SoftmaxMode 枚举、DEFAULT_DR_DELTA /
-// FALLBACK_OVERFLOW_MARGIN 常量、DeclaredReferenceSoftmaxState 状态与
-// DeclaredReferenceSoftmax（FoldAttention DR-Softmax，含 ComputeAdaptiveDelta /
-// Merge 等全部静态接口）整块删除——全仓库（内核/宿主/单测/基准）零调用，
-// 属未接线的预留实现；Split-KV 归并落地时按需重入并配单测。
 
 } // namespace sage_attn
 

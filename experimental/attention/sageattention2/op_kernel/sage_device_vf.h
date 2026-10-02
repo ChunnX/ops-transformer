@@ -17,6 +17,7 @@
 #pragma once
 
 #include <cstdint>
+#include "../sageattn_fp8/ascendc/tiling.h"
 
 #ifndef SAGE_ATTN_DEVICE_COMPILE
 #if defined(__CCE__) && !defined(__CCE_KT_TEST__)
@@ -202,9 +203,9 @@ __simd_vf__ inline void SoftmaxProbRowVF(__ubuf__ float* logits, __ubuf__ float8
     auto full = CreateMask<float, MaskPattern::ALL>();
     static constexpr CastTrait toFp8{RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
     RegTensor<float> m_reg;
-    // 数学恒等：exp(x - m_prime) * 448 = exp(x - (m_prime - ln(448)))，ln(448) ≈ 6.104793232414985f
-    // 硬件级融合：循环内消灭 Mul 向量乘法，节约 1 拍向量 ALU 计算
-    Duplicate(m_reg, m_prime - 6.104793232414985f);
+    // 数学恒等：exp(x - m_prime) * 448 = exp(x - (m_prime - ln(448)))，ln(448) 唯一定义于 tiling.h (LN_448)
+    // 硬件级融合：以加代乘，循环内消灭 Mul 向量乘法，节约 1 拍向量 ALU 计算
+    Duplicate(m_reg, m_prime - sage_attn::LN_448);
     for (uint32_t j = 0; j < block_n; j += 64) {
         RegTensor<float> logit_val, diff, exp_val;
         RegTensor<float8_e4m3_t> packed;

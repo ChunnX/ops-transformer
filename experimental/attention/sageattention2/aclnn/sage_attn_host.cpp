@@ -168,8 +168,10 @@ aclnnSageAttention2GetWorkspaceSize(
     bool has_km = (keyMeanOptional != nullptr);
     bool has_lse = (lse != nullptr);
 
+    // 移植态 C-ABI 无 dtype 形参：本路径固定 fp16 位型（bf16 走 canonical
+    // op_api/op_host 路径，由 aclTensor/gert dtype 分派）
     aclnnStatus status = sage_attn::ComputeHostTiling(
-        b, sq, sk, hq, hkv, d_og,
+        b, sq, sk, hq, hkv, /*dtype_mode*/ 1, d_og,
         smScale, qkQuantGran, pvAccumDtype,
         isCausal, tensorLayout, smoothK, smoothV,
         has_km, has_lse,

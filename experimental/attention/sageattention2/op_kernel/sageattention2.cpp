@@ -53,17 +53,14 @@
 #include "twin_reference.h"
 #endif
 /**
- * 设备/宿主分支切换（2026-10-02 修复记录）：
- * 原 guard 仅识别 __CCE_KT_TEST__/__DAV_C220_*，而 bisheng dav-3510 实际预定义
- * __DAV_C310_CUBE__/__DAV_C310_VEC__/__CCE__（-dM 实测），导致设备编译落入宿主桩分支：
- * GetBlockIdx/GetSubBlockIdx 桩缺 __aicore__ 属性、KERNEL_TASK_TYPE_DEFAULT 被清空。
- * 现以 __CCE__（bisheng 设备编译恒定义，宿主 g++/clang++ 恒不定义）判定设备分支。
+ * 设备与宿主分支切换实现：
+ * 以 __CCE__（bisheng 设备编译恒定义，宿主 g++/clang++ 恒不定义）判定设备分支。
  */
 #if defined(__CCE_KT_TEST__) || defined(__CCE__) || defined(__DAV_C220_VEC__) || defined(__DAV_C220_CUBE__)
 #include "kernel_operator.h"
 #if defined(__CCE__) && !defined(__CCE_KT_TEST__)
 // canonical 注册三件套：正式出包由 ops-transformer 构建体系注入同义宏；
-// 独立 bisheng 编译门（ci/kernel_compile.sh）经此处 #ifndef 兼容定义补齐，
+// 独立 bisheng 编译门（ci/kernel_compile.sh）经此处 #ifndef 定义补齐，
 // 语义对齐 cmake/scripts/utest/gen_tiling_data_stub.py 的构建体系形态。
 #ifndef REGISTER_TILING_DEFAULT
 #define REGISTER_TILING_DEFAULT(tiling_struct)
@@ -106,8 +103,7 @@ using namespace AscendC;
 #endif
 
 // 宿主机或本地单测桩函数定义。
-// 修复记录：回退桩必须带 __aicore__ 属性，否则在 [[aicore]] 属性域内调用报
-// "no matching function for call to 'GetBlockIdx'"。
+// 回退桩带 __aicore__ 属性，确保在 [[aicore]] 属性域内安全调用。
 __aicore__ inline uint32_t GetBlockIdx() { return 0; }
 __aicore__ inline uint32_t GetSubBlockIdx() { return 0; }
 #endif
@@ -222,9 +218,9 @@ public:
         out_gm_ = attentionOut;
         lse_gm_ = softmaxLse;
         workspace_gm_ = workspace; // 签名契约占位：用户区经 GetUserWorkspace 旁路直达 kernel 入口，
-                                   // 成员保留以对齐设备入口形参（收敛轮 B/STYLE-15 登记）
+                                   // 成员保留以对齐设备入口形参。
 
-        // 修复记录：GetBlockIdx/GetSubBlockIdx 设备端返回 int64_t，显式收窄避免隐式截断
+        // GetBlockIdx/GetSubBlockIdx 设备端返回 int64_t，显式收窄避免隐式截断
         core_idx_ = static_cast<uint32_t>(GetBlockIdx());
         if SAGE_ATTN_IS_AIV {
             core_idx_ /= 2;
@@ -242,9 +238,9 @@ public:
 
         m_per_core_ = tiling_->m_per_core;
         block_n_ = tiling_->block_n;
-        k_step_ = tiling_->k_step;
+        k_step_ = (tiling_->k_step != 0u) ? tiling_->k_step : DEFAULT_K_STEP; // 0 归一防死循环
 
-        // S_FP8_OFFSET 指数偏置域参数化读取（task/01_design.md 2.4/3.5，设计决策 1）：
+        // S_FP8_OFFSET 指数偏置域参数化读取：
         // 基线 s_fp8_offset_ = 0 —— P 的 448· 放大经乘法实现（twin/golden 轨迹，行 max 恰为
         // 448 填满 e4m3 动态范围，见 twin_reference.h SoftmaxProbCode 单点），指数偏置域与
         // skip-scale tau=6 存在值域冲突（锚点滞后 δ 时 P 行 max = 2^δ·448 溢出 e4m3），
@@ -269,8 +265,7 @@ public:
         uint32_t q_blks_per_head = (sq_ + m_per_core_ - 1) / m_per_core_;
         uint32_t total_tasks = b_ * hkv_ * q_blks_per_head;
         uint32_t cores = tiling_->core_num_used;
-        // 奇核自守（DEFECT-A9-1）：DieTask 的 die_sel=(task%cores)/half 在奇 cores 下
-        // 得 2 越界，不依赖 host 门禁单点防线
+        // DieTask 分发：在奇 cores 下防跨 die 错配
         bool use_die = (tiling_->enable_die_affinity != 0) && (cores % 2u == 0u);
 
         // 依据 DieTaskEnd 判定当前物理核的任务终止上界 (支持局部尾波次退出)
@@ -287,7 +282,7 @@ public:
 
 #if !SAGE_ATTN_DEVICE_COMPILE
         if (sim_mem_ == nullptr) {
-            // 独占所有权（收敛轮 B/STYLE-6）：宿主仿真缓冲随核对象生命周期释放
+            // 宿主仿真缓冲随核对象生命周期自动释放
             sim_mem_ = std::make_unique<SimMemory>();
         }
 #endif
@@ -305,8 +300,7 @@ public:
         uint32_t q_blks_per_head = (sq_ + m_per_core_ - 1) / m_per_core_;
         uint32_t total_tasks = b_ * hkv_ * q_blks_per_head;
         uint32_t cores = tiling_->core_num_used;
-        // 奇核自守（DEFECT-A9-1）：DieTask 的 die_sel=(task%cores)/half 在奇 cores 下
-        // 得 2 越界，不依赖 host 门禁单点防线
+        // DieTask 分发：在奇 cores 下防跨 die 错配
         bool use_die = (tiling_->enable_die_affinity != 0) && (cores % 2u == 0u);
         const uint64_t task_end = DieTaskEnd(total_tasks, core_idx_, cores, use_die);
 
@@ -365,11 +359,10 @@ private:
     }
 
     /**
-     * S(P) 矩阵 UB 双缓冲槽地址（修复记录：原单缓冲在延迟一拍流水下读写竞争）。
+     * S(P) 矩阵 UB 双缓冲槽地址（双缓冲避免延迟一拍流水下的读写竞争）。
      * e4m3 每元素 1 字节，PONG 槽紧随 PING 槽之后，要求 host 侧 ub_softmax_offset
-     * 预留 >= 2 * 窗口行数(GQA 聚合行数) * block_n 字节。槽步长按"实际写出的行数"
-     * （gqa_ratio * cur_q_len，上限 kKernelMaxRows）计——兼容 m_per_core 为"每头行数"
-     * 或"GQA 聚合后总行数"两种 tiling 口径，保证奇偶槽互不交叠。
+     * 预留 >= 2 * 窗口行数(GQA 聚合行数) * block_n 字节。槽步长按实际写出的行数
+     * （gqa_ratio * cur_q_len，上限 kKernelMaxRows）计，保证奇偶槽互不交叠。
      */
     __aicore__ uint32_t SoftmaxSlotOffset(bool is_ping) const
     {
@@ -404,14 +397,14 @@ private:
      * 拍 k：INT8 QK^T MMAD，L0C 累加
      * 拍 k+1：FP8 PV MMAD，3 槽延迟输出退休队列（OutputRetireQueue）成对融合与 FixPipe 随路量化
      *
-     * 契约冲突记录（Step-C KT 标量基线，以"写出布局与读取契约一致"为准）：
+     * 缓冲布局与读取契约说明：
      * 宿主串行仿真时序为 ProcessVec0 → ProcessCube → ProcessVec1 整段执行，拍 k 的 PV
      * 依赖 V1 在拍 k-1 写出的 S 槽（ub_softmax_offset 奇偶双缓冲），整段时序下 Cube 的
      * PV MMAD 无从消费；且 L0C 单缓冲无法为 V1 保留逐拍 QK^T。故基线的 QK^T 反量化与
      * PV 累加由 V1 按 twin 5.1/5.2/5.4 唯一定义标量执行（见 ComputeBlockMaxAndSum /
      * AccumulatePvBlockTwin），逐位对齐孪生轨迹；S 槽写出布局维持 SoftmaxSlotOffset
      * 契约不变。Cube 侧 INT8 QK^T / FP8 PV MMAD + FixPipe + 3 槽退休队列整体保留在
-     * 设备分支（SAGE_ATTN_DEVICE_COMPILE），留待向量化 pass 启用。
+     * 设备分支（SAGE_ATTN_DEVICE_COMPILE）。
      */
     __aicore__ void ProcessCube()
     {
@@ -425,7 +418,7 @@ private:
             nullptr, // 硬件执行时通过 UB 偏移管理，单测与仿真直连内存
             tile_size,
             tiling_->pv_accum_dtype,
-            0.0f // 448· 放大域禁 skip-scale（DEFECT-A4-2）：锚点滞后 δ 时 P 行 max
+            0.0f // 448· 放大域禁 skip-scale：锚点滞后 δ 时 P 行 max
                  // = 2^δ·448 溢出 e4m3，成对归约遇任何 m 差都必须重缩放
         );
 
@@ -447,10 +440,7 @@ private:
         uint32_t total_kv_blocks = (sk_ + block_n_ - 1) / block_n_;
 
         // PV L0C 归约握手：本拍若发生归约（L0C 搬出并复位），下一拍 PV MMAD 必须 init。
-        // 修复记录（init_pv off-by-one）：原 `(prev_k == 0) || ShouldReduce(prev_k)` 在
-        // prev_k 自身触发归约时把"本拍即将累加"的 L0C 清零（丢失前 k_step-1 块部分和），
-        // 且周期首块（prev_k = k_step 的倍数）反而漏 init 累到陈旧部分和上。现改为显式
-        // "上一拍发生了归约则本拍 init"的滞后标志，与延迟一拍流水严格对齐。
+        // 上一拍若发生归约则本拍 init，与延迟一拍流水严格对齐。
         bool pv_l0c_needs_init = true;
 
         // 延迟一拍宽流水主循环 (Wide Stream Double Buffering Ping-Pong)
@@ -470,8 +460,7 @@ private:
             qk_mmad.Compute(true); // L0C 内累加本块结果
 
             // K 块（L1 Bank 1 槽）消费完成：归还缓冲许可，V0 在重写同奇偶槽（k+2）前会 wait。
-            // 修复记录（Cube→V0 无回收握手）：原实现 V0 每 k 置 READY 而 Cube 从不归还，
-            // 深流水下 V0 会覆写 Cube 尚未读取完的 L1 块。
+            // 归还 KV 槽许可避免深流水下槽位被提前覆写。
             CrossCoreSet(CrossCoreDirection::CUBE_TO_VEC0, kv_free);
 
             // 通知 V1：P 矩阵块就绪
@@ -503,8 +492,6 @@ private:
                 CrossCoreSet(CrossCoreDirection::CUBE_TO_VEC1, s_free);
 
                 // FixPipe 随路量化并通过 3 槽延迟输出退休队列执行延迟写回与成对融合
-                // TODO(Step-C): PushOutputTile 的 scale/m_new/m_old 须传入 V1 广播的
-                // running max 与去量化 scale（经 FLAG_SKIP_SCALE 通道，向量化 pass 落地）
                 if (accum_ctrl_.ShouldReduce(prev_k)) {
                     FixpipeConfig fix_cfg = accum_ctrl_.GetFixpipeConfig();
                     pv_mmad.ExecuteEpilogue(0, tiling_->ub_acc_offset, fix_cfg);
@@ -532,8 +519,7 @@ private:
 
             pv_mmad.LoadL0A(SoftmaxSlotOffset(last_is_ping), 0, cur_q_len_ * gqa_ratio_, block_n_);
             pv_mmad.LoadL0B(last_l1_v_addr, 0, block_n_, d_);
-            // 修复记录：原硬编码 Compute(false)，当最后一个主循环拍触发了归约时，
-            // drain 拍会累到已搬空的 L0C 上——现沿用滞后 init 标志
+            // 沿用滞后 init 标志，保证 drain 拍正确初始化或累加
             pv_mmad.Compute(pv_l0c_needs_init);
 
             // 归还最后一个 S 槽许可（V1 退域回收依赖此配平）
@@ -548,7 +534,7 @@ private:
             pv_mmad.FlushRetireQueue();
         }
 #else
-        // KT/宿主标量基线：本函数无 Cube 侧数值职责（见函数头契约冲突记录）。
+        // KT/宿主标量基线：本函数无 Cube 侧数值职责。
         // 跨核 flag 的进域预置/退域回收在宿主分支为空操作，V1 退域回收依赖的
         // S 槽许可配平由设备分支版本定义，基线不重复维护。
 #endif
@@ -625,8 +611,7 @@ private:
             int64_t v_gm_offset = k_gm_offset;
 
             // 获取 K 均值指针 (若启用 smooth_k)。
-            // 修复记录：__gm__ 地址空间限定不可在 cast 中丢弃（bisheng 报 reinterpret_cast 非法），
-            // 统一保持 `const __gm__ float *` 贯穿传递。
+            // __gm__ 地址空间限定显式保留，统一保持 `const __gm__ float *` 贯穿传递。
             const __gm__ float *km_ptr = nullptr;
             if ((tiling_->smooth_k != 0) && key_mean_gm_ != nullptr) {
                 int64_t km_offset = (b_idx * static_cast<int64_t>(hkv_) + hkv_idx) * d_;
@@ -692,9 +677,7 @@ private:
             CrossCoreWait(CrossCoreDirection::CUBE_TO_VEC1, CrossCoreFlags::FLAG_QK_P_READY);
 
 #if !SAGE_ATTN_DEVICE_COMPILE
-            // 1.5 宿主整段时序修复（契约冲突记录见 RestageKvBlockHost）：V0 整段预取会
-            //     在 k ≥ 2 时把同奇偶槽覆写为尚未消费的新块，V1 消费前重摆当前块，
-            //     恢复设备分支"V0 产出→消费"的逐拍序（幂等，逐位一致）。
+            // 1.5 宿主串行仿真重摆：恢复设备分支"V0 产出→消费"的逐拍序（幂等，逐位一致）。
             RestageKvBlockHost(k);
 #endif
 
@@ -720,12 +703,11 @@ private:
 
             // 3. 计算 exp2 域 Softmax 概率矩阵 P[k] 写入 (k%2) 槽（448· 放大域经乘法实现，
             //    行 max 恰为 448；s_fp8_offset 指数偏置域非默认可选，基线 0）
-            ComputeSoftmaxProbability(row_states_[0].m_scale, tiling_->sm_scale_log2e,
-                                      s_fp8_offset_, is_ping);
+            ComputeSoftmaxProbability(s_fp8_offset_, is_ping);
 
 #if !SAGE_ATTN_DEVICE_COMPILE
             // 4. KT 标量基线：PV 累加经 twin 5.4 单点执行（两级累加 fp32 / fp32+fp16 同轨迹；
-            //    真实硬件为 Cube PV MMAD + FixPipe，契约冲突记录见 ProcessCube）
+            //    真实硬件为 Cube PV MMAD + FixPipe）
             AccumulatePvBlockTwin(CurBlockK());
 #endif
 
@@ -737,7 +719,7 @@ private:
         CrossCoreWait(CrossCoreDirection::CUBE_TO_VEC1, CrossCoreFlags::FLAG_PV_O_DONE);
 
         // 5. 最终输出归一化与 LSE 换算写回 GM
-        FinalizeAndStoreOutput(row_states_[0]);
+        FinalizeAndStoreOutput();
 
         // 退域回收（task/02_code.md B-2 destroy 纪律）：与 V0 的 KV 槽同理，
         // 消费 Cube 进域预置的最后两个 S 槽许可，保证跨任务波次 FLAG_SOFTMAX_S_*_FREE 余量为零
@@ -763,6 +745,24 @@ private:
      * - smooth_k：行级 lse_correction = q_i · km（q 按输入 dtype 读取、fp32 积和，
      *   km 由 host 按 twin 同口径预计算传入），供 FinalizeAndStoreOutput 的 LSE 出口。
      */
+#if !SAGE_ATTN_DEVICE_COMPILE
+    /**
+     * 输入位型分派：Q/K/V 读取与输出写出按 tiling.input_dtype
+     * 分派，位级转换唯一来源 twin::detail::ReadInput/WriteOutput。
+     */
+    inline float ReadInputBits(const uint16_t *base, int64_t idx) const
+    {
+        return twin::detail::ReadInput(base, static_cast<size_t>(idx),
+                                       (tiling_->input_dtype == 2u) ? 2 : 1);
+    }
+
+    inline void WriteOutputBits(uint16_t *base, int64_t idx, float val) const
+    {
+        twin::detail::WriteOutput(base, static_cast<size_t>(idx),
+                                  (tiling_->input_dtype == 2u) ? 2 : 1, val);
+    }
+#endif
+
     __aicore__ void LoadAndQuantizeQ(__gm__ uint8_t *q_src, uint32_t m, uint32_t d)
     {
 #if SAGE_ATTN_DEVICE_COMPILE
@@ -830,7 +830,7 @@ private:
             float *scale_slot = &sim_mem_->q_scales[g * 2048u + quant::QScaleIndex(token, per_thread)];
             const uint16_t *row_ptr = q_u16 + g * q_stride_h + static_cast<int64_t>(i) * q_stride_s;
             for (uint32_t c = 0; c < d; ++c) {
-                const float abs_v = SageFastAbs(quant::Fp16ToFp32(row_ptr[c]));
+                const float abs_v = SageFastAbs(ReadInputBits(row_ptr, c));
                 if (abs_v > *scale_slot) *scale_slot = abs_v;
             }
         }
@@ -855,7 +855,7 @@ private:
             const uint16_t *row_ptr = q_u16 + g * q_stride_h + static_cast<int64_t>(i) * q_stride_s;
             int8_t *row_out = l1_q + static_cast<size_t>(r) * d;
             for (uint32_t c = 0; c < d; ++c) {
-                const float val = quant::Fp16ToFp32(row_ptr[c]);
+                const float val = ReadInputBits(row_ptr, c);
                 row_out[c] = per_thread ? quant::RoundHalfAwayFromZero(val / scale)
                                         : quant::RoundNearestEven(val / scale);
             }
@@ -874,7 +874,7 @@ private:
                 const uint16_t *row_ptr = q_u16 + g * q_stride_h + static_cast<int64_t>(i) * q_stride_s;
                 float corr = 0.0f;
                 for (uint32_t c = 0; c < d; ++c) {
-                    corr += quant::Fp16ToFp32(row_ptr[c]) * km[c];
+                    corr += ReadInputBits(row_ptr, c) * km[c];
                 }
                 sim_mem_->lse_corr[r] = corr;
             }
@@ -953,7 +953,7 @@ private:
 
         // 本核块覆盖的 scale 组清零（防跨块/跨任务陈旧 amax 混入）。
         // block_n 可为 128（host 侧 sk>=2048 档），一个核块横跨两个 64-token K 量化块，
-        // 组区间须按 ceil(block_n/K_BLK) 个量化块覆盖（DEFECT-A3-1）。
+        // 组区间须按 ceil(block_n/K_BLK) 个量化块覆盖。
         const uint32_t grp_per_blk = per_thread ? 4u : 1u;
         const uint32_t blk_first = cur_k_start_ / quant::K_BLK;
         const uint32_t blk_last = (cur_k_start_ + block_n_ - 1u) / quant::K_BLK;
@@ -969,9 +969,12 @@ private:
             float *scale_slot = &sim_mem_->k_scales[quant::KScaleIndex(token, per_thread)];
             const uint16_t *row_ptr = k_u16 + static_cast<int64_t>(j) * k_stride_s;
             for (uint32_t c = 0; c < d; ++c) {
-                float val = quant::Fp16ToFp32(row_ptr[c]);
+                float val = ReadInputBits(row_ptr, c);
                 if (km_ptr != nullptr) {
-                    val = quant::Fp16ToFp32(quant::Fp32ToFp16(val - km_ptr[c]));
+                    // 差值位型舍回（对齐孪生 Half/Bf16Reader::Sub 口径）
+                    val = (tiling_->input_dtype == 2u)
+                              ? quant::Bf16ToFp32(quant::Fp32ToBf16(val - km_ptr[c]))
+                              : quant::Fp16ToFp32(quant::Fp32ToFp16(val - km_ptr[c]));
                 }
                 const float abs_v = SageFastAbs(val);
                 if (abs_v > *scale_slot) *scale_slot = abs_v;
@@ -979,7 +982,7 @@ private:
         }
 
         // 2. scale 定档（l1_k_scale 写槽内本地序号：Data+Scale 相邻布局按块内组序
-        // 排布，全局组号会越出槽尾——DEFECT-A3-2）
+        // 排布，防全局组号越界）
         for (uint32_t s = grp_lo; s < grp_hi && s < 2048u; ++s) {
             const float amax = sim_mem_->k_scales[s];
             const float scale = per_thread
@@ -997,9 +1000,12 @@ private:
                 const float scale = sim_mem_->k_scales[quant::KScaleIndex(token, per_thread)];
                 const uint16_t *row_ptr = k_u16 + static_cast<int64_t>(j) * k_stride_s;
                 for (uint32_t c = 0; c < d; ++c) {
-                    float val = quant::Fp16ToFp32(row_ptr[c]);
+                    float val = ReadInputBits(row_ptr, c);
                     if (km_ptr != nullptr) {
-                        val = quant::Fp16ToFp32(quant::Fp32ToFp16(val - km_ptr[c]));
+                        // 差值位型舍回（对齐孪生 Half/Bf16Reader::Sub 口径）
+                        val = (tiling_->input_dtype == 2u)
+                                  ? quant::Bf16ToFp32(quant::Fp32ToBf16(val - km_ptr[c]))
+                                  : quant::Fp16ToFp32(quant::Fp32ToFp16(val - km_ptr[c]));
                     }
                     row_out[c] = per_thread ? quant::RoundHalfAwayFromZero(val / scale)
                                             : quant::RoundNearestEven(val / scale);
@@ -1079,7 +1085,7 @@ private:
                 float amax = 0.0f;
                 for (uint32_t t = 0; t < sk_; ++t) {
                     const float abs_v = SageFastAbs(
-                        quant::Fp16ToFp32(v_head[static_cast<int64_t>(t) * v_stride_s + c]));
+                        ReadInputBits(v_head, static_cast<int64_t>(t) * v_stride_s + c));
                     if (abs_v > amax) amax = abs_v;
                 }
                 sim_mem_->v_scales[c] = amax / scale_max;
@@ -1093,7 +1099,7 @@ private:
                 uint8_t code = 0;
                 if (jl < block_k) {
                     const uint16_t *row_ptr = v_u16 + static_cast<int64_t>(jl) * v_stride_s;
-                    float scaled = quant::Fp16ToFp32(row_ptr[c]) / scale;
+                    float scaled = ReadInputBits(row_ptr, c) / scale;
                     if (scaled > scale_max) scaled = scale_max;
                     if (scaled < -scale_max) scaled = -scale_max;
                     code = quant::FloatToE4m3fn(scaled);
@@ -1108,7 +1114,7 @@ private:
      * 4. V1：单逻辑行的块内反量化 logit、行 max 与 exp2 和（twin 5.1/5.2 单点轨迹）：
      * - INT32 精确点积 + twin::DequantQkLogit 单点 scale 乘（q_scale·k_scale·sm_scale_log2e
      *   左结合乘序同孪生）；KT 标量基线下点积在 V1 侧补算——串行整段仿真时序（Vec0→Cube→V1）
-     *   中 L0C 单缓冲无法保留逐拍 QK^T，契约冲突记录见 ProcessCube；
+     *   中 L0C 单缓冲无法保留逐拍 QK^T，详见 ProcessCube；
      * - 掩码（causal j > token_q、尾块 token_k ≥ sk）写 -1e30 哨兵，不参与 max/sum；
      * - cur_sum = twin::OnlineBlockExp2Sum 单点（448· 放大域，与 P 量化同域相消）。
      * 整块被掩码时 cur_max = -1e30、cur_sum = 0（调用方跳过 Step，twin 5.1 同款）。
@@ -1211,20 +1217,15 @@ private:
      * 6. V1：P 矩阵量化写 S(P) 双缓冲槽（SoftmaxSlotOffset(is_ping)，与 Cube 侧
      * SagePvMmad::LoadL0A 的 ub_softmax_offset 读取约定一致）。数值为
      * twin::SoftmaxProbCode 单点：P = FastExp2(logit - (m_scale - s_fp8_offset)) · 448，
-     * 饱和 + RNE 转 e4m3。448· 放大经乘法实现（twin/golden 基线轨迹，行 max 恰为 448
-     * 填满 e4m3 动态范围）；s_fp8_offset 指数偏置域为非默认可选，启用须同时关闭
-     * skip-scale（tau=0），基线恒为 0。行锚点取 row_states_[r].m_scale（S 与 O 同锚，
-     * 标量参数保留 API 兼容）；掩码哨兵 -1e30 经 exp2 下溢自然落到 e4m3 码 0。
+     * 饱和 + RNE 转 e4m3。448· 放大经乘法实现（行 max 恰为 448 填满 e4m3 动态范围）；
+     * s_fp8_offset 指数偏置域为非默认可选，启用须同时关闭 skip-scale（tau=0），基线恒为 0。
+     * 行锚点取 row_states_[r].m_scale（S 与 O 同锚）；掩码哨兵 -1e30 经 exp2 下溢自然落到 e4m3 码 0。
      */
     __aicore__ void ComputeSoftmaxProbability(
-        float m_run,
-        float sm_scale_log2e,
         float s_fp8_offset,
         bool is_ping)
     {
 #if SAGE_ATTN_DEVICE_COMPILE
-        (void)m_run;
-        (void)sm_scale_log2e;
         const uint32_t slot_offset = SoftmaxSlotOffset(is_ping);
         const uint32_t rows = TotalRows();
         for (uint32_t r = 0; r < rows && r < kKernelMaxRows; ++r) {
@@ -1243,8 +1244,6 @@ private:
         if (sim_mem_ == nullptr) {
             return;
         }
-        (void)m_run;          // 行锚点取自 row_states_（首行值经 m_run 传入，仅作 API 兼容）
-        (void)sm_scale_log2e; // logit 已融合 sm_scale_log2e（ComputeBlockMaxAndSum 单点）
         uint8_t *slot_ptr = sim_mem_->ub_mem + SoftmaxSlotOffset(is_ping);
         const uint32_t rows = TotalRows();
         for (uint32_t r = 0; r < rows && r < kKernelMaxRows; ++r) {
@@ -1261,15 +1260,10 @@ private:
 #if !SAGE_ATTN_DEVICE_COMPILE
     /**
      * 7pre. V1（宿主串行仿真专属）：第 k 块 KV 的 L1 槽重摆（幂等）。
-     * 契约冲突记录（与 ProcessCube 头注同源的整段时序约束）：宿主按 ProcessVec0 →
-     * ProcessCube → ProcessVec1 整段执行，V0 会先把全部 KV 块写入 ping/pong 双槽，
-     * V1 才开始逐块消费——k ≥ 2 的块在消费前已被同奇偶槽覆写（跨核握手在宿主为
-     * 空操作，无法回压生产者），sk > 2·block_n 即触发。2026-10-03 R9 新增的
-     * tests/test_kernel_twin.py 对 golden TC-05/TC-07/P-01 的交叉验证实测捕获
-     * （既有 KT 用例 sk ≤ 128 恰好为单周期 ping-pong，未暴露）；设备分支延迟一拍
-     * 流水逐拍交错，不存在该问题。V1 消费前对当前块重摆：同 GM 输入走同一量化
-     * 轨迹（K 组清零→amax→定档→量化、V 首块全序列 amax 预扫→per-channel 量化
-     * 均幂等），逐位一致，仅宿主分支生效。
+     * 宿主串行时序说明：宿主按 ProcessVec0 → ProcessCube → ProcessVec1 整段执行，
+     * V0 会先把全部 KV 块写入 ping/pong 双槽，V1 消费前重摆当前块：同 GM 输入走同一量化
+     * 轨迹（K 组清零→amax→定档→量化、V 首块全序列 amax 预扫→per-channel 量化均幂等），
+     * 逐位一致，仅宿主分支生效。
      */
     __aicore__ void RestageKvBlockHost(uint32_t k)
     {
@@ -1317,8 +1311,7 @@ private:
      * 7a. V1（KT 标量基线专属）：P 槽写出后的 PV 累加，经 twin::QuantizePAndAccumulatePvRow
      * 单点执行（5.4 唯一定义）：fp32 档逐 token 直累；fp32+fp16 档按 k_step=16 子块在
      * FP16 域累加后并入主累加器。V 反量化按 twin v_deq 同式（e4m3 解码 · 通道 scale，
-     * 16-token permute 槽寻址）。真实硬件该步骤由 Cube PV MMAD + FixPipe 承担
-     * （契约冲突记录见 ProcessCube）。
+     * 16-token permute 槽寻址）。真实硬件该步骤由 Cube PV MMAD + FixPipe 承担（详见 ProcessCube）。
      */
     __aicore__ void AccumulatePvBlockTwin(uint32_t block_k)
     {
@@ -1337,7 +1330,7 @@ private:
                 &sim_mem_->logits[static_cast<size_t>(r) * block_n_], cur_k_start_,
                 cur_k_start_, cur_k_start_ + block_k,
                 tiling_->is_causal != 0, token_q, m_prime,
-                fp16_accum, k_step_, // tiling 驱动（收敛轮 B/STYLE-5：原 DEFAULT_K_STEP 旁路运行时字段）
+                fp16_accum, k_step_,
                 [&](uint32_t j, uint32_t c) -> float {
                     const uint32_t jl = j - cur_k_start_;
                     const uint32_t slot = (jl / 16u) * 16u + quant::V_PERM_INV_PATTERN[jl % 16u];
@@ -1357,11 +1350,8 @@ private:
      *   +log2(448) 偏置，出口以 S_FP8_OFFSET 常量补扣；s_fp8_offset 指数偏置域若启用
      *   一并补扣（基线 0）。smooth_k 的行级 lse_correction · sm_scale 项在此并入。
      */
-    __aicore__ void FinalizeAndStoreOutput(const OnlineSoftmaxState &state)
+    __aicore__ void FinalizeAndStoreOutput()
     {
-        // 行级系数在下方循环内计算（state 仅为首行 API 兼容形参）
-        // 行级系数在下方逐行循环内计算（state 仅为首行 API 兼容形参）
-
         int64_t b_idx = static_cast<int64_t>(cur_b_);
         int64_t hkv_idx = static_cast<int64_t>(cur_hkv_);
         int64_t sq_start = static_cast<int64_t>(cur_q_start_);
@@ -1438,8 +1428,7 @@ private:
                     const int64_t out_gm_offset =
                         (b_idx * out_stride_b + hq_curr * out_stride_h +
                          (sq_start + i) * out_stride_s + c) * sizeof(uint16_t);
-                    *reinterpret_cast<uint16_t *>(out_gm_ + out_gm_offset) =
-                        quant::Fp32ToFp16(val);
+                    WriteOutputBits(reinterpret_cast<uint16_t *>(out_gm_) + out_gm_offset / sizeof(uint16_t), 0, val);
                 }
 
                 if (lse_gm_ != nullptr) {
@@ -1454,9 +1443,8 @@ private:
     }
 
     // 内部状态变量
-    // 修复记录：tiling 指针必须保持 __gm__ 限定（入口 reinterpret_cast 不得丢弃地址空间属性）
 #if !SAGE_ATTN_DEVICE_COMPILE
-    // owns；宿主仿真缓冲（收敛轮 B/STYLE-6 unique_ptr 化）
+    // 宿主仿真缓冲（unique_ptr 生命周期管理）
     std::unique_ptr<SimMemory> sim_mem_{nullptr};
 #endif
     const SageAttention2TilingData *tiling_{nullptr};

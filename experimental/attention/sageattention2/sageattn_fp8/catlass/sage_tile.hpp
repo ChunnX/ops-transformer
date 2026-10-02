@@ -28,9 +28,6 @@
 
 namespace Catlass::SageAttn {
 
-// 清理记录：临时包装 MakeBuffAddr 已删除——其未设置 logicPos（默认 0 = TPosition::GM，
-// LoadData/Mmad 按该字段分派硬件单元），且单一定义纪律要求在调用点直接写 TBuffAddr
-// 完整构造（TPipe::GetAbsAddr 范式，见 sage_qk_mmad.hpp / sage_pv_mmad.hpp）。
 
 /**
  * LoadData 2D 单 repeat 搬运字节数（512B，CANN LoadData2DParams.repeatTimes 的计量单位）

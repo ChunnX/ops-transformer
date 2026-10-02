@@ -38,28 +38,11 @@ aclnnStatus BuildSage(const aclTensor *q, const aclTensor *k, const aclTensor *v
                       const char *accum, bool smoothK, bool smoothV,
                       const aclTensor *out, const aclTensor *lse, aclOpExecutor *executor)
 {
-    // 可选输入按非空实况逐一绑定（DEFECT-A5-2：原"两者同时非空才绑定"会静默
-    // 丢弃单独传入的 key_mean）；OP_ATTR 与 def.cpp 的 7 属性注册
-    // （tensor_layout/is_causal/qk_quant_gran/sm_scale/pv_accum_dtype/smooth_k/smooth_v）
-    // 逐项一致——return_lse 经 softmaxLse 张量是否非空表达，不是注册属性，
-    // return_lse 不入 OP_ATTR（由 lse 输出可选性承载），保持 7 项与 def 注册一致。
-    if (keyMean != nullptr && lseCorr != nullptr) {
-        return ADD_TO_LAUNCHER_LIST_AICORE(
-            SageAttention2, OP_INPUT(q, k, v, keyMean, lseCorr), OP_OUTPUT(out, lse),
-            OP_ATTR(layout, causal, gran, scale, accum, smoothK, smoothV));
-    }
-    if (keyMean != nullptr) {
-        return ADD_TO_LAUNCHER_LIST_AICORE(
-            SageAttention2, OP_INPUT(q, k, v, keyMean), OP_OUTPUT(out, lse),
-            OP_ATTR(layout, causal, gran, scale, accum, smoothK, smoothV));
-    }
-    // lseCorr 单独非空时不经 OP_INPUT 下发（DEFECT-A5-8）：OP_INPUT 按算子原型
-    // 输入序位置绑定，中间可选项不可跳位——4 参形态会把 lse_correction 落入
-    // key_mean 槽（smooth_k=1 时核内按 [b,hkv,d_pad] fp32 误读为 km，数值/越界
-    // 双重风险）。基线核对该通道仅指针承接、消费留给向量化 pass（op_kernel
-    // lse_correction_gm_ 契约注释），此处与基线一致保持 3 参直落。
+    // 可选输入全序 nullptr 占位：OP_INPUT 按位绑定 def 注册序 query,key,value,key_mean,lse_correction，
+    // 空 optional 以 nullptr 占位。OP_ATTR 与 def.cpp 的 7 项属性逐项一致；
+    // return_lse 由 softmaxLse 输出张量是否非空承载。
     return ADD_TO_LAUNCHER_LIST_AICORE(
-        SageAttention2, OP_INPUT(q, k, v), OP_OUTPUT(out, lse),
+        SageAttention2, OP_INPUT(q, k, v, keyMean, lseCorr), OP_OUTPUT(out, lse),
         OP_ATTR(layout, causal, gran, scale, accum, smoothK, smoothV));
 }
 } // namespace l0op
@@ -96,17 +79,19 @@ extern "C" aclnnStatus aclnnSageAttention2GetWorkspaceSize(
     const aclTensor *query, const aclTensor *key, const aclTensor *value,
     const aclTensor *keyMeanOptional, const aclTensor *lseCorrectionOptional,
     const char *tensorLayout, bool isCausal, const char *qkQuantGran, double smScale,
-    const char *pvAccumDtype, bool smoothK, bool smoothV, bool returnLse,
+    const char *pvAccumDtype, bool smoothK, bool smoothV,
     const aclTensor *attentionOut, const aclTensor *softmaxLse,
     uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     if (workspaceSize == nullptr || executor == nullptr || query == nullptr || key == nullptr ||
         value == nullptr || attentionOut == nullptr || tensorLayout == nullptr ||
-        qkQuantGran == nullptr || pvAccumDtype == nullptr || (returnLse && softmaxLse == nullptr)) {
+        qkQuantGran == nullptr || pvAccumDtype == nullptr) {
         return ACLNN_ERR_PARAM_NULLPTR;
     }
     *workspaceSize = 0;
     *executor = nullptr;
+
+    const bool returnLse = (softmaxLse != nullptr);
 
     // 任务书口径：per_thread/per_warp 为合法算法粒度，非法取值报错（不静默降级）
     if (std::strcmp(qkQuantGran, "per_thread") != 0 && std::strcmp(qkQuantGran, "per_warp") != 0) {
@@ -115,8 +100,7 @@ extern "C" aclnnStatus aclnnSageAttention2GetWorkspaceSize(
     if (!std::isfinite(smScale)) {
         return ACLNN_ERR_PARAM_INVALID;
     }
-    // 布局同义词域与 def.cpp/proto 对齐：BNSD~HND、BSND~NHD（DEFECT-A5-4，
-    // def 默认值即 "BNSD"，仅认 HND/NHD 会把缺省调用拒之门外）
+    // 布局同义词域与 def.cpp/proto 对齐：BNSD~HND、BSND~NHD
     const char *layout_canon = tensorLayout;
     if (std::strcmp(layout_canon, "BNSD") == 0) {
         layout_canon = "HND";
@@ -143,7 +127,7 @@ extern "C" aclnnStatus aclnnSageAttention2GetWorkspaceSize(
     L2_DFX_PHASE_1(aclnnSageAttention2,
                    DFX_IN(query, key, value, keyMeanOptional, lseCorrectionOptional,
                           tensorLayout, isCausal, qkQuantGran, smScale, pvAccumDtype,
-                          smoothK, smoothV, returnLse),
+                          smoothK, smoothV),
                    DFX_OUT(attentionOut, softmaxLse));
     auto owner = CREATE_EXECUTOR();
     if (owner.get() == nullptr) {

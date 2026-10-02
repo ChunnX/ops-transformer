@@ -74,7 +74,10 @@ if(COMMAND add_ops_compile_options)
 endif()
 
 if (NOT BUILD_OPS_RTY_KERNEL AND COMMAND add_modules_sources)
-    add_modules_sources(OPTYPE sage_attention2 ACLNNTYPE aclnn)
+    # op_api 与 op_host 同级布局
+    add_modules_sources(OPTYPE sage_attention2 ACLNNTYPE aclnn
+        OP_API_INDEPENDENT ON
+        OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api)
 endif()
 
 # 支持独立构建 Host 共享库以供本地单测与集成测试

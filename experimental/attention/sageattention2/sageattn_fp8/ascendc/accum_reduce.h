@@ -37,19 +37,14 @@ namespace sage_attn {
 
 /**
  * FixPipe 随路量化的 FP16 舍入仿真：返回"经 FP16 RNE 舍入后仍以 fp32 承载"的值。
- * 单一定义纪律（收敛轮 B/STYLE-11）：位级转换唯一来源为 quant::Fp32ToFp16/Fp16ToFp32
- *（次正规 RNE 舍入语义），本函数不再持有第二份位操作实现；原 FTZ 行为与 golden
- * 的 fp16 舍入轨迹不一致，已随委托修正。名 QuantizeToFp16 保留（调用点语义：
- * "把值钉在 FP16 网格上"），返回类型 float 为既定接口。
+ * 位级转换唯一来源为 quant::Fp32ToFp16/Fp16ToFp32（次正规 RNE 舍入语义）。
  */
 __aicore__ static inline float QuantizeToFp16(float val) {
     return quant::Fp16ToFp32(quant::Fp32ToFp16(val));
 }
 
 /**
- * FixPipe 随路操作配置描述符（白皮书 4.1.1 节硬件数据通路）
- * 清理记录：原 quant_scale 字段全仓库无来源无消费（随路量化比例恒为 1.0，950 FixPipe
- * 亦无独立 scale 端口），已删除。
+ * FixPipe 随路操作配置描述符（硬件数据通路）
  */
 struct FixpipeConfig {
     bool enable_inline_quant;   // 是否开启 L0C 回写 UB 随路量化 (FP32 -> FP16)
@@ -74,19 +69,12 @@ public:
     }
 
     /**
-     * 判断当前迭代是否需要触发 L0C 向 UB 主累加器的 FixPipe 搬出归约
-     * 末块判定由内部 total_kv_blocks_ 推导（2026-10-03 修复：原 is_last_step 形参在
-     * FA2 原序单循环中无人传 true，fp32 档永不归约、O 恒零，宿主仿真单测捕获；该历史
-     * 测试文件 test_kernel_host_sim.cpp 已不存在，验证现由 tests/test_output_queue.cpp 与
-     * tests/test_golden_precision.py 承担）。
+     * 判断当前迭代是否需要触发 L0C 向 UB 主累加器的 FixPipe 搬出归约。
+     * 末块判定由内部 total_kv_blocks_ 推导。
      *
      * @param step_idx 当前处理的 KV 分块序号 (0-indexed)
      */
     __aicore__ bool ShouldReduce(uint32_t step_idx) const {
-        // 三档统一按周期归约（2026-10-03 修复）：原 fp32 档"仅末块搬出"会让 L0C 跨块
-        // 累加不同锚点的 P——P 锚点随块推进（FA2 原序），跨块部分和在数学上不可合并；
-        // "fp32 全程驻留 L0C"的性能形态需要 FixPipe 随路块间锚差缩放，属设备阶段工作
-        //（task/01_design.md 3.3 契约冲突记录一并由本注释取代）。
         const bool is_last_step = (total_kv_blocks_ > 0) && (step_idx + 1 >= total_kv_blocks_);
         return is_last_step || (((step_idx + 1) % k_step_) == 0);
     }
@@ -125,8 +113,6 @@ private:
     PvAccumDtype accum_mode_;
     uint32_t k_step_;
     uint32_t total_kv_blocks_;
-    // 清理记录：原 current_step_/Advance()/GetCurrentStep() 仅记录步数、核内无任何消费点
-    //（kernel 主循环已删除 Advance 调用），属膨胀死代码，已删除。
 };
 
 /**
@@ -140,7 +126,7 @@ private:
  *    全面支持 fp32、fp32+fp32、fp32+fp16 三档两级累加精度，并在 fp32+fp16 档融合 FixPipe 随路量化。
  * 3. 融合 Online Softmax 的 skip-scale 判定（tau = 6.0f）：
  *    若局部最大值变化在 tau 以内，则跳过对累加器的重缩放乘法，直接执行直通累加，消除冗余浮点乘法。
- * 4. 兼容 S_FP8_OFFSET 偏置（log2(448) = 8.807355f），分母在线累计与最终归一化严格对齐。
+ * 4. 支持 S_FP8_OFFSET 偏置（log2(448) = 8.807355f），分母在线累计与最终归一化严格对齐。
  * 5. 循环结束时调用 Flush() 彻底清空剩余 1~2 个槽位并完成最终写回。
  */
 template <typename DType = float, uint32_t CAPACITY = 3>

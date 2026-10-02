@@ -133,10 +133,7 @@ public:
         this->Attr("pv_accum_dtype").AttrType(OPTIONAL).String("fp32+fp16");
         this->Attr("smooth_k").AttrType(OPTIONAL).Bool(true);
         this->Attr("smooth_v").AttrType(OPTIONAL).Bool(false);
-        // return_lse 不设属性：由 lse 输出张量的可选性承载（op_api 侧按
-        // returnLse 入参决定 ViewCopy 是否执行），OP_ATTR 保持 7 项与本注册一致
-        //（DEFECT-A5-1 / DEFECT-F-1 收敛记录：2026-10-03 曾加第 8 属性，与
-        // op_api 的 7 项 OP_ATTR 相撞后按 7 项方向收敛）
+        // return_lse 不设属性：由 lse 输出张量的可选性承载，OP_ATTR 保持 7 项与注册一致。
 
         // 5. AI Core 硬件平台配置与执行入口映射（收敛为 Ascend 950PR 单平台）
         OpAICoreConfig config;

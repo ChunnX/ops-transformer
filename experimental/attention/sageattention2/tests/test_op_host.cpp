@@ -212,7 +212,7 @@ bool TestInferShapeValidCases()
         ge::graphStatus ret = infer_shape_func(&ctx);
         TEST_ASSERT(ret == ge::GRAPH_SUCCESS, "InferShape BSND failed");
         TEST_ASSERT(out_shape == q_shape, "BSND Output shape must match Query");
-        // LSE 布局恒为 [B, Hq, Sq]（收敛轮 B/STYLE-2 契约：与核内扁平写址
+        // LSE 布局恒为 [B, Hq, Sq]（与核内扁平写址
         // op_kernel FinalizeAndStoreOutput 的 ((b*Hq+h)*Sq+s) 一致，不随 BSND 翻转）
         TEST_ASSERT(lse_shape == gert::Shape({2, 32, 512}), "BSND LSE shape must be [B, Hq, Sq]");
     }

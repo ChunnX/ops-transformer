@@ -81,7 +81,7 @@ inline uint32_t GetHardwareCoreNum()
  * 核心设计指标：
  * 1. 扁平代数闭式计算，无复杂动态循环与大表搜索，平均启动开销 < 2 微秒
  * 2. 彻底打赢对 FIA 3.7 万行无 cache 的 Host Launch 时延之战
- * 3. 动态兼容 32 核与 28 核
+ * 3. 动态支持 32 核与 28 核
  * 4. 强制 64 位整型提升计算显存空间与地址偏移
  *
  * inline 唯一定义（本头被 aclnn/sage_attn_host.cpp 与 op_host/sage_attention2_tiling.cpp
@@ -95,6 +95,7 @@ inline aclnnStatus ComputeHostTiling(
     uint32_t sk,
     uint32_t hq,
     uint32_t hkv,
+    int dtype_mode,      // 输入位型分派：1=fp16, 2=bf16，写 TilingData.input_dtype
     uint32_t d_og,
     double smScale,
     int64_t qkQuantGran,
@@ -150,9 +151,8 @@ inline aclnnStatus ComputeHostTiling(
     tiling_out.smooth_v = (smoothV && pvAccumDtype == PV_ACCUM_FP32) ? 1 : 0;
 
     // 7. 预计算与常量折叠数值字段 (8 字节)
-    // sm_scale 冻结语义（task/01_design 1.3）：默认值 1/sqrt(d) 仅由上层桥接在
-    // Python sm_scale=None 时折叠后传入；C 接口收到 0 或负值一律判非法报错，
-    // 绝不再静默兜底（避免掩盖上游缺省传递错误）
+    // sm_scale 冻结语义：默认值 1/sqrt(d) 仅由上层桥接在
+    // Python sm_scale=None 时折叠后传入；C 接口收到 0 或负值一律判非法报错
     if (!(smScale > 0.0) || !std::isfinite(smScale)) {
         return ACLNN_ERR_PARAM_INVALID;
     }
@@ -160,17 +160,16 @@ inline aclnnStatus ComputeHostTiling(
     tiling_out.sm_scale_log2e = base_sm_scale * quant::LOG2E;
     tiling_out.v_scale_max = quant::GetVScaleMax(static_cast<uint32_t>(pvAccumDtype));
     // s_fp8_offset 契约冻结：仅允许缺省 0（基线，448· 经乘法承担）或冻结常量
-    // S_FP8_OFFSET（映射回基线 0，op_kernel Init 归一化）；其余值使 P 行 max
-    // 2^δ·448 溢出 e4m3 且 LSE 出口失配（DEFECT-A4-1），host 侧直接拒绝。
+    // S_FP8_OFFSET（映射回基线 0，op_kernel Init 归一化）。
     tiling_out.s_fp8_offset = quant::S_FP8_OFFSET;
+    // 输入位型分派：fp16/bf16 三方（def 注册、op_api、核内读写）一致
+    tiling_out.input_dtype = static_cast<uint8_t>(dtype_mode);
 
     // 8. 闭式分块计算 (分块字段，12 字节)
     // m_per_core 沿 GQA 头聚合：kernel 的 M 维打包 = 组内各 Q 头行连续
     //（TotalRows = gqa·cur_q_len，行容量 kKernelMaxRows = 128），故
-    // gqa·m_per_core <= 128 为硬约束（DEFECT-A6-1：原 (64,128] 提升逻辑在
-    // gqa>=3 时行数溢出 128，静默截断丢头）；同时 m_per_core >= 32 保证
-    // per_thread 32-token 子块的 scale 组不跨 tile 切割。gqa>4 时打包不下，
-    // 显式拒绝（头分组任务维为 M5 项，静默出错不可接受）。
+    // gqa·m_per_core <= 128 为硬约束；同时 m_per_core >= 32 保证
+    // per_thread 32-token 子块的 scale 组不跨 tile 切割。gqa>4 时打包不下，显式拒绝。
     uint32_t m_per_core = 64;
     if (gqa_ratio > 1) {
         if (gqa_ratio > 4u) {
@@ -187,10 +186,9 @@ inline aclnnStatus ComputeHostTiling(
     }
     tiling_out.block_n = block_n;
 
-    // 运行时资源台账 fail-fast（RES-01，task/03_review.md 资源与同步粒度类）：
+    // 运行时资源台账 fail-fast：
     // O 累加器/S 双槽/L0C/L1 的足迹随 (gqa·m_per_core, block_n, d_pad) 变化，
-    // 必须在发射前拒绝越界分块——NPU 侧容量超限是无诊断的硬件异常（案例研究
-    // ascend-rs §6 UB 静默溢出事故），device static_assert 仅覆盖常量部分。
+    // 必须在发射前拒绝越界分块。
     const uint32_t total_rows = m_per_core * gqa_ratio;
     if (Catlass::SageAttn::SageResourceManager::InspectTilingPlan(total_rows, block_n, d_pad) !=
         Catlass::SageAttn::FootprintViolation::kNone) {
@@ -198,7 +196,7 @@ inline aclnnStatus ComputeHostTiling(
     }
 
     // k_step：两级累加归约周期步长 (默认 16)
-    tiling_out.k_step = DEFAULT_K_STEP; // 唯一定义点 tiling.h（收敛轮 B/STYLE-5）
+    tiling_out.k_step = DEFAULT_K_STEP; // 唯一定义点 tiling.h
 
     // 9. 分核计算与 Split-KV 判定 (分核字段，20 字节)
     uint32_t hw_cores = GetHardwareCoreNum();
@@ -208,7 +206,7 @@ inline aclnnStatus ComputeHostTiling(
     tiling_out.q_blk_num = q_blk_num;
     tiling_out.kv_blk_num = kv_blk_num;
 
-    // 任务切分单位为 (Batch, Hkv, Q_blk)；64 位乘法防回绕（DEFECT-A6-2）
+    // 任务切分单位为 (Batch, Hkv, Q_blk)；64 位乘法防回绕
     const uint64_t total_tasks_64 = static_cast<uint64_t>(b) * hkv * q_blk_num;
     if (total_tasks_64 > UINT32_MAX) {
         return ACLNN_ERR_PARAM_INVALID;

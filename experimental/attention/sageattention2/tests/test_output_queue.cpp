@@ -289,10 +289,10 @@ void TestFlushVariousRemainingSlots() {
 }
 
 /**
- * [Test 5] 三档两级累加精度（fp32, fp32+fp32, fp32+fp16）兼容性测试
+ * [Test 5] 三档两级累加精度（fp32, fp32+fp32, fp32+fp16）验证测试
  */
 void TestThreePrecisionModes() {
-    std::cout << "[Test 5] Testing compatibility across 3 accumulation precision modes..." << std::endl;
+    std::cout << "[Test 5] Testing 3 accumulation precision modes..." << std::endl;
 
     constexpr uint32_t TILE_SIZE = 64;
     std::vector<float> acc(TILE_SIZE, 0.0f);

@@ -93,7 +93,7 @@ static ge::graphStatus TilingSageAttention2(gert::TilingContext *context)
     const bool *smooth_k = (attrs != nullptr) ? attrs->GetBool(sage_attn2_idx::ATTR_SMOOTH_K) : nullptr;
     const bool *smooth_v = (attrs != nullptr) ? attrs->GetBool(sage_attn2_idx::ATTR_SMOOTH_V) : nullptr;
 
-    // P-01 微秒级发射门禁（DEFECT-A5-7）：tiling 热路径禁止 std::string 堆分配，
+    // 微秒级极速发射：tiling 热路径禁止 std::string 堆分配，
     // 缺省折叠与编码映射全部走 const char* 比较
     const char *layout = (layout_str != nullptr) ? layout_str : "BNSD";
     const char *gran = (gran_str != nullptr) ? gran_str : "per_thread";
@@ -132,8 +132,11 @@ static ge::graphStatus TilingSageAttention2(gert::TilingContext *context)
 
     sage_attn::SageAttention2TilingData tiling_data;
     uint64_t workspace_bytes = 0;
+    const auto query_dtype = context->GetInputDataType(sage_attn2_idx::IN_QUERY);
+    const int dtype_mode = (query_dtype == ge::DT_BF16) ? 2 : 1;
+
     aclnnStatus status = sage_attn::ComputeHostTiling(
-        b, sq, sk, hq, hkv, d_og,
+        b, sq, sk, hq, hkv, dtype_mode, d_og,
         scale,
         sage_attn::QuantGranCodeFromString(gran),
         sage_attn::PvAccumCodeFromString(accum),
@@ -141,7 +144,7 @@ static ge::graphStatus TilingSageAttention2(gert::TilingContext *context)
         layout_code,
         (smooth_k != nullptr) ? *smooth_k : true,
         (smooth_v != nullptr) ? *smooth_v : false,
-        context->GetInputShape(sage_attn2_idx::IN_KEY_MEAN) != nullptr, // has_key_mean 实况（DEFECT-A5-3）
+        context->GetInputShape(sage_attn2_idx::IN_KEY_MEAN) != nullptr, // has_key_mean 实况
         false, // has_lse
         tiling_data,
         workspace_bytes);
@@ -149,12 +152,9 @@ static ge::graphStatus TilingSageAttention2(gert::TilingContext *context)
         return ge::GRAPH_FAILED;
     }
 
-    // blockDim 以平台实测 AIC 数封顶（DEFECT-A5-7：28 核减配拓扑防超订；
+    // blockDim 以平台实测 AIC 数封顶（28 核减配拓扑防超订；
     // CompileInfo/platform 为权威源，env 覆盖仅供自动化测试）。
-    // DEFECT-A6-4：封顶必须在序列化之前——原顺序先 memcpy 后钳制，RawTilingData
-    // 携带未钳制的 core_num_used 而 blockDim 用钳制值：28 核减配拓扑（aic=28、
-    // 闭式算得 32）下 kernel 按 tiling 的 32 核推进波次而仅 28 核在位，波次空间中
-    // 映射到物理核 28..31 的虚拟任务无核执行，对应 (b,hkv,q_blk) 输出块静默缺失。
+    // 封顶必须在序列化之前完成，保证 RawTilingData 与 blockDim 一致。
     if (context->GetPlatformInfo() != nullptr) {
         const uint32_t aic = platform_ascendc::PlatformAscendC(context->GetPlatformInfo())
                                  .GetCoreNumAic();
