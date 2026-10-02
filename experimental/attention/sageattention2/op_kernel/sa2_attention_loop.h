@@ -101,7 +101,11 @@ struct Sa2VfFinishArgs {
     float smScale;
 };
 
-#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)) || defined(__CCE_KT_TEST__)
+// plain 语法门禁态（无任何宏）已由本文件头部 __has_include 分支装入 sa2_ascendc_hoststub.h，
+// AscendC 类型可得，故 plain/stub 态与 3510 arch pass / __CCE_KT_TEST__ 同权开放本段
+//（M2b-0 冻结门禁：plain 态唯一允许诊断 = 三个文件的 #error 守卫，使用点无条件解析、
+// 定义不得缺席）；仅「__NPU_ARCH__ 存在但非 3510」的未来 arch pass 维持排除。
+#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)) || defined(__CCE_KT_TEST__) || !defined(__NPU_ARCH__)
 // Fixpipe L0C→UB 行主序配置（catlass copy_l0c_to_ub.hpp 同款常量）
 constexpr AscendC::FixpipeConfig kSa2CfgRowMajorUb = {AscendC::CO2Layout::ROW_MAJOR, true};
 
@@ -707,10 +711,9 @@ public:
         td_ = &td;
 
         pipe_.InitBuffer(ubBuf_, Sa2DeviceRes<G>::kUbEnd);
-        // M2b-0（拆分编译实测）：L1/L0 TPipe 分配仅 AIC 合法——AIV pass 对 L1/L0C TBuf
-        // InitBuffer 直接触发后端硬错误（"Unsupported scalar instruction in AIV loop" /
-        // "error pointer address space cast"，-O0/-O3 同现）。AIV 侧本地内存只有 UB；
-        // L1/L0A/L0B/L0C 张量构建是 AIC 专属路径，编译期按核型裁剪。
+        // 以下初始化序列与 ctor 逐字同构（Init = 内核入口的显式初始化路径，ctor 序为同一
+        // 序列的副本；InitBuffer 双执行属既有设计，行为保持不变）。「L1/L0 TPipe 分配仅
+        // AIC 合法」判据注记见 ctor 内，此处不重复。
         if ASCEND_IS_AIC {
             pipe_.InitBuffer(l1Buf_, kL1End);
             pipe_.InitBuffer(l0aBuf_, kL0ABBytes);
@@ -1018,9 +1021,9 @@ public:
             for (int64_t colBlk = 0; colBlk < 8; ++colBlk) {
                 const int64_t dstOffset = ((rowBlk * 8) + colBlk) * 512 + inRow * 32;
                 *reinterpret_cast<uint64_t *>(pSlotL1 + dstOffset) =
-                    *reinterpret_cast<const uint64_t *>(pRow + colBlk * 16);
+                    *reinterpret_cast<const __ubuf__ uint64_t *>(pRow + colBlk * 16);
                 *reinterpret_cast<uint64_t *>(pSlotL1 + dstOffset + 8) =
-                    *reinterpret_cast<const uint64_t *>(pRow + colBlk * 16 + 8);
+                    *reinterpret_cast<const __ubuf__ uint64_t *>(pRow + colBlk * 16 + 8);
             }
         }
 
@@ -1211,9 +1214,9 @@ public:
             int64_t r = 0;
             for (; r + 4 <= validRows; r += 4) {
                 *reinterpret_cast<__gm__ uint64_t *>(lsePtr + r) =
-                    *reinterpret_cast<const uint64_t *>(stageRow + r);
+                    *reinterpret_cast<const __ubuf__ uint64_t *>(stageRow + r);
                 *reinterpret_cast<__gm__ uint64_t *>(lsePtr + r + 2) =
-                    *reinterpret_cast<const uint64_t *>(stageRow + r + 2);
+                    *reinterpret_cast<const __ubuf__ uint64_t *>(stageRow + r + 2);
             }
             for (; r < validRows; ++r) {
                 lsePtr[r] = stageRow[r];

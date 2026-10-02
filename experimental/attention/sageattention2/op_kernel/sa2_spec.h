@@ -102,6 +102,12 @@ namespace sa2 {
 #else
 #define SA2_AICORE
 #endif
+// plain 语法门禁态（无任何宏，本头先于 hoststub 装载点被包含）：__simd_callee__ 回退为空宏。
+// ccec 设备编译（kernel_operator.h 可得）与 __CCE_KT_TEST__ 桩轨（hoststub 提供真定义）
+// 均不进入本分支；空宏与 hoststub 展开逐字一致，后装无重定义冲突。
+#if !defined(__simd_callee__) && !defined(__AICORE__) && !__has_include("kernel_operator.h")
+#define __simd_callee__
+#endif
 // 宿主桩轨（sim/spec 先于 hoststub 被包含时）的地址空间限定回退；设备构建下为真限定符。
 #ifndef __gm__
 #define __gm__
@@ -247,7 +253,7 @@ SA2_AICORE inline half Sa2ScalarFromFloat<half>(float f)
     return r;
 }
 #endif
-#if (defined(__AICORE__) && defined(__NPU_ARCH__)) || defined(__CCE_KT_TEST__)
+#if (defined(__AICORE__) && defined(__NPU_ARCH__)) || defined(__CCE_KT_TEST__) || !defined(__NPU_ARCH__)
 // f16 位型 → f32 位型（纯整数，无任何浮点指令/位强转）。迭代 2 实测补充：
 // Sa2HalfBitsToFloat 末端的「位型 → float」强转在 AIV 编译单元内不可选中（ISel
 // "Cannot select: f32 = bitcast"，p33f/p33g 探针），wrapper 侧展开也同罪（内联后同单元）。
