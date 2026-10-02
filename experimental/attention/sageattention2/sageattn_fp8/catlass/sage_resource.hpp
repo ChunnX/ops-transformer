@@ -84,10 +84,33 @@ struct Vector1UbBudget {
 };
 
 /**
+ * 运行时资源台账违规码（结构化 fail-fast，RES-01）：
+ * 片上容量超限在 NPU 上表现为无诊断信息的硬件异常（案例研究 ascend-rs §6 的
+ * C++ 16384 元素静默踩 UB 事故），故随 shape 变化的足迹必须在 host 发射前拒绝，
+ * 并给出可归档的区域级违规原因，而非依赖 device 侧 static_assert 单点防线。
+ */
+enum class FootprintViolation : uint32_t {
+    kNone = 0,
+    kInvalidShape,     // 行/列/头维为 0，分块计划本身非法
+    kGqaRowOverflow,   // GQA 聚合 M 打包行数超出核内行状态上限
+    kL1Bank0Q,         // L1 Bank 0：Q 数据区越界（Data+Scale 相邻契约被破坏）
+    kL1Bank1Kv,        // L1 Bank 1：KV Ping-Pong 双槽越界
+    kL0CAccum,         // L0C：QK^T INT32 累加器越界
+    kUbV1OAccum,       // V1 UB：O 主累加器（fp32 常驻）越界
+    kUbV1SoftmaxSlot,  // V1 UB：S(P) 奇偶双槽越出 FIXPIPE_RECV 区
+    kUbV0Input,        // V0 UB：GM 输入 ping/pong 暂存槽越界
+};
+
+/**
  * 资源分配校验器
  */
 class SageResourceManager {
 public:
+    // 与 op_kernel/sageattention2.cpp 的 kKernelMaxRows 契约同步（唯二出现点，
+    // 改动须双侧联动 + test_tiling_struct 台账用例回归）；Q_MAX_BYTES 的
+    // 128x128 规格隐含同一上限。
+    static constexpr uint32_t MAX_GQA_PACK_ROWS = 128;
+
     /**
      * 静态校验分块配置是否满足片上容量硬约束
      */
@@ -112,6 +135,75 @@ public:
         }
 
         return true;
+    }
+
+    /**
+     * 运行时资源台账检查（RES-01，host 发射前 fail-fast 的唯一判据）：
+     * total_rows 为 GQA 聚合后的 M 打包宽（gqa_ratio * m_per_core，即 kernel 侧
+     * TotalRows），不是 m_per_core 本身——O 累加器、S 双槽、L0C 均按聚合宽计。
+     * 纯 constexpr 整数算术，host 热路径零堆分配（DEFECT-A5-7 微秒级发射纪律）。
+     * 各区域容量唯一定义点：L1DoubleBankContract / Vector0UbBudget /
+     * Vector1UbBudget / HardwareResourceQuota（本文件与 sage_tile.hpp）。
+     */
+    static constexpr FootprintViolation InspectTilingPlan(
+        uint32_t total_rows, uint32_t block_n, uint32_t head_dim)
+    {
+        if (total_rows == 0u || block_n == 0u || head_dim == 0u) {
+            return FootprintViolation::kInvalidShape;
+        }
+        if (total_rows > MAX_GQA_PACK_ROWS) {
+            return FootprintViolation::kGqaRowOverflow;
+        }
+
+        // L1 Bank 0：Q 数据区按 [total_rows][head_dim] INT8 摆放（kernel
+        // LoadAndQuantizeQ 的 L1 写出契约），越界即破坏后邻 Q Scale 区
+        const uint64_t q_bytes = static_cast<uint64_t>(total_rows) * head_dim;
+        if (q_bytes > L1DoubleBankContract::Q_MAX_BYTES) {
+            return FootprintViolation::kL1Bank0Q;
+        }
+
+        // L1 Bank 1：KV 双槽（K INT8 + V FP8 各半槽，含槽内 Scale 区）
+        const uint64_t kv_bytes = static_cast<uint64_t>(L1DoubleBankContract::KV_SLOT_BYTES) * 2u;
+        if (kv_bytes > L1DoubleBankContract::BANK1_SIZE) {
+            return FootprintViolation::kL1Bank1Kv;
+        }
+
+        // L0C：QK^T INT32 累加器 [total_rows][block_n]
+        const uint64_t l0c_bytes = static_cast<uint64_t>(total_rows) * block_n * 4u;
+        if (l0c_bytes > HardwareResourceQuota::L0C_TOTAL_BYTES) {
+            return FootprintViolation::kL0CAccum;
+        }
+
+        // V1 UB：O 主累加器 [total_rows][head_dim] FP32（O_ACCUM_OFFSET = 0 起）
+        const uint64_t o_accum_bytes = static_cast<uint64_t>(total_rows) * head_dim * 4u;
+        if (o_accum_bytes > Vector1UbBudget::O_ACCUM_BYTES) {
+            return FootprintViolation::kUbV1OAccum;
+        }
+
+        // V1 UB：S(P) 奇偶双槽驻留 FIXPIPE_RECV 区（kernel SoftmaxSlotOffset 以
+        // ub_softmax_offset = FIXPIPE_RECV_OFFSET 为基址，槽步长 rows * block_n 字节）
+        const uint64_t softmax_slot_bytes = static_cast<uint64_t>(total_rows) * block_n * 2u;
+        if (softmax_slot_bytes > Vector1UbBudget::FIXPIPE_RECV_BYTES) {
+            return FootprintViolation::kUbV1SoftmaxSlot;
+        }
+
+        // V0 UB：GM 输入 ping 槽按 [block_n][head_dim] FP16 暂存（pong 槽等宽，
+        // 偏移由 Vector0UbBudget 常量锁定，校验单槽容量即可覆盖双槽契约）
+        const uint64_t v0_input_bytes = static_cast<uint64_t>(block_n) * head_dim * 2u;
+        if (v0_input_bytes > Vector0UbBudget::GM_INPUT_PING_BYTES) {
+            return FootprintViolation::kUbV0Input;
+        }
+
+        return FootprintViolation::kNone;
+    }
+
+    /**
+     * 布尔包装：host tiling / 单测的直接判据
+     */
+    static constexpr bool ValidateTilingPlan(
+        uint32_t total_rows, uint32_t block_n, uint32_t head_dim)
+    {
+        return InspectTilingPlan(total_rows, block_n, head_dim) == FootprintViolation::kNone;
     }
 };
 

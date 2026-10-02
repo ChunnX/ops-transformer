@@ -108,7 +108,7 @@ struct L1DoubleBankContract {
     // Bank 0 分配
     static constexpr uint32_t Q_DATA_OFFSET = BANK0_START;
     static constexpr uint32_t Q_MAX_BYTES   = 128 * 128 * sizeof(int8_t); // 16 KB
-    static constexpr uint32_t Q_SCALE_OFFSET = BANK0_START + 16 * 1024;
+    static constexpr uint32_t Q_SCALE_OFFSET = Q_DATA_OFFSET + Q_MAX_BYTES; // Q 数据区后紧邻 scale（Data+Scale 相邻）
 
     // Bank 1 分配 (Ping-Pong 双缓冲)：单槽 128KB = K 子区 64KB (INT8) + V 子区 64KB (FP8)
     static constexpr uint32_t KV_SLOT_BYTES   = 128 * 1024;

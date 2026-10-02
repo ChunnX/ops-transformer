@@ -22,6 +22,8 @@
 #include <cstring>
 #include "tiling.h"
 #include "online_softmax.h"
+// FP16 位级转换唯一定义点（STYLE-11 单一定义收敛）
+#include "../../quant/quant_common.h"
 
 #ifndef __aicore__
 #if defined(__CCE_KT_TEST__) || defined(__DAV_C220_VEC__) || defined(__DAV_C220_CUBE__)
@@ -34,62 +36,14 @@
 namespace sage_attn {
 
 /**
- * FP16 浮点转换与舍入辅助函数（RNE 模式，用于仿真 FixPipe 随路量化）
+ * FixPipe 随路量化的 FP16 舍入仿真：返回"经 FP16 RNE 舍入后仍以 fp32 承载"的值。
+ * 单一定义纪律（收敛轮 B/STYLE-11）：位级转换唯一来源为 quant::Fp32ToFp16/Fp16ToFp32
+ *（次正规 RNE 舍入语义），本函数不再持有第二份位操作实现；原 FTZ 行为与 golden
+ * 的 fp16 舍入轨迹不一致，已随委托修正。名 QuantizeToFp16 保留（调用点语义：
+ * "把值钉在 FP16 网格上"），返回类型 float 为既定接口。
  */
 __aicore__ static inline float QuantizeToFp16(float val) {
-    uint32_t f;
-    std::memcpy(&f, &val, 4);
-    uint32_t sign = (f >> 31) & 0x1;
-    int32_t exp = ((f >> 23) & 0xFF) - 127 + 15;
-    uint32_t mant = (f & 0x7FFFFF) >> 13;
-    uint32_t remainder = f & 0x1FFF;
-
-    // Round to nearest even (RNE)
-    if (remainder > 0x1000 || (remainder == 0x1000 && (mant & 1))) {
-        mant++;
-        if (mant >= 0x400) {
-            mant = 0;
-            exp++;
-        }
-    }
-
-    uint16_t h;
-    if (exp <= 0) {
-        h = static_cast<uint16_t>(sign << 15);
-    } else if (exp >= 31) {
-        h = static_cast<uint16_t>((sign << 15) | 0x7C00);
-    } else {
-        h = static_cast<uint16_t>((sign << 15) | (exp << 10) | mant);
-    }
-
-    // Decode back to float
-    uint32_t h_sign = (h >> 15) & 1;
-    uint32_t h_exp = (h >> 10) & 0x1F;
-    uint32_t h_mant = h & 0x3FF;
-    uint32_t f32;
-    if (h_exp == 0x1F) {
-        f32 = (h_sign << 31) | (0xFF << 23) | (h_mant ? 0x7FFFFF : 0);
-    } else if (h_exp == 0) {
-        if (h_mant != 0) {
-            // FP16 非规格化重规格化：左移直至隐含位 (bit10) 置位，e 从 113 (127-14) 起递减。
-            // 修复记录：此处原误写 `mant <<= 1`（位移的是 32 位尾数残留值，循环条件永不满足），
-            // 一旦出现 FP16 非规格化即死循环——已改为移动 h_mant。
-            uint32_t e = 0x71;
-            while (!(h_mant & 0x400)) {
-                h_mant <<= 1;
-                e--;
-            }
-            h_mant &= 0x3FF;
-            f32 = (h_sign << 31) | (e << 23) | (h_mant << 13);
-        } else {
-            f32 = (h_sign << 31);
-        }
-    } else {
-        f32 = (h_sign << 31) | ((h_exp + 127 - 15) << 23) | (h_mant << 13);
-    }
-    float out;
-    std::memcpy(&out, &f32, 4);
-    return out;
+    return quant::Fp16ToFp32(quant::Fp32ToFp16(val));
 }
 
 /**
@@ -178,11 +132,11 @@ private:
 /**
  * 3 槽延迟输出退休队列模板类（OutputRetireQueue）
  *
- * 核心对标与超越特性：
- * 1. 对标竞品 PR 12430 的 outputPending[3] 环形队列机制：
+ * 核心特性：
+ * 1. outputPending[3] 环形队列机制：
  *    当连续 PV MMAD 产生输出时，在片上槽位缓存，触发成对归约（Pairwise Reduction）与 Rescale 融合，
  *    使 UB/GM 累加器的读取和写回开销直接减少 50%。
- * 2. 突破 PR 12430 仅支持 fp32+fp32 的严重缺陷：
+ * 2. 多档累加精度支持：
  *    全面支持 fp32、fp32+fp32、fp32+fp16 三档两级累加精度，并在 fp32+fp16 档融合 FixPipe 随路量化。
  * 3. 融合 Online Softmax 的 skip-scale 判定（tau = 6.0f）：
  *    若局部最大值变化在 tau 以内，则跳过对累加器的重缩放乘法，直接执行直通累加，消除冗余浮点乘法。
@@ -217,7 +171,6 @@ public:
      * @param tile_size 单分块数据元素总数 (M * D)
      * @param accum_dtype 两级累加精度档位 (0=fp32, 1=fp32+fp32, 2=fp32+fp16)
      * @param tau skip-scale 阈值 (默认 6.0f)
-     * @param s_fp8_offset FP8 偏置 (默认 tiling.h 的 S_FP8_OFFSET = log2(448))
      */
     __aicore__ void Init(
         DType* acc_data,
@@ -562,7 +515,7 @@ private:
 
     PvAccumDtype accum_mode_{PV_ACCUM_FP32_FP16}; // 两级累加精度
     float tau_{SKIP_SCALE_TAU};     // skip-scale 阈值 (6.0f)
-    float s_fp8_offset_{S_FP8_OFFSET}; // FP8 偏置 (log2(448))，分母与核内 LSE 同域偏置的出口相消锚点
+    float s_fp8_offset_{S_FP8_OFFSET}; // FP8 偏置 (默认 log2(448))
     float current_m_{MIN_FLOAT_VAL}; // 累加器当前锚点 max
     bool acc_initialized_{false};   // 累加器初始化标志
 

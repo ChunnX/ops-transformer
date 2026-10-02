@@ -41,13 +41,17 @@
 #endif
 #endif
 
+#ifndef __host__
+#define __host__
+#endif
+
 namespace sage_attn {
 namespace quant {
 
 /**
  * 浮点格式转换函数 (FP16 / BF16 到 FP32 及逆向转换)
  */
-inline float Fp16ToFp32(uint16_t h) noexcept {
+__aicore__ __host__ inline float Fp16ToFp32(uint16_t h) noexcept {
     uint32_t sign = (h >> 15) & 0x1;
     uint32_t exp = (h >> 10) & 0x1f;
     uint32_t mant = h & 0x3ff;
@@ -75,7 +79,7 @@ inline float Fp16ToFp32(uint16_t h) noexcept {
     float f; std::memcpy(&f, &u, sizeof(float)); return f;
 }
 
-inline uint16_t Fp32ToFp16(float f) noexcept {
+__aicore__ __host__ inline uint16_t Fp32ToFp16(float f) noexcept {
     uint32_t u;
     std::memcpy(&u, &f, sizeof(float));
     uint32_t sign = (u >> 31) & 0x1;
@@ -85,12 +89,14 @@ inline uint16_t Fp32ToFp16(float f) noexcept {
     int32_t new_exp = static_cast<int32_t>(exp) - 127 + 15;
     if (new_exp >= 31) return static_cast<uint16_t>((sign << 15) | 0x7c00);
     if (new_exp <= 0) {
-        if (1 - new_exp > 24) return static_cast<uint16_t>(sign << 15);
-        mant |= 0x800000;
-        uint32_t shift = 1 - new_exp + 13;
-        uint32_t round_bit = 1 << (shift - 1);
+        // 次正规域：shift 可达 37（exp∈[89,112]），有符号 int 移位超 31 位为 UB
+        //（收敛轮 B/STYLE-1），统一 uint32 移位并对 shift>24 直接舍入到零
+        const uint32_t shift = static_cast<uint32_t>(1 - new_exp) + 13u;
+        if (shift > 24u) return static_cast<uint16_t>(sign << 15);
+        mant |= 0x800000u;
+        const uint32_t round_bit = 1u << (shift - 1u);
         uint32_t quotient = mant >> shift;
-        uint32_t remainder = mant & ((1 << shift) - 1);
+        const uint32_t remainder = mant & ((1u << shift) - 1u);
         if (remainder > round_bit || (remainder == round_bit && (quotient & 1))) quotient++;
         return static_cast<uint16_t>((sign << 15) | quotient);
     }
@@ -107,12 +113,12 @@ inline uint16_t Fp32ToFp16(float f) noexcept {
     return static_cast<uint16_t>((sign << 15) | (new_exp << 10) | quotient);
 }
 
-inline float Bf16ToFp32(uint16_t b) noexcept {
+__aicore__ __host__ inline float Bf16ToFp32(uint16_t b) noexcept {
     uint32_t u = static_cast<uint32_t>(b) << 16;
     float f; std::memcpy(&f, &u, sizeof(float)); return f;
 }
 
-inline uint16_t Fp32ToBf16(float f) noexcept {
+__aicore__ __host__ inline uint16_t Fp32ToBf16(float f) noexcept {
     uint32_t u;
     std::memcpy(&u, &f, sizeof(float));
     uint32_t lsb = (u >> 16) & 1;
@@ -132,12 +138,12 @@ inline uint16_t Fp32ToBf16(float f) noexcept {
  * 整数运算表达同一舍入语义；量化域 |x| 有界（|x/scale| 至多百余量级），
  * float 24 位尾数内整数 cast 精确，与 std 版本逐位一致（tests/test_quant.py 锁定）。
  */
-inline int32_t FloorToInt(float v) noexcept {
+__aicore__ __host__ inline int32_t FloorToInt(float v) noexcept {
     int32_t t = static_cast<int32_t>(v);
     return (v < static_cast<float>(t)) ? (t - 1) : t;
 }
 
-inline int8_t RoundHalfAwayFromZero(float val) noexcept {
+__aicore__ __host__ inline int8_t RoundHalfAwayFromZero(float val) noexcept {
     const bool neg = (val < 0.0f);
     const float abs_val = neg ? -val : val;
     int32_t rounded = FloorToInt(abs_val + 0.5f);
@@ -146,7 +152,7 @@ inline int8_t RoundHalfAwayFromZero(float val) noexcept {
     return static_cast<int8_t>(neg ? -rounded : rounded);
 }
 
-inline int8_t RoundNearestEven(float val) noexcept {
+__aicore__ __host__ inline int8_t RoundNearestEven(float val) noexcept {
     const int32_t lower = FloorToInt(val);
     const float frac = val - static_cast<float>(lower);
     int32_t result;
@@ -173,7 +179,7 @@ using sage_attn::FP8_E4M3_MAX;
  * IEEE 754 float32 到 FP8 e4m3fn 的精确位级 RNE + Satfinite 转换
  * （与 GPU cvt.rn.satfinite.e4m3 逐位一致，全仓唯一定义点，禁止外部别名）
  */
-inline uint8_t FloatToE4m3fn(float f) noexcept {
+__aicore__ __host__ inline uint8_t FloatToE4m3fn(float f) noexcept {
     if (f != f) return 0x7f;  // NaN（设备侧无 std::isnan，位比较等价）
     if (f > FP8_E4M3_MAX) f = FP8_E4M3_MAX;
     if (f < -FP8_E4M3_MAX) f = -FP8_E4M3_MAX;
@@ -241,7 +247,7 @@ inline uint8_t FloatToE4m3fn(float f) noexcept {
 /**
  * FP8 e4m3fn 到 float32 的精确解码（PV 孪生反量化与单测使用）
  */
-inline float E4m3fnToFloat(uint8_t v) noexcept {
+__aicore__ __host__ inline float E4m3fnToFloat(uint8_t v) noexcept {
     const uint32_t sign = (v >> 7) & 0x1;
     const uint32_t exp = (v >> 3) & 0xf;
     const uint32_t mant = v & 0x7;
@@ -336,30 +342,34 @@ static_assert(V_PERM_PATTERN[V_PERM_INV_PATTERN[3]] == 3, "V perm inverse must b
 /**
  * 输入数据读取抽象与减法模式对齐
  */
+// Reader 方法与上方转换函数同为 __aicore__（2026-10-03 随 quant 层设备化标注补齐）：
+// bisheng 对 TU 内未引用的 inline 函数体也做双 pass 语义检查，host 语境方法调用
+// __aicore__ 函数会报 "call to __aicore__ function from __host__ function"。
+// 宿主 TU（g++/clang++，__aicore__ 展开为空）不受影响。
 template <typename T>
 struct ElementReader {
-    static inline float Read(const T* ptr, size_t idx) noexcept {
+    static inline __aicore__ float Read(const T* ptr, size_t idx) noexcept {
         return static_cast<float>(ptr[idx]);
     }
-    static inline float Sub(float a, float b) noexcept {
+    static inline __aicore__ float Sub(float a, float b) noexcept {
         return a - b;
     }
 };
 
 struct HalfReader {
-    static inline float Read(const uint16_t* ptr, size_t idx) noexcept {
+    static inline __aicore__ float Read(const uint16_t* ptr, size_t idx) noexcept {
         return Fp16ToFp32(ptr[idx]);
     }
-    static inline float Sub(float a, float b) noexcept {
+    static inline __aicore__ float Sub(float a, float b) noexcept {
         return Fp16ToFp32(Fp32ToFp16(a - b));
     }
 };
 
 struct Bf16Reader {
-    static inline float Read(const uint16_t* ptr, size_t idx) noexcept {
+    static inline __aicore__ float Read(const uint16_t* ptr, size_t idx) noexcept {
         return Bf16ToFp32(ptr[idx]);
     }
-    static inline float Sub(float a, float b) noexcept {
+    static inline __aicore__ float Sub(float a, float b) noexcept {
         return Bf16ToFp32(Fp32ToBf16(a - b));
     }
 };

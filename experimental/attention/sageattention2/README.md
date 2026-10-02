@@ -81,7 +81,7 @@ bash build.sh --pkg --experimental --soc=ascend950 --vendor_name=customize --ops
 - `SAGEATTN_ALLOW_CPU_STUB`：允许 CPU 参考回退（语义见上）
 - `SAGEATTN_NUM_CORES`：Host Tiling 参与调度的 AI Core 数覆盖（如 `28` 用于减配拓扑，实现见 `./aclnn/sage_attn_host_tiling.h` 的 `GetHardwareCoreNum`）
 - `SAGEATTN_BUILD_VERBOSE`：置 `1` 时输出 C++ 扩展编译日志
-- `SAGE_OPAPI_LIBRARY` / `FIA_OPAPI_LIBRARY` / `SAGE_ABI_VERSION=pr12430`：基准工具 dlsym 外部算子库时的路径与 ABI 开关（仅 `./benchmarks/` 使用）
+- `SAGE_OPAPI_LIBRARY` / `FIA_OPAPI_LIBRARY`：基准工具 dlsym 外部算子库时的路径（仅 `./benchmarks/` 使用）
 
 ## 适用边界
 

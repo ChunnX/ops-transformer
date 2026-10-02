@@ -173,10 +173,6 @@ struct __attribute__((packed, aligned(32))) SageAttention2TilingData {
     uint8_t reserved[4];
 
     // 便捷访问辅助函数
-    uint32_t GetGqaRatio() const noexcept {
-        return (hkv > 0) ? (hq / hkv) : 1;
-    }
-
     bool IsCausal() const noexcept {
         return is_causal != 0;
     }
@@ -187,10 +183,6 @@ struct __attribute__((packed, aligned(32))) SageAttention2TilingData {
 
     bool IsSmoothV() const noexcept {
         return smooth_v != 0;
-    }
-
-    bool IsMerge() const noexcept {
-        return is_merge != 0;
     }
 
     bool IsHND() const noexcept {
@@ -205,9 +197,6 @@ struct __attribute__((packed, aligned(32))) SageAttention2TilingData {
         return qk_quant_gran == QUANT_GRAN_PER_WARP;
     }
 
-    bool EnableDieAffinity() const noexcept {
-        return enable_die_affinity != 0;
-    }
 };
 
 // 静态断言验证结构体大小和对齐属性

@@ -149,24 +149,33 @@ static ge::graphStatus TilingSageAttention2(gert::TilingContext *context)
         return ge::GRAPH_FAILED;
     }
 
-    // 标准 tiling 序列化：写入 RawTilingData 并回填数据长度
+    // blockDim 以平台实测 AIC 数封顶（DEFECT-A5-7：28 核减配拓扑防超订；
+    // CompileInfo/platform 为权威源，env 覆盖仅供自动化测试）。
+    // DEFECT-A6-4：封顶必须在序列化之前——原顺序先 memcpy 后钳制，RawTilingData
+    // 携带未钳制的 core_num_used 而 blockDim 用钳制值：28 核减配拓扑（aic=28、
+    // 闭式算得 32）下 kernel 按 tiling 的 32 核推进波次而仅 28 核在位，波次空间中
+    // 映射到物理核 28..31 的虚拟任务无核执行，对应 (b,hkv,q_blk) 输出块静默缺失。
+    if (context->GetPlatformInfo() != nullptr) {
+        const uint32_t aic = platform_ascendc::PlatformAscendC(context->GetPlatformInfo())
+                                 .GetCoreNumAic();
+        if (aic > 0 && aic < tiling_data.core_num_used) {
+            tiling_data.core_num_used = aic;
+            // cores_per_die 契约定义为 core_num_used / die_num（tiling.h 注释），
+            // 随钳制联动，避免序列化出与 core_num_used 矛盾的亲和元数据
+            tiling_data.cores_per_die =
+                (aic >= sage_attn::ATLAS_950_DIE_NUM) ? (aic / sage_attn::ATLAS_950_DIE_NUM) : aic;
+        }
+    }
+    context->SetBlockDim(tiling_data.core_num_used);
+
+    // 标准 tiling 序列化：写入 RawTilingData 并回填数据长度（须在全部钳制之后，
+    // 保证下发位元与 SetBlockDim 一致）
     auto *raw_tiling = context->GetRawTilingData();
     if (raw_tiling->GetData() == nullptr || raw_tiling->GetCapacity() < sizeof(tiling_data)) {
         return ge::GRAPH_FAILED;
     }
     std::memcpy(raw_tiling->GetData(), &tiling_data, sizeof(tiling_data));
     raw_tiling->SetDataSize(sizeof(tiling_data));
-
-    // blockDim 以平台实测 AIC 数封顶（DEFECT-A5-7：28 核减配拓扑防超订；
-    // CompileInfo/platform 为权威源，env 覆盖仅供自动化测试）
-    if (context->GetPlatformInfo() != nullptr) {
-        const uint32_t aic = platform_ascendc::PlatformAscendC(context->GetPlatformInfo())
-                                 .GetCoreNumAic();
-        if (aic > 0 && aic < tiling_data.core_num_used) {
-            tiling_data.core_num_used = aic;
-        }
-    }
-    context->SetBlockDim(tiling_data.core_num_used);
 
     // TilingKey：运行时模式编码（gran×accum×layout×causal×pad），kernel 侧运行时字段
     // 消费；编译期模板特化（ASCENDC_TPL_ARGS_DECL）待 dtype 分裂时再引入（M5）。
@@ -175,7 +184,7 @@ static ge::graphStatus TilingSageAttention2(gert::TilingContext *context)
                                 ((tiling_data.d_pad == 128u ? 1u : 0u) << 16);
     context->SetTilingKey(static_cast<uint64_t>(tiling_key));
 
-    // SyncAll/三段式调度要求 MIX 1:2 全网格驻留（竞品同款口径）
+    // SyncAll/三段式调度要求 MIX 1:2 全网格驻留
     context->SetScheduleMode(1);
 
     size_t *workspaces = context->GetWorkspaceSizes(1);
@@ -195,7 +204,7 @@ static ge::graphStatus TilingSageAttention2(gert::TilingContext *context)
 } // namespace
 
 /**
- * canonical 注册（对齐仓内规范与竞品形态）：
+ * canonical 注册（对齐仓内规范）：
  * - Tiling：闭式计算 + RawTilingData 序列化 + TilingKey/ScheduleMode/Workspace 元信息；
  * - TilingParse<CompileInfo>：离线期固化 AIC/AIV 核数，运行时免 torch 初始化查询。
  */

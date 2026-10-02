@@ -68,13 +68,15 @@ constexpr float MIN_FLOAT_VAL = -3.402823466e+38F;  // -FLT_MAX，float 最小�
  * exp2 域 Online Softmax 状态描述符
  */
 struct OnlineSoftmaxState {
-    float m_run;       // running max（exp2 域当前全局最大值）
-    float d_run;       // running denominator（exp2 域分母累加和）
-    float m_cur;       // 当前分块的局部最大值
-    float d_cur;       // 当前分块的局部 exp2 和
-    float m_scale;     // 上一次执行 O 累加器重缩放的锚点最大值
-    float lse;         // 当前维护的 exp2 域 LSE (log-sum-exp)
-    bool need_rescale; // 本轮是否需要对 O 主累加器执行 rescale
+    // NSDMI 缺省初始化（收敛轮 B/STYLE-8）：设备分支 row_states_ 数组构造后
+    // 不经 Reset 也无未定值读取；Reset 语义与缺省值一致
+    float m_run = MIN_FLOAT_VAL;       // running max（exp2 域当前全局最大值）
+    float d_run = 0.0f;                // running denominator（exp2 域分母累加和）
+    float m_cur = MIN_FLOAT_VAL;       // 当前分块的局部最大值
+    float d_cur = 0.0f;                // 当前分块的局部 exp2 和
+    float m_scale = MIN_FLOAT_VAL;     // 上一次执行 O 累加器重缩放的锚点最大值
+    float lse = MIN_FLOAT_VAL;         // 当前维护的 exp2 域 LSE (log-sum-exp)
+    bool need_rescale = true;          // 本轮是否需要对 O 主累加器执行 rescale
 
     __aicore__ void Reset() {
         m_run = MIN_FLOAT_VAL;

@@ -274,7 +274,7 @@ inline int RunSequential(const TwinIo& io, TwinQuantDump* dump = nullptr) {
         }
     }
 
-    // 2. smooth_k 的 km（fp32 累加求均值后舍入回输入 dtype，对齐 torch.mean 行为）
+    // 2. smooth_k 的 km（double 累加求均值后舍入回输入 dtype，对齐 torch.mean 行为；收敛轮 B/STYLE-9 注释随实修正）
     std::vector<float> km;
     if (smooth_k) {
         if (io.key_mean != nullptr) {

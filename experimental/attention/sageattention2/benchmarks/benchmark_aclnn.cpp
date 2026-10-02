@@ -17,7 +17,7 @@
 // - Seamless mock/simulation mode when compiling on development hosts without physical Ascend NPU / CANN toolkit.
 //   Simulation runs emit NaN speedup fields, verdict "SIMULATION" and exit code 2 so synthetic
 //   latencies can never be mistaken for real-device acceptance evidence.
-// - Structured JSON report generation matching task/06_benchmark.md specification and competitor benchmark format.
+// - Structured JSON report generation matching task/06_benchmark.md specification and benchmark format.
 
 #include <algorithm>
 #include <chrono>
@@ -479,23 +479,6 @@ typedef aclnnStatus (*SageNativePrepareFn)(
     uint64_t *workspaceSize,
     aclOpExecutor **executor);
 
-typedef aclnnStatus (*SagePr12430PrepareFn)(
-    const aclTensor *q,
-    const aclTensor *k,
-    const aclTensor *v,
-    const char *tensorLayout,
-    bool isCausal,
-    const char *qkQuantGran,
-    double smScale,
-    const char *pvAccumDtype,
-    bool smoothK,
-    bool smoothV,
-    bool returnLse,
-    const aclTensor *out,
-    const aclTensor *lse,
-    uint64_t *workspaceSize,
-    aclOpExecutor **executor);
-
 typedef aclnnStatus (*SageRunFn)(
     void *workspace,
     uint64_t workspaceSize,
@@ -706,7 +689,6 @@ struct OpDispatcher {
     std::string fiaLibPath{"built-in / linked"};
 
     SageNativePrepareFn sageNativePrepare{nullptr};
-    SagePr12430PrepareFn sagePr12430Prepare{nullptr};
     SageRunFn sageRun{nullptr};
 
     FiaV5PrepareFn fiaPrepare{nullptr};
@@ -714,14 +696,8 @@ struct OpDispatcher {
     DestroyExecutorFn destroyExecutorFn{nullptr};
 
     bool isSimulation{false};
-    bool isPr12430Abi{false};
 
     OpDispatcher() {
-        const char *abiEnv = std::getenv("SAGE_ABI_VERSION");
-        if (abiEnv && std::string(abiEnv) == "pr12430") {
-            isPr12430Abi = true;
-        }
-
         const char *sageLibEnv = std::getenv("SAGE_OPAPI_LIBRARY");
         if (sageLibEnv && sageLibEnv[0] != '\0') {
             sageLib = dlopen(sageLibEnv, RTLD_NOW | RTLD_GLOBAL);
@@ -750,11 +726,7 @@ struct OpDispatcher {
         void *symFiaPrep = dlsym(searchFia, "aclnnFusedInferAttentionScoreV5GetWorkspaceSize");
         void *symFiaRun = dlsym(searchFia, "aclnnFusedInferAttentionScoreV5");
 
-        if (isPr12430Abi) {
-            sagePr12430Prepare = reinterpret_cast<SagePr12430PrepareFn>(symSagePrep);
-        } else {
-            sageNativePrepare = reinterpret_cast<SageNativePrepareFn>(symSagePrep);
-        }
+        sageNativePrepare = reinterpret_cast<SageNativePrepareFn>(symSagePrep);
         sageRun = reinterpret_cast<SageRunFn>(symSageRun);
         fiaPrepare = reinterpret_cast<FiaV5PrepareFn>(symFiaPrep);
         fiaRun = reinterpret_cast<FiaV5RunFn>(symFiaRun);
@@ -770,7 +742,7 @@ struct OpDispatcher {
         // aclDestroyAclOpExecutor; simulation executors are plain heap objects and are deleted.
 
 #ifndef SAGE_BENCH_REAL_ACL
-        if (!sageNativePrepare && !sagePr12430Prepare) {
+        if (!sageNativePrepare) {
             sageNativePrepare = &MockSageAttention2GetWorkspaceSize;
             sageRun = &MockSageAttention2;
             isSimulation = true;
@@ -784,7 +756,10 @@ struct OpDispatcher {
         }
 #endif
 
-        if ((!sageNativePrepare && !sagePr12430Prepare) || !sageRun) {
+        if (!sageNativePrepare || !sageRun) {
+            throw std::runtime_error("Failed to resolve SageAttention2 symbols via dlsym or mocks");
+        }
+        if (!fiaPrepare || !fiaRun) {
             throw std::runtime_error("Failed to resolve SageAttention2 symbols via dlsym or mocks");
         }
         if (!fiaPrepare || !fiaRun) {
@@ -879,7 +854,7 @@ struct BenchmarkConfig {
 };
 
 void PrintUsage(const char *prog) {
-    std::cout << "Usage (positional, compatible with competitor branch):\n"
+    std::cout << "Usage (positional, compatible mode):\n"
               << "  " << prog << " SEQ BATCH KV_HEADS BF16 CAUSAL WARMUP_CALLS REPEATS OUTPUT_JSON\n\n"
               << "Usage (named flags):\n"
               << "  " << prog << " [--case P-01..P-07] [--seq <int>] [--batch <int>] [--kv-heads <int>]\n"
@@ -1117,23 +1092,13 @@ int main(int argc, char **argv) {
 
         auto prepareOp = [&](bool isSage, uint64_t &wsBytes, aclOpExecutor *&exec) {
             if (isSage) {
-                if (dispatcher.isPr12430Abi) {
-                    char layout[] = "HND";
-                    char gran[] = "per_token";
-                    char accum[] = "fp32+fp32";
-                    CheckAcl(dispatcher.sagePr12430Prepare(q.handle, k.handle, v.handle, layout, cfg.causal, gran,
-                                                          smScale, accum, true, cfg.smoothV, false, out.handle, nullptr,
-                                                          &wsBytes, &exec),
-                             "SageAttention2 PR12430 GetWorkspaceSize");
-                } else {
-                    int64_t qkQuantGran = 3;  // sage_attn::QUANT_GRAN_PER_THREAD
-                    int64_t pvAccumDtype = 2; // sage_attn::PV_ACCUM_FP32_FP16
-                    int64_t layout = 1;       // sage_attn::LAYOUT_HND
-                    CheckAcl(dispatcher.sageNativePrepare(q.handle, k.handle, v.handle, nullptr, nullptr, smScale,
-                                                         qkQuantGran, pvAccumDtype, cfg.causal, layout, false,
-                                                         cfg.smoothV, out.handle, nullptr, &wsBytes, &exec),
-                             "SageAttention2 Native GetWorkspaceSize");
-                }
+                int64_t qkQuantGran = 3;  // sage_attn::QUANT_GRAN_PER_THREAD
+                int64_t pvAccumDtype = 2; // sage_attn::PV_ACCUM_FP32_FP16
+                int64_t layout = 1;       // sage_attn::LAYOUT_HND
+                CheckAcl(dispatcher.sageNativePrepare(q.handle, k.handle, v.handle, nullptr, nullptr, smScale,
+                                                     qkQuantGran, pvAccumDtype, cfg.causal, layout, false,
+                                                     cfg.smoothV, out.handle, nullptr, &wsBytes, &exec),
+                         "SageAttention2 Native GetWorkspaceSize");
             } else {
                 // Exact [sq, sk] causal mask with sparseMode=0 keeps the FIA baseline on the same
                 // mask semantics as the candidate operator (sparseMode=2 would ignore the mask).

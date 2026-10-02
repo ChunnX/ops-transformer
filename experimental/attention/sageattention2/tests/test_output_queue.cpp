@@ -146,7 +146,7 @@ void TestPairwiseFusionNumericalFidelity() {
     std::vector<float> acc_queue(TILE_SIZE, 0.0f);
     OutputRetireQueue<float, 3> queue;
     // 将 tau 设置为 0.0f，保证每次 max 增大都严格与基准对齐 rescale 算子
-    queue.Init(acc_queue.data(), TILE_SIZE, PV_ACCUM_FP32, 0.0f, 8.807355f);
+    queue.Init(acc_queue.data(), TILE_SIZE, PV_ACCUM_FP32, 0.0f);
 
     float m_prev = m_seq[0];
     for (uint32_t t = 0; t < NUM_TILES; ++t) {
@@ -357,8 +357,6 @@ void TestSFP8OffsetAndFinalize() {
 
     OutputRetireQueue<float, 3> q;
     q.Init(acc.data(), TILE_SIZE, PV_ACCUM_FP32, 6.0f, 8.807355f);
-
-    assert(std::fabs(q.GetSFP8Offset() - 8.807355f) < 1e-5f);
 
     q.Push(0, tile0.data(), 1.0f, 0.0f, 0.0f);
     q.Push(1, tile1.data(), 1.0f, 0.0f, 0.0f);

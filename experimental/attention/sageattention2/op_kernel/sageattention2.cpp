@@ -30,6 +30,7 @@
 #include "../sageattn_fp8/catlass/sage_resource.hpp"
 #include "../sageattn_fp8/catlass/sage_qk_mmad.hpp"
 #include "../sageattn_fp8/catlass/sage_pv_mmad.hpp"
+#include "sage_device_vf.h"
 
 // 量化/转换原语唯一定义点（quant_common.h 自 2026-10-03 起为 device-safe 实现，
 // 不依赖 std::floor/std::nearbyint，设备分支可安全 include）：
@@ -41,6 +42,7 @@
 #include <cstddef>
 #include <cmath>
 #include <algorithm>
+#include <memory>
 
 // KT/宿主标量基线（Step-C）唯一真值路径：QK 反量化 logit、块内 exp2 和、P 量化与
 // PV 行累加均经 twin_reference.h 单点 include 复用（设计决策 5：语义公式禁止在内核
@@ -193,20 +195,7 @@ struct SimMemory {
  */
 class SageAttnKernel {
 public:
-    __aicore__ SageAttnKernel() {
-#if !SAGE_ATTN_DEVICE_COMPILE
-        sim_mem_ = nullptr;
-#endif
-    }
 
-    __aicore__ ~SageAttnKernel() {
-#if !SAGE_ATTN_DEVICE_COMPILE
-        if (sim_mem_ != nullptr) {
-            delete sim_mem_;
-            sim_mem_ = nullptr;
-        }
-#endif
-    }
 
     /**
      * 核心初始化逻辑
@@ -230,7 +219,8 @@ public:
         lse_correction_gm_ = lseCorrection;
         out_gm_ = attentionOut;
         lse_gm_ = softmaxLse;
-        workspace_gm_ = workspace;
+        workspace_gm_ = workspace; // 签名契约占位：用户区经 GetUserWorkspace 旁路直达 kernel 入口，
+                                   // 成员保留以对齐设备入口形参（收敛轮 B/STYLE-15 登记）
 
         // 修复记录：GetBlockIdx/GetSubBlockIdx 设备端返回 int64_t，显式收窄避免隐式截断
         core_idx_ = static_cast<uint32_t>(GetBlockIdx());
@@ -295,7 +285,8 @@ public:
 
 #if !SAGE_ATTN_DEVICE_COMPILE
         if (sim_mem_ == nullptr) {
-            sim_mem_ = new SimMemory();
+            // 独占所有权（收敛轮 B/STYLE-6）：宿主仿真缓冲随核对象生命周期释放
+            sim_mem_ = std::make_unique<SimMemory>();
         }
 #endif
     }
@@ -426,15 +417,14 @@ private:
         Catlass::SageAttn::SageQkMmad<> qk_mmad;
         Catlass::SageAttn::SagePvMmad<> pv_mmad;
 
-        // 初始化 3 槽延迟输出退休队列（宽流水与成对融合延迟写回，超越竞品 PR 12430）
+        // 初始化 3 槽延迟输出退休队列（宽流水与成对融合延迟写回）
         uint32_t tile_size = cur_q_len_ * d_;
         pv_mmad.InitRetireQueue(
             nullptr, // 硬件执行时通过 UB 偏移管理，单测与仿真直连内存
             tile_size,
             tiling_->pv_accum_dtype,
-            0.0f, // 448· 放大域禁 skip-scale（DEFECT-A4-2）：锚点滞后 δ 时 P 行 max
-                  // = 2^δ·448 溢出 e4m3，成对归约遇任何 m 差都必须重缩放
-            s_fp8_offset_ // 指数偏置域（基线 0，语义见 Init 注释）
+            0.0f // 448· 放大域禁 skip-scale（DEFECT-A4-2）：锚点滞后 δ 时 P 行 max
+                 // = 2^δ·448 溢出 e4m3，成对归约遇任何 m 差都必须重缩放
         );
 
         // 进域预置（task/02_code.md B-2 init 纪律）：Cube 是 KV 槽与 S 槽的消费者，
@@ -680,6 +670,10 @@ private:
                 }
             }
         }
+#else
+        for (uint32_t r = 0; r < TotalRows() && r < kKernelMaxRows; ++r) {
+            row_states_[r].Reset();
+        }
 #endif
         uint32_t total_kv_blocks = (sk_ + block_n_ - 1) / block_n_;
 
@@ -696,13 +690,14 @@ private:
             CrossCoreWait(CrossCoreDirection::CUBE_TO_VEC1, CrossCoreFlags::FLAG_QK_P_READY);
 
 #if !SAGE_ATTN_DEVICE_COMPILE
+            // 1.5 宿主整段时序修复（契约冲突记录见 RestageKvBlockHost）：V0 整段预取会
+            //     在 k ≥ 2 时把同奇偶槽覆写为尚未消费的新块，V1 消费前重摆当前块，
+            //     恢复设备分支"V0 产出→消费"的逐拍序（幂等，逐位一致）。
+            RestageKvBlockHost(k);
+#endif
+
             // 2. 逐行块内 logit 反量化/掩码、行 max 与 exp2 和（twin 5.1/5.2 单点），
             //    随后按 twin 5.3 步进行级状态并重缩放 O 行。
-            //    锚点纪律记录（设计决策 1/3 取舍）：Step 的 skip-scale（tau=6）机制保持
-            //    可用，但本基线逐块以 is_force_rescale=true 强制重缩放——孪生/golden 的
-            //    P 量化轨迹按块锚定（m_scale 恒等于 m_run），skip 滞后锚会让 P 偏离
-            //    golden 量化网格，且 448· 放大域在锚差 δ>0 时溢出 e4m3（2^δ·448），
-            //    二者不可兼得；Step-C 以孪生逐位一致为准，skip-scale 留给向量化 pass。
             for (uint32_t r = 0; r < TotalRows() && r < kKernelMaxRows; ++r) {
                 float cur_max = MIN_FLOAT_VAL;
                 float cur_sum = 0.0f;
@@ -717,7 +712,6 @@ private:
                     RescaleAccumulator(rescale_factor, r);
                 }
             }
-#endif
 
             // 缓冲回收握手：同奇偶 S 槽须待 Cube 消费完上一轮（k-2）后方可覆写（宿主为空操作）
             CrossCoreWait(CrossCoreDirection::CUBE_TO_VEC1, s_free);
@@ -770,7 +764,39 @@ private:
     __aicore__ void LoadAndQuantizeQ(__gm__ uint8_t *q_src, uint32_t m, uint32_t d)
     {
 #if SAGE_ATTN_DEVICE_COMPILE
-        (void)q_src; (void)m; (void)d;
+        if (q_src == nullptr) return;
+        (void)m;
+        const uint32_t total_rows = TotalRows();
+        const int64_t q_stride_h = (tiling_->tensor_layout == LAYOUT_HND)
+                                       ? static_cast<int64_t>(sq_) * d_ : d_;
+        const int64_t q_stride_s = (tiling_->tensor_layout == LAYOUT_HND)
+                                       ? d_ : static_cast<int64_t>(hq_) * d_;
+        LocalTensor<half> ub_in(TPosition::VECCALC, Catlass::SageAttn::Vector0UbBudget::GM_INPUT_PING_OFFSET, d);
+        LocalTensor<int8_t> ub_out(TPosition::VECCALC, Catlass::SageAttn::Vector0UbBudget::NZ_OUTPUT_OFFSET, d);
+        LocalTensor<int8_t> l1_q(TPosition::A1, tiling_->l1_q_offset, total_rows * d);
+
+        for (uint32_t r = 0; r < total_rows && r < kKernelMaxRows; ++r) {
+            const uint32_t g = r / cur_q_len_;
+            const uint32_t i = r % cur_q_len_;
+            const int64_t row_gm_offset = (g * q_stride_h + static_cast<int64_t>(i) * q_stride_s) * sizeof(half);
+            GlobalTensor<half> gm_row;
+            gm_row.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(q_src + row_gm_offset));
+
+            DataCopy(ub_in, gm_row, d);
+            PipeBarrier<PIPE_V>();
+
+            dev_vf::QuantizeRowInt8VF(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
+                                      reinterpret_cast<__ubuf__ int8_t*>(ub_out.GetPhyAddr()),
+                                      d);
+
+            PipeBarrier<PIPE_V>();
+            DataCopyParams cp;
+            cp.blockCount = 1;
+            cp.blockLen = d / 32;
+            cp.srcStride = 0;
+            cp.dstStride = 0;
+            DataCopy(l1_q[r * d], ub_out, cp);
+        }
 #else
         if (sim_mem_ == nullptr || q_src == nullptr) {
             return;
@@ -870,7 +896,45 @@ private:
         uint32_t d)
     {
 #if SAGE_ATTN_DEVICE_COMPILE
-        (void)k_src; (void)km_ptr; (void)l1_dst_addr; (void)block_k; (void)d;
+        if (k_src == nullptr) return;
+        const int64_t k_stride_s = (tiling_->tensor_layout == LAYOUT_HND)
+                                       ? d_ : static_cast<int64_t>(hkv_) * d_;
+        LocalTensor<half> ub_in(TPosition::VECCALC, Catlass::SageAttn::Vector0UbBudget::GM_INPUT_PING_OFFSET, d);
+        LocalTensor<float> ub_km(TPosition::VECCALC, Catlass::SageAttn::Vector0UbBudget::QUANT_WORKSPACE_OFFSET, d);
+        LocalTensor<int8_t> ub_out(TPosition::VECCALC, Catlass::SageAttn::Vector0UbBudget::NZ_OUTPUT_OFFSET, d);
+        LocalTensor<int8_t> l1_k(TPosition::B1, l1_dst_addr, block_n_ * d);
+
+        const uint32_t has_km = (km_ptr != nullptr) ? 1u : 0u;
+        if (has_km) {
+            GlobalTensor<float> gm_km;
+            gm_km.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(const_cast<__gm__ float*>(km_ptr)));
+            DataCopy(ub_km, gm_km, d);
+        }
+
+        for (uint32_t j = 0; j < block_n_; ++j) {
+            if (j < block_k) {
+                const int64_t row_gm_offset = static_cast<int64_t>(j) * k_stride_s * sizeof(half);
+                GlobalTensor<half> gm_row;
+                gm_row.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(k_src + row_gm_offset));
+                DataCopy(ub_in, gm_row, d);
+                PipeBarrier<PIPE_V>();
+
+                dev_vf::QuantizeKeyRowInt8VF(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
+                                             reinterpret_cast<__ubuf__ float*>(ub_km.GetPhyAddr()),
+                                             reinterpret_cast<__ubuf__ int8_t*>(ub_out.GetPhyAddr()),
+                                             d, has_km);
+            } else {
+                Duplicate(ub_out, int8_t(0), d);
+            }
+
+            PipeBarrier<PIPE_V>();
+            DataCopyParams cp;
+            cp.blockCount = 1;
+            cp.blockLen = d / 32;
+            cp.srcStride = 0;
+            cp.dstStride = 0;
+            DataCopy(l1_k[j * d], ub_out, cp);
+        }
 #else
         if (sim_mem_ == nullptr || k_src == nullptr) {
             return;
@@ -965,7 +1029,36 @@ private:
         uint32_t d)
     {
 #if SAGE_ATTN_DEVICE_COMPILE
-        (void)v_src; (void)l1_dst_addr; (void)block_k; (void)d;
+        if (v_src == nullptr) return;
+        const int64_t v_stride_s = (tiling_->tensor_layout == LAYOUT_HND)
+                                       ? d_ : static_cast<int64_t>(hkv_) * d_;
+        LocalTensor<half> ub_in(TPosition::VECCALC, Catlass::SageAttn::Vector0UbBudget::GM_INPUT_PING_OFFSET, d);
+        LocalTensor<float8_e4m3_t> ub_out(TPosition::VECCALC, Catlass::SageAttn::Vector0UbBudget::NZ_OUTPUT_OFFSET, d);
+        LocalTensor<float8_e4m3_t> l1_v(TPosition::B1, l1_dst_addr, block_n_ * d);
+
+        for (uint32_t j = 0; j < block_n_; ++j) {
+            if (j < block_k) {
+                const int64_t row_gm_offset = static_cast<int64_t>(j) * v_stride_s * sizeof(half);
+                GlobalTensor<half> gm_row;
+                gm_row.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(v_src + row_gm_offset));
+                DataCopy(ub_in, gm_row, d);
+                PipeBarrier<PIPE_V>();
+
+                dev_vf::QuantizeValueRowFp8VF(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
+                                             reinterpret_cast<__ubuf__ float8_e4m3_t*>(ub_out.GetPhyAddr()),
+                                             d);
+            } else {
+                Duplicate(ub_out.ReinterpretCast<int8_t>(), int8_t(0), d);
+            }
+
+            PipeBarrier<PIPE_V>();
+            DataCopyParams cp;
+            cp.blockCount = 1;
+            cp.blockLen = d / 32;
+            cp.srcStride = 0;
+            cp.dstStride = 0;
+            DataCopy(l1_v[j * d], ub_out, cp);
+        }
 #else
         if (sim_mem_ == nullptr || v_src == nullptr) {
             return;
@@ -1021,9 +1114,20 @@ private:
     __aicore__ void ComputeBlockMaxAndSum(uint32_t row, float &cur_max, float &cur_sum, uint32_t k_idx)
     {
 #if SAGE_ATTN_DEVICE_COMPILE
-        (void)row; (void)k_idx;
-        cur_max = 0.0f;
-        cur_sum = 1.0f;
+        (void)k_idx;
+        LocalTensor<float> ub_logits(TPosition::VECCALC,
+                                     Catlass::SageAttn::Vector1UbBudget::FIXPIPE_RECV_OFFSET + row * block_n_ * sizeof(float),
+                                     block_n_);
+        LocalTensor<float> ub_stats(TPosition::VECCALC,
+                                    Catlass::SageAttn::Vector1UbBudget::LSE_WORKSPACE_OFFSET,
+                                    128);
+        dev_vf::BlockMaxAndSumVF(reinterpret_cast<__ubuf__ float*>(ub_logits.GetPhyAddr()),
+                                 block_n_,
+                                 reinterpret_cast<__ubuf__ float*>(ub_stats.GetPhyAddr()));
+        SetFlag<HardEvent::V_S>(0);
+        WaitFlag<HardEvent::V_S>(0);
+        cur_max = ub_stats.GetValue(0);
+        cur_sum = ub_stats.GetValue(64);
 #else
         if (sim_mem_ == nullptr) {
             cur_max = 0.0f;
@@ -1085,7 +1189,11 @@ private:
     __aicore__ void RescaleAccumulator(float rescale_factor, uint32_t row)
     {
 #if SAGE_ATTN_DEVICE_COMPILE
-        (void)rescale_factor; (void)row;
+        LocalTensor<float> ub_accum(TPosition::VECCALC,
+                                    Catlass::SageAttn::Vector1UbBudget::O_ACCUM_OFFSET + row * d_ * sizeof(float),
+                                    d_);
+        dev_vf::RescaleAccumRowVF(reinterpret_cast<__ubuf__ float*>(ub_accum.GetPhyAddr()),
+                                  rescale_factor, d_);
 #else
         if (sim_mem_ == nullptr) {
             return;
@@ -1113,7 +1221,22 @@ private:
         bool is_ping)
     {
 #if SAGE_ATTN_DEVICE_COMPILE
-        (void)m_run; (void)sm_scale_log2e; (void)s_fp8_offset; (void)is_ping;
+        (void)m_run;
+        (void)sm_scale_log2e;
+        const uint32_t slot_offset = SoftmaxSlotOffset(is_ping);
+        const uint32_t rows = TotalRows();
+        for (uint32_t r = 0; r < rows && r < kKernelMaxRows; ++r) {
+            const float m_prime = row_states_[r].m_scale - s_fp8_offset;
+            LocalTensor<float> ub_logits(TPosition::VECCALC,
+                                         Catlass::SageAttn::Vector1UbBudget::FIXPIPE_RECV_OFFSET + r * block_n_ * sizeof(float),
+                                         block_n_);
+            LocalTensor<float8_e4m3_t> ub_out_p(TPosition::VECCALC,
+                                                slot_offset + r * block_n_ * sizeof(float8_e4m3_t),
+                                                block_n_);
+            dev_vf::SoftmaxProbRowVF(reinterpret_cast<__ubuf__ float*>(ub_logits.GetPhyAddr()),
+                                     reinterpret_cast<__ubuf__ float8_e4m3_t*>(ub_out_p.GetPhyAddr()),
+                                     m_prime, block_n_);
+        }
 #else
         if (sim_mem_ == nullptr) {
             return;
@@ -1134,6 +1257,60 @@ private:
     }
 
 #if !SAGE_ATTN_DEVICE_COMPILE
+    /**
+     * 7pre. V1（宿主串行仿真专属）：第 k 块 KV 的 L1 槽重摆（幂等）。
+     * 契约冲突记录（与 ProcessCube 头注同源的整段时序约束）：宿主按 ProcessVec0 →
+     * ProcessCube → ProcessVec1 整段执行，V0 会先把全部 KV 块写入 ping/pong 双槽，
+     * V1 才开始逐块消费——k ≥ 2 的块在消费前已被同奇偶槽覆写（跨核握手在宿主为
+     * 空操作，无法回压生产者），sk > 2·block_n 即触发。2026-10-03 R9 新增的
+     * tests/test_kernel_twin.py 对 golden TC-05/TC-07/P-01 的交叉验证实测捕获
+     * （既有 KT 用例 sk ≤ 128 恰好为单周期 ping-pong，未暴露）；设备分支延迟一拍
+     * 流水逐拍交错，不存在该问题。V1 消费前对当前块重摆：同 GM 输入走同一量化
+     * 轨迹（K 组清零→amax→定档→量化、V 首块全序列 amax 预扫→per-channel 量化
+     * 均幂等），逐位一致，仅宿主分支生效。
+     */
+    __aicore__ void RestageKvBlockHost(uint32_t k)
+    {
+        if (sim_mem_ == nullptr) {
+            return;
+        }
+        cur_k_ = k;
+        cur_k_start_ = k * block_n_;
+        const uint32_t cur_block_k = CurBlockK();
+        const bool is_ping = ((k % 2) == 0);
+        const uint32_t l1_dst_offset = is_ping
+                                           ? Catlass::SageAttn::L1DoubleBankContract::KV_PING_OFFSET
+                                           : Catlass::SageAttn::L1DoubleBankContract::KV_PONG_OFFSET;
+
+        const int64_t b_idx = static_cast<int64_t>(cur_b_);
+        const int64_t hkv_idx = static_cast<int64_t>(cur_hkv_);
+        const int64_t sk_start = static_cast<int64_t>(cur_k_start_);
+
+        int64_t kv_stride_b, kv_stride_h, kv_stride_s;
+        if ((tiling_->tensor_layout == LAYOUT_HND)) {
+            kv_stride_b = static_cast<int64_t>(hkv_) * sk_ * d_;
+            kv_stride_h = static_cast<int64_t>(sk_) * d_;
+            kv_stride_s = d_;
+        } else {
+            kv_stride_b = static_cast<int64_t>(sk_) * hkv_ * d_;
+            kv_stride_s = static_cast<int64_t>(hkv_) * d_;
+            kv_stride_h = d_;
+        }
+
+        const int64_t kv_gm_offset = b_idx * kv_stride_b + hkv_idx * kv_stride_h + sk_start * kv_stride_s;
+        const __gm__ float *km_ptr = nullptr;
+        if ((tiling_->smooth_k != 0) && key_mean_gm_ != nullptr) {
+            const int64_t km_offset = (b_idx * static_cast<int64_t>(hkv_) + hkv_idx) * d_;
+            km_ptr = reinterpret_cast<const __gm__ float *>(key_mean_gm_ + km_offset * sizeof(float));
+        }
+
+        QuantizeAndStageKey(key_gm_ + kv_gm_offset * sizeof(uint16_t), km_ptr, l1_dst_offset,
+                            cur_block_k, d_);
+        QuantizeAndStageValue(value_gm_ + kv_gm_offset * sizeof(uint16_t),
+                              l1_dst_offset + Catlass::SageAttn::L1DoubleBankContract::KV_V_SUB_OFFSET,
+                              cur_block_k, d_);
+    }
+
     /**
      * 7a. V1（KT 标量基线专属）：P 槽写出后的 PV 累加，经 twin::QuantizePAndAccumulatePvRow
      * 单点执行（5.4 唯一定义）：fp32 档逐 token 直累；fp32+fp16 档按 k_step=16 子块在
@@ -1158,7 +1335,7 @@ private:
                 &sim_mem_->logits[static_cast<size_t>(r) * block_n_], cur_k_start_,
                 cur_k_start_, cur_k_start_ + block_k,
                 tiling_->is_causal != 0, token_q, m_prime,
-                fp16_accum, DEFAULT_K_STEP,
+                fp16_accum, k_step_, // tiling 驱动（收敛轮 B/STYLE-5：原 DEFAULT_K_STEP 旁路运行时字段）
                 [&](uint32_t j, uint32_t c) -> float {
                     const uint32_t jl = j - cur_k_start_;
                     const uint32_t slot = (jl / 16u) * 16u + quant::V_PERM_INV_PATTERN[jl % 16u];
@@ -1181,8 +1358,7 @@ private:
     __aicore__ void FinalizeAndStoreOutput(const OnlineSoftmaxState &state)
     {
         // 行级系数在下方循环内计算（state 仅为首行 API 兼容形参）
-        float inv_d = OnlineSoftmaxTransformer::GetFinalInvDenominator(state);
-        (void)inv_d;
+        // 行级系数在下方逐行循环内计算（state 仅为首行 API 兼容形参）
 
         int64_t b_idx = static_cast<int64_t>(cur_b_);
         int64_t hkv_idx = static_cast<int64_t>(cur_hkv_);
@@ -1199,7 +1375,45 @@ private:
             out_stride_h = d_;
         }
 
-#if !SAGE_ATTN_DEVICE_COMPILE
+#if SAGE_ATTN_DEVICE_COMPILE
+        if (out_gm_ == nullptr) return;
+        const bool is_smooth_k = (tiling_->smooth_k != 0);
+        LocalTensor<half> ub_half(TPosition::VECCALC, Catlass::SageAttn::Vector1UbBudget::FIXPIPE_RECV_OFFSET, d_);
+
+        for (uint32_t g = 0; g < gqa_ratio_; ++g) {
+            const int64_t hq_curr = hkv_idx * static_cast<int64_t>(gqa_ratio_) + g;
+            if (hq_curr >= hq_) break;
+
+            for (uint32_t i = 0; i < cur_q_len_; ++i) {
+                const uint32_t r = g * cur_q_len_ + i;
+                if (r >= kKernelMaxRows) break;
+                const float inv_row = OnlineSoftmaxTransformer::GetFinalInvDenominator(row_states_[r]);
+                const float lse_host = OnlineSoftmaxTransformer::ConvertLseToHost(
+                    row_states_[r].lse, tiling_->sm_scale_log2e * INV_LOG2E,
+                    0.0f, is_smooth_k, S_FP8_OFFSET + s_fp8_offset_);
+
+                LocalTensor<float> ub_o_row(TPosition::VECCALC,
+                                            Catlass::SageAttn::Vector1UbBudget::O_ACCUM_OFFSET + r * d_ * sizeof(float),
+                                            d_);
+                dev_vf::FinalizeRowVF(reinterpret_cast<__ubuf__ float*>(ub_o_row.GetPhyAddr()),
+                                     reinterpret_cast<__ubuf__ half*>(ub_half.GetPhyAddr()),
+                                     inv_row, tiling_->d_og);
+
+                const int64_t out_gm_offset =
+                    (b_idx * out_stride_b + hq_curr * out_stride_h +
+                     (sq_start + i) * out_stride_s) * sizeof(half);
+                GlobalTensor<half> gm_out;
+                gm_out.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(out_gm_ + out_gm_offset));
+                DataCopy(gm_out, ub_half, tiling_->d_og);
+
+                if (lse_gm_ != nullptr) {
+                    const int64_t lse_offset =
+                        ((b_idx * static_cast<int64_t>(hq_) + hq_curr) * sq_ + (sq_start + i)) * sizeof(float);
+                    *reinterpret_cast<__gm__ float*>(lse_gm_ + lse_offset) = lse_host;
+                }
+            }
+        }
+#else
         if (sim_mem_ == nullptr || out_gm_ == nullptr) {
             return;
         }
@@ -1234,16 +1448,14 @@ private:
                 }
             }
         }
-#else
-        (void)b_idx; (void)hkv_idx; (void)sq_start;
-        (void)out_stride_b; (void)out_stride_h; (void)out_stride_s;
 #endif
     }
 
     // 内部状态变量
     // 修复记录：tiling 指针必须保持 __gm__ 限定（入口 reinterpret_cast 不得丢弃地址空间属性）
 #if !SAGE_ATTN_DEVICE_COMPILE
-    SimMemory *sim_mem_{nullptr};
+    // owns；宿主仿真缓冲（收敛轮 B/STYLE-6 unique_ptr 化）
+    std::unique_ptr<SimMemory> sim_mem_{nullptr};
 #endif
     const SageAttention2TilingData *tiling_{nullptr};
     __gm__ uint8_t *query_gm_{nullptr};
@@ -1317,7 +1529,7 @@ extern "C" __global__ __aicore__ void sage_attention2(
     // opc autogen 按此顺序生成 launch 调用，缺参/错序报 "requires 8 arguments, but 9"）。
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
 
-    // canonical 注册三件套（对齐仓内规范与竞品形态；宿主/KT 分支为等价桩）：
+    // canonical 注册三件套（对齐仓内规范；宿主/KT 分支为等价桩）：
     // REGISTER_TILING_DEFAULT 登记 TilingData 类型；GET_TILING_DATA_WITH_STRUCT 把
     // GM tiling 一次性拷入核内结构体（免 __gm__ 逐字段远端读）；GetUserWorkspace
     // 取得跳过 CANN 系统 workspace 前缀后的用户区指针。

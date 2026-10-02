@@ -187,8 +187,18 @@ inline aclnnStatus ComputeHostTiling(
     }
     tiling_out.block_n = block_n;
 
+    // 运行时资源台账 fail-fast（RES-01，task/03_review.md 资源与同步粒度类）：
+    // O 累加器/S 双槽/L0C/L1 的足迹随 (gqa·m_per_core, block_n, d_pad) 变化，
+    // 必须在发射前拒绝越界分块——NPU 侧容量超限是无诊断的硬件异常（案例研究
+    // ascend-rs §6 UB 静默溢出事故），device static_assert 仅覆盖常量部分。
+    const uint32_t total_rows = m_per_core * gqa_ratio;
+    if (Catlass::SageAttn::SageResourceManager::InspectTilingPlan(total_rows, block_n, d_pad) !=
+        Catlass::SageAttn::FootprintViolation::kNone) {
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+
     // k_step：两级累加归约周期步长 (默认 16)
-    tiling_out.k_step = 16;
+    tiling_out.k_step = DEFAULT_K_STEP; // 唯一定义点 tiling.h（收敛轮 B/STYLE-5）
 
     // 9. 分核计算与 Split-KV 判定 (分核字段，20 字节)
     uint32_t hw_cores = GetHardwareCoreNum();

@@ -9,7 +9,7 @@
  */
 
 /**
- * canonical aclnn 两段式（对齐仓内规范与竞品形态）：
+ * canonical aclnn 两段式（对齐仓内规范）：
  * 一段式 L2_DFX_PHASE_1 → CREATE_EXECUTOR → Canonical 视图（HND/NHD 互换）→
  * l0op::Contiguous → AllocTensor → ADD_TO_LAUNCHER_LIST_AICORE → ViewCopy 回写 →
  * GetWorkspaceSize/ReleaseTo；二段式 L2_DFX_PHASE_2 → CommonOpExecutorRun。
@@ -53,7 +53,7 @@ aclnnStatus BuildSage(const aclTensor *q, const aclTensor *k, const aclTensor *v
             SageAttention2, OP_INPUT(q, k, v, keyMean), OP_OUTPUT(out, lse),
             OP_ATTR(layout, causal, gran, scale, accum, smoothK, smoothV));
     }
-    // lseCorr 单独非空时不经 OP_INPUT 下发（DEFECT-A5-3）：OP_INPUT 按算子原型
+    // lseCorr 单独非空时不经 OP_INPUT 下发（DEFECT-A5-8）：OP_INPUT 按算子原型
     // 输入序位置绑定，中间可选项不可跳位——4 参形态会把 lse_correction 落入
     // key_mean 槽（smooth_k=1 时核内按 [b,hkv,d_pad] fp32 误读为 km，数值/越界
     // 双重风险）。基线核对该通道仅指针承接、消费留给向量化 pass（op_kernel
