@@ -9,16 +9,14 @@ from torch._subclasses.fake_tensor import FakeTensorMode
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "python"))
 
-from sageattention2 import sageattn, sageattn_qk_int8_pv_fp8_asc  # noqa: E402
+from sageattention2 import create_qkv, sageattn, sageattn_qk_int8_pv_fp8_asc  # noqa: E402
 
 OP = torch.ops.sageattention2.forward
 
 
 def _create_tensors(b=1, hq=2, hk=2, sq=64, sk=64, d=64, dtype=torch.float16):
-    q = torch.randn(b, hq, sq, d, dtype=dtype)
-    k = torch.randn(b, hk, sk, d, dtype=dtype)
-    v = torch.randn(b, hk, sk, d, dtype=dtype)
-    return q, k, v
+    return create_qkv(b=b, hq=hq, hk=hk, sq=sq, sk=sk, d=d, dtype=dtype)
+
 
 
 def test_schema_contract():
@@ -67,10 +65,9 @@ def test_meta_and_fake_tensor():
 
     # FakeTensorMode 同构（含校验：非法参数在 fake 域即拦截）
     with FakeTensorMode():
-        fq = torch.randn(1, 2, 64, 64, dtype=torch.float16)
-        fk = torch.randn(1, 2, 64, 64, dtype=torch.float16)
-        fv = torch.randn(1, 2, 64, 64, dtype=torch.float16)
+        fq, fk, fv = create_qkv(1, 2, 64, 64)
         out_f, lse_f = OP(fq, fk, fv, return_lse=True)
+
         assert out_f.shape == fq.shape and out_f.dtype == fq.dtype
         assert lse_f.shape == (1, 2, 64) and lse_f.dtype == torch.float32
         with pytest.raises(ValueError, match="tensor_layout"):

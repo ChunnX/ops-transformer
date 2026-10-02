@@ -249,10 +249,36 @@ struct AicRemoveRef<T&&> { using type = T; };
 // __simd_callee__：VF 函数体内可调用（cce 实测：VF 内仅可调 simd_callee 标注函数）
 __simd_callee__ inline uint16_t Sa2F32ToHalfBits(float f)
 {
+    // 真 IEEE binary16 RNE（指数重偏置 −112 + 13 位舍入 + 次正规 2^-24 步进）。
+    // 旧式 (bits + 0x7FFF + 尾奇) >> 16 是 fp32→bf16 截断式：指数域 8 位不换算，
+    // 1.0f 产 0x3F80（按 fp16 解读 1.875），qScale/kScale 全域被错误放大。
+    // 逐位等价于 hostbits::HalfF32（kv_quant_reciprocal_e8m0_guard 全域扫掠冻结）。
     uint32_t bits;
     bits = *reinterpret_cast<const uint32_t *>(&f);
-    uint32_t bias = 0x7FFFu + ((bits >> 16) & 1u);
-    return static_cast<uint16_t>((bits + bias) >> 16);
+    const uint32_t a = bits & 0x7FFFFFFFu;
+    const uint32_t sign = (bits >> 16) & 0x8000u;
+    if (a >= 0x7F800000u) {
+        return static_cast<uint16_t>(sign | 0x7C00u | ((a > 0x7F800000u) ? 0x0200u : 0u));
+    }
+    if (a >= 0x47800000u) {
+        return static_cast<uint16_t>(sign | 0x7C00u);
+    }
+    const int32_t e = static_cast<int32_t>(a >> 23) - 127;
+    if (e > -15) {
+        const uint32_t h = (a >> 13) - 0x1C000u;
+        const uint32_t rem = a & 0x1FFFu;
+        const uint32_t q = h + ((rem > 0x1000u || (rem == 0x1000u && ((h & 1u) != 0u))) ? 1u : 0u);
+        return static_cast<uint16_t>(sign | q);
+    }
+    if (a < 0x33000000u) {
+        return static_cast<uint16_t>(sign);
+    }
+    const int32_t sh = -1 - e;
+    const uint32_t full = (a & 0x007FFFFFu) | 0x00800000u;
+    uint32_t q = full >> sh;
+    const uint32_t rem = full & ((1u << sh) - 1u);
+    q += (rem > (1u << (sh - 1)) || (rem == (1u << (sh - 1)) && ((q & 1u) != 0u))) ? 1u : 0u;
+    return static_cast<uint16_t>(sign | q);
 }
 #endif
 template <typename T>

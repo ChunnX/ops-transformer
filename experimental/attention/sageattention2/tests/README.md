@@ -7,42 +7,45 @@
 测试套件由 Python 验收矩阵与 C++ aclnn 两段式测试程序共同构成：
 
 - `test_functional_matrix.py`
-  - 路径：[test_functional_matrix.py](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/tests/test_functional_matrix.py)
+  - 路径：[test_functional_matrix.py](./test_functional_matrix.py)
   - 说明：基于 pytest 的端到端功能测试矩阵，覆盖任务书规定的全部 TC-01 至 TC-10 验收用例（用例数唯一权威于第三节 §1；含 TC-01 dtype 维与 TC-02 gran×accum 全组合的参数化展开，以及 TC-05 零填充等价与 TC-08 负测试全量扩充）。
+- `test_analytic_contracts.py`
+  - 路径：[test_analytic_contracts.py](./test_analytic_contracts.py)
+  - 说明：基于 pytest 的可解析闭式契约套件（16 项），覆盖零 score 闭式恰为 1.0、均匀 Softmax LSE 闭式等于 ln(S)、因果 LSE 等于 ln(row)、NHD/HND 逐位严格等价、MX 尺度通道隔离与符号翻转、sm_scale 扫网比值门禁、FP16 极限幅值无饱和防溢出等。
 - `test_pytorch_integration.py`（M2c-N1/N2 新增）
-  - 路径：[test_pytorch_integration.py](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/tests/test_pytorch_integration.py)
+  - 路径：[test_pytorch_integration.py](./test_pytorch_integration.py)
   - 说明：PyTorch 集成深度套件——dispatcher schema 契约（kwonly 参数序与默认值逐项对齐任务书 §2.3）、
     Meta 设备与 FakeTensorMode 的 shape/dtype 推导与 fake 域校验拦截、`torch.compile(backend="eager",
     fullgraph=True)` 全图捕获（算子级 + 入口级，输出与 eager 逐位一致）、重复调用逐位一致确定性契约
     （gran × accum 参数化；对应 D-R8 单写者无 atomic 设计）。
 - `test_host_assertions.py`
-  - 路径：[test_host_assertions.py](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/tests/test_host_assertions.py)
+  - 路径：[test_host_assertions.py](./test_host_assertions.py)
   - 说明：基于 pytest 的宿主机数值断言与仿真对齐套件，覆盖 κ 双档位（2.25 vs 448.0）、粒度非零差异、LSE 等价契约（§4.6 修正口径，不加 lnκ）以及 P-01 ~ P-07 任务书性能典型形状以 FP32 SDPA 为基准（用例数唯一权威于第三节 §1）。
 - `sa2_numeric_conformance.cpp`
-  - 路径：[sa2_numeric_conformance.cpp](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/tests/sa2_numeric_conformance.cpp)
+  - 路径：[sa2_numeric_conformance.cpp](./sa2_numeric_conformance.cpp)
   - 说明：纯 C++17 无依赖的内核数值契约断言桩（M4.1）：κ 两档（含 M4.4 κ=2.25 域定源、Pr*Vr<=2047 封顶与 FP16 动态范围安全界证明与断言）、θ=lnκ skip 两路一致性、LSE 契约（含 +lnκ 负测试）、E8M0 向上取幂位技巧对照 std 方法逐位一致、g 因子 FP16 可表示界与 DEQ 恒等式、per_warp/per_thread 粒度差异非零、因果谓词块级 vs 逐元素等价（含 S=16384 几何推导、3态分类与 GEMM 剪枝率断言）、FP8 码字全表往返、fp32+fp16 折叠误差界与 κ=2.25 封顶数理闭环（单行激励上限 |O_ir| <= 2047 << 65504、S=16384 极限累加 36864 < 65504 杜绝溢出、局部相对误差 2^-11 证明）、M2.7.2 UB 计划 O(1) 硬防护（宿主编译期实例化 sa2_ub_plan.h：两链终址由 tile 常数独立重推 == 冻结锚点 152448/217984 且 ≤ 248KB 高水位、随 S 无关；Rust 式结构化错误——host 编译失败即硬错误，非运行期静默溢出）、M2c-C2 极限分数值域与上溢防御用例（score_range_safety_guard，大幅值 [-100, 100] 与极差 > 150、θ-skip 极端波动平滑转移、FP8 E4M3 饱和截断 [0, 448.0]/0x7E 绝无 NaN/Inf/穿透、深度负得分 S_ij <= -80 分母/LSE 无下溢、FP16 两级累加最大激励严格 <= 65504）、双 Die NUMA 拓扑亲和与 GQA L2 Cache 原地复用断言（dual_die_numa_affinity_and_gqa_l2_reuse_guard，形式化证明 100% 内存亲和与消除跨 Die HCCS 通信、量化证明 GQA 4:1 75% 与 8:1 87.5% L2 原地复用）、vScale 窗口化 nN 布局契约（vscale_windowed_nn_layout_contract，写像与消费窗逐字节双射一致性）、Softmax 在线更新数值稳定性与下溢冲零守卫（online_softmax_stability_and_ftz_guard，2-pass offline vs online 递推等价性与误差界 < 2e-6、单精度浮点下溢界 ln(2^128) ≈ 88.7228 处 alpha 严格冲零 FTZ 证明、LSE 自然域数值闭环与无下溢保证）。实测 checks 总数、用例数与 0 失败口径唯一权威于第三节 §2（其余文档一律引用该处，不再重复落数字）。直接复用 op_kernel/sa2_spec.h 与 sa2_planner.h 的契约常量。
 - `test_host_tiling_planner.cpp`
-  - 路径：[test_host_tiling_planner.cpp](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/tests/test_host_tiling_planner.cpp)
+  - 路径：[test_host_tiling_planner.cpp](./test_host_tiling_planner.cpp)
   - 说明：基于 C++17 的 Host Tiling 动态 Shape、Workspace 布局与调度规划形式化验证套件（M0.5 / M3.2 / M3.3）。覆盖 S=128 到 S=131072 极限超长序列（P-01 ~ P-07 与 128K 上限）、GQA 1:1/4:1/8:1、Workspace 512 字节对齐与 uint64 溢出硬防护、双 Die 奇偶划分 0% 偏斜证明、FlashAttention-4 LPT 尾核空转消除（S=16384 从 128 步降为 1 步降低 99.2%，S=131072 从 1024 步降为 1 步降低 99.902%）。
 - `test_m27_typestate_ub_guard.cpp`
-  - 路径：[test_m27_typestate_ub_guard.cpp](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/tests/test_m27_typestate_ub_guard.cpp)
+  - 路径：[test_m27_typestate_ub_guard.cpp](./test_m27_typestate_ub_guard.cpp)
   - 说明：M2.7 架构特性（Typestate Move-Only 状态机、Same-Engine Zero-Stall、UB Hard Guard 显式容量防御、2D Tile 硬件融合归约 10^-9 精度界）单元验证。
 - `aiv_backend_probe.cpp`（迭代 2 新增，ccec dav-c310-vec 后端行为探针矩阵）
-  - 路径：[aiv_backend_probe.cpp](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/tests/aiv_backend_probe.cpp)
+  - 路径：[aiv_backend_probe.cpp](./aiv_backend_probe.cpp)
   - 说明：非交付内核（禁入任何构建目标），仅作为 AIV pass 拒绝判别条件 R1/R2 的可复现
     探针锚点（PASS 形态默认可编译；FAIL 变体以 SA2_PROBE_FAILING_VARIANTS 宏门控）。
     判别条件结论与逐条实测表见文件头注与 op_kernel/CMakeLists.txt 头注。
 - `sa2_host_e2e.cpp` + `test_host_e2e_bridge.py`（M2a 内核宿主差分桥，v27.1 新增）
-  - 路径：[sa2_host_e2e.cpp](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/tests/sa2_host_e2e.cpp) /
-    [test_host_e2e_bridge.py](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/tests/test_host_e2e_bridge.py)
+  - 路径：[sa2_host_e2e.cpp](./sa2_host_e2e.cpp) /
+    [test_host_e2e_bridge.py](./test_host_e2e_bridge.py)
   - 说明：把 op_kernel 的 C++ 宿主仿真全链（KV prep → 注意力主循环 → epilogue）真正跑起来，
     与 `sageattn_reference` 逐配置对拍（pytest 全量构成见第三节 §1；无 g++ 环境自动 skip）。
     覆盖：GQA 4/2 + per_thread + fp32+fp16；奇 hk=3（双 Die 尾槽）+ per_warp + causal + d=48 pad + 尾块 200→256。
     复现：`pytest tests/test_host_e2e_bridge.py -q`（内部自动 `g++ -std=c++17 -O2 -Wall -Wextra -I op_kernel
     tests/sa2_host_e2e.cpp` 编译后执行）。
 - `test_aclnn.cpp`
-  - 路径：[test_aclnn.cpp](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/tests/test_aclnn.cpp)
-  - 说明：基于 AscendCL 与 aclnn 的两段式 C++ 调用与异常防御测试，包含 10 组全量测试用例（Test 1 ~ Test 2 正例 HND/NHD 布局与累加档位，Test 3 ~ Test 10 负例覆盖 nullptr、非法 layout、非法 quantGran、非法 accumDtype、D>128 越界、因果 Sq!=Sk、非连续末维 stride(-1)!=1、非整除 GQA 全面防御拦截）。
+  - 路径：[test_aclnn.cpp](./test_aclnn.cpp)
+  - 说明：基于 AscendCL 与 aclnn 的两段式 C++ 调用与异常防御测试，包含 11 组全量测试用例（Test 1 ~ Test 2 正例 HND/NHD 布局与累加档位，Test 3 ~ Test 10 负例覆盖 nullptr、非法 layout、非法 quantGran、非法 accumDtype、D>128 越界、因果 Sq!=Sk、非连续末维 stride(-1)!=1、非整除 GQA 全面防御拦截，Test 11 正例官方标准大驼峰别名 aclnnSageAttention2）。
 
 ## 二、功能验收矩阵覆盖（TC-01 ~ TC-10）
 
@@ -113,9 +116,10 @@ pytest experimental/attention/sageattention2/tests/test_pytorch_integration.py -
 pytest experimental/attention/sageattention2/tests/test_host_assertions.py -v
 ```
 
-全部 41 项用例（19 + 集成 7 + 13 + 差分桥 2）均应通过。本行是 pytest 总数与构成的唯一权威口径，其余文档只引用此处（2026-10-02 实测 41 passed / 45.6s）。
+全部 57 项用例（端到端功能 19 + 闭式契约 16 + 集成 7 + 宿主数值 13 + 差分桥 2）均应通过。本行是 pytest 总数与构成的唯一权威口径，其余文档只引用此处（2026-10-02 实测 57 passed / 10.9s）。
 
 ### 2. C++ 数值契约断言桩执行（宿主机，无 NPU 依赖）
+
 
 纯 C++17 实现，直接以宿主 g++ 编译运行（-I 指向 op_kernel 以复用契约头）：
 
@@ -130,9 +134,9 @@ g++ -std=c++17 -O2 -Wall -Wextra \
 
 ### 3. C++ aclnn 测试执行
 
-覆盖 10 组全量测试用例（Test 1 ~ Test 2 正例 HND/NHD 布局与累加档位，Test 3 ~ Test 10 负例防御校验拦截）：
+覆盖 11 组全量测试用例（Test 1 ~ Test 2 正例 HND/NHD 布局与累加档位，Test 3 ~ Test 10 负例防御校验拦截，Test 11 标准大驼峰别名）：
 
-宿主机纯 CPU / 模拟环境独立编译与测试（无需 CANN 依赖即可全量验证 10 组接口防御逻辑）：
+宿主机纯 CPU / 模拟环境独立编译与测试（无需 CANN 依赖即可全量验证 11 组接口防御逻辑）：
 
 ```bash
 clang++ -std=c++17 -Wall -Wextra -Werror \

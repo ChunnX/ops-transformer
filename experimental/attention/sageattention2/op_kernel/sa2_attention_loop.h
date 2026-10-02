@@ -994,7 +994,6 @@ public:
             AscendC::GlobalTensor<half> gmKScale;
             gmKScale.SetGlobalBuffer(kScaleStep);
             AscendC::DataCopy(kScaleUb, gmKScale, static_cast<uint32_t>(kKvStep * p.segWidth));
-            AscendC::PipeBarrier<PIPE_MTE2>();
             NotifyScaleLoaded(parity);
         }
     }
@@ -1330,11 +1329,39 @@ public:
         StepCubeQkDevice(task, step, streamId);
     }
 
+    /**
+     * @brief AIC 负责：异步双缓冲预取 K8（GM -> L1）
+     */
+    __aicore__ inline void PrefetchKDevice(const Sa2Task &task, int64_t step)
+    {
+        if (step >= task.steps) {
+            return;
+        }
+        int64_t parity = step % 2;
+        const Sa2Params &p = td_->params;
+        const Sa2KvHeadView kvView = KvHeadView(p, task.b, task.kh);
+        __gm__ int8_t *k8Step = reinterpret_cast<__gm__ int8_t *>(
+            userWs_ + K8StepByteOff(td_->k8 + kvView.wsK8, step, p.dp));
+
+        AscendC::GlobalTensor<int8_t> gmKTensor;
+        gmKTensor.SetGlobalBuffer(k8Step, static_cast<uint64_t>(kKvStep * p.dp));
+        gmKTensor.SetL2CacheHint(Sa2CacheModeOf(Sa2BufferCachePolicy::kK8Hint));
+        AscendC::LocalTensor<int8_t> l1KTensor =
+            L1TensorI8(parity == 0 ? kL1KStep0 : kL1KStep1);
+        AscendC::DataCopy(l1KTensor, gmKTensor, static_cast<uint32_t>(kKvStep * p.dp));
+        NotifyKLoaded(parity);
+    }
+
     __aicore__ inline void StepCubeQkDevice(const Sa2Task &task, int64_t step, int64_t streamId)
     {
         if (step == 0) {
             // P1-2：等 AIV QQuant(t) 完成（kQ8Ok），杜绝读到上一任务陈旧 q8 或半写状态
             AwaitMte1(streamId, Sa2CrossFlag::kQ8Ok);
+            // 种子预取 step 0 与 step 1 双缓冲槽
+            PrefetchKDevice(task, 0);
+            if (task.steps > 1) {
+                PrefetchKDevice(task, 1);
+            }
         }
         if (step >= 2) {
             AwaitV(streamId, Sa2CrossFlag::kQkFree);
@@ -1343,11 +1370,6 @@ public:
         const Sa2Params &p = td_->params;
         constexpr bool isThreadGran = (G == Gran::kPerThread);
         int64_t parity = step % 2;
-
-        const Sa2KvHeadView kvView = KvHeadView(p, task.b, task.kh);
-        // 步内寻址取 planner 唯一算式（B-26：engine 禁自书偏移算式）
-        __gm__ int8_t *k8Step = reinterpret_cast<__gm__ int8_t *>(
-            userWs_ + K8StepByteOff(td_->k8 + kvView.wsK8, step, p.dp));
 
         // 1. 搬运 Q8 从 L1 到 L0A (MTE1)。M2b-0：真实 LocalTensor 无 (ptr,size,pos) 构造
         //（hoststub 假想 API），一律经 TBuf::Get()[字节偏移].ReinterpretCast<T>() 构建，
@@ -1362,19 +1384,12 @@ public:
 
         Catlass::Gemm::Tile::TileCopyTla<Catlass::Arch::Ascend950, decltype(tensorQInL1), decltype(tensorQInL0A)> copyQToL0A;
         copyQToL0A(tensorQInL0A, tensorQInL1);
-        AscendC::PipeBarrier<PIPE_MTE1>();
 
-        // 2. 搬运 K8：GM -> L1 (MTE2) -> L0B (MTE1)（应用 M2c-B1 L2 Cache Hint 常驻策略）。
-        //    GlobalTensor 无 (ptr,size) 构造：默认构造 + SetGlobalBuffer(__gm__ 裸指针直入，
-        //    禁止跨地址空间 const/reinterpret 转换）。
-        AscendC::GlobalTensor<int8_t> gmKTensor;
-        gmKTensor.SetGlobalBuffer(k8Step, static_cast<uint64_t>(kKvStep * p.dp));
-        gmKTensor.SetL2CacheHint(Sa2CacheModeOf(Sa2BufferCachePolicy::kK8Hint));
+        // 2. 等待 K8 异步预取就绪 (AwaitKLoaded)，搬运 K8：L1 -> L0B (MTE1)，随后置 NotifyKConsumed 并流水预取 step+2
+        AwaitKLoaded(parity);
+
         AscendC::LocalTensor<int8_t> l1KTensor =
             L1TensorI8(parity == 0 ? kL1KStep0 : kL1KStep1);
-        AscendC::DataCopy(l1KTensor, gmKTensor, static_cast<uint32_t>(kKvStep * p.dp));
-        AscendC::PipeBarrier<PIPE_MTE2>();
-
         AscendC::LocalTensor<int8_t> l0bKTensor = L0bTensorI8();
         auto layoutKInL1 = tla::MakeLayout<int8_t, Catlass::layout::zN>(kKvStep, p.dp);
         auto tensorKInL1 = tla::MakeTensor(l1KTensor, layoutKInL1, tla::MakeCoord(static_cast<int64_t>(0), static_cast<int64_t>(0)), Catlass::Arch::PositionL1{});
@@ -1384,6 +1399,11 @@ public:
         Catlass::Gemm::Tile::TileCopyTla<Catlass::Arch::Ascend950, decltype(tensorKInL1), decltype(tensorKInL0B)> copyKToL0B;
         copyKToL0B(tensorKInL0B, tensorKInL1);
         AscendC::PipeBarrier<PIPE_MTE1>();
+        NotifyKConsumed(parity);
+
+        if (step + 2 < task.steps) {
+            PrefetchKDevice(task, step + 2);
+        }
 
         // 3. L0C 象限映射与 MMAD 乘加
         AscendC::LocalTensor<int32_t> l0cTensor =
@@ -1446,8 +1466,74 @@ public:
         StepCubePvDevice(task, step, streamId);
     }
 
+    /**
+     * @brief AIC 负责：异步双缓冲预取 V8 与 MX Scale（GM -> L1）
+     */
+    __aicore__ inline void PrefetchVDevice(const Sa2Task &task, int64_t step)
+    {
+        if (step >= task.steps) {
+            return;
+        }
+        int64_t parity = step % 2;
+        const Sa2Params &p = td_->params;
+        const Sa2KvHeadView kvView = KvHeadView(p, task.b, task.kh);
+        __gm__ int16_t *wsVScaleBase = reinterpret_cast<__gm__ int16_t *>(
+            userWs_ + td_->vScale + kvView.wsVScale);
+        __gm__ int8_t *v8Step = reinterpret_cast<__gm__ int8_t *>(
+            userWs_ + V8StepByteOff(td_->v8 + kvView.wsV8, step, p.dp));
+
+        AscendC::GlobalTensor<float8_e4m3_t> gmVTensor;
+        gmVTensor.SetGlobalBuffer(reinterpret_cast<__gm__ float8_e4m3_t *>(v8Step),
+                                  static_cast<uint64_t>(kKvStep * p.dp));
+        gmVTensor.SetL2CacheHint(Sa2CacheModeOf(Sa2BufferCachePolicy::kV8Hint));
+        AscendC::LocalTensor<float8_e4m3_t> l1VTensor =
+            L1TensorF8(parity == 0 ? kL1VStep0 : kL1VStep1);
+        AscendC::DataCopy(l1VTensor, gmVTensor, static_cast<uint32_t>(kKvStep * p.dp));
+
+        AscendC::LocalTensor<float8_e8m0_t> l1VScaleTensor =
+            L1TensorF8E8M0(parity == 0 ? kL1VScale0 : kL1VScale1);
+
+        const int64_t totalScaleBytes = (p.kp * p.dp) / 32;
+        const bool canCacheHead = (totalScaleBytes <= kL1MxScaleCacheBytes);
+        const int64_t stepScaleOffset = VScaleStepByteOff(0, step, p.dp);
+        const int64_t scaleCopyBytes =
+            (kL1VScaleSlot < totalScaleBytes - stepScaleOffset) ? kL1VScaleSlot
+                                                                : (totalScaleBytes - stepScaleOffset);
+
+        if (canCacheHead && mxScaleCache_.IsHit(task.b, task.kh, wsVScaleBase)) {
+            AscendC::LocalTensor<float8_e8m0_t> cachedScaleTensor =
+                L1TensorF8E8M0(kL1MxScaleCacheBase + stepScaleOffset);
+            AscendC::DataCopy(l1VScaleTensor, cachedScaleTensor, static_cast<uint32_t>(scaleCopyBytes));
+        } else {
+            AscendC::GlobalTensor<float8_e8m0_t> gmVScaleTensor;
+            gmVScaleTensor.SetGlobalBuffer(reinterpret_cast<__gm__ float8_e8m0_t *>(wsVScaleBase),
+                                          static_cast<uint64_t>(scaleCopyBytes));
+            gmVScaleTensor.SetL2CacheHint(Sa2CacheModeOf(Sa2BufferCachePolicy::kScaleHint));
+            AscendC::DataCopy(l1VScaleTensor, gmVScaleTensor, static_cast<uint32_t>(scaleCopyBytes));
+
+            if (canCacheHead && step == 0) {
+                AscendC::GlobalTensor<float8_e8m0_t> gmFullScaleTensor;
+                gmFullScaleTensor.SetGlobalBuffer(reinterpret_cast<__gm__ float8_e8m0_t *>(wsVScaleBase),
+                                                  static_cast<uint64_t>(totalScaleBytes));
+                gmFullScaleTensor.SetL2CacheHint(Sa2CacheModeOf(Sa2BufferCachePolicy::kScaleHint));
+                AscendC::LocalTensor<float8_e8m0_t> cacheBufTensor =
+                    L1TensorF8E8M0(kL1MxScaleCacheBase);
+                AscendC::DataCopy(cacheBufTensor, gmFullScaleTensor, static_cast<uint32_t>(totalScaleBytes));
+                mxScaleCache_.MarkCached(task.b, task.kh, wsVScaleBase, totalScaleBytes);
+            }
+        }
+        NotifyVLoaded(parity);
+    }
+
     __aicore__ inline void StepCubePvDevice(const Sa2Task &task, int64_t step, int64_t streamId)
     {
+        if (step == 0) {
+            // 种子预取 step 0 与 step 1 双缓冲槽
+            PrefetchVDevice(task, 0);
+            if (task.steps > 1) {
+                PrefetchVDevice(task, 1);
+            }
+        }
         int64_t parity = step % 2;
         AwaitMte1(streamId, Sa2CrossFlag::kPTaken);
         if (step >= 2) {
@@ -1455,12 +1541,6 @@ public:
         }
 
         const Sa2Params &p = td_->params;
-        const Sa2KvHeadView kvView = KvHeadView(p, task.b, task.kh);
-        __gm__ int16_t *wsVScaleBase = reinterpret_cast<__gm__ int16_t *>(
-            userWs_ + td_->vScale + kvView.wsVScale);
-        // 步内寻址取 planner 唯一算式（B-26：engine 禁自书偏移算式）
-        __gm__ int8_t *v8Step = reinterpret_cast<__gm__ int8_t *>(
-            userWs_ + V8StepByteOff(td_->v8 + kvView.wsV8, step, p.dp));
 
         // 1. 搬运 P (FP8 E4M3) 从 L1 到 L0A (MTE1)。M2b-0：张量构建走 TBuf 链（见 StepCubeQk）。
         AscendC::LocalTensor<float8_e4m3_t> l1PTensor =
@@ -1474,66 +1554,14 @@ public:
 
         Catlass::Gemm::Tile::TileCopyTla<Catlass::Arch::Ascend950, decltype(tensorPInL1), decltype(tensorPInL0A)> copyPToL0A;
         copyPToL0A(tensorPInL0A, tensorPInL1);
-        AscendC::PipeBarrier<PIPE_MTE1>();
 
-        // 2. 搬运 V8 与 UE8M0 VScale：GM -> L1 (MTE2) -> L0B (MTE1，带 MX 尺度展开)
-        // 应用 M2c-B1 L2 Cache Hint 常驻策略（CACHE_HINT_NORMAL_LAST_VICTIM）
-        // MX 伴尺度搬运（copy_l1_to_l0b 三参特化）的类型契约：TensorSrc(L1) = 普通 fp8 族、
-        // TensorDst(L0B) = mx_* 族、scale = float8_e8m0_t nN；L1 侧保持 float8_e4m3_t，
-        // L0B 侧改用 mx_fp8_e4m3_t（硬件 MX LoadData 在 L0B 展开尺度）。
-        AscendC::GlobalTensor<float8_e4m3_t> gmVTensor;
-        gmVTensor.SetGlobalBuffer(reinterpret_cast<__gm__ float8_e4m3_t *>(v8Step),
-                                  static_cast<uint64_t>(kKvStep * p.dp));
-        gmVTensor.SetL2CacheHint(Sa2CacheModeOf(Sa2BufferCachePolicy::kV8Hint));
+        // 2. 等待 V8 与 UE8M0 VScale 异步预取完成 (AwaitVLoaded)，从 L1 搬运到 L0B (MTE1，带 MX 尺度展开)，随后置 NotifyVConsumed 并流水预取 step+2
+        AwaitVLoaded(parity);
+
         AscendC::LocalTensor<float8_e4m3_t> l1VTensor =
             L1TensorF8(parity == 0 ? kL1VStep0 : kL1VStep1);
-        AscendC::DataCopy(l1VTensor, gmVTensor, static_cast<uint32_t>(kKvStep * p.dp));
-
         AscendC::LocalTensor<float8_e8m0_t> l1VScaleTensor =
             L1TensorF8E8M0(parity == 0 ? kL1VScale0 : kL1VScale1);
-
-        // M2c-B4 V MX Scale L1 缓存命中检查：
-        const int64_t totalScaleBytes = (p.kp * p.dp) / 32;
-        const bool canCacheHead = (totalScaleBytes <= kL1MxScaleCacheBytes);
-        // 步偏移取 planner 唯一算式（B-26）。
-        const int64_t stepScaleOffset = VScaleStepByteOff(0, step, p.dp);
-        // v31 迭代 2 布局契约闭合：GM 写像 = 逐步 nN 窗序列化（kv_prep VScalePairWordOff），
-        // 与本处 tla::MakeMxScaleLayout<e8m0, nN, true>(kKvStep/32, dp) 视图的平面化字节像
-        // 逐字节一致（catlass layout.hpp nN 分支 + copy_l1_to_l0b.hpp 三操作数派生为源码依据，
-        // 宿主 conformance 以独立 nN 模型断言）；残余 M2b 真机核实项收窄为 LoadData2DMxParams
-        // 硬件行为本身。本处仅冻结界内性——拷贝长度钳制在 head 尺度区剩余字节内（两操作数
-        // 均为 4·dp 倍数 ≥ 256B，32B MTE 对齐保持），杜绝 kL1VScaleSlot=1024B 直拷对
-        // workspace 尾部 head 的越界读。
-        const int64_t scaleCopyBytes =
-            (kL1VScaleSlot < totalScaleBytes - stepScaleOffset) ? kL1VScaleSlot
-                                                                : (totalScaleBytes - stepScaleOffset);
-
-        if (canCacheHead && mxScaleCache_.IsHit(task.b, task.kh, wsVScaleBase)) {
-            // L1 缓存命中：直接从 Head 级 L1 缓存区复制当前 step 的尺度张量到双缓冲槽
-            AscendC::LocalTensor<float8_e8m0_t> cachedScaleTensor =
-                L1TensorF8E8M0(kL1MxScaleCacheBase + stepScaleOffset);
-            AscendC::DataCopy(l1VScaleTensor, cachedScaleTensor, static_cast<uint32_t>(scaleCopyBytes));
-        } else {
-            // 未命中或超容量：从 GM 加载并附带 CACHE_HINT_NORMAL_LAST_VICTIM
-            AscendC::GlobalTensor<float8_e8m0_t> gmVScaleTensor;
-            gmVScaleTensor.SetGlobalBuffer(reinterpret_cast<__gm__ float8_e8m0_t *>(wsVScaleBase),
-                                          static_cast<uint64_t>(scaleCopyBytes));
-            gmVScaleTensor.SetL2CacheHint(Sa2CacheModeOf(Sa2BufferCachePolicy::kScaleHint));
-            AscendC::DataCopy(l1VScaleTensor, gmVScaleTensor, static_cast<uint32_t>(scaleCopyBytes));
-
-            if (canCacheHead && step == 0) {
-                // 首步预热本 Head 的全部 L1 缓存
-                AscendC::GlobalTensor<float8_e8m0_t> gmFullScaleTensor;
-                gmFullScaleTensor.SetGlobalBuffer(reinterpret_cast<__gm__ float8_e8m0_t *>(wsVScaleBase),
-                                                  static_cast<uint64_t>(totalScaleBytes));
-                gmFullScaleTensor.SetL2CacheHint(Sa2CacheModeOf(Sa2BufferCachePolicy::kScaleHint));
-                AscendC::LocalTensor<float8_e8m0_t> cacheBufTensor =
-                    L1TensorF8E8M0(kL1MxScaleCacheBase);
-                AscendC::DataCopy(cacheBufTensor, gmFullScaleTensor, static_cast<uint32_t>(totalScaleBytes));
-                mxScaleCache_.MarkCached(task.b, task.kh, wsVScaleBase, totalScaleBytes);
-            }
-        }
-        AscendC::PipeBarrier<PIPE_MTE2>();
 
         auto layoutVInL1 = tla::MakeLayout<float8_e4m3_t, Catlass::layout::zN>(kKvStep, p.dp);
         auto tensorVInL1 = tla::MakeTensor(l1VTensor, layoutVInL1, tla::MakeCoord(static_cast<int64_t>(0), static_cast<int64_t>(0)), Catlass::Arch::PositionL1{});
@@ -1592,6 +1620,11 @@ public:
                               loadDataParams, loadDataMxParams);
         }
         AscendC::PipeBarrier<PIPE_MTE1>();
+        NotifyVConsumed(parity);
+
+        if (step + 2 < task.steps) {
+            PrefetchVDevice(task, step + 2);
+        }
 
         // 3. L0C 象限映射与 FP8 PV MMAD 乘加
         AscendC::LocalTensor<float> l0cTensor =

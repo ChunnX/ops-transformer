@@ -1,46 +1,57 @@
 #!/usr/bin/env bash
-# ==============================================================================
-# run_performance_validation.sh: SageAttention2 性能基准一键评测与门禁核验脚本
-# ==============================================================================
+# run_performance_validation.sh: SageAttention2 benchmark execution and gate verification
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+# shellcheck source=./common.sh
+source "${SCRIPT_DIR}/common.sh"
 
-echo "================================================================================"
-echo "   SageAttention2 End-to-End Performance Benchmark Runner"
-echo "================================================================================"
+ROOT_DIR="$(get_sage_root_dir)"
+PYTHON_BIN="$(detect_python_bin)"
 
-# 1. 执行 C++ aclnn 两段式性能对比基准测试
-echo "[STEP 1/2] Compiling and running C++ aclnn vs FIA baseline suite..."
-clang++ -std=c++17 -Wall -Wextra -Werror \
-    -I "${ROOT_DIR}/op_host" \
-    -I "${ROOT_DIR}" \
-    -I "${ROOT_DIR}/op_api" \
-    "${ROOT_DIR}/benchmarks/benchmark_aclnn_fia.cpp" \
-    -o /tmp/benchmark_aclnn_fia
+compile_and_run_aclnn() {
+    local bin_target="/tmp/benchmark_aclnn_fia"
+    log_step "[1/2] Compiling and running C++ aclnn vs FIA baseline suite..."
 
-echo "[INFO] Running with Default Timing Policy (Warmup=25, Repeats=50)..."
-/tmp/benchmark_aclnn_fia
+    clang++ -std=c++17 -Wall -Wextra -Werror \
+        -I "${ROOT_DIR}/op_host" \
+        -I "${ROOT_DIR}" \
+        -I "${ROOT_DIR}/op_api" \
+        "${ROOT_DIR}/benchmarks/benchmark_aclnn_fia.cpp" \
+        -o "${bin_target}"
 
-echo "[INFO] Running with Task test_perf Policy (Warmup=5, Repeats=20)..."
-SAGEATTN_PERF_WARMUP=5 SAGEATTN_PERF_ITERS=20 /tmp/benchmark_aclnn_fia
+    log_info "Running with default timing policy (Warmup=25, Repeats=50)..."
+    "${bin_target}"
 
-# 2. 执行 Python 验收矩阵与性能验证
-echo "[STEP 2/2] Running Python Performance Benchmark Suite..."
-PYTHON_BIN="python3"
-if [ -f "${ROOT_DIR}/../../../../.venv/bin/python" ]; then
-    PYTHON_BIN="${ROOT_DIR}/../../../../.venv/bin/python"
-elif [ -f "${ROOT_DIR}/.venv/bin/python" ]; then
-    PYTHON_BIN="${ROOT_DIR}/.venv/bin/python"
-fi
+    log_info "Running with test_perf timing policy (Warmup=5, Repeats=20)..."
+    SAGEATTN_PERF_WARMUP=5 SAGEATTN_PERF_ITERS=20 "${bin_target}"
+}
 
-if "${PYTHON_BIN}" -c "import torch" &>/dev/null; then
-    "${PYTHON_BIN}" "${SCRIPT_DIR}/benchmark.py" --cases standard --quick
-else
-    echo "[WARN] PyTorch not available in current Python environment, skipping Python benchmark."
-fi
+run_python_benchmarks() {
+    local py_bin="$1"
+    log_step "[2/2] Running Python Performance Benchmark Suite..."
 
-echo "================================================================================"
-echo "   All Performance Benchmark Validations Completed Successfully!"
-echo "================================================================================"
+    if ! has_torch "${py_bin}"; then
+        log_warn "PyTorch not available in Python environment (${py_bin}), skipping Python benchmark."
+        return 0
+    fi
+
+    "${py_bin}" "${SCRIPT_DIR}/benchmark.py" --cases standard --quick
+
+    if has_npu "${py_bin}"; then
+        log_info "Running dual-policy on NPU (primary frozen 25/50, appendix test_perf 5/20)..."
+        "${py_bin}" "${SCRIPT_DIR}/benchmark.py" --cases standard --metric-policy both \
+            --output-json "${ROOT_DIR}/build/bench_dual_policy.json"
+    else
+        log_info "NPU unavailable: skipping dual-policy run (host simulation mode)."
+    fi
+}
+
+main() {
+    log_info "SageAttention2 End-to-End Performance Benchmark Runner"
+    compile_and_run_aclnn
+    run_python_benchmarks "${PYTHON_BIN}"
+    log_success "All Performance Benchmark Validations Completed Successfully!"
+}
+
+main "$@"

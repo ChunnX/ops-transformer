@@ -40,309 +40,28 @@ except ImportError:
     HAVE_FLASH_ATTN = False
 
 # 导入 SageAttention2 库
-for candidate in [
-    Path(__file__).resolve().parent.parent / "python",
-    Path(__file__).resolve().parent.parent.parent / "ops-transformer/experimental/attention/sageattention2/python",
-]:
-    if candidate.exists() and str(candidate) not in sys.path:
-        sys.path.insert(0, str(candidate))
+_repo_python_path = Path(__file__).resolve().parent.parent / "python"
+if _repo_python_path.exists() and str(_repo_python_path) not in sys.path:
+    sys.path.insert(0, str(_repo_python_path))
 
 from sageattention2 import sageattn_qk_int8_pv_fp8_asc
+from sageattention2._constants import (
+    ALL_BENCHMARK_SPECS,
+    BENCHMARK_SPECS,
+    EXTENDED_CASE_IDS,
+    SHORT_CASE_IDS,
+    STANDARD_CASE_IDS,
+)
+from sageattention2._utils import (
+    compute_attention_flops,
+    compute_geomean,
+    compute_memory_traffic_bytes,
+    create_qkv,
+)
 
 # 任务书 §5.1 / §7 与 todo.md §0.5 规定的基准测试规格矩阵
-BENCHMARK_CASES: dict[str, dict[str, Any]] = {
-    "P-01": {
-        "batch": 1,
-        "hq": 32,
-        "hk": 32,
-        "sq": 4096,
-        "sk": 4096,
-        "d": 128,
-        "is_causal": False,
-        "dtype": torch.float16,
-        "pv_accum_dtype": "fp32+fp16",
-        "category": "S1",
-        "desc": "[1,32,4096,128] FP16 non-causal (Standard 4K Context)",
-    },
-    "P-02": {
-        "batch": 1,
-        "hq": 32,
-        "hk": 32,
-        "sq": 8192,
-        "sk": 8192,
-        "d": 128,
-        "is_causal": False,
-        "dtype": torch.float16,
-        "pv_accum_dtype": "fp32+fp16",
-        "category": "S1",
-        "desc": "[1,32,8192,128] FP16 non-causal (Standard 8K Context)",
-    },
-    "P-03": {
-        "batch": 1,
-        "hq": 32,
-        "hk": 32,
-        "sq": 8192,
-        "sk": 8192,
-        "d": 128,
-        "is_causal": True,
-        "dtype": torch.float16,
-        "pv_accum_dtype": "fp32+fp16",
-        "category": "S2",
-        "desc": "[1,32,8192,128] FP16 causal (8K Causal Masking)",
-    },
-    "P-04": {
-        "batch": 2,
-        "hq": 32,
-        "hk": 32,
-        "sq": 8192,
-        "sk": 8192,
-        "d": 128,
-        "is_causal": False,
-        "dtype": torch.float16,
-        "pv_accum_dtype": "fp32+fp16",
-        "category": "S1",
-        "desc": "[2,32,8192,128] FP16 non-causal (Batch=2 8K Context)",
-    },
-    "P-05": {
-        "batch": 1,
-        "hq": 32,
-        "hk": 8,
-        "sq": 4096,
-        "sk": 4096,
-        "d": 128,
-        "is_causal": False,
-        "dtype": torch.float16,
-        "pv_accum_dtype": "fp32+fp16",
-        "category": "S3",
-        "desc": "[1,32:8,4096,128] FP16 GQA (Grouped Query 32:8, S=4096)",
-    },
-    "P-06": {
-        "batch": 1,
-        "hq": 32,
-        "hk": 32,
-        "sq": 4096,
-        "sk": 4096,
-        "d": 128,
-        "is_causal": False,
-        "dtype": torch.bfloat16,
-        "pv_accum_dtype": "fp32+fp16",
-        "category": "S4",
-        "desc": "[1,32,4096,128] BF16 non-causal (BFloat16 Mixed Precision)",
-    },
-    "P-07": {
-        "batch": 1,
-        "hq": 32,
-        "hk": 32,
-        "sq": 16384,
-        "sk": 16384,
-        "d": 128,
-        "is_causal": False,
-        "dtype": torch.float16,
-        "pv_accum_dtype": "fp32+fp16",
-        "category": "S5",
-        "desc": "[1,32,16384,128] FP16 long-sequence (Ultra-long 16K Context)",
-    },
-    # 扩展用例：短序列与 Decode 阶段压测
-    "P-00-S128": {
-        "batch": 1,
-        "hq": 32,
-        "hk": 32,
-        "sq": 128,
-        "sk": 128,
-        "d": 128,
-        "is_causal": False,
-        "dtype": torch.float16,
-        "pv_accum_dtype": "fp32+fp16",
-        "category": "S0",
-        "desc": "[1,32,128,128] FP16 short-sequence (S=128 Micro-Prompt)",
-    },
-    "P-00-S512": {
-        "batch": 1,
-        "hq": 32,
-        "hk": 32,
-        "sq": 512,
-        "sk": 512,
-        "d": 128,
-        "is_causal": False,
-        "dtype": torch.float16,
-        "pv_accum_dtype": "fp32+fp16",
-        "category": "S0",
-        "desc": "[1,32,512,128] FP16 short-sequence (S=512 Short Prompt)",
-    },
-    "P-00-Decode": {
-        "batch": 1,
-        "hq": 32,
-        "hk": 32,
-        "sq": 1,
-        "sk": 4096,
-        "d": 128,
-        "is_causal": False,
-        "dtype": torch.float16,
-        "pv_accum_dtype": "fp32+fp16",
-        "category": "S0",
-        "desc": "[1,32,1,128] x [1,32,4096,128] FP16 Decode Step (Sq=1, Sk=4096)",
-    },
-    # 扩展用例：超长序列（32K/64K/128K）与扩展形状矩阵
-    "P-08": {
-        "batch": 1,
-        "hq": 32,
-        "hk": 32,
-        "sq": 32768,
-        "sk": 32768,
-        "d": 128,
-        "is_causal": False,
-        "dtype": torch.float16,
-        "pv_accum_dtype": "fp32+fp16",
-        "category": "S5",
-        "desc": "[1,32,32768,128] FP16 ultra-long (32K Context)",
-    },
-    "P-09": {
-        "batch": 1,
-        "hq": 32,
-        "hk": 32,
-        "sq": 65536,
-        "sk": 65536,
-        "d": 128,
-        "is_causal": False,
-        "dtype": torch.float16,
-        "pv_accum_dtype": "fp32+fp16",
-        "category": "S5",
-        "desc": "[1,32,65536,128] FP16 ultra-long (64K Context)",
-    },
-    "P-10": {
-        "batch": 1,
-        "hq": 32,
-        "hk": 32,
-        "sq": 131072,
-        "sk": 131072,
-        "d": 128,
-        "is_causal": False,
-        "dtype": torch.float16,
-        "pv_accum_dtype": "fp32+fp16",
-        "category": "S5",
-        "desc": "[1,32,131072,128] FP16 extreme-long (128K Context)",
-    },
-    "X-01": {
-        "batch": 1,
-        "hq": 32,
-        "hk": 32,
-        "sq": 2048,
-        "sk": 2048,
-        "d": 128,
-        "is_causal": False,
-        "dtype": torch.float16,
-        "pv_accum_dtype": "fp32+fp16",
-        "category": "SX",
-        "desc": "[1,32,2048,128] FP16 medium (2K Context)",
-    },
-    "X-02": {
-        "batch": 1,
-        "hq": 32,
-        "hk": 8,
-        "sq": 2048,
-        "sk": 2048,
-        "d": 128,
-        "is_causal": False,
-        "dtype": torch.float16,
-        "pv_accum_dtype": "fp32+fp16",
-        "category": "SX",
-        "desc": "[1,32:8,2048,128] FP16 GQA (32:8, 2K Context)",
-    },
-    "X-03": {
-        "batch": 1,
-        "hq": 32,
-        "hk": 8,
-        "sq": 8192,
-        "sk": 8192,
-        "d": 128,
-        "is_causal": False,
-        "dtype": torch.float16,
-        "pv_accum_dtype": "fp32+fp16",
-        "category": "SX",
-        "desc": "[1,32:8,8192,128] FP16 GQA (32:8, 8K Context)",
-    },
-    "X-04": {
-        "batch": 1,
-        "hq": 32,
-        "hk": 8,
-        "sq": 16384,
-        "sk": 16384,
-        "d": 128,
-        "is_causal": False,
-        "dtype": torch.float16,
-        "pv_accum_dtype": "fp32+fp16",
-        "category": "SX",
-        "desc": "[1,32:8,16384,128] FP16 GQA (32:8, 16K Context)",
-    },
-    "X-05": {
-        "batch": 2,
-        "hq": 32,
-        "hk": 32,
-        "sq": 4096,
-        "sk": 4096,
-        "d": 128,
-        "is_causal": False,
-        "dtype": torch.float16,
-        "pv_accum_dtype": "fp32+fp16",
-        "category": "SX",
-        "desc": "[2,32,4096,128] FP16 non-causal (Batch=2 4K Context)",
-    },
-    "X-06": {
-        "batch": 4,
-        "hq": 32,
-        "hk": 32,
-        "sq": 2048,
-        "sk": 2048,
-        "d": 128,
-        "is_causal": False,
-        "dtype": torch.float16,
-        "pv_accum_dtype": "fp32+fp16",
-        "category": "SX",
-        "desc": "[4,32,2048,128] FP16 non-causal (Batch=4 2K Context)",
-    },
-    "X-07": {
-        "batch": 1,
-        "hq": 32,
-        "hk": 32,
-        "sq": 4096,
-        "sk": 4096,
-        "d": 64,
-        "is_causal": False,
-        "dtype": torch.float16,
-        "pv_accum_dtype": "fp32+fp16",
-        "category": "SX",
-        "desc": "[1,32,4096,64] FP16 native head_dim=64",
-    },
-}
+BENCHMARK_CASES = ALL_BENCHMARK_SPECS
 
-STANDARD_CASE_IDS = ["P-01", "P-02", "P-03", "P-04", "P-05", "P-06", "P-07"]
-SHORT_CASE_IDS = ["P-00-S128", "P-00-S512", "P-00-Decode"]
-EXTENDED_CASE_IDS = ["P-08", "P-09", "P-10", "X-01", "X-02", "X-03", "X-04", "X-05", "X-06", "X-07"]
-
-
-def compute_attention_flops(
-    b: int, hq: int, sq: int, sk: int, d: int, is_causal: bool
-) -> float:
-    """计算标准注意力计算量 (FLOPs)：
-    非因果注意力量：4 * B * H * Sq * Sk * D (QK^T 2*B*H*Sq*Sk*D + PV 2*B*H*Sq*Sk*D)
-    因果注意力量：2 * B * H * Sq * Sk * D (下三角掩码下计算量为标准的一半)
-    """
-    factor = 2.0 if is_causal else 4.0
-    return factor * float(b) * float(hq) * float(sq) * float(sk) * float(d)
-
-
-def compute_memory_traffic_bytes(
-    b: int, hq: int, hk: int, sq: int, sk: int, d: int, dtype: torch.dtype
-) -> int:
-    """计算注意力理论最小显存访问字节数 (Bytes)：
-    Q 读入 + K 读入 + V 读入 + Out 写出
-    """
-    elem_bytes = 2 if dtype in (torch.float16, torch.bfloat16) else 4
-    q_bytes = b * hq * sq * d * elem_bytes
-    k_bytes = b * hk * sk * d * elem_bytes
-    v_bytes = b * hk * sk * d * elem_bytes
-    out_bytes = b * hq * sq * d * elem_bytes
-    return q_bytes + k_bytes + v_bytes + out_bytes
 
 
 def sync_device(device: torch.device) -> None:
@@ -404,14 +123,6 @@ def measure_execution_time_ms(
     sync_device(device)
     t1 = time.perf_counter()
     return ((t1 - t0) / float(repeats)) * 1000.0
-
-
-def compute_geomean(values: list[float]) -> float:
-    """计算加速比几何平均数"""
-    valid = [v for v in values if v > 0]
-    if not valid:
-        return 0.0
-    return math.exp(sum(math.log(v) for v in valid) / len(valid))
 
 
 def build_fia_callable(
@@ -507,9 +218,9 @@ def run_benchmark_case(
     sm_scale = 1.0 / math.sqrt(d)
 
     # 1. 生成随机输入张量
-    q = torch.randn((b, hq, sq, d), dtype=dtype, device=device)
-    k = torch.randn((b, hk, sk, d), dtype=dtype, device=device)
-    v = torch.randn((b, hk, sk, d), dtype=dtype, device=device)
+    q, k, v = create_qkv(
+        b=b, hq=hq, hk=hk, sq=sq, sk=sk, d=d, dtype=dtype, device=device, layout="HND"
+    )
 
     flops = compute_attention_flops(b, hq, sq, sk, d, is_causal)
     traffic_bytes = compute_memory_traffic_bytes(b, hq, hk, sq, sk, d, dtype)
@@ -652,8 +363,8 @@ def parse_args():
         "--metric-policy",
         type=str,
         default="auto",
-        choices=["auto", "frozen", "test_perf"],
-        help="Timing iteration policy: 'frozen' (warmup=25, repeats=50 as per §0.5), 'test_perf' (warmup=5, repeats=20 as per test_perf.py), or 'auto' (respects SAGEATTN_PERF_WARMUP/ITERS, default frozen)",
+        choices=["auto", "frozen", "test_perf", "both"],
+        help="Timing iteration policy: 'frozen' (warmup=25, repeats=50 as per §0.5), 'test_perf' (warmup=5, repeats=20 as per test_perf.py), 'both' (R-6 双口径补录: run frozen then test_perf and print delta appendix), or 'auto' (respects SAGEATTN_PERF_WARMUP/ITERS, default frozen)",
     )
     parser.add_argument(
         "--warmup",
@@ -726,6 +437,123 @@ def parse_args():
         help="Optional path to dump structured benchmark results as JSON",
     )
     return parser.parse_args()
+
+
+def execute_round(
+    selected_case_ids: list[str],
+    args: argparse.Namespace,
+    device: torch.device,
+    warmup: int,
+    repeats: int,
+    scale_factor: int,
+    profiler_context: Any,
+    tag: str,
+) -> dict[str, Any]:
+    """Run one full protocol round (single timing policy) and print its report."""
+    results: list[dict[str, Any]] = []
+    print("\nBenchmark Execution Progress:")
+    for case_id in selected_case_ids:
+        spec = BENCHMARK_CASES[case_id]
+        print(f"  * Running {case_id:<12} ({spec['desc']})... ", end="", flush=True)
+        try:
+            res = run_benchmark_case(
+                case_id=case_id,
+                spec=spec,
+                device=device,
+                baseline_type=args.baseline,
+                warmup=warmup,
+                repeats=repeats,
+                peak_bandwidth_gbs=args.peak_bandwidth_gbs,
+                scale_factor=scale_factor,
+                qk_quant_gran=args.qk_quant_gran,
+                pv_accum_dtype=args.pv_accum_dtype,
+                profiler_context=profiler_context,
+            )
+            results.append(res)
+            gate_tag = "[PASS >= 1.6x]" if res["meets_gate"] else "[BELOW 1.6x]"
+            if res.get("error"):
+                print(f"FAILED (Baseline error: {res['error']})")
+            else:
+                print(
+                    f"Done. SA2: {res['sa2_time_ms']:.2f} ms ({res['sa2_tflops']:.1f} TFLOPS, "
+                    f"BW: {res['effective_bw_gbs']:.1f} GB/s, MBU: {res['mbu_percent']:.1f}%) | "
+                    f"{res['baseline_name']}: {res['baseline_time_ms']:.2f} ms ({res['baseline_tflops']:.1f} TFLOPS) | "
+                    f"Speedup: {res['speedup']:.2f}x {gate_tag}"
+                )
+        except Exception as exc:  # noqa: BLE001
+            print(f"FAILED (Error: {exc})")
+            results.append({
+                "case_id": case_id,
+                "category": spec["category"],
+                "desc": spec["desc"],
+                "error": str(exc),
+                "meets_gate": False,
+                "speedup": 0.0,
+            })
+
+    speedup_values = [r["speedup"] for r in results if r.get("speedup", 0.0) > 0 and not r.get("error")]
+    geomean_speedup = compute_geomean(speedup_values)
+    all_individual_pass = all(r.get("meets_gate", False) for r in results)
+    overall_gate_pass = all_individual_pass and (geomean_speedup >= 1.6)
+
+    print("\n" + "=" * 80)
+    print(f"   SageAttention2 Performance Benchmark & Profiling Report [{tag}]")
+    print("=" * 80)
+    for r in results:
+        case_id = r["case_id"]
+        if r.get("error"):
+            print(f"- Case {case_id}: FAILED ({r['error']})")
+        else:
+            status = "PASS" if r["meets_gate"] else "FAIL"
+            print(f"- Case {case_id} ({r['desc']}):")
+            print(f"  - Shape: {r['shape']} (D={r['d']}, Causal={r['is_causal']}, Dtype={r['dtype']})")
+            print(f"  - SageAttention2 Latency: {r['sa2_time_ms']:.3f} ms")
+            print(f"  - SageAttention2 Throughput: {r['sa2_tflops']:.2f} TFLOP/s")
+            print(f"  - Effective Memory Bandwidth: {r['effective_bw_gbs']:.2f} GB/s (MBU: {r['mbu_percent']:.1f}%)")
+            print(f"  - Arithmetic Intensity: {r['arithmetic_intensity']:.2f} FLOP/Byte (Vector-bound: {'YES' if r['arithmetic_intensity'] < 100 else 'NO'})")
+            print(f"  - Baseline ({r['baseline_name']}) Latency: {r['baseline_time_ms']:.3f} ms ({r['baseline_tflops']:.2f} TFLOP/s)")
+            print(f"  - Acceleration Speedup: {r['speedup']:.2f}x (Gate >= 1.6x: {status})")
+
+    print("\n- Overall Performance Gate Summary:")
+    print(f"  - Tested Cases Count: {len(results)}")
+    print(f"  - Geometric Mean Speedup: {geomean_speedup:.2f}x")
+    print(f"  - Individual Gate Compliance: {'ALL PASS' if all_individual_pass else 'SOME FAILED'}")
+    print(f"  - Performance Contract Gate Status: {'PASSED (>= 1.6x)' if overall_gate_pass else 'FAILED (< 1.6x)'}")
+    print("=" * 80)
+
+    return {
+        "tag": tag,
+        "warmup": warmup,
+        "repeats": repeats,
+        "results": results,
+        "geomean_speedup": geomean_speedup,
+        "all_individual_pass": all_individual_pass,
+        "overall_gate_pass": overall_gate_pass,
+    }
+
+
+def print_dual_policy_appendix(primary: dict[str, Any], secondary: dict[str, Any]) -> None:
+    """R-6 双口径补录：门禁以 primary (frozen 25/50) 判定，secondary (test_perf 5/20) 为配套脚本口径附注。"""
+    print("\n" + "=" * 80)
+    print("   Dual-Policy Appendix (R-6 计时口径差值附注)")
+    print(f"   Primary (门禁口径): {primary['tag']} | Secondary (配套补录): {secondary['tag']}")
+    print("=" * 80)
+    sec_by_case = {r["case_id"]: r for r in secondary["results"]}
+    for r in primary["results"]:
+        s = sec_by_case.get(r["case_id"])
+        if s is None or r.get("error") or s.get("error") or r.get("sa2_time_ms", 0.0) <= 0:
+            print(f"- Case {r['case_id']}: appendix skipped (error or missing round)")
+            continue
+        delta_pct = 100.0 * (s["sa2_time_ms"] - r["sa2_time_ms"]) / r["sa2_time_ms"]
+        print(
+            f"- Case {r['case_id']}: SA2 time {r['sa2_time_ms']:.3f} -> {s['sa2_time_ms']:.3f} ms "
+            f"(Δ {delta_pct:+.1f}%) | speedup {r['speedup']:.2f}x -> {s['speedup']:.2f}x"
+        )
+    print(
+        f"- Geomean speedup: {primary['geomean_speedup']:.2f}x [{primary['tag']}] "
+        f"vs {secondary['geomean_speedup']:.2f}x [{secondary['tag']}]"
+    )
+    print("- 注: 门禁判定以 Primary 口径为准; 两口径差值供自验证报告附注引用 (todo.md R-6)。")
 
 
 def main() -> int:
@@ -818,78 +646,33 @@ def main() -> int:
             )
             print(f"[PROFILER] PyTorch Profiler enabled, traces will be saved to {args.profile_dir}")
 
-    results: list[dict[str, Any]] = []
-    print("\nBenchmark Execution Progress:")
-    for case_id in selected_case_ids:
-        spec = BENCHMARK_CASES[case_id]
-        print(f"  * Running {case_id:<12} ({spec['desc']})... ", end="", flush=True)
-        try:
-            res = run_benchmark_case(
-                case_id=case_id,
-                spec=spec,
-                device=device,
-                baseline_type=args.baseline,
-                warmup=warmup,
-                repeats=repeats,
-                peak_bandwidth_gbs=args.peak_bandwidth_gbs,
-                scale_factor=scale_factor,
-                qk_quant_gran=args.qk_quant_gran,
-                pv_accum_dtype=args.pv_accum_dtype,
-                profiler_context=profiler_context,
-            )
-            results.append(res)
-            gate_tag = "[PASS >= 1.6x]" if res["meets_gate"] else "[BELOW 1.6x]"
-            if res.get("error"):
-                print(f"FAILED (Baseline error: {res['error']})")
-            else:
-                print(
-                    f"Done. SA2: {res['sa2_time_ms']:.2f} ms ({res['sa2_tflops']:.1f} TFLOPS, "
-                    f"BW: {res['effective_bw_gbs']:.1f} GB/s, MBU: {res['mbu_percent']:.1f}%) | "
-                    f"{res['baseline_name']}: {res['baseline_time_ms']:.2f} ms ({res['baseline_tflops']:.1f} TFLOPS) | "
-                    f"Speedup: {res['speedup']:.2f}x {gate_tag}"
-                )
-        except Exception as exc:  # noqa: BLE001
-            print(f"FAILED (Error: {exc})")
-            results.append({
-                "case_id": case_id,
-                "category": spec["category"],
-                "desc": spec["desc"],
-                "error": str(exc),
-                "meets_gate": False,
-                "speedup": 0.0,
-            })
-
-    # 计算整体统计与几何平均数
-    speedup_values = [r["speedup"] for r in results if r.get("speedup", 0.0) > 0 and not r.get("error")]
-    geomean_speedup = compute_geomean(speedup_values)
-    all_individual_pass = all(r.get("meets_gate", False) for r in results)
-    overall_gate_pass = all_individual_pass and (geomean_speedup >= 1.6)
-
-    # 输出结构化嵌套列表报告（严禁 Markdown 表格行首 '|'）
-    print("\n" + "=" * 80)
-    print("   SageAttention2 Performance Benchmark & Profiling Report")
-    print("=" * 80)
-    for r in results:
-        case_id = r["case_id"]
-        if r.get("error"):
-            print(f"- Case {case_id}: FAILED ({r['error']})")
+    protocols: list[tuple[str, int, int]]
+    if args.metric_policy == "both":
+        if args.quick:
+            print("[WARN] --quick overrides dual policy; falling back to single custom protocol.")
+            protocols = [(f"quick (warmup={warmup}, repeats={repeats})", warmup, repeats)]
         else:
-            status = "PASS" if r["meets_gate"] else "FAIL"
-            print(f"- Case {case_id} ({r['desc']}):")
-            print(f"  - Shape: {r['shape']} (D={r['d']}, Causal={r['is_causal']}, Dtype={r['dtype']})")
-            print(f"  - SageAttention2 Latency: {r['sa2_time_ms']:.3f} ms")
-            print(f"  - SageAttention2 Throughput: {r['sa2_tflops']:.2f} TFLOP/s")
-            print(f"  - Effective Memory Bandwidth: {r['effective_bw_gbs']:.2f} GB/s (MBU: {r['mbu_percent']:.1f}%)")
-            print(f"  - Arithmetic Intensity: {r['arithmetic_intensity']:.2f} FLOP/Byte (Vector-bound: {'YES' if r['arithmetic_intensity'] < 100 else 'NO'})")
-            print(f"  - Baseline ({r['baseline_name']}) Latency: {r['baseline_time_ms']:.3f} ms ({r['baseline_tflops']:.2f} TFLOP/s)")
-            print(f"  - Acceleration Speedup: {r['speedup']:.2f}x (Gate >= 1.6x: {status})")
+            protocols = [("frozen (25/50)", 25, 50), ("test_perf (5/20)", 5, 20)]
+            if args.profile:
+                print("[WARN] --metric-policy both: profiler trace captured for the primary protocol only.")
+    else:
+        protocols = [(policy_tag, warmup, repeats)]
 
-    print("\n- Overall Performance Gate Summary:")
-    print(f"  - Tested Cases Count: {len(results)}")
-    print(f"  - Geometric Mean Speedup: {geomean_speedup:.2f}x")
-    print(f"  - Individual Gate Compliance: {'ALL PASS' if all_individual_pass else 'SOME FAILED'}")
-    print(f"  - Performance Contract Gate Status: {'PASSED (>= 1.6x)' if overall_gate_pass else 'FAILED (< 1.6x)'}")
-    print("=" * 80)
+    rounds: list[dict[str, Any]] = []
+    for idx, (tag, w, r) in enumerate(protocols):
+        if len(protocols) > 1:
+            print(f"\n{'#' * 80}")
+            print(f"#   Protocol Round {idx + 1}/{len(protocols)}: {tag} (Warmup={w}, Repeats={r})")
+            print(f"{'#' * 80}")
+        ctx = profiler_context if idx == 0 else None
+        rounds.append(execute_round(selected_case_ids, args, device, w, r, scale_factor, ctx, tag))
+
+    if len(rounds) > 1:
+        print_dual_policy_appendix(rounds[0], rounds[1])
+
+    # 门禁判定以 primary（frozen / 指定口径）为准；secondary 仅差值附注（R-6）
+    primary = rounds[0]
+    overall_gate_pass = primary["overall_gate_pass"]
 
     # 导出 JSON 报告
     if args.output_json:
@@ -898,17 +681,29 @@ def main() -> int:
                 "device": str(device),
                 "baseline_type": args.baseline,
                 "scale_factor": scale_factor,
-                "warmup": warmup,
-                "repeats": repeats,
+                "warmup": primary["warmup"],
+                "repeats": primary["repeats"],
                 "qk_quant_gran": args.qk_quant_gran,
                 "pv_accum_dtype": args.pv_accum_dtype,
                 "peak_bandwidth_gbs": args.peak_bandwidth_gbs,
-                "geomean_speedup": round(geomean_speedup, 3),
-                "all_individual_pass": all_individual_pass,
+                "geomean_speedup": round(primary["geomean_speedup"], 3),
+                "all_individual_pass": primary["all_individual_pass"],
                 "overall_gate_pass": overall_gate_pass,
+                "policy_rounds": [
+                    {
+                        "tag": rd["tag"],
+                        "warmup": rd["warmup"],
+                        "repeats": rd["repeats"],
+                        "geomean_speedup": round(rd["geomean_speedup"], 3),
+                        "overall_gate_pass": rd["overall_gate_pass"],
+                    }
+                    for rd in rounds
+                ],
             },
-            "cases": results,
+            "cases": primary["results"],
         }
+        if len(rounds) > 1:
+            report_data["secondary_cases"] = rounds[1]["results"]
         output_path = Path(args.output_json)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         with open(output_path, "w", encoding="utf-8") as f:

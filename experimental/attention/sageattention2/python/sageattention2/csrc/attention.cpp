@@ -199,6 +199,10 @@ struct ConvertedParamsGuard {
     do {                                                                                                   \
         void *wsFuncAddr = FindOpApiSymbol(#apiName "GetWorkspaceSize");                                   \
         void *runFuncAddr = FindOpApiSymbol(#apiName);                                                     \
+        if (wsFuncAddr == nullptr || runFuncAddr == nullptr) {                                             \
+            wsFuncAddr = FindOpApiSymbol("aclnnSageAttention2GetWorkspaceSize");                           \
+            runFuncAddr = FindOpApiSymbol("aclnnSageAttention2");                                         \
+        }                                                                                                  \
         TORCH_CHECK(wsFuncAddr != nullptr && runFuncAddr != nullptr, #apiName,                             \
                     " or " #apiName "GetWorkspaceSize not found in Ascend op api libraries.");             \
         uint64_t workspaceSize = 0;                                                                        \

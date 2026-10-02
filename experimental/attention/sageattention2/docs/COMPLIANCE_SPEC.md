@@ -1,6 +1,6 @@
 # SageAttention2 任务需求契约严格合规与实现优势论证
 
-本文档依据需求规范 [SageAttention2_task_doc.md](file:///Users/z/git/hw/sageAttention2/SageAttention2_task_doc.md)，逐条论证华为昇腾 Atlas 950PR 平台上的 `SageAttention2` 实现的合规性、完备性以及架构技术优势。
+本文档依据 SageAttention2 算子任务需求规范，逐条论证华为昇腾 Atlas 950PR 平台上的 `SageAttention2` 实现的合规性、完备性以及架构技术优势。
 
 ## 一、需求条款逐条合规核验
 
@@ -10,8 +10,8 @@
   - 提供顶层通用分发入口 `sageattn` 与全功能底层接口 `sageattn_qk_int8_pv_fp8_asc`。
   - 参数命名、默认值与行为与官方开源行为严格一致（`tensor_layout="HND"`, `is_causal=False`, `qk_quant_gran="per_thread"`, `pv_accum_dtype="fp32+fp16"`, `smooth_k=True`, `smooth_v=False`, `return_lse=False`）。
 - **aclnn 两段式接口**：
-  - 交付完备的 `aclnnSa2Attention2GetWorkspaceSize` 与 `aclnnSa2Attention2` C++ 运行时接口，语义与 PyTorch 接口完全同构。
-  - 提供独立的 C++ 单元验证套件 [test_aclnn.cpp](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/tests/test_aclnn.cpp)（10 组全量正反用例 100% 通过）。
+  - 交付完备的 `aclnnSa2Attention2GetWorkspaceSize` / `aclnnSa2Attention2` 与标准大驼峰别名 `aclnnSageAttention2GetWorkspaceSize` / `aclnnSageAttention2` C++ 运行时接口，语义与 PyTorch 接口完全同构。
+  - 提供独立的 C++ 单元验证套件 [test_aclnn.cpp](../tests/test_aclnn.cpp)（11 组全量正反用例 100% 通过）。
 
 ### 2. 量化方案与精度档位（任务书 §3 & §4）
 
@@ -25,7 +25,7 @@
 
 ### 3. 验收测试用例全覆盖（TC-01 ~ TC-10）
 
-在 [test_functional_matrix.py](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/tests/test_functional_matrix.py) 中实现了全量用例覆盖：
+在 [test_functional_matrix.py](../tests/test_functional_matrix.py) 中实现了全量用例覆盖：
 
 - **TC-01 布局分发**：验证 HND 与 NHD 布局数值完全等价。
 - **TC-02 全组合覆盖**：2 种量化粒度 × 3 种累加档位 = 6 种组合全部测试通过。
@@ -55,7 +55,7 @@
 
 ## 三、相关文件索引
 
-- 任务需求：[sageAttention2/SageAttention2_task_doc.md](file:///Users/z/git/hw/sageAttention2/SageAttention2_task_doc.md)
-- 数值契约：[tests/sa2_numeric_conformance.cpp](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/tests/sa2_numeric_conformance.cpp)
-- 规划器验证：[tests/test_host_tiling_planner.cpp](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/tests/test_host_tiling_planner.cpp)
-- 性能基线测试：[benchmarks/benchmark_aclnn_fia.cpp](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/benchmarks/benchmark_aclnn_fia.cpp)
+- 数值契约：[tests/sa2_numeric_conformance.cpp](../tests/sa2_numeric_conformance.cpp)
+- 规划器验证：[tests/test_host_tiling_planner.cpp](../tests/test_host_tiling_planner.cpp)
+- 性能基线测试：[benchmarks/benchmark_aclnn_fia.cpp](../benchmarks/benchmark_aclnn_fia.cpp)
+- 接口对齐规范：[docs/CUDA_INTERFACE_SPEC.md](./CUDA_INTERFACE_SPEC.md)

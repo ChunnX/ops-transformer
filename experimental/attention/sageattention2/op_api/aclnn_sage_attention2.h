@@ -45,6 +45,20 @@ ACLNN_API aclnnStatus aclnnSa2Attention2GetWorkspaceSize(
 ACLNN_API aclnnStatus aclnnSa2Attention2(
     void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream);
 
+/**
+ * @brief 仓内标准大驼峰别名（CANN 统一规范对齐，转发 aclnnSa2Attention2GetWorkspaceSize）。
+ */
+ACLNN_API aclnnStatus aclnnSageAttention2GetWorkspaceSize(
+    const aclTensor *q, const aclTensor *k, const aclTensor *v, const char *tensorLayout, bool isCausal,
+    const char *qkQuantGran, double smScale, const char *pvAccumDtype, bool smoothK, bool smoothV, bool returnLse,
+    aclTensor *out, aclTensor *lse, uint64_t *workspaceSize, aclOpExecutor **executor);
+
+/**
+ * @brief 仓内标准大驼峰别名（CANN 统一规范对齐，转发 aclnnSa2Attention2）。
+ */
+ACLNN_API aclnnStatus aclnnSageAttention2(
+    void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream);
+
 #ifdef __cplusplus
 }
 #endif

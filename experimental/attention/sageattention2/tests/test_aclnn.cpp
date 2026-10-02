@@ -242,6 +242,21 @@ inline aclnnStatus aclnnSa2Attention2(
     delete reinterpret_cast<MockOpExecutor *>(executor);
     return ACLNN_SUCCESS;
 }
+
+inline aclnnStatus aclnnSageAttention2GetWorkspaceSize(
+    const aclTensor *q, const aclTensor *k, const aclTensor *v, const char *tensorLayout, bool isCausal,
+    const char *qkQuantGran, double smScale, const char *pvAccumDtype, bool smoothK, bool smoothV, bool returnLse,
+    aclTensor *out, aclTensor *lse, uint64_t *workspaceSize, aclOpExecutor **executor)
+{
+    return aclnnSa2Attention2GetWorkspaceSize(q, k, v, tensorLayout, isCausal, qkQuantGran, smScale, pvAccumDtype,
+                                              smoothK, smoothV, returnLse, out, lse, workspaceSize, executor);
+}
+
+inline aclnnStatus aclnnSageAttention2(
+    void *ws, uint64_t sz, aclOpExecutor *executor, aclrtStream st)
+{
+    return aclnnSa2Attention2(ws, sz, executor, st);
+}
 #endif
 
 #define CHECK_RET(cond, return_expr) \
@@ -707,6 +722,63 @@ static int Test10_Negative_NonDivisibleGqa()
 }
 
 // -------------------------------------------------------------
+// -------------------------------------------------------------
+// Test 11: 官方标准大驼峰别名用例（aclnnSageAttention2 两段式入口）
+// -------------------------------------------------------------
+static int Test11_Positive_Standard_Alias_aclnnSageAttention2(aclrtStream stream)
+{
+    LOG_PRINT("[TEST 11] Running positive case via standard alias aclnnSageAttention2 (HND, fp16, per_thread, fp32+fp16)...\n");
+    const int64_t b = 1, hq = 4, hk = 4, sq = 64, sk = 64, d = 64;
+    std::vector<int64_t> qShape = {b, hq, sq, d};
+    std::vector<int64_t> kShape = {b, hk, sk, d};
+    std::vector<int64_t> vShape = {b, hk, sk, d};
+    std::vector<int64_t> outShape = {b, hq, sq, d};
+    std::vector<int64_t> lseShape = {b, hq, sq};
+
+    void *qAddr = nullptr, *kAddr = nullptr, *vAddr = nullptr, *outAddr = nullptr, *lseAddr = nullptr;
+    aclTensor *q = nullptr, *k = nullptr, *v = nullptr, *out = nullptr, *lse = nullptr;
+
+    std::vector<uint16_t> qHost(GetShapeSize(qShape), 0x3C00); // 1.0 in fp16
+    std::vector<uint16_t> kHost(GetShapeSize(kShape), 0x3C00);
+    std::vector<uint16_t> vHost(GetShapeSize(vShape), 0x3C00);
+    std::vector<uint16_t> outHost(GetShapeSize(outShape), 0);
+    std::vector<float> lseHost(GetShapeSize(lseShape), 0.0f);
+
+    CreateAclTensorHelper(qHost, qShape, &qAddr, ACL_FLOAT16, &q);
+    CreateAclTensorHelper(kHost, kShape, &kAddr, ACL_FLOAT16, &k);
+    CreateAclTensorHelper(vHost, vShape, &vAddr, ACL_FLOAT16, &v);
+    CreateAclTensorHelper(outHost, outShape, &outAddr, ACL_FLOAT16, &out);
+    CreateAclTensorHelper(lseHost, lseShape, &lseAddr, ACL_FLOAT, &lse);
+
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    double smScale = 1.0 / std::sqrt(static_cast<double>(d));
+
+    auto status = aclnnSageAttention2GetWorkspaceSize(
+        q, k, v, "HND", false, "per_thread", smScale, "fp32+fp16",
+        true, false, true, out, lse, &workspaceSize, &executor);
+    CHECK_RET(status == ACLNN_SUCCESS, LOG_PRINT("Test 11 GetWorkspaceSize failed: %d\n", status); return -1);
+
+    void *workspace = nullptr;
+    if (workspaceSize > 0) {
+        aclrtMalloc(&workspace, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
+    }
+    status = aclnnSageAttention2(workspace, workspaceSize, executor, stream);
+    CHECK_RET(status == ACLNN_SUCCESS, LOG_PRINT("Test 11 Execution failed: %d\n", status); return -1);
+    aclrtSynchronizeStream(stream);
+
+    if (workspace != nullptr) aclrtFree(workspace);
+    DestroyTensorAndAddr(q, qAddr);
+    DestroyTensorAndAddr(k, kAddr);
+    DestroyTensorAndAddr(v, vAddr);
+    DestroyTensorAndAddr(out, outAddr);
+    DestroyTensorAndAddr(lse, lseAddr);
+
+    LOG_PRINT("  -> Test 11 (Standard alias aclnnSageAttention2) PASSED!\n");
+    return 0;
+}
+
+// -------------------------------------------------------------
 // 主入口
 // -------------------------------------------------------------
 int main(int, char **)
@@ -733,13 +805,14 @@ int main(int, char **)
     if (Test8_Negative_CausalSeqMismatch() != 0) failCount++;
     if (Test9_Negative_NonContiguousLastDim() != 0) failCount++;
     if (Test10_Negative_NonDivisibleGqa() != 0) failCount++;
+    if (Test11_Positive_Standard_Alias_aclnnSageAttention2(stream) != 0) failCount++;
 
     aclrtDestroyStream(stream);
     aclrtResetDevice(deviceId);
     aclFinalize();
 
     if (failCount == 0) {
-        LOG_PRINT("=== All 10 aclnn Test Cases PASSED! (0 failures) ===\n");
+        LOG_PRINT("=== All 11 aclnn Test Cases PASSED! (0 failures) ===\n");
         return 0;
     } else {
         LOG_PRINT("=== aclnn Verification FAILED: %d test cases failed! ===\n", failCount);

@@ -76,6 +76,6 @@ $$\text{lse}_{\text{final}} = \ln(\text{denom}) + m' + s \cdot (q \cdot \mu_k)$$
 
 ## 四、相关文件索引
 
-- 核心实现：[python/sageattention2/core.py](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/python/sageattention2/core.py)
-- 接口校验：[python/sageattention2/_ops.py](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/python/sageattention2/_ops.py)
-- 验收矩阵：[tests/test_functional_matrix.py](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/tests/test_functional_matrix.py)
+- 核心实现：[python/sageattention2/core.py](../python/sageattention2/core.py)
+- 接口校验：[python/sageattention2/_ops.py](../python/sageattention2/_ops.py)
+- 验收矩阵：[tests/test_functional_matrix.py](../tests/test_functional_matrix.py)

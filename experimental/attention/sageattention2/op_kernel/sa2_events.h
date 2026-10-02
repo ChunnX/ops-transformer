@@ -126,6 +126,43 @@ __aicore__ inline void AwaitScaleConsumed(int64_t parity) {
   AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(static_cast<uint16_t>(parity == 0 ? kEvScale0 : kEvScale1));
 }
 
+// ---- K8 / V8 双缓冲异步流水预取与本地事件协同 (AIC Cube 轨) ----
+// 消除 MTE2 同步 PipeBarrier，通过 MTE2_MTE1 与 MTE1_MTE2 实现流水重叠：
+// 1. MTE2 异步 DataCopy 加载 K/V 到 L1 双缓冲槽后，置 MTE2_MTE1 放行 MTE1；
+// 2. MTE1 等待 MTE2_MTE1 就绪后将 L1 搬至 L0B，随后置 MTE1_MTE2 释放该 L1 槽；
+// 3. MTE2 预取后续 step+2 时等待 MTE1_MTE2 槽位释放，形成无气泡双缓冲流水。
+__aicore__ inline void NotifyKLoaded(int64_t parity) {
+  AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(static_cast<uint16_t>(parity == 0 ? kEvKPrefetch0 : kEvKPrefetch1));
+}
+
+__aicore__ inline void AwaitKLoaded(int64_t parity) {
+  AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(static_cast<uint16_t>(parity == 0 ? kEvKPrefetch0 : kEvKPrefetch1));
+}
+
+__aicore__ inline void NotifyKConsumed(int64_t parity) {
+  AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(static_cast<uint16_t>(parity == 0 ? kEvKPrefetch0 : kEvKPrefetch1));
+}
+
+__aicore__ inline void AwaitKConsumed(int64_t parity) {
+  AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(static_cast<uint16_t>(parity == 0 ? kEvKPrefetch0 : kEvKPrefetch1));
+}
+
+__aicore__ inline void NotifyVLoaded(int64_t parity) {
+  AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(static_cast<uint16_t>(parity == 0 ? kEvVPrefetch0 : kEvVPrefetch1));
+}
+
+__aicore__ inline void AwaitVLoaded(int64_t parity) {
+  AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(static_cast<uint16_t>(parity == 0 ? kEvVPrefetch0 : kEvVPrefetch1));
+}
+
+__aicore__ inline void NotifyVConsumed(int64_t parity) {
+  AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(static_cast<uint16_t>(parity == 0 ? kEvVPrefetch0 : kEvVPrefetch1));
+}
+
+__aicore__ inline void AwaitVConsumed(int64_t parity) {
+  AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(static_cast<uint16_t>(parity == 0 ? kEvVPrefetch0 : kEvVPrefetch1));
+}
+
 #else
 
 inline void NotifyFix(int64_t, Sa2CrossFlag) {}
@@ -138,6 +175,14 @@ inline void NotifyScaleLoaded(int64_t) {}
 inline void AwaitScaleLoaded(int64_t) {}
 inline void NotifyScaleConsumed(int64_t) {}
 inline void AwaitScaleConsumed(int64_t) {}
+inline void NotifyKLoaded(int64_t) {}
+inline void AwaitKLoaded(int64_t) {}
+inline void NotifyKConsumed(int64_t) {}
+inline void AwaitKConsumed(int64_t) {}
+inline void NotifyVLoaded(int64_t) {}
+inline void AwaitVLoaded(int64_t) {}
+inline void NotifyVConsumed(int64_t) {}
+inline void AwaitVConsumed(int64_t) {}
 
 #endif  // __has_include("kernel_operator.h")
 

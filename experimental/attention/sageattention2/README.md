@@ -8,31 +8,31 @@
 
 - `op_host/`
   - 对应任务书：`op_host/`
-  - 内容：算子定义注册 [sa2_def.cpp](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/op_host/sa2_def.cpp)、Tiling 分析与资源校验 [sa2_tiling.cpp](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/op_host/sa2_tiling.cpp)、构建配置 [CMakeLists.txt](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/op_host/CMakeLists.txt)。
+  - 内容：算子定义注册 [sa2_def.cpp](./op_host/sa2_def.cpp)、Tiling 分析与资源校验 [sa2_tiling.cpp](./op_host/sa2_tiling.cpp)、构建配置 [CMakeLists.txt](./op_host/CMakeLists.txt)。
 - `op_kernel/`
   - 对应任务书：`op_kernel/`
-  - 内容：真实物理内核模块，严格专属于真机 NPU 物理编译（`__AICORE__` 或硬件桩 `-D__CCE_KT_TEST__`）。包含内核参数与常量契约 [sa2_spec.h](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/op_kernel/sa2_spec.h)、8 特化模板维 [sa2_template_key.h](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/op_kernel/sa2_template_key.h)、FA4 LPT 规划器 [sa2_planner.h](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/op_kernel/sa2_planner.h)、UB 槽位内存预算 [sa2_ub_plan.h](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/op_kernel/sa2_ub_plan.h)、跨核与本地同步旗号 [sa2_events.h](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/op_kernel/sa2_events.h)、KV 预处理与注意力主循环 AscendC + CATLASS 真实硬件流水（[sa2_kv_prep.h](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/op_kernel/sa2_kv_prep.h) / [sa2_attention_loop.h](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/op_kernel/sa2_attention_loop.h)）与内核入口函数 [sa2_kernel.cpp](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/op_kernel/sa2_kernel.cpp)。顶部设置物理硬防线（非设备宏直接 `#error` 拦截），彻底杜绝宿主 STL 与标量代码污染。
+  - 内容：真实物理内核模块，严格专属于真机 NPU 物理编译（`__AICORE__` 或硬件桩 `-D__CCE_KT_TEST__`）。包含内核参数与常量契约 [sa2_spec.h](./op_kernel/sa2_spec.h)、8 特化模板维 [sa2_template_key.h](./op_kernel/sa2_template_key.h)、FA4 LPT 规划器 [sa2_planner.h](./op_kernel/sa2_planner.h)、UB 槽位内存预算 [sa2_ub_plan.h](./op_kernel/sa2_ub_plan.h)、跨核与本地同步旗号 [sa2_events.h](./op_kernel/sa2_events.h)、KV 预处理与注意力主循环 AscendC + CATLASS 真实硬件流水（[sa2_kv_prep.h](./op_kernel/sa2_kv_prep.h) / [sa2_attention_loop.h](./op_kernel/sa2_attention_loop.h)）与内核入口函数 [sa2_kernel.cpp](./op_kernel/sa2_kernel.cpp)。顶部设置物理硬防线（非设备宏直接 `#error` 拦截），彻底杜绝宿主 STL 与标量代码污染。
 - `sim/`
   - 对应任务书：独立宿主高精数值仿真模块
-  - 内容：宿主机标量数值仿真引擎 [sa2_sim_engine.h](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/sim/sa2_sim_engine.h)、仿真注意力循环 [sa2_sim_loop.h](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/sim/sa2_sim_loop.h)、仿真 KV 预处理 [sa2_sim_kv_prep.h](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/sim/sa2_sim_kv_prep.h) 与构建配置 [CMakeLists.txt](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/sim/CMakeLists.txt)。完全与设备内核物理隔离，专为 pytest、差分桥与离线黄金对拍服务。
+  - 内容：宿主机标量数值仿真引擎 [sa2_sim_engine.h](./sim/sa2_sim_engine.h)、仿真注意力循环 [sa2_sim_loop.h](./sim/sa2_sim_loop.h)、仿真 KV 预处理 [sa2_sim_kv_prep.h](./sim/sa2_sim_kv_prep.h) 与构建配置 [CMakeLists.txt](./sim/CMakeLists.txt)。完全与设备内核物理隔离，专为 pytest、差分桥与离线黄金对拍服务。
 - `op_api/`
   - 对应任务书：`op_api/`
-  - 内容：两段式 aclnn 接口声明 [aclnn_sage_attention2.h](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/op_api/aclnn_sage_attention2.h) 与分发实现 [aclnn_sage_attention2.cpp](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/op_api/aclnn_sage_attention2.cpp)。
+  - 内容：两段式 aclnn 接口声明 [aclnn_sage_attention2.h](./op_api/aclnn_sage_attention2.h) 与分发实现 [aclnn_sage_attention2.cpp](./op_api/aclnn_sage_attention2.cpp)。
 - `python/`
   - 对应任务书：`python/`
-  - 内容：PyTorch Dispatcher 适配层 [sageattention2](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/python/sageattention2)（包含自动分发 `_ops.py`、CSRC C++ 绑定 `csrc/attention.cpp` 与纯 CPU 数值参考实现 `reference.py`）。
+  - 内容：PyTorch Dispatcher 适配层 [sageattention2](./python/sageattention2)（包含自动分发 `_ops.py`、CSRC C++ 绑定 `csrc/attention.cpp` 与纯 CPU 数值参考实现 `reference.py`）。
 - `tests/`
   - 对应任务书：`tests/`
-  - 内容：端到端功能验收矩阵 [test_functional_matrix.py](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/tests/test_functional_matrix.py)（TC-01 ~ TC-10 全覆盖，含零填充数值等价与负测试全面扩充）、宿主机数值断言与仿真对齐 [test_host_assertions.py](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/tests/test_host_assertions.py)、C++ 数值契约断言桩 [sa2_numeric_conformance.cpp](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/tests/sa2_numeric_conformance.cpp)（0 失败，checks 总数唯一权威口径见 tests/README.md 第三节 §2，含 M4.4 数理证明、M2.7.2 UB 防护、M2c-C2 极限分值域防御、双 Die NUMA 拓扑亲和/GQA L2 Cache 原地复用断言、vScale 窗口化 nN 布局契约与 Softmax 在线更新数值稳定性及 FTZ 冲零断言）、C++ 两段式接口与异常防御全量验证 [test_aclnn.cpp](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/tests/test_aclnn.cpp)（覆盖正例 2 项 + 负例 8 项共 10 组全量校验防御）与套件说明 [tests/README.md](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/tests/README.md)。
+  - 内容：端到端功能验收矩阵 [test_functional_matrix.py](./tests/test_functional_matrix.py)（TC-01 ~ TC-10 全覆盖，含零填充数值等价与负测试全面扩充）、宿主机数值断言与仿真对齐 [test_host_assertions.py](./tests/test_host_assertions.py)、C++ 数值契约断言桩 [sa2_numeric_conformance.cpp](./tests/sa2_numeric_conformance.cpp)（0 失败，checks 总数唯一权威口径见 tests/README.md 第三节 §2，含 M4.4 数理证明、M2.7.2 UB 防护、M2c-C2 极限分值域防御、双 Die NUMA 拓扑亲和/GQA L2 Cache 原地复用断言、vScale 窗口化 nN 布局契约与 Softmax 在线更新数值稳定性及 FTZ 冲零断言）、C++ 两段式接口与异常防御全量验证 [test_aclnn.cpp](./tests/test_aclnn.cpp)（覆盖正例 3 项 + 负例 8 项共 11 组全量校验防御，含官方标准大驼峰别名 aclnnSageAttention2）与套件说明 [tests/README.md](./tests/README.md)。
 - `benchmarks/`
   - 对应任务书：性能评测程序
-  - 内容：C++ aclnn 两段式性能对比测试程序 [benchmark_aclnn_fia.cpp](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/benchmarks/benchmark_aclnn_fia.cpp)，覆盖 P-01 ~ P-07 全部规格，明确对照官方 `aclnnFusedInferAttentionScoreV5` 基准，核验 >= 1.6x 性能契约硬门禁。
+  - 内容：C++ aclnn 两段式性能对比测试程序 [benchmark_aclnn_fia.cpp](./benchmarks/benchmark_aclnn_fia.cpp)，覆盖 P-01 ~ P-07 全部规格，明确对照官方 `aclnnFusedInferAttentionScoreV5` 基准，核验 >= 1.6x 性能契约硬门禁。
 - `tools/`
   - 对应任务书：`tools/`
-  - 内容：真 GPU golden 导出工具 [export_gpu_golden.py](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/tools/export_gpu_golden.py)，用于在真实 NVIDIA GPU 环境下一键导出 L-A 验证数据（覆盖 TC-02 全组合 × P-01 ~ P-07 形状）。【澄清】：导出工具已就绪 ≠ 真机 golden 已取得，L-A 验收标准以真 GPU 环境实际导出并落库的 golden 数据为最终准绳。
+  - 内容：真 GPU golden 导出工具 [export_gpu_golden.py](./tools/export_gpu_golden.py)，用于在真实 NVIDIA GPU 环境下一键导出 L-A 验证数据（覆盖 TC-02 全组合 × P-01 ~ P-07 形状）。【澄清】：导出工具已就绪 ≠ 真机 golden 已取得，L-A 验收标准以真 GPU 环境实际导出并落库的 golden 数据为最终准绳。
 - `THIRD_PARTY`
   - 对应任务书：开源许可声明与借用登记
-  - 内容：[THIRD_PARTY](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/THIRD_PARTY) 集中登记借用的 FlashMLA、DeepGEMM-Ascend、TileKernels、tilelang、DeepSelect 5 个开源 MIT 资产信息与完整许可文本。
+  - 内容：[THIRD_PARTY](./THIRD_PARTY) 集中登记借用的 FlashMLA、DeepGEMM-Ascend、TileKernels、tilelang、DeepSelect 5 个开源 MIT 资产信息与完整许可文本。
 
 ## 二、API 说明与环境变量
 
@@ -103,7 +103,7 @@ aclrtSynchronizeStream(stream);
 - **OPP 算子包一键构建与安装**（生产级交付标准）：
 
 ```bash
-cd ops-transformer/experimental/attention/sageattention2
+cd experimental/attention/sageattention2
 
 # 1. 构建标准 OPP 自定义算子包（输出 cann-ops-transformer-custom_*.run）
 bash build_opp.sh
@@ -115,7 +115,7 @@ bash install_opp.sh
 - **PyTorch C++ 扩展安装**：
 
 ```bash
-cd ops-transformer/experimental/attention/sageattention2
+cd experimental/attention/sageattention2
 pip install -r requirements.txt
 pip install .
 ```
@@ -123,7 +123,6 @@ pip install .
 - **统一全量构建**（通过 ops-transformer 仓顶层脚本）：
 
 ```bash
-cd ops-transformer
 source /usr/local/Ascend/ascend-toolkit/set_env.sh
 bash build.sh --pkg --experimental --soc=ascend950 --ops=sageattention2 --build-type=Release -O3
 ```
@@ -149,7 +148,7 @@ clang++ -std=c++17 -O3 -Wall -Wextra \
 - 执行 C++ aclnn 全量防御与接口契约测试（全量用例 0 失败，构成唯一权威口径见 tests/README.md 第三节 §3）：
 
 ```bash
-# 宿主机独立编译与运行（无需 CANN 依赖即可全量验证 10 组接口防御）
+# 宿主机独立编译与运行（无需 CANN 依赖即可全量验证 11 组接口防御）
 clang++ -std=c++17 -Wall -Wextra -Werror \
     experimental/attention/sageattention2/tests/test_aclnn.cpp \
     -o /tmp/test_aclnn && /tmp/test_aclnn
@@ -171,7 +170,7 @@ clang++ -std=c++17 -Wall -Wextra -Werror \
 
 ## 四、开源资产借用与许可登记
 
-根据开源许可规范与项目合规要求，本项目所参考与借用的第三方开源组件均已在 [THIRD_PARTY](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/THIRD_PARTY) 集中明确登记，包括：
+根据开源许可规范与项目合规要求，本项目所参考与借用的第三方开源组件均已在 [THIRD_PARTY](./THIRD_PARTY) 集中明确登记，包括：
 
 - FlashMLA（DeepSeek，MIT 许可）
   - 借用点：三状态 online softmax 状态机、θ 阈值法 skip-scale 调度、UB 累加器驻留与 MMA 重缩放解耦设计。
@@ -183,3 +182,9 @@ clang++ -std=c++17 -Wall -Wextra -Werror \
   - 借用点：Ascend 950 Cube MMAD 指令调度流水与原型验证参考轨。
 - DeepSelect（DeepSeek，MIT 许可）
   - 借用点：单指令复合原语与 AIV 指令错峰流水控制理念。
+
+## 五、工程专题文档索引
+
+- 任务需求契约逐条合规与实现优势论证：[docs/COMPLIANCE_SPEC.md](./docs/COMPLIANCE_SPEC.md)
+- 与 CUDA 开源接口差异说明：[docs/CUDA_INTERFACE_SPEC.md](./docs/CUDA_INTERFACE_SPEC.md)（中文稿：[docs/CUDA接口差异说明.md](./docs/CUDA接口差异说明.md)）
+- PyTorch 接入范围与深度集成契约说明：[docs/PYTORCH_INTEGRATION_SPEC.md](./docs/PYTORCH_INTEGRATION_SPEC.md)（中文稿：[docs/PyTorch接入说明.md](./docs/PyTorch接入说明.md)）

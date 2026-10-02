@@ -21,61 +21,41 @@ from typing import Any
 
 import torch
 
+# 导入 SageAttention2 库
+_repo_python_path = Path(__file__).resolve().parent.parent / "python"
+if _repo_python_path.exists() and str(_repo_python_path) not in sys.path:
+    sys.path.insert(0, str(_repo_python_path))
+
+from sageattention2._constants import (
+    BENCHMARK_SPECS,
+    VALID_PV_ACCUM_DTYPES,
+    VALID_QK_QUANT_GRANS,
+)
+from sageattention2._utils import create_qkv
+
 # 7 大基准测试规格 P-01 ~ P-07（任务书 §5.1 / todo.md §0.5）
 BENCHMARK_CASES: list[dict[str, Any]] = [
     {
-        "name": "P-01",
-        "b": 1, "hq": 32, "hk": 32, "sq": 4096, "sk": 4096, "d": 128,
-        "dtype": "float16", "is_causal": False,
-        "smooth_k": True, "smooth_v": False,
-        "category": "S1", "desc": "[1,32,4096,128] FP16 non-causal",
-    },
-    {
-        "name": "P-02",
-        "b": 1, "hq": 32, "hk": 32, "sq": 8192, "sk": 8192, "d": 128,
-        "dtype": "float16", "is_causal": False,
-        "smooth_k": True, "smooth_v": False,
-        "category": "S1", "desc": "[1,32,8192,128] FP16 non-causal",
-    },
-    {
-        "name": "P-03",
-        "b": 1, "hq": 32, "hk": 32, "sq": 8192, "sk": 8192, "d": 128,
-        "dtype": "float16", "is_causal": True,
-        "smooth_k": True, "smooth_v": False,
-        "category": "S2", "desc": "[1,32,8192,128] FP16 causal",
-    },
-    {
-        "name": "P-04",
-        "b": 2, "hq": 32, "hk": 32, "sq": 8192, "sk": 8192, "d": 128,
-        "dtype": "float16", "is_causal": False,
-        "smooth_k": True, "smooth_v": False,
-        "category": "S1", "desc": "[2,32,8192,128] FP16 non-causal",
-    },
-    {
-        "name": "P-05",
-        "b": 1, "hq": 32, "hk": 8, "sq": 4096, "sk": 4096, "d": 128,
-        "dtype": "float16", "is_causal": False,
-        "smooth_k": True, "smooth_v": False,
-        "category": "S3", "desc": "GQA Hq/Hk=32/8, S=4096, D=128 FP16",
-    },
-    {
-        "name": "P-06",
-        "b": 1, "hq": 32, "hk": 32, "sq": 4096, "sk": 4096, "d": 128,
-        "dtype": "bfloat16", "is_causal": False,
-        "smooth_k": True, "smooth_v": False,
-        "category": "S4", "desc": "[1,32,4096,128] BF16 non-causal",
-    },
-    {
-        "name": "P-07",
-        "b": 1, "hq": 32, "hk": 32, "sq": 16384, "sk": 16384, "d": 128,
-        "dtype": "float16", "is_causal": False,
-        "smooth_k": True, "smooth_v": False,
-        "category": "S5", "desc": "[1,32,16384,128] FP16 long-sequence",
-    },
+        "name": k,
+        "b": v["batch"],
+        "hq": v["hq"],
+        "hk": v["hk"],
+        "sq": v["sq"],
+        "sk": v["sk"],
+        "d": v["d"],
+        "dtype": "bfloat16" if v["dtype"] == torch.bfloat16 else "float16",
+        "is_causal": v["is_causal"],
+        "smooth_k": True,
+        "smooth_v": False,
+        "category": v.get("category", ""),
+        "desc": v.get("desc", ""),
+    }
+    for k, v in BENCHMARK_SPECS.items()
 ]
 
-VALID_QUANT_GRANS = ("per_thread", "per_warp")
-VALID_ACCUM_DTYPES = ("fp32", "fp32+fp32", "fp32+fp16")
+VALID_QUANT_GRANS = VALID_QK_QUANT_GRANS
+VALID_ACCUM_DTYPES = VALID_PV_ACCUM_DTYPES
+
 
 
 def compute_file_sha256(filepath: Path) -> str:
@@ -326,13 +306,9 @@ def main():
         if args.strict_gpu:
             sys.exit("[FATAL ERROR] --strict-gpu specified, but no genuine CUDA GPU / package is available.")
         # 加载本地高保真参考实现作为兜底
-        candidate_paths = [
-            Path(__file__).resolve().parent.parent / "python",
-            Path(__file__).resolve().parent.parent.parent / "ops-transformer/experimental/attention/sageattention2/python",
-        ]
-        for p in candidate_paths:
-            if p.exists() and str(p) not in sys.path:
-                sys.path.insert(0, str(p))
+        local_py_path = Path(__file__).resolve().parent.parent / "python"
+        if local_py_path.exists() and str(local_py_path) not in sys.path:
+            sys.path.insert(0, str(local_py_path))
         from sageattention2.reference import sageattn_reference
         gpu_fn = sageattn_reference
         print("[+] Loaded local reference implementation (CPU fallback)")
@@ -370,9 +346,9 @@ def main():
 
                 # 生成确定性输入张量
                 torch.manual_seed(args.seed + generated_count)
-                q = torch.randn(b, hq, sq, d, dtype=dtype, device=device)
-                k = torch.randn(b, hk, sk, d, dtype=dtype, device=device)
-                v = torch.randn(b, hk, sk, d, dtype=dtype, device=device)
+                q, k, v = create_qkv(
+                    b=b, hq=hq, hk=hk, sq=sq, sk=sk, d=d, dtype=dtype, device=device, layout="HND"
+                )
 
                 # 调用计算
                 try:

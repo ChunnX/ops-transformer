@@ -449,6 +449,20 @@ aclnnStatus aclnnSa2Attention2(void *workspace, uint64_t workspaceSize, aclOpExe
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
 }
 
+aclnnStatus aclnnSageAttention2GetWorkspaceSize(
+    const aclTensor *q, const aclTensor *k, const aclTensor *v, const char *tensorLayout, bool isCausal,
+    const char *qkQuantGran, double smScale, const char *pvAccumDtype, bool smoothK, bool smoothV, bool returnLse,
+    aclTensor *out, aclTensor *lse, uint64_t *workspaceSize, aclOpExecutor **executor)
+{
+    return aclnnSa2Attention2GetWorkspaceSize(q, k, v, tensorLayout, isCausal, qkQuantGran, smScale, pvAccumDtype,
+                                              smoothK, smoothV, returnLse, out, lse, workspaceSize, executor);
+}
+
+aclnnStatus aclnnSageAttention2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)
+{
+    return aclnnSa2Attention2(workspace, workspaceSize, executor, stream);
+}
+
 #ifdef __cplusplus
 }
 #endif

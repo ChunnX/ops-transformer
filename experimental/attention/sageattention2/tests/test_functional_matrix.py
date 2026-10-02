@@ -9,20 +9,18 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "python"))
 
-from sageattention2 import replace_sdpa, sageattn, sageattn_qk_int8_pv_fp8_asc
+from sageattention2 import (
+    create_qkv,
+    replace_sdpa,
+    sageattn,
+    sageattn_qk_int8_pv_fp8_asc,
+)
 from sageattention2.reference import sageattn_reference
 
 
 def _create_tensors(b=2, hq=4, hk=4, sq=64, sk=64, d=64, dtype=torch.float16, layout="HND"):
-    if layout == "HND":
-        q = torch.randn(b, hq, sq, d, dtype=dtype)
-        k = torch.randn(b, hk, sk, d, dtype=dtype)
-        v = torch.randn(b, hk, sk, d, dtype=dtype)
-    else:  # NHD
-        q = torch.randn(b, sq, hq, d, dtype=dtype)
-        k = torch.randn(b, sk, hk, d, dtype=dtype)
-        v = torch.randn(b, sk, hk, d, dtype=dtype)
-    return q, k, v
+    return create_qkv(b=b, hq=hq, hk=hk, sq=sq, sk=sk, d=d, dtype=dtype, layout=layout)
+
 
 
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
@@ -202,25 +200,20 @@ def test_tc08_illegal_inputs():
     q, k, v = _create_tensors(b=1, hq=4, hk=4, sq=64, sk=64, d=64)
 
     # 1. head_dim > 128
-    q_bad_d = torch.randn(1, 4, 64, 160, dtype=torch.float16)
-    k_bad_d = torch.randn(1, 4, 64, 160, dtype=torch.float16)
-    v_bad_d = torch.randn(1, 4, 64, 160, dtype=torch.float16)
+    q_bad_d, k_bad_d, v_bad_d = create_qkv(1, 4, 64, 160)
     with pytest.raises(ValueError, match="head_dim"):
         sageattn(q_bad_d, k_bad_d, v_bad_d)
 
     # 2. Hq % Hk != 0
-    q_bad_h = torch.randn(1, 5, 64, 64, dtype=torch.float16)
-    k_bad_h = torch.randn(1, 3, 64, 64, dtype=torch.float16)
-    v_bad_h = torch.randn(1, 3, 64, 64, dtype=torch.float16)
+    q_bad_h, k_bad_h, v_bad_h = create_qkv(1, 5, 64, 64, hk=3)
     with pytest.raises(ValueError, match="divisible"):
         sageattn(q_bad_h, k_bad_h, v_bad_h)
 
     # 3. is_causal 时 Sq != Sk
-    q_diff_s = torch.randn(1, 4, 64, 64, dtype=torch.float16)
-    k_diff_s = torch.randn(1, 4, 128, 64, dtype=torch.float16)
-    v_diff_s = torch.randn(1, 4, 128, 64, dtype=torch.float16)
+    q_diff_s, k_diff_s, v_diff_s = create_qkv(1, 4, 64, 64, sk=128)
     with pytest.raises(ValueError, match="is_causal is valid only when qo_len equals kv_len"):
         sageattn(q_diff_s, k_diff_s, v_diff_s, is_causal=True)
+
 
     # 4. attn_mask 非 None 报错
     with pytest.raises(ValueError, match="attn_mask"):
@@ -287,18 +280,17 @@ def test_tc08_illegal_inputs_extended():
         sageattn(q[0], k[0], v[0])
 
     # 2. batch 不一致
-    q_b2 = torch.randn(2, 4, 64, 64, dtype=torch.float16)
+    q_b2 = create_qkv(2, 4, 64, 64).q
     with pytest.raises(ValueError, match="batch"):
         sageattn(q_b2, k, v)
 
     # 3. q 与 k 的 head_dim 不一致
-    k_d128 = torch.randn(1, 4, 64, 128, dtype=torch.float16)
-    v_d128 = torch.randn(1, 4, 64, 128, dtype=torch.float16)
+    _, k_d128, v_d128 = create_qkv(1, 4, 64, 128)
     with pytest.raises(ValueError, match="head_dim"):
         sageattn(q, k_d128, v_d128)
 
     # 4. k/v shape 不一致（同 b/h/d 但序列长不同）
-    v_s32 = torch.randn(1, 4, 32, 64, dtype=torch.float16)
+    v_s32 = create_qkv(1, 4, 32, 64).v
     with pytest.raises(ValueError, match="k and v must share the same shape"):
         sageattn(q, k, v_s32)
 
@@ -309,15 +301,14 @@ def test_tc08_illegal_inputs_extended():
         sageattn(q, k, v, sm_scale=float("nan"))
 
     # 6. head_dim 下界校验（D=0 契约拦截）
-    q_d0 = torch.randn(1, 4, 64, 0, dtype=torch.float16)
-    k_d0 = torch.randn(1, 4, 64, 0, dtype=torch.float16)
-    v_d0 = torch.randn(1, 4, 64, 0, dtype=torch.float16)
+    q_d0, k_d0, v_d0 = create_qkv(1, 4, 64, 0)
     with pytest.raises(ValueError, match="head_dim"):
         sageattn(q_d0, k_d0, v_d0)
 
     # 7. reference 校验面同口径（直接调 sageattn_reference 亦拦截 D=0）
     with pytest.raises(ValueError, match="head_dim"):
         sageattn_reference(q_d0, k_d0, v_d0)
+
 
 
 def test_tc09_scaled_sequences():

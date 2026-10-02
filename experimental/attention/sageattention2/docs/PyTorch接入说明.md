@@ -7,10 +7,10 @@
 - 方式 A（源码直用）：`PYTHONPATH=<本目录>/python` 后 `import sageattention2`，零编译依赖（CPU 分发
   路径可独立运行宿主回归）。
 - 方式 B（扩展桥）：`pip install .`；首次 NPU 调用时经 `torch.utils.cpp_extension` JIT 编译
-  `python/sageattention2/csrc/attention.cpp`（需 C++17 编译器），后续走 PyTorch 扩展缓存。
-- 方式 C（OPP + ACLNN）：`bash build_opp.sh && bash install_opp.sh` 安装自定义算子包，
+  `[../python/sageattention2/csrc/attention.cpp](../python/sageattention2/csrc/attention.cpp)`（需 C++17 编译器），后续走 PyTorch 扩展缓存。
+- 方式 C（OPP + ACLNN）：`bash ../build_opp.sh && bash ../install_opp.sh` 安装自定义算子包，
   `ASCEND_CUSTOM_OPP_PATH` 指向包根且须在导入 torch_npu 前设置；csrc 桥经 dlopen 解析
-  `aclnnSa2Attention2` 两段式符号下发。
+  `aclnnSa2Attention2` / `aclnnSageAttention2` 两段式符号下发。
 - 依赖：torch（≥ 2.x，含 torch.library 稳定接口）、torch_npu（NPU 路径必需）。
 
 ## 二、dispatcher 注册面
@@ -29,7 +29,8 @@ sageattention2::forward(Tensor q, Tensor k, Tensor v, *,
 - Meta / FakeTensor：`register_fake` 提供校验与 shape/dtype 推导（含 LSE `[B, Hq, Sq]`），
   参数校验在 fake 域即拦截。
 - 契约断言：schema kwonly 参数序与默认值逐项对齐任务书 §2.3
-  （tests/test_pytorch_integration.py::test_schema_contract 钉为契约用例）。
+  （[../tests/test_pytorch_integration.py](../tests/test_pytorch_integration.py)::test_schema_contract 钉为契约用例）。
+- 工具辅助：提供 `create_qkv` 与 `create_attention_inputs` 工厂函数，支持以字典参数直接构造 Q/K/V 张量与算子传参，消除多处重复的 `torch.randn` 样板代码。
 
 ## 三、图模式范围（已验证 / 未验证分列）
 
@@ -54,6 +55,6 @@ sageattention2::forward(Tensor q, Tensor k, Tensor v, *,
 
 ## 六、验证状态（宿主 / 真机分列）
 
-- 已验证（宿主 CPU）：本说明第二、三、四、五节全部断言（tests/test_pytorch_integration.py，
+- 已验证（宿主 CPU）：本说明第二、三、四、五节全部断言（[../tests/test_pytorch_integration.py](../tests/test_pytorch_integration.py)，
   2026-10-02，torch 2.14.1 CPU）。
 - 待验证（真机 NPU）：PrivateUse1 路径下同断言、多流并发与重复调用一致性真机域复验（挂 M3）。

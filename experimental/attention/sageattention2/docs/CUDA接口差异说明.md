@@ -8,11 +8,11 @@
 
 - `sageattn(q, k, v, tensor_layout="HND", is_causal=False, sm_scale=None, return_lse=False, **kwargs)`：
   自动分发入口，NPU 上固定分发到 FP8 PV 路径；`pv_accum_dtype` / `qk_quant_gran` 可经 kwargs 或环境变量
-  `SAGEATTN_PV_ACCUM_DTYPE` / `SAGEATTN_QK_QUANT_GRAN` 覆盖（README 第二节）。
+  `SAGEATTN_PV_ACCUM_DTYPE` / `SAGEATTN_QK_QUANT_GRAN` 覆盖（[../README.md](../README.md) 第二节）。
 - `sageattn_qk_int8_pv_fp8_asc(...)`：与开源 `sageattn_qk_int8_pv_fp8_cuda` 参数列表、默认值、返回值逐项对齐
   （`qk_quant_gran="per_thread"`、`pv_accum_dtype="fp32+fp16"`、`smooth_k=True`、`smooth_v=False`、
   `return_lse=False`）。
-- `aclnnSa2Attention2`：两段式 aclnn 入口，语义与 PyTorch 路径一致（op_api/aclnn_sage_attention2.h）。
+- `aclnnSa2Attention2`：两段式 aclnn 入口，语义与 PyTorch 路径一致（[../op_api/aclnn_sage_attention2.h](../op_api/aclnn_sage_attention2.h)）。
 - 不导出开源 `*_sm90` / `*_cuda` 同名符号；不提供 FP16 PV、varlen、triton 路径。
 
 ## 二、量化语义
@@ -51,16 +51,16 @@
 ## 六、数值行为差异与保证
 
 - 确定性：跨核归约采用单写者确定性分块树（无 atomic 加法），同输入重复调用输出与 LSE 逐位一致
-  （tests/test_pytorch_integration.py 钉为契约用例）。
+  （[../tests/test_pytorch_integration.py](../tests/test_pytorch_integration.py) 钉为契约用例）。
 - 概率域封顶：P ≤ κ 构造性杜绝 E4M3 饱和穿透；极值分数域（±100、极差 > 150）、深度负分数、
-  FP16 折叠上界（≤ 65504）有专项数值契约用例（tests/sa2_numeric_conformance.cpp）。
-- 宿主可复现回归：CPU 参考实现（python/sageattention2/reference.py）与内核宿主差分桥可脱离 NPU
+  FP16 折叠上界（≤ 65504）有专项数值契约用例（[../tests/sa2_numeric_conformance.cpp](../tests/sa2_numeric_conformance.cpp)）。
+- 宿主可复现回归：CPU 参考实现（[../python/sageattention2/reference.py](../python/sageattention2/reference.py)）与内核宿主差分桥可脱离 NPU
   运行全量数值断言。
 
 ## 七、验证状态（宿主 / 真机分列）
 
 - 已验证（宿主 CPU，2026-10-02）：接口契约、参数校验、pad/裁剪、LSE 语义（含 GQA 广播与因果）、
   gran × accum 全组合、重复调用逐位一致、torch.compile(eager, fullgraph) 与 Meta/FakeTensor
-  （tests/test_pytorch_integration.py）、C++ 数值契约 985,726 checks 0 失败。
+  （[../tests/test_pytorch_integration.py](../tests/test_pytorch_integration.py)）、C++ 数值契约 985,726 checks 0 失败。
 - 待验证（真机 NPU，挂 M3/M4/M5）：NPU 执行冒烟、AscendOpTest 精度、对 GPU 开源 L-A golden 对照、
   P-01~P-07 双路径性能。

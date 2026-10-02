@@ -3,18 +3,21 @@ import warnings
 
 import torch
 
-# P 域 scale_max 分档（DESIGN_SPEC §4.3）：κ = exp 域上界，p = exp(S - m') ≤ κ
-KAPPA = {"fp32": 448.0, "fp32+fp32": 448.0, "fp32+fp16": 2.25}
-# per_thread 量化段长：D 维每 16 列一个 scale（per_warp 为整 token 一个 scale）
-PER_THREAD_SEG = 16
-# V 的 MX 量化组：32 token × channel（DESIGN_SPEC §4.8）
-MX_GROUP_TOKENS = 32
-E4M3_MAX = 448.0
-# E8M0 最小正指数（全零组防护，DESIGN_SPEC §4.8）
-E8M0_MIN_EXPONENT = -127.0
-# tile 形状与内核一致（DESIGN_SPEC §3.2）：Q 每 64 行量化一次，KV 每 128 步进
-QUERY_TILE_ROWS = 64
-KV_TILE_ROWS = 128
+from ._constants import (
+    E4M3_MAX,
+    E8M0_MIN_EXPONENT,
+    KAPPA,
+    KV_TILE_ROWS,
+    MX_GROUP_TOKENS,
+    PER_THREAD_SEG,
+    QUERY_TILE_ROWS,
+)
+from ._utils import (
+    pad_to_bucket,
+    padded_head_dim,
+    sanitize_smooth_v,
+    validate_all_inputs,
+)
 
 
 def _e4m3_round(x: torch.Tensor) -> torch.Tensor:
@@ -98,37 +101,6 @@ def _mx_quant_v(v: torch.Tensor) -> torch.Tensor:
     return (code * scale.unsqueeze(3)).view(batch, head, -1, dim)[:, :, :seq, :]
 
 
-def _validate(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, tensor_layout: str, is_causal: bool,
-              qk_quant_gran: str, pv_accum_dtype: str, sm_scale: float | None = None) -> None:
-    if tensor_layout not in ("HND", "NHD"):
-        raise ValueError(f"tensor_layout must be HND or NHD, but got {tensor_layout!r}.")
-    if qk_quant_gran not in ("per_warp", "per_thread"):
-        raise ValueError(f"qk_quant_gran must be per_warp or per_thread, but got {qk_quant_gran!r}.")
-    if pv_accum_dtype not in KAPPA:
-        raise ValueError(f"pv_accum_dtype must be one of {sorted(KAPPA)}, but got {pv_accum_dtype!r}.")
-    if q.dim() != 4 or k.dim() != 4 or v.dim() != 4:
-        raise ValueError("q/k/v must be 4D tensors.")
-    if not (q.dtype == k.dtype == v.dtype and q.dtype in (torch.float16, torch.bfloat16)):
-        raise ValueError("q/k/v must share the same fp16/bf16 dtype.")
-    for name, tensor in (("q", q), ("k", k), ("v", v)):
-        if tensor.stride(-1) != 1:
-            raise ValueError(
-                f"{name} must have stride(-1) == 1 (contiguous last dim), but got stride {tuple(tensor.stride())}."
-            )
-    if sm_scale is not None and (not math.isfinite(sm_scale) or abs(sm_scale) > 3.4028235e+38):
-        raise ValueError(f"sm_scale must be finite, but got {sm_scale}.")
-    head = 2 if tensor_layout == "NHD" else 1
-    seq = 1 if tensor_layout == "NHD" else 2
-    if q.shape[0] != k.shape[0] or q.shape[3] != k.shape[3] or k.shape != v.shape:
-        raise ValueError("q/k/v batch/head_dim must match and k/v must share the same shape.")
-    if q.shape[head] % k.shape[head] != 0:
-        raise ValueError("num_qo_heads must be divisible by num_kv_heads.")
-    if is_causal and q.shape[seq] != k.shape[seq]:
-        raise ValueError("is_causal is valid only when qo_len equals kv_len.")
-    if not 0 < q.shape[3] <= 128:
-        raise ValueError(f"head_dim must be in (0, 128], but got {q.shape[3]}.")
-
-
 def sageattn_reference(
     q: torch.Tensor,
     k: torch.Tensor,
@@ -147,15 +119,8 @@ def sageattn_reference(
     说明：head_dim pad 列在 QK^T、corr 与 PV 中贡献恒为零，故参考实现 pad 后计算、
     输出裁回 head_dim_og 与内核语义等价。
     """
-    _validate(q, k, v, tensor_layout, is_causal, qk_quant_gran, pv_accum_dtype, sm_scale)
-    if smooth_v and pv_accum_dtype != "fp32":
-        warnings.warn(
-            "smooth_v is only supported with pv_accum_dtype='fp32' and will be ignored for "
-            f"pv_accum_dtype={pv_accum_dtype!r}.",
-            UserWarning,
-            stacklevel=2,
-        )
-        smooth_v = False
+    validate_all_inputs(q, k, v, tensor_layout, is_causal, qk_quant_gran, pv_accum_dtype, sm_scale)
+    smooth_v = sanitize_smooth_v(smooth_v, pv_accum_dtype)
     kappa = KAPPA[pv_accum_dtype]
     ln_kappa = math.log(kappa)
     seg = None if qk_quant_gran == "per_warp" else PER_THREAD_SEG
@@ -173,11 +138,13 @@ def sageattn_reference(
     group = num_q_heads // num_kv_heads
 
     # head_dim pad 到 64/128（pad 列为零，不影响量化 amax 与得分）
-    padded = 64 if head_dim_og <= 64 else 128
+    padded = padded_head_dim(head_dim_og)
     if padded != head_dim_og:
-        q_hnd = torch.nn.functional.pad(q_hnd, (0, padded - head_dim_og))
-        k_hnd = torch.nn.functional.pad(k_hnd, (0, padded - head_dim_og))
-        v_hnd = torch.nn.functional.pad(v_hnd, (0, padded - head_dim_og))
+        pad_len = pad_to_bucket(head_dim_og, padded)
+        q_hnd = torch.nn.functional.pad(q_hnd, (0, pad_len))
+        k_hnd = torch.nn.functional.pad(k_hnd, (0, pad_len))
+        v_hnd = torch.nn.functional.pad(v_hnd, (0, pad_len))
+
 
     # smooth_k：K 沿序列维减逐通道均值（FP32 统计，§4.7）；GQA 时 μ 按组广播（repeat_interleave）
     if smooth_k:

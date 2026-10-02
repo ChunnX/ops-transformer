@@ -8,7 +8,7 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "python"))
 
-from sageattention2 import sageattn, sageattn_qk_int8_pv_fp8_asc
+from sageattention2 import create_qkv, sageattn, sageattn_qk_int8_pv_fp8_asc
 
 
 def _sdpa_ground_truth(q, k, v, is_causal=False, sm_scale=None):
@@ -22,10 +22,7 @@ def _sdpa_ground_truth(q, k, v, is_causal=False, sm_scale=None):
 def test_assertion_kappa_two_tiers():
     """断言 1: κ 双档位（2.25 vs 448.0）数值差异与 P 域约束。"""
     torch.manual_seed(101)
-    b, hq, sq, d = 1, 4, 128, 64
-    q = torch.randn(b, hq, sq, d, dtype=torch.float16)
-    k = torch.randn(b, hq, sq, d, dtype=torch.float16)
-    v = torch.randn(b, hq, sq, d, dtype=torch.float16)
+    q, k, v = create_qkv(b=1, hq=4, sq=128, d=64)
 
     out_fp16_accum = sageattn_qk_int8_pv_fp8_asc(q, k, v, pv_accum_dtype="fp32+fp16")
     out_fp32_accum = sageattn_qk_int8_pv_fp8_asc(q, k, v, pv_accum_dtype="fp32")
@@ -37,12 +34,12 @@ def test_assertion_kappa_two_tiers():
 def test_assertion_granularity_non_zero_difference():
     """断言 2: per_warp 与 per_thread 分段非零差异（严禁空桩违约）。"""
     torch.manual_seed(202)
-    b, hq, sq, d = 1, 4, 128, 128
+    d = 128
     # 构造通道方差不均匀的输入以放大分段 scale 的差异
     weights = torch.linspace(0.1, 10.0, d, dtype=torch.float16)
-    q = torch.randn(b, hq, sq, d, dtype=torch.float16) * weights
-    k = torch.randn(b, hq, sq, d, dtype=torch.float16) * weights
-    v = torch.randn(b, hq, sq, d, dtype=torch.float16)
+    q, k, v = create_qkv(b=1, hq=4, sq=128, d=d)
+    q = q * weights
+    k = k * weights
 
     out_warp = sageattn_qk_int8_pv_fp8_asc(q, k, v, qk_quant_gran="per_warp")
     out_thread = sageattn_qk_int8_pv_fp8_asc(q, k, v, qk_quant_gran="per_thread")
@@ -54,11 +51,10 @@ def test_assertion_granularity_non_zero_difference():
 def test_assertion_lse_contract():
     """断言 3: LSE 核内闭环数学契约（DESIGN_SPEC §4.6 修正口径：lse = ln(denom) + m' + s*corr，不加 lnκ）。"""
     torch.manual_seed(303)
-    b, hq, sq, d = 1, 2, 64, 64
+    d = 64
     sm_scale = 1.0 / math.sqrt(d)
-    q = torch.randn(b, hq, sq, d, dtype=torch.float16)
-    k = torch.randn(b, hq, sq, d, dtype=torch.float16)
-    v = torch.randn(b, hq, sq, d, dtype=torch.float16)
+    q, k, v = create_qkv(b=1, hq=2, sq=64, d=d)
+
 
     _out, lse = sageattn(q, k, v, sm_scale=sm_scale, return_lse=True, smooth_k=True)
 
@@ -85,19 +81,14 @@ def test_assertion_lse_contract():
 def test_assertion_lb_sdpa_matrix(case_cfg):
     """断言 4: P-01 ~ P-07 对应规格以 FP32 SDPA 为基准（L-B 门禁要求：max≤2, mean≤1.2, RMSE≤1.2）。"""
     torch.manual_seed(404)
-    b, hq, hk, sq, sk, d = case_cfg["b"], case_cfg["hq"], case_cfg["hk"], case_cfg["sq"], case_cfg["sk"], case_cfg["d"]
-    dtype = case_cfg["dtype"]
     causal = case_cfg["causal"]
-
-    q = torch.randn(b, hq, sq, d, dtype=dtype)
-    k = torch.randn(b, hk, sk, d, dtype=dtype)
-    v = torch.randn(b, hk, sk, d, dtype=dtype)
+    q, k, v = create_qkv(**case_cfg)
 
     out = sageattn(q, k, v, is_causal=causal)
 
     # 针对 GQA 广播 K/V
-    if hq != hk:
-        group = hq // hk
+    if case_cfg["hq"] != case_cfg["hk"]:
+        group = case_cfg["hq"] // case_cfg["hk"]
         k_ref = k.repeat_interleave(group, dim=1)
         v_ref = v.repeat_interleave(group, dim=1)
     else:
@@ -120,10 +111,7 @@ def test_assertion_lb_sdpa_matrix(case_cfg):
 def test_assertion_deterministic_repeatability():
     """断言 5: 确定性逐位一致（D-R8 确定性单写者树设计，无原子加随机竞争）。"""
     torch.manual_seed(505)
-    b, hq, hk, sq, sk, d = 2, 4, 2, 128, 128, 64
-    q = torch.randn(b, hq, sq, d, dtype=torch.float16)
-    k = torch.randn(b, hk, sk, d, dtype=torch.float16)
-    v = torch.randn(b, hk, sk, d, dtype=torch.float16)
+    q, k, v = create_qkv(b=2, hq=4, hk=2, sq=128, sk=128, d=64)
 
     # 1. sageattn 默认分发两次执行逐位一致
     out1, lse1 = sageattn(q, k, v, return_lse=True)
@@ -145,14 +133,12 @@ def test_assertion_deterministic_repeatability():
 def test_assertion_torch_compile_eager_and_fullgraph():
     """断言 6: PyTorch torch.compile(eager, fullgraph=True) 整图编译与无图中断验证。"""
     torch.manual_seed(606)
-    b, hq, sq, d = 1, 4, 64, 64
-    q = torch.randn(b, hq, sq, d, dtype=torch.float16)
-    k = torch.randn(b, hq, sq, d, dtype=torch.float16)
-    v = torch.randn(b, hq, sq, d, dtype=torch.float16)
+    q, k, v = create_qkv(b=1, hq=4, sq=64, d=64)
 
     compiled_fn = torch.compile(sageattn, backend="eager", fullgraph=True)
     out_compiled = compiled_fn(q, k, v)
     out_eager = sageattn(q, k, v)
+
 
     assert torch.equal(out_compiled, out_eager), "torch.compile output must match eager output"
 

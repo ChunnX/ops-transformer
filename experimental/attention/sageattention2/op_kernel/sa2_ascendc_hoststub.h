@@ -384,8 +384,13 @@ enum class HardEvent {
     MTE2_V = 0,
     V_MTE2 = 1,
     MTE1_MTE2 = 2,
-    MTE3_V = 3,
-    V_MTE3 = 4,
+    MTE2_MTE1 = 3,
+    MTE3_V = 4,
+    V_MTE3 = 5,
+    MTE1_M = 6,
+    M_MTE1 = 7,
+    M_FIX = 8,
+    FIX_M = 9,
 };
 
 template <HardEvent Ev>
@@ -393,6 +398,9 @@ inline void SetFlag(uint16_t eventId) { (void)eventId; }
 
 template <HardEvent Ev>
 inline void WaitFlag(uint16_t eventId) { (void)eventId; }
+
+template <HardEvent Ev>
+inline void Sync() {}
 
 template <typename T, typename U, typename S>
 inline void Mmad(const LocalTensor<T> &dst, const LocalTensor<U> &fm, const LocalTensor<S> &filter, const MmadParams &params) {

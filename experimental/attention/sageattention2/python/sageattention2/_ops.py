@@ -1,134 +1,42 @@
 # SageAttention2 PyTorch 适配层：torch.library dispatcher（参数校验 / 自动分发 / head_dim pad / LSE 透传）
 import contextlib
 import math
-import os
-import warnings
 from typing import Any
 
 import torch
 
-VALID_TENSOR_LAYOUTS = ("HND", "NHD")
-VALID_QK_QUANT_GRANS = ("per_warp", "per_thread")
-VALID_PV_ACCUM_DTYPES = ("fp32", "fp32+fp32", "fp32+fp16")
-DEFAULT_QK_QUANT_GRAN = "per_thread"
-DEFAULT_PV_ACCUM_DTYPE = "fp32+fp16"
-FP32_MAX = torch.finfo(torch.float32).max
-# head_dim pad 档位：D<64 pad 到 64；(64,128) 内 pad 到 128；D>128 报错
-PAD_BUCKETS = (64, 128)
+from ._constants import (
+    DEFAULT_PV_ACCUM_DTYPE,
+    DEFAULT_QK_QUANT_GRAN,
+    ENV_PV_ACCUM_DTYPE,
+    ENV_QK_QUANT_GRAN,
+    PAD_BUCKETS,
+    VALID_PV_ACCUM_DTYPES,
+    VALID_QK_QUANT_GRANS,
+    VALID_TENSOR_LAYOUTS,
+)
+from ._utils import (
+    check_dtype,
+    check_params,
+    check_shape,
+    check_stride,
+    check_tensor_layout,
+    get_env_or_default,
+    pad_to_bucket,
+    padded_head_dim,
+    sanitize_smooth_v,
+    validate_all_inputs,
+)
+
 # plan cache 容量上限（防止长时运行内存无界增长）
 _PLAN_CACHE_LIMIT = 64
-_ENV_PV_ACCUM_DTYPE = "SAGEATTN_PV_ACCUM_DTYPE"
-_ENV_QK_QUANT_GRAN = "SAGEATTN_QK_QUANT_GRAN"
-
-# plan cache：键含全部语义参数与 shape/dtype，值为 dispatch 预解析结果（pad 档位、默认 scale 等）
-_PLAN_CACHE = {}
-
-
-def _check_tensor_layout(tensor_layout: str) -> None:
-    if tensor_layout not in VALID_TENSOR_LAYOUTS:
-        raise ValueError(
-            f"tensor_layout must be one of {list(VALID_TENSOR_LAYOUTS)}, but got {tensor_layout!r}."
-        )
-
-
-def _check_dtype(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor) -> None:
-    for name, tensor in (("q", q), ("k", k), ("v", v)):
-        if tensor.dtype not in (torch.float16, torch.bfloat16):
-            raise ValueError(
-                f"{name} must be torch.float16 or torch.bfloat16, but got {tensor.dtype}."
-            )
-    if not (q.dtype == k.dtype == v.dtype):
-        raise ValueError(
-            f"q/k/v must share the same dtype, but got q={q.dtype}, k={k.dtype}, v={v.dtype}."
-        )
-    if not (q.device == k.device == v.device):
-        raise ValueError(
-            f"q/k/v must reside on the same device, but got q={q.device}, k={k.device}, v={v.device}."
-        )
-
-
-def _check_shape(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, tensor_layout: str, is_causal: bool) -> None:
-    if q.dim() != 4 or k.dim() != 4 or v.dim() != 4:
-        raise ValueError(
-            f"q/k/v must be 4D tensors, but got dims q={q.dim()}, k={k.dim()}, v={v.dim()}."
-        )
-    head = 2 if tensor_layout == "NHD" else 1
-    seq = 1 if tensor_layout == "NHD" else 2
-    if q.shape[0] != k.shape[0] or q.shape[0] != v.shape[0]:
-        raise ValueError(
-            f"q/k/v must share the same batch size, but got q={q.shape[0]}, k={k.shape[0]}, v={v.shape[0]}."
-        )
-    if q.shape[3] != k.shape[3] or k.shape[3] != v.shape[3]:
-        raise ValueError(
-            f"q/k/v must share the same head_dim, but got q={q.shape[3]}, k={k.shape[3]}, v={v.shape[3]}."
-        )
-    if k.shape != v.shape:
-        raise ValueError(
-            f"k and v must share the same shape, but got k={tuple(k.shape)} and v={tuple(v.shape)}."
-        )
-    if q.shape[head] % k.shape[head] != 0:
-        raise ValueError(
-            f"num_qo_heads must be divisible by num_kv_heads, but got Hq={q.shape[head]} and Hk={k.shape[head]}."
-        )
-    if is_causal and q.shape[seq] != k.shape[seq]:
-        raise ValueError(
-            f"is_causal is valid only when qo_len equals kv_len, but got Sq={q.shape[seq]} and Sk={k.shape[seq]}."
-        )
-
-
-def _check_stride(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor) -> None:
-    for name, tensor in (("q", q), ("k", k), ("v", v)):
-        if tensor.stride(-1) != 1:
-            raise ValueError(
-                f"{name} must have stride(-1) == 1 (contiguous last dim), but got stride {tuple(tensor.stride())}."
-            )
-
-
-def _check_params(
-    qk_quant_gran: str,
-    pv_accum_dtype: str,
-    sm_scale: float | None,
-    head_dim: int,
-) -> None:
-    if qk_quant_gran not in VALID_QK_QUANT_GRANS:
-        raise ValueError(
-            f"qk_quant_gran must be one of {list(VALID_QK_QUANT_GRANS)}, but got {qk_quant_gran!r}."
-        )
-    if pv_accum_dtype not in VALID_PV_ACCUM_DTYPES:
-        raise ValueError(
-            f"pv_accum_dtype must be one of {list(VALID_PV_ACCUM_DTYPES)}, but got {pv_accum_dtype!r}."
-        )
-    if sm_scale is not None and (not math.isfinite(sm_scale) or abs(sm_scale) > FP32_MAX):
-        raise ValueError(
-            f"sm_scale must be finite and within the fp32 representable range "
-            f"({-FP32_MAX}, {FP32_MAX}), but got {sm_scale}."
-        )
-    if head_dim <= 0 or head_dim > PAD_BUCKETS[-1]:
-        raise ValueError(
-            f"head_dim must be in (0, {PAD_BUCKETS[-1]}], but got {head_dim}."
-        )
-
-
-def _get_env_or(name: str, default: str) -> str:
-    value = os.environ.get(name)
-    return value if value else default
-
-
-def _padded_head_dim(head_dim: int) -> int:
-    for bucket in PAD_BUCKETS:
-        if head_dim <= bucket:
-            return bucket
-    return head_dim
-
-
-def _pad_to(value: int, bucket: int) -> int:
-    return bucket - value if value < bucket else 0
+_PLAN_CACHE: dict[tuple[int, float | None], dict[str, Any]] = {}
 
 
 def _resolve_plan(
     head_dim_og: int,
     sm_scale: float | None,
-) -> dict:
+) -> dict[str, Any]:
     key = (head_dim_og, sm_scale)
     plan = _PLAN_CACHE.get(key)
     if plan is not None:
@@ -136,7 +44,7 @@ def _resolve_plan(
 
     plan = {
         "head_dim_og": head_dim_og,
-        "padded_head_dim": _padded_head_dim(head_dim_og),
+        "padded_head_dim": padded_head_dim(head_dim_og),
         "sm_scale": sm_scale if sm_scale is not None else 1.0 / math.sqrt(head_dim_og),
     }
     if len(_PLAN_CACHE) >= _PLAN_CACHE_LIMIT:
@@ -175,28 +83,15 @@ def _forward_impl(
     return_lse: bool = False,
 ) -> tuple[torch.Tensor, torch.Tensor | None]:
     """NPU 实现体：校验 + plan 解析 + head_dim pad + csrc 扩展调用 + 输出裁剪。"""
-    _check_tensor_layout(tensor_layout)
-    _check_dtype(q, k, v)
-    _check_shape(q, k, v, tensor_layout, is_causal)
-    _check_stride(q, k, v)
-    _check_params(qk_quant_gran, pv_accum_dtype, sm_scale, q.shape[3])
-
-    # smooth_v 仅 fp32 全程累加档生效；其余档 warning 后忽略（对齐开源）
-    if smooth_v and pv_accum_dtype != "fp32":
-        warnings.warn(
-            "smooth_v is only supported with pv_accum_dtype='fp32' and will be ignored for "
-            f"pv_accum_dtype={pv_accum_dtype!r}.",
-            UserWarning,
-            stacklevel=3,
-        )
-        smooth_v = False
+    validate_all_inputs(q, k, v, tensor_layout, is_causal, qk_quant_gran, pv_accum_dtype, sm_scale)
+    smooth_v = sanitize_smooth_v(smooth_v, pv_accum_dtype)
 
     plan = _resolve_plan(q.shape[3], sm_scale)
     head_dim_og = plan["head_dim_og"]
-    padded_head_dim = plan["padded_head_dim"]
+    target_padded_dim = plan["padded_head_dim"]
     effective_scale = plan["sm_scale"]
 
-    pad = _pad_to(head_dim_og, padded_head_dim)
+    pad = pad_to_bucket(head_dim_og, target_padded_dim)
     if pad > 0:
         q = torch.nn.functional.pad(q, (0, pad))
         k = torch.nn.functional.pad(k, (0, pad))
@@ -236,11 +131,7 @@ def _forward_meta(
     return_lse: bool = False,
 ) -> tuple[torch.Tensor, torch.Tensor | None]:
     """Meta 实现：复用全部校验，仅做 shape/dtype 推导。"""
-    _check_tensor_layout(tensor_layout)
-    _check_dtype(q, k, v)
-    _check_shape(q, k, v, tensor_layout, is_causal)
-    _check_stride(q, k, v)
-    _check_params(qk_quant_gran, pv_accum_dtype, sm_scale, q.shape[3])
+    validate_all_inputs(q, k, v, tensor_layout, is_causal, qk_quant_gran, pv_accum_dtype, sm_scale)
     return _forward_meta_shape(q, tensor_layout, return_lse)
 
 
@@ -258,20 +149,8 @@ def _forward_cpu(
     return_lse: bool = False,
 ) -> tuple[torch.Tensor, torch.Tensor | None]:
     """CPU 参考实现分发：复用全部参数校验与 warning，转调 reference.sageattn_reference。"""
-    _check_tensor_layout(tensor_layout)
-    _check_dtype(q, k, v)
-    _check_shape(q, k, v, tensor_layout, is_causal)
-    _check_stride(q, k, v)
-    _check_params(qk_quant_gran, pv_accum_dtype, sm_scale, q.shape[3])
-
-    if smooth_v and pv_accum_dtype != "fp32":
-        warnings.warn(
-            "smooth_v is only supported with pv_accum_dtype='fp32' and will be ignored for "
-            f"pv_accum_dtype={pv_accum_dtype!r}.",
-            UserWarning,
-            stacklevel=3,
-        )
-        smooth_v = False
+    validate_all_inputs(q, k, v, tensor_layout, is_causal, qk_quant_gran, pv_accum_dtype, sm_scale)
+    smooth_v = sanitize_smooth_v(smooth_v, pv_accum_dtype)
 
     plan = _resolve_plan(q.shape[-1], sm_scale)
     effective_scale = plan["sm_scale"]
@@ -359,11 +238,11 @@ def sageattn(
     """自动分发入口：NPU 上固定分发到 FP8 PV 实现（sageattn_qk_int8_pv_fp8_asc）。"""
     if "attn_mask" in kwargs and kwargs.pop("attn_mask") is not None:
         raise ValueError("sageattn does not support attn_mask.")
-    pv_accum_dtype = kwargs.pop("pv_accum_dtype", None) or _get_env_or(
-        _ENV_PV_ACCUM_DTYPE, DEFAULT_PV_ACCUM_DTYPE
+    pv_accum_dtype = kwargs.pop("pv_accum_dtype", None) or get_env_or_default(
+        ENV_PV_ACCUM_DTYPE, DEFAULT_PV_ACCUM_DTYPE
     )
-    qk_quant_gran = kwargs.pop("qk_quant_gran", None) or _get_env_or(
-        _ENV_QK_QUANT_GRAN, DEFAULT_QK_QUANT_GRAN
+    qk_quant_gran = kwargs.pop("qk_quant_gran", None) or get_env_or_default(
+        ENV_QK_QUANT_GRAN, DEFAULT_QK_QUANT_GRAN
     )
     smooth_k = kwargs.pop("smooth_k", True)
     smooth_v = kwargs.pop("smooth_v", False)
