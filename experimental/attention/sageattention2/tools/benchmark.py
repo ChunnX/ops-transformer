@@ -182,10 +182,142 @@ BENCHMARK_CASES: dict[str, dict[str, Any]] = {
         "category": "S0",
         "desc": "[1,32,1,128] x [1,32,4096,128] FP16 Decode Step (Sq=1, Sk=4096)",
     },
+    # 扩展用例：超长序列（32K/64K/128K）与扩展形状矩阵
+    "P-08": {
+        "batch": 1,
+        "hq": 32,
+        "hk": 32,
+        "sq": 32768,
+        "sk": 32768,
+        "d": 128,
+        "is_causal": False,
+        "dtype": torch.float16,
+        "pv_accum_dtype": "fp32+fp16",
+        "category": "S5",
+        "desc": "[1,32,32768,128] FP16 ultra-long (32K Context)",
+    },
+    "P-09": {
+        "batch": 1,
+        "hq": 32,
+        "hk": 32,
+        "sq": 65536,
+        "sk": 65536,
+        "d": 128,
+        "is_causal": False,
+        "dtype": torch.float16,
+        "pv_accum_dtype": "fp32+fp16",
+        "category": "S5",
+        "desc": "[1,32,65536,128] FP16 ultra-long (64K Context)",
+    },
+    "P-10": {
+        "batch": 1,
+        "hq": 32,
+        "hk": 32,
+        "sq": 131072,
+        "sk": 131072,
+        "d": 128,
+        "is_causal": False,
+        "dtype": torch.float16,
+        "pv_accum_dtype": "fp32+fp16",
+        "category": "S5",
+        "desc": "[1,32,131072,128] FP16 extreme-long (128K Context)",
+    },
+    "X-01": {
+        "batch": 1,
+        "hq": 32,
+        "hk": 32,
+        "sq": 2048,
+        "sk": 2048,
+        "d": 128,
+        "is_causal": False,
+        "dtype": torch.float16,
+        "pv_accum_dtype": "fp32+fp16",
+        "category": "SX",
+        "desc": "[1,32,2048,128] FP16 medium (2K Context)",
+    },
+    "X-02": {
+        "batch": 1,
+        "hq": 32,
+        "hk": 8,
+        "sq": 2048,
+        "sk": 2048,
+        "d": 128,
+        "is_causal": False,
+        "dtype": torch.float16,
+        "pv_accum_dtype": "fp32+fp16",
+        "category": "SX",
+        "desc": "[1,32:8,2048,128] FP16 GQA (32:8, 2K Context)",
+    },
+    "X-03": {
+        "batch": 1,
+        "hq": 32,
+        "hk": 8,
+        "sq": 8192,
+        "sk": 8192,
+        "d": 128,
+        "is_causal": False,
+        "dtype": torch.float16,
+        "pv_accum_dtype": "fp32+fp16",
+        "category": "SX",
+        "desc": "[1,32:8,8192,128] FP16 GQA (32:8, 8K Context)",
+    },
+    "X-04": {
+        "batch": 1,
+        "hq": 32,
+        "hk": 8,
+        "sq": 16384,
+        "sk": 16384,
+        "d": 128,
+        "is_causal": False,
+        "dtype": torch.float16,
+        "pv_accum_dtype": "fp32+fp16",
+        "category": "SX",
+        "desc": "[1,32:8,16384,128] FP16 GQA (32:8, 16K Context)",
+    },
+    "X-05": {
+        "batch": 2,
+        "hq": 32,
+        "hk": 32,
+        "sq": 4096,
+        "sk": 4096,
+        "d": 128,
+        "is_causal": False,
+        "dtype": torch.float16,
+        "pv_accum_dtype": "fp32+fp16",
+        "category": "SX",
+        "desc": "[2,32,4096,128] FP16 non-causal (Batch=2 4K Context)",
+    },
+    "X-06": {
+        "batch": 4,
+        "hq": 32,
+        "hk": 32,
+        "sq": 2048,
+        "sk": 2048,
+        "d": 128,
+        "is_causal": False,
+        "dtype": torch.float16,
+        "pv_accum_dtype": "fp32+fp16",
+        "category": "SX",
+        "desc": "[4,32,2048,128] FP16 non-causal (Batch=4 2K Context)",
+    },
+    "X-07": {
+        "batch": 1,
+        "hq": 32,
+        "hk": 32,
+        "sq": 4096,
+        "sk": 4096,
+        "d": 64,
+        "is_causal": False,
+        "dtype": torch.float16,
+        "pv_accum_dtype": "fp32+fp16",
+        "category": "SX",
+        "desc": "[1,32,4096,64] FP16 native head_dim=64",
+    },
 }
 
 STANDARD_CASE_IDS = ["P-01", "P-02", "P-03", "P-04", "P-05", "P-06", "P-07"]
 SHORT_CASE_IDS = ["P-00-S128", "P-00-S512", "P-00-Decode"]
+EXTENDED_CASE_IDS = ["P-08", "P-09", "P-10", "X-01", "X-02", "X-03", "X-04", "X-05", "X-06", "X-07"]
 
 
 def compute_attention_flops(
@@ -517,6 +649,13 @@ def parse_args():
         help="Baseline comparison target: 'auto' (NPU->FIA, CUDA->FlashAttn, CPU->FP32 SDPA), 'fp32_sdpa', 'sdpa', 'fia', 'flash_attn'",
     )
     parser.add_argument(
+        "--metric-policy",
+        type=str,
+        default="auto",
+        choices=["auto", "frozen", "test_perf"],
+        help="Timing iteration policy: 'frozen' (warmup=25, repeats=50 as per §0.5), 'test_perf' (warmup=5, repeats=20 as per test_perf.py), or 'auto' (respects SAGEATTN_PERF_WARMUP/ITERS, default frozen)",
+    )
+    parser.add_argument(
         "--warmup",
         type=int,
         default=25,
@@ -618,19 +757,26 @@ def main() -> int:
         return 0
 
     scale_factor = args.scale_down
-    warmup = args.warmup
-    repeats = args.repeats
+    default_warmup = 5 if args.metric_policy == "test_perf" else 25
+    default_repeats = 20 if args.metric_policy == "test_perf" else 50
+    env_warmup = os.environ.get("SAGEATTN_PERF_WARMUP")
+    env_repeats = os.environ.get("SAGEATTN_PERF_ITERS")
+
+    warmup = int(env_warmup) if env_warmup is not None else (args.warmup if args.warmup != 25 else default_warmup)
+    repeats = int(env_repeats) if env_repeats is not None else (args.repeats if args.repeats != 50 else default_repeats)
+
     if args.quick:
         scale_factor = max(scale_factor, 8)
         warmup = 2
         repeats = 3
 
+    policy_tag = "test_perf (5/20)" if (warmup == 5 and repeats == 20) else ("frozen (25/50)" if (warmup == 25 and repeats == 50) else "custom")
     device = torch.device(args.device)
     print("=" * 80)
     print("   SageAttention2 Performance Benchmark & Profiling Suite")
     print(f"   Target Device: {device} | Baseline: {args.baseline} | Scale Factor: {scale_factor}x")
     print(f"   Granularity: {args.qk_quant_gran} | Accumulator: {args.pv_accum_dtype}")
-    print(f"   Warmup: {warmup} | Repeats: {repeats} | Peak HBM Bandwidth: {args.peak_bandwidth_gbs:.1f} GB/s")
+    print(f"   Timing Policy: {policy_tag} (Warmup={warmup}, Repeats={repeats}) | Peak HBM: {args.peak_bandwidth_gbs:.1f} GB/s")
     if args.quick:
         print("   [MODE] Quick smoke verification mode enabled.")
     print("=" * 80)

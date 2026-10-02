@@ -115,3 +115,57 @@ def test_assertion_lb_sdpa_matrix(case_cfg):
     assert mean_err <= 1.2, f"[{case_cfg['name']}] mean_err {mean_err:.4f} > 1.2"
     assert rmse <= 1.2, f"[{case_cfg['name']}] rmse {rmse:.4f} > 1.2"
     assert matched_ratio >= 0.95, f"[{case_cfg['name']}] matched_ratio {matched_ratio:.4f} < 0.95"
+
+
+def test_assertion_deterministic_repeatability():
+    """断言 5: 确定性逐位一致（D-R8 确定性单写者树设计，无原子加随机竞争）。"""
+    torch.manual_seed(505)
+    b, hq, hk, sq, sk, d = 2, 4, 2, 128, 128, 64
+    q = torch.randn(b, hq, sq, d, dtype=torch.float16)
+    k = torch.randn(b, hk, sk, d, dtype=torch.float16)
+    v = torch.randn(b, hk, sk, d, dtype=torch.float16)
+
+    # 1. sageattn 默认分发两次执行逐位一致
+    out1, lse1 = sageattn(q, k, v, return_lse=True)
+    out2, lse2 = sageattn(q, k, v, return_lse=True)
+    assert torch.equal(out1, out2), "out must be bitwise identical across calls"
+    assert torch.equal(lse1, lse2), "lse must be bitwise identical across calls"
+
+    # 2. per_thread 显式入口两次执行逐位一致
+    out_pt1, lse_pt1 = sageattn_qk_int8_pv_fp8_asc(
+        q, k, v, qk_quant_gran="per_thread", pv_accum_dtype="fp32+fp16", return_lse=True
+    )
+    out_pt2, lse_pt2 = sageattn_qk_int8_pv_fp8_asc(
+        q, k, v, qk_quant_gran="per_thread", pv_accum_dtype="fp32+fp16", return_lse=True
+    )
+    assert torch.equal(out_pt1, out_pt2), "per_thread out must be bitwise identical across calls"
+    assert torch.equal(lse_pt1, lse_pt2), "per_thread lse must be bitwise identical across calls"
+
+
+def test_assertion_torch_compile_eager_and_fullgraph():
+    """断言 6: PyTorch torch.compile(eager, fullgraph=True) 整图编译与无图中断验证。"""
+    torch.manual_seed(606)
+    b, hq, sq, d = 1, 4, 64, 64
+    q = torch.randn(b, hq, sq, d, dtype=torch.float16)
+    k = torch.randn(b, hq, sq, d, dtype=torch.float16)
+    v = torch.randn(b, hq, sq, d, dtype=torch.float16)
+
+    compiled_fn = torch.compile(sageattn, backend="eager", fullgraph=True)
+    out_compiled = compiled_fn(q, k, v)
+    out_eager = sageattn(q, k, v)
+
+    assert torch.equal(out_compiled, out_eager), "torch.compile output must match eager output"
+
+
+def test_assertion_meta_tensor_shape_inference():
+    """断言 7: Meta / FakeTensor 设备上的张量形状推导契约验证。"""
+    b, hq, hk, sq, sk, d = 1, 8, 2, 256, 256, 128
+    qm = torch.empty(b, hq, sq, d, device="meta", dtype=torch.float16)
+    km = torch.empty(b, hk, sk, d, device="meta", dtype=torch.float16)
+    vm = torch.empty(b, hk, sk, d, device="meta", dtype=torch.float16)
+
+    out_meta, lse_meta = sageattn(qm, km, vm, return_lse=True)
+    assert out_meta.device.type == "meta"
+    assert out_meta.shape == (b, hq, sq, d)
+    assert lse_meta.device.type == "meta"
+    assert lse_meta.shape == (b, hq, sq)

@@ -100,11 +100,11 @@ pytest experimental/attention/sageattention2/tests/ -v
 # 执行 TC-01 ~ TC-10 端到端功能测试（19 项）
 pytest experimental/attention/sageattention2/tests/test_functional_matrix.py -v
 
-# 执行宿主机数值断言与 P-01 ~ P-07 仿真精度验证（10 项）
+# 执行宿主机数值断言与 P-01 ~ P-07 仿真精度验证（13 项）
 pytest experimental/attention/sageattention2/tests/test_host_assertions.py -v
 ```
 
-全部 31 项用例（19 + 10 + 差分桥 2）均应通过。本行是 pytest 总数与构成的唯一权威口径，其余文档只引用此处。
+全部 34 项用例（19 + 13 + 差分桥 2）均应通过。本行是 pytest 总数与构成的唯一权威口径，其余文档只引用此处。
 
 ### 2. C++ 数值契约断言桩执行（宿主机，无 NPU 依赖）
 

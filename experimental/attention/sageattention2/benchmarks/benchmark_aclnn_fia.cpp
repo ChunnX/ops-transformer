@@ -241,10 +241,22 @@ static void DestroyTensor(aclTensor *t)
 // 评测主流程
 int main()
 {
+    int warmup = 25;
+    int repeats = 50;
+    if (const char *envWarmup = std::getenv("SAGEATTN_PERF_WARMUP")) {
+        int v = std::atoi(envWarmup);
+        if (v > 0) warmup = v;
+    }
+    if (const char *envIters = std::getenv("SAGEATTN_PERF_ITERS")) {
+        int v = std::atoi(envIters);
+        if (v > 0) repeats = v;
+    }
+
     std::cout << "================================================================================" << std::endl;
     std::cout << "   SageAttention2 vs aclnnFusedInferAttentionScoreV5 Performance Baseline Suite" << std::endl;
     std::cout << "   Runtime Environment: " << (SA2_BENCHMARK_REAL_CANN ? "AscendCL Real NPU Hardware" : "Host Lightweight Cycle-Accurate Simulator") << std::endl;
     std::cout << "   Evaluation Target  : INT8 QK^T + FP8 PV vs Official FP16 Baseline" << std::endl;
+    std::cout << "   Timing Policy      : Warmup=" << warmup << " | Repeats=" << repeats << " (Task test_perf Reference: 5/20)" << std::endl;
     std::cout << "================================================================================" << std::endl;
 
     aclInit(nullptr);
@@ -295,12 +307,11 @@ int main()
         }
 
         // 预热与执行计时
-        for (int i = 0; i < 3; ++i) {
+        for (int i = 0; i < warmup; ++i) {
             aclnnSa2Attention2(sa2Workspace, sa2WorkspaceSize, sa2Exec, stream);
         }
         aclrtSynchronizeStream(stream);
 
-        const int repeats = 10;
         auto t0 = std::chrono::high_resolution_clock::now();
         for (int i = 0; i < repeats; ++i) {
             aclnnSa2Attention2(sa2Workspace, sa2WorkspaceSize, sa2Exec, stream);
@@ -339,7 +350,7 @@ int main()
             aclrtMalloc(&fiaWorkspace, fiaWorkspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
         }
 
-        for (int i = 0; i < 3; ++i) {
+        for (int i = 0; i < warmup; ++i) {
             aclnnFusedInferAttentionScoreV5(fiaWorkspace, fiaWorkspaceSize, fiaExec, stream);
         }
         aclrtSynchronizeStream(stream);
