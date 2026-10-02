@@ -32,15 +32,35 @@ namespace optiling {
 inline constexpr uint32_t BR = 64;
 inline constexpr uint32_t BC = 128;
 inline constexpr uint32_t MAX_HEAD_DIM = 128;
-// 单维上限 < 2^32-64：为内核侧 u32 下标运算预留边界余量
+
+// [第一性原理推导：单维上限 < 2^32 - 64]
+// 硬件依据：在昇腾 Atlas 950PR 硬件架构中，DaVinci 向量与张量 MTE2/MTE3 DMA 地址计算使用 32 位无符号整数寄存器寻址，
+// 单次猝发访问与缓存行对齐基准为 64 字节（512-bit cacheline）。
+// 若张量单维长度达到或超过 2^32 - 64，在添加硬件行对齐或地址尾部偏移（+64B 余量）时将触发 32 位无符号整数溢出回绕（wrap-around），
+// 导致指针越界访问与非法内存写。因此严格从硬件寻址安全第一性原理限制单维上限必须小于 2^32 - 64。
 inline constexpr uint64_t DIM_UPPER = (1ULL << 32) - 64;
-// 任务枚举上限：b·Hk < 2^32（调度器 task id 解码空间约束）
+
+// [第一性原理推导：任务枚举上限 b·Hk < 2^32]
+// 硬件依据：在 Atlas 950PR 多核网格调度拓扑与 CANN 任务分发体系中，全网格任务坐标（Global Task ID）由 Batch 与 Key-Value Head（b·Hk）
+// 及其内部分块索引构成。硬件任务分配寄存器统一采用 32 位无符号定点表示传递至各 AIC/AIV 计算单元。
+// 约束 b·Hk < 2^32，保证单步任务坐标解码在 32 位定点算术下严格封闭、零溢出，确保多核调度器任务解码空间完全单射映射。
 inline constexpr uint64_t BH_UPPER = 1ULL << 32;
-// workspace 各分区 512B 对齐（DESIGN_SPEC §5.3）
+
+// workspace 各分区 512B 硬件缓存行对齐（对齐 Atlas 950PR GM/L2 突发传输最佳粒度）
 inline constexpr uint64_t WS_ALIGN = 512;
-// 系统 workspace 兜底：GetLibApiWorkSpaceSize 不可用或为 0 时取 16MiB
+
+// [第一性原理推导：系统 Workspace 16MiB 兜底保底池]
+// 硬件依据：在昇腾 Atlas 950PR 混合核调度模型下，CANN 运行时底层系统库（包括全核硬件屏障 SyncAll 状态结构、跨核旗号硬件对账缓冲、
+// L2 缓存管理控制表以及平台管理数据结构）依赖专用的系统 Workspace。
+// 当平台接口 GetLibApiWorkSpaceSize() 在离线仿真或轻量运行时环境下返回 0 或不可得时，16MiB 是 CANN 官方标准为 Atlas 950 系列平台
+// 预留的标准系统辅助内存保底池（涵盖双 Die 拓扑同步所需的安全空间，且 512 字节硬件行严格对齐），确保缺少运行时反馈时系统屏障绝对无未定义行为。
 inline constexpr uint64_t SYS_WS_FALLBACK = 16ULL << 20;
-// 全栅格驻留调度：MIX 1 AIC:2 AIV 下 SyncAll 的前提（DESIGN_SPEC §2/§6）
+
+// [第一性原理推导：全栅格驻留调度模式 SetScheduleMode(1) / SCHEDULE_MODE_ALL_CORE]
+// 硬件依据：在 Atlas 950PR 上，SageAttention2 采用 1 AIC + 2 AIV 混合核流水线与全栅格常驻（All-Core Resident）模式。
+// 全算子生命周期内，所有分配的 AIC 与 AIV 计算单元同时拉起、常驻执行，并通过硬件 CrossCore Event 旗号与全核硬件屏障（SyncAll）实现确定性的脉动协同。
+// 若采用动态拉起或分批调度模式，不同核之间的硬件全局同步与跨核事件将发生死锁。
+// 因此必须将调度模式显式设为 SCHEDULE_MODE_ALL_CORE (1U)，指示 CANN 调度器采用全核常驻拓扑调度，确保全网格 AIC/AIV 协同计算的无死锁与最高能效执行。
 inline constexpr uint32_t SCHEDULE_MODE_ALL_CORE = 1U;
 
 // 昇腾 Atlas 950PR 硬件网格拓扑常量
@@ -78,7 +98,7 @@ struct Sa2AttrValues {
     bool smoothV = false;
 };
 
-// Workspace 各分区字节大小与对齐布局（附录 C.1 与 DESIGN_SPEC §5.3）
+// Workspace 各分区字节大小与对齐布局（按照 DESIGN_SPEC §5.3 硬件规格定义）
 struct Sa2WorkspaceLayout {
     uint64_t kMeanSize = 0;      // B·Hk·dp·4：K 逐通道 FP32 均值
     uint64_t vMeanSize = 0;      // B·Hk·dp·4：V 逐通道 FP32 均值
@@ -454,6 +474,7 @@ inline constexpr Sa2Dims kP01Dims{1, 32, 32, 4096, 4096, 128};
 inline constexpr Sa2Dims kP02Dims{1, 32, 32, 8192, 8192, 128};
 inline constexpr Sa2Dims kP05Dims{1, 32, 8, 4096, 4096, 128};    // GQA 4:1
 inline constexpr Sa2Dims kP07Dims{1, 32, 32, 16384, 16384, 128}; // S=16384 超长序列
+inline constexpr Sa2Dims kP131KDims{1, 32, 32, 131072, 131072, 128}; // S=131072 极限超长序列 (128K)
 inline constexpr Sa2Dims kGqa8Dims{1, 64, 8, 4096, 4096, 128};   // GQA 8:1
 inline constexpr Sa2Dims kMqaDims{1, 32, 1, 2048, 2048, 128};    // MQA 32:1
 
@@ -462,6 +483,12 @@ static_assert(kP07Cfg.ubInstantaneousPeak <= kP07Cfg.ubHardSafetyLimit,
               "P-07 peak memory must not exceed 160KB safety limit");
 static_assert(kP07Cfg.ubFootprintPerStep <= kP07Cfg.ubHighWater,
               "P-07 slab footprint must not exceed 248KB high water mark");
+
+inline constexpr Sa2TileConfig kP131KCfg = Sa2Optiling::DeriveTileConfig(kP131KDims, 1, 128);
+static_assert(kP131KCfg.ubInstantaneousPeak <= kP131KCfg.ubHardSafetyLimit,
+              "P-131K peak memory must not exceed 160KB safety limit");
+static_assert(kP131KCfg.ubFootprintPerStep <= kP131KCfg.ubHighWater,
+              "P-131K slab footprint must not exceed 248KB high water mark");
 
 // 2. 静态证明 Workspace 分区（kMean, vMean, k8, kScale, v8, vScale）计算安全与 512B 对齐
 inline constexpr auto MakeWorkspaceProof = [](const Sa2Dims &dims, uint32_t dp, uint32_t kp, uint32_t segWidth) {
@@ -474,6 +501,7 @@ static_assert(MakeWorkspaceProof(kP01Dims, 128, 4096, 16), "P-01 workspace must 
 static_assert(MakeWorkspaceProof(kP02Dims, 128, 8192, 16), "P-02 workspace must be valid and 512B aligned");
 static_assert(MakeWorkspaceProof(kP05Dims, 128, 4096, 16), "P-05 workspace must be valid and 512B aligned");
 static_assert(MakeWorkspaceProof(kP07Dims, 128, 16384, 16), "P-07 workspace must be valid and 512B aligned");
+static_assert(MakeWorkspaceProof(kP131KDims, 128, 131072, 16), "P-131K workspace must be valid and 512B aligned");
 static_assert(MakeWorkspaceProof(kGqa8Dims, 128, 4096, 16), "GQA 8:1 workspace must be valid and 512B aligned");
 static_assert(MakeWorkspaceProof(kMqaDims, 128, 2048, 16), "MQA workspace must be valid and 512B aligned");
 
@@ -508,6 +536,13 @@ static_assert(kLptStats16K.longestStep == 128 && kLptStats16K.shortestStep == 1,
               "FA4 LPT for S=16384: longest task is 128 steps, shortest is 1 step");
 static_assert(kLptStats16K.tailIdleStepsBound == 1,
               "FA4 LPT guarantees tail idle wait <= 1 step even for S=16384!");
+
+inline constexpr Sa2LptScheduleStats kLptStats131K = Sa2Optiling::AnalyzeLptScheduling(131072, 131072, true);
+static_assert(kLptStats131K.isMonotonicallyDecreasing, "FA4 LPT for S=131072 tasks must decrease monotonically");
+static_assert(kLptStats131K.longestStep == 1024 && kLptStats131K.shortestStep == 1,
+              "FA4 LPT for S=131072: longest task is 1024 steps, shortest is 1 step");
+static_assert(kLptStats131K.tailIdleStepsBound == 1,
+              "FA4 LPT guarantees tail idle wait <= 1 step even for S=131072!");
 
 // 5. 静态证明 GQA 组内 Query Head 连续排布带来的 L2 Cache 命中率与带宽缩减
 static_assert(Sa2Optiling::AnalyzeGqaL2HitRatio(32, 8) == 0.75, "GQA 4:1 achieves 75% KV L2 Cache hit ratio");

@@ -11,7 +11,7 @@
 
 namespace sa2 {
 
-// ---- 表结构常量（附录 C.5 口径）----
+// ---- 表结构常量（DESIGN_SPEC §5.2 双 Die 分区拓扑口径）----
 // die 局部任务表（每 AIC 一张）：slot = (b·pairCols + p)，pair 覆盖 kh = 2p + die；
 // hk 奇数时最后一对在 die=1 侧越界，槽仍在表中占位（valid=false，O(1) 跳过，保证区间均分均匀）。
 // 任务 id：gid = slot·perHead + (qh·tiles + mbRev)，mbRev 为因果逆序游标（0 ↔ 最高 m-block）。
@@ -144,7 +144,7 @@ SA2_AICORE constexpr int64_t VScalePairWordOff(int64_t pairIdx, int64_t c, int64
          (pairIdx % pairsPerWin) * kMxScaleC0Channels + (c % kMxScaleC0Channels);
 }
 
-// ---- Q tile / 输出 / LSE 寻址（附录 C.5 公式落地）----
+// ---- Q tile / 输出 / LSE 寻址（DESIGN_SPEC §5.3 寻址公式落地）----
 // Q tile 元素偏移（行 [m0, m0+64)）；布局无关，stride 由 host 传入。
 SA2_AICORE constexpr int64_t QTileOffset(const Sa2Params& p, int64_t b, int64_t qh, int64_t m0) {
   return b * p.qStride[0] + qh * p.qStride[1] + m0 * p.qStride[2];

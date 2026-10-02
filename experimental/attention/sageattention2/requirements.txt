@@ -1,0 +1,6 @@
+# SageAttention2 (Ascend NPU) Runtime & Testing Requirements
+torch>=2.1.0
+torch_npu
+ninja
+numpy
+pytest>=7.0.0

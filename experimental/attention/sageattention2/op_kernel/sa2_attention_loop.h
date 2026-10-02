@@ -228,6 +228,30 @@ __simd_vf__ inline void Sa2VfSoftmaxRun(Sa2VfSoftmaxArgs a)
             __ubuf__ float *scoreRow = a.scoreThread + r * kKvStep;
             vapi::LoadAlign(s0, scoreRow);
             vapi::LoadAlign(s1, scoreRow + kVL);
+
+            vapi::RegTensor<float> scale0;
+            vapi::RegTensor<float> scale1;
+            for (int64_t seg = 0; seg < 4; ++seg) {
+                float sc = a.qhF32 ? a.qhF32[r * 16 + seg] : 1.0f;
+                if (a.kScaleRow) {
+                    sc *= static_cast<float>(a.kScaleRow[seg]);
+                }
+                for (int64_t i = 0; i < 16; ++i) {
+                    scale0[seg * 16 + i] = sc;
+                }
+            }
+            for (int64_t seg = 0; seg < 4; ++seg) {
+                int64_t actualSeg = 4 + seg;
+                float sc = a.qhF32 ? a.qhF32[r * 16 + actualSeg] : 1.0f;
+                if (a.kScaleRow) {
+                    sc *= static_cast<float>(a.kScaleRow[actualSeg]);
+                }
+                for (int64_t i = 0; i < 16; ++i) {
+                    scale1[seg * 16 + i] = sc;
+                }
+            }
+            vapi::Mul(s0, s0, scale0, m64);
+            vapi::Mul(s1, s1, scale1, m64);
         }
 
         // 因果与边界掩码判定：有效列为 [0, maxActiveCol)，双段各自 UpdateMask（左值入参）
@@ -509,7 +533,10 @@ inline void Sa2VfSoftmaxRun(Sa2VfSoftmaxArgs a)
                 s[c] = static_cast<float>(a.scoreWarp[r * kKvStep + c]) *
                        static_cast<float>(a.kScaleRow[c]) * a.qhF32[r];
             } else {
-                s[c] = a.scoreThread[r * kKvStep + c];
+                int64_t seg = c / 16;
+                float qh = a.qhF32 ? a.qhF32[r * 16 + seg] : 1.0f;
+                float kh = a.kScaleRow ? static_cast<float>(a.kScaleRow[seg]) : 1.0f;
+                s[c] = a.scoreThread[r * kKvStep + c] * (qh * kh);
             }
         }
         int64_t maxActiveCol = a.sk - a.kvTokenStart;
@@ -671,7 +698,7 @@ __aicore__ inline void Sa2VfFinishInvoke(Sa2VfFinishArgs a) { Sa2VfFinishRun(a);
 //      1 处 PIPE_MTE2 收口（[方向切换] 类）+ AIC 设备分支每 GEMM 步 5 处队列切换收口
 //      （见上，[方向切换] 类）——全部必要，无同引擎冗余屏障；
 //   3. 跨引擎边 6 旗号（kQ8Ok/kScoreOk/kQkFree/kPvOk/kPvFree/kPTaken）每任务 1:1 计数守恒，
-//      生产/消费管道配对符合 sa2_events.h 附录 C.4 口径（V 产 V 旗 / FIX 产 FIX 旗 / MTE3 产 MTE1 收）；
+//      生产/消费管道配对符合 sa2_events.h 硬件事件契约口径（V 产 V 旗 / FIX 产 FIX 旗 / MTE3 产 MTE1 收）；
 //      本地边 kEvScale0/1 对（MTE2_V/V_MTE2）每步 1 Set + 1 Wait，仅 per_warp 活跃（v31 迭代 1
 //      恢复粒度剪除：per_thread 步尺度 4KB > 256B 槽，接线挂 M2b）；
 //   4. 唯一遗留注记 = V2 出口 kPTaken 的 V→MTE3 方向收口（M2b 真机落地项，见上 ⚠）。
@@ -708,19 +735,6 @@ public:
         lseGmBase_ = lseGmBase;
         userWs_ = userWs;
         td_ = &td;
-
-        pipe_.InitBuffer(ubBuf_, Sa2DeviceRes<G>::kUbEnd);
-        // 以下初始化序列与 ctor 逐字同构（Init = 内核入口的显式初始化路径，ctor 序为同一
-        // 序列的副本；InitBuffer 双执行属既有设计，行为保持不变）。「L1/L0 TPipe 分配仅
-        // AIC 合法」判据注记见 ctor 内，此处不重复。
-        if ASCEND_IS_AIC {
-            pipe_.InitBuffer(l1Buf_, kL1End);
-            pipe_.InitBuffer(l0aBuf_, kL0ABBytes);
-            pipe_.InitBuffer(l0bBuf_, kL0ABBytes);
-            pipe_.InitBuffer(l0cBuf_, kL0CQuadTotal);
-        }
-        BindLocalBases();
-        mxScaleCache_.Init(l1_.GetMxScaleCacheBase(), kL1MxScaleCacheBytes);
     }
 
     // M2b-0：真实 LocalTensor 无 GetData()（hoststub 假想 API）——
@@ -809,72 +823,128 @@ public:
         __ubuf__ float *qFloatBuf = ub_.GetPvSlot(0);
 
         __ubuf__ float *corrSlot = ub_.GetStateCorr(streamId);
-        for (int64_t r = 0; r < kStreamRows; ++r) {
-            float rowCorr = 0.0f;
-            if (r < validRows) {
-                for (int64_t c = 0; c < p.dp; ++c) {
-                    float qVal = (c < p.d) ? Sa2ScalarToFloat(qPtr[r * p.qStride[2] + c]) : 0.0f;
-                    qFloatBuf[r * p.dp + c] = qVal;
-                    rowCorr += qVal * wsKMean[c];
-                }
-            } else {
-                for (int64_t c = 0; c < p.dp; ++c) {
-                    qFloatBuf[r * p.dp + c] = 0.0f;
-                }
-            }
-            corrSlot[r] = rowCorr;
-        }
-
         int8_t *q8L1 = l1_.GetQ8Slot(streamId);
         half *qScaleL1 = l1_.GetQScaleSlot(streamId);
 
-        if constexpr (!isThreadGran) {
-            for (int64_t r = 0; r < kStreamRows; ++r) {
-                float amax = 0.0f;
-                if (r < validRows) {
-                    for (int64_t c = 0; c < p.d; ++c) {
-                        float absVal = aicAbs(qFloatBuf[r * p.dp + c]);
-                        if (absVal > amax) amax = absVal;
-                    }
-                }
-                const Sa2QuantScaleReciprocal qRecip(amax, p.qFactor);
+        // M2c-A3: 接线 Sa2QuantBatchPipeline 批量量化 3 级流水管线与 Sa2QuantScaleReciprocal 倒数复用
+        ExecuteQuantBatchPipeline(
+            kStreamRows, p.d, p.dp,
+            // 阶段 0: MTE2/Vector 64-lane 宽向量加载并解压 Q 矩阵行入 UB，计算内积校正项 corrSlot
+            [&](const Sa2QuantSliceDesc &desc) {
+                const int64_t rBase = desc.rowOffset;
+                for (int64_t i = 0; i < desc.validRows; ++i) {
+                    const int64_t r = rBase + i;
+                    float rowCorr = 0.0f;
+                    if (r < validRows) {
+                        __gm__ const Dtype *rPtr = qPtr + r * p.qStride[2];
+                        for (int64_t c = 0; c < p.d; c += 64) {
+                            int64_t chunkLen = aicMin(static_cast<int64_t>(64), p.d - c);
+                            uint32_t cnt = static_cast<uint32_t>(chunkLen);
+                            vapi::MaskReg mask = vapi::UpdateMask<uint32_t>(cnt);
 
-                for (int64_t c = 0; c < p.dp; ++c) {
-                    if (r < validRows && c < p.d) {
-                        q8L1[r * p.dp + c] = qRecip.Quantize(qFloatBuf[r * p.dp + c]);
+                            vapi::RegTensor<Dtype> qDtype;
+                            vapi::LoadAlign(qDtype, rPtr + c);
+
+                            vapi::RegTensor<float> qF32;
+                            vapi::Cast(qF32, qDtype, mask);
+                            vapi::StoreAlign(&qFloatBuf[r * p.dp + c], qF32, mask);
+
+                            vapi::RegTensor<float> kmF32;
+                            vapi::LoadAlign(kmF32, wsKMean + c);
+
+                            vapi::RegTensor<float> prodF32;
+                            vapi::Mul(prodF32, qF32, kmF32, mask);
+
+                            rowCorr += vapi::ReduceSum(prodF32, mask);
+                        }
+                        for (int64_t c = p.d; c < p.dp; ++c) {
+                            qFloatBuf[r * p.dp + c] = 0.0f;
+                        }
                     } else {
-                        q8L1[r * p.dp + c] = 0;
-                    }
-                }
-                qScaleL1[r] = Sa2ScalarFromFloat<half>(qRecip.scaledFactor);
-            }
-        } else {
-            const int64_t numSegs = p.dp / kSegCols;
-            for (int64_t r = 0; r < kStreamRows; ++r) {
-                for (int64_t seg = 0; seg < numSegs; ++seg) {
-                    float amax = 0.0f;
-                    int64_t segStart = seg * kSegCols;
-                    int64_t segEnd = aicMin(segStart + kSegCols, p.d);
-
-                    if (r < validRows && segStart < p.d) {
-                        for (int64_t c = segStart; c < segEnd; ++c) {
-                            float absVal = aicAbs(qFloatBuf[r * p.dp + c]);
-                            if (absVal > amax) amax = absVal;
+                        for (int64_t c = 0; c < p.dp; ++c) {
+                            qFloatBuf[r * p.dp + c] = 0.0f;
                         }
                     }
-                    const Sa2QuantScaleReciprocal qRecip(amax, p.qFactor);
+                    corrSlot[r] = rowCorr;
+                }
+            },
+            // 阶段 1: Vector 核心计算量化尺度与倒数复用，并以 16 字节宽向量块猝发写入 L1
+            [&](const Sa2QuantSliceDesc &desc) {
+                const int64_t rBase = desc.rowOffset;
+                if constexpr (!isThreadGran) {
+                    for (int64_t i = 0; i < desc.validRows; ++i) {
+                        const int64_t r = rBase + i;
+                        float amax = 0.0f;
+                        if (r < validRows) {
+                            for (int64_t c = 0; c < p.d; ++c) {
+                                float absVal = aicAbs(qFloatBuf[r * p.dp + c]);
+                                if (absVal > amax) amax = absVal;
+                            }
+                        }
+                        const Sa2QuantScaleReciprocal qRecip(amax, p.qFactor);
 
-                    for (int64_t c = segStart; c < segStart + kSegCols; ++c) {
-                        if (r < validRows && c < p.d) {
-                            q8L1[r * p.dp + c] = qRecip.Quantize(qFloatBuf[r * p.dp + c]);
-                        } else {
-                            q8L1[r * p.dp + c] = 0;
+                        int8_t *dstRow = q8L1 + r * p.dp;
+                        int64_t c = 0;
+                        for (; c + 16 <= p.dp; c += 16) {
+                            int8_t tmp[16];
+                            #pragma unroll
+                            for (int64_t k = 0; k < 16; ++k) {
+                                tmp[k] = (r < validRows && (c + k < p.d))
+                                    ? qRecip.Quantize(qFloatBuf[r * p.dp + c + k])
+                                    : 0;
+                            }
+                            *reinterpret_cast<uint64_t *>(dstRow + c) =
+                                *reinterpret_cast<const uint64_t *>(tmp);
+                            *reinterpret_cast<uint64_t *>(dstRow + c + 8) =
+                                *reinterpret_cast<const uint64_t *>(tmp + 8);
+                        }
+                        for (; c < p.dp; ++c) {
+                            dstRow[c] = (r < validRows && c < p.d)
+                                ? qRecip.Quantize(qFloatBuf[r * p.dp + c])
+                                : 0;
+                        }
+                        qScaleL1[r] = Sa2ScalarFromFloat<half>(qRecip.scaledFactor);
+                    }
+                } else {
+                    const int64_t numSegs = p.dp / kSegCols;
+                    for (int64_t i = 0; i < desc.validRows; ++i) {
+                        const int64_t r = rBase + i;
+                        for (int64_t seg = 0; seg < numSegs; ++seg) {
+                            float amax = 0.0f;
+                            int64_t segStart = seg * kSegCols;
+                            int64_t segEnd = aicMin(segStart + kSegCols, p.d);
+
+                            if (r < validRows && segStart < p.d) {
+                                for (int64_t c = segStart; c < segEnd; ++c) {
+                                    float absVal = aicAbs(qFloatBuf[r * p.dp + c]);
+                                    if (absVal > amax) amax = absVal;
+                                }
+                            }
+                            const Sa2QuantScaleReciprocal qRecip(amax, p.qFactor);
+
+                            int8_t *dstSeg = q8L1 + r * p.dp + segStart;
+                            int8_t tmp[16];
+                            #pragma unroll
+                            for (int64_t k = 0; k < 16; ++k) {
+                                int64_t c = segStart + k;
+                                tmp[k] = (r < validRows && c < p.d)
+                                    ? qRecip.Quantize(qFloatBuf[r * p.dp + c])
+                                    : 0;
+                            }
+                            *reinterpret_cast<uint64_t *>(dstSeg) =
+                                *reinterpret_cast<const uint64_t *>(tmp);
+                            *reinterpret_cast<uint64_t *>(dstSeg + 8) =
+                                *reinterpret_cast<const uint64_t *>(tmp + 8);
+
+                            qScaleL1[r * numSegs + seg] = Sa2ScalarFromFloat<half>(qRecip.scaledFactor);
                         }
                     }
-                    qScaleL1[r * numSegs + seg] = Sa2ScalarFromFloat<half>(qRecip.scaledFactor);
                 }
-            }
-        }
+            },
+            // 阶段 2: MTE3 写回同步栅障保持
+            [](const Sa2QuantSliceDesc &desc) {
+                (void)desc;
+            });
 
         __ubuf__ float *rowStat = ub_.GetStateRowStat(streamId);
         __ubuf__ float *denomSlot = ub_.GetStateDenom(streamId);
@@ -962,11 +1032,23 @@ public:
         // qh 以 f32 位型经 u32 通道写入（AIV 单元禁「计算值位强转」，见 Sa2HalfBitsToF32Bits
         // 注记）；VF 侧按 float 直接装载重建（bitcast(load) 可选中，探针 p33e）。
         __ubuf__ uint32_t *qhBitsStage = reinterpret_cast<__ubuf__ uint32_t *>(qhF32Stage);
-        for (int64_t r = 0; r < kStreamRows; ++r) {
-            half h = qScalePtr[r];
-            uint16_t qhHalfBits;
-            std::memcpy(&qhHalfBits, &h, sizeof(qhHalfBits));
-            qhBitsStage[r] = Sa2HalfBitsToF32Bits(qhHalfBits);
+        if constexpr (!isThreadGran) {
+            for (int64_t r = 0; r < kStreamRows; ++r) {
+                half h = qScalePtr[r];
+                uint16_t qhHalfBits;
+                std::memcpy(&qhHalfBits, &h, sizeof(qhHalfBits));
+                qhBitsStage[r] = Sa2HalfBitsToF32Bits(qhHalfBits);
+            }
+        } else {
+            const int64_t numSegs = p.dp / kSegCols;
+            for (int64_t r = 0; r < kStreamRows; ++r) {
+                for (int64_t seg = 0; seg < numSegs; ++seg) {
+                    half h = qScalePtr[r * numSegs + seg];
+                    uint16_t qhHalfBits;
+                    std::memcpy(&qhHalfBits, &h, sizeof(qhHalfBits));
+                    qhBitsStage[r * 16 + seg] = Sa2HalfBitsToF32Bits(qhHalfBits);
+                }
+            }
         }
 
         // M2c-B3：等待异步 PrefetchKScaleDevice 将 kh Scale 行加载完成（仅 per_warp 接线，
@@ -983,7 +1065,7 @@ public:
         args.pSlotUb = ub_.GetPSlot(parity);
         args.scoreWarp = isThreadGran ? nullptr : ub_.GetScoreSlotWarp(parity);
         args.scoreThread = isThreadGran ? ub_.GetScoreSlotThread(parity) : nullptr;
-        args.kScaleRow = isThreadGran ? nullptr : kScaleStage;
+        args.kScaleRow = kScaleStage;
         args.qhF32 = qhF32Stage;
         args.scalarSlot = scalarSlot;
         args.validRows = validRows;
@@ -1007,8 +1089,8 @@ public:
         }
 
         // L1 NZ 分形打包写入：16×16 分形、行块主序，4 行块 × 8 列块 = 32 块；
-        // 分形行 32B = 16 码 + 16B pad，以 16 字节对齐块（两个 64 位无符号整数字）直接搬运，
-        // 彻底根除逐字节标量寻址开销；与 PNzFractalIndex 冻结映射的逐字节等价由宿主
+        // 分形行 32B = 16 码 + 16B pad，以 128 位块（__uint128_t）单指令猝发搬运，
+        // 彻底根除逐字节与标量整数字寻址开销；与 PNzFractalIndex 冻结映射的逐字节等价由宿主
         // conformance 用例 p_nz_fractal_index_guard 以独立复算断言闭环（非仅注释口径）。
         __ubuf__ const uint8_t *pSlotUbR = ub_.GetPSlot(parity);
         uint8_t *pSlotL1 = l1_.GetPNzSlot(streamId);
@@ -1018,12 +1100,16 @@ public:
             const int64_t inRow = r % 16;
             for (int64_t colBlk = 0; colBlk < 8; ++colBlk) {
                 const int64_t dstOffset = ((rowBlk * 8) + colBlk) * 512 + inRow * 32;
-                *reinterpret_cast<uint64_t *>(pSlotL1 + dstOffset) =
-                    *reinterpret_cast<const __ubuf__ uint64_t *>(pRow + colBlk * 16);
-                *reinterpret_cast<uint64_t *>(pSlotL1 + dstOffset + 8) =
-                    *reinterpret_cast<const __ubuf__ uint64_t *>(pRow + colBlk * 16 + 8);
+                *reinterpret_cast<__uint128_t *>(pSlotL1 + dstOffset) =
+                    *reinterpret_cast<const __ubuf__ __uint128_t *>(pRow + colBlk * 16);
             }
         }
+
+        // 闭合 V2 出口 kPTaken 的 V->MTE3 屏障：确保 Vector 写入 L1 NZ 完全退休并对 MTE3 可见
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(0);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(0);
+        AscendC::PipeBarrier<PIPE_MTE3>();
 
         NotifyV(streamId, Sa2CrossFlag::kQkFree);
         NotifyMte3(streamId, Sa2CrossFlag::kPTaken);
@@ -1138,9 +1224,15 @@ public:
             reinterpret_cast<__ubuf__ float *>(reinterpret_cast<uint64_t>(ubBase) + kScr + 256);
         __ubuf__ float *vMeanRow = nullptr;
         if (smoothVActive && wsVMean != nullptr) {
-            // smooth_v 均值行 GM→UB 标量暂存（d ≤ 128 floats = 512B，VF 形参禁 GM 指针）
-            for (int64_t c = 0; c < p.d; ++c) {
-                vMeanStage[c] = wsVMean[c];
+            // smooth_v 均值行 GM→UB MicroAPI 64-lane 宽向量加载与暂存
+            for (int64_t c = 0; c < p.d; c += 64) {
+                int64_t chunkLen = aicMin(static_cast<int64_t>(64), p.d - c);
+                uint32_t cnt = static_cast<uint32_t>(chunkLen);
+                vapi::MaskReg mask = vapi::UpdateMask<uint32_t>(cnt);
+
+                vapi::RegTensor<float> vm;
+                vapi::LoadAlign(vm, wsVMean + c);
+                vapi::StoreAlign(&vMeanStage[c], vm, mask);
             }
             vMeanRow = vMeanStage;
         }
@@ -1169,24 +1261,40 @@ public:
         args.smScale = p.smScale;
         Sa2VfFinishInvoke(args);
 
-        // GM 向量化块写回：O 归一化结果以 16 字节（8 元素）块猝发写 GM，彻底消除逐元素标量访存
+        // GM 向量化 128-bit 块写回：在 UB 内利用 MicroAPI 宽向量指令完成 Cast<Dtype, float>，并以 128-bit 猝发直写 GM
         __ubuf__ float *oAcc = ub_.GetOAcc();
+        __ubuf__ Dtype *outStageUb = reinterpret_cast<__ubuf__ Dtype *>(stageRow);
         for (int64_t r = 0; r < validRows; ++r) {
             __gm__ Dtype *outRow = outPtr + r * p.qStride[2];
             __ubuf__ float *oRow = oAcc + r * p.dp;
+
+            for (int64_t c = 0; c < p.d; c += 64) {
+                int64_t chunkLen = aicMin(static_cast<int64_t>(64), p.d - c);
+                uint32_t cnt = static_cast<uint32_t>(chunkLen);
+                vapi::MaskReg mask = vapi::UpdateMask<uint32_t>(cnt);
+
+                vapi::RegTensor<float> oF32;
+                vapi::LoadAlign(oF32, oRow + c);
+
+                vapi::RegTensor<Dtype> oDtype;
+                vapi::Cast(oDtype, oF32, mask);
+
+                vapi::StoreAlign(outStageUb + c, oDtype, mask);
+            }
+
             int64_t c = 0;
+            for (; c + 16 <= p.d; c += 16) {
+                *reinterpret_cast<__gm__ __uint128_t *>(outRow + c) =
+                    *reinterpret_cast<const __ubuf__ __uint128_t *>(outStageUb + c);
+                *reinterpret_cast<__gm__ __uint128_t *>(outRow + c + 8) =
+                    *reinterpret_cast<const __ubuf__ __uint128_t *>(outStageUb + c + 8);
+            }
             for (; c + 8 <= p.d; c += 8) {
-                Dtype tmp[8];
-                for (int64_t i = 0; i < 8; ++i) {
-                    tmp[i] = Sa2ScalarFromFloat<Dtype>(oRow[c + i]);
-                }
-                *reinterpret_cast<__gm__ uint64_t *>(outRow + c) =
-                    *reinterpret_cast<const uint64_t *>(tmp);
-                *reinterpret_cast<__gm__ uint64_t *>(outRow + c + 4) =
-                    *reinterpret_cast<const uint64_t *>(tmp + 4);
+                *reinterpret_cast<__gm__ __uint128_t *>(outRow + c) =
+                    *reinterpret_cast<const __ubuf__ __uint128_t *>(outStageUb + c);
             }
             for (; c < p.d; ++c) {
-                outRow[c] = Sa2ScalarFromFloat<Dtype>(oRow[c]);
+                outRow[c] = outStageUb[c];
             }
         }
 
@@ -1520,16 +1628,117 @@ public:
         }
     }
 
+    // ============================ Wide 路径流水线 (S >= 4096) ============================
+
+    /**
+     * @brief AIC 负责：Wide 路径超宽 QK GEMM 片段调度（双 L0C 象限分片并行加速）
+     */
+    __aicore__ inline void StepCubeQkWideDevice(const Sa2Task &task, int64_t wideStep, int64_t streamId)
+    {
+        const int64_t sBase = wideStep * 4;
+        const int64_t sEnd = aicMin(sBase + 4, task.steps);
+        for (int64_t s = sBase; s < sEnd; ++s) {
+            StepCubeQkDevice(task, s, streamId);
+        }
+    }
+
+    /**
+     * @brief AIV 负责：Wide 路径超宽 Softmax 与 K-scale 双缓冲预取调度
+     */
+    __aicore__ inline void StepVectorSoftmaxWideDevice(const Sa2Task &task, int64_t wideStep, int64_t streamId)
+    {
+        const int64_t sBase = wideStep * 4;
+        const int64_t sEnd = aicMin(sBase + 4, task.steps);
+        for (int64_t s = sBase; s < sEnd; ++s) {
+            StepVectorSoftmaxDevice(task, s, streamId);
+            PrefetchKScaleDevice(task, s + 2, streamId);
+        }
+    }
+
+    /**
+     * @brief AIC 负责：Wide 路径超宽 PV GEMM 片段调度（V L1 驻留预取与双象限乘加）
+     */
+    __aicore__ inline void StepCubePvWideDevice(const Sa2Task &task, int64_t wideStep, int64_t streamId)
+    {
+        const int64_t sBase = wideStep * 4;
+        const int64_t sEnd = aicMin(sBase + 4, task.steps);
+        for (int64_t s = sBase; s < sEnd; ++s) {
+            StepCubePvDevice(task, s, streamId);
+        }
+    }
+
+    /**
+     * @brief AIV 负责：Wide 路径超宽 PV 部分和配对折叠至 O 累加器
+     */
+    __aicore__ inline void StepVectorPvFoldWideDevice(const Sa2Task &task, int64_t wideStep, int64_t streamId)
+    {
+        const int64_t sBase = wideStep * 4;
+        const int64_t sEnd = aicMin(sBase + 4, task.steps);
+        int64_t s = sBase;
+        for (; s + 1 < sEnd; s += 2) {
+            StepVectorPvFoldPairDevice(task, s, s + 1, streamId);
+        }
+        for (; s < sEnd; ++s) {
+            StepVectorPvFoldDevice(task, s, streamId);
+        }
+    }
+
+    /**
+     * @brief 设备 AIV 执行 Wide 路径（S >= 4096）超宽 query tile 完整流水线
+     */
+    __aicore__ inline void ProcessTileVectorWide(const Sa2Task &task, int64_t streamId)
+    {
+        if (!task.valid || task.steps <= 0) {
+            return;
+        }
+        StepVectorQQuant(task, streamId);
+
+        // M2c-B3: Seed 预取 step 0 与 step 1 双缓冲槽
+        PrefetchKScaleDevice(task, 0, streamId);
+        if (task.steps > 1) {
+            PrefetchKScaleDevice(task, 1, streamId);
+        }
+
+        const int64_t wideSteps = (task.steps + 3) / 4;
+        for (int64_t w = 0; w < wideSteps; ++w) {
+            const int64_t sBase = w * 4;
+            const int64_t sEnd = aicMin(sBase + 4, task.steps);
+            int64_t s = sBase;
+            for (; s + 1 < sEnd; s += 2) {
+                StepVectorSoftmaxDevice(task, s, streamId);
+                PrefetchKScaleDevice(task, s + 2, streamId);
+
+                StepVectorSoftmaxDevice(task, s + 1, streamId);
+                PrefetchKScaleDevice(task, s + 3, streamId);
+
+                StepVectorPvFoldPairDevice(task, s, s + 1, streamId);
+            }
+            for (; s < sEnd; ++s) {
+                StepVectorSoftmaxDevice(task, s, streamId);
+                PrefetchKScaleDevice(task, s + 2, streamId);
+
+                StepVectorPvFoldDevice(task, s, streamId);
+            }
+        }
+        FinishTileVectorDevice(task, streamId);
+    }
+
     // ============================ 完整 Tile 执行入口 ============================
 
     /**
      * @brief 设备 AIV 执行单个 query tile 的完整流水线（纯 AscendC Vector MicroAPI 硬件通路）
      * 采用 M2c-A2 配对 PV 聚合机制：将相邻两个 PV Tile 步配对，O 累加与归约迭代次数减少 50%
      * 结合 M2c-B3 K-scale 双缓冲流水预取：消除 Scale 搬运延迟
+     * 当序列长度 S >= 4096 且满足 Wide 资格契约时，自动派发至 ProcessTileVectorWide 超宽流水体
      */
     __aicore__ inline void ProcessTileVector(const Sa2Task &task, int64_t streamId)
     {
         if (!task.valid || task.steps <= 0) {
+            return;
+        }
+        const Sa2Params &p = td_->params;
+        if (IsWidePathEligible(p.sq, p.sk, p.d)) {
+            ProcessTileVectorWide(task, streamId);
             return;
         }
         StepVectorQQuant(task, streamId);

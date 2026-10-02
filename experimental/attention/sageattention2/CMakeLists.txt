@@ -1,7 +1,7 @@
 # SageAttention2 算子构建入口：转发 op_host / op_api / op_kernel / tests 子目录（对齐仓内算子惯例）
 file(GLOB CURRENT_DIRS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/*)
 if(NOT ENABLE_TEST AND NOT BENCHMARK)
-    list(REMOVE_ITEM CURRENT_DIRS tests)
+    list(REMOVE_ITEM CURRENT_DIRS tests benchmarks)
 endif()
 foreach(SUB_DIR ${CURRENT_DIRS})
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${SUB_DIR}/CMakeLists.txt")

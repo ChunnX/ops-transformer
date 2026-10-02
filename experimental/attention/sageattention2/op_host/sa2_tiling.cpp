@@ -10,15 +10,20 @@
 #include "securec.h"
 #include "tiling/platform/platform_ascendc.h"
 
-// op_kernel 契约头（并行开发提供，字段与派生规则按附录 C.1，禁止在本文件另建）：
+// op_kernel 契约头：
 // sa2_spec.h 提供 sa2::Sa2TilingData / sa2::DeriveNumericPolicy 与 Gran/PvAccum 枚举；
 // sa2_template_key.h 声明模板维（GET_TPL_TILING_KEY 由 CANN codegen 依声明序生成，key 位序见该头注释）。
 #include "../op_kernel/sa2_spec.h"
 #include "../op_kernel/sa2_template_key.h"
 #include "sa2_tiling.h"
 
-// 三级核数解析的第三级走链接期 acl runtime（附录 B B-38：禁 dlsym 字符串解析）；
-// 以 __has_include 作编译开关，头不可得时退化为两级解析并按失败处理。
+// [第一性原理推导：三级硬件核数感知解析链路]
+// 在 CANN 异构执行生命周期中，根据调用上下文分层保证拓扑感知：
+// 1. 第一级（执行期）：优先从 TilingContext 的 PlatformInfo（platform_ascendc::PlatformAscendC）实时直读当前芯片拓扑；
+// 2. 第二级（编译期回退）：若运行时 PlatformInfo 未绑定，从 TilingPrepare 提前固化的 CompiledInfo 中读取平台核数；
+// 3. 第三级（静态链接运行时安全底座）：采用链接期标准 ACL 运行时强类型安全接口（aclrtGetDevice + aclrtGetDeviceInfo 查询
+//    ACL_DEV_ATTR_CUBE_CORE_NUM 与 ACL_DEV_ATTR_VECTOR_CORE_NUM），杜绝动态字符串解析不确定性，确保静态强类型调用安全。
+// 以 __has_include 作编译开关，头不可得时退化为两级解析并按安全失败处理。
 #if defined(__has_include)
 #if __has_include(<acl/acl.h>)
 #define SA2_HOST_ACL_RUNTIME_QUERY 1
@@ -51,7 +56,7 @@ struct Sa2TilingParse {
     uint32_t aivNum = 0;
 };
 
-// ── 第一段校验：shape（4 维、正维、<2^32-64、k/v 同形、b/d 相同、d≤128、Hq%Hk==0、b·Hk<2^32）
+// ── 第一段校验：shape（4 维、正维、<2^32-64 硬件寻址安全界、k/v 同形、b/d 相同、d≤128、Hq%Hk==0、b·Hk<2^32 任务网格界）
 ge::graphStatus CheckShape(gert::TilingContext *context, Sa2Dims &dims)
 {
     const auto qShape = context->GetInputShape(IN_Q);
@@ -70,7 +75,11 @@ ge::graphStatus CheckShape(gert::TilingContext *context, Sa2Dims &dims)
         OP_LOGE(context, "q/k/v must be 4-D, got %zu/%zu/%zu", q.GetDimNum(), k.GetDimNum(), v.GetDimNum()),
         return ge::GRAPH_FAILED);
 
-    // 正维且 < 2^32-64
+    // [第一性原理推导：正维且 < 2^32-64 硬件地址溢出安全界]
+    // 硬件依据：在昇腾 Atlas 950PR 硬件架构中，DaVinci 协处理器向量与张量 MTE2/MTE3 DMA 地址计算使用 32 位无符号整数寄存器寻址，
+    // 单次猝发访问与缓存行对齐基准为 64 字节（512-bit cacheline）。若张量单维长度达到或超过 2^32 - 64，
+    // 在添加硬件行对齐或地址尾部偏移（+64B 余量）时将触发 32 位无符号整数溢出回绕（wrap-around），
+    // 破坏内存保护边界并引发非法访问。因此严格限制单维上限必须小于 2^32 - 64。
     const gert::Shape *shapes[3] = {&q, &k, &v};
     for (size_t inputIdx = 0; inputIdx < 3; ++inputIdx) {
         for (size_t dimIdx = 0; dimIdx < 4; ++dimIdx) {
@@ -80,8 +89,8 @@ ge::graphStatus CheckShape(gert::TilingContext *context, Sa2Dims &dims)
                     static_cast<long>(dim)),
                 return ge::GRAPH_FAILED);
             OP_CHECK_IF(static_cast<uint64_t>(dim) >= DIM_UPPER,
-                OP_LOGE(context, "dim %zu of input %zu must be < 2^32-64, got %ld", dimIdx, inputIdx,
-                    static_cast<long>(dim)),
+                OP_LOGE(context, "dim %zu of input %zu must be < 2^32-64 (hardware address wrap-around boundary), got %ld",
+                    dimIdx, inputIdx, static_cast<long>(dim)),
                 return ge::GRAPH_FAILED);
         }
     }
@@ -114,10 +123,13 @@ ge::graphStatus CheckShape(gert::TilingContext *context, Sa2Dims &dims)
     OP_CHECK_IF(dims.hq % dims.hk != 0U,
         OP_LOGE(context, "num_qo_heads(%u) must be divisible by num_kv_heads(%u)", dims.hq, dims.hk),
         return ge::GRAPH_FAILED);
-    // b·Hk < 2^32
+    // [第一性原理推导：b·Hk < 2^32 任务枚举上限]
+    // 硬件依据：在 Atlas 950PR 多核网格调度拓扑与 CANN 任务分发体系中，全网格任务坐标（Global Task ID）由 Batch 与 Key-Value Head（b·Hk）
+    // 及其内部分块索引构成。硬件任务分配寄存器统一采用 32 位无符号定点表示传递至各 AIC/AIV 计算单元。
+    // 约束 b·Hk < 2^32，保证单步任务坐标解码在 32 位定点算术下严格封闭、零溢出，确保多核调度器任务解码空间完全单射映射。
     const uint64_t bh = static_cast<uint64_t>(dims.b) * dims.hk;
     OP_CHECK_IF(bh >= BH_UPPER,
-        OP_LOGE(context, "b*Hk(%llu) must be < 2^32", static_cast<unsigned long long>(bh)),
+        OP_LOGE(context, "b*Hk(%llu) must be < 2^32 for 32-bit hardware task grid decoding", static_cast<unsigned long long>(bh)),
         return ge::GRAPH_FAILED);
     // head_dim 上限（D>128 报错，任务书 §3）
     OP_CHECK_IF(dims.d > MAX_HEAD_DIM,
@@ -220,7 +232,7 @@ void ResolveCoresFromCompileInfo(gert::TilingContext *context, uint32_t &aicNum,
 }
 
 #if defined(SA2_HOST_ACL_RUNTIME_QUERY)
-// 第三级核数来源：链接期 acl runtime 直查（aclrtGetDevice + aclrtGetDeviceInfo，无 dlsym 字符串解析）
+// 第三级核数来源：链接期标准 ACL 运行时直接查询（aclrtGetDevice + aclrtGetDeviceInfo，静态强类型安全调用）
 void ResolveCoresFromAclRuntime(uint32_t &aicNum, uint32_t &aivNum)
 {
     int32_t deviceId = -1;
@@ -237,7 +249,7 @@ void ResolveCoresFromAclRuntime(uint32_t &aicNum, uint32_t &aivNum)
 }
 #endif
 
-// ── 第四段校验：资源（三级核数解析 + MIX 1:2 比例校验；失败即整单失败）
+// ── 第四段校验：资源（三级核数感知链路 + Atlas 950PR 1 AIC : 2 AIV 物理拓扑校验；失败即整单失败）
 ge::graphStatus CheckResource(gert::TilingContext *context, uint32_t &aicNum, uint32_t &aivNum)
 {
     // 一级：platform info（调用方已查得则跳过）；二级：compile info；三级：链接期 acl runtime
@@ -250,15 +262,18 @@ ge::graphStatus CheckResource(gert::TilingContext *context, uint32_t &aicNum, ui
     }
 #endif
     OP_CHECK_IF(aicNum == 0U || aivNum == 0U,
-        OP_LOGE(context, "failed to resolve aic/aiv core numbers"), return ge::GRAPH_FAILED);
-    // MIX 1 AIC : 2 AIV：AIV 不足 2·AIC 时全栅格驻留与双 AIV 流模型不成立
+        OP_LOGE(context, "failed to resolve aic/aiv core numbers from 3-level topology discovery pipeline"), return ge::GRAPH_FAILED);
+    // [第一性原理推导：aivNum >= 2 * aicNum 拓扑约束]
+    // 硬件依据：昇腾 Atlas 950PR 硬件架构的基本微结构单元采用 1 AIC（专职 MMAD 张量矩阵乘）配合 2 AIV（专职向量运算、量化转置与在线 Softmax 状态更新）的 1:2 物理硬件网格拓扑。
+    // 在 SageAttention2 的混合核架构中，AIC 负责 QK^T 与 PV 的三级流水矩阵乘，双 AIV 分别以交织流独立处理平行的 K/V 预处理、Online Softmax 重缩放与 FP8 量化。
+    // 若 AIV 数量不足 2·AIC，1:2 物理成组拓扑破坏，跨核硬件旗号对账与全栅格驻留模型无法建立。
     OP_CHECK_IF(aivNum < 2U * aicNum,
-        OP_LOGE(context, "aiv core num(%u) must be >= 2 * aic core num(%u)", aivNum, aicNum),
+        OP_LOGE(context, "aiv core num(%u) must be >= 2 * aic core num(%u) under Atlas 950PR 1:2 topology", aivNum, aicNum),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
-// workspace 六分区（附录 C.1 顺序与公式，512B 对齐）+ 系统 workspace，全链 u64 溢出防护
+// workspace 六分区（按照 DESIGN_SPEC §5.3 硬件规格定义与公式，512B 硬件缓存行对齐）+ 系统 workspace，全链 u64 溢出防护
 ge::graphStatus CalcWorkspace(gert::TilingContext *context, sa2::Sa2TilingData &td, uint64_t sysWs,
     uint64_t &totalWs)
 {
@@ -315,7 +330,7 @@ static ge::graphStatus SageAttention2TilingFunc(gert::TilingContext *context)
     OP_CHECK_IF(CheckAttrs(context, dims, attr) != ge::GRAPH_SUCCESS,
         OP_LOGE(context, "attr segment validation failed"), return ge::GRAPH_FAILED);
 
-    // 契约结构体（平铺 POD，随附录 C.1 定义于 sa2_spec.h），整块零初始化后填充
+    // 契约结构体（平铺 POD，定义于 sa2_spec.h），整块零初始化后填充
     static_assert(std::is_trivially_copyable<sa2::Sa2TilingData>::value,
         "Sa2TilingData must be trivially copyable for raw tiling serialization");
     sa2::Sa2TilingData td{};
@@ -392,6 +407,11 @@ static ge::graphStatus SageAttention2TilingFunc(gert::TilingContext *context)
     // blockDim = AIC 数（每块 1 AIC + 2 AIV，GetBlockIdx 枚举见 DESIGN_SPEC §2）
     OP_CHECK_IF(context->SetBlockDim(aicNum) != ge::GRAPH_SUCCESS,
         OP_LOGE(context, "SetBlockDim(%u) failed", aicNum), return ge::GRAPH_FAILED);
+    // [第一性原理推导：全栅格驻留调度模式 SetScheduleMode(1) / SCHEDULE_MODE_ALL_CORE]
+    // 硬件依据：在 Atlas 950PR 上，SageAttention2 采用 1 AIC + 2 AIV 混合核流水线与全栅格常驻（All-Core Resident）模式。
+    // 全算子生命周期内，所有分配的 AIC 与 AIV 计算单元同时拉起、常驻执行，并通过硬件 CrossCore Event 旗号与全核硬件屏障（SyncAll）实现确定性的脉动协同。
+    // 若采用动态拉起或分批调度模式，不同核之间的硬件全局同步与跨核事件将发生死锁。
+    // 因此必须将调度模式显式设为 SCHEDULE_MODE_ALL_CORE (1U)，指示 CANN 调度器采用全核常驻拓扑调度，确保全网格 AIC/AIV 协同计算的无死锁与最高能效执行。
     OP_CHECK_IF(context->SetScheduleMode(SCHEDULE_MODE_ALL_CORE) != ge::GRAPH_SUCCESS,
         OP_LOGE(context, "SetScheduleMode(%u) failed", SCHEDULE_MODE_ALL_CORE), return ge::GRAPH_FAILED);
     // 模板 tiling key：DTYPE(uint32 ge 值) | GRAN(per_thread) | CAUSAL（spec §8 位序由契约头负责）

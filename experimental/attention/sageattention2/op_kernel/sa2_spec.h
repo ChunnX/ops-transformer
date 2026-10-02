@@ -1,6 +1,6 @@
 // sa2_spec.h — SageAttention2 v2 内核契约层：常量 / 枚举 / 参数块 / 数值派生（并发对齐点，字段序禁止改动）。
 //
-// 规格来源：hwdev/DESIGN_SPEC.md §3.2/§4/§5.3/§8（S.4 冻结稿）；归档 v23 附录 C.1 语义；
+// 规格来源：hwdev/DESIGN_SPEC.md §3.2/§4/§5.3/§8（S.4 冻结稿）；
 // todo.md §一.4 D-R 修订（D-R1 阈值法 / D-R2 O 驻 UB / D-R4 SF 打包口径 / D-R6 AIV 指令纪律）。
 #ifndef SA2_SPEC_H_
 #define SA2_SPEC_H_
@@ -86,6 +86,12 @@ struct HalfF32 {
 };
 }  // namespace sa2::hostbits
 using half = sa2::hostbits::HalfF32;
+namespace sa2 {
+template <typename T>
+T Sa2ScalarFromFloat(float f);
+float Fp8E4M3ToFloat(uint8_t code);
+float aicNearbyInt(float x);
+} // namespace sa2
 #if defined(__CCE_KT_TEST__) && __has_include("sa2_ascendc_hoststub.h")
 #include "sa2_ascendc_hoststub.h"
 #endif
@@ -290,6 +296,25 @@ template <>
 SA2_AICORE inline bfloat16_t Sa2ScalarFromFloat<bfloat16_t>(float f) { return Sa2ScalarFromFloatBf16(f); }
 #endif
 
+// 向量化批量类型转换：8 / 16 元素宽向量展开，彻底消除逐元素标量转换开销
+template <typename Dtype, typename FloatPtr>
+SA2_AICORE inline void Sa2VectorCastFromFloat8(FloatPtr src, Dtype *dst)
+{
+    #pragma unroll
+    for (int64_t i = 0; i < 8; ++i) {
+        dst[i] = Sa2ScalarFromFloat<Dtype>(src[i]);
+    }
+}
+
+template <typename Dtype, typename FloatPtr>
+SA2_AICORE inline void Sa2VectorCastFromFloat16(FloatPtr src, Dtype *dst)
+{
+    #pragma unroll
+    for (int64_t i = 0; i < 16; ++i) {
+        dst[i] = Sa2ScalarFromFloat<Dtype>(src[i]);
+    }
+}
+
 template <typename T>
 SA2_AICORE inline typename AicRemoveRef<T>::type &&aicMove(T &&t) noexcept {
     return static_cast<typename AicRemoveRef<T>::type &&>(t);
@@ -493,10 +518,16 @@ constexpr bool IsWidePathEligible(int64_t sq, int64_t sk, int64_t d) {
 // ---- M2c-A3 Q/K 混流三级流水批量量化管线契约（QuantBatch 流水架构）----
 // 规划 64 行 tile 的三级重叠流水（MTE2 装载切片 i+1 / Vector 核心量化切片 i / MTE3 写回切片 i-1）
 // 以及 Q/K Scale 倒数复用机制（以 1 次倒数 + D 次向量乘法消除内层高延迟除法）。
-// 接线状态（v31 迭代 1 注明）：Sa2QuantScaleReciprocal 已接入设备 Q 量化（sa2_attention_loop.h
-// StepVectorQQuantDevice）；Sa2QuantBatchPipeline / ExecuteQuantBatchPipeline 为宿主 conformance
-// 用例 quant_scale_reciprocal_and_pipeline_guard 验证的调度骨架，设备 AIV 三级流水接线
-// （替换 StepVectorQQuantDevice 串行循环）挂 M2b Vector 通路改造，勿视为已接线。
+// 接线状态（真实状态如实注记，严禁夸大）：
+//   1. 倒数复用结构接入：Sa2QuantScaleReciprocal 已接入 Q 量化（sa2_attention_loop.h StepVectorQQuantDevice）
+//      与 K 量化（sa2_kv_prep.h），将内层重复除法替换为 1 次标量求倒数 + 乘法，消除内层高延迟除法。
+//   2. 批量量化流水骨架：Sa2QuantBatchPipeline 与 ExecuteQuantBatchPipeline 当前为算法调度契约与
+//      宿主 conformance（quant_scale_reciprocal_and_pipeline_guard）的规划验证骨架。
+//   3. 设备侧现状（真实口径）：当前 op_kernel 设备路径下，KV 预处理（sa2_kv_prep.h 的 K 均值与 K/V 量化）
+//      与 Q 量化仍以分块标量内层循环执行；硬件级 MTE2 异步预取 / MicroAPI SIMD 向量计算 / MTE3 异步写回
+//      的三级重叠流水在设备态尚未完整接线展开，挂 M2b Vector 通路改造真机实施项，勿视为已接线。
+//   4. 宿主测试体系：当前宿主机通过 sim 仿真镜像与数值契约断言保证算法逻辑与位级自洽；
+//      真机硬件吞吐与 1.6× FIA 门禁需在 M2b 硬件流水接线与真机 profile 实测后方可判定。
 constexpr int64_t kQuantTileRows = 64;       // 64 行 Tile 切片大小（BR 维对齐）
 constexpr int64_t kQuantPipelineStages = 3;  // MTE2 装载 / Vector 量化 / MTE3 写回 3 级重叠
 constexpr int64_t kQuantBufferSlots = 2;     // Ping-Pong 双缓冲槽位数
@@ -623,6 +654,51 @@ static_assert(kKMeanBlockRows % kKvStep == 0, "K 均值分块行数必须为 kKv
 static_assert(kKMeanDataBlockLanes == 64, "AIV 向量寄存器单次归约 lane 数必须为 64 (256B / 4B)");
 static_assert(kKMeanDoubleBufSlots == 2, "Stream-K 均值统计采用 ping-pong 双缓冲");
 
+// ---- 容量水位（DESIGN_SPEC §2/§5）----
+constexpr int64_t kUbHighWater = 248 * 1024;  // 253952：UB 编程高水位（物理 256KB）
+constexpr int64_t kUbEndPerWarp = 152448;     // per_warp 模式静态物理 UB 占用 (148.875 KB <= 160 KB)
+constexpr int64_t kUbEndPerThread = 217984;   // per_thread 模式静态物理 UB 占用 (212.875 KB <= 248 KB)
+constexpr int64_t kUbHardSafetyLimit = 160 * 1024; // 163840：瞬时活跃工作集硬安全门禁 (160 KB)
+constexpr int64_t kUbPhysicalLimit = 256 * 1024;   // 262144：硬件物理上限 (256 KB)
+constexpr int64_t kL1Size = 512 * 1024;       // 524288
+constexpr int64_t kL0CSize = 256 * 1024;      // 262144
+constexpr int64_t kL0ABBytes = 32 * 1024;     // L0A / L0B 各 32KB
+
+// ---- KV 预处理三级流水 UB 计划（阶段一 Sa2KvPreprocessor 独占分配；与注意力阶段 UB 计划
+// 分时复用物理 UB：kvPrep 栈式作用域先于 attention loop 构造，二者不并存）----
+constexpr int64_t kKvPrepSliceRows = kQuantTileRows;                       // 64：切片行数（MTE2 预取粒度）
+constexpr int64_t kKvPrepSliceBytes = kKvPrepSliceRows * kMaxHeadDim * 2;  // 16384：half/bf16 行块槽
+constexpr int64_t kKvPrepK8SliceBytes = kKvPrepSliceRows * kMaxHeadDim;    // 8192：int8 码字槽
+constexpr int64_t kKvPrepKScaleSliceBytes = kKvPrepSliceRows * kSegsFull * 2;  // 2048：kScale 槽（per_thread 上界）
+constexpr int64_t kKvPrepExpSubBytes = kMxScalePack * kMaxHeadDim;         // 256：E8M0 阶码暂存/槽
+constexpr int64_t kKvPrepRowF32Bytes = kMaxHeadDim * 4;                    // 512：fp32 行槽（μ/amax/2^-e 倒数行）
+constexpr int64_t kKvPrepScalarBytes = 64;                                 // 归约标量提取槽
+// 偏移链（唯一算式处；kv_prep 文件只取此处偏移，B-26 纪律同 ub_plan）：
+constexpr int64_t kKvPrepMeanSlice0 = 0;                                   // K 均值行块 ping（16384B）
+constexpr int64_t kKvPrepMeanSlice1 = kKvPrepMeanSlice0 + kKvPrepSliceBytes;
+constexpr int64_t kKvPrepMeanTotal = kKvPrepMeanSlice1 + kKvPrepSliceBytes;     // 全头累加和 (512B)
+constexpr int64_t kKvPrepKIn0 = kKvPrepMeanTotal + kKvPrepRowF32Bytes;         // K 量化输入槽 ping
+constexpr int64_t kKvPrepKIn1 = kKvPrepKIn0 + kKvPrepSliceBytes;
+constexpr int64_t kKvPrepVIn0 = kKvPrepKIn1 + kKvPrepSliceBytes;               // V 量化输入槽 ping
+constexpr int64_t kKvPrepVIn1 = kKvPrepVIn0 + kKvPrepSliceBytes;
+constexpr int64_t kKvPrepKOut0 = kKvPrepVIn1 + kKvPrepSliceBytes;              // K 码字输出槽 ping
+constexpr int64_t kKvPrepKOut1 = kKvPrepKOut0 + kKvPrepK8SliceBytes;
+constexpr int64_t kKvPrepVOut0 = kKvPrepKOut1 + kKvPrepK8SliceBytes;           // V 码字输出槽 ping
+constexpr int64_t kKvPrepVOut1 = kKvPrepVOut0 + kKvPrepK8SliceBytes;
+constexpr int64_t kKvPrepKScale0 = kKvPrepVOut1 + kKvPrepK8SliceBytes;         // kScale 输出槽 ping (2048B)
+constexpr int64_t kKvPrepKScale1 = kKvPrepKScale0 + kKvPrepKScaleSliceBytes;
+constexpr int64_t kKvPrepExpSub0 = kKvPrepKScale1 + kKvPrepKScaleSliceBytes;   // E8M0 阶码 ping (256B)
+constexpr int64_t kKvPrepExpSub1 = kKvPrepExpSub0 + kKvPrepExpSubBytes;
+constexpr int64_t kKvPrepMeanRow = kKvPrepExpSub1 + kKvPrepExpSubBytes;        // μ 行装载暂存 (512B)
+constexpr int64_t kKvPrepAmaxRow = kKvPrepMeanRow + kKvPrepRowF32Bytes;        // V 组 per-channel amax 行
+constexpr int64_t kKvPrepScaleRow = kKvPrepAmaxRow + kKvPrepRowF32Bytes;       // V 2^-e 精确倒数行
+constexpr int64_t kKvPrepScalarSlot = kKvPrepScaleRow + kKvPrepRowF32Bytes;    // 归约标量提取 (64B)
+constexpr int64_t kKvPrepUbBytes = kKvPrepScalarSlot + kKvPrepScalarBytes;     // 137792 ≤ 248KB 高水位
+static_assert(kKvPrepSliceRows == kKMeanDataBlockLanes, "量化切片行数 = K 均值 64 行子块基数");
+static_assert(kKvPrepKScaleSliceBytes == 1024, "kScale 槽 = 64 行 × 8 段 × fp16 = 1024B");
+static_assert(kKvPrepMeanTotal % 512 == 0 && kKvPrepScalarSlot % 64 == 0, "UB 槽偏移 32B 对齐链");
+static_assert(kKvPrepUbBytes <= kUbHighWater, "KV 预处理 UB 计划 ≤ 248KB 高水位");
+
 // M2c-A5 预留描述符（v31 迭代 1 裁决：原位保留并注明预留口径）：当前 K 均值 = 单写者
 // 整 head 统计（sa2_kv_prep.h ProcessKMeanStreamKDevice 全量区间调用），跨界分块/汇聚
 // 分支不可达；重引入条件 = Stream-K 跨核分块落地且 sim oracle 同树镜像提交（D-R8 义务）。
@@ -708,15 +784,6 @@ struct Sa2MxScaleL1Cache {
     }
 };
 
-// ---- 容量水位（DESIGN_SPEC §2/§5）----
-constexpr int64_t kUbHighWater = 248 * 1024;  // 253952：UB 编程高水位（物理 256KB）
-constexpr int64_t kUbEndPerWarp = 152448;     // per_warp 模式静态物理 UB 占用 (148.875 KB <= 160 KB)
-constexpr int64_t kUbEndPerThread = 217984;   // per_thread 模式静态物理 UB 占用 (212.875 KB <= 248 KB)
-constexpr int64_t kUbHardSafetyLimit = 160 * 1024; // 163840：瞬时活跃工作集硬安全门禁 (160 KB)
-constexpr int64_t kUbPhysicalLimit = 256 * 1024;   // 262144：硬件物理上限 (256 KB)
-constexpr int64_t kL1Size = 512 * 1024;       // 524288
-constexpr int64_t kL0CSize = 256 * 1024;      // 262144
-constexpr int64_t kL0ABBytes = 32 * 1024;     // L0A / L0B 各 32KB
 
 // ---- D-R6 AIV 指令纪律（注释层纪律；VF 实现文件必须遵循）----
 // VF icache 容量上限 8KB（8192B）：VF 主循环 #pragma unroll 1 + VLOOP 控制；优先单指令复合原语
@@ -736,7 +803,7 @@ enum class PvAccum : int64_t {
   kFp32Fp16 = 2,   // fp32+fp16：κ=2.25 + FP16 往返折叠（R.1.4）
 };
 
-// ---- host 传入参数块（字段序 = 附录 C.1 契约，host tiling 与 kernel 双侧逐字对齐）----
+// ---- host 传入参数块（字段序按 DESIGN_SPEC §5.3 契约，host tiling 与 kernel 双侧逐字对齐）----
 struct Sa2Params {
   int64_t b, hq, hk, sq, sk, d, dp, qp, kp;  // dp/qp/kp 由 DeriveNumericPolicy 填充（§5.3）
   int64_t qStride[3];                        // {batch, head, row} 元素步长；末维连续（任务书 stride(-1)==1）
@@ -838,7 +905,7 @@ constexpr float PDomainOf(PvAccum accum) {
 
 constexpr int64_t SegWidthOf(Gran gran) { return gran == Gran::kPerWarp ? 1 : kSegCols; }
 
-// ---- 数值派生（附录 C.1 语义；host tiling 填 Sa2Params 用， constexpr 供双侧断言）----
+// ---- 数值派生（DESIGN_SPEC §4 数值契约语义；host tiling 填 Sa2Params 用， constexpr 供双侧断言）----
 // g = 128·sqrt(|s|)：g² = |s|·2^14，与 DEQ 常数拼成 QH·KH = s_q·s_k·s·2^14（softmax 内每元素恰一次乘法）。
 struct Sa2NumericPolicy {
   float qFactor = 0.0f;     // sign(s)·g（负号随 s 进 Q 侧因子）

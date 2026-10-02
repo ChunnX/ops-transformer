@@ -1,7 +1,7 @@
 // sa2_events.h — SageAttention2 v2 跨核旗号与本地事件契约（编号即契约，engine 文件禁止散落魔数）。
 //
 // 规格来源：DESIGN_SPEC §6（主循环 5 旗号 ×2 流 + 本地事件 6 ≈ 16 ≤ MODE4 预算）；
-// 通知侧管道语义按附录 C.4 口径落地（见各 helper 注释；Notify* = 发送方生产管道，Await* = 接收方消费管道）。
+// 通知侧管道语义按硬件事件管道契约口径落地（见各 helper 注释；Notify* = 发送方生产管道，Await* = 接收方消费管道）。
 #ifndef SA2_EVENTS_H_
 #define SA2_EVENTS_H_
 

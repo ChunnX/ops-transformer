@@ -507,7 +507,7 @@ def parse_args():
     parser.add_argument(
         "--device",
         type=str,
-        default="npu" if (HAVE_TORCH_NPU and torch.cuda.is_available()) else "cpu",
+        default="npu" if (hasattr(torch, "npu") and torch.npu.is_available()) else "cpu",
         help="Target device: 'npu', 'cuda', or 'cpu'",
     )
     parser.add_argument(

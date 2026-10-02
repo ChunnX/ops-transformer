@@ -331,8 +331,12 @@ def sageattn_qk_int8_pv_fp8_asc(
     **kwargs: Any,
 ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     """INT8 QK^T + FP8 PV 注意力（NPU，Ascend 950）；参数语义与开源 sageattn_qk_int8_pv_fp8_cuda 逐项对齐。"""
-    if kwargs.get("attn_mask", None) is not None:
-        raise ValueError("sageattn_qk_int8_pv_fp8_asc does not support attn_mask.")
+    if "attn_mask" in kwargs:
+        if kwargs.pop("attn_mask") is not None:
+            raise ValueError("sageattn_qk_int8_pv_fp8_asc does not support attn_mask.")
+    if kwargs:
+        unexpected = sorted(kwargs.keys())
+        raise TypeError(f"sageattn_qk_int8_pv_fp8_asc() got unexpected keyword argument(s): {unexpected}")
     out, lse = torch.ops.sageattention2.forward(
         q, k, v,
         tensor_layout=tensor_layout,
@@ -358,14 +362,20 @@ def sageattn(
     **kwargs: Any,
 ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     """自动分发入口：NPU 上固定分发到 FP8 PV 实现（sageattn_qk_int8_pv_fp8_asc）。"""
-    if kwargs.get("attn_mask", None) is not None:
-        raise ValueError("sageattn does not support attn_mask.")
+    if "attn_mask" in kwargs:
+        if kwargs.pop("attn_mask") is not None:
+            raise ValueError("sageattn does not support attn_mask.")
     pv_accum_dtype = kwargs.pop("pv_accum_dtype", None) or _get_env_or(
         _ENV_PV_ACCUM_DTYPE, DEFAULT_PV_ACCUM_DTYPE
     )
     qk_quant_gran = kwargs.pop("qk_quant_gran", None) or _get_env_or(
         _ENV_QK_QUANT_GRAN, DEFAULT_QK_QUANT_GRAN
     )
+    smooth_k = kwargs.pop("smooth_k", True)
+    smooth_v = kwargs.pop("smooth_v", False)
+    if kwargs:
+        unexpected = sorted(kwargs.keys())
+        raise TypeError(f"sageattn() got unexpected keyword argument(s): {unexpected}")
     return sageattn_qk_int8_pv_fp8_asc(
         q, k, v,
         tensor_layout=tensor_layout,
@@ -373,10 +383,9 @@ def sageattn(
         qk_quant_gran=qk_quant_gran,
         sm_scale=sm_scale,
         pv_accum_dtype=pv_accum_dtype,
-        smooth_k=kwargs.pop("smooth_k", True),
-        smooth_v=kwargs.pop("smooth_v", False),
+        smooth_k=smooth_k,
+        smooth_v=smooth_v,
         return_lse=return_lse,
-        **kwargs,
     )
 
 

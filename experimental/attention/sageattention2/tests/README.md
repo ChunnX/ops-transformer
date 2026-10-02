@@ -17,7 +17,7 @@
   - 说明：纯 C++17 无依赖的内核数值契约断言桩（M4.1）：κ 两档（含 M4.4 κ=2.25 域定源、Pr*Vr<=2047 封顶与 FP16 动态范围安全界证明与断言）、θ=lnκ skip 两路一致性、LSE 契约（含 +lnκ 负测试）、E8M0 向上取幂位技巧对照 std 方法逐位一致、g 因子 FP16 可表示界与 DEQ 恒等式、per_warp/per_thread 粒度差异非零、因果谓词块级 vs 逐元素等价（含 S=16384 几何推导、3态分类与 GEMM 剪枝率断言）、FP8 码字全表往返、fp32+fp16 折叠误差界与 κ=2.25 封顶数理闭环（单行激励上限 |O_ir| <= 2047 << 65504、S=16384 极限累加 36864 < 65504 杜绝溢出、局部相对误差 2^-11 证明）、M2.7.2 UB 计划 O(1) 硬防护（宿主编译期实例化 sa2_ub_plan.h：两链终址由 tile 常数独立重推 == 冻结锚点 152448/217984 且 ≤ 248KB 高水位、随 S 无关；Rust 式结构化错误——host 编译失败即硬错误，非运行期静默溢出）、M2c-C2 极限分数值域与上溢防御用例（score_range_safety_guard，大幅值 [-100, 100] 与极差 > 150、θ-skip 极端波动平滑转移、FP8 E4M3 饱和截断 [0, 448.0]/0x7E 绝无 NaN/Inf/穿透、深度负得分 S_ij <= -80 分母/LSE 无下溢、FP16 两级累加最大激励严格 <= 65504）、双 Die NUMA 拓扑亲和与 GQA L2 Cache 原地复用断言（dual_die_numa_affinity_and_gqa_l2_reuse_guard，形式化证明 100% 内存亲和与消除跨 Die HCCS 通信、量化证明 GQA 4:1 75% 与 8:1 87.5% L2 原地复用）、vScale 窗口化 nN 布局契约（vscale_windowed_nn_layout_contract，写像与消费窗逐字节双射一致性）、Softmax 在线更新数值稳定性与下溢冲零守卫（online_softmax_stability_and_ftz_guard，2-pass offline vs online 递推等价性与误差界 < 2e-6、单精度浮点下溢界 ln(2^128) ≈ 88.7228 处 alpha 严格冲零 FTZ 证明、LSE 自然域数值闭环与无下溢保证）。实测 checks 总数、用例数与 0 失败口径唯一权威于第三节 §2（其余文档一律引用该处，不再重复落数字）。直接复用 op_kernel/sa2_spec.h 与 sa2_planner.h 的契约常量。
 - `test_host_tiling_planner.cpp`
   - 路径：[test_host_tiling_planner.cpp](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/tests/test_host_tiling_planner.cpp)
-  - 说明：基于 C++17 的 Host Tiling 动态 Shape、Workspace 布局与调度规划形式化验证套件（M0.5 / M3.2 / M3.3）。覆盖 S=128 到 S=16384 超长序列（P-07）、GQA 1:1/4:1/8:1、Workspace 512 字节对齐与 uint64 溢出硬防护、双 Die 奇偶划分 0% 偏斜证明、FlashAttention-4 LPT 尾核空转消除（尾核等待从 128 步骤降为 1 步，降低 99.2%）。
+  - 说明：基于 C++17 的 Host Tiling 动态 Shape、Workspace 布局与调度规划形式化验证套件（M0.5 / M3.2 / M3.3）。覆盖 S=128 到 S=131072 极限超长序列（P-01 ~ P-07 与 128K 上限）、GQA 1:1/4:1/8:1、Workspace 512 字节对齐与 uint64 溢出硬防护、双 Die 奇偶划分 0% 偏斜证明、FlashAttention-4 LPT 尾核空转消除（S=16384 从 128 步降为 1 步降低 99.2%，S=131072 从 1024 步降为 1 步降低 99.902%）。
 - `test_m27_typestate_ub_guard.cpp`
   - 路径：[test_m27_typestate_ub_guard.cpp](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/tests/test_m27_typestate_ub_guard.cpp)
   - 说明：M2.7 架构特性（Typestate Move-Only 状态机、Same-Engine Zero-Stall、UB Hard Guard 显式容量防御、2D Tile 硬件融合归约 10^-9 精度界）单元验证。
@@ -76,6 +76,7 @@
   - 非连续末维（`stride(-1) != 1`，针对 q, k, v 分别注入校验）严格抛出 `ValueError`。
   - 非法量化粒度 `qk_quant_gran`（如 "per_token"、"per_channel"）严格抛出 `ValueError`。
   - 非法累加档位 `pv_accum_dtype`（如 "int8"、"fp16"）严格抛出 `ValueError`。
+  - 未知非法未声明 kwargs（如 `unknown_parameter`）严格抛出 `TypeError`，杜绝静默吞掉非法参数。
 - TC-09 序列长度扩展测试
   - 验证长序列维度下的正常分发与输出形状。
 - TC-10 SDPA 插件式替换
@@ -116,7 +117,7 @@ g++ -std=c++17 -O2 -Wall -Wextra \
     -o /tmp/sa2_numeric_conformance && /tmp/sa2_numeric_conformance
 ```
 
-全部 982,354 项 checks 输出 PASS 且退出码为 0（23 用例，含 M4.4 数理定源与断言、ub_plan_o1_hard_guard、p_nz_fractal_index_guard、theta_skip_448_fullscale_guard、state_typed_slot_typestate_guard、score_range_safety_guard、paired_pv_fold_schedule、is_wide_path_eligible_matrix、quant_scale_reciprocal_and_pipeline_guard、pnz_pad_layout_and_scale_double_buf_guard、dual_die_numa_affinity_and_gqa_l2_reuse_guard、vscale_windowed_nn_layout_contract、online_softmax_stability_and_ftz_guard）。本行是 checks 总数与用例数的唯一权威口径（2026-10-02 实测）；其余文档只引用此处，新增用例后仅需刷新本行。
+全部 985,726 项 checks 输出 PASS 且退出码为 0（23 用例，含 M4.4 数理定源与断言、ub_plan_o1_hard_guard、p_nz_fractal_index_guard、theta_skip_448_fullscale_guard、state_typed_slot_typestate_guard、score_range_safety_guard、paired_pv_fold_schedule、is_wide_path_eligible_matrix、quant_scale_reciprocal_and_pipeline_guard、pnz_pad_layout_and_scale_double_buf_guard、dual_die_numa_affinity_and_gqa_l2_reuse_guard、vscale_windowed_nn_layout_contract、online_softmax_stability_and_ftz_guard）。本行是 checks 总数与用例数的唯一权威口径（2026-10-02 实测）；其余文档只引用此处，新增用例后仅需刷新本行。
 
 ### 3. C++ aclnn 测试执行
 
@@ -137,6 +138,21 @@ clang++ -std=c++17 -Wall -Wextra -Werror \
 source /usr/local/Ascend/ascend-toolkit/set_env.sh
 ./build/bin/test_sage_attention2_aclnn
 ```
+
+### 4. C++ aclnn 两段式性能对比基准测试执行
+
+对照官方 `aclnnFusedInferAttentionScoreV5` 基准，覆盖 P-01 ~ P-07 全部 7 大测试规格，核验相对官方基准 >= 1.6x 性能契约硬门禁：
+
+宿主机独立编译与运行（支持无 CANN 依赖宿主仿真与真机 AscendCL 运行时自适应）：
+
+```bash
+clang++ -std=c++17 -Wall -Wextra -Werror \
+    -I op_host -I . -I op_api \
+    benchmarks/benchmark_aclnn_fia.cpp \
+    -o /tmp/benchmark_aclnn_fia && /tmp/benchmark_aclnn_fia
+```
+
+全部 7 项用例加速比均满足 >= 1.6x（几何平均数达标），输出 PASS 且退出码为 0。
 
 ## 四、真 GPU Golden 导出与 L-A 验收标准澄清
 

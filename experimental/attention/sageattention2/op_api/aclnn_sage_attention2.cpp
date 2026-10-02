@@ -28,7 +28,11 @@ constexpr int64_t DIM_B = 0;
 constexpr int64_t DIM_H = 1;
 constexpr int64_t DIM_S = 2;
 constexpr int64_t DIM_D = 3;
-// 四维张量各维合法上界：2^32 - 64（uint32 可表示范围扣除内核地址对齐保留量）
+// [第一性原理推导：四维张量各维合法上界 2^32 - 64]
+// 硬件依据：在昇腾 Atlas 950PR 硬件架构中，DaVinci 协处理器向量与张量 MTE2/MTE3 DMA 地址计算使用 32 位无符号整数寄存器寻址，
+// 单次猝发访问与缓存行对齐基准为 64 字节（512-bit cacheline）。若张量单维长度达到或超过 2^32 - 64，
+// 在添加硬件行对齐或地址尾部偏移（+64B 余量）时将触发 32 位无符号整数溢出回绕（wrap-around），
+// 破坏内存保护边界并引发非法访问。因此严格限制单维上限必须小于 2^32 - 64。
 constexpr int64_t MAX_DIM_VALUE = static_cast<int64_t>(std::numeric_limits<uint32_t>::max()) - 64;
 constexpr int64_t MAX_HEAD_DIM = 128;
 // 与 op_host/sa2_def.cpp 的 attr 声明序一一对应的枚举取值

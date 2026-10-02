@@ -71,6 +71,13 @@ using float8_e8m0_t = uint8_t;
 namespace sa2 {
 uint8_t FloatToFp8E4M3(float val);
 float Fp8E4M3ToFloat(uint8_t b);
+float aicNearbyInt(float x);
+inline bfloat16_t FloatToBf16(float f) {
+    uint32_t u;
+    std::memcpy(&u, &f, sizeof(u));
+    u += 0x7FFFu + ((u >> 16) & 1u);
+    return static_cast<bfloat16_t>(u >> 16);
+}
 }
 
 namespace AscendC {
@@ -522,11 +529,18 @@ enum class PostLiteral {
     POST_MODE_UPDATE = 0,
 };
 
+// 舍入模式替身（与真机 AscendC::RoundMode 对位的桩轨枚举；数值语义由 Cast 的实现分支承载，
+// 桩轨唯一消费形态 = CAST_RINT（RNE）与 UNKNOWN（无数值含义的宽化））。
+enum class RoundMode : int32_t {
+    UNKNOWN = 0,
+    CAST_RINT = 1,
+};
+
 struct CastTrait {
     RegLayout layout{RegLayout::ZERO};
     SatMode sat{SatMode::NO_SAT};
     MaskMergeMode merge{MaskMergeMode::ZEROING};
-    int32_t round{0};
+    RoundMode round{RoundMode::UNKNOWN};
 };
 
 template <typename T>
@@ -664,6 +678,15 @@ inline void Max(RegTensor<T> &dst, const RegTensor<T> &src1, const RegTensor<T> 
 }
 
 template <typename T>
+inline void Min(RegTensor<T> &dst, const RegTensor<T> &src1, const RegTensor<T> &src2, MaskReg mask) {
+    for (size_t i = 0; i < dst.kCapacity; ++i) {
+        if (mask.IsActive(i)) {
+            dst[i] = (src1[i] < src2[i]) ? src1[i] : src2[i];
+        }
+    }
+}
+
+template <typename T>
 inline void Select(RegTensor<T> &dst, const RegTensor<T> &src1, const RegTensor<T> &src2, MaskReg mask) {
     for (size_t i = 0; i < dst.kCapacity; ++i) {
         dst[i] = mask.IsActive(i) ? src1[i] : src2[i];
@@ -771,6 +794,15 @@ inline float ReduceSum(const RegTensor<float> &src, MaskReg mask) {
     return static_cast<float>(sum);
 }
 
+inline void ReduceMax(RegTensor<float> &dst, const RegTensor<float> &src, MaskReg mask) {
+    Reduce<ReduceType::MAX>(dst, src, mask);
+}
+
+inline void ReduceSum(RegTensor<float> &dst, const RegTensor<float> &src, MaskReg mask) {
+    Reduce<ReduceType::SUM>(dst, src, mask);
+}
+
+
 template <typename DstT, typename SrcT>
 inline void Cast(RegTensor<DstT> &dst, const RegTensor<SrcT> &src, MaskReg mask) {
     for (size_t i = 0; i < dst.kCapacity && i < src.kCapacity; ++i) {
@@ -781,8 +813,17 @@ inline void Cast(RegTensor<DstT> &dst, const RegTensor<SrcT> &src, MaskReg mask)
                 dst[i] = sa2::Fp8E4M3ToFloat(static_cast<uint8_t>(src[i]));
             } else if constexpr (std::is_same_v<DstT, half> && std::is_same_v<SrcT, float>) {
                 dst[i] = half(src[i]);
+            } else if constexpr (std::is_same_v<DstT, bfloat16_t> && std::is_same_v<SrcT, float>) {
+                dst[i] = sa2::FloatToBf16(src[i]);
             } else if constexpr (std::is_same_v<DstT, float> && std::is_same_v<SrcT, half>) {
                 dst[i] = static_cast<float>(src[i]);
+            } else if constexpr (std::is_same_v<DstT, float> && std::is_same_v<SrcT, bfloat16_t>) {
+                // bf16 位型精确展开（指数域左移 16 位），同 sa2::Sa2ScalarToFloat(bfloat16_t)
+                uint32_t bits = static_cast<uint32_t>(src[i]) << 16;
+                std::memcpy(&dst[i], &bits, sizeof(float));
+            } else if constexpr (std::is_integral_v<DstT> && std::is_same_v<SrcT, float>) {
+                // 设备 CAST_RINT 语义镜像：RNE 取整后收窄（sa2::aicNearbyInt 同源）
+                dst[i] = static_cast<DstT>(sa2::aicNearbyInt(src[i]));
             } else {
                 dst[i] = static_cast<DstT>(src[i]);
             }

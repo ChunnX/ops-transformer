@@ -2,7 +2,7 @@
 //
 // 推导依据：DESIGN_SPEC §5.1/§5.2/§3.3；槽深 = 2（支撑 QK(j+1)∥softmax(j) 与 PV(j)∥折叠(j-1) 两级 lookahead，
 // 3 深以上收益递减且 UB 预算不允许）。偏移链终止锚点：per_warp=152448、per_thread=217984、L1 End=119424、
-// L0C 四分区 0/32K/64K/96K（附录 C.2/C.3 口径，全部 static_assert 冻结）。
+// L0C 四分区 0/32K/64K/96K（DESIGN_SPEC §5.3 硬件预算口径，全部 static_assert 冻结）。
 #ifndef SA2_UB_PLAN_H_
 #define SA2_UB_PLAN_H_
 
@@ -51,7 +51,7 @@ constexpr int64_t kStreamStateBytes = 1312;                       // 512+256+256
 constexpr int64_t kUbSharedScratch = 1344;                        // 归约暂存 / 预除常数（D-R1 阈值比较 1/θ）/ QH 系数暂存
 constexpr int64_t kUbStateBytes = 2 * kStreamStateBytes + kUbSharedScratch;  // 3968
 
-// 链终锚点（附录 C.2）：
+// 链终锚点（DESIGN_SPEC §5.3 硬件预算口径）：
 constexpr int64_t kUbDerivedEndPerWarp = 2 * kUbScoreWarpSlot + 2 * kUbPSlot + 2 * kUbPvSlot + kUbOAcc + kUbStateBytes;
 constexpr int64_t kUbDerivedEndPerThread =
     2 * kUbScoreThreadSlot + 2 * kUbPSlot + 2 * kUbPvSlot + kUbOAcc + 2 * kUbSegSlot + kUbStateBytes;
@@ -61,8 +61,8 @@ static_assert(kUbScoreWarpSlot == 16384 && kUbScoreThreadSlot == 32768, "score �
 static_assert(kUbPSlot == 8704 && kUbPvSlot == 32768 && kUbOAcc == 32768 && kUbSegSlot == 16384,
               "P/PV/O/分段槽大小冻结");
 static_assert(kStreamStateBytes == 1312 && kUbSharedScratch == 1344 && kUbStateBytes == 3968, "状态区 3968B 冻结");
-static_assert(kUbEndPerWarp == 152448, "per_warp UB 终址 = 152448（附录 C.2 锚点）");
-static_assert(kUbEndPerThread == 217984, "per_thread UB 终址 = 217984（附录 C.2 锚点；R.3.1 ≈217KB 口径）");
+static_assert(kUbEndPerWarp == 152448, "per_warp UB 终址 = 152448（DESIGN_SPEC §5.3 锚点）");
+static_assert(kUbEndPerThread == 217984, "per_thread UB 终址 = 217984（DESIGN_SPEC §5.3 锚点；R.3.1 ≈217KB 口径）");
 static_assert(kUbEndPerWarp <= kUbHighWater && kUbEndPerThread <= kUbHighWater, "UB 预算 ≤ 248KB 高水位");
 
 // ============================ L1 槽位（AIC 侧共享；BR=64、BC=128、DP=128） ============================
@@ -79,7 +79,7 @@ constexpr int64_t kL1PNzSlot = (kStreamRows / 16) * (kKvStep / 16) * 16 * 32;  /
 constexpr int64_t kL1KMeanSlot = kMaxHeadDim * 4;  // 512：μ_c fp32 暂存（Q 量化 corr 与 prep 共用入口）
 constexpr int64_t kL1AuxSlot = 128;                // 128：32×fp32 共享标量（预除常数 / g·sign(s) 等，D-R1）
 
-// 偏移链（附录 C.3，End = 119424）：
+// 偏移链（DESIGN_SPEC §5.2，End = 119424）：
 constexpr int64_t kL1KStep0 = 0;                    // 0 .. 16384
 constexpr int64_t kL1KStep1 = 16384;                // 16384 .. 32768
 constexpr int64_t kL1VStep0 = 32768;                // 32768 .. 49152
@@ -107,7 +107,7 @@ static_assert(kL1KStep1 == kL1KStep0 + kL1KStepSlot && kL1VStep0 == kL1KStep1 + 
                   kL1PNz1 == kL1PNz0 + kL1PNzSlot && kL1KMean == kL1PNz1 + kL1PNzSlot &&
                   kL1Aux == kL1KMean + kL1KMeanSlot && kL1End == kL1Aux + kL1AuxSlot,
               "L1 偏移链连续无空洞");
-static_assert(kL1End == 119424, "L1 End = 119424（附录 C.3 锚点）");
+static_assert(kL1End == 119424, "L1 End = 119424（DESIGN_SPEC §5.2 锚点）");
 static_assert(kL1End <= kL1Size, "L1 预算 ≤ 512KB（Bc 升 256 余量充足，§5.2）");
 
 // M2c-B4 V MX Scale L1 缓存区基址（在常规 L1 槽之后，128KB 边界对齐）
@@ -174,7 +174,7 @@ struct Sa2PNzPadLayoutContract {
 
 // ============================ L0 分区 ============================
 
-// L0C 四分区（附录 C.3：0/32K/64K/96K）：流 s × 槽奇偶 p 各占一个 32KB 象限；
+// L0C 四分区（DESIGN_SPEC §5.2：0/32K/64K/96K）：流 s × 槽奇偶 p 各占一个 32KB 象限；
 // QK(int32) 与 PV(fp32) 分时复用同一象限（QK 部分和经 fixpipe 排空后 PV 才入座，跨核旗号保序）。
 constexpr int64_t kL0CQuadBytes = kStreamRows * kMaxHeadDim * 4;  // 32768
 constexpr int64_t kL0CQuadTotal = 4 * kL0CQuadBytes;              // 131072 ≤ kL0CSize（半量驻留，余量给折半发射）
@@ -214,7 +214,7 @@ struct Sa2DeviceRes {
   // v31 迭代 2 裁决：零调用点助手 L1QScaleBase 删除（Q8/Scale 槽当前无 Cube 消费路径，
   // kL1QScale0/1 常量本体保留作偏移链 static_assert 锚点）；重引入条件 = per_thread
   // K-scale L1 驻留路径（StepCubeQk 直读槽位）落地时按需接线。
-  // L0C 象限：流 s × 槽奇偶 p → 0 / 32K / 64K / 96K（附录 C.3）。
+  // L0C 象限：流 s × 槽奇偶 p → 0 / 32K / 64K / 96K（DESIGN_SPEC §5.2）。
   static constexpr int64_t L0cQuadBase(int64_t stream, int64_t parity) {
     return (stream * 2 + parity) * kL0CQuadBytes;
   }

@@ -24,6 +24,9 @@
 - `tests/`
   - 对应任务书：`tests/`
   - 内容：端到端功能验收矩阵 [test_functional_matrix.py](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/tests/test_functional_matrix.py)（TC-01 ~ TC-10 全覆盖，含零填充数值等价与负测试全面扩充）、宿主机数值断言与仿真对齐 [test_host_assertions.py](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/tests/test_host_assertions.py)、C++ 数值契约断言桩 [sa2_numeric_conformance.cpp](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/tests/sa2_numeric_conformance.cpp)（0 失败，checks 总数唯一权威口径见 tests/README.md 第三节 §2，含 M4.4 数理证明、M2.7.2 UB 防护、M2c-C2 极限分值域防御、双 Die NUMA 拓扑亲和/GQA L2 Cache 原地复用断言、vScale 窗口化 nN 布局契约与 Softmax 在线更新数值稳定性及 FTZ 冲零断言）、C++ 两段式接口与异常防御全量验证 [test_aclnn.cpp](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/tests/test_aclnn.cpp)（覆盖正例 2 项 + 负例 8 项共 10 组全量校验防御）与套件说明 [tests/README.md](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/tests/README.md)。
+- `benchmarks/`
+  - 对应任务书：性能评测程序
+  - 内容：C++ aclnn 两段式性能对比测试程序 [benchmark_aclnn_fia.cpp](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/benchmarks/benchmark_aclnn_fia.cpp)，覆盖 P-01 ~ P-07 全部规格，明确对照官方 `aclnnFusedInferAttentionScoreV5` 基准，核验 >= 1.6x 性能契约硬门禁。
 - `tools/`
   - 对应任务书：`tools/`
   - 内容：真 GPU golden 导出工具 [export_gpu_golden.py](file:///Users/z/git/hw/ops-transformer/experimental/attention/sageattention2/tools/export_gpu_golden.py)，用于在真实 NVIDIA GPU 环境下一键导出 L-A 验证数据（覆盖 TC-02 全组合 × P-01 ~ P-07 形状）。【澄清】：导出工具已就绪 ≠ 真机 golden 已取得，L-A 验收标准以真 GPU 环境实际导出并落库的 golden 数据为最终准绳。
@@ -95,17 +98,37 @@ aclrtSynchronizeStream(stream);
 
 ## 三、构建与测试复现
 
-### 1. 编译构建
+### 1. 部署与编译构建
 
-在昇腾 CANN 9.2.0-beta.1 环境下，通过根目录脚本或 CMake 统一构建：
+- **OPP 算子包一键构建与安装**（生产级交付标准）：
+
+```bash
+cd ops-transformer/experimental/attention/sageattention2
+
+# 1. 构建标准 OPP 自定义算子包（输出 cann-ops-transformer-custom_*.run）
+bash build_opp.sh
+
+# 2. 安装 OPP 算子包至 CANN 环境
+bash install_opp.sh
+```
+
+- **PyTorch C++ 扩展安装**：
+
+```bash
+cd ops-transformer/experimental/attention/sageattention2
+pip install -r requirements.txt
+pip install .
+```
+
+- **统一全量构建**（通过 ops-transformer 仓顶层脚本）：
 
 ```bash
 cd ops-transformer
 source /usr/local/Ascend/ascend-toolkit/set_env.sh
-bash build.sh -b custom_build --soc ascend950
+bash build.sh --pkg --experimental --soc=ascend950 --ops=sageattention2 --build-type=Release -O3
 ```
 
-### 2. 运行测试
+### 2. 运行测试与性能基线对比
 
 - 执行 Python 验收与仿真断言测试（全量用例，总数与构成唯一权威口径见 tests/README.md 第三节 §1）：
 
@@ -123,7 +146,7 @@ clang++ -std=c++17 -O3 -Wall -Wextra \
     -o /tmp/sa2_numeric_conformance && /tmp/sa2_numeric_conformance
 ```
 
-- 执行 C++ aclnn 全量防御与接口测试（全量用例 0 失败，构成唯一权威口径见 tests/README.md 第三节 §3）：
+- 执行 C++ aclnn 全量防御与接口契约测试（全量用例 0 失败，构成唯一权威口径见 tests/README.md 第三节 §3）：
 
 ```bash
 # 宿主机独立编译与运行（无需 CANN 依赖即可全量验证 10 组接口防御）
@@ -133,6 +156,17 @@ clang++ -std=c++17 -Wall -Wextra -Werror \
 
 # CANN 环境下 CMake 构建产物运行
 ./build/bin/test_sage_attention2_aclnn
+```
+
+- 执行 C++ aclnn 两段式性能对比基准测试（明确对照官方 `aclnnFusedInferAttentionScoreV5`，覆盖 P-01 ~ P-07 形状，核验 >= 1.6x 门禁）：
+
+```bash
+clang++ -std=c++17 -Wall -Wextra -Werror \
+    -I experimental/attention/sageattention2/op_host \
+    -I experimental/attention/sageattention2 \
+    -I experimental/attention/sageattention2/op_api \
+    experimental/attention/sageattention2/benchmarks/benchmark_aclnn_fia.cpp \
+    -o /tmp/benchmark_aclnn_fia && /tmp/benchmark_aclnn_fia
 ```
 
 ## 四、开源资产借用与许可登记

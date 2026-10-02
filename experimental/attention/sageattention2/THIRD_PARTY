@@ -167,3 +167,33 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+---
+
+## 6. SageAttention (thu-ml/SageAttention)
+
+- 项目地址: https://github.com/thu-ml/SageAttention
+- 许可类型: Apache License 2.0
+- 吸收与参考要点:
+  - 核心算法原始出处与数学契约：INT8 QK^T + FP8 PV 核心算法思想、smooth_k（μ_k 均值减除）、per-thread 与 per-warp 量化粒度语义。
+  - κ 双档位数理设计（448.0 / 2.25）：
+    - 满量程 fp32 与 fp32+fp32 累加档位：选用 κ = 448.0，对齐 FP8 E4M3FN 满量程（最大有限值 448.0），防止 Softmax 指数运算溢出。
+    - 两级累加 fp32+fp16 档位：选用 κ = 2.25（对应 θ = ln 2.25 ≈ 0.81093），通过紧凑动态范围压制行内指数累加幅值（P_r × V_r ≤ 2047），杜绝半精度累加器溢出（65504 边界）与精度剧烈损失。
+  - 跨端真值检验基准与 golden 导出工具：用于 GPU/NPU 跨端精度验证的 golden 数据生成与导出参考实现（tools/export_gpu_golden.py 与 python/sageattention2/reference.py 严格对齐上游算法语义与 API 参数契约）。
+
+### 版权与许可声明:
+```text
+Copyright (c) 2024 THU-ML
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+```

@@ -267,6 +267,15 @@ def test_tc08_illegal_inputs():
     with pytest.raises(ValueError, match="pv_accum_dtype"):
         sageattn(q, k, v, pv_accum_dtype="fp16")
 
+    # 11. 未知非法未声明 kwargs 严格抛出 TypeError 异常拦截
+    with pytest.raises(TypeError, match="unexpected keyword argument"):
+        sageattn(q, k, v, unknown_parameter=123)
+    with pytest.raises(TypeError, match="unexpected keyword argument"):
+        sageattn_qk_int8_pv_fp8_asc(q, k, v, invalid_option=True)
+    from sageattention2.core import sageattn_qk_int8_pv_fp8_asc as core_sageattn_qk
+    with pytest.raises(TypeError, match="unexpected keyword argument"):
+        core_sageattn_qk(q, k, v, bogus_kwarg="abc")
+
 
 def test_tc08_illegal_inputs_extended():
     """TC-08 补充: _ops 校验分支中上述用例未覆盖的非法输入（shape 族 / sm_scale 越界）。"""

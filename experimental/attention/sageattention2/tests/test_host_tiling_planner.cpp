@@ -127,11 +127,25 @@ void TestFlashAttention4LptScheduling() {
     assert(lpt16k.tailIdleStepsBound == 1);
 
     // 证明：对比自然序（SPT），尾核最大等待时间从 128 步骤降为 1 步，尾核空转等待消除率高达 99.2%！
-    double waitReduction = (1.0 - static_cast<double>(lpt16k.shortestStep) / static_cast<double>(lpt16k.longestStep)) * 100.0;
+    double waitReduction16k = (1.0 - static_cast<double>(lpt16k.shortestStep) / static_cast<double>(lpt16k.longestStep)) * 100.0;
     std::printf("  -> S=16384 tail core wait reduction: %.1f%% (from %lld steps down to %lld step)\n",
-                waitReduction, static_cast<long long>(lpt16k.longestStep),
+                waitReduction16k, static_cast<long long>(lpt16k.longestStep),
                 static_cast<long long>(lpt16k.shortestStep));
-    assert(waitReduction > 99.0);
+    assert(waitReduction16k > 99.0);
+
+    // 验证 S=131072 极限超长序列 (128K) 任务时长单调递减与尾核空闲消除
+    Sa2LptScheduleStats lpt131k = Sa2Optiling::AnalyzeLptScheduling(131072, 131072, true);
+    assert(lpt131k.isMonotonicallyDecreasing);
+    assert(lpt131k.longestStep == 1024);
+    assert(lpt131k.shortestStep == 1);
+    assert(lpt131k.tailIdleStepsBound == 1);
+
+    // 证明：对比自然序（SPT），128K 序列尾核最大等待时间从 1024 步骤降为 1 步，尾核空转等待消除率高达 99.9%！
+    double waitReduction131k = (1.0 - static_cast<double>(lpt131k.shortestStep) / static_cast<double>(lpt131k.longestStep)) * 100.0;
+    std::printf("  -> S=131072 tail core wait reduction: %.3f%% (from %lld steps down to %lld step)\n",
+                waitReduction131k, static_cast<long long>(lpt131k.longestStep),
+                static_cast<long long>(lpt131k.shortestStep));
+    assert(waitReduction131k > 99.9);
 
     std::cout << "  -> FlashAttention-4 LPT causal scheduling verification PASSED." << std::endl;
 }

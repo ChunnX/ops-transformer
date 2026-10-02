@@ -48,7 +48,7 @@ def _load_extension():
 
 def _resolve_stream_handle(device: torch.device) -> int:
     """解析当前 NPU 流句柄（aclrtStream），供 csrc 侧两段式第二段调用使用。"""
-    import torch_npu
+    import torch_npu  # noqa: F401
 
     index = device.index if device.index is not None else torch.npu.current_device()
     with torch.npu.device(index):
