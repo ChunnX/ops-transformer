@@ -893,10 +893,8 @@ public:
                                     ? qRecip.Quantize(qFloatBuf[r * p.dp + c + k])
                                     : 0;
                             }
-                            *reinterpret_cast<uint64_t *>(dstRow + c) =
-                                *reinterpret_cast<const uint64_t *>(tmp);
-                            *reinterpret_cast<uint64_t *>(dstRow + c + 8) =
-                                *reinterpret_cast<const uint64_t *>(tmp + 8);
+                            *reinterpret_cast<__uint128_t *>(dstRow + c) =
+                                *reinterpret_cast<const __uint128_t *>(tmp);
                         }
                         for (; c < p.dp; ++c) {
                             dstRow[c] = (r < validRows && c < p.d)
@@ -931,10 +929,8 @@ public:
                                     ? qRecip.Quantize(qFloatBuf[r * p.dp + c])
                                     : 0;
                             }
-                            *reinterpret_cast<uint64_t *>(dstSeg) =
-                                *reinterpret_cast<const uint64_t *>(tmp);
-                            *reinterpret_cast<uint64_t *>(dstSeg + 8) =
-                                *reinterpret_cast<const uint64_t *>(tmp + 8);
+                            *reinterpret_cast<__uint128_t *>(dstSeg) =
+                                *reinterpret_cast<const __uint128_t *>(tmp);
 
                             qScaleL1[r * numSegs + seg] = Sa2ScalarFromFloat<half>(qRecip.scaledFactor);
                         }
@@ -955,8 +951,11 @@ public:
             denomSlot[r] = 0.0f;
         }
 
-        for (int64_t i = 0; i < kStreamRows * p.dp; ++i) {
-            oAcc[i] = 0.0f;
+        vapi::MaskReg m64 = vapi::CreateMask<float, vapi::MaskPattern::ALL>();
+        vapi::RegTensor<float> zeroAcc;
+        vapi::Duplicate(zeroAcc, 0.0f);
+        for (int64_t i = 0; i < kStreamRows * p.dp; i += 64) {
+            vapi::StoreAlign(&oAcc[i], zeroAcc, m64);
         }
 
         // P1-2 任务切换竞态闭环：q8/qScale 已落 L1（含 O 状态复位完成），放行 AIC 该任务首步 QK。
@@ -1016,7 +1015,6 @@ public:
             ? (kStreamRows * kKvStep * 16 * static_cast<int64_t>(sizeof(float)))
             : (kStreamRows * kKvStep * static_cast<int64_t>(sizeof(float)));
         auto scoreFull = AcquireSlot<Sa2CrossFlag::kScoreOk>(scoreSlotAddr, scoreSlotBytes, streamId);
-        (void)scoreFull;
 
         const Sa2Params &p = td_->params;
         const int64_t validRows = QTileValidRows(p, task.m0);
@@ -1068,8 +1066,12 @@ public:
         args.oAcc = ub_.GetOAcc();
         args.alphaSlot = ub_.GetStateAlpha(streamId, parity);
         args.pSlotUb = ub_.GetPSlot(parity);
-        args.scoreWarp = isThreadGran ? nullptr : ub_.GetScoreSlotWarp(parity);
-        args.scoreThread = isThreadGran ? ub_.GetScoreSlotThread(parity) : nullptr;
+        args.scoreWarp = isThreadGran
+            ? nullptr
+            : reinterpret_cast<__ubuf__ half *>(reinterpret_cast<uint64_t>(SlotData<half>(scoreFull)));
+        args.scoreThread = isThreadGran
+            ? reinterpret_cast<__ubuf__ float *>(reinterpret_cast<uint64_t>(SlotData<float>(scoreFull)))
+            : nullptr;
         args.kScaleRow = kScaleStage;
         args.qhF32 = qhF32Stage;
         args.scalarSlot = scalarSlot;
@@ -1117,8 +1119,7 @@ public:
         AscendC::PipeBarrier<PIPE_MTE3>();
 
         // 状态类型化槽位迁移：释放 QK 槽并通知 AIC 可进行后续步计算（Empty态无数据访问）
-        auto scoreEmpty = ReleaseSlot<Sa2CrossFlag::kQkFree>(std::move(scoreFull));
-        (void)scoreEmpty;
+        ReleaseSlot<Sa2CrossFlag::kQkFree>(aicMove(scoreFull));
         NotifyMte3(streamId, Sa2CrossFlag::kPTaken);
     }
 
@@ -1310,10 +1311,8 @@ public:
             __gm__ float *lsePtr = reinterpret_cast<__gm__ float *>(lseGmBase_) + lseOffset;
             int64_t r = 0;
             for (; r + 4 <= validRows; r += 4) {
-                *reinterpret_cast<__gm__ uint64_t *>(lsePtr + r) =
-                    *reinterpret_cast<const __ubuf__ uint64_t *>(stageRow + r);
-                *reinterpret_cast<__gm__ uint64_t *>(lsePtr + r + 2) =
-                    *reinterpret_cast<const __ubuf__ uint64_t *>(stageRow + r + 2);
+                *reinterpret_cast<__gm__ __uint128_t *>(lsePtr + r) =
+                    *reinterpret_cast<const __ubuf__ __uint128_t *>(stageRow + r);
             }
             for (; r < validRows; ++r) {
                 lsePtr[r] = stageRow[r];

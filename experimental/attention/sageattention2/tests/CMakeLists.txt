@@ -11,7 +11,7 @@ if(BUILD_OPEN_PROJECT OR ENABLE_TEST)
         cust_opapi
     )
 
-    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../benchmarks/benchmark_aclnn_fia.cpp")
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../benchmarks/benchmark_aclnn_fia.cpp" AND NOT TARGET benchmark_sage_attention2_aclnn)
         add_executable(benchmark_sage_attention2_aclnn ../benchmarks/benchmark_aclnn_fia.cpp)
         target_include_directories(benchmark_sage_attention2_aclnn PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/../op_api

@@ -1,6 +1,6 @@
 # benchmarks 构建脚本：aclnn C++ 性能对比基准测试可执行程序构建
 
-if(BUILD_OPEN_PROJECT OR ENABLE_TEST OR BENCHMARK)
+if((BUILD_OPEN_PROJECT OR ENABLE_TEST OR BENCHMARK) AND NOT TARGET benchmark_sage_attention2_aclnn)
     add_executable(benchmark_sage_attention2_aclnn benchmark_aclnn_fia.cpp)
     target_include_directories(benchmark_sage_attention2_aclnn PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/../op_api
