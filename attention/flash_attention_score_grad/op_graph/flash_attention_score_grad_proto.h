@@ -68,7 +68,7 @@ namespace ge {
 * @li sparse_mode: An int. 0, defaultMsk. 1, allMask. 2, leftUpCausal. 3, rightDownCausal. 4, band. 5, prefix.
 * 6, prefixCompress. 7, rightDownCausalBand. 8, bandLeftUpCausal.
 * @li pse_type: An int. Optional attribute. Users can pass in 1 if they do not specify it.
-* The supported configuration values ​​are 0, 1, 2, and 3.
+* The supported configuration values are 0, 1, 2, and 3.
 * @li seed: An int. Optional attribute. Default: 0.
 * @li offset: An int. Optional attribute.  Default: 0.
 * @li out_dtype: An int. Optional attribute.  Default: 0.
@@ -132,6 +132,6 @@ REG_OP(FlashAttentionScoreGrad)
     .ATTR(out_dtype, Int, 0)
     .ATTR(softmax_in_layout, String, "")
     .OP_END_FACTORY_REG(FlashAttentionScoreGrad)
-}  // namespace ge
+} // namespace ge
 
-#endif  // FLASH_ATTENTION_SCORE_GRAD_PROTO_H_
+#endif // FLASH_ATTENTION_SCORE_GRAD_PROTO_H_
