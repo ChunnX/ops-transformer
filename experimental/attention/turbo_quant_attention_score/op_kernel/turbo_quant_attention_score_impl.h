@@ -24,8 +24,14 @@ constexpr uint32_t UB_FLOATS =
 static_assert(UB_FLOATS * sizeof(float) <= UB_BYTES, "UB layout exceeds its allocation");
 constexpr float COEFFICIENT = 0.009791516697777346F;
 
+template <typename NormType>
+class PrefillPrepare;
+
 template <typename NormType, bool PackedSign = false>
 class Kernel {
+    template <typename>
+    friend class PrefillPrepare;
+
 public:
     __aicore__ inline void Init(GM_ADDR q, GM_ADDR qr, GM_ADDR idx, GM_ADDR sign, GM_ADDR norm, GM_ADDR gamma,
                                 GM_ADDR table, GM_ADDR lens, GM_ADDR out, uint32_t tokens, uint32_t qHeads,
@@ -117,7 +123,7 @@ public:
         }
     }
 
-    __aicore__ inline void Process()
+    __aicore__ inline void Process(uint32_t taskStride = GetBlockNum())
     {
         const uint64_t tiles = (maxLen_ + ROWS - 1) / ROWS;
         // Each task owns one key tile and reuses its decoded keys across GQA heads.
@@ -125,7 +131,7 @@ public:
         const uint32_t queryGroups = batch_ == 1 ? (tokens_ + 7) / 8 : batch_;
         const uint64_t tasks = tiles * kvHeads_ * queryGroups;
         uint64_t cachedQuery = static_cast<uint64_t>(-1);
-        for (uint64_t task = GetBlockIdx(); task < tasks; task += GetBlockNum()) {
+        for (uint64_t task = GetBlockIdx(); task < tasks; task += taskStride) {
             const uint32_t start = (task % tiles) * ROWS;
             const uint32_t head = (task / tiles) % kvHeads_;
             const uint32_t group = task / (tiles * kvHeads_);
@@ -153,7 +159,7 @@ public:
             const bool batchedOutput = groups <= 4 && maxLen_ <= 0x3fffffffU;
             const uint32_t validRows = valid ? (length - start < count ? length - start : count) : 0;
             if constexpr (PackedSign)
-                PrefetchNext(task + GetBlockNum(), tasks, tiles);
+                PrefetchNext(task + taskStride, tasks, tiles);
             for (uint32_t token = first; token < end; ++token) {
                 const uint64_t firstQuery = static_cast<uint64_t>(token) * qHeads_ + head * groups;
                 if (valid && batchedOutput) {

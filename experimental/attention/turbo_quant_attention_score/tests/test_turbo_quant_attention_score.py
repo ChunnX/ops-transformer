@@ -134,6 +134,10 @@ def check_task_golden(output, inputs, bits):
         if not torch.equal(torch.isneginf(actual), torch.isneginf(ref)):
             raise AssertionError("task golden infinity mask differs")
         actual, ref = actual[valid], ref[valid]
+        if not torch.isfinite(actual).all():
+            raise AssertionError(
+                "task golden output is nonfinite at a finite reference position"
+            )
         error = (actual - ref).abs()
         if error.numel():
             max_abs = max(max_abs, error.max().item())

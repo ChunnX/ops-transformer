@@ -10,6 +10,7 @@
 #ifndef TURBO_QUANT_ATTENTION_SCORE_TILING_H
 #define TURBO_QUANT_ATTENTION_SCORE_TILING_H
 #include "register/tilingdata_base.h"
+#include "tiling/tiling_api.h"
 namespace optiling {
 BEGIN_TILING_DATA_DEF(TurboQuantAttentionScoreTilingData)
 TILING_DATA_FIELD_DEF(uint32_t, tokens);
@@ -20,6 +21,7 @@ TILING_DATA_FIELD_DEF(uint32_t, blocks);
 TILING_DATA_FIELD_DEF(uint32_t, tableWidth);
 TILING_DATA_FIELD_DEF(uint32_t, maxLen);
 TILING_DATA_FIELD_DEF(uint32_t, bits);
+TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, cube);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(TurboQuantAttentionScore, TurboQuantAttentionScoreTilingData)
 } // namespace optiling

@@ -9,7 +9,7 @@
 ## 背景介绍
 
 MHA/GQA 的长上下文 Key cache 占用大量显存。TurboQuant 将旋转空间中的主分量编码为少量 bit，
-并用 QJL 符号向量修正残差。本算子直接从压缩 cache 生成分数，不在 GM 中完整展开 Key。
+并用 QJL 符号向量修正残差。decode 路径直接从压缩 cache 生成分数；对齐 prefill 路径使用有界临时工作区复用解码系数，调用结束后释放。
 与仓内 TurboQuant 稀疏 attention 算子不同，本接口输出稠密 attention score，且不包含 V 聚合。
 
 # 需求分析（required）
@@ -43,7 +43,7 @@ query 的旋转及投影由上游完成。该输出不包括 softmax 缩放和 c
 
 ### 支持数据类型与形状
 
-query 为 BF16，编码为 UINT8，norm/gamma 为匹配的 BF16 或 FP16，页表和长度为 INT32，输出为 FP32。
+query 为 BF16，编码为 UINT8，norm/gamma 为匹配的 BF16 或 FP16，页表为 INT32，长度为 INT32/INT64，输出为 FP32。
 head_dim、qjl_dim、block_size 均为 128；其余维度在接口约束内动态变化。
 
 ## 算子实现
@@ -55,10 +55,13 @@ OpDef 注册两个 norm/gamma dtype 签名，自动生成 aclnn API。
 aclnn Tensor 路径的 optional 值依赖可能保留设备数据；该场景使用调用方预分配输出的最后一维，
 不在 host 解引用设备指针。CPU 整数数组路径验证真实最大长度与输出形状一致。
 tiling 检查 rank、形状关系、GQA 整除、batch/token 映射、属性和 dtype，再保存八个 UINT32 维度参数。
-按设备 AIV 核数分派任务。tiling key 0/1 分别为 BF16/FP16 norm/gamma。
-内核不使用 GM workspace。
+Vector 路径按设备 AIV 核数分派，tiling key 0/1 分别对应 BF16/FP16 norm/gamma，GM workspace 仍为零。
+对齐 prefill 使用 key 2/3 的 MIX AIC:AIV=1:2 路径，并附带 TCubeTiling。
+分派条件为单序列、128≤T≤512、T 为 32 的倍数、输出长度为正且是 256 的倍数，
+同时限制矩阵 stride 不超过 INT_MAX、临时用户工作区不超过 128 MiB。
+不满足条件或 tiling 失败时保留原 Vector 路径。
 
-### kernel 侧设计
+### Vector kernel 侧设计
 
 每个任务处理某一 KV head 的 32 个连续 key 位置。单页为 128 个 token，因此 tile 不跨页。
 prefill 每组最多八个 query，共享 tile 解码结果；同组所有 GQA head 同样复用解码结果。
@@ -71,14 +74,46 @@ prefill 每组最多八个 query，共享 tile 解码结果；同组所有 GQA h
 5. query 转 FP32 后进行向量乘法和树形归约，分别乘 norm/gamma 并叠加修正项。
 6. 写出 32 个或尾部不足 32 个分数。越过当前请求长度的元素写负无穷。
 
-prefill 每核使用 185 KiB UB；单 token decode 额外分配 2 KiB 压缩输入预取缓冲区，共 187 KiB。基础空间包含索引、128 维重复使用的二进制缩放向量、解码块、query 缓存和归约临时空间。
+Vector prefill 每核使用 185 KiB UB；单 token decode 额外分配 2 KiB 压缩输入预取缓冲区，共 187 KiB。基础空间包含索引、128 维重复使用的二进制缩放向量、解码块、query 缓存和归约临时空间。
 GQA 比例不超过 4 时一次搬入最多八个 query token 的全部同组 head，向量化归约合并及范数缩放；
 单 token decode 使用 packed QJL bit 直接选择正负 query residual，保持原 FP32 归约顺序；下一 tile 的压缩 idx 在独立缓冲区预取，消费前等待 MTE2 到 Vector 的事件。
 连续 key tile 复用同一 query 缓存；同组最多四个 head 的范数缩放和输出搬运批量执行。
 Gather 的偏移单位仍为字节，保留 FP32 元素的四倍偏移及 byte 搬入后的 32 字节行对齐。
 更大 GQA 比例走逐 head 搬运路径，避免越过 query 缓存容量。
 所有向量缓冲区 32 字节对齐。跨流水使用显式 barrier；尾部搬运只访问有效行。
-当前实现使用 Vector Core，避免 Cube BF16 centroid 舍入导致精度偏离 golden。
+Vector 路径保持原 FP32 解码和归约顺序。
+
+### 对齐 prefill：Vector 准备与 Cube 分阶段流水（2026-10-02）
+
+输入、输出、bit packing、centroid、QJL 修正系数和测试阈值保持原定义。
+Vector 每次解码 32 行，先计算主项 `centroid * norm` 和残差项 `sign * gamma * coefficient`。
+每项系数拆成两个 FP16 分量：高分量为 FP16 舍入值，低分量为 FP32 残差的 FP16 舍入值。
+query 的两份主项和两份 QJL 输入组成 K=512 的矩阵；Cube 以 FP32 累加，直接写入
+`[T, Hq, maxLen]` 的最终跨 head 行 stride，不生成完整中间 score 矩阵，也不再进行 GM score 后处理。
+该拆分并非逐位保留全部 FP32 信息；BF16 query 在 FP16 正常范围内可精确转换，近零时转换误差至多为 `2^-25`。
+因此必须继续对完整输出执行原独立 CPU 和附件 golden 的精度检查，不能仅用“采用 FP32 累加”推导精度合格。
+
+每个准备任务拥有一个 KV head 的 256-key 块，该块供同组所有 query head 复用。
+查询准备完成并统一发布检查结果后，Vector 准备下一阶段的 key 系数，Cube 计算上一阶段。
+每阶段末使用 `SyncAll<false>()` 显式跨 AIC/AIV 同步；矩阵乘对象在整个阶段循环中复用。
+支持 128×256×64 基础 tile 时，L1 的 A/B stepK 均取 4、depth 均取 8，总占用 384 KiB；
+host 核对实际 tile 和 L1 容量后才采用该配置。
+
+准备阶段检查真实长度、页号和数值范围；norm/gamma 或 query 非有限、超出 FP16 范围，
+或者长度/页号不适合 Cube 时，通过初始化后的原子状态字发布回退信号。
+所有 Cube 写入完成并同步后，AIV 使用原 Vector 路径覆盖整个输出；因此回退不会与 Cube 竞争写出。
+MIX 模式的 AIV task stride 使用 `GetBlockNum() * GetTaskRation()`，避免两倍 Vector 核重复处理同一任务。
+
+用户工作区字节数为 `(Hq*T + Hkv*maxLen)*1024 + (1 + Hkv*maxLen/256)*512`，
+另加平台 `GetLibApiWorkSpaceSize()` 返回的系统工作区。
+官方 T=512、Hq=32、Hkv=8、maxLen=4096 用例的用户工作区为 50,397,696 字节；
+当前 A2 安装包总 workspace 为 67,174,912 字节，另有独立的 256 MiB FP32 输出。
+此处是临时计算开销，不能计入持久 KV cache 压缩比。
+
+专项测试为 `tests/test_prefill_regression.py`：覆盖两种 norm dtype、两种长度 dtype、bits=2/3/4、
+GQA=1/2/3/4/5/8、host 长度接口、异常后恢复正常和非对齐形状回退。
+`test_golden_nonfinite.py` 额外验证 golden 包装器拒绝有限参考位置上的 NaN/Inf，防止 NaN 比较静默漏检。
+纯相对误差近零分母及模型验收结论仍需与组织方规则区分，混合误差自测通过不等于完成任务验收。
 
 ## 支持硬件
 

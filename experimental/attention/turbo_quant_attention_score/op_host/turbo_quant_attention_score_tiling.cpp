@@ -14,6 +14,52 @@
 #include "turbo_quant_attention_score_tiling.h"
 
 namespace optiling {
+// Limit scratch to 128 MiB, including a cache-line-separated status area.
+// Other shapes retain the original zero-workspace Vector implementation.
+static bool PrefillTiling(gert::TilingContext *context, platform_ascendc::PlatformAscendC &platform,
+                          TurboQuantAttentionScoreTilingData &data, uint64_t ubSize)
+{
+    const uint64_t tokens = data.get_tokens(), heads = data.get_qHeads(), kvHeads = data.get_kvHeads();
+    const uint64_t length = data.get_maxLen();
+    constexpr uint64_t LIMIT = 128ULL * 1024 * 1024;
+    if (data.get_batch() != 1 || tokens < 128 || tokens > 512 || tokens % 32 || !length || length % 256 ||
+        heads * length > INT_MAX || ubSize < 187U * 1024 || !platform.GetCoreNumAic())
+        return false;
+    const uint64_t rows = heads * tokens + kvHeads * length;
+    const uint64_t flagBytes = (1 + kvHeads * (length / 256)) * 512;
+    if (flagBytes > LIMIT || rows > (LIMIT - flagBytes) / 1024)
+        return false;
+    using namespace matmul_tiling;
+    MatmulApiTiling mm(platform);
+    mm.SetAType(TPosition::GM, CubeFormat::ND, DataType::DT_FLOAT16, false);
+    mm.SetBType(TPosition::GM, CubeFormat::ND, DataType::DT_FLOAT16, true);
+    mm.SetCType(TPosition::GM, CubeFormat::ND, DataType::DT_FLOAT);
+    mm.SetShape(tokens, 256, 512);
+    mm.SetOrgShape(tokens, heads * length, 512);
+    mm.SetFixSplit(128, 256, 64);
+    mm.SetBias(false);
+    mm.SetMatmulConfigParams(1);
+    mm.SetBufferSpace(-1, -1, -1);
+    if (mm.GetTiling(data.cube) < 0)
+        return false;
+    // Two L1 stages for each operand: 2*(128*64*8 + 256*64*8) = 384 KiB.
+    // Keep the API result unchanged if the requested tile or capacity differs.
+    uint64_t l1Size = 0;
+    platform.GetCoreMemSize(platform_ascendc::CoreMemType::L1, l1Size);
+    if (data.cube.get_baseM() == 128 && data.cube.get_baseN() == 256 && data.cube.get_baseK() == 64 &&
+        l1Size >= 384U * 1024U) {
+        data.cube.set_stepKa(4);
+        data.cube.set_stepKb(4);
+        data.cube.set_depthA1(8);
+        data.cube.set_depthB1(8);
+        data.cube.set_shareL1Size(384U * 1024U);
+    }
+    context->SetBlockDim(platform.GetCoreNumAic());
+    context->SetTilingKey(context->GetInputDesc(4)->GetDataType() == ge::DT_BF16 ? 2 : 3);
+    context->GetWorkspaceSizes(1)[0] = platform.GetLibApiWorkSpaceSize() + rows * 1024 + flagBytes;
+    return true;
+}
+
 static ge::graphStatus Tiling(gert::TilingContext *context)
 {
     const uint32_t ranks[] = {3, 3, 4, 4, 3, 3, 2, 1};
@@ -116,6 +162,7 @@ static ge::graphStatus Tiling(gert::TilingContext *context)
     context->SetBlockDim(cores);
     context->SetTilingKey(normType == ge::DT_BF16 ? 0 : 1);
     context->GetWorkspaceSizes(1)[0] = 0;
+    PrefillTiling(context, platform, tiling, ubSize);
     tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
     return ge::GRAPH_SUCCESS;

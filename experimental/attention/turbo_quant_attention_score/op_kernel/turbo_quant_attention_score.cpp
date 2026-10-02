@@ -8,7 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 #include "kernel_operator.h"
-#include "turbo_quant_attention_score_impl.h"
+#include "turbo_quant_attention_score_prefill.h"
 
 extern "C" __global__ __aicore__ void turbo_quant_attention_score(GM_ADDR queryRotated, GM_ADDR queryQjl,
                                                                   GM_ADDR keyCacheIdx, GM_ADDR keyCacheQjl,
@@ -17,7 +17,21 @@ extern "C" __global__ __aicore__ void turbo_quant_attention_score(GM_ADDR queryR
                                                                   GM_ADDR attnScores, GM_ADDR workspace, GM_ADDR tiling)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
+    KERNEL_TASK_TYPE(2, KERNEL_TYPE_MIX_AIC_1_2);
+    KERNEL_TASK_TYPE(3, KERNEL_TYPE_MIX_AIC_1_2);
     GET_TILING_DATA(t, tiling);
+    if (TILING_KEY_IS(2)) {
+        TurboQuant::RunPrefill<bfloat16_t>(queryRotated, queryQjl, keyCacheIdx, keyCacheQjl, keyCacheNorm,
+                                           keyCacheGamma, blockTable, seqLens, attnScores,
+                                           AscendC::GetUserWorkspace(workspace), t);
+        return;
+    }
+    if (TILING_KEY_IS(3)) {
+        TurboQuant::RunPrefill<half>(queryRotated, queryQjl, keyCacheIdx, keyCacheQjl, keyCacheNorm, keyCacheGamma,
+                                     blockTable, seqLens, attnScores, AscendC::GetUserWorkspace(workspace), t);
+        return;
+    }
+
     if (TILING_KEY_IS(0)) {
         if (t.tokens == 1) {
             TurboQuant::Kernel<bfloat16_t, true> op;

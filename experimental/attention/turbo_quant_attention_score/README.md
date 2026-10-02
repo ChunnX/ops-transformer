@@ -59,3 +59,19 @@ source /path/to/install/vendors/turboquant_transformer/bin/set_env.bash
 
 aclnn 两阶段接口、输出分配和数据依赖见 [接口文档](docs/aclnnTurboQuantAttentionScore.md)。
 自测步骤见 [tests/README.md](tests/README.md)，设计见 [设计文档](docs/design.md)。
+
+
+## 对齐 prefill 流水
+
+单序列对齐 prefill 可使用 Vector 准备与 Cube 计算重叠的路径；其他形状保留原 Vector 实现。
+该路径使用 FP16 双分量系数、FP32 累加和有界临时工作区，并对不适合矩阵乘的运行时输入回退。
+实现条件、精度边界和工作区公式见 [设计说明](docs/design.md#对齐-prefillvector-准备与-cube-分阶段流水2026-10-02)。
+
+安装自定义包并配置 `TURBOQUANT_OPAPI` 后，可执行：
+
+```bash
+python tests/test_prefill_regression.py --output prefill_regression.json
+python tests/test_golden_nonfinite.py
+```
+
+测试使用原有混合误差阈值；完整附件用例仍需额外校验，不能仅凭随机回归声明任务精度验收完成。
