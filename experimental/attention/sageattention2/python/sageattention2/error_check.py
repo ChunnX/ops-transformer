@@ -187,7 +187,17 @@ def pad_head_dim(q: Any, k: Any, v: Any) -> Tuple[Any, Any, Any, int]:
 
 
 def compute_sm_scale(head_dim_og: int, sm_scale: Optional[float]) -> float:
-    """Compute sm_scale default: 1.0 / sqrt(head_dim_og)."""
+    """Compute sm_scale default: 1.0 / sqrt(head_dim_og) when sm_scale is None.
+
+    Frozen semantics (task/01_design 1.3): the default only applies to None;
+    an explicit sm_scale must be a finite positive number, otherwise raise.
+    """
     if sm_scale is None:
         return 1.0 / math.sqrt(head_dim_og)
-    return float(sm_scale)
+    scale = float(sm_scale)
+    if not math.isfinite(scale) or scale <= 0.0:
+        raise ValueError(
+            "sm_scale must be a finite positive number when explicitly provided; "
+            "omit it for the default 1/sqrt(head_dim)"
+        )
+    return scale

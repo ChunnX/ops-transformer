@@ -21,6 +21,22 @@
 #include <cstdint>
 #include <cstddef>
 
+/**
+ * Host/Device 切换（本头文件被所有 ascendc/catlass 头包含，是 __aicore__ 的首个定义点）：
+ * - bisheng -xasc 设备编译预定义 __aicore__ = __attribute__((cce_aicore))，下方 #ifndef 直接保留内建；
+ * - KT 设备/主机单测定义 __CCE_KT_TEST__（或历史 __DAV_C220_*），属性展开为 [[]]；
+ * - 纯宿主语法门（g++/clang++ 无任何宏）展开为空。
+ * 此前此处为无条件空展开，会抢在 online_softmax.h 之前把 __aicore__ 污染为空，
+ * 使 KT 单测路径丢失属性——已改为与其他头一致的完整切换范式。
+ */
+#ifndef __aicore__
+#if defined(__CCE_KT_TEST__) || defined(__DAV_C220_VEC__) || defined(__DAV_C220_CUBE__)
+#define __aicore__ [[]]
+#else
+#define __aicore__
+#endif
+#endif
+
 namespace sage_attn {
 
 /**
@@ -40,6 +56,30 @@ constexpr uint32_t L0C_SIZE = 256 * 1024;              // L0C 累加器 256KB
 
 constexpr uint32_t ATLAS_950_AIC_NUM = 32;             // Atlas 950PR 满配 32 个 AI Core
 constexpr uint32_t ATLAS_950_AIV_NUM = 64;             // Atlas 950PR 满配 64 个 Vector Core (1C2V 架构)
+constexpr uint32_t ATLAS_950_DIE_NUM = 2;              // Atlas 950PR 标配 2 个计算 Die
+constexpr uint32_t ATLAS_950_GROUPS_PER_DIE = 4;       // Atlas 950PR 每 Die 包含 4 个 Core Group (全片 8-Group)
+constexpr uint32_t ATLAS_950_CORES_PER_DIE = 16;       // Atlas 950PR 满配单 Die 16 个 AI Core
+constexpr float S_FP8_OFFSET = 8.807354922057604f;      // log2(448.0f) P 矩阵 e4m3 偏置常数 (task/01_design 2.4)
+
+/**
+ * 共享数学与量化常量（全仓唯一定义点；quant_host.h / online_softmax.h /
+ * quant_common.h 经 include + using 引用，禁止再复制）
+ */
+constexpr float LOG2E = 1.4426950408889634f;            // log2(e)
+constexpr float INV_LOG2E = 0.6931471805599453f;        // 1.0f / log2(e) = ln(2)
+constexpr float INT8_QUANT_MAX = 127.0f;                // INT8 对称量化上限
+constexpr float SCALE_EPSILON = 1e-7f;                  // INT8 量化 scale 兜底微量 (amax/127 + 1e-7)
+constexpr float FP8_E4M3_MAX = 448.0f;                  // FP8 e4m3fn 最大有限值 (448.0 字面量唯一定义点)
+constexpr float SCALE_MAX_FP16_ACCUM = 2.25f;           // fp32+fp16 档 V 量化 scale_max (对齐开源)
+constexpr float SCALE_MAX_FP32_ACCUM = FP8_E4M3_MAX;    // 其余档位 V 量化 scale_max (饱和至 e4m3 满量程)
+constexpr float SCALE_ONE_TOLERANCE = 1e-6f;            // 缩放系数 (alpha/rescale) 与 1.0 比较的浮点容差
+constexpr float SKIP_SCALE_TAU = 6.0f;                  // FlashMLA / Online Softmax 跳步缩放阈值 tau = 6.0 (唯一定义点)
+
+/**
+ * 两级累加归约周期缺省步长（tiling.k_step ∈ {8, 16, 32} 的缺省值；
+ * AccumReduceController 兜底、孪生参考 fp16 子块累加均引用此处）
+ */
+constexpr uint32_t DEFAULT_K_STEP = 16;
 
 /**
  * 布局编码枚举（对齐 core.py 行 745）
@@ -89,9 +129,14 @@ struct __attribute__((packed, aligned(32))) SageAttention2TilingData {
     uint32_t smooth_k;        // 是否启用 smooth_k (0=False, 1=True)
     uint32_t smooth_v;        // 是否启用 smooth_v (0=False, 1=True)
 
-    // 3. 数值字段 (8 字节)
+    // 3. 数值字段 (12 字节)
     float sm_scale_log2e;     // Host 端折叠后的缩放因子: sm_scale * log2(e) (约 1.44269504)
     float v_scale_max;        // V 量化饱和上限 (fp32+fp16 为 2.25f, 其余为 448.0f)
+    // 【I1 kernel-lane 契约增量，请勿回退删除】task/01_design.md 3.5 节冻结字段：
+    // P 矩阵 e4m3 放大偏置 log2(448)≈8.807（语义见 2.4 节）。取值恒等于上方 S_FP8_OFFSET
+    // 常量，入结构体仅为单测参数化；op_host 侧按常量填充即可。device 侧
+    // op_kernel/sageattention2.cpp 的 ComputeSoftmaxProbability / ConvertLseToHost 出口依赖此字段。
+    float s_fp8_offset;
 
     // 4. 分块字段 (12 字节)
     uint32_t m_per_core;      // 每个核处理的 Query 行数 (GQA 聚合后对齐为 64 的倍数)
@@ -116,40 +161,52 @@ struct __attribute__((packed, aligned(32))) SageAttention2TilingData {
     uint64_t workspace_lse_offset; // GM 工作区中 LSE 张量偏移 (字节)
     uint64_t workspace_vm_offset;  // GM 工作区中 V 均值张量偏移 (字节, 仅用于 fuse_v_mean)
 
-    // 7. 补齐保留字段 (24 字节) 使结构体总大小为 160 字节 (32 字节整数倍)
-    uint8_t reserved[24];
+    // 7. Die 调度与硬件亲和性字段 (16 字节)
+    uint32_t enable_die_affinity;  // 是否启用 Die 亲和性多核调度 (0=关闭, 1=启用)
+    uint32_t die_num;              // 芯片计算 Die 数量 (Atlas 950PR 双 Die 架构，值为 2)
+    uint32_t cores_per_die;        // 每个计算 Die 包含的核心数 (core_num_used / die_num, 标配 16 或 14)
+    uint32_t tasks_per_die;        // 每个计算 Die 分配的基础任务数 ((total_tasks + 1) / die_num)
+
+    // 8. 补齐保留字段 (4 字节) 使结构体总大小严格为 160 字节 (32 字节整数倍)
+    // 布局变更说明 (2026-10-02, I1 lane)：新增第 3 节数值字段 s_fp8_offset (4 字节) 后，
+    // reserved 由 8 字节缩为 4 字节，结构体总大小与 32B 对齐不变 (static_assert 锁定)。
+    uint8_t reserved[4];
 
     // 便捷访问辅助函数
-    uint32_t GetGqaRatio() const {
+    uint32_t GetGqaRatio() const noexcept {
         return (hkv > 0) ? (hq / hkv) : 1;
     }
 
-    bool IsCausal() const {
+    bool IsCausal() const noexcept {
         return is_causal != 0;
     }
 
-    bool IsSmoothK() const {
+    bool IsSmoothK() const noexcept {
         return smooth_k != 0;
     }
 
-    bool IsSmoothV() const {
+    bool IsSmoothV() const noexcept {
         return smooth_v != 0;
     }
 
-    bool IsMerge() const {
+    bool IsMerge() const noexcept {
         return is_merge != 0;
     }
 
-    bool IsHND() const {
+    bool IsHND() const noexcept {
         return tensor_layout == LAYOUT_HND;
     }
 
-    bool IsPerThread() const {
+    bool IsPerThread() const noexcept {
         return qk_quant_gran == QUANT_GRAN_PER_THREAD;
     }
 
-    bool IsPerWarp() const {
+    bool IsPerWarp() const noexcept {
         return qk_quant_gran == QUANT_GRAN_PER_WARP;
+    }
+
+    bool EnableDieAffinity() const noexcept {
+        return enable_die_affinity != 0;
     }
 };
 
@@ -159,6 +216,46 @@ static_assert(sizeof(SageAttention2TilingData) % 32 == 0, "SageAttention2TilingD
 static_assert(alignof(SageAttention2TilingData) == 32, "SageAttention2TilingData must be 32-byte aligned");
 
 using TilingData = SageAttention2TilingData;
+
+/**
+ * DieTask 算法：将连续的虚拟任务映射到 Atlas 950PR 双 Die / 8-Group 拓扑
+ * Die 0 (核 0 ~ cores/2-1) 亲和前半段任务 [0, total/2)
+ * Die 1 (核 cores/2 ~ cores-1) 亲和后半段任务 [total/2, total)
+ * 纯简洁整数运算与移位，保证微秒级发射时延与纳秒级内核解码
+ *
+ * @param task 虚拟任务索引 (wave * cores + core)
+ * @param total 任务总数 (b * hkv * q_blks)
+ * @param cores 参与调度的核心总数 (必须为偶数，如 32 或 28)
+ * @return 物理亲和后的实际任务索引
+ */
+__aicore__ inline uint64_t DieTask(uint64_t task, uint64_t total, uint32_t cores) noexcept {
+    if (cores < 2 || total < 2) {
+        return task;
+    }
+    const uint32_t half = cores / 2;
+    const uint64_t half_total = total / 2;
+    return (task % cores / half) * half_total + (task / cores) * half + (task % half);
+}
+
+/**
+ * DieTaskEnd 算法：计算当前核心在虚拟循环任务空间中的终止边界 (支持尾波次 partial wave)
+ *
+ * @param total 任务总数
+ * @param core 当前核心物理索引 (GetBlockIdx)
+ * @param cores 参与调度的核心总数
+ * @param enable 是否启用 Die 亲和性调度
+ * @return 当前核心的任务循环终止上界
+ */
+__aicore__ inline uint64_t DieTaskEnd(uint64_t total, uint32_t core, uint32_t cores, bool enable = true) noexcept {
+    if (!enable || cores < 2 || total < 2 || (cores % 2 != 0)) {
+        return total;
+    }
+    const uint32_t half = cores / 2;
+    const uint32_t rank = core % half;
+    const uint64_t local = total / 2;
+    const uint64_t count = (local > rank) ? ((local - rank + half - 1) / half) : 0;
+    return core + count * cores;
+}
 
 } // namespace sage_attn
 

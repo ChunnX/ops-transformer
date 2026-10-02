@@ -19,8 +19,8 @@
   - `key`：必选输入，Key 张量，数据类型支持 FP16 与 BF16，形状为 `[B, Sk, Hkv, D]` 或 `[B, Hkv, Sk, D]`。
   - `value`：必选输入，Value 张量，数据类型支持 FP16 与 BF16，形状与 `key` 一致。
   - `keyMeanOptional`：可选输入，Key 序列维均值张量，仅在 `smoothK=true` 时生效，形状为 `[B, Hkv, D]`。
-  - `lseCorrectionOptional`：可选输入，LSE 广播修正项张量，用于保留与 smooth_k 的严格数学等价性，形状为 `[B, Hq, Sq]`。
-  - `smScale`：必选参数，浮点缩放因子，传入小于等于 0 时自动回退至默认值 `1.0 / sqrt(head_dim)`。
+  - `lseCorrectionOptional`：可选输入，LSE 修正项张量，形状为 `[B, Hq, Sq]`。预留入口：smooth_k 的 LSE 修正当前随算子内部融合（见 `sage_attn_host.cpp`），Host Tiling 不消费该张量。
+  - `smScale`：必选参数，浮点缩放因子。默认值 `1.0 / sqrt(head_dim)` 仅由上层接口在 `sm_scale=None` 时折叠后传入；本接口收到非正值或非有限值时返回 `ACLNN_ERR_PARAM_INVALID`，不再静默兜底。
   - `qkQuantGran`：必选参数，量化粒度枚举，取值 2 表示 per_warp，取值 3 表示 per_thread。
   - `pvAccumDtype`：必选参数，PV 累加精度档位，取值 0 表示全精度 fp32，取值 1 表示 fp32+fp32，取值 2 表示 fp32+fp16。
   - `isCausal`：必选参数，布尔标志，true 表示启用因果下三角注意力掩码，false 表示全向稠密注意力。
@@ -36,7 +36,8 @@
   - `ACLNN_SUCCESS`（0）：参数校验通过，Tiling 计算成功并完成执行器构造。
   - `ACLNN_ERR_PARAM_NULLPTR`（161001）：必选指针为 nullptr。
   - `ACLNN_ERR_PARAM_INVALID`（161002）：输入参数非法（包括维度非 4D、GQA 头数无法整除、头维度超过 128、枚举值非法等）。
-  - `ACLNN_ERR_INNER_CREATE_EXECUTOR`（561001）：执行器内存分配失败。
+  - `ACLNN_ERR_INNER_CREATE_EXECUTOR`（561101）：执行器内存分配失败。
+- Tiling 下发链路：第一段以闭式 `ComputeHostTiling`（inline 定义见 `./aclnn/sage_attn_host_tiling.h`）计算 Workspace 与 Tiling 一致性校验；kernel 实际使用的 TilingData 由 `./op_host/sage_attention2_tiling.cpp` 注册的 TilingImpl（复用同一 `ComputeHostTiling`）序列化进 `gert::RawTilingData`，在第二段 `CommonOpExecutorRun` 下发阶段由框架写入设备核。
 
 ### 2.2 第二段：aclnnSageAttention2
 

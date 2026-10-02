@@ -1,13 +1,12 @@
 """
-PyTorch operator registration and dynamic linking plugin for SageAttention2 on Ascend NPU.
+NPU availability detection and kernel launch bridge for SageAttention2 on Ascend NPU.
 Aligned with ops-transformer custom ops and torch_npu specifications.
+(扩展库的加载与注册统一由 _extension.py / _ops.py 负责，本模块仅做探测与转发。)
 """
 
 from __future__ import annotations
 
-import os
 from typing import Any, Callable, Optional, Tuple
-import warnings
 
 try:
     import torch
@@ -21,7 +20,6 @@ except ImportError:
 
 
 _NPU_SAGEATTN_OP_NAME = "npu_sage_attention2"
-_CUSTOM_LIB_NAME = "sageattention2"
 
 
 def is_npu_available() -> bool:
@@ -41,40 +39,11 @@ def is_npu_kernel_loaded() -> bool:
     for ns in ("cann_ops_transformer", "sageattention2", "custom"):
         if hasattr(torch.ops, ns):
             lib = getattr(torch.ops, ns)
-            if hasattr(lib, _NPU_SAGEATTN_OP_NAME) or hasattr(lib, "sageattn_qk_int8_pv_fp8_asc"):
+            if hasattr(lib, _NPU_SAGEATTN_OP_NAME) or hasattr(lib, "sageattn_qk_int8_pv_fp8_asc") or hasattr(lib, "forward"):
                 return True
     if torch_npu is not None and hasattr(torch_npu, _NPU_SAGEATTN_OP_NAME):
         return True
     return False
-
-
-def register_custom_op() -> bool:
-    """
-    Attempt to register the SageAttention2 custom operator into torch.library / torch_npu.
-    """
-    if torch is None:
-        return False
-
-    possible_paths = [
-        os.environ.get("SAGEATTN_LIB_PATH", ""),
-        os.path.join(os.path.dirname(__file__), "..", "..", "build", "lib_sageattention2.so"),
-        os.path.join(os.path.dirname(__file__), "csrc", "lib_sageattention2.so"),
-    ]
-    for lib_path in possible_paths:
-        if lib_path and os.path.exists(lib_path):
-            try:
-                torch.ops.load_library(lib_path)
-                break
-            except Exception as e:
-                warnings.warn(f"Failed to load SageAttention2 shared library from {lib_path}: {e}")
-
-    if torch_npu is not None and hasattr(torch.ops, "cann_ops_transformer"):
-        cand = getattr(torch.ops.cann_ops_transformer, _NPU_SAGEATTN_OP_NAME, None)
-        if cand is not None:
-            setattr(torch_npu, _NPU_SAGEATTN_OP_NAME, cand)
-            return True
-
-    return is_npu_kernel_loaded()
 
 
 def run_sageattn_npu(
@@ -103,7 +72,9 @@ def run_sageattn_npu(
             torch.npu.set_device(v.device)
 
     op_fn: Optional[Callable[..., Any]] = None
-    if hasattr(torch.ops, "cann_ops_transformer") and hasattr(torch.ops.cann_ops_transformer, _NPU_SAGEATTN_OP_NAME):
+    if hasattr(torch.ops, "sageattention2") and hasattr(torch.ops.sageattention2, "forward"):
+        op_fn = getattr(torch.ops.sageattention2, "forward")
+    elif hasattr(torch.ops, "cann_ops_transformer") and hasattr(torch.ops.cann_ops_transformer, _NPU_SAGEATTN_OP_NAME):
         op_fn = getattr(torch.ops.cann_ops_transformer, _NPU_SAGEATTN_OP_NAME)
     elif hasattr(torch.ops, "sageattention2") and hasattr(torch.ops.sageattention2, "sageattn_qk_int8_pv_fp8_asc"):
         op_fn = getattr(torch.ops.sageattention2, "sageattn_qk_int8_pv_fp8_asc")

@@ -1,7 +1,7 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This file is a part of the CANN Open Software.
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -16,6 +16,7 @@
  */
 
 #include "quant_host.h"
+#include "quant_common.h"
 
 #include <cstdint>
 #include <cmath>
@@ -23,144 +24,10 @@
 #include <cstring>
 #include <vector>
 
-#ifndef __aicore__
-#if defined(__CCE_KT_TEST__) || defined(__DAV_C220_VEC__) || defined(__DAV_C220_CUBE__)
-#define __aicore__ [[]]
-#else
-#define __aicore__
-#endif
-#endif
-
 namespace sage_attn {
 namespace quant {
 
-/**
- * 浮点格式转换函数 (FP16 / BF16 到 FP32 及逆向转换)
- */
-inline float Fp16ToFp32(uint16_t h) {
-    uint32_t sign = (h >> 15) & 0x1;
-    uint32_t exp = (h >> 10) & 0x1f;
-    uint32_t mant = h & 0x3ff;
-    if (exp == 0) {
-        if (mant == 0) {
-            uint32_t u = sign << 31;
-            float f; std::memcpy(&f, &u, 4); return f;
-        }
-        int32_t e = -14;
-        uint32_t m = mant;
-        while ((m & 0x400) == 0) {
-            m <<= 1;
-            e -= 1;
-        }
-        m &= ~0x400;
-        uint32_t f_exp = static_cast<uint32_t>(e + 127);
-        uint32_t u = (sign << 31) | (f_exp << 23) | (m << 13);
-        float f; std::memcpy(&f, &u, 4); return f;
-    } else if (exp == 31) {
-        uint32_t u = (sign << 31) | 0x7f800000 | (mant << 13);
-        float f; std::memcpy(&f, &u, 4); return f;
-    }
-    uint32_t f_exp = exp - 15 + 127;
-    uint32_t u = (sign << 31) | (f_exp << 23) | (mant << 13);
-    float f; std::memcpy(&f, &u, 4); return f;
-}
-
-inline uint16_t Fp32ToFp16(float f) {
-    uint32_t u;
-    std::memcpy(&u, &f, sizeof(float));
-    uint32_t sign = (u >> 31) & 0x1;
-    uint32_t exp = (u >> 23) & 0xff;
-    uint32_t mant = u & 0x7fffff;
-    if (exp == 0) return static_cast<uint16_t>(sign << 15);
-    int32_t new_exp = static_cast<int32_t>(exp) - 127 + 15;
-    if (new_exp >= 31) return static_cast<uint16_t>((sign << 15) | 0x7c00);
-    if (new_exp <= 0) {
-        if (1 - new_exp > 24) return static_cast<uint16_t>(sign << 15);
-        mant |= 0x800000;
-        uint32_t shift = 1 - new_exp + 13;
-        uint32_t round_bit = 1 << (shift - 1);
-        uint32_t quotient = mant >> shift;
-        uint32_t remainder = mant & ((1 << shift) - 1);
-        if (remainder > round_bit || (remainder == round_bit && (quotient & 1))) quotient++;
-        return static_cast<uint16_t>((sign << 15) | quotient);
-    }
-    uint32_t quotient = mant >> 13;
-    uint32_t remainder = mant & 0x1fff;
-    if (remainder > 0x1000 || (remainder == 0x1000 && (quotient & 1))) {
-        quotient++;
-        if (quotient == 0x400) {
-            quotient = 0;
-            new_exp++;
-            if (new_exp >= 31) return static_cast<uint16_t>((sign << 15) | 0x7c00);
-        }
-    }
-    return static_cast<uint16_t>((sign << 15) | (new_exp << 10) | quotient);
-}
-
-inline float Bf16ToFp32(uint16_t b) {
-    uint32_t u = static_cast<uint32_t>(b) << 16;
-    float f; std::memcpy(&f, &u, 4); return f;
-}
-
-inline uint16_t Fp32ToBf16(float f) {
-    uint32_t u;
-    std::memcpy(&u, &f, sizeof(float));
-    uint32_t lsb = (u >> 16) & 1;
-    uint32_t rounding_bias = 0x7fff + lsb;
-    u += rounding_bias;
-    return static_cast<uint16_t>(u >> 16);
-}
-
-/**
- * 输入数据读取抽象与减法模式对齐
- */
-template <typename T>
-struct ElementReader {
-    static inline float Read(const T* ptr, size_t idx) {
-        return static_cast<float>(ptr[idx]);
-    }
-    static inline float Sub(float a, float b) {
-        return a - b;
-    }
-};
-
-struct HalfReader {
-    static inline float Read(const uint16_t* ptr, size_t idx) {
-        return Fp16ToFp32(ptr[idx]);
-    }
-    static inline float Sub(float a, float b) {
-        return Fp16ToFp32(Fp32ToFp16(a - b));
-    }
-};
-
-struct Bf16Reader {
-    static inline float Read(const uint16_t* ptr, size_t idx) {
-        return Bf16ToFp32(ptr[idx]);
-    }
-    static inline float Sub(float a, float b) {
-        return Bf16ToFp32(Fp32ToBf16(a - b));
-    }
-};
-
-/**
- * 舍入模式辅助内联函数（严格区分 half-away-from-zero 与 RNE）
- * - per_thread 路径: half-away-from-zero (x + 0.5 * sign(x) 后转整，饱和至 [-127, 127])
- * - per_warp 路径: Round-to-Nearest-Even (RNE 舍入，饱和至 [-128, 127])
- */
-inline int8_t RoundHalfAwayFromZero(float val) {
-    float sign = (val >= 0.0f) ? 1.0f : -1.0f;
-    float rounded = std::floor(std::abs(val) + 0.5f) * sign;
-    if (rounded > 127.0f) rounded = 127.0f;
-    if (rounded < -127.0f) rounded = -127.0f;
-    return static_cast<int8_t>(rounded);
-}
-
-inline int8_t RoundNearestEven(float val) {
-    float rounded = std::nearbyint(val);
-    if (rounded > 127.0f) rounded = 127.0f;
-    if (rounded < -128.0f) rounded = -128.0f;
-    return static_cast<int8_t>(rounded);
-}
+// 舍入原语 RoundHalfAwayFromZero / RoundNearestEven 的唯一定义位于 quant_common.h
 
 /**
  * AscendC Vector Core 独立 INT8 量化算子实现类 (V0 核心量化 Prologue)
@@ -191,7 +58,7 @@ public:
 
         for (uint32_t b_idx = 0; b_idx < b; ++b_idx) {
             for (uint32_t h_idx = 0; h_idx < hq; ++h_idx) {
-                float* cur_scale_head = q_scale_out + (b_idx * hq + h_idx) * (num_blkq * (qk_quant_gran == QUANT_GRAN_PER_THREAD ? 32 : 4));
+                float* cur_scale_head = q_scale_out + (static_cast<size_t>(b_idx) * hq + h_idx) * QScaleCount(sq, qk_quant_gran == QUANT_GRAN_PER_THREAD);
 
                 for (uint32_t blk_idx = 0; blk_idx < num_blkq; ++blk_idx) {
                     uint32_t token_blk_start = blk_idx * BLKQ;
@@ -209,8 +76,8 @@ public:
                                     uint32_t t = sub_start + p * 8 + g;
                                     if (t < sq) {
                                         size_t base_offset = (tensor_layout == LAYOUT_HND) ?
-                                            (((size_t)b_idx * hq + h_idx) * sq + t) * d :
-                                            (((size_t)b_idx * sq + t) * hq + h_idx) * d;
+                                            ((static_cast<size_t>(b_idx) * hq + h_idx) * sq + t) * d :
+                                            ((static_cast<size_t>(b_idx) * sq + t) * hq + h_idx) * d;
 
                                         for (uint32_t c = 0; c < d; ++c) {
                                             float abs_v = std::abs(Reader::Read(q_in, base_offset + c));
@@ -220,7 +87,7 @@ public:
                                 }
 
                                 float scale = amax / INT8_QUANT_MAX + SCALE_EPSILON;
-                                uint32_t scale_idx = blk_idx * 32 + sub_idx * 8 + g;
+                                uint32_t scale_idx = QScaleIndex(sub_start + g, true);
                                 cur_scale_head[scale_idx] = scale;
 
                                 // 量化并执行 half-away-from-zero 舍入 (保持除法运算以对齐 GPU ULP 舍入轨迹)
@@ -228,12 +95,12 @@ public:
                                     uint32_t t = sub_start + p * 8 + g;
                                     if (t < sq) {
                                         size_t base_offset = (tensor_layout == LAYOUT_HND) ?
-                                            (((size_t)b_idx * hq + h_idx) * sq + t) * d :
-                                            (((size_t)b_idx * sq + t) * hq + h_idx) * d;
+                                            ((static_cast<size_t>(b_idx) * hq + h_idx) * sq + t) * d :
+                                            ((static_cast<size_t>(b_idx) * sq + t) * hq + h_idx) * d;
 
                                         int8_t* row_out = (tensor_layout == LAYOUT_HND) ?
-                                            (q_out + (((size_t)b_idx * hq + h_idx) * sq + t) * d) :
-                                            (q_out + (((size_t)b_idx * sq + t) * hq + h_idx) * d);
+                                            (q_out + ((static_cast<size_t>(b_idx) * hq + h_idx) * sq + t) * d) :
+                                            (q_out + ((static_cast<size_t>(b_idx) * sq + t) * hq + h_idx) * d);
 
                                         for (uint32_t c = 0; c < d; ++c) {
                                             float scaled_v = Reader::Read(q_in, base_offset + c) / scale;
@@ -253,8 +120,8 @@ public:
                                 uint32_t t = sub_start + i;
                                 if (t < sq) {
                                     size_t base_offset = (tensor_layout == LAYOUT_HND) ?
-                                        (((size_t)b_idx * hq + h_idx) * sq + t) * d :
-                                        (((size_t)b_idx * sq + t) * hq + h_idx) * d;
+                                        ((static_cast<size_t>(b_idx) * hq + h_idx) * sq + t) * d :
+                                        ((static_cast<size_t>(b_idx) * sq + t) * hq + h_idx) * d;
 
                                     for (uint32_t c = 0; c < d; ++c) {
                                         float abs_v = std::abs(Reader::Read(q_in, base_offset + c));
@@ -265,7 +132,7 @@ public:
 
                             if (amax < SCALE_EPSILON) amax = SCALE_EPSILON;
                             float scale = amax / INT8_QUANT_MAX;
-                            uint32_t scale_idx = blk_idx * 4 + sub_idx;
+                            uint32_t scale_idx = QScaleIndex(sub_start, false);
                             cur_scale_head[scale_idx] = scale;
 
                             // 量化并执行 RNE 舍入
@@ -273,12 +140,12 @@ public:
                                 uint32_t t = sub_start + i;
                                 if (t < sq) {
                                     size_t base_offset = (tensor_layout == LAYOUT_HND) ?
-                                        (((size_t)b_idx * hq + h_idx) * sq + t) * d :
-                                        (((size_t)b_idx * sq + t) * hq + h_idx) * d;
+                                        ((static_cast<size_t>(b_idx) * hq + h_idx) * sq + t) * d :
+                                        ((static_cast<size_t>(b_idx) * sq + t) * hq + h_idx) * d;
 
                                     int8_t* row_out = (tensor_layout == LAYOUT_HND) ?
-                                        (q_out + (((size_t)b_idx * hq + h_idx) * sq + t) * d) :
-                                        (q_out + (((size_t)b_idx * sq + t) * hq + h_idx) * d);
+                                        (q_out + ((static_cast<size_t>(b_idx) * hq + h_idx) * sq + t) * d) :
+                                        (q_out + ((static_cast<size_t>(b_idx) * sq + t) * hq + h_idx) * d);
 
                                     for (uint32_t c = 0; c < d; ++c) {
                                         float scaled_v = Reader::Read(q_in, base_offset + c) / scale;
@@ -317,8 +184,8 @@ public:
 
         for (uint32_t b_idx = 0; b_idx < b; ++b_idx) {
             for (uint32_t h_idx = 0; h_idx < hkv; ++h_idx) {
-                const float* km_vec = (smooth_k && km_in != nullptr) ? (km_in + (b_idx * hkv + h_idx) * d) : nullptr;
-                float* cur_scale_head = k_scale_out + (b_idx * hkv + h_idx) * (num_blkk * (qk_quant_gran == QUANT_GRAN_PER_THREAD ? 4 : 1));
+                const float* km_vec = (smooth_k && km_in != nullptr) ? (km_in + (static_cast<size_t>(b_idx) * hkv + h_idx) * d) : nullptr;
+                float* cur_scale_head = k_scale_out + (static_cast<size_t>(b_idx) * hkv + h_idx) * KScaleCount(sk, qk_quant_gran == QUANT_GRAN_PER_THREAD);
 
                 for (uint32_t blk_idx = 0; blk_idx < num_blkk; ++blk_idx) {
                     uint32_t token_blk_start = blk_idx * BLKK;
@@ -334,8 +201,8 @@ public:
                                     uint32_t t = token_blk_start + (p * 8 + 2 * g + pair_elem);
                                     if (t < sk) {
                                         size_t base_offset = (tensor_layout == LAYOUT_HND) ?
-                                            (((size_t)b_idx * hkv + h_idx) * sk + t) * d :
-                                            (((size_t)b_idx * sk + t) * hkv + h_idx) * d;
+                                            ((static_cast<size_t>(b_idx) * hkv + h_idx) * sk + t) * d :
+                                            ((static_cast<size_t>(b_idx) * sk + t) * hkv + h_idx) * d;
 
                                         for (uint32_t c = 0; c < d; ++c) {
                                             float raw_val = Reader::Read(k_in, base_offset + c);
@@ -348,7 +215,7 @@ public:
                             }
 
                             float scale = amax / INT8_QUANT_MAX + SCALE_EPSILON;
-                            uint32_t scale_idx = blk_idx * 4 + g;
+                            uint32_t scale_idx = KScaleIndex(token_blk_start + 2 * g, true);
                             cur_scale_head[scale_idx] = scale;
 
                             // 量化并执行 half-away-from-zero 舍入
@@ -357,12 +224,12 @@ public:
                                     uint32_t t = token_blk_start + (p * 8 + 2 * g + pair_elem);
                                     if (t < sk) {
                                         size_t base_offset = (tensor_layout == LAYOUT_HND) ?
-                                            (((size_t)b_idx * hkv + h_idx) * sk + t) * d :
-                                            (((size_t)b_idx * sk + t) * hkv + h_idx) * d;
+                                            ((static_cast<size_t>(b_idx) * hkv + h_idx) * sk + t) * d :
+                                            ((static_cast<size_t>(b_idx) * sk + t) * hkv + h_idx) * d;
 
                                         int8_t* row_out = (tensor_layout == LAYOUT_HND) ?
-                                            (k_out + (((size_t)b_idx * hkv + h_idx) * sk + t) * d) :
-                                            (k_out + (((size_t)b_idx * sk + t) * hkv + h_idx) * d);
+                                            (k_out + ((static_cast<size_t>(b_idx) * hkv + h_idx) * sk + t) * d) :
+                                            (k_out + ((static_cast<size_t>(b_idx) * sk + t) * hkv + h_idx) * d);
 
                                         for (uint32_t c = 0; c < d; ++c) {
                                             float raw_val = Reader::Read(k_in, base_offset + c);
@@ -381,8 +248,8 @@ public:
                             uint32_t t = token_blk_start + i;
                             if (t < sk) {
                                 size_t base_offset = (tensor_layout == LAYOUT_HND) ?
-                                    (((size_t)b_idx * hkv + h_idx) * sk + t) * d :
-                                    (((size_t)b_idx * sk + t) * hkv + h_idx) * d;
+                                    ((static_cast<size_t>(b_idx) * hkv + h_idx) * sk + t) * d :
+                                    ((static_cast<size_t>(b_idx) * sk + t) * hkv + h_idx) * d;
 
                                 for (uint32_t c = 0; c < d; ++c) {
                                     float raw_val = Reader::Read(k_in, base_offset + c);
@@ -395,7 +262,7 @@ public:
 
                         if (amax < SCALE_EPSILON) amax = SCALE_EPSILON;
                         float scale = amax / INT8_QUANT_MAX;
-                        uint32_t scale_idx = blk_idx;
+                        uint32_t scale_idx = KScaleIndex(token_blk_start, false);
                         cur_scale_head[scale_idx] = scale;
 
                         // 量化并执行 RNE 舍入
@@ -403,12 +270,12 @@ public:
                             uint32_t t = token_blk_start + i;
                             if (t < sk) {
                                 size_t base_offset = (tensor_layout == LAYOUT_HND) ?
-                                    (((size_t)b_idx * hkv + h_idx) * sk + t) * d :
-                                    (((size_t)b_idx * sk + t) * hkv + h_idx) * d;
+                                    ((static_cast<size_t>(b_idx) * hkv + h_idx) * sk + t) * d :
+                                    ((static_cast<size_t>(b_idx) * sk + t) * hkv + h_idx) * d;
 
                                 int8_t* row_out = (tensor_layout == LAYOUT_HND) ?
-                                    (k_out + (((size_t)b_idx * hkv + h_idx) * sk + t) * d) :
-                                    (k_out + (((size_t)b_idx * sk + t) * hkv + h_idx) * d);
+                                    (k_out + ((static_cast<size_t>(b_idx) * hkv + h_idx) * sk + t) * d) :
+                                    (k_out + ((static_cast<size_t>(b_idx) * sk + t) * hkv + h_idx) * d);
 
                                 for (uint32_t c = 0; c < d; ++c) {
                                     float raw_val = Reader::Read(k_in, base_offset + c);
@@ -435,7 +302,7 @@ public:
         uint32_t block_k,
         uint32_t d,
         uint32_t qk_quant_gran
-    ) {
+    ) noexcept {
         uint32_t data_bytes = block_k * d * sizeof(int8_t);
         uint32_t num_scales = (qk_quant_gran == QUANT_GRAN_PER_THREAD) ? 4 : 1;
         uint32_t scale_bytes = num_scales * sizeof(float);
@@ -475,7 +342,7 @@ int QuantizeQInt8Ascend(
     uint32_t qk_quant_gran,
     uint32_t tensor_layout,
     int dtype_mode
-) {
+) noexcept {
     sage_attn::quant::AscendCQuantInt8Kernel kernel;
     if (dtype_mode == 1) {
         kernel.ProcessQ<uint16_t, sage_attn::quant::HalfReader>(
@@ -509,7 +376,7 @@ int QuantizeKInt8Ascend(
     int smooth_k,
     uint32_t tensor_layout,
     int dtype_mode
-) {
+) noexcept {
     sage_attn::quant::AscendCQuantInt8Kernel kernel;
     if (dtype_mode == 1) {
         kernel.ProcessK<uint16_t, sage_attn::quant::HalfReader>(
@@ -540,7 +407,7 @@ int PackKvDataAndScaleAdjacentAscend(
     uint32_t block_k,
     uint32_t d,
     uint32_t qk_quant_gran
-) {
+) noexcept {
     sage_attn::quant::AscendCQuantInt8Kernel kernel;
     kernel.PackKvDataAndScaleAdjacent(k_data_block, k_scale_block, compact_dst, block_k, d, qk_quant_gran);
     return 0;

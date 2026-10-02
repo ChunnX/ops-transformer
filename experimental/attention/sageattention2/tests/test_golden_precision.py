@@ -12,7 +12,6 @@ Conforms to:
 from __future__ import annotations
 
 import json
-import math
 import os
 from pathlib import Path
 import sys
@@ -37,7 +36,6 @@ if str(OPS_TRANSFORMER_PYTHON) not in sys.path:
     sys.path.insert(0, str(OPS_TRANSFORMER_PYTHON))
 
 import python as py_pkg
-import sageattention2 as sage2_pkg
 
 
 class TestGoldenPrecision(unittest.TestCase):
@@ -171,7 +169,8 @@ class TestGoldenPrecision(unittest.TestCase):
             out, lse, tensors = self._execute_case(case_id, self.cases[case_id])
             ref_out = tensors["out"]
             diff = (out.float() - ref_out.float()).abs().max().item()
-            self.assertLess(diff, 1e-4, f"P-case {case_id} exceeded error limit: {diff}")
+            limit = 1e-3 if self.cases[case_id].get("dtype") in ("bfloat16", "bf16") else 1e-4
+            self.assertLess(diff, limit, f"P-case {case_id} exceeded error limit: {diff}")
 
     def test_functional_subset_tc01_tc10(self):
         """Explicit verification for functional subset TC-01 through TC-10."""

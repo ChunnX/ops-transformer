@@ -1,7 +1,7 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This file is a part of the CANN Open Software.
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -22,7 +22,20 @@
 #include <cstddef>
 #include "../ascendc/tiling.h"
 
+#if defined(__CCE_KT_TEST__) || defined(__CCE__) || defined(__DAV_C220_VEC__) || defined(__DAV_C220_CUBE__) || defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__)
+#include "kernel_operator.h"
+#endif
+
 namespace Catlass::SageAttn {
+
+// 清理记录：临时包装 MakeBuffAddr 已删除——其未设置 logicPos（默认 0 = TPosition::GM，
+// LoadData/Mmad 按该字段分派硬件单元），且单一定义纪律要求在调用点直接写 TBuffAddr
+// 完整构造（TPipe::GetAbsAddr 范式，见 sage_qk_mmad.hpp / sage_pv_mmad.hpp）。
+
+/**
+ * LoadData 2D 单 repeat 搬运字节数（512B，CANN LoadData2DParams.repeatTimes 的计量单位）
+ */
+constexpr uint32_t LOADDATA2D_REPEAT_BYTES = 512;
 
 /**
  * 昇腾 950 DaVinci 硬件分形基本粒度常量
@@ -63,7 +76,7 @@ template <typename DataType, uint32_t BlockN, uint32_t HeadDim>
 struct KvSlotLayoutContract {
     static constexpr uint32_t DATA_ELEMENTS = BlockN * HeadDim;
     static constexpr uint32_t DATA_BYTES = DATA_ELEMENTS * sizeof(DataType);
-    
+
     // 32 字节对齐
     static constexpr uint32_t DATA_BYTES_ALIGNED = ((DATA_BYTES + 31U) / 32U) * 32U;
 
@@ -75,7 +88,7 @@ struct KvSlotLayoutContract {
     static constexpr uint32_t PER_THREAD_SCALE_BYTES_ALIGNED = ((PER_THREAD_SCALE_BYTES + 31U) / 32U) * 32U;
 
     static constexpr uint32_t TOTAL_SLOT_BYTES_PER_THREAD = DATA_BYTES_ALIGNED + PER_THREAD_SCALE_BYTES_ALIGNED;
-    
+
     // Scale 在 Slot 内的相对偏移即为 Data 对齐后的大小
     static constexpr uint32_t SCALE_OFFSET = DATA_BYTES_ALIGNED;
 };
@@ -97,9 +110,11 @@ struct L1DoubleBankContract {
     static constexpr uint32_t Q_MAX_BYTES   = 128 * 128 * sizeof(int8_t); // 16 KB
     static constexpr uint32_t Q_SCALE_OFFSET = BANK0_START + 16 * 1024;
 
-    // Bank 1 分配 (Ping-Pong 双缓冲)
-    static constexpr uint32_t KV_PING_OFFSET = BANK1_START;
-    static constexpr uint32_t KV_PONG_OFFSET = BANK1_START + 128 * 1024; // 128 KB 间隔
+    // Bank 1 分配 (Ping-Pong 双缓冲)：单槽 128KB = K 子区 64KB (INT8) + V 子区 64KB (FP8)
+    static constexpr uint32_t KV_SLOT_BYTES   = 128 * 1024;
+    static constexpr uint32_t KV_V_SUB_OFFSET = KV_SLOT_BYTES / 2;          // 槽内 V 子区偏移 (K 居槽首)
+    static constexpr uint32_t KV_PING_OFFSET  = BANK1_START;
+    static constexpr uint32_t KV_PONG_OFFSET  = BANK1_START + KV_SLOT_BYTES;
 };
 
 } // namespace Catlass::SageAttn

@@ -17,7 +17,6 @@ Covers acceptance test cases TC-01 through TC-10 per task/04_local_test.md, task
 from __future__ import annotations
 
 import json
-import math
 import os
 from pathlib import Path
 import sys

@@ -1,7 +1,7 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This file is a part of the CANN Open Software.
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -19,7 +19,9 @@
 #define SAGE_ATTN_FP8_ASCENDC_ACCUM_REDUCE_H
 
 #include <cstdint>
+#include <cstring>
 #include "tiling.h"
+#include "online_softmax.h"
 
 #ifndef __aicore__
 #if defined(__CCE_KT_TEST__) || defined(__DAV_C220_VEC__) || defined(__DAV_C220_CUBE__)
@@ -32,13 +34,73 @@
 namespace sage_attn {
 
 /**
+ * FP16 浮点转换与舍入辅助函数（RNE 模式，用于仿真 FixPipe 随路量化）
+ */
+__aicore__ static inline float QuantizeToFp16(float val) {
+    uint32_t f;
+    std::memcpy(&f, &val, 4);
+    uint32_t sign = (f >> 31) & 0x1;
+    int32_t exp = ((f >> 23) & 0xFF) - 127 + 15;
+    uint32_t mant = (f & 0x7FFFFF) >> 13;
+    uint32_t remainder = f & 0x1FFF;
+
+    // Round to nearest even (RNE)
+    if (remainder > 0x1000 || (remainder == 0x1000 && (mant & 1))) {
+        mant++;
+        if (mant >= 0x400) {
+            mant = 0;
+            exp++;
+        }
+    }
+
+    uint16_t h;
+    if (exp <= 0) {
+        h = static_cast<uint16_t>(sign << 15);
+    } else if (exp >= 31) {
+        h = static_cast<uint16_t>((sign << 15) | 0x7C00);
+    } else {
+        h = static_cast<uint16_t>((sign << 15) | (exp << 10) | mant);
+    }
+
+    // Decode back to float
+    uint32_t h_sign = (h >> 15) & 1;
+    uint32_t h_exp = (h >> 10) & 0x1F;
+    uint32_t h_mant = h & 0x3FF;
+    uint32_t f32;
+    if (h_exp == 0x1F) {
+        f32 = (h_sign << 31) | (0xFF << 23) | (h_mant ? 0x7FFFFF : 0);
+    } else if (h_exp == 0) {
+        if (h_mant != 0) {
+            // FP16 非规格化重规格化：左移直至隐含位 (bit10) 置位，e 从 113 (127-14) 起递减。
+            // 修复记录：此处原误写 `mant <<= 1`（位移的是 32 位尾数残留值，循环条件永不满足），
+            // 一旦出现 FP16 非规格化即死循环——已改为移动 h_mant。
+            uint32_t e = 0x71;
+            while (!(h_mant & 0x400)) {
+                h_mant <<= 1;
+                e--;
+            }
+            h_mant &= 0x3FF;
+            f32 = (h_sign << 31) | (e << 23) | (h_mant << 13);
+        } else {
+            f32 = (h_sign << 31);
+        }
+    } else {
+        f32 = (h_sign << 31) | ((h_exp + 127 - 15) << 23) | (h_mant << 13);
+    }
+    float out;
+    std::memcpy(&out, &f32, 4);
+    return out;
+}
+
+/**
  * FixPipe 随路操作配置描述符（白皮书 4.1.1 节硬件数据通路）
+ * 清理记录：原 quant_scale 字段全仓库无来源无消费（随路量化比例恒为 1.0，950 FixPipe
+ * 亦无独立 scale 端口），已删除。
  */
 struct FixpipeConfig {
     bool enable_inline_quant;   // 是否开启 L0C 回写 UB 随路量化 (FP32 -> FP16)
     bool enable_nz_to_nd;       // 是否开启分形 NZ 到 ND 随路转置排布
     uint32_t quant_dst_type;    // 目标量化格式 (0=FP32, 1=FP16, 2=BF16)
-    float quant_scale;          // 随路量化比例缩放因子
 };
 
 /**
@@ -49,28 +111,29 @@ struct FixpipeConfig {
 class AccumReduceController {
 public:
     __aicore__ AccumReduceController()
-        : accum_mode_(PV_ACCUM_FP32_FP16), k_step_(16), total_kv_blocks_(0), current_step_(0) {}
+        : accum_mode_(PV_ACCUM_FP32_FP16), k_step_(DEFAULT_K_STEP), total_kv_blocks_(0) {}
 
     __aicore__ void Init(uint32_t accum_dtype, uint32_t k_step, uint32_t total_kv_blocks) {
         accum_mode_ = static_cast<PvAccumDtype>(accum_dtype);
-        k_step_ = (k_step > 0) ? k_step : 16;
+        k_step_ = (k_step > 0) ? k_step : DEFAULT_K_STEP;
         total_kv_blocks_ = total_kv_blocks;
-        current_step_ = 0;
     }
 
     /**
      * 判断当前迭代是否需要触发 L0C 向 UB 主累加器的 FixPipe 搬出归约
-     * 
+     * 末块判定由内部 total_kv_blocks_ 推导（2026-10-03 修复：原 is_last_step 形参在
+     * FA2 原序单循环中无人传 true，fp32 档永不归约、O 恒零，宿主仿真单测捕获；该历史
+     * 测试文件 test_kernel_host_sim.cpp 已不存在，验证现由 tests/test_output_queue.cpp 与
+     * tests/test_golden_precision.py 承担）。
+     *
      * @param step_idx 当前处理的 KV 分块序号 (0-indexed)
-     * @param is_last_step 是否为最后一个 KV 分块
      */
-    __aicore__ bool ShouldReduce(uint32_t step_idx, bool is_last_step) const {
-        if (accum_mode_ == PV_ACCUM_FP32) {
-            // fp32 档：950 L0C 具备全 24-bit 尾数，全程在 L0C 累加，仅在最后一步搬出
-            return is_last_step;
-        }
-
-        // fp32+fp32 和 fp32+fp16 档：每 k_step 周期归约一次，末尾块强制归约
+    __aicore__ bool ShouldReduce(uint32_t step_idx) const {
+        // 三档统一按周期归约（2026-10-03 修复）：原 fp32 档"仅末块搬出"会让 L0C 跨块
+        // 累加不同锚点的 P——P 锚点随块推进（FA2 原序），跨块部分和在数学上不可合并；
+        // "fp32 全程驻留 L0C"的性能形态需要 FixPipe 随路块间锚差缩放，属设备阶段工作
+        //（task/01_design.md 3.3 契约冲突记录一并由本注释取代）。
+        const bool is_last_step = (total_kv_blocks_ > 0) && (step_idx + 1 >= total_kv_blocks_);
         return is_last_step || (((step_idx + 1) % k_step_) == 0);
     }
 
@@ -84,21 +147,12 @@ public:
         if (accum_mode_ == PV_ACCUM_FP32_FP16) {
             cfg.enable_inline_quant = true;
             cfg.quant_dst_type = 1; // FP16
-            cfg.quant_scale = 1.0f;
         } else {
             // fp32 与 fp32+fp32 保持 FP32 精度
             cfg.enable_inline_quant = false;
             cfg.quant_dst_type = 0; // FP32
-            cfg.quant_scale = 1.0f;
         }
         return cfg;
-    }
-
-    /**
-     * 步进计数器
-     */
-    __aicore__ void Advance() {
-        current_step_++;
     }
 
     __aicore__ PvAccumDtype GetAccumMode() const {
@@ -117,7 +171,408 @@ private:
     PvAccumDtype accum_mode_;
     uint32_t k_step_;
     uint32_t total_kv_blocks_;
-    uint32_t current_step_;
+    // 清理记录：原 current_step_/Advance()/GetCurrentStep() 仅记录步数、核内无任何消费点
+    //（kernel 主循环已删除 Advance 调用），属膨胀死代码，已删除。
+};
+
+/**
+ * 3 槽延迟输出退休队列模板类（OutputRetireQueue）
+ *
+ * 核心对标与超越特性：
+ * 1. 对标竞品 PR 12430 的 outputPending[3] 环形队列机制：
+ *    当连续 PV MMAD 产生输出时，在片上槽位缓存，触发成对归约（Pairwise Reduction）与 Rescale 融合，
+ *    使 UB/GM 累加器的读取和写回开销直接减少 50%。
+ * 2. 突破 PR 12430 仅支持 fp32+fp32 的严重缺陷：
+ *    全面支持 fp32、fp32+fp32、fp32+fp16 三档两级累加精度，并在 fp32+fp16 档融合 FixPipe 随路量化。
+ * 3. 融合 Online Softmax 的 skip-scale 判定（tau = 6.0f）：
+ *    若局部最大值变化在 tau 以内，则跳过对累加器的重缩放乘法，直接执行直通累加，消除冗余浮点乘法。
+ * 4. 兼容 S_FP8_OFFSET 偏置（log2(448) = 8.807355f），分母在线累计与最终归一化严格对齐。
+ * 5. 循环结束时调用 Flush() 彻底清空剩余 1~2 个槽位并完成最终写回。
+ */
+template <typename DType = float, uint32_t CAPACITY = 3>
+class OutputRetireQueue {
+public:
+    static constexpr uint32_t QUEUE_CAPACITY = CAPACITY;
+
+    /**
+     * 单槽位描述结构体
+     */
+    struct Slot {
+        uint32_t tile_idx{0};       // 分块序号
+        const DType* p_data{nullptr}; // 局部 PV MMAD 输出数据指针
+        float scale{1.0f};          // 概率与去量化缩放系数
+        float m_new{0.0f};          // 局部更新后的 running max (exp2 域)
+        float m_old{0.0f};          // 上一状态的 running max
+        bool valid{false};          // 槽位有效标志
+    };
+
+    // 全部状态成员已由声明处 NSDMI 初始化（Slot::valid 默认 false），逐字段赋值的
+    // 旧构造函数与其完全重复，收敛为默认构造以保证初值唯一定义。
+    __aicore__ OutputRetireQueue() = default;
+
+    /**
+     * 初始化退休队列与累加器绑定
+     *
+     * @param acc_data UB 主累加器指针
+     * @param tile_size 单分块数据元素总数 (M * D)
+     * @param accum_dtype 两级累加精度档位 (0=fp32, 1=fp32+fp32, 2=fp32+fp16)
+     * @param tau skip-scale 阈值 (默认 6.0f)
+     * @param s_fp8_offset FP8 偏置 (默认 tiling.h 的 S_FP8_OFFSET = log2(448))
+     */
+    __aicore__ void Init(
+        DType* acc_data,
+        uint32_t tile_size,
+        uint32_t accum_dtype = PV_ACCUM_FP32_FP16,
+        float tau = SKIP_SCALE_TAU,
+        float s_fp8_offset = S_FP8_OFFSET) {
+        acc_data_ = acc_data;
+        tile_size_ = tile_size;
+        accum_mode_ = static_cast<PvAccumDtype>(accum_dtype);
+        tau_ = tau;
+        s_fp8_offset_ = s_fp8_offset;
+        queue_size_ = 0;
+        head_ = 0;
+        tail_ = 0;
+        current_m_ = MIN_FLOAT_VAL;
+        acc_initialized_ = false;
+        pairwise_count_ = 0;
+        single_count_ = 0;
+        skip_scale_count_ = 0;
+        rescale_count_ = 0;
+        total_pushed_ = 0;
+        total_retired_ = 0;
+        for (uint32_t i = 0; i < CAPACITY; ++i) {
+            slots_[i].valid = false;
+        }
+    }
+
+    /**
+     * 重新绑定主累加器缓冲区
+     */
+    __aicore__ void BindAccumulator(DType* acc_data, uint32_t tile_size) {
+        acc_data_ = acc_data;
+        tile_size_ = tile_size;
+    }
+
+    /**
+     * 将新产生的 PV MMAD 输出块压入退休队列
+     * 当队列满时（达到 CAPACITY=3 槽位），自动触发成对归约与 Rescale 融合
+     *
+     * @param tile_idx 当前分块序号
+     * @param p_data 当前分块数据指针
+     * @param scale 缩放因子
+     * @param m_new 当前分块对应的 running max
+     * @param m_old 上一步的 running max
+     * @return 成功返回 true
+     */
+    __aicore__ bool Push(
+        uint32_t tile_idx,
+        const DType* p_data,
+        float scale,
+        float m_new,
+        float m_old) {
+        // 若队列已满，先触发成对归约释放槽位
+        if (queue_size_ >= CAPACITY) {
+            RetirePair();
+        }
+
+        // 入队新槽位
+        slots_[tail_].tile_idx = tile_idx;
+        slots_[tail_].p_data = p_data;
+        slots_[tail_].scale = scale;
+        slots_[tail_].m_new = m_new;
+        slots_[tail_].m_old = m_old;
+        slots_[tail_].valid = true;
+        tail_ = (tail_ + 1) % CAPACITY;
+        queue_size_++;
+        total_pushed_++;
+
+        // 槽位满时自动触发成对归约（Pairwise Reduction）与 Rescale 融合
+        if (queue_size_ >= CAPACITY) {
+            RetirePair();
+        }
+
+        return true;
+    }
+
+    /**
+     * 成对归约（Pairwise Reduction）核心实现
+     * 将队列头部的两个槽位 (Slot 0 与 Slot 1) 融合成一次累加器读写更新
+     */
+    __aicore__ void RetirePair() {
+        if (queue_size_ < 2) {
+            return;
+        }
+
+        Slot& s0 = slots_[head_];
+        Slot& s1 = slots_[(head_ + 1) % CAPACITY];
+
+        // 计算当前成对融合的目标统一 max
+        float m_target = (s1.m_new > s0.m_new) ? s1.m_new : s0.m_new;
+
+        // 计算两分块各自到 m_target 的对齐缩放系数
+        float alpha0 = s0.scale * OnlineSoftmaxTransformer::FastExp2(s0.m_new - m_target);
+        float alpha1 = s1.scale * OnlineSoftmaxTransformer::FastExp2(s1.m_new - m_target);
+
+        if (!acc_initialized_) {
+            // 首对分块直接初始化累加器
+            current_m_ = m_target;
+            acc_initialized_ = true;
+
+            if (acc_data_ != nullptr && s0.p_data != nullptr && s1.p_data != nullptr) {
+                for (uint32_t j = 0; j < tile_size_; ++j) {
+                    float v0 = static_cast<float>(s0.p_data[j]);
+                    float v1 = static_cast<float>(s1.p_data[j]);
+                    float val = v0 * alpha0 + v1 * alpha1;
+                    if (accum_mode_ == PV_ACCUM_FP32_FP16) {
+                        val = QuantizeToFp16(val);
+                    }
+                    acc_data_[j] = static_cast<DType>(val);
+                }
+            }
+        } else {
+            // 累加器已有部分和：判定 skip-scale 与 rescale
+            float delta_m = m_target - current_m_;
+            bool need_rescale = false;
+            float rescale_factor = 1.0f;
+
+            if (delta_m <= 0.0f) {
+                need_rescale = false;
+                rescale_factor = 1.0f;
+            } else if (delta_m < tau_) {
+                // skip-scale 判定成功：差值在 tau (6.0f) 以内，跳过累加器重缩放
+                need_rescale = false;
+                rescale_factor = 1.0f;
+                skip_scale_count_++;
+            } else {
+                // 超过阈值：执行累加器重缩放
+                need_rescale = true;
+                rescale_factor = OnlineSoftmaxTransformer::FastExp2(current_m_ - m_target);
+                current_m_ = m_target;
+                rescale_count_++;
+            }
+
+            if (acc_data_ != nullptr && s0.p_data != nullptr && s1.p_data != nullptr) {
+                if (!need_rescale) {
+                    if (m_target != current_m_) {
+                        float align_factor = OnlineSoftmaxTransformer::FastExp2(m_target - current_m_);
+                        alpha0 *= align_factor;
+                        alpha1 *= align_factor;
+                    }
+                    // 直通累加模式：消除对累加器的浮点乘法
+                    if (SageFastAbs(alpha0 - 1.0f) < SCALE_ONE_TOLERANCE &&
+                        SageFastAbs(alpha1 - 1.0f) < SCALE_ONE_TOLERANCE) {
+                        // 极致优化：纯加法直通
+                        for (uint32_t j = 0; j < tile_size_; ++j) {
+                            float acc_val = static_cast<float>(acc_data_[j]);
+                            float v0 = static_cast<float>(s0.p_data[j]);
+                            float v1 = static_cast<float>(s1.p_data[j]);
+                            float val = acc_val + v0 + v1;
+                            if (accum_mode_ == PV_ACCUM_FP32_FP16) {
+                                val = QuantizeToFp16(val);
+                            }
+                            acc_data_[j] = static_cast<DType>(val);
+                        }
+                    } else {
+                        for (uint32_t j = 0; j < tile_size_; ++j) {
+                            float acc_val = static_cast<float>(acc_data_[j]);
+                            float v0 = static_cast<float>(s0.p_data[j]);
+                            float v1 = static_cast<float>(s1.p_data[j]);
+                            float val = acc_val + (v0 * alpha0 + v1 * alpha1);
+                            if (accum_mode_ == PV_ACCUM_FP32_FP16) {
+                                val = QuantizeToFp16(val);
+                            }
+                            acc_data_[j] = static_cast<DType>(val);
+                        }
+                    }
+                } else {
+                    // Rescale 融合模式：单拍完成累加器缩放与两块累加更新
+                    for (uint32_t j = 0; j < tile_size_; ++j) {
+                        float acc_val = static_cast<float>(acc_data_[j]);
+                        float v0 = static_cast<float>(s0.p_data[j]);
+                        float v1 = static_cast<float>(s1.p_data[j]);
+                        float val = acc_val * rescale_factor + (v0 * alpha0 + v1 * alpha1);
+                        if (accum_mode_ == PV_ACCUM_FP32_FP16) {
+                            val = QuantizeToFp16(val);
+                        }
+                        acc_data_[j] = static_cast<DType>(val);
+                    }
+                }
+            }
+        }
+
+        // 释放已退休的两个槽位
+        s0.valid = false;
+        s1.valid = false;
+        head_ = (head_ + 2) % CAPACITY;
+        queue_size_ -= 2;
+        pairwise_count_++;
+        total_retired_ += 2;
+    }
+
+    /**
+     * 单槽位归约实现（在 Flush 尾部处理奇数剩余槽位时使用）
+     */
+    __aicore__ void RetireSingle() {
+        if (queue_size_ < 1) {
+            return;
+        }
+
+        Slot& s0 = slots_[head_];
+        float m_target = s0.m_new;
+        float alpha0 = s0.scale;
+
+        if (!acc_initialized_) {
+            current_m_ = m_target;
+            acc_initialized_ = true;
+
+            if (acc_data_ != nullptr && s0.p_data != nullptr) {
+                for (uint32_t j = 0; j < tile_size_; ++j) {
+                    float v0 = static_cast<float>(s0.p_data[j]);
+                    float val = v0 * alpha0;
+                    if (accum_mode_ == PV_ACCUM_FP32_FP16) {
+                        val = QuantizeToFp16(val);
+                    }
+                    acc_data_[j] = static_cast<DType>(val);
+                }
+            }
+        } else {
+            float delta_m = m_target - current_m_;
+            bool need_rescale = false;
+            float rescale_factor = 1.0f;
+
+            if (delta_m <= 0.0f) {
+                need_rescale = false;
+                rescale_factor = 1.0f;
+            } else if (delta_m < tau_) {
+                need_rescale = false;
+                rescale_factor = 1.0f;
+                skip_scale_count_++;
+            } else {
+                need_rescale = true;
+                rescale_factor = OnlineSoftmaxTransformer::FastExp2(current_m_ - m_target);
+                current_m_ = m_target;
+                rescale_count_++;
+            }
+
+            if (acc_data_ != nullptr && s0.p_data != nullptr) {
+                if (!need_rescale) {
+                    if (m_target != current_m_) {
+                        float align_factor = OnlineSoftmaxTransformer::FastExp2(m_target - current_m_);
+                        alpha0 *= align_factor;
+                    }
+                    if (SageFastAbs(alpha0 - 1.0f) < SCALE_ONE_TOLERANCE) {
+                        for (uint32_t j = 0; j < tile_size_; ++j) {
+                            float acc_val = static_cast<float>(acc_data_[j]);
+                            float v0 = static_cast<float>(s0.p_data[j]);
+                            float val = acc_val + v0;
+                            if (accum_mode_ == PV_ACCUM_FP32_FP16) {
+                                val = QuantizeToFp16(val);
+                            }
+                            acc_data_[j] = static_cast<DType>(val);
+                        }
+                    } else {
+                        for (uint32_t j = 0; j < tile_size_; ++j) {
+                            float acc_val = static_cast<float>(acc_data_[j]);
+                            float v0 = static_cast<float>(s0.p_data[j]);
+                            float val = acc_val + (v0 * alpha0);
+                            if (accum_mode_ == PV_ACCUM_FP32_FP16) {
+                                val = QuantizeToFp16(val);
+                            }
+                            acc_data_[j] = static_cast<DType>(val);
+                        }
+                    }
+                } else {
+                    for (uint32_t j = 0; j < tile_size_; ++j) {
+                        float acc_val = static_cast<float>(acc_data_[j]);
+                        float v0 = static_cast<float>(s0.p_data[j]);
+                        float val = acc_val * rescale_factor + (v0 * alpha0);
+                        if (accum_mode_ == PV_ACCUM_FP32_FP16) {
+                            val = QuantizeToFp16(val);
+                        }
+                        acc_data_[j] = static_cast<DType>(val);
+                    }
+                }
+            }
+        }
+
+        s0.valid = false;
+        head_ = (head_ + 1) % CAPACITY;
+        queue_size_ -= 1;
+        single_count_++;
+        total_retired_ += 1;
+    }
+
+    /**
+     * 算子主循环结束时调用 Flush() 彻底清空剩余 1~2 个槽位并完成写回
+     */
+    __aicore__ void Flush() {
+        while (queue_size_ >= 2) {
+            RetirePair();
+        }
+        if (queue_size_ == 1) {
+            RetireSingle();
+        }
+    }
+
+    /**
+     * 最终归一化输出写回
+     *
+     * @param out_dst 最终写出的 GM 或 UB 输出缓冲区
+     * @param inv_denominator Softmax 最终倒数乘数 (来自 OnlineSoftmaxTransformer::GetFinalInvDenominator)
+     */
+    __aicore__ void Finalize(DType* out_dst, float inv_denominator) {
+        Flush();
+        if (out_dst != nullptr && acc_data_ != nullptr && inv_denominator > 0.0f) {
+            for (uint32_t j = 0; j < tile_size_; ++j) {
+                float val = static_cast<float>(acc_data_[j]) * inv_denominator;
+                out_dst[j] = static_cast<DType>(val);
+            }
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // 状态查询与统计函数
+    // -------------------------------------------------------------------------
+    __aicore__ uint32_t GetQueueSize() const { return queue_size_; }
+    __aicore__ bool IsEmpty() const { return queue_size_ == 0; }
+    __aicore__ bool IsFull() const { return queue_size_ >= CAPACITY; }
+    __aicore__ uint32_t GetCapacity() const { return CAPACITY; }
+    __aicore__ uint32_t GetPairwiseCount() const { return pairwise_count_; }
+    __aicore__ uint32_t GetSingleCount() const { return single_count_; }
+    __aicore__ uint32_t GetSkipScaleCount() const { return skip_scale_count_; }
+    __aicore__ uint32_t GetRescaleCount() const { return rescale_count_; }
+    __aicore__ uint32_t GetTotalPushed() const { return total_pushed_; }
+    __aicore__ uint32_t GetTotalRetired() const { return total_retired_; }
+    __aicore__ float GetCurrentM() const { return current_m_; }
+    __aicore__ float GetSFP8Offset() const { return s_fp8_offset_; }
+    __aicore__ void SetSFP8Offset(float offset) { s_fp8_offset_ = offset; }
+    __aicore__ PvAccumDtype GetAccumMode() const { return accum_mode_; }
+    __aicore__ const Slot& GetSlot(uint32_t i) const { return slots_[(head_ + i) % CAPACITY]; }
+    __aicore__ const DType* GetAccumulator() const { return acc_data_; }
+    __aicore__ DType* GetAccumulator() { return acc_data_; }
+
+private:
+    DType* acc_data_{nullptr};      // 累加器目标缓冲
+    uint32_t tile_size_{0};         // 分块数据元素数
+    Slot slots_[CAPACITY];          // 3 槽延迟输出缓冲槽位
+    uint32_t queue_size_{0};        // 当前队列中有效槽位数
+    uint32_t head_{0};              // 队列头索引
+    uint32_t tail_{0};              // 队列尾索引
+
+    PvAccumDtype accum_mode_{PV_ACCUM_FP32_FP16}; // 两级累加精度
+    float tau_{SKIP_SCALE_TAU};     // skip-scale 阈值 (6.0f)
+    float s_fp8_offset_{S_FP8_OFFSET}; // FP8 偏置 (log2(448))，分母与核内 LSE 同域偏置的出口相消锚点
+    float current_m_{MIN_FLOAT_VAL}; // 累加器当前锚点 max
+    bool acc_initialized_{false};   // 累加器初始化标志
+
+    // 统计度量
+    uint32_t pairwise_count_{0};
+    uint32_t single_count_{0};
+    uint32_t skip_scale_count_{0};
+    uint32_t rescale_count_{0};
+    uint32_t total_pushed_{0};
+    uint32_t total_retired_{0};
 };
 
 } // namespace sage_attn

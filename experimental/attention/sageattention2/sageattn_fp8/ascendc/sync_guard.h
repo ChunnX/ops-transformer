@@ -1,7 +1,6 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -19,7 +18,17 @@
 #define SAGE_ATTN_FP8_ASCENDC_SYNC_GUARD_H
 
 #include <cstdint>
-#include <utility>
+
+/**
+ * bisheng -xasc 设备编译标记（与 online_softmax.h 同一约定，此处独立成守卫以保持头文件自洽）。
+ */
+#ifndef SAGE_ATTN_DEVICE_COMPILE
+#if defined(__CCE__) && !defined(__CCE_KT_TEST__)
+#define SAGE_ATTN_DEVICE_COMPILE 1
+#else
+#define SAGE_ATTN_DEVICE_COMPILE 0
+#endif
+#endif
 
 #ifndef __aicore__
 #if defined(__CCE_KT_TEST__) || defined(__DAV_C220_VEC__) || defined(__DAV_C220_CUBE__)
@@ -29,41 +38,15 @@
 #endif
 #endif
 
+#if SAGE_ATTN_DEVICE_COMPILE || defined(__CCE_KT_TEST__) || defined(__DAV_C220_VEC__) || defined(__DAV_C220_CUBE__)
+#include "kernel_operator.h"
+#endif
+
 namespace sage_attn {
 
-/**
- * 硬件管线标识（对应 DaVinci 硬件微架构）
- */
-enum class PipeId : uint32_t {
-    PIPE_MTE1 = 0,  // L1 到 L0 搬运管线 (Cube 侧数据加载)
-    PIPE_MTE2 = 1,  // GM 到片上 (L1/UB) 搬入管线
-    PIPE_MTE3 = 2,  // 片上到 GM 搬出管线
-    PIPE_M    = 3,  // MMAD 矩阵乘计算管线 (Cube)
-    PIPE_V    = 4,  // 向量计算管线 (Vector SIMD/SIMT)
-    PIPE_FIX  = 5,  // FixPipe 搬运与随路量化/排布管线
-    PIPE_S    = 6,  // 标量计算管线
-    PIPE_ALL  = 7   // 全流水线屏障
-};
-
-/**
- * 片上流水 BufferID 映射（白皮书 4.1.6 节互斥锁语义缓冲标识）
- */
-namespace BufferIds {
-    // Vector 核心 UB 缓冲 ID
-    constexpr uint32_t VEC_RAW_KV_PING          = 0;
-    constexpr uint32_t VEC_RAW_KV_PONG          = 1;
-    constexpr uint32_t VEC_QUANT_WORKSPACE      = 2;
-    constexpr uint32_t VEC_NZ_KV_PING           = 3;
-    constexpr uint32_t VEC_NZ_KV_PONG           = 4;
-    constexpr uint32_t VEC_SOFTMAX_INTERMEDIATE = 5;
-    constexpr uint32_t VEC_O_ACCUM              = 6;
-
-    // Cube 核心 L0 缓冲 ID
-    constexpr uint32_t CUBE_L0A_Q               = 0;
-    constexpr uint32_t CUBE_L0B_KV_PING         = 1;
-    constexpr uint32_t CUBE_L0B_KV_PONG         = 2;
-    constexpr uint32_t CUBE_L0C_ACC             = 3;
-}
+// 清理记录（2026-10-03 R5 收敛清扫）：原 PipeId 管线枚举、BufferIds 缓冲 ID 映射与
+// GetBuffer/RelBuffer 空操作桩（::get_buf/::rls_buf 为臆测签名，CANN 头无此接口）
+// 全仓库零调用，一并删除；BufferID (get_buf/rel_buf) 语义待 950 头文件提供实证签名后重入。
 
 /**
  * 跨核同步方向与信号量定义 (1C2V 架构)
@@ -77,89 +60,46 @@ enum class CrossCoreDirection : uint32_t {
     VEC1_TO_VEC0 = 5   // Vector 1 -> Vector 0
 };
 
+/**
+ * 跨核 flag 语义表（每个 flag 的 set/wait 均须 1:1 配对，task/02_code.md 同步条款）
+ * 生命周期 = 单个任务（DecodeTask 一次解码到 Finalize 输出），跨任务波次的
+ * 进域预置 / 退域回收纪律见 op_kernel/sageattention2.cpp 各 Process 入口与出口。
+ */
 namespace CrossCoreFlags {
-    constexpr uint32_t FLAG_Q_READY         = 0;  // Q 量化常驻已就位
-    constexpr uint32_t FLAG_KV_PING_READY   = 1;  // Ping 块 KV 量化就位
-    constexpr uint32_t FLAG_KV_PONG_READY   = 2;  // Pong 块 KV 量化就位
-    constexpr uint32_t FLAG_QK_P_READY      = 3;  // QK 矩阵乘完成，P 块就绪
-    constexpr uint32_t FLAG_SOFTMAX_S_READY = 4;  // Softmax 完成，S 块就绪
-    constexpr uint32_t FLAG_SKIP_SCALE_SIG  = 5;  // Skip-scale 跳步缩放信号
-    constexpr uint32_t FLAG_PV_O_DONE       = 6;  // PV 累加完成
+    constexpr uint32_t FLAG_Q_READY              = 0;  // Q 量化常驻已就位 (V0 set → Cube wait)
+    constexpr uint32_t FLAG_KV_PING_READY        = 1;  // Ping 块 KV 量化就位 (V0 set → Cube wait)
+    constexpr uint32_t FLAG_KV_PONG_READY        = 2;  // Pong 块 KV 量化就位 (V0 set → Cube wait)
+    constexpr uint32_t FLAG_QK_P_READY           = 3;  // QK 矩阵乘完成，P 块就绪 (Cube set → V1 wait)
+    constexpr uint32_t FLAG_SOFTMAX_S_PING_READY = 4;  // Ping 槽 S 就绪 (V1 set → Cube wait)
+    constexpr uint32_t FLAG_SOFTMAX_S_PONG_READY = 5;  // Pong 槽 S 就绪 (V1 set → Cube wait)
+    constexpr uint32_t FLAG_PV_O_DONE            = 6;  // PV 累加与退休队列清空完成 (Cube set → V1 wait)
+    // 缓冲回收握手：消费者消费完成后向生产者归还缓冲许可，杜绝深流水下未消费块被覆写
+    constexpr uint32_t FLAG_KV_PING_FREE         = 7;  // Ping 槽 KV 已消费，V0 可覆写 (Cube set → V0 wait)
+    constexpr uint32_t FLAG_KV_PONG_FREE         = 8;  // Pong 槽 KV 已消费，V0 可覆写 (Cube set → V0 wait)
+    constexpr uint32_t FLAG_SOFTMAX_S_PING_FREE  = 9;  // Ping 槽 S 已消费，V1 可覆写 (Cube set → V1 wait)
+    constexpr uint32_t FLAG_SOFTMAX_S_PONG_FREE  = 10; // Pong 槽 S 已消费，V1 可覆写 (Cube set → V1 wait)
+    // 清理记录：原 FLAG_SOFTMAX_S_READY 单槽标志已被 S_PING/S_PONG 双缓冲对取代；
+    // 原 FLAG_SKIP_SCALE_SIG 全仓库零调用，一并删除。
 }
-
-/**
- * 硬件级 BufferID 同步封装 (get_buf / rel_buf)
- * 白皮书 4.1.6 节：互斥锁语义，内聚性优于 set_flag/wait_flag，避免管线饥饿
- */
-__aicore__ inline void GetBuffer(PipeId pipe, uint32_t buf_id, bool is_wait = false) {
-#if defined(__CCE_KT_TEST__) || defined(__DAV_C220_VEC__) || defined(__DAV_C220_CUBE__)
-    // CANN 设备侧内置硬件 intrinsic 调用
-    ::get_buf(static_cast<uint32_t>(pipe), buf_id, is_wait);
-#else
-    // Host 侧测试与静态校验桩
-    (void)pipe;
-    (void)buf_id;
-    (void)is_wait;
-#endif
-}
-
-__aicore__ inline void RelBuffer(PipeId pipe, uint32_t buf_id, bool is_wait = false) {
-#if defined(__CCE_KT_TEST__) || defined(__DAV_C220_VEC__) || defined(__DAV_C220_CUBE__)
-    // CANN 设备侧内置硬件 intrinsic 调用
-    ::rls_buf(static_cast<uint32_t>(pipe), buf_id, is_wait);
-#else
-    // Host 侧测试与静态校验桩
-    (void)pipe;
-    (void)buf_id;
-    (void)is_wait;
-#endif
-}
-
-/**
- * BufferID RAII 守卫：保证在作用域退出时自动安全释放 buffer，根除死锁
- */
-class ScopedBufferGuard {
-public:
-    __aicore__ ScopedBufferGuard(PipeId pipe, uint32_t buf_id, bool is_wait = false)
-        : pipe_(pipe), buf_id_(buf_id), is_wait_(is_wait), is_active_(true) {
-        GetBuffer(pipe_, buf_id_, is_wait_);
-    }
-
-    __aicore__ ~ScopedBufferGuard() {
-        if (is_active_) {
-            RelBuffer(pipe_, buf_id_, is_wait_);
-        }
-    }
-
-    __aicore__ void ReleaseEarly() {
-        if (is_active_) {
-            RelBuffer(pipe_, buf_id_, is_wait_);
-            is_active_ = false;
-        }
-    }
-
-    ScopedBufferGuard(const ScopedBufferGuard&) = delete;
-    ScopedBufferGuard& operator=(const ScopedBufferGuard&) = delete;
-
-    __aicore__ ScopedBufferGuard(ScopedBufferGuard&& other) noexcept
-        : pipe_(other.pipe_), buf_id_(other.buf_id_), is_wait_(other.is_wait_), is_active_(other.is_active_) {
-        other.is_active_ = false;
-    }
-
-private:
-    PipeId pipe_;
-    uint32_t buf_id_;
-    bool is_wait_;
-    bool is_active_;
-};
 
 /**
  * 跨核同步原语封装 (1C2V 硬件跨核信号灯)
+ *
+ * 设备端映射 CANN 官方接口（dav-3510 头文件实测签名）：
+ *   CrossCoreSetFlag<uint8_t modeId, pipe_t pipe>(uint16_t flagId)
+ *   CrossCoreWaitFlag<uint8_t modeId = 0, pipe_t pipe = PIPE_S>(uint16_t flagId)
+ * modeId 4 = 块内 (intra-block) 同步：dav-3510 实测仅该模式放行全部 flagId [0,15]
+ *（modeId 0x2 的 ffts 通路对 flagId 有 [2,5]∪[10] / [1]∪[4,5] 的编译期硬范围约束）；
+ * 1C2V 的 Cube/V0/V1 本就同属一个 AI Core，块内信号灯语义精确匹配。
+ * PIPE_S 为全局作用域常量（非 AscendC:: 成员），不可加名字空间限定。
+ * 清理记录：原 GetBuffer/RelBuffer（::get_buf/::rls_buf 为臆测签名，CANN 头无此接口）
+ * 及 ScopedBufferGuard/ScopedCrossCoreSignalGuard/ScopedPipeEventGuard/SAGE_GUARD_* 宏
+ * 全部零调用，已删除；BufferID (get_buf/rel_buf) 迁移待 950 头文件提供实证签名后重入。
  */
 __aicore__ inline void CrossCoreSet(CrossCoreDirection dir, uint32_t flag_id) {
-#if defined(__CCE_KT_TEST__) || defined(__DAV_C220_VEC__) || defined(__DAV_C220_CUBE__)
-    // 映射到硬件跨核寄存器或 cross_core_sync 指令
-    ::CrossCoreSetFlag(static_cast<uint32_t>(dir), flag_id);
+#if SAGE_ATTN_DEVICE_COMPILE || defined(__CCE_KT_TEST__) || defined(__DAV_C220_VEC__) || defined(__DAV_C220_CUBE__)
+    (void)dir;
+    AscendC::CrossCoreSetFlag<4, PIPE_S>(static_cast<uint16_t>(flag_id));
 #else
     (void)dir;
     (void)flag_id;
@@ -167,95 +107,14 @@ __aicore__ inline void CrossCoreSet(CrossCoreDirection dir, uint32_t flag_id) {
 }
 
 __aicore__ inline void CrossCoreWait(CrossCoreDirection dir, uint32_t flag_id) {
-#if defined(__CCE_KT_TEST__) || defined(__DAV_C220_VEC__) || defined(__DAV_C220_CUBE__)
-    ::CrossCoreWaitFlag(static_cast<uint32_t>(dir), flag_id);
+#if SAGE_ATTN_DEVICE_COMPILE || defined(__CCE_KT_TEST__) || defined(__DAV_C220_VEC__) || defined(__DAV_C220_CUBE__)
+    (void)dir;
+    AscendC::CrossCoreWaitFlag<4, PIPE_S>(static_cast<uint16_t>(flag_id));
 #else
     (void)dir;
     (void)flag_id;
 #endif
 }
-
-/**
- * 跨核信号 RAII 守卫：保证在析构时完成触发通知
- */
-class ScopedCrossCoreSignalGuard {
-public:
-    __aicore__ ScopedCrossCoreSignalGuard(CrossCoreDirection dir, uint32_t flag_id)
-        : dir_(dir), flag_id_(flag_id), is_active_(true) {}
-
-    __aicore__ ~ScopedCrossCoreSignalGuard() {
-        if (is_active_) {
-            CrossCoreSet(dir_, flag_id_);
-        }
-    }
-
-    __aicore__ void Cancel() {
-        is_active_ = false;
-    }
-
-    ScopedCrossCoreSignalGuard(const ScopedCrossCoreSignalGuard&) = delete;
-    ScopedCrossCoreSignalGuard& operator=(const ScopedCrossCoreSignalGuard&) = delete;
-
-private:
-    CrossCoreDirection dir_;
-    uint32_t flag_id_;
-    bool is_active_;
-};
-
-/**
- * 1:1 配对防护 RAII 守卫 (遵从 cannbot-skills 算子红线准则三与案例十一：生产者在前、消费者在后)
- * 严格执行 SetFlag / WaitFlag 1:1 配对，杜绝流水线挂死
- */
-template <PipeId SrcPipe, PipeId DstPipe>
-class ScopedPipeEventGuard {
-public:
-    __aicore__ explicit ScopedPipeEventGuard(uint32_t event_id)
-        : event_id_(event_id), is_set_(false) {}
-
-    __aicore__ void Signal() {
-        if (!is_set_) {
-#if defined(__CCE_KT_TEST__) || defined(__DAV_C220_VEC__) || defined(__DAV_C220_CUBE__)
-            ::SetFlag<static_cast<uint32_t>(SrcPipe), static_cast<uint32_t>(DstPipe)>(event_id_);
-#endif
-            is_set_ = true;
-        }
-    }
-
-    __aicore__ void Wait() {
-        if (is_set_) {
-#if defined(__CCE_KT_TEST__) || defined(__DAV_C220_VEC__) || defined(__DAV_C220_CUBE__)
-            ::WaitFlag<static_cast<uint32_t>(SrcPipe), static_cast<uint32_t>(DstPipe)>(event_id_);
-#endif
-            is_set_ = false;
-        }
-    }
-
-    __aicore__ ~ScopedPipeEventGuard() {
-        // 如果已 Set 但尚未 Wait，在作用域退出时强行消费或断言，防止硬件死锁
-        if (is_set_) {
-            Wait();
-        }
-    }
-
-    ScopedPipeEventGuard(const ScopedPipeEventGuard&) = delete;
-    ScopedPipeEventGuard& operator=(const ScopedPipeEventGuard&) = delete;
-
-private:
-    uint32_t event_id_;
-    bool is_set_;
-};
-
-/**
- * 便捷同步保护宏
- */
-#define SAGE_GUARD_BUFFER(pipe, buf_id) \
-    ::sage_attn::ScopedBufferGuard _buf_guard_##buf_id(pipe, buf_id, false)
-
-#define SAGE_GUARD_BUFFER_WAIT(pipe, buf_id) \
-    ::sage_attn::ScopedBufferGuard _buf_guard_##buf_id(pipe, buf_id, true)
-
-#define SAGE_GUARD_CROSS_SIGNAL(dir, flag_id) \
-    ::sage_attn::ScopedCrossCoreSignalGuard _cross_guard_##flag_id(dir, flag_id)
 
 } // namespace sage_attn
 

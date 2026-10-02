@@ -4,13 +4,13 @@ Verifies:
 1. Bit-exact / strict-tolerance alignment against all Golden dataset cases (P-01..P-07, TC-01..TC-10)
 2. AscendC Vector C++ quantization kernels (QuantizeQInt8Ascend, QuantizeKInt8Ascend, QuantizeVFp8Ascend)
 3. Compact adjacent layout packing (PackKvDataAndScaleAdjacentAscend, PackVDataAndScaleAdjacentAscend)
-4. Host helper logic (ComputeKm, FoldSmScaleLog2e, ComputeLseCorrection, ConvertLseExp2ToOut)
+4. Host helper logic (quant_host.h GetVScaleMax tiering via ctypes wrapper;
+   sm_scale folding & head-dim padding now live in the Python baseline layers)
 """
 
 import ctypes
 import json
 import math
-import os
 import subprocess
 import sys
 import unittest
@@ -39,7 +39,7 @@ libquant = ctypes.CDLL(str(DYLIB_PATH))
 
 # Import numerical prototype
 sys.path.insert(0, str(REPO_ROOT))
-from prototypes.tilelang_sageattn_prototype import TileLangSageAttentionPrototype, simulate_sage_attention
+from prototypes.tilelang_sageattn_prototype import TileLangSageAttentionPrototype
 
 
 class TestQuantAgainstGolden(unittest.TestCase):
@@ -319,8 +319,36 @@ class TestQuantHostHelpers(unittest.TestCase):
         self.assertAlmostEqual(folded, 0.12751743, places=6)
 
     def test_v_scale_max(self):
-        self.assertEqual(2.25, 2.25)  # fp32+fp16
-        self.assertEqual(448.0, 448.0)  # fp32
+        # 对 quant_host.h 的 GetVScaleMax 三档取值逻辑做真实行为验证：
+        # fp32+fp16 (PV_ACCUM_FP32_FP16=2) 档返回 2.25，其余档位（含非法值兜底）返回 448.0。
+        # GetVScaleMax 是 C++ inline 函数，无法直接 ctypes 调用，这里现场编译一个
+        # 只包含 quant_host.h 的 extern "C" 包装动态库再断言返回值。
+        wrapper_src = r"""
+#include "quant_host.h"
+extern "C" {
+float sage_v_scale_max(unsigned pv_accum_dtype) {
+    return sage_attn::quant::GetVScaleMax(pv_accum_dtype);
+}
+}
+"""
+        host_lib = Path("/tmp/libsage_quant_host.dylib")
+        quant_dir = current_file.parent.parent / "quant"
+        cmd = [
+            "c++", "-std=c++17", "-Wall", "-Wextra", "-O2", "-shared", "-fPIC",
+            "-x", "c++", "-", "-I", str(quant_dir), "-o", str(host_lib),
+        ]
+        subprocess.run(cmd, input=wrapper_src.encode("utf-8"), check=True)
+        lib_host = ctypes.CDLL(str(host_lib))
+        lib_host.sage_v_scale_max.restype = ctypes.c_float
+        lib_host.sage_v_scale_max.argtypes = [ctypes.c_uint]
+
+        # PV_ACCUM_FP32_FP16 (2) 是唯一低精度档 -> 2.25
+        self.assertEqual(lib_host.sage_v_scale_max(2), ctypes.c_float(2.25).value)
+        # PV_ACCUM_FP32 (0) 与 PV_ACCUM_FP32_FP32 (1) -> 448.0
+        self.assertEqual(lib_host.sage_v_scale_max(0), ctypes.c_float(448.0).value)
+        self.assertEqual(lib_host.sage_v_scale_max(1), ctypes.c_float(448.0).value)
+        # 非法档位走 else 兜底 -> 448.0（保守高精度饱和上限）
+        self.assertEqual(lib_host.sage_v_scale_max(999), ctypes.c_float(448.0).value)
 
     def test_padded_head_dim(self):
         # Head dimensions <= 64 pad to 64, <= 128 pad to 128

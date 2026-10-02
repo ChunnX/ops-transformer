@@ -14,17 +14,51 @@ endif()
 
 if (BUILD_OPEN_PROJECT)
     if(TARGET op_host_aclnn)
+        # 注意：aclnn/sage_attn_host.cpp 属 op_api 层实现（引用 libnnopbase 的
+        # UniqueExecutor 符号），不参与 op_host_proto 库，否则 op_build dlopen
+        # 本库时会因未定义符号失败；它由本地 sageattention2_host 目标与
+        # benchmarks/build_aclnn_benchmark.sh 单独编译
         target_sources(op_host_aclnn PRIVATE
-            ${CMAKE_CURRENT_SOURCE_DIR}/../aclnn/sage_attn_host.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/sage_attention2_def.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/sage_attention2_infershape.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/sage_attention2_tiling.cpp
             ${CMAKE_CURRENT_SOURCE_DIR}/../quant/quant_int8.cpp
             ${CMAKE_CURRENT_SOURCE_DIR}/../quant/quant_fp8.cpp
         )
         target_include_directories(op_host_aclnn PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}
             ${CMAKE_CURRENT_SOURCE_DIR}/../aclnn
             ${CMAKE_CURRENT_SOURCE_DIR}/../sageattn_fp8/ascendc
             ${CMAKE_CURRENT_SOURCE_DIR}/../sageattn_fp8/catlass
             ${CMAKE_CURRENT_SOURCE_DIR}/../quant
+            # aclnn 轻量执行器头 (aclnn/opdev/op_executor.h) 位于 CANN include/aclnn 子树
+            ${ASCEND_CANN_PACKAGE_PATH}/include/aclnn
         )
+        # TilingImpl 经 platform_ascendc::PlatformAscendC 动态探测核数
+        #（GetCoreNumAic/GetCoreNumAiv），符号唯一定义在静态库 libtiling_api.a；
+        # 框架默认不给 op_host_aclnn 链接 tiling_api，缺失时 op_build dlopen 报
+        # "undefined symbol: GetCoreNumAiv"，此处显式补链。
+        if(TARGET tiling_api)
+            target_link_libraries(op_host_aclnn PRIVATE tiling_api)
+        endif()
+    endif()
+    if(TARGET op_host_aclnnExc)
+        target_sources(op_host_aclnnExc PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/sage_attention2_def.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/sage_attention2_infershape.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/sage_attention2_tiling.cpp
+        )
+        target_include_directories(op_host_aclnnExc PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}
+            ${CMAKE_CURRENT_SOURCE_DIR}/../aclnn
+            ${CMAKE_CURRENT_SOURCE_DIR}/../sageattn_fp8/ascendc
+            ${CMAKE_CURRENT_SOURCE_DIR}/../quant
+            # aclnn 错误码 (aclnn/opdev/op_errno.h) 位于 CANN include/aclnn 子树
+            ${ASCEND_CANN_PACKAGE_PATH}/include/aclnn
+        )
+        if(TARGET tiling_api)
+            target_link_libraries(op_host_aclnnExc PRIVATE tiling_api)
+        endif()
     endif()
 endif()
 
@@ -46,11 +80,15 @@ endif()
 # 支持独立构建 Host 共享库以供本地单测与集成测试
 if(NOT TARGET op_host_aclnn AND NOT TARGET sageattention2_host)
     add_library(sageattention2_host SHARED
+        ${CMAKE_CURRENT_SOURCE_DIR}/sage_attention2_def.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/sage_attention2_infershape.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/sage_attention2_tiling.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/../aclnn/sage_attn_host.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/../quant/quant_int8.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/../quant/quant_fp8.cpp
     )
     target_include_directories(sageattention2_host PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/../aclnn
         ${CMAKE_CURRENT_SOURCE_DIR}/../sageattn_fp8/ascendc
         ${CMAKE_CURRENT_SOURCE_DIR}/../sageattn_fp8/catlass

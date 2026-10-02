@@ -6,10 +6,9 @@ multi-backend auto-detection (C++ aclnn/op_plugin vs high-fidelity CPU simulatio
 
 from __future__ import annotations
 
-import math
 import os
-from typing import Any, Optional, Tuple
 import warnings
+from typing import Any, Optional, Tuple
 
 try:
     import torch
@@ -30,6 +29,20 @@ from .op_plugin import is_npu_available, is_npu_kernel_loaded, run_sageattn_npu
 
 
 SAGEATTN_PV_ACCUM_DTYPE_DEFAULT = "fp32+fp16"
+
+# 数值常量（python 侧唯一定义点；跨语言对应 C++ 侧唯一定义
+# ../sageattn_fp8/ascendc/tiling.h，禁止在本语言内复制第二份数值）：
+# - S_FP8_OFFSET = log2(448)：P 矩阵 e4m3 放大偏置（task/01_design 2.4）
+# - S_FP8_SCALE_MAX / SCALE_MAX_FP16_ACCUM：V 量化 scale_max 两档（448.0 / 2.25）
+# - INT8_QUANT_MAX / SCALE_EPSILON：INT8 对称量化上限与兜底微量
+# - LOG2E：exp2 域换算系数。注意 1.44269504 为 golden 冻结截断精度，
+#   勿"修正"为全精度 1.4426950408889634（位级对齐依赖）。
+S_FP8_OFFSET = 8.807354922057604  # log2(448.0)
+S_FP8_SCALE_MAX = 448.0
+SCALE_MAX_FP16_ACCUM = 2.25
+INT8_QUANT_MAX = 127.0
+SCALE_EPSILON = 1e-7
+LOG2E = 1.44269504
 
 # Permutation pattern for FP8 V MMA layout (16-token chunks)
 _V_FP8_PERM = [0, 1, 8, 9, 2, 3, 10, 11, 4, 5, 12, 13, 6, 7, 14, 15]
@@ -54,8 +67,8 @@ def _quant_qk_per_warp(
     pad_sq = num_blkq * 128
     q_pad = F.pad(q_hnd, (0, 0, 0, pad_sq - sq)) if pad_sq > sq else q_hnd
     q_view = q_pad.view(b, hq, num_blkq, 4, 32, d).float()
-    amax_q = q_view.abs().amax(dim=(4, 5)).clamp(min=1e-7)
-    scale_q = amax_q / 127.0
+    amax_q = q_view.abs().amax(dim=(4, 5)).clamp(min=SCALE_EPSILON)
+    scale_q = amax_q / INT8_QUANT_MAX
     q_scaled = q_view / scale_q.unsqueeze(4).unsqueeze(5)
     q_quant = torch.round(q_scaled).clamp(-128, 127).to(torch.int8)
     q_deq = (q_quant.float() * scale_q.unsqueeze(4).unsqueeze(5)).view(b, hq, pad_sq, d)[:, :, :sq, :]
@@ -65,8 +78,8 @@ def _quant_qk_per_warp(
     pad_sk = num_blkk * 64
     k_pad = F.pad(k_centered_hnd, (0, 0, 0, pad_sk - sk)) if pad_sk > sk else k_centered_hnd
     k_view = k_pad.view(b, hkv, num_blkk, 64, d).float()
-    amax_k = k_view.abs().amax(dim=(3, 4)).clamp(min=1e-7)
-    scale_k = amax_k / 127.0
+    amax_k = k_view.abs().amax(dim=(3, 4)).clamp(min=SCALE_EPSILON)
+    scale_k = amax_k / INT8_QUANT_MAX
     k_scaled = k_view / scale_k.unsqueeze(3).unsqueeze(4)
     k_quant = torch.round(k_scaled).clamp(-128, 127).to(torch.int8)
     k_deq = (k_quant.float() * scale_k.unsqueeze(3).unsqueeze(4)).view(b, hkv, pad_sk, d)[:, :, :sk, :]
@@ -91,7 +104,7 @@ def _quant_qk_per_thread(
     q_pad = F.pad(q_hnd, (0, 0, 0, pad_sq - sq)) if pad_sq > sq else q_hnd
     q_view = q_pad.view(b, hq, num_blkq, 4, 4, 8, d).float()
     amax_q = q_view.abs().amax(dim=(4, 6))
-    scale_q = amax_q / 127.0 + 1e-7
+    scale_q = amax_q / INT8_QUANT_MAX + SCALE_EPSILON
     scale_exp_q = scale_q.unsqueeze(4).unsqueeze(6)
     q_scaled = q_view / scale_exp_q
     q_quant = torch.clamp(torch.floor(torch.abs(q_scaled) + 0.5) * torch.sign(q_scaled), -127, 127).to(torch.int8)
@@ -103,7 +116,7 @@ def _quant_qk_per_thread(
     k_pad = F.pad(k_centered_hnd, (0, 0, 0, pad_sk - sk)) if pad_sk > sk else k_centered_hnd
     k_view = k_pad.view(b, hkv, num_blkk, 8, 4, 2, d).float()
     amax_k = k_view.abs().amax(dim=(3, 5, 6))
-    scale_k = amax_k / 127.0 + 1e-7
+    scale_k = amax_k / INT8_QUANT_MAX + SCALE_EPSILON
     scale_exp_k = scale_k.unsqueeze(3).unsqueeze(5).unsqueeze(6)
     k_scaled = k_view / scale_exp_k
     k_quant = torch.clamp(torch.floor(torch.abs(k_scaled) + 0.5) * torch.sign(k_scaled), -127, 127).to(torch.int8)
@@ -121,7 +134,7 @@ def _quant_v_fp8(
 ) -> torch.Tensor:
     """Quantize V to FP8 e4m3fn with sequence padding and permuted layout."""
     b, hkv = v_hnd.shape[0], v_hnd.shape[1]
-    scale_max = 2.25 if pv_accum_dtype == "fp32+fp16" else 448.0
+    scale_max = SCALE_MAX_FP16_ACCUM if pv_accum_dtype == "fp32+fp16" else S_FP8_SCALE_MAX
 
     pad_sk_v = (sk + 63) // 64 * 64
     v_t = v_hnd.transpose(2, 3)  # (b, hkv, d, sk)
@@ -141,14 +154,14 @@ def _quant_v_fp8(
         amax_v = torch.max((v_sub.amax(dim=-1) - vm).abs(), (v_sub.amin(dim=-1) - vm).abs())
         v_scale = amax_v / scale_max
         v_norm = (v_perm.float() - vm.unsqueeze(-1)) / v_scale.unsqueeze(-1)
-        v_fp8 = v_norm.clamp(-448.0, 448.0).to(torch.float8_e4m3fn) if has_fp8 else v_norm.clamp(-448.0, 448.0)
+        v_fp8 = v_norm.clamp(-S_FP8_SCALE_MAX, S_FP8_SCALE_MAX).to(torch.float8_e4m3fn) if has_fp8 else v_norm.clamp(-S_FP8_SCALE_MAX, S_FP8_SCALE_MAX)
         v_fp8_unperm = v_fp8.view(b, hkv, d, num_16, 16)[:, :, :, :, _V_FP8_INV_PERM].contiguous().view(b, hkv, d, pad_sk_v)[:, :, :, :sk]
         v_deq_hnd = (v_fp8_unperm.float() * v_scale.unsqueeze(-1) + vm.unsqueeze(-1)).transpose(2, 3)
     else:
         amax_v = torch.max(v_sub.amax(dim=-1).abs(), v_sub.amin(dim=-1).abs())
         v_scale = amax_v / scale_max
         v_norm = v_perm.float() / v_scale.unsqueeze(-1)
-        v_fp8 = v_norm.clamp(-448.0, 448.0).to(torch.float8_e4m3fn) if has_fp8 else v_norm.clamp(-448.0, 448.0)
+        v_fp8 = v_norm.clamp(-S_FP8_SCALE_MAX, S_FP8_SCALE_MAX).to(torch.float8_e4m3fn) if has_fp8 else v_norm.clamp(-S_FP8_SCALE_MAX, S_FP8_SCALE_MAX)
         v_fp8_unperm = v_fp8.view(b, hkv, d, num_16, 16)[:, :, :, :, _V_FP8_INV_PERM].contiguous().view(b, hkv, d, pad_sk_v)[:, :, :, :sk]
         v_deq_hnd = (v_fp8_unperm.float() * v_scale.unsqueeze(-1)).transpose(2, 3)
 
@@ -173,7 +186,7 @@ def run_sageattn_cpu_reference(
     Aligned with golden/generate_golden.py simulate_sage_attention.
     """
     dtype = q_pad.dtype
-    sm_scale_log2e = sm_scale * 1.44269504
+    sm_scale_log2e = sm_scale * LOG2E
 
     # Convert layout to HND for standardized tile processing
     if tensor_layout == "NHD":
@@ -215,7 +228,11 @@ def run_sageattn_cpu_reference(
         v_deq_hnd = v_deq_hnd.repeat_interleave(rep, dim=1)
 
     # 5. Online Softmax and Two-level Accumulation Simulation
+    # S_FP8_OFFSET 放大语义（task/01_design 2.4，对齐 GPU attn_utils.cuh 的
+    # m' = m - log2(448) 冻结轨迹）：P 在转 e4m3 前放大 448 倍填满 e4m3 动态范围，
+    # 分母在放大域累加，输出归一化时分子分母相消，LSE 减去 log2(448) 偏置。
     cta_k = 64
+    k_step = 16
     num_cta_k = (sk + cta_k - 1) // cta_k
     ro = torch.zeros((b, hq, sq, d), dtype=torch.float32, device=q_hnd.device)
     m = torch.full((b, hq, sq, 1), -5000000.0, dtype=torch.float32, device=q_hnd.device)
@@ -248,26 +265,38 @@ def run_sageattn_cpu_reference(
         if is_causal:
             p_exp2 = p_exp2.masked_fill(causal_mask, 0.0)
 
-        # Quantize P to e4m3
-        p_f8 = p_exp2.clamp(-448.0, 448.0).to(torch.float8_e4m3fn).float() if has_fp8 else p_exp2.clamp(-448.0, 448.0)
-        d_denom = d_denom + p_exp2.sum(dim=-1, keepdim=True)
+        # Quantize P to e4m3 with S_FP8_OFFSET (= log2(448)) scaling:
+        # P 先放大 448 倍再 clamp/转 e4m3，分母在放大域累加
+        p_scaled = p_exp2 * S_FP8_SCALE_MAX
+        p_f8 = p_scaled.clamp(-S_FP8_SCALE_MAX, S_FP8_SCALE_MAX).to(torch.float8_e4m3fn).float() if has_fp8 else p_scaled.clamp(-S_FP8_SCALE_MAX, S_FP8_SCALE_MAX)
+        d_denom = d_denom + p_scaled.sum(dim=-1, keepdim=True)
 
-        # Two-level accumulation
+        # Two-level accumulation（冻结语义轨迹：fp32+fp16 档为 "FP16 主累加器 +
+        # 每 k_step 归约回 FP32"——每 k_step=16 个 KV token 的 PV 在 FP16 域
+        # 累加，经一次 FP16 舍入后归约进 FP32 主累加器）
         if pv_accum_dtype == "fp32+fp16":
-            pv_chunk = torch.matmul(p_f8.half(), v_chunk.half()).float()
+            pv_chunk = torch.zeros(
+                (b, hq, sq, d), dtype=torch.float32, device=q_hnd.device
+            )
+            for ks_start in range(0, k_end - k_start, k_step):
+                ks_end = min(ks_start + k_step, k_end - k_start)
+                p_sub = p_f8[:, :, :, ks_start:ks_end].contiguous().half()
+                v_sub = v_chunk[:, :, ks_start:ks_end, :].contiguous().half()
+                pv_sub = torch.matmul(p_sub, v_sub)
+                pv_chunk = pv_chunk + pv_sub.float()
         else:
             pv_chunk = torch.matmul(p_f8, v_chunk)
 
         ro = ro + pv_chunk
         m = m_new
 
-    # Output normalization
+    # Output normalization（448 放大在分子分母间相消）
     out_hnd = ro / d_denom
 
-    # LSE calculation
+    # LSE calculation（分母处于 448 放大域，需减去 S_FP8_OFFSET = log2(448) 偏置）
     if return_lse:
-        lse_exp2 = torch.log2(d_denom.squeeze(-1).clamp(min=1e-12)) + m.squeeze(-1)
-        lse_out = lse_exp2 / 1.44269504 + (lse_correction * sm_scale if smooth_k else 0.0)
+        lse_exp2 = torch.log2(d_denom.squeeze(-1).clamp(min=1e-12)) + m.squeeze(-1) - S_FP8_OFFSET
+        lse_out = lse_exp2 / LOG2E + (lse_correction * sm_scale if smooth_k else 0.0)
     else:
         lse_out = None
 
@@ -281,6 +310,22 @@ def run_sageattn_cpu_reference(
         out = out_hnd
 
     return out, lse_out
+
+
+def _run_cpu_reference_with_stub_warning(
+    warn_stub: bool,
+    npu_in_use: bool,
+    **ref_kwargs: Any,
+) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+    """Run the CPU reference; warn loudly when it is serving as an NPU stub under explicit opt-in."""
+    if warn_stub or npu_in_use:
+        warnings.warn(
+            "SageAttention2 is running the high-fidelity CPU reference stub "
+            "(SAGEATTN_ALLOW_CPU_STUB opt-in); results are NOT valid NPU precision/performance evidence.",
+            UserWarning,
+            stacklevel=3,
+        )
+    return run_sageattn_cpu_reference(**ref_kwargs)
 
 
 def dispatch_sageattn(
@@ -360,46 +405,15 @@ def dispatch_sageattn_qk_int8_pv_fp8_asc(
 
     allow_cpu_stub = os.environ.get("SAGEATTN_ALLOW_CPU_STUB", "0").lower() in ("1", "true", "yes")
     is_cpu_device = hasattr(v, "device") and v.device.type == "cpu"
+    is_meta_device = hasattr(v, "device") and v.device.type == "meta"
+    is_fake_tensor = type(v).__name__ == "FakeTensor" or hasattr(v, "fake_mode")
     npu_avail = is_npu_available() and is_npu_kernel_loaded()
 
-    if npu_avail and not is_cpu_device and not allow_cpu_stub:
-        try:
-            out_pad, lse = run_sageattn_npu(
-                q=q_pad,
-                k=k_pad,
-                v=v_pad,
-                tensor_layout=tensor_layout,
-                is_causal=is_causal,
-                qk_quant_gran=qk_quant_gran,
-                sm_scale=sm_scale_val,
-                pv_accum_dtype=pv_accum_dtype,
-                smooth_k=smooth_k,
-                smooth_v=smooth_v,
-                return_lse=return_lse,
-                **kwargs,
-            )
-        except NotImplementedError:
-            if is_cpu_device or allow_cpu_stub or not is_npu_available():
-                out_pad, lse = run_sageattn_cpu_reference(
-                    q_pad=q_pad,
-                    k_pad=k_pad,
-                    v_pad=v_pad,
-                    tensor_layout=tensor_layout,
-                    is_causal=is_causal,
-                    qk_quant_gran=qk_quant_gran,
-                    sm_scale=sm_scale_val,
-                    pv_accum_dtype=pv_accum_dtype,
-                    smooth_k=smooth_k,
-                    smooth_v=smooth_v,
-                    return_lse=return_lse,
-                )
-            else:
-                raise
-    else:
-        out_pad, lse = run_sageattn_cpu_reference(
-            q_pad=q_pad,
-            k_pad=k_pad,
-            v_pad=v_pad,
+    if is_meta_device or is_fake_tensor:
+        out_pad, lse = torch.ops.sageattention2.forward(
+            q_pad,
+            k_pad,
+            v_pad,
             tensor_layout=tensor_layout,
             is_causal=is_causal,
             qk_quant_gran=qk_quant_gran,
@@ -409,14 +423,52 @@ def dispatch_sageattn_qk_int8_pv_fp8_asc(
             smooth_v=smooth_v,
             return_lse=return_lse,
         )
+        out = out_pad[..., :head_dim_og]
+        if return_lse:
+            return out, lse
+        return out
+
+    # 禁止静默 CPU 回退：NPU 在位但 kernel 未加载时，必须显式 SAGEATTN_ALLOW_CPU_STUB
+    # opt-in（附带警告）才允许走 CPU 参考；纯 CPU 张量（本地单测）不受此门控限制。
+    # meta/fake 张量已在上方分支提前返回，此处无需重复判断。
+    npu_present = is_npu_available()
+    if not is_cpu_device and npu_present and not npu_avail and not allow_cpu_stub:
+        raise RuntimeError(
+            "SageAttention2 NPU kernel is not loaded while an Ascend NPU is present; "
+            "build the custom operator (bash build_opp.sh) or set SAGEATTN_ALLOW_CPU_STUB=1 "
+            "to explicitly opt in to the high-fidelity CPU reference stub."
+        )
+
+    if npu_avail and not is_cpu_device and not allow_cpu_stub:
+        # 该分支内 is_cpu_device/allow_cpu_stub 恒为 False 且 npu_present 恒为 True，
+        # CPU 参考回退在此不可达（显式回退仅走下方 else 分支并伴随 stub 告警），
+        # kernel 缺位时按门控语义直接上抛 NotImplementedError。
+        out_pad, lse = run_sageattn_npu(
+            q=q_pad,
+            k=k_pad,
+            v=v_pad,
+            tensor_layout=tensor_layout,
+            is_causal=is_causal,
+            qk_quant_gran=qk_quant_gran,
+            sm_scale=sm_scale_val,
+            pv_accum_dtype=pv_accum_dtype,
+            smooth_k=smooth_k,
+            smooth_v=smooth_v,
+            return_lse=return_lse,
+            **kwargs,
+        )
+    else:
+        out_pad, lse = _run_cpu_reference_with_stub_warning(
+            allow_cpu_stub, npu_present and not is_cpu_device,
+            q_pad=q_pad, k_pad=k_pad, v_pad=v_pad,
+            tensor_layout=tensor_layout, is_causal=is_causal,
+            qk_quant_gran=qk_quant_gran, sm_scale=sm_scale_val,
+            pv_accum_dtype=pv_accum_dtype, smooth_k=smooth_k,
+            smooth_v=smooth_v, return_lse=return_lse,
+        )
 
     out = out_pad[..., :head_dim_og]
 
     if return_lse:
         return out, lse
     return out
-
-
-# Frozen signature aliases for direct module import
-sageattn = dispatch_sageattn
-sageattn_qk_int8_pv_fp8_asc = dispatch_sageattn_qk_int8_pv_fp8_asc

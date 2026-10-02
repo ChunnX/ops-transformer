@@ -9,7 +9,7 @@
 # -----------------------------------------------------------------------------------------------------------
 
 set(SAGE_ATTN_KERNEL_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/../sageattn_fp8/ascendc/sage_attn_kernel.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/sageattention2.cpp
 )
 
 if (DEFINED CMAKE_ASC_COMPILER)
