@@ -17,12 +17,12 @@ import json
 import math
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import torch
 
 # 7 大基准测试规格 P-01 ~ P-07（任务书 §5.1 / todo.md §0.5）
-BENCHMARK_CASES: List[Dict[str, Any]] = [
+BENCHMARK_CASES: list[dict[str, Any]] = [
     {
         "name": "P-01",
         "b": 1, "hq": 32, "hk": 32, "sq": 4096, "sk": 4096, "d": 128,
@@ -87,7 +87,7 @@ def compute_file_sha256(filepath: Path) -> str:
     return sha.hexdigest()
 
 
-def compute_tensor_stats(tensor: torch.Tensor) -> Dict[str, Any]:
+def compute_tensor_stats(tensor: torch.Tensor) -> dict[str, Any]:
     """计算张量统计指标与异常值检测（NaN / Inf）"""
     t_float = tensor.float()
     has_nan = bool(torch.isnan(t_float).any().item())
@@ -110,9 +110,9 @@ def compute_tensor_stats(tensor: torch.Tensor) -> Dict[str, Any]:
 
 def validate_manifest(
     manifest_path: Path,
-    expected_cases: Optional[List[str]] = None,
-    expected_grans: Optional[List[str]] = None,
-    expected_accums: Optional[List[str]] = None,
+    expected_cases: list[str] | None = None,
+    expected_grans: list[str] | None = None,
+    expected_accums: list[str] | None = None,
     strict_gpu: bool = False,
 ) -> bool:
     """全面校验 manifest.json 元数据及其关联的 golden 张量文件：
@@ -144,7 +144,7 @@ def validate_manifest(
             for a in exp_accums:
                 expected_tags.add(f"{c}_{g}_{a.replace('+', '_')}")
 
-    found_tags = set(entry.get("case_tag") for entry in manifest_data)
+    found_tags = {entry.get("case_tag") for entry in manifest_data}
     missing_tags = expected_tags - found_tags
     if missing_tags:
         print(f"[VERIFY ERROR] Missing expected case tags in manifest ({len(missing_tags)} missing):")
@@ -345,7 +345,7 @@ def main():
     total_combinations = len(args.cases) * len(args.quant_grans) * len(args.accum_dtypes)
     print(f"\n[*] Generating {total_combinations} golden tensor files...")
 
-    manifest: List[Dict[str, Any]] = []
+    manifest: list[dict[str, Any]] = []
     generated_count = 0
 
     for cfg in BENCHMARK_CASES:
@@ -393,7 +393,7 @@ def main():
                         out, lse = out_res, None
                 except Exception as exc:
                     print(f" FAILED: {exc}")
-                    raise exc
+                    raise
 
                 # 转移到 CPU 并计算统计元数据
                 out_cpu = out.detach().cpu()

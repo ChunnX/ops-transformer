@@ -35,7 +35,7 @@ def _compile(out_dir: Path) -> Path:
            "-I", str(REPO_DIR / "sim"),
            "-I", str(REPO_DIR / "op_host"),
            str(TEST_DIR / "sa2_host_e2e.cpp"), "-o", str(binary)]
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+    proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
     assert proc.returncode == 0, f"compile failed:\n{proc.stderr}"
     return binary
 
@@ -60,7 +60,7 @@ def _parse_meta(path: Path) -> dict:
 def _run_binary(binary: Path, tmp: Path, tag: str) -> Path:
     """执行 e2e 二进制（单次运行导出全部用例的 q/k/v/out/lse 字节），返回输出前缀。"""
     prefix = tmp / f"e2e_{tag}"
-    proc = subprocess.run([str(binary), str(prefix)], capture_output=True, text=True)
+    proc = subprocess.run([str(binary), str(prefix)], capture_output=True, text=True, check=False)
     assert proc.returncode == 0, f"e2e binary failed:\n{proc.stdout}\n{proc.stderr}"
     return prefix
 

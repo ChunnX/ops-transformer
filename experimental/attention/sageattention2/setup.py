@@ -8,8 +8,8 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 
 import os
-import sys
 from pathlib import Path
+
 from setuptools import find_packages, setup
 
 HERE = Path(__file__).resolve().parent

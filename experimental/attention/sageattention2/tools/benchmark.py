@@ -20,7 +20,7 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 import torch
 import torch.nn.functional as F
@@ -49,9 +49,8 @@ for candidate in [
 
 from sageattention2 import sageattn_qk_int8_pv_fp8_asc
 
-
 # 任务书 §5.1 / §7 与 todo.md §0.5 规定的基准测试规格矩阵
-BENCHMARK_CASES: Dict[str, Dict[str, Any]] = {
+BENCHMARK_CASES: dict[str, dict[str, Any]] = {
     "P-01": {
         "batch": 1,
         "hq": 32,
@@ -249,7 +248,7 @@ def measure_execution_time_ms(
             end_event.record()
             sync_device(device)
             return float(start_event.elapsed_time(end_event)) / float(repeats)
-        except Exception:
+        except Exception:  # noqa: BLE001, S110
             pass
 
     if device.type == "cuda":
@@ -263,7 +262,7 @@ def measure_execution_time_ms(
             end_event.record()
             sync_device(device)
             return float(start_event.elapsed_time(end_event)) / float(repeats)
-        except Exception:
+        except Exception:  # noqa: BLE001, S110
             pass
 
     # 3. CPU / 通用 host 计时路径
@@ -275,7 +274,7 @@ def measure_execution_time_ms(
     return ((t1 - t0) / float(repeats)) * 1000.0
 
 
-def compute_geomean(values: List[float]) -> float:
+def compute_geomean(values: list[float]) -> float:
     """计算加速比几何平均数"""
     valid = [v for v in values if v > 0]
     if not valid:
@@ -353,7 +352,7 @@ def build_flash_attn_callable(
 
 def run_benchmark_case(
     case_id: str,
-    spec: Dict[str, Any],
+    spec: dict[str, Any],
     device: torch.device,
     baseline_type: str = "auto",
     warmup: int = 25,
@@ -363,7 +362,7 @@ def run_benchmark_case(
     qk_quant_gran: str = "per_thread",
     pv_accum_dtype: str = "fp32+fp16",
     profiler_context=None,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """单用例基准压测与吞吐评测核心流程"""
     b = spec["batch"]
     hq = spec["hq"]
@@ -435,7 +434,7 @@ def run_benchmark_case(
         speedup = (baseline_time_ms / sa2_time_ms) if sa2_time_ms > 0 else 0.0
         meets_gate = speedup >= 1.6
         error_msg = None
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         baseline_time_ms = 0.0
         baseline_tflops = 0.0
         speedup = 0.0
@@ -470,7 +469,7 @@ def run_benchmark_case(
     }
 
 
-def generate_msprof_command_template(cases: List[str], output_dir: str = "./prof_output") -> str:
+def generate_msprof_command_template(cases: list[str], output_dir: str = "./prof_output") -> str:
     """生成 Ascend CANN 真实硬件 profiling 采集命令模板"""
     case_str = ",".join(cases)
     template = f"""# ==============================================================================
@@ -659,7 +658,7 @@ def main() -> int:
                     on_trace_ready=torch_npu.profiler.tensorboard_trace_handler(args.profile_dir),
                 )
                 print(f"[PROFILER] CANN Ascend Profiler enabled, traces will be saved to {args.profile_dir}")
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 print(f"[PROFILER] Warning: Failed to initialize CANN profiler: {e}, falling back to standard profiler")
         if profiler_context is None:
             profiler_context = torch.profiler.profile(
@@ -673,7 +672,7 @@ def main() -> int:
             )
             print(f"[PROFILER] PyTorch Profiler enabled, traces will be saved to {args.profile_dir}")
 
-    results: List[Dict[str, Any]] = []
+    results: list[dict[str, Any]] = []
     print("\nBenchmark Execution Progress:")
     for case_id in selected_case_ids:
         spec = BENCHMARK_CASES[case_id]
@@ -703,7 +702,7 @@ def main() -> int:
                     f"{res['baseline_name']}: {res['baseline_time_ms']:.2f} ms ({res['baseline_tflops']:.1f} TFLOPS) | "
                     f"Speedup: {res['speedup']:.2f}x {gate_tag}"
                 )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             print(f"FAILED (Error: {exc})")
             results.append({
                 "case_id": case_id,

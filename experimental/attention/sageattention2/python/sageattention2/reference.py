@@ -1,5 +1,4 @@
 import math
-from typing import Optional, Tuple, Union
 import warnings
 
 import torch
@@ -23,7 +22,7 @@ def _e4m3_round(x: torch.Tensor) -> torch.Tensor:
     return x.clamp(-E4M3_MAX, E4M3_MAX).to(torch.float8_e4m3fn).to(torch.float32)
 
 
-def _int8_quant(x: torch.Tensor, seg: Optional[int]) -> Tuple[torch.Tensor, torch.Tensor]:
+def _int8_quant(x: torch.Tensor, seg: int | None) -> tuple[torch.Tensor, torch.Tensor]:
     """INT8 对称量化：scale = amax/127，零行（段）→ 1.0（DESIGN_SPEC §1）。
 
     x: [R, D] FP32。seg=None → per_warp（每 token 一个 scale，返回 [R]）；
@@ -48,7 +47,7 @@ def _int8_quant(x: torch.Tensor, seg: Optional[int]) -> Tuple[torch.Tensor, torc
 
 
 def _qk_score(q8: torch.Tensor, q_scale: torch.Tensor, k8: torch.Tensor, k_scale: torch.Tensor, sm_scale: float,
-              seg: Optional[int]) -> torch.Tensor:
+              seg: int | None) -> torch.Tensor:
     """QK^T 反量化得分；q8/k8 为整数值 FP32，矩阵乘按整值精确（127*127*128 < 2^24）。
 
     舍入点（DESIGN_SPEC §4.1）：QK^T 结果以 FP16 存储。模型近似：内核按 §4.2 将 scale
@@ -100,7 +99,7 @@ def _mx_quant_v(v: torch.Tensor) -> torch.Tensor:
 
 
 def _validate(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, tensor_layout: str, is_causal: bool,
-              qk_quant_gran: str, pv_accum_dtype: str, sm_scale: Optional[float] = None) -> None:
+              qk_quant_gran: str, pv_accum_dtype: str, sm_scale: float | None = None) -> None:
     if tensor_layout not in ("HND", "NHD"):
         raise ValueError(f"tensor_layout must be HND or NHD, but got {tensor_layout!r}.")
     if qk_quant_gran not in ("per_warp", "per_thread"):
@@ -137,12 +136,12 @@ def sageattn_reference(
     tensor_layout: str = "HND",
     is_causal: bool = False,
     qk_quant_gran: str = "per_thread",
-    sm_scale: Optional[float] = None,
+    sm_scale: float | None = None,
     pv_accum_dtype: str = "fp32+fp16",
     smooth_k: bool = True,
     smooth_v: bool = False,
     return_lse: bool = False,
-) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
     """CPU 参考实现：与内核同配置（gran × accum × smooth）的数值 golden，仅前向。
 
     说明：head_dim pad 列在 QK^T、corr 与 PV 中贡献恒为零，故参考实现 pad 后计算、

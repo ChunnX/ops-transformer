@@ -2,6 +2,7 @@
 import math
 import sys
 from pathlib import Path
+
 import pytest
 import torch
 
@@ -59,7 +60,7 @@ def test_assertion_lse_contract():
     k = torch.randn(b, hq, sq, d, dtype=torch.float16)
     v = torch.randn(b, hq, sq, d, dtype=torch.float16)
 
-    out, lse = sageattn(q, k, v, sm_scale=sm_scale, return_lse=True, smooth_k=True)
+    _out, lse = sageattn(q, k, v, sm_scale=sm_scale, return_lse=True, smooth_k=True)
 
     # 理论 ground truth: 全量浮点计算的 logsumexp(QK^T * sm_scale)
     score_gt = torch.einsum("bhsd,bhkd->bhsk", q.float(), k.float()) * sm_scale

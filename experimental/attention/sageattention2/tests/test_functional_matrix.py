@@ -1,14 +1,15 @@
 # SageAttention2 功能验收测试矩阵（TC-01 ~ TC-10 全覆盖）
 import math
 import sys
-from pathlib import Path
 import warnings
+from pathlib import Path
+
 import pytest
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "python"))
 
-from sageattention2 import sageattn, sageattn_qk_int8_pv_fp8_asc, replace_sdpa
+from sageattention2 import replace_sdpa, sageattn, sageattn_qk_int8_pv_fp8_asc
 from sageattention2.reference import sageattn_reference
 
 

@@ -3,7 +3,7 @@ import contextlib
 import math
 import os
 import warnings
-from typing import Any, Optional, Tuple, Union
+from typing import Any
 
 import torch
 
@@ -50,19 +50,17 @@ def _check_dtype(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor) -> None:
 def _check_shape(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, tensor_layout: str, is_causal: bool) -> None:
     if q.dim() != 4 or k.dim() != 4 or v.dim() != 4:
         raise ValueError(
-            "q/k/v must be 4D tensors, but got dims q=%d, k=%d, v=%d." % (q.dim(), k.dim(), v.dim())
+            f"q/k/v must be 4D tensors, but got dims q={q.dim()}, k={k.dim()}, v={v.dim()}."
         )
     head = 2 if tensor_layout == "NHD" else 1
     seq = 1 if tensor_layout == "NHD" else 2
     if q.shape[0] != k.shape[0] or q.shape[0] != v.shape[0]:
         raise ValueError(
-            "q/k/v must share the same batch size, but got q=%d, k=%d, v=%d."
-            % (q.shape[0], k.shape[0], v.shape[0])
+            f"q/k/v must share the same batch size, but got q={q.shape[0]}, k={k.shape[0]}, v={v.shape[0]}."
         )
     if q.shape[3] != k.shape[3] or k.shape[3] != v.shape[3]:
         raise ValueError(
-            "q/k/v must share the same head_dim, but got q=%d, k=%d, v=%d."
-            % (q.shape[3], k.shape[3], v.shape[3])
+            f"q/k/v must share the same head_dim, but got q={q.shape[3]}, k={k.shape[3]}, v={v.shape[3]}."
         )
     if k.shape != v.shape:
         raise ValueError(
@@ -70,13 +68,11 @@ def _check_shape(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, tensor_layou
         )
     if q.shape[head] % k.shape[head] != 0:
         raise ValueError(
-            "num_qo_heads must be divisible by num_kv_heads, but got Hq=%d and Hk=%d."
-            % (q.shape[head], k.shape[head])
+            f"num_qo_heads must be divisible by num_kv_heads, but got Hq={q.shape[head]} and Hk={k.shape[head]}."
         )
     if is_causal and q.shape[seq] != k.shape[seq]:
         raise ValueError(
-            "is_causal is valid only when qo_len equals kv_len, but got Sq=%d and Sk=%d."
-            % (q.shape[seq], k.shape[seq])
+            f"is_causal is valid only when qo_len equals kv_len, but got Sq={q.shape[seq]} and Sk={k.shape[seq]}."
         )
 
 
@@ -91,7 +87,7 @@ def _check_stride(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor) -> None:
 def _check_params(
     qk_quant_gran: str,
     pv_accum_dtype: str,
-    sm_scale: Optional[float],
+    sm_scale: float | None,
     head_dim: int,
 ) -> None:
     if qk_quant_gran not in VALID_QK_QUANT_GRANS:
@@ -131,7 +127,7 @@ def _pad_to(value: int, bucket: int) -> int:
 
 def _resolve_plan(
     head_dim_og: int,
-    sm_scale: Optional[float],
+    sm_scale: float | None,
 ) -> dict:
     key = (head_dim_og, sm_scale)
     plan = _PLAN_CACHE.get(key)
@@ -151,7 +147,7 @@ def _resolve_plan(
 
 def _forward_meta_shape(
     q: torch.Tensor, tensor_layout: str, return_lse: bool
-) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+) -> tuple[torch.Tensor, torch.Tensor | None]:
     """Meta 推导：o 与 q 同布局同 shape（dtype 同 q）；lse 为 [B, Hq, Sq] 的 FP32。"""
     out = torch.empty(q.shape, dtype=q.dtype, device=q.device)
     if return_lse:
@@ -172,12 +168,12 @@ def _forward_impl(
     tensor_layout: str = "HND",
     is_causal: bool = False,
     qk_quant_gran: str = DEFAULT_QK_QUANT_GRAN,
-    sm_scale: Optional[float] = None,
+    sm_scale: float | None = None,
     pv_accum_dtype: str = DEFAULT_PV_ACCUM_DTYPE,
     smooth_k: bool = True,
     smooth_v: bool = False,
     return_lse: bool = False,
-) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+) -> tuple[torch.Tensor, torch.Tensor | None]:
     """NPU 实现体：校验 + plan 解析 + head_dim pad + csrc 扩展调用 + 输出裁剪。"""
     _check_tensor_layout(tensor_layout)
     _check_dtype(q, k, v)
@@ -233,12 +229,12 @@ def _forward_meta(
     tensor_layout: str = "HND",
     is_causal: bool = False,
     qk_quant_gran: str = DEFAULT_QK_QUANT_GRAN,
-    sm_scale: Optional[float] = None,
+    sm_scale: float | None = None,
     pv_accum_dtype: str = DEFAULT_PV_ACCUM_DTYPE,
     smooth_k: bool = True,
     smooth_v: bool = False,
     return_lse: bool = False,
-) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+) -> tuple[torch.Tensor, torch.Tensor | None]:
     """Meta 实现：复用全部校验，仅做 shape/dtype 推导。"""
     _check_tensor_layout(tensor_layout)
     _check_dtype(q, k, v)
@@ -255,12 +251,12 @@ def _forward_cpu(
     tensor_layout: str = "HND",
     is_causal: bool = False,
     qk_quant_gran: str = DEFAULT_QK_QUANT_GRAN,
-    sm_scale: Optional[float] = None,
+    sm_scale: float | None = None,
     pv_accum_dtype: str = DEFAULT_PV_ACCUM_DTYPE,
     smooth_k: bool = True,
     smooth_v: bool = False,
     return_lse: bool = False,
-) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+) -> tuple[torch.Tensor, torch.Tensor | None]:
     """CPU 参考实现分发：复用全部参数校验与 warning，转调 reference.sageattn_reference。"""
     _check_tensor_layout(tensor_layout)
     _check_dtype(q, k, v)
@@ -311,7 +307,7 @@ torch.library.impl(_SCHEMA_OP, "CPU")(_forward_cpu)
 torch.library.impl(_SCHEMA_OP, "PrivateUse1")(_forward_impl)
 try:
     torch.library.impl(_SCHEMA_OP, "AutogradPrivateUse1")(_forward_impl)
-except Exception:
+except Exception:  # noqa: BLE001, S110
     pass
 torch.library.register_fake(_SCHEMA_OP)(_forward_meta)
 
@@ -323,17 +319,16 @@ def sageattn_qk_int8_pv_fp8_asc(
     tensor_layout: str = "HND",
     is_causal: bool = False,
     qk_quant_gran: str = DEFAULT_QK_QUANT_GRAN,
-    sm_scale: Optional[float] = None,
+    sm_scale: float | None = None,
     pv_accum_dtype: str = DEFAULT_PV_ACCUM_DTYPE,
     smooth_k: bool = True,
     smooth_v: bool = False,
     return_lse: bool = False,
     **kwargs: Any,
-) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
     """INT8 QK^T + FP8 PV 注意力（NPU，Ascend 950）；参数语义与开源 sageattn_qk_int8_pv_fp8_cuda 逐项对齐。"""
-    if "attn_mask" in kwargs:
-        if kwargs.pop("attn_mask") is not None:
-            raise ValueError("sageattn_qk_int8_pv_fp8_asc does not support attn_mask.")
+    if "attn_mask" in kwargs and kwargs.pop("attn_mask") is not None:
+        raise ValueError("sageattn_qk_int8_pv_fp8_asc does not support attn_mask.")
     if kwargs:
         unexpected = sorted(kwargs.keys())
         raise TypeError(f"sageattn_qk_int8_pv_fp8_asc() got unexpected keyword argument(s): {unexpected}")
@@ -357,14 +352,13 @@ def sageattn(
     v: torch.Tensor,
     tensor_layout: str = "HND",
     is_causal: bool = False,
-    sm_scale: Optional[float] = None,
+    sm_scale: float | None = None,
     return_lse: bool = False,
     **kwargs: Any,
-) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
     """自动分发入口：NPU 上固定分发到 FP8 PV 实现（sageattn_qk_int8_pv_fp8_asc）。"""
-    if "attn_mask" in kwargs:
-        if kwargs.pop("attn_mask") is not None:
-            raise ValueError("sageattn does not support attn_mask.")
+    if "attn_mask" in kwargs and kwargs.pop("attn_mask") is not None:
+        raise ValueError("sageattn does not support attn_mask.")
     pv_accum_dtype = kwargs.pop("pv_accum_dtype", None) or _get_env_or(
         _ENV_PV_ACCUM_DTYPE, DEFAULT_PV_ACCUM_DTYPE
     )

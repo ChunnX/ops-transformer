@@ -1,6 +1,5 @@
 # SageAttention2 torch 扩展加载器：JIT 构建 csrc/attention.cpp 并提供 NPU 前向入口与流句柄解析
 import os
-from typing import Optional, Tuple
 
 import torch
 
@@ -68,7 +67,7 @@ def sa2_attention(
     smooth_k: bool,
     smooth_v: bool,
     return_lse: bool,
-) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+) -> tuple[torch.Tensor, torch.Tensor | None]:
     """调用 csrc 扩展执行 INT8 QK^T + FP8 PV 前向；return_lse 为 False 时 lse 返回 None。"""
     extension = _load_extension()
     stream_handle = _resolve_stream_handle(q.device)
