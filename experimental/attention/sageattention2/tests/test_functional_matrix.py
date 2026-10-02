@@ -315,9 +315,13 @@ def test_tc08_illegal_inputs_extended():
     with pytest.raises(ValueError, match="head_dim"):
         sageattn(q_d0, k_d0, v_d0)
 
+    # 7. reference 校验面同口径（直接调 sageattn_reference 亦拦截 D=0）
+    with pytest.raises(ValueError, match="head_dim"):
+        sageattn_reference(q_d0, k_d0, v_d0)
+
 
 def test_tc09_scaled_sequences():
-    """TC-09: 序列长度测试（含非对称及 S=8192 长序列真实校验）。"""
+    """TC-09: 序列长度测试（含非对称及 S=8192 / S=16384 长序列真实校验）。"""
     # 1. 非对称序列长
     q, k, v = _create_tensors(b=1, hq=2, hk=2, sq=256, sk=512, d=64)
     out = sageattn(q, k, v)
@@ -329,6 +333,12 @@ def test_tc09_scaled_sequences():
     out_8k = sageattn(q_8k, k_8k, v_8k)
     assert out_8k.shape == (1, 1, 8192, 64)
     assert torch.all(torch.isfinite(out_8k))
+
+    # 3. 16K 长序列真实校验（TC-09 契约 S >= 16K 档；宿主 reference 实测 ~7s）
+    q_16k, k_16k, v_16k = _create_tensors(b=1, hq=1, hk=1, sq=16384, sk=16384, d=64)
+    out_16k = sageattn(q_16k, k_16k, v_16k)
+    assert out_16k.shape == (1, 1, 16384, 64)
+    assert torch.all(torch.isfinite(out_16k))
 
 
 def test_tc10_replace_sdpa_smoke():

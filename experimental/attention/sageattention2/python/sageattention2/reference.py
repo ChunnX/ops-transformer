@@ -125,8 +125,8 @@ def _validate(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, tensor_layout: 
         raise ValueError("num_qo_heads must be divisible by num_kv_heads.")
     if is_causal and q.shape[seq] != k.shape[seq]:
         raise ValueError("is_causal is valid only when qo_len equals kv_len.")
-    if q.shape[3] > 128:
-        raise ValueError("head_dim must not be greater than 128.")
+    if not 0 < q.shape[3] <= 128:
+        raise ValueError(f"head_dim must be in (0, 128], but got {q.shape[3]}.")
 
 
 def sageattn_reference(
