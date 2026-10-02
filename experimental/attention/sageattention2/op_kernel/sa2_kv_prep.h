@@ -33,6 +33,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <cstdio>
 
 #include "sa2_spec.h"
 #include "sa2_planner.h"
@@ -58,6 +59,8 @@ using GM_ADDR = uint8_t*;
 #endif
 
 namespace sa2 {
+
+inline int c_trace = 0;
 
 // 阶段一本地 HardEvent 票（票号 0/1，逐槽携带 MTE2_V/V_MTE2/V_MTE3/MTE3_V 四域事件对）。
 // 票号分域分相不相交：MTE1_MTE2 域 0..3 = 注意力阶段 K/V 预取、MTE2_V/V_MTE2 域 4/5 =
@@ -306,24 +309,23 @@ private:
         }
     }
 
-    // ---- K 均值：64 行子块 UB 纵向归约（列 lane 内按行序 FP32 逐次相加，树序不变）----
+    // ---- K 均值：64 行子块 UB 纵向归约（列 lane 内按行序 FP32 逐次相加）----
+    // 子块和累入块级累加器 kKvPrepMeanAcc；每 128 行块由 MergeKMeanAcc 汇入全头和一次——
+    // 加法树 = 128 行块 → 64 行子块 → 全头折叠，与 sim oracle（ProcessKMean chunkBuf 树）
+    // 逐位同构（FP32 非结合：块内先折子块、块间再折叠的次序不可换）。
     __aicore__ inline void ReduceKMeanSub(
         __ubuf__ const Dtype *slice, int64_t rows, int64_t d, int64_t dp)
     {
-        __ubuf__ float *totalUb = UbAt<float>(kKvPrepMeanTotal);
+        __ubuf__ float *accUb = UbAt<float>(kKvPrepMeanAcc);
         (void)d;
 #if SA2_KV_PREP_VAPI
         vapi::MaskReg m64 = vapi::CreateMask<float, vapi::MaskPattern::ALL>();
-        vapi::RegTensor<float> tot0;
-        vapi::LoadAlign(tot0, totalUb);
         vapi::RegTensor<float> acc0;
-        vapi::Duplicate(acc0, 0.0f);
-        vapi::RegTensor<float> tot1;
+        vapi::LoadAlign(acc0, accUb);
         vapi::RegTensor<float> acc1;
         const bool wide = (dp > kKvPrepVlF32);
         if (wide) {
-            vapi::LoadAlign(tot1, totalUb + kKvPrepVlF32);
-            vapi::Duplicate(acc1, 0.0f);
+            vapi::LoadAlign(acc1, accUb + kKvPrepVlF32);
         }
         for (int64_t r = 0; r < rows; ++r) {
             __ubuf__ const Dtype *row = slice + r * dp;
@@ -340,19 +342,45 @@ private:
                 vapi::Add(acc1, acc1, f1, m64);
             }
         }
-        vapi::Add(tot0, tot0, acc0, m64);
-        vapi::StoreAlign(totalUb, tot0, m64);
+        vapi::StoreAlign(accUb, acc0, m64);
         if (wide) {
-            vapi::Add(tot1, tot1, acc1, m64);
-            vapi::StoreAlign(totalUb + kKvPrepVlF32, tot1, m64);
+            vapi::StoreAlign(accUb + kKvPrepVlF32, acc1, m64);
         }
 #else
         // MIX 第三 pass 标量解析轨（运行期不可达）：语句序与 vapi 轨逐 lane 同构
         for (int64_t r = 0; r < rows; ++r) {
             __ubuf__ const Dtype *row = slice + r * dp;
             for (int64_t c = 0; c < d; ++c) {
-                totalUb[c] += static_cast<float>(row[c]);
+                accUb[c] += static_cast<float>(row[c]);
             }
+        }
+#endif
+    }
+
+    // 块汇聚：全头累加和 += 块级累加器（每 128 行块恰一次；树序与 oracle 一致）
+    __aicore__ inline void MergeKMeanAcc(int64_t dp)
+    {
+        __ubuf__ float *accUb = UbAt<float>(kKvPrepMeanAcc);
+        __ubuf__ float *totalUb = UbAt<float>(kKvPrepMeanTotal);
+#if SA2_KV_PREP_VAPI
+        vapi::MaskReg m64 = vapi::CreateMask<float, vapi::MaskPattern::ALL>();
+        vapi::RegTensor<float> tot0;
+        vapi::LoadAlign(tot0, totalUb);
+        vapi::RegTensor<float> acc0;
+        vapi::LoadAlign(acc0, accUb);
+        vapi::Add(tot0, tot0, acc0, m64);
+        vapi::StoreAlign(totalUb, tot0, m64);
+        if (dp > kKvPrepVlF32) {
+            vapi::RegTensor<float> tot1;
+            vapi::LoadAlign(tot1, totalUb + kKvPrepVlF32);
+            vapi::RegTensor<float> acc1;
+            vapi::LoadAlign(acc1, accUb + kKvPrepVlF32);
+            vapi::Add(tot1, tot1, acc1, m64);
+            vapi::StoreAlign(totalUb + kKvPrepVlF32, tot1, m64);
+        }
+#else
+        for (int64_t c = 0; c < dp; ++c) {
+            totalUb[c] += accUb[c];
         }
 #endif
     }
@@ -389,6 +417,9 @@ private:
 
         const int64_t numSubs =
             (actualEnd - actualStart + kKMeanDataBlockLanes - 1) / kKMeanDataBlockLanes;
+        const int64_t numBlocks =
+            (actualEnd - actualStart + kKMeanBlockRows - 1) / kKMeanBlockRows;
+        __ubuf__ float *accUb = UbAt<float>(kKvPrepMeanAcc);
         // MTE2 双缓冲：预取子块 0 后进入主循环——先发子块 i+1 拉块（槽 (i+1)%2），再归约子块 i。
         // 槽复用（i+2）前以 V_MTE2 事件等待 Vector 读毕（WAR 收口），装载毕以 MTE2_V 放行归约。
         {
@@ -398,25 +429,38 @@ private:
                          p.kStride[2], s0, p.sk);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EvOf(0));
         }
-        for (int64_t sub = 0; sub < numSubs; ++sub) {
-            const int64_t slot = sub & 1;
-            const int64_t next = sub + 1;
-            if (next < numSubs) {
-                const int64_t nextSlot = slot ^ 1;
-                if (next >= 2) {
-                    AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EvOf(nextSlot));
-                }
-                const int64_t s1 = actualStart + next * kKMeanDataBlockLanes;
-                const int64_t rows1 = aicMin(kKMeanDataBlockLanes, actualEnd - s1);
-                LoadRowsToUb(MeanSliceOf(nextSlot), gmK + s1 * p.kStride[2], rows1, p.d, p.dp,
-                             p.kStride[2], s1, p.sk);
-                AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EvOf(nextSlot));
+        int64_t subGlobal = 0;
+        for (int64_t block = 0; block < numBlocks; ++block) {
+            const int64_t blockStart = actualStart + block * kKMeanBlockRows;
+            const int64_t blockEnd = aicMin(blockStart + kKMeanBlockRows, actualEnd);
+            const int64_t subsInBlock =
+                (blockEnd - blockStart + kKMeanDataBlockLanes - 1) / kKMeanDataBlockLanes;
+            // 块级累加器清零（树的第一层：128 行块内先折 64 行子块）
+            for (int64_t c = 0; c < p.dp; ++c) {
+                accUb[c] = 0.0f;
             }
-            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EvOf(slot));
-            ReduceKMeanSub(MeanSliceOf(slot), aicMin(kKMeanDataBlockLanes, actualEnd -
-                                                                       (actualStart + sub * kKMeanDataBlockLanes)),
-                           p.d, p.dp);
-            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EvOf(slot));
+            for (int64_t s = 0; s < subsInBlock; ++s, ++subGlobal) {
+                const int64_t slot = subGlobal & 1;
+                const int64_t next = subGlobal + 1;
+                if (next < numSubs) {
+                    const int64_t nextSlot = slot ^ 1;
+                    if (next >= 2) {
+                        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EvOf(nextSlot));
+                    }
+                    const int64_t s1 = actualStart + next * kKMeanDataBlockLanes;
+                    const int64_t rows1 = aicMin(kKMeanDataBlockLanes, actualEnd - s1);
+                    LoadRowsToUb(MeanSliceOf(nextSlot), gmK + s1 * p.kStride[2], rows1, p.d, p.dp,
+                                 p.kStride[2], s1, p.sk);
+                    AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EvOf(nextSlot));
+                }
+                AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EvOf(slot));
+                ReduceKMeanSub(MeanSliceOf(slot),
+                               aicMin(kKMeanDataBlockLanes, actualEnd -
+                                                                          (actualStart + subGlobal * kKMeanDataBlockLanes)),
+                               p.d, p.dp);
+                AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EvOf(slot));
+            }
+            MergeKMeanAcc(p.dp);  // 树的第二层：块和汇入全头和（每 128 行块恰一次）
         }
 
         // 完整 head 独写 vs 跨界 head 汇聚（单写者 GM 写回；语义与分块树序不变）
@@ -560,19 +604,23 @@ private:
                 // per_warp：行 amax（全宽，pad 列经槽零填充贡献 0）
                 vapi::RegTensor<float> amaxV;
                 vapi::Duplicate(amaxV, 0.0f);
+                if (c_trace && desc.sliceIndex == 1 && r >= 62) std::fprintf(stderr, "[KB] r=%lld pre-loop ub=%p vOut00=%02x\n", (long long)r, (void*)VOutOf(0), VOutOf(0)[0]);
                 for (int64_t seg = 0; seg < p.dp; seg += kKvPrepVlF32) {
                     vapi::RegTensor<Dtype> h;
                     vapi::LoadAlign(h, rowIn + seg);
+                    if (c_trace && desc.sliceIndex == 1 && r >= 62) std::fprintf(stderr, "[KB] r=%lld seg=%lld after-loadh vOut00=%02x\n", (long long)r, (long long)seg, VOutOf(0)[0]);
                     vapi::RegTensor<float> f;
                     vapi::Cast<float, Dtype, kKvCastWide0>(f, h, m64);
                     vapi::RegTensor<float> meanV;
                     vapi::LoadAlign(meanV, meanRow + seg);
+                    if (c_trace && desc.sliceIndex == 1 && r >= 62) std::fprintf(stderr, "[KB] r=%lld seg=%lld after-loadmean vOut00=%02x\n", (long long)r, (long long)seg, VOutOf(0)[0]);
                     vapi::Sub(f, f, meanV, m64);
                     vapi::RegTensor<float> neg;
                     vapi::Muls(neg, f, -1.0f, m64);
                     vapi::Max(f, f, neg, m64);  // |x| = max(x, −x)
                     vapi::Max(amaxV, amaxV, f, m64);
                 }
+                if (c_trace && desc.sliceIndex == 1 && r >= 62) std::fprintf(stderr, "[KB] r=%lld after-amaxloop vOut00=%02x\n", (long long)r, VOutOf(0)[0]);
                 vapi::RegTensor<float> amaxRed;
                 vapi::ReduceMax(amaxRed, amaxV, m64);
                 vapi::StoreAlign(scalarSlot, amaxRed, m1);

@@ -557,14 +557,14 @@ inline void Sa2VfSoftmaxRun(Sa2VfSoftmaxArgs a)
         float mOld = a.rowStat[r * 2 + 0];
         float mBlkShift = mBlk - a.lnPDomain;
         float mNew = (mOld > mBlkShift) ? mOld : mBlkShift;
-        float alpha = std::exp(mOld - mNew);
+        float alpha = aicExp(mOld - mNew);
         if ((mBlk - mOld) <= a.lnPDomain) {
             alpha = 1.0f;
             mNew = mOld;
         }
         float sumP8 = 0.0f;
         for (int64_t c = 0; c < kKvStep; ++c) {
-            float pv = (c < maxActiveCol) ? std::exp(s[c] - mNew) : 0.0f;
+            float pv = (c < maxActiveCol) ? aicExp(s[c] - mNew) : 0.0f;
             if (c < maxActiveCol) sumP8 += pv;
             a.pSlotUb[r * kKvStep + c] = FloatToFp8E4M3(pv);
         }
@@ -610,7 +610,7 @@ inline void Sa2VfFinishRun(Sa2VfFinishArgs a)
     }
     if (a.mStage != nullptr && a.validRows > 0) {
         for (int64_t r = 0; r < a.validRows; ++r) {
-            a.stageRow[r] = std::log(a.denom[r]) + a.mStage[r] + a.smScale * a.corr[r];
+            a.stageRow[r] = aicLog(a.denom[r]) + a.mStage[r] + a.smScale * a.corr[r];
         }
     }
 }
@@ -1008,12 +1008,17 @@ public:
     __aicore__ inline void StepVectorSoftmaxDevice(const Sa2Task &task, int64_t step, int64_t streamId)
     {
         int64_t parity = step % 2;
-        CrossEnginePending<void, Sa2CrossFlag::kScoreOk> pendingScore(nullptr, 0, streamId);
-        auto readyScore = aicMove(pendingScore).Await();
-        (void)readyScore;
+        constexpr bool isThreadGran = (G == Gran::kPerThread);
+        void *scoreSlotAddr = isThreadGran
+            ? reinterpret_cast<void *>(reinterpret_cast<uint64_t>(ub_.GetScoreSlotThread(parity)))
+            : reinterpret_cast<void *>(reinterpret_cast<uint64_t>(ub_.GetScoreSlotWarp(parity)));
+        const int64_t scoreSlotBytes = isThreadGran
+            ? (kStreamRows * kKvStep * 16 * static_cast<int64_t>(sizeof(float)))
+            : (kStreamRows * kKvStep * static_cast<int64_t>(sizeof(float)));
+        auto scoreFull = AcquireSlot<Sa2CrossFlag::kScoreOk>(scoreSlotAddr, scoreSlotBytes, streamId);
+        (void)scoreFull;
 
         const Sa2Params &p = td_->params;
-        constexpr bool isThreadGran = (G == Gran::kPerThread);
         const int64_t validRows = QTileValidRows(p, task.m0);
         const int64_t kvTokenStart = step * kKvStep;
         const half *qScalePtr = l1_.GetQScaleSlot(streamId);
@@ -1111,7 +1116,9 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(0);
         AscendC::PipeBarrier<PIPE_MTE3>();
 
-        NotifyV(streamId, Sa2CrossFlag::kQkFree);
+        // 状态类型化槽位迁移：释放 QK 槽并通知 AIC 可进行后续步计算（Empty态无数据访问）
+        auto scoreEmpty = ReleaseSlot<Sa2CrossFlag::kQkFree>(std::move(scoreFull));
+        (void)scoreEmpty;
         NotifyMte3(streamId, Sa2CrossFlag::kPTaken);
     }
 
@@ -1401,6 +1408,7 @@ public:
             fixpipeParams.srcStride = static_cast<uint16_t>(kKvStep / 16);
             fixpipeParams.dstStride = static_cast<uint32_t>(kKvStep);
             fixpipeParams.quantPre = QuantMode_t::DEQF16;
+            fixpipeParams.subBlockId = (streamId != 0);
             // 硬件核实项（Fixpipe DEQ 模式枚举核实，D-R13-(1) 前提）：真实
             // deqScalar 载体为 uint64_t（hoststub 假想为 float），950 fixpipe 的 DEQ 标量
             // 编码（fp32 位型/双 fp16 打包/移位格式）未经真机核实，暂以 2^-14 的 fp32 位型装入。
@@ -1419,6 +1427,7 @@ public:
             fixpipeParams.nSize = static_cast<uint16_t>(kKvStep);
             fixpipeParams.srcStride = static_cast<uint16_t>(kKvStep / 16);
             fixpipeParams.dstStride = static_cast<uint32_t>(kKvStep);
+            fixpipeParams.subBlockId = (streamId != 0);
             AscendC::LocalTensor<float> l0cTensorAsFloat = l0cTensor.template ReinterpretCast<float>();
             const float kSa2DeqScalar = 1.0f / 16384.0f;
             fixpipeParams.deqScalar =
@@ -1605,6 +1614,7 @@ public:
         fixpipeParams.srcStride = static_cast<uint16_t>(p.dp / 16);
         fixpipeParams.dstStride = static_cast<uint32_t>(p.dp);
         fixpipeParams.quantPre = QuantMode_t::NoQuant;
+        fixpipeParams.subBlockId = (streamId != 0);
         AscendC::Fixpipe<float, float, kSa2CfgRowMajorUb>(ubPvTensor, l0cTensor, fixpipeParams);
         AscendC::PipeBarrier<PIPE_FIX>();
 

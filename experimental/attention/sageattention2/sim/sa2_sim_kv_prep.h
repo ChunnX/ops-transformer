@@ -414,8 +414,11 @@ private:
             const float *rowIn = ctx.kIn[slot] + r * p.dp;
             uint8_t *rowOut = ctx.kOut[slot] + r * p.dp;
             float rowDiff[kMaxHeadDim] = {0.0f};
-            for (int64_t c = 0; c < p.d; ++c) {
-                rowDiff[c] = rowIn[c] - ctx.wsKMean[c];
+            if (validToken) {
+                // 无效 token 行零贡献（输入槽零填充 ⇒ 不减均值，与设备/标量 oracle 同款守卫）
+                for (int64_t c = 0; c < p.d; ++c) {
+                    rowDiff[c] = rowIn[c] - ctx.wsKMean[c];
+                }
             }
             if constexpr (!isThreadGran) {
                 float amax = 0.0f;

@@ -9,7 +9,6 @@
 #include <cmath>
 #include <cstring>
 #include <algorithm>
-#include <vector>
 
 #if !defined(SA2_SPEC_H_) && __has_include("sa2_spec.h")
 #include "sa2_spec.h"
@@ -72,6 +71,7 @@ namespace sa2 {
 uint8_t FloatToFp8E4M3(float val);
 float Fp8E4M3ToFloat(uint8_t b);
 float aicNearbyInt(float x);
+float aicLog(float x);
 inline bfloat16_t FloatToBf16(float f) {
     uint32_t u;
     std::memcpy(&u, &f, sizeof(u));
@@ -229,24 +229,51 @@ private:
 template <TPosition pos = TPosition::VECCALC>
 class TBuf {
 public:
+    TBuf() = default;
+    ~TBuf() {
+        if (buf_) {
+            delete[] buf_;
+            buf_ = nullptr;
+        }
+    }
+    TBuf(const TBuf &) = delete;
+    TBuf &operator=(const TBuf &) = delete;
+    TBuf(TBuf &&other) noexcept : buf_(other.buf_), sizeBytes_(other.sizeBytes_) {
+        other.buf_ = nullptr;
+        other.sizeBytes_ = 0;
+    }
+    TBuf &operator=(TBuf &&other) noexcept {
+        if (this != &other) {
+            if (buf_) delete[] buf_;
+            buf_ = other.buf_;
+            sizeBytes_ = other.sizeBytes_;
+            other.buf_ = nullptr;
+            other.sizeBytes_ = 0;
+        }
+        return *this;
+    }
+
     template <typename T>
     LocalTensor<T> Get() const {
-        if (buf_.empty()) {
+        if (buf_ == nullptr || sizeBytes_ == 0) {
             return LocalTensor<T>(nullptr, 0, pos);
         }
-        return LocalTensor<T>(const_cast<T*>(reinterpret_cast<const T*>(buf_.data())),
-                              static_cast<uint32_t>(buf_.size() / (sizeof(T) == 0 ? 1 : sizeof(T))), pos);
+        return LocalTensor<T>(reinterpret_cast<T*>(buf_),
+                              static_cast<uint32_t>(sizeBytes_ / (sizeof(T) == 0 ? 1 : sizeof(T))), pos);
     }
     template <typename T>
     LocalTensor<T> Allocate(uint32_t size) {
-        buf_.resize(size * sizeof(T), 0);
-        return LocalTensor<T>(reinterpret_cast<T*>(buf_.data()), size, pos);
+        Init(size * sizeof(T));
+        return LocalTensor<T>(reinterpret_cast<T*>(buf_), size, pos);
     }
     void Init(uint32_t bytes) {
-        buf_.resize(bytes, 0);
+        if (buf_) delete[] buf_;
+        sizeBytes_ = bytes;
+        buf_ = bytes > 0 ? new uint8_t[bytes]() : nullptr;
     }
 private:
-    mutable std::vector<uint8_t> buf_{};
+    uint8_t *buf_{nullptr};
+    uint32_t sizeBytes_{0};
 };
 
 class TPipe {

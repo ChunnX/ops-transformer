@@ -227,6 +227,14 @@ SA2_AICORE inline float aicExp(float x) {
 #endif
 }
 
+SA2_AICORE inline float aicLog(float x) {
+#if defined(__aicore__)
+    return __builtin_logf(x);    // 单精度 log，数值口径同 std::log(float)
+#else
+    return std::log(x);
+#endif
+}
+
 template <typename T>
 struct AicRemoveRef { using type = T; };
 template <typename T>
@@ -676,7 +684,8 @@ constexpr int64_t kKvPrepScalarBytes = 64;                                 // �
 // 偏移链（唯一算式处；kv_prep 文件只取此处偏移，B-26 纪律同 ub_plan）：
 constexpr int64_t kKvPrepMeanSlice0 = 0;                                   // K 均值行块 ping（16384B）
 constexpr int64_t kKvPrepMeanSlice1 = kKvPrepMeanSlice0 + kKvPrepSliceBytes;
-constexpr int64_t kKvPrepMeanTotal = kKvPrepMeanSlice1 + kKvPrepSliceBytes;     // 全头累加和 (512B)
+constexpr int64_t kKvPrepMeanAcc = kKvPrepMeanSlice1 + kKvPrepSliceBytes;      // 128 行块级列累加器 (512B)
+constexpr int64_t kKvPrepMeanTotal = kKvPrepMeanAcc + kKvPrepRowF32Bytes;      // 全头累加和 (512B)
 constexpr int64_t kKvPrepKIn0 = kKvPrepMeanTotal + kKvPrepRowF32Bytes;         // K 量化输入槽 ping
 constexpr int64_t kKvPrepKIn1 = kKvPrepKIn0 + kKvPrepSliceBytes;
 constexpr int64_t kKvPrepVIn0 = kKvPrepKIn1 + kKvPrepSliceBytes;               // V 量化输入槽 ping
@@ -693,7 +702,7 @@ constexpr int64_t kKvPrepMeanRow = kKvPrepExpSub1 + 2 * kKvPrepExpSubBytes;    /
 constexpr int64_t kKvPrepAmaxRow = kKvPrepMeanRow + kKvPrepRowF32Bytes;        // V 组 per-channel amax 行
 constexpr int64_t kKvPrepScaleRow = kKvPrepAmaxRow + kKvPrepRowF32Bytes;       // V 2^-e 精确倒数行
 constexpr int64_t kKvPrepScalarSlot = kKvPrepScaleRow + kKvPrepRowF32Bytes;    // 归约标量提取 (64B)
-constexpr int64_t kKvPrepUbBytes = kKvPrepScalarSlot + kKvPrepScalarBytes;     // 138304 ≤ 248KB 高水位
+constexpr int64_t kKvPrepUbBytes = kKvPrepScalarSlot + kKvPrepScalarBytes;     // 138816 ≤ 248KB 高水位
 static_assert(kKvPrepSliceRows == kKMeanDataBlockLanes, "量化切片行数 = K 均值 64 行子块基数");
 static_assert(kKvPrepKScaleSliceBytes == 2048, "kScale 槽 = 64 行 × segWidth 上界 16 half（槽内行距与 GM 同构）");
 static_assert(kKvPrepMeanTotal % 512 == 0 && kKvPrepScalarSlot % 64 == 0, "UB 槽偏移 32B 对齐链");
