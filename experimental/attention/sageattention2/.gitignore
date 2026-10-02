@@ -1,0 +1,21 @@
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
+
+# 本地构建产物（run.sh / build_opp.sh / benchmarks 输出）
+build/
+*.o
+*.dylib
+*.so
+
+# 本地 Python 测试门依赖的虚拟环境与缓存（.venv 目录本身保留在本地，仅禁止入库）
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
