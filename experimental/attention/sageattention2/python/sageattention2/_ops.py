@@ -103,9 +103,9 @@ def _check_params(
             f"sm_scale must be finite and within the fp32 representable range "
             f"({-FP32_MAX}, {FP32_MAX}), but got {sm_scale}."
         )
-    if head_dim > PAD_BUCKETS[-1]:
+    if head_dim <= 0 or head_dim > PAD_BUCKETS[-1]:
         raise ValueError(
-            f"head_dim must not be greater than {PAD_BUCKETS[-1]}, but got {head_dim}."
+            f"head_dim must be in (0, {PAD_BUCKETS[-1]}], but got {head_dim}."
         )
 
 

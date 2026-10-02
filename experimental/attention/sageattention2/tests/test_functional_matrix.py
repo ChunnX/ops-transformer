@@ -308,6 +308,13 @@ def test_tc08_illegal_inputs_extended():
     with pytest.raises(ValueError, match="sm_scale"):
         sageattn(q, k, v, sm_scale=float("nan"))
 
+    # 6. head_dim 下界校验（D=0 契约拦截）
+    q_d0 = torch.randn(1, 4, 64, 0, dtype=torch.float16)
+    k_d0 = torch.randn(1, 4, 64, 0, dtype=torch.float16)
+    v_d0 = torch.randn(1, 4, 64, 0, dtype=torch.float16)
+    with pytest.raises(ValueError, match="head_dim"):
+        sageattn(q_d0, k_d0, v_d0)
+
 
 def test_tc09_scaled_sequences():
     """TC-09: 序列长度测试（含非对称及 S=8192 长序列真实校验）。"""

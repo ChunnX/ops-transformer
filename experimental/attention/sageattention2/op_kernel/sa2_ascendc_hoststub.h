@@ -474,8 +474,12 @@ struct MaskReg {
 
     constexpr MaskReg() = default;
 
+    // activeCount = 掩码有效 lane 数（按元素类型宽度换算，CreateMask<float, ALL> = 64）：
+    // 镜像真机掩码语义的必要条件——只查 bits 不查 activeCount 会让 uint8 寄存器的掩码
+    // 访存越过 activeCount 写满 256 lane，越槽踩踏相邻 UB 区域（实测 kOut1→VOut0 /
+    // vOut1→KScale0 各 192B 越界写，conformance kv_prep 三方对账抓出）。
     inline bool IsActive(size_t idx) const {
-        if (idx >= 256) return false;
+        if (idx >= activeCount || idx >= 256) return false;
         return (bits[idx / 64] & (1ULL << (idx % 64))) != 0;
     }
 };

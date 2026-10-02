@@ -529,13 +529,13 @@ constexpr bool IsWidePathEligible(int64_t sq, int64_t sk, int64_t d) {
 // 接线状态（真实状态如实注记，严禁夸大）：
 //   1. 倒数复用结构接入：Sa2QuantScaleReciprocal 已接入 Q 量化（sa2_attention_loop.h StepVectorQQuantDevice）
 //      与 K 量化（sa2_kv_prep.h），将内层重复除法替换为 1 次标量求倒数 + 乘法，消除内层高延迟除法。
-//   2. 批量量化流水骨架：Sa2QuantBatchPipeline 与 ExecuteQuantBatchPipeline 当前为算法调度契约与
-//      宿主 conformance（quant_scale_reciprocal_and_pipeline_guard）的规划验证骨架。
-//   3. 设备侧现状（真实口径）：当前 op_kernel 设备路径下，KV 预处理（sa2_kv_prep.h 的 K 均值与 K/V 量化）
-//      与 Q 量化仍以分块标量内层循环执行；硬件级 MTE2 异步预取 / MicroAPI SIMD 向量计算 / MTE3 异步写回
-//      的三级重叠流水在设备态尚未完整接线展开，挂 M2b Vector 通路改造真机实施项，勿视为已接线。
+//   2. 批量量化流水骨架：Sa2QuantBatchPipeline 与 ExecuteQuantBatchPipeline 已在 StepVectorQQuantDevice
+//      中接线落地，驱动分块调度与执行。
+//   3. 向量化完成度（真实口径）：KV 预处理（sa2_kv_prep.h 的 128 行 K 均值分块树与 K/V 量化）与 Q 量化已由
+//      MicroAPI 宽向量指令（LoadAlign / Cast / Add / Sub / Mul / StoreAlign）及 128 位块猝发直写完成；
+//      真机硬件级 MTE2 异步预取与 MTE3 异步写回的跨引擎三级重叠流水在硬件态的无缝掩盖挂真机 profile 检验。
 //   4. 宿主测试体系：当前宿主机通过 sim 仿真镜像与数值契约断言保证算法逻辑与位级自洽；
-//      真机硬件吞吐与 1.6× FIA 门禁需在 M2b 硬件流水接线与真机 profile 实测后方可判定。
+//      真机硬件吞吐与 1.6× FIA 门禁以 M5.2/M5.3 真机实测为准。
 constexpr int64_t kQuantTileRows = 64;       // 64 行 Tile 切片大小（BR 维对齐）
 constexpr int64_t kQuantPipelineStages = 3;  // MTE2 装载 / Vector 量化 / MTE3 写回 3 级重叠
 constexpr int64_t kQuantBufferSlots = 2;     // Ping-Pong 双缓冲槽位数

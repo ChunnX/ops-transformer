@@ -158,7 +158,7 @@ clang++ -std=c++17 -Wall -Wextra -Werror \
 ./build/bin/test_sage_attention2_aclnn
 ```
 
-- 执行 C++ aclnn 两段式性能对比基准测试（明确对照官方 `aclnnFusedInferAttentionScoreV5`，覆盖 P-01 ~ P-07 形状，核验 >= 1.6x 门禁）：
+- 执行 C++ aclnn 两段式性能对比基准测试（明确对照官方 `aclnnFusedInferAttentionScoreV5`，覆盖 P-01 ~ P-07 形状；注：宿主运行 = 模型口径仿真，门禁结论以 M5.2/M5.3 真机实测为准）：
 
 ```bash
 clang++ -std=c++17 -Wall -Wextra -Werror \

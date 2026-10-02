@@ -60,8 +60,6 @@ using GM_ADDR = uint8_t*;
 
 namespace sa2 {
 
-inline int c_trace = 0;
-
 // 阶段一本地 HardEvent 票（票号 0/1，逐槽携带 MTE2_V/V_MTE2/V_MTE3/MTE3_V 四域事件对）。
 // 票号分域分相不相交：MTE1_MTE2 域 0..3 = 注意力阶段 K/V 预取、MTE2_V/V_MTE2 域 4/5 =
 // scale 预取（注意力阶段）；阶段一与注意力阶段经 sa2_kernel.cpp SyncAll 收口，票号复用安全。
@@ -604,23 +602,19 @@ private:
                 // per_warp：行 amax（全宽，pad 列经槽零填充贡献 0）
                 vapi::RegTensor<float> amaxV;
                 vapi::Duplicate(amaxV, 0.0f);
-                if (c_trace && desc.sliceIndex == 1 && r >= 62) std::fprintf(stderr, "[KB] r=%lld pre-loop ub=%p vOut00=%02x\n", (long long)r, (void*)VOutOf(0), VOutOf(0)[0]);
                 for (int64_t seg = 0; seg < p.dp; seg += kKvPrepVlF32) {
                     vapi::RegTensor<Dtype> h;
                     vapi::LoadAlign(h, rowIn + seg);
-                    if (c_trace && desc.sliceIndex == 1 && r >= 62) std::fprintf(stderr, "[KB] r=%lld seg=%lld after-loadh vOut00=%02x\n", (long long)r, (long long)seg, VOutOf(0)[0]);
                     vapi::RegTensor<float> f;
                     vapi::Cast<float, Dtype, kKvCastWide0>(f, h, m64);
                     vapi::RegTensor<float> meanV;
                     vapi::LoadAlign(meanV, meanRow + seg);
-                    if (c_trace && desc.sliceIndex == 1 && r >= 62) std::fprintf(stderr, "[KB] r=%lld seg=%lld after-loadmean vOut00=%02x\n", (long long)r, (long long)seg, VOutOf(0)[0]);
                     vapi::Sub(f, f, meanV, m64);
                     vapi::RegTensor<float> neg;
                     vapi::Muls(neg, f, -1.0f, m64);
                     vapi::Max(f, f, neg, m64);  // |x| = max(x, −x)
                     vapi::Max(amaxV, amaxV, f, m64);
                 }
-                if (c_trace && desc.sliceIndex == 1 && r >= 62) std::fprintf(stderr, "[KB] r=%lld after-amaxloop vOut00=%02x\n", (long long)r, VOutOf(0)[0]);
                 vapi::RegTensor<float> amaxRed;
                 vapi::ReduceMax(amaxRed, amaxV, m64);
                 vapi::StoreAlign(scalarSlot, amaxRed, m1);
