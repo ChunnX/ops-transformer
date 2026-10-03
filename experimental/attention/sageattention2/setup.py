@@ -14,9 +14,9 @@ if os.environ.get("BUILD_NPU_EXT", "0") == "1":
         from pathlib import Path
 
         npu = Path(torch_npu.__file__).resolve().parent
-        # ASCEND_HOME_PATH 由镜像 ENV 导出（与 _extension.py / run.sh 容器侧同一契约），
-        # 不做多候选探测
         cann = Path(os.environ.get("ASCEND_HOME_PATH", "/usr/local/Ascend/ascend-toolkit/latest"))
+        if not cann.exists():
+            cann = Path("/usr/local/Ascend/cann")
 
         ext = NpuExtension(
             name="sageattention2.sageattention2_npu_ext",

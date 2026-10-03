@@ -1,7 +1,8 @@
 """
 Dispatcher and execution backend router for SageAttention2 on Ascend NPU.
 Implements auto-routing to NPU FP8 PV path, pv_accum_dtype override via kwargs/env,
-multi-backend auto-detection (C++ aclnn/op_plugin vs high-fidelity CPU simulation).
+multi-backend auto-detection (NPU C++ extension: csrc bridge -> op_api aclnn two-phase
+interface vs high-fidelity CPU simulation).
 """
 
 from __future__ import annotations
@@ -27,7 +28,6 @@ from .error_check import (
     V_FP8_INV_PERM,
     V_FP8_PERM,
 )
-from . import _ops
 
 
 # 默认档唯一定义点：error_check.DEFAULT_PV_ACCUM_DTYPE（本名曾为
@@ -168,7 +168,10 @@ def _quant_v_fp8(
         v_scale = amax_v / scale_max
         v_norm = (v_perm.float() - vm.unsqueeze(-1)) / v_scale.unsqueeze(-1)
         v_fp8 = v_norm.clamp(-S_FP8_SCALE_MAX, S_FP8_SCALE_MAX).to(torch.float8_e4m3fn) if has_fp8 else v_norm.clamp(-S_FP8_SCALE_MAX, S_FP8_SCALE_MAX)
-        v_fp8_unperm = v_fp8.view(b, hkv, d, num_16, 16)[:, :, :, :, V_FP8_INV_PERM].contiguous().view(b, hkv, d, pad_sk_v)[:, :, :, :sk]
+        if has_fp8 and hasattr(torch, "float8_e4m3fn") and v_fp8.dtype == torch.float8_e4m3fn:
+            v_fp8_unperm = v_fp8.view(torch.uint8).view(b, hkv, d, num_16, 16)[:, :, :, :, V_FP8_INV_PERM].view(torch.float8_e4m3fn).contiguous().view(b, hkv, d, pad_sk_v)[:, :, :, :sk]
+        else:
+            v_fp8_unperm = v_fp8.view(b, hkv, d, num_16, 16)[:, :, :, :, V_FP8_INV_PERM].contiguous().view(b, hkv, d, pad_sk_v)[:, :, :, :sk]
         v_deq_hnd = (v_fp8_unperm.float() * v_scale.unsqueeze(-1) + vm.unsqueeze(-1)).transpose(2, 3)
     else:
         vm = None
@@ -176,7 +179,10 @@ def _quant_v_fp8(
         v_scale = amax_v / scale_max
         v_norm = v_perm.float() / v_scale.unsqueeze(-1)
         v_fp8 = v_norm.clamp(-S_FP8_SCALE_MAX, S_FP8_SCALE_MAX).to(torch.float8_e4m3fn) if has_fp8 else v_norm.clamp(-S_FP8_SCALE_MAX, S_FP8_SCALE_MAX)
-        v_fp8_unperm = v_fp8.view(b, hkv, d, num_16, 16)[:, :, :, :, V_FP8_INV_PERM].contiguous().view(b, hkv, d, pad_sk_v)[:, :, :, :sk]
+        if has_fp8 and hasattr(torch, "float8_e4m3fn") and v_fp8.dtype == torch.float8_e4m3fn:
+            v_fp8_unperm = v_fp8.view(torch.uint8).view(b, hkv, d, num_16, 16)[:, :, :, :, V_FP8_INV_PERM].view(torch.float8_e4m3fn).contiguous().view(b, hkv, d, pad_sk_v)[:, :, :, :sk]
+        else:
+            v_fp8_unperm = v_fp8.view(b, hkv, d, num_16, 16)[:, :, :, :, V_FP8_INV_PERM].contiguous().view(b, hkv, d, pad_sk_v)[:, :, :, :sk]
         v_deq_hnd = (v_fp8_unperm.float() * v_scale.unsqueeze(-1)).transpose(2, 3)
 
     return v_deq_hnd, v_fp8, v_scale, vm, v_norm

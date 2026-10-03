@@ -33,17 +33,11 @@ LB_RATIO_EPS = 1.0e-5        # L-B 上限浮点松弛
 OP_ROOT = Path(__file__).resolve().parent.parent
 # golden 数据集唯一位置：docker/golden（docker/init.sh --golden 幂等置备，绝不重生成）
 GOLDEN_DIR = OP_ROOT / "docker" / "golden"
-REPO_ROOT = OP_ROOT
 
 
 def find_golden_dir() -> Path:
     """golden 数据集目录（唯一定义点）。"""
     return GOLDEN_DIR
-
-
-def find_repo_root() -> Path:
-    """算子根目录（唯一定义点）。"""
-    return OP_ROOT
 
 
 def load_manifest_cases() -> dict:

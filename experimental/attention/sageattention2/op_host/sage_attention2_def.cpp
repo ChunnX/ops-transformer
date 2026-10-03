@@ -1,68 +1,14 @@
 /*!
  * \file sage_attention2_def.cpp
- * \brief Ascend CANN 官方标准 REG_OP 与 OpDef 算子原型注册
+ * \brief Ascend CANN 官方标准 OpDef 算子定义与硬件配置
  */
 
 #include "sage_attention2_def.h"
 
-namespace ge {
-
-/**
- * @brief SageAttention2: 针对 Ascend 950PR 硬件深度优化的极速 FP8/INT8 量化注意力算子。
- *
- * 核心创新点与特性：
- * 1. 完整支持 qk_quant_gran 量化粒度配置 (per_thread 与 per_warp)。
- * 2. 严格支持 pv_accum_dtype 累加精度档位 (fp32, fp32+fp32, fp32+fp16)。
- * 3. 支持平滑化因子 smooth_k 与 smooth_v。
- * 4. 支持因果掩码 (is_causal) 与 HND/NHD 张量布局。
- *
- * @par Inputs:
- * @li query: [B, Hq, Sq, D] 或 [B, Sq, Hq, D]，数据类型支持 float16, bfloat16。
- * @li key: [B, Hkv, Sk, D] 或 [B, Sk, Hkv, D]，数据类型支持 float16, bfloat16。
- * @li value: [B, Hkv, Sk, D] 或 [B, Sk, Hkv, D]，数据类型支持 float16, bfloat16。
- * @li key_mean: [B, Hkv, D]，可选输入，Key 均值向量 (smooth_k 启用时使用)，类型为 float32
- *     （DEFECT-L-1：内核 float* 直读，fp16 会按 fp32 误读）。
- * @li lse_correction: [B, Hq, Sq]，可选输入，LSE 修正项张量，类型为 float32。
- *
- * @par Outputs:
- * @li output: [B, Hq, Sq, D] 或 [B, Sq, Hq, D]，形状与数据类型同 query。
- * @li lse: [B, Hq, Sq]，可选输出，Softmax 归一化对数和，类型为 float32。
- *
- * @par Attributes:
- * @li tensor_layout: String，张量内存排布格式 ("HND" 或 "NHD")，默认 "HND"。
- * @li is_causal: Bool，因果注意力下三角掩码开关，默认 false。
- * @li qk_quant_gran: String，QK 矩阵乘量化粒度 ("per_thread", "per_warp")，默认 "per_thread"。
- * @li sm_scale: Float，Softmax 缩放系数，默认 0.0f (0.0 表示内部采用 1.0 / sqrt(head_dim)，负值非法)。
- * @li pv_accum_dtype: String，PV 矩阵乘累加中间精度 ("fp32", "fp32+fp32", "fp32+fp16")，默认 "fp32+fp16"。
- * @li smooth_k: Bool，Key 平滑减法开关，默认 true。
- * @li smooth_v: Bool，Value 平滑减法开关，默认 false。
- */
-REG_OP(SageAttention2)
-    .INPUT(query, TensorType({DT_FLOAT16, DT_BF16}))
-    .INPUT(key, TensorType({DT_FLOAT16, DT_BF16}))
-    .INPUT(value, TensorType({DT_FLOAT16, DT_BF16}))
-    // DEFECT-L-1: km 位型仅 DT_FLOAT（内核 float* 直读，fp16 会按 fp32 误读）
-    .OPTIONAL_INPUT(key_mean, TensorType({DT_FLOAT}))
-    .OPTIONAL_INPUT(lse_correction, TensorType({DT_FLOAT}))
-    .OUTPUT(output, TensorType({DT_FLOAT16, DT_BF16}))
-    .OUTPUT(lse, TensorType({DT_FLOAT}))
-    .ATTR(tensor_layout, String, "HND")
-    .ATTR(is_causal, Bool, false)
-    .ATTR(qk_quant_gran, String, "per_thread")
-    .ATTR(sm_scale, Float, 0.0f)
-    .ATTR(pv_accum_dtype, String, "fp32+fp16")
-    .ATTR(smooth_k, Bool, true)
-    .ATTR(smooth_v, Bool, false)
-    .OP_END_FACTORY_REG(SageAttention2);
-
-} // namespace ge
-
 namespace ops {
 
-class SageAttention2 : public OpDef {
-public:
-    explicit SageAttention2(const char *name) : OpDef(name)
-    {
+SageAttention2::SageAttention2(const char *name) : OpDef(name)
+{
         // 1. 必选输入张量（DataTypeList/FormatList 为本版本 OpDef 标准列表接口，
         //    FormatList 单元素 ND 可与多 dtype 选项对齐）
         this->Input("query")
@@ -84,8 +30,7 @@ public:
             .AutoContiguous();
 
         // 2. 可选平滑与修正输入张量
-        // DEFECT-L-1 同口径（上方 REG_OP 注释）：km 内核 float* 直读，位型仅 DT_FLOAT，
-        // 两套注册形态不得放行 DT_FLOAT16（fp16 km 会按 fp32 误读）
+        // DEFECT-L-1 同口径：km 内核 float* 直读，位型仅 DT_FLOAT，不得放行 DT_FLOAT16
         this->Input("key_mean")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_FLOAT})
@@ -111,8 +56,7 @@ public:
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
 
-        // 4. 算子属性声明（OPTIONAL + 冻结默认值，对齐开源 core.py 签名：
-        //    gran 默认 per_thread、accum 默认 fp32+fp16，消除 REQUIRED 却带默认值的矛盾）
+        // 4. 算子属性声明（OPTIONAL + 冻结默认值，对齐开源 core.py 签名）
         this->Attr("tensor_layout").AttrType(OPTIONAL).String("HND");
         this->Attr("is_causal").AttrType(OPTIONAL).Bool(false);
         this->Attr("qk_quant_gran").AttrType(OPTIONAL).String("per_thread");
@@ -120,7 +64,6 @@ public:
         this->Attr("pv_accum_dtype").AttrType(OPTIONAL).String("fp32+fp16");
         this->Attr("smooth_k").AttrType(OPTIONAL).Bool(true);
         this->Attr("smooth_v").AttrType(OPTIONAL).Bool(false);
-        // return_lse 不设属性：由 lse 输出张量的可选性承载，OP_ATTR 保持 7 项与注册一致。
 
         // 5. AI Core 硬件平台配置与执行入口映射（收敛为 Ascend 950PR 单平台）
         OpAICoreConfig config;
@@ -134,7 +77,7 @@ public:
 
         this->AICore().AddConfig("ascend950", config);
     }
-};
+
 
 OP_ADD(SageAttention2);
 

@@ -45,7 +45,7 @@ def compute_sha256(filepath: Path | str) -> str:
 _TESTS_DIR = REPO_ROOT / "tests"
 if str(_TESTS_DIR) not in sys.path:
     sys.path.insert(0, str(_TESTS_DIR))
-from _golden_utils import make_qkv as _unified_make_qkv, sdpa_fp32  # noqa: E402
+from _golden_utils import atol_for, make_qkv as _unified_make_qkv, sdpa_fp32  # noqa: E402
 
 
 def make_qkv(
@@ -675,7 +675,9 @@ def generate_golden(
         rel_l2 = float((torch.linalg.norm(err) / (torch.linalg.norm(out_sdpa.float()) + 1e-12)).item())
 
         dtype_str = case.get("dtype", "float16")
-        rtol, atol = (2 ** -9, 2 ** -9) if dtype_str == "float16" else (2 ** -6, 2 ** -6)
+        # 冻结 L-A 容差唯一定义：tests/_golden_utils.py（ATOL_FP16/ATOL_BF16，与四个
+        # 消费测试共用同一常量；本编排此前内联的 2^-9/2^-6 字面量已收敛）
+        rtol = atol = atol_for(dtype_str == "bfloat16")
         matched = np.isclose(out.float().numpy().reshape(-1), out_sdpa.float().numpy().reshape(-1), rtol=rtol, atol=atol)
         matched_ratio = float(matched.mean()) if matched.size else 1.0
 

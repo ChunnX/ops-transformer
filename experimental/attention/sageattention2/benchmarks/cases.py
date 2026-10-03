@@ -5,7 +5,7 @@ Default heads: 32 (unless specified by case, e.g. X-02 has 16)
 Default dim: 128 (unless specified by case, e.g. X-04 has 64)
 """
 
-from typing import Dict, List, NamedTuple, Optional
+from typing import Dict, NamedTuple
 
 
 class BenchmarkCase(NamedTuple):

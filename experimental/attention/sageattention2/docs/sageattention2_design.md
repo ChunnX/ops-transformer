@@ -59,10 +59,10 @@
 | 编译域三件套 SAGE_ATTN_DEVICE_COMPILE / SAGE_ATTN_KERNEL_API / __aicore__ 桩 | tiling.h | 全部头文件（7 份重复守卫删除，12 处 #if 收敛） |
 | TilingData ctypes 镜像 | tests/tiling_mirror.py | test_tiling_struct/test_kernel_twin |
 | FP16/BF16 位型转换（RNE） | quant_common.h | 算子/golden/benchmark（截断版已删除） |
-| 数值常量（Python 侧） | dispatch.py | golden 生成器 import（本地副本已删） |
+| 数值常量（Python 侧） | error_check.py | dispatch/_ops/golden 生成器 import（本地副本已删） |
 | CATLASS_ROOT 解析 | cmake/SageAttnDeps.cmake | op_kernel/op_host CMake |
 | 接口布局字符串（仅 HND/NHD） | op_api 白名单报错 | op_host/proto/def 默认值 HND |
-| 接口默认值常量（Python DEFAULT_*） | error_check.py | core/dispatch/_ops/op_plugin 签名 |
+| 接口默认值常量（Python DEFAULT_*） | error_check.py | dispatch/_ops 签名默认 |
 | 接口默认值常量（C++ kDefault*） | aclnn/sage_attn_proto.h | op_host tiling 缺省折叠 |
 | V 量化 scale_max 分档 v_scale_max_for | dispatch.py | golden 生成器/测试填充（2.25/448 字面量已消） |
 | tiling 枚举编码镜像（LAYOUT/GRAN/ACCUM） | tests/tiling_mirror.py | test_kernel_twin 等 |

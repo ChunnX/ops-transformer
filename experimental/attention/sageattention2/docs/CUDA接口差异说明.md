@@ -33,14 +33,14 @@ NPU 侧两种粒度是两套独立存在的量化内核，不是兼容别名；�
 
 ## S_FP8_OFFSET：P 矩阵按 log2(448) 精确放大
 
-- NPU 语义：Softmax 全程在 exp2 域计算，running max 记为 $m$；P 矩阵按 $P = 2^{\text{score} - m + 8.807355}$ 生成，其中偏置常数 $8.807355 = \log_2 448$（`S_FP8_OFFSET`，唯一定义位于 `./sageattn_fp8/ascendc/tiling.h`；设备侧 P 量化注入点为 `./op_kernel/sage_device_vf.h` 的 `SoftmaxProbRowVF` 与宿主基线 `./op_kernel/sageattention2.cpp` 的 `ComputeSoftmaxProbability`——448· 放大经乘法恒启用，LSE 出口恒以该常量补扣）
+- NPU 语义：Softmax 全程在 exp2 域计算，running max 记为 $m$；P 矩阵按 $P = 2^{\text{score} - m + 8.807355}$ 生成，其中偏置常数 $8.807355 = \log_2 448$（`S_FP8_OFFSET`，唯一定义位于 `./sageattn_fp8/ascendc/tiling.h`；设备侧 P 量化注入点为 `./op_kernel/sage_device_vf.h` 的 `SoftmaxProbRowsVF` 与宿主基线 `./op_kernel/sageattention2.cpp` 的 `ComputeSoftmaxProbability`——448· 放大经乘法恒启用，LSE 出口恒以该常量补扣）
 - 效果：P 落在 $[0, 448]$，直接按 e4m3 饱和量化，P 的量化 scale 固定为单位 1，省去逐元素乘 scale 的 Vector 开销
 - 分母一致性：softmax 分母按同一放大尺度在线累计，归一化经 `OnlineSoftmaxTransformer::GetFinalInvDenominator`（O 与分母同处 448· 放大域，除法处放大精确相消，见 `./sageattn_fp8/ascendc/online_softmax.h`）；偏置抵消由 `./tests/test_kernel_twin.py` 的 golden 交叉验证覆盖
 - 与 CUDA 的关系：上游 FP8 路径同样通过 448 平移/缩放方案把概率幅度送入 e4m3 表示域（见上游 `csrc/qattn/attn_utils.cuh`），数值设计目标一致；但上游在 FP16 域做 max 平移后再换算，本实现在 exp2 域以单次加法注入偏置，舍入轨迹不同，不承诺逐位一致
 
 ## PV 两级累加：NPU 三档，CUDA 两档
 
-- NPU 档位（`PvAccumDtype`，`./sageattn_fp8/ascendc/tiling.h`；Host 侧实现 `./aclnn/sage_attn_host_tiling.h`，设备侧 PV 交接为 `./sageattn_fp8/catlass/sage_pv_mmad.hpp` 的 FixPipe 裸搬 + `MergePvPartialRowVF` 档位合并，宿主真值 `./sageattn_fp8/ascendc/twin_reference.h` 的 `AccumulatePvRow`）
+- NPU 档位（`PvAccumDtype`，`./sageattn_fp8/ascendc/tiling.h`；Host 侧实现 `./aclnn/sage_attn_host_tiling.h`，设备侧 PV 交接为 `./sageattn_fp8/catlass/sage_pv_mmad.hpp` 的 FixPipe 裸搬 + `MergePvPartialRowsVF` 档位合并，宿主真值 `./sageattn_fp8/ascendc/twin_reference.h` 的 `AccumulatePvRow`）
 
 - `0`（`"fp32"`）：单级全程 FP32 累加，无第二级低精度 buffer；`smooth_v` 正路径仅在该档可用
 - `1`（`"fp32+fp32"`）：Cube FP8 MMA 硬件累加，每 `k_step` 周期归约至 FP32 输出 buffer
@@ -58,7 +58,7 @@ NPU 侧两种粒度是两套独立存在的量化内核，不是兼容别名；�
 ## 舍入模式：half-away-from-zero 与 RNE 并存
 
 - NPU `per_thread` INT8 量化：half-away-from-zero，对量化前数值的绝对值加 `0.5` 后向下取整、再乘回符号，随后饱和至 `[-127, 127]`（舍入原语 `RoundHalfAwayFromZero`/`RoundNearestEven` 唯一定义于 `./quant/quant_common.h`，注释明确区分两种模式）
-- NPU `per_warp` INT8 量化：RNE（round to nearest even，`nearbyint`）
+- NPU `per_warp` INT8 量化：RNE（round to nearest even，`RoundNearestEven` 显式整数运算实现，不依赖 `std::nearbyint`——设备侧 <cmath> 无该符号，见 `./quant/quant_common.h`）
 - 两种舍入在 x86 可单测内核与 AscendC 设备内核中逐路径保持一致；仓库根 golden 数据集（`golden/manifest.json`，随交付置备）的 TC-02 系列按粒度分别固化期望值
 - 含义：即使分组数一致，不同舍入模式也会产生不同 int8 码本；任何 CUDA 逐位对齐声明必须先核对舍入轨迹，不能只看分组参数
 

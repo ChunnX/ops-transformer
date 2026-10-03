@@ -24,7 +24,7 @@
 
 - 设备核经 `./sageattn_fp8/catlass/sage_tile.hpp` 无条件 include 官方 cann/catlass 仓 `<catlass/catlass.hpp>`，分形粒度常量（FRACTAL_M0/N0、FRACTAL_K0_*、LOADDATA2D_REPEAT_BYTES）全部由官方 `BYTE_PER_C0` / `C0_NUM_PER_FRACTAL` / `BYTE_PER_FRACTAL` 派生，官方演进自动跟随；
 - 构建前置：`CATLASS_ROOT` 指向官方 catlass checkout（解析链：CMake 变量/环境变量 → 算子 `./docker/third_party/catlass`（`docker/init.sh` 置备）→ 仓库根 `./third_party/catlass`，唯一定义点 `./cmake/SageAttnDeps.cmake`，缺失即 fatal）；
-- 深化复用（2026-10-03，全部为位元等价的 constexpr/forceinline 替换，指令流零变化）：跨核同步委托官方 `Arch::CrossCoreFlag` / `CrossCoreSetFlag/WaitFlag`（arch/cross_core_sync.hpp，sync_guard.h 单点）；QK/PV 累加位型与 L0 FP8 寄存器位型接入官方 `Gemm::helper::ElementAccumulatorSelector` / `GetL0Element` 表（sage_qk/pv_mmad.hpp Traits）；设备 VF 函数标记采用官方 `CATLASS_DEVICE_SIMD_VF` 宏；host tiling 与设备核全链路取整收敛到官方 `::CeilDiv` / `::RoundUp`。设备编译统一注入官方架构选择宏 `-DCATLASS_ARCH=3510`（run.sh kernel、build_opp.sh、tools/sim 同口径）。逐项清单见设计文档"官方组件复用清单"；
+- 深化复用（2026-10-03，全部为位元等价的 constexpr/forceinline 替换，指令流零变化）：跨核同步委托官方 `Arch::CrossCoreFlag` / `CrossCoreSetFlag/WaitFlag`（arch/cross_core_sync.hpp，sync_guard.h 单点）；QK/PV MMA 经官方 `Gemm::Tile::TileMmadTla` 发射（L0 FP8 寄存器位型由 PV Compute 的 `mx_fp8_e4m3_t` 张量位型直承载，见 sage_qk/pv_mmad.hpp）；设备 VF 函数标记采用官方 `CATLASS_DEVICE_SIMD_VF` 宏；host tiling 与设备核全链路取整收敛到官方 `::CeilDiv` / `::RoundUp`。设备编译统一注入官方架构选择宏 `-DCATLASS_ARCH=3510`（run.sh kernel、build_opp.sh、tools/sim 同口径）。逐项清单见设计文档"官方组件复用清单"；
 - 模块边界：官方 TileCopyTla 等 copy 组件要求 L1 侧 zN 分形布局；本算子 V0 产出为 ND 行布局 + Data/Scale 相邻契约（任务书允许的按 Cube 微调项），故 LoadData2D/Fixpipe 热路径为本算子自研 AscendC 逻辑，MMA 指令语义冻结待真机 L-A 复核，不与官方 copy 组件混用。
 
 ## 编译构建

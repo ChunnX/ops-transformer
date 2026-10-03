@@ -31,7 +31,7 @@ for p in [str(OPS_PYTHON_DIR), str(OFFICIAL_TEST_DIR), str(REPO_ROOT)]:
         sys.path.insert(0, p)
 
 os.environ.setdefault("SAGEATTN_ALLOW_CPU_STUB", "1")
-os.environ.setdefault("SAGEATTN_NPU_MODULE", "sageattention2")
+# （SAGEATTN_NPU_MODULE 死旋钮已删：全仓无任何读取方）
 
 from tests.official_test_suite_dryrun import (
     load_all_cases,

@@ -49,7 +49,7 @@ inline sage_attn::TensorLayout DetectLayout(const gert::InferShapeContext *conte
  * 4. 严格校验 GQA 分组广播整除性 (Hq % Hkv == 0 且 Hq >= Hkv)
  * 5. 推导并设置 Output 与 LSE 目标形状
  */
-static ge::graphStatus InferShapeSageAttention2(gert::InferShapeContext *context)
+ge::graphStatus InferShapeSageAttention2(gert::InferShapeContext *context)
 {
     if (context == nullptr) {
         return ge::GRAPH_FAILED;
@@ -161,7 +161,7 @@ static ge::graphStatus InferShapeSageAttention2(gert::InferShapeContext *context
  * Output 类型严格与 Query 类型对齐 (DT_FLOAT16 或 DT_BF16)
  * LSE 类型严格为单精度浮点 (DT_FLOAT)
  */
-static ge::graphStatus InferDataTypeSageAttention2(gert::InferDataTypeContext *context)
+ge::graphStatus InferDataTypeSageAttention2(gert::InferDataTypeContext *context)
 {
     if (context == nullptr) {
         return ge::GRAPH_FAILED;

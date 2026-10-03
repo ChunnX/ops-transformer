@@ -117,7 +117,7 @@ mkdir -p "${CUSTOM_DIR}/op_impl/ai_core/tbe/kernel/${SOC}"
 mkdir -p "${CUSTOM_DIR}/op_impl/ai_core/tbe/op_tiling/lib"
 mkdir -p "${CUSTOM_DIR}/bin"
 
-HOST_CXX_FLAGS=(-std=c++17 -O2 -fPIC -Wall -Wextra -Wno-ignored-qualifiers -Wno-reorder-ctor -Wno-reorder -Wno-unused-parameter -lstdc++)  # bisheng 链接需显式 C++ 运行时
+HOST_CXX_FLAGS=(-std=c++17 -O2 -fPIC -D_GLIBCXX_USE_CXX11_ABI=0 -Wall -Wextra -Wno-ignored-qualifiers -Wno-reorder -Wno-unused-parameter -lstdc++)  # bisheng 链接需显式 C++ 运行时
 COMMON_INCLUDES=(
     -I"${OP_DIR}/op_host"
     -I"${OP_DIR}/aclnn"
@@ -163,16 +163,22 @@ cp -f "${CUSTOM_DIR}/op_api/lib/libcust_opapi.so" "${CUSTOM_DIR}/op_proto/lib/li
     -o "${CUSTOM_DIR}/op_impl/ai_core/tbe/op_tiling/lib/liboptiling.so"
 
 echo "2. Compiling op_kernel device object for ${SOC} with BiSheng (-xasc ${NPU_ARCH})..."
-# -DCATLASS_ARCH=3510：官方 CATLASS 架构选择宏（与 run.sh kernel 同一口径），
-# sage_pv_mmad.hpp 的官方 GetL0Element/ElementAccumulatorSelector FP8 表项依赖
-"${BISHENG}" --npu-arch="${NPU_ARCH}" -std=c++17 -xasc -DCATLASS_ARCH=3510 -c \
-    "${OP_DIR}/op_kernel/sageattention2.cpp" \
-    -I"${ASCEND_HOME_PATH}/include" \
-    -I"${OP_DIR}/sageattn_fp8/ascendc" \
-    -I"${OP_DIR}/sageattn_fp8/catlass" \
-    -I"${OP_DIR}/quant" \
-    -I"${CATLASS_DIR}" \
-    -o "${CUSTOM_DIR}/op_impl/ai_core/tbe/kernel/${SOC}/sageattention2.o"
+# 若 build/sageattention2_bisheng.o 存在且不旧于 kernel 源文件，则复用已编译目标，避免 QEMU 重复编译
+if [ -f "${OP_DIR}/build/sageattention2_bisheng.o" ] && [ ! "${OP_DIR}/op_kernel/sageattention2.cpp" -nt "${OP_DIR}/build/sageattention2_bisheng.o" ]; then
+    echo "Reusing precompiled device object ${OP_DIR}/build/sageattention2_bisheng.o..."
+    cp -f "${OP_DIR}/build/sageattention2_bisheng.o" "${CUSTOM_DIR}/op_impl/ai_core/tbe/kernel/${SOC}/sageattention2.o"
+else
+    # -DCATLASS_ARCH=3510：官方 CATLASS 架构选择宏（与 run.sh kernel 同一口径），
+    # sage_pv_mmad.hpp 的官方 GetL0Element/ElementAccumulatorSelector FP8 表项依赖
+    "${BISHENG}" --npu-arch="${NPU_ARCH}" -std=c++17 -xasc -DCATLASS_ARCH=3510 -c \
+        "${OP_DIR}/op_kernel/sageattention2.cpp" \
+        -I"${ASCEND_HOME_PATH}/include" \
+        -I"${OP_DIR}/sageattn_fp8/ascendc" \
+        -I"${OP_DIR}/sageattn_fp8/catlass" \
+        -I"${OP_DIR}/quant" \
+        -I"${CATLASS_DIR}" \
+        -o "${CUSTOM_DIR}/op_impl/ai_core/tbe/kernel/${SOC}/sageattention2.o"
+fi
 
 echo "3. Packaging headers and configuration files..."
 

@@ -12,6 +12,10 @@
 // 取代本文件原裸 __simd_vf__ inline 书写（官方演进单点跟随；设备编译全路径已注入
 // -DCATLASS_ARCH=3510，见 run.sh kernel / build_opp.sh）。
 #include "catlass/detail/macros.hpp"
+#ifdef CATLASS_DEVICE_SIMD_VF
+#undef CATLASS_DEVICE_SIMD_VF
+#endif
+#define CATLASS_DEVICE_SIMD_VF __aicore__ inline
 
 namespace sage_attn {
 namespace dev_vf {

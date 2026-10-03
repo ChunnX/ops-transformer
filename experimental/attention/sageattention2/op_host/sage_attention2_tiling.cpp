@@ -89,12 +89,10 @@ static ge::graphStatus TilingSageAttention2(gert::TilingContext *context)
     const int64_t layout_code = sage_attn::TensorLayoutCodeFromString(layout);
     const int64_t accum_code = sage_attn::PvAccumCodeFromString(accum);
 
-    bool smooth_v_val = (smooth_v != nullptr) ? *smooth_v : false;
-    if (smooth_v_val && (accum_code == sage_attn::PV_ACCUM_FP32_FP32 || accum_code == sage_attn::PV_ACCUM_FP32_FP16)) {
-        smooth_v_val = false;
-        // Host warning implementation omitted to avoid non-standard std::cerr,
-        // relying on python side handle_smooth_v for user warning emission.
-    }
+    // smooth_v 档位钳制唯一定义：ComputeHostTiling（smoothV && pvAccum==PV_ACCUM_FP32，
+    // 见 aclnn/sage_attn_host_tiling.h）——此处不再复制第二份抑制逻辑；
+    // 用户告警由 Python 侧 handle_smooth_v 发出
+    const bool smooth_v_val = (smooth_v != nullptr) ? *smooth_v : false;
 
     uint32_t b = 0, sq = 0, sk = 0, hq = 0, hkv = 0, d_og = 0;
     if (layout_code == sage_attn::LAYOUT_HND) {

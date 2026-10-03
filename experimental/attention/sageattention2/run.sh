@@ -17,7 +17,7 @@ WORK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD_DIR="${WORK_DIR}/build"
 
 if [ "${SAGE_IN_CONTAINER:-}" != "1" ]; then
-    exec bash "${WORK_DIR}/docker/sage" run bash run.sh "$@"
+  exec bash "${WORK_DIR}/docker/sage" run bash run.sh "$@"
 fi
 
 # 容器侧：ASCEND_HOME_PATH 由镜像 ENV 导出，CATLASS 由 sage init 置备
@@ -27,110 +27,115 @@ CATLASS_ROOT="${CATLASS_ROOT:-${WORK_DIR}/docker/third_party/catlass}"
 export CATLASS_ROOT
 CATLASS_INC="${CATLASS_ROOT}/include"
 
-# bisheng 宿主模式链接不自动携带 C++ 运行时，链接型编译需显式 -lstdc++
-HOST_CXX_FLAGS=(-std=c++17 -O2 -Wall -Wextra -Wno-ignored-qualifiers -Wno-reorder-ctor -Wno-reorder -Wno-unused-parameter -lstdc++)
+# bisheng 宿主模式链接不自动携带 C++ 运行时，链接型编译需显式 -lstdc++；CANN 库统一使用 CXX11_ABI=0
+HOST_CXX_FLAGS=(-std=c++17 -O2 -D_GLIBCXX_USE_CXX11_ABI=0 -Wall -Wextra -Wno-ignored-qualifiers -Wno-reorder -Wno-unused-parameter -lstdc++)
 COMMON_INCLUDES=(
-    -I"${WORK_DIR}/sageattn_fp8/ascendc"
-    -I"${WORK_DIR}/sageattn_fp8/catlass"
-    -I"${WORK_DIR}/quant"
-    -I"${CATLASS_INC}"
+  -I"${ASCEND_HOME_PATH}/include"
+  -I"${ASCEND_HOME_PATH}/include/aclnn"
+  -I"${WORK_DIR}/sageattn_fp8/ascendc"
+  -I"${WORK_DIR}/sageattn_fp8/catlass"
+  -I"${WORK_DIR}/quant"
+  -I"${CATLASS_INC}"
 )
 
 run_host_tests() {
-    echo ">>> [host] C++ 宿主单测（BiSheng 宿主模式）..."
-    mkdir -p "${BUILD_DIR}"
+  echo ">>> [host] C++ 宿主单测（BiSheng 宿主模式）..."
+  mkdir -p "${BUILD_DIR}"
 
-    echo "-- 编译 test_aclnn_host"
-    "${BISHENG}" "${HOST_CXX_FLAGS[@]}" \
-        "${WORK_DIR}/tests/test_aclnn_host.cpp" \
-        -I"${WORK_DIR}/aclnn" \
-        "${COMMON_INCLUDES[@]}" \
-        -o "${BUILD_DIR}/test_aclnn_host"
-    "${BUILD_DIR}/test_aclnn_host"
+  echo "-- 编译 test_aclnn_host"
+  "${BISHENG}" "${HOST_CXX_FLAGS[@]}" \
+    "${WORK_DIR}/tests/test_aclnn_host.cpp" \
+    -I"${WORK_DIR}/aclnn" \
+    "${COMMON_INCLUDES[@]}" \
+    -o "${BUILD_DIR}/test_aclnn_host"
+  "${BUILD_DIR}/test_aclnn_host"
 
-    echo "-- 编译 test_op_host (REG_OP & InferShape)"
-    "${BISHENG}" "${HOST_CXX_FLAGS[@]}" \
-        "${WORK_DIR}/tests/test_op_host.cpp" \
-        "${WORK_DIR}/op_host/sage_attention2_def.cpp" \
-        "${WORK_DIR}/op_host/sage_attention2_infershape.cpp" \
-        -I"${WORK_DIR}/op_host" \
-        -I"${WORK_DIR}/aclnn" \
-        "${COMMON_INCLUDES[@]}" \
-        -o "${BUILD_DIR}/test_op_host"
-    "${BUILD_DIR}/test_op_host"
+  echo "-- 编译 test_op_host (REG_OP & InferShape)"
+  "${BISHENG}" "${HOST_CXX_FLAGS[@]}" \
+    "${WORK_DIR}/tests/test_op_host.cpp" \
+    "${WORK_DIR}/op_host/sage_attention2_def.cpp" \
+    "${WORK_DIR}/op_host/sage_attention2_infershape.cpp" \
+    -I"${WORK_DIR}/op_host" \
+    -I"${WORK_DIR}/aclnn" \
+    "${COMMON_INCLUDES[@]}" \
+    -L"${ASCEND_HOME_PATH}/lib64" \
+    -lgraph -lgraph_base -lmetadef -lopp_registry \
+    -Wl,-rpath,"${ASCEND_HOME_PATH}/lib64" \
+    -o "${BUILD_DIR}/test_op_host"
+  "${BUILD_DIR}/test_op_host"
 
-    echo "-- 编译 test_tiling_struct"
-    "${BISHENG}" "${HOST_CXX_FLAGS[@]}" \
-        "${WORK_DIR}/tests/test_tiling_struct.cpp" \
-        "${COMMON_INCLUDES[@]}" \
-        -o "${BUILD_DIR}/test_tiling_struct"
-    "${BUILD_DIR}/test_tiling_struct"
+  echo "-- 编译 test_tiling_struct"
+  "${BISHENG}" "${HOST_CXX_FLAGS[@]}" \
+    "${WORK_DIR}/tests/test_tiling_struct.cpp" \
+    "${COMMON_INCLUDES[@]}" \
+    -o "${BUILD_DIR}/test_tiling_struct"
+  "${BUILD_DIR}/test_tiling_struct"
 
-    echo ">>> [host] 全部通过"
+  echo ">>> [host] 全部通过"
 }
 
 compile_kernel_bisheng() {
-    echo ">>> [kernel] BiSheng 交叉编译设备核 → dav-3510..."
-    mkdir -p "${BUILD_DIR}"
-    # -DCATLASS_ARCH=3510 与 build_opp.sh / tools/sim 同口径（sage_pv_mmad.hpp 的 FP8 位型表依赖）
-    "${BISHENG}" --npu-arch=dav-3510 -std=c++17 -xasc -DCATLASS_ARCH=3510 -c \
-        "${WORK_DIR}/op_kernel/sageattention2.cpp" \
-        -I"${ASCEND_HOME_PATH}/include" \
-        "${COMMON_INCLUDES[@]}" \
-        -o "${BUILD_DIR}/sageattention2_bisheng.o"
-    echo ">>> [kernel] 编译成功: ${BUILD_DIR}/sageattention2_bisheng.o"
+  echo ">>> [kernel] BiSheng 交叉编译设备核 → dav-3510..."
+  mkdir -p "${BUILD_DIR}"
+  # -DCATLASS_ARCH=3510 与 build_opp.sh / tools/sim 同口径（sage_pv_mmad.hpp 的 FP8 位型表依赖）
+  "${BISHENG}" --npu-arch=dav-3510 -std=c++17 -xasc -DCATLASS_ARCH=3510 -c \
+    "${WORK_DIR}/op_kernel/sageattention2.cpp" \
+    -I"${ASCEND_HOME_PATH}/include" \
+    "${COMMON_INCLUDES[@]}" \
+    -o "${BUILD_DIR}/sageattention2_bisheng.o"
+  echo ">>> [kernel] 编译成功: ${BUILD_DIR}/sageattention2_bisheng.o"
 }
 
 run_python_tests() {
-    echo ">>> [python] Python 门禁..."
-    local PY_BIN="${SAGE_PYTHON:-python3}"
-    echo "Using python: $("${PY_BIN}" -c 'import sys; print(sys.executable, sys.version.split()[0])')"
+  echo ">>> [python] Python 门禁..."
+  local PY_BIN="${SAGE_PYTHON:-python3}"
+  echo "Using python: $("${PY_BIN}" -c 'import sys; print(sys.executable, sys.version.split()[0])')"
 
-    echo "-- test_tiling_struct.py"
-    "${PY_BIN}" -m unittest "${WORK_DIR}/tests/test_tiling_struct.py"
+  echo "-- test_tiling_struct.py"
+  "${PY_BIN}" -m unittest "${WORK_DIR}/tests/test_tiling_struct.py"
 
-    echo "-- test_quant.py"
-    "${PY_BIN}" "${WORK_DIR}/tests/test_quant.py"
+  echo "-- test_quant.py"
+  "${PY_BIN}" "${WORK_DIR}/tests/test_quant.py"
 
-    echo "-- test_kernel_twin.py (宿主孪生执行器与 kernel 宿主串行分支 vs golden)"
-    "${PY_BIN}" "${WORK_DIR}/tests/test_kernel_twin.py"
+  echo "-- test_kernel_twin.py (宿主孪生执行器与 kernel 宿主串行分支 vs golden)"
+  "${PY_BIN}" "${WORK_DIR}/tests/test_kernel_twin.py"
 
-    echo "-- test_gqa_chunk.py (GQA 8:1 分块打包双路径位级一致性)"
-    "${PY_BIN}" "${WORK_DIR}/tests/test_gqa_chunk.py"
+  echo "-- test_gqa_chunk.py (GQA 8:1 分块打包双路径位级一致性)"
+  "${PY_BIN}" "${WORK_DIR}/tests/test_gqa_chunk.py"
 
-    echo ">>> [python] 全部通过"
+  echo ">>> [python] 全部通过"
 }
 
 run_opp_tests() {
-    echo ">>> [opp] OPP 出包（build_opp.sh）+ 部署（install_opp.sh）..."
-    bash "${WORK_DIR}/build_opp.sh" --clean
-    bash "${WORK_DIR}/install_opp.sh" --quiet
-    echo ">>> [opp] 出包与部署成功"
+  echo ">>> [opp] OPP 出包（build_opp.sh）+ 部署（install_opp.sh）..."
+  bash "${WORK_DIR}/build_opp.sh" --clean
+  bash "${WORK_DIR}/install_opp.sh" --quiet
+  echo ">>> [opp] 出包与部署成功"
 }
 
 case "${1:-all}" in
-    host)
-        run_host_tests
-        ;;
-    kernel)
-        compile_kernel_bisheng
-        ;;
-    python)
-        run_python_tests
-        ;;
-    opp)
-        run_opp_tests
-        ;;
-    all)
-        run_host_tests
-        compile_kernel_bisheng
-        run_python_tests
-        run_opp_tests
-        echo "=== SageAttention2 全部门禁通过（host / kernel / python / opp, BiSheng 容器）==="
-        ;;
-    *)
-        echo "Unknown target: ${1}" >&2
-        echo "Usage: $0 [all|host|kernel|python|opp]" >&2
-        exit 1
-        ;;
+host)
+  run_host_tests
+  ;;
+kernel)
+  compile_kernel_bisheng
+  ;;
+python)
+  run_python_tests
+  ;;
+opp)
+  run_opp_tests
+  ;;
+all)
+  run_host_tests
+  compile_kernel_bisheng
+  run_python_tests
+  run_opp_tests
+  echo "=== SageAttention2 全部门禁通过（host / kernel / python / opp, BiSheng 容器）==="
+  ;;
+*)
+  echo "Unknown target: ${1}" >&2
+  echo "Usage: $0 [all|host|kernel|python|opp]" >&2
+  exit 1
+  ;;
 esac

@@ -12,7 +12,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # tests/ 内共享模块
 
 # 镜像唯一定义点：tests/tiling_mirror.py（逐字段偏移由下方断言锁定）
-from tiling_mirror import SageAttention2TilingData  # noqa: E402
+from tiling_mirror import SageAttention2TilingData, TILING_STRUCT_FMT  # noqa: E402
 
 
 class TestTilingDataStruct(unittest.TestCase):
@@ -74,8 +74,8 @@ class TestTilingDataStruct(unittest.TestCase):
         self.assertEqual(SageAttention2TilingData.reserved.offset, 153)
 
     def test_pack_unpack(self):
-        # 验证 struct 打包与 ctypes 解析一致性
-        fmt = "<7I 6I 2f 3I 5I 7I 2Q 4I B7s"
+        # 验证 struct 打包与 ctypes 解析一致性（序列化格式唯一定义 tiling_mirror.TILING_STRUCT_FMT）
+        fmt = TILING_STRUCT_FMT
         self.assertEqual(struct.calcsize(fmt), 160)
 
         tiling = SageAttention2TilingData()

@@ -18,7 +18,7 @@ if str(OPS_TRANSFORMER_PYTHON) not in sys.path:
     sys.path.insert(0, str(OPS_TRANSFORMER_PYTHON))
 
 import sageattention2 as sage2
-from sageattention2 import _extension, _ops
+from sageattention2 import _extension
 
 
 class TestTorchExtension(unittest.TestCase):
