@@ -1,122 +1,101 @@
 # 与 CUDA 默认接口的差异
 
-本文逐项声明 NPU 侧 `sageattn` / `sageattn_qk_int8_pv_fp8_asc` / 两段式 `aclnnSageAttention2` 相对 CUDA 上游 SageAttention2 INT8 QK / FP8 PV 路径的真实语义。所有 NPU 行为均给出本仓库可核验的源码位置；CUDA 侧行为仅在上游源码可核验的范围内陈述。
+Ascend 950 实现采用 **`per_token` Q/K INT8 量化、每 channel 每 32 个 token 的 V MXFP8 量化，以及 `fp32+fp32` 两级累加**。相对于 CUDA 通用 FP8 接口默认的 `fp32+fp16` 路径，本实现的 PV 局部累加精度更高；Q/K 和 V 的 scale 分组也更细。以下区分接口参数、实际计算类型和硬件路径。
 
-## 对照基准与范围
+## 对照版本与默认接口
 
-- CUDA 上游基准：thu-ml/SageAttention，核对提交固定为 `d1a57a546c3d395b1ffcbeecc66d81db76f3b4b5`（2026-09-14 核对），对应 `sageattention/core.py` 的 `sageattn_qk_int8_pv_fp8_cuda` 分支族
-- NPU 侧声明范围：本目录 `./quant/`、`./sageattn_fp8/ascendc/`、`./aclnn/`、`./python/sageattention2/` 的当前实现
-- 数值结论类断言（逐位对齐、误差界）一律以工作区根的 golden 数据目录（`golden/manifest.json`，位于本仓库之外）的 TC 系列数据比对为准，本文不给出无实测出处的误差数字
+CUDA 源码来自 [thu-ml/SageAttention](https://github.com/thu-ml/SageAttention)，核对日期为 2026-09-14，固定提交为 `d1a57a546c3d395b1ffcbeecc66d81db76f3b4b5`。本说明针对该提交的 SageAttention2 INT8 QK / FP8 PV 路径。
 
-## 量化粒度：per_thread 与 per_warp 均为真实现
+CUDA 的 `sageattn` 会按 GPU 架构选择实现，不能把某一个分支的默认参数推广到全部 GPU：
 
-NPU 侧两种粒度是两套独立存在的量化内核，不是兼容别名；这与"仅实现单一分组、其余字符串告警回退"的适配方式有本质区别。
+| 入口或分支 | 默认 Q/K 量化参数 | 默认 PV 累加参数 |
+|---|---|---|
+| `sageattn_qk_int8_pv_fp8_cuda`；`sageattn` 的 SM89 分支 | `per_thread` | `fp32+fp16` |
+| `sageattn_qk_int8_pv_fp8_cuda_sm90`；`sageattn` 的 SM90 分支 | `per_thread` | `fp32+fp32` |
+| `sageattn` 的 SM120 / SM121 分支 | `per_warp` | `fp32+fp16` |
+| 本实现 `sageattn_qk_int8_pv_fp8_asc`；NPU `sageattn` | `per_token` | `fp32+fp32` |
 
-- `qk_quant_gran="per_thread"` 真实分组（`./quant/quant_int8.cpp` per-thread 路径，x86 可单测）
+上游通用 FP8 函数的 docstring 仍写默认 `fp32+fp32`，但函数签名和 SM89 调度实际传入 `fp32+fp16`；此处以执行代码为准。SM80 / SM86 默认选择 FP16 PV，属于另一条计算路径。
 
-- Q：每 128 token 块切 4 个 32-token 子块，每子块按步距 8 取 4 组，单 scale 覆盖 8 个交错 token 的完整 head dim，每块共 32 个 scale（`QScaleCount`，`./quant/quant_common.h`）
-- K：每 64 token 块切 4 组，单 scale 覆盖 16 个交错 token（8 对相邻 token 对，`n mod 8 == 2g`）的完整 head dim，每块共 4 个 scale（`KScaleCount`，`./quant/quant_common.h`）
-- 舍入为 half-away-from-zero（见下节）
+## PV 累加类型：为什么使用 fp32+fp32
 
-- `qk_quant_gran="per_warp"` 真实分组（`./quant/quant_int8.cpp` per-warp 路径，RNE 舍入）
+本实现分两级保留累加状态：
 
-- Q：每 128 token 块 4 个 scale，单 scale 覆盖 32 个 token
-- K：每 64 token 块 1 个 scale，单 scale 覆盖 64 个 token
+1. Cube 执行 MXFP8 PV 矩阵乘，局部结果保留在 FP32 L0C 中，并以 FP32 搬到 Vector UB。
+2. Vector 用 FP32 维护跨块输出，执行 online softmax 对应的 `O = alpha × O + PV`，分母及最终归一化也使用 FP32。最终写回时才将 O 转为输入对应的 FP16 / BF16。
 
-- 与 CUDA 分组数对照（上游 `sageattention/triton/quant_per_thread.py`、`sageattention/quant.py`，WARPQ/WARPK/BLKK 为上游源码常量）
+因此公开参数默认值使用 **`pv_accum_dtype="fp32+fp32"`**，表明 PV 局部累加和跨块输出累加均为 FP32。旧值 `"fp32"` 是无告警的兼容别名，调用相同实现；它不会切换到另一种单级累加 kernel。其他值沿用兼容回退行为：Python 发出 `UserWarning`，独立 ACLNN 发出 `OP_LOGW`，实际仍使用 `fp32+fp32`。
 
-- CUDA 通用 FP8 `per_thread`（WARPQ=32、WARPK=64）：Q 单 scale 覆盖 4 token，K 覆盖 16 token
-- CUDA SM90 FP8 `per_thread`（WARPQ=16、WARPK=128）：Q 单 scale 覆盖 2 token，K 覆盖 32 token
-- CUDA 通用 FP8 `per_warp`（WARPQ=32、BLKK=64）：Q 单 scale 覆盖 32 token，K 覆盖 64 token
-- NPU `per_warp` 的覆盖数与 CUDA 通用 per_warp 相同（32/64）；NPU `per_thread` 为 8/16，介于 CUDA 两种 per_thread 配置之间
-- 结论：同名参数不构成逐位 golden。CUDA 的 thread/warp 分组与 lane、MMA fragment 映射绑定，NPU 的 AIV/Cube 布局不同；工作区根 golden 数据目录的 TC-02 系列给出 NPU 侧两种粒度的逐位期望值
+CUDA 参数字符串也需要结合 kernel 理解：该版本 `fp32+fp16` 分支调用 `compute_fp8_sv_inst_buf_fp16_accu`，其 PV MMA 使用 FP16 局部累加，将结果解包为 float 后加入 FP32 输出状态；不是“先用 FP32 MMA，再把输出总和降为 FP16”。`fp32+fp32` 分支则使用 FP32 PV MMA 局部缓冲，再加入 FP32 输出状态。
 
-## S_FP8_OFFSET：P 矩阵按 log2(448) 精确放大
+**相对于 CUDA 的 `fp32+fp16` 默认分支，NPU 在 PV 局部累加阶段使用更高精度，避免该阶段的 FP16 舍入和动态范围限制。** CUDA 的 SM90 默认已经采用 `fp32+fp32`，两者在软件累加类型上都是两级 FP32，不能仅凭参数名宣称 NPU 比该分支精度更高。上游还记录了部分 FP8 MMA / WGMMA 路径的有效累加位数限制；具体硬件有效位数不能只由源码里的 `float` 类型推导。
 
-- NPU 语义：Softmax 全程在 exp2 域计算，running max 记为 $m$；P 矩阵按 $P = 2^{\text{score} - m + 8.807355}$ 生成，其中偏置常数 $8.807355 = \log_2 448$（`S_FP8_OFFSET`，唯一定义位于 `./sageattn_fp8/ascendc/tiling.h`，`./quant/quant_host.h` 经 using 引入；Host Tiling 将其写入 TilingData `s_fp8_offset` 字段下发，设备侧注入 `./sageattn_fp8/ascendc/accum_reduce.h` 的 OutputRetireQueue 与 `./op_kernel/sageattention2.cpp` 的 `ComputeSoftmaxProbability`）
-- 效果：P 落在 $[0, 448]$，直接按 e4m3 饱和量化，P 的量化 scale 固定为单位 1，省去逐元素乘 scale 的 Vector 开销
-- 分母一致性：softmax 分母按同一放大尺度在线累计，`OutputRetireQueue::Finalize` 以 `inv_denominator` 归一化输出，偏置严格抵消；`./tests/test_output_queue.cpp` 的 Test 6 对该偏置抵消做了数值验证
-- 与 CUDA 的关系：上游 FP8 路径同样通过 448 平移/缩放方案把概率幅度送入 e4m3 表示域（见上游 `csrc/qattn/attn_utils.cuh`），数值设计目标一致；但上游在 FP16 域做 max 平移后再换算，本实现在 exp2 域以单次加法注入偏置，舍入轨迹不同，不承诺逐位一致
+两级 FP32 描述的是累加状态，Q/K 仍量化为 INT8，P/V 仍量化为 FP8，score/max 仍有 FP16 处理。它不等于完整 FP32 Attention，也不保证任意输入的最终误差都小于 CUDA。
 
-## PV 两级累加：NPU 三档，CUDA 两档
+## 量化粒度：Q/K 与 V 的 scale 分组更细
 
-- NPU 档位（`PvAccumDtype`，`./sageattn_fp8/ascendc/tiling.h`；Host 侧实现 `./aclnn/sage_attn_host.cpp`，设备侧 `./sageattn_fp8/ascendc/accum_reduce.h`）
+### Q/K：每个 token 独立 scale
 
-- `0`（`"fp32"`）：单级全程 FP32 累加，无第二级低精度 buffer；`smooth_v` 正路径仅在该档可用
-- `1`（`"fp32+fp32"`）：Cube FP8 MMA 硬件累加，每 `k_step` 周期归约至 FP32 输出 buffer
-- `2`（`"fp32+fp16"`）：每 `k_step` 周期归约至 FP16 buffer，融合 FixPipe 随路量化；默认验收档
-- CUDA 上游仅有 `fp32+fp16` 与 `fp32+fp32` 两档；NPU 的 `"fp32"` 单级档为新增，三者互不别名，Python 侧非法档位直接 `ValueError`（`./python/sageattention2/error_check.py`），无静默回退
+NPU 为每个 batch、head、token 沿整个 head dimension 求绝对值最大值，生成一个 INT8 scale；不同 token 不共享该 scale。
 
-- 档位与 V 量化饱和上限联动（`GetVScaleMax`，`./quant/quant_host.h`）
+CUDA `per_thread` 中的 thread 指与 warp / MMA 映射对应的交错 token 分组，不是“每个元素一个 scale”。按该版本实际调用参数，满分组的覆盖范围如下，尾组只统计有效 token：
 
-- `"fp32+fp16"` 档：`v_scale_max = 2.25`（保护 FP16 归约 buffer 动态范围，常数 `SCALE_MAX_FP16_ACCUM`）
-- 其余档位：`v_scale_max = 448.0`（e4m3 满幅，常数 `SCALE_MAX_FP32_ACCUM`）
-- 该取值影响 V 量化 scale 与饱和截断半径，是跨档位结果不可互比的原因之一
+| Q/K 分组 | 每个 Q scale 覆盖的 token 数 | 每个 K scale 覆盖的 token 数 |
+|---|---:|---:|
+| CUDA 通用 FP8 `per_thread`：WARPQ=32、WARPK=64 | 4 | 16 |
+| CUDA SM90 FP8 `per_thread`：WARPQ=16、WARPK=128 | 2 | 32 |
+| CUDA 通用 FP8 `per_warp`：WARPQ=32、BLKK=64 | 32 | 64 |
+| CUDA SM90 FP8 `per_warp`：WARPQ=16、BLKK=128 | 16 | 128 |
+| NPU `per_token` | 1 | 1 |
 
-- 附带的 NPU 侧机制：`"fp32+fp16"` 与 `"fp32+fp32"` 档启用 skip-scale 判定（阈值 `tau = 6.0`，`SKIP_SCALE_TAU`）——running max 变化在阈值内时跳过累加器重缩放乘法；以及 3 槽延迟输出退休队列（`OutputRetireQueue`）的成对归约写回。两者为 NPU 微架构设计，CUDA 无对应物，也不改变对外数值契约
+`per_thread` 的 Q 分组按 8 个 token 的步距取行，单个 scale 覆盖 `WARPQ/8` 行；K 分组按相邻两行、步距 8 取行，覆盖 `WARPK/4` 行。各组均覆盖完整 head dimension。因此这里的“更细”具体指 **scale 沿 token 维的共享范围更小**，减少某个 token 的大值对其他 token 量化步长的影响。
 
-## 舍入模式：half-away-from-zero 与 RNE 并存
+本实现接受 `per_thread` / `per_warp` 参数以兼容调用，但告警后实际执行 `per_token`。Ascend 的 AIV / Cube 分工和矩阵布局与 CUDA lane / warp / MMA 映射不同；使用这些字符串不会复现 CUDA 的分组、量化结果和舍入顺序。
 
-- NPU `per_thread` INT8 量化：half-away-from-zero，对量化前数值的绝对值加 `0.5` 后向下取整、再乘回符号，随后饱和至 `[-127, 127]`（舍入原语 `RoundHalfAwayFromZero`/`RoundNearestEven` 唯一定义于 `./quant/quant_common.h`，注释明确区分两种模式）
-- NPU `per_warp` INT8 量化：RNE（round to nearest even，`nearbyint`）
-- 两种舍入在 x86 可单测内核与 AscendC 设备内核中逐路径保持一致；工作区根的 golden 数据目录（`golden/manifest.json`，位于本仓库之外）的 TC-02 系列按粒度分别固化期望值
-- 含义：即使分组数一致，不同舍入模式也会产生不同 int8 码本；任何 CUDA 逐位对齐声明必须先核对舍入轨迹，不能只看分组参数
+### V：每 channel 每 32 个 token 独立 scale
 
-## smooth_v：fp32 档真实正路径，其余档告警忽略
+CUDA `per_channel_fp8` 为每个 batch、KV head、channel 生成一个 FP32 scale，在该 channel 的整条序列上共享。NPU 则将序列按 32 个 token 分组，每个 channel、每组分别生成 E8M0 scale，V 数据为 E4M3；尾组补零。
 
-- `pv_accum_dtype="fp32"` 且 `smooth_v=True`：真实执行 V 平滑正路径
+例如 Sk=8192 时，CUDA 每个 channel 使用 1 个 scale，NPU 每个 channel 使用 256 个 scale。局部组可适应各自的数值范围，降低整条序列中离群值对其他组的影响。E8M0 scale 只能表示 2 的整数次幂，与 CUDA 的 FP32 scale 表示精度不同；更细的分组并不意味着每个输入都获得更小误差。
 
-- Host/量化侧：`QuantizeVFp8Ascend` 沿序列维统计 V 均值 `vm` 并输出（`./quant/quant_fp8.cpp`），workspace 预留 `vm` 空间（TilingData `workspace_vm_offset`，`./sageattn_fp8/ascendc/tiling.h`）
-- 计算侧：V 减均值后量化，输出端加回 `vm` 补偿
-- 这是 NPU 特有路径：CUDA 上游 FP8 两级累加分支固定不做 V 平滑，`smooth_v` 参数在上游通用接口中会告警并被忽略
+P 使用 E4M3 数据与固定单位 MX scale，概率幅度通过 softmax 的 448 平移方案处理。上述“更细粒度”针对 Q/K 和 V，不表示 P 也采用自适应的每 32-token scale。
 
-- `pv_accum_dtype` 为 `"fp32+fp32"` 或 `"fp32+fp16"` 时传 `smooth_v=True`：Python 层发 `UserWarning` 后置 False（`./python/sageattention2/error_check.py` 的 `handle_smooth_v`），独立 ACLNN 层等价拒绝，不静默改语义
+## 其他接口差异与使用方式
 
-## smooth_k 与 LSE 补偿
+| 项目 | CUDA FP8 路径 | 当前 NPU 实现 |
+|---|---|---|
+| `smooth_k` | 默认 `True`，对 K 减均值 | 默认 `True`，保留 K 平滑与 LSE 补偿 |
+| `smooth_v` | 通用接口保留该参数；两级累加分支会告警并忽略 `True`，SM90 固定不做 V 平滑 | 默认 `False`；传 `True` 告警并忽略，V 使用局部分组 MXFP8 |
+| 最终输出 | FP16 / BF16，与输入类型对应 | FP16 / BF16，与输入类型对应；中间两级 FP32 不改变输出 dtype |
+| 计算组织 | CUDA 预处理量化后调用 attention kernel | 完整融合算子包含 Stats、Quant、Attention，内部按 Cube / Vector 流水调度 |
 
-- NPU 语义：`smooth_k=True`（默认）时 K 沿序列维减均值 `km`（量化核 `QuantizeKInt8Ascend` 的 `km_in` 入参，`./quant/quant_int8.cpp`），并预计算 LSE 修正项 `lse_correction = Q * km^T`（融合在设备核内，`./op_kernel/sageattention2.cpp` 的 `lse_corr`）
-- 对外 LSE 换算：`lse_out = (lse_exp2 - s_fp8_offset) * ln(2) + lse_correction * sm_scale`（`ConvertLseToHost`，`./sageattn_fp8/ascendc/online_softmax.h`；即 exp2 域 LSE 先补扣 `s_fp8_offset` 再除以 $\log_2 e$ 换回自然对数域），减均值引入的行常数在返回前精确补偿
-- 意义：开启 smooth_k 后对外 LSE 与"不减均值"的参考实现可证等价；CUDA 上游 `return_lse` 语义仅在部分入口提供，且补偿路径实现不同，跨实现比较 LSE 时以本公式为准
+V 的局部分组量化是当前省去 V 均值统计、减均值及输出补偿的设计依据，可减少计算与访存；它不表示 V 平滑对任何分布都无益。
 
-## 差异速查（条目式对照）
+```python
+from sageattention2 import sageattn_qk_int8_pv_fp8_asc
 
-- Q/K INT8 量化分组
+out = sageattn_qk_int8_pv_fp8_asc(
+    q, k, v,
+    qk_quant_gran="per_token",
+    pv_accum_dtype="fp32+fp32",
+    smooth_k=True,
+    smooth_v=False,
+)
+```
 
-- NPU `per_thread`：Q 每 scale 8 token / K 每 scale 16 token，两套真实内核
-- NPU `per_warp`：Q 每 scale 32 token / K 每 scale 64 token，真实内核
-- CUDA `per_thread`：Q 4（通用）或 2（SM90），K 16（通用）或 32（SM90）
-- CUDA `per_warp`：Q 32 / K 64（通用配置）
-
-- INT8 舍入
-
-- NPU：per_thread 用 half-away-from-zero，per_warp 用 RNE
-- CUDA：分组与 lane/warp 映射绑定，舍入轨迹依赖具体 kernel 分支，逐位不可移植
-
-- P（概率）FP8 表示
-
-- NPU：exp2 域注入 `S_FP8_OFFSET = 8.807355`，P 放大 448 倍后单位 scale 量化 e4m3，分母同尺度累计并在 Finalize 抵消
-- CUDA：448 平移/缩放方案送入 e4m3，P 的 MX scale 固定单位
-
-- PV 累加档位
-
-- NPU：`fp32`、`fp32+fp32`、`fp32+fp16` 三档，无别名无回退
-- CUDA：`fp32+fp16`、`fp32+fp32` 两档，不同 SM 默认值不同
-
-- V FP8 量化
-
-- NPU：沿 head dim 逐 channel，饱和上限按档位取 `2.25`（fp32+fp16）或 `448.0`（其余）
-- CUDA：`per_channel_fp8` 逐 channel 单 scale，饱和域为 e4m3 满幅
-
-- smooth_v
-
-- NPU：`fp32` 档真实正路径（vm 统计 + 减均值 + 输出补偿），其余档告警忽略
-- CUDA：FP8 两级累加分支不支持，参数告警后忽略
+默认调用已使用上述配置。已有调用中的 `pv_accum_dtype="fp32"` 无需修改即可继续运行，结果语义相同。更多形状、布局与功能限制见 [算子 README](../README.md)。由于 Q/K、V 的量化分组及数值处理不同，CUDA 同名参数不能直接视为 NPU 的同配置逐元素 golden。
 
 ## 源码依据
 
-- NPU 量化内核与舍入：`./quant/quant_int8.cpp`（half-away 与 RNE 两条路径）、`./quant/quant_fp8.cpp`（V e4m3 与 vm 统计）、`./sageattn_fp8/ascendc/tiling.h`（`S_FP8_OFFSET`、`SCALE_MAX_*` 等常量唯一定义）、`./quant/quant_common.h`（`QScaleCount`/`KScaleCount` 分组数公式）、`./quant/quant_host.h`（using 引入常量并提供 `GetVScaleMax`）
-- 设备侧累加与偏置：`./sageattn_fp8/ascendc/accum_reduce.h`（OutputRetireQueue、`s_fp8_offset`、`Finalize`）、`./op_kernel/sageattention2.cpp`（`ComputeSoftmaxProbability` 注入偏置）
-- Tiling 契约：`./sageattn_fp8/ascendc/tiling.h`（`PvAccumDtype`、`QkQuantGran`、`workspace_vm_offset`）
-- 接口与告警语义：`./python/sageattention2/error_check.py`（`handle_smooth_v`、档位白名单）、`./python/sageattention2/dispatch.py`（`per_thread`/`per_warp` 双实现参考实现）
-- 数值期望值：工作区根 golden 数据目录的 TC-02（量化粒度）、TC-03（smooth_v/no_smooth_k）、TC-09（长序列）系列
-- CUDA 上游分组常量（WARPQ/WARPK/BLKK）：thu-ml/SageAttention 提交 `d1a57a546c3d395b1ffcbeecc66d81db76f3b4b5` 的 `sageattention/triton/quant_per_thread.py`、`sageattention/quant.py`、`csrc/qattn/attn_utils.cuh`
+上游链接固定到本次核对提交：
+
+- [core.py：架构调度、默认参数及实际调用分支](https://github.com/thu-ml/SageAttention/blob/d1a57a546c3d395b1ffcbeecc66d81db76f3b4b5/sageattention/core.py)
+- [attn_utils.cuh：FP32 / FP16 局部 PV 累加与 FP32 输出缓冲](https://github.com/thu-ml/SageAttention/blob/d1a57a546c3d395b1ffcbeecc66d81db76f3b4b5/csrc/qattn/attn_utils.cuh)
+- [quant_per_thread.py：Q/K 交错 token 分组](https://github.com/thu-ml/SageAttention/blob/d1a57a546c3d395b1ffcbeecc66d81db76f3b4b5/sageattention/triton/quant_per_thread.py)
+- [quant.py：per-warp Q/K 与 per-channel V](https://github.com/thu-ml/SageAttention/blob/d1a57a546c3d395b1ffcbeecc66d81db76f3b4b5/sageattention/quant.py)
+
+NPU 实现对应位置：
+
+- [Python 默认接口](../python/sageattention2/__init__.py)、[Dispatcher 与参数兼容](../python/sageattention2/_ops.py)、[C++/torch_npu 接入](../python/sageattention2/csrc/attention.cpp)、[ACLNN 参数兼容](../op_api/aclnn_sage_attention2.cpp)
+- [Cube PV 累加与 FP32 搬运](../op_kernel/attention_block_cube.h)、[Vector 输出累加与归一化](../op_kernel/output_update.h)
+- [Q/K per-token 量化](../op_kernel/quant.h)、[V 每 32-token MXFP8 量化](../op_kernel/quant_v_mx.h)

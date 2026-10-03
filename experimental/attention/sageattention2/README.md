@@ -1,141 +1,172 @@
-# SageAttention2（Ascend 950PR 实验算子）
-
-本目录实现面向 Atlas 950PR 的 SageAttention2 前向注意力融合算子：INT8 量化 $QK^T$ 矩阵乘、FP8 e4m3 PV 矩阵乘、exp2 域在线 Softmax 与两级累加输出，基于 AscendC 与 CATLASS 编写，提供 PyTorch Python 接口与两段式 ACLNN C 接口。CUDA 上游对照实现为 thu-ml/SageAttention 的 `sageattn_qk_int8_pv_fp8_cuda` 路径，逐项语义差异见 [与 CUDA 默认接口的差异](./docs/CUDA接口差异说明.md)。
+# SageAttention2
 
 ## 产品支持情况
 
-- Atlas 950PR（`ascend950`）：支持，满配 32 AI Core / 双 Die 拓扑，28 核减配拓扑经 `SAGEATTN_NUM_CORES` 环境变量支持
-- 其他昇腾产品：未适配
+| 产品 | 是否支持 |
+|---|:---:|
+| Ascend 950PR | √ |
+| 其他昇腾产品 | 未适配 |
 
-## 目录结构
+本算子使用 Ascend 950 的 Cube/Vector 数据通路和寄存器向量 API，基于 AscendC 与 CATLASS 实现 INT8 QK、MXFP8 PV 的前向 Attention。
 
-- `./aclnn/`：两段式 ACLNN Host 实现（`sage_attn_proto.h` 接口原型、`sage_attn_host.cpp` 参数校验与 Host Tiling）
-- `./sageattn_fp8/`：AscendC 设备侧基础设施（`ascendc/tiling.h` 为 Host/Device 共享 TilingData，`catlass/` 为 Cube MMA 封装；设备核入口已按 CANN opc 打包约定迁至 `./op_kernel/sageattention2.cpp`）
-- `./op_kernel/`：CANN opc 打包约定的内核源码目录（`sageattention2.cpp`，1C2V 延迟一拍主流水唯一内核入口）
-- `./quant/`：Q/K INT8 与 V FP8 量化 Host 逻辑与可单测的 C++ 量化内核
-- `./op_host/`：CANN 标准 REG_OP/InferShape 注册层；交付态 op_api 层两段式 C 接口实现位于 `./op_api/`（字符串属性 ABI，经 `OP_API_DIR` 随 run 包打包安装），`./aclnn/` 为移植态本地单测实现（数值编码 ABI，见 `./aclnn/sage_attn_proto.h`）
-- `./python/sageattention2/`：PyTorch 接入包（`core.py` 冻结签名、`dispatch.py` 多后端路由、`op_plugin.py` NPU kernel 加载）
-- `./tests/`、`./benchmarks/`：本地门禁单测与独立 ACLNN 基准工具
-- `./tools/sim/`：设备核 camodel 仿真 harness（B2 门禁数值比对；依赖 CANN 容器 bisheng `--run-mode=sim` 运行，用法见 `./tools/sim/README.md`，不属于 run.sh 主机门禁）
-- `./run.sh`：本地门禁统一入口
+## 功能说明
 
-## 编译构建
+计算 `softmax(Q @ Kᵀ * sm_scale) @ V` 的量化近似，提供 PyTorch `sageattn`、`sageattn_qk_int8_pv_fp8_asc` 和两阶段 `aclnnSageAttention2` 接口。
 
-### 仓库整包构建（产出算子 run 包）
+一次 `SageAttention2` MIX AIC:AIV=1:2 kernel launch 内依次完成三个阶段：
 
-- 前置条件：CANN Toolkit（已验证 `9.2.0-beta.1`）、BiSheng 编译器、已完成 `source /usr/local/Ascend/cann/set_env.sh` 或等效环境注入
-- 核心动作：在仓库根目录 `ops-transformer/` 执行完整构建，`--ops` 按算子目录名过滤实验算子
+1. **Stats**：开启 smooth K 时计算 K 均值；对齐长序列使用 Stream-K 分配，跨核片段通过 FP32 atomic add 汇合。
+2. **Quant**：按 token 将 Q/K 量化为 INT8，生成吸收 `sm_scale` 的固定平衡 FP16 scale；V 沿 sequence 每 32 个 token、每个 channel 独立量化为 E4M3，生成 E8M0 scale。
+3. **Core**：INT8 QK、online softmax、MXFP8 PV 与 FP32 O 更新流水执行。PV 由硬件应用 MX scale，末尾仅归一化和输出转换。
 
-```bash
-cd ops-transformer
-bash build.sh --pkg --experimental --soc=ascend950 --vendor_name=customize --ops=sage_attention2 -j16
+V 量化采用 `scale = 2^ceil(log2(max(abs(V_group))/448))`，全零分组使用有限的正 scale。FP16/BF16 的绝对值最大值直接在 16 位中归约，只将分组最大值转换为 FP32 以生成 scale。V 不再做全序列 per-channel 量化或减均值处理。
+
+Stats 的均值清零→累加和 Stats→Quant 使用 `SyncAll<true>()` 同步所有 AIV；Quant→Core 使用 `SyncAll<false>()` 同步所有 AIC/AIV，确保量化数据写入 GM 后才开始 Attention。预处理按 `2 * cores` 分配 AIV 任务，空闲核也参与屏障。满足核数、KV 头数为偶数及 Sq 对齐条件时，Stats、Quant 和 Attention 按同一 KV head 分组到两组核，改善双 die 的 L2 局部性；实际收益取决于设备的逻辑核映射，正确性不依赖物理映射。Stats 先清零均值并同步，完整 head 独占写回，跨核 head 原子累加。FP32 原子加的顺序可能变化，不保证重复调用逐位一致。Host 使用 `SetScheduleMode(1)` 的 batch 调度，保证全核同步所需的同时驻留。
+
+dtype 和 wide 通过 `ASCENDC_TPL_ARGS_DECL` 声明为模板参数，Host 用 `GET_TPL_TILING_KEY(input_dtype, wide)` 选择入口。FP16/BF16 与普通/wide 共四种模板组合，tiling key 分别为 1/27/257/283（dtype 占低 8 位，wide 占第 8 位）。每次调用仍只启动一个融合 kernel。`WIDE` 同时传给 Quant 的 V 排列和 Attention 的 N256/N512 路径，融合设备代码不再按 dtype 或 shape 执行这两处分发；公共 `attention.h` 只提供 `Attention<T, WIDE>`。
+
+中间结果仅保存在算子 workspace：K 均值、E8M0 V scale、Q8/K8/V8、FP16 Q/K scale 。各区域按 512 字节对齐，tiling 检查大小溢出并加上 CANN 系统 workspace 前缀；每次调用独立分配，无跨调用全局状态。ACLNN 只注册和启动一个融合算子，接口签名不变。
+
+QK 在 Cube 中累加为 INT32，经固定 `2^-11` DEQF16 转为 FP16，再乘预处理的 Q/K scale；score 与 max 使用 FP16，ExpSub 输出 FP32。每个块的 max 在 FP16 中减去 `FP16(ln(448))`，与旧的平移后 max 取最大值；概率、online alpha 和 LSE 共用这一状态，因此省去概率逐元素乘 448，LSE 使用 `shifted_max + log(denom)`。V 使用 E4M3 数据与 E8M0 分组 scale；P 的 MX scale 固定为 1。PV、持续累加的 O 和 softmax 分母全部使用 FP32，除法采用默认 AscendC Div。
+
+连续对齐输入的 Q/V 原始读取使用 bypass L2 的 cache hint，保留 K 与量化输出的默认缓存策略，减少一次性读取对后续数据的挤占。连续对齐输入按 64 行双缓冲量化，Q/K 复用每 token 的 FP32 scale 倒数；非对齐输入保留原有 Q/K 舍入路径。两类输入都使用同一个 V MX 分组量化实现，不足 32 个 token 的尾组补零。V scale 在 workspace 中按 `[B,Hkv,Kp/64,Dp,2]` 保存，每个 E8M0 scale 占一字节。
+
+PV 通过 CATLASS 的 MX scale 布局和搬运接口加载 L0B scale，使用硬件 MXFP8 MMA。P 的单位 scale 在 L0A 初始化一次。V scale 按 KV head 缓存在 L1，容量为 176 KiB；超过容量时按 PV tile 搬运，仍为同一 MXFP8 算法。
+
+通用路径采用 M128/N256 分块、四个 score 槽和两个 P/PV 共享槽。D padding 为 128、Sq 为 128 的倍数且 Sk 为 512 的倍数并不少于 4096 时，使用 N512 路径：两个 N256 Cube 片段共享一次 softmax，流水跨 query 连续执行。O 常驻 UB，P 经 UB→L1 交给 Cube，QK/PV 经 L0C→UB 交给 Vector。wide 路径的 K/V 各使用两个 L1 缓冲区预取；Cube 按 N256 片段推进，Vector 按 N512 分组推进。
+
+wide 路径将 FP8 P 原位写入已经消费的 FP16 score 条带，再通过带源间隔的 UB→L1 搬运保持既有 L1 布局，使两个 PV 槽能保留待合并的结果。同一 query 的相邻两组输出配对更新，在两次 PV 等待之间先计算下一组 softmax 并供 P；读取完成后才释放两个 PV 槽，保持两次 FP32 FMA 的舍入顺序。alpha 和延迟输出记录各用三个槽，跨 query 无法配对及奇数组尾部退回单组更新。P_READY 后的 Cube 计算依赖保护 score 槽复用，UB 高水位为 246 KiB。
+
+## 参数说明
+
+输入 Q/K/V 均为四维、同设备、同 dtype 的 FP16 或 BF16 NPU Tensor，最后一维连续。PyTorch 接口要求基础 ND/NCHW 存储，不支持私有存储格式。输出 shape/dtype 与 Q 相同。
+
+| 参数 | 类型/默认值 | 说明 |
+|---|---|---|
+| `q` | Tensor | HND 为 `[B,Hq,Sq,D]`，NHD 为 `[B,Sq,Hq,D]` |
+| `k`、`v` | Tensor | HND 为 `[B,Hkv,Sk,D]`，NHD 为 `[B,Sk,Hkv,D]` |
+| `tensor_layout` | str，`HND` | 支持 `HND`、`NHD` |
+| `is_causal` | bool，`False` | 开启时要求 Sq=Sk |
+| `qk_quant_gran` | str，`per_token` | 实际执行 per-token；per_thread/per_warp 告警后回退 |
+| `sm_scale` | float/None，`None` | 默认 `1/sqrt(D)`，须可表示为有限 FP32 |
+| `pv_accum_dtype` | str，`fp32+fp32` | PV 局部累加与跨块 O 累加均为 FP32；`fp32` 为兼容别名，其他值告警后回退 |
+| `smooth_k` | bool，`True` | 量化前减去 K 沿序列维的均值 |
+| `smooth_v` | 兼容参数，`False` | 不支持 V 平滑；传 `True` 时 warning 并忽略 |
+| `return_lse` | bool，`False` | 返回 `(out, lse)`；LSE 为 FP32、shape `[B,Hq,Sq]` |
+
+本实现按 Ascend 950 的计算和执行模型提供接口：FP8 PV 使用 Cube 原生 FP32 累加，局部结果和持续累加的 O 均保留 FP32。先执行 FP32 MMA 再将局部结果转成 FP16，不能获得 GPU 原生 FP16 输出/累加 MMA 的吞吐收益，还会增加转换和舍入；最终 O 仍按输入 dtype 输出。
+
+Q/K 量化以 token 为独立 scale 单位。CUDA 的 per-thread/per-warp 分组依赖 lane、warp 和 MMA fragment 的映射，不能直接搬到 AscendC 的 AIV、向量寄存器和 Cube tile 上。接口接受 per_thread/per_warp，打印 warning 后回退为 per_token；实际计算不复现 CUDA 的 lane/warp 分组。PV 的 `fp32+fp32` 和兼容别名 `fp32` 均执行两级 FP32 累加，其他累加参数 warning 后回退为 `fp32+fp32`，smooth_v=True warning 后忽略。PyTorch 使用 UserWarning，独立 ACLNN 使用 OP_LOGW；原生 `per_token`、`fp32+fp32` 及兼容别名 `fp32` 不触发回退告警。
+
+**不再支持 smooth_v 计算。** V 改用 MXFP8 细粒度量化，每个 channel 沿序列每 32 个 token 独立生成 scale，能够适应局部数值范围，降低整条序列共用 scale 时离群值对其他元素的影响。因此当前路径无需再做 V 均值统计、减均值及输出补偿，省去相应计算与访存。`smooth_v` 仅作为兼容参数保留，传入 `True` 时告警并忽略。这是当前量化方案的取舍，不表示任意输入分布下平滑都不可能改善误差。
+
+支持 GQA（Hq 必须能被 Hkv 整除）、1≤D≤128、D padding、序列尾块、末维连续的 stride 输入。非因果模式支持 Sq≠Sk。LSE 包含 K smoothing 的行常数补偿。
+
+不支持任意 attention mask、dropout、varlen 和 autograd。
+
+```python
+import torch
+import torch_npu
+from sageattention2 import sageattn
+
+q = torch.randn(1, 4, 4096, 128, dtype=torch.float16, device="npu")
+k = torch.randn(1, 2, 4096, 128, dtype=q.dtype, device=q.device)
+v = torch.randn_like(k)
+out, lse = sageattn(q, k, v, return_lse=True)
 ```
 
-- 注意：`--ops` 过滤值必须命中 `experimental/attention/` 下的算子目录名（本算子目录为 `sageattention2`）；若交付流水线按注册名 `sage_attention2` 传参导致目录未命中，改用 `bash build.sh --pkg --experimental --soc=ascend950 --vendor_name=customize --ops=sageattention2 -j16` 或省略 `--ops` 全量构建
-- 产出：`build_out/` 下的 custom run 包，安装后含 ACLNN 算子库 `libsageattention2.so`（`opFile` 名见 `./op_host/sage_attention2_def.cpp`）
+ACLNN 声明见 [aclnn_sage_attention2.h](op_api/aclnn_sage_attention2.h)。先调用 `aclnnSageAttention2GetWorkspaceSize` 获得 workspace 大小和 executor，再调用 `aclnnSageAttention2`。可运行的调用示例见 [benchmark_aclnn.cpp](benchmarks/benchmark_aclnn.cpp)。
 
-### 本地门禁（run.sh，无需 NPU）
+CUDA 默认接口、两级累加精度与量化粒度的详细对照见 [与 CUDA 默认接口的差异](docs/CUDA接口差异说明.md)。
 
-- 前置条件：macOS 或 Linux 主机，`clang++` 或 `g++`；Python 门解释器选择链：SAGE_PYTHON 环境变量 → 本目录 .venv → 仓库外 workspace 级 .venv-sage → PATH（2026-10-03 起 .venv 不再入库，避免 kernel 打包拷贝 659MB 环境目录）
-- 命令均在算子目录 `experimental/attention/sageattention2/` 执行
-- 支持的目标：
+## 编译与安装
 
-- `bash run.sh host`：编译并运行 `tests/test_aclnn_host.cpp`（TilingData 布局、Host Tiling、Die 亲和性、参数校验）、`tests/test_op_host.cpp`（REG_OP/InferShape）、`tests/test_output_queue.cpp`（OutputRetireQueue 成对归约）
-- `bash run.sh kernel`：设备 kernel 源码语法检查（主机编译器语法级）
-- `bash run.sh python`：`tests/test_tiling_struct.py`（ctypes 镜像与 `tiling.h` 逐字段对齐）、`tests/test_quant.py`（量化内核 ctypes 行为验证）与 `tests/test_kernel_twin.py`（宿主孪生执行器 + kernel 宿主串行分支对 golden 落盘数据的 L-A/L-B 功能交叉验证）
-- `bash run.sh opp`：custom OPP 打包 dry-run 与 mock 安装测试
-- `bash run.sh container`：容器内 BiSheng 设备二进制编译（`dav-3510`）
-- `bash run.sh all`：以上全部
+已验证环境：CANN Toolkit/950 ops **9.2.0-beta.1**、PyTorch **2.9.0**、torch_npu **2.9.0.post8**，CATLASS commit `337cc89254d46f5d6041d117aca64edf7197027a`。构建和测试依赖见 [requirements.txt](requirements.txt)。
 
-## 接口说明
+本目录 `experimental/attention/sageattention2` 由 ops-transformer 顶层工程构建（`--ops=sageattention2`），包含唯一的 `SageAttention2` 注册入口，无额外的同级阶段算子目录。
 
-### PyTorch 接口（`./python/sageattention2/`）
-
-- 入口一 `sageattn(q, k, v, tensor_layout="HND", is_causal=False, sm_scale=None, return_lse=False, 其余关键字参数包)`：自动路由到 FP8 PV kernel，`pv_accum_dtype` 等高级参数经关键字参数（kwargs）传入
-- 入口二 `sageattn_qk_int8_pv_fp8_asc(q, k, v, tensor_layout="HND", is_causal=False, qk_quant_gran="per_thread", sm_scale=None, pv_accum_dtype="fp32+fp16", smooth_k=True, smooth_v=False, return_lse=False, 其余关键字参数包)`：显式全参版本，末位为 kwargs 透传
-- 张量形状：
-
-- `tensor_layout="HND"`：q 为 `[B, Hq, Sq, D]`，k/v 为 `[B, Hkv, Sk, D]`
-- `tensor_layout="NHD"`：q 为 `[B, Sq, Hq, D]`，k/v 为 `[B, Sk, Hkv, D]`
-- 输出 shape/dtype 与 q 相同；`return_lse=True` 时追加返回 FP32 LSE，shape `[B, Hq, Sq]`
-
-- `pv_accum_dtype` 的取值与覆盖优先级：
-
-- 合法取值：`"fp32"`（全程 FP32 单级）、`"fp32+fp32"`（Cube 硬件累加 + FP32 buffer 周期归约）、`"fp32+fp16"`（FP16 buffer 周期归约，默认验收档）
-- 覆盖优先级：`kwargs` 中的 `pv_accum_dtype` 高于环境变量 `SAGEATTN_PV_ACCUM_DTYPE`，环境变量高于默认值 `"fp32+fp16"`（实现在 `./python/sageattention2/dispatch.py` 的 `dispatch_sageattn`）
-- 非法取值直接抛 `ValueError`，不做静默回退
-
-- `SAGEATTN_ALLOW_CPU_STUB` 语义：默认关闭；设为 `1`/`true`/`yes` 时，即使检测到 NPU 可用也允许走高保真 CPU 参考实现（与 golden 数据生成算法逐位同源），用于无卡环境的功能验证与 CI。该模式输出为 CPU 参考结果，禁止作为 NPU 性能与精度验收证据
-
-### 两段式 ACLNN C 接口（交付态 `./op_api/`，移植态 `./aclnn/`）
-
-- 交付态（随 run 包安装，真机调用方以此为准）：`./op_api/aclnn_sage_attention2.h` 第一段 `aclnnSageAttention2GetWorkspaceSize`：入参 q/k/v、可选 `keyMean`/`lseCorrection`、`tensorLayout`（字符串 `"HND"`/`"NHD"`，`"BNSD"`/`"BSND"` 同义词域）、`isCausal`、`qkQuantGran`（`"per_thread"`/`"per_warp"`）、`smScale`、`pvAccumDtype`（`"fp32"`/`"fp32+fp32"`/`"fp32+fp16"`）、`smoothK`、`smoothV`、out、可选 lse、`workspaceSize`、`executor`；属性顺序与 `./op_host/sage_attention2_def.cpp` 注册的 7 项一致
-- 移植态（本地单测与无 opdev 环境自包含实现，不随 run 包安装）：`./aclnn/sage_attn_proto.h` 第一段同名接口取数值编码：`qkQuantGran`（2=per_warp，3=per_thread）、`pvAccumDtype`（0=fp32，1=fp32+fp32，2=fp32+fp16）、`tensorLayout`（0=NHD，1=HND），属性顺序为 scale, gran, accum, causal, layout, smoothK, smoothV
-- 第二段 `aclnnSageAttention2(workspace, workspaceSize, executor, stream)`：校验 workspace 不小于第一段产出后发射 kernel（两态签名一致）
-- `smScale` 冻结语义：默认值 `1/sqrt(head_dim)` 仅在 Python `sm_scale=None` 时由桥接层折叠后传入；两态 C 接口收到非正值返回 `ACLNN_ERR_PARAM_INVALID`
-- Tiling 下发：Host Tiling 经 `./op_host/sage_attention2_tiling.cpp` 注册的 TilingImpl 序列化进 `gert::RawTilingData`，由框架在 `CommonOpExecutorRun` 下发阶段写入 kernel
-- 完整两段式调用示例见 `./benchmarks/benchmark_aclnn.cpp`
-
-### 环境变量汇总
-
-- `SAGEATTN_PV_ACCUM_DTYPE`：`sageattn` 入口的 `pv_accum_dtype` 默认值覆盖
-- `SAGEATTN_ALLOW_CPU_STUB`：允许 CPU 参考回退（语义见上）
-- `SAGEATTN_NUM_CORES`：Host Tiling 参与调度的 AI Core 数覆盖（如 `28` 用于减配拓扑，实现见 `./aclnn/sage_attn_host_tiling.h` 的 `GetHardwareCoreNum`）
-- `SAGEATTN_BUILD_VERBOSE`：置 `1` 时输出 C++ 扩展编译日志
-- `SAGE_OPAPI_LIBRARY` / `FIA_OPAPI_LIBRARY`：基准工具 dlsym 外部算子库时的路径（仅 `./benchmarks/` 使用）
-
-## 适用边界
-
-- 仅支持前向推理，不支持反向与 autograd
-- 计算路径固定为 INT8 $QK^T$ + FP8 e4m3 PV；`qk_quant_gran` 的 `per_thread` 与 `per_warp` 在 NPU 侧均为真实存在的独立实现
-- 稠密注意力：不支持 paged KV cache、block table、varlen（`actualSeqLengths` 语义）与任意自定义 mask；`is_causal=True` 仅在 `Sq == Sk` 时合法
-- GQA 要求 `Hq` 能被 `Hkv` 整除；`1 <= D <= 128`，非 64/128 的头维自动 padding
-- `smooth_v=True` 仅在 `pv_accum_dtype="fp32"` 档真实生效（V 减均值 + 输出补偿正路径）；其余档位告警后忽略
-- 输入要求四维、同设备、同 dtype（FP16/BF16）、末维连续
-
-## 性能基准工具（`./benchmarks/`）
-
-- `benchmark_aclnn.cpp`：独立 C++ ACLNN 基准工具，dlsym 加载 `aclnnSageAttention2`（函数指针签名对齐交付 `./op_api/aclnn_sage_attention2.h` 字符串属性 ABI）与基线 `aclnnFusedInferAttentionScoreV5`（签名逐参数对齐 CANN `9.2.0-beta.1` 头文件），ABBA 轮换 + Trim5 统计 + JSON 报告
-- 退出码契约：`0` 为真机运行完成（含 PASS/FAIL 裁决字段），`1` 为运行错误，`2` 为 SIMULATION 模拟运行
-- SIMULATION 模式（无 CANN/NPU 的主机 mock 构建）下，所有 `speedup` 字段输出 `NaN`、`verdict` 输出 `"SIMULATION"`、`passed` 与精度对照字段输出 `null`，报告头与 `meta.simulation_warning` 显式声明模拟语义；模拟延迟为合成常数，禁止作为验收证据
-- 构建：`bash benchmarks/build_aclnn_benchmark.sh`（有 CANN 环境时链接真机库，否则自动落 mock 模式并容忍冒烟退出码 `2`）
-- 单用例示例（算子目录执行）：
+在本目录执行；CANN 和 CATLASS 路径按实际环境设置：
 
 ```bash
-./build/benchmarks/benchmark_aclnn --case P-03 --warmup 50 --repeats 100 \
-    --order abba --gate 1.6 --output build/bench_p03.json
+source /usr/local/Ascend/cann/set_env.sh
+export ASCEND_HOME_PATH=/usr/local/Ascend/cann
+export CATLASS_ROOT=/path/to/catlass
+export ASCEND_RT_VISIBLE_DEVICES=0
+
+bash install_opp.sh
+source build/opp/vendors/custom_transformer/bin/set_env.bash
+python -m pip install --no-deps .
+# 源码开发也可使用：export PYTHONPATH="$PWD/python${PYTHONPATH:+:$PYTHONPATH}"
 ```
 
-## 一键复现（本地门禁序列）
+`install_opp.sh` 调用仓库完整构建流程并安装到本目录的 `build/opp`。PyTorch 使用本目录独立的 C++ 扩展，通过 `torch.ops.sageattention2.forward` 和 torch_npu 的 `EXEC_NPU_CMD_EXT` 调用 ACLNN。首次 NPU 调用仅编译本算子的 C++ bridge，后续使用 PyTorch 编译缓存；需要 C++17 编译器和 Ninja。自定义 OPP 由 `ASCEND_CUSTOM_OPP_PATH` 指定，须在导入 torch_npu 前设置。
 
-- 前置条件：已在算子目录 `experimental/attention/sageattention2/`；Python 门依赖 torch 环境（解释器选择链见上文；本仓库不入库任何 venv）
-- 核心动作，按序执行，任何一步非零退出即门禁失败：
+测试使用已安装的 ACLNN 融合算子：
 
 ```bash
-cd ops-transformer/experimental/attention/sageattention2
-bash run.sh host
-bash run.sh kernel
-bash run.sh python
-bash run.sh opp
+bash benchmarks/build_aclnn_benchmark.sh
+SAGEATTN_TEST_STANDALONE=1 \
+    python -m pytest -q tests -o junit_family=xunit1 --junitxml=build/pytest-results.xml
 ```
 
-- 等价的 pytest 直跑形式：
+修改 kernel 后须重新完整构建、安装，再执行 NPU 测试。
+
+接入结构、安装与图模式范围见 [PyTorch 接入说明](docs/PyTorch接入说明.md)。
+
+## 测试说明
+
+CPU 参考采用 per-token Q/K 与 32-token MXFP8 V 量化，使用上述 FP16 平移 max 定义及 FP8 饱和转换；独立 SDPA 标准未改变。
+
+测试全部通过公开 ACLNN 路径运行，并对照独立 per-token QK / MXFP8 PV CPU 算法、FP32 SDPA 或可解析的常数输入结果。覆盖 dtype/layout/stride/GQA/causal、smooth K、smooth_v warning/ignore、LSE、长序列、模板选择边界、重复调用、并发流和独立 C++ ACLNN 入口。
+
+PyTorch 接入测试另覆盖 Meta/FakeTensor、dispatcher schema、`torch.compile(backend="eager", fullgraph=True)` 和私有存储格式检查；图模式范围见 [PyTorch 接入说明](docs/PyTorch接入说明.md)。
+
+[测试矩阵](tests/task_cases.py) 由 Python 参数组合直接生成并去重，包含 204 条功能、16 条精度及 5 条非法参数用例。正向用例统一使用原生 `per_token`、`fp32+fp32` 和 `smooth_v=False`，出现 fallback 告警即判失败；兼容别名、回退告警和忽略参数由 `tests/test_mxfp8.py` 专门验证。性能用例统一定义在 [benchmarks/cases.py](benchmarks/cases.py)。
+
+MXFP8 PV 用例采用 CPU 独立量化的端到端对照，使用下述统一标准，并检查重复调用数值一致性及独立 SDPA 误差。wide 的 LSE 对照包含 FP16 scale/score 舍入的量化参考。
+
+数值参考是本目录的 per-token QK / MXFP8 PV CPU 算法及独立 FP32 SDPA。CPU 同算法检查采用 FP16 rtol/atol=2^-9、BF16=2^-6、至少 99% 匹配比例；最大绝对误差通常分别限于 0.1/1。SDPA 的 max/mean/RMSE 误差比例门限为 2/1.2/1.2。
+
+MXFP8 回归统一检查最大绝对误差上限：FP16 为 0.1，BF16 为 1.0。分组 scale、非对齐尾块和 L1 缓存容量边界另有独立可解析输入测试。
+
+`tests/test_wide_sequence.py` 补充 4K/8K/16K 完整序列的 wide 精度覆盖：12 项双 dtype、causal/non-causal、GQA 和 HND/NHD 用例逐元素对照 CPU 同算法（`block_k=512`），同时检查可选 LSE。另以 P-01～P-07 的完整 B/H/S 尺寸运行两条公开接口，检查全部输出和 LSE 的一致性，并对首尾 query head 的全部 batch/序列做 CPU 对照；这七项 CPU 对照是 head 抽样，不代表全 head 的独立精度验证。
+
+FP16 平移的舍入会改变 P 的实际缩放，因此不保证与原先 `448 * exp(score - max)` 逐位或按旧量化参考一致。零 score、V 全 1 时，FP16 输出为约 0.999512；较大且相等的 score 还可能使 P 超过 448 后饱和。独立 SDPA 检查保留原有标准。
+
+上述结果不等同于原始 GPU per-thread/per-warp L-A/L-B 或正式 AscendOpTest 验收；这些对照尚未执行。
+
+## 性能测试
+
+验收计时与任务书配套 `test_perf.py::_time_ms` 一致：每个实现默认先执行 50 次预热（包含首次编译/初始化），预热后同步；用一对 Device Event 包住连续 100 次完整算子调用，循环内不主动同步；全部提交后同步，以总耗时除以 100 作为平均耗时。先测 FIA，再测 Sage；每个实现测量完成后间隔 10 秒。统计范围包含 Stats、Quant 和 Attention，不预先缓存量化结果。
+
+PyTorch 默认预热 50 次，参数为 `--warmup` 或 `SAGEATTN_PERF_WARMUP`；测量次数使用 `--repeats` 或 `SAGEATTN_PERF_ITERS`，默认 100 次。预热次数不按运行时间自动调整。ACLNN 使用等价的批量 ACL Event 计时，每次正常调用 GetWorkspaceSize 和执行接口，workspace/output 复用；两阶段调用均位于批量计时区间内。报告保存总耗时、调用次数和平均耗时，加速比使用 FIA 平均耗时除以 Sage 平均耗时。
 
 ```bash
-SAGE_PYTHON=... pytest tests/ -q（或 run.sh python）
+python benchmarks/run_validation_performance.py --output build/performance_batch
+bash benchmarks/build_aclnn_benchmark.sh
+mkdir -p build/performance_batch/aclnn
+./build/benchmarks/benchmark_aclnn 4096 1 32 0 0 50 100 build/performance_batch/aclnn/P-01.json
 ```
 
-- 质量准出门禁：
+### msprof op
 
-- `bash run.sh host` 输出三段 `[SUCCESS]`（ACLNN Host 7 例、OP_HOST 5 例、OutputQueue 10 例）且退出码为 0
-- `SAGE_PYTHON=... pytest tests/ -q` 全部用例通过（含 `tests/test_tiling_struct.py` 的 TilingData ctypes 镜像对 160 字节总长、32 字节对齐与逐字段偏移的断言）；`run.sh python` 覆盖 test_tiling_struct.py、test_quant.py 与 test_kernel_twin.py 三个快速项，全量口径以 pytest 为准
-- `tests/test_kernel_twin.py`（已纳入 `run.sh python`）：宿主孪生全流水执行器（twin_reference RunSequential）与 kernel 宿主串行分支（op_kernel SageAttnKernel + SimMemory，TilingData 直驱 `sage_attention2` C 入口）对 golden 25 桶落盘 out/lse 的功能交叉验证——22 桶整桶 + 3 大桶 128 对齐行窗口（P-05/P-07/TC-09，非因果行独立性如实标注；TC-03_smooth_v_fp32 为 smooth_v 建模边界由 test_function.py 覆盖），判据 L-A（matched_ratio ≥ 0.99、max_abs ≤ 0.1/1.0、LSE ≤ 1e-3）+ L-B（对 SDPA 误差比 ≤ 2.0/1.2/1.2），并附 P-01 量化中间态（q/k INT8、v FP8、scale）位级比对；P-01/TC-04/TC-05/TC-07/TC-01(fp16) 代表桶另以 kernel 宿主串行分支复验，TC-01(bf16) 桶覆盖核内 `tiling.input_dtype==2` 位型分派分支（bf16 读写与 km 差值位型舍回）
-- 仓库级数值门（kernel 宿主串行路径 vs 孪生参考十用例位级一致、golden 25 桶 L-A/L-B）：由工程根 `ci/local_test.sh` 承载，依赖仓库外 `./tests/` 与 `./sageAttention2/sageAttentionTest`（交付包内不自带，复现须在完整工程根执行）
-- `bash run.sh opp` 完成 dry-run 打包与 mock 安装且退出码为 0
-- 真机验收另行执行 `bash benchmarks/build_aclnn_benchmark.sh` 并以真机报告的 `verdict: PASS` 为准；`mode: SIMULATION` 的报告一律无效
+采集单个完整算子；应用只调用一次目标算子，预热和重放由 msprof op 默认配置处理。不设置 `--warm-up`、`--aic-metrics` 或 `--launch-count`，保留默认指标。
 
-## 交付文档索引
+```bash
+msprof op --kernel-name=SageAttention2 --output=build/msprof/P-01/sage \
+    --application="python benchmarks/profile_single_op.py --case P-01 --operator sage"
+msprof op --kernel-name=FusedInferAttentionScore --output=build/msprof/P-01/fia \
+    --application="python benchmarks/profile_single_op.py --case P-01 --operator fia"
+```
 
-- [与 CUDA 默认接口的差异](./docs/CUDA接口差异说明.md)：量化粒度、S_FP8_OFFSET 放大、两级累加三档、舍入模式、smooth_v 正路径的逐项语义对照
-- 接口原型：交付态 `./op_api/aclnn_sage_attention2.h`（字符串属性，随 run 包安装）；移植态 `./aclnn/sage_attn_proto.h`（数值编码，本地单测）
-- Tiling 契约：`./sageattn_fp8/ascendc/tiling.h`（160 字节、32 字节对齐，Host/Device 共享只读）
+`benchmark_aclnn` 参数依次为 `SEQ BATCH KV_HEADS BF16 CAUSAL WARMUP_CALLS REPEATS OUTPUT_JSON`。性能结果随自测材料提供。
+
+## 目录说明
+
+| 目录 | 内容 |
+|---|---|
+| `op_kernel` | Stats、Quant、Cube/Vector 分块、online softmax 和 O 更新 |
+| `op_host`、`op_api` | 参数校验、注册、tiling 和两阶段 ACLNN |
+| `python` | PyTorch ACLNN 适配层和 CPU 参考 |
+| `tests` | 公开接口功能、精度和多流回归 |
+| `benchmarks` | 性能测试脚本和独立 ACLNN 调用示例 |

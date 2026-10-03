@@ -106,14 +106,14 @@
 
 ##### tilingkey 规划策略
 
-- 32 位整型 tiling_key 编码结构：
+- 交付态现状：tilingKey 恒为 0，统一设备入口经 binary_info_config.json 注册（op_host SetTilingKey(0)，源码注释契约"须置 0 与 binary_info_config.json 注册一致"；该注册文件由 CANN 提交物提供，不在本仓源树）；kernel 按 GET_TILING_DATA_WITH_STRUCT 的运行时字段消费，tiling_key 不参与核内分派。
+- M5 规划：启用 tiling_key 后按 32 位整型编码做编译期模板特化（ASCENDC_TPL_ARGS_DECL）零分支直调，规划编码结构：
   - bits 0-3: gran（2=per_warp, 3=per_thread）
   - bits 4-7: accum（0=fp32, 1=fp32+fp32, 2=fp32+fp16）
   - bits 8-11: layout（0=NHD, 1=HND）
   - bits 12-15: causal（0=非因果, 1=因果）
-  - bits 16-19: pad（0=d_pad 64 档, 1=d_pad 128 档；编码见 op_host SetTilingKey 的 `d_pad == 128u ? 1u : 0u`）
+  - bits 16-19: pad（0=d_pad 64 档, 1=d_pad 128 档）
   - bits 20-23: input_dtype（1=fp16, 2=bf16）
-- M5 规划：依据 tiling_key 做编译期模板特化（ASCENDC_TPL_ARGS_DECL）零分支直调；当前 kernel 按 GET_TILING_DATA_WITH_STRUCT 的运行时字段消费 tiling_key 不参与核内分派。
 
 #### kernel 侧设计
 

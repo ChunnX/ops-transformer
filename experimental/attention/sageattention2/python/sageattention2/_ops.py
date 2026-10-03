@@ -1,35 +1,27 @@
-"""PyTorch 2.x dispatcher interface, schema definition, and FakeTensor/Meta registration for SageAttention2."""
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+
+"""PyTorch dispatcher interface for the fused SageAttention2 operator."""
 
 from __future__ import annotations
 
 import math
-from typing import Any
 import warnings
 
 import torch
 from torch.library import impl
 
-# 接口字符串协议唯一来源：error_check.py 的 VALID_* 集合（禁止在此复制第二套字面量表）
-from .error_check import VALID_LAYOUTS, VALID_PV_ACCUM_DTYPES, VALID_QUANT_GRANS
 
-
-def _validate(
-    q: torch.Tensor,
-    k: torch.Tensor,
-    v: torch.Tensor,
-    layout: str,
-    causal: bool,
-    gran: str,
-    pv_accum_dtype: str,
-    kwargs: dict[str, Any],
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Validate tensors and parameters against SageAttention2 specifications."""
-    if layout not in VALID_LAYOUTS:
+def _validate(q, k, v, layout, causal, gran, kwargs):
+    if layout not in ("HND", "NHD"):
         raise ValueError("tensor_layout must be HND or NHD")
-    if gran not in VALID_QUANT_GRANS:
-        raise ValueError(f"qk_quant_gran must be 'per_thread' or 'per_warp', got '{gran}'")
-    if pv_accum_dtype not in VALID_PV_ACCUM_DTYPES:
-        raise ValueError("pv_accum_dtype must be fp32, fp32+fp32, or fp32+fp16")
+    if gran not in ("per_token", "per_thread", "per_warp"):
+        raise ValueError("qk_quant_gran must be per_token, per_thread or per_warp")
     if kwargs.pop("attn_mask", None) is not None:
         raise ValueError("attn_mask is unsupported")
     if kwargs.pop("dropout_p", 0.0) != 0:
@@ -50,7 +42,6 @@ def _validate(
         raise ValueError("empty dimensions are unsupported")
     if any(any(n >= 2**32 - 64 for n in t.shape) for t in (q, k, v)):
         raise ValueError("dimensions exceed the kernel uint32 range")
-
     qc, kc, vc = (
         (q, k, v) if layout == "HND" else tuple(t.transpose(1, 2) for t in (q, k, v))
     )
@@ -70,118 +61,56 @@ def _validate(
     return qc, kc, vc
 
 
-# Register custom operator schema under sageattention2 namespace using FRAGMENT to allow multiple module imports
-_library = torch.library.Library("sageattention2", "FRAGMENT")
-
-if not hasattr(getattr(torch.ops, "sageattention2", None), "forward"):
+try:
+    _library = torch.library.Library("sageattention2", "DEF")
     _library.define(
         'forward(Tensor q, Tensor k, Tensor v, *, str tensor_layout="HND", '
-        'bool is_causal=False, str qk_quant_gran="per_thread", float? sm_scale=None, '
-        'str pv_accum_dtype="fp32+fp16", bool smooth_k=True, bool smooth_v=False, '
-        'bool return_lse=False) -> (Tensor, Tensor?)'
+        "bool is_causal=False, float? sm_scale=None, bool smooth_k=True, "
+        "bool return_lse=False) -> (Tensor, Tensor?)"
     )
+except Exception:
+    _library = torch.library.Library("sageattention2", "FRAGMENT")
 
-    @impl(_library, "forward", "Meta")
-    def _meta(
-        q: torch.Tensor,
-        k: torch.Tensor,
-        v: torch.Tensor,
-        *,
-        tensor_layout: str = "HND",
-        is_causal: bool = False,
-        qk_quant_gran: str = "per_thread",
-        sm_scale: float | None = None,
-        pv_accum_dtype: str = "fp32+fp16",
-        smooth_k: bool = True,
-        smooth_v: bool = False,
-        return_lse: bool = False,
-    ) -> tuple[torch.Tensor, torch.Tensor | None]:
-        """FakeTensor / Meta implementation for shape deduction in torch.compile graph mode."""
-        qc, _, _ = _validate(
-            q, k, v, tensor_layout, is_causal, qk_quant_gran, pv_accum_dtype, {}
-        )
-        if sm_scale is not None and (
-            not math.isfinite(sm_scale) or abs(sm_scale) > 3.4028234663852886e38
-        ):
-            raise ValueError("invalid FP32 sm_scale")
-        # 冻结语义：显式 sm_scale 必须为正；默认 1/sqrt(D) 仅在 None 时生效
-        if sm_scale is not None and sm_scale <= 0:
-            raise ValueError(
-                "sm_scale must be > 0 when explicitly provided; omit it for the default 1/sqrt(head_dim)"
-            )
 
-        out = q.new_empty(q.shape)
-        lse = q.new_empty(qc.shape[:3], dtype=torch.float32) if return_lse else None
-        return out, lse
+@impl(_library, "forward", "Meta")
+def _meta(
+    q,
+    k,
+    v,
+    *,
+    tensor_layout="HND",
+    is_causal=False,
+    sm_scale=None,
+    smooth_k=True,
+    return_lse=False,
+):
+    qc, _, _ = _validate(q, k, v, tensor_layout, is_causal, "per_token", {})
+    if sm_scale is not None and (
+        not math.isfinite(sm_scale) or abs(sm_scale) > 3.4028234663852886e38
+    ):
+        raise ValueError("invalid FP32 sm_scale")
+    out = q.new_empty(q.shape)
+    lse = q.new_empty(qc.shape[:3], dtype=torch.float32) if return_lse else None
+    return out, lse
 
-    @impl(_library, "forward", "PrivateUse1")
-    def _npu(
-        q: torch.Tensor,
-        k: torch.Tensor,
-        v: torch.Tensor,
-        *,
-        tensor_layout: str = "HND",
-        is_causal: bool = False,
-        qk_quant_gran: str = "per_thread",
-        sm_scale: float | None = None,
-        pv_accum_dtype: str = "fp32+fp16",
-        smooth_k: bool = True,
-        smooth_v: bool = False,
-        return_lse: bool = False,
-    ) -> tuple[torch.Tensor, torch.Tensor | None]:
-        """Execute via the compiled C++ bridge on Ascend NPU hardware."""
-        from ._extension import load_extension
 
-        return load_extension().forward(
-            q,
-            k,
-            v,
-            tensor_layout,
-            is_causal,
-            qk_quant_gran,
-            sm_scale,
-            pv_accum_dtype,
-            smooth_k,
-            smooth_v,
-            return_lse,
-        )
+@impl(_library, "forward", "PrivateUse1")
+def _npu(
+    q,
+    k,
+    v,
+    *,
+    tensor_layout="HND",
+    is_causal=False,
+    sm_scale=None,
+    smooth_k=True,
+    return_lse=False,
+):
+    from ._extension import load_extension
 
-    @impl(_library, "forward", "CPU")
-    def _cpu(
-        q: torch.Tensor,
-        k: torch.Tensor,
-        v: torch.Tensor,
-        *,
-        tensor_layout: str = "HND",
-        is_causal: bool = False,
-        qk_quant_gran: str = "per_thread",
-        sm_scale: float | None = None,
-        pv_accum_dtype: str = "fp32+fp16",
-        smooth_k: bool = True,
-        smooth_v: bool = False,
-        return_lse: bool = False,
-    ) -> tuple[torch.Tensor, torch.Tensor | None]:
-        """High-fidelity CPU reference fallback for local tests and non-NPU environments."""
-        from .dispatch import run_sageattn_cpu_reference
-        from .error_check import compute_sm_scale, pad_head_dim
-
-        q_pad, k_pad, v_pad, head_dim_og = pad_head_dim(q, k, v)
-        sm_scale_val = compute_sm_scale(head_dim_og, sm_scale)
-        out_pad, lse = run_sageattn_cpu_reference(
-            q_pad=q_pad,
-            k_pad=k_pad,
-            v_pad=v_pad,
-            tensor_layout=tensor_layout,
-            is_causal=is_causal,
-            qk_quant_gran=qk_quant_gran,
-            sm_scale=sm_scale_val,
-            pv_accum_dtype=pv_accum_dtype,
-            smooth_k=smooth_k,
-            smooth_v=smooth_v,
-            return_lse=return_lse,
-        )
-        out = out_pad[..., :head_dim_og].contiguous()
-        return out, lse
+    return load_extension().forward(
+        q, k, v, tensor_layout, is_causal, sm_scale, smooth_k, return_lse
+    )
 
 
 def run(
@@ -191,15 +120,15 @@ def run(
     *,
     tensor_layout: str = "HND",
     is_causal: bool = False,
-    qk_quant_gran: str = "per_thread",
+    qk_quant_gran: str = "per_token",
     sm_scale: float | None = None,
-    pv_accum_dtype: str = "fp32+fp16",
+    pv_accum_dtype: str = "fp32+fp32",
     smooth_k: bool = True,
     smooth_v: bool = False,
     return_lse: bool = False,
-    **kwargs: Any,
+    **kwargs,
 ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
-    """Run SageAttention2 forward through PyTorch custom operator dispatcher.
+    """Run forward SageAttention2 with per-token INT8 QK and MXFP8 PV.
 
     Args:
         q: FP16/BF16 query, [B,Hq,Sq,D] in HND or [B,Sq,Hq,D] in NHD.
@@ -207,48 +136,49 @@ def run(
         v: Value with the same shape, dtype and device as k.
         tensor_layout: HND or NHD. Last dimension must be contiguous, 1 <= D <= 128.
         is_causal: Apply a causal mask; requires Sq == Sk.
-        qk_quant_gran: per_thread or per_warp.
-        sm_scale: Softmax scale; defaults to 1/sqrt(D) only when omitted (None).
-            Explicit 0/negative values are rejected.
-        pv_accum_dtype: fp32, fp32+fp32, or fp32+fp16. Fully preserved and passed through.
+        qk_quant_gran: per_token; per_thread/per_warp warn and use per_token.
+        sm_scale: Softmax scale, defaults to 1/sqrt(D).
+        pv_accum_dtype: fp32+fp32, with fp32 as an alias; other values warn and fall back.
         smooth_k: Subtract the sequence mean of K before quantization.
-        smooth_v: Center V around mean (warns and ignored unless pv_accum_dtype='fp32').
+        smooth_v: Compatibility flag; True warns and is ignored.
         return_lse: Also return FP32 logsumexp with shape [B,Hq,Sq].
-        **kwargs: Unused parameters.
+        **kwargs: Only attn_mask=None and dropout_p=0 are accepted.
 
     Returns:
-        Output tensor with q's shape/dtype, or (output, lse) when return_lse=True.
+        Output with q's shape/dtype, or (output, lse) when return_lse=True.
+        Hq must be divisible by Hkv. This operator is forward-only.
     """
-    _validate(q, k, v, tensor_layout, is_causal, qk_quant_gran, pv_accum_dtype, kwargs)
+    _validate(q, k, v, tensor_layout, is_causal, qk_quant_gran, kwargs)
     if sm_scale is not None:
         sm_scale = float(sm_scale)
         if not math.isfinite(sm_scale) or abs(sm_scale) > 3.4028234663852886e38:
             raise ValueError("invalid FP32 sm_scale")
-        # 冻结语义：显式 sm_scale 必须为正；默认 1/sqrt(D) 仅在 None 时生效
-        if sm_scale <= 0:
-            raise ValueError(
-                "sm_scale must be > 0 when explicitly provided; omit it for the default 1/sqrt(head_dim)"
-            )
-
-    if smooth_v and pv_accum_dtype != "fp32":
+    if qk_quant_gran != "per_token":
         warnings.warn(
-            f"smooth_v will be ignored when pv_accum_dtype='{pv_accum_dtype}' "
-            "(FP8 PV does not support value centering; use pv_accum_dtype='fp32' to enable smooth_v).",
+            f"qk_quant_gran={qk_quant_gran!r} falls back to per_token on Ascend 950.",
             UserWarning,
             stacklevel=2,
         )
-
+    if pv_accum_dtype not in ("fp32+fp32", "fp32"):
+        warnings.warn(
+            f"pv_accum_dtype={pv_accum_dtype!r} falls back to fp32+fp32 on Ascend 950.",
+            UserWarning,
+            stacklevel=2,
+        )
+    if smooth_v:
+        warnings.warn(
+            "smooth_v is ignored: SageAttention2 uses MXFP8 PV without value centering.",
+            UserWarning,
+            stacklevel=2,
+        )
     out, lse = torch.ops.sageattention2.forward(
         q,
         k,
         v,
         tensor_layout=tensor_layout,
         is_causal=is_causal,
-        qk_quant_gran=qk_quant_gran,
         sm_scale=sm_scale,
-        pv_accum_dtype=pv_accum_dtype,
         smooth_k=smooth_k,
-        smooth_v=smooth_v,
         return_lse=return_lse,
     )
     return (out, lse) if return_lse else out

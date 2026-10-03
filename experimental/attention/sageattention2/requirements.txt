@@ -1,0 +1,7 @@
+# Install the CPU wheel of PyTorch plus the NPU backend; CUDA is unnecessary.
+torch==2.9.0
+torch_npu==2.9.0.post8
+numpy>=1.26,<2
+pytest>=8
+cmake>=3.20
+ninja

@@ -1,227 +1,192 @@
-/*!
- * \file sage_attention2_tiling.cpp
- * \brief SageAttention2 Host TilingImpl 注册：将闭式 Tiling 结果序列化进
- *        gert::TilingContext 的 RawTilingData（两段式 CommonOpExecutorRun
- *        下发 kernel 时由框架从该 buffer 取 tiling）。
- *
- * 序列化写法对齐仓库内其他实验算子的标准模式（如 turbo_quant_sparse_flash_attention
- * 的 TilingImpl::SetTilingData）：写入 RawTilingData->GetData() 并 SetDataSize。
- * Tiling 数值计算复用 aclnn/sage_attn_host_tiling.h 的 sage_attn::ComputeHostTiling
- * 闭式实现，保证 GetWorkspaceSize 阶段与 TilingImpl 阶段结果位元一致。
+/*
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
-
-#include "sage_attention2_def.h"
 
 #include <cmath>
+#include <cstdio>
 #include <cstring>
-#include <string>
-
-// 闭式 Tiling 计算、tiling 结构体、数值编码与字符串映射均经本头引入
-// （sage_attn_host_tiling.h -> sage_attn_proto.h -> ascendc/tiling.h）
-#include "../aclnn/sage_attn_host_tiling.h"
-
-#if defined(SAGE_HAS_OP_IMPL_REGISTRY)
-#if defined(__has_include)
-#if __has_include("exe_graph/runtime/tiling_context.h")
-#include "exe_graph/runtime/tiling_context.h"
-#define SAGE_HAS_REAL_TILING_CONTEXT 1
-#endif
-#endif
-#endif
-
-#if defined(SAGE_HAS_REAL_TILING_CONTEXT)
-
+#include <dlfcn.h>
+#include <initializer_list>
+#include <limits>
+#include "acl/acl_rt.h"
+#include "register/op_def_registry.h"
 #include "tiling/platform/platform_ascendc.h"
+#include "../op_kernel/sage_attention2_tiling_data.h"
+#include "../op_kernel/sage_attention2_template_tiling_key.h"
 
-namespace ops {
-
+namespace optiling {
 namespace {
-
-/**
- * 标准宿主 Tiling 入口：
- * 1. 读取 Q/K/V 形状与全部字符串/标量属性并映射为数值编码
- *    （唯一映射位于 sage_attn_proto.h 的 *CodeFromString）
- * 2. 复用闭式 ComputeHostTiling 计算并填充 SageAttention2TilingData
- * 3. 将 tiling 位元写入 gert::RawTilingData（框架经 CommonOpExecutorRun 下发至 kernel）
- * 4. 设置 BlockDim 与 Workspace 大小
- */
-static ge::graphStatus TilingSageAttention2(gert::TilingContext *context)
+ge::graphStatus Failure(int line)
 {
-    if (context == nullptr || context->GetRawTilingData() == nullptr) {
-        return ge::GRAPH_FAILED;
+    std::fprintf(stderr, "SageAttention2 tiling validation failed at line %d\n", line);
+    return ge::GRAPH_FAILED;
+}
+struct CompileInfo {
+    uint32_t cores = 0, vectors = 0;
+};
+ge::graphStatus Tile(gert::TilingContext *c)
+{
+    if (!c || !c->GetAttrs()) {
+        return Failure(__LINE__);
     }
-
-    const gert::Shape *query_shape = nullptr;
-    const gert::Shape *key_shape = nullptr;
-    const gert::Shape *value_shape = nullptr;
-    if (context->GetInputShape(sage_attn2_idx::IN_QUERY) != nullptr &&
-        context->GetInputShape(sage_attn2_idx::IN_KEY) != nullptr &&
-        context->GetInputShape(sage_attn2_idx::IN_VALUE) != nullptr) {
-        // TilingContext 返回 StorageShape，取原始逻辑 shape 参与闭式计算
-        query_shape = &context->GetInputShape(sage_attn2_idx::IN_QUERY)->GetOriginShape();
-        key_shape = &context->GetInputShape(sage_attn2_idx::IN_KEY)->GetOriginShape();
-        value_shape = &context->GetInputShape(sage_attn2_idx::IN_VALUE)->GetOriginShape();
-    }
-    if (query_shape == nullptr || key_shape == nullptr || value_shape == nullptr ||
-        query_shape->GetDimNum() != 4 || key_shape->GetDimNum() != 4 || value_shape->GetDimNum() != 4) {
-        return ge::GRAPH_FAILED;
-    }
-
-    const auto *attrs = context->GetAttrs();
-    const char *layout_str = (attrs != nullptr) ? ReadStringAttr(attrs, sage_attn2_idx::ATTR_TENSOR_LAYOUT) : nullptr;
-    const char *gran_str = (attrs != nullptr) ? ReadStringAttr(attrs, sage_attn2_idx::ATTR_QK_QUANT_GRAN) : nullptr;
-    const char *accum_str = (attrs != nullptr) ? ReadStringAttr(attrs, sage_attn2_idx::ATTR_PV_ACCUM_DTYPE) : nullptr;
-    const bool *is_causal = (attrs != nullptr) ? attrs->GetBool(sage_attn2_idx::ATTR_IS_CAUSAL) : nullptr;
-    const float *sm_scale = (attrs != nullptr) ? attrs->GetFloat(sage_attn2_idx::ATTR_SM_SCALE) : nullptr;
-    const bool *smooth_k = (attrs != nullptr) ? attrs->GetBool(sage_attn2_idx::ATTR_SMOOTH_K) : nullptr;
-    const bool *smooth_v = (attrs != nullptr) ? attrs->GetBool(sage_attn2_idx::ATTR_SMOOTH_V) : nullptr;
-
-    // 微秒级极速发射：tiling 热路径禁止 std::string 堆分配，
-    // 缺省折叠与编码映射全部走 const char* 比较
-    const char *layout = (layout_str != nullptr) ? layout_str : "BNSD";
-    const char *gran = (gran_str != nullptr) ? gran_str : "per_thread";
-    const char *accum = (accum_str != nullptr) ? accum_str : "fp32+fp16";
-
-    const int64_t layout_code = sage_attn::TensorLayoutCodeFromString(layout);
-
-    uint32_t b = 0, sq = 0, sk = 0, hq = 0, hkv = 0, d_og = 0;
-    if (layout_code == sage_attn::LAYOUT_HND) {
-        // HND/BNSD 布局: [B, H, S, D]
-        b = static_cast<uint32_t>(query_shape->GetDim(0));
-        hq = static_cast<uint32_t>(query_shape->GetDim(1));
-        sq = static_cast<uint32_t>(query_shape->GetDim(2));
-        d_og = static_cast<uint32_t>(query_shape->GetDim(3));
-        hkv = static_cast<uint32_t>(key_shape->GetDim(1));
-        sk = static_cast<uint32_t>(key_shape->GetDim(2));
-    } else {
-        // NHD/BSND 布局: [B, S, H, D]
-        b = static_cast<uint32_t>(query_shape->GetDim(0));
-        sq = static_cast<uint32_t>(query_shape->GetDim(1));
-        hq = static_cast<uint32_t>(query_shape->GetDim(2));
-        d_og = static_cast<uint32_t>(query_shape->GetDim(3));
-        sk = static_cast<uint32_t>(key_shape->GetDim(1));
-        hkv = static_cast<uint32_t>(key_shape->GetDim(2));
-    }
-
-    // sm_scale：GE 图属性未显式提供时为默认 0，此时折叠为 1/sqrt(d)
-    // （与 Python 桥接 None->默认 语义一致）；负值为非法显式入参，直接报错
-    double scale = (sm_scale != nullptr) ? static_cast<double>(*sm_scale) : 0.0;
-    if (scale < 0.0) {
-        return ge::GRAPH_FAILED;
-    }
-    if (scale <= 0.0) {
-        scale = 1.0 / std::sqrt(static_cast<double>(d_og));
-    }
-
-    sage_attn::SageAttention2TilingData tiling_data;
-    uint64_t workspace_bytes = 0;
-    // gert::TilingContext 无 GetInputDataType（CANN 9.2.0-beta.1 实测），dtype 经
-    // GetInputDesc 的 CompileTimeTensorDesc 读取（仓内 turbo_quant_sparse_flash_attention
-    // TilingImpl 同款惯例）；desc 缺失按非法图 fail-closed。
-    const auto *query_desc = context->GetInputDesc(sage_attn2_idx::IN_QUERY);
-    if (query_desc == nullptr) {
-        return ge::GRAPH_FAILED;
-    }
-    const auto query_dtype = query_desc->GetDataType();
-    const int dtype_mode = (query_dtype == ge::DT_BF16) ? 2 : 1;
-
-    aclnnStatus status = sage_attn::ComputeHostTiling(
-        b, sq, sk, hq, hkv, dtype_mode, d_og,
-        scale,
-        sage_attn::QuantGranCodeFromString(gran),
-        sage_attn::PvAccumCodeFromString(accum),
-        (is_causal != nullptr) ? *is_causal : false,
-        layout_code,
-        (smooth_k != nullptr) ? *smooth_k : true,
-        (smooth_v != nullptr) ? *smooth_v : false,
-        context->GetInputShape(sage_attn2_idx::IN_KEY_MEAN) != nullptr, // has_key_mean 实况
-        false, // has_lse
-        tiling_data,
-        workspace_bytes);
-    if (status != ACLNN_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
-
-    // blockDim 以平台实测 AIC 数封顶（28 核减配拓扑防超订；
-    // CompileInfo/platform 为权威源，env 覆盖仅供自动化测试）。
-    // 封顶必须在序列化之前完成，保证 RawTilingData 与 blockDim 一致。
-    if (context->GetPlatformInfo() != nullptr) {
-        const uint32_t aic = platform_ascendc::PlatformAscendC(context->GetPlatformInfo())
-                                 .GetCoreNumAic();
-        if (aic > 0 && aic < tiling_data.core_num_used) {
-            tiling_data.core_num_used = aic;
-            // cores_per_die 契约定义为 core_num_used / die_num（tiling.h 注释），
-            // 随钳制联动，避免序列化出与 core_num_used 矛盾的亲和元数据
-            tiling_data.cores_per_die =
-                (aic >= sage_attn::ATLAS_950_DIE_NUM) ? (aic / sage_attn::ATLAS_950_DIE_NUM) : aic;
+    for (int i = 0; i < 3; ++i) {
+        if (!c->GetInputShape(i) || !c->GetInputDesc(i)) {
+            return Failure(__LINE__);
+        }
+        const auto &shape = c->GetInputShape(i)->GetStorageShape();
+        if (shape.GetDimNum() != 4) {
+            return Failure(__LINE__);
+        }
+        for (int j = 0; j < 4; ++j) {
+            if (shape[j] <= 0 || shape[j] >= UINT32_MAX - 64) {
+                return Failure(__LINE__);
+            }
         }
     }
-    context->SetBlockDim(tiling_data.core_num_used);
-
-    // 标准 tiling 序列化：写入 RawTilingData 并回填数据长度（须在全部钳制之后，
-    // 保证下发位元与 SetBlockDim 一致）
-    auto *raw_tiling = context->GetRawTilingData();
-    if (raw_tiling->GetData() == nullptr || raw_tiling->GetCapacity() < sizeof(tiling_data)) {
-        return ge::GRAPH_FAILED;
+    const auto &q = c->GetInputShape(0)->GetStorageShape();
+    const auto &k = c->GetInputShape(1)->GetStorageShape();
+    const auto &v = c->GetInputShape(2)->GetStorageShape();
+    auto dt = c->GetInputDesc(0)->GetDataType();
+    if ((dt != ge::DT_FLOAT16 && dt != ge::DT_BF16) || c->GetInputDesc(1)->GetDataType() != dt ||
+        c->GetInputDesc(2)->GetDataType() != dt || k != v || q[0] != k[0] || q[3] != k[3] || q[3] > 128 ||
+        q[1] % k[1] || uint64_t(k[0]) * k[1] >= UINT32_MAX) {
+        return Failure(__LINE__);
     }
-    std::memcpy(raw_tiling->GetData(), &tiling_data, sizeof(tiling_data));
-    raw_tiling->SetDataSize(sizeof(tiling_data));
-
-    // TilingKey：当前算子包采用统一设备入口（SageAttention2_0，tilingKey=0），
-    // 内部经 RawTilingData 动态分发；SetTilingKey 须置 0 与 binary_info_config.json 注册一致。
-    context->SetTilingKey(0);
-
-    // SyncAll/三段式调度要求 MIX 1:2 全网格驻留
-    context->SetScheduleMode(1);
-
-    size_t *workspaces = context->GetWorkspaceSizes(1);
-    if (workspaces != nullptr) {
-        // dav-3510 GetUserWorkspace 会跳过 CANN 系统 workspace 前缀，host 侧须预留
-        uint64_t reserved = 16ULL * 1024 * 1024;
-        if (context->GetPlatformInfo() != nullptr) {
-            reserved = platform_ascendc::PlatformAscendC(context->GetPlatformInfo())
-                           .GetLibApiWorkSpaceSize();
+    if (q[2] > UINT32_MAX - 127 || k[2] > UINT32_MAX - 511) {
+        return Failure(__LINE__);
+    }
+    SageAttention2TilingData t{};
+    auto &p = t.params;
+    p.b = q[0];
+    p.hq = q[1];
+    p.hk = k[1];
+    p.sq = q[2];
+    p.sk = k[2];
+    p.d = q[3];
+    p.dp = p.d <= 64 ? 64 : 128;
+    p.qp = (p.sq + 127) / 128 * 128;
+    p.kp = (p.sk + 511) / 512 * 512;
+    const auto *attrs = c->GetAttrs();
+    auto sm = attrs->GetAttrPointer<float>(0);
+    auto smooth = attrs->GetAttrPointer<bool>(1);
+    auto causal = attrs->GetAttrPointer<bool>(2);
+    auto lse = attrs->GetAttrPointer<bool>(3);
+    if (!sm || !smooth || !causal || !lse || !std::isfinite(*sm) || (*causal && p.sq != p.sk)) {
+        return Failure(__LINE__);
+    }
+    p.smScale = *sm;
+    p.smoothK = *smooth;
+    p.causal = *causal;
+    p.returnLse = *lse;
+    p.bf16 = dt == ge::DT_BF16;
+    p.qs[2] = p.d;
+    p.qs[1] = uint64_t(p.sq) * p.d;
+    p.qs[0] = uint64_t(p.hq) * p.qs[1];
+    p.ks[2] = p.vs[2] = p.d;
+    p.ks[1] = p.vs[1] = uint64_t(p.sk) * p.d;
+    p.ks[0] = p.vs[0] = uint64_t(p.hk) * p.ks[1];
+    // Standalone aclnn may provide an empty compile-info object. Runtime
+    // platform information is authoritative and does not require torch init.
+    uint32_t vectors = 0;
+    if (c->GetPlatformInfo()) {
+        auto platform = platform_ascendc::PlatformAscendC(c->GetPlatformInfo());
+        p.cores = platform.GetCoreNumAic();
+        vectors = platform.GetCoreNumAiv();
+    }
+    if (!p.cores && c->GetCompileInfo()) {
+        const auto *info = static_cast<const CompileInfo *>(c->GetCompileInfo());
+        p.cores = info->cores;
+        vectors = info->vectors;
+    }
+    if (!p.cores || vectors < 2 * p.cores) {
+        // Some direct aclnn launches carry no populated tiling platform data.
+        // Resolve optional runtime queries without imposing a runtime dependency
+        // on offline tiling tools; never guess core counts from a device model.
+        auto getDevice = reinterpret_cast<aclError (*)(int32_t *)>(dlsym(RTLD_DEFAULT, "aclrtGetDevice"));
+        auto getInfo = reinterpret_cast<aclError (*)(uint32_t, aclrtDevAttr, int64_t *)>(
+            dlsym(RTLD_DEFAULT, "aclrtGetDeviceInfo"));
+        int32_t device = 0;
+        int64_t aic = 0, aiv = 0;
+        if (getDevice && getInfo && getDevice(&device) == ACL_SUCCESS &&
+            getInfo(device, ACL_DEV_ATTR_CUBE_CORE_NUM, &aic) == ACL_SUCCESS &&
+            getInfo(device, ACL_DEV_ATTR_VECTOR_CORE_NUM, &aiv) == ACL_SUCCESS && aic > 0 && aic < UINT32_MAX &&
+            aiv >= 2 * aic && aiv < UINT32_MAX) {
+            p.cores = static_cast<uint32_t>(aic);
+            vectors = static_cast<uint32_t>(aiv);
         }
-        workspaces[0] = static_cast<size_t>(reserved + workspace_bytes);
     }
-
+    if (!p.cores || vectors < 2 * p.cores) {
+        return Failure(__LINE__);
+    }
+    c->SetBlockDim(p.cores);
+    const bool wide = p.dp == 128 && p.sq % 128 == 0 && p.sk % 512 == 0 && p.sk >= 4096;
+    c->SetTilingKey(GET_TPL_TILING_KEY(static_cast<uint32_t>(dt), wide));
+    // SyncAll requires the entire MIX 1:2 grid to be resident together.
+    c->SetScheduleMode(1);
+    uint64_t bytes = 0;
+    auto allocate = [&bytes](uint64_t &offset, std::initializer_list<uint64_t> factors) {
+        uint64_t size = 1;
+        for (auto factor : factors) {
+            if (factor && size > std::numeric_limits<uint64_t>::max() / factor) {
+                return false;
+            }
+            size *= factor;
+        }
+        if (size > std::numeric_limits<uint64_t>::max() - 511) {
+            return false;
+        }
+        size = (size + 511) / 512 * 512;
+        if (bytes > std::numeric_limits<uint64_t>::max() - size) {
+            return false;
+        }
+        offset = bytes;
+        bytes += size;
+        return true;
+    };
+    if (!allocate(t.mean, {p.b, p.hk, p.dp, sizeof(float)}) || !allocate(t.vMxScale, {p.b, p.hk, p.kp / 32, p.dp}) ||
+        !allocate(t.q8, {p.b, p.hq, p.qp, p.dp}) || !allocate(t.k8, {p.b, p.hk, p.kp, p.dp}) ||
+        !allocate(t.v8, {p.b, p.hk, p.kp, p.dp}) || !allocate(t.qScale, {p.b, p.hq, p.qp, sizeof(uint16_t)}) ||
+        !allocate(t.kScale, {p.b, p.hk, p.kp, sizeof(uint16_t)})) {
+        return Failure(__LINE__);
+    }
+    // dav3510 GetUserWorkspace skips the CANN system workspace prefix.
+    uint64_t reserved = 16ULL * 1024 * 1024;
+    if (c->GetPlatformInfo()) {
+        reserved = platform_ascendc::PlatformAscendC(c->GetPlatformInfo()).GetLibApiWorkSpaceSize();
+    }
+    if (bytes > std::numeric_limits<size_t>::max() - reserved) {
+        return Failure(__LINE__);
+    }
+    auto raw = c->GetRawTilingData();
+    auto ws = c->GetWorkspaceSizes(1);
+    if (!raw || raw->GetCapacity() < sizeof(t) || !ws) {
+        return Failure(__LINE__);
+    }
+    std::memcpy(raw->GetData(), &t, sizeof(t));
+    raw->SetDataSize(sizeof(t));
+    ws[0] = reserved + bytes;
     return ge::GRAPH_SUCCESS;
 }
-
-} // namespace
-
-/**
- * canonical 注册（对齐仓内规范）：
- * - Tiling：闭式计算 + RawTilingData 序列化 + TilingKey/ScheduleMode/Workspace 元信息；
- * - TilingParse<CompileInfo>：离线期固化 AIC/AIV 核数，运行时免 torch 初始化查询。
- */
-struct SageAttention2CompileInfo {
-    uint32_t cores = 0;
-    uint32_t vectors = 0;
-};
-
-ge::graphStatus ParseSageAttention2CompileInfo(gert::TilingParseContext *context)
+ge::graphStatus Parse(gert::TilingParseContext *c)
 {
-    if (context == nullptr || context->GetPlatformInfo() == nullptr) {
-        return ge::GRAPH_FAILED;
+    if (!c || !c->GetPlatformInfo()) {
+        return Failure(__LINE__);
     }
-    auto *info = context->GetCompiledInfo<SageAttention2CompileInfo>();
-    if (info == nullptr) {
-        return ge::GRAPH_FAILED;
+    auto *info = c->GetCompiledInfo<CompileInfo>();
+    if (!info) {
+        return Failure(__LINE__);
     }
-    const auto platform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
+    auto platform = platform_ascendc::PlatformAscendC(c->GetPlatformInfo());
     info->cores = platform.GetCoreNumAic();
     info->vectors = platform.GetCoreNumAiv();
     return ge::GRAPH_SUCCESS;
 }
-
-IMPL_OP_OPTILING(SageAttention2)
-    .Tiling(TilingSageAttention2)
-    .TilingParse<SageAttention2CompileInfo>(ParseSageAttention2CompileInfo);
-
-} // namespace ops
-
-#else
-// 本地无 CANN exe_graph 头文件环境：TilingImpl 由容器内构建启用，
-// 本地路径的 tiling 数值验证由 aclnn/sage_attn_host.cpp 的 ComputeHostTiling 单测覆盖。
-#endif // SAGE_HAS_REAL_TILING_CONTEXT
+} // namespace
+IMPL_OP_OPTILING(SageAttention2).Tiling(Tile).TilingParse<CompileInfo>(Parse);
+} // namespace optiling
