@@ -79,13 +79,11 @@ def make_qkv(
 # 收敛后数值唯一实现在算子包（交付自包含性决定依赖方向 golden→算子），本文件
 # 仅保留编排职责（manifest / SHA 台账 / case 执行）。收敛为纯等价替换，golden
 # 位型不变；复核锚点：收敛前后桶 SHA256 应逐一相同。
-import sys as _sys
-from pathlib import Path as _Path
-
-# 算子包路径引导：tools/ 的上一级即算子根，python/ 下为 sageattention2 包
-_OP_PYTHON = _Path(__file__).resolve().parents[1] / "python"
-if str(_OP_PYTHON) not in _sys.path:
-    _sys.path.insert(0, str(_OP_PYTHON))
+# 算子包路径引导（sys/Path 复用本文件顶部既有 import）：tools/ 的上一级即算子根，
+# python/ 下为 sageattention2 包
+_OP_PYTHON = Path(__file__).resolve().parents[1] / "python"
+if str(_OP_PYTHON) not in sys.path:
+    sys.path.insert(0, str(_OP_PYTHON))
 
 from sageattention2.dispatch import run_sageattn_cpu_reference as _canonical_reference  # noqa: E402
 

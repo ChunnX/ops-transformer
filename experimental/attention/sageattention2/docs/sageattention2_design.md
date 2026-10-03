@@ -190,7 +190,7 @@ chunks=1，任务解码与调度算术逐位不变（twin 25 桶 golden 回归�
       相邻对齐、LoadData2D repeat 计数、因果活跃块上限；标量 min 不再自造）。
   - 官方组件复用清单（2026-10-03 深化接入，全部为位元等价的 constexpr/forceinline 替换）：
     - `Arch::CrossCoreFlag` + `CrossCoreSetFlag/WaitFlag<MODE,PIPE>`
-      （arch/cross_core_sync.hpp）：1C2V 16 flag 跨核同步原语委托官方薄封装单点
+      （arch/cross_core_sync.hpp）：1C2V 14 flag 跨核同步原语委托官方薄封装单点
       （sync_guard.h；modeId=4 块内 + PIPE_S 语义不变，forceinline 直译 AscendC
       原语、指令流零变化）；
     - MMA 累加位型与 FP8 L0 寄存器位型直接显式书写（轮 5 复审后口径）：Traits
@@ -233,7 +233,7 @@ chunks=1，任务解码与调度算术逐位不变（twin 25 桶 golden 回归�
     - `TileCopyTla` L1→L0A/L0B 特化：EnableIf 强约束 L1 侧 zN 分形布局，与本算子
       ND 行 + Data/Scale 相邻 L1 契约不匹配；
     - `Arch::Resource` / `LocalTensorBuffer`（TPipe InitBuffer）：官方头注释自证
-      "Tpipe 初始化会插入同步接口，可能与使用者冲突"——与本核手管 16 flag 流水
+      "Tpipe 初始化会插入同步接口，可能与使用者冲突"——与本核手管 14 flag 流水
       相斥，且零收益，不引入；
     - 竞品（A2 同类算子）"PV 中间结果写回 GM 再读回归并"策略：新增 2 次 GM 往返
       （写 P/部分和 + 读回归并），长序列显存带宽 +50% 量级，直接劣化对 FIA 的
@@ -244,7 +244,7 @@ chunks=1，任务解码与调度算术逐位不变（twin 25 桶 golden 回归�
 - 延迟一拍软件流水：
   - Cube 计算与 Vector 计算深度交叠，消灭 Vector 成为关键路径的等待气泡；
 - 同步与流水守卫：
-  - 采用现役 16 flag 有界缓冲协议（`sync_guard.h` FLAG 0~15）实现核间/核内定向通知，
+  - 采用现役 14 flag 有界缓冲协议（`sync_guard.h` FLAG 0~13）实现核间/核内定向通知，
     进域预置/退域回收配平防跨任务波次残留死锁（task/02_code.md B-2 纪律）。
     （历史 RES-05 类型状态守卫 `pipeline_guard.h` 经死代码清扫删除：设备核热路径
     以显式 flag 协议保序，该头文件零生产消费，仅测试引用。）
