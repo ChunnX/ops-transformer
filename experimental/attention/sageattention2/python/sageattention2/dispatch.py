@@ -133,6 +133,28 @@ def _quant_qk_per_thread(
     return q_deq, k_deq, q_int8, q_scale, k_int8, k_scale
 
 
+def _encode_fp8_and_unperm(
+    v_norm: torch.Tensor,
+    has_fp8: bool,
+    b: int,
+    hkv: int,
+    d: int,
+    num_16: int,
+    pad_sk_v: int,
+    sk: int,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """v_norm -> (v_fp8, v_fp8_unperm)：e4m3 量化 + NaN 规整 0x7F + 16-token 逆 permute
+    裁回 sk。smooth_v 两分支位级同一段，唯一定义于此。"""
+    v_fp8 = v_norm.clamp(-S_FP8_SCALE_MAX, S_FP8_SCALE_MAX).to(torch.float8_e4m3fn) if has_fp8 else v_norm.clamp(-S_FP8_SCALE_MAX, S_FP8_SCALE_MAX)
+    if has_fp8:  # 谓词归并：has_fp8 即 hasattr 本名，dtype 恒由上一行条件表达式决定
+        v_u8 = torch.where(torch.isnan(v_norm), torch.tensor(0x7F, dtype=torch.uint8, device=v_norm.device), v_fp8.view(torch.uint8))
+        v_fp8 = v_u8.view(torch.float8_e4m3fn)
+        v_fp8_unperm = v_u8.view(b, hkv, d, num_16, 16)[:, :, :, :, V_FP8_INV_PERM].view(torch.float8_e4m3fn).contiguous().view(b, hkv, d, pad_sk_v)[:, :, :, :sk]
+    else:
+        v_fp8_unperm = v_fp8.view(b, hkv, d, num_16, 16)[:, :, :, :, V_FP8_INV_PERM].contiguous().view(b, hkv, d, pad_sk_v)[:, :, :, :sk]
+    return v_fp8, v_fp8_unperm
+
+
 def _quant_v_fp8(
     v_hnd: torch.Tensor,
     sk: int,
@@ -167,26 +189,14 @@ def _quant_v_fp8(
         amax_v = torch.max((v_sub.amax(dim=-1) - vm).abs(), (v_sub.amin(dim=-1) - vm).abs())
         v_scale = amax_v / scale_max
         v_norm = (v_perm.float() - vm.unsqueeze(-1)) / v_scale.unsqueeze(-1)
-        v_fp8 = v_norm.clamp(-S_FP8_SCALE_MAX, S_FP8_SCALE_MAX).to(torch.float8_e4m3fn) if has_fp8 else v_norm.clamp(-S_FP8_SCALE_MAX, S_FP8_SCALE_MAX)
-        if has_fp8:  # 谓词归并：has_fp8 即 hasattr 本名，dtype 恒由上一行条件表达式决定
-            v_u8 = torch.where(torch.isnan(v_norm), torch.tensor(0x7F, dtype=torch.uint8, device=v_norm.device), v_fp8.view(torch.uint8))
-            v_fp8 = v_u8.view(torch.float8_e4m3fn)
-            v_fp8_unperm = v_u8.view(b, hkv, d, num_16, 16)[:, :, :, :, V_FP8_INV_PERM].view(torch.float8_e4m3fn).contiguous().view(b, hkv, d, pad_sk_v)[:, :, :, :sk]
-        else:
-            v_fp8_unperm = v_fp8.view(b, hkv, d, num_16, 16)[:, :, :, :, V_FP8_INV_PERM].contiguous().view(b, hkv, d, pad_sk_v)[:, :, :, :sk]
+        v_fp8, v_fp8_unperm = _encode_fp8_and_unperm(v_norm, has_fp8, b, hkv, d, num_16, pad_sk_v, sk)
         v_deq_hnd = (v_fp8_unperm.float() * v_scale.unsqueeze(-1) + vm.unsqueeze(-1)).transpose(2, 3)
     else:
         vm = None
         amax_v = torch.max(v_sub.amax(dim=-1).abs(), v_sub.amin(dim=-1).abs())
         v_scale = amax_v / scale_max
         v_norm = v_perm.float() / v_scale.unsqueeze(-1)
-        v_fp8 = v_norm.clamp(-S_FP8_SCALE_MAX, S_FP8_SCALE_MAX).to(torch.float8_e4m3fn) if has_fp8 else v_norm.clamp(-S_FP8_SCALE_MAX, S_FP8_SCALE_MAX)
-        if has_fp8:  # 谓词归并：has_fp8 即 hasattr 本名，dtype 恒由上一行条件表达式决定
-            v_u8 = torch.where(torch.isnan(v_norm), torch.tensor(0x7F, dtype=torch.uint8, device=v_norm.device), v_fp8.view(torch.uint8))
-            v_fp8 = v_u8.view(torch.float8_e4m3fn)
-            v_fp8_unperm = v_u8.view(b, hkv, d, num_16, 16)[:, :, :, :, V_FP8_INV_PERM].view(torch.float8_e4m3fn).contiguous().view(b, hkv, d, pad_sk_v)[:, :, :, :sk]
-        else:
-            v_fp8_unperm = v_fp8.view(b, hkv, d, num_16, 16)[:, :, :, :, V_FP8_INV_PERM].contiguous().view(b, hkv, d, pad_sk_v)[:, :, :, :sk]
+        v_fp8, v_fp8_unperm = _encode_fp8_and_unperm(v_norm, has_fp8, b, hkv, d, num_16, pad_sk_v, sk)
         v_deq_hnd = (v_fp8_unperm.float() * v_scale.unsqueeze(-1)).transpose(2, 3)
 
     return v_deq_hnd, v_fp8, v_scale, vm

@@ -637,7 +637,7 @@ def generate_golden(
     manifest: Dict[str, Any] = {
         "version": "1.0.0",
         "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-        "generator": "./golden/generate_golden.py",
+        "generator": "./tools/generate_golden.py",
         "device": device if torch.cuda.is_available() and device == "cuda" else "cpu",
         "total_cases": len(cases_to_run),
         "cases": {},
