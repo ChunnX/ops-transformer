@@ -5,7 +5,7 @@ Default heads: 32 (unless specified by case, e.g. X-02 has 16)
 Default dim: 128 (unless specified by case, e.g. X-04 has 64)
 """
 
-from typing import Dict, NamedTuple
+from typing import NamedTuple
 
 
 class BenchmarkCase(NamedTuple):
@@ -75,11 +75,6 @@ def get_case(name: str) -> BenchmarkCase:
                 tier=tier,
             )
     raise KeyError(f"Case '{name}' not found in benchmark cases")
-
-
-CASES_DICT: Dict[str, BenchmarkCase] = {
-    c[0]: get_case(c[0]) for c in ALL_CASES
-}
 
 
 if __name__ == "__main__":

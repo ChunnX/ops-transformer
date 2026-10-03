@@ -69,8 +69,9 @@ SAGE_ATTN_SIM_OUT=/work/out/sa2_sim_out \
 
 ## 已知边界
 
-- smooth_k=1 用例的 LSE 含 `q·km × sm_scale` 校正项；设备分支 `lse_corr_` 基线恒 0
-  （`LoadAndQuantizeQ` 步骤 4 仅宿主/KT 分支实现），该差属设备核已知未实现域，
-  比对脚本单独标注，不算 harness 失真。
+- smooth_k=1 用例的 LSE 含 `q·km × sm_scale` 校正项；核内不算该项（桥接层契约，
+  见 op_kernel LoadAndQuantizeQ 注释），参考程序与设备 harness 经 `lseCorrection`
+  GM 入参两侧同源传入、V1 FinalizeAndStoreOutput 直读；LSE 超差即属数值失真，
+  比对脚本单独标注。
 - 快照运行：并发会话在迭代 op_kernel/ 既有文件，端到端验证须对 git 快照（HEAD
   archive）执行，避免工作树中间态污染编译。

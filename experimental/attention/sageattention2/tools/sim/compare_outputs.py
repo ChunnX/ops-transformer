@@ -94,8 +94,8 @@ def main():
     print(f"判定: O 位级全一致={o_bit_ok}  O ≤1ulp={o_ulp_ok}  LSE 相对差≤1e-3={lse_ok}")
     if not lse_ok:
         print("  LSE 超差提示：smooth_k=1 用例下 LSE 含 q·km 校正项（×sm_scale），")
-        print("  设备分支 lse_corr_ 基线恒 0（LoadAndQuantizeQ 步骤 4 仅宿主/KT 分支实现），")
-        print("  该差属设备核已知未实现域，非仿真 harness 数值失真。")
+        print("  该项经 lseCorrection GM 入参两侧同源传入（V1 FinalizeAndStoreOutput 直读），")
+        print("  超差不属预期域，须查 harness/kernel 数值轨迹。")
     print(f"结论: {'PASS' if (o_bit_ok or o_ulp_ok) and lse_ok else 'FAIL'}"
           f"（FastExp2 多项式 vs std::exp2 的 ≤1ulp 预期 {'成立' if o_ulp_ok else '不成立'}）")
     sys.exit(0 if (o_bit_ok or o_ulp_ok) and lse_ok else 1)
