@@ -198,10 +198,11 @@ chunks=1，任务解码与调度算术逐位不变（twin 25 桶 golden 回归�
       PV Compute 的 L0A/L0B 张量按 `AscendC::mx_fp8_e4m3_t` 直承载（位元等价于
       原 `Gemm::helper::ElementAccumulatorSelector` / `GetL0Element<float8_e4m3_t,
       true>` 官方表接入，2026-10-04 轮 5 撤销模板间接层；两 helper 已不在复用面）；
-    - `detail/macros.hpp` 设备函数宏 `CATLASS_DEVICE_SIMD_VF`（官方 3510 档原值
-      `__simd_vf__ static`，与官方 950 FA softmax epilogue 同款接入）：op_kernel/
-      sage_device_vf.h 全部 VF 原语的标记单点（2026-10-04 起本仓 undef 后重定义为
-      `__aicore__ inline` 规避 BiSheng 编译崩溃，见 sage_device_vf.h 头注）；
+    - `detail/macros.hpp` 设备函数宏 `CATLASS_DEVICE_SIMD_VF`（3510 档
+      `__simd_vf__ static`，与官方 950 FA softmax epilogue 同款）：op_kernel/
+      sage_device_vf.h 全部 VF 原语的标记单点（2026-10-04 曾短暂 undef 重定义为
+      `__aicore__ inline` 规避疑似 BiSheng 崩溃，经复审确认真因是 64 位变量移位、
+      与本宏无关后恢复官方原值——本宏禁止再本地重定义）；
     - host tiling（aclnn/sage_attn_host_tiling.h）与设备核（op_kernel）全链路的
       分块计数/16-token 对齐改写为 `::CeilDiv` / `::RoundUp`（与手写
       `(a+b-1)/b` 位元一致；floor 语义的尾元素块号显式保留整除并注释禁改）；

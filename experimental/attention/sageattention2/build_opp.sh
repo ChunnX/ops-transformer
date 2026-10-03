@@ -171,7 +171,7 @@ else
     # -DCATLASS_ARCH=3510：官方 CATLASS 架构选择宏（与 run.sh kernel / tools/sim 同一口径）。
     # 真实消费方：3510 档官方常量（catlass.hpp BYTE_PER_FRACTAL/BYTE_PER_BLK/
     # C0_NUM_PER_FRACTAL，经 sage_tile.hpp 派生）与 detail/macros.hpp
-    # CATLASS_DEVICE_SIMD_VF 宏定义（sage_device_vf.h 接入，另作崩溃规避重定义）；
+    # CATLASS_DEVICE_SIMD_VF 宏（仅 3510 档有定义，sage_device_vf.h 全部 VF 原语取用）；
     # TileMmadTla 的 3510 特化由 --npu-arch（__NPU_ARCH__）选路，两口径须一致。
     "${BISHENG}" --npu-arch="${NPU_ARCH}" -std=c++17 -xasc -DCATLASS_ARCH=3510 -c \
         "${OP_DIR}/op_kernel/sageattention2.cpp" \

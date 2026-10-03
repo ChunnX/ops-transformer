@@ -822,6 +822,8 @@ private:
             Catlass::SageAttn::Sync<HardEvent::V_S>();
             // 标量 Step 段（行级状态机与 twin 5.3 逐步一致，不批化）：rescale 位图 +
             // 行锚/系数行槽收集
+            // rescale 位图：4×uint32_t 字 + `& 31` 掩码移位（禁 uint64_t 位图——
+            // 64 位变量移位触发 BiSheng SelectionDAG 编译崩溃，见 sage_device_vf.h 头注）
             uint32_t bm[4] = {0u, 0u, 0u, 0u};
             for (uint32_t r = 0; r < rows && r < MAX_PACK_ROWS; ++r) {
                 const float cur_max = ub_row_max.GetValue(r);

@@ -13,6 +13,13 @@
 // -DCATLASS_ARCH=3510，见 run.sh kernel / build_opp.sh）。
 #include "catlass/detail/macros.hpp"
 
+// BiSheng 编译器缺陷约束（2026-10-04 真机编译崩溃定位，禁"优化"回旧写法）：
+// 本文件（含全部 dev_vf 原语）禁止 64 位操作数的变量移位（64-bit value 按非常量
+// 移位会触发 BiSheng LLVM SelectionDAG 编译期崩溃）。行寻址等索引算术一律留在
+// uint32_t 域——本算子行数 ≤ MAX_PACK_ROWS=128、行宽 ≤ 128 元素，32 位乘积无溢出；
+// 行级位图拆 4 个 uint32_t 字、以 `& 31` 掩码移位取位（RescaleAccumRowsVF 与
+// sageattention2.cpp 的 bm 组装同款）。改回 uint64_t 偏移/位图会原样复现崩溃。
+
 namespace sage_attn {
 namespace dev_vf {
 
@@ -403,6 +410,9 @@ CATLASS_DEVICE_SIMD_VF void RescaleAccumRowsVF(__ubuf__ float* o_base, __ubuf__ 
     using namespace AscendC::MicroAPI;
     auto full = CreateMask<float, MaskPattern::ALL>();
     for (uint32_t r = 0; r < rows; ++r) {
+        // 位图字选择为三元链（c06f1d69c 复审：VF 原语内不放局部数组，
+        // 原 uint32_t bm[4] 就地展开）；位提取恒为 uint32_t 掩码移位
+        // （本文件头 BiSheng 64 位变量移位禁令）
         const uint32_t w = (r < 32u) ? bm0 : ((r < 64u) ? bm1 : ((r < 96u) ? bm2 : bm3));
         const uint32_t fire = (w >> (r & 31u)) & 1u;
         if (fire == 0u) {
