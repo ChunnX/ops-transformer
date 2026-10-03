@@ -431,6 +431,12 @@ private:
                                      : Catlass::SageAttn::L1DoubleBankContract::KV_PONG_OFFSET;
     }
 
+    __aicore__ __gm__ float *StageStrip() const
+    {
+        return reinterpret_cast<__gm__ float *>(workspace_gm_) +
+               static_cast<uint64_t>(core_idx_) * (STAGE_CORE_STRIDE / sizeof(float));
+    }
+
     /**
      * 1. Cube 核心处理逻辑（MMAD 计算与宽流水延迟退休主流水）
      * 拍 k：INT8 QK^T MMAD，L0C 累加
@@ -851,9 +857,12 @@ private:
     /**
      * A7 scale 条带桥（task/12 第四节；GM 暂存条带常量以 tiling.h 为唯一定义点）：
      * V0 产出 scale → GetUserWorkspace 用户区按核条带（core_idx 折半后 × STAGE_CORE_STRIDE）
-     * → V1 以 MTE2 接入 UB 副本。GM 可见性序：V0 条带写完成后经 KV/Q_READY 举旗链传递
-     * （V0 侧条带写接入 + MTE3 排空纪律为 task/12 验收 3"V0 侧"待办项），本侧一律在
-     * wait QK_P_READY 之后读取（跨核 flag 链传递保序）。
+     * → V1 以 MTE2 接入 UB 副本。GM 可见性序：V0 条带写以 S_MTE3/MTE3_S 双自配对排空后
+     * 方随 Q_READY/KV_*_READY raise（LoadAndQuantizeQ/QuantizeAndStageKey/Value 设备分支），
+     * 本侧一律在 wait QK_P_READY 之后读取（跨核 flag 链传递保序）。
+     * 已知限制（真机验证项）：k 块解析 ping/pong 条带为单槽双缓冲，V0 在拍 k+2 经
+     * kv_free 许可重写同奇偶槽，早于 V1 拍 k 读取完成的协议序未闭合（需条带消费
+     * ACK 扩展 flag 协议，task/12 第四节演进项）——L-A/真机门前须复核。
      */
     __aicore__ void StageV1ScaleStrips()
     {
@@ -1068,6 +1077,29 @@ private:
             SyncMte3ToV();
         }
 
+        // A7 V0（task/12 第五节第 3 条）：行解析 q_scale 暂存写——组定标后的逐行
+        // scale 按 GQA 聚合行序展开写 GM 条带（STAGE_Q_SCALE_OFFSET，零填充至 128 槽），
+        // V1 反量化按行读取。S→MTE3 与 MTE3→S 双自配对：标量 SetValue 对 MTE3 可见、
+        // MTE3 写对后续 S 管 raise FLAG_Q_READY 可见（GM 可见性，task/12 第四节）。
+        LocalTensor<float> ub_stage_q(TPosition::VECCALC,
+                                      Catlass::SageAttn::Vector0UbBudget::QUANT_WORKSPACE_OFFSET + 10240,
+                                      STAGE_SLOT_FLOATS);
+        for (uint32_t s = 0; s < STAGE_SLOT_FLOATS; ++s) {
+            ub_stage_q.SetValue(s, 0.0f);
+        }
+        for (uint32_t r = 0; r < total_rows_q && r < kKernelMaxRows; ++r) {
+            const uint32_t g = r / cur_q_len_;
+            const uint32_t token = cur_q_start_ + (r % cur_q_len_);
+            ub_stage_q.SetValue(r, ub_scales.GetValue(g * 2048u + quant::QScaleIndex(token, per_thread_q)));
+        }
+        SetFlag<HardEvent::S_MTE3>(0);
+        WaitFlag<HardEvent::S_MTE3>(0);
+        GlobalTensor<float> gm_stage_q;
+        gm_stage_q.SetGlobalBuffer(StageStrip() + STAGE_Q_SCALE_OFFSET);
+        DataCopy(gm_stage_q, ub_stage_q, STAGE_SLOT_FLOATS);
+        SetFlag<HardEvent::MTE3_S>(0);
+        WaitFlag<HardEvent::MTE3_S>(0);
+
         // 4. smooth_k 行级 lse_correction（设备态，R22）：q·km 逐行点积——宿主步 4 同式：
         //    输入按位型解码（bf16/fp16 → fp32，quant 层唯一口径）× km（fp32，host 预计算
         //    传入），顺序 fp32 积和逐位同式；GM 标量读范式与 V per-channel 预扫一致。
@@ -1263,6 +1295,31 @@ private:
             l1_k_scale.SetValue(s - grp_lo, scale);
         }
 
+        // A7 V0（task/12 第五节第 3 条）：块解析 k_scale 暂存写——逐 token 展开写
+        // GM 条带 ping/pong 槽（按 cur_k_ 奇偶，零填充至 128 槽），V1 反量化按当前块
+        // 奇偶读取。S→MTE3 / MTE3→S 双自配对排空后方由调用方 raise KV_*_READY
+        //（GM 可见性，task/12 第四节；QK_P 传递性保证 V1 读取时序）。
+        LocalTensor<float> ub_stage_k(TPosition::VECCALC,
+                                      Catlass::SageAttn::Vector0UbBudget::QUANT_WORKSPACE_OFFSET + 10240,
+                                      STAGE_SLOT_FLOATS);
+        for (uint32_t s = 0; s < STAGE_SLOT_FLOATS; ++s) {
+            ub_stage_k.SetValue(s, 0.0f);
+        }
+        for (uint32_t j = 0; j < block_n_; ++j) {
+            if (j < block_k) {
+                const uint32_t token = cur_k_start_ + j;
+                ub_stage_k.SetValue(j, ub_k_scales.GetValue(quant::KScaleIndex(token, per_thread_k)));
+            } // 尾块 pad 列保持 0：V1 侧前缀掩码哨兵不消费该列 scale
+        }
+        SetFlag<HardEvent::S_MTE3>(0);
+        WaitFlag<HardEvent::S_MTE3>(0);
+        GlobalTensor<float> gm_stage_k;
+        gm_stage_k.SetGlobalBuffer(StageStrip() +
+                                   ((cur_k_ % 2u) == 0u ? STAGE_K_SCALE_PING_OFFSET : STAGE_K_SCALE_PONG_OFFSET));
+        DataCopy(gm_stage_k, ub_stage_k, STAGE_SLOT_FLOATS);
+        SetFlag<HardEvent::MTE3_S>(0);
+        WaitFlag<HardEvent::MTE3_S>(0);
+
         // C. 逐行量化写 L1 + 尾块 pad 置零
         for (uint32_t j = 0; j < block_n_; ++j) {
             // V→MTE2 回边（R22）：ub_in 逐行复用，上一行 VF 读毕方可 MTE2 覆写
@@ -1406,24 +1463,34 @@ private:
         const float scale_max = tiling_->v_scale_max;
 
         if (cur_k_ == 0) {
-            // 全序列 per-channel amax（v_src 即 KV 头首行基址；pad token 计 0 不影响）。
-            // GM 读取经 GlobalTensor（bisheng 禁止 __gm__ 指针 reinterpret 丢地址空间）
-            GlobalTensor<uint16_t> v_head_gm;
-            v_head_gm.SetGlobalBuffer(reinterpret_cast<__gm__ uint16_t*>(v_src));
-            for (uint32_t c = 0; c < d; ++c) {
-                float amax = 0.0f;
-                for (uint32_t t = 0; t < sk_; ++t) {
-                    const uint16_t bits = v_head_gm(static_cast<int64_t>(t) * v_stride_s + c);
-                    const float abs_v = SageFastAbs(
-                        (dtype_mode == 2u) ? quant::Bf16ToFp32(bits) : quant::Fp16ToFp32(bits));
-                    if (abs_v > amax) amax = abs_v;
-                }
-                ub_v_scale.SetValue(c, amax / scale_max);
+            // A7 V0（task/12 第五节第 3 条）：per-channel 全序列 amax 预扫向量化——
+            // ub_v_scale 充零作 amax 累加器，逐 token 行 ChannelAmaxAccumVF 累加
+            //（v_src 即 KV 头首行基址；pad token 计 0 不影响），FinalizeVScaleVF 按
+            // v_scale_max 除法定标（quant_fp8/孪生唯一口径）。
+            Duplicate(ub_v_scale, 0.0f, d);
+            for (uint32_t t = 0; t < sk_; ++t) {
+                const int64_t row_gm_offset = static_cast<int64_t>(t) * v_stride_s * static_cast<int64_t>(sizeof(half));
+                GlobalTensor<half> gm_row;
+                gm_row.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(v_src + row_gm_offset));
+                DataCopy(ub_in, gm_row, d);
+                SyncMte2ToV();
+                dev_vf::ChannelAmaxAccumVF(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
+                                           reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
+                                           d, dtype_mode);
             }
-            // S 管写 → V 管读同步（DEFECT-G-2）：后续 QuantVRowFp8VF 的 LoadAlign
-            // 在 V 管消费 scale 向量
-            SetFlag<HardEvent::S_V>(0);
-            WaitFlag<HardEvent::S_V>(0);
+            dev_vf::FinalizeVScaleVF(reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
+                                     reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
+                                     scale_max, d);
+
+            // A7：v_scale 暂存写（STAGE_V_SCALE_OFFSET，任务级一次）。V→MTE3 排空
+            // 保证 scale 向量写毕才发起 GM 搬出，MTE3→S 排空后方由调用方在首块
+            // KV_READY raise 前 GM 可见（V1 合并侧经 PV_PARTIAL→QK_P 传递性读取）。
+            SyncVToMte3();
+            GlobalTensor<float> gm_stage_v;
+            gm_stage_v.SetGlobalBuffer(StageStrip() + STAGE_V_SCALE_OFFSET);
+            DataCopy(gm_stage_v, ub_v_scale, d);
+            SetFlag<HardEvent::MTE3_S>(0);
+            WaitFlag<HardEvent::MTE3_S>(0);
         }
 
         for (uint32_t j = 0; j < block_n_; ++j) {
