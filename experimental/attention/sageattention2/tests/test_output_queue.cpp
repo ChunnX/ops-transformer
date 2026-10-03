@@ -886,12 +886,7 @@ void TestBoolAdapterEquivalence() {
     }
     auto v_at_a = [&](uint32_t j, uint32_t c) -> float { return v_a[j * kChannels + c]; };
 
-    auto run_bool = [&](bool fp16_accum, const std::vector<float>& s, const auto& v_at) {
-        std::vector<float> o(kChannels, 0.0f);
-        twin::QuantizePAndAccumulatePvRow(o.data(), kChannels, s.data(), 0, 0, kNumTokens,
-                                          false, 0, 0.0f, fp16_accum, DEFAULT_K_STEP, v_at);
-        return o;
-    };
+    // 三轨单点直驱（bool 兼容入口 QuantizePAndAccumulatePvRow 已删：纯转发无独立语义）
     auto run_enum = [&](PvAccumDtype mode, const std::vector<float>& s, const auto& v_at) {
         std::vector<float> o(kChannels, 0.0f);
         twin::AccumulatePvRow(o.data(), kChannels, s.data(), 0, 0, kNumTokens,
@@ -899,15 +894,10 @@ void TestBoolAdapterEquivalence() {
         return o;
     };
 
-    const auto o_fp32_bool = run_bool(false, s_row_a, v_at_a);
-    const auto o_fp16_bool = run_bool(true, s_row_a, v_at_a);
     const auto o_fp32_enum = run_enum(PV_ACCUM_FP32, s_row_a, v_at_a);
     const auto o_fp16_enum = run_enum(PV_ACCUM_FP32_FP16, s_row_a, v_at_a);
     for (uint32_t c = 0; c < kChannels; ++c) {
-        assert(std::isfinite(o_fp32_bool[c]) && std::isfinite(o_fp16_bool[c]));
-        // bool 双档签名与三轨单点位级等价（fp32 / fp32+fp16 两档不回归的证据）
-        assert(o_fp32_bool[c] == o_fp32_enum[c]);
-        assert(o_fp16_bool[c] == o_fp16_enum[c]);
+        assert(std::isfinite(o_fp32_enum[c]) && std::isfinite(o_fp16_enum[c]));
         assert(o_fp16_enum[c] != o_fp32_enum[c]);  // 独立低精度轨迹非平凡
     }
 
@@ -941,7 +931,7 @@ void TestBoolAdapterEquivalence() {
         }
     }
 
-    std::cout << "[Test 9 Passed] Bool adapter is bit-exact with the 3-track single point (fp32 & fp32+fp16)!"
+    std::cout << "[Test 9 Passed] 3-track single-point PV accumulation (fp32 & fp32+fp16) non-degenerate!"
               << std::endl;
 }
 

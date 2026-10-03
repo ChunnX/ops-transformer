@@ -92,7 +92,7 @@ private:
 #if SAGE_ATTN_DEVICE_COMPILE
 /**
  * A7（task/12 D2）V1 消费侧单行合并原语：pv_partial 交接槽行 → O_ACCUM 行。
- * 轨迹 = 宿主 twin::QuantizePAndAccumulatePvRow（AccumulatePvBlockTwin 调用）的设备段
+ * 轨迹 = 宿主 twin::AccumulatePvRow（AccumulatePvBlockTwin 调用）的设备段
  * 实例：o_row[c] += partial[r][c] · v_scale[c]，其中 partial 为 Cube PV MMAD 的 FP32
  * 部分和（P8 码 × V8 码，P 侧 448· 放大域与 v_scale 的 V 通道域拆分同宿主 v_at 分解）。
  * - fp32+fp16 档（fp16_round=1，档位判据由调用方直读 tiling.pv_accum_dtype）：

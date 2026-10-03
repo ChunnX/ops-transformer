@@ -163,8 +163,7 @@ inline float OnlineBlockExp2Sum(const float* s_row, uint32_t s_base,
 
 /**
  * 单行·单块 P 量化 + PV 累加三轨单点（twin 5.4 的唯一定义；RunSequential 直驱，
- * 设备核 KT 标量基线经下方 QuantizePAndAccumulatePvRow 兼容入口 include 复用，
- * 内核内禁止复制）。P 以 m'（锚点 - 可选指数偏置）量化为 e4m3 后反量化累加，
+ * 设备核 KT 标量基线 include 复用，内核内禁止复制）。P 以 m'（锚点 - 可选指数偏置）量化为 e4m3 后反量化累加，
  * 三档语义定标（开源 SageAttention2 实测分支，pv_accum_dtype 三取值均存在）：
  * - fp32 档（PV_ACCUM_FP32，单一 FP32 运行和）：开源 core.py:811 分派
  *   qk_int8_sv_f8_accum_f32_fuse_v_scale_attn（模板实参 DTypeSVAccum=float,
@@ -249,29 +248,6 @@ inline void AccumulatePvRow(
             }
         }
     }
-}
-
-/**
- * 设备核 KT 标量基线兼容入口（bool 双档签名，op_kernel/sageattention2.cpp
- * AccumulatePvBlockTwin 既有调用点依赖）：双档映射后直驱三轨单点
- * AccumulatePvRow，本函数零数值逻辑（无第二份公式）。
- */
-template <typename VAt>
-inline void QuantizePAndAccumulatePvRow(
-    float* o_row,
-    uint32_t d_pad,
-    const float* s_row,
-    uint32_t s_base,
-    uint32_t j_beg,
-    uint32_t j_end,
-    bool is_causal,
-    uint32_t token_q,
-    float m_prime,
-    bool fp16_accum,
-    uint32_t k_step,
-    const VAt& v_at) {
-    AccumulatePvRow(o_row, d_pad, s_row, s_base, j_beg, j_end, is_causal, token_q, m_prime,
-                    fp16_accum ? PV_ACCUM_FP32_FP16 : PV_ACCUM_FP32, k_step, v_at);
 }
 
 /**

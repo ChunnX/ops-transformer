@@ -100,12 +100,12 @@ class TestTorchExtension(unittest.TestCase):
     def test_torch_compile_fullgraph_eager_hnd_and_nhd(self):
         """Verify torch.compile(backend='eager', fullgraph=True) succeeds without graph breaks."""
         def attn_hnd(q, k, v):
-            return _ops.run(
+            return sage2.sageattn(
                 q, k, v, tensor_layout="HND", qk_quant_gran="per_thread", pv_accum_dtype="fp32+fp16", return_lse=True
             )
 
         def attn_nhd(q, k, v):
-            return _ops.run(
+            return sage2.sageattn(
                 q, k, v, tensor_layout="NHD", qk_quant_gran="per_warp", pv_accum_dtype="fp32", return_lse=True
             )
 
@@ -138,23 +138,23 @@ class TestTorchExtension(unittest.TestCase):
 
         # Valid quantization granularities (per_thread, per_warp) must be accepted
         for gran in ("per_thread", "per_warp"):
-            out = _ops.run(q, k, v, qk_quant_gran=gran)
+            out, _ = sage2.sageattn(q, k, v, qk_quant_gran=gran)
             self.assertEqual(out.shape, q.shape)
 
         # All 3 valid accumulation datatypes must be accepted
         for accum in ("fp32", "fp32+fp32", "fp32+fp16"):
-            out = _ops.run(q, k, v, pv_accum_dtype=accum)
+            out, _ = sage2.sageattn(q, k, v, pv_accum_dtype=accum)
             self.assertEqual(out.shape, q.shape)
 
         # Invalid granularity must be rejected
         with self.assertRaises(ValueError):
-            _ops.run(q, k, v, qk_quant_gran="per_token")
+            sage2.sageattn(q, k, v, qk_quant_gran="per_token")
         with self.assertRaises(ValueError):
-            _ops.run(q, k, v, qk_quant_gran="invalid_gran")
+            sage2.sageattn(q, k, v, qk_quant_gran="invalid_gran")
 
         # Invalid accum dtype must be rejected
         with self.assertRaises(ValueError):
-            _ops.run(q, k, v, pv_accum_dtype="int32")
+            sage2.sageattn(q, k, v, pv_accum_dtype="int32")
 
 
 if __name__ == "__main__":

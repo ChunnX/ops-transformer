@@ -118,12 +118,9 @@ if [ "${MOCK_MODE}" = false ] && [ "${DRY_RUN}" = false ] && [ "${HAS_CANN}" = t
     source "${CANN_ROOT}/set_env.sh"
     set -u
 
-    if [ -d "${REPO_DIR}/third_party/catlass" ]; then
+    export CATLASS_ROOT="${CATLASS_ROOT:-${REPO_DIR}/../catlass}"
+    if [ ! -d "${CATLASS_ROOT}" ] && [ -d "${REPO_DIR}/third_party/catlass" ]; then
         export CATLASS_ROOT="${REPO_DIR}/third_party/catlass"
-    elif [ -d "${REPO_DIR}/../git/catlass" ]; then
-        export CATLASS_ROOT="${REPO_DIR}/../git/catlass"
-    elif [ -d "${REPO_DIR}/../catlass" ]; then
-        export CATLASS_ROOT="${REPO_DIR}/../catlass"
     fi
 
     cd "${REPO_DIR}"
@@ -180,18 +177,6 @@ mkdir -p "${CUSTOM_DIR}/bin"
 
 echo -e "${BLUE}1. Compiling op_host dynamic libraries (liboptiling.so & libcust_opapi.so)...${NC}"
 
-# 官方 CATLASS include（sage_tile.hpp 分形常量唯一定义源）：CATLASS_ROOT 优先，
-# 其次检查仓库同级 git/catlass 或 catlass
-CATLASS_ROOT="${CATLASS_ROOT:-${REPO_DIR}/../git/catlass}"
-if [ ! -d "${CATLASS_ROOT}/include" ] && [ -d "${REPO_DIR}/../catlass" ]; then
-    CATLASS_ROOT="${REPO_DIR}/../catlass"
-fi
-CATLASS_INC_ARGS=()
-if [ -d "${CATLASS_ROOT}/include" ]; then
-    CATLASS_INC_ARGS=(-I"${CATLASS_ROOT}/include")
-    echo -e "${BLUE}Binding official CATLASS constants from ${CATLASS_ROOT}/include${NC}"
-fi
-
 SHARED_FLAGS="-shared -fPIC -O2"
 if [[ "$OSTYPE" == "darwin"* ]]; then
     SHARED_FLAGS="-shared -fPIC -O2 -undefined dynamic_lookup"
@@ -209,7 +194,6 @@ ${CXX_COMPILER} -std=c++17 ${SHARED_FLAGS} \
     -I"${OP_DIR}/quant" \
     -I"${OP_DIR}/sageattn_fp8/ascendc" \
     -I"${OP_DIR}/sageattn_fp8/catlass" \
-    ${CATLASS_INC_ARGS[@]+"${CATLASS_INC_ARGS[@]}"} \
     -o "${CUSTOM_DIR}/op_api/lib/libcust_opapi.so"
 
 # 软链接或同步一份到 op_proto/lib
@@ -227,7 +211,6 @@ ${CXX_COMPILER} -std=c++17 ${SHARED_FLAGS} \
     -I"${OP_DIR}/quant" \
     -I"${OP_DIR}/sageattn_fp8/ascendc" \
     -I"${OP_DIR}/sageattn_fp8/catlass" \
-    ${CATLASS_INC_ARGS[@]+"${CATLASS_INC_ARGS[@]}"} \
     -o "${CUSTOM_DIR}/op_impl/ai_core/tbe/op_tiling/lib/liboptiling.so"
 
 # 如果是 macOS，同时生成对应名称或软连接以保证平台兼容性
@@ -241,7 +224,6 @@ ${CXX_COMPILER} -std=c++17 -c \
     "${OP_DIR}/op_kernel/sageattention2.cpp" \
     -I"${OP_DIR}/sageattn_fp8/ascendc" \
     -I"${OP_DIR}/sageattn_fp8/catlass" \
-    ${CATLASS_INC_ARGS[@]+"${CATLASS_INC_ARGS[@]}"} \
     -I"${OP_DIR}/quant" \
     -o "${CUSTOM_DIR}/op_impl/ai_core/tbe/kernel/${SOC}/sageattention2.o"
 

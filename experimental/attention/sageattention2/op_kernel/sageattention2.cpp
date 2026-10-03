@@ -80,10 +80,10 @@ using namespace AscendC;
 #define KERNEL_TYPE_MIX_AIC_1_2 0
 #endif
 #ifndef ASCEND_IS_AIC
-#define ASCEND_IS_AIC true
+#define ASCEND_IS_AIC (true)
 #endif
 #ifndef ASCEND_IS_AIV
-#define ASCEND_IS_AIV false
+#define ASCEND_IS_AIV (false)
 #endif
 
 // 宿主机或本地单测桩函数定义。
@@ -95,22 +95,11 @@ __aicore__ inline uint32_t GetSubBlockIdx() { return 0; }
 /**
  * 核内域判定宏：bisheng 设备分支中 ASCEND_IS_AIC 展开为编译期谓词 constexpr(...)，
  * 官方调用范式为无括号 `if ASCEND_IS_AIC {`（内置算子 geglu_3510_impl.h 同款）；
- * 宿主/KT 分支展开为普通布尔，按 C 风格加括号。统一经 SAGE_ATTN_IS_AIC/AIV 书写。
+ * 宿主/KT 分支展开为普通布尔，按 C 风格加括号。统一经 ASCEND_IS_AIC/AIV 书写。
  */
-#if SAGE_ATTN_DEVICE_COMPILE
-#define SAGE_ATTN_IS_AIC ASCEND_IS_AIC
-#define SAGE_ATTN_IS_AIV ASCEND_IS_AIV
-#else
-#define SAGE_ATTN_IS_AIC (ASCEND_IS_AIC)
-#define SAGE_ATTN_IS_AIV (ASCEND_IS_AIV)
-#endif
-
 namespace sage_attn {
 
 // MTE/V 管线序助手（收敛轮 I/I-2/I-3 单点定义；事件 ID 0 与文件内既有
-// V_S(0)/FIX_S(0) 风格一致——即时自配对、无在途交叠）：
-// - SyncMte2ToV：GM→UB DataCopy（MTE2 写）后、VF/标量读（V 管）前调用；
-// - SyncVToMte3：VF/标量写（V 管）后、UB→L1/GM DataCopy（MTE3 读）前调用；
 // - SyncMte3ToV：UB→GM DataCopy（MTE3 读）后、同槽被下一轮 VF 写复用前调用
 //   （DEFECT-I-1：PipeBarrier<PIPE_V> 不排 MTE3 在途读）；
 // - SyncVToMte2（R22 回边）：VF 读毕（V 管）后、同槽被下一轮 GM→UB DataCopy
@@ -140,14 +129,7 @@ inline void SyncVToMte2() {}
 #endif
 
 
-// L1 数值追踪打点（task/07_profile.md 三级调试法 L1）：仅调试构建定义
-// SAGE_ATTN_TRACE=1 时启用，性能构建零开销。
-#if defined(SAGE_ATTN_TRACE) && !defined(__CCE__)
-#include <cstdio>
-#define SAGE_TRACE(...) std::printf(__VA_ARGS__)
-#else
-#define SAGE_TRACE(...)
-#endif
+
 
 // GQA 聚合后的窗口行上限（m_per_core 为 64 的倍数、gqa_ratio ≤ 8 的验收域内恒满足；
 // 常量不随 SimMemory 分支门控，row_states_ 成员在设备分支亦需该界）
@@ -229,7 +211,7 @@ struct SimMemory {
  *    范围）；s_fp8_offset 指数偏置域为非默认可选（与 skip-scale 存在 2^δ·448 溢出冲突，
  *    启用须 tau=0），基线恒为 0；
  * d. 两级累加：fp32 档逐 token 直累；fp32+fp16 档按 k_step=16 子块 FP16 域累加
- *    （twin::QuantizePAndAccumulatePvRow 单点），O 主累加器驻留 V1 UB（fp32）。
+ *    （twin::AccumulatePvRow 单点），O 主累加器驻留 V1 UB（fp32）。
  */
 class SageAttnKernel {
 public:
@@ -262,7 +244,7 @@ public:
 
         // GetBlockIdx 设备端返回 int64_t，显式收窄避免隐式截断
         core_idx_ = static_cast<uint32_t>(GetBlockIdx());
-        if SAGE_ATTN_IS_AIV {
+        if ASCEND_IS_AIV {
             sub_core_idx_ = core_idx_ % 2;
             core_idx_ /= 2;
         } else {
@@ -346,7 +328,7 @@ public:
             }
 
 #if SAGE_ATTN_KERNEL_API
-            if SAGE_ATTN_IS_AIC {
+            if ASCEND_IS_AIC {
                 ProcessCube();
             } else {
                 if (sub_core_idx_ == 0) {
@@ -1697,7 +1679,7 @@ private:
     /**
      * 5. V1：O 主累加器单行原地重缩放。twin 5.3 口径为纯 fp32 乘——即使 fp32+fp16 档
      * 也不经 FP16 中间舍入（FP16 域累加仅发生在 PV 归约路径，见
-     * twin::QuantizePAndAccumulatePvRow），与 RunSequential 逐位一致。
+     * twin::AccumulatePvRow），与 RunSequential 逐位一致。
      */
     __aicore__ void RescaleAccumulator(float rescale_factor, uint32_t row)
     {
@@ -1800,7 +1782,7 @@ private:
     }
 
     /**
-     * 7a. V1（KT 标量基线专属）：P 槽写出后的 PV 累加，经 twin::QuantizePAndAccumulatePvRow
+     * 7a. V1（KT 标量基线专属）：P 槽写出后的 PV 累加，经 twin::AccumulatePvRow
      * 单点执行（5.4 唯一定义）：fp32 档逐 token 直累；fp32+fp16 档按 k_step=16 子块在
      * FP16 域累加后并入主累加器。V 反量化按 twin v_deq 同式（e4m3 解码 · 通道 scale，
      * 16-token permute 槽寻址）。真实硬件该步骤由 Cube PV MMAD + FixPipe 承担（详见 ProcessCube）。
@@ -1817,12 +1799,12 @@ private:
         for (uint32_t r = 0; r < rows && r < MAX_PACK_ROWS; ++r) {
             const uint32_t token_q = cur_q_start_ + (r % cur_q_len_);
             const float m_prime = row_states_[r].m_scale;
-            twin::QuantizePAndAccumulatePvRow(
+            twin::AccumulatePvRow(
                 &sim_mem_->o_accum[static_cast<size_t>(r) * d_], d_,
                 &sim_mem_->logits[static_cast<size_t>(r) * block_n_], cur_k_start_,
                 cur_k_start_, cur_k_start_ + block_k,
                 tiling_->is_causal != 0, token_q, m_prime,
-                fp16_accum, k_step_,
+                fp16_accum ? PV_ACCUM_FP32_FP16 : PV_ACCUM_FP32, k_step_,
                 [&](uint32_t j, uint32_t c) -> float {
                     const uint32_t jl = j - cur_k_start_;
                     const uint32_t slot = quant::VSlotOfToken(jl);
