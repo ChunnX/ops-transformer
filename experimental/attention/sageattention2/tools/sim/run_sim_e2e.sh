@@ -40,13 +40,14 @@ bisheng -std=c++17 -O2 -DSAGE_ATTN_DEVICE_COMPILE=0 \
     -I"$SAGE_ATTN/sageattn_fp8/ascendc" -I"$SAGE_ATTN/aclnn" -I"$SAGE_ATTN/quant" -I"$SIMDIR" \
     -I"$CATLASS_INC" \
     "$SIMDIR/sim_reference.cpp" "$SAGE_ATTN/quant/quant_int8.cpp" "$SAGE_ATTN/quant/quant_fp8.cpp" \
-    -lstdc++ \
+    -lstdc++ -lm \
     -o "$OUT/sim_reference" || { echo "[FAIL] 参考程序编译失败"; exit 1; }
 (cd "$WORK" && "$OUT/sim_reference" "$WORK") || RC=1
 
 echo "== [2/4] 设备 sim 可执行（bisheng --run-mode=sim，与 run.sh kernel 同 include 清单）=="
 bisheng --run-mode=sim -xasc --npu-arch=dav-3510 -std=c++17 -DCATLASS_ARCH=3510 \
     -I"$ASC/include" \
+    -I"$ASC/include/aclnn" \
     -I"$SAGE_ATTN/sageattn_fp8/ascendc" \
     -I"$SAGE_ATTN/sageattn_fp8/catlass" \
     -I"$SAGE_ATTN/quant" \

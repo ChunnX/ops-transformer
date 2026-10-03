@@ -146,7 +146,7 @@ static ge::graphStatus TilingSageAttention2(gert::TilingContext *context)
         (smooth_k != nullptr) ? *smooth_k : true,
         smooth_v_val,
         context->GetInputShape(sage_attn2_idx::IN_KEY_MEAN) != nullptr, // has_key_mean 实况
-        false, // has_lse
+        context->GetOutputShape(sage_attn2_idx::OUT_LSE) != nullptr,   // has_lse 实况
         tiling_data,
         workspace_bytes);
     if (status != ACLNN_SUCCESS) {

@@ -27,21 +27,6 @@
 
 #include "../../aclnn/sage_attn_proto.h"
 #include "../../aclnn/sage_attn_host_tiling.h"
-
-// aclnn 错误码补齐：sim 编译域带 -I$ASC/include，本容器 CANN 9.2.0-beta.1 的
-// aclnn/aclnn_base.h 有 aclnnStatus 类型而无 ACLNN_* 常量（无 opdev/op_errno.h），
-// host_tiling.h 的本地桩分支被 SAGE_HAS_CANN_ACLNN_BASE 关闭，常量处于未定义态
-// （ComputeHostTiling 返回值与 BuildTiling 判定直接引用）。此处按桩分支同值补
-// 定义——须置于 host_tiling.h 之后（守卫宏由其定义），仅覆盖本 harness 编译域，
-// 不动仓内既有文件。
-#if defined(SAGE_HAS_CANN_ACLNN_BASE)
-#ifndef ACLNN_SUCCESS
-constexpr aclnnStatus ACLNN_SUCCESS = 0;
-constexpr aclnnStatus ACLNN_ERR_PARAM_NULLPTR = 161001;
-constexpr aclnnStatus ACLNN_ERR_PARAM_INVALID = 161002;
-#endif
-#endif
-
 #include "../../quant/quant_common.h"
 
 // 注意：twin_reference.h（宿主孪生真值）仅由 sim_reference.cpp include——

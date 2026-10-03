@@ -88,6 +88,19 @@ struct Vector1UbBudget {
     static constexpr uint32_t LSE_WORKSPACE_BYTES      = 16 * 1024;  // 行 stats + logits 行暂存 + scale 条带副本
     // LSE 工作区行距（512B = 128 float；消费侧子偏移 = OFFSET + n·LSE_ROW_STRIDE）
     static constexpr uint32_t LSE_ROW_STRIDE           = 512;
+    // LSE 工作区行级暂存子槽唯一定义点（每槽 512B = 128 float）：
+    static constexpr uint32_t V1_ROW_MAX_OFFSET        = LSE_WORKSPACE_OFFSET;
+    static constexpr uint32_t V1_ROW_SUM_OFFSET        = LSE_WORKSPACE_OFFSET + LSE_ROW_STRIDE;
+    static constexpr uint32_t V1_KS_ROW_OFFSET         = LSE_WORKSPACE_OFFSET + 2 * LSE_ROW_STRIDE;
+    static constexpr uint32_t V1_QS_ROW_OFFSET         = LSE_WORKSPACE_OFFSET + 3 * LSE_ROW_STRIDE;
+    static constexpr uint32_t V1_VS_CHAN_OFFSET        = LSE_WORKSPACE_OFFSET + 4 * LSE_ROW_STRIDE;
+    static constexpr uint32_t V1_VM_CHAN_OFFSET        = LSE_WORKSPACE_OFFSET + 5 * LSE_ROW_STRIDE;
+    static constexpr uint32_t V1_CORR_ROW_OFFSET       = LSE_WORKSPACE_OFFSET + 6 * LSE_ROW_STRIDE;
+    static constexpr uint32_t V1_LSE_ROW_OFFSET        = LSE_WORKSPACE_OFFSET + 7 * LSE_ROW_STRIDE;
+    static constexpr uint32_t V1_M_LN_ROW_OFFSET       = LSE_WORKSPACE_OFFSET + 8 * LSE_ROW_STRIDE;
+    static constexpr uint32_t V1_RS_FACTOR_ROW_OFFSET  = LSE_WORKSPACE_OFFSET + 9 * LSE_ROW_STRIDE;
+    static_assert(V1_RS_FACTOR_ROW_OFFSET + 512u <= LSE_WORKSPACE_OFFSET + LSE_WORKSPACE_BYTES,
+                  "Vector1 LSE workspace sub-offsets overlap or exceed the region");
 
     static constexpr uint32_t TWO_LEVEL_REDUCE_OFFSET  = 240 * 1024;
     static constexpr uint32_t TWO_LEVEL_REDUCE_BYTES   = 16 * 1024;  // 两级累加归约缓冲（skip-scale 变体预留）

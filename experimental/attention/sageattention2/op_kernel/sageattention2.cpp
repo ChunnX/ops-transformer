@@ -61,32 +61,6 @@
 #endif
 #endif
 using namespace AscendC;
-#else
-#ifndef __global__
-#define __global__
-#endif
-#ifndef __aicore__
-#define __aicore__
-#endif
-#ifndef __gm__
-#define __gm__
-#endif
-#ifndef KERNEL_TASK_TYPE_DEFAULT
-#define KERNEL_TASK_TYPE_DEFAULT(x)
-#endif
-#ifndef KERNEL_TYPE_MIX_AIC_1_2
-#define KERNEL_TYPE_MIX_AIC_1_2 0
-#endif
-#ifndef ASCEND_IS_AIC
-#define ASCEND_IS_AIC (true)
-#endif
-#ifndef ASCEND_IS_AIV
-#define ASCEND_IS_AIV (false)
-#endif
-
-// 宿主模拟执行与本地单测环境兼容实现：
-// 携带 __aicore__ 属性以保持与设备侧属性域签名一致。
-__aicore__ inline uint32_t GetBlockIdx() { return 0; }
 #endif
 
 // M5 编译期位型特化唯一定义点：输入位型档位常量 / NormDtypeMode 归一 /
@@ -137,29 +111,20 @@ namespace sage_attn {
 // R4 行批化注：原 logits 行暂存槽(+512)在反量化改驻 dot32 区（元素等宽原地覆写，
 // 读保护窗不变）后释放为行 exp2 和槽；行 max/和/锚/系数四槽均为 1 float/行
 //（VL1 lane0 写、GetValue/DIST_BRC_B32 读），行距无槽间越界。
-[[maybe_unused]] constexpr uint32_t SAGE_UB_DOT32_OFFSET = Catlass::SageAttn::Vector1UbBudget::A7_DOT32_OFFSET;
-[[maybe_unused]] constexpr uint32_t SAGE_UB_PV_PARTIAL_OFFSET = Catlass::SageAttn::Vector1UbBudget::A7_PV_PARTIAL_OFFSET;
-[[maybe_unused]] constexpr uint32_t SAGE_UB_V1_STATS_OFFSET = Catlass::SageAttn::Vector1UbBudget::LSE_WORKSPACE_OFFSET;
-// LSE 工作区行距 512B（128 float）：具名常量唯一定义点 Vector1UbBudget::LSE_ROW_STRIDE
-[[maybe_unused]] constexpr uint32_t SAGE_UB_V1_ROW_MAX_OFFSET = SAGE_UB_V1_STATS_OFFSET;
-[[maybe_unused]] constexpr uint32_t SAGE_UB_V1_ROW_SUM_OFFSET = SAGE_UB_V1_STATS_OFFSET + Catlass::SageAttn::Vector1UbBudget::LSE_ROW_STRIDE;
-[[maybe_unused]] constexpr uint32_t SAGE_UB_V1_KS_ROW_OFFSET = SAGE_UB_V1_STATS_OFFSET + 2 * Catlass::SageAttn::Vector1UbBudget::LSE_ROW_STRIDE;
-[[maybe_unused]] constexpr uint32_t SAGE_UB_V1_QS_ROW_OFFSET = SAGE_UB_V1_STATS_OFFSET + 3 * Catlass::SageAttn::Vector1UbBudget::LSE_ROW_STRIDE;
-[[maybe_unused]] constexpr uint32_t SAGE_UB_V1_VS_CHAN_OFFSET = SAGE_UB_V1_STATS_OFFSET + 4 * Catlass::SageAttn::Vector1UbBudget::LSE_ROW_STRIDE;
-// smooth_v 的 vm 通道槽（V0 经 workspace GM 区产出，V1 Finalize 逐通道加回）
-[[maybe_unused]] constexpr uint32_t SAGE_UB_V1_VM_CHAN_OFFSET = SAGE_UB_V1_STATS_OFFSET + 5 * Catlass::SageAttn::Vector1UbBudget::LSE_ROW_STRIDE;
-// smooth_k 的 lseCorrection 行条带副本 + LSE 出口行条带（P2-8 Finalize 突发化：
-// 逐头单次 MTE2 接入 / MTE3 搬出，取代逐 token 标量 GM 读/写；对齐不满足时回落标量）
-[[maybe_unused]] constexpr uint32_t SAGE_UB_V1_CORR_ROW_OFFSET = SAGE_UB_V1_STATS_OFFSET + 6 * Catlass::SageAttn::Vector1UbBudget::LSE_ROW_STRIDE;
-[[maybe_unused]] constexpr uint32_t SAGE_UB_V1_LSE_ROW_OFFSET = SAGE_UB_V1_STATS_OFFSET + 7 * Catlass::SageAttn::Vector1UbBudget::LSE_ROW_STRIDE;
-// R4 行批化的行 P 锚（m'·ln2）与行 rescale 系数槽（置于 +8/+9 行距——前 8 槽为
-// stats/ks/qs/vs/vm/corr/lse 具名子槽，+4KB 起为本区尾部空闲域）
-[[maybe_unused]] constexpr uint32_t SAGE_UB_V1_M_LN_ROW_OFFSET = SAGE_UB_V1_STATS_OFFSET + 8 * Catlass::SageAttn::Vector1UbBudget::LSE_ROW_STRIDE;
-[[maybe_unused]] constexpr uint32_t SAGE_UB_V1_RS_FACTOR_ROW_OFFSET = SAGE_UB_V1_STATS_OFFSET + 9 * Catlass::SageAttn::Vector1UbBudget::LSE_ROW_STRIDE;
-// 尾行断言链式覆盖此前各子槽（stats..rs_factor 两两不相交且不出区）
-static_assert(SAGE_UB_V1_RS_FACTOR_ROW_OFFSET + 512u <= Catlass::SageAttn::Vector1UbBudget::LSE_WORKSPACE_OFFSET +
-                  Catlass::SageAttn::Vector1UbBudget::LSE_WORKSPACE_BYTES,
-              "A7 V1 row scratch exceeds LSE workspace region");
+using Catlass::SageAttn::Vector1UbBudget;
+[[maybe_unused]] constexpr uint32_t SAGE_UB_DOT32_OFFSET = Vector1UbBudget::A7_DOT32_OFFSET;
+[[maybe_unused]] constexpr uint32_t SAGE_UB_PV_PARTIAL_OFFSET = Vector1UbBudget::A7_PV_PARTIAL_OFFSET;
+[[maybe_unused]] constexpr uint32_t SAGE_UB_V1_STATS_OFFSET = Vector1UbBudget::LSE_WORKSPACE_OFFSET;
+[[maybe_unused]] constexpr uint32_t SAGE_UB_V1_ROW_MAX_OFFSET = Vector1UbBudget::V1_ROW_MAX_OFFSET;
+[[maybe_unused]] constexpr uint32_t SAGE_UB_V1_ROW_SUM_OFFSET = Vector1UbBudget::V1_ROW_SUM_OFFSET;
+[[maybe_unused]] constexpr uint32_t SAGE_UB_V1_KS_ROW_OFFSET = Vector1UbBudget::V1_KS_ROW_OFFSET;
+[[maybe_unused]] constexpr uint32_t SAGE_UB_V1_QS_ROW_OFFSET = Vector1UbBudget::V1_QS_ROW_OFFSET;
+[[maybe_unused]] constexpr uint32_t SAGE_UB_V1_VS_CHAN_OFFSET = Vector1UbBudget::V1_VS_CHAN_OFFSET;
+[[maybe_unused]] constexpr uint32_t SAGE_UB_V1_VM_CHAN_OFFSET = Vector1UbBudget::V1_VM_CHAN_OFFSET;
+[[maybe_unused]] constexpr uint32_t SAGE_UB_V1_CORR_ROW_OFFSET = Vector1UbBudget::V1_CORR_ROW_OFFSET;
+[[maybe_unused]] constexpr uint32_t SAGE_UB_V1_LSE_ROW_OFFSET = Vector1UbBudget::V1_LSE_ROW_OFFSET;
+[[maybe_unused]] constexpr uint32_t SAGE_UB_V1_M_LN_ROW_OFFSET = Vector1UbBudget::V1_M_LN_ROW_OFFSET;
+[[maybe_unused]] constexpr uint32_t SAGE_UB_V1_RS_FACTOR_ROW_OFFSET = Vector1UbBudget::V1_RS_FACTOR_ROW_OFFSET;
 
 #if !SAGE_ATTN_DEVICE_COMPILE
 /**
@@ -656,7 +621,7 @@ private:
             // 获取 K 均值指针 (若启用 smooth_k)。
             // __gm__ 地址空间限定显式保留，统一保持 `const __gm__ float *` 贯穿传递。
             const __gm__ float *km_ptr = nullptr;
-            if ((tiling_->smooth_k != 0) && key_mean_gm_ != nullptr) {
+            if (tiling_->smooth_k != 0) {
                 int64_t km_offset = (b_idx * static_cast<int64_t>(hkv_) + hkv_idx) * d_;
                 km_ptr = reinterpret_cast<const __gm__ float*>(key_mean_gm_ + km_offset * sizeof(float));
             }
@@ -930,9 +895,6 @@ private:
      */
     __aicore__ void StageV1ScaleStrips()
     {
-        if (workspace_gm_ == nullptr) {
-            return;
-        }
         __gm__ uint8_t *strip =
             workspace_gm_ + static_cast<int64_t>(core_idx_) * STAGE_CORE_STRIDE;
         GlobalTensor<float> gm_strip;
@@ -947,9 +909,6 @@ private:
 
     __aicore__ void StageKScaleStrip(bool is_ping)
     {
-        if (workspace_gm_ == nullptr) {
-            return;
-        }
         __gm__ uint8_t *strip =
             workspace_gm_ + static_cast<int64_t>(core_idx_) * STAGE_CORE_STRIDE;
         GlobalTensor<float> gm_strip;
@@ -1030,7 +989,6 @@ private:
                                      const Catlass::SageAttn::GmBhsdLayout &q_layout)
     {
 #if SAGE_ATTN_DEVICE_COMPILE
-        if (q_src == nullptr) return;
         // DEFECT-F-1 重构：组粒度两阶段——行 abs-max VF 进 UB rowmax 数组，
         // 组归并/定档经 quant::QScaleIndex 单点（与宿主串行路径逐步一致），
         // 逐行量化 VF 走除法轨迹 + per_thread half-away / per_warp RINT。
@@ -1068,6 +1026,8 @@ private:
             const int64_t row_gm_offset = q_layout(tla::MakeCoord(0u, g, i, 0u)) * static_cast<int64_t>(sizeof(half));
             GlobalTensor<half> gm_row;
             gm_row.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(q_src + row_gm_offset));
+            // Q 行 GM 流式读取：启用 L2 Cache Bypass (CACHE_MODE_DISABLE)，防止冲刷片上 64MB L2，锁定 K 矩阵长效驻留
+            gm_row.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
             DataCopy(ub_in, gm_row, d);
             Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
             dev_vf::RowAbsMaxVF<kDtype>(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
@@ -1110,6 +1070,8 @@ private:
             const int64_t row_gm_offset = q_layout(tla::MakeCoord(0u, g, i, 0u)) * static_cast<int64_t>(sizeof(half));
             GlobalTensor<half> gm_row;
             gm_row.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(q_src + row_gm_offset));
+            // Q 行 GM 流式读取：启用 L2 Cache Bypass，避免流式数据冲刷 L2 缓存
+            gm_row.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
             DataCopy(ub_in, gm_row, d);
             Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
             dev_vf::QuantRowInt8VF<kDtype>(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
@@ -1217,7 +1179,6 @@ private:
         const Catlass::SageAttn::GmBhsdLayout &kv_layout)
     {
 #if SAGE_ATTN_DEVICE_COMPILE
-        if (k_src == nullptr) return;
         // DEFECT-F-1 重构：组粒度两阶段（组边界 quant::KScaleIndex 单点，
         // 块内本地序号写 l1_k_scale——Data+Scale 相邻契约）
         const bool per_thread_k = (tiling_->qk_quant_gran == QUANT_GRAN_PER_THREAD);
@@ -1230,8 +1191,8 @@ private:
                                      Catlass::SageAttn::Vector0UbBudget::QUANT_ROWMAX_OFFSET,
                                      MAX_PACK_ROWS);
         LocalTensor<float> ub_k_scales(TPosition::VECCALC,
-                                       Catlass::SageAttn::Vector0UbBudget::QUANT_SCALES_OFFSET,
-                                       kKScaleSlotStride);
+                                     Catlass::SageAttn::Vector0UbBudget::QUANT_SCALES_OFFSET,
+                                     kKScaleSlotStride);
         LocalTensor<float> ub_km(TPosition::VECCALC,
                                  Catlass::SageAttn::Vector0UbBudget::QUANT_KM_OFFSET,
                                  d);
@@ -1264,9 +1225,7 @@ private:
             const int64_t row_gm_offset = kv_layout(tla::MakeCoord(0u, 0u, j, 0u)) * static_cast<int64_t>(sizeof(half));
             GlobalTensor<half> gm_row;
             gm_row.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(k_src + row_gm_offset));
-            // K 行 GM 流式读（每任务独占、无跨任务复用）：L2 直通旁路，避免污染 Die 本地
-            // 64MB L2（保留给 KV 亲和复用热数据）
-            gm_row.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+            // K 矩阵 GM 读：不旁路 L2 Cache，使其在 Atlas 950PR 片上 64MB L2 中长效驻留，供后续 Q 块高效命中复用
             DataCopy(ub_in, gm_row, d);
             Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
             dev_vf::RowAbsMaxVF<kDtype>(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
@@ -1323,8 +1282,7 @@ private:
                 const int64_t row_gm_offset = kv_layout(tla::MakeCoord(0u, 0u, j, 0u)) * static_cast<int64_t>(sizeof(half));
                 GlobalTensor<half> gm_row;
                 gm_row.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(k_src + row_gm_offset));
-                // K 行 GM 流式读：L2 直通旁路（同 A 段，避免污染 Die 本地 L2）
-                gm_row.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+                // K 矩阵 GM 读：保持 L2 Cache 驻留
                 DataCopy(ub_in, gm_row, d);
                 Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
                 const uint32_t token = cur_k_start_ + j;
@@ -1432,7 +1390,6 @@ private:
         const Catlass::SageAttn::GmBhsdLayout &kv_layout)
     {
 #if SAGE_ATTN_DEVICE_COMPILE
-        if (v_src == nullptr) return;
         // DEFECT-F-1 重构：per-channel 全序列预扫（首块一次）→ UB scale 张量；逐行量化
         // VF 走除法轨迹 + ±scale_max 截断 + 全零通道 0/0=NaN → e4m3 0x7f。
         // M5：输入位型档位为编译期常量 kDtype（VF 调用模板实参，原 dtype_mode 形参删除）
@@ -1464,7 +1421,7 @@ private:
                     const int64_t row_gm_offset = kv_layout(tla::MakeCoord(0u, 0u, t, 0u)) * static_cast<int64_t>(sizeof(half));
                     GlobalTensor<half> gm_row;
                     gm_row.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(v_src + row_gm_offset));
-                    // V 全序列预扫（任务级一次的流式读）：L2 直通旁路，避免污染 Die 本地 L2
+                    // V 全序列预扫（任务级一次的流式读）：启用 L2 直通旁路，避免冲刷片上 64MB L2
                     gm_row.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
                     Catlass::SageAttn::Sync<HardEvent::V_MTE2>();
                     DataCopy(ub_in, gm_row, d);
@@ -1492,14 +1449,14 @@ private:
                     const int64_t row_gm_offset = kv_layout(tla::MakeCoord(0u, 0u, t, 0u)) * static_cast<int64_t>(sizeof(half));
                     GlobalTensor<half> gm_row;
                     gm_row.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(v_src + row_gm_offset));
-                    // V 全序列预扫（任务级一次的流式读）：L2 直通旁路，避免污染 Die 本地 L2
+                    // V 全序列预扫（任务级一次的流式读）：启用 L2 直通旁路，避免冲刷片上 64MB L2
                     gm_row.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
                     Catlass::SageAttn::Sync<HardEvent::V_MTE2>();
                     DataCopy(ub_in, gm_row, d);
                     Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
                     dev_vf::ChannelAmaxAccumVF<kDtype>(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
-                                                       reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
-                                                       d);
+                                                        reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
+                                                        d);
                 }
                 dev_vf::FinalizeVScaleVF(reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
                                          reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
@@ -1514,7 +1471,7 @@ private:
             GlobalTensor<float> gm_stage_v;
             gm_stage_v.SetGlobalBuffer(StageStrip() + STAGE_V_SCALE_OFFSET);
             DataCopy(gm_stage_v, ub_v_scale, d);
-            if (smooth_v != 0u && workspace_gm_ != nullptr) {
+            if (smooth_v != 0u) {
                 GlobalTensor<float> gm_vm;
                 gm_vm.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(
                     workspace_gm_ + tiling_->workspace_vm_offset +
@@ -1759,7 +1716,7 @@ private:
             Catlass::SageAttn::MakeGmBhsdLayout(b_, hkv_, sk_, d_, tiling_->tensor_layout == LAYOUT_HND);
         const int64_t kv_gm_offset = kv_layout(tla::MakeCoord(b_idx, hkv_idx, sk_start, 0u));
         const __gm__ float *km_ptr = nullptr;
-        if ((tiling_->smooth_k != 0) && key_mean_gm_ != nullptr) {
+        if (tiling_->smooth_k != 0) {
             const int64_t km_offset = (b_idx * static_cast<int64_t>(hkv_) + hkv_idx) * d_;
             km_ptr = reinterpret_cast<const __gm__ float *>(key_mean_gm_ + km_offset * sizeof(float));
         }
@@ -1840,11 +1797,10 @@ private:
         // smooth_k && return_lse 时产出该张量）
         const bool has_lse_corr = (lse_correction_gm_ != nullptr);
 #if SAGE_ATTN_DEVICE_COMPILE
-        if (out_gm_ == nullptr) return;
         // smooth_v 的 vm 通道向量：V0 首块产出并写 workspace GM 区，本侧 Finalize 前
         // 经 MTE2 接入 UB（读取时序在 PV_O_DONE 之后，由跨核 flag 链传递保序——
         // vm 写毕方 raise 首块 KV_READY，QK_P 链直达本函数）
-        const bool has_vm = (tiling_->smooth_v != 0) && (workspace_gm_ != nullptr);
+        const bool has_vm = (tiling_->smooth_v != 0);
         LocalTensor<float> ub_vm(TPosition::VECCALC, SAGE_UB_V1_VM_CHAN_OFFSET, d_);
         if (has_vm) {
             GlobalTensor<float> gm_vm;

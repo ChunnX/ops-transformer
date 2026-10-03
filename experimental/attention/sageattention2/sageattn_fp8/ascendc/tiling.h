@@ -26,6 +26,34 @@
 #define __forceinline__ inline __attribute__((always_inline))
 #endif
 
+#ifndef __global__
+#define __global__
+#endif
+
+#ifndef __gm__
+#define __gm__
+#endif
+
+#ifndef KERNEL_TASK_TYPE_DEFAULT
+#define KERNEL_TASK_TYPE_DEFAULT(x)
+#endif
+
+#ifndef KERNEL_TYPE_MIX_AIC_1_2
+#define KERNEL_TYPE_MIX_AIC_1_2 0
+#endif
+
+#ifndef ASCEND_IS_AIC
+#define ASCEND_IS_AIC (true)
+#endif
+
+#ifndef ASCEND_IS_AIV
+#define ASCEND_IS_AIV (false)
+#endif
+
+#if !defined(__CCE__) && !defined(__CCE_KT_TEST__)
+inline uint32_t GetBlockIdx() { return 0; }
+#endif
+
 /**
  * 编译域判定宏（全仓唯一定义点，其余头文件禁止再定义或重复守卫）：
  * - SAGE_ATTN_DEVICE_COMPILE：bisheng -xasc 真机/camodal 设备编译语义分支；
