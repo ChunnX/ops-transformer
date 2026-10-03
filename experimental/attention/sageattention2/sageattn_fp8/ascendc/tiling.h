@@ -4,27 +4,6 @@
 #include <cstdint>
 #include <cstddef>
 
-#ifndef __CCE__
-namespace AscendC {
-enum class TPosition : uint8_t {
-    GM = 0,
-    A1 = 1,
-    A2 = 2,
-    B1 = 3,
-    B2 = 4,
-    C1 = 5,
-    C2 = 6,
-    CO1 = 7,
-    CO2 = 8,
-    VECIN = 9,
-    VECOUT = 10,
-    VECCALC = 11,
-    TSCM = 12,
-    LCM = 13
-};
-} // namespace AscendC
-#endif
-
 // 官方 CATLASS 容量常量一致性锁：本头文件保持零依赖基座（被 quant 裸编译等无
 // CATLASS -I 场景包含），容量取白皮书字面量；与官方 Catlass::Arch::Ascend950 的
 // 逐项一致由 sage_resource.hpp 的 static_assert 链在含 catlass 的 TU 编译期锁定。
@@ -32,13 +11,11 @@ enum class TPosition : uint8_t {
 /**
  * Host/Device 切换（本头文件被所有 ascendc/catlass 头包含，是 __aicore__ 的首个定义点）：
  * - bisheng -xasc 设备编译预定义 __aicore__ = __attribute__((cce_aicore))，下方 #ifndef 直接保留内建；
- * - KT 设备/主机单测定义 __CCE_KT_TEST__（或历史 __DAV_C220_*），属性展开为 [[]]；
+ * - KT 设备/主机单测定义 __CCE_KT_TEST__，属性展开为 [[]]；
  * - 纯宿主门禁（BiSheng 宿主模式无任何宏）展开为空。
- * 此前此处为无条件空展开，会抢在 online_softmax.h 之前把 __aicore__ 污染为空，
- * 使 KT 单测路径丢失属性——已改为与其他头一致的完整切换范式。
  */
 #ifndef __aicore__
-#if defined(__CCE_KT_TEST__) || defined(__DAV_C220_VEC__) || defined(__DAV_C220_CUBE__) || defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__)
+#if defined(__CCE_KT_TEST__)
 #define __aicore__ [[]]
 #else
 #define __aicore__
@@ -52,7 +29,7 @@ enum class TPosition : uint8_t {
 /**
  * 编译域判定宏（全仓唯一定义点，其余头文件禁止再定义或重复守卫）：
  * - SAGE_ATTN_DEVICE_COMPILE：bisheng -xasc 真机/camodal 设备编译语义分支；
- * - SAGE_ATTN_KERNEL_API：kernel_operator.h 可用域（设备编译或 KT/DAV 单测桩），
+ * - SAGE_ATTN_KERNEL_API：kernel_operator.h 可用域（设备编译或 KT 单测桩），
  *   兼作 "设备态执行路径" 判定（宿主串行仿真为 0）。
  */
 #ifndef SAGE_ATTN_DEVICE_COMPILE
@@ -63,7 +40,7 @@ enum class TPosition : uint8_t {
 #endif
 #endif
 
-#if SAGE_ATTN_DEVICE_COMPILE || defined(__CCE_KT_TEST__) || defined(__DAV_C220_VEC__) || defined(__DAV_C220_CUBE__) || defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__)
+#if SAGE_ATTN_DEVICE_COMPILE || defined(__CCE_KT_TEST__)
 #define SAGE_ATTN_KERNEL_API 1
 #else
 #define SAGE_ATTN_KERNEL_API 0
@@ -157,7 +134,6 @@ constexpr uint32_t STAGE_K_SCALE_PING_OFFSET = 512;
 constexpr uint32_t STAGE_K_SCALE_PONG_OFFSET = 1024;
 constexpr uint32_t STAGE_V_SCALE_OFFSET = 1536;
 constexpr uint32_t STAGE_SLOT_FLOATS = 128;               // 单区域容量（float 数）
-constexpr uint32_t STAGE_SLOT_BYTES = STAGE_SLOT_FLOATS * sizeof(float);
 
 /**
  * 布局编码枚举（对齐 core.py 行 745）

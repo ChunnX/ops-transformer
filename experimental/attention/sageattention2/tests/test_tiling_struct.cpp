@@ -75,20 +75,15 @@ void TestTilingDataLayout() {
     assert(offsetof(SageAttention2TilingData, reserved) == 153);
 
     // Capacity constants：L1/Bank/UB 保留 sage_attn 直引（L1 经官方 Arch::Ascend950
-    // 派生）；L0A/L0B/L0C 的官方→本算子唯一映射点为 HardwareResourceQuota（tiling.h
-    // 的重复别名已随 2026-10-03 死代码清扫删除）
+    // Capacity constants：L1/Bank/UB 保留 sage_attn 直引（L1 经官方 Arch::Ascend950
+    // 派生）；L0A/L0B 无生产判据，不再设配额别名也不做官方源canary；L0C 唯一映射点
+    // 为 HardwareResourceQuota（InspectTilingPlan 判据消费方）
     assert(L1_TOTAL_SIZE == 512 * 1024);
     assert(L1_BANK_SIZE == 256 * 1024);
     assert(UB_TOTAL_SIZE_PER_V == 256 * 1024);
-    static_assert(HardwareResourceQuota::L0A_TOTAL_BYTES == Catlass::Arch::Ascend950::L0A_SIZE,
-                  "L0A quota must map the official Ascend950 constant");
-    static_assert(HardwareResourceQuota::L0B_TOTAL_BYTES == Catlass::Arch::Ascend950::L0B_SIZE,
-                  "L0B quota must map the official Ascend950 constant");
     static_assert(HardwareResourceQuota::L0C_TOTAL_BYTES == Catlass::Arch::Ascend950::L0C_SIZE,
                   "L0C quota must map the official Ascend950 constant");
-    static_assert(HardwareResourceQuota::L1_TOTAL_BYTES == Catlass::Arch::Ascend950::L1_SIZE,
-                  "L1 quota must map the official Ascend950 constant");
-    assert(L1_TOTAL_SIZE == HardwareResourceQuota::L1_TOTAL_BYTES);
+    assert(L1_TOTAL_SIZE == Catlass::Arch::Ascend950::L1_SIZE);
 
     std::cout << "[Test 1 Passed] All TilingData offsets and constants match specification!" << std::endl;
 }
@@ -158,10 +153,13 @@ void TestCatlassContracts() {
                   "ping/pong slots must be adjacent in Bank 1");
 
     // 清理记录（2026-10-03 死代码清扫随动）：
-    // - KvSlotLayoutContract：生产链路零实例化且槽内 Scale 偏移描述与核内实际摆布
+    // - KvSlotLayoutContract：生产链路零实例化且槽内 Scale 偏移描述与核内实际
     //   （block_n·d 直排，非 RoundUp）不一致，整块删除，本用例随之移除；
     // - SageResourceManager::ValidateBudget：被 InspectTilingPlan（RES-01 全量台账）
-    //   取代的旧静态校验，零生产调用方，删除，本用例随之移除。
+    //   取代的旧静态校验，零生产调用方，删除，本用例随之移除；
+    // - SageResourceManager::ValidateTilingPlan：InspectTilingPlan 的布尔包装，
+    //   零生产调用方（host tiling 唯一判据为 InspectTilingPlan），2026-10-04 删除，
+    //   本用例改直引 InspectTilingPlan == kNone。
     // 原 AMLA FloatMulPow2Int（本文件原 Test 5）随 quant_common.h 的零调用原语一并删除：
     // base-2 域重缩放的现行唯一轨迹为 OnlineSoftmaxTransformer::FastExp2（位构造自实现）。
 
@@ -174,12 +172,12 @@ void TestResourceFootprintLedger() {
     // 验收域内全部分块计划必须通过（P-01..P-07 覆盖的组合）：
     // gqa=1 (rows=64), gqa=2 (rows=128, m_per_core=64), gqa>=3 (rows=128, m_per_core=32),
     // block_n 64 (sk<2048) / 128 (sk>=2048), d_pad 64/128
-    assert(SageResourceManager::ValidateTilingPlan(64, 64, 128));
-    assert(SageResourceManager::ValidateTilingPlan(64, 128, 128));
-    assert(SageResourceManager::ValidateTilingPlan(128, 64, 128));
-    assert(SageResourceManager::ValidateTilingPlan(128, 128, 128));
-    assert(SageResourceManager::ValidateTilingPlan(64, 64, 64));
-    assert(SageResourceManager::ValidateTilingPlan(128, 128, 64));
+    assert(SageResourceManager::InspectTilingPlan(64, 64, 128) == FootprintViolation::kNone);
+    assert(SageResourceManager::InspectTilingPlan(64, 128, 128) == FootprintViolation::kNone);
+    assert(SageResourceManager::InspectTilingPlan(128, 64, 128) == FootprintViolation::kNone);
+    assert(SageResourceManager::InspectTilingPlan(128, 128, 128) == FootprintViolation::kNone);
+    assert(SageResourceManager::InspectTilingPlan(64, 64, 64) == FootprintViolation::kNone);
+    assert(SageResourceManager::InspectTilingPlan(128, 128, 64) == FootprintViolation::kNone);
 
     // 预算边界恰好填满必须放行（= 容量为合法，> 容量才违规）：
     // rows=128, d=128 -> O 累加器 128*128*4 = 64KB == O_ACCUM_BYTES
@@ -216,7 +214,8 @@ void TestResourceFootprintLedger() {
     assert(SageResourceManager::InspectTilingPlan(64, 200, 128) == FootprintViolation::kUbV0Input);
 
     // constexpr 可用于编译期断言（分块常量改动的编译门）
-    static_assert(SageResourceManager::ValidateTilingPlan(128, 128, 128),
+    static_assert(SageResourceManager::InspectTilingPlan(128, 128, 128) ==
+                      FootprintViolation::kNone,
                   "P-01..P-07 acceptance domain must fit on-chip budgets");
     static_assert(SageResourceManager::InspectTilingPlan(256, 64, 128) ==
                   FootprintViolation::kGqaRowOverflow,

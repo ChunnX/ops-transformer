@@ -41,6 +41,7 @@ bash build.sh --pkg --experimental --soc=ascend950 --vendor_name=customize --ops
 
 - 注意：`--ops` 过滤值必须命中 `./ops-transformer/experimental/attention/` 下的算子目录名（本算子目录为 `sageattention2`）；若交付流水线按注册名 `sage_attention2` 传参导致目录未命中，改用 `bash build.sh --pkg --experimental --soc=ascend950 --vendor_name=customize --ops=sageattention2 -j16` 或省略 `--ops` 全量构建
 - 产出：`./build_out/` 下的 custom run 包，安装后含 ACLNN 算子库 `libsageattention2.so`（`opFile` 名见 `./op_host/sage_attention2_def.cpp`）
+- vendor 名唯一定义点（P2-14）：本算子自建 OPP 树的 vendor 目录固定为 `customize`（`./build_opp.sh` 出包 `vendors/customize`、`./install_opp.sh` 本地部署与 `vendors/config.ini` `load_priority=customize`、`./benchmarks/build_aclnn_benchmark.sh` 链接、`python/sageattention2/_extension.py` 探测，均以此为准）。仓库整包是另一交付物：`build.sh` 的 vendor 目录为 `${vendor_name}_transformer`（上例 `--vendor_name=customize` → `vendors/customize_transformer`；缺省 `custom` → `vendors/custom_transformer`），整包安装后由 CANN 按 `ASCEND_OPP_PATH` 与 `load_priority` 装载，aclnn 调用运行期 dlsym 解析，与本地 `customize` 树并存、互不指代
 
 ### 容器门禁（run.sh → BiSheng 容器，唯一编译与测试环境）
 

@@ -5,7 +5,6 @@
 #include <cstdint>
 #include <cmath>
 #include <algorithm>
-#include <cstring>
 #include <vector>
 
 namespace sage_attn {
@@ -127,21 +126,6 @@ public:
             }
         }
     }
-
-    /**
-     * 将量化后的 V FP8 数据与对应通道 Scale 紧凑拼装为 "data + scale 相邻" 布局
-     * 写入格式: [FP8 矩阵 (pad_sk_v * d)] [FP32 scale 向量 (d * sizeof(float))] [32B 对齐]
-     */
-    void PackVDataAndScaleAdjacent(
-        const uint8_t* v_data_block,
-        const float* v_scale_head,
-        uint8_t* compact_dst,
-        uint32_t pad_sk_v,
-        uint32_t d
-    ) noexcept {
-        PackDataAndScaleAdjacent(v_data_block, pad_sk_v * d * sizeof(uint8_t),
-                                 v_scale_head, d * sizeof(float), compact_dst);
-    }
 };
 
 } // namespace quant
@@ -184,18 +168,6 @@ int QuantizeVFp8Ascend(
             reinterpret_cast<uint8_t*>(v_fp8_out),
             v_scale_out, vm_out, b, hkv, sk, d, pv_accum_dtype, smooth_v != 0, tensor_layout);
     }
-    return 0;
-}
-
-int PackVDataAndScaleAdjacentAscend(
-    const uint8_t* v_data_block,
-    const float* v_scale_head,
-    uint8_t* compact_dst,
-    uint32_t pad_sk_v,
-    uint32_t d
-) noexcept {
-    sage_attn::quant::AscendCQuantFp8Kernel kernel;
-    kernel.PackVDataAndScaleAdjacent(v_data_block, v_scale_head, compact_dst, pad_sk_v, d);
     return 0;
 }
 

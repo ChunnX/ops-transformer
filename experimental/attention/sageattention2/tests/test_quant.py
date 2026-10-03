@@ -3,7 +3,8 @@ Unit tests for Vector independent quantization kernels and numerical prototypes.
 Verifies:
 1. Bit-exact / strict-tolerance alignment against all Golden dataset cases (P-01..P-07, TC-01..TC-10)
 2. AscendC Vector C++ quantization kernels (QuantizeQInt8Ascend, QuantizeKInt8Ascend, QuantizeVFp8Ascend)
-3. Compact adjacent layout packing (PackKvDataAndScaleAdjacentAscend, PackVDataAndScaleAdjacentAscend)
+3. Compact adjacent layout packing：C-ABI 已随 2026-10-04 死代码清扫删除
+   （PackKv/VDataAndScaleAdjacentAscend 零生产调用方，见文件末占位说明）
 4. Host helper logic (quant_host.h GetVScaleMax tiering via ctypes wrapper;
    sm_scale folding & head-dim padding now live in the Python baseline layers)
 """
@@ -390,36 +391,12 @@ float sage_v_scale_max(unsigned pv_accum_dtype) {
         self.assertEqual(get_padded_head_dim(96), 128)
         self.assertEqual(get_padded_head_dim(128), 128)
 
-    def test_compact_kv_block_layout(self):
-        # Verify compact adjacent layout memory packing
-        block_k = 64
-        d = 128
-        qk_quant_gran = 3  # per_thread -> 4 scales
-        data_bytes = block_k * d  # 8192
-        scale_bytes = 4 * 4  # 16
-        total = data_bytes + scale_bytes  # 8208
-        aligned_32 = ((total + 31) // 32) * 32  # 8224
-
-        dummy_data = torch.randint(-127, 127, (block_k, d), dtype=torch.int8)
-        dummy_scale = torch.randn(4, dtype=torch.float32)
-        compact_buf = torch.zeros(aligned_32, dtype=torch.uint8)
-
-        ret = libquant.PackKvDataAndScaleAdjacentAscend(
-            ctypes.c_void_p(dummy_data.data_ptr()),
-            ctypes.c_void_p(dummy_scale.data_ptr()),
-            ctypes.c_void_p(compact_buf.data_ptr()),
-            ctypes.c_uint32(block_k),
-            ctypes.c_uint32(d),
-            ctypes.c_uint32(qk_quant_gran),
-        )
-        self.assertEqual(ret, 0)
-
-        # Unpack and verify bit-identity
-        recovered_data = compact_buf[:data_bytes].view(torch.int8).view(block_k, d)
-        recovered_scale = compact_buf[data_bytes:data_bytes + scale_bytes].view(torch.float32)
-
-        self.assertTrue(torch.equal(recovered_data, dummy_data))
-        self.assertTrue(torch.equal(recovered_scale, dummy_scale))
+    def test_compact_kv_block_layout_removed(self):
+        """清扫台账占位：Compact adjacent layout packing 的 C-ABI
+        （PackKvDataAndScaleAdjacentAscend / PackVDataAndScaleAdjacentAscend）
+        为零生产调用方死链，2026-10-04 随 quant_int8/quant_fp8/quant_common.h
+        一并删除；L1 侧 Data+Scale 相邻摆布唯一由设备核 CopyUbRowToL1 契约承载。
+        原 test_compact_kv_block_layout 本体随之移除。"""
 
 
 if __name__ == "__main__":

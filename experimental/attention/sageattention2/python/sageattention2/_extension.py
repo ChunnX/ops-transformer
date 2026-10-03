@@ -50,10 +50,16 @@ def load_extension():
         "-lascendcl",
     ]
 
+    # Vendor 名唯一定义点（P2-14）：本算子自建 OPP 树的 vendor 目录固定为
+    # `customize`（build_opp.sh 出包 build/opp/vendors/customize，install_opp.sh
+    # 默认部署 build/opp_installed/vendors/customize，config.ini load_priority=customize）。
+    # 仓库根 build.sh 整包 run 包是另一交付物，其 vendor 目录为 ${vendor_name}_transformer
+    # （默认 --vendor_name=custom → custom_transformer，见 cmake/custom_build.cmake），
+    # 与本算子本地树并存合法、互不同名；该形态下 opapi 由 CANN 按 ASCEND_OPP_PATH 装载，
+    # EXEC_NPU_CMD_EXT 运行期 dlsym 解析，无需（也不应）在此按整包 vendor 名探测。
     for opp_vendor in (
-        cann / "opp" / "vendors" / "custom_transformer",
-        cann / "opp" / "vendors" / "customize",
         op_root / "build" / "opp_installed" / "vendors" / "customize",
+        cann / "opp" / "vendors" / "customize",
     ):
         v_inc = opp_vendor / "op_api" / "include"
         if v_inc.exists() and str(v_inc) not in extra_include_paths:

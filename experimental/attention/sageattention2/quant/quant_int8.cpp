@@ -4,7 +4,6 @@
 #include <cstdint>
 #include <cmath>
 #include <algorithm>
-#include <cstring>
 #include <vector>
 
 namespace sage_attn {
@@ -271,24 +270,6 @@ public:
             }
         }
     }
-
-    /**
-     * 将量化后的 K 数据与同块 FP32 Scale 按 "data + scale 相邻" 紧凑排布
-     * 在连续内存中写入 [INT8 数据块 (block_k * d)] [FP32 scale 向量] [32B 对齐 padding]
-     */
-    void PackKvDataAndScaleAdjacent(
-        const int8_t* k_data_block,
-        const float* k_scale_block,
-        uint8_t* compact_dst,
-        uint32_t block_k,
-        uint32_t d,
-        uint32_t qk_quant_gran
-    ) noexcept {
-        const uint32_t data_bytes = block_k * d * sizeof(int8_t);
-        const uint32_t num_scales = (qk_quant_gran == QUANT_GRAN_PER_THREAD) ? 4 : 1;
-        PackDataAndScaleAdjacent(k_data_block, data_bytes, k_scale_block,
-                                 num_scales * sizeof(float), compact_dst);
-    }
 };
 
 } // namespace quant
@@ -366,19 +347,6 @@ int QuantizeKInt8Ascend(
             reinterpret_cast<int8_t*>(k_out),
             k_scale_out, b, hkv, sk, d, qk_quant_gran, smooth_k != 0, tensor_layout);
     }
-    return 0;
-}
-
-int PackKvDataAndScaleAdjacentAscend(
-    const int8_t* k_data_block,
-    const float* k_scale_block,
-    uint8_t* compact_dst,
-    uint32_t block_k,
-    uint32_t d,
-    uint32_t qk_quant_gran
-) noexcept {
-    sage_attn::quant::AscendCQuantInt8Kernel kernel;
-    kernel.PackKvDataAndScaleAdjacent(k_data_block, k_scale_block, compact_dst, block_k, d, qk_quant_gran);
     return 0;
 }
 

@@ -45,39 +45,6 @@ constexpr aclnnStatus ACLNN_ERR_PARAM_INVALID = 161002;
 namespace sage_attn {
 
 /**
- * 双 Die 拓扑亲和调度判定准则 (inspired by competitor common.h):
- * Atlas 950PR 标配 2 个计算 Die，各拥有 16 个 AI Core 与 64MB 独立片上 L2 Cache。
- * 当参与调度的核心数为偶数 (标配 32 核或减配 28 核) 且 (b * hkv) 能被 2 整除时，
- * 满足双 Die 亲和调度条件：
- * - Die 0 (核 0..cores/2-1) 亲和前半段 KV heads/batches [0, (b * hkv)/2)
- * - Die 1 (核 cores/2..cores-1) 亲和后半段 KV heads/batches [(b * hkv)/2, b * hkv)
- * 使得对应 KV 头所有 Q 块任务全部收敛在同一 Die 内部物理核上执行，
- * 保证 100% 的 KV reuse 命中对应 Die 的 64MB 本地 L2 Cache，彻底消除跨 Die 互联颠簸 (cross-Die bouncing)。
- */
-inline bool UseDieGroups(uint32_t cores, uint32_t b, uint32_t hkv) noexcept
-{
-    return cores >= 2 && (cores % 2 == 0) && ((static_cast<uint64_t>(b) * hkv) % 2 == 0);
-}
-
-/**
- * 计算指定物理核心归属的计算 Die (Die 0: 0..cores/2-1, Die 1: cores/2..cores-1)
- */
-inline uint32_t GetDieIndexForCore(uint32_t core, uint32_t cores = ATLAS_950_AIC_NUM) noexcept
-{
-    return (core < (cores / 2)) ? 0 : 1;
-}
-
-/**
- * 计算指定 Batch / Hkv 头在双 Die 拓扑下的亲和归属 Die
- */
-inline uint32_t GetKvHeadDieAffinity(uint32_t b_idx, uint32_t hkv_idx, uint32_t b, uint32_t hkv) noexcept
-{
-    uint64_t total_bh = static_cast<uint64_t>(b) * hkv;
-    uint64_t cur_bh = static_cast<uint64_t>(b_idx) * hkv + hkv_idx;
-    return (cur_bh < (total_bh / 2)) ? 0 : 1;
-}
-
-/**
  * 获取硬件可用 AI Core 核心数量
  * 动态支持 32 核 (Atlas 950PR 满配) 与 28 核 (减配版)：
  * 环境变量覆盖供自动化测试/特定拓扑使用；核数的设备侧权威源是
@@ -190,7 +157,7 @@ inline aclnnStatus ComputeHostTiling(
         return ACLNN_ERR_PARAM_INVALID;
     }
     float base_sm_scale = static_cast<float>(smScale);
-    tiling_out.sm_scale_log2e = base_sm_scale * quant::LOG2E;
+    tiling_out.sm_scale_log2e = base_sm_scale * sage_attn::LOG2E;
     tiling_out.v_scale_max = quant::GetVScaleMax(static_cast<uint32_t>(pvAccumDtype));
     // （原 s_fp8_offset TilingData 字段已删除：448· 放大恒经乘法启用、LSE 出口恒以
     //  S_FP8_OFFSET 常量补扣，唯一定义 sageattn_fp8/ascendc/tiling.h。）

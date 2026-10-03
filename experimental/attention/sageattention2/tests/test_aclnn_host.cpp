@@ -368,7 +368,9 @@ bool TestDieAffinityScheduling()
     const uint32_t q_blks_test = 4;
     for (uint32_t c = 0; c < l2_cores; ++c) {
         uint64_t task_end = sage_attn::DieTaskEnd(l2_total_tasks, c, l2_cores, true);
-        const uint32_t core_die = sage_attn::GetDieIndexForCore(c, l2_cores);
+        // Die 半分映射（ComputeHostTiling enable_die 判据的核内 DieTask 契约）：
+        // Die 0 = 前 cores/2 核，Die 1 = 后 cores/2 核
+        const uint32_t core_die = (c < l2_cores / 2) ? 0u : 1u;
         for (uint64_t vtask = c; vtask < task_end; vtask += l2_cores) {
             uint64_t mapped = sage_attn::DieTask(vtask, l2_total_tasks, l2_cores);
             uint32_t kv_head_idx = static_cast<uint32_t>(mapped / q_blks_test);
@@ -424,13 +426,9 @@ bool TestDieAffinityScheduling()
     TEST_CHECK(td_dyn.block_n == 64, "Dynamic shape (sk=1500 < 2048) fallback block_n must be 64");
     TEST_CHECK(td_dyn.k_step == 16, "Dynamic shape fallback k_step must be default 16");
 
-    // (4) 验证辅助函数
-    TEST_CHECK(sage_attn::UseDieGroups(32, 1, 32) == true, "Even b*hkv is eligible for Die affinity");
-    TEST_CHECK(sage_attn::UseDieGroups(32, 1, 35) == false, "Odd b*hkv is ineligible for Die affinity");
-    TEST_CHECK(sage_attn::GetDieIndexForCore(5, 32) == 0, "Core 5 is Die 0");
-    TEST_CHECK(sage_attn::GetDieIndexForCore(25, 32) == 1, "Core 25 is Die 1");
-    TEST_CHECK(sage_attn::GetKvHeadDieAffinity(0, 5, 2, 16) == 0, "KV head 5 of 32 belongs to Die 0");
-    TEST_CHECK(sage_attn::GetKvHeadDieAffinity(1, 5, 2, 16) == 1, "KV head 21 of 32 belongs to Die 1");
+    // (4) 验证辅助函数子块已随 2026-10-04 死代码清扫移除：UseDieGroups /
+    // GetDieIndexForCore / GetKvHeadDieAffinity 为零生产调用方辅助（enable_die
+    // 判据唯一定义在 ComputeHostTiling 第 10 步内联实现），删除，本用例随之移除。
 
     std::cout << "[PASS] TestDieAffinityScheduling" << std::endl;
     return true;

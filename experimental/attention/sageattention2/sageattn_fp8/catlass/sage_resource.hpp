@@ -12,17 +12,12 @@ using Arch = Catlass::Arch::Ascend950;
 
 /**
  * 1C2V 硬件资源配额契约（Atlas 950PR 架构白皮书表 4-2）。
- * L1/L0A/L0B/L0C 取官方 Catlass::Arch::Ascend950 常数（一处定义，消除多层别名）。
- * UB 不取官方 Ascend950::UB_SIZE（248KB，官方样例工程口径）：本算子按任务书验收域
- * （Atlas 950PR 白皮书表 4-2 单 Vector 核 256KB）冻结 256KB 配额——两值为不同口径
- * 而非换算关系，故不做 assert 绑定；UB 份额由下方各预算 static_assert 链按 256KB
- * 封顶锁定。
+ * 仅保留有生产消费方的配额项（InspectTilingPlan 的 L0C 判据、Vector0/1 预算链的
+ * UB 封顶判据）；L1/L0A/L0B 总量由 tiling.h 的 L1_TOTAL_SIZE 与官方
+ * Catlass::Arch::Ascend950 常数承载（test_tiling_struct 直锁官方源，不再设别名层）。
  */
 struct HardwareResourceQuota {
     // 物理硬件上限
-    static constexpr uint32_t L1_TOTAL_BYTES   = Arch::L1_SIZE;                   // 512 KB
-    static constexpr uint32_t L0A_TOTAL_BYTES  = Arch::L0A_SIZE;                  // 64 KB
-    static constexpr uint32_t L0B_TOTAL_BYTES  = Arch::L0B_SIZE;                  // 64 KB
     static constexpr uint32_t L0C_TOTAL_BYTES  = Arch::L0C_SIZE;                  // 256 KB
     static constexpr uint32_t UB_PER_V_BYTES   = 256 * 1024;                      // 256 KB
 };
@@ -34,9 +29,6 @@ struct Vector0UbBudget {
     // V0（量化 prologue 核）：负责 GM 输入暂存、INT8/FP8 量化、ND2NZ 摆放
     static constexpr uint32_t GM_INPUT_PING_OFFSET     = 0;
     static constexpr uint32_t GM_INPUT_PING_BYTES      = 48 * 1024;  // 48 KB
-
-    static constexpr uint32_t GM_INPUT_PONG_OFFSET     = 48 * 1024;
-    static constexpr uint32_t GM_INPUT_PONG_BYTES      = 48 * 1024;  // 48 KB
 
     static constexpr uint32_t QUANT_WORKSPACE_OFFSET   = 96 * 1024;
     static constexpr uint32_t QUANT_WORKSPACE_BYTES    = 48 * 1024;  // 48 KB
@@ -60,7 +52,6 @@ struct Vector0UbBudget {
                   "Vector0 quant workspace sub-offsets overlap or exceed the region");
 
     static constexpr uint32_t NZ_OUTPUT_OFFSET         = 144 * 1024;
-    static constexpr uint32_t NZ_OUTPUT_BYTES          = 96 * 1024;  // 96 KB (含每行 32B padding 防 bank conflict)
 
     static constexpr uint32_t RESERVED_OFFSET          = 240 * 1024;
     static constexpr uint32_t RESERVED_BYTES           = 16 * 1024;  // 16 KB 保留
@@ -219,23 +210,14 @@ public:
             return FootprintViolation::kUbV1A7Handoff;
         }
 
-        // V0 UB：GM 输入 ping 槽按 [block_n][head_dim] FP16 暂存（pong 槽等宽，
-        // 偏移由 Vector0UbBudget 常量锁定，校验单槽容量即可覆盖双槽契约）
+        // V0 UB：GM 输入 ping 槽按 [block_n][head_dim] FP16 暂存（设备核单槽取数，
+        // 偏移唯一定义 GM_INPUT_PING_OFFSET，校验槽容量即覆盖该消费契约）
         const uint64_t v0_input_bytes = static_cast<uint64_t>(block_n) * head_dim * 2u;
         if (v0_input_bytes > Vector0UbBudget::GM_INPUT_PING_BYTES) {
             return FootprintViolation::kUbV0Input;
         }
 
         return FootprintViolation::kNone;
-    }
-
-    /**
-     * 布尔包装：host tiling / 单测的直接判据
-     */
-    static constexpr bool ValidateTilingPlan(
-        uint32_t total_rows, uint32_t block_n, uint32_t head_dim)
-    {
-        return InspectTilingPlan(total_rows, block_n, head_dim) == FootprintViolation::kNone;
     }
 };
 

@@ -378,24 +378,6 @@ struct Bf16Reader {
 };
 
 /**
- * Data+Scale 相邻紧凑排布单点（quant_int8 KV 块与 quant_fp8 V 头共用）：
- * memcpy(data) + memcpy(scale) + 32B 对齐补零。调用方各自持有数据/尺寸语义，
- * 本函数只承载排布契约——禁止再写第二份三步 memcpy 样板。
- */
-inline void PackDataAndScaleAdjacent(const void* data, uint32_t data_bytes,
-                                     const void* scale, uint32_t scale_bytes,
-                                     void* compact_dst) noexcept {
-    std::memcpy(compact_dst, data, data_bytes);
-    std::memcpy(static_cast<uint8_t*>(compact_dst) + data_bytes, scale, scale_bytes);
-    const uint32_t total_written = data_bytes + scale_bytes;
-    const uint32_t aligned_total = (total_written + 31u) / 32u * 32u;
-    if (aligned_total > total_written) {
-        std::memset(static_cast<uint8_t*>(compact_dst) + total_written, 0,
-                    aligned_total - total_written);
-    }
-}
-
-/**
  * smooth_k 的 K 减均值单点（差值位型舍回，对齐孪生 Half/Bf16Reader::Sub 口径）：
  * km 为 nullptr 时原值直通。kernel 设备/宿主分支与 quant 参考实现共用，
  * 禁止在调用方展开 (dtype==2)?Bf16:Half 三元式。
@@ -416,6 +398,9 @@ __aicore__ __host__ inline float SubKm(float val, const float* km_vec, uint32_t 
  * quant 层 C-ABI 唯一声明点（定义在 quant_int8.cpp / quant_fp8.cpp；
  * twin_reference.h 与外部单测经本头引用，禁止在他处重复声明）。
  * dtype_mode：0=float32，1=float16，2=bfloat16；布局编码 LAYOUT_HND/LAYOUT_NHD。
+ * （原 PackKv/VDataAndScaleAdjacentAscend 与其内核成员、底座 PackDataAndScaleAdjacent
+ *  为零调用方死链，2026-10-04 删除：L1 Data+Scale 相邻摆布由设备核 CopyUbRowToL1
+ *  契约承载，host 侧无第二份排布实现。）
  */
 extern "C" {
 int QuantizeQInt8Ascend(const void* q_in, void* q_out, float* q_scale_out, uint32_t b, uint32_t hq,
@@ -427,11 +412,6 @@ int QuantizeKInt8Ascend(const void* k_in, const float* km_in, void* k_out, float
 int QuantizeVFp8Ascend(const void* v_in, void* v_fp8_out, float* v_scale_out, float* vm_out,
                        uint32_t b, uint32_t hkv, uint32_t sk, uint32_t d, uint32_t pv_accum_dtype,
                        int smooth_v, uint32_t tensor_layout, int dtype_mode) noexcept;
-int PackKvDataAndScaleAdjacentAscend(const int8_t* k_data_block, const float* k_scale_block,
-                                     uint8_t* compact_dst, uint32_t block_k, uint32_t d,
-                                     uint32_t qk_quant_gran) noexcept;
-int PackVDataAndScaleAdjacentAscend(const uint8_t* v_data_block, const float* v_scale_head,
-                                    uint8_t* compact_dst, uint32_t pad_sk_v, uint32_t d) noexcept;
 }
 
 #endif // SAGE_ATTN_QUANT_COMMON_H

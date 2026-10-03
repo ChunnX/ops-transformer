@@ -21,15 +21,27 @@
 // ::CeilDiv/::Min/::Max，CATLASS_HOST_DEVICE constexpr）——catlass.hpp 已带入，此处
 // 显式 include 使本文件对全局对齐原语的依赖单点可见。
 #include "catlass/detail/alignment.hpp"
-// 官方架构资源组件（Arch::Ascend950 片上容量）与官方 layout 构件（tla/layout.hpp 的
-// MakeLayout/MakeShape/MakeStride/crd2offset）——Bank 几何与 GM 布局单点经官方组件派生。
-#include "catlass/arch/arch.hpp"
-#include "tla/layout.hpp"
-
 #if SAGE_ATTN_KERNEL_API
 #include "kernel_operator.h"
 #else
 namespace AscendC {
+
+enum class TPosition : uint8_t {
+    GM = 0,
+    A1 = 1,
+    A2 = 2,
+    B1 = 3,
+    B2 = 4,
+    C1 = 5,
+    C2 = 6,
+    CO1 = 7,
+    CO2 = 8,
+    VECIN = 9,
+    VECOUT = 10,
+    VECCALC = 11,
+    TSCM = 12,
+    LCM = 13
+};
 
 // 宿主门禁（KERNEL_API=0）HardEvent 影子枚举：编号逐项镜像 dav-3510 设备头
 //（cann aarch64-linux/asc/impl/basic_api/kernel_event.h，3510 无 FIX_V/V_FIX 档）。
@@ -43,6 +55,11 @@ enum class HardEvent : uint8_t {
 };
 } // namespace AscendC
 #endif
+
+// 官方架构资源组件（Arch::Ascend950 片上容量）与官方 layout 构件（tla/layout.hpp 的
+// MakeLayout/MakeShape/MakeStride/crd2offset）——Bank 几何与 GM 布局单点经官方组件派生。
+#include "catlass/arch/arch.hpp"
+#include "tla/layout.hpp"
 
 namespace Catlass::SageAttn {
 
@@ -274,7 +291,6 @@ __aicore__ inline constexpr GmBhsLayout MakeGmBhsLayout(uint32_t b, uint32_t h, 
  */
 struct L1DoubleBankContract {
     static constexpr uint32_t BANK0_START = sage_attn::L1_BANK0_OFFSET; // 0 KB
-    static constexpr uint32_t BANK0_SIZE  = sage_attn::L1_BANK_SIZE;    // 256 KB
     static constexpr uint32_t BANK1_START = sage_attn::L1_BANK1_OFFSET; // 256 KB
     static constexpr uint32_t BANK1_SIZE  = sage_attn::L1_BANK_SIZE;    // 256 KB
 
