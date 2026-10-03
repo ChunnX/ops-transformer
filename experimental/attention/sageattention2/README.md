@@ -19,6 +19,12 @@
 - `./tools/sim/`：设备核 camodel 仿真 harness（B2 门禁数值比对；依赖 CANN 容器 bisheng `--run-mode=sim` 运行，用法见 `./tools/sim/README.md`，不属于 run.sh 主机门禁）
 - `./run.sh`：本地门禁统一入口
 
+## 官方 CATLASS 接入与模块边界
+
+- 设备核经 `sageattn_fp8/catlass/sage_tile.hpp` 无条件 include 官方 cann/catlass 仓 `<catlass/catlass.hpp>`，分形粒度常量（FRACTAL_M0/N0、FRACTAL_K0_*、LOADDATA2D_REPEAT_BYTES）全部由官方 `BYTE_PER_C0` / `C0_NUM_PER_FRACTAL` / `BYTE_PER_FRACTAL` 派生，`static_assert` 锁定；
+- 构建前置：`CATLASS_ROOT` 指向官方 catlass checkout（解析链：CMake 变量/环境变量 → 仓上级 `../catlass` → `third_party/catlass`，唯一定义点 `cmake/SageAttnDeps.cmake`，缺失即 fatal）；
+- 模块边界：官方 TileCopyTla 等 copy 组件要求 L1 侧 zN 分形布局；本算子 V0 产出为 ND 行布局 + Data/Scale 相邻契约（任务书允许的按 Cube 微调项），故 LoadData2D/Fixpipe 热路径为本算子自研 AscendC 逻辑，MMA 指令语义冻结待真机 L-A 复核，不与官方 copy 组件混用。
+
 ## 编译构建
 
 ### 仓库整包构建（产出算子 run 包）
@@ -69,7 +75,7 @@ bash build.sh --pkg --experimental --soc=ascend950 --vendor_name=customize --ops
 
 ### 两段式 ACLNN C 接口（交付态 `./op_api/`，移植态 `./aclnn/`）
 
-- 交付态（随 run 包安装，真机调用方以此为准）：`./op_api/aclnn_sage_attention2.h` 第一段 `aclnnSageAttention2GetWorkspaceSize`：入参 q/k/v、可选 `keyMean`/`lseCorrection`、`tensorLayout`（字符串 `"HND"`/`"NHD"`，`"BNSD"`/`"BSND"` 同义词域）、`isCausal`、`qkQuantGran`（`"per_thread"`/`"per_warp"`）、`smScale`、`pvAccumDtype`（`"fp32"`/`"fp32+fp32"`/`"fp32+fp16"`）、`smoothK`、`smoothV`、out、可选 lse、`workspaceSize`、`executor`；属性顺序与 `./op_host/sage_attention2_def.cpp` 注册的 7 项一致
+- 交付态（随 run 包安装，真机调用方以此为准）：`./op_api/aclnn_sage_attention2.h` 第一段 `aclnnSageAttention2GetWorkspaceSize`：入参 q/k/v、可选 `keyMean`/`lseCorrection`、`tensorLayout`（字符串，仅 `"HND"`/`"NHD"`，非法取值报错）、`isCausal`、`qkQuantGran`（`"per_thread"`/`"per_warp"`）、`smScale`、`pvAccumDtype`（`"fp32"`/`"fp32+fp32"`/`"fp32+fp16"`）、`smoothK`、`smoothV`、out、可选 lse、`workspaceSize`、`executor`；属性顺序与 `./op_host/sage_attention2_def.cpp` 注册的 7 项一致
 - 移植态（本地单测与无 opdev 环境自包含实现，不随 run 包安装）：`./aclnn/sage_attn_proto.h` 第一段同名接口取数值编码：`qkQuantGran`（2=per_warp，3=per_thread）、`pvAccumDtype`（0=fp32，1=fp32+fp32，2=fp32+fp16）、`tensorLayout`（0=NHD，1=HND），属性顺序为 scale, gran, accum, causal, layout, smoothK, smoothV
 - 第二段 `aclnnSageAttention2(workspace, workspaceSize, executor, stream)`：校验 workspace 不小于第一段产出后发射 kernel（两态签名一致）
 - `smScale` 冻结语义：默认值 `1/sqrt(head_dim)` 仅在 Python `sm_scale=None` 时由桥接层折叠后传入；两态 C 接口收到非正值返回 `ACLNN_ERR_PARAM_INVALID`

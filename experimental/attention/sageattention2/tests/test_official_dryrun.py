@@ -36,12 +36,8 @@ os.environ.setdefault("SAGEATTN_ALLOW_CPU_STUB", "1")
 os.environ.setdefault("SAGEATTN_NPU_MODULE", "sageattention2")
 
 from tests.official_test_suite_dryrun import (
-    generate_perf_manifest,
     load_all_cases,
     resolve_backend,
-    run_accuracy_evaluation,
-    run_functional_dryrun,
-    run_negative_interceptions,
     run_full_suite,
 )
 
@@ -52,8 +48,7 @@ class TestOfficialTestSuiteDryRun(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.cases_dict = load_all_cases(CASES_JSON_PATH)
-        _, fp8_fn, cls.backend_name = resolve_backend()
-        cls.fp8_asc = staticmethod(fp8_fn)
+        resolve_backend()  # 装载后端模块（setUpClass 副作用），返回值无消费者
         cls.suite_results = run_full_suite(report_path=REPORT_OUTPUT_PATH)
 
     def test_01_cases_500_manifest_integrity(self):

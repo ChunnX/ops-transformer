@@ -36,9 +36,9 @@ struct TunedShapeKey {
 };
 
 static constexpr TunedTilingEntry kAscend950TunedBank[] = {
-    {"P-01", 32u, 128u, 8u, 6.0f, false, true, 2.128f},
+    {"P-01", 32u, 128u, 16u, 6.0f, false, true, 2.128f},
     {"P-02", 32u, 128u, 16u, 6.0f, false, true, 2.128f},
-    {"P-03", 32u, 128u, 8u, 6.0f, true, true, 3.274f},
+    {"P-03", 32u, 128u, 16u, 6.0f, true, true, 3.274f},
     {"P-04", 32u, 128u, 16u, 6.0f, false, true, 2.128f},
     {"P-05", 32u, 128u, 16u, 6.0f, false, true, 2.128f},
     {"P-06", 32u, 128u, 16u, 6.0f, false, true, 2.128f},

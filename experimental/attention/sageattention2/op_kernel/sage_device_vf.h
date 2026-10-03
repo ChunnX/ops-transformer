@@ -236,7 +236,7 @@ __simd_vf__ inline void DequantMaskLogitsRowVF(__ubuf__ int32_t* dot_row, __ubuf
     const bool is_pure_masked = (is_causal != 0u && token_q < k_start) || (k_start >= sk);
     if (is_pure_masked) {
         RegTensor<float> neg_inf;
-        Duplicate(neg_inf, -1.0e30f);
+        Duplicate(neg_inf, SAGE_MASK_SENTINEL);
         for (uint32_t j = 0; j < block_n; j += 64) {
             StoreAlign(logits_row + j, neg_inf, full);
         }
@@ -266,7 +266,7 @@ __simd_vf__ inline void DequantMaskLogitsRowVF(__ubuf__ int32_t* dot_row, __ubuf
 
     // 块级路径 3：混合块（触碰因果斜线或 sk 尾界），按 64-element chunk 细粒度三态分流
     RegTensor<float> neg_inf;
-    Duplicate(neg_inf, -1.0e30f);
+    Duplicate(neg_inf, SAGE_MASK_SENTINEL);
 
     for (uint32_t j = 0; j < block_n; j += 64) {
         const uint32_t chunk_start = k_start + j;
@@ -319,7 +319,7 @@ __simd_vf__ inline void BlockMaxAndSumVF(__ubuf__ float* logits, uint32_t block_
     auto full = CreateMask<float, MaskPattern::ALL>();
 
     RegTensor<float> max_val, sum_val;
-    Duplicate(max_val, -1.0e30f);
+    Duplicate(max_val, SAGE_MASK_SENTINEL);
     Duplicate(sum_val, 0.0f);
 
     for (uint32_t col = 0; col < block_n; col += 64) {

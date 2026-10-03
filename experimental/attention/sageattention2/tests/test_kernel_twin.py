@@ -40,7 +40,6 @@ import math
 import os
 import subprocess
 import sys
-import time
 import unittest
 from pathlib import Path
 
@@ -48,6 +47,7 @@ import torch
 
 current_file = Path(__file__).resolve()
 OP_ROOT = current_file.parents[1]
+sys.path.insert(0, str(current_file.parent))  # tests/ 内共享模块（tiling_mirror）
 REPO_ROOT = next((p for p in current_file.parents if (p / "golden" / "manifest.json").exists()),
                  OP_ROOT.parent.parent.parent.parent)
 
@@ -115,34 +115,8 @@ def _load_lib() -> ctypes.CDLL:
     return lib
 
 
-class SageAttention2TilingData(ctypes.Structure):
-    """tiling.h SageAttention2TilingData 的 ctypes 镜像（160 字节，_pack_=1，
-    逐字段对齐断言由 tests/test_tiling_struct.py 锁定）。"""
-
-    _pack_ = 1
-    _fields_ = [
-        ("b", ctypes.c_uint32), ("hq", ctypes.c_uint32), ("hkv", ctypes.c_uint32),
-        ("sq", ctypes.c_uint32), ("sk", ctypes.c_uint32), ("d_og", ctypes.c_uint32),
-        ("d_pad", ctypes.c_uint32),
-        ("is_causal", ctypes.c_uint32), ("tensor_layout", ctypes.c_uint32),
-        ("qk_quant_gran", ctypes.c_uint32), ("pv_accum_dtype", ctypes.c_uint32),
-        ("smooth_k", ctypes.c_uint32), ("smooth_v", ctypes.c_uint32),
-        ("sm_scale_log2e", ctypes.c_float), ("v_scale_max", ctypes.c_float),
-        ("s_fp8_offset", ctypes.c_float),
-        ("m_per_core", ctypes.c_uint32), ("block_n", ctypes.c_uint32), ("k_step", ctypes.c_uint32),
-        ("core_num_used", ctypes.c_uint32), ("q_blk_num", ctypes.c_uint32),
-        ("kv_blk_num", ctypes.c_uint32), ("split_kv_num", ctypes.c_uint32),
-        ("is_merge", ctypes.c_uint32),
-        ("l1_q_offset", ctypes.c_uint32), ("l1_q_scale_offset", ctypes.c_uint32),
-        ("l1_kv_offset", ctypes.c_uint32), ("l1_kv_scale_offset", ctypes.c_uint32),
-        ("ub_acc_offset", ctypes.c_uint32), ("ub_softmax_offset", ctypes.c_uint32),
-        ("ub_quant_offset", ctypes.c_uint32),
-        ("workspace_lse_offset", ctypes.c_uint64), ("workspace_vm_offset", ctypes.c_uint64),
-        ("enable_die_affinity", ctypes.c_uint32), ("die_num", ctypes.c_uint32),
-        ("cores_per_die", ctypes.c_uint32), ("tasks_per_die", ctypes.c_uint32),
-        ("input_dtype", ctypes.c_uint8),  # §8 输入位型分派：1=fp16（缺省）, 2=bf16
-        ("reserved", ctypes.c_uint8 * 3),
-    ]
+# 镜像唯一定义点：tests/tiling_mirror.py（逐字段偏移由 tests/test_tiling_struct.py 锁定）
+from tiling_mirror import SageAttention2TilingData
 
 
 _LIB = _load_lib()

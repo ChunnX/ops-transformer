@@ -119,6 +119,11 @@
 
 - 1C2V 协同流水：
   - Cube 引擎：负责 INT8 MMAD（QK^T）与 FP8 MMAD（PV），由 CATLASS 矩阵乘模板驱动；
+  - CATLASS 接入边界（2026-10-03 收敛）：分形常量唯一定义源为官方 cann/catlass 仓
+    `<catlass/catlass.hpp>`（sage_tile.hpp include + static_assert 绑定，构建接线见
+    cmake/SageAttnDeps.cmake）；LoadData2D/Fixpipe 数据通路因本算子 L1 为 ND 行布局
+    + Data/Scale 相邻契约（与官方 TileCopyTla 的 zN 前置不匹配），保持 AscendC 自研，
+    为任务书"按 Cube/CATLASS 微调分块"授权范围；
   - V0 向量核：负责 MTE2 搬入、smooth_k 均值扣减、INT8/FP8 量化、scale 提取与 ND2NZ 排布转换；
   - V1 向量核：负责 L0C FixPipe 接收、exp2 域 online softmax、行 max 与 skip-scale 动态重缩放、两级累加归约与 LSE 累计；
 - 延迟一拍软件流水：

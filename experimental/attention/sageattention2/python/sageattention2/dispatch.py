@@ -445,7 +445,8 @@ def dispatch_sageattn_qk_int8_pv_fp8_asc(
     is_cpu_device = hasattr(v, "device") and v.device.type == "cpu"
     is_meta_device = hasattr(v, "device") and v.device.type == "meta"
     is_fake_tensor = type(v).__name__ == "FakeTensor" or hasattr(v, "fake_mode")
-    npu_avail = is_npu_available() and is_npu_kernel_loaded()
+    npu_present = is_npu_available()
+    npu_avail = npu_present and is_npu_kernel_loaded()
 
     if is_meta_device or is_fake_tensor:
         out_pad, lse = torch.ops.sageattention2.forward(
@@ -466,7 +467,6 @@ def dispatch_sageattn_qk_int8_pv_fp8_asc(
     # 禁止静默 CPU 回退：NPU 在位但 kernel 未加载时，必须显式 SAGEATTN_ALLOW_CPU_STUB
     # opt-in（附带警告）才允许走 CPU 参考；纯 CPU 张量（本地单测）不受此门控限制。
     # meta/fake 张量已在上方分支提前返回，此处无需重复判断。
-    npu_present = is_npu_available()
     if not is_cpu_device and npu_present and not npu_avail and not allow_cpu_stub:
         raise RuntimeError(
             "SageAttention2 NPU kernel is not loaded while an Ascend NPU is present; "

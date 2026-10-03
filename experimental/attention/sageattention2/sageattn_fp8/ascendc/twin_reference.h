@@ -434,10 +434,10 @@ inline int RunSequential(const TwinIo& io, TwinQuantDump* dump = nullptr) {
                     const uint32_t j_end = (j_beg + CTA_K < io.sk) ? j_beg + CTA_K : io.sk;
 
                     // 5.1 块内 logits（INT32 精确点积 + 单点反量化；与设备核 INT8 MMAD 同轨迹）
-                    float cur_max = -1.0e30f;
+                    float cur_max = SAGE_MASK_SENTINEL;
                     for (uint32_t j = j_beg; j < j_end; ++j) {
                         if (io.is_causal && static_cast<int64_t>(j) > static_cast<int64_t>(i)) {
-                            s_row[j] = -1.0e30f;  // 掩码位置记负无穷且不参与 max/sum
+                            s_row[j] = SAGE_MASK_SENTINEL;  // 掩码位置记负无穷且不参与 max/sum
                             continue;
                         }
                         int32_t dot = 0;
@@ -451,7 +451,7 @@ inline int RunSequential(const TwinIo& io, TwinQuantDump* dump = nullptr) {
                                                   sm_scale_log2e);
                         if (s_row[j] > cur_max) cur_max = s_row[j];
                     }
-                    if (cur_max <= -1.0e30f) {
+                    if (cur_max <= SAGE_MASK_SENTINEL) {
                         continue;  // 整块被因果掩码（前缀行），无贡献
                     }
 

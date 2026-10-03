@@ -194,7 +194,6 @@ static_assert(SAGE_UB_V1_VS_CHAN_OFFSET + 512u <= Catlass::SageAttn::Vector1UbBu
 struct SimMemory {
     uint8_t l1_mem[512 * 1024]{0};
     uint8_t ub_mem[512 * 1024]{0};
-    int32_t l0c_qk[128 * 128]{0};
     float o_accum[128 * 128]{0.0f};
     float logits[128 * 128]{0.0f};
     float q_scales[8 * 2048]{0.0f};
@@ -786,7 +785,7 @@ private:
                 float cur_max = MIN_FLOAT_VAL;
                 float cur_sum = 0.0f;
                 ComputeBlockMaxAndSum(r, cur_max, cur_sum, k);
-                if (cur_max > -1.0e30f) {
+                if (cur_max > SAGE_MASK_SENTINEL) {
                     const float rescale_factor =
                         OnlineSoftmaxTransformer::Step(row_states_[r], cur_max, cur_sum, true);
                     if (row_states_[r].need_rescale &&
@@ -803,7 +802,7 @@ private:
                 float cur_max = MIN_FLOAT_VAL;
                 float cur_sum = 0.0f;
                 ComputeBlockMaxAndSum(r, cur_max, cur_sum, k);
-                if (cur_max <= -1.0e30f) {
+                if (cur_max <= SAGE_MASK_SENTINEL) {
                     continue; // twin 5.1：整块被因果掩码（前缀行），无贡献不步进
                 }
                 const float rescale_factor =
@@ -1622,7 +1621,7 @@ private:
             const uint32_t token_k = cur_k_start_ + j;
             if (token_k >= sk_ || (tiling_->is_causal != 0 &&
                                    static_cast<int64_t>(token_k) > static_cast<int64_t>(token_q))) {
-                logits_row[j] = -1.0e30f;
+                logits_row[j] = SAGE_MASK_SENTINEL;
                 continue;
             }
             const int8_t *qr = l1_q + static_cast<size_t>(row) * d_;
@@ -1637,12 +1636,12 @@ private:
                 tiling_->sm_scale_log2e);
         }
 
-        float row_max = -1.0e30f;
+        float row_max = SAGE_MASK_SENTINEL;
         for (uint32_t j = 0; j < block_n_; ++j) {
             if (logits_row[j] > row_max) row_max = logits_row[j];
         }
-        if (row_max <= -1.0e30f) {
-            cur_max = -1.0e30f;
+        if (row_max <= SAGE_MASK_SENTINEL) {
+            cur_max = SAGE_MASK_SENTINEL;
             cur_sum = 0.0f;
             return;
         }

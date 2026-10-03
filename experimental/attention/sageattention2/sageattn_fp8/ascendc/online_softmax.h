@@ -46,6 +46,9 @@ __aicore__ static inline float SageFastAbs(float x) {
 // LOG2E / INV_LOG2E / SKIP_SCALE_TAU 的唯一定义位于 tiling.h（本文件经 include 引用）
 constexpr float EXP2_MIN_CLAMP = -87.33f;           // exp2 下溢极值，低于此值截断为 0
 constexpr float MIN_FLOAT_VAL = -3.402823466e+38F;  // -FLT_MAX，float 最小有限值（不再经宏定义）
+// causal/尾块掩码哨兵（唯一定义点）：必须 > -FLT_MAX，使 "cur_max <= SAGE_MASK_SENTINEL"
+// 能区分"整块被掩码"与"状态未初始化"（后者为 MIN_FLOAT_VAL）
+constexpr float SAGE_MASK_SENTINEL = -1.0e30f;
 
 /**
  * exp2 域 Online Softmax 状态描述符
@@ -63,8 +66,6 @@ struct OnlineSoftmaxState {
     __aicore__ void Reset() {
         m_run = MIN_FLOAT_VAL;
         d_run = 0.0f;
-        m_cur = MIN_FLOAT_VAL;
-        d_cur = 0.0f;
         m_scale = MIN_FLOAT_VAL;
         lse = MIN_FLOAT_VAL;
         need_rescale = true;
@@ -174,9 +175,6 @@ public:
         float cur_max,
         float cur_sum,
         bool is_force_rescale = false) {
-
-        state.m_cur = cur_max;
-        state.d_cur = cur_sum;
 
         if (state.m_run <= MIN_FLOAT_VAL) {
             // 首个有效分块初始化

@@ -36,7 +36,9 @@ def is_npu_kernel_loaded() -> bool:
     """Return True if compiled C++/aclnn NPU custom operator is available."""
     if torch is None:
         return False
-    for ns in ("cann_ops_transformer", "sageattention2", "custom"):
+    # 探测命名空间清单须与 run_sageattn_npu 的 op_fn 查找链一致（禁止探测认可
+    # 而执行不可达的死分支）
+    for ns in ("cann_ops_transformer", "sageattention2"):
         if hasattr(torch.ops, ns):
             lib = getattr(torch.ops, ns)
             if hasattr(lib, _NPU_SAGEATTN_OP_NAME) or hasattr(lib, "sageattn_qk_int8_pv_fp8_asc") or hasattr(lib, "forward"):
