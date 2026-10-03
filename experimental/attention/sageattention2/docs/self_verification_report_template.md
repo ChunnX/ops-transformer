@@ -71,8 +71,8 @@
 
 ### 3.3 精度比对截图占位
 
-- 精度比对终端输出日志截图：待实机回填（截取 tools/check_golden.py --strict 执行结果，显示 25/25 PASS）。
-- 官方测试套件 dry-run / 实机比对截图：待实机回填（截取 tests/test_official_suite.py 运行结果）。
+- 精度比对终端输出日志截图：待实机回填（截取 tests/test_golden_precision.py 执行结果，显示 25 桶 L-A/L-B 全 PASS）。
+- 官方测试套件 dry-run / 实机比对截图：待实机回填（截取 tests/test_official_dryrun.py 运行结果）。
 
 ## 4. 性能自验证结果（硬性门禁对照）
 

@@ -51,7 +51,7 @@ bash run.sh all       # 全链
 - `docker/Dockerfile`：CANN 9.2.0-beta.1 950 devel 基础镜像 + BiSheng + torch 配套；
 - `docker/docker-compose.yml`：门禁服务编排（构建/运行，全部相对挂载）；
 - `docker/docker-compose.npu.yml`：Atlas 950 真机环境设备与驱动透传叠加（`docker/sage` 检测驱动自动启用）；
-- `docker/sage`：容器生命周期唯一入口（`up` / `exec` / `run` / `stop` 四个动词）；
+- `docker/sage`：容器生命周期唯一入口（`init` / `up` / `exec` / `run` / `stop` 五个动词）；
 - `docker/init.sh`：一键初始化（目录、.env、CATLASS 固定 commit、基础镜像、可选 golden）；
 - `docker/.env.example`：compose 覆盖项模板；
 - `docker/third_party/`、`docker/cache/`、`docker/out/`：初始化产物与缓存出口（gitignore，不入库）。

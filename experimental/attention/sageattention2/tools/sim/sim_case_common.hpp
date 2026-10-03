@@ -29,8 +29,10 @@
 #include "../../aclnn/sage_attn_host_tiling.h"
 #include "../../quant/quant_common.h"
 
-// 注意：twin_reference.h（宿主孪生真值）仅由 sim_reference.cpp include——
-// 它携带 std::vector 载体且数值实现在宿主分支，不得混入 bisheng 设备编译域。
+// 注意：twin_reference.h（宿主孪生真值）仅在宿主编译域被 include：sim_reference.cpp、
+// 自身实现 twin_reference.cpp，以及 op_kernel/sageattention2.cpp 的宿主分支
+// （!SAGE_ATTN_DEVICE_COMPILE 门控）。它携带 std::vector 载体且数值实现在宿主分支，
+// 不得混入 bisheng 设备编译域。
 
 namespace sage_attn_sim {
 
