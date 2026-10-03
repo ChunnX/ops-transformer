@@ -60,7 +60,7 @@ constexpr uint32_t ATLAS_950_DIE_NUM = 2;              // Atlas 950PR 标配 2 �
 constexpr uint32_t ATLAS_950_GROUPS_PER_DIE = 4;       // Atlas 950PR 每 Die 包含 4 个 Core Group (全片 8-Group)
 constexpr uint32_t ATLAS_950_CORES_PER_DIE = 16;       // Atlas 950PR 满配单 Die 16 个 AI Core
 constexpr float S_FP8_OFFSET = 8.807354922057604f;      // log2(448.0f) P 矩阵 e4m3 偏置常数 (task/01_design 2.4)
-constexpr float LN_448 = 6.104793232414985f;            // ln(448.0f) = S_FP8_OFFSET * INV_LOG2E，以加代乘偏置
+constexpr float LN_448 = 6.104793232414985f;            // ln(448.0f) = S_FP8_OFFSET * INV_LOG2E（N7/R11-1 裁定后 448· 放大恒以乘法在指数之后，本常量保留为域关系注记）
 
 /**
  * 共享数学与量化常量（全仓唯一定义点；quant_host.h / online_softmax.h /

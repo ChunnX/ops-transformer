@@ -108,8 +108,9 @@ __simd_vf__ inline void QuantRowInt8VF(__ubuf__ half* in_ptr, __ubuf__ int8_t* o
 
     RegTensor<float> scale_reg, neg127, pos127;
     Duplicate(scale_reg, scale);
-    Duplicate(neg127, -127.0f);
-    Duplicate(pos127, 127.0f);
+    // 饱和界 INT8_QUANT_MAX 唯一定义位于 tiling.h（quant_common.h 同源纪律）
+    Duplicate(neg127, -INT8_QUANT_MAX);
+    Duplicate(pos127, INT8_QUANT_MAX);
     RegTensor<float> zero, half_reg, neg_half_reg;
     Duplicate(zero, 0.0f);
     Duplicate(half_reg, 0.5f);
@@ -144,11 +145,14 @@ __simd_vf__ inline void QuantRowInt8VF(__ubuf__ half* in_ptr, __ubuf__ int8_t* o
 
         RegTensor<int32_t> packed_i;
         if (per_thread) {
-            // half-away：x + 0.5·sign(x) 后截断（对 -0 边界与宿主 floor(|x|+0.5)·sign 同值）
+            // half-away：x + 0.5·sign(x) 后截断（对 -0 边界与宿主 floor(|x|+0.5)·sign 同值）。
+            // MicroAPI 语义（dav-3510 头与 CANN 内置实现核对）：Compare<LT>(a,b) = a<b，
+            // Select(dst,s0,s1,mask) = mask ? s0 : s1——neg(val<0) 须取 neg_half_reg(-0.5)
+            // 才是 +0.5·sign(x)；反接会退化为 round-half-toward-zero（R16 审查修正）
             RegTensor<float> bias, shifted;
             MaskReg neg;
             Compare<float, CMPMODE::LT>(neg, val, zero, full);
-            Select(bias, half_reg, neg_half_reg, neg);
+            Select(bias, neg_half_reg, half_reg, neg);
             Add(shifted, val, bias, full);
             Cast<int32_t, float, toI32Trunc>(packed_i, shifted, full);
         } else {
@@ -261,18 +265,21 @@ __simd_vf__ inline void RescaleAccumRowVF(__ubuf__ float* o_row, float factor, u
 
 /**
  * 6. Softmax 概率矩阵生成：exp2 域恒等 P = 2^(x-m')·448（logits 已折 sm_scale·log2e，
- *    经 ln2 缩放进自然域），ln448 融合进锚点（以加代乘），并饱和转换至 FP8 e4m3fn。
+ *    经 ln2 缩放进自然域），448· 放大经乘法在 Exp 之后实现（twin::SoftmaxProbCode
+ *    同式；DEFECT-R11-1：ln448 融合进锚点的以加代乘轨迹与孪生差 1 ulp，经 e4m3
+ *    量化放大为位翻转，同 N7 裁定），并饱和转换至 FP8 e4m3fn。
  */
 __simd_vf__ inline void SoftmaxProbRowVF(__ubuf__ float* logits, __ubuf__ float8_e4m3_t* out_p, float m_prime, uint32_t block_n) {
     using namespace AscendC;
     using namespace AscendC::MicroAPI;
     auto full = CreateMask<float, MaskPattern::ALL>();
     static constexpr CastTrait toFp8{RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
-    // exp2 域恒等（收敛轮 F/DEFECT-F-2）：P = 2^(x-m')·448 = Exp((x-m')·ln2 + ln448)。
-    // logits 为 exp2 域量（已折 sm_scale·log2e），必须经 ln2 缩放进自然域；
-    // ln448 融合进锚点（以加代乘），448· 放大使行 max 恰为 448 填满 e4m3 动态范围。
+    // exp2 域恒等（twin::SoftmaxProbCode 同式）：P = 2^(x-m')·448，乘法在 Exp 之后。
+    // logits 为 exp2 域量（已折 sm_scale·log2e），经 ln2 缩放进硬件自然指数域——
+    // ln2 缩放为设备本征域换算（真机 L-A 容差域，A7 族登记）；
+    // 448· 放大使行 max 恰为 448 填满 e4m3 动态范围。
     RegTensor<float> m_ln_reg, ln2_reg;
-    Duplicate(m_ln_reg, m_prime * INV_LOG2E - LN_448);
+    Duplicate(m_ln_reg, m_prime * INV_LOG2E);
     Duplicate(ln2_reg, INV_LOG2E);
     for (uint32_t j = 0; j < block_n; j += 64) {
         RegTensor<float> logit_val, scaled, diff, exp_val;
@@ -281,6 +288,7 @@ __simd_vf__ inline void SoftmaxProbRowVF(__ubuf__ float* logits, __ubuf__ float8
         Mul(scaled, logit_val, ln2_reg, full);
         Sub(diff, scaled, m_ln_reg, full);
         Exp(exp_val, diff, full);
+        Muls(exp_val, exp_val, FP8_E4M3_MAX, full);
         Cast<float8_e4m3_t, float, toFp8>(packed, exp_val, full);
         StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(out_p + j, packed, full);
     }

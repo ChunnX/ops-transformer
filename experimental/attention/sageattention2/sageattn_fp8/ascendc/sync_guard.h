@@ -78,6 +78,9 @@ namespace CrossCoreFlags {
     // Cube 每块 PV L0C → UB 交接槽（TWO_LEVEL_REDUCE 区）后 set，V1 合并进 O 主累加器后 set FREE
     constexpr uint32_t FLAG_PV_PARTIAL_READY     = 11; // 块 PV 部分和已落 UB 交接槽 (Cube set → V1 wait)
     constexpr uint32_t FLAG_PV_PARTIAL_FREE      = 12; // 交接槽已合并，Cube 可覆写 (V1 set → Cube wait)
+    // A7 QK dot32 单缓冲读保护：V1 完成 block k 反量化读取后 set，Cube 方可在
+    // beat k+1 覆写 dot32 区（单 L0C 要求 QK fp 先于 PV Mmad，无法借道 S(k) 排序）
+    constexpr uint32_t FLAG_DOT_FREE             = 13; // dot32 区已读毕，Cube 可覆写 (V1 set → Cube wait)
 }
 
 /**

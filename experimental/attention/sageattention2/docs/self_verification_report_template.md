@@ -157,10 +157,12 @@ python3 tests/test_official_suite.py
 # 1. 运行 PyTorch 路径对标测试
 python3 tests/benchmark/bench_npu.py --repeats 100 --warmup 50 --order abba
 
-# 2. 编译并运行 aclnn 路径对标测试
+# 2. 编译并运行 aclnn 路径对标测试（CLI 无聚合旗标，逐 case 运行，见 PrintUsage）
 cd ops-transformer/experimental/attention/sageattention2
 bash benchmarks/build_aclnn_benchmark.sh
-./build/benchmarks/benchmark_aclnn --all --order abba --gate 1.6
+for c in P-01 P-02 P-03 P-04 P-05 P-06 P-07; do
+  ./build/benchmarks/benchmark_aclnn --case $c --order abba --gate 1.6
+done
 ```
 
 预期结果：P-01 至 P-07 逐项及几何平均在 PyTorch 与 aclnn 双路径均实现 Speedup >= 1.6x。

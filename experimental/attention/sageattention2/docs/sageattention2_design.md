@@ -111,9 +111,9 @@
   - bits 4-7: accum（0=fp32, 1=fp32+fp32, 2=fp32+fp16）
   - bits 8-11: layout（0=NHD, 1=HND）
   - bits 12-15: causal（0=非因果, 1=因果）
-  - bits 16-19: pad（0=无pad, 1=pad64, 2=pad128）
+  - bits 16-19: pad（0=d_pad 64 档, 1=d_pad 128 档；编码见 op_host SetTilingKey 的 `d_pad == 128u ? 1u : 0u`）
   - bits 20-23: input_dtype（1=fp16, 2=bf16）
-- 依据 tiling_key 在 Kernel 侧进行零分支模板直调。
+- M5 规划：依据 tiling_key 做编译期模板特化（ASCENDC_TPL_ARGS_DECL）零分支直调；当前 kernel 按 GET_TILING_DATA_WITH_STRUCT 的运行时字段消费 tiling_key 不参与核内分派。
 
 #### kernel 侧设计
 

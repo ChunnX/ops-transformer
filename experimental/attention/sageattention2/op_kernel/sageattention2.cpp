@@ -136,6 +136,19 @@ namespace sage_attn {
 // 常量不随 SimMemory 分支门控，row_states_ 成员在设备分支亦需该界）
 constexpr uint32_t kKernelMaxRows = 128;
 
+// A7 设备态 UB 布局（V1 256KB 地址空间内的 A7 专用区；task/12_device_data_path.md）：
+// 与 Vector1UbBudget 的区界解耦（区为记账名，地址连续编址），静态不等式防越界——
+//   O_ACCUM [0,64KB) | S 双槽 [64KB,64KB+2·rows·block_n) | dot32 [80KB,80KB+rows·block_n·4)
+//   pv_partial [144KB,144KB+rows·d·4) | 行 stats 等小暂存 [208KB, LSE 区)
+// 极限 rows=block_n=d=128 时 dot32/pv_partial 各恰 64KB，总占用 208KB < 256KB。
+constexpr uint32_t SAGE_UB_DOT32_OFFSET = 80u * 1024u;
+constexpr uint32_t SAGE_UB_PV_PARTIAL_OFFSET = 144u * 1024u;
+static_assert(SAGE_UB_DOT32_OFFSET + kKernelMaxRows * 128 * sizeof(int32_t)
+                  <= SAGE_UB_PV_PARTIAL_OFFSET,
+              "A7 dot32 region overflows into pv_partial");
+static_assert(SAGE_UB_PV_PARTIAL_OFFSET + kKernelMaxRows * 128 * sizeof(float) <= 256u * 1024u,
+              "A7 pv_partial region exceeds V1 UB");
+
 #if !SAGE_ATTN_DEVICE_COMPILE
 /**
  * KT/宿主标量基线暂存区（SimMemory）：以固定大小数组成员承载真实硬件的 L1/UB/L0 分域，
@@ -416,24 +429,22 @@ private:
         Catlass::SageAttn::SageQkMmad<> qk_mmad;
         Catlass::SageAttn::SagePvMmad<> pv_mmad;
 
-        // 初始化 3 槽延迟输出退休队列（宽流水与成对融合延迟写回）
-        uint32_t tile_size = cur_q_len_ * d_;
-        pv_mmad.InitRetireQueue(
-            nullptr, // 硬件执行时通过 UB 偏移管理，单测与仿真直连内存
-            tile_size,
-            tiling_->pv_accum_dtype,
-            0.0f // 448· 放大域禁 skip-scale：锚点滞后 δ 时 P 行 max
-                 // = 2^δ·448 溢出 e4m3，成对归约遇任何 m 差都必须重缩放
-        );
+        // A7（task/12 D3）：热路径不使用 OutputRetireQueue——golden 轨迹为逐块锚定
+        // 强制 rescale，队列的 tau/skip-scale 双锚点与 V1 独占 O 主累加器冲突；
+        // 每块 PV L0C 部分和经 FixPipe 裸搬至 UB 交接槽，由 V1 按档位合并。
 
         // 进域预置（task/02_code.md B-2 init 纪律）：Cube 是 KV 槽与 S 槽的消费者，
         // 预置"首次使用前已归还"许可，V0/V1 首轮写槽前的 wait 立即放行。
-        // 余量核算（单任务域）：KV_FREE/S_FREE 各 set 2+N 次（预置 2 + 每块消费归还 N），
-        // 对端 wait N+2 次（逐块 N + 退域回收 2），任务边界余量严格归零。
+        // A7 新增：PARTIAL_FREE / DOT_FREE 预置（交接槽与 dot32 单缓冲首拍放行）。
+        // 余量核算（单任务域，N = total_kv_blocks）：KV_FREE/S_FREE 各 set 2+N、
+        // wait N+2；PARTIAL_FREE/DOT_FREE 各 set 1+N（预置 1 + V1 逐块 N）、
+        // wait N+1（逐块 N + 退域回收 1），任务边界余量严格归零。
         CrossCoreSet(CrossCoreDirection::CUBE_TO_VEC0, CrossCoreFlags::FLAG_KV_PING_FREE);
         CrossCoreSet(CrossCoreDirection::CUBE_TO_VEC0, CrossCoreFlags::FLAG_KV_PONG_FREE);
         CrossCoreSet(CrossCoreDirection::CUBE_TO_VEC1, CrossCoreFlags::FLAG_SOFTMAX_S_PING_FREE);
         CrossCoreSet(CrossCoreDirection::CUBE_TO_VEC1, CrossCoreFlags::FLAG_SOFTMAX_S_PONG_FREE);
+        CrossCoreSet(CrossCoreDirection::CUBE_TO_VEC1, CrossCoreFlags::FLAG_PV_PARTIAL_FREE);
+        CrossCoreSet(CrossCoreDirection::CUBE_TO_VEC1, CrossCoreFlags::FLAG_DOT_FREE);
 
         // 1. 等待 V0 完成 Q 矩阵量化并常驻 L1 Bank 0
         CrossCoreWait(CrossCoreDirection::VEC0_TO_CUBE, CrossCoreFlags::FLAG_Q_READY);
@@ -442,10 +453,7 @@ private:
         qk_mmad.LoadL0A(tiling_->l1_q_offset, 0, cur_q_len_ * gqa_ratio_, d_);
 
         uint32_t total_kv_blocks = (sk_ + block_n_ - 1) / block_n_;
-
-        // PV L0C 归约握手：本拍若发生归约（L0C 搬出并复位），下一拍 PV MMAD 必须 init。
-        // 上一拍若发生归约则本拍 init，与延迟一拍流水严格对齐。
-        bool pv_l0c_needs_init = true;
+        const uint32_t rows = cur_q_len_ * gqa_ratio_;
 
         // 延迟一拍宽流水主循环 (Wide Stream Double Buffering Ping-Pong)
         for (uint32_t k = 0; k < total_kv_blocks; ++k) {
@@ -458,19 +466,24 @@ private:
             // 1. 等待 V0 当前 KV 分块量化就绪 (N256 Cube / N512 Vector 解耦)
             CrossCoreWait(CrossCoreDirection::VEC0_TO_CUBE, kv_flag);
 
-            // 2. 拍 k（Cube）：INT8 QK^T MMAD
+            // 2. 拍 k（Cube）：INT8 QK^T MMAD（L0C 单缓冲：dot(k) 必须先于 PV(k-1) Mmad 搬出）
             // 加载 K 分块至 L0B
             qk_mmad.LoadL0B(l1_kv_addr, 0, block_n_, d_);
-            qk_mmad.Compute(true); // L0C 内累加本块结果
+            qk_mmad.Compute(true); // 逐块独立部分和（golden 逐块锚定轨迹，task/12 归约粒度定案）
 
             // K 块（L1 Bank 1 槽）消费完成：归还缓冲许可，V0 在重写同奇偶槽（k+2）前会 wait。
-            // 归还 KV 槽许可避免深流水下槽位被提前覆写。
             CrossCoreSet(CrossCoreDirection::CUBE_TO_VEC0, kv_free);
 
-            // 通知 V1：P 矩阵块就绪
+            // 3. A7：QK dot32 裸搬 UB（读保护：V1 完成上一块反量化读取后经 DOT_FREE 放行；
+            //    FixPipe 走 FIX 管，CrossCoreSet 在 S 管——先自配对排空 FIX 再 raise flag 保 GM/UB 可见序）
+            CrossCoreWait(CrossCoreDirection::VEC1_TO_CUBE, CrossCoreFlags::FLAG_DOT_FREE);
+            qk_mmad.EmitL0CToUbRaw(SAGE_UB_DOT32_OFFSET, SAGE_UB_DOT32_OFFSET + 64 * block_n_ * sizeof(int32_t),
+                                   rows, block_n_);
+            SetFlag<HardEvent::FIX_S>(0);
+            WaitFlag<HardEvent::FIX_S>(0);
             CrossCoreSet(CrossCoreDirection::CUBE_TO_VEC1, CrossCoreFlags::FLAG_QK_P_READY);
 
-            // 3. 拍 k（Cube 并发）：计算上一拍的 FP8 PV MMAD (当 k > 0 时)
+            // 4. 拍 k（Cube 并发）：计算上一拍的 FP8 PV MMAD (当 k > 0 时)
             if (k > 0) {
                 uint32_t prev_k = k - 1;
                 bool prev_is_ping = ((prev_k % 2) == 0);
@@ -486,28 +499,26 @@ private:
                 CrossCoreWait(CrossCoreDirection::VEC1_TO_CUBE, s_flag);
 
                 // 加载 S 矩阵至 L0A（对应奇偶槽），加载 V 矩阵至 L0B
-                pv_mmad.LoadL0A(SoftmaxSlotOffset(prev_is_ping), 0, cur_q_len_ * gqa_ratio_, block_n_);
+                pv_mmad.LoadL0A(SoftmaxSlotOffset(prev_is_ping), 0, rows, block_n_);
                 pv_mmad.LoadL0B(prev_l1_v_addr, 0, block_n_, d_);
 
-                // 累加 PV 计算：仅当上一拍发生了归约时才复位 L0C
-                pv_mmad.Compute(pv_l0c_needs_init);
+                // 每块独立部分和（init=true；两级累加的二级归并由 V1 按 pv_accum_dtype 档位执行）
+                pv_mmad.Compute(true);
 
                 // S[prev_k]（UB 槽）消费完成：归还缓冲许可，V1 在重写同奇偶槽前会 wait
                 CrossCoreSet(CrossCoreDirection::CUBE_TO_VEC1, s_free);
 
-                // FixPipe 随路量化并通过 3 槽延迟输出退休队列执行延迟写回与成对融合
-                if (accum_ctrl_.ShouldReduce(prev_k)) {
-                    FixpipeConfig fix_cfg = accum_ctrl_.GetFixpipeConfig();
-                    pv_mmad.ExecuteEpilogue(0, tiling_->ub_acc_offset, fix_cfg);
-                    pv_mmad.PushOutputTile(prev_k, nullptr, 1.0f, 0.0f, 0.0f);
-                }
-
-                // 归约发生在"本拍消费完成之后"，下一拍（prev_k + 1）的 PV 才需要 init
-                pv_l0c_needs_init = accum_ctrl_.ShouldReduce(prev_k);
+                // A7：PV 部分和裸搬 UB 交接槽（读保护：V1 合并完上一块后经 PARTIAL_FREE 放行）
+                CrossCoreWait(CrossCoreDirection::VEC1_TO_CUBE, CrossCoreFlags::FLAG_PV_PARTIAL_FREE);
+                FixpipeConfig fix_cfg = accum_ctrl_.GetFixpipeConfig();
+                pv_mmad.ExecuteEpilogue(0, SAGE_UB_PV_PARTIAL_OFFSET, fix_cfg);
+                SetFlag<HardEvent::FIX_S>(0);
+                WaitFlag<HardEvent::FIX_S>(0);
+                CrossCoreSet(CrossCoreDirection::CUBE_TO_VEC1, CrossCoreFlags::FLAG_PV_PARTIAL_READY);
             }
         }
 
-        // Drain 拍：完成最后一个 KV 分块的 PV MMAD 与 FixPipe 搬出，并彻底 Flush 队列
+        // Drain 拍：完成最后一个 KV 分块的 PV MMAD 与部分和搬出
         if (total_kv_blocks > 0) {
             uint32_t last_k = total_kv_blocks - 1;
             bool last_is_ping = ((last_k % 2) == 0);
@@ -523,19 +534,21 @@ private:
 
             pv_mmad.LoadL0A(SoftmaxSlotOffset(last_is_ping), 0, cur_q_len_ * gqa_ratio_, block_n_);
             pv_mmad.LoadL0B(last_l1_v_addr, 0, block_n_, d_);
-            // 沿用滞后 init 标志，保证 drain 拍正确初始化或累加
-            pv_mmad.Compute(pv_l0c_needs_init);
+            pv_mmad.Compute(true);
 
             // 归还最后一个 S 槽许可（V1 退域回收依赖此配平）
             CrossCoreSet(CrossCoreDirection::CUBE_TO_VEC1, s_free);
 
-            // 最后一拍强制搬出并压入延迟队列
+            // 最后一块部分和搬出
+            CrossCoreWait(CrossCoreDirection::VEC1_TO_CUBE, CrossCoreFlags::FLAG_PV_PARTIAL_FREE);
             FixpipeConfig fix_cfg = accum_ctrl_.GetFixpipeConfig();
-            pv_mmad.ExecuteEpilogue(0, tiling_->ub_acc_offset, fix_cfg);
-            pv_mmad.PushOutputTile(last_k, nullptr, 1.0f, 0.0f, 0.0f);
+            pv_mmad.ExecuteEpilogue(0, SAGE_UB_PV_PARTIAL_OFFSET, fix_cfg);
+            SetFlag<HardEvent::FIX_S>(0);
+            WaitFlag<HardEvent::FIX_S>(0);
+            CrossCoreSet(CrossCoreDirection::CUBE_TO_VEC1, CrossCoreFlags::FLAG_PV_PARTIAL_READY);
 
-            // 彻底清空退休队列中剩余的 1~2 个槽位并完成最终写回
-            pv_mmad.FlushRetireQueue();
+            // 退域回收（B-2 destroy 纪律）：消费 V1 最后一块的 DOT_FREE 归还许可
+            CrossCoreWait(CrossCoreDirection::VEC1_TO_CUBE, CrossCoreFlags::FLAG_DOT_FREE);
         }
 #else
         // KT/宿主标量基线：本函数无 Cube 侧数值职责。
@@ -813,6 +826,9 @@ private:
                                 reinterpret_cast<__ubuf__ float*>(ub_rowmax.GetPhyAddr()) + r,
                                 nullptr, d, 0u, dtype_mode);
         }
+        // V 管写 → S 管读同步（DEFECT-G-1，与 V1 统计读取同款事件对）
+        SetFlag<HardEvent::V_S>(0);
+        WaitFlag<HardEvent::V_S>(0);
 
         // B. 组归并 + scale 定档（宿主同式；per_thread=amax/127+1e-7，
         //    per_warp=clamp(amax,1e-7)/127）
@@ -1003,6 +1019,9 @@ private:
                                 reinterpret_cast<__ubuf__ float*>(ub_km.GetPhyAddr()),
                                 d, has_km, dtype_mode);
         }
+        // V 管写 → S 管读同步（DEFECT-G-1）
+        SetFlag<HardEvent::V_S>(0);
+        WaitFlag<HardEvent::V_S>(0);
 
         // B. 组归并（pair/块粒度，KScaleIndex 单点）+ 定档 + l1_k_scale 本地写出
         for (uint32_t j = 0; j < block_k; ++j) {
@@ -1171,6 +1190,10 @@ private:
                 }
                 ub_v_scale.SetValue(c, amax / scale_max);
             }
+            // S 管写 → V 管读同步（DEFECT-G-2）：后续 QuantVRowFp8VF 的 LoadAlign
+            // 在 V 管消费 scale 向量
+            SetFlag<HardEvent::S_V>(0);
+            WaitFlag<HardEvent::S_V>(0);
         }
 
         for (uint32_t j = 0; j < block_n_; ++j) {
