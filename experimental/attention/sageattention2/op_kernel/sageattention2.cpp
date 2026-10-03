@@ -123,6 +123,25 @@ __aicore__ inline uint32_t GetSubBlockIdx() { return 0; }
 
 namespace sage_attn {
 
+// MTE/V 管线序助手（收敛轮 I/I-2/I-3 单点定义；事件 ID 0 与文件内既有
+// V_S(0)/FIX_S(0) 风格一致——即时自配对、无在途交叠）：
+// - SyncMte2ToV：GM→UB DataCopy（MTE2 写）后、VF/标量读（V 管）前调用；
+// - SyncVToMte3：VF/标量写（V 管）后、UB→L1/GM DataCopy（MTE3 读）前调用。
+#if SAGE_ATTN_DEVICE_COMPILE
+__aicore__ inline void SyncMte2ToV() {
+    SetFlag<HardEvent::MTE2_V>(0);
+    WaitFlag<HardEvent::MTE2_V>(0);
+}
+__aicore__ inline void SyncVToMte3() {
+    SetFlag<HardEvent::V_MTE3>(0);
+    WaitFlag<HardEvent::V_MTE3>(0);
+}
+#else
+inline void SyncMte2ToV() {}
+inline void SyncVToMte3() {}
+#endif
+
+
 // L1 数值追踪打点（task/07_profile.md 三级调试法 L1）：仅调试构建定义
 // SAGE_ATTN_TRACE=1 时启用，性能构建零开销。
 #if defined(SAGE_ATTN_TRACE) && !defined(__CCE__)
@@ -645,9 +664,12 @@ private:
 
             // 严格保证生产者在前：写入完成后触发跨核事件通知 Cube
             // 生产管排空（DEFECT-H-2）：MTE3 写 KV 槽 → Cube MTE 读，CrossCoreSet
-            // （S 管）不排空 MTE3，先自配对事件等待写毕再举旗
+            // （S 管）不排空 MTE3，先自配对事件等待写毕再举旗（设备态；宿主
+            // CrossCoreSet 为空桩且无 HardEvent，见 sync_guard.h）
+#if SAGE_ATTN_DEVICE_COMPILE
             SetFlag<HardEvent::MTE3_MTE2>(0);
             WaitFlag<HardEvent::MTE3_MTE2>(0);
+#endif
             CrossCoreSet(CrossCoreDirection::VEC0_TO_CUBE, kv_flag);
         }
 
@@ -734,8 +756,10 @@ private:
 
             // 生产管排空（DEFECT-H-2）：VF 写 P 槽（V 管）→ Cube LoadL0A（MTE）读，
             // CrossCoreSet（S 管）不排空 V 管，先自配对事件等待写毕再举旗
+#if SAGE_ATTN_DEVICE_COMPILE
             SetFlag<HardEvent::V_S>(0);
             WaitFlag<HardEvent::V_S>(0);
+#endif
             CrossCoreSet(CrossCoreDirection::VEC1_TO_CUBE, s_flag);
         }
 
@@ -828,7 +852,7 @@ private:
             GlobalTensor<half> gm_row;
             gm_row.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(q_src + row_gm_offset));
             DataCopy(ub_in, gm_row, d);
-            PipeBarrier<PIPE_V>();
+            SyncMte2ToV();
             dev_vf::RowAbsMaxVF(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
                                 reinterpret_cast<__ubuf__ float*>(ub_rowmax.GetPhyAddr()) + r,
                                 nullptr, d, 0u, dtype_mode);
@@ -865,11 +889,11 @@ private:
             GlobalTensor<half> gm_row;
             gm_row.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(q_src + row_gm_offset));
             DataCopy(ub_in, gm_row, d);
-            PipeBarrier<PIPE_V>();
+            SyncMte2ToV();
             dev_vf::QuantRowInt8VF(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
                                    reinterpret_cast<__ubuf__ int8_t*>(ub_out.GetPhyAddr()),
                                    scale, d, per_thread_q ? 1u : 0u, 0u, nullptr, dtype_mode);
-            PipeBarrier<PIPE_V>();
+            SyncVToMte3();
             DataCopyParams cp;
             cp.blockCount = 1;
             cp.blockLen = d / 32;
@@ -1007,6 +1031,7 @@ private:
             GlobalTensor<float> gm_km;
             gm_km.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(const_cast<__gm__ float*>(km_ptr)));
             DataCopy(ub_km, gm_km, d);
+            SyncMte2ToV();
         }
 
         // 窗口 scale 组清零
@@ -1020,7 +1045,7 @@ private:
             GlobalTensor<half> gm_row;
             gm_row.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(k_src + row_gm_offset));
             DataCopy(ub_in, gm_row, d);
-            PipeBarrier<PIPE_V>();
+            SyncMte2ToV();
             dev_vf::RowAbsMaxVF(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
                                 reinterpret_cast<__ubuf__ float*>(ub_rowmax.GetPhyAddr()) + j,
                                 reinterpret_cast<__ubuf__ float*>(ub_km.GetPhyAddr()),
@@ -1051,7 +1076,7 @@ private:
                 GlobalTensor<half> gm_row;
                 gm_row.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(k_src + row_gm_offset));
                 DataCopy(ub_in, gm_row, d);
-                PipeBarrier<PIPE_V>();
+                SyncMte2ToV();
                 const uint32_t token = cur_k_start_ + j;
                 const float scale = ub_k_scales.GetValue(quant::KScaleIndex(token, per_thread_k));
                 dev_vf::QuantRowInt8VF(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
@@ -1061,7 +1086,7 @@ private:
             } else {
                 Duplicate(ub_out, int8_t(0), d);
             }
-            PipeBarrier<PIPE_V>();
+            SyncVToMte3();
             DataCopyParams cp;
             cp.blockCount = 1;
             cp.blockLen = d / 32;
@@ -1209,7 +1234,7 @@ private:
                 GlobalTensor<half> gm_row;
                 gm_row.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(v_src + row_gm_offset));
                 DataCopy(ub_in, gm_row, d);
-                PipeBarrier<PIPE_V>();
+                SyncMte2ToV();
                 dev_vf::QuantVRowFp8VF(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
                                        reinterpret_cast<__ubuf__ float8_e4m3_t*>(ub_out.GetPhyAddr()),
                                        reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
@@ -1217,7 +1242,7 @@ private:
             } else {
                 Duplicate(ub_out.ReinterpretCast<int8_t>(), int8_t(0), d);
             }
-            PipeBarrier<PIPE_V>();
+            SyncVToMte3();
             DataCopyParams cp;
             cp.blockCount = 1;
             cp.blockLen = d / 32;
