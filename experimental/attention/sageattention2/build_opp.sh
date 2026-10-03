@@ -161,7 +161,7 @@ cp -f "${CUSTOM_DIR}/op_api/lib/libcust_opapi.so" "${CUSTOM_DIR}/op_proto/lib/li
     -o "${CUSTOM_DIR}/op_impl/ai_core/tbe/op_tiling/lib/liboptiling.so"
 
 echo "2. Compiling op_kernel device object for ${SOC} with BiSheng (-xasc ${NPU_ARCH})..."
-# -DCATLASS_ARCH=3510：官方 CATLASS 架构选择宏（与 ci/kernel_compile.sh 同一口径），
+# -DCATLASS_ARCH=3510：官方 CATLASS 架构选择宏（与 run.sh kernel 同一口径），
 # sage_pv_mmad.hpp 的官方 GetL0Element/ElementAccumulatorSelector FP8 表项依赖
 "${BISHENG}" --npu-arch="${NPU_ARCH}" -std=c++17 -xasc -DCATLASS_ARCH=3510 -c \
     "${OP_DIR}/op_kernel/sageattention2.cpp" \

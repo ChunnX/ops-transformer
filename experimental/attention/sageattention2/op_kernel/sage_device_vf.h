@@ -10,7 +10,7 @@
 // 官方 CATLASS 设备函数宏（catlass/detail/macros.hpp）：CATLASS_DEVICE_SIMD_VF =
 // __simd_vf__ static（CATLASS_ARCH=3510），与官方 950 FA softmax epilogue 同款标记，
 // 取代本文件原裸 __simd_vf__ inline 书写（官方演进单点跟随；设备编译全路径已注入
-// -DCATLASS_ARCH=3510，见 run.sh kernel / ci/kernel_compile.sh / build_opp.sh）。
+// -DCATLASS_ARCH=3510，见 run.sh kernel / build_opp.sh）。
 #include "catlass/detail/macros.hpp"
 
 namespace sage_attn {

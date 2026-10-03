@@ -42,7 +42,7 @@
 #include "kernel_operator.h"
 #if SAGE_ATTN_DEVICE_COMPILE
 // canonical 注册三件套：正式出包由 ops-transformer 构建体系注入同义宏；
-// 独立 bisheng 编译门（ci/kernel_compile.sh）经此处 #ifndef 定义补齐，
+// 独立 bisheng 编译门（run.sh kernel）经此处 #ifndef 定义补齐，
 // 语义对齐 cmake/scripts/utest/gen_tiling_data_stub.py 的构建体系形态。
 #ifndef REGISTER_TILING_DEFAULT
 #define REGISTER_TILING_DEFAULT(tiling_struct)

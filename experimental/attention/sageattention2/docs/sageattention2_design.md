@@ -206,7 +206,7 @@ chunks=1，任务解码与调度算术逐位不变（twin 25 桶 golden 回归�
     - host tiling（aclnn/sage_attn_host_tiling.h）与设备核（op_kernel）全链路的
       分块计数/16-token 对齐改写为 `::CeilDiv` / `::RoundUp`（与手写
       `(a+b-1)/b` 位元一致；floor 语义的尾元素块号显式保留整除并注释禁改）；
-    - 构建对齐：全部设备编译路径（ci/kernel_compile.sh、run.sh kernel、
+    - 构建对齐：全部设备编译路径（run.sh kernel、
       build_opp.sh、tools/sim 设备步）统一注入官方架构选择宏
       `-DCATLASS_ARCH=3510`。
   - 官方组件复用清单（2026-10-03 第 4 轮深化接入，位元等价替换 + 重复造轮子收敛）：

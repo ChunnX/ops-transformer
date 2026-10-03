@@ -14,8 +14,8 @@
 // - ElementAccumulatorSelector：fp8×fp8→FP32 累加位型（Arch3510 表项）；
 // - GetL0Element：fp8 码 → L0 MMAD 寄存器位型（mx_fp8_e4m3_t，CATLASS_ARCH=3510）。
 // 两表均随官方架构支持自动跟随；依赖 kernel_operator.h 的 AscendC 位型，宿主门禁
-// （KERNEL_API=0）不引入，Traits 走下方显式 fallback。构建侧（ci/kernel_compile.sh、
-// run.sh kernel、build_opp.sh、tools/sim 设备步）统一注入 -DCATLASS_ARCH=3510。
+// （KERNEL_API=0）不引入，Traits 走下方显式 fallback。构建侧（run.sh kernel、
+// build_opp.sh、tools/sim 设备步）统一注入 -DCATLASS_ARCH=3510。
 #include "catlass/gemm/helper.hpp"
 #endif
 

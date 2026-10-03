@@ -23,7 +23,8 @@
 - 接口差异说明：./ops-transformer/experimental/attention/sageattention2/docs/CUDA接口差异说明.md
 - 算子顶层说明：./README.md 与 ./ops-transformer/experimental/attention/sageattention2/README.md
 - 测试用例与套件：./tests/、./ops-transformer/experimental/attention/sageattention2/tests/ 与 ./benchmarks/
-- CI 门禁脚本：./ci/local_test.sh、./ci/kernel_compile.sh 与 ./ci/regress.sh
+- 门禁脚本：./run.sh（host / kernel / python / opp 目标，BiSheng 容器内执行）
+- 性能基准工具：./benchmarks/run_validation_performance.py（PyTorch 路径）与 ./benchmarks/benchmark_aclnn.cpp（aclnn 路径，经 ./benchmarks/build_aclnn_benchmark.sh 构建）
 
 ## 3. 功能与精度自验证结果
 

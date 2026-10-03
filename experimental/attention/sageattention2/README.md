@@ -15,7 +15,7 @@
 - `./quant/`：Q/K INT8 与 V FP8 量化 Host 逻辑与可单测的 C++ 量化内核
 - `./op_host/`：CANN 标准 REG_OP/InferShape 注册层；交付态 op_api 层两段式 C 接口实现位于 `./op_api/`（字符串属性 ABI，经 `OP_API_DIR` 随 run 包打包安装），`./aclnn/` 为移植态本地单测实现（数值编码 ABI，见 `./aclnn/sage_attn_proto.h`）
 - `./python/sageattention2/`：PyTorch 接入包（`dispatch.py` 前端分派与环境变量解析、`_ops.py` PyTorch 自定义算子注册与后端绑定、`_extension.py` C++ 扩展加载、`error_check.py` 输入校验与预处理、`monkey_patch.py` SDPA 热替换工具）
-- `./tests/`、`./benchmarks/`：容器门禁单测与独立 ACLNN 基准工具
+- `./tests/`、`./benchmarks/`：容器门禁单测与独立基准工具（`./benchmarks/benchmark_aclnn.cpp` aclnn 路径、`./benchmarks/run_validation_performance.py` PyTorch 路径）
 - `./tools/sim/`：设备核 camodel 仿真 harness（B2 门禁数值比对；依赖门禁容器 bisheng `--run-mode=sim` 运行，用法见 `./tools/sim/README.md`，不属于 run.sh 容器门禁主链）
 - `./docker/`：算子门禁容器（唯一编译与测试环境；Dockerfile/compose/生命周期入口 `sage`/一键初始化 `init.sh`/CATLASS 内聚目录 `third_party/`，卷挂载全部为仓库内相对路径，见 `./docker/README.md`）
 - `./run.sh`：门禁统一入口（宿主只依赖 docker，所有目标自动包装进容器，容器内统一 BiSheng 编译）
@@ -24,7 +24,7 @@
 
 - 设备核经 `./sageattn_fp8/catlass/sage_tile.hpp` 无条件 include 官方 cann/catlass 仓 `<catlass/catlass.hpp>`，分形粒度常量（FRACTAL_M0/N0、FRACTAL_K0_*、LOADDATA2D_REPEAT_BYTES）全部由官方 `BYTE_PER_C0` / `C0_NUM_PER_FRACTAL` / `BYTE_PER_FRACTAL` 派生，官方演进自动跟随；
 - 构建前置：`CATLASS_ROOT` 指向官方 catlass checkout（解析链：CMake 变量/环境变量 → 算子 `./docker/third_party/catlass`（`docker/init.sh` 置备）→ 仓库根 `./third_party/catlass`，唯一定义点 `./cmake/SageAttnDeps.cmake`，缺失即 fatal）；
-- 深化复用（2026-10-03，全部为位元等价的 constexpr/forceinline 替换，指令流零变化）：跨核同步委托官方 `Arch::CrossCoreFlag` / `CrossCoreSetFlag/WaitFlag`（arch/cross_core_sync.hpp，sync_guard.h 单点）；QK/PV 累加位型与 L0 FP8 寄存器位型接入官方 `Gemm::helper::ElementAccumulatorSelector` / `GetL0Element` 表（sage_qk/pv_mmad.hpp Traits）；设备 VF 函数标记采用官方 `CATLASS_DEVICE_SIMD_VF` 宏；host tiling 与设备核全链路取整收敛到官方 `::CeilDiv` / `::RoundUp`。设备编译统一注入官方架构选择宏 `-DCATLASS_ARCH=3510`（ci/kernel_compile.sh、run.sh、build_opp.sh、tools/sim 同口径）。逐项清单见设计文档"官方组件复用清单"；
+- 深化复用（2026-10-03，全部为位元等价的 constexpr/forceinline 替换，指令流零变化）：跨核同步委托官方 `Arch::CrossCoreFlag` / `CrossCoreSetFlag/WaitFlag`（arch/cross_core_sync.hpp，sync_guard.h 单点）；QK/PV 累加位型与 L0 FP8 寄存器位型接入官方 `Gemm::helper::ElementAccumulatorSelector` / `GetL0Element` 表（sage_qk/pv_mmad.hpp Traits）；设备 VF 函数标记采用官方 `CATLASS_DEVICE_SIMD_VF` 宏；host tiling 与设备核全链路取整收敛到官方 `::CeilDiv` / `::RoundUp`。设备编译统一注入官方架构选择宏 `-DCATLASS_ARCH=3510`（run.sh kernel、build_opp.sh、tools/sim 同口径）。逐项清单见设计文档"官方组件复用清单"；
 - 模块边界：官方 TileCopyTla 等 copy 组件要求 L1 侧 zN 分形布局；本算子 V0 产出为 ND 行布局 + Data/Scale 相邻契约（任务书允许的按 Cube 微调项），故 LoadData2D/Fixpipe 热路径为本算子自研 AscendC 逻辑，MMA 指令语义冻结待真机 L-A 复核，不与官方 copy 组件混用。
 
 ## 编译构建
@@ -45,7 +45,7 @@ bash build.sh --pkg --experimental --soc=ascend950 --vendor_name=customize --ops
 ### 容器门禁（run.sh → BiSheng 容器，唯一编译与测试环境）
 
 - 前置条件：宿主只依赖 Docker 与 Docker Compose 插件；所有编译与测试经 `./docker/` 容器内的 BiSheng 编译器承载，不存在任何宿主编译器路径
-- 独立仓库交付契约：卷挂载全部为相对路径且只指向仓库内部目录，唯一外部依赖 CATLASS 经 `bash docker/init.sh` 拉取固定 commit 内聚到 `./docker/third_party/catlass`（见 `./docker/README.md`）
+- 独立仓库交付契约：卷挂载全部为相对路径且只指向仓库内部目录，唯一外部依赖 CATLASS 经 `bash docker/init.sh` 拉取固定 commit 内聚到 `./docker/third_party/catlass`（commit 固定为 `e420328d38945dea53ac8ee56795215db20b943b`，唯一定义点 `./docker/init.sh` 的 `CATLASS_COMMIT`；见 `./docker/README.md`）
 - 命令均在算子目录 `./ops-transformer/experimental/attention/sageattention2/` 执行；`run.sh` 各目标在宿主侧自动包装进容器（首次运行自动补齐 CATLASS 初始化），容器侧统一 BiSheng
 - 设备核编译严格基于 BiSheng 编译器（`--npu-arch=dav-3510 -std=c++17 -xasc`）
 - 支持的目标：
@@ -119,6 +119,19 @@ bash build.sh --pkg --experimental --soc=ascend950 --vendor_name=customize --ops
     --order abba --gate 1.6 --output build/bench_p03.json
 ```
 
+- `run_validation_performance.py`：PyTorch 路径性能门禁工具，逐条实测 P-01..P-07 的 `sageattn_qk_int8_pv_fp8_asc`（`fp32+fp16` 交付默认档）对基线 `torch_npu.npu_fused_infer_attention_score` 的 Speedup 并判定每条 `>=1.6` 门禁与全用例几何平均
+- 用例表唯一定义点为 `./benchmarks/cases.py`（本工具不复制第二份）；FIA 基线配方固化任务书「最小调用示例」：`input_layout="BNSD"`（与本算子 HND 同构，双方共享同一物理张量）、`num_heads`/`num_key_value_heads`/dtype/causal 逐 case 对齐、`pre_tokens=65535`、`next_tokens=65535`、`scale=1/sqrt(D)`；因果 P-03 叠加 `sparse_mode=2` 与 2048×2048 triu bool 掩码（官方 perf harness 因果配方）
+- 计时口径：`torch.npu.Event` 事件对逐次预建，warmup（默认 30，下限 10）不计入统计，`--repeats`（默认 100，下限 20）次测量后 synchronize 再取逐迭代 ms 均值；逐 case 打印 `T_FIA / T_sage / Speedup / 门禁判定`，末行输出几何平均
+- 环境契约：无 torch_npu 或无 NPU 设备时打印明确跳过信息并以退出码 0 结束（供 CI-off 机器冒烟）；NPU 上为严格模式，任何失败非零退出
+- 运行（算子目录执行，真机环境）：
+
+```bash
+python3 benchmarks/run_validation_performance.py --warmup 30 --repeats 100 \
+    --output build/pyperf_report.json
+```
+
+- 产出 JSON 报告：逐 case 的 shape/dtype/causal/`t_fia_ms`/`t_sage_ms`/`speedup`/`passed`、`geomean_speedup`、`all_cases_pass`，以及 `fia_causal_recipe`、torch/torch_npu 版本与设备名等 `meta` 字段，可直接回填自验证报告性能基准用例表（PyTorch 列）
+
 ## 一键复现（容器门禁序列）
 
 - 前置条件：已在算子目录 `./ops-transformer/experimental/attention/sageattention2/`，宿主机已装 docker 与 compose 插件（唯一宿主依赖；镜像/缓存说明见 `./docker/README.md`）
@@ -140,7 +153,7 @@ bash run.sh opp
 - `bash run.sh host` 输出各二进制自检 `[SUCCESS]` 且退出码为 0（当前收敛为 test_aclnn_host / test_op_host / test_tiling_struct 三个二进制，以 `run.sh` 实际清单为准）
 - `bash run.sh python` 四个测试文件全部通过（含 `./tests/test_tiling_struct.py` 的 TilingData ctypes 镜像对 160 字节总长、32 字节对齐与逐字段偏移的断言）
 - `./tests/test_kernel_twin.py`（已纳入 `run.sh python`）：宿主孪生全流水执行器（twin_reference RunSequential）与 kernel 宿主串行分支（op_kernel SageAttnKernel + SimMemory，TilingData 直驱 `sage_attention2` C 入口）对 golden 25 桶落盘 out/lse 的功能交叉验证——23 桶整桶 + 3 大桶 128 对齐行窗口（P-05/P-07/TC-09，非因果行独立性如实标注；TC-03_smooth_v_fp32 经 smooth_v 正路径整桶执行），判据 L-A（matched_ratio ≥ 0.99、max_abs ≤ 0.1/1.0、LSE ≤ 1e-3）+ L-B（对 SDPA 误差比 ≤ 2.0/1.2/1.2），并附 P-01 量化中间态（q/k INT8、v FP8、scale）位级比对；P-01/TC-03/TC-04/TC-05/TC-07/TC-01(fp16) 代表桶另以 kernel 宿主串行分支复验，TC-01(bf16) 桶覆盖核内 `tiling.input_dtype==2` 位型分派分支（bf16 读写与 km 差值位型舍回）
-- 仓库级数值门（kernel 宿主串行路径 vs 孪生参考十用例位级一致、golden 25 桶 L-A/L-B）：由工程根 `./ci/local_test.sh` 承载，依赖仓库外 `./tests/` 与 `./sageAttention2/sageAttentionTest`（交付包内不自带，复现须在完整工程根执行）
+- 仓库级数值门（kernel 宿主串行路径 vs 孪生参考十用例位级一致、golden 25 桶 L-A/L-B）：由 `bash run.sh python` 中的 `./tests/test_kernel_twin.py` 承载（判据见上条）
 - `bash run.sh opp` 完成 BiSheng vendor 树出包与本地部署且退出码为 0
 - 真机验收另行执行 `bash ./benchmarks/build_aclnn_benchmark.sh`（容器内）并以真机报告的 `verdict: PASS` 为准；`mode: SIMULATION` 的报告一律无效
 

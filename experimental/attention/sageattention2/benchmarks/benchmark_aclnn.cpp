@@ -77,6 +77,18 @@ struct DeviceRuntime {
     }
 };
 
+// Element size by acl dtype: this tool hosts ACL_BOOL masks (1B), the fp32
+// keyMean input (4B) and fp16/bf16 tensors (2B); byteSize must follow the dtype.
+static size_t AclElemBytes(aclDataType type) {
+    if (type == ACL_BOOL) {
+        return 1;
+    }
+    if (type == ACL_FLOAT) {
+        return 4;
+    }
+    return 2;
+}
+
 struct DeviceTensor {
     aclTensor *handle{nullptr};
     void *deviceData{nullptr};
@@ -92,7 +104,7 @@ struct DeviceTensor {
             strides[i] = count;
             count *= shape[i];
         }
-        byteSize = static_cast<size_t>(count) * (dtype == ACL_BOOL ? 1 : 2);
+        byteSize = static_cast<size_t>(count) * AclElemBytes(type);
         CheckAcl(aclrtMalloc(&deviceData, byteSize, ACL_MEM_MALLOC_HUGE_FIRST), "aclrtMalloc tensor");
         if (hostData) {
             CheckAcl(aclrtMemcpy(deviceData, byteSize, hostData, byteSize, ACL_MEMCPY_HOST_TO_DEVICE),
@@ -589,6 +601,27 @@ int main(int argc, char **argv) {
 
         auto kHost = makeRandomHostData(kvElements);
         DeviceTensor k({cfg.batch, cfg.kvHeads, cfg.seq, cfg.dim}, dtype, kHost.data());
+
+        // keyMean（fp32，[B, Hkv, d_pad]）：smooth_k=true 验收默认档的真实入参，
+        // 计算口径对齐交付桥接层 python/sageattention2/csrc/attention.cpp——
+        // k.mean(seq_dim)（fp32 累加 → 输入位型 RNE 舍回 → fp32 承载），
+        // pad 通道补零（上游 pad_head_dim 同契约：d<=64→64，否则 128）
+        const int64_t dPadKm = (cfg.dim <= 64) ? 64 : 128;
+        std::vector<float> kmHost(static_cast<size_t>(cfg.batch) * cfg.kvHeads * dPadKm, 0.0f);
+        for (int64_t b = 0; b < cfg.batch; ++b) {
+            for (int64_t h = 0; h < cfg.kvHeads; ++h) {
+                for (int64_t d = 0; d < cfg.dim; ++d) {
+                    float acc = 0.0f;
+                    for (int64_t s = 0; s < cfg.seq; ++s) {
+                        acc += DecodeFloat(kHost[(b * cfg.kvHeads + h) * cfg.seq * cfg.dim + s * cfg.dim + d],
+                                           cfg.bf16);
+                    }
+                    kmHost[(b * cfg.kvHeads + h) * dPadKm + d] =
+                        DecodeFloat(EncodeFloat(acc / static_cast<float>(cfg.seq), cfg.bf16), cfg.bf16);
+                }
+            }
+        }
+        DeviceTensor keyMean({cfg.batch, cfg.kvHeads, dPadKm}, ACL_FLOAT, kmHost.data());
         kHost.clear();
         kHost.shrink_to_fit();
 
@@ -639,11 +672,13 @@ int main(int argc, char **argv) {
         auto prepareOp = [&](bool isSage, uint64_t &wsBytes, aclOpExecutor *&exec) {
             if (isSage) {
                 // 字符串属性形态（交付 op_api ABI）：顺序 layout, causal, gran,
-                // scale, accum, smoothK, smoothV；基准固定 per_thread + fp32+fp16
-                // 默认验收档；smooth_k 传 false 与 key_mean=nullptr（不传均值）一致
-                CheckAcl(dispatcher.sageNativePrepare(q.handle, k.handle, v.handle, nullptr, nullptr,
+                // scale, accum, smoothK, smoothV；基准跑验收默认档
+                // per_thread + fp32+fp16 + smooth_k=true（真实 keyMean 入参，
+                // 与桥接层 python/sageattention2/csrc/attention.cpp 交付路径一致；
+                // lseCorrection 仅 return_lse 路径需要，此处恒为 nullptr）
+                CheckAcl(dispatcher.sageNativePrepare(q.handle, k.handle, v.handle, keyMean.handle, nullptr,
                                                      "HND", cfg.causal, "per_thread", smScale,
-                                                     "fp32+fp16", false,
+                                                     "fp32+fp16", true,
                                                      cfg.smoothV, out.handle, nullptr, &wsBytes, &exec),
                          "SageAttention2 Native GetWorkspaceSize");
             } else {
@@ -926,6 +961,7 @@ int main(int argc, char **argv) {
              << "  \"bf16\": " << (cfg.bf16 ? "true" : "false") << ",\n"
              << "  \"causal\": " << (cfg.causal ? "true" : "false") << ",\n"
              << "  \"is_causal\": " << (cfg.causal ? "true" : "false") << ",\n"
+             << "  \"smooth_k\": true,\n"
              << "  \"smooth_v\": " << (cfg.smoothV ? "true" : "false") << ",\n"
              << "  \"warmup_calls\": " << cfg.warmupCalls << ",\n"
              << "  \"repeats\": " << cfg.repeats << ",\n"
