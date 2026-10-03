@@ -77,7 +77,8 @@ run_host_tests() {
 compile_kernel_bisheng() {
   echo ">>> [kernel] BiSheng 交叉编译设备核 → dav-3510..."
   mkdir -p "${BUILD_DIR}"
-  # -DCATLASS_ARCH=3510 与 build_opp.sh / tools/sim 同口径（sage_pv_mmad.hpp 的 FP8 位型表依赖）
+  # -DCATLASS_ARCH=3510 与 build_opp.sh / tools/sim 同口径
+  # （真实消费方：catlass.hpp 3510 档常量 + CATLASS_DEVICE_SIMD_VF 宏，见 build_opp.sh 同注）
   "${BISHENG}" --npu-arch=dav-3510 -std=c++17 -xasc -DCATLASS_ARCH=3510 -c \
     "${WORK_DIR}/op_kernel/sageattention2.cpp" \
     -I"${ASCEND_HOME_PATH}/include" \

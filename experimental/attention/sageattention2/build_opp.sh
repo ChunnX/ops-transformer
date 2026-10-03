@@ -168,8 +168,11 @@ if [ -f "${OP_DIR}/build/sageattention2_bisheng.o" ] && [ ! "${OP_DIR}/op_kernel
     echo "Reusing precompiled device object ${OP_DIR}/build/sageattention2_bisheng.o..."
     cp -f "${OP_DIR}/build/sageattention2_bisheng.o" "${CUSTOM_DIR}/op_impl/ai_core/tbe/kernel/${SOC}/sageattention2.o"
 else
-    # -DCATLASS_ARCH=3510：官方 CATLASS 架构选择宏（与 run.sh kernel 同一口径），
-    # sage_pv_mmad.hpp 的官方 GetL0Element/ElementAccumulatorSelector FP8 表项依赖
+    # -DCATLASS_ARCH=3510：官方 CATLASS 架构选择宏（与 run.sh kernel / tools/sim 同一口径）。
+    # 真实消费方：3510 档官方常量（catlass.hpp BYTE_PER_FRACTAL/BYTE_PER_BLK/
+    # C0_NUM_PER_FRACTAL，经 sage_tile.hpp 派生）与 detail/macros.hpp
+    # CATLASS_DEVICE_SIMD_VF 宏定义（sage_device_vf.h 接入，另作崩溃规避重定义）；
+    # TileMmadTla 的 3510 特化由 --npu-arch（__NPU_ARCH__）选路，两口径须一致。
     "${BISHENG}" --npu-arch="${NPU_ARCH}" -std=c++17 -xasc -DCATLASS_ARCH=3510 -c \
         "${OP_DIR}/op_kernel/sageattention2.cpp" \
         -I"${ASCEND_HOME_PATH}/include" \

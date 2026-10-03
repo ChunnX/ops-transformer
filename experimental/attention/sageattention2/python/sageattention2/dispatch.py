@@ -169,7 +169,9 @@ def _quant_v_fp8(
         v_norm = (v_perm.float() - vm.unsqueeze(-1)) / v_scale.unsqueeze(-1)
         v_fp8 = v_norm.clamp(-S_FP8_SCALE_MAX, S_FP8_SCALE_MAX).to(torch.float8_e4m3fn) if has_fp8 else v_norm.clamp(-S_FP8_SCALE_MAX, S_FP8_SCALE_MAX)
         if has_fp8 and hasattr(torch, "float8_e4m3fn") and v_fp8.dtype == torch.float8_e4m3fn:
-            v_fp8_unperm = v_fp8.view(torch.uint8).view(b, hkv, d, num_16, 16)[:, :, :, :, V_FP8_INV_PERM].view(torch.float8_e4m3fn).contiguous().view(b, hkv, d, pad_sk_v)[:, :, :, :sk]
+            v_u8 = torch.where(torch.isnan(v_norm), torch.tensor(0x7F, dtype=torch.uint8, device=v_norm.device), v_fp8.view(torch.uint8))
+            v_fp8 = v_u8.view(torch.float8_e4m3fn)
+            v_fp8_unperm = v_u8.view(b, hkv, d, num_16, 16)[:, :, :, :, V_FP8_INV_PERM].view(torch.float8_e4m3fn).contiguous().view(b, hkv, d, pad_sk_v)[:, :, :, :sk]
         else:
             v_fp8_unperm = v_fp8.view(b, hkv, d, num_16, 16)[:, :, :, :, V_FP8_INV_PERM].contiguous().view(b, hkv, d, pad_sk_v)[:, :, :, :sk]
         v_deq_hnd = (v_fp8_unperm.float() * v_scale.unsqueeze(-1) + vm.unsqueeze(-1)).transpose(2, 3)
@@ -180,7 +182,9 @@ def _quant_v_fp8(
         v_norm = v_perm.float() / v_scale.unsqueeze(-1)
         v_fp8 = v_norm.clamp(-S_FP8_SCALE_MAX, S_FP8_SCALE_MAX).to(torch.float8_e4m3fn) if has_fp8 else v_norm.clamp(-S_FP8_SCALE_MAX, S_FP8_SCALE_MAX)
         if has_fp8 and hasattr(torch, "float8_e4m3fn") and v_fp8.dtype == torch.float8_e4m3fn:
-            v_fp8_unperm = v_fp8.view(torch.uint8).view(b, hkv, d, num_16, 16)[:, :, :, :, V_FP8_INV_PERM].view(torch.float8_e4m3fn).contiguous().view(b, hkv, d, pad_sk_v)[:, :, :, :sk]
+            v_u8 = torch.where(torch.isnan(v_norm), torch.tensor(0x7F, dtype=torch.uint8, device=v_norm.device), v_fp8.view(torch.uint8))
+            v_fp8 = v_u8.view(torch.float8_e4m3fn)
+            v_fp8_unperm = v_u8.view(b, hkv, d, num_16, 16)[:, :, :, :, V_FP8_INV_PERM].view(torch.float8_e4m3fn).contiguous().view(b, hkv, d, pad_sk_v)[:, :, :, :sk]
         else:
             v_fp8_unperm = v_fp8.view(b, hkv, d, num_16, 16)[:, :, :, :, V_FP8_INV_PERM].contiguous().view(b, hkv, d, pad_sk_v)[:, :, :, :sk]
         v_deq_hnd = (v_fp8_unperm.float() * v_scale.unsqueeze(-1)).transpose(2, 3)

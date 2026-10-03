@@ -68,7 +68,7 @@
 | tiling 枚举编码镜像（LAYOUT/GRAN/ACCUM） | tests/tiling_mirror.py | test_kernel_twin 等 |
 | ActiveKvBlocks/SubKm 核内辅助 | op_kernel 私有方法 | 4 处重算 + 2 处 km 舍回收敛 |
 | 输入位型档位归一 NormDtypeMode（M5） | op_kernel/sage_attention2_template_tiling_key.h | 核内 kDtype / host tiling / tiling key 编码共用，消费侧禁再展开三元式 |
-| Data+Scale 相邻排布 PackDataAndScaleAdjacent | quant_common.h | quant_int8/quant_fp8 Pack 双实现 |
+| L1 Data+Scale 相邻摆布契约 CopyUbRowToL1 | sageattn_fp8/catlass/sage_tile.hpp | 核内 Q/K/V 三处 UB→L1 行搬（原 host 侧 PackDataAndScaleAdjacent 死链已删，2026-10-04） |
 | LSE_ROW_STRIDE / MAX_GQA_RATIO | sage_resource.hpp / tiling.h | V1 子偏移、SimMemory 配额、host 上限 |
 
 ## 死代码清扫记录（2026-10-03）
@@ -193,15 +193,15 @@ chunks=1，任务解码与调度算术逐位不变（twin 25 桶 golden 回归�
       （arch/cross_core_sync.hpp）：1C2V 16 flag 跨核同步原语委托官方薄封装单点
       （sync_guard.h；modeId=4 块内 + PIPE_S 语义不变，forceinline 直译 AscendC
       原语、指令流零变化）；
-    - `Gemm::helper::ElementAccumulatorSelector`：QK int8×int8→INT32 与 PV
-      fp8×fp8→FP32 累加位型官方表单点（Traits ElementC，随官方架构支持自动跟随；
-      宿主门禁无 AscendC 位型，显式同值 fallback）；
-    - `Gemm::helper::GetL0Element<float8_e4m3_t, true>`：fp8 码 → L0 `mx_fp8_e4m3_t`
-      寄存器位型官方映射（PV Compute；static_assert 锁定，构建漏配
-      `-DCATLASS_ARCH=3510` 时编译期显式失败）；
-    - `detail/macros.hpp` 设备函数宏 `CATLASS_DEVICE_SIMD_VF`（`__simd_vf__ static`，
-      与官方 950 FA softmax epilogue 同款）：sage_pv_mmad.hpp 的
-      MergePvPartialRowVF 标记单点；
+    - MMA 累加位型与 FP8 L0 寄存器位型直接显式书写（轮 5 复审后口径）：Traits
+      ElementC 取朴素 `int32_t`（QK int8×int8→INT32）/ `float`（PV fp8×fp8→FP32），
+      PV Compute 的 L0A/L0B 张量按 `AscendC::mx_fp8_e4m3_t` 直承载（位元等价于
+      原 `Gemm::helper::ElementAccumulatorSelector` / `GetL0Element<float8_e4m3_t,
+      true>` 官方表接入，2026-10-04 轮 5 撤销模板间接层；两 helper 已不在复用面）；
+    - `detail/macros.hpp` 设备函数宏 `CATLASS_DEVICE_SIMD_VF`（官方 3510 档原值
+      `__simd_vf__ static`，与官方 950 FA softmax epilogue 同款接入）：op_kernel/
+      sage_device_vf.h 全部 VF 原语的标记单点（2026-10-04 起本仓 undef 后重定义为
+      `__aicore__ inline` 规避 BiSheng 编译崩溃，见 sage_device_vf.h 头注）；
     - host tiling（aclnn/sage_attn_host_tiling.h）与设备核（op_kernel）全链路的
       分块计数/16-token 对齐改写为 `::CeilDiv` / `::RoundUp`（与手写
       `(a+b-1)/b` 位元一致；floor 语义的尾元素块号显式保留整除并注释禁改）；
