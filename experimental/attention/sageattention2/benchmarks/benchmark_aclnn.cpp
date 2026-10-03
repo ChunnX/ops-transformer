@@ -50,9 +50,9 @@
 #include "acl/acl.h"
 #include "aclnn/acl_meta.h"
 #if defined(__has_include)
-#if __has_include("sage_attn_proto.h")
-#include "sage_attn_proto.h"
-#endif
+// 注意：不包含 aclnn/sage_attn_proto.h——其声明为移植态数值编码 ABI，
+// 与本文件对齐的交付 op_api 字符串属性 ABI 同名冲突（ODR）；
+// 交付原型见 op_api/aclnn_sage_attention2.h（编译期校验由签名注释锁定）
 #if __has_include("aclnnop/aclnn_fused_infer_attention_score_v5.h")
 #include "aclnnop/aclnn_fused_infer_attention_score_v5.h"
 #endif
@@ -462,17 +462,23 @@ struct DeviceWorkspace {
 };
 
 // Function pointer signatures for ACLNN operators
+// Sage 侧签名逐参数对齐交付 op_api/aclnn_sage_attention2.h（真实出包 ABI，
+// 与 def.cpp 注册的 7 项字符串/标量属性一致）：属性顺序为
+// layout, causal, gran, scale, accum, smoothK, smoothV，gran/accum/layout 为
+// 字符串（"per_thread"/"fp32+fp16"/"HND"，BNSD/BSND 同义词域见实现）。
+// 禁止回退为数值编码形态——OPP 安装库仅导出字符串属性符号，数值形参会按
+// 位置错绑到 const char * 槽位（strcmp 野指针）。
 typedef aclnnStatus (*SageNativePrepareFn)(
     const aclTensor *query,
     const aclTensor *key,
     const aclTensor *value,
     const aclTensor *keyMeanOptional,
     const aclTensor *lseCorrectionOptional,
-    double smScale,
-    int64_t qkQuantGran,
-    int64_t pvAccumDtype,
+    const char *tensorLayout,
     bool isCausal,
-    int64_t tensorLayout,
+    const char *qkQuantGran,
+    double smScale,
+    const char *pvAccumDtype,
     bool smoothK,
     bool smoothV,
     const aclTensor *out,
@@ -560,11 +566,11 @@ aclnnStatus MockSageAttention2GetWorkspaceSize(
     const aclTensor *,
     const aclTensor *,
     const aclTensor *,
-    double,
-    int64_t,
-    int64_t,
+    const char *,
     bool isCausal,
-    int64_t,
+    const char *,
+    double,
+    const char *,
     bool,
     bool,
     const aclTensor *,
@@ -1091,11 +1097,12 @@ int main(int argc, char **argv) {
 
         auto prepareOp = [&](bool isSage, uint64_t &wsBytes, aclOpExecutor *&exec) {
             if (isSage) {
-                int64_t qkQuantGran = 3;  // sage_attn::QUANT_GRAN_PER_THREAD
-                int64_t pvAccumDtype = 2; // sage_attn::PV_ACCUM_FP32_FP16
-                int64_t layout = 1;       // sage_attn::LAYOUT_HND
-                CheckAcl(dispatcher.sageNativePrepare(q.handle, k.handle, v.handle, nullptr, nullptr, smScale,
-                                                     qkQuantGran, pvAccumDtype, cfg.causal, layout, false,
+                // 字符串属性形态（交付 op_api ABI）：顺序 layout, causal, gran,
+                // scale, accum, smoothK, smoothV；基准固定 per_thread + fp32+fp16
+                // 默认验收档；smooth_k 传 false 与 key_mean=nullptr（不传均值）一致
+                CheckAcl(dispatcher.sageNativePrepare(q.handle, k.handle, v.handle, nullptr, nullptr,
+                                                     "HND", cfg.causal, "per_thread", smScale,
+                                                     "fp32+fp16", false,
                                                      cfg.smoothV, out.handle, nullptr, &wsBytes, &exec),
                          "SageAttention2 Native GetWorkspaceSize");
             } else {

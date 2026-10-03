@@ -280,6 +280,10 @@ public:
         uint64_t initial_task = use_die ? DieTask(core_idx_, total_tasks, cores) : core_idx_;
         DecodeTask(initial_task, q_blks_per_head);
 
+        for (uint32_t r = 0; r < kKernelMaxRows; ++r) {
+            lse_corr_[r] = 0.0f;
+        }
+
 #if !SAGE_ATTN_DEVICE_COMPILE
         if (sim_mem_ == nullptr) {
             // 宿主仿真缓冲随核对象生命周期自动释放
@@ -767,30 +771,81 @@ private:
     {
 #if SAGE_ATTN_DEVICE_COMPILE
         if (q_src == nullptr) return;
-        (void)m;
-        const uint32_t total_rows = TotalRows();
+        // DEFECT-F-1 重构：组粒度两阶段——行 abs-max VF 进 UB rowmax 数组，
+        // 组归并/定档经 quant::QScaleIndex 单点（与宿主串行路径逐步一致），
+        // 逐行量化 VF 走除法轨迹 + per_thread half-away / per_warp RINT。
+        const bool per_thread_q = (tiling_->qk_quant_gran == QUANT_GRAN_PER_THREAD);
+        const uint32_t total_rows_q = TotalRows();
         const int64_t q_stride_h = (tiling_->tensor_layout == LAYOUT_HND)
                                        ? static_cast<int64_t>(sq_) * d_ : d_;
         const int64_t q_stride_s = (tiling_->tensor_layout == LAYOUT_HND)
                                        ? d_ : static_cast<int64_t>(hq_) * d_;
+        LocalTensor<float> ub_rowmax(TPosition::VECCALC,
+                                     Catlass::SageAttn::Vector0UbBudget::QUANT_WORKSPACE_OFFSET,
+                                     kKernelMaxRows);
+        LocalTensor<float> ub_scales(TPosition::VECCALC,
+                                     Catlass::SageAttn::Vector0UbBudget::QUANT_WORKSPACE_OFFSET + 512,
+                                     2048);
         LocalTensor<half> ub_in(TPosition::VECCALC, Catlass::SageAttn::Vector0UbBudget::GM_INPUT_PING_OFFSET, d);
         LocalTensor<int8_t> ub_out(TPosition::VECCALC, Catlass::SageAttn::Vector0UbBudget::NZ_OUTPUT_OFFSET, d);
-        LocalTensor<int8_t> l1_q(TPosition::A1, tiling_->l1_q_offset, total_rows * d);
+        LocalTensor<int8_t> l1_q(TPosition::A1, tiling_->l1_q_offset, total_rows_q * d);
+        const uint32_t dtype_mode = (tiling_->input_dtype == 2u) ? 2u : 1u;
 
-        for (uint32_t r = 0; r < total_rows && r < kKernelMaxRows; ++r) {
+        // 窗口 scale 组清零（防跨任务波次陈旧 amax 混入）
+        const uint32_t grp_first_q = quant::QScaleIndex(cur_q_start_, per_thread_q);
+        const uint32_t grp_last_q = quant::QScaleIndex(cur_q_start_ + cur_q_len_ - 1u, per_thread_q);
+        for (uint32_t g = 0; g < gqa_ratio_ && g < 8u; ++g) {
+            for (uint32_t s = grp_first_q; s <= grp_last_q && s < 2048u; ++s) {
+                ub_scales.SetValue(g * 2048u + s, 0.0f);
+            }
+        }
+
+        // A. 行 abs-max（每行一次 MTE2 + VF）
+        for (uint32_t r = 0; r < total_rows_q && r < kKernelMaxRows; ++r) {
             const uint32_t g = r / cur_q_len_;
             const uint32_t i = r % cur_q_len_;
-            const int64_t row_gm_offset = (g * q_stride_h + static_cast<int64_t>(i) * q_stride_s) * sizeof(half);
+            const int64_t row_gm_offset = (g * q_stride_h + static_cast<int64_t>(i) * q_stride_s) * static_cast<int64_t>(sizeof(half));
             GlobalTensor<half> gm_row;
             gm_row.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(q_src + row_gm_offset));
-
             DataCopy(ub_in, gm_row, d);
             PipeBarrier<PIPE_V>();
+            dev_vf::RowAbsMaxVF(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
+                                reinterpret_cast<__ubuf__ float*>(ub_rowmax.GetPhyAddr()) + r,
+                                nullptr, d, 0u, dtype_mode);
+        }
 
-            dev_vf::QuantizeRowInt8VF(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
-                                      reinterpret_cast<__ubuf__ int8_t*>(ub_out.GetPhyAddr()),
-                                      d);
+        // B. 组归并 + scale 定档（宿主同式；per_thread=amax/127+1e-7，
+        //    per_warp=clamp(amax,1e-7)/127）
+        for (uint32_t r = 0; r < total_rows_q && r < kKernelMaxRows; ++r) {
+            const uint32_t g = r / cur_q_len_;
+            const uint32_t token = cur_q_start_ + (r % cur_q_len_);
+            const float amax = ub_rowmax.GetValue(r);
+            const uint32_t slot = g * 2048u + quant::QScaleIndex(token, per_thread_q);
+            if (amax > ub_scales.GetValue(slot)) ub_scales.SetValue(slot, amax);
+        }
+        for (uint32_t g = 0; g < gqa_ratio_ && g < 8u; ++g) {
+            for (uint32_t s = grp_first_q; s <= grp_last_q && s < 2048u; ++s) {
+                const float amax = ub_scales.GetValue(g * 2048u + s);
+                ub_scales.SetValue(g * 2048u + s, per_thread_q
+                    ? (amax / INT8_QUANT_MAX + SCALE_EPSILON)
+                    : ((amax < SCALE_EPSILON ? SCALE_EPSILON : amax) / INT8_QUANT_MAX));
+            }
+        }
 
+        // C. 逐行量化写 L1（除法轨迹 + 舍入分档）
+        for (uint32_t r = 0; r < total_rows_q && r < kKernelMaxRows; ++r) {
+            const uint32_t g = r / cur_q_len_;
+            const uint32_t i = r % cur_q_len_;
+            const uint32_t token = cur_q_start_ + i;
+            const float scale = ub_scales.GetValue(g * 2048u + quant::QScaleIndex(token, per_thread_q));
+            const int64_t row_gm_offset = (g * q_stride_h + static_cast<int64_t>(i) * q_stride_s) * static_cast<int64_t>(sizeof(half));
+            GlobalTensor<half> gm_row;
+            gm_row.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(q_src + row_gm_offset));
+            DataCopy(ub_in, gm_row, d);
+            PipeBarrier<PIPE_V>();
+            dev_vf::QuantRowInt8VF(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
+                                   reinterpret_cast<__ubuf__ int8_t*>(ub_out.GetPhyAddr()),
+                                   scale, d, per_thread_q ? 1u : 0u, 0u, nullptr, dtype_mode);
             PipeBarrier<PIPE_V>();
             DataCopyParams cp;
             cp.blockCount = 1;
@@ -877,6 +932,7 @@ private:
                     corr += ReadInputBits(row_ptr, c) * km[c];
                 }
                 sim_mem_->lse_corr[r] = corr;
+                lse_corr_[r] = corr;
             }
         }
 #endif
@@ -899,36 +955,86 @@ private:
     {
 #if SAGE_ATTN_DEVICE_COMPILE
         if (k_src == nullptr) return;
+        // DEFECT-F-1 重构：组粒度两阶段（组边界 quant::KScaleIndex 单点，
+        // 块内本地序号写 l1_k_scale——Data+Scale 相邻契约）
+        const bool per_thread_k = (tiling_->qk_quant_gran == QUANT_GRAN_PER_THREAD);
         const int64_t k_stride_s = (tiling_->tensor_layout == LAYOUT_HND)
                                        ? d_ : static_cast<int64_t>(hkv_) * d_;
+        const uint32_t dtype_mode = (tiling_->input_dtype == 2u) ? 2u : 1u;
+        const uint32_t grp_per_blk = per_thread_k ? 4u : 1u;
+        const uint32_t blk_first = cur_k_start_ / quant::K_BLK;
+        const uint32_t grp_lo = blk_first * grp_per_blk;
+        const uint32_t grp_hi = ((cur_k_start_ + block_n_ - 1u) / quant::K_BLK + 1u) * grp_per_blk;
+        LocalTensor<float> ub_rowmax(TPosition::VECCALC,
+                                     Catlass::SageAttn::Vector0UbBudget::QUANT_WORKSPACE_OFFSET,
+                                     kKernelMaxRows);
+        LocalTensor<float> ub_k_scales(TPosition::VECCALC,
+                                       Catlass::SageAttn::Vector0UbBudget::QUANT_WORKSPACE_OFFSET + 512,
+                                       2048);
+        LocalTensor<float> ub_km(TPosition::VECCALC,
+                                 Catlass::SageAttn::Vector0UbBudget::QUANT_WORKSPACE_OFFSET + 1024 + 2048 * 4,
+                                 d);
         LocalTensor<half> ub_in(TPosition::VECCALC, Catlass::SageAttn::Vector0UbBudget::GM_INPUT_PING_OFFSET, d);
-        LocalTensor<float> ub_km(TPosition::VECCALC, Catlass::SageAttn::Vector0UbBudget::QUANT_WORKSPACE_OFFSET, d);
         LocalTensor<int8_t> ub_out(TPosition::VECCALC, Catlass::SageAttn::Vector0UbBudget::NZ_OUTPUT_OFFSET, d);
         LocalTensor<int8_t> l1_k(TPosition::B1, l1_dst_addr, block_n_ * d);
-
+        LocalTensor<float> l1_k_scale(TPosition::B1, l1_dst_addr + static_cast<uint32_t>(block_n_ * d), 2048);
         const uint32_t has_km = (km_ptr != nullptr) ? 1u : 0u;
+
         if (has_km) {
             GlobalTensor<float> gm_km;
             gm_km.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(const_cast<__gm__ float*>(km_ptr)));
             DataCopy(ub_km, gm_km, d);
         }
 
+        // 窗口 scale 组清零
+        for (uint32_t s = grp_lo; s < grp_hi && s < 2048u; ++s) {
+            ub_k_scales.SetValue(s, 0.0f);
+        }
+
+        // A. 行 abs-max（仅真实 token；pad 行零贡献且 pad 组写 0 由 C 段 pad 分支覆盖）
+        for (uint32_t j = 0; j < block_k; ++j) {
+            const int64_t row_gm_offset = static_cast<int64_t>(j) * k_stride_s * static_cast<int64_t>(sizeof(half));
+            GlobalTensor<half> gm_row;
+            gm_row.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(k_src + row_gm_offset));
+            DataCopy(ub_in, gm_row, d);
+            PipeBarrier<PIPE_V>();
+            dev_vf::RowAbsMaxVF(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
+                                reinterpret_cast<__ubuf__ float*>(ub_rowmax.GetPhyAddr()) + j,
+                                reinterpret_cast<__ubuf__ float*>(ub_km.GetPhyAddr()),
+                                d, has_km, dtype_mode);
+        }
+
+        // B. 组归并（pair/块粒度，KScaleIndex 单点）+ 定档 + l1_k_scale 本地写出
+        for (uint32_t j = 0; j < block_k; ++j) {
+            const uint32_t slot = quant::KScaleIndex(cur_k_start_ + j, per_thread_k);
+            if (ub_rowmax.GetValue(j) > ub_k_scales.GetValue(slot)) ub_k_scales.SetValue(slot, ub_rowmax.GetValue(j));
+        }
+        for (uint32_t s = grp_lo; s < grp_hi && s < 2048u; ++s) {
+            const float amax = ub_k_scales.GetValue(s);
+            const float scale = per_thread_k
+                ? (amax / INT8_QUANT_MAX + SCALE_EPSILON)
+                : ((amax < SCALE_EPSILON ? SCALE_EPSILON : amax) / INT8_QUANT_MAX);
+            ub_k_scales.SetValue(s, scale);
+            l1_k_scale.SetValue(s - grp_lo, scale);
+        }
+
+        // C. 逐行量化写 L1 + 尾块 pad 置零
         for (uint32_t j = 0; j < block_n_; ++j) {
             if (j < block_k) {
-                const int64_t row_gm_offset = static_cast<int64_t>(j) * k_stride_s * sizeof(half);
+                const int64_t row_gm_offset = static_cast<int64_t>(j) * k_stride_s * static_cast<int64_t>(sizeof(half));
                 GlobalTensor<half> gm_row;
                 gm_row.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(k_src + row_gm_offset));
                 DataCopy(ub_in, gm_row, d);
                 PipeBarrier<PIPE_V>();
-
-                dev_vf::QuantizeKeyRowInt8VF(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
-                                             reinterpret_cast<__ubuf__ float*>(ub_km.GetPhyAddr()),
-                                             reinterpret_cast<__ubuf__ int8_t*>(ub_out.GetPhyAddr()),
-                                             d, has_km);
+                const uint32_t token = cur_k_start_ + j;
+                const float scale = ub_k_scales.GetValue(quant::KScaleIndex(token, per_thread_k));
+                dev_vf::QuantRowInt8VF(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
+                                       reinterpret_cast<__ubuf__ int8_t*>(ub_out.GetPhyAddr()),
+                                       scale, d, per_thread_k ? 1u : 0u, has_km,
+                                       reinterpret_cast<__ubuf__ float*>(ub_km.GetPhyAddr()), dtype_mode);
             } else {
                 Duplicate(ub_out, int8_t(0), d);
             }
-
             PipeBarrier<PIPE_V>();
             DataCopyParams cp;
             cp.blockCount = 1;
@@ -1036,27 +1142,51 @@ private:
     {
 #if SAGE_ATTN_DEVICE_COMPILE
         if (v_src == nullptr) return;
+        // DEFECT-F-1 重构：per-channel 全序列 amax 预扫（首块一次，标量语义优先、
+        // 向量化为后续 pass）→ UB scale 张量；逐行量化 VF 走除法轨迹 + ±scale_max
+        // 截断 + 全零通道 0/0=NaN → e4m3 0x7f。
+        const uint32_t dtype_mode = (tiling_->input_dtype == 2u) ? 2u : 1u;
         const int64_t v_stride_s = (tiling_->tensor_layout == LAYOUT_HND)
                                        ? d_ : static_cast<int64_t>(hkv_) * d_;
+        LocalTensor<float> ub_v_scale(TPosition::VECCALC,
+                                      Catlass::SageAttn::Vector0UbBudget::QUANT_WORKSPACE_OFFSET,
+                                      d);
         LocalTensor<half> ub_in(TPosition::VECCALC, Catlass::SageAttn::Vector0UbBudget::GM_INPUT_PING_OFFSET, d);
         LocalTensor<float8_e4m3_t> ub_out(TPosition::VECCALC, Catlass::SageAttn::Vector0UbBudget::NZ_OUTPUT_OFFSET, d);
         LocalTensor<float8_e4m3_t> l1_v(TPosition::B1, l1_dst_addr, block_n_ * d);
+        const float scale_max = tiling_->v_scale_max;
+
+        if (cur_k_ == 0) {
+            // 全序列 per-channel amax（v_src 即 KV 头首行基址；pad token 计 0 不影响）。
+            // GM 读取经 GlobalTensor（bisheng 禁止 __gm__ 指针 reinterpret 丢地址空间）
+            GlobalTensor<uint16_t> v_head_gm;
+            v_head_gm.SetGlobalBuffer(reinterpret_cast<__gm__ uint16_t*>(v_src));
+            for (uint32_t c = 0; c < d; ++c) {
+                float amax = 0.0f;
+                for (uint32_t t = 0; t < sk_; ++t) {
+                    const uint16_t bits = v_head_gm(static_cast<int64_t>(t) * v_stride_s + c);
+                    const float abs_v = SageFastAbs(
+                        (dtype_mode == 2u) ? quant::Bf16ToFp32(bits) : quant::Fp16ToFp32(bits));
+                    if (abs_v > amax) amax = abs_v;
+                }
+                ub_v_scale.SetValue(c, amax / scale_max);
+            }
+        }
 
         for (uint32_t j = 0; j < block_n_; ++j) {
             if (j < block_k) {
-                const int64_t row_gm_offset = static_cast<int64_t>(j) * v_stride_s * sizeof(half);
+                const int64_t row_gm_offset = static_cast<int64_t>(j) * v_stride_s * static_cast<int64_t>(sizeof(half));
                 GlobalTensor<half> gm_row;
                 gm_row.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(v_src + row_gm_offset));
                 DataCopy(ub_in, gm_row, d);
                 PipeBarrier<PIPE_V>();
-
-                dev_vf::QuantizeValueRowFp8VF(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
-                                             reinterpret_cast<__ubuf__ float8_e4m3_t*>(ub_out.GetPhyAddr()),
-                                             d);
+                dev_vf::QuantVRowFp8VF(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
+                                       reinterpret_cast<__ubuf__ float8_e4m3_t*>(ub_out.GetPhyAddr()),
+                                       reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
+                                       d, scale_max, dtype_mode);
             } else {
                 Duplicate(ub_out.ReinterpretCast<int8_t>(), int8_t(0), d);
             }
-
             PipeBarrier<PIPE_V>();
             DataCopyParams cp;
             cp.blockCount = 1;
@@ -1376,23 +1506,32 @@ private:
                 const uint32_t r = g * cur_q_len_ + i;
                 if (r >= kKernelMaxRows) break;
                 const float inv_row = OnlineSoftmaxTransformer::GetFinalInvDenominator(row_states_[r]);
+                const float lse_corr_val = (r < kKernelMaxRows) ? lse_corr_[r] : 0.0f;
                 const float lse_host = OnlineSoftmaxTransformer::ConvertLseToHost(
                     row_states_[r].lse, tiling_->sm_scale_log2e * INV_LOG2E,
-                    0.0f, is_smooth_k, S_FP8_OFFSET + s_fp8_offset_);
+                    lse_corr_val, is_smooth_k, S_FP8_OFFSET + s_fp8_offset_);
 
                 LocalTensor<float> ub_o_row(TPosition::VECCALC,
                                             Catlass::SageAttn::Vector1UbBudget::O_ACCUM_OFFSET + r * d_ * sizeof(float),
                                             d_);
                 dev_vf::FinalizeRowVF(reinterpret_cast<__ubuf__ float*>(ub_o_row.GetPhyAddr()),
-                                     reinterpret_cast<__ubuf__ half*>(ub_half.GetPhyAddr()),
-                                     inv_row, tiling_->d_og);
+                                     reinterpret_cast<__ubuf__ uint16_t*>(ub_half.GetPhyAddr()),
+                                     inv_row, tiling_->d_og, tiling_->input_dtype);
+                // 注：GM 搬出支持 half 与 bfloat16 双路径（DEFECT-F-3）
 
                 const int64_t out_gm_offset =
                     (b_idx * out_stride_b + hq_curr * out_stride_h +
                      (sq_start + i) * out_stride_s) * sizeof(half);
-                GlobalTensor<half> gm_out;
-                gm_out.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(out_gm_ + out_gm_offset));
-                DataCopy(gm_out, ub_half, tiling_->d_og);
+                if (tiling_->input_dtype == 2u) {
+                    GlobalTensor<bfloat16_t> gm_out;
+                    gm_out.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(out_gm_ + out_gm_offset));
+                    LocalTensor<bfloat16_t> ub_bf16 = ub_half.ReinterpretCast<bfloat16_t>();
+                    DataCopy(gm_out, ub_bf16, tiling_->d_og);
+                } else {
+                    GlobalTensor<half> gm_out;
+                    gm_out.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(out_gm_ + out_gm_offset));
+                    DataCopy(gm_out, ub_half, tiling_->d_og);
+                }
 
                 if (lse_gm_ != nullptr) {
                     const int64_t lse_offset =
@@ -1483,6 +1622,9 @@ private:
     // 行级 online softmax 状态（GQA 逻辑行 r = g * cur_q_len + i 各自独立维护，
     // 与 twin RunSequential 的行级状态一致；真实硬件驻留 V1 UB LSE_WORKSPACE 区）
     OnlineSoftmaxState row_states_[kKernelMaxRows];
+
+    // smooth_k 行级 lse_correction 统一状态（全分支共享，杜绝设备态硬编码 0.0f）
+    float lse_corr_[kKernelMaxRows]{0.0f};
 
     // P 矩阵 e4m3 放大偏置——s_fp8_offset 指数偏置域（tiling 参数化读取，基线 0；
     // 448· 放大经乘法实现且恒启用，语义见 Init 与 ComputeSoftmaxProbability 注释）

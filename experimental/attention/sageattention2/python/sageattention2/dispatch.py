@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import os
 import warnings
-from typing import Any, Optional, Tuple, Union
+from typing import Any, Optional, Tuple
 
 try:
     import torch
@@ -57,8 +57,13 @@ def _quant_qk_per_warp(
     sq: int,
     sk: int,
     d: int,
-) -> Tuple[torch.Tensor, torch.Tensor]:
-    """per_warp INT8 quantization for Q and K (RNE rounding + saturation)."""
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """per_warp INT8 quantization for Q and K (RNE rounding + saturation).
+
+    返回 (q_deq, k_deq, q_int8, q_scale, k_int8, k_scale)。中间态格式与 golden
+    台账一致（q_int8/k_int8 裁回 sq/sk；q_scale [b,hq,blk*4]；k_scale [b,hkv,blk]），
+    供单一基准整合（golden 生成器编排复用）。
+    """
     b, hq = q_hnd.shape[0], q_hnd.shape[1]
     _, hkv = k_centered_hnd.shape[0], k_centered_hnd.shape[1]
 
@@ -69,8 +74,10 @@ def _quant_qk_per_warp(
     q_view = q_pad.view(b, hq, num_blkq, 4, 32, d).float()
     amax_q = q_view.abs().amax(dim=(4, 5)).clamp(min=SCALE_EPSILON)
     scale_q = amax_q / INT8_QUANT_MAX
+    q_scale = scale_q.view(b, hq, num_blkq * 4)
     q_scaled = q_view / scale_q.unsqueeze(4).unsqueeze(5)
     q_quant = torch.round(q_scaled).clamp(-128, 127).to(torch.int8)
+    q_int8 = q_quant.view(b, hq, pad_sq, d)[:, :, :sq, :]
     q_deq = (q_quant.float() * scale_q.unsqueeze(4).unsqueeze(5)).view(b, hq, pad_sq, d)[:, :, :sq, :]
 
     # K per_block: BLKK=64 -> 1 scale per 64 tokens
@@ -80,11 +87,13 @@ def _quant_qk_per_warp(
     k_view = k_pad.view(b, hkv, num_blkk, 64, d).float()
     amax_k = k_view.abs().amax(dim=(3, 4)).clamp(min=SCALE_EPSILON)
     scale_k = amax_k / INT8_QUANT_MAX
+    k_scale = scale_k.view(b, hkv, num_blkk)
     k_scaled = k_view / scale_k.unsqueeze(3).unsqueeze(4)
     k_quant = torch.round(k_scaled).clamp(-128, 127).to(torch.int8)
+    k_int8 = k_quant.view(b, hkv, pad_sk, d)[:, :, :sk, :]
     k_deq = (k_quant.float() * scale_k.unsqueeze(3).unsqueeze(4)).view(b, hkv, pad_sk, d)[:, :, :sk, :]
 
-    return q_deq, k_deq
+    return q_deq, k_deq, q_int8, q_scale, k_int8, k_scale
 
 
 def _quant_qk_per_thread(
@@ -93,8 +102,12 @@ def _quant_qk_per_thread(
     sq: int,
     sk: int,
     d: int,
-) -> Tuple[torch.Tensor, torch.Tensor]:
-    """per_thread INT8 quantization for Q and K (half-away-from-zero rounding + clamp[-127, 127])."""
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """per_thread INT8 quantization for Q and K (half-away-from-zero rounding + clamp[-127, 127]).
+
+    返回 (q_deq, k_deq, q_int8, q_scale, k_int8, k_scale)。中间态格式与 golden
+    台账一致（q_int8/k_int8 裁回 sq/sk；q_scale [b,hq,blk*32]；k_scale [b,hkv,blk*4]）。
+    """
     b, hq = q_hnd.shape[0], q_hnd.shape[1]
     _, hkv = k_centered_hnd.shape[0], k_centered_hnd.shape[1]
 
@@ -108,7 +121,9 @@ def _quant_qk_per_thread(
     scale_exp_q = scale_q.unsqueeze(4).unsqueeze(6)
     q_scaled = q_view / scale_exp_q
     q_quant = torch.clamp(torch.floor(torch.abs(q_scaled) + 0.5) * torch.sign(q_scaled), -127, 127).to(torch.int8)
+    q_int8 = q_quant.view(b, hq, pad_sq, d)[:, :, :sq, :]
     q_deq = (q_quant.float() * scale_exp_q).view(b, hq, pad_sq, d)[:, :, :sq, :]
+    q_scale = scale_q.view(b, hq, num_blkq * 32)
 
     # K per_thread: 64 tokens -> 4 groups of 8 pairs (adjacent columns)
     num_blkk = (sk + 63) // 64
@@ -120,9 +135,11 @@ def _quant_qk_per_thread(
     scale_exp_k = scale_k.unsqueeze(3).unsqueeze(5).unsqueeze(6)
     k_scaled = k_view / scale_exp_k
     k_quant = torch.clamp(torch.floor(torch.abs(k_scaled) + 0.5) * torch.sign(k_scaled), -127, 127).to(torch.int8)
+    k_int8 = k_quant.view(b, hkv, pad_sk, d)[:, :, :sk, :]
     k_deq = (k_quant.float() * scale_exp_k).view(b, hkv, pad_sk, d)[:, :, :sk, :]
+    k_scale = scale_k.view(b, hkv, num_blkk * 4)
 
-    return q_deq, k_deq
+    return q_deq, k_deq, q_int8, q_scale, k_int8, k_scale
 
 
 def _quant_v_fp8(
@@ -131,8 +148,13 @@ def _quant_v_fp8(
     d: int,
     pv_accum_dtype: str,
     smooth_v: bool,
-) -> torch.Tensor:
-    """Quantize V to FP8 e4m3fn with sequence padding and permuted layout."""
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, Optional[torch.Tensor], torch.Tensor]:
+    """Quantize V to FP8 e4m3fn with sequence padding and permuted layout.
+
+    返回 (v_deq_hnd, v_fp8, v_scale, vm, v_norm_clamped)。中间态格式与 golden 台账
+    一致（v_fp8 [b,hkv,d,pad_sk_v] permuted、v_scale [b,hkv,d]、vm 仅 smooth_v 路径
+    非 None），供单一基准整合（golden 生成器编排复用）。
+    """
     b, hkv = v_hnd.shape[0], v_hnd.shape[1]
     scale_max = SCALE_MAX_FP16_ACCUM if pv_accum_dtype == "fp32+fp16" else S_FP8_SCALE_MAX
 
@@ -158,6 +180,7 @@ def _quant_v_fp8(
         v_fp8_unperm = v_fp8.view(b, hkv, d, num_16, 16)[:, :, :, :, _V_FP8_INV_PERM].contiguous().view(b, hkv, d, pad_sk_v)[:, :, :, :sk]
         v_deq_hnd = (v_fp8_unperm.float() * v_scale.unsqueeze(-1) + vm.unsqueeze(-1)).transpose(2, 3)
     else:
+        vm = None
         amax_v = torch.max(v_sub.amax(dim=-1).abs(), v_sub.amin(dim=-1).abs())
         v_scale = amax_v / scale_max
         v_norm = v_perm.float() / v_scale.unsqueeze(-1)
@@ -165,7 +188,7 @@ def _quant_v_fp8(
         v_fp8_unperm = v_fp8.view(b, hkv, d, num_16, 16)[:, :, :, :, _V_FP8_INV_PERM].contiguous().view(b, hkv, d, pad_sk_v)[:, :, :, :sk]
         v_deq_hnd = (v_fp8_unperm.float() * v_scale.unsqueeze(-1)).transpose(2, 3)
 
-    return v_deq_hnd
+    return v_deq_hnd, v_fp8, v_scale, vm, v_norm
 
 
 def run_sageattn_cpu_reference(
@@ -180,10 +203,14 @@ def run_sageattn_cpu_reference(
     smooth_k: bool,
     smooth_v: bool,
     return_lse: bool,
-) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+    return_intermediates: bool = False,
+):
     """
     High-fidelity CPU reference simulation for SageAttention2 on Ascend NPU.
-    Aligned with golden/generate_golden.py simulate_sage_attention.
+    单一基准（Group J）：本函数是算子侧唯一 Python 数值参考；golden 生成器
+    （golden/generate_golden.py）经 return_intermediates=True 编排复用，两份
+    量化/仿真实现已删除。中间态格式 = golden 台账格式（HND 域：q_int8 裁回
+    sq、q_scale 组序、v_fp8 permuted [b,hkv,d,pad_sk_v]、v_scale [b,hkv,d]）。
     """
     dtype = q_pad.dtype
     sm_scale_log2e = sm_scale * LOG2E
@@ -212,14 +239,14 @@ def run_sageattn_cpu_reference(
         k_centered_hnd = k_hnd
         lse_correction = torch.zeros((b, hq, sq), dtype=torch.float32, device=q_hnd.device)
 
-    # 2. Quantize Q & K
+    # 2. Quantize Q & K（返回中间态：q_int8/q_scale/k_int8/k_scale，golden 台账格式）
     if qk_quant_gran == "per_thread":
-        q_deq_hnd, k_deq_hnd = _quant_qk_per_thread(q_hnd, k_centered_hnd, sq, sk, d)
+        q_deq_hnd, k_deq_hnd, q_int8, q_scale, k_int8, k_scale = _quant_qk_per_thread(q_hnd, k_centered_hnd, sq, sk, d)
     else:
-        q_deq_hnd, k_deq_hnd = _quant_qk_per_warp(q_hnd, k_centered_hnd, sq, sk, d)
+        q_deq_hnd, k_deq_hnd, q_int8, q_scale, k_int8, k_scale = _quant_qk_per_warp(q_hnd, k_centered_hnd, sq, sk, d)
 
-    # 3. Quantize V to FP8
-    v_deq_hnd = _quant_v_fp8(v_hnd, sk, d, pv_accum_dtype, smooth_v)
+    # 3. Quantize V to FP8（返回中间态：v_fp8 permuted / v_scale / vm）
+    v_deq_hnd, v_fp8, v_scale, vm, _ = _quant_v_fp8(v_hnd, sk, d, pv_accum_dtype, smooth_v)
 
     # 4. GQA broadcasting
     if hq != hkv:
@@ -309,6 +336,17 @@ def run_sageattn_cpu_reference(
     else:
         out = out_hnd
 
+    if return_intermediates:
+        intermediates = {
+            "q_int8": q_int8,        # [b, hq, sq, d] HND，裁回 sq
+            "q_scale": q_scale,      # [b, hq, blk*(32|4)]
+            "k_int8": k_int8,        # [b, hkv, sk, d] HND，裁回 sk
+            "k_scale": k_scale,      # [b, hkv, blk*(4|1)]
+            "v_fp8": v_fp8,          # [b, hkv, d, pad_sk_v] 16-token permuted
+            "v_scale": v_scale,      # [b, hkv, d]
+            "vm": vm,                # 仅 smooth_v 路径非 None
+        }
+        return out, lse_out, intermediates
     return out, lse_out
 
 
@@ -337,7 +375,7 @@ def dispatch_sageattn(
     sm_scale: Optional[float] = None,
     return_lse: bool = False,
     **kwargs: Any,
-) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+):
     """
     Dispatch sageattn to sageattn_qk_int8_pv_fp8_asc on Ascend NPU.
     Reads pv_accum_dtype from kwargs or SAGEATTN_PV_ACCUM_DTYPE environment variable.
@@ -379,7 +417,7 @@ def dispatch_sageattn_qk_int8_pv_fp8_asc(
     smooth_v: bool = False,
     return_lse: bool = False,
     **kwargs: Any,
-) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+) -> torch.Tensor:
     """
     Dispatch sageattn_qk_int8_pv_fp8_asc across NPU C++ / aclnn and CPU reference backends.
     """

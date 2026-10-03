@@ -83,6 +83,27 @@ constexpr float SKIP_SCALE_TAU = 6.0f;                  // FlashMLA / Online Sof
 constexpr uint32_t DEFAULT_K_STEP = 16;
 
 /**
+ * GM 暂存区布局（V0→V1 的 scale 桥接，2026-10-03 设备数据通路 A7 落地）：
+ * Vector0 量化核产出的 scale 供 Vector1 softmax 核消费（两 Vector UB 互不可见，
+ * L1 侧仅供 Cube 读），经 GetUserWorkspace 用户区按核分条带交接。host 侧
+ * （op_host/aclnn host tiling）按 STAGE_CORE_STRIDE × core_num_used 预留，
+ * kernel 侧以 GetBlockIdx（AIV 折半后 core_idx）× STAGE_CORE_STRIDE 寻址——
+ * 布局唯一定义点即本组常量，禁止两侧各自推导。
+ * 每条带 4 个区域，各 512B（128 float 行解析 scale）：
+ *   [0,   512)   行解析 q_scale（V0 按 QScaleIndex 分组定标后逐行展开，gqa 聚合行序）
+ *   [512, 1024)  块解析 k_scale ping 槽（V0 按 KScaleIndex 分组定标后逐 token 展开）
+ *   [1024,1536)  块解析 k_scale pong 槽
+ *   [1536,2048)  V per-channel scale（V0 全序列 amax 预扫产出，任务级一次）
+ */
+constexpr uint32_t STAGE_CORE_STRIDE = 2048;
+constexpr uint32_t STAGE_Q_SCALE_OFFSET = 0;
+constexpr uint32_t STAGE_K_SCALE_PING_OFFSET = 512;
+constexpr uint32_t STAGE_K_SCALE_PONG_OFFSET = 1024;
+constexpr uint32_t STAGE_V_SCALE_OFFSET = 1536;
+constexpr uint32_t STAGE_SLOT_FLOATS = 128;               // 单区域容量（float 数）
+constexpr uint32_t STAGE_SLOT_BYTES = STAGE_SLOT_FLOATS * sizeof(float);
+
+/**
  * 布局编码枚举（对齐 core.py 行 745）
  */
 enum TensorLayout : uint32_t {

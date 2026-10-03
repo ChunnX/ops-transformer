@@ -128,6 +128,12 @@ inline aclnnStatus ComputeHostTiling(
     if (pvAccumDtype < PV_ACCUM_FP32 || pvAccumDtype > PV_ACCUM_FP32_FP16) {
         return ACLNN_ERR_PARAM_INVALID;
     }
+    // tensor_layout 编码域校验：仅接受冻结编码 NHD(0)/HND(1)，非法数值显式报错
+    // 不静默归一（与 canonical op_api 的"非法布局报错不降级"口径及同函数
+    // gran/accum 严格校验一致；GE 字符串映射层经 *CodeFromString 恒产 0/1，不受影响）
+    if (tensorLayout != LAYOUT_NHD && tensorLayout != LAYOUT_HND) {
+        return ACLNN_ERR_PARAM_INVALID;
+    }
 
     // 4. 清空结构体 (160 字节，32 字节对齐)
     std::memset(&tiling_out, 0, sizeof(SageAttention2TilingData));
@@ -288,6 +294,12 @@ inline aclnnStatus ComputeHostTiling(
     } else {
         tiling_out.workspace_vm_offset = 0;
     }
+
+    // (4) A7 V0→V1 scale 暂存条带（task/12_device_data_path.md 第四节；2026-10-03）：
+    // 布局常量唯一定义 tiling.h STAGE_*（每核 STAGE_CORE_STRIDE 字节 × 参与核数），
+    // kernel 侧以 core_idx × STAGE_CORE_STRIDE 寻址 GetUserWorkspace 用户区。
+    current_ws_offset += align512(static_cast<uint64_t>(tiling_out.core_num_used) *
+                                  sage_attn::STAGE_CORE_STRIDE);
 
     workspace_bytes_out = current_ws_offset;
     return ACLNN_SUCCESS;

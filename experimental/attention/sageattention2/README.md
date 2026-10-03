@@ -13,7 +13,7 @@
 - `./sageattn_fp8/`：AscendC 设备侧基础设施（`ascendc/tiling.h` 为 Host/Device 共享 TilingData，`catlass/` 为 Cube MMA 封装；设备核入口已按 CANN opc 打包约定迁至 `./op_kernel/sageattention2.cpp`）
 - `./op_kernel/`：CANN opc 打包约定的内核源码目录（`sageattention2.cpp`，1C2V 延迟一拍主流水唯一内核入口）
 - `./quant/`：Q/K INT8 与 V FP8 量化 Host 逻辑与可单测的 C++ 量化内核
-- `./op_host/`：CANN 标准 REG_OP/InferShape 注册层；op_api 层两段式 C 接口实现位于 `./aclnn/`，打包后进入 run 包 `op_api/` 布局（原字符串属性适配层已删除，接口编码见 `./aclnn/sage_attn_proto.h`）
+- `./op_host/`：CANN 标准 REG_OP/InferShape 注册层；交付态 op_api 层两段式 C 接口实现位于 `./op_api/`（字符串属性 ABI，经 `OP_API_DIR` 随 run 包打包安装），`./aclnn/` 为移植态本地单测实现（数值编码 ABI，见 `./aclnn/sage_attn_proto.h`）
 - `./python/sageattention2/`：PyTorch 接入包（`core.py` 冻结签名、`dispatch.py` 多后端路由、`op_plugin.py` NPU kernel 加载）
 - `./tests/`、`./benchmarks/`：本地门禁单测与独立 ACLNN 基准工具
 - `./run.sh`：本地门禁统一入口
@@ -66,12 +66,12 @@ bash build.sh --pkg --experimental --soc=ascend950 --vendor_name=customize --ops
 
 - `SAGEATTN_ALLOW_CPU_STUB` 语义：默认关闭；设为 `1`/`true`/`yes` 时，即使检测到 NPU 可用也允许走高保真 CPU 参考实现（与 golden 数据生成算法逐位同源），用于无卡环境的功能验证与 CI。该模式输出为 CPU 参考结果，禁止作为 NPU 性能与精度验收证据
 
-### 两段式 ACLNN C 接口（`./aclnn/sage_attn_proto.h`）
+### 两段式 ACLNN C 接口（交付态 `./op_api/`，移植态 `./aclnn/`）
 
-- 第一段 `aclnnSageAttention2GetWorkspaceSize`：入参 q/k/v、可选 `keyMean`/`lseCorrection`、`smScale`、`qkQuantGran`（2=per_warp，3=per_thread）、`pvAccumDtype`（0=fp32，1=fp32+fp32，2=fp32+fp16）、`isCausal`、`tensorLayout`（0=NHD，1=HND）、`smoothK`、`smoothV`、out、可选 lse；产出 workspace 大小与 `aclOpExecutor`
-- 第二段 `aclnnSageAttention2(workspace, workspaceSize, executor, stream)`：校验 workspace 不小于第一段产出后发射 kernel
-- 接口编码唯一以 `./aclnn/sage_attn_proto.h` 的数值编码为准；字符串形式（`"per_thread"`、`"fp32+fp16"`、`"HND"` 等）仅在 Python/C++ 桥接层（`./python/sageattention2/csrc/attention.cpp`）转换为数值编码后透传，不设第二套字符串协议（原 `WithStrAttrs` 适配层已删除）
-- `smScale` 冻结语义：默认值 `1/sqrt(head_dim)` 仅在 Python `sm_scale=None` 时由桥接层折叠后传入；本 C 接口收到非正值返回 `ACLNN_ERR_PARAM_INVALID`
+- 交付态（随 run 包安装，真机调用方以此为准）：`./op_api/aclnn_sage_attention2.h` 第一段 `aclnnSageAttention2GetWorkspaceSize`：入参 q/k/v、可选 `keyMean`/`lseCorrection`、`tensorLayout`（字符串 `"HND"`/`"NHD"`，`"BNSD"`/`"BSND"` 同义词域）、`isCausal`、`qkQuantGran`（`"per_thread"`/`"per_warp"`）、`smScale`、`pvAccumDtype`（`"fp32"`/`"fp32+fp32"`/`"fp32+fp16"`）、`smoothK`、`smoothV`、out、可选 lse、`workspaceSize`、`executor`；属性顺序与 `./op_host/sage_attention2_def.cpp` 注册的 7 项一致
+- 移植态（本地单测与无 opdev 环境自包含实现，不随 run 包安装）：`./aclnn/sage_attn_proto.h` 第一段同名接口取数值编码：`qkQuantGran`（2=per_warp，3=per_thread）、`pvAccumDtype`（0=fp32，1=fp32+fp32，2=fp32+fp16）、`tensorLayout`（0=NHD，1=HND），属性顺序为 scale, gran, accum, causal, layout, smoothK, smoothV
+- 第二段 `aclnnSageAttention2(workspace, workspaceSize, executor, stream)`：校验 workspace 不小于第一段产出后发射 kernel（两态签名一致）
+- `smScale` 冻结语义：默认值 `1/sqrt(head_dim)` 仅在 Python `sm_scale=None` 时由桥接层折叠后传入；两态 C 接口收到非正值返回 `ACLNN_ERR_PARAM_INVALID`
 - Tiling 下发：Host Tiling 经 `./op_host/sage_attention2_tiling.cpp` 注册的 TilingImpl 序列化进 `gert::RawTilingData`，由框架在 `CommonOpExecutorRun` 下发阶段写入 kernel
 - 完整两段式调用示例见 `./benchmarks/benchmark_aclnn.cpp`
 
@@ -94,7 +94,7 @@ bash build.sh --pkg --experimental --soc=ascend950 --vendor_name=customize --ops
 
 ## 性能基准工具（`./benchmarks/`）
 
-- `benchmark_aclnn.cpp`：独立 C++ ACLNN 基准工具，dlsym 加载 `aclnnSageAttention2` 与基线 `aclnnFusedInferAttentionScoreV5`（函数指针签名逐参数对齐 CANN `9.2.0-beta.1` 头文件），ABBA 轮换 + Trim5 统计 + JSON 报告
+- `benchmark_aclnn.cpp`：独立 C++ ACLNN 基准工具，dlsym 加载 `aclnnSageAttention2`（函数指针签名对齐交付 `./op_api/aclnn_sage_attention2.h` 字符串属性 ABI）与基线 `aclnnFusedInferAttentionScoreV5`（签名逐参数对齐 CANN `9.2.0-beta.1` 头文件），ABBA 轮换 + Trim5 统计 + JSON 报告
 - 退出码契约：`0` 为真机运行完成（含 PASS/FAIL 裁决字段），`1` 为运行错误，`2` 为 SIMULATION 模拟运行
 - SIMULATION 模式（无 CANN/NPU 的主机 mock 构建）下，所有 `speedup` 字段输出 `NaN`、`verdict` 输出 `"SIMULATION"`、`passed` 与精度对照字段输出 `null`，报告头与 `meta.simulation_warning` 显式声明模拟语义；模拟延迟为合成常数，禁止作为验收证据
 - 构建：`bash benchmarks/build_aclnn_benchmark.sh`（有 CANN 环境时链接真机库，否则自动落 mock 模式并容忍冒烟退出码 `2`）
@@ -126,9 +126,9 @@ SAGE_PYTHON=... pytest tests/ -q（或 run.sh python）
 
 - 质量准出门禁：
 
-- `bash run.sh host` 输出三段 `[SUCCESS]`（ACLNN Host 7 例、OP_HOST 5 例、OutputQueue 7 例）且退出码为 0
+- `bash run.sh host` 输出三段 `[SUCCESS]`（ACLNN Host 7 例、OP_HOST 5 例、OutputQueue 10 例）且退出码为 0
 - `SAGE_PYTHON=... pytest tests/ -q` 全部用例通过（含 `tests/test_tiling_struct.py` 的 TilingData ctypes 镜像对 160 字节总长、32 字节对齐与逐字段偏移的断言）；`run.sh python` 仅覆盖 test_tiling_struct.py 与 test_quant.py 两个快速项，全量口径以 pytest 为准
-- `tests/test_kernel_twin.py`（已纳入 `run.sh python`）：宿主孪生全流水执行器（twin_reference RunSequential）与 kernel 宿主串行分支（op_kernel SageAttnKernel + SimMemory，TilingData 直驱 `sage_attention2` C 入口）对 golden 25 桶落盘 out/lse 的功能交叉验证——22 桶整桶 + 3 大桶 128 对齐行窗口（P-05/P-07/TC-09，非因果行独立性如实标注；TC-03_smooth_v_fp32 为 smooth_v 建模边界由 test_function.py 覆盖），判据 L-A（matched_ratio ≥ 0.99、max_abs ≤ 0.1/1.0、LSE ≤ 1e-3）+ L-B（对 SDPA 误差比 ≤ 2.0/1.2/1.2），并附 P-01 量化中间态（q/k INT8、v FP8、scale）位级比对；P-01/TC-05/TC-07 三代表桶另以 kernel 宿主串行分支复验
+- `tests/test_kernel_twin.py`（已纳入 `run.sh python`）：宿主孪生全流水执行器（twin_reference RunSequential）与 kernel 宿主串行分支（op_kernel SageAttnKernel + SimMemory，TilingData 直驱 `sage_attention2` C 入口）对 golden 25 桶落盘 out/lse 的功能交叉验证——22 桶整桶 + 3 大桶 128 对齐行窗口（P-05/P-07/TC-09，非因果行独立性如实标注；TC-03_smooth_v_fp32 为 smooth_v 建模边界由 test_function.py 覆盖），判据 L-A（matched_ratio ≥ 0.99、max_abs ≤ 0.1/1.0、LSE ≤ 1e-3）+ L-B（对 SDPA 误差比 ≤ 2.0/1.2/1.2），并附 P-01 量化中间态（q/k INT8、v FP8、scale）位级比对；P-01/TC-04/TC-05/TC-07/TC-01(fp16) 代表桶另以 kernel 宿主串行分支复验，TC-01(bf16) 桶覆盖核内 `tiling.input_dtype==2` 位型分派分支（bf16 读写与 km 差值位型舍回）
 - 仓库级数值门（kernel 宿主串行路径 vs 孪生参考十用例位级一致、golden 25 桶 L-A/L-B）：由工程根 `ci/local_test.sh` 承载，依赖仓库外 `./tests/` 与 `./sageAttention2/sageAttentionTest`（交付包内不自带，复现须在完整工程根执行）
 - `bash run.sh opp` 完成 dry-run 打包与 mock 安装且退出码为 0
 - 真机验收另行执行 `bash benchmarks/build_aclnn_benchmark.sh` 并以真机报告的 `verdict: PASS` 为准；`mode: SIMULATION` 的报告一律无效
@@ -136,5 +136,5 @@ SAGE_PYTHON=... pytest tests/ -q（或 run.sh python）
 ## 交付文档索引
 
 - [与 CUDA 默认接口的差异](./docs/CUDA接口差异说明.md)：量化粒度、S_FP8_OFFSET 放大、两级累加三档、舍入模式、smooth_v 正路径的逐项语义对照
-- 接口原型：`./aclnn/sage_attn_proto.h`（唯一协议：数值编码）
+- 接口原型：交付态 `./op_api/aclnn_sage_attention2.h`（字符串属性，随 run 包安装）；移植态 `./aclnn/sage_attn_proto.h`（数值编码，本地单测）
 - Tiling 契约：`./sageattn_fp8/ascendc/tiling.h`（160 字节、32 字节对齐，Host/Device 共享只读）

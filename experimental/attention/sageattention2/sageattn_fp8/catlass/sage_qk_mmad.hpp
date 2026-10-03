@@ -255,11 +255,76 @@ public:
         return q_scale * k_scale * sm_scale_log2e;
     }
 
+    /**
+     * A7（task/12_device_data_path.md D1 方案甲）：QK^T 的 L0C INT32 结果裸搬至 UB
+     * logits 区（dav-3510 FixPipe，quantPre DISABLE = 位型透传，无精度转换）。
+     * - 反量化不在本层：INT32→float 精确 cast 与 q_scale·k_scale·sm_scale_log2e
+     *   左结合乘序由 V1 侧 DequantMaskLogitsRowVF 承担（对齐 twin::DequantQkLogit
+     *   单点；|dot| ≤ 2^21 整数域内 cast 精确，01_design 2.9 节）；
+     * - m > 64 时按 64 行两段发射，两段同分区（subBlockId=false）写入 UB 连续两块
+     *   （ub_dst_half0/half1），V1 跨段读取；若 bisheng 门/真机否决该形态，按 D1
+     *   退 CATLASS CopyL0CToUBTla（SPLIT_M）；
+     * - 宿主/KT 分支无硬件 FIX 通路，设备态外为空（与 Mmad 同守卫范式）。
+     */
+    __aicore__ void EmitL0CToUbRaw(uint32_t ub_dst_half0, uint32_t ub_dst_half1,
+                                   uint32_t m, uint32_t n) {
+#if defined(__CCE__) && !defined(__CCE_KT_TEST__)
+        constexpr uint32_t M_SPLIT = 64;
+        static constexpr auto format = AscendC::CO2Layout::ROW_MAJOR;
+        static constexpr AscendC::FixpipeConfig cfg{format, true};
+        AscendC::FixpipeParamsArch3510<format> fp;
+        fp.nSize = static_cast<uint16_t>(n);
+        fp.srcStride = static_cast<uint16_t>(m);   // L0C zN 行距（整幅行数）
+        fp.dstStride = static_cast<uint16_t>(n);   // UB ND 行距
+        fp.params.ndNum = 1;
+        fp.params.srcNdStride = 0;
+        fp.params.dstNdStride = 0;
+        // QuantMode_t 为全局作用域枚举（CANN 无 AscendC:: 限定版本），缺省成员
+        // NoQuant 即"随路量化关闭"（kernel_utils_struct_dma_params.h 默认值）
+        fp.quantPre = QuantMode_t::NoQuant;
+        fp.dualDstCtl = 0;
+        fp.subBlockId = false;
+        AscendC::TBuffAddr l0c_desc{};
+        l0c_desc.logicPos = static_cast<uint8_t>(AscendC::TPosition::CO1);
+        l0c_desc.bufferHandle = nullptr;
+        l0c_desc.bufferAddr = 0U;
+        l0c_desc.dataLen = static_cast<uint32_t>(m * n * sizeof(ElementC));
+        AscendC::LocalTensor<ElementC> l0c_tensor;
+        l0c_tensor.SetAddr(l0c_desc);
+        AscendC::TBuffAddr ub0_desc{};
+        ub0_desc.logicPos = static_cast<uint8_t>(AscendC::TPosition::VECOUT);
+        ub0_desc.bufferHandle = nullptr;
+        ub0_desc.bufferAddr = ub_dst_half0;
+        ub0_desc.dataLen = static_cast<uint32_t>(m * n * sizeof(ElementC));
+        AscendC::LocalTensor<ElementC> ub_dst0;
+        ub_dst0.SetAddr(ub0_desc);
+        if (m <= M_SPLIT) {
+            fp.mSize = static_cast<uint16_t>(m);
+            AscendC::Fixpipe<ElementC, ElementC, cfg>(ub_dst0, l0c_tensor, fp);
+        } else {
+            fp.mSize = static_cast<uint16_t>(M_SPLIT);
+            AscendC::TBuffAddr ub1_desc = ub0_desc;
+            ub1_desc.bufferAddr = ub_dst_half1;
+            ub1_desc.dataLen = static_cast<uint32_t>((m - M_SPLIT) * n * sizeof(ElementC));
+            AscendC::LocalTensor<ElementC> ub_dst1;
+            ub_dst1.SetAddr(ub1_desc);
+            AscendC::Fixpipe<ElementC, ElementC, cfg>(ub_dst0, l0c_tensor, fp);
+            // 第二个 64 行段：L0C 侧按分形行偏移（int32 zN 每分形行 16 列）
+            AscendC::Fixpipe<ElementC, ElementC, cfg>(ub_dst1, l0c_tensor[M_SPLIT * 16], fp);
+        }
+#else
+        (void)ub_dst_half0;
+        (void)ub_dst_half1;
+        (void)m;
+        (void)n;
+#endif
+    }
+
     __aicore__ const ElementC* GetL0C() const {
 #if !defined(__CCE__) && !defined(__CCE_KT_TEST__) && !defined(__DAV_C220_VEC__) && !defined(__DAV_C220_CUBE__) && !defined(__DAV_C310_CUBE__) && !defined(__DAV_C310_VEC__)
         return (l0c_base_ != nullptr) ? static_cast<const ElementC*>(l0c_base_) : l0c_buf_;
 #else
-        return nullptr;
+        return (l0c_base_ != nullptr) ? static_cast<const ElementC*>(l0c_base_) : nullptr;
 #endif
     }
 
@@ -267,7 +332,7 @@ public:
 #if !defined(__CCE__) && !defined(__CCE_KT_TEST__) && !defined(__DAV_C220_VEC__) && !defined(__DAV_C220_CUBE__) && !defined(__DAV_C310_CUBE__) && !defined(__DAV_C310_VEC__)
         return (l0c_base_ != nullptr) ? static_cast<ElementC*>(l0c_base_) : l0c_buf_;
 #else
-        return nullptr;
+        return (l0c_base_ != nullptr) ? static_cast<ElementC*>(l0c_base_) : nullptr;
 #endif
     }
 

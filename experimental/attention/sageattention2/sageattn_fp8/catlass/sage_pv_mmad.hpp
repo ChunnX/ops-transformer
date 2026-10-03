@@ -285,9 +285,14 @@ public:
     }
 
     /**
-     * FixPipe Epilogue 回写 UB 主累加器
-     * 支持随路量化 (FP32 -> FP16) 与分形 NZ -> ND 转置
-     * 支持通过 3 槽延迟输出退休队列（OutputRetireQueue）进行成对融合延迟写回
+     * FixPipe Epilogue：L0C FP32 部分和裸搬至 UB 交接槽（A7，task/12 D1 方案甲 + D2）
+     * - 设备态：dav-3510 FixPipe（quantPre DISABLE，精确 FP32 位型透传，NZ→ND）——
+     *   fp32+fp16 档的 FP16 RNE 舍回不在随路（D2 裁定），由 V1 合并侧
+     *   MergePvPartialRowVF 按档位执行（可审计、与孪生同域）；fixpipe_cfg 中的
+     *   enable_inline_quant 由此变为 V1 合并侧的档位判据（该语义变更同步 task/12）。
+     * - m > 64 双段发射与同分区约束同 SageQkMmad::EmitL0CToUbRaw 注释。
+     * - 宿主/KT 分支保留原路径（随路量化仿真 + 退休队列 push，OutputRetireQueue
+     *   本体与单测为 skip-scale 变体保留，热路径不再调用）。
      */
     __aicore__ void ExecuteEpilogue(
         [[maybe_unused]] uint32_t l0c_src_offset,
@@ -309,8 +314,52 @@ public:
             }
         }
 #else
-        (void)l0c_src_offset;
-        (void)ub_dst_offset;
+        // 设备态：真实 FixPipe 搬出（每任务域由调用方以 FLAG_PV_PARTIAL_* 握手串行化）
+        if (p_data == nullptr) {
+            constexpr uint32_t M_SPLIT = 64;
+            constexpr uint32_t ELEM_C = sizeof(ElementC);
+            static constexpr auto format = AscendC::CO2Layout::ROW_MAJOR;
+            static constexpr AscendC::FixpipeConfig cfg{format, true};
+            AscendC::FixpipeParamsArch3510<format> fp;
+            fp.nSize = static_cast<uint16_t>(n_);
+            fp.srcStride = static_cast<uint16_t>(m_);
+            fp.dstStride = static_cast<uint16_t>(n_);
+            fp.params.ndNum = 1;
+            fp.params.srcNdStride = 0;
+            fp.params.dstNdStride = 0;
+            // QuantMode_t 为全局作用域枚举（CANN 无 AscendC:: 限定版本），缺省成员
+        // NoQuant 即"随路量化关闭"（kernel_utils_struct_dma_params.h 默认值）
+        fp.quantPre = QuantMode_t::NoQuant;
+            fp.dualDstCtl = 0;
+            fp.subBlockId = false;
+            AscendC::TBuffAddr l0c_desc{};
+            l0c_desc.logicPos = static_cast<uint8_t>(AscendC::TPosition::CO1);
+            l0c_desc.bufferHandle = nullptr;
+            l0c_desc.bufferAddr = l0c_src_offset;
+            l0c_desc.dataLen = static_cast<uint32_t>(m_ * n_ * ELEM_C);
+            AscendC::LocalTensor<ElementC> l0c_tensor;
+            l0c_tensor.SetAddr(l0c_desc);
+            AscendC::TBuffAddr ub0_desc{};
+            ub0_desc.logicPos = static_cast<uint8_t>(AscendC::TPosition::VECOUT);
+            ub0_desc.bufferHandle = nullptr;
+            ub0_desc.bufferAddr = ub_dst_offset;
+            ub0_desc.dataLen = static_cast<uint32_t>(m_ * n_ * ELEM_C);
+            AscendC::LocalTensor<ElementC> ub_dst0;
+            ub_dst0.SetAddr(ub0_desc);
+            if (m_ <= M_SPLIT) {
+                fp.mSize = static_cast<uint16_t>(m_);
+                AscendC::Fixpipe<ElementC, ElementC, cfg>(ub_dst0, l0c_tensor, fp);
+            } else {
+                fp.mSize = static_cast<uint16_t>(M_SPLIT);
+                AscendC::TBuffAddr ub1_desc = ub0_desc;
+                ub1_desc.bufferAddr = ub_dst_offset + M_SPLIT * n_ * ELEM_C;
+                ub1_desc.dataLen = static_cast<uint32_t>((m_ - M_SPLIT) * n_ * ELEM_C);
+                AscendC::LocalTensor<ElementC> ub_dst1;
+                ub_dst1.SetAddr(ub1_desc);
+                AscendC::Fixpipe<ElementC, ElementC, cfg>(ub_dst0, l0c_tensor, fp);
+                AscendC::Fixpipe<ElementC, ElementC, cfg>(ub_dst1, l0c_tensor[M_SPLIT * 16], fp);
+            }
+        }
         (void)fixpipe_cfg;
 #endif
         if (use_retire_queue && src != nullptr) {
@@ -322,7 +371,7 @@ public:
 #if !defined(__CCE__) && !defined(__CCE_KT_TEST__) && !defined(__DAV_C220_VEC__) && !defined(__DAV_C220_CUBE__) && !defined(__DAV_C310_CUBE__) && !defined(__DAV_C310_VEC__)
         return (l0c_base_ != nullptr) ? static_cast<const ElementC*>(l0c_base_) : l0c_buf_;
 #else
-        return nullptr;
+        return (l0c_base_ != nullptr) ? static_cast<const ElementC*>(l0c_base_) : nullptr;
 #endif
     }
 
@@ -330,7 +379,7 @@ public:
 #if !defined(__CCE__) && !defined(__CCE_KT_TEST__) && !defined(__DAV_C220_VEC__) && !defined(__DAV_C220_CUBE__) && !defined(__DAV_C310_CUBE__) && !defined(__DAV_C310_VEC__)
         return (l0c_base_ != nullptr) ? static_cast<ElementC*>(l0c_base_) : l0c_buf_;
 #else
-        return nullptr;
+        return (l0c_base_ != nullptr) ? static_cast<ElementC*>(l0c_base_) : nullptr;
 #endif
     }
 

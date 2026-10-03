@@ -13,7 +13,11 @@
 
 #include "acl/acl.h"
 #include "aclnn/aclnn_base.h"
+#if __has_include("op_api/level2_api.h")
 #include "op_api/level2_api.h"
+#elif __has_include("level2_api.h")
+#include "level2_api.h"
+#endif
 
 #ifdef __cplusplus
 extern "C" {

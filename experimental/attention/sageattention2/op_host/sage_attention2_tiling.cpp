@@ -184,11 +184,12 @@ static ge::graphStatus TilingSageAttention2(gert::TilingContext *context)
     std::memcpy(raw_tiling->GetData(), &tiling_data, sizeof(tiling_data));
     raw_tiling->SetDataSize(sizeof(tiling_data));
 
-    // TilingKey：运行时模式编码（gran×accum×layout×causal×pad），kernel 侧运行时字段
+    // TilingKey：运行时模式编码（gran×accum×layout×causal×pad×input_dtype），kernel 侧运行时字段
     // 消费；编译期模板特化（ASCENDC_TPL_ARGS_DECL）待 dtype 分裂时再引入（M5）。
     const uint32_t tiling_key = tiling_data.qk_quant_gran | (tiling_data.pv_accum_dtype << 4) |
                                 (tiling_data.tensor_layout << 8) | (tiling_data.is_causal << 12) |
-                                ((tiling_data.d_pad == 128u ? 1u : 0u) << 16);
+                                ((tiling_data.d_pad == 128u ? 1u : 0u) << 16) |
+                                (static_cast<uint32_t>(tiling_data.input_dtype) << 20);
     context->SetTilingKey(static_cast<uint64_t>(tiling_key));
 
     // SyncAll/三段式调度要求 MIX 1:2 全网格驻留

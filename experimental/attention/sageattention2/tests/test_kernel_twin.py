@@ -24,9 +24,9 @@
   P-05/P-07/TC-09 三个大桶（saved_shape 序列长 >= 512/1024/2048）按"非因果行的行级
   独立性"取 128 对齐行窗口执行（窗口内 Q 量化组按 32-token 组边界整组包含，与整桶
   golden 量化轨迹逐位同源），测试名以 row_window 如实标注；
-- kernel 宿主串行分支：TC-05（pad d48 + 裁剪）、TC-07（causal + per_warp）、
-  TC-01（NHD 原生布局）、TC-04（smooth_k LSE 校正）、P-01 主档共 5 桶
-  （宿主标量路径每任务重摆 KV，代价高于孪生，取代表性覆盖）。
+- kernel 宿主串行分支：TC-05（pad d48/d96 补零+裁剪，覆盖 pad64/pad128 两域）、
+  TC-07（causal + per_warp）、TC-01（NHD 原生布局 fp16/bf16）、TC-04（smooth_k LSE
+  校正）、P-01 主档共 7 桶（宿主标量路径每任务重摆 KV，代价高于孪生，取代表性覆盖）。
 
 运行方式：pytest tests/test_kernel_twin.py 或 python tests/test_kernel_twin.py；
 动态库现场编译（首次约 1 s，按源码 mtime 缓存），无需 NPU 与预置产物。
@@ -67,14 +67,6 @@ TWIN_ROW_WINDOWS = {
     "P-07_per_thread_fp32+fp16_fp16_HND": [(1, 0, 64), (1, 896, 960)],
     "TC-09_long_seq_2k": [(0, 0, 128), (0, 1920, 2048)],
 }
-# kernel 宿主串行分支的代表桶（d_pad pad/crop、NHD、causal、smooth_k LSE、主档）
-KERNEL_HOST_CASES = [
-    "TC-05_pad_d48",
-    "TC-07_causal_per_warp",
-    "TC-01_nhd_layout_fp16",
-    "TC-04_return_lse",
-    "P-01_per_thread_fp32+fp16_fp16_HND",
-]
 
 _DYLIB_PATH = OP_ROOT / "build" / ("libsage_kernel_twin.so" if sys.platform.startswith("linux")
                                    else "libsage_kernel_twin.dylib")
@@ -147,7 +139,8 @@ class SageAttention2TilingData(ctypes.Structure):
         ("workspace_lse_offset", ctypes.c_uint64), ("workspace_vm_offset", ctypes.c_uint64),
         ("enable_die_affinity", ctypes.c_uint32), ("die_num", ctypes.c_uint32),
         ("cores_per_die", ctypes.c_uint32), ("tasks_per_die", ctypes.c_uint32),
-        ("reserved", ctypes.c_uint8 * 4),
+        ("input_dtype", ctypes.c_uint8),  # §8 输入位型分派：1=fp16（缺省）, 2=bf16
+        ("reserved", ctypes.c_uint8 * 3),
     ]
 
 
@@ -235,6 +228,9 @@ def _run_kernel_host(case: dict, q: torch.Tensor, k: torch.Tensor, v: torch.Tens
     t.b, t.hq, t.hkv, t.sq, t.sk, t.d_og, t.d_pad = b, hq, hkv, sq, sk, d_og, d_pad
     t.is_causal, t.tensor_layout, t.qk_quant_gran, t.pv_accum_dtype = causal, layout, gran, accum
     t.smooth_k, t.smooth_v = smooth_k, 0
+    # 输入位型分派（tiling.h §8，ComputeHostTiling 同式）：核内 ReadInputBits/
+    # km 减法按该字段走 fp16/bf16 分支，0 会被核内归一为 fp16
+    t.input_dtype = _dtype_mode(q)
     t.sm_scale_log2e = sm_scale * LOG2E
     t.v_scale_max = 2.25 if accum == 2 else 448.0
     t.s_fp8_offset = S_FP8_OFFSET
@@ -495,6 +491,14 @@ class TestKernelHostSerialBranchVsGolden(GoldenTwinTestBase):
         print(f"\n[kernel-host] TC-05_pad_d48: matched={stats['matched_ratio']:.6f} "
               f"max_abs={stats['max_abs_error']:.6g} lse={stats['lse_max_diff']:.3e}")
 
+    def test_tc05_pad_d96_kernel_host(self):
+        """TC-05_pad_d96 kernel 宿主分支：d96→d_pad128 补零与裁剪（pad128 域，
+        与 d48 的 pad64 域互补；C++ 宿主仿真 tests/test_kernel_host_sim.cpp 的
+        pad_d48/pad_d96 用例为同域位级判据）。"""
+        stats = self._run_kernel_host_bucket("TC-05_pad_d96")
+        print(f"\n[kernel-host] TC-05_pad_d96: matched={stats['matched_ratio']:.6f} "
+              f"max_abs={stats['max_abs_error']:.6g} lse={stats['lse_max_diff']:.3e}")
+
     def test_tc07_causal_per_warp_kernel_host(self):
         stats = self._run_kernel_host_bucket("TC-07_causal_per_warp")
         print(f"\n[kernel-host] TC-07_causal_per_warp: matched={stats['matched_ratio']:.6f} "
@@ -513,6 +517,12 @@ class TestKernelHostSerialBranchVsGolden(GoldenTwinTestBase):
     def test_p01_main_bucket_kernel_host(self):
         stats = self._run_kernel_host_bucket("P-01_per_thread_fp32+fp16_fp16_HND")
         print(f"\n[kernel-host] P-01 主档: matched={stats['matched_ratio']:.6f} "
+              f"max_abs={stats['max_abs_error']:.6g} lse={stats['lse_max_diff']:.3e}")
+
+    def test_tc01_nhd_bf16_kernel_host(self):
+        """TC-01 NHD bf16 桶：核内 input_dtype==2 分支（bf16 读写与 km 差值位型舍回）。"""
+        stats = self._run_kernel_host_bucket("TC-01_nhd_layout_bf16")
+        print(f"\n[kernel-host] TC-01_nhd_layout_bf16: matched={stats['matched_ratio']:.6f} "
               f"max_abs={stats['max_abs_error']:.6g} lse={stats['lse_max_diff']:.3e}")
 
 

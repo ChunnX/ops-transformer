@@ -34,112 +34,174 @@ namespace sage_attn {
 namespace dev_vf {
 
 /**
- * 1. Q 向量量化 (INT8)：使用 950 MicroAPI 对齐加载、求 amax、计算缩放倒数并饱和写出。
+ * 1a. 行绝对值最大（DEFECT-F-1 组粒度量化的行内阶段）：
+ * 可选 kMean 减法（带输入位型舍回），Abs 后 ReduceMax，行 max 写 1 元素槽。
+ * 组间归并与 scale 定档由调用方按 quant::QScaleIndex/KScaleIndex 单点完成
+ * （与宿主串行路径逐步一致）。
  */
-__simd_vf__ inline void QuantizeRowInt8VF(__ubuf__ half* in_ptr, __ubuf__ int8_t* out_ptr, uint32_t d) {
+__simd_vf__ inline void RowAbsMaxVF(__ubuf__ half* in_ptr, __ubuf__ float* out_slot,
+                                    __ubuf__ float* km_ptr, uint32_t d,
+                                    uint32_t has_km, uint32_t dtype_mode) {
     using namespace AscendC;
     using namespace AscendC::MicroAPI;
     auto full = CreateMask<float, MaskPattern::ALL>();
     static constexpr CastTrait toFp32{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
-    static constexpr CastTrait toInt8{RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+    static constexpr CastTrait toHalf{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+    static constexpr CastTrait toBf16{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
 
     RegTensor<float> amax_reg;
     Duplicate(amax_reg, 0.0f);
     for (uint32_t c = 0; c < d; c += 64) {
-        RegTensor<half> raw;
         RegTensor<float> val;
-        LoadAlign<half, LoadDist::DIST_UNPACK_B16>(raw, in_ptr + c);
-        Cast<float, half, toFp32>(val, raw, full);
-        Abs(val, val, full);
-        Max(amax_reg, amax_reg, val, full);
-    }
-    ReduceMax(amax_reg, amax_reg, full);
-
-    RegTensor<float> scale_reg, inv_scale_reg, div127_reg, one_reg;
-    Duplicate(one_reg, 1.0f);
-    Duplicate(div127_reg, 127.0f);
-    Div(scale_reg, amax_reg, div127_reg, full);
-    Maxs(scale_reg, scale_reg, 1e-6f, full);
-    Div(inv_scale_reg, one_reg, scale_reg, full);
-
-    for (uint32_t c = 0; c < d; c += 64) {
-        RegTensor<half> raw;
-        RegTensor<float> val;
-        RegTensor<int32_t> packed;
-        LoadAlign<half, LoadDist::DIST_UNPACK_B16>(raw, in_ptr + c);
-        Cast<float, half, toFp32>(val, raw, full);
-        Mul(val, val, inv_scale_reg, full);
-        Cast<int32_t, float, toInt8>(packed, val, full);
-        StoreAlign<int8_t, StoreDist::DIST_PACK4_B32>(out_ptr + c, reinterpret_cast<RegTensor<int8_t>&>(packed), full);
-    }
-}
-
-/**
- * 2. K 向量量化 (INT8)：支持 smooth_k 减均值、求 amax、计算缩放倒数并写出。
- */
-__simd_vf__ inline void QuantizeKeyRowInt8VF(__ubuf__ half* in_ptr, __ubuf__ float* km_ptr, __ubuf__ int8_t* out_ptr, uint32_t d, uint32_t has_km) {
-    using namespace AscendC;
-    using namespace AscendC::MicroAPI;
-    auto full = CreateMask<float, MaskPattern::ALL>();
-    static constexpr CastTrait toFp32{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
-    static constexpr CastTrait toInt8{RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
-
-    RegTensor<float> amax_reg;
-    Duplicate(amax_reg, 0.0f);
-    for (uint32_t c = 0; c < d; c += 64) {
-        RegTensor<half> raw;
-        RegTensor<float> val, km_val;
-        LoadAlign<half, LoadDist::DIST_UNPACK_B16>(raw, in_ptr + c);
-        Cast<float, half, toFp32>(val, raw, full);
+        if (dtype_mode == 2u) {
+            RegTensor<bfloat16_t> raw;
+            LoadAlign<bfloat16_t, LoadDist::DIST_UNPACK_B16>(raw, reinterpret_cast<__ubuf__ bfloat16_t*>(in_ptr) + c);
+            Cast<float, bfloat16_t, toFp32>(val, raw, full);
+        } else {
+            RegTensor<half> raw;
+            LoadAlign<half, LoadDist::DIST_UNPACK_B16>(raw, in_ptr + c);
+            Cast<float, half, toFp32>(val, raw, full);
+        }
         if (has_km) {
+            RegTensor<float> km_val;
             LoadAlign(km_val, km_ptr + c);
             Sub(val, val, km_val, full);
+            // 差值位型舍回（对齐孪生 Half/Bf16Reader::Sub 口径）
+            if (dtype_mode == 2u) {
+                RegTensor<bfloat16_t> rt;
+                Cast<bfloat16_t, float, toBf16>(rt, val, full);
+                Cast<float, bfloat16_t, toFp32>(val, rt, full);
+            } else {
+                RegTensor<half> rt;
+                Cast<half, float, toHalf>(rt, val, full);
+                Cast<float, half, toFp32>(val, rt, full);
+            }
         }
         Abs(val, val, full);
         Max(amax_reg, amax_reg, val, full);
     }
     ReduceMax(amax_reg, amax_reg, full);
-
-    RegTensor<float> scale_reg, inv_scale_reg, div127_reg, one_reg;
-    Duplicate(one_reg, 1.0f);
-    Duplicate(div127_reg, 127.0f);
-    Div(scale_reg, amax_reg, div127_reg, full);
-    Maxs(scale_reg, scale_reg, 1e-6f, full);
-    Div(inv_scale_reg, one_reg, scale_reg, full);
-
-    for (uint32_t c = 0; c < d; c += 64) {
-        RegTensor<half> raw;
-        RegTensor<float> val, km_val;
-        RegTensor<int32_t> packed;
-        LoadAlign<half, LoadDist::DIST_UNPACK_B16>(raw, in_ptr + c);
-        Cast<float, half, toFp32>(val, raw, full);
-        if (has_km) {
-            LoadAlign(km_val, km_ptr + c);
-            Sub(val, val, km_val, full);
-        }
-        Mul(val, val, inv_scale_reg, full);
-        Cast<int32_t, float, toInt8>(packed, val, full);
-        StoreAlign<int8_t, StoreDist::DIST_PACK4_B32>(out_ptr + c, reinterpret_cast<RegTensor<int8_t>&>(packed), full);
-    }
+    StoreAlign(out_slot, amax_reg, full);
 }
 
 /**
- * 3. V 向量量化 (FP8 e4m3fn)：直接利用 MicroAPI 向量 Cast 饱和转换。
+ * 1b. 行 INT8 量化（DEFECT-F-1 除法轨迹 + 舍入分档）：
+ * - 除法轨迹：val / scale（禁 inv-scale 乘法）；
+ * - per_thread：half-away-from-zero——x 加 0.5·sign(x) 后 CAST_TRUNC（对齐
+ *   quant::RoundHalfAwayFromZero 的 floor(|x|+0.5)·sign）；
+ * - per_warp：CAST_RINT（对齐 quant::RoundNearestEven / cvt.rni）；
+ * - 饱和 ±127（与两个 Round* 的 clamp 一致）。
  */
-__simd_vf__ inline void QuantizeValueRowFp8VF(__ubuf__ half* in_ptr, __ubuf__ float8_e4m3_t* out_ptr, uint32_t d) {
+__simd_vf__ inline void QuantRowInt8VF(__ubuf__ half* in_ptr, __ubuf__ int8_t* out_ptr,
+                                       float scale, uint32_t d,
+                                       uint32_t per_thread, uint32_t has_km,
+                                       __ubuf__ float* km_ptr, uint32_t dtype_mode) {
     using namespace AscendC;
     using namespace AscendC::MicroAPI;
     auto full = CreateMask<float, MaskPattern::ALL>();
     static constexpr CastTrait toFp32{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+    static constexpr CastTrait toHalf{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+    static constexpr CastTrait toBf16{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+    static constexpr CastTrait toI32Trunc{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_TRUNC};
+    static constexpr CastTrait toI32Rint{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+    static constexpr CastTrait toI8Sat{RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_TRUNC};
+
+    RegTensor<float> scale_reg, neg127, pos127;
+    Duplicate(scale_reg, scale);
+    Duplicate(neg127, -127.0f);
+    Duplicate(pos127, 127.0f);
+    RegTensor<float> zero, half_reg, neg_half_reg;
+    Duplicate(zero, 0.0f);
+    Duplicate(half_reg, 0.5f);
+    Duplicate(neg_half_reg, -0.5f);
+
+    for (uint32_t c = 0; c < d; c += 64) {
+        RegTensor<float> val;
+        if (dtype_mode == 2u) {
+            RegTensor<bfloat16_t> raw;
+            LoadAlign<bfloat16_t, LoadDist::DIST_UNPACK_B16>(raw, reinterpret_cast<__ubuf__ bfloat16_t*>(in_ptr) + c);
+            Cast<float, bfloat16_t, toFp32>(val, raw, full);
+        } else {
+            RegTensor<half> raw;
+            LoadAlign<half, LoadDist::DIST_UNPACK_B16>(raw, in_ptr + c);
+            Cast<float, half, toFp32>(val, raw, full);
+        }
+        if (has_km) {
+            RegTensor<float> km_val;
+            LoadAlign(km_val, km_ptr + c);
+            Sub(val, val, km_val, full);
+            if (dtype_mode == 2u) {
+                RegTensor<bfloat16_t> rt;
+                Cast<bfloat16_t, float, toBf16>(rt, val, full);
+                Cast<float, bfloat16_t, toFp32>(val, rt, full);
+            } else {
+                RegTensor<half> rt;
+                Cast<half, float, toHalf>(rt, val, full);
+                Cast<float, half, toFp32>(val, rt, full);
+            }
+        }
+        Div(val, val, scale_reg, full);
+
+        RegTensor<int32_t> packed_i;
+        if (per_thread) {
+            // half-away：x + 0.5·sign(x) 后截断（对 -0 边界与宿主 floor(|x|+0.5)·sign 同值）
+            RegTensor<float> bias, shifted;
+            MaskReg neg;
+            Compare<float, CMPMODE::LT>(neg, val, zero, full);
+            Select(bias, half_reg, neg_half_reg, neg);
+            Add(shifted, val, bias, full);
+            Cast<int32_t, float, toI32Trunc>(packed_i, shifted, full);
+        } else {
+            Cast<int32_t, float, toI32Rint>(packed_i, val, full);
+        }
+        Cast<float, int32_t, toFp32>(val, packed_i, full);
+        Max(val, val, neg127, full);
+        Min(val, val, pos127, full);
+        // 硬件 vconv 无 float→int8 直转（dav-3510 static assert）：int32 中转后
+        // DIST_PACK4_B32 打包窄化（±127 已在 float 域 clamp，窄化无损）
+        Cast<int32_t, float, toI8Sat>(packed_i, val, full);
+        StoreAlign<int8_t, StoreDist::DIST_PACK4_B32>(out_ptr + c,
+            reinterpret_cast<RegTensor<int8_t>&>(packed_i), full);
+    }
+}
+
+/**
+ * 3. V 行 FP8 量化（DEFECT-F-1：per-channel scale 分档）：
+ * - scale 向量由调用方按全序列 per-channel amax / v_scale_max（2.25 或 448 分档）预写；
+ * - 除法轨迹：scaled = val / scale（对齐宿主/孪生除法）；
+ * - 全零通道 scale=0 → 0/0=NaN → e4m3 编码 0x7f（对齐 quant::FloatToE4m3fn 的
+ *   NaN 保真与 golden）；有限通道饱和 ±scale_max 后 RNE 转 e4m3。
+ */
+__simd_vf__ inline void QuantVRowFp8VF(__ubuf__ half* in_ptr, __ubuf__ float8_e4m3_t* out_ptr,
+                                       __ubuf__ float* scale_ptr, uint32_t d,
+                                       float scale_max, uint32_t dtype_mode) {
+    using namespace AscendC;
+    using namespace AscendC::MicroAPI;
+    auto full = CreateMask<float, MaskPattern::ALL>();
+    static constexpr CastTrait toFp32{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+    static constexpr CastTrait toBf16{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
     static constexpr CastTrait toFp8{RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
 
+    RegTensor<float> scale_max_reg, neg_scale_max_reg;
+    Duplicate(scale_max_reg, scale_max);
+    Duplicate(neg_scale_max_reg, -scale_max);
     for (uint32_t c = 0; c < d; c += 64) {
-        RegTensor<half> raw;
-        RegTensor<float> val;
+        RegTensor<float> val, scale_reg, scaled;
         RegTensor<float8_e4m3_t> packed;
-        LoadAlign<half, LoadDist::DIST_UNPACK_B16>(raw, in_ptr + c);
-        Cast<float, half, toFp32>(val, raw, full);
-        Cast<float8_e4m3_t, float, toFp8>(packed, val, full);
+        if (dtype_mode == 2u) {
+            RegTensor<bfloat16_t> raw;
+            LoadAlign<bfloat16_t, LoadDist::DIST_UNPACK_B16>(raw, reinterpret_cast<__ubuf__ bfloat16_t*>(in_ptr) + c);
+            Cast<float, bfloat16_t, toFp32>(val, raw, full);
+        } else {
+            RegTensor<half> raw;
+            LoadAlign<half, LoadDist::DIST_UNPACK_B16>(raw, in_ptr + c);
+            Cast<float, half, toFp32>(val, raw, full);
+        }
+        LoadAlign(scale_reg, scale_ptr + c);
+        Div(scaled, val, scale_reg, full);
+        Min(scaled, scaled, scale_max_reg, full);
+        Max(scaled, scaled, neg_scale_max_reg, full);
+        Cast<float8_e4m3_t, float, toFp8>(packed, scaled, full);
         StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(out_ptr + c, packed, full);
     }
 }
@@ -163,12 +225,16 @@ __simd_vf__ inline void BlockMaxAndSumVF(__ubuf__ float* logits, uint32_t block_
     }
     ReduceMax(max_val, max_val, full);
 
+    // exp2 域 + 448· 放大（twin OnlineBlockExp2Sum 同式，收敛轮 F/DEFECT-F-2）：
+    // cur_sum = Σ 2^(x-m)·448 = 448·Σ Exp((x-m)·ln2)；掩码哨兵 -1e30 经 Exp 下溢自然为 0
     for (uint32_t col = 0; col < block_n; col += 64) {
-        RegTensor<float> x, diff, p;
+        RegTensor<float> x, diff, nat;
         LoadAlign(x, logits + col);
         Sub(diff, x, max_val, full);
-        Exp(p, diff, full);
-        Add(sum_val, sum_val, p, full);
+        Muls(diff, diff, INV_LOG2E, full);
+        Exp(nat, diff, full);
+        Muls(nat, nat, FP8_E4M3_MAX, full);
+        Add(sum_val, sum_val, nat, full);
     }
     ReduceSum(sum_val, sum_val, full);
 
@@ -194,23 +260,26 @@ __simd_vf__ inline void RescaleAccumRowVF(__ubuf__ float* o_row, float factor, u
 }
 
 /**
- * 6. Softmax 概率矩阵生成：将 448 倍放大偏移融合进指数指数项 (m_prime - ln(448))，
- *    消除循环内的向量浮点乘法指令，并饱和转换至 FP8 e4m3fn。
+ * 6. Softmax 概率矩阵生成：exp2 域恒等 P = 2^(x-m')·448（logits 已折 sm_scale·log2e，
+ *    经 ln2 缩放进自然域），ln448 融合进锚点（以加代乘），并饱和转换至 FP8 e4m3fn。
  */
 __simd_vf__ inline void SoftmaxProbRowVF(__ubuf__ float* logits, __ubuf__ float8_e4m3_t* out_p, float m_prime, uint32_t block_n) {
     using namespace AscendC;
     using namespace AscendC::MicroAPI;
     auto full = CreateMask<float, MaskPattern::ALL>();
     static constexpr CastTrait toFp8{RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
-    RegTensor<float> m_reg;
-    // 数学恒等：exp(x - m_prime) * 448 = exp(x - (m_prime - ln(448)))，ln(448) 唯一定义于 tiling.h (LN_448)
-    // 硬件级融合：以加代乘，循环内消灭 Mul 向量乘法，节约 1 拍向量 ALU 计算
-    Duplicate(m_reg, m_prime - sage_attn::LN_448);
+    // exp2 域恒等（收敛轮 F/DEFECT-F-2）：P = 2^(x-m')·448 = Exp((x-m')·ln2 + ln448)。
+    // logits 为 exp2 域量（已折 sm_scale·log2e），必须经 ln2 缩放进自然域；
+    // ln448 融合进锚点（以加代乘），448· 放大使行 max 恰为 448 填满 e4m3 动态范围。
+    RegTensor<float> m_ln_reg, ln2_reg;
+    Duplicate(m_ln_reg, m_prime * INV_LOG2E - LN_448);
+    Duplicate(ln2_reg, INV_LOG2E);
     for (uint32_t j = 0; j < block_n; j += 64) {
-        RegTensor<float> logit_val, diff, exp_val;
+        RegTensor<float> logit_val, scaled, diff, exp_val;
         RegTensor<float8_e4m3_t> packed;
         LoadAlign(logit_val, logits + j);
-        Sub(diff, logit_val, m_reg, full);
+        Mul(scaled, logit_val, ln2_reg, full);
+        Sub(diff, scaled, m_ln_reg, full);
         Exp(exp_val, diff, full);
         Cast<float8_e4m3_t, float, toFp8>(packed, exp_val, full);
         StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(out_p + j, packed, full);
@@ -218,22 +287,30 @@ __simd_vf__ inline void SoftmaxProbRowVF(__ubuf__ float* logits, __ubuf__ float8
 }
 
 /**
- * 7. 最终归一化与 FP16 输出转换。
+ * 7. 最终归一化与输出位型转换（dtype_mode：2=bf16，其余按 fp16）。
  */
-__simd_vf__ inline void FinalizeRowVF(__ubuf__ float* o_row, __ubuf__ half* out_row, float inv_d, uint32_t d) {
+__simd_vf__ inline void FinalizeRowVF(__ubuf__ float* o_row, __ubuf__ uint16_t* out_row, float inv_d, uint32_t d, uint32_t dtype_mode) {
     using namespace AscendC;
     using namespace AscendC::MicroAPI;
     auto full = CreateMask<float, MaskPattern::ALL>();
     static constexpr CastTrait toHalf{RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+    static constexpr CastTrait toBf16{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
     RegTensor<float> inv_reg;
     Duplicate(inv_reg, inv_d);
     for (uint32_t c = 0; c < d; c += 64) {
         RegTensor<float> x;
-        RegTensor<half> h;
         LoadAlign(x, o_row + c);
         Mul(x, x, inv_reg, full);
-        Cast<half, float, toHalf>(h, x, full);
-        StoreAlign<half, StoreDist::DIST_PACK_B32>(out_row + c, h, full);
+        if (dtype_mode == 2u) {
+            // bf16 输出（收敛轮 F/DEFECT-F-3）：与宿主 WriteOutputBits 的 Fp32ToBf16 口径一致
+            RegTensor<bfloat16_t> b;
+            Cast<bfloat16_t, float, toBf16>(b, x, full);
+            StoreAlign<bfloat16_t, StoreDist::DIST_PACK_B32>(reinterpret_cast<__ubuf__ bfloat16_t*>(out_row) + c, b, full);
+        } else {
+            RegTensor<half> h;
+            Cast<half, float, toHalf>(h, x, full);
+            StoreAlign<half, StoreDist::DIST_PACK_B32>(reinterpret_cast<__ubuf__ half*>(out_row) + c, h, full);
+        }
     }
 }
 

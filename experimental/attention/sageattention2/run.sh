@@ -70,7 +70,29 @@ run_host_tests() {
     echo "Executing ${QUEUE_BIN}..."
     "${QUEUE_BIN}"
 
-    echo ">>> C++ Host & OutputQueue Tests Completed Successfully!"
+    echo "Compiling test_tiling_struct with ${CXX_COMPILER}..."
+    local TILING_BIN="${BUILD_DIR}/test_tiling_struct"
+    ${CXX_COMPILER} -std=c++17 -O2 -Wall -Wextra \
+        "${WORK_DIR}/tests/test_tiling_struct.cpp" \
+        -I"${WORK_DIR}/sageattn_fp8/ascendc" \
+        -I"${WORK_DIR}/sageattn_fp8/catlass" \
+        -I"${WORK_DIR}/quant" \
+        -o "${TILING_BIN}"
+
+    echo "Executing ${TILING_BIN}..."
+    "${TILING_BIN}"
+
+    echo "Compiling test_pipeline_guard with ${CXX_COMPILER}..."
+    local GUARD_BIN="${BUILD_DIR}/test_pipeline_guard"
+    ${CXX_COMPILER} -std=c++17 -O2 -Wall -Wextra \
+        "${WORK_DIR}/tests/test_pipeline_guard.cpp" \
+        -I"${WORK_DIR}/sageattn_fp8/ascendc" \
+        -o "${GUARD_BIN}"
+
+    echo "Executing ${GUARD_BIN}..."
+    "${GUARD_BIN}"
+
+    echo ">>> C++ Host, Tiling, Guard & OutputQueue Tests Completed Successfully!"
 }
 
 check_kernel_syntax() {

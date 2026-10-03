@@ -319,10 +319,14 @@ class TestQuantHostHelpers(unittest.TestCase):
         self.assertAlmostEqual(folded, 0.12751743, places=6)
 
     def test_v_scale_max(self):
-        # 对 quant_host.h 的 GetVScaleMax 三档取值逻辑做真实行为验证：
-        # fp32+fp16 (PV_ACCUM_FP32_FP16=2) 档返回 2.25，其余档位（含非法值兜底）返回 448.0。
-        # GetVScaleMax 是 C++ inline 函数，无法直接 ctypes 调用，这里现场编译一个
-        # 只包含 quant_host.h 的 extern "C" 包装动态库再断言返回值。
+        """收敛轮 A/CLEANUP-6 双重实证（原断言 assertEqual(2.25, 2.25) 恒真）：
+        1) quant_host.h GetVScaleMax 三档取值：fp32+fp16 (PV_ACCUM_FP32_FP16=2) 档
+           返回 2.25，其余档位（含非法值兜底）返回 448.0——GetVScaleMax 是 C++ inline
+           函数，无法直接 ctypes 调用，现场编译只含 quant_host.h 的 extern "C"
+           包装动态库再断言返回值；
+        2) golden 各桶 v_scale 落盘值按 manifest 的 pv_accum_dtype 反推上界：
+           fp32+fp16 档 scale = amax/2.25（其余 448），全零通道为 NaN（isfinite
+           排除）；全零 V 通道 + scale=0 的 NaN 保真属量化语义（task/01_design 2.7）。"""
         wrapper_src = r"""
 #include "quant_host.h"
 extern "C" {
@@ -332,7 +336,7 @@ float sage_v_scale_max(unsigned pv_accum_dtype) {
 }
 """
         host_lib = Path("/tmp/libsage_quant_host.dylib")
-        quant_dir = current_file.parent.parent / "quant"
+        quant_dir = REPO_ROOT / "ops-transformer" / "experimental" / "attention" / "sageattention2" / "quant"
         cmd = [
             "c++", "-std=c++17", "-Wall", "-Wextra", "-O2", "-shared", "-fPIC",
             "-x", "c++", "-", "-I", str(quant_dir), "-o", str(host_lib),
@@ -349,6 +353,26 @@ float sage_v_scale_max(unsigned pv_accum_dtype) {
         self.assertEqual(lib_host.sage_v_scale_max(1), ctypes.c_float(448.0).value)
         # 非法档位走 else 兜底 -> 448.0（保守高精度饱和上限）
         self.assertEqual(lib_host.sage_v_scale_max(999), ctypes.c_float(448.0).value)
+
+        with open(REPO_ROOT / "golden" / "manifest.json", "r") as f:
+            cases = json.load(f)["cases"]
+        checked = 0
+        for case_id, info in cases.items():
+            v_scale_path = REPO_ROOT / "golden" / case_id / "v_scale.pt"
+            if not v_scale_path.exists():
+                continue
+            v_scale = torch.load(v_scale_path, weights_only=True)
+            finite = v_scale[torch.isfinite(v_scale)]
+            if finite.numel() == 0:
+                continue
+            accum = info.get("pv_accum_dtype", "fp32+fp16")
+            bound = 2.25 if accum == "fp32+fp16" else 448.0
+            with self.subTest(case=case_id):
+                self.assertTrue((finite >= 0).all(), f"{case_id}: v_scale must be non-negative")
+                self.assertLessEqual(
+                    finite.max().item(), bound, f"{case_id}: v_scale exceeds {bound}")
+            checked += 1
+        self.assertGreater(checked, 0, "no v_scale buckets checked")
 
     def test_padded_head_dim(self):
         # Head dimensions <= 64 pad to 64, <= 128 pad to 128

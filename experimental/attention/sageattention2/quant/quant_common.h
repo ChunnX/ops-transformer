@@ -313,32 +313,35 @@ constexpr uint32_t Q_BLK = 128;
 constexpr uint32_t Q_SUB = 32;
 constexpr uint32_t K_BLK = 64;
 
-inline uint32_t QBlockNum(uint32_t seq_len) noexcept {
+__aicore__ __host__ inline uint32_t QBlockNum(uint32_t seq_len) noexcept {
     return (seq_len + Q_BLK - 1) / Q_BLK;
 }
 
-inline uint32_t KBlockNum(uint32_t seq_len) noexcept {
+__aicore__ __host__ inline uint32_t KBlockNum(uint32_t seq_len) noexcept {
     return (seq_len + K_BLK - 1) / K_BLK;
 }
 
 /**
  * Q 的 scale 组数（每 head）：per_thread 为 blk×32，per_warp 为 blk×4
  */
-inline uint32_t QScaleCount(uint32_t seq_len, bool per_thread) noexcept {
+__aicore__ __host__ inline uint32_t QScaleCount(uint32_t seq_len, bool per_thread) noexcept {
     return QBlockNum(seq_len) * (per_thread ? 32u : 4u);
 }
 
 /**
  * K 的 scale 组数（每 head）：per_thread 为 blk×4，per_warp 为 blk×1
  */
-inline uint32_t KScaleCount(uint32_t seq_len, bool per_thread) noexcept {
+__aicore__ __host__ inline uint32_t KScaleCount(uint32_t seq_len, bool per_thread) noexcept {
     return KBlockNum(seq_len) * (per_thread ? 4u : 1u);
 }
 
 /**
  * token 在其 head 的 Q scale 数组中的线性组号
  */
-inline uint32_t QScaleIndex(uint32_t token, bool per_thread) noexcept {
+    // 设备分支 Phase-B 组归并调用（DEFECT-F-1 随动）：不带 __host__——bisheng 对
+    // 仅标 __host__ 的函数不在设备 pass 发射函数体，链接期 undefined（归并/定档
+    // 为纯整数算术，host/device 双 pass 同结果）
+__aicore__ inline uint32_t QScaleIndex(uint32_t token, bool per_thread) noexcept {
     const uint32_t blk = token / Q_BLK;
     const uint32_t in_blk = token % Q_BLK;
     if (per_thread) {
@@ -352,7 +355,7 @@ inline uint32_t QScaleIndex(uint32_t token, bool per_thread) noexcept {
  * per_thread 组 g 含 8 对相邻 token：token = blk*64 + p*8 + 2g + e (p∈[0,8), e∈{0,1})，
  * 即组号由序列内 8 交织相的相邻对决定（对齐 quant_per_thread.py 的 (8,4,2) 分解）
  */
-inline uint32_t KScaleIndex(uint32_t token, bool per_thread) noexcept {
+__aicore__ inline uint32_t KScaleIndex(uint32_t token, bool per_thread) noexcept {
     const uint32_t blk = token / K_BLK;
     const uint32_t in_blk = token % K_BLK;
     if (per_thread) {

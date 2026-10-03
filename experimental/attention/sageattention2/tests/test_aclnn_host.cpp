@@ -313,7 +313,11 @@ bool TestParameterValidation()
     TEST_CHECK(aclnnSageAttention2GetWorkspaceSize(&q, &k, &v, nullptr, nullptr, 0.1, 999, 2, false, 1, false, false, &out, nullptr, &ws_size, &executor) == ACLNN_ERR_PARAM_INVALID, "Should reject invalid qkQuantGran");
     TEST_CHECK(aclnnSageAttention2GetWorkspaceSize(&q, &k, &v, nullptr, nullptr, 0.1, 3, 999, false, 1, false, false, &out, nullptr, &ws_size, &executor) == ACLNN_ERR_PARAM_INVALID, "Should reject invalid pvAccumDtype");
 
-    // 5. 第二段空执行器拦截
+    // 5. 非法张量布局编码拦截（仅 0=NHD/1=HND 合法，乱码/负值显式报错不静默归一）
+    TEST_CHECK(aclnnSageAttention2GetWorkspaceSize(&q, &k, &v, nullptr, nullptr, 0.1, 3, 2, false, 7, false, false, &out, nullptr, &ws_size, &executor) == ACLNN_ERR_PARAM_INVALID, "Should reject invalid tensorLayout (7)");
+    TEST_CHECK(aclnnSageAttention2GetWorkspaceSize(&q, &k, &v, nullptr, nullptr, 0.1, 3, 2, false, -1, false, false, &out, nullptr, &ws_size, &executor) == ACLNN_ERR_PARAM_INVALID, "Should reject invalid tensorLayout (-1)");
+
+    // 6. 第二段空执行器拦截
     TEST_CHECK(aclnnSageAttention2(nullptr, 0, nullptr, nullptr) == ACLNN_ERR_PARAM_NULLPTR, "Should reject null executor in phase 2");
 
     std::cout << "[PASS] TestParameterValidation" << std::endl;

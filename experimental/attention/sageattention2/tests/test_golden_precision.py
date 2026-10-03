@@ -166,11 +166,15 @@ class TestGoldenPrecision(unittest.TestCase):
         p_cases = [k for k in self.cases if k.startswith("P-")]
         self.assertEqual(len(p_cases), 7)
         for case_id in sorted(p_cases):
-            out, lse, tensors = self._execute_case(case_id, self.cases[case_id])
+            case_info = self.cases[case_id]
+            out, lse, tensors = self._execute_case(case_id, case_info)
             ref_out = tensors["out"]
             diff = (out.float() - ref_out.float()).abs().max().item()
-            limit = 1e-3 if self.cases[case_id].get("dtype") in ("bfloat16", "bf16") else 1e-4
-            self.assertLess(diff, limit, f"P-case {case_id} exceeded error limit: {diff}")
+            # 容差按输入 dtype 分档（收敛轮 A/CLEANUP-6：bf16 有效位 ~8bit，
+            # 与 test_l_error_ratios 的 2^-6 口径一致；孪生位级一致时 diff 应为 0）
+            is_bf16 = case_info.get("dtype") in ("bfloat16", "bf16")
+            tol = 2.0 ** (-6) if is_bf16 else 2.0 ** (-9)
+            self.assertLess(diff, tol, f"P-case {case_id} exceeded error limit {tol}: {diff}")
 
     def test_functional_subset_tc01_tc10(self):
         """Explicit verification for functional subset TC-01 through TC-10."""
