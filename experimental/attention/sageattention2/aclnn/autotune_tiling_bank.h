@@ -1,7 +1,12 @@
 /*!
  * \file autotune_tiling_bank.h
- * \brief 由 autotune 调优引擎自动生成的针对 Ascend 950PR 的最优 Tiling 策略知识库
- * \note 严禁手工随意修改，请通过 benchmark/autotune/autotune_runner.py 重新调优生成
+ * \brief 真机实测固化的针对 Ascend 950PR 的最优 Tiling 策略知识库
+ *        （P-01..P-07，a31b913f9 固化；调优会话经 build_opp.sh SAGE_AUTOTUNE_HOOKS=1
+ *        的 SAGEATTN_FORCE_* / SAGEATTN_TUNE_CASE 覆盖钩子驱动，见
+ *        aclnn/sage_attn_host_tiling.h 门控注释）
+ * \note 条目数值（m_per_core/block_n/k_step/use_die_grouped）严禁手工修改；
+ *       仅消费调优值的四个字段保留（零调用字段已随 2026-10-04 清扫删除：
+ *       skip_scale_tau / causal_early_exit / expected_speedup 与 TunedShapeKey）
  */
 
 #ifndef SAGE_ATTN_AUTOTUNE_TILING_BANK_H
@@ -18,31 +23,17 @@ struct TunedTilingEntry {
     uint32_t m_per_core;
     uint32_t block_n;
     uint32_t k_step;
-    float skip_scale_tau;
-    bool causal_early_exit;
     bool use_die_grouped;
-    float expected_speedup;
-};
-
-struct TunedShapeKey {
-    uint32_t b{0};
-    uint32_t sq{0};
-    uint32_t sk{0};
-    uint32_t hq{0};
-    uint32_t hkv{0};
-    uint32_t d{0};
-    int dtype_mode{0}; // 1=fp16, 2=bf16
-    bool is_causal{false};
 };
 
 static constexpr TunedTilingEntry kAscend950TunedBank[] = {
-    {"P-01", 32u, 128u, 16u, 6.0f, false, true, 2.128f},
-    {"P-02", 32u, 128u, 16u, 6.0f, false, true, 2.128f},
-    {"P-03", 32u, 128u, 16u, 6.0f, true, true, 3.274f},
-    {"P-04", 32u, 128u, 16u, 6.0f, false, true, 2.128f},
-    {"P-05", 32u, 128u, 16u, 6.0f, false, true, 2.128f},
-    {"P-06", 32u, 128u, 16u, 6.0f, false, true, 2.128f},
-    {"P-07", 32u, 128u, 16u, 6.0f, false, true, 2.128f},
+    {"P-01", 32u, 128u, 16u, true},
+    {"P-02", 32u, 128u, 16u, true},
+    {"P-03", 32u, 128u, 16u, true},
+    {"P-04", 32u, 128u, 16u, true},
+    {"P-05", 32u, 128u, 16u, true},
+    {"P-06", 32u, 128u, 16u, true},
+    {"P-07", 32u, 128u, 16u, true},
 };
 
 constexpr size_t kNumTunedEntries = sizeof(kAscend950TunedBank) / sizeof(kAscend950TunedBank[0]);
@@ -113,12 +104,6 @@ inline const TunedTilingEntry* QueryTunedTiling(
         return QueryTunedTiling(cid);
     }
     return nullptr;
-}
-
-inline const TunedTilingEntry* QueryTunedTiling(const TunedShapeKey& shape)
-{
-    return QueryTunedTiling(
-        shape.b, shape.sq, shape.sk, shape.hq, shape.hkv, shape.d, shape.dtype_mode, shape.is_causal);
 }
 
 } // namespace autotune

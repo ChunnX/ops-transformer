@@ -26,13 +26,14 @@ def _load_cpp_constants():
 
     if not (os.path.isfile(_tiling_h) and os.path.isfile(_proto_h)):
         # 降级兜底：当以纯 python 包部署在 site-packages 时，C++ 源码树不存在，
-        # 返回与 tiling.h / proto.h 严格一致的标准常量
+        # 返回与 tiling.h / proto.h 严格一致的标准常量（SCALE_EPSILON=1e-7 对齐
+        # tiling.h INT8 量化 scale 兜底微量，勿回退旧 1e-5 口径）
         return (
             8.807354922057604,
             2.25,
             448.0,
             127.0,
-            1e-5,
+            1e-7,
             16,
             "HND",
             "per_thread",
