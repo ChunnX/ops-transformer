@@ -24,6 +24,21 @@ def _load_cpp_constants():
     _tiling_h = os.path.join(_dir, "..", "..", "sageattn_fp8", "ascendc", "tiling.h")
     _proto_h = os.path.join(_dir, "..", "..", "aclnn", "sage_attn_proto.h")
 
+    if not (os.path.isfile(_tiling_h) and os.path.isfile(_proto_h)):
+        # 降级兜底：当以纯 python 包部署在 site-packages 时，C++ 源码树不存在，
+        # 返回与 tiling.h / proto.h 严格一致的标准常量
+        return (
+            8.807354922057604,
+            2.25,
+            448.0,
+            127.0,
+            1e-5,
+            16,
+            "HND",
+            "per_thread",
+            "fp32+fp16",
+        )
+
     with open(_tiling_h, "r") as f:
         t_content = f.read()
     with open(_proto_h, "r") as f:
@@ -103,6 +118,7 @@ def validate_tensors(q: Any, k: Any, v: Any, tensor_layout: str, is_causal: bool
     if b_q != b_k or b_q != b_v: raise ValueError("Batch size mismatch across tensors")
     if h_k != h_v or s_k != s_v or d_k != d_v: raise ValueError("Key and value tensor shapes must match")
     if d_q != d_k: raise ValueError("Head dimension mismatch")
+    if d_q <= 0 or d_q > 128: raise ValueError("Unsupported head_dim")
     if h_q % h_k != 0: raise ValueError("GQA constraint violated")
     if is_causal and s_q != s_k: raise ValueError("is_causal=True requires qo_len == kv_len")
     if q.device != k.device or q.device != v.device: raise AssertionError("All tensors (q, k, v) must be on the same device")

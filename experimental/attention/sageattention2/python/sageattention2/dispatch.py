@@ -369,11 +369,10 @@ def resolve_pv_accum_dtype(pv_accum_dtype: Optional[str] = None) -> str:
     return DEFAULT_PV_ACCUM_DTYPE
 
 
-def dispatch_sageattn(
+def sageattn(
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
-    attn_mask: Optional[torch.Tensor] = None,
     tensor_layout: str = DEFAULT_TENSOR_LAYOUT,
     is_causal: bool = False,
     sm_scale: Optional[float] = None,
@@ -386,12 +385,15 @@ def dispatch_sageattn(
     When return_lse=False, directly returns single tensor o.
     When return_lse=True, returns tuple (o, lse).
     """
-    if attn_mask is not None:
+    if isinstance(tensor_layout, torch.Tensor):
         raise ValueError("attn_mask is not supported")
-    # kwargs 形态的 attn_mask 必须在本层消费（显式 attn_mask=None 转发会与其冲突）；
-    # 拒绝语义与汇入点 dispatch_sageattn_qk_int8_pv_fp8_asc 一致
-    if "attn_mask" in kwargs and kwargs.pop("attn_mask") is not None:
+    if kwargs.pop("attn_mask", None) is not None:
         raise ValueError("attn_mask is not supported")
+    if kwargs.pop("dropout_p", 0.0) != 0.0:
+        raise ValueError("dropout is not supported")
+    if sm_scale is None and "scale" in kwargs:
+        sm_scale = kwargs.pop("scale")
+    kwargs.pop("enable_gqa", None)
 
     pv_accum_dtype = kwargs.pop("pv_accum_dtype", None)
     pv_accum_dtype = resolve_pv_accum_dtype(pv_accum_dtype)
@@ -400,11 +402,10 @@ def dispatch_sageattn(
     smooth_k = kwargs.pop("smooth_k", True)
     smooth_v = kwargs.pop("smooth_v", False)
 
-    return dispatch_sageattn_qk_int8_pv_fp8_asc(
+    return sageattn_qk_int8_pv_fp8_asc(
         q=q,
         k=k,
         v=v,
-        attn_mask=None,
         tensor_layout=tensor_layout,
         is_causal=is_causal,
         qk_quant_gran=qk_quant_gran,
@@ -417,11 +418,10 @@ def dispatch_sageattn(
     )
 
 
-def dispatch_sageattn_qk_int8_pv_fp8_asc(
+def sageattn_qk_int8_pv_fp8_asc(
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
-    attn_mask: Optional[torch.Tensor] = None,
     tensor_layout: str = DEFAULT_TENSOR_LAYOUT,
     is_causal: bool = False,
     qk_quant_gran: str = DEFAULT_QK_QUANT_GRAN,
@@ -436,18 +436,23 @@ def dispatch_sageattn_qk_int8_pv_fp8_asc(
     Dispatch sageattn_qk_int8_pv_fp8_asc to PyTorch registered custom op torch.ops.sageattention2.forward.
     When return_lse=False, directly returns single tensor o.
     When return_lse=True, returns tuple (o, lse).
-
-    参数域完整校验唯一属于 torch.ops.sageattention2.forward 边界实现（_ops），本层
-    只做 API 形状（attn_mask 拒绝）与 pv_accum_dtype 解析，不再复制第二份校验。
     """
-    if attn_mask is not None:
+    if isinstance(tensor_layout, torch.Tensor):
         raise ValueError("attn_mask is not supported")
-    if "attn_mask" in kwargs and kwargs.pop("attn_mask") is not None:
+    if kwargs.pop("attn_mask", None) is not None:
         raise ValueError("attn_mask is not supported")
+    if kwargs.pop("dropout_p", 0.0) != 0.0:
+        raise ValueError("dropout is not supported")
+    if sm_scale is None and "scale" in kwargs:
+        sm_scale = kwargs.pop("scale")
+    kwargs.pop("enable_gqa", None)
 
     if pv_accum_dtype is None:
         pv_accum_dtype = kwargs.pop("pv_accum_dtype", None)
     pv_accum_dtype = resolve_pv_accum_dtype(pv_accum_dtype)
+
+    if kwargs:
+        raise TypeError(f"unsupported arguments: {sorted(kwargs)}")
 
     out, lse = torch.ops.sageattention2.forward(
         q,
@@ -468,7 +473,7 @@ def dispatch_sageattn_qk_int8_pv_fp8_asc(
     return out
 
 
-sageattn = dispatch_sageattn
-sageattn_qk_int8_pv_fp8_asc = dispatch_sageattn_qk_int8_pv_fp8_asc
+dispatch_sageattn = sageattn
+dispatch_sageattn_qk_int8_pv_fp8_asc = sageattn_qk_int8_pv_fp8_asc
 
 

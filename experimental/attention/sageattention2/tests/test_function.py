@@ -31,7 +31,7 @@ current_file = Path(__file__).resolve()
 OP_ROOT = current_file.parent.parent
 
 sys.path.insert(0, str(current_file.parent))  # tests/ 共享模块
-from _golden_utils import find_golden_dir, load_case_tensors  # noqa: E402
+from _golden_utils import find_golden_dir, load_case_tensors, make_qkv  # noqa: E402
 if str(OP_ROOT / "python") not in sys.path:
     sys.path.insert(0, str(OP_ROOT / "python"))
 
@@ -49,20 +49,8 @@ def _make_qkv(
     layout: str = "HND",
     seed: int = 42,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Helper to generate deterministic pseudo-random Q, K, V tensors."""
-    g = torch.Generator(device="cpu")
-    g.manual_seed(seed)
-    if layout == "HND":
-        q = torch.randn(b, hq, sq, d, dtype=dtype, generator=g)
-        k = torch.randn(b, hkv, sk, d, dtype=dtype, generator=g)
-        v = torch.randn(b, hkv, sk, d, dtype=dtype, generator=g)
-    elif layout == "NHD":
-        q = torch.randn(b, sq, hq, d, dtype=dtype, generator=g)
-        k = torch.randn(b, sk, hkv, d, dtype=dtype, generator=g)
-        v = torch.randn(b, sk, hkv, d, dtype=dtype, generator=g)
-    else:
-        raise ValueError(f"Unsupported layout: {layout}")
-    return q, k, v
+    """Helper to generate deterministic pseudo-random Q, K, V tensors (delegates to _golden_utils)."""
+    return make_qkv(b=b, hq=hq, hkv=hkv, sq=sq, sk=sk, d=d, layout=layout, dtype=dtype, seed=seed)
 
 
 class TestSageAttention2Function(unittest.TestCase):
@@ -119,6 +107,38 @@ class TestSageAttention2Function(unittest.TestCase):
         self.assertEqual(len(res_lse), 2)
         self.assertIsInstance(res_lse[0], torch.Tensor)
         self.assertIsInstance(res_lse[1], torch.Tensor)
+
+    def test_tc01_positional_calling_and_kwargs_validation(self):
+        """TC-01: Verify positional parameter calling aligns with task doc and kwargs are strictly validated."""
+        b, hq, hkv, s, d = 1, 2, 2, 32, 64
+        q, k, v = _make_qkv(b, hq, hkv, s, s, d)
+
+        # 1. Positional layout and causal calling
+        out_pos1 = sage2_pkg.sageattn(q, k, v, "HND")
+        self.assertEqual(out_pos1.shape, (b, hq, s, d))
+
+        out_pos2 = sage2_pkg.sageattn(q, k, v, "HND", False)
+        self.assertEqual(out_pos2.shape, (b, hq, s, d))
+
+        out_pos_asc = sage2_pkg.sageattn_qk_int8_pv_fp8_asc(q, k, v, "HND", False, "per_warp")
+        self.assertEqual(out_pos_asc.shape, (b, hq, s, d))
+
+        # 2. scale alias in kwargs matches sm_scale
+        out_sm = sage2_pkg.sageattn(q, k, v, sm_scale=0.125)
+        out_sc = sage2_pkg.sageattn(q, k, v, scale=0.125)
+        self.assertTrue(torch.equal(out_sm, out_sc))
+
+        # 3. dropout_p > 0 rejected
+        with self.assertRaises(ValueError):
+            sage2_pkg.sageattn(q, k, v, dropout_p=0.2)
+        with self.assertRaises(ValueError):
+            sage2_pkg.sageattn_qk_int8_pv_fp8_asc(q, k, v, dropout_p=0.2)
+
+        # 4. Unrecognized kwargs rejected with TypeError
+        with self.assertRaises(TypeError):
+            sage2_pkg.sageattn(q, k, v, invalid_kwarg=42)
+        with self.assertRaises(TypeError):
+            sage2_pkg.sageattn_qk_int8_pv_fp8_asc(q, k, v, invalid_kwarg=42)
 
     def test_tc01_kwargs_pv_accum_dtype_override(self):
         """TC-01: Verify pv_accum_dtype override via kwargs in sageattn."""

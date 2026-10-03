@@ -26,6 +26,7 @@ if str(OP_ROOT) not in sys.path:
 if str(OP_ROOT / "python") not in sys.path:
     sys.path.insert(0, str(OP_ROOT / "python"))
 
+from _golden_utils import make_qkv
 import sageattention2 as sage2
 from sageattention2 import (
     is_sdpa_patched,
@@ -48,12 +49,7 @@ class TestSdpaMonkeyPatch(unittest.TestCase):
         # Always restore to clean unpatched state after each test
         restore_sdpa(_ORIGINAL_SDPA)
 
-    def _make_qkv(self, b=1, hq=4, hkv=4, s=64, d=64, dtype=torch.float16, seed=42):
-        g = torch.Generator(device="cpu").manual_seed(seed)
-        q = torch.randn(b, hq, s, d, dtype=dtype, generator=g)
-        k = torch.randn(b, hkv, s, d, dtype=dtype, generator=g)
-        v = torch.randn(b, hkv, s, d, dtype=dtype, generator=g)
-        return q, k, v
+    _make_qkv = staticmethod(make_qkv)
 
     def test_replace_and_restore(self):
         """Verify replace_sdpa replaces F.scaled_dot_product_attention and restore_sdpa reverts it."""
@@ -165,6 +161,53 @@ class TestSdpaMonkeyPatch(unittest.TestCase):
             with self.assertRaises(ValueError) as ctx:
                 F.scaled_dot_product_attention(q, k, v, attn_mask=mask)
             self.assertIn("attn_mask is not supported", str(ctx.exception))
+
+    def test_requires_grad_fallback_behavior(self):
+        """Verify requires_grad=True triggers automatic fallback to PyTorch SDPA when fallback_to_original=True."""
+        q = torch.randn(1, 2, 32, 64, dtype=torch.float32, requires_grad=True)
+        k = torch.randn(1, 2, 32, 64, dtype=torch.float32, requires_grad=True)
+        v = torch.randn(1, 2, 32, 64, dtype=torch.float32, requires_grad=True)
+
+        with sdpa_patch(fallback_to_original=True):
+            out = F.scaled_dot_product_attention(q, k, v)
+            loss = out.sum()
+            loss.backward()
+            self.assertIsNotNone(q.grad)
+            self.assertIsNotNone(k.grad)
+            self.assertIsNotNone(v.grad)
+
+        # When fallback_to_original=False, must raise ValueError
+        q2 = torch.randn(1, 2, 32, 64, dtype=torch.float16, requires_grad=True)
+        k2 = torch.randn(1, 2, 32, 64, dtype=torch.float16)
+        v2 = torch.randn(1, 2, 32, 64, dtype=torch.float16)
+        with sdpa_patch(fallback_to_original=False):
+            with self.assertRaises(ValueError) as ctx:
+                F.scaled_dot_product_attention(q2, k2, v2)
+            self.assertIn("requires_grad", str(ctx.exception))
+
+    def test_direct_sdpa_plug_and_play(self):
+        """Verify direct replacement F.scaled_dot_product_attention = sageattn behaves accurately."""
+        q, k, v = self._make_qkv(b=1, hq=2, hkv=2, s=32, d=64)
+        orig_sdpa = F.scaled_dot_product_attention
+        try:
+            F.scaled_dot_product_attention = sageattn
+            # Test with scale, is_causal, dropout_p=0.0, attn_mask=None
+            custom_scale = 0.125
+            out = F.scaled_dot_product_attention(
+                q, k, v, attn_mask=None, dropout_p=0.0, is_causal=True, scale=custom_scale
+            )
+            expected = sageattn(q, k, v, is_causal=True, sm_scale=custom_scale)
+            self.assertTrue(torch.equal(out, expected))
+
+            # Test dropout_p > 0 rejected
+            with self.assertRaises(ValueError):
+                F.scaled_dot_product_attention(q, k, v, dropout_p=0.5)
+
+            # Test non-None attn_mask rejected
+            with self.assertRaises(ValueError):
+                F.scaled_dot_product_attention(q, k, v, attn_mask=torch.ones(32, 32))
+        finally:
+            F.scaled_dot_product_attention = orig_sdpa
 
 
 if __name__ == "__main__":

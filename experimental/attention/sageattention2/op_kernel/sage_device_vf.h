@@ -17,14 +17,23 @@ namespace sage_attn {
 namespace dev_vf {
 
 /**
+ * M5 编译期位型特化约定：凡按输入位型（1=fp16, 2=bf16，编码唯一定义
+ * tiling.h input_dtype / sage_attention2_template_tiling_key.h）分流的 VF 原语，
+ * 档位经非类型模板参数 DTYPE_MODE 承接（调用方传 SageAttnKernel 的编译期
+ * 常量 kDtype），位型支路一律 if constexpr——单一源定义，实例化只保留所取
+ * 支路的指令序列（原运行时 dtype_mode 形参 + 运行时 if 的零分支化，逐位算术不变）。
+ */
+
+/**
  * 1a. 行绝对值最大（DEFECT-F-1 组粒度量化的行内阶段）：
  * 可选 kMean 减法（带输入位型舍回），Abs 后 ReduceMax，行 max 写 1 元素槽。
  * 组间归并与 scale 定档由调用方按 quant::QScaleIndex/KScaleIndex 单点完成
  * （与宿主串行路径逐步一致）。
  */
+template <uint32_t DTYPE_MODE>
 CATLASS_DEVICE_SIMD_VF void RowAbsMaxVF(__ubuf__ half* in_ptr, __ubuf__ float* out_slot,
                                     __ubuf__ float* km_ptr, uint32_t d,
-                                    uint32_t has_km, uint32_t dtype_mode) {
+                                    uint32_t has_km) {
     using namespace AscendC;
     using namespace AscendC::MicroAPI;
     auto full = CreateMask<float, MaskPattern::ALL>();
@@ -36,7 +45,7 @@ CATLASS_DEVICE_SIMD_VF void RowAbsMaxVF(__ubuf__ half* in_ptr, __ubuf__ float* o
     Duplicate(amax_reg, 0.0f);
     for (uint32_t c = 0; c < d; c += 64) {
         RegTensor<float> val;
-        if (dtype_mode == 2u) {
+        if constexpr (DTYPE_MODE == 2u) {
             RegTensor<bfloat16_t> raw;
             LoadAlign<bfloat16_t, LoadDist::DIST_UNPACK_B16>(raw, reinterpret_cast<__ubuf__ bfloat16_t*>(in_ptr) + c);
             Cast<float, bfloat16_t, toFp32>(val, raw, full);
@@ -50,7 +59,7 @@ CATLASS_DEVICE_SIMD_VF void RowAbsMaxVF(__ubuf__ half* in_ptr, __ubuf__ float* o
             LoadAlign(km_val, km_ptr + c);
             Sub(val, val, km_val, full);
             // 差值位型舍回（对齐孪生 Half/Bf16Reader::Sub 口径）
-            if (dtype_mode == 2u) {
+            if constexpr (DTYPE_MODE == 2u) {
                 RegTensor<bfloat16_t> rt;
                 Cast<bfloat16_t, float, toBf16>(rt, val, full);
                 Cast<float, bfloat16_t, toFp32>(val, rt, full);
@@ -81,10 +90,11 @@ CATLASS_DEVICE_SIMD_VF void RowAbsMaxVF(__ubuf__ half* in_ptr, __ubuf__ float* o
  * - per_warp：CAST_RINT（对齐 quant::RoundNearestEven / cvt.rni）；
  * - 饱和 ±127（与两个 Round* 的 clamp 一致）。
  */
+template <uint32_t DTYPE_MODE>
 CATLASS_DEVICE_SIMD_VF void QuantRowInt8VF(__ubuf__ half* in_ptr, __ubuf__ int8_t* out_ptr,
                                        float scale, uint32_t d,
                                        uint32_t per_thread, uint32_t has_km,
-                                       __ubuf__ float* km_ptr, uint32_t dtype_mode) {
+                                       __ubuf__ float* km_ptr) {
     using namespace AscendC;
     using namespace AscendC::MicroAPI;
     auto full = CreateMask<float, MaskPattern::ALL>();
@@ -107,7 +117,7 @@ CATLASS_DEVICE_SIMD_VF void QuantRowInt8VF(__ubuf__ half* in_ptr, __ubuf__ int8_
 
     for (uint32_t c = 0; c < d; c += 64) {
         RegTensor<float> val;
-        if (dtype_mode == 2u) {
+        if constexpr (DTYPE_MODE == 2u) {
             RegTensor<bfloat16_t> raw;
             LoadAlign<bfloat16_t, LoadDist::DIST_UNPACK_B16>(raw, reinterpret_cast<__ubuf__ bfloat16_t*>(in_ptr) + c);
             Cast<float, bfloat16_t, toFp32>(val, raw, full);
@@ -120,7 +130,7 @@ CATLASS_DEVICE_SIMD_VF void QuantRowInt8VF(__ubuf__ half* in_ptr, __ubuf__ int8_
             RegTensor<float> km_val;
             LoadAlign(km_val, km_ptr + c);
             Sub(val, val, km_val, full);
-            if (dtype_mode == 2u) {
+            if constexpr (DTYPE_MODE == 2u) {
                 RegTensor<bfloat16_t> rt;
                 Cast<bfloat16_t, float, toBf16>(rt, val, full);
                 Cast<float, bfloat16_t, toFp32>(val, rt, full);
@@ -166,10 +176,11 @@ CATLASS_DEVICE_SIMD_VF void QuantRowInt8VF(__ubuf__ half* in_ptr, __ubuf__ int8_
  * - 全零通道 scale=0 → 0/0=NaN → e4m3 编码 0x7f（对齐 quant::FloatToE4m3fn 的
  *   NaN 保真与 golden）；有限通道饱和 ±scale_max 后 RNE 转 e4m3。
  */
+template <uint32_t DTYPE_MODE>
 CATLASS_DEVICE_SIMD_VF void QuantVRowFp8VF(__ubuf__ half* in_ptr, __ubuf__ float8_e4m3_t* out_ptr,
                                        __ubuf__ float* scale_ptr, __ubuf__ float* vm_ptr,
                                        uint32_t has_vm, uint32_t d,
-                                       float scale_max, uint32_t dtype_mode) {
+                                       float scale_max) {
     using namespace AscendC;
     using namespace AscendC::MicroAPI;
     auto full = CreateMask<float, MaskPattern::ALL>();
@@ -184,7 +195,7 @@ CATLASS_DEVICE_SIMD_VF void QuantVRowFp8VF(__ubuf__ half* in_ptr, __ubuf__ float
     for (uint32_t c = 0; c < d; c += 64) {
         RegTensor<float> val, scale_reg, scaled;
         RegTensor<float8_e4m3_t> packed;
-        if (dtype_mode == 2u) {
+        if constexpr (DTYPE_MODE == 2u) {
             RegTensor<bfloat16_t> raw;
             LoadAlign<bfloat16_t, LoadDist::DIST_UNPACK_B16>(raw, reinterpret_cast<__ubuf__ bfloat16_t*>(in_ptr) + c);
             Cast<float, bfloat16_t, toFp32>(val, raw, full);
@@ -404,8 +415,9 @@ CATLASS_DEVICE_SIMD_VF void SoftmaxProbRowVF(__ubuf__ float* logits, __ubuf__ fl
  * （输入位型 cast + 可选 kMean 域外无——V 无 kMean），逐 token 行调用一次，
  * 由调用方先充零 amax 缓冲（twin/quant_fp8 per-channel 口径）。
  */
+template <uint32_t DTYPE_MODE>
 CATLASS_DEVICE_SIMD_VF void ChannelAmaxAccumVF(__ubuf__ half* in_ptr, __ubuf__ float* amax_ptr,
-                                           uint32_t d, uint32_t dtype_mode) {
+                                           uint32_t d) {
     using namespace AscendC;
     using namespace AscendC::MicroAPI;
     auto full = CreateMask<float, MaskPattern::ALL>();
@@ -413,7 +425,7 @@ CATLASS_DEVICE_SIMD_VF void ChannelAmaxAccumVF(__ubuf__ half* in_ptr, __ubuf__ f
 
     for (uint32_t c = 0; c < d; c += 64) {
         RegTensor<float> val, amax;
-        if (dtype_mode == 2u) {
+        if constexpr (DTYPE_MODE == 2u) {
             RegTensor<bfloat16_t> raw;
             LoadAlign<bfloat16_t, LoadDist::DIST_UNPACK_B16>(raw, reinterpret_cast<__ubuf__ bfloat16_t*>(in_ptr) + c);
             Cast<float, bfloat16_t, toFp32>(val, raw, full);
@@ -454,9 +466,10 @@ CATLASS_DEVICE_SIMD_VF void FinalizeVScaleVF(__ubuf__ float* amax_ptr, __ubuf__ 
  * A7-3 smooth_v 预扫·通道 max/min/sum 累加步（smooth_v 生效时替代 ChannelAmaxAccumVF，
  * 单趟读出三统计量；调用方按 max=-FLT_MAX / min=+FLT_MAX / sum=0 充初值）。
  */
+template <uint32_t DTYPE_MODE>
 CATLASS_DEVICE_SIMD_VF void ChannelStatsAccumVF(__ubuf__ half* in_ptr, __ubuf__ float* vmax_ptr,
                                             __ubuf__ float* vmin_ptr, __ubuf__ float* vsum_ptr,
-                                            uint32_t d, uint32_t dtype_mode) {
+                                            uint32_t d) {
     using namespace AscendC;
     using namespace AscendC::MicroAPI;
     auto full = CreateMask<float, MaskPattern::ALL>();
@@ -464,7 +477,7 @@ CATLASS_DEVICE_SIMD_VF void ChannelStatsAccumVF(__ubuf__ half* in_ptr, __ubuf__ 
 
     for (uint32_t c = 0; c < d; c += 64) {
         RegTensor<float> val, vmax, vmin, vsum;
-        if (dtype_mode == 2u) {
+        if constexpr (DTYPE_MODE == 2u) {
             RegTensor<bfloat16_t> raw;
             LoadAlign<bfloat16_t, LoadDist::DIST_UNPACK_B16>(raw, reinterpret_cast<__ubuf__ bfloat16_t*>(in_ptr) + c);
             Cast<float, bfloat16_t, toFp32>(val, raw, full);
@@ -526,12 +539,13 @@ CATLASS_DEVICE_SIMD_VF void FinalizeSmoothVScaleVF(__ubuf__ float* vmax_ptr, __u
 }
 
 /**
- * 7. 最终归一化与输出位型转换（dtype_mode：2=bf16，其余按 fp16）。
+ * 7. 最终归一化与输出位型转换（DTYPE_MODE：2=bf16，其余按 fp16）。
  * 可选 smooth_v 的 vm 偏置：V 减均值量化下 PV 分子分母的 vm·Σp 项在归一化中
  * 恰好还原为 vm（不参与归一化），故出口直接逐通道加回（o·inv + vm）。
  */
+template <uint32_t DTYPE_MODE>
 CATLASS_DEVICE_SIMD_VF void FinalizeRowVF(__ubuf__ float* o_row, __ubuf__ uint16_t* out_row, float inv_d,
-                                      __ubuf__ float* vm_ptr, uint32_t d, uint32_t dtype_mode) {
+                                      __ubuf__ float* vm_ptr, uint32_t d) {
     using namespace AscendC;
     using namespace AscendC::MicroAPI;
     auto full = CreateMask<float, MaskPattern::ALL>();
@@ -548,7 +562,7 @@ CATLASS_DEVICE_SIMD_VF void FinalizeRowVF(__ubuf__ float* o_row, __ubuf__ uint16
             LoadAlign(vm_val, vm_ptr + c);
             Add(x, x, vm_val, full);
         }
-        if (dtype_mode == 2u) {
+        if constexpr (DTYPE_MODE == 2u) {
             // bf16 输出（收敛轮 F/DEFECT-F-3）：与宿主 WriteOutputBits 的 Fp32ToBf16 口径一致
             RegTensor<bfloat16_t> b;
             Cast<bfloat16_t, float, toBf16>(b, x, full);
@@ -559,6 +573,36 @@ CATLASS_DEVICE_SIMD_VF void FinalizeRowVF(__ubuf__ float* o_row, __ubuf__ uint16
             StoreAlign<half, StoreDist::DIST_PACK_B32>(reinterpret_cast<__ubuf__ half*>(out_row) + c, h, full);
         }
     }
+}
+
+/**
+ * 8. UB float 区广播填充（P2-8 标量化收尾：scale 组清零 / STAGE 条带零填充等整区
+ * 同值写的单点）：Duplicate 常量后按 64-lane chunk StoreAlign——取代逐元素标量
+ * SetValue 循环（S 管串行 → V 管单指令块写）。逐位等价论证：每目标元素均写入
+ * 同一常量位型，与标量循环写集逐一重合；尾块按 2 的幂精确分解（VLn 掩码恰写
+ * n lane），无超界写。与输入位型无关，不需 DTYPE_MODE 特化。
+ */
+CATLASS_DEVICE_SIMD_VF void FillF32VF(__ubuf__ float* dst, float value, uint32_t count) {
+    using namespace AscendC;
+    using namespace AscendC::MicroAPI;
+    if (count == 0u) {
+        return;
+    }
+    RegTensor<float> vreg;
+    Duplicate(vreg, value);
+    auto full = CreateMask<float, MaskPattern::ALL>();
+    uint32_t c = 0;
+    for (; c + 64u <= count; c += 64u) {
+        StoreAlign(dst + c, vreg, full);
+    }
+    uint32_t rem = count - c;
+    uint32_t off = c;
+    if (rem & 32u) { auto m = CreateMask<float, MaskPattern::VL32>(); StoreAlign(dst + off, vreg, m); off += 32u; }
+    if (rem & 16u) { auto m = CreateMask<float, MaskPattern::VL16>(); StoreAlign(dst + off, vreg, m); off += 16u; }
+    if (rem & 8u)  { auto m = CreateMask<float, MaskPattern::VL8>();  StoreAlign(dst + off, vreg, m); off += 8u;  }
+    if (rem & 4u)  { auto m = CreateMask<float, MaskPattern::VL4>();  StoreAlign(dst + off, vreg, m); off += 4u;  }
+    if (rem & 2u)  { auto m = CreateMask<float, MaskPattern::VL2>();  StoreAlign(dst + off, vreg, m); off += 2u;  }
+    if (rem & 1u)  { auto m = CreateMask<float, MaskPattern::VL1>();  StoreAlign(dst + off, vreg, m); }
 }
 
 } // namespace dev_vf

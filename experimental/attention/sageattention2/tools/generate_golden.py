@@ -43,6 +43,12 @@ def compute_sha256(filepath: Path | str) -> str:
     return h.hexdigest()
 
 
+_TESTS_DIR = REPO_ROOT / "tests"
+if str(_TESTS_DIR) not in sys.path:
+    sys.path.insert(0, str(_TESTS_DIR))
+from _golden_utils import make_qkv as _unified_make_qkv, sdpa_fp32  # noqa: E402
+
+
 def make_qkv(
     shape: Dict[str, int],
     tensor_layout: str,
@@ -50,71 +56,19 @@ def make_qkv(
     seed: int = 42,
     device: str = "cpu",
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Generate pseudo-random Q, K, V tensors matching the specified configuration."""
-    b = shape["batch_size"]
-    hq = shape["num_qo_heads"]
-    hkv = shape["num_kv_heads"]
-    sq = shape["qo_len"]
-    sk = shape["kv_len"]
-    d = shape["head_dim"]
-
-    g = torch.Generator(device="cpu")
-    g.manual_seed(seed)
-
-    def _rand(sz: Tuple[int, ...]) -> torch.Tensor:
-        return torch.randn(sz, generator=g, dtype=torch.float32).to(dtype)
-
-    if tensor_layout == "HND":
-        q = _rand((b, hq, sq, d))
-        k = _rand((b, hkv, sk, d))
-        v = _rand((b, hkv, sk, d))
-    elif tensor_layout == "NHD":
-        q = _rand((b, sq, hq, d))
-        k = _rand((b, sk, hkv, d))
-        v = _rand((b, sk, hkv, d))
-    else:
-        raise ValueError(f"Unsupported layout: {tensor_layout}")
-
-    return q.to(device), k.to(device), v.to(device)
-
-
-def sdpa_fp32(
-    q: torch.Tensor,
-    k: torch.Tensor,
-    v: torch.Tensor,
-    tensor_layout: str = "HND",
-    is_causal: bool = False,
-    sm_scale: Optional[float] = None,
-) -> torch.Tensor:
-    """High-precision FP32 SDPA baseline (L-B reference)."""
-    if tensor_layout == "NHD":
-        q_bnsd = q.transpose(1, 2).contiguous().float()
-        k_bnsd = k.transpose(1, 2).contiguous().float()
-        v_bnsd = v.transpose(1, 2).contiguous().float()
-    else:
-        q_bnsd = q.float()
-        k_bnsd = k.float()
-        v_bnsd = v.float()
-
-    b, hq, sq, d = q_bnsd.shape
-    _, hkv, sk, _ = k_bnsd.shape
-
-    if hq != hkv:
-        rep = hq // hkv
-        k_bnsd = k_bnsd.repeat_interleave(rep, dim=1)
-        v_bnsd = v_bnsd.repeat_interleave(rep, dim=1)
-
-    scale = (1.0 / math.sqrt(d)) if sm_scale is None else float(sm_scale)
-    attn = torch.matmul(q_bnsd, k_bnsd.transpose(-2, -1)) * scale
-    if is_causal:
-        mask = torch.ones(sq, sk, device=attn.device, dtype=torch.bool).triu(1)
-        attn = attn.masked_fill(mask, float("-inf"))
-    prob = torch.softmax(attn, dim=-1)
-    out = torch.matmul(prob, v_bnsd)
-
-    if tensor_layout == "NHD":
-        out = out.transpose(1, 2).contiguous()
-    return out
+    """Generate pseudo-random Q, K, V tensors matching the specified configuration (delegates to _golden_utils)."""
+    return _unified_make_qkv(
+        b=shape["batch_size"],
+        hq=shape["num_qo_heads"],
+        hkv=shape["num_kv_heads"],
+        sq=shape["qo_len"],
+        sk=shape["kv_len"],
+        d=shape["head_dim"],
+        layout=tensor_layout,
+        dtype=dtype,
+        seed=seed,
+        device=device,
+    )
 
 
 # ---------------------------------------------------------------------------

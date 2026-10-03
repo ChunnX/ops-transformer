@@ -11,7 +11,9 @@ test_quant.py。任何口径调整必须先过四者全部用例并同步任务�
 """
 
 import json
+import math
 from pathlib import Path
+from typing import Optional, Tuple, Union
 
 import torch
 
@@ -109,3 +111,78 @@ def l_b_ratios(out: torch.Tensor, sdpa: torch.Tensor, meta: dict) -> dict:
         "ratio_mean": _ratio(err.mean().item(), den_mean),
         "ratio_rmse": _ratio(rmse, den_rmse),
     }
+
+
+def make_qkv(
+    b: int = 1,
+    hq: int = 4,
+    hkv: int = 4,
+    sq: int = 64,
+    sk: int = 64,
+    d: int = 64,
+    layout: str = "HND",
+    dtype: torch.dtype = torch.float16,
+    seed: int = 42,
+    device: Union[str, torch.device] = "cpu",
+    s: Optional[int] = None,
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """生成测试用的伪随机 Q, K, V 张量（唯一定义点）。
+    
+    统一支持 (sq, sk) 区分或简写 s (当 s 不为空时 sq = sk = s)。
+    """
+    if s is not None:
+        sq = sk = s
+    g = torch.Generator(device="cpu").manual_seed(seed)
+    if layout == "HND":
+        q = torch.randn(b, hq, sq, d, dtype=dtype, generator=g)
+        k = torch.randn(b, hkv, sk, d, dtype=dtype, generator=g)
+        v = torch.randn(b, hkv, sk, d, dtype=dtype, generator=g)
+    elif layout == "NHD":
+        q = torch.randn(b, sq, hq, d, dtype=dtype, generator=g)
+        k = torch.randn(b, sk, hkv, d, dtype=dtype, generator=g)
+        v = torch.randn(b, sk, hkv, d, dtype=dtype, generator=g)
+    else:
+        raise ValueError(f"Unsupported layout: {layout}")
+
+    if str(device) != "cpu":
+        return q.to(device), k.to(device), v.to(device)
+    return q, k, v
+
+
+def sdpa_fp32(
+    q: torch.Tensor,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    tensor_layout: str = "HND",
+    is_causal: bool = False,
+    sm_scale: Optional[float] = None,
+) -> torch.Tensor:
+    """高精度 FP32 SDPA 基线实现（唯一定义点，L-B 基准计算）。"""
+    if tensor_layout == "NHD":
+        q_bnsd = q.transpose(1, 2).contiguous().float()
+        k_bnsd = k.transpose(1, 2).contiguous().float()
+        v_bnsd = v.transpose(1, 2).contiguous().float()
+    else:
+        q_bnsd = q.float()
+        k_bnsd = k.float()
+        v_bnsd = v.float()
+
+    b, hq, sq, d = q_bnsd.shape
+    _, hkv, sk, _ = k_bnsd.shape
+
+    if hq != hkv:
+        rep = hq // hkv
+        k_bnsd = k_bnsd.repeat_interleave(rep, dim=1)
+        v_bnsd = v_bnsd.repeat_interleave(rep, dim=1)
+
+    scale = (1.0 / math.sqrt(d)) if sm_scale is None else float(sm_scale)
+    attn = torch.matmul(q_bnsd, k_bnsd.transpose(-2, -1)) * scale
+    if is_causal:
+        mask = torch.ones(sq, sk, device=attn.device, dtype=torch.bool).triu(1)
+        attn = attn.masked_fill(mask, float("-inf"))
+    prob = torch.softmax(attn, dim=-1)
+    out = torch.matmul(prob, v_bnsd)
+
+    if tensor_layout == "NHD":
+        out = out.transpose(1, 2).contiguous()
+    return out

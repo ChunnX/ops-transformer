@@ -58,6 +58,8 @@ def _can_use_sageattn(
     sk = key.shape[2]
     if is_causal and sq != sk:
         return False, f"is_causal requires sq == sk (got {sq} != {sk})"
+    if query.requires_grad or key.requires_grad or value.requires_grad:
+        return False, "requires_grad=True is not supported in forward-only SageAttention2"
     if query.stride(-1) != 1 or key.stride(-1) != 1 or value.stride(-1) != 1:
         return False, "Last dimension of tensors must be contiguous (stride(-1) == 1)"
     return True, ""
@@ -116,7 +118,6 @@ def replace_sdpa(
                 q=query,
                 k=key,
                 v=value,
-                attn_mask=None,
                 tensor_layout="HND",
                 is_causal=is_causal,
                 sm_scale=scale,

@@ -20,6 +20,10 @@
 // （sage_attn_host_tiling.h -> sage_attn_proto.h -> ascendc/tiling.h）
 #include "../aclnn/sage_attn_host_tiling.h"
 
+// M5 编译期位型特化：tiling key 单点编码（dtype nibble bits 20-23；canonical
+// 模板档位出包时宏映射 GET_TPL_TILING_KEY，裸 bisheng 出包为本仓冻结编码）
+#include "../op_kernel/sage_attention2_template_tiling_key.h"
+
 #if defined(SAGE_HAS_OP_IMPL_REGISTRY)
 #if defined(__has_include)
 #if __has_include("exe_graph/runtime/tiling_context.h")
@@ -178,9 +182,11 @@ static ge::graphStatus TilingSageAttention2(gert::TilingContext *context)
     std::memcpy(raw_tiling->GetData(), &tiling_data, sizeof(tiling_data));
     raw_tiling->SetDataSize(sizeof(tiling_data));
 
-    // TilingKey：当前算子包采用统一设备入口（SageAttention2_0，tilingKey=0），
-    // 内部经 RawTilingData 动态分发；SetTilingKey 须置 0 与 binary_info_config.json 注册一致。
-    context->SetTilingKey(0);
+    // TilingKey（M5 编译期位型特化）：dtype 档位 nibble（bits 20-23，编码唯一定义
+    // op_kernel/sage_attention2_template_tiling_key.h，competitor GET_TPL_TILING_KEY
+    // 同款单点）。canonical 模板档位出包时框架依此直连模板入口实例；裸 bisheng
+    // 出包核内按 tiling.input_dtype 经 RunByDtype 等效一次分派。
+    context->SetTilingKey(SAGE_TPL_TILING_KEY(static_cast<uint32_t>(dtype_mode)));
 
     // SyncAll/三段式调度要求 MIX 1:2 全网格驻留
     context->SetScheduleMode(1);

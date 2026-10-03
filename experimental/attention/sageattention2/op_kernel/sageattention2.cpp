@@ -90,6 +90,13 @@ __aicore__ inline uint32_t GetBlockIdx() { return 0; }
 __aicore__ inline uint32_t GetSubBlockIdx() { return 0; }
 #endif
 
+// M5 编译期位型特化唯一定义点：输入位型档位常量 / NormDtypeMode 归一 /
+// tiling key 编码 / canonical ASCENDC_TPL_ARGS_DECL 声明（设备编译仅 OPP
+// autogen 态纳入 canonical 头，裸 bisheng 门禁自动回落 RunByDtype 形态）。
+// 置于 using namespace AscendC 之后：canonical 头 KERNEL 态的 TypeFromId
+// DT_* 特化按无限定名引用 AscendC 枚举，须域注入先于 include。
+#include "sage_attention2_template_tiling_key.h"
+
 /**
  * 核内域判定宏：bisheng 设备分支中 ASCEND_IS_AIC 展开为编译期谓词 constexpr(...)，
  * 官方调用范式为无括号 `if ASCEND_IS_AIC {`（内置算子 geglu_3510_impl.h 同款）；
@@ -126,6 +133,7 @@ namespace sage_attn {
 // 暂存子槽——重排后 S pong 槽（≤96KB）不再被 Cube dot32 裸搬（96KB 起）踩踏：
 //   O_ACCUM [0,64K) | S 双槽 [64K, ≤96K) | dot32 [96K,160K) | pv_partial [160K,224K)
 //   | LSE 区 [224K,240K)：行 stats(+0)/logits 行(+512)/ks 行(+1K)/qs 行(+1.5K)/vs(+2K)
+//     /vm(+2.5K)/corr 行(+3K)/lse 行(+3.5K)
 //   | TWO_LEVEL_REDUCE [240K,256K)
 [[maybe_unused]] constexpr uint32_t SAGE_UB_DOT32_OFFSET = Catlass::SageAttn::Vector1UbBudget::A7_DOT32_OFFSET;
 [[maybe_unused]] constexpr uint32_t SAGE_UB_PV_PARTIAL_OFFSET = Catlass::SageAttn::Vector1UbBudget::A7_PV_PARTIAL_OFFSET;
@@ -137,7 +145,12 @@ namespace sage_attn {
 [[maybe_unused]] constexpr uint32_t SAGE_UB_V1_VS_CHAN_OFFSET = SAGE_UB_V1_STATS_OFFSET + 4 * Catlass::SageAttn::Vector1UbBudget::LSE_ROW_STRIDE;
 // smooth_v 的 vm 通道槽（V0 经 workspace GM 区产出，V1 Finalize 逐通道加回）
 [[maybe_unused]] constexpr uint32_t SAGE_UB_V1_VM_CHAN_OFFSET = SAGE_UB_V1_STATS_OFFSET + 5 * Catlass::SageAttn::Vector1UbBudget::LSE_ROW_STRIDE;
-static_assert(SAGE_UB_V1_VM_CHAN_OFFSET + 512u <= Catlass::SageAttn::Vector1UbBudget::LSE_WORKSPACE_OFFSET +
+// smooth_k 的 lseCorrection 行条带副本 + LSE 出口行条带（P2-8 Finalize 突发化：
+// 逐头单次 MTE2 接入 / MTE3 搬出，取代逐 token 标量 GM 读/写；对齐不满足时回落标量）
+[[maybe_unused]] constexpr uint32_t SAGE_UB_V1_CORR_ROW_OFFSET = SAGE_UB_V1_STATS_OFFSET + 6 * Catlass::SageAttn::Vector1UbBudget::LSE_ROW_STRIDE;
+[[maybe_unused]] constexpr uint32_t SAGE_UB_V1_LSE_ROW_OFFSET = SAGE_UB_V1_STATS_OFFSET + 7 * Catlass::SageAttn::Vector1UbBudget::LSE_ROW_STRIDE;
+// 尾行断言链式覆盖此前各子槽（stats..vm 两两不相交且不出区）
+static_assert(SAGE_UB_V1_LSE_ROW_OFFSET + 512u <= Catlass::SageAttn::Vector1UbBudget::LSE_WORKSPACE_OFFSET +
                   Catlass::SageAttn::Vector1UbBudget::LSE_WORKSPACE_BYTES,
               "A7 V1 row scratch exceeds LSE workspace region");
 
@@ -191,9 +204,17 @@ struct SimMemory {
  *    动态范围），LSE 出口恒以 S_FP8_OFFSET 常量补扣；
  * d. 两级累加：fp32 档逐 token 直累；fp32+fp16 档按 k_step=16 子块 FP16 域累加
  *    （twin::AccumulatePvRow 单点），O 主累加器驻留 V1 UB（fp32）。
+ *
+ * M5 编译期位型特化：类模板化于 DTYPE_MODE（归一化输入位型档位，1=fp16 / 2=bf16，
+ * 归一唯一定义 sage_attn::NormDtypeMode）；原运行时 DtypeMode() 消费点全部改经
+ * 编译期常量 kDtype（if constexpr / VF 模板实参），设备热路径零位型分支，各档位
+ * 实例化执行的算术指令与原运行时分支逐一相同（逐位不变特化）。
  */
+template <uint32_t DTYPE_MODE>
 class SageAttnKernel {
 public:
+    // 编译期输入位型档位（原 DtypeMode() 的编译期形态）
+    static constexpr uint32_t kDtype = NormDtypeMode(DTYPE_MODE);
 
 
     /**
@@ -378,11 +399,8 @@ private:
         return (sk_start + block_n_ <= sk_) ? block_n_ : static_cast<uint32_t>(sk_ - sk_start);
     }
 
-    // 输入位型归一（0 视作 fp16 缺省；唯一定义点，消费侧禁止再展开三元式）
-    __aicore__ uint32_t DtypeMode() const
-    {
-        return (tiling_->input_dtype == 2u) ? 2u : 1u;
-    }
+    // 输入位型归一唯一定义点已迁移 sage_attention2_template_tiling_key.h 的
+    // sage_attn::NormDtypeMode；核内消费一律编译期常量 kDtype（M5）。
     // 当前任务的因果活跃 KV 分块数（全尾块公式唯一定义点；DecodeTask 缓存至
     // active_kv_blocks_，Cube/Vec0/Vec1 三处消费同源；块计数取整走官方
     // CATLASS ::CeilDiv，::Min 为同头文件官方极值组件）
@@ -941,19 +959,20 @@ private:
      */
 #if !SAGE_ATTN_DEVICE_COMPILE
     /**
-     * 输入位型分派：Q/K/V 读取与输出写出按 tiling.input_dtype
-     * 分派，位级转换唯一来源 twin::detail::ReadInput/WriteOutput。
+     * 输入位型分派：Q/K/V 读取与输出写出按本实例化档位 kDtype（入口按
+     * tiling.input_dtype 运行时选择实例）分派，位级转换唯一来源
+     * twin::detail::ReadInput/WriteOutput。
      */
     inline float ReadInputBits(const uint16_t *base, int64_t idx) const
     {
         return twin::detail::ReadInput(base, static_cast<size_t>(idx),
-                                       DtypeMode());
+                                       kDtype);
     }
 
     inline void WriteOutputBits(uint16_t *base, int64_t idx, float val) const
     {
         twin::detail::WriteOutput(base, static_cast<size_t>(idx),
-                                  DtypeMode(), val);
+                                  kDtype, val);
     }
 #endif
 
@@ -976,15 +995,18 @@ private:
         LocalTensor<half> ub_in(TPosition::VECCALC, Catlass::SageAttn::Vector0UbBudget::GM_INPUT_PING_OFFSET, d);
         LocalTensor<int8_t> ub_out(TPosition::VECCALC, Catlass::SageAttn::Vector0UbBudget::NZ_OUTPUT_OFFSET, d);
         LocalTensor<int8_t> l1_q(TPosition::A1, tiling_->l1_q_offset, total_rows_q * d);
-        const uint32_t dtype_mode = DtypeMode();
+        // M5：输入位型档位为编译期常量 kDtype（VF 调用模板实参，原 dtype_mode 形参删除）
 
-        // 窗口 scale 组清零（防跨任务波次陈旧 amax 混入）
+        // 窗口 scale 组清零（防跨任务波次陈旧 amax 混入；P2-8：连续组段以 FillF32VF
+        // 广播填充向量化——写集与标量循环逐一重合，槽界钳制保持）
         const uint32_t grp_first_q = quant::QScaleIndex(cur_q_start_, per_thread_q);
         const uint32_t grp_last_q = quant::QScaleIndex(cur_q_start_ + cur_q_len_ - 1u, per_thread_q);
+        const uint32_t grp_cnt_q = (grp_first_q < kQScaleSlotStride)
+                                       ? (::Min(grp_last_q + 1u, kQScaleSlotStride) - grp_first_q)
+                                       : 0u;
+        __ubuf__ float *ub_scales_ptr = reinterpret_cast<__ubuf__ float*>(ub_scales.GetPhyAddr());
         for (uint32_t g = 0; g < cur_heads_; ++g) {
-            for (uint32_t s = grp_first_q; s <= grp_last_q && s < kQScaleSlotStride; ++s) {
-                ub_scales.SetValue((cur_g0_ + g) * kQScaleSlotStride + s, 0.0f);
-            }
+            dev_vf::FillF32VF(ub_scales_ptr + (cur_g0_ + g) * kQScaleSlotStride + grp_first_q, 0.0f, grp_cnt_q);
         }
 
         // A. 行 abs-max（每行一次 MTE2 + VF）
@@ -998,15 +1020,20 @@ private:
             gm_row.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(q_src + row_gm_offset));
             DataCopy(ub_in, gm_row, d);
             Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
-            dev_vf::RowAbsMaxVF(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
-                                reinterpret_cast<__ubuf__ float*>(ub_rowmax.GetPhyAddr()) + r,
-                                nullptr, d, 0u, dtype_mode);
+            dev_vf::RowAbsMaxVF<kDtype>(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
+                                        reinterpret_cast<__ubuf__ float*>(ub_rowmax.GetPhyAddr()) + r,
+                                        nullptr, d, 0u);
         }
         // V 管写 → S 管读同步（DEFECT-G-1，与 V1 统计读取同款事件对）
         Catlass::SageAttn::Sync<HardEvent::V_S>();
 
         // B. 组归并 + scale 定档（宿主同式；per_thread=amax/127+1e-7，
-        //    per_warp=clamp(amax,1e-7)/127）
+        //    per_warp=clamp(amax,1e-7)/127）。
+        //    P2-8 向量化裁定（保留标量）：组归并为行→槽散布写——per_thread 组号含
+        //    8 相位跨步 8 交织（quant::QScaleIndex 唯一定义），行段非连续且 dav-3510
+        //    MicroAPI 无跨 lane 散布/收集原语，散布归并保持标量（2-3 S 拍/行，任务级
+        //    一次）；定档循环为 quant::FinalizeQkScale 单点公式，向量化须把公式复制进
+        //    VF 违反一处定义，保持标量（≤2·pack_heads 元素/任务）。
         for (uint32_t r = 0; r < total_rows_q && r < MAX_PACK_ROWS; ++r) {
             const uint32_t g = r / cur_q_len_;
             const uint32_t token = cur_q_start_ + (r % cur_q_len_);
@@ -1035,9 +1062,9 @@ private:
             gm_row.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(q_src + row_gm_offset));
             DataCopy(ub_in, gm_row, d);
             Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
-            dev_vf::QuantRowInt8VF(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
-                                   reinterpret_cast<__ubuf__ int8_t*>(ub_out.GetPhyAddr()),
-                                   scale, d, per_thread_q ? 1u : 0u, 0u, nullptr, dtype_mode);
+            dev_vf::QuantRowInt8VF<kDtype>(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
+                                           reinterpret_cast<__ubuf__ int8_t*>(ub_out.GetPhyAddr()),
+                                           scale, d, per_thread_q ? 1u : 0u, 0u, nullptr);
             Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
             Catlass::SageAttn::CopyUbRowToL1(l1_q[r * d], ub_out, d);
             // MTE3→V 回边（DEFECT-I-1 同款）：ub_out 逐行复用，在途 MTE3 读排空后方可下一行 VF 写
@@ -1051,9 +1078,9 @@ private:
         LocalTensor<float> ub_stage_q(TPosition::VECCALC,
                                       Catlass::SageAttn::Vector0UbBudget::QUANT_STAGE_STRIP_OFFSET,
                                       STAGE_SLOT_FLOATS);
-        for (uint32_t s = 0; s < STAGE_SLOT_FLOATS; ++s) {
-            ub_stage_q.SetValue(s, 0.0f);
-        }
+        // 条带零填充向量化（FillF32VF 单点；128 float = 2 全 chunk）
+        dev_vf::FillF32VF(reinterpret_cast<__ubuf__ float*>(ub_stage_q.GetPhyAddr()), 0.0f, STAGE_SLOT_FLOATS);
+        // 逐行展开保持标量（P2-8）：行→槽为 8 相位交织寻址，无连续段亦无收集原语
         for (uint32_t r = 0; r < total_rows_q && r < MAX_PACK_ROWS; ++r) {
             const uint32_t g = r / cur_q_len_;
             const uint32_t token = cur_q_start_ + (r % cur_q_len_);
@@ -1144,7 +1171,7 @@ private:
         // DEFECT-F-1 重构：组粒度两阶段（组边界 quant::KScaleIndex 单点，
         // 块内本地序号写 l1_k_scale——Data+Scale 相邻契约）
         const bool per_thread_k = (tiling_->qk_quant_gran == QUANT_GRAN_PER_THREAD);
-        const uint32_t dtype_mode = DtypeMode();
+        // M5：输入位型档位为编译期常量 kDtype（VF 调用模板实参，原 dtype_mode 形参删除）
         const uint32_t grp_per_blk = per_thread_k ? 4u : 1u;
         const uint32_t blk_first = cur_k_start_ / quant::K_BLK;
         const uint32_t grp_lo = blk_first * grp_per_blk;
@@ -1171,9 +1198,13 @@ private:
             Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
         }
 
-        // 窗口 scale 组清零
-        for (uint32_t s = grp_lo; s < grp_hi && s < kKScaleSlotStride; ++s) {
-            ub_k_scales.SetValue(s, 0.0f);
+        // 窗口 scale 组清零（P2-8：连续组段 FillF32VF 广播填充，槽界钳制保持）
+        const uint32_t grp_fill_cnt = (grp_lo < kKScaleSlotStride)
+                                          ? (::Min(grp_hi, kKScaleSlotStride) - grp_lo)
+                                          : 0u;
+        if (grp_fill_cnt != 0u) {
+            dev_vf::FillF32VF(reinterpret_cast<__ubuf__ float*>(ub_k_scales.GetPhyAddr()) + grp_lo,
+                              0.0f, grp_fill_cnt);
         }
 
         // A. 行 abs-max（仅真实 token；pad 行零贡献且 pad 组写 0 由 C 段 pad 分支覆盖）
@@ -1188,18 +1219,21 @@ private:
             gm_row.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
             DataCopy(ub_in, gm_row, d);
             Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
-            dev_vf::RowAbsMaxVF(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
-                                reinterpret_cast<__ubuf__ float*>(ub_rowmax.GetPhyAddr()) + j,
-                                reinterpret_cast<__ubuf__ float*>(ub_km.GetPhyAddr()),
-                                d, has_km, dtype_mode);
+            dev_vf::RowAbsMaxVF<kDtype>(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
+                                        reinterpret_cast<__ubuf__ float*>(ub_rowmax.GetPhyAddr()) + j,
+                                        reinterpret_cast<__ubuf__ float*>(ub_km.GetPhyAddr()),
+                                        d, has_km);
         }
         // V 管写 → S 管读同步（DEFECT-G-1）
         Catlass::SageAttn::Sync<HardEvent::V_S>();
 
         // B. 组归并（pair/块粒度，KScaleIndex 单点）+ 定档 + l1_k_scale 本地写出
+        //（P2-8：归并/定档保留标量，理由同 LoadAndQuantizeQ B 段——交织组散布写 +
+        // quant 单点公式；amax 单次读出替代原条件真分支的二次 GetValue）
         for (uint32_t j = 0; j < block_k; ++j) {
             const uint32_t slot = quant::KScaleIndex(cur_k_start_ + j, per_thread_k);
-            if (ub_rowmax.GetValue(j) > ub_k_scales.GetValue(slot)) ub_k_scales.SetValue(slot, ub_rowmax.GetValue(j));
+            const float amax = ub_rowmax.GetValue(j);
+            if (amax > ub_k_scales.GetValue(slot)) ub_k_scales.SetValue(slot, amax);
         }
         for (uint32_t s = grp_lo; s < grp_hi && s < kKScaleSlotStride; ++s) {
             const float amax = ub_k_scales.GetValue(s);
@@ -1215,9 +1249,9 @@ private:
         LocalTensor<float> ub_stage_k(TPosition::VECCALC,
                                       Catlass::SageAttn::Vector0UbBudget::QUANT_STAGE_STRIP_OFFSET,
                                       STAGE_SLOT_FLOATS);
-        for (uint32_t s = 0; s < STAGE_SLOT_FLOATS; ++s) {
-            ub_stage_k.SetValue(s, 0.0f);
-        }
+        // 条带零填充向量化（FillF32VF 单点；128 float = 2 全 chunk）
+        dev_vf::FillF32VF(reinterpret_cast<__ubuf__ float*>(ub_stage_k.GetPhyAddr()), 0.0f, STAGE_SLOT_FLOATS);
+        // 逐 token 展开保持标量（P2-8：交织组寻址 + 尾块 pad 列零保持，同 Q 条带理由）
         for (uint32_t j = 0; j < block_n_; ++j) {
             if (j < block_k) {
                 const uint32_t token = cur_k_start_ + j;
@@ -1245,10 +1279,10 @@ private:
                 Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
                 const uint32_t token = cur_k_start_ + j;
                 const float scale = ub_k_scales.GetValue(quant::KScaleIndex(token, per_thread_k));
-                dev_vf::QuantRowInt8VF(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
-                                       reinterpret_cast<__ubuf__ int8_t*>(ub_out.GetPhyAddr()),
-                                       scale, d, per_thread_k ? 1u : 0u, has_km,
-                                       reinterpret_cast<__ubuf__ float*>(ub_km.GetPhyAddr()), dtype_mode);
+                dev_vf::QuantRowInt8VF<kDtype>(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
+                                               reinterpret_cast<__ubuf__ int8_t*>(ub_out.GetPhyAddr()),
+                                               scale, d, per_thread_k ? 1u : 0u, has_km,
+                                               reinterpret_cast<__ubuf__ float*>(ub_km.GetPhyAddr()));
             } else {
                 Duplicate(ub_out, int8_t(0), d);
             }
@@ -1287,7 +1321,7 @@ private:
             const uint16_t *row_ptr = k_u16 + kv_layout(tla::MakeCoord(0u, 0u, j, 0u));
             for (uint32_t c = 0; c < d; ++c) {
                 float val = ReadInputBits(row_ptr, c);
-                val = quant::SubKm(val, km_ptr, c, DtypeMode());
+                val = quant::SubKm(val, km_ptr, c, kDtype);
                 const float abs_v = SageFastAbs(val);
                 if (abs_v > *scale_slot) *scale_slot = abs_v;
             }
@@ -1311,7 +1345,7 @@ private:
                 const uint16_t *row_ptr = k_u16 + kv_layout(tla::MakeCoord(0u, 0u, j, 0u));
                 for (uint32_t c = 0; c < d; ++c) {
                     float val = ReadInputBits(row_ptr, c);
-                    val = quant::SubKm(val, km_ptr, c, DtypeMode());
+                    val = quant::SubKm(val, km_ptr, c, kDtype);
                     row_out[c] = per_thread ? quant::RoundHalfAwayFromZero(val / scale)
                                             : quant::RoundNearestEven(val / scale);
                 }
@@ -1351,7 +1385,7 @@ private:
         if (v_src == nullptr) return;
         // DEFECT-F-1 重构：per-channel 全序列预扫（首块一次）→ UB scale 张量；逐行量化
         // VF 走除法轨迹 + ±scale_max 截断 + 全零通道 0/0=NaN → e4m3 0x7f。
-        const uint32_t dtype_mode = DtypeMode();
+        // M5：输入位型档位为编译期常量 kDtype（VF 调用模板实参，原 dtype_mode 形参删除）
         LocalTensor<float> ub_v_scale(TPosition::VECCALC,
                                       Catlass::SageAttn::Vector0UbBudget::QUANT_ROWMAX_OFFSET,
                                       d);
@@ -1385,11 +1419,11 @@ private:
                     Catlass::SageAttn::Sync<HardEvent::V_MTE2>();
                     DataCopy(ub_in, gm_row, d);
                     Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
-                    dev_vf::ChannelStatsAccumVF(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
-                                                reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
-                                                reinterpret_cast<__ubuf__ float*>(ub_v_min.GetPhyAddr()),
-                                                reinterpret_cast<__ubuf__ float*>(ub_v_sum.GetPhyAddr()),
-                                                d, dtype_mode);
+                    dev_vf::ChannelStatsAccumVF<kDtype>(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
+                                                        reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
+                                                        reinterpret_cast<__ubuf__ float*>(ub_v_min.GetPhyAddr()),
+                                                        reinterpret_cast<__ubuf__ float*>(ub_v_sum.GetPhyAddr()),
+                                                        d);
                 }
                 Catlass::SageAttn::Sync<HardEvent::V_S>();
                 dev_vf::FinalizeSmoothVScaleVF(reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
@@ -1413,9 +1447,9 @@ private:
                     Catlass::SageAttn::Sync<HardEvent::V_MTE2>();
                     DataCopy(ub_in, gm_row, d);
                     Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
-                    dev_vf::ChannelAmaxAccumVF(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
-                                               reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
-                                               d, dtype_mode);
+                    dev_vf::ChannelAmaxAccumVF<kDtype>(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
+                                                       reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
+                                                       d);
                 }
                 dev_vf::FinalizeVScaleVF(reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
                                          reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
@@ -1452,11 +1486,11 @@ private:
                 gm_row.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
                 DataCopy(ub_in, gm_row, d);
                 Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
-                dev_vf::QuantVRowFp8VF(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
-                                       reinterpret_cast<__ubuf__ float8_e4m3_t*>(ub_out.GetPhyAddr()),
-                                       reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
-                                       reinterpret_cast<__ubuf__ float*>(ub_v_sum.GetPhyAddr()),
-                                       smooth_v, d, scale_max, dtype_mode);
+                dev_vf::QuantVRowFp8VF<kDtype>(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
+                                               reinterpret_cast<__ubuf__ float8_e4m3_t*>(ub_out.GetPhyAddr()),
+                                               reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
+                                               reinterpret_cast<__ubuf__ float*>(ub_v_sum.GetPhyAddr()),
+                                               smooth_v, d, scale_max);
             } else {
                 Duplicate(ub_out.ReinterpretCast<int8_t>(), int8_t(0), d);
             }
@@ -1760,9 +1794,9 @@ private:
      * - 行级 inv_d = GetFinalInvDenominator(row_states_[r])（O 与分母同处 448· 放大域，
      *   除法处放大精确相消）；
      * - smooth_k 的行级 lse_correction 由桥接层算好（fp32 matmul q·km_broadcast^T，
-     *   开源契约 core.py:593-597）经 lseCorrection GM 入参传入，按 (b, hq, token)
-     *   全局下标直读——校正项启用与否以该张量存在（非 nullptr）为唯一定义，
-     *   V0/V1 跨 AIV 不共享私有状态，核内不得自算；
+     *   开源契约 core.py:593-597）经 lseCorrection GM 入参传入，对齐域逐头整行
+     *   MTE2 接入 UB（未对齐域逐 token 直读）——校正项启用与否以该张量存在
+     *   （非 nullptr）为唯一定义，V0/V1 跨 AIV 不共享私有状态，核内不得自算；
      * - smooth_v（host 门控仅 fp32 档）：V 减均值量化下 PV 分子分母的 vm·Σp 项
      *   归一化后恰还原为 vm，Finalize 经 workspace GM 区（workspace_vm_offset）
      *   读回 vm 后逐通道加回（o·inv + vm）；
@@ -1807,16 +1841,38 @@ private:
             const int64_t hq_curr = hkv_idx * static_cast<int64_t>(gqa_ratio_) + static_cast<int64_t>(cur_g0_) + g;
             if (hq_curr >= hq_) break;
 
+            // P2-8 LSE 条带突发化：corr 行单次 MTE2 接入 UB、lse 行单次 MTE3 搬出——
+            // 取代逐 token 标量 GM 读/写（S 管逐元素 GM 访问串行化）。突发约束为
+            // DataCopy 块搬运的 32B 对齐域：GM 元素基址与长度均须 8（fp32）对齐；
+            // 不满足（sq 尾块/头基址未对齐）时逐 token 回落标量路径，位级同值同址。
+            const int64_t lse_elem_base = lse_layout(tla::MakeCoord(b_idx, hq_curr, sq_start));
+            const bool lse_burst_ok =
+                (static_cast<uint64_t>(lse_elem_base) % 8u == 0u) && ((cur_q_len_ % 8u) == 0u);
+            LocalTensor<float> ub_corr(TPosition::VECCALC, SAGE_UB_V1_CORR_ROW_OFFSET, cur_q_len_);
+            LocalTensor<float> ub_lse_row(TPosition::VECCALC, SAGE_UB_V1_LSE_ROW_OFFSET, cur_q_len_);
+            if (has_lse_corr && lse_burst_ok) {
+                GlobalTensor<float> gm_corr;
+                gm_corr.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(
+                    lse_correction_gm_ + lse_elem_base * static_cast<int64_t>(sizeof(float))));
+                DataCopy(ub_corr, gm_corr, cur_q_len_);
+                // 条带副本由 S 管逐行 GetValue 消费：MTE2 写 → S 管读显式排空
+                Catlass::SageAttn::Sync<HardEvent::MTE2_S>();
+            }
+
             for (uint32_t i = 0; i < cur_q_len_; ++i) {
                 const uint32_t r = g * cur_q_len_ + i;
                 if (r >= MAX_PACK_ROWS) break;
                 const float inv_row = OnlineSoftmaxTransformer::GetFinalInvDenominator(row_states_[r]);
-                // LSE 校正项：lseCorrection GM 按 (b, hq, token) 全局下标直读
+                // LSE 校正项：burst 域读 UB 条带副本，否则按 (b, hq, token) 全局下标直读
                 float lse_corr_val = 0.0f;
                 if (has_lse_corr) {
-                    const int64_t corr_offset = lse_layout(tla::MakeCoord(b_idx, hq_curr, sq_start + i)) *
-                                                static_cast<int64_t>(sizeof(float));
-                    lse_corr_val = *reinterpret_cast<const __gm__ float*>(lse_correction_gm_ + corr_offset);
+                    if (lse_burst_ok) {
+                        lse_corr_val = ub_corr.GetValue(i);
+                    } else {
+                        const int64_t corr_offset = lse_layout(tla::MakeCoord(b_idx, hq_curr, sq_start + i)) *
+                                                    static_cast<int64_t>(sizeof(float));
+                        lse_corr_val = *reinterpret_cast<const __gm__ float*>(lse_correction_gm_ + corr_offset);
+                    }
                 }
                 // LSE 出口：核内 exp2 域 LSE 含 448· 放大（乘法实现）所致的 +log2(448) 偏置，
                 // 以 S_FP8_OFFSET 常量补扣（唯一定义，见 ConvertLseToHost 注释）
@@ -1827,18 +1883,20 @@ private:
                 LocalTensor<float> ub_o_row(TPosition::VECCALC,
                                             Catlass::SageAttn::Vector1UbBudget::O_ACCUM_OFFSET + r * d_ * sizeof(float),
                                             d_);
-                dev_vf::FinalizeRowVF(reinterpret_cast<__ubuf__ float*>(ub_o_row.GetPhyAddr()),
+                dev_vf::FinalizeRowVF<kDtype>(reinterpret_cast<__ubuf__ float*>(ub_o_row.GetPhyAddr()),
                                      reinterpret_cast<__ubuf__ uint16_t*>(ub_half.GetPhyAddr()),
                                      inv_row,
                                      has_vm ? reinterpret_cast<__ubuf__ float*>(ub_vm.GetPhyAddr()) : nullptr,
-                                     tiling_->d_og, tiling_->input_dtype);
+                                     tiling_->d_og);
                 // V 管写 → MTE3 读（DEFECT-I-1）：DataCopy 前置 V→MTE3 事件对，
                 // 保证本行 VF 写毕才发起 GM 搬出（支持 half 与 bfloat16 双路径，DEFECT-F-3）
                 Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
 
                 const int64_t out_gm_offset = out_layout(tla::MakeCoord(b_idx, hq_curr, sq_start + i, 0u)) *
                                               static_cast<int64_t>(sizeof(half));
-                if (DtypeMode() == 2u) {
+                // M5：输出位型编译期分流（原运行时 DtypeMode()==2 分支的 if constexpr 形态，
+                // 档位常量唯一定义 sage_attention2_template_tiling_key.h）
+                if constexpr (kDtype == kTplDtypeBf16) {
                     GlobalTensor<bfloat16_t> gm_out;
                     gm_out.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(out_gm_ + out_gm_offset));
                     LocalTensor<bfloat16_t> ub_bf16 = ub_half.ReinterpretCast<bfloat16_t>();
@@ -1853,10 +1911,23 @@ private:
                 Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
 
                 if (lse_gm_ != nullptr) {
-                    const int64_t lse_offset = lse_layout(tla::MakeCoord(b_idx, hq_curr, sq_start + i)) *
-                                               static_cast<int64_t>(sizeof(float));
-                    *reinterpret_cast<__gm__ float*>(lse_gm_ + lse_offset) = lse_host;
+                    if (lse_burst_ok) {
+                        ub_lse_row.SetValue(i, lse_host);
+                    } else {
+                        const int64_t lse_offset = lse_layout(tla::MakeCoord(b_idx, hq_curr, sq_start + i)) *
+                                                   static_cast<int64_t>(sizeof(float));
+                        *reinterpret_cast<__gm__ float*>(lse_gm_ + lse_offset) = lse_host;
+                    }
                 }
+            }
+            if (lse_gm_ != nullptr && lse_burst_ok) {
+                // 行条带 S 管写毕 → MTE3 搬出；搬出排空后方可在下一头复用该行（MTE3→S）
+                Catlass::SageAttn::Sync<HardEvent::S_MTE3>();
+                GlobalTensor<float> gm_lse;
+                gm_lse.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(
+                    lse_gm_ + lse_elem_base * static_cast<int64_t>(sizeof(float))));
+                DataCopy(gm_lse, ub_lse_row, cur_q_len_);
+                Catlass::SageAttn::Sync<HardEvent::MTE3_S>();
             }
         }
 #else
@@ -1954,6 +2025,57 @@ private:
 
 };
 
+/**
+ * M5 编译期位型特化启动器：模板核执行器 Run<DTYPE_MODE> + RunByDtype 运行时一次分派。
+ * 两者独立于模板 tiling key 宏存在（裸 bisheng 编译门无需 ASCENDC_TPL_ARGS_DECL）；
+ * canonical 模板档位出包（SAGE_HAS_CANONICAL_TPL_ARGS）时框架按 tiling key 直连
+ * Run<INPUT_DTYPE>，不经 RunByDtype。分派谓词与核内 kDtype 同出 NormDtypeMode
+ * 唯一定义，两形态同档位实例执行的算术逐位一致。
+ */
+struct SageAttnLaunch {
+    template <uint32_t DTYPE_MODE>
+    static __aicore__ void Run(
+        __gm__ uint8_t *query,
+        __gm__ uint8_t *key,
+        __gm__ uint8_t *value,
+        __gm__ uint8_t *keyMean,
+        __gm__ uint8_t *lseCorrection,
+        __gm__ uint8_t *attentionOut,
+        __gm__ uint8_t *softmaxLse,
+        __gm__ uint8_t *workspace,
+        const SageAttention2TilingData *tiling_data)
+    {
+#if SAGE_ATTN_DEVICE_COMPILE
+        SageAttnKernel<DTYPE_MODE> kernel;
+        kernel.Init(query, key, value, keyMean, lseCorrection, attentionOut, softmaxLse, workspace, tiling_data);
+#else
+        (void)workspace;
+        SageAttnKernel<DTYPE_MODE> kernel;
+        kernel.Init(query, key, value, keyMean, lseCorrection, attentionOut, softmaxLse, nullptr, tiling_data);
+#endif
+        kernel.Process();
+    }
+
+    static __aicore__ void RunByDtype(
+        uint32_t dtype_mode,
+        __gm__ uint8_t *query,
+        __gm__ uint8_t *key,
+        __gm__ uint8_t *value,
+        __gm__ uint8_t *keyMean,
+        __gm__ uint8_t *lseCorrection,
+        __gm__ uint8_t *attentionOut,
+        __gm__ uint8_t *softmaxLse,
+        __gm__ uint8_t *workspace,
+        const SageAttention2TilingData *tiling_data)
+    {
+        if (NormDtypeMode(dtype_mode) == kTplDtypeBf16) {
+            Run<kTplDtypeBf16>(query, key, value, keyMean, lseCorrection, attentionOut, softmaxLse, workspace, tiling_data);
+        } else {
+            Run<kTplDtypeFp16>(query, key, value, keyMean, lseCorrection, attentionOut, softmaxLse, workspace, tiling_data);
+        }
+    }
+};
+
 } // namespace sage_attn
 
 /**
@@ -1962,6 +2084,33 @@ private:
  * 名称不符报 "kernel entry not implement"。
  * 声明 KERNEL_TYPE_MIX_AIC_1_2 硬件拓扑
  */
+#if SAGE_ATTN_DEVICE_COMPILE && defined(SAGE_HAS_CANONICAL_TPL_ARGS)
+/**
+ * canonical 模板档位入口（OPP opc autogen 出包形态，competitor 同款）：框架依
+ * ASCENDC_TPL_ARGS_DECL 声明与 host SetTilingKey 的 tiling key 直连模板实例，
+ * 核内零运行时位型分派。裸 bisheng 门禁（无 template_argument.h）编入下方
+ * extern "C" 运行时 RunByDtype 形态。
+ */
+template <uint32_t INPUT_DTYPE>
+__global__ __aicore__ void sage_attention2(
+    __gm__ uint8_t *query,
+    __gm__ uint8_t *key,
+    __gm__ uint8_t *value,
+    __gm__ uint8_t *keyMean,
+    __gm__ uint8_t *lseCorrection,
+    __gm__ uint8_t *attentionOut,
+    __gm__ uint8_t *softmaxLse,
+    __gm__ uint8_t *workspace,
+    __gm__ uint8_t *tiling)
+{
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+    REGISTER_TILING_DEFAULT(sage_attn::SageAttention2TilingData);
+    GET_TILING_DATA_WITH_STRUCT(sage_attn::SageAttention2TilingData, t, tiling);
+    __gm__ uint8_t *user_workspace = GetUserWorkspace(workspace);
+    sage_attn::SageAttnLaunch::Run<INPUT_DTYPE>(query, key, value, keyMean, lseCorrection,
+                                                attentionOut, softmaxLse, user_workspace, &t);
+}
+#else
 extern "C" __global__ __aicore__ void sage_attention2(
     __gm__ uint8_t *query,
     __gm__ uint8_t *key,
@@ -1986,16 +2135,20 @@ extern "C" __global__ __aicore__ void sage_attention2(
     REGISTER_TILING_DEFAULT(sage_attn::SageAttention2TilingData);
     GET_TILING_DATA_WITH_STRUCT(sage_attn::SageAttention2TilingData, t, tiling);
     __gm__ uint8_t *user_workspace = GetUserWorkspace(workspace);
-    sage_attn::SageAttnKernel kernel;
-    kernel.Init(query, key, value, keyMean, lseCorrection, attentionOut, softmaxLse, user_workspace, &t);
+    // M5：裸 bisheng 形态按 tiling.input_dtype 运行时一次分派到模板实例
+    //（分派在任务 prologue，热路径零位型分支；canonical 模板档位出包时由
+    // 上方模板入口直连，无此运行时归一）
+    sage_attn::SageAttnLaunch::RunByDtype(t.input_dtype, query, key, value, keyMean, lseCorrection,
+                                          attentionOut, softmaxLse, user_workspace, &t);
 #else
     (void)workspace;
     // 基线 lse_correction 由桥接层算好传入（开源契约），本入口直承 GM 指针，
     // V1 FinalizeAndStoreOutput 消费（校正启用以指针非空为唯一定义）
     const sage_attn::SageAttention2TilingData *tiling_data =
         reinterpret_cast<const sage_attn::SageAttention2TilingData *>(tiling);
-    sage_attn::SageAttnKernel kernel;
-    kernel.Init(query, key, value, keyMean, lseCorrection, attentionOut, softmaxLse, nullptr, tiling_data);
+    // M5：宿主/KT 分支保持 tiling.input_dtype 运行时一次分派（测试契约不变）
+    sage_attn::SageAttnLaunch::RunByDtype(tiling_data->input_dtype, query, key, value, keyMean, lseCorrection,
+                                          attentionOut, softmaxLse, nullptr, tiling_data);
 #endif
-    kernel.Process();
 }
+#endif
