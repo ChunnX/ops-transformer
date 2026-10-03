@@ -165,13 +165,20 @@ static ge::graphStatus InferShapeSageAttention2(gert::InferShapeContext *context
     // 7. 可选平滑与修正项形状校验
     const gert::Shape *keyMeanShape = context->GetInputShape(sage_attn2_idx::IN_KEY_MEAN);
     if (keyMeanShape != nullptr && keyMeanShape->GetDimNum() > 0) {
+        // km 契约（DEFECT-L-1 三方对齐：内核 float* 读 d_pad、孪生 assign d_pad、
+        // python 桥按 pad 后 K 求均值）：末维 = d_pad（d<=64→64，否则 128），
+        // 位型仅 DT_FLOAT（内核 float* 直读，fp16 km 会按 fp32 误读）
+        const int64_t d_pad_km = (d <= 64) ? 64 : 128;
         if (keyMeanShape->GetDimNum() == 3) {
-            if (keyMeanShape->GetDim(0) != b || keyMeanShape->GetDim(1) != hkv || keyMeanShape->GetDim(2) != d) {
+            if (keyMeanShape->GetDim(0) != b || keyMeanShape->GetDim(1) != hkv ||
+                keyMeanShape->GetDim(2) != d_pad_km) {
                 std::cerr << "[SageAttention2][InferShape] key_mean 3D shape mismatch! Expected ["
-                          << b << ", " << hkv << ", " << d << "]" << std::endl;
+                          << b << ", " << hkv << ", " << d_pad_km << "] (padded head dim)" << std::endl;
                 return ge::GRAPH_FAILED;
             }
         }
+        // km 位型约束由 def.cpp Input 注册（DT_FLOAT）在图编译期强制；
+        // InferShapeContext 无 dtype 查询接口，此处只做形状校验。
     }
 
     const gert::Shape *lseCorrShape = context->GetInputShape(sage_attn2_idx::IN_LSE_CORRECTION);

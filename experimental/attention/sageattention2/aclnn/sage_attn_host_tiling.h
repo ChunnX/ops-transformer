@@ -131,6 +131,11 @@ inline aclnnStatus ComputeHostTiling(
     tiling_out.d_pad = d_pad;
 
     // 6. 填充模式字段 (24 字节)
+    // 任务书 §2.2：因果掩码仅当 Sq == Sk 合法（DEFECT-L-2：原仅 python/op_api 入口
+    // 拒绝，移植态 C-ABI 与 gert tiling 路径可达 Sq>Sk causal，共享点一处拒绝全覆盖）
+    if (isCausal && sq != sk) {
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     tiling_out.is_causal = isCausal ? 1 : 0;
     tiling_out.tensor_layout = (tensorLayout == LAYOUT_HND) ? LAYOUT_HND : LAYOUT_NHD;
     tiling_out.qk_quant_gran = static_cast<uint32_t>(qkQuantGran);
