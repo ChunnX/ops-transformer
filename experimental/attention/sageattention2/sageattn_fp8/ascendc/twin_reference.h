@@ -35,7 +35,9 @@
  *    Python 原型口径一致）；放大域与 skip-scale tau=6 存在值域冲突（2^tau·448 溢出
  *    e4m3 上限），故放大域下强制逐块重缩放（Step 恒 force=true，skip 分支不启用，
  *    tau 机制仅留给无放大域路线复用）。S_FP8_OFFSET 由 TilingData.s_fp8_offset 携带，
- *    设备核同口径（P 量化锚点 = m_scale - s_fp8_offset）。
+ *    设备核同口径（P 量化锚点 = m_scale - s_fp8_offset）；
+ * 5. PV 累加三档独立轨迹（AccumulatePvRow 单点，语义定标见其注释）：fp32 单一运行和 /
+ *    fp32+fp32 每 k_step 分段子和归约 FP32 buffer / fp32+fp16 k_step FP16 子块归约。
  */
 
 #include "tiling.h"
@@ -173,16 +175,39 @@ inline float OnlineBlockExp2Sum(const float* s_row, uint32_t s_base,
 }
 
 /**
- * 单行·单块 P 量化 + PV 累加（twin 5.4 的唯一定义；设备核 KT 标量基线经 include
- * 复用本轨迹，内核内禁止复制）。
- * P 以 m'（锚点 - 可选指数偏置）量化为 e4m3 后反量化累加：
- * - fp32 档：逐 token 直累 o_row[c] += p8 · v(j,c)（p8==0 跳过）；
- * - fp32+fp16 档：按 k_step 子块在 FP16 域累加（乘数双侧舍入 FP16），子块和舍入
- *   FP16 后并入 fp32 主累加器（对齐 FixPipe 随路量化轨迹）。
+ * 单行·单块 P 量化 + PV 累加三轨单点（twin 5.4 的唯一定义；RunSequential 直驱，
+ * 设备核 KT 标量基线经下方 QuantizePAndAccumulatePvRow 兼容入口 include 复用，
+ * 内核内禁止复制）。P 以 m'（锚点 - 可选指数偏置）量化为 e4m3 后反量化累加，
+ * 三档语义定标（开源 SageAttention2 实测分支，pv_accum_dtype 三取值均存在）：
+ * - fp32 档（PV_ACCUM_FP32，单一 FP32 运行和）：开源 core.py:811 分派
+ *   qk_int8_sv_f8_accum_f32_fuse_v_scale_attn（模板实参 DTypeSVAccum=float,
+ *   use_inst_buffer=false，csrc/qattn/sm89_qk_int8_sv_f8_accum_f32_fuse_v_scale_attn.cu:155），
+ *   PV 走 compute_fp8_sv（csrc/qattn/attn_utils.cuh:780）：每个 32-token MMA tile
+ *   经 f8f8f32 MMA 直接累加进持久 RO（attn_utils.cuh:801，无中间 buffer）——
+ *   全程单一运行和；
+ * - fp32+fp32 档（PV_ACCUM_FP32_FP32，k_step 分段子和后归约 FP32 buffer）：开源
+ *   core.py:816 分派 qk_int8_sv_f8_accum_f32_fuse_v_scale_attn_inst_buf（模板实参
+ *   float, true，csrc/qattn/sm89_qk_int8_sv_f8_accum_f32_fuse_v_scale_attn_inst_buf.cu:155），
+ *   PV 走 compute_fp8_sv_inst_buf（attn_utils.cuh:816）：块内 FP32 inst buffer
+ *   （attn_utils.cuh:822）首 tile kInit（:840）、后续 kInplaceUpdate（:867），
+ *   buffer 生命周期 = 一次 KV 分块调用（CTA_K=64，csrc/qattn/qk_int_sv_f8_cuda_sm89.cuh:452-465
+ *   每块调用一次），块末归约 flush RO += RO_inst_buf（attn_utils.cuh:884-891）到
+ *   FP32 主累加器。故 MMA 内部域为 FP32（f8f8f32，与 950 Cube L0C FP32 累加白皮书
+ *   口径一致），"低精度"体现为受归约周期约束的中间归约而非降域；加法结合序与
+ *   fp32 档真实不同（分段子和相加 vs 全程单一运行和）。本实现把开源的块界归约
+ *   周期按 tiling.k_step ∈ {8,16,32} 参数化（k_step 与 fp32+fp16 轨迹共用
+ *   DEFAULT_K_STEP 唯一定义点）；与 GPU golden 的位级等价性待 GPU golden 重生成
+ *   时按 k_step 闭环（已知限制，如实注明）；
+ * - fp32+fp16 档（PV_ACCUM_FP32_FP16，FP16 子累加器）：开源 core.py:818 分派
+ *   qk_int8_sv_f8_accum_f16_fuse_v_scale_attn_inst_buf（模板实参 float, true, …,
+ *   true）→ compute_fp8_sv_inst_buf_fp16_accu（attn_utils.cuh:899）：f8f8f16 MMA
+ *   在 FP16 域块内累加（:924/:952），块末解包回加 FP32 RO（:966-973）；本实现按
+ *   k_step 子块在 FP16 域累加（乘数双侧舍入 FP16），子块和舍入 FP16 后并入 fp32
+ *   主累加器（对齐 FixPipe 随路量化轨迹）。
  * v_at(绝对token j, 通道 c) 返回反量化 V 值（e4m3 解码 · 通道 scale）。
  */
 template <typename VAt>
-inline void QuantizePAndAccumulatePvRow(
+inline void AccumulatePvRow(
     float* o_row,
     uint32_t d_pad,
     const float* s_row,
@@ -192,10 +217,10 @@ inline void QuantizePAndAccumulatePvRow(
     bool is_causal,
     uint32_t token_q,
     float m_prime,
-    bool fp16_accum,
+    PvAccumDtype pv_accum,
     uint32_t k_step,
     const VAt& v_at) {
-    if (fp16_accum) {
+    if (pv_accum == PV_ACCUM_FP32_FP16) {
         for (uint32_t ks_beg = j_beg; ks_beg < j_end; ks_beg += k_step) {
             const uint32_t ks_fin = (ks_beg + k_step < j_end) ? ks_beg + k_step : j_end;
             for (uint32_t c = 0; c < d_pad; ++c) {
@@ -209,6 +234,20 @@ inline void QuantizePAndAccumulatePvRow(
                                quant::Fp16ToFp32(quant::Fp32ToFp16(v_at(j, c)));
                 }
                 o_row[c] += quant::Fp16ToFp32(quant::Fp32ToFp16(sub_sum));
+            }
+        }
+    } else if (pv_accum == PV_ACCUM_FP32_FP32) {
+        for (uint32_t ks_beg = j_beg; ks_beg < j_end; ks_beg += k_step) {
+            const uint32_t ks_fin = (ks_beg + k_step < j_end) ? ks_beg + k_step : j_end;
+            for (uint32_t c = 0; c < d_pad; ++c) {
+                float sub_sum = 0.0f;
+                for (uint32_t j = ks_beg; j < ks_fin; ++j) {
+                    if (is_causal && static_cast<int64_t>(j) > static_cast<int64_t>(token_q)) {
+                        continue;
+                    }
+                    sub_sum += SoftmaxProbDequant(s_row[j - s_base], m_prime) * v_at(j, c);
+                }
+                o_row[c] += sub_sum;  // k_step 周期归约：FP32 分部和 flush 进 FP32 O buffer
             }
         }
     } else {
@@ -226,6 +265,29 @@ inline void QuantizePAndAccumulatePvRow(
 }
 
 /**
+ * 设备核 KT 标量基线兼容入口（bool 双档签名，op_kernel/sageattention2.cpp
+ * AccumulatePvBlockTwin 既有调用点依赖）：双档映射后直驱三轨单点
+ * AccumulatePvRow，本函数零数值逻辑（无第二份公式）。
+ */
+template <typename VAt>
+inline void QuantizePAndAccumulatePvRow(
+    float* o_row,
+    uint32_t d_pad,
+    const float* s_row,
+    uint32_t s_base,
+    uint32_t j_beg,
+    uint32_t j_end,
+    bool is_causal,
+    uint32_t token_q,
+    float m_prime,
+    bool fp16_accum,
+    uint32_t k_step,
+    const VAt& v_at) {
+    AccumulatePvRow(o_row, d_pad, s_row, s_base, j_beg, j_end, is_causal, token_q, m_prime,
+                    fp16_accum ? PV_ACCUM_FP32_FP16 : PV_ACCUM_FP32, k_step, v_at);
+}
+
+/**
  * 顺序执行全流水：pad → (km) → 量化 → QK^T → online softmax → FP8 PV → 归一化与 LSE。
  * 返回 0 成功；非 0 为不支持的配置（当前拒绝 D>128）。
  */
@@ -240,7 +302,9 @@ inline int RunSequential(const TwinIo& io, TwinQuantDump* dump = nullptr) {
     const bool is_hnd = io.tensor_layout == LAYOUT_HND;
     const bool per_thread = io.qk_quant_gran == QUANT_GRAN_PER_THREAD;
     const bool smooth_k = io.smooth_k != 0;
-    const bool fp16_accum = io.pv_accum_dtype == PV_ACCUM_FP32_FP16;
+    // PV 三档（0=fp32 / 1=fp32+fp32 / 2=fp32+fp16）：非法取值经 AccumulatePvRow
+    // else 分支落 fp32 单一运行和轨（与既有缺省行为一致）
+    const PvAccumDtype pv_accum = static_cast<PvAccumDtype>(io.pv_accum_dtype);
     const size_t total_q = static_cast<size_t>(io.b) * io.hq * io.sq * d_pad;
     const size_t total_kv = static_cast<size_t>(io.b) * io.hkv * io.sk * d_pad;
 
@@ -421,11 +485,12 @@ inline int RunSequential(const TwinIo& io, TwinQuantDump* dump = nullptr) {
                         }
                     }
 
-                    // 5.4 P 量化（e4m3，448· 放大域）+ PV 累加——单点
-                    //     fp32+fp16 档：按 k_step (16) 子块在 FP16 域累加后舍入回 FP16 并入主累加器
-                    QuantizePAndAccumulatePvRow(
+                    // 5.4 P 量化（e4m3，448· 放大域）+ PV 三档累加——单点
+                    //     fp32：单一运行和；fp32+fp32：k_step 分段子和归约 FP32 buffer；
+                    //     fp32+fp16：k_step 子块 FP16 域累加后舍入并入主累加器
+                    AccumulatePvRow(
                         o_row, d_pad, s_row.data(), 0, j_beg, j_end, io.is_causal != 0, i,
-                        state.m_scale, fp16_accum, DEFAULT_K_STEP,
+                        state.m_scale, pv_accum, DEFAULT_K_STEP,
                         [&](uint32_t j, uint32_t c) { return v_deq(bi, kh, c, j); });
                 }
 

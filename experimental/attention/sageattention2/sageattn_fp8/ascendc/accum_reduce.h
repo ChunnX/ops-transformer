@@ -54,8 +54,11 @@ struct FixpipeConfig {
 
 /**
  * 两级累加归约控制器
- * 支持 fp32, fp32+fp32, fp32+fp16 三档周期归约
- * 严格按照 task/01_design.md 2.4 节和 task.md 2.5 定理二实现
+ * 支持 fp32 / fp32+fp32 / fp32+fp16 三档两级累加：
+ * - fp32：全程 FP32 单一运行和，仅末块归约（ShouldReduce 两轨节奏）；
+ * - fp32+fp32：MMA 域 FP32，每 k_step 分块归约至 FP32 buffer；
+ * - fp32+fp16：低精度 MMA 域 FP16，每 k_step 分块归约至 FP16 buffer（FixPipe 随路量化）。
+ * 轨迹语义与 twin_reference.h AccumulatePvRow 三轨单点同源定标。
  */
 class AccumReduceController {
 public:
@@ -70,17 +73,29 @@ public:
 
     /**
      * 判断当前迭代是否需要触发 L0C 向 UB 主累加器的 FixPipe 搬出归约。
-     * 末块判定由内部 total_kv_blocks_ 推导。
+     * 末块判定由内部 total_kv_blocks_ 推导。节奏按档位两轨（与 twin_reference.h
+     * AccumulatePvRow 三轨单点的结合序定标一致）：
+     * - PV_ACCUM_FP32：全程 FP32 单一运行和（L0C 即主累加器），仅末块归约——
+     *   周期归约会把"单一运行和"改写成"分段子和"，破坏与 fp32 golden 轨迹的
+     *   位级一致性；
+     * - PV_ACCUM_FP32_FP32 / PV_ACCUM_FP32_FP16：每 k_step 分块周期归约 + 末块
+     *   强制归约（inst buffer 受 k_step 约束定期 flush，随路格式见 GetFixpipeConfig）。
      *
      * @param step_idx 当前处理的 KV 分块序号 (0-indexed)
      */
     __aicore__ bool ShouldReduce(uint32_t step_idx) const {
         const bool is_last_step = (total_kv_blocks_ > 0) && (step_idx + 1 >= total_kv_blocks_);
+        if (accum_mode_ == PV_ACCUM_FP32) {
+            return is_last_step;
+        }
         return is_last_step || (((step_idx + 1) % k_step_) == 0);
     }
 
     /**
-     * 获取当前档位对应的 FixPipe 硬件配置
+     * 获取当前档位对应的 FixPipe 硬件配置。
+     * fp32+fp32 与 fp32 共用同一随路配置（FP32 直通、无随路量化）：两档的数值
+     * 差异在归约节奏（ShouldReduce：k_step 周期 vs 仅末块），不在随路格式——
+     * fp32+fp32 的周期 flush 与 fp32 的末块 flush 均以 FP32 位型搬出。
      */
     __aicore__ FixpipeConfig GetFixpipeConfig() const {
         FixpipeConfig cfg;

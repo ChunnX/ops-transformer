@@ -25,6 +25,7 @@
 #include "tiling.h"
 #include "online_softmax.h"
 #include "accum_reduce.h"
+#include "twin_reference.h"
 
 using namespace sage_attn;
 
@@ -403,6 +404,216 @@ void TestWideStreamDecoupling() {
     std::cout << "[Test 7 Passed] Wide Stream pipelining and pairwise retirement verified!" << std::endl;
 }
 
+/**
+ * [Test 8] fp32+fp32 两级累加独立轨迹：flush 节奏真实执行 + 与 fp32 的结合序差异有界且不恒等
+ *
+ * 构造（p8 = SoftmaxProbDequant(0, m'=0) = exp2(0)·448 = 448 精确，V 逐 token 给定）：
+ * 乘积序列（token 序）= [7·2^27, -7·2^27, 7·2^21, 7·2^21 | 0.875 × 12]。
+ * - fp32 单一运行和：前 4 项块内精确相消并精确累至 X = 7·2^22 = 29360128（ulp(X)=2），
+ *   其后 ε=0.875 项逐个被 RNE 丢弃（0.875 < 半 ulp=1）→ 结果恒 X；
+ * - fp32+fp32：每 k_step 分段子先在子块内精确归并（如 4·0.875=3.5、8·0.875=7），
+ *   窗末一次归约进 FP32 O buffer，加法结合序与 fp32 真实不同：
+ *   k_step=16（单窗，与 fp32 同结合序）→ X（位级同轨锚点）；
+ *   k_step=8 → 第二窗子和 7 → X+7 落 tie（X+6/X+8 等距）RNE 取偶 → X+8；
+ *   k_step=4 → 3.5/3.5/3.5 三窗 → X+12；k_step=2 → 1.75×6 窗 → X+12。
+ *   全部差异有限、有界（相对差 < 1e-6）且位级不恒等。
+ */
+void TestFp32Fp32AccumTrack() {
+    std::cout << "[Test 8] Testing fp32+fp32 accumulation track (flush cadence & association order)..." << std::endl;
+
+    constexpr uint32_t kNumTokens = 16;  // == DEFAULT_K_STEP：单窗锚点用
+    constexpr uint32_t kChannels = 2;
+    constexpr float kBigV = 2097152.0f;    // 2^21 → 乘积 7·2^27
+    constexpr float kMidV = 32768.0f;      // 2^15 → 乘积 7·2^21
+    constexpr float kTinyV = 0.001953125f; // 2^-9 → 乘积 7·2^-3 = 0.875
+
+    std::vector<float> s_row(kNumTokens, 0.0f);  // m'=0 时 p8 = 448 精确
+    std::vector<float> v(kNumTokens);
+    for (uint32_t j = 0; j < kNumTokens; ++j) {
+        v[j] = (j < 2) ? kBigV : ((j < 4) ? kMidV : kTinyV);
+    }
+    v[1] = -kBigV;  // 大项块内精确相消
+    auto v_at = [&](uint32_t j, uint32_t) -> float { return v[j]; };
+
+    auto run_track = [&](PvAccumDtype mode, uint32_t k_step) {
+        std::vector<float> o(kChannels, 0.0f);
+        twin::AccumulatePvRow(o.data(), kChannels, s_row.data(), 0, 0, kNumTokens,
+                              false, 0, 0.0f, mode, k_step, v_at);
+        return o;
+    };
+
+    const std::vector<float> o_fp32 = run_track(PV_ACCUM_FP32, DEFAULT_K_STEP);
+    const std::vector<float> o_ks16 = run_track(PV_ACCUM_FP32_FP32, DEFAULT_K_STEP);
+    const std::vector<float> o_ks8 = run_track(PV_ACCUM_FP32_FP32, 8);
+    const std::vector<float> o_ks4 = run_track(PV_ACCUM_FP32_FP32, 4);
+    const std::vector<float> o_ks2 = run_track(PV_ACCUM_FP32_FP32, 2);
+
+    constexpr float kAnchorX = 29360128.0f;  // 7·2^22
+    for (uint32_t c = 0; c < kChannels; ++c) {
+        assert(std::isfinite(o_fp32[c]));
+        // 锚点：单窗（k_step >= token 数）时 fp32+fp32 与 fp32 位级同轨——
+        // 两档唯一数值差异源即归约节奏（结合序），而非乘法域
+        assert(o_fp32[c] == kAnchorX);
+        assert(o_ks16[c] == o_fp32[c]);
+        // (a) flush 节奏真实执行：不同 k_step 的分段归约产生位级可区分结果
+        assert(o_ks8[c] == kAnchorX + 8.0f);
+        assert(o_ks4[c] == kAnchorX + 12.0f);
+        assert(o_ks2[c] == kAnchorX + 12.0f);
+        assert(o_ks8[c] != o_ks4[c]);
+        // (b) 与 fp32 的结合序差异有限、有界且不恒等
+        assert(o_ks4[c] != o_fp32[c]);
+        const float rel = std::fabs(o_ks4[c] - o_fp32[c]) / std::fabs(o_fp32[c]);
+        assert(rel < 1e-6f);
+    }
+
+    std::cout << "[Test 8 Passed] fp32+fp32 track flush cadence executed & bounded association-order "
+                 "difference vs fp32 verified (rel diff < 1e-6, bitwise distinct)!"
+              << std::endl;
+}
+
+/**
+ * [Test 9] 设备核兼容入口（bool 双档）与三轨单点的映射等价性：零数值逻辑（无第二份公式）。
+ * 输入 A（良性量级）：bool↔enum 位级等价（fp32 / fp32+fp16 两档不回归的证据）；
+ * 输入 B（Test 8 同族结合序构造，token 数 > k_step）：fp32+fp32 独立轨迹非平凡性——
+ * 通道 0~2 与 fp32 位级互异，通道 3（全中项，窗界落在半 ulp 内）为同轨负控。
+ */
+void TestBoolAdapterEquivalence() {
+    std::cout << "[Test 9] Testing bool adapter entry maps exactly onto the 3-track single point..." << std::endl;
+
+    // 输入 A：良性量级，三档全部有限
+    constexpr uint32_t kNumTokens = 20;
+    constexpr uint32_t kChannels = 4;
+    std::vector<float> s_row_a(kNumTokens);
+    std::vector<float> v_a(kNumTokens * kChannels);
+    for (uint32_t j = 0; j < kNumTokens; ++j) {
+        s_row_a[j] = -0.05f * static_cast<float>(j);  // 非平凡 p8 轨迹
+        for (uint32_t c = 0; c < kChannels; ++c) {
+            v_a[j * kChannels + c] = std::sin(static_cast<float>(j) * 0.7f + static_cast<float>(c)) * 3.5f;
+        }
+    }
+    auto v_at_a = [&](uint32_t j, uint32_t c) -> float { return v_a[j * kChannels + c]; };
+
+    auto run_bool = [&](bool fp16_accum, const std::vector<float>& s, const auto& v_at) {
+        std::vector<float> o(kChannels, 0.0f);
+        twin::QuantizePAndAccumulatePvRow(o.data(), kChannels, s.data(), 0, 0, kNumTokens,
+                                          false, 0, 0.0f, fp16_accum, DEFAULT_K_STEP, v_at);
+        return o;
+    };
+    auto run_enum = [&](PvAccumDtype mode, const std::vector<float>& s, const auto& v_at) {
+        std::vector<float> o(kChannels, 0.0f);
+        twin::AccumulatePvRow(o.data(), kChannels, s.data(), 0, 0, kNumTokens,
+                              false, 0, 0.0f, mode, DEFAULT_K_STEP, v_at);
+        return o;
+    };
+
+    const auto o_fp32_bool = run_bool(false, s_row_a, v_at_a);
+    const auto o_fp16_bool = run_bool(true, s_row_a, v_at_a);
+    const auto o_fp32_enum = run_enum(PV_ACCUM_FP32, s_row_a, v_at_a);
+    const auto o_fp16_enum = run_enum(PV_ACCUM_FP32_FP16, s_row_a, v_at_a);
+    for (uint32_t c = 0; c < kChannels; ++c) {
+        assert(std::isfinite(o_fp32_bool[c]) && std::isfinite(o_fp16_bool[c]));
+        // bool 双档签名与三轨单点位级等价（fp32 / fp32+fp16 两档不回归的证据）
+        assert(o_fp32_bool[c] == o_fp32_enum[c]);
+        assert(o_fp16_bool[c] == o_fp16_enum[c]);
+        assert(o_fp16_enum[c] != o_fp32_enum[c]);  // 独立低精度轨迹非平凡
+    }
+
+    // 输入 B：p8 = 448 精确，通道 0~2 乘积 = [±7·2^27 相消, 7·2^21, 7·2^21 | 0.875 × 16]，
+    // 通道 3 全大项（乘积 7·2^24 ×4 = 7·2^26，ulp=8 > 窗界子和 3.5 → 窗界归约被 RNE
+    // 丢弃，与 fp32 同轨的负控）
+    std::vector<float> s_row_b(kNumTokens, 0.0f);
+    std::vector<float> v_b(kNumTokens * kChannels, 0.0f);
+    for (uint32_t c = 0; c < kChannels; ++c) {
+        if (c == 3) {
+            for (uint32_t j = 0; j < 4; ++j) v_b[j * kChannels + c] = 262144.0f;  // 2^18
+        } else {
+            const float big = (c % 2 == 0) ? 2097152.0f : -2097152.0f;
+            v_b[0 * kChannels + c] = big;
+            v_b[1 * kChannels + c] = -big;
+            v_b[2 * kChannels + c] = 32768.0f;
+            v_b[3 * kChannels + c] = 32768.0f;
+        }
+        for (uint32_t j = 4; j < kNumTokens; ++j) v_b[j * kChannels + c] = 0.001953125f;
+    }
+    auto v_at_b = [&](uint32_t j, uint32_t c) -> float { return v_b[j * kChannels + c]; };
+
+    const auto o_fp32_b = run_enum(PV_ACCUM_FP32, s_row_b, v_at_b);
+    const auto o_fp32fp32_b = run_enum(PV_ACCUM_FP32_FP32, s_row_b, v_at_b);
+    for (uint32_t c = 0; c < kChannels; ++c) {
+        assert(std::isfinite(o_fp32fp32_b[c]));
+        if (c < 3) {
+            assert(o_fp32fp32_b[c] != o_fp32_b[c]);   // 分段归约结合序差异真实存在
+        } else {
+            assert(o_fp32fp32_b[c] == o_fp32_b[c]);   // 窗界子和低于半 ulp 时同轨（负控）
+        }
+    }
+
+    std::cout << "[Test 9 Passed] Bool adapter is bit-exact with the 3-track single point (fp32 & fp32+fp16)!"
+              << std::endl;
+}
+
+/**
+ * [Test 10] AccumReduceController 归约节奏两轨化：fp32 仅末块 vs fp32+fp32/fp32+fp16 周期+末块
+ */
+void TestAccumReduceCadencePerMode() {
+    std::cout << "[Test 10] Testing AccumReduceController per-mode reduction cadence..." << std::endl;
+
+    constexpr uint32_t kTotalBlocks = 10;
+    constexpr uint32_t kKStep = 2;
+
+    // 1. fp32：全程单一运行和，仅末块归约（周期项被禁用）
+    {
+        AccumReduceController ctrl;
+        ctrl.Init(PV_ACCUM_FP32, kKStep, kTotalBlocks);
+        assert(ctrl.GetAccumMode() == PV_ACCUM_FP32);
+        assert(ctrl.GetKStep() == kKStep);
+        for (uint32_t step = 0; step + 1 < kTotalBlocks; ++step) {
+            assert(!ctrl.ShouldReduce(step));  // 周期点不再归约
+        }
+        assert(ctrl.ShouldReduce(kTotalBlocks - 1));  // 末块强制归约
+
+        const FixpipeConfig cfg = ctrl.GetFixpipeConfig();
+        assert(!cfg.enable_inline_quant);
+        assert(cfg.quant_dst_type == 0);  // FP32 直通
+        assert(cfg.enable_nz_to_nd);
+    }
+
+    // 2. fp32+fp32：k_step 周期归约 + 末块强制归约；随路配置与 fp32 同为 FP32 直通
+    //    （数值差异在节奏，不在随路格式）
+    {
+        AccumReduceController ctrl;
+        ctrl.Init(PV_ACCUM_FP32_FP32, kKStep, kTotalBlocks);
+        assert(ctrl.GetAccumMode() == PV_ACCUM_FP32_FP32);
+        for (uint32_t step = 0; step < kTotalBlocks; ++step) {
+            const bool expect = ((step + 1) % kKStep == 0) || (step + 1 == kTotalBlocks);
+            assert(ctrl.ShouldReduce(step) == expect);
+        }
+        const FixpipeConfig cfg = ctrl.GetFixpipeConfig();
+        assert(!cfg.enable_inline_quant);
+        assert(cfg.quant_dst_type == 0);
+        assert(cfg.enable_nz_to_nd);
+    }
+
+    // 3. fp32+fp16：节奏与 fp32+fp32 一致（k_step 周期 + 末块），随路量化 FP16 不回归
+    {
+        AccumReduceController ctrl;
+        ctrl.Init(PV_ACCUM_FP32_FP16, kKStep, kTotalBlocks);
+        assert(ctrl.GetAccumMode() == PV_ACCUM_FP32_FP16);
+        assert(ctrl.IsFp16Accum());
+        for (uint32_t step = 0; step < kTotalBlocks; ++step) {
+            const bool expect = ((step + 1) % kKStep == 0) || (step + 1 == kTotalBlocks);
+            assert(ctrl.ShouldReduce(step) == expect);
+        }
+        const FixpipeConfig cfg = ctrl.GetFixpipeConfig();
+        assert(cfg.enable_inline_quant);
+        assert(cfg.quant_dst_type == 1);  // FP16
+        assert(cfg.enable_nz_to_nd);
+    }
+
+    std::cout << "[Test 10 Passed] fp32 (last-block-only) vs fp32+fp32/fp32+fp16 (k_step periodic) cadence verified!"
+              << std::endl;
+}
+
 int main() {
     std::cout << "==================================================================" << std::endl;
     std::cout << "SageAttention2 OutputRetireQueue & Wide Stream Unit Tests" << std::endl;
@@ -415,9 +626,12 @@ int main() {
     TestThreePrecisionModes();
     TestSFP8OffsetAndFinalize();
     TestWideStreamDecoupling();
+    TestFp32Fp32AccumTrack();
+    TestBoolAdapterEquivalence();
+    TestAccumReduceCadencePerMode();
 
     std::cout << "==================================================================" << std::endl;
-    std::cout << "ALL 7 OUTPUT RETIRE QUEUE UNIT TESTS PASSED SUCCESSFULLY! (100%)" << std::endl;
+    std::cout << "ALL 10 OUTPUT RETIRE QUEUE UNIT TESTS PASSED SUCCESSFULLY! (100%)" << std::endl;
     std::cout << "==================================================================" << std::endl;
 
     return 0;
