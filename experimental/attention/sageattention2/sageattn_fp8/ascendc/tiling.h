@@ -20,6 +20,16 @@
 #endif
 #endif
 
+#ifndef __forceinline__
+#if defined(_MSC_VER)
+#define __forceinline__ __forceinline
+#elif defined(__GNUC__) || defined(__clang__)
+#define __forceinline__ inline __attribute__((always_inline))
+#else
+#define __forceinline__ inline
+#endif
+#endif
+
 /**
  * 编译域判定宏（全仓唯一定义点，其余头文件禁止再定义或重复守卫）：
  * - SAGE_ATTN_DEVICE_COMPILE：bisheng -xasc 真机/camodal 设备编译语义分支；

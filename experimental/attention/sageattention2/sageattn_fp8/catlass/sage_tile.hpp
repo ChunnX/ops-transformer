@@ -7,28 +7,17 @@
 #include "../ascendc/tiling.h"
 
 /**
- * 官方 CATLASS 组件接入（cann/catlass 仓，CATLASS_ROOT/include 经构建接线注入 -I）：
- * 分形粒度常量以官方 catlass.hpp 为唯一定义源派生（BYTE_PER_C0=32、
- * C0_NUM_PER_FRACTAL=16、BYTE_PER_FRACTAL=512）；宿主语法门等无 CATLASS 路径的
- * 编译场景回退本地字面值，两侧分支经 static_assert 锁定与官方值恒等，杜绝漂移。
+ * 官方 CATLASS 组件接入（cann/catlass 仓，CATLASS_ROOT/include 经构建接线注入 -I，
+ * 全部编译场景——host 门禁/内核语法门/OPP 打包/BiSheng 设备——均带该 -I，故
+ * catlass.hpp 无条件直含，不再保留本地字面值回退分支）：
+ * 分形粒度常量以官方 catlass.hpp 为唯一定义源（BYTE_PER_C0=32、
+ * C0_NUM_PER_FRACTAL=16、BYTE_PER_FRACTAL=512），下方 static_assert 锁定官方值，
+ * 官方漂移即编译期报错。
  * 设备态热路径的 LoadData2D/Fixpipe 搬运为 ND 布局 + Data/Scale 相邻等本算子
  * 自定义契约（官方 TileCopyTla 组件要求 L1 侧 zN 分形布局，不匹配本算子 V0 产出
  * 布局——该数据通路重构须随 camodel 仿真/真机 L-A 循环推进，见设计文档模块边界）。
  */
-#if defined(__has_include)
-#if __has_include("catlass/catlass.hpp")
 #include "catlass/catlass.hpp"
-#define SAGE_HAS_OFFICIAL_CATLASS 1
-#endif
-#endif
-
-#ifndef SAGE_HAS_OFFICIAL_CATLASS
-namespace Catlass {
-constexpr uint32_t BYTE_PER_C0 = 32;
-constexpr uint32_t C0_NUM_PER_FRACTAL = 16;
-constexpr uint32_t BYTE_PER_FRACTAL = 512;
-}
-#endif
 
 #if SAGE_ATTN_KERNEL_API
 #include "kernel_operator.h"
@@ -141,57 +130,7 @@ __aicore__ inline void LoadTile2D(uint32_t dst_addr, uint32_t src_addr, uint32_t
 #endif
 }
 
-/**
- * 通用 Cube MMAD 矩阵乘执行原语：C(L0C) += A(L0A) x B(L0B)
- * 统一收敛 INT8 (QK) 与 FP8 (PV) 的 Mmad 调用通路。
- */
-template <typename ElementC, typename ElementA, typename ElementB, bool IsFp8 = false>
-__aicore__ inline void ExecuteTileMmad(uint32_t m, uint32_t n, uint32_t k, bool init) {
-#if SAGE_ATTN_DEVICE_COMPILE
-    AscendC::MmadParams mmad_params;
-    mmad_params.m = static_cast<uint16_t>(m);
-    mmad_params.n = static_cast<uint16_t>(n);
-    mmad_params.k = static_cast<uint16_t>(k);
-    mmad_params.cmatrixInitVal = init;
 
-    AscendC::TBuffAddr l0c_desc{};
-    l0c_desc.logicPos = static_cast<uint8_t>(AscendC::TPosition::CO1);
-    l0c_desc.bufferHandle = nullptr;
-    l0c_desc.bufferAddr = 0U;
-    l0c_desc.dataLen = static_cast<uint32_t>(m * n * sizeof(ElementC));
-    AscendC::LocalTensor<ElementC> l0c_tensor;
-    l0c_tensor.SetAddr(l0c_desc);
-
-    AscendC::TBuffAddr l0a_desc{};
-    l0a_desc.logicPos = static_cast<uint8_t>(AscendC::TPosition::A2);
-    l0a_desc.bufferHandle = nullptr;
-    l0a_desc.bufferAddr = 0U;
-    l0a_desc.dataLen = static_cast<uint32_t>(m * k * sizeof(ElementA));
-    AscendC::LocalTensor<ElementA> l0a_tensor;
-    l0a_tensor.SetAddr(l0a_desc);
-
-    AscendC::TBuffAddr l0b_desc{};
-    l0b_desc.logicPos = static_cast<uint8_t>(AscendC::TPosition::B2);
-    l0b_desc.bufferHandle = nullptr;
-    l0b_desc.bufferAddr = 0U;
-    l0b_desc.dataLen = static_cast<uint32_t>(n * k * sizeof(ElementB));
-    AscendC::LocalTensor<ElementB> l0b_tensor;
-    l0b_tensor.SetAddr(l0b_desc);
-
-    if constexpr (IsFp8) {
-        auto l0a_fp8 = l0a_tensor.template ReinterpretCast<AscendC::mx_fp8_e4m3_t>();
-        auto l0b_fp8 = l0b_tensor.template ReinterpretCast<AscendC::mx_fp8_e4m3_t>();
-        AscendC::Mmad(l0c_tensor, l0a_fp8, l0b_fp8, mmad_params);
-    } else {
-        AscendC::Mmad(l0c_tensor, l0a_tensor, l0b_tensor, mmad_params);
-    }
-#else
-    (void)m;
-    (void)n;
-    (void)k;
-    (void)init;
-#endif
-}
 
 /**
  * 通用 Fixpipe L0C -> UB 裸搬原语（SPLIT_M 分段发射）：
