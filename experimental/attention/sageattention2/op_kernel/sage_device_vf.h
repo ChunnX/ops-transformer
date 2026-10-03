@@ -189,8 +189,8 @@ __simd_vf__ inline void QuantVRowFp8VF(__ubuf__ half* in_ptr, __ubuf__ float8_e4
         }
         LoadAlign(scale_reg, scale_ptr + c);
         Div(scaled, val, scale_reg, full);
-        // 全零通道 NaN 守卫（收敛轮 1/R1-1）：不依赖硬件 Min/Max NaN 语义——
-        // scale=0 → Div 产 NaN → SAT cast 保留 e4m3 0x7f（对齐 golden）
+        // 全零通道 NaN 守卫（收敛轮 1/R1-1）：Select 显式注入 quiet NaN，消除
+        // Div(0/0) 的实现依赖；NaN→e4m3 0x7f 仍依赖 SAT cast 保真（已列实机探针）
         MaskReg zero_scale;
         Compare<float, CMPMODE::EQ>(zero_scale, scale_reg, zero_reg, full);
         Duplicate(nan_reg, std::numeric_limits<float>::quiet_NaN());

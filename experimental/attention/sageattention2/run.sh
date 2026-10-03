@@ -144,6 +144,7 @@ run_python_tests() {
 
 build_in_container() {
     echo ">>> Checking CANN / Container Build Environment..."
+    mkdir -p "${BUILD_DIR}"
     if [ -n "${ASCEND_HOME_PATH:-}" ] && [ -x "${ASCEND_HOME_PATH}/bin/bisheng" ]; then
         echo "Found BiSheng compiler at ${ASCEND_HOME_PATH}/bin/bisheng"
         echo "Compiling kernel with BiSheng for Ascend 950 (dav-3510)..."
