@@ -29,24 +29,9 @@ import torch.nn.functional as F
 REPO_ROOT = Path(__file__).resolve().parent.parent
 GOLDEN_DIR = REPO_ROOT / "golden"
 
-# FP8 e4m3 scale max constants (aligned with task/01_design.md 2.4 / 2.7)
-SCALE_MAX_FP16_ACCUM = 2.25
-SCALE_MAX_FP32_ACCUM = 448.0
-
-# S_FP8_OFFSET: log2(448). GPU FP8 PV path scales P by 448 before e4m3 conversion
-# (m' = m - log2(448)), accumulating the denominator in the scaled domain; the
-# factor cancels in output normalization and the LSE carries the matching bias.
-S_FP8_OFFSET = 8.807354922057604
-S_FP8_SCALE_MAX = 448.0
-
-# Two-level accumulation reduction period (frozen kernel semantics)
-K_STEP = 16
-
-# Permutation pattern for FP8 V MMA layout (16-token chunks)
-V_FP8_PERM = [0, 1, 8, 9, 2, 3, 10, 11, 4, 5, 12, 13, 6, 7, 14, 15]
-V_FP8_INV_PERM = [0] * 16
-for _i, _p in enumerate(V_FP8_PERM):
-    V_FP8_INV_PERM[_p] = _i
+# 数值常量（S_FP8_OFFSET / SCALE_MAX_* / K_STEP / V_FP8_PERM 等）唯一定义点：
+# 算子包 python/sageattention2/error_check.py（自 tiling.h 直读）；本编排文件
+# 经下方 sys.path 引导 import 算子包，不复制任何数值字面量。
 
 
 def compute_sha256(filepath: Path | str) -> str:
@@ -144,11 +129,12 @@ def sdpa_fp32(
 import sys as _sys
 from pathlib import Path as _Path
 
-_OP_PYTHON = _Path(__file__).resolve().parents[1] / "ops-transformer" / "experimental" / "attention" / "sageattention2" / "python"
+# 算子包路径引导：tools/ 的上一级即算子根，python/ 下为 sageattention2 包
+_OP_PYTHON = _Path(__file__).resolve().parents[1] / "python"
 if str(_OP_PYTHON) not in _sys.path:
     _sys.path.insert(0, str(_OP_PYTHON))
 
-from sageattention2.dispatch import run_sageattn_cpu_reference as _canonical_reference
+from sageattention2.dispatch import run_sageattn_cpu_reference as _canonical_reference  # noqa: E402
 
 
 def simulate_sage_attention(

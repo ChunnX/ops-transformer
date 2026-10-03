@@ -16,9 +16,16 @@ from .error_check import (
     DEFAULT_PV_ACCUM_DTYPE,
     DEFAULT_QK_QUANT_GRAN,
     DEFAULT_TENSOR_LAYOUT,
+    INT8_QUANT_MAX,
+    K_STEP,
+    LOG2E,
     S_FP8_OFFSET,
+    S_FP8_SCALE_MAX,
+    SCALE_EPSILON,
     SCALE_MAX_FP16_ACCUM,
     VALID_PV_ACCUM_DTYPES,
+    V_FP8_INV_PERM,
+    V_FP8_PERM,
     compute_sm_scale,
     handle_smooth_v,
     pad_head_dim,
@@ -27,31 +34,15 @@ from . import _ops
 
 
 # 默认档唯一定义点：error_check.DEFAULT_PV_ACCUM_DTYPE（本名曾为
-# SAGEATTN_PV_ACCUM_DTYPE_DEFAULT，别名已收敛）
-
-# 数值常量（python 侧唯一定义点；跨语言对应 C++ 侧唯一定义
-# ../sageattn_fp8/ascendc/tiling.h，禁止在本语言内复制第二份数值）：
-# - S_FP8_OFFSET = log2(448)：P 矩阵 e4m3 放大偏置（task/01_design 2.4）
-# - S_FP8_SCALE_MAX / SCALE_MAX_FP16_ACCUM：V 量化 scale_max 两档（448.0 / 2.25）
-# - INT8_QUANT_MAX / SCALE_EPSILON：INT8 对称量化上限与兜底微量
-# - LOG2E：exp2 域换算系数。注意 1.44269504 为 golden 冻结截断精度，
-#   勿"修正"为全精度 1.4426950408889634（位级对齐依赖）。
-S_FP8_SCALE_MAX = 448.0
-INT8_QUANT_MAX = 127.0
-SCALE_EPSILON = 1e-7
-LOG2E = 1.44269504
+# SAGEATTN_PV_ACCUM_DTYPE_DEFAULT，别名已收敛）。
+# 数值常量唯一定义点：error_check（自 sageattn_fp8/ascendc/tiling.h 直读或单点定义），
+# 本模块经 import 引用，禁止再复制数值字面量。
 
 
 def v_scale_max_for(pv_accum_dtype: str) -> float:
     """V 量化 scale_max 分档（fp32+fp16 档 2.25，其余 448.0；对齐开源超参，
     C++ 对应点 quant::GetVScaleMax）。"""
     return SCALE_MAX_FP16_ACCUM if pv_accum_dtype == DEFAULT_PV_ACCUM_DTYPE else S_FP8_SCALE_MAX
-
-# Permutation pattern for FP8 V MMA layout (16-token chunks)
-_V_FP8_PERM = [0, 1, 8, 9, 2, 3, 10, 11, 4, 5, 12, 13, 6, 7, 14, 15]
-_V_FP8_INV_PERM = [0] * 16
-for _i, _p in enumerate(_V_FP8_PERM):
-    _V_FP8_INV_PERM[_p] = _i
 
 
 def _quant_qk_per_warp(
@@ -167,7 +158,7 @@ def _quant_v_fp8(
 
     num_16 = pad_sk_v // 16
     v_16 = v_pad.view(b, hkv, d, num_16, 16)
-    v_perm = v_16[:, :, :, :, _V_FP8_PERM].contiguous().view(b, hkv, d, pad_sk_v)
+    v_perm = v_16[:, :, :, :, V_FP8_PERM].contiguous().view(b, hkv, d, pad_sk_v)
 
     fp8_padded_tokens = (sk + 15) // 16 * 16
     v_sub = v_perm[:, :, :, :fp8_padded_tokens].float()
@@ -180,7 +171,7 @@ def _quant_v_fp8(
         v_scale = amax_v / scale_max
         v_norm = (v_perm.float() - vm.unsqueeze(-1)) / v_scale.unsqueeze(-1)
         v_fp8 = v_norm.clamp(-S_FP8_SCALE_MAX, S_FP8_SCALE_MAX).to(torch.float8_e4m3fn) if has_fp8 else v_norm.clamp(-S_FP8_SCALE_MAX, S_FP8_SCALE_MAX)
-        v_fp8_unperm = v_fp8.view(b, hkv, d, num_16, 16)[:, :, :, :, _V_FP8_INV_PERM].contiguous().view(b, hkv, d, pad_sk_v)[:, :, :, :sk]
+        v_fp8_unperm = v_fp8.view(b, hkv, d, num_16, 16)[:, :, :, :, V_FP8_INV_PERM].contiguous().view(b, hkv, d, pad_sk_v)[:, :, :, :sk]
         v_deq_hnd = (v_fp8_unperm.float() * v_scale.unsqueeze(-1) + vm.unsqueeze(-1)).transpose(2, 3)
     else:
         vm = None
@@ -188,7 +179,7 @@ def _quant_v_fp8(
         v_scale = amax_v / scale_max
         v_norm = v_perm.float() / v_scale.unsqueeze(-1)
         v_fp8 = v_norm.clamp(-S_FP8_SCALE_MAX, S_FP8_SCALE_MAX).to(torch.float8_e4m3fn) if has_fp8 else v_norm.clamp(-S_FP8_SCALE_MAX, S_FP8_SCALE_MAX)
-        v_fp8_unperm = v_fp8.view(b, hkv, d, num_16, 16)[:, :, :, :, _V_FP8_INV_PERM].contiguous().view(b, hkv, d, pad_sk_v)[:, :, :, :sk]
+        v_fp8_unperm = v_fp8.view(b, hkv, d, num_16, 16)[:, :, :, :, V_FP8_INV_PERM].contiguous().view(b, hkv, d, pad_sk_v)[:, :, :, :sk]
         v_deq_hnd = (v_fp8_unperm.float() * v_scale.unsqueeze(-1)).transpose(2, 3)
 
     return v_deq_hnd, v_fp8, v_scale, vm, v_norm
@@ -262,7 +253,7 @@ def run_sageattn_cpu_reference(
     # m' = m - log2(448) 冻结轨迹）：P 在转 e4m3 前放大 448 倍填满 e4m3 动态范围，
     # 分母在放大域累加，输出归一化时分子分母相消，LSE 减去 log2(448) 偏置。
     cta_k = 64
-    k_step = 16
+    k_step = K_STEP
     num_cta_k = (sk + cta_k - 1) // cta_k
     ro = torch.zeros((b, hq, sq, d), dtype=torch.float32, device=q_hnd.device)
     m = torch.full((b, hq, sq, 1), -5000000.0, dtype=torch.float32, device=q_hnd.device)

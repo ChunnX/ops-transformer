@@ -14,25 +14,53 @@ import torch
 import torch.nn.functional as F
 
 def _load_cpp_constants():
+    """从 C++ 唯一定义点直读数值常量（sageattn_fp8/ascendc/tiling.h）与默认档字符串
+    （aclnn/sage_attn_proto.h）。
+
+    本模块是 python 侧数值常量的唯一定义点：dispatch / golden 生成编排一律
+    `from .error_check import ...` 引用，禁止再复制数值字面量。
+    """
     _dir = os.path.dirname(__file__)
     _tiling_h = os.path.join(_dir, "..", "..", "sageattn_fp8", "ascendc", "tiling.h")
     _proto_h = os.path.join(_dir, "..", "..", "aclnn", "sage_attn_proto.h")
-    
+
     with open(_tiling_h, "r") as f:
         t_content = f.read()
     with open(_proto_h, "r") as f:
         p_content = f.read()
-        
-    s_fp8 = float(re.search(r"constexpr\s+float\s+S_FP8_OFFSET\s*=\s*([0-9.]+)f", t_content).group(1))
-    scale_max = float(re.search(r"constexpr\s+float\s+SCALE_MAX_FP16_ACCUM\s*=\s*([0-9.]+)f", t_content).group(1))
-    
+
+    def _float_const(name: str) -> float:
+        return float(re.search(
+            r"constexpr\s+float\s+" + name + r"\s*=\s*([0-9.eE+-]+)f", t_content).group(1))
+
+    s_fp8 = _float_const("S_FP8_OFFSET")
+    scale_max_fp16 = _float_const("SCALE_MAX_FP16_ACCUM")
+    s_fp8_scale_max = _float_const("FP8_E4M3_MAX")
+    int8_quant_max = _float_const("INT8_QUANT_MAX")
+    scale_epsilon = _float_const("SCALE_EPSILON")
+    k_step = int(re.search(
+        r"constexpr\s+uint32_t\s+DEFAULT_K_STEP\s*=\s*(\d+)\s*;", t_content).group(1))
+
     layout = re.search(r'kDefaultLayout\s*=\s*"([^"]+)"', p_content).group(1)
     gran = re.search(r'kDefaultQkQuantGran\s*=\s*"([^"]+)"', p_content).group(1)
     accum = re.search(r'kDefaultPvAccumDtype\s*=\s*"([^"]+)"', p_content).group(1)
-    
-    return s_fp8, scale_max, layout, gran, accum
 
-S_FP8_OFFSET, SCALE_MAX_FP16_ACCUM, DEFAULT_TENSOR_LAYOUT, DEFAULT_QK_QUANT_GRAN, DEFAULT_PV_ACCUM_DTYPE = _load_cpp_constants()
+    return (s_fp8, scale_max_fp16, s_fp8_scale_max, int8_quant_max,
+            scale_epsilon, k_step, layout, gran, accum)
+
+(S_FP8_OFFSET, SCALE_MAX_FP16_ACCUM, S_FP8_SCALE_MAX, INT8_QUANT_MAX, SCALE_EPSILON,
+ K_STEP, DEFAULT_TENSOR_LAYOUT, DEFAULT_QK_QUANT_GRAN, DEFAULT_PV_ACCUM_DTYPE) = _load_cpp_constants()
+
+# exp2 域换算系数：golden 冻结截断精度（勿"修正"为全精度 1.4426950408889634——
+# 位级对齐依赖；tiling.h 的 LOG2E 为全精度 C++ 常量，与本值为两个不同常量）
+LOG2E = 1.44269504
+
+# FP8 V MMA 布局 16-token 段内 permute（C++ 唯一定义 quant/quant_common.h
+# V_PERM_PATTERN/V_PERM_INV_PATTERN；python 侧唯一定义点即此处）
+V_FP8_PERM = [0, 1, 8, 9, 2, 3, 10, 11, 4, 5, 12, 13, 6, 7, 14, 15]
+V_FP8_INV_PERM = [0] * 16
+for _i, _p in enumerate(V_FP8_PERM):
+    V_FP8_INV_PERM[_p] = _i
 
 VALID_LAYOUTS = {"HND", "NHD"}
 VALID_QUANT_GRANS = {"per_warp", "per_thread"}
