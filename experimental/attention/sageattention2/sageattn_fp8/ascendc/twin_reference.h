@@ -10,7 +10,8 @@
  *    QuantizeVFp8Ascend，含 half-away 与 RNE 舍入、per_thread/per_warp 分组、e4m3 编码、
  *    16-token permute、scale_max 分档）——本文件零量化逻辑复制；
  * 2. Online Softmax 状态机复用 online_softmax.h 的 OnlineSoftmaxTransformer（锚点纪律见其
- *    Step 注释：S 与 O 同锚 m_scale，分母 d_run 以 m_run 维护、出口一次补偿）；
+ *    Step 注释：S 与 O 同锚 m_scale，分母 d_run 以 m_run 维护、出口直取倒数——恒强锚定
+ *    不变量 m_scale == m_run 下 m_scale→m_run 补偿因子恒为 1.0f，不再保留恒等乘式）；
  * 3. QK^T 以 INT32 精确累加后一次性乘 (q_scale·k_scale·sm_scale_log2e)，与设备核
  *    INT8 MMAD + 反量化 scale 广播的舍入轨迹一致（优于逐元素反量化相乘的参考路径）；
  * 4. P 矩阵 e4m3 域默认即 448· 放大域：SoftmaxProbCode/OnlineBlockExp2Sum 乘

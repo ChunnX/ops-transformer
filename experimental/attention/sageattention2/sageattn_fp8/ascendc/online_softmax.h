@@ -151,7 +151,9 @@ public:
     /**
      * 单步状态转移（处理一个到来的 KV 分块极值与局部指数和）。
      * 恒逐块强锚定重缩放：除首个有效分块（初始化，返回 1.0 且 need_rescale=false）外，
-     * 每块均将 O 锚点 m_scale 重锚到 m_new 并返回重缩放系数 FastExp2(m_scale_old - m_new)。
+     * 每块均将 O 锚点 m_scale 重锚到 m_new 并返回 O 重缩放系数——不变量 m_scale == m_run
+     * （本文件类注 + test_tiling_struct 锁值）下该系数与分母维持系数 alpha_old 同参同值，
+     * 单次 FastExp2 双消费，不另设第二趟指数。
      *
      * @param state 待更新的 Softmax 状态引用
      * @param cur_max 当前 KV 块的局部最大值 (已融合 sm_scale_log2e)
@@ -177,11 +179,11 @@ public:
 
         // O 锚点纪律：O 累加器始终以 m_scale 为唯一锚点——
         // 调用方计算 S 分块必须以 state.m_scale（而非 m_run）为基准。
-        // 触发 O 主累加器更新：将 O 从旧锚点 m_scale 转换到新锚点 m_new
-        float rescale_o_factor = FastExp2(state.m_scale - m_new);
-
-        float alpha_old = FastExp2(state.m_run - m_new);
-        float alpha_cur = FastExp2(cur_max - m_new);
+        // 不变量 m_scale == m_run（进函数时成立）⇒ FastExp2(m_scale - m_new) 与
+        // FastExp2(m_run - m_new) 同参同值，单算 alpha_old 同时充当 O 重缩放系数与
+        // 分母维持系数（原两趟 FastExp2 归并，位级等价：同参纯函数同返回值）。
+        const float alpha_old = FastExp2(state.m_run - m_new);
+        const float alpha_cur = FastExp2(cur_max - m_new);
         state.d_run = state.d_run * alpha_old + cur_sum * alpha_cur;
 
         state.m_run = m_new;
@@ -191,7 +193,8 @@ public:
         // 更新 exp2 域 LSE
         state.lse = state.m_run + FastLog2(state.d_run);
 
-        return rescale_o_factor;
+        // O 主累加器重缩放系数 = 旧锚 m_scale → m_new（== alpha_old，见上）
+        return alpha_old;
     }
 
     /**
@@ -223,9 +226,10 @@ public:
      */
     __aicore__ static inline float GetFinalInvDenominator(const OnlineSoftmaxState& state) {
         if (state.d_run > 0.0f) {
-            // 需要补偿 m_scale 到 m_run 的残余指数偏差
-            float scale_bias = FastExp2(state.m_scale - state.m_run);
-            return scale_bias / state.d_run;
+            // 恒逐块强锚定不变量下 m_scale == m_run，m_scale→m_run 残余指数补偿因子
+            // 恒为 FastExp2(0)=1.0f（设备位型构造与宿主 std::exp2 对 0 均精确回 1.0f），
+            // 直取倒数，不再保留恒等补偿乘式。
+            return 1.0f / state.d_run;
         }
         return 0.0f;
     }
