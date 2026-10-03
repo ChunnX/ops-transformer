@@ -126,7 +126,9 @@ namespace sage_attn {
 // MTE/V 管线序助手（收敛轮 I/I-2/I-3 单点定义；事件 ID 0 与文件内既有
 // V_S(0)/FIX_S(0) 风格一致——即时自配对、无在途交叠）：
 // - SyncMte2ToV：GM→UB DataCopy（MTE2 写）后、VF/标量读（V 管）前调用；
-// - SyncVToMte3：VF/标量写（V 管）后、UB→L1/GM DataCopy（MTE3 读）前调用。
+// - SyncVToMte3：VF/标量写（V 管）后、UB→L1/GM DataCopy（MTE3 读）前调用；
+// - SyncMte3ToV：UB→GM DataCopy（MTE3 读）后、同槽被下一轮 VF 写复用前调用
+//   （DEFECT-I-1：PipeBarrier<PIPE_V> 不排 MTE3 在途读）。
 #if SAGE_ATTN_DEVICE_COMPILE
 __aicore__ inline void SyncMte2ToV() {
     SetFlag<HardEvent::MTE2_V>(0);
@@ -136,9 +138,14 @@ __aicore__ inline void SyncVToMte3() {
     SetFlag<HardEvent::V_MTE3>(0);
     WaitFlag<HardEvent::V_MTE3>(0);
 }
+__aicore__ inline void SyncMte3ToV() {
+    SetFlag<HardEvent::MTE3_V>(0);
+    WaitFlag<HardEvent::MTE3_V>(0);
+}
 #else
 inline void SyncMte2ToV() {}
 inline void SyncVToMte3() {}
+inline void SyncMte3ToV() {}
 #endif
 
 
@@ -1572,7 +1579,9 @@ private:
                 dev_vf::FinalizeRowVF(reinterpret_cast<__ubuf__ float*>(ub_o_row.GetPhyAddr()),
                                      reinterpret_cast<__ubuf__ uint16_t*>(ub_half.GetPhyAddr()),
                                      inv_row, tiling_->d_og, tiling_->input_dtype);
-                // 注：GM 搬出支持 half 与 bfloat16 双路径（DEFECT-F-3）
+                // V 管写 → MTE3 读（DEFECT-I-1）：DataCopy 前置 V→MTE3 事件对，
+                // 保证本行 VF 写毕才发起 GM 搬出（支持 half 与 bfloat16 双路径，DEFECT-F-3）
+                SyncVToMte3();
 
                 const int64_t out_gm_offset =
                     (b_idx * out_stride_b + hq_curr * out_stride_h +
@@ -1587,9 +1596,9 @@ private:
                     gm_out.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(out_gm_ + out_gm_offset));
                     DataCopy(gm_out, ub_half, tiling_->d_og);
                 }
-                // V 管写（FinalizeRowVF）→ MTE3 读同步（DEFECT-H-1）：ub_half 逐行复用，
-                // 上一行在途 MTE3 读与新行 VF 写必须经屏障排空
-                PipeBarrier<PIPE_V>();
+                // ub_half 逐行复用：上一行在途 MTE3 读须先于下一行 VF 写排空
+                //（DEFECT-H-1/I-1：PipeBarrier<PIPE_V> 不排 MTE3，改 MTE3→V 事件对）
+                SyncMte3ToV();
 
                 if (lse_gm_ != nullptr) {
                     const int64_t lse_offset =
