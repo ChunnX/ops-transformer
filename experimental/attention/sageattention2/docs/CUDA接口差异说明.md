@@ -33,7 +33,7 @@ NPU 侧两种粒度是两套独立存在的量化内核，不是兼容别名；�
 
 ## S_FP8_OFFSET：P 矩阵按 log2(448) 精确放大
 
-- NPU 语义：Softmax 全程在 exp2 域计算，running max 记为 $m$；P 矩阵按 $P = 2^{\text{score} - m + 8.807355}$ 生成，其中偏置常数 $8.807355 = \log_2 448$（`S_FP8_OFFSET`，唯一定义位于 `./sageattn_fp8/ascendc/tiling.h`，`./quant/quant_host.h` 经 using 引入；Host Tiling 将其写入 TilingData `s_fp8_offset` 字段下发，设备侧 P 量化注入点为 `./op_kernel/sage_device_vf.h` 的 `SoftmaxProbRowVF` 与宿主基线 `./op_kernel/sageattention2.cpp` 的 `ComputeSoftmaxProbability`——448· 放大经乘法恒启用，`s_fp8_offset` 字段保留仅为 160B 布局契约）
+- NPU 语义：Softmax 全程在 exp2 域计算，running max 记为 $m$；P 矩阵按 $P = 2^{\text{score} - m + 8.807355}$ 生成，其中偏置常数 $8.807355 = \log_2 448$（`S_FP8_OFFSET`，唯一定义位于 `./sageattn_fp8/ascendc/tiling.h`；设备侧 P 量化注入点为 `./op_kernel/sage_device_vf.h` 的 `SoftmaxProbRowVF` 与宿主基线 `./op_kernel/sageattention2.cpp` 的 `ComputeSoftmaxProbability`——448· 放大经乘法恒启用，LSE 出口恒以该常量补扣）
 - 效果：P 落在 $[0, 448]$，直接按 e4m3 饱和量化，P 的量化 scale 固定为单位 1，省去逐元素乘 scale 的 Vector 开销
 - 分母一致性：softmax 分母按同一放大尺度在线累计，归一化经 `OnlineSoftmaxTransformer::GetFinalInvDenominator`（O 与分母同处 448· 放大域，除法处放大精确相消，见 `./sageattn_fp8/ascendc/online_softmax.h`）；偏置抵消由 `./tests/test_kernel_twin.py` 的 golden 交叉验证覆盖
 - 与 CUDA 的关系：上游 FP8 路径同样通过 448 平移/缩放方案把概率幅度送入 e4m3 表示域（见上游 `csrc/qattn/attn_utils.cuh`），数值设计目标一致；但上游在 FP16 域做 max 平移后再换算，本实现在 exp2 域以单次加法注入偏置，舍入轨迹不同，不承诺逐位一致
@@ -53,7 +53,7 @@ NPU 侧两种粒度是两套独立存在的量化内核，不是兼容别名；�
 - 其余档位：`v_scale_max = 448.0`（e4m3 满幅，常数 `SCALE_MAX_FP32_ACCUM`）
 - 该取值影响 V 量化 scale 与饱和截断半径，是跨档位结果不可互比的原因之一
 
-- 附带的 NPU 侧机制：`"fp32+fp16"` 与 `"fp32+fp32"` 档启用 skip-scale 判定（阈值 `tau = 6.0`，`SKIP_SCALE_TAU`）——running max 变化在阈值内时跳过累加器重缩放乘法（`OnlineSoftmaxTransformer::Step`）。此为 NPU 微架构设计，CUDA 无对应物，也不改变对外数值契约
+- 附带的 NPU 侧机制：softmax 采用恒逐块强锚定重缩放——每到来一个 KV 分块必对 O 累加器执行重缩放（`OnlineSoftmaxTransformer::Step`，锚点 `m_scale` 恒等于 `m_run`），对齐 golden 的逐块锚定 e4m3 量化网格。此为 NPU 微架构设计，CUDA 无对应物，也不改变对外数值契约
 
 ## 舍入模式：half-away-from-zero 与 RNE 并存
 
@@ -75,7 +75,7 @@ NPU 侧两种粒度是两套独立存在的量化内核，不是兼容别名；�
 ## smooth_k 与 LSE 补偿
 
 - NPU 语义：`smooth_k=True`（默认）时 K 沿序列维减均值 `km`（量化核 `QuantizeKInt8Ascend` 的 `km_in` 入参，`./quant/quant_int8.cpp`），并预计算 LSE 修正项 `lse_correction = Q * km^T`（融合在设备核内，`./op_kernel/sageattention2.cpp` 的 `lse_corr`）
-- 对外 LSE 换算：`lse_out = (lse_exp2 - s_fp8_offset) * ln(2) + lse_correction * sm_scale`（`ConvertLseToHost`，`./sageattn_fp8/ascendc/online_softmax.h`；即 exp2 域 LSE 先补扣 `s_fp8_offset` 再除以 $\log_2 e$ 换回自然对数域），减均值引入的行常数在返回前精确补偿
+- 对外 LSE 换算：`lse_out = (lse_exp2 - S_FP8_OFFSET) * ln(2) + lse_correction * sm_scale`（`ConvertLseToHost`，`./sageattn_fp8/ascendc/online_softmax.h`；即 exp2 域 LSE 先补扣 `S_FP8_OFFSET` 常量再除以 $\log_2 e$ 换回自然对数域），减均值引入的行常数在返回前精确补偿
 - 意义：开启 smooth_k 后对外 LSE 与"不减均值"的参考实现可证等价；CUDA 上游 `return_lse` 语义仅在部分入口提供，且补偿路径实现不同，跨实现比较 LSE 时以本公式为准
 
 ## 差异速查（条目式对照）

@@ -83,6 +83,14 @@ static ge::graphStatus TilingSageAttention2(gert::TilingContext *context)
     const char *accum = (accum_str != nullptr) ? accum_str : sage_attn::kDefaultPvAccumDtype;
 
     const int64_t layout_code = sage_attn::TensorLayoutCodeFromString(layout);
+    const int64_t accum_code = sage_attn::PvAccumCodeFromString(accum);
+
+    bool smooth_v_val = (smooth_v != nullptr) ? *smooth_v : false;
+    if (smooth_v_val && (accum_code == sage_attn::PV_ACCUM_FP32_FP32 || accum_code == sage_attn::PV_ACCUM_FP32_FP16)) {
+        smooth_v_val = false;
+        // Host warning implementation omitted to avoid non-standard std::cerr,
+        // relying on python side handle_smooth_v for user warning emission.
+    }
 
     uint32_t b = 0, sq = 0, sk = 0, hq = 0, hkv = 0, d_og = 0;
     if (layout_code == sage_attn::LAYOUT_HND) {
@@ -129,11 +137,11 @@ static ge::graphStatus TilingSageAttention2(gert::TilingContext *context)
         b, sq, sk, hq, hkv, dtype_mode, d_og,
         scale,
         sage_attn::QuantGranCodeFromString(gran),
-        sage_attn::PvAccumCodeFromString(accum),
+        accum_code,
         (is_causal != nullptr) ? *is_causal : false,
         layout_code,
         (smooth_k != nullptr) ? *smooth_k : true,
-        (smooth_v != nullptr) ? *smooth_v : false,
+        smooth_v_val,
         context->GetInputShape(sage_attn2_idx::IN_KEY_MEAN) != nullptr, // has_key_mean 实况
         false, // has_lse
         tiling_data,

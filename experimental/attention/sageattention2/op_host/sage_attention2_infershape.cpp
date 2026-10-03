@@ -3,7 +3,6 @@
  * \brief SageAttention2 算子 InferShape 与 InferDataType 准确推导实现
  */
 
-#include <iostream>
 
 #include "sage_attention2_def.h"
 
@@ -89,38 +88,27 @@ static ge::graphStatus InferShapeSageAttention2(gert::InferShapeContext *context
 
     // 1. Batch 校验
     if (b <= 0 || kb != b || vb != b) {
-        std::cerr << "[SageAttention2][InferShape] Batch dimensions mismatch! Q: "
-                  << b << ", K: " << kb << ", V: " << vb << std::endl;
         return ge::GRAPH_FAILED;
     }
 
     // 2. Head Dim 校验 (必须匹配且 <= 128)
     if (d <= 0 || kd != d || vd != d) {
-        std::cerr << "[SageAttention2][InferShape] Head dim mismatch! Q: "
-                  << d << ", K: " << kd << ", V: " << vd << std::endl;
         return ge::GRAPH_FAILED;
     }
     if (d > MAX_HEAD_DIM) {
-        std::cerr << "[SageAttention2][InferShape] Head dim exceeds hardware limit (128): " << d << std::endl;
         return ge::GRAPH_FAILED;
     }
 
     // 3. Sequence 长度校验
     if (sq <= 0 || sk <= 0 || vsk != sk) {
-        std::cerr << "[SageAttention2][InferShape] Sequence length mismatch! K: "
-                  << sk << ", V: " << vsk << std::endl;
         return ge::GRAPH_FAILED;
     }
 
     // 4. GQA 广播头数校验 (Hq 必须能被 Hkv 整除，且 Hkv == vHkv)
     if (hkv <= 0 || vhkv != hkv) {
-        std::cerr << "[SageAttention2][InferShape] Key/Value heads mismatch! K: "
-                  << hkv << ", V: " << vhkv << std::endl;
         return ge::GRAPH_FAILED;
     }
     if (hq < hkv || (hq % hkv != 0)) {
-        std::cerr << "[SageAttention2][InferShape] Invalid GQA configuration! Hq ("
-                  << hq << ") must be divisible by Hkv (" << hkv << ")!" << std::endl;
         return ge::GRAPH_FAILED;
     }
 
@@ -147,8 +135,6 @@ static ge::graphStatus InferShapeSageAttention2(gert::InferShapeContext *context
         if (keyMeanShape->GetDimNum() == 3) {
             if (keyMeanShape->GetDim(0) != b || keyMeanShape->GetDim(1) != hkv ||
                 keyMeanShape->GetDim(2) != d_pad_km) {
-                std::cerr << "[SageAttention2][InferShape] key_mean 3D shape mismatch! Expected ["
-                          << b << ", " << hkv << ", " << d_pad_km << "] (padded head dim)" << std::endl;
                 return ge::GRAPH_FAILED;
             }
         }
@@ -161,8 +147,6 @@ static ge::graphStatus InferShapeSageAttention2(gert::InferShapeContext *context
         if (lseCorrShape->GetDimNum() == 3) {
             // lse_correction 契约恒为 [B, Hq, Sq]（对齐接口规范与核内行语义，不随 tensor_layout 翻转）
             if (lseCorrShape->GetDim(0) != b || lseCorrShape->GetDim(1) != hq || lseCorrShape->GetDim(2) != sq) {
-                std::cerr << "[SageAttention2][InferShape] lse_correction shape mismatch! Expected ["
-                          << b << ", " << hq << ", " << sq << "]" << std::endl;
                 return ge::GRAPH_FAILED;
             }
         }
@@ -189,12 +173,9 @@ static ge::graphStatus InferDataTypeSageAttention2(gert::InferDataTypeContext *c
 
     // 校验输入数据类型（任务书 §3：输入 dtype 仅 FP16/BF16）
     if (queryDtype != ge::DT_FLOAT16 && queryDtype != ge::DT_BF16) {
-        std::cerr << "[SageAttention2][InferDataType] Unsupported Query dtype: " << queryDtype << std::endl;
         return ge::GRAPH_FAILED;
     }
     if (keyDtype != queryDtype || valDtype != queryDtype) {
-        std::cerr << "[SageAttention2][InferDataType] Q, K, V data types must match! Q="
-                  << queryDtype << ", K=" << keyDtype << ", V=" << valDtype << std::endl;
         return ge::GRAPH_FAILED;
     }
 

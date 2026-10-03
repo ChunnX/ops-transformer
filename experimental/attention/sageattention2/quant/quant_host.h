@@ -12,13 +12,13 @@ namespace quant {
 /**
  * 数学与硬件常量：唯一定义位于 ../sageattn_fp8/ascendc/tiling.h（sage_attn 命名空间），
  * 此处经 using 引入 quant 命名空间，禁止再复制数值。
- * 仅保留有消费方的别名（aclnn host tiling 的 quant::LOG2E / quant::S_FP8_OFFSET 与
- * 本文件 GetVScaleMax 的 SCALE_MAX_*）；其余常量由消费方直引 sage_attn:: 原名。
+ * 仅保留有消费方的别名（aclnn host tiling 的 quant::LOG2E 与本文件 GetVScaleMax 的
+ * SCALE_MAX_*）；其余常量由消费方直引 sage_attn:: 原名。
  * （原 SKIP_SCALE_TAU / INT8_QUANT_MAX / SCALE_EPSILON / FP8_E4M3_MAX 的无消费方
- * using 别名已随 2026-10-03 死代码清扫删除。）
+ * using 别名已随 2026-10-03 死代码清扫删除；原 quant::S_FP8_OFFSET 别名的唯一
+ * 消费方 TilingData.s_fp8_offset 字段写入已删除，别名随之移除。）
  */
 using sage_attn::LOG2E;
-using sage_attn::S_FP8_OFFSET;
 using sage_attn::SCALE_MAX_FP16_ACCUM;
 using sage_attn::SCALE_MAX_FP32_ACCUM;
 

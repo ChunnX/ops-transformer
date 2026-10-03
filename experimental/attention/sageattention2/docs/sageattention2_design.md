@@ -240,7 +240,7 @@ chunks=1，任务解码与调度算术逐位不变（twin 25 桶 golden 回归�
       Speedup 门禁——本算子 L1↔L0↔UB 全片上闭环（零 GM 往返热路径）为其核心
       性能优势，坚决不采用。
   - V0 向量核：负责 MTE2 搬入、smooth_k 均值扣减、INT8/FP8 量化、scale 提取与 ND2NZ 排布转换；
-  - V1 向量核：负责 L0C FixPipe 接收、exp2 域 online softmax、行 max 与 skip-scale 动态重缩放、两级累加归约与 LSE 累计；
+  - V1 向量核：负责 L0C FixPipe 接收、exp2 域 online softmax、行 max 与恒逐块强锚定重缩放、两级累加归约与 LSE 累计；
 - 延迟一拍软件流水：
   - Cube 计算与 Vector 计算深度交叠，消灭 Vector 成为关键路径的等待气泡；
 - 同步与流水守卫：

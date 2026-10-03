@@ -73,8 +73,9 @@ from tiling_mirror import (  # noqa: E402
     LAYOUT_HND,
     LAYOUT_NHD,
 )
+# 全精度 exp2 域换算系数（宿主 tiling 填充同 tiling.h 的 C++ LOG2E 全精度值；
+# 与 dispatch golden 冻结截断值 1.44269504 是两个不同常量）
 LOG2E = 1.4426950408889634
-S_FP8_OFFSET = 8.807354922057604
 
 
 def _lse_correction(q: torch.Tensor, k: torch.Tensor, hnd: bool) -> torch.Tensor:
