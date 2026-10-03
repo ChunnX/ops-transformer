@@ -106,10 +106,13 @@ struct Vector1UbBudget {
     static constexpr uint32_t TWO_LEVEL_REDUCE_BYTES   = 16 * 1024;  // 两级累加归约缓冲（skip-scale 变体预留）
 
     // 行界常数（与 SageResourceManager::MAX_GQA_PACK_ROWS / host 分块域 block_n ∈ {64,128} /
-    // d_pad ≤ 128 验收域同步；op_kernel kKernelMaxRows 同源，改动须双侧联动 + 台账回归）
+    // d_pad ≤ 128 验收域同步；唯一 行上限定义点 sage_attn::MAX_PACK_ROWS（tiling.h），
+    // 本值经下方 static_assert 锁定相等，改动须双侧联动 + 台账回归）
     static constexpr uint32_t A7_REGION_ROW_MAX        = 128;
     static constexpr uint32_t A7_REGION_BLOCK_N_MAX    = 128;
     static constexpr uint32_t A7_REGION_HEAD_DIM_MAX   = 128;
+    static_assert(A7_REGION_ROW_MAX == sage_attn::MAX_PACK_ROWS,
+                  "A7_REGION_ROW_MAX must equal tiling.h MAX_PACK_ROWS (single row-cap definition point)");
 
     static_assert(O_ACCUM_OFFSET + O_ACCUM_BYTES <= FIXPIPE_RECV_OFFSET,
                   "A7 O_ACCUM region overlaps S slot region");
@@ -155,10 +158,12 @@ enum class FootprintViolation : uint32_t {
  */
 class SageResourceManager {
 public:
-    // 与 op_kernel/sageattention2.cpp 的 kKernelMaxRows 契约同步（唯二出现点，
-    // 改动须双侧联动 + test_tiling_struct 台账用例回归）；Q_MAX_BYTES 的
-    // 128x128 规格隐含同一上限。
+    // 与 sage_attn::MAX_PACK_ROWS（tiling.h 唯一定义点，kernel 行窗口直读）契约同步
+    // （相等由 static_assert 编译期锁定，改动须双侧联动 + test_tiling_struct 台账用例
+    // 回归）；Q_MAX_BYTES 的 128x128 规格隐含同一上限。
     static constexpr uint32_t MAX_GQA_PACK_ROWS = 128;
+    static_assert(MAX_GQA_PACK_ROWS == sage_attn::MAX_PACK_ROWS,
+                  "MAX_GQA_PACK_ROWS must equal tiling.h MAX_PACK_ROWS (single row-cap definition point)");
 
     /**
      * 运行时资源台账检查（RES-01，host 发射前 fail-fast 的唯一判据）：

@@ -6,7 +6,9 @@
 
 // 官方 CATLASS 容量常量一致性锁：本头文件保持零依赖基座（被 quant 裸编译等无
 // CATLASS -I 场景包含），容量取白皮书字面量；与官方 Catlass::Arch::Ascend950 的
-// 逐项一致由 sage_resource.hpp 的 static_assert 链在含 catlass 的 TU 编译期锁定。
+// 一致性由 test_tiling_struct.cpp（含 catlass 的 TU）直锁官方源（L1 字面量断言 +
+// HardwareResourceQuota::L0C_TOTAL_BYTES == Arch::Ascend950::L0C_SIZE 唯一映射，
+// L0A/L0B 无生产判据不设 canary，见 sage_resource.hpp 配额注记）。
 
 /**
  * Host/Device 切换（本头文件被所有 ascendc/catlass 头包含，是 __aicore__ 的首个定义点）：
@@ -81,9 +83,10 @@ namespace sage_attn {
 /**
  * 片上存储容量与硬件拓扑常量（白皮书表 4-2 与第 3 节硬件规格）。
  * 本头文件为全仓零依赖基座（quant 裸编译等无 CATLASS -I 场景亦包含），容量取
- * 白皮书字面量；与官方 Catlass::Arch::Ascend950（L1 512KB / L0A/L0B 64KB /
- * L0C 256KB）的逐项一致由 sage_resource.hpp HardwareResourceQuota 的 static_assert
- * 链在含 catlass 的 TU 编译期锁定，官方演进漂移会在编译期显式暴露。
+ * 白皮书字面量；与官方 Catlass::Arch::Ascend950（L1 512KB / L0C 256KB）的一致性由
+ * test_tiling_struct.cpp 直锁官方源（L1 字面量断言 + HardwareResourceQuota 的 L0C
+ * 唯一映射 static_assert），官方演进漂移在测试编译期显式暴露；L0A/L0B 无生产判据，
+ * 不设配额别名与官方源 canary（sage_resource.hpp 同口径）。
  * UB 不取官方 Arch::Ascend950::UB_SIZE（248KB，官方样例工程口径）：本算子按任务书
  * 验收域（Atlas 950PR 白皮书表 4-2 单 Vector 核 256KB）冻结 256KB——两值为不同口径
  * 而非换算关系（sage_resource.hpp HardwareResourceQuota 同口径）。
@@ -103,8 +106,9 @@ constexpr uint32_t UB_TOTAL_SIZE_PER_V = 256 * 1024;   // 单 Vector 核心 UB �
 constexpr uint32_t ATLAS_950_AIC_NUM = 32;             // Atlas 950PR 满配 32 个 AI Core
 constexpr uint32_t ATLAS_950_DIE_NUM = 2;              // Atlas 950PR 标配 2 个计算 Die
 
-// 单任务 GQA 行打包上限（kernel kKernelMaxRows / host total_rows 校验 / InspectTilingPlan
-// 三方同源唯一点）：单任务打包 min(gqa_ratio, MAX_PACK_ROWS / m_per_core) 个 Q 头，
+// 单任务 GQA 行打包上限（kernel 行窗口直读本常量 / host total_rows 校验 / InspectTilingPlan
+// 三方同源唯一点，sage_resource.hpp 的 MAX_GQA_PACK_ROWS / A7_REGION_ROW_MAX 以
+// static_assert 锁定与本值相等）：单任务打包 min(gqa_ratio, MAX_PACK_ROWS / m_per_core) 个 Q 头，
 // gqa_ratio 超出时按 chunk 拆多任务（如 8:1 × m_per_core=32 → 2 chunk × 4 头 × 32 行）
 constexpr uint32_t MAX_PACK_ROWS = 128;
 
@@ -129,7 +133,9 @@ constexpr float SCALE_ONE_TOLERANCE = 1e-6f;            // 缩放系数 (alpha/r
 
 /**
  * 两级累加归约周期缺省步长（tiling.k_step ∈ {8, 16, 32} 的缺省值；
- * AccumReduceController 兜底、孪生参考 fp16 子块累加均引用此处）
+ * 消费方：aclnn host tiling 缺省 k_step、kernel 0 归一兜底（防死循环）、
+ * 孪生参考 twin::AccumulatePvRow 的 fp16 子块累加。原 AccumReduceController
+ * 兜底消费已随 2026-10-03 死代码清扫删除，见 tests/test_tiling_struct.cpp 清理记录）
  */
 constexpr uint32_t DEFAULT_K_STEP = 16;
 

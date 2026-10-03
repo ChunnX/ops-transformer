@@ -188,7 +188,7 @@ void TestResourceFootprintLedger() {
     assert(SageResourceManager::InspectTilingPlan(64, 0, 128) == FootprintViolation::kInvalidShape);
     assert(SageResourceManager::InspectTilingPlan(64, 64, 0) == FootprintViolation::kInvalidShape);
 
-    // GQA 行溢出：total_rows > kKernelMaxRows(128)（kernel 侧行状态容量契约）
+    // GQA 行溢出：total_rows > MAX_PACK_ROWS(128)（tiling.h 唯一定义点，kernel 侧行状态容量契约）
     assert(SageResourceManager::InspectTilingPlan(256, 64, 128) == FootprintViolation::kGqaRowOverflow);
 
     // L1 Bank 0 Q 数据区：rows*d INT8 > 16KB（Q_MAX_BYTES = 128*128）
