@@ -1292,7 +1292,7 @@ def _prepare_rope_npu(
             double_krope = torch.stack([k_rope_pa, fake_krope_tensor], dim=1)
             double_krope = double_krope.npu()
             k_rope_npu = double_krope[:, 0]  # 覆写为非连续
-            logger.info(f"[NPU] k_rope is_contiguous={k_rope.is_contiguous()}")
+            logger.info(f"[NPU] k_rope is_contiguous={k_rope_npu.is_contiguous()}")
     else:
         k_rope_npu = convert_qk_rope_bnsd_to_layout(
             kr_bf16, actual_seq_kv, npu_input_layout
