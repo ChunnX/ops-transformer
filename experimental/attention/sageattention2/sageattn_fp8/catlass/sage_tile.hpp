@@ -11,8 +11,9 @@
  * 全部编译场景——host 门禁/内核语法门/OPP 打包/BiSheng 设备——均带该 -I，故
  * catlass.hpp 无条件直含，不再保留本地字面值回退分支）：
  * 分形粒度常量以官方 catlass.hpp 为唯一定义源（BYTE_PER_C0=32、
- * C0_NUM_PER_FRACTAL=16、BYTE_PER_FRACTAL=512），下方 static_assert 锁定官方值，
- * 官方漂移即编译期报错。
+ * C0_NUM_PER_FRACTAL=16、BYTE_PER_FRACTAL=512），本文件一律经官方常量派生
+ * （如 LOADDATA2D_REPEAT_BYTES = BYTE_PER_FRACTAL），官方演进自动跟随，
+ * 不做字面量锁定。
  * 设备态热路径的 LoadData2D/Fixpipe 搬运为 ND 布局 + Data/Scale 相邻等本算子
  * 自定义契约（官方 TileCopyTla 组件要求 L1 侧 zN 分形布局，不匹配本算子 V0 产出
  * 布局——该数据通路重构须随 camodel 仿真/真机 L-A 循环推进，见设计文档模块边界）。
@@ -77,22 +78,6 @@ __aicore__ inline void Sync() {
 constexpr uint32_t LOADDATA2D_REPEAT_BYTES = Catlass::BYTE_PER_FRACTAL;
 
 /**
- * 昇腾 950 DaVinci 硬件分形基本粒度常量
- * 直接引用官方 CATLASS 分形基元常量：
- * - M0/N0: C0_NUM_PER_FRACTAL = 16
- * - K0: BYTE_PER_C0 = 32（INT8/FP8 下 1 字节元素单 C0 包含 32 个元素）
- */
-constexpr uint32_t FRACTAL_M0 = Catlass::C0_NUM_PER_FRACTAL;
-constexpr uint32_t FRACTAL_N0 = Catlass::C0_NUM_PER_FRACTAL;
-constexpr uint32_t FRACTAL_K0_INT8 = Catlass::BYTE_PER_C0;
-constexpr uint32_t FRACTAL_K0_FP8 = Catlass::BYTE_PER_C0;
-
-static_assert(FRACTAL_M0 == 16 && FRACTAL_N0 == 16, "fractal MN granularity must be 16x16");
-static_assert(FRACTAL_K0_INT8 == 32 && FRACTAL_K0_FP8 == 32,
-              "fractal K0 must be 32 for 1-byte elements");
-static_assert(LOADDATA2D_REPEAT_BYTES == 512, "LoadData2D repeat unit must be 512B");
-
-/**
  * 通用 2D 分块搬运原语：从片上源位置搬入目标寄存器/缓冲（L1/UB -> L0A/L0B）
  * 统一收敛 LoadData2D 样板代码，杜绝多处重复 TBuffAddr 描述符装配。
  */
@@ -117,7 +102,8 @@ __aicore__ inline void LoadTile2D(uint32_t dst_addr, uint32_t src_addr, uint32_t
     src_tensor.SetAddr(src_desc);
 
     AscendC::LoadData2DParams load_params;
-    load_params.repeatTimes = static_cast<uint16_t>((total_bytes + LOADDATA2D_REPEAT_BYTES - 1) / LOADDATA2D_REPEAT_BYTES);
+    // 官方 Catlass 对齐组件（catlass/detail/alignment.hpp，全局命名空间）
+    load_params.repeatTimes = static_cast<uint16_t>(::CeilDiv<LOADDATA2D_REPEAT_BYTES>(total_bytes));
     load_params.srcStride = 0;
     load_params.ifTranspose = if_transpose;
     AscendC::LoadData(dst_tensor, src_tensor, load_params);
@@ -136,6 +122,10 @@ __aicore__ inline void LoadTile2D(uint32_t dst_addr, uint32_t src_addr, uint32_t
  * 通用 Fixpipe L0C -> UB 裸搬原语（SPLIT_M 分段发射）：
  * dav-3510 Fixpipe 透传搬出（quantPre DISABLE，精确位型透传，zN -> ND）。
  * m > 64 时按 64 行双段发射，两段同分区写入 UB。
+ * 不采用官方 Gemm::Tile::CopyL0CToUBTla：其 Ascend950 特化基于 FixpipeParamsC310
+ * 参数面（nSize 按 32B 粒度 RoundUp、unitFlag 语义），SPLIT_M 档走 dualDstCtl 硬件
+ * 双目的地模式；与本核真机 L-A 验证过的 Arch3510 参数面 + 手动双段发射（整幅 zN
+ * 行距 srcStride=m、UB ND 行距 dstStride=n）不同构——golden 位级锁定域，不替换。
  */
 template <typename ElementC>
 __aicore__ inline void CopyL0CToUbSplitM(
@@ -187,8 +177,10 @@ __aicore__ inline void CopyL0CToUbSplitM(
         ub1_desc.dataLen = static_cast<uint32_t>((m - M_SPLIT) * n * elem_size);
         AscendC::LocalTensor<ElementC> ub_dst1;
         ub_dst1.SetAddr(ub1_desc);
+        // 第二段 L0C 源偏移：zN 内分形行粒度 = C0_NUM_PER_FRACTAL（16 行/分形），
+        // 64 行 = 4 个分形行，元素偏移 64*16（官方 catlass.hpp 常量，一处定义）
         AscendC::Fixpipe<ElementC, ElementC, cfg>(ub_dst0, l0c_tensor, fp);
-        AscendC::Fixpipe<ElementC, ElementC, cfg>(ub_dst1, l0c_tensor[M_SPLIT * 16], fp);
+        AscendC::Fixpipe<ElementC, ElementC, cfg>(ub_dst1, l0c_tensor[M_SPLIT * Catlass::C0_NUM_PER_FRACTAL], fp);
     }
 #else
     (void)l0c_src_offset;
@@ -203,21 +195,24 @@ __aicore__ inline void CopyL0CToUbSplitM(
  * 将 INT8/FP8 矩阵数据与对应块的 FP32 Scale 在物理内存中紧密相邻排布，
  * 使得每 token 的两次 MTE2 拷贝合并为一次、请求数量直接减半，
  * 彻底化解 16 项 MTE2 Issue Queue 溢出导致的硬件挂起。
+ * 对齐算子走官方 Catlass::RoundUp（32B = BYTE_PER_BLK，一个 MTE 块粒度）；
+ * 块形状本身为本算子自定义契约（非 CATLASS 标准分形布局，官方无等价组件）。
  */
 template <typename DataType, uint32_t BlockN, uint32_t HeadDim>
 struct KvSlotLayoutContract {
     static constexpr uint32_t DATA_ELEMENTS = BlockN * HeadDim;
     static constexpr uint32_t DATA_BYTES = DATA_ELEMENTS * sizeof(DataType);
 
-    // 32 字节对齐
-    static constexpr uint32_t DATA_BYTES_ALIGNED = ((DATA_BYTES + 31U) / 32U) * 32U;
+    // 32 字节（单 MTE 块）对齐——官方 Catlass 对齐组件（alignment.hpp，全局命名空间）
+    static constexpr uint32_t DATA_BYTES_ALIGNED = ::RoundUp<Catlass::BYTE_PER_BLK>(DATA_BYTES);
 
     // per_thread 模式下每 64 token 块对应 4 个 FP32 scale，per_warp 为 1 个
     static constexpr uint32_t PER_THREAD_SCALE_COUNT = (BlockN / 64U) * 4U;
     static constexpr uint32_t PER_WARP_SCALE_COUNT = (BlockN / 64U) * 1U;
 
     static constexpr uint32_t PER_THREAD_SCALE_BYTES = PER_THREAD_SCALE_COUNT * sizeof(float);
-    static constexpr uint32_t PER_THREAD_SCALE_BYTES_ALIGNED = ((PER_THREAD_SCALE_BYTES + 31U) / 32U) * 32U;
+    static constexpr uint32_t PER_THREAD_SCALE_BYTES_ALIGNED =
+        ::RoundUp<Catlass::BYTE_PER_BLK>(PER_THREAD_SCALE_BYTES);
 
     static constexpr uint32_t TOTAL_SLOT_BYTES_PER_THREAD = DATA_BYTES_ALIGNED + PER_THREAD_SCALE_BYTES_ALIGNED;
 

@@ -149,6 +149,8 @@ if command -v clang++ >/dev/null 2>&1; then
 fi
 echo -e "Using Host C++ Compiler: ${BLUE}${CXX_COMPILER}${NC}"
 
+CATLASS_DIR="${CATLASS_DIR:-${OP_DIR}/../../../../git/catlass/include}"
+
 # 规划官方标准自定义 OPP 目录结构
 # 规范结构参见 CANN 自定义算子开发指南：
 # vendors/
@@ -194,6 +196,7 @@ ${CXX_COMPILER} -std=c++17 ${SHARED_FLAGS} \
     -I"${OP_DIR}/quant" \
     -I"${OP_DIR}/sageattn_fp8/ascendc" \
     -I"${OP_DIR}/sageattn_fp8/catlass" \
+    -I"${CATLASS_DIR}" \
     -o "${CUSTOM_DIR}/op_api/lib/libcust_opapi.so"
 
 # 软链接或同步一份到 op_proto/lib
@@ -211,6 +214,7 @@ ${CXX_COMPILER} -std=c++17 ${SHARED_FLAGS} \
     -I"${OP_DIR}/quant" \
     -I"${OP_DIR}/sageattn_fp8/ascendc" \
     -I"${OP_DIR}/sageattn_fp8/catlass" \
+    -I"${CATLASS_DIR}" \
     -o "${CUSTOM_DIR}/op_impl/ai_core/tbe/op_tiling/lib/liboptiling.so"
 
 # 如果是 macOS，同时生成对应名称或软连接以保证平台兼容性
@@ -225,6 +229,7 @@ ${CXX_COMPILER} -std=c++17 -c \
     -I"${OP_DIR}/sageattn_fp8/ascendc" \
     -I"${OP_DIR}/sageattn_fp8/catlass" \
     -I"${OP_DIR}/quant" \
+    -I"${CATLASS_DIR}" \
     -o "${CUSTOM_DIR}/op_impl/ai_core/tbe/kernel/${SOC}/sageattention2.o"
 
 echo -e "${BLUE}3. Packaging headers and configuration files...${NC}"

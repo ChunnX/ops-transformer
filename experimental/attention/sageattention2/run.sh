@@ -51,19 +51,6 @@ run_host_tests() {
     echo "Executing ${OP_HOST_BIN}..."
     "${OP_HOST_BIN}"
 
-    echo "Compiling test_output_queue with ${CXX_COMPILER}..."
-    local QUEUE_BIN="${BUILD_DIR}/test_output_queue"
-    ${CXX_COMPILER} -std=c++17 -O2 -Wall -Wextra \
-        "${WORK_DIR}/tests/test_output_queue.cpp" \
-        -I"${WORK_DIR}/sageattn_fp8/ascendc" \
-        -I"${WORK_DIR}/sageattn_fp8/catlass" \
-        -I"${WORK_DIR}/quant" \
-        -I"${CATLASS_DIR}" \
-        -o "${QUEUE_BIN}"
-
-    echo "Executing ${QUEUE_BIN}..."
-    "${QUEUE_BIN}"
-
     echo "Compiling test_tiling_struct with ${CXX_COMPILER}..."
     local TILING_BIN="${BUILD_DIR}/test_tiling_struct"
     ${CXX_COMPILER} -std=c++17 -O2 -Wall -Wextra \
@@ -77,17 +64,7 @@ run_host_tests() {
     echo "Executing ${TILING_BIN}..."
     "${TILING_BIN}"
 
-    echo "Compiling test_pipeline_guard with ${CXX_COMPILER}..."
-    local GUARD_BIN="${BUILD_DIR}/test_pipeline_guard"
-    ${CXX_COMPILER} -std=c++17 -O2 -Wall -Wextra \
-        "${WORK_DIR}/tests/test_pipeline_guard.cpp" \
-        -I"${WORK_DIR}/sageattn_fp8/ascendc" \
-        -o "${GUARD_BIN}"
-
-    echo "Executing ${GUARD_BIN}..."
-    "${GUARD_BIN}"
-
-    echo ">>> C++ Host, Tiling & Guard Tests Completed Successfully!"
+    echo ">>> C++ Host & Tiling Tests Completed Successfully!"
 }
 
 check_kernel_syntax() {

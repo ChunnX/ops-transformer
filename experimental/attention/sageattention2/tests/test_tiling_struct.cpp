@@ -1,5 +1,5 @@
 /**
- * Verification test for SageAttention2 TilingData, SyncGuard, OnlineSoftmax, AccumReduce and CATLASS contracts
+ * Verification test for SageAttention2 TilingData, OnlineSoftmax and CATLASS contracts
  */
 
 #include <iostream>
@@ -8,9 +8,7 @@
 #include <cmath>
 
 #include "../sageattn_fp8/ascendc/tiling.h"
-#include "../sageattn_fp8/ascendc/sync_guard.h"
 #include "../sageattn_fp8/ascendc/online_softmax.h"
-#include "../sageattn_fp8/ascendc/accum_reduce.h"
 #include "../sageattn_fp8/catlass/sage_tile.hpp"
 #include "../sageattn_fp8/catlass/sage_resource.hpp"
 #include "../sageattn_fp8/catlass/sage_qk_mmad.hpp"
@@ -133,49 +131,14 @@ void TestOnlineSoftmax() {
 // 死代码"自 online_softmax.h 整块删除，本用例随之移除；Split-KV 归并重入 DR 时
 // 按 online_softmax.h 清理记录恢复并补单测（FoldAttention 数值覆盖现由
 // tests/test_fold_attention.py 的原型级用例承担）。
-
-void TestAccumReduce() {
-    std::cout << "[Test 3] Testing AccumReduceController for 3 modes..." << std::endl;
-
-    // Mode 0: FP32
-    AccumReduceController ctrl_fp32;
-    ctrl_fp32.Init(PV_ACCUM_FP32, 16, 32);
-    assert(!ctrl_fp32.ShouldReduce(0));
-    // 2026-10-03 R9 随动（对齐交付侧 20ab9175a"fp32+fp32 两级累加独立轨迹"）：
-    // fp32 档为单一运行和（twin AccumulatePvRow fp32 轨迹单点，对齐开源 f8f8f32
-    // 连续累加），仅末块归约；k_step 周期归约为 fp32+fp32/fp16 两档专属节奏。
-    // 原"三档统一周期归约"（DEFECT-N5 首版口径）随真值层演化同步退役；N5 的
-    // 设备侧 L0C 块间锚差缩放仍属 Phase-D 登记，与本节奏契约解耦。
-    assert(!ctrl_fp32.ShouldReduce(15));
-    assert(ctrl_fp32.ShouldReduce(31));   // final block forces reduction
-    auto cfg_fp32 = ctrl_fp32.GetFixpipeConfig();
-    assert(!cfg_fp32.enable_inline_quant);
-
-    // Mode 1: FP32+FP32
-    AccumReduceController ctrl_fp32_fp32;
-    ctrl_fp32_fp32.Init(PV_ACCUM_FP32_FP32, 16, 32);
-    assert(!ctrl_fp32_fp32.ShouldReduce(0));
-    assert(ctrl_fp32_fp32.ShouldReduce(15)); // reduces at k_step
-    assert(!ctrl_fp32_fp32.ShouldReduce(16));
-    assert(ctrl_fp32_fp32.ShouldReduce(31));  // reduces at last step
-    auto cfg_fp32_fp32 = ctrl_fp32_fp32.GetFixpipeConfig();
-    assert(!cfg_fp32_fp32.enable_inline_quant);
-
-    // Mode 2: FP32+FP16 (Default acceptance mode)
-    AccumReduceController ctrl_fp32_fp16;
-    ctrl_fp32_fp16.Init(PV_ACCUM_FP32_FP16, 16, 32);
-    assert(!ctrl_fp32_fp16.ShouldReduce(0));
-    assert(ctrl_fp32_fp16.ShouldReduce(15));
-    assert(ctrl_fp32_fp16.ShouldReduce(31));
-    auto cfg_fp32_fp16 = ctrl_fp32_fp16.GetFixpipeConfig();
-    assert(cfg_fp32_fp16.enable_inline_quant); // inline quantization enabled
-    assert(cfg_fp32_fp16.quant_dst_type == 1);  // FP16 destination
-
-    std::cout << "[Test 3 Passed] AccumReduceController verified for all 3 modes!" << std::endl;
-}
+// 清理记录（2026-10-03 死代码清扫）：AccumReduceController / FixpipeConfig /
+// QuantizeToFp16（accum_reduce.h）与 OutputRetireQueue 均为"热路径已弃用策略"的
+// 零生产消费载体——设备 PV 归约节奏唯一定义点为 twin::AccumulatePvRow（k_step
+// 子块域）+ 设备侧逐块 FixPipe 裸搬合并（档位判据直读 tiling.pv_accum_dtype），
+// 原独立控制器类与其测试（本文件 Test 3、test_output_queue.cpp Test 10）随之删除。
 
 void TestCatlassContracts() {
-    std::cout << "[Test 4] Testing CATLASS tile and resource contracts..." << std::endl;
+    std::cout << "[Test 3] Testing CATLASS tile and resource contracts..." << std::endl;
 
     // Test KV slot layout
     using SlotContract = KvSlotLayoutContract<int8_t, 64, 128>;
@@ -193,11 +156,11 @@ void TestCatlassContracts() {
     // Invalid budget (too large to fit in L1 Bank 0)
     assert(SageResourceManager::ValidateBudget(4096, 64, 128) == false);
 
-    std::cout << "[Test 4 Passed] CATLASS contracts and resource validation verified!" << std::endl;
+    std::cout << "[Test 3 Passed] CATLASS contracts and resource validation verified!" << std::endl;
 }
 
 void TestResourceFootprintLedger() {
-    std::cout << "[Test 5] Testing runtime footprint ledger (InspectTilingPlan / RES-01)..." << std::endl;
+    std::cout << "[Test 4] Testing runtime footprint ledger (InspectTilingPlan / RES-01)..." << std::endl;
 
     // 验收域内全部分块计划必须通过（P-01..P-07 覆盖的组合）：
     // gqa=1 (rows=64), gqa=2 (rows=128, m_per_core=64), gqa>=3 (rows=128, m_per_core=32),
@@ -250,11 +213,11 @@ void TestResourceFootprintLedger() {
                   FootprintViolation::kGqaRowOverflow,
                   "row overflow must be caught at compile time when constants hard-code it");
 
-    std::cout << "[Test 5 Passed] Runtime footprint ledger verified!" << std::endl;
+    std::cout << "[Test 4 Passed] Runtime footprint ledger verified!" << std::endl;
 }
 
 void TestAmlaFloatMulPow2Int() {
-    std::cout << "[Test 6] Testing AMLA FloatMulPow2Int integer addition equivalence (Lemma 1)..." << std::endl;
+    std::cout << "[Test 5] Testing AMLA FloatMulPow2Int integer addition equivalence (Lemma 1)..." << std::endl;
     // 1. 标准正规数乘 2^n
     float f = 1.5f;
     assert(quant::FloatMulPow2Int(f, 0) == 1.5f);
@@ -275,14 +238,13 @@ void TestAmlaFloatMulPow2Int() {
     float tiny = 1e-35f;
     assert(quant::FloatMulPow2Int(tiny, -50) == 0.0f);
 
-    std::cout << "[Test 6 Passed] AMLA FloatMulPow2Int mathematical equivalence verified!" << std::endl;
+    std::cout << "[Test 5 Passed] AMLA FloatMulPow2Int mathematical equivalence verified!" << std::endl;
 }
 
 int main() {
     std::cout << "Starting SageAttention2 C++ Contract and Tiling Verification..." << std::endl;
     TestTilingDataLayout();
     TestOnlineSoftmax();
-    TestAccumReduce();
     TestCatlassContracts();
     TestResourceFootprintLedger();
     TestAmlaFloatMulPow2Int();

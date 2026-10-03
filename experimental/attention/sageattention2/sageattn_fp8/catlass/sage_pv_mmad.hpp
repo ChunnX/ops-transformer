@@ -3,7 +3,6 @@
 
 #include <cstdint>
 #include "../ascendc/tiling.h"
-#include "../ascendc/accum_reduce.h"
 #include "sage_tile.hpp"
 #include "sage_resource.hpp"
 #include "../../quant/quant_common.h"
@@ -167,7 +166,9 @@ private:
  * 实例：o_row[c] += partial[r][c] · v_scale[c]，其中 partial 为 Cube PV MMAD 的 FP32
  * 部分和（P8 码 × V8 码，P 侧 448· 放大域与 v_scale 的 V 通道域拆分同宿主 v_at 分解）。
  * - fp32+fp16 档（fp16_round=1，档位判据由调用方直读 tiling.pv_accum_dtype）：
- *   并入前按 QuantizeToFp16 唯一口径做 FP16 RNE 舍回——
+ *   并入前做 FP16 RNE 舍回（与宿主 quant::Fp32ToFp16/Fp16ToFp32 同 RNE 口径——
+ *   accum_reduce.h 的 QuantizeToFp16 仿真壳已随死代码清理删除，此处 Cast 链
+ *   即其位级等价）——
  *   块内求和已由 PV MMAD 承担（设备段粒度替代 twin k_step 子块，L-A 容差域，task/12）；
  * - fp32 / fp32+fp32 档：FP32 直通并入。
  * 调用方须保证 O 行经 S 槽 / dot32 同款握手串行化（FLAG_PV_PARTIAL_READY/FREE）。

@@ -7,7 +7,6 @@
 //（bisheng 编译门的 -W#pragma-message 曾捕获该错位）。
 #include "../sageattn_fp8/ascendc/tiling.h"
 #include "../sageattn_fp8/ascendc/online_softmax.h"
-#include "../sageattn_fp8/ascendc/accum_reduce.h"
 #include "../sageattn_fp8/ascendc/sync_guard.h"
 
 #include "../sageattn_fp8/catlass/sage_tile.hpp"
@@ -28,11 +27,11 @@
 #include <algorithm>
 #include <memory>
 
-// KT/宿主标量基线（Step-C）唯一真值路径：QK 反量化 logit、块内 exp2 和、P 量化与
+// 宿主/KT 孪生执行分支数值真值路径：QK 反量化 logit、块内 exp2 和、P 量化与
 // PV 行累加均经 twin_reference.h 单点 include 复用（设计决策 5：语义公式禁止在内核
 // 内复制第二份）。twin_reference.h 携带宿主 STL 载体（std::vector），设备分支
-// （bisheng -xasc，SAGE_ATTN_DEVICE_COMPILE=1）不引入——七函数的数值实现位于宿主/KT
-// 分支，设备侧维持流水结构桩，向量化实现留给后续 pass。
+// （bisheng -xasc，SAGE_ATTN_DEVICE_COMPILE=1）完全由 AscendC 硬件原语与
+// dev_vf 向量化流水算子承载，不引入宿主 STL 依赖。
 #if !SAGE_ATTN_DEVICE_COMPILE
 #include "twin_reference.h"
 #endif
@@ -86,8 +85,8 @@ using namespace AscendC;
 #define ASCEND_IS_AIV (false)
 #endif
 
-// 宿主机或本地单测桩函数定义。
-// 回退桩带 __aicore__ 属性，确保在 [[aicore]] 属性域内安全调用。
+// 宿主模拟执行与本地单测环境兼容实现：
+// 携带 __aicore__ 属性以保持与设备侧属性域签名一致。
 __aicore__ inline uint32_t GetBlockIdx() { return 0; }
 __aicore__ inline uint32_t GetSubBlockIdx() { return 0; }
 #endif
@@ -134,10 +133,8 @@ inline void SyncVToMte2() {}
 // GQA 聚合后的窗口行上限（m_per_core 为 64 的倍数、gqa_ratio ≤ 8 的验收域内恒满足；
 // 常量不随 SimMemory 分支门控，row_states_ 成员在设备分支亦需该界）
 // 行打包上限唯一定义点：tiling.h MAX_PACK_ROWS（host/InspectTilingPlan 同源）
-
-__aicore__ inline uint32_t SageFastMin(uint32_t a, uint32_t b) {
-    return (a < b) ? a : b;
-}
+// 标量 min/max 复用官方 CATLASS 对齐组件（catlass/detail/alignment.hpp 全局
+// Min/Max，CATLASS_HOST_DEVICE 强圈内联，同 ternary 语义零开销），不再自造。
 
 // A7 设备态 UB 布局（V1 256KB 地址空间，task/12_device_data_path.md；R17-2 重排定案）：
 // 区界/互斥/封顶的唯一定义点为 sage_resource.hpp Vector1UbBudget（static_assert 链
@@ -146,16 +143,16 @@ __aicore__ inline uint32_t SageFastMin(uint32_t a, uint32_t b) {
 //   O_ACCUM [0,64K) | S 双槽 [64K, ≤96K) | dot32 [96K,160K) | pv_partial [160K,224K)
 //   | LSE 区 [224K,240K)：行 stats(+0)/logits 行(+512)/ks 行(+1K)/qs 行(+1.5K)/vs(+2K)
 //   | TWO_LEVEL_REDUCE [240K,256K)
-constexpr uint32_t SAGE_UB_DOT32_OFFSET = Catlass::SageAttn::Vector1UbBudget::A7_DOT32_OFFSET;
-constexpr uint32_t SAGE_UB_PV_PARTIAL_OFFSET = Catlass::SageAttn::Vector1UbBudget::A7_PV_PARTIAL_OFFSET;
-constexpr uint32_t SAGE_UB_V1_STATS_OFFSET = Catlass::SageAttn::Vector1UbBudget::LSE_WORKSPACE_OFFSET;
+[[maybe_unused]] constexpr uint32_t SAGE_UB_DOT32_OFFSET = Catlass::SageAttn::Vector1UbBudget::A7_DOT32_OFFSET;
+[[maybe_unused]] constexpr uint32_t SAGE_UB_PV_PARTIAL_OFFSET = Catlass::SageAttn::Vector1UbBudget::A7_PV_PARTIAL_OFFSET;
+[[maybe_unused]] constexpr uint32_t SAGE_UB_V1_STATS_OFFSET = Catlass::SageAttn::Vector1UbBudget::LSE_WORKSPACE_OFFSET;
 // LSE 工作区行距 512B（128 float）：具名常量唯一定义点 Vector1UbBudget::LSE_ROW_STRIDE
-constexpr uint32_t SAGE_UB_V1_LOGITS_ROW_OFFSET = SAGE_UB_V1_STATS_OFFSET + Catlass::SageAttn::Vector1UbBudget::LSE_ROW_STRIDE;
-constexpr uint32_t SAGE_UB_V1_KS_ROW_OFFSET = SAGE_UB_V1_STATS_OFFSET + 2 * Catlass::SageAttn::Vector1UbBudget::LSE_ROW_STRIDE;
-constexpr uint32_t SAGE_UB_V1_QS_ROW_OFFSET = SAGE_UB_V1_STATS_OFFSET + 3 * Catlass::SageAttn::Vector1UbBudget::LSE_ROW_STRIDE;
-constexpr uint32_t SAGE_UB_V1_VS_CHAN_OFFSET = SAGE_UB_V1_STATS_OFFSET + 4 * Catlass::SageAttn::Vector1UbBudget::LSE_ROW_STRIDE;
+[[maybe_unused]] constexpr uint32_t SAGE_UB_V1_LOGITS_ROW_OFFSET = SAGE_UB_V1_STATS_OFFSET + Catlass::SageAttn::Vector1UbBudget::LSE_ROW_STRIDE;
+[[maybe_unused]] constexpr uint32_t SAGE_UB_V1_KS_ROW_OFFSET = SAGE_UB_V1_STATS_OFFSET + 2 * Catlass::SageAttn::Vector1UbBudget::LSE_ROW_STRIDE;
+[[maybe_unused]] constexpr uint32_t SAGE_UB_V1_QS_ROW_OFFSET = SAGE_UB_V1_STATS_OFFSET + 3 * Catlass::SageAttn::Vector1UbBudget::LSE_ROW_STRIDE;
+[[maybe_unused]] constexpr uint32_t SAGE_UB_V1_VS_CHAN_OFFSET = SAGE_UB_V1_STATS_OFFSET + 4 * Catlass::SageAttn::Vector1UbBudget::LSE_ROW_STRIDE;
 // smooth_v 的 vm 通道槽（V0 经 workspace GM 区产出，V1 Finalize 逐通道加回）
-constexpr uint32_t SAGE_UB_V1_VM_CHAN_OFFSET = SAGE_UB_V1_STATS_OFFSET + 5 * Catlass::SageAttn::Vector1UbBudget::LSE_ROW_STRIDE;
+[[maybe_unused]] constexpr uint32_t SAGE_UB_V1_VM_CHAN_OFFSET = SAGE_UB_V1_STATS_OFFSET + 5 * Catlass::SageAttn::Vector1UbBudget::LSE_ROW_STRIDE;
 static_assert(SAGE_UB_V1_VM_CHAN_OFFSET + 512u <= Catlass::SageAttn::Vector1UbBudget::LSE_WORKSPACE_OFFSET +
                   Catlass::SageAttn::Vector1UbBudget::LSE_WORKSPACE_BYTES,
               "A7 V1 row scratch exceeds LSE workspace region");
@@ -239,8 +236,8 @@ public:
         lse_correction_gm_ = lseCorrection;
         out_gm_ = attentionOut;
         lse_gm_ = softmaxLse;
-        workspace_gm_ = workspace; // 签名契约占位：用户区经 GetUserWorkspace 旁路直达 kernel 入口，
-                                   // 成员保留以对齐设备入口形参。
+        workspace_gm_ = workspace; // 遵循 CANN 算子签名契约：用户 Workspace 指针经 GetUserWorkspace 直达入口，
+                                   // 保留以保持结构签名一致。
 
         // GetBlockIdx 设备端返回 int64_t，显式收窄避免隐式截断
         core_idx_ = static_cast<uint32_t>(GetBlockIdx());
@@ -409,7 +406,7 @@ private:
     {
         const uint32_t total_kv_blocks = (sk_ + block_n_ - 1) / block_n_;
         return (tiling_->is_causal != 0)
-            ? SageFastMin(total_kv_blocks, (cur_q_start_ + cur_q_len_ + block_n_ - 1) / block_n_)
+            ? ::Min(total_kv_blocks, (cur_q_start_ + cur_q_len_ + block_n_ - 1) / block_n_)
             : total_kv_blocks;
     }
 
@@ -681,7 +678,7 @@ private:
             // 严格保证生产者在前：写入完成后触发跨核事件通知 Cube
             // 生产管排空（DEFECT-H-2）：MTE3 写 KV 槽 → Cube MTE 读，CrossCoreSet
             // （S 管）不排空 MTE3，先自配对事件等待写毕再举旗（设备态；宿主
-            // CrossCoreSet 为空桩且无 HardEvent，见 sync_guard.h）
+            // 环境无硬件跨核事件，CrossCoreSet 模拟为无操作且无 HardEvent，见 sync_guard.h）
 #if SAGE_ATTN_DEVICE_COMPILE
             SetFlag<HardEvent::MTE3_MTE2>(0);
             WaitFlag<HardEvent::MTE3_MTE2>(0);
@@ -919,8 +916,7 @@ private:
     __aicore__ void MergePvPartialRows()
     {
         const uint32_t rows = TotalRows();
-        // fp32+fp16 档在合并处做 FP16 RNE 舍回（D2 裁定；档位判据直读 tiling，
-        // 不经 FixpipeConfig 间接——controller 在核内已无运行时职责）
+        // fp32+fp16 档在合并处做 FP16 RNE 舍回（D2 裁定；档位判据直读 tiling）
         const uint32_t fp16_round =
             (tiling_->pv_accum_dtype == PV_ACCUM_FP32_FP16) ? 1u : 0u;
         LocalTensor<float> ub_vs(TPosition::VECCALC, SAGE_UB_V1_VS_CHAN_OFFSET, d_);
@@ -956,9 +952,10 @@ private:
 #endif
 
     // -------------------------------------------------------------------------
-    // 内部实现辅助函数（Step-C 标量基线：数值语义以 twin_reference.h RunSequential 为
-    // 唯一真值，量化原语/分组索引/P 量化/PV 行累加经其单点 include 复用，禁止复制公式；
-    // 设备分支维持流水结构桩，向量化实现留给后续 pass）
+    // 内部实现辅助函数：
+    // - 宿主分支：以 twin_reference.h RunSequential 为数值参考，量化原语/分组索引/
+    //   P 量化/PV 累加单点复用 twin 实现；
+    // - 设备分支：采用全向量化 AscendC 原语与 dev_vf 专用算子实现 1C2V 高性能流水。
     // -------------------------------------------------------------------------
 
     /**
@@ -2049,7 +2046,7 @@ extern "C" __global__ __aicore__ void sage_attention2(
     // opc autogen 按此顺序生成 launch 调用，缺参/错序报 "requires 8 arguments, but 9"）。
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
 
-    // canonical 注册三件套（对齐仓内规范；宿主/KT 分支为等价桩）：
+    // canonical 注册宏（对齐仓内规范；宿主与 KT 编译环境提供等价模拟宏）：
     // REGISTER_TILING_DEFAULT 登记 TilingData 类型；GET_TILING_DATA_WITH_STRUCT 把
     // GM tiling 一次性拷入核内结构体（免 __gm__ 逐字段远端读）；GetUserWorkspace
     // 取得跳过 CANN 系统 workspace 前缀后的用户区指针。

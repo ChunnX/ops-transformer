@@ -49,7 +49,7 @@
 
 | 不变量 | 唯一定义点 | 消费方 |
 |---|---|---|
-| 分形粒度（M0/N0/K0、LoadData2D repeat） | 官方 catlass.hpp（sage_tile.hpp include + static_assert） | kernel 全部 MMA/搬运 |
+| 分形粒度（M0/N0/K0、LoadData2D repeat） | 官方 catlass.hpp（sage_tile.hpp include 直引派生） | kernel 全部 MMA/搬运 |
 | 行打包上限 MAX_PACK_ROWS=128 | tiling.h | kernel 窗口/host total_rows/InspectTilingPlan |
 | Q/K scale 槽步长 kQScaleSlotStride=4096 / kKScaleSlotStride=2048 | tiling.h（容量域经 QScaleCount/KScaleCount constexpr static_assert 锁定） | SimMemory/设备 UB 槽寻址 |
 | QK scale 定档公式 FinalizeQkScale | quant_common.h | kernel 双分支 + quant 参考实现（8 处收敛） |
@@ -69,6 +69,22 @@
 | ActiveKvBlocks/DtypeMode/SubKm 核内辅助 | op_kernel 私有方法 | 4 处重算 + 9 处位型分派 + 2 处 km 舍回收敛 |
 | Data+Scale 相邻排布 PackDataAndScaleAdjacent | quant_common.h | quant_int8/quant_fp8 Pack 双实现 |
 | LSE_ROW_STRIDE / MAX_GQA_RATIO | sage_resource.hpp / tiling.h | V1 子偏移、SimMemory 配额、host 上限 |
+
+## 死代码清扫记录（2026-10-03）
+
+以下四件为零生产消费的"已弃用策略"载体，经全仓引用图核验后删除（测试同步退役，
+决策上下文以本节与本文件"同步与流水守卫"节注记存档）：
+
+| 删除件 | 原职责 | 删除依据 |
+|---|---|---|
+| `sageattn_fp8/ascendc/pipeline_guard.h`（319 行） | UbTile 类型状态守卫（RES-05，编译期约束 DMA/计算状态转移） | 设备核热路径以 sync_guard.h 显式 flag 协议保序，该头零生产 include，仅 tests/test_pipeline_guard.cpp 引用 |
+| `sageattn_fp8/ascendc/accum_reduce.h`（111 行） | AccumReduceController 归约节奏控制器、FixpipeConfig、QuantizeToFp16 仿真壳 | PV 归约节奏唯一定义点已收敛至 twin::AccumulatePvRow（k_step 子块域）+ 设备侧逐块 FixPipe 裸搬合并（档位直读 tiling.pv_accum_dtype）；三符号零非测试消费 |
+| `tests/test_output_queue.cpp`（约 1000 行） | OutputRetireQueue（3 槽延迟成对归约 + skip-scale 变体）回归 | 队列类本体即测试文件内本地定义（"非交付热路径组件"），其 skip-scale 双锚点策略与 golden 逐块锚定强制 rescale 轨迹冲突，A7（task/12 D3）已裁定热路径弃用 |
+| `tests/test_pipeline_guard.cpp` | pipeline_guard 类型状态协议测试 | 随被测载体删除 |
+
+随动清理：op_kernel/sageattention2.cpp 与 sage_pv_mmad.hpp 的 accum_reduce.h include、
+run.sh 对应编译/运行钩子、test_tiling_struct.cpp 的 AccumReduceController 用例
+（编号重排）、README/PR 描述目录与同步机制条目。
 
 ## GQA 分块打包策略（2026-10-03，P7 修复）
 
@@ -159,17 +175,42 @@ chunks=1，任务解码与调度算术逐位不变（twin 25 桶 golden 回归�
 - 1C2V 协同流水：
   - Cube 引擎：负责 INT8 MMAD（QK^T）与 FP8 MMAD（PV），由 CATLASS 矩阵乘模板驱动；
   - CATLASS 接入边界（2026-10-03 收敛）：分形常量唯一定义源为官方 cann/catlass 仓
-    `<catlass/catlass.hpp>`（sage_tile.hpp include + static_assert 绑定，构建接线见
+    `<catlass/catlass.hpp>`（sage_tile.hpp include 直引派生，构建接线见
     cmake/SageAttnDeps.cmake）；LoadData2D/Fixpipe 数据通路因本算子 L1 为 ND 行布局
     + Data/Scale 相邻契约（与官方 TileCopyTla 的 zN 前置不匹配），保持 AscendC 自研，
     为任务书"按 Cube/CATLASS 微调分块"授权范围；
+  - 官方组件复用清单（2026-10-03 复用度盘点）：
+    - `Gemm::Tile::TileMmadTla<Ascend950>`：INT8 QK^T 与 FP8 PV 两条 MMAD 发射单点
+      （sage_qk_mmad.hpp / sage_pv_mmad.hpp Compute，取代原手写 ExecuteTileMmad）；
+    - `tla::MakeTensor/MakeLayout/MakeShape/MakeStride` + `Arch::PositionL0A/L0B/L0C`：
+      L0 三级张量代数描述（两执行器 Compute）；
+    - `Arch::Ascend950` 硬件常量（L1/L0A/L0B/L0C 容量）：HardwareResourceQuota 唯一映射源；
+    - 分形/MTE 常量 `BYTE_PER_FRACTAL`（→LOADDATA2D_REPEAT_BYTES）、`BYTE_PER_BLK`
+      （→32B 对齐）、`C0_NUM_PER_FRACTAL`（→Fixpipe zN 分形行粒度）；
+    - `detail/alignment.hpp` 全局组件 `::RoundUp` / `::CeilDiv` / `::Min`（Data+Scale
+      相邻对齐、LoadData2D repeat 计数、因果活跃块上限；标量 min 不再自造）。
+  - 官方组件不采用清单（性能/位级锁定裁定，均有源码级证据）：
+    - `Gemm::Tile::CopyL0CToUBTla`（ascend950 特化）：基于 `FixpipeParamsC310` 参数面
+      且 nSize 按 32B 粒度 RoundUp；本算子真机 L-A 验证走 `FixpipeParamsArch3510`
+      精确 nSize + SPLIT_M 手动双段发射（golden 位级锁定域），不同构不替换；
+    - `TileCopyTla` L1→L0A/L0B 特化：EnableIf 强约束 L1 侧 zN 分形布局，与本算子
+      ND 行 + Data/Scale 相邻 L1 契约不匹配；
+    - `Arch::Resource` / `LocalTensorBuffer`（TPipe InitBuffer）：官方头注释自证
+      "Tpipe 初始化会插入同步接口，可能与使用者冲突"——与本核手管 16 flag 流水
+      相斥，且零收益，不引入；
+    - 竞品（A2 同类算子）"PV 中间结果写回 GM 再读回归并"策略：新增 2 次 GM 往返
+      （写 P/部分和 + 读回归并），长序列显存带宽 +50% 量级，直接劣化对 FIA 的
+      Speedup 门禁——本算子 L1↔L0↔UB 全片上闭环（零 GM 往返热路径）为其核心
+      性能优势，坚决不采用。
   - V0 向量核：负责 MTE2 搬入、smooth_k 均值扣减、INT8/FP8 量化、scale 提取与 ND2NZ 排布转换；
   - V1 向量核：负责 L0C FixPipe 接收、exp2 域 online softmax、行 max 与 skip-scale 动态重缩放、两级累加归约与 LSE 累计；
 - 延迟一拍软件流水：
   - Cube 计算与 Vector 计算深度交叠，消灭 Vector 成为关键路径的等待气泡；
 - 同步与流水守卫：
-  - 采用现役 11 flag 有界缓冲协议（`sync_guard.h`）实现核间/核内定向通知；
-  - 引入类型状态守卫（`pipeline_guard.h`，RES-05）确保 DMA 搬运与计算状态机严格保序。
+  - 采用现役 16 flag 有界缓冲协议（`sync_guard.h` FLAG 0~15）实现核间/核内定向通知，
+    进域预置/退域回收配平防跨任务波次残留死锁（task/02_code.md B-2 纪律）。
+    （历史 RES-05 类型状态守卫 `pipeline_guard.h` 经死代码清扫删除：设备核热路径
+    以显式 flag 协议保序，该头文件零生产消费，仅测试引用。）
 
 ## 支持硬件
 

@@ -5,33 +5,22 @@
 #include <cstddef>
 #include "../ascendc/tiling.h"
 #include "sage_tile.hpp"
-#if defined(__has_include)
-#if __has_include("catlass/arch/arch.hpp")
 #include "catlass/arch/arch.hpp"
-#define SAGE_HAS_OFFICIAL_CATLASS_ARCH 1
-#endif
-#endif
-
-#ifndef SAGE_HAS_OFFICIAL_CATLASS_ARCH
-namespace Catlass::Arch {
-struct Ascend950 {
-    static constexpr uint32_t L1_SIZE = 512 * 1024;
-    static constexpr uint32_t L0A_SIZE = 64 * 1024;
-    static constexpr uint32_t L0B_SIZE = 64 * 1024;
-    static constexpr uint32_t L0C_SIZE = 256 * 1024;
-};
-}
-#endif
 
 namespace Catlass::SageAttn {
 
 using Arch = Catlass::Arch::Ascend950;
 
 /**
- * 1C2V 硬件资源配额契约（Atlas 950PR 架构白皮书表 4-2，基于官方 CATLASS Ascend950 架构定义）
+ * 1C2V 硬件资源配额契约（Atlas 950PR 架构白皮书表 4-2）。
+ * L1/L0A/L0B/L0C 取官方 Catlass::Arch::Ascend950 常数（一处定义，消除多层别名）。
+ * UB 不取官方 Ascend950::UB_SIZE（248KB，官方样例工程口径）：本算子按任务书验收域
+ * （Atlas 950PR 白皮书表 4-2 单 Vector 核 256KB）冻结 256KB 配额——两值为不同口径
+ * 而非换算关系，故不做 assert 绑定；UB 份额由下方各预算 static_assert 链按 256KB
+ * 封顶锁定。
  */
 struct HardwareResourceQuota {
-    // 物理硬件上限（基于 Catlass::Arch::Ascend950 官方常数，一处定义，消除多层别名）
+    // 物理硬件上限
     static constexpr uint32_t L1_TOTAL_BYTES   = Arch::L1_SIZE;                   // 512 KB
     static constexpr uint32_t L0A_TOTAL_BYTES  = Arch::L0A_SIZE;                  // 64 KB
     static constexpr uint32_t L0B_TOTAL_BYTES  = Arch::L0B_SIZE;                  // 64 KB

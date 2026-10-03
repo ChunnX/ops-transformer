@@ -21,7 +21,7 @@
 
 ## 官方 CATLASS 接入与模块边界
 
-- 设备核经 `sageattn_fp8/catlass/sage_tile.hpp` 无条件 include 官方 cann/catlass 仓 `<catlass/catlass.hpp>`，分形粒度常量（FRACTAL_M0/N0、FRACTAL_K0_*、LOADDATA2D_REPEAT_BYTES）全部由官方 `BYTE_PER_C0` / `C0_NUM_PER_FRACTAL` / `BYTE_PER_FRACTAL` 派生，`static_assert` 锁定；
+- 设备核经 `sageattn_fp8/catlass/sage_tile.hpp` 无条件 include 官方 cann/catlass 仓 `<catlass/catlass.hpp>`，分形粒度常量（FRACTAL_M0/N0、FRACTAL_K0_*、LOADDATA2D_REPEAT_BYTES）全部由官方 `BYTE_PER_C0` / `C0_NUM_PER_FRACTAL` / `BYTE_PER_FRACTAL` 派生，官方演进自动跟随；
 - 构建前置：`CATLASS_ROOT` 指向官方 catlass checkout（解析链：CMake 变量/环境变量 → 仓上级 `../catlass` → `third_party/catlass`，唯一定义点 `cmake/SageAttnDeps.cmake`，缺失即 fatal）；
 - 模块边界：官方 TileCopyTla 等 copy 组件要求 L1 侧 zN 分形布局；本算子 V0 产出为 ND 行布局 + Data/Scale 相邻契约（任务书允许的按 Cube 微调项），故 LoadData2D/Fixpipe 热路径为本算子自研 AscendC 逻辑，MMA 指令语义冻结待真机 L-A 复核，不与官方 copy 组件混用。
 
@@ -46,7 +46,7 @@ bash build.sh --pkg --experimental --soc=ascend950 --vendor_name=customize --ops
 - 命令均在算子目录 `experimental/attention/sageattention2/` 执行
 - 支持的目标：
 
-- `bash run.sh host`：编译并运行 `tests/test_aclnn_host.cpp`（TilingData 布局、Host Tiling、Die 亲和性、参数校验）、`tests/test_op_host.cpp`（REG_OP/InferShape）、`tests/test_output_queue.cpp`（OutputRetireQueue 成对归约）
+- `bash run.sh host`：编译并运行 `tests/test_aclnn_host.cpp`（TilingData 布局、Host Tiling、Die 亲和性、参数校验）、`tests/test_op_host.cpp`（REG_OP/InferShape）、`tests/test_tiling_struct.cpp`（TilingData 偏移、Online Softmax 与 CATLASS 契约）
 - `bash run.sh kernel`：设备 kernel 源码语法检查（主机编译器语法级）
 - `bash run.sh python`：`tests/test_tiling_struct.py`（ctypes 镜像与 `tiling.h` 逐字段对齐）、`tests/test_quant.py`（量化内核 ctypes 行为验证）与 `tests/test_kernel_twin.py`（宿主孪生执行器 + kernel 宿主串行分支对 golden 落盘数据的 L-A/L-B 功能交叉验证）
 - `bash run.sh opp`：custom OPP 打包 dry-run 与 mock 安装测试

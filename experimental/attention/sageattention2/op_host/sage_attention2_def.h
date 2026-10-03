@@ -182,7 +182,7 @@ enum OpParamType {
 class OpTensorDef {
 public:
     OpTensorDef& ParamType(OpParamType pt) { param_type_ = pt; return *this; }
-    // 真实 CANN OpDef 使用 DataTypeList/FormatList 列表接口；本地桩同名对齐
+    // 真实 CANN OpDef 使用 DataTypeList/FormatList 列表接口；本地宿主测试环境同名对齐
     OpTensorDef& DataTypeList(const std::vector<ge::DataType> &dt) { data_types_ = dt; return *this; }
     OpTensorDef& FormatList(const std::vector<ge::Format> &fmt) { formats_ = fmt; return *this; }
     OpTensorDef& AutoContiguous() { auto_contiguous_ = true; return *this; }
@@ -498,7 +498,7 @@ constexpr size_t ATTR_SMOOTH_V = 6;
 /**
  * RuntimeAttrs 字符串属性读取封装（唯一定义点）：
  * 真实 CANN gert::RuntimeAttrs 为 GetStr(idx) -> const char*，
- * 本地桩为 GetString(idx) -> const std::string*。
+ * 本地宿主测试环境为 GetString(idx) -> const std::string*。
  */
 inline const char *ReadStringAttr(const gert::RuntimeAttrs *attrs, size_t idx)
 {
