@@ -12,8 +12,6 @@
 
 import logging
 import torch
-import torch_npu
-import ascend_ops
 
 # 基础配置
 logging.basicConfig(level=logging.INFO)
@@ -48,7 +46,7 @@ def get_routing_conf_cpu(indices, scores, local_expert_num, start_expert_id, end
             if expert_id < start_expert_id or expert_id >= end_expert_id:
                 continue
             local_expert_id = expert_id % local_expert_num
-            if seen[local_expert_id] or init_token_list[local_expert_id] >= token_num:
+            if seen_mask[local_expert_id] or init_token_list[local_expert_id] >= token_num:
                 continue
             seen_mask[local_expert_id] = True
             init_token_table[local_expert_id, init_token_list[local_expert_id]] = i_token
@@ -114,20 +112,20 @@ init_token_table_2d1, init_token_list_npu_2d1, final_score_table_2d1 = \
                              LOCAL_EXPERT_NUM, TOKEN_NUM)
 
 # 5. 结果对比
-logging.info(f"------------------------------------------结果对比-----------------------------------------")
+logging.info("------------------------------------------结果对比-----------------------------------------")
 logging.info(f"indices tensor: \n{indices1}")
 logging.info(f"scores tensor: \n{scores1}")
 
 # init_token_list对比
-init_token_list_abs_error = torch.abs(init_token_list_npu_2d - init_token_list_cpu)
-logging.info(f"-------------------------------init_token_list的结果对比---------------------------")
+init_token_list_abs_error = torch.abs(init_token_list_npu_2d1 - init_token_list_cpu)
+logging.info("-------------------------------init_token_list的结果对比---------------------------")
 logging.info(f"init_token_list cpu result: \n{init_token_list_cpu}")
-logging.info(f"init_token_list npu result: \n{init_token_list_npu_2d}")
+logging.info(f"init_token_list npu result: \n{init_token_list_npu_2d1}")
 logging.info(f"init_token_list max absolute error: {init_token_list_abs_error.max().item()}")
 
 # init_token_table对比
 init_token_table_abs_error = torch.abs(init_token_table_2d1.float() - init_token_table_cpu.float())
-logging.info(f"------------------------init_token_table的结果对比----------------------------------")
+logging.info("------------------------init_token_table的结果对比----------------------------------")
 logging.info(f"init_token_table cpu result: \n{init_token_table_cpu}")
 logging.info(f"init_token_table npu result: \n{init_token_table_2d1}")
 logging.info(f"init_token_table max absolute error: {init_token_table_abs_error.max().item()}")
@@ -136,7 +134,7 @@ logging.info(f"init_token_table average absolute error: {init_token_table_abs_er
 # final_score_table对比
 final_score_table_abs_error = torch.abs(final_score_table_2d1.float() - final_score_table_cpu.float())
 final_score_table_rel_error = final_score_table_abs_error / (torch.abs(final_score_table_cpu.float()) + 1e-12)
-logging.info(f"-------------------------final_score_table的结果对比----------------------------------")
+logging.info("-------------------------final_score_table的结果对比----------------------------------")
 logging.info(f"final_score_table cpu result: \n{final_score_table_cpu}")
 logging.info(f"final_score_table npu result: \n{final_score_table_2d1}")
 logging.info(f"final_score_table max absolute error: {final_score_table_abs_error.max().item():.8f}")
