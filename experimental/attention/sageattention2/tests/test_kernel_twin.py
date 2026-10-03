@@ -34,8 +34,9 @@ lse_correction 喂法（开源契约）：km 与 corr = q·km_broadcast^T（fp32
 上层算好传入——孪生经 C-ABI lse_correction 形参、kernel 经 GM 入参 5，两条路径
 消费同一 `_lse_correction` 产出（本文件唯一定义）。
 
-运行方式：pytest tests/test_kernel_twin.py 或 python tests/test_kernel_twin.py；
-动态库现场编译（首次约 1 s，按源码 mtime 缓存），无需 NPU 与预置产物。
+运行方式：run.sh python（自动进容器）或容器内 python tests/test_kernel_twin.py；
+动态库现场编译（首次约 1 s，按源码 mtime 缓存，编译器唯一定义点 tests/_cxx.py：BiSheng），
+无需 NPU 与预置产物。
 """
 
 from __future__ import annotations
@@ -52,10 +53,19 @@ from pathlib import Path
 import torch
 
 current_file = Path(__file__).resolve()
-OP_ROOT = current_file.parents[1]
-sys.path.insert(0, str(current_file.parent))  # tests/ 内共享模块（tiling_mirror）
-REPO_ROOT = next((p for p in current_file.parents if (p / "golden" / "manifest.json").exists()),
-                 OP_ROOT.parent.parent.parent.parent)
+OP_ROOT = current_file.parent.parent
+REPO_ROOT = current_file.parents[5]
+sys.path.insert(0, str(current_file.parent))  # tests/ 内共享模块（tiling_mirror、_cxx）
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+if str(OP_ROOT) not in sys.path:
+    sys.path.insert(0, str(OP_ROOT))
+if str(OP_ROOT / "python") not in sys.path:
+    sys.path.insert(0, str(OP_ROOT / "python"))
+
+# 测试动态库编译器唯一定义点（容器内 BiSheng）
+from _cxx import cxx  # noqa: E402
+
 
 # 与 tiling.h / quant_common.h 的编码唯一定义一致
 # 编码镜像唯一定义点：tests/tiling_mirror.py（锚定 tiling.h 枚举）
@@ -113,7 +123,7 @@ def _build_dylib() -> Path:
             return _DYLIB_PATH
     _DYLIB_PATH.parent.mkdir(parents=True, exist_ok=True)
     cmd = [
-        os.environ.get("CXX", "c++"), "-std=c++17", "-O3", "-shared", "-fPIC",
+        cxx(), "-std=c++17", "-O3", "-shared", "-fPIC",
         *[str(s) for s in _TWIN_SOURCES],
         "-I", str(OP_ROOT / "sageattn_fp8" / "ascendc"),
         "-I", str(OP_ROOT / "sageattn_fp8" / "catlass"),

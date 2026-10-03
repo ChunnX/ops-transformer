@@ -10,7 +10,7 @@ canonical 注册内核，并与宿主孪生真值（`sageattn_fp8/ascendc/twin_r
 | 文件 | 作用 |
 | --- | --- |
 | `sim_case_common.hpp` | 共享用例定义（形状/模式/种子/输入生成/key_mean/tiling 单点/bin IO） |
-| `sim_reference.cpp` | golden 参考程序（g++ 宿主编译）：生成输入 + tiling bin，孪生流水算 O/LSE |
+| `sim_reference.cpp` | golden 参考程序（bisheng 宿主模式编译）：生成输入 + tiling bin，孪生流水算 O/LSE |
 | `sim_main.cpp` | 设备 harness（bisheng `--run-mode=sim` 混编）：读 bin → GM → chevron 发射 → 回读落盘 |
 | `compare_outputs.py` | numpy 比对：O 位级一致率/ulp 分布、LSE 相对差、结论判定 |
 | `run_sim_e2e.sh` | 一键编排：参考编译运行 → sim 编译 → camodel 运行 → 比对 |
@@ -21,23 +21,21 @@ B=1、Hq=Hkv=1、Sq=Sk=128、D=64、fp16、per_thread、pv_accum=fp32+fp16、非
 smooth_k=1、sm_scale=1/8；输入 `std::mt19937(20261003±{1,2,3})` 生成 fp16 [-2,2)
 （整数域确定性映射，跨编译器位级一致）。
 
-## 复现步骤（容器内一次性命令形态）
+## 复现步骤（算子门禁容器内一次性命令形态）
 
 ```bash
-OUT=<宿主输出目录>          # 须可写，如 /Users/z/git/hw/docker/out
-docker run --rm \
-  -v /Users/z/git/hw:/work/hw \
-  -v "${OUT}":/work/out \
-  -e SAGE_ATTN_SIM_OUT=/work/out/sa2_sim_out \
-  sageattn2-dev:latest \
-  bash /work/hw/ops-transformer/experimental/attention/sageattention2/tools/sim/run_sim_e2e.sh \
-       /work/hw/ops-transformer /work/out/sa2_sim_e2e
+cd ops-transformer/experimental/attention/sageattention2   # 算子目录
+# 前置：bash docker/init.sh（CATLASS 置备）；产物落算子 docker/out/（挂载为 /work/out）
+SAGE_ATTN_SIM_OUT=/work/out/sa2_sim_out \
+./docker/sage run \
+  bash tools/sim/run_sim_e2e.sh /work/ops-transformer /work/out/sa2_sim_e2e
 # 快照形态（避免工作树中间态污染编译，见"已知边界"）：
 #   git archive HEAD --prefix=ops-transformer/ | tar -x -C <快照父目录>
-# 并把第一处挂载换成 -v <快照父目录>:/work/hw，其余参数不变。
+# 并把 <算子仓根> 参数换成快照里的 /work/ops-transformer 对应挂载路径, 其余参数不变。
 ```
 
-四步：g++ 参考程序 → bisheng 设备 sim 编译 → camodel 仿真运行 → 数值比对。
+四步：bisheng 宿主模式参考程序 → bisheng 设备 sim 编译 → camodel 仿真运行 → 数值比对
+（全部编译统一 BiSheng，无宿主 g++ 代偿）。
 退出码 0 = 数值判定 PASS。
 
 ## 启动机制结论（2026-10-03 实证）

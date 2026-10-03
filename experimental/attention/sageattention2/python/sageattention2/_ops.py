@@ -5,6 +5,7 @@ PyTorch custom operator registration for SageAttention2 on Ascend NPU.
 from __future__ import annotations
 
 import math
+import os
 import warnings
 from typing import Any
 

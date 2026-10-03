@@ -1,0 +1,17 @@
+# NPU 透传叠加层: 仅在装有昇腾驱动(Atlas 950PR 等)的 Linux 宿主上由 ./run_in_docker.sh 自动启用。
+# macOS 等无驱动开发机恒为交叉编译形态（门禁全链不需要本文件）。
+# 设备清单依据官方镜像运行示例(cann-container-image OVERVIEW, 950 系含 ummu/uburma)
+services:
+  dev:
+    devices:
+      - /dev/davinci0
+      - /dev/davinci_manager
+      - /dev/hisi_hdc
+      - /dev/ummu
+      - /dev/uburma
+    volumes:
+      - /usr/local/dcmi:/usr/local/dcmi
+      - /usr/local/bin/npu-smi:/usr/local/bin/npu-smi
+      - /usr/local/Ascend/driver/lib64/:/usr/local/Ascend/driver/lib64/
+      - /usr/local/Ascend/driver/version.info:/usr/local/Ascend/driver/version.info
+      - /etc/ascend_install.info:/etc/ascend_install.info

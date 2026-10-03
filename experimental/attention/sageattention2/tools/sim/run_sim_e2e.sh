@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# B2 门禁端到端仿真一键脚本（CANN 容器内执行）。
+# B2 门禁端到端仿真一键脚本（CANN 容器内执行，经 ./docker/sage run 进入）。
 # 用法：bash run_sim_e2e.sh <算子仓根> <工作目录>
 #   <算子仓根> ops-transformer 仓根，缺省 /tmp/sa2_sim/ops-transformer（开发副本）；
-#              一次性容器形态传 /work/hw/ops-transformer（/work/hw 为宿主仓挂载）。
-#   <工作目录> bin 落点，须可写；一次性容器形态传 /work/out/sa2_sim_e2e（宿主
-#              /Users/z/git/hw/docker/out 挂载），日志/产物目录经 SAGE_ATTN_SIM_OUT
+#              门禁容器形态传 /work/ops-transformer（仓库根挂载, 见 docker/docker-compose.yml）。
+#   <工作目录> bin 落点，须可写；门禁容器形态传 /work/out/sa2_sim_e2e（挂载自
+#              算子 docker/out/），日志/产物目录经 SAGE_ATTN_SIM_OUT
 #              覆盖（缺省 /tmp/sa2_logs）。
-# 前置：容器内 CANN 9.2.0-beta.1（sageattn2-dev 镜像），本脚本自行 source 环境。
+# 前置：算子门禁容器（experimental/attention/sageattention2/docker/，CANN 9.2.0-beta.1），
+# 本脚本自行 source 环境；全部编译统一 BiSheng（参考程序为宿主模式，无 g++ 代偿）。
 set -uo pipefail
 
 REPO="${1:-/tmp/sa2_sim/ops-transformer}"
@@ -32,8 +33,8 @@ export LD_LIBRARY_PATH="$CAMODEL_STACK:/usr/local/Ascend/cann-9.2.0-beta.1/lib64
 SIMLIB="$ASC/aarch64-linux/simulator/Ascend950PR_9599/lib"
 RC=0
 
-echo "== [1/4] golden 参考程序（g++，SAGE_ATTN_DEVICE_COMPILE=0 路径）=="
-g++ -std=c++17 -O2 -DSAGE_ATTN_DEVICE_COMPILE=0 \
+echo "== [1/4] golden 参考程序（bisheng 宿主模式，SAGE_ATTN_DEVICE_COMPILE=0 路径）=="
+bisheng -std=c++17 -O2 -DSAGE_ATTN_DEVICE_COMPILE=0 \
     -I"$SAGE_ATTN/sageattn_fp8/ascendc" -I"$SAGE_ATTN/aclnn" -I"$SAGE_ATTN/quant" -I"$SIMDIR" \
     "$SIMDIR/sim_reference.cpp" "$SAGE_ATTN/quant/quant_int8.cpp" "$SAGE_ATTN/quant/quant_fp8.cpp" \
     -o "$OUT/sim_reference" || { echo "[FAIL] 参考程序编译失败"; exit 1; }

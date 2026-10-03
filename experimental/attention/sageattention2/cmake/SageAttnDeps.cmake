@@ -5,7 +5,11 @@
 # BYTE_PER_FRACTAL）派生分形粒度，因此本依赖为硬性前置，缺失即 fatal（与仓内
 # CATLASS 样例工程的 CATLASS_ROOT 约定一致）。
 #
-# 解析链：CATLASS_ROOT（CMake 变量 → 环境变量）→ <repo>/../catlass → <repo>/third_party/catlass
+# 解析链（独立仓库交付契约：只引用仓库内部路径，外部 checkout 统一经
+# docker/init.sh 内聚到算子 docker/third_party/catlass）：
+#   CATLASS_ROOT（CMake 变量 → 环境变量）
+#   → <算子目录>/docker/third_party/catlass   （init.sh 置备位置）
+#   → <仓库根>/third_party/catlass
 # 产出变量（调用方直接消费，勿自行重解析）：
 #   SAGE_ATTN_CATLASS_INCLUDE_DIR  官方 CATLASS include 目录
 
@@ -13,16 +17,15 @@ if(NOT DEFINED CATLASS_ROOT)
     set(CATLASS_ROOT "$ENV{CATLASS_ROOT}")
 endif()
 
-# CMAKE_CURRENT_LIST_DIR = <算子目录>/cmake；仓根为其上三级
+# CMAKE_CURRENT_LIST_DIR = <算子目录>/cmake；算子目录为其上一级，仓库根为其上三级
+get_filename_component(SAGE_ATTN_OP_DIR "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
 get_filename_component(SAGE_ATTN_REPO_ROOT "${CMAKE_CURRENT_LIST_DIR}/../../.." ABSOLUTE)
 
 if(NOT CATLASS_ROOT)
-    if(EXISTS "${SAGE_ATTN_REPO_ROOT}/../catlass/include/catlass/catlass.hpp")
-        set(CATLASS_ROOT "${SAGE_ATTN_REPO_ROOT}/../catlass")
+    if(EXISTS "${SAGE_ATTN_OP_DIR}/docker/third_party/catlass/include/catlass/catlass.hpp")
+        set(CATLASS_ROOT "${SAGE_ATTN_OP_DIR}/docker/third_party/catlass")
     elseif(EXISTS "${SAGE_ATTN_REPO_ROOT}/third_party/catlass/include/catlass/catlass.hpp")
         set(CATLASS_ROOT "${SAGE_ATTN_REPO_ROOT}/third_party/catlass")
-    elseif(EXISTS "${SAGE_ATTN_REPO_ROOT}/../git/catlass/include/catlass/catlass.hpp")
-        set(CATLASS_ROOT "${SAGE_ATTN_REPO_ROOT}/../git/catlass")
     endif()
 endif()
 
@@ -30,7 +33,9 @@ if(NOT CATLASS_ROOT OR NOT EXISTS "${CATLASS_ROOT}/include/catlass/catlass.hpp")
     message(FATAL_ERROR
         "SageAttention2: set CATLASS_ROOT to an official cann/catlass checkout "
         "with Ascend950 support (checked: \$CATLASS_ROOT env, "
-        "${SAGE_ATTN_REPO_ROOT}/../catlass, ${SAGE_ATTN_REPO_ROOT}/third_party/catlass)")
+        "${SAGE_ATTN_OP_DIR}/docker/third_party/catlass, "
+        "${SAGE_ATTN_REPO_ROOT}/third_party/catlass; "
+        "run docker/init.sh to provision)")
 endif()
 
 set(SAGE_ATTN_CATLASS_INCLUDE_DIR "${CATLASS_ROOT}/include")

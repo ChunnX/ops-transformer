@@ -11,7 +11,7 @@
  * 求均值后舍入回 fp16）、bin 文件读写辅助。
  *
  * 被两个编译域共享：
- * - sim_reference.cpp（容器内 g++ 宿主编译，产出输入 bin + tiling bin + golden bin）；
+ * - sim_reference.cpp（容器内 BiSheng 宿主模式编译，产出输入 bin + tiling bin + golden bin）；
  * - sim_main.cpp（bisheng --run-mode=sim 混编，读同一批 bin 驱动设备核）。
  * 两端输入位级同源是数值比对成立的前提，因此设备侧一律从 bin 读输入，不在
  * 设备 harness 内重新生成。

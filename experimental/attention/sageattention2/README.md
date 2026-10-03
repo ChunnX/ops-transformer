@@ -9,20 +9,21 @@
 
 ## 目录结构
 
-- `./aclnn/`：两段式 ACLNN Host 实现（`sage_attn_proto.h` 接口原型、`sage_attn_host.cpp` 参数校验与 Host Tiling）
-- `./sageattn_fp8/`：AscendC 设备侧基础设施（`ascendc/tiling.h` 为 Host/Device 共享 TilingData，`catlass/` 为 Cube MMA 封装；设备核入口已按 CANN opc 打包约定迁至 `./op_kernel/sageattention2.cpp`）
-- `./op_kernel/`：CANN opc 打包约定的内核源码目录（`sageattention2.cpp`，1C2V 延迟一拍主流水唯一内核入口）
+- `./aclnn/`：两段式 ACLNN Host 实现（`./aclnn/sage_attn_proto.h` 接口原型、`./aclnn/sage_attn_host.cpp` 参数校验与 Host Tiling）
+- `./sageattn_fp8/`：AscendC 设备侧基础设施（`./sageattn_fp8/ascendc/tiling.h` 为 Host/Device 共享 TilingData，`./sageattn_fp8/catlass/` 为 Cube MMA 封装；设备核入口已按 CANN opc 打包约定迁至 `./op_kernel/sageattention2.cpp`）
+- `./op_kernel/`：CANN opc 打包约定的内核源码目录（`./op_kernel/sageattention2.cpp`，1C2V 延迟一拍主流水唯一内核入口）
 - `./quant/`：Q/K INT8 与 V FP8 量化 Host 逻辑与可单测的 C++ 量化内核
 - `./op_host/`：CANN 标准 REG_OP/InferShape 注册层；交付态 op_api 层两段式 C 接口实现位于 `./op_api/`（字符串属性 ABI，经 `OP_API_DIR` 随 run 包打包安装），`./aclnn/` 为移植态本地单测实现（数值编码 ABI，见 `./aclnn/sage_attn_proto.h`）
-- `./python/sageattention2/`：PyTorch 接入包（`core.py` 冻结签名、`dispatch.py` 多后端路由、`op_plugin.py` NPU kernel 加载）
-- `./tests/`、`./benchmarks/`：本地门禁单测与独立 ACLNN 基准工具
-- `./tools/sim/`：设备核 camodel 仿真 harness（B2 门禁数值比对；依赖 CANN 容器 bisheng `--run-mode=sim` 运行，用法见 `./tools/sim/README.md`，不属于 run.sh 主机门禁）
-- `./run.sh`：本地门禁统一入口
+- `./python/sageattention2/`：PyTorch 接入包（`dispatch.py` 前端分派与环境变量解析、`_ops.py` PyTorch 自定义算子注册与后端绑定、`_extension.py` C++ 扩展加载、`error_check.py` 输入校验与预处理、`monkey_patch.py` SDPA 热替换工具）
+- `./tests/`、`./benchmarks/`：容器门禁单测与独立 ACLNN 基准工具
+- `./tools/sim/`：设备核 camodel 仿真 harness（B2 门禁数值比对；依赖门禁容器 bisheng `--run-mode=sim` 运行，用法见 `./tools/sim/README.md`，不属于 run.sh 容器门禁主链）
+- `./docker/`：算子门禁容器（唯一编译与测试环境；Dockerfile/compose/生命周期入口 `sage`，见 `./docker/README.md`）
+- `./run.sh`：门禁统一入口（宿主只依赖 docker，所有目标自动包装进容器，容器内统一 BiSheng 编译）
 
 ## 官方 CATLASS 接入与模块边界
 
-- 设备核经 `sageattn_fp8/catlass/sage_tile.hpp` 无条件 include 官方 cann/catlass 仓 `<catlass/catlass.hpp>`，分形粒度常量（FRACTAL_M0/N0、FRACTAL_K0_*、LOADDATA2D_REPEAT_BYTES）全部由官方 `BYTE_PER_C0` / `C0_NUM_PER_FRACTAL` / `BYTE_PER_FRACTAL` 派生，官方演进自动跟随；
-- 构建前置：`CATLASS_ROOT` 指向官方 catlass checkout（解析链：CMake 变量/环境变量 → 仓上级 `../catlass` → `third_party/catlass`，唯一定义点 `cmake/SageAttnDeps.cmake`，缺失即 fatal）；
+- 设备核经 `./sageattn_fp8/catlass/sage_tile.hpp` 无条件 include 官方 cann/catlass 仓 `<catlass/catlass.hpp>`，分形粒度常量（FRACTAL_M0/N0、FRACTAL_K0_*、LOADDATA2D_REPEAT_BYTES）全部由官方 `BYTE_PER_C0` / `C0_NUM_PER_FRACTAL` / `BYTE_PER_FRACTAL` 派生，官方演进自动跟随；
+- 构建前置：`CATLASS_ROOT` 指向官方 catlass checkout（解析链：CMake 变量/环境变量 → 仓上级 `../catlass` → `./third_party/catlass`，唯一定义点 `./cmake/SageAttnDeps.cmake`，缺失即 fatal）；
 - 模块边界：官方 TileCopyTla 等 copy 组件要求 L1 侧 zN 分形布局；本算子 V0 产出为 ND 行布局 + Data/Scale 相邻契约（任务书允许的按 Cube 微调项），故 LoadData2D/Fixpipe 热路径为本算子自研 AscendC 逻辑，MMA 指令语义冻结待真机 L-A 复核，不与官方 copy 组件混用。
 
 ## 编译构建
@@ -30,35 +31,39 @@
 ### 仓库整包构建（产出算子 run 包）
 
 - 前置条件：CANN Toolkit（已验证 `9.2.0-beta.1`）、BiSheng 编译器、已完成 `source /usr/local/Ascend/cann/set_env.sh` 或等效环境注入
-- 核心动作：在仓库根目录 `ops-transformer/` 执行完整构建，`--ops` 按算子目录名过滤实验算子
+- 核心动作：在仓库根目录 `./ops-transformer/` 执行完整构建，`--ops` 按算子目录名过滤实验算子
 
 ```bash
-cd ops-transformer
+cd ./ops-transformer
 bash build.sh --pkg --experimental --soc=ascend950 --vendor_name=customize --ops=sage_attention2 -j16
 ```
 
-- 注意：`--ops` 过滤值必须命中 `experimental/attention/` 下的算子目录名（本算子目录为 `sageattention2`）；若交付流水线按注册名 `sage_attention2` 传参导致目录未命中，改用 `bash build.sh --pkg --experimental --soc=ascend950 --vendor_name=customize --ops=sageattention2 -j16` 或省略 `--ops` 全量构建
-- 产出：`build_out/` 下的 custom run 包，安装后含 ACLNN 算子库 `libsageattention2.so`（`opFile` 名见 `./op_host/sage_attention2_def.cpp`）
+- 注意：`--ops` 过滤值必须命中 `./ops-transformer/experimental/attention/` 下的算子目录名（本算子目录为 `sageattention2`）；若交付流水线按注册名 `sage_attention2` 传参导致目录未命中，改用 `bash build.sh --pkg --experimental --soc=ascend950 --vendor_name=customize --ops=sageattention2 -j16` 或省略 `--ops` 全量构建
+- 产出：`./build_out/` 下的 custom run 包，安装后含 ACLNN 算子库 `libsageattention2.so`（`opFile` 名见 `./op_host/sage_attention2_def.cpp`）
 
-### 本地门禁（run.sh，无需 NPU）
+### 容器门禁（run.sh → BiSheng 容器，唯一编译与测试环境）
 
-- 前置条件：macOS 或 Linux 主机，`clang++` 或 `g++`；Python 门解释器选择链：SAGE_PYTHON 环境变量 → 本目录 .venv → 仓库外 workspace 级 .venv-sage → PATH（2026-10-03 起 .venv 不再入库，避免 kernel 打包拷贝 659MB 环境目录）
-- 命令均在算子目录 `experimental/attention/sageattention2/` 执行
+- 前置条件：宿主 C++ 单元测试依赖本地编译器（`clang++` 或 `g++`）；设备核编译依赖 BiSheng 编译器（本地有 CANN 时直调，无 CANN 时由 `docker` 容器承载，宿主只需安装 Docker 与 Docker Compose 插件）
+- 命令均在算子目录 `./ops-transformer/experimental/attention/sageattention2/` 执行；`run.sh kernel` 检测到宿主无 BiSheng 时自动委派给容器执行，亦可通过 `bash run.sh docker` 直接启动容器毕昇编译
+- 设备核编译严格基于 BiSheng 编译器（`--npu-arch=dav-3510 -std=c++17 -xasc`）
 - 支持的目标：
 
-- `bash run.sh host`：编译并运行 `tests/test_aclnn_host.cpp`（TilingData 布局、Host Tiling、Die 亲和性、参数校验）、`tests/test_op_host.cpp`（REG_OP/InferShape）、`tests/test_tiling_struct.cpp`（TilingData 偏移、Online Softmax 与 CATLASS 契约）
-- `bash run.sh kernel`：设备 kernel 源码语法检查（主机编译器语法级）
-- `bash run.sh python`：`tests/test_tiling_struct.py`（ctypes 镜像与 `tiling.h` 逐字段对齐）、`tests/test_quant.py`（量化内核 ctypes 行为验证）与 `tests/test_kernel_twin.py`（宿主孪生执行器 + kernel 宿主串行分支对 golden 落盘数据的 L-A/L-B 功能交叉验证）
+- `bash run.sh host`：使用宿主编译器编译并运行 `./tests/test_aclnn_host.cpp`、`./tests/test_op_host.cpp` 与 `./tests/test_tiling_struct.cpp`
+- `bash run.sh kernel`：基于 BiSheng 编译器编译设备核 `./op_kernel/sageattention2.cpp` 为 `./build/sageattention2_bisheng.o`（无 BiSheng 时自动转由 Docker 执行）
+- `bash run.sh docker [target]`：一键调用 Docker 容器执行容器内毕昇编译与门禁测试
+- `bash run.sh python`：`./tests/test_tiling_struct.py`、`./tests/test_quant.py` 与 `./tests/test_kernel_twin.py`
 - `bash run.sh opp`：custom OPP 打包 dry-run 与 mock 安装测试
-- `bash run.sh container`：容器内 BiSheng 设备二进制编译（`dav-3510`）
-- `bash run.sh all`：以上全部
+- `bash run.sh all`：执行全部门禁验证（host → kernel → python → opp）
 
 ## 接口说明
 
 ### PyTorch 接口（`./python/sageattention2/`）
 
-- 入口一 `sageattn(q, k, v, tensor_layout="HND", is_causal=False, sm_scale=None, return_lse=False, 其余关键字参数包)`：自动路由到 FP8 PV kernel，`pv_accum_dtype` 等高级参数经关键字参数（kwargs）传入
-- 入口二 `sageattn_qk_int8_pv_fp8_asc(q, k, v, tensor_layout="HND", is_causal=False, qk_quant_gran="per_thread", sm_scale=None, pv_accum_dtype="fp32+fp16", smooth_k=True, smooth_v=False, return_lse=False, 其余关键字参数包)`：显式全参版本，末位为 kwargs 透传
+- 入口一 `sageattn(q, k, v, attn_mask=None, tensor_layout="HND", is_causal=False, sm_scale=None, return_lse=False, 其余关键字参数包)`：自动路由到 FP8 PV kernel，`pv_accum_dtype` 等高级参数经关键字参数（kwargs）传入
+- 入口二 `sageattn_qk_int8_pv_fp8_asc(q, k, v, attn_mask=None, tensor_layout="HND", is_causal=False, qk_quant_gran="per_thread", sm_scale=None, pv_accum_dtype=None, smooth_k=True, smooth_v=False, return_lse=False, 其余关键字参数包)`：显式全参版本，末位为 kwargs 透传
+- 返回值契约：当 `return_lse=False`（默认值）时，直接单张量返回 `o`；仅当 `return_lse=True` 时，才返回 `(o, lse)` 二元组
+- 掩码约束：显式接收可选参数 `attn_mask=None`，传入非 None 掩码时直接抛出 `ValueError` 异常
+- SDPA 热替换工具（`./python/sageattention2/monkey_patch.py`）：提供 `replace_sdpa()` 全局热替换、`restore_sdpa()` 恢复还原以及 `sdpa_patch()` 上下文管理器，支持工业级降级回退与嵌套作用域
 - 张量形状：
 
 - `tensor_layout="HND"`：q 为 `[B, Hq, Sq, D]`，k/v 为 `[B, Hkv, Sk, D]`
@@ -103,8 +108,8 @@ bash build.sh --pkg --experimental --soc=ascend950 --vendor_name=customize --ops
 
 - `benchmark_aclnn.cpp`：独立 C++ ACLNN 基准工具，dlsym 加载 `aclnnSageAttention2`（函数指针签名对齐交付 `./op_api/aclnn_sage_attention2.h` 字符串属性 ABI）与基线 `aclnnFusedInferAttentionScoreV5`（签名逐参数对齐 CANN `9.2.0-beta.1` 头文件），ABBA 轮换 + Trim5 统计 + JSON 报告
 - 退出码契约：`0` 为真机运行完成（含 PASS/FAIL 裁决字段），`1` 为运行错误，`2` 为 SIMULATION 模拟运行
-- SIMULATION 模式（无 CANN/NPU 的主机 mock 构建）下，所有 `speedup` 字段输出 `NaN`、`verdict` 输出 `"SIMULATION"`、`passed` 与精度对照字段输出 `null`，报告头与 `meta.simulation_warning` 显式声明模拟语义；模拟延迟为合成常数，禁止作为验收证据
-- 构建：`bash benchmarks/build_aclnn_benchmark.sh`（有 CANN 环境时链接真机库，否则自动落 mock 模式并容忍冒烟退出码 `2`）
+- SIMULATION 为纯运行时模式（非编译路径）：容器未透传 NPU 设备时工具仍可运行（dlsym 解析失败即落 mock 执行器），所有 `speedup` 字段输出 `NaN`、`verdict` 输出 `"SIMULATION"`、`passed` 与精度对照字段输出 `null`，报告头与 `meta.simulation_warning` 显式声明模拟语义；模拟延迟为合成常数，禁止作为验收证据
+- 构建：`bash ./benchmarks/build_aclnn_benchmark.sh`（容器内执行，BiSheng 宿主模式编译并链接 CANN 真机库；无 CANN 环境直接报错，不再有 mock 编译分支）
 - 单用例示例（算子目录执行）：
 
 ```bash
@@ -112,33 +117,29 @@ bash build.sh --pkg --experimental --soc=ascend950 --vendor_name=customize --ops
     --order abba --gate 1.6 --output build/bench_p03.json
 ```
 
-## 一键复现（本地门禁序列）
+## 一键复现（容器门禁序列）
 
-- 前置条件：已在算子目录 `experimental/attention/sageattention2/`；Python 门依赖 torch 环境（解释器选择链见上文；本仓库不入库任何 venv）
+- 前置条件：已在算子目录 `./ops-transformer/experimental/attention/sageattention2/`，宿主机已装 docker 与 compose 插件（唯一宿主依赖；镜像/缓存说明见 `./docker/README.md`）
 - 核心动作，按序执行，任何一步非零退出即门禁失败：
 
 ```bash
-cd ops-transformer/experimental/attention/sageattention2
+cd ./ops-transformer/experimental/attention/sageattention2
 bash run.sh host
 bash run.sh kernel
 bash run.sh python
 bash run.sh opp
 ```
 
-- 等价的 pytest 直跑形式：
-
-```bash
-SAGE_PYTHON=... pytest tests/ -q（或 run.sh python）
-```
+- 也可一条命令全跑：`bash run.sh all`；交互调试：`./docker/sage exec`
 
 - 质量准出门禁：
 
-- `bash run.sh host` 输出三段 `[SUCCESS]`（ACLNN Host 7 例、OP_HOST 5 例、OutputQueue 10 例）且退出码为 0
-- `SAGE_PYTHON=... pytest tests/ -q` 全部用例通过（含 `tests/test_tiling_struct.py` 的 TilingData ctypes 镜像对 160 字节总长、32 字节对齐与逐字段偏移的断言）；`run.sh python` 覆盖 test_tiling_struct.py、test_quant.py 与 test_kernel_twin.py 三个快速项，全量口径以 pytest 为准
-- `tests/test_kernel_twin.py`（已纳入 `run.sh python`）：宿主孪生全流水执行器（twin_reference RunSequential）与 kernel 宿主串行分支（op_kernel SageAttnKernel + SimMemory，TilingData 直驱 `sage_attention2` C 入口）对 golden 25 桶落盘 out/lse 的功能交叉验证——23 桶整桶 + 3 大桶 128 对齐行窗口（P-05/P-07/TC-09，非因果行独立性如实标注；TC-03_smooth_v_fp32 经 smooth_v 正路径整桶执行），判据 L-A（matched_ratio ≥ 0.99、max_abs ≤ 0.1/1.0、LSE ≤ 1e-3）+ L-B（对 SDPA 误差比 ≤ 2.0/1.2/1.2），并附 P-01 量化中间态（q/k INT8、v FP8、scale）位级比对；P-01/TC-03/TC-04/TC-05/TC-07/TC-01(fp16) 代表桶另以 kernel 宿主串行分支复验，TC-01(bf16) 桶覆盖核内 `tiling.input_dtype==2` 位型分派分支（bf16 读写与 km 差值位型舍回）
-- 仓库级数值门（kernel 宿主串行路径 vs 孪生参考十用例位级一致、golden 25 桶 L-A/L-B）：由工程根 `ci/local_test.sh` 承载，依赖仓库外 `./tests/` 与 `./sageAttention2/sageAttentionTest`（交付包内不自带，复现须在完整工程根执行）
-- `bash run.sh opp` 完成 dry-run 打包与 mock 安装且退出码为 0
-- 真机验收另行执行 `bash benchmarks/build_aclnn_benchmark.sh` 并以真机报告的 `verdict: PASS` 为准；`mode: SIMULATION` 的报告一律无效
+- `bash run.sh host` 输出各二进制自检 `[SUCCESS]` 且退出码为 0（当前收敛为 test_aclnn_host / test_op_host / test_tiling_struct 三个二进制，以 `run.sh` 实际清单为准）
+- `bash run.sh python` 四个测试文件全部通过（含 `./tests/test_tiling_struct.py` 的 TilingData ctypes 镜像对 160 字节总长、32 字节对齐与逐字段偏移的断言）
+- `./tests/test_kernel_twin.py`（已纳入 `run.sh python`）：宿主孪生全流水执行器（twin_reference RunSequential）与 kernel 宿主串行分支（op_kernel SageAttnKernel + SimMemory，TilingData 直驱 `sage_attention2` C 入口）对 golden 25 桶落盘 out/lse 的功能交叉验证——23 桶整桶 + 3 大桶 128 对齐行窗口（P-05/P-07/TC-09，非因果行独立性如实标注；TC-03_smooth_v_fp32 经 smooth_v 正路径整桶执行），判据 L-A（matched_ratio ≥ 0.99、max_abs ≤ 0.1/1.0、LSE ≤ 1e-3）+ L-B（对 SDPA 误差比 ≤ 2.0/1.2/1.2），并附 P-01 量化中间态（q/k INT8、v FP8、scale）位级比对；P-01/TC-03/TC-04/TC-05/TC-07/TC-01(fp16) 代表桶另以 kernel 宿主串行分支复验，TC-01(bf16) 桶覆盖核内 `tiling.input_dtype==2` 位型分派分支（bf16 读写与 km 差值位型舍回）
+- 仓库级数值门（kernel 宿主串行路径 vs 孪生参考十用例位级一致、golden 25 桶 L-A/L-B）：由工程根 `./ci/local_test.sh` 承载，依赖仓库外 `./tests/` 与 `./sageAttention2/sageAttentionTest`（交付包内不自带，复现须在完整工程根执行）
+- `bash run.sh opp` 完成 BiSheng vendor 树出包与本地部署且退出码为 0
+- 真机验收另行执行 `bash ./benchmarks/build_aclnn_benchmark.sh`（容器内）并以真机报告的 `verdict: PASS` 为准；`mode: SIMULATION` 的报告一律无效
 
 ## 交付文档索引
 

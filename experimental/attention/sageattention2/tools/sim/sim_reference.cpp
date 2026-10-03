@@ -1,6 +1,6 @@
 /**
  * \file sim_reference.cpp
- * \brief B2 门禁 golden 参考程序（宿主 g++ 编译，SAGE_ATTN_DEVICE_COMPILE=0 路径）。
+ * \brief B2 门禁 golden 参考程序（容器内 BiSheng 宿主模式编译，SAGE_ATTN_DEVICE_COMPILE=0 路径）。
  *
  * 职责：
  * 1. 按 sim_case_common.hpp 冻结用例生成 fp16 Q/K/V 与 key_mean，写 bin；
@@ -11,7 +11,7 @@
  * input_key_mean_f32.bin / tiling_160.bin / golden_o_fp16.bin / golden_lse_f32.bin
  *
  * 编译（容器内，见 run_sim_e2e.sh 步骤 1）：
- *   g++ -std=c++17 -O2 -DSAGE_ATTN_DEVICE_COMPILE=0
+ *   bisheng -std=c++17 -O2 -DSAGE_ATTN_DEVICE_COMPILE=0
  *       -I sageattn_fp8/ascendc -I aclnn -I quant -I tools/sim
  *       sim_reference.cpp quant/quant_int8.cpp quant/quant_fp8.cpp
  */

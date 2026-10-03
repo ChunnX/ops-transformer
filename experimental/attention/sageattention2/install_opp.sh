@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
-# install_opp.sh: CANN 官方标准自定义 OPP 算子部署与环境变量导出工具
+# install_opp.sh: CANN 标准自定义 OPP 算子部署与环境变量导出（无编译职责）
+#
+# 编译统一由 build_opp.sh 在 BiSheng 容器内完成；本脚本只做部署：
+#   - 默认部署到算子本地 build/opp_installed（算子 .gitignore 已兜住）；
+#   - 若仓库根存在官方整包产物 cann-ops-transformer-custom_*.run，优先以官方 run 包安装
+#     （真机交付形态，语义不变）；
+#   - --export-env 输出可直接 eval 的环境变量注入命令。
 
 set -euo pipefail
 
@@ -7,29 +13,18 @@ OP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "${OP_DIR}/../../.." && pwd)"
 
 INSTALL_PATH=""
-DRY_RUN=false
-MOCK_MODE=false
 REBUILD=false
 QUIET=false
 EXPORT_ENV_ONLY=false
 SOC="ascend950"
 PASSTHROUGH_ARGS=()
 
-# 颜色控制
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-YELLOW='\033[1;33m'
-CYAN='\033[0;36m'
-NC='\033[0m'
-
 print_usage() {
     echo "Usage: $0 [options]"
     echo ""
     echo "Options:"
-    echo "  --install-path=<path>    Custom installation path (default: auto-detected or build/opp_installed)"
-    echo "  --dry-run                Perform Dry-Run deployment without modifying system files"
-    echo "  --mock                   Mock installation mode (same as --dry-run)"
+    echo "  --install-path=<path>    Custom installation path (default: build/opp_installed,"
+    echo "                             or first entry of ASCEND_CUSTOM_OPP_PATH when set)"
     echo "  --rebuild                Force re-running build_opp.sh before deployment"
     echo "  --export-env             Print shell export commands for evaluation: eval \$($0 --export-env)"
     echo "  --soc=<soc>              Target SoC version (default: ascend950)"
@@ -41,17 +36,6 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --install-path=*)
             INSTALL_PATH="${1#*=}"
-            shift
-            ;;
-        --dry-run)
-            DRY_RUN=true
-            MOCK_MODE=true
-            PASSTHROUGH_ARGS+=("--dry-run")
-            shift
-            ;;
-        --mock)
-            MOCK_MODE=true
-            PASSTHROUGH_ARGS+=("--mock")
             shift
             ;;
         --rebuild)
@@ -82,11 +66,9 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# 确定默认安装目录
+# 确定默认安装目录：显式指定 > ASCEND_CUSTOM_OPP_PATH 首项 > 算子本地 build/opp_installed
 if [ -z "${INSTALL_PATH}" ]; then
-    if [ -n "${ASCEND_HOME_PATH:-}" ] && [ -d "${ASCEND_HOME_PATH}/opp" ] && [ "${MOCK_MODE}" = false ]; then
-        INSTALL_PATH="${ASCEND_HOME_PATH}/opp"
-    elif [ -n "${ASCEND_CUSTOM_OPP_PATH:-}" ]; then
+    if [ -n "${ASCEND_CUSTOM_OPP_PATH:-}" ]; then
         FIRST_PATH="${ASCEND_CUSTOM_OPP_PATH%%:*}"
         INSTALL_PATH="${FIRST_PATH%/vendors*}"
     else
@@ -106,29 +88,29 @@ if [ "${EXPORT_ENV_ONLY}" = true ]; then
 fi
 
 if [ "${QUIET}" = false ]; then
-    echo -e "${CYAN}================================================================================${NC}"
-    echo -e "${CYAN}SageAttention2 CANN Custom OPP Installer (install_opp.sh)${NC}"
-    echo -e "${CYAN}Operator directory: ${OP_DIR}${NC}"
-    echo -e "${CYAN}Target installation: ${INSTALL_PATH}${NC}"
-    echo -e "${CYAN}Target SoC:          ${SOC}${NC}"
-    echo -e "${CYAN}================================================================================${NC}"
+    echo "================================================================================"
+    echo "SageAttention2 CANN Custom OPP Installer"
+    echo "Operator directory: ${OP_DIR}"
+    echo "Target installation: ${INSTALL_PATH}"
+    echo "Target SoC:          ${SOC}"
+    echo "================================================================================"
 fi
 
 PKG_SRC_DIR="${OP_DIR}/build/opp"
 
-# 1. 检查或触发 build_opp.sh 出包
+# 1. 检查或触发 build_opp.sh（BiSheng 容器内）出包
 if [ "${REBUILD}" = true ] || [ ! -d "${PKG_SRC_DIR}/vendors/customize" ]; then
     if [ "${QUIET}" = false ]; then
-        echo -e "${BLUE}>>> OPP package not found or rebuild requested. Invoking build_opp.sh...${NC}"
+        echo ">>> OPP package not found or rebuild requested. Invoking build_opp.sh..."
     fi
     bash "${OP_DIR}/build_opp.sh" --output-dir="${PKG_SRC_DIR}" --soc="${SOC}" "${PASSTHROUGH_ARGS[@]}"
 fi
 
-# 2. 如果存在官方出包生成的 .run 安装包且处于非 mock 模式，优先调用官方 run 脚本
+# 2. 如果存在官方整包出包的 .run 安装包，优先调用官方 run 脚本（真机交付形态）
 RUN_PKG=$(find "${REPO_DIR}/build_out" -name "cann-ops-transformer-custom_*.run" 2>/dev/null | head -n 1 || true)
-if [ -n "${RUN_PKG}" ] && [ -f "${RUN_PKG}" ] && [ "${MOCK_MODE}" = false ] && [ "${DRY_RUN}" = false ]; then
+if [ -n "${RUN_PKG}" ] && [ -f "${RUN_PKG}" ]; then
     if [ "${QUIET}" = false ]; then
-        echo -e "${GREEN}>>> Executing official CANN custom opp run package: ${RUN_PKG}...${NC}"
+        echo ">>> Executing official CANN custom opp run package: ${RUN_PKG}..."
     fi
     bash "${RUN_PKG}" --quiet --install-path="${INSTALL_PATH}"
     CONFIG_FILE="${INSTALL_PATH}/vendors/config.ini"
@@ -141,7 +123,7 @@ EOF
 else
     # 本地标准 Vendor 目录部署
     if [ "${QUIET}" = false ]; then
-        echo -e "${BLUE}>>> Deploying vendor tree to ${INSTALL_PATH}/vendors...${NC}"
+        echo ">>> Deploying vendor tree to ${INSTALL_PATH}/vendors..."
     fi
 
     mkdir -p "${INSTALL_PATH}/vendors/customize"
@@ -159,9 +141,7 @@ EOF
     else
         # 确保 load_priority 包含 customize
         if ! grep -q "customize" "${CONFIG_FILE}"; then
-            sed -i.bak 's/load_priority=/load_priority=customize,/' "${CONFIG_FILE}" 2>/dev/null || \
-            sed -i '' 's/load_priority=/load_priority=customize,/' "${CONFIG_FILE}" 2>/dev/null || true
-            rm -f "${CONFIG_FILE}.bak"
+            sed -i 's/load_priority=/load_priority=customize,/' "${CONFIG_FILE}" 2>/dev/null || true
         fi
     fi
 
@@ -176,24 +156,24 @@ fi
 
 # 3. 部署后自检验证
 if [ "${QUIET}" = false ]; then
-    echo -e "${BLUE}>>> Verifying deployed OPP components...${NC}"
+    echo ">>> Verifying deployed OPP components..."
 fi
 
-test -f "${INSTALL_PATH}/vendors/config.ini" || test -f "${INSTALL_PATH}/vendors/custom_transformer/config.ini" || { echo -e "${RED}[ERROR] ${INSTALL_PATH}/vendors/config.ini missing!${NC}"; exit 1; }
-test -f "${INSTALL_PATH}/vendors/customize/op_api/lib/libcust_opapi.so" || test -f "${INSTALL_PATH}/vendors/custom_transformer/op_api/lib/libcust_opapi.so" || { echo -e "${RED}[ERROR] libcust_opapi.so missing!${NC}"; exit 1; }
-test -f "${INSTALL_PATH}/vendors/customize/op_impl/ai_core/tbe/op_tiling/lib/liboptiling.so" || test -f "${INSTALL_PATH}/vendors/custom_transformer/op_impl/ai_core/tbe/op_tiling/lib/liboptiling.so" || test -f "${INSTALL_PATH}/vendors/custom_transformer/op_impl/ai_core/tbe/op_tiling/liboptiling.so" || test -f "${INSTALL_PATH}/vendors/customize/op_impl/ai_core/tbe/op_tiling/liboptiling.so" || { echo -e "${RED}[ERROR] liboptiling.so missing!${NC}"; exit 1; }
-test -f "${INSTALL_PATH}/vendors/customize/bin/set_env.bash" || test -f "${INSTALL_PATH}/vendors/custom_transformer/bin/set_env.bash" || { echo -e "${RED}[ERROR] set_env.bash missing!${NC}"; exit 1; }
+test -f "${INSTALL_PATH}/vendors/config.ini" || { echo "[ERROR] ${INSTALL_PATH}/vendors/config.ini missing!"; exit 1; }
+test -f "${INSTALL_PATH}/vendors/customize/op_api/lib/libcust_opapi.so" || { echo "[ERROR] libcust_opapi.so missing!"; exit 1; }
+test -f "${INSTALL_PATH}/vendors/customize/op_impl/ai_core/tbe/op_tiling/lib/liboptiling.so" || { echo "[ERROR] liboptiling.so missing!"; exit 1; }
+test -f "${INSTALL_PATH}/vendors/customize/bin/set_env.bash" || { echo "[ERROR] set_env.bash missing!"; exit 1; }
 
 if [ "${QUIET}" = false ]; then
-    echo -e "${GREEN}================================================================================${NC}"
-    echo -e "${GREEN}>>> SageAttention2 CANN Custom OPP Successfully Installed!${NC}"
-    echo -e "${GREEN}Installation directory: ${INSTALL_PATH}/vendors${NC}"
-    echo -e "${GREEN}Active vendor:          customize${NC}"
-    echo -e "${GREEN}To enable environment in your current shell, execute:${NC}"
-    echo -e "  ${YELLOW}source \"${INSTALL_PATH}/vendors/customize/bin/set_env.bash\"${NC}"
-    echo -e "or evaluate dynamically:"
-    echo -e "  ${YELLOW}eval \$(\"${OP_DIR}/install_opp.sh\" --install-path=\"${INSTALL_PATH}\" --export-env)${NC}"
-    echo -e "${GREEN}================================================================================${NC}"
+    echo "================================================================================"
+    echo ">>> SageAttention2 CANN Custom OPP Successfully Installed!"
+    echo "Installation directory: ${INSTALL_PATH}/vendors"
+    echo "Active vendor:          customize"
+    echo "To enable environment in your current shell, execute:"
+    echo "  source \"${INSTALL_PATH}/vendors/customize/bin/set_env.bash\""
+    echo "or evaluate dynamically:"
+    echo "  eval \$(${OP_DIR}/install_opp.sh --install-path=\"${INSTALL_PATH}\" --export-env)"
+    echo "================================================================================"
 fi
 
 exit 0

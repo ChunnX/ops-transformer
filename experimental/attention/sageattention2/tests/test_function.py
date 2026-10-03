@@ -28,22 +28,17 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 current_file = Path(__file__).resolve()
-REPO_ROOT = next((p for p in current_file.parents if (p / "golden" / "manifest.json").exists()), current_file.parents[1])
-sys.path.insert(0, str(Path(__file__).resolve().parent))  # tests/ 共享模块
+OP_ROOT = current_file.parent.parent
+REPO_ROOT = current_file.parents[5]
+
+sys.path.insert(0, str(current_file.parent))  # tests/ 共享模块
 from _golden_utils import load_case_tensors  # noqa: E402
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
-
-OPS_TRANSFORMER_PYTHON = (
-    REPO_ROOT
-    / "ops-transformer"
-    / "experimental"
-    / "attention"
-    / "sageattention2"
-    / "python"
-)
-if str(OPS_TRANSFORMER_PYTHON) not in sys.path:
-    sys.path.insert(0, str(OPS_TRANSFORMER_PYTHON))
+if str(OP_ROOT) not in sys.path:
+    sys.path.insert(0, str(OP_ROOT))
+if str(OP_ROOT / "python") not in sys.path:
+    sys.path.insert(0, str(OP_ROOT / "python"))
 
 import python as py_pkg
 import sageattention2 as sage2_pkg
@@ -103,12 +98,33 @@ class TestSageAttention2Function(unittest.TestCase):
         for dtype in (torch.float16, torch.bfloat16):
             for layout in ("HND", "NHD"):
                 q, k, v = _make_qkv(b, hq, hkv, sq, sk, d, dtype=dtype, layout=layout)
-                out, _ = py_pkg.sageattn(q, k, v, tensor_layout=layout)
+                out = py_pkg.sageattn(q, k, v, tensor_layout=layout)
 
                 expected_shape = (b, hq, sq, d) if layout == "HND" else (b, sq, hq, d)
                 self.assertEqual(out.shape, expected_shape)
                 self.assertEqual(out.dtype, dtype)
                 self.assertTrue(torch.isfinite(out).all())
+
+    def test_tc01_return_value_contract(self):
+        """TC-01: Verify return value contract: return_lse=False returns Tensor; return_lse=True returns (Tensor, Tensor)."""
+        b, hq, hkv, s, d = 1, 2, 2, 32, 64
+        q, k, v = _make_qkv(b, hq, hkv, s, s, d)
+
+        # Default return_lse=False -> bare Tensor
+        res_default = py_pkg.sageattn(q, k, v)
+        self.assertIsInstance(res_default, torch.Tensor)
+        self.assertNotIsInstance(res_default, tuple)
+
+        res_qk_default = py_pkg.sageattn_qk_int8_pv_fp8_asc(q, k, v)
+        self.assertIsInstance(res_qk_default, torch.Tensor)
+        self.assertNotIsInstance(res_qk_default, tuple)
+
+        # return_lse=True -> 2-tuple (o, lse)
+        res_lse = py_pkg.sageattn(q, k, v, return_lse=True)
+        self.assertIsInstance(res_lse, tuple)
+        self.assertEqual(len(res_lse), 2)
+        self.assertIsInstance(res_lse[0], torch.Tensor)
+        self.assertIsInstance(res_lse[1], torch.Tensor)
 
     def test_tc01_kwargs_pv_accum_dtype_override(self):
         """TC-01: Verify pv_accum_dtype override via kwargs in sageattn."""
@@ -116,21 +132,46 @@ class TestSageAttention2Function(unittest.TestCase):
         q, k, v = _make_qkv(b, hq, hkv, s, s, d)
 
         for accum in ("fp32", "fp32+fp32", "fp32+fp16"):
-            out, _ = py_pkg.sageattn(q, k, v, pv_accum_dtype=accum)
+            out = py_pkg.sageattn(q, k, v, pv_accum_dtype=accum)
             self.assertEqual(out.shape, (b, hq, s, d))
             self.assertTrue(torch.isfinite(out).all())
 
     def test_tc01_env_var_pv_accum_dtype_override(self):
-        """TC-01: Verify pv_accum_dtype override via SAGEATTN_PV_ACCUM_DTYPE env var."""
-        b, hq, hkv, s, d = 1, 2, 2, 32, 64
+        """TC-01: Verify pv_accum_dtype override via SAGEATTN_PV_ACCUM_DTYPE env var with real numerical assertions."""
+        b, hq, hkv, s, d = 1, 2, 2, 64, 64
         q, k, v = _make_qkv(b, hq, hkv, s, s, d)
 
         old_env = os.environ.get("SAGEATTN_PV_ACCUM_DTYPE")
         try:
+            # Baseline: default without env var (fp32+fp16, v_scale_max=2.25)
+            os.environ.pop("SAGEATTN_PV_ACCUM_DTYPE", None)
+            out_default = py_pkg.sageattn(q, k, v)
+            self.assertEqual(out_default.shape, (b, hq, s, d))
+
+            # Branch 1: fp32+fp32 (v_scale_max=448.0, fp32 accum)
             os.environ["SAGEATTN_PV_ACCUM_DTYPE"] = "fp32+fp32"
-            out, _ = py_pkg.sageattn(q, k, v)
-            self.assertEqual(out.shape, (b, hq, s, d))
-            self.assertTrue(torch.isfinite(out).all())
+            out_env_32 = py_pkg.sageattn(q, k, v)
+            out_explicit_32 = py_pkg.sageattn(q, k, v, pv_accum_dtype="fp32+fp32")
+            self.assertTrue(torch.equal(out_env_32, out_explicit_32))
+            self.assertFalse(torch.equal(out_env_32, out_default))
+
+            # Branch 2: fp32 (full single-stage fp32 accum)
+            os.environ["SAGEATTN_PV_ACCUM_DTYPE"] = "fp32"
+            out_env_fp32 = py_pkg.sageattn(q, k, v)
+            out_explicit_fp32 = py_pkg.sageattn(q, k, v, pv_accum_dtype="fp32")
+            self.assertTrue(torch.equal(out_env_fp32, out_explicit_fp32))
+            self.assertFalse(torch.equal(out_env_fp32, out_default))
+
+            # Branch 3: fp32+fp16 (matches default)
+            os.environ["SAGEATTN_PV_ACCUM_DTYPE"] = "fp32+fp16"
+            out_env_16 = py_pkg.sageattn(q, k, v)
+            self.assertTrue(torch.equal(out_env_16, out_default))
+
+            # Branch 4: Invalid env var must raise ValueError immediately
+            os.environ["SAGEATTN_PV_ACCUM_DTYPE"] = "invalid_precision_mode"
+            with self.assertRaises(ValueError) as ctx:
+                py_pkg.sageattn(q, k, v)
+            self.assertIn("Invalid SAGEATTN_PV_ACCUM_DTYPE", str(ctx.exception))
         finally:
             if old_env is not None:
                 os.environ["SAGEATTN_PV_ACCUM_DTYPE"] = old_env
@@ -139,16 +180,21 @@ class TestSageAttention2Function(unittest.TestCase):
 
     def test_tc01_kwargs_priority_over_env(self):
         """TC-01: Kwargs override must take precedence over environment variable."""
-        b, hq, hkv, s, d = 1, 2, 2, 32, 64
+        b, hq, hkv, s, d = 1, 2, 2, 64, 64
         q, k, v = _make_qkv(b, hq, hkv, s, s, d)
 
         old_env = os.environ.get("SAGEATTN_PV_ACCUM_DTYPE")
         try:
+            # Env is set to fp32
             os.environ["SAGEATTN_PV_ACCUM_DTYPE"] = "fp32"
             # kwargs explicitly specifies fp32+fp16
-            out, _ = py_pkg.sageattn(q, k, v, pv_accum_dtype="fp32+fp16")
-            self.assertEqual(out.shape, (b, hq, s, d))
-            self.assertTrue(torch.isfinite(out).all())
+            out_kwargs = py_pkg.sageattn(q, k, v, pv_accum_dtype="fp32+fp16")
+            out_explicit_fp16 = py_pkg.sageattn(q, k, v, pv_accum_dtype="fp32+fp16")
+            out_explicit_fp32 = py_pkg.sageattn(q, k, v, pv_accum_dtype="fp32")
+
+            self.assertEqual(out_kwargs.shape, (b, hq, s, d))
+            self.assertTrue(torch.equal(out_kwargs, out_explicit_fp16))
+            self.assertFalse(torch.equal(out_kwargs, out_explicit_fp32))
         finally:
             if old_env is not None:
                 os.environ["SAGEATTN_PV_ACCUM_DTYPE"] = old_env
@@ -160,8 +206,8 @@ class TestSageAttention2Function(unittest.TestCase):
         b, hq, hkv, s, d = 1, 2, 2, 32, 64
         q, k, v = _make_qkv(b, hq, hkv, s, s, d)
 
-        out1, _ = py_pkg.sageattn(q, k, v)
-        out2, _ = sage2_pkg.sageattn(q, k, v)
+        out1 = py_pkg.sageattn(q, k, v)
+        out2 = sage2_pkg.sageattn(q, k, v)
         self.assertTrue(torch.equal(out1, out2))
 
     # -------------------------------------------------------------------------
@@ -177,7 +223,7 @@ class TestSageAttention2Function(unittest.TestCase):
             for accum in accums:
                 for dtype in (torch.float16, torch.bfloat16):
                     q, k, v = _make_qkv(b, hq, hkv, s, s, d, dtype=dtype)
-                    out, _ = py_pkg.sageattn_qk_int8_pv_fp8_asc(
+                    out = py_pkg.sageattn_qk_int8_pv_fp8_asc(
                         q, k, v,
                         qk_quant_gran=gran,
                         pv_accum_dtype=accum,
@@ -197,7 +243,7 @@ class TestSageAttention2Function(unittest.TestCase):
 
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
-            out, _ = py_pkg.sageattn_qk_int8_pv_fp8_asc(
+            out = py_pkg.sageattn_qk_int8_pv_fp8_asc(
                 q, k, v, pv_accum_dtype="fp32", smooth_v=True
             )
             # Must NOT warn about smooth_v ignored
@@ -214,7 +260,7 @@ class TestSageAttention2Function(unittest.TestCase):
         for accum in ("fp32+fp16", "fp32+fp32"):
             with warnings.catch_warnings(record=True) as w:
                 warnings.simplefilter("always")
-                out, _ = py_pkg.sageattn_qk_int8_pv_fp8_asc(
+                out = py_pkg.sageattn_qk_int8_pv_fp8_asc(
                     q, k, v, pv_accum_dtype=accum, smooth_v=True
                 )
                 smooth_v_warnings = [item for item in w if "smooth_v will be ignored" in str(item.message)]
@@ -227,8 +273,8 @@ class TestSageAttention2Function(unittest.TestCase):
         b, hq, hkv, s, d = 1, 2, 2, 32, 64
         q, k, v = _make_qkv(b, hq, hkv, s, s, d)
 
-        out_sk_true, _ = py_pkg.sageattn_qk_int8_pv_fp8_asc(q, k, v, smooth_k=True)
-        out_sk_false, _ = py_pkg.sageattn_qk_int8_pv_fp8_asc(q, k, v, smooth_k=False)
+        out_sk_true = py_pkg.sageattn_qk_int8_pv_fp8_asc(q, k, v, smooth_k=True)
+        out_sk_false = py_pkg.sageattn_qk_int8_pv_fp8_asc(q, k, v, smooth_k=False)
 
         self.assertEqual(out_sk_true.shape, (b, hq, s, d))
         self.assertEqual(out_sk_false.shape, (b, hq, s, d))
@@ -291,25 +337,25 @@ class TestSageAttention2Function(unittest.TestCase):
 
         # D = 48 (pad to 64 -> crop to 48)
         q48, k48, v48 = _make_qkv(b, hq, hkv, s, s, 48)
-        out48, _ = py_pkg.sageattn(q48, k48, v48)
+        out48 = py_pkg.sageattn(q48, k48, v48)
         self.assertEqual(out48.shape, (b, hq, s, 48))
 
         # D = 80 (pad to 128 -> crop to 80)
         q80, k80, v80 = _make_qkv(b, hq, hkv, s, s, 80)
-        out80, _ = py_pkg.sageattn(q80, k80, v80)
+        out80 = py_pkg.sageattn(q80, k80, v80)
         self.assertEqual(out80.shape, (b, hq, s, 80))
 
         # D = 96 (pad to 128 -> crop to 96)
         q96, k96, v96 = _make_qkv(b, hq, hkv, s, s, 96)
-        out96, _ = py_pkg.sageattn(q96, k96, v96)
+        out96 = py_pkg.sageattn(q96, k96, v96)
         self.assertEqual(out96.shape, (b, hq, s, 96))
 
         # Boundary dimensions D = 64 and D = 128 (no pad needed)
         q64, k64, v64 = _make_qkv(b, hq, hkv, s, s, 64)
-        self.assertEqual(py_pkg.sageattn(q64, k64, v64)[0].shape, (b, hq, s, 64))
+        self.assertEqual(py_pkg.sageattn(q64, k64, v64).shape, (b, hq, s, 64))
 
         q128, k128, v128 = _make_qkv(b, hq, hkv, s, s, 128)
-        self.assertEqual(py_pkg.sageattn(q128, k128, v128)[0].shape, (b, hq, s, 128))
+        self.assertEqual(py_pkg.sageattn(q128, k128, v128).shape, (b, hq, s, 128))
 
     def test_tc05_head_dim_error_intercept(self):
         """TC-05: D > 128 (e.g. D=256) or D <= 0 must raise ValueError."""
@@ -334,13 +380,13 @@ class TestSageAttention2Function(unittest.TestCase):
 
         # Hq=8, Hkv=2 (GQA ratio 4), Sq=64, Sk=128 (Sq < Sk)
         q, k, v = _make_qkv(b, 8, 2, 64, 128, d)
-        out, _ = py_pkg.sageattn(q, k, v)
+        out = py_pkg.sageattn(q, k, v)
         self.assertEqual(out.shape, (b, 8, 64, d))
         self.assertTrue(torch.isfinite(out).all())
 
         # Hq=12, Hkv=3 (GQA ratio 4), Sq=128, Sk=64 (Sq > Sk)
         q2, k2, v2 = _make_qkv(b, 12, 3, 128, 64, d)
-        out2, _ = py_pkg.sageattn(q2, k2, v2)
+        out2 = py_pkg.sageattn(q2, k2, v2)
         self.assertEqual(out2.shape, (b, 12, 128, d))
         self.assertTrue(torch.isfinite(out2).all())
 
@@ -360,8 +406,8 @@ class TestSageAttention2Function(unittest.TestCase):
         b, h, s, d = 1, 2, 64, 64
         q, k, v = _make_qkv(b, h, h, s, s, d)
 
-        out_causal, _ = py_pkg.sageattn(q, k, v, is_causal=True)
-        out_non_causal, _ = py_pkg.sageattn(q, k, v, is_causal=False)
+        out_causal = py_pkg.sageattn(q, k, v, is_causal=True)
+        out_non_causal = py_pkg.sageattn(q, k, v, is_causal=False)
 
         self.assertEqual(out_causal.shape, (b, h, s, d))
         self.assertFalse(torch.allclose(out_causal, out_non_causal, atol=1e-3))
@@ -371,7 +417,7 @@ class TestSageAttention2Function(unittest.TestCase):
         b, h, s, d = 1, 2, 64, 64
         q, k, v = _make_qkv(b, h, h, s, s, d, dtype=torch.float16)
 
-        out_causal, _ = py_pkg.sageattn(q, k, v, is_causal=True)
+        out_causal = py_pkg.sageattn(q, k, v, is_causal=True)
         out_sdpa_causal = F.scaled_dot_product_attention(q.float(), k.float(), v.float(), is_causal=True).half()
 
         max_err = (out_causal.float() - out_sdpa_causal.float()).abs().max().item()
@@ -380,7 +426,7 @@ class TestSageAttention2Function(unittest.TestCase):
         # Test against Golden TC-07 case
         if "TC-07_causal_per_warp" in self.manifest.get("cases", {}):
             c, tensors = self._load_golden_case("TC-07_causal_per_warp")
-            out_golden, _ = py_pkg.sageattn_qk_int8_pv_fp8_asc(
+            out_golden = py_pkg.sageattn_qk_int8_pv_fp8_asc(
                 tensors["q"], tensors["k"], tensors["v"],
                 tensor_layout=c["tensor_layout"],
                 is_causal=c["is_causal"],
@@ -423,16 +469,40 @@ class TestSageAttention2Function(unittest.TestCase):
         with self.assertRaises((ValueError, RuntimeError, TypeError)):
             py_pkg.sageattn_qk_int8_pv_fp8_asc(q, k, v, pv_accum_dtype="fp16")
 
-        # 4. Non-None attn_mask
-        with self.assertRaises((ValueError, RuntimeError, TypeError)) as ctx:
-            py_pkg.sageattn(q, k, v, attn_mask=torch.ones(s, s))
-        self.assertTrue("attn_mask" in str(ctx.exception))
+        # 4. Non-None attn_mask (keyword argument, positional argument, and full-param entry)
+        mask = torch.ones(s, s)
+        with self.assertRaises(ValueError) as ctx:
+            py_pkg.sageattn(q, k, v, attn_mask=mask)
+        self.assertIn("attn_mask", str(ctx.exception))
 
-        # 5. Non-contiguous last dimension
+        with self.assertRaises(ValueError) as ctx:
+            py_pkg.sageattn(q, k, v, mask)
+        self.assertIn("attn_mask", str(ctx.exception))
+
+        with self.assertRaises(ValueError) as ctx:
+            py_pkg.sageattn_qk_int8_pv_fp8_asc(q, k, v, attn_mask=mask)
+        self.assertIn("attn_mask", str(ctx.exception))
+
+        with self.assertRaises(ValueError) as ctx:
+            py_pkg.sageattn_qk_int8_pv_fp8_asc(q, k, v, mask)
+        self.assertIn("attn_mask", str(ctx.exception))
+
+        # 5. Non-contiguous last dimension: regular shape
         q_stride2 = torch.randn(b, h, s, d * 2, dtype=torch.float16)[:, :, :, ::2]
         self.assertNotEqual(q_stride2.stride(-1), 1)
         with self.assertRaises(AssertionError) as ctx:
             py_pkg.sageattn(q_stride2, k, v)
+        self.assertIn("Last dim of qkv must be contiguous", str(ctx.exception))
+
+        # 5b. Non-contiguous last dimension with padding (head_dim=48 < 64):
+        # Must be intercepted before F.pad creates a contiguous tensor!
+        q_stride2_pad = torch.randn(b, h, s, 48 * 2, dtype=torch.float16)[:, :, :, ::2]
+        k48 = torch.randn(b, h, s, 48, dtype=torch.float16)
+        v48 = torch.randn(b, h, s, 48, dtype=torch.float16)
+        self.assertNotEqual(q_stride2_pad.stride(-1), 1)
+        self.assertEqual(q_stride2_pad.shape[-1], 48)
+        with self.assertRaises(AssertionError) as ctx:
+            py_pkg.sageattn(q_stride2_pad, k48, v48)
         self.assertIn("Last dim of qkv must be contiguous", str(ctx.exception))
 
         # 6. Tensor dtype mismatch
@@ -450,7 +520,7 @@ class TestSageAttention2Function(unittest.TestCase):
         q, k, v = _make_qkv(b, hq, hkv, s, s, d)
 
         for accum in ("fp32+fp16", "fp32+fp32", "fp32"):
-            out, _ = py_pkg.sageattn_qk_int8_pv_fp8_asc(
+            out = py_pkg.sageattn_qk_int8_pv_fp8_asc(
                 q, k, v,
                 pv_accum_dtype=accum,
                 qk_quant_gran="per_thread",
@@ -462,7 +532,7 @@ class TestSageAttention2Function(unittest.TestCase):
         # Test against Golden TC-09 case if manifest exists
         if "TC-09_long_seq_2k" in self.manifest.get("cases", {}):
             c, tensors = self._load_golden_case("TC-09_long_seq_2k")
-            out_golden, _ = py_pkg.sageattn_qk_int8_pv_fp8_asc(
+            out_golden = py_pkg.sageattn_qk_int8_pv_fp8_asc(
                 tensors["q"], tensors["k"], tensors["v"],
                 tensor_layout=c["tensor_layout"],
                 is_causal=c["is_causal"],
@@ -482,7 +552,7 @@ class TestSageAttention2Function(unittest.TestCase):
         b, h, s, d = 1, 4, 128, 64
         q, k, v = _make_qkv(b, h, h, s, s, d, dtype=torch.float16)
 
-        out_sage, _ = py_pkg.sageattn(q, k, v)
+        out_sage = py_pkg.sageattn(q, k, v)
         out_sdpa = F.scaled_dot_product_attention(q.float(), k.float(), v.float()).half()
 
         max_err = (out_sage.float() - out_sdpa.float()).abs().max().item()
@@ -506,7 +576,7 @@ class TestSageAttention2Function(unittest.TestCase):
 
             def forward(self, q, k, v):
                 # q, k, v: [B, H, S, D]
-                return py_pkg.sageattn(q, k, v, tensor_layout="HND")[0]
+                return py_pkg.sageattn(q, k, v, tensor_layout="HND")
 
         toy_layer = ToyAttentionBlock(d_model=256, num_heads=4)
         b, s = 2, 64

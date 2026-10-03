@@ -138,12 +138,12 @@ class TestTorchExtension(unittest.TestCase):
 
         # Valid quantization granularities (per_thread, per_warp) must be accepted
         for gran in ("per_thread", "per_warp"):
-            out, _ = sage2.sageattn(q, k, v, qk_quant_gran=gran)
+            out = sage2.sageattn(q, k, v, qk_quant_gran=gran)
             self.assertEqual(out.shape, q.shape)
 
         # All 3 valid accumulation datatypes must be accepted
         for accum in ("fp32", "fp32+fp32", "fp32+fp16"):
-            out, _ = sage2.sageattn(q, k, v, pv_accum_dtype=accum)
+            out = sage2.sageattn(q, k, v, pv_accum_dtype=accum)
             self.assertEqual(out.shape, q.shape)
 
         # Invalid granularity must be rejected

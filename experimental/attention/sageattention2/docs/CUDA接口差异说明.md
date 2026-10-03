@@ -33,14 +33,14 @@ NPU 侧两种粒度是两套独立存在的量化内核，不是兼容别名；�
 
 ## S_FP8_OFFSET：P 矩阵按 log2(448) 精确放大
 
-- NPU 语义：Softmax 全程在 exp2 域计算，running max 记为 $m$；P 矩阵按 $P = 2^{\text{score} - m + 8.807355}$ 生成，其中偏置常数 $8.807355 = \log_2 448$（`S_FP8_OFFSET`，唯一定义位于 `./sageattn_fp8/ascendc/tiling.h`，`./quant/quant_host.h` 经 using 引入；Host Tiling 将其写入 TilingData `s_fp8_offset` 字段下发，设备侧注入 `./sageattn_fp8/ascendc/accum_reduce.h` 的 OutputRetireQueue 与 `./op_kernel/sageattention2.cpp` 的 `ComputeSoftmaxProbability`）
+- NPU 语义：Softmax 全程在 exp2 域计算，running max 记为 $m$；P 矩阵按 $P = 2^{\text{score} - m + 8.807355}$ 生成，其中偏置常数 $8.807355 = \log_2 448$（`S_FP8_OFFSET`，唯一定义位于 `./sageattn_fp8/ascendc/tiling.h`，`./quant/quant_host.h` 经 using 引入；Host Tiling 将其写入 TilingData `s_fp8_offset` 字段下发，设备侧 P 量化注入点为 `./op_kernel/sage_device_vf.h` 的 `SoftmaxProbRowVF` 与宿主基线 `./op_kernel/sageattention2.cpp` 的 `ComputeSoftmaxProbability`——448· 放大经乘法恒启用，`s_fp8_offset` 字段保留仅为 160B 布局契约）
 - 效果：P 落在 $[0, 448]$，直接按 e4m3 饱和量化，P 的量化 scale 固定为单位 1，省去逐元素乘 scale 的 Vector 开销
-- 分母一致性：softmax 分母按同一放大尺度在线累计，`OutputRetireQueue::Finalize` 以 `inv_denominator` 归一化输出，偏置严格抵消；`./tests/test_output_queue.cpp` 的 Test 6 对该偏置抵消做了数值验证
+- 分母一致性：softmax 分母按同一放大尺度在线累计，归一化经 `OnlineSoftmaxTransformer::GetFinalInvDenominator`（O 与分母同处 448· 放大域，除法处放大精确相消，见 `./sageattn_fp8/ascendc/online_softmax.h`）；偏置抵消由 `./tests/test_kernel_twin.py` 的 golden 交叉验证覆盖
 - 与 CUDA 的关系：上游 FP8 路径同样通过 448 平移/缩放方案把概率幅度送入 e4m3 表示域（见上游 `csrc/qattn/attn_utils.cuh`），数值设计目标一致；但上游在 FP16 域做 max 平移后再换算，本实现在 exp2 域以单次加法注入偏置，舍入轨迹不同，不承诺逐位一致
 
 ## PV 两级累加：NPU 三档，CUDA 两档
 
-- NPU 档位（`PvAccumDtype`，`./sageattn_fp8/ascendc/tiling.h`；Host 侧实现 `./aclnn/sage_attn_host.cpp`，设备侧 `./sageattn_fp8/ascendc/accum_reduce.h`）
+- NPU 档位（`PvAccumDtype`，`./sageattn_fp8/ascendc/tiling.h`；Host 侧实现 `./aclnn/sage_attn_host.cpp`，设备侧 PV 交接为 `./sageattn_fp8/catlass/sage_pv_mmad.hpp` 的 FixPipe 裸搬 + `MergePvPartialRowVF` 档位合并，宿主真值 `./sageattn_fp8/ascendc/twin_reference.h` 的 `AccumulatePvRow`）
 
 - `0`（`"fp32"`）：单级全程 FP32 累加，无第二级低精度 buffer；`smooth_v` 正路径仅在该档可用
 - `1`（`"fp32+fp32"`）：Cube FP8 MMA 硬件累加，每 `k_step` 周期归约至 FP32 输出 buffer
@@ -53,7 +53,7 @@ NPU 侧两种粒度是两套独立存在的量化内核，不是兼容别名；�
 - 其余档位：`v_scale_max = 448.0`（e4m3 满幅，常数 `SCALE_MAX_FP32_ACCUM`）
 - 该取值影响 V 量化 scale 与饱和截断半径，是跨档位结果不可互比的原因之一
 
-- 附带的 NPU 侧机制：`"fp32+fp16"` 与 `"fp32+fp32"` 档启用 skip-scale 判定（阈值 `tau = 6.0`，`SKIP_SCALE_TAU`）——running max 变化在阈值内时跳过累加器重缩放乘法；以及 3 槽延迟输出退休队列（`OutputRetireQueue`）的成对归约写回。两者为 NPU 微架构设计，CUDA 无对应物，也不改变对外数值契约
+- 附带的 NPU 侧机制：`"fp32+fp16"` 与 `"fp32+fp32"` 档启用 skip-scale 判定（阈值 `tau = 6.0`，`SKIP_SCALE_TAU`）——running max 变化在阈值内时跳过累加器重缩放乘法（`OnlineSoftmaxTransformer::Step`）。此为 NPU 微架构设计，CUDA 无对应物，也不改变对外数值契约
 
 ## 舍入模式：half-away-from-zero 与 RNE 并存
 
@@ -115,7 +115,7 @@ NPU 侧两种粒度是两套独立存在的量化内核，不是兼容别名；�
 ## 源码依据
 
 - NPU 量化内核与舍入：`./quant/quant_int8.cpp`（half-away 与 RNE 两条路径）、`./quant/quant_fp8.cpp`（V e4m3 与 vm 统计）、`./sageattn_fp8/ascendc/tiling.h`（`S_FP8_OFFSET`、`SCALE_MAX_*` 等常量唯一定义）、`./quant/quant_common.h`（`QScaleCount`/`KScaleCount` 分组数公式）、`./quant/quant_host.h`（using 引入常量并提供 `GetVScaleMax`）
-- 设备侧累加与偏置：`./sageattn_fp8/ascendc/accum_reduce.h`（OutputRetireQueue、`s_fp8_offset`、`Finalize`）、`./op_kernel/sageattention2.cpp`（`ComputeSoftmaxProbability` 注入偏置）
+- 设备侧累加与偏置：`./sageattn_fp8/ascendc/online_softmax.h`（`GetFinalInvDenominator` 归一化）、`./op_kernel/sageattention2.cpp`（`ComputeSoftmaxProbability` 注入偏置）、`./op_kernel/sage_device_vf.h`（设备态 `SoftmaxProbRowVF` / `FinalizeRowVF`）
 - Tiling 契约：`./sageattn_fp8/ascendc/tiling.h`（`PvAccumDtype`、`QkQuantGran`、`workspace_vm_offset`）
 - 接口与告警语义：`./python/sageattention2/error_check.py`（`handle_smooth_v`、档位白名单）、`./python/sageattention2/dispatch.py`（`per_thread`/`per_warp` 双实现参考实现）
 - 数值期望值：工作区根 golden 数据目录的 TC-02（量化粒度）、TC-03（smooth_v/no_smooth_k）、TC-09（长序列）系列

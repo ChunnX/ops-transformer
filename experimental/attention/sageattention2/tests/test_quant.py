@@ -20,19 +20,26 @@ import torch
 import torch.nn.functional as F
 
 current_file = Path(__file__).resolve()
-REPO_ROOT = next((p for p in current_file.parents if (p / "golden" / "manifest.json").exists()), current_file.parents[5])
-sys.path.insert(0, str(Path(__file__).resolve().parent))  # tests/ 共享模块
+OP_ROOT = current_file.parent.parent
+REPO_ROOT = current_file.parents[5]
+
+sys.path.insert(0, str(current_file.parent))  # tests/ 共享模块
+from _cxx import cxx  # noqa: E402  （测试动态库编译器唯一定义点：容器内 BiSheng）
 from _golden_utils import load_tensor  # noqa: E402  （golden 加载唯一定义点）
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
+if str(OP_ROOT) not in sys.path:
+    sys.path.insert(0, str(OP_ROOT))
+if str(OP_ROOT / "python") not in sys.path:
+    sys.path.insert(0, str(OP_ROOT / "python"))
 DYLIB_PATH = Path("/tmp/libquant_ascendc.dylib")
 
 # Ensure C++ dylib is built for testing
 if not DYLIB_PATH.exists():
-    cpp_q = REPO_ROOT / "ops-transformer" / "experimental" / "attention" / "sageattention2" / "quant" / "quant_int8.cpp"
-    cpp_v = REPO_ROOT / "ops-transformer" / "experimental" / "attention" / "sageattention2" / "quant" / "quant_fp8.cpp"
+    cpp_q = OP_ROOT / "quant" / "quant_int8.cpp"
+    cpp_v = OP_ROOT / "quant" / "quant_fp8.cpp"
     cmd = [
-        "c++", "-std=c++17", "-Wall", "-Wextra", "-O3", "-shared", "-fPIC",
+        cxx(), "-std=c++17", "-Wall", "-Wextra", "-O3", "-shared", "-fPIC",
         str(cpp_q), str(cpp_v), "-o", str(DYLIB_PATH)
     ]
     subprocess.check_call(cmd)
@@ -333,7 +340,7 @@ float sage_v_scale_max(unsigned pv_accum_dtype) {
         host_lib = Path("/tmp/libsage_quant_host.dylib")
         quant_dir = REPO_ROOT / "ops-transformer" / "experimental" / "attention" / "sageattention2" / "quant"
         cmd = [
-            "c++", "-std=c++17", "-Wall", "-Wextra", "-O2", "-shared", "-fPIC",
+            cxx(), "-std=c++17", "-Wall", "-Wextra", "-O2", "-shared", "-fPIC",
             "-x", "c++", "-", "-I", str(quant_dir), "-o", str(host_lib),
         ]
         subprocess.run(cmd, input=wrapper_src.encode("utf-8"), check=True)

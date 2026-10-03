@@ -1,42 +1,32 @@
 #!/usr/bin/env bash
-# build_opp.sh: CANN 官方标准自定义 OPP 算子构建与出包工具
+# build_opp.sh: CANN 标准自定义 OPP 算子 vendor 树构建（BiSheng 容器内执行）
+#
+# 全部产物由 BiSheng 编译：op_host/op_api/quant 的 host 动态库走 BiSheng 宿主模式，
+# 设备核走 BiSheng 交叉编译（ascend950 → dav-3510），不存在任何宿主编译器代偿路径。
+# 运行环境：算子门禁容器（experimental/attention/sageattention2/docker/），
+# 即 run.sh opp 的实现体；交付态整仓 run 包另由仓库根 build.sh 出包（见 README）。
 
 set -euo pipefail
 
 OP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_DIR="$(cd "${OP_DIR}/../../.." && pwd)"
-
-# 默认构建配置
-SOC="ascend950"
 OUTPUT_DIR="${OP_DIR}/build/opp"
-DRY_RUN=false
-MOCK_MODE=false
+SOC="ascend950"            # 官方 vendor 目录/ini 的 SoC 标识
+NPU_ARCH="dav-3510"        # BiSheng 设备架构（ascend950 对应 dav-3510）
 CLEAN_BUILD=false
 VERBOSE=false
 EXTRA_ARGS=()
 
-# 颜色控制
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-YELLOW='\033[1;33m'
-CYAN='\033[0;36m'
-NC='\033[0m'
-
 print_usage() {
-    echo "Usage: $0 [options] [-- <extra CANN build.sh args>]"
+    echo "Usage: $0 [options] [-- <extra args>]"
     echo ""
     echo "Options:"
-    echo "  --soc=<soc>              Target SoC version (default: ascend950)"
+    echo "  --soc=<soc>              Target SoC version (default: ascend950; BiSheng arch dav-3510)"
     echo "  --output-dir=<path>      Output package directory (default: build/opp)"
-    echo "  --dry-run                Perform Dry-Run without requiring NPU hardware or CANN toolkit"
-    echo "  --mock                   Compile local Mock OPP package (equivalent to --dry-run)"
-    echo "  --clean                  Clean output/build directories before building"
+    echo "  --clean                  Clean output directory before building"
     echo "  --verbose                Enable verbose build logging"
     echo "  -h, --help               Display this help message"
 }
 
-# 解析命令行参数
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --soc=*)
@@ -45,15 +35,6 @@ while [[ $# -gt 0 ]]; do
             ;;
         --output-dir=*)
             OUTPUT_DIR="${1#*=}"
-            shift
-            ;;
-        --dry-run)
-            DRY_RUN=true
-            MOCK_MODE=true
-            shift
-            ;;
-        --mock)
-            MOCK_MODE=true
             shift
             ;;
         --clean)
@@ -80,76 +61,42 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-echo -e "${CYAN}================================================================================${NC}"
-echo -e "${CYAN}SageAttention2 CANN Custom OPP Package Builder (build_opp.sh)${NC}"
-echo -e "${CYAN}Operator directory: ${OP_DIR}${NC}"
-echo -e "${CYAN}Target SoC:         ${SOC}${NC}"
-echo -e "${CYAN}Output directory:   ${OUTPUT_DIR}${NC}"
-echo -e "${CYAN}================================================================================${NC}"
+echo "================================================================================"
+echo "SageAttention2 CANN Custom OPP Package Builder (BiSheng, container-only)"
+echo "Operator directory: ${OP_DIR}"
+echo "Target SoC:         ${SOC} (npu-arch ${NPU_ARCH})"
+echo "Output directory:   ${OUTPUT_DIR}"
+echo "================================================================================"
+
+# BiSheng / CANN 环境是硬前置（容器内由 run.sh 注入；裸宿主直接报错，不做代偿编译）
+if [ -z "${ASCEND_HOME_PATH:-}" ]; then
+    # shellcheck source=/dev/null
+    source /usr/local/Ascend/ascend-toolkit/set_env.sh
+fi
+BISHENG="${ASCEND_HOME_PATH}/bin/bisheng"
+if [ ! -x "${BISHENG}" ]; then
+    if command -v bisheng >/dev/null 2>&1; then
+        BISHENG="bisheng"
+    else
+        echo "[ERROR] BiSheng compiler not found (ASCEND_HOME_PATH=${ASCEND_HOME_PATH:-unset})." >&2
+        echo "        请在算子门禁容器内执行（bash run.sh opp），或 source CANN set_env.sh。" >&2
+        exit 1
+    fi
+fi
+
+# CATLASS 解析（唯一定义点与 run.sh 容器侧一致：CATLASS_ROOT 覆盖 → init.sh 置备位置）
+CATLASS_ROOT="${CATLASS_ROOT:-${OP_DIR}/docker/third_party/catlass}"
+CATLASS_DIR="${CATLASS_ROOT}/include"
+if [ ! -d "${CATLASS_DIR}" ]; then
+    echo "[ERROR] CATLASS include directory not found: ${CATLASS_DIR} (export CATLASS_ROOT to override)." >&2
+    echo "        请先执行 bash docker/init.sh 置备 CATLASS。" >&2
+    exit 1
+fi
 
 if [ "${CLEAN_BUILD}" = true ]; then
-    echo -e "${BLUE}>>> Cleaning build and output directories...${NC}"
+    echo ">>> Cleaning output directory..."
     rm -rf "${OUTPUT_DIR}"
 fi
-
-# 检查 CANN 环境
-CANN_ROOT="${ASCEND_HOME_PATH:-/usr/local/Ascend/ascend-toolkit/latest}"
-if [ ! -d "${CANN_ROOT}" ] && [ -d "/usr/local/Ascend/cann" ]; then
-    CANN_ROOT="/usr/local/Ascend/cann"
-fi
-
-HAS_CANN=false
-HAS_BISHENG=false
-
-if [ -f "${CANN_ROOT}/set_env.sh" ]; then
-    HAS_CANN=true
-fi
-
-if [ -n "${ASCEND_HOME_PATH:-}" ] && [ -x "${ASCEND_HOME_PATH}/bin/bisheng" ]; then
-    HAS_BISHENG=true
-elif command -v bisheng >/dev/null 2>&1; then
-    HAS_BISHENG=true
-fi
-
-# 如果未强制指定 --mock/--dry-run，且环境具备 CANN 与 BiSheng，走官方出包流程
-if [ "${MOCK_MODE}" = false ] && [ "${DRY_RUN}" = false ] && [ "${HAS_CANN}" = true ] && [ "${HAS_BISHENG}" = true ]; then
-    echo -e "${GREEN}>>> Active CANN & BiSheng environment detected. Running official vendor packaging...${NC}"
-    set +u
-    source "${CANN_ROOT}/set_env.sh"
-    set -u
-
-    export CATLASS_ROOT="${CATLASS_ROOT:-${REPO_DIR}/../catlass}"
-    if [ ! -d "${CATLASS_ROOT}" ] && [ -d "${REPO_DIR}/third_party/catlass" ]; then
-        export CATLASS_ROOT="${REPO_DIR}/third_party/catlass"
-    fi
-
-    cd "${REPO_DIR}"
-    echo "Running: bash build.sh --pkg --experimental --soc=${SOC} --ops=sageattention2 ${EXTRA_ARGS[*]:-}"
-    bash build.sh --pkg --experimental --soc="${SOC}" --ops=sageattention2 "${EXTRA_ARGS[@]}"
-
-    # 安装/展开 run 包至指定 output_dir
-    # （此处位于脚本顶层而非函数内，bash 的 local 在函数外直接报错退出，故用普通变量）
-    RUN_PKG=$(find "${REPO_DIR}/build_out" -name "cann-ops-transformer-custom_*.run" | head -n 1 || true)
-    if [ -n "${RUN_PKG}" ] && [ -f "${RUN_PKG}" ]; then
-        echo -e "${GREEN}>>> Unpacking ${RUN_PKG} into ${OUTPUT_DIR}...${NC}"
-        bash "${RUN_PKG}" --quiet --install-path="${OUTPUT_DIR}"
-    fi
-
-    echo -e "${GREEN}>>> Official CANN OPP Build & Packaging Completed Successfully!${NC}"
-    exit 0
-fi
-
-# 无卡环境、本地开发或显式指定 --dry-run/--mock: 执行高拟真 Mock 编译与标准 Vendor 目录封包
-echo -e "${YELLOW}>>> Running in Local Dry-Run / Mock Build Mode...${NC}"
-
-# 检测本地 C++ 编译器
-CXX_COMPILER="g++"
-if command -v clang++ >/dev/null 2>&1; then
-    CXX_COMPILER="clang++"
-fi
-echo -e "Using Host C++ Compiler: ${BLUE}${CXX_COMPILER}${NC}"
-
-CATLASS_DIR="${CATLASS_DIR:-${OP_DIR}/../../../../git/catlass/include}"
 
 # 规划官方标准自定义 OPP 目录结构
 # 规范结构参见 CANN 自定义算子开发指南：
@@ -177,62 +124,53 @@ mkdir -p "${CUSTOM_DIR}/op_impl/ai_core/tbe/kernel/${SOC}"
 mkdir -p "${CUSTOM_DIR}/op_impl/ai_core/tbe/op_tiling/lib"
 mkdir -p "${CUSTOM_DIR}/bin"
 
-echo -e "${BLUE}1. Compiling op_host dynamic libraries (liboptiling.so & libcust_opapi.so)...${NC}"
+HOST_CXX_FLAGS=(-std=c++17 -O2 -fPIC -Wall -Wextra)
+COMMON_INCLUDES=(
+    -I"${OP_DIR}/op_host"
+    -I"${OP_DIR}/aclnn"
+    -I"${OP_DIR}/quant"
+    -I"${OP_DIR}/sageattn_fp8/ascendc"
+    -I"${OP_DIR}/sageattn_fp8/catlass"
+    -I"${CATLASS_DIR}"
+)
+[ "${VERBOSE}" = true ] && HOST_CXX_FLAGS+=(-v)
 
-SHARED_FLAGS="-shared -fPIC -O2"
-if [[ "$OSTYPE" == "darwin"* ]]; then
-    SHARED_FLAGS="-shared -fPIC -O2 -undefined dynamic_lookup"
-fi
+QUANT_SOURCES=("${OP_DIR}/quant/quant_int8.cpp" "${OP_DIR}/quant/quant_fp8.cpp")
 
-# 编译 libcust_opapi.so (包含 ACLNN Host 接口、量化核以及原型推导)
-${CXX_COMPILER} -std=c++17 ${SHARED_FLAGS} \
+echo "1. Compiling op_host dynamic libraries with BiSheng (libcust_opapi.so & liboptiling.so)..."
+
+# libcust_opapi.so (包含 ACLNN Host 接口、量化核以及原型推导)
+"${BISHENG}" "${HOST_CXX_FLAGS[@]}" -shared \
     "${OP_DIR}/aclnn/sage_attn_host.cpp" \
-    "${OP_DIR}/quant/quant_int8.cpp" \
-    "${OP_DIR}/quant/quant_fp8.cpp" \
+    "${QUANT_SOURCES[@]}" \
     "${OP_DIR}/op_host/sage_attention2_def.cpp" \
     "${OP_DIR}/op_host/sage_attention2_infershape.cpp" \
-    -I"${OP_DIR}/op_host" \
-    -I"${OP_DIR}/aclnn" \
-    -I"${OP_DIR}/quant" \
-    -I"${OP_DIR}/sageattn_fp8/ascendc" \
-    -I"${OP_DIR}/sageattn_fp8/catlass" \
-    -I"${CATLASS_DIR}" \
+    "${COMMON_INCLUDES[@]}" \
     -o "${CUSTOM_DIR}/op_api/lib/libcust_opapi.so"
 
-# 软链接或同步一份到 op_proto/lib
+# 同步一份到 op_proto/lib
 cp -f "${CUSTOM_DIR}/op_api/lib/libcust_opapi.so" "${CUSTOM_DIR}/op_proto/lib/libcust_opapi.so"
 
-# 编译 liboptiling.so (包含算子 Tiling 算法与 InferShape)
-${CXX_COMPILER} -std=c++17 ${SHARED_FLAGS} \
+# liboptiling.so (包含算子 Tiling 算法与 InferShape)
+"${BISHENG}" "${HOST_CXX_FLAGS[@]}" -shared \
     "${OP_DIR}/op_host/sage_attention2_def.cpp" \
     "${OP_DIR}/op_host/sage_attention2_infershape.cpp" \
     "${OP_DIR}/aclnn/sage_attn_host.cpp" \
-    "${OP_DIR}/quant/quant_int8.cpp" \
-    "${OP_DIR}/quant/quant_fp8.cpp" \
-    -I"${OP_DIR}/op_host" \
-    -I"${OP_DIR}/aclnn" \
-    -I"${OP_DIR}/quant" \
-    -I"${OP_DIR}/sageattn_fp8/ascendc" \
-    -I"${OP_DIR}/sageattn_fp8/catlass" \
-    -I"${CATLASS_DIR}" \
+    "${QUANT_SOURCES[@]}" \
+    "${COMMON_INCLUDES[@]}" \
     -o "${CUSTOM_DIR}/op_impl/ai_core/tbe/op_tiling/lib/liboptiling.so"
 
-# 如果是 macOS，同时生成对应名称或软连接以保证平台兼容性
-if [[ "$OSTYPE" == "darwin"* ]]; then
-    cp -f "${CUSTOM_DIR}/op_api/lib/libcust_opapi.so" "${CUSTOM_DIR}/op_api/lib/libcust_opapi.dylib" || true
-    cp -f "${CUSTOM_DIR}/op_impl/ai_core/tbe/op_tiling/lib/liboptiling.so" "${CUSTOM_DIR}/op_impl/ai_core/tbe/op_tiling/lib/liboptiling.dylib" || true
-fi
-
-echo -e "${BLUE}2. Compiling op_kernel object binary for ${SOC}...${NC}"
-${CXX_COMPILER} -std=c++17 -c \
+echo "2. Compiling op_kernel device object for ${SOC} with BiSheng (-xasc ${NPU_ARCH})..."
+"${BISHENG}" --npu-arch="${NPU_ARCH}" -std=c++17 -xasc -c \
     "${OP_DIR}/op_kernel/sageattention2.cpp" \
+    -I"${ASCEND_HOME_PATH}/include" \
     -I"${OP_DIR}/sageattn_fp8/ascendc" \
     -I"${OP_DIR}/sageattn_fp8/catlass" \
     -I"${OP_DIR}/quant" \
     -I"${CATLASS_DIR}" \
     -o "${CUSTOM_DIR}/op_impl/ai_core/tbe/kernel/${SOC}/sageattention2.o"
 
-echo -e "${BLUE}3. Packaging headers and configuration files...${NC}"
+echo "3. Packaging headers and configuration files..."
 
 # 安装头文件
 if [ -f "${OP_DIR}/op_api/aclnn_sage_attention2.h" ]; then
@@ -272,23 +210,23 @@ EOF
 chmod +x "${CUSTOM_DIR}/bin/set_env.bash"
 
 # 4. 验证打包产物完整性
-echo -e "${BLUE}4. Verifying package integrity and layout...${NC}"
-test -f "${VENDORS_DIR}/config.ini" || { echo -e "${RED}[ERROR] config.ini missing!${NC}"; exit 1; }
-test -f "${CUSTOM_DIR}/op_api/lib/libcust_opapi.so" || { echo -e "${RED}[ERROR] libcust_opapi.so missing!${NC}"; exit 1; }
-test -f "${CUSTOM_DIR}/op_impl/ai_core/tbe/op_tiling/lib/liboptiling.so" || { echo -e "${RED}[ERROR] liboptiling.so missing!${NC}"; exit 1; }
-test -f "${CUSTOM_DIR}/op_impl/ai_core/tbe/kernel/${SOC}/sageattention2.o" || { echo -e "${RED}[ERROR] sageattention2.o missing!${NC}"; exit 1; }
-test -f "${CUSTOM_DIR}/op_impl/ai_core/tbe/config/${SOC}/sageattention2.ini" || { echo -e "${RED}[ERROR] sageattention2.ini missing!${NC}"; exit 1; }
+echo "4. Verifying package integrity and layout..."
+test -f "${VENDORS_DIR}/config.ini" || { echo "[ERROR] config.ini missing!"; exit 1; }
+test -f "${CUSTOM_DIR}/op_api/lib/libcust_opapi.so" || { echo "[ERROR] libcust_opapi.so missing!"; exit 1; }
+test -f "${CUSTOM_DIR}/op_impl/ai_core/tbe/op_tiling/lib/liboptiling.so" || { echo "[ERROR] liboptiling.so missing!"; exit 1; }
+test -f "${CUSTOM_DIR}/op_impl/ai_core/tbe/kernel/${SOC}/sageattention2.o" || { echo "[ERROR] sageattention2.o missing!"; exit 1; }
+test -f "${CUSTOM_DIR}/op_impl/ai_core/tbe/config/${SOC}/sageattention2.ini" || { echo "[ERROR] sageattention2.ini missing!"; exit 1; }
 
-echo -e "${GREEN}================================================================================${NC}"
-echo -e "${GREEN}>>> CANN Custom OPP Package Successfully Built!${NC}"
-echo -e "${GREEN}Package location: ${OUTPUT_DIR}/vendors${NC}"
-echo -e "${GREEN}Verified artifacts:${NC}"
-echo -e "  - ${OUTPUT_DIR}/vendors/config.ini"
-echo -e "  - ${OUTPUT_DIR}/vendors/customize/op_api/lib/libcust_opapi.so"
-echo -e "  - ${OUTPUT_DIR}/vendors/customize/op_impl/ai_core/tbe/op_tiling/lib/liboptiling.so"
-echo -e "  - ${OUTPUT_DIR}/vendors/customize/op_impl/ai_core/tbe/kernel/${SOC}/sageattention2.o"
-echo -e "  - ${OUTPUT_DIR}/vendors/customize/op_impl/ai_core/tbe/config/${SOC}/sageattention2.ini"
-echo -e "  - ${OUTPUT_DIR}/vendors/customize/bin/set_env.bash"
-echo -e "${GREEN}================================================================================${NC}"
+echo "================================================================================"
+echo ">>> CANN Custom OPP Package Successfully Built (all artifacts by BiSheng)!"
+echo "Package location: ${OUTPUT_DIR}/vendors"
+echo "Verified artifacts:"
+echo "  - ${OUTPUT_DIR}/vendors/config.ini"
+echo "  - ${OUTPUT_DIR}/vendors/customize/op_api/lib/libcust_opapi.so"
+echo "  - ${OUTPUT_DIR}/vendors/customize/op_impl/ai_core/tbe/op_tiling/lib/liboptiling.so"
+echo "  - ${OUTPUT_DIR}/vendors/customize/op_impl/ai_core/tbe/kernel/${SOC}/sageattention2.o"
+echo "  - ${OUTPUT_DIR}/vendors/customize/op_impl/ai_core/tbe/config/${SOC}/sageattention2.ini"
+echo "  - ${OUTPUT_DIR}/vendors/customize/bin/set_env.bash"
+echo "================================================================================"
 
 exit 0

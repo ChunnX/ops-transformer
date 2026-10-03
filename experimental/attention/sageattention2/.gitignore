@@ -1,11 +1,23 @@
-# 本地构建产物（run.sh / build_opp.sh / benchmarks 输出）
+# 本地与容器构建产物
 build/
+build_out/
+out/
+docker/out/
+docker/cache/
+docker/.env
+docker/catlass
+docker/catlass/
 *.o
-*.dylib
 *.so
+*.bin
+*.dylib
 
-# 本地 Python 测试门依赖的虚拟环境与缓存（.venv 目录本身保留在本地，仅禁止入库）
+# Python 虚拟环境与测试缓存
 .venv/
 __pycache__/
-*.pyc
 .pytest_cache/
+*.pyc
+*.log
+
+# 临时冒烟代码
+sage_device_smoke.cpp

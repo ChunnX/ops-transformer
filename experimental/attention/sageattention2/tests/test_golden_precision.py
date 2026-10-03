@@ -20,9 +20,10 @@ import unittest
 import torch
 
 current_file = Path(__file__).resolve()
-REPO_ROOT = next((p for p in current_file.parents if (p / "golden" / "manifest.json").exists()), current_file.parents[1])
+OP_ROOT = current_file.parent.parent
+REPO_ROOT = current_file.parents[5]
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))  # tests/ 共享模块（判据唯一定义点）
+sys.path.insert(0, str(current_file.parent))  # tests/ 共享模块（判据唯一定义点）
 from _golden_utils import (  # noqa: E402
     load_case_tensors,
     l_a_metrics,
@@ -34,17 +35,10 @@ from _golden_utils import (  # noqa: E402
 )
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
-
-OPS_TRANSFORMER_PYTHON = (
-    REPO_ROOT
-    / "ops-transformer"
-    / "experimental"
-    / "attention"
-    / "sageattention2"
-    / "python"
-)
-if str(OPS_TRANSFORMER_PYTHON) not in sys.path:
-    sys.path.insert(0, str(OPS_TRANSFORMER_PYTHON))
+if str(OP_ROOT) not in sys.path:
+    sys.path.insert(0, str(OP_ROOT))
+if str(OP_ROOT / "python") not in sys.path:
+    sys.path.insert(0, str(OP_ROOT / "python"))
 
 import python as py_pkg
 

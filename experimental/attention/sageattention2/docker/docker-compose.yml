@@ -1,0 +1,43 @@
+# SageAttention2 算子门禁容器（默认: 交叉编译形态, 无 NPU 设备）
+# NPU 透传形态由 docker-compose.npu.yml 叠加, docker/sage 检测驱动后自动启用
+# 覆盖项(环境变量, 见 .env.example / Dockerfile):
+#   CANN_IMAGE / TORCH_SPEC / TORCH_NPU_SPEC / TORCH_INDEX  镜像与 torch 配套
+#   SAGE_IMAGE         产出的镜像 tag（默认 sageattn2-op-dev:latest）
+#   SAGE_ATTN_SIM_OUT  透传进容器（tools/sim 仿真产物出口, 见 tools/sim/README.md）
+# 挂载契约（独立仓库交付）: 卷挂载全部为相对路径, 且只指向本仓库内部目录,
+# 绝不引用仓库外部宿主路径——验收方/CI 拉取本仓后开箱即用:
+#   ../../../..  → /work/ops-transformer  本仓库根（本 compose 文件位于
+#                experimental/attention/sageattention2/docker/, 上四级即仓库根;
+#                算子源码实时同步, build/ 产物直接落宿主, 由算子 .gitignore 兜住）
+#   ./cache      → /root/.cache           包与编译缓存持久化（gitignore）, 销毁容器后仍在
+#   ./out        → /work/out              独立产物出口（仿真日志等散件, gitignore, 不进仓）
+# 外部依赖 CATLASS 不经任何挂载进入容器: 由 init.sh 拉取固定 commit 到
+# docker/third_party/catlass（gitignore）, 随仓库根本体挂载进容器;
+# 解析链唯一定义见 run.sh（容器侧导出 CATLASS_ROOT）与 cmake/SageAttnDeps.cmake。
+name: sageattn2-op
+
+services:
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        CANN_IMAGE: ${CANN_IMAGE:-swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:9.2.0-beta.1-950-ubuntu22.04-py3.10-devel}
+        TORCH_SPEC: ${TORCH_SPEC:-torch==2.12.0}
+        TORCH_NPU_SPEC: ${TORCH_NPU_SPEC:-torch-npu==2.12.0}
+        TORCH_INDEX: ${TORCH_INDEX:-https://mirrors.aliyun.com/pytorch-wheels/cpu/}
+    image: ${SAGE_IMAGE:-sageattn2-op-dev:latest}
+    container_name: sageattn2-op-dev
+    init: true
+    working_dir: /work/ops-transformer/experimental/attention/sageattention2
+    volumes:
+      - ../../../..:/work/ops-transformer
+      - ./out:/work/out
+      - ./cache:/root/.cache
+    environment:
+      - PYTHONDONTWRITEBYTECODE=1
+      # run.sh 据此判定"已在容器内"，直接走容器内 BiSheng，不再向宿主 docker 回包
+      - SAGE_IN_CONTAINER=1
+      # 以下为宿主环境透传：未设置时不注入，容器内走 run.sh 默认值
+      - SAGE_ATTN_SIM_OUT
+    command: ["bash"]

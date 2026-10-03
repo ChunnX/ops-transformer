@@ -47,7 +47,8 @@ def validate_common_parameters(
     tensor_layout: str,
     qk_quant_gran: str,
     pv_accum_dtype: str,
-    kwargs: Dict[str, Any],
+    kwargs: Optional[Dict[str, Any]] = None,
+    attn_mask: Optional[Any] = None,
 ) -> None:
     if tensor_layout not in VALID_LAYOUTS:
         raise ValueError(f"Invalid tensor_layout '{tensor_layout}'")
@@ -55,7 +56,9 @@ def validate_common_parameters(
         raise ValueError(f"qk_quant_gran must be 'per_warp' or 'per_thread'")
     if pv_accum_dtype not in VALID_PV_ACCUM_DTYPES:
         raise ValueError(f"pv_accum_dtype must be one of {VALID_PV_ACCUM_DTYPES}")
-    if kwargs.get("attn_mask") is not None:
+    if attn_mask is not None:
+        raise ValueError("attn_mask is not supported")
+    if kwargs is not None and kwargs.get("attn_mask") is not None:
         raise ValueError("attn_mask is not supported")
 
 def handle_smooth_v(pv_accum_dtype: str, smooth_v: bool) -> bool:
@@ -86,11 +89,15 @@ def validate_tensors(q: Any, k: Any, v: Any, tensor_layout: str, is_causal: bool
         valid_dtypes = (torch.float16, torch.bfloat16)
         if q.dtype not in valid_dtypes: raise AssertionError("Input tensors must be in dtype of torch.float16 or torch.bfloat16")
         if q.dtype != k.dtype or q.dtype != v.dtype: raise AssertionError("All tensors (q, k, v) must have the same dtype")
+    if hasattr(q, "stride") and hasattr(k, "stride") and hasattr(v, "stride"):
+        assert q.stride(-1) == 1 and k.stride(-1) == 1 and v.stride(-1) == 1, "Last dim of qkv must be contiguous."
 
 
 def pad_head_dim(q: Any, k: Any, v: Any) -> Tuple[Any, Any, Any, int]:
     if not hasattr(q, "size"):
         return q, k, v, 0
+    if hasattr(q, "stride") and hasattr(k, "stride") and hasattr(v, "stride"):
+        assert q.stride(-1) == 1 and k.stride(-1) == 1 and v.stride(-1) == 1, "Last dim of qkv must be contiguous."
     head_dim_og = q.size(-1)
     if head_dim_og <= 0:
         raise ValueError("Invalid head_dim")
@@ -107,8 +114,6 @@ def pad_head_dim(q: Any, k: Any, v: Any) -> Tuple[Any, Any, Any, int]:
     elif head_dim_og > 128:
         raise ValueError("Unsupported head_dim")
 
-    if hasattr(q, "stride") and hasattr(k, "stride") and hasattr(v, "stride"):
-        assert q.stride(-1) == 1 and k.stride(-1) == 1 and v.stride(-1) == 1, "Last dim of qkv must be contiguous."
     return q, k, v, head_dim_og
 
 def compute_sm_scale(head_dim_og: int, sm_scale: Optional[float]) -> float:

@@ -18,11 +18,9 @@ import unittest
 
 # Path bootstrap
 _current_file = Path(__file__).resolve()
-REPO_ROOT = next(
-    (p for p in _current_file.parents if (p / "sageAttention2" / "sageAttentionTest" / "cases" / "cases_500.json").exists()),
-    _current_file.parents[5],
-)
-OPS_PYTHON_DIR = REPO_ROOT / "ops-transformer" / "experimental" / "attention" / "sageattention2" / "python"
+OP_ROOT = _current_file.parent.parent
+REPO_ROOT = _current_file.parents[5]
+OPS_PYTHON_DIR = OP_ROOT / "python"
 OFFICIAL_TEST_DIR = REPO_ROOT / "sageAttention2" / "sageAttentionTest" / "tests" / "pytest"
 CASES_JSON_PATH = REPO_ROOT / "sageAttention2" / "sageAttentionTest" / "cases" / "cases_500.json"
 REPORT_OUTPUT_PATH = REPO_ROOT / "tests" / "official_suite_report.txt"

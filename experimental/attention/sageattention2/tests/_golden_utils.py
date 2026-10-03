@@ -28,16 +28,13 @@ LB_RATIO_LIMITS = (2.0, 1.2, 1.2)  # L-B (max, mean, rmse) 误差比上限
 LB_RATIO_EPS = 1.0e-5        # L-B 上限浮点松弛
 
 
+REPO_ROOT = Path(__file__).resolve().parents[5]
+
+
 def find_repo_root() -> Path:
-    """向上查找含 golden/manifest.json 的工程根（与各测试原逻辑一致）。"""
-    current = Path(__file__).resolve()
-    for parent in current.parents:
-        if (parent / "golden" / "manifest.json").exists():
-            return parent
-    raise FileNotFoundError("golden/manifest.json not found in any parent directory")
+    """工程根目录（唯一定义点）。"""
+    return REPO_ROOT
 
-
-REPO_ROOT = find_repo_root()
 
 
 def load_manifest_cases() -> dict:

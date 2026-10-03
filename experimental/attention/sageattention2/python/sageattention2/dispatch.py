@@ -24,12 +24,14 @@ from .error_check import (
     DEFAULT_TENSOR_LAYOUT,
     S_FP8_OFFSET,
     SCALE_MAX_FP16_ACCUM,
+    VALID_PV_ACCUM_DTYPES,
     compute_sm_scale,
     handle_smooth_v,
     pad_head_dim,
     validate_common_parameters,
     validate_tensors,
 )
+from . import _ops
 
 
 # 默认档唯一定义点：error_check.DEFAULT_PV_ACCUM_DTYPE（本名曾为
@@ -357,5 +359,136 @@ def run_sageattn_cpu_reference(
         }
         return out, lse_out, intermediates
     return out, lse_out
+
+
+def resolve_pv_accum_dtype(pv_accum_dtype: Optional[str] = None) -> str:
+    """Resolve pv_accum_dtype with priority: explicit parameter > SAGEATTN_PV_ACCUM_DTYPE env > default ('fp32+fp16').
+    Strictly validates legality against VALID_PV_ACCUM_DTYPES.
+    """
+    if pv_accum_dtype is not None:
+        target = str(pv_accum_dtype).strip()
+        if target not in VALID_PV_ACCUM_DTYPES:
+            raise ValueError(
+                f"Invalid pv_accum_dtype '{pv_accum_dtype}', must be one of {sorted(VALID_PV_ACCUM_DTYPES)}"
+            )
+        return target
+
+    env_val = os.environ.get("SAGEATTN_PV_ACCUM_DTYPE")
+    if env_val is not None and env_val.strip() != "":
+        target = env_val.strip()
+        if target not in VALID_PV_ACCUM_DTYPES:
+            raise ValueError(
+                f"Invalid SAGEATTN_PV_ACCUM_DTYPE environment variable '{env_val}', "
+                f"must be one of {sorted(VALID_PV_ACCUM_DTYPES)}"
+            )
+        return target
+
+    return DEFAULT_PV_ACCUM_DTYPE
+
+
+def dispatch_sageattn(
+    q: torch.Tensor,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    attn_mask: Optional[torch.Tensor] = None,
+    tensor_layout: str = DEFAULT_TENSOR_LAYOUT,
+    is_causal: bool = False,
+    sm_scale: Optional[float] = None,
+    return_lse: bool = False,
+    **kwargs: Any,
+) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+    """
+    Dispatch sageattn to sageattn_qk_int8_pv_fp8_asc on Ascend NPU / CPU reference simulation.
+    Resolves pv_accum_dtype with priority: kwargs > SAGEATTN_PV_ACCUM_DTYPE env > default ('fp32+fp16').
+    When return_lse=False, directly returns single tensor o.
+    When return_lse=True, returns tuple (o, lse).
+    """
+    if attn_mask is not None:
+        raise ValueError("attn_mask is not supported")
+    if "attn_mask" in kwargs and kwargs.pop("attn_mask") is not None:
+        raise ValueError("attn_mask is not supported")
+
+    pv_accum_dtype = kwargs.pop("pv_accum_dtype", None)
+    pv_accum_dtype = resolve_pv_accum_dtype(pv_accum_dtype)
+
+    qk_quant_gran = kwargs.pop("qk_quant_gran", DEFAULT_QK_QUANT_GRAN)
+    smooth_k = kwargs.pop("smooth_k", True)
+    smooth_v = kwargs.pop("smooth_v", False)
+
+    return dispatch_sageattn_qk_int8_pv_fp8_asc(
+        q=q,
+        k=k,
+        v=v,
+        attn_mask=None,
+        tensor_layout=tensor_layout,
+        is_causal=is_causal,
+        qk_quant_gran=qk_quant_gran,
+        sm_scale=sm_scale,
+        pv_accum_dtype=pv_accum_dtype,
+        smooth_k=smooth_k,
+        smooth_v=smooth_v,
+        return_lse=return_lse,
+        **kwargs,
+    )
+
+
+def dispatch_sageattn_qk_int8_pv_fp8_asc(
+    q: torch.Tensor,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    attn_mask: Optional[torch.Tensor] = None,
+    tensor_layout: str = DEFAULT_TENSOR_LAYOUT,
+    is_causal: bool = False,
+    qk_quant_gran: str = DEFAULT_QK_QUANT_GRAN,
+    sm_scale: Optional[float] = None,
+    pv_accum_dtype: Optional[str] = None,
+    smooth_k: bool = True,
+    smooth_v: bool = False,
+    return_lse: bool = False,
+    **kwargs: Any,
+) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+    """
+    Dispatch sageattn_qk_int8_pv_fp8_asc to PyTorch registered custom op torch.ops.sageattention2.forward.
+    When return_lse=False, directly returns single tensor o.
+    When return_lse=True, returns tuple (o, lse).
+    """
+    if attn_mask is not None:
+        raise ValueError("attn_mask is not supported")
+    if "attn_mask" in kwargs and kwargs.pop("attn_mask") is not None:
+        raise ValueError("attn_mask is not supported")
+
+    if pv_accum_dtype is None:
+        pv_accum_dtype = kwargs.pop("pv_accum_dtype", None)
+    pv_accum_dtype = resolve_pv_accum_dtype(pv_accum_dtype)
+
+    validate_common_parameters(
+        tensor_layout=tensor_layout,
+        qk_quant_gran=qk_quant_gran,
+        pv_accum_dtype=pv_accum_dtype,
+        kwargs=kwargs,
+        attn_mask=attn_mask,
+    )
+
+    out, lse = torch.ops.sageattention2.forward(
+        q,
+        k,
+        v,
+        tensor_layout=tensor_layout,
+        is_causal=is_causal,
+        qk_quant_gran=qk_quant_gran,
+        sm_scale=sm_scale,
+        pv_accum_dtype=pv_accum_dtype,
+        smooth_k=smooth_k,
+        smooth_v=smooth_v,
+        return_lse=return_lse,
+    )
+
+    if return_lse:
+        return out, lse
+    return out
+
+
+sageattn = dispatch_sageattn
+sageattn_qk_int8_pv_fp8_asc = dispatch_sageattn_qk_int8_pv_fp8_asc
 
 
