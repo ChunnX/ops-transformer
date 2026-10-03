@@ -398,31 +398,21 @@ def sageattn(
 ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     """
     Dispatch sageattn to sageattn_qk_int8_pv_fp8_asc on Ascend NPU / CPU reference simulation.
-    Resolves pv_accum_dtype with priority: kwargs > SAGEATTN_PV_ACCUM_DTYPE env > default ('fp32+fp16').
     When return_lse=False, directly returns single tensor o.
     When return_lse=True, returns tuple (o, lse).
 
-    SDPA 形态 kwargs（attn_mask/dropout_p/scale/enable_gqa）的拒绝与别名消费唯一定义在
-    sageattn_qk_int8_pv_fp8_asc，本层经 **kwargs 委托，不复制第二份。
+    数值形参（pv_accum_dtype/qk_quant_gran/smooth_k/smooth_v）与 SDPA 形态 kwargs
+    （attn_mask/dropout_p/scale/enable_gqa）的缺省、解析（pv_accum_dtype 优先级：
+    显式传参 > SAGEATTN_PV_ACCUM_DTYPE env > 默认 'fp32+fp16'）与拒绝全部唯一定义在
+    sageattn_qk_int8_pv_fp8_asc——同名具名形参承接 **kwargs 转发，本层零重复缺省/零重复解析。
     """
-    pv_accum_dtype = kwargs.pop("pv_accum_dtype", None)
-    pv_accum_dtype = resolve_pv_accum_dtype(pv_accum_dtype)
-
-    qk_quant_gran = kwargs.pop("qk_quant_gran", DEFAULT_QK_QUANT_GRAN)
-    smooth_k = kwargs.pop("smooth_k", True)
-    smooth_v = kwargs.pop("smooth_v", False)
-
     return sageattn_qk_int8_pv_fp8_asc(
         q=q,
         k=k,
         v=v,
         tensor_layout=tensor_layout,
         is_causal=is_causal,
-        qk_quant_gran=qk_quant_gran,
         sm_scale=sm_scale,
-        pv_accum_dtype=pv_accum_dtype,
-        smooth_k=smooth_k,
-        smooth_v=smooth_v,
         return_lse=return_lse,
         **kwargs,
     )
