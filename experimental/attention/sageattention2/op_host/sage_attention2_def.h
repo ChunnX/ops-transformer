@@ -351,7 +351,6 @@ public:
     }
 
     void AddString(const std::string &s) { str_list_.push_back(s); }
-    void AddInt(int64_t i) { int_list_.push_back(i); }
 
 private:
     std::vector<std::string> str_list_;
@@ -360,10 +359,7 @@ private:
 
 class InferShapeContext {
 public:
-    explicit InferShapeContext(const char *node_name = "SageAttention2")
-        : node_name_(node_name) {}
-
-    const char* GetNodeName() const { return node_name_.c_str(); }
+    InferShapeContext() = default;
 
     void SetInputShape(size_t idx, const Shape *s) {
         if (idx >= input_shapes_.size()) input_shapes_.resize(idx + 1, nullptr);
@@ -388,7 +384,6 @@ public:
     const RuntimeAttrs* GetAttrs() const { return attrs_; }
 
 private:
-    std::string node_name_;
     std::vector<const Shape*> input_shapes_;
     std::vector<Shape*> output_shapes_;
     const RuntimeAttrs *attrs_{nullptr};
@@ -396,10 +391,7 @@ private:
 
 class InferDataTypeContext {
 public:
-    explicit InferDataTypeContext(const char *node_name = "SageAttention2")
-        : node_name_(node_name) {}
-
-    const char* GetNodeName() const { return node_name_.c_str(); }
+    InferDataTypeContext() = default;
 
     void SetInputDataType(size_t idx, ge::DataType dt) {
         if (idx >= input_dtypes_.size()) input_dtypes_.resize(idx + 1, ge::DT_UNDEFINED);
@@ -423,7 +415,6 @@ public:
     const RuntimeAttrs* GetAttrs() const { return attrs_; }
 
 private:
-    std::string node_name_;
     std::vector<ge::DataType> input_dtypes_;
     std::vector<ge::DataType> output_dtypes_;
     const RuntimeAttrs *attrs_{nullptr};

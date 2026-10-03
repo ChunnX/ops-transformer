@@ -27,7 +27,6 @@ if str(OP_ROOT / "python") not in sys.path:
     sys.path.insert(0, str(OP_ROOT / "python"))
 
 from _golden_utils import make_qkv
-import sageattention2 as sage2
 from sageattention2 import (
     is_sdpa_patched,
     replace_sdpa,

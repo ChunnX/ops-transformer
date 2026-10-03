@@ -67,7 +67,6 @@ class TestQuantAgainstGolden(unittest.TestCase):
 
     def _run_single_case(self, case_id: str):
         case_info = self.cases[case_id]
-        case_dir = GOLDEN_DIR / case_id
 
         names = ("q", "k", "v", "q_int8", "q_scale", "k_int8", "k_scale",
                  "v_fp8", "v_scale", "lse", "out")
@@ -192,7 +191,6 @@ class TestAscendCQuantKernels(unittest.TestCase):
         with open(manifest_path, "r") as f:
             manifest = json.load(f)
         case_info = manifest["cases"][case_id]
-        case_dir = GOLDEN_DIR / case_id
 
         names = ("q", "k", "v", "q_int8", "q_scale", "k_int8", "k_scale",
                  "v_fp8", "v_scale")

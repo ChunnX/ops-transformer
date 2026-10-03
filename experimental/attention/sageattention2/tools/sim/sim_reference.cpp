@@ -87,7 +87,7 @@ int main(int argc, char **argv) {
     io.dtype_mode = kDtypeMode;
     io.sm_scale = kSmScale;
 
-    const int rc = sage_attn::twin::RunSequential(io, nullptr);
+    const int rc = sage_attn::twin::RunSequential(io);
     if (rc != 0) {
         std::fprintf(stderr, "[FAIL] RunSequential 返回 %d\n", rc);
         return 1;

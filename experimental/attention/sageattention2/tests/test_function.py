@@ -317,7 +317,7 @@ class TestSageAttention2Function(unittest.TestCase):
         b, hq, hkv, sq, sk, d = 1, 8, 2, 64, 128, 64
         q, k, v = _make_qkv(b, hq, hkv, sq, sk, d)
 
-        out, lse = sage2_pkg.sageattn(q, k, v, return_lse=True, smooth_k=True)
+        _, lse = sage2_pkg.sageattn(q, k, v, return_lse=True, smooth_k=True)
         self.assertEqual(lse.shape, (b, hq, sq))
         self.assertTrue(torch.isfinite(lse).all())
 

@@ -206,14 +206,14 @@ public:
         }
 
         // V1 UB：A7 dot32 裸搬区 [total_rows][block_n] INT32（R17-2 全区建模：Cube
-        // EmitL0CToUbRaw 落点、V1 DequantMaskLogitsRowVF 消费，FLAG_DOT_FREE 读保护）
+        // EmitL0CToUbRaw 落点、V1 DequantMaskLogitsRowsVF 原地反量化消费（R4：float logits 元素等宽覆写），FLAG_DOT_FREE 读保护）
         const uint64_t dot32_bytes = static_cast<uint64_t>(total_rows) * block_n * sizeof(int32_t);
         if (dot32_bytes > Vector1UbBudget::A7_DOT32_BYTES) {
             return FootprintViolation::kUbV1A7Handoff;
         }
 
         // V1 UB：A7 PV 部分和交接槽 [total_rows][head_dim] FP32（ExecuteEpilogue 落点、
-        // V1 MergePvPartialRowVF 消费，FLAG_PV_PARTIAL_FREE 读保护）
+        // V1 MergePvPartialRowsVF 消费，FLAG_PV_PARTIAL_FREE 读保护）
         const uint64_t pv_partial_bytes = static_cast<uint64_t>(total_rows) * head_dim * 4u;
         if (pv_partial_bytes > Vector1UbBudget::A7_PV_PARTIAL_BYTES) {
             return FootprintViolation::kUbV1A7Handoff;

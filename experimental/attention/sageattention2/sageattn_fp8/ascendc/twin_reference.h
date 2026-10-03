@@ -24,6 +24,7 @@
 
 #include "tiling.h"
 #include "online_softmax.h"
+#include "catlass/detail/alignment.hpp"
 
 #include "../../quant/quant_common.h"
 
@@ -251,7 +252,7 @@ inline void AccumulatePvRow(
  * 顺序执行全流水：pad → (km) → 量化 → QK^T → online softmax → FP8 PV → 归一化与 LSE。
  * 返回 0 成功；非 0 为不支持的配置（当前拒绝 D>128）。
  */
-inline int RunSequential(const TwinIo& io, TwinQuantDump* dump = nullptr) {
+inline int RunSequential(const TwinIo& io) {
     using quant::E4m3fnToFloat;
     using quant::FloatToE4m3fn;
 
@@ -330,7 +331,7 @@ inline int RunSequential(const TwinIo& io, TwinQuantDump* dump = nullptr) {
     // 3. 量化（quant 层唯一定义；内部自带 128/64 块的 scale 分组与补零语义）
     const uint32_t q_scales = quant::QScaleCount(io.sq, per_thread);
     const uint32_t k_scales = quant::KScaleCount(io.sk, per_thread);
-    const uint32_t pad_sk_v = ((io.sk + 63) / 64) * 64;
+    const uint32_t pad_sk_v = ::RoundUp<64u>(io.sk);
     // smooth_v 档位门控（host tiling 同式：仅全精度 fp32 档生效）
     const bool smooth_v = (io.smooth_v != 0) && (pv_accum == PV_ACCUM_FP32);
     // static：SageAttnTwinQuantDump 导出的指针在下一次调用前保持有效
@@ -467,7 +468,8 @@ inline int RunSequential(const TwinIo& io, TwinQuantDump* dump = nullptr) {
                             state.lse, io.sm_scale,
                             corr_head != nullptr ? corr_head[i] : 0.0f,
                             corr_head != nullptr, S_FP8_OFFSET);
-                }            }
+                }
+            }
 
             // 5.6 归一化（行级 1/d）、裁剪回 d_og、写回输出
             for (uint32_t i = 0; i < io.sq; ++i) {
@@ -491,16 +493,6 @@ inline int RunSequential(const TwinIo& io, TwinQuantDump* dump = nullptr) {
     g_last_dump.v_scale = v_scale.data();
     g_last_dump.d_pad = d_pad;
     g_last_dump.pad_sk_v = pad_sk_v;
-    if (dump != nullptr) {
-        *dump = g_last_dump;
-        dump->k_int8 = k_int8.data();
-        dump->v_fp8 = v_fp8.data();
-        dump->q_scale = q_scale.data();
-        dump->k_scale = k_scale.data();
-        dump->v_scale = v_scale.data();
-        dump->d_pad = d_pad;
-        dump->pad_sk_v = pad_sk_v;
-    }
     return 0;
 }
 

@@ -1,5 +1,6 @@
 #include "quant_host.h"
 #include "quant_common.h"
+#include "catlass/detail/alignment.hpp"
 
 #include <cstdint>
 #include <cmath>
@@ -43,9 +44,9 @@ public:
         uint32_t tensor_layout
     ) {
         float scale_max = GetVScaleMax(pv_accum_dtype);
-        uint32_t pad_sk_v = ((sk + 63) / 64) * 64;
+        uint32_t pad_sk_v = ::RoundUp<64u>(sk);
         uint32_t num_16 = pad_sk_v / 16;
-        uint32_t fp8_padded_tokens = ((sk + 15) / 16) * 16;
+        uint32_t fp8_padded_tokens = ::RoundUp<16u>(sk);
 
         for (uint32_t b_idx = 0; b_idx < b; ++b_idx) {
             for (uint32_t h_idx = 0; h_idx < hkv; ++h_idx) {

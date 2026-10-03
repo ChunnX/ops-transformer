@@ -42,7 +42,6 @@ lse_correction 喂法（开源契约）：km 与 corr = q·km_broadcast^T（fp32
 from __future__ import annotations
 
 import ctypes
-import json
 import math
 import os
 import subprocess
@@ -66,8 +65,6 @@ from _cxx import cxx, cxx_link_flags  # noqa: E402
 # 编码镜像唯一定义点：tests/tiling_mirror.py（锚定 tiling.h 枚举）
 from tiling_mirror import (  # noqa: E402
     ACCUM_CODE,
-    ACCUM_FP32,
-    ACCUM_FP32_FP16,
     GRAN_PER_THREAD,
     GRAN_PER_WARP,
     LAYOUT_HND,

@@ -133,7 +133,7 @@ public:
      * sage_qk_mmad.hpp EmitL0CToUbRaw：C310 参数面 + dualDstCtl 硬件分段与已验证
      * 的 Arch3510 手动分段不同构，golden 位级锁定域不替换）。
      * fixpipe_cfg 死参数链已删（P11）：随路量化不在 Fixpipe——fp32+fp16 档的
-     * FP16 RNE 舍回定在 V1 合并处（MergePvPartialRowVF，档位直读 tiling）。
+     * FP16 RNE 舍回定在 V1 合并处（MergePvPartialRowsVF，档位直读 tiling）。
      * l0c_src_offset 参数已删：L0C 单缓冲，全调用域恒 0（死参清理）。
      */
     __aicore__ void ExecuteEpilogue(uint32_t ub_dst_offset) {
@@ -141,52 +141,11 @@ public:
     }
 
 private:
+
     uint32_t m_{Traits::M};
     uint32_t n_{Traits::N};
     uint32_t k_{Traits::K};
 };
-
-#if SAGE_ATTN_DEVICE_COMPILE
-/**
- * A7（task/12 D2）V1 消费侧单行合并原语：pv_partial 交接槽行 → O_ACCUM 行。
- * 轨迹 = 宿主 twin::AccumulatePvRow（AccumulatePvBlockTwin 调用）的设备段
- * 实例：o_row[c] += partial[r][c] · v_scale[c]，其中 partial 为 Cube PV MMAD 的 FP32
- * 部分和（P8 码 × V8 码，P 侧 448· 放大域与 v_scale 的 V 通道域拆分同宿主 v_at 分解）。
- * - fp32+fp16 档（fp16_round=1，档位判据由调用方直读 tiling.pv_accum_dtype）：
- *   并入前做 FP16 RNE 舍回（与宿主 quant::Fp32ToFp16/Fp16ToFp32 同 RNE 口径——
- *   accum_reduce.h 的 QuantizeToFp16 仿真壳已随死代码清理删除，此处 Cast 链
- *   即其位级等价）——
- *   块内求和已由 PV MMAD 承担（设备段粒度替代 twin k_step 子块，L-A 容差域，task/12）；
- * - fp32 / fp32+fp32 档：FP32 直通并入。
- * 调用方须保证 O 行经 S 槽 / dot32 同款握手串行化（FLAG_PV_PARTIAL_READY/FREE）。
- * 本原语为 AscendC VF 域（任务书分工：Vector 侧逻辑不走 CATLASS 模板）；
- * 函数标记采用官方设备函数宏 Catlass::CATLASS_DEVICE_SIMD_VF
- *（catlass/detail/macros.hpp：__simd_vf__ static，与官方 FA epilogue 同款）。
- */
-CATLASS_DEVICE_SIMD_VF void MergePvPartialRowVF(__ubuf__ float* partial_row, __ubuf__ float* o_row,
-                                                __ubuf__ float* v_scale_ptr, uint32_t d,
-                                                uint32_t fp16_round) {
-    using namespace AscendC;
-    using namespace AscendC::MicroAPI;
-    auto full = CreateMask<float, MaskPattern::ALL>();
-    static constexpr CastTrait toFp16{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
-    static constexpr CastTrait toFp32{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
-    for (uint32_t c = 0; c < d; c += 64) {
-        RegTensor<float> partial, vs, o;
-        LoadAlign(partial, partial_row + c);
-        LoadAlign(vs, v_scale_ptr + c);
-        Mul(partial, partial, vs, full);
-        if (fp16_round != 0u) {
-            RegTensor<half> rounded;
-            Cast<half, float, toFp16>(rounded, partial, full);
-            Cast<float, half, toFp32>(partial, rounded, full);
-        }
-        LoadAlign(o, o_row + c);
-        Add(o, o, partial, full);
-        StoreAlign(o_row + c, o, full);
-    }
-}
-#endif
 
 } // namespace Catlass::SageAttn
 

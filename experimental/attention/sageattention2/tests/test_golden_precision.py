@@ -146,7 +146,7 @@ class TestGoldenPrecision(unittest.TestCase):
         self.assertEqual(len(p_cases), 7)
         for case_id in sorted(p_cases):
             case_info = self.cases[case_id]
-            out, lse, tensors = self._execute_case(case_id, case_info)
+            out, _, tensors = self._execute_case(case_id, case_info)
             ref_out = tensors["out"]
             diff = (out.float() - ref_out.float()).abs().max().item()
             # 容差按输入 dtype 分档（收敛轮 A/CLEANUP-6：bf16 有效位 ~8bit，
@@ -160,7 +160,7 @@ class TestGoldenPrecision(unittest.TestCase):
         tc_cases = [k for k in self.cases if k.startswith("TC-")]
         self.assertGreaterEqual(len(tc_cases), 10)
         for case_id in sorted(tc_cases):
-            out, lse, tensors = self._execute_case(case_id, self.cases[case_id])
+            out, _, tensors = self._execute_case(case_id, self.cases[case_id])
             ref_out = tensors["out"]
             diff = (out.float() - ref_out.float()).abs().max().item()
             self.assertLess(diff, 1e-4, f"TC-case {case_id} exceeded error limit: {diff}")

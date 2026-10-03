@@ -128,7 +128,7 @@ public:
     /**
      * A7（task/12_device_data_path.md D1 方案甲）：QK^T 的 L0C INT32 结果裸搬至 UB
      * logits 区（dav-3510 FixPipe，quantPre DISABLE = 位型透传，无精度转换）。
-     * 反量化不在本层，由 V1 侧 DequantMaskLogitsRowVF 承担。
+     * 反量化不在本层，由 V1 侧 DequantMaskLogitsRowsVF（R4 行批化，dot32 区原地覆写）承担。
      * Fixpipe 走 CopyL0CToUbSplitM 单点：官方 CopyL0CToUBTla 特化基于
      * FixpipeParamsC310（nSize 按 32B 粒度 RoundUp、unitFlag 语义）且 SPLIT_M 档用
      * dualDstCtl 硬件双目的地模式，与本核已真机验证的 Arch3510 手动分段发射

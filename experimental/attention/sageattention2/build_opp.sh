@@ -14,10 +14,9 @@ SOC="ascend950"            # 官方 vendor 目录/ini 的 SoC 标识
 NPU_ARCH="dav-3510"        # BiSheng 设备架构（ascend950 对应 dav-3510）
 CLEAN_BUILD=false
 VERBOSE=false
-EXTRA_ARGS=()
 
 print_usage() {
-    echo "Usage: $0 [options] [-- <extra args>]"
+    echo "Usage: $0 [options]"
     echo ""
     echo "Options:"
     echo "  --soc=<soc>              Target SoC version (default: ascend950; BiSheng arch dav-3510)"
@@ -49,13 +48,7 @@ while [[ $# -gt 0 ]]; do
             print_usage
             exit 0
             ;;
-        --)
-            shift
-            EXTRA_ARGS+=("$@")
-            break
-            ;;
         *)
-            EXTRA_ARGS+=("$1")
             shift
             ;;
     esac
@@ -124,7 +117,7 @@ mkdir -p "${CUSTOM_DIR}/op_impl/ai_core/tbe/kernel/${SOC}"
 mkdir -p "${CUSTOM_DIR}/op_impl/ai_core/tbe/op_tiling/lib"
 mkdir -p "${CUSTOM_DIR}/bin"
 
-HOST_CXX_FLAGS=(-std=c++17 -O2 -fPIC -Wall -Wextra -lstdc++)  # bisheng 链接需显式 C++ 运行时
+HOST_CXX_FLAGS=(-std=c++17 -O2 -fPIC -Wall -Wextra -Wno-ignored-qualifiers -Wno-reorder-ctor -Wno-reorder -Wno-unused-parameter -lstdc++)  # bisheng 链接需显式 C++ 运行时
 COMMON_INCLUDES=(
     -I"${OP_DIR}/op_host"
     -I"${OP_DIR}/aclnn"
@@ -183,10 +176,8 @@ echo "2. Compiling op_kernel device object for ${SOC} with BiSheng (-xasc ${NPU_
 
 echo "3. Packaging headers and configuration files..."
 
-# 安装头文件
-if [ -f "${OP_DIR}/op_api/aclnn_sage_attention2.h" ]; then
-    cp -f "${OP_DIR}/op_api/aclnn_sage_attention2.h" "${CUSTOM_DIR}/op_api/include/"
-fi
+# 安装头文件（交付面必含 aclnn 头，缺失由 set -e 直接失败，不做静默跳过）
+cp -f "${OP_DIR}/op_api/aclnn_sage_attention2.h" "${CUSTOM_DIR}/op_api/include/"
 cp -f "${OP_DIR}/op_host/sage_attention2_def.h" "${CUSTOM_DIR}/op_proto/inc/"
 
 # 生成 vendors/config.ini

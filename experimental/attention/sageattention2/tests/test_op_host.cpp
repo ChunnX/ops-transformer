@@ -97,7 +97,7 @@ bool TestInferShapeValidCases()
 
     // 用例 A: 标准 MHA (B=2, Hq=32, Hkv=32, Sq=1024, Sk=1024, D=128)
     {
-        gert::InferShapeContext ctx("SageAttention2_MHA");
+        gert::InferShapeContext ctx;
         gert::Shape q_shape({2, 32, 1024, 128});
         gert::Shape k_shape({2, 32, 1024, 128});
         gert::Shape v_shape({2, 32, 1024, 128});
@@ -118,7 +118,7 @@ bool TestInferShapeValidCases()
 
     // 用例 B: GQA 广播 (B=4, Hq=32, Hkv=8 [4:1], Sq=512, Sk=2048, D=64)
     {
-        gert::InferShapeContext ctx("SageAttention2_GQA");
+        gert::InferShapeContext ctx;
         gert::Shape q_shape({4, 32, 512, 64});
         gert::Shape k_shape({4, 8, 2048, 64});
         gert::Shape v_shape({4, 8, 2048, 64});
@@ -139,7 +139,7 @@ bool TestInferShapeValidCases()
 
     // 用例 C: MQA 广播 (B=1, Hq=16, Hkv=1 [16:1], Sq=128, Sk=512, D=128)
     {
-        gert::InferShapeContext ctx("SageAttention2_MQA");
+        gert::InferShapeContext ctx;
         gert::Shape q_shape({1, 16, 128, 128});
         gert::Shape k_shape({1, 1, 512, 128});
         gert::Shape v_shape({1, 1, 512, 128});
@@ -157,7 +157,7 @@ bool TestInferShapeValidCases()
 
     // 用例 D: 非标准头维度边界 (D=80 与 D=96)
     {
-        gert::InferShapeContext ctx("SageAttention2_D80");
+        gert::InferShapeContext ctx;
         gert::Shape q_shape({2, 16, 256, 80});
         gert::Shape k_shape({2, 16, 256, 80});
         gert::Shape v_shape({2, 16, 256, 80});
@@ -175,7 +175,7 @@ bool TestInferShapeValidCases()
 
     // 用例 E: NHD 布局
     {
-        gert::InferShapeContext ctx("SageAttention2_NHD");
+        gert::InferShapeContext ctx;
         gert::RuntimeAttrs attrs;
         attrs.AddString("NHD");
         ctx.SetAttrs(&attrs);
@@ -290,7 +290,7 @@ bool TestInferDataType()
 
     // 用例 A: Float16 输入推导
     {
-        gert::InferDataTypeContext ctx("SageAttention2_FP16");
+        gert::InferDataTypeContext ctx;
         ctx.SetInputDataType(0, ge::DT_FLOAT16);
         ctx.SetInputDataType(1, ge::DT_FLOAT16);
         ctx.SetInputDataType(2, ge::DT_FLOAT16);
@@ -303,7 +303,7 @@ bool TestInferDataType()
 
     // 用例 B: BFloat16 输入推导
     {
-        gert::InferDataTypeContext ctx("SageAttention2_BF16");
+        gert::InferDataTypeContext ctx;
         ctx.SetInputDataType(0, ge::DT_BF16);
         ctx.SetInputDataType(1, ge::DT_BF16);
         ctx.SetInputDataType(2, ge::DT_BF16);
@@ -316,7 +316,7 @@ bool TestInferDataType()
 
     // 用例 C: Q 与 K 数据类型不匹配拦截
     {
-        gert::InferDataTypeContext ctx("SageAttention2_Mismatch");
+        gert::InferDataTypeContext ctx;
         ctx.SetInputDataType(0, ge::DT_FLOAT16);
         ctx.SetInputDataType(1, ge::DT_BF16);
         ctx.SetInputDataType(2, ge::DT_FLOAT16);

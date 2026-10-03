@@ -20,7 +20,8 @@ namespace ge {
  * @li query: [B, Hq, Sq, D] 或 [B, Sq, Hq, D]，数据类型支持 float16, bfloat16。
  * @li key: [B, Hkv, Sk, D] 或 [B, Sk, Hkv, D]，数据类型支持 float16, bfloat16。
  * @li value: [B, Hkv, Sk, D] 或 [B, Sk, Hkv, D]，数据类型支持 float16, bfloat16。
- * @li key_mean: [B, Hkv, D]，可选输入，Key 均值向量 (smooth_k 启用时使用)，类型为 float32 或 float16。
+ * @li key_mean: [B, Hkv, D]，可选输入，Key 均值向量 (smooth_k 启用时使用)，类型为 float32
+ *     （DEFECT-L-1：内核 float* 直读，fp16 会按 fp32 误读）。
  * @li lse_correction: [B, Hq, Sq]，可选输入，LSE 修正项张量，类型为 float32。
  *
  * @par Outputs:
@@ -83,9 +84,11 @@ public:
             .AutoContiguous();
 
         // 2. 可选平滑与修正输入张量
+        // DEFECT-L-1 同口径（上方 REG_OP 注释）：km 内核 float* 直读，位型仅 DT_FLOAT，
+        // 两套注册形态不得放行 DT_FLOAT16（fp16 km 会按 fp32 误读）
         this->Input("key_mean")
             .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT16})
+            .DataTypeList({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
 

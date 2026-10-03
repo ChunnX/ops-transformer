@@ -16,10 +16,10 @@
 
 namespace op_api {
 namespace {
+#if SAGE_NPU_AVAILABLE
 constexpr int64_t ND_FORMAT = 2;
 constexpr int64_t NCHW_FORMAT = 0;
 
-#if SAGE_NPU_AVAILABLE
 void check_storage_format(const at::Tensor &tensor)
 {
     auto format = at_npu::native::custom_ops::get_npu_format(tensor);

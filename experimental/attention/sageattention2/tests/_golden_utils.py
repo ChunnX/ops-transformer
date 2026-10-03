@@ -167,7 +167,7 @@ def sdpa_fp32(
         k_bnsd = k.float()
         v_bnsd = v.float()
 
-    b, hq, sq, d = q_bnsd.shape
+    _, hq, sq, d = q_bnsd.shape
     _, hkv, sk, _ = k_bnsd.shape
 
     if hq != hkv:
