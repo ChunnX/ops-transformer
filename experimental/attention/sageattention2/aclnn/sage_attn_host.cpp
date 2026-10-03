@@ -39,7 +39,7 @@ struct ConcreteSageOpExecutor : public ::aclOpExecutor {
 
 /**
  * 张量维度辅助提取器
- * 支持从 CANN 原生 aclTensor 或本地轻量 mock 中统一提取形状
+ * 支持从 CANN 原生 aclTensor 中统一提取形状
  */
 inline bool ExtractTensorDimensions(
     const aclTensor *tensor,

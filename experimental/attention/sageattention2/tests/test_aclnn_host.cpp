@@ -24,7 +24,7 @@ namespace {
 /**
  * 辅助函数：构造测试用的 aclTensor
  */
-aclTensor CreateMockTensor(int64_t d0, int64_t d1, int64_t d2, int64_t d3)
+aclTensor CreateTestTensor(int64_t d0, int64_t d1, int64_t d2, int64_t d3)
 {
     aclTensor t;
     t.shape = {d0, d1, d2, d3};
@@ -100,11 +100,11 @@ bool TestHostTilingStandardGqa()
     std::cout << "[RUN] TestHostTilingStandardGqa..." << std::endl;
 
     // HND 布局: [B=2, Hq=32, Sq=1024, D=128], KV: [B=2, Hkv=8, Sk=1024, D=128]
-    aclTensor q = CreateMockTensor(2, 32, 1024, 128);
-    aclTensor k = CreateMockTensor(2, 8, 1024, 128);
-    aclTensor v = CreateMockTensor(2, 8, 1024, 128);
-    aclTensor out = CreateMockTensor(2, 32, 1024, 128);
-    aclTensor lse = CreateMockTensor(2, 32, 1024, 1);
+    aclTensor q = CreateTestTensor(2, 32, 1024, 128);
+    aclTensor k = CreateTestTensor(2, 8, 1024, 128);
+    aclTensor v = CreateTestTensor(2, 8, 1024, 128);
+    aclTensor out = CreateTestTensor(2, 32, 1024, 128);
+    aclTensor lse = CreateTestTensor(2, 32, 1024, 1);
 
     uint64_t ws_size = 0;
     aclOpExecutor *executor = nullptr;
@@ -168,10 +168,10 @@ bool TestHostTilingFp32SmoothV()
 {
     std::cout << "[RUN] TestHostTilingFp32SmoothV..." << std::endl;
 
-    aclTensor q = CreateMockTensor(2, 16, 512, 64);
-    aclTensor k = CreateMockTensor(2, 16, 512, 64);
-    aclTensor v = CreateMockTensor(2, 16, 512, 64);
-    aclTensor out = CreateMockTensor(2, 16, 512, 64);
+    aclTensor q = CreateTestTensor(2, 16, 512, 64);
+    aclTensor k = CreateTestTensor(2, 16, 512, 64);
+    aclTensor v = CreateTestTensor(2, 16, 512, 64);
+    aclTensor out = CreateTestTensor(2, 16, 512, 64);
 
     uint64_t ws_size = 0;
     aclOpExecutor *executor = nullptr;
@@ -208,10 +208,10 @@ bool TestHostTilingSplitKvTrigger()
     std::cout << "[RUN] TestHostTilingSplitKvTrigger..." << std::endl;
 
     // 单头、极小批次：B=1, Hq=1, Hkv=1, Sq=64, Sk=1024, D=64
-    aclTensor q = CreateMockTensor(1, 1, 64, 64);
-    aclTensor k = CreateMockTensor(1, 1, 1024, 64);
-    aclTensor v = CreateMockTensor(1, 1, 1024, 64);
-    aclTensor out = CreateMockTensor(1, 1, 64, 64);
+    aclTensor q = CreateTestTensor(1, 1, 64, 64);
+    aclTensor k = CreateTestTensor(1, 1, 1024, 64);
+    aclTensor v = CreateTestTensor(1, 1, 1024, 64);
+    aclTensor out = CreateTestTensor(1, 1, 64, 64);
 
     uint64_t ws_size = 0;
     aclOpExecutor *executor = nullptr;
@@ -241,10 +241,10 @@ bool TestCoreCompatibility28()
 
     setenv("SAGEATTN_NUM_CORES", "28", 1);
 
-    aclTensor q = CreateMockTensor(4, 16, 512, 128);
-    aclTensor k = CreateMockTensor(4, 16, 512, 128);
-    aclTensor v = CreateMockTensor(4, 16, 512, 128);
-    aclTensor out = CreateMockTensor(4, 16, 512, 128);
+    aclTensor q = CreateTestTensor(4, 16, 512, 128);
+    aclTensor k = CreateTestTensor(4, 16, 512, 128);
+    aclTensor v = CreateTestTensor(4, 16, 512, 128);
+    aclTensor out = CreateTestTensor(4, 16, 512, 128);
 
     uint64_t ws_size = 0;
     aclOpExecutor *executor = nullptr;
@@ -270,10 +270,10 @@ bool TestParameterValidation()
 {
     std::cout << "[RUN] TestParameterValidation..." << std::endl;
 
-    aclTensor q = CreateMockTensor(2, 32, 128, 64);
-    aclTensor k = CreateMockTensor(2, 8, 128, 64);
-    aclTensor v = CreateMockTensor(2, 8, 128, 64);
-    aclTensor out = CreateMockTensor(2, 32, 128, 64);
+    aclTensor q = CreateTestTensor(2, 32, 128, 64);
+    aclTensor k = CreateTestTensor(2, 8, 128, 64);
+    aclTensor v = CreateTestTensor(2, 8, 128, 64);
+    aclTensor out = CreateTestTensor(2, 32, 128, 64);
     uint64_t ws_size = 0;
     aclOpExecutor *executor = nullptr;
 
@@ -283,13 +283,13 @@ bool TestParameterValidation()
     TEST_CHECK(aclnnSageAttention2GetWorkspaceSize(&q, &k, &v, nullptr, nullptr, 0.1, 3, 2, false, 1, false, false, &out, nullptr, &ws_size, nullptr) == ACLNN_ERR_PARAM_NULLPTR, "Should reject null executor");
 
     // 2. GQA 不可整除拦截 (Hq=31, Hkv=8)
-    aclTensor q_bad_gqa = CreateMockTensor(2, 31, 128, 64);
+    aclTensor q_bad_gqa = CreateTestTensor(2, 31, 128, 64);
     TEST_CHECK(aclnnSageAttention2GetWorkspaceSize(&q_bad_gqa, &k, &v, nullptr, nullptr, 0.1, 3, 2, false, 1, false, false, &out, nullptr, &ws_size, &executor) == ACLNN_ERR_PARAM_INVALID, "Should reject non-divisible GQA heads");
 
     // 3. HeadDim 超过 128 拦截 (D=256)
-    aclTensor q_bad_d = CreateMockTensor(2, 32, 128, 256);
-    aclTensor k_bad_d = CreateMockTensor(2, 8, 128, 256);
-    aclTensor v_bad_d = CreateMockTensor(2, 8, 128, 256);
+    aclTensor q_bad_d = CreateTestTensor(2, 32, 128, 256);
+    aclTensor k_bad_d = CreateTestTensor(2, 8, 128, 256);
+    aclTensor v_bad_d = CreateTestTensor(2, 8, 128, 256);
     TEST_CHECK(aclnnSageAttention2GetWorkspaceSize(&q_bad_d, &k_bad_d, &v_bad_d, nullptr, nullptr, 0.1, 3, 2, false, 1, false, false, &out, nullptr, &ws_size, &executor) == ACLNN_ERR_PARAM_INVALID, "Should reject D > 128");
 
     // 4. 非法量化粒度与累加精度
@@ -303,10 +303,10 @@ bool TestParameterValidation()
     // 6. causal 与 Sq!=Sk 组合拒绝（DEFECT-L-2 负向锁：任务书 §2.2 因果掩码仅当
     //    Sq==Sk 合法，共享点 ComputeHostTiling 一处拒绝——移植态 C-ABI 透传
     //    ACLNN_ERR_PARAM_INVALID，gert TilingImpl 同点映射 GRAPH_FAILED）
-    aclTensor q_causal_skew = CreateMockTensor(2, 32, 128, 64); // Sq=128
-    aclTensor k_causal_skew = CreateMockTensor(2, 8, 256, 64);  // Sk=256
-    aclTensor v_causal_skew = CreateMockTensor(2, 8, 256, 64);
-    aclTensor out_causal_skew = CreateMockTensor(2, 32, 128, 64);
+    aclTensor q_causal_skew = CreateTestTensor(2, 32, 128, 64); // Sq=128
+    aclTensor k_causal_skew = CreateTestTensor(2, 8, 256, 64);  // Sk=256
+    aclTensor v_causal_skew = CreateTestTensor(2, 8, 256, 64);
+    aclTensor out_causal_skew = CreateTestTensor(2, 32, 128, 64);
     TEST_CHECK(aclnnSageAttention2GetWorkspaceSize(&q_causal_skew, &k_causal_skew, &v_causal_skew, nullptr, nullptr, 0.1, 3, 2, true, 1, false, false, &out_causal_skew, nullptr, &ws_size, &executor) == ACLNN_ERR_PARAM_INVALID, "Should reject causal with Sq != Sk");
     // 非 causal 的 Sq!=Sk 为合法路径（Split-KV 域，参 TestHostTilingSplitKvTrigger），必须保留
     TEST_CHECK(aclnnSageAttention2GetWorkspaceSize(&q_causal_skew, &k_causal_skew, &v_causal_skew, nullptr, nullptr, 0.1, 3, 2, false, 1, false, false, &out_causal_skew, nullptr, &ws_size, &executor) == ACLNN_SUCCESS, "Should retain non-causal with Sq != Sk");

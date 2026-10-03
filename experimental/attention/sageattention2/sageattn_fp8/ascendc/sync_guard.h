@@ -11,6 +11,10 @@
 
 #if SAGE_ATTN_KERNEL_API
 #include "kernel_operator.h"
+// 官方 CATLASS 跨核同步组件（catlass/arch/cross_core_sync.hpp）：CrossCoreFlag
+// 类型化旗标 + CrossCoreSetFlag/WaitFlag 薄封装（forceinline 直译 AscendC 原语，
+// 指令流与裸调用一致）。宿主门禁（BiSheng 宿主模式，KERNEL_API=0）不引入。
+#include "catlass/arch/cross_core_sync.hpp"
 #endif
 
 namespace sage_attn {
@@ -23,8 +27,7 @@ enum class CrossCoreDirection : uint32_t {
     CUBE_TO_VEC1 = 1,  // Cube 核心 -> Vector 1 (softmax 核)
     VEC0_TO_CUBE = 2,  // Vector 0 -> Cube 核心 (K/V 就位)
     VEC1_TO_CUBE = 3,  // Vector 1 -> Cube 核心 (softmax 结果与 skip-scale 信号)
-    VEC0_TO_VEC1 = 4,  // Vector 0 -> Vector 1
-    VEC1_TO_VEC0 = 5   // Vector 1 -> Vector 0
+    VEC1_TO_VEC0 = 4   // Vector 1 -> Vector 0 (scale 条带消费 ACK；dir 仅作文档语义，不参与硬件编码)
 };
 
 /**
@@ -68,17 +71,19 @@ namespace CrossCoreFlags {
 /**
  * 跨核同步原语封装 (1C2V 硬件跨核信号灯)
  *
- * 设备端映射 CANN 官方接口（dav-3510 头文件实测签名）：
- *   CrossCoreSetFlag<uint8_t modeId, pipe_t pipe>(uint16_t flagId)
- *   CrossCoreWaitFlag<uint8_t modeId = 0, pipe_t pipe = PIPE_S>(uint16_t flagId)
+ * 委托官方 CATLASS 组件（catlass/arch/cross_core_sync.hpp，一处定义）：
+ *   Catlass::Arch::CrossCoreSetFlag<modeId, pipe>(Catlass::Arch::CrossCoreFlag&)
+ *   Catlass::Arch::CrossCoreWaitFlag<modeId, pipe>(Catlass::Arch::CrossCoreFlag&)
  * modeId 4 = 块内 (intra-block) 同步：支持全部 flagId [0,15]；
  * 1C2V 的 Cube/V0/V1 同属一个 AI Core，块内信号灯语义精确匹配。
  * PIPE_S 为全局作用域常量，不可加名字空间限定。
+ * dir 参数保留 1C2V 方向语义文档（生产者→消费者），不参与硬件编码。
  */
 __aicore__ inline void CrossCoreSet(CrossCoreDirection dir, uint32_t flag_id) {
 #if SAGE_ATTN_KERNEL_API
     (void)dir;
-    AscendC::CrossCoreSetFlag<4, PIPE_S>(static_cast<uint16_t>(flag_id));
+    Catlass::Arch::CrossCoreFlag flag{static_cast<Catlass::Arch::FlagID>(flag_id)};
+    Catlass::Arch::CrossCoreSetFlag<4, PIPE_S>(flag);
 #else
     (void)dir;
     (void)flag_id;
@@ -88,7 +93,8 @@ __aicore__ inline void CrossCoreSet(CrossCoreDirection dir, uint32_t flag_id) {
 __aicore__ inline void CrossCoreWait(CrossCoreDirection dir, uint32_t flag_id) {
 #if SAGE_ATTN_KERNEL_API
     (void)dir;
-    AscendC::CrossCoreWaitFlag<4, PIPE_S>(static_cast<uint16_t>(flag_id));
+    Catlass::Arch::CrossCoreFlag flag{static_cast<Catlass::Arch::FlagID>(flag_id)};
+    Catlass::Arch::CrossCoreWaitFlag<4, PIPE_S>(flag);
 #else
     (void)dir;
     (void)flag_id;

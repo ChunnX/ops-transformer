@@ -138,27 +138,29 @@
 ### 5.1 环境准备
 
 ```bash
+# 真机验收环境（Atlas 950PR，已装 CANN 与驱动）注入 CANN 环境后进入算子目录；
+# 交叉/开发环境则经算子门禁容器执行（bash docker/init.sh，run.sh 自动包装进容器）
 source /usr/local/Ascend/ascend-toolkit/set_env.sh
-cd /work/hw
+cd <仓库根>/experimental/attention/sageattention2
 ```
 
 ### 5.2 精度复现
 
 ```bash
-python3 tools/check_golden.py --golden golden/ --strict
-python3 tests/test_official_suite.py
+bash run.sh host
+bash run.sh python
 ```
 
-预期结果：所有 25 桶 golden 与 500 个官方用例 100% 通过。
+预期结果：`host` 三个 C++ 二进制自检全过；`python` 四个测试文件全过
+（含 `tests/test_kernel_twin.py` 对 golden 25 桶的 L-A/L-B 判据与量化中间态位级比对）。
 
 ### 5.3 性能复现
 
 ```bash
-# 1. 运行 PyTorch 路径对标测试
-python3 tests/benchmark/bench_npu.py --repeats 100 --warmup 50 --order abba
+# 1. 运行 PyTorch 路径对标测试（sageattn 入口 vs FIA 基线；计时 harness 由验收环境提供）
+bash run.sh python   # 先确认 torch.ops.sageattention2.forward 门禁全绿（真机 NPU 可用时）
 
 # 2. 编译并运行 aclnn 路径对标测试（CLI 无聚合旗标，逐 case 运行，见 PrintUsage）
-cd ops-transformer/experimental/attention/sageattention2
 bash benchmarks/build_aclnn_benchmark.sh
 for c in P-01 P-02 P-03 P-04 P-05 P-06 P-07; do
   ./build/benchmarks/benchmark_aclnn --case $c --order abba --gate 1.6

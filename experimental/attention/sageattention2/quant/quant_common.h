@@ -103,37 +103,6 @@ __aicore__ __host__ inline uint16_t Fp32ToBf16(float f) noexcept {
 }
 
 /**
- * AMLA 以加代乘核心原语（引理 1 / 公式 12）：
- * 对单精度浮点数 F，乘以 2^n（n 为整数阶码偏移）在二进制位级严格等价于整型指数加法：
- * AS_INT32(F * 2^n) = AS_INT32(F) + n * 2^23
- * 本原语服务于 base-2 (exp2) 域的重缩放 (Rescale) 与指数位更新，消除浮点乘法开销。
- */
-__aicore__ __host__ inline float FloatMulPow2Int(float f, int32_t n) noexcept {
-    if (f == 0.0f || n == 0) return f;
-    uint32_t u;
-    std::memcpy(&u, &f, sizeof(float));
-    const uint32_t exp = (u >> 23) & 0xffu;
-    if (exp == 0 || exp == 255) {
-        return f;
-    }
-    const int32_t new_exp = static_cast<int32_t>(exp) + n;
-    if (new_exp <= 0) {
-        return 0.0f;
-    }
-    if (new_exp >= 255) {
-        const uint32_t inf_bits = (u & 0x80000000u) | 0x7f800000u;
-        float res;
-        std::memcpy(&res, &inf_bits, sizeof(float));
-        return res;
-    }
-    // 指数替换更新：保持符号位与尾数不变，更新阶码段
-    u = (u & 0x807FFFFFu) | (static_cast<uint32_t>(new_exp) << 23);
-    float res;
-    std::memcpy(&res, &u, sizeof(float));
-    return res;
-}
-
-/**
  * INT8 舍入原语（严格区分 half-away-from-zero 与 RNE，策略八 / task.md 2.2 策略四）
  * - per_thread 路径: half-away-from-zero (floor(|x|+0.5)*sign，饱和至 [-127, 127])，
  *   对齐 GPU quant_per_thread.py 的 +0.5*sign(x)；
@@ -379,7 +348,7 @@ __aicore__ __host__ inline uint32_t VSlotOfToken(uint32_t token_in_block) noexce
 // Reader 方法与上方转换函数同为 __aicore__（2026-10-03 随 quant 层设备化标注补齐）：
 // bisheng 对 TU 内未引用的 inline 函数体也做双 pass 语义检查，host 语境方法调用
 // __aicore__ 函数会报 "call to __aicore__ function from __host__ function"。
-// 宿主 TU（g++/clang++，__aicore__ 展开为空）不受影响。
+// 宿主 TU（BiSheng 宿主模式，__aicore__ 展开为空）不受影响。
 template <typename T>
 struct ElementReader {
     static inline __aicore__ float Read(const T* ptr, size_t idx) noexcept {

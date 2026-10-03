@@ -56,6 +56,7 @@ run_host_tests() {
         "${WORK_DIR}/op_host/sage_attention2_infershape.cpp" \
         -I"${WORK_DIR}/op_host" \
         -I"${WORK_DIR}/aclnn" \
+        "${COMMON_INCLUDES[@]}" \
         -o "${BUILD_DIR}/test_op_host"
     "${BUILD_DIR}/test_op_host"
 

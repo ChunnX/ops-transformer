@@ -4,11 +4,36 @@
 #include <cstdint>
 #include <cstddef>
 
+#ifndef __CCE__
+namespace AscendC {
+enum class TPosition : uint8_t {
+    GM = 0,
+    A1 = 1,
+    A2 = 2,
+    B1 = 3,
+    B2 = 4,
+    C1 = 5,
+    C2 = 6,
+    CO1 = 7,
+    CO2 = 8,
+    VECIN = 9,
+    VECOUT = 10,
+    VECCALC = 11,
+    TSCM = 12,
+    LCM = 13
+};
+} // namespace AscendC
+#endif
+
+// 官方 CATLASS 容量常量一致性锁：本头文件保持零依赖基座（被 quant 裸编译等无
+// CATLASS -I 场景包含），容量取白皮书字面量；与官方 Catlass::Arch::Ascend950 的
+// 逐项一致由 sage_resource.hpp 的 static_assert 链在含 catlass 的 TU 编译期锁定。
+
 /**
  * Host/Device 切换（本头文件被所有 ascendc/catlass 头包含，是 __aicore__ 的首个定义点）：
  * - bisheng -xasc 设备编译预定义 __aicore__ = __attribute__((cce_aicore))，下方 #ifndef 直接保留内建；
  * - KT 设备/主机单测定义 __CCE_KT_TEST__（或历史 __DAV_C220_*），属性展开为 [[]]；
- * - 纯宿主语法门（g++/clang++ 无任何宏）展开为空。
+ * - 纯宿主门禁（BiSheng 宿主模式无任何宏）展开为空。
  * 此前此处为无条件空展开，会抢在 online_softmax.h 之前把 __aicore__ 污染为空，
  * 使 KT 单测路径丢失属性——已改为与其他头一致的完整切换范式。
  */
@@ -21,13 +46,7 @@
 #endif
 
 #ifndef __forceinline__
-#if defined(_MSC_VER)
-#define __forceinline__ __forceinline
-#elif defined(__GNUC__) || defined(__clang__)
 #define __forceinline__ inline __attribute__((always_inline))
-#else
-#define __forceinline__ inline
-#endif
 #endif
 
 /**
@@ -53,25 +72,29 @@
 namespace sage_attn {
 
 /**
- * 片上存储容量与硬件拓扑常量（白皮书表 4-2 与第 3 节硬件规格）
+ * 片上存储容量与硬件拓扑常量（白皮书表 4-2 与第 3 节硬件规格）。
+ * 本头文件为全仓零依赖基座（quant 裸编译等无 CATLASS -I 场景亦包含），容量取
+ * 白皮书字面量；与官方 Catlass::Arch::Ascend950（L1 512KB / L0A/L0B 64KB /
+ * L0C 256KB）的逐项一致由 sage_resource.hpp HardwareResourceQuota 的 static_assert
+ * 链在含 catlass 的 TU 编译期锁定，官方演进漂移会在编译期显式暴露。
+ * UB 不取官方 Arch::Ascend950::UB_SIZE（248KB，官方样例工程口径）：本算子按任务书
+ * 验收域（Atlas 950PR 白皮书表 4-2 单 Vector 核 256KB）冻结 256KB——两值为不同口径
+ * 而非换算关系（sage_resource.hpp HardwareResourceQuota 同口径）。
  */
 constexpr uint32_t L1_TOTAL_SIZE = 512 * 1024;         // L1 总容量 512KB
-constexpr uint32_t L1_BANK_SIZE = 256 * 1024;          // 单 Bank 容量 256KB
+constexpr uint32_t L1_BANK_SIZE = L1_TOTAL_SIZE / 2;   // 单 Bank 容量 256KB（L1 对半分 Bank 的拓扑事实）
 constexpr uint32_t L1_BANK0_OFFSET = 0;                // Bank 0 起始偏移 (0~256KB, Q 与 Q scale)
-constexpr uint32_t L1_BANK1_OFFSET = 256 * 1024;       // Bank 1 起始偏移 (256~512KB, KV 与 KV scale)
+constexpr uint32_t L1_BANK1_OFFSET = L1_BANK_SIZE;     // Bank 1 起始偏移 (256~512KB, KV 与 KV scale)
 
 constexpr uint32_t UB_TOTAL_SIZE_PER_V = 256 * 1024;   // 单 Vector 核心 UB 容量 256KB (V0 256KB, V1 256KB)
-constexpr uint32_t UB_TOTAL_SIZE = 512 * 1024;         // 每 AI Core 包含 2 个 Vector 核心，UB 总量 512KB
 
-constexpr uint32_t L0A_SIZE = 64 * 1024;               // L0A 矩阵乘输入 A 寄存器 64KB
-constexpr uint32_t L0B_SIZE = 64 * 1024;               // L0B 矩阵乘输入 B 寄存器 64KB
-constexpr uint32_t L0C_SIZE = 256 * 1024;              // L0C 累加器 256KB
-
+// L0A/L0B/L0C 容量不在本头重复映射：官方 Arch::Ascend950 → 本算子配额的唯一映射点
+// 为 sage_resource.hpp HardwareResourceQuota（L0A/L0B 64KB、L0C 256KB），消费方直引。
+// 原 ATLAS_950_AIV_NUM / GROUPS_PER_DIE / CORES_PER_DIE 拓扑常量零调用方，已随
+// 2026-10-03 死代码清扫删除（核数由 tiling.core_num_used 运行时携带，host 推导见
+// op_host/aclnn host tiling）。
 constexpr uint32_t ATLAS_950_AIC_NUM = 32;             // Atlas 950PR 满配 32 个 AI Core
-constexpr uint32_t ATLAS_950_AIV_NUM = 64;             // Atlas 950PR 满配 64 个 Vector Core (1C2V 架构)
 constexpr uint32_t ATLAS_950_DIE_NUM = 2;              // Atlas 950PR 标配 2 个计算 Die
-constexpr uint32_t ATLAS_950_GROUPS_PER_DIE = 4;       // Atlas 950PR 每 Die 包含 4 个 Core Group (全片 8-Group)
-constexpr uint32_t ATLAS_950_CORES_PER_DIE = 16;       // Atlas 950PR 满配单 Die 16 个 AI Core
 
 // 单任务 GQA 行打包上限（kernel kKernelMaxRows / host total_rows 校验 / InspectTilingPlan
 // 三方同源唯一点）：单任务打包 min(gqa_ratio, MAX_PACK_ROWS / m_per_core) 个 Q 头，
@@ -245,8 +268,6 @@ struct __attribute__((packed, aligned(32))) SageAttention2TilingData {
 static_assert(sizeof(SageAttention2TilingData) == 160, "SageAttention2TilingData size must be exactly 160 bytes");
 static_assert(sizeof(SageAttention2TilingData) % 32 == 0, "SageAttention2TilingData size must be a multiple of 32 bytes");
 static_assert(alignof(SageAttention2TilingData) == 32, "SageAttention2TilingData must be 32-byte aligned");
-
-using TilingData = SageAttention2TilingData;
 
 /**
  * DieTask 算法：将连续的虚拟任务映射到 Atlas 950PR 双 Die / 8-Group 拓扑

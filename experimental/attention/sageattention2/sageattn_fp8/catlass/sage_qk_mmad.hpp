@@ -2,24 +2,22 @@
 #define SAGE_ATTN_FP8_CATLASS_SAGE_QK_MMAD_HPP
 
 #include <cstdint>
+#include <type_traits>
 #include "../ascendc/tiling.h"
 #include "sage_tile.hpp"
 #include "sage_resource.hpp"
 
-#if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wignored-qualifiers"
-#pragma clang diagnostic ignored "-Wreorder-ctor"
-#pragma clang diagnostic ignored "-Wunused-parameter"
-#elif defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wignored-qualifiers"
-#pragma GCC diagnostic ignored "-Wreorder"
-#pragma GCC diagnostic ignored "-Wunused-parameter"
+
+#if SAGE_ATTN_KERNEL_API
+#include "catlass/arch/arch.hpp"
+// 官方位型映射表单点（catlass/gemm/helper.hpp）：ElementAccumulatorSelector
+// 承担 A×B→累加位型的 Arch 映射（int8×int8→INT32），随官方架构支持自动跟随。
+// 依赖 kernel_operator.h 的 AscendC 位型（half/bfloat16_t 等），宿主门禁
+// （KERNEL_API=0）不引入，Traits 走下方显式 fallback。
+#include "catlass/gemm/helper.hpp"
 #endif
 
 #if defined(__has_include) && __has_include("tla/tensor.hpp")
-#include "catlass/arch/arch.hpp"
 #include "tla/tensor.hpp"
 #endif
 
@@ -27,12 +25,6 @@
 #if defined(__has_include) && __has_include("catlass/gemm/tile/tile_mmad.hpp")
 #include "catlass/gemm/tile/tile_mmad.hpp"
 #endif
-#endif
-
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#elif defined(__GNUC__)
-#pragma GCC diagnostic pop
 #endif
 
 namespace Catlass::SageAttn {
@@ -50,7 +42,16 @@ template <
 struct SageQkMmadTraits {
     using ElementA = int8_t;
     using ElementB = int8_t;
+#if SAGE_ATTN_KERNEL_API
+    // 官方累加位型表（Catlass::Gemm::helper，helper.hpp 单点）：int8×int8→INT32，
+    // 随官方 Arch 支持自动跟随，不再手写位型
+    using ElementC = typename Catlass::Gemm::helper::ElementAccumulatorSelector<
+        ElementA, ElementB>::ElementAccumulator;
+#else
+    // 宿主门禁（无 kernel_operator.h，helper.hpp 不可解析）：显式 INT32，与
+    // 设备态官方表项一致（tests/test_kernel_twin 宿主分支位级锁定域）
     using ElementC = int32_t;
+#endif
 
     static constexpr uint32_t M = TileM;
     static constexpr uint32_t N = TileN;
@@ -75,21 +76,22 @@ public:
      * 搬运不走官方 TileCopyTla L1→L0A 特化——其 EnableIf 强约束 L1 侧 zN 分形布局
      * （copy_l1_to_l0a.hpp），与本算子 V0 产出的 ND 行 + Data/Scale 相邻 L1 布局不匹配
      * （布局契约见 sage_tile.hpp 头注释与设计文档"CATLASS 接入边界"节），
-     * 故保留 LoadTile2D 单点实现。
+     * 故保留 LoadTile2D 单点实现。L0 寻址恒为基址 0（本核 L0A/L0B 单缓冲无分片，
+     * 原显式 l0a/l0b 基址参数全调用域恒 0，随死参清理删除）。
      */
-    __aicore__ void LoadL0A(uint32_t l1_q_addr, uint32_t l0a_addr, uint32_t m, uint32_t k) {
+    __aicore__ void LoadL0A(uint32_t l1_q_addr, uint32_t m, uint32_t k) {
         m_ = m;
         k_ = k;
-        LoadTile2D<ElementA, AscendC::TPosition::A2, AscendC::TPosition::A1>(l0a_addr, l1_q_addr, m, k);
+        LoadTile2D<ElementA, AscendC::TPosition::A2, AscendC::TPosition::A1>(0U, l1_q_addr, m, k);
     }
 
     /**
      * 加载 K 分块：从 L1 Bank 1 搬入 L0B（ND 行布局，理由同 LoadL0A）
      */
-    __aicore__ void LoadL0B(uint32_t l1_k_addr, uint32_t l0b_addr, uint32_t n, uint32_t k) {
+    __aicore__ void LoadL0B(uint32_t l1_k_addr, uint32_t n, uint32_t k) {
         n_ = n;
         k_ = k;
-        LoadTile2D<ElementB, AscendC::TPosition::B2, AscendC::TPosition::B1>(l0b_addr, l1_k_addr, n, k);
+        LoadTile2D<ElementB, AscendC::TPosition::B2, AscendC::TPosition::B1>(0U, l1_k_addr, n, k);
     }
 
     /**
@@ -124,7 +126,10 @@ public:
 
         auto layout_a = tla::MakeLayout(tla::MakeShape(m_, k_), tla::MakeStride(k_, tla::Int<1>{}));
         auto layout_b = tla::MakeLayout(tla::MakeShape(n_, k_), tla::MakeStride(k_, tla::Int<1>{}));
-        auto layout_c = tla::MakeLayout(tla::MakeShape(m_, n_), tla::MakeStride(n_, tla::Int<1>{}));
+        // L0C 布局官方单点（tla/layout.hpp MakeLayoutL0C）：zN 分形 shape/stride +
+        // originShape=(rows,cols) 由官方一处派生，取代手写行主 MakeLayout 装配；
+        // 本处 TileMmadTla 的显式 (m,n,k) 重载仅消费 tensor.data()，位元零变化。
+        auto layout_c = tla::MakeLayoutL0C(m_, n_);
 
         auto tensor_l0a = tla::MakeTensor(l0a_tensor, layout_a, Catlass::Arch::PositionL0A{});
         auto tensor_l0b = tla::MakeTensor(l0b_tensor, layout_b, Catlass::Arch::PositionL0B{});
@@ -143,10 +148,10 @@ public:
      * FixpipeParamsC310（nSize 按 32B 粒度 RoundUp、unitFlag 语义）且 SPLIT_M 档用
      * dualDstCtl 硬件双目的地模式，与本核已真机验证的 Arch3510 手动分段发射
      * （m>64 双 Fixpipe、整幅 zN 行距）不同构，不替换（golden 位级锁定域）。
+     * 原 ub_dst_half1 死参已删（dot32 单缓冲，第二半槽地址无消费者）。
      */
-    __aicore__ void EmitL0CToUbRaw(uint32_t ub_dst_half0, [[maybe_unused]] uint32_t ub_dst_half1,
-                                   uint32_t m, uint32_t n) {
-        CopyL0CToUbSplitM<ElementC>(0U, ub_dst_half0, m, n);
+    __aicore__ void EmitL0CToUbRaw(uint32_t ub_dst_offset, uint32_t m, uint32_t n) {
+        CopyL0CToUbSplitM<ElementC>(0U, ub_dst_offset, m, n);
     }
 
 private:

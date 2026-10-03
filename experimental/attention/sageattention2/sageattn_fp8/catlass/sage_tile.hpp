@@ -19,41 +19,29 @@
  * 布局——该数据通路重构须随 camodel 仿真/真机 L-A 循环推进，见设计文档模块边界）。
  */
 #include "catlass/catlass.hpp"
+// 官方对齐/极值组件显式声明（catlass/detail/alignment.hpp，全局 ::RoundUp/::RoundDown/
+// ::CeilDiv/::Min/::Max，CATLASS_HOST_DEVICE constexpr）——catlass.hpp 已带入，此处
+// 显式 include 使本文件对全局对齐原语的依赖单点可见。
+#include "catlass/detail/alignment.hpp"
+// 官方架构资源组件（Arch::Ascend950 片上容量）与官方 layout 构件（tla/layout.hpp 的
+// MakeLayout/MakeShape/MakeStride/crd2offset）——Bank 几何与 GM 布局单点经官方组件派生。
+#include "catlass/arch/arch.hpp"
+#include "tla/layout.hpp"
 
 #if SAGE_ATTN_KERNEL_API
 #include "kernel_operator.h"
 #else
 namespace AscendC {
-enum class TPosition : uint8_t {
-    GM = 0,
-    A1 = 1,
-    A2 = 2,
-    B1 = 3,
-    B2 = 4,
-    C1 = 5,
-    C2 = 6,
-    CO1 = 7,
-    CO2 = 8,
-    VECIN = 9,
-    VECOUT = 10,
-    VECCALC = 11,
-    TSCM = 12,
-    C2PIPE2GM = 13,
-};
 
-enum class HardEvent : uint16_t {
-    V_MTE2 = 0,
-    MTE2_V = 1,
-    V_MTE3 = 2,
-    MTE3_V = 3,
-    MTE2_MTE1 = 4,
-    MTE1_MTE2 = 5,
-    MTE1_M = 6,
-    M_MTE1 = 7,
-    V_S = 8,
-    S_V = 9,
-    FIX_S = 10,
-    S_FIX = 11,
+// 宿主门禁（KERNEL_API=0）HardEvent 影子枚举：编号逐项镜像 dav-3510 设备头
+//（cann aarch64-linux/asc/impl/basic_api/kernel_event.h，3510 无 FIX_V/V_FIX 档）。
+// 宿主分支该枚举仅作 Catlass::SageAttn::Sync<E> 的模板标签（事件体编译期剔除），
+// 不触发硬件语义；编号对齐消除双域枚举漂移隐患（旧影子枚举为自造编号，已废弃）。
+enum class HardEvent : uint8_t {
+    MTE2_MTE1, MTE1_MTE2, MTE1_M, M_MTE1, MTE2_V, V_MTE2, MTE3_V, V_MTE3,
+    M_V, V_M, V_V, MTE3_MTE1, MTE1_MTE3, MTE1_V, MTE2_M, M_MTE2, V_MTE1,
+    M_FIX, FIX_M, MTE3_MTE2, MTE2_MTE3, S_V, V_S, S_MTE2, MTE2_S, S_MTE3,
+    MTE3_S, MTE2_FIX, FIX_MTE2, FIX_S, M_S, FIX_MTE3, MTE1_FIX, FIX_MTE1, FIX_FIX,
 };
 } // namespace AscendC
 #endif
@@ -191,34 +179,94 @@ __aicore__ inline void CopyL0CToUbSplitM(
 }
 
 /**
- * Data + Scale 相邻排布契约（FlashMLA 硬件并发核心优化）
+ * UB 行 → L1 行单块搬入（ND 行布局，V0 量化产出写入 L1 Data/Scale 相邻槽）：
+ * 收敛 LoadAndQuantizeQ / QuantizeAndStageKey / QuantizeAndStageValue 三处相同的
+ * DataCopyParams 样板（blockCount=1、blockLen 以 32B 块计 = 官方 BYTE_PER_BLK、
+ * 行内连续零步距）。row_bytes 须为 BYTE_PER_BLK 整数倍（d ∈ {64,128} 字节码恒满足）。
+ */
+#if SAGE_ATTN_DEVICE_COMPILE
+template <typename Element>
+__aicore__ inline void CopyUbRowToL1(AscendC::LocalTensor<Element> l1_dst,
+                                     AscendC::LocalTensor<Element> ub_src,
+                                     uint32_t row_bytes)
+{
+    AscendC::DataCopyParams cp;
+    cp.blockCount = 1;
+    cp.blockLen = row_bytes / Catlass::BYTE_PER_BLK;
+    cp.srcStride = 0;
+    cp.dstStride = 0;
+    AscendC::DataCopy(l1_dst, ub_src, cp);
+}
+#endif
+
+namespace detail {
+
+// GM (B,H,S,D) 布局类型标签（运行时形状/步距；步距 int64 元素单位 + D 连续）
+using GmBhsdShapeTag = decltype(tla::MakeShape(uint32_t{}, uint32_t{}, uint32_t{}, uint32_t{}));
+using GmBhsdStrideTag = decltype(tla::MakeStride(int64_t{}, int64_t{}, int64_t{}, tla::Int<1>{}));
+
+} // namespace detail
+
+/**
+ * GM 四维张量布局的 tla 单点表达（任务书分工：CATLASS 负责 Layout）：
+ * - HND（layout_hnd != 0）：B 步距 H·S·D、H 步距 S·D、S 步距 D、D 连续；
+ * - NHD（layout_hnd == 0）：B 步距 S·H·D、H 步距 D、S 步距 H·D、D 连续。
+ * 步距统一 int64 元素单位（64 位 GM 寻址纪律），坐标折叠由 tla::crd2offset 承担
+ * （逐维乘加，与手写 b·sb + h·sh + s·ss 位元一致，宿主孪生位级锁定域已验证）。
+ * Q/K/V 输入与 O 输出的布局推导此前在核内 8 处各写一份 if (LAYOUT_HND) 步距四元组，
+ * 全部收敛至此单点（布局/步距/重复次数逐项对齐原手写式，test_tiling_struct 锁值）。
+ */
+using GmBhsdLayout = decltype(tla::MakeLayout(detail::GmBhsdShapeTag{}, detail::GmBhsdStrideTag{}));
+
+__aicore__ inline GmBhsdLayout MakeGmBhsdLayout(uint32_t b, uint32_t h, uint32_t s, uint32_t d,
+                                                uint32_t layout_hnd)
+{
+    if (layout_hnd != 0u) {
+        return tla::MakeLayout(tla::MakeShape(b, h, s, d),
+                               tla::MakeStride(static_cast<int64_t>(h) * s * d,
+                                               static_cast<int64_t>(s) * d,
+                                               static_cast<int64_t>(d), tla::Int<1>{}));
+    }
+    return tla::MakeLayout(tla::MakeShape(b, h, s, d),
+                           tla::MakeStride(static_cast<int64_t>(s) * h * d,
+                                           static_cast<int64_t>(d),
+                                           static_cast<int64_t>(h) * d, tla::Int<1>{}));
+}
+
+namespace detail {
+
+using GmBhsShapeTag = decltype(tla::MakeShape(uint32_t{}, uint32_t{}, uint32_t{}));
+using GmBhsStrideTag = decltype(tla::MakeStride(int64_t{}, int64_t{}, tla::Int<1>{}));
+
+} // namespace detail
+
+/**
+ * GM 三维稠密布局（B,H,S 元素连续，与 tensor_layout 无关）：
+ * LSE / lseCorrection float 张量按 (b, hq, sq) 稠密排布，坐标折叠
+ * b·(H·S) + h·S + s 与手写嵌套乘加位元一致。
+ */
+using GmBhsLayout = decltype(tla::MakeLayout(detail::GmBhsShapeTag{}, detail::GmBhsStrideTag{}));
+
+__aicore__ inline GmBhsLayout MakeGmBhsLayout(uint32_t b, uint32_t h, uint32_t s)
+{
+    (void)b; // 步距自 H 起，b 不参与折叠（稠密布局形状仅作文档）
+    return tla::MakeLayout(tla::MakeShape(b, h, s),
+                           tla::MakeStride(static_cast<int64_t>(h) * s,
+                                           static_cast<int64_t>(s), tla::Int<1>{}));
+}
+
+/**
+ * Data + Scale 相邻排布契约（FlashMLA 硬件并发核心优化）：
  * 将 INT8/FP8 矩阵数据与对应块的 FP32 Scale 在物理内存中紧密相邻排布，
  * 使得每 token 的两次 MTE2 拷贝合并为一次、请求数量直接减半，
  * 彻底化解 16 项 MTE2 Issue Queue 溢出导致的硬件挂起。
- * 对齐算子走官方 Catlass::RoundUp（32B = BYTE_PER_BLK，一个 MTE 块粒度）；
- * 块形状本身为本算子自定义契约（非 CATLASS 标准分形布局，官方无等价组件）。
+ * 本算子的槽内实际摆布唯一定义点为下方 L1DoubleBankContract（Bank 0 的
+ * Q_DATA→Q_SCALE 与 Bank 1 KV 槽的 [K Data][K Scale] 相邻排布均由其承载；
+ * 对齐走官方 Catlass::RoundUp，32B = BYTE_PER_BLK，一个 MTE 块粒度）。
+ * 原 KvSlotLayoutContract 模板已随 2026-10-03 死代码清扫删除：生产链路
+ * （kernel / host tiling）零实例化，且其 RoundUp 槽内 Scale 偏移与核内实际
+ * 摆布（block_n·d 直排）描述不一致，留存反而构成误导性契约。
  */
-template <typename DataType, uint32_t BlockN, uint32_t HeadDim>
-struct KvSlotLayoutContract {
-    static constexpr uint32_t DATA_ELEMENTS = BlockN * HeadDim;
-    static constexpr uint32_t DATA_BYTES = DATA_ELEMENTS * sizeof(DataType);
-
-    // 32 字节（单 MTE 块）对齐——官方 Catlass 对齐组件（alignment.hpp，全局命名空间）
-    static constexpr uint32_t DATA_BYTES_ALIGNED = ::RoundUp<Catlass::BYTE_PER_BLK>(DATA_BYTES);
-
-    // per_thread 模式下每 64 token 块对应 4 个 FP32 scale，per_warp 为 1 个
-    static constexpr uint32_t PER_THREAD_SCALE_COUNT = (BlockN / 64U) * 4U;
-    static constexpr uint32_t PER_WARP_SCALE_COUNT = (BlockN / 64U) * 1U;
-
-    static constexpr uint32_t PER_THREAD_SCALE_BYTES = PER_THREAD_SCALE_COUNT * sizeof(float);
-    static constexpr uint32_t PER_THREAD_SCALE_BYTES_ALIGNED =
-        ::RoundUp<Catlass::BYTE_PER_BLK>(PER_THREAD_SCALE_BYTES);
-
-    static constexpr uint32_t TOTAL_SLOT_BYTES_PER_THREAD = DATA_BYTES_ALIGNED + PER_THREAD_SCALE_BYTES_ALIGNED;
-
-    // Scale 在 Slot 内的相对偏移即为 Data 对齐后的大小
-    static constexpr uint32_t SCALE_OFFSET = DATA_BYTES_ALIGNED;
-};
 
 /**
  * L1 双 Bank 物理配平契约

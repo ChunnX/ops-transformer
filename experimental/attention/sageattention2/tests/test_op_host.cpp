@@ -92,7 +92,7 @@ bool TestOpDefRegistry()
 bool TestInferShapeValidCases()
 {
     std::cout << "[RUN] TestInferShapeValidCases..." << std::endl;
-    auto infer_shape_func = ops::OpImplRegistryMock::GetInstance("SageAttention2").GetInferShape();
+    auto infer_shape_func = ops::OpImplRegistry::GetInstance("SageAttention2").GetInferShape();
     TEST_ASSERT(infer_shape_func != nullptr, "InferShape function must be registered");
 
     // 用例 A: 标准 MHA (B=2, Hq=32, Hkv=32, Sq=1024, Sk=1024, D=128)
@@ -208,7 +208,7 @@ bool TestInferShapeValidCases()
 bool TestInferShapeErrorHandling()
 {
     std::cout << "[RUN] TestInferShapeErrorHandling..." << std::endl;
-    auto infer_shape_func = ops::OpImplRegistryMock::GetInstance("SageAttention2").GetInferShape();
+    auto infer_shape_func = ops::OpImplRegistry::GetInstance("SageAttention2").GetInferShape();
 
     // 1. 空指针测试
     TEST_ASSERT(infer_shape_func(nullptr) == ge::GRAPH_FAILED, "Should reject null context");
@@ -285,7 +285,7 @@ bool TestInferShapeErrorHandling()
 bool TestInferDataType()
 {
     std::cout << "[RUN] TestInferDataType..." << std::endl;
-    auto infer_data_type_func = ops::OpImplRegistryMock::GetInstance("SageAttention2").GetInferDataType();
+    auto infer_data_type_func = ops::OpImplRegistry::GetInstance("SageAttention2").GetInferDataType();
     TEST_ASSERT(infer_data_type_func != nullptr, "InferDataType function must be registered");
 
     // 用例 A: Float16 输入推导

@@ -26,7 +26,6 @@ struct HardwareResourceQuota {
     static constexpr uint32_t L0B_TOTAL_BYTES  = Arch::L0B_SIZE;                  // 64 KB
     static constexpr uint32_t L0C_TOTAL_BYTES  = Arch::L0C_SIZE;                  // 256 KB
     static constexpr uint32_t UB_PER_V_BYTES   = 256 * 1024;                      // 256 KB
-    static constexpr uint32_t UB_TOTAL_BYTES   = 2 * UB_PER_V_BYTES;              // 512 KB
 };
 
 /**
@@ -156,32 +155,6 @@ public:
     // 改动须双侧联动 + test_tiling_struct 台账用例回归）；Q_MAX_BYTES 的
     // 128x128 规格隐含同一上限。
     static constexpr uint32_t MAX_GQA_PACK_ROWS = 128;
-
-    /**
-     * 静态校验分块配置是否满足片上容量硬约束
-     */
-    static constexpr bool ValidateBudget(uint32_t m_per_core, uint32_t block_n, uint32_t head_dim) {
-        // Q 矩阵大小 (INT8)
-        uint32_t q_bytes = m_per_core * head_dim * sizeof(int8_t);
-        if (q_bytes > L1DoubleBankContract::BANK0_SIZE) {
-            return false;
-        }
-
-        // KV 单块大小 (INT8 或 FP8)
-        uint32_t kv_single_block_bytes = block_n * head_dim * sizeof(int8_t);
-        // 双缓冲 Ping-Pong 需要 2 个 KV 块
-        if (kv_single_block_bytes * 2U > L1DoubleBankContract::BANK1_SIZE) {
-            return false;
-        }
-
-        // L0C 矩阵乘中间累加大小 (INT32 或 FP32)
-        uint32_t l0c_bytes = m_per_core * block_n * sizeof(float);
-        if (l0c_bytes > HardwareResourceQuota::L0C_TOTAL_BYTES) {
-            return false;
-        }
-
-        return true;
-    }
 
     /**
      * 运行时资源台账检查（RES-01，host 发射前 fail-fast 的唯一判据）：

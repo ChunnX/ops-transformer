@@ -189,6 +189,26 @@ chunks=1，任务解码与调度算术逐位不变（twin 25 桶 golden 回归�
       （→32B 对齐）、`C0_NUM_PER_FRACTAL`（→Fixpipe zN 分形行粒度）；
     - `detail/alignment.hpp` 全局组件 `::RoundUp` / `::CeilDiv` / `::Min`（Data+Scale
       相邻对齐、LoadData2D repeat 计数、因果活跃块上限；标量 min 不再自造）。
+  - 官方组件复用清单（2026-10-03 深化接入，全部为位元等价的 constexpr/forceinline 替换）：
+    - `Arch::CrossCoreFlag` + `CrossCoreSetFlag/WaitFlag<MODE,PIPE>`
+      （arch/cross_core_sync.hpp）：1C2V 16 flag 跨核同步原语委托官方薄封装单点
+      （sync_guard.h；modeId=4 块内 + PIPE_S 语义不变，forceinline 直译 AscendC
+      原语、指令流零变化）；
+    - `Gemm::helper::ElementAccumulatorSelector`：QK int8×int8→INT32 与 PV
+      fp8×fp8→FP32 累加位型官方表单点（Traits ElementC，随官方架构支持自动跟随；
+      宿主门禁无 AscendC 位型，显式同值 fallback）；
+    - `Gemm::helper::GetL0Element<float8_e4m3_t, true>`：fp8 码 → L0 `mx_fp8_e4m3_t`
+      寄存器位型官方映射（PV Compute；static_assert 锁定，构建漏配
+      `-DCATLASS_ARCH=3510` 时编译期显式失败）；
+    - `detail/macros.hpp` 设备函数宏 `CATLASS_DEVICE_SIMD_VF`（`__simd_vf__ static`，
+      与官方 950 FA softmax epilogue 同款）：sage_pv_mmad.hpp 的
+      MergePvPartialRowVF 标记单点；
+    - host tiling（aclnn/sage_attn_host_tiling.h）与设备核（op_kernel）全链路的
+      分块计数/16-token 对齐改写为 `::CeilDiv` / `::RoundUp`（与手写
+      `(a+b-1)/b` 位元一致；floor 语义的尾元素块号显式保留整除并注释禁改）；
+    - 构建对齐：全部设备编译路径（ci/kernel_compile.sh、run.sh kernel、
+      build_opp.sh、tools/sim 设备步）统一注入官方架构选择宏
+      `-DCATLASS_ARCH=3510`。
   - 官方组件不采用清单（性能/位级锁定裁定，均有源码级证据）：
     - `Gemm::Tile::CopyL0CToUBTla`（ascend950 特化）：基于 `FixpipeParamsC310` 参数面
       且 nSize 按 32B 粒度 RoundUp；本算子真机 L-A 验证走 `FixpipeParamsArch3510`

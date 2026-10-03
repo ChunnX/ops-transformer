@@ -6,7 +6,7 @@
 
 - CUDA 上游基准：thu-ml/SageAttention，核对提交固定为 `d1a57a546c3d395b1ffcbeecc66d81db76f3b4b5`（2026-09-14 核对），对应 `sageattention/core.py` 的 `sageattn_qk_int8_pv_fp8_cuda` 分支族
 - NPU 侧声明范围：本目录 `./quant/`、`./sageattn_fp8/ascendc/`、`./aclnn/`、`./python/sageattention2/` 的当前实现
-- 数值结论类断言（逐位对齐、误差界）一律以工作区根的 golden 数据目录（`golden/manifest.json`，位于本仓库之外）的 TC 系列数据比对为准，本文不给出无实测出处的误差数字
+- 数值结论类断言（逐位对齐、误差界）一律以仓库根 golden 数据集（`golden/manifest.json`，随交付置备：`bash docker/init.sh --golden <数据集>`）的 TC 系列数据比对为准，本文不给出无实测出处的误差数字
 
 ## 量化粒度：per_thread 与 per_warp 均为真实现
 
@@ -29,7 +29,7 @@ NPU 侧两种粒度是两套独立存在的量化内核，不是兼容别名；�
 - CUDA SM90 FP8 `per_thread`（WARPQ=16、WARPK=128）：Q 单 scale 覆盖 2 token，K 覆盖 32 token
 - CUDA 通用 FP8 `per_warp`（WARPQ=32、BLKK=64）：Q 单 scale 覆盖 32 token，K 覆盖 64 token
 - NPU `per_warp` 的覆盖数与 CUDA 通用 per_warp 相同（32/64）；NPU `per_thread` 为 8/16，介于 CUDA 两种 per_thread 配置之间
-- 结论：同名参数不构成逐位 golden。CUDA 的 thread/warp 分组与 lane、MMA fragment 映射绑定，NPU 的 AIV/Cube 布局不同；工作区根 golden 数据目录的 TC-02 系列给出 NPU 侧两种粒度的逐位期望值
+- 结论：同名参数不构成逐位 golden。CUDA 的 thread/warp 分组与 lane、MMA fragment 映射绑定，NPU 的 AIV/Cube 布局不同；仓库根 golden 数据集的 TC-02 系列给出 NPU 侧两种粒度的逐位期望值
 
 ## S_FP8_OFFSET：P 矩阵按 log2(448) 精确放大
 
@@ -59,7 +59,7 @@ NPU 侧两种粒度是两套独立存在的量化内核，不是兼容别名；�
 
 - NPU `per_thread` INT8 量化：half-away-from-zero，对量化前数值的绝对值加 `0.5` 后向下取整、再乘回符号，随后饱和至 `[-127, 127]`（舍入原语 `RoundHalfAwayFromZero`/`RoundNearestEven` 唯一定义于 `./quant/quant_common.h`，注释明确区分两种模式）
 - NPU `per_warp` INT8 量化：RNE（round to nearest even，`nearbyint`）
-- 两种舍入在 x86 可单测内核与 AscendC 设备内核中逐路径保持一致；工作区根的 golden 数据目录（`golden/manifest.json`，位于本仓库之外）的 TC-02 系列按粒度分别固化期望值
+- 两种舍入在 x86 可单测内核与 AscendC 设备内核中逐路径保持一致；仓库根 golden 数据集（`golden/manifest.json`，随交付置备）的 TC-02 系列按粒度分别固化期望值
 - 含义：即使分组数一致，不同舍入模式也会产生不同 int8 码本；任何 CUDA 逐位对齐声明必须先核对舍入轨迹，不能只看分组参数
 
 ## smooth_v：fp32 档真实正路径，其余档告警忽略
@@ -118,5 +118,5 @@ NPU 侧两种粒度是两套独立存在的量化内核，不是兼容别名；�
 - 设备侧累加与偏置：`./sageattn_fp8/ascendc/online_softmax.h`（`GetFinalInvDenominator` 归一化）、`./op_kernel/sageattention2.cpp`（`ComputeSoftmaxProbability` 注入偏置）、`./op_kernel/sage_device_vf.h`（设备态 `SoftmaxProbRowVF` / `FinalizeRowVF`）
 - Tiling 契约：`./sageattn_fp8/ascendc/tiling.h`（`PvAccumDtype`、`QkQuantGran`、`workspace_vm_offset`）
 - 接口与告警语义：`./python/sageattention2/error_check.py`（`handle_smooth_v`、档位白名单）、`./python/sageattention2/dispatch.py`（`per_thread`/`per_warp` 双实现参考实现）
-- 数值期望值：工作区根 golden 数据目录的 TC-02（量化粒度）、TC-03（smooth_v/no_smooth_k）、TC-09（长序列）系列
+- 数值期望值：仓库根 golden 数据集的 TC-02（量化粒度）、TC-03（smooth_v/no_smooth_k）、TC-09（长序列）系列
 - CUDA 上游分组常量（WARPQ/WARPK/BLKK）：thu-ml/SageAttention 提交 `d1a57a546c3d395b1ffcbeecc66d81db76f3b4b5` 的 `sageattention/triton/quant_per_thread.py`、`sageattention/quant.py`、`csrc/qattn/attn_utils.cuh`

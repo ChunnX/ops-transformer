@@ -17,13 +17,14 @@
 - `./python/sageattention2/`：PyTorch 接入包（`dispatch.py` 前端分派与环境变量解析、`_ops.py` PyTorch 自定义算子注册与后端绑定、`_extension.py` C++ 扩展加载、`error_check.py` 输入校验与预处理、`monkey_patch.py` SDPA 热替换工具）
 - `./tests/`、`./benchmarks/`：容器门禁单测与独立 ACLNN 基准工具
 - `./tools/sim/`：设备核 camodel 仿真 harness（B2 门禁数值比对；依赖门禁容器 bisheng `--run-mode=sim` 运行，用法见 `./tools/sim/README.md`，不属于 run.sh 容器门禁主链）
-- `./docker/`：算子门禁容器（唯一编译与测试环境；Dockerfile/compose/生命周期入口 `sage`，见 `./docker/README.md`）
+- `./docker/`：算子门禁容器（唯一编译与测试环境；Dockerfile/compose/生命周期入口 `sage`/一键初始化 `init.sh`/CATLASS 内聚目录 `third_party/`，卷挂载全部为仓库内相对路径，见 `./docker/README.md`）
 - `./run.sh`：门禁统一入口（宿主只依赖 docker，所有目标自动包装进容器，容器内统一 BiSheng 编译）
 
 ## 官方 CATLASS 接入与模块边界
 
 - 设备核经 `./sageattn_fp8/catlass/sage_tile.hpp` 无条件 include 官方 cann/catlass 仓 `<catlass/catlass.hpp>`，分形粒度常量（FRACTAL_M0/N0、FRACTAL_K0_*、LOADDATA2D_REPEAT_BYTES）全部由官方 `BYTE_PER_C0` / `C0_NUM_PER_FRACTAL` / `BYTE_PER_FRACTAL` 派生，官方演进自动跟随；
-- 构建前置：`CATLASS_ROOT` 指向官方 catlass checkout（解析链：CMake 变量/环境变量 → 仓上级 `../catlass` → `./third_party/catlass`，唯一定义点 `./cmake/SageAttnDeps.cmake`，缺失即 fatal）；
+- 构建前置：`CATLASS_ROOT` 指向官方 catlass checkout（解析链：CMake 变量/环境变量 → 算子 `./docker/third_party/catlass`（`docker/init.sh` 置备）→ 仓库根 `./third_party/catlass`，唯一定义点 `./cmake/SageAttnDeps.cmake`，缺失即 fatal）；
+- 深化复用（2026-10-03，全部为位元等价的 constexpr/forceinline 替换，指令流零变化）：跨核同步委托官方 `Arch::CrossCoreFlag` / `CrossCoreSetFlag/WaitFlag`（arch/cross_core_sync.hpp，sync_guard.h 单点）；QK/PV 累加位型与 L0 FP8 寄存器位型接入官方 `Gemm::helper::ElementAccumulatorSelector` / `GetL0Element` 表（sage_qk/pv_mmad.hpp Traits）；设备 VF 函数标记采用官方 `CATLASS_DEVICE_SIMD_VF` 宏；host tiling 与设备核全链路取整收敛到官方 `::CeilDiv` / `::RoundUp`。设备编译统一注入官方架构选择宏 `-DCATLASS_ARCH=3510`（ci/kernel_compile.sh、run.sh、build_opp.sh、tools/sim 同口径）。逐项清单见设计文档"官方组件复用清单"；
 - 模块边界：官方 TileCopyTla 等 copy 组件要求 L1 侧 zN 分形布局；本算子 V0 产出为 ND 行布局 + Data/Scale 相邻契约（任务书允许的按 Cube 微调项），故 LoadData2D/Fixpipe 热路径为本算子自研 AscendC 逻辑，MMA 指令语义冻结待真机 L-A 复核，不与官方 copy 组件混用。
 
 ## 编译构建
@@ -43,17 +44,18 @@ bash build.sh --pkg --experimental --soc=ascend950 --vendor_name=customize --ops
 
 ### 容器门禁（run.sh → BiSheng 容器，唯一编译与测试环境）
 
-- 前置条件：宿主 C++ 单元测试依赖本地编译器（`clang++` 或 `g++`）；设备核编译依赖 BiSheng 编译器（本地有 CANN 时直调，无 CANN 时由 `docker` 容器承载，宿主只需安装 Docker 与 Docker Compose 插件）
-- 命令均在算子目录 `./ops-transformer/experimental/attention/sageattention2/` 执行；`run.sh kernel` 检测到宿主无 BiSheng 时自动委派给容器执行，亦可通过 `bash run.sh docker` 直接启动容器毕昇编译
+- 前置条件：宿主只依赖 Docker 与 Docker Compose 插件；所有编译与测试经 `./docker/` 容器内的 BiSheng 编译器承载，不存在任何宿主编译器路径
+- 独立仓库交付契约：卷挂载全部为相对路径且只指向仓库内部目录，唯一外部依赖 CATLASS 经 `bash docker/init.sh` 拉取固定 commit 内聚到 `./docker/third_party/catlass`（见 `./docker/README.md`）
+- 命令均在算子目录 `./ops-transformer/experimental/attention/sageattention2/` 执行；`run.sh` 各目标在宿主侧自动包装进容器（首次运行自动补齐 CATLASS 初始化），容器侧统一 BiSheng
 - 设备核编译严格基于 BiSheng 编译器（`--npu-arch=dav-3510 -std=c++17 -xasc`）
 - 支持的目标：
 
-- `bash run.sh host`：使用宿主编译器编译并运行 `./tests/test_aclnn_host.cpp`、`./tests/test_op_host.cpp` 与 `./tests/test_tiling_struct.cpp`
-- `bash run.sh kernel`：基于 BiSheng 编译器编译设备核 `./op_kernel/sageattention2.cpp` 为 `./build/sageattention2_bisheng.o`（无 BiSheng 时自动转由 Docker 执行）
-- `bash run.sh docker [target]`：一键调用 Docker 容器执行容器内毕昇编译与门禁测试
-- `bash run.sh python`：`./tests/test_tiling_struct.py`、`./tests/test_quant.py` 与 `./tests/test_kernel_twin.py`
-- `bash run.sh opp`：custom OPP 打包 dry-run 与 mock 安装测试
+- `bash run.sh host`：BiSheng 宿主模式编译并运行 `./tests/test_aclnn_host.cpp`、`./tests/test_op_host.cpp` 与 `./tests/test_tiling_struct.cpp`
+- `bash run.sh kernel`：BiSheng 交叉编译设备核 `./op_kernel/sageattention2.cpp` 为 `./build/sageattention2_bisheng.o`
+- `bash run.sh python`：容器内 `./tests/test_tiling_struct.py`、`./tests/test_quant.py`、`./tests/test_kernel_twin.py` 与 `./tests/test_gqa_chunk.py`（测试动态库由 BiSheng 编译）
+- `bash run.sh opp`：OPP vendor 树 BiSheng 出包（`./build_opp.sh`）与本地部署（`./install_opp.sh`）
 - `bash run.sh all`：执行全部门禁验证（host → kernel → python → opp）
+- 交互调试：`./docker/sage exec`
 
 ## 接口说明
 
@@ -108,8 +110,8 @@ bash build.sh --pkg --experimental --soc=ascend950 --vendor_name=customize --ops
 
 - `benchmark_aclnn.cpp`：独立 C++ ACLNN 基准工具，dlsym 加载 `aclnnSageAttention2`（函数指针签名对齐交付 `./op_api/aclnn_sage_attention2.h` 字符串属性 ABI）与基线 `aclnnFusedInferAttentionScoreV5`（签名逐参数对齐 CANN `9.2.0-beta.1` 头文件），ABBA 轮换 + Trim5 统计 + JSON 报告
 - 退出码契约：`0` 为真机运行完成（含 PASS/FAIL 裁决字段），`1` 为运行错误，`2` 为 SIMULATION 模拟运行
-- SIMULATION 为纯运行时模式（非编译路径）：容器未透传 NPU 设备时工具仍可运行（dlsym 解析失败即落 mock 执行器），所有 `speedup` 字段输出 `NaN`、`verdict` 输出 `"SIMULATION"`、`passed` 与精度对照字段输出 `null`，报告头与 `meta.simulation_warning` 显式声明模拟语义；模拟延迟为合成常数，禁止作为验收证据
-- 构建：`bash ./benchmarks/build_aclnn_benchmark.sh`（容器内执行，BiSheng 宿主模式编译并链接 CANN 真机库；无 CANN 环境直接报错，不再有 mock 编译分支）
+- SIMULATION 为纯运行时模式（非编译路径）：容器未透传 NPU 设备时工具仍可运行，所有 `speedup` 字段输出 `NaN`、`verdict` 输出 `"SIMULATION"`、`passed` 与精度对照字段输出 `null`，报告头与 `meta.simulation_warning` 显式声明模拟语义；模拟延迟为合成常数，禁止作为验收证据
+- 构建：`bash ./benchmarks/build_aclnn_benchmark.sh`（容器内执行，BiSheng 宿主模式编译并链接 CANN 真机库）
 - 单用例示例（算子目录执行）：
 
 ```bash
@@ -124,6 +126,7 @@ bash build.sh --pkg --experimental --soc=ascend950 --vendor_name=customize --ops
 
 ```bash
 cd ./ops-transformer/experimental/attention/sageattention2
+bash docker/init.sh                 # 一键初始化（CATLASS 固定 commit → docker/third_party/、.env、基础镜像）
 bash run.sh host
 bash run.sh kernel
 bash run.sh python

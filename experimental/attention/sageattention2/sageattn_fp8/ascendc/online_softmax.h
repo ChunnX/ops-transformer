@@ -9,7 +9,7 @@
 
 /**
  * bisheng -xasc 设备编译标记（dav-3510 预定义 __DAV_C310_CUBE__/__DAV_C310_VEC__/__CCE__）；
- * 宿主 g++/clang++（含 __CCE_KT_TEST__ 单测）均不定义 __CCE__，走 std 数学函数分支。
+ * BiSheng 宿主模式（含 __CCE_KT_TEST__ 单测）不定义 __CCE__，走 std 数学函数分支。
  * 实测依据：设备侧 C 库仅 fabsf 等少数符号有实现，exp2f/log2f 链接期报 undefined symbol，
  * 故设备端 exp2/log2 必须按位构造自实现（见 FastExp2/FastLog2）。
  * 与 sync_guard.h 的定义点共用同一 #ifndef 守卫，保证任意包含顺序下仅定义一次。
@@ -40,11 +40,10 @@ constexpr float SAGE_MASK_SENTINEL = -1.0e30f;
  * exp2 域 Online Softmax 状态描述符
  */
 struct OnlineSoftmaxState {
-    // 结构体成员缺省初始化，确保状态确定性
+    // 结构体成员缺省初始化，确保状态确定性（块内局部极值/局部和为 Step 入参，
+    // 不驻留状态——原 m_cur/d_cur 死成员已随 2026-10-03 死代码清扫删除）
     float m_run = MIN_FLOAT_VAL;       // running max（exp2 域当前全局最大值）
     float d_run = 0.0f;                // running denominator（exp2 域分母累加和）
-    float m_cur = MIN_FLOAT_VAL;       // 当前分块的局部最大值
-    float d_cur = 0.0f;                // 当前分块的局部 exp2 和
     float m_scale = MIN_FLOAT_VAL;     // 上一次执行 O 累加器重缩放的锚点最大值
     float lse = MIN_FLOAT_VAL;         // 当前维护的 exp2 域 LSE (log-sum-exp)
     bool need_rescale = true;          // 本轮是否需要对 O 主累加器执行 rescale

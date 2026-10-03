@@ -60,7 +60,7 @@ private:
     std::vector<DataType> types_;
 };
 
-struct AttrValueMock {
+struct AttrValueDesc {
     std::string type;
     std::string str_val;
     bool bool_val{false};
@@ -68,95 +68,95 @@ struct AttrValueMock {
     int64_t int_val{0};
 };
 
-class OperatorRegMock {
+class OperatorRegistration {
 public:
-    explicit OperatorRegMock(const std::string &name) : op_name_(name) {}
+    explicit OperatorRegistration(const std::string &name) : op_name_(name) {}
 
-    OperatorRegMock& AddInput(const std::string &name, const TensorType &type) {
+    OperatorRegistration& AddInput(const std::string &name, const TensorType &type) {
         inputs_[name] = type;
         return *this;
     }
 
-    OperatorRegMock& AddOptionalInput(const std::string &name, const TensorType &type) {
+    OperatorRegistration& AddOptionalInput(const std::string &name, const TensorType &type) {
         optional_inputs_[name] = type;
         return *this;
     }
 
-    OperatorRegMock& AddOutput(const std::string &name, const TensorType &type) {
+    OperatorRegistration& AddOutput(const std::string &name, const TensorType &type) {
         outputs_[name] = type;
         return *this;
     }
 
-    OperatorRegMock& AddAttr(const std::string &name, const std::string &type, const std::string &val) {
-        AttrValueMock attr;
+    OperatorRegistration& AddAttr(const std::string &name, const std::string &type, const std::string &val) {
+        AttrValueDesc attr;
         attr.type = type;
         attr.str_val = val;
         attrs_[name] = attr;
         return *this;
     }
 
-    OperatorRegMock& AddAttr(const std::string &name, const std::string &type, const char *val) {
+    OperatorRegistration& AddAttr(const std::string &name, const std::string &type, const char *val) {
         return AddAttr(name, type, std::string(val ? val : ""));
     }
 
-    OperatorRegMock& AddAttr(const std::string &name, const std::string &type, bool val) {
-        AttrValueMock attr;
+    OperatorRegistration& AddAttr(const std::string &name, const std::string &type, bool val) {
+        AttrValueDesc attr;
         attr.type = type;
         attr.bool_val = val;
         attrs_[name] = attr;
         return *this;
     }
 
-    OperatorRegMock& AddAttr(const std::string &name, const std::string &type, float val) {
-        AttrValueMock attr;
+    OperatorRegistration& AddAttr(const std::string &name, const std::string &type, float val) {
+        AttrValueDesc attr;
         attr.type = type;
         attr.float_val = val;
         attrs_[name] = attr;
         return *this;
     }
 
-    OperatorRegMock& AddAttr(const std::string &name, const std::string &type, double val) {
+    OperatorRegistration& AddAttr(const std::string &name, const std::string &type, double val) {
         return AddAttr(name, type, static_cast<float>(val));
     }
 
-    OperatorRegMock& AddAttr(const std::string &name, const std::string &type, int64_t val) {
-        AttrValueMock attr;
+    OperatorRegistration& AddAttr(const std::string &name, const std::string &type, int64_t val) {
+        AttrValueDesc attr;
         attr.type = type;
         attr.int_val = val;
         attrs_[name] = attr;
         return *this;
     }
 
-    OperatorRegMock& EndFactoryReg() { return *this; }
+    OperatorRegistration& EndFactoryReg() { return *this; }
 
     const std::string& GetOpName() const { return op_name_; }
     bool HasInput(const std::string &name) const { return inputs_.find(name) != inputs_.end() || optional_inputs_.find(name) != optional_inputs_.end(); }
     bool HasOptionalInput(const std::string &name) const { return optional_inputs_.find(name) != optional_inputs_.end(); }
     bool HasOutput(const std::string &name) const { return outputs_.find(name) != outputs_.end(); }
     bool HasAttr(const std::string &name) const { return attrs_.find(name) != attrs_.end(); }
-    const AttrValueMock& GetAttr(const std::string &name) const { return attrs_.at(name); }
+    const AttrValueDesc& GetAttr(const std::string &name) const { return attrs_.at(name); }
 
 private:
     std::string op_name_;
     std::map<std::string, TensorType> inputs_;
     std::map<std::string, TensorType> optional_inputs_;
     std::map<std::string, TensorType> outputs_;
-    std::map<std::string, AttrValueMock> attrs_;
+    std::map<std::string, AttrValueDesc> attrs_;
 };
 
 #define REG_OP(OpType) \
-    class OpType : public ::ge::OperatorRegMock { \
+    class OpType : public ::ge::OperatorRegistration { \
     public: \
-        OpType() : ::ge::OperatorRegMock(#OpType) {} \
+        OpType() : ::ge::OperatorRegistration(#OpType) {} \
         static OpType& GetInstance() { \
             static OpType instance; \
             return instance; \
         } \
     }; \
-    ::ge::OperatorRegMock& Get##OpType##Reg() { \
+    ::ge::OperatorRegistration& Get##OpType##Reg() { \
         return OpType::GetInstance(); \
     } \
-    inline ::ge::OperatorRegMock& g_##OpType##_op_reg = OpType::GetInstance()
+    inline ::ge::OperatorRegistration& g_##OpType##_op_reg = OpType::GetInstance()
 
 #define INPUT(name, type) AddInput(#name, type)
 #define OPTIONAL_INPUT(name, type) AddOptionalInput(#name, type)
@@ -164,7 +164,7 @@ private:
 #define ATTR(name, type, default_val) AddAttr(#name, #type, default_val)
 #define OP_END_FACTORY_REG(OpType) EndFactoryReg()
 
-OperatorRegMock& GetSageAttention2Reg();
+OperatorRegistration& GetSageAttention2Reg();
 
 } // namespace ge
 
@@ -436,19 +436,19 @@ namespace ops {
 using InferShapeFunc = ge::graphStatus (*)(gert::InferShapeContext *context);
 using InferDataTypeFunc = ge::graphStatus (*)(gert::InferDataTypeContext *context);
 
-class OpImplRegistryMock {
+class OpImplRegistry {
 public:
-    static OpImplRegistryMock& GetInstance(const std::string &name) {
-        static std::map<std::string, OpImplRegistryMock> instances;
+    static OpImplRegistry& GetInstance(const std::string &name) {
+        static std::map<std::string, OpImplRegistry> instances;
         return instances[name];
     }
 
-    OpImplRegistryMock& InferShape(InferShapeFunc func) {
+    OpImplRegistry& InferShape(InferShapeFunc func) {
         infer_shape_ = func;
         return *this;
     }
 
-    OpImplRegistryMock& InferDataType(InferDataTypeFunc func) {
+    OpImplRegistry& InferDataType(InferDataTypeFunc func) {
         infer_data_type_ = func;
         return *this;
     }
@@ -462,8 +462,8 @@ private:
 };
 
 #define IMPL_OP_INFERSHAPE(OpType) \
-    inline ::ops::OpImplRegistryMock& g_##OpType##_impl_reg = \
-        ::ops::OpImplRegistryMock::GetInstance(#OpType)
+    inline ::ops::OpImplRegistry& g_##OpType##_impl_reg = \
+        ::ops::OpImplRegistry::GetInstance(#OpType)
 
 } // namespace ops
 

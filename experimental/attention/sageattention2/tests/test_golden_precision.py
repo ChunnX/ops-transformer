@@ -21,10 +21,10 @@ import torch
 
 current_file = Path(__file__).resolve()
 OP_ROOT = current_file.parent.parent
-REPO_ROOT = current_file.parents[5]
 
 sys.path.insert(0, str(current_file.parent))  # tests/ 共享模块（判据唯一定义点）
 from _golden_utils import (  # noqa: E402
+    find_golden_dir,
     load_case_tensors,
     l_a_metrics,
     l_b_ratios,
@@ -33,14 +33,10 @@ from _golden_utils import (  # noqa: E402
     LB_RATIO_EPS,
     LSE_TOL,
 )
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
-if str(OP_ROOT) not in sys.path:
-    sys.path.insert(0, str(OP_ROOT))
 if str(OP_ROOT / "python") not in sys.path:
     sys.path.insert(0, str(OP_ROOT / "python"))
 
-import python as py_pkg
+import sageattention2 as sage2_pkg
 
 
 class TestGoldenPrecision(unittest.TestCase):
@@ -49,7 +45,7 @@ class TestGoldenPrecision(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         os.environ["SAGEATTN_ALLOW_CPU_STUB"] = "1"
-        cls.manifest_path = REPO_ROOT / "golden" / "manifest.json"
+        cls.manifest_path = find_golden_dir() / "manifest.json"
         if not cls.manifest_path.exists():
             raise FileNotFoundError(f"Golden manifest not found at {cls.manifest_path}")
 
@@ -67,7 +63,7 @@ class TestGoldenPrecision(unittest.TestCase):
         k = tensors["k"]
         v = tensors["v"]
 
-        out, lse = py_pkg.sageattn_qk_int8_pv_fp8_asc(
+        out, lse = sage2_pkg.sageattn_qk_int8_pv_fp8_asc(
             q=q,
             k=k,
             v=v,
@@ -173,12 +169,9 @@ class TestGoldenPrecision(unittest.TestCase):
         """Verify calling top-level sageattn API matches sageattn_qk_int8_pv_fp8_asc precision."""
         case_id = "P-01_per_thread_fp32+fp16_fp16_HND"
         c = self.cases[case_id]
-        tensors = {
-            tname: torch.load(REPO_ROOT / rpath, map_location="cpu", weights_only=True)
-            for tname, rpath in c["tensors"].items()
-        }
+        tensors = load_case_tensors(c)
 
-        out_direct, lse_direct = py_pkg.sageattn_qk_int8_pv_fp8_asc(
+        out_direct, lse_direct = sage2_pkg.sageattn_qk_int8_pv_fp8_asc(
             tensors["q"], tensors["k"], tensors["v"],
             tensor_layout=c["tensor_layout"],
             is_causal=c["is_causal"],
@@ -189,7 +182,7 @@ class TestGoldenPrecision(unittest.TestCase):
             return_lse=True,
         )
 
-        out_routed, lse_routed = py_pkg.sageattn(
+        out_routed, lse_routed = sage2_pkg.sageattn(
             tensors["q"], tensors["k"], tensors["v"],
             tensor_layout=c["tensor_layout"],
             is_causal=c["is_causal"],

@@ -124,7 +124,7 @@ mkdir -p "${CUSTOM_DIR}/op_impl/ai_core/tbe/kernel/${SOC}"
 mkdir -p "${CUSTOM_DIR}/op_impl/ai_core/tbe/op_tiling/lib"
 mkdir -p "${CUSTOM_DIR}/bin"
 
-HOST_CXX_FLAGS=(-std=c++17 -O2 -fPIC -Wall -Wextra)
+HOST_CXX_FLAGS=(-std=c++17 -O2 -fPIC -Wall -Wextra -lstdc++)  # bisheng 链接需显式 C++ 运行时
 COMMON_INCLUDES=(
     -I"${OP_DIR}/op_host"
     -I"${OP_DIR}/aclnn"
@@ -161,7 +161,9 @@ cp -f "${CUSTOM_DIR}/op_api/lib/libcust_opapi.so" "${CUSTOM_DIR}/op_proto/lib/li
     -o "${CUSTOM_DIR}/op_impl/ai_core/tbe/op_tiling/lib/liboptiling.so"
 
 echo "2. Compiling op_kernel device object for ${SOC} with BiSheng (-xasc ${NPU_ARCH})..."
-"${BISHENG}" --npu-arch="${NPU_ARCH}" -std=c++17 -xasc -c \
+# -DCATLASS_ARCH=3510：官方 CATLASS 架构选择宏（与 ci/kernel_compile.sh 同一口径），
+# sage_pv_mmad.hpp 的官方 GetL0Element/ElementAccumulatorSelector FP8 表项依赖
+"${BISHENG}" --npu-arch="${NPU_ARCH}" -std=c++17 -xasc -DCATLASS_ARCH=3510 -c \
     "${OP_DIR}/op_kernel/sageattention2.cpp" \
     -I"${ASCEND_HOME_PATH}/include" \
     -I"${OP_DIR}/sageattn_fp8/ascendc" \

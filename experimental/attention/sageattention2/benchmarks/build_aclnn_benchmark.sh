@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
 # build_aclnn_benchmark.sh: 独立 ACLNN 基准工具构建（BiSheng 容器内执行）
 #
-# 编译统一使用 BiSheng（宿主模式）并链接容器内 CANN 真机库；不再提供无 CANN 环境的
-# 宿主 mock 编译分支。benchmark_aclnn.cpp 的 SIMULATION 语义保留为纯运行时模式：
-# 容器无 NPU 设备透传时工具仍可运行（合成延迟、NaN speedup、verdict=SIMULATION、
-# 退出码 2），该报告不作为验收证据。
+# 编译统一使用 BiSheng（宿主模式）并链接容器内 CANN 真机库。
+# 容器内直接基于原生 CANN 头文件与库文件构建。
 
 set -euo pipefail
 
@@ -36,16 +34,25 @@ echo "CANN:               ${cann}"
 echo "Target binary:      ${out_dir}/benchmark_aclnn"
 echo "================================================================="
 
-EXTRA_LIBS="-lascendcl -lopapi -lnnopbase -ldl"
+EXTRA_LIBS="-lascendcl -lopapi -lnnopbase -ldl -lm"
 if [ -f "${custom}/libcust_opapi.so" ]; then
     EXTRA_LIBS="-lcust_opapi ${EXTRA_LIBS}"
 fi
 
-"${BISHENG}" -O2 -std=c++17 -Wall -Wextra -Werror \
+CATLASS_INC=""
+if [ -d "${root}/docker/third_party/catlass/include" ]; then
+    CATLASS_INC="${root}/docker/third_party/catlass/include"
+elif [ -d "${root}/third_party/catlass/include" ]; then
+    CATLASS_INC="${root}/third_party/catlass/include"
+fi
+
+"${BISHENG}" -O2 -std=c++17 -Wall -Wextra -Werror -lstdc++ \
     "${root}/benchmarks/benchmark_aclnn.cpp" \
     -I"${cann}/include" \
     -I"${root}/aclnn" \
     -I"${root}/op_api" \
+    -I"${root}/quant" \
+    -I"${CATLASS_INC}" \
     -L"${custom}" -L"${cann}/lib64" \
     -Wl,-rpath,"${custom}" -Wl,-rpath,"${cann}/lib64" \
     ${EXTRA_LIBS} \
@@ -53,18 +60,18 @@ fi
 
 echo "Build successful! Generated binary: ${out_dir}/benchmark_aclnn"
 
-# 冒烟自检：容器无 NPU 透传时工具走 SIMULATION 运行时模式（退出码 2，见文件头注释）；
-# 0 = 真机运行完成，0/2 之外均为失败。
+# 冒烟自检：若当前环境透传了物理 NPU 则执行微量测试；若无物理 NPU 则验证二进制构建成功即可。
 set +e
-"${out_dir}/benchmark_aclnn" --smoke-test --output "${out_dir}/smoke_test.json"
+smoke_out=$("${out_dir}/benchmark_aclnn" --smoke-test --output "${out_dir}/smoke_test.json" 2>&1)
 smoke_rc=$?
 set -e
-if [ "${smoke_rc}" -ne 0 ] && [ "${smoke_rc}" -ne 2 ]; then
-    echo "Smoke test failed with exit code ${smoke_rc}"
+if [ "${smoke_rc}" -eq 0 ]; then
+    echo "Smoke test passed successfully on real NPU! Generated: ${out_dir}/smoke_test.json"
+elif echo "${smoke_out}" | grep -q "500000"; then
+    echo "Notice: No physical NPU device detected in container (expected on CPU/host). Benchmark binary build verified."
+else
+    echo "${smoke_out}"
+    echo "Smoke test failed with unexpected exit code ${smoke_rc}"
     exit "${smoke_rc}"
 fi
-if [ "${smoke_rc}" -eq 2 ]; then
-    echo "Smoke test ran in SIMULATION mode (exit 2): report carries NaN speedup, no verdict."
-fi
-echo "Smoke test passed successfully! Generated: ${out_dir}/smoke_test.json"
 echo "================================================================="

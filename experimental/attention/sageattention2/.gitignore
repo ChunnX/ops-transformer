@@ -4,13 +4,13 @@ build_out/
 out/
 docker/out/
 docker/cache/
+docker/third_party/
+docker/golden/
 docker/.env
-docker/catlass
-docker/catlass/
 *.o
 *.so
-*.bin
 *.dylib
+*.pt
 
 # Python 虚拟环境与测试缓存
 .venv/
@@ -18,6 +18,4 @@ __pycache__/
 .pytest_cache/
 *.pyc
 *.log
-
-# 临时冒烟代码
-sage_device_smoke.cpp
+golden/

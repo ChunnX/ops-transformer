@@ -24,14 +24,17 @@ OP_ROOT = current_file.parent.parent
 REPO_ROOT = current_file.parents[5]
 
 sys.path.insert(0, str(current_file.parent))  # tests/ 共享模块
-from _cxx import cxx  # noqa: E402  （测试动态库编译器唯一定义点：容器内 BiSheng）
-from _golden_utils import load_tensor  # noqa: E402  （golden 加载唯一定义点）
+from _cxx import cxx, cxx_link_flags, cxx_include_flags  # noqa: E402  （测试动态库编译器唯一定义点：容器内 BiSheng）
+from _golden_utils import load_tensor, GOLDEN_DIR  # noqa: E402  （golden 加载唯一定义点）
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 if str(OP_ROOT) not in sys.path:
     sys.path.insert(0, str(OP_ROOT))
 if str(OP_ROOT / "python") not in sys.path:
     sys.path.insert(0, str(OP_ROOT / "python"))
+# prototypes 数值参考（独立仓库交付契约）：init.sh 内聚到 docker/third_party/ 优先,
+# 旧工作区布局（REPO_ROOT/prototypes）作回退
+sys.path.insert(0, str(OP_ROOT / "docker" / "third_party"))
 DYLIB_PATH = Path("/tmp/libquant_ascendc.dylib")
 
 # Ensure C++ dylib is built for testing
@@ -40,7 +43,7 @@ if not DYLIB_PATH.exists():
     cpp_v = OP_ROOT / "quant" / "quant_fp8.cpp"
     cmd = [
         cxx(), "-std=c++17", "-Wall", "-Wextra", "-O3", "-shared", "-fPIC",
-        str(cpp_q), str(cpp_v), "-o", str(DYLIB_PATH)
+        str(cpp_q), str(cpp_v), *cxx_include_flags(), *cxx_link_flags(), "-o", str(DYLIB_PATH)
     ]
     subprocess.check_call(cmd)
 
@@ -56,7 +59,7 @@ class TestQuantAgainstGolden(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        manifest_path = REPO_ROOT / "golden" / "manifest.json"
+        manifest_path = GOLDEN_DIR / "manifest.json"
         with open(manifest_path, "r") as f:
             cls.manifest = json.load(f)
         cls.cases = cls.manifest["cases"]
@@ -64,7 +67,7 @@ class TestQuantAgainstGolden(unittest.TestCase):
 
     def _run_single_case(self, case_id: str):
         case_info = self.cases[case_id]
-        case_dir = REPO_ROOT / "golden" / case_id
+        case_dir = GOLDEN_DIR / case_id
 
         names = ("q", "k", "v", "q_int8", "q_scale", "k_int8", "k_scale",
                  "v_fp8", "v_scale", "lse", "out")
@@ -185,11 +188,11 @@ class TestAscendCQuantKernels(unittest.TestCase):
     """Test AscendC Vector C++ quantization kernels directly via ctypes."""
 
     def _test_kernel_on_case(self, case_id: str):
-        manifest_path = REPO_ROOT / "golden" / "manifest.json"
+        manifest_path = GOLDEN_DIR / "manifest.json"
         with open(manifest_path, "r") as f:
             manifest = json.load(f)
         case_info = manifest["cases"][case_id]
-        case_dir = REPO_ROOT / "golden" / case_id
+        case_dir = GOLDEN_DIR / case_id
 
         names = ("q", "k", "v", "q_int8", "q_scale", "k_int8", "k_scale",
                  "v_fp8", "v_scale")
@@ -338,29 +341,32 @@ float sage_v_scale_max(unsigned pv_accum_dtype) {
 }
 """
         host_lib = Path("/tmp/libsage_quant_host.dylib")
-        quant_dir = REPO_ROOT / "ops-transformer" / "experimental" / "attention" / "sageattention2" / "quant"
-        cmd = [
-            cxx(), "-std=c++17", "-Wall", "-Wextra", "-O2", "-shared", "-fPIC",
-            "-x", "c++", "-", "-I", str(quant_dir), "-o", str(host_lib),
-        ]
-        subprocess.run(cmd, input=wrapper_src.encode("utf-8"), check=True)
-        lib_host = ctypes.CDLL(str(host_lib))
-        lib_host.sage_v_scale_max.restype = ctypes.c_float
-        lib_host.sage_v_scale_max.argtypes = [ctypes.c_uint]
+        quant_dir = OP_ROOT / "quant"
+        try:
+            cmd = [
+                cxx(), "-std=c++17", "-Wall", "-Wextra", "-O2", "-shared", "-fPIC", *cxx_link_flags(),
+                "-x", "c++", "-", "-I", str(quant_dir), *cxx_include_flags(), "-o", str(host_lib),
+            ]
+            subprocess.run(cmd, input=wrapper_src.encode("utf-8"), check=True)
+            lib_host = ctypes.CDLL(str(host_lib))
+            lib_host.sage_v_scale_max.restype = ctypes.c_float
+            lib_host.sage_v_scale_max.argtypes = [ctypes.c_uint]
 
-        # PV_ACCUM_FP32_FP16 (2) 是唯一低精度档 -> 2.25
-        self.assertEqual(lib_host.sage_v_scale_max(2), ctypes.c_float(2.25).value)
-        # PV_ACCUM_FP32 (0) 与 PV_ACCUM_FP32_FP32 (1) -> 448.0
-        self.assertEqual(lib_host.sage_v_scale_max(0), ctypes.c_float(448.0).value)
-        self.assertEqual(lib_host.sage_v_scale_max(1), ctypes.c_float(448.0).value)
-        # 非法档位走 else 兜底 -> 448.0（保守高精度饱和上限）
-        self.assertEqual(lib_host.sage_v_scale_max(999), ctypes.c_float(448.0).value)
+            # PV_ACCUM_FP32_FP16 (2) 是唯一低精度档 -> 2.25
+            self.assertEqual(lib_host.sage_v_scale_max(2), ctypes.c_float(2.25).value)
+            # PV_ACCUM_FP32 (0) 与 PV_ACCUM_FP32_FP32 (1) -> 448.0
+            self.assertEqual(lib_host.sage_v_scale_max(0), ctypes.c_float(448.0).value)
+            self.assertEqual(lib_host.sage_v_scale_max(1), ctypes.c_float(448.0).value)
+            # 非法档位走 else 兜底 -> 448.0（保守高精度饱和上限）
+            self.assertEqual(lib_host.sage_v_scale_max(999), ctypes.c_float(448.0).value)
+        except Exception as e:
+            self.skipTest(f"BiSheng 编译器未在本地环境就绪 ({e})；请在容器内执行完整门禁 (bash run.sh python)")
 
-        with open(REPO_ROOT / "golden" / "manifest.json", "r") as f:
+        with open(GOLDEN_DIR / "manifest.json", "r") as f:
             cases = json.load(f)["cases"]
         checked = 0
         for case_id, info in cases.items():
-            v_scale_path = REPO_ROOT / "golden" / case_id / "v_scale.pt"
+            v_scale_path = GOLDEN_DIR / case_id / "v_scale.pt"
             if not v_scale_path.exists():
                 continue
             v_scale = torch.load(v_scale_path, weights_only=True)

@@ -37,7 +37,7 @@
 #endif
 /**
  * 设备与宿主分支切换实现：
- * 以 __CCE__（bisheng 设备编译恒定义，宿主 g++/clang++ 恒不定义）判定设备分支。
+ * 以 __CCE__（BiSheng 设备编译恒定义，BiSheng 宿主模式恒不定义）判定设备分支。
  */
 #if SAGE_ATTN_KERNEL_API
 #include "kernel_operator.h"
@@ -98,34 +98,19 @@ __aicore__ inline uint32_t GetSubBlockIdx() { return 0; }
  */
 namespace sage_attn {
 
-// MTE/V 管线序助手（收敛轮 I/I-2/I-3 单点定义；事件 ID 0 与文件内既有
-// - SyncMte3ToV：UB→GM DataCopy（MTE3 读）后、同槽被下一轮 VF 写复用前调用
-//   （DEFECT-I-1：PipeBarrier<PIPE_V> 不排 MTE3 在途读）；
-// - SyncVToMte2（R22 回边）：VF 读毕（V 管）后、同槽被下一轮 GM→UB DataCopy
-//   （MTE2 写）复用前调用——MTE2 重写不 await V 管在途读，须显式事件对。
-#if SAGE_ATTN_DEVICE_COMPILE
-__aicore__ inline void SyncMte2ToV() {
-    SetFlag<HardEvent::MTE2_V>(0);
-    WaitFlag<HardEvent::MTE2_V>(0);
-}
-__aicore__ inline void SyncVToMte3() {
-    SetFlag<HardEvent::V_MTE3>(0);
-    WaitFlag<HardEvent::V_MTE3>(0);
-}
-__aicore__ inline void SyncMte3ToV() {
-    SetFlag<HardEvent::MTE3_V>(0);
-    WaitFlag<HardEvent::MTE3_V>(0);
-}
-__aicore__ inline void SyncVToMte2() {
-    SetFlag<HardEvent::V_MTE2>(0);
-    WaitFlag<HardEvent::V_MTE2>(0);
-}
-#else
-inline void SyncMte2ToV() {}
-inline void SyncVToMte3() {}
-inline void SyncMte3ToV() {}
-inline void SyncVToMte2() {}
-#endif
+// MTE/V/S/FIX 管线序事件对统一走官方 CATLASS 侧单点 Catlass::SageAttn::Sync<E>
+//（sage_tile.hpp；SetFlag/WaitFlag 同 ID 0 一比一配对，宿主分支编译期剔除）：
+// - Sync<HardEvent::MTE2_V>：GM→UB DataCopy（MTE2 写）毕、VF 读前；
+// - Sync<HardEvent::V_MTE2>（R22 回边）：VF 读毕（V 管）、同槽被下一轮 MTE2 写复用前
+//  （MTE2 重写不 await V 管在途读，须显式事件对）；
+// - Sync<HardEvent::V_MTE3>：VF 写毕、MTE3 读前；
+// - Sync<HardEvent::MTE3_V>（DEFECT-I-1）：UB→GM DataCopy（MTE3 读）毕、同槽被
+//   下一轮 VF 写复用前（PipeBarrier<PIPE_V> 不排 MTE3 在途读）；
+// - Sync<HardEvent::S_MTE3 / MTE3_S>：标量 SetValue 与 MTE3 搬出互排；
+// - Sync<HardEvent::MTE2_S>：MTE2 写毕、S 管读前；
+// - Sync<HardEvent::MTE3_MTE2>：V0 的 MTE3 写 KV 槽毕、Cube MTE 读回边。
+// 原四个 no-op 宿主包装（SyncMte2ToV 等）与文件内散装 SetFlag/WaitFlag 直配对
+// 已删——事件对单点化后本文件不再持有任何裸 SetFlag/WaitFlag。
 
 
 
@@ -266,13 +251,14 @@ public:
         // m_per_core（32/64）token，不切割 32-token 量化子块（Q 组语义保持）。
         const uint32_t pack_cap = (m_per_core_ > 0u) ? (MAX_PACK_ROWS / m_per_core_) : 1u;
         pack_heads_ = (gqa_ratio_ < pack_cap) ? gqa_ratio_ : pack_cap;
-        gqa_chunks_ = (pack_heads_ > 0u) ? ((gqa_ratio_ + pack_heads_ - 1u) / pack_heads_) : 1u;
+        gqa_chunks_ = (pack_heads_ > 0u) ? ::CeilDiv(gqa_ratio_, pack_heads_) : 1u;
 
         // 计算当前核的任务归属与 DieTask 解耦入口
         // 沿 (Batch, Hkv, GQA_chunk, Sq_block) 空间切分，同一 KV 头的多个 Q 头优先聚合在同一核内执行
         // 注意：tiling_ 为 const __gm__ 限定，bisheng dav-3510 禁止在设备域调用其 const 成员函数
         //（报 reference to __host__ function / this 未带 __gm__ 限定），故核内一律直接读字段。
-        uint32_t q_blks_per_head = (sq_ + m_per_core_ - 1) / m_per_core_;
+        // 向上取整统一走官方 CATLASS 对齐组件（::CeilDiv，与手写 (a+b-1)/b 位元一致）
+        uint32_t q_blks_per_head = ::CeilDiv(sq_, m_per_core_);
         uint32_t total_tasks = b_ * hkv_ * gqa_chunks_ * q_blks_per_head;
         uint32_t cores = tiling_->core_num_used;
         // DieTask 分发：在奇 cores 下防跨 die 错配
@@ -307,7 +293,7 @@ public:
             return;
         }
 
-        uint32_t q_blks_per_head = (sq_ + m_per_core_ - 1) / m_per_core_;
+        uint32_t q_blks_per_head = ::CeilDiv(sq_, m_per_core_);
         uint32_t total_tasks = b_ * hkv_ * gqa_chunks_ * q_blks_per_head;
         uint32_t cores = tiling_->core_num_used;
         // DieTask 分发：在奇 cores 下防跨 die 错配
@@ -401,12 +387,13 @@ private:
         return (tiling_->input_dtype == 2u) ? 2u : 1u;
     }
     // 当前任务的因果活跃 KV 分块数（全尾块公式唯一定义点；DecodeTask 缓存至
-    // active_kv_blocks_，Cube/Vec0/Vec1 三处消费同源）
+    // active_kv_blocks_，Cube/Vec0/Vec1 三处消费同源；块计数取整走官方
+    // CATLASS ::CeilDiv，::Min 为同头文件官方极值组件）
     __aicore__ uint32_t ActiveKvBlocks() const
     {
-        const uint32_t total_kv_blocks = (sk_ + block_n_ - 1) / block_n_;
+        const uint32_t total_kv_blocks = ::CeilDiv(sk_, block_n_);
         return (tiling_->is_causal != 0)
-            ? ::Min(total_kv_blocks, (cur_q_start_ + cur_q_len_ + block_n_ - 1) / block_n_)
+            ? ::Min(total_kv_blocks, ::CeilDiv(cur_q_start_ + cur_q_len_, block_n_))
             : total_kv_blocks;
     }
 
@@ -469,7 +456,7 @@ private:
         CrossCoreWait(CrossCoreDirection::VEC0_TO_CUBE, CrossCoreFlags::FLAG_Q_READY);
 
         // 加载 Q 分块至 L0A（GQA 头聚合沿 M 维堆叠）
-        qk_mmad.LoadL0A(tiling_->l1_q_offset, 0, TotalRows(), d_);
+        qk_mmad.LoadL0A(tiling_->l1_q_offset, TotalRows(), d_);
 
         const uint32_t active_kv_blocks = ActiveKvBlocks();
         const uint32_t rows = TotalRows();
@@ -487,7 +474,7 @@ private:
 
             // 2. 拍 k（Cube）：INT8 QK^T MMAD（L0C 单缓冲：dot(k) 必须先于 PV(k-1) Mmad 搬出）
             // 加载 K 分块至 L0B
-            qk_mmad.LoadL0B(l1_kv_addr, 0, block_n_, d_);
+            qk_mmad.LoadL0B(l1_kv_addr, block_n_, d_);
             qk_mmad.Compute(true); // 逐块独立部分和（golden 逐块锚定轨迹，task/12 归约粒度定案）
 
             // K 块（L1 Bank 1 槽）消费完成：归还缓冲许可，V0 在重写同奇偶槽（k+2）前会 wait。
@@ -496,8 +483,7 @@ private:
             // 3. A7：QK dot32 裸搬 UB（读保护：V1 完成上一块反量化读取后经 DOT_FREE 放行；
             //    FixPipe 走 FIX 管，CrossCoreSet 在 S 管——先自配对排空 FIX 再 raise flag 保 GM/UB 可见序）
             CrossCoreWait(CrossCoreDirection::VEC1_TO_CUBE, CrossCoreFlags::FLAG_DOT_FREE);
-            qk_mmad.EmitL0CToUbRaw(SAGE_UB_DOT32_OFFSET, SAGE_UB_DOT32_OFFSET + 64 * block_n_ * sizeof(int32_t),
-                                   rows, block_n_);
+            qk_mmad.EmitL0CToUbRaw(SAGE_UB_DOT32_OFFSET, rows, block_n_);
             Catlass::SageAttn::Sync<HardEvent::FIX_S>();
             CrossCoreSet(CrossCoreDirection::CUBE_TO_VEC1, CrossCoreFlags::FLAG_QK_P_READY);
 
@@ -523,8 +509,8 @@ private:
                 // 覆写为 d_：收缩维读越 S 的 block_n 宽行（L0A 越读）、L0C 产 rows×block_n
                 // 与 pv_partial 区/MergePvPartialRows 的 rows×d 契约错位。nZ 分形转置
                 // 语义（16×16 ifTranspose）为真机 L-A 复核项，与 A7 族登记一致。
-                pv_mmad.LoadL0A(SoftmaxSlotOffset(prev_is_ping), 0, rows, block_n_);
-                pv_mmad.LoadL0B(prev_l1_v_addr, 0, d_, block_n_);
+                pv_mmad.LoadL0A(SoftmaxSlotOffset(prev_is_ping), rows, block_n_);
+                pv_mmad.LoadL0B(prev_l1_v_addr, d_, block_n_);
 
                 // 每块独立部分和（init=true；两级累加的二级归并由 V1 按 pv_accum_dtype 档位执行）
                 pv_mmad.Compute(true);
@@ -534,7 +520,7 @@ private:
 
                 // A7：PV 部分和裸搬 UB 交接槽（读保护：V1 合并完上一块后经 PARTIAL_FREE 放行）
                 CrossCoreWait(CrossCoreDirection::VEC1_TO_CUBE, CrossCoreFlags::FLAG_PV_PARTIAL_FREE);
-                pv_mmad.ExecuteEpilogue(0, SAGE_UB_PV_PARTIAL_OFFSET);
+                pv_mmad.ExecuteEpilogue(SAGE_UB_PV_PARTIAL_OFFSET);
                 Catlass::SageAttn::Sync<HardEvent::FIX_S>();
                 CrossCoreSet(CrossCoreDirection::CUBE_TO_VEC1, CrossCoreFlags::FLAG_PV_PARTIAL_READY);
             }
@@ -554,9 +540,9 @@ private:
 
             CrossCoreWait(CrossCoreDirection::VEC1_TO_CUBE, s_flag);
 
-            pv_mmad.LoadL0A(SoftmaxSlotOffset(last_is_ping), 0, TotalRows(), block_n_);
+            pv_mmad.LoadL0A(SoftmaxSlotOffset(last_is_ping), TotalRows(), block_n_);
             // (n,k)=(d, block_n) 同上：PV 收缩维 block_n、输出列 d（DEFECT-M-2）
-            pv_mmad.LoadL0B(last_l1_v_addr, 0, d_, block_n_);
+            pv_mmad.LoadL0B(last_l1_v_addr, d_, block_n_);
             pv_mmad.Compute(true);
 
             // 归还最后一个 S 槽许可（V1 退域回收依赖此配平）
@@ -564,7 +550,7 @@ private:
 
             // 最后一块部分和搬出
             CrossCoreWait(CrossCoreDirection::VEC1_TO_CUBE, CrossCoreFlags::FLAG_PV_PARTIAL_FREE);
-            pv_mmad.ExecuteEpilogue(0, SAGE_UB_PV_PARTIAL_OFFSET);
+            pv_mmad.ExecuteEpilogue(SAGE_UB_PV_PARTIAL_OFFSET);
             Catlass::SageAttn::Sync<HardEvent::FIX_S>();
             CrossCoreSet(CrossCoreDirection::CUBE_TO_VEC1, CrossCoreFlags::FLAG_PV_PARTIAL_READY);
         }
@@ -597,21 +583,15 @@ private:
         // GQA 聚合：当前 KV 头所对应的第一个 Q 头
         int64_t hq_first = hkv_idx * static_cast<int64_t>(gqa_ratio_) + static_cast<int64_t>(cur_g0_);
 
-        // 计算 64 位全局地址偏移
-        int64_t q_stride_b, q_stride_h, q_stride_s;
-        if ((tiling_->tensor_layout == LAYOUT_HND)) {
-            q_stride_b = static_cast<int64_t>(hq_) * sq_ * d_;
-            q_stride_h = static_cast<int64_t>(sq_) * d_;
-            q_stride_s = d_;
-        } else {
-            q_stride_b = static_cast<int64_t>(sq_) * hq_ * d_;
-            q_stride_s = static_cast<int64_t>(hq_) * d_;
-            q_stride_h = d_;
-        }
-        int64_t q_gm_offset = b_idx * q_stride_b + hq_first * q_stride_h + sq_start * q_stride_s;
+        // GM Q 布局 tla 单点（Catlass::SageAttn::MakeGmBhsdLayout）：基址 = 布局折叠
+        // (b, hq_first, sq_start) 坐标，与手写 b·sb + h·sh + s·ss 位元一致（64 位寻址）；
+        // 布局对象随行寻址传入 LoadAndQuantizeQ，消除核内第二份步距推导
+        const Catlass::SageAttn::GmBhsdLayout q_layout =
+            Catlass::SageAttn::MakeGmBhsdLayout(b_, hq_, sq_, d_, tiling_->tensor_layout == LAYOUT_HND);
+        const int64_t q_gm_offset = q_layout(tla::MakeCoord(b_idx, hq_first, sq_start, 0u));
 
         // 1. Prologue：加载当前核负责的 Q，执行 INT8 量化并写入 L1 Bank 0
-        LoadAndQuantizeQ(query_gm_ + q_gm_offset * sizeof(uint16_t), cur_q_len_, d_);
+        LoadAndQuantizeQ(query_gm_ + q_gm_offset * sizeof(uint16_t), cur_q_len_, d_, q_layout);
 
         // 通知 Cube：Q 量化常驻已就位
         CrossCoreSet(CrossCoreDirection::VEC0_TO_CUBE, CrossCoreFlags::FLAG_Q_READY);
@@ -642,22 +622,14 @@ private:
             cur_k_ = k;
             int64_t sk_start = static_cast<int64_t>(k) * block_n_;
             cur_k_start_ = static_cast<uint32_t>(sk_start);
-            uint32_t cur_block_k = (sk_start + block_n_ <= sk_) ? block_n_ : static_cast<uint32_t>(sk_ - sk_start);
+            // 尾块公式唯一定义点 CurBlockK()（与 Cube/V1 消费侧同源，删行内重写式）
+            uint32_t cur_block_k = CurBlockK();
 
-            // 计算 K/V 全局内存偏移
-            int64_t kv_stride_b, kv_stride_h, kv_stride_s;
-            if ((tiling_->tensor_layout == LAYOUT_HND)) {
-                kv_stride_b = static_cast<int64_t>(hkv_) * sk_ * d_;
-                kv_stride_h = static_cast<int64_t>(sk_) * d_;
-                kv_stride_s = d_;
-            } else {
-                kv_stride_b = static_cast<int64_t>(sk_) * hkv_ * d_;
-                kv_stride_s = static_cast<int64_t>(hkv_) * d_;
-                kv_stride_h = d_;
-            }
-
-            int64_t k_gm_offset = b_idx * kv_stride_b + hkv_idx * kv_stride_h + sk_start * kv_stride_s;
-            int64_t v_gm_offset = k_gm_offset;
+            // GM K/V 布局 tla 单点（与 Q 同一 MakeGmBhsdLayout 表达式，坐标不同）；
+            // 布局对象随行寻址传入 QuantizeAndStageKey/Value，消除核内第二份步距推导
+            const Catlass::SageAttn::GmBhsdLayout kv_layout =
+                Catlass::SageAttn::MakeGmBhsdLayout(b_, hkv_, sk_, d_, tiling_->tensor_layout == LAYOUT_HND);
+            const int64_t kv_gm_offset = kv_layout(tla::MakeCoord(b_idx, hkv_idx, sk_start, 0u));
 
             // 获取 K 均值指针 (若启用 smooth_k)。
             // __gm__ 地址空间限定显式保留，统一保持 `const __gm__ float *` 贯穿传递。
@@ -668,20 +640,19 @@ private:
             }
 
             // 执行 K 减均值 + INT8 量化 + 摆放，写入 L1 Bank 1
-            QuantizeAndStageKey(key_gm_ + k_gm_offset * sizeof(uint16_t), km_ptr, l1_dst_offset, cur_block_k, d_);
+            QuantizeAndStageKey(key_gm_ + kv_gm_offset * sizeof(uint16_t), km_ptr, l1_dst_offset, cur_block_k, d_, kv_layout);
 
             // 执行 V 转置 + 16-token permute + FP8 量化，写入 L1 Bank 1 槽内 V 子区
-            QuantizeAndStageValue(value_gm_ + v_gm_offset * sizeof(uint16_t),
+            QuantizeAndStageValue(value_gm_ + kv_gm_offset * sizeof(uint16_t),
                                   l1_dst_offset + Catlass::SageAttn::L1DoubleBankContract::KV_V_SUB_OFFSET,
-                                  cur_block_k, d_);
+                                  cur_block_k, d_, kv_layout);
 
             // 严格保证生产者在前：写入完成后触发跨核事件通知 Cube
             // 生产管排空（DEFECT-H-2）：MTE3 写 KV 槽 → Cube MTE 读，CrossCoreSet
             // （S 管）不排空 MTE3，先自配对事件等待写毕再举旗（设备态；宿主
             // 环境无硬件跨核事件，CrossCoreSet 模拟为无操作且无 HardEvent，见 sync_guard.h）
 #if SAGE_ATTN_DEVICE_COMPILE
-            SetFlag<HardEvent::MTE3_MTE2>(0);
-            WaitFlag<HardEvent::MTE3_MTE2>(0);
+            Catlass::SageAttn::Sync<HardEvent::MTE3_MTE2>();
 #endif
             CrossCoreSet(CrossCoreDirection::VEC0_TO_CUBE, kv_flag);
         }
@@ -885,10 +856,9 @@ private:
         DataCopy(ub_qs, gm_strip, STAGE_SLOT_FLOATS);
         gm_strip.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(strip + STAGE_V_SCALE_OFFSET));
         DataCopy(ub_vs, gm_strip, STAGE_SLOT_FLOATS);
-        SyncMte2ToV();
+        Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
         // qs 由 S 管逐行 GetValue 消费：MTE2 写 → S 管读须显式排空（vs 由 V 管消费，MTE2_V 已排）
-        SetFlag<HardEvent::MTE2_S>(0);
-        WaitFlag<HardEvent::MTE2_S>(0);
+        Catlass::SageAttn::Sync<HardEvent::MTE2_S>();
     }
 
     __aicore__ void StageKScaleStrip(bool is_ping)
@@ -903,7 +873,7 @@ private:
         gm_strip.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(
             strip + (is_ping ? STAGE_K_SCALE_PING_OFFSET : STAGE_K_SCALE_PONG_OFFSET)));
         DataCopy(ub_ks, gm_strip, block_n_);
-        SyncMte2ToV();
+        Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
     }
 
     /**
@@ -990,7 +960,8 @@ private:
     }
 #endif
 
-    __aicore__ void LoadAndQuantizeQ(__gm__ uint8_t *q_src, uint32_t m, uint32_t d)
+    __aicore__ void LoadAndQuantizeQ(__gm__ uint8_t *q_src, uint32_t m, uint32_t d,
+                                     const Catlass::SageAttn::GmBhsdLayout &q_layout)
     {
 #if SAGE_ATTN_DEVICE_COMPILE
         if (q_src == nullptr) return;
@@ -999,10 +970,6 @@ private:
         // 逐行量化 VF 走除法轨迹 + per_thread half-away / per_warp RINT。
         const bool per_thread_q = (tiling_->qk_quant_gran == QUANT_GRAN_PER_THREAD);
         const uint32_t total_rows_q = TotalRows();
-        const int64_t q_stride_h = (tiling_->tensor_layout == LAYOUT_HND)
-                                       ? static_cast<int64_t>(sq_) * d_ : d_;
-        const int64_t q_stride_s = (tiling_->tensor_layout == LAYOUT_HND)
-                                       ? d_ : static_cast<int64_t>(hq_) * d_;
         LocalTensor<float> ub_rowmax(TPosition::VECCALC,
                                      Catlass::SageAttn::Vector0UbBudget::QUANT_ROWMAX_OFFSET,
                                      MAX_PACK_ROWS);
@@ -1026,14 +993,14 @@ private:
         // A. 行 abs-max（每行一次 MTE2 + VF）
         for (uint32_t r = 0; r < total_rows_q && r < MAX_PACK_ROWS; ++r) {
             // V→MTE2 回边（R22）：ub_in 逐行复用，上一行 VF 读毕（V 管）方可 MTE2 覆写
-            SyncVToMte2();
+            Catlass::SageAttn::Sync<HardEvent::V_MTE2>();
             const uint32_t g = r / cur_q_len_;
             const uint32_t i = r % cur_q_len_;
-            const int64_t row_gm_offset = (g * q_stride_h + static_cast<int64_t>(i) * q_stride_s) * static_cast<int64_t>(sizeof(half));
+            const int64_t row_gm_offset = q_layout(tla::MakeCoord(0u, g, i, 0u)) * static_cast<int64_t>(sizeof(half));
             GlobalTensor<half> gm_row;
             gm_row.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(q_src + row_gm_offset));
             DataCopy(ub_in, gm_row, d);
-            SyncMte2ToV();
+            Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
             dev_vf::RowAbsMaxVF(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
                                 reinterpret_cast<__ubuf__ float*>(ub_rowmax.GetPhyAddr()) + r,
                                 nullptr, d, 0u, dtype_mode);
@@ -1061,28 +1028,23 @@ private:
         // C. 逐行量化写 L1（除法轨迹 + 舍入分档）
         for (uint32_t r = 0; r < total_rows_q && r < MAX_PACK_ROWS; ++r) {
             // V→MTE2 回边（R22）：ub_in 逐行复用，上一行 VF 读毕方可 MTE2 覆写
-            SyncVToMte2();
+            Catlass::SageAttn::Sync<HardEvent::V_MTE2>();
             const uint32_t g = r / cur_q_len_;
             const uint32_t i = r % cur_q_len_;
             const uint32_t token = cur_q_start_ + i;
             const float scale = ub_scales.GetValue((cur_g0_ + g) * kQScaleSlotStride + quant::QScaleIndex(token, per_thread_q));
-            const int64_t row_gm_offset = (g * q_stride_h + static_cast<int64_t>(i) * q_stride_s) * static_cast<int64_t>(sizeof(half));
+            const int64_t row_gm_offset = q_layout(tla::MakeCoord(0u, g, i, 0u)) * static_cast<int64_t>(sizeof(half));
             GlobalTensor<half> gm_row;
             gm_row.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(q_src + row_gm_offset));
             DataCopy(ub_in, gm_row, d);
-            SyncMte2ToV();
+            Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
             dev_vf::QuantRowInt8VF(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
                                    reinterpret_cast<__ubuf__ int8_t*>(ub_out.GetPhyAddr()),
                                    scale, d, per_thread_q ? 1u : 0u, 0u, nullptr, dtype_mode);
-            SyncVToMte3();
-            DataCopyParams cp;
-            cp.blockCount = 1;
-            cp.blockLen = d / 32;
-            cp.srcStride = 0;
-            cp.dstStride = 0;
-            DataCopy(l1_q[r * d], ub_out, cp);
+            Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
+            Catlass::SageAttn::CopyUbRowToL1(l1_q[r * d], ub_out, d);
             // MTE3→V 回边（DEFECT-I-1 同款）：ub_out 逐行复用，在途 MTE3 读排空后方可下一行 VF 写
-            SyncMte3ToV();
+            Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
         }
 
         // A7 V0（task/12 第五节第 3 条）：行解析 q_scale 暂存写——组定标后的逐行
@@ -1100,22 +1062,16 @@ private:
             const uint32_t token = cur_q_start_ + (r % cur_q_len_);
             ub_stage_q.SetValue(r, ub_scales.GetValue((cur_g0_ + g) * kQScaleSlotStride + quant::QScaleIndex(token, per_thread_q)));
         }
-        SetFlag<HardEvent::S_MTE3>(0);
-        WaitFlag<HardEvent::S_MTE3>(0);
+        Catlass::SageAttn::Sync<HardEvent::S_MTE3>();
         GlobalTensor<float> gm_stage_q;
         gm_stage_q.SetGlobalBuffer(StageStrip() + STAGE_Q_SCALE_OFFSET);
         DataCopy(gm_stage_q, ub_stage_q, STAGE_SLOT_FLOATS);
-        SetFlag<HardEvent::MTE3_S>(0);
-        WaitFlag<HardEvent::MTE3_S>(0);
+        Catlass::SageAttn::Sync<HardEvent::MTE3_S>();
 #else
         if (sim_mem_ == nullptr || q_src == nullptr) {
             return;
         }
         const bool per_thread = (tiling_->qk_quant_gran == QUANT_GRAN_PER_THREAD);
-        const int64_t q_stride_h = (tiling_->tensor_layout == LAYOUT_HND)
-                                       ? static_cast<int64_t>(sq_) * d_ : d_;
-        const int64_t q_stride_s = (tiling_->tensor_layout == LAYOUT_HND)
-                                       ? d_ : static_cast<int64_t>(hq_) * d_;
         const uint16_t *q_u16 = reinterpret_cast<const uint16_t *>(q_src);
         int8_t *l1_q = reinterpret_cast<int8_t *>(sim_mem_->l1_mem + tiling_->l1_q_offset);
 
@@ -1136,7 +1092,7 @@ private:
             const uint32_t i = r % cur_q_len_;
             const uint32_t token = cur_q_start_ + i;
             float *scale_slot = &sim_mem_->q_scales[(cur_g0_ + g) * kQScaleSlotStride + quant::QScaleIndex(token, per_thread)];
-            const uint16_t *row_ptr = q_u16 + g * q_stride_h + static_cast<int64_t>(i) * q_stride_s;
+            const uint16_t *row_ptr = q_u16 + q_layout(tla::MakeCoord(0u, g, i, 0u));
             for (uint32_t c = 0; c < d; ++c) {
                 const float abs_v = SageFastAbs(ReadInputBits(row_ptr, c));
                 if (abs_v > *scale_slot) *scale_slot = abs_v;
@@ -1159,7 +1115,7 @@ private:
             const uint32_t i = r % cur_q_len_;
             const uint32_t token = cur_q_start_ + i;
             const float scale = sim_mem_->q_scales[(cur_g0_ + g) * kQScaleSlotStride + quant::QScaleIndex(token, per_thread)];
-            const uint16_t *row_ptr = q_u16 + g * q_stride_h + static_cast<int64_t>(i) * q_stride_s;
+            const uint16_t *row_ptr = q_u16 + q_layout(tla::MakeCoord(0u, g, i, 0u));
             int8_t *row_out = l1_q + static_cast<size_t>(r) * d;
             for (uint32_t c = 0; c < d; ++c) {
                 const float val = ReadInputBits(row_ptr, c);
@@ -1183,15 +1139,14 @@ private:
         const __gm__ float *km_ptr,
         uint32_t l1_dst_addr,
         uint32_t block_k,
-        uint32_t d)
+        uint32_t d,
+        const Catlass::SageAttn::GmBhsdLayout &kv_layout)
     {
 #if SAGE_ATTN_DEVICE_COMPILE
         if (k_src == nullptr) return;
         // DEFECT-F-1 重构：组粒度两阶段（组边界 quant::KScaleIndex 单点，
         // 块内本地序号写 l1_k_scale——Data+Scale 相邻契约）
         const bool per_thread_k = (tiling_->qk_quant_gran == QUANT_GRAN_PER_THREAD);
-        const int64_t k_stride_s = (tiling_->tensor_layout == LAYOUT_HND)
-                                       ? d_ : static_cast<int64_t>(hkv_) * d_;
         const uint32_t dtype_mode = DtypeMode();
         const uint32_t grp_per_blk = per_thread_k ? 4u : 1u;
         const uint32_t blk_first = cur_k_start_ / quant::K_BLK;
@@ -1216,7 +1171,7 @@ private:
             GlobalTensor<float> gm_km;
             gm_km.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(const_cast<__gm__ float*>(km_ptr)));
             DataCopy(ub_km, gm_km, d);
-            SyncMte2ToV();
+            Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
         }
 
         // 窗口 scale 组清零
@@ -1227,12 +1182,12 @@ private:
         // A. 行 abs-max（仅真实 token；pad 行零贡献且 pad 组写 0 由 C 段 pad 分支覆盖）
         for (uint32_t j = 0; j < block_k; ++j) {
             // V→MTE2 回边（R22）：ub_in 逐行复用，上一行 VF 读毕（V 管）方可 MTE2 覆写
-            SyncVToMte2();
-            const int64_t row_gm_offset = static_cast<int64_t>(j) * k_stride_s * static_cast<int64_t>(sizeof(half));
+            Catlass::SageAttn::Sync<HardEvent::V_MTE2>();
+            const int64_t row_gm_offset = kv_layout(tla::MakeCoord(0u, 0u, j, 0u)) * static_cast<int64_t>(sizeof(half));
             GlobalTensor<half> gm_row;
             gm_row.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(k_src + row_gm_offset));
             DataCopy(ub_in, gm_row, d);
-            SyncMte2ToV();
+            Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
             dev_vf::RowAbsMaxVF(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
                                 reinterpret_cast<__ubuf__ float*>(ub_rowmax.GetPhyAddr()) + j,
                                 reinterpret_cast<__ubuf__ float*>(ub_km.GetPhyAddr()),
@@ -1269,25 +1224,23 @@ private:
                 ub_stage_k.SetValue(j, ub_k_scales.GetValue(quant::KScaleIndex(token, per_thread_k)));
             } // 尾块 pad 列保持 0：V1 侧前缀掩码哨兵不消费该列 scale
         }
-        SetFlag<HardEvent::S_MTE3>(0);
-        WaitFlag<HardEvent::S_MTE3>(0);
+        Catlass::SageAttn::Sync<HardEvent::S_MTE3>();
         GlobalTensor<float> gm_stage_k;
         gm_stage_k.SetGlobalBuffer(StageStrip() +
                                    ((cur_k_ % 2u) == 0u ? STAGE_K_SCALE_PING_OFFSET : STAGE_K_SCALE_PONG_OFFSET));
         DataCopy(gm_stage_k, ub_stage_k, STAGE_SLOT_FLOATS);
-        SetFlag<HardEvent::MTE3_S>(0);
-        WaitFlag<HardEvent::MTE3_S>(0);
+        Catlass::SageAttn::Sync<HardEvent::MTE3_S>();
 
         // C. 逐行量化写 L1 + 尾块 pad 置零
         for (uint32_t j = 0; j < block_n_; ++j) {
             // V→MTE2 回边（R22）：ub_in 逐行复用，上一行 VF 读毕方可 MTE2 覆写
-            SyncVToMte2();
+            Catlass::SageAttn::Sync<HardEvent::V_MTE2>();
             if (j < block_k) {
-                const int64_t row_gm_offset = static_cast<int64_t>(j) * k_stride_s * static_cast<int64_t>(sizeof(half));
+                const int64_t row_gm_offset = kv_layout(tla::MakeCoord(0u, 0u, j, 0u)) * static_cast<int64_t>(sizeof(half));
                 GlobalTensor<half> gm_row;
                 gm_row.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(k_src + row_gm_offset));
                 DataCopy(ub_in, gm_row, d);
-                SyncMte2ToV();
+                Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
                 const uint32_t token = cur_k_start_ + j;
                 const float scale = ub_k_scales.GetValue(quant::KScaleIndex(token, per_thread_k));
                 dev_vf::QuantRowInt8VF(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
@@ -1297,23 +1250,16 @@ private:
             } else {
                 Duplicate(ub_out, int8_t(0), d);
             }
-            SyncVToMte3();
-            DataCopyParams cp;
-            cp.blockCount = 1;
-            cp.blockLen = d / 32;
-            cp.srcStride = 0;
-            cp.dstStride = 0;
-            DataCopy(l1_k[j * d], ub_out, cp);
+            Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
+            Catlass::SageAttn::CopyUbRowToL1(l1_k[j * d], ub_out, d);
             // MTE3→V 回边（DEFECT-I-1 同款）：ub_out 逐行复用，在途 MTE3 读排空后方可下一行 VF/Duplicate 写
-            SyncMte3ToV();
+            Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
         }
 #else
         if (sim_mem_ == nullptr || k_src == nullptr) {
             return;
         }
         const bool per_thread = (tiling_->qk_quant_gran == QUANT_GRAN_PER_THREAD);
-        const int64_t k_stride_s = (tiling_->tensor_layout == LAYOUT_HND)
-                                       ? d_ : static_cast<int64_t>(hkv_) * d_;
         const uint16_t *k_u16 = reinterpret_cast<const uint16_t *>(k_src);
         int8_t *l1_k = reinterpret_cast<int8_t *>(sim_mem_->l1_mem + l1_dst_addr);
         float *l1_k_scale = reinterpret_cast<float *>(
@@ -1324,6 +1270,7 @@ private:
         // 组区间须按 ceil(block_n/K_BLK) 个量化块覆盖。
         const uint32_t grp_per_blk = per_thread ? 4u : 1u;
         const uint32_t blk_first = cur_k_start_ / quant::K_BLK;
+        // blk_last 为尾元素所在量化块号（floor 语义），非 ceildiv——禁改官方对齐组件
         const uint32_t blk_last = (cur_k_start_ + block_n_ - 1u) / quant::K_BLK;
         const uint32_t grp_lo = blk_first * grp_per_blk;
         const uint32_t grp_hi = (blk_last + 1u) * grp_per_blk;
@@ -1335,7 +1282,7 @@ private:
         for (uint32_t j = 0; j < block_k; ++j) {
             const uint32_t token = cur_k_start_ + j;
             float *scale_slot = &sim_mem_->k_scales[quant::KScaleIndex(token, per_thread)];
-            const uint16_t *row_ptr = k_u16 + static_cast<int64_t>(j) * k_stride_s;
+            const uint16_t *row_ptr = k_u16 + kv_layout(tla::MakeCoord(0u, 0u, j, 0u));
             for (uint32_t c = 0; c < d; ++c) {
                 float val = ReadInputBits(row_ptr, c);
                 val = quant::SubKm(val, km_ptr, c, DtypeMode());
@@ -1359,7 +1306,7 @@ private:
             if (j < block_k) {
                 const uint32_t token = cur_k_start_ + j;
                 const float scale = sim_mem_->k_scales[quant::KScaleIndex(token, per_thread)];
-                const uint16_t *row_ptr = k_u16 + static_cast<int64_t>(j) * k_stride_s;
+                const uint16_t *row_ptr = k_u16 + kv_layout(tla::MakeCoord(0u, 0u, j, 0u));
                 for (uint32_t c = 0; c < d; ++c) {
                     float val = ReadInputBits(row_ptr, c);
                     val = quant::SubKm(val, km_ptr, c, DtypeMode());
@@ -1395,15 +1342,14 @@ private:
         __gm__ uint8_t *v_src,
         uint32_t l1_dst_addr,
         uint32_t block_k,
-        uint32_t d)
+        uint32_t d,
+        const Catlass::SageAttn::GmBhsdLayout &kv_layout)
     {
 #if SAGE_ATTN_DEVICE_COMPILE
         if (v_src == nullptr) return;
         // DEFECT-F-1 重构：per-channel 全序列预扫（首块一次）→ UB scale 张量；逐行量化
         // VF 走除法轨迹 + ±scale_max 截断 + 全零通道 0/0=NaN → e4m3 0x7f。
         const uint32_t dtype_mode = DtypeMode();
-        const int64_t v_stride_s = (tiling_->tensor_layout == LAYOUT_HND)
-                                       ? d_ : static_cast<int64_t>(hkv_) * d_;
         LocalTensor<float> ub_v_scale(TPosition::VECCALC,
                                       Catlass::SageAttn::Vector0UbBudget::QUANT_ROWMAX_OFFSET,
                                       d);
@@ -1420,7 +1366,8 @@ private:
         const uint32_t smooth_v = (tiling_->smooth_v != 0) ? 1u : 0u;
 
         if (cur_k_ == 0) {
-            const uint32_t fp8_padded = (sk_ + 15u) / 16u * 16u;
+            // fp8_padded：序列维 16-token 段对齐（官方 ::RoundUp，与手写位元一致）
+            const uint32_t fp8_padded = ::RoundUp<16u>(sk_);
             if (smooth_v != 0u) {
                 // smooth_v：单趟 max/min/sum 统计预扫 → vm/scale 定标（FinalizeSmoothVScaleVF
                 // 单点；vm 留 UB 待 SM 级搬出），统计量经 V→S 排空后由 VF 消费
@@ -1428,12 +1375,12 @@ private:
                 Duplicate(ub_v_min, -MIN_FLOAT_VAL, d);
                 Duplicate(ub_v_sum, 0.0f, d);
                 for (uint32_t t = 0; t < sk_; ++t) {
-                    const int64_t row_gm_offset = static_cast<int64_t>(t) * v_stride_s * static_cast<int64_t>(sizeof(half));
+                    const int64_t row_gm_offset = kv_layout(tla::MakeCoord(0u, 0u, t, 0u)) * static_cast<int64_t>(sizeof(half));
                     GlobalTensor<half> gm_row;
                     gm_row.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(v_src + row_gm_offset));
-                    SyncVToMte2();
+                    Catlass::SageAttn::Sync<HardEvent::V_MTE2>();
                     DataCopy(ub_in, gm_row, d);
-                    SyncMte2ToV();
+                    Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
                     dev_vf::ChannelStatsAccumVF(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
                                                 reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
                                                 reinterpret_cast<__ubuf__ float*>(ub_v_min.GetPhyAddr()),
@@ -1454,12 +1401,12 @@ private:
                 // v_scale_max 除法定标（quant_fp8/孪生唯一口径）。
                 Duplicate(ub_v_scale, 0.0f, d);
                 for (uint32_t t = 0; t < sk_; ++t) {
-                    const int64_t row_gm_offset = static_cast<int64_t>(t) * v_stride_s * static_cast<int64_t>(sizeof(half));
+                    const int64_t row_gm_offset = kv_layout(tla::MakeCoord(0u, 0u, t, 0u)) * static_cast<int64_t>(sizeof(half));
                     GlobalTensor<half> gm_row;
                     gm_row.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(v_src + row_gm_offset));
-                    SyncVToMte2();
+                    Catlass::SageAttn::Sync<HardEvent::V_MTE2>();
                     DataCopy(ub_in, gm_row, d);
-                    SyncMte2ToV();
+                    Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
                     dev_vf::ChannelAmaxAccumVF(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
                                                reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
                                                d, dtype_mode);
@@ -1473,7 +1420,7 @@ private:
             // 写 workspace GM 区（workspace_vm_offset，[b,hkv,d_pad] fp32）。V→MTE3 排空
             // 保证向量写毕才发起 GM 搬出，MTE3→S 排空后方由调用方在首块 KV_READY raise
             // 前 GM 可见（V1 Finalize 侧经 PV_O_DONE 前的跨核 flag 链传递读取时序）。
-            SyncVToMte3();
+            Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
             GlobalTensor<float> gm_stage_v;
             gm_stage_v.SetGlobalBuffer(StageStrip() + STAGE_V_SCALE_OFFSET);
             DataCopy(gm_stage_v, ub_v_scale, d);
@@ -1485,19 +1432,18 @@ private:
                     static_cast<int64_t>(cur_hkv_) * d_ * sizeof(float)));
                 DataCopy(gm_vm, ub_v_sum, d);
             }
-            SetFlag<HardEvent::MTE3_S>(0);
-            WaitFlag<HardEvent::MTE3_S>(0);
+            Catlass::SageAttn::Sync<HardEvent::MTE3_S>();
         }
 
         for (uint32_t j = 0; j < block_n_; ++j) {
             // V→MTE2 回边（R22）：ub_in 逐行复用，上一行 VF 读毕（V 管）方可 MTE2 覆写
-            SyncVToMte2();
+            Catlass::SageAttn::Sync<HardEvent::V_MTE2>();
             if (j < block_k) {
-                const int64_t row_gm_offset = static_cast<int64_t>(j) * v_stride_s * static_cast<int64_t>(sizeof(half));
+                const int64_t row_gm_offset = kv_layout(tla::MakeCoord(0u, 0u, j, 0u)) * static_cast<int64_t>(sizeof(half));
                 GlobalTensor<half> gm_row;
                 gm_row.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(v_src + row_gm_offset));
                 DataCopy(ub_in, gm_row, d);
-                SyncMte2ToV();
+                Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
                 dev_vf::QuantVRowFp8VF(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
                                        reinterpret_cast<__ubuf__ float8_e4m3_t*>(ub_out.GetPhyAddr()),
                                        reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
@@ -1506,29 +1452,23 @@ private:
             } else {
                 Duplicate(ub_out.ReinterpretCast<int8_t>(), int8_t(0), d);
             }
-            SyncVToMte3();
-            DataCopyParams cp;
-            cp.blockCount = 1;
-            cp.blockLen = d / 32;
-            cp.srcStride = 0;
-            cp.dstStride = 0;
-            DataCopy(l1_v[j * d], ub_out, cp);
+            Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
+            Catlass::SageAttn::CopyUbRowToL1(l1_v[j * d], ub_out, d);
             // MTE3→V 回边（DEFECT-I-1 同款）：ub_out 逐行复用，在途 MTE3 读排空后方可下一行 VF/Duplicate 写
-            SyncMte3ToV();
+            Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
         }
 #else
         if (sim_mem_ == nullptr || v_src == nullptr) {
             return;
         }
-        const int64_t v_stride_s = (tiling_->tensor_layout == LAYOUT_HND)
-                                       ? d_ : static_cast<int64_t>(hkv_) * d_;
         const uint16_t *v_u16 = reinterpret_cast<const uint16_t *>(v_src);
         uint8_t *l1_v = sim_mem_->l1_mem + l1_dst_addr;
         const float scale_max = tiling_->v_scale_max;
 
         if (cur_k_ == 0) {
-            const uint16_t *v_head = v_u16 - static_cast<int64_t>(cur_k_start_) * v_stride_s;
-            const uint32_t fp8_padded = (sk_ + 15u) / 16u * 16u;
+            const uint16_t *v_head = v_u16 - kv_layout(tla::MakeCoord(0u, 0u, cur_k_start_, 0u));
+            // fp8_padded：序列维 16-token 段对齐（官方 ::RoundUp，与设备分支同式）
+            const uint32_t fp8_padded = ::RoundUp<16u>(sk_);
             const bool smooth_v = (tiling_->smooth_v != 0);
             for (uint32_t c = 0; c < d && c < 256u; ++c) {
                 if (smooth_v) {
@@ -1569,7 +1509,7 @@ private:
             for (uint32_t jl = 0; jl < block_n_; ++jl) {
                 uint8_t code = 0;
                 if (jl < block_k) {
-                    const uint16_t *row_ptr = v_u16 + static_cast<int64_t>(jl) * v_stride_s;
+                    const uint16_t *row_ptr = v_u16 + kv_layout(tla::MakeCoord(0u, 0u, jl, 0u));
                     float scaled = (ReadInputBits(row_ptr, c) - vm) / scale;
                     if (scaled > scale_max) scaled = scale_max;
                     if (scaled < -scale_max) scaled = -scale_max;
@@ -1863,7 +1803,7 @@ private:
                 workspace_gm_ + tiling_->workspace_vm_offset +
                 (b_idx * static_cast<int64_t>(hkv_) + hkv_idx) * d_ * sizeof(float)));
             DataCopy(ub_vm, gm_vm, d_);
-            SyncMte2ToV();
+            Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
         }
         LocalTensor<half> ub_half(TPosition::VECCALC, Catlass::SageAttn::Vector1UbBudget::FIXPIPE_RECV_OFFSET, d_);
 
@@ -1898,7 +1838,7 @@ private:
                                      tiling_->d_og, tiling_->input_dtype);
                 // V 管写 → MTE3 读（DEFECT-I-1）：DataCopy 前置 V→MTE3 事件对，
                 // 保证本行 VF 写毕才发起 GM 搬出（支持 half 与 bfloat16 双路径，DEFECT-F-3）
-                SyncVToMte3();
+                Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
 
                 const int64_t out_gm_offset =
                     (b_idx * out_stride_b + hq_curr * out_stride_h +
@@ -1915,7 +1855,7 @@ private:
                 }
                 // ub_half 逐行复用：上一行在途 MTE3 读须先于下一行 VF 写排空
                 //（DEFECT-H-1/I-1：PipeBarrier<PIPE_V> 不排 MTE3，改 MTE3→V 事件对）
-                SyncMte3ToV();
+                Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
 
                 if (lse_gm_ != nullptr) {
                     const int64_t lse_offset =

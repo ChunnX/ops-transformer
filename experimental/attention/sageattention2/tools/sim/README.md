@@ -35,7 +35,7 @@ SAGE_ATTN_SIM_OUT=/work/out/sa2_sim_out \
 ```
 
 四步：bisheng 宿主模式参考程序 → bisheng 设备 sim 编译 → camodel 仿真运行 → 数值比对
-（全部编译统一 BiSheng，无宿主 g++ 代偿）。
+（全部编译统一采用 BiSheng 编译器）。
 退出码 0 = 数值判定 PASS。
 
 ## 启动机制结论（2026-10-03 实证）

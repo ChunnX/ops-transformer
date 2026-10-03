@@ -7,7 +7,7 @@
 #              算子 docker/out/），日志/产物目录经 SAGE_ATTN_SIM_OUT
 #              覆盖（缺省 /tmp/sa2_logs）。
 # 前置：算子门禁容器（experimental/attention/sageattention2/docker/，CANN 9.2.0-beta.1），
-# 本脚本自行 source 环境；全部编译统一 BiSheng（参考程序为宿主模式，无 g++ 代偿）。
+# 本脚本自行 source 环境；全部编译统一采用 BiSheng 编译器。
 set -uo pipefail
 
 REPO="${1:-/tmp/sa2_sim/ops-transformer}"
@@ -41,7 +41,7 @@ bisheng -std=c++17 -O2 -DSAGE_ATTN_DEVICE_COMPILE=0 \
 (cd "$WORK" && "$OUT/sim_reference" "$WORK") || RC=1
 
 echo "== [2/4] 设备 sim 可执行（bisheng --run-mode=sim，与 ci/kernel_compile.sh 同 include 清单）=="
-bisheng --run-mode=sim -xasc --npu-arch=dav-3510 -std=c++17 \
+bisheng --run-mode=sim -xasc --npu-arch=dav-3510 -std=c++17 -DCATLASS_ARCH=3510 \
     -I"$ASC/include" \
     -I"$SAGE_ATTN/sageattn_fp8/ascendc" \
     -I"$SAGE_ATTN/sageattn_fp8/catlass" \

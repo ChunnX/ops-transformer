@@ -28,33 +28,50 @@ LB_RATIO_LIMITS = (2.0, 1.2, 1.2)  # L-B (max, mean, rmse) 误差比上限
 LB_RATIO_EPS = 1.0e-5        # L-B 上限浮点松弛
 
 
-REPO_ROOT = Path(__file__).resolve().parents[5]
+OP_ROOT = Path(__file__).resolve().parent.parent
+GOLDEN_DIR = OP_ROOT / "docker" / "golden"
+if not GOLDEN_DIR.exists():
+    repo_fallback = Path(__file__).resolve().parents[5] / "golden"
+    if repo_fallback.exists():
+        GOLDEN_DIR = repo_fallback
+REPO_ROOT = OP_ROOT
+
+
+def find_golden_dir() -> Path:
+    """golden 数据集目录（唯一定义点）。"""
+    return GOLDEN_DIR
 
 
 def find_repo_root() -> Path:
-    """工程根目录（唯一定义点）。"""
-    return REPO_ROOT
-
+    """算子根目录（唯一定义点）。"""
+    return OP_ROOT
 
 
 def load_manifest_cases() -> dict:
     """读取 golden/manifest.json 的 cases 字典（25 桶）。"""
-    with open(REPO_ROOT / "golden" / "manifest.json", encoding="utf-8") as f:
+    with open(GOLDEN_DIR / "manifest.json", encoding="utf-8") as f:
         return json.load(f)["cases"]
 
 
 def load_tensor(case_id: str, name: str) -> torch.Tensor:
     """加载 golden/<case_id>/<name>.pt（CPU 张量）。"""
-    path = REPO_ROOT / "golden" / case_id / f"{name}.pt"
+    path = GOLDEN_DIR / case_id / f"{name}.pt"
     return torch.load(path, map_location="cpu", weights_only=True)
 
 
 def load_case_tensors(case_meta: dict) -> dict:
     """按 manifest case 的 tensors 清单加载全部张量 → {name: Tensor}。"""
-    return {
-        tname: torch.load(REPO_ROOT / rel_path, map_location="cpu", weights_only=True)
-        for tname, rel_path in case_meta["tensors"].items()
-    }
+    res = {}
+    for tname, rel_path in case_meta["tensors"].items():
+        p = Path(rel_path)
+        parts = p.parts
+        if parts and parts[0] == ".":
+            parts = parts[1:]
+        if parts and parts[0] == "golden":
+            parts = parts[1:]
+        tensor_path = GOLDEN_DIR / Path(*parts)
+        res[tname] = torch.load(tensor_path, map_location="cpu", weights_only=True)
+    return res
 
 
 def atol_for(is_bf16: bool) -> float:

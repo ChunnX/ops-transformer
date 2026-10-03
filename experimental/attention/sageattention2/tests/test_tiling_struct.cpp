@@ -74,13 +74,21 @@ void TestTilingDataLayout() {
     assert(offsetof(SageAttention2TilingData, tasks_per_die) == 152);
     assert(offsetof(SageAttention2TilingData, reserved) == 157 /* input_dtype 占 156 */);
 
-    // Capacity constants
+    // Capacity constants：L1/Bank/UB 保留 sage_attn 直引（L1 经官方 Arch::Ascend950
+    // 派生）；L0A/L0B/L0C 的官方→本算子唯一映射点为 HardwareResourceQuota（tiling.h
+    // 的重复别名已随 2026-10-03 死代码清扫删除）
     assert(L1_TOTAL_SIZE == 512 * 1024);
     assert(L1_BANK_SIZE == 256 * 1024);
     assert(UB_TOTAL_SIZE_PER_V == 256 * 1024);
-    assert(L0A_SIZE == 64 * 1024);
-    assert(L0B_SIZE == 64 * 1024);
-    assert(L0C_SIZE == 256 * 1024);
+    static_assert(HardwareResourceQuota::L0A_TOTAL_BYTES == Catlass::Arch::Ascend950::L0A_SIZE,
+                  "L0A quota must map the official Ascend950 constant");
+    static_assert(HardwareResourceQuota::L0B_TOTAL_BYTES == Catlass::Arch::Ascend950::L0B_SIZE,
+                  "L0B quota must map the official Ascend950 constant");
+    static_assert(HardwareResourceQuota::L0C_TOTAL_BYTES == Catlass::Arch::Ascend950::L0C_SIZE,
+                  "L0C quota must map the official Ascend950 constant");
+    static_assert(HardwareResourceQuota::L1_TOTAL_BYTES == Catlass::Arch::Ascend950::L1_SIZE,
+                  "L1 quota must map the official Ascend950 constant");
+    assert(L1_TOTAL_SIZE == HardwareResourceQuota::L1_TOTAL_BYTES);
 
     std::cout << "[Test 1 Passed] All TilingData offsets and constants match specification!" << std::endl;
 }
@@ -140,21 +148,24 @@ void TestOnlineSoftmax() {
 void TestCatlassContracts() {
     std::cout << "[Test 3] Testing CATLASS tile and resource contracts..." << std::endl;
 
-    // Test KV slot layout
-    using SlotContract = KvSlotLayoutContract<int8_t, 64, 128>;
-    assert(SlotContract::DATA_ELEMENTS == 64 * 128);
-    assert(SlotContract::DATA_BYTES == 8192);
-    assert(SlotContract::SCALE_OFFSET == 8192);
-    assert(SlotContract::PER_THREAD_SCALE_COUNT == 4);
-    assert(SlotContract::PER_THREAD_SCALE_BYTES == 16);
-    assert(SlotContract::PER_THREAD_SCALE_BYTES_ALIGNED == 32);
-    assert(SlotContract::TOTAL_SLOT_BYTES_PER_THREAD == 8192 + 32);
+    // L1 双 Bank 契约（生产链路实际消费的槽布局唯一定义点：kernel LoadAndQuantizeQ /
+    // QuantizeAndStageKey/Value 与 aclnn host tiling 均按此寻址）
+    static_assert(L1DoubleBankContract::BANK0_START == 0, "Bank 0 must start at 0");
+    static_assert(L1DoubleBankContract::BANK1_START == 256 * 1024, "Bank 1 must start at 256KB");
+    static_assert(L1DoubleBankContract::Q_MAX_BYTES == 128 * 128, "Q data region 128x128 INT8");
+    static_assert(L1DoubleBankContract::KV_SLOT_BYTES == 128 * 1024, "KV slot = K 64KB + V 64KB");
+    static_assert(L1DoubleBankContract::KV_V_SUB_OFFSET == 64 * 1024, "V sub-slot at slot midpoint");
+    static_assert(L1DoubleBankContract::KV_PONG_OFFSET ==
+                      L1DoubleBankContract::KV_PING_OFFSET + L1DoubleBankContract::KV_SLOT_BYTES,
+                  "ping/pong slots must be adjacent in Bank 1");
 
-    // Test Resource manager budget validation
-    assert(SageResourceManager::ValidateBudget(64, 64, 128) == true);
-    assert(SageResourceManager::ValidateBudget(128, 128, 128) == true);
-    // Invalid budget (too large to fit in L1 Bank 0)
-    assert(SageResourceManager::ValidateBudget(4096, 64, 128) == false);
+    // 清理记录（2026-10-03 死代码清扫随动）：
+    // - KvSlotLayoutContract：生产链路零实例化且槽内 Scale 偏移描述与核内实际摆布
+    //   （block_n·d 直排，非 RoundUp）不一致，整块删除，本用例随之移除；
+    // - SageResourceManager::ValidateBudget：被 InspectTilingPlan（RES-01 全量台账）
+    //   取代的旧静态校验，零生产调用方，删除，本用例随之移除。
+    // 原 AMLA FloatMulPow2Int（本文件原 Test 5）随 quant_common.h 的零调用原语一并删除：
+    // base-2 域重缩放的现行唯一轨迹为 OnlineSoftmaxTransformer::FastExp2（位构造自实现）。
 
     std::cout << "[Test 3 Passed] CATLASS contracts and resource validation verified!" << std::endl;
 }
@@ -216,38 +227,12 @@ void TestResourceFootprintLedger() {
     std::cout << "[Test 4 Passed] Runtime footprint ledger verified!" << std::endl;
 }
 
-void TestAmlaFloatMulPow2Int() {
-    std::cout << "[Test 5] Testing AMLA FloatMulPow2Int integer addition equivalence (Lemma 1)..." << std::endl;
-    // 1. 标准正规数乘 2^n
-    float f = 1.5f;
-    assert(quant::FloatMulPow2Int(f, 0) == 1.5f);
-    assert(quant::FloatMulPow2Int(f, 1) == 3.0f);
-    assert(quant::FloatMulPow2Int(f, 2) == 6.0f);
-    assert(quant::FloatMulPow2Int(f, -1) == 0.75f);
-    assert(quant::FloatMulPow2Int(f, -2) == 0.375f);
-
-    // 2. 负数
-    float fn = -2.25f;
-    assert(quant::FloatMulPow2Int(fn, 1) == -4.5f);
-    assert(quant::FloatMulPow2Int(fn, -1) == -1.125f);
-
-    // 3. 边界值：0.0 恒为 0.0
-    assert(quant::FloatMulPow2Int(0.0f, 5) == 0.0f);
-
-    // 4. 下溢与上溢截断
-    float tiny = 1e-35f;
-    assert(quant::FloatMulPow2Int(tiny, -50) == 0.0f);
-
-    std::cout << "[Test 5 Passed] AMLA FloatMulPow2Int mathematical equivalence verified!" << std::endl;
-}
-
 int main() {
     std::cout << "Starting SageAttention2 C++ Contract and Tiling Verification..." << std::endl;
     TestTilingDataLayout();
     TestOnlineSoftmax();
     TestCatlassContracts();
     TestResourceFootprintLedger();
-    TestAmlaFloatMulPow2Int();
     std::cout << "All C++ contracts and struct layouts PASSED successfully!" << std::endl;
     return 0;
 }

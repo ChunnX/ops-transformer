@@ -49,22 +49,6 @@ inline bool UseDieGroups(uint32_t cores, uint32_t b, uint32_t hkv) noexcept
 }
 
 /**
- * 映射虚拟任务至物理核心亲和目标 (直接转发至 tiling.h DieTask 唯一定义)
- */
-inline uint64_t MapDieTask(uint64_t task, uint64_t total, uint32_t cores) noexcept
-{
-    return DieTask(task, total, cores);
-}
-
-/**
- * 计算物理核心在当前 Die 内的任务循环终止边界 (直接转发至 tiling.h DieTaskEnd 唯一定义)
- */
-inline uint64_t MapDieTaskEnd(uint64_t total, uint32_t core, uint32_t cores, bool enable = true) noexcept
-{
-    return DieTaskEnd(total, core, cores, enable);
-}
-
-/**
  * 计算指定物理核心归属的计算 Die (Die 0: 0..cores/2-1, Die 1: cores/2..cores-1)
  */
 inline uint32_t GetDieIndexForCore(uint32_t core, uint32_t cores = ATLAS_950_AIC_NUM) noexcept
@@ -266,9 +250,11 @@ inline aclnnStatus ComputeHostTiling(
     }
 
     // 9. 分核计算与 Split-KV 判定 (分核字段，20 字节)
+    // 分块计数的向上取整统一走官方 CATLASS 对齐组件（catlass/detail/alignment.hpp
+    // 全局 ::CeilDiv，constexpr 纯整数算术，与手写 (a+b-1)/b 位元一致）
     uint32_t hw_cores = GetHardwareCoreNum();
-    uint32_t q_blk_num = (sq + m_per_core - 1) / m_per_core;
-    uint32_t kv_blk_num = (sk + block_n - 1) / block_n;
+    uint32_t q_blk_num = ::CeilDiv(sq, m_per_core);
+    uint32_t kv_blk_num = ::CeilDiv(sk, block_n);
 
     tiling_out.q_blk_num = q_blk_num;
     tiling_out.kv_blk_num = kv_blk_num;
@@ -283,7 +269,7 @@ inline aclnnStatus ComputeHostTiling(
 
     // 尾核利用优化：当任务总数不足以填满硬件核心时，自动沿 KV 序列维实施 Split-KV
     if (total_tasks < hw_cores && kv_blk_num > 1) {
-        uint32_t factor = (hw_cores + total_tasks - 1) / total_tasks;
+        uint32_t factor = ::CeilDiv(hw_cores, total_tasks);
         split_kv_num = (factor < kv_blk_num) ? factor : kv_blk_num;
         if (split_kv_num > 8) {
             split_kv_num = 8;
@@ -321,7 +307,7 @@ inline aclnnStatus ComputeHostTiling(
     tiling_out.enable_die_affinity = enable_die ? 1 : 0;
     tiling_out.die_num = die_num;
     tiling_out.cores_per_die = (active_cores >= die_num) ? (active_cores / die_num) : active_cores;
-    tiling_out.tasks_per_die = (total_tasks + die_num - 1) / die_num;
+    tiling_out.tasks_per_die = ::CeilDiv(total_tasks, die_num);
 
     // 11. 片上存储与全局内存偏移布局字段 (44 字节)
     tiling_out.l1_q_offset = Catlass::SageAttn::L1DoubleBankContract::Q_DATA_OFFSET;
@@ -337,9 +323,10 @@ inline aclnnStatus ComputeHostTiling(
     tiling_out.ub_quant_offset = Catlass::SageAttn::Vector0UbBudget::QUANT_WORKSPACE_OFFSET;
 
     // 12. Workspace 空间计算与 64 位整型提升 (杜绝 4GB 整数溢出)
+    // 512B 对齐统一走官方 CATLASS 对齐组件（::RoundUp<512u>，constexpr）
     uint64_t current_ws_offset = 0;
     auto align512 = [](uint64_t size) -> uint64_t {
-        return ((size + 511ULL) / 512ULL) * 512ULL;
+        return ::RoundUp<512u>(size);
     };
 
     // (1) LSE 临时显存空间 (Split-KV 跨核归并；smooth_k 的 lse_correction 由桥接层

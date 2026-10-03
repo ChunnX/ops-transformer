@@ -4,9 +4,7 @@
 // - Noise reduction protocols: A-B-B-A ping-pong alternation, optional L2 cache flush, cooldown sleep.
 // - Robust statistical metrics: Trim5 mean (excluding 5% outliers on both tails), P50, P99, std, min, max.
 // - Dynamic dlsym loading of target aclnnSageAttention2 and baseline aclnnFusedInferAttentionScoreV5.
-// - Seamless mock/simulation mode when compiling on development hosts without physical Ascend NPU / CANN toolkit.
-//   Simulation runs emit NaN speedup fields, verdict "SIMULATION" and exit code 2 so synthetic
-//   latencies can never be mistaken for real-device acceptance evidence.
+// - Direct execution with native CANN runtime on physical Ascend NPU.
 // - Structured JSON report generation matching task/06_benchmark.md specification and benchmark format.
 
 #include "quant_common.h"
@@ -31,257 +29,13 @@
 #include <thread>
 #include <vector>
 
-#if defined(__has_include)
-#if __has_include("acl/acl.h") && !defined(MOCK_NPU)
-#define SAGE_BENCH_REAL_ACL 1
-#endif
-#endif
-
-#ifdef SAGE_BENCH_REAL_ACL
 #include "acl/acl.h"
 #include "aclnn/acl_meta.h"
 #if defined(__has_include)
-// 注意：不包含 aclnn/sage_attn_proto.h——其声明为移植态数值编码 ABI，
-// 与本文件对齐的交付 op_api 字符串属性 ABI 同名冲突（ODR）；
-// 交付原型见 op_api/aclnn_sage_attention2.h（编译期校验由签名注释锁定）
 #if __has_include("aclnnop/aclnn_fused_infer_attention_score_v5.h")
 #include "aclnnop/aclnn_fused_infer_attention_score_v5.h"
 #endif
 #endif
-#else
-// ============================================================================
-// High-fidelity Mock/Simulation Types & Stubs for Host Local Builds
-// ============================================================================
-
-typedef int32_t aclError;
-typedef int32_t aclnnStatus;
-typedef void *aclrtStream;
-typedef void *aclrtEvent;
-
-constexpr aclError ACL_SUCCESS = 0;
-constexpr aclnnStatus ACLNN_SUCCESS = 0;
-
-enum aclDataType {
-    ACL_DT_UNDEFINED = -1,
-    ACL_FLOAT = 0,
-    ACL_FLOAT16 = 1,
-    ACL_INT8 = 2,
-    ACL_INT32 = 3,
-    ACL_INT64 = 4,
-    ACL_BOOL = 9,
-    ACL_BF16 = 27
-};
-
-enum aclFormat {
-    ACL_FORMAT_UNDEFINED = -1,
-    ACL_FORMAT_NCHW = 0,
-    ACL_FORMAT_NHWC = 1,
-    ACL_FORMAT_ND = 2
-};
-
-enum aclMemMallocPolicy {
-    ACL_MEM_MALLOC_HUGE_FIRST = 0,
-    ACL_MEM_MALLOC_HUGE_ONLY = 1,
-    ACL_MEM_MALLOC_NORMAL_ONLY = 2
-};
-
-enum aclMemcpyKind {
-    ACL_MEMCPY_HOST_TO_HOST = 0,
-    ACL_MEMCPY_HOST_TO_DEVICE = 1,
-    ACL_MEMCPY_DEVICE_TO_HOST = 2,
-    ACL_MEMCPY_DEVICE_TO_DEVICE = 3
-};
-
-struct aclTensor {
-    std::vector<int64_t> shape;
-    std::vector<int64_t> strides;
-    aclDataType dtype{ACL_FLOAT16};
-    aclFormat format{ACL_FORMAT_ND};
-    void *data{nullptr};
-    size_t bytes{0};
-
-    int64_t GetShape(size_t dim) const {
-        if (dim < shape.size()) return shape[dim];
-        return 0;
-    }
-    size_t GetDimNum() const {
-        return shape.size();
-    }
-};
-
-struct aclTensorList {
-    std::vector<aclTensor *> tensors;
-};
-
-struct aclIntArray {
-    std::vector<int64_t> data;
-};
-
-struct aclOpExecutor {
-    virtual ~aclOpExecutor() = default;
-    virtual uint64_t GetWorkspaceSize() const {
-        return workspaceBytes;
-    }
-    uint64_t workspaceBytes{0};
-    bool isSage{true};
-    double simulatedLatencyMs{1.0};
-};
-
-struct MockEventRecord {
-    std::chrono::high_resolution_clock::time_point wallTime;
-    double simulatedTimeMs{0.0};
-    bool recorded{false};
-};
-
-// Global simulated device clock in milliseconds
-static double g_simulatedDeviceClockMs = 0.0;
-
-inline aclError aclInit(const char *) {
-    return ACL_SUCCESS;
-}
-
-inline aclError aclFinalize() {
-    return ACL_SUCCESS;
-}
-
-inline aclError aclrtSetDevice(int32_t) {
-    return ACL_SUCCESS;
-}
-
-inline aclError aclrtResetDevice(int32_t) {
-    return ACL_SUCCESS;
-}
-
-inline aclError aclrtCreateStream(aclrtStream *stream) {
-    if (!stream) return 161001;
-    *stream = reinterpret_cast<aclrtStream>(0x578EA);
-    return ACL_SUCCESS;
-}
-
-inline aclError aclrtDestroyStream(aclrtStream) {
-    return ACL_SUCCESS;
-}
-
-inline aclError aclrtSynchronizeStream(aclrtStream) {
-    return ACL_SUCCESS;
-}
-
-inline aclError aclrtMalloc(void **devPtr, size_t size, aclMemMallocPolicy) {
-    if (!devPtr) return 161001;
-    void *ptr = nullptr;
-    int ret = posix_memalign(&ptr, 64, (size + 63) / 64 * 64);
-    if (ret != 0 || !ptr) {
-        return 161002;
-    }
-    std::memset(ptr, 0, size);
-    *devPtr = ptr;
-    return ACL_SUCCESS;
-}
-
-inline aclError aclrtFree(void *devPtr) {
-    if (devPtr) {
-        std::free(devPtr);
-    }
-    return ACL_SUCCESS;
-}
-
-inline aclError aclrtMemcpy(void *dst, size_t destMax, const void *src, size_t count, aclMemcpyKind) {
-    if (!dst || !src) return 161001;
-    size_t copyBytes = std::min(destMax, count);
-    std::memcpy(dst, src, copyBytes);
-    return ACL_SUCCESS;
-}
-
-inline aclError aclrtMemset(void *devPtr, size_t maxCount, int32_t value, size_t count) {
-    if (!devPtr) return 161001;
-    size_t setBytes = std::min(maxCount, count);
-    std::memset(devPtr, value, setBytes);
-    return ACL_SUCCESS;
-}
-
-inline aclError aclrtCreateEvent(aclrtEvent *event) {
-    if (!event) return 161001;
-    auto record = new MockEventRecord();
-    *event = reinterpret_cast<aclrtEvent>(record);
-    return ACL_SUCCESS;
-}
-
-inline aclError aclrtDestroyEvent(aclrtEvent event) {
-    if (event) {
-        delete reinterpret_cast<MockEventRecord *>(event);
-    }
-    return ACL_SUCCESS;
-}
-
-inline aclError aclrtRecordEvent(aclrtEvent event, aclrtStream) {
-    if (!event) return 161001;
-    auto record = reinterpret_cast<MockEventRecord *>(event);
-    record->wallTime = std::chrono::high_resolution_clock::now();
-    record->simulatedTimeMs = g_simulatedDeviceClockMs;
-    record->recorded = true;
-    return ACL_SUCCESS;
-}
-
-inline aclError aclrtEventElapsedTime(float *ms, aclrtEvent startEvent, aclrtEvent endEvent) {
-    if (!ms || !startEvent || !endEvent) return 161001;
-    auto startRec = reinterpret_cast<MockEventRecord *>(startEvent);
-    auto endRec = reinterpret_cast<MockEventRecord *>(endEvent);
-    if (endRec->simulatedTimeMs >= startRec->simulatedTimeMs && endRec->recorded && startRec->recorded) {
-        *ms = static_cast<float>(endRec->simulatedTimeMs - startRec->simulatedTimeMs);
-    } else {
-        auto dur = std::chrono::duration_cast<std::chrono::microseconds>(endRec->wallTime - startRec->wallTime);
-        *ms = static_cast<float>(dur.count()) / 1000.0f;
-    }
-    return ACL_SUCCESS;
-}
-
-inline aclTensor *aclCreateTensor(const int64_t *viewDims, uint64_t viewDimsNum, aclDataType dataType,
-                                  const int64_t *stride, int64_t, aclFormat format, const int64_t *,
-                                  uint64_t, void *data) {
-    auto t = new aclTensor();
-    t->shape.assign(viewDims, viewDims + viewDimsNum);
-    if (stride) {
-        t->strides.assign(stride, stride + viewDimsNum);
-    }
-    t->dtype = dataType;
-    t->format = format;
-    t->data = data;
-    size_t total = 1;
-    for (auto d : t->shape) total *= static_cast<size_t>(d);
-    t->bytes = total * (dataType == ACL_BOOL ? 1 : 2);
-    return t;
-}
-
-inline aclError aclDestroyTensor(const aclTensor *tensor) {
-    delete tensor;
-    return ACL_SUCCESS;
-}
-
-inline aclTensorList *aclCreateTensorList(const aclTensor *const *tensors, uint64_t tensorNum) {
-    auto list = new aclTensorList();
-    for (uint64_t i = 0; i < tensorNum; ++i) {
-        list->tensors.push_back(const_cast<aclTensor *>(tensors[i]));
-    }
-    return list;
-}
-
-inline aclError aclDestroyTensorList(const aclTensorList *tensorList) {
-    delete tensorList;
-    return ACL_SUCCESS;
-}
-
-inline aclIntArray *aclCreateIntArray(const int64_t *value, uint64_t size) {
-    auto arr = new aclIntArray();
-    arr->data.assign(value, value + size);
-    return arr;
-}
-
-inline aclError aclDestroyIntArray(const aclIntArray *array) {
-    delete array;
-    return ACL_SUCCESS;
-}
-
-#endif // SAGE_BENCH_REAL_ACL
 
 namespace {
 
@@ -497,136 +251,7 @@ typedef aclnnStatus (*FiaV5RunFn)(
 // Resolved via dlsym so the tool still links on CANN variants without the symbol.
 typedef aclnnStatus (*DestroyExecutorFn)(aclOpExecutor *executor);
 
-#ifndef SAGE_BENCH_REAL_ACL
-// Mock Operator Implementations for Simulation Mode
-aclnnStatus MockSageAttention2GetWorkspaceSize(
-    const aclTensor *query,
-    const aclTensor *,
-    const aclTensor *,
-    const aclTensor *,
-    const aclTensor *,
-    const char *,
-    bool isCausal,
-    const char *,
-    double,
-    const char *,
-    bool,
-    bool,
-    const aclTensor *,
-    const aclTensor *,
-    uint64_t *workspaceSize,
-    aclOpExecutor **executor) {
-    if (!workspaceSize || !executor) return 161001;
-    *workspaceSize = 1048576; // 1MB workspace
-    auto exec = new aclOpExecutor();
-    exec->workspaceBytes = *workspaceSize;
-    exec->isSage = true;
-    int64_t seq = query ? query->GetShape(2) : 4096;
-    if (seq == 0) seq = 4096;
-    // Calibrated baseline latency for SageAttention2 on Atlas 950PR:
-    // P-01 (4096): ~0.85 ms; P-02 (8192): ~3.15 ms; P-07 (16384): ~12.5 ms
-    double base = 0.05 + (static_cast<double>(seq) / 4096.0) * (static_cast<double>(seq) / 4096.0) * 0.78;
-    if (isCausal) base *= 0.55;
-    exec->simulatedLatencyMs = base;
-    *executor = exec;
-    return ACLNN_SUCCESS;
-}
 
-aclnnStatus MockSageAttention2(
-    void *,
-    uint64_t,
-    aclOpExecutor *executor,
-    aclrtStream) {
-    if (!executor) return 161001;
-    static std::mt19937 mockRng(42);
-    static std::normal_distribution<double> jitter(0.0, 0.003); // +/- 0.003 ms jitter
-    double lat = executor->simulatedLatencyMs + jitter(mockRng);
-    if (lat < 0.01) lat = 0.01;
-    g_simulatedDeviceClockMs += lat;
-    return ACLNN_SUCCESS;
-}
-
-aclnnStatus MockFiaV5GetWorkspaceSize(
-    const aclTensor *query,
-    const aclTensorList *,
-    const aclTensorList *,
-    const aclTensor *,
-    const aclTensor *,
-    const aclIntArray *,
-    const aclIntArray *,
-    const aclTensor *,
-    const aclTensor *,
-    const aclTensor *,
-    const aclTensor *,
-    const aclTensor *,
-    const aclTensor *,
-    const aclTensor *,
-    const aclTensor *,
-    const aclTensor *,
-    const aclTensor *,
-    const aclTensor *,
-    const aclTensor *,
-    const aclTensor *,
-    const aclTensor *,
-    const aclTensor *,
-    const aclTensor *,
-    const aclIntArray *,
-    const aclTensor *,
-    const aclTensor *,
-    const aclTensor *,
-    const aclTensor *,
-    const aclTensor *,
-    const aclIntArray *,
-    const aclIntArray *,
-    int64_t,
-    double,
-    int64_t,
-    int64_t,
-    char *,
-    int64_t,
-    int64_t sparseMode,
-    int64_t,
-    int64_t,
-    int64_t,
-    bool,
-    int64_t,
-    int64_t,
-    int64_t,
-    int64_t,
-    const aclTensor *,
-    const aclTensor *,
-    uint64_t *workspaceSize,
-    aclOpExecutor **executor) {
-    if (!workspaceSize || !executor) return 161001;
-    *workspaceSize = 2097152; // 2MB workspace
-    auto exec = new aclOpExecutor();
-    exec->workspaceBytes = *workspaceSize;
-    exec->isSage = false;
-    int64_t seq = query ? query->GetShape(2) : 4096;
-    if (seq == 0) seq = 4096;
-    // Calibrated baseline latency for FIA on Atlas 950PR:
-    // P-01 (4096): ~1.55 ms; P-02 (8192): ~5.80 ms; P-07 (16384): ~23.0 ms
-    double base = 0.08 + (static_cast<double>(seq) / 4096.0) * (static_cast<double>(seq) / 4096.0) * 1.45;
-    if (sparseMode != 0) base *= 0.54;
-    exec->simulatedLatencyMs = base;
-    *executor = exec;
-    return ACLNN_SUCCESS;
-}
-
-aclnnStatus MockFiaV5(
-    void *,
-    uint64_t,
-    aclOpExecutor *executor,
-    aclrtStream) {
-    if (!executor) return 161001;
-    static std::mt19937 mockRng(99);
-    static std::normal_distribution<double> jitter(0.0, 0.005);
-    double lat = executor->simulatedLatencyMs + jitter(mockRng);
-    if (lat < 0.02) lat = 0.02;
-    g_simulatedDeviceClockMs += lat;
-    return ACLNN_SUCCESS;
-}
-#endif
 
 struct OpDispatcher {
     void *sageLib{nullptr};
@@ -684,32 +309,13 @@ struct OpDispatcher {
             destroyExecutorFn = reinterpret_cast<DestroyExecutorFn>(symDestroyExec);
         }
 
-        // Executors created by real two-phase ACLNN calls must always be released through
-        // aclDestroyAclOpExecutor; simulation executors are plain heap objects and are deleted.
-
-#ifndef SAGE_BENCH_REAL_ACL
-        if (!sageNativePrepare) {
-            sageNativePrepare = &MockSageAttention2GetWorkspaceSize;
-            sageRun = &MockSageAttention2;
-            isSimulation = true;
-            sageLibPath = "mock_simulation";
-        }
-        if (!fiaPrepare) {
-            fiaPrepare = &MockFiaV5GetWorkspaceSize;
-            fiaRun = &MockFiaV5;
-            isSimulation = true;
-            fiaLibPath = "mock_simulation";
-        }
-#endif
+        // Executors created by two-phase ACLNN calls must be released through aclDestroyAclOpExecutor.
 
         if (!sageNativePrepare || !sageRun) {
-            throw std::runtime_error("Failed to resolve SageAttention2 symbols via dlsym or mocks");
+            throw std::runtime_error("Failed to resolve SageAttention2 symbols via dlsym");
         }
         if (!fiaPrepare || !fiaRun) {
-            throw std::runtime_error("Failed to resolve SageAttention2 symbols via dlsym or mocks");
-        }
-        if (!fiaPrepare || !fiaRun) {
-            throw std::runtime_error("Failed to resolve FIA V5 symbols via dlsym or mocks");
+            throw std::runtime_error("Failed to resolve FIA V5 symbols via dlsym");
         }
     }
 
@@ -940,7 +546,6 @@ int main(int argc, char **argv) {
             if (exec == nullptr) {
                 return;
             }
-#ifdef SAGE_BENCH_REAL_ACL
             // Real aclOpExecutor is an opaque forward-declared struct: it can only be
             // released through the CANN API, never with delete.
             if (dispatcher.destroyExecutorFn) {
@@ -953,9 +558,6 @@ int main(int argc, char **argv) {
                     leakWarned = true;
                 }
             }
-#else
-            delete exec;
-#endif
             exec = nullptr;
         };
 
@@ -1242,7 +844,7 @@ int main(int argc, char **argv) {
             verdict = "SIMULATION";
         }
 
-        // Accuracy comparison vs FIA (real device only: mock kernels never write outputs,
+        // Accuracy comparison vs FIA (real device only,
         // so any diff computed in simulation would be a meaningless 0-vs-0 comparison).
         double maxAbsDiff = 0.0, sumAbsDiff = 0.0, sumSqDiff = 0.0;
         double meanAbsDiff = 0.0, rmseDiff = 0.0;
@@ -1393,7 +995,7 @@ int main(int argc, char **argv) {
              << "    \"is_simulation\": " << (dispatcher.isSimulation ? "true" : "false") << ",\n"
              << "    \"simulation_warning\": \""
              << (dispatcher.isSimulation
-                     ? "Synthetic latencies from mock kernels; speedup/verdict carry no acceptance evidence"
+                     ? "Synthetic latencies; speedup/verdict carry no acceptance evidence"
                      : "")
              << "\",\n"
              << "    \"l2_flush_mb\": " << cfg.l2FlushMb << ",\n"

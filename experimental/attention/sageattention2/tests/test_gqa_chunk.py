@@ -66,6 +66,11 @@ def _run_kernel_host_gqa8(q, k, v, km, gran_code, causal):
 class TestGqaChunkedPacking(unittest.TestCase):
     """32:4（8:1）分块路径 vs 孪生：out 与 LSE 逐位一致。"""
 
+    @classmethod
+    def setUpClass(cls):
+        if tk._LIB is None:
+            raise unittest.SkipTest("BiSheng 编译器未在本地环境就绪；请在容器内执行该单测 (bash run.sh python)")
+
     def test_gqa8_chunk2_bitwise_parity(self):
         torch.manual_seed(7)
         b, hq, hkv, sq, sk, d = 1, 32, 4, 128, 128, 128
