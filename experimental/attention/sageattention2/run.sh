@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-# run.sh — SageAttention2 门禁统一入口（唯一宿主依赖：Docker + compose 插件）。
-#
-# 宿主侧：仅做一键初始化校验与容器包装（docker/sage run），不在宿主做任何编译；
-# 容器侧：全部编译与测试统一由 BiSheng 承载——C++ 宿主单测走 BiSheng 宿主模式，
-# 设备核走 BiSheng 交叉编译（dav-3510），不存在 clang++/g++ 等任何其他编译器路径。
+# run.sh — SageAttention2 门禁统一入口。
+# 宿主侧只做容器包装（依赖仅 Docker + compose 插件）；容器内全部编译与测试统一由 BiSheng 承载
+# （C++ 宿主单测走 BiSheng 宿主模式，设备核走 BiSheng 交叉编译 dav-3510）。
+# 首次使用先执行 ./docker/sage init 置备 .env / CATLASS / 基础镜像 / golden。
 #
 # 用法：bash run.sh [host|kernel|python|opp|all]
 #   host   BiSheng 编译并运行 C++ 宿主单测（test_aclnn_host / test_op_host / test_tiling_struct）
@@ -14,62 +13,22 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-WORK_DIR="${SCRIPT_DIR}"
+WORK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD_DIR="${WORK_DIR}/build"
 
-# ---------------------------------------------------------------- 宿主侧：容器包装
 if [ "${SAGE_IN_CONTAINER:-}" != "1" ]; then
-    command -v docker >/dev/null 2>&1 \
-        || { echo "ERROR: 宿主未安装 docker（门禁唯一宿主依赖，含 compose 插件）。" >&2; exit 1; }
-    # 一键初始化兜底：CATLASS（docker/third_party/）未置备时自动补齐（幂等）
-    if [ ! -f "${WORK_DIR}/docker/third_party/catlass/include/catlass/catlass.hpp" ]; then
-        bash "${WORK_DIR}/docker/init.sh"
-    fi
     exec bash "${WORK_DIR}/docker/sage" run bash run.sh "$@"
 fi
 
-# ---------------------------------------------------------------- 容器侧
-# CANN / BiSheng 环境解析（唯一定义点）：镜像 ENV 已导出 ASCEND_HOME_PATH；
-# 此处兜底探测不同 CANN 包布局（ascend-toolkit/latest 或 cann-<version>）。
-if [ -z "${ASCEND_HOME_PATH:-}" ] || [ ! -x "${ASCEND_HOME_PATH}/bin/bisheng" ]; then
-    ASCEND_HOME_PATH=""
-    for cand in /usr/local/Ascend/ascend-toolkit/latest /usr/local/Ascend/cann-*; do
-        if [ -x "${cand}/bin/bisheng" ]; then
-            ASCEND_HOME_PATH="${cand}"
-            break
-        fi
-    done
-fi
-if [ -z "${ASCEND_HOME_PATH:-}" ] || [ ! -x "${ASCEND_HOME_PATH}/bin/bisheng" ]; then
-    echo "ERROR: 容器内未找到 BiSheng 编译器（ASCEND_HOME_PATH=${ASCEND_HOME_PATH:-unset}）。" >&2
-    exit 1
-fi
-export ASCEND_HOME_PATH
-case ":${PATH}:" in
-    *":${ASCEND_HOME_PATH}/bin:"*) ;;
-    *) export PATH="${ASCEND_HOME_PATH}/bin:${PATH}" ;;
-esac
+# 容器侧：ASCEND_HOME_PATH 由镜像 ENV 导出，CATLASS 由 sage init 置备
+export PATH="${ASCEND_HOME_PATH}/bin:${PATH}"
 BISHENG="${ASCEND_HOME_PATH}/bin/bisheng"
-
-# CATLASS 解析（唯一定义点，与 cmake/SageAttnDeps.cmake 同链）：CATLASS_ROOT 覆盖
-# → init.sh 置备的 docker/third_party/catlass
 CATLASS_ROOT="${CATLASS_ROOT:-${WORK_DIR}/docker/third_party/catlass}"
-if [ ! -f "${CATLASS_ROOT}/include/catlass/catlass.hpp" ]; then
-    echo "ERROR: CATLASS 未置备（${CATLASS_ROOT}）。请在宿主执行 bash docker/init.sh。" >&2
-    exit 1
-fi
 export CATLASS_ROOT
 CATLASS_INC="${CATLASS_ROOT}/include"
 
-echo "================================================================="
-echo "SageAttention2 Build & Test Runner (container / BiSheng only)"
-echo "Working directory : ${WORK_DIR}"
-echo "BiSheng           : ${BISHENG}"
-echo "CATLASS_ROOT      : ${CATLASS_ROOT}"
-echo "================================================================="
-
-HOST_CXX_FLAGS=(-std=c++17 -O2 -Wall -Wextra)
+# bisheng 宿主模式链接不自动携带 C++ 运行时，链接型编译需显式 -lstdc++
+HOST_CXX_FLAGS=(-std=c++17 -O2 -Wall -Wextra -Wno-ignored-qualifiers -Wno-reorder-ctor -Wno-reorder -Wno-unused-parameter -lstdc++)
 COMMON_INCLUDES=(
     -I"${WORK_DIR}/sageattn_fp8/ascendc"
     -I"${WORK_DIR}/sageattn_fp8/catlass"
@@ -78,7 +37,7 @@ COMMON_INCLUDES=(
 )
 
 run_host_tests() {
-    echo ">>> [host] C++ 宿主单测（BiSheng 宿主模式，唯一编译器）..."
+    echo ">>> [host] C++ 宿主单测（BiSheng 宿主模式）..."
     mkdir -p "${BUILD_DIR}"
 
     echo "-- 编译 test_aclnn_host"
@@ -107,22 +66,23 @@ run_host_tests() {
         -o "${BUILD_DIR}/test_tiling_struct"
     "${BUILD_DIR}/test_tiling_struct"
 
-    echo ">>> [host] C++ 宿主单测全部通过"
+    echo ">>> [host] 全部通过"
 }
 
 compile_kernel_bisheng() {
-    echo ">>> [kernel] BiSheng 交叉编译设备核 → Ascend 950 (dav-3510)..."
+    echo ">>> [kernel] BiSheng 交叉编译设备核 → dav-3510..."
     mkdir -p "${BUILD_DIR}"
-    "${BISHENG}" --npu-arch=dav-3510 -std=c++17 -xasc -c \
+    # -DCATLASS_ARCH=3510 与 ci/kernel_compile.sh / build_opp.sh 同口径（sage_pv_mmad.hpp 的 FP8 位型表依赖）
+    "${BISHENG}" --npu-arch=dav-3510 -std=c++17 -xasc -DCATLASS_ARCH=3510 -c \
         "${WORK_DIR}/op_kernel/sageattention2.cpp" \
         -I"${ASCEND_HOME_PATH}/include" \
         "${COMMON_INCLUDES[@]}" \
         -o "${BUILD_DIR}/sageattention2_bisheng.o"
-    echo ">>> [kernel] 设备核编译成功: ${BUILD_DIR}/sageattention2_bisheng.o"
+    echo ">>> [kernel] 编译成功: ${BUILD_DIR}/sageattention2_bisheng.o"
 }
 
 run_python_tests() {
-    echo ">>> [python] Python 门禁（容器内 python + torch，测试动态库由 BiSheng 编译）..."
+    echo ">>> [python] Python 门禁..."
     local PY_BIN="${SAGE_PYTHON:-python3}"
     echo "Using python: $("${PY_BIN}" -c 'import sys; print(sys.executable, sys.version.split()[0])')"
 
@@ -138,19 +98,17 @@ run_python_tests() {
     echo "-- test_gqa_chunk.py (GQA 8:1 分块打包双路径位级一致性)"
     "${PY_BIN}" "${WORK_DIR}/tests/test_gqa_chunk.py"
 
-    echo ">>> [python] Python 门禁全部通过"
+    echo ">>> [python] 全部通过"
 }
 
 run_opp_tests() {
-    echo ">>> [opp] CANN 标准自定义 OPP 出包（build_opp.sh, 全 BiSheng）+ 部署（install_opp.sh）..."
+    echo ">>> [opp] OPP 出包（build_opp.sh）+ 部署（install_opp.sh）..."
     bash "${WORK_DIR}/build_opp.sh" --clean
     bash "${WORK_DIR}/install_opp.sh" --quiet
-    echo ">>> [opp] OPP 出包与部署成功"
+    echo ">>> [opp] 出包与部署成功"
 }
 
-TARGET="${1:-all}"
-
-case "${TARGET}" in
+case "${1:-all}" in
     host)
         run_host_tests
         ;;
@@ -168,13 +126,11 @@ case "${TARGET}" in
         compile_kernel_bisheng
         run_python_tests
         run_opp_tests
-        echo "================================================================="
-        echo "SageAttention2 全部门禁通过（host / kernel / python / opp, BiSheng 容器）"
-        echo "================================================================="
+        echo "=== SageAttention2 全部门禁通过（host / kernel / python / opp, BiSheng 容器）==="
         ;;
     *)
-        echo "Unknown target: ${TARGET}"
-        echo "Usage: $0 [all|host|kernel|python|opp]"
+        echo "Unknown target: ${1}" >&2
+        echo "Usage: $0 [all|host|kernel|python|opp]" >&2
         exit 1
         ;;
 esac

@@ -1,19 +1,17 @@
 #!/usr/bin/env bash
-# sage — SageAttention2 门禁/开发容器的唯一生命周期入口（up / exec / run / stop 四个动词）。
-# compose 组装逻辑只在本文件定义一次（含 NPU 透传叠加判定），run.sh 的容器包装也走这里。
-#   ./docker/sage up            # 后台启动（镜像缺失/过期时自动构建）
-#   ./docker/sage exec          # 进入容器 bash；exec <cmd...> 则在容器内执行命令
-#   ./docker/sage run <cmd...>  # 一次性容器执行（run.sh 门禁包装用，退出码透传）
-#   ./docker/sage stop          # 关闭并销毁容器与 compose 卷（镜像与缓存目录保留）
+# sage — 门禁容器唯一生命周期入口（compose 组装只在此定义，检测到昇腾驱动时叠加 NPU 透传）。
+#   ./docker/sage init [args...]  一次性置备：目录/.env/CATLASS/基础镜像/golden（见 init.sh）
+#   ./docker/sage up              # 后台启动（含镜像构建）
+#   ./docker/sage exec [cmd...]   # 进入容器 bash，或执行命令
+#   ./docker/sage run <cmd...>    # 一次性容器执行（run.sh 门禁包装用，退出码透传）
+#   ./docker/sage stop            # 关闭并销毁容器与 compose 卷（镜像与缓存目录保留）
 set -euo pipefail
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${DIR}"
 
-# compose 组装（唯一定义点）：检测到昇腾驱动时叠加 NPU 透传
 COMPOSE=(docker compose -f docker-compose.yml)
 if [ -e /dev/davinci_manager ]; then
-    echo "检测到昇腾驱动, 叠加 NPU 透传" >&2
     COMPOSE+=(-f docker-compose.npu.yml)
 fi
 
@@ -22,25 +20,25 @@ case "${1:-}" in
         shift
         "${COMPOSE[@]}" up -d --build
         "${COMPOSE[@]}" ps
-        echo "进入容器: ./docker/sage exec"
         ;;
     exec)
         shift
-        if [ "$#" -eq 0 ]; then
-            "${COMPOSE[@]}" exec dev bash
-        else
-            "${COMPOSE[@]}" exec dev "$@"
-        fi
+        if [ "$#" -eq 0 ]; then set -- bash; fi
+        "${COMPOSE[@]}" exec dev "$@"
         ;;
     run)
         shift
-        "${COMPOSE[@]}" run --rm --build dev "$@"
+        "${COMPOSE[@]}" run --rm dev "$@"
+        ;;
+    init)
+        shift
+        bash "${DIR}/init.sh" "$@"
         ;;
     stop)
         "${COMPOSE[@]}" down -v --remove-orphans
         ;;
     *)
-        echo "usage: sage {up|exec [cmd...]|run cmd...|stop}" >&2
+        echo "usage: sage {init [args...]|up|exec [cmd...]|run cmd...|stop}" >&2
         exit 2
         ;;
 esac
