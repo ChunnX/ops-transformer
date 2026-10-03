@@ -93,6 +93,7 @@ bash build.sh --pkg --experimental --soc=ascend950 --vendor_name=customize --ops
 - `SAGEATTN_PV_ACCUM_DTYPE`：`sageattn` 入口的 `pv_accum_dtype` 默认值覆盖
 - `SAGEATTN_ALLOW_CPU_STUB`：允许 CPU 参考回退（语义见上）
 - `SAGEATTN_NUM_CORES`：Host Tiling 参与调度的 AI Core 数覆盖（如 `28` 用于减配拓扑，实现见 `./aclnn/sage_attn_host_tiling.h` 的 `GetHardwareCoreNum`）
+- `SAGEATTN_TUNE_CASE`：强制 Host Tiling 命中调优知识库指定用例（`P-01`..`P-07`），供调优评估与测试覆盖使用（实现见 `./aclnn/sage_attn_host_tiling.h` 的 `ComputeHostTiling` 查询与 `./aclnn/autotune_tiling_bank.h`）
 - `SAGEATTN_BUILD_VERBOSE`：置 `1` 时输出 C++ 扩展编译日志
 - `SAGE_OPAPI_LIBRARY` / `FIA_OPAPI_LIBRARY`：基准工具 dlsym 外部算子库时的路径（仅 `./benchmarks/` 使用）
 
@@ -101,7 +102,7 @@ bash build.sh --pkg --experimental --soc=ascend950 --vendor_name=customize --ops
 - 仅支持前向推理，不支持反向与 autograd
 - 计算路径固定为 INT8 $QK^T$ + FP8 e4m3 PV；`qk_quant_gran` 的 `per_thread` 与 `per_warp` 在 NPU 侧均为真实存在的独立实现
 - 稠密注意力：不支持 paged KV cache、block table、varlen（`actualSeqLengths` 语义）与任意自定义 mask；`is_causal=True` 仅在 `Sq == Sk` 时合法
-- GQA 要求 `Hq` 能被 `Hkv` 整除；`1 <= D <= 128`，非 64/128 的头维自动 padding
+- GQA 要求 `Hq` 能被 `Hkv` 整除，且 `Hq / Hkv <= 8`（上限值唯一定义于 `./sageattn_fp8/ascendc/tiling.h` 的 `MAX_GQA_RATIO`，为本交付明示的验收域上限：`Hq / Hkv > 8` 的输入由 Host Tiling（`./aclnn/sage_attn_host_tiling.h`）显式报错拒绝，不做静默截断或回退）；`1 <= D <= 128`，非 64/128 的头维自动 padding
 - `smooth_v=True` 仅在 `pv_accum_dtype="fp32"` 档真实生效（V 减均值 + 输出补偿正路径）；其余档位告警后忽略
 - 输入要求四维、同设备、同 dtype（FP16/BF16）、末维连续
 
@@ -130,6 +131,24 @@ python3 benchmarks/run_validation_performance.py --warmup 30 --repeats 100 \
 ```
 
 - 产出 JSON 报告：逐 case 的 shape/dtype/causal/`t_fia_ms`/`t_sage_ms`/`speedup`/`passed`、`geomean_speedup`、`all_cases_pass`，以及 `fia_causal_recipe`、torch/torch_npu 版本与设备名等 `meta` 字段，可直接回填自验证报告性能基准用例表（PyTorch 列）
+
+## 设备侧功能门禁与单算子 Profiling
+
+- 设备侧功能门禁套件 `./tests/test_npu_standalone.py`：真机上驱动已安装的两段式 `aclnnSageAttention2`（经 `./python/sageattention2` 公开 API → C++ 桥接），逐条覆盖任务书《功能验收用例》TC-01..TC-10（`sageattn` 分发 FP16/BF16 × HND/NHD、`sageattn_qk_int8_pv_fp8_asc` per_thread/per_warp × `fp32`/`fp32+fp32`/`fp32+fp16`、smooth_k/smooth_v 开关与 warning 语义、`return_lse` 形状 `[B,Hq,Sq]` 与 LSE 公式校验、head_dim 48→64/96→128 pad 与输出裁剪、GQA+Sq≠Sk、因果、D>128/非连续末维/非法 gran/attn_mask 错误注入、S=8192 与 S=16384 长序列、SDPA 热替换冒烟）
+- 精度判据：任务书 L-B 风格混合容差（FP16 `2^-9` / BF16 `2^-6`，`matched_ratio >= 0.99`，`max_abs` 上限 `1e-1`/`1e-0`），LSE 另按 FP32 容差校验；参考为自包含 FP32 分块 softmax 注意力与 logsumexp（不导入 `./tests/_golden_utils.py`）
+- 运行（算子目录执行，真机环境；长序列用例需较大显存与数分钟量级运行时间）：
+
+```bash
+SAGEATTN_TEST_NPU=1 python3 -m pytest tests/test_npu_standalone.py -v
+```
+
+- 未设 `SAGEATTN_TEST_NPU=1`、或无 torch/torch_npu/NPU 设备时整模块 pytest.skip 并以退出码 0 结束，宿主机 pytest 冒烟不受影响、不触发设备调用与扩展编译
+- 单算子 Profiling 配方 `./benchmarks/profile_single_op.py`：取 `./benchmarks/cases.py` 单 case，经 `sageattn_qk_int8_pv_fp8_asc`（`fp32+fp16` 档）以 torch_npu.profiler（kineto）采集算子级耗时，导出 chrome trace 并打印 op 级汇总表，模块 docstring 附 msprof 整进程附加用法；无 torch/torch_npu/NPU 时打印跳过信息并以退出码 0 结束
+
+```bash
+python3 benchmarks/profile_single_op.py --case P-01 --warmup 10 --steps 20 \
+    --trace build/profile_P-01.json
+```
 
 ## 一键复现（容器门禁序列）
 
@@ -161,5 +180,6 @@ bash run.sh opp
 ## 交付文档索引
 
 - [与 CUDA 默认接口的差异](./docs/CUDA接口差异说明.md)：量化粒度、S_FP8_OFFSET 放大、两级累加三档、舍入模式、smooth_v 正路径的逐项语义对照
+- [PyTorch接入说明](./docs/PyTorch接入说明.md)：安装顺序（CANN → torch/torch_npu → OPP 包 `./install_opp.sh` 部署与 `ASCEND_CUSTOM_OPP_PATH` 注入 → Python 包接入）、接口签名与调用示例（HND/NHD、GQA、因果、LSE）、SDPA 热替换、约束与环境变量、图模式注意事项
 - 接口原型：交付态 `./op_api/aclnn_sage_attention2.h`（字符串属性，随 run 包安装，两段式 C 接口唯一权威签名）；Host Tiling 与编码协议见 `./aclnn/README.md`
 - Tiling 契约：`./sageattn_fp8/ascendc/tiling.h`（160 字节、32 字节对齐，Host/Device 共享只读）
