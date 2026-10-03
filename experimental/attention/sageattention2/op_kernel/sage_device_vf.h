@@ -66,7 +66,13 @@ __simd_vf__ inline void RowAbsMaxVF(__ubuf__ half* in_ptr, __ubuf__ float* out_s
         Max(amax_reg, amax_reg, val, full);
     }
     ReduceMax(amax_reg, amax_reg, full);
-    StoreAlign(out_slot, amax_reg, full);
+    // 槽宽契约：out_slot 为 1 float/行（ub_rowmax[r]，128 float 区，调用方
+    // GetValue(r) 逐行读）。归约结果驻留全 64 lane，须以 VL1 窄掩码仅写 lane 0——
+    // full 掩码会把 256B 写到 [r, r+64) float，r≥65 时越过 ub_rowmax 尾界（512B）
+    // 踩中后邻 ub_scales/ub_k_scales 区首部（DEFECT-M-1，AIV UB 越写：
+    // 越写值恒为合法 amax 正数，经组归并条件 max 抬高 scale → 量化失真）。
+    auto single_lane = CreateMask<float, MaskPattern::VL1>();
+    StoreAlign(out_slot, amax_reg, single_lane);
 }
 
 /**
