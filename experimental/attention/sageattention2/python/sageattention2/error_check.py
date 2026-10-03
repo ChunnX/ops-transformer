@@ -7,7 +7,7 @@ from __future__ import annotations
 import math
 import os
 import re
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Optional, Tuple
 import warnings
 
 import torch
@@ -85,8 +85,6 @@ def validate_common_parameters(
     tensor_layout: str,
     qk_quant_gran: str,
     pv_accum_dtype: str,
-    kwargs: Optional[Dict[str, Any]] = None,
-    attn_mask: Optional[Any] = None,
 ) -> None:
     if tensor_layout not in VALID_LAYOUTS:
         raise ValueError(f"Invalid tensor_layout '{tensor_layout}'")
@@ -94,10 +92,6 @@ def validate_common_parameters(
         raise ValueError(f"qk_quant_gran must be 'per_warp' or 'per_thread'")
     if pv_accum_dtype not in VALID_PV_ACCUM_DTYPES:
         raise ValueError(f"pv_accum_dtype must be one of {VALID_PV_ACCUM_DTYPES}")
-    if attn_mask is not None:
-        raise ValueError("attn_mask is not supported")
-    if kwargs is not None and kwargs.get("attn_mask") is not None:
-        raise ValueError("attn_mask is not supported")
 
 def handle_smooth_v(pv_accum_dtype: str, smooth_v: bool) -> bool:
     if pv_accum_dtype in ("fp32+fp32", "fp32+fp16") and smooth_v:
@@ -129,9 +123,9 @@ def validate_tensors(q: Any, k: Any, v: Any, tensor_layout: str, is_causal: bool
 
 
 def pad_head_dim(q: Any, k: Any, v: Any) -> Tuple[Any, Any, Any, int]:
+    # head_dim 值域门（<=0 / >128 拒绝）唯一定义在 validate_tensors（三后端前置），
+    # 本函数只负责补齐，不复制第二份值域校验
     head_dim_og = q.size(-1)
-    if head_dim_og <= 0:
-        raise ValueError("Invalid head_dim")
     if head_dim_og < 64:
         pad_size = 64 - head_dim_og
         q = F.pad(q, (0, pad_size))
@@ -142,8 +136,6 @@ def pad_head_dim(q: Any, k: Any, v: Any) -> Tuple[Any, Any, Any, int]:
         q = F.pad(q, (0, pad_size))
         k = F.pad(k, (0, pad_size))
         v = F.pad(v, (0, pad_size))
-    elif head_dim_og > 128:
-        raise ValueError("Unsupported head_dim")
 
     return q, k, v, head_dim_og
 

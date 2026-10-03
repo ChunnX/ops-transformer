@@ -66,7 +66,8 @@
 | 接口默认值常量（C++ kDefault*） | aclnn/sage_attn_proto.h | op_host tiling 缺省折叠 |
 | V 量化 scale_max 分档 v_scale_max_for | dispatch.py | golden 生成器/测试填充（2.25/448 字面量已消） |
 | tiling 枚举编码镜像（LAYOUT/GRAN/ACCUM） | tests/tiling_mirror.py | test_kernel_twin 等 |
-| ActiveKvBlocks/DtypeMode/SubKm 核内辅助 | op_kernel 私有方法 | 4 处重算 + 9 处位型分派 + 2 处 km 舍回收敛 |
+| ActiveKvBlocks/SubKm 核内辅助 | op_kernel 私有方法 | 4 处重算 + 2 处 km 舍回收敛 |
+| 输入位型档位归一 NormDtypeMode（M5） | op_kernel/sage_attention2_template_tiling_key.h | 核内 kDtype / host tiling / tiling key 编码共用，消费侧禁再展开三元式 |
 | Data+Scale 相邻排布 PackDataAndScaleAdjacent | quant_common.h | quant_int8/quant_fp8 Pack 双实现 |
 | LSE_ROW_STRIDE / MAX_GQA_RATIO | sage_resource.hpp / tiling.h | V1 子偏移、SimMemory 配额、host 上限 |
 
@@ -161,14 +162,12 @@ chunks=1，任务解码与调度算术逐位不变（twin 25 桶 golden 回归�
 
 ##### tilingkey 规划策略
 
-- 32 位整型 tiling_key 编码结构：
-  - bits 0-3: gran（2=per_warp, 3=per_thread）
-  - bits 4-7: accum（0=fp32, 1=fp32+fp32, 2=fp32+fp16）
-  - bits 8-11: layout（0=NHD, 1=HND）
-  - bits 12-15: causal（0=非因果, 1=因果）
-  - bits 16-19: pad（0=d_pad 64 档, 1=d_pad 128 档；编码见 op_host SetTilingKey 的 `d_pad == 128u ? 1u : 0u`）
-  - bits 20-23: input_dtype（1=fp16, 2=bf16）
-- M5 规划：依据 tiling_key 做编译期模板特化（ASCENDC_TPL_ARGS_DECL）零分支直调；当前 kernel 按 GET_TILING_DATA_WITH_STRUCT 的运行时字段消费 tiling_key 不参与核内分派。
+- 32 位整型 tiling_key 编码（M5 起唯一定义 `./op_kernel/sage_attention2_template_tiling_key.h`）：
+  - bits 20-23: input_dtype（1=fp16, 2=bf16；常量 kTplDtypeFp16/kTplDtypeBf16，归一 NormDtypeMode 单点）
+  - bits 0-19: 预留恒 0——gran/accum/layout/causal/pad 不进 tiling key（位型无关路径全部编译期共享，无对应核内分派）
+- M5 已落地双形态：
+  - canonical 模板档位出包（ASCENDC_TPL_ARGS_DECL + GET_TPL_TILING_KEY，competitor 同款单头模式）：框架按 tiling key 直连模板实例 `sage_attention2<INPUT_DTYPE>`，零运行时位型分派；
+  - 裸 bisheng 门禁（无 template_argument.h，回落编码 `TplTilingKey`）：核内 `SageAttnLaunch::RunByDtype` 按 `tiling.input_dtype` 在任务 prologue 一次分派到模板实例，热路径零位型分支；两形态同档位实例执行的算术逐位一致。
 
 #### kernel 侧设计
 

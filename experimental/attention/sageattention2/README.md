@@ -61,10 +61,10 @@ bash build.sh --pkg --experimental --soc=ascend950 --vendor_name=customize --ops
 
 ### PyTorch 接口（`./python/sageattention2/`）
 
-- 入口一 `sageattn(q, k, v, attn_mask=None, tensor_layout="HND", is_causal=False, sm_scale=None, return_lse=False, 其余关键字参数包)`：自动路由到 FP8 PV kernel，`pv_accum_dtype` 等高级参数经关键字参数（kwargs）传入
-- 入口二 `sageattn_qk_int8_pv_fp8_asc(q, k, v, attn_mask=None, tensor_layout="HND", is_causal=False, qk_quant_gran="per_thread", sm_scale=None, pv_accum_dtype=None, smooth_k=True, smooth_v=False, return_lse=False, 其余关键字参数包)`：显式全参版本，末位为 kwargs 透传
+- 入口一 `sageattn(q, k, v, tensor_layout="HND", is_causal=False, sm_scale=None, return_lse=False, **kwargs)`：自动路由到 FP8 PV kernel，`pv_accum_dtype` 等高级参数经关键字参数（kwargs）传入
+- 入口二 `sageattn_qk_int8_pv_fp8_asc(q, k, v, tensor_layout="HND", is_causal=False, qk_quant_gran="per_thread", sm_scale=None, pv_accum_dtype=None, smooth_k=True, smooth_v=False, return_lse=False, **kwargs)`：显式全参版本，末位为 kwargs 透传
 - 返回值契约：当 `return_lse=False`（默认值）时，直接单张量返回 `o`；仅当 `return_lse=True` 时，才返回 `(o, lse)` 二元组
-- 掩码约束：显式接收可选参数 `attn_mask=None`，传入非 None 掩码时直接抛出 `ValueError` 异常
+- 掩码约束：`attn_mask` 仅经 kwargs 接收（SDPA 形态兼容），非 None 掩码（含位置实参误传张量）直接抛出 `ValueError` 异常；同批拒绝的还有非零 `dropout_p`
 - SDPA 热替换工具（`./python/sageattention2/monkey_patch.py`）：提供 `replace_sdpa()` 全局热替换、`restore_sdpa()` 恢复还原以及 `sdpa_patch()` 上下文管理器，支持工业级降级回退与嵌套作用域
 - 张量形状：
 
@@ -75,7 +75,7 @@ bash build.sh --pkg --experimental --soc=ascend950 --vendor_name=customize --ops
 - `pv_accum_dtype` 的取值与覆盖优先级：
 
 - 合法取值：`"fp32"`（全程 FP32 单级）、`"fp32+fp32"`（Cube 硬件累加 + FP32 buffer 周期归约）、`"fp32+fp16"`（FP16 buffer 周期归约，默认验收档）
-- 覆盖优先级：`kwargs` 中的 `pv_accum_dtype` 高于环境变量 `SAGEATTN_PV_ACCUM_DTYPE`，环境变量高于默认值 `"fp32+fp16"`（实现在 `./python/sageattention2/dispatch.py` 的 `dispatch_sageattn`）
+- 覆盖优先级：`kwargs` 中的 `pv_accum_dtype` 高于环境变量 `SAGEATTN_PV_ACCUM_DTYPE`，环境变量高于默认值 `"fp32+fp16"`（实现在 `./python/sageattention2/dispatch.py` 的 `sageattn`）
 - 非法取值直接抛 `ValueError`，不做静默回退
 
 - `SAGEATTN_ALLOW_CPU_STUB` 语义：默认关闭；设为 `1`/`true`/`yes` 时，即使检测到 NPU 可用也允许走高保真 CPU 参考实现（与 golden 数据生成算法逐位同源），用于无卡环境的功能验证与 CI。该模式输出为 CPU 参考结果，禁止作为 NPU 性能与精度验收证据

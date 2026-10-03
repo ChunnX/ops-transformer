@@ -46,7 +46,7 @@ if not hasattr(getattr(torch.ops, "sageattention2", None), "forward"):
         smooth_v: bool = False,
         return_lse: bool = False,
     ) -> tuple[torch.Tensor, torch.Tensor | None]:
-        validate_common_parameters(tensor_layout, qk_quant_gran, pv_accum_dtype, {})
+        validate_common_parameters(tensor_layout, qk_quant_gran, pv_accum_dtype)
         validate_tensors(q, k, v, tensor_layout, is_causal)
         sm_scale_val = compute_sm_scale(q.shape[-1], sm_scale)
         smooth_v = handle_smooth_v(pv_accum_dtype, smooth_v)
@@ -76,7 +76,7 @@ if not hasattr(getattr(torch.ops, "sageattention2", None), "forward"):
     ) -> tuple[torch.Tensor, torch.Tensor | None]:
         from ._extension import load_extension
 
-        validate_common_parameters(tensor_layout, qk_quant_gran, pv_accum_dtype, {})
+        validate_common_parameters(tensor_layout, qk_quant_gran, pv_accum_dtype)
         validate_tensors(q, k, v, tensor_layout, is_causal)
         smooth_v = handle_smooth_v(pv_accum_dtype, smooth_v)
         q_pad, k_pad, v_pad, head_dim_og = pad_head_dim(q, k, v)
@@ -115,7 +115,7 @@ if not hasattr(getattr(torch.ops, "sageattention2", None), "forward"):
     ) -> tuple[torch.Tensor, torch.Tensor | None]:
         from .dispatch import run_sageattn_cpu_reference
 
-        validate_common_parameters(tensor_layout, qk_quant_gran, pv_accum_dtype, {})
+        validate_common_parameters(tensor_layout, qk_quant_gran, pv_accum_dtype)
         validate_tensors(q, k, v, tensor_layout, is_causal)
         smooth_v = handle_smooth_v(pv_accum_dtype, smooth_v)
 

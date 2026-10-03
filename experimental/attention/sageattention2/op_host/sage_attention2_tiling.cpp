@@ -135,7 +135,9 @@ static ge::graphStatus TilingSageAttention2(gert::TilingContext *context)
         return ge::GRAPH_FAILED;
     }
     const auto query_dtype = query_desc->GetDataType();
-    const int dtype_mode = (query_dtype == ge::DT_BF16) ? 2 : 1;
+    // 档位常量唯一定义 op_kernel/sage_attention2_template_tiling_key.h（kTplDtypeFp16/Bf16）
+    const int dtype_mode = (query_dtype == ge::DT_BF16) ? static_cast<int>(sage_attn::kTplDtypeBf16)
+                                                        : static_cast<int>(sage_attn::kTplDtypeFp16);
 
     aclnnStatus status = sage_attn::ComputeHostTiling(
         b, sq, sk, hq, hkv, dtype_mode, d_og,

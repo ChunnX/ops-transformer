@@ -117,7 +117,7 @@ inline aclnnStatus ComputeHostTiling(
     uint32_t sk,
     uint32_t hq,
     uint32_t hkv,
-    int dtype_mode,      // 输入位型分派：1=fp16, 2=bf16，写 TilingData.input_dtype
+    int dtype_mode,      // 输入位型分派档位（编码唯一定义 op_kernel/sage_attention2_template_tiling_key.h），写 TilingData.input_dtype
     uint32_t d_og,
     double smScale,
     int64_t qkQuantGran,

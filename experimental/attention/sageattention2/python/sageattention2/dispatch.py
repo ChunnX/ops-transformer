@@ -26,9 +26,6 @@ from .error_check import (
     VALID_PV_ACCUM_DTYPES,
     V_FP8_INV_PERM,
     V_FP8_PERM,
-    compute_sm_scale,
-    handle_smooth_v,
-    pad_head_dim,
 )
 from . import _ops
 
@@ -384,17 +381,10 @@ def sageattn(
     Resolves pv_accum_dtype with priority: kwargs > SAGEATTN_PV_ACCUM_DTYPE env > default ('fp32+fp16').
     When return_lse=False, directly returns single tensor o.
     When return_lse=True, returns tuple (o, lse).
-    """
-    if isinstance(tensor_layout, torch.Tensor):
-        raise ValueError("attn_mask is not supported")
-    if kwargs.pop("attn_mask", None) is not None:
-        raise ValueError("attn_mask is not supported")
-    if kwargs.pop("dropout_p", 0.0) != 0.0:
-        raise ValueError("dropout is not supported")
-    if sm_scale is None and "scale" in kwargs:
-        sm_scale = kwargs.pop("scale")
-    kwargs.pop("enable_gqa", None)
 
+    SDPA 形态 kwargs（attn_mask/dropout_p/scale/enable_gqa）的拒绝与别名消费唯一定义在
+    sageattn_qk_int8_pv_fp8_asc，本层经 **kwargs 委托，不复制第二份。
+    """
     pv_accum_dtype = kwargs.pop("pv_accum_dtype", None)
     pv_accum_dtype = resolve_pv_accum_dtype(pv_accum_dtype)
 
@@ -471,9 +461,5 @@ def sageattn_qk_int8_pv_fp8_asc(
     if return_lse:
         return out, lse
     return out
-
-
-dispatch_sageattn = sageattn
-dispatch_sageattn_qk_int8_pv_fp8_asc = sageattn_qk_int8_pv_fp8_asc
 
 

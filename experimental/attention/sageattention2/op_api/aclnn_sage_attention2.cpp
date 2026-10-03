@@ -3,8 +3,8 @@
  * 一段式 L2_DFX_PHASE_1 → CREATE_EXECUTOR → Canonical 视图（HND/NHD 互换）→
  * l0op::Contiguous → AllocTensor → ADD_TO_LAUNCHER_LIST_AICORE → ViewCopy 回写 →
  * GetWorkspaceSize/ReleaseTo；二段式 L2_DFX_PHASE_2 → CommonOpExecutorRun。
- * 与 aclnn/ 目录的移植版接口并存（aclnn/ 面向无 opdev 运行时的移植态与单测，
- * 本目录为仓内交付态规范路径）。
+ * 两段式 C 接口唯一交付实现（aclnn/ 目录仅承载闭式 Host Tiling 计算核心与
+ * 字符串属性编码协议，不含第二套两段式实现）。
  */
 
 #include "aclnn_sage_attention2.h"
