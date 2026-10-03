@@ -32,11 +32,15 @@ export LD_LIBRARY_PATH="$CAMODEL_STACK:/usr/local/Ascend/cann-9.2.0-beta.1/lib64
 
 SIMLIB="$ASC/aarch64-linux/simulator/Ascend950PR_9599/lib"
 RC=0
+# CATLASS 头（sage_tile.hpp/sage_attn_host_tiling.h 链必需；约定与 run.sh 一致）
+CATLASS_INC="${CATLASS_ROOT:-${SAGE_ATTN}/docker/third_party/catlass}/include"
 
 echo "== [1/4] golden 参考程序（bisheng 宿主模式，SAGE_ATTN_DEVICE_COMPILE=0 路径）=="
 bisheng -std=c++17 -O2 -DSAGE_ATTN_DEVICE_COMPILE=0 \
     -I"$SAGE_ATTN/sageattn_fp8/ascendc" -I"$SAGE_ATTN/aclnn" -I"$SAGE_ATTN/quant" -I"$SIMDIR" \
+    -I"$CATLASS_INC" \
     "$SIMDIR/sim_reference.cpp" "$SAGE_ATTN/quant/quant_int8.cpp" "$SAGE_ATTN/quant/quant_fp8.cpp" \
+    -lstdc++ \
     -o "$OUT/sim_reference" || { echo "[FAIL] 参考程序编译失败"; exit 1; }
 (cd "$WORK" && "$OUT/sim_reference" "$WORK") || RC=1
 
@@ -47,8 +51,9 @@ bisheng --run-mode=sim -xasc --npu-arch=dav-3510 -std=c++17 -DCATLASS_ARCH=3510 
     -I"$SAGE_ATTN/sageattn_fp8/catlass" \
     -I"$SAGE_ATTN/quant" \
     -I"$SIMDIR" \
+    -I"$CATLASS_INC" \
     "$SAGE_ATTN/op_kernel/sageattention2.cpp" "$SIMDIR/sim_main.cpp" \
-    -L"$SIMLIB" -lruntime_camodel \
+    -L"$SIMLIB" -lruntime_camodel -lstdc++ \
     -o "$OUT/sim_app" 2> "$OUT/bisheng_sim.log"
 rc=$?
 if [[ $rc -ne 0 ]]; then

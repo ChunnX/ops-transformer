@@ -8,7 +8,6 @@
 #include <cassert>
 #include <cmath>
 #include <vector>
-#include <cstdlib>
 
 #define TEST_CHECK(cond, msg) \
     do { \

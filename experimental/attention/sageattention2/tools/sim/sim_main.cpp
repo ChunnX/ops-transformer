@@ -21,7 +21,6 @@
  */
 #include <cstdint>
 #include <cstdio>
-#include <cstring>
 #include <vector>
 
 #include "sim_case_common.hpp"

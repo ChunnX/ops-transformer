@@ -3,8 +3,6 @@
 
 #include <cstdint>
 #include <cmath>
-#include <algorithm>
-#include <vector>
 
 namespace sage_attn {
 namespace quant {

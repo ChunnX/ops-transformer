@@ -12,7 +12,6 @@
 
 #include <cstdint>
 #include <cstring>
-#include <cmath>
 
 #include "../sageattn_fp8/ascendc/tiling.h"
 

@@ -56,7 +56,7 @@ class TestGoldenPrecision(unittest.TestCase):
         if len(cls.cases) != 25:
             raise ValueError(f"Expected 25 golden cases, but found {len(cls.cases)}")
 
-    def _execute_case(self, case_id: str, case_meta: dict):
+    def _execute_case(self, case_meta: dict):
         tensors = load_case_tensors(case_meta)
 
         q = tensors["q"]
@@ -82,7 +82,7 @@ class TestGoldenPrecision(unittest.TestCase):
         """L-A precision gate: matched_ratio >= 0.99, max_abs_error <= limit, lse_diff <= 1e-3."""
         for case_id, c in self.cases.items():
             with self.subTest(case_id=case_id, test="L-A"):
-                out, lse, tensors = self._execute_case(case_id, c)
+                out, lse, tensors = self._execute_case(c)
                 ref_out = tensors["out"]
                 ref_lse = tensors["lse"]
 
@@ -120,7 +120,7 @@ class TestGoldenPrecision(unittest.TestCase):
         """L-B precision gate: ratio_max <= 2.0, ratio_mean <= 1.2, ratio_rmse <= 1.2 vs FP32 SDPA."""
         for case_id, c in self.cases.items():
             with self.subTest(case_id=case_id, test="L-B"):
-                out, _, tensors = self._execute_case(case_id, c)
+                out, _, tensors = self._execute_case(c)
                 sdpa_ref = tensors["out_sdpa_fp32"]
                 r = l_b_ratios(out, sdpa_ref, c)
 
@@ -146,7 +146,7 @@ class TestGoldenPrecision(unittest.TestCase):
         self.assertEqual(len(p_cases), 7)
         for case_id in sorted(p_cases):
             case_info = self.cases[case_id]
-            out, _, tensors = self._execute_case(case_id, case_info)
+            out, _, tensors = self._execute_case(case_info)
             ref_out = tensors["out"]
             diff = (out.float() - ref_out.float()).abs().max().item()
             # 容差按输入 dtype 分档（收敛轮 A/CLEANUP-6：bf16 有效位 ~8bit，
@@ -160,7 +160,7 @@ class TestGoldenPrecision(unittest.TestCase):
         tc_cases = [k for k in self.cases if k.startswith("TC-")]
         self.assertGreaterEqual(len(tc_cases), 10)
         for case_id in sorted(tc_cases):
-            out, _, tensors = self._execute_case(case_id, self.cases[case_id])
+            out, _, tensors = self._execute_case(self.cases[case_id])
             ref_out = tensors["out"]
             diff = (out.float() - ref_out.float()).abs().max().item()
             self.assertLess(diff, 1e-4, f"TC-case {case_id} exceeded error limit: {diff}")
