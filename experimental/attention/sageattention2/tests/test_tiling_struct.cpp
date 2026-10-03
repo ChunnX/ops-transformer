@@ -152,6 +152,20 @@ void TestCatlassContracts() {
                       L1DoubleBankContract::KV_PING_OFFSET + L1DoubleBankContract::KV_SLOT_BYTES,
                   "ping/pong slots must be adjacent in Bank 1");
 
+    // A7 GM scale 交接条带（V0→V1 桥，STAGE_* 唯一定义点 tiling.h；kernel 侧
+    // StageV1ScaleStrips/StageKScaleStrip/QuantizeAndStageKey 按本组常量 +
+    // (k % 126) * 512 槽寻址，aclnn host tiling 按 STAGE_CORE_STRIDE × core_num_used
+    // 预留）：三段布局单调相接，126 个 K scale 槽恰好填满单核条带余量，
+    // 锁死 kernel 槽字面量与常量组之间的漂移空间
+    static_assert(STAGE_Q_SCALE_OFFSET == 0, "Q scale at stage strip start");
+    static_assert(STAGE_V_SCALE_OFFSET == STAGE_Q_SCALE_OFFSET + STAGE_SLOT_FLOATS * sizeof(float),
+                  "V scale slot follows Q scale slot");
+    static_assert(STAGE_K_SCALE_BASE_OFFSET == STAGE_V_SCALE_OFFSET + STAGE_SLOT_FLOATS * sizeof(float),
+                  "K scale slot region follows V scale slot");
+    static_assert(STAGE_K_SCALE_BASE_OFFSET + STAGE_K_SCALE_NUM_SLOTS * (STAGE_SLOT_FLOATS * sizeof(float)) ==
+                      STAGE_CORE_STRIDE,
+                  "K scale slots must exactly fill the per-core stage strip");
+
     // 清理记录（2026-10-03 死代码清扫随动）：
     // - KvSlotLayoutContract：生产链路零实例化且槽内 Scale 偏移描述与核内实际
     //   （block_n·d 直排，非 RoundUp）不一致，整块删除，本用例随之移除；
