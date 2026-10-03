@@ -87,7 +87,6 @@ using namespace AscendC;
 // 宿主模拟执行与本地单测环境兼容实现：
 // 携带 __aicore__ 属性以保持与设备侧属性域签名一致。
 __aicore__ inline uint32_t GetBlockIdx() { return 0; }
-__aicore__ inline uint32_t GetSubBlockIdx() { return 0; }
 #endif
 
 // M5 编译期位型特化唯一定义点：输入位型档位常量 / NormDtypeMode 归一 /

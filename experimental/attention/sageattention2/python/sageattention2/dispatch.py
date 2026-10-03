@@ -139,10 +139,10 @@ def _quant_v_fp8(
     d: int,
     pv_accum_dtype: str,
     smooth_v: bool,
-) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, Optional[torch.Tensor], torch.Tensor]:
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
     """Quantize V to FP8 e4m3fn with sequence padding and permuted layout.
 
-    返回 (v_deq_hnd, v_fp8, v_scale, vm, v_norm_clamped)。中间态格式与 golden 台账
+    返回 (v_deq_hnd, v_fp8, v_scale, vm)。中间态格式与 golden 台账
     一致（v_fp8 [b,hkv,d,pad_sk_v] permuted、v_scale [b,hkv,d]、vm 仅 smooth_v 路径
     非 None），供单一基准整合（golden 生成器编排复用）。
     """
@@ -168,7 +168,7 @@ def _quant_v_fp8(
         v_scale = amax_v / scale_max
         v_norm = (v_perm.float() - vm.unsqueeze(-1)) / v_scale.unsqueeze(-1)
         v_fp8 = v_norm.clamp(-S_FP8_SCALE_MAX, S_FP8_SCALE_MAX).to(torch.float8_e4m3fn) if has_fp8 else v_norm.clamp(-S_FP8_SCALE_MAX, S_FP8_SCALE_MAX)
-        if has_fp8 and hasattr(torch, "float8_e4m3fn") and v_fp8.dtype == torch.float8_e4m3fn:
+        if has_fp8:  # 谓词归并：has_fp8 即 hasattr 本名，dtype 恒由上一行条件表达式决定
             v_u8 = torch.where(torch.isnan(v_norm), torch.tensor(0x7F, dtype=torch.uint8, device=v_norm.device), v_fp8.view(torch.uint8))
             v_fp8 = v_u8.view(torch.float8_e4m3fn)
             v_fp8_unperm = v_u8.view(b, hkv, d, num_16, 16)[:, :, :, :, V_FP8_INV_PERM].view(torch.float8_e4m3fn).contiguous().view(b, hkv, d, pad_sk_v)[:, :, :, :sk]
@@ -181,7 +181,7 @@ def _quant_v_fp8(
         v_scale = amax_v / scale_max
         v_norm = v_perm.float() / v_scale.unsqueeze(-1)
         v_fp8 = v_norm.clamp(-S_FP8_SCALE_MAX, S_FP8_SCALE_MAX).to(torch.float8_e4m3fn) if has_fp8 else v_norm.clamp(-S_FP8_SCALE_MAX, S_FP8_SCALE_MAX)
-        if has_fp8 and hasattr(torch, "float8_e4m3fn") and v_fp8.dtype == torch.float8_e4m3fn:
+        if has_fp8:  # 谓词归并：has_fp8 即 hasattr 本名，dtype 恒由上一行条件表达式决定
             v_u8 = torch.where(torch.isnan(v_norm), torch.tensor(0x7F, dtype=torch.uint8, device=v_norm.device), v_fp8.view(torch.uint8))
             v_fp8 = v_u8.view(torch.float8_e4m3fn)
             v_fp8_unperm = v_u8.view(b, hkv, d, num_16, 16)[:, :, :, :, V_FP8_INV_PERM].view(torch.float8_e4m3fn).contiguous().view(b, hkv, d, pad_sk_v)[:, :, :, :sk]
@@ -189,7 +189,7 @@ def _quant_v_fp8(
             v_fp8_unperm = v_fp8.view(b, hkv, d, num_16, 16)[:, :, :, :, V_FP8_INV_PERM].contiguous().view(b, hkv, d, pad_sk_v)[:, :, :, :sk]
         v_deq_hnd = (v_fp8_unperm.float() * v_scale.unsqueeze(-1)).transpose(2, 3)
 
-    return v_deq_hnd, v_fp8, v_scale, vm, v_norm
+    return v_deq_hnd, v_fp8, v_scale, vm
 
 
 def run_sageattn_cpu_reference(
@@ -247,7 +247,7 @@ def run_sageattn_cpu_reference(
         q_deq_hnd, k_deq_hnd, q_int8, q_scale, k_int8, k_scale = _quant_qk_per_warp(q_hnd, k_centered_hnd, sq, sk, d)
 
     # 3. Quantize V to FP8（返回中间态：v_fp8 permuted / v_scale / vm）
-    v_deq_hnd, v_fp8, v_scale, vm, _ = _quant_v_fp8(v_hnd, sk, d, pv_accum_dtype, smooth_v)
+    v_deq_hnd, v_fp8, v_scale, vm = _quant_v_fp8(v_hnd, sk, d, pv_accum_dtype, smooth_v)
 
     # 4. GQA broadcasting
     if hq != hkv:
