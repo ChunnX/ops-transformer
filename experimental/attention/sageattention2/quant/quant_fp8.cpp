@@ -138,21 +138,8 @@ public:
         uint32_t pad_sk_v,
         uint32_t d
     ) noexcept {
-        uint32_t data_bytes = pad_sk_v * d * sizeof(uint8_t);
-        uint32_t scale_bytes = d * sizeof(float);
-
-        // 1. 拷贝 FP8 数据
-        std::memcpy(compact_dst, v_data_block, data_bytes);
-
-        // 2. 紧随其后拷贝通道 scale
-        std::memcpy(compact_dst + data_bytes, v_scale_head, scale_bytes);
-
-        // 3. 补齐至 32 字节边界
-        uint32_t total_written = data_bytes + scale_bytes;
-        uint32_t aligned_total = Align32(total_written);
-        if (aligned_total > total_written) {
-            std::memset(compact_dst + total_written, 0, aligned_total - total_written);
-        }
+        PackDataAndScaleAdjacent(v_data_block, pad_sk_v * d * sizeof(uint8_t),
+                                 v_scale_head, d * sizeof(float), compact_dst);
     }
 };
 

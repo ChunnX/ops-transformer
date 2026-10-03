@@ -13,11 +13,31 @@
  * 使 KT 单测路径丢失属性——已改为与其他头一致的完整切换范式。
  */
 #ifndef __aicore__
-#if defined(__CCE_KT_TEST__) || defined(__DAV_C220_VEC__) || defined(__DAV_C220_CUBE__)
+#if defined(__CCE_KT_TEST__) || defined(__DAV_C220_VEC__) || defined(__DAV_C220_CUBE__) || defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__)
 #define __aicore__ [[]]
 #else
 #define __aicore__
 #endif
+#endif
+
+/**
+ * 编译域判定宏（全仓唯一定义点，其余头文件禁止再定义或重复守卫）：
+ * - SAGE_ATTN_DEVICE_COMPILE：bisheng -xasc 真机/camodal 设备编译语义分支；
+ * - SAGE_ATTN_KERNEL_API：kernel_operator.h 可用域（设备编译或 KT/DAV 单测桩），
+ *   兼作 "设备态执行路径" 判定（宿主串行仿真为 0）。
+ */
+#ifndef SAGE_ATTN_DEVICE_COMPILE
+#if defined(__CCE__) && !defined(__CCE_KT_TEST__)
+#define SAGE_ATTN_DEVICE_COMPILE 1
+#else
+#define SAGE_ATTN_DEVICE_COMPILE 0
+#endif
+#endif
+
+#if SAGE_ATTN_DEVICE_COMPILE || defined(__CCE_KT_TEST__) || defined(__DAV_C220_VEC__) || defined(__DAV_C220_CUBE__) || defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__)
+#define SAGE_ATTN_KERNEL_API 1
+#else
+#define SAGE_ATTN_KERNEL_API 0
 #endif
 
 namespace sage_attn {
@@ -42,6 +62,16 @@ constexpr uint32_t ATLAS_950_AIV_NUM = 64;             // Atlas 950PR 满配 64 
 constexpr uint32_t ATLAS_950_DIE_NUM = 2;              // Atlas 950PR 标配 2 个计算 Die
 constexpr uint32_t ATLAS_950_GROUPS_PER_DIE = 4;       // Atlas 950PR 每 Die 包含 4 个 Core Group (全片 8-Group)
 constexpr uint32_t ATLAS_950_CORES_PER_DIE = 16;       // Atlas 950PR 满配单 Die 16 个 AI Core
+
+// 单任务 GQA 行打包上限（kernel kKernelMaxRows / host total_rows 校验 / InspectTilingPlan
+// 三方同源唯一点）：单任务打包 min(gqa_ratio, MAX_PACK_ROWS / m_per_core) 个 Q 头，
+// gqa_ratio 超出时按 chunk 拆多任务（如 8:1 × m_per_core=32 → 2 chunk × 4 头 × 32 行）
+constexpr uint32_t MAX_PACK_ROWS = 128;
+
+// GQA 头数上限（gqa_ratio ≤ 8；官方 500 用例套件最大 8:1）：
+// SimMemory/设备 UB 的 Q scale 槽按 8 头配额冻结，host 校验（aclnn host tiling
+// gqa_ratio > MAX_GQA_RATIO 拒绝）与本常量同源
+constexpr uint32_t MAX_GQA_RATIO = 8;
 constexpr float S_FP8_OFFSET = 8.807354922057604f;      // log2(448.0f) P 矩阵 e4m3 偏置常数 (task/01_design 2.4)
 
 /**
@@ -63,6 +93,18 @@ constexpr float SKIP_SCALE_TAU = 6.0f;                  // FlashMLA / Online Sof
  * AccumReduceController 兜底、孪生参考 fp16 子块累加均引用此处）
  */
 constexpr uint32_t DEFAULT_K_STEP = 16;
+
+/**
+ * Q/K INT8 scale 槽区每头步长（SimMemory 与设备 UB 暂存的槽布局常量；
+ * 槽寻址 = 全局头序 × 步长 + QScaleIndex/KScaleIndex(token)，索引唯一定义点
+ * 在 quant/quant_common.h）：
+ * - Q：4096 = QScaleCount(16384, per_thread)——P-07 域 sq ≤ 16384 不越界；
+ *   此前步长 2048 在 per_thread sq > 8192 时越头污染 scale（P0 级精度隐患修复）
+ * - K：2048 = KScaleCount(32768, per_thread)——sk ≤ 32768 域
+ * 容量域经 quant_common.h 的 static_assert 与 QScaleCount/KScaleCount 锁定。
+ */
+constexpr uint32_t kQScaleSlotStride = 4096;
+constexpr uint32_t kKScaleSlotStride = 2048;
 
 /**
  * GM 暂存区布局（V0→V1 的 scale 桥接，2026-10-03 设备数据通路 A7 落地）：

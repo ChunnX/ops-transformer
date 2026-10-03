@@ -9,8 +9,16 @@ import warnings
 import torch
 from torch.library import impl
 
-# 接口字符串协议唯一来源：error_check.py 的 VALID_* 集合（禁止在此复制第二套字面量表）
-from .error_check import VALID_LAYOUTS, VALID_PV_ACCUM_DTYPES, VALID_QUANT_GRANS
+from .error_check import (
+    DEFAULT_PV_ACCUM_DTYPE,
+    DEFAULT_QK_QUANT_GRAN,
+    DEFAULT_TENSOR_LAYOUT,
+    VALID_LAYOUTS,
+    VALID_PV_ACCUM_DTYPES,
+    VALID_QUANT_GRANS,
+    validate_common_parameters,
+    validate_tensors,
+)
 
 
 def _validate(
@@ -24,55 +32,32 @@ def _validate(
     kwargs: dict[str, Any],
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Validate tensors and parameters against SageAttention2 specifications."""
-    if layout not in VALID_LAYOUTS:
-        raise ValueError("tensor_layout must be HND or NHD")
-    if gran not in VALID_QUANT_GRANS:
-        raise ValueError(f"qk_quant_gran must be 'per_thread' or 'per_warp', got '{gran}'")
-    if pv_accum_dtype not in VALID_PV_ACCUM_DTYPES:
-        raise ValueError("pv_accum_dtype must be fp32, fp32+fp32, or fp32+fp16")
-    if kwargs.pop("attn_mask", None) is not None:
-        raise ValueError("attn_mask is unsupported")
+    validate_common_parameters(
+        tensor_layout=layout,
+        qk_quant_gran=gran,
+        pv_accum_dtype=pv_accum_dtype,
+        kwargs=kwargs,
+    )
+    validate_tensors(q, k, v, tensor_layout=layout, is_causal=causal)
+    if q.requires_grad or k.requires_grad or v.requires_grad:
+        raise ValueError("forward-only operator does not support autograd")
     if kwargs.pop("dropout_p", 0.0) != 0:
         raise ValueError("dropout is unsupported")
     if kwargs:
         raise TypeError(f"unsupported arguments: {sorted(kwargs)}")
-    if any(t.ndim != 4 for t in (q, k, v)):
-        raise ValueError("q/k/v must have rank 4")
-    if q.dtype not in (torch.float16, torch.bfloat16) or any(
-        t.dtype != q.dtype for t in (k, v)
-    ):
-        raise ValueError("q/k/v must share FP16 or BF16 dtype")
-    if any(t.device != q.device for t in (k, v)):
-        raise ValueError("q/k/v must share a device")
-    if any(t.stride(-1) != 1 for t in (q, k, v)):
-        raise ValueError("last dimension must be contiguous")
-    if any(any(n <= 0 for n in t.shape) for t in (q, k, v)):
-        raise ValueError("empty dimensions are unsupported")
-    if any(any(n >= 2**32 - 64 for n in t.shape) for t in (q, k, v)):
-        raise ValueError("dimensions exceed the kernel uint32 range")
-
     qc, kc, vc = (
         (q, k, v) if layout == "HND" else tuple(t.transpose(1, 2) for t in (q, k, v))
     )
-    b, h, s, d = qc.shape
-    if not 0 < d <= 128:
+    if not 0 < qc.shape[-1] <= 128:
         raise ValueError("head_dim must be in [1,128]")
-    if kc.shape != vc.shape or kc.shape[0] != b or kc.shape[-1] != d:
-        raise ValueError("incompatible q/k/v shapes")
-    if h % kc.shape[1]:
-        raise ValueError("Hq must be divisible by Hkv")
-    if b * kc.shape[1] >= 2**32:
-        raise ValueError("batch times KV heads exceeds the kernel uint32 range")
-    if causal and s != kc.shape[2]:
-        raise ValueError("causal requires Sq == Sk")
-    if q.requires_grad or k.requires_grad or v.requires_grad:
-        raise ValueError("forward-only operator does not support autograd")
     return qc, kc, vc
 
 
 # Register custom operator schema under sageattention2 namespace using FRAGMENT to allow multiple module imports
 _library = torch.library.Library("sageattention2", "FRAGMENT")
 
+# schema 字符串中的默认值（"HND"/"per_thread"/"fp32+fp16"）为文本，须与
+# error_check.DEFAULT_TENSOR_LAYOUT / DEFAULT_QK_QUANT_GRAN / DEFAULT_PV_ACCUM_DTYPE 一致
 if not hasattr(getattr(torch.ops, "sageattention2", None), "forward"):
     _library.define(
         'forward(Tensor q, Tensor k, Tensor v, *, str tensor_layout="HND", '
@@ -87,11 +72,11 @@ if not hasattr(getattr(torch.ops, "sageattention2", None), "forward"):
         k: torch.Tensor,
         v: torch.Tensor,
         *,
-        tensor_layout: str = "HND",
+        tensor_layout: str = DEFAULT_TENSOR_LAYOUT,
         is_causal: bool = False,
-        qk_quant_gran: str = "per_thread",
+        qk_quant_gran: str = DEFAULT_QK_QUANT_GRAN,
         sm_scale: float | None = None,
-        pv_accum_dtype: str = "fp32+fp16",
+        pv_accum_dtype: str = DEFAULT_PV_ACCUM_DTYPE,
         smooth_k: bool = True,
         smooth_v: bool = False,
         return_lse: bool = False,
@@ -120,11 +105,11 @@ if not hasattr(getattr(torch.ops, "sageattention2", None), "forward"):
         k: torch.Tensor,
         v: torch.Tensor,
         *,
-        tensor_layout: str = "HND",
+        tensor_layout: str = DEFAULT_TENSOR_LAYOUT,
         is_causal: bool = False,
-        qk_quant_gran: str = "per_thread",
+        qk_quant_gran: str = DEFAULT_QK_QUANT_GRAN,
         sm_scale: float | None = None,
-        pv_accum_dtype: str = "fp32+fp16",
+        pv_accum_dtype: str = DEFAULT_PV_ACCUM_DTYPE,
         smooth_k: bool = True,
         smooth_v: bool = False,
         return_lse: bool = False,
@@ -152,11 +137,11 @@ if not hasattr(getattr(torch.ops, "sageattention2", None), "forward"):
         k: torch.Tensor,
         v: torch.Tensor,
         *,
-        tensor_layout: str = "HND",
+        tensor_layout: str = DEFAULT_TENSOR_LAYOUT,
         is_causal: bool = False,
-        qk_quant_gran: str = "per_thread",
+        qk_quant_gran: str = DEFAULT_QK_QUANT_GRAN,
         sm_scale: float | None = None,
-        pv_accum_dtype: str = "fp32+fp16",
+        pv_accum_dtype: str = DEFAULT_PV_ACCUM_DTYPE,
         smooth_k: bool = True,
         smooth_v: bool = False,
         return_lse: bool = False,
@@ -189,11 +174,11 @@ def run(
     k: torch.Tensor,
     v: torch.Tensor,
     *,
-    tensor_layout: str = "HND",
+    tensor_layout: str = DEFAULT_TENSOR_LAYOUT,
     is_causal: bool = False,
-    qk_quant_gran: str = "per_thread",
+    qk_quant_gran: str = DEFAULT_QK_QUANT_GRAN,
     sm_scale: float | None = None,
-    pv_accum_dtype: str = "fp32+fp16",
+    pv_accum_dtype: str = DEFAULT_PV_ACCUM_DTYPE,
     smooth_k: bool = True,
     smooth_v: bool = False,
     return_lse: bool = False,

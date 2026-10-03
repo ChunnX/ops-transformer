@@ -69,7 +69,7 @@ public:
                                     }
                                 }
 
-                                float scale = amax / INT8_QUANT_MAX + SCALE_EPSILON;
+                                float scale = FinalizeQkScale(amax, true);
                                 uint32_t scale_idx = QScaleIndex(sub_start + g, true);
                                 cur_scale_head[scale_idx] = scale;
 
@@ -113,8 +113,7 @@ public:
                                 }
                             }
 
-                            if (amax < SCALE_EPSILON) amax = SCALE_EPSILON;
-                            float scale = amax / INT8_QUANT_MAX;
+                            float scale = FinalizeQkScale(amax, false);
                             uint32_t scale_idx = QScaleIndex(sub_start, false);
                             cur_scale_head[scale_idx] = scale;
 
@@ -197,7 +196,7 @@ public:
                                 }
                             }
 
-                            float scale = amax / INT8_QUANT_MAX + SCALE_EPSILON;
+                            float scale = FinalizeQkScale(amax, true);
                             uint32_t scale_idx = KScaleIndex(token_blk_start + 2 * g, true);
                             cur_scale_head[scale_idx] = scale;
 
@@ -243,8 +242,7 @@ public:
                             }
                         }
 
-                        if (amax < SCALE_EPSILON) amax = SCALE_EPSILON;
-                        float scale = amax / INT8_QUANT_MAX;
+                        float scale = FinalizeQkScale(amax, false);
                         uint32_t scale_idx = KScaleIndex(token_blk_start, false);
                         cur_scale_head[scale_idx] = scale;
 
@@ -286,22 +284,10 @@ public:
         uint32_t d,
         uint32_t qk_quant_gran
     ) noexcept {
-        uint32_t data_bytes = block_k * d * sizeof(int8_t);
-        uint32_t num_scales = (qk_quant_gran == QUANT_GRAN_PER_THREAD) ? 4 : 1;
-        uint32_t scale_bytes = num_scales * sizeof(float);
-
-        // 1. 拷贝 INT8 数据
-        std::memcpy(compact_dst, k_data_block, data_bytes);
-
-        // 2. 紧随其后拷贝 FP32 scale
-        std::memcpy(compact_dst + data_bytes, k_scale_block, scale_bytes);
-
-        // 3. 补齐至 32 字节边界
-        uint32_t total_written = data_bytes + scale_bytes;
-        uint32_t aligned_total = Align32(total_written);
-        if (aligned_total > total_written) {
-            std::memset(compact_dst + total_written, 0, aligned_total - total_written);
-        }
+        const uint32_t data_bytes = block_k * d * sizeof(int8_t);
+        const uint32_t num_scales = (qk_quant_gran == QUANT_GRAN_PER_THREAD) ? 4 : 1;
+        PackDataAndScaleAdjacent(k_data_block, data_bytes, k_scale_block,
+                                 num_scales * sizeof(float), compact_dst);
     }
 };
 

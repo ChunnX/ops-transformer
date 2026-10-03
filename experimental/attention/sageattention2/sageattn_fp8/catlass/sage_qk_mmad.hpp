@@ -6,13 +6,6 @@
 #include "sage_tile.hpp"
 #include "sage_resource.hpp"
 
-#ifndef __aicore__
-#if defined(__CCE_KT_TEST__) || defined(__CCE__) || defined(__DAV_C220_VEC__) || defined(__DAV_C220_CUBE__) || defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__)
-#define __aicore__ [[]]
-#else
-#define __aicore__
-#endif
-#endif
 
 namespace Catlass::SageAttn {
 

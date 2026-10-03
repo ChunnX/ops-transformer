@@ -11,18 +11,9 @@ from unittest.mock import patch
 import torch
 from torch._subclasses.fake_tensor import FakeTensorMode
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
-
-OPS_TRANSFORMER_PYTHON = (
-    REPO_ROOT
-    / "ops-transformer"
-    / "experimental"
-    / "attention"
-    / "sageattention2"
-    / "python"
-)
+# 本文件位于 <算子目录>/tests/：算子包 python 目录即 ../python（自包含，
+# 不依赖其他测试模块先执行注入 sys.path）
+OPS_TRANSFORMER_PYTHON = Path(__file__).resolve().parents[1] / "python"
 if str(OPS_TRANSFORMER_PYTHON) not in sys.path:
     sys.path.insert(0, str(OPS_TRANSFORMER_PYTHON))
 

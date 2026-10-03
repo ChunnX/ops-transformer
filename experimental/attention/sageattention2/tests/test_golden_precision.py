@@ -21,6 +21,17 @@ import torch
 
 current_file = Path(__file__).resolve()
 REPO_ROOT = next((p for p in current_file.parents if (p / "golden" / "manifest.json").exists()), current_file.parents[1])
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # tests/ 共享模块（判据唯一定义点）
+from _golden_utils import (  # noqa: E402
+    load_case_tensors,
+    l_a_metrics,
+    l_b_ratios,
+    MATCHED_RATIO_MIN,
+    LB_RATIO_LIMITS,
+    LB_RATIO_EPS,
+    LSE_TOL,
+)
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
@@ -56,10 +67,7 @@ class TestGoldenPrecision(unittest.TestCase):
             raise ValueError(f"Expected 25 golden cases, but found {len(cls.cases)}")
 
     def _execute_case(self, case_id: str, case_meta: dict):
-        tensors = {}
-        for tname, rel_path in case_meta["tensors"].items():
-            full_path = REPO_ROOT / rel_path
-            tensors[tname] = torch.load(full_path, map_location="cpu", weights_only=True)
+        tensors = load_case_tensors(case_meta)
 
         q = tensors["q"]
         k = tensors["k"]
@@ -89,28 +97,23 @@ class TestGoldenPrecision(unittest.TestCase):
                 ref_lse = tensors["lse"]
 
                 is_bf16 = c.get("dtype") in ("bfloat16", "bf16")
-                atol = 2.0**(-6) if is_bf16 else 2.0**(-9)
-                rtol = atol
-                max_abs_limit = 1.0 if is_bf16 else 0.1
+                m = l_a_metrics(out, ref_out, is_bf16)
 
                 # 1. Output tensor shape and finiteness
                 self.assertEqual(out.shape, ref_out.shape, f"Shape mismatch for {case_id}")
                 self.assertTrue(torch.isfinite(out).all(), f"Non-finite values in output for {case_id}")
 
-                # 2. Output tensor error against Golden
-                diff = (out.float() - ref_out.float()).abs()
-                max_err = diff.max().item()
-                matched_elements = (diff <= (atol + rtol * ref_out.float().abs())).float().mean().item()
-
+                # 2. Output tensor error against Golden（判据唯一定义点 _golden_utils）
                 self.assertGreaterEqual(
-                    matched_elements,
-                    0.99,
-                    f"[{case_id}] L-A matched ratio {matched_elements:.6f} < 0.99 (atol={atol}, rtol={rtol})",
+                    m["matched_ratio"],
+                    MATCHED_RATIO_MIN,
+                    f"[{case_id}] L-A matched ratio {m['matched_ratio']:.6f} < {MATCHED_RATIO_MIN} "
+                    f"(atol={m['atol']:.6g}, max_abs={m['max_abs_error']:.6g})",
                 )
                 self.assertLessEqual(
-                    max_err,
-                    max_abs_limit,
-                    f"[{case_id}] L-A max abs error {max_err:.6f} exceeds limit {max_abs_limit}",
+                    m["max_abs_error"],
+                    m["max_abs_limit"],
+                    f"[{case_id}] L-A max abs error {m['max_abs_error']:.6g} exceeds limit {m['max_abs_limit']}",
                 )
 
                 # 3. LSE verification
@@ -119,8 +122,8 @@ class TestGoldenPrecision(unittest.TestCase):
                 max_lse_diff = (lse.float() - ref_lse.float()).abs().max().item()
                 self.assertLessEqual(
                     max_lse_diff,
-                    1e-3,
-                    f"[{case_id}] LSE difference {max_lse_diff:.6f} exceeds tolerance 1e-3",
+                    LSE_TOL,
+                    f"[{case_id}] LSE difference {max_lse_diff:.6g} exceeds tolerance {LSE_TOL}",
                 )
 
     def test_all_25_cases_l_b_precision(self):
@@ -129,36 +132,22 @@ class TestGoldenPrecision(unittest.TestCase):
             with self.subTest(case_id=case_id, test="L-B"):
                 out, _, tensors = self._execute_case(case_id, c)
                 sdpa_ref = tensors["out_sdpa_fp32"]
-                ref_metrics = c.get("metrics", {})
-
-                err_sdpa = (out.float() - sdpa_ref.float()).abs()
-                max_sdpa = err_sdpa.max().item()
-                mean_sdpa = err_sdpa.mean().item()
-                rmse_sdpa = torch.sqrt((err_sdpa**2).mean()).item()
-
-                # Ratio comparison with manifest golden metrics
-                ref_max = ref_metrics.get("max_abs_error_vs_sdpa", max_sdpa)
-                ref_mean = ref_metrics.get("mean_abs_error_vs_sdpa", mean_sdpa)
-                ref_rmse = ref_metrics.get("rmse_error_vs_sdpa", rmse_sdpa)
-
-                ratio_max = max_sdpa / ref_max if ref_max > 0 else 1.0
-                ratio_mean = mean_sdpa / ref_mean if ref_mean > 0 else 1.0
-                ratio_rmse = rmse_sdpa / ref_rmse if ref_rmse > 0 else 1.0
+                r = l_b_ratios(out, sdpa_ref, c)
 
                 self.assertLessEqual(
-                    ratio_max,
-                    2.0 + 1e-5,
-                    f"[{case_id}] L-B ratio_max {ratio_max:.4f} > 2.0",
+                    r["ratio_max"],
+                    LB_RATIO_LIMITS[0] + LB_RATIO_EPS,
+                    f"[{case_id}] L-B ratio_max {r['ratio_max']:.4f} > {LB_RATIO_LIMITS[0]}",
                 )
                 self.assertLessEqual(
-                    ratio_mean,
-                    1.2 + 1e-5,
-                    f"[{case_id}] L-B ratio_mean {ratio_mean:.4f} > 1.2",
+                    r["ratio_mean"],
+                    LB_RATIO_LIMITS[1] + LB_RATIO_EPS,
+                    f"[{case_id}] L-B ratio_mean {r['ratio_mean']:.4f} > {LB_RATIO_LIMITS[1]}",
                 )
                 self.assertLessEqual(
-                    ratio_rmse,
-                    1.2 + 1e-5,
-                    f"[{case_id}] L-B ratio_rmse {ratio_rmse:.4f} > 1.2",
+                    r["ratio_rmse"],
+                    LB_RATIO_LIMITS[2] + LB_RATIO_EPS,
+                    f"[{case_id}] L-B ratio_rmse {r['ratio_rmse']:.4f} > {LB_RATIO_LIMITS[2]}",
                 )
 
     def test_benchmark_subset_p01_p07(self):

@@ -21,6 +21,8 @@ if(NOT CATLASS_ROOT)
         set(CATLASS_ROOT "${SAGE_ATTN_REPO_ROOT}/../catlass")
     elseif(EXISTS "${SAGE_ATTN_REPO_ROOT}/third_party/catlass/include/catlass/catlass.hpp")
         set(CATLASS_ROOT "${SAGE_ATTN_REPO_ROOT}/third_party/catlass")
+    elseif(EXISTS "${SAGE_ATTN_REPO_ROOT}/../git/catlass/include/catlass/catlass.hpp")
+        set(CATLASS_ROOT "${SAGE_ATTN_REPO_ROOT}/../git/catlass")
     endif()
 endif()
 

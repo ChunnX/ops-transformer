@@ -224,7 +224,11 @@ inline aclnnStatus ComputeHostTiling(
 
     uint32_t m_per_core = 64;
     if (gqa_ratio > 1) {
-        if (gqa_ratio > 4u) {
+        // GQA 分块打包（官方 500 用例含 32:4 即 8:1）：行打包上限 MAX_PACK_ROWS，
+        // 单任务打包 min(gqa_ratio, MAX_PACK_ROWS / m_per_core) 个 Q 头，超出按 chunk
+        // 拆多任务（kernel DecodeTask 同式推导，任务空间 b*hkv*chunks*q_blks）。
+        if (gqa_ratio > MAX_GQA_RATIO) {
+            // 上限 8：SimMemory/GM scale 暂存条带按 8 头配额冻结（官方套件最大 8:1）
             return ACLNN_ERR_PARAM_INVALID;
         }
         m_per_core = (gqa_ratio == 2u) ? 64u : 32u;
@@ -252,7 +256,10 @@ inline aclnnStatus ComputeHostTiling(
     // 运行时资源台账 fail-fast：
     // O 累加器/S 双槽/L0C/L1 的足迹随 (gqa·m_per_core, block_n, d_pad) 变化，
     // 必须在发射前拒绝越界分块。
-    const uint32_t total_rows = m_per_core * gqa_ratio;
+    const uint32_t pack_heads = (gqa_ratio > 0)
+        ? ((gqa_ratio < MAX_PACK_ROWS / m_per_core) ? gqa_ratio : MAX_PACK_ROWS / m_per_core)
+        : 1u;
+    const uint32_t total_rows = m_per_core * pack_heads;
     if (Catlass::SageAttn::SageResourceManager::InspectTilingPlan(total_rows, block_n, d_pad) !=
         Catlass::SageAttn::FootprintViolation::kNone) {
         return ACLNN_ERR_PARAM_INVALID;

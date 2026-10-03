@@ -16,13 +16,6 @@
 
 #include "../sageattn_fp8/ascendc/tiling.h"
 
-#ifndef __aicore__
-#if defined(__CCE_KT_TEST__) || defined(__DAV_C220_VEC__) || defined(__DAV_C220_CUBE__)
-#define __aicore__ [[]]
-#else
-#define __aicore__
-#endif
-#endif
 
 #ifndef __host__
 #define __host__
@@ -296,25 +289,25 @@ constexpr uint32_t Q_BLK = 128;
 constexpr uint32_t Q_SUB = 32;
 constexpr uint32_t K_BLK = 64;
 
-__aicore__ __host__ inline uint32_t QBlockNum(uint32_t seq_len) noexcept {
+__aicore__ __host__ constexpr inline uint32_t QBlockNum(uint32_t seq_len) noexcept {
     return (seq_len + Q_BLK - 1) / Q_BLK;
 }
 
-__aicore__ __host__ inline uint32_t KBlockNum(uint32_t seq_len) noexcept {
+__aicore__ __host__ constexpr inline uint32_t KBlockNum(uint32_t seq_len) noexcept {
     return (seq_len + K_BLK - 1) / K_BLK;
 }
 
 /**
  * Q 的 scale 组数（每 head）：per_thread 为 blk×32，per_warp 为 blk×4
  */
-__aicore__ __host__ inline uint32_t QScaleCount(uint32_t seq_len, bool per_thread) noexcept {
+__aicore__ __host__ constexpr inline uint32_t QScaleCount(uint32_t seq_len, bool per_thread) noexcept {
     return QBlockNum(seq_len) * (per_thread ? 32u : 4u);
 }
 
 /**
  * K 的 scale 组数（每 head）：per_thread 为 blk×4，per_warp 为 blk×1
  */
-__aicore__ __host__ inline uint32_t KScaleCount(uint32_t seq_len, bool per_thread) noexcept {
+__aicore__ __host__ constexpr inline uint32_t KScaleCount(uint32_t seq_len, bool per_thread) noexcept {
     return KBlockNum(seq_len) * (per_thread ? 4u : 1u);
 }
 
@@ -332,6 +325,23 @@ __aicore__ inline uint32_t QScaleIndex(uint32_t token, bool per_thread) noexcept
     }
     return blk * 4u + in_blk / Q_SUB;
 }
+
+/**
+ * QK INT8 scale 定档公式唯一定义点（kernel 设备/宿主分支与 quant 参考实现共用）：
+ * - per_thread：amax/127 + 1e-7（与 RoundHalfAwayFromZero 舍入路径配对）；
+ * - per_warp：clamp(amax, 1e-7)/127（与 RoundNearestEven 舍入路径配对）。
+ * 禁止在调用方复制本公式——一处修舍入/兜底，处处生效。
+ */
+__aicore__ __host__ inline float FinalizeQkScale(float amax, bool per_thread) noexcept {
+    return per_thread ? (amax / INT8_QUANT_MAX + SCALE_EPSILON)
+                      : ((amax < SCALE_EPSILON ? SCALE_EPSILON : amax) / INT8_QUANT_MAX);
+}
+
+// 槽区步长容量域锁定（与 tiling.h kQScaleSlotStride/kKScaleSlotStride 配对）
+static_assert(QScaleCount(16384, true) <= kQScaleSlotStride,
+              "Q scale slot stride must cover per_thread sq=16384 (P-07 domain)");
+static_assert(KScaleCount(32768, true) <= kKScaleSlotStride,
+              "K scale slot stride must cover per_thread sk=32768");
 
 /**
  * token 在其 head 的 K scale 数组中的线性组号
@@ -354,6 +364,14 @@ __aicore__ inline uint32_t KScaleIndex(uint32_t token, bool per_thread) noexcept
 constexpr uint32_t V_PERM_PATTERN[16] = {0, 1, 8, 9, 2, 3, 10, 11, 4, 5, 12, 13, 6, 7, 14, 15};
 constexpr uint32_t V_PERM_INV_PATTERN[16] = {0, 1, 4, 5, 8, 9, 12, 13, 2, 3, 6, 7, 10, 11, 14, 15};
 static_assert(V_PERM_PATTERN[V_PERM_INV_PATTERN[3]] == 3, "V perm inverse must be consistent");
+
+/**
+ * token 在 16-token 段内的物理 V 槽号（V_PERM_INV_PATTERN 寻址唯一定义点）：
+ * golden v_fp8 排布、twin v_deq 读取与 kernel V 量化写槽共用，禁止再展开公式。
+ */
+__aicore__ __host__ inline uint32_t VSlotOfToken(uint32_t token_in_block) noexcept {
+    return (token_in_block / 16u) * 16u + V_PERM_INV_PATTERN[token_in_block % 16u];
+}
 
 /**
  * 输入数据读取抽象与减法模式对齐
@@ -389,6 +407,38 @@ struct Bf16Reader {
         return Bf16ToFp32(Fp32ToBf16(a - b));
     }
 };
+
+/**
+ * Data+Scale 相邻紧凑排布单点（quant_int8 KV 块与 quant_fp8 V 头共用）：
+ * memcpy(data) + memcpy(scale) + 32B 对齐补零。调用方各自持有数据/尺寸语义，
+ * 本函数只承载排布契约——禁止再写第二份三步 memcpy 样板。
+ */
+inline void PackDataAndScaleAdjacent(const void* data, uint32_t data_bytes,
+                                     const void* scale, uint32_t scale_bytes,
+                                     void* compact_dst) noexcept {
+    std::memcpy(compact_dst, data, data_bytes);
+    std::memcpy(static_cast<uint8_t*>(compact_dst) + data_bytes, scale, scale_bytes);
+    const uint32_t total_written = data_bytes + scale_bytes;
+    const uint32_t aligned_total = (total_written + 31u) / 32u * 32u;
+    if (aligned_total > total_written) {
+        std::memset(static_cast<uint8_t*>(compact_dst) + total_written, 0,
+                    aligned_total - total_written);
+    }
+}
+
+/**
+ * smooth_k 的 K 减均值单点（差值位型舍回，对齐孪生 Half/Bf16Reader::Sub 口径）：
+ * km 为 nullptr 时原值直通。kernel 设备/宿主分支与 quant 参考实现共用，
+ * 禁止在调用方展开 (dtype==2)?Bf16:Half 三元式。
+ */
+__aicore__ __host__ inline float SubKm(float val, const float* km_vec, uint32_t c,
+                                       uint32_t dtype_mode) noexcept {
+    if (km_vec == nullptr) {
+        return val;
+    }
+    return (dtype_mode == 2u) ? Bf16Reader::Sub(val, km_vec[c])
+                              : HalfReader::Sub(val, km_vec[c]);
+}
 
 } // namespace quant
 } // namespace sage_attn

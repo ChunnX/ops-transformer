@@ -4,13 +4,6 @@
 #include <limits>
 #include "../sageattn_fp8/ascendc/tiling.h"
 
-#ifndef SAGE_ATTN_DEVICE_COMPILE
-#if defined(__CCE__) && !defined(__CCE_KT_TEST__)
-#define SAGE_ATTN_DEVICE_COMPILE 1
-#else
-#define SAGE_ATTN_DEVICE_COMPILE 0
-#endif
-#endif
 
 #if SAGE_ATTN_DEVICE_COMPILE
 #include "kernel_operator.h"
@@ -471,6 +464,40 @@ __simd_vf__ inline void FinalizeRowVF(__ubuf__ float* o_row, __ubuf__ uint16_t* 
             StoreAlign<half, StoreDist::DIST_PACK_B32>(reinterpret_cast<__ubuf__ half*>(out_row) + c, h, full);
         }
     }
+}
+
+/**
+ * 8. 向量点积（行级 lse_correction 向量化）：
+ * 计算 in_ptr (fp16/bf16, 长度 d) 与 km_ptr (float, 长度 d) 的内积，结果写至 out_slot (1 float/行)。
+ * 以 256 位 SIMD 寄存器并行执行 Cast + Mul + ReduceSum，彻底消除标量读 GM 循环。
+ */
+__simd_vf__ inline void DotProductVF(__ubuf__ half* in_ptr, __ubuf__ float* km_ptr,
+                                     __ubuf__ float* out_slot, uint32_t d, uint32_t dtype_mode) {
+    using namespace AscendC;
+    using namespace AscendC::MicroAPI;
+    auto full = CreateMask<float, MaskPattern::ALL>();
+    static constexpr CastTrait toFp32{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+
+    RegTensor<float> accum;
+    Duplicate(accum, 0.0f);
+    for (uint32_t c = 0; c < d; c += 64) {
+        RegTensor<float> val, km_val;
+        if (dtype_mode == 2u) {
+            RegTensor<bfloat16_t> raw;
+            LoadAlign<bfloat16_t, LoadDist::DIST_UNPACK_B16>(raw, reinterpret_cast<__ubuf__ bfloat16_t*>(in_ptr) + c);
+            Cast<float, bfloat16_t, toFp32>(val, raw, full);
+        } else {
+            RegTensor<half> raw;
+            LoadAlign<half, LoadDist::DIST_UNPACK_B16>(raw, in_ptr + c);
+            Cast<float, half, toFp32>(val, raw, full);
+        }
+        LoadAlign(km_val, km_ptr + c);
+        Mul(val, val, km_val, full);
+        Add(accum, accum, val, full);
+    }
+    ReduceSum(accum, accum, full);
+    auto single_lane = CreateMask<float, MaskPattern::VL1>();
+    StoreAlign(out_slot, accum, single_lane);
 }
 
 } // namespace dev_vf

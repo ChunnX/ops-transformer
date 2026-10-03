@@ -10,14 +10,20 @@ except ImportError:
     from unittest.mock import MagicMock
     torch = MagicMock()
 
-from .dispatch import dispatch_sageattn, dispatch_sageattn_qk_int8_pv_fp8_asc
+from .dispatch import (
+    DEFAULT_PV_ACCUM_DTYPE,
+    DEFAULT_QK_QUANT_GRAN,
+    DEFAULT_TENSOR_LAYOUT,
+    dispatch_sageattn,
+    dispatch_sageattn_qk_int8_pv_fp8_asc,
+)
 
 
 def sageattn(
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
-    tensor_layout: str = "HND",
+    tensor_layout: str = DEFAULT_TENSOR_LAYOUT,
     is_causal: bool = False,
     sm_scale: Optional[float] = None,
     return_lse: bool = False,
@@ -92,11 +98,11 @@ def sageattn_qk_int8_pv_fp8_asc(
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
-    tensor_layout: str = "HND",
+    tensor_layout: str = DEFAULT_TENSOR_LAYOUT,
     is_causal: bool = False,
-    qk_quant_gran: str = "per_thread",
+    qk_quant_gran: str = DEFAULT_QK_QUANT_GRAN,
     sm_scale: Optional[float] = None,
-    pv_accum_dtype: str = "fp32+fp16",
+    pv_accum_dtype: str = DEFAULT_PV_ACCUM_DTYPE,
     smooth_k: bool = True,
     smooth_v: bool = False,
     return_lse: bool = False,

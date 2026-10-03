@@ -20,26 +20,12 @@ int SageAttnTwinRunForward(
     unsigned b, unsigned hq, unsigned hkv, unsigned sq, unsigned sk, unsigned d_og,
     unsigned tensor_layout, unsigned qk_quant_gran, unsigned pv_accum_dtype,
     unsigned is_causal, unsigned smooth_k, int dtype_mode, float sm_scale) {
-    sage_attn::twin::TwinIo io{};
-    io.q = q;
-    io.k = k;
-    io.v = v;
-    io.key_mean = key_mean;
-    io.out = out;
-    io.lse = lse;
-    io.b = b;
-    io.hq = hq;
-    io.hkv = hkv;
-    io.sq = sq;
-    io.sk = sk;
-    io.d_og = d_og;
-    io.tensor_layout = tensor_layout;
-    io.qk_quant_gran = qk_quant_gran;
-    io.pv_accum_dtype = pv_accum_dtype;
-    io.is_causal = is_causal;
-    io.smooth_k = smooth_k;
-    io.dtype_mode = dtype_mode;
-    io.sm_scale = sm_scale;
+    // C-ABI 形参序即 TwinIo 字段序（struct 契约），聚合初始化一处绑定
+    const sage_attn::twin::TwinIo io{
+        q, k, v, out, lse, key_mean,
+        b, hq, hkv, sq, sk, d_og,
+        tensor_layout, qk_quant_gran, pv_accum_dtype,
+        is_causal, smooth_k, dtype_mode, sm_scale};
     return sage_attn::twin::RunSequential(io);
 }
 

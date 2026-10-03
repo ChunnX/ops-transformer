@@ -145,6 +145,10 @@ run_python_tests() {
         echo "Running test_kernel_twin.py (宿主孪生执行器与 kernel 宿主串行分支 vs golden)..."
         "${PY_BIN}" "${WORK_DIR}/tests/test_kernel_twin.py"
     fi
+    if [ -f "${WORK_DIR}/tests/test_gqa_chunk.py" ]; then
+        echo "Running test_gqa_chunk.py (GQA 8:1 分块打包双路径位级一致性)..."
+        "${PY_BIN}" "${WORK_DIR}/tests/test_gqa_chunk.py"
+    fi
     echo ">>> Python Tests Completed!"
 }
 

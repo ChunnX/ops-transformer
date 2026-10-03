@@ -9,6 +9,7 @@
 //   latencies can never be mistaken for real-device acceptance evidence.
 // - Structured JSON report generation matching task/06_benchmark.md specification and benchmark format.
 
+#include "quant_common.h"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -290,67 +291,15 @@ void CheckAcl(int64_t status, const char *what) {
     }
 }
 
-// Bit-exact FP16 & BF16 encode/decode routines conforming to IEEE 754 half-precision and bfloat16 standards
-uint16_t FloatToFp16Bits(float val) {
-    uint32_t f;
-    std::memcpy(&f, &val, 4);
-    uint32_t sign = (f >> 31) & 0x1;
-    int32_t exp = ((f >> 23) & 0xFF) - 127 + 15;
-    uint32_t mant = (f & 0x7FFFFF) >> 13;
-    if (exp <= 0) {
-        return static_cast<uint16_t>(sign << 15);
-    }
-    if (exp >= 31) {
-        return static_cast<uint16_t>((sign << 15) | 0x7C00);
-    }
-    return static_cast<uint16_t>((sign << 15) | (exp << 10) | mant);
-}
-
-float Fp16BitsToFloat(uint16_t h) {
-    uint32_t sign = (h >> 15) & 1;
-    uint32_t exp = (h >> 10) & 0x1F;
-    uint32_t mant = h & 0x3FF;
-    uint32_t f32;
-    if (exp == 0x1F) {
-        f32 = (sign << 31) | (0xFF << 23) | (mant ? 0x7FFFFF : 0);
-    } else if (exp == 0) {
-        if (mant != 0) {
-            uint32_t e = 0x71;
-            while (!(mant & 0x400)) {
-                mant <<= 1;
-                e--;
-            }
-            mant &= 0x3FF;
-            f32 = (sign << 31) | (e << 23) | (mant << 13);
-        } else {
-            f32 = (sign << 31);
-        }
-    } else {
-        f32 = (sign << 31) | ((exp + 127 - 15) << 23) | (mant << 13);
-    }
-    float out;
-    std::memcpy(&out, &f32, 4);
-    return out;
-}
-
+// FP16/BF16 位型转换唯一定义点：quant/quant_common.h（RNE 舍入）。
+// 此前本文件自带一份"截断式" fp16 编码（mantissa 直接 >>13 无舍入），与算子/
+// golden 的 RNE 轨迹在容差边界必然分叉——精度裁决数据禁止第二套舍入口径。
 uint16_t EncodeFloat(float val, bool bf16) {
-    if (!bf16) {
-        return FloatToFp16Bits(val);
-    }
-    uint32_t bits;
-    std::memcpy(&bits, &val, 4);
-    bits += 0x7fff + ((bits >> 16) & 1);
-    return static_cast<uint16_t>(bits >> 16);
+    return bf16 ? sage_attn::quant::Fp32ToBf16(val) : sage_attn::quant::Fp32ToFp16(val);
 }
 
 float DecodeFloat(uint16_t bits, bool bf16) {
-    if (!bf16) {
-        return Fp16BitsToFloat(bits);
-    }
-    uint32_t f32 = static_cast<uint32_t>(bits) << 16;
-    float val;
-    std::memcpy(&val, &f32, 4);
-    return val;
+    return bf16 ? sage_attn::quant::Bf16ToFp32(bits) : sage_attn::quant::Fp16ToFp32(bits);
 }
 
 struct DeviceRuntime {

@@ -78,9 +78,9 @@ static ge::graphStatus TilingSageAttention2(gert::TilingContext *context)
 
     // 微秒级极速发射：tiling 热路径禁止 std::string 堆分配，
     // 缺省折叠与编码映射全部走 const char* 比较
-    const char *layout = (layout_str != nullptr) ? layout_str : "HND";
-    const char *gran = (gran_str != nullptr) ? gran_str : "per_thread";
-    const char *accum = (accum_str != nullptr) ? accum_str : "fp32+fp16";
+    const char *layout = (layout_str != nullptr) ? layout_str : sage_attn::kDefaultLayout;
+    const char *gran = (gran_str != nullptr) ? gran_str : sage_attn::kDefaultQkQuantGran;
+    const char *accum = (accum_str != nullptr) ? accum_str : sage_attn::kDefaultPvAccumDtype;
 
     const int64_t layout_code = sage_attn::TensorLayoutCodeFromString(layout);
 

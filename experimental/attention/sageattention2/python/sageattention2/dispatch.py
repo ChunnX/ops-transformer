@@ -19,6 +19,9 @@ except ImportError:
     F = MagicMock()
 
 from .error_check import (
+    DEFAULT_PV_ACCUM_DTYPE,
+    DEFAULT_QK_QUANT_GRAN,
+    DEFAULT_TENSOR_LAYOUT,
     compute_sm_scale,
     handle_smooth_v,
     pad_head_dim,
@@ -28,7 +31,8 @@ from .error_check import (
 from .op_plugin import is_npu_available, is_npu_kernel_loaded, run_sageattn_npu
 
 
-SAGEATTN_PV_ACCUM_DTYPE_DEFAULT = "fp32+fp16"
+# 默认档唯一定义点：error_check.DEFAULT_PV_ACCUM_DTYPE（本名曾为
+# SAGEATTN_PV_ACCUM_DTYPE_DEFAULT，别名已收敛）
 
 # 数值常量（python 侧唯一定义点；跨语言对应 C++ 侧唯一定义
 # ../sageattn_fp8/ascendc/tiling.h，禁止在本语言内复制第二份数值）：
@@ -43,6 +47,12 @@ SCALE_MAX_FP16_ACCUM = 2.25
 INT8_QUANT_MAX = 127.0
 SCALE_EPSILON = 1e-7
 LOG2E = 1.44269504
+
+
+def v_scale_max_for(pv_accum_dtype: str) -> float:
+    """V 量化 scale_max 分档（fp32+fp16 档 2.25，其余 448.0；对齐开源超参，
+    C++ 对应点 quant::GetVScaleMax）。"""
+    return SCALE_MAX_FP16_ACCUM if pv_accum_dtype == DEFAULT_PV_ACCUM_DTYPE else S_FP8_SCALE_MAX
 
 # Permutation pattern for FP8 V MMA layout (16-token chunks)
 _V_FP8_PERM = [0, 1, 8, 9, 2, 3, 10, 11, 4, 5, 12, 13, 6, 7, 14, 15]
@@ -156,7 +166,7 @@ def _quant_v_fp8(
     非 None），供单一基准整合（golden 生成器编排复用）。
     """
     b, hkv = v_hnd.shape[0], v_hnd.shape[1]
-    scale_max = SCALE_MAX_FP16_ACCUM if pv_accum_dtype == "fp32+fp16" else S_FP8_SCALE_MAX
+    scale_max = v_scale_max_for(pv_accum_dtype)
 
     pad_sk_v = (sk + 63) // 64 * 64
     v_t = v_hnd.transpose(2, 3)  # (b, hkv, d, sk)
@@ -370,7 +380,7 @@ def dispatch_sageattn(
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
-    tensor_layout: str = "HND",
+    tensor_layout: str = DEFAULT_TENSOR_LAYOUT,
     is_causal: bool = False,
     sm_scale: Optional[float] = None,
     return_lse: bool = False,
@@ -382,9 +392,9 @@ def dispatch_sageattn(
     """
     pv_accum_dtype = kwargs.pop(
         "pv_accum_dtype",
-        os.environ.get("SAGEATTN_PV_ACCUM_DTYPE", SAGEATTN_PV_ACCUM_DTYPE_DEFAULT),
+        os.environ.get("SAGEATTN_PV_ACCUM_DTYPE", DEFAULT_PV_ACCUM_DTYPE),
     )
-    qk_quant_gran = kwargs.pop("qk_quant_gran", "per_thread")
+    qk_quant_gran = kwargs.pop("qk_quant_gran", DEFAULT_QK_QUANT_GRAN)
     smooth_k = kwargs.pop("smooth_k", True)
     smooth_v = kwargs.pop("smooth_v", False)
 
@@ -408,11 +418,11 @@ def dispatch_sageattn_qk_int8_pv_fp8_asc(
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
-    tensor_layout: str = "HND",
+    tensor_layout: str = DEFAULT_TENSOR_LAYOUT,
     is_causal: bool = False,
-    qk_quant_gran: str = "per_thread",
+    qk_quant_gran: str = DEFAULT_QK_QUANT_GRAN,
     sm_scale: Optional[float] = None,
-    pv_accum_dtype: str = "fp32+fp16",
+    pv_accum_dtype: str = DEFAULT_PV_ACCUM_DTYPE,
     smooth_k: bool = True,
     smooth_v: bool = False,
     return_lse: bool = False,
@@ -455,8 +465,11 @@ def dispatch_sageattn_qk_int8_pv_fp8_asc(
             v_pad,
             tensor_layout=tensor_layout,
             is_causal=is_causal,
+            qk_quant_gran=qk_quant_gran,
             sm_scale=sm_scale_val,
+            pv_accum_dtype=pv_accum_dtype,
             smooth_k=smooth_k,
+            smooth_v=smooth_v,
             return_lse=return_lse,
         )
         out = out_pad[..., :head_dim_og]

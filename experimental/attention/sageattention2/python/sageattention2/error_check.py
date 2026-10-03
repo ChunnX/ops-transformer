@@ -22,6 +22,13 @@ VALID_LAYOUTS = {"HND", "NHD"}
 VALID_QUANT_GRANS = {"per_warp", "per_thread"}
 VALID_PV_ACCUM_DTYPES = {"fp32", "fp32+fp32", "fp32+fp16"}
 
+# 冻结签名默认值（任务书 §2.3 逐项对齐开源；全包签名唯一定义点，
+# core/dispatch/_ops/op_plugin 的默认形参一律引用此处；torch.library schema
+# 字符串内的默认值为文本，无法引用变量，以注释锚定须与本组常量一致）
+DEFAULT_TENSOR_LAYOUT = "HND"
+DEFAULT_QK_QUANT_GRAN = "per_thread"
+DEFAULT_PV_ACCUM_DTYPE = "fp32+fp16"
+
 
 def validate_common_parameters(
     tensor_layout: str,

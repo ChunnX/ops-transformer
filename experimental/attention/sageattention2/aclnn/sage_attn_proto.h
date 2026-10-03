@@ -63,6 +63,12 @@ namespace sage_attn {
  * fp32+fp16 / HND）；严格校验由各入口的前置检查负责（op_api 对 layout
  * 白名单校验，非法取值直接报错）。
  */
+// 冻结签名默认值（C++ 侧唯一定义点；op_host 缺省折叠与 op_api 文档共用；
+// 与任务书 §2.3 及 Python 侧 error_check.DEFAULT_* 逐项对应）
+constexpr const char *kDefaultLayout = "HND";
+constexpr const char *kDefaultQkQuantGran = "per_thread";
+constexpr const char *kDefaultPvAccumDtype = "fp32+fp16";
+
 inline int64_t TensorLayoutCodeFromString(const char *layout)
 {
     return (std::strcmp(layout, "NHD") == 0) ? static_cast<int64_t>(LAYOUT_NHD)

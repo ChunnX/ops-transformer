@@ -131,6 +131,13 @@ if [ -n "${RUN_PKG}" ] && [ -f "${RUN_PKG}" ] && [ "${MOCK_MODE}" = false ] && [
         echo -e "${GREEN}>>> Executing official CANN custom opp run package: ${RUN_PKG}...${NC}"
     fi
     bash "${RUN_PKG}" --quiet --install-path="${INSTALL_PATH}"
+    CONFIG_FILE="${INSTALL_PATH}/vendors/config.ini"
+    if [ ! -f "${CONFIG_FILE}" ]; then
+        cat << 'EOF' > "${CONFIG_FILE}"
+[common]
+load_priority=custom_transformer,customize
+EOF
+    fi
 else
     # 本地标准 Vendor 目录部署
     if [ "${QUIET}" = false ]; then

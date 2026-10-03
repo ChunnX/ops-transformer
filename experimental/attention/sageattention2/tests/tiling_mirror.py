@@ -18,6 +18,15 @@ TILING_STRUCT_FMT = "<7I 6I 3f 3I 5I 7I 2Q 4I B3s"
 #: 冻结结构体大小（字节）
 EXPECTED_SIZE = 160
 
+# ---------------------------------------------------------------------------
+# tiling.h §枚举编码镜像（字符串协议 -> 数值编码的唯一测试侧定义点；
+# C++ 权威：tiling.h LAYOUT_*/QUANT_GRAN_*/PV_ACCUM_* 枚举）
+# ---------------------------------------------------------------------------
+LAYOUT_NHD, LAYOUT_HND = 0, 1
+GRAN_PER_WARP, GRAN_PER_THREAD = 2, 3
+ACCUM_FP32, ACCUM_FP32_FP32, ACCUM_FP32_FP16 = 0, 1, 2
+ACCUM_CODE = {"fp32": ACCUM_FP32, "fp32+fp32": ACCUM_FP32_FP32, "fp32+fp16": ACCUM_FP32_FP16}
+
 
 class SageAttention2TilingData(ctypes.Structure):
     _pack_ = 1

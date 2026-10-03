@@ -18,6 +18,7 @@ set(SAGE_ATTN_HOST_INCLUDE_DIRS
     ${CMAKE_CURRENT_SOURCE_DIR}/../sageattn_fp8/ascendc
     ${CMAKE_CURRENT_SOURCE_DIR}/../sageattn_fp8/catlass
     ${CMAKE_CURRENT_SOURCE_DIR}/../quant
+    ${SAGE_ATTN_CATLASS_INCLUDE_DIR}
 )
 
 if (BUILD_OPEN_PROJECT)

@@ -2,27 +2,14 @@
 #define SAGE_ATTN_FP8_ASCENDC_SYNC_GUARD_H
 
 #include <cstdint>
+#include "tiling.h"
 
 /**
  * bisheng -xasc 设备编译标记（与 online_softmax.h 同一约定，此处独立成守卫以保持头文件自洽）。
  */
-#ifndef SAGE_ATTN_DEVICE_COMPILE
-#if defined(__CCE__) && !defined(__CCE_KT_TEST__)
-#define SAGE_ATTN_DEVICE_COMPILE 1
-#else
-#define SAGE_ATTN_DEVICE_COMPILE 0
-#endif
-#endif
 
-#ifndef __aicore__
-#if defined(__CCE_KT_TEST__) || defined(__DAV_C220_VEC__) || defined(__DAV_C220_CUBE__)
-#define __aicore__ [[]]
-#else
-#define __aicore__
-#endif
-#endif
 
-#if SAGE_ATTN_DEVICE_COMPILE || defined(__CCE_KT_TEST__) || defined(__DAV_C220_VEC__) || defined(__DAV_C220_CUBE__)
+#if SAGE_ATTN_KERNEL_API
 #include "kernel_operator.h"
 #endif
 
@@ -89,7 +76,7 @@ namespace CrossCoreFlags {
  * PIPE_S 为全局作用域常量，不可加名字空间限定。
  */
 __aicore__ inline void CrossCoreSet(CrossCoreDirection dir, uint32_t flag_id) {
-#if SAGE_ATTN_DEVICE_COMPILE || defined(__CCE_KT_TEST__) || defined(__DAV_C220_VEC__) || defined(__DAV_C220_CUBE__)
+#if SAGE_ATTN_KERNEL_API
     (void)dir;
     AscendC::CrossCoreSetFlag<4, PIPE_S>(static_cast<uint16_t>(flag_id));
 #else
@@ -99,7 +86,7 @@ __aicore__ inline void CrossCoreSet(CrossCoreDirection dir, uint32_t flag_id) {
 }
 
 __aicore__ inline void CrossCoreWait(CrossCoreDirection dir, uint32_t flag_id) {
-#if SAGE_ATTN_DEVICE_COMPILE || defined(__CCE_KT_TEST__) || defined(__DAV_C220_VEC__) || defined(__DAV_C220_CUBE__)
+#if SAGE_ATTN_KERNEL_API
     (void)dir;
     AscendC::CrossCoreWaitFlag<4, PIPE_S>(static_cast<uint16_t>(flag_id));
 #else

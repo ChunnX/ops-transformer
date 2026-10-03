@@ -29,6 +29,8 @@ import torch.nn.functional as F
 
 current_file = Path(__file__).resolve()
 REPO_ROOT = next((p for p in current_file.parents if (p / "golden" / "manifest.json").exists()), current_file.parents[1])
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # tests/ 共享模块
+from _golden_utils import load_case_tensors  # noqa: E402
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
@@ -89,11 +91,7 @@ class TestSageAttention2Function(unittest.TestCase):
     def _load_golden_case(self, case_id: str):
         self.assertIn(case_id, self.manifest.get("cases", {}), f"Case {case_id} not in manifest")
         c = self.manifest["cases"][case_id]
-        tensors = {}
-        for tname, rel_path in c["tensors"].items():
-            full_path = REPO_ROOT / rel_path
-            tensors[tname] = torch.load(full_path, map_location="cpu", weights_only=True)
-        return c, tensors
+        return c, load_case_tensors(c)
 
     # -------------------------------------------------------------------------
     # TC-01: sageattn unified dispatch and kwargs/env override

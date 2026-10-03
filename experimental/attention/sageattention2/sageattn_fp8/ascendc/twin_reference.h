@@ -376,7 +376,7 @@ inline int RunSequential(const TwinIo& io, TwinQuantDump* dump = nullptr) {
     // 4. V 反量化（e4m3 位型转 float 供 PV 使用）
     //    v_fp8 物理布局 [b, hkv, d_pad, pad_sk_v]：段内物理槽 p 存放 token V_PERM_PATTERN[p]
     auto v_deq = [&](uint32_t bi, uint32_t hi, uint32_t di, uint32_t j) -> float {
-        const uint32_t slot = (j / 16) * 16 + quant::V_PERM_INV_PATTERN[j % 16];
+        const uint32_t slot = quant::VSlotOfToken(j);
         const size_t off = ((static_cast<size_t>(bi) * io.hkv + hi) * d_pad + di) * pad_sk_v + slot;
         return E4m3fnToFloat(v_fp8[off]) * v_scale[(static_cast<size_t>(bi) * io.hkv + hi) * d_pad + di];
     };

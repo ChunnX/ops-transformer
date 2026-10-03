@@ -31,6 +31,10 @@ def load_extension():
     if not csrc_file.exists():
         raise FileNotFoundError(f"Cannot find SageAttention2 C++ source at {csrc_file}")
 
+    # 算子自身 aclnn proto 头与本地 OPP 安装产物（存在性守卫，幂等追加）——
+    # 根包 python/ 的同名扩展经 shim 共享本实现，编译参数唯一定义点在此。
+    op_root = package.parent.parent  # .../experimental/attention/sageattention2
+
     extra_include_paths = [
         str(npu / "include"),
         str(npu / "include" / "third_party" / "acl" / "inc"),
@@ -38,6 +42,9 @@ def load_extension():
         str(npu / "include" / "third_party" / "op-plugin"),
         str(cann / "include"),
     ]
+    if (op_root / "aclnn").exists():
+        extra_include_paths.append(str(op_root / "aclnn"))
+
     extra_ldflags = [
         "-L" + str(npu / "lib"),
         "-ltorch_npu",
@@ -45,6 +52,19 @@ def load_extension():
         "-L" + str(cann / "lib64"),
         "-lascendcl",
     ]
+
+    for opp_vendor in (
+        cann / "opp" / "vendors" / "custom_transformer",
+        cann / "opp" / "vendors" / "customize",
+        op_root / "build" / "opp_installed" / "vendors" / "customize",
+    ):
+        v_inc = opp_vendor / "op_api" / "include"
+        if v_inc.exists() and str(v_inc) not in extra_include_paths:
+            extra_include_paths.append(str(v_inc))
+        v_lib = opp_vendor / "op_api" / "lib"
+        if v_lib.exists():
+            extra_ldflags.extend(["-L" + str(v_lib), "-lcust_opapi", "-Wl,-rpath," + str(v_lib)])
+            break
 
     return load(
         name="sageattention2_npu_ext",

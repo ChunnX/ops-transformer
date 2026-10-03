@@ -2,6 +2,7 @@
 #define SAGE_ATTN_FP8_ASCENDC_PIPELINE_GUARD_H
 
 #include <cstdint>
+#include "tiling.h"
 #include <cstddef>
 #include <type_traits>
 
@@ -26,21 +27,7 @@
  * references/sync-mechanisms.md 的 HardEvent 通路）。
  */
 
-#ifndef SAGE_ATTN_DEVICE_COMPILE
-#if defined(__CCE__) && !defined(__CCE_KT_TEST__)
-#define SAGE_ATTN_DEVICE_COMPILE 1
-#else
-#define SAGE_ATTN_DEVICE_COMPILE 0
-#endif
-#endif
 
-#ifndef __aicore__
-#if defined(__CCE_KT_TEST__) || defined(__DAV_C220_VEC__) || defined(__DAV_C220_CUBE__)
-#define __aicore__ [[]]
-#else
-#define __aicore__
-#endif
-#endif
 
 // 宿主/KT 分支的地址空间限定回退（对齐 op_kernel/sageattention2.cpp 宿主桩约定）；
 // bisheng 设备编译由编译器内建定义，不受此处影响

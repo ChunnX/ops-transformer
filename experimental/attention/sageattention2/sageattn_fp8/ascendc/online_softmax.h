@@ -14,21 +14,7 @@
  * 故设备端 exp2/log2 必须按位构造自实现（见 FastExp2/FastLog2）。
  * 与 sync_guard.h 的定义点共用同一 #ifndef 守卫，保证任意包含顺序下仅定义一次。
  */
-#ifndef SAGE_ATTN_DEVICE_COMPILE
-#if defined(__CCE__) && !defined(__CCE_KT_TEST__)
-#define SAGE_ATTN_DEVICE_COMPILE 1
-#else
-#define SAGE_ATTN_DEVICE_COMPILE 0
-#endif
-#endif
 
-#ifndef __aicore__
-#if defined(__CCE_KT_TEST__) || defined(__DAV_C220_VEC__) || defined(__DAV_C220_CUBE__)
-#define __aicore__ [[]]
-#else
-#define __aicore__
-#endif
-#endif
 
 namespace sage_attn {
 

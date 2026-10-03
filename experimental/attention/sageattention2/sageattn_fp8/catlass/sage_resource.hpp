@@ -5,7 +5,23 @@
 #include <cstddef>
 #include "../ascendc/tiling.h"
 #include "sage_tile.hpp"
+#if defined(__has_include)
+#if __has_include("catlass/arch/arch.hpp")
 #include "catlass/arch/arch.hpp"
+#define SAGE_HAS_OFFICIAL_CATLASS_ARCH 1
+#endif
+#endif
+
+#ifndef SAGE_HAS_OFFICIAL_CATLASS_ARCH
+namespace Catlass::Arch {
+struct Ascend950 {
+    static constexpr uint32_t L1_SIZE = 512 * 1024;
+    static constexpr uint32_t L0A_SIZE = 64 * 1024;
+    static constexpr uint32_t L0B_SIZE = 64 * 1024;
+    static constexpr uint32_t L0C_SIZE = 256 * 1024;
+};
+}
+#endif
 
 namespace Catlass::SageAttn {
 
@@ -37,6 +53,19 @@ struct Vector0UbBudget {
 
     static constexpr uint32_t QUANT_WORKSPACE_OFFSET   = 96 * 1024;
     static constexpr uint32_t QUANT_WORKSPACE_BYTES    = 48 * 1024;  // 48 KB
+
+    // 量化工作区子偏移（P6 具名化；Q scale 槽区扩容至 sage_attn::kQScaleSlotStride=4096 f32
+    // = 16KB 后重排——tile: rowmax 512B | scales 16KB | km 512B | strip 512B）：
+    static constexpr uint32_t QUANT_ROWMAX_OFFSET      = QUANT_WORKSPACE_OFFSET;
+    static constexpr uint32_t QUANT_SCALES_OFFSET      = QUANT_ROWMAX_OFFSET + 512;
+    static constexpr uint32_t QUANT_KM_OFFSET          = QUANT_SCALES_OFFSET + sage_attn::kQScaleSlotStride * 4;
+    static constexpr uint32_t QUANT_STAGE_STRIP_OFFSET = QUANT_KM_OFFSET + 512;
+    static constexpr uint32_t QUANT_STAGE_STRIP_END    = QUANT_STAGE_STRIP_OFFSET + 512;
+    static_assert(QUANT_ROWMAX_OFFSET < QUANT_SCALES_OFFSET &&
+                  QUANT_SCALES_OFFSET < QUANT_KM_OFFSET &&
+                  QUANT_KM_OFFSET < QUANT_STAGE_STRIP_OFFSET &&
+                  QUANT_STAGE_STRIP_END <= QUANT_WORKSPACE_OFFSET + QUANT_WORKSPACE_BYTES,
+                  "Vector0 quant workspace sub-offsets overlap or exceed the region");
 
     static constexpr uint32_t NZ_OUTPUT_OFFSET         = 144 * 1024;
     static constexpr uint32_t NZ_OUTPUT_BYTES          = 96 * 1024;  // 96 KB (含每行 32B padding 防 bank conflict)
@@ -73,6 +102,8 @@ struct Vector1UbBudget {
 
     static constexpr uint32_t LSE_WORKSPACE_OFFSET     = 224 * 1024;
     static constexpr uint32_t LSE_WORKSPACE_BYTES      = 16 * 1024;  // 行 stats + logits 行暂存 + scale 条带副本
+    // LSE 工作区行距（512B = 128 float；消费侧子偏移 = OFFSET + n·LSE_ROW_STRIDE）
+    static constexpr uint32_t LSE_ROW_STRIDE           = 512;
 
     static constexpr uint32_t TWO_LEVEL_REDUCE_OFFSET  = 240 * 1024;
     static constexpr uint32_t TWO_LEVEL_REDUCE_BYTES   = 16 * 1024;  // 两级累加归约缓冲（skip-scale 变体预留）

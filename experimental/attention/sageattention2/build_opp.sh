@@ -118,9 +118,12 @@ if [ "${MOCK_MODE}" = false ] && [ "${DRY_RUN}" = false ] && [ "${HAS_CANN}" = t
     source "${CANN_ROOT}/set_env.sh"
     set -u
 
-    export CATLASS_ROOT="${CATLASS_ROOT:-${REPO_DIR}/../catlass}"
-    if [ ! -d "${CATLASS_ROOT}" ] && [ -d "${REPO_DIR}/third_party/catlass" ]; then
+    if [ -d "${REPO_DIR}/third_party/catlass" ]; then
         export CATLASS_ROOT="${REPO_DIR}/third_party/catlass"
+    elif [ -d "${REPO_DIR}/../git/catlass" ]; then
+        export CATLASS_ROOT="${REPO_DIR}/../git/catlass"
+    elif [ -d "${REPO_DIR}/../catlass" ]; then
+        export CATLASS_ROOT="${REPO_DIR}/../catlass"
     fi
 
     cd "${REPO_DIR}"

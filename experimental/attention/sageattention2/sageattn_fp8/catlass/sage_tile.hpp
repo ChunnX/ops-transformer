@@ -15,9 +15,22 @@
  * 自定义契约（官方 TileCopyTla 组件要求 L1 侧 zN 分形布局，不匹配本算子 V0 产出
  * 布局——该数据通路重构须随 camodel 仿真/真机 L-A 循环推进，见设计文档模块边界）。
  */
+#if defined(__has_include)
+#if __has_include("catlass/catlass.hpp")
 #include "catlass/catlass.hpp"
+#define SAGE_HAS_OFFICIAL_CATLASS 1
+#endif
+#endif
 
-#if defined(__CCE_KT_TEST__) || defined(__CCE__) || defined(__DAV_C220_VEC__) || defined(__DAV_C220_CUBE__) || defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__)
+#ifndef SAGE_HAS_OFFICIAL_CATLASS
+namespace Catlass {
+constexpr uint32_t BYTE_PER_C0 = 32;
+constexpr uint32_t C0_NUM_PER_FRACTAL = 16;
+constexpr uint32_t BYTE_PER_FRACTAL = 512;
+}
+#endif
+
+#if SAGE_ATTN_KERNEL_API
 #include "kernel_operator.h"
 #else
 namespace AscendC {
@@ -62,7 +75,7 @@ namespace Catlass::SageAttn {
  */
 template <AscendC::HardEvent E>
 __aicore__ inline void Sync() {
-#if defined(__CCE__) && !defined(__CCE_KT_TEST__)
+#if SAGE_ATTN_DEVICE_COMPILE
     AscendC::SetFlag<E>(0);
     AscendC::WaitFlag<E>(0);
 #endif
@@ -96,7 +109,7 @@ static_assert(LOADDATA2D_REPEAT_BYTES == 512, "LoadData2D repeat unit must be 51
  */
 template <typename Element, AscendC::TPosition DstPos, AscendC::TPosition SrcPos>
 __aicore__ inline void LoadTile2D(uint32_t dst_addr, uint32_t src_addr, uint32_t rows, uint32_t cols, bool if_transpose = false) {
-#if defined(__CCE__) && !defined(__CCE_KT_TEST__)
+#if SAGE_ATTN_DEVICE_COMPILE
     const uint32_t total_bytes = rows * cols * static_cast<uint32_t>(sizeof(Element));
     AscendC::TBuffAddr dst_desc{};
     dst_desc.logicPos = static_cast<uint8_t>(DstPos);
@@ -134,7 +147,7 @@ __aicore__ inline void LoadTile2D(uint32_t dst_addr, uint32_t src_addr, uint32_t
  */
 template <typename ElementC, typename ElementA, typename ElementB, bool IsFp8 = false>
 __aicore__ inline void ExecuteTileMmad(uint32_t m, uint32_t n, uint32_t k, bool init) {
-#if defined(__CCE__) && !defined(__CCE_KT_TEST__)
+#if SAGE_ATTN_DEVICE_COMPILE
     AscendC::MmadParams mmad_params;
     mmad_params.m = static_cast<uint16_t>(m);
     mmad_params.n = static_cast<uint16_t>(n);
@@ -192,7 +205,7 @@ __aicore__ inline void CopyL0CToUbSplitM(
     uint32_t m,
     uint32_t n)
 {
-#if defined(__CCE__) && !defined(__CCE_KT_TEST__)
+#if SAGE_ATTN_DEVICE_COMPILE
     constexpr uint32_t M_SPLIT = 64;
     constexpr uint32_t elem_size = sizeof(ElementC);
     static constexpr auto format = AscendC::CO2Layout::ROW_MAJOR;

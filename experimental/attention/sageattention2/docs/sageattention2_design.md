@@ -45,6 +45,45 @@
 
 # 详细设计（required）
 
+## 单一定义点清单（2026-10-03 打磨轮）
+
+| 不变量 | 唯一定义点 | 消费方 |
+|---|---|---|
+| 分形粒度（M0/N0/K0、LoadData2D repeat） | 官方 catlass.hpp（sage_tile.hpp include + static_assert） | kernel 全部 MMA/搬运 |
+| 行打包上限 MAX_PACK_ROWS=128 | tiling.h | kernel 窗口/host total_rows/InspectTilingPlan |
+| Q/K scale 槽步长 kQScaleSlotStride=4096 / kKScaleSlotStride=2048 | tiling.h（容量域经 QScaleCount/KScaleCount constexpr static_assert 锁定） | SimMemory/设备 UB 槽寻址 |
+| QK scale 定档公式 FinalizeQkScale | quant_common.h | kernel 双分支 + quant 参考实现（8 处收敛） |
+| 量化组号 QScaleIndex/KScaleIndex（constexpr） | quant_common.h | 全链路 |
+| V 物理槽寻址 VSlotOfToken | quant_common.h | golden/twin/kernel（3 处收敛） |
+| 因果掩码哨兵 SAGE_MASK_SENTINEL | online_softmax.h | kernel/VF/twin（12 处收敛） |
+| 编译域三件套 SAGE_ATTN_DEVICE_COMPILE / SAGE_ATTN_KERNEL_API / __aicore__ 桩 | tiling.h | 全部头文件（7 份重复守卫删除，12 处 #if 收敛） |
+| TilingData ctypes 镜像 | tests/tiling_mirror.py | test_tiling_struct/test_kernel_twin |
+| FP16/BF16 位型转换（RNE） | quant_common.h | 算子/golden/benchmark（截断版已删除） |
+| 数值常量（Python 侧） | dispatch.py | golden 生成器 import（本地副本已删） |
+| CATLASS_ROOT 解析 | cmake/SageAttnDeps.cmake | op_kernel/op_host CMake |
+| 接口布局字符串（仅 HND/NHD） | op_api 白名单报错 | op_host/proto/def 默认值 HND |
+| 接口默认值常量（Python DEFAULT_*） | error_check.py | core/dispatch/_ops/op_plugin 签名 |
+| 接口默认值常量（C++ kDefault*） | aclnn/sage_attn_proto.h | op_host tiling 缺省折叠 |
+| V 量化 scale_max 分档 v_scale_max_for | dispatch.py | golden 生成器/测试填充（2.25/448 字面量已消） |
+| tiling 枚举编码镜像（LAYOUT/GRAN/ACCUM） | tests/tiling_mirror.py | test_kernel_twin 等 |
+| ActiveKvBlocks/DtypeMode/SubKm 核内辅助 | op_kernel 私有方法 | 4 处重算 + 9 处位型分派 + 2 处 km 舍回收敛 |
+| Data+Scale 相邻排布 PackDataAndScaleAdjacent | quant_common.h | quant_int8/quant_fp8 Pack 双实现 |
+| LSE_ROW_STRIDE / MAX_GQA_RATIO | sage_resource.hpp / tiling.h | V1 子偏移、SimMemory 配额、host 上限 |
+
+## GQA 分块打包策略（2026-10-03，P7 修复）
+
+官方 500 用例套件含 32:4（gqa_ratio=8）× 9 条，而 Q 头打包受单任务行上限
+MAX_PACK_ROWS=128（tiling.h 唯一定义点）约束：4:1 × m_per_core=32 已满 128 行。
+方案：单任务打包 `min(gqa_ratio, MAX_PACK_ROWS / m_per_core)` 个 Q 头，超出按
+chunk 拆多任务（8:1 → 2 chunk × 4 头 × 32 行），任务空间扩为
+`b × hkv × chunks × q_blks`。窗口 token 宽度恒为 m_per_core（32/64），
+32-token 量化子块不被切割；Q scale 槽按全局头序（cur_g0_ + g）寻址，
+GM 行寻址按窗口局部 g（基址已含 hq_first）。对 gqa ≤ 4 的既有用例
+chunks=1，任务解码与调度算术逐位不变（twin 25 桶 golden 回归锁定）；
+8:1 路径由 tests/test_gqa_chunk.py 的双路径位级一致性测试覆盖。
+上限 gqa_ratio ≤ 8：SimMemory / GM scale 暂存条带按 8 头配额冻结
+（官方套件最大 8:1）。
+
 ## 算子分析
 
 ### 数学公式

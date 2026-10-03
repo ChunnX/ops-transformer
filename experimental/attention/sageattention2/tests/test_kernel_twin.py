@@ -52,9 +52,16 @@ REPO_ROOT = next((p for p in current_file.parents if (p / "golden" / "manifest.j
                  OP_ROOT.parent.parent.parent.parent)
 
 # 与 tiling.h / quant_common.h 的编码唯一定义一致
-LAYOUT_NHD, LAYOUT_HND = 0, 1
-GRAN_PER_WARP, GRAN_PER_THREAD = 2, 3
-ACCUM_CODE = {"fp32": 0, "fp32+fp32": 1, "fp32+fp16": 2}
+# 编码镜像唯一定义点：tests/tiling_mirror.py（锚定 tiling.h 枚举）
+from tiling_mirror import (  # noqa: E402
+    ACCUM_CODE,
+    ACCUM_FP32,
+    ACCUM_FP32_FP16,
+    GRAN_PER_THREAD,
+    GRAN_PER_WARP,
+    LAYOUT_HND,
+    LAYOUT_NHD,
+)
 LOG2E = 1.4426950408889634
 S_FP8_OFFSET = 8.807354922057604
 
@@ -76,7 +83,6 @@ _TWIN_SOURCES = [
     OP_ROOT / "quant" / "quant_int8.cpp",
     OP_ROOT / "quant" / "quant_fp8.cpp",
 ]
-_TENSOR_CACHE: dict[tuple[str, str], torch.Tensor] = {}
 
 
 def _build_dylib() -> Path:
@@ -118,15 +124,27 @@ def _load_lib() -> ctypes.CDLL:
 # 镜像唯一定义点：tests/tiling_mirror.py（逐字段偏移由 tests/test_tiling_struct.py 锁定）
 from tiling_mirror import SageAttention2TilingData
 
+sys.path.insert(0, str(OP_ROOT / "python"))  # 算子包（scale_max 分档唯一定义点）
+from sageattention2.dispatch import v_scale_max_for  # noqa: E402
+from _golden_utils import (  # noqa: E402  （golden 加载与 L-A/L-B 判据唯一定义点）
+    load_tensor,
+    l_a_metrics as _l_a_metrics,
+    l_b_ratios as _l_b_ratios,
+)
+
 
 _LIB = _load_lib()
 
 
-def _load_tensor(case_id: str, name: str) -> torch.Tensor:
+# golden 加载与 L-A/L-B 判据唯一定义点：tests/_golden_utils.py（纯等价搬迁，
+# 带进程内缓存以保持既有跨用例复用行为）
+_TENSOR_CACHE = {}
+
+
+def _load_tensor(case_id: str, name: str) -> "torch.Tensor":
     key = (case_id, name)
     if key not in _TENSOR_CACHE:
-        path = REPO_ROOT / "golden" / case_id / f"{name}.pt"
-        _TENSOR_CACHE[key] = torch.load(path, map_location="cpu", weights_only=True)
+        _TENSOR_CACHE[key] = load_tensor(case_id, name)
     return _TENSOR_CACHE[key]
 
 
@@ -207,7 +225,7 @@ def _run_kernel_host(case: dict, q: torch.Tensor, k: torch.Tensor, v: torch.Tens
     # km 减法按该字段走 fp16/bf16 分支，0 会被核内归一为 fp16
     t.input_dtype = _dtype_mode(q)
     t.sm_scale_log2e = sm_scale * LOG2E
-    t.v_scale_max = 2.25 if accum == 2 else 448.0
+    t.v_scale_max = v_scale_max_for(case.get("pv_accum_dtype", "fp32+fp16"))
     t.s_fp8_offset = S_FP8_OFFSET
     t.m_per_core, t.block_n, t.k_step = 64, 64, 16
     t.core_num_used = 1
@@ -237,33 +255,6 @@ def _run_kernel_host(case: dict, q: torch.Tensor, k: torch.Tensor, v: torch.Tens
     else:
         out = out_pad[..., :d_og].contiguous()
     return out, lse.view(b, hq, sq)
-
-
-def _l_a_metrics(out: torch.Tensor, ref_out: torch.Tensor, is_bf16: bool) -> dict:
-    atol = 2.0 ** (-6) if is_bf16 else 2.0 ** (-9)
-    diff = (out.float() - ref_out.float()).abs()
-    tol = atol + atol * ref_out.float().abs()
-    return {
-        "atol": atol,
-        "matched_ratio": (diff <= tol).float().mean().item(),
-        "max_abs_error": diff.max().item(),
-        "max_abs_limit": 1.0 if is_bf16 else 0.1,
-    }
-
-
-def _l_b_ratios(out: torch.Tensor, sdpa: torch.Tensor, meta: dict) -> dict:
-    err = (out.float() - sdpa.float()).abs()
-    ref = meta.get("metrics", {})
-    den_max = ref.get("max_abs_error_vs_sdpa", 0.0)
-    den_mean = ref.get("mean_abs_error_vs_sdpa", 0.0)
-    den_rmse = ref.get("rmse_error_vs_sdpa", 0.0)
-    rmse = torch.sqrt((err ** 2).mean()).item()
-    one = lambda num, den: (num / den) if den > 0 else 1.0
-    return {
-        "ratio_max": one(err.max().item(), den_max),
-        "ratio_mean": one(err.mean().item(), den_mean),
-        "ratio_rmse": one(rmse, den_rmse),
-    }
 
 
 class GoldenTwinTestBase(unittest.TestCase):

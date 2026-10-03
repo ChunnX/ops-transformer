@@ -21,6 +21,8 @@ import torch.nn.functional as F
 
 current_file = Path(__file__).resolve()
 REPO_ROOT = next((p for p in current_file.parents if (p / "golden" / "manifest.json").exists()), current_file.parents[5])
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # tests/ 共享模块
+from _golden_utils import load_tensor  # noqa: E402  （golden 加载唯一定义点）
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 DYLIB_PATH = Path("/tmp/libquant_ascendc.dylib")
@@ -57,18 +59,14 @@ class TestQuantAgainstGolden(unittest.TestCase):
         case_info = self.cases[case_id]
         case_dir = REPO_ROOT / "golden" / case_id
 
-        q = torch.load(case_dir / "q.pt", weights_only=True)
-        k = torch.load(case_dir / "k.pt", weights_only=True)
-        v = torch.load(case_dir / "v.pt", weights_only=True)
-
-        golden_q_int8 = torch.load(case_dir / "q_int8.pt", weights_only=True)
-        golden_q_scale = torch.load(case_dir / "q_scale.pt", weights_only=True)
-        golden_k_int8 = torch.load(case_dir / "k_int8.pt", weights_only=True)
-        golden_k_scale = torch.load(case_dir / "k_scale.pt", weights_only=True)
-        golden_v_fp8 = torch.load(case_dir / "v_fp8.pt", weights_only=True)
-        golden_v_scale = torch.load(case_dir / "v_scale.pt", weights_only=True)
-        golden_lse = torch.load(case_dir / "lse.pt", weights_only=True)
-        golden_out = torch.load(case_dir / "out.pt", weights_only=True)
+        names = ("q", "k", "v", "q_int8", "q_scale", "k_int8", "k_scale",
+                 "v_fp8", "v_scale", "lse", "out")
+        g = {n: load_tensor(case_id, n) for n in names}
+        q, k, v = g["q"], g["k"], g["v"]
+        golden_q_int8, golden_q_scale = g["q_int8"], g["q_scale"]
+        golden_k_int8, golden_k_scale = g["k_int8"], g["k_scale"]
+        golden_v_fp8, golden_v_scale = g["v_fp8"], g["v_scale"]
+        golden_lse, golden_out = g["lse"], g["out"]
 
         out, lse, q_int8, q_scale, k_int8, k_scale, v_fp8, v_scale = self.prototype.forward(
             q=q,
@@ -186,16 +184,13 @@ class TestAscendCQuantKernels(unittest.TestCase):
         case_info = manifest["cases"][case_id]
         case_dir = REPO_ROOT / "golden" / case_id
 
-        q = torch.load(case_dir / "q.pt", weights_only=True)
-        k = torch.load(case_dir / "k.pt", weights_only=True)
-        v = torch.load(case_dir / "v.pt", weights_only=True)
-
-        golden_q_int8 = torch.load(case_dir / "q_int8.pt", weights_only=True)
-        golden_q_scale = torch.load(case_dir / "q_scale.pt", weights_only=True)
-        golden_k_int8 = torch.load(case_dir / "k_int8.pt", weights_only=True)
-        golden_k_scale = torch.load(case_dir / "k_scale.pt", weights_only=True)
-        golden_v_fp8 = torch.load(case_dir / "v_fp8.pt", weights_only=True)
-        golden_v_scale = torch.load(case_dir / "v_scale.pt", weights_only=True)
+        names = ("q", "k", "v", "q_int8", "q_scale", "k_int8", "k_scale",
+                 "v_fp8", "v_scale")
+        g = {n: load_tensor(case_id, n) for n in names}
+        q, k, v = g["q"], g["k"], g["v"]
+        golden_q_int8, golden_q_scale = g["q_int8"], g["q_scale"]
+        golden_k_int8, golden_k_scale = g["k_int8"], g["k_scale"]
+        golden_v_fp8, golden_v_scale = g["v_fp8"], g["v_scale"]
 
         head_dim_og = q.size(-1)
         pad_d = 64 if head_dim_og < 64 else (128 if head_dim_og > 64 and head_dim_og < 128 else head_dim_og)
