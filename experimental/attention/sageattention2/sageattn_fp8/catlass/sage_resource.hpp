@@ -46,23 +46,57 @@ struct Vector0UbBudget {
 };
 
 struct Vector1UbBudget {
-    // V1（softmax 核）：负责 Online Softmax、O 主累加器、两级累加归约
+    // V1（softmax 核）：负责 Online Softmax、O 主累加器、两级累加归约。
+    // R17-2 重排（2026-10-03）：A7 设备态交接区（dot32/pv_partial）并入本记账结构——
+    // 原 dot32@80KB/pv_partial@144KB 与 S pong 槽、TWO_LEVEL_REDUCE 记账区三方重叠
+    //（Cube FixPipe 写 dot32 会踩 V1 的 S pong 槽），现全部区 512B 对齐、两两不相交：
+    //   O_ACCUM [0,64K) | S 双槽 [64K, 64K+2·rows·block_n)（≤96K，FIXPIPE_RECV 记账区）
+    //   A7 dot32 [96K,160K) | A7 pv_partial [160K,224K) | LSE_WORKSPACE [224K,240K)
+    //   TWO_LEVEL_REDUCE [240K,256K)
+    // 互斥与封顶由下方 static_assert 链编译期锁定（链式单调 ⇒ 两两不相交）。
     static constexpr uint32_t O_ACCUM_OFFSET           = 0;
     static constexpr uint32_t O_ACCUM_BYTES            = 64 * 1024;  // 64 KB (FP32 常驻主累加器)
 
     static constexpr uint32_t FIXPIPE_RECV_OFFSET      = 64 * 1024;
-    static constexpr uint32_t FIXPIPE_RECV_BYTES       = 64 * 1024;  // 64 KB (P 矩阵落地与 S 中间量)
+    static constexpr uint32_t FIXPIPE_RECV_BYTES       = 64 * 1024;  // 64 KB (S(P) 奇偶双槽记账区；
+                                                                      //  实际占用 2·rows·block_n ≤ 32K)
 
-    static constexpr uint32_t TWO_LEVEL_REDUCE_OFFSET  = 128 * 1024;
-    static constexpr uint32_t TWO_LEVEL_REDUCE_BYTES   = 64 * 1024;  // 64 KB (两级累加归约缓冲)
+    // A7 设备态交接区（task/12 D1/D2：Cube FixPipe 裸搬落点，V1 消费；单缓冲读保护
+    // 握手 FLAG_DOT_FREE=13 / FLAG_PV_PARTIAL_FREE=12，sync_guard.h）
+    static constexpr uint32_t A7_DOT32_OFFSET          = 96 * 1024;
+    static constexpr uint32_t A7_DOT32_BYTES           = 64 * 1024;  // rows·block_n·4 ≤ 128·128·4
+    static constexpr uint32_t A7_PV_PARTIAL_OFFSET     = 160 * 1024;
+    static constexpr uint32_t A7_PV_PARTIAL_BYTES      = 64 * 1024;  // rows·d_pad·4 ≤ 128·128·4
 
-    static constexpr uint32_t LSE_WORKSPACE_OFFSET     = 192 * 1024;
-    static constexpr uint32_t LSE_WORKSPACE_BYTES      = 32 * 1024;  // 32 KB (m_run, d_run, lse 向量)
+    static constexpr uint32_t LSE_WORKSPACE_OFFSET     = 224 * 1024;
+    static constexpr uint32_t LSE_WORKSPACE_BYTES      = 16 * 1024;  // 行 stats + logits 行暂存 + scale 条带副本
 
-    static constexpr uint32_t RESERVED_OFFSET          = 224 * 1024;
-    static constexpr uint32_t RESERVED_BYTES           = 32 * 1024;  // 32 KB 保留
+    static constexpr uint32_t TWO_LEVEL_REDUCE_OFFSET  = 240 * 1024;
+    static constexpr uint32_t TWO_LEVEL_REDUCE_BYTES   = 16 * 1024;  // 两级累加归约缓冲（skip-scale 变体预留）
 
-    static_assert(RESERVED_OFFSET + RESERVED_BYTES <= HardwareResourceQuota::UB_PER_V_BYTES,
+    // 行界常数（与 SageResourceManager::MAX_GQA_PACK_ROWS / host 分块域 block_n ∈ {64,128} /
+    // d_pad ≤ 128 验收域同步；op_kernel kKernelMaxRows 同源，改动须双侧联动 + 台账回归）
+    static constexpr uint32_t A7_REGION_ROW_MAX        = 128;
+    static constexpr uint32_t A7_REGION_BLOCK_N_MAX    = 128;
+    static constexpr uint32_t A7_REGION_HEAD_DIM_MAX   = 128;
+
+    static_assert(O_ACCUM_OFFSET + O_ACCUM_BYTES <= FIXPIPE_RECV_OFFSET,
+                  "A7 O_ACCUM region overlaps S slot region");
+    static_assert(FIXPIPE_RECV_OFFSET +
+                          2u * A7_REGION_ROW_MAX * A7_REGION_BLOCK_N_MAX <= A7_DOT32_OFFSET,
+                  "A7 S pong slot region overlaps dot32");
+    static_assert(A7_DOT32_OFFSET +
+                          A7_REGION_ROW_MAX * A7_REGION_BLOCK_N_MAX * sizeof(int32_t)
+                      <= A7_PV_PARTIAL_OFFSET,
+                  "A7 dot32 region overlaps pv_partial");
+    static_assert(A7_PV_PARTIAL_OFFSET +
+                          A7_REGION_ROW_MAX * A7_REGION_HEAD_DIM_MAX * sizeof(float)
+                      <= LSE_WORKSPACE_OFFSET,
+                  "A7 pv_partial region overlaps LSE workspace");
+    static_assert(LSE_WORKSPACE_OFFSET + LSE_WORKSPACE_BYTES <= TWO_LEVEL_REDUCE_OFFSET,
+                  "A7 LSE workspace overlaps TWO_LEVEL_REDUCE");
+    static_assert(TWO_LEVEL_REDUCE_OFFSET + TWO_LEVEL_REDUCE_BYTES
+                      <= HardwareResourceQuota::UB_PER_V_BYTES,
                   "Vector1 UB allocation exceeds 256KB physical limit");
 };
 
@@ -81,6 +115,7 @@ enum class FootprintViolation : uint32_t {
     kL0CAccum,         // L0C：QK^T INT32 累加器越界
     kUbV1OAccum,       // V1 UB：O 主累加器（fp32 常驻）越界
     kUbV1SoftmaxSlot,  // V1 UB：S(P) 奇偶双槽越出 FIXPIPE_RECV 区
+    kUbV1A7Handoff,    // V1 UB：A7 dot32/pv_partial 交接区越界（Cube FixPipe 落点，R17-2 建模）
     kUbV0Input,        // V0 UB：GM 输入 ping/pong 暂存槽越界
 };
 
@@ -168,6 +203,20 @@ public:
         const uint64_t softmax_slot_bytes = static_cast<uint64_t>(total_rows) * block_n * 2u;
         if (softmax_slot_bytes > Vector1UbBudget::FIXPIPE_RECV_BYTES) {
             return FootprintViolation::kUbV1SoftmaxSlot;
+        }
+
+        // V1 UB：A7 dot32 裸搬区 [total_rows][block_n] INT32（R17-2 全区建模：Cube
+        // EmitL0CToUbRaw 落点、V1 DequantMaskLogitsRowVF 消费，FLAG_DOT_FREE 读保护）
+        const uint64_t dot32_bytes = static_cast<uint64_t>(total_rows) * block_n * sizeof(int32_t);
+        if (dot32_bytes > Vector1UbBudget::A7_DOT32_BYTES) {
+            return FootprintViolation::kUbV1A7Handoff;
+        }
+
+        // V1 UB：A7 PV 部分和交接槽 [total_rows][head_dim] FP32（ExecuteEpilogue 落点、
+        // V1 MergePvPartialRowVF 消费，FLAG_PV_PARTIAL_FREE 读保护）
+        const uint64_t pv_partial_bytes = static_cast<uint64_t>(total_rows) * head_dim * 4u;
+        if (pv_partial_bytes > Vector1UbBudget::A7_PV_PARTIAL_BYTES) {
+            return FootprintViolation::kUbV1A7Handoff;
         }
 
         // V0 UB：GM 输入 ping 槽按 [block_n][head_dim] FP16 暂存（pong 槽等宽，

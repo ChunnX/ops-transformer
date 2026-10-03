@@ -235,6 +235,11 @@ void TestResourceFootprintLedger() {
     // 边界：2*128*256 = 64KB 恰好填满 FIXPIPE_RECV，放行
     assert(SageResourceManager::InspectTilingPlan(128, 256, 64) != FootprintViolation::kUbV1SoftmaxSlot);
 
+    // R17-2 全区建模：A7 dot32 交接区 rows·block_n·4 > 64KB（128·256·4 = 128KB 越界；
+    // 上一行只断言"非 S 槽越界"，此处锁定其命中的是 A7 交接区违规码。pv_partial 侧
+    // rows·d·4 > 64KB 与 kL1Bank0Q 的 rows·d > 16KB 同量纲、被其严格支配，恒不可达属预期）
+    assert(SageResourceManager::InspectTilingPlan(128, 256, 64) == FootprintViolation::kUbV1A7Handoff);
+
     // V0 UB GM 输入槽：block_n*d*2 > 48KB
     assert(SageResourceManager::InspectTilingPlan(64, 200, 128) == FootprintViolation::kUbV0Input);
 

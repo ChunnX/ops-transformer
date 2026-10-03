@@ -300,7 +300,18 @@ bool TestParameterValidation()
     TEST_CHECK(aclnnSageAttention2GetWorkspaceSize(&q, &k, &v, nullptr, nullptr, 0.1, 3, 2, false, 7, false, false, &out, nullptr, &ws_size, &executor) == ACLNN_ERR_PARAM_INVALID, "Should reject invalid tensorLayout (7)");
     TEST_CHECK(aclnnSageAttention2GetWorkspaceSize(&q, &k, &v, nullptr, nullptr, 0.1, 3, 2, false, -1, false, false, &out, nullptr, &ws_size, &executor) == ACLNN_ERR_PARAM_INVALID, "Should reject invalid tensorLayout (-1)");
 
-    // 6. 第二段空执行器拦截
+    // 6. causal 与 Sq!=Sk 组合拒绝（DEFECT-L-2 负向锁：任务书 §2.2 因果掩码仅当
+    //    Sq==Sk 合法，共享点 ComputeHostTiling 一处拒绝——移植态 C-ABI 透传
+    //    ACLNN_ERR_PARAM_INVALID，gert TilingImpl 同点映射 GRAPH_FAILED）
+    aclTensor q_causal_skew = CreateMockTensor(2, 32, 128, 64); // Sq=128
+    aclTensor k_causal_skew = CreateMockTensor(2, 8, 256, 64);  // Sk=256
+    aclTensor v_causal_skew = CreateMockTensor(2, 8, 256, 64);
+    aclTensor out_causal_skew = CreateMockTensor(2, 32, 128, 64);
+    TEST_CHECK(aclnnSageAttention2GetWorkspaceSize(&q_causal_skew, &k_causal_skew, &v_causal_skew, nullptr, nullptr, 0.1, 3, 2, true, 1, false, false, &out_causal_skew, nullptr, &ws_size, &executor) == ACLNN_ERR_PARAM_INVALID, "Should reject causal with Sq != Sk");
+    // 非 causal 的 Sq!=Sk 为合法路径（Split-KV 域，参 TestHostTilingSplitKvTrigger），必须保留
+    TEST_CHECK(aclnnSageAttention2GetWorkspaceSize(&q_causal_skew, &k_causal_skew, &v_causal_skew, nullptr, nullptr, 0.1, 3, 2, false, 1, false, false, &out_causal_skew, nullptr, &ws_size, &executor) == ACLNN_SUCCESS, "Should retain non-causal with Sq != Sk");
+
+    // 7. 第二段空执行器拦截
     TEST_CHECK(aclnnSageAttention2(nullptr, 0, nullptr, nullptr) == ACLNN_ERR_PARAM_NULLPTR, "Should reject null executor in phase 2");
 
     std::cout << "[PASS] TestParameterValidation" << std::endl;

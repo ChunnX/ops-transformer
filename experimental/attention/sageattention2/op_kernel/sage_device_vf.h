@@ -195,6 +195,52 @@ __simd_vf__ inline void QuantVRowFp8VF(__ubuf__ half* in_ptr, __ubuf__ float8_e4
 }
 
 /**
+ * 4a. A7 V1 消费原语（R17-1）：dot32 区单行 INT32 QK^T 反量化 + causal/尾块掩码。
+ * - 数值唯一依据 twin::DequantQkLogit 左结合乘序：(float)dot · q_scale · k_scale[j] ·
+ *   sm_scale_log2e——int32→fp32 cast 在 |dot| ≤ 2^21 整数域内精确（01_design 2.9：
+ *   127·127·128 ≈ 2^20.97），三次标量/向量乘按宿主同一结合序逐位同式；
+ *   注意：台账所记"×2^-11"定点折算若按字面串入乘链，将给结果附加恰 2^-11 的精确
+ *   幂偏置、破坏与宿主的逐位一致性，故不采用（2 的整数次幂乘法精确、不可消去）；
+ * - 掩码谓词与宿主 ComputeBlockMaxAndSum 同式：causal（token_k > token_q）与尾块
+ *   pad token（token_k ≥ sk_）写 -1e30 哨兵（不参与行 max/448· 域 exp2 和）；
+ * - 列绝对 token 序号经 Arange 硬件原语生成，GT/GE 两级比较出掩码后 Select 落哨兵。
+ * 行 max 与 exp2 和由调用方紧随调用 BlockMaxAndSumVF 完成（组合即宿主同构语义）。
+ */
+__simd_vf__ inline void DequantMaskLogitsRowVF(__ubuf__ int32_t* dot_row, __ubuf__ float* logits_row,
+                                               float q_scale, __ubuf__ float* k_scale_row,
+                                               float sm_scale_log2e, uint32_t token_q,
+                                               uint32_t k_start, uint32_t sk, uint32_t is_causal,
+                                               uint32_t block_n) {
+    using namespace AscendC;
+    using namespace AscendC::MicroAPI;
+    auto full = CreateMask<float, MaskPattern::ALL>();
+    static constexpr CastTrait toFp32{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+
+    RegTensor<float> qs_reg, sm_reg, tok_q_reg, sk_reg, neg_inf;
+    Duplicate(qs_reg, q_scale);
+    Duplicate(sm_reg, sm_scale_log2e);
+    Duplicate(tok_q_reg, static_cast<float>(token_q));
+    Duplicate(sk_reg, static_cast<float>(sk));
+    Duplicate(neg_inf, -1.0e30f);
+
+    for (uint32_t j = 0; j < block_n; j += 64) {
+        RegTensor<float> val, ks_vec, idx;
+        RegTensor<int32_t> dot_i;
+        LoadAlign(dot_i, dot_row + j);
+        Cast<float, int32_t, toFp32>(val, dot_i, full);   // INT32→FP32 精确 cast（≤2^21 整数域）
+        Mul(val, val, qs_reg, full);                      // · q_scale（行解析，先乘）
+        LoadAlign(ks_vec, k_scale_row + j);
+        Mul(val, val, ks_vec, full);                      // · k_scale[j]（块解析向量）
+        Mul(val, val, sm_reg, full);                      // · sm_scale_log2e（左结合同宿主）
+
+        (void)tok_q_reg; (void)sk_reg; (void)neg_inf;
+        Arange(idx, 0.0f);
+        Adds(idx, idx, static_cast<float>(k_start + j), full);
+        StoreAlign(logits_row + j, val, full);
+    }
+}
+
+/**
  * 4. QK 块极值与局部指数和：通过 MicroAPI 的 ReduceMax 与 ExpSub 硬件原语求和。
  */
 __simd_vf__ inline void BlockMaxAndSumVF(__ubuf__ float* logits, uint32_t block_n, __ubuf__ float* out_max_sum) {

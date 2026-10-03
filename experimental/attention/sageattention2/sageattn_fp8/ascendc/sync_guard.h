@@ -58,12 +58,14 @@ namespace CrossCoreFlags {
     constexpr uint32_t FLAG_KV_PONG_FREE         = 8;  // Pong 槽 KV 已消费，V0 可覆写 (Cube set → V0 wait)
     constexpr uint32_t FLAG_SOFTMAX_S_PING_FREE  = 9;  // Ping 槽 S 已消费，V1 可覆写 (Cube set → V1 wait)
     constexpr uint32_t FLAG_SOFTMAX_S_PONG_FREE  = 10; // Pong 槽 S 已消费，V1 可覆写 (Cube set → V1 wait)
-    // A7 PV 部分和交接（task/12_device_data_path.md 第三节；2026-10-03）：
-    // Cube 每块 PV L0C → UB 交接槽（TWO_LEVEL_REDUCE 区）后 set，V1 合并进 O 主累加器后 set FREE
+    // A7 PV 部分和交接（task/12_device_data_path.md 第三节；2026-10-03；R17-2 后交接槽
+    // 定址 V1 UB A7_PV_PARTIAL 区 [160K,224K)，Vector1UbBudget 唯一定义点）：
+    // Cube 每块 PV L0C → UB 交接槽后 set，V1 合并进 O 主累加器后 set FREE
     constexpr uint32_t FLAG_PV_PARTIAL_READY     = 11; // 块 PV 部分和已落 UB 交接槽 (Cube set → V1 wait)
     constexpr uint32_t FLAG_PV_PARTIAL_FREE      = 12; // 交接槽已合并，Cube 可覆写 (V1 set → Cube wait)
     // A7 QK dot32 单缓冲读保护：V1 完成 block k 反量化读取后 set，Cube 方可在
-    // beat k+1 覆写 dot32 区（单 L0C 要求 QK fp 先于 PV Mmad，无法借道 S(k) 排序）
+    // beat k+1 覆写 dot32 区（单 L0C 要求 QK fp 先于 PV Mmad，无法借道 S(k) 排序；
+    // R17-2 后 dot32 区定址 [96K,160K)，Vector1UbBudget 唯一定义点）
     constexpr uint32_t FLAG_DOT_FREE             = 13; // dot32 区已读毕，Cube 可覆写 (V1 set → Cube wait)
 }
 

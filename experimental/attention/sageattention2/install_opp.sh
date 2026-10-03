@@ -171,10 +171,10 @@ if [ "${QUIET}" = false ]; then
     echo -e "${BLUE}>>> Verifying deployed OPP components...${NC}"
 fi
 
-test -f "${INSTALL_PATH}/vendors/config.ini" || { echo -e "${RED}[ERROR] ${INSTALL_PATH}/vendors/config.ini missing!${NC}"; exit 1; }
-test -f "${INSTALL_PATH}/vendors/customize/op_api/lib/libcust_opapi.so" || { echo -e "${RED}[ERROR] libcust_opapi.so missing!${NC}"; exit 1; }
-test -f "${INSTALL_PATH}/vendors/customize/op_impl/ai_core/tbe/op_tiling/lib/liboptiling.so" || { echo -e "${RED}[ERROR] liboptiling.so missing!${NC}"; exit 1; }
-test -f "${INSTALL_PATH}/vendors/customize/bin/set_env.bash" || { echo -e "${RED}[ERROR] set_env.bash missing!${NC}"; exit 1; }
+test -f "${INSTALL_PATH}/vendors/config.ini" || test -f "${INSTALL_PATH}/vendors/custom_transformer/config.ini" || { echo -e "${RED}[ERROR] ${INSTALL_PATH}/vendors/config.ini missing!${NC}"; exit 1; }
+test -f "${INSTALL_PATH}/vendors/customize/op_api/lib/libcust_opapi.so" || test -f "${INSTALL_PATH}/vendors/custom_transformer/op_api/lib/libcust_opapi.so" || { echo -e "${RED}[ERROR] libcust_opapi.so missing!${NC}"; exit 1; }
+test -f "${INSTALL_PATH}/vendors/customize/op_impl/ai_core/tbe/op_tiling/lib/liboptiling.so" || test -f "${INSTALL_PATH}/vendors/custom_transformer/op_impl/ai_core/tbe/op_tiling/lib/liboptiling.so" || test -f "${INSTALL_PATH}/vendors/custom_transformer/op_impl/ai_core/tbe/op_tiling/liboptiling.so" || test -f "${INSTALL_PATH}/vendors/customize/op_impl/ai_core/tbe/op_tiling/liboptiling.so" || { echo -e "${RED}[ERROR] liboptiling.so missing!${NC}"; exit 1; }
+test -f "${INSTALL_PATH}/vendors/customize/bin/set_env.bash" || test -f "${INSTALL_PATH}/vendors/custom_transformer/bin/set_env.bash" || { echo -e "${RED}[ERROR] set_env.bash missing!${NC}"; exit 1; }
 
 if [ "${QUIET}" = false ]; then
     echo -e "${GREEN}================================================================================${NC}"

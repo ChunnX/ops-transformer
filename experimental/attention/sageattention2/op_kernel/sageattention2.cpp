@@ -112,7 +112,9 @@ namespace sage_attn {
 // - SyncMte2ToV：GM→UB DataCopy（MTE2 写）后、VF/标量读（V 管）前调用；
 // - SyncVToMte3：VF/标量写（V 管）后、UB→L1/GM DataCopy（MTE3 读）前调用；
 // - SyncMte3ToV：UB→GM DataCopy（MTE3 读）后、同槽被下一轮 VF 写复用前调用
-//   （DEFECT-I-1：PipeBarrier<PIPE_V> 不排 MTE3 在途读）。
+//   （DEFECT-I-1：PipeBarrier<PIPE_V> 不排 MTE3 在途读）；
+// - SyncVToMte2（R22 回边）：VF 读毕（V 管）后、同槽被下一轮 GM→UB DataCopy
+//   （MTE2 写）复用前调用——MTE2 重写不 await V 管在途读，须显式事件对。
 #if SAGE_ATTN_DEVICE_COMPILE
 __aicore__ inline void SyncMte2ToV() {
     SetFlag<HardEvent::MTE2_V>(0);
@@ -126,10 +128,15 @@ __aicore__ inline void SyncMte3ToV() {
     SetFlag<HardEvent::MTE3_V>(0);
     WaitFlag<HardEvent::MTE3_V>(0);
 }
+__aicore__ inline void SyncVToMte2() {
+    SetFlag<HardEvent::V_MTE2>(0);
+    WaitFlag<HardEvent::V_MTE2>(0);
+}
 #else
 inline void SyncMte2ToV() {}
 inline void SyncVToMte3() {}
 inline void SyncMte3ToV() {}
+inline void SyncVToMte2() {}
 #endif
 
 
@@ -146,18 +153,23 @@ inline void SyncMte3ToV() {}
 // 常量不随 SimMemory 分支门控，row_states_ 成员在设备分支亦需该界）
 constexpr uint32_t kKernelMaxRows = 128;
 
-// A7 设备态 UB 布局（V1 256KB 地址空间内的 A7 专用区；task/12_device_data_path.md）：
-// 与 Vector1UbBudget 的区界解耦（区为记账名，地址连续编址），静态不等式防越界——
-//   O_ACCUM [0,64KB) | S 双槽 [64KB,64KB+2·rows·block_n) | dot32 [80KB,80KB+rows·block_n·4)
-//   pv_partial [144KB,144KB+rows·d·4) | 行 stats 等小暂存 [208KB, LSE 区)
-// 极限 rows=block_n=d=128 时 dot32/pv_partial 各恰 64KB，总占用 208KB < 256KB。
-constexpr uint32_t SAGE_UB_DOT32_OFFSET = 80u * 1024u;
-constexpr uint32_t SAGE_UB_PV_PARTIAL_OFFSET = 144u * 1024u;
-static_assert(SAGE_UB_DOT32_OFFSET + kKernelMaxRows * 128 * sizeof(int32_t)
-                  <= SAGE_UB_PV_PARTIAL_OFFSET,
-              "A7 dot32 region overflows into pv_partial");
-static_assert(SAGE_UB_PV_PARTIAL_OFFSET + kKernelMaxRows * 128 * sizeof(float) <= 256u * 1024u,
-              "A7 pv_partial region exceeds V1 UB");
+// A7 设备态 UB 布局（V1 256KB 地址空间，task/12_device_data_path.md；R17-2 重排定案）：
+// 区界/互斥/封顶的唯一定义点为 sage_resource.hpp Vector1UbBudget（static_assert 链
+// 编译期锁定两两不相交且 ≤ 256KB，512B 对齐），本文件仅保留调用点别名与 V1 行级
+// 暂存子槽——重排后 S pong 槽（≤96KB）不再被 Cube dot32 裸搬（96KB 起）踩踏：
+//   O_ACCUM [0,64K) | S 双槽 [64K, ≤96K) | dot32 [96K,160K) | pv_partial [160K,224K)
+//   | LSE 区 [224K,240K)：行 stats(+0)/logits 行(+512)/ks 行(+1K)/qs 行(+1.5K)/vs(+2K)
+//   | TWO_LEVEL_REDUCE [240K,256K)
+constexpr uint32_t SAGE_UB_DOT32_OFFSET = Catlass::SageAttn::Vector1UbBudget::A7_DOT32_OFFSET;
+constexpr uint32_t SAGE_UB_PV_PARTIAL_OFFSET = Catlass::SageAttn::Vector1UbBudget::A7_PV_PARTIAL_OFFSET;
+constexpr uint32_t SAGE_UB_V1_STATS_OFFSET = Catlass::SageAttn::Vector1UbBudget::LSE_WORKSPACE_OFFSET;
+constexpr uint32_t SAGE_UB_V1_LOGITS_ROW_OFFSET = SAGE_UB_V1_STATS_OFFSET + 512;
+constexpr uint32_t SAGE_UB_V1_KS_ROW_OFFSET = SAGE_UB_V1_STATS_OFFSET + 1024;
+constexpr uint32_t SAGE_UB_V1_QS_ROW_OFFSET = SAGE_UB_V1_STATS_OFFSET + 1536;
+constexpr uint32_t SAGE_UB_V1_VS_CHAN_OFFSET = SAGE_UB_V1_STATS_OFFSET + 2048;
+static_assert(SAGE_UB_V1_VS_CHAN_OFFSET + 512u <= Catlass::SageAttn::Vector1UbBudget::LSE_WORKSPACE_OFFSET +
+                  Catlass::SageAttn::Vector1UbBudget::LSE_WORKSPACE_BYTES,
+              "A7 V1 row scratch exceeds LSE workspace region");
 
 #if !SAGE_ATTN_DEVICE_COMPILE
 /**
@@ -446,9 +458,15 @@ private:
         // 进域预置（task/02_code.md B-2 init 纪律）：Cube 是 KV 槽与 S 槽的消费者，
         // 预置"首次使用前已归还"许可，V0/V1 首轮写槽前的 wait 立即放行。
         // A7 新增：PARTIAL_FREE / DOT_FREE 预置（交接槽与 dot32 单缓冲首拍放行）。
-        // 余量核算（单任务域，N = total_kv_blocks）：KV_FREE/S_FREE 各 set 2+N、
-        // wait N+2；PARTIAL_FREE/DOT_FREE 各 set 1+N（预置 1 + V1 逐块 N）、
-        // wait N+1（逐块 N + 退域回收 1），任务边界余量严格归零。
+        // 余量核算（单任务域，N = total_kv_blocks；R22 逐 flag 对账，与实现一致）：
+        //   KV_PING/PONG_FREE：set 2+N（预置 2 合计 + 逐块 N）/ wait N+2（V0 逐块 N + 退域 2）
+        //   SOFTMAX_S_PING/PONG_FREE：set 2+N（预置 2 合计 + 逐前块 N 合计）/
+        //     wait N+2（V1 逐块 N + 退域 2）
+        //   PV_PARTIAL_FREE：set 1+N（预置 1 + V1 合并 N：拍顶 N-1 + 收尾 1）/
+        //     wait N+1（逐块发射前 N-1 + drain 1 + 退域回收 1）
+        //   DOT_FREE：set 1+N（预置 1 + V1 逐块 N）/ wait N+1（逐块 N + 退域回收 1）
+        // N=0/1 边界：PARTIAL/DOT 各 set 1=wait 1 / 2=2（退域回收无条件执行预置回收，
+        // 故置于分块条件之外）；任务边界余量严格归零。
         CrossCoreSet(CrossCoreDirection::CUBE_TO_VEC0, CrossCoreFlags::FLAG_KV_PING_FREE);
         CrossCoreSet(CrossCoreDirection::CUBE_TO_VEC0, CrossCoreFlags::FLAG_KV_PONG_FREE);
         CrossCoreSet(CrossCoreDirection::CUBE_TO_VEC1, CrossCoreFlags::FLAG_SOFTMAX_S_PING_FREE);
@@ -556,10 +574,12 @@ private:
             SetFlag<HardEvent::FIX_S>(0);
             WaitFlag<HardEvent::FIX_S>(0);
             CrossCoreSet(CrossCoreDirection::CUBE_TO_VEC1, CrossCoreFlags::FLAG_PV_PARTIAL_READY);
-
-            // 退域回收（B-2 destroy 纪律）：消费 V1 最后一块的 DOT_FREE 归还许可
-            CrossCoreWait(CrossCoreDirection::VEC1_TO_CUBE, CrossCoreFlags::FLAG_DOT_FREE);
         }
+
+        // 退域回收（B-2 destroy 纪律；R22 修正：移出分块条件——N=0 时亦须回收预置许可，
+        // N≥1 时消费 V1 最后一块的归还许可，保证任务边界 DOT/PARTIAL_FREE 余量严格归零）
+        CrossCoreWait(CrossCoreDirection::VEC1_TO_CUBE, CrossCoreFlags::FLAG_DOT_FREE);
+        CrossCoreWait(CrossCoreDirection::VEC1_TO_CUBE, CrossCoreFlags::FLAG_PV_PARTIAL_FREE);
 #else
         // KT/宿主标量基线：本函数无 Cube 侧数值职责。
         // 跨核 flag 的进域预置/退域回收在宿主分支为空操作，V1 退域回收依赖的
@@ -676,7 +696,14 @@ private:
      * 负责 exp2 域 Online Softmax、skip-scale 判定、O 主累加器更新、LSE 累积与写回。
      * softmax 状态为行级（GQA 逻辑行 r = g * cur_q_len + i 各自独立维护 max/denominator，
      * 与 twin RunSequential 的行级状态一致）；S 槽写出布局维持 SoftmaxSlotOffset 奇偶
-     * 双缓冲契约不变（V1 写出、向量化 pass 的 Cube 读取）。
+     * 双缓冲契约不变（V1 写出、Cube 读取）。
+     * R17-1（A7 设备消费侧）：设备态补齐 dot32/pv_partial 交接槽的消费握手与数据通路——
+     *   每拍 k：拍顶合并第 k-1 块 PV 部分和（wait PARTIAL_READY → MergePvPartialRows →
+     *   set PARTIAL_FREE；O 锚点仍为 m_scale(k-1)，早于本拍 Step 重缩放，与 twin 5.4 的
+     *   "块内 rescale 后并入"轨迹等价，task/12 第三节时序）→ wait S_FREE → wait QK_P →
+     *   逐行 dot32 反量化/掩码 → 行 max/exp2 和 → Step → O 行重缩放 → P 码逐行写 S 槽 →
+     *   V_S 排空 → set DOT_FREE（dot32 单缓冲读保护归还）→ set S_READY；
+     *   收尾：wait PARTIAL_READY → 合并最后一块 → set PARTIAL_FREE → wait PV_O_DONE。
      */
     __aicore__ void ProcessVec1()
     {
@@ -684,7 +711,7 @@ private:
         if (sim_mem_ != nullptr) {
             for (uint32_t r = 0; r < TotalRows() && r < kKernelMaxRows; ++r) {
                 row_states_[r].Reset();
-                // O 主累加器按任务复位（真实硬件由 FixPipe 归约时的 L0C 复位语义承担）
+                // O 主累加器按任务复位（真实硬件由下方设备分支的 UB 复位承担）
                 float *o_row = &sim_mem_->o_accum[static_cast<size_t>(r) * d_];
                 for (uint32_t c = 0; c < d_; ++c) {
                     o_row[c] = 0.0f;
@@ -694,6 +721,13 @@ private:
 #else
         for (uint32_t r = 0; r < TotalRows() && r < kKernelMaxRows; ++r) {
             row_states_[r].Reset();
+        }
+        // O 主累加器按任务复位（V1 UB 常驻区；多波次任务域防跨任务残留，与宿主 sim 复位同语义）
+        {
+            const uint32_t rows = TotalRows();
+            LocalTensor<float> ub_o(TPosition::VECCALC,
+                                    Catlass::SageAttn::Vector1UbBudget::O_ACCUM_OFFSET, rows * d_);
+            Duplicate(ub_o, 0.0f, rows * d_);
         }
 #endif
         uint32_t total_kv_blocks = (sk_ + block_n_ - 1) / block_n_;
@@ -707,14 +741,52 @@ private:
             uint32_t s_free = is_ping ? CrossCoreFlags::FLAG_SOFTMAX_S_PING_FREE
                                       : CrossCoreFlags::FLAG_SOFTMAX_S_PONG_FREE;
 
+#if SAGE_ATTN_DEVICE_COMPILE
+            // A7 拍顶部：合并上一块（第 k-1 块）PV 部分和并归还交接槽许可（时序见函数注释）
+            if (k > 0) {
+                CrossCoreWait(CrossCoreDirection::CUBE_TO_VEC1, CrossCoreFlags::FLAG_PV_PARTIAL_READY);
+                MergePvPartialRows();
+                CrossCoreSet(CrossCoreDirection::VEC1_TO_CUBE, CrossCoreFlags::FLAG_PV_PARTIAL_FREE);
+            }
+#endif
+            // 缓冲回收握手：同奇偶 S 槽须待 Cube 消费完上一轮（k-2）后方可覆写（宿主为空操作）。
+            // R22 前移至行循环前：设备态 P 码在行循环内逐行写槽，许可须先于首行写获取。
+            CrossCoreWait(CrossCoreDirection::CUBE_TO_VEC1, s_free);
+
             // 1. 等待 Cube 拍 k 的 P 矩阵块就绪
             CrossCoreWait(CrossCoreDirection::CUBE_TO_VEC1, CrossCoreFlags::FLAG_QK_P_READY);
 
 #if !SAGE_ATTN_DEVICE_COMPILE
             // 1.5 宿主串行仿真重摆：恢复设备分支"V0 产出→消费"的逐拍序（幂等，逐位一致）。
             RestageKvBlockHost(k);
+#else
+            // 1.6 A7 scale 条带桥（task/12 第四节）：q 行解析 / v per-channel 任务级一次，
+            //     k 块解析按奇偶槽逐拍接入（GM 暂存条带 → UB 副本，MTE2 排空后进 VF/S）
+            if (k == 0) {
+                StageV1ScaleStrips();
+            }
+            StageKScaleStrip(is_ping);
 #endif
 
+#if SAGE_ATTN_DEVICE_COMPILE
+            // 2/3. A7 融合行轨迹：dot32 反量化/掩码 → 行 max/448· 域 exp2 和 → Step →
+            //      O 行重缩放 → P 码逐行写 S 槽（掩码行跳过 Step，P 码经 exp2 下溢自然为 0，
+            //      与宿主整幅 ComputeSoftmaxProbability 写出同值）
+            for (uint32_t r = 0; r < TotalRows() && r < kKernelMaxRows; ++r) {
+                float cur_max = MIN_FLOAT_VAL;
+                float cur_sum = 0.0f;
+                ComputeBlockMaxAndSum(r, cur_max, cur_sum, k);
+                if (cur_max > -1.0e30f) {
+                    const float rescale_factor =
+                        OnlineSoftmaxTransformer::Step(row_states_[r], cur_max, cur_sum, true);
+                    if (row_states_[r].need_rescale &&
+                        SageFastAbs(rescale_factor - 1.0f) > SCALE_ONE_TOLERANCE) {
+                        RescaleAccumulator(rescale_factor, r);
+                    }
+                }
+                SoftmaxProbRow(r, is_ping);
+            }
+#else
             // 2. 逐行块内 logit 反量化/掩码、行 max 与 exp2 和（twin 5.1/5.2 单点），
             //    随后按 twin 5.3 步进行级状态并重缩放 O 行。
             for (uint32_t r = 0; r < TotalRows() && r < kKernelMaxRows; ++r) {
@@ -732,16 +804,12 @@ private:
                 }
             }
 
-            // 缓冲回收握手：同奇偶 S 槽须待 Cube 消费完上一轮（k-2）后方可覆写（宿主为空操作）
-            CrossCoreWait(CrossCoreDirection::CUBE_TO_VEC1, s_free);
-
             // 3. 计算 exp2 域 Softmax 概率矩阵 P[k] 写入 (k%2) 槽（448· 放大域经乘法实现，
             //    行 max 恰为 448；s_fp8_offset 指数偏置域非默认可选，基线 0）
             ComputeSoftmaxProbability(s_fp8_offset_, is_ping);
 
-#if !SAGE_ATTN_DEVICE_COMPILE
             // 4. KT 标量基线：PV 累加经 twin 5.4 单点执行（两级累加 fp32 / fp32+fp16 同轨迹；
-            //    真实硬件为 Cube PV MMAD + FixPipe）
+            //    真实硬件为 Cube PV MMAD + FixPipe → V1 拍顶/收尾合并，见函数注释）
             AccumulatePvBlockTwin(CurBlockK());
 #endif
 
@@ -750,9 +818,22 @@ private:
 #if SAGE_ATTN_DEVICE_COMPILE
             SetFlag<HardEvent::V_S>(0);
             WaitFlag<HardEvent::V_S>(0);
+            // dot32 单缓冲读保护归还（V 管读毕，Cube 方可在 beat k+1 覆写 dot32 区）
+            CrossCoreSet(CrossCoreDirection::VEC1_TO_CUBE, CrossCoreFlags::FLAG_DOT_FREE);
 #endif
             CrossCoreSet(CrossCoreDirection::VEC1_TO_CUBE, s_flag);
         }
+
+#if SAGE_ATTN_DEVICE_COMPILE
+        // 收尾：合并最后一块（第 N-1 块）PV 部分和——O 锚点 m_scale(N-1) 上直接并入，
+        // 与 twin 5.5 归一化入口的 O 状态逐位同域（时序无死锁：Cube drain 发射 READY 后
+        // 经退域回收等本侧 FREE，本侧合并后举 FREE 再等 PV_O_DONE，无环）
+        if (total_kv_blocks > 0) {
+            CrossCoreWait(CrossCoreDirection::CUBE_TO_VEC1, CrossCoreFlags::FLAG_PV_PARTIAL_READY);
+            MergePvPartialRows();
+            CrossCoreSet(CrossCoreDirection::VEC1_TO_CUBE, CrossCoreFlags::FLAG_PV_PARTIAL_FREE);
+        }
+#endif
 
         // 等待 Cube 全部 PV 累加收尾完成
         CrossCoreWait(CrossCoreDirection::CUBE_TO_VEC1, CrossCoreFlags::FLAG_PV_O_DONE);
@@ -765,6 +846,93 @@ private:
         CrossCoreWait(CrossCoreDirection::CUBE_TO_VEC1, CrossCoreFlags::FLAG_SOFTMAX_S_PING_FREE);
         CrossCoreWait(CrossCoreDirection::CUBE_TO_VEC1, CrossCoreFlags::FLAG_SOFTMAX_S_PONG_FREE);
     }
+
+#if SAGE_ATTN_DEVICE_COMPILE
+    /**
+     * A7 scale 条带桥（task/12 第四节；GM 暂存条带常量以 tiling.h 为唯一定义点）：
+     * V0 产出 scale → GetUserWorkspace 用户区按核条带（core_idx 折半后 × STAGE_CORE_STRIDE）
+     * → V1 以 MTE2 接入 UB 副本。GM 可见性序：V0 条带写完成后经 KV/Q_READY 举旗链传递
+     * （V0 侧条带写接入 + MTE3 排空纪律为 task/12 验收 3"V0 侧"待办项），本侧一律在
+     * wait QK_P_READY 之后读取（跨核 flag 链传递保序）。
+     */
+    __aicore__ void StageV1ScaleStrips()
+    {
+        if (workspace_gm_ == nullptr) {
+            return;
+        }
+        __gm__ uint8_t *strip =
+            workspace_gm_ + static_cast<int64_t>(core_idx_) * STAGE_CORE_STRIDE;
+        GlobalTensor<float> gm_strip;
+        LocalTensor<float> ub_qs(TPosition::VECCALC, SAGE_UB_V1_QS_ROW_OFFSET, STAGE_SLOT_FLOATS);
+        LocalTensor<float> ub_vs(TPosition::VECCALC, SAGE_UB_V1_VS_CHAN_OFFSET, STAGE_SLOT_FLOATS);
+        gm_strip.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(strip + STAGE_Q_SCALE_OFFSET));
+        DataCopy(ub_qs, gm_strip, STAGE_SLOT_FLOATS);
+        gm_strip.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(strip + STAGE_V_SCALE_OFFSET));
+        DataCopy(ub_vs, gm_strip, STAGE_SLOT_FLOATS);
+        SyncMte2ToV();
+        // qs 由 S 管逐行 GetValue 消费：MTE2 写 → S 管读须显式排空（vs 由 V 管消费，MTE2_V 已排）
+        SetFlag<HardEvent::MTE2_S>(0);
+        WaitFlag<HardEvent::MTE2_S>(0);
+    }
+
+    __aicore__ void StageKScaleStrip(bool is_ping)
+    {
+        if (workspace_gm_ == nullptr) {
+            return;
+        }
+        __gm__ uint8_t *strip =
+            workspace_gm_ + static_cast<int64_t>(core_idx_) * STAGE_CORE_STRIDE;
+        GlobalTensor<float> gm_strip;
+        LocalTensor<float> ub_ks(TPosition::VECCALC, SAGE_UB_V1_KS_ROW_OFFSET, STAGE_SLOT_FLOATS);
+        gm_strip.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(
+            strip + (is_ping ? STAGE_K_SCALE_PING_OFFSET : STAGE_K_SCALE_PONG_OFFSET)));
+        DataCopy(ub_ks, gm_strip, block_n_);
+        SyncMte2ToV();
+    }
+
+    /**
+     * A7：pv_partial 交接槽全行合并（MergePvPartialRowVF，sage_pv_mmad.hpp 单点）。
+     * 轨迹 = 宿主 AccumulatePvBlockTwin 的设备段实例：O 行 += partial·v_scale[c]，
+     * fp32+fp16 档按 D2 以 enable_inline_quant 为档位判据在合并处做 FP16 RNE 舍回
+     * （QuantizeToFp16 唯一口径）；块内求和序由 PV MMAD 承担（设备段粒度，
+     * L-A 容差域登记 task/12）。
+     */
+    __aicore__ void MergePvPartialRows()
+    {
+        const uint32_t rows = TotalRows();
+        const uint32_t fp16_round =
+            accum_ctrl_.GetFixpipeConfig().enable_inline_quant ? 1u : 0u;
+        LocalTensor<float> ub_vs(TPosition::VECCALC, SAGE_UB_V1_VS_CHAN_OFFSET, d_);
+        for (uint32_t r = 0; r < rows && r < kKernelMaxRows; ++r) {
+            LocalTensor<float> ub_partial(TPosition::VECCALC,
+                                          SAGE_UB_PV_PARTIAL_OFFSET + r * d_ * sizeof(float), d_);
+            LocalTensor<float> ub_o(TPosition::VECCALC,
+                                    Catlass::SageAttn::Vector1UbBudget::O_ACCUM_OFFSET +
+                                        r * d_ * sizeof(float),
+                                    d_);
+            Catlass::SageAttn::MergePvPartialRowVF(
+                reinterpret_cast<__ubuf__ float*>(ub_partial.GetPhyAddr()),
+                reinterpret_cast<__ubuf__ float*>(ub_o.GetPhyAddr()),
+                reinterpret_cast<__ubuf__ float*>(ub_vs.GetPhyAddr()),
+                d_, fp16_round);
+        }
+    }
+
+    /**
+     * A7：单行 P 码写 S 槽（SoftmaxProbRowVF；行锚 = row_states_[r].m_scale - s_fp8_offset_，
+     * 与宿主 ComputeSoftmaxProbability 同式——掩码哨兵行经 exp2 下溢自然落到 e4m3 码 0）。
+     */
+    __aicore__ void SoftmaxProbRow(uint32_t r, bool is_ping)
+    {
+        const float m_prime = row_states_[r].m_scale - s_fp8_offset_;
+        LocalTensor<float> ub_logits(TPosition::VECCALC, SAGE_UB_V1_LOGITS_ROW_OFFSET, block_n_);
+        LocalTensor<float8_e4m3_t> ub_out_p(TPosition::VECCALC,
+                                            SoftmaxSlotOffset(is_ping) + r * block_n_, block_n_);
+        dev_vf::SoftmaxProbRowVF(reinterpret_cast<__ubuf__ float*>(ub_logits.GetPhyAddr()),
+                                 reinterpret_cast<__ubuf__ float8_e4m3_t*>(ub_out_p.GetPhyAddr()),
+                                 m_prime, block_n_);
+    }
+#endif
 
     // -------------------------------------------------------------------------
     // 内部实现辅助函数（Step-C 标量基线：数值语义以 twin_reference.h RunSequential 为
@@ -782,7 +950,8 @@ private:
      *   Q scale 按头分段存放 sim q_scales[g*2048 + 组号]（KT 基线的 scale 暂存；
      *   L1 内 scale 摆放随 tiling.l1_q_scale_offset 于向量化 pass 落地），L1 内 [行][d] 摆放；
      * - smooth_k：行级 lse_correction = q_i · km（q 按输入 dtype 读取、fp32 积和，
-     *   km 由 host 按 twin 同口径预计算传入），供 FinalizeAndStoreOutput 的 LSE 出口。
+     *   km 由 host 按 twin 同口径预计算传入），供 FinalizeAndStoreOutput 的 LSE 出口；
+     *   设备态经 GM 标量读按宿主同式补算（R22，lse_corr_[r] 全分支共享状态）。
      */
 #if !SAGE_ATTN_DEVICE_COMPILE
     /**
@@ -837,6 +1006,8 @@ private:
 
         // A. 行 abs-max（每行一次 MTE2 + VF）
         for (uint32_t r = 0; r < total_rows_q && r < kKernelMaxRows; ++r) {
+            // V→MTE2 回边（R22）：ub_in 逐行复用，上一行 VF 读毕（V 管）方可 MTE2 覆写
+            SyncVToMte2();
             const uint32_t g = r / cur_q_len_;
             const uint32_t i = r % cur_q_len_;
             const int64_t row_gm_offset = (g * q_stride_h + static_cast<int64_t>(i) * q_stride_s) * static_cast<int64_t>(sizeof(half));
@@ -872,6 +1043,8 @@ private:
 
         // C. 逐行量化写 L1（除法轨迹 + 舍入分档）
         for (uint32_t r = 0; r < total_rows_q && r < kKernelMaxRows; ++r) {
+            // V→MTE2 回边（R22）：ub_in 逐行复用，上一行 VF 读毕方可 MTE2 覆写
+            SyncVToMte2();
             const uint32_t g = r / cur_q_len_;
             const uint32_t i = r % cur_q_len_;
             const uint32_t token = cur_q_start_ + i;
@@ -891,6 +1064,34 @@ private:
             cp.srcStride = 0;
             cp.dstStride = 0;
             DataCopy(l1_q[r * d], ub_out, cp);
+            // MTE3→V 回边（DEFECT-I-1 同款）：ub_out 逐行复用，在途 MTE3 读排空后方可下一行 VF 写
+            SyncMte3ToV();
+        }
+
+        // 4. smooth_k 行级 lse_correction（设备态，R22）：q·km 逐行点积——宿主步 4 同式：
+        //    输入按位型解码（bf16/fp16 → fp32，quant 层唯一口径）× km（fp32，host 预计算
+        //    传入），顺序 fp32 积和逐位同式；GM 标量读范式与 V per-channel 预扫一致。
+        if ((tiling_->smooth_k != 0) && key_mean_gm_ != nullptr) {
+            const int64_t km_offset =
+                (static_cast<int64_t>(cur_b_) * hkv_ + cur_hkv_) * d;
+            GlobalTensor<float> gm_km;
+            gm_km.SetGlobalBuffer(
+                reinterpret_cast<__gm__ float*>(key_mean_gm_ + km_offset * sizeof(float)));
+            GlobalTensor<uint16_t> gm_q_bits;
+            gm_q_bits.SetGlobalBuffer(reinterpret_cast<__gm__ uint16_t*>(q_src));
+            for (uint32_t r = 0; r < total_rows_q && r < kKernelMaxRows; ++r) {
+                const uint32_t g = r / cur_q_len_;
+                const uint32_t i = r % cur_q_len_;
+                const int64_t row_elem = g * q_stride_h + static_cast<int64_t>(i) * q_stride_s;
+                float corr = 0.0f;
+                for (uint32_t c = 0; c < d; ++c) {
+                    const uint16_t bits = gm_q_bits(row_elem + c);
+                    const float val = (dtype_mode == 2u) ? quant::Bf16ToFp32(bits)
+                                                         : quant::Fp16ToFp32(bits);
+                    corr += val * gm_km(c);
+                }
+                lse_corr_[r] = corr;
+            }
         }
 #else
         if (sim_mem_ == nullptr || q_src == nullptr) {
@@ -1032,6 +1233,8 @@ private:
 
         // A. 行 abs-max（仅真实 token；pad 行零贡献且 pad 组写 0 由 C 段 pad 分支覆盖）
         for (uint32_t j = 0; j < block_k; ++j) {
+            // V→MTE2 回边（R22）：ub_in 逐行复用，上一行 VF 读毕（V 管）方可 MTE2 覆写
+            SyncVToMte2();
             const int64_t row_gm_offset = static_cast<int64_t>(j) * k_stride_s * static_cast<int64_t>(sizeof(half));
             GlobalTensor<half> gm_row;
             gm_row.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(k_src + row_gm_offset));
@@ -1062,6 +1265,8 @@ private:
 
         // C. 逐行量化写 L1 + 尾块 pad 置零
         for (uint32_t j = 0; j < block_n_; ++j) {
+            // V→MTE2 回边（R22）：ub_in 逐行复用，上一行 VF 读毕方可 MTE2 覆写
+            SyncVToMte2();
             if (j < block_k) {
                 const int64_t row_gm_offset = static_cast<int64_t>(j) * k_stride_s * static_cast<int64_t>(sizeof(half));
                 GlobalTensor<half> gm_row;
@@ -1084,6 +1289,8 @@ private:
             cp.srcStride = 0;
             cp.dstStride = 0;
             DataCopy(l1_k[j * d], ub_out, cp);
+            // MTE3→V 回边（DEFECT-I-1 同款）：ub_out 逐行复用，在途 MTE3 读排空后方可下一行 VF/Duplicate 写
+            SyncMte3ToV();
         }
 #else
         if (sim_mem_ == nullptr || k_src == nullptr) {
@@ -1220,6 +1427,8 @@ private:
         }
 
         for (uint32_t j = 0; j < block_n_; ++j) {
+            // V→MTE2 回边（R22）：ub_in 逐行复用，上一行 VF 读毕（V 管）方可 MTE2 覆写
+            SyncVToMte2();
             if (j < block_k) {
                 const int64_t row_gm_offset = static_cast<int64_t>(j) * v_stride_s * static_cast<int64_t>(sizeof(half));
                 GlobalTensor<half> gm_row;
@@ -1240,6 +1449,8 @@ private:
             cp.srcStride = 0;
             cp.dstStride = 0;
             DataCopy(l1_v[j * d], ub_out, cp);
+            // MTE3→V 回边（DEFECT-I-1 同款）：ub_out 逐行复用，在途 MTE3 读排空后方可下一行 VF/Duplicate 写
+            SyncMte3ToV();
         }
 #else
         if (sim_mem_ == nullptr || v_src == nullptr) {
@@ -1284,23 +1495,37 @@ private:
 
     /**
      * 4. V1：单逻辑行的块内反量化 logit、行 max 与 exp2 和（twin 5.1/5.2 单点轨迹）：
-     * - INT32 精确点积 + twin::DequantQkLogit 单点 scale 乘（q_scale·k_scale·sm_scale_log2e
-     *   左结合乘序同孪生）；KT 标量基线下点积在 V1 侧补算——串行整段仿真时序（Vec0→Cube→V1）
-     *   中 L0C 单缓冲无法保留逐拍 QK^T，详见 ProcessCube；
-     * - 掩码（causal j > token_q、尾块 token_k ≥ sk）写 -1e30 哨兵，不参与 max/sum；
-     * - cur_sum = twin::OnlineBlockExp2Sum 单点（448· 放大域，与 P 量化同域相消）。
+     * - 设备态（A7，R17-1）：Cube 经 EmitL0CToUbRaw 落 dot32 区 [row][block_n] INT32，
+     *   本函数 DequantMaskLogitsRowVF 反量化+掩码写 logits 行暂存（twin::DequantQkLogit
+     *   左结合乘序，|dot| ≤ 2^21 cast 精确，01_design 2.9；causal/尾块掩码 -1e30 哨兵），
+     *   随后 BlockMaxAndSumVF 行 max 与 448· 域 exp2 和——组合即宿主同构语义；
+     * - 宿主/KT 标量基线：INT32 精确点积 + twin::DequantQkLogit 单点 scale 乘
+     *   （q_scale·k_scale·sm_scale_log2e 左结合乘序同孪生）——串行整段仿真时序
+     *   （Vec0→Cube→V1）中 L0C 单缓冲无法保留逐拍 QK^T，详见 ProcessCube；
+     * - 掩码（causal j > token_q、尾块 token_k ≥ sk_）写 -1e30 哨兵，不参与 max/sum；
+     * - cur_sum 为 448· 放大域（twin::OnlineBlockExp2Sum 同式，与 P 量化同域相消；
+     *   设备 exp 域换算经 ln2 缩放，真机 L-A 容差域，A7 族登记）。
      * 整块被掩码时 cur_max = -1e30、cur_sum = 0（调用方跳过 Step，twin 5.1 同款）。
      */
     __aicore__ void ComputeBlockMaxAndSum(uint32_t row, float &cur_max, float &cur_sum, uint32_t k_idx)
     {
 #if SAGE_ATTN_DEVICE_COMPILE
         (void)k_idx;
-        LocalTensor<float> ub_logits(TPosition::VECCALC,
-                                     Catlass::SageAttn::Vector1UbBudget::FIXPIPE_RECV_OFFSET + row * block_n_ * sizeof(float),
-                                     block_n_);
-        LocalTensor<float> ub_stats(TPosition::VECCALC,
-                                    Catlass::SageAttn::Vector1UbBudget::LSE_WORKSPACE_OFFSET,
-                                    128);
+        const uint32_t token_q = cur_q_start_ + (row % cur_q_len_);
+        LocalTensor<int32_t> ub_dot(TPosition::VECCALC,
+                                    SAGE_UB_DOT32_OFFSET + row * block_n_ * sizeof(int32_t), block_n_);
+        LocalTensor<float> ub_logits(TPosition::VECCALC, SAGE_UB_V1_LOGITS_ROW_OFFSET, block_n_);
+        LocalTensor<float> ub_ks(TPosition::VECCALC, SAGE_UB_V1_KS_ROW_OFFSET, block_n_);
+        LocalTensor<float> ub_qs(TPosition::VECCALC, SAGE_UB_V1_QS_ROW_OFFSET, STAGE_SLOT_FLOATS);
+        LocalTensor<float> ub_stats(TPosition::VECCALC, SAGE_UB_V1_STATS_OFFSET, 128);
+        // 行解析 q_scale：StageV1ScaleStrips 已以 MTE2_S 排空 S 管读取序
+        const float q_scale = ub_qs.GetValue(row);
+        dev_vf::DequantMaskLogitsRowVF(reinterpret_cast<__ubuf__ int32_t*>(ub_dot.GetPhyAddr()),
+                                       reinterpret_cast<__ubuf__ float*>(ub_logits.GetPhyAddr()),
+                                       q_scale,
+                                       reinterpret_cast<__ubuf__ float*>(ub_ks.GetPhyAddr()),
+                                       tiling_->sm_scale_log2e, token_q, cur_k_start_, sk_,
+                                       tiling_->is_causal, block_n_);
         dev_vf::BlockMaxAndSumVF(reinterpret_cast<__ubuf__ float*>(ub_logits.GetPhyAddr()),
                                  block_n_,
                                  reinterpret_cast<__ubuf__ float*>(ub_stats.GetPhyAddr()));
@@ -1385,34 +1610,20 @@ private:
 #endif
     }
 
+#if !SAGE_ATTN_DEVICE_COMPILE
     /**
-     * 6. V1：P 矩阵量化写 S(P) 双缓冲槽（SoftmaxSlotOffset(is_ping)，与 Cube 侧
-     * SagePvMmad::LoadL0A 的 ub_softmax_offset 读取约定一致）。数值为
+     * 6. V1（宿主/KT 标量基线）：P 矩阵整幅量化写 S(P) 双缓冲槽（SoftmaxSlotOffset(is_ping)，
+     * 与 Cube 侧 SagePvMmad::LoadL0A 的 ub_softmax_offset 读取约定一致）。数值为
      * twin::SoftmaxProbCode 单点：P = FastExp2(logit - (m_scale - s_fp8_offset)) · 448，
      * 饱和 + RNE 转 e4m3。448· 放大经乘法实现（行 max 恰为 448 填满 e4m3 动态范围）；
      * s_fp8_offset 指数偏置域为非默认可选，启用须同时关闭 skip-scale（tau=0），基线恒为 0。
-     * 行锚点取 row_states_[r].m_scale（S 与 O 同锚）；掩码哨兵 -1e30 经 exp2 下溢自然落到 e4m3 码 0。
+     * 行锚点取 row_states_[r].m_scale（S 与 O 同锚）；掩码哨兵 -1e30 经 exp2 下溢自然落到
+     * e4m3 码 0。设备态对应原语为上行循环内的 SoftmaxProbRow（逐行同式，掩码行同值码 0）。
      */
     __aicore__ void ComputeSoftmaxProbability(
         float s_fp8_offset,
         bool is_ping)
     {
-#if SAGE_ATTN_DEVICE_COMPILE
-        const uint32_t slot_offset = SoftmaxSlotOffset(is_ping);
-        const uint32_t rows = TotalRows();
-        for (uint32_t r = 0; r < rows && r < kKernelMaxRows; ++r) {
-            const float m_prime = row_states_[r].m_scale - s_fp8_offset;
-            LocalTensor<float> ub_logits(TPosition::VECCALC,
-                                         Catlass::SageAttn::Vector1UbBudget::FIXPIPE_RECV_OFFSET + r * block_n_ * sizeof(float),
-                                         block_n_);
-            LocalTensor<float8_e4m3_t> ub_out_p(TPosition::VECCALC,
-                                                slot_offset + r * block_n_ * sizeof(float8_e4m3_t),
-                                                block_n_);
-            dev_vf::SoftmaxProbRowVF(reinterpret_cast<__ubuf__ float*>(ub_logits.GetPhyAddr()),
-                                     reinterpret_cast<__ubuf__ float8_e4m3_t*>(ub_out_p.GetPhyAddr()),
-                                     m_prime, block_n_);
-        }
-#else
         if (sim_mem_ == nullptr) {
             return;
         }
@@ -1426,8 +1637,8 @@ private:
                 slot_row[j] = twin::SoftmaxProbCode(logits_row[j], m_prime);
             }
         }
-#endif
     }
+#endif
 
 #if !SAGE_ATTN_DEVICE_COMPILE
     /**
