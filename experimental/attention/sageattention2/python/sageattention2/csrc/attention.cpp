@@ -1,5 +1,4 @@
 #include <cmath>
-#include <limits>
 #include <string>
 #include <tuple>
 #include <torch/extension.h>
@@ -56,13 +55,6 @@ std::tuple<at::Tensor, c10::optional<at::Tensor>> sageattention2(
     }
 
     auto out = at::empty(q.sizes(), q.options());
-    c10::optional<at::Tensor> lse;
-    if (return_lse) {
-        const int64_t head_axis = (tensor_layout == "HND") ? 1 : 2;
-        const int64_t seq_axis = (tensor_layout == "HND") ? 2 : 1;
-        lse = at::empty({q.size(0), q.size(head_axis), q.size(seq_axis)}, q.options().dtype(at::kFloat));
-    }
-
     // 开源契约（git/SageAttention/sageattention/core.py:583-597）：km 与 lse_correction
     // 均在上层算好传入——
     // - km = k.mean(seq_dim)（输入 dtype 舍回；上游 pad_head_dim 已把 pad 通道补零），
@@ -71,6 +63,10 @@ std::tuple<at::Tensor, c10::optional<at::Tensor>> sageattention2(
     //   与布局无关（lse 输出同为该形）。设备核不再核内计算 q·km，Finalize 直读本张量。
     const int64_t head_axis = (tensor_layout == "HND") ? 1 : 2;
     const int64_t seq_axis = (tensor_layout == "HND") ? 2 : 1;
+    c10::optional<at::Tensor> lse;
+    if (return_lse) {
+        lse = at::empty({q.size(0), q.size(head_axis), q.size(seq_axis)}, q.options().dtype(at::kFloat));
+    }
     c10::optional<at::Tensor> km_tensor;
     c10::optional<at::Tensor> lse_corr_tensor;
     if (smooth_k) {

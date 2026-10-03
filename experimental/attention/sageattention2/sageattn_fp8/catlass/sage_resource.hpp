@@ -19,7 +19,8 @@ using Arch = Catlass::Arch::Ascend950;
 struct HardwareResourceQuota {
     // 物理硬件上限
     static constexpr uint32_t L0C_TOTAL_BYTES  = Arch::L0C_SIZE;                  // 256 KB
-    static constexpr uint32_t UB_PER_V_BYTES   = 256 * 1024;                      // 256 KB
+    // UB 封顶唯一定义点 ascendc/tiling.h（UB_TOTAL_SIZE_PER_V），此处仅 constexpr 别名
+    static constexpr uint32_t UB_PER_V_BYTES   = sage_attn::UB_TOTAL_SIZE_PER_V;
 };
 
 /**

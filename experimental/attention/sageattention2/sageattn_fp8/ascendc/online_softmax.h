@@ -209,7 +209,7 @@ public:
         float sm_scale,
         float lse_correction,
         bool is_smooth_k,
-        float s_fp8_offset = 0.0f) {
+        float s_fp8_offset) {
 
         float lse_true = (lse_exp2 - s_fp8_offset) * INV_LOG2E;
         if (is_smooth_k) {

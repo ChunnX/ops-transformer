@@ -119,7 +119,7 @@ mkdir -p "${CUSTOM_DIR}/bin"
 
 HOST_CXX_FLAGS=(-std=c++17 -O2 -fPIC -D_GLIBCXX_USE_CXX11_ABI=0 -Wall -Wextra -Wno-ignored-qualifiers -Wno-reorder -Wno-unused-parameter -lstdc++)  # bisheng 链接需显式 C++ 运行时
 # Auto-Tune 调优会话构建开关（SAGE_AUTOTUNE_HOOKS=1 时编入 SAGE_ATTN_AUTOTUNE_HOOKS）：
-# 仅 benchmark/autotune 网格实测会话使用；正式发布构建缺省关闭——
+# 仅调优网格实测会话使用；正式发布构建缺省关闭——
 # sage_attn_host_tiling.h 中全部运行期调优钩子（getenv 覆盖入口）不参与编译，
 # 交付产物只保留编译期 constexpr 调优知识库（autotune_tiling_bank.h）。
 if [ "${SAGE_AUTOTUNE_HOOKS:-0}" = "1" ]; then
@@ -147,6 +147,10 @@ echo "1. Compiling op_host dynamic libraries with BiSheng (libcust_opapi.so & li
 # libcust_opapi.so（交付态 aclnn 两段式唯一实现 op_api/aclnn_sage_attention2.cpp——
 # 字符串属性 ABI 面，与 def.cpp 注册的 7 项属性一致；移植态两段式已删除收敛；
 # l0op/CommonOpExecutorRun 等运行时符号由 CANN 运行时装载时提供）
+OPAPI_EXTRA_LIBS=()
+if [ -d "${ASCEND_HOME_PATH}/lib64" ]; then
+    OPAPI_EXTRA_LIBS+=(-L"${ASCEND_HOME_PATH}/lib64" -lopapi -lnnopbase -lascendcl)
+fi
 "${BISHENG}" "${HOST_CXX_FLAGS[@]}" -shared \
     "${OP_DIR}/op_api/aclnn_sage_attention2.cpp" \
     "${QUANT_SOURCES[@]}" \
@@ -154,6 +158,7 @@ echo "1. Compiling op_host dynamic libraries with BiSheng (libcust_opapi.so & li
     "${OP_DIR}/op_host/sage_attention2_infershape.cpp" \
     "${COMMON_INCLUDES[@]}" \
     "${CANN_INCLUDES[@]}" \
+    "${OPAPI_EXTRA_LIBS[@]}" \
     -o "${CUSTOM_DIR}/op_api/lib/libcust_opapi.so"
 
 # 同步一份到 op_proto/lib
@@ -161,7 +166,14 @@ cp -f "${CUSTOM_DIR}/op_api/lib/libcust_opapi.so" "${CUSTOM_DIR}/op_proto/lib/li
 
 # liboptiling.so（算子 TilingImpl 与 InferShape；tiling 数值唯一实现
 # aclnn/sage_attn_host_tiling.h 的 ComputeHostTiling）
-"${BISHENG}" "${HOST_CXX_FLAGS[@]}" -shared \
+OPTILING_EXTRA_FLAGS=(-DSAGE_HAS_OP_IMPL_REGISTRY=1)
+if [ -d "${ASCEND_HOME_PATH}/x86_64-linux/asc/include" ]; then
+    OPTILING_EXTRA_FLAGS+=(-I"${ASCEND_HOME_PATH}/x86_64-linux/asc/include")
+fi
+if [ -f "${ASCEND_HOME_PATH}/lib64/libtiling_api.a" ]; then
+    OPTILING_EXTRA_FLAGS+=("${ASCEND_HOME_PATH}/lib64/libtiling_api.a")
+fi
+"${BISHENG}" "${HOST_CXX_FLAGS[@]}" "${OPTILING_EXTRA_FLAGS[@]}" -shared \
     "${OP_DIR}/op_host/sage_attention2_def.cpp" \
     "${OP_DIR}/op_host/sage_attention2_infershape.cpp" \
     "${OP_DIR}/op_host/sage_attention2_tiling.cpp" \
@@ -169,6 +181,11 @@ cp -f "${CUSTOM_DIR}/op_api/lib/libcust_opapi.so" "${CUSTOM_DIR}/op_proto/lib/li
     "${COMMON_INCLUDES[@]}" \
     "${CANN_INCLUDES[@]}" \
     -o "${CUSTOM_DIR}/op_impl/ai_core/tbe/op_tiling/lib/liboptiling.so"
+
+# CANN 多路径探测兼顾 (op_tiling/lib/liboptiling.so, op_tiling/liboptiling.so, op_tiling/lib/linux/x86_64/liboptiling.so)
+cp -f "${CUSTOM_DIR}/op_impl/ai_core/tbe/op_tiling/lib/liboptiling.so" "${CUSTOM_DIR}/op_impl/ai_core/tbe/op_tiling/liboptiling.so"
+mkdir -p "${CUSTOM_DIR}/op_impl/ai_core/tbe/op_tiling/lib/linux/x86_64"
+cp -f "${CUSTOM_DIR}/op_impl/ai_core/tbe/op_tiling/lib/liboptiling.so" "${CUSTOM_DIR}/op_impl/ai_core/tbe/op_tiling/lib/linux/x86_64/liboptiling.so"
 
 echo "2. Compiling op_kernel device object for ${SOC} with BiSheng (-xasc ${NPU_ARCH})..."
 # 若 build/sageattention2_bisheng.o 存在且不旧于 kernel 源文件，则复用已编译目标，避免 QEMU 重复编译
@@ -197,9 +214,8 @@ echo "3. Packaging headers and configuration files..."
 cp -f "${OP_DIR}/op_api/aclnn_sage_attention2.h" "${CUSTOM_DIR}/op_api/include/"
 cp -f "${OP_DIR}/op_host/sage_attention2_def.h" "${CUSTOM_DIR}/op_proto/inc/"
 
-# 生成 vendors/config.ini
+# 生成 vendors/config.ini（标准 CANN 格式无 [common] section）
 cat << 'EOF' > "${VENDORS_DIR}/config.ini"
-[common]
 load_priority=customize
 EOF
 
@@ -216,6 +232,16 @@ precisionReduce.flag=true
 soc.version=${SOC}
 deterministic.flag=false
 EOF
+
+# 同步已编译 kernel 目录与 binary_info 配置文件（若存在）
+if [ -d "${OP_DIR}/build/opp_installed/vendors/customize/op_impl/ai_core/tbe/kernel/config/${SOC}" ]; then
+    mkdir -p "${CUSTOM_DIR}/op_impl/ai_core/tbe/kernel/config/${SOC}"
+    cp -rf "${OP_DIR}/build/opp_installed/vendors/customize/op_impl/ai_core/tbe/kernel/config/${SOC}/"* "${CUSTOM_DIR}/op_impl/ai_core/tbe/kernel/config/${SOC}/" 2>/dev/null || true
+fi
+if [ -d "${OP_DIR}/build/opp_installed/vendors/customize/op_impl/ai_core/tbe/kernel/${SOC}/sageattention2" ]; then
+    mkdir -p "${CUSTOM_DIR}/op_impl/ai_core/tbe/kernel/${SOC}/sageattention2"
+    cp -rf "${OP_DIR}/build/opp_installed/vendors/customize/op_impl/ai_core/tbe/kernel/${SOC}/sageattention2/"* "${CUSTOM_DIR}/op_impl/ai_core/tbe/kernel/${SOC}/sageattention2/" 2>/dev/null || true
+fi
 
 # 生成环境变量导入脚本 set_env.bash
 cat << 'EOF' > "${CUSTOM_DIR}/bin/set_env.bash"

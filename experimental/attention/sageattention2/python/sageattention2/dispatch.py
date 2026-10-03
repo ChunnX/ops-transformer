@@ -209,7 +209,7 @@ def run_sageattn_cpu_reference(
     """
     High-fidelity CPU reference simulation for SageAttention2 on Ascend NPU.
     单一基准（Group J）：本函数是算子侧唯一 Python 数值参考；golden 生成器
-    （golden/generate_golden.py）经 return_intermediates=True 编排复用，两份
+    （tools/generate_golden.py）经 return_intermediates=True 编排复用，两份
     量化/仿真实现已删除。中间态格式 = golden 台账格式（HND 域：q_int8 裁回
     sq、q_scale 组序、v_fp8 permuted [b,hkv,d,pad_sk_v]、v_scale [b,hkv,d]）。
     """
@@ -447,8 +447,6 @@ def sageattn_qk_int8_pv_fp8_asc(
         sm_scale = kwargs.pop("scale")
     kwargs.pop("enable_gqa", None)
 
-    if pv_accum_dtype is None:
-        pv_accum_dtype = kwargs.pop("pv_accum_dtype", None)
     pv_accum_dtype = resolve_pv_accum_dtype(pv_accum_dtype)
 
     if kwargs:

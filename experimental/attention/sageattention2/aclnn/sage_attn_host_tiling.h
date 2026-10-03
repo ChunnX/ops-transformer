@@ -205,9 +205,9 @@ inline aclnnStatus ComputeHostTiling(
     }
 
     // Auto-Tune 调优会话钩子（SAGE_ATTN_AUTOTUNE_HOOKS 编译期门控）：
-    // 仅调优构建（build_opp.sh SAGE_AUTOTUNE_HOOKS=1，见 benchmark/autotune/README.md）
+    // 仅调优构建（build_opp.sh SAGE_AUTOTUNE_HOOKS=1 编入该宏）
     // 定义该宏时编入 SAGEATTN_FORCE_MPERCORE/_BLOCKN/_KSTEP/_DIE/_SPLITKV 与
-    // SAGEATTN_TUNE_CASE 运行期覆盖入口，供 autotune_runner.py 网格实测逐配置切换；
+    // SAGEATTN_TUNE_CASE 运行期覆盖入口，供网格实测调优会话逐配置切换；
     // 正式发布构建（缺省不定义宏）该段整体不参与编译——零 autotune 代码、
     // 零 getenv 运行时判断，发射路径只剩编译期 constexpr 调优知识库查询。
     // 覆盖取值域与 kernel/UB 台账一致（m 32/64/128、n 64/128——A7 dot32 区

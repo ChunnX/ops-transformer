@@ -120,8 +120,8 @@ void TestOnlineSoftmax() {
     // Test LSE conversion
     float sm_scale = 1.0f / 8.0f; // sqrt(64)
     float lse_corr = 0.5f;
-    float lse_host_smooth = OnlineSoftmaxTransformer::ConvertLseToHost(state.lse, sm_scale, lse_corr, true);
-    float lse_host_no_smooth = OnlineSoftmaxTransformer::ConvertLseToHost(state.lse, sm_scale, lse_corr, false);
+    float lse_host_smooth = OnlineSoftmaxTransformer::ConvertLseToHost(state.lse, sm_scale, lse_corr, true, S_FP8_OFFSET);
+    float lse_host_no_smooth = OnlineSoftmaxTransformer::ConvertLseToHost(state.lse, sm_scale, lse_corr, false, S_FP8_OFFSET);
     assert(lse_host_smooth > lse_host_no_smooth);
     assert(std::fabs((lse_host_smooth - lse_host_no_smooth) - (lse_corr * sm_scale)) < 1e-6f);
 

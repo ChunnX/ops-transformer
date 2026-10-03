@@ -14,7 +14,6 @@
 
 #include <cmath>
 #include <cstring>
-#include <string>
 
 // 闭式 Tiling 计算、tiling 结构体、数值编码与字符串映射均经本头引入
 // （sage_attn_host_tiling.h -> sage_attn_proto.h -> ascendc/tiling.h）
@@ -210,26 +209,20 @@ static ge::graphStatus TilingSageAttention2(gert::TilingContext *context)
 /**
  * canonical 注册（对齐仓内规范）：
  * - Tiling：闭式计算 + RawTilingData 序列化 + TilingKey/ScheduleMode/Workspace 元信息；
- * - TilingParse<CompileInfo>：离线期固化 AIC/AIV 核数，运行时免 torch 初始化查询。
+ * - TilingParse<CompileInfo>：图模式标准交付件（docs/zh/develop/aicore_develop_guide.md
+ *   交付件1：注册链与 CompileInfo 结构须保留以满足框架调用规范）。核数权威源为 Tiling
+ *   入口的 PlatformAscendC 直查并经 tiling.core_num_used 下发，CompileInfo 无实际逻辑
+ *   可置空（原 cores/vectors 写只读零消费字段，2026-10-04 死代码清扫移除）。
  */
-struct SageAttention2CompileInfo {
-    uint32_t cores = 0;
-    uint32_t vectors = 0;
-};
+struct SageAttention2CompileInfo {};
 
 ge::graphStatus ParseSageAttention2CompileInfo(gert::TilingParseContext *context)
 {
     if (context == nullptr || context->GetPlatformInfo() == nullptr) {
         return ge::GRAPH_FAILED;
     }
-    auto *info = context->GetCompiledInfo<SageAttention2CompileInfo>();
-    if (info == nullptr) {
-        return ge::GRAPH_FAILED;
-    }
-    const auto platform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
-    info->cores = platform.GetCoreNumAic();
-    info->vectors = platform.GetCoreNumAiv();
-    return ge::GRAPH_SUCCESS;
+    return (context->GetCompiledInfo<SageAttention2CompileInfo>() != nullptr) ? ge::GRAPH_SUCCESS
+                                                                             : ge::GRAPH_FAILED;
 }
 
 IMPL_OP_OPTILING(SageAttention2)
