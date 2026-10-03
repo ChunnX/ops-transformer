@@ -118,6 +118,14 @@ mkdir -p "${CUSTOM_DIR}/op_impl/ai_core/tbe/op_tiling/lib"
 mkdir -p "${CUSTOM_DIR}/bin"
 
 HOST_CXX_FLAGS=(-std=c++17 -O2 -fPIC -D_GLIBCXX_USE_CXX11_ABI=0 -Wall -Wextra -Wno-ignored-qualifiers -Wno-reorder -Wno-unused-parameter -lstdc++)  # bisheng 链接需显式 C++ 运行时
+# Auto-Tune 调优会话构建开关（SAGE_AUTOTUNE_HOOKS=1 时编入 SAGE_ATTN_AUTOTUNE_HOOKS）：
+# 仅 benchmark/autotune 网格实测会话使用；正式发布构建缺省关闭——
+# sage_attn_host_tiling.h 中全部运行期调优钩子（getenv 覆盖入口）不参与编译，
+# 交付产物只保留编译期 constexpr 调优知识库（autotune_tiling_bank.h）。
+if [ "${SAGE_AUTOTUNE_HOOKS:-0}" = "1" ]; then
+    HOST_CXX_FLAGS+=(-DSAGE_ATTN_AUTOTUNE_HOOKS)
+    echo "[autotune] 调优会话构建：SAGE_ATTN_AUTOTUNE_HOOKS 运行期覆盖钩子已编入（非发布形态）"
+fi
 COMMON_INCLUDES=(
     -I"${OP_DIR}/op_host"
     -I"${OP_DIR}/aclnn"

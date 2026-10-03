@@ -169,10 +169,13 @@ inline aclnnStatus ComputeHostTiling(
     // 命中调优用例 (P-01 ~ P-07) 时应用实测最优超参 (m_per_core, block_n, k_step,
     // use_die_grouped)；未命中或动态 shape 时平滑回退至健壮的闭式推导。
     const autotune::TunedTilingEntry *tuned = nullptr;
+#if defined(SAGE_ATTN_AUTOTUNE_HOOKS)
+    // 调优会话专用：按用例 ID 直查知识库（正式构建无此运行期入口，见上方宏门控注释）
     const char *env_tune_case = std::getenv("SAGEATTN_TUNE_CASE");
     if (env_tune_case != nullptr) {
         tuned = autotune::QueryTunedTiling(env_tune_case);
     }
+#endif
     if (tuned == nullptr) {
         tuned = autotune::QueryTunedTiling(b, sq, sk, hq, hkv, d_og, dtype_mode, isCausal);
     }
@@ -201,12 +204,16 @@ inline aclnnStatus ComputeHostTiling(
         tuned_die_grouped = tuned->use_die_grouped;
     }
 
-    // Auto-Tune 实测驱动覆盖（仅调优/归因场景使用，见 benchmark/autotune/autotune_runner.py）：
-    // SAGEATTN_FORCE_MPERCORE / SAGEATTN_FORCE_BLOCKN / SAGEATTN_FORCE_KSTEP /
-    // SAGEATTN_FORCE_DIE / SAGEATTN_FORCE_SPLITKV 依次强制分块与分核超参。
-    // 取值域与 kernel/UB 台账一致（m 32/64/128、n 64/128——A7 dot32 区 static_assert
-    // 封顶 128、k 8/16/32、die 0/1、split 1..8）；覆盖值与库查询值同经
-    // InspectTilingPlan 足迹 fail-fast，越界显式拒绝不静默降级；未设置时零行为变化。
+    // Auto-Tune 调优会话钩子（SAGE_ATTN_AUTOTUNE_HOOKS 编译期门控）：
+    // 仅调优构建（build_opp.sh SAGE_AUTOTUNE_HOOKS=1，见 benchmark/autotune/README.md）
+    // 定义该宏时编入 SAGEATTN_FORCE_MPERCORE/_BLOCKN/_KSTEP/_DIE/_SPLITKV 与
+    // SAGEATTN_TUNE_CASE 运行期覆盖入口，供 autotune_runner.py 网格实测逐配置切换；
+    // 正式发布构建（缺省不定义宏）该段整体不参与编译——零 autotune 代码、
+    // 零 getenv 运行时判断，发射路径只剩编译期 constexpr 调优知识库查询。
+    // 覆盖取值域与 kernel/UB 台账一致（m 32/64/128、n 64/128——A7 dot32 区
+    // static_assert 封顶 128、k 8/16/32、die 0/1、split 1..8），越界显式拒绝；
+    // 覆盖值与库查询值同经 InspectTilingPlan 足迹 fail-fast，不静默降级。
+#if defined(SAGE_ATTN_AUTOTUNE_HOOKS)
     auto env_forced = [](const char *name) -> int64_t {
         const char *raw = std::getenv(name);
         if (raw == nullptr || *raw == '\0') {
@@ -250,6 +257,9 @@ inline aclnnStatus ComputeHostTiling(
         tuned_die_grouped = (forced_die == 1);
         die_forced = true;
     }
+#else
+    constexpr bool die_forced = false;
+#endif
 
     tiling_out.m_per_core = m_per_core;
     tiling_out.block_n = block_n;
@@ -293,6 +303,7 @@ inline aclnnStatus ComputeHostTiling(
             split_kv_num = 8;
         }
     }
+#if defined(SAGE_ATTN_AUTOTUNE_HOOKS)
     const int64_t forced_split = env_forced("SAGEATTN_FORCE_SPLITKV");
     if (forced_split >= 1) {
         if (forced_split > 8 || forced_split > static_cast<int64_t>(kv_blk_num)) {
@@ -300,6 +311,7 @@ inline aclnnStatus ComputeHostTiling(
         }
         split_kv_num = static_cast<uint32_t>(forced_split);
     }
+#endif
     tiling_out.split_kv_num = split_kv_num;
     tiling_out.is_merge = 0;
 
