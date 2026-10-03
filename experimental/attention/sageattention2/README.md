@@ -94,9 +94,10 @@ bash build.sh --pkg --experimental --soc=ascend950 --vendor_name=customize --ops
 - `SAGEATTN_PV_ACCUM_DTYPE`：`sageattn` 入口的 `pv_accum_dtype` 默认值覆盖
 - `SAGEATTN_ALLOW_CPU_STUB`：允许 CPU 参考回退（语义见上）
 - `SAGEATTN_NUM_CORES`：Host Tiling 参与调度的 AI Core 数覆盖（如 `28` 用于减配拓扑，实现见 `./aclnn/sage_attn_host_tiling.h` 的 `GetHardwareCoreNum`）
-- `SAGEATTN_TUNE_CASE`：强制 Host Tiling 命中调优知识库指定用例（`P-01`..`P-07`），供调优评估与测试覆盖使用（实现见 `./aclnn/sage_attn_host_tiling.h` 的 `ComputeHostTiling` 查询与 `./aclnn/autotune_tiling_bank.h`）
+- `SAGEATTN_TUNE_CASE`：强制 Host Tiling 命中调优知识库指定用例（`P-01`..`P-07`），供调优评估与测试覆盖使用（实现见 `./aclnn/sage_attn_host_tiling.h` 的 `ComputeHostTiling` 查询与 `./aclnn/autotune_tiling_bank.h`）；与 `SAGEATTN_FORCE_MPERCORE`/`_BLOCKN`/`_KSTEP`/`_DIE`/`_SPLITKV` 覆盖钩子同属调优会话专用，仅在 `SAGE_AUTOTUNE_HOOKS=1` 调优构建（`build_opp.sh`）中编入生效，正式发布构建不参与编译
 - `SAGEATTN_BUILD_VERBOSE`：置 `1` 时输出 C++ 扩展编译日志
 - `SAGE_OPAPI_LIBRARY` / `FIA_OPAPI_LIBRARY`：基准工具 dlsym 外部算子库时的路径（仅 `./benchmarks/` 使用）
+- `SAGE_BENCH_HEADS` / `SAGE_BENCH_DIM` / `SAGE_SMOOTH_V` / `SAGE_PERF_GATE` / `SAGE_BENCH_ORDER` / `SAGE_BENCH_L2_FLUSH_MB` / `SAGE_COOLDOWN_MS`：基准工具 CLI 前置默认覆盖（同名命令行旗标可覆盖，仅 `./benchmarks/benchmark_aclnn.cpp` 消费，取值语义见其 `--help`）
 
 ## 适用边界
 

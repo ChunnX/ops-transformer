@@ -47,8 +47,9 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --soc=*)
+            # SOC 统一经下方 --soc="${SOC}" 单点传入 build_opp.sh（此处若再入
+            # PASSTHROUGH_ARGS 会把同一旗标注入两次）
             SOC="${1#*=}"
-            PASSTHROUGH_ARGS+=("$1")
             shift
             ;;
         --quiet)
@@ -107,8 +108,9 @@ if [ "${REBUILD}" = true ] || [ ! -d "${PKG_SRC_DIR}/vendors/customize" ]; then
 fi
 
 # 2. 如果存在官方整包出包的 .run 安装包，优先调用官方 run 脚本（真机交付形态）
+# （find 只输出已存在的路径，非空判定即为存在性判定）
 RUN_PKG=$(find "${REPO_DIR}/build_out" -name "cann-ops-transformer-custom_*.run" 2>/dev/null | head -n 1 || true)
-if [ -n "${RUN_PKG}" ] && [ -f "${RUN_PKG}" ]; then
+if [ -n "${RUN_PKG}" ]; then
     if [ "${QUIET}" = false ]; then
         echo ">>> Executing official CANN custom opp run package: ${RUN_PKG}..."
     fi
