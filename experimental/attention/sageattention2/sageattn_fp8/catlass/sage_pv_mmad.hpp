@@ -60,7 +60,6 @@ public:
     using ElementA = typename Traits::ElementA;
     using ElementB = typename Traits::ElementB;
     using ElementC = typename Traits::ElementC;
-    using RetireQueue = sage_attn::OutputRetireQueue<ElementC, 3>;
 
     // 成员初值统一由声明处 NSDMI 唯一定义，构造函数仅保留宿主仿真缓冲清零
     __aicore__ SagePvMmad() {
@@ -75,41 +74,10 @@ public:
         l0c_base_ = l0c_base;
     }
 
-    /**
-     * 初始化 3 槽延迟输出退休队列（宽流水与成对融合延迟写回）
-     */
-    __aicore__ void InitRetireQueue(
-        ElementC* acc_dst,
-        uint32_t tile_size,
-        uint32_t accum_dtype = sage_attn::PV_ACCUM_FP32_FP16,
-        float tau = sage_attn::SKIP_SCALE_TAU,
-        float s_fp8_offset = sage_attn::S_FP8_OFFSET) {
-        retire_queue_.Init(acc_dst, tile_size, accum_dtype, tau, s_fp8_offset);
-    }
-
-    __aicore__ RetireQueue& GetRetireQueue() { return retire_queue_; }
-    __aicore__ const RetireQueue& GetRetireQueue() const { return retire_queue_; }
-
-    /**
-     * 将局部 PV MMAD 产生的部分和压入延迟退休队列
-     */
-    __aicore__ bool PushOutputTile(
-        uint32_t tile_idx,
-        const ElementC* p_data,
-        float scale,
-        float m_new,
-        float m_old) {
-        const ElementC* src = (p_data != nullptr) ? p_data : GetL0C();
-        return retire_queue_.Push(tile_idx, src, scale, m_new, m_old);
-    }
-
-    /**
-     * 算子主循环收尾时彻底清空延迟退休队列中的剩余槽位
-     */
-    __aicore__ void FlushRetireQueue() {
-        retire_queue_.Flush();
-    }
-
+    // D3（task/12 决策点 3）：退休队列门面（InitRetireQueue/PushOutputTile/
+    // FlushRetireQueue/GetRetireQueue）已随热路径摘除清理——A7 数据通路以
+    // FLAG_PV_PARTIAL_FREE/READY 握手的裸搬交接替代；OutputRetireQueue 本体与
+    // tests/test_output_queue.cpp 单测为 skip-scale 变体保留（accum_reduce.h）。
 
     /**
      * 加载 Softmax 概率矩阵 S 分块至 L0A
@@ -274,22 +242,16 @@ public:
      *   MergePvPartialRowVF 按档位执行（可审计、与孪生同域）；fixpipe_cfg 中的
      *   enable_inline_quant 由此变为 V1 合并侧的档位判据（该语义变更同步 task/12）。
      * - m > 64 双段发射与同分区约束同 SageQkMmad::EmitL0CToUbRaw 注释。
-     * - 宿主/KT 分支保留原路径（随路量化仿真 + 退休队列 push，OutputRetireQueue
-     *   本体与单测为 skip-scale 变体保留，热路径不再调用）。
+     * - 宿主/KT 分支保留随路量化仿真路径（退休队列 push 已随 D3 门面清理移除，
+     *   OutputRetireQueue 本体与单测为 skip-scale 变体保留于 accum_reduce.h）。
      */
     __aicore__ void ExecuteEpilogue(
         [[maybe_unused]] uint32_t l0c_src_offset,
         [[maybe_unused]] uint32_t ub_dst_offset,
-        const sage_attn::FixpipeConfig& fixpipe_cfg,
-        bool use_retire_queue = false,
-        uint32_t tile_idx = 0,
-        const ElementC* p_data = nullptr,
-        float scale = 1.0f,
-        float m_new = 0.0f,
-        float m_old = 0.0f) {
+        const sage_attn::FixpipeConfig& fixpipe_cfg) {
 
-        ElementC* src = (p_data != nullptr) ? const_cast<ElementC*>(p_data) : GetL0C();
 #if !defined(__CCE__) && !defined(__CCE_KT_TEST__) && !defined(__DAV_C220_VEC__) && !defined(__DAV_C220_CUBE__) && !defined(__DAV_C310_CUBE__) && !defined(__DAV_C310_VEC__)
+        ElementC* src = GetL0C();
         if (src != nullptr && fixpipe_cfg.enable_inline_quant) {
             uint32_t total_elements = m_ * n_;
             for (uint32_t idx = 0; idx < total_elements; ++idx) {
@@ -298,56 +260,51 @@ public:
         }
 #else
         // 设备态：真实 FixPipe 搬出（每任务域由调用方以 FLAG_PV_PARTIAL_* 握手串行化）
-        if (p_data == nullptr) {
-            constexpr uint32_t M_SPLIT = 64;
-            constexpr uint32_t ELEM_C = sizeof(ElementC);
-            static constexpr auto format = AscendC::CO2Layout::ROW_MAJOR;
-            static constexpr AscendC::FixpipeConfig cfg{format, true};
-            AscendC::FixpipeParamsArch3510<format> fp;
-            fp.nSize = static_cast<uint16_t>(n_);
-            fp.srcStride = static_cast<uint16_t>(m_);
-            fp.dstStride = static_cast<uint16_t>(n_);
-            fp.params.ndNum = 1;
-            fp.params.srcNdStride = 0;
-            fp.params.dstNdStride = 0;
-            // QuantMode_t 为全局作用域枚举（CANN 无 AscendC:: 限定版本），缺省成员
+        constexpr uint32_t M_SPLIT = 64;
+        constexpr uint32_t ELEM_C = sizeof(ElementC);
+        static constexpr auto format = AscendC::CO2Layout::ROW_MAJOR;
+        static constexpr AscendC::FixpipeConfig cfg{format, true};
+        AscendC::FixpipeParamsArch3510<format> fp;
+        fp.nSize = static_cast<uint16_t>(n_);
+        fp.srcStride = static_cast<uint16_t>(m_);
+        fp.dstStride = static_cast<uint16_t>(n_);
+        fp.params.ndNum = 1;
+        fp.params.srcNdStride = 0;
+        fp.params.dstNdStride = 0;
+        // QuantMode_t 为全局作用域枚举（CANN 无 AscendC:: 限定版本），缺省成员
         // NoQuant 即"随路量化关闭"（kernel_utils_struct_dma_params.h 默认值）
         fp.quantPre = QuantMode_t::NoQuant;
-            fp.dualDstCtl = 0;
-            fp.subBlockId = false;
-            AscendC::TBuffAddr l0c_desc{};
-            l0c_desc.logicPos = static_cast<uint8_t>(AscendC::TPosition::CO1);
-            l0c_desc.bufferHandle = nullptr;
-            l0c_desc.bufferAddr = l0c_src_offset;
-            l0c_desc.dataLen = static_cast<uint32_t>(m_ * n_ * ELEM_C);
-            AscendC::LocalTensor<ElementC> l0c_tensor;
-            l0c_tensor.SetAddr(l0c_desc);
-            AscendC::TBuffAddr ub0_desc{};
-            ub0_desc.logicPos = static_cast<uint8_t>(AscendC::TPosition::VECOUT);
-            ub0_desc.bufferHandle = nullptr;
-            ub0_desc.bufferAddr = ub_dst_offset;
-            ub0_desc.dataLen = static_cast<uint32_t>(m_ * n_ * ELEM_C);
-            AscendC::LocalTensor<ElementC> ub_dst0;
-            ub_dst0.SetAddr(ub0_desc);
-            if (m_ <= M_SPLIT) {
-                fp.mSize = static_cast<uint16_t>(m_);
-                AscendC::Fixpipe<ElementC, ElementC, cfg>(ub_dst0, l0c_tensor, fp);
-            } else {
-                fp.mSize = static_cast<uint16_t>(M_SPLIT);
-                AscendC::TBuffAddr ub1_desc = ub0_desc;
-                ub1_desc.bufferAddr = ub_dst_offset + M_SPLIT * n_ * ELEM_C;
-                ub1_desc.dataLen = static_cast<uint32_t>((m_ - M_SPLIT) * n_ * ELEM_C);
-                AscendC::LocalTensor<ElementC> ub_dst1;
-                ub_dst1.SetAddr(ub1_desc);
-                AscendC::Fixpipe<ElementC, ElementC, cfg>(ub_dst0, l0c_tensor, fp);
-                AscendC::Fixpipe<ElementC, ElementC, cfg>(ub_dst1, l0c_tensor[M_SPLIT * 16], fp);
-            }
+        fp.dualDstCtl = 0;
+        fp.subBlockId = false;
+        AscendC::TBuffAddr l0c_desc{};
+        l0c_desc.logicPos = static_cast<uint8_t>(AscendC::TPosition::CO1);
+        l0c_desc.bufferHandle = nullptr;
+        l0c_desc.bufferAddr = l0c_src_offset;
+        l0c_desc.dataLen = static_cast<uint32_t>(m_ * n_ * ELEM_C);
+        AscendC::LocalTensor<ElementC> l0c_tensor;
+        l0c_tensor.SetAddr(l0c_desc);
+        AscendC::TBuffAddr ub0_desc{};
+        ub0_desc.logicPos = static_cast<uint8_t>(AscendC::TPosition::VECOUT);
+        ub0_desc.bufferHandle = nullptr;
+        ub0_desc.bufferAddr = ub_dst_offset;
+        ub0_desc.dataLen = static_cast<uint32_t>(m_ * n_ * ELEM_C);
+        AscendC::LocalTensor<ElementC> ub_dst0;
+        ub_dst0.SetAddr(ub0_desc);
+        if (m_ <= M_SPLIT) {
+            fp.mSize = static_cast<uint16_t>(m_);
+            AscendC::Fixpipe<ElementC, ElementC, cfg>(ub_dst0, l0c_tensor, fp);
+        } else {
+            fp.mSize = static_cast<uint16_t>(M_SPLIT);
+            AscendC::TBuffAddr ub1_desc = ub0_desc;
+            ub1_desc.bufferAddr = ub_dst_offset + M_SPLIT * n_ * ELEM_C;
+            ub1_desc.dataLen = static_cast<uint32_t>((m_ - M_SPLIT) * n_ * ELEM_C);
+            AscendC::LocalTensor<ElementC> ub_dst1;
+            ub_dst1.SetAddr(ub1_desc);
+            AscendC::Fixpipe<ElementC, ElementC, cfg>(ub_dst0, l0c_tensor, fp);
+            AscendC::Fixpipe<ElementC, ElementC, cfg>(ub_dst1, l0c_tensor[M_SPLIT * 16], fp);
         }
         (void)fixpipe_cfg;
 #endif
-        if (use_retire_queue && src != nullptr) {
-            retire_queue_.Push(tile_idx, src, scale, m_new, m_old);
-        }
     }
 
     __aicore__ const ElementC* GetL0C() const {
@@ -367,7 +324,6 @@ public:
     }
 
 private:
-    RetireQueue retire_queue_;
     const void* ub_base_{nullptr};
     const void* l1_base_{nullptr};
     void* l0c_base_{nullptr};

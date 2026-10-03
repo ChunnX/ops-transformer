@@ -216,15 +216,13 @@ __simd_vf__ inline void DequantMaskLogitsRowVF(__ubuf__ int32_t* dot_row, __ubuf
     auto full = CreateMask<float, MaskPattern::ALL>();
     static constexpr CastTrait toFp32{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
 
-    RegTensor<float> qs_reg, sm_reg, tok_q_reg, sk_reg, neg_inf;
+    RegTensor<float> qs_reg, sm_reg, neg_inf;
     Duplicate(qs_reg, q_scale);
     Duplicate(sm_reg, sm_scale_log2e);
-    Duplicate(tok_q_reg, static_cast<float>(token_q));
-    Duplicate(sk_reg, static_cast<float>(sk));
     Duplicate(neg_inf, -1.0e30f);
 
     for (uint32_t j = 0; j < block_n; j += 64) {
-        RegTensor<float> val, ks_vec, idx;
+        RegTensor<float> val, ks_vec, masked_q, masked_k;
         RegTensor<int32_t> dot_i;
         LoadAlign(dot_i, dot_row + j);
         Cast<float, int32_t, toFp32>(val, dot_i, full);   // INT32→FP32 精确 cast（≤2^21 整数域）
@@ -233,10 +231,24 @@ __simd_vf__ inline void DequantMaskLogitsRowVF(__ubuf__ int32_t* dot_row, __ubuf
         Mul(val, val, ks_vec, full);                      // · k_scale[j]（块解析向量）
         Mul(val, val, sm_reg, full);                      // · sm_scale_log2e（左结合同宿主）
 
-        (void)tok_q_reg; (void)sk_reg; (void)neg_inf;
-        Arange(idx, 0.0f);
-        Adds(idx, idx, static_cast<float>(k_start + j), full);
-        StoreAlign(logits_row + j, val, full);
+        // 掩码谓词与宿主 ComputeBlockMaxAndSum 同式，比较界经标量预折算到列序域：
+        // token_k = k_start + j + lane，causal: token_k > token_q ⟺ lane > token_q − 段基址
+        //（非 causal 置 INT32_MAX 界使 GT 恒假）；尾块 pad: token_k ≥ sk ⟺ lane ≥ sk − 段基址。
+        // 列序经 Arange 硬件原语生成——dav-3510 Arange 仅支持 s8/s16/s32/f32/f16/s64，
+        // 列序取 int32 域（float 域 Arange/Adds 触发 AIV 后端 unsupported scalar
+        // instruction，bisheng 门实测捕获）。
+        RegTensor<int32_t> idx, tok_q_bound, sk_bound;
+        Arange<int32_t>(idx, 0);
+        Duplicate(tok_q_bound, (is_causal != 0u)
+                                   ? static_cast<int32_t>(token_q) - static_cast<int32_t>(k_start + j)
+                                   : 2147483647);
+        Duplicate(sk_bound, static_cast<int32_t>(sk) - static_cast<int32_t>(k_start + j));
+        MaskReg gt_tok_q, ge_sk;
+        Compare<int32_t, CMPMODE::GT>(gt_tok_q, idx, tok_q_bound, full);
+        Select(masked_q, neg_inf, val, gt_tok_q);         // causal：token_k > token_q → -1e30
+        Compare<int32_t, CMPMODE::GE>(ge_sk, idx, sk_bound, full);
+        Select(masked_k, neg_inf, masked_q, ge_sk);       // 尾块 pad：token_k ≥ sk → -1e30
+        StoreAlign(logits_row + j, masked_k, full);
     }
 }
 
@@ -321,6 +333,57 @@ __simd_vf__ inline void SoftmaxProbRowVF(__ubuf__ float* logits, __ubuf__ float8
         Muls(exp_val, exp_val, FP8_E4M3_MAX, full);
         Cast<float8_e4m3_t, float, toFp8>(packed, exp_val, full);
         StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(out_p + j, packed, full);
+    }
+}
+
+/**
+ * A7-1（task/12 第五节第 3 条 V0 侧）V per-channel 全序列 amax 预扫·通道累加步：amax[c] = max(amax[c], |val[c]|)
+ * （输入位型 cast + 可选 kMean 域外无——V 无 kMean），逐 token 行调用一次，
+ * 由调用方先充零 amax 缓冲（twin/quant_fp8 per-channel 口径）。
+ */
+__simd_vf__ inline void ChannelAmaxAccumVF(__ubuf__ half* in_ptr, __ubuf__ float* amax_ptr,
+                                           uint32_t d, uint32_t dtype_mode) {
+    using namespace AscendC;
+    using namespace AscendC::MicroAPI;
+    auto full = CreateMask<float, MaskPattern::ALL>();
+    static constexpr CastTrait toFp32{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+
+    for (uint32_t c = 0; c < d; c += 64) {
+        RegTensor<float> val, amax;
+        if (dtype_mode == 2u) {
+            RegTensor<bfloat16_t> raw;
+            LoadAlign<bfloat16_t, LoadDist::DIST_UNPACK_B16>(raw, reinterpret_cast<__ubuf__ bfloat16_t*>(in_ptr) + c);
+            Cast<float, bfloat16_t, toFp32>(val, raw, full);
+        } else {
+            RegTensor<half> raw;
+            LoadAlign<half, LoadDist::DIST_UNPACK_B16>(raw, in_ptr + c);
+            Cast<float, half, toFp32>(val, raw, full);
+        }
+        Abs(val, val, full);
+        LoadAlign(amax, amax_ptr + c);
+        Max(amax, amax, val, full);
+        StoreAlign(amax_ptr + c, amax, full);
+    }
+}
+
+/**
+ * A7-2 V per-channel 定标：scale[c] = amax[c] / scale_max（除法轨迹，对齐宿主
+ * quant_fp8 / 孪生；全零通道 amax=0 → scale=0，经 QuantVRowFp8VF 的 0/0=NaN →
+ * e4m3 0x7f 容错）。可原地（out_scale_ptr == amax_ptr）。
+ */
+__simd_vf__ inline void FinalizeVScaleVF(__ubuf__ float* amax_ptr, __ubuf__ float* out_scale_ptr,
+                                         float scale_max, uint32_t d) {
+    using namespace AscendC;
+    using namespace AscendC::MicroAPI;
+    auto full = CreateMask<float, MaskPattern::ALL>();
+
+    RegTensor<float> smax_reg;
+    Duplicate(smax_reg, scale_max);
+    for (uint32_t c = 0; c < d; c += 64) {
+        RegTensor<float> amax;
+        LoadAlign(amax, amax_ptr + c);
+        Div(amax, amax, smax_reg, full);
+        StoreAlign(out_scale_ptr + c, amax, full);
     }
 }
 
