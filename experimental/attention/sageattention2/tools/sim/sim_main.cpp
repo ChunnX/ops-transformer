@@ -91,12 +91,13 @@ int main(int argc, char **argv) {
 
     // 1. 读参考侧产物（输入/tiling 与 golden 严格同源）
     std::vector<uint16_t> q_bits, k_bits, v_bits;
-    std::vector<float> km;
+    std::vector<float> km, corr;
     std::vector<uint8_t> tiling_bytes;
     if (!ReadBin<uint16_t>(P(kQBin), q_bits, static_cast<size_t>(kB) * kSq * kHq * kDOg) ||
         !ReadBin<uint16_t>(P(kKBin), k_bits, static_cast<size_t>(kB) * kSk * kHkv * kDOg) ||
         !ReadBin<uint16_t>(P(kVBin), v_bits, static_cast<size_t>(kB) * kSk * kHkv * kDOg) ||
         !ReadBin<float>(P(kKmBin), km, static_cast<size_t>(kB) * kHkv * 128u) ||
+        !ReadBin<float>(P(kLseCorrBin), corr, static_cast<size_t>(kB) * kHq * kSq) ||
         !ReadBin<uint8_t>(P(kTilingBin), tiling_bytes, sizeof(sage_attn::SageAttention2TilingData))) {
         std::fprintf(stderr, "[FAIL] 读输入/tiling bin 失败（先跑 sim_reference）\n");
         return 1;
@@ -133,14 +134,16 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    // 3. GM 分配与上传（lseCorrection 直读通道设备分支未消费，恒 nullptr；
-    //    workspace 走 rtMemset 清零后仅驻卡，host 侧无需回读）
-    DevBuffer q_d, k_d, v_d, km_d, o_d, lse_d, ws_d, tiling_d;
+    // 3. GM 分配与上传（lseCorrection 为 smooth_k 的校正项 GM 入参，与孪生
+    //    io.lse_correction 同源同值；workspace 走 rtMemset 清零后仅驻卡，
+    //    host 侧无需回读）
+    DevBuffer q_d, k_d, v_d, km_d, corr_d, o_d, lse_d, ws_d, tiling_d;
     void *stream = nullptr;
     bool ok = AllocAndUpload(q_d, q_bits.data(), q_bits.size() * sizeof(uint16_t)) &&
               AllocAndUpload(k_d, k_bits.data(), k_bits.size() * sizeof(uint16_t)) &&
               AllocAndUpload(v_d, v_bits.data(), v_bits.size() * sizeof(uint16_t)) &&
               AllocAndUpload(km_d, km.data(), km.size() * sizeof(float)) &&
+              AllocAndUpload(corr_d, corr.data(), corr.size() * sizeof(float)) &&
               AllocAndUpload(tiling_d, tiling_bytes.data(), tiling_bytes.size());
     ok = ok && AllocAndUpload(o_d, q_bits.data(), o_bytes) &&  // O 先用垃圾占位，长度正确即可
          AllocAndUpload(lse_d, km.data(), lse_bytes);
@@ -159,7 +162,7 @@ int main(int argc, char **argv) {
     std::fflush(stdout);
     sage_attention2<<<blockDim, nullptr, stream>>>(
         q_d.ptr, k_d.ptr, v_d.ptr, km_d.ptr,
-        static_cast<__gm__ uint8_t *>(nullptr),   // lseCorrection：设备分支未消费
+        corr_d.ptr,                              // lseCorrection：smooth_k 校正项 GM 入参
         o_d.ptr, lse_d.ptr, ws_d.ptr, tiling_d.ptr);
     if (rtStreamSynchronize(stream) != 0) {
         std::fprintf(stderr, "[FAIL] rtStreamSynchronize 失败（内核异常/死锁？查 CAMODEL_LOG_PATH）\n");
@@ -177,6 +180,7 @@ int main(int argc, char **argv) {
     rtFree(k_d.ptr);
     rtFree(v_d.ptr);
     rtFree(km_d.ptr);
+    rtFree(corr_d.ptr);
     rtFree(o_d.ptr);
     rtFree(lse_d.ptr);
     rtFree(ws_d.ptr);

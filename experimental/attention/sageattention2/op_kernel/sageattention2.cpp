@@ -172,7 +172,9 @@ constexpr uint32_t SAGE_UB_V1_LOGITS_ROW_OFFSET = SAGE_UB_V1_STATS_OFFSET + Catl
 constexpr uint32_t SAGE_UB_V1_KS_ROW_OFFSET = SAGE_UB_V1_STATS_OFFSET + 2 * Catlass::SageAttn::Vector1UbBudget::LSE_ROW_STRIDE;
 constexpr uint32_t SAGE_UB_V1_QS_ROW_OFFSET = SAGE_UB_V1_STATS_OFFSET + 3 * Catlass::SageAttn::Vector1UbBudget::LSE_ROW_STRIDE;
 constexpr uint32_t SAGE_UB_V1_VS_CHAN_OFFSET = SAGE_UB_V1_STATS_OFFSET + 4 * Catlass::SageAttn::Vector1UbBudget::LSE_ROW_STRIDE;
-static_assert(SAGE_UB_V1_VS_CHAN_OFFSET + 512u <= Catlass::SageAttn::Vector1UbBudget::LSE_WORKSPACE_OFFSET +
+// smooth_v 的 vm 通道槽（V0 经 workspace GM 区产出，V1 Finalize 逐通道加回）
+constexpr uint32_t SAGE_UB_V1_VM_CHAN_OFFSET = SAGE_UB_V1_STATS_OFFSET + 5 * Catlass::SageAttn::Vector1UbBudget::LSE_ROW_STRIDE;
+static_assert(SAGE_UB_V1_VM_CHAN_OFFSET + 512u <= Catlass::SageAttn::Vector1UbBudget::LSE_WORKSPACE_OFFSET +
                   Catlass::SageAttn::Vector1UbBudget::LSE_WORKSPACE_BYTES,
               "A7 V1 row scratch exceeds LSE workspace region");
 
@@ -189,7 +191,7 @@ static_assert(SAGE_UB_V1_VS_CHAN_OFFSET + 512u <= Catlass::SageAttn::Vector1UbBu
  * - o_accum：V1 UB O 主累加器（[GQA 行][d_pad] fp32，Vector1UbBudget::O_ACCUM 契约归属 V1）；
  * - logits：当前拍反量化 logit（[GQA 行][block_n]，exp2 域，含 causal 掩码哨兵 -1e30）；
  * - q/k/v_scales：本任务 (b, hkv) 的量化 scale（q 按 GQA 头分段 [g*2048+组号]）；
- * - lse_corr：smooth_k 的行级 lse_correction（q_i · km，[GQA 行]）。
+ * - v_means：smooth_v 的 per-channel 均值（V0 预扫产出，PV 反量化时加回，[通道]）。
  * GQA 行 = g * cur_q_len + i（g 为 KV 头内 Q 头序号），上限 MAX_PACK_ROWS。
  */
 struct SimMemory {
@@ -200,7 +202,7 @@ struct SimMemory {
     float q_scales[MAX_GQA_RATIO * kQScaleSlotStride]{0.0f};
     float k_scales[kKScaleSlotStride]{0.0f};
     float v_scales[256]{0.0f};
-    float lse_corr[128]{0.0f};
+    float v_means[256]{0.0f};
 };
 #endif
 
@@ -308,11 +310,6 @@ public:
         // 解码初始任务 (第 0 波次)
         uint64_t initial_task = use_die ? DieTask(core_idx_, total_tasks, cores) : core_idx_;
         DecodeTask(initial_task, q_blks_per_head);
-
-        // bisheng 设备 pass 的 <algorithm> 无 fill 系可用，朴素循环为设备安全形
-        for (uint32_t r = 0; r < MAX_PACK_ROWS; ++r) {
-            lse_corr_[r] = 0.0f;
-        }
 
 #if !SAGE_ATTN_DEVICE_COMPILE
         if (sim_mem_ == nullptr) {
@@ -991,9 +988,10 @@ private:
      * - GQA 聚合沿 M 维堆叠行：逻辑行 r = g * cur_q_len + i（g 为 KV 头内 Q 头序号），
      *   Q scale 按头分段存放 sim q_scales[g*2048 + 组号]（KT 基线的 scale 暂存；
      *   L1 内 scale 摆放随 tiling.l1_q_scale_offset 于向量化 pass 落地），L1 内 [行][d] 摆放；
-     * - smooth_k：行级 lse_correction = q_i · km（q 按输入 dtype 读取、fp32 积和，
-     *   km 由 host 按 twin 同口径预计算传入），供 FinalizeAndStoreOutput 的 LSE 出口；
-     *   设备态经 GM 标量读按宿主同式补算（R22，lse_corr_[r] 全分支共享状态）。
+     * - smooth_k 的行级 lse_correction 不在核内计算：桥接层按开源契约
+     *   （core.py:593-597，fp32 matmul q·km_broadcast^T）算好经 lseCorrection GM
+     *   入参传入，V1 FinalizeAndStoreOutput 按 (b, hq, token) 全局下标直读
+     *   （V0/V1 跨 AIV 不共享私有状态，核内算 corr 本就无法送达 V1）。
      */
 #if !SAGE_ATTN_DEVICE_COMPILE
     /**
@@ -1130,45 +1128,6 @@ private:
         DataCopy(gm_stage_q, ub_stage_q, STAGE_SLOT_FLOATS);
         SetFlag<HardEvent::MTE3_S>(0);
         WaitFlag<HardEvent::MTE3_S>(0);
-
-        // 4. smooth_k 行级 lse_correction（设备态向量化，DEFECT-VEC-1）：
-        //    km 预加载进 UB (ub_km)，各行利用 ub_in 与 dev_vf::DotProductVF
-        //    通过 256 位 SIMD 寄存器执行向量点积积和，彻底消灭标量逐元素读 GM 循环。
-        if ((tiling_->smooth_k != 0) && key_mean_gm_ != nullptr) {
-            const int64_t km_offset =
-                (static_cast<int64_t>(cur_b_) * hkv_ + cur_hkv_) * d;
-            LocalTensor<float> ub_km(TPosition::VECCALC,
-                                     Catlass::SageAttn::Vector0UbBudget::QUANT_KM_OFFSET,
-                                     d);
-            GlobalTensor<float> gm_km;
-            gm_km.SetGlobalBuffer(
-                reinterpret_cast<__gm__ float*>(key_mean_gm_ + km_offset * sizeof(float)));
-            DataCopy(ub_km, gm_km, d);
-            SyncMte2ToV();
-
-            LocalTensor<float> ub_corr_slot(TPosition::VECCALC,
-                                            Catlass::SageAttn::Vector0UbBudget::QUANT_ROWMAX_OFFSET,
-                                            MAX_PACK_ROWS);
-            for (uint32_t r = 0; r < total_rows_q && r < MAX_PACK_ROWS; ++r) {
-                SyncVToMte2();
-                const uint32_t g = r / cur_q_len_;
-                const uint32_t i = r % cur_q_len_;
-                const int64_t row_gm_offset = (g * q_stride_h + static_cast<int64_t>(i) * q_stride_s) * static_cast<int64_t>(sizeof(half));
-                GlobalTensor<half> gm_row;
-                gm_row.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(q_src + row_gm_offset));
-                DataCopy(ub_in, gm_row, d);
-                SyncMte2ToV();
-
-                dev_vf::DotProductVF(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
-                                     reinterpret_cast<__ubuf__ float*>(ub_km.GetPhyAddr()),
-                                     reinterpret_cast<__ubuf__ float*>(ub_corr_slot.GetPhyAddr()) + r,
-                                     d, dtype_mode);
-            }
-            Catlass::SageAttn::Sync<HardEvent::V_S>();
-            for (uint32_t r = 0; r < total_rows_q && r < MAX_PACK_ROWS; ++r) {
-                lse_corr_[r] = ub_corr_slot.GetValue(r);
-            }
-        }
 #else
         if (sim_mem_ == nullptr || q_src == nullptr) {
             return;
@@ -1227,26 +1186,6 @@ private:
                 const float val = ReadInputBits(row_ptr, c);
                 row_out[c] = per_thread ? quant::RoundHalfAwayFromZero(val / scale)
                                         : quant::RoundNearestEven(val / scale);
-            }
-        }
-
-        // 4. smooth_k 行级 lse_correction
-        if ((tiling_->smooth_k != 0) && key_mean_gm_ != nullptr) {
-            const int64_t km_offset =
-                (static_cast<int64_t>(cur_b_) * hkv_ + cur_hkv_) * d;
-            const float *km = reinterpret_cast<const float *>(
-                key_mean_gm_ + km_offset * sizeof(float));
-            for (uint32_t r = 0; r < TotalRows(); ++r) {
-                if (r >= MAX_PACK_ROWS) break;
-                const uint32_t g = r / cur_q_len_;
-                const uint32_t i = r % cur_q_len_;
-                const uint16_t *row_ptr = q_u16 + g * q_stride_h + static_cast<int64_t>(i) * q_stride_s;
-                float corr = 0.0f;
-                for (uint32_t c = 0; c < d; ++c) {
-                    corr += ReadInputBits(row_ptr, c) * km[c];
-                }
-                sim_mem_->lse_corr[r] = corr;
-                lse_corr_[r] = corr;
             }
         }
 #endif
@@ -1460,10 +1399,15 @@ private:
     /**
      * 3. V0：V 转置 + 16-token permute + per-channel FP8 量化写 L1 槽内 V 子区
      * （twin/quant_fp8 量化轨迹逐步一致）：
-     * - per-channel scale 为全序列静态量：首块（cur_k_==0）对整个 KV 头做 GM amax 预扫
+     * - per-channel scale 为全序列静态量：首块（cur_k_==0）对整个 KV 头做 GM 预扫
      *   （pad token 计 0 不影响 amax），scale = amax / v_scale_max（fp32+fp16 档 2.25、
-     *   其余 448，由 tiling 携带）；全零通道 scale=0 经 NaN → e4m3 0x7f 容错（同 quant_fp8）；
-     * - 量化保持除法轨迹：scaled = val / scale，饱和 ±scale_max 后 RNE 转 e4m3；
+     *   其余 448，由 tiling 携带）；smooth_v（host 门控仅 fp32 档置位）时预扫累计
+     *   max/min/sum 三统计量，vm = sum/fp8_padded、amax = max(|max-vm|,|min-vm|,
+     *   pad |0-vm|)（dispatch._quant_v_fp8 / quant_fp8 ProcessV 同式）；全零通道
+     *   scale=0 经 NaN → e4m3 0x7f 容错（同 quant_fp8）；
+     * - 量化保持除法轨迹：scaled = (val - vm) / scale，饱和 ±scale_max 后 RNE 转 e4m3；
+     * - vm 经 workspace GM 区（tiling.workspace_vm_offset，host 按 [b,hkv,d_pad] fp32
+     *   预留）传 V1，Finalize 归一化后逐通道加回；v_scale 仍走 STAGE_V_SCALE 条带；
      * - L1 槽内 V 布局 [d][block_n]，16-token 段内物理槽 p 存 token V_PERM_PATTERN[p]
      *   （token jl 的物理槽 = V_PERM_INV_PATTERN[jl%16]，与 golden v_fp8 同构、与
      *   twin v_deq 读取式一致）；尾块 pad 槽写 0。
@@ -1476,47 +1420,92 @@ private:
     {
 #if SAGE_ATTN_DEVICE_COMPILE
         if (v_src == nullptr) return;
-        // DEFECT-F-1 重构：per-channel 全序列 amax 预扫（首块一次，标量语义优先、
-        // 向量化为后续 pass）→ UB scale 张量；逐行量化 VF 走除法轨迹 + ±scale_max
-        // 截断 + 全零通道 0/0=NaN → e4m3 0x7f。
+        // DEFECT-F-1 重构：per-channel 全序列预扫（首块一次）→ UB scale 张量；逐行量化
+        // VF 走除法轨迹 + ±scale_max 截断 + 全零通道 0/0=NaN → e4m3 0x7f。
         const uint32_t dtype_mode = DtypeMode();
         const int64_t v_stride_s = (tiling_->tensor_layout == LAYOUT_HND)
                                        ? d_ : static_cast<int64_t>(hkv_) * d_;
         LocalTensor<float> ub_v_scale(TPosition::VECCALC,
                                       Catlass::SageAttn::Vector0UbBudget::QUANT_ROWMAX_OFFSET,
                                       d);
+        LocalTensor<float> ub_v_min(TPosition::VECCALC,
+                                    Catlass::SageAttn::Vector0UbBudget::QUANT_VMIN_OFFSET,
+                                    d);
+        LocalTensor<float> ub_v_sum(TPosition::VECCALC,
+                                    Catlass::SageAttn::Vector0UbBudget::QUANT_VSUM_OFFSET,
+                                    d);
         LocalTensor<half> ub_in(TPosition::VECCALC, Catlass::SageAttn::Vector0UbBudget::GM_INPUT_PING_OFFSET, d);
         LocalTensor<float8_e4m3_t> ub_out(TPosition::VECCALC, Catlass::SageAttn::Vector0UbBudget::NZ_OUTPUT_OFFSET, d);
         LocalTensor<float8_e4m3_t> l1_v(TPosition::B1, l1_dst_addr, block_n_ * d);
         const float scale_max = tiling_->v_scale_max;
+        const uint32_t smooth_v = (tiling_->smooth_v != 0) ? 1u : 0u;
 
         if (cur_k_ == 0) {
-            // A7 V0（task/12 第五节第 3 条）：per-channel 全序列 amax 预扫向量化——
-            // ub_v_scale 充零作 amax 累加器，逐 token 行 ChannelAmaxAccumVF 累加
-            //（v_src 即 KV 头首行基址；pad token 计 0 不影响），FinalizeVScaleVF 按
-            // v_scale_max 除法定标（quant_fp8/孪生唯一口径）。
-            Duplicate(ub_v_scale, 0.0f, d);
-            for (uint32_t t = 0; t < sk_; ++t) {
-                const int64_t row_gm_offset = static_cast<int64_t>(t) * v_stride_s * static_cast<int64_t>(sizeof(half));
-                GlobalTensor<half> gm_row;
-                gm_row.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(v_src + row_gm_offset));
-                DataCopy(ub_in, gm_row, d);
-                SyncMte2ToV();
-                dev_vf::ChannelAmaxAccumVF(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
-                                           reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
-                                           d, dtype_mode);
+            const uint32_t fp8_padded = (sk_ + 15u) / 16u * 16u;
+            if (smooth_v != 0u) {
+                // smooth_v：单趟 max/min/sum 统计预扫 → vm/scale 定标（FinalizeSmoothVScaleVF
+                // 单点；vm 留 UB 待 SM 级搬出），统计量经 V→S 排空后由 VF 消费
+                Duplicate(ub_v_scale, MIN_FLOAT_VAL, d);
+                Duplicate(ub_v_min, -MIN_FLOAT_VAL, d);
+                Duplicate(ub_v_sum, 0.0f, d);
+                for (uint32_t t = 0; t < sk_; ++t) {
+                    const int64_t row_gm_offset = static_cast<int64_t>(t) * v_stride_s * static_cast<int64_t>(sizeof(half));
+                    GlobalTensor<half> gm_row;
+                    gm_row.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(v_src + row_gm_offset));
+                    SyncVToMte2();
+                    DataCopy(ub_in, gm_row, d);
+                    SyncMte2ToV();
+                    dev_vf::ChannelStatsAccumVF(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
+                                                reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
+                                                reinterpret_cast<__ubuf__ float*>(ub_v_min.GetPhyAddr()),
+                                                reinterpret_cast<__ubuf__ float*>(ub_v_sum.GetPhyAddr()),
+                                                d, dtype_mode);
+                }
+                Catlass::SageAttn::Sync<HardEvent::V_S>();
+                dev_vf::FinalizeSmoothVScaleVF(reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
+                                               reinterpret_cast<__ubuf__ float*>(ub_v_min.GetPhyAddr()),
+                                               reinterpret_cast<__ubuf__ float*>(ub_v_sum.GetPhyAddr()),
+                                               reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
+                                               fp8_padded, (fp8_padded > sk_) ? 1u : 0u, scale_max, d);
+                Catlass::SageAttn::Sync<HardEvent::V_S>();
+            } else {
+                // A7 V0（task/12 第五节第 3 条）：per-channel 全序列 amax 预扫向量化——
+                // ub_v_scale 充零作 amax 累加器，逐 token 行 ChannelAmaxAccumVF 累加
+                //（v_src 即 KV 头首行基址；pad token 计 0 不影响），FinalizeVScaleVF 按
+                // v_scale_max 除法定标（quant_fp8/孪生唯一口径）。
+                Duplicate(ub_v_scale, 0.0f, d);
+                for (uint32_t t = 0; t < sk_; ++t) {
+                    const int64_t row_gm_offset = static_cast<int64_t>(t) * v_stride_s * static_cast<int64_t>(sizeof(half));
+                    GlobalTensor<half> gm_row;
+                    gm_row.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(v_src + row_gm_offset));
+                    SyncVToMte2();
+                    DataCopy(ub_in, gm_row, d);
+                    SyncMte2ToV();
+                    dev_vf::ChannelAmaxAccumVF(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
+                                               reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
+                                               d, dtype_mode);
+                }
+                dev_vf::FinalizeVScaleVF(reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
+                                         reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
+                                         scale_max, d);
             }
-            dev_vf::FinalizeVScaleVF(reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
-                                     reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
-                                     scale_max, d);
 
-            // A7：v_scale 暂存写（STAGE_V_SCALE_OFFSET，任务级一次）。V→MTE3 排空
-            // 保证 scale 向量写毕才发起 GM 搬出，MTE3→S 排空后方由调用方在首块
-            // KV_READY raise 前 GM 可见（V1 合并侧经 PV_PARTIAL→QK_P 传递性读取）。
+            // A7：v_scale 暂存写（STAGE_V_SCALE_OFFSET，任务级一次）+ smooth_v 的 vm
+            // 写 workspace GM 区（workspace_vm_offset，[b,hkv,d_pad] fp32）。V→MTE3 排空
+            // 保证向量写毕才发起 GM 搬出，MTE3→S 排空后方由调用方在首块 KV_READY raise
+            // 前 GM 可见（V1 Finalize 侧经 PV_O_DONE 前的跨核 flag 链传递读取时序）。
             SyncVToMte3();
             GlobalTensor<float> gm_stage_v;
             gm_stage_v.SetGlobalBuffer(StageStrip() + STAGE_V_SCALE_OFFSET);
             DataCopy(gm_stage_v, ub_v_scale, d);
+            if (smooth_v != 0u && workspace_gm_ != nullptr) {
+                GlobalTensor<float> gm_vm;
+                gm_vm.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(
+                    workspace_gm_ + tiling_->workspace_vm_offset +
+                    static_cast<int64_t>(cur_b_) * hkv_ * d_ * sizeof(float) +
+                    static_cast<int64_t>(cur_hkv_) * d_ * sizeof(float)));
+                DataCopy(gm_vm, ub_v_sum, d);
+            }
             SetFlag<HardEvent::MTE3_S>(0);
             WaitFlag<HardEvent::MTE3_S>(0);
         }
@@ -1533,7 +1522,8 @@ private:
                 dev_vf::QuantVRowFp8VF(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
                                        reinterpret_cast<__ubuf__ float8_e4m3_t*>(ub_out.GetPhyAddr()),
                                        reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
-                                       d, scale_max, dtype_mode);
+                                       reinterpret_cast<__ubuf__ float*>(ub_v_sum.GetPhyAddr()),
+                                       smooth_v, d, scale_max, dtype_mode);
             } else {
                 Duplicate(ub_out.ReinterpretCast<int8_t>(), int8_t(0), d);
             }
@@ -1559,25 +1549,49 @@ private:
 
         if (cur_k_ == 0) {
             const uint16_t *v_head = v_u16 - static_cast<int64_t>(cur_k_start_) * v_stride_s;
+            const uint32_t fp8_padded = (sk_ + 15u) / 16u * 16u;
+            const bool smooth_v = (tiling_->smooth_v != 0);
             for (uint32_t c = 0; c < d && c < 256u; ++c) {
-                float amax = 0.0f;
-                for (uint32_t t = 0; t < sk_; ++t) {
-                    const float abs_v = SageFastAbs(
-                        ReadInputBits(v_head, static_cast<int64_t>(t) * v_stride_s + c));
-                    if (abs_v > amax) amax = abs_v;
+                if (smooth_v) {
+                    // quant_fp8 ProcessV smooth_v 支路同式：vm = sum/fp8_padded，
+                    // amax = max(pad |0-vm|, max_t |v_t - vm|)（pad token 计 0 贡献 |vm|），
+                    // scale = amax / scale_max（全零通道 scale=0 → NaN 容错同非 smooth 路径）
+                    float sum_v = 0.0f;
+                    for (uint32_t t = 0; t < sk_; ++t) {
+                        sum_v += ReadInputBits(v_head, static_cast<int64_t>(t) * v_stride_s + c);
+                    }
+                    const float vm = sum_v / static_cast<float>(fp8_padded);
+                    float amax = (fp8_padded > sk_) ? SageFastAbs(vm) : 0.0f;
+                    for (uint32_t t = 0; t < sk_; ++t) {
+                        const float diff =
+                            ReadInputBits(v_head, static_cast<int64_t>(t) * v_stride_s + c) - vm;
+                        const float abs_v = SageFastAbs(diff);
+                        if (abs_v > amax) amax = abs_v;
+                    }
+                    sim_mem_->v_means[c] = vm;
+                    sim_mem_->v_scales[c] = amax / scale_max;
+                } else {
+                    float amax = 0.0f;
+                    for (uint32_t t = 0; t < sk_; ++t) {
+                        const float abs_v = SageFastAbs(
+                            ReadInputBits(v_head, static_cast<int64_t>(t) * v_stride_s + c));
+                        if (abs_v > amax) amax = abs_v;
+                    }
+                    sim_mem_->v_scales[c] = amax / scale_max;
                 }
-                sim_mem_->v_scales[c] = amax / scale_max;
             }
         }
 
+        const bool smooth_v = (tiling_->smooth_v != 0);
         for (uint32_t c = 0; c < d; ++c) {
             const float scale = (c < 256u) ? sim_mem_->v_scales[c] : 1.0f;
+            const float vm = (smooth_v && c < 256u) ? sim_mem_->v_means[c] : 0.0f;
             uint8_t *chan_out = l1_v + static_cast<size_t>(c) * block_n_;
             for (uint32_t jl = 0; jl < block_n_; ++jl) {
                 uint8_t code = 0;
                 if (jl < block_k) {
                     const uint16_t *row_ptr = v_u16 + static_cast<int64_t>(jl) * v_stride_s;
-                    float scaled = ReadInputBits(row_ptr, c) / scale;
+                    float scaled = (ReadInputBits(row_ptr, c) - vm) / scale;
                     if (scaled > scale_max) scaled = scale_max;
                     if (scaled < -scale_max) scaled = -scale_max;
                     code = quant::FloatToE4m3fn(scaled);
@@ -1812,8 +1826,11 @@ private:
                 [&](uint32_t j, uint32_t c) -> float {
                     const uint32_t jl = j - cur_k_start_;
                     const uint32_t slot = quant::VSlotOfToken(jl);
+                    // smooth_v：v_deq = e4m3 解码 · 通道 scale + vm（dispatch._quant_v_fp8
+                    // smooth_v 支路同式；vm 项随 PV 累加进主累加器，归一化后恰还原 +vm）
+                    const float vm = (tiling_->smooth_v != 0) ? sim_mem_->v_means[c] : 0.0f;
                     return quant::E4m3fnToFloat(l1_v[static_cast<size_t>(c) * block_n_ + slot]) *
-                           sim_mem_->v_scales[c];
+                               sim_mem_->v_scales[c] + vm;
                 });
         }
     }
@@ -1823,10 +1840,16 @@ private:
      * 7. V1：最终归一化与 LSE 换算写回 GM（twin 5.5/5.6 单点轨迹）：
      * - 行级 inv_d = GetFinalInvDenominator(row_states_[r])（O 与分母同处 448· 放大域，
      *   除法处放大精确相消）；
-     * - LSE 出口 = ConvertLseToHost(lse, sm_scale, lse_correction, smooth_k,
+     * - smooth_k 的行级 lse_correction 由桥接层算好（fp32 matmul q·km_broadcast^T，
+     *   开源契约 core.py:593-597）经 lseCorrection GM 入参传入，按 (b, hq, token)
+     *   全局下标直读——校正项启用与否以该张量存在（非 nullptr）为唯一定义，
+     *   V0/V1 跨 AIV 不共享私有状态，核内不得自算；
+     * - smooth_v（host 门控仅 fp32 档）：V 减均值量化下 PV 分子分母的 vm·Σp 项
+     *   归一化后恰还原为 vm，Finalize 经 workspace GM 区（workspace_vm_offset）
+     *   读回 vm 后逐通道加回（o·inv + vm）；
+     * - LSE 出口 = ConvertLseToHost(lse, sm_scale, lse_correction, has_corr,
      *   S_FP8_OFFSET)：核内 exp2 域 LSE 含 448· 放大（乘法实现）所致的
-     *   +log2(448) 偏置，出口以 S_FP8_OFFSET 常量补扣；smooth_k 的行级
-     *   lse_correction · sm_scale 项在此并入。
+     *   +log2(448) 偏置，出口以 S_FP8_OFFSET 常量补扣。
      */
     __aicore__ void FinalizeAndStoreOutput()
     {
@@ -1845,9 +1868,24 @@ private:
             out_stride_h = d_;
         }
 
+        // smooth_k 校正项启用唯一定义：lseCorrection GM 张量存在（桥接层仅在
+        // smooth_k && return_lse 时产出该张量）
+        const bool has_lse_corr = (lse_correction_gm_ != nullptr);
 #if SAGE_ATTN_DEVICE_COMPILE
         if (out_gm_ == nullptr) return;
-        const bool is_smooth_k = (tiling_->smooth_k != 0);
+        // smooth_v 的 vm 通道向量：V0 首块产出并写 workspace GM 区，本侧 Finalize 前
+        // 经 MTE2 接入 UB（读取时序在 PV_O_DONE 之后，由跨核 flag 链传递保序——
+        // vm 写毕方 raise 首块 KV_READY，QK_P 链直达本函数）
+        const bool has_vm = (tiling_->smooth_v != 0) && (workspace_gm_ != nullptr);
+        LocalTensor<float> ub_vm(TPosition::VECCALC, SAGE_UB_V1_VM_CHAN_OFFSET, d_);
+        if (has_vm) {
+            GlobalTensor<float> gm_vm;
+            gm_vm.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(
+                workspace_gm_ + tiling_->workspace_vm_offset +
+                (b_idx * static_cast<int64_t>(hkv_) + hkv_idx) * d_ * sizeof(float)));
+            DataCopy(ub_vm, gm_vm, d_);
+            SyncMte2ToV();
+        }
         LocalTensor<half> ub_half(TPosition::VECCALC, Catlass::SageAttn::Vector1UbBudget::FIXPIPE_RECV_OFFSET, d_);
 
         for (uint32_t g = 0; g < cur_heads_; ++g) {
@@ -1858,19 +1896,27 @@ private:
                 const uint32_t r = g * cur_q_len_ + i;
                 if (r >= MAX_PACK_ROWS) break;
                 const float inv_row = OnlineSoftmaxTransformer::GetFinalInvDenominator(row_states_[r]);
-                const float lse_corr_val = (r < MAX_PACK_ROWS) ? lse_corr_[r] : 0.0f;
+                // LSE 校正项：lseCorrection GM 按 (b, hq, token) 全局下标直读
+                float lse_corr_val = 0.0f;
+                if (has_lse_corr) {
+                    const int64_t corr_offset =
+                        ((b_idx * static_cast<int64_t>(hq_) + hq_curr) * sq_ + (sq_start + i)) * sizeof(float);
+                    lse_corr_val = *reinterpret_cast<const __gm__ float*>(lse_correction_gm_ + corr_offset);
+                }
                 // LSE 出口：核内 exp2 域 LSE 含 448· 放大（乘法实现）所致的 +log2(448) 偏置，
                 // 以 S_FP8_OFFSET 常量补扣（唯一定义，见 ConvertLseToHost 注释）
                 const float lse_host = OnlineSoftmaxTransformer::ConvertLseToHost(
                     row_states_[r].lse, tiling_->sm_scale_log2e * INV_LOG2E,
-                    lse_corr_val, is_smooth_k, S_FP8_OFFSET);
+                    lse_corr_val, has_lse_corr, S_FP8_OFFSET);
 
                 LocalTensor<float> ub_o_row(TPosition::VECCALC,
                                             Catlass::SageAttn::Vector1UbBudget::O_ACCUM_OFFSET + r * d_ * sizeof(float),
                                             d_);
                 dev_vf::FinalizeRowVF(reinterpret_cast<__ubuf__ float*>(ub_o_row.GetPhyAddr()),
                                      reinterpret_cast<__ubuf__ uint16_t*>(ub_half.GetPhyAddr()),
-                                     inv_row, tiling_->d_og, tiling_->input_dtype);
+                                     inv_row,
+                                     has_vm ? reinterpret_cast<__ubuf__ float*>(ub_vm.GetPhyAddr()) : nullptr,
+                                     tiling_->d_og, tiling_->input_dtype);
                 // V 管写 → MTE3 读（DEFECT-I-1）：DataCopy 前置 V→MTE3 事件对，
                 // 保证本行 VF 写毕才发起 GM 搬出（支持 half 与 bfloat16 双路径，DEFECT-F-3）
                 SyncVToMte3();
@@ -1903,7 +1949,6 @@ private:
         if (sim_mem_ == nullptr || out_gm_ == nullptr) {
             return;
         }
-        const bool is_smooth_k = (tiling_->smooth_k != 0);
         for (uint32_t g = 0; g < cur_heads_; ++g) {
             const int64_t hq_curr = hkv_idx * static_cast<int64_t>(gqa_ratio_) + static_cast<int64_t>(cur_g0_) + g;
             if (hq_curr >= hq_) break;
@@ -1913,9 +1958,16 @@ private:
                 if (r >= MAX_PACK_ROWS) break;
                 const float inv_row =
                     OnlineSoftmaxTransformer::GetFinalInvDenominator(row_states_[r]);
+                // LSE 校正项：lseCorrection GM 按 (b, hq, token) 全局下标直读（与设备分支同式）
+                float lse_corr_val = 0.0f;
+                if (has_lse_corr) {
+                    const int64_t corr_offset =
+                        ((b_idx * static_cast<int64_t>(hq_) + hq_curr) * sq_ + (sq_start + i)) * sizeof(float);
+                    lse_corr_val = *reinterpret_cast<const float*>(lse_correction_gm_ + corr_offset);
+                }
                 const float lse_host = OnlineSoftmaxTransformer::ConvertLseToHost(
                     row_states_[r].lse, tiling_->sm_scale_log2e * INV_LOG2E,
-                    sim_mem_->lse_corr[r], is_smooth_k, S_FP8_OFFSET);
+                    lse_corr_val, has_lse_corr, S_FP8_OFFSET);
 
                 for (uint32_t c = 0; c < tiling_->d_og; ++c) {
                     const float val = sim_mem_->o_accum[static_cast<size_t>(r) * d_ + c] * inv_row;
@@ -1946,9 +1998,10 @@ private:
     __gm__ uint8_t *key_gm_{nullptr};
     __gm__ uint8_t *value_gm_{nullptr};
     __gm__ uint8_t *key_mean_gm_{nullptr};
-    // smooth_k 的 GM 侧 lse_correction 直读通道（注册入参 4）：基线数值由核内
-    // Q·km 单点计算（twin 契约，LoadAndQuantizeQ 步 4），该通道仅完成指针承接，
-    // 消费留给向量化 pass（届时以非空判优，避免与核内计算双份叠加）。
+    // smooth_k 的行级 lse_correction（注册入参 4）：桥接层按开源契约算好（fp32
+    // q·km_broadcast^T，仅 return_lse 时非空），V1 Finalize 按 (b, hq, token) 全局
+    // 下标直读；校正项启用与否以本指针非空为唯一定义（V0/V1 跨 AIV 不共享私有
+    // 状态，核内不得自算）。
     __gm__ uint8_t *lse_correction_gm_{nullptr};
     __gm__ uint8_t *out_gm_{nullptr};
     __gm__ uint8_t *lse_gm_{nullptr};
@@ -1988,9 +2041,6 @@ private:
     // 与 twin RunSequential 的行级状态一致；真实硬件驻留 V1 UB LSE_WORKSPACE 区）
     OnlineSoftmaxState row_states_[MAX_PACK_ROWS];
 
-    // smooth_k 行级 lse_correction 统一状态（全分支共享，杜绝设备态硬编码 0.0f）
-    float lse_corr_[MAX_PACK_ROWS]{0.0f};
-
 };
 
 } // namespace sage_attn
@@ -2029,7 +2079,8 @@ extern "C" __global__ __aicore__ void sage_attention2(
     kernel.Init(query, key, value, keyMean, lseCorrection, attentionOut, softmaxLse, user_workspace, &t);
 #else
     (void)workspace;
-    // 基线 lse_correction 由核内 Q·km 单点计算（twin 契约），GM 直读通道留给向量化 pass
+    // 基线 lse_correction 由桥接层算好传入（开源契约），本入口直承 GM 指针，
+    // V1 FinalizeAndStoreOutput 消费（校正启用以指针非空为唯一定义）
     const sage_attn::SageAttention2TilingData *tiling_data =
         reinterpret_cast<const sage_attn::SageAttention2TilingData *>(tiling);
     sage_attn::SageAttnKernel kernel;

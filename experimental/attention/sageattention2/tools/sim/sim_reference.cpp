@@ -34,11 +34,12 @@ int main(int argc, char **argv) {
     GenerateFp16Tensor(kSeed + 1u, q_bits);
     GenerateFp16Tensor(kSeed + 2u, k_bits);
     GenerateFp16Tensor(kSeed + 3u, v_bits);
-    std::vector<float> km;
+    std::vector<float> km, corr;
     ComputeKeyMean(k_bits, km);
+    ComputeLseCorrection(q_bits, km, corr);
 
     if (!WriteBin(P(kQBin), q_bits) || !WriteBin(P(kKBin), k_bits) || !WriteBin(P(kVBin), v_bits) ||
-        !WriteBin(P(kKmBin), km)) {
+        !WriteBin(P(kKmBin), km) || !WriteBin(P(kLseCorrBin), corr)) {
         std::fprintf(stderr, "[FAIL] 写输入 bin 失败（目录 %s）\n", dir.c_str());
         return 1;
     }
@@ -58,7 +59,8 @@ int main(int argc, char **argv) {
                 tiling.m_per_core, tiling.block_n, tiling.k_step, tiling.core_num_used,
                 static_cast<unsigned long long>(ws_bytes));
 
-    // 3. golden：宿主孪生全流水（含 smooth_k 的 LSE 校正项）
+    // 3. golden：宿主孪生全流水（smooth_k 的 LSE 校正项经 io.lse_correction 外部传入，
+    //    与设备核 GM 入参同源同值）
     std::vector<uint16_t> out_bits(static_cast<size_t>(kB) * kSq * kHq * kDOg, 0);
     std::vector<float> lse(static_cast<size_t>(kB) * kHq * kSq, 0.0f);
 
@@ -69,6 +71,7 @@ int main(int argc, char **argv) {
     io.out = out_bits.data();
     io.lse = lse.data();
     io.key_mean = km.data();
+    io.lse_correction = corr.data();
     io.b = kB;
     io.hq = kHq;
     io.hkv = kHkv;
@@ -80,6 +83,7 @@ int main(int argc, char **argv) {
     io.pv_accum_dtype = kPvAccum;
     io.is_causal = kIsCausal;
     io.smooth_k = kSmoothK;
+    io.smooth_v = 0;  // 冻结用例为 fp32+fp16 档，smooth_v 不生效
     io.dtype_mode = kDtypeMode;
     io.sm_scale = kSmScale;
 

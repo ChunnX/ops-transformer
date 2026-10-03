@@ -11,21 +11,23 @@
 extern "C" {
 
 /**
- * CPU 孪生全流水入口。参数口径与 TwinIo 一一对应；返回 0 成功。
- * lse 传 nullptr 表示 return_lse=False；key_mean 传 nullptr 且 smooth_k=1 时内部自算 km。
+ * CPU 孪生全流水入口。参数口径与 TwinIo 字段序一一对应；返回 0 成功。
+ * lse 传 nullptr 表示 return_lse=False；key_mean 传 nullptr 且 smooth_k=1 时内部自算 km；
+ * lse_correction 为 smooth_k=1 时调用方按开源公式预计算的行级校正（[b*hq*sq] fp32，
+ * 与设备核同契约——外部传入，孪生不自算）；smooth_v 仅 pv_accum=fp32 档生效。
  */
 int SageAttnTwinRunForward(
     const void* q, const void* k, const void* v,
-    const float* key_mean, void* out, float* lse,
+    const float* key_mean, const float* lse_correction, void* out, float* lse,
     unsigned b, unsigned hq, unsigned hkv, unsigned sq, unsigned sk, unsigned d_og,
     unsigned tensor_layout, unsigned qk_quant_gran, unsigned pv_accum_dtype,
-    unsigned is_causal, unsigned smooth_k, int dtype_mode, float sm_scale) {
+    unsigned is_causal, unsigned smooth_k, unsigned smooth_v, int dtype_mode, float sm_scale) {
     // C-ABI 形参序即 TwinIo 字段序（struct 契约），聚合初始化一处绑定
     const sage_attn::twin::TwinIo io{
-        q, k, v, out, lse, key_mean,
+        q, k, v, out, lse, key_mean, lse_correction,
         b, hq, hkv, sq, sk, d_og,
         tensor_layout, qk_quant_gran, pv_accum_dtype,
-        is_causal, smooth_k, dtype_mode, sm_scale};
+        is_causal, smooth_k, smooth_v, dtype_mode, sm_scale};
     return sage_attn::twin::RunSequential(io);
 }
 

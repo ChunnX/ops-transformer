@@ -156,12 +156,14 @@ __simd_vf__ inline void QuantRowInt8VF(__ubuf__ half* in_ptr, __ubuf__ int8_t* o
 /**
  * 3. V 行 FP8 量化（DEFECT-F-1：per-channel scale 分档）：
  * - scale 向量由调用方按全序列 per-channel amax / v_scale_max（2.25 或 448 分档）预写；
+ * - 可选 smooth_v 的 vm 减法（float 域直减、无位型舍回，对齐 quant_fp8 ProcessV 口径）；
  * - 除法轨迹：scaled = val / scale（对齐宿主/孪生除法）；
  * - 全零通道 scale=0 → 0/0=NaN → e4m3 编码 0x7f（对齐 quant::FloatToE4m3fn 的
  *   NaN 保真与 golden）；有限通道饱和 ±scale_max 后 RNE 转 e4m3。
  */
 __simd_vf__ inline void QuantVRowFp8VF(__ubuf__ half* in_ptr, __ubuf__ float8_e4m3_t* out_ptr,
-                                       __ubuf__ float* scale_ptr, uint32_t d,
+                                       __ubuf__ float* scale_ptr, __ubuf__ float* vm_ptr,
+                                       uint32_t has_vm, uint32_t d,
                                        float scale_max, uint32_t dtype_mode) {
     using namespace AscendC;
     using namespace AscendC::MicroAPI;
@@ -185,6 +187,11 @@ __simd_vf__ inline void QuantVRowFp8VF(__ubuf__ half* in_ptr, __ubuf__ float8_e4
             RegTensor<half> raw;
             LoadAlign<half, LoadDist::DIST_UNPACK_B16>(raw, in_ptr + c);
             Cast<float, half, toFp32>(val, raw, full);
+        }
+        if (has_vm != 0u) {
+            RegTensor<float> vm_val;
+            LoadAlign(vm_val, vm_ptr + c);
+            Sub(val, val, vm_val, full);
         }
         LoadAlign(scale_reg, scale_ptr + c);
         Div(scaled, val, scale_reg, full);
@@ -439,9 +446,87 @@ __simd_vf__ inline void FinalizeVScaleVF(__ubuf__ float* amax_ptr, __ubuf__ floa
 }
 
 /**
- * 7. 最终归一化与输出位型转换（dtype_mode：2=bf16，其余按 fp16）。
+ * A7-3 smooth_v 预扫·通道 max/min/sum 累加步（smooth_v 生效时替代 ChannelAmaxAccumVF，
+ * 单趟读出三统计量；调用方按 max=-FLT_MAX / min=+FLT_MAX / sum=0 充初值）。
  */
-__simd_vf__ inline void FinalizeRowVF(__ubuf__ float* o_row, __ubuf__ uint16_t* out_row, float inv_d, uint32_t d, uint32_t dtype_mode) {
+__simd_vf__ inline void ChannelStatsAccumVF(__ubuf__ half* in_ptr, __ubuf__ float* vmax_ptr,
+                                            __ubuf__ float* vmin_ptr, __ubuf__ float* vsum_ptr,
+                                            uint32_t d, uint32_t dtype_mode) {
+    using namespace AscendC;
+    using namespace AscendC::MicroAPI;
+    auto full = CreateMask<float, MaskPattern::ALL>();
+    static constexpr CastTrait toFp32{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+
+    for (uint32_t c = 0; c < d; c += 64) {
+        RegTensor<float> val, vmax, vmin, vsum;
+        if (dtype_mode == 2u) {
+            RegTensor<bfloat16_t> raw;
+            LoadAlign<bfloat16_t, LoadDist::DIST_UNPACK_B16>(raw, reinterpret_cast<__ubuf__ bfloat16_t*>(in_ptr) + c);
+            Cast<float, bfloat16_t, toFp32>(val, raw, full);
+        } else {
+            RegTensor<half> raw;
+            LoadAlign<half, LoadDist::DIST_UNPACK_B16>(raw, in_ptr + c);
+            Cast<float, half, toFp32>(val, raw, full);
+        }
+        LoadAlign(vmax, vmax_ptr + c);
+        LoadAlign(vmin, vmin_ptr + c);
+        LoadAlign(vsum, vsum_ptr + c);
+        Max(vmax, vmax, val, full);
+        Min(vmin, vmin, val, full);
+        Add(vsum, vsum, val, full);
+        StoreAlign(vmax_ptr + c, vmax, full);
+        StoreAlign(vmin_ptr + c, vmin, full);
+        StoreAlign(vsum_ptr + c, vsum, full);
+    }
+}
+
+/**
+ * A7-4 smooth_v 定标单点（dispatch._quant_v_fp8 smooth_v 支路 / quant_fp8 ProcessV 同式）：
+ * vm[c] = sum[c] / fp8_padded；amax[c] = max(|max-vm|, |min-vm|, 有 pad 时 |0-vm|=|vm|)；
+ * scale[c] = amax[c] / scale_max（除法轨迹；全零通道 amax=0 → scale=0 的 NaN 容错
+ * 与非 smooth 路径一致）。vm 原地写回 vsum_ptr，scale 写 scale_out_ptr。
+ */
+__simd_vf__ inline void FinalizeSmoothVScaleVF(__ubuf__ float* vmax_ptr, __ubuf__ float* vmin_ptr,
+                                               __ubuf__ float* vsum_ptr, __ubuf__ float* scale_out_ptr,
+                                               uint32_t fp8_padded, uint32_t has_pad,
+                                               float scale_max, uint32_t d) {
+    using namespace AscendC;
+    using namespace AscendC::MicroAPI;
+    auto full = CreateMask<float, MaskPattern::ALL>();
+
+    RegTensor<float> pad_reg, smax_reg, zero_reg;
+    Duplicate(pad_reg, static_cast<float>(fp8_padded));
+    Duplicate(smax_reg, scale_max);
+    Duplicate(zero_reg, 0.0f);
+    for (uint32_t c = 0; c < d; c += 64) {
+        RegTensor<float> vmax, vmin, vm, hi, lo, amax;
+        LoadAlign(vmax, vmax_ptr + c);
+        LoadAlign(vmin, vmin_ptr + c);
+        LoadAlign(vm, vsum_ptr + c);
+        Div(vm, vm, pad_reg, full);            // vm = sum / fp8_padded
+        Sub(hi, vmax, vm, full);
+        Abs(hi, hi, full);
+        Sub(lo, vmin, vm, full);
+        Abs(lo, lo, full);
+        Max(amax, hi, lo, full);
+        if (has_pad != 0u) {
+            RegTensor<float> vm_abs;
+            Abs(vm_abs, vm, full);             // pad token (val=0) 贡献 |0 - vm|
+            Max(amax, amax, vm_abs, full);
+        }
+        Div(amax, amax, smax_reg, full);       // scale = amax / scale_max
+        StoreAlign(scale_out_ptr + c, amax, full);
+        StoreAlign(vsum_ptr + c, vm, full);    // vm 原地写回
+    }
+}
+
+/**
+ * 7. 最终归一化与输出位型转换（dtype_mode：2=bf16，其余按 fp16）。
+ * 可选 smooth_v 的 vm 偏置：V 减均值量化下 PV 分子分母的 vm·Σp 项在归一化中
+ * 恰好还原为 vm（不参与归一化），故出口直接逐通道加回（o·inv + vm）。
+ */
+__simd_vf__ inline void FinalizeRowVF(__ubuf__ float* o_row, __ubuf__ uint16_t* out_row, float inv_d,
+                                      __ubuf__ float* vm_ptr, uint32_t d, uint32_t dtype_mode) {
     using namespace AscendC;
     using namespace AscendC::MicroAPI;
     auto full = CreateMask<float, MaskPattern::ALL>();
@@ -453,6 +538,11 @@ __simd_vf__ inline void FinalizeRowVF(__ubuf__ float* o_row, __ubuf__ uint16_t* 
         RegTensor<float> x;
         LoadAlign(x, o_row + c);
         Mul(x, x, inv_reg, full);
+        if (vm_ptr != nullptr) {
+            RegTensor<float> vm_val;
+            LoadAlign(vm_val, vm_ptr + c);
+            Add(x, x, vm_val, full);
+        }
         if (dtype_mode == 2u) {
             // bf16 输出（收敛轮 F/DEFECT-F-3）：与宿主 WriteOutputBits 的 Fp32ToBf16 口径一致
             RegTensor<bfloat16_t> b;
@@ -464,40 +554,6 @@ __simd_vf__ inline void FinalizeRowVF(__ubuf__ float* o_row, __ubuf__ uint16_t* 
             StoreAlign<half, StoreDist::DIST_PACK_B32>(reinterpret_cast<__ubuf__ half*>(out_row) + c, h, full);
         }
     }
-}
-
-/**
- * 8. 向量点积（行级 lse_correction 向量化）：
- * 计算 in_ptr (fp16/bf16, 长度 d) 与 km_ptr (float, 长度 d) 的内积，结果写至 out_slot (1 float/行)。
- * 以 256 位 SIMD 寄存器并行执行 Cast + Mul + ReduceSum，彻底消除标量读 GM 循环。
- */
-__simd_vf__ inline void DotProductVF(__ubuf__ half* in_ptr, __ubuf__ float* km_ptr,
-                                     __ubuf__ float* out_slot, uint32_t d, uint32_t dtype_mode) {
-    using namespace AscendC;
-    using namespace AscendC::MicroAPI;
-    auto full = CreateMask<float, MaskPattern::ALL>();
-    static constexpr CastTrait toFp32{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
-
-    RegTensor<float> accum;
-    Duplicate(accum, 0.0f);
-    for (uint32_t c = 0; c < d; c += 64) {
-        RegTensor<float> val, km_val;
-        if (dtype_mode == 2u) {
-            RegTensor<bfloat16_t> raw;
-            LoadAlign<bfloat16_t, LoadDist::DIST_UNPACK_B16>(raw, reinterpret_cast<__ubuf__ bfloat16_t*>(in_ptr) + c);
-            Cast<float, bfloat16_t, toFp32>(val, raw, full);
-        } else {
-            RegTensor<half> raw;
-            LoadAlign<half, LoadDist::DIST_UNPACK_B16>(raw, in_ptr + c);
-            Cast<float, half, toFp32>(val, raw, full);
-        }
-        LoadAlign(km_val, km_ptr + c);
-        Mul(val, val, km_val, full);
-        Add(accum, accum, val, full);
-    }
-    ReduceSum(accum, accum, full);
-    auto single_lane = CreateMask<float, MaskPattern::VL1>();
-    StoreAlign(out_slot, accum, single_lane);
 }
 
 } // namespace dev_vf

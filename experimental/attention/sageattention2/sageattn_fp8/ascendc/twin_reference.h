@@ -48,6 +48,9 @@ struct TwinIo {
     void* out;
     float* lse;             // 可为 nullptr（等价 return_lse=False）
     const float* key_mean;  // 预计算的 km [b*hkv*d_pad]，smooth_k=0 时可为 nullptr
+    const float* lse_correction;  // 预计算的行级校正 [b*hq*sq] fp32（q·km_broadcast^T）；
+                                  // smooth_k=1 时调用方必须传入（与设备核同契约：桥接层/
+                                  // 上游算好传入，核/孪生不自算），smooth_k=0 时忽略
 
     uint32_t b;
     uint32_t hq;
@@ -61,6 +64,7 @@ struct TwinIo {
     uint32_t pv_accum_dtype;  // PV_ACCUM_* 三档
     uint32_t is_causal;
     uint32_t smooth_k;
+    uint32_t smooth_v;        // 仅 pv_accum_dtype==PV_ACCUM_FP32 时生效（host 同款门控）
     int dtype_mode;           // 1=fp16, 2=bf16
     float sm_scale;           // 调用方保证非空（host 已做 1/sqrt(d_og) 缺省折叠）
 };
@@ -354,31 +358,44 @@ inline int RunSequential(const TwinIo& io, TwinQuantDump* dump = nullptr) {
     const uint32_t q_scales = quant::QScaleCount(io.sq, per_thread);
     const uint32_t k_scales = quant::KScaleCount(io.sk, per_thread);
     const uint32_t pad_sk_v = ((io.sk + 63) / 64) * 64;
+    // smooth_v 档位门控（host tiling 同式：仅全精度 fp32 档生效）
+    const bool smooth_v = (io.smooth_v != 0) && (pv_accum == PV_ACCUM_FP32);
     // static：SageAttnTwinQuantDump 导出的指针在下一次调用前保持有效
     static std::vector<int8_t> q_int8, k_int8;
     static std::vector<uint8_t> v_fp8;
-    static std::vector<float> q_scale, k_scale, v_scale;
+    static std::vector<float> q_scale, k_scale, v_scale, vm;
     q_int8.assign(total_q, 0);
     k_int8.assign(total_kv, 0);
     v_fp8.assign(static_cast<size_t>(io.b) * io.hkv * d_pad * pad_sk_v, 0);
     q_scale.assign(static_cast<size_t>(io.b) * io.hq * q_scales, 0.0f);
     k_scale.assign(static_cast<size_t>(io.b) * io.hkv * k_scales, 0.0f);
     v_scale.assign(static_cast<size_t>(io.b) * io.hkv * d_pad, 0.0f);
+    if (smooth_v) {
+        vm.assign(static_cast<size_t>(io.b) * io.hkv * d_pad, 0.0f);
+    } else {
+        vm.clear();
+    }
 
     QuantizeQInt8Ascend(q_pad.data(), q_int8.data(), q_scale.data(), io.b, io.hq, io.sq, d_pad,
                         io.qk_quant_gran, LAYOUT_HND, io.dtype_mode);
     QuantizeKInt8Ascend(k_pad.data(), smooth_k ? km.data() : nullptr, k_int8.data(), k_scale.data(),
                         io.b, io.hkv, io.sk, d_pad, io.qk_quant_gran, smooth_k ? 1 : 0,
                         LAYOUT_HND, io.dtype_mode);
-    QuantizeVFp8Ascend(v_pad.data(), v_fp8.data(), v_scale.data(), nullptr, io.b, io.hkv, io.sk,
-                       d_pad, io.pv_accum_dtype, 0, LAYOUT_HND, io.dtype_mode);
+    QuantizeVFp8Ascend(v_pad.data(), v_fp8.data(), v_scale.data(),
+                       smooth_v ? vm.data() : nullptr, io.b, io.hkv, io.sk,
+                       d_pad, io.pv_accum_dtype, smooth_v ? 1 : 0, LAYOUT_HND, io.dtype_mode);
 
     // 4. V 反量化（e4m3 位型转 float 供 PV 使用）
     //    v_fp8 物理布局 [b, hkv, d_pad, pad_sk_v]：段内物理槽 p 存放 token V_PERM_PATTERN[p]
+    //    smooth_v：v_deq = 解码 · scale + vm（dispatch._quant_v_fp8 smooth_v 支路同式）
     auto v_deq = [&](uint32_t bi, uint32_t hi, uint32_t di, uint32_t j) -> float {
         const uint32_t slot = quant::VSlotOfToken(j);
         const size_t off = ((static_cast<size_t>(bi) * io.hkv + hi) * d_pad + di) * pad_sk_v + slot;
-        return E4m3fnToFloat(v_fp8[off]) * v_scale[(static_cast<size_t>(bi) * io.hkv + hi) * d_pad + di];
+        const float deq = E4m3fnToFloat(v_fp8[off]) * v_scale[(static_cast<size_t>(bi) * io.hkv + hi) * d_pad + di];
+        if (!smooth_v) {
+            return deq;
+        }
+        return deq + vm[(static_cast<size_t>(bi) * io.hkv + hi) * d_pad + di];
     };
 
     // 5. 主循环：逐 (b, hq) 头，QK^T → online softmax（锚点纪律）→ FP8 PV → 归一化
@@ -387,7 +404,6 @@ inline int RunSequential(const TwinIo& io, TwinQuantDump* dump = nullptr) {
     const uint32_t gqa = io.hq / io.hkv;
     std::vector<float> o_acc(io.sq * d_pad);
     std::vector<float> s_row(io.sk);
-    std::vector<float> corr_row(io.sq);
     std::vector<float> inv_row(io.sq);
 
     for (uint32_t bi = 0; bi < io.b; ++bi) {
@@ -398,19 +414,12 @@ inline int RunSequential(const TwinIo& io, TwinQuantDump* dump = nullptr) {
             const int8_t* k_head = k_int8.data() + (static_cast<size_t>(bi) * io.hkv + kh) * io.sk * d_pad;
             const float* ks_head = k_scale.data() + (static_cast<size_t>(bi) * io.hkv + kh) * k_scales;
 
-            // smooth_k 的 LSE 校正项（行级 lse_correction = q_i · km，积和按输入 dtype 舍入）
-            if (smooth_k) {
-                const float* km_head = km.data() + (static_cast<size_t>(bi) * io.hkv + kh) * d_pad;
-                for (uint32_t i = 0; i < io.sq; ++i) {
-                    float corr = 0.0f;
-                    for (uint32_t c = 0; c < d_pad; ++c) {
-                        corr += detail::ReadInput(
-                            q_pad.data(), detail::ElemOffset(bi, hi, i, c, io.b, io.hq, io.sq, d_pad, true),
-                            io.dtype_mode) * km_head[c];
-                    }
-                    corr_row[i] = corr;
-                }
-            }
+            // smooth_k 的行级 LSE 校正项：与设备核同契约，由调用方按开源公式
+            // （q·km_broadcast^T，fp32）算好经 io.lse_correction 传入，孪生不自算
+            const float* corr_head =
+                (smooth_k && io.lse_correction != nullptr)
+                    ? io.lse_correction + (static_cast<size_t>(bi) * io.hq + hi) * io.sq
+                    : nullptr;
 
             std::fill(o_acc.begin(), o_acc.end(), 0.0f);
 
@@ -482,7 +491,9 @@ inline int RunSequential(const TwinIo& io, TwinQuantDump* dump = nullptr) {
                 if (io.lse != nullptr) {
                     io.lse[(static_cast<size_t>(bi) * io.hq + hi) * io.sq + i] =
                         OnlineSoftmaxTransformer::ConvertLseToHost(
-                            state.lse, io.sm_scale, corr_row[i], smooth_k, S_FP8_OFFSET);
+                            state.lse, io.sm_scale,
+                            corr_head != nullptr ? corr_head[i] : 0.0f,
+                            corr_head != nullptr, S_FP8_OFFSET);
                 }            }
 
             // 5.6 归一化（行级 1/d）、裁剪回 d_og、写回输出

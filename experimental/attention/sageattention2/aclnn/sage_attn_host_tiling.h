@@ -342,7 +342,8 @@ inline aclnnStatus ComputeHostTiling(
         return ((size + 511ULL) / 512ULL) * 512ULL;
     };
 
-    // (1) LSE 临时显存空间 (Split-KV 跨核归并或 smooth_k 修正)
+    // (1) LSE 临时显存空间 (Split-KV 跨核归并；smooth_k 的 lse_correction 由桥接层
+    //     经 lseCorrection GM 入参直传，不经 workspace)
     if (split_kv_num > 1 || hasLse) {
         tiling_out.workspace_lse_offset = current_ws_offset;
         int64_t lse_elems = static_cast<int64_t>(b) * hq * sq * split_kv_num;

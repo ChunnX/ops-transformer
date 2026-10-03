@@ -71,6 +71,7 @@ constexpr const char *kQBin = "input_q_fp16.bin";
 constexpr const char *kKBin = "input_k_fp16.bin";
 constexpr const char *kVBin = "input_v_fp16.bin";
 constexpr const char *kKmBin = "input_key_mean_f32.bin";
+constexpr const char *kLseCorrBin = "input_lse_correction_f32.bin";
 constexpr const char *kTilingBin = "tiling_160.bin";
 constexpr const char *kGoldenOBin = "golden_o_fp16.bin";
 constexpr const char *kGoldenLseBin = "golden_lse_f32.bin";
@@ -117,6 +118,29 @@ inline void ComputeKeyMean(const std::vector<uint16_t> &k_bits, std::vector<floa
                 const float mean = static_cast<float>(sum / kSk);
                 km[(static_cast<size_t>(bi) * kHkv + hi) * 128u + di] =
                     sage_attn::quant::Fp16ToFp32(sage_attn::quant::Fp32ToFp16(mean));
+            }
+        }
+    }
+}
+
+/**
+ * smooth_k 的行级 lse_correction 预计算（[b*hq*sq] fp32，开源契约 q·km_broadcast^T）：
+ * 与 key_mean 同为"上层算好传入"的外部张量——设备核经 GM 入参 5 直读、孪生经
+ * TwinIo.lse_correction 消费，本端产出保证两侧同源（gqa=1，km 广播为恒等）。
+ */
+inline void ComputeLseCorrection(const std::vector<uint16_t> &q_bits, const std::vector<float> &km,
+                                 std::vector<float> &corr) {
+    corr.assign(static_cast<size_t>(kB) * kHq * kSq, 0.0f);
+    for (uint32_t bi = 0; bi < kB; ++bi) {
+        for (uint32_t hi = 0; hi < kHq; ++hi) {
+            const float *km_head = km.data() + (static_cast<size_t>(bi) * kHkv + hi) * 128u;
+            for (uint32_t si = 0; si < kSq; ++si) {
+                float acc = 0.0f;
+                for (uint32_t di = 0; di < kDOg; ++di) {
+                    const size_t off = NhdOffset(bi, si, hi, di, kB, kSq, kHq, kDOg);
+                    acc += sage_attn::quant::Fp16ToFp32(q_bits[off]) * km_head[di];
+                }
+                corr[(static_cast<size_t>(bi) * kHq + hi) * kSq + si] = acc;
             }
         }
     }

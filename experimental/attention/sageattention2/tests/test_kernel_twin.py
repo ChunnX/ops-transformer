@@ -9,7 +9,8 @@
    （SAGE_ATTN_DEVICE_COMPILE=0 路径，SimMemory 模拟 L1/UB/L0）——经 extern "C"
    sage_attention2 入口直驱，Host Tiling 同款 TilingData（core_num_used=1 + 关闭
    Die 亲和串行覆盖全部任务），验证 V0 量化 prologue / V1 softmax 与 PV 的核内
-   数值路径与 GM 出入口（含 d_pad pad/crop、NHD 原生布局、smooth_k LSE 校正）。
+   数值路径与 GM 出入口（含 d_pad pad/crop、NHD 原生布局、smooth_k LSE 校正、
+   smooth_v 的 V 减均值量化与 PV +vm）。
 
 比对基线：golden/manifest.json 全部 25 桶的落盘 out/lse（CPU 高保真参考轨迹）。
 容差口径（与 tests/test_golden_precision.py 的 L-A/L-B 一致）：
@@ -18,15 +19,20 @@
 - L-B：对 out_sdpa_fp32 的 max/mean/rmse 误差比 <= 2.0/1.2/1.2（分母取 manifest metrics）。
 
 覆盖范围与如实标注：
-- 全流水孪生：25 桶中 22 桶整桶执行（含 P-01 主档 / TC-05_pad_d48 / TC-07_causal_per_warp
-  三个代表桶的专属用例与量化中间态位级比对）；TC-03_smooth_v_fp32 不在孪生/核内
-  基线建模范围（smooth_v 正路径由 Python 包装层承担，行为验证归 tests/test_function.py）；
+- 全流水孪生：25 桶整桶执行（含 P-01 主档 / TC-05_pad_d48 / TC-07_causal_per_warp
+  三个代表桶的专属用例与量化中间态位级比对）；TC-03_smooth_v_fp32 经 smooth_v
+  正路径（V 减均值量化 + PV +vm）整桶执行；
   P-05/P-07/TC-09 三个大桶（saved_shape 序列长 >= 512/1024/2048）按"非因果行的行级
   独立性"取 128 对齐行窗口执行（窗口内 Q 量化组按 32-token 组边界整组包含，与整桶
   golden 量化轨迹逐位同源），测试名以 row_window 如实标注；
 - kernel 宿主串行分支：TC-05（pad d48/d96 补零+裁剪，覆盖 pad64/pad128 两域）、
   TC-07（causal + per_warp）、TC-01（NHD 原生布局 fp16/bf16）、TC-04（smooth_k LSE
-  校正）、P-01 主档共 7 桶（宿主标量路径每任务重摆 KV，代价高于孪生，取代表性覆盖）。
+  校正）、TC-03（smooth_v 正路径）、P-01 主档共 8 桶（宿主标量路径每任务重摆 KV，
+  代价高于孪生，取代表性覆盖）。
+
+lse_correction 喂法（开源契约）：km 与 corr = q·km_broadcast^T（fp32 matmul）均在
+上层算好传入——孪生经 C-ABI lse_correction 形参、kernel 经 GM 入参 5，两条路径
+消费同一 `_lse_correction` 产出（本文件唯一定义）。
 
 运行方式：pytest tests/test_kernel_twin.py 或 python tests/test_kernel_twin.py；
 动态库现场编译（首次约 1 s，按源码 mtime 缓存），无需 NPU 与预置产物。
@@ -65,8 +71,22 @@ from tiling_mirror import (  # noqa: E402
 LOG2E = 1.4426950408889634
 S_FP8_OFFSET = 8.807354922057604
 
-# smooth_v 正路径不在孪生/核内基线建模范围（Python 包装层职责，见模块 docstring）
-SKIP_TWIN_CASES = {"TC-03_smooth_v_fp32"}
+
+def _lse_correction(q: torch.Tensor, k: torch.Tensor, hnd: bool) -> torch.Tensor:
+    """smooth_k 行级 lse_correction（[b, hq, sq] fp32，开源契约 core.py:593-597）。"""
+    if not hnd:
+        q = q.transpose(1, 2)
+        k = k.transpose(1, 2)
+    km = k.mean(dim=2, keepdim=True)
+    q_per_kv = q.shape[1] // k.shape[1]
+    if q_per_kv > 1:
+        km = km.repeat_interleave(q_per_kv, dim=1)
+    return torch.matmul(q.float(), km.float().transpose(2, 3)).squeeze(-1).contiguous()
+
+
+def _effective_smooth_v(case: dict) -> bool:
+    """smooth_v 生效判据（host tiling 同式：smoothV && pv_accum==fp32）。"""
+    return bool(case.get("smooth_v", False)) and case.get("pv_accum_dtype", "fp32+fp16") == "fp32"
 # 大桶行窗口（非因果行独立性；窗口起点 128 对齐保证 per_thread/per_warp Q 量化组
 # 与整桶 golden 同组同值——QScaleIndex 以 128-token 块内相位寻址；K/V 按头切片）
 TWIN_ROW_WINDOWS = {
@@ -109,7 +129,7 @@ def _load_lib() -> ctypes.CDLL:
     lib = ctypes.CDLL(str(_build_dylib()))
     lib.SageAttnTwinRunForward.restype = ctypes.c_int
     lib.SageAttnTwinRunForward.argtypes = (
-        [ctypes.c_void_p] * 6 + [ctypes.c_uint] * 11 + [ctypes.c_int, ctypes.c_float]
+        [ctypes.c_void_p] * 7 + [ctypes.c_uint] * 12 + [ctypes.c_int, ctypes.c_float]
     )
     lib.SageAttnTwinQuantDump.restype = None
     lib.SageAttnTwinQuantDump.argtypes = (
@@ -161,17 +181,24 @@ def _run_twin(case: dict, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor):
     shape = case["saved_shape"]
     b, hq, hkv = shape["batch_size"], shape["num_qo_heads"], shape["num_kv_heads"]
     sq, sk, d = shape["qo_len"], shape["kv_len"], shape["head_dim"]
-    layout = LAYOUT_HND if case.get("tensor_layout", "HND") == "HND" else LAYOUT_NHD
+    hnd = case.get("tensor_layout", "HND") == "HND"
+    layout = LAYOUT_HND if hnd else LAYOUT_NHD
     gran = GRAN_PER_THREAD if case.get("qk_quant_gran", "per_thread") == "per_thread" else GRAN_PER_WARP
     accum = ACCUM_CODE[case.get("pv_accum_dtype", "fp32+fp16")]
+    smooth_k = 1 if case.get("smooth_k", True) else 0
+    smooth_v = 1 if _effective_smooth_v(case) else 0
     out = torch.empty_like(q)
     lse = torch.zeros(b * hq * sq, dtype=torch.float32)
+    # smooth_k 校正项由上层算好传入（开源契约，与设备核 GM 入参同式）
+    corr = _lse_correction(q, k, hnd) if smooth_k else None
     rc = _LIB.SageAttnTwinRunForward(
         ctypes.c_void_p(q.data_ptr()), ctypes.c_void_p(k.data_ptr()), ctypes.c_void_p(v.data_ptr()),
-        None, ctypes.c_void_p(out.data_ptr()), ctypes.c_void_p(lse.data_ptr()),
+        None,
+        ctypes.c_void_p(corr.data_ptr()) if corr is not None else None,
+        ctypes.c_void_p(out.data_ptr()), ctypes.c_void_p(lse.data_ptr()),
         b, hq, hkv, sq, sk, d, layout, gran, accum,
         1 if case.get("is_causal") else 0,
-        1 if case.get("smooth_k", True) else 0,
+        smooth_k, smooth_v,
         _dtype_mode(q), 1.0 / math.sqrt(d),
     )
     assert rc == 0, f"twin refused config (rc={rc})"
@@ -183,7 +210,9 @@ def _run_kernel_host(case: dict, q: torch.Tensor, k: torch.Tensor, v: torch.Tens
 
     入出口契约：Q/K/V/OUT 的 GM 视图按 d_pad 步长寻址（d_og < d_pad 时调用方补零
     pad、出参裁剪，与设备包装层职责一致）；key_mean 为 fp32 [b, hkv, d_pad]；
-    TilingData 与 aclnn/sage_attn_host_tiling.h ComputeHostTiling 同式填充，
+    lse_correction 为 fp32 [b, hq, sq]（smooth_k 时非空，核 V1 Finalize 按
+    (b, hq, token) 全局下标直读——与设备 GM 入参同契约）；TilingData 与
+    aclnn/sage_attn_host_tiling.h ComputeHostTiling 同式填充，
     core_num_used=1 + 关闭 Die 亲和使单核串行覆盖全部任务。
     """
     shape = case["saved_shape"]
@@ -196,6 +225,7 @@ def _run_kernel_host(case: dict, q: torch.Tensor, k: torch.Tensor, v: torch.Tens
     accum = ACCUM_CODE[case.get("pv_accum_dtype", "fp32+fp16")]
     causal = 1 if case.get("is_causal") else 0
     smooth_k = 1 if case.get("smooth_k", True) else 0
+    smooth_v = 1 if _effective_smooth_v(case) else 0
     gqa = hq // hkv
     assert gqa == 1, "kernel host tier covers gqa=1 buckets (rows = gqa*64 <= 128)"
 
@@ -213,6 +243,9 @@ def _run_kernel_host(case: dict, q: torch.Tensor, k: torch.Tensor, v: torch.Tens
     km = None
     if smooth_k:
         km = kp.mean(dim=2 if hnd else 1).float().contiguous()
+        corr = _lse_correction(qp, kp, hnd).contiguous().view(-1)
+    else:
+        corr = None
     out_pad = torch.zeros_like(qp)
     lse = torch.zeros(b * hq * sq, dtype=torch.float32)
 
@@ -220,7 +253,7 @@ def _run_kernel_host(case: dict, q: torch.Tensor, k: torch.Tensor, v: torch.Tens
     t = SageAttention2TilingData()
     t.b, t.hq, t.hkv, t.sq, t.sk, t.d_og, t.d_pad = b, hq, hkv, sq, sk, d_og, d_pad
     t.is_causal, t.tensor_layout, t.qk_quant_gran, t.pv_accum_dtype = causal, layout, gran, accum
-    t.smooth_k, t.smooth_v = smooth_k, 0
+    t.smooth_k, t.smooth_v = smooth_k, smooth_v
     # 输入位型分派（tiling.h §8，ComputeHostTiling 同式）：核内 ReadInputBits/
     # km 减法按该字段走 fp16/bf16 分支，0 会被核内归一为 fp16
     t.input_dtype = _dtype_mode(q)
@@ -244,9 +277,10 @@ def _run_kernel_host(case: dict, q: torch.Tensor, k: torch.Tensor, v: torch.Tens
     t.cores_per_die, t.tasks_per_die = 1, b * hkv * t.q_blk_num
 
     km_ptr = ctypes.c_void_p(km.data_ptr()) if km is not None else None
+    corr_ptr = ctypes.c_void_p(corr.data_ptr()) if corr is not None else None
     _LIB.sage_attention2(
         ctypes.c_void_p(qp.data_ptr()), ctypes.c_void_p(kp.data_ptr()), ctypes.c_void_p(vp.data_ptr()),
-        km_ptr, None,
+        km_ptr, corr_ptr,
         ctypes.c_void_p(out_pad.data_ptr()), ctypes.c_void_p(lse.data_ptr()),
         None, ctypes.cast(ctypes.byref(t), ctypes.c_void_p),
     )
@@ -370,11 +404,12 @@ class TestTwinFullPipelineVsGolden(GoldenTwinTestBase):
                 self._run_full_bucket(case_id)
 
     def test_tc_bucket_matrix(self):
-        """TC 行为矩阵整桶：NHD/bf16、per_warp 与三档累加、no_smooth_k、GQA、pad d80/d96、LSE。"""
+        """TC 行为矩阵整桶：NHD/bf16、per_warp 与三档累加、smooth_v 正路径、no_smooth_k、
+        GQA、pad d80/d96、LSE。"""
         for case_id in ("TC-01_nhd_layout_fp16", "TC-01_nhd_layout_bf16",
                         "TC-02_per_thread_fp32", "TC-02_per_thread_fp32+fp32",
                         "TC-02_per_warp_fp32", "TC-02_per_warp_fp32+fp16", "TC-02_per_warp_fp32+fp32",
-                        "TC-03_no_smooth_k", "TC-04_return_lse", "TC-04_return_lse_gqa",
+                        "TC-03_smooth_v_fp32", "TC-03_no_smooth_k", "TC-04_return_lse", "TC-04_return_lse_gqa",
                         "TC-05_pad_d80", "TC-05_pad_d96",
                         "TC-06_gqa_sq_neq_sk", "TC-10_sdpa_compat"):
             with self.subTest(case=case_id):
@@ -418,7 +453,7 @@ class TestTwinFullPipelineVsGolden(GoldenTwinTestBase):
                           f"lse={stats['lse_max_diff']:.3e}")
 
     def test_manifest_bucket_coverage(self):
-        """门禁自检：25 桶中除 smooth_v 建模边界外全部被本文件覆盖（整桶或行窗口）。"""
+        """门禁自检：25 桶全部被本文件覆盖（整桶或行窗口；smooth_v 正路径已入基线）。"""
         covered = {"P-01_per_thread_fp32+fp16_fp16_HND", "TC-05_pad_d48", "TC-07_causal_per_warp"}
         covered |= set(TWIN_ROW_WINDOWS)
         for case_id in self.manifest:
@@ -429,20 +464,18 @@ class TestTwinFullPipelineVsGolden(GoldenTwinTestBase):
                                "P-06_per_thread_fp32+fp16_bf16_HND"):
                     covered.add(case_id)
             elif case_id.startswith("TC-") and case_id not in covered:
-                if case_id not in SKIP_TWIN_CASES:
-                    covered.add(case_id)
+                covered.add(case_id)
         missing = [c for c in self.manifest if c not in covered]
-        self.assertEqual(set(missing), set(SKIP_TWIN_CASES),
-                         f"twin coverage hole: {missing} (expected only {sorted(SKIP_TWIN_CASES)})")
+        self.assertEqual(missing, [], f"twin coverage hole: {missing}")
 
 
 class TestKernelHostSerialBranchVsGolden(GoldenTwinTestBase):
     """kernel 宿主串行分支（op_kernel SageAttnKernel + SimMemory）vs golden。
 
     以 TilingData 直驱 extern "C" sage_attention2 入口（SAGE_ATTN_DEVICE_COMPILE=0
-    路径），验证 V0 量化 prologue（含 km 减法与 lse_correction）、V1 块内 logit/
-    softmax/P 量化/PV 与 GM 出入口；KV ping-pong 槽的宿主整段时序约束由
-    RestageKvBlockHost 保证，本测试即其 golden 级回归。
+    路径），验证 V0 量化 prologue（含 km 减法与 smooth_v 的 vm 预扫）、V1 块内 logit/
+    softmax/P 量化/PV 与 GM 出入口（lse_correction 按 GM 入参直读）；KV ping-pong 槽的
+    宿主整段时序约束由 RestageKvBlockHost 保证，本测试即其 golden 级回归。
     """
 
     def _run_kernel_host_bucket(self, case_id: str) -> dict:
@@ -451,6 +484,12 @@ class TestKernelHostSerialBranchVsGolden(GoldenTwinTestBase):
         v = _load_tensor(case_id, "v")
         out, lse = _run_kernel_host(self.manifest[case_id], q, k, v)
         return self.assert_bucket(out, lse, case_id)
+
+    def test_tc03_smooth_v_kernel_host(self):
+        """TC-03 smooth_v 正路径（fp32 档）：V 减均值量化 + PV 反量化 +vm 全链路。"""
+        stats = self._run_kernel_host_bucket("TC-03_smooth_v_fp32")
+        print(f"\n[kernel-host] TC-03_smooth_v_fp32: matched={stats['matched_ratio']:.6f} "
+              f"max_abs={stats['max_abs_error']:.6g} lse={stats['lse_max_diff']:.3e}")
 
     def test_tc05_pad_d48_kernel_host(self):
         stats = self._run_kernel_host_bucket("TC-05_pad_d48")

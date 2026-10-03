@@ -21,10 +21,15 @@ from sageattention2.dispatch import v_scale_max_for  # noqa: E402
 
 
 def _run_kernel_host_gqa8(q, k, v, km, gran_code, causal):
-    """kernel 宿主串行分支 @ gqa=8：m_per_core=32 → 2 chunk × 4 头 × 32 行。"""
+    """kernel 宿主串行分支 @ gqa=8：m_per_core=32 → 2 chunk × 4 头 × 32 行。
+
+    lse_correction 与孪生侧同源（tk._lse_correction 唯一定义，fp32 matmul q·km^T），
+    两侧消费同值缓冲，LSE 位级可比。
+    """
     b, hq, hkv, sq, sk, d = 1, 32, 4, q.shape[2], q.shape[3], q.shape[3]
     out_pad = torch.zeros_like(q)
     lse = torch.zeros(b * hq * sq, dtype=torch.float32)
+    corr = tk._lse_correction(q, k, True).contiguous().view(-1)
     t = tk.SageAttention2TilingData()
     t.b, t.hq, t.hkv, t.sq, t.sk, t.d_og, t.d_pad = b, hq, hkv, sq, sk, d, 128
     t.is_causal, t.tensor_layout = causal, tk.LAYOUT_HND
@@ -51,7 +56,7 @@ def _run_kernel_host_gqa8(q, k, v, km, gran_code, causal):
     t.cores_per_die, t.tasks_per_die = 1, b * hkv * 2 * t.q_blk_num
     tk._LIB.sage_attention2(
         ctypes.c_void_p(q.data_ptr()), ctypes.c_void_p(k.data_ptr()), ctypes.c_void_p(v.data_ptr()),
-        ctypes.c_void_p(km.data_ptr()), None,
+        ctypes.c_void_p(km.data_ptr()), ctypes.c_void_p(corr.data_ptr()),
         ctypes.c_void_p(out_pad.data_ptr()), ctypes.c_void_p(lse.data_ptr()),
         None, ctypes.cast(ctypes.byref(t), ctypes.c_void_p),
     )

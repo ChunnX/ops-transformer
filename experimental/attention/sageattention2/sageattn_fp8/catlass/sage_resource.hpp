@@ -55,16 +55,21 @@ struct Vector0UbBudget {
     static constexpr uint32_t QUANT_WORKSPACE_BYTES    = 48 * 1024;  // 48 KB
 
     // 量化工作区子偏移（P6 具名化；Q scale 槽区扩容至 sage_attn::kQScaleSlotStride=4096 f32
-    // = 16KB 后重排——tile: rowmax 512B | scales 16KB | km 512B | strip 512B）：
+    // = 16KB 后重排——tile: rowmax 512B | scales 16KB | km 512B | strip 512B | vmin 512B | vsum 512B；
+    // vmin/vsum 为 smooth_v 的通道统计预扫槽，A7 smooth_v 设备核专用）：
     static constexpr uint32_t QUANT_ROWMAX_OFFSET      = QUANT_WORKSPACE_OFFSET;
     static constexpr uint32_t QUANT_SCALES_OFFSET      = QUANT_ROWMAX_OFFSET + 512;
     static constexpr uint32_t QUANT_KM_OFFSET          = QUANT_SCALES_OFFSET + sage_attn::kQScaleSlotStride * 4;
     static constexpr uint32_t QUANT_STAGE_STRIP_OFFSET = QUANT_KM_OFFSET + 512;
     static constexpr uint32_t QUANT_STAGE_STRIP_END    = QUANT_STAGE_STRIP_OFFSET + 512;
+    static constexpr uint32_t QUANT_VMIN_OFFSET        = QUANT_STAGE_STRIP_END;
+    static constexpr uint32_t QUANT_VSUM_OFFSET        = QUANT_VMIN_OFFSET + 512;
     static_assert(QUANT_ROWMAX_OFFSET < QUANT_SCALES_OFFSET &&
                   QUANT_SCALES_OFFSET < QUANT_KM_OFFSET &&
                   QUANT_KM_OFFSET < QUANT_STAGE_STRIP_OFFSET &&
-                  QUANT_STAGE_STRIP_END <= QUANT_WORKSPACE_OFFSET + QUANT_WORKSPACE_BYTES,
+                  QUANT_STAGE_STRIP_END <= QUANT_VMIN_OFFSET &&
+                  QUANT_VMIN_OFFSET < QUANT_VSUM_OFFSET &&
+                  QUANT_VSUM_OFFSET + 512 <= QUANT_WORKSPACE_OFFSET + QUANT_WORKSPACE_BYTES,
                   "Vector0 quant workspace sub-offsets overlap or exceed the region");
 
     static constexpr uint32_t NZ_OUTPUT_OFFSET         = 144 * 1024;

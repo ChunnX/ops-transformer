@@ -90,11 +90,25 @@ std::tuple<at::Tensor, c10::optional<at::Tensor>> sageattention2(
     const int64_t gran_code = sage_attn::QuantGranCodeFromString(qk_quant_gran.c_str());
     const int64_t accum_code = sage_attn::PvAccumCodeFromString(pv_accum_dtype.c_str());
 
+    // 开源契约（git/SageAttention/sageattention/core.py:583-597）：km 与 lse_correction
+    // 均在上层算好传入——
+    // - km = k.mean(seq_dim)（输入 dtype 舍回；上游 pad_head_dim 已把 pad 通道补零），
+    //   此处以 fp32 张量承载（keyMean GM 入参为 fp32 视图，kernel 按输入位型舍回消费）；
+    // - lse_correction = q·km_broadcast^T（fp32 matmul，仅 return_lse 时），[B, Hq, Sq]，
+    //   与布局无关（lse 输出同为该形）。设备核不再核内计算 q·km，Finalize 直读本张量。
     c10::optional<at::Tensor> km_tensor;
+    c10::optional<at::Tensor> lse_corr_tensor;
     if (smooth_k) {
         km_tensor = k.mean(seq_axis, /*keepdim=*/false).to(at::kFloat).contiguous();
+        if (return_lse) {
+            const int64_t gqa = q.size(head_axis) / k.size(head_axis);
+            auto q_hnd = (head_axis == 1) ? q : q.transpose(1, 2);  // [B, Hq, Sq, D] 视图
+            auto km_b = km_tensor->repeat_interleave(gqa, /*dim=*/1)
+                            .unsqueeze(2);  // [B, Hq, 1, D] GQA 广播
+            lse_corr_tensor = at::matmul(q_hnd.to(at::kFloat), km_b.to(at::kFloat).transpose(2, 3))
+                                  .squeeze(-1);
+        }
     }
-    c10::optional<at::Tensor> none_tensor;
 
 #if SAGE_NPU_AVAILABLE
     const c10::OptionalDeviceGuard device_guard(q.device());
@@ -104,7 +118,7 @@ std::tuple<at::Tensor, c10::optional<at::Tensor>> sageattention2(
 
     EXEC_NPU_CMD_EXT(aclnnSageAttention2,
                      q, k, v,
-                     km_tensor, none_tensor,
+                     km_tensor, lse_corr_tensor,
                      scale, gran_code, accum_code,
                      is_causal, layout_code,
                      smooth_k, smooth_v,

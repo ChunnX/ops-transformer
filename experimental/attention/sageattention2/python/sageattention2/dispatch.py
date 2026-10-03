@@ -22,13 +22,14 @@ from .error_check import (
     DEFAULT_PV_ACCUM_DTYPE,
     DEFAULT_QK_QUANT_GRAN,
     DEFAULT_TENSOR_LAYOUT,
+    S_FP8_OFFSET,
+    SCALE_MAX_FP16_ACCUM,
     compute_sm_scale,
     handle_smooth_v,
     pad_head_dim,
     validate_common_parameters,
     validate_tensors,
 )
-from .op_plugin import is_npu_available, is_npu_kernel_loaded, run_sageattn_npu
 
 
 # 默认档唯一定义点：error_check.DEFAULT_PV_ACCUM_DTYPE（本名曾为
@@ -41,9 +42,7 @@ from .op_plugin import is_npu_available, is_npu_kernel_loaded, run_sageattn_npu
 # - INT8_QUANT_MAX / SCALE_EPSILON：INT8 对称量化上限与兜底微量
 # - LOG2E：exp2 域换算系数。注意 1.44269504 为 golden 冻结截断精度，
 #   勿"修正"为全精度 1.4426950408889634（位级对齐依赖）。
-S_FP8_OFFSET = 8.807354922057604  # log2(448.0)
 S_FP8_SCALE_MAX = 448.0
-SCALE_MAX_FP16_ACCUM = 2.25
 INT8_QUANT_MAX = 127.0
 SCALE_EPSILON = 1e-7
 LOG2E = 1.44269504
@@ -360,163 +359,3 @@ def run_sageattn_cpu_reference(
     return out, lse_out
 
 
-def _run_cpu_reference_with_stub_warning(
-    warn_stub: bool,
-    npu_in_use: bool,
-    **ref_kwargs: Any,
-) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
-    """Run the CPU reference; warn loudly when it is serving as an NPU stub under explicit opt-in."""
-    if warn_stub or npu_in_use:
-        warnings.warn(
-            "SageAttention2 is running the high-fidelity CPU reference stub "
-            "(SAGEATTN_ALLOW_CPU_STUB opt-in); results are NOT valid NPU precision/performance evidence.",
-            UserWarning,
-            stacklevel=3,
-        )
-    return run_sageattn_cpu_reference(**ref_kwargs)
-
-
-def dispatch_sageattn(
-    q: torch.Tensor,
-    k: torch.Tensor,
-    v: torch.Tensor,
-    tensor_layout: str = DEFAULT_TENSOR_LAYOUT,
-    is_causal: bool = False,
-    sm_scale: Optional[float] = None,
-    return_lse: bool = False,
-    **kwargs: Any,
-):
-    """
-    Dispatch sageattn to sageattn_qk_int8_pv_fp8_asc on Ascend NPU.
-    Reads pv_accum_dtype from kwargs or SAGEATTN_PV_ACCUM_DTYPE environment variable.
-    """
-    pv_accum_dtype = kwargs.pop(
-        "pv_accum_dtype",
-        os.environ.get("SAGEATTN_PV_ACCUM_DTYPE", DEFAULT_PV_ACCUM_DTYPE),
-    )
-    qk_quant_gran = kwargs.pop("qk_quant_gran", DEFAULT_QK_QUANT_GRAN)
-    smooth_k = kwargs.pop("smooth_k", True)
-    smooth_v = kwargs.pop("smooth_v", False)
-
-    return dispatch_sageattn_qk_int8_pv_fp8_asc(
-        q=q,
-        k=k,
-        v=v,
-        tensor_layout=tensor_layout,
-        is_causal=is_causal,
-        qk_quant_gran=qk_quant_gran,
-        sm_scale=sm_scale,
-        pv_accum_dtype=pv_accum_dtype,
-        smooth_k=smooth_k,
-        smooth_v=smooth_v,
-        return_lse=return_lse,
-        **kwargs,
-    )
-
-
-def dispatch_sageattn_qk_int8_pv_fp8_asc(
-    q: torch.Tensor,
-    k: torch.Tensor,
-    v: torch.Tensor,
-    tensor_layout: str = DEFAULT_TENSOR_LAYOUT,
-    is_causal: bool = False,
-    qk_quant_gran: str = DEFAULT_QK_QUANT_GRAN,
-    sm_scale: Optional[float] = None,
-    pv_accum_dtype: str = DEFAULT_PV_ACCUM_DTYPE,
-    smooth_k: bool = True,
-    smooth_v: bool = False,
-    return_lse: bool = False,
-    **kwargs: Any,
-) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
-    """
-    Dispatch sageattn_qk_int8_pv_fp8_asc across NPU C++ / aclnn and CPU reference backends.
-    """
-    validate_common_parameters(
-        tensor_layout=tensor_layout,
-        qk_quant_gran=qk_quant_gran,
-        pv_accum_dtype=pv_accum_dtype,
-        kwargs=kwargs,
-    )
-
-    smooth_v = handle_smooth_v(pv_accum_dtype, smooth_v)
-
-    validate_tensors(
-        q=q,
-        k=k,
-        v=v,
-        tensor_layout=tensor_layout,
-        is_causal=is_causal,
-    )
-
-    q_pad, k_pad, v_pad, head_dim_og = pad_head_dim(q, k, v)
-    sm_scale_val = compute_sm_scale(head_dim_og, sm_scale)
-
-    allow_cpu_stub = os.environ.get("SAGEATTN_ALLOW_CPU_STUB", "0").lower() in ("1", "true", "yes")
-    is_cpu_device = hasattr(v, "device") and v.device.type == "cpu"
-    is_meta_device = hasattr(v, "device") and v.device.type == "meta"
-    is_fake_tensor = type(v).__name__ == "FakeTensor" or hasattr(v, "fake_mode")
-    npu_present = is_npu_available()
-    npu_avail = npu_present and is_npu_kernel_loaded()
-
-    if is_meta_device or is_fake_tensor:
-        out_pad, lse = torch.ops.sageattention2.forward(
-            q_pad,
-            k_pad,
-            v_pad,
-            tensor_layout=tensor_layout,
-            is_causal=is_causal,
-            qk_quant_gran=qk_quant_gran,
-            sm_scale=sm_scale_val,
-            pv_accum_dtype=pv_accum_dtype,
-            smooth_k=smooth_k,
-            smooth_v=smooth_v,
-            return_lse=return_lse,
-        )
-        out = out_pad[..., :head_dim_og]
-        if return_lse:
-            return out, lse
-        return out
-
-    # 禁止静默 CPU 回退：NPU 在位但 kernel 未加载时，必须显式 SAGEATTN_ALLOW_CPU_STUB
-    # opt-in（附带警告）才允许走 CPU 参考；纯 CPU 张量（本地单测）不受此门控限制。
-    # meta/fake 张量已在上方分支提前返回，此处无需重复判断。
-    if not is_cpu_device and npu_present and not npu_avail and not allow_cpu_stub:
-        raise RuntimeError(
-            "SageAttention2 NPU kernel is not loaded while an Ascend NPU is present; "
-            "build the custom operator (bash build_opp.sh) or set SAGEATTN_ALLOW_CPU_STUB=1 "
-            "to explicitly opt in to the high-fidelity CPU reference stub."
-        )
-
-    if npu_avail and not is_cpu_device and not allow_cpu_stub:
-        # 该分支内 is_cpu_device/allow_cpu_stub 恒为 False 且 npu_present 恒为 True，
-        # CPU 参考回退在此不可达（显式回退仅走下方 else 分支并伴随 stub 告警），
-        # kernel 缺位时按门控语义直接上抛 NotImplementedError。
-        out_pad, lse = run_sageattn_npu(
-            q=q_pad,
-            k=k_pad,
-            v=v_pad,
-            tensor_layout=tensor_layout,
-            is_causal=is_causal,
-            qk_quant_gran=qk_quant_gran,
-            sm_scale=sm_scale_val,
-            pv_accum_dtype=pv_accum_dtype,
-            smooth_k=smooth_k,
-            smooth_v=smooth_v,
-            return_lse=return_lse,
-            **kwargs,
-        )
-    else:
-        out_pad, lse = _run_cpu_reference_with_stub_warning(
-            allow_cpu_stub, npu_present and not is_cpu_device,
-            q_pad=q_pad, k_pad=k_pad, v_pad=v_pad,
-            tensor_layout=tensor_layout, is_causal=is_causal,
-            qk_quant_gran=qk_quant_gran, sm_scale=sm_scale_val,
-            pv_accum_dtype=pv_accum_dtype, smooth_k=smooth_k,
-            smooth_v=smooth_v, return_lse=return_lse,
-        )
-
-    out = out_pad[..., :head_dim_og]
-
-    if return_lse:
-        return out, lse
-    return out
