@@ -154,9 +154,9 @@ def aclnn_op_func_fa_varLen_cpu(input_data : InputDataset):
             softmax_sum = torch.cat([softmax_sum, softmax_sumi], dim=0)
             attention_out[cu_seqlens_q[i]:cu_seqlens_q[i+1]] = attention_outi.squeeze(0).permute(1, 0, 2)
         else:
-            softmax_maxi = torch.zeros(1, N1, seqlens_list_q[i], 8)
+            softmax_maxi = torch.zeros(1, headNum, seqlens_list_q[i], 8)
             softmax_maxi = softmax_maxi.contiguous().view(-1)
-            softmax_sumi = torch.zeros(1, N1, seqlens_list_q[i], 8)
+            softmax_sumi = torch.zeros(1, headNum, seqlens_list_q[i], 8)
             softmax_sumi = softmax_sumi.contiguous().view(-1)
             softmax_max = torch.cat([softmax_max, softmax_maxi], dim=0)
             softmax_sum = torch.cat([softmax_sum, softmax_sumi], dim=0)
