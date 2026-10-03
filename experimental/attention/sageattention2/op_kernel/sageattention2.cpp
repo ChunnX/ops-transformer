@@ -148,16 +148,31 @@ constexpr uint32_t kKernelMaxRows = 128;
 
 // A7 设备态 UB 布局（V1 256KB 地址空间内的 A7 专用区；task/12_device_data_path.md）：
 // 与 Vector1UbBudget 的区界解耦（区为记账名，地址连续编址），静态不等式防越界——
-//   O_ACCUM [0,64KB) | S 双槽 [64KB,64KB+2·rows·block_n) | dot32 [80KB,80KB+rows·block_n·4)
-//   pv_partial [144KB,144KB+rows·d·4) | 行 stats 等小暂存 [208KB, LSE 区)
-// 极限 rows=block_n=d=128 时 dot32/pv_partial 各恰 64KB，总占用 208KB < 256KB。
-constexpr uint32_t SAGE_UB_DOT32_OFFSET = 80u * 1024u;
-constexpr uint32_t SAGE_UB_PV_PARTIAL_OFFSET = 144u * 1024u;
+//   O_ACCUM [0,64KB) | S 双槽 [64KB,96KB) | dot32 [96KB,160KB) | pv_partial [160KB,224KB)
+//   | 行 stats [224KB,225KB) | 暂存 scale 副本 [225KB,228KB)
+// 极限 rows=block_n=d=128 时 S 双槽恰 32KB、dot32/pv_partial 各恰 64KB，总占用 228KB
+// < 256KB；四段互不交叠由 static_assert 逐界锁定（V0/V1 接线轮修正：原 80KB/144KB
+// 摆放与 S 双槽最坏 32KB、行 stats 区在极限 rows·block_n=128·128 下相撞）。
+constexpr uint32_t SAGE_UB_DOT32_OFFSET = 96u * 1024u;
+constexpr uint32_t SAGE_UB_PV_PARTIAL_OFFSET = 160u * 1024u;
+constexpr uint32_t SAGE_UB_STATS_OFFSET = 224u * 1024u;
+constexpr uint32_t SAGE_UB_STAGE_Q_OFFSET = 225u * 1024u;
+constexpr uint32_t SAGE_UB_STAGE_V_OFFSET = 226u * 1024u;
+constexpr uint32_t SAGE_UB_STAGE_K_OFFSET = 227u * 1024u;
+static_assert(Catlass::SageAttn::Vector1UbBudget::FIXPIPE_RECV_OFFSET +
+                      2u * kKernelMaxRows * 128u <= SAGE_UB_DOT32_OFFSET,
+              "A7 S double slots overflow into dot32 region");
 static_assert(SAGE_UB_DOT32_OFFSET + kKernelMaxRows * 128 * sizeof(int32_t)
                   <= SAGE_UB_PV_PARTIAL_OFFSET,
               "A7 dot32 region overflows into pv_partial");
-static_assert(SAGE_UB_PV_PARTIAL_OFFSET + kKernelMaxRows * 128 * sizeof(float) <= 256u * 1024u,
-              "A7 pv_partial region exceeds V1 UB");
+static_assert(SAGE_UB_PV_PARTIAL_OFFSET + kKernelMaxRows * 128 * sizeof(float)
+                  <= SAGE_UB_STATS_OFFSET,
+              "A7 pv_partial region overflows into stats region");
+static_assert(SAGE_UB_STATS_OFFSET + 4u * STAGE_SLOT_FLOATS <= SAGE_UB_STAGE_Q_OFFSET &&
+                  SAGE_UB_STAGE_Q_OFFSET + 4u * STAGE_SLOT_FLOATS <= SAGE_UB_STAGE_V_OFFSET &&
+                  SAGE_UB_STAGE_V_OFFSET + 4u * STAGE_SLOT_FLOATS <= SAGE_UB_STAGE_K_OFFSET &&
+                  SAGE_UB_STAGE_K_OFFSET + 4u * STAGE_SLOT_FLOATS <= 256u * 1024u,
+              "A7 staged scale copies exceed V1 UB");
 
 #if !SAGE_ATTN_DEVICE_COMPILE
 /**
@@ -420,9 +435,28 @@ private:
     }
 
     /**
-     * 1. Cube 核心处理逻辑（MMAD 计算与宽流水延迟退休主流水）
-     * 拍 k：INT8 QK^T MMAD，L0C 累加
-     * 拍 k+1：FP8 PV MMAD，3 槽延迟输出退休队列（OutputRetireQueue）成对融合与 FixPipe 随路量化
+     * A7 GM 暂存条带基址（task/12 第四节）：GetUserWorkspace 用户区按 AIV 折半后
+     * core_idx 条带寻址（V0 与同组 V1 折半后同号，共享同一条带），四区布局唯一定义
+     * 于 tiling.h STAGE_* 常量。
+     */
+    __aicore__ __gm__ float *StageStrip() const
+    {
+        return reinterpret_cast<__gm__ float *>(workspace_gm_) +
+               static_cast<uint64_t>(core_idx_) * (STAGE_CORE_STRIDE / sizeof(float));
+    }
+
+    // A7：dot32/反量化 logits 行基址（V1 读 dot32、DequantMaskLogitsRowVF 原地覆写、
+    // BlockMaxAndSumVF 与 SoftmaxProbRowVF 同址消费；每任务域由 FLAG_DOT_FREE=13 单缓冲握手）
+    __aicore__ uint32_t Dot32RowOffset(uint32_t row) const
+    {
+        return SAGE_UB_DOT32_OFFSET + row * block_n_ * static_cast<uint32_t>(sizeof(float));
+    }
+
+    /**
+     * 1. Cube 核心处理逻辑（A7 数据通路，task/12_device_data_path.md）
+     * 拍 k：INT8 QK^T MMAD → L0C dot32 裸搬 UB（FLAG_DOT_FREE=13 读保护）→ QK_P；
+     * 拍 k+1：FP8 PV MMAD → L0C 部分和裸搬 UB 交接槽（FLAG_PV_PARTIAL_FREE/READY
+     * 12/11 握手），V1 按档位合并进 O 主累加器（D2）。
      *
      * 缓冲布局与读取契约说明：
      * 宿主串行仿真时序为 ProcessVec0 → ProcessCube → ProcessVec1 整段执行，拍 k 的 PV
@@ -430,8 +464,9 @@ private:
      * PV MMAD 无从消费；且 L0C 单缓冲无法为 V1 保留逐拍 QK^T。故基线的 QK^T 反量化与
      * PV 累加由 V1 按 twin 5.1/5.2/5.4 唯一定义标量执行（见 ComputeBlockMaxAndSum /
      * AccumulatePvBlockTwin），逐位对齐孪生轨迹；S 槽写出布局维持 SoftmaxSlotOffset
-     * 契约不变。Cube 侧 INT8 QK^T / FP8 PV MMAD + FixPipe + 3 槽退休队列整体保留在
-     * 设备分支（SAGE_ATTN_DEVICE_COMPILE）。
+     * 契约不变。设备分支（SAGE_ATTN_DEVICE_COMPILE）走 A7 设备数据通路：QK dot32 与
+     * PV 部分和经 FixPipe 裸搬由 V1 消费（D3：热路径不含退休队列，OutputRetireQueue
+     * 本体与单测为 skip-scale 变体保留）。
      */
     __aicore__ void ProcessCube()
     {
@@ -556,10 +591,14 @@ private:
             SetFlag<HardEvent::FIX_S>(0);
             WaitFlag<HardEvent::FIX_S>(0);
             CrossCoreSet(CrossCoreDirection::CUBE_TO_VEC1, CrossCoreFlags::FLAG_PV_PARTIAL_READY);
-
-            // 退域回收（B-2 destroy 纪律）：消费 V1 最后一块的 DOT_FREE 归还许可
-            CrossCoreWait(CrossCoreDirection::VEC1_TO_CUBE, CrossCoreFlags::FLAG_DOT_FREE);
         }
+
+        // 退域回收（task/02_code.md B-2 destroy 纪律 + task/12 第三节 flag 配平）：
+        // 回收进域预置的 PARTIAL_FREE / DOT_FREE 各 1 枚许可（total_kv_blocks == 0 时
+        // 为唯一消费者），保证任务域边界两类 flag 余量严格归零——V0/V1 接线轮修正：
+        // 原实现仅回收 DOT_FREE 且置于 total>0 分支内，PARTIAL_FREE 预置跨任务残留。
+        CrossCoreWait(CrossCoreDirection::VEC1_TO_CUBE, CrossCoreFlags::FLAG_PV_PARTIAL_FREE);
+        CrossCoreWait(CrossCoreDirection::VEC1_TO_CUBE, CrossCoreFlags::FLAG_DOT_FREE);
 #else
         // KT/宿主标量基线：本函数无 Cube 侧数值职责。
         // 跨核 flag 的进域预置/退域回收在宿主分支为空操作，V1 退域回收依赖的
@@ -715,6 +754,49 @@ private:
             RestageKvBlockHost(k);
 #endif
 
+#if SAGE_ATTN_DEVICE_COMPILE
+            // 1.7 A7 V1（task/12 第五节第 3 条）：dot32 反量化消费段。
+            // k==0 拍随 QK_P 搬 v_scale 暂存副本（V0 首块在 KV_READY raise 前 MTE3_S
+            // 排空，QK_P 传递序保证可见）；逐块搬当前奇偶 k_scale 副本后逐行
+            // DequantMaskLogitsRowVF 原地覆写 dot32 区为 exp2 域 logits（twin 左结合
+            // 乘序 + causal/尾块统一折算的前缀 valid 掩码，q_scale 行解析取自暂存条带）。
+            if (k == 0) {
+                GlobalTensor<float> gm_stage_v;
+                gm_stage_v.SetGlobalBuffer(StageStrip() + STAGE_V_SCALE_OFFSET);
+                LocalTensor<float> ub_stage_v(TPosition::VECCALC, SAGE_UB_STAGE_V_OFFSET, STAGE_SLOT_FLOATS);
+                DataCopy(ub_stage_v, gm_stage_v, d_);
+                SyncMte2ToV();
+            }
+            {
+                GlobalTensor<float> gm_stage_k;
+                gm_stage_k.SetGlobalBuffer(StageStrip() +
+                                           (is_ping ? STAGE_K_SCALE_PING_OFFSET : STAGE_K_SCALE_PONG_OFFSET));
+                LocalTensor<float> ub_stage_k(TPosition::VECCALC, SAGE_UB_STAGE_K_OFFSET, STAGE_SLOT_FLOATS);
+                DataCopy(ub_stage_k, gm_stage_k, STAGE_SLOT_FLOATS);
+                SyncMte2ToV();
+
+                const uint32_t cur_block_k = CurBlockK();
+                for (uint32_t r = 0; r < TotalRows() && r < kKernelMaxRows; ++r) {
+                    const uint32_t token_q = cur_q_start_ + (r % cur_q_len_);
+                    const float q_scale_row = StageStrip()[STAGE_Q_SCALE_OFFSET + r];
+                    uint32_t valid_count = cur_block_k;
+                    if (tiling_->is_causal != 0) {
+                        const int64_t diff = static_cast<int64_t>(token_q) - static_cast<int64_t>(cur_k_start_) + 1;
+                        valid_count = (diff <= 0) ? 0u
+                                                  : ((diff < static_cast<int64_t>(cur_block_k))
+                                                         ? static_cast<uint32_t>(diff)
+                                                         : cur_block_k);
+                    }
+                    LocalTensor<int32_t> ub_dot(TPosition::VECCALC, Dot32RowOffset(r), block_n_);
+                    dev_vf::DequantMaskLogitsRowVF(reinterpret_cast<__ubuf__ int32_t *>(ub_dot.GetPhyAddr()),
+                                                   reinterpret_cast<__ubuf__ float *>(ub_dot.GetPhyAddr()),
+                                                   q_scale_row, tiling_->sm_scale_log2e,
+                                                   reinterpret_cast<__ubuf__ float *>(ub_stage_k.GetPhyAddr()),
+                                                   block_n_, valid_count);
+                }
+            }
+#endif
+
             // 2. 逐行块内 logit 反量化/掩码、行 max 与 exp2 和（twin 5.1/5.2 单点），
             //    随后按 twin 5.3 步进行级状态并重缩放 O 行。
             for (uint32_t r = 0; r < TotalRows() && r < kKernelMaxRows; ++r) {
@@ -752,6 +834,42 @@ private:
             WaitFlag<HardEvent::V_S>(0);
 #endif
             CrossCoreSet(CrossCoreDirection::VEC1_TO_CUBE, s_flag);
+
+#if SAGE_ATTN_DEVICE_COMPILE
+            // 4.5 A7：dot32/反量化 logits 区读毕（P 码写为最后消费者），放行 Cube
+            // 拍 k+1 覆写 dot32 区（FLAG_DOT_FREE=13 单缓冲读保护）
+            CrossCoreSet(CrossCoreDirection::VEC1_TO_CUBE, CrossCoreFlags::FLAG_DOT_FREE);
+
+            // 4.6 A7（task/12 第三节时序）：PV 部分和合并——wait FLAG_PV_PARTIAL_READY
+            //（Cube 于拍 k+1 顶部对块 k 发出，此刻 O 锚点仍为本拍 m_scale(k)，早于
+            // Step(k+1) 重缩放）→ 逐行 MergePvPartialRowVF（v_scale 乘 + fp32+fp16 档
+            // FP16 RNE 舍回，D2 裁定舍入点在合并处）→ set FLAG_PV_PARTIAL_FREE。
+            CrossCoreWait(CrossCoreDirection::CUBE_TO_VEC1, CrossCoreFlags::FLAG_PV_PARTIAL_READY);
+            {
+                const uint32_t fp16_round = accum_ctrl_.IsFp16Accum() ? 1u : 0u;
+                LocalTensor<float> ub_stage_v(TPosition::VECCALC, SAGE_UB_STAGE_V_OFFSET, STAGE_SLOT_FLOATS);
+                for (uint32_t r = 0; r < TotalRows() && r < kKernelMaxRows; ++r) {
+                    LocalTensor<float> ub_o_row(TPosition::VECCALC,
+                                                Catlass::SageAttn::Vector1UbBudget::O_ACCUM_OFFSET +
+                                                    r * d_ * static_cast<uint32_t>(sizeof(float)),
+                                                d_);
+                    LocalTensor<float> ub_partial(TPosition::VECCALC,
+                                                  SAGE_UB_PV_PARTIAL_OFFSET +
+                                                      r * d_ * static_cast<uint32_t>(sizeof(float)),
+                                                  d_);
+                    dev_vf::MergePvPartialRowVF(reinterpret_cast<__ubuf__ float *>(ub_o_row.GetPhyAddr()),
+                                                reinterpret_cast<__ubuf__ float *>(ub_partial.GetPhyAddr()),
+                                                reinterpret_cast<__ubuf__ float *>(ub_stage_v.GetPhyAddr()),
+                                                d_, fp16_round);
+                }
+                // 生产管排空（DEFECT-H-2 同款纪律）：合并的 V 管 UB 读必须先于
+                // S 管 raise PARTIAL_FREE 完成，否则 Cube 下一拍 FixPipe 覆写交接槽
+                // 会与在途读竞争
+                SetFlag<HardEvent::V_S>(0);
+                WaitFlag<HardEvent::V_S>(0);
+            }
+            CrossCoreSet(CrossCoreDirection::VEC1_TO_CUBE, CrossCoreFlags::FLAG_PV_PARTIAL_FREE);
+#endif
         }
 
         // 等待 Cube 全部 PV 累加收尾完成
@@ -892,6 +1010,29 @@ private:
             cp.dstStride = 0;
             DataCopy(l1_q[r * d], ub_out, cp);
         }
+
+        // A7 V0（task/12 第五节第 3 条）：行解析 q_scale 暂存写——组定标后的逐行
+        // scale 按 GQA 聚合行序展开写 GM 条带（STAGE_Q_SCALE_OFFSET，零填充至 128 槽），
+        // V1 反量化按行读取。S→MTE3 与 MTE3→S 双自配对：标量 SetValue 对 MTE3 可见、
+        // MTE3 写对后续 S 管 raise FLAG_Q_READY 可见（GM 可见性，task/12 第四节）。
+        LocalTensor<float> ub_stage_q(TPosition::VECCALC,
+                                      Catlass::SageAttn::Vector0UbBudget::QUANT_WORKSPACE_OFFSET + 10240,
+                                      STAGE_SLOT_FLOATS);
+        for (uint32_t s = 0; s < STAGE_SLOT_FLOATS; ++s) {
+            ub_stage_q.SetValue(s, 0.0f);
+        }
+        for (uint32_t r = 0; r < total_rows_q && r < kKernelMaxRows; ++r) {
+            const uint32_t g = r / cur_q_len_;
+            const uint32_t token = cur_q_start_ + (r % cur_q_len_);
+            ub_stage_q.SetValue(r, ub_scales.GetValue(g * 2048u + quant::QScaleIndex(token, per_thread_q)));
+        }
+        SetFlag<HardEvent::S_MTE3>(0);
+        WaitFlag<HardEvent::S_MTE3>(0);
+        GlobalTensor<float> gm_stage_q;
+        gm_stage_q.SetGlobalBuffer(StageStrip() + STAGE_Q_SCALE_OFFSET);
+        DataCopy(gm_stage_q, ub_stage_q, STAGE_SLOT_FLOATS);
+        SetFlag<HardEvent::MTE3_S>(0);
+        WaitFlag<HardEvent::MTE3_S>(0);
 #else
         if (sim_mem_ == nullptr || q_src == nullptr) {
             return;
@@ -1060,6 +1201,31 @@ private:
             l1_k_scale.SetValue(s - grp_lo, scale);
         }
 
+        // A7 V0（task/12 第五节第 3 条）：块解析 k_scale 暂存写——逐 token 展开写
+        // GM 条带 ping/pong 槽（按 cur_k_ 奇偶，零填充至 128 槽），V1 反量化按当前块
+        // 奇偶读取。S→MTE3 / MTE3→S 双自配对排空后方由调用方 raise KV_*_READY
+        //（GM 可见性，task/12 第四节；QK_P 传递性保证 V1 读取时序）。
+        LocalTensor<float> ub_stage_k(TPosition::VECCALC,
+                                      Catlass::SageAttn::Vector0UbBudget::QUANT_WORKSPACE_OFFSET + 10240,
+                                      STAGE_SLOT_FLOATS);
+        for (uint32_t s = 0; s < STAGE_SLOT_FLOATS; ++s) {
+            ub_stage_k.SetValue(s, 0.0f);
+        }
+        for (uint32_t j = 0; j < block_n_; ++j) {
+            if (j < block_k) {
+                const uint32_t token = cur_k_start_ + j;
+                ub_stage_k.SetValue(j, ub_k_scales.GetValue(quant::KScaleIndex(token, per_thread_k)));
+            } // 尾块 pad 列保持 0：V1 侧前缀掩码哨兵不消费该列 scale
+        }
+        SetFlag<HardEvent::S_MTE3>(0);
+        WaitFlag<HardEvent::S_MTE3>(0);
+        GlobalTensor<float> gm_stage_k;
+        gm_stage_k.SetGlobalBuffer(StageStrip() +
+                                   ((cur_k_ % 2u) == 0u ? STAGE_K_SCALE_PING_OFFSET : STAGE_K_SCALE_PONG_OFFSET));
+        DataCopy(gm_stage_k, ub_stage_k, STAGE_SLOT_FLOATS);
+        SetFlag<HardEvent::MTE3_S>(0);
+        WaitFlag<HardEvent::MTE3_S>(0);
+
         // C. 逐行量化写 L1 + 尾块 pad 置零
         for (uint32_t j = 0; j < block_n_; ++j) {
             if (j < block_k) {
@@ -1199,24 +1365,34 @@ private:
         const float scale_max = tiling_->v_scale_max;
 
         if (cur_k_ == 0) {
-            // 全序列 per-channel amax（v_src 即 KV 头首行基址；pad token 计 0 不影响）。
-            // GM 读取经 GlobalTensor（bisheng 禁止 __gm__ 指针 reinterpret 丢地址空间）
-            GlobalTensor<uint16_t> v_head_gm;
-            v_head_gm.SetGlobalBuffer(reinterpret_cast<__gm__ uint16_t*>(v_src));
-            for (uint32_t c = 0; c < d; ++c) {
-                float amax = 0.0f;
-                for (uint32_t t = 0; t < sk_; ++t) {
-                    const uint16_t bits = v_head_gm(static_cast<int64_t>(t) * v_stride_s + c);
-                    const float abs_v = SageFastAbs(
-                        (dtype_mode == 2u) ? quant::Bf16ToFp32(bits) : quant::Fp16ToFp32(bits));
-                    if (abs_v > amax) amax = abs_v;
-                }
-                ub_v_scale.SetValue(c, amax / scale_max);
+            // A7 V0（task/12 第五节第 3 条）：per-channel 全序列 amax 预扫向量化——
+            // ub_v_scale 充零作 amax 累加器，逐 token 行 ChannelAmaxAccumVF 累加
+            //（v_src 即 KV 头首行基址；pad token 计 0 不影响），FinalizeVScaleVF 按
+            // v_scale_max 除法定标（quant_fp8/孪生唯一口径）。
+            Duplicate(ub_v_scale, 0.0f, d);
+            for (uint32_t t = 0; t < sk_; ++t) {
+                const int64_t row_gm_offset = static_cast<int64_t>(t) * v_stride_s * static_cast<int64_t>(sizeof(half));
+                GlobalTensor<half> gm_row;
+                gm_row.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(v_src + row_gm_offset));
+                DataCopy(ub_in, gm_row, d);
+                SyncMte2ToV();
+                dev_vf::ChannelAmaxAccumVF(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
+                                           reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
+                                           d, dtype_mode);
             }
-            // S 管写 → V 管读同步（DEFECT-G-2）：后续 QuantVRowFp8VF 的 LoadAlign
-            // 在 V 管消费 scale 向量
-            SetFlag<HardEvent::S_V>(0);
-            WaitFlag<HardEvent::S_V>(0);
+            dev_vf::FinalizeVScaleVF(reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
+                                     reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
+                                     scale_max, d);
+
+            // A7：v_scale 暂存写（STAGE_V_SCALE_OFFSET，任务级一次）。V→MTE3 排空
+            // 保证 scale 向量写毕才发起 GM 搬出，MTE3→S 排空后方由调用方在首块
+            // KV_READY raise 前 GM 可见（V1 合并侧经 PV_PARTIAL→QK_P 传递性读取）。
+            SyncVToMte3();
+            GlobalTensor<float> gm_stage_v;
+            gm_stage_v.SetGlobalBuffer(StageStrip() + STAGE_V_SCALE_OFFSET);
+            DataCopy(gm_stage_v, ub_v_scale, d);
+            SetFlag<HardEvent::MTE3_S>(0);
+            WaitFlag<HardEvent::MTE3_S>(0);
         }
 
         for (uint32_t j = 0; j < block_n_; ++j) {
@@ -1295,9 +1471,8 @@ private:
     {
 #if SAGE_ATTN_DEVICE_COMPILE
         (void)k_idx;
-        LocalTensor<float> ub_logits(TPosition::VECCALC,
-                                     Catlass::SageAttn::Vector1UbBudget::FIXPIPE_RECV_OFFSET + row * block_n_ * sizeof(float),
-                                     block_n_);
+        // A7：logits 已由 DequantMaskLogitsRowVF 原地落 dot32 区（QK_P→DOT_FREE 单缓冲域）
+        LocalTensor<float> ub_logits(TPosition::VECCALC, Dot32RowOffset(row), block_n_);
         LocalTensor<float> ub_stats(TPosition::VECCALC,
                                     Catlass::SageAttn::Vector1UbBudget::LSE_WORKSPACE_OFFSET,
                                     128);
@@ -1402,9 +1577,9 @@ private:
         const uint32_t rows = TotalRows();
         for (uint32_t r = 0; r < rows && r < kKernelMaxRows; ++r) {
             const float m_prime = row_states_[r].m_scale - s_fp8_offset;
-            LocalTensor<float> ub_logits(TPosition::VECCALC,
-                                         Catlass::SageAttn::Vector1UbBudget::FIXPIPE_RECV_OFFSET + r * block_n_ * sizeof(float),
-                                         block_n_);
+            // A7：logits 源为 dot32 区反量化结果（原 FIXPIPE_RECV 直读无生产者，已随
+            // V1 接线改址）
+            LocalTensor<float> ub_logits(TPosition::VECCALC, Dot32RowOffset(r), block_n_);
             LocalTensor<float8_e4m3_t> ub_out_p(TPosition::VECCALC,
                                                 slot_offset + r * block_n_ * sizeof(float8_e4m3_t),
                                                 block_n_);
