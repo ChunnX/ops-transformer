@@ -86,20 +86,32 @@ def run_sageattn_npu(
             "Ascend 950PR NPU kernel is not loaded. Build ops-transformer or enable SAGEATTN_ALLOW_CPU_STUB=1."
         )
 
-    res = op_fn(
-        q,
-        k,
-        v,
-        tensor_layout=tensor_layout,
-        is_causal=is_causal,
-        qk_quant_gran=qk_quant_gran,
-        sm_scale=sm_scale,
-        pv_accum_dtype=pv_accum_dtype,
-        smooth_k=smooth_k,
-        smooth_v=smooth_v,
-        return_lse=return_lse,
-        **kwargs,
-    )
+    if hasattr(torch.ops, "sageattention2") and op_fn is getattr(torch.ops.sageattention2, "forward", None):
+        res = op_fn(
+            q,
+            k,
+            v,
+            tensor_layout=tensor_layout,
+            is_causal=is_causal,
+            sm_scale=sm_scale,
+            smooth_k=smooth_k,
+            return_lse=return_lse,
+        )
+    else:
+        res = op_fn(
+            q,
+            k,
+            v,
+            tensor_layout=tensor_layout,
+            is_causal=is_causal,
+            qk_quant_gran=qk_quant_gran,
+            sm_scale=sm_scale,
+            pv_accum_dtype=pv_accum_dtype,
+            smooth_k=smooth_k,
+            smooth_v=smooth_v,
+            return_lse=return_lse,
+            **kwargs,
+        )
     if isinstance(res, tuple):
         return res[0], res[1] if len(res) > 1 else None
     return res, None

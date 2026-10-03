@@ -454,11 +454,8 @@ def dispatch_sageattn_qk_int8_pv_fp8_asc(
             v_pad,
             tensor_layout=tensor_layout,
             is_causal=is_causal,
-            qk_quant_gran=qk_quant_gran,
             sm_scale=sm_scale_val,
-            pv_accum_dtype=pv_accum_dtype,
             smooth_k=smooth_k,
-            smooth_v=smooth_v,
             return_lse=return_lse,
         )
         out = out_pad[..., :head_dim_og]
