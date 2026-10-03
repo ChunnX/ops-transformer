@@ -48,7 +48,7 @@ def get_routing_conf_cpu(indices, scores, local_expert_num, start_expert_id, end
             if expert_id < start_expert_id or expert_id >= end_expert_id:
                 continue
             local_expert_id = expert_id % local_expert_num
-            if seen[local_expert_id] or init_token_list[local_expert_id] >= token_num:
+            if seen_mask[local_expert_id] or init_token_list[local_expert_id] >= token_num:
                 continue
             seen_mask[local_expert_id] = True
             init_token_table[local_expert_id, init_token_list[local_expert_id]] = i_token
@@ -119,10 +119,10 @@ logging.info(f"indices tensor: \n{indices1}")
 logging.info(f"scores tensor: \n{scores1}")
 
 # init_token_list对比
-init_token_list_abs_error = torch.abs(init_token_list_npu_2d - init_token_list_cpu)
+init_token_list_abs_error = torch.abs(init_token_list_npu_2d1 - init_token_list_cpu)
 logging.info(f"-------------------------------init_token_list的结果对比---------------------------")
 logging.info(f"init_token_list cpu result: \n{init_token_list_cpu}")
-logging.info(f"init_token_list npu result: \n{init_token_list_npu_2d}")
+logging.info(f"init_token_list npu result: \n{init_token_list_npu_2d1}")
 logging.info(f"init_token_list max absolute error: {init_token_list_abs_error.max().item()}")
 
 # init_token_table对比
