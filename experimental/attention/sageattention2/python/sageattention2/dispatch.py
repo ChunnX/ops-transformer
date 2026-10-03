@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import os
 import warnings
-from typing import Any, Optional, Tuple
+from typing import Any, Optional, Tuple, Union
 
 try:
     import torch
@@ -427,7 +427,7 @@ def dispatch_sageattn_qk_int8_pv_fp8_asc(
     smooth_v: bool = False,
     return_lse: bool = False,
     **kwargs: Any,
-) -> torch.Tensor:
+) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     """
     Dispatch sageattn_qk_int8_pv_fp8_asc across NPU C++ / aclnn and CPU reference backends.
     """

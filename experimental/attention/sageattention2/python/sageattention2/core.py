@@ -3,7 +3,7 @@ SageAttention2 Core APIs on Ascend NPU (Atlas 950PR).
 Interface signatures frozen and strictly 100% aligned with git/SageAttention/sageattention/core.py.
 """
 
-from typing import Any, Optional
+from typing import Any, Optional, Tuple, Union
 try:
     import torch
 except ImportError:
@@ -28,7 +28,7 @@ def sageattn(
     sm_scale: Optional[float] = None,
     return_lse: bool = False,
     **kwargs: Any,
-):
+) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     """
     Automatically routes to SageAttention FP8 PV kernel on Ascend 950PR.
 
@@ -107,7 +107,7 @@ def sageattn_qk_int8_pv_fp8_asc(
     smooth_v: bool = False,
     return_lse: bool = False,
     **kwargs: Any,
-) -> torch.Tensor:
+) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     """
     SageAttention with INT8 quantization for Q and K, FP8 PV on Ascend 950PR.
     Corresponding to sageattn_qk_int8_pv_fp8_cuda in open-source SageAttention.
