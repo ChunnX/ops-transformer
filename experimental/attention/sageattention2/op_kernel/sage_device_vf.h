@@ -12,10 +12,6 @@
 // 取代本文件原裸 __simd_vf__ inline 书写（官方演进单点跟随；设备编译全路径已注入
 // -DCATLASS_ARCH=3510，见 run.sh kernel / build_opp.sh）。
 #include "catlass/detail/macros.hpp"
-#ifdef CATLASS_DEVICE_SIMD_VF
-#undef CATLASS_DEVICE_SIMD_VF
-#endif
-#define CATLASS_DEVICE_SIMD_VF __aicore__ inline
 
 namespace sage_attn {
 namespace dev_vf {
@@ -405,10 +401,9 @@ CATLASS_DEVICE_SIMD_VF void RescaleAccumRowsVF(__ubuf__ float* o_base, __ubuf__ 
                                                uint32_t bm0, uint32_t bm1, uint32_t bm2, uint32_t bm3) {
     using namespace AscendC;
     using namespace AscendC::MicroAPI;
-    const uint32_t bm[4] = {bm0, bm1, bm2, bm3};
     auto full = CreateMask<float, MaskPattern::ALL>();
     for (uint32_t r = 0; r < rows; ++r) {
-        const uint32_t w = bm[r >> 5];
+        const uint32_t w = (r < 32u) ? bm0 : ((r < 64u) ? bm1 : ((r < 96u) ? bm2 : bm3));
         const uint32_t fire = (w >> (r & 31u)) & 1u;
         if (fire == 0u) {
             continue;
