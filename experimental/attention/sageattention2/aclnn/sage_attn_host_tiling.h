@@ -368,7 +368,12 @@ inline aclnnStatus ComputeHostTiling(
         return ::RoundUp<512u>(size);
     };
 
-    // (1) LSE 临时显存空间 (Split-KV 跨核归并；smooth_k 的 lse_correction 由桥接层
+    // (1) A7 V0→V1 scale 暂存条带（STAGE_CORE_STRIDE × core_num_used；
+    //     kernel 侧以 core_idx × STAGE_CORE_STRIDE 从 workspace 起始处定址）
+    current_ws_offset += align512(static_cast<uint64_t>(tiling_out.core_num_used) *
+                                  sage_attn::STAGE_CORE_STRIDE);
+
+    // (2) LSE 临时显存空间 (Split-KV 跨核归并；smooth_k 的 lse_correction 由桥接层
     //     经 lseCorrection GM 入参直传，不经 workspace)
     if (split_kv_num > 1 || hasLse) {
         tiling_out.workspace_lse_offset = current_ws_offset;
@@ -379,14 +384,14 @@ inline aclnnStatus ComputeHostTiling(
         tiling_out.workspace_lse_offset = 0;
     }
 
-    // (2) Split-KV partial outputs 临时累加显存
+    // (3) Split-KV partial outputs 临时累加显存
     if (split_kv_num > 1) {
         int64_t partial_o_elems = static_cast<int64_t>(b) * hq * sq * d_pad * split_kv_num;
         uint64_t partial_o_bytes = align512(static_cast<uint64_t>(partial_o_elems) * sizeof(float));
         current_ws_offset += partial_o_bytes;
     }
 
-    // (3) fuse_v_mean 临时均值空间
+    // (4) fuse_v_mean 临时均值空间
     if (tiling_out.IsSmoothV()) {
         tiling_out.workspace_vm_offset = current_ws_offset;
         int64_t vm_elems = static_cast<int64_t>(b) * hkv * d_pad;
@@ -395,12 +400,6 @@ inline aclnnStatus ComputeHostTiling(
     } else {
         tiling_out.workspace_vm_offset = 0;
     }
-
-    // (4) A7 V0→V1 scale 暂存条带（task/12_device_data_path.md 第四节；2026-10-03）：
-    // 布局常量唯一定义 tiling.h STAGE_*（每核 STAGE_CORE_STRIDE 字节 × 参与核数），
-    // kernel 侧以 core_idx × STAGE_CORE_STRIDE 寻址 GetUserWorkspace 用户区。
-    current_ws_offset += align512(static_cast<uint64_t>(tiling_out.core_num_used) *
-                                  sage_attn::STAGE_CORE_STRIDE);
 
     workspace_bytes_out = current_ws_offset;
     return ACLNN_SUCCESS;

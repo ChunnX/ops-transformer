@@ -390,10 +390,9 @@ private:
                                      : Catlass::SageAttn::L1DoubleBankContract::KV_PONG_OFFSET;
     }
 
-    __aicore__ __gm__ float *StageStrip() const
+    __aicore__ __gm__ uint8_t *StageStrip() const
     {
-        return reinterpret_cast<__gm__ float *>(workspace_gm_) +
-               static_cast<uint64_t>(core_idx_) * (STAGE_CORE_STRIDE / sizeof(float));
+        return workspace_gm_ + static_cast<int64_t>(core_idx_) * STAGE_CORE_STRIDE;
     }
 
     /**
@@ -597,14 +596,6 @@ private:
             // 首两个槽（k=0/1）的许可由 Cube 进域预置，此处 wait 立即放行。
             CrossCoreWait(CrossCoreDirection::CUBE_TO_VEC0, kv_free);
 
-#if SAGE_ATTN_DEVICE_COMPILE
-            // A7 scale 条带写前取许（DEFECT-M-3 闭环）：
-            // 写入第 k 块 K scale strip 前，必须等待 V1 消费完上一轮（k-2）同奇偶槽。
-            // 首两个槽（k=0/1）由 V1 进域预置发放，此处 wait 立即放行。
-            uint32_t strip_free = is_ping ? CrossCoreFlags::FLAG_SCALE_STRIP_PING_FREE
-                                          : CrossCoreFlags::FLAG_SCALE_STRIP_PONG_FREE;
-            CrossCoreWait(CrossCoreDirection::VEC1_TO_VEC0, strip_free);
-#endif
 
             cur_k_ = k;
             int64_t sk_start = static_cast<int64_t>(k) * block_n_;
@@ -650,11 +641,7 @@ private:
         CrossCoreWait(CrossCoreDirection::CUBE_TO_VEC0, CrossCoreFlags::FLAG_KV_PING_FREE);
         CrossCoreWait(CrossCoreDirection::CUBE_TO_VEC0, CrossCoreFlags::FLAG_KV_PONG_FREE);
 
-#if SAGE_ATTN_DEVICE_COMPILE
-        // scale 条带许可退域回收：消费 V1 进域预置的最后两个条带许可，余量严格归零。
-        CrossCoreWait(CrossCoreDirection::VEC1_TO_VEC0, CrossCoreFlags::FLAG_SCALE_STRIP_PING_FREE);
-        CrossCoreWait(CrossCoreDirection::VEC1_TO_VEC0, CrossCoreFlags::FLAG_SCALE_STRIP_PONG_FREE);
-#endif
+
     }
 
     /**
@@ -702,11 +689,7 @@ private:
             Duplicate(ub_o, 0.0f, rows * d_);
         }
 #endif
-#if SAGE_ATTN_DEVICE_COMPILE
-        // A7 scale 条带进域预置（DEFECT-M-3 闭环）：向 V0 发放首批两个条带写许可 (ping/pong 槽)
-        CrossCoreSet(CrossCoreDirection::VEC1_TO_VEC0, CrossCoreFlags::FLAG_SCALE_STRIP_PING_FREE);
-        CrossCoreSet(CrossCoreDirection::VEC1_TO_VEC0, CrossCoreFlags::FLAG_SCALE_STRIP_PONG_FREE);
-#endif
+
         const uint32_t active_kv_blocks = ActiveKvBlocks();
 
         for (uint32_t k = 0; k < active_kv_blocks; ++k) {
@@ -738,15 +721,11 @@ private:
             RestageKvBlockHost(k);
 #else
             // 1.6 A7 scale 条带桥（task/12 第四节）：q 行解析 / v per-channel 任务级一次，
-            //     k 块解析按奇偶槽逐拍接入（GM 暂存条带 → UB 副本，MTE2 排空后进 VF/S）
+            //     k 块解析按 126 独立 slot 逐拍接入（GM 暂存条带 → UB 副本，MTE2 排空后进 VF/S）
             if (k == 0) {
                 StageV1ScaleStrips();
             }
-            StageKScaleStrip(is_ping);
-            // V1 读取该条带完成并排空 MTE2 后，向 V0 归还该奇偶槽的写许可 ACK（DEFECT-M-3 闭环）
-            uint32_t strip_ack = is_ping ? CrossCoreFlags::FLAG_SCALE_STRIP_PING_FREE
-                                         : CrossCoreFlags::FLAG_SCALE_STRIP_PONG_FREE;
-            CrossCoreSet(CrossCoreDirection::VEC1_TO_VEC0, strip_ack);
+            StageKScaleStrip(k);
 #endif
 
 #if SAGE_ATTN_DEVICE_COMPILE
@@ -886,17 +865,15 @@ private:
      * → V1 以 MTE2 接入 UB 副本。GM 可见性序：V0 条带写以 S_MTE3/MTE3_S 双自配对排空后
      * 方随 Q_READY/KV_*_READY raise（LoadAndQuantizeQ/QuantizeAndStageKey/Value 设备分支），
      * 本侧一律在 wait QK_P_READY 之后读取（跨核 flag 链传递保序）。
-     * 协议序闭合（DEFECT-M-3 闭环）：k 块解析 ping/pong 条带单槽双缓冲经 FLAG_SCALE_STRIP_PING_FREE
-     * 与 FLAG_SCALE_STRIP_PONG_FREE 实现 V0 写前取许、V1 读后归还 ACK 握手与进退域配平，
-     * 消除覆写竞争隐患。
+     * 槽位隔离闭环：k 块解析 scale 经 STAGE_K_SCALE_BASE_OFFSET + (k % 126u) * 512 独立槽存放，
+     * 彻底消除覆写竞争隐患，无需硬件不支持的跨 Vector 同步。
      * R4 注：qs/ks 消费端已由 S 管 GetValue 改为 V 管 VF LoadAlign / DIST_BRC_B32 广播
      * Load（行批化 DequantMaskLogitsRowsVF），MTE2 写 → V 管读由本函数尾部 MTE2_V 单点
      * 排空承担（原 MTE2_S 对随其 S 管消费端一并删除，事件对不残留）。
      */
     __aicore__ void StageV1ScaleStrips()
     {
-        __gm__ uint8_t *strip =
-            workspace_gm_ + static_cast<int64_t>(core_idx_) * STAGE_CORE_STRIDE;
+        __gm__ uint8_t *strip = StageStrip();
         GlobalTensor<float> gm_strip;
         LocalTensor<float> ub_qs(TPosition::VECCALC, SAGE_UB_V1_QS_ROW_OFFSET, STAGE_SLOT_FLOATS);
         LocalTensor<float> ub_vs(TPosition::VECCALC, SAGE_UB_V1_VS_CHAN_OFFSET, STAGE_SLOT_FLOATS);
@@ -907,14 +884,13 @@ private:
         Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
     }
 
-    __aicore__ void StageKScaleStrip(bool is_ping)
+    __aicore__ void StageKScaleStrip(uint32_t k)
     {
-        __gm__ uint8_t *strip =
-            workspace_gm_ + static_cast<int64_t>(core_idx_) * STAGE_CORE_STRIDE;
+        __gm__ uint8_t *strip = StageStrip();
         GlobalTensor<float> gm_strip;
         LocalTensor<float> ub_ks(TPosition::VECCALC, SAGE_UB_V1_KS_ROW_OFFSET, STAGE_SLOT_FLOATS);
-        gm_strip.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(
-            strip + (is_ping ? STAGE_K_SCALE_PING_OFFSET : STAGE_K_SCALE_PONG_OFFSET)));
+        uint32_t k_offset = STAGE_K_SCALE_BASE_OFFSET + (k % 126u) * 512u;
+        gm_strip.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(strip + k_offset));
         DataCopy(ub_ks, gm_strip, block_n_);
         Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
     }
@@ -1100,7 +1076,7 @@ private:
         }
         Catlass::SageAttn::Sync<HardEvent::S_MTE3>();
         GlobalTensor<float> gm_stage_q;
-        gm_stage_q.SetGlobalBuffer(StageStrip() + STAGE_Q_SCALE_OFFSET);
+        gm_stage_q.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(StageStrip() + STAGE_Q_SCALE_OFFSET));
         DataCopy(gm_stage_q, ub_stage_q, STAGE_SLOT_FLOATS);
         Catlass::SageAttn::Sync<HardEvent::MTE3_S>();
 #else
@@ -1269,8 +1245,8 @@ private:
         }
         Catlass::SageAttn::Sync<HardEvent::S_MTE3>();
         GlobalTensor<float> gm_stage_k;
-        gm_stage_k.SetGlobalBuffer(StageStrip() +
-                                   ((cur_k_ % 2u) == 0u ? STAGE_K_SCALE_PING_OFFSET : STAGE_K_SCALE_PONG_OFFSET));
+        uint32_t k_offset = STAGE_K_SCALE_BASE_OFFSET + (cur_k_ % 126u) * 512u;
+        gm_stage_k.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(StageStrip() + k_offset));
         DataCopy(gm_stage_k, ub_stage_k, STAGE_SLOT_FLOATS);
         Catlass::SageAttn::Sync<HardEvent::MTE3_S>();
 
@@ -1469,7 +1445,7 @@ private:
             // 前 GM 可见（V1 Finalize 侧经 PV_O_DONE 前的跨核 flag 链传递读取时序）。
             Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
             GlobalTensor<float> gm_stage_v;
-            gm_stage_v.SetGlobalBuffer(StageStrip() + STAGE_V_SCALE_OFFSET);
+            gm_stage_v.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(StageStrip() + STAGE_V_SCALE_OFFSET));
             DataCopy(gm_stage_v, ub_v_scale, d);
             if (smooth_v != 0u) {
                 GlobalTensor<float> gm_vm;

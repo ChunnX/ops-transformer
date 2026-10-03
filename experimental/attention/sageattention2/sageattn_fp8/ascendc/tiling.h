@@ -152,24 +152,24 @@ constexpr uint32_t kQScaleSlotStride = 4096;
 constexpr uint32_t kKScaleSlotStride = 2048;
 
 /**
- * GM 暂存区布局（V0→V1 的 scale 桥接，2026-10-03 设备数据通路 A7 落地）：
+ * GM 暂存区布局（V0→V1 的 scale 桥接，2026-10-03 设备数据通路 A7 落地，DEFECT-3 修复）：
  * Vector0 量化核产出的 scale 供 Vector1 softmax 核消费（两 Vector UB 互不可见，
  * L1 侧仅供 Cube 读），经 GetUserWorkspace 用户区按核分条带交接。host 侧
  * （op_host/aclnn host tiling）按 STAGE_CORE_STRIDE × core_num_used 预留，
- * kernel 侧以 GetBlockIdx（AIV 折半后 core_idx）× STAGE_CORE_STRIDE 寻址——
- * 布局唯一定义点即本组常量，禁止两侧各自推导。
- * 每条带 4 个区域，各 512B（128 float 行解析 scale）：
- *   [0,   512)   行解析 q_scale（V0 按 QScaleIndex 分组定标后逐行展开，gqa 聚合行序）
- *   [512, 1024)  块解析 k_scale ping 槽（V0 按 KScaleIndex 分组定标后逐 token 展开）
- *   [1024,1536)  块解析 k_scale pong 槽
- *   [1536,2048)  V per-channel scale（V0 全序列 amax 预扫产出，任务级一次）
+ * kernel 侧以 core_idx × STAGE_CORE_STRIDE 寻址——布局唯一定义点即本组常量。
+ * STAGE_CORE_STRIDE 设为 64KB (65536 字节)，每个核预留充裕空间；
+ * 为每个 K block 提供独立的 scale 槽位 (k % 126u)，彻底避免覆写竞争，
+ * 无需硬件不支持的 V1→V0 同步信号：
+ *   [0,    512)   行解析 q_scale（V0 按 QScaleIndex 分组定标后逐行展开，gqa 聚合行序）
+ *   [512,  1024)  V per-channel scale（V0 全序列 amax 预扫产出，任务级一次）
+ *   [1024, 65536) 块解析 k_scale 槽区（126 个独立 slot，各 512B，偏移 STAGE_K_SCALE_BASE_OFFSET + (k % 126u) * 512）
  */
-constexpr uint32_t STAGE_CORE_STRIDE = 2048;
-constexpr uint32_t STAGE_Q_SCALE_OFFSET = 0;
-constexpr uint32_t STAGE_K_SCALE_PING_OFFSET = 512;
-constexpr uint32_t STAGE_K_SCALE_PONG_OFFSET = 1024;
-constexpr uint32_t STAGE_V_SCALE_OFFSET = 1536;
-constexpr uint32_t STAGE_SLOT_FLOATS = 128;               // 单区域容量（float 数）
+constexpr uint32_t STAGE_CORE_STRIDE = 65536;             // 单核 GM scale 交接条带容量 64KB
+constexpr uint32_t STAGE_Q_SCALE_OFFSET = 0;              // Q scale 起始字节偏移 [0, 512)
+constexpr uint32_t STAGE_V_SCALE_OFFSET = 512;            // V scale 起始字节偏移 [512, 1024)
+constexpr uint32_t STAGE_K_SCALE_BASE_OFFSET = 1024;      // K scale 独立 slot 基址偏移 [1024, 65536)
+constexpr uint32_t STAGE_K_SCALE_NUM_SLOTS = 126;         // 126 个独立 K scale slot，避免轮转覆盖
+constexpr uint32_t STAGE_SLOT_FLOATS = 128;               // 单区域容量（float 数，512B）
 
 /**
  * 布局编码枚举（对齐 core.py 行 745）
