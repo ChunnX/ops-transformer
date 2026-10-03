@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <limits>
 #include "../sageattn_fp8/ascendc/tiling.h"
 
 #ifndef SAGE_ATTN_DEVICE_COMPILE
@@ -170,9 +171,10 @@ __simd_vf__ inline void QuantVRowFp8VF(__ubuf__ half* in_ptr, __ubuf__ float8_e4
     static constexpr CastTrait toBf16{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
     static constexpr CastTrait toFp8{RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
 
-    RegTensor<float> scale_max_reg, neg_scale_max_reg;
+    RegTensor<float> scale_max_reg, neg_scale_max_reg, zero_reg, nan_reg;
     Duplicate(scale_max_reg, scale_max);
     Duplicate(neg_scale_max_reg, -scale_max);
+    Duplicate(zero_reg, 0.0f);
     for (uint32_t c = 0; c < d; c += 64) {
         RegTensor<float> val, scale_reg, scaled;
         RegTensor<float8_e4m3_t> packed;
@@ -187,6 +189,12 @@ __simd_vf__ inline void QuantVRowFp8VF(__ubuf__ half* in_ptr, __ubuf__ float8_e4
         }
         LoadAlign(scale_reg, scale_ptr + c);
         Div(scaled, val, scale_reg, full);
+        // 全零通道 NaN 守卫（收敛轮 1/R1-1）：不依赖硬件 Min/Max NaN 语义——
+        // scale=0 → Div 产 NaN → SAT cast 保留 e4m3 0x7f（对齐 golden）
+        MaskReg zero_scale;
+        Compare<float, CMPMODE::EQ>(zero_scale, scale_reg, zero_reg, full);
+        Duplicate(nan_reg, std::numeric_limits<float>::quiet_NaN());
+        Select(scaled, nan_reg, scaled, zero_scale);
         Min(scaled, scaled, scale_max_reg, full);
         Max(scaled, scaled, neg_scale_max_reg, full);
         Cast<float8_e4m3_t, float, toFp8>(packed, scaled, full);

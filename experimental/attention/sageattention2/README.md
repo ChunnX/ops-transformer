@@ -16,6 +16,7 @@
 - `./op_host/`：CANN 标准 REG_OP/InferShape 注册层；交付态 op_api 层两段式 C 接口实现位于 `./op_api/`（字符串属性 ABI，经 `OP_API_DIR` 随 run 包打包安装），`./aclnn/` 为移植态本地单测实现（数值编码 ABI，见 `./aclnn/sage_attn_proto.h`）
 - `./python/sageattention2/`：PyTorch 接入包（`core.py` 冻结签名、`dispatch.py` 多后端路由、`op_plugin.py` NPU kernel 加载）
 - `./tests/`、`./benchmarks/`：本地门禁单测与独立 ACLNN 基准工具
+- `./tools/sim/`：设备核 camodel 仿真 harness（B2 门禁数值比对；依赖 CANN 容器 bisheng `--run-mode=sim` 运行，用法见 `./tools/sim/README.md`，不属于 run.sh 主机门禁）
 - `./run.sh`：本地门禁统一入口
 
 ## 编译构建
@@ -127,7 +128,7 @@ SAGE_PYTHON=... pytest tests/ -q（或 run.sh python）
 - 质量准出门禁：
 
 - `bash run.sh host` 输出三段 `[SUCCESS]`（ACLNN Host 7 例、OP_HOST 5 例、OutputQueue 10 例）且退出码为 0
-- `SAGE_PYTHON=... pytest tests/ -q` 全部用例通过（含 `tests/test_tiling_struct.py` 的 TilingData ctypes 镜像对 160 字节总长、32 字节对齐与逐字段偏移的断言）；`run.sh python` 仅覆盖 test_tiling_struct.py 与 test_quant.py 两个快速项，全量口径以 pytest 为准
+- `SAGE_PYTHON=... pytest tests/ -q` 全部用例通过（含 `tests/test_tiling_struct.py` 的 TilingData ctypes 镜像对 160 字节总长、32 字节对齐与逐字段偏移的断言）；`run.sh python` 覆盖 test_tiling_struct.py、test_quant.py 与 test_kernel_twin.py 三个快速项，全量口径以 pytest 为准
 - `tests/test_kernel_twin.py`（已纳入 `run.sh python`）：宿主孪生全流水执行器（twin_reference RunSequential）与 kernel 宿主串行分支（op_kernel SageAttnKernel + SimMemory，TilingData 直驱 `sage_attention2` C 入口）对 golden 25 桶落盘 out/lse 的功能交叉验证——22 桶整桶 + 3 大桶 128 对齐行窗口（P-05/P-07/TC-09，非因果行独立性如实标注；TC-03_smooth_v_fp32 为 smooth_v 建模边界由 test_function.py 覆盖），判据 L-A（matched_ratio ≥ 0.99、max_abs ≤ 0.1/1.0、LSE ≤ 1e-3）+ L-B（对 SDPA 误差比 ≤ 2.0/1.2/1.2），并附 P-01 量化中间态（q/k INT8、v FP8、scale）位级比对；P-01/TC-04/TC-05/TC-07/TC-01(fp16) 代表桶另以 kernel 宿主串行分支复验，TC-01(bf16) 桶覆盖核内 `tiling.input_dtype==2` 位型分派分支（bf16 读写与 km 差值位型舍回）
 - 仓库级数值门（kernel 宿主串行路径 vs 孪生参考十用例位级一致、golden 25 桶 L-A/L-B）：由工程根 `ci/local_test.sh` 承载，依赖仓库外 `./tests/` 与 `./sageAttention2/sageAttentionTest`（交付包内不自带，复现须在完整工程根执行）
 - `bash run.sh opp` 完成 dry-run 打包与 mock 安装且退出码为 0

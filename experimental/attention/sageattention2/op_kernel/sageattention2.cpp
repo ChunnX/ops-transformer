@@ -255,12 +255,14 @@ public:
         workspace_gm_ = workspace; // 签名契约占位：用户区经 GetUserWorkspace 旁路直达 kernel 入口，
                                    // 成员保留以对齐设备入口形参。
 
-        // GetBlockIdx/GetSubBlockIdx 设备端返回 int64_t，显式收窄避免隐式截断
+        // GetBlockIdx 设备端返回 int64_t，显式收窄避免隐式截断
         core_idx_ = static_cast<uint32_t>(GetBlockIdx());
         if SAGE_ATTN_IS_AIV {
+            sub_core_idx_ = core_idx_ % 2;
             core_idx_ /= 2;
+        } else {
+            sub_core_idx_ = 0;
         }
-        sub_core_idx_ = static_cast<uint32_t>(GetSubBlockIdx());
 
         // 提取核心 tiling 常量
         b_ = tiling_->b;

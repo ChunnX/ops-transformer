@@ -24,14 +24,17 @@ smooth_k=1、sm_scale=1/8；输入 `std::mt19937(20261003±{1,2,3})` 生成 fp16
 ## 复现步骤（容器内一次性命令形态）
 
 ```bash
-SNAP=<快照仓根>            # 含 experimental/attention/sageattention2 的目录
-WORK=<可写工作目录>
+OUT=<宿主输出目录>          # 须可写，如 /Users/z/git/hw/docker/out
 docker run --rm \
-  -v <宿主输出目录>:/work/out \
+  -v /Users/z/git/hw:/work/hw \
+  -v "${OUT}":/work/out \
   -e SAGE_ATTN_SIM_OUT=/work/out/sa2_sim_out \
   sageattn2-dev:latest \
-  bash $SNAP/experimental/attention/sageattention2/tools/sim/run_sim_e2e.sh \
-       $SNAP/ops-transformer /work/out/sa2_sim_e2e
+  bash /work/hw/ops-transformer/experimental/attention/sageattention2/tools/sim/run_sim_e2e.sh \
+       /work/hw/ops-transformer /work/out/sa2_sim_e2e
+# 快照形态（避免工作树中间态污染编译，见"已知边界"）：
+#   git archive HEAD --prefix=ops-transformer/ | tar -x -C <快照父目录>
+# 并把第一处挂载换成 -v <快照父目录>:/work/hw，其余参数不变。
 ```
 
 四步：g++ 参考程序 → bisheng 设备 sim 编译 → camodel 仿真运行 → 数值比对。
@@ -64,7 +67,7 @@ docker run --rm \
 
 ## 数值结论
 
-（见交付报告；本节随每次运行由 compare_outputs.py 输出刷新）
+（判定输出由 compare_outputs.py 运行时打印至 stdout；交付报告与本节摘要按每次运行人工回填）
 
 ## 已知边界
 
