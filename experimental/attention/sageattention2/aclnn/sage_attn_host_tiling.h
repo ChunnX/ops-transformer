@@ -6,9 +6,9 @@
  * \brief 闭式 Host Tiling 计算核心（inline 头文件实现）
  *
  * ComputeHostTiling 为纯函数（仅依赖 tiling.h / catlass / quant_host 头），
- * 同时被 aclnn/sage_attn_host.cpp（两段式 C 接口）与
- * op_host/sage_attention2_tiling.cpp（gert TilingImpl）包含，
- * 保证 GetWorkspaceSize 阶段与 TilingImpl 阶段结果位元一致。
+ * 被 op_host/sage_attention2_tiling.cpp（gert TilingImpl）与宿主单测
+ * tests/test_aclnn_host.cpp 包含，保证 TilingImpl 序列化位元与单测锁值一致；
+ * 交付态两段式 aclnn 入口（op_api 层）的 Workspace 预算同式收敛于此。
  * 以 inline 头文件形式组织，使 op_host 库无需链接 op_api 层目标即可获得定义。
  */
 
@@ -23,12 +23,23 @@
 #include <cstring>
 #include <cstdlib>
 
-// 平台核数查询（opdev/platform.h）依赖 libnnopbase 运行时符号；op_api 层 TU
-// （aclnn/sage_attn_host.cpp）在包含本头文件前定义 SAGE_ATTN_HAVE_PLATFORM_INFO
-// 以启用动态核数探测。op_host 库（被 op_build dlopen）不得引用 libnnopbase
-// 符号，走环境变量覆盖 + 默认 32 核的闭式路径。
-#if defined(SAGE_ATTN_HAVE_PLATFORM_INFO) && defined(SAGE_HAS_CANN_ACLNN_BASE)
-#include "opdev/platform.h"
+// aclnn 状态码词汇表（ComputeHostTiling 返回值；原 sage_attn_proto.h 承载，
+// 移植态两段式删除后归本头）：CANN 头可用时复用真实定义，宿主单测等无 CANN
+// include 环境使用取值对齐 CANN opdev/op_errno.h 的本地桩。
+#if defined(__has_include)
+#if __has_include("aclnn/aclnn_base.h")
+#include "aclnn/aclnn_base.h"
+#if __has_include("opdev/op_errno.h")
+#include "opdev/op_errno.h"
+#endif
+#define SAGE_HAS_CANN_ACLNN_BASE 1
+#endif
+#endif
+
+#ifndef SAGE_HAS_CANN_ACLNN_BASE
+using aclnnStatus = int32_t;
+constexpr aclnnStatus ACLNN_SUCCESS = 0;
+constexpr aclnnStatus ACLNN_ERR_PARAM_INVALID = 161002;
 #endif
 
 namespace sage_attn {
@@ -68,11 +79,13 @@ inline uint32_t GetKvHeadDieAffinity(uint32_t b_idx, uint32_t hkv_idx, uint32_t 
 
 /**
  * 获取硬件可用 AI Core 核心数量
- * 动态检测 32 核 (Atlas 950PR 满配) 与 28 核 (减配版)
+ * 动态支持 32 核 (Atlas 950PR 满配) 与 28 核 (减配版)：
+ * 环境变量覆盖供自动化测试/特定拓扑使用；核数的设备侧权威源是
+ * op_host TilingImpl 的 platform_ascendc AIC 钳制（sage_attention2_tiling.cpp，
+ * op_host 库被 op_build dlopen，禁止引用 libnnopbase 运行时符号）。
  */
 inline uint32_t GetHardwareCoreNum()
 {
-    // 1. 优先读取用户显式环境变量覆盖 (如自动化测试或特定拓扑)
     const char *env_cores = std::getenv("SAGEATTN_NUM_CORES");
     if (env_cores != nullptr) {
         int c = std::atoi(env_cores);
@@ -80,14 +93,6 @@ inline uint32_t GetHardwareCoreNum()
             return static_cast<uint32_t>(c);
         }
     }
-
-#if defined(SAGE_ATTN_HAVE_PLATFORM_INFO) && defined(SAGE_HAS_CANN_ACLNN_BASE)
-    const op::PlatformInfo &npuInfo = op::GetCurrentPlatformInfo();
-    uint32_t cubeCores = npuInfo.GetCubeCoreNum();
-    if (cubeCores > 0) {
-        return cubeCores;
-    }
-#endif
 
     // 默认 Atlas 950PR 标配 32 个 AI Core
     return ATLAS_950_AIC_NUM;
@@ -101,10 +106,10 @@ inline uint32_t GetHardwareCoreNum()
  * 3. 动态支持 32 核与 28 核
  * 4. 强制 64 位整型提升计算显存空间与地址偏移
  *
- * inline 唯一定义（本头被 aclnn/sage_attn_host.cpp 与 op_host/sage_attention2_tiling.cpp
- * 同时包含，且二者在独立构建目标 sageattention2_host 中共链——无 inline 会在共享库
- * 链接期报 duplicate symbol，R6 审查实测捕获）；inline 弱符号即 proto.h 注释所述
- * "弱符号，避免 op_host 库反向依赖 op_api 层目标"的落地形式。
+ * inline 唯一定义（本头被 op_host/sage_attention2_tiling.cpp 与
+ * tests/test_aclnn_host.cpp 同时包含，且二者在独立构建目标 sageattention2_host
+ * 中共链——无 inline 会在共享库链接期报 duplicate symbol，R6 审查实测捕获）；
+ * inline 弱符号即"避免 op_host 库反向依赖 op_api 层目标"的落地形式。
  */
 inline aclnnStatus ComputeHostTiling(
     uint32_t b,
@@ -187,16 +192,15 @@ inline aclnnStatus ComputeHostTiling(
     float base_sm_scale = static_cast<float>(smScale);
     tiling_out.sm_scale_log2e = base_sm_scale * quant::LOG2E;
     tiling_out.v_scale_max = quant::GetVScaleMax(static_cast<uint32_t>(pvAccumDtype));
-    // s_fp8_offset 契约冻结：仅允许缺省 0（基线，448· 经乘法承担）或冻结常量
-    // S_FP8_OFFSET（映射回基线 0，op_kernel Init 归一化）。
-    tiling_out.s_fp8_offset = quant::S_FP8_OFFSET;
+    // （原 s_fp8_offset TilingData 字段已删除：448· 放大恒经乘法启用、LSE 出口恒以
+    //  S_FP8_OFFSET 常量补扣，唯一定义 sageattn_fp8/ascendc/tiling.h。）
     // 输入位型分派：fp16/bf16 三方（def 注册、op_api、核内读写）一致
     tiling_out.input_dtype = static_cast<uint8_t>(dtype_mode);
 
     // 8. 闭式分块计算 (分块字段，12 字节) 与 Auto-Tuned Tiling 调优知识库查询
     // 优先查询 Ascend 950PR 经验调优知识库 (autotune::QueryTunedTiling)：
     // 命中调优用例 (P-01 ~ P-07) 时应用实测最优超参 (m_per_core, block_n, k_step,
-    // causal_early_exit, use_die_grouped)；未命中或动态 shape 时平滑回退至健壮的闭式推导。
+    // use_die_grouped)；未命中或动态 shape 时平滑回退至健壮的闭式推导。
     const autotune::TunedTilingEntry *tuned = nullptr;
     const char *env_tune_case = std::getenv("SAGEATTN_TUNE_CASE");
     if (env_tune_case != nullptr) {
@@ -221,21 +225,18 @@ inline aclnnStatus ComputeHostTiling(
     uint32_t k_step = DEFAULT_K_STEP;
     bool tuned_die_grouped = false;
     bool has_tuned = false;
-    uint8_t causal_early_exit_val = isCausal ? 1 : 0;
 
     if (tuned != nullptr) {
         has_tuned = true;
         m_per_core = tuned->m_per_core;
         block_n = tuned->block_n;
         k_step = tuned->k_step;
-        causal_early_exit_val = tuned->causal_early_exit ? 1 : 0;
         tuned_die_grouped = tuned->use_die_grouped;
     }
 
     tiling_out.m_per_core = m_per_core;
     tiling_out.block_n = block_n;
     tiling_out.k_step = k_step;
-    tiling_out.causal_early_exit = causal_early_exit_val;
 
     // 运行时资源台账 fail-fast：
     // O 累加器/S 双槽/L0C/L1 的足迹随 (gqa·m_per_core, block_n, d_pad) 变化，

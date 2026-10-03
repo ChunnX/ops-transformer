@@ -29,11 +29,8 @@ LB_RATIO_EPS = 1.0e-5        # L-B 上限浮点松弛
 
 
 OP_ROOT = Path(__file__).resolve().parent.parent
+# golden 数据集唯一位置：docker/golden（docker/init.sh --golden 幂等置备，绝不重生成）
 GOLDEN_DIR = OP_ROOT / "docker" / "golden"
-if not GOLDEN_DIR.exists():
-    repo_fallback = Path(__file__).resolve().parents[5] / "golden"
-    if repo_fallback.exists():
-        GOLDEN_DIR = repo_fallback
 REPO_ROOT = OP_ROOT
 
 

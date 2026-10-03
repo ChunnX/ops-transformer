@@ -26,7 +26,7 @@ enum class CrossCoreDirection : uint32_t {
     CUBE_TO_VEC0 = 0,  // Cube 核心 -> Vector 0 (量化 prologue 核)
     CUBE_TO_VEC1 = 1,  // Cube 核心 -> Vector 1 (softmax 核)
     VEC0_TO_CUBE = 2,  // Vector 0 -> Cube 核心 (K/V 就位)
-    VEC1_TO_CUBE = 3,  // Vector 1 -> Cube 核心 (softmax 结果与 skip-scale 信号)
+    VEC1_TO_CUBE = 3,  // Vector 1 -> Cube 核心 (softmax 结果 S 槽就绪/缓冲归还信号)
     VEC1_TO_VEC0 = 4   // Vector 1 -> Vector 0 (scale 条带消费 ACK；dir 仅作文档语义，不参与硬件编码)
 };
 

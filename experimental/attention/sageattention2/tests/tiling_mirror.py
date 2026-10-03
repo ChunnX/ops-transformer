@@ -13,7 +13,7 @@ import ctypes
 import struct
 
 #: struct.pack 序列化格式（与 _fields_ 逐字段对应）
-TILING_STRUCT_FMT = "<7I 6I 3f 3I 5I 7I 2Q 4I B3s"
+TILING_STRUCT_FMT = "<7I 6I 2f 3I 5I 7I 2Q 4I B7s"
 
 #: 冻结结构体大小（字节）
 EXPECTED_SIZE = 160
@@ -46,10 +46,11 @@ class SageAttention2TilingData(ctypes.Structure):
         ("pv_accum_dtype", ctypes.c_uint32),
         ("smooth_k", ctypes.c_uint32),
         ("smooth_v", ctypes.c_uint32),
-        # 3. 数值字段 (12 bytes)；s_fp8_offset 为布局冻结保留字段（kernel 不读）
+        # 3. 数值字段 (8 bytes)；原 s_fp8_offset 布局冻结字段已删除
+        #    （448· 放大恒经乘法启用、LSE 出口恒以 S_FP8_OFFSET 常量补扣，
+        #    唯一定义 sageattn_fp8/ascendc/tiling.h），其 4 字节并入尾部保留域
         ("sm_scale_log2e", ctypes.c_float),
         ("v_scale_max", ctypes.c_float),
-        ("s_fp8_offset", ctypes.c_float),
         # 4. 分块字段 (12 bytes)
         ("m_per_core", ctypes.c_uint32),
         ("block_n", ctypes.c_uint32),
@@ -75,9 +76,10 @@ class SageAttention2TilingData(ctypes.Structure):
         ("die_num", ctypes.c_uint32),
         ("cores_per_die", ctypes.c_uint32),
         ("tasks_per_die", ctypes.c_uint32),
-        # 8. dtype 与补齐保留字段 (4 bytes)：input_dtype 输入位型分派（1=fp16, 2=bf16）
+        # 8. dtype 与补齐保留字段 (8 bytes)：input_dtype 输入位型分派（1=fp16, 2=bf16）；
+        #    保留域 7 字节（吸收原 causal_early_exit 与 s_fp8_offset 删除后的冗余位）
         ("input_dtype", ctypes.c_uint8),
-        ("reserved", ctypes.c_uint8 * 3),
+        ("reserved", ctypes.c_uint8 * 7),
     ]
 
 

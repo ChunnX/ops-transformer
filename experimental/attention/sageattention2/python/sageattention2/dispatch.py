@@ -7,16 +7,10 @@ multi-backend auto-detection (C++ aclnn/op_plugin vs high-fidelity CPU simulatio
 from __future__ import annotations
 
 import os
-import warnings
 from typing import Any, Optional, Tuple, Union
 
-try:
-    import torch
-    import torch.nn.functional as F
-except ImportError:
-    from unittest.mock import MagicMock
-    torch = MagicMock()
-    F = MagicMock()
+import torch
+import torch.nn.functional as F
 
 from .error_check import (
     DEFAULT_PV_ACCUM_DTYPE,
@@ -28,8 +22,6 @@ from .error_check import (
     compute_sm_scale,
     handle_smooth_v,
     pad_head_dim,
-    validate_common_parameters,
-    validate_tensors,
 )
 from . import _ops
 
@@ -405,6 +397,8 @@ def dispatch_sageattn(
     """
     if attn_mask is not None:
         raise ValueError("attn_mask is not supported")
+    # kwargs 形态的 attn_mask 必须在本层消费（显式 attn_mask=None 转发会与其冲突）；
+    # 拒绝语义与汇入点 dispatch_sageattn_qk_int8_pv_fp8_asc 一致
     if "attn_mask" in kwargs and kwargs.pop("attn_mask") is not None:
         raise ValueError("attn_mask is not supported")
 
@@ -451,6 +445,9 @@ def dispatch_sageattn_qk_int8_pv_fp8_asc(
     Dispatch sageattn_qk_int8_pv_fp8_asc to PyTorch registered custom op torch.ops.sageattention2.forward.
     When return_lse=False, directly returns single tensor o.
     When return_lse=True, returns tuple (o, lse).
+
+    参数域完整校验唯一属于 torch.ops.sageattention2.forward 边界实现（_ops），本层
+    只做 API 形状（attn_mask 拒绝）与 pv_accum_dtype 解析，不再复制第二份校验。
     """
     if attn_mask is not None:
         raise ValueError("attn_mask is not supported")
@@ -460,14 +457,6 @@ def dispatch_sageattn_qk_int8_pv_fp8_asc(
     if pv_accum_dtype is None:
         pv_accum_dtype = kwargs.pop("pv_accum_dtype", None)
     pv_accum_dtype = resolve_pv_accum_dtype(pv_accum_dtype)
-
-    validate_common_parameters(
-        tensor_layout=tensor_layout,
-        qk_quant_gran=qk_quant_gran,
-        pv_accum_dtype=pv_accum_dtype,
-        kwargs=kwargs,
-        attn_mask=attn_mask,
-    )
 
     out, lse = torch.ops.sageattention2.forward(
         q,

@@ -9,15 +9,9 @@ from __future__ import annotations
 import contextlib
 import functools
 from typing import Any, Callable, Optional
-import warnings
 
-try:
-    import torch
-    import torch.nn.functional as F
-except ImportError:
-    from unittest.mock import MagicMock
-    torch = MagicMock()
-    F = MagicMock()
+import torch
+import torch.nn.functional as F
 
 from .dispatch import sageattn
 
@@ -43,18 +37,14 @@ def _can_use_sageattn(
         return False, "attn_mask is not supported"
     if dropout_p is not None and dropout_p > 0.0:
         return False, "dropout_p > 0 is not supported in inference-only SageAttention2"
-    if not (hasattr(query, "dim") and hasattr(key, "dim") and hasattr(value, "dim")):
-        return False, "Inputs must be PyTorch tensors"
     if query.dim() != 4 or key.dim() != 4 or value.dim() != 4:
         return False, "Tensors must be 4D (B, H, S, D)"
-    if hasattr(query, "dtype"):
-        if query.dtype not in (torch.float16, torch.bfloat16):
-            return False, f"dtype {query.dtype} is not float16 or bfloat16"
-        if query.dtype != key.dtype or query.dtype != value.dtype:
-            return False, "Tensors must share identical dtype"
-    if hasattr(query, "device"):
-        if query.device != key.device or query.device != value.device:
-            return False, "Tensors must share identical device"
+    if query.dtype not in (torch.float16, torch.bfloat16):
+        return False, f"dtype {query.dtype} is not float16 or bfloat16"
+    if query.dtype != key.dtype or query.dtype != value.dtype:
+        return False, "Tensors must share identical dtype"
+    if query.device != key.device or query.device != value.device:
+        return False, "Tensors must share identical device"
     head_dim = query.shape[-1]
     if head_dim <= 0 or head_dim > 128:
         return False, f"head_dim {head_dim} must be in range [1, 128]"
@@ -68,9 +58,8 @@ def _can_use_sageattn(
     sk = key.shape[2]
     if is_causal and sq != sk:
         return False, f"is_causal requires sq == sk (got {sq} != {sk})"
-    if hasattr(query, "stride") and hasattr(key, "stride") and hasattr(value, "stride"):
-        if query.stride(-1) != 1 or key.stride(-1) != 1 or value.stride(-1) != 1:
-            return False, "Last dimension of tensors must be contiguous (stride(-1) == 1)"
+    if query.stride(-1) != 1 or key.stride(-1) != 1 or value.stride(-1) != 1:
+        return False, "Last dimension of tensors must be contiguous (stride(-1) == 1)"
     return True, ""
 
 

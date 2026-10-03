@@ -43,7 +43,6 @@ run_host_tests() {
     echo "-- 编译 test_aclnn_host"
     "${BISHENG}" "${HOST_CXX_FLAGS[@]}" \
         "${WORK_DIR}/tests/test_aclnn_host.cpp" \
-        "${WORK_DIR}/aclnn/sage_attn_host.cpp" \
         -I"${WORK_DIR}/aclnn" \
         "${COMMON_INCLUDES[@]}" \
         -o "${BUILD_DIR}/test_aclnn_host"

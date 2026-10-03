@@ -40,7 +40,7 @@ NPU 侧两种粒度是两套独立存在的量化内核，不是兼容别名；�
 
 ## PV 两级累加：NPU 三档，CUDA 两档
 
-- NPU 档位（`PvAccumDtype`，`./sageattn_fp8/ascendc/tiling.h`；Host 侧实现 `./aclnn/sage_attn_host.cpp`，设备侧 PV 交接为 `./sageattn_fp8/catlass/sage_pv_mmad.hpp` 的 FixPipe 裸搬 + `MergePvPartialRowVF` 档位合并，宿主真值 `./sageattn_fp8/ascendc/twin_reference.h` 的 `AccumulatePvRow`）
+- NPU 档位（`PvAccumDtype`，`./sageattn_fp8/ascendc/tiling.h`；Host 侧实现 `./aclnn/sage_attn_host_tiling.h`，设备侧 PV 交接为 `./sageattn_fp8/catlass/sage_pv_mmad.hpp` 的 FixPipe 裸搬 + `MergePvPartialRowVF` 档位合并，宿主真值 `./sageattn_fp8/ascendc/twin_reference.h` 的 `AccumulatePvRow`）
 
 - `0`（`"fp32"`）：单级全程 FP32 累加，无第二级低精度 buffer；`smooth_v` 正路径仅在该档可用
 - `1`（`"fp32+fp32"`）：Cube FP8 MMA 硬件累加，每 `k_step` 周期归约至 FP32 输出 buffer

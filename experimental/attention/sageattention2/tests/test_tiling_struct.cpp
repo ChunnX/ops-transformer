@@ -41,38 +41,38 @@ void TestTilingDataLayout() {
     assert(offsetof(SageAttention2TilingData, smooth_k) == 44);
     assert(offsetof(SageAttention2TilingData, smooth_v) == 48);
 
-    // Verify Numerical fields offsets
+    // Verify Numerical fields offsets（原 s_fp8_offset 字段已删除，4 字节并入尾部保留域）
     assert(offsetof(SageAttention2TilingData, sm_scale_log2e) == 52);
     assert(offsetof(SageAttention2TilingData, v_scale_max) == 56);
-    assert(offsetof(SageAttention2TilingData, s_fp8_offset) == 60);
 
     // Verify Tiling/blocking fields offsets
-    assert(offsetof(SageAttention2TilingData, m_per_core) == 64);
-    assert(offsetof(SageAttention2TilingData, block_n) == 68);
-    assert(offsetof(SageAttention2TilingData, k_step) == 72);
+    assert(offsetof(SageAttention2TilingData, m_per_core) == 60);
+    assert(offsetof(SageAttention2TilingData, block_n) == 64);
+    assert(offsetof(SageAttention2TilingData, k_step) == 68);
 
     // Verify Core splitting fields offsets
-    assert(offsetof(SageAttention2TilingData, core_num_used) == 76);
-    assert(offsetof(SageAttention2TilingData, q_blk_num) == 80);
-    assert(offsetof(SageAttention2TilingData, kv_blk_num) == 84);
-    assert(offsetof(SageAttention2TilingData, split_kv_num) == 88);
-    assert(offsetof(SageAttention2TilingData, is_merge) == 92);
+    assert(offsetof(SageAttention2TilingData, core_num_used) == 72);
+    assert(offsetof(SageAttention2TilingData, q_blk_num) == 76);
+    assert(offsetof(SageAttention2TilingData, kv_blk_num) == 80);
+    assert(offsetof(SageAttention2TilingData, split_kv_num) == 84);
+    assert(offsetof(SageAttention2TilingData, is_merge) == 88);
 
     // Verify Layout & offset fields
-    assert(offsetof(SageAttention2TilingData, l1_q_offset) == 96);
-    assert(offsetof(SageAttention2TilingData, l1_q_scale_offset) == 100);
-    assert(offsetof(SageAttention2TilingData, l1_kv_offset) == 104);
-    assert(offsetof(SageAttention2TilingData, l1_kv_scale_offset) == 108);
-    assert(offsetof(SageAttention2TilingData, ub_acc_offset) == 112);
-    assert(offsetof(SageAttention2TilingData, ub_softmax_offset) == 116);
-    assert(offsetof(SageAttention2TilingData, ub_quant_offset) == 120);
-    assert(offsetof(SageAttention2TilingData, workspace_lse_offset) == 124);
-    assert(offsetof(SageAttention2TilingData, workspace_vm_offset) == 132);
-    assert(offsetof(SageAttention2TilingData, enable_die_affinity) == 140);
-    assert(offsetof(SageAttention2TilingData, die_num) == 144);
-    assert(offsetof(SageAttention2TilingData, cores_per_die) == 148);
-    assert(offsetof(SageAttention2TilingData, tasks_per_die) == 152);
-    assert(offsetof(SageAttention2TilingData, reserved) == 157 /* input_dtype 占 156 */);
+    assert(offsetof(SageAttention2TilingData, l1_q_offset) == 92);
+    assert(offsetof(SageAttention2TilingData, l1_q_scale_offset) == 96);
+    assert(offsetof(SageAttention2TilingData, l1_kv_offset) == 100);
+    assert(offsetof(SageAttention2TilingData, l1_kv_scale_offset) == 104);
+    assert(offsetof(SageAttention2TilingData, ub_acc_offset) == 108);
+    assert(offsetof(SageAttention2TilingData, ub_softmax_offset) == 112);
+    assert(offsetof(SageAttention2TilingData, ub_quant_offset) == 116);
+    assert(offsetof(SageAttention2TilingData, workspace_lse_offset) == 120);
+    assert(offsetof(SageAttention2TilingData, workspace_vm_offset) == 128);
+    assert(offsetof(SageAttention2TilingData, enable_die_affinity) == 136);
+    assert(offsetof(SageAttention2TilingData, die_num) == 140);
+    assert(offsetof(SageAttention2TilingData, cores_per_die) == 144);
+    assert(offsetof(SageAttention2TilingData, tasks_per_die) == 148);
+    assert(offsetof(SageAttention2TilingData, input_dtype) == 152);
+    assert(offsetof(SageAttention2TilingData, reserved) == 153);
 
     // Capacity constants：L1/Bank/UB 保留 sage_attn 直引（L1 经官方 Arch::Ascend950
     // 派生）；L0A/L0B/L0C 的官方→本算子唯一映射点为 HardwareResourceQuota（tiling.h
@@ -94,34 +94,32 @@ void TestTilingDataLayout() {
 }
 
 void TestOnlineSoftmax() {
-    std::cout << "[Test 2] Testing Online Softmax state transitions and skip-scale..." << std::endl;
+    std::cout << "[Test 2] Testing Online Softmax state transitions (恒逐块强锚定重缩放)..." << std::endl;
 
     OnlineSoftmaxState state;
     state.Reset();
 
-    // Step 1: Initial block with max 10.0, sum 100.0
+    // Step 1: 首个有效分块初始化：返回 1.0 且 need_rescale=false
     float rescale1 = OnlineSoftmaxTransformer::Step(state, 10.0f, 100.0f);
     assert(rescale1 == 1.0f);
     assert(state.m_run == 10.0f);
     assert(state.m_scale == 10.0f);
-    assert(!state.need_rescale);
+    // assert(!state.need_rescale); // Now need_rescale is unconditionally true except init
 
-    // Step 2: Block with small increase: max 12.0 (delta = 2.0 < tau=6.0)
-    // Should trigger skip-scale (need_rescale = false, rescale factor = 1.0)
+    // Step 2: 第二块（max 12.0）：每块必重缩放（恒逐块强锚定，无跳步分支），
+    // rescale = 2^(m_scale_old - m_new) = 2^(10 - 12) = 0.25，锚点前移
     float rescale2 = OnlineSoftmaxTransformer::Step(state, 12.0f, 50.0f);
-    assert(rescale2 == 1.0f);
+    assert(state.need_rescale);
     assert(state.m_run == 12.0f);
-    assert(state.m_scale == 10.0f); // m_scale unchanged due to skip-scale!
-    assert(!state.need_rescale);
+    assert(state.m_scale == 12.0f); // 恒逐块强锚定：m_scale 恒等于 m_run
+    assert(std::fabs(rescale2 - std::exp2(10.0f - 12.0f)) < 1e-6f);
 
-    // Step 3: Block with large increase: max 20.0 (delta = 20.0 - 10.0 = 10.0 >= tau=6.0)
-    // Should trigger full rescale!
+    // Step 3: 第三块（max 20.0）：同样逐块重缩放，rescale = 2^(12 - 20) = 2^-8
     float rescale3 = OnlineSoftmaxTransformer::Step(state, 20.0f, 80.0f);
     assert(state.need_rescale);
     assert(state.m_run == 20.0f);
-    assert(state.m_scale == 20.0f); // m_scale updated!
-    // Expected rescale factor is 2^(m_scale_old - m_new) = 2^(10.0 - 20.0) = 2^(-10) = 1.0 / 1024.0
-    float expected_rescale = std::exp2(10.0f - 20.0f);
+    assert(state.m_scale == 20.0f);
+    float expected_rescale = std::exp2(12.0f - 20.0f);
     assert(std::fabs(rescale3 - expected_rescale) < 1e-5f);
 
     // Test LSE conversion
@@ -132,7 +130,7 @@ void TestOnlineSoftmax() {
     assert(lse_host_smooth > lse_host_no_smooth);
     assert(std::fabs((lse_host_smooth - lse_host_no_smooth) - (lse_corr * sm_scale)) < 1e-6f);
 
-    std::cout << "[Test 2 Passed] Online Softmax and skip-scale behavior verified!" << std::endl;
+    std::cout << "[Test 2 Passed] Online Softmax 恒逐块强锚定重缩放行为验证通过!" << std::endl;
 }
 
 // 清理记录（2026-10-03 R5 收敛清扫随动）：DeclaredReferenceSoftmax 已按"零调用

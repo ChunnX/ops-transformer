@@ -277,7 +277,6 @@ def _run_kernel_host(case: dict, q: torch.Tensor, k: torch.Tensor, v: torch.Tens
     t.input_dtype = _dtype_mode(q)
     t.sm_scale_log2e = sm_scale * LOG2E
     t.v_scale_max = v_scale_max_for(case.get("pv_accum_dtype", "fp32+fp16"))
-    t.s_fp8_offset = S_FP8_OFFSET
     t.m_per_core, t.block_n, t.k_step = 64, 64, 16
     t.core_num_used = 1
     t.q_blk_num = (sq + t.m_per_core - 1) // t.m_per_core

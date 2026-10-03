@@ -1,6 +1,5 @@
-#include "../aclnn/sage_attn_proto.h"
-// ComputeHostTiling 的 inline 唯一定义在本头（proto.h 仅有声明）：
-// 本 TU 直接调用它，缺此 include 会在链接期报 undefined reference（R7 修正）
+// ComputeHostTiling 的 inline 唯一定义与 aclnn 状态码词汇表均在本头链
+// （host_tiling.h -> sage_attn_proto.h -> ascendc/tiling.h）：
 #include "../aclnn/sage_attn_host_tiling.h"
 #include "../sageattn_fp8/ascendc/tiling.h"
 #include "../quant/quant_host.h"
@@ -21,16 +20,20 @@
 
 namespace {
 
-/**
- * 辅助函数：构造测试用的 aclTensor
- */
-aclTensor CreateTestTensor(int64_t d0, int64_t d1, int64_t d2, int64_t d3)
+// 直测 ComputeHostTiling/TilingData 的公共入口：交付态两段式 C-ABI 唯一面在
+// op_api/aclnn_sage_attention2（CANN 运行时承载，无法宿主桩执行）；
+// tiling 数值与校验契约以闭式计算核心为唯一直测点。
+bool CallHostTiling(uint32_t b, uint32_t sq, uint32_t sk, uint32_t hq, uint32_t hkv,
+                    int dtype_mode, uint32_t d_og,
+                    double sm_scale, int64_t qk_quant_gran, int64_t pv_accum_dtype,
+                    bool is_causal, int64_t tensor_layout, bool smooth_k, bool smooth_v,
+                    bool has_km, bool has_lse,
+                    sage_attn::SageAttention2TilingData &td, uint64_t &ws)
 {
-    aclTensor t;
-    t.shape = {d0, d1, d2, d3};
-    t.dtype = 0;
-    t.data = reinterpret_cast<void*>(0x1000);
-    return t;
+    return sage_attn::ComputeHostTiling(b, sq, sk, hq, hkv, dtype_mode, d_og,
+                                        sm_scale, qk_quant_gran, pv_accum_dtype,
+                                        is_causal, tensor_layout, smooth_k, smooth_v,
+                                        has_km, has_lse, td, ws) == ACLNN_SUCCESS;
 }
 
 // 1. 测试 TilingData 结构体大小与内存对齐
@@ -62,33 +65,32 @@ bool TestTilingDataLayout()
 
     TEST_CHECK(reinterpret_cast<uintptr_t>(&data.sm_scale_log2e) - base == 52, "sm_scale_log2e offset == 52");
     TEST_CHECK(reinterpret_cast<uintptr_t>(&data.v_scale_max) - base == 56, "v_scale_max offset == 56");
-    TEST_CHECK(reinterpret_cast<uintptr_t>(&data.s_fp8_offset) - base == 60, "s_fp8_offset offset == 60");
 
-    TEST_CHECK(reinterpret_cast<uintptr_t>(&data.m_per_core) - base == 64, "m_per_core offset == 64");
-    TEST_CHECK(reinterpret_cast<uintptr_t>(&data.block_n) - base == 68, "block_n offset == 68");
-    TEST_CHECK(reinterpret_cast<uintptr_t>(&data.k_step) - base == 72, "k_step offset == 72");
+    TEST_CHECK(reinterpret_cast<uintptr_t>(&data.m_per_core) - base == 60, "m_per_core offset == 60");
+    TEST_CHECK(reinterpret_cast<uintptr_t>(&data.block_n) - base == 64, "block_n offset == 64");
+    TEST_CHECK(reinterpret_cast<uintptr_t>(&data.k_step) - base == 68, "k_step offset == 68");
 
-    TEST_CHECK(reinterpret_cast<uintptr_t>(&data.core_num_used) - base == 76, "core_num_used offset == 76");
-    TEST_CHECK(reinterpret_cast<uintptr_t>(&data.q_blk_num) - base == 80, "q_blk_num offset == 80");
-    TEST_CHECK(reinterpret_cast<uintptr_t>(&data.kv_blk_num) - base == 84, "kv_blk_num offset == 84");
-    TEST_CHECK(reinterpret_cast<uintptr_t>(&data.split_kv_num) - base == 88, "split_kv_num offset == 88");
-    TEST_CHECK(reinterpret_cast<uintptr_t>(&data.is_merge) - base == 92, "is_merge offset == 92");
+    TEST_CHECK(reinterpret_cast<uintptr_t>(&data.core_num_used) - base == 72, "core_num_used offset == 72");
+    TEST_CHECK(reinterpret_cast<uintptr_t>(&data.q_blk_num) - base == 76, "q_blk_num offset == 76");
+    TEST_CHECK(reinterpret_cast<uintptr_t>(&data.kv_blk_num) - base == 80, "kv_blk_num offset == 80");
+    TEST_CHECK(reinterpret_cast<uintptr_t>(&data.split_kv_num) - base == 84, "split_kv_num offset == 84");
+    TEST_CHECK(reinterpret_cast<uintptr_t>(&data.is_merge) - base == 88, "is_merge offset == 88");
 
-    TEST_CHECK(reinterpret_cast<uintptr_t>(&data.l1_q_offset) - base == 96, "l1_q_offset offset == 96");
-    TEST_CHECK(reinterpret_cast<uintptr_t>(&data.l1_q_scale_offset) - base == 100, "l1_q_scale_offset offset == 100");
-    TEST_CHECK(reinterpret_cast<uintptr_t>(&data.l1_kv_offset) - base == 104, "l1_kv_offset offset == 104");
-    TEST_CHECK(reinterpret_cast<uintptr_t>(&data.l1_kv_scale_offset) - base == 108, "l1_kv_scale_offset offset == 108");
-    TEST_CHECK(reinterpret_cast<uintptr_t>(&data.ub_acc_offset) - base == 112, "ub_acc_offset offset == 112");
-    TEST_CHECK(reinterpret_cast<uintptr_t>(&data.ub_softmax_offset) - base == 116, "ub_softmax_offset offset == 116");
-    TEST_CHECK(reinterpret_cast<uintptr_t>(&data.ub_quant_offset) - base == 120, "ub_quant_offset offset == 120");
-    TEST_CHECK(reinterpret_cast<uintptr_t>(&data.workspace_lse_offset) - base == 124, "workspace_lse_offset offset == 124");
-    TEST_CHECK(reinterpret_cast<uintptr_t>(&data.workspace_vm_offset) - base == 132, "workspace_vm_offset offset == 132");
-    TEST_CHECK(reinterpret_cast<uintptr_t>(&data.enable_die_affinity) - base == 140, "enable_die_affinity offset == 140");
-    TEST_CHECK(reinterpret_cast<uintptr_t>(&data.die_num) - base == 144, "die_num offset == 144");
-    TEST_CHECK(reinterpret_cast<uintptr_t>(&data.cores_per_die) - base == 148, "cores_per_die offset == 148");
-    TEST_CHECK(reinterpret_cast<uintptr_t>(&data.tasks_per_die) - base == 152, "tasks_per_die offset == 152");
-    TEST_CHECK(reinterpret_cast<uintptr_t>(&data.input_dtype) - base == 156, "input_dtype offset == 156");
-    TEST_CHECK(reinterpret_cast<uintptr_t>(&data.reserved) - base == 157, "reserved offset == 157 (dtype 占 156)");
+    TEST_CHECK(reinterpret_cast<uintptr_t>(&data.l1_q_offset) - base == 92, "l1_q_offset offset == 92");
+    TEST_CHECK(reinterpret_cast<uintptr_t>(&data.l1_q_scale_offset) - base == 96, "l1_q_scale_offset offset == 96");
+    TEST_CHECK(reinterpret_cast<uintptr_t>(&data.l1_kv_offset) - base == 100, "l1_kv_offset offset == 100");
+    TEST_CHECK(reinterpret_cast<uintptr_t>(&data.l1_kv_scale_offset) - base == 104, "l1_kv_scale_offset offset == 104");
+    TEST_CHECK(reinterpret_cast<uintptr_t>(&data.ub_acc_offset) - base == 108, "ub_acc_offset offset == 108");
+    TEST_CHECK(reinterpret_cast<uintptr_t>(&data.ub_softmax_offset) - base == 112, "ub_softmax_offset offset == 112");
+    TEST_CHECK(reinterpret_cast<uintptr_t>(&data.ub_quant_offset) - base == 116, "ub_quant_offset offset == 116");
+    TEST_CHECK(reinterpret_cast<uintptr_t>(&data.workspace_lse_offset) - base == 120, "workspace_lse_offset offset == 120");
+    TEST_CHECK(reinterpret_cast<uintptr_t>(&data.workspace_vm_offset) - base == 128, "workspace_vm_offset offset == 128");
+    TEST_CHECK(reinterpret_cast<uintptr_t>(&data.enable_die_affinity) - base == 136, "enable_die_affinity offset == 136");
+    TEST_CHECK(reinterpret_cast<uintptr_t>(&data.die_num) - base == 140, "die_num offset == 140");
+    TEST_CHECK(reinterpret_cast<uintptr_t>(&data.cores_per_die) - base == 144, "cores_per_die offset == 144");
+    TEST_CHECK(reinterpret_cast<uintptr_t>(&data.tasks_per_die) - base == 148, "tasks_per_die offset == 148");
+    TEST_CHECK(reinterpret_cast<uintptr_t>(&data.input_dtype) - base == 152, "input_dtype offset == 152");
+    TEST_CHECK(reinterpret_cast<uintptr_t>(&data.reserved) - base == 153, "reserved offset == 153");
 
     std::cout << "[PASS] TestTilingDataLayout" << std::endl;
     return true;
@@ -100,50 +102,21 @@ bool TestHostTilingStandardGqa()
     std::cout << "[RUN] TestHostTilingStandardGqa..." << std::endl;
 
     // HND 布局: [B=2, Hq=32, Sq=1024, D=128], KV: [B=2, Hkv=8, Sk=1024, D=128]
-    aclTensor q = CreateTestTensor(2, 32, 1024, 128);
-    aclTensor k = CreateTestTensor(2, 8, 1024, 128);
-    aclTensor v = CreateTestTensor(2, 8, 1024, 128);
-    aclTensor out = CreateTestTensor(2, 32, 1024, 128);
-    aclTensor lse = CreateTestTensor(2, 32, 1024, 1);
-
     uint64_t ws_size = 0;
-    aclOpExecutor *executor = nullptr;
+    sage_attn::SageAttention2TilingData td;
 
-    double sm_scale = 1.0 / std::sqrt(128.0);
-    int64_t qk_quant_gran = sage_attn::QUANT_GRAN_PER_THREAD;
-    int64_t pv_accum_dtype = sage_attn::PV_ACCUM_FP32_FP16; // 默认验收档位
-    bool is_causal = false;
-    int64_t tensor_layout = sage_attn::LAYOUT_HND;
-    bool smooth_k = false;
-    bool smooth_v = false;
-
-    aclnnStatus ret = aclnnSageAttention2GetWorkspaceSize(
-        &q, &k, &v,
-        nullptr, nullptr,
-        sm_scale, qk_quant_gran, pv_accum_dtype,
-        is_causal, tensor_layout, smooth_k, smooth_v,
-        &out, &lse,
-        &ws_size, &executor);
-
-    TEST_CHECK(ret == ACLNN_SUCCESS, "GetWorkspaceSize returned error");
-    TEST_CHECK(executor != nullptr, "executor is nullptr");
+    TEST_CHECK(CallHostTiling(2, 1024, 1024, 32, 8, /*dtype_mode*/ 1, 128,
+                              1.0 / std::sqrt(128.0),
+                              sage_attn::QUANT_GRAN_PER_THREAD, sage_attn::PV_ACCUM_FP32_FP16,
+                              /*is_causal*/ false, sage_attn::LAYOUT_HND,
+                              /*smooth_k*/ false, /*smooth_v*/ false,
+                              /*has_km*/ false, /*has_lse*/ true,
+                              td, ws_size),
+               "ComputeHostTiling returned error");
+    TEST_CHECK(ws_size > 0, "workspaceSize must cover lse temporary");
     TEST_CHECK((ws_size % 512) == 0, "workspaceSize must be 512-byte aligned");
 
-    // 验证两段式第二阶段
-    std::vector<uint8_t> dummy_ws(ws_size > 0 ? ws_size : 512, 0);
-    ret = aclnnSageAttention2(dummy_ws.data(), ws_size, executor, nullptr);
-    TEST_CHECK(ret == ACLNN_SUCCESS, "aclnnSageAttention2 failed");
-
     // 验证 Die 亲和性调度 Tiling 字段
-    sage_attn::SageAttention2TilingData td;
-    uint64_t calculated_ws = 0;
-    aclnnStatus t_ret = sage_attn::ComputeHostTiling(
-        2, 1024, 1024, 32, 8, /*dtype_mode*/ 1, 128,
-        sm_scale, qk_quant_gran, pv_accum_dtype,
-        is_causal, tensor_layout, smooth_k, smooth_v,
-        false, true,
-        td, calculated_ws);
-    TEST_CHECK(t_ret == ACLNN_SUCCESS, "ComputeHostTiling failed");
     TEST_CHECK(td.enable_die_affinity == 1, "enable_die_affinity must be 1 for standard GQA");
     TEST_CHECK(td.die_num == 2, "die_num must be 2 for Atlas 950PR");
     TEST_CHECK(td.cores_per_die == 16, "cores_per_die must be 16 (32 / 2)");
@@ -152,13 +125,6 @@ bool TestHostTilingStandardGqa()
     TEST_CHECK(td.m_per_core == 32, "m_per_core must be 32 (gqa=4, 4*32<=128 row capacity)");
     TEST_CHECK(td.tasks_per_die == 256, "tasks_per_die must be 256 (512 / 2)");
 
-    // 显存过小报错验证
-    if (ws_size > 0) {
-        ret = aclnnSageAttention2(dummy_ws.data(), ws_size - 1, executor, nullptr);
-        TEST_CHECK(ret == ACLNN_ERR_PARAM_INVALID, "aclnnSageAttention2 should reject small workspace");
-    }
-
-    delete executor;
     std::cout << "[PASS] TestHostTilingStandardGqa" << std::endl;
     return true;
 }
@@ -168,36 +134,21 @@ bool TestHostTilingFp32SmoothV()
 {
     std::cout << "[RUN] TestHostTilingFp32SmoothV..." << std::endl;
 
-    aclTensor q = CreateTestTensor(2, 16, 512, 64);
-    aclTensor k = CreateTestTensor(2, 16, 512, 64);
-    aclTensor v = CreateTestTensor(2, 16, 512, 64);
-    aclTensor out = CreateTestTensor(2, 16, 512, 64);
-
     uint64_t ws_size = 0;
-    aclOpExecutor *executor = nullptr;
+    sage_attn::SageAttention2TilingData td;
 
-    double sm_scale = 1.0 / 8.0;
-    int64_t qk_quant_gran = sage_attn::QUANT_GRAN_PER_WARP;
-    int64_t pv_accum_dtype = sage_attn::PV_ACCUM_FP32; // 全精度档
-    bool is_causal = true;
-    int64_t tensor_layout = sage_attn::LAYOUT_HND;
-    bool smooth_k = false;
-    bool smooth_v = true; // 启用 smooth_v，触发 fuse_v_mean 空间分配
-
-    aclnnStatus ret = aclnnSageAttention2GetWorkspaceSize(
-        &q, &k, &v,
-        nullptr, nullptr,
-        sm_scale, qk_quant_gran, pv_accum_dtype,
-        is_causal, tensor_layout, smooth_k, smooth_v,
-        &out, nullptr,
-        &ws_size, &executor);
-
-    TEST_CHECK(ret == ACLNN_SUCCESS, "GetWorkspaceSize failed");
-    TEST_CHECK(executor != nullptr, "executor is null");
+    TEST_CHECK(CallHostTiling(2, 512, 512, 16, 16, /*dtype_mode*/ 1, 64,
+                              1.0 / 8.0, sage_attn::QUANT_GRAN_PER_WARP, sage_attn::PV_ACCUM_FP32,
+                              /*is_causal*/ true, sage_attn::LAYOUT_HND,
+                              /*smooth_k*/ false, /*smooth_v*/ true,
+                              /*has_km*/ false, /*has_lse*/ false,
+                              td, ws_size),
+               "ComputeHostTiling failed");
+    // smooth_v 仅全精度 fp32 档生效：fuse_v_mean 均值空间必须入账
+    TEST_CHECK(td.smooth_v == 1, "smooth_v must survive on fp32 accum tier");
     TEST_CHECK(ws_size > 0, "workspace should be allocated for smooth_v");
     TEST_CHECK((ws_size % 512) == 0, "workspace must be 512 aligned");
 
-    delete executor;
     std::cout << "[PASS] TestHostTilingFp32SmoothV" << std::endl;
     return true;
 }
@@ -208,28 +159,20 @@ bool TestHostTilingSplitKvTrigger()
     std::cout << "[RUN] TestHostTilingSplitKvTrigger..." << std::endl;
 
     // 单头、极小批次：B=1, Hq=1, Hkv=1, Sq=64, Sk=1024, D=64
-    aclTensor q = CreateTestTensor(1, 1, 64, 64);
-    aclTensor k = CreateTestTensor(1, 1, 1024, 64);
-    aclTensor v = CreateTestTensor(1, 1, 1024, 64);
-    aclTensor out = CreateTestTensor(1, 1, 64, 64);
-
     uint64_t ws_size = 0;
-    aclOpExecutor *executor = nullptr;
+    sage_attn::SageAttention2TilingData td;
 
-    aclnnStatus ret = aclnnSageAttention2GetWorkspaceSize(
-        &q, &k, &v,
-        nullptr, nullptr,
-        0.125, sage_attn::QUANT_GRAN_PER_THREAD, sage_attn::PV_ACCUM_FP32_FP16,
-        false, sage_attn::LAYOUT_HND, false, false,
-        &out, nullptr,
-        &ws_size, &executor);
-
-    TEST_CHECK(ret == ACLNN_SUCCESS, "GetWorkspaceSize failed");
-    TEST_CHECK(executor != nullptr, "executor is null");
+    TEST_CHECK(CallHostTiling(1, 64, 1024, 1, 1, /*dtype_mode*/ 1, 64,
+                              0.125, sage_attn::QUANT_GRAN_PER_THREAD, sage_attn::PV_ACCUM_FP32_FP16,
+                              /*is_causal*/ false, sage_attn::LAYOUT_HND,
+                              /*smooth_k*/ false, /*smooth_v*/ false,
+                              /*has_km*/ false, /*has_lse*/ false,
+                              td, ws_size),
+               "ComputeHostTiling failed");
     // Split-KV 使能后需要为 partial O 和 partial LSE 分配显存
+    TEST_CHECK(td.split_kv_num > 1, "single short task must trigger Split-KV");
     TEST_CHECK(ws_size > 0, "Split-KV should allocate workspace");
 
-    delete executor;
     std::cout << "[PASS] TestHostTilingSplitKvTrigger" << std::endl;
     return true;
 }
@@ -241,78 +184,91 @@ bool TestCoreCompatibility28()
 
     setenv("SAGEATTN_NUM_CORES", "28", 1);
 
-    aclTensor q = CreateTestTensor(4, 16, 512, 128);
-    aclTensor k = CreateTestTensor(4, 16, 512, 128);
-    aclTensor v = CreateTestTensor(4, 16, 512, 128);
-    aclTensor out = CreateTestTensor(4, 16, 512, 128);
-
     uint64_t ws_size = 0;
-    aclOpExecutor *executor = nullptr;
+    sage_attn::SageAttention2TilingData td;
 
-    aclnnStatus ret = aclnnSageAttention2GetWorkspaceSize(
-        &q, &k, &v,
-        nullptr, nullptr,
-        0.125, sage_attn::QUANT_GRAN_PER_THREAD, sage_attn::PV_ACCUM_FP32_FP16,
-        false, sage_attn::LAYOUT_HND, false, false,
-        &out, nullptr,
-        &ws_size, &executor);
-
-    TEST_CHECK(ret == ACLNN_SUCCESS, "GetWorkspaceSize failed with 28 cores");
-    delete executor;
+    TEST_CHECK(CallHostTiling(4, 512, 512, 16, 16, /*dtype_mode*/ 1, 128,
+                              0.125, sage_attn::QUANT_GRAN_PER_THREAD, sage_attn::PV_ACCUM_FP32_FP16,
+                              /*is_causal*/ false, sage_attn::LAYOUT_HND,
+                              /*smooth_k*/ false, /*smooth_v*/ false,
+                              /*has_km*/ false, /*has_lse*/ false,
+                              td, ws_size),
+               "ComputeHostTiling failed with 28 cores");
+    TEST_CHECK(td.core_num_used <= 28, "core_num_used must respect the 28-core topology");
 
     unsetenv("SAGEATTN_NUM_CORES");
     std::cout << "[PASS] TestCoreCompatibility28" << std::endl;
     return true;
 }
 
-// 6. 测试参数校验与非法入参拦截 (红线规则)
+// 6. 测试参数校验与非法入参拦截 (红线规则；校验唯一点在共享的 ComputeHostTiling，
+//    Python 边界与交付 op_api 的白名单按同一域拒绝)
 bool TestParameterValidation()
 {
     std::cout << "[RUN] TestParameterValidation..." << std::endl;
 
-    aclTensor q = CreateTestTensor(2, 32, 128, 64);
-    aclTensor k = CreateTestTensor(2, 8, 128, 64);
-    aclTensor v = CreateTestTensor(2, 8, 128, 64);
-    aclTensor out = CreateTestTensor(2, 32, 128, 64);
-    uint64_t ws_size = 0;
-    aclOpExecutor *executor = nullptr;
+    sage_attn::SageAttention2TilingData td;
+    uint64_t ws = 0;
 
-    // 1. 空指针入参
-    TEST_CHECK(aclnnSageAttention2GetWorkspaceSize(nullptr, &k, &v, nullptr, nullptr, 0.1, 3, 2, false, 1, false, false, &out, nullptr, &ws_size, &executor) == ACLNN_ERR_PARAM_NULLPTR, "Should reject null query");
-    TEST_CHECK(aclnnSageAttention2GetWorkspaceSize(&q, &k, &v, nullptr, nullptr, 0.1, 3, 2, false, 1, false, false, &out, nullptr, nullptr, &executor) == ACLNN_ERR_PARAM_NULLPTR, "Should reject null ws_size");
-    TEST_CHECK(aclnnSageAttention2GetWorkspaceSize(&q, &k, &v, nullptr, nullptr, 0.1, 3, 2, false, 1, false, false, &out, nullptr, &ws_size, nullptr) == ACLNN_ERR_PARAM_NULLPTR, "Should reject null executor");
+    // 1. GQA 不可整除拦截 (Hq=31, Hkv=8)
+    TEST_CHECK(!CallHostTiling(2, 128, 128, 31, 8, 1, 64, 0.1,
+                               sage_attn::QUANT_GRAN_PER_THREAD, sage_attn::PV_ACCUM_FP32_FP16,
+                               false, sage_attn::LAYOUT_HND, false, false, false, false, td, ws),
+               "Should reject non-divisible GQA heads");
 
-    // 2. GQA 不可整除拦截 (Hq=31, Hkv=8)
-    aclTensor q_bad_gqa = CreateTestTensor(2, 31, 128, 64);
-    TEST_CHECK(aclnnSageAttention2GetWorkspaceSize(&q_bad_gqa, &k, &v, nullptr, nullptr, 0.1, 3, 2, false, 1, false, false, &out, nullptr, &ws_size, &executor) == ACLNN_ERR_PARAM_INVALID, "Should reject non-divisible GQA heads");
+    // 2. HeadDim 越界拦截 (D=256 > 128 与 D=0)
+    TEST_CHECK(!CallHostTiling(2, 128, 128, 32, 8, 1, 256, 0.1,
+                               sage_attn::QUANT_GRAN_PER_THREAD, sage_attn::PV_ACCUM_FP32_FP16,
+                               false, sage_attn::LAYOUT_HND, false, false, false, false, td, ws),
+               "Should reject D > 128");
+    TEST_CHECK(!CallHostTiling(2, 128, 128, 32, 8, 1, 0, 0.1,
+                               sage_attn::QUANT_GRAN_PER_THREAD, sage_attn::PV_ACCUM_FP32_FP16,
+                               false, sage_attn::LAYOUT_HND, false, false, false, false, td, ws),
+               "Should reject D == 0");
 
-    // 3. HeadDim 超过 128 拦截 (D=256)
-    aclTensor q_bad_d = CreateTestTensor(2, 32, 128, 256);
-    aclTensor k_bad_d = CreateTestTensor(2, 8, 128, 256);
-    aclTensor v_bad_d = CreateTestTensor(2, 8, 128, 256);
-    TEST_CHECK(aclnnSageAttention2GetWorkspaceSize(&q_bad_d, &k_bad_d, &v_bad_d, nullptr, nullptr, 0.1, 3, 2, false, 1, false, false, &out, nullptr, &ws_size, &executor) == ACLNN_ERR_PARAM_INVALID, "Should reject D > 128");
+    // 3. 非法量化粒度与累加精度
+    TEST_CHECK(!CallHostTiling(2, 128, 128, 32, 8, 1, 64, 0.1, 999,
+                               sage_attn::PV_ACCUM_FP32_FP16,
+                               false, sage_attn::LAYOUT_HND, false, false, false, false, td, ws),
+               "Should reject invalid qkQuantGran");
+    TEST_CHECK(!CallHostTiling(2, 128, 128, 32, 8, 1, 64, 0.1,
+                               sage_attn::QUANT_GRAN_PER_THREAD, 999,
+                               false, sage_attn::LAYOUT_HND, false, false, false, false, td, ws),
+               "Should reject invalid pvAccumDtype");
 
-    // 4. 非法量化粒度与累加精度
-    TEST_CHECK(aclnnSageAttention2GetWorkspaceSize(&q, &k, &v, nullptr, nullptr, 0.1, 999, 2, false, 1, false, false, &out, nullptr, &ws_size, &executor) == ACLNN_ERR_PARAM_INVALID, "Should reject invalid qkQuantGran");
-    TEST_CHECK(aclnnSageAttention2GetWorkspaceSize(&q, &k, &v, nullptr, nullptr, 0.1, 3, 999, false, 1, false, false, &out, nullptr, &ws_size, &executor) == ACLNN_ERR_PARAM_INVALID, "Should reject invalid pvAccumDtype");
+    // 4. 非法张量布局编码拦截（仅 0=NHD/1=HND 合法，乱码/负值显式报错不静默归一）
+    TEST_CHECK(!CallHostTiling(2, 128, 128, 32, 8, 1, 64, 0.1,
+                               sage_attn::QUANT_GRAN_PER_THREAD, sage_attn::PV_ACCUM_FP32_FP16,
+                               false, 7, false, false, false, false, td, ws),
+               "Should reject invalid tensorLayout (7)");
+    TEST_CHECK(!CallHostTiling(2, 128, 128, 32, 8, 1, 64, 0.1,
+                               sage_attn::QUANT_GRAN_PER_THREAD, sage_attn::PV_ACCUM_FP32_FP16,
+                               false, -1, false, false, false, false, td, ws),
+               "Should reject invalid tensorLayout (-1)");
 
-    // 5. 非法张量布局编码拦截（仅 0=NHD/1=HND 合法，乱码/负值显式报错不静默归一）
-    TEST_CHECK(aclnnSageAttention2GetWorkspaceSize(&q, &k, &v, nullptr, nullptr, 0.1, 3, 2, false, 7, false, false, &out, nullptr, &ws_size, &executor) == ACLNN_ERR_PARAM_INVALID, "Should reject invalid tensorLayout (7)");
-    TEST_CHECK(aclnnSageAttention2GetWorkspaceSize(&q, &k, &v, nullptr, nullptr, 0.1, 3, 2, false, -1, false, false, &out, nullptr, &ws_size, &executor) == ACLNN_ERR_PARAM_INVALID, "Should reject invalid tensorLayout (-1)");
-
-    // 6. causal 与 Sq!=Sk 组合拒绝（DEFECT-L-2 负向锁：任务书 §2.2 因果掩码仅当
-    //    Sq==Sk 合法，共享点 ComputeHostTiling 一处拒绝——移植态 C-ABI 透传
+    // 5. causal 与 Sq!=Sk 组合拒绝（DEFECT-L-2 负向锁：任务书 §2.2 因果掩码仅当
+    //    Sq==Sk 合法，共享点 ComputeHostTiling 一处拒绝——交付 op_api 透传
     //    ACLNN_ERR_PARAM_INVALID，gert TilingImpl 同点映射 GRAPH_FAILED）
-    aclTensor q_causal_skew = CreateTestTensor(2, 32, 128, 64); // Sq=128
-    aclTensor k_causal_skew = CreateTestTensor(2, 8, 256, 64);  // Sk=256
-    aclTensor v_causal_skew = CreateTestTensor(2, 8, 256, 64);
-    aclTensor out_causal_skew = CreateTestTensor(2, 32, 128, 64);
-    TEST_CHECK(aclnnSageAttention2GetWorkspaceSize(&q_causal_skew, &k_causal_skew, &v_causal_skew, nullptr, nullptr, 0.1, 3, 2, true, 1, false, false, &out_causal_skew, nullptr, &ws_size, &executor) == ACLNN_ERR_PARAM_INVALID, "Should reject causal with Sq != Sk");
+    TEST_CHECK(!CallHostTiling(2, 128, 256, 32, 8, 1, 64, 0.1,
+                               sage_attn::QUANT_GRAN_PER_THREAD, sage_attn::PV_ACCUM_FP32_FP16,
+                               true, sage_attn::LAYOUT_HND, false, false, false, false, td, ws),
+               "Should reject causal with Sq != Sk");
     // 非 causal 的 Sq!=Sk 为合法路径（Split-KV 域，参 TestHostTilingSplitKvTrigger），必须保留
-    TEST_CHECK(aclnnSageAttention2GetWorkspaceSize(&q_causal_skew, &k_causal_skew, &v_causal_skew, nullptr, nullptr, 0.1, 3, 2, false, 1, false, false, &out_causal_skew, nullptr, &ws_size, &executor) == ACLNN_SUCCESS, "Should retain non-causal with Sq != Sk");
+    TEST_CHECK(CallHostTiling(2, 128, 256, 32, 8, 1, 64, 0.1,
+                              sage_attn::QUANT_GRAN_PER_THREAD, sage_attn::PV_ACCUM_FP32_FP16,
+                              false, sage_attn::LAYOUT_HND, false, false, false, false, td, ws),
+               "Should retain non-causal with Sq != Sk");
 
-    // 7. 第二段空执行器拦截
-    TEST_CHECK(aclnnSageAttention2(nullptr, 0, nullptr, nullptr) == ACLNN_ERR_PARAM_NULLPTR, "Should reject null executor in phase 2");
+    // 6. sm_scale 冻结语义：0/负值一律非法（默认 1/sqrt(D) 由上层桥接折叠后
+    //    传入，C 计算核心不再兜底；非有限值同点拒绝）
+    TEST_CHECK(!CallHostTiling(2, 128, 128, 32, 8, 1, 64, 0.0,
+                               sage_attn::QUANT_GRAN_PER_THREAD, sage_attn::PV_ACCUM_FP32_FP16,
+                               false, sage_attn::LAYOUT_HND, false, false, false, false, td, ws),
+               "Should reject sm_scale == 0");
+    TEST_CHECK(!CallHostTiling(2, 128, 128, 32, 8, 1, 64, -0.5,
+                               sage_attn::QUANT_GRAN_PER_THREAD, sage_attn::PV_ACCUM_FP32_FP16,
+                               false, sage_attn::LAYOUT_HND, false, false, false, false, td, ws),
+               "Should reject negative sm_scale");
 
     std::cout << "[PASS] TestParameterValidation" << std::endl;
     return true;
@@ -439,7 +395,6 @@ bool TestDieAffinityScheduling()
     TEST_CHECK(td_p01.m_per_core == 32, "P-01 tuned m_per_core must be 32");
     TEST_CHECK(td_p01.block_n == 128, "P-01 tuned block_n must be 128");
     TEST_CHECK(td_p01.k_step == 8 || td_p01.k_step == 16, "P-01 tuned k_step must be 8 or 16");
-    TEST_CHECK(td_p01.causal_early_exit == 0, "P-01 non-causal early exit must be 0");
     TEST_CHECK(td_p01.enable_die_affinity == 1, "P-01 use_die_grouped must be 1");
 
     // (2) 查询 P-03 (B=1, Hq=32, Hkv=32, Sq=8192, Sk=8192, D=128, fp16, causal=true)
@@ -454,7 +409,6 @@ bool TestDieAffinityScheduling()
     TEST_CHECK(td_p03.m_per_core == 32, "P-03 tuned m_per_core must be 32");
     TEST_CHECK(td_p03.block_n == 128, "P-03 tuned block_n must be 128");
     TEST_CHECK(td_p03.k_step == 8 || td_p03.k_step == 16, "P-03 tuned k_step must be 8 or 16");
-    TEST_CHECK(td_p03.causal_early_exit == 1, "P-03 causal early exit must be 1");
     TEST_CHECK(td_p03.enable_die_affinity == 1, "P-03 use_die_grouped must be 1");
 
     // (3) 验证动态非调优 shape 的闭式推导平滑回退

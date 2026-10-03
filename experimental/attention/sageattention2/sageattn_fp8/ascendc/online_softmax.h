@@ -29,7 +29,7 @@ __aicore__ static inline float SageFastAbs(float x) {
 /**
  * 数学常量定义（exp2 域在线 Softmax）
  */
-// LOG2E / INV_LOG2E / SKIP_SCALE_TAU 的唯一定义位于 tiling.h（本文件经 include 引用）
+// LOG2E / INV_LOG2E 的唯一定义位于 tiling.h（本文件经 include 引用）
 constexpr float EXP2_MIN_CLAMP = -87.33f;           // exp2 下溢极值，低于此值截断为 0
 constexpr float MIN_FLOAT_VAL = -3.402823466e+38F;  // -FLT_MAX，float 最小有限值（不再经宏定义）
 // causal/尾块掩码哨兵（唯一定义点）：必须 > -FLT_MAX，使 "cur_max <= SAGE_MASK_SENTINEL"
@@ -59,7 +59,9 @@ struct OnlineSoftmaxState {
 
 /**
  * exp2 域 online softmax 状态转移器
- * 核心技术依据：FlashMLA 报告 skip-scale、FlashAttention-3 延迟一拍流水以及 task/01_design.md 2.6/4.3
+ * 核心技术依据：FlashAttention-3 延迟一拍流水以及 task/01_design.md 2.6/4.3；
+ * 缩放策略为恒逐块强锚定重缩放（每块必触发 O 重缩放，m_scale 恒等于 m_run）——
+ * golden 的逐块锚定轨迹依赖该纪律（e4m3 量化网格依赖锚点，锚点滞后会偏离网格）。
  */
 class OnlineSoftmaxTransformer {
 public:
@@ -147,19 +149,19 @@ public:
     }
 
     /**
-     * 单步状态转移（处理一个到来的 KV 分块极值与局部指数和）
+     * 单步状态转移（处理一个到来的 KV 分块极值与局部指数和）。
+     * 恒逐块强锚定重缩放：除首个有效分块（初始化，返回 1.0 且 need_rescale=false）外，
+     * 每块均将 O 锚点 m_scale 重锚到 m_new 并返回重缩放系数 FastExp2(m_scale_old - m_new)。
      *
      * @param state 待更新的 Softmax 状态引用
      * @param cur_max 当前 KV 块的局部最大值 (已融合 sm_scale_log2e)
      * @param cur_sum 当前 KV 块按 (logits - cur_max) 计算出的 exp2 之和
-     * @param is_force_rescale 是否强制重缩放 (如在循环结束的 drain 步)
-     * @return 返回需要施加于 O 主累加器的缩放系数（若跳步缩放则为 1.0f）
+     * @return 返回需要施加于 O 主累加器的缩放系数（首块初始化为 1.0f）
      */
     __aicore__ static inline float Step(
         OnlineSoftmaxState& state,
         float cur_max,
-        float cur_sum,
-        bool is_force_rescale = false) {
+        float cur_sum) {
 
         if (state.m_run <= MIN_FLOAT_VAL) {
             // 首个有效分块初始化
@@ -173,39 +175,18 @@ public:
 
         float m_new = (state.m_run > cur_max) ? state.m_run : cur_max;
 
-        // 判定 skip-scale 条件：
-        // 若 (cur_max - m_scale) < tau (6.0f) 且非强制刷新，则跳过对 O 的即时重缩放。
-        // O 锚点纪律（2026-10-03 修复）：O 累加器始终以 m_scale 为唯一锚点——
-        // 调用方计算 S 分块必须以 state.m_scale（而非 m_run）为基准，
-        // 2. S 值域因此放宽到 (0, 2^tau]（tau=6 时 ≤64，e4m3/FP16/FP32 均可精确表示）；
-        // 2. d_run 始终以 m_run 为锚维护，最终由 GetFinalInvDenominator 以
-        //    2^(m_scale - m_run) 一次性补偿——分子分母锚点各自全局一致，代数严格无漂移。
-        //    （修复前的实现允许 skip 期间的 S 以各自 m_run 锚点进入 O，末尾单次补偿
-        //     无法纠正逐块锚差，最长块间权重被压低至 2^-tau。）
-        bool skip = (!is_force_rescale) && ((cur_max - state.m_scale) < SKIP_SCALE_TAU);
+        // O 锚点纪律：O 累加器始终以 m_scale 为唯一锚点——
+        // 调用方计算 S 分块必须以 state.m_scale（而非 m_run）为基准。
+        // 触发 O 主累加器更新：将 O 从旧锚点 m_scale 转换到新锚点 m_new
+        float rescale_o_factor = FastExp2(state.m_scale - m_new);
 
-        float rescale_o_factor = 1.0f;
+        float alpha_old = FastExp2(state.m_run - m_new);
+        float alpha_cur = FastExp2(cur_max - m_new);
+        state.d_run = state.d_run * alpha_old + cur_sum * alpha_cur;
 
-        if (skip) {
-            state.need_rescale = false;
-            // 延迟重缩放模式：分母仍以全局 m_new 为基准更新；O 锚点 m_scale 不动
-            float alpha_old = FastExp2(state.m_run - m_new);
-            float alpha_cur = FastExp2(cur_max - m_new);
-            state.d_run = state.d_run * alpha_old + cur_sum * alpha_cur;
-            state.m_run = m_new;
-            rescale_o_factor = 1.0f;
-        } else {
-            state.need_rescale = true;
-            // 触发 O 主累加器更新：将 O 从旧锚点 m_scale 转换到新锚点 m_new
-            rescale_o_factor = FastExp2(state.m_scale - m_new);
-
-            float alpha_old = FastExp2(state.m_run - m_new);
-            float alpha_cur = FastExp2(cur_max - m_new);
-            state.d_run = state.d_run * alpha_old + cur_sum * alpha_cur;
-
-            state.m_run = m_new;
-            state.m_scale = m_new;
-        }
+        state.m_run = m_new;
+        state.m_scale = m_new;
+        state.need_rescale = true;
 
         // 更新 exp2 域 LSE
         state.lse = state.m_run + FastLog2(state.d_run);
@@ -221,7 +202,7 @@ public:
      *   出口先补扣 s_fp8_offset，再 /1.44269504 换回自然对数域：
      *   lse_out = (lse_exp2 - s_fp8_offset) / log2(e) + (smooth_k ? lse_correction * sm_scale : 0)
      *
-     * @param s_fp8_offset P 矩阵 e4m3 放大偏置（tiling 携带，缺省 0）
+     * @param s_fp8_offset P 矩阵 e4m3 放大偏置（S_FP8_OFFSET 常量，唯一定义 tiling.h）
      */
     __aicore__ static inline float ConvertLseToHost(
         float lse_exp2,

@@ -21,11 +21,8 @@ def load_extension():
 
     package = Path(__file__).resolve().parent
     npu = Path(torch_npu.__file__).resolve().parent
+    # ASCEND_HOME_PATH 由镜像 ENV 导出（与 run.sh 容器侧同一契约），不做多候选探测
     cann = Path(os.environ.get("ASCEND_HOME_PATH", "/usr/local/Ascend/ascend-toolkit/latest"))
-    if not cann.exists():
-        cann_alt = Path("/usr/local/Ascend/cann")
-        if cann_alt.exists():
-            cann = cann_alt
 
     csrc_file = package / "csrc" / "attention.cpp"
     if not csrc_file.exists():

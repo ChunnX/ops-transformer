@@ -40,43 +40,42 @@ class TestTilingDataStruct(unittest.TestCase):
         self.assertEqual(SageAttention2TilingData.smooth_k.offset, 44)
         self.assertEqual(SageAttention2TilingData.smooth_v.offset, 48)
 
-        # 数值字段
+        # 数值字段（原 s_fp8_offset 字段已删除，4 字节并入尾部保留域）
         self.assertEqual(SageAttention2TilingData.sm_scale_log2e.offset, 52)
         self.assertEqual(SageAttention2TilingData.v_scale_max.offset, 56)
-        self.assertEqual(SageAttention2TilingData.s_fp8_offset.offset, 60)
 
         # 分块字段
-        self.assertEqual(SageAttention2TilingData.m_per_core.offset, 64)
-        self.assertEqual(SageAttention2TilingData.block_n.offset, 68)
-        self.assertEqual(SageAttention2TilingData.k_step.offset, 72)
+        self.assertEqual(SageAttention2TilingData.m_per_core.offset, 60)
+        self.assertEqual(SageAttention2TilingData.block_n.offset, 64)
+        self.assertEqual(SageAttention2TilingData.k_step.offset, 68)
 
         # 分核字段
-        self.assertEqual(SageAttention2TilingData.core_num_used.offset, 76)
-        self.assertEqual(SageAttention2TilingData.q_blk_num.offset, 80)
-        self.assertEqual(SageAttention2TilingData.kv_blk_num.offset, 84)
-        self.assertEqual(SageAttention2TilingData.split_kv_num.offset, 88)
-        self.assertEqual(SageAttention2TilingData.is_merge.offset, 92)
+        self.assertEqual(SageAttention2TilingData.core_num_used.offset, 72)
+        self.assertEqual(SageAttention2TilingData.q_blk_num.offset, 76)
+        self.assertEqual(SageAttention2TilingData.kv_blk_num.offset, 80)
+        self.assertEqual(SageAttention2TilingData.split_kv_num.offset, 84)
+        self.assertEqual(SageAttention2TilingData.is_merge.offset, 88)
 
         # 布局与偏移字段
-        self.assertEqual(SageAttention2TilingData.l1_q_offset.offset, 96)
-        self.assertEqual(SageAttention2TilingData.l1_q_scale_offset.offset, 100)
-        self.assertEqual(SageAttention2TilingData.l1_kv_offset.offset, 104)
-        self.assertEqual(SageAttention2TilingData.l1_kv_scale_offset.offset, 108)
-        self.assertEqual(SageAttention2TilingData.ub_acc_offset.offset, 112)
-        self.assertEqual(SageAttention2TilingData.ub_softmax_offset.offset, 116)
-        self.assertEqual(SageAttention2TilingData.ub_quant_offset.offset, 120)
-        self.assertEqual(SageAttention2TilingData.workspace_lse_offset.offset, 124)
-        self.assertEqual(SageAttention2TilingData.workspace_vm_offset.offset, 132)
-        self.assertEqual(SageAttention2TilingData.enable_die_affinity.offset, 140)
-        self.assertEqual(SageAttention2TilingData.die_num.offset, 144)
-        self.assertEqual(SageAttention2TilingData.cores_per_die.offset, 148)
-        self.assertEqual(SageAttention2TilingData.tasks_per_die.offset, 152)
-        self.assertEqual(SageAttention2TilingData.input_dtype.offset, 156)
-        self.assertEqual(SageAttention2TilingData.reserved.offset, 157)
+        self.assertEqual(SageAttention2TilingData.l1_q_offset.offset, 92)
+        self.assertEqual(SageAttention2TilingData.l1_q_scale_offset.offset, 96)
+        self.assertEqual(SageAttention2TilingData.l1_kv_offset.offset, 100)
+        self.assertEqual(SageAttention2TilingData.l1_kv_scale_offset.offset, 104)
+        self.assertEqual(SageAttention2TilingData.ub_acc_offset.offset, 108)
+        self.assertEqual(SageAttention2TilingData.ub_softmax_offset.offset, 112)
+        self.assertEqual(SageAttention2TilingData.ub_quant_offset.offset, 116)
+        self.assertEqual(SageAttention2TilingData.workspace_lse_offset.offset, 120)
+        self.assertEqual(SageAttention2TilingData.workspace_vm_offset.offset, 128)
+        self.assertEqual(SageAttention2TilingData.enable_die_affinity.offset, 136)
+        self.assertEqual(SageAttention2TilingData.die_num.offset, 140)
+        self.assertEqual(SageAttention2TilingData.cores_per_die.offset, 144)
+        self.assertEqual(SageAttention2TilingData.tasks_per_die.offset, 148)
+        self.assertEqual(SageAttention2TilingData.input_dtype.offset, 152)
+        self.assertEqual(SageAttention2TilingData.reserved.offset, 153)
 
     def test_pack_unpack(self):
         # 验证 struct 打包与 ctypes 解析一致性
-        fmt = "<7I 6I 3f 3I 5I 7I 2Q 4I B3s"
+        fmt = "<7I 6I 2f 3I 5I 7I 2Q 4I B7s"
         self.assertEqual(struct.calcsize(fmt), 160)
 
         tiling = SageAttention2TilingData()
@@ -95,7 +94,6 @@ class TestTilingDataStruct(unittest.TestCase):
         tiling.smooth_v = 0
         tiling.sm_scale_log2e = 0.1275
         tiling.v_scale_max = 2.25
-        tiling.s_fp8_offset = 8.807355
         tiling.m_per_core = 64
         tiling.block_n = 64
         tiling.k_step = 16
@@ -127,10 +125,9 @@ class TestTilingDataStruct(unittest.TestCase):
         self.assertEqual(unpacked[10], 2)  # pv_accum_dtype
         self.assertAlmostEqual(unpacked[13], 0.1275, places=5)
         self.assertAlmostEqual(unpacked[14], 2.25, places=5)
-        self.assertAlmostEqual(unpacked[15], 8.807355, places=5)
-        self.assertEqual(unpacked[31], 1048576)  # workspace_lse_offset
-        self.assertEqual(unpacked[37], 1)  # input_dtype (1=fp16)
-        self.assertEqual(unpacked[38], b"\x00\x00\x00")  # reserved
+        self.assertEqual(unpacked[30], 1048576)  # workspace_lse_offset
+        self.assertEqual(unpacked[36], 1)  # input_dtype (1=fp16)
+        self.assertEqual(unpacked[37], b"\x00" * 7)  # reserved
 
 
 if __name__ == "__main__":

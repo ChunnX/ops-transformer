@@ -15,10 +15,9 @@
  *    INT8 MMAD + 反量化 scale 广播的舍入轨迹一致（优于逐元素反量化相乘的参考路径）；
  * 4. P 矩阵 e4m3 域默认即 448· 放大域：SoftmaxProbCode/OnlineBlockExp2Sum 乘
  *    FP8_E4M3_MAX，LSE 出口 ConvertLseToHost 扣 S_FP8_OFFSET（与已对齐 golden 的
- *    Python 原型口径一致）；放大域与 skip-scale tau=6 存在值域冲突（2^tau·448 溢出
- *    e4m3 上限），故放大域下强制逐块重缩放（Step 恒 force=true，skip 分支不启用，
- *    tau 机制仅留给无放大域路线复用）。S_FP8_OFFSET 由 TilingData.s_fp8_offset 携带，
- *    设备核同口径（P 量化锚点 = m_scale - s_fp8_offset）；
+ *    Python 原型口径一致）。恒逐块强锚定重缩放下 m_scale 恒等于 m_run（Step 每块
+ *    必触发 O 重缩放），S_FP8_OFFSET 由 tiling.h 常量唯一定义，设备核同口径
+ *    （P 量化锚点 = m_scale）；
  * 5. PV 累加三档独立轨迹（AccumulatePvRow 单点，语义定标见其注释）：fp32 单一运行和 /
  *    fp32+fp32 每 k_step 分段子和归约 FP32 buffer / fp32+fp16 k_step FP16 子块归约。
  */
@@ -128,9 +127,7 @@ inline float DequantQkLogit(int32_t dot, float q_scale, float k_scale,
  * P 矩阵标量量化单点（twin 5.4 与设备核 ComputeSoftmaxProbability 共享）：
  * P = FastExp2(logit_exp2 - m') · FP8_E4M3_MAX —— 448· 放大域经乘法实现（twin/golden
  * 轨迹），块行 max 元素恰为 448，填满 e4m3 动态范围后饱和截断 + RNE 转 e4m3 码。
- * m' 为锚点（基线 = 行锚 m_scale，强制逐块重缩放下恒等于 m_run）。
- * 指数偏置 S_FP8_OFFSET 变体属非默认可选：启用须同时关闭 skip-scale（tau=0），
- * 由调用方把偏置折叠进 m' 后传入。
+ * m' 为锚点（基线 = 行锚 m_scale，恒逐块强锚定重缩放下恒等于 m_run）。
  */
 inline uint8_t SoftmaxProbCode(float logit_exp2, float m_prime) noexcept {
     float p = OnlineSoftmaxTransformer::FastExp2(logit_exp2 - m_prime) * FP8_E4M3_MAX;
@@ -444,9 +441,9 @@ inline int RunSequential(const TwinIo& io, TwinQuantDump* dump = nullptr) {
                     const float cur_sum =
                         OnlineBlockExp2Sum(s_row.data(), 0, j_beg, j_end, io.is_causal != 0, i, cur_max);
 
-                    // 5.3 在线状态步进（强制重缩放：对齐 golden 的逐块锚定轨迹）
+                    // 5.3 在线状态步进（恒逐块强锚定重缩放：对齐 golden 的逐块锚定轨迹）
                     const float rescale =
-                        OnlineSoftmaxTransformer::Step(state, cur_max, cur_sum, true);
+                        OnlineSoftmaxTransformer::Step(state, cur_max, cur_sum);
                     if (state.need_rescale && std::fabs(rescale - 1.0f) > SCALE_ONE_TOLERANCE) {
                         for (uint32_t c = 0; c < d_pad; ++c) {
                             o_row[c] *= rescale;

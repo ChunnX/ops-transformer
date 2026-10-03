@@ -61,56 +61,31 @@ static ge::graphStatus InferShapeSageAttention2(gert::InferShapeContext *context
     const gert::Shape *valueShape = context->GetInputShape(sage_attn2_idx::IN_VALUE);
 
     if (queryShape == nullptr || keyShape == nullptr || valueShape == nullptr) {
-        std::cerr << "[SageAttention2][InferShape] Query, Key or Value input shape is null!" << std::endl;
         return ge::GRAPH_FAILED;
     }
 
     if (queryShape->GetDimNum() != EXPECTED_DIM_NUM ||
         keyShape->GetDimNum() != EXPECTED_DIM_NUM ||
         valueShape->GetDimNum() != EXPECTED_DIM_NUM) {
-        std::cerr << "[SageAttention2][InferShape] Q, K, V must all be 4-dimensional tensors!" << std::endl;
         return ge::GRAPH_FAILED;
     }
 
     sage_attn::TensorLayout layout = DetectLayout(context);
 
-    int64_t b = 0, hq = 0, sq = 0, d = 0;
-    int64_t kb = 0, hkv = 0, sk = 0, kd = 0;
-    int64_t vb = 0, vhkv = 0, vsk = 0, vd = 0;
+    int64_t b = queryShape->GetDim(0);
+    int64_t hq = queryShape->GetDim((layout == sage_attn::LAYOUT_HND) ? 1 : 2);
+    int64_t sq = queryShape->GetDim((layout == sage_attn::LAYOUT_HND) ? 2 : 1);
+    int64_t d = queryShape->GetDim(3);
 
-    if (layout == sage_attn::LAYOUT_HND) {
-        // HND: [B, H, S, D]
-        b = queryShape->GetDim(0);
-        hq = queryShape->GetDim(1);
-        sq = queryShape->GetDim(2);
-        d = queryShape->GetDim(3);
+    int64_t kb = keyShape->GetDim(0);
+    int64_t hkv = keyShape->GetDim((layout == sage_attn::LAYOUT_HND) ? 1 : 2);
+    int64_t sk = keyShape->GetDim((layout == sage_attn::LAYOUT_HND) ? 2 : 1);
+    int64_t kd = keyShape->GetDim(3);
 
-        kb = keyShape->GetDim(0);
-        hkv = keyShape->GetDim(1);
-        sk = keyShape->GetDim(2);
-        kd = keyShape->GetDim(3);
-
-        vb = valueShape->GetDim(0);
-        vhkv = valueShape->GetDim(1);
-        vsk = valueShape->GetDim(2);
-        vd = valueShape->GetDim(3);
-    } else {
-        // NHD: [B, S, H, D]
-        b = queryShape->GetDim(0);
-        sq = queryShape->GetDim(1);
-        hq = queryShape->GetDim(2);
-        d = queryShape->GetDim(3);
-
-        kb = keyShape->GetDim(0);
-        sk = keyShape->GetDim(1);
-        hkv = keyShape->GetDim(2);
-        kd = keyShape->GetDim(3);
-
-        vb = valueShape->GetDim(0);
-        vsk = valueShape->GetDim(1);
-        vhkv = valueShape->GetDim(2);
-        vd = valueShape->GetDim(3);
-    }
+    int64_t vb = valueShape->GetDim(0);
+    int64_t vhkv = valueShape->GetDim((layout == sage_attn::LAYOUT_HND) ? 1 : 2);
+    int64_t vsk = valueShape->GetDim((layout == sage_attn::LAYOUT_HND) ? 2 : 1);
+    int64_t vd = valueShape->GetDim(3);
 
     // 1. Batch 校验
     if (b <= 0 || kb != b || vb != b) {

@@ -60,7 +60,6 @@ endif()
 if(NOT TARGET op_host_aclnn AND NOT TARGET sageattention2_host)
     add_library(sageattention2_host SHARED
         ${SAGE_ATTN_HOST_CORE_SOURCES}
-        ${CMAKE_CURRENT_SOURCE_DIR}/../aclnn/sage_attn_host.cpp
         ${SAGE_ATTN_QUANT_SOURCES}
     )
     target_include_directories(sageattention2_host PUBLIC ${SAGE_ATTN_HOST_INCLUDE_DIRS})

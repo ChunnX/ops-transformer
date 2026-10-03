@@ -4,22 +4,11 @@ PyTorch custom operator registration for SageAttention2 on Ascend NPU.
 
 from __future__ import annotations
 
-import math
 import os
 import warnings
-from typing import Any
 
-try:
-    import torch
-    from torch.library import impl
-except ImportError:
-    from unittest.mock import MagicMock
-    torch = MagicMock()
-    
-    def impl(*args, **kwargs):
-        def decorator(func):
-            return func
-        return decorator
+import torch
+from torch.library import impl
 
 from .error_check import (
     DEFAULT_PV_ACCUM_DTYPE,
@@ -29,6 +18,7 @@ from .error_check import (
     handle_smooth_v,
     pad_head_dim,
     validate_common_parameters,
+    validate_tensors,
 )
 
 _library = torch.library.Library("sageattention2", "FRAGMENT")
@@ -57,11 +47,10 @@ if not hasattr(getattr(torch.ops, "sageattention2", None), "forward"):
         return_lse: bool = False,
     ) -> tuple[torch.Tensor, torch.Tensor | None]:
         validate_common_parameters(tensor_layout, qk_quant_gran, pv_accum_dtype, {})
-        from .error_check import validate_tensors
         validate_tensors(q, k, v, tensor_layout, is_causal)
         sm_scale_val = compute_sm_scale(q.shape[-1], sm_scale)
         smooth_v = handle_smooth_v(pv_accum_dtype, smooth_v)
-        
+
         out = q.new_empty(q.shape)
         if return_lse:
             qc = q if tensor_layout == "HND" else q.transpose(1, 2)
@@ -86,9 +75,8 @@ if not hasattr(getattr(torch.ops, "sageattention2", None), "forward"):
         return_lse: bool = False,
     ) -> tuple[torch.Tensor, torch.Tensor | None]:
         from ._extension import load_extension
-        
+
         validate_common_parameters(tensor_layout, qk_quant_gran, pv_accum_dtype, {})
-        from .error_check import validate_tensors
         validate_tensors(q, k, v, tensor_layout, is_causal)
         smooth_v = handle_smooth_v(pv_accum_dtype, smooth_v)
         q_pad, k_pad, v_pad, head_dim_og = pad_head_dim(q, k, v)
@@ -125,14 +113,12 @@ if not hasattr(getattr(torch.ops, "sageattention2", None), "forward"):
         smooth_v: bool = False,
         return_lse: bool = False,
     ) -> tuple[torch.Tensor, torch.Tensor | None]:
-        import os
         from .dispatch import run_sageattn_cpu_reference
 
         validate_common_parameters(tensor_layout, qk_quant_gran, pv_accum_dtype, {})
-        from .error_check import validate_tensors
         validate_tensors(q, k, v, tensor_layout, is_causal)
         smooth_v = handle_smooth_v(pv_accum_dtype, smooth_v)
-        
+
         # 允许通过环境变量启用 stub warning
         allow_cpu_stub = os.environ.get("SAGEATTN_ALLOW_CPU_STUB", "0").lower() in ("1", "true", "yes")
         if allow_cpu_stub:

@@ -9,11 +9,11 @@
 
 ## 目录结构
 
-- `./aclnn/`：两段式 ACLNN Host 实现（`./aclnn/sage_attn_proto.h` 接口原型、`./aclnn/sage_attn_host.cpp` 参数校验与 Host Tiling）
+- `./aclnn/`：闭式 Host Tiling 计算核心与接口编码协议（`./aclnn/sage_attn_host_tiling.h` 闭式 `ComputeHostTiling` 唯一定义、`./aclnn/sage_attn_proto.h` "字符串属性→数值编码"唯一映射、`./aclnn/autotune_tiling_bank.h` P-01..P-07 调优知识库）
 - `./sageattn_fp8/`：AscendC 设备侧基础设施（`./sageattn_fp8/ascendc/tiling.h` 为 Host/Device 共享 TilingData，`./sageattn_fp8/catlass/` 为 Cube MMA 封装；设备核入口已按 CANN opc 打包约定迁至 `./op_kernel/sageattention2.cpp`）
 - `./op_kernel/`：CANN opc 打包约定的内核源码目录（`./op_kernel/sageattention2.cpp`，1C2V 延迟一拍主流水唯一内核入口）
 - `./quant/`：Q/K INT8 与 V FP8 量化 Host 逻辑与可单测的 C++ 量化内核
-- `./op_host/`：CANN 标准 REG_OP/InferShape 注册层；交付态 op_api 层两段式 C 接口实现位于 `./op_api/`（字符串属性 ABI，经 `OP_API_DIR` 随 run 包打包安装），`./aclnn/` 为移植态本地单测实现（数值编码 ABI，见 `./aclnn/sage_attn_proto.h`）
+- `./op_host/`：CANN 标准 REG_OP/InferShape 注册层；交付态 op_api 层两段式 C 接口唯一实现位于 `./op_api/`（字符串属性 ABI，经 `OP_API_DIR` 随 run 包打包安装），TilingImpl 复用 `./aclnn/sage_attn_host_tiling.h` 的闭式 `ComputeHostTiling`
 - `./python/sageattention2/`：PyTorch 接入包（`dispatch.py` 前端分派与环境变量解析、`_ops.py` PyTorch 自定义算子注册与后端绑定、`_extension.py` C++ 扩展加载、`error_check.py` 输入校验与预处理、`monkey_patch.py` SDPA 热替换工具）
 - `./tests/`、`./benchmarks/`：容器门禁单测与独立基准工具（`./benchmarks/benchmark_aclnn.cpp` aclnn 路径、`./benchmarks/run_validation_performance.py` PyTorch 路径）
 - `./tools/sim/`：设备核 camodel 仿真 harness（B2 门禁数值比对；依赖门禁容器 bisheng `--run-mode=sim` 运行，用法见 `./tools/sim/README.md`，不属于 run.sh 容器门禁主链）
@@ -80,13 +80,12 @@ bash build.sh --pkg --experimental --soc=ascend950 --vendor_name=customize --ops
 
 - `SAGEATTN_ALLOW_CPU_STUB` 语义：默认关闭；设为 `1`/`true`/`yes` 时，即使检测到 NPU 可用也允许走高保真 CPU 参考实现（与 golden 数据生成算法逐位同源），用于无卡环境的功能验证与 CI。该模式输出为 CPU 参考结果，禁止作为 NPU 性能与精度验收证据
 
-### 两段式 ACLNN C 接口（交付态 `./op_api/`，移植态 `./aclnn/`）
+### 两段式 ACLNN C 接口（交付态 `./op_api/` 唯一实现）
 
 - 交付态（随 run 包安装，真机调用方以此为准）：`./op_api/aclnn_sage_attention2.h` 第一段 `aclnnSageAttention2GetWorkspaceSize`：入参 q/k/v、可选 `keyMean`/`lseCorrection`、`tensorLayout`（字符串，仅 `"HND"`/`"NHD"`，非法取值报错）、`isCausal`、`qkQuantGran`（`"per_thread"`/`"per_warp"`）、`smScale`、`pvAccumDtype`（`"fp32"`/`"fp32+fp32"`/`"fp32+fp16"`）、`smoothK`、`smoothV`、out、可选 lse、`workspaceSize`、`executor`；属性顺序与 `./op_host/sage_attention2_def.cpp` 注册的 7 项一致
-- 移植态（本地单测与无 opdev 环境自包含实现，不随 run 包安装）：`./aclnn/sage_attn_proto.h` 第一段同名接口取数值编码：`qkQuantGran`（2=per_warp，3=per_thread）、`pvAccumDtype`（0=fp32，1=fp32+fp32，2=fp32+fp16）、`tensorLayout`（0=NHD，1=HND），属性顺序为 scale, gran, accum, causal, layout, smoothK, smoothV
-- 第二段 `aclnnSageAttention2(workspace, workspaceSize, executor, stream)`：校验 workspace 不小于第一段产出后发射 kernel（两态签名一致）
-- `smScale` 冻结语义：默认值 `1/sqrt(head_dim)` 仅在 Python `sm_scale=None` 时由桥接层折叠后传入；两态 C 接口收到非正值返回 `ACLNN_ERR_PARAM_INVALID`
-- Tiling 下发：Host Tiling 经 `./op_host/sage_attention2_tiling.cpp` 注册的 TilingImpl 序列化进 `gert::RawTilingData`，由框架在 `CommonOpExecutorRun` 下发阶段写入 kernel
+- 第二段 `aclnnSageAttention2(workspace, workspaceSize, executor, stream)`：校验 workspace 不小于第一段产出后发射 kernel
+- `smScale` 冻结语义：默认值 `1/sqrt(head_dim)` 仅在 Python `sm_scale=None` 时由桥接层折叠后传入；C 入口收到非正值返回 `ACLNN_ERR_PARAM_INVALID`
+- Tiling 下发：Host Tiling 唯一实现为 `./aclnn/sage_attn_host_tiling.h` 的闭式 `ComputeHostTiling`，经 `./op_host/sage_attention2_tiling.cpp` 注册的 TilingImpl 序列化进 `gert::RawTilingData`，由框架在 `CommonOpExecutorRun` 下发阶段写入 kernel；数值编码（0=NHD/1=HND 等）仅供 Host/Device 内部消费，经 `./aclnn/sage_attn_proto.h` 的 `*CodeFromString` 唯一映射产生，禁止作为跨语言 ABI 形参再引入
 - 完整两段式调用示例见 `./benchmarks/benchmark_aclnn.cpp`
 
 ### 环境变量汇总
@@ -146,6 +145,8 @@ bash run.sh python
 bash run.sh opp
 ```
 
+- golden 基线数据位于 `./docker/golden/`（25 桶交付基线 + manifest，`run.sh python` 的 L-A/L-B 判据输入）。容器镜像不含 golden：由 `bash docker/init.sh --golden <数据集目录>` 幂等置备（目标已存在则绝不改写/重生成；生成器源码唯一定义点 `./tools/generate_golden.py`，随数据集一同置备，禁止重生成 golden）
+
 - 也可一条命令全跑：`bash run.sh all`；交互调试：`./docker/sage exec`
 
 - 质量准出门禁：
@@ -160,5 +161,5 @@ bash run.sh opp
 ## 交付文档索引
 
 - [与 CUDA 默认接口的差异](./docs/CUDA接口差异说明.md)：量化粒度、S_FP8_OFFSET 放大、两级累加三档、舍入模式、smooth_v 正路径的逐项语义对照
-- 接口原型：交付态 `./op_api/aclnn_sage_attention2.h`（字符串属性，随 run 包安装）；移植态 `./aclnn/sage_attn_proto.h`（数值编码，本地单测）
+- 接口原型：交付态 `./op_api/aclnn_sage_attention2.h`（字符串属性，随 run 包安装，两段式 C 接口唯一权威签名）；Host Tiling 与编码协议见 `./aclnn/README.md`
 - Tiling 契约：`./sageattn_fp8/ascendc/tiling.h`（160 字节、32 字节对齐，Host/Device 共享只读）

@@ -226,5 +226,5 @@ IMPL_OP_OPTILING(SageAttention2)
 
 #else
 // 本地无 CANN exe_graph 头文件环境：TilingImpl 由容器内构建启用，
-// 本地路径的 tiling 数值验证由 aclnn/sage_attn_host.cpp 的 ComputeHostTiling 单测覆盖。
+// 本地路径的 tiling 数值验证由 tests/test_aclnn_host.cpp 直测 ComputeHostTiling 覆盖。
 #endif // SAGE_HAS_REAL_TILING_CONTEXT

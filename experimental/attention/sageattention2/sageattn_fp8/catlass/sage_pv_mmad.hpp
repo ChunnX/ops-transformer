@@ -10,13 +10,6 @@
 
 #if SAGE_ATTN_KERNEL_API
 #include "catlass/arch/arch.hpp"
-// 官方位型映射表单点（catlass/gemm/helper.hpp）：
-// - ElementAccumulatorSelector：fp8×fp8→FP32 累加位型（Arch3510 表项）；
-// - GetL0Element：fp8 码 → L0 MMAD 寄存器位型（mx_fp8_e4m3_t，CATLASS_ARCH=3510）。
-// 两表均随官方架构支持自动跟随；依赖 kernel_operator.h 的 AscendC 位型，宿主门禁
-// （KERNEL_API=0）不引入，Traits 走下方显式 fallback。构建侧（run.sh kernel、
-// build_opp.sh、tools/sim 设备步）统一注入 -DCATLASS_ARCH=3510。
-#include "catlass/gemm/helper.hpp"
 #endif
 
 #if defined(__has_include) && __has_include("tla/tensor.hpp")
@@ -46,17 +39,7 @@ template <
 struct SagePvMmadTraits {
     using ElementA = int8_t;
     using ElementB = int8_t;
-#if SAGE_ATTN_KERNEL_API
-    // 官方累加位型表（Catlass::Gemm::helper，helper.hpp 单点）：语义位型
-    // fp8_e4m3×fp8_e4m3→FP32（Arch3510 表项；A/B 以 int8_t 字节码承载，见下），
-    // 随官方 Arch 支持自动跟随，不再手写位型
-    using ElementC = typename Catlass::Gemm::helper::ElementAccumulatorSelector<
-        float8_e4m3_t, float8_e4m3_t>::ElementAccumulator;
-#else
-    // 宿主门禁（无 kernel_operator.h，helper.hpp 不可解析）：显式 FP32，与
-    // 设备态官方表项一致（tests/test_kernel_twin 宿主分支位级锁定域）
     using ElementC = float;
-#endif
 
     static constexpr uint32_t M = TileM;
     static constexpr uint32_t N = TileN;
@@ -109,13 +92,7 @@ public:
      */
     __aicore__ void Compute([[maybe_unused]] bool init = false) {
 #if SAGE_ATTN_DEVICE_COMPILE
-        // FP8 位型载体（字节码按 e4m3 解释；与 INT8 Traits 字段解耦）：
-        // 官方 GetL0Element 表单点（helper.hpp，CATLASS_ARCH=3510 表项 fp8→mx_fp8），
-        // 随官方 L0 位型映射自动跟随；static_assert 使构建漏配 -DCATLASS_ARCH=3510
-        // 时在编译期显式失败（而非静默退回非 MX 位型）
-        using Fp8Code = typename Catlass::Gemm::helper::GetL0Element<float8_e4m3_t, true>::Element;
-        static_assert(std::is_same<Fp8Code, AscendC::mx_fp8_e4m3_t>::value,
-                      "GetL0Element<fp8,true> requires -DCATLASS_ARCH=3510 (mx_fp8_e4m3_t L0 mapping)");
+        using Fp8Code = AscendC::mx_fp8_e4m3_t;
 
         AscendC::TBuffAddr l0a_desc{};
         l0a_desc.logicPos = static_cast<uint8_t>(AscendC::TPosition::A2);

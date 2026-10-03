@@ -137,27 +137,36 @@ COMMON_INCLUDES=(
 
 QUANT_SOURCES=("${OP_DIR}/quant/quant_int8.cpp" "${OP_DIR}/quant/quant_fp8.cpp")
 
+# CANN opdev/exe_graph 头子树（交付态 op_api 与 TilingImpl 的唯一编译环境；
+# opdev/* 位于 include/aclnn 子树，与 op_host/CMakeLists.txt 同口径）
+CANN_INCLUDES=(-I"${ASCEND_HOME_PATH}/include" -I"${ASCEND_HOME_PATH}/include/aclnn")
+
 echo "1. Compiling op_host dynamic libraries with BiSheng (libcust_opapi.so & liboptiling.so)..."
 
-# libcust_opapi.so (包含 ACLNN Host 接口、量化核以及原型推导)
+# libcust_opapi.so（交付态 aclnn 两段式唯一实现 op_api/aclnn_sage_attention2.cpp——
+# 字符串属性 ABI 面，与 def.cpp 注册的 7 项属性一致；移植态两段式已删除收敛；
+# l0op/CommonOpExecutorRun 等运行时符号由 CANN 运行时装载时提供）
 "${BISHENG}" "${HOST_CXX_FLAGS[@]}" -shared \
-    "${OP_DIR}/aclnn/sage_attn_host.cpp" \
+    "${OP_DIR}/op_api/aclnn_sage_attention2.cpp" \
     "${QUANT_SOURCES[@]}" \
     "${OP_DIR}/op_host/sage_attention2_def.cpp" \
     "${OP_DIR}/op_host/sage_attention2_infershape.cpp" \
     "${COMMON_INCLUDES[@]}" \
+    "${CANN_INCLUDES[@]}" \
     -o "${CUSTOM_DIR}/op_api/lib/libcust_opapi.so"
 
 # 同步一份到 op_proto/lib
 cp -f "${CUSTOM_DIR}/op_api/lib/libcust_opapi.so" "${CUSTOM_DIR}/op_proto/lib/libcust_opapi.so"
 
-# liboptiling.so (包含算子 Tiling 算法与 InferShape)
+# liboptiling.so（算子 TilingImpl 与 InferShape；tiling 数值唯一实现
+# aclnn/sage_attn_host_tiling.h 的 ComputeHostTiling）
 "${BISHENG}" "${HOST_CXX_FLAGS[@]}" -shared \
     "${OP_DIR}/op_host/sage_attention2_def.cpp" \
     "${OP_DIR}/op_host/sage_attention2_infershape.cpp" \
-    "${OP_DIR}/aclnn/sage_attn_host.cpp" \
+    "${OP_DIR}/op_host/sage_attention2_tiling.cpp" \
     "${QUANT_SOURCES[@]}" \
     "${COMMON_INCLUDES[@]}" \
+    "${CANN_INCLUDES[@]}" \
     -o "${CUSTOM_DIR}/op_impl/ai_core/tbe/op_tiling/lib/liboptiling.so"
 
 echo "2. Compiling op_kernel device object for ${SOC} with BiSheng (-xasc ${NPU_ARCH})..."
@@ -178,7 +187,6 @@ echo "3. Packaging headers and configuration files..."
 if [ -f "${OP_DIR}/op_api/aclnn_sage_attention2.h" ]; then
     cp -f "${OP_DIR}/op_api/aclnn_sage_attention2.h" "${CUSTOM_DIR}/op_api/include/"
 fi
-cp -f "${OP_DIR}/aclnn/sage_attn_proto.h" "${CUSTOM_DIR}/op_api/include/"
 cp -f "${OP_DIR}/op_host/sage_attention2_def.h" "${CUSTOM_DIR}/op_proto/inc/"
 
 # 生成 vendors/config.ini

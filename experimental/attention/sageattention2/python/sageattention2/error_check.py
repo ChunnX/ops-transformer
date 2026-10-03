@@ -10,13 +10,8 @@ import re
 from typing import Any, Dict, Optional, Tuple
 import warnings
 
-try:
-    import torch
-    import torch.nn.functional as F
-except ImportError:
-    from unittest.mock import MagicMock
-    torch = MagicMock()
-    F = MagicMock()
+import torch
+import torch.nn.functional as F
 
 def _load_cpp_constants():
     _dir = os.path.dirname(__file__)
@@ -68,7 +63,6 @@ def handle_smooth_v(pv_accum_dtype: str, smooth_v: bool) -> bool:
     return smooth_v
 
 def validate_tensors(q: Any, k: Any, v: Any, tensor_layout: str, is_causal: bool) -> None:
-    if not hasattr(q, "dim") or not hasattr(k, "dim") or not hasattr(v, "dim"): return
     if q.dim() != 4 or k.dim() != 4 or v.dim() != 4: raise ValueError("Input tensors q, k, v must all be 4D tensors")
     if tensor_layout == "HND":
         b_q, h_q, s_q, d_q = q.shape
@@ -83,21 +77,14 @@ def validate_tensors(q: Any, k: Any, v: Any, tensor_layout: str, is_causal: bool
     if d_q != d_k: raise ValueError("Head dimension mismatch")
     if h_q % h_k != 0: raise ValueError("GQA constraint violated")
     if is_causal and s_q != s_k: raise ValueError("is_causal=True requires qo_len == kv_len")
-    if hasattr(q, "device"):
-        if q.device != k.device or q.device != v.device: raise AssertionError("All tensors (q, k, v) must be on the same device")
-    if hasattr(q, "dtype"):
-        valid_dtypes = (torch.float16, torch.bfloat16)
-        if q.dtype not in valid_dtypes: raise AssertionError("Input tensors must be in dtype of torch.float16 or torch.bfloat16")
-        if q.dtype != k.dtype or q.dtype != v.dtype: raise AssertionError("All tensors (q, k, v) must have the same dtype")
-    if hasattr(q, "stride") and hasattr(k, "stride") and hasattr(v, "stride"):
-        assert q.stride(-1) == 1 and k.stride(-1) == 1 and v.stride(-1) == 1, "Last dim of qkv must be contiguous."
+    if q.device != k.device or q.device != v.device: raise AssertionError("All tensors (q, k, v) must be on the same device")
+    valid_dtypes = (torch.float16, torch.bfloat16)
+    if q.dtype not in valid_dtypes: raise AssertionError("Input tensors must be in dtype of torch.float16 or torch.bfloat16")
+    if q.dtype != k.dtype or q.dtype != v.dtype: raise AssertionError("All tensors (q, k, v) must have the same dtype")
+    assert q.stride(-1) == 1 and k.stride(-1) == 1 and v.stride(-1) == 1, "Last dim of qkv must be contiguous."
 
 
 def pad_head_dim(q: Any, k: Any, v: Any) -> Tuple[Any, Any, Any, int]:
-    if not hasattr(q, "size"):
-        return q, k, v, 0
-    if hasattr(q, "stride") and hasattr(k, "stride") and hasattr(v, "stride"):
-        assert q.stride(-1) == 1 and k.stride(-1) == 1 and v.stride(-1) == 1, "Last dim of qkv must be contiguous."
     head_dim_og = q.size(-1)
     if head_dim_og <= 0:
         raise ValueError("Invalid head_dim")

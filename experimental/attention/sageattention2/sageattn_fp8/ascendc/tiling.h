@@ -119,7 +119,6 @@ constexpr float FP8_E4M3_MAX = 448.0f;                  // FP8 e4m3fn 最大有�
 constexpr float SCALE_MAX_FP16_ACCUM = 2.25f;           // fp32+fp16 档 V 量化 scale_max (对齐开源)
 constexpr float SCALE_MAX_FP32_ACCUM = FP8_E4M3_MAX;    // 其余档位 V 量化 scale_max (饱和至 e4m3 满量程)
 constexpr float SCALE_ONE_TOLERANCE = 1e-6f;            // 缩放系数 (alpha/rescale) 与 1.0 比较的浮点容差
-constexpr float SKIP_SCALE_TAU = 6.0f;                  // FlashMLA / Online Softmax 跳步缩放阈值 tau = 6.0 (唯一定义点)
 
 /**
  * 两级累加归约周期缺省步长（tiling.k_step ∈ {8, 16, 32} 的缺省值；
@@ -208,14 +207,12 @@ struct __attribute__((packed, aligned(32))) SageAttention2TilingData {
     uint32_t smooth_k;        // 是否启用 smooth_k (0=False, 1=True)
     uint32_t smooth_v;        // 是否启用 smooth_v (0=False, 1=True)
 
-    // 3. 数值字段 (12 字节)
+    // 3. 数值字段 (8 字节)
     float sm_scale_log2e;     // Host 端折叠后的缩放因子: sm_scale * log2(e) (约 1.44269504)
     float v_scale_max;        // V 量化饱和上限 (fp32+fp16 为 2.25f, 其余为 448.0f)
-    // 【布局冻结字段，kernel 不读】task/01_design.md 3.5 节冻结字段：仅允许缺省 0 或
-    // 冻结常量 S_FP8_OFFSET（host 唯一填充点 aclnn/sage_attn_host_tiling.h）。448· 放大
-    // 经乘法恒启用（twin::SoftmaxProbCode），LSE 出口恒以 S_FP8_OFFSET 常量补扣，
-    // 本字段不参与运行时数值——保留仅为 160 字节 TilingData 布局契约（ctypes 镜像断言）。
-    float s_fp8_offset;
+    // （原 s_fp8_offset 布局冻结字段已删除：448· 放大恒经乘法启用（twin::SoftmaxProbCode），
+    // LSE 出口恒以 S_FP8_OFFSET 常量补扣（唯一定义本文件），该字段从不参与运行时数值，
+    // 其 4 字节已并入尾部保留域，160 字节 TilingData 布局契约不变。）
 
     // 4. 分块字段 (12 字节)
     uint32_t m_per_core;      // 每个核处理的 Query 行数 (GQA 聚合后对齐为 64 的倍数)
@@ -249,13 +246,10 @@ struct __attribute__((packed, aligned(32))) SageAttention2TilingData {
     // 8. dtype 与补齐保留字段：输入位型分派（任务书 §3 支持 FP16/BF16）。
     // 编码：0 视作 fp16 缺省（消费方 (==2)?2:1 归一），1=float16, 2=bfloat16
     uint8_t input_dtype;  // 1=fp16（缺省）, 2=bf16
-    union {
-        uint8_t reserved[3];
-        struct {
-            uint8_t causal_early_exit; // 0=关闭, 1=启用因果掩码早退 (来自 autotune 经验调优)
-            uint8_t rsvd[2];
-        };
-    };
+    // 尾部保留域 (7 字节)：吸收原 causal_early_exit（kernel 从未读取，host 写值无消费者）
+    // 与 s_fp8_offset（kernel 直读 S_FP8_OFFSET 常量）删除后的冗余位，
+    // 160 字节 TilingData 布局契约（ctypes 镜像断言）不变。
+    uint8_t reserved[7];
 
     // 便捷访问辅助函数（仅 host 侧使用；设备核内因 bisheng 对 const __gm__ this
     // 的成员函数限制，一律直接读字段——见 op_kernel/sageattention2.cpp Init 注释）

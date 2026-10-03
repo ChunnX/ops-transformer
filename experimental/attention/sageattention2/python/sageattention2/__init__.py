@@ -1,7 +1,6 @@
 """
 SageAttention2 Python package for Ascend NPU (Atlas 950PR).
 """
-import torch
 from . import _extension, _ops
 from .dispatch import (
     dispatch_sageattn,

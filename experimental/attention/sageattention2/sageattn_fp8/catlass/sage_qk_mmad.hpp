@@ -9,11 +9,6 @@
 
 #if SAGE_ATTN_KERNEL_API
 #include "catlass/arch/arch.hpp"
-// 官方位型映射表单点（catlass/gemm/helper.hpp）：ElementAccumulatorSelector
-// 承担 A×B→累加位型的 Arch 映射（int8×int8→INT32），随官方架构支持自动跟随。
-// 依赖 kernel_operator.h 的 AscendC 位型（half/bfloat16_t 等），宿主门禁
-// （KERNEL_API=0）不引入，Traits 走下方显式 fallback。
-#include "catlass/gemm/helper.hpp"
 #endif
 
 #if defined(__has_include) && __has_include("tla/tensor.hpp")
@@ -41,16 +36,7 @@ template <
 struct SageQkMmadTraits {
     using ElementA = int8_t;
     using ElementB = int8_t;
-#if SAGE_ATTN_KERNEL_API
-    // 官方累加位型表（Catlass::Gemm::helper，helper.hpp 单点）：int8×int8→INT32，
-    // 随官方 Arch 支持自动跟随，不再手写位型
-    using ElementC = typename Catlass::Gemm::helper::ElementAccumulatorSelector<
-        ElementA, ElementB>::ElementAccumulator;
-#else
-    // 宿主门禁（无 kernel_operator.h，helper.hpp 不可解析）：显式 INT32，与
-    // 设备态官方表项一致（tests/test_kernel_twin 宿主分支位级锁定域）
     using ElementC = int32_t;
-#endif
 
     static constexpr uint32_t M = TileM;
     static constexpr uint32_t N = TileN;

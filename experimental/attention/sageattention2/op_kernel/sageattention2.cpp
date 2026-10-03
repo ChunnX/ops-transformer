@@ -185,12 +185,10 @@ struct SimMemory {
      * （GPU golden 对标）与 tests/test_function.py（功能用例））：
  * a. 逐行 Softmax：OnlineSoftmaxState 按逻辑行（r = g*cur_q_len + i）维护，行 max/行分母/
  *    行 rescale/行 LSE/行 lse_correction 全部独立——softmax 是行级语义；
- * b. P 逐块锚定：每块以 is_force_rescale=true 强制重缩放（m_scale 恒等于 m_run），P 在
- *    本块锚点量化——twin/golden 的逐块锚定轨迹（e4m3 量化网格依赖锚点，锚点滞后会偏离
- *    golden 网格）；skip-scale（tau=6）机制保留在 online_softmax.h 供向量化 pass 复用；
- * c. 448· 放大域经乘法实现（twin::SoftmaxProbCode 单点，行 max 恰为 448 填满 e4m3 动态
- *    范围）；s_fp8_offset 指数偏置域为非默认可选（与 skip-scale 存在 2^δ·448 溢出冲突，
- *    启用须 tau=0），基线恒为 0；
+ * b. P 逐块锚定（恒逐块强锚定重缩放）：m_scale 恒等于 m_run，P 在本块锚点量化——
+ *    twin/golden 的逐块锚定轨迹（e4m3 量化网格依赖锚点，锚点滞后会偏离 golden 网格）；
+ * c. 448· 放大域经乘法实现（twin::SoftmaxProbCode 单点，行 max 恰为 448 填满 e4m3
+ *    动态范围），LSE 出口恒以 S_FP8_OFFSET 常量补扣；
  * d. 两级累加：fp32 档逐 token 直累；fp32+fp16 档按 k_step=16 子块 FP16 域累加
  *    （twin::AccumulatePvRow 单点），O 主累加器驻留 V1 UB（fp32）。
  */
@@ -428,8 +426,8 @@ private:
         Catlass::SageAttn::SageQkMmad<> qk_mmad;
         Catlass::SageAttn::SagePvMmad<> pv_mmad;
 
-        // A7（task/12 D3）：热路径不使用 OutputRetireQueue——golden 轨迹为逐块锚定
-        // 强制 rescale，队列的 tau/skip-scale 双锚点与 V1 独占 O 主累加器冲突；
+        // A7（task/12 D3）：热路径不使用 OutputRetireQueue——golden 轨迹为恒逐块
+        // 强锚定重缩放，队列的双锚点策略与 V1 独占 O 主累加器冲突；
         // 每块 PV L0C 部分和经 FixPipe 裸搬至 UB 交接槽，由 V1 按档位合并。
 
         // 进域预置（task/02_code.md B-2 init 纪律）：Cube 是 KV 槽与 S 槽的消费者，
@@ -671,7 +669,7 @@ private:
 
     /**
      * 3. Vector 1 核心处理逻辑（Softmax 核）
-     * 负责 exp2 域 Online Softmax、skip-scale 判定、O 主累加器更新、LSE 累积与写回。
+     * 负责 exp2 域 Online Softmax、逐块 O 重缩放、O 主累加器更新、LSE 累积与写回。
      * softmax 状态为行级（GQA 逻辑行 r = g * cur_q_len + i 各自独立维护 max/denominator，
      * 与 twin RunSequential 的行级状态一致）；S 槽写出布局维持 SoftmaxSlotOffset 奇偶
      * 双缓冲契约不变（V1 写出、Cube 读取）。
@@ -762,7 +760,7 @@ private:
                 ComputeBlockMaxAndSum(r, cur_max, cur_sum, k);
                 if (cur_max > SAGE_MASK_SENTINEL) {
                     const float rescale_factor =
-                        OnlineSoftmaxTransformer::Step(row_states_[r], cur_max, cur_sum, true);
+                        OnlineSoftmaxTransformer::Step(row_states_[r], cur_max, cur_sum);
                     if (row_states_[r].need_rescale &&
                         SageFastAbs(rescale_factor - 1.0f) > SCALE_ONE_TOLERANCE) {
                         RescaleAccumulator(rescale_factor, r);
@@ -781,7 +779,7 @@ private:
                     continue; // twin 5.1：整块被因果掩码（前缀行），无贡献不步进
                 }
                 const float rescale_factor =
-                    OnlineSoftmaxTransformer::Step(row_states_[r], cur_max, cur_sum, true);
+                    OnlineSoftmaxTransformer::Step(row_states_[r], cur_max, cur_sum);
                 if (row_states_[r].need_rescale &&
                     SageFastAbs(rescale_factor - 1.0f) > SCALE_ONE_TOLERANCE) {
                     RescaleAccumulator(rescale_factor, r);
@@ -1185,6 +1183,9 @@ private:
             const int64_t row_gm_offset = kv_layout(tla::MakeCoord(0u, 0u, j, 0u)) * static_cast<int64_t>(sizeof(half));
             GlobalTensor<half> gm_row;
             gm_row.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(k_src + row_gm_offset));
+            // K 行 GM 流式读（每任务独占、无跨任务复用）：L2 直通旁路，避免污染 Die 本地
+            // 64MB L2（保留给 KV 亲和复用热数据）
+            gm_row.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
             DataCopy(ub_in, gm_row, d);
             Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
             dev_vf::RowAbsMaxVF(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
@@ -1238,6 +1239,8 @@ private:
                 const int64_t row_gm_offset = kv_layout(tla::MakeCoord(0u, 0u, j, 0u)) * static_cast<int64_t>(sizeof(half));
                 GlobalTensor<half> gm_row;
                 gm_row.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(k_src + row_gm_offset));
+                // K 行 GM 流式读：L2 直通旁路（同 A 段，避免污染 Die 本地 L2）
+                gm_row.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
                 DataCopy(ub_in, gm_row, d);
                 Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
                 const uint32_t token = cur_k_start_ + j;
@@ -1377,6 +1380,8 @@ private:
                     const int64_t row_gm_offset = kv_layout(tla::MakeCoord(0u, 0u, t, 0u)) * static_cast<int64_t>(sizeof(half));
                     GlobalTensor<half> gm_row;
                     gm_row.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(v_src + row_gm_offset));
+                    // V 全序列预扫（任务级一次的流式读）：L2 直通旁路，避免污染 Die 本地 L2
+                    gm_row.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
                     Catlass::SageAttn::Sync<HardEvent::V_MTE2>();
                     DataCopy(ub_in, gm_row, d);
                     Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
@@ -1403,6 +1408,8 @@ private:
                     const int64_t row_gm_offset = kv_layout(tla::MakeCoord(0u, 0u, t, 0u)) * static_cast<int64_t>(sizeof(half));
                     GlobalTensor<half> gm_row;
                     gm_row.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(v_src + row_gm_offset));
+                    // V 全序列预扫（任务级一次的流式读）：L2 直通旁路，避免污染 Die 本地 L2
+                    gm_row.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
                     Catlass::SageAttn::Sync<HardEvent::V_MTE2>();
                     DataCopy(ub_in, gm_row, d);
                     Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
@@ -1441,6 +1448,8 @@ private:
                 const int64_t row_gm_offset = kv_layout(tla::MakeCoord(0u, 0u, j, 0u)) * static_cast<int64_t>(sizeof(half));
                 GlobalTensor<half> gm_row;
                 gm_row.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(v_src + row_gm_offset));
+                // V 行 GM 流式读（单任务一次性消费）：L2 直通旁路，避免污染 Die 本地 L2
+                gm_row.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
                 DataCopy(ub_in, gm_row, d);
                 Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
                 dev_vf::QuantVRowFp8VF(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
