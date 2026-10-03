@@ -14,7 +14,7 @@ NPU 侧两种粒度是两套独立存在的量化内核，不是兼容别名；�
 
 - `qk_quant_gran="per_thread"` 真实分组（`./quant/quant_int8.cpp` per-thread 路径，x86 可单测）
 
-- Q：每 128 token 块切 4 个 32-token 子块，每子块按步距 8 取 4 组，单 scale 覆盖 8 个交错 token 的完整 head dim，每块共 32 个 scale（`QScaleCount`，`./quant/quant_common.h`）
+- Q：每 128 token 块切 4 个 32-token 子块，每子块按步距 8 取 8 组，单 scale 覆盖 4 个步距 8 交错 token 的完整 head dim，每块共 32 个 scale（`QScaleCount`，`./quant/quant_common.h`）
 - K：每 64 token 块切 4 组，单 scale 覆盖 16 个交错 token（8 对相邻 token 对，`n mod 8 == 2g`）的完整 head dim，每块共 4 个 scale（`KScaleCount`，`./quant/quant_common.h`）
 - 舍入为 half-away-from-zero（见下节）
 
@@ -28,7 +28,7 @@ NPU 侧两种粒度是两套独立存在的量化内核，不是兼容别名；�
 - CUDA 通用 FP8 `per_thread`（WARPQ=32、WARPK=64）：Q 单 scale 覆盖 4 token，K 覆盖 16 token
 - CUDA SM90 FP8 `per_thread`（WARPQ=16、WARPK=128）：Q 单 scale 覆盖 2 token，K 覆盖 32 token
 - CUDA 通用 FP8 `per_warp`（WARPQ=32、BLKK=64）：Q 单 scale 覆盖 32 token，K 覆盖 64 token
-- NPU `per_warp` 的覆盖数与 CUDA 通用 per_warp 相同（32/64）；NPU `per_thread` 为 8/16，介于 CUDA 两种 per_thread 配置之间
+- NPU `per_warp` 的覆盖数与 CUDA 通用 per_warp 相同（32/64）；NPU `per_thread` 为 4/16，与 CUDA 通用 per_thread 覆盖数相同（组内为步距 8 交织序，非 lane 连续段）
 - 结论：同名参数不构成逐位 golden。CUDA 的 thread/warp 分组与 lane、MMA fragment 映射绑定，NPU 的 AIV/Cube 布局不同；仓库根 golden 数据集的 TC-02 系列给出 NPU 侧两种粒度的逐位期望值
 
 ## S_FP8_OFFSET：P 矩阵按 log2(448) 精确放大
@@ -82,7 +82,7 @@ NPU 侧两种粒度是两套独立存在的量化内核，不是兼容别名；�
 
 - Q/K INT8 量化分组
 
-- NPU `per_thread`：Q 每 scale 8 token / K 每 scale 16 token，两套真实内核
+- NPU `per_thread`：Q 每 scale 4 token / K 每 scale 16 token，两套真实内核
 - NPU `per_warp`：Q 每 scale 32 token / K 每 scale 64 token，真实内核
 - CUDA `per_thread`：Q 4（通用）或 2（SM90），K 16（通用）或 32（SM90）
 - CUDA `per_warp`：Q 32 / K 64（通用配置）
