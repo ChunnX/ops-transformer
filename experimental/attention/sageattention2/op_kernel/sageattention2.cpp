@@ -644,6 +644,10 @@ private:
                                   cur_block_k, d_);
 
             // 严格保证生产者在前：写入完成后触发跨核事件通知 Cube
+            // 生产管排空（DEFECT-H-2）：MTE3 写 KV 槽 → Cube MTE 读，CrossCoreSet
+            // （S 管）不排空 MTE3，先自配对事件等待写毕再举旗
+            SetFlag<HardEvent::MTE3_MTE2>(0);
+            WaitFlag<HardEvent::MTE3_MTE2>(0);
             CrossCoreSet(CrossCoreDirection::VEC0_TO_CUBE, kv_flag);
         }
 
@@ -728,7 +732,10 @@ private:
             AccumulatePvBlockTwin(CurBlockK());
 #endif
 
-            // 通知 Cube：S[k] 矩阵已就位
+            // 生产管排空（DEFECT-H-2）：VF 写 P 槽（V 管）→ Cube LoadL0A（MTE）读，
+            // CrossCoreSet（S 管）不排空 V 管，先自配对事件等待写毕再举旗
+            SetFlag<HardEvent::V_S>(0);
+            WaitFlag<HardEvent::V_S>(0);
             CrossCoreSet(CrossCoreDirection::VEC1_TO_CUBE, s_flag);
         }
 
@@ -1555,6 +1562,9 @@ private:
                     gm_out.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(out_gm_ + out_gm_offset));
                     DataCopy(gm_out, ub_half, tiling_->d_og);
                 }
+                // V 管写（FinalizeRowVF）→ MTE3 读同步（DEFECT-H-1）：ub_half 逐行复用，
+                // 上一行在途 MTE3 读与新行 VF 写必须经屏障排空
+                PipeBarrier<PIPE_V>();
 
                 if (lse_gm_ != nullptr) {
                     const int64_t lse_offset =
