@@ -433,8 +433,8 @@ private:
 
 namespace ops {
 
-typedef ge::graphStatus (*InferShapeFunc)(gert::InferShapeContext *context);
-typedef ge::graphStatus (*InferDataTypeFunc)(gert::InferDataTypeContext *context);
+using InferShapeFunc = ge::graphStatus (*)(gert::InferShapeContext *context);
+using InferDataTypeFunc = ge::graphStatus (*)(gert::InferDataTypeContext *context);
 
 class OpImplRegistryMock {
 public:

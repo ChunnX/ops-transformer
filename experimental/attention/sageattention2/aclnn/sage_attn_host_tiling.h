@@ -13,6 +13,7 @@
  */
 
 #include "sage_attn_proto.h"
+#include "autotune_tiling_bank.h"
 #include "../sageattn_fp8/ascendc/tiling.h"
 #include "../sageattn_fp8/catlass/sage_tile.hpp"
 #include "../sageattn_fp8/catlass/sage_resource.hpp"
@@ -31,6 +32,55 @@
 #endif
 
 namespace sage_attn {
+
+/**
+ * 双 Die 拓扑亲和调度判定准则 (inspired by competitor common.h):
+ * Atlas 950PR 标配 2 个计算 Die，各拥有 16 个 AI Core 与 64MB 独立片上 L2 Cache。
+ * 当参与调度的核心数为偶数 (标配 32 核或减配 28 核) 且 (b * hkv) 能被 2 整除时，
+ * 满足双 Die 亲和调度条件：
+ * - Die 0 (核 0..cores/2-1) 亲和前半段 KV heads/batches [0, (b * hkv)/2)
+ * - Die 1 (核 cores/2..cores-1) 亲和后半段 KV heads/batches [(b * hkv)/2, b * hkv)
+ * 使得对应 KV 头所有 Q 块任务全部收敛在同一 Die 内部物理核上执行，
+ * 保证 100% 的 KV reuse 命中对应 Die 的 64MB 本地 L2 Cache，彻底消除跨 Die 互联颠簸 (cross-Die bouncing)。
+ */
+inline bool UseDieGroups(uint32_t cores, uint32_t b, uint32_t hkv) noexcept
+{
+    return cores >= 2 && (cores % 2 == 0) && ((static_cast<uint64_t>(b) * hkv) % 2 == 0);
+}
+
+/**
+ * 映射虚拟任务至物理核心亲和目标 (直接转发至 tiling.h DieTask 唯一定义)
+ */
+inline uint64_t MapDieTask(uint64_t task, uint64_t total, uint32_t cores) noexcept
+{
+    return DieTask(task, total, cores);
+}
+
+/**
+ * 计算物理核心在当前 Die 内的任务循环终止边界 (直接转发至 tiling.h DieTaskEnd 唯一定义)
+ */
+inline uint64_t MapDieTaskEnd(uint64_t total, uint32_t core, uint32_t cores, bool enable = true) noexcept
+{
+    return DieTaskEnd(total, core, cores, enable);
+}
+
+/**
+ * 计算指定物理核心归属的计算 Die (Die 0: 0..cores/2-1, Die 1: cores/2..cores-1)
+ */
+inline uint32_t GetDieIndexForCore(uint32_t core, uint32_t cores = ATLAS_950_AIC_NUM) noexcept
+{
+    return (core < (cores / 2)) ? 0 : 1;
+}
+
+/**
+ * 计算指定 Batch / Hkv 头在双 Die 拓扑下的亲和归属 Die
+ */
+inline uint32_t GetKvHeadDieAffinity(uint32_t b_idx, uint32_t hkv_idx, uint32_t b, uint32_t hkv) noexcept
+{
+    uint64_t total_bh = static_cast<uint64_t>(b) * hkv;
+    uint64_t cur_bh = static_cast<uint64_t>(b_idx) * hkv + hkv_idx;
+    return (cur_bh < (total_bh / 2)) ? 0 : 1;
+}
 
 /**
  * 获取硬件可用 AI Core 核心数量
@@ -159,11 +209,19 @@ inline aclnnStatus ComputeHostTiling(
     // 输入位型分派：fp16/bf16 三方（def 注册、op_api、核内读写）一致
     tiling_out.input_dtype = static_cast<uint8_t>(dtype_mode);
 
-    // 8. 闭式分块计算 (分块字段，12 字节)
-    // m_per_core 沿 GQA 头聚合：kernel 的 M 维打包 = 组内各 Q 头行连续
-    //（TotalRows = gqa·cur_q_len，行容量 kKernelMaxRows = 128），故
-    // gqa·m_per_core <= 128 为硬约束；同时 m_per_core >= 32 保证
-    // per_thread 32-token 子块的 scale 组不跨 tile 切割。gqa>4 时打包不下，显式拒绝。
+    // 8. 闭式分块计算 (分块字段，12 字节) 与 Auto-Tuned Tiling 调优知识库查询
+    // 优先查询 Ascend 950PR 经验调优知识库 (autotune::QueryTunedTiling)：
+    // 命中调优用例 (P-01 ~ P-07) 时应用实测最优超参 (m_per_core, block_n, k_step,
+    // causal_early_exit, use_die_grouped)；未命中或动态 shape 时平滑回退至健壮的闭式推导。
+    const autotune::TunedTilingEntry *tuned = nullptr;
+    const char *env_tune_case = std::getenv("SAGEATTN_TUNE_CASE");
+    if (env_tune_case != nullptr) {
+        tuned = autotune::QueryTunedTiling(env_tune_case);
+    }
+    if (tuned == nullptr) {
+        tuned = autotune::QueryTunedTiling(b, sq, sk, hq, hkv, d_og, dtype_mode, isCausal);
+    }
+
     uint32_t m_per_core = 64;
     if (gqa_ratio > 1) {
         if (gqa_ratio > 4u) {
@@ -171,14 +229,25 @@ inline aclnnStatus ComputeHostTiling(
         }
         m_per_core = (gqa_ratio == 2u) ? 64u : 32u;
     }
-    tiling_out.m_per_core = m_per_core;
+    uint32_t block_n = (sk >= 2048) ? 128 : 64;
+    uint32_t k_step = DEFAULT_K_STEP;
+    bool tuned_die_grouped = false;
+    bool has_tuned = false;
+    uint8_t causal_early_exit_val = isCausal ? 1 : 0;
 
-    // block_n：KV 分块大小，推荐 64 或 128 (满足 L1 Bank 1 256KB Ping-Pong 与 FixPipe 吞吐平衡)
-    uint32_t block_n = 64;
-    if (sk >= 2048) {
-        block_n = 128;
+    if (tuned != nullptr) {
+        has_tuned = true;
+        m_per_core = tuned->m_per_core;
+        block_n = tuned->block_n;
+        k_step = tuned->k_step;
+        causal_early_exit_val = tuned->causal_early_exit ? 1 : 0;
+        tuned_die_grouped = tuned->use_die_grouped;
     }
+
+    tiling_out.m_per_core = m_per_core;
     tiling_out.block_n = block_n;
+    tiling_out.k_step = k_step;
+    tiling_out.causal_early_exit = causal_early_exit_val;
 
     // 运行时资源台账 fail-fast：
     // O 累加器/S 双槽/L0C/L1 的足迹随 (gqa·m_per_core, block_n, d_pad) 变化，
@@ -188,9 +257,6 @@ inline aclnnStatus ComputeHostTiling(
         Catlass::SageAttn::FootprintViolation::kNone) {
         return ACLNN_ERR_PARAM_INVALID;
     }
-
-    // k_step：两级累加归约周期步长 (默认 16)
-    tiling_out.k_step = DEFAULT_K_STEP; // 唯一定义点 tiling.h
 
     // 9. 分核计算与 Split-KV 判定 (分核字段，20 字节)
     uint32_t hw_cores = GetHardwareCoreNum();
@@ -223,14 +289,27 @@ inline aclnnStatus ComputeHostTiling(
     tiling_out.core_num_used = (scheduled_tasks < hw_cores) ? scheduled_tasks : hw_cores;
 
     // 10. Die 亲和性多核调度分核计算 (Atlas 950PR 双 Die / 8-Group 拓扑)
-    // 硬件拓扑：Atlas 950PR 标配 2 个计算 Die，每个 Die 拥有独立的片上 L2 Cache 与 AI Core 组 (各 4 个 Core Group)
-    // 若简单按线性顺序平铺 task_id，同一 Query 块对应的任务会频繁跨 Die 调度，导致跨 Die 互联总线拥塞与远端 L2 Cache Miss
-    // 判定准则：无 Split-KV 切分、核心数 >= 2 且为偶数 (标配 32 核或减配 28 核)，且任务数 >= 2 且为偶数时启用 Die 亲和性调度
+    // 竞品 common.h DieTask 启发与双 Die 拓扑亲和调度：
+    // 硬件拓扑：Atlas 950PR 标配 2 个计算 Die，每个 Die 拥有独立的片上 64MB L2 Cache 与 AI Core 组 (各 4 个 Core Group)
+    // 判定准则：当参与调度核心数为 32 (或偶数核心) 且 (b * hkv) 能被 2 整除时，
+    // 将任务严格按 Die 切分，Die 0 (核 0..cores/2-1) 亲和前半段 KV heads/batches [0, (b*hkv)/2)，
+    // Die 1 (核 cores/2..cores-1) 亲和后半段 KV heads/batches [(b*hkv)/2, b*hkv)。
+    // 这保证了 100% 的 KV reuse 命中对应 Die 的 64MB 本地 L2 Cache，彻底避免跨 Die 互联总线颠簸。
     uint32_t die_num = ATLAS_950_DIE_NUM;
     uint32_t active_cores = tiling_out.core_num_used;
-    bool enable_die = (split_kv_num == 1) &&
-                      (active_cores >= die_num) && ((active_cores % die_num) == 0) &&
-                      (total_tasks >= die_num) && ((total_tasks % die_num) == 0);
+    const bool is_b_hkv_even = ((static_cast<uint64_t>(b) * hkv) % 2ULL == 0ULL);
+
+    bool enable_die = false;
+    if (has_tuned) {
+        enable_die = tuned_die_grouped && (split_kv_num == 1) &&
+                     (active_cores >= die_num) && ((active_cores % die_num) == 0) &&
+                     is_b_hkv_even;
+    } else {
+        enable_die = (split_kv_num == 1) &&
+                     (active_cores >= die_num) && ((active_cores % die_num) == 0) &&
+                     (total_tasks >= die_num) && ((total_tasks % die_num) == 0) &&
+                     is_b_hkv_even;
+    }
 
     tiling_out.enable_die_affinity = enable_die ? 1 : 0;
     tiling_out.die_num = die_num;

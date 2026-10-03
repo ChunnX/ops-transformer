@@ -67,6 +67,15 @@ namespace CrossCoreFlags {
     // beat k+1 覆写 dot32 区（单 L0C 要求 QK fp 先于 PV Mmad，无法借道 S(k) 排序；
     // R17-2 后 dot32 区定址 [96K,160K)，Vector1UbBudget 唯一定义点）
     constexpr uint32_t FLAG_DOT_FREE             = 13; // dot32 区已读毕，Cube 可覆写 (V1 set → Cube wait)
+    // A7 scale 条带消费 ACK（DEFECT-M-3，2026-10-03 轮 2；task/12 第四节已知限制关闭）：
+    // GM 暂存条带（STAGE_Q_SCALE_OFFSET / K ping / K pong / V，tiling.h 唯一定义点）
+    // 为 V0 写、V1 读的单槽双缓冲。V1 进域预置两许可并逐拍读毕（MTE2 排空后）归还，
+    // V0 逐拍写前取许、退域回收末拍许可——同波内 n-th 写许可 ↔ n-th 读 ACK 严格
+    // FIFO 配对，跨波由许可链（Cube 波首 KV_*_FREE 预置 ⟸ V1 上一波终局 flag）
+    // 传递保序。单波对账：PING = 1 预置 + ⌈N/2⌉ 归还 = 1 波首 + ⌈N/2⌉−1 逐拍 + 1 回收；
+    // PONG = 1 + ⌊N/2⌋ = 1 + ⌊N/2⌋−1 + 1，余量逐波归零。
+    constexpr uint32_t FLAG_SCALE_STRIP_PING_FREE = 14; // 偶拍条带已读毕，V0 可覆写 (V1 set → V0 wait)
+    constexpr uint32_t FLAG_SCALE_STRIP_PONG_FREE = 15; // 奇拍条带已读毕，V0 可覆写 (V1 set → V0 wait)
 }
 
 /**

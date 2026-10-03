@@ -153,6 +153,10 @@ inline void SyncVToMte2() {}
 // 常量不随 SimMemory 分支门控，row_states_ 成员在设备分支亦需该界）
 constexpr uint32_t kKernelMaxRows = 128;
 
+__aicore__ inline uint32_t SageFastMin(uint32_t a, uint32_t b) {
+    return (a < b) ? a : b;
+}
+
 // A7 设备态 UB 布局（V1 256KB 地址空间，task/12_device_data_path.md；R17-2 重排定案）：
 // 区界/互斥/封顶的唯一定义点为 sage_resource.hpp Vector1UbBudget（static_assert 链
 // 编译期锁定两两不相交且 ≤ 256KB，512B 对齐），本文件仅保留调用点别名与 V1 行级
@@ -203,18 +207,17 @@ struct SimMemory {
 /**
  * SageAttention2 1C2V 设备核执行器
  * 核心技术规范：
- * 1. 1C2V 硬件编排：1 个 Cube Core 搭配 2 个 Vector Core (V0 量化 prologue 核，V1 Softmax 与 LSE 核)
- * 2. 延迟一拍流水：Cube 与 Vector 双域交错掩盖计算与搬运延时
- * 3. GQA 头聚合：当 Hq > Hkv 时沿 M 维聚合至 64 的倍数，一份 L1 KV 被多个 Q head 连续复用
- * 4. 64 位 GM 寻址：所有显存指针与 stride 计算强转 int64_t，杜绝长序列整数溢出
- * 5. 跨核 Flag 同步保序：严格遵循生产者在前、消费者在后，且每个任务域内 set/wait 1:1 配对
- *    （进域预置"消费者已归还"许可、退域回收残余许可，防跨任务波次残留死锁，task/02_code.md B-2）
- *
- * 数值架构契约（Step-C 标量基线，与 twin_reference.h RunSequential 唯一真值逐位一致，
- * 数值验证入口为 tests/test_kernel_twin.py（宿主串行分支 + 孪生执行器对 golden 25 桶
- * L-A/L-B 交叉验证，即本文件宿主分支的 golden 级回归）、tests/test_golden_precision.py
- * （GPU golden 对标）与 tests/test_function.py（功能用例），OutputRetireQueue 由
- * tests/test_output_queue.cpp 单测锁定）：
+     * 1. 1C2V 硬件编排：1 个 Cube Core 搭配 2 个 Vector Core (V0 量化 prologue 核，V1 Softmax 与 LSE 核)
+     * 2. 延迟一拍流水：Cube 与 Vector 双域交错掩盖计算与搬运延时
+     * 3. GQA 头聚合：当 Hq > Hkv 时沿 M 维聚合至 64 的倍数，一份 L1 KV 被多个 Q head 连续复用
+     * 4. 64 位 GM 寻址：所有显存指针与 stride 计算强转 int64_t，杜绝长序列整数溢出
+     * 5. 跨核 Flag 同步保序：严格遵循生产者在前、消费者在后，且每个任务域内 set/wait 1:1 配对
+     *    （进域预置"消费者已归还"许可、退域回收残余许可，防跨任务波次残留死锁，task/02_code.md B-2）
+     *
+     * 数值架构契约（Step-C 标量基线，与 twin_reference.h RunSequential 唯一真值逐位一致，
+     * 数值验证入口为 tests/test_kernel_twin.py（宿主串行分支 + 孪生执行器对 golden 25 桶
+     * L-A/L-B 交叉验证，即本文件宿主分支的 golden 级回归）、tests/test_golden_precision.py
+     * （GPU golden 对标）与 tests/test_function.py（功能用例））：
  * a. 逐行 Softmax：OnlineSoftmaxState 按逻辑行（r = g*cur_q_len + i）维护，行 max/行分母/
  *    行 rescale/行 LSE/行 lse_correction 全部独立——softmax 是行级语义；
  * b. P 逐块锚定：每块以 is_force_rescale=true 强制重缩放（m_scale 恒等于 m_run），P 在
@@ -277,28 +280,10 @@ public:
         block_n_ = tiling_->block_n;
         k_step_ = (tiling_->k_step != 0u) ? tiling_->k_step : DEFAULT_K_STEP; // 0 归一防死循环
 
-        // S_FP8_OFFSET 指数偏置域参数化读取：
-        // 基线 s_fp8_offset_ = 0 —— P 的 448· 放大经乘法实现（twin/golden 轨迹，行 max 恰为
-        // 448 填满 e4m3 动态范围，见 twin_reference.h SoftmaxProbCode 单点），指数偏置域与
-        // skip-scale tau=6 存在值域冲突（锚点滞后 δ 时 P 行 max = 2^δ·448 溢出 e4m3），
-        // 属非默认可选路径，启用须同时关闭 skip-scale（tau=0）。此处防御 (0, 1024) 合法域，
-        // host 侧未落字段（0）时保持基线 0，不再回退 8.807 以免与乘法放大叠加双份放大。
-        // s_fp8_offset 域归一化（448· 放大经乘法恒启用，twin 轨迹）：字段为冻结常量
-        // S_FP8_OFFSET（op_host 按 tiling.h 契约填充）或 0（基线缺省）时，放大已由
-        // twin::SoftmaxProbCode 的 448 乘法承担，额外指数偏置取 0；其余合法值方视为
-        // 额外指数偏置启用（非默认可选，须 tau=0）。否则冻结常量会与乘法放大叠加成
-        // 448^2 双份放大，且 LSE 出口多扣一份 log2(448)。
-        const float s_fp8_off_raw = tiling_->s_fp8_offset;
-        s_fp8_offset_ = (s_fp8_off_raw > 0.0f && s_fp8_off_raw < 1024.0f &&
-                         SageFastAbs(s_fp8_off_raw - S_FP8_OFFSET) > 1e-4f)
-                            ? s_fp8_off_raw
-                            : 0.0f;
-
         // 计算当前核的任务归属与 DieTask 解耦入口
         // 沿 (Batch, Hkv, Sq_block) 空间切分，优先将同一 KV 头的多个 Q 头聚合在同一核内执行
         // 注意：tiling_ 为 const __gm__ 限定，bisheng dav-3510 禁止在设备域调用其 const 成员函数
-        //（报 reference to __host__ function / this 未带 __gm__ 限定），故核内一律直接读字段，
-        // tiling.h 的 IsHND()/IsSmoothK()/EnableDieAffinity() 等便捷函数仅供 host 侧使用。
+        //（报 reference to __host__ function / this 未带 __gm__ 限定），故核内一律直接读字段。
         uint32_t q_blks_per_head = (sq_ + m_per_core_ - 1) / m_per_core_;
         uint32_t total_tasks = b_ * hkv_ * q_blks_per_head;
         uint32_t cores = tiling_->core_num_used;
@@ -394,9 +379,13 @@ private:
         cur_q_start_ = cur_q_blk_ * m_per_core_;
         cur_q_len_ = (cur_q_start_ + m_per_core_ <= sq_) ? m_per_core_ : (sq_ - cur_q_start_);
 
-        // 初始化两级累加控制器
+        // 初始化两级累加控制器与因果掩码活跃分块数 (Causal Mask Early Exit)
         uint32_t total_kv_blocks = (sk_ + block_n_ - 1) / block_n_;
-        accum_ctrl_.Init(tiling_->pv_accum_dtype, k_step_, total_kv_blocks);
+        uint32_t active_kv_blocks = (tiling_->is_causal != 0)
+            ? SageFastMin(total_kv_blocks, (cur_q_start_ + cur_q_len_ + block_n_ - 1) / block_n_)
+            : total_kv_blocks;
+        active_kv_blocks_ = active_kv_blocks;
+        accum_ctrl_.Init(tiling_->pv_accum_dtype, k_step_, active_kv_blocks);
     }
 
     /**
@@ -442,7 +431,7 @@ private:
     /**
      * 1. Cube 核心处理逻辑（MMAD 计算与宽流水延迟退休主流水）
      * 拍 k：INT8 QK^T MMAD，L0C 累加
-     * 拍 k+1：FP8 PV MMAD，3 槽延迟输出退休队列（OutputRetireQueue）成对融合与 FixPipe 随路量化
+     * 拍 k+1：FP8 PV MMAD，L0C 部分和经 FixPipe 裸搬至 UB 交接槽
      *
      * 缓冲布局与读取契约说明：
      * 宿主串行仿真时序为 ProcessVec0 → ProcessCube → ProcessVec1 整段执行，拍 k 的 PV
@@ -489,10 +478,13 @@ private:
         qk_mmad.LoadL0A(tiling_->l1_q_offset, 0, cur_q_len_ * gqa_ratio_, d_);
 
         uint32_t total_kv_blocks = (sk_ + block_n_ - 1) / block_n_;
+        uint32_t active_kv_blocks = (tiling_->is_causal != 0)
+            ? SageFastMin(total_kv_blocks, (cur_q_start_ + cur_q_len_ + block_n_ - 1) / block_n_)
+            : total_kv_blocks;
         const uint32_t rows = cur_q_len_ * gqa_ratio_;
 
         // 延迟一拍宽流水主循环 (Wide Stream Double Buffering Ping-Pong)
-        for (uint32_t k = 0; k < total_kv_blocks; ++k) {
+        for (uint32_t k = 0; k < active_kv_blocks; ++k) {
             bool is_ping = ((k % 2) == 0);
             uint32_t kv_flag = is_ping ? CrossCoreFlags::FLAG_KV_PING_READY : CrossCoreFlags::FLAG_KV_PONG_READY;
             uint32_t kv_free = is_ping ? CrossCoreFlags::FLAG_KV_PING_FREE : CrossCoreFlags::FLAG_KV_PONG_FREE;
@@ -515,8 +507,7 @@ private:
             CrossCoreWait(CrossCoreDirection::VEC1_TO_CUBE, CrossCoreFlags::FLAG_DOT_FREE);
             qk_mmad.EmitL0CToUbRaw(SAGE_UB_DOT32_OFFSET, SAGE_UB_DOT32_OFFSET + 64 * block_n_ * sizeof(int32_t),
                                    rows, block_n_);
-            SetFlag<HardEvent::FIX_S>(0);
-            WaitFlag<HardEvent::FIX_S>(0);
+            Catlass::SageAttn::Sync<HardEvent::FIX_S>();
             CrossCoreSet(CrossCoreDirection::CUBE_TO_VEC1, CrossCoreFlags::FLAG_QK_P_READY);
 
             // 4. 拍 k（Cube 并发）：计算上一拍的 FP8 PV MMAD (当 k > 0 时)
@@ -554,15 +545,14 @@ private:
                 CrossCoreWait(CrossCoreDirection::VEC1_TO_CUBE, CrossCoreFlags::FLAG_PV_PARTIAL_FREE);
                 FixpipeConfig fix_cfg = accum_ctrl_.GetFixpipeConfig();
                 pv_mmad.ExecuteEpilogue(0, SAGE_UB_PV_PARTIAL_OFFSET, fix_cfg);
-                SetFlag<HardEvent::FIX_S>(0);
-                WaitFlag<HardEvent::FIX_S>(0);
+                Catlass::SageAttn::Sync<HardEvent::FIX_S>();
                 CrossCoreSet(CrossCoreDirection::CUBE_TO_VEC1, CrossCoreFlags::FLAG_PV_PARTIAL_READY);
             }
         }
 
         // Drain 拍：完成最后一个 KV 分块的 PV MMAD 与部分和搬出
-        if (total_kv_blocks > 0) {
-            uint32_t last_k = total_kv_blocks - 1;
+        if (active_kv_blocks > 0) {
+            uint32_t last_k = active_kv_blocks - 1;
             bool last_is_ping = ((last_k % 2) == 0);
             uint32_t last_l1_v_addr = (last_is_ping ? Catlass::SageAttn::L1DoubleBankContract::KV_PING_OFFSET
                                                     : Catlass::SageAttn::L1DoubleBankContract::KV_PONG_OFFSET)
@@ -586,8 +576,7 @@ private:
             CrossCoreWait(CrossCoreDirection::VEC1_TO_CUBE, CrossCoreFlags::FLAG_PV_PARTIAL_FREE);
             FixpipeConfig fix_cfg = accum_ctrl_.GetFixpipeConfig();
             pv_mmad.ExecuteEpilogue(0, SAGE_UB_PV_PARTIAL_OFFSET, fix_cfg);
-            SetFlag<HardEvent::FIX_S>(0);
-            WaitFlag<HardEvent::FIX_S>(0);
+            Catlass::SageAttn::Sync<HardEvent::FIX_S>();
             CrossCoreSet(CrossCoreDirection::CUBE_TO_VEC1, CrossCoreFlags::FLAG_PV_PARTIAL_READY);
         }
 
@@ -639,9 +628,12 @@ private:
         CrossCoreSet(CrossCoreDirection::VEC0_TO_CUBE, CrossCoreFlags::FLAG_Q_READY);
 
         uint32_t total_kv_blocks = (sk_ + block_n_ - 1) / block_n_;
+        uint32_t active_kv_blocks = (tiling_->is_causal != 0)
+            ? SageFastMin(total_kv_blocks, (cur_q_start_ + cur_q_len_ + block_n_ - 1) / block_n_)
+            : total_kv_blocks;
 
         // 2. 流水循环：流式预取第 k 块 KV 并执行 INT8/FP8 量化
-        for (uint32_t k = 0; k < total_kv_blocks; ++k) {
+        for (uint32_t k = 0; k < active_kv_blocks; ++k) {
             bool is_ping = ((k % 2) == 0);
             uint32_t kv_flag = is_ping ? CrossCoreFlags::FLAG_KV_PING_READY : CrossCoreFlags::FLAG_KV_PONG_READY;
             uint32_t kv_free = is_ping ? CrossCoreFlags::FLAG_KV_PING_FREE : CrossCoreFlags::FLAG_KV_PONG_FREE;
@@ -746,8 +738,11 @@ private:
         }
 #endif
         uint32_t total_kv_blocks = (sk_ + block_n_ - 1) / block_n_;
+        uint32_t active_kv_blocks = (tiling_->is_causal != 0)
+            ? SageFastMin(total_kv_blocks, (cur_q_start_ + cur_q_len_ + block_n_ - 1) / block_n_)
+            : total_kv_blocks;
 
-        for (uint32_t k = 0; k < total_kv_blocks; ++k) {
+        for (uint32_t k = 0; k < active_kv_blocks; ++k) {
             cur_k_ = k;
             cur_k_start_ = k * block_n_;
             bool is_ping = ((k % 2) == 0);
@@ -820,8 +815,8 @@ private:
             }
 
             // 3. 计算 exp2 域 Softmax 概率矩阵 P[k] 写入 (k%2) 槽（448· 放大域经乘法实现，
-            //    行 max 恰为 448；s_fp8_offset 指数偏置域非默认可选，基线 0）
-            ComputeSoftmaxProbability(s_fp8_offset_, is_ping);
+            //    行 max 恰为 448）
+            ComputeSoftmaxProbability(is_ping);
 
             // 4. KT 标量基线：PV 累加经 twin 5.4 单点执行（两级累加 fp32 / fp32+fp16 同轨迹；
             //    真实硬件为 Cube PV MMAD + FixPipe → V1 拍顶/收尾合并，见函数注释）
@@ -831,8 +826,7 @@ private:
             // 生产管排空（DEFECT-H-2）：VF 写 P 槽（V 管）→ Cube LoadL0A（MTE）读，
             // CrossCoreSet（S 管）不排空 V 管，先自配对事件等待写毕再举旗
 #if SAGE_ATTN_DEVICE_COMPILE
-            SetFlag<HardEvent::V_S>(0);
-            WaitFlag<HardEvent::V_S>(0);
+            Catlass::SageAttn::Sync<HardEvent::V_S>();
             // dot32 单缓冲读保护归还（V 管读毕，Cube 方可在 beat k+1 覆写 dot32 区）
             CrossCoreSet(CrossCoreDirection::VEC1_TO_CUBE, CrossCoreFlags::FLAG_DOT_FREE);
 #endif
@@ -843,7 +837,7 @@ private:
         // 收尾：合并最后一块（第 N-1 块）PV 部分和——O 锚点 m_scale(N-1) 上直接并入，
         // 与 twin 5.5 归一化入口的 O 状态逐位同域（时序无死锁：Cube drain 发射 READY 后
         // 经退域回收等本侧 FREE，本侧合并后举 FREE 再等 PV_O_DONE，无环）
-        if (total_kv_blocks > 0) {
+        if (active_kv_blocks > 0) {
             CrossCoreWait(CrossCoreDirection::CUBE_TO_VEC1, CrossCoreFlags::FLAG_PV_PARTIAL_READY);
             MergePvPartialRows();
             CrossCoreSet(CrossCoreDirection::VEC1_TO_CUBE, CrossCoreFlags::FLAG_PV_PARTIAL_FREE);
@@ -937,12 +931,12 @@ private:
     }
 
     /**
-     * A7：单行 P 码写 S 槽（SoftmaxProbRowVF；行锚 = row_states_[r].m_scale - s_fp8_offset_，
+     * A7：单行 P 码写 S 槽（SoftmaxProbRowVF；行锚 = row_states_[r].m_scale，
      * 与宿主 ComputeSoftmaxProbability 同式——掩码哨兵行经 exp2 下溢自然落到 e4m3 码 0）。
      */
     __aicore__ void SoftmaxProbRow(uint32_t r, bool is_ping)
     {
-        const float m_prime = row_states_[r].m_scale - s_fp8_offset_;
+        const float m_prime = row_states_[r].m_scale;
         LocalTensor<float> ub_logits(TPosition::VECCALC, SAGE_UB_V1_LOGITS_ROW_OFFSET, block_n_);
         LocalTensor<float8_e4m3_t> ub_out_p(TPosition::VECCALC,
                                             SoftmaxSlotOffset(is_ping) + r * block_n_, block_n_);
@@ -1038,8 +1032,7 @@ private:
                                 nullptr, d, 0u, dtype_mode);
         }
         // V 管写 → S 管读同步（DEFECT-G-1，与 V1 统计读取同款事件对）
-        SetFlag<HardEvent::V_S>(0);
-        WaitFlag<HardEvent::V_S>(0);
+        Catlass::SageAttn::Sync<HardEvent::V_S>();
 
         // B. 组归并 + scale 定档（宿主同式；per_thread=amax/127+1e-7，
         //    per_warp=clamp(amax,1e-7)/127）
@@ -1287,8 +1280,7 @@ private:
                                 d, has_km, dtype_mode);
         }
         // V 管写 → S 管读同步（DEFECT-G-1）
-        SetFlag<HardEvent::V_S>(0);
-        WaitFlag<HardEvent::V_S>(0);
+        Catlass::SageAttn::Sync<HardEvent::V_S>();
 
         // B. 组归并（pair/块粒度，KScaleIndex 单点）+ 定档 + l1_k_scale 本地写出
         for (uint32_t j = 0; j < block_k; ++j) {
@@ -1605,8 +1597,7 @@ private:
         dev_vf::BlockMaxAndSumVF(reinterpret_cast<__ubuf__ float*>(ub_logits.GetPhyAddr()),
                                  block_n_,
                                  reinterpret_cast<__ubuf__ float*>(ub_stats.GetPhyAddr()));
-        SetFlag<HardEvent::V_S>(0);
-        WaitFlag<HardEvent::V_S>(0);
+        Catlass::SageAttn::Sync<HardEvent::V_S>();
         cur_max = ub_stats.GetValue(0);
         cur_sum = ub_stats.GetValue(64);
 #else
@@ -1690,14 +1681,12 @@ private:
     /**
      * 6. V1（宿主/KT 标量基线）：P 矩阵整幅量化写 S(P) 双缓冲槽（SoftmaxSlotOffset(is_ping)，
      * 与 Cube 侧 SagePvMmad::LoadL0A 的 ub_softmax_offset 读取约定一致）。数值为
-     * twin::SoftmaxProbCode 单点：P = FastExp2(logit - (m_scale - s_fp8_offset)) · 448，
-     * 饱和 + RNE 转 e4m3。448· 放大经乘法实现（行 max 恰为 448 填满 e4m3 动态范围）；
-     * s_fp8_offset 指数偏置域为非默认可选，启用须同时关闭 skip-scale（tau=0），基线恒为 0。
+     * twin::SoftmaxProbCode 单点：P = FastExp2(logit - m_scale) · 448，
+     * 饱和 + RNE 转 e4m3。448· 放大经乘法实现（行 max 恰为 448 填满 e4m3 动态范围）。
      * 行锚点取 row_states_[r].m_scale（S 与 O 同锚）；掩码哨兵 -1e30 经 exp2 下溢自然落到
      * e4m3 码 0。设备态对应原语为上行循环内的 SoftmaxProbRow（逐行同式，掩码行同值码 0）。
      */
     __aicore__ void ComputeSoftmaxProbability(
-        float s_fp8_offset,
         bool is_ping)
     {
         if (sim_mem_ == nullptr) {
@@ -1706,7 +1695,7 @@ private:
         uint8_t *slot_ptr = sim_mem_->ub_mem + SoftmaxSlotOffset(is_ping);
         const uint32_t rows = TotalRows();
         for (uint32_t r = 0; r < rows && r < kKernelMaxRows; ++r) {
-            const float m_prime = row_states_[r].m_scale - s_fp8_offset;
+            const float m_prime = row_states_[r].m_scale;
             const float *logits_row = &sim_mem_->logits[static_cast<size_t>(r) * block_n_];
             uint8_t *slot_row = slot_ptr + static_cast<size_t>(r) * block_n_;
             for (uint32_t j = 0; j < block_n_; ++j) {
@@ -1727,6 +1716,9 @@ private:
     __aicore__ void RestageKvBlockHost(uint32_t k)
     {
         if (sim_mem_ == nullptr) {
+            return;
+        }
+        if (k >= active_kv_blocks_) {
             return;
         }
         cur_k_ = k;
@@ -1783,7 +1775,7 @@ private:
         const uint32_t rows = TotalRows();
         for (uint32_t r = 0; r < rows && r < kKernelMaxRows; ++r) {
             const uint32_t token_q = cur_q_start_ + (r % cur_q_len_);
-            const float m_prime = row_states_[r].m_scale - s_fp8_offset_;
+            const float m_prime = row_states_[r].m_scale;
             twin::QuantizePAndAccumulatePvRow(
                 &sim_mem_->o_accum[static_cast<size_t>(r) * d_], d_,
                 &sim_mem_->logits[static_cast<size_t>(r) * block_n_], cur_k_start_,
@@ -1805,9 +1797,9 @@ private:
      * - 行级 inv_d = GetFinalInvDenominator(row_states_[r])（O 与分母同处 448· 放大域，
      *   除法处放大精确相消）；
      * - LSE 出口 = ConvertLseToHost(lse, sm_scale, lse_correction, smooth_k,
-     *   S_FP8_OFFSET + s_fp8_offset)：核内 exp2 域 LSE 含 448· 放大（乘法实现）所致的
-     *   +log2(448) 偏置，出口以 S_FP8_OFFSET 常量补扣；s_fp8_offset 指数偏置域若启用
-     *   一并补扣（基线 0）。smooth_k 的行级 lse_correction · sm_scale 项在此并入。
+     *   S_FP8_OFFSET)：核内 exp2 域 LSE 含 448· 放大（乘法实现）所致的
+     *   +log2(448) 偏置，出口以 S_FP8_OFFSET 常量补扣；smooth_k 的行级
+     *   lse_correction · sm_scale 项在此并入。
      */
     __aicore__ void FinalizeAndStoreOutput()
     {
@@ -1840,9 +1832,11 @@ private:
                 if (r >= kKernelMaxRows) break;
                 const float inv_row = OnlineSoftmaxTransformer::GetFinalInvDenominator(row_states_[r]);
                 const float lse_corr_val = (r < kKernelMaxRows) ? lse_corr_[r] : 0.0f;
+                // LSE 出口：核内 exp2 域 LSE 含 448· 放大（乘法实现）所致的 +log2(448) 偏置，
+                // 以 S_FP8_OFFSET 常量补扣（唯一定义，见 ConvertLseToHost 注释）
                 const float lse_host = OnlineSoftmaxTransformer::ConvertLseToHost(
                     row_states_[r].lse, tiling_->sm_scale_log2e * INV_LOG2E,
-                    lse_corr_val, is_smooth_k, S_FP8_OFFSET + s_fp8_offset_);
+                    lse_corr_val, is_smooth_k, S_FP8_OFFSET);
 
                 LocalTensor<float> ub_o_row(TPosition::VECCALC,
                                             Catlass::SageAttn::Vector1UbBudget::O_ACCUM_OFFSET + r * d_ * sizeof(float),
@@ -1894,7 +1888,7 @@ private:
                     OnlineSoftmaxTransformer::GetFinalInvDenominator(row_states_[r]);
                 const float lse_host = OnlineSoftmaxTransformer::ConvertLseToHost(
                     row_states_[r].lse, tiling_->sm_scale_log2e * INV_LOG2E,
-                    sim_mem_->lse_corr[r], is_smooth_k, S_FP8_OFFSET + s_fp8_offset_);
+                    sim_mem_->lse_corr[r], is_smooth_k, S_FP8_OFFSET);
 
                 for (uint32_t c = 0; c < tiling_->d_og; ++c) {
                     const float val = sim_mem_->o_accum[static_cast<size_t>(r) * d_ + c] * inv_row;
@@ -1956,6 +1950,7 @@ private:
     uint32_t cur_q_len_{0};
     uint32_t cur_k_{0};
     uint32_t cur_k_start_{0};
+    uint32_t active_kv_blocks_{0};
 
     // 行级 online softmax 状态（GQA 逻辑行 r = g * cur_q_len + i 各自独立维护，
     // 与 twin RunSequential 的行级状态一致；真实硬件驻留 V1 UB LSE_WORKSPACE 区）
@@ -1963,10 +1958,6 @@ private:
 
     // smooth_k 行级 lse_correction 统一状态（全分支共享，杜绝设备态硬编码 0.0f）
     float lse_corr_[kKernelMaxRows]{0.0f};
-
-    // P 矩阵 e4m3 放大偏置——s_fp8_offset 指数偏置域（tiling 参数化读取，基线 0；
-    // 448· 放大经乘法实现且恒启用，语义见 Init 与 ComputeSoftmaxProbability 注释）
-    float s_fp8_offset_{0.0f};
 
     AccumReduceController accum_ctrl_;
 };

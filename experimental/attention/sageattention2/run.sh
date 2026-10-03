@@ -19,6 +19,7 @@ run_host_tests() {
     if command -v clang++ >/dev/null 2>&1; then
         CXX_COMPILER="clang++"
     fi
+    local CATLASS_DIR="${CATLASS_DIR:-${WORK_DIR}/../../../../git/catlass/include}"
 
     mkdir -p "${BUILD_DIR}"
     local TEST_BIN="${BUILD_DIR}/test_aclnn_host"
@@ -31,6 +32,7 @@ run_host_tests() {
         -I"${WORK_DIR}/sageattn_fp8/ascendc" \
         -I"${WORK_DIR}/sageattn_fp8/catlass" \
         -I"${WORK_DIR}/quant" \
+        -I"${CATLASS_DIR}" \
         -o "${TEST_BIN}"
 
     echo "Executing ${TEST_BIN}..."
@@ -56,6 +58,7 @@ run_host_tests() {
         -I"${WORK_DIR}/sageattn_fp8/ascendc" \
         -I"${WORK_DIR}/sageattn_fp8/catlass" \
         -I"${WORK_DIR}/quant" \
+        -I"${CATLASS_DIR}" \
         -o "${QUEUE_BIN}"
 
     echo "Executing ${QUEUE_BIN}..."
@@ -68,6 +71,7 @@ run_host_tests() {
         -I"${WORK_DIR}/sageattn_fp8/ascendc" \
         -I"${WORK_DIR}/sageattn_fp8/catlass" \
         -I"${WORK_DIR}/quant" \
+        -I"${CATLASS_DIR}" \
         -o "${TILING_BIN}"
 
     echo "Executing ${TILING_BIN}..."
@@ -83,7 +87,7 @@ run_host_tests() {
     echo "Executing ${GUARD_BIN}..."
     "${GUARD_BIN}"
 
-    echo ">>> C++ Host, Tiling, Guard & OutputQueue Tests Completed Successfully!"
+    echo ">>> C++ Host, Tiling & Guard Tests Completed Successfully!"
 }
 
 check_kernel_syntax() {
@@ -92,6 +96,7 @@ check_kernel_syntax() {
     if command -v clang++ >/dev/null 2>&1; then
         CXX_COMPILER="clang++"
     fi
+    local CATLASS_DIR="${CATLASS_DIR:-${WORK_DIR}/../../../../git/catlass/include}"
 
     mkdir -p "${BUILD_DIR}"
     local OBJ_OUT="${BUILD_DIR}/sageattention2_syntax.o"
@@ -102,6 +107,7 @@ check_kernel_syntax() {
         -I"${WORK_DIR}/sageattn_fp8/ascendc" \
         -I"${WORK_DIR}/sageattn_fp8/catlass" \
         -I"${WORK_DIR}/quant" \
+        -I"${CATLASS_DIR}" \
         -o "${OBJ_OUT}"
 
     rm -f "${OBJ_OUT}"
@@ -147,12 +153,14 @@ build_in_container() {
     if [ -n "${ASCEND_HOME_PATH:-}" ] && [ -x "${ASCEND_HOME_PATH}/bin/bisheng" ]; then
         echo "Found BiSheng compiler at ${ASCEND_HOME_PATH}/bin/bisheng"
         echo "Compiling kernel with BiSheng for Ascend 950 (dav-3510)..."
+        local CATLASS_DIR="${CATLASS_DIR:-${WORK_DIR}/../../../../git/catlass/include}"
         "${ASCEND_HOME_PATH}/bin/bisheng" --npu-arch=dav-3510 -std=c++17 -xasc \
             -c "${WORK_DIR}/op_kernel/sageattention2.cpp" \
             -I"${ASCEND_HOME_PATH}/include" \
             -I"${WORK_DIR}/sageattn_fp8/ascendc" \
             -I"${WORK_DIR}/sageattn_fp8/catlass" \
             -I"${WORK_DIR}/quant" \
+            -I"${CATLASS_DIR}" \
             -o "${BUILD_DIR}/sageattention2_bisheng.o"
         echo ">>> BiSheng compilation succeeded!"
     else

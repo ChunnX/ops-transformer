@@ -47,7 +47,7 @@ bool TestRegOpDefinition()
     TEST_ASSERT(reg.HasAttr("smooth_v"), "Must have attr: smooth_v");
 
     // 校验属性默认值
-    TEST_ASSERT(reg.GetAttr("tensor_layout").str_val == "BNSD", "tensor_layout default BNSD");
+    TEST_ASSERT(reg.GetAttr("tensor_layout").str_val == "HND", "tensor_layout default HND");
     TEST_ASSERT(reg.GetAttr("is_causal").bool_val == false, "is_causal default false");
     TEST_ASSERT(reg.GetAttr("qk_quant_gran").str_val == "per_thread", "qk_quant_gran default per_thread");
     TEST_ASSERT(reg.GetAttr("pv_accum_dtype").str_val == "fp32+fp16", "pv_accum_dtype default fp32+fp16");
@@ -173,11 +173,11 @@ bool TestInferShapeValidCases()
         TEST_ASSERT(out_shape.GetDim(3) == 80, "Output D must be 80");
     }
 
-    // 用例 E: BSND / NHD 布局
+    // 用例 E: NHD 布局
     {
-        gert::InferShapeContext ctx("SageAttention2_BSND");
+        gert::InferShapeContext ctx("SageAttention2_NHD");
         gert::RuntimeAttrs attrs;
-        attrs.AddString("BSND");
+        attrs.AddString("NHD");
         ctx.SetAttrs(&attrs);
 
         gert::Shape q_shape({2, 512, 32, 128}); // [B, Sq, Hq, D]
@@ -193,11 +193,11 @@ bool TestInferShapeValidCases()
         ctx.SetOutputShape(1, &lse_shape);
 
         ge::graphStatus ret = infer_shape_func(&ctx);
-        TEST_ASSERT(ret == ge::GRAPH_SUCCESS, "InferShape BSND failed");
-        TEST_ASSERT(out_shape == q_shape, "BSND Output shape must match Query");
+        TEST_ASSERT(ret == ge::GRAPH_SUCCESS, "InferShape NHD failed");
+        TEST_ASSERT(out_shape == q_shape, "NHD Output shape must match Query");
         // LSE 布局恒为 [B, Hq, Sq]（与核内扁平写址
-        // op_kernel FinalizeAndStoreOutput 的 ((b*Hq+h)*Sq+s) 一致，不随 BSND 翻转）
-        TEST_ASSERT(lse_shape == gert::Shape({2, 32, 512}), "BSND LSE shape must be [B, Hq, Sq]");
+        // op_kernel FinalizeAndStoreOutput 的 ((b*Hq+h)*Sq+s) 一致，不随 NHD 翻转）
+        TEST_ASSERT(lse_shape == gert::Shape({2, 32, 512}), "NHD LSE shape must be [B, Hq, Sq]");
     }
 
     std::cout << "[PASS] TestInferShapeValidCases" << std::endl;

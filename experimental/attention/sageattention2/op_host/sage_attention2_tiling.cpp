@@ -78,7 +78,7 @@ static ge::graphStatus TilingSageAttention2(gert::TilingContext *context)
 
     // 微秒级极速发射：tiling 热路径禁止 std::string 堆分配，
     // 缺省折叠与编码映射全部走 const char* 比较
-    const char *layout = (layout_str != nullptr) ? layout_str : "BNSD";
+    const char *layout = (layout_str != nullptr) ? layout_str : "HND";
     const char *gran = (gran_str != nullptr) ? gran_str : "per_thread";
     const char *accum = (accum_str != nullptr) ? accum_str : "fp32+fp16";
 
@@ -86,7 +86,7 @@ static ge::graphStatus TilingSageAttention2(gert::TilingContext *context)
 
     uint32_t b = 0, sq = 0, sk = 0, hq = 0, hkv = 0, d_og = 0;
     if (layout_code == sage_attn::LAYOUT_HND) {
-        // HND/BNSD 布局: [B, H, S, D]
+        // HND 布局: [B, H, S, D]
         b = static_cast<uint32_t>(query_shape->GetDim(0));
         hq = static_cast<uint32_t>(query_shape->GetDim(1));
         sq = static_cast<uint32_t>(query_shape->GetDim(2));
@@ -94,7 +94,7 @@ static ge::graphStatus TilingSageAttention2(gert::TilingContext *context)
         hkv = static_cast<uint32_t>(key_shape->GetDim(1));
         sk = static_cast<uint32_t>(key_shape->GetDim(2));
     } else {
-        // NHD/BSND 布局: [B, S, H, D]
+        // NHD 布局: [B, S, H, D]
         b = static_cast<uint32_t>(query_shape->GetDim(0));
         sq = static_cast<uint32_t>(query_shape->GetDim(1));
         hq = static_cast<uint32_t>(query_shape->GetDim(2));
@@ -154,6 +154,9 @@ static ge::graphStatus TilingSageAttention2(gert::TilingContext *context)
             // 随钳制联动，避免序列化出与 core_num_used 矛盾的亲和元数据
             tiling_data.cores_per_die =
                 (aic >= sage_attn::ATLAS_950_DIE_NUM) ? (aic / sage_attn::ATLAS_950_DIE_NUM) : aic;
+            if ((aic % sage_attn::ATLAS_950_DIE_NUM) != 0) {
+                tiling_data.enable_die_affinity = 0;
+            }
         }
     }
     context->SetBlockDim(tiling_data.core_num_used);

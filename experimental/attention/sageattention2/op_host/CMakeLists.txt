@@ -1,22 +1,33 @@
-if(COMMAND add_op_to_compiled_list)
-    add_op_to_compiled_list()
-endif()
+include(${CMAKE_CURRENT_LIST_DIR}/../cmake/SageAttnDeps.cmake)
+
+# Host 侧源码与共享 include 列表（本目录两个 target 的唯一定义点）
+set(SAGE_ATTN_HOST_CORE_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/sage_attention2_def.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/sage_attention2_infershape.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/sage_attention2_tiling.cpp
+)
+
+set(SAGE_ATTN_QUANT_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/../quant/quant_int8.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../quant/quant_fp8.cpp
+)
+
+set(SAGE_ATTN_HOST_INCLUDE_DIRS
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../aclnn
+    ${CMAKE_CURRENT_SOURCE_DIR}/../sageattn_fp8/ascendc
+    ${CMAKE_CURRENT_SOURCE_DIR}/../sageattn_fp8/catlass
+    ${CMAKE_CURRENT_SOURCE_DIR}/../quant
+)
 
 if (BUILD_OPEN_PROJECT)
     if(TARGET op_host_aclnnExc)
         target_sources(op_host_aclnnExc PRIVATE
-            ${CMAKE_CURRENT_SOURCE_DIR}/sage_attention2_def.cpp
-            ${CMAKE_CURRENT_SOURCE_DIR}/sage_attention2_infershape.cpp
-            ${CMAKE_CURRENT_SOURCE_DIR}/sage_attention2_tiling.cpp
-            ${CMAKE_CURRENT_SOURCE_DIR}/../quant/quant_int8.cpp
-            ${CMAKE_CURRENT_SOURCE_DIR}/../quant/quant_fp8.cpp
+            ${SAGE_ATTN_HOST_CORE_SOURCES}
+            ${SAGE_ATTN_QUANT_SOURCES}
         )
         target_include_directories(op_host_aclnnExc PRIVATE
-            ${CMAKE_CURRENT_SOURCE_DIR}
-            ${CMAKE_CURRENT_SOURCE_DIR}/../aclnn
-            ${CMAKE_CURRENT_SOURCE_DIR}/../sageattn_fp8/ascendc
-            ${CMAKE_CURRENT_SOURCE_DIR}/../sageattn_fp8/catlass
-            ${CMAKE_CURRENT_SOURCE_DIR}/../quant
+            ${SAGE_ATTN_HOST_INCLUDE_DIRS}
             # aclnn 错误码与轻量执行器头 (aclnn/opdev/op_errno.h) 位于 CANN include/aclnn 子树
             ${ASCEND_CANN_PACKAGE_PATH}/include/aclnn
         )
@@ -47,19 +58,10 @@ endif()
 # 支持独立构建 Host 共享库以供本地单测与集成测试
 if(NOT TARGET op_host_aclnn AND NOT TARGET sageattention2_host)
     add_library(sageattention2_host SHARED
-        ${CMAKE_CURRENT_SOURCE_DIR}/sage_attention2_def.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/sage_attention2_infershape.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/sage_attention2_tiling.cpp
+        ${SAGE_ATTN_HOST_CORE_SOURCES}
         ${CMAKE_CURRENT_SOURCE_DIR}/../aclnn/sage_attn_host.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/../quant/quant_int8.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/../quant/quant_fp8.cpp
+        ${SAGE_ATTN_QUANT_SOURCES}
     )
-    target_include_directories(sageattention2_host PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}
-        ${CMAKE_CURRENT_SOURCE_DIR}/../aclnn
-        ${CMAKE_CURRENT_SOURCE_DIR}/../sageattn_fp8/ascendc
-        ${CMAKE_CURRENT_SOURCE_DIR}/../sageattn_fp8/catlass
-        ${CMAKE_CURRENT_SOURCE_DIR}/../quant
-    )
+    target_include_directories(sageattention2_host PUBLIC ${SAGE_ATTN_HOST_INCLUDE_DIRS})
     target_compile_features(sageattention2_host PUBLIC cxx_std_17)
 endif()

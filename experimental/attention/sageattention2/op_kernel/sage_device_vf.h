@@ -174,13 +174,13 @@ __simd_vf__ inline void QuantVRowFp8VF(__ubuf__ half* in_ptr, __ubuf__ float8_e4
     using namespace AscendC::MicroAPI;
     auto full = CreateMask<float, MaskPattern::ALL>();
     static constexpr CastTrait toFp32{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
-    static constexpr CastTrait toBf16{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
     static constexpr CastTrait toFp8{RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
 
     RegTensor<float> scale_max_reg, neg_scale_max_reg, zero_reg, nan_reg;
     Duplicate(scale_max_reg, scale_max);
     Duplicate(neg_scale_max_reg, -scale_max);
     Duplicate(zero_reg, 0.0f);
+    Duplicate(nan_reg, std::numeric_limits<float>::quiet_NaN());
     for (uint32_t c = 0; c < d; c += 64) {
         RegTensor<float> val, scale_reg, scaled;
         RegTensor<float8_e4m3_t> packed;
@@ -199,7 +199,6 @@ __simd_vf__ inline void QuantVRowFp8VF(__ubuf__ half* in_ptr, __ubuf__ float8_e4
         // scale=0 → Div 产 NaN → SAT cast 保留 e4m3 0x7f（对齐 golden）
         MaskReg zero_scale;
         Compare<float, CMPMODE::EQ>(zero_scale, scale_reg, zero_reg, full);
-        Duplicate(nan_reg, std::numeric_limits<float>::quiet_NaN());
         Select(scaled, nan_reg, scaled, zero_scale);
         Min(scaled, scaled, scale_max_reg, full);
         Max(scaled, scaled, neg_scale_max_reg, full);
@@ -215,9 +214,12 @@ __simd_vf__ inline void QuantVRowFp8VF(__ubuf__ half* in_ptr, __ubuf__ float8_e4
  *   127·127·128 ≈ 2^20.97），三次标量/向量乘按宿主同一结合序逐位同式；
  *   注意：台账所记"×2^-11"定点折算若按字面串入乘链，将给结果附加恰 2^-11 的精确
  *   幂偏置、破坏与宿主的逐位一致性，故不采用（2 的整数次幂乘法精确、不可消去）；
- * - 掩码谓词与宿主 ComputeBlockMaxAndSum 同式：causal（token_k > token_q）与尾块
- *   pad token（token_k ≥ sk_）写 -1e30 哨兵（不参与行 max/448· 域 exp2 和）；
- * - 列绝对 token 序号经 Arange 硬件原语生成，GT/GE 两级比较出掩码后 Select 落哨兵。
+ * - 三态掩码快速路径（Tri-State Masking Fast Path）：
+ *   ① 全活跃态（is_pure_active / chunk_pure_active）：完全在因果下三角与 sk 尾界内，
+ *      跳过全部 Arange、bounds Duplicate、Compare 与 Select，反量化值直存；
+ *   ② 全掩码态（is_pure_masked / chunk_pure_masked）：完全在因果上三角或超 sk 尾界，
+ *      跳过点积读取、Cast 与三次乘法，直接落 -1e30 哨兵；
+ *   ③ 混合边界态：仅对触碰因果对角线或尾块 pad 界的 chunk 执行硬件 int32 Arange 与 GT/GE 掩码 Select。
  * 行 max 与 exp2 和由调用方紧随调用 BlockMaxAndSumVF 完成（组合即宿主同构语义）。
  */
 __simd_vf__ inline void DequantMaskLogitsRowVF(__ubuf__ int32_t* dot_row, __ubuf__ float* logits_row,
@@ -230,35 +232,77 @@ __simd_vf__ inline void DequantMaskLogitsRowVF(__ubuf__ int32_t* dot_row, __ubuf
     auto full = CreateMask<float, MaskPattern::ALL>();
     static constexpr CastTrait toFp32{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
 
-    RegTensor<float> qs_reg, sm_reg, neg_inf;
+    // 块级快速路径 1：全掩码块（整块处于因果上三角或超 sk 尾界），直接写 -1e30 哨兵
+    const bool is_pure_masked = (is_causal != 0u && token_q < k_start) || (k_start >= sk);
+    if (is_pure_masked) {
+        RegTensor<float> neg_inf;
+        Duplicate(neg_inf, -1.0e30f);
+        for (uint32_t j = 0; j < block_n; j += 64) {
+            StoreAlign(logits_row + j, neg_inf, full);
+        }
+        return;
+    }
+
+    RegTensor<float> qs_reg, sm_reg;
     Duplicate(qs_reg, q_scale);
     Duplicate(sm_reg, sm_scale_log2e);
+
+    // 块级快速路径 2：全活跃块（整块完全在因果下三角与 sk 尾界内），免除全部掩码计算
+    const bool is_pure_active = (is_causal == 0u || token_q >= k_start + block_n - 1) && (k_start + block_n <= sk);
+    if (is_pure_active) {
+        for (uint32_t j = 0; j < block_n; j += 64) {
+            RegTensor<float> val, ks_vec;
+            RegTensor<int32_t> dot_i;
+            LoadAlign(dot_i, dot_row + j);
+            Cast<float, int32_t, toFp32>(val, dot_i, full);   // INT32→FP32 精确 cast（≤2^21 整数域）
+            Mul(val, val, qs_reg, full);                      // · q_scale（行解析，先乘）
+            LoadAlign(ks_vec, k_scale_row + j);
+            Mul(val, val, ks_vec, full);                      // · k_scale[j]（块解析向量）
+            Mul(val, val, sm_reg, full);                      // · sm_scale_log2e（左结合同宿主）
+            StoreAlign(logits_row + j, val, full);
+        }
+        return;
+    }
+
+    // 块级路径 3：混合块（触碰因果斜线或 sk 尾界），按 64-element chunk 细粒度三态分流
+    RegTensor<float> neg_inf;
     Duplicate(neg_inf, -1.0e30f);
 
     for (uint32_t j = 0; j < block_n; j += 64) {
-        RegTensor<float> val, ks_vec, masked_q, masked_k;
+        const uint32_t chunk_start = k_start + j;
+        const uint32_t chunk_end = chunk_start + 63u;
+
+        // Chunk 级态 1：全掩码（因果上三角或超 sk 尾界），跳过点积读取与乘法直接落哨兵
+        if ((is_causal != 0u && token_q < chunk_start) || (chunk_start >= sk)) {
+            StoreAlign(logits_row + j, neg_inf, full);
+            continue;
+        }
+
+        RegTensor<float> val, ks_vec;
         RegTensor<int32_t> dot_i;
         LoadAlign(dot_i, dot_row + j);
-        Cast<float, int32_t, toFp32>(val, dot_i, full);   // INT32→FP32 精确 cast（≤2^21 整数域）
-        Mul(val, val, qs_reg, full);                      // · q_scale（行解析，先乘）
+        Cast<float, int32_t, toFp32>(val, dot_i, full);
+        Mul(val, val, qs_reg, full);
         LoadAlign(ks_vec, k_scale_row + j);
-        Mul(val, val, ks_vec, full);                      // · k_scale[j]（块解析向量）
-        Mul(val, val, sm_reg, full);                      // · sm_scale_log2e（左结合同宿主）
+        Mul(val, val, ks_vec, full);
+        Mul(val, val, sm_reg, full);
 
-        // 掩码谓词与宿主 ComputeBlockMaxAndSum 同式，比较界经标量预折算到列序域：
-        // token_k = k_start + j + lane，causal: token_k > token_q ⟺ lane > token_q − 段基址
-        //（非 causal 置 INT32_MAX 界使 GT 恒假）；尾块 pad: token_k ≥ sk ⟺ lane ≥ sk − 段基址。
-        // 列序经 Arange 硬件原语生成——dav-3510 Arange 仅支持 s8/s16/s32/f32/f16/s64，
-        // 列序取 int32 域（float 域 Arange/Adds 触发 AIV 后端 unsupported scalar
-        // instruction，bisheng 门实测捕获）。
+        // Chunk 级态 2：全活跃（完全在因果下三角与 sk 尾界内），直接写反量化结果
+        if ((is_causal == 0u || token_q >= chunk_end) && (chunk_start + 64u <= sk)) {
+            StoreAlign(logits_row + j, val, full);
+            continue;
+        }
+
+        // Chunk 级态 3：混合边界，调用硬件 Arange/Compare/Select 精确掩码
         RegTensor<int32_t> idx, tok_q_bound, sk_bound;
         Arange<int32_t>(idx, 0);
         Duplicate(tok_q_bound, (is_causal != 0u)
-                                   ? static_cast<int32_t>(token_q) - static_cast<int32_t>(k_start + j)
+                                   ? static_cast<int32_t>(token_q) - static_cast<int32_t>(chunk_start)
                                    : 2147483647);
-        Duplicate(sk_bound, static_cast<int32_t>(sk) - static_cast<int32_t>(k_start + j));
+        Duplicate(sk_bound, static_cast<int32_t>(sk) - static_cast<int32_t>(chunk_start));
         MaskReg gt_tok_q, ge_sk;
         Compare<int32_t, CMPMODE::GT>(gt_tok_q, idx, tok_q_bound, full);
+        RegTensor<float> masked_q, masked_k;
         Select(masked_q, neg_inf, val, gt_tok_q);         // causal：token_k > token_q → -1e30
         Compare<int32_t, CMPMODE::GE>(ge_sk, idx, sk_bound, full);
         Select(masked_k, neg_inf, masked_q, ge_sk);       // 尾块 pad：token_k ≥ sk → -1e30

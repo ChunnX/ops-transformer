@@ -455,7 +455,7 @@ struct DeviceWorkspace {
 // Sage 侧签名逐参数对齐交付 op_api/aclnn_sage_attention2.h（真实出包 ABI，
 // 与 def.cpp 注册的 7 项字符串/标量属性一致）：属性顺序为
 // layout, causal, gran, scale, accum, smoothK, smoothV，gran/accum/layout 为
-// 字符串（"per_thread"/"fp32+fp16"/"HND"，BNSD/BSND 同义词域见实现）。
+// 字符串（"per_thread"/"fp32+fp16"/"HND"）。
 // 禁止回退为数值编码形态——OPP 安装库仅导出字符串属性符号，数值形参会按
 // 位置错绑到 const char * 槽位（strcmp 野指针）。
 typedef aclnnStatus (*SageNativePrepareFn)(

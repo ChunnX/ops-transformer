@@ -404,6 +404,80 @@ bool TestDieAffinityScheduling()
     TEST_CHECK(t_ret_odd == ACLNN_SUCCESS, "ComputeHostTiling for odd tasks succeeded");
     TEST_CHECK(td_odd.enable_die_affinity == 0, "Odd task count (35) must disable die affinity for safety");
 
+    // 5. 验证 100% KV reuse 命中对应 Die 的 64MB 本地 L2 Cache (无跨 Die 颠簸)
+    // 设定 32 核满配、B=2, Hkv=16 (b * hkv = 32 为偶数), Sq=256, m_per_core=64 (q_blks=4)
+    // 总任务数 total_tasks = 2 * 16 * 4 = 128
+    const uint64_t l2_total_tasks = 128;
+    const uint32_t l2_cores = 32;
+    const uint32_t q_blks_test = 4;
+    for (uint32_t c = 0; c < l2_cores; ++c) {
+        uint64_t task_end = sage_attn::DieTaskEnd(l2_total_tasks, c, l2_cores, true);
+        const uint32_t core_die = sage_attn::GetDieIndexForCore(c, l2_cores);
+        for (uint64_t vtask = c; vtask < task_end; vtask += l2_cores) {
+            uint64_t mapped = sage_attn::DieTask(vtask, l2_total_tasks, l2_cores);
+            uint32_t kv_head_idx = static_cast<uint32_t>(mapped / q_blks_test);
+            uint32_t expected_die = (kv_head_idx < 16) ? 0 : 1;
+            TEST_CHECK(core_die == expected_die, "KV head must strictly reside on the core's local Die L2 cache!");
+            if (core_die == 0) {
+                TEST_CHECK(kv_head_idx < 16, "Die 0 core must only access first half of KV heads [0..15]");
+            } else {
+                TEST_CHECK(kv_head_idx >= 16 && kv_head_idx < 32, "Die 1 core must only access second half of KV heads [16..31]");
+            }
+        }
+    }
+
+    // 6. 验证 Auto-Tuned Tiling 经验调优查询与闭式推导平滑回退
+    // (1) 查询 P-01 (B=1, Hq=32, Hkv=32, Sq=4096, Sk=4096, D=128, fp16, non-causal)
+    sage_attn::SageAttention2TilingData td_p01;
+    uint64_t ws_p01 = 0;
+    aclnnStatus ret_p01 = sage_attn::ComputeHostTiling(
+        1, 4096, 4096, 32, 32, /*dtype_mode*/ 1, 128,
+        0.125, sage_attn::QUANT_GRAN_PER_THREAD, sage_attn::PV_ACCUM_FP32_FP16,
+        false, sage_attn::LAYOUT_HND, false, false,
+        false, false, td_p01, ws_p01);
+    TEST_CHECK(ret_p01 == ACLNN_SUCCESS, "P-01 ComputeHostTiling succeeded");
+    TEST_CHECK(td_p01.m_per_core == 32, "P-01 tuned m_per_core must be 32");
+    TEST_CHECK(td_p01.block_n == 128, "P-01 tuned block_n must be 128");
+    TEST_CHECK(td_p01.k_step == 8 || td_p01.k_step == 16, "P-01 tuned k_step must be 8 or 16");
+    TEST_CHECK(td_p01.causal_early_exit == 0, "P-01 non-causal early exit must be 0");
+    TEST_CHECK(td_p01.enable_die_affinity == 1, "P-01 use_die_grouped must be 1");
+
+    // (2) 查询 P-03 (B=1, Hq=32, Hkv=32, Sq=8192, Sk=8192, D=128, fp16, causal=true)
+    sage_attn::SageAttention2TilingData td_p03;
+    uint64_t ws_p03 = 0;
+    aclnnStatus ret_p03 = sage_attn::ComputeHostTiling(
+        1, 8192, 8192, 32, 32, /*dtype_mode*/ 1, 128,
+        0.125, sage_attn::QUANT_GRAN_PER_THREAD, sage_attn::PV_ACCUM_FP32_FP16,
+        true, sage_attn::LAYOUT_HND, false, false,
+        false, false, td_p03, ws_p03);
+    TEST_CHECK(ret_p03 == ACLNN_SUCCESS, "P-03 ComputeHostTiling succeeded");
+    TEST_CHECK(td_p03.m_per_core == 32, "P-03 tuned m_per_core must be 32");
+    TEST_CHECK(td_p03.block_n == 128, "P-03 tuned block_n must be 128");
+    TEST_CHECK(td_p03.k_step == 8 || td_p03.k_step == 16, "P-03 tuned k_step must be 8 or 16");
+    TEST_CHECK(td_p03.causal_early_exit == 1, "P-03 causal early exit must be 1");
+    TEST_CHECK(td_p03.enable_die_affinity == 1, "P-03 use_die_grouped must be 1");
+
+    // (3) 验证动态非调优 shape 的闭式推导平滑回退
+    sage_attn::SageAttention2TilingData td_dyn;
+    uint64_t ws_dyn = 0;
+    aclnnStatus ret_dyn = sage_attn::ComputeHostTiling(
+        3, 1000, 1500, 16, 16, /*dtype_mode*/ 1, 128,
+        0.125, sage_attn::QUANT_GRAN_PER_THREAD, sage_attn::PV_ACCUM_FP32_FP16,
+        false, sage_attn::LAYOUT_HND, false, false,
+        false, false, td_dyn, ws_dyn);
+    TEST_CHECK(ret_dyn == ACLNN_SUCCESS, "Dynamic shape ComputeHostTiling succeeded");
+    TEST_CHECK(td_dyn.m_per_core == 64, "Dynamic shape fallback m_per_core must be 64");
+    TEST_CHECK(td_dyn.block_n == 64, "Dynamic shape (sk=1500 < 2048) fallback block_n must be 64");
+    TEST_CHECK(td_dyn.k_step == 16, "Dynamic shape fallback k_step must be default 16");
+
+    // (4) 验证辅助函数
+    TEST_CHECK(sage_attn::UseDieGroups(32, 1, 32) == true, "Even b*hkv is eligible for Die affinity");
+    TEST_CHECK(sage_attn::UseDieGroups(32, 1, 35) == false, "Odd b*hkv is ineligible for Die affinity");
+    TEST_CHECK(sage_attn::GetDieIndexForCore(5, 32) == 0, "Core 5 is Die 0");
+    TEST_CHECK(sage_attn::GetDieIndexForCore(25, 32) == 1, "Core 25 is Die 1");
+    TEST_CHECK(sage_attn::GetKvHeadDieAffinity(0, 5, 2, 16) == 0, "KV head 5 of 32 belongs to Die 0");
+    TEST_CHECK(sage_attn::GetKvHeadDieAffinity(1, 5, 2, 16) == 1, "KV head 21 of 32 belongs to Die 1");
+
     std::cout << "[PASS] TestDieAffinityScheduling" << std::endl;
     return true;
 }

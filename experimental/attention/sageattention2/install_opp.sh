@@ -84,10 +84,11 @@ done
 
 # 确定默认安装目录
 if [ -z "${INSTALL_PATH}" ]; then
-    if [ -n "${ASCEND_CUSTOM_OPP_PATH:-}" ] && [ ! "${ASCEND_CUSTOM_OPP_PATH}" = *:* ]; then
-        INSTALL_PATH="${ASCEND_CUSTOM_OPP_PATH}"
-    elif [ -n "${ASCEND_HOME_PATH:-}" ] && [ -d "${ASCEND_HOME_PATH}/opp" ] && [ "${MOCK_MODE}" = false ]; then
+    if [ -n "${ASCEND_HOME_PATH:-}" ] && [ -d "${ASCEND_HOME_PATH}/opp" ] && [ "${MOCK_MODE}" = false ]; then
         INSTALL_PATH="${ASCEND_HOME_PATH}/opp"
+    elif [ -n "${ASCEND_CUSTOM_OPP_PATH:-}" ]; then
+        FIRST_PATH="${ASCEND_CUSTOM_OPP_PATH%%:*}"
+        INSTALL_PATH="${FIRST_PATH%/vendors*}"
     else
         INSTALL_PATH="${OP_DIR}/build/opp_installed"
     fi

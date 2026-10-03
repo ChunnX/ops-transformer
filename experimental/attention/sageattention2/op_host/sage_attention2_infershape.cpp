@@ -20,7 +20,7 @@ static constexpr int64_t MAX_HEAD_DIM = 128;
 
 /**
  * 布局属性解析：字符串经 sage_attn::TensorLayoutCodeFromString 唯一映射，
- * 数值属性直接比对 proto 编码；默认 BNSD/HND。
+ * 数值属性直接比对 proto 编码；默认 HND。
  */
 inline sage_attn::TensorLayout DetectLayout(const gert::InferShapeContext *context)
 {
@@ -79,7 +79,7 @@ static ge::graphStatus InferShapeSageAttention2(gert::InferShapeContext *context
     int64_t vb = 0, vhkv = 0, vsk = 0, vd = 0;
 
     if (layout == sage_attn::LAYOUT_HND) {
-        // BNSD/HND: [B, H, S, D]
+        // HND: [B, H, S, D]
         b = queryShape->GetDim(0);
         hq = queryShape->GetDim(1);
         sq = queryShape->GetDim(2);
@@ -95,7 +95,7 @@ static ge::graphStatus InferShapeSageAttention2(gert::InferShapeContext *context
         vsk = valueShape->GetDim(2);
         vd = valueShape->GetDim(3);
     } else {
-        // BSND/NHD: [B, S, H, D]
+        // NHD: [B, S, H, D]
         b = queryShape->GetDim(0);
         sq = queryShape->GetDim(1);
         hq = queryShape->GetDim(2);

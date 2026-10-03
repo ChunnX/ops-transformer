@@ -43,7 +43,6 @@ constexpr uint32_t ATLAS_950_DIE_NUM = 2;              // Atlas 950PR 标配 2 �
 constexpr uint32_t ATLAS_950_GROUPS_PER_DIE = 4;       // Atlas 950PR 每 Die 包含 4 个 Core Group (全片 8-Group)
 constexpr uint32_t ATLAS_950_CORES_PER_DIE = 16;       // Atlas 950PR 满配单 Die 16 个 AI Core
 constexpr float S_FP8_OFFSET = 8.807354922057604f;      // log2(448.0f) P 矩阵 e4m3 偏置常数 (task/01_design 2.4)
-constexpr float LN_448 = 6.104793232414985f;            // ln(448.0f) = S_FP8_OFFSET * INV_LOG2E（N7/R11-1 裁定后 448· 放大恒以乘法在指数之后，本常量保留为域关系注记）
 
 /**
  * 共享数学与量化常量（全仓唯一定义点；quant_host.h / online_softmax.h /
@@ -137,10 +136,10 @@ struct __attribute__((packed, aligned(32))) SageAttention2TilingData {
     // 3. 数值字段 (12 字节)
     float sm_scale_log2e;     // Host 端折叠后的缩放因子: sm_scale * log2(e) (约 1.44269504)
     float v_scale_max;        // V 量化饱和上限 (fp32+fp16 为 2.25f, 其余为 448.0f)
-    // 【I1 kernel-lane 契约增量，请勿回退删除】task/01_design.md 3.5 节冻结字段：
-    // P 矩阵 e4m3 放大偏置 log2(448)≈8.807（语义见 2.4 节）。取值恒等于上方 S_FP8_OFFSET
-    // 常量，入结构体仅为单测参数化；op_host 侧按常量填充即可。device 侧
-    // op_kernel/sageattention2.cpp 的 ComputeSoftmaxProbability / ConvertLseToHost 出口依赖此字段。
+    // 【布局冻结字段，kernel 不读】task/01_design.md 3.5 节冻结字段：仅允许缺省 0 或
+    // 冻结常量 S_FP8_OFFSET（host 唯一填充点 aclnn/sage_attn_host_tiling.h）。448· 放大
+    // 经乘法恒启用（twin::SoftmaxProbCode），LSE 出口恒以 S_FP8_OFFSET 常量补扣，
+    // 本字段不参与运行时数值——保留仅为 160 字节 TilingData 布局契约（ctypes 镜像断言）。
     float s_fp8_offset;
 
     // 4. 分块字段 (12 字节)
@@ -175,33 +174,19 @@ struct __attribute__((packed, aligned(32))) SageAttention2TilingData {
     // 8. dtype 与补齐保留字段：输入位型分派（任务书 §3 支持 FP16/BF16）。
     // 编码：0 视作 fp16 缺省（消费方 (==2)?2:1 归一），1=float16, 2=bfloat16
     uint8_t input_dtype;  // 1=fp16（缺省）, 2=bf16
-    uint8_t reserved[3];
+    union {
+        uint8_t reserved[3];
+        struct {
+            uint8_t causal_early_exit; // 0=关闭, 1=启用因果掩码早退 (来自 autotune 经验调优)
+            uint8_t rsvd[2];
+        };
+    };
 
-    // 便捷访问辅助函数
-    bool IsCausal() const noexcept {
-        return is_causal != 0;
-    }
-
-    bool IsSmoothK() const noexcept {
-        return smooth_k != 0;
-    }
-
+    // 便捷访问辅助函数（仅 host 侧使用；设备核内因 bisheng 对 const __gm__ this
+    // 的成员函数限制，一律直接读字段——见 op_kernel/sageattention2.cpp Init 注释）
     bool IsSmoothV() const noexcept {
         return smooth_v != 0;
     }
-
-    bool IsHND() const noexcept {
-        return tensor_layout == LAYOUT_HND;
-    }
-
-    bool IsPerThread() const noexcept {
-        return qk_quant_gran == QUANT_GRAN_PER_THREAD;
-    }
-
-    bool IsPerWarp() const noexcept {
-        return qk_quant_gran == QUANT_GRAN_PER_WARP;
-    }
-
 };
 
 // 静态断言验证结构体大小和对齐属性

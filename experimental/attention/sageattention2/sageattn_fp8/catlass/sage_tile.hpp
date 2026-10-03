@@ -3,48 +3,248 @@
 
 #include <cstdint>
 #include <cstddef>
+#include <type_traits>
 #include "../ascendc/tiling.h"
+
+/**
+ * 官方 CATLASS 组件接入（cann/catlass 仓，CATLASS_ROOT/include 经构建接线注入 -I）：
+ * 分形粒度常量以官方 catlass.hpp 为唯一定义源派生（BYTE_PER_C0=32、
+ * C0_NUM_PER_FRACTAL=16、BYTE_PER_FRACTAL=512）；宿主语法门等无 CATLASS 路径的
+ * 编译场景回退本地字面值，两侧分支经 static_assert 锁定与官方值恒等，杜绝漂移。
+ * 设备态热路径的 LoadData2D/Fixpipe 搬运为 ND 布局 + Data/Scale 相邻等本算子
+ * 自定义契约（官方 TileCopyTla 组件要求 L1 侧 zN 分形布局，不匹配本算子 V0 产出
+ * 布局——该数据通路重构须随 camodel 仿真/真机 L-A 循环推进，见设计文档模块边界）。
+ */
+#include "catlass/catlass.hpp"
 
 #if defined(__CCE_KT_TEST__) || defined(__CCE__) || defined(__DAV_C220_VEC__) || defined(__DAV_C220_CUBE__) || defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__)
 #include "kernel_operator.h"
+#else
+namespace AscendC {
+enum class TPosition : uint8_t {
+    GM = 0,
+    A1 = 1,
+    A2 = 2,
+    B1 = 3,
+    B2 = 4,
+    C1 = 5,
+    C2 = 6,
+    CO1 = 7,
+    CO2 = 8,
+    VECIN = 9,
+    VECOUT = 10,
+    VECCALC = 11,
+    TSCM = 12,
+    C2PIPE2GM = 13,
+};
+
+enum class HardEvent : uint16_t {
+    V_MTE2 = 0,
+    MTE2_V = 1,
+    V_MTE3 = 2,
+    MTE3_V = 3,
+    MTE2_MTE1 = 4,
+    MTE1_MTE2 = 5,
+    MTE1_M = 6,
+    M_MTE1 = 7,
+    V_S = 8,
+    S_V = 9,
+    FIX_S = 10,
+    S_FIX = 11,
+};
+} // namespace AscendC
 #endif
 
 namespace Catlass::SageAttn {
 
+/**
+ * 昇腾硬件事件同步模板（对齐竞品 PR#12430 / common.h 原语，消除冗余配对代码）
+ */
+template <AscendC::HardEvent E>
+__aicore__ inline void Sync() {
+#if defined(__CCE__) && !defined(__CCE_KT_TEST__)
+    AscendC::SetFlag<E>(0);
+    AscendC::WaitFlag<E>(0);
+#endif
+}
 
 /**
  * LoadData 2D 单 repeat 搬运字节数（512B，CANN LoadData2DParams.repeatTimes 的计量单位）
+ * 直接引用官方 CATLASS BYTE_PER_FRACTAL 常量（32 * 16 = 512B，一处定义）
  */
-constexpr uint32_t LOADDATA2D_REPEAT_BYTES = 512;
+constexpr uint32_t LOADDATA2D_REPEAT_BYTES = Catlass::BYTE_PER_FRACTAL;
 
 /**
  * 昇腾 950 DaVinci 硬件分形基本粒度常量
- * INT8 / FP8 下 K 维分形步长为 32 (32B)，FP16 下为 16 (32B)
+ * 直接引用官方 CATLASS 分形基元常量：
+ * - M0/N0: C0_NUM_PER_FRACTAL = 16
+ * - K0: BYTE_PER_C0 = 32（INT8/FP8 下 1 字节元素单 C0 包含 32 个元素）
  */
-constexpr uint32_t FRACTAL_M0 = 16;
-constexpr uint32_t FRACTAL_N0 = 16;
-constexpr uint32_t FRACTAL_K0_INT8 = 32;
-constexpr uint32_t FRACTAL_K0_FP8 = 32;
-constexpr uint32_t FRACTAL_K0_FP16 = 16;
+constexpr uint32_t FRACTAL_M0 = Catlass::C0_NUM_PER_FRACTAL;
+constexpr uint32_t FRACTAL_N0 = Catlass::C0_NUM_PER_FRACTAL;
+constexpr uint32_t FRACTAL_K0_INT8 = Catlass::BYTE_PER_C0;
+constexpr uint32_t FRACTAL_K0_FP8 = Catlass::BYTE_PER_C0;
+
+static_assert(FRACTAL_M0 == 16 && FRACTAL_N0 == 16, "fractal MN granularity must be 16x16");
+static_assert(FRACTAL_K0_INT8 == 32 && FRACTAL_K0_FP8 == 32,
+              "fractal K0 must be 32 for 1-byte elements");
+static_assert(LOADDATA2D_REPEAT_BYTES == 512, "LoadData2D repeat unit must be 512B");
 
 /**
- * 分形布局标签定义（对齐 CATLASS 规范与 950PR 专用分形）
+ * 通用 2D 分块搬运原语：从片上源位置搬入目标寄存器/缓冲（L1/UB -> L0A/L0B）
+ * 统一收敛 LoadData2D 样板代码，杜绝多处重复 TBuffAddr 描述符装配。
  */
-struct Layout_zZ {
-    static constexpr const char* name = "zZ";
-};
+template <typename Element, AscendC::TPosition DstPos, AscendC::TPosition SrcPos>
+__aicore__ inline void LoadTile2D(uint32_t dst_addr, uint32_t src_addr, uint32_t rows, uint32_t cols, bool if_transpose = false) {
+#if defined(__CCE__) && !defined(__CCE_KT_TEST__)
+    const uint32_t total_bytes = rows * cols * static_cast<uint32_t>(sizeof(Element));
+    AscendC::TBuffAddr dst_desc{};
+    dst_desc.logicPos = static_cast<uint8_t>(DstPos);
+    dst_desc.bufferHandle = nullptr;
+    dst_desc.bufferAddr = dst_addr;
+    dst_desc.dataLen = total_bytes;
+    AscendC::LocalTensor<Element> dst_tensor;
+    dst_tensor.SetAddr(dst_desc);
 
-struct Layout_nZ {
-    static constexpr const char* name = "nZ";
-};
+    AscendC::TBuffAddr src_desc{};
+    src_desc.logicPos = static_cast<uint8_t>(SrcPos);
+    src_desc.bufferHandle = nullptr;
+    src_desc.bufferAddr = src_addr;
+    src_desc.dataLen = total_bytes;
+    AscendC::LocalTensor<Element> src_tensor;
+    src_tensor.SetAddr(src_desc);
 
-struct Layout_zN {
-    static constexpr const char* name = "zN";
-};
+    AscendC::LoadData2DParams load_params;
+    load_params.repeatTimes = static_cast<uint16_t>((total_bytes + LOADDATA2D_REPEAT_BYTES - 1) / LOADDATA2D_REPEAT_BYTES);
+    load_params.srcStride = 0;
+    load_params.ifTranspose = if_transpose;
+    AscendC::LoadData(dst_tensor, src_tensor, load_params);
+#else
+    (void)dst_addr;
+    (void)src_addr;
+    (void)rows;
+    (void)cols;
+    (void)if_transpose;
+#endif
+}
 
-struct Layout_ND {
-    static constexpr const char* name = "ND";
-};
+/**
+ * 通用 Cube MMAD 矩阵乘执行原语：C(L0C) += A(L0A) x B(L0B)
+ * 统一收敛 INT8 (QK) 与 FP8 (PV) 的 Mmad 调用通路。
+ */
+template <typename ElementC, typename ElementA, typename ElementB, bool IsFp8 = false>
+__aicore__ inline void ExecuteTileMmad(uint32_t m, uint32_t n, uint32_t k, bool init) {
+#if defined(__CCE__) && !defined(__CCE_KT_TEST__)
+    AscendC::MmadParams mmad_params;
+    mmad_params.m = static_cast<uint16_t>(m);
+    mmad_params.n = static_cast<uint16_t>(n);
+    mmad_params.k = static_cast<uint16_t>(k);
+    mmad_params.cmatrixInitVal = init;
+
+    AscendC::TBuffAddr l0c_desc{};
+    l0c_desc.logicPos = static_cast<uint8_t>(AscendC::TPosition::CO1);
+    l0c_desc.bufferHandle = nullptr;
+    l0c_desc.bufferAddr = 0U;
+    l0c_desc.dataLen = static_cast<uint32_t>(m * n * sizeof(ElementC));
+    AscendC::LocalTensor<ElementC> l0c_tensor;
+    l0c_tensor.SetAddr(l0c_desc);
+
+    AscendC::TBuffAddr l0a_desc{};
+    l0a_desc.logicPos = static_cast<uint8_t>(AscendC::TPosition::A2);
+    l0a_desc.bufferHandle = nullptr;
+    l0a_desc.bufferAddr = 0U;
+    l0a_desc.dataLen = static_cast<uint32_t>(m * k * sizeof(ElementA));
+    AscendC::LocalTensor<ElementA> l0a_tensor;
+    l0a_tensor.SetAddr(l0a_desc);
+
+    AscendC::TBuffAddr l0b_desc{};
+    l0b_desc.logicPos = static_cast<uint8_t>(AscendC::TPosition::B2);
+    l0b_desc.bufferHandle = nullptr;
+    l0b_desc.bufferAddr = 0U;
+    l0b_desc.dataLen = static_cast<uint32_t>(n * k * sizeof(ElementB));
+    AscendC::LocalTensor<ElementB> l0b_tensor;
+    l0b_tensor.SetAddr(l0b_desc);
+
+    if constexpr (IsFp8) {
+        auto l0a_fp8 = l0a_tensor.template ReinterpretCast<AscendC::mx_fp8_e4m3_t>();
+        auto l0b_fp8 = l0b_tensor.template ReinterpretCast<AscendC::mx_fp8_e4m3_t>();
+        AscendC::Mmad(l0c_tensor, l0a_fp8, l0b_fp8, mmad_params);
+    } else {
+        AscendC::Mmad(l0c_tensor, l0a_tensor, l0b_tensor, mmad_params);
+    }
+#else
+    (void)m;
+    (void)n;
+    (void)k;
+    (void)init;
+#endif
+}
+
+/**
+ * 通用 Fixpipe L0C -> UB 裸搬原语（SPLIT_M 分段发射）：
+ * dav-3510 Fixpipe 透传搬出（quantPre DISABLE，精确位型透传，zN -> ND）。
+ * m > 64 时按 64 行双段发射，两段同分区写入 UB。
+ */
+template <typename ElementC>
+__aicore__ inline void CopyL0CToUbSplitM(
+    uint32_t l0c_src_offset,
+    uint32_t ub_dst_offset,
+    uint32_t m,
+    uint32_t n)
+{
+#if defined(__CCE__) && !defined(__CCE_KT_TEST__)
+    constexpr uint32_t M_SPLIT = 64;
+    constexpr uint32_t elem_size = sizeof(ElementC);
+    static constexpr auto format = AscendC::CO2Layout::ROW_MAJOR;
+    static constexpr AscendC::FixpipeConfig cfg{format, true};
+
+    AscendC::FixpipeParamsArch3510<format> fp;
+    fp.nSize = static_cast<uint16_t>(n);
+    fp.srcStride = static_cast<uint16_t>(m);   // L0C zN 行距（整幅行数）
+    fp.dstStride = static_cast<uint16_t>(n);   // UB ND 行距
+    fp.params.ndNum = 1;
+    fp.params.srcNdStride = 0;
+    fp.params.dstNdStride = 0;
+    fp.quantPre = QuantMode_t::NoQuant;
+    fp.dualDstCtl = 0;
+    fp.subBlockId = false;
+
+    AscendC::TBuffAddr l0c_desc{};
+    l0c_desc.logicPos = static_cast<uint8_t>(AscendC::TPosition::CO1);
+    l0c_desc.bufferHandle = nullptr;
+    l0c_desc.bufferAddr = l0c_src_offset;
+    l0c_desc.dataLen = static_cast<uint32_t>(m * n * elem_size);
+    AscendC::LocalTensor<ElementC> l0c_tensor;
+    l0c_tensor.SetAddr(l0c_desc);
+
+    AscendC::TBuffAddr ub0_desc{};
+    ub0_desc.logicPos = static_cast<uint8_t>(AscendC::TPosition::VECOUT);
+    ub0_desc.bufferHandle = nullptr;
+    ub0_desc.bufferAddr = ub_dst_offset;
+    ub0_desc.dataLen = static_cast<uint32_t>(m * n * elem_size);
+    AscendC::LocalTensor<ElementC> ub_dst0;
+    ub_dst0.SetAddr(ub0_desc);
+
+    if (m <= M_SPLIT) {
+        fp.mSize = static_cast<uint16_t>(m);
+        AscendC::Fixpipe<ElementC, ElementC, cfg>(ub_dst0, l0c_tensor, fp);
+    } else {
+        fp.mSize = static_cast<uint16_t>(M_SPLIT);
+        AscendC::TBuffAddr ub1_desc = ub0_desc;
+        ub1_desc.bufferAddr = ub_dst_offset + M_SPLIT * n * elem_size;
+        ub1_desc.dataLen = static_cast<uint32_t>((m - M_SPLIT) * n * elem_size);
+        AscendC::LocalTensor<ElementC> ub_dst1;
+        ub_dst1.SetAddr(ub1_desc);
+        AscendC::Fixpipe<ElementC, ElementC, cfg>(ub_dst0, l0c_tensor, fp);
+        AscendC::Fixpipe<ElementC, ElementC, cfg>(ub_dst1, l0c_tensor[M_SPLIT * 16], fp);
+    }
+#else
+    (void)l0c_src_offset;
+    (void)ub_dst_offset;
+    (void)m;
+    (void)n;
+#endif
+}
 
 /**
  * Data + Scale 相邻排布契约（FlashMLA 硬件并发核心优化）

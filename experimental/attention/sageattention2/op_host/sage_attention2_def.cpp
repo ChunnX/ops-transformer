@@ -14,7 +14,7 @@ namespace ge {
  * 1. 完整支持 qk_quant_gran 量化粒度配置 (per_thread 与 per_warp)。
  * 2. 严格支持 pv_accum_dtype 累加精度档位 (fp32, fp32+fp32, fp32+fp16)。
  * 3. 支持平滑化因子 smooth_k 与 smooth_v。
- * 4. 支持因果掩码 (is_causal) 与任意 BNSD/HND, BSND/NHD 张量布局。
+ * 4. 支持因果掩码 (is_causal) 与 HND/NHD 张量布局。
  *
  * @par Inputs:
  * @li query: [B, Hq, Sq, D] 或 [B, Sq, Hq, D]，数据类型支持 float16, bfloat16。
@@ -28,7 +28,7 @@ namespace ge {
  * @li lse: [B, Hq, Sq]，可选输出，Softmax 归一化对数和，类型为 float32。
  *
  * @par Attributes:
- * @li tensor_layout: String，张量内存排布格式 ("BNSD" 或 "BSND")，默认 "BNSD"。
+ * @li tensor_layout: String，张量内存排布格式 ("HND" 或 "NHD")，默认 "HND"。
  * @li is_causal: Bool，因果注意力下三角掩码开关，默认 false。
  * @li qk_quant_gran: String，QK 矩阵乘量化粒度 ("per_thread", "per_warp")，默认 "per_thread"。
  * @li sm_scale: Float，Softmax 缩放系数，默认 0.0f (0.0 表示内部采用 1.0 / sqrt(head_dim)，负值非法)。
@@ -45,7 +45,7 @@ REG_OP(SageAttention2)
     .OPTIONAL_INPUT(lse_correction, TensorType({DT_FLOAT}))
     .OUTPUT(output, TensorType({DT_FLOAT16, DT_BF16}))
     .OUTPUT(lse, TensorType({DT_FLOAT}))
-    .ATTR(tensor_layout, String, "BNSD")
+    .ATTR(tensor_layout, String, "HND")
     .ATTR(is_causal, Bool, false)
     .ATTR(qk_quant_gran, String, "per_thread")
     .ATTR(sm_scale, Float, 0.0f)
@@ -110,7 +110,7 @@ public:
 
         // 4. 算子属性声明（OPTIONAL + 冻结默认值，对齐开源 core.py 签名：
         //    gran 默认 per_thread、accum 默认 fp32+fp16，消除 REQUIRED 却带默认值的矛盾）
-        this->Attr("tensor_layout").AttrType(OPTIONAL).String("BNSD");
+        this->Attr("tensor_layout").AttrType(OPTIONAL).String("HND");
         this->Attr("is_causal").AttrType(OPTIONAL).Bool(false);
         this->Attr("qk_quant_gran").AttrType(OPTIONAL).String("per_thread");
         this->Attr("sm_scale").AttrType(OPTIONAL).Float(0.0f);

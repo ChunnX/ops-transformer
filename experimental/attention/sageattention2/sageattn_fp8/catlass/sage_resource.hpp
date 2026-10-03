@@ -5,20 +5,23 @@
 #include <cstddef>
 #include "../ascendc/tiling.h"
 #include "sage_tile.hpp"
+#include "catlass/arch/arch.hpp"
 
 namespace Catlass::SageAttn {
 
+using Arch = Catlass::Arch::Ascend950;
+
 /**
- * 1C2V 硬件资源配额契约（Atlas 950PR 架构白皮书表 4-2）
+ * 1C2V 硬件资源配额契约（Atlas 950PR 架构白皮书表 4-2，基于官方 CATLASS Ascend950 架构定义）
  */
 struct HardwareResourceQuota {
-    // 物理硬件上限
-    static constexpr uint32_t L1_TOTAL_BYTES   = sage_attn::L1_TOTAL_SIZE;        // 512 KB
-    static constexpr uint32_t L0A_TOTAL_BYTES  = sage_attn::L0A_SIZE;             // 64 KB
-    static constexpr uint32_t L0B_TOTAL_BYTES  = sage_attn::L0B_SIZE;             // 64 KB
-    static constexpr uint32_t L0C_TOTAL_BYTES  = sage_attn::L0C_SIZE;             // 256 KB
-    static constexpr uint32_t UB_PER_V_BYTES   = sage_attn::UB_TOTAL_SIZE_PER_V;  // 256 KB
-    static constexpr uint32_t UB_TOTAL_BYTES   = sage_attn::UB_TOTAL_SIZE;        // 512 KB
+    // 物理硬件上限（基于 Catlass::Arch::Ascend950 官方常数，一处定义，消除多层别名）
+    static constexpr uint32_t L1_TOTAL_BYTES   = Arch::L1_SIZE;                   // 512 KB
+    static constexpr uint32_t L0A_TOTAL_BYTES  = Arch::L0A_SIZE;                  // 64 KB
+    static constexpr uint32_t L0B_TOTAL_BYTES  = Arch::L0B_SIZE;                  // 64 KB
+    static constexpr uint32_t L0C_TOTAL_BYTES  = Arch::L0C_SIZE;                  // 256 KB
+    static constexpr uint32_t UB_PER_V_BYTES   = 256 * 1024;                      // 256 KB
+    static constexpr uint32_t UB_TOTAL_BYTES   = 2 * UB_PER_V_BYTES;              // 512 KB
 };
 
 /**

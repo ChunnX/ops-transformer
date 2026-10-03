@@ -26,7 +26,7 @@
 #ifndef SAGE_HAS_CANN_ACLNN_BASE
 // 本地编译或无 CANN 依赖环境下的轻量类型定义与错误码桩
 // （错误码取值对齐 CANN aclnn/opdev/op_errno.h）
-typedef int32_t aclnnStatus;
+using aclnnStatus = int32_t;
 constexpr aclnnStatus ACLNN_SUCCESS = 0;
 constexpr aclnnStatus ACLNN_ERR_PARAM_NULLPTR = 161001;
 constexpr aclnnStatus ACLNN_ERR_PARAM_INVALID = 161002;
@@ -51,23 +51,22 @@ struct aclOpExecutor {
     virtual ~aclOpExecutor() = default;
     virtual uint64_t GetWorkspaceSize() const { return 0; }
 };
-typedef void* aclrtStream;
+using aclrtStream = void*;
 #endif
 
 namespace sage_attn {
 
 /**
  * 接口字符串协议 -> 数值编码的唯一映射（C++ 侧唯一定义点）。
- * torch 桥接（csrc/attention.cpp）传入 HND/NHD、per_warp/per_thread、
- * fp32/fp32+fp32/fp32+fp16；GE 图属性（op_host）传入同义的 BNSD/BSND。
- * 非法串按冻结签名默认值兜底（per_thread / fp32+fp16 / HND），
- * 严格校验由各入口的前置检查负责。
+ * torch 桥接（csrc 等价路径）传入 HND/NHD、per_warp/per_thread、
+ * fp32/fp32+fp32/fp32+fp16。非法串按冻结签名默认值兜底（per_thread /
+ * fp32+fp16 / HND）；严格校验由各入口的前置检查负责（op_api 对 layout
+ * 白名单校验，非法取值直接报错）。
  */
 inline int64_t TensorLayoutCodeFromString(const char *layout)
 {
-    // NHD 与 BSND 同义（[B,S,H,D]）；HND 与 BNSD 同义（[B,H,S,D]）
-    return (std::strcmp(layout, "NHD") == 0 || std::strcmp(layout, "BSND") == 0) ? static_cast<int64_t>(LAYOUT_NHD)
-                                                 : static_cast<int64_t>(LAYOUT_HND);
+    return (std::strcmp(layout, "NHD") == 0) ? static_cast<int64_t>(LAYOUT_NHD)
+                                             : static_cast<int64_t>(LAYOUT_HND);
 }
 
 inline int64_t QuantGranCodeFromString(const char *gran)

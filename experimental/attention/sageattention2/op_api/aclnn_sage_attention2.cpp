@@ -38,7 +38,7 @@ aclnnStatus BuildSage(const aclTensor *q, const aclTensor *k, const aclTensor *v
 } // namespace l0op
 
 namespace {
-// HND/NHD 的 1、2 维互换视图（BNSD<->BSND 同形互换），storage 不变
+// HND/NHD 的 1、2 维互换视图（kernel 内部统一按 HND 消费），storage 不变
 const aclTensor *Canonical(const aclTensor *t, bool nhd, aclOpExecutor *executor)
 {
     if (!nhd) {
@@ -90,15 +90,9 @@ extern "C" aclnnStatus aclnnSageAttention2GetWorkspaceSize(
     if (!std::isfinite(smScale)) {
         return ACLNN_ERR_PARAM_INVALID;
     }
-    // 布局同义词域与 def.cpp/proto 对齐：BNSD~HND、BSND~NHD
-    const char *layout_canon = tensorLayout;
-    if (std::strcmp(layout_canon, "BNSD") == 0) {
-        layout_canon = "HND";
-    } else if (std::strcmp(layout_canon, "BSND") == 0) {
-        layout_canon = "NHD";
-    }
-    const bool nhd = (std::strcmp(layout_canon, "NHD") == 0);
-    if (!nhd && std::strcmp(layout_canon, "HND") != 0) {
+    // 任务书口径：布局仅 HND/NHD，非法取值报错（不静默降级）
+    const bool nhd = (std::strcmp(tensorLayout, "NHD") == 0);
+    if (!nhd && std::strcmp(tensorLayout, "HND") != 0) {
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (std::strcmp(pvAccumDtype, "fp32") != 0 && std::strcmp(pvAccumDtype, "fp32+fp32") != 0 &&
@@ -157,7 +151,7 @@ extern "C" aclnnStatus aclnnSageAttention2GetWorkspaceSize(
     }
     const aclnnStatus ret = l0op::BuildSage(
         qc, kc, vc, keyMeanOptional, lseCorrectionOptional, static_cast<float>(smScale),
-        layout_canon, isCausal, qkQuantGran, pvAccumDtype, smoothK, smoothV,
+        tensorLayout, isCausal, qkQuantGran, pvAccumDtype, smoothK, smoothV,
         outTensor, lseTensor, owner.get());
     if (ret != ACLNN_SUCCESS) {
         return ret;

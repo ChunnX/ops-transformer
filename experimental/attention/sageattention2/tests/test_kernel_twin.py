@@ -92,6 +92,7 @@ def _build_dylib() -> Path:
         "-I", str(OP_ROOT / "sageattn_fp8" / "ascendc"),
         "-I", str(OP_ROOT / "sageattn_fp8" / "catlass"),
         "-I", str(OP_ROOT / "quant"),
+        "-I", str(REPO_ROOT / "git" / "catlass" / "include"),
         "-o", str(_DYLIB_PATH),
     ]
     subprocess.check_call(cmd)
