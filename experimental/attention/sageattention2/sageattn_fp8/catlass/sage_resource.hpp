@@ -2,7 +2,6 @@
 #define SAGE_ATTN_FP8_CATLASS_SAGE_RESOURCE_HPP
 
 #include <cstdint>
-#include <cstddef>
 #include "../ascendc/tiling.h"
 #include "sage_tile.hpp"
 #include "catlass/arch/arch.hpp"

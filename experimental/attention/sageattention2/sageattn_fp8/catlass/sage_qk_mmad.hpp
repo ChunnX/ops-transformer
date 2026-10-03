@@ -2,7 +2,6 @@
 #define SAGE_ATTN_FP8_CATLASS_SAGE_QK_MMAD_HPP
 
 #include <cstdint>
-#include <type_traits>
 #include "../ascendc/tiling.h"
 #include "sage_tile.hpp"
 #include "sage_resource.hpp"

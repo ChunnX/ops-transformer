@@ -2,8 +2,6 @@
 #define SAGE_ATTN_FP8_CATLASS_SAGE_TILE_HPP
 
 #include <cstdint>
-#include <cstddef>
-#include <type_traits>
 #include "../ascendc/tiling.h"
 
 /**
@@ -218,7 +216,7 @@ using GmBhsdStrideTag = decltype(tla::MakeStride(int64_t{}, int64_t{}, int64_t{}
  */
 using GmBhsdLayout = decltype(tla::MakeLayout(detail::GmBhsdShapeTag{}, detail::GmBhsdStrideTag{}));
 
-__aicore__ inline GmBhsdLayout MakeGmBhsdLayout(uint32_t b, uint32_t h, uint32_t s, uint32_t d,
+__aicore__ inline constexpr GmBhsdLayout MakeGmBhsdLayout(uint32_t b, uint32_t h, uint32_t s, uint32_t d,
                                                 uint32_t layout_hnd)
 {
     if (layout_hnd != 0u) {
@@ -247,7 +245,7 @@ using GmBhsStrideTag = decltype(tla::MakeStride(int64_t{}, int64_t{}, tla::Int<1
  */
 using GmBhsLayout = decltype(tla::MakeLayout(detail::GmBhsShapeTag{}, detail::GmBhsStrideTag{}));
 
-__aicore__ inline GmBhsLayout MakeGmBhsLayout(uint32_t b, uint32_t h, uint32_t s)
+__aicore__ inline constexpr GmBhsLayout MakeGmBhsLayout(uint32_t b, uint32_t h, uint32_t s)
 {
     (void)b; // 步距自 H 起，b 不参与折叠（稠密布局形状仅作文档）
     return tla::MakeLayout(tla::MakeShape(b, h, s),

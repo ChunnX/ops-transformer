@@ -227,12 +227,40 @@ void TestResourceFootprintLedger() {
     std::cout << "[Test 4 Passed] Runtime footprint ledger verified!" << std::endl;
 }
 
+void TestGmTlaLayouts() {
+    std::cout << "[Test 5] Testing tla GM layout single point (MakeGmBhsdLayout / MakeGmBhsLayout)..." << std::endl;
+
+    // GM 四维布局 tla 单点 vs 原手写步距四元组位元等价（HND/NHD 各抽基址与行偏移；
+    // kernel 侧 Q/K/V/O 布局推导已全部收敛至该单点，本用例锁值防回归）
+    const auto hnd = MakeGmBhsdLayout(2, 4, 8, 128, 1);
+    // HND: sb=H·S·D, sh=S·D, ss=D
+    assert(hnd(tla::MakeCoord(uint32_t(1), int64_t(3), int64_t(5), 0u)) ==
+           1 * (4 * 8 * 128) + 3 * (8 * 128) + 5 * 128);
+    assert(hnd(tla::MakeCoord(uint32_t(0), int64_t(0), int64_t(0), 0u)) == 0);
+
+    const auto nhd = MakeGmBhsdLayout(2, 4, 8, 128, 0);
+    // NHD: sb=S·H·D, sh=D, ss=H·D
+    assert(nhd(tla::MakeCoord(uint32_t(1), int64_t(3), int64_t(5), 0u)) ==
+           1 * (8 * 4 * 128) + 3 * 128 + 5 * (4 * 128));
+
+    // (b,hq,sq) 稠密布局（LSE / lseCorrection）：b·(H·S) + h·S + s
+    const auto dense = MakeGmBhsLayout(2, 4, 8);
+    assert(dense(tla::MakeCoord(uint32_t(1), int64_t(3), int64_t(5))) == 1 * (4 * 8) + 3 * 8 + 5);
+
+    // constexpr 域（编译期可折叠，与运行时同式）
+    static_assert(MakeGmBhsLayout(2, 4, 8)(tla::MakeCoord(uint32_t(1), int64_t(3), int64_t(5))) == 61,
+                  "dense layout must fold at compile time");
+
+    std::cout << "[Test 5 Passed] tla GM layout equivalence verified!" << std::endl;
+}
+
 int main() {
     std::cout << "Starting SageAttention2 C++ Contract and Tiling Verification..." << std::endl;
     TestTilingDataLayout();
     TestOnlineSoftmax();
     TestCatlassContracts();
     TestResourceFootprintLedger();
+    TestGmTlaLayouts();
     std::cout << "All C++ contracts and struct layouts PASSED successfully!" << std::endl;
     return 0;
 }

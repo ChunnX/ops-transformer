@@ -23,7 +23,6 @@
 
 #include <cstdint>
 #include <cstddef>
-#include <cmath>
 #include <algorithm>
 #include <memory>
 
@@ -1477,13 +1476,13 @@ private:
                     // scale = amax / scale_max（全零通道 scale=0 → NaN 容错同非 smooth 路径）
                     float sum_v = 0.0f;
                     for (uint32_t t = 0; t < sk_; ++t) {
-                        sum_v += ReadInputBits(v_head, static_cast<int64_t>(t) * v_stride_s + c);
+                        sum_v += ReadInputBits(v_head, kv_layout(tla::MakeCoord(0u, 0u, t, 0u)) + c);
                     }
                     const float vm = sum_v / static_cast<float>(fp8_padded);
                     float amax = (fp8_padded > sk_) ? SageFastAbs(vm) : 0.0f;
                     for (uint32_t t = 0; t < sk_; ++t) {
                         const float diff =
-                            ReadInputBits(v_head, static_cast<int64_t>(t) * v_stride_s + c) - vm;
+                            ReadInputBits(v_head, kv_layout(tla::MakeCoord(0u, 0u, t, 0u)) + c) - vm;
                         const float abs_v = SageFastAbs(diff);
                         if (abs_v > amax) amax = abs_v;
                     }
@@ -1493,7 +1492,7 @@ private:
                     float amax = 0.0f;
                     for (uint32_t t = 0; t < sk_; ++t) {
                         const float abs_v = SageFastAbs(
-                            ReadInputBits(v_head, static_cast<int64_t>(t) * v_stride_s + c));
+                            ReadInputBits(v_head, kv_layout(tla::MakeCoord(0u, 0u, t, 0u)) + c));
                         if (abs_v > amax) amax = abs_v;
                     }
                     sim_mem_->v_scales[c] = amax / scale_max;
@@ -1693,18 +1692,10 @@ private:
         const int64_t hkv_idx = static_cast<int64_t>(cur_hkv_);
         const int64_t sk_start = static_cast<int64_t>(cur_k_start_);
 
-        int64_t kv_stride_b, kv_stride_h, kv_stride_s;
-        if ((tiling_->tensor_layout == LAYOUT_HND)) {
-            kv_stride_b = static_cast<int64_t>(hkv_) * sk_ * d_;
-            kv_stride_h = static_cast<int64_t>(sk_) * d_;
-            kv_stride_s = d_;
-        } else {
-            kv_stride_b = static_cast<int64_t>(sk_) * hkv_ * d_;
-            kv_stride_s = static_cast<int64_t>(hkv_) * d_;
-            kv_stride_h = d_;
-        }
-
-        const int64_t kv_gm_offset = b_idx * kv_stride_b + hkv_idx * kv_stride_h + sk_start * kv_stride_s;
+        // GM K/V 布局 tla 单点（与 ProcessVec0 流水路径同一 MakeGmBhsdLayout 表达式）
+        const Catlass::SageAttn::GmBhsdLayout kv_layout =
+            Catlass::SageAttn::MakeGmBhsdLayout(b_, hkv_, sk_, d_, tiling_->tensor_layout == LAYOUT_HND);
+        const int64_t kv_gm_offset = kv_layout(tla::MakeCoord(b_idx, hkv_idx, sk_start, 0u));
         const __gm__ float *km_ptr = nullptr;
         if ((tiling_->smooth_k != 0) && key_mean_gm_ != nullptr) {
             const int64_t km_offset = (b_idx * static_cast<int64_t>(hkv_) + hkv_idx) * d_;
@@ -1712,10 +1703,10 @@ private:
         }
 
         QuantizeAndStageKey(key_gm_ + kv_gm_offset * sizeof(uint16_t), km_ptr, l1_dst_offset,
-                            cur_block_k, d_);
+                            cur_block_k, d_, kv_layout);
         QuantizeAndStageValue(value_gm_ + kv_gm_offset * sizeof(uint16_t),
                               l1_dst_offset + Catlass::SageAttn::L1DoubleBankContract::KV_V_SUB_OFFSET,
-                              cur_block_k, d_);
+                              cur_block_k, d_, kv_layout);
     }
 
     /**
@@ -1776,16 +1767,12 @@ private:
         int64_t hkv_idx = static_cast<int64_t>(cur_hkv_);
         int64_t sq_start = static_cast<int64_t>(cur_q_start_);
 
-        int64_t out_stride_b, out_stride_h, out_stride_s;
-        if ((tiling_->tensor_layout == LAYOUT_HND)) {
-            out_stride_b = static_cast<int64_t>(hq_) * sq_ * d_;
-            out_stride_h = static_cast<int64_t>(sq_) * d_;
-            out_stride_s = d_;
-        } else {
-            out_stride_b = static_cast<int64_t>(sq_) * hq_ * d_;
-            out_stride_s = static_cast<int64_t>(hq_) * d_;
-            out_stride_h = d_;
-        }
+        // GM O 布局 tla 单点（与输入同一 MakeGmBhsdLayout；D 连续维由 DataCopy 承担）
+        const Catlass::SageAttn::GmBhsdLayout out_layout =
+            Catlass::SageAttn::MakeGmBhsdLayout(b_, hq_, sq_, d_, tiling_->tensor_layout == LAYOUT_HND);
+        // LSE / lseCorrection 的 (b,hq,sq) 稠密布局 tla 单点（与 tensor_layout 无关）
+        const Catlass::SageAttn::GmBhsLayout lse_layout =
+            Catlass::SageAttn::MakeGmBhsLayout(b_, hq_, sq_);
 
         // smooth_k 校正项启用唯一定义：lseCorrection GM 张量存在（桥接层仅在
         // smooth_k && return_lse 时产出该张量）
@@ -1818,8 +1805,8 @@ private:
                 // LSE 校正项：lseCorrection GM 按 (b, hq, token) 全局下标直读
                 float lse_corr_val = 0.0f;
                 if (has_lse_corr) {
-                    const int64_t corr_offset =
-                        ((b_idx * static_cast<int64_t>(hq_) + hq_curr) * sq_ + (sq_start + i)) * sizeof(float);
+                    const int64_t corr_offset = lse_layout(tla::MakeCoord(b_idx, hq_curr, sq_start + i)) *
+                                                static_cast<int64_t>(sizeof(float));
                     lse_corr_val = *reinterpret_cast<const __gm__ float*>(lse_correction_gm_ + corr_offset);
                 }
                 // LSE 出口：核内 exp2 域 LSE 含 448· 放大（乘法实现）所致的 +log2(448) 偏置，
@@ -1840,9 +1827,8 @@ private:
                 // 保证本行 VF 写毕才发起 GM 搬出（支持 half 与 bfloat16 双路径，DEFECT-F-3）
                 Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
 
-                const int64_t out_gm_offset =
-                    (b_idx * out_stride_b + hq_curr * out_stride_h +
-                     (sq_start + i) * out_stride_s) * sizeof(half);
+                const int64_t out_gm_offset = out_layout(tla::MakeCoord(b_idx, hq_curr, sq_start + i, 0u)) *
+                                              static_cast<int64_t>(sizeof(half));
                 if (DtypeMode() == 2u) {
                     GlobalTensor<bfloat16_t> gm_out;
                     gm_out.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(out_gm_ + out_gm_offset));
@@ -1858,8 +1844,8 @@ private:
                 Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
 
                 if (lse_gm_ != nullptr) {
-                    const int64_t lse_offset =
-                        ((b_idx * static_cast<int64_t>(hq_) + hq_curr) * sq_ + (sq_start + i)) * sizeof(float);
+                    const int64_t lse_offset = lse_layout(tla::MakeCoord(b_idx, hq_curr, sq_start + i)) *
+                                               static_cast<int64_t>(sizeof(float));
                     *reinterpret_cast<__gm__ float*>(lse_gm_ + lse_offset) = lse_host;
                 }
             }
@@ -1880,8 +1866,8 @@ private:
                 // LSE 校正项：lseCorrection GM 按 (b, hq, token) 全局下标直读（与设备分支同式）
                 float lse_corr_val = 0.0f;
                 if (has_lse_corr) {
-                    const int64_t corr_offset =
-                        ((b_idx * static_cast<int64_t>(hq_) + hq_curr) * sq_ + (sq_start + i)) * sizeof(float);
+                    const int64_t corr_offset = lse_layout(tla::MakeCoord(b_idx, hq_curr, sq_start + i)) *
+                                                static_cast<int64_t>(sizeof(float));
                     lse_corr_val = *reinterpret_cast<const float*>(lse_correction_gm_ + corr_offset);
                 }
                 const float lse_host = OnlineSoftmaxTransformer::ConvertLseToHost(
@@ -1890,16 +1876,13 @@ private:
 
                 for (uint32_t c = 0; c < tiling_->d_og; ++c) {
                     const float val = sim_mem_->o_accum[static_cast<size_t>(r) * d_ + c] * inv_row;
-                    const int64_t out_gm_offset =
-                        (b_idx * out_stride_b + hq_curr * out_stride_h +
-                         (sq_start + i) * out_stride_s + c) * sizeof(uint16_t);
-                    WriteOutputBits(reinterpret_cast<uint16_t *>(out_gm_) + out_gm_offset / sizeof(uint16_t), 0, val);
+                    const int64_t out_elem = out_layout(tla::MakeCoord(b_idx, hq_curr, sq_start + i, c));
+                    WriteOutputBits(reinterpret_cast<uint16_t *>(out_gm_) + out_elem, 0, val);
                 }
 
                 if (lse_gm_ != nullptr) {
-                    const int64_t lse_offset =
-                        ((b_idx * static_cast<int64_t>(hq_) + hq_curr) * sq_ + (sq_start + i)) *
-                        sizeof(float);
+                    const int64_t lse_offset = lse_layout(tla::MakeCoord(b_idx, hq_curr, sq_start + i)) *
+                                               static_cast<int64_t>(sizeof(float));
                     *reinterpret_cast<float *>(lse_gm_ + lse_offset) = lse_host;
                 }
             }

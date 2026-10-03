@@ -209,6 +209,23 @@ chunks=1，任务解码与调度算术逐位不变（twin 25 桶 golden 回归�
     - 构建对齐：全部设备编译路径（ci/kernel_compile.sh、run.sh kernel、
       build_opp.sh、tools/sim 设备步）统一注入官方架构选择宏
       `-DCATLASS_ARCH=3510`。
+  - 官方组件复用清单（2026-10-03 第 4 轮深化接入，位元等价替换 + 重复造轮子收敛）：
+    - `tla::MakeLayout/MakeShape/MakeStride` + `tla::crd2offset`（tla/layout.hpp）：
+      GM 寻址布局 tla 单点 `Catlass::SageAttn::MakeGmBhsdLayout`（(B,H,S,D) 四维，
+      HND/NHD 双模式，int64 元素步距——Q/K/V 输入与 O 输出共用；核内原 8 处
+      `if (LAYOUT_HND)` 手写步距四元组全部删除，坐标折叠 b·sb+h·sh+s·ss 与手写式
+      位元一致，test_tiling_struct Test 5 锁值）与 `MakeGmBhsLayout`（LSE/
+      lseCorrection 的 (B,HQ,SQ) 稠密布局）；
+    - `tla::MakeLayoutL0C`：L0C zN 分形布局官方单点（两执行器 Compute 的 layout_c，
+      取代手写行主 MakeLayout 装配；TileMmadTla 显式 (m,n,k) 重载仅消费
+      tensor.data()，位元零变化）；
+    - 事件对/搬运样板收敛（本算子侧单点，参数化自 AscendC 原语）：核内全部
+      SetFlag/WaitFlag 直配对（含原 4 个 no-op 宿主包装）收敛至
+      `Catlass::SageAttn::Sync<HardEvent>` 单点；宿主 HardEvent 影子枚举编号逐项
+      镜像 dav-3510 官方 kernel_event.h（消除双域枚举漂移）；3 处 UB→L1 行搬
+      DataCopyParams 样板收敛至 `CopyUbRowToL1`（blockLen 计量 = 官方
+      BYTE_PER_BLK）；Mmad 执行器恒 0 的 L0 基址 / L0C 源偏移 / S 槽第二半址死参
+      全部删除。
   - 官方组件不采用清单（性能/位级锁定裁定，均有源码级证据）：
     - `Gemm::Tile::CopyL0CToUBTla`（ascend950 特化）：基于 `FixpipeParamsC310` 参数面
       且 nSize 按 32B 粒度 RoundUp；本算子真机 L-A 验证走 `FixpipeParamsArch3510`
