@@ -822,8 +822,7 @@ private:
             Catlass::SageAttn::Sync<HardEvent::V_S>();
             // 标量 Step 段（行级状态机与 twin 5.3 逐步一致，不批化）：rescale 位图 +
             // 行锚/系数行槽收集
-            uint64_t bm_lo = 0;
-            uint64_t bm_hi = 0;
+            uint32_t bm[4] = {0u, 0u, 0u, 0u};
             for (uint32_t r = 0; r < rows && r < MAX_PACK_ROWS; ++r) {
                 const float cur_max = ub_row_max.GetValue(r);
                 const float cur_sum = ub_row_sum.GetValue(r);
@@ -832,11 +831,7 @@ private:
                         OnlineSoftmaxTransformer::Step(row_states_[r], cur_max, cur_sum);
                     if (row_states_[r].need_rescale &&
                         SageFastAbs(rescale_factor - 1.0f) > SCALE_ONE_TOLERANCE) {
-                        if (r < 64u) {
-                            bm_lo |= (uint64_t{1} << r);
-                        } else {
-                            bm_hi |= (uint64_t{1} << (r - 64u));
-                        }
+                        bm[r >> 5] |= (uint32_t{1} << (r & 31u));
                         ub_factor.SetValue(r, rescale_factor);
                     }
                 }
@@ -851,7 +846,7 @@ private:
             // 与原 need_rescale && |factor-1|>tol 判定同集）
             dev_vf::RescaleAccumRowsVF(reinterpret_cast<__ubuf__ float*>(ub_o.GetPhyAddr()),
                                        reinterpret_cast<__ubuf__ float*>(ub_factor.GetPhyAddr()),
-                                       rows, d_, bm_lo, bm_hi);
+                                       rows, d_, bm[0], bm[1], bm[2], bm[3]);
             // 整幅 P 码写 S 槽（行锚 BRC 广播；全行无条件写出，与宿主整幅
             // ComputeSoftmaxProbability 的行覆盖域一致）
             dev_vf::SoftmaxProbRowsVF(reinterpret_cast<__ubuf__ float*>(ub_logits_dot.GetPhyAddr()),

@@ -266,8 +266,8 @@ CATLASS_DEVICE_SIMD_VF void DequantMaskLogitsRowsVF(__ubuf__ float* logits_dot_b
 
     for (uint32_t r = 0; r < rows; ++r) {
         const uint32_t token_q = cur_q_start + (r % cur_q_len);
-        __ubuf__ int32_t* dot_row = dot_base + static_cast<uint64_t>(r) * block_n;
-        __ubuf__ float* logits_row = logits_dot_base + static_cast<uint64_t>(r) * block_n;
+        __ubuf__ int32_t* dot_row = dot_base + r * block_n;
+        __ubuf__ float* logits_row = logits_dot_base + r * block_n;
 
         // 行级快速路径 1：全掩码行（整行处于因果上三角或超 sk 尾界），直接写 -1e30 哨兵
         const bool is_pure_masked = (is_causal != 0u && token_q < k_start) || (k_start >= sk);
@@ -363,7 +363,7 @@ CATLASS_DEVICE_SIMD_VF void BlockMaxAndSumRowsVF(__ubuf__ float* logits_base, ui
     auto single_lane = CreateMask<float, MaskPattern::VL1>();
 
     for (uint32_t r = 0; r < rows; ++r) {
-        __ubuf__ float* logits = logits_base + static_cast<uint64_t>(r) * block_n;
+        __ubuf__ float* logits = logits_base + r * block_n;
         RegTensor<float> max_val, sum_val;
         Duplicate(max_val, SAGE_MASK_SENTINEL);
         Duplicate(sum_val, 0.0f);
@@ -402,18 +402,20 @@ CATLASS_DEVICE_SIMD_VF void BlockMaxAndSumRowsVF(__ubuf__ float* logits_base, ui
  */
 CATLASS_DEVICE_SIMD_VF void RescaleAccumRowsVF(__ubuf__ float* o_base, __ubuf__ float* factor_row,
                                                uint32_t rows, uint32_t d,
-                                               uint64_t bm_lo, uint64_t bm_hi) {
+                                               uint32_t bm0, uint32_t bm1, uint32_t bm2, uint32_t bm3) {
     using namespace AscendC;
     using namespace AscendC::MicroAPI;
+    const uint32_t bm[4] = {bm0, bm1, bm2, bm3};
     auto full = CreateMask<float, MaskPattern::ALL>();
     for (uint32_t r = 0; r < rows; ++r) {
-        const uint64_t fire = (r < 64u) ? ((bm_lo >> r) & 1u) : ((bm_hi >> (r - 64u)) & 1u);
+        const uint32_t w = bm[r >> 5];
+        const uint32_t fire = (w >> (r & 31u)) & 1u;
         if (fire == 0u) {
             continue;
         }
         RegTensor<float> factor_reg;
         LoadAlign<float, LoadDist::DIST_BRC_B32>(factor_reg, factor_row + r);
-        __ubuf__ float* o_row = o_base + static_cast<uint64_t>(r) * d;
+        __ubuf__ float* o_row = o_base + r * d;
         for (uint32_t c = 0; c < d; c += 64) {
             RegTensor<float> x;
             LoadAlign(x, o_row + c);
@@ -448,8 +450,8 @@ CATLASS_DEVICE_SIMD_VF void SoftmaxProbRowsVF(__ubuf__ float* logits_base, __ubu
     for (uint32_t r = 0; r < rows; ++r) {
         RegTensor<float> m_ln_reg;
         LoadAlign<float, LoadDist::DIST_BRC_B32>(m_ln_reg, m_ln_row + r);
-        __ubuf__ float* logits = logits_base + static_cast<uint64_t>(r) * block_n;
-        __ubuf__ float8_e4m3_t* out_p = out_p_base + static_cast<uint64_t>(r) * block_n;
+        __ubuf__ float* logits = logits_base + r * block_n;
+        __ubuf__ float8_e4m3_t* out_p = out_p_base + r * block_n;
         for (uint32_t j = 0; j < block_n; j += 64) {
             RegTensor<float> logit_val, scaled, diff, exp_val;
             RegTensor<float8_e4m3_t> packed;
@@ -486,8 +488,8 @@ CATLASS_DEVICE_SIMD_VF void MergePvPartialRowsVF(__ubuf__ float* partial_base, _
     static constexpr CastTrait toFp16{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
     static constexpr CastTrait toFp32{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
     for (uint32_t r = 0; r < rows; ++r) {
-        __ubuf__ float* partial_row = partial_base + static_cast<uint64_t>(r) * d;
-        __ubuf__ float* o_row = o_base + static_cast<uint64_t>(r) * d;
+        __ubuf__ float* partial_row = partial_base + r * d;
+        __ubuf__ float* o_row = o_base + r * d;
         for (uint32_t c = 0; c < d; c += 64) {
             RegTensor<float> partial, vs, o;
             LoadAlign(partial, partial_row + c);
