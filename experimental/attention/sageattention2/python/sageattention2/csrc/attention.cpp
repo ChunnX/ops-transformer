@@ -96,12 +96,15 @@ std::tuple<at::Tensor, c10::optional<at::Tensor>> sageattention2(
 
     // 交付态字符串属性 ABI：layout/gran/accum 直传字符串（op_api 白名单校验），
     // 禁止回退数值编码形态（与 benchmarks/benchmark_aclnn.cpp 同一口径）
+    const char *layout_cstr = tensor_layout.c_str();
+    const char *gran_cstr = qk_quant_gran.c_str();
+    const char *accum_cstr = pv_accum_dtype.c_str();
     EXEC_NPU_CMD_EXT(aclnnSageAttention2,
                      q, k, v,
                      km_tensor, lse_corr_tensor,
-                     tensor_layout.c_str(), is_causal,
-                     qk_quant_gran.c_str(), scale,
-                     pv_accum_dtype.c_str(),
+                     layout_cstr, is_causal,
+                     gran_cstr, scale,
+                     accum_cstr,
                      smooth_k, smooth_v,
                      out, lse);
 #else

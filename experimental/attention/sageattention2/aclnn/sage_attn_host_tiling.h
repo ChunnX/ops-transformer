@@ -201,6 +201,56 @@ inline aclnnStatus ComputeHostTiling(
         tuned_die_grouped = tuned->use_die_grouped;
     }
 
+    // Auto-Tune 实测驱动覆盖（仅调优/归因场景使用，见 benchmark/autotune/autotune_runner.py）：
+    // SAGEATTN_FORCE_MPERCORE / SAGEATTN_FORCE_BLOCKN / SAGEATTN_FORCE_KSTEP /
+    // SAGEATTN_FORCE_DIE / SAGEATTN_FORCE_SPLITKV 依次强制分块与分核超参。
+    // 取值域与 kernel/UB 台账一致（m 32/64/128、n 64/128——A7 dot32 区 static_assert
+    // 封顶 128、k 8/16/32、die 0/1、split 1..8）；覆盖值与库查询值同经
+    // InspectTilingPlan 足迹 fail-fast，越界显式拒绝不静默降级；未设置时零行为变化。
+    auto env_forced = [](const char *name) -> int64_t {
+        const char *raw = std::getenv(name);
+        if (raw == nullptr || *raw == '\0') {
+            return -1;
+        }
+        char *end = nullptr;
+        const long long parsed = std::strtoll(raw, &end, 10);
+        if (end == raw || parsed < 0) {
+            return -1;
+        }
+        return static_cast<int64_t>(parsed);
+    };
+
+    const int64_t forced_m = env_forced("SAGEATTN_FORCE_MPERCORE");
+    if (forced_m >= 0) {
+        if (forced_m != 32 && forced_m != 64 && forced_m != 128) {
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        m_per_core = static_cast<uint32_t>(forced_m);
+        has_tuned = true;
+    }
+    const int64_t forced_n = env_forced("SAGEATTN_FORCE_BLOCKN");
+    if (forced_n >= 0) {
+        if (forced_n != 64 && forced_n != 128) {
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        block_n = static_cast<uint32_t>(forced_n);
+        has_tuned = true;
+    }
+    const int64_t forced_k = env_forced("SAGEATTN_FORCE_KSTEP");
+    if (forced_k >= 0) {
+        if (forced_k != 8 && forced_k != 16 && forced_k != 32) {
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        k_step = static_cast<uint32_t>(forced_k);
+        has_tuned = true;
+    }
+    bool die_forced = false;
+    const int64_t forced_die = env_forced("SAGEATTN_FORCE_DIE");
+    if (forced_die == 0 || forced_die == 1) {
+        tuned_die_grouped = (forced_die == 1);
+        die_forced = true;
+    }
+
     tiling_out.m_per_core = m_per_core;
     tiling_out.block_n = block_n;
     tiling_out.k_step = k_step;
@@ -243,6 +293,13 @@ inline aclnnStatus ComputeHostTiling(
             split_kv_num = 8;
         }
     }
+    const int64_t forced_split = env_forced("SAGEATTN_FORCE_SPLITKV");
+    if (forced_split >= 1) {
+        if (forced_split > 8 || forced_split > static_cast<int64_t>(kv_blk_num)) {
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        split_kv_num = static_cast<uint32_t>(forced_split);
+    }
     tiling_out.split_kv_num = split_kv_num;
     tiling_out.is_merge = 0;
 
@@ -261,7 +318,9 @@ inline aclnnStatus ComputeHostTiling(
     const bool is_b_hkv_even = ((static_cast<uint64_t>(b) * hkv) % 2ULL == 0ULL);
 
     bool enable_die = false;
-    if (has_tuned) {
+    if (has_tuned || die_forced) {
+        // 库命中 / 调优覆盖态：die 意愿取库值或 SAGEATTN_FORCE_DIE，硬性前置
+        // （无 Split-KV、核心数偶数且 ≥ Die 数、b*hkv 偶数）仍然全部保留
         enable_die = tuned_die_grouped && (split_kv_num == 1) &&
                      (active_cores >= die_num) && ((active_cores % die_num) == 0) &&
                      is_b_hkv_even;
