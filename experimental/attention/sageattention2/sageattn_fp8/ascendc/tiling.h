@@ -26,6 +26,27 @@
 #define __forceinline__ inline __attribute__((always_inline))
 #endif
 
+/**
+ * 编译域判定宏（全仓唯一定义点，其余头文件禁止再定义或重复守卫）：
+ * - SAGE_ATTN_DEVICE_COMPILE：bisheng -xasc 真机/camodal 设备编译语义分支；
+ * - SAGE_ATTN_KERNEL_API：kernel_operator.h 可用域（设备编译或 KT 单测桩），
+ *   兼作 "设备态执行路径" 判定（宿主串行仿真为 0）。
+ */
+#ifndef SAGE_ATTN_DEVICE_COMPILE
+#if defined(__CCE__) && !defined(__CCE_KT_TEST__)
+#define SAGE_ATTN_DEVICE_COMPILE 1
+#else
+#define SAGE_ATTN_DEVICE_COMPILE 0
+#endif
+#endif
+
+#if SAGE_ATTN_DEVICE_COMPILE || defined(__CCE_KT_TEST__)
+#define SAGE_ATTN_KERNEL_API 1
+#else
+#define SAGE_ATTN_KERNEL_API 0
+#endif
+
+#if !SAGE_ATTN_KERNEL_API
 #ifndef __global__
 #define __global__
 #endif
@@ -53,25 +74,6 @@
 #if !defined(__CCE__) && !defined(__CCE_KT_TEST__)
 inline uint32_t GetBlockIdx() { return 0; }
 #endif
-
-/**
- * 编译域判定宏（全仓唯一定义点，其余头文件禁止再定义或重复守卫）：
- * - SAGE_ATTN_DEVICE_COMPILE：bisheng -xasc 真机/camodal 设备编译语义分支；
- * - SAGE_ATTN_KERNEL_API：kernel_operator.h 可用域（设备编译或 KT 单测桩），
- *   兼作 "设备态执行路径" 判定（宿主串行仿真为 0）。
- */
-#ifndef SAGE_ATTN_DEVICE_COMPILE
-#if defined(__CCE__) && !defined(__CCE_KT_TEST__)
-#define SAGE_ATTN_DEVICE_COMPILE 1
-#else
-#define SAGE_ATTN_DEVICE_COMPILE 0
-#endif
-#endif
-
-#if SAGE_ATTN_DEVICE_COMPILE || defined(__CCE_KT_TEST__)
-#define SAGE_ATTN_KERNEL_API 1
-#else
-#define SAGE_ATTN_KERNEL_API 0
 #endif
 
 namespace sage_attn {

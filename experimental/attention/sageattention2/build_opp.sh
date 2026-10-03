@@ -188,8 +188,16 @@ mkdir -p "${CUSTOM_DIR}/op_impl/ai_core/tbe/op_tiling/lib/linux/x86_64"
 cp -f "${CUSTOM_DIR}/op_impl/ai_core/tbe/op_tiling/lib/liboptiling.so" "${CUSTOM_DIR}/op_impl/ai_core/tbe/op_tiling/lib/linux/x86_64/liboptiling.so"
 
 echo "2. Compiling op_kernel device object for ${SOC} with BiSheng (-xasc ${NPU_ARCH})..."
-# 若 build/sageattention2_bisheng.o 存在且不旧于 kernel 源文件，则复用已编译目标，避免 QEMU 重复编译
-if [ -f "${OP_DIR}/build/sageattention2_bisheng.o" ] && [ ! "${OP_DIR}/op_kernel/sageattention2.cpp" -nt "${OP_DIR}/build/sageattention2_bisheng.o" ]; then
+# 若 build/sageattention2_bisheng.o 存在且不旧于 kernel 源文件和全部包含头文件，则复用已编译目标
+KERNEL_REUSE=false
+if [ -f "${OP_DIR}/build/sageattention2_bisheng.o" ]; then
+    if [ ! "${OP_DIR}/op_kernel/sageattention2.cpp" -nt "${OP_DIR}/build/sageattention2_bisheng.o" ] && \
+       [ -z "$(find "${OP_DIR}/op_kernel" "${OP_DIR}/sageattn_fp8" "${OP_DIR}/quant" \( -name "*.h" -o -name "*.hpp" \) -newer "${OP_DIR}/build/sageattention2_bisheng.o" 2>/dev/null)" ]; then
+        KERNEL_REUSE=true
+    fi
+fi
+
+if [ "${KERNEL_REUSE}" = true ]; then
     echo "Reusing precompiled device object ${OP_DIR}/build/sageattention2_bisheng.o..."
     cp -f "${OP_DIR}/build/sageattention2_bisheng.o" "${CUSTOM_DIR}/op_impl/ai_core/tbe/kernel/${SOC}/sageattention2.o"
 else
