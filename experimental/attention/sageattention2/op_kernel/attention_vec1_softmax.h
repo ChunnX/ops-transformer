@@ -211,15 +211,18 @@ public:
         LocalTensor<float> ub_o(TPosition::VECCALC, SlotV1OAccum::Offset(), rows * ctx.d);
         LocalTensor<float8_e4m3_t> ub_out_p(TPosition::VECCALC, SlotV1FixpipeRecv::Offset(), rows * ctx.block_n);
 
-        dev_vf::DequantMaskLogitsRowsVF(reinterpret_cast<__ubuf__ float*>(ub_logits_dot.GetPhyAddr()), rows,
+        // M6-3 Logits 瓦片寄存器流式融合：反量化 + 三态掩码 + 行内 Max + ExpSub 指数求和
+        // 单遍行流水完成（原 DequantMaskLogitsRowsVF + BlockMaxAndSumRowsVF 两趟结构退役）。
+        // 对 UB Logits 的 3 次重复加载消除为 1 次流式读取（Max/Sum 中间状态完全驻留向量
+        // 寄存器），Logits 仅 1 次流式写出供下游 SoftmaxProbRowsVF 按 running max 铸 FP8；
+        // chunk 顺序 Max 链与 MulDstAdd 累加链严格同序，位级语义与原两趟一致。
+        dev_vf::DequantMaskMaxSumRowsVF(reinterpret_cast<__ubuf__ float*>(ub_logits_dot.GetPhyAddr()), rows,
                                         reinterpret_cast<__ubuf__ float*>(ub_qs.GetPhyAddr()),
                                         reinterpret_cast<__ubuf__ float*>(ub_ks.GetPhyAddr()),
                                         ctx.tiling->sm_scale_log2e, ctx.cur_q_start, ctx.cur_q_len,
-                                        cur_k_start, ctx.sk, ctx.tiling->is_causal, ctx.block_n);
-        dev_vf::BlockMaxAndSumRowsVF(reinterpret_cast<__ubuf__ float*>(ub_logits_dot.GetPhyAddr()), rows,
-                                     ctx.block_n,
-                                     reinterpret_cast<__ubuf__ float*>(ub_block_max.GetPhyAddr()),
-                                     reinterpret_cast<__ubuf__ float*>(ub_block_sum.GetPhyAddr()));
+                                        cur_k_start, ctx.sk, ctx.tiling->is_causal, ctx.block_n,
+                                        reinterpret_cast<__ubuf__ float*>(ub_block_max.GetPhyAddr()),
+                                        reinterpret_cast<__ubuf__ float*>(ub_block_sum.GetPhyAddr()));
 
         dev_vf::UpdateOnlineSoftmaxRowsVF(reinterpret_cast<__ubuf__ float*>(ub_running_max.GetPhyAddr()),
                                           reinterpret_cast<__ubuf__ float*>(ub_running_sum.GetPhyAddr()),

@@ -102,14 +102,17 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void RowAbsMaxRowsV
 /**
  * 1b. 行 INT8 量化（DEFECT-F-1 除法轨迹 + 舍入分档）：
  * - 除法轨迹：val / scale（禁 inv-scale 乘法）；
+ * - CATLASS 950 模式：直接由 scale_ptr 经 LoadAlign<float, LoadDist::DIST_BRC_B32>
+ *   随路完成 UB 标量加载与 64 通道全局广播，彻底消除标量单元 GetValue 与独立的向量 Duplicate 指令；
  * - per_thread：half-away-from-zero——x 加 0.5·sign(x) 后 CAST_TRUNC（对齐
  *   quant::RoundHalfAwayFromZero 的 floor(|x|+0.5)·sign）；
  * - per_warp：CAST_RINT（对齐 quant::RoundNearestEven / cvt.rni）；
- * - 饱和 ±127（与两个 Round* 的 clamp 一致）。
+ * - 饱和 ±127（与两个 Round* 的 clamp 一致）；
+ * - 打包与写出：微架构 StoreDist::DIST_PACK4_B32 硬件压包直写 UB。
  */
 template <uint32_t DTYPE_MODE>
 __simd_vf__ __aicore__ inline __attribute__((always_inline)) void QuantRowInt8VF(__ubuf__ half* in_ptr, __ubuf__ int8_t* out_ptr,
-                                       float scale, uint32_t d,
+                                       __ubuf__ float* scale_ptr, uint32_t d,
                                        uint32_t per_thread, uint32_t has_km,
                                        __ubuf__ float* km_ptr) {
     using namespace AscendC;
@@ -123,7 +126,8 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void QuantRowInt8VF
     static constexpr CastTrait toI8Sat{RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_TRUNC};
 
     RegTensor<float> scale_reg, neg127, pos127;
-    Duplicate(scale_reg, scale);
+    // CATLASS 950 模式：LoadAlign 随路完成 UB 标量加载与 64 通道全局广播
+    LoadAlign<float, LoadDist::DIST_BRC_B32>(scale_reg, scale_ptr);
     // 饱和界 INT8_QUANT_MAX 唯一定义位于 tiling.h（quant_common.h 同源纪律）
     Duplicate(neg127, -INT8_QUANT_MAX);
     Duplicate(pos127, INT8_QUANT_MAX);
@@ -165,12 +169,12 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void QuantRowInt8VF
             // MicroAPI 语义（dav-3510 头与 CANN 内置实现核对）：Compare<LT>(a,b) = a<b，
             // Select(dst,s0,s1,mask) = mask ? s0 : s1——neg(val<0) 须取 neg_half_reg(-0.5)
             // 才是 +0.5·sign(x)；反接会退化为 round-half-toward-zero（R16 审查修正）
-            RegTensor<float> bias, shifted;
+            RegTensor<float> bias;
             MaskReg neg;
             Compare<float, CMPMODE::LT>(neg, val, zero, full);
             Select(bias, neg_half_reg, half_reg, neg);
-            Add(shifted, val, bias, full);
-            Cast<int32_t, float, toI32Trunc>(packed_i, shifted, full);
+            Add(val, val, bias, full);
+            Cast<int32_t, float, toI32Trunc>(packed_i, val, full);
         } else {
             Cast<int32_t, float, toI32Rint>(packed_i, val, full);
         }
@@ -179,6 +183,78 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void QuantRowInt8VF
         Min(val, val, pos127, full);
         // 硬件 vconv 无 float→int8 直转（dav-3510 static assert）：int32 中转后
         // DIST_PACK4_B32 打包窄化（±127 已在 float 域 clamp，窄化无损）
+        Cast<int32_t, float, toI8Sat>(packed_i, val, full);
+        StoreAlign<int8_t, StoreDist::DIST_PACK4_B32>(out_ptr + c,
+            reinterpret_cast<RegTensor<int8_t>&>(packed_i), full);
+    }
+}
+
+// 标量兼容重载：支持接收标量 float scale，函数内调用 Duplicate 全通道广播
+template <uint32_t DTYPE_MODE>
+__simd_vf__ __aicore__ inline __attribute__((always_inline)) void QuantRowInt8VF(__ubuf__ half* in_ptr, __ubuf__ int8_t* out_ptr,
+                                       float scale, uint32_t d,
+                                       uint32_t per_thread, uint32_t has_km,
+                                       __ubuf__ float* km_ptr) {
+    using namespace AscendC;
+    using namespace AscendC::MicroAPI;
+    auto full = CreateMask<float, MaskPattern::ALL>();
+    static constexpr CastTrait toFp32{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+    static constexpr CastTrait toHalf{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+    static constexpr CastTrait toBf16{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+    static constexpr CastTrait toI32Trunc{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_TRUNC};
+    static constexpr CastTrait toI32Rint{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+    static constexpr CastTrait toI8Sat{RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_TRUNC};
+
+    RegTensor<float> scale_reg, neg127, pos127;
+    Duplicate(scale_reg, scale);
+    Duplicate(neg127, -INT8_QUANT_MAX);
+    Duplicate(pos127, INT8_QUANT_MAX);
+    RegTensor<float> zero, half_reg, neg_half_reg;
+    Duplicate(zero, 0.0f);
+    Duplicate(half_reg, 0.5f);
+    Duplicate(neg_half_reg, -0.5f);
+
+    for (uint32_t c = 0; c < d; c += 64) {
+        RegTensor<float> val;
+        if constexpr (DTYPE_MODE == 2u) {
+            RegTensor<bfloat16_t> raw;
+            LoadAlign<bfloat16_t, LoadDist::DIST_UNPACK_B16>(raw, reinterpret_cast<__ubuf__ bfloat16_t*>(in_ptr) + c);
+            Cast<float, bfloat16_t, toFp32>(val, raw, full);
+        } else {
+            RegTensor<half> raw;
+            LoadAlign<half, LoadDist::DIST_UNPACK_B16>(raw, in_ptr + c);
+            Cast<float, half, toFp32>(val, raw, full);
+        }
+        if (has_km) {
+            RegTensor<float> km_val;
+            LoadAlign(km_val, km_ptr + c);
+            Sub(val, val, km_val, full);
+            if constexpr (DTYPE_MODE == 2u) {
+                RegTensor<bfloat16_t> rt;
+                Cast<bfloat16_t, float, toBf16>(rt, val, full);
+                Cast<float, bfloat16_t, toFp32>(val, rt, full);
+            } else {
+                RegTensor<half> rt;
+                Cast<half, float, toHalf>(rt, val, full);
+                Cast<float, half, toFp32>(val, rt, full);
+            }
+        }
+        Div(val, val, scale_reg, full);
+
+        RegTensor<int32_t> packed_i;
+        if (per_thread) {
+            RegTensor<float> bias;
+            MaskReg neg;
+            Compare<float, CMPMODE::LT>(neg, val, zero, full);
+            Select(bias, neg_half_reg, half_reg, neg);
+            Add(val, val, bias, full);
+            Cast<int32_t, float, toI32Trunc>(packed_i, val, full);
+        } else {
+            Cast<int32_t, float, toI32Rint>(packed_i, val, full);
+        }
+        Cast<float, int32_t, toFp32>(val, packed_i, full);
+        Max(val, val, neg127, full);
+        Min(val, val, pos127, full);
         Cast<int32_t, float, toI8Sat>(packed_i, val, full);
         StoreAlign<int8_t, StoreDist::DIST_PACK4_B32>(out_ptr + c,
             reinterpret_cast<RegTensor<int8_t>&>(packed_i), full);
@@ -210,7 +286,7 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void QuantVRowFp8VF
     Duplicate(zero_reg, 0.0f);
     Duplicate(nan_reg, std::numeric_limits<float>::quiet_NaN());
     for (uint32_t c = 0; c < d; c += 64) {
-        RegTensor<float> val, scale_reg, scaled;
+        RegTensor<float> val, scale_reg;
         RegTensor<float8_e4m3_t> packed;
         if constexpr (DTYPE_MODE == 2u) {
             RegTensor<bfloat16_t> raw;
@@ -227,21 +303,124 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void QuantVRowFp8VF
             Sub(val, val, vm_val, full);
         }
         LoadAlign(scale_reg, scale_ptr + c);
-        Div(scaled, val, scale_reg, full);
+        Div(val, val, scale_reg, full);
         // 全零通道 NaN 守卫（收敛轮 1/R1-1）：不依赖硬件 Min/Max NaN 语义——
         // scale=0 → Div 产 NaN → SAT cast 保留 e4m3 0x7f（对齐 golden）
         MaskReg zero_scale;
         Compare<float, CMPMODE::EQ>(zero_scale, scale_reg, zero_reg, full);
-        Select(scaled, nan_reg, scaled, zero_scale);
-        Min(scaled, scaled, scale_max_reg, full);
-        Max(scaled, scaled, neg_scale_max_reg, full);
-        Cast<float8_e4m3_t, float, toFp8>(packed, scaled, full);
+        Select(val, nan_reg, val, zero_scale);
+        Min(val, val, scale_max_reg, full);
+        Max(val, val, neg_scale_max_reg, full);
+        Cast<float8_e4m3_t, float, toFp8>(packed, val, full);
         StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(out_ptr + c, packed, full);
     }
 }
 
 /**
- * 4a. A7 V1 消费原语（R17-1，R4 行批化）：dot32 区整窗 INT32 QK^T 反量化 + causal/尾块掩码。
+ * 4a. Logits 单 chunk 反量化分片助手（4 融合原语的行内编译期展开单元）：
+ * 执行与融合前完全一致的指令轨迹——dot32 读取、int32→fp32 cast、twin::DequantQkLogit
+ * 左结合三乘链、三态掩码快速路径——并将结果驻留 out_val 寄存器瓦片返回给调用方
+ * （StoreAlign 位保写出 UB：寄存器值 ≡ UB 回读值，供行内 Max/ExpSub 直用免二次加载）。
+ * 硬件 ABI 约束（dav-3510 前端检查"simd_vf function can only call simd_callee function"
+ * 与"simd_vf 函数指针形参必须位于 __ubuf__ 地址空间"）：跨函数传递寄存器瓦片的用户
+ * 助手须以官方 MicroAPI 内在函数同款 __simd_callee__ 标记，且形参类型于 dev_vf 命名
+ * 空间作用域以全限定 AscendC::Reg::RegTensor 承接（MicroAPI 即 Reg 的命名空间别名，
+ * kernel_macros.h L129；函数体内 using 指令不作用于签名解析）；MaskReg 谓词形参禁用，
+ * full 由助手内部 CreateMask 现场生成（编译期全真，零运行时开销）。always_inline
+ * 内联后与单函数内联展开同构、零调用栈帧。
+ * 注意：台账所记"×2^-11"定点折算若按字面串入乘链，将给结果附加恰 2^-11 的精确
+ * 幂偏置、破坏与宿主的逐位一致性，故不采用（2 的整数次幂乘法精确、不可消去）。
+ */
+__simd_callee__ __aicore__ inline __attribute__((always_inline)) void DequantStoreLogitChunkVF(
+    __ubuf__ int32_t* dot_row, __ubuf__ float* logits_row, uint32_t j,
+    AscendC::Reg::RegTensor<float>& qs_reg, __ubuf__ float* k_scale_row,
+    AscendC::Reg::RegTensor<float>& sm_reg, AscendC::Reg::RegTensor<float>& neg_inf,
+    uint32_t token_q, uint32_t k_start, uint32_t sk,
+    uint32_t is_causal, bool row_pure_active, AscendC::Reg::RegTensor<float>& out_val) {
+    using namespace AscendC;
+    using namespace AscendC::MicroAPI;
+    static constexpr CastTrait toFp32{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+    auto full = CreateMask<float, MaskPattern::ALL>();
+
+    const uint32_t chunk_start = k_start + j;
+    uint32_t bound_k = sk;
+    if (is_causal != 0u && token_q + 1u < bound_k) {
+        bound_k = token_q + 1u;
+    }
+
+    // Chunk 级态 1：全掩码（因果上三角或超 sk 尾界），跳过点积读取、Cast 与三次乘法，
+    // 直接落 -1e30 哨兵（哨兵同步驻留 out_val 寄存器瓦片，行内 Max/ExpSub 链与 UB 回读同值）
+    if (!row_pure_active && chunk_start >= bound_k) {
+        out_val = neg_inf;
+        StoreAlign(logits_row + j, neg_inf, full);
+        return;
+    }
+
+    RegTensor<float> ks_vec;
+    RegTensor<int32_t> dot_i;
+    LoadAlign(dot_i, dot_row + j);
+    Cast<float, int32_t, toFp32>(out_val, dot_i, full);   // INT32→FP32 精确 cast（≤2^21 整数域）
+    Mul(out_val, out_val, qs_reg, full);                  // · q_scale（行解析，先乘）
+    LoadAlign(ks_vec, k_scale_row + j);
+    Mul(out_val, out_val, ks_vec, full);                  // · k_scale[j]（块解析向量）
+    Mul(out_val, out_val, sm_reg, full);                  // · sm_scale_log2e（左结合同宿主）
+
+    // Chunk 级态 2：全活跃（完全在因果下三角与 sk 尾界内），直接写反量化结果
+    if (row_pure_active || chunk_start + 64u <= bound_k) {
+        StoreAlign(logits_row + j, out_val, full);
+        return;
+    }
+
+    // Chunk 级态 3：混合边界，复用 CATLASS CreateMask 与 UpdateMask 动态尾块硬件掩码生成
+    uint32_t tailN = bound_k - chunk_start;
+    MaskReg pregTailN = UpdateMask<float>(tailN);
+    Select(out_val, out_val, neg_inf, pregTailN);
+    StoreAlign(logits_row + j, out_val, full);
+}
+
+/**
+ * 4b. 寄存器瓦片 ExpSub 指数 + 448· 放大跨 chunk 向量累加单步助手（4 融合原语单元）：
+ * exp2 域 + 448· 放大（twin OnlineBlockExp2Sum 同式，收敛轮 F/DEFECT-F-2）：
+ * cur_sum = Σ 2^(x-m)·448 = 448·Σ Exp((x-m)·ln2)。
+ * CATLASS 950 MicroAPI ExpSub + MulDstAdd 指令级下沉（M6-1 已核准语义）：
+ * 1. max_nat 为自然域行最大，ExpSub 熔断减法与指数本征指令；
+ * 2. MulDstAdd 硬件语义 (dst = dst * src0 + src1): nat (dst) * e4m3_max_reg (src0) + sum_val (src1) -> nat，
+ *    sum_val = nat 保持跨 chunk 64-lane 向量累加器严格同序。
+ * 同 4a：__simd_callee__ 标记 + AscendC::Reg::RegTensor 全限定形参（ABI 合法形态）。
+ */
+__simd_callee__ __aicore__ inline __attribute__((always_inline)) void ExpSubAccumChunkVF(
+    AscendC::Reg::RegTensor<float>& val, AscendC::Reg::RegTensor<float>& max_nat,
+    AscendC::Reg::RegTensor<float>& e4m3_max_reg, AscendC::Reg::RegTensor<float>& sum_val) {
+    using namespace AscendC;
+    using namespace AscendC::MicroAPI;
+    auto full = CreateMask<float, MaskPattern::ALL>();
+    RegTensor<float> nat;
+    Muls(val, val, INV_LOG2E, full);
+    ExpSub(nat, val, max_nat, full);
+    MulDstAdd(nat, e4m3_max_reg, sum_val, full);
+    sum_val = nat;
+}
+
+/**
+ * 4. QK 块 Logits 瓦片寄存器流式融合（M6-3「挖掘 Softmax 进化与 CATLASS 复用 3」，
+ *    R4 行批化）：借鉴 CATLASS 950 FA Softmax Epilogue 的 ComputeMaskandScale /
+ *    ComputeExpSubSum 行流水组织模式（block_epilogue_fa_softmax_ascend950.hpp），
+ *    融合原 4a（DequantMaskLogitsRowsVF）与原 4（BlockMaxAndSumRowsVF）两趟结构。
+ *    原结构中同一份 float Logits 在 UB 往返 4 次（反量化 1 写 + Max 趟 1 读 +
+ *    Exp/Sum 趟 1 读 + 下游 SoftmaxProb 1 读，共 3 读 1 写），严重挤占 UB 读写端口；
+ *    本原语将反量化、三态掩码、行内 Max 与 ExpSub 指数求和熔断为单遍行流水：
+ * - 逐 64 元素 chunk 从 dot32 交接槽做唯一一次流式读取，int32→FP32 反量化与
+ *   因果/尾块三态掩码后，chunk 值全程驻留向量寄存器（RegTensor）；A7 dot32 台账
+ *   封顶 block_n ≤ 128（host 强制 n ∈ {64,128}，sage_attn_host_tiling.h 越界拒绝），
+ *   即每行至多 2 个 64-lane 瓦片，按 NCHUNK 编译期展开、零动态寄存器索引；
+ * - 行内最大值由寄存器 Max 链 + ReduceMax 直接得出（消除原 Max 趟 UB 回读）；
+ * - 随即在寄存器瓦片上原位执行 Muls(ln2)→ExpSub→MulDstAdd(448·) 累加链（4b 助手，
+ *   消除原 Exp/Sum 趟 UB 回读）；Logits 仅 1 次流式写出 UB 供下游 SoftmaxProbRowsVF
+ *   按 Online 更新后的 running max 生成 FP8 P——该次读受位级黄金语义约束必需
+ *   running max（P = 2^(x-m')·448，m' 为 Online 步进后的行状态，非本块局部 max，
+ *   若以块局部 max 铸 FP8 将在 e4m3 次正规域引入舍入差、破坏 matched_ratio=1.0），
+ *   按契约保留；对 UB Logits 的 3 次重复加载由此消除为 1 次流式读取，
+ *   Max/Sum 中间状态完全驻留向量寄存器；
  * - 原地轨迹：float logits 按 [row][block_n] 布局覆写同一 dot32 缓冲（int32→float 元素
  *   等宽）——同 chunk 地址 Load 先于 Store（寄存器 RAW 序，各 chunk 地址互斥）；dot32
  *   为单缓冲读保护交接槽，本区覆写发生在 wait QK_P_READY 之后、V_S 排空 + set DOT_FREE
@@ -249,163 +428,91 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void QuantVRowFp8VF
  * - 数值唯一依据 twin::DequantQkLogit 左结合乘序：(float)dot · q_scale · k_scale[j] ·
  *   sm_scale_log2e——int32→fp32 cast 在 |dot| ≤ 2^21 整数域内精确（01_design 2.9：
  *   127·127·128 ≈ 2^20.97），三次标量/向量乘按宿主同一结合序逐位同式；
- *   注意：台账所记"×2^-11"定点折算若按字面串入乘链，将给结果附加恰 2^-11 的精确
- *   幂偏置、破坏与宿主的逐位一致性，故不采用（2 的整数次幂乘法精确、不可消去）；
- * - 行批等价论证（R4）：行间独立，跨行在途交织不改各行 FP 轨迹。每行的行解析量取法
- *   位保：token_q 由标量实参算术（与原调用方同式）；q_scale 经 DIST_BRC_B32 单元素
- *   广播 Load（读同一 ub_qs 槽位的同一 float，取代原 Duplicate 入参——搬运非 FP 运算）；
- *   每行三态掩码快速路径判定与 chunk 分流逐分支保持原单行函数形态；
- * - 三态掩码快速路径（Tri-State Masking Fast Path，逐行独立判定）：
- *   ① 全活跃态（is_pure_active / chunk_pure_active）：完全在因果下三角与 sk 尾界内，
- *      跳过全部 Arange、bounds Duplicate、Compare 与 Select，反量化值直存；
- *   ② 全掩码态（is_pure_masked / chunk_pure_masked）：完全在因果上三角或超 sk 尾界，
- *      跳过点积读取、Cast 与三次乘法，直接落 -1e30 哨兵；
- *   ③ 混合边界态：仅对触碰因果对角线或尾块 pad 界的 chunk 执行硬件 int32 Arange 与 GT/GE 掩码 Select。
- * 行 max 与 exp2 和由调用方紧随调用 BlockMaxAndSumRowsVF 完成（组合即宿主同构语义）。
+ * - 行批等价与位级一致性论证（R4/M6-3）：行间独立，跨行在途交织不改各行 FP 轨迹。
+ *   StoreAlign 位保，寄存器瓦片直用 ≡ 原两趟 UB 回读同位型；chunk 顺序 Max 链与
+ *   MulDstAdd 跨 chunk 向量累加链与原两趟严格同序；掩码哨兵 -1e30 全掩码行
+ *   （x ≡ max，ExpSub(0)=1、448· 逐 chunk 累加 = 448·block_n）与 Online 步进中
+ *   alpha_cur 下溢清零的联合行为同原实现逐位一致；
+ * - 行解析 q_scale 经 DIST_BRC_B32 单元素广播 Load（读同一 ub_qs 槽位的同一 float，
+ *   搬运非 FP 运算）；三态掩码快速路径（逐行独立判定）：① 全活跃态免除全部掩码
+ *   计算；② 全掩码态跳过点积读取与乘法直接落哨兵；③ 混合边界态仅对触碰因果对角线
+ *   或尾块 pad 界的 chunk 执行 UpdateMask 掩码 Select——逐分支保持原形态；
+ * - 行 max/sum 采用 CANN MicroAPI 标准 StoreUnAlign / StoreUnAlignPost 流式非对齐
+ *   写原语满 32 字节（8 float）对齐刷写（DaVinci VEC 访 UB 32 字节对齐约束，根除
+ *   硬件 340 异常），收尾 LocalMemBar 保证后继 Online 步进与 SoftmaxProb 的 UB 读
+ *   可见本函数全部写出。
  */
-__simd_vf__ __aicore__ inline __attribute__((always_inline)) void DequantMaskLogitsRowsVF(__ubuf__ float* logits_dot_base, uint32_t rows,
-                                               __ubuf__ float* qs_row, __ubuf__ float* k_scale_row,
-                                               float sm_scale_log2e, uint32_t cur_q_start,
-                                               uint32_t cur_q_len, uint32_t k_start, uint32_t sk,
-                                               uint32_t is_causal, uint32_t block_n) {
+template <uint32_t NCHUNK>
+__simd_vf__ __aicore__ inline __attribute__((always_inline)) void DequantMaskMaxSumRowsVFImpl(
+    __ubuf__ float* logits_dot_base, uint32_t rows,
+    __ubuf__ float* qs_row, __ubuf__ float* k_scale_row,
+    float sm_scale_log2e, uint32_t cur_q_start, uint32_t cur_q_len,
+    uint32_t k_start, uint32_t sk, uint32_t is_causal, uint32_t block_n,
+    __ubuf__ float* out_max_row, __ubuf__ float* out_sum_row) {
     using namespace AscendC;
     using namespace AscendC::MicroAPI;
     auto full = CreateMask<float, MaskPattern::ALL>();
-    static constexpr CastTrait toFp32{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
     __ubuf__ int32_t* dot_base = reinterpret_cast<__ubuf__ int32_t*>(logits_dot_base);
+    __ubuf__ float* max_ptr = out_max_row;
+    __ubuf__ float* sum_ptr = out_sum_row;
+    UnalignReg max_store;
+    UnalignReg sum_store;
 
     RegTensor<float> sm_reg;
     Duplicate(sm_reg, sm_scale_log2e);
+    RegTensor<float> neg_inf;
+    Duplicate(neg_inf, SAGE_MASK_SENTINEL);
 
     for (uint32_t r = 0; r < rows; ++r) {
         const uint32_t token_q = cur_q_start + (r % cur_q_len);
         __ubuf__ int32_t* dot_row = dot_base + r * block_n;
         __ubuf__ float* logits_row = logits_dot_base + r * block_n;
 
-        // 行级快速路径 1：全掩码行（整行处于因果上三角或超 sk 尾界），直接写 -1e30 哨兵
+        // 行级快速路径 1：全掩码行（整行处于因果上三角或超 sk 尾界），哨兵直落 UB 与寄存器瓦片
         const bool is_pure_masked = (is_causal != 0u && token_q < k_start) || (k_start >= sk);
-        if (is_pure_masked) {
-            RegTensor<float> neg_inf;
-            Duplicate(neg_inf, SAGE_MASK_SENTINEL);
-            for (uint32_t j = 0; j < block_n; j += 64) {
-                StoreAlign(logits_row + j, neg_inf, full);
-            }
-            continue;
-        }
-
-        // 行解析 q_scale：DIST_BRC_B32 单元素广播 Load（读 ub_qs[r] 原 float，位保搬运）
-        RegTensor<float> qs_reg;
-        LoadAlign<float, LoadDist::DIST_BRC_B32>(qs_reg, qs_row + r);
-
         // 行级快速路径 2：全活跃行（整行完全在因果下三角与 sk 尾界内），免除全部掩码计算
         const bool is_pure_active = (is_causal == 0u || token_q >= k_start + block_n - 1) && (k_start + block_n <= sk);
-        if (is_pure_active) {
-            for (uint32_t j = 0; j < block_n; j += 64) {
-                RegTensor<float> val, ks_vec;
-                RegTensor<int32_t> dot_i;
-                LoadAlign(dot_i, dot_row + j);
-                Cast<float, int32_t, toFp32>(val, dot_i, full);   // INT32→FP32 精确 cast（≤2^21 整数域）
-                Mul(val, val, qs_reg, full);                      // · q_scale（行解析，先乘）
-                LoadAlign(ks_vec, k_scale_row + j);
-                Mul(val, val, ks_vec, full);                      // · k_scale[j]（块解析向量）
-                Mul(val, val, sm_reg, full);                      // · sm_scale_log2e（左结合同宿主）
-                StoreAlign(logits_row + j, val, full);
-            }
-            continue;
-        }
 
-        // 行级路径 3：混合行（触碰因果斜线或 sk 尾界），按 64-element chunk 细粒度三态分流
-        RegTensor<float> neg_inf;
-        Duplicate(neg_inf, SAGE_MASK_SENTINEL);
-
-        for (uint32_t j = 0; j < block_n; j += 64) {
-            const uint32_t chunk_start = k_start + j;
-            uint32_t bound_k = sk;
-            if (is_causal != 0u && token_q + 1u < bound_k) {
-                bound_k = token_q + 1u;
-            }
-
-            // Chunk 级态 1：全掩码（因果上三角或超 sk 尾界），跳过点积读取与乘法直接落哨兵
-            if (chunk_start >= bound_k) {
-                StoreAlign(logits_row + j, neg_inf, full);
-                continue;
-            }
-
-            RegTensor<float> val, ks_vec;
-            RegTensor<int32_t> dot_i;
-            LoadAlign(dot_i, dot_row + j);
-            Cast<float, int32_t, toFp32>(val, dot_i, full);
-            Mul(val, val, qs_reg, full);
-            LoadAlign(ks_vec, k_scale_row + j);
-            Mul(val, val, ks_vec, full);
-            Mul(val, val, sm_reg, full);
-
-            // Chunk 级态 2：全活跃（完全在因果下三角与 sk 尾界内），直接写反量化结果
-            if (chunk_start + 64u <= bound_k) {
-                StoreAlign(logits_row + j, val, full);
-                continue;
-            }
-
-            // Chunk 级态 3：混合边界，复用 CATLASS CreateMask 与 UpdateMask 动态尾块硬件掩码生成
-            uint32_t tailN = bound_k - chunk_start;
-            MaskReg pregTailN = UpdateMask<float>(tailN);
-            Select(val, val, neg_inf, pregTailN);
-            StoreAlign(logits_row + j, val, full);
-        }
-    }
-}
-
-/**
- * 4. QK 块极值与局部指数和（R4 行批化）：逐行原 ReduceMax/Exp 链不变。
- *    针对 DaVinci 硬件 VEC 访 UB 必须 32 字节对齐约束（根除 r>0 时 out+r 的 +4 字节
- *    非对齐 StoreAlign 触发硬件 340 异常）：
- *    采用 CANN MicroAPI 标准 StoreUnAlign / StoreUnAlignPost 流式非对齐写原语，
- *    在寄存器中缓冲逐行单元素归约值，满 32 字节（8 float）对齐写出，循环后统一刷回 UB。
- *    行内两级 chunk 循环、ReduceMax/ReduceSum 归约树、掩码哨兵 -1e30 的 Exp 下溢行为逐位同原单行版本。
- */
-__simd_vf__ __aicore__ inline __attribute__((always_inline)) void BlockMaxAndSumRowsVF(__ubuf__ float* logits_base, uint32_t rows, uint32_t block_n,
-                                                 __ubuf__ float* out_max_row, __ubuf__ float* out_sum_row) {
-    using namespace AscendC;
-    using namespace AscendC::MicroAPI;
-    if (rows == 0u) {
-        return;
-    }
-    auto full = CreateMask<float, MaskPattern::ALL>();
-    __ubuf__ float* max_ptr = out_max_row;
-    __ubuf__ float* sum_ptr = out_sum_row;
-    UnalignReg max_store;
-    UnalignReg sum_store;
-
-    for (uint32_t r = 0; r < rows; ++r) {
-        __ubuf__ float* logits = logits_base + r * block_n;
         RegTensor<float> max_val, sum_val;
         Duplicate(max_val, SAGE_MASK_SENTINEL);
         Duplicate(sum_val, 0.0f);
 
-        for (uint32_t col = 0; col < block_n; col += 64) {
-            RegTensor<float> x;
-            LoadAlign(x, logits + col);
-            Max(max_val, max_val, x, full);
+        RegTensor<float> val0;
+        if (is_pure_masked) {
+            val0 = neg_inf;
+            StoreAlign(logits_row, neg_inf, full);
+        } else {
+            // 行解析 q_scale：DIST_BRC_B32 单元素广播 Load（读 ub_qs[r] 原 float，位保搬运）
+            RegTensor<float> qs_reg;
+            LoadAlign<float, LoadDist::DIST_BRC_B32>(qs_reg, qs_row + r);
+            DequantStoreLogitChunkVF(dot_row, logits_row, 0u, qs_reg, k_scale_row, sm_reg, neg_inf,
+                                     token_q, k_start, sk, is_causal, is_pure_active, val0);
+            Max(max_val, max_val, val0, full);
         }
+
+        RegTensor<float> val1;
+        if constexpr (NCHUNK > 1u) {
+            if (is_pure_masked) {
+                val1 = neg_inf;
+                StoreAlign(logits_row + 64u, neg_inf, full);
+            } else {
+                RegTensor<float> qs_reg;
+                LoadAlign<float, LoadDist::DIST_BRC_B32>(qs_reg, qs_row + r);
+                DequantStoreLogitChunkVF(dot_row + 64u, logits_row + 64u, 64u, qs_reg, k_scale_row, sm_reg, neg_inf,
+                                         token_q, k_start, sk, is_causal, is_pure_active, val1);
+                Max(max_val, max_val, val1, full);
+            }
+        }
+
         ReduceMax(max_val, max_val, full);
 
-        // exp2 域 + 448· 放大（twin OnlineBlockExp2Sum 同式，收敛轮 F/DEFECT-F-2）：
-        // cur_sum = Σ 2^(x-m)·448 = 448·Σ Exp((x-m)·ln2)；掩码哨兵 -1e30 经 Exp 下溢自然为 0
-        // CATLASS 950 MicroAPI ExpSub + MulDstAdd 指令级下沉：
-        // 1. max_val 预缩放为自然域 max_nat，内部循环用 ExpSub 熔断减法与指数本征指令；
-        // 2. MulDstAdd 硬件语义 (dst = dst * src0 + src1): nat (dst) * e4m3_max_reg (src0) + sum_val (src1) -> nat，
-        //    消除冗余 x_nat 寄存器分配与中间指令，并入 sum_val 累加器。
         RegTensor<float> max_nat, e4m3_max_reg;
         Muls(max_nat, max_val, INV_LOG2E, full);
         Duplicate(e4m3_max_reg, FP8_E4M3_MAX);
 
-        for (uint32_t col = 0; col < block_n; col += 64) {
-            RegTensor<float> x, nat;
-            LoadAlign(x, logits + col);
-            Muls(x, x, INV_LOG2E, full);
-            ExpSub(nat, x, max_nat, full);
-            MulDstAdd(nat, e4m3_max_reg, sum_val, full);
-            sum_val = nat;
+        ExpSubAccumChunkVF(val0, max_nat, e4m3_max_reg, sum_val);
+        if constexpr (NCHUNK > 1u) {
+            ExpSubAccumChunkVF(val1, max_nat, e4m3_max_reg, sum_val);
         }
         ReduceSum(sum_val, sum_val, full);
 
@@ -415,6 +522,32 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void BlockMaxAndSum
     StoreUnAlignPost(max_ptr, max_store, 0);
     StoreUnAlignPost(sum_ptr, sum_store, 0);
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+}
+
+/**
+ * 4. Logits 瓦片寄存器流式融合原语入口：按 block_n 台账取值域（64/128）编译期分派
+ * 瓦片数 NCHUNK（每行 1 或 2 个 64-lane chunk），block_n > 128 由 host tiling 越界拒绝封顶。
+ * 入口保持普通 __aicore__ inline（非 __simd_vf__）——dav-3510 前端约束"simd_vf 只可
+ * 调用 simd_callee"，simd_vf→simd_vf 跨瓦片数分派调用不合法；普通函数调用 simd_vf 合法。
+ */
+__aicore__ inline __attribute__((always_inline)) void DequantMaskMaxSumRowsVF(
+    __ubuf__ float* logits_dot_base, uint32_t rows,
+    __ubuf__ float* qs_row, __ubuf__ float* k_scale_row,
+    float sm_scale_log2e, uint32_t cur_q_start, uint32_t cur_q_len,
+    uint32_t k_start, uint32_t sk, uint32_t is_causal, uint32_t block_n,
+    __ubuf__ float* out_max_row, __ubuf__ float* out_sum_row) {
+    if (rows == 0u) {
+        return;
+    }
+    if (block_n <= 64u) {
+        DequantMaskMaxSumRowsVFImpl<1u>(logits_dot_base, rows, qs_row, k_scale_row, sm_scale_log2e,
+                                        cur_q_start, cur_q_len, k_start, sk, is_causal, block_n,
+                                        out_max_row, out_sum_row);
+    } else {
+        DequantMaskMaxSumRowsVFImpl<2u>(logits_dot_base, rows, qs_row, k_scale_row, sm_scale_log2e,
+                                        cur_q_start, cur_q_len, k_start, sk, is_causal, block_n,
+                                        out_max_row, out_sum_row);
+    }
 }
 
 /**

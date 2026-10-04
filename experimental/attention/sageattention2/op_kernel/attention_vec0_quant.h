@@ -97,12 +97,13 @@ public:
         }
 
         // C. 逐行量化写 L1
+        Catlass::SageAttn::Sync<HardEvent::S_V>();
         for (uint32_t r = 0; r < total_rows_q && r < MAX_PACK_ROWS; ++r) {
             Catlass::SageAttn::Sync<HardEvent::V_MTE2>();
             const uint32_t g = r / ctx.cur_q_len;
             const uint32_t i = r % ctx.cur_q_len;
             const uint32_t token = ctx.cur_q_start + i;
-            const float scale = ub_scales.GetValue((ctx.cur_g0 + g) * kQScaleSlotStride + quant::QScaleIndex(token, per_thread_q));
+            __ubuf__ float* scale_ptr = ub_scales_ptr + (ctx.cur_g0 + g) * kQScaleSlotStride + quant::QScaleIndex(token, per_thread_q);
             const int64_t row_gm_offset = q_layout(tla::MakeCoord(0u, g, i, 0u)) * static_cast<int64_t>(sizeof(half));
             GlobalTensor<half> gm_row;
             gm_row.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(q_src + row_gm_offset));
@@ -111,7 +112,7 @@ public:
             Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
             dev_vf::QuantRowInt8VF<kDtype>(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
                                            reinterpret_cast<__ubuf__ int8_t*>(ub_out.GetPhyAddr()),
-                                           scale, d, per_thread_q ? 1u : 0u, 0u, nullptr);
+                                           scale_ptr, d, per_thread_q ? 1u : 0u, 0u, nullptr);
             Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
             Catlass::SageAttn::CopyUbToL1(l1_q[r * d], ub_out, d);
             Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
@@ -278,6 +279,8 @@ public:
         Catlass::SageAttn::CopyUbToL1(l1_k_scale, ub_stage_k, STAGE_SLOT_BYTES);
         Catlass::SageAttn::Sync<HardEvent::MTE3_S>();
 
+        Catlass::SageAttn::Sync<HardEvent::S_V>();
+        __ubuf__ float *ub_k_scales_ptr = reinterpret_cast<__ubuf__ float*>(ub_k_scales.GetPhyAddr());
         for (uint32_t j = 0; j < block_n; ++j) {
             Catlass::SageAttn::Sync<HardEvent::V_MTE2>();
             if (j < block_k) {
@@ -287,10 +290,10 @@ public:
                 DataCopy(ub_in, gm_row, d);
                 Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
                 const uint32_t token = cur_k_start + j;
-                const float scale = ub_k_scales.GetValue(quant::KScaleIndex(token, per_thread_k));
+                __ubuf__ float* scale_ptr = ub_k_scales_ptr + quant::KScaleIndex(token, per_thread_k);
                 dev_vf::QuantRowInt8VF<kDtype>(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
                                                reinterpret_cast<__ubuf__ int8_t*>(ub_out.GetPhyAddr()),
-                                               scale, d, per_thread_k ? 1u : 0u, has_km,
+                                               scale_ptr, d, per_thread_k ? 1u : 0u, has_km,
                                                reinterpret_cast<__ubuf__ float*>(ub_km.GetPhyAddr()));
             } else {
                 Duplicate(ub_out, int8_t(0), d);
