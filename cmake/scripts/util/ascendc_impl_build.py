@@ -191,7 +191,7 @@ def get_kernel_source(src_file, dir_snake, dir_ex):
 
 '''
 
-IMPL_API = """
+IMPL_API = r"""
 @tbe_register.register_operator("{}", trans_bool_to_s8=False)
 @para_check.check_op_params({})
 def {}({}, kernel_name="{}"{}):
