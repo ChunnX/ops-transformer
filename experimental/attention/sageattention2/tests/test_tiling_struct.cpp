@@ -4,7 +4,6 @@
 
 #include <iostream>
 #include <cassert>
-#include <cstddef>
 #include <cmath>
 
 #include "../sageattn_fp8/ascendc/tiling.h"

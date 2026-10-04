@@ -55,7 +55,6 @@ def _run_kernel_host_gqa8(q, k, v, km, gran_code, causal):
     t.cores_per_die, t.tasks_per_die = 1, b * hkv * 2 * t.q_blk_num
     tk._LIB.sage_attention2(
         ctypes.c_void_p(q.data_ptr()), ctypes.c_void_p(k.data_ptr()), ctypes.c_void_p(v.data_ptr()),
-        ctypes.c_void_p(km.data_ptr()), ctypes.c_void_p(corr.data_ptr()),
         ctypes.c_void_p(out_pad.data_ptr()), ctypes.c_void_p(lse.data_ptr()),
         None, ctypes.cast(ctypes.byref(t), ctypes.c_void_p),
     )

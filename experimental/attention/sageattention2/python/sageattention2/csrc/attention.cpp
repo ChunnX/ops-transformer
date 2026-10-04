@@ -128,19 +128,6 @@ std::tuple<at::Tensor, c10::optional<at::Tensor>> sageattention2(
     if (return_lse) {
         lse = at::empty({q.size(0), q.size(head_axis), q.size(seq_axis)}, q.options().dtype(at::kFloat));
     }
-    c10::optional<at::Tensor> km_tensor;
-    c10::optional<at::Tensor> lse_corr_tensor;
-    if (smooth_k) {
-        km_tensor = k.mean(seq_axis, /*keepdim=*/false).to(at::kFloat).contiguous();
-        if (return_lse) {
-            const int64_t gqa = q.size(head_axis) / k.size(head_axis);
-            auto q_hnd = (head_axis == 1) ? q : q.transpose(1, 2);  // [B, Hq, Sq, D] 视图
-            auto km_b = km_tensor->repeat_interleave(gqa, /*dim=*/1)
-                            .unsqueeze(2);  // [B, Hq, 1, D] GQA 广播
-            lse_corr_tensor = at::matmul(q_hnd.to(at::kFloat), km_b.to(at::kFloat).transpose(2, 3))
-                                  .squeeze(-1);
-        }
-    }
 
 #if SAGE_NPU_AVAILABLE
     // sm_scale 冻结语义：None 才默认 1/sqrt(D)（显式非法值由 Python 边界与 C 入口拒绝）
@@ -158,7 +145,6 @@ std::tuple<at::Tensor, c10::optional<at::Tensor>> sageattention2(
     const char *accum_cstr = pv_accum_dtype.c_str();
     SAGE_EXEC_NPU_DIRECT(aclnnSageAttention2GetWorkspaceSize, aclnnSageAttention2,
                      q, k, v,
-                     km_tensor, lse_corr_tensor,
                      layout_cstr, is_causal,
                      gran_cstr, scale,
                      accum_cstr,

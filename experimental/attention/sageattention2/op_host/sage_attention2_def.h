@@ -25,8 +25,6 @@ REG_OP(SageAttention2)
     .INPUT(query, TensorType({DT_FLOAT16, DT_BF16}))
     .INPUT(key, TensorType({DT_FLOAT16, DT_BF16}))
     .INPUT(value, TensorType({DT_FLOAT16, DT_BF16}))
-    .OPTIONAL_INPUT(key_mean, TensorType({DT_FLOAT}))
-    .OPTIONAL_INPUT(lse_correction, TensorType({DT_FLOAT}))
     .OUTPUT(output, TensorType({DT_FLOAT16, DT_BF16}))
     .OUTPUT(lse, TensorType({DT_FLOAT}))
     .ATTR(tensor_layout, String, "HND")
@@ -54,8 +52,6 @@ namespace sage_attn2_idx {
 constexpr size_t IN_QUERY = 0;
 constexpr size_t IN_KEY = 1;
 constexpr size_t IN_VALUE = 2;
-constexpr size_t IN_KEY_MEAN = 3;
-constexpr size_t IN_LSE_CORRECTION = 4;
 
 constexpr size_t OUT_OUTPUT = 0;
 constexpr size_t OUT_LSE = 1;

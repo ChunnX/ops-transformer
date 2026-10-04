@@ -23,16 +23,12 @@ namespace l0op {
 OP_TYPE_REGISTER(SageAttention2);
 
 aclnnStatus BuildSage(const aclTensor *q, const aclTensor *k, const aclTensor *v,
-                      const aclTensor *keyMean, const aclTensor *lseCorr,
                       float scale, const char *layout, bool causal, const char *gran,
                       const char *accum, bool smoothK, bool smoothV,
                       const aclTensor *out, const aclTensor *lse, aclOpExecutor *executor)
 {
-    // 可选输入全序 nullptr 占位：OP_INPUT 按位绑定 def 注册序 query,key,value,key_mean,lse_correction，
-    // 空 optional 以 nullptr 占位。OP_ATTR 与 def.cpp 的 7 项属性逐项一致；
-    // return_lse 由 softmaxLse 输出张量是否非空承载。
     return ADD_TO_LAUNCHER_LIST_AICORE(
-        SageAttention2, OP_INPUT(q, k, v, keyMean, lseCorr), OP_OUTPUT(out, lse),
+        SageAttention2, OP_INPUT(q, k, v), OP_OUTPUT(out, lse),
         OP_ATTR(layout, causal, gran, scale, accum, smoothK, smoothV));
 }
 } // namespace l0op
@@ -67,7 +63,6 @@ bool TensorValid(const aclTensor *t)
 
 extern "C" aclnnStatus aclnnSageAttention2GetWorkspaceSize(
     const aclTensor *query, const aclTensor *key, const aclTensor *value,
-    const aclTensor *keyMeanOptional, const aclTensor *lseCorrectionOptional,
     const char *tensorLayout, bool isCausal, const char *qkQuantGran, double smScale,
     const char *pvAccumDtype, bool smoothK, bool smoothV,
     const aclTensor *attentionOut, const aclTensor *softmaxLse,
@@ -109,7 +104,7 @@ extern "C" aclnnStatus aclnnSageAttention2GetWorkspaceSize(
     }
 
     L2_DFX_PHASE_1(aclnnSageAttention2,
-                   DFX_IN(query, key, value, keyMeanOptional, lseCorrectionOptional,
+                   DFX_IN(query, key, value,
                           tensorLayout, isCausal, qkQuantGran, smScale, pvAccumDtype,
                           smoothK, smoothV),
                    DFX_OUT(attentionOut, softmaxLse));
@@ -150,7 +145,7 @@ extern "C" aclnnStatus aclnnSageAttention2GetWorkspaceSize(
         return ACLNN_ERR_INNER_NULLPTR;
     }
     const aclnnStatus ret = l0op::BuildSage(
-        qc, kc, vc, keyMeanOptional, lseCorrectionOptional, static_cast<float>(smScale),
+        qc, kc, vc, static_cast<float>(smScale),
         tensorLayout, isCausal, qkQuantGran, pvAccumDtype, smoothK, smoothV,
         outTensor, lseTensor, owner.get());
     if (ret != ACLNN_SUCCESS) {

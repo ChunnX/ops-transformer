@@ -153,8 +153,6 @@ bool TestRegOpDefinition()
     TEST_ASSERT(ge::op::SageAttention2::name_in_query() == "query", "Must have input: query");
     TEST_ASSERT(ge::op::SageAttention2::name_in_key() == "key", "Must have input: key");
     TEST_ASSERT(ge::op::SageAttention2::name_in_value() == "value", "Must have input: value");
-    TEST_ASSERT(ge::op::SageAttention2::name_in_key_mean() == "key_mean", "Must have optional input: key_mean");
-    TEST_ASSERT(ge::op::SageAttention2::name_in_lse_correction() == "lse_correction", "Must have optional input: lse_correction");
 
     // 验证所有输出张量名称
     TEST_ASSERT(ge::op::SageAttention2::name_out_output() == "output", "Must have output: output");

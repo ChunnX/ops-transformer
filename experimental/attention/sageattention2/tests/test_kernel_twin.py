@@ -152,7 +152,7 @@ def _load_lib():
         + [ctypes.POINTER(ctypes.c_uint)] * 2
     )
     lib.sage_attention2.restype = None
-    lib.sage_attention2.argtypes = [ctypes.c_void_p] * 9
+    lib.sage_attention2.argtypes = [ctypes.c_void_p] * 7
     return lib
 
 
@@ -292,10 +292,8 @@ def _run_kernel_host(case: dict, q: torch.Tensor, k: torch.Tensor, v: torch.Tens
     t.cores_per_die, t.tasks_per_die = 1, b * hkv * t.q_blk_num
 
     km_ptr = ctypes.c_void_p(km.data_ptr()) if km is not None else None
-    corr_ptr = ctypes.c_void_p(corr.data_ptr()) if corr is not None else None
     _LIB.sage_attention2(
         ctypes.c_void_p(qp.data_ptr()), ctypes.c_void_p(kp.data_ptr()), ctypes.c_void_p(vp.data_ptr()),
-        km_ptr, corr_ptr,
         ctypes.c_void_p(out_pad.data_ptr()), ctypes.c_void_p(lse.data_ptr()),
         None, ctypes.cast(ctypes.byref(t), ctypes.c_void_p),
     )

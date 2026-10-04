@@ -16,14 +16,13 @@ extern "C" {
 /**
  * SageAttention2 两段式 aclnn 接口（INT8 QK^T + FP8 PV，前向）。
  * 与 op_host/sage_attention2_def.cpp 的输入/输出/属性注册一一对应：
- * inputs: query, key, value, key_mean(可选), lse_correction(可选)
+ * inputs: query, key, value
  * outputs: output, lse(return_lse=false 时可传 nullptr 语义的占位)
  * attrs: tensor_layout, is_causal, qk_quant_gran, sm_scale, pv_accum_dtype,
  *        smooth_k, smooth_v（顺序与 def 注册一致）
  */
 aclnnStatus aclnnSageAttention2GetWorkspaceSize(
     const aclTensor *query, const aclTensor *key, const aclTensor *value,
-    const aclTensor *keyMeanOptional, const aclTensor *lseCorrectionOptional,
     const char *tensorLayout, bool isCausal, const char *qkQuantGran, double smScale,
     const char *pvAccumDtype, bool smoothK, bool smoothV,
     const aclTensor *attentionOut, const aclTensor *softmaxLse,

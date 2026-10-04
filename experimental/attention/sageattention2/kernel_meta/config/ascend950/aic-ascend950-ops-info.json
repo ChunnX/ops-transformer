@@ -78,20 +78,6 @@
             "paramType":"required",
             "shape":"all"
         },
-        "input3":{
-            "dtype":"float32,float32,float16,float16,float32,float32,float16,float16,float32,float32,float16,float16,float32,float32,float16,float16,float32,float32,float16,float16,float32,float32,float16,float16,float32,float32,float16,float16,float32,float32,float16,float16",
-            "format":"ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
-            "name":"key_mean",
-            "paramType":"optional",
-            "shape":"all"
-        },
-        "input4":{
-            "dtype":"float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32",
-            "format":"ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
-            "name":"lse_correction",
-            "paramType":"optional",
-            "shape":"all"
-        },
         "needCheckSupport":{
             "flag":"false"
         },

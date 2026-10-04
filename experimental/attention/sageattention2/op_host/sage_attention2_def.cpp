@@ -29,21 +29,7 @@ SageAttention2::SageAttention2(const char *name) : OpDef(name)
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
 
-        // 2. 可选平滑与修正输入张量
-        // DEFECT-L-1 同口径：km 内核 float* 直读，位型仅 DT_FLOAT，不得放行 DT_FLOAT16
-        this->Input("key_mean")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_FLOAT})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-
-        this->Input("lse_correction")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_FLOAT})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-
-        // 3. 输出张量
+        // 2. 输出张量
         this->Output("output")
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_FLOAT16, ge::DT_BF16})

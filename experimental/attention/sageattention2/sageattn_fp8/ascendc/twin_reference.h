@@ -32,7 +32,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
-#include <cstring>
 #include <vector>
 
 namespace sage_attn {

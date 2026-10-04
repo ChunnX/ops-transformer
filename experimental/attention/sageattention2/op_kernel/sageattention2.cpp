@@ -203,8 +203,6 @@ public:
         __gm__ uint8_t *query,
         __gm__ uint8_t *key,
         __gm__ uint8_t *value,
-        __gm__ uint8_t *keyMean,
-        __gm__ uint8_t *lseCorrection,
         __gm__ uint8_t *attentionOut,
         __gm__ uint8_t *softmaxLse,
         __gm__ uint8_t *workspace,
@@ -214,8 +212,8 @@ public:
         query_gm_ = query;
         key_gm_ = key;
         value_gm_ = value;
-        key_mean_gm_ = keyMean;
-        lse_correction_gm_ = lseCorrection;
+        key_mean_gm_ = nullptr;
+        lse_correction_gm_ = nullptr;
         out_gm_ = attentionOut;
         lse_gm_ = softmaxLse;
         workspace_gm_ = workspace; // 遵循 CANN 算子签名契约：用户 Workspace 指针经 GetUserWorkspace 直达入口；
@@ -1992,8 +1990,6 @@ struct SageAttnLaunch {
         __gm__ uint8_t *query,
         __gm__ uint8_t *key,
         __gm__ uint8_t *value,
-        __gm__ uint8_t *keyMean,
-        __gm__ uint8_t *lseCorrection,
         __gm__ uint8_t *attentionOut,
         __gm__ uint8_t *softmaxLse,
         __gm__ uint8_t *workspace,
@@ -2001,11 +1997,11 @@ struct SageAttnLaunch {
     {
 #if SAGE_ATTN_DEVICE_COMPILE
         SageAttnKernel<DTYPE_MODE> kernel;
-        kernel.Init(query, key, value, keyMean, lseCorrection, attentionOut, softmaxLse, workspace, tiling_data);
+        kernel.Init(query, key, value, attentionOut, softmaxLse, workspace, tiling_data);
 #else
         (void)workspace;
         SageAttnKernel<DTYPE_MODE> kernel;
-        kernel.Init(query, key, value, keyMean, lseCorrection, attentionOut, softmaxLse, nullptr, tiling_data);
+        kernel.Init(query, key, value, attentionOut, softmaxLse, nullptr, tiling_data);
 #endif
         kernel.Process();
     }
@@ -2015,17 +2011,15 @@ struct SageAttnLaunch {
         __gm__ uint8_t *query,
         __gm__ uint8_t *key,
         __gm__ uint8_t *value,
-        __gm__ uint8_t *keyMean,
-        __gm__ uint8_t *lseCorrection,
         __gm__ uint8_t *attentionOut,
         __gm__ uint8_t *softmaxLse,
         __gm__ uint8_t *workspace,
         const SageAttention2TilingData *tiling_data)
     {
         if (NormDtypeMode(dtype_mode) == kTplDtypeBf16) {
-            Run<kTplDtypeBf16>(query, key, value, keyMean, lseCorrection, attentionOut, softmaxLse, workspace, tiling_data);
+            Run<kTplDtypeBf16>(query, key, value, attentionOut, softmaxLse, workspace, tiling_data);
         } else {
-            Run<kTplDtypeFp16>(query, key, value, keyMean, lseCorrection, attentionOut, softmaxLse, workspace, tiling_data);
+            Run<kTplDtypeFp16>(query, key, value, attentionOut, softmaxLse, workspace, tiling_data);
         }
     }
 };
@@ -2050,8 +2044,6 @@ __global__ __aicore__ void sage_attention2(
     __gm__ uint8_t *query,
     __gm__ uint8_t *key,
     __gm__ uint8_t *value,
-    __gm__ uint8_t *keyMean,
-    __gm__ uint8_t *lseCorrection,
     __gm__ uint8_t *attentionOut,
     __gm__ uint8_t *softmaxLse,
     __gm__ uint8_t *workspace,
@@ -2061,7 +2053,7 @@ __global__ __aicore__ void sage_attention2(
     REGISTER_TILING_DEFAULT(sage_attn::SageAttention2TilingData);
     GET_TILING_DATA_WITH_STRUCT(sage_attn::SageAttention2TilingData, t, tiling);
     __gm__ uint8_t *user_workspace = AscendC::GetUserWorkspace(workspace);
-    sage_attn::SageAttnLaunch::Run<INPUT_DTYPE>(query, key, value, keyMean, lseCorrection,
+    sage_attn::SageAttnLaunch::Run<INPUT_DTYPE>(query, key, value,
                                                 attentionOut, softmaxLse, user_workspace, &t);
 }
 #else
@@ -2069,16 +2061,13 @@ extern "C" __global__ __aicore__ void sage_attention2(
     __gm__ uint8_t *query,
     __gm__ uint8_t *key,
     __gm__ uint8_t *value,
-    __gm__ uint8_t *keyMean,
-    __gm__ uint8_t *lseCorrection,
     __gm__ uint8_t *attentionOut,
     __gm__ uint8_t *softmaxLse,
     __gm__ uint8_t *workspace,
     __gm__ uint8_t *tiling)
 {
-    // 入参顺序契约：INPUT(query,key,value) → OPTIONAL_INPUT(key_mean,lse_correction) →
-    // OUTPUT(output,lse) → workspace → tiling（严格对齐 sage_attention2_def.cpp 注册顺序，
-    // opc autogen 按此顺序生成 launch 调用，缺参/错序报 "requires 8 arguments, but 9"）。
+    // 入参顺序契约：INPUT(query,key,value) → OUTPUT(output,lse) → workspace → tiling
+    //（严格对齐 sage_attention2_def.cpp 注册顺序，标准 7 参数，与 CANN launch 契约完全一致）。
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
 
     // canonical 注册宏（对齐仓内规范；宿主与 KT 编译环境提供等价模拟宏）：
@@ -2092,16 +2081,14 @@ extern "C" __global__ __aicore__ void sage_attention2(
     // M5：裸 bisheng 形态按 tiling.input_dtype 运行时一次分派到模板实例
     //（分派在任务 prologue，热路径零位型分支；canonical 模板档位出包时由
     // 上方模板入口直连，无此运行时归一）
-    sage_attn::SageAttnLaunch::RunByDtype(t.input_dtype, query, key, value, keyMean, lseCorrection,
+    sage_attn::SageAttnLaunch::RunByDtype(t.input_dtype, query, key, value,
                                           attentionOut, softmaxLse, user_workspace, &t);
 #else
     (void)workspace;
-    // 基线 lse_correction 由桥接层算好传入（开源契约），本入口直承 GM 指针，
-    // V1 FinalizeAndStoreOutput 消费（校正启用以指针非空为唯一定义）
     const sage_attn::SageAttention2TilingData *tiling_data =
         reinterpret_cast<const sage_attn::SageAttention2TilingData *>(tiling);
     // M5：宿主/KT 分支保持 tiling.input_dtype 运行时一次分派（测试契约不变）
-    sage_attn::SageAttnLaunch::RunByDtype(tiling_data->input_dtype, query, key, value, keyMean, lseCorrection,
+    sage_attn::SageAttnLaunch::RunByDtype(tiling_data->input_dtype, query, key, value,
                                           attentionOut, softmaxLse, nullptr, tiling_data);
 #endif
 }

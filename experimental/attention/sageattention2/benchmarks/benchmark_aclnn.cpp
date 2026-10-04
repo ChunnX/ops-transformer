@@ -13,7 +13,6 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
-#include <ctime>
 #include <dlfcn.h>
 #include <fstream>
 #include <iomanip>
@@ -175,8 +174,6 @@ typedef aclnnStatus (*SageNativePrepareFn)(
     const aclTensor *query,
     const aclTensor *key,
     const aclTensor *value,
-    const aclTensor *keyMeanOptional,
-    const aclTensor *lseCorrectionOptional,
     const char *tensorLayout,
     bool isCausal,
     const char *qkQuantGran,
@@ -674,7 +671,7 @@ int main(int argc, char **argv) {
                 // per_thread + fp32+fp16 + smooth_k=true（真实 keyMean 入参，
                 // 与桥接层 python/sageattention2/csrc/attention.cpp 交付路径一致；
                 // lseCorrection 仅 return_lse 路径需要，此处恒为 nullptr）
-                CheckAcl(dispatcher.sageNativePrepare(q.handle, k.handle, v.handle, keyMean.handle, nullptr,
+                CheckAcl(dispatcher.sageNativePrepare(q.handle, k.handle, v.handle,
                                                      "HND", cfg.causal, "per_thread", smScale,
                                                      "fp32+fp16", true,
                                                      cfg.smoothV, out.handle, nullptr, &wsBytes, &exec),

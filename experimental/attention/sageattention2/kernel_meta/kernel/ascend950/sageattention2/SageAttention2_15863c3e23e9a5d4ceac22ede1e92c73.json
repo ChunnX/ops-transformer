@@ -15,10 +15,9 @@
   null,
   null,
   null,
-  null,
   null
  ],
- "sha256": "ce30be26a533f0e7deae52136248d176acfb9092f18cc31bd9101ac62731108f",
+ "sha256": "4e328e74e0eb1bce6269007fe9bb9682d3087e33507bf1e16d9b947e7211d63f",
  "workspace": {
   "num": 1,
   "size": [
@@ -91,28 +90,6 @@
     "dtype": "float16",
     "format": "ND",
     "paramType": "required",
-    "shape": [
-     -2
-    ],
-    "format_match_mode": "FormatAgnostic"
-   },
-   {
-    "name": "key_mean",
-    "index": 3,
-    "dtype": "float32",
-    "format": "ND",
-    "paramType": "optional",
-    "shape": [
-     -2
-    ],
-    "format_match_mode": "FormatAgnostic"
-   },
-   {
-    "name": "lse_correction",
-    "index": 4,
-    "dtype": "float32",
-    "format": "ND",
-    "paramType": "optional",
     "shape": [
      -2
     ],

@@ -2,7 +2,6 @@
 #define SAGE_ATTN_FP8_ASCENDC_TILING_H
 
 #include <cstdint>
-#include <cstddef>
 
 // 官方 CATLASS 容量常量一致性锁：本头文件保持零依赖基座（被 quant 裸编译等无
 // CATLASS -I 场景包含），容量取白皮书字面量；与官方 Catlass::Arch::Ascend950 的

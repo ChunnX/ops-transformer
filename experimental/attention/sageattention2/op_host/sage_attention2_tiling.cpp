@@ -145,7 +145,7 @@ static ge::graphStatus TilingSageAttention2(gert::TilingContext *context)
         layout_code,
         (smooth_k != nullptr) ? *smooth_k : true,
         smooth_v_val,
-        context->GetInputShape(sage_attn2_idx::IN_KEY_MEAN) != nullptr, // has_key_mean 实况
+        false, // has_key_mean 实况（标准 7 参收敛，无独立输入张量）
         context->GetOutputShape(sage_attn2_idx::OUT_LSE) != nullptr,   // has_lse 实况
         tiling_data,
         workspace_bytes);

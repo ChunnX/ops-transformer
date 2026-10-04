@@ -44,28 +44,6 @@
             -2
           ],
           "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "key_mean",
-          "index": 3,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "lse_correction",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
         }
       ],
       "outputs": [
@@ -177,28 +155,6 @@
           "dtype": "float16",
           "format": "ND",
           "paramType": "required",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "key_mean",
-          "index": 3,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "lse_correction",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
           "shape": [
             -2
           ],
@@ -318,28 +274,6 @@
             -2
           ],
           "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "key_mean",
-          "index": 3,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "lse_correction",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
         }
       ],
       "outputs": [
@@ -451,28 +385,6 @@
           "dtype": "bfloat16",
           "format": "ND",
           "paramType": "required",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "key_mean",
-          "index": 3,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "lse_correction",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
           "shape": [
             -2
           ],
@@ -592,28 +504,6 @@
             -2
           ],
           "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "key_mean",
-          "index": 3,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "lse_correction",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
         }
       ],
       "outputs": [
@@ -725,28 +615,6 @@
           "dtype": "bfloat16",
           "format": "ND",
           "paramType": "required",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "key_mean",
-          "index": 3,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "lse_correction",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
           "shape": [
             -2
           ],
@@ -866,28 +734,6 @@
             -2
           ],
           "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "key_mean",
-          "index": 3,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "lse_correction",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
         }
       ],
       "outputs": [
@@ -999,28 +845,6 @@
           "dtype": "float16",
           "format": "ND",
           "paramType": "required",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "key_mean",
-          "index": 3,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "lse_correction",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
           "shape": [
             -2
           ],
@@ -1140,28 +964,6 @@
             -2
           ],
           "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "key_mean",
-          "index": 3,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "lse_correction",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
         }
       ],
       "outputs": [
@@ -1273,28 +1075,6 @@
           "dtype": "float16",
           "format": "ND",
           "paramType": "required",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "key_mean",
-          "index": 3,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "lse_correction",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
           "shape": [
             -2
           ],
@@ -1414,28 +1194,6 @@
             -2
           ],
           "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "key_mean",
-          "index": 3,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "lse_correction",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
         }
       ],
       "outputs": [
@@ -1547,28 +1305,6 @@
           "dtype": "bfloat16",
           "format": "ND",
           "paramType": "required",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "key_mean",
-          "index": 3,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "lse_correction",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
           "shape": [
             -2
           ],
@@ -1688,28 +1424,6 @@
             -2
           ],
           "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "key_mean",
-          "index": 3,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "lse_correction",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
         }
       ],
       "outputs": [
@@ -1821,28 +1535,6 @@
           "dtype": "bfloat16",
           "format": "ND",
           "paramType": "required",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "key_mean",
-          "index": 3,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "lse_correction",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
           "shape": [
             -2
           ],
@@ -1962,28 +1654,6 @@
             -2
           ],
           "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "key_mean",
-          "index": 3,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "lse_correction",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
         }
       ],
       "outputs": [
@@ -2095,28 +1765,6 @@
           "dtype": "float16",
           "format": "ND",
           "paramType": "required",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "key_mean",
-          "index": 3,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "lse_correction",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
           "shape": [
             -2
           ],
