@@ -1171,6 +1171,8 @@ __simd_vf__ void GetKVPhyAddrVFImpl(__ubuf__ uint32_t* kvPhyAddrUb, __ubuf__ int
     Reg::MaskReg add_carry_h_2;
     Reg::MaskReg preg_tail_neg_1_b32;
     Reg::MaskReg preg_tail_neg_2_b32;
+    Reg::MaskReg preg_neg_idx_1;
+    Reg::MaskReg preg_neg_idx_2;
 
     Reg::RegTensor<uint32_t> vreg_kvStride;
     Reg::RegTensor<uint32_t> vreg_sparse_idx_1;
@@ -1203,7 +1205,9 @@ __simd_vf__ void GetKVPhyAddrVFImpl(__ubuf__ uint32_t* kvPhyAddrUb, __ubuf__ int
     Reg::RegTensor<uint32_t> vreg_total_offset_H_2;
 
     Reg::RegTensor<uint32_t> vreg_zero;
+    Reg::RegTensor<uint32_t> vreg_invalid;
     Reg::Duplicate(vreg_zero, 0);
+    Reg::Duplicate(vreg_invalid, inValidValue);
     Reg::Duplicate(vreg_kvStride, kvStride);
 
     for (; s2Loop > 1;) {
@@ -1212,6 +1216,9 @@ __simd_vf__ void GetKVPhyAddrVFImpl(__ubuf__ uint32_t* kvPhyAddrUb, __ubuf__ int
                                                               sparseIdxUb + i * s2NumPerLoop);
             Reg::LoadAlign<int32_t, Reg::LoadDist::DIST_NORM>((Reg::RegTensor<int32_t>&)vreg_sparse_idx_2,
                                                               sparseIdxUb + s2NumPerReg + i * s2NumPerLoop);
+            // 原始 sparse 下标为 -1 的车道，物理地址高低 32 位都保持 0xFFFFFFFF
+            Reg::Compare<uint32_t, CMPMODE::EQ>(preg_neg_idx_1, vreg_sparse_idx_1, vreg_invalid, preg_all_b32);
+            Reg::Compare<uint32_t, CMPMODE::EQ>(preg_neg_idx_2, vreg_sparse_idx_2, vreg_invalid, preg_all_b32);
             // * sparseBlockSize
             Reg::Muls(vreg_sparse_idx_1, vreg_sparse_idx_1, sparseBlockSize, preg_all_b32);
             Reg::Muls(vreg_sparse_idx_2, vreg_sparse_idx_2, sparseBlockSize, preg_all_b32);
@@ -1247,6 +1254,10 @@ __simd_vf__ void GetKVPhyAddrVFImpl(__ubuf__ uint32_t* kvPhyAddrUb, __ubuf__ int
                       preg_all_b32);
             Reg::AddC(add_carry_h_2, vreg_total_offset_H_2, vreg_mul_overflow_L_2, vreg_zero, add_carry_l_2,
                       preg_all_b32);
+            Reg::Duplicate<uint32_t, Reg::MaskMergeMode::MERGING>(vreg_total_offset_L_1, inValidValue, preg_neg_idx_1);
+            Reg::Duplicate<uint32_t, Reg::MaskMergeMode::MERGING>(vreg_total_offset_H_1, inValidValue, preg_neg_idx_1);
+            Reg::Duplicate<uint32_t, Reg::MaskMergeMode::MERGING>(vreg_total_offset_L_2, inValidValue, preg_neg_idx_2);
+            Reg::Duplicate<uint32_t, Reg::MaskMergeMode::MERGING>(vreg_total_offset_H_2, inValidValue, preg_neg_idx_2);
 
             // 搬出 由于拆分为了int32类型，元素个数翻倍
             Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_INTLV_B32>(
@@ -1270,6 +1281,9 @@ __simd_vf__ void GetKVPhyAddrVFImpl(__ubuf__ uint32_t* kvPhyAddrUb, __ubuf__ int
                                                           sparseIdxUb + i * s2NumPerLoop);
         Reg::LoadAlign<int32_t, Reg::LoadDist::DIST_NORM>((Reg::RegTensor<int32_t>&)vreg_sparse_idx_2,
                                                           sparseIdxUb + s2NumPerReg + i * s2NumPerLoop);
+        // 只在本拍有效尾数里识别原始 -1，尾部之外仍由下面的 tail mask 填 -1
+        Reg::Compare<uint32_t, CMPMODE::EQ>(preg_neg_idx_1, vreg_sparse_idx_1, vreg_invalid, preg_tail_1_b32);
+        Reg::Compare<uint32_t, CMPMODE::EQ>(preg_neg_idx_2, vreg_sparse_idx_2, vreg_invalid, preg_tail_2_b32);
         // * sparseBlockSize
         Reg::Muls(vreg_sparse_idx_1, vreg_sparse_idx_1, sparseBlockSize, preg_tail_1_b32);
         Reg::Muls(vreg_sparse_idx_2, vreg_sparse_idx_2, sparseBlockSize, preg_tail_2_b32);
@@ -1306,7 +1320,11 @@ __simd_vf__ void GetKVPhyAddrVFImpl(__ubuf__ uint32_t* kvPhyAddrUb, __ubuf__ int
         Reg::AddC(add_carry_h_2, vreg_total_offset_H_2, vreg_mul_overflow_L_2, vreg_zero, add_carry_l_2,
                   preg_tail_2_b32);
 
-        // 无效值填充-1(0xFFFFFFFF)
+        // 原始 sparse 下标为 -1 的位置，以及有效尾数之外的车道，都输出 int64 -1
+        Reg::Duplicate<uint32_t, Reg::MaskMergeMode::MERGING>(vreg_total_offset_L_1, inValidValue, preg_neg_idx_1);
+        Reg::Duplicate<uint32_t, Reg::MaskMergeMode::MERGING>(vreg_total_offset_H_1, inValidValue, preg_neg_idx_1);
+        Reg::Duplicate<uint32_t, Reg::MaskMergeMode::MERGING>(vreg_total_offset_L_2, inValidValue, preg_neg_idx_2);
+        Reg::Duplicate<uint32_t, Reg::MaskMergeMode::MERGING>(vreg_total_offset_H_2, inValidValue, preg_neg_idx_2);
         Reg::Duplicate<uint32_t, Reg::MaskMergeMode::MERGING>(vreg_total_offset_L_1, inValidValue, preg_tail_neg_1_b32);
         Reg::Duplicate<uint32_t, Reg::MaskMergeMode::MERGING>(vreg_total_offset_H_1, inValidValue, preg_tail_neg_1_b32);
         Reg::Duplicate<uint32_t, Reg::MaskMergeMode::MERGING>(vreg_total_offset_L_2, inValidValue, preg_tail_neg_2_b32);
