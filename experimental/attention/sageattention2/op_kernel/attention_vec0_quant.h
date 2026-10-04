@@ -545,7 +545,7 @@ public:
         LoadAndQuantizeQ(ctx, ctx.query_gm + q_gm_offset * sizeof(uint16_t), q_layout);
 
         // 通知 Cube：Q 量化常驻已就位
-        AttentionSync::Vec0SignalQReady();
+        AttentionSync::V0SignalQReady();
 
         const uint32_t active_kv_blocks = ctx.active_kv_blocks;
 
@@ -554,8 +554,8 @@ public:
             bool is_ping = ((k % 2) == 0);
             uint32_t l1_dst_offset = is_ping ? SlotL1KvPing::Offset() : SlotL1KvPong::Offset();
 
-            // 缓冲回收握手：k >= 2 时等待 Cube 释放该槽
-            AttentionSync::Vec0WaitKvFree(k, is_ping);
+            // 缓冲回收握手：首两拍由预置 Token 直接通行，后续拍严格受 Cube 消费进度回压
+            AttentionSync::V0WaitKvFree(is_ping);
 
             int64_t sk_start = static_cast<int64_t>(k) * ctx.block_n;
             uint32_t cur_block_k = ctx.CurBlockK(k);
@@ -578,18 +578,8 @@ public:
                                   l1_dst_offset + Catlass::SageAttn::L1DoubleBankContract::KV_V_SUB_OFFSET,
                                   k, cur_block_k, kv_layout);
 
-            AttentionSync::Vec0SignalKvReady(is_ping, k);
+            AttentionSync::V0SignalKvReady(is_ping);
         }
-
-#if SAGE_ATTN_DEVICE_COMPILE
-        // 退域补等：消费 Cube 末尾释放的未用 KV 槽许可，保证跨任务波次 Flag 净余量恒为零
-        if (active_kv_blocks >= 1) {
-            AttentionSync::Vec0DrainKvPingFree();
-        }
-        if (active_kv_blocks >= 2) {
-            AttentionSync::Vec0DrainKvPongFree();
-        }
-#endif
     }
 
     __aicore__ inline __attribute__((always_inline)) void ProcessStandalone(const TaskContext &ctx)

@@ -296,16 +296,15 @@ __aicore__ inline __attribute__((always_inline)) void ProcessVec1(
 
 #if SAGE_ATTN_DEVICE_COMPILE
         if (k > 0) {
-            AttentionSync::Vec1WaitPartialReady();
+            AttentionSync::V1WaitPartialReady();
             output.MergePartialRows(ctx);
-            AttentionSync::Vec1ReleasePartialFree();
+            AttentionSync::V1ReleasePartialFree();
         }
 #endif
 
-        if (k >= 2) {
-            AttentionSync::Vec1WaitSoftmaxFree(is_ping);
-        }
-        AttentionSync::Vec1WaitQkReady();
+        // 等待当前槽位可用（首两拍由预置 Token 直接通行）
+        AttentionSync::V1WaitSoftmaxFree(is_ping);
+        AttentionSync::V1WaitQkReady();
 
 #if SAGE_ATTN_DEVICE_COMPILE
         if (k == 0) {
@@ -320,29 +319,22 @@ __aicore__ inline __attribute__((always_inline)) void ProcessVec1(
         output.AccumulatePvBlockTwin(ctx, k, block_k, softmax.GetRowStates());
 #endif
 
-        // 仅在后续拍仍有 QK dot32 时释放许可（Cube 仅等待 N-1 拍，保证跨任务净余量为零）
-        if (k + 1 < active_kv_blocks) {
-            AttentionSync::Vec1ReleaseDotFree();
-        }
-        AttentionSync::Vec1SignalSoftmaxReady(is_ping);
+        // 读毕当前 dot32 立即归还缓冲给 Cube
+        AttentionSync::V1ReleaseDotFree();
+        AttentionSync::V1SignalSoftmaxReady(is_ping);
     }
 
 #if SAGE_ATTN_DEVICE_COMPILE
+    // Drain 拍：接收并累加最后一拍的 PV 部分和，并归还许可
     if (active_kv_blocks > 0) {
-        AttentionSync::Vec1WaitPartialReady();
+        AttentionSync::V1WaitPartialReady();
         output.MergePartialRows(ctx);
-        // 注意：Drain 拍为最后一块 partial，Cube 后续不再发射 PV，不再需要释放 PartialFree 许可
+        AttentionSync::V1ReleasePartialFree();
     }
 #endif
 
-    AttentionSync::Vec1WaitPvDone();
+    AttentionSync::V1WaitPvDone();
     output.FinalizeAndStore(ctx, softmax.GetRowStates());
-    if (active_kv_blocks >= 1) {
-        AttentionSync::Vec1DrainSoftmaxPingFree();
-    }
-    if (active_kv_blocks >= 2) {
-        AttentionSync::Vec1DrainSoftmaxPongFree();
-    }
 }
 
 /**
@@ -488,6 +480,8 @@ public:
                 DecodeTask(mapped_task, q_blks_per_head);
             }
 
+            AttentionSync::InitSyncTokens();
+
 #if SAGE_ATTN_DEVICE_COMPILE
             if ASCEND_IS_AIC {
                 CubeBlockParams p{ctx_.TotalRows(), ctx_.block_n, ctx_.d};
@@ -507,6 +501,8 @@ public:
                           SlotV1Dot32::Offset(), SlotV1PvPartial::Offset());
             ProcessVec1(ctx_, softmax_, output_);
 #endif
+
+            AttentionSync::ReleaseSyncTokens();
         }
     }
 
