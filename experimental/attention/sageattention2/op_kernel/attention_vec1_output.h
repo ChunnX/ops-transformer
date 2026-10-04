@@ -387,7 +387,10 @@ public:
         uint32_t q_blks_per_head = ::CeilDiv(ctx_.sq, ctx_.m_per_core);
         uint32_t total_tasks = ctx_.b * ctx_.hkv * ctx_.gqa_chunks * q_blks_per_head;
         uint32_t cores = ctx_.tiling->core_num_used;
-        bool use_die = (ctx_.tiling->enable_die_affinity != 0) && (cores % 2u == 0u);
+        // Host 判据 b·hkv 偶 ⇒ total_tasks 恒偶；此处防御性复核奇偶与极小域，
+        // host 判据若回归则静默退化为全量边界，绝不进入丢尾任务的契约域外分支。
+        bool use_die = (ctx_.tiling->enable_die_affinity != 0) && (cores % 2u == 0u) &&
+                       (total_tasks >= 2u) && (total_tasks % 2u == 0u);
 
         task_end_ = DieTaskEnd(total_tasks, ctx_.core_idx, cores, use_die);
         if (ctx_.core_idx >= task_end_) {
@@ -458,7 +461,10 @@ public:
         uint32_t q_blks_per_head = ::CeilDiv(ctx_.sq, ctx_.m_per_core);
         uint32_t total_tasks = ctx_.b * ctx_.hkv * ctx_.gqa_chunks * q_blks_per_head;
         uint32_t cores = ctx_.tiling->core_num_used;
-        bool use_die = (ctx_.tiling->enable_die_affinity != 0) && (cores % 2u == 0u);
+        // Host 判据 b·hkv 偶 ⇒ total_tasks 恒偶；此处防御性复核奇偶与极小域，
+        // host 判据若回归则静默退化为全量边界，绝不进入丢尾任务的契约域外分支。
+        bool use_die = (ctx_.tiling->enable_die_affinity != 0) && (cores % 2u == 0u) &&
+                       (total_tasks >= 2u) && (total_tasks % 2u == 0u);
         const uint64_t task_end = DieTaskEnd(total_tasks, ctx_.core_idx, cores, use_die);
 
         for (uint64_t virtual_task = ctx_.core_idx; virtual_task < task_end; virtual_task += cores) {

@@ -300,11 +300,12 @@ void TestDieAffinityContract() {
     static_assert(sage_attn::DieTaskEnd(16, 8, 32, true) == 8,
                   "partial wave must retire Die 0 cores beyond the local task count");
 
-    // 生产域穷举：偶数任务总数 × {满配 32 核 / 28 核减配 / 小网格}，验证三点：
+    // 生产域穷举：偶数任务总数 × 全部偶数核网格（2..32 全覆盖，含满配/减配/小网格），验证三点：
     // (1) 双射性：每个虚拟任务恰好被一个物理核执行一次，[0, total) 无遗漏无重复；
     // (2) Die 半分不变量：Die 0 (核 [0, cores/2)) 只触达 [0, total/2)，Die 1 只触达后半；
     // (3) Die 内负载均衡：同一 Die 各活跃核任务数相差不超过 1，且两 Die 各承担一半。
-    const uint32_t core_grids[] = {2u, 4u, 16u, 28u, 32u};
+    const uint32_t core_grids[] = {2u, 4u, 6u, 8u, 10u, 12u, 14u, 16u,
+                                   18u, 20u, 22u, 24u, 26u, 28u, 30u, 32u};
     const uint64_t totals[] = {2ull, 14ull, 16ull, 28ull, 64ull, 128ull, 1024ull};
     for (uint32_t cores : core_grids) {
         for (uint64_t total : totals) {
@@ -358,6 +359,7 @@ void TestDieAffinityContract() {
         for (uint64_t bh = 0; bh < kTotal / kBlock; ++bh) {
             const uint32_t first = exec_die[static_cast<size_t>(bh * kBlock)];
             for (uint64_t t = bh * kBlock + 1; t < (bh + 1) * kBlock; ++t) {
+                assert(exec_die[static_cast<size_t>(t)] != 2u);  // 哨兵：防全核空转退化下比较恒真
                 assert(exec_die[static_cast<size_t>(t)] == first);
             }
         }
