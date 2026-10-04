@@ -10,9 +10,11 @@ required cases P-01..P-07 (task doc 基准用例；唯一用例表 ./benchmarks/
 
 FIA 基线调用配方固化自任务书「最小调用示例」与 task/06_benchmark.md「FIA 基线
 采集」：input_layout="BNSD"（与本算子 HND 同构，双方共享同一物理张量，无转置拷贝）、
-pre_tokens=65535、next_tokens=65535、scale=1/sqrt(D)；因果 case P-03 叠加官方
-perf harness 因果配方 sparse_mode=2 + 2048x2048 triu bool 掩码（task/06_benchmark.md
-因果配方条目，与 sparse_mode=3 配方语义等价）。
+pre_tokens=65535、next_tokens=65535、scale=1/sqrt(D)；因果 case P-03 叠加
+sparse_mode=2 + 2048x2048 triu bool 掩码（task/06_benchmark.md 因果配方条目：
+官方 perf harness 的 causal 实配是 sparse_mode=2 + next_tokens=0、不传掩码，
+2048 优化掩码出自其中 sparse_mode=3 配方——V5 文档要求 sparse_mode=2/3 均配
+2048x2048 优化模板；Sq == Sk 时与 sparse_mode=3 配方语义等价）。
 
 无 torch/torch_npu 或无 NPU 设备时打印明确跳过信息并以退出码 0 结束（CI-off
 机器冒烟）；在 NPU 上则严格模式，任何失败直接抛出。
