@@ -286,7 +286,8 @@ static_assert(alignof(SageAttention2TilingData) == 32, "SageAttention2TilingData
  * 纯简洁整数运算与移位，保证微秒级发射时延与纳秒级内核解码
  *
  * @param task 虚拟任务索引 (wave * cores + core)
- * @param total 任务总数 (b * hkv * q_blks)
+ * @param total 任务总数 (b * hkv * gqa_chunk * q_blks，4D 口径与 DecodeTask 解码一致；
+ *         唯一生产消费方 op_kernel Process 的 total_tasks 恒含 GQA chunk 因子)
  * @param cores 参与调度的核心总数 (必须为偶数，如 32 或 28)
  * @return 物理亲和后的实际任务索引
  */
