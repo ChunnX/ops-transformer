@@ -391,23 +391,20 @@ public:
         ctx_.pack_heads = (ctx_.gqa_ratio < pack_cap) ? ctx_.gqa_ratio : pack_cap;
         ctx_.gqa_chunks = (ctx_.pack_heads > 0u) ? ::CeilDiv(ctx_.gqa_ratio, ctx_.pack_heads) : 1u;
 
-        uint32_t q_blks_per_head = ::CeilDiv(ctx_.sq, ctx_.m_per_core);
-        uint32_t total_tasks = ctx_.b * ctx_.hkv * ctx_.gqa_chunks * q_blks_per_head;
-        uint32_t cores = ctx_.tiling->core_num_used;
-        // Host 判据 b·hkv 偶 ⇒ total_tasks 恒偶；此处防御性复核奇偶与极小域，
-        // host 判据若回归则静默退化为全量边界，绝不进入丢尾任务的契约域外分支。
-        bool use_die = (ctx_.tiling->enable_die_affinity != 0) && (cores % 2u == 0u) &&
-                       (total_tasks >= 2u) && (total_tasks % 2u == 0u);
+        q_blks_per_head_ = ::CeilDiv(ctx_.sq, ctx_.m_per_core);
+        total_tasks_ = ctx_.b * ctx_.hkv * ctx_.gqa_chunks * q_blks_per_head_;
+        cores_ = ctx_.tiling->core_num_used;
+        use_die_ = (ctx_.tiling->enable_die_affinity != 0);
 
-        task_end_ = DieTaskEnd(total_tasks, ctx_.core_idx, cores, use_die);
+        task_end_ = DieTaskEnd(total_tasks_, ctx_.core_idx, cores_, use_die_);
         if (ctx_.core_idx >= task_end_) {
             is_active_core_ = false;
             return;
         }
         is_active_core_ = true;
 
-        uint64_t initial_task = use_die ? DieTask(ctx_.core_idx, total_tasks, cores) : ctx_.core_idx;
-        DecodeTask(initial_task, q_blks_per_head);
+        uint64_t initial_task = use_die_ ? DieTask(ctx_.core_idx, total_tasks_, cores_) : ctx_.core_idx;
+        DecodeTask(initial_task, q_blks_per_head_);
 
 #if !SAGE_ATTN_DEVICE_COMPILE
         if (sim_mem_ == nullptr) {
@@ -465,19 +462,10 @@ public:
             return;
         }
 
-        uint32_t q_blks_per_head = ::CeilDiv(ctx_.sq, ctx_.m_per_core);
-        uint32_t total_tasks = ctx_.b * ctx_.hkv * ctx_.gqa_chunks * q_blks_per_head;
-        uint32_t cores = ctx_.tiling->core_num_used;
-        // Host 判据 b·hkv 偶 ⇒ total_tasks 恒偶；此处防御性复核奇偶与极小域，
-        // host 判据若回归则静默退化为全量边界，绝不进入丢尾任务的契约域外分支。
-        bool use_die = (ctx_.tiling->enable_die_affinity != 0) && (cores % 2u == 0u) &&
-                       (total_tasks >= 2u) && (total_tasks % 2u == 0u);
-        const uint64_t task_end = DieTaskEnd(total_tasks, ctx_.core_idx, cores, use_die);
-
-        for (uint64_t virtual_task = ctx_.core_idx; virtual_task < task_end; virtual_task += cores) {
+        for (uint64_t virtual_task = ctx_.core_idx; virtual_task < task_end_; virtual_task += cores_) {
             if (virtual_task > ctx_.core_idx) {
-                uint64_t mapped_task = use_die ? DieTask(virtual_task, total_tasks, cores) : virtual_task;
-                DecodeTask(mapped_task, q_blks_per_head);
+                uint64_t mapped_task = use_die_ ? DieTask(virtual_task, total_tasks_, cores_) : virtual_task;
+                DecodeTask(mapped_task, q_blks_per_head_);
             }
 
             AttentionSync::InitSyncTokens();
@@ -540,25 +528,15 @@ public:
         output_.FinalizeAndStore(ctx_, softmax_.GetRowStates());
     }
 
-    __aicore__ inline __attribute__((always_inline)) void TestVec0NormalProcess()
-    {
-        if (!is_active_core_) return;
-        vec0_.Process(ctx_);
-    }
-
-    __aicore__ inline __attribute__((always_inline)) void TestCubeVec0Handshake()
-    {
-        if (!is_active_core_) return;
-        CubeBlockParams p{ctx_.TotalRows(), ctx_.block_n, ctx_.d};
-        cube_.TestProcessWithVec0(p, ctx_.active_kv_blocks, ctx_.tiling->l1_q_offset,
-                                 SlotV1Dot32::Offset(), SlotV1PvPartial::Offset());
-    }
-
     __aicore__ inline const TaskContext &GetContext() const { return ctx_; }
 
 private:
     TaskContext ctx_;
     uint64_t task_end_{0};
+    uint32_t total_tasks_{0};
+    uint32_t q_blks_per_head_{1};
+    uint32_t cores_{1};
+    bool use_die_{false};
     bool is_active_core_{false};
 
     AttentionCube cube_;

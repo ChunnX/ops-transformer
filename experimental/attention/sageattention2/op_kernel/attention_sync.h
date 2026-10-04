@@ -86,7 +86,7 @@ public:
                 // Vector 0 回收由 Cube 预置的未用 Token
                 AscendC::CrossCoreWaitFlag<MODE, PIPE_MTE3>(SyncFlags::KV_PING_FREE);
                 AscendC::CrossCoreWaitFlag<MODE, PIPE_MTE3>(SyncFlags::KV_PONG_FREE);
-            } else if (AscendC::GetSubBlockIdx() == 1) {
+            } else {
                 // Vector 1 回收由 Cube 预置的未用 Token
                 AscendC::CrossCoreWaitFlag<MODE, PIPE_MTE3>(SyncFlags::S_PING_FREE);
                 AscendC::CrossCoreWaitFlag<MODE, PIPE_MTE3>(SyncFlags::S_PONG_FREE);

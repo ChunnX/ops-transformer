@@ -165,42 +165,6 @@ public:
 #endif
     }
 
-    __aicore__ inline __attribute__((always_inline)) void TestProcessWithVec0(
-        const CubeBlockParams &params,
-        uint32_t active_kv_blocks,
-        uint32_t l1_q_offset,
-        uint32_t ub_dot32_offset,
-        uint32_t ub_pv_partial_offset)
-    {
-#if SAGE_ATTN_DEVICE_COMPILE
-        (void)ub_dot32_offset;
-        (void)ub_pv_partial_offset;
-        Catlass::SageAttn::SageQkMmad<> qk_mmad;
-
-        // 1. 等待 V0 完成 Q 量化
-        AttentionSync::CubeWaitQReady();
-        qk_mmad.LoadL0A(l1_q_offset, params.rows, params.d);
-        Catlass::SageAttn::Sync<HardEvent::MTE1_M>();
-
-        for (uint32_t k = 0; k < active_kv_blocks; ++k) {
-            bool is_ping = ((k % 2) == 0);
-            uint32_t l1_kv_addr = is_ping ? SlotL1KvPing::Offset() : SlotL1KvPong::Offset();
-
-            // 2. 等待 V0 完成 KV 量化
-            AttentionSync::CubeWaitKvReady(is_ping);
-
-            qk_mmad.LoadL0B(l1_kv_addr, params.block_n, params.d);
-            Catlass::SageAttn::Sync<HardEvent::MTE1_M>();
-            qk_mmad.Compute(true);
-            Catlass::SageAttn::Sync<HardEvent::M_FIX>();
-
-            // 3. 释放 KV_FREE 给 V0
-            AttentionSync::CubeReleaseKvFree(is_ping);
-        }
-#else
-        (void)params; (void)active_kv_blocks; (void)l1_q_offset; (void)ub_dot32_offset; (void)ub_pv_partial_offset;
-#endif
-    }
 
 private:
 #if SAGE_ATTN_DEVICE_COMPILE
