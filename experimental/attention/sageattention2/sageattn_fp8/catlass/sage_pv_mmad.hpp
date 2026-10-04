@@ -60,15 +60,13 @@ public:
     __aicore__ inline __attribute__((always_inline)) SagePvMmad() = default;
 
     /**
-     * 加载 Softmax 概率矩阵 S 分块至 L0A（从 UB 奇偶槽搬运，ND 行布局）。
-     * 不走官方 TileCopyTla——其 L1 侧 zN 分形布局强约束与本算子 V1 产出的
-     * UB 行布局不匹配（布局契约见 sage_tile.hpp 头注释），保留 LoadTile2D 单点。
+     * 加载 Softmax 概率矩阵 S(P) 分块至 L0A（从 L1 Bank 0 奇偶双缓冲槽搬运至 L0A）。
      */
     __aicore__ inline __attribute__((always_inline)) void LoadL0A(uint32_t s_addr, uint32_t m, uint32_t k) {
         m_ = m;
         k_ = k;
         // L0 寻址恒为基址 0（单缓冲无分片，原 l0a/l0b 基址参数全调用域恒 0，死参清理）
-        LoadTile2D<ElementA, AscendC::TPosition::A2, AscendC::TPosition::VECIN>(0U, s_addr, m, k);
+        LoadTile2D<ElementA, AscendC::TPosition::A2, AscendC::TPosition::A1>(0U, s_addr, m, k);
     }
 
     /**

@@ -113,7 +113,7 @@ public:
                                            reinterpret_cast<__ubuf__ int8_t*>(ub_out.GetPhyAddr()),
                                            scale, d, per_thread_q ? 1u : 0u, 0u, nullptr);
             Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
-            Catlass::SageAttn::CopyUbRowToL1(l1_q[r * d], ub_out, d);
+            Catlass::SageAttn::CopyUbToL1(l1_q[r * d], ub_out, d);
             Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
         }
 
@@ -288,7 +288,7 @@ public:
                 Duplicate(ub_out, int8_t(0), d);
             }
             Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
-            Catlass::SageAttn::CopyUbRowToL1(l1_k[j * d], ub_out, d);
+            Catlass::SageAttn::CopyUbToL1(l1_k[j * d], ub_out, d);
             Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
         }
 #else
@@ -450,7 +450,7 @@ public:
                 Duplicate(ub_out.ReinterpretCast<int8_t>(), int8_t(0), d);
             }
             Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
-            Catlass::SageAttn::CopyUbRowToL1(l1_v[j * d], ub_out, d);
+            Catlass::SageAttn::CopyUbToL1(l1_v[j * d], ub_out, d);
             Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
         }
 #else

@@ -417,27 +417,83 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void BlockMaxAndSum
 }
 
 /**
- * 5. O 累加器行批原地缩放（R4）：逐行位图许可（bm 位 r 置位方执行该行，与原标量
- *    need_rescale && |factor-1|>tol 判定逐行同集）；系数经 DIST_BRC_B32 广播 Load
- *    ub_factor[r]（原 Duplicate(rescale_factor) 的同一 float，位保搬运），行内
- *    Load→Mul→Store 链与原 RescaleAccumRowVF 逐位同式。未置位行零访存零运算
- *    （不做 ×1.0f 恒等乘，保持原跳过语义的零开销）。
+ * 4.5. 全量纯向量化 Online Softmax 状态步进（R4 行批化）：
+ * 消除全部标量循环与 V_S / S_V 跨引擎同步气泡。
+ * 纯向量 SIMD 指令更新 running_max 与 running_sum，并计算 O 累加器的 rescale 因子：
+ * - m_new = max(m_old, m_cur)
+ * - alpha_old = exp((m_old - m_new) * ln2)
+ * - alpha_cur = exp((m_cur - m_new) * ln2)
+ * - d_new = d_old * alpha_old + d_cur * alpha_cur
+ * - ub_factor = alpha_old (用于 O 主累加器原地重缩放)
  */
-__simd_vf__ __aicore__ inline __attribute__((always_inline)) void RescaleAccumRowsVF(__ubuf__ float* o_base, __ubuf__ float* factor_row,
-                                               uint32_t rows, uint32_t d,
-                                               uint32_t bm0, uint32_t bm1, uint32_t bm2, uint32_t bm3) {
+__simd_vf__ __aicore__ inline __attribute__((always_inline)) void UpdateOnlineSoftmaxRowsVF(
+    __ubuf__ float* running_max,
+    __ubuf__ float* running_sum,
+    __ubuf__ float* block_max,
+    __ubuf__ float* block_sum,
+    __ubuf__ float* ub_factor,
+    uint32_t rows,
+    uint32_t k)
+{
+    using namespace AscendC;
+    using namespace AscendC::MicroAPI;
+    auto full = CreateMask<float, MaskPattern::ALL>();
+
+    for (uint32_t r = 0; r < rows; r += 64) {
+        RegTensor<float> m_cur, d_cur;
+        LoadAlign(m_cur, block_max + r);
+        LoadAlign(d_cur, block_sum + r);
+
+        RegTensor<float> m_new, d_new, alpha_old;
+        if (k == 0) {
+            m_new = m_cur;
+            d_new = d_cur;
+            Duplicate(alpha_old, 1.0f);
+        } else {
+            RegTensor<float> m_old, d_old;
+            LoadAlign(m_old, running_max + r);
+            LoadAlign(d_old, running_sum + r);
+
+            // m_new = max(m_old, m_cur)
+            Max(m_new, m_old, m_cur, full);
+
+            // alpha_old = exp2(m_old - m_new) = exp((m_old - m_new) * ln2)
+            RegTensor<float> diff_old;
+            Sub(diff_old, m_old, m_new, full);
+            Muls(diff_old, diff_old, INV_LOG2E, full);
+            Exp(alpha_old, diff_old, full);
+
+            // alpha_cur = exp2(m_cur - m_new) = exp((m_cur - m_new) * ln2)
+            RegTensor<float> diff_cur, alpha_cur;
+            Sub(diff_cur, m_cur, m_new, full);
+            Muls(diff_cur, diff_cur, INV_LOG2E, full);
+            Exp(alpha_cur, diff_cur, full);
+
+            // d_new = d_old * alpha_old + d_cur * alpha_cur (fused via MulDstAdd)
+            Mul(d_new, d_old, alpha_old, full);
+            MulDstAdd(d_new, d_cur, alpha_cur, full);
+        }
+
+        StoreAlign(running_max + r, m_new, full);
+        StoreAlign(running_sum + r, d_new, full);
+        StoreAlign(ub_factor + r, alpha_old, full);
+    }
+    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+}
+
+/**
+ * 5. O 累加器行批原地缩放（R4）：纯向量 SIMD 广播缩放
+ */
+__simd_vf__ __aicore__ inline __attribute__((always_inline)) void RescaleAccumRowsVF(
+    __ubuf__ float* o_base,
+    __ubuf__ float* factor_row,
+    uint32_t rows,
+    uint32_t d)
+{
     using namespace AscendC;
     using namespace AscendC::MicroAPI;
     auto full = CreateMask<float, MaskPattern::ALL>();
     for (uint32_t r = 0; r < rows; ++r) {
-        // 位图字选择为三元链（c06f1d69c 复审：VF 原语内不放局部数组，
-        // 原 uint32_t bm[4] 就地展开）；位提取恒为 uint32_t 掩码移位
-        // （本文件头 BiSheng 64 位变量移位禁令）
-        const uint32_t w = (r < 32u) ? bm0 : ((r < 64u) ? bm1 : ((r < 96u) ? bm2 : bm3));
-        const uint32_t fire = (w >> (r & 31u)) & 1u;
-        if (fire == 0u) {
-            continue;
-        }
         RegTensor<float> factor_reg;
         LoadAlign<float, LoadDist::DIST_BRC_B32>(factor_reg, factor_row + r);
         __ubuf__ float* o_row = o_base + r * d;
@@ -448,47 +504,43 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void RescaleAccumRo
             StoreAlign(o_row + c, x, full);
         }
     }
+    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 }
 
 /**
- * 6. Softmax 概率矩阵生成（R4 行批化）：exp2 域恒等 P = 2^(x-m')·448（logits 已折
- *    sm_scale·log2e，经 ln2 缩放进自然域），448· 放大经乘法在 Exp 之后实现
- *    （twin::SoftmaxProbCode 同式；DEFECT-R11-1：ln448 融合进锚点的以加代乘轨迹与
- *    孪生差 1 ulp，经 e4m3 量化放大为位翻转，同 N7 裁定），并饱和转换至 FP8 e4m3fn。
- *    行锚 m'·ln2 由调用方标量域预乘写入 m_ln_row[r]（与原 Duplicate(m_prime*INV_LOG2E)
- *    的同一标量乘式同值），VF 经 DIST_BRC_B32 广播 Load 回读——行内
- *    Mul(ln2)→Sub(m_ln)→Exp→Muls(448)→Cast 链逐位同原单行版本；掩码行经 exp2
- *    下溢自然落到 e4m3 码 0。
+ * 6. Softmax 概率矩阵生成（R4 行批化）：exp2 域恒等 P = 2^(x-m')·448，并饱和转换至 FP8 e4m3fn
  */
-__simd_vf__ __aicore__ inline __attribute__((always_inline)) void SoftmaxProbRowsVF(__ubuf__ float* logits_base, __ubuf__ float8_e4m3_t* out_p_base,
-                                              __ubuf__ float* m_ln_row, uint32_t rows, uint32_t block_n) {
+__simd_vf__ __aicore__ inline __attribute__((always_inline)) void SoftmaxProbRowsVF(
+    __ubuf__ float* logits_base,
+    __ubuf__ float8_e4m3_t* out_p_base,
+    __ubuf__ float* running_max,
+    uint32_t rows,
+    uint32_t block_n)
+{
     using namespace AscendC;
     using namespace AscendC::MicroAPI;
     auto full = CreateMask<float, MaskPattern::ALL>();
     static constexpr CastTrait toFp8{RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
-    // exp2 域恒等（twin::SoftmaxProbCode 同式）：P = 2^(x-m')·448，乘法在 Exp 之后。
-    // logits 为 exp2 域量（已折 sm_scale·log2e），经 ln2 缩放进硬件自然指数域——
-    // ln2 缩放为设备本征域换算（真机 L-A 容差域，A7 族登记）；
-    // 448· 放大使行 max 恰为 448 填满 e4m3 动态范围。
     RegTensor<float> ln2_reg;
     Duplicate(ln2_reg, INV_LOG2E);
     for (uint32_t r = 0; r < rows; ++r) {
-        RegTensor<float> m_ln_reg;
-        LoadAlign<float, LoadDist::DIST_BRC_B32>(m_ln_reg, m_ln_row + r);
+        RegTensor<float> m_reg;
+        LoadAlign<float, LoadDist::DIST_BRC_B32>(m_reg, running_max + r);
         __ubuf__ float* logits = logits_base + r * block_n;
         __ubuf__ float8_e4m3_t* out_p = out_p_base + r * block_n;
         for (uint32_t j = 0; j < block_n; j += 64) {
-            RegTensor<float> logit_val, scaled, diff, exp_val;
+            RegTensor<float> logit_val, diff, exp_val;
             RegTensor<float8_e4m3_t> packed;
             LoadAlign(logit_val, logits + j);
-            Mul(scaled, logit_val, ln2_reg, full);
-            Sub(diff, scaled, m_ln_reg, full);
+            Sub(diff, logit_val, m_reg, full);
+            Mul(diff, diff, ln2_reg, full);
             Exp(exp_val, diff, full);
             Muls(exp_val, exp_val, FP8_E4M3_MAX, full);
             Cast<float8_e4m3_t, float, toFp8>(packed, exp_val, full);
             StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(out_p + j, packed, full);
         }
     }
+    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 }
 
 /**
@@ -661,20 +713,52 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void FinalizeSmooth
 }
 
 /**
+ * 6.8. 计算最终分母倒数 (inv_d = 1 / d_final):
+ * 纯向量 SIMD 指令除法，若 d_final <= 0 则填 0.0f
+ */
+__simd_vf__ __aicore__ inline __attribute__((always_inline)) void ComputeInvDenominatorVF(
+    __ubuf__ float* d_run_ptr,
+    __ubuf__ float* inv_d_ptr,
+    uint32_t rows)
+{
+    using namespace AscendC;
+    using namespace AscendC::MicroAPI;
+    auto full = CreateMask<float, MaskPattern::ALL>();
+    for (uint32_t r = 0; r < rows; r += 64) {
+        RegTensor<float> d_val, inv_val, zero, one;
+        LoadAlign(d_val, d_run_ptr + r);
+        Duplicate(one, 1.0f);
+        Duplicate(zero, 0.0f);
+        Div(inv_val, one, d_val, full);
+        MaskReg pos_mask;
+        Compare<float, CMPMODE::GT>(pos_mask, d_val, zero, full);
+        Select(inv_val, inv_val, zero, pos_mask);
+        StoreAlign(inv_d_ptr + r, inv_val, full);
+    }
+    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+}
+
+/**
  * 7. 最终归一化与输出位型转换（DTYPE_MODE：2=bf16，其余按 fp16）。
  * 可选 smooth_v 的 vm 偏置：V 减均值量化下 PV 分子分母的 vm·Σp 项在归一化中
  * 恰好还原为 vm（不参与归一化），故出口直接逐通道加回（o·inv + vm）。
  */
 template <uint32_t DTYPE_MODE>
-__simd_vf__ __aicore__ inline __attribute__((always_inline)) void FinalizeRowVF(__ubuf__ float* o_row, __ubuf__ uint16_t* out_row, float inv_d,
-                                      __ubuf__ float* vm_ptr, uint32_t d) {
+__simd_vf__ __aicore__ inline __attribute__((always_inline)) void FinalizeRowVF(
+    __ubuf__ float* o_row,
+    __ubuf__ uint16_t* out_row,
+    __ubuf__ float* inv_d_ptr,
+    uint32_t row_idx,
+    __ubuf__ float* vm_ptr,
+    uint32_t d)
+{
     using namespace AscendC;
     using namespace AscendC::MicroAPI;
     auto full = CreateMask<float, MaskPattern::ALL>();
     static constexpr CastTrait toHalf{RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
     static constexpr CastTrait toBf16{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
     RegTensor<float> inv_reg;
-    Duplicate(inv_reg, inv_d);
+    LoadAlign<float, LoadDist::DIST_BRC_B32>(inv_reg, inv_d_ptr + row_idx);
     for (uint32_t c = 0; c < d; c += 64) {
         RegTensor<float> x;
         LoadAlign(x, o_row + c);

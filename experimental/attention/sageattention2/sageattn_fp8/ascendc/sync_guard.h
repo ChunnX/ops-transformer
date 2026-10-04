@@ -16,6 +16,10 @@
 // 类型化旗标 + CrossCoreSetFlag/WaitFlag 薄封装（forceinline 直译 AscendC 原语，
 // 指令流与裸调用一致）。宿主门禁（BiSheng 宿主模式，KERNEL_API=0）不引入。
 #include "catlass/arch/cross_core_sync.hpp"
+#else
+#ifndef PIPE_S
+constexpr int PIPE_S = 0;
+#endif
 #endif
 
 namespace sage_attn {

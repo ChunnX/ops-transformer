@@ -19,17 +19,6 @@ public:
     // =========================================================================
 
     /**
-     * \brief S 槽双缓冲进域预置：Cube 作为消费者向 V1 发送初始 2 个 S 槽空闲许可
-     */
-    __aicore__ inline __attribute__((always_inline)) static void CubeInitPipeline()
-    {
-#if SAGE_ATTN_DEVICE_COMPILE
-        CrossCoreSet(CrossCoreDirection::CUBE_TO_VEC1, CrossCoreFlags::FLAG_SOFTMAX_S_PING_FREE);
-        CrossCoreSet(CrossCoreDirection::CUBE_TO_VEC1, CrossCoreFlags::FLAG_SOFTMAX_S_PONG_FREE);
-#endif
-    }
-
-    /**
      * \brief 等待 V0 完成 Q 矩阵量化并常驻 L1 Bank 0
      */
     __aicore__ inline __attribute__((always_inline)) static void CubeWaitQReady()
@@ -280,12 +269,18 @@ public:
     }
 
     /**
-     * \brief 退域补等：消费 Cube 进域预置的最后两个 S 槽许可，保证跨任务波次余量为零
+     * \brief 退域补等：按需消费 Cube 释放的 S 槽许可，保证跨任务波次余量为零
      */
-    __aicore__ inline __attribute__((always_inline)) static void Vec1DrainSoftmaxFree()
+    __aicore__ inline __attribute__((always_inline)) static void Vec1DrainSoftmaxPingFree()
     {
 #if SAGE_ATTN_DEVICE_COMPILE
         CrossCoreWait(CrossCoreDirection::CUBE_TO_VEC1, CrossCoreFlags::FLAG_SOFTMAX_S_PING_FREE);
+#endif
+    }
+
+    __aicore__ inline __attribute__((always_inline)) static void Vec1DrainSoftmaxPongFree()
+    {
+#if SAGE_ATTN_DEVICE_COMPILE
         CrossCoreWait(CrossCoreDirection::CUBE_TO_VEC1, CrossCoreFlags::FLAG_SOFTMAX_S_PONG_FREE);
 #endif
     }

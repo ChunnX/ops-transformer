@@ -61,14 +61,16 @@ using SlotV1KsRow       = StaticSlot<Catlass::SageAttn::Vector1UbBudget::V1_KS_R
 using SlotV1QsRow       = StaticSlot<Catlass::SageAttn::Vector1UbBudget::V1_QS_ROW_OFFSET, 512>;
 using SlotV1VsChan      = StaticSlot<Catlass::SageAttn::Vector1UbBudget::V1_VS_CHAN_OFFSET, 512>;
 using SlotV1VmChan      = StaticSlot<Catlass::SageAttn::Vector1UbBudget::V1_VM_CHAN_OFFSET, 512>;
-using SlotV1CorrRow     = StaticSlot<Catlass::SageAttn::Vector1UbBudget::V1_CORR_ROW_OFFSET, 512>;
+using SlotV1BlockMax    = StaticSlot<Catlass::SageAttn::Vector1UbBudget::V1_CORR_ROW_OFFSET, 512>;
 using SlotV1LseRow      = StaticSlot<Catlass::SageAttn::Vector1UbBudget::V1_LSE_ROW_OFFSET, 512>;
-using SlotV1MLnRow      = StaticSlot<Catlass::SageAttn::Vector1UbBudget::V1_M_LN_ROW_OFFSET, 512>;
+using SlotV1BlockSum    = StaticSlot<Catlass::SageAttn::Vector1UbBudget::V1_M_LN_ROW_OFFSET, 512>;
 using SlotV1RsFactor    = StaticSlot<Catlass::SageAttn::Vector1UbBudget::V1_RS_FACTOR_ROW_OFFSET, 512>;
 
 // --- L1 Bank 双缓冲槽编译期守卫 ---
 using SlotL1KvPing      = StaticSlot<Catlass::SageAttn::L1DoubleBankContract::KV_PING_OFFSET, Catlass::SageAttn::L1DoubleBankContract::KV_SLOT_BYTES>;
 using SlotL1KvPong      = StaticSlot<Catlass::SageAttn::L1DoubleBankContract::KV_PONG_OFFSET, Catlass::SageAttn::L1DoubleBankContract::KV_SLOT_BYTES>;
+using SlotL1SoftmaxPPing = StaticSlot<Catlass::SageAttn::L1DoubleBankContract::P_PING_OFFSET, Catlass::SageAttn::L1DoubleBankContract::P_SLOT_BYTES>;
+using SlotL1SoftmaxPPong = StaticSlot<Catlass::SageAttn::L1DoubleBankContract::P_PONG_OFFSET, Catlass::SageAttn::L1DoubleBankContract::P_SLOT_BYTES>;
 
 #if !SAGE_ATTN_DEVICE_COMPILE
 /**

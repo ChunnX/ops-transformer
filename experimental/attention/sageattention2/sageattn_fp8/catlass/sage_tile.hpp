@@ -202,16 +202,24 @@ __aicore__ inline __attribute__((always_inline)) void CopyL0CToUbSplitM(
  */
 #if SAGE_ATTN_DEVICE_COMPILE
 template <typename Element>
-__aicore__ inline __attribute__((always_inline)) void CopyUbRowToL1(AscendC::LocalTensor<Element> l1_dst,
-                                     AscendC::LocalTensor<Element> ub_src,
-                                     uint32_t row_bytes)
+__aicore__ inline __attribute__((always_inline)) void CopyUbToL1(AscendC::LocalTensor<Element> l1_dst,
+                                                                 AscendC::LocalTensor<Element> ub_src,
+                                                                 uint32_t total_bytes)
 {
     AscendC::DataCopyParams cp;
     cp.blockCount = 1;
-    cp.blockLen = row_bytes / Catlass::BYTE_PER_BLK;
+    cp.blockLen = total_bytes / Catlass::BYTE_PER_BLK;
     cp.srcStride = 0;
     cp.dstStride = 0;
     AscendC::DataCopy(l1_dst, ub_src, cp);
+}
+
+template <typename Element>
+__aicore__ inline __attribute__((always_inline)) void CopyUbRowToL1(AscendC::LocalTensor<Element> l1_dst,
+                                                                    AscendC::LocalTensor<Element> ub_src,
+                                                                    uint32_t row_bytes)
+{
+    CopyUbToL1(l1_dst, ub_src, row_bytes);
 }
 #endif
 
@@ -299,6 +307,11 @@ struct L1DoubleBankContract {
     static constexpr uint32_t Q_DATA_OFFSET = BANK0_START;
     static constexpr uint32_t Q_MAX_BYTES   = 128 * 128 * sizeof(int8_t); // 16 KB
     static constexpr uint32_t Q_SCALE_OFFSET = Q_DATA_OFFSET + Q_MAX_BYTES; // Q 数据区后紧邻 scale（Data+Scale 相邻）
+
+    // P 矩阵在 Bank 0 中的双缓冲槽位（供 Vector 1 写入，Cube 读取；单槽最大 128x128 = 16KB）
+    static constexpr uint32_t P_SLOT_BYTES   = 16 * 1024;
+    static constexpr uint32_t P_PING_OFFSET  = BANK0_START + 64 * 1024; // 64 KB
+    static constexpr uint32_t P_PONG_OFFSET  = P_PING_OFFSET + P_SLOT_BYTES; // 80 KB
 
     // Bank 1 分配 (Ping-Pong 双缓冲)：单槽 128KB = K 子区 64KB (INT8) + V 子区 64KB (FP8)
     static constexpr uint32_t KV_SLOT_BYTES   = 128 * 1024;

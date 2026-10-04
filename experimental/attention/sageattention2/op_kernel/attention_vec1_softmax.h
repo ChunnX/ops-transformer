@@ -200,13 +200,14 @@ public:
 
         LocalTensor<float> ub_qs(TPosition::VECCALC, SlotV1QsRow::Offset(), STAGE_SLOT_FLOATS);
         LocalTensor<float> ub_ks(TPosition::VECCALC, SlotV1KsRow::Offset(), ctx.block_n);
-        LocalTensor<float> ub_row_max(TPosition::VECCALC, SlotV1RowMax::Offset(), MAX_PACK_ROWS);
-        LocalTensor<float> ub_row_sum(TPosition::VECCALC, SlotV1RowSum::Offset(), MAX_PACK_ROWS);
-        LocalTensor<float> ub_mln(TPosition::VECCALC, SlotV1MLnRow::Offset(), MAX_PACK_ROWS);
+        LocalTensor<float> ub_running_max(TPosition::VECCALC, SlotV1RowMax::Offset(), MAX_PACK_ROWS);
+        LocalTensor<float> ub_running_sum(TPosition::VECCALC, SlotV1RowSum::Offset(), MAX_PACK_ROWS);
+        LocalTensor<float> ub_block_max(TPosition::VECCALC, SlotV1BlockMax::Offset(), MAX_PACK_ROWS);
+        LocalTensor<float> ub_block_sum(TPosition::VECCALC, SlotV1BlockSum::Offset(), MAX_PACK_ROWS);
         LocalTensor<float> ub_factor(TPosition::VECCALC, SlotV1RsFactor::Offset(), MAX_PACK_ROWS);
         LocalTensor<float> ub_logits_dot(TPosition::VECCALC, SlotV1Dot32::Offset(), rows * ctx.block_n);
         LocalTensor<float> ub_o(TPosition::VECCALC, SlotV1OAccum::Offset(), rows * ctx.d);
-        LocalTensor<float8_e4m3_t> ub_out_p(TPosition::VECCALC, ctx.SoftmaxSlotOffset(is_ping), rows * ctx.block_n);
+        LocalTensor<float8_e4m3_t> ub_out_p(TPosition::VECCALC, SlotV1FixpipeRecv::Offset(), rows * ctx.block_n);
 
         dev_vf::DequantMaskLogitsRowsVF(reinterpret_cast<__ubuf__ float*>(ub_logits_dot.GetPhyAddr()), rows,
                                         reinterpret_cast<__ubuf__ float*>(ub_qs.GetPhyAddr()),
@@ -215,36 +216,33 @@ public:
                                         cur_k_start, ctx.sk, ctx.tiling->is_causal, ctx.block_n);
         dev_vf::BlockMaxAndSumRowsVF(reinterpret_cast<__ubuf__ float*>(ub_logits_dot.GetPhyAddr()), rows,
                                      ctx.block_n,
-                                     reinterpret_cast<__ubuf__ float*>(ub_row_max.GetPhyAddr()),
-                                     reinterpret_cast<__ubuf__ float*>(ub_row_sum.GetPhyAddr()));
+                                     reinterpret_cast<__ubuf__ float*>(ub_block_max.GetPhyAddr()),
+                                     reinterpret_cast<__ubuf__ float*>(ub_block_sum.GetPhyAddr()));
 
-        Catlass::SageAttn::Sync<HardEvent::V_S>();
+        dev_vf::UpdateOnlineSoftmaxRowsVF(reinterpret_cast<__ubuf__ float*>(ub_running_max.GetPhyAddr()),
+                                          reinterpret_cast<__ubuf__ float*>(ub_running_sum.GetPhyAddr()),
+                                          reinterpret_cast<__ubuf__ float*>(ub_block_max.GetPhyAddr()),
+                                          reinterpret_cast<__ubuf__ float*>(ub_block_sum.GetPhyAddr()),
+                                          reinterpret_cast<__ubuf__ float*>(ub_factor.GetPhyAddr()),
+                                          rows, k);
 
-        uint32_t bm[4] = {0u, 0u, 0u, 0u};
-        for (uint32_t r = 0; r < rows && r < MAX_PACK_ROWS; ++r) {
-            const float cur_max = ub_row_max.GetValue(r);
-            const float cur_sum = ub_row_sum.GetValue(r);
-            if (cur_max > SAGE_MASK_SENTINEL) {
-                const float rescale_factor =
-                    OnlineSoftmaxTransformer::Step(row_states_[r], cur_max, cur_sum);
-                if (row_states_[r].need_rescale &&
-                    SageFastAbs(rescale_factor - 1.0f) > SCALE_ONE_TOLERANCE) {
-                    bm[r >> 5] |= (uint32_t{1} << (r & 31u));
-                    ub_factor.SetValue(r, rescale_factor);
-                }
-            }
-            ub_mln.SetValue(r, row_states_[r].m_scale * INV_LOG2E);
+        if (k > 0) {
+            dev_vf::RescaleAccumRowsVF(reinterpret_cast<__ubuf__ float*>(ub_o.GetPhyAddr()),
+                                       reinterpret_cast<__ubuf__ float*>(ub_factor.GetPhyAddr()),
+                                       rows, ctx.d);
         }
 
-        Catlass::SageAttn::Sync<HardEvent::S_V>();
-
-        dev_vf::RescaleAccumRowsVF(reinterpret_cast<__ubuf__ float*>(ub_o.GetPhyAddr()),
-                                   reinterpret_cast<__ubuf__ float*>(ub_factor.GetPhyAddr()),
-                                   rows, ctx.d, bm[0], bm[1], bm[2], bm[3]);
         dev_vf::SoftmaxProbRowsVF(reinterpret_cast<__ubuf__ float*>(ub_logits_dot.GetPhyAddr()),
                                   reinterpret_cast<__ubuf__ float8_e4m3_t*>(ub_out_p.GetPhyAddr()),
-                                  reinterpret_cast<__ubuf__ float*>(ub_mln.GetPhyAddr()),
+                                  reinterpret_cast<__ubuf__ float*>(ub_running_max.GetPhyAddr()),
                                   rows, ctx.block_n);
+
+        // 通过片上 SSBUF 高速通路将 FP8 P 矩阵搬入 L1 Bank 0 专有双缓冲槽，供 Cube PV MMAD 读取
+        Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
+        const uint32_t l1_p_addr = is_ping ? SlotL1SoftmaxPPing::Offset() : SlotL1SoftmaxPPong::Offset();
+        LocalTensor<float8_e4m3_t> l1_p(TPosition::A1, l1_p_addr, rows * ctx.block_n);
+        Catlass::SageAttn::CopyUbToL1(l1_p, ub_out_p, rows * ctx.block_n);
+        Catlass::SageAttn::Sync<HardEvent::MTE3_S>();
 #else
         RestageKvBlockHost(ctx, k);
 

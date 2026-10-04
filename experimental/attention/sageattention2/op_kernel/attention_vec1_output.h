@@ -144,6 +144,14 @@ public:
             Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
         }
         LocalTensor<half> ub_half(TPosition::VECCALC, SlotV1FixpipeRecv::Offset(), ctx.d);
+        LocalTensor<float> ub_running_max(TPosition::VECCALC, SlotV1RowMax::Offset(), MAX_PACK_ROWS);
+        LocalTensor<float> ub_running_sum(TPosition::VECCALC, SlotV1RowSum::Offset(), MAX_PACK_ROWS);
+        LocalTensor<float> ub_inv_d(TPosition::VECCALC, SlotV1RsFactor::Offset(), MAX_PACK_ROWS);
+        const uint32_t total_rows = ctx.TotalRows();
+        dev_vf::ComputeInvDenominatorVF(reinterpret_cast<__ubuf__ float*>(ub_running_sum.GetPhyAddr()),
+                                        reinterpret_cast<__ubuf__ float*>(ub_inv_d.GetPhyAddr()),
+                                        total_rows);
+        Catlass::SageAttn::Sync<HardEvent::V_S>();
 
         for (uint32_t g = 0; g < ctx.cur_heads; ++g) {
             const int64_t hq_curr = hkv_idx * static_cast<int64_t>(ctx.gqa_ratio) + static_cast<int64_t>(ctx.cur_g0) + g;
@@ -157,10 +165,14 @@ public:
             for (uint32_t i = 0; i < ctx.cur_q_len; ++i) {
                 const uint32_t r = g * ctx.cur_q_len + i;
                 if (r >= MAX_PACK_ROWS) break;
-                const float inv_row = OnlineSoftmaxTransformer::GetFinalInvDenominator(row_states_[r]);
 
+                const float m_val = ub_running_max.GetValue(r);
+                const float d_val = ub_running_sum.GetValue(r);
+                const float lse_exp2 = (d_val > 0.0f)
+                    ? (m_val + OnlineSoftmaxTransformer::FastLog2(d_val))
+                    : MIN_FLOAT_VAL;
                 const float lse_host = OnlineSoftmaxTransformer::ConvertLseToHost(
-                    row_states_[r].lse, ctx.tiling->sm_scale_log2e * INV_LOG2E,
+                    lse_exp2, ctx.tiling->sm_scale_log2e * INV_LOG2E,
                     0.0f, false, S_FP8_OFFSET);
 
                 LocalTensor<float> ub_o_row(TPosition::VECCALC,
@@ -168,7 +180,8 @@ public:
                                             ctx.d);
                 dev_vf::FinalizeRowVF<kDtype>(reinterpret_cast<__ubuf__ float*>(ub_o_row.GetPhyAddr()),
                                              reinterpret_cast<__ubuf__ uint16_t*>(ub_half.GetPhyAddr()),
-                                             inv_row,
+                                             reinterpret_cast<__ubuf__ float*>(ub_inv_d.GetPhyAddr()),
+                                             r,
                                              has_vm ? reinterpret_cast<__ubuf__ float*>(ub_vm.GetPhyAddr()) : nullptr,
                                              ctx.tiling->d_og);
                 Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
@@ -178,11 +191,13 @@ public:
                 if constexpr (kDtype == kTplDtypeBf16) {
                     GlobalTensor<bfloat16_t> gm_out;
                     gm_out.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(ctx.out_gm + out_gm_offset));
+                    gm_out.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
                     LocalTensor<bfloat16_t> ub_bf16 = ub_half.ReinterpretCast<bfloat16_t>();
                     DataCopy(gm_out, ub_bf16, ctx.tiling->d_og);
                 } else {
                     GlobalTensor<half> gm_out;
                     gm_out.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(ctx.out_gm + out_gm_offset));
+                    gm_out.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
                     DataCopy(gm_out, ub_half, ctx.tiling->d_og);
                 }
                 Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
@@ -202,6 +217,7 @@ public:
                 GlobalTensor<float> gm_lse;
                 gm_lse.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(
                     ctx.lse_gm + lse_elem_base * static_cast<int64_t>(sizeof(float))));
+                gm_lse.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
                 DataCopy(gm_lse, ub_lse_row, ctx.cur_q_len);
                 Catlass::SageAttn::Sync<HardEvent::MTE3_S>();
             }
@@ -271,7 +287,9 @@ __aicore__ inline __attribute__((always_inline)) void ProcessVec1(
         }
 #endif
 
-        AttentionSync::Vec1WaitSoftmaxFree(is_ping);
+        if (k >= 2) {
+            AttentionSync::Vec1WaitSoftmaxFree(is_ping);
+        }
         AttentionSync::Vec1WaitQkReady();
 
 #if SAGE_ATTN_DEVICE_COMPILE
@@ -304,7 +322,12 @@ __aicore__ inline __attribute__((always_inline)) void ProcessVec1(
 
     AttentionSync::Vec1WaitPvDone();
     output.FinalizeAndStore(ctx, softmax.GetRowStates());
-    AttentionSync::Vec1DrainSoftmaxFree();
+    if (active_kv_blocks >= 1) {
+        AttentionSync::Vec1DrainSoftmaxPingFree();
+    }
+    if (active_kv_blocks >= 2) {
+        AttentionSync::Vec1DrainSoftmaxPongFree();
+    }
 }
 
 /**
@@ -443,7 +466,7 @@ public:
             if ASCEND_IS_AIC {
                 CubeBlockParams p{ctx_.TotalRows(), ctx_.block_n, ctx_.d};
                 cube_.Process(p, ctx_.active_kv_blocks, ctx_.tiling->l1_q_offset,
-                              ctx_.tiling->ub_softmax_offset, SlotV1Dot32::Offset(), SlotV1PvPartial::Offset());
+                              SlotV1Dot32::Offset(), SlotV1PvPartial::Offset());
             } else {
                 if (ctx_.sub_core_idx == 0) {
                     vec0_.Process(ctx_);
@@ -455,7 +478,7 @@ public:
             vec0_.Process(ctx_);
             CubeBlockParams p{ctx_.TotalRows(), ctx_.block_n, ctx_.d};
             cube_.Process(p, ctx_.active_kv_blocks, ctx_.tiling->l1_q_offset,
-                          ctx_.tiling->ub_softmax_offset, SlotV1Dot32::Offset(), SlotV1PvPartial::Offset());
+                          SlotV1Dot32::Offset(), SlotV1PvPartial::Offset());
             ProcessVec1(ctx_, softmax_, output_);
 #endif
         }
