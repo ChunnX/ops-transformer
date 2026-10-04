@@ -27,7 +27,6 @@ import os
 import shutil
 import struct
 import subprocess
-import sys
 
 
 def find_objcopy_executable(explicit_path=None):
