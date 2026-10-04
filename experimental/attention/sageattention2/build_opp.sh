@@ -206,7 +206,8 @@ else
     # C0_NUM_PER_FRACTAL，经 sage_tile.hpp 派生）与 detail/macros.hpp
     # CATLASS_DEVICE_SIMD_VF 宏（仅 3510 档有定义，sage_device_vf.h 全部 VF 原语取用）；
     # TileMmadTla 的 3510 特化由 --npu-arch（__NPU_ARCH__）选路，两口径须一致。
-    "${BISHENG}" --npu-arch="${NPU_ARCH}" -std=c++17 -xasc -DCATLASS_ARCH=3510 -c \
+    "${BISHENG}" --npu-arch="${NPU_ARCH}" -std=c++17 -xasc -DCATLASS_ARCH=3510 \
+        -DENABLE_CV_COMM_VIA_SSBUF=1 --cce-no-dcache-flush -c \
         "${OP_DIR}/op_kernel/sageattention2.cpp" \
         -I"${ASCEND_HOME_PATH}/include" \
         -I"${OP_DIR}/sageattn_fp8/ascendc" \

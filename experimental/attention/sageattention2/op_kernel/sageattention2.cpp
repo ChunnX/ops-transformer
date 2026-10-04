@@ -5,6 +5,11 @@
 // 注意：本文件位于 op_kernel/，包含 ascendc/ 头必须用相对路径——
 // 裸 "tiling.h" 会按 -I 顺序误解析到 CANN 的 adv_api/matmul/tiling.h
 //（bisheng 编译门的 -W#pragma-message 曾捕获该错位）。
+// 950PR 官方 SSBUF 硬件通路：强制开启核内核间 SSBUF 通路，使 DataCopyUB2L1Impl 走
+// CopyUbufToCbuf 硬件内联指令，避免退化走 GetKfcClient() 导致未对齐地址 AIV 340 报错。
+#ifndef ENABLE_CV_COMM_VIA_SSBUF
+#define ENABLE_CV_COMM_VIA_SSBUF 1
+#endif
 #include "../sageattn_fp8/ascendc/tiling.h"
 #include "../sageattn_fp8/ascendc/online_softmax.h"
 #include "../sageattn_fp8/ascendc/sync_guard.h"
@@ -39,6 +44,9 @@
  * 以 __CCE__（BiSheng 设备编译恒定义，BiSheng 宿主模式恒不定义）判定设备分支。
  */
 #if SAGE_ATTN_KERNEL_API
+#ifndef ENABLE_CV_COMM_VIA_SSBUF
+#define ENABLE_CV_COMM_VIA_SSBUF 1
+#endif
 #include "kernel_operator.h"
 #if SAGE_ATTN_DEVICE_COMPILE
 // canonical 注册宏：正式出包由 ops-transformer 构建体系注入同义宏；

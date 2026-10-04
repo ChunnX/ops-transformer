@@ -46,6 +46,8 @@ if(COMMAND add_ops_compile_options)
                 -Werror
                 -mllvm -cce-vf-remove-membar=false
                 -mllvm -cce-aicore-hoist-movemask=false
+                -DENABLE_CV_COMM_VIA_SSBUF=true
+                --cce-no-dcache-flush
     )
 endif()
 

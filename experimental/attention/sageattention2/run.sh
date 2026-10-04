@@ -79,7 +79,8 @@ compile_kernel_bisheng() {
   mkdir -p "${BUILD_DIR}"
   # -DCATLASS_ARCH=3510 与 build_opp.sh / tools/sim 同口径
   # （真实消费方：catlass.hpp 3510 档常量 + CATLASS_DEVICE_SIMD_VF 宏，见 build_opp.sh 同注）
-  "${BISHENG}" --npu-arch=dav-3510 -std=c++17 -xasc -DCATLASS_ARCH=3510 -c \
+  "${BISHENG}" --npu-arch=dav-3510 -std=c++17 -xasc -DCATLASS_ARCH=3510 \
+    -DENABLE_CV_COMM_VIA_SSBUF=1 --cce-no-dcache-flush -c \
     "${WORK_DIR}/op_kernel/sageattention2.cpp" \
     -I"${ASCEND_HOME_PATH}/include" \
     "${COMMON_INCLUDES[@]}" \
