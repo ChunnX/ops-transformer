@@ -28,8 +28,9 @@ def load_extension():
     if not csrc_file.exists():
         raise FileNotFoundError(f"Cannot find SageAttention2 C++ source at {csrc_file}")
 
-    # 算子自身 aclnn proto 头与本地 OPP 安装产物（存在性守卫，幂等追加）——
-    # 根包 python/ 的同名扩展经 shim 共享本实现，编译参数唯一定义点在此。
+    # 本地 OPP 安装产物链接面（存在性守卫，幂等追加）——根包 python/ 的同名扩展经
+    # shim 共享本实现，编译参数唯一定义点在此。头文件不经此注入：csrc 经相对路径
+    # 直引仓库 op_api/aclnn_sage_attention2.h，aclnn/ 与 vendor include 均无可解析头。
     op_root = package.parent.parent  # .../experimental/attention/sageattention2
 
     extra_include_paths = [
@@ -39,8 +40,6 @@ def load_extension():
         str(npu / "include" / "third_party" / "op-plugin"),
         str(cann / "include"),
     ]
-    if (op_root / "aclnn").exists():
-        extra_include_paths.append(str(op_root / "aclnn"))
 
     extra_ldflags = [
         "-L" + str(npu / "lib"),
@@ -55,15 +54,13 @@ def load_extension():
     # 默认部署 build/opp_installed/vendors/customize，config.ini load_priority=customize）。
     # 仓库根 build.sh 整包 run 包是另一交付物，其 vendor 目录为 ${vendor_name}_transformer
     # （默认 --vendor_name=custom → custom_transformer，见 cmake/custom_build.cmake），
-    # 与本算子本地树并存合法、互不同名；该形态下 opapi 由 CANN 按 ASCEND_OPP_PATH 装载，
-    # EXEC_NPU_CMD_EXT 运行期 dlsym 解析，无需（也不应）在此按整包 vendor 名探测。
+    # 与本算子本地树并存合法、互不同名；整包 opapi 由 CANN 按 ASCEND_OPP_PATH 装载、
+    # 不经本扩展消费——桥接为链接期直引两段式符号（csrc SAGE_EXEC_NPU_DIRECT），
+    # -lcust_opapi 仅来自上方 customize 两候选，无需（也不应）按整包 vendor 名探测。
     for opp_vendor in (
         op_root / "build" / "opp_installed" / "vendors" / "customize",
         cann / "opp" / "vendors" / "customize",
     ):
-        v_inc = opp_vendor / "op_api" / "include"
-        if v_inc.exists() and str(v_inc) not in extra_include_paths:
-            extra_include_paths.append(str(v_inc))
         v_lib = opp_vendor / "op_api" / "lib"
         if v_lib.exists():
             extra_ldflags.extend(["-L" + str(v_lib), "-lcust_opapi", "-Wl,-rpath," + str(v_lib)])

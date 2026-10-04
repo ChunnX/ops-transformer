@@ -47,6 +47,7 @@ inline void EnsureCannOpapiLoaded()
 #define SAGE_EXEC_NPU_DIRECT(ws_fn, run_fn, ...)                                                           \
     do {                                                                                                   \
         sage_direct::EnsureCannOpapiLoaded();                                                              \
+        const void *sage_run_addr = reinterpret_cast<const void *>(&(run_fn));                             \
         InitExecCommonCtx();                                                                               \
         auto acl_stream = GetAclStream();                                                                  \
         SetExecConfig();                                                                                   \
@@ -59,9 +60,9 @@ inline void EnsureCannOpapiLoaded()
         auto workspace_status = call(get_workspace_func, converted_params);                                \
         TORCH_CHECK(workspace_status == 0, "SageAttention2 GetWorkspaceSize failed: ", workspace_status);  \
         void *workspace_addr = GetWorkSpaceAddr(workspace_size);                                           \
-        auto acl_call = [converted_params, workspace_addr, workspace_size, acl_stream, executor, run_fn]() -> int { \
+        auto acl_call = [converted_params, workspace_addr, workspace_size, acl_stream, executor, sage_run_addr]() -> int { \
             InitExecSubTheadCtx(acl_stream);                                                               \
-            auto api_ret = ExecuteApiFunc((void *)(run_fn), acl_stream, workspace_addr, workspace_size, executor); \
+            auto api_ret = ExecuteApiFunc(sage_run_addr, acl_stream, workspace_addr, workspace_size, executor); \
             ReleaseConvertTypes(converted_params);                                                         \
             ReleaseExecCommonCtx();                                                                        \
             return api_ret;                                                                                \
