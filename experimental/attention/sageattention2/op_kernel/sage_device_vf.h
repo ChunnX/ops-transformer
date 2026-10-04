@@ -784,41 +784,20 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void FinalizeSmooth
 }
 
 /**
- * 6.8. 计算最终分母倒数 (inv_d = 1 / d_final):
- * 纯向量 SIMD 指令除法，若 d_final <= 0 则填 0.0f
- */
-__simd_vf__ __aicore__ inline __attribute__((always_inline)) void ComputeInvDenominatorVF(
-    __ubuf__ float* d_run_ptr,
-    __ubuf__ float* inv_d_ptr,
-    uint32_t rows)
-{
-    using namespace AscendC;
-    using namespace AscendC::MicroAPI;
-    auto full = CreateMask<float, MaskPattern::ALL>();
-    for (uint32_t r = 0; r < rows; r += 64) {
-        RegTensor<float> d_val, inv_val, zero, one;
-        LoadAlign(d_val, d_run_ptr + r);
-        Duplicate(one, 1.0f);
-        Duplicate(zero, 0.0f);
-        Div(inv_val, one, d_val, full);
-        MaskReg pos_mask;
-        Compare<float, CMPMODE::GT>(pos_mask, d_val, zero, full);
-        Select(inv_val, inv_val, zero, pos_mask);
-        StoreAlign(inv_d_ptr + r, inv_val, full);
-    }
-    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
-}
-
-/**
- * 7. 最终归一化与输出位型转换（DTYPE_MODE：2=bf16，其余按 fp16）。
- * 可选 smooth_v 的 vm 偏置：V 减均值量化下 PV 分子分母的 vm·Σp 项在归一化中
- * 恰好还原为 vm（不参与归一化），故出口直接逐通道加回（o·inv + vm）。
+ * 7. 最终行归一化与输出位型转换（DTYPE_MODE：2=bf16，其余按 fp16）。
+ * - 借鉴 CATLASS 950 官方源码模式（FlashUpdateLastNew 与 LastDivNew）：
+ *   行首直接通过 LoadAlign<float, LoadDist::DIST_BRC_B32> 从 d_run_ptr + row_idx 随路加载
+ *   当前行的 running sum 分母值并广播到 64 通道；
+ * - 寄存器内部就地计算归一化系数 inv_reg = (d > 0.0f) ? (1.0f / d) : 0.0f，
+ *   彻底消灭原独立的 ComputeInvDenominatorVF 全局遍历、UB 暂存区往返读写与 LocalMemBar 屏障；
+ * - 可选 smooth_v 的 vm 偏置：V 减均值量化下 PV 分子分母的 vm·Σp 项在归一化中
+ *   恰好还原为 vm（不参与归一化），故出口直接逐通道加回（MulDstAdd 熔断 o·inv + vm）。
  */
 template <uint32_t DTYPE_MODE>
 __simd_vf__ __aicore__ inline __attribute__((always_inline)) void FinalizeRowVF(
     __ubuf__ float* o_row,
     __ubuf__ uint16_t* out_row,
-    __ubuf__ float* inv_d_ptr,
+    __ubuf__ float* d_run_ptr,
     uint32_t row_idx,
     __ubuf__ float* vm_ptr,
     uint32_t d)
@@ -828,8 +807,17 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void FinalizeRowVF(
     auto full = CreateMask<float, MaskPattern::ALL>();
     static constexpr CastTrait toHalf{RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
     static constexpr CastTrait toBf16{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
-    RegTensor<float> inv_reg;
-    LoadAlign<float, LoadDist::DIST_BRC_B32>(inv_reg, inv_d_ptr + row_idx);
+
+    // CATLASS 950 模式（FlashUpdateLastNew / LastDivNew）：随路加载分母并在寄存器内求倒数
+    RegTensor<float> d_reg, inv_reg, zero_reg, one_reg;
+    LoadAlign<float, LoadDist::DIST_BRC_B32>(d_reg, d_run_ptr + row_idx);
+    Duplicate(one_reg, 1.0f);
+    Duplicate(zero_reg, 0.0f);
+    Div(inv_reg, one_reg, d_reg, full);
+    MaskReg pos_mask;
+    Compare<float, CMPMODE::GT>(pos_mask, d_reg, zero_reg, full);
+    Select(inv_reg, inv_reg, zero_reg, pos_mask);
+
     for (uint32_t c = 0; c < d; c += 64) {
         RegTensor<float> x;
         LoadAlign(x, o_row + c);
@@ -854,6 +842,7 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void FinalizeRowVF(
         }
     }
 }
+
 
 /**
  * 8. UB float 区广播填充（P2-8 标量化收尾：scale 组清零 / STAGE 条带零填充等整区

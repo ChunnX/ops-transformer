@@ -146,11 +146,6 @@ public:
         LocalTensor<half> ub_half(TPosition::VECCALC, SlotV1FixpipeRecv::Offset(), ctx.d);
         LocalTensor<float> ub_running_max(TPosition::VECCALC, SlotV1RowMax::Offset(), MAX_PACK_ROWS);
         LocalTensor<float> ub_running_sum(TPosition::VECCALC, SlotV1RowSum::Offset(), MAX_PACK_ROWS);
-        LocalTensor<float> ub_inv_d(TPosition::VECCALC, SlotV1RsFactor::Offset(), MAX_PACK_ROWS);
-        const uint32_t total_rows = ctx.TotalRows();
-        dev_vf::ComputeInvDenominatorVF(reinterpret_cast<__ubuf__ float*>(ub_running_sum.GetPhyAddr()),
-                                        reinterpret_cast<__ubuf__ float*>(ub_inv_d.GetPhyAddr()),
-                                        total_rows);
         Catlass::SageAttn::Sync<HardEvent::V_S>();
 
         for (uint32_t g = 0; g < ctx.cur_heads; ++g) {
@@ -180,7 +175,7 @@ public:
                                             ctx.d);
                 dev_vf::FinalizeRowVF<kDtype>(reinterpret_cast<__ubuf__ float*>(ub_o_row.GetPhyAddr()),
                                              reinterpret_cast<__ubuf__ uint16_t*>(ub_half.GetPhyAddr()),
-                                             reinterpret_cast<__ubuf__ float*>(ub_inv_d.GetPhyAddr()),
+                                             reinterpret_cast<__ubuf__ float*>(ub_running_sum.GetPhyAddr()),
                                              r,
                                              has_vm ? reinterpret_cast<__ubuf__ float*>(ub_vm.GetPhyAddr()) : nullptr,
                                              ctx.tiling->d_og);
