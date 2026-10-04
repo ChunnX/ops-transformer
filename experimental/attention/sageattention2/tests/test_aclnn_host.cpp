@@ -258,8 +258,9 @@ bool TestParameterValidation()
                               false, sage_attn::LAYOUT_HND, false, false, false, false, td, ws),
                "Should retain non-causal with Sq != Sk");
 
-    // 6. sm_scale 冻结语义：0/负值一律非法（默认 1/sqrt(D) 由上层桥接折叠后
-    //    传入，C 计算核心不再兜底；非有限值同点拒绝）
+    // 6. sm_scale 冻结语义（三层分治）：默认 1/sqrt(D) 由 Python 桥接（sm_scale=None）
+    //    与 gert 路径 TilingImpl（0/缺省）折叠后传入；本函数（闭式 ComputeHostTiling）
+    //    不折叠，对直连调用方拒绝 0/负值/非有限值（与 sage_attn_host_tiling.h 检查注释同口径）
     TEST_CHECK(!CallHostTiling(2, 128, 128, 32, 8, 1, 64, 0.0,
                                sage_attn::QUANT_GRAN_PER_THREAD, sage_attn::PV_ACCUM_FP32_FP16,
                                false, sage_attn::LAYOUT_HND, false, false, false, false, td, ws),

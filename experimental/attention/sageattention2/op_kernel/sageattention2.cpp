@@ -118,7 +118,8 @@ namespace sage_attn {
 using Catlass::SageAttn::Vector1UbBudget;
 [[maybe_unused]] constexpr uint32_t SAGE_UB_DOT32_OFFSET = Vector1UbBudget::A7_DOT32_OFFSET;
 [[maybe_unused]] constexpr uint32_t SAGE_UB_PV_PARTIAL_OFFSET = Vector1UbBudget::A7_PV_PARTIAL_OFFSET;
-[[maybe_unused]] constexpr uint32_t SAGE_UB_V1_STATS_OFFSET = Vector1UbBudget::LSE_WORKSPACE_OFFSET;
+// （LSE 区基址不再设本文件别名：R17-2 重排后各子槽偏移已逐一具名于唯一定义点
+//  Vector1UbBudget（V1_ROW_MAX_OFFSET 即区基址），调用点别名只保留有消费方者。）
 [[maybe_unused]] constexpr uint32_t SAGE_UB_V1_ROW_MAX_OFFSET = Vector1UbBudget::V1_ROW_MAX_OFFSET;
 [[maybe_unused]] constexpr uint32_t SAGE_UB_V1_ROW_SUM_OFFSET = Vector1UbBudget::V1_ROW_SUM_OFFSET;
 [[maybe_unused]] constexpr uint32_t SAGE_UB_V1_KS_ROW_OFFSET = Vector1UbBudget::V1_KS_ROW_OFFSET;
