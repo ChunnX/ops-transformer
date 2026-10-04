@@ -239,9 +239,10 @@ public:
             return FootprintViolation::kUbV1A7Handoff;
         }
 
-        // V0 UB：GM 输入 ping 槽按 [block_n][head_dim] FP16 暂存（设备核单槽取数，
+        // V0 UB：GM 输入 ping 槽按 max(total_rows, block_n) × head_dim FP16 暂存（Q 聚合行或 KV 分块行，
         // 偏移唯一定义 GM_INPUT_PING_OFFSET，校验槽容量即覆盖该消费契约）
-        const uint64_t v0_input_bytes = static_cast<uint64_t>(block_n) * head_dim * 2u;
+        const uint64_t max_v0_rows = (total_rows > block_n) ? total_rows : block_n;
+        const uint64_t v0_input_bytes = max_v0_rows * head_dim * 2u;
         if (v0_input_bytes > Vector0UbBudget::GM_INPUT_PING_BYTES) {
             return FootprintViolation::kUbV0Input;
         }

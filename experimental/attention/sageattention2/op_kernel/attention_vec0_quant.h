@@ -22,6 +22,8 @@ template <uint32_t DTYPE_MODE>
 class AttentionVec0Quant {
 public:
     static constexpr uint32_t kDtype = NormDtypeMode(DTYPE_MODE);
+    static_assert(MAX_PACK_ROWS * 128u * sizeof(uint16_t) <= Catlass::SageAttn::Vector0UbBudget::GM_INPUT_PING_BYTES,
+                  "SlotV0InputPing capacity must accommodate MAX_PACK_ROWS * head_dim_max");
 
 #if !SAGE_ATTN_DEVICE_COMPILE
     __aicore__ inline __attribute__((always_inline)) static float ReadInputBits(const uint16_t *base, int64_t idx)
@@ -71,10 +73,9 @@ public:
             if (head_start_row >= act_rows_q) break;
             const uint32_t rows_to_load = ::Min(ctx.cur_q_len, act_rows_q - head_start_row);
             const int64_t head_gm_offset = q_layout(tla::MakeCoord(0u, g, 0u, 0u)) * static_cast<int64_t>(sizeof(half));
-            GlobalTensor<half> gm_head;
-            gm_head.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(q_src + head_gm_offset));
-            gm_head.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
-            Catlass::SageAttn::LoadTile2DFromGm(ub_in[head_start_row * d], gm_head, rows_to_load, d, stride_q);
+            Catlass::SageAttn::LoadTile2DFromGm(ub_in[head_start_row * d],
+                                                reinterpret_cast<__gm__ half*>(q_src + head_gm_offset),
+                                                rows_to_load, d, stride_q);
         }
         Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
         dev_vf::RowAbsMaxRowsVF<kDtype>(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
@@ -234,11 +235,8 @@ public:
 
         // 单条 2D Strided DMA 猝发读整个 block_k 分块拉入 UB，消灭逐行 GM 读与流水气泡
         const uint32_t stride_k = Catlass::SageAttn::CalcGm2dStride32B(ctx.hkv, d, sizeof(half), ctx.tiling->tensor_layout);
-        GlobalTensor<half> gm_k;
-        gm_k.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(k_src));
-        gm_k.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
         Catlass::SageAttn::Sync<HardEvent::V_MTE2>();
-        Catlass::SageAttn::LoadTile2DFromGm(ub_in, gm_k, block_k, d, stride_k);
+        Catlass::SageAttn::LoadTile2DFromGm(ub_in, reinterpret_cast<__gm__ half*>(k_src), block_k, d, stride_k);
         Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
         dev_vf::RowAbsMaxRowsVF<kDtype>(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
                                         reinterpret_cast<__ubuf__ float*>(ub_rowmax.GetPhyAddr()),
@@ -388,11 +386,9 @@ public:
                 for (uint32_t t_start = 0; t_start < ctx.sk; t_start += MAX_PACK_ROWS) {
                     const uint32_t chunk_len = ::Min(static_cast<uint32_t>(MAX_PACK_ROWS), ctx.sk - t_start);
                     const int64_t chunk_gm_offset = kv_layout(tla::MakeCoord(0u, 0u, t_start, 0u)) * static_cast<int64_t>(sizeof(half));
-                    GlobalTensor<half> gm_chunk;
-                    gm_chunk.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(v_src + chunk_gm_offset));
-                    gm_chunk.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
                     Catlass::SageAttn::Sync<HardEvent::V_MTE2>();
-                    Catlass::SageAttn::LoadTile2DFromGm(ub_in, gm_chunk, chunk_len, d, stride_v);
+                    Catlass::SageAttn::LoadTile2DFromGm(ub_in, reinterpret_cast<__gm__ half*>(v_src + chunk_gm_offset),
+                                                        chunk_len, d, stride_v);
                     Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
                     for (uint32_t c = 0; c < chunk_len; ++c) {
                         dev_vf::ChannelStatsAccumVF<kDtype>(reinterpret_cast<__ubuf__ half*>(ub_in[c * d].GetPhyAddr()),
@@ -414,11 +410,9 @@ public:
                 for (uint32_t t_start = 0; t_start < ctx.sk; t_start += MAX_PACK_ROWS) {
                     const uint32_t chunk_len = ::Min(static_cast<uint32_t>(MAX_PACK_ROWS), ctx.sk - t_start);
                     const int64_t chunk_gm_offset = kv_layout(tla::MakeCoord(0u, 0u, t_start, 0u)) * static_cast<int64_t>(sizeof(half));
-                    GlobalTensor<half> gm_chunk;
-                    gm_chunk.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(v_src + chunk_gm_offset));
-                    gm_chunk.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
                     Catlass::SageAttn::Sync<HardEvent::V_MTE2>();
-                    Catlass::SageAttn::LoadTile2DFromGm(ub_in, gm_chunk, chunk_len, d, stride_v);
+                    Catlass::SageAttn::LoadTile2DFromGm(ub_in, reinterpret_cast<__gm__ half*>(v_src + chunk_gm_offset),
+                                                        chunk_len, d, stride_v);
                     Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
                     for (uint32_t c = 0; c < chunk_len; ++c) {
                         dev_vf::ChannelAmaxAccumVF<kDtype>(reinterpret_cast<__ubuf__ half*>(ub_in[c * d].GetPhyAddr()),
@@ -446,11 +440,8 @@ public:
         }
 
         // 分块量化写 L1：单条 2D Strided DMA 猝发读整个 block_k 分块拉入 UB，消灭逐行 GM 读与流水气泡
-        GlobalTensor<half> gm_v;
-        gm_v.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(v_src));
-        gm_v.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
         Catlass::SageAttn::Sync<HardEvent::V_MTE2>();
-        Catlass::SageAttn::LoadTile2DFromGm(ub_in, gm_v, block_k, d, stride_v);
+        Catlass::SageAttn::LoadTile2DFromGm(ub_in, reinterpret_cast<__gm__ half*>(v_src), block_k, d, stride_v);
         Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
 
         for (uint32_t j = 0; j < block_n; ++j) {

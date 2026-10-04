@@ -382,8 +382,9 @@ void TestNddmaStrideContract() {
     assert(Catlass::SageAttn::CalcGm2dStride32B(1, 128, 2, sage_attn::LAYOUT_HND) == 0);
 
     // NHD 布局 ([B, S, H, D])：
-    // 单 Head 退化：H=1 时相邻 Token 连续，跨步为 0
+    // 单 Head 与边界退化：H=1 或 H=0 时相邻 Token 连续/安全退化，跨步恒为 0，无下溢
     assert(Catlass::SageAttn::CalcGm2dStride32B(1, 128, 2, sage_attn::LAYOUT_NHD) == 0);
+    assert(Catlass::SageAttn::CalcGm2dStride32B(0, 128, 2, sage_attn::LAYOUT_NHD) == 0);
     // 多 Head：stride = (H - 1) * (d * 2 / 32)
     // H=32, d=128: 31 * (128 * 2 / 32) = 31 * 8 = 248
     assert(Catlass::SageAttn::CalcGm2dStride32B(32, 128, 2, sage_attn::LAYOUT_NHD) == 248);
@@ -392,7 +393,7 @@ void TestNddmaStrideContract() {
     // H=4, d=128: 3 * 8 = 24
     assert(Catlass::SageAttn::CalcGm2dStride32B(4, 128, 2, sage_attn::LAYOUT_NHD) == 24);
 
-    // 与 MakeGmBhsdLayout 步距单点位元严格等价契约实证：
+    // 与 MakeGmBhsdLayout 步距单点位元严格等价契约实证 (d=128 与 d=64 双规格覆盖)：
     // NHD 下相邻两个 Token (s=0 与 s=1) 在 GM 中的地址差（以 half 元素计）
     // 恰好等于 (stride_32b_blocks * 32 / sizeof(half)) + d
     const uint32_t test_h = 16;
@@ -407,11 +408,29 @@ void TestNddmaStrideContract() {
     const int64_t reconstructed_diff = static_cast<int64_t>(stride_32b * 32 / 2) + test_d;
     assert(elem_diff == reconstructed_diff);
 
-    // constexpr 编译期锁值
+    // d=64 规格位元覆盖：
+    const uint32_t test_h_64 = 8;
+    const uint32_t test_d_64 = 64;
+    const auto nhd_layout_64 = Catlass::SageAttn::MakeGmBhsdLayout(1, test_h_64, 32, test_d_64, 0);
+    const int64_t t0_offset = nhd_layout_64(tla::MakeCoord(0u, 2u, 0u, 0u));
+    const int64_t t1_offset = nhd_layout_64(tla::MakeCoord(0u, 2u, 1u, 0u));
+    const int64_t diff_64 = t1_offset - t0_offset;
+    assert(diff_64 == static_cast<int64_t>(test_h_64) * test_d_64);
+    const uint32_t stride_32b_64 = Catlass::SageAttn::CalcGm2dStride32B(test_h_64, test_d_64, 2, sage_attn::LAYOUT_NHD);
+    const int64_t reconstructed_64 = static_cast<int64_t>(stride_32b_64 * 32 / 2) + test_d_64;
+    assert(diff_64 == reconstructed_64);
+
+    // 昇腾 32 字节硬件突发对齐与 constexpr 编译期锁值：
+    static_assert((64u * sizeof(uint16_t)) % 32u == 0u, "d=64 must be 32B aligned");
+    static_assert((128u * sizeof(uint16_t)) % 32u == 0u, "d=128 must be 32B aligned");
+    static_assert((64u * sizeof(uint16_t)) / 32u == 4u, "d=64 block_len must be 4");
+    static_assert((128u * sizeof(uint16_t)) / 32u == 8u, "d=128 block_len must be 8");
     static_assert(Catlass::SageAttn::CalcGm2dStride32B(32, 128, 2, sage_attn::LAYOUT_NHD) == 248,
                   "NHD 32-head stride must fold at compile time");
     static_assert(Catlass::SageAttn::CalcGm2dStride32B(32, 128, 2, sage_attn::LAYOUT_HND) == 0,
                   "HND stride must fold at compile time to 0");
+    static_assert(Catlass::SageAttn::CalcGm2dStride32B(0, 128, 2, sage_attn::LAYOUT_NHD) == 0,
+                  "H=0 boundary must fold to 0");
 
     std::cout << "[Test 7 Passed] NDDMA 2D Strided DMA contract verified!" << std::endl;
 }
