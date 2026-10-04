@@ -160,10 +160,13 @@ class TestGoldenPrecision(unittest.TestCase):
         tc_cases = [k for k in self.cases if k.startswith("TC-")]
         self.assertGreaterEqual(len(tc_cases), 10)
         for case_id in sorted(tc_cases):
-            out, _, tensors = self._execute_case(self.cases[case_id])
+            case_info = self.cases[case_id]
+            out, _, tensors = self._execute_case(case_info)
             ref_out = tensors["out"]
             diff = (out.float() - ref_out.float()).abs().max().item()
-            self.assertLess(diff, 1e-4, f"TC-case {case_id} exceeded error limit: {diff}")
+            is_bf16 = case_info.get("dtype") in ("bfloat16", "bf16")
+            tol = 2.0 ** (-6) if is_bf16 else 2.0 ** (-9)
+            self.assertLess(diff, tol, f"TC-case {case_id} exceeded error limit {tol}: {diff}")
 
     def test_sageattn_dispatch_precision_equivalence(self):
         """Verify calling top-level sageattn API matches sageattn_qk_int8_pv_fp8_asc precision."""

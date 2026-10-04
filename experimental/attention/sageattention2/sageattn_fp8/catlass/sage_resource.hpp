@@ -104,7 +104,7 @@ struct Vector1UbBudget {
                   "Vector1 LSE workspace sub-offsets overlap or exceed the region");
 
     static constexpr uint32_t TWO_LEVEL_REDUCE_OFFSET  = 240 * 1024;
-    static constexpr uint32_t TWO_LEVEL_REDUCE_BYTES   = 16 * 1024;  // 两级累加归约缓冲（skip-scale 变体预留）
+    static constexpr uint32_t TWO_LEVEL_REDUCE_BYTES   = 16 * 1024;  // 两级累加归约缓冲（标准 fp32+fp16 周期归约）
 
     // 行界常数（与 SageResourceManager::MAX_GQA_PACK_ROWS / host 分块域 block_n ∈ {64,128} /
     // d_pad ≤ 128 验收域同步；唯一 行上限定义点 sage_attn::MAX_PACK_ROWS（tiling.h），
