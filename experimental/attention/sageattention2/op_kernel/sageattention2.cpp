@@ -1,6 +1,5 @@
-#ifndef ENABLE_CV_COMM_VIA_SSBUF
-#define ENABLE_CV_COMM_VIA_SSBUF 1
-#endif
+// ENABLE_CV_COMM_VIA_SSBUF 单点定义于 static_slot.h（本文件首个包含头，
+// 先于 kernel_operator.h 生效，驱动 SSBUF 硬件通路选择）。
 #include "static_slot.h"
 #include "attention_sync.h"
 #include "attention_cube.h"
