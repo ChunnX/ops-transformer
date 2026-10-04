@@ -9,7 +9,7 @@
 #include "sage_attention2_template_tiling_key.h"
 
 #if SAGE_ATTN_DEVICE_COMPILE
-#define DEBUG_PHASE_6 1
+#define DEBUG_PHASE_6A 1
 
 template <class ByteCountT>
 __inline__ __attribute__((always_inline)) __aicore__ void InitTilingDataHelper(
@@ -54,17 +54,18 @@ extern "C" __global__ __aicore__ void sage_attention2(
     GET_TILING_DATA_WITH_STRUCT(sage_attn::SageAttention2TilingData, t, tiling);
     AscendC::SetSysWorkspaceForce(workspace);
     __gm__ uint8_t *user_ws = workspace + AscendC::RESERVED_WORKSPACE;
-#if defined(DEBUG_PHASE_6)
+#if defined(DEBUG_PHASE_6A)
     // 实例化内核并执行 Init
     sage_attn::SageAttnKernel<sage_attn::kTplDtypeFp16> kernel;
     kernel.Init(query, key, value, attentionOut, softmaxLse, user_ws, &t);
-    // 测试 Cube 与 Vector 0 的实际握手；Vector 1 提前退出
+    // 纯信号测试：Vector 0 触发 Q_READY 并等待 KV_PING_FREE；Cube 等待 Q_READY 并触发 KV_PING_FREE
     if ASCEND_IS_AIC {
-        kernel.TestCubeVec0Handshake();
+        sage_attn::AttentionSync::CubeWaitQReady();
+        sage_attn::AttentionSync::CubeReleaseKvFree(true);
     } else {
         if (AscendC::GetSubBlockIdx() == 0) {
-            // Vector 0 完整执行（含与 Cube 的真实跨核信号灯：Q_READY, KV_READY, KV_FREE）
-            kernel.TestVec0NormalProcess();
+            sage_attn::AttentionSync::Vec0SignalQReady();
+            sage_attn::AttentionSync::Vec0DrainKvPingFree();
         }
     }
     return;
