@@ -4261,10 +4261,10 @@ def deepseek_inquant_ds_pa_preprocessing(ifa_param, params):
     k_cache_index = 21
     v_cache_index = 22
     k_rope_cache_index = 25
-    if self.params["is_preprocess"]:
-        self.params["input_data"].kwargs["k_cache"] = k_cache
-        self.params["input_data"].kwargs["v_cache"] = v_cache
-        self.params["input_data"].kwargs["k_rope_cache"] = k_rope_cache
+    if params["is_preprocess"]:
+        params["input_data"].kwargs["k_cache"] = k_cache
+        params["input_data"].kwargs["v_cache"] = v_cache
+        params["input_data"].kwargs["k_rope_cache"] = k_rope_cache
 
 
 def deepseek_inquant_preprocessing(ifa_param, params):
@@ -4750,8 +4750,8 @@ def aclnn_op_func_ifa_cpu(torch_tensor_list, params):
                 block_idx += 1
             block_table_batch_idx += 1
         ifa_param["block_table"] = block_table
-        k_np_dtype = tools.get_np_dtype(params["dtype_input"][1])
-        v_np_dtype = tools.get_np_dtype(params["dtype_input"][2])
+        k_np_dtype = get_np_dtype(params["dtype_input"][1])
+        v_np_dtype = get_np_dtype(params["dtype_input"][2])
         ifa_param["k_np_dtype"] = k_np_dtype
         ifa_param["v_np_dtype"] = v_np_dtype
         print(
@@ -7103,7 +7103,7 @@ def kvantiquantmode(flagList, torch_tensor_list, params, v_end_index, numKeyValu
     # 判断kv分离的伪量化
     if flagList[17] or flagList[19]:
         anti_or_kvanti = 2
-        q_dtype_np = tools.get_np_dtype(params["dtype_input"][0])
+        q_dtype_np = get_np_dtype(params["dtype_input"][0])
         k_antiquantscale_shape = params["shape_input"][v_end_index + 13]
         k_antiquantscale_tensor = torch_tensor_list[v_end_index + 13]
         v_antiquantscale_shape = params["shape_input"][v_end_index + 15]
@@ -7137,7 +7137,7 @@ def kvantiquantmode(flagList, torch_tensor_list, params, v_end_index, numKeyValu
             )
 
     if flagList[18] or flagList[20]:
-        q_dtype_np = tools.get_np_dtype(params["dtype_input"][0])
+        q_dtype_np = get_np_dtype(params["dtype_input"][0])
         k_antiquantoffset_shape = params["shape_input"][v_end_index + 14]
         k_antiquantoffset_tensor = torch_tensor_list[v_end_index + 14]
         v_antiquantoffset_shape = params["shape_input"][v_end_index + 16]
@@ -7606,7 +7606,7 @@ def deepseek_ds_pa_preprocessing(pfa_param, params, torch_tensor_list):
                 base,
             ).transpose(0, 1, 3, 2, 4)
 
-    kv_dtype = tools.get_np_dtype(params["dtype_input"][1])
+    kv_dtype = get_np_dtype(params["dtype_input"][1])
 
     if str(kv_dtype) == "<class 'bfloat16'>":
         k_cache = torch.from_numpy(k_cache).to(torch.bfloat16)
@@ -8150,7 +8150,7 @@ def aclnnPromptFlashAttention_unification(torch_tensor_list, params):
 
         if flagList[17] or flagList[19]:
             anti_or_kvanti = 2
-            q_dtype_np = tools.get_np_dtype(params["dtype_input"][0])
+            q_dtype_np = get_np_dtype(params["dtype_input"][0])
             k_antiquantscale_shape = params["shape_input"][v_end_index + 13]
             k_antiquantscale_tensor = torch_tensor_list[v_end_index + 13]
             v_antiquantscale_shape = params["shape_input"][v_end_index + 15]
@@ -8202,7 +8202,7 @@ def aclnnPromptFlashAttention_unification(torch_tensor_list, params):
         pfa_param["v_antiquant_scale"] = v_antiquant_scale
 
         if flagList[18] or flagList[20]:
-            q_dtype_np = tools.get_np_dtype(params["dtype_input"][0])
+            q_dtype_np = get_np_dtype(params["dtype_input"][0])
             k_antiquantoffset_shape = params["shape_input"][v_end_index + 14]
             k_antiquantoffset_tensor = torch_tensor_list[v_end_index + 14]
             v_antiquantoffset_shape = params["shape_input"][v_end_index + 16]
@@ -8432,7 +8432,7 @@ def aclnnPromptFlashAttention_unification(torch_tensor_list, params):
                         print(f"[INFO]k_cache NZ: {k_cache.shape}")
                         print(f"[INFO]v_cache NZ: {v_cache.shape}")
 
-                kv_dtype = tools.get_np_dtype(params["dtype_input"][1])
+                kv_dtype = get_np_dtype(params["dtype_input"][1])
 
                 if str(kv_dtype) == "<class 'bfloat16'>":
                     k_cache = torch.from_numpy(k_cache).to(torch.bfloat16)
