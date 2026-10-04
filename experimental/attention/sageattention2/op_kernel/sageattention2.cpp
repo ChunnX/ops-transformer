@@ -210,8 +210,9 @@ public:
         lse_correction_gm_ = lseCorrection;
         out_gm_ = attentionOut;
         lse_gm_ = softmaxLse;
-        workspace_gm_ = workspace; // 遵循 CANN 算子签名契约：用户 Workspace 指针经 GetUserWorkspace 直达入口，
-                                   // 保留以保持结构签名一致。
+        workspace_gm_ = workspace; // 遵循 CANN 算子签名契约：用户 Workspace 指针经 GetUserWorkspace 直达入口；
+                                   // 非签名占位——A7 scale 交接条带（StageStrip，core_idx × STAGE_CORE_STRIDE
+                                   // 定址）与 smooth_v 均值区（workspace_vm_offset）均自本指针实址消费。
 
         // 1C2V (KERNEL_TYPE_MIX_AIC_1_2) 模式下：
         // AIC 与同一物理核内的两个 AIV 共享相同的 GetBlockIdx()（即 core_idx_）；
@@ -322,7 +323,7 @@ public:
 
 private:
     /**
-     * 任务解码辅助函数：将一维任务索引解耦为 (Batch, Hkv, Q_blk) 并更新当前 Token 范围与累加控制器
+     * 任务解码辅助函数：将一维任务索引解耦为 (Batch, Hkv, GQA_chunk, Q_blk) 并更新当前 Token 范围与累加控制器
      */
     __aicore__ void DecodeTask(uint64_t task_idx, uint32_t q_blks_per_head)
     {
