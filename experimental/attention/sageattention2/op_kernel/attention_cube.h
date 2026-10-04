@@ -100,6 +100,75 @@ public:
         AttentionSync::CubeSignalPvDone();
     }
 
+    __aicore__ inline __attribute__((always_inline)) void TestProcessStandalone(
+        const CubeBlockParams &params,
+        uint32_t active_kv_blocks,
+        uint32_t l1_q_offset,
+        uint32_t ub_dot32_offset,
+        uint32_t ub_pv_partial_offset)
+    {
+#if SAGE_ATTN_DEVICE_COMPILE
+        Catlass::SageAttn::SageQkMmad<> qk_mmad;
+        Catlass::SageAttn::SagePvMmad<> pv_mmad;
+
+        // 加载 Q 分块至 L0A: (rows, d)
+        qk_mmad.LoadL0A(l1_q_offset, params.rows, params.d);
+        Catlass::SageAttn::Sync<HardEvent::MTE1_M>();
+
+        for (uint32_t k = 0; k < active_kv_blocks; ++k) {
+            bool is_ping = ((k % 2) == 0);
+            uint32_t l1_kv_addr = is_ping ? SlotL1KvPing::Offset() : SlotL1KvPong::Offset();
+
+            if (k > 0) {
+                uint32_t prev_k = k - 1;
+                bool prev_is_ping = ((prev_k % 2) == 0);
+                uint32_t l1_v_addr = (prev_is_ping ? SlotL1KvPing::Offset() : SlotL1KvPong::Offset())
+                                     + Catlass::SageAttn::L1DoubleBankContract::KV_V_SUB_OFFSET;
+                uint32_t s_slot = prev_is_ping ? SlotL1SoftmaxPPing::Offset() : SlotL1SoftmaxPPong::Offset();
+                pv_mmad.LoadL0A(s_slot, params.rows, params.block_n);
+                pv_mmad.LoadL0B(l1_v_addr, params.block_n, params.d);
+                Catlass::SageAttn::Sync<HardEvent::MTE1_M>();
+                pv_mmad.Compute(true);
+                Catlass::SageAttn::Sync<HardEvent::M_FIX>();
+                pv_mmad.ExecuteEpilogue(ub_pv_partial_offset);
+                Catlass::SageAttn::Sync<HardEvent::FIX_M>();
+            }
+
+            if (k > 0) {
+                qk_mmad.LoadL0A(l1_q_offset, params.rows, params.d);
+            }
+            qk_mmad.LoadL0B(l1_kv_addr, params.block_n, params.d);
+            Catlass::SageAttn::Sync<HardEvent::MTE1_M>();
+            qk_mmad.Compute(true);
+            Catlass::SageAttn::Sync<HardEvent::M_FIX>();
+
+            qk_mmad.EmitL0CToUbRaw(ub_dot32_offset, params.rows, params.block_n);
+            Catlass::SageAttn::Sync<HardEvent::FIX_M>();
+        }
+
+        if (active_kv_blocks > 0) {
+            uint32_t last_k = active_kv_blocks - 1;
+            bool last_is_ping = ((last_k % 2) == 0);
+            uint32_t l1_v_addr = (last_is_ping ? SlotL1KvPing::Offset() : SlotL1KvPong::Offset())
+                                 + Catlass::SageAttn::L1DoubleBankContract::KV_V_SUB_OFFSET;
+            uint32_t s_slot = last_is_ping ? SlotL1SoftmaxPPing::Offset() : SlotL1SoftmaxPPong::Offset();
+            pv_mmad.LoadL0A(s_slot, params.rows, params.block_n);
+            pv_mmad.LoadL0B(l1_v_addr, params.block_n, params.d);
+            Catlass::SageAttn::Sync<HardEvent::MTE1_M>();
+            pv_mmad.Compute(true);
+            Catlass::SageAttn::Sync<HardEvent::M_FIX>();
+            pv_mmad.ExecuteEpilogue(ub_pv_partial_offset);
+            Catlass::SageAttn::Sync<HardEvent::FIX_M>();
+        }
+#else
+        (void)params;
+        (void)active_kv_blocks;
+        (void)l1_q_offset;
+        (void)ub_dot32_offset;
+        (void)ub_pv_partial_offset;
+#endif
+    }
+
 private:
 #if SAGE_ATTN_DEVICE_COMPILE
     __aicore__ inline __attribute__((always_inline)) void StepPvMmad(

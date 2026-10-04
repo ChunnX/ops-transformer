@@ -516,6 +516,14 @@ public:
         vec0_.ProcessStandalone(ctx_);
     }
 
+    __aicore__ inline __attribute__((always_inline)) void TestCubeStandalone()
+    {
+        if (!is_active_core_) return;
+        CubeBlockParams p{ctx_.TotalRows(), ctx_.block_n, ctx_.d};
+        cube_.TestProcessStandalone(p, ctx_.active_kv_blocks, ctx_.tiling->l1_q_offset,
+                                   SlotV1Dot32::Offset(), SlotV1PvPartial::Offset());
+    }
+
     __aicore__ inline __attribute__((always_inline)) void TestVec1Standalone()
     {
         if (!is_active_core_) return;
