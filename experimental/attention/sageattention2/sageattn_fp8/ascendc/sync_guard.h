@@ -1,5 +1,6 @@
 #ifndef SAGE_ATTN_FP8_ASCENDC_SYNC_GUARD_H
 #define SAGE_ATTN_FP8_ASCENDC_SYNC_GUARD_H
+#pragma once
 
 #include <cstdint>
 #include "tiling.h"
@@ -72,7 +73,7 @@ namespace CrossCoreFlags {
  * Cube (AIC) 在与 Vector 1 同步时必须将 flag_id 加上 16。
  * PIPE_S 为全局作用域常量，不可加名字空间限定。
  */
-__aicore__ inline void CrossCoreSet(CrossCoreDirection dir, uint32_t flag_id) {
+__aicore__ inline __attribute__((always_inline)) void CrossCoreSet(CrossCoreDirection dir, uint32_t flag_id) {
 #if SAGE_ATTN_KERNEL_API
     uint32_t hw_flag_id = flag_id;
     if ASCEND_IS_AIC {
@@ -88,7 +89,7 @@ __aicore__ inline void CrossCoreSet(CrossCoreDirection dir, uint32_t flag_id) {
 #endif
 }
 
-__aicore__ inline void CrossCoreWait(CrossCoreDirection dir, uint32_t flag_id) {
+__aicore__ inline __attribute__((always_inline)) void CrossCoreWait(CrossCoreDirection dir, uint32_t flag_id) {
 #if SAGE_ATTN_KERNEL_API
     uint32_t hw_flag_id = flag_id;
     if ASCEND_IS_AIC {

@@ -1,5 +1,6 @@
 #ifndef SAGE_ATTN_FP8_CATLASS_SAGE_RESOURCE_HPP
 #define SAGE_ATTN_FP8_CATLASS_SAGE_RESOURCE_HPP
+#pragma once
 
 #include <cstdint>
 #include "../ascendc/tiling.h"
@@ -173,7 +174,7 @@ public:
      * 各区域容量唯一定义点：L1DoubleBankContract / Vector0UbBudget /
      * Vector1UbBudget / HardwareResourceQuota（本文件与 sage_tile.hpp）。
      */
-    static constexpr FootprintViolation InspectTilingPlan(
+    [[nodiscard]] static constexpr FootprintViolation InspectTilingPlan(
         uint32_t total_rows, uint32_t block_n, uint32_t head_dim)
     {
         if (total_rows == 0u || block_n == 0u || head_dim == 0u) {

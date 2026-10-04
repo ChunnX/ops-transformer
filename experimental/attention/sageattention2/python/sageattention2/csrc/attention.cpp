@@ -56,7 +56,7 @@ inline void EnsureCannOpapiLoaded()
         aclOpExecutor *executor = nullptr;                                                                 \
         aclOpExecutor **executor_addr = &executor;                                                         \
         auto converted_params = ConvertTypes(__VA_ARGS__, workspace_size_addr, executor_addr);             \
-        auto get_workspace_func = ConvertToOpApiFunc(converted_params, (void *)&(ws_fn));                  \
+        auto get_workspace_func = ConvertToOpApiFunc(converted_params, reinterpret_cast<void *>(&(ws_fn))); \
         auto workspace_status = call(get_workspace_func, converted_params);                                \
         TORCH_CHECK(workspace_status == 0, "SageAttention2 GetWorkspaceSize failed: ", workspace_status);  \
         void *workspace_addr = GetWorkSpaceAddr(workspace_size);                                           \

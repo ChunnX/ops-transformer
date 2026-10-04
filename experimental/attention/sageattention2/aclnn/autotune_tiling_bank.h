@@ -11,9 +11,11 @@
 
 #ifndef SAGE_ATTN_AUTOTUNE_TILING_BANK_H
 #define SAGE_ATTN_AUTOTUNE_TILING_BANK_H
+#pragma once
 
 #include <cstdint>
 #include <cstddef>
+#include <string_view>
 
 namespace sage_attn {
 namespace autotune {
@@ -36,23 +38,23 @@ static constexpr TunedTilingEntry kAscend950TunedBank[] = {
     {"P-07", 32u, 128u, 16u, true},
 };
 
-constexpr size_t kNumTunedEntries = sizeof(kAscend950TunedBank) / sizeof(kAscend950TunedBank[0]);
+inline constexpr size_t kNumTunedEntries = sizeof(kAscend950TunedBank) / sizeof(kAscend950TunedBank[0]);
 
-inline const TunedTilingEntry* QueryTunedTiling(const char* case_id) {
-    if (case_id == nullptr) return nullptr;
-    for (size_t i = 0; i < kNumTunedEntries; ++i) {
-        const auto& e = kAscend950TunedBank[i];
-        const char* p1 = e.case_id;
-        const char* p2 = case_id;
-        while (*p1 && *p2 && *p1 == *p2) { ++p1; ++p2; }
-        if (*p1 == '\0' && *p2 == '\0') {
+[[nodiscard]] inline const TunedTilingEntry* QueryTunedTiling(std::string_view case_id) {
+    for (const auto& e : kAscend950TunedBank) {
+        if (case_id == e.case_id) {
             return &e;
         }
     }
     return nullptr;
 }
 
-inline const char* MatchCaseId(
+[[nodiscard]] inline const TunedTilingEntry* QueryTunedTiling(const char* case_id) {
+    if (case_id == nullptr) return nullptr;
+    return QueryTunedTiling(std::string_view{case_id});
+}
+
+[[nodiscard]] inline const char* MatchCaseId(
     uint32_t b,
     uint32_t sq,
     uint32_t sk,
@@ -89,7 +91,7 @@ inline const char* MatchCaseId(
     return nullptr;
 }
 
-inline const TunedTilingEntry* QueryTunedTiling(
+[[nodiscard]] inline const TunedTilingEntry* QueryTunedTiling(
     uint32_t b,
     uint32_t sq,
     uint32_t sk,

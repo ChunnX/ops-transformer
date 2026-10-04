@@ -1,5 +1,6 @@
 #ifndef SAGE_ATTN_FP8_CATLASS_SAGE_PV_MMAD_HPP
 #define SAGE_ATTN_FP8_CATLASS_SAGE_PV_MMAD_HPP
+#pragma once
 
 #include <cstdint>
 #include "../ascendc/tiling.h"
@@ -56,14 +57,14 @@ public:
     using ElementB = typename Traits::ElementB;
     using ElementC = typename Traits::ElementC;
 
-    __aicore__ SagePvMmad() = default;
+    __aicore__ inline __attribute__((always_inline)) SagePvMmad() = default;
 
     /**
      * 加载 Softmax 概率矩阵 S 分块至 L0A（从 UB 奇偶槽搬运，ND 行布局）。
      * 不走官方 TileCopyTla——其 L1 侧 zN 分形布局强约束与本算子 V1 产出的
      * UB 行布局不匹配（布局契约见 sage_tile.hpp 头注释），保留 LoadTile2D 单点。
      */
-    __aicore__ void LoadL0A(uint32_t s_addr, uint32_t m, uint32_t k) {
+    __aicore__ inline __attribute__((always_inline)) void LoadL0A(uint32_t s_addr, uint32_t m, uint32_t k) {
         m_ = m;
         k_ = k;
         // L0 寻址恒为基址 0（单缓冲无分片，原 l0a/l0b 基址参数全调用域恒 0，死参清理）
@@ -74,7 +75,7 @@ public:
      * 加载 V 分块至 L0B（从 L1 Bank 1 槽搬运，(n,k)=(d, block_n) 记账见
      * op_kernel ProcessCube 的 DEFECT-M-2 注释）
      */
-    __aicore__ void LoadL0B(uint32_t l1_v_addr, uint32_t k, uint32_t n) {
+    __aicore__ inline __attribute__((always_inline)) void LoadL0B(uint32_t l1_v_addr, uint32_t k, uint32_t n) {
         k_ = k;
         n_ = n;
         LoadTile2D<ElementB, AscendC::TPosition::B2, AscendC::TPosition::B1>(0U, l1_v_addr, k, n);
@@ -89,7 +90,7 @@ public:
      * m/n/k/cmatrixInitVal 逐参等价；disableGemv=true 与 PipeBarrier<PIPE_M> 差异
      * 的无行为影响论证见 sage_qk_mmad.hpp Compute 注释（两执行器同一组件）。
      */
-    __aicore__ void Compute([[maybe_unused]] bool init = false) {
+    __aicore__ inline __attribute__((always_inline)) void Compute([[maybe_unused]] bool init = false) {
 #if SAGE_ATTN_DEVICE_COMPILE
         using Fp8Code = AscendC::mx_fp8_e4m3_t;
 
@@ -135,7 +136,7 @@ public:
      * FP16 RNE 舍回定在 V1 合并处（MergePvPartialRowsVF，档位直读 tiling）。
      * l0c_src_offset 参数已删：L0C 单缓冲，全调用域恒 0（死参清理）。
      */
-    __aicore__ void ExecuteEpilogue(uint32_t ub_dst_offset) {
+    __aicore__ inline __attribute__((always_inline)) void ExecuteEpilogue(uint32_t ub_dst_offset) {
         CopyL0CToUbSplitM<ElementC>(0U, ub_dst_offset, m_, n_);
     }
 

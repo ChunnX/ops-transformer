@@ -147,31 +147,48 @@ bool TestRegOpDefinition()
     std::cout << "[RUN] TestRegOpDefinition..." << std::endl;
     ge::op::SageAttention2 op("SageAttention2");
 
-    TEST_ASSERT(op.GetOpType() == "SageAttention2", "OpName must be SageAttention2");
+    ge::AscendString str;
+    op.GetOpType(str);
+    TEST_ASSERT(str == "SageAttention2", "OpName must be SageAttention2");
 
     // 验证所有输入张量名称
-    TEST_ASSERT(ge::op::SageAttention2::name_in_query() == "query", "Must have input: query");
-    TEST_ASSERT(ge::op::SageAttention2::name_in_key() == "key", "Must have input: key");
-    TEST_ASSERT(ge::op::SageAttention2::name_in_value() == "value", "Must have input: value");
+    ge::op::SageAttention2::name_in_query(str);
+    TEST_ASSERT(str == "query", "Must have input: query");
+    ge::op::SageAttention2::name_in_key(str);
+    TEST_ASSERT(str == "key", "Must have input: key");
+    ge::op::SageAttention2::name_in_value(str);
+    TEST_ASSERT(str == "value", "Must have input: value");
 
     // 验证所有输出张量名称
-    TEST_ASSERT(ge::op::SageAttention2::name_out_output() == "output", "Must have output: output");
-    TEST_ASSERT(ge::op::SageAttention2::name_out_lse() == "lse", "Must have output: lse");
+    ge::op::SageAttention2::name_out_output(str);
+    TEST_ASSERT(str == "output", "Must have output: output");
+    ge::op::SageAttention2::name_out_lse(str);
+    TEST_ASSERT(str == "lse", "Must have output: lse");
 
     // 验证全部 7 个属性名
-    TEST_ASSERT(ge::op::SageAttention2::name_attr_tensor_layout() == "tensor_layout", "Must have attr: tensor_layout");
-    TEST_ASSERT(ge::op::SageAttention2::name_attr_is_causal() == "is_causal", "Must have attr: is_causal");
-    TEST_ASSERT(ge::op::SageAttention2::name_attr_qk_quant_gran() == "qk_quant_gran", "Must have attr: qk_quant_gran");
-    TEST_ASSERT(ge::op::SageAttention2::name_attr_sm_scale() == "sm_scale", "Must have attr: sm_scale");
-    TEST_ASSERT(ge::op::SageAttention2::name_attr_pv_accum_dtype() == "pv_accum_dtype", "Must have attr: pv_accum_dtype");
-    TEST_ASSERT(ge::op::SageAttention2::name_attr_smooth_k() == "smooth_k", "Must have attr: smooth_k");
-    TEST_ASSERT(ge::op::SageAttention2::name_attr_smooth_v() == "smooth_v", "Must have attr: smooth_v");
+    ge::op::SageAttention2::name_attr_tensor_layout(str);
+    TEST_ASSERT(str == "tensor_layout", "Must have attr: tensor_layout");
+    ge::op::SageAttention2::name_attr_is_causal(str);
+    TEST_ASSERT(str == "is_causal", "Must have attr: is_causal");
+    ge::op::SageAttention2::name_attr_qk_quant_gran(str);
+    TEST_ASSERT(str == "qk_quant_gran", "Must have attr: qk_quant_gran");
+    ge::op::SageAttention2::name_attr_sm_scale(str);
+    TEST_ASSERT(str == "sm_scale", "Must have attr: sm_scale");
+    ge::op::SageAttention2::name_attr_pv_accum_dtype(str);
+    TEST_ASSERT(str == "pv_accum_dtype", "Must have attr: pv_accum_dtype");
+    ge::op::SageAttention2::name_attr_smooth_k(str);
+    TEST_ASSERT(str == "smooth_k", "Must have attr: smooth_k");
+    ge::op::SageAttention2::name_attr_smooth_v(str);
+    TEST_ASSERT(str == "smooth_v", "Must have attr: smooth_v");
 
     // 校验属性默认值
-    TEST_ASSERT(op.get_attr_tensor_layout() == "HND", "tensor_layout default HND");
+    op.get_attr_tensor_layout(str);
+    TEST_ASSERT(str == "HND", "tensor_layout default HND");
     TEST_ASSERT(op.get_attr_is_causal() == false, "is_causal default false");
-    TEST_ASSERT(op.get_attr_qk_quant_gran() == "per_thread", "qk_quant_gran default per_thread");
-    TEST_ASSERT(op.get_attr_pv_accum_dtype() == "fp32+fp16", "pv_accum_dtype default fp32+fp16");
+    op.get_attr_qk_quant_gran(str);
+    TEST_ASSERT(str == "per_thread", "qk_quant_gran default per_thread");
+    op.get_attr_pv_accum_dtype(str);
+    TEST_ASSERT(str == "fp32+fp16", "pv_accum_dtype default fp32+fp16");
     TEST_ASSERT(op.get_attr_smooth_k() == true, "smooth_k default true");
     TEST_ASSERT(op.get_attr_smooth_v() == false, "smooth_v default false");
 

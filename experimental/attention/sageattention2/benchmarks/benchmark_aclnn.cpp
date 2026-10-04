@@ -167,7 +167,7 @@ struct DeviceWorkspace {
 // 字符串（"per_thread"/"fp32+fp16"/"HND"）。
 // 禁止回退为数值编码形态——OPP 安装库仅导出字符串属性符号，数值形参会按
 // 位置错绑到 const char * 槽位（strcmp 野指针）。
-typedef aclnnStatus (*SageNativePrepareFn)(
+using SageNativePrepareFn = aclnnStatus (*)(
     const aclTensor *query,
     const aclTensor *key,
     const aclTensor *value,
@@ -183,7 +183,7 @@ typedef aclnnStatus (*SageNativePrepareFn)(
     uint64_t *workspaceSize,
     aclOpExecutor **executor);
 
-typedef aclnnStatus (*SageRunFn)(
+using SageRunFn = aclnnStatus (*)(
     void *workspace,
     uint64_t workspaceSize,
     aclOpExecutor *executor,
@@ -193,7 +193,7 @@ typedef aclnnStatus (*SageRunFn)(
 // aclnnop/aclnn_fused_infer_attention_score_v5.h (aclnnFusedInferAttentionScoreV5GetWorkspaceSize).
 // All scalar modes are int64_t in the real header (never int). Do not reorder or drop the
 // RoPE / learnableSink / startIdx tails added by recent CANN releases.
-typedef aclnnStatus (*FiaV5PrepareFn)(
+using FiaV5PrepareFn = aclnnStatus (*)(
     const aclTensor *query,
     const aclTensorList *key,
     const aclTensorList *value,
@@ -245,7 +245,7 @@ typedef aclnnStatus (*FiaV5PrepareFn)(
     uint64_t *workspaceSize,
     aclOpExecutor **executor);
 
-typedef aclnnStatus (*FiaV5RunFn)(
+using FiaV5RunFn = aclnnStatus (*)(
     void *workspace,
     uint64_t workspaceSize,
     aclOpExecutor *executor,
@@ -253,7 +253,7 @@ typedef aclnnStatus (*FiaV5RunFn)(
 
 // Global ACLNN executor destructor (aclnn/acl_meta.h): aclDestroyAclOpExecutor.
 // Resolved via dlsym so the tool still links on CANN variants without the symbol.
-typedef aclnnStatus (*DestroyExecutorFn)(aclOpExecutor *executor);
+using DestroyExecutorFn = aclnnStatus (*)(aclOpExecutor *executor);
 
 
 

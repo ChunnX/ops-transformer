@@ -1,5 +1,6 @@
 #ifndef SAGE_ATTN_FP8_ASCENDC_TILING_H
 #define SAGE_ATTN_FP8_ASCENDC_TILING_H
+#pragma once
 
 #include <cstddef>
 #include <cstdint>
@@ -22,6 +23,10 @@
 #else
 #define __aicore__
 #endif
+#endif
+
+#ifndef __host__
+#define __host__
 #endif
 
 #ifndef __forceinline__
@@ -271,7 +276,7 @@ struct __attribute__((packed, aligned(32))) SageAttention2TilingData {
 
     // 便捷访问辅助函数（仅 host 侧使用；设备核内因 bisheng 对 const __gm__ this
     // 的成员函数限制，一律直接读字段——见 op_kernel/sageattention2.cpp Init 注释）
-    bool IsSmoothV() const noexcept {
+    [[nodiscard]] bool IsSmoothV() const noexcept {
         return smooth_v != 0;
     }
 };
@@ -293,7 +298,7 @@ static_assert(alignof(SageAttention2TilingData) == 32, "SageAttention2TilingData
  * @param cores 参与调度的核心总数 (必须为偶数，如 32 或 28)
  * @return 物理亲和后的实际任务索引
  */
-__aicore__ inline uint64_t DieTask(uint64_t task, uint64_t total, uint32_t cores) noexcept {
+[[nodiscard]] __aicore__ __forceinline__ uint64_t DieTask(uint64_t task, uint64_t total, uint32_t cores) noexcept {
     if (cores < 2 || total < 2) {
         return task;
     }
@@ -311,7 +316,7 @@ __aicore__ inline uint64_t DieTask(uint64_t task, uint64_t total, uint32_t cores
  * @param enable 是否启用 Die 亲和性调度
  * @return 当前核心的任务循环终止上界
  */
-__aicore__ inline uint64_t DieTaskEnd(uint64_t total, uint32_t core, uint32_t cores, bool enable = true) noexcept {
+[[nodiscard]] __aicore__ __forceinline__ uint64_t DieTaskEnd(uint64_t total, uint32_t core, uint32_t cores, bool enable = true) noexcept {
     if (!enable || cores < 2 || total < 2 || (cores % 2 != 0)) {
         return total;
     }

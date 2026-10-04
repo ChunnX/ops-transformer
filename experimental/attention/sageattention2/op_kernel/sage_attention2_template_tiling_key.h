@@ -22,10 +22,6 @@
 
 #include "../sageattn_fp8/ascendc/tiling.h" // __aicore__ 宏桩首个定义点（宿主展开为空）
 
-#ifndef __host__
-#define __host__
-#endif
-
 #if defined(__has_include)
 #if __has_include("ascendc/host_api/tiling/template_argument.h")
 #if !defined(SAGE_ATTN_DEVICE_COMPILE) || !SAGE_ATTN_DEVICE_COMPILE || defined(ASCENDC_TPL_KERNEL)
@@ -45,7 +41,7 @@ inline constexpr uint32_t kTplDtypeBf16 = 2; // 2=bf16
  * 输入位型归一（0 视作 fp16 缺省）。host/kernel 共用唯一定义点，
  * 消费侧禁止再展开三元式（原 SageAttnKernel::DtypeMode 的定义迁移至此）。
  */
-__aicore__ __host__ inline constexpr uint32_t NormDtypeMode(uint32_t raw)
+[[nodiscard]] __aicore__ __host__ inline __attribute__((always_inline)) constexpr uint32_t NormDtypeMode(uint32_t raw)
 {
     return (raw == kTplDtypeBf16) ? kTplDtypeBf16 : kTplDtypeFp16;
 }
@@ -56,7 +52,7 @@ __aicore__ __host__ inline constexpr uint32_t NormDtypeMode(uint32_t raw)
  * 冻结 bits 20-23 = input_dtype；其余 key 位 M5 未启用恒 0）。canonical 机制
  * 可用时 host 侧经 SAGE_TPL_TILING_KEY 宏走 GET_TPL_TILING_KEY 单点。
  */
-__aicore__ __host__ inline constexpr uint32_t TplTilingKey(uint32_t dtype_mode)
+[[nodiscard]] __aicore__ __host__ inline __attribute__((always_inline)) constexpr uint32_t TplTilingKey(uint32_t dtype_mode)
 {
     return NormDtypeMode(dtype_mode) << kTplDtypeShift;
 }

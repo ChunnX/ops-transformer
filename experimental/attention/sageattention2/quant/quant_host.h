@@ -1,5 +1,6 @@
 #ifndef SAGE_ATTN_QUANT_HOST_H
 #define SAGE_ATTN_QUANT_HOST_H
+#pragma once
 
 #include <cstdint>
 
@@ -22,8 +23,8 @@ namespace quant {
  * quant_common.h 的 QScaleCount/KScaleCount）。原 Align32 / ALIGN_BYTES_32
  * 无调用方死代码，已删除（宿主对齐统一走官方 CATLASS ::RoundUp）。
  */
-inline float GetVScaleMax(uint32_t pv_accum_dtype) noexcept {
-    return (pv_accum_dtype == PV_ACCUM_FP32_FP16) ? SCALE_MAX_FP16_ACCUM : SCALE_MAX_FP32_ACCUM;
+[[nodiscard]] inline constexpr float GetVScaleMax(uint32_t pv_accum_dtype) noexcept {
+    return (pv_accum_dtype == static_cast<uint32_t>(PvAccumDtype::PV_ACCUM_FP32_FP16)) ? SCALE_MAX_FP16_ACCUM : SCALE_MAX_FP32_ACCUM;
 }
 
 } // namespace quant

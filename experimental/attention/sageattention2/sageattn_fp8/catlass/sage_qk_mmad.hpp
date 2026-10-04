@@ -1,5 +1,6 @@
 #ifndef SAGE_ATTN_FP8_CATLASS_SAGE_QK_MMAD_HPP
 #define SAGE_ATTN_FP8_CATLASS_SAGE_QK_MMAD_HPP
+#pragma once
 
 #include <cstdint>
 #include "../ascendc/tiling.h"
@@ -54,7 +55,7 @@ public:
     using ElementB = typename Traits::ElementB;
     using ElementC = typename Traits::ElementC;
 
-    __aicore__ SageQkMmad() = default;
+    __aicore__ inline __attribute__((always_inline)) SageQkMmad() = default;
 
     /**
      * 加载 Q 分块：从 L1 Bank 0 搬入 L0A（ND 行布局）。
@@ -64,7 +65,7 @@ public:
      * 故保留 LoadTile2D 单点实现。L0 寻址恒为基址 0（本核 L0A/L0B 单缓冲无分片，
      * 原显式 l0a/l0b 基址参数全调用域恒 0，随死参清理删除）。
      */
-    __aicore__ void LoadL0A(uint32_t l1_q_addr, uint32_t m, uint32_t k) {
+    __aicore__ inline __attribute__((always_inline)) void LoadL0A(uint32_t l1_q_addr, uint32_t m, uint32_t k) {
         m_ = m;
         k_ = k;
         LoadTile2D<ElementA, AscendC::TPosition::A2, AscendC::TPosition::A1>(0U, l1_q_addr, m, k);
@@ -73,7 +74,7 @@ public:
     /**
      * 加载 K 分块：从 L1 Bank 1 搬入 L0B（ND 行布局，理由同 LoadL0A）
      */
-    __aicore__ void LoadL0B(uint32_t l1_k_addr, uint32_t n, uint32_t k) {
+    __aicore__ inline __attribute__((always_inline)) void LoadL0B(uint32_t l1_k_addr, uint32_t n, uint32_t k) {
         n_ = n;
         k_ = k;
         LoadTile2D<ElementB, AscendC::TPosition::B2, AscendC::TPosition::B1>(0U, l1_k_addr, n, k);
@@ -89,7 +90,7 @@ public:
      * 2. (m/16)*(n/16)<10 时官方追加 PipeBarrier<PIPE_M>（纯 M 管序栅栏，无数值效应，
      *    不触碰跨核 flag 握手——握手走 S/M/FIX 管显式事件）。
      */
-    __aicore__ void Compute([[maybe_unused]] bool init = true) {
+    __aicore__ inline __attribute__((always_inline)) void Compute([[maybe_unused]] bool init = true) {
 #if SAGE_ATTN_DEVICE_COMPILE
         AscendC::TBuffAddr l0a_desc{};
         l0a_desc.logicPos = static_cast<uint8_t>(AscendC::TPosition::A2);
@@ -135,7 +136,7 @@ public:
      * （m>64 双 Fixpipe、整幅 zN 行距）不同构，不替换（golden 位级锁定域）。
      * 原 ub_dst_half1 死参已删（dot32 单缓冲，第二半槽地址无消费者）。
      */
-    __aicore__ void EmitL0CToUbRaw(uint32_t ub_dst_offset, uint32_t m, uint32_t n) {
+    __aicore__ inline __attribute__((always_inline)) void EmitL0CToUbRaw(uint32_t ub_dst_offset, uint32_t m, uint32_t n) {
         CopyL0CToUbSplitM<ElementC>(0U, ub_dst_offset, m, n);
     }
 

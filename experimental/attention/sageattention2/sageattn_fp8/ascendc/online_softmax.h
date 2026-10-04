@@ -1,5 +1,6 @@
 #ifndef SAGE_ATTN_FP8_ASCENDC_ONLINE_SOFTMAX_H
 #define SAGE_ATTN_FP8_ASCENDC_ONLINE_SOFTMAX_H
+#pragma once
 
 #include <cmath>
 #include <cstdint>
@@ -22,7 +23,7 @@ namespace sage_attn {
  * 快速绝对值：device 侧 <cmath> 无 std::fabs(float) 可用重载（bisheng 报 no matching function），
  * 统一用符号位判断，host/device 语义一致（对 -0.0 返回 -0.0，不影响本算子比较逻辑）。
  */
-__aicore__ static inline float SageFastAbs(float x) {
+[[nodiscard]] __aicore__ inline __attribute__((always_inline)) float SageFastAbs(float x) {
     return (x < 0.0f) ? -x : x;
 }
 
@@ -48,7 +49,7 @@ struct OnlineSoftmaxState {
     float lse = MIN_FLOAT_VAL;         // 当前维护的 exp2 域 LSE (log-sum-exp)
     bool need_rescale = true;          // 本轮是否需要对 O 主累加器执行 rescale
 
-    __aicore__ void Reset() {
+    __aicore__ inline __attribute__((always_inline)) void Reset() {
         m_run = MIN_FLOAT_VAL;
         d_run = 0.0f;
         m_scale = MIN_FLOAT_VAL;
@@ -73,7 +74,7 @@ public:
      *   float 精度 < 1 ulp。调用域约定：本算子所有调用点 x <= 0（max 对齐差），
      *   EXP2_MIN_CLAMP 哨兵保证 n >= -88，不会落入非规格化域；仍保留上/下溢防护兜底。
      */
-    __aicore__ static inline float FastExp2(float x) {
+    [[nodiscard]] __aicore__ inline __attribute__((always_inline)) static float FastExp2(float x) {
         if (x < EXP2_MIN_CLAMP) {
             return 0.0f;
         }
@@ -114,7 +115,7 @@ public:
      * - bisheng dav-3510 设备端：C 库 log2f 无设备实现（链接期 undefined symbol），
      *   改为"指数位提取 + 折半归约 [√0.5,√2) + atanh 级数"自实现，float 精度 < 1 ulp。
      */
-    __aicore__ static inline float FastLog2(float x) {
+    [[nodiscard]] __aicore__ inline __attribute__((always_inline)) static float FastLog2(float x) {
         if (x <= 0.0f) {
             return MIN_FLOAT_VAL;
         }
@@ -160,7 +161,7 @@ public:
      * @param cur_sum 当前 KV 块按 (logits - cur_max) 计算出的 exp2 之和
      * @return 返回需要施加于 O 主累加器的缩放系数（首块初始化为 1.0f）
      */
-    __aicore__ static inline float Step(
+    [[nodiscard]] __aicore__ inline __attribute__((always_inline)) static float Step(
         OnlineSoftmaxState& state,
         float cur_max,
         float cur_sum) {
@@ -207,7 +208,7 @@ public:
      *
      * @param s_fp8_offset P 矩阵 e4m3 放大偏置（S_FP8_OFFSET 常量，唯一定义 tiling.h）
      */
-    __aicore__ static inline float ConvertLseToHost(
+    [[nodiscard]] __aicore__ inline __attribute__((always_inline)) static float ConvertLseToHost(
         float lse_exp2,
         float sm_scale,
         float lse_correction,
@@ -224,7 +225,7 @@ public:
     /**
      * 输出归一化系数计算：获取最终除以分母的倒数乘数
      */
-    __aicore__ static inline float GetFinalInvDenominator(const OnlineSoftmaxState& state) {
+    [[nodiscard]] __aicore__ inline __attribute__((always_inline)) static float GetFinalInvDenominator(const OnlineSoftmaxState& state) {
         if (state.d_run > 0.0f) {
             // 恒逐块强锚定不变量下 m_scale == m_run，m_scale→m_run 残余指数补偿因子
             // 恒为 FastExp2(0)=1.0f（设备位型构造与宿主 std::exp2 对 0 均精确回 1.0f），

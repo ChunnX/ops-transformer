@@ -1,5 +1,6 @@
 #ifndef SAGE_ATTN_HOST_TILING_H
 #define SAGE_ATTN_HOST_TILING_H
+#pragma once
 
 /**
  * \file sage_attn_host_tiling.h
@@ -51,7 +52,7 @@ namespace sage_attn {
  * op_host TilingImpl 的 platform_ascendc AIC 钳制（sage_attention2_tiling.cpp，
  * op_host 库被 op_build dlopen，禁止引用 libnnopbase 运行时符号）。
  */
-inline uint32_t GetHardwareCoreNum()
+[[nodiscard]] inline uint32_t GetHardwareCoreNum()
 {
     const char *env_cores = std::getenv("SAGEATTN_NUM_CORES");
     if (env_cores != nullptr) {
@@ -78,7 +79,7 @@ inline uint32_t GetHardwareCoreNum()
  * 中共链——无 inline 会在共享库链接期报 duplicate symbol，R6 审查实测捕获）；
  * inline 弱符号即"避免 op_host 库反向依赖 op_api 层目标"的落地形式。
  */
-inline aclnnStatus ComputeHostTiling(
+[[nodiscard]] inline aclnnStatus ComputeHostTiling(
     uint32_t b,
     uint32_t sq,
     uint32_t sk,
@@ -110,21 +111,24 @@ inline aclnnStatus ComputeHostTiling(
     uint32_t gqa_ratio = hq / hkv;
 
     // 3. 量化粒度与累加档位校验
-    if (qkQuantGran != QUANT_GRAN_PER_WARP && qkQuantGran != QUANT_GRAN_PER_THREAD) {
+    if (qkQuantGran != static_cast<int64_t>(QkQuantGran::QUANT_GRAN_PER_WARP) &&
+        qkQuantGran != static_cast<int64_t>(QkQuantGran::QUANT_GRAN_PER_THREAD)) {
         return ACLNN_ERR_PARAM_INVALID;
     }
-    if (pvAccumDtype < PV_ACCUM_FP32 || pvAccumDtype > PV_ACCUM_FP32_FP16) {
+    if (pvAccumDtype < static_cast<int64_t>(PvAccumDtype::PV_ACCUM_FP32) ||
+        pvAccumDtype > static_cast<int64_t>(PvAccumDtype::PV_ACCUM_FP32_FP16)) {
         return ACLNN_ERR_PARAM_INVALID;
     }
     // tensor_layout 编码域校验：仅接受冻结编码 NHD(0)/HND(1)，非法数值显式报错
     // 不静默归一（与 canonical op_api 的"非法布局报错不降级"口径及同函数
     // gran/accum 严格校验一致；GE 字符串映射层经 *CodeFromString 恒产 0/1，不受影响）
-    if (tensorLayout != LAYOUT_NHD && tensorLayout != LAYOUT_HND) {
+    if (tensorLayout != static_cast<int64_t>(TensorLayout::LAYOUT_NHD) &&
+        tensorLayout != static_cast<int64_t>(TensorLayout::LAYOUT_HND)) {
         return ACLNN_ERR_PARAM_INVALID;
     }
 
     // 4. 清空结构体 (160 字节，32 字节对齐)
-    std::memset(&tiling_out, 0, sizeof(SageAttention2TilingData));
+    tiling_out = {};
 
     // 5. 填充 Shape 字段 (28 字节)
     tiling_out.b = b;
@@ -142,13 +146,15 @@ inline aclnnStatus ComputeHostTiling(
         return ACLNN_ERR_PARAM_INVALID;
     }
     tiling_out.is_causal = isCausal ? 1 : 0;
-    tiling_out.tensor_layout = (tensorLayout == LAYOUT_HND) ? LAYOUT_HND : LAYOUT_NHD;
+    tiling_out.tensor_layout = static_cast<uint32_t>(
+        (tensorLayout == static_cast<int64_t>(TensorLayout::LAYOUT_HND))
+            ? TensorLayout::LAYOUT_HND : TensorLayout::LAYOUT_NHD);
     tiling_out.qk_quant_gran = static_cast<uint32_t>(qkQuantGran);
     tiling_out.pv_accum_dtype = static_cast<uint32_t>(pvAccumDtype);
     (void)smoothK;
     tiling_out.smooth_k = 0; // 标准 7 参收敛无 keyMean 输入，恒置 0
     // 对齐设计文档：若非全精度 fp32 档，则忽略 smooth_v
-    tiling_out.smooth_v = (smoothV && pvAccumDtype == PV_ACCUM_FP32) ? 1 : 0;
+    tiling_out.smooth_v = (smoothV && pvAccumDtype == static_cast<int64_t>(PvAccumDtype::PV_ACCUM_FP32)) ? 1 : 0;
 
     // 7. 预计算与常量折叠数值字段 (8 字节)
     // sm_scale 冻结语义：默认值 1/sqrt(d) 由上层桥接在

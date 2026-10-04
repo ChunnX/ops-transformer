@@ -21,7 +21,7 @@ static constexpr int64_t MAX_HEAD_DIM = 128;
  * 布局属性解析：字符串经 sage_attn::TensorLayoutCodeFromString 唯一映射，
  * 数值属性直接比对 proto 编码；默认 HND。
  */
-inline sage_attn::TensorLayout DetectLayout(const gert::InferShapeContext *context)
+[[nodiscard]] inline sage_attn::TensorLayout DetectLayout(const gert::InferShapeContext *context) noexcept
 {
     const auto *attrs = context->GetAttrs();
     if (attrs != nullptr) {

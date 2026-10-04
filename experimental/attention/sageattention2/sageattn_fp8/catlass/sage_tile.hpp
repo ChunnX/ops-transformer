@@ -1,5 +1,6 @@
 #ifndef SAGE_ATTN_FP8_CATLASS_SAGE_TILE_HPP
 #define SAGE_ATTN_FP8_CATLASS_SAGE_TILE_HPP
+#pragma once
 
 #include <cstdint>
 #include "../ascendc/tiling.h"
@@ -67,7 +68,7 @@ namespace Catlass::SageAttn {
  * 昇腾硬件事件同步模板（对齐竞品 PR#12430 / common.h 原语，消除冗余配对代码）
  */
 template <AscendC::HardEvent E>
-__aicore__ inline void Sync() {
+__aicore__ inline __attribute__((always_inline)) void Sync() {
 #if SAGE_ATTN_DEVICE_COMPILE
     AscendC::SetFlag<E>(0);
     AscendC::WaitFlag<E>(0);
@@ -85,7 +86,7 @@ constexpr uint32_t LOADDATA2D_REPEAT_BYTES = Catlass::BYTE_PER_FRACTAL;
  * 统一收敛 LoadData2D 样板代码，杜绝多处重复 TBuffAddr 描述符装配。
  */
 template <typename Element, AscendC::TPosition DstPos, AscendC::TPosition SrcPos>
-__aicore__ inline void LoadTile2D(uint32_t dst_addr, uint32_t src_addr, uint32_t rows, uint32_t cols, bool if_transpose = false) {
+__aicore__ inline __attribute__((always_inline)) void LoadTile2D(uint32_t dst_addr, uint32_t src_addr, uint32_t rows, uint32_t cols, bool if_transpose = false) {
 #if SAGE_ATTN_DEVICE_COMPILE
     const uint32_t total_bytes = rows * cols * static_cast<uint32_t>(sizeof(Element));
     AscendC::TBuffAddr dst_desc{};
@@ -131,7 +132,7 @@ __aicore__ inline void LoadTile2D(uint32_t dst_addr, uint32_t src_addr, uint32_t
  * 行距 srcStride=m、UB ND 行距 dstStride=n）不同构——golden 位级锁定域，不替换。
  */
 template <typename ElementC>
-__aicore__ inline void CopyL0CToUbSplitM(
+__aicore__ inline __attribute__((always_inline)) void CopyL0CToUbSplitM(
     uint32_t l0c_src_offset,
     uint32_t ub_dst_offset,
     uint32_t m,
@@ -201,7 +202,7 @@ __aicore__ inline void CopyL0CToUbSplitM(
  */
 #if SAGE_ATTN_DEVICE_COMPILE
 template <typename Element>
-__aicore__ inline void CopyUbRowToL1(AscendC::LocalTensor<Element> l1_dst,
+__aicore__ inline __attribute__((always_inline)) void CopyUbRowToL1(AscendC::LocalTensor<Element> l1_dst,
                                      AscendC::LocalTensor<Element> ub_src,
                                      uint32_t row_bytes)
 {
@@ -233,7 +234,7 @@ using GmBhsdStrideTag = decltype(tla::MakeStride(int64_t{}, int64_t{}, int64_t{}
  */
 using GmBhsdLayout = decltype(tla::MakeLayout(detail::GmBhsdShapeTag{}, detail::GmBhsdStrideTag{}));
 
-__aicore__ inline constexpr GmBhsdLayout MakeGmBhsdLayout(uint32_t b, uint32_t h, uint32_t s, uint32_t d,
+[[nodiscard]] __aicore__ inline __attribute__((always_inline)) constexpr GmBhsdLayout MakeGmBhsdLayout(uint32_t b, uint32_t h, uint32_t s, uint32_t d,
                                                 uint32_t layout_hnd)
 {
     if (layout_hnd != 0u) {
@@ -262,7 +263,7 @@ using GmBhsStrideTag = decltype(tla::MakeStride(int64_t{}, int64_t{}, tla::Int<1
  */
 using GmBhsLayout = decltype(tla::MakeLayout(detail::GmBhsShapeTag{}, detail::GmBhsStrideTag{}));
 
-__aicore__ inline constexpr GmBhsLayout MakeGmBhsLayout(uint32_t b, uint32_t h, uint32_t s)
+[[nodiscard]] __aicore__ inline __attribute__((always_inline)) constexpr GmBhsLayout MakeGmBhsLayout(uint32_t b, uint32_t h, uint32_t s)
 {
     (void)b; // 步距自 H 起，b 不参与折叠（稠密布局形状仅作文档）
     return tla::MakeLayout(tla::MakeShape(b, h, s),

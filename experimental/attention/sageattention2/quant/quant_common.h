@@ -1,5 +1,6 @@
 #ifndef SAGE_ATTN_QUANT_COMMON_H
 #define SAGE_ATTN_QUANT_COMMON_H
+#pragma once
 
 /**
  * \file quant_common.h
@@ -15,18 +16,13 @@
 
 #include "../sageattn_fp8/ascendc/tiling.h"
 
-
-#ifndef __host__
-#define __host__
-#endif
-
 namespace sage_attn {
 namespace quant {
 
 /**
  * 浮点格式转换函数 (FP16 / BF16 到 FP32 及逆向转换)
  */
-__aicore__ __host__ inline float Fp16ToFp32(uint16_t h) noexcept {
+[[nodiscard]] __aicore__ __host__ inline __attribute__((always_inline)) float Fp16ToFp32(uint16_t h) noexcept {
     uint32_t sign = (h >> 15) & 0x1;
     uint32_t exp = (h >> 10) & 0x1f;
     uint32_t mant = h & 0x3ff;
@@ -54,7 +50,7 @@ __aicore__ __host__ inline float Fp16ToFp32(uint16_t h) noexcept {
     float f; std::memcpy(&f, &u, sizeof(float)); return f;
 }
 
-__aicore__ __host__ inline uint16_t Fp32ToFp16(float f) noexcept {
+[[nodiscard]] __aicore__ __host__ inline __attribute__((always_inline)) uint16_t Fp32ToFp16(float f) noexcept {
     uint32_t u;
     std::memcpy(&u, &f, sizeof(float));
     uint32_t sign = (u >> 31) & 0x1;
@@ -87,12 +83,12 @@ __aicore__ __host__ inline uint16_t Fp32ToFp16(float f) noexcept {
     return static_cast<uint16_t>((sign << 15) | (new_exp << 10) | quotient);
 }
 
-__aicore__ __host__ inline float Bf16ToFp32(uint16_t b) noexcept {
+[[nodiscard]] __aicore__ __host__ inline __attribute__((always_inline)) float Bf16ToFp32(uint16_t b) noexcept {
     uint32_t u = static_cast<uint32_t>(b) << 16;
     float f; std::memcpy(&f, &u, sizeof(float)); return f;
 }
 
-__aicore__ __host__ inline uint16_t Fp32ToBf16(float f) noexcept {
+[[nodiscard]] __aicore__ __host__ inline __attribute__((always_inline)) uint16_t Fp32ToBf16(float f) noexcept {
     uint32_t u;
     std::memcpy(&u, &f, sizeof(float));
     uint32_t lsb = (u >> 16) & 1;
@@ -112,12 +108,12 @@ __aicore__ __host__ inline uint16_t Fp32ToBf16(float f) noexcept {
  * 整数运算表达同一舍入语义；量化域 |x| 有界（|x/scale| 至多百余量级），
  * float 24 位尾数内整数 cast 精确，与 std 版本逐位一致（tests/test_quant.py 锁定）。
  */
-__aicore__ __host__ inline int32_t FloorToInt(float v) noexcept {
+[[nodiscard]] __aicore__ __host__ inline __attribute__((always_inline)) int32_t FloorToInt(float v) noexcept {
     int32_t t = static_cast<int32_t>(v);
     return (v < static_cast<float>(t)) ? (t - 1) : t;
 }
 
-__aicore__ __host__ inline int8_t RoundHalfAwayFromZero(float val) noexcept {
+[[nodiscard]] __aicore__ __host__ inline __attribute__((always_inline)) int8_t RoundHalfAwayFromZero(float val) noexcept {
     const bool neg = (val < 0.0f);
     const float abs_val = neg ? -val : val;
     int32_t rounded = FloorToInt(abs_val + 0.5f);
@@ -126,7 +122,7 @@ __aicore__ __host__ inline int8_t RoundHalfAwayFromZero(float val) noexcept {
     return static_cast<int8_t>(neg ? -rounded : rounded);
 }
 
-__aicore__ __host__ inline int8_t RoundNearestEven(float val) noexcept {
+[[nodiscard]] __aicore__ __host__ inline __attribute__((always_inline)) int8_t RoundNearestEven(float val) noexcept {
     const int32_t lower = FloorToInt(val);
     const float frac = val - static_cast<float>(lower);
     int32_t result;
@@ -153,7 +149,7 @@ using sage_attn::FP8_E4M3_MAX;
  * IEEE 754 float32 到 FP8 e4m3fn 的精确位级 RNE + Satfinite 转换
  * （与 GPU cvt.rn.satfinite.e4m3 逐位一致，全仓唯一定义点，禁止外部别名）
  */
-__aicore__ __host__ inline uint8_t FloatToE4m3fn(float f) noexcept {
+[[nodiscard]] __aicore__ __host__ inline __attribute__((always_inline)) uint8_t FloatToE4m3fn(float f) noexcept {
     if (f != f) return 0x7f;  // NaN（设备侧无 std::isnan，位比较等价）
     if (f > FP8_E4M3_MAX) f = FP8_E4M3_MAX;
     if (f < -FP8_E4M3_MAX) f = -FP8_E4M3_MAX;
@@ -221,7 +217,7 @@ __aicore__ __host__ inline uint8_t FloatToE4m3fn(float f) noexcept {
 /**
  * FP8 e4m3fn 到 float32 的精确解码（PV 孪生反量化与单测使用）
  */
-__aicore__ __host__ inline float E4m3fnToFloat(uint8_t v) noexcept {
+[[nodiscard]] __aicore__ __host__ inline __attribute__((always_inline)) float E4m3fnToFloat(uint8_t v) noexcept {
     const uint32_t sign = (v >> 7) & 0x1;
     const uint32_t exp = (v >> 3) & 0xf;
     const uint32_t mant = v & 0x7;
@@ -257,25 +253,25 @@ constexpr uint32_t Q_BLK = 128;
 constexpr uint32_t Q_SUB = 32;
 constexpr uint32_t K_BLK = 64;
 
-__aicore__ __host__ constexpr inline uint32_t QBlockNum(uint32_t seq_len) noexcept {
+[[nodiscard]] __aicore__ __host__ constexpr inline __attribute__((always_inline)) uint32_t QBlockNum(uint32_t seq_len) noexcept {
     return (seq_len + Q_BLK - 1) / Q_BLK;
 }
 
-__aicore__ __host__ constexpr inline uint32_t KBlockNum(uint32_t seq_len) noexcept {
+[[nodiscard]] __aicore__ __host__ constexpr inline __attribute__((always_inline)) uint32_t KBlockNum(uint32_t seq_len) noexcept {
     return (seq_len + K_BLK - 1) / K_BLK;
 }
 
 /**
  * Q 的 scale 组数（每 head）：per_thread 为 blk×32，per_warp 为 blk×4
  */
-__aicore__ __host__ constexpr inline uint32_t QScaleCount(uint32_t seq_len, bool per_thread) noexcept {
+[[nodiscard]] __aicore__ __host__ constexpr inline __attribute__((always_inline)) uint32_t QScaleCount(uint32_t seq_len, bool per_thread) noexcept {
     return QBlockNum(seq_len) * (per_thread ? 32u : 4u);
 }
 
 /**
  * K 的 scale 组数（每 head）：per_thread 为 blk×4，per_warp 为 blk×1
  */
-__aicore__ __host__ constexpr inline uint32_t KScaleCount(uint32_t seq_len, bool per_thread) noexcept {
+[[nodiscard]] __aicore__ __host__ constexpr inline __attribute__((always_inline)) uint32_t KScaleCount(uint32_t seq_len, bool per_thread) noexcept {
     return KBlockNum(seq_len) * (per_thread ? 4u : 1u);
 }
 
@@ -285,7 +281,7 @@ __aicore__ __host__ constexpr inline uint32_t KScaleCount(uint32_t seq_len, bool
     // 设备分支 Phase-B 组归并调用（DEFECT-F-1 随动）：不带 __host__——bisheng 对
     // 仅标 __host__ 的函数不在设备 pass 发射函数体，链接期 undefined（归并/定档
     // 为纯整数算术，host/device 双 pass 同结果）
-__aicore__ inline uint32_t QScaleIndex(uint32_t token, bool per_thread) noexcept {
+[[nodiscard]] __aicore__ inline __attribute__((always_inline)) uint32_t QScaleIndex(uint32_t token, bool per_thread) noexcept {
     const uint32_t blk = token / Q_BLK;
     const uint32_t in_blk = token % Q_BLK;
     if (per_thread) {
@@ -300,7 +296,7 @@ __aicore__ inline uint32_t QScaleIndex(uint32_t token, bool per_thread) noexcept
  * - per_warp：clamp(amax, 1e-7)/127（与 RoundNearestEven 舍入路径配对）。
  * 禁止在调用方复制本公式——一处修舍入/兜底，处处生效。
  */
-__aicore__ __host__ inline float FinalizeQkScale(float amax, bool per_thread) noexcept {
+[[nodiscard]] __aicore__ __host__ inline __attribute__((always_inline)) float FinalizeQkScale(float amax, bool per_thread) noexcept {
     return per_thread ? (amax / INT8_QUANT_MAX + SCALE_EPSILON)
                       : ((amax < SCALE_EPSILON ? SCALE_EPSILON : amax) / INT8_QUANT_MAX);
 }
@@ -316,7 +312,7 @@ static_assert(KScaleCount(32768, true) <= kKScaleSlotStride,
  * per_thread 组 g 含 8 对相邻 token：token = blk*64 + p*8 + 2g + e (p∈[0,8), e∈{0,1})，
  * 即组号由序列内 8 交织相的相邻对决定（对齐 quant_per_thread.py 的 (8,4,2) 分解）
  */
-__aicore__ inline uint32_t KScaleIndex(uint32_t token, bool per_thread) noexcept {
+[[nodiscard]] __aicore__ inline __attribute__((always_inline)) uint32_t KScaleIndex(uint32_t token, bool per_thread) noexcept {
     const uint32_t blk = token / K_BLK;
     const uint32_t in_blk = token % K_BLK;
     if (per_thread) {
@@ -337,7 +333,7 @@ static_assert(V_PERM_PATTERN[V_PERM_INV_PATTERN[3]] == 3, "V perm inverse must b
  * token 在 16-token 段内的物理 V 槽号（V_PERM_INV_PATTERN 寻址唯一定义点）：
  * golden v_fp8 排布、twin v_deq 读取与 kernel V 量化写槽共用，禁止再展开公式。
  */
-__aicore__ __host__ inline uint32_t VSlotOfToken(uint32_t token_in_block) noexcept {
+[[nodiscard]] __aicore__ __host__ inline __attribute__((always_inline)) uint32_t VSlotOfToken(uint32_t token_in_block) noexcept {
     return (token_in_block / 16u) * 16u + V_PERM_INV_PATTERN[token_in_block % 16u];
 }
 
@@ -350,28 +346,28 @@ __aicore__ __host__ inline uint32_t VSlotOfToken(uint32_t token_in_block) noexce
 // 宿主 TU（BiSheng 宿主模式，__aicore__ 展开为空）不受影响。
 template <typename T>
 struct ElementReader {
-    static inline __aicore__ float Read(const T* ptr, size_t idx) noexcept {
+    [[nodiscard]] static inline __aicore__ __attribute__((always_inline)) float Read(const T* ptr, size_t idx) noexcept {
         return static_cast<float>(ptr[idx]);
     }
-    static inline __aicore__ float Sub(float a, float b) noexcept {
+    [[nodiscard]] static inline __aicore__ __attribute__((always_inline)) float Sub(float a, float b) noexcept {
         return a - b;
     }
 };
 
 struct HalfReader {
-    static inline __aicore__ float Read(const uint16_t* ptr, size_t idx) noexcept {
+    [[nodiscard]] static inline __aicore__ __attribute__((always_inline)) float Read(const uint16_t* ptr, size_t idx) noexcept {
         return Fp16ToFp32(ptr[idx]);
     }
-    static inline __aicore__ float Sub(float a, float b) noexcept {
+    [[nodiscard]] static inline __aicore__ __attribute__((always_inline)) float Sub(float a, float b) noexcept {
         return Fp16ToFp32(Fp32ToFp16(a - b));
     }
 };
 
 struct Bf16Reader {
-    static inline __aicore__ float Read(const uint16_t* ptr, size_t idx) noexcept {
+    [[nodiscard]] static inline __aicore__ __attribute__((always_inline)) float Read(const uint16_t* ptr, size_t idx) noexcept {
         return Bf16ToFp32(ptr[idx]);
     }
-    static inline __aicore__ float Sub(float a, float b) noexcept {
+    [[nodiscard]] static inline __aicore__ __attribute__((always_inline)) float Sub(float a, float b) noexcept {
         return Bf16ToFp32(Fp32ToBf16(a - b));
     }
 };
@@ -381,7 +377,7 @@ struct Bf16Reader {
  * km 为 nullptr 时原值直通。kernel 设备/宿主分支与 quant 参考实现共用，
  * 禁止在调用方展开 (dtype==2)?Bf16:Half 三元式。
  */
-__aicore__ __host__ inline float SubKm(float val, const float* km_vec, uint32_t c,
+[[nodiscard]] __aicore__ __host__ inline __attribute__((always_inline)) float SubKm(float val, const float* km_vec, uint32_t c,
                                        uint32_t dtype_mode) noexcept {
     if (km_vec == nullptr) {
         return val;
@@ -399,7 +395,7 @@ __aicore__ __host__ inline float SubKm(float val, const float* km_vec, uint32_t 
  */
 #if defined(__CCE_AICORE__)
 template <typename ReadK>
-__aicore__ inline float KeyMeanElement(uint32_t sk, uint32_t dtype_mode, ReadK&& read_k) noexcept {
+[[nodiscard]] __aicore__ inline __attribute__((always_inline)) float KeyMeanElement(uint32_t sk, uint32_t dtype_mode, ReadK&& read_k) noexcept {
     float sum = 0.0f;
     for (uint32_t si = 0; si < sk; ++si) {
         sum += read_k(si);
@@ -410,7 +406,7 @@ __aicore__ inline float KeyMeanElement(uint32_t sk, uint32_t dtype_mode, ReadK&&
 }
 #else
 template <typename ReadK>
-inline float KeyMeanElement(uint32_t sk, uint32_t dtype_mode, ReadK&& read_k) noexcept {
+[[nodiscard]] inline float KeyMeanElement(uint32_t sk, uint32_t dtype_mode, ReadK&& read_k) noexcept {
     double sum = 0.0;
     for (uint32_t si = 0; si < sk; ++si) {
         sum += read_k(si);
@@ -428,7 +424,7 @@ inline float KeyMeanElement(uint32_t sk, uint32_t dtype_mode, ReadK&& read_k) no
  * corr 位级一致是 gqa 分块位级 parity 的前提。read_q(c) 供给 Q 行 c 列 fp32 读数。
  */
 template <typename ReadQ>
-__aicore__ __host__ inline float LseCorrDot(uint32_t d_pad, ReadQ&& read_q, const float* km) noexcept {
+[[nodiscard]] __aicore__ __host__ inline __attribute__((always_inline)) float LseCorrDot(uint32_t d_pad, ReadQ&& read_q, const float* km) noexcept {
     float dot = 0.0f;
     for (uint32_t c = 0; c < d_pad; ++c) {
         dot += read_q(c) * km[c];

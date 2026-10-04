@@ -1,5 +1,6 @@
 #ifndef SAGE_ATTENTION2_DEF_H
 #define SAGE_ATTENTION2_DEF_H
+#pragma once
 
 #include <cstddef>
 
@@ -47,33 +48,33 @@ public:
  * SageAttention2 参数索引（唯一定义点，严格对齐 REG_OP 与 OpDef 声明顺序）
  */
 namespace sage_attn2_idx {
-constexpr size_t IN_QUERY = 0;
-constexpr size_t IN_KEY = 1;
-constexpr size_t IN_VALUE = 2;
+inline constexpr size_t IN_QUERY = 0;
+inline constexpr size_t IN_KEY = 1;
+inline constexpr size_t IN_VALUE = 2;
 
-constexpr size_t OUT_OUTPUT = 0;
-constexpr size_t OUT_LSE = 1;
+inline constexpr size_t OUT_OUTPUT = 0;
+inline constexpr size_t OUT_LSE = 1;
 
-constexpr size_t ATTR_TENSOR_LAYOUT = 0;
-constexpr size_t ATTR_IS_CAUSAL = 1;
-constexpr size_t ATTR_QK_QUANT_GRAN = 2;
-constexpr size_t ATTR_SM_SCALE = 3;
-constexpr size_t ATTR_PV_ACCUM_DTYPE = 4;
-constexpr size_t ATTR_SMOOTH_K = 5;
-constexpr size_t ATTR_SMOOTH_V = 6;
+inline constexpr size_t ATTR_TENSOR_LAYOUT = 0;
+inline constexpr size_t ATTR_IS_CAUSAL = 1;
+inline constexpr size_t ATTR_QK_QUANT_GRAN = 2;
+inline constexpr size_t ATTR_SM_SCALE = 3;
+inline constexpr size_t ATTR_PV_ACCUM_DTYPE = 4;
+inline constexpr size_t ATTR_SMOOTH_K = 5;
+inline constexpr size_t ATTR_SMOOTH_V = 6;
 } // namespace sage_attn2_idx
 
 /**
  * RuntimeAttrs 字符串属性读取封装（唯一定义点）：
  * 标准 CANN gert::RuntimeAttrs::GetStr(idx) -> const char*
  */
-inline const char *ReadStringAttr(const gert::RuntimeAttrs *attrs, size_t idx)
+[[nodiscard]] inline const char *ReadStringAttr(const gert::RuntimeAttrs *attrs, size_t idx) noexcept
 {
     return (attrs != nullptr) ? attrs->GetStr(idx) : nullptr;
 }
 
-ge::graphStatus InferShapeSageAttention2(gert::InferShapeContext *context);
-ge::graphStatus InferDataTypeSageAttention2(gert::InferDataTypeContext *context);
+[[nodiscard]] ge::graphStatus InferShapeSageAttention2(gert::InferShapeContext *context);
+[[nodiscard]] ge::graphStatus InferDataTypeSageAttention2(gert::InferDataTypeContext *context);
 
 } // namespace ops
 

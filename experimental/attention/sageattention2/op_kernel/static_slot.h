@@ -10,7 +10,6 @@
 #define ENABLE_CV_COMM_VIA_SSBUF 1
 #endif
 #include "kernel_operator.h"
-using namespace AscendC;
 #endif
 
 #include "sage_attention2_template_tiling_key.h"
@@ -18,6 +17,10 @@ using namespace AscendC;
 #include "../sageattn_fp8/catlass/sage_resource.hpp"
 
 namespace sage_attn {
+
+#if SAGE_ATTN_KERNEL_API
+using namespace AscendC;
+#endif
 
 /**
  * \brief 编译期安全守卫模板 StaticSlot
@@ -32,9 +35,9 @@ struct StaticSlot {
     static_assert(OFFSET % 32 == 0, "StaticSlot OFFSET must be 32-byte aligned!");
     static_assert(BYTES % 32 == 0, "StaticSlot BYTES must be 32-byte aligned!");
 
-    __aicore__ inline __attribute__((always_inline)) static constexpr uint32_t Offset() { return OFFSET; }
-    __aicore__ inline __attribute__((always_inline)) static constexpr uint32_t Bytes() { return BYTES; }
-    __aicore__ inline __attribute__((always_inline)) static constexpr uint32_t End() { return OFFSET + BYTES; }
+    [[nodiscard]] __aicore__ inline __attribute__((always_inline)) static constexpr uint32_t Offset() { return OFFSET; }
+    [[nodiscard]] __aicore__ inline __attribute__((always_inline)) static constexpr uint32_t Bytes() { return BYTES; }
+    [[nodiscard]] __aicore__ inline __attribute__((always_inline)) static constexpr uint32_t End() { return OFFSET + BYTES; }
 };
 
 // --- Vector 0 UB 槽编译期守卫 ---
@@ -127,23 +130,23 @@ struct TaskContext {
     float *km_self{nullptr};
 #endif
 
-    __aicore__ inline __attribute__((always_inline)) uint32_t TotalRows() const
+    [[nodiscard]] __aicore__ inline __attribute__((always_inline)) uint32_t TotalRows() const
     {
         return cur_heads * cur_q_len;
     }
 
-    __aicore__ inline __attribute__((always_inline)) uint32_t CurBlockK(uint32_t cur_k) const
+    [[nodiscard]] __aicore__ inline __attribute__((always_inline)) uint32_t CurBlockK(uint32_t cur_k) const
     {
         const int64_t sk_start = static_cast<int64_t>(cur_k) * block_n;
         return (sk_start + block_n <= sk) ? block_n : static_cast<uint32_t>(sk - sk_start);
     }
 
-    __aicore__ inline __attribute__((always_inline)) __gm__ uint8_t *StageStrip() const
+    [[nodiscard]] __aicore__ inline __attribute__((always_inline)) __gm__ uint8_t *StageStrip() const
     {
         return workspace_gm + static_cast<uint64_t>(core_idx) * STAGE_CORE_STRIDE;
     }
 
-    __aicore__ inline __attribute__((always_inline)) uint32_t SoftmaxSlotOffset(bool is_ping) const
+    [[nodiscard]] __aicore__ inline __attribute__((always_inline)) uint32_t SoftmaxSlotOffset(bool is_ping) const
     {
         const uint32_t tile_bytes = TotalRows() * block_n;
         return tiling->ub_softmax_offset + (is_ping ? 0u : tile_bytes);

@@ -1,8 +1,10 @@
 #ifndef SAGE_ATTN_PROTO_H
 #define SAGE_ATTN_PROTO_H
+#pragma once
 
 #include <cstdint>
 #include <cstring>
+#include <string_view>
 
 // 接口数值编码（gran/accum/layout）与共享数学常量的唯一定义位于
 // ../sageattn_fp8/ascendc/tiling.h（Host/Device 共享 ABI）；本头经 include
@@ -25,31 +27,49 @@ namespace sage_attn {
  */
 // 冻结签名默认值（C++ 侧唯一定义点；op_host 缺省折叠与 op_api 文档共用；
 // 与任务书 §2.3 及 Python 侧 error_check.DEFAULT_* 逐项对应）
-constexpr const char *kDefaultLayout = "HND";
-constexpr const char *kDefaultQkQuantGran = "per_thread";
-constexpr const char *kDefaultPvAccumDtype = "fp32+fp16";
+inline constexpr const char *kDefaultLayout = "HND";
+inline constexpr const char *kDefaultQkQuantGran = "per_thread";
+inline constexpr const char *kDefaultPvAccumDtype = "fp32+fp16";
 
-inline int64_t TensorLayoutCodeFromString(const char *layout)
+[[nodiscard]] inline int64_t TensorLayoutCodeFromString(std::string_view layout) noexcept
 {
-    return (std::strcmp(layout, "NHD") == 0) ? static_cast<int64_t>(LAYOUT_NHD)
-                                             : static_cast<int64_t>(LAYOUT_HND);
+    return (layout == "NHD") ? static_cast<int64_t>(TensorLayout::LAYOUT_NHD)
+                             : static_cast<int64_t>(TensorLayout::LAYOUT_HND);
 }
 
-inline int64_t QuantGranCodeFromString(const char *gran)
+[[nodiscard]] inline int64_t TensorLayoutCodeFromString(const char *layout) noexcept
 {
-    return (std::strcmp(gran, "per_warp") == 0) ? static_cast<int64_t>(QUANT_GRAN_PER_WARP)
-                                : static_cast<int64_t>(QUANT_GRAN_PER_THREAD);
+    if (layout == nullptr) return static_cast<int64_t>(TensorLayout::LAYOUT_HND);
+    return TensorLayoutCodeFromString(std::string_view{layout});
 }
 
-inline int64_t PvAccumCodeFromString(const char *accum)
+[[nodiscard]] inline int64_t QuantGranCodeFromString(std::string_view gran) noexcept
 {
-    if (std::strcmp(accum, "fp32") == 0) {
-        return static_cast<int64_t>(PV_ACCUM_FP32);
+    return (gran == "per_warp") ? static_cast<int64_t>(QkQuantGran::QUANT_GRAN_PER_WARP)
+                                : static_cast<int64_t>(QkQuantGran::QUANT_GRAN_PER_THREAD);
+}
+
+[[nodiscard]] inline int64_t QuantGranCodeFromString(const char *gran) noexcept
+{
+    if (gran == nullptr) return static_cast<int64_t>(QkQuantGran::QUANT_GRAN_PER_THREAD);
+    return QuantGranCodeFromString(std::string_view{gran});
+}
+
+[[nodiscard]] inline int64_t PvAccumCodeFromString(std::string_view accum) noexcept
+{
+    if (accum == "fp32") {
+        return static_cast<int64_t>(PvAccumDtype::PV_ACCUM_FP32);
     }
-    if (std::strcmp(accum, "fp32+fp32") == 0) {
-        return static_cast<int64_t>(PV_ACCUM_FP32_FP32);
+    if (accum == "fp32+fp32") {
+        return static_cast<int64_t>(PvAccumDtype::PV_ACCUM_FP32_FP32);
     }
-    return static_cast<int64_t>(PV_ACCUM_FP32_FP16);
+    return static_cast<int64_t>(PvAccumDtype::PV_ACCUM_FP32_FP16);
+}
+
+[[nodiscard]] inline int64_t PvAccumCodeFromString(const char *accum) noexcept
+{
+    if (accum == nullptr) return static_cast<int64_t>(PvAccumDtype::PV_ACCUM_FP32_FP16);
+    return PvAccumCodeFromString(std::string_view{accum});
 }
 
 } // namespace sage_attn
