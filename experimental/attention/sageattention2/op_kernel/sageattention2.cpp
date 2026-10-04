@@ -161,8 +161,10 @@ struct SimMemory {
      * 2. 延迟一拍流水：Cube 与 Vector 双域交错掩盖计算与搬运延时
      * 3. GQA 头聚合：当 Hq > Hkv 时沿 M 维聚合至 64 的倍数，一份 L1 KV 被多个 Q head 连续复用
      * 4. 64 位 GM 寻址：所有显存指针与 stride 计算强转 int64_t，杜绝长序列整数溢出
-     * 5. 跨核 Flag 同步保序：严格遵循生产者在前、消费者在后，且每个任务域内 set/wait 1:1 配对
-     *    （进域预置"消费者已归还"许可、退域回收残余许可，防跨任务波次残留死锁，task/02_code.md B-2）
+     * 5. 跨核 Flag 同步保序：严格遵循生产者在前、消费者在后；set/wait 配对按 flag 族分治——
+     *    仅 S 槽 FREE 对由 Cube 进域预置"消费者已归还"许可、V1 退域补等配平（含预置/回收 1:1），
+     *    KV/DOT/PARTIAL 族无预置/回收，靠首拍缓冲区天然为空跳过 wait（域内残余许可供
+     *    下一波次首槽直写，不跨任务死锁，task/02_code.md B-2）
      *
      * 数值架构契约（Step-C 标量基线，与 twin_reference.h RunSequential 唯一真值逐位一致，
      * 数值验证入口为 tests/test_kernel_twin.py（宿主串行分支 + 孪生执行器对 golden 25 桶
@@ -292,8 +294,9 @@ public:
         const uint64_t task_end = DieTaskEnd(total_tasks, core_idx_, cores, use_die);
 
         // 循环执行分配给当前物理核的所有波次任务 (Die 内部严格亲和)
-        // 跨任务波次 flag 纪律（task/02_code.md B-2）：每个任务域内 Cube 进域预置
-        // KV/S 槽"已归还"许可、V0/V1 退域回收残余许可，保证任意任务边界上 flag 余量为零。
+        // 跨任务波次 flag 纪律（task/02_code.md B-2，按族分治）：仅 S 槽 FREE 对由 Cube
+        // 进域预置"已归还"许可、V1 退域补等配平；KV/DOT/PARTIAL 族无预置/回收，依赖
+        // 首拍缓冲区天然为空跳过 wait（波次边界残余许可不影响下一任务首两拍直写）。
         for (uint64_t virtual_task = core_idx_; virtual_task < task_end; virtual_task += cores) {
             // 当虚拟任务推进至后续波次时重新解码任务
             if (virtual_task > core_idx_) {
@@ -823,8 +826,9 @@ private:
 
 #if SAGE_ATTN_DEVICE_COMPILE
         // 收尾：合并最后一块（第 N-1 块）PV 部分和——O 锚点 m_scale(N-1) 上直接并入，
-        // 与 twin 5.5 归一化入口的 O 状态逐位同域（时序无死锁：Cube drain 发射 READY 后
-        // 经退域回收等本侧 FREE，本侧合并后举 FREE 再等 PV_O_DONE，无环）
+        // 与 twin 5.5 归一化入口的 O 状态逐位同域（时序无死锁：PARTIAL 族无预置/回收，
+        // Cube drain 先等本侧合并上一块举出的 FREE 再发射最后一块 READY，本侧收尾
+        // wait READY→合并→举 FREE→wait PV_O_DONE，链式无环）
         if (active_kv_blocks > 0) {
             CrossCoreWait(CrossCoreDirection::CUBE_TO_VEC1, CrossCoreFlags::FLAG_PV_PARTIAL_READY);
             MergePvPartialRows();
@@ -838,8 +842,9 @@ private:
         // 5. 最终输出归一化与 LSE 换算写回 GM
         FinalizeAndStoreOutput();
 
-        // 退域回收（task/02_code.md B-2 destroy 纪律）：与 V0 的 KV 槽同理，
-        // 消费 Cube 进域预置的最后两个 S 槽许可，保证跨任务波次 FLAG_SOFTMAX_S_*_FREE 余量为零
+        // 退域补等（task/02_code.md B-2 destroy 纪律，唯一预置/回收族）：消费 Cube 进域
+        // 预置的最后两个 S 槽许可，保证跨任务波次 FLAG_SOFTMAX_S_*_FREE 余量为零
+        //（KV/DOT/PARTIAL 族无预置/回收，不在此列）
         CrossCoreWait(CrossCoreDirection::CUBE_TO_VEC1, CrossCoreFlags::FLAG_SOFTMAX_S_PING_FREE);
         CrossCoreWait(CrossCoreDirection::CUBE_TO_VEC1, CrossCoreFlags::FLAG_SOFTMAX_S_PONG_FREE);
     }
