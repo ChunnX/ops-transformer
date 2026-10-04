@@ -374,6 +374,48 @@ void TestDieAffinityContract() {
     std::cout << "[Test 6 Passed] STARS 2.0 die affinity closed-form mapping verified!" << std::endl;
 }
 
+void TestNddmaStrideContract() {
+    std::cout << "[Test 7] Testing NDDMA 2D Strided DMA contract..." << std::endl;
+    // HND 布局：同一 Head 内连续，跨步恒为 0
+    assert(Catlass::SageAttn::CalcGm2dStride32B(32, 128, 2, sage_attn::LAYOUT_HND) == 0);
+    assert(Catlass::SageAttn::CalcGm2dStride32B(8, 64, 2, sage_attn::LAYOUT_HND) == 0);
+    assert(Catlass::SageAttn::CalcGm2dStride32B(1, 128, 2, sage_attn::LAYOUT_HND) == 0);
+
+    // NHD 布局 ([B, S, H, D])：
+    // 单 Head 退化：H=1 时相邻 Token 连续，跨步为 0
+    assert(Catlass::SageAttn::CalcGm2dStride32B(1, 128, 2, sage_attn::LAYOUT_NHD) == 0);
+    // 多 Head：stride = (H - 1) * (d * 2 / 32)
+    // H=32, d=128: 31 * (128 * 2 / 32) = 31 * 8 = 248
+    assert(Catlass::SageAttn::CalcGm2dStride32B(32, 128, 2, sage_attn::LAYOUT_NHD) == 248);
+    // H=8, d=64: 7 * (64 * 2 / 32) = 7 * 4 = 28
+    assert(Catlass::SageAttn::CalcGm2dStride32B(8, 64, 2, sage_attn::LAYOUT_NHD) == 28);
+    // H=4, d=128: 3 * 8 = 24
+    assert(Catlass::SageAttn::CalcGm2dStride32B(4, 128, 2, sage_attn::LAYOUT_NHD) == 24);
+
+    // 与 MakeGmBhsdLayout 步距单点位元严格等价契约实证：
+    // NHD 下相邻两个 Token (s=0 与 s=1) 在 GM 中的地址差（以 half 元素计）
+    // 恰好等于 (stride_32b_blocks * 32 / sizeof(half)) + d
+    const uint32_t test_h = 16;
+    const uint32_t test_d = 128;
+    const auto nhd_layout = Catlass::SageAttn::MakeGmBhsdLayout(1, test_h, 64, test_d, 0);
+    const int64_t token0_offset = nhd_layout(tla::MakeCoord(0u, 3u, 0u, 0u));
+    const int64_t token1_offset = nhd_layout(tla::MakeCoord(0u, 3u, 1u, 0u));
+    const int64_t elem_diff = token1_offset - token0_offset; // 应为 test_h * test_d
+    assert(elem_diff == static_cast<int64_t>(test_h) * test_d);
+
+    const uint32_t stride_32b = Catlass::SageAttn::CalcGm2dStride32B(test_h, test_d, 2, sage_attn::LAYOUT_NHD);
+    const int64_t reconstructed_diff = static_cast<int64_t>(stride_32b * 32 / 2) + test_d;
+    assert(elem_diff == reconstructed_diff);
+
+    // constexpr 编译期锁值
+    static_assert(Catlass::SageAttn::CalcGm2dStride32B(32, 128, 2, sage_attn::LAYOUT_NHD) == 248,
+                  "NHD 32-head stride must fold at compile time");
+    static_assert(Catlass::SageAttn::CalcGm2dStride32B(32, 128, 2, sage_attn::LAYOUT_HND) == 0,
+                  "HND stride must fold at compile time to 0");
+
+    std::cout << "[Test 7 Passed] NDDMA 2D Strided DMA contract verified!" << std::endl;
+}
+
 int main() {
     std::cout << "Starting SageAttention2 C++ Contract and Tiling Verification..." << std::endl;
     TestTilingDataLayout();
@@ -382,6 +424,7 @@ int main() {
     TestResourceFootprintLedger();
     TestGmTlaLayouts();
     TestDieAffinityContract();
+    TestNddmaStrideContract();
     std::cout << "All C++ contracts and struct layouts PASSED successfully!" << std::endl;
     return 0;
 }

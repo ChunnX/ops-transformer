@@ -221,7 +221,74 @@ __aicore__ inline __attribute__((always_inline)) void CopyUbRowToL1(AscendC::Loc
 {
     CopyUbToL1(l1_dst, ub_src, row_bytes);
 }
+
+/**
+ * 通用 2D 分块从 GM 搬入 UB 原语（利用 Ascend 950 NDDMA 2D/Strided DMA 硬件指令）：
+ * 统一封装 DataCopyParams，支持 HND 稠密连续搬运与 NHD 跨步连续搬运。
+ * blockLen / srcStride 以 32 字节块计（BYTE_PER_BLK = 32）。
+ * ub_dst: 目标 UB 本地张量（连续紧凑存放，dstStride = 0）
+ * gm_src_base: GM 源起始地址张量
+ * rows: 搬运块数（行数，如 cur_q_len 或 block_k）
+ * d: 每行元素数（列数，half 类型，d * sizeof(Element) 需为 32B 对齐）
+ * stride_32b_blocks: GM 源地址相邻行之间的间隙（以 32 字节块计）。HND 时为 0；NHD 时为 (H - 1) * (d * sizeof(Element) / 32)
+ */
+template <typename Element>
+__aicore__ inline __attribute__((always_inline)) void LoadTile2DFromGm(
+    AscendC::LocalTensor<Element> ub_dst,
+    AscendC::GlobalTensor<Element> gm_src_base,
+    uint32_t rows,
+    uint32_t d,
+    uint32_t stride_32b_blocks = 0)
+{
+    if (rows == 0) return;
+    const uint32_t block_len = (d * static_cast<uint32_t>(sizeof(Element))) / Catlass::BYTE_PER_BLK;
+    if (stride_32b_blocks == 0 || rows <= 1) {
+        AscendC::DataCopy(ub_dst, gm_src_base, rows * d);
+    } else {
+        AscendC::DataCopyParams cp;
+        cp.blockCount = static_cast<uint16_t>(rows);
+        cp.blockLen = static_cast<uint16_t>(block_len);
+        cp.srcStride = static_cast<uint16_t>(stride_32b_blocks);
+        cp.dstStride = 0;
+        AscendC::DataCopy(ub_dst, gm_src_base, cp);
+    }
+}
+
+template <typename Element>
+__aicore__ inline __attribute__((always_inline)) void LoadTile2DFromGm(
+    AscendC::LocalTensor<Element> ub_dst,
+    __gm__ Element *gm_src_ptr,
+    uint32_t rows,
+    uint32_t d,
+    uint32_t stride_32b_blocks = 0)
+{
+    if (rows == 0) return;
+    AscendC::GlobalTensor<Element> gm_src;
+    gm_src.SetGlobalBuffer(gm_src_ptr);
+    gm_src.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+    LoadTile2DFromGm(ub_dst, gm_src, rows, d, stride_32b_blocks);
+}
 #endif
+
+/**
+ * 计算 GM 2D 搬运相邻行之间的间隙（以 32 字节块计，供 DataCopyParams.srcStride 使用）：
+ * - HND 布局：同一 Head 内相邻 Token 在物理内存上严格连续，stride = 0；
+ * - NHD 布局 ([B, S, H, D])：同一 Head 内相邻 Token 的地址间隔为 H * D * sizeof(Element)，
+ *   相邻行间隙为 (H - 1) * D * sizeof(Element) 字节，换算为 32 字节块数即：
+ *   srcStride = (total_heads - 1) * (d * sizeof(Element) / 32)。
+ */
+[[nodiscard]] __aicore__ inline __attribute__((always_inline)) constexpr uint32_t CalcGm2dStride32B(
+    uint32_t total_heads,
+    uint32_t d,
+    uint32_t elem_size,
+    uint32_t tensor_layout)
+{
+    if (tensor_layout == sage_attn::LAYOUT_HND || total_heads <= 1u) {
+        return 0u;
+    }
+    return (total_heads - 1u) * ((d * elem_size) / Catlass::BYTE_PER_BLK);
+}
+
 
 namespace detail {
 
