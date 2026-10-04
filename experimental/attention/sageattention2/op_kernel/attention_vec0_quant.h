@@ -258,22 +258,22 @@ public:
             const float scale = quant::FinalizeQkScale(amax, per_thread_k);
             ub_k_scales.SetValue(s, scale);
         }
+        Catlass::SageAttn::Sync<HardEvent::S_V>();
 
         LocalTensor<float> ub_stage_k(TPosition::VECCALC, SlotV0StageStrip::Offset(), STAGE_SLOT_FLOATS);
         dev_vf::FillF32VF(reinterpret_cast<__ubuf__ float*>(ub_stage_k.GetPhyAddr()), 0.0f, STAGE_SLOT_FLOATS);
+        Catlass::SageAttn::Sync<HardEvent::V_S>();
         for (uint32_t j = 0; j < block_n; ++j) {
             if (j < block_k) {
                 const uint32_t token = cur_k_start + j;
                 ub_stage_k.SetValue(j, ub_k_scales.GetValue(quant::KScaleIndex(token, per_thread_k)));
             }
         }
-        Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
         Catlass::SageAttn::Sync<HardEvent::S_MTE3>();
         GlobalTensor<float> gm_stage_k;
         uint32_t k_offset = STAGE_K_SCALE_BASE_OFFSET + (cur_k % STAGE_K_SCALE_NUM_SLOTS) * STAGE_SLOT_BYTES;
         gm_stage_k.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(ctx.StageStrip() + k_offset));
         DataCopy(gm_stage_k, ub_stage_k, STAGE_SLOT_FLOATS);
-        Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
         Catlass::SageAttn::Sync<HardEvent::MTE3_S>();
 
         // 逐行量化写 L1：复用已在片上 UB 中的数据，消除逐行 GM 读与流水气泡
@@ -432,7 +432,6 @@ public:
             }
 
             Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
-            Catlass::SageAttn::Sync<HardEvent::S_MTE3>();
             GlobalTensor<float> gm_stage_v;
             gm_stage_v.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(ctx.StageStrip() + STAGE_V_SCALE_OFFSET));
             DataCopy(gm_stage_v, ub_v_scale, STAGE_SLOT_FLOATS);
@@ -445,7 +444,6 @@ public:
                 DataCopy(gm_vm, ub_v_sum, d);
             }
             Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
-            Catlass::SageAttn::Sync<HardEvent::MTE3_S>();
         }
 
         // 分块量化写 L1：单条 2D Strided DMA 猝发读整个 block_k 分块拉入 UB，消灭逐行 GM 读与流水气泡
