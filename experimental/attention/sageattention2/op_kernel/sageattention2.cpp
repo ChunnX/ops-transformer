@@ -420,24 +420,10 @@ private:
         // 强锚定重缩放，队列的双锚点策略与 V1 独占 O 主累加器冲突；
         // 每块 PV L0C 部分和经 FixPipe 裸搬至 UB 交接槽，由 V1 按档位合并。
 
-        // 进域预置（task/02_code.md B-2 init 纪律）：Cube 是 KV 槽与 S 槽的消费者，
-        // 预置"首次使用前已归还"许可，V0/V1 首轮写槽前的 wait 立即放行。
-        // A7 新增：PARTIAL_FREE / DOT_FREE 预置（交接槽与 dot32 单缓冲首拍放行）。
-        // 余量核算（单任务域，N = total_kv_blocks；R22 逐 flag 对账，与实现一致）：
-        //   KV_PING/PONG_FREE：set 2+N（预置 2 合计 + 逐块 N）/ wait N+2（V0 逐块 N + 退域 2）
-        //   SOFTMAX_S_PING/PONG_FREE：set 2+N（预置 2 合计 + 逐前块 N 合计）/
-        //     wait N+2（V1 逐块 N + 退域 2）
-        //   PV_PARTIAL_FREE：set 1+N（预置 1 + V1 合并 N：拍顶 N-1 + 收尾 1）/
-        //     wait N+1（逐块发射前 N-1 + drain 1 + 退域回收 1）
-        //   DOT_FREE：set 1+N（预置 1 + V1 逐块 N）/ wait N+1（逐块 N + 退域回收 1）
-        // N=0/1 边界：PARTIAL/DOT 各 set 1=wait 1 / 2=2（退域回收无条件执行预置回收，
-        // 故置于分块条件之外）；任务边界余量严格归零。
-        CrossCoreSet(CrossCoreDirection::CUBE_TO_VEC0, CrossCoreFlags::FLAG_KV_PING_FREE);
-        CrossCoreSet(CrossCoreDirection::CUBE_TO_VEC0, CrossCoreFlags::FLAG_KV_PONG_FREE);
+        // S 槽双缓冲进域预置：Cube 是 S 槽消费者，向 V1 发送 S 槽就绪前许可，V1 首两拍写槽前的 wait 立即放行。
+        // KV_FREE / DOT_FREE / PARTIAL_FREE 首拍缓冲区天然为空，无需预置（避免跨核伪预置导致首拍死锁）。
         CrossCoreSet(CrossCoreDirection::CUBE_TO_VEC1, CrossCoreFlags::FLAG_SOFTMAX_S_PING_FREE);
         CrossCoreSet(CrossCoreDirection::CUBE_TO_VEC1, CrossCoreFlags::FLAG_SOFTMAX_S_PONG_FREE);
-        CrossCoreSet(CrossCoreDirection::CUBE_TO_VEC1, CrossCoreFlags::FLAG_PV_PARTIAL_FREE);
-        CrossCoreSet(CrossCoreDirection::CUBE_TO_VEC1, CrossCoreFlags::FLAG_DOT_FREE);
 
         // 1. 等待 V0 完成 Q 矩阵量化并常驻 L1 Bank 0
         CrossCoreWait(CrossCoreDirection::VEC0_TO_CUBE, CrossCoreFlags::FLAG_Q_READY);
@@ -467,9 +453,11 @@ private:
             // K 块（L1 Bank 1 槽）消费完成：归还缓冲许可，V0 在重写同奇偶槽（k+2）前会 wait。
             CrossCoreSet(CrossCoreDirection::CUBE_TO_VEC0, kv_free);
 
-            // 3. A7：QK dot32 裸搬 UB（读保护：V1 完成上一块反量化读取后经 DOT_FREE 放行；
+            // 3. A7：QK dot32 裸搬 UB（首拍 k=0 缓冲区天然为空无需等待；k > 0 时等待 V1 读毕上一拍 dot32；
             //    FixPipe 走 FIX 管，CrossCoreSet 在 S 管——先自配对排空 FIX 再 raise flag 保 GM/UB 可见序）
-            CrossCoreWait(CrossCoreDirection::VEC1_TO_CUBE, CrossCoreFlags::FLAG_DOT_FREE);
+            if (k > 0) {
+                CrossCoreWait(CrossCoreDirection::VEC1_TO_CUBE, CrossCoreFlags::FLAG_DOT_FREE);
+            }
             qk_mmad.EmitL0CToUbRaw(SAGE_UB_DOT32_OFFSET, rows, block_n_);
             Catlass::SageAttn::Sync<HardEvent::FIX_S>();
             CrossCoreSet(CrossCoreDirection::CUBE_TO_VEC1, CrossCoreFlags::FLAG_QK_P_READY);
@@ -505,8 +493,10 @@ private:
                 // S[prev_k]（UB 槽）消费完成：归还缓冲许可，V1 在重写同奇偶槽前会 wait
                 CrossCoreSet(CrossCoreDirection::CUBE_TO_VEC1, s_free);
 
-                // A7：PV 部分和裸搬 UB 交接槽（读保护：V1 合并完上一块后经 PARTIAL_FREE 放行）
-                CrossCoreWait(CrossCoreDirection::VEC1_TO_CUBE, CrossCoreFlags::FLAG_PV_PARTIAL_FREE);
+                // A7：PV 部分和裸搬 UB 交接槽（首个 partial k=1 槽天然为空；k > 1 时等待 V1 合并完上一块交接槽）
+                if (k > 1) {
+                    CrossCoreWait(CrossCoreDirection::VEC1_TO_CUBE, CrossCoreFlags::FLAG_PV_PARTIAL_FREE);
+                }
                 pv_mmad.ExecuteEpilogue(SAGE_UB_PV_PARTIAL_OFFSET);
                 Catlass::SageAttn::Sync<HardEvent::FIX_S>();
                 CrossCoreSet(CrossCoreDirection::CUBE_TO_VEC1, CrossCoreFlags::FLAG_PV_PARTIAL_READY);
@@ -535,17 +525,14 @@ private:
             // 归还最后一个 S 槽许可（V1 退域回收依赖此配平）
             CrossCoreSet(CrossCoreDirection::CUBE_TO_VEC1, s_free);
 
-            // 最后一块部分和搬出
-            CrossCoreWait(CrossCoreDirection::VEC1_TO_CUBE, CrossCoreFlags::FLAG_PV_PARTIAL_FREE);
+            // 最后一块部分和搬出（当 active_kv_blocks > 1 时需等待 V1 释放上一块 partial 交接槽）
+            if (active_kv_blocks > 1) {
+                CrossCoreWait(CrossCoreDirection::VEC1_TO_CUBE, CrossCoreFlags::FLAG_PV_PARTIAL_FREE);
+            }
             pv_mmad.ExecuteEpilogue(SAGE_UB_PV_PARTIAL_OFFSET);
             Catlass::SageAttn::Sync<HardEvent::FIX_S>();
             CrossCoreSet(CrossCoreDirection::CUBE_TO_VEC1, CrossCoreFlags::FLAG_PV_PARTIAL_READY);
         }
-
-        // 退域回收（B-2 destroy 纪律；R22 修正：移出分块条件——N=0 时亦须回收预置许可，
-        // N≥1 时消费 V1 最后一块的归还许可，保证任务边界 DOT/PARTIAL_FREE 余量严格归零）
-        CrossCoreWait(CrossCoreDirection::VEC1_TO_CUBE, CrossCoreFlags::FLAG_DOT_FREE);
-        CrossCoreWait(CrossCoreDirection::VEC1_TO_CUBE, CrossCoreFlags::FLAG_PV_PARTIAL_FREE);
 #else
         // KT/宿主标量基线：本函数无 Cube 侧数值职责。
         // 跨核 flag 的进域预置/退域回收在宿主分支为空操作，V1 退域回收依赖的
@@ -594,8 +581,10 @@ private:
                                              : Catlass::SageAttn::L1DoubleBankContract::KV_PONG_OFFSET;
 
             // 缓冲回收握手：同奇偶槽须待 Cube 消费完上一轮（k-2）后方可覆写。
-            // 首两个槽（k=0/1）的许可由 Cube 进域预置，此处 wait 立即放行。
-            CrossCoreWait(CrossCoreDirection::CUBE_TO_VEC0, kv_free);
+            // 首两槽（k=0/1）直接写入，从 k >= 2 开始等待 Cube 释放该槽。
+            if (k >= 2) {
+                CrossCoreWait(CrossCoreDirection::CUBE_TO_VEC0, kv_free);
+            }
 
 
             cur_k_ = k;
@@ -636,11 +625,7 @@ private:
             CrossCoreSet(CrossCoreDirection::VEC0_TO_CUBE, kv_flag);
         }
 
-        // 退域回收（task/02_code.md B-2 destroy 纪律）：消费 Cube 进域预置的最后两个
-        // KV 槽许可，保证本任务结束时 FLAG_KV_*_FREE 余量为零，下一波次进域预置才重新立券，
-        // 防跨任务残留许可导致首两槽未消费即被覆写。
-        CrossCoreWait(CrossCoreDirection::CUBE_TO_VEC0, CrossCoreFlags::FLAG_KV_PING_FREE);
-        CrossCoreWait(CrossCoreDirection::CUBE_TO_VEC0, CrossCoreFlags::FLAG_KV_PONG_FREE);
+
 
 
     }
