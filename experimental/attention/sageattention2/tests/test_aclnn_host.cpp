@@ -5,7 +5,6 @@
 #include "../quant/quant_host.h"
 
 #include <iostream>
-#include <cassert>
 #include <cmath>
 #include <vector>
 

@@ -2,7 +2,6 @@
 #define SAGE_ATTN_QUANT_HOST_H
 
 #include <cstdint>
-#include <cstddef>
 
 #include "quant_common.h"
 

@@ -1,7 +1,6 @@
 #ifndef SAGE_ATTENTION2_DEF_H
 #define SAGE_ATTENTION2_DEF_H
 
-#include <cstdint>
 #include <cstddef>
 
 #include "graph/operator_reg.h"
