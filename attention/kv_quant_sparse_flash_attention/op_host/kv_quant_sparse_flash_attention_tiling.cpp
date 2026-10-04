@@ -308,6 +308,7 @@ void QSFAMlaTiling::CalcVectorizeFlag()
             alignedSparseBlockCount * sizeof(int64_t);
         vectorizeFlag_ = static_cast<uint32_t>(vectorizeUbSize <= UB_SIZE && blocksizeFlag != 0 &&
                                                sparseBlockCountFlag != 0 && sparseModeFlag != 0);
+        vectorizeFlag_ = 0U;
     }
 }
 
