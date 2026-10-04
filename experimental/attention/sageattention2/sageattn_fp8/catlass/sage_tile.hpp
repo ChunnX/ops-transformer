@@ -153,7 +153,7 @@ __aicore__ inline __attribute__((always_inline)) void CopyL0CToUbSplitM(
     fp.params.dstNdStride = 0;
     fp.quantPre = QuantMode_t::NoQuant;
     fp.dualDstCtl = 0;
-    fp.subBlockId = false;
+    fp.subBlockId = true;
 
     AscendC::TBuffAddr l0c_desc{};
     l0c_desc.logicPos = static_cast<uint8_t>(AscendC::TPosition::CO1);
