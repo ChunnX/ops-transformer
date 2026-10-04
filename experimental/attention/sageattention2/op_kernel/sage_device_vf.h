@@ -32,61 +32,70 @@ namespace dev_vf {
  */
 
 /**
- * 1a. 行绝对值最大（DEFECT-F-1 组粒度量化的行内阶段）：
- * 可选 kMean 减法（带输入位型舍回），Abs 后 ReduceMax，行 max 写 1 元素槽。
+ * 1a. 行批绝对值最大（DEFECT-F-1 组粒度量化的行内阶段，R4 行批化）：
+ * 可选 kMean 减法（带输入位型舍回），Abs 后 ReduceMax。
+ * 针对昇腾 DaVinci 硬件 VEC 访 UB 必须 32 字节对齐约束（彻底根除逐行 +4 字节非对齐
+ * StoreAlign 触发硬件 340 异常）：
+ * 采用 CANN MicroAPI 标准 StoreUnAlign / StoreUnAlignPost 流式非对齐写原语，
+ * 在寄存器中缓冲逐行单元素归约值，满 32 字节（8 float）对齐写出，循环后统一刷回 UB。
  * 组间归并与 scale 定档由调用方按 quant::QScaleIndex/KScaleIndex 单点完成
  * （与宿主串行路径逐步一致）。
  */
 template <uint32_t DTYPE_MODE>
-CATLASS_DEVICE_SIMD_VF void RowAbsMaxVF(__ubuf__ half* in_ptr, __ubuf__ float* out_slot,
-                                    __ubuf__ float* km_ptr, uint32_t d,
-                                    uint32_t has_km) {
+CATLASS_DEVICE_SIMD_VF void RowAbsMaxRowsVF(__ubuf__ half* in_base, __ubuf__ float* out_rowmax,
+                                            __ubuf__ float* km_ptr, uint32_t rows, uint32_t d,
+                                            uint32_t has_km) {
     using namespace AscendC;
     using namespace AscendC::MicroAPI;
+    if (rows == 0u) {
+        return;
+    }
     auto full = CreateMask<float, MaskPattern::ALL>();
     static constexpr CastTrait toFp32{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
     static constexpr CastTrait toHalf{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
     static constexpr CastTrait toBf16{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
 
-    RegTensor<float> amax_reg;
-    Duplicate(amax_reg, 0.0f);
-    for (uint32_t c = 0; c < d; c += 64) {
-        RegTensor<float> val;
-        if constexpr (DTYPE_MODE == 2u) {
-            RegTensor<bfloat16_t> raw;
-            LoadAlign<bfloat16_t, LoadDist::DIST_UNPACK_B16>(raw, reinterpret_cast<__ubuf__ bfloat16_t*>(in_ptr) + c);
-            Cast<float, bfloat16_t, toFp32>(val, raw, full);
-        } else {
-            RegTensor<half> raw;
-            LoadAlign<half, LoadDist::DIST_UNPACK_B16>(raw, in_ptr + c);
-            Cast<float, half, toFp32>(val, raw, full);
-        }
-        if (has_km) {
-            RegTensor<float> km_val;
-            LoadAlign(km_val, km_ptr + c);
-            Sub(val, val, km_val, full);
-            // 差值位型舍回（对齐孪生 Half/Bf16Reader::Sub 口径）
+    __ubuf__ float* dst = out_rowmax;
+    UnalignReg compact;
+
+    for (uint32_t r = 0; r < rows; ++r) {
+        __ubuf__ half* in_ptr = in_base + r * d;
+        RegTensor<float> amax_reg;
+        Duplicate(amax_reg, 0.0f);
+        for (uint32_t c = 0; c < d; c += 64) {
+            RegTensor<float> val;
             if constexpr (DTYPE_MODE == 2u) {
-                RegTensor<bfloat16_t> rt;
-                Cast<bfloat16_t, float, toBf16>(rt, val, full);
-                Cast<float, bfloat16_t, toFp32>(val, rt, full);
+                RegTensor<bfloat16_t> raw;
+                LoadAlign<bfloat16_t, LoadDist::DIST_UNPACK_B16>(raw, reinterpret_cast<__ubuf__ bfloat16_t*>(in_ptr) + c);
+                Cast<float, bfloat16_t, toFp32>(val, raw, full);
             } else {
-                RegTensor<half> rt;
-                Cast<half, float, toHalf>(rt, val, full);
-                Cast<float, half, toFp32>(val, rt, full);
+                RegTensor<half> raw;
+                LoadAlign<half, LoadDist::DIST_UNPACK_B16>(raw, in_ptr + c);
+                Cast<float, half, toFp32>(val, raw, full);
             }
+            if (has_km) {
+                RegTensor<float> km_val;
+                LoadAlign(km_val, km_ptr + c);
+                Sub(val, val, km_val, full);
+                // 差值位型舍回（对齐孪生 Half/Bf16Reader::Sub 口径）
+                if constexpr (DTYPE_MODE == 2u) {
+                    RegTensor<bfloat16_t> rt;
+                    Cast<bfloat16_t, float, toBf16>(rt, val, full);
+                    Cast<float, bfloat16_t, toFp32>(val, rt, full);
+                } else {
+                    RegTensor<half> rt;
+                    Cast<half, float, toHalf>(rt, val, full);
+                    Cast<float, half, toFp32>(val, rt, full);
+                }
+            }
+            Abs(val, val, full);
+            Max(amax_reg, amax_reg, val, full);
         }
-        Abs(val, val, full);
-        Max(amax_reg, amax_reg, val, full);
+        ReduceMax(amax_reg, amax_reg, full);
+        StoreUnAlign<float, PostLiteral::POST_MODE_UPDATE>(dst, amax_reg, compact, 1);
     }
-    ReduceMax(amax_reg, amax_reg, full);
-    // 槽宽契约：out_slot 为 1 float/行（ub_rowmax[r]，128 float 区，调用方
-    // GetValue(r) 逐行读）。归约结果驻留全 64 lane，须以 VL1 窄掩码仅写 lane 0——
-    // full 掩码会把 256B 写到 [r, r+64) float，r≥65 时越过 ub_rowmax 尾界（512B）
-    // 踩中后邻 ub_scales/ub_k_scales 区首部（DEFECT-M-1，AIV UB 越写：
-    // 越写值恒为合法 amax 正数，经组归并条件 max 抬高 scale → 量化失真）。
-    auto single_lane = CreateMask<float, MaskPattern::VL1>();
-    StoreAlign(out_slot, amax_reg, single_lane);
+    StoreUnAlignPost(dst, compact, 0);
+    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 }
 
 /**
@@ -352,18 +361,25 @@ CATLASS_DEVICE_SIMD_VF void DequantMaskLogitsRowsVF(__ubuf__ float* logits_dot_b
 }
 
 /**
- * 4. QK 块极值与局部指数和（R4 行批化）：逐行原 ReduceMax/Exp 链不变，行 max / 448· 域
- *    exp2 和分别以 VL1 窄掩码写 lane 0 至 out_max_row[r] / out_sum_row[r]（各 1 float/行；
- *    与 RowAbsMaxVF 的 DEFECT-M-1 同款纪律——归约结果驻留全 64 lane，full 掩码会越出
- *    128 float 行槽尾界，VL1 恰写一行槽）。行内两级 chunk 循环、ReduceMax/ReduceSum
- *    归约树、掩码哨兵 -1e30 的 Exp 下溢行为逐位同原单行版本。
+ * 4. QK 块极值与局部指数和（R4 行批化）：逐行原 ReduceMax/Exp 链不变。
+ *    针对 DaVinci 硬件 VEC 访 UB 必须 32 字节对齐约束（根除 r>0 时 out+r 的 +4 字节
+ *    非对齐 StoreAlign 触发硬件 340 异常）：
+ *    采用 CANN MicroAPI 标准 StoreUnAlign / StoreUnAlignPost 流式非对齐写原语，
+ *    在寄存器中缓冲逐行单元素归约值，满 32 字节（8 float）对齐写出，循环后统一刷回 UB。
+ *    行内两级 chunk 循环、ReduceMax/ReduceSum 归约树、掩码哨兵 -1e30 的 Exp 下溢行为逐位同原单行版本。
  */
 CATLASS_DEVICE_SIMD_VF void BlockMaxAndSumRowsVF(__ubuf__ float* logits_base, uint32_t rows, uint32_t block_n,
                                                  __ubuf__ float* out_max_row, __ubuf__ float* out_sum_row) {
     using namespace AscendC;
     using namespace AscendC::MicroAPI;
+    if (rows == 0u) {
+        return;
+    }
     auto full = CreateMask<float, MaskPattern::ALL>();
-    auto single_lane = CreateMask<float, MaskPattern::VL1>();
+    __ubuf__ float* max_ptr = out_max_row;
+    __ubuf__ float* sum_ptr = out_sum_row;
+    UnalignReg max_store;
+    UnalignReg sum_store;
 
     for (uint32_t r = 0; r < rows; ++r) {
         __ubuf__ float* logits = logits_base + r * block_n;
@@ -391,9 +407,12 @@ CATLASS_DEVICE_SIMD_VF void BlockMaxAndSumRowsVF(__ubuf__ float* logits_base, ui
         }
         ReduceSum(sum_val, sum_val, full);
 
-        StoreAlign(out_max_row + r, max_val, single_lane);
-        StoreAlign(out_sum_row + r, sum_val, single_lane);
+        StoreUnAlign<float, PostLiteral::POST_MODE_UPDATE>(max_ptr, max_val, max_store, 1);
+        StoreUnAlign<float, PostLiteral::POST_MODE_UPDATE>(sum_ptr, sum_val, sum_store, 1);
     }
+    StoreUnAlignPost(max_ptr, max_store, 0);
+    StoreUnAlignPost(sum_ptr, sum_store, 0);
+    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 }
 
 /**
@@ -679,10 +698,10 @@ CATLASS_DEVICE_SIMD_VF void FinalizeRowVF(__ubuf__ float* o_row, __ubuf__ uint16
 
 /**
  * 8. UB float 区广播填充（P2-8 标量化收尾：scale 组清零 / STAGE 条带零填充等整区
- * 同值写的单点）：Duplicate 常量后按 64-lane chunk StoreAlign——取代逐元素标量
- * SetValue 循环（S 管串行 → V 管单指令块写）。逐位等价论证：每目标元素均写入
- * 同一常量位型，与标量循环写集逐一重合；尾块按 2 的幂精确分解（VLn 掩码恰写
- * n lane），无超界写。与输入位型无关，不需 DTYPE_MODE 特化。
+ * 同值写的单点）：Duplicate 常量后按 64-lane chunk StoreAlign 写对齐段；
+ * 尾部 ≥8 float 的 2 的幂段（32/16/8 float，均为 32 字节整数倍）以对齐掩码 StoreAlign 写出；
+ * 尾部 <8 float（1~7 float，非 32 字节对齐）严禁使用 StoreAlign，转由 StoreUnAlign /
+ * StoreUnAlignPost 写入，彻底根除非 32 字节对齐硬件 340 异常。
  */
 CATLASS_DEVICE_SIMD_VF void FillF32VF(__ubuf__ float* dst, float value, uint32_t count) {
     using namespace AscendC;
@@ -702,9 +721,14 @@ CATLASS_DEVICE_SIMD_VF void FillF32VF(__ubuf__ float* dst, float value, uint32_t
     if (rem & 32u) { auto m = CreateMask<float, MaskPattern::VL32>(); StoreAlign(dst + off, vreg, m); off += 32u; }
     if (rem & 16u) { auto m = CreateMask<float, MaskPattern::VL16>(); StoreAlign(dst + off, vreg, m); off += 16u; }
     if (rem & 8u)  { auto m = CreateMask<float, MaskPattern::VL8>();  StoreAlign(dst + off, vreg, m); off += 8u;  }
-    if (rem & 4u)  { auto m = CreateMask<float, MaskPattern::VL4>();  StoreAlign(dst + off, vreg, m); off += 4u;  }
-    if (rem & 2u)  { auto m = CreateMask<float, MaskPattern::VL2>();  StoreAlign(dst + off, vreg, m); off += 2u;  }
-    if (rem & 1u)  { auto m = CreateMask<float, MaskPattern::VL1>();  StoreAlign(dst + off, vreg, m); }
+    uint32_t tail = rem & 7u;
+    if (tail > 0u) {
+        UnalignReg tail_store;
+        __ubuf__ float* tail_ptr = dst + off;
+        StoreUnAlign<float, PostLiteral::POST_MODE_UPDATE>(tail_ptr, vreg, tail_store, tail);
+        StoreUnAlignPost(tail_ptr, tail_store, 0);
+    }
+    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 }
 
 } // namespace dev_vf

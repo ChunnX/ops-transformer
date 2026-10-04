@@ -653,7 +653,7 @@ private:
      *   收尾：wait PARTIAL_READY → 合并最后一块 → set PARTIAL_FREE → wait PV_O_DONE。
      * R4 行批化（设备态行循环整拍向量化）：行内 FP 轨迹（同操作数同顺序）不变，整窗
      *   行循环收敛为四个 VF pass——DequantMaskLogitsRowsVF（dot32 原地反量化/掩码）→
-     *   BlockMaxAndSumRowsVF（行 max / 448· 域 exp2 和，VL1 写行槽）→ 标量 Step 段
+     *   BlockMaxAndSumRowsVF（行 max / 448· 域 exp2 和，StoreUnAlign 写行槽）→ 标量 Step 段
      *   （每拍单次 V_S 后逐行 GetValue 读行统计、OnlineSoftmaxTransformer::Step 逐行
      *   不变，行锚 m'·ln2 与 rescale 系数 SetValue 入行槽）→ 单次 S_V 放行后
      *   RescaleAccumRowsVF（行位图许可）+ SoftmaxProbRowsVF（行锚 BRC 广播）。
@@ -973,27 +973,30 @@ private:
         LocalTensor<float> ub_scales(TPosition::VECCALC,
                                      Catlass::SageAttn::Vector0UbBudget::QUANT_SCALES_OFFSET,
                                      kQScaleSlotStride);
-        LocalTensor<half> ub_in(TPosition::VECCALC, Catlass::SageAttn::Vector0UbBudget::GM_INPUT_PING_OFFSET, d);
+        LocalTensor<half> ub_in(TPosition::VECCALC, Catlass::SageAttn::Vector0UbBudget::GM_INPUT_PING_OFFSET, MAX_PACK_ROWS * d);
         LocalTensor<int8_t> ub_out(TPosition::VECCALC, Catlass::SageAttn::Vector0UbBudget::NZ_OUTPUT_OFFSET, d);
         LocalTensor<int8_t> l1_q(TPosition::A1, tiling_->l1_q_offset, total_rows_q * d);
         // M5：输入位型档位为编译期常量 kDtype（VF 调用模板实参，原 dtype_mode 形参删除）
 
         // 窗口 scale 组清零（防跨任务波次陈旧 amax 混入；P2-8：连续组段以 FillF32VF
-        // 广播填充向量化——写集与标量循环逐一重合，槽界钳制保持）
+        // 广播填充向量化——写集与标量循环逐一重合，槽界钳制保持；
+        // 8-float (32B) 对齐钳制，确保 dst 严格满足 DaVinci 硬件 32 字节对齐）
         const uint32_t grp_first_q = quant::QScaleIndex(cur_q_start_, per_thread_q);
         const uint32_t grp_last_q = quant::QScaleIndex(cur_q_start_ + cur_q_len_ - 1u, per_thread_q);
-        const uint32_t grp_cnt_q = (grp_first_q < kQScaleSlotStride)
-                                       ? (::Min(grp_last_q + 1u, kQScaleSlotStride) - grp_first_q)
-                                       : 0u;
+        const uint32_t grp_first_aligned = (grp_first_q / 8u) * 8u;
+        const uint32_t grp_last_aligned = ::Min(((grp_last_q + 8u) / 8u) * 8u, static_cast<uint32_t>(kQScaleSlotStride));
+        const uint32_t grp_cnt_aligned = (grp_first_aligned < grp_last_aligned)
+                                             ? (grp_last_aligned - grp_first_aligned)
+                                             : 0u;
         __ubuf__ float *ub_scales_ptr = reinterpret_cast<__ubuf__ float*>(ub_scales.GetPhyAddr());
         for (uint32_t g = 0; g < cur_heads_; ++g) {
-            dev_vf::FillF32VF(ub_scales_ptr + (cur_g0_ + g) * kQScaleSlotStride + grp_first_q, 0.0f, grp_cnt_q);
+            dev_vf::FillF32VF(ub_scales_ptr + (cur_g0_ + g) * kQScaleSlotStride + grp_first_aligned, 0.0f, grp_cnt_aligned);
         }
 
-        // A. 行 abs-max（每行一次 MTE2 + VF）
-        for (uint32_t r = 0; r < total_rows_q && r < MAX_PACK_ROWS; ++r) {
-            // V→MTE2 回边（R22）：ub_in 逐行复用，上一行 VF 读毕（V 管）方可 MTE2 覆写
-            Catlass::SageAttn::Sync<HardEvent::V_MTE2>();
+        // A. 行批 abs-max（GM 批读入 UB + RowAbsMaxRowsVF 批计算，彻底根除 340 异常）
+        const uint32_t act_rows_q = ::Min(total_rows_q, static_cast<uint32_t>(MAX_PACK_ROWS));
+        Catlass::SageAttn::Sync<HardEvent::V_MTE2>();
+        for (uint32_t r = 0; r < act_rows_q; ++r) {
             const uint32_t g = r / cur_q_len_;
             const uint32_t i = r % cur_q_len_;
             const int64_t row_gm_offset = q_layout(tla::MakeCoord(0u, g, i, 0u)) * static_cast<int64_t>(sizeof(half));
@@ -1001,12 +1004,12 @@ private:
             gm_row.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(q_src + row_gm_offset));
             // Q 行 GM 流式读取：启用 L2 Cache Bypass (CACHE_MODE_DISABLE)，防止冲刷片上 64MB L2，锁定 K 矩阵长效驻留
             gm_row.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
-            DataCopy(ub_in, gm_row, d);
-            Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
-            dev_vf::RowAbsMaxVF<kDtype>(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
-                                        reinterpret_cast<__ubuf__ float*>(ub_rowmax.GetPhyAddr()) + r,
-                                        nullptr, d, 0u);
+            DataCopy(ub_in[r * d], gm_row, d);
         }
+        Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
+        dev_vf::RowAbsMaxRowsVF<kDtype>(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
+                                        reinterpret_cast<__ubuf__ float*>(ub_rowmax.GetPhyAddr()),
+                                        nullptr, act_rows_q, d, 0u);
         // V 管写 → S 管读同步（DEFECT-G-1，与 V1 统计读取同款事件对）
         Catlass::SageAttn::Sync<HardEvent::V_S>();
 
@@ -1169,7 +1172,7 @@ private:
         LocalTensor<float> ub_km(TPosition::VECCALC,
                                  Catlass::SageAttn::Vector0UbBudget::QUANT_KM_OFFSET,
                                  d);
-        LocalTensor<half> ub_in(TPosition::VECCALC, Catlass::SageAttn::Vector0UbBudget::GM_INPUT_PING_OFFSET, d);
+        LocalTensor<half> ub_in(TPosition::VECCALC, Catlass::SageAttn::Vector0UbBudget::GM_INPUT_PING_OFFSET, MAX_PACK_ROWS * d);
         LocalTensor<int8_t> ub_out(TPosition::VECCALC, Catlass::SageAttn::Vector0UbBudget::NZ_OUTPUT_OFFSET, d);
         LocalTensor<int8_t> l1_k(TPosition::B1, l1_dst_addr, block_n_ * d);
         LocalTensor<float> l1_k_scale(TPosition::B1, l1_dst_addr + static_cast<uint32_t>(block_n_ * d), kKScaleSlotStride);
@@ -1182,30 +1185,32 @@ private:
             Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
         }
 
-        // 窗口 scale 组清零（P2-8：连续组段 FillF32VF 广播填充，槽界钳制保持）
-        const uint32_t grp_fill_cnt = (grp_lo < kKScaleSlotStride)
-                                          ? (::Min(grp_hi, kKScaleSlotStride) - grp_lo)
+        // 窗口 scale 组清零（P2-8：连续组段 FillF32VF 广播填充，槽界钳制保持；
+        // 8-float (32B) 对齐钳制，确保 dst 严格满足 DaVinci 硬件 32 字节对齐）
+        const uint32_t grp_lo_aligned = (grp_lo / 8u) * 8u;
+        const uint32_t grp_hi_aligned = ::Min(((grp_hi + 7u) / 8u) * 8u, static_cast<uint32_t>(kKScaleSlotStride));
+        const uint32_t grp_fill_cnt = (grp_lo_aligned < grp_hi_aligned)
+                                          ? (grp_hi_aligned - grp_lo_aligned)
                                           : 0u;
         if (grp_fill_cnt != 0u) {
-            dev_vf::FillF32VF(reinterpret_cast<__ubuf__ float*>(ub_k_scales.GetPhyAddr()) + grp_lo,
+            dev_vf::FillF32VF(reinterpret_cast<__ubuf__ float*>(ub_k_scales.GetPhyAddr()) + grp_lo_aligned,
                               0.0f, grp_fill_cnt);
         }
 
-        // A. 行 abs-max（仅真实 token；pad 行零贡献且 pad 组写 0 由 C 段 pad 分支覆盖）
+        // A. 行批 abs-max（仅真实 token；GM 批读入 UB + RowAbsMaxRowsVF 批计算，彻底根除 340 异常）
+        Catlass::SageAttn::Sync<HardEvent::V_MTE2>();
         for (uint32_t j = 0; j < block_k; ++j) {
-            // V→MTE2 回边（R22）：ub_in 逐行复用，上一行 VF 读毕（V 管）方可 MTE2 覆写
-            Catlass::SageAttn::Sync<HardEvent::V_MTE2>();
             const int64_t row_gm_offset = kv_layout(tla::MakeCoord(0u, 0u, j, 0u)) * static_cast<int64_t>(sizeof(half));
             GlobalTensor<half> gm_row;
             gm_row.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(k_src + row_gm_offset));
             // K 矩阵 GM 读：不旁路 L2 Cache，使其在 Atlas 950PR 片上 64MB L2 中长效驻留，供后续 Q 块高效命中复用
-            DataCopy(ub_in, gm_row, d);
-            Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
-            dev_vf::RowAbsMaxVF<kDtype>(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
-                                        reinterpret_cast<__ubuf__ float*>(ub_rowmax.GetPhyAddr()) + j,
-                                        reinterpret_cast<__ubuf__ float*>(ub_km.GetPhyAddr()),
-                                        d, has_km);
+            DataCopy(ub_in[j * d], gm_row, d);
         }
+        Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
+        dev_vf::RowAbsMaxRowsVF<kDtype>(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
+                                        reinterpret_cast<__ubuf__ float*>(ub_rowmax.GetPhyAddr()),
+                                        reinterpret_cast<__ubuf__ float*>(ub_km.GetPhyAddr()),
+                                        block_k, d, has_km);
         // V 管写 → S 管读同步（DEFECT-G-1）
         Catlass::SageAttn::Sync<HardEvent::V_S>();
 

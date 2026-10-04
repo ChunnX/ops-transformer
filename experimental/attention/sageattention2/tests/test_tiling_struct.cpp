@@ -75,7 +75,6 @@ void TestTilingDataLayout() {
     assert(offsetof(SageAttention2TilingData, reserved) == 153);
 
     // Capacity constants：L1/Bank/UB 保留 sage_attn 直引（L1 经官方 Arch::Ascend950
-    // Capacity constants：L1/Bank/UB 保留 sage_attn 直引（L1 经官方 Arch::Ascend950
     // 派生）；L0A/L0B 无生产判据，不再设配额别名也不做官方源canary；L0C 唯一映射点
     // 为 HardwareResourceQuota（InspectTilingPlan 判据消费方）
     assert(L1_TOTAL_SIZE == 512 * 1024);

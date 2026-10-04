@@ -11,8 +11,9 @@ def cust_opapi_ldflags(op_root: Path, cann: Path) -> list[str]:
     """算子 vendor 库 libcust_opapi.so 的链接参数（桥接扩展唯一定义点，JIT/AOT 共享）。
 
     Vendor 名唯一定义点（P2-14）：本算子自建 OPP 树的 vendor 目录固定为
-    `customize`（build_opp.sh 出包 build/opp/vendors/customize，install_opp.sh
-    默认部署 build/opp_installed/vendors/customize，config.ini load_priority=customize）。
+    `customize`（build_opp.sh 出包 build/opp/vendors/customize 并镜像 custom_transformer
+    兼容树，install_opp.sh 默认部署 build/opp_installed/vendors/customize，config.ini
+    load_priority=customize,custom_transformer）。
     仓库根 build.sh 整包 run 包是另一交付物，其 vendor 目录为 ${vendor_name}_transformer
     （默认 --vendor_name=custom → custom_transformer，见 cmake/custom_build.cmake），
     与本算子本地树并存合法、互不同名；整包 opapi 由 CANN 按 ASCEND_OPP_PATH 装载、

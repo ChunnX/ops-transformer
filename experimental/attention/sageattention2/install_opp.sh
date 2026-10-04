@@ -2,15 +2,13 @@
 # install_opp.sh: CANN 标准自定义 OPP 算子部署与环境变量导出（无编译职责）
 #
 # 编译统一由 build_opp.sh 在 BiSheng 容器内完成；本脚本只做部署：
-#   - 默认部署到算子本地 build/opp_installed（算子 .gitignore 已兜住）；
-#   - 若仓库根存在官方整包产物 cann-ops-transformer-custom_*.run，优先以官方 run 包安装
-#     （真机交付形态，语义不变）；
+#   - 默认部署到算子本地 build/opp_installed（算子 .gitignore 已兜住），customize 与
+#     custom_transformer 双 vendor 树同步置备，config.ini load_priority=customize,custom_transformer；
 #   - --export-env 输出可直接 eval 的环境变量注入命令。
 
 set -euo pipefail
 
 OP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_DIR="$(cd "${OP_DIR}/../../.." && pwd)"
 
 INSTALL_PATH=""
 REBUILD=false
