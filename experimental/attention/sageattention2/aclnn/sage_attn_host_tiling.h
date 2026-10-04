@@ -376,8 +376,7 @@ inline aclnnStatus ComputeHostTiling(
     current_ws_offset += align512(static_cast<uint64_t>(tiling_out.core_num_used) *
                                   sage_attn::STAGE_CORE_STRIDE);
 
-    // (2) LSE 临时显存空间 (Split-KV 跨核归并；smooth_k 的 lse_correction 由桥接层
-    //     经 lseCorrection GM 入参直传，不经 workspace)
+    // (2) LSE 临时显存空间 (Split-KV 跨核归并)
     if (split_kv_num > 1 || hasLse) {
         tiling_out.workspace_lse_offset = current_ws_offset;
         int64_t lse_elems = static_cast<int64_t>(b) * hq * sq * split_kv_num;

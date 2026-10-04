@@ -14,11 +14,9 @@ namespace ge {
  *
  * 输入/输出/属性契约：
  * 1. query/key/value: 必选输入，支持 DT_FLOAT16 / DT_BF16。
- * 2. key_mean: 可选输入，Key 均值向量 (smooth_k 启用时使用)，类型为 DT_FLOAT。
- * 3. lse_correction: 可选输入，LSE 修正项张量，类型为 DT_FLOAT。
- * 4. output: 必选输出，形状与数据类型同 query。
- * 5. lse: 可选输出，Softmax 归一化对数和，类型为 DT_FLOAT。
- * 6. 属性：tensor_layout("HND"), is_causal(false), qk_quant_gran("per_thread"),
+ * 2. output: 必选输出，形状与数据类型同 query。
+ * 3. lse: 可选输出，Softmax 归一化对数和，类型为 DT_FLOAT。
+ * 4. 属性：tensor_layout("HND"), is_causal(false), qk_quant_gran("per_thread"),
  *    sm_scale(0.0f), pv_accum_dtype("fp32+fp16"), smooth_k(true), smooth_v(false)。
  */
 REG_OP(SageAttention2)

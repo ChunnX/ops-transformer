@@ -116,12 +116,6 @@ std::tuple<at::Tensor, c10::optional<at::Tensor>> sageattention2(
     }
 
     auto out = at::empty(q.sizes(), q.options());
-    // 开源契约（git/SageAttention/sageattention/core.py:583-597）：km 与 lse_correction
-    // 均在上层算好传入——
-    // - km = k.mean(seq_dim)（输入 dtype 舍回；上游 pad_head_dim 已把 pad 通道补零），
-    //   此处以 fp32 张量承载（keyMean GM 入参为 fp32 视图，kernel 按输入位型舍回消费）；
-    // - lse_correction = q·km_broadcast^T（fp32 matmul，仅 return_lse 时），[B, Hq, Sq]，
-    //   与布局无关（lse 输出同为该形）。设备核不再核内计算 q·km，Finalize 直读本张量。
     const int64_t head_axis = (tensor_layout == "HND") ? 1 : 2;
     const int64_t seq_axis = (tensor_layout == "HND") ? 2 : 1;
     c10::optional<at::Tensor> lse;

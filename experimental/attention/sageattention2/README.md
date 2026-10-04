@@ -83,7 +83,7 @@ bash build.sh --pkg --experimental --soc=ascend950 --vendor_name=customize --ops
 
 ### 两段式 ACLNN C 接口（交付态 `./op_api/` 唯一实现）
 
-- 交付态（随 run 包安装，真机调用方以此为准）：`./op_api/aclnn_sage_attention2.h` 第一段 `aclnnSageAttention2GetWorkspaceSize`：入参 q/k/v、可选 `keyMean`/`lseCorrection`、`tensorLayout`（字符串，仅 `"HND"`/`"NHD"`，非法取值报错）、`isCausal`、`qkQuantGran`（`"per_thread"`/`"per_warp"`）、`smScale`、`pvAccumDtype`（`"fp32"`/`"fp32+fp32"`/`"fp32+fp16"`）、`smoothK`、`smoothV`、out、可选 lse、`workspaceSize`、`executor`；属性顺序与 `./op_host/sage_attention2_def.cpp` 注册的 7 项一致
+- 交付态（随 run 包安装，真机调用方以此为准）：`./op_api/aclnn_sage_attention2.h` 第一段 `aclnnSageAttention2GetWorkspaceSize`：入参 q/k/v、`tensorLayout`（字符串，仅 `"HND"`/`"NHD"`，非法取值报错）、`isCausal`、`qkQuantGran`（`"per_thread"`/`"per_warp"`）、`smScale`、`pvAccumDtype`（`"fp32"`/`"fp32+fp32"`/`"fp32+fp16"`）、`smoothK`、`smoothV`、out、可选 lse、`workspaceSize`、`executor`；属性顺序与 `./op_host/sage_attention2_def.cpp` 注册的 7 项一致
 - 第二段 `aclnnSageAttention2(workspace, workspaceSize, executor, stream)`：校验 workspace 不小于第一段产出后发射 kernel
 - `smScale` 冻结语义：默认值 `1/sqrt(head_dim)` 由 Python 桥接在 `sm_scale=None` 时折叠后传入（gert 路径 `0`/缺省亦由 TilingImpl 折叠为该默认）；C 入口收到非有限值返回 `ACLNN_ERR_PARAM_INVALID`，负值由 TilingImpl 报错拒绝
 - Tiling 下发：Host Tiling 唯一实现为 `./aclnn/sage_attn_host_tiling.h` 的闭式 `ComputeHostTiling`，经 `./op_host/sage_attention2_tiling.cpp` 注册的 TilingImpl 序列化进 `gert::RawTilingData`，由框架在 `CommonOpExecutorRun` 下发阶段写入 kernel；数值编码（0=NHD/1=HND 等）仅供 Host/Device 内部消费，经 `./aclnn/sage_attn_proto.h` 的 `*CodeFromString` 唯一映射产生，禁止作为跨语言 ABI 形参再引入
