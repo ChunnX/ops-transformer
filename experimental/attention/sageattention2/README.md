@@ -174,7 +174,7 @@ bash run.sh opp
 
 - `bash run.sh host` 输出各二进制自检 `[SUCCESS]` 且退出码为 0（当前收敛为 test_aclnn_host / test_op_host / test_tiling_struct 三个二进制，以 `run.sh` 实际清单为准）
 - `bash run.sh python` 四个测试文件全部通过（含 `./tests/test_tiling_struct.py` 的 TilingData ctypes 镜像对 160 字节总长、32 字节对齐与逐字段偏移的断言）
-- `./tests/test_kernel_twin.py`（已纳入 `run.sh python`）：宿主孪生全流水执行器（twin_reference RunSequential）与 kernel 宿主串行分支（op_kernel SageAttnKernel + SimMemory，TilingData 直驱 `sage_attention2` C 入口）对 golden 25 桶落盘 out/lse 的功能交叉验证——23 桶整桶 + 3 大桶 128 对齐行窗口（P-05/P-07/TC-09，非因果行独立性如实标注；TC-03_smooth_v_fp32 经 smooth_v 正路径整桶执行），判据 L-A（matched_ratio ≥ 0.99、max_abs ≤ 0.1/1.0、LSE ≤ 1e-3）+ L-B（对 SDPA 误差比 ≤ 2.0/1.2/1.2），并附 P-01 量化中间态（q/k INT8、v FP8、scale）位级比对；P-01/TC-03/TC-04/TC-05/TC-07/TC-01(fp16) 代表桶另以 kernel 宿主串行分支复验，TC-01(bf16) 桶覆盖核内 `tiling.input_dtype==2` 位型分派分支（bf16 读写与 km 差值位型舍回）
+- `./tests/test_kernel_twin.py`（已纳入 `run.sh python`）：宿主孪生全流水执行器（twin_reference RunSequential）与 kernel 宿主串行分支（op_kernel SageAttnKernel + SimMemory，TilingData 直驱 `sage_attention2` C 入口）对 golden 25 桶落盘 out/lse 的功能交叉验证——22 桶整桶 + 3 大桶 128 对齐行窗口（P-05/P-07/TC-09，非因果行独立性如实标注；TC-03_smooth_v_fp32 经 smooth_v 正路径整桶执行），判据 L-A（matched_ratio ≥ 0.99、max_abs ≤ 0.1/1.0、LSE ≤ 1e-3）+ L-B（对 SDPA 误差比 ≤ 2.0/1.2/1.2），并附 P-01 量化中间态（q/k INT8、v FP8、scale）位级比对；P-01/TC-03/TC-04/TC-05/TC-07/TC-01(fp16) 代表桶另以 kernel 宿主串行分支复验，TC-01(bf16) 桶覆盖核内 `tiling.input_dtype==2` 位型分派分支（bf16 读写与 km 差值位型舍回）
 - 仓库级数值门（kernel 宿主串行路径 vs 孪生参考十用例位级一致、golden 25 桶 L-A/L-B）：由 `bash run.sh python` 中的 `./tests/test_kernel_twin.py` 承载（判据见上条）
 - `bash run.sh opp` 完成 BiSheng vendor 树出包与本地部署且退出码为 0
 - 真机验收另行执行 `bash ./benchmarks/build_aclnn_benchmark.sh`（容器内）并以真机报告的 `verdict: PASS` 为准；`mode: SIMULATION` 的报告一律无效
