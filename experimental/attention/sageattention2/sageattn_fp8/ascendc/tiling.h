@@ -77,11 +77,39 @@ constexpr uint32_t UB_TOTAL_SIZE_PER_V = 256 * 1024;   // 单 Vector 核心 UB �
 
 // L0A/L0B/L0C 容量不在本头重复映射：官方 Arch::Ascend950 → 本算子配额的唯一映射点
 // 为 sage_resource.hpp HardwareResourceQuota（L0A/L0B 64KB、L0C 256KB），消费方直引。
-// 原 ATLAS_950_AIV_NUM / GROUPS_PER_DIE / CORES_PER_DIE 拓扑常量零调用方，已随
-// 2026-10-03 死代码清扫删除（核数由 tiling.core_num_used 运行时携带，host 推导见
-// op_host/aclnn host tiling）。
+// 原 ATLAS_950_AIV_NUM 拓扑常量零调用方，已随 2026-10-03 死代码清扫删除（核数由
+// tiling.core_num_used 运行时携带，host 推导见 op_host/aclnn host tiling）；本文件
+// STARS_* Group 拓扑常量为 M6 Die 亲和契约的编译期消费载体（下方 static_assert 与
+// tests/test_tiling_struct.cpp Test 6 直锁白皮书字面量）。
 constexpr uint32_t ATLAS_950_AIC_NUM = 32;             // Atlas 950PR 满配 32 个 AI Core
 constexpr uint32_t ATLAS_950_DIE_NUM = 2;              // Atlas 950PR 标配 2 个计算 Die
+
+/**
+ * STARS 2.0 硬件调度拓扑（白皮书第 4.4 节：AI Core 分为最多 8 个 Group，支持按 Die
+ * 进行亲和性调度）：Atlas 950PR 满配网格 = 2 Die × 每 Die 4 Group × 每 Group 4 核。
+ * 接口考证结论（CANN 9.2.0-beta.1，容器内 ${ASCEND_HOME_PATH}/include，grep 全树）：
+ * host tiling 层无 STARS Group 直控公开 API——
+ * - acl/acl_rt.h:978 aclrtHacType 仅暴露 ACL_RT_HAC_TYPE_STARS 硬件队列类型枚举；
+ * - pto/comm/async/sdma/sdma_types.hpp:23 仅 STARS SQE 类型常量（kRtStarsSqeTypeSdma=11），
+ *   sdma_workspace_manager.hpp:273 仅 rtGetDeviceInfo(kInfoTypePhyDieId=19) 物理 Die 号
+ *   查询面（host 流级，非 per-op tiling 面）；
+ * - 全 include 树无 HSCB 关键词（HSCB 为纯硬件总线，无软件编程面）；gert 侧任务下发
+ *   仅 SetBlockDim/SetScheduleMode（exe_graph/runtime/tiling_context.h:227/254）；
+ * - ./git/catlass 全仓无 STARS 关键词（官方 CATLASS 未封装 Die 亲和组件）。
+ * 故本算子 Die 亲和分组按仓内既有惯例落地：TilingData 第 7 段四字段
+ * （enable_die_affinity/die_num/cores_per_die/tasks_per_die，布局冻结 160 字节，不新增
+ * 字段）显式编码 2 个物理 Die Group 配置（enable_die_affinity=1 即下发 Die 亲和调度），
+ * 核内按 GetBlockIdx 经 DieTask/DieTaskEnd（下方唯一定义点）解码 Batch/Head 分块到
+ * Die 的闭式映射，运行时 STARS 调度器按 blockDim 波次把任务下沉至各 Die 硬件队列
+ * 纳秒级发射。
+ */
+constexpr uint32_t STARS_MAX_GROUP_NUM = 8;   // 全片 AI Core 硬件 Group 数上限（白皮书 4.4）
+constexpr uint32_t STARS_GROUPS_PER_DIE = STARS_MAX_GROUP_NUM / ATLAS_950_DIE_NUM;   // 每 Die 4 个 Group
+constexpr uint32_t STARS_CORES_PER_GROUP = ATLAS_950_AIC_NUM / STARS_MAX_GROUP_NUM;  // 每 Group 4 核
+static_assert(STARS_GROUPS_PER_DIE * ATLAS_950_DIE_NUM == STARS_MAX_GROUP_NUM,
+              "STARS group topology must tile exactly into the physical dies");
+static_assert(STARS_CORES_PER_GROUP * STARS_MAX_GROUP_NUM == ATLAS_950_AIC_NUM,
+              "STARS group topology must tile exactly into the full AI core grid");
 
 // 单任务 GQA 行打包上限（kernel 行窗口直读本常量 / host total_rows 校验 / InspectTilingPlan
 // 三方同源唯一点，sage_resource.hpp 的 MAX_GQA_PACK_ROWS / A7_REGION_ROW_MAX 以
@@ -254,10 +282,16 @@ static_assert(sizeof(SageAttention2TilingData) % 32 == 0, "SageAttention2TilingD
 static_assert(alignof(SageAttention2TilingData) == 32, "SageAttention2TilingData must be 32-byte aligned");
 
 /**
- * DieTask 算法：将连续的虚拟任务映射到 Atlas 950PR 双 Die / 8-Group 拓扑
- * Die 0 (核 0 ~ cores/2-1) 亲和前半段任务 [0, total/2)
- * Die 1 (核 cores/2 ~ cores-1) 亲和后半段任务 [total/2, total)
- * 纯简洁整数运算与移位，保证微秒级发射时延与纳秒级内核解码
+ * DieTask 闭式映射 φ：将连续的虚拟任务索引映射到 Atlas 950PR 双 Die / 8-Group 拓扑
+ * （STARS 2.0 按 Die 亲和，拓扑常量见上方 STARS_MAX_GROUP_NUM 组）：
+ *   Die 0 (核 0 ~ cores/2-1) 亲和前半段任务 [0, total/2)
+ *   Die 1 (核 cores/2 ~ cores-1) 亲和后半段任务 [total/2, total)
+ * 波次展开 φ(v) = (⌊(v mod C)/H⌋)·(T/2) + ⌊v/C⌋·H + (v mod H)，C=cores，H=C/2；
+ * T 为偶数时 φ 是活跃核域到 [0, T) 的双射（编译期采样锁值见下方 static_assert，
+ * 生产域运行时穷举见 tests/test_tiling_struct.cpp Test 6）；T 为奇数时尾任务 T-1
+ * 无核执行，属契约外危险域（host enable 判据以偶性硬门禁排除，唯一定义点
+ * aclnn/sage_attn_host_tiling.h 第 10 步）。constexpr 纯整数运算与移位，host 判据
+ * 与核内纳秒级解码同式同源。
  *
  * @param task 虚拟任务索引 (wave * cores + core)
  * @param total 任务总数 (b * hkv * gqa_chunk * q_blks，4D 口径与 DecodeTask 解码一致；
@@ -265,7 +299,7 @@ static_assert(alignof(SageAttention2TilingData) == 32, "SageAttention2TilingData
  * @param cores 参与调度的核心总数 (必须为偶数，如 32 或 28)
  * @return 物理亲和后的实际任务索引
  */
-[[nodiscard]] __aicore__ __forceinline__ uint64_t DieTask(uint64_t task, uint64_t total, uint32_t cores) noexcept {
+[[nodiscard]] __aicore__ __forceinline__ constexpr uint64_t DieTask(uint64_t task, uint64_t total, uint32_t cores) noexcept {
     if (cores < 2 || total < 2) {
         return task;
     }
@@ -275,15 +309,18 @@ static_assert(alignof(SageAttention2TilingData) == 32, "SageAttention2TilingData
 }
 
 /**
- * DieTaskEnd 算法：计算当前核心在虚拟循环任务空间中的终止边界 (支持尾波次 partial wave)
+ * DieTaskEnd 闭式映射：计算当前核心在虚拟循环任务空间中的终止边界 (支持尾波次 partial wave)
+ * 波次计数 ⌈(T/2 − rank)/H⌉（rank = core mod H 为本 Die 内名次），保证两 Die 各核
+ * 任务数相差不超过 1 且全体活跃核对 [0, T) 双射覆盖；enable=false / 单核 / 奇数核 /
+ * 极小任务域恒退化为 total（等价单组全量循环，单 Die 环境与老用例零行为差异）。
  *
  * @param total 任务总数
  * @param core 当前核心物理索引 (GetBlockIdx)
  * @param cores 参与调度的核心总数
- * @param enable 是否启用 Die 亲和性调度
+ * @param enable 是否启用 Die 亲和性调度 (tiling.enable_die_affinity 单一控制位)
  * @return 当前核心的任务循环终止上界
  */
-[[nodiscard]] __aicore__ __forceinline__ uint64_t DieTaskEnd(uint64_t total, uint32_t core, uint32_t cores, bool enable = true) noexcept {
+[[nodiscard]] __aicore__ __forceinline__ constexpr uint64_t DieTaskEnd(uint64_t total, uint32_t core, uint32_t cores, bool enable = true) noexcept {
     if (!enable || cores < 2 || total < 2 || (cores % 2 != 0)) {
         return total;
     }
@@ -293,6 +330,29 @@ static_assert(alignof(SageAttention2TilingData) == 32, "SageAttention2TilingData
     const uint64_t count = (local > rank) ? ((local - rank + half - 1) / half) : 0;
     return core + count * cores;
 }
+
+// Die 亲和闭式映射编译期契约（constexpr 自锁；生产域运行时穷举与 (b,h) 块整对齐
+// 定理实证见 tests/test_tiling_struct.cpp Test 6）：满配 32 核 / T=64 双 Die 半分
+// 双射采样 + partial wave 边界 + 退化恒等域
+static_assert(DieTask(0, 64, 32) == 0 && DieTask(15, 64, 32) == 15,
+              "Die 0 wave 0 must map identity into the first half [0, 32)");
+static_assert(DieTask(16, 64, 32) == 32 && DieTask(31, 64, 32) == 47,
+              "Die 1 wave 0 must map into the second half [32, 64)");
+static_assert(DieTask(32, 64, 32) == 16 && DieTask(47, 64, 32) == 31,
+              "Die 0 wave 1 must stay inside the first half [0, 32)");
+static_assert(DieTask(48, 64, 32) == 48 && DieTask(63, 64, 32) == 63,
+              "Die 1 wave 1 must stay inside the second half [32, 64)");
+static_assert(DieTaskEnd(64, 0, 32, true) == 64 && DieTaskEnd(64, 16, 32, true) == 80,
+              "full wave domain must schedule exactly 2 waves per core");
+static_assert(DieTaskEnd(16, 8, 32, true) == 8,
+              "partial wave must retire Die 0 cores beyond the local task count");
+static_assert(DieTaskEnd(16, 16, 32, true) == 48,
+              "partial wave must keep the Die 1 first-rank core active");
+static_assert(DieTask(7, 0, 32) == 7 && DieTask(7, 1, 32) == 7 && DieTask(7, 16, 1) == 7,
+              "single-die/single-task domain must degenerate to identity");
+static_assert(DieTaskEnd(16, 3, 32, false) == 16 && DieTaskEnd(16, 3, 31, true) == 16 &&
+              DieTaskEnd(1, 0, 32, true) == 1,
+              "disabled/odd-core/tiny-total domains must degenerate to the full loop bound");
 
 } // namespace sage_attn
 

@@ -5,6 +5,7 @@
 #include <iostream>
 #include <cassert>
 #include <cmath>
+#include <vector>
 
 #include "../sageattn_fp8/ascendc/tiling.h"
 #include "../sageattn_fp8/ascendc/online_softmax.h"
@@ -283,6 +284,96 @@ void TestGmTlaLayouts() {
     std::cout << "[Test 5 Passed] tla GM layout equivalence verified!" << std::endl;
 }
 
+void TestDieAffinityContract() {
+    std::cout << "[Test 6] Testing STARS 2.0 die affinity closed-form mapping contract..." << std::endl;
+
+    // STARS 2.0 拓扑常量契约（白皮书第 4.4 节：最多 8 个 Group、按 Die 亲和；
+    // 唯一定义点 ascendc/tiling.h，host 判据与核内解码共享同源）
+    static_assert(ATLAS_950_DIE_NUM == 2, "Atlas 950PR is a dual-die package");
+    static_assert(STARS_MAX_GROUP_NUM == 8, "STARS 2.0 supports at most 8 hardware groups");
+    static_assert(STARS_GROUPS_PER_DIE == 4, "each 950PR die owns 4 STARS core groups");
+    static_assert(STARS_CORES_PER_GROUP == 4, "the full 32-core grid tiles into 8 groups of 4");
+
+    // 闭式映射编译期锁值（与 tiling.h 自锁互为冗余防线，防 constexpr 契约域被弱化）
+    static_assert(sage_attn::DieTask(16, 64, 32) == 32,
+                  "Die 1 wave 0 must map into the second half [32, 64)");
+    static_assert(sage_attn::DieTaskEnd(16, 8, 32, true) == 8,
+                  "partial wave must retire Die 0 cores beyond the local task count");
+
+    // 生产域穷举：偶数任务总数 × {满配 32 核 / 28 核减配 / 小网格}，验证三点：
+    // (1) 双射性：每个虚拟任务恰好被一个物理核执行一次，[0, total) 无遗漏无重复；
+    // (2) Die 半分不变量：Die 0 (核 [0, cores/2)) 只触达 [0, total/2)，Die 1 只触达后半；
+    // (3) Die 内负载均衡：同一 Die 各活跃核任务数相差不超过 1，且两 Die 各承担一半。
+    const uint32_t core_grids[] = {2u, 4u, 16u, 28u, 32u};
+    const uint64_t totals[] = {2ull, 14ull, 16ull, 28ull, 64ull, 128ull, 1024ull};
+    for (uint32_t cores : core_grids) {
+        for (uint64_t total : totals) {
+            std::vector<bool> covered(total, false);
+            uint64_t die_load[2] = {0ull, 0ull};
+            uint64_t die_load_min[2] = {~0ull, ~0ull};
+            uint64_t die_load_max[2] = {0ull, 0ull};
+            for (uint32_t c = 0; c < cores; ++c) {
+                const uint32_t die = (c < cores / 2u) ? 0u : 1u;
+                const uint64_t task_end = sage_attn::DieTaskEnd(total, c, cores, true);
+                uint64_t my_load = 0;
+                for (uint64_t v = c; v < task_end; v += cores) {
+                    const uint64_t mapped = sage_attn::DieTask(v, total, cores);
+                    assert(mapped < total);
+                    assert(!covered[mapped]);
+                    covered[mapped] = true;
+                    assert((mapped < total / 2) == (die == 0u));
+                    ++my_load;
+                }
+                if (my_load > 0) {
+                    die_load[die] += my_load;
+                    die_load_min[die] = (my_load < die_load_min[die]) ? my_load : die_load_min[die];
+                    die_load_max[die] = (my_load > die_load_max[die]) ? my_load : die_load_max[die];
+                }
+            }
+            for (uint64_t i = 0; i < total; ++i) {
+                assert(covered[i]);
+            }
+            assert(die_load[0] == total / 2);
+            assert(die_load[1] == total - total / 2);
+            assert(die_load_max[0] - die_load_min[0] <= 1);
+            assert(die_load_max[1] - die_load_min[1] <= 1);
+        }
+    }
+
+    // (Batch,Head) 块整对齐定理实证：b·hkv=4（偶），基块粒度 gqa_chunk·q_blk=2·3=6，
+    // 核域总数 24：Die 边界 12 为基块粒度整数倍 ⇒ 4 个 (b,h) 基块 [0,6) [6,12) [12,18)
+    // [18,24) 各自整块归属单一 Die，无跨 Die 批次分裂（KV 流 100% 命中本 Die 本地 L2）。
+    {
+        const uint32_t cores = 32;
+        constexpr uint64_t kTotal = 24;
+        constexpr uint64_t kBlock = 6;  // gqa_chunk=2 × q_blk=3
+        std::vector<uint32_t> exec_die(static_cast<size_t>(kTotal), 2u);  // 2=未执行哨兵
+        for (uint32_t c = 0; c < cores; ++c) {
+            const uint32_t die = (c < cores / 2u) ? 0u : 1u;
+            const uint64_t task_end = sage_attn::DieTaskEnd(kTotal, c, cores, true);
+            for (uint64_t v = c; v < task_end; v += cores) {
+                exec_die[static_cast<size_t>(sage_attn::DieTask(v, kTotal, cores))] = die;
+            }
+        }
+        for (uint64_t bh = 0; bh < kTotal / kBlock; ++bh) {
+            const uint32_t first = exec_die[static_cast<size_t>(bh * kBlock)];
+            for (uint64_t t = bh * kBlock + 1; t < (bh + 1) * kBlock; ++t) {
+                assert(exec_die[static_cast<size_t>(t)] == first);
+            }
+        }
+    }
+
+    // 退化恒等域（单 Die 环境/老用例等价单组：零行为差异）
+    assert(sage_attn::DieTask(7, 0, 32) == 7);               // total < 2
+    assert(sage_attn::DieTask(7, 1, 32) == 7);
+    assert(sage_attn::DieTask(7, 16, 1) == 7);               // cores < 2
+    assert(sage_attn::DieTaskEnd(16, 3, 32, false) == 16);   // 亲和关断 → 全量边界
+    assert(sage_attn::DieTaskEnd(16, 3, 31, true) == 16);    // 奇数核拓扑 → 全量边界
+    assert(sage_attn::DieTaskEnd(1, 0, 32, true) == 1);      // 极小任务域
+
+    std::cout << "[Test 6 Passed] STARS 2.0 die affinity closed-form mapping verified!" << std::endl;
+}
+
 int main() {
     std::cout << "Starting SageAttention2 C++ Contract and Tiling Verification..." << std::endl;
     TestTilingDataLayout();
@@ -290,6 +381,7 @@ int main() {
     TestCatlassContracts();
     TestResourceFootprintLedger();
     TestGmTlaLayouts();
+    TestDieAffinityContract();
     std::cout << "All C++ contracts and struct layouts PASSED successfully!" << std::endl;
     return 0;
 }

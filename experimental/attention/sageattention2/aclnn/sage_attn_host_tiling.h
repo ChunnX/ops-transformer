@@ -327,13 +327,25 @@ namespace sage_attn {
     uint32_t scheduled_tasks = total_tasks * split_kv_num;
     tiling_out.core_num_used = (scheduled_tasks < hw_cores) ? scheduled_tasks : hw_cores;
 
-    // 10. Die 亲和性多核调度分核计算 (Atlas 950PR 双 Die / 8-Group 拓扑)
-    // 竞品 common.h DieTask 启发与双 Die 拓扑亲和调度：
-    // 硬件拓扑：Atlas 950PR 标配 2 个计算 Die，每个 Die 拥有独立的片上 64MB L2 Cache 与 AI Core 组 (各 4 个 Core Group)
-    // 判定准则：当参与调度核心数为 32 (或偶数核心) 且 (b * hkv) 能被 2 整除时，
-    // 将任务严格按 Die 切分，Die 0 (核 0..cores/2-1) 亲和前半段 KV heads/batches [0, (b*hkv)/2)，
-    // Die 1 (核 cores/2..cores-1) 亲和后半段 KV heads/batches [(b*hkv)/2, b*hkv)。
-    // 这保证了 100% 的 KV reuse 命中对应 Die 的 64MB 本地 L2 Cache，彻底避免跨 Die 互联总线颠簸。
+    // 10. Die 亲和性多核调度分核计算（STARS 2.0 双 Die / 8-Group 拓扑，M6 硬件特性 4）
+    // 接口边界（考证证据链唯一定义点 ascendc/tiling.h STARS_MAX_GROUP_NUM 组注释）：
+    // 本 CANN 版本 host tiling 层无 STARS Group 直控公开 API，按仓内既有惯例以
+    // TilingData 第 7 段四字段编码 2 个物理 Die Group 配置（enable_die_affinity=1 即
+    // 下发 Die 亲和调度），核内按 GetBlockIdx 经 DieTask/DieTaskEnd 解码，运行时
+    // STARS 调度器按 blockDim 波次将 Batch/Head 分块下沉至各 Die 硬件队列纳秒级发射
+    // （HSCB 为纯硬件总线，无软件编程面）。
+    // 闭式映射与判据（数学论证）：
+    // - 核域任务总数 T4 = b·hkv·gqa_chunk·q_blk（与 kernel DecodeTask 同式），
+    //   DieTask/DieTaskEnd 双射闭合的必要条件是 T4 为偶数（奇数总数丢尾任务）；
+    // - 两分支共同硬前置 b·hkv 偶：T3 = b·hkv·q_blk 随之恒偶，T4 = T3·gqa_chunk
+    //   恒偶，核内映射无尾任务遗漏（安全性）；非调优域另加 T3 偶与 T3 ≥ 2，在
+    //   b·hkv 偶下属显式防御性冗余（恒真蕴含）；
+    // - (b,h) 块整对齐定理：b·hkv 偶 ⇔ Die 边界 T4/2 = (b·hkv/2)·(gqa_chunk·q_blk)
+    //   为 (b,h) 基块粒度 gqa_chunk·q_blk 的整数倍 ⇔ 每个 Batch/Head 基块整块归属
+    //   单一 Die（其 KV 流 100% 命中本 Die 本地 L2，零跨 Die 重取）。
+    // 硬件拓扑：Atlas 950PR 标配 2 个计算 Die（2 Die × 4 STARS Group × 4 核），每 Die
+    // 独立 64MB L2；Die 0 (核 0..cores/2-1) 亲和前半段任务，Die 1 (核 cores/2..cores-1)
+    // 亲和后半段任务，两 Die 间零任务交叉、零 KV 跨 Die 重取。
     uint32_t die_num = ATLAS_950_DIE_NUM;
     uint32_t active_cores = tiling_out.core_num_used;
     const bool is_b_hkv_even = ((static_cast<uint64_t>(b) * hkv) % 2ULL == 0ULL);
