@@ -287,7 +287,10 @@ __aicore__ inline __attribute__((always_inline)) void ProcessVec1(
         output.AccumulatePvBlockTwin(ctx, k, block_k, softmax.GetRowStates());
 #endif
 
-        AttentionSync::Vec1ReleaseDotFree();
+        // 仅在后续拍仍有 QK dot32 时释放许可（Cube 仅等待 N-1 拍，保证跨任务净余量为零）
+        if (k + 1 < active_kv_blocks) {
+            AttentionSync::Vec1ReleaseDotFree();
+        }
         AttentionSync::Vec1SignalSoftmaxReady(is_ping);
     }
 
@@ -295,7 +298,7 @@ __aicore__ inline __attribute__((always_inline)) void ProcessVec1(
     if (active_kv_blocks > 0) {
         AttentionSync::Vec1WaitPartialReady();
         output.MergePartialRows(ctx);
-        AttentionSync::Vec1ReleasePartialFree();
+        // 注意：Drain 拍为最后一块 partial，Cube 后续不再发射 PV，不再需要释放 PartialFree 许可
     }
 #endif
 

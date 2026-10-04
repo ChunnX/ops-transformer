@@ -181,6 +181,23 @@ public:
 #endif
     }
 
+    /**
+     * \brief 任务退域补等：消费 Cube 末尾释放的未用 KV 槽许可，保证跨任务 Flag 净余量恒为零
+     */
+    __aicore__ inline __attribute__((always_inline)) static void Vec0DrainKvPingFree()
+    {
+#if SAGE_ATTN_DEVICE_COMPILE
+        CrossCoreWait(CrossCoreDirection::CUBE_TO_VEC0, CrossCoreFlags::FLAG_KV_PING_FREE);
+#endif
+    }
+
+    __aicore__ inline __attribute__((always_inline)) static void Vec0DrainKvPongFree()
+    {
+#if SAGE_ATTN_DEVICE_COMPILE
+        CrossCoreWait(CrossCoreDirection::CUBE_TO_VEC0, CrossCoreFlags::FLAG_KV_PONG_FREE);
+#endif
+    }
+
     // =========================================================================
     // 3. Vector 1 侧同步原语
     // =========================================================================

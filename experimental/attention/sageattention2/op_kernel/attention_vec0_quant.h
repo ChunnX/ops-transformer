@@ -562,6 +562,16 @@ public:
 
             AttentionSync::Vec0SignalKvReady(is_ping);
         }
+
+#if SAGE_ATTN_DEVICE_COMPILE
+        // 退域补等：消费 Cube 末尾释放的未用 KV 槽许可，保证跨任务波次 Flag 净余量恒为零
+        if (active_kv_blocks >= 1) {
+            AttentionSync::Vec0DrainKvPingFree();
+        }
+        if (active_kv_blocks >= 2) {
+            AttentionSync::Vec0DrainKvPongFree();
+        }
+#endif
     }
 };
 
