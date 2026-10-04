@@ -462,7 +462,7 @@ public:
                 DecodeTask(mapped_task, q_blks_per_head);
             }
 
-#if SAGE_ATTN_KERNEL_API
+#if SAGE_ATTN_DEVICE_COMPILE
             if ASCEND_IS_AIC {
                 CubeBlockParams p{ctx_.TotalRows(), ctx_.block_n, ctx_.d};
                 cube_.Process(p, ctx_.active_kv_blocks, ctx_.tiling->l1_q_offset,

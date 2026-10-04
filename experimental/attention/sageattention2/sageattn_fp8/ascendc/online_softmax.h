@@ -10,7 +10,7 @@
 
 /**
  * bisheng -xasc 设备编译标记（dav-3510 预定义 __DAV_C310_CUBE__/__DAV_C310_VEC__/__CCE__）；
- * BiSheng 宿主模式（含 __CCE_KT_TEST__ 单测）不定义 __CCE__，走 std 数学函数分支。
+ * BiSheng 宿主模式不定义 __CCE__，走 std 数学函数分支。
  * 实测依据：设备侧 C 库仅 fabsf 等少数符号有实现，exp2f/log2f 链接期报 undefined symbol，
  * 故设备端 exp2/log2 必须按位构造自实现（见 FastExp2/FastLog2）。
  * 与 sync_guard.h 的定义点共用同一 #ifndef 守卫，保证任意包含顺序下仅定义一次。
@@ -68,7 +68,7 @@ class OnlineSoftmaxTransformer {
 public:
     /**
      * 快速 exp2 实现
-     * - 宿主（含 KT 单测）：std::exp2；
+     * - 宿主（BiSheng 宿主模式）：std::exp2；
      * - bisheng dav-3510 设备端：C 库 exp2f 无设备实现（链接期 undefined symbol），
      *   改为"最近整数拆分 + fdlibm [-0.5,0.5) 极小极大多项式 + 2^n 指数位构造"自实现，
      *   float 精度 < 1 ulp。调用域约定：本算子所有调用点 x <= 0（max 对齐差），
@@ -111,7 +111,7 @@ public:
 
     /**
      * 快速 log2 实现
-     * - 宿主（含 KT 单测）：std::log2；
+     * - 宿主（BiSheng 宿主模式）：std::log2；
      * - bisheng dav-3510 设备端：C 库 log2f 无设备实现（链接期 undefined symbol），
      *   改为"指数位提取 + 折半归约 [√0.5,√2) + atanh 级数"自实现，float 精度 < 1 ulp。
      */

@@ -10,11 +10,11 @@
  */
 
 
-#if SAGE_ATTN_KERNEL_API
+#if SAGE_ATTN_DEVICE_COMPILE
 #include "kernel_operator.h"
 // 官方 CATLASS 跨核同步组件（catlass/arch/cross_core_sync.hpp）：CrossCoreFlag
 // 类型化旗标 + CrossCoreSetFlag/WaitFlag 薄封装（forceinline 直译 AscendC 原语，
-// 指令流与裸调用一致）。宿主门禁（BiSheng 宿主模式，KERNEL_API=0）不引入。
+// 指令流与裸调用一致）。宿主门禁（BiSheng 宿主模式，DEVICE_COMPILE=0）不引入。
 #include "catlass/arch/cross_core_sync.hpp"
 #else
 #ifndef PIPE_S
@@ -69,7 +69,7 @@ namespace CrossCoreFlags {
     constexpr uint32_t FLAG_KV_REVERSE_ACK       = 14; // V0 ↔ Cube 硬件模 15 级反向确认旗标 (Cube set → V0 wait)
 }
 
-#if SAGE_ATTN_KERNEL_API
+#if SAGE_ATTN_DEVICE_COMPILE
 using CrossCoreFlagWithReverse = Catlass::Arch::CrossCoreFlagWithReverse<Catlass::Arch::MAX_REVERSE_DEPTH>;
 #endif
 
@@ -87,7 +87,7 @@ using CrossCoreFlagWithReverse = Catlass::Arch::CrossCoreFlagWithReverse<Catlass
  */
 template <auto pipe = PIPE_S>
 __aicore__ inline __attribute__((always_inline)) void CrossCoreSet(CrossCoreDirection dir, uint32_t flag_id) {
-#if SAGE_ATTN_KERNEL_API
+#if SAGE_ATTN_DEVICE_COMPILE
     uint32_t hw_flag_id = flag_id;
     if ASCEND_IS_AIC {
         if (dir == CrossCoreDirection::CUBE_TO_VEC1 || dir == CrossCoreDirection::VEC1_TO_CUBE) {
@@ -103,7 +103,7 @@ __aicore__ inline __attribute__((always_inline)) void CrossCoreSet(CrossCoreDire
 }
 
 __aicore__ inline __attribute__((always_inline)) void CrossCoreWait(CrossCoreDirection dir, uint32_t flag_id) {
-#if SAGE_ATTN_KERNEL_API
+#if SAGE_ATTN_DEVICE_COMPILE
     uint32_t hw_flag_id = flag_id;
     if ASCEND_IS_AIC {
         if (dir == CrossCoreDirection::CUBE_TO_VEC1 || dir == CrossCoreDirection::VEC1_TO_CUBE) {

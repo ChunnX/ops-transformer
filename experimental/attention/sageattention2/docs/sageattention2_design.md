@@ -56,7 +56,7 @@
 | 量化组号 QScaleIndex/KScaleIndex（constexpr） | quant_common.h | 全链路 |
 | V 物理槽寻址 VSlotOfToken | quant_common.h | golden/twin/kernel（3 处收敛） |
 | 因果掩码哨兵 SAGE_MASK_SENTINEL | online_softmax.h | kernel/VF/twin（12 处收敛） |
-| 编译域三件套 SAGE_ATTN_DEVICE_COMPILE / SAGE_ATTN_KERNEL_API / __aicore__ 桩 | tiling.h | 全部头文件（7 份重复守卫删除，12 处 #if 收敛） |
+| 编译域单宏 SAGE_ATTN_DEVICE_COMPILE（__CCE__ 直判）与 __aicore__ 桩 | tiling.h | 全部头文件（历史 SAGE_ATTN_KERNEL_API / __CCE_KT_TEST__ 桩域随 2026-10-04 死代码清扫并入本宏） |
 | TilingData ctypes 镜像 | tests/tiling_mirror.py | test_tiling_struct/test_kernel_twin |
 | FP16/BF16 位型转换（RNE） | quant_common.h | 算子/golden/benchmark（截断版已删除） |
 | 数值常量（Python 侧） | error_check.py | dispatch/_ops/golden 生成器 import（本地副本已删） |

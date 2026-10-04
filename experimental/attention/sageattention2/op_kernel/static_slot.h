@@ -5,7 +5,7 @@
 #include "../sageattn_fp8/ascendc/tiling.h"
 #include "../sageattn_fp8/ascendc/online_softmax.h"
 
-#if SAGE_ATTN_KERNEL_API
+#if SAGE_ATTN_DEVICE_COMPILE
 #ifndef ENABLE_CV_COMM_VIA_SSBUF
 #define ENABLE_CV_COMM_VIA_SSBUF 1
 #endif
@@ -18,7 +18,7 @@
 
 namespace sage_attn {
 
-#if SAGE_ATTN_KERNEL_API
+#if SAGE_ATTN_DEVICE_COMPILE
 using namespace AscendC;
 #endif
 
@@ -145,6 +145,12 @@ struct TaskContext {
     {
         const int64_t sk_start = static_cast<int64_t>(cur_k) * block_n;
         return (sk_start + block_n <= sk) ? block_n : static_cast<uint32_t>(sk - sk_start);
+    }
+
+    [[nodiscard]] __aicore__ inline __attribute__((always_inline)) uint32_t SoftmaxSlotOffset(bool is_ping) const
+    {
+        const uint32_t tile_bytes = TotalRows() * block_n;
+        return SlotV1FixpipeRecv::Offset() + (is_ping ? 0u : tile_bytes);
     }
 };
 

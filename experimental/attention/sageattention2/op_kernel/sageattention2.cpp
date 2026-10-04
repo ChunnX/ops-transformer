@@ -8,7 +8,7 @@
 #include "attention_vec1_output.h"
 #include "sage_attention2_template_tiling_key.h"
 
-#if SAGE_ATTN_KERNEL_API && SAGE_ATTN_DEVICE_COMPILE
+#if SAGE_ATTN_DEVICE_COMPILE
 #ifndef REGISTER_TILING_DEFAULT
 #define REGISTER_TILING_DEFAULT(tiling_struct)
 #endif

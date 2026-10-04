@@ -7,7 +7,7 @@
 
 /**
  * 官方 CATLASS 组件接入（cann/catlass 仓，CATLASS_ROOT/include 经构建接线注入 -I，
- * 全部编译场景——host 门禁/内核语法门/OPP 打包/BiSheng 设备——均带该 -I，故
+ * 全部编译场景——宿主门禁/OPP 打包/BiSheng 设备与 sim 混编——均带该 -I，故
  * catlass.hpp 无条件直含，不再保留本地字面值回退分支）：
  * 分形粒度常量以官方 catlass.hpp 为唯一定义源（BYTE_PER_C0=32、
  * C0_NUM_PER_FRACTAL=16、BYTE_PER_FRACTAL=512），本文件一律经官方常量派生
@@ -22,7 +22,7 @@
 // ::CeilDiv/::Min/::Max，CATLASS_HOST_DEVICE constexpr）——catlass.hpp 已带入，此处
 // 显式 include 使本文件对全局对齐原语的依赖单点可见。
 #include "catlass/detail/alignment.hpp"
-#if SAGE_ATTN_KERNEL_API
+#if SAGE_ATTN_DEVICE_COMPILE
 #include "kernel_operator.h"
 #else
 namespace AscendC {
@@ -44,7 +44,7 @@ enum class TPosition : uint8_t {
     LCM = 13
 };
 
-// 宿主门禁（KERNEL_API=0）HardEvent 影子枚举：编号逐项镜像 dav-3510 设备头
+// 宿主门禁（DEVICE_COMPILE=0）HardEvent 影子枚举：编号逐项镜像 dav-3510 设备头
 //（cann aarch64-linux/asc/impl/basic_api/kernel_event.h，3510 无 FIX_V/V_FIX 档）。
 // 宿主分支该枚举仅作 Catlass::SageAttn::Sync<E> 的模板标签（事件体编译期剔除），
 // 不触发硬件语义；编号对齐消除双域枚举漂移隐患（旧影子枚举为自造编号，已废弃）。

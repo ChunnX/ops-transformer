@@ -8,7 +8,7 @@
 #include "sage_resource.hpp"
 #include "../../quant/quant_common.h"
 
-#if SAGE_ATTN_KERNEL_API
+#if SAGE_ATTN_DEVICE_COMPILE
 #include "catlass/arch/arch.hpp"
 #endif
 

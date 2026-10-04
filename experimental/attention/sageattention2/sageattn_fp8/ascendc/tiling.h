@@ -14,15 +14,10 @@
 /**
  * Host/Device 切换（本头文件被所有 ascendc/catlass 头包含，是 __aicore__ 的首个定义点）：
  * - bisheng -xasc 设备编译预定义 __aicore__ = __attribute__((cce_aicore))，下方 #ifndef 直接保留内建；
- * - KT 设备/主机单测定义 __CCE_KT_TEST__，属性展开为 [[]]；
- * - 纯宿主门禁（BiSheng 宿主模式无任何宏）展开为空。
+ * - 纯宿主门禁（BiSheng 宿主模式）展开为空。
  */
 #ifndef __aicore__
-#if defined(__CCE_KT_TEST__)
-#define __aicore__ [[]]
-#else
 #define __aicore__
-#endif
 #endif
 
 #ifndef __host__
@@ -35,25 +30,22 @@
 
 /**
  * 编译域判定宏（全仓唯一定义点，其余头文件禁止再定义或重复守卫）：
- * - SAGE_ATTN_DEVICE_COMPILE：bisheng -xasc 真机/camodel 设备编译语义分支；
- * - SAGE_ATTN_KERNEL_API：kernel_operator.h 可用域（设备编译或 KT 单测桩），
- *   兼作 "设备态执行路径" 判定（宿主串行仿真为 0）。
+ * SAGE_ATTN_DEVICE_COMPILE=1 当且仅当 bisheng -xasc 设备编译（编译器预定义 __CCE__），
+ * 此时 kernel_operator.h 与 CATLASS 设备组件可用、跨核同步为真实硬件原语；
+ * =0 为 BiSheng 宿主模式（宿主单测/孪生执行器），kernel 侧 API 落下方桩，
+ * 执行路径为宿主串行仿真（V0 → Cube → V1 顺序直跑）。
+ * （历史 SAGE_ATTN_KERNEL_API 与 __CCE_KT_TEST__ 单测桩域已随 2026-10-04 死代码
+ * 清扫合并删除：构建已收敛到毕昇容器双路径，两宏取值与 DEVICE_COMPILE 恒等。）
  */
 #ifndef SAGE_ATTN_DEVICE_COMPILE
-#if defined(__CCE__) && !defined(__CCE_KT_TEST__)
+#if defined(__CCE__)
 #define SAGE_ATTN_DEVICE_COMPILE 1
 #else
 #define SAGE_ATTN_DEVICE_COMPILE 0
 #endif
 #endif
 
-#if SAGE_ATTN_DEVICE_COMPILE || defined(__CCE_KT_TEST__)
-#define SAGE_ATTN_KERNEL_API 1
-#else
-#define SAGE_ATTN_KERNEL_API 0
-#endif
-
-#if !SAGE_ATTN_KERNEL_API
+#if !SAGE_ATTN_DEVICE_COMPILE
 #ifndef __global__
 #define __global__
 #endif
@@ -78,14 +70,11 @@
 #define ASCEND_IS_AIV (false)
 #endif
 
-#if !defined(__CCE__) && !defined(__CCE_KT_TEST__)
+// 宿主串行仿真桩：GetBlockIdx 恒 0（单核串行跑满全部任务），GetSubBlockIdx 恒 0
 inline uint32_t GetBlockIdx() { return 0; }
 namespace AscendC {
 inline uint32_t GetSubBlockIdx() { return 0; }
-inline void SetSysWorkspaceForce(uint8_t *workspace) { (void)workspace; }
-constexpr size_t RESERVED_WORKSPACE = 16 * 1024 * 1024;
 } // namespace AscendC
-#endif
 #endif
 
 namespace sage_attn {
