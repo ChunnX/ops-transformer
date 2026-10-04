@@ -213,8 +213,9 @@ inline aclnnStatus ComputeHostTiling(
     // 正式发布构建（缺省不定义宏）该段整体不参与编译——零 autotune 代码、
     // 零 getenv 运行时判断，发射路径只剩编译期 constexpr 调优知识库查询。
     // 覆盖取值域与 kernel/UB 台账一致（m 32/64/128、n 64/128——A7 dot32 区
-    // static_assert 封顶 128、k 8/16/32、die 0/1、split 1..8），越界显式拒绝；
-    // 覆盖值与库查询值同经 InspectTilingPlan 足迹 fail-fast，不静默降级。
+    // static_assert 封顶 128、k 8/16/32，越界显式拒绝）；die 仅 0/1、split 仅
+    // ≥1 语义化生效，其余解析值视同未设置（不覆盖、不报错）；
+    // 生效覆盖值与库查询值同经 InspectTilingPlan 足迹 fail-fast，不静默降级。
 #if defined(SAGE_ATTN_AUTOTUNE_HOOKS)
     auto env_forced = [](const char *name) -> int64_t {
         const char *raw = std::getenv(name);
