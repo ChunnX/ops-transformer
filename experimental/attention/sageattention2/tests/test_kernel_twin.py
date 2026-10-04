@@ -275,6 +275,7 @@ def _run_kernel_host(case: dict, q: torch.Tensor, k: torch.Tensor, v: torch.Tens
     t.workspace_lse_offset, t.workspace_vm_offset = 0, 0
     t.enable_die_affinity, t.die_num = 0, 1
     t.cores_per_die, t.tasks_per_die = 1, b * hkv * t.q_blk_num
+    t.has_lse = 1 if lse is not None else 0
 
     _LIB.sage_attention2(
         ctypes.c_void_p(qp.data_ptr()), ctypes.c_void_p(kp.data_ptr()), ctypes.c_void_p(vp.data_ptr()),

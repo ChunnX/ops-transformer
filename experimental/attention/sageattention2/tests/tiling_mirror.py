@@ -82,6 +82,15 @@ class SageAttention2TilingData(ctypes.Structure):
         ("reserved", ctypes.c_uint8 * 7),
     ]
 
+    @property
+    def has_lse(self):
+        return self.reserved[0]
+
+    @has_lse.setter
+    def has_lse(self, val):
+        self.reserved[0] = int(val)
+
+
 
 # 第一道护栏：镜像自检（ctypes 布局 vs struct 格式 vs 冻结大小，三方一致）
 assert ctypes.sizeof(SageAttention2TilingData) == struct.calcsize(TILING_STRUCT_FMT), (

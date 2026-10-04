@@ -155,6 +155,7 @@ namespace sage_attn {
     tiling_out.smooth_k = 0; // 标准 7 参收敛无 keyMean 输入，恒置 0
     // 对齐设计文档：若非全精度 fp32 档，则忽略 smooth_v
     tiling_out.smooth_v = (smoothV && pvAccumDtype == static_cast<int64_t>(PvAccumDtype::PV_ACCUM_FP32)) ? 1 : 0;
+    tiling_out.has_lse = hasLse ? 1u : 0u;
 
     // 7. 预计算与常量折叠数值字段 (8 字节)
     // sm_scale 冻结语义：默认值 1/sqrt(d) 由上层桥接在

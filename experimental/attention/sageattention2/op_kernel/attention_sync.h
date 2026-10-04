@@ -163,14 +163,13 @@ public:
     }
 
     /**
-     * \brief MTE3_MTE2 自配对排空后，通知 Cube 拍 k 的 KV 分块量化就绪
+     * \brief MTE3_S 自配对排空后，通知 Cube 拍 k 的 KV 分块量化就绪
      * 集成 CATLASS CrossCoreFlagWithReverse 硬件队深 15 级防锁死安全防护：
      * 模 15 边界（(k + 1) % MAX_CROSS_CORE_SYNC_DEPTH == 0）等待 Cube 反向确认 ACK，解除单向长流累积。
      */
     __aicore__ inline __attribute__((always_inline)) static void Vec0SignalKvReady(bool is_ping, uint32_t k)
     {
 #if SAGE_ATTN_DEVICE_COMPILE
-        Catlass::SageAttn::Sync<HardEvent::MTE3_MTE2>();
         Catlass::SageAttn::Sync<HardEvent::MTE3_S>();
         uint32_t kv_flag = is_ping ? CrossCoreFlags::FLAG_KV_PING_READY : CrossCoreFlags::FLAG_KV_PONG_READY;
         CrossCoreSet(CrossCoreDirection::VEC0_TO_CUBE, kv_flag);

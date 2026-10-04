@@ -20,19 +20,56 @@ max_abs 上限 FP16 1e-1 / BF16 1e-0；LSE 另按 FP32 容差校验（含 smooth
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 import math
 import os
+import signal
 import sys
+import time
+import unittest
 import warnings
 from pathlib import Path
 
 import pytest
 
+@contextmanager
+def npu_timeout_guard(seconds: int = 20, name: str = "case", extra_info: str = ""):
+    """Watchdog context manager protecting against NPU hardware hangs/deadlocks.
+
+    Uses POSIX signal.alarm to raise a descriptive TimeoutError with test case
+    identification and input parameters if execution exceeds `seconds`.
+    Supports nesting by tracking and restoring remaining alarm timers.
+    """
+    if not hasattr(signal, "alarm") or not hasattr(signal, "SIGALRM"):
+        yield
+        return
+
+    sec_int = max(1, int(seconds))
+    start_time = time.monotonic()
+
+    def _timeout_handler(signum, frame):
+        detail = f" [参数: {extra_info}]" if extra_info else ""
+        msg = (
+            f"[NPU-TIMEOUT] {name} 执行超过 {sec_int} 秒！"
+            f"可能存在硬件死锁，已被看门狗中断！{detail}"
+        )
+        raise TimeoutError(msg)
+
+    old_handler = signal.signal(signal.SIGALRM, _timeout_handler)
+    prev_remaining = signal.alarm(sec_int)
+    try:
+        yield
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, old_handler)
+        if prev_remaining > 0:
+            elapsed = int(time.monotonic() - start_time)
+            new_remaining = max(1, prev_remaining - elapsed)
+            signal.alarm(new_remaining)
+
+
 if os.environ.get("SAGEATTN_TEST_NPU", "").strip().lower() not in ("1", "true", "yes"):
-    pytest.skip(
-        "SAGEATTN_TEST_NPU=1 required (on-device TC suite); skipping on host",
-        allow_module_level=True,
-    )
+    raise unittest.SkipTest("SAGEATTN_TEST_NPU=1 required (on-device TC suite); skipping on host")
 
 try:
     import torch
@@ -47,9 +84,20 @@ try:
         sys.path.insert(0, str(OPS_PYTHON))
     import sageattention2 as sage2
 except (ImportError, RuntimeError) as err:
-    pytest.skip(f"torch / torch_npu / sageattention2 unavailable: {err}", allow_module_level=True)
+    raise unittest.SkipTest(f"torch / torch_npu / sageattention2 unavailable: {err}")
 
 DEVICE = "npu"
+
+
+@pytest.fixture(autouse=True)
+def case_timeout_watchdog(request):
+    """Fallback watchdog fixture ensuring each test finishes within timeout."""
+    test_name = request.node.name
+    timeout_sec = int(os.environ.get("SAGE_CASE_TIMEOUT", "20"))
+    with npu_timeout_guard(seconds=timeout_sec, name=test_name, extra_info="test-level fallback"):
+        yield
+
+
 
 # 任务书"精度要求"混合容差表（输出 FP16/BF16 时）
 MIXED_TOL = {torch.float16: 2**-9, torch.bfloat16: 2**-6}
@@ -156,12 +204,14 @@ def test_tc01_sageattn_dispatch_fp16_bf16_hnd_nhd():
     for dtype in (torch.float16, torch.bfloat16):
         for layout in ("HND", "NHD"):
             seed += 1
-            q, k, v = make_qkv(2, 4, 4, 256, 256, 128, dtype, layout, seed)
-            out = sage2.sageattn(q, k, v, tensor_layout=layout)
-            ref = sdpa_reference(to_hnd(q, layout), to_hnd(k, layout), to_hnd(v, layout))
-            if layout == "NHD":
-                ref = ref.transpose(1, 2)
-            assert_mixed(out, ref, dtype, f"TC-01 {dtype}/{layout}")
+            info = f"shape=[2, 4, 256, 128], dtype={dtype}, layout={layout}, is_causal=False"
+            with npu_timeout_guard(seconds=20, name="test_tc01", extra_info=info):
+                q, k, v = make_qkv(2, 4, 4, 256, 256, 128, dtype, layout, seed)
+                out = sage2.sageattn(q, k, v, tensor_layout=layout)
+                ref = sdpa_reference(to_hnd(q, layout), to_hnd(k, layout), to_hnd(v, layout))
+                if layout == "NHD":
+                    ref = ref.transpose(1, 2)
+                assert_mixed(out, ref, dtype, f"TC-01 {dtype}/{layout}")
 
 
 def test_tc02_explicit_api_gran_x_accum():
@@ -170,42 +220,48 @@ def test_tc02_explicit_api_gran_x_accum():
     for gran in ("per_thread", "per_warp"):
         for accum in ("fp32", "fp32+fp32", "fp32+fp16"):
             seed += 1
-            q, k, v = make_qkv(1, 4, 4, 256, 256, 128, torch.float16, "HND", seed)
-            out = sage2.sageattn_qk_int8_pv_fp8_asc(
-                q, k, v, qk_quant_gran=gran, pv_accum_dtype=accum
-            )
-            assert_mixed(out, sdpa_reference(q, k, v), torch.float16, f"TC-02 {gran}/{accum}")
+            info = f"shape=[1, 4, 256, 128], dtype=float16, layout=HND, gran={gran}, accum={accum}"
+            with npu_timeout_guard(seconds=20, name="test_tc02", extra_info=info):
+                q, k, v = make_qkv(1, 4, 4, 256, 256, 128, torch.float16, "HND", seed)
+                out = sage2.sageattn_qk_int8_pv_fp8_asc(
+                    q, k, v, qk_quant_gran=gran, pv_accum_dtype=accum
+                )
+                assert_mixed(out, sdpa_reference(q, k, v), torch.float16, f"TC-02 {gran}/{accum}")
 
 
 def test_tc03_smooth_k_smooth_v_warning_behavior():
     """TC-03：smooth_v 在两级累加档 warning 后忽略；fp32 档真实生效不告警；smooth_k 开关合法。"""
-    q, k, v = make_qkv(1, 4, 4, 256, 256, 128, torch.float16, "HND", 300)
-    with pytest.warns(UserWarning, match="smooth_v will be ignored"):
-        sage2.sageattn_qk_int8_pv_fp8_asc(q, k, v, pv_accum_dtype="fp32+fp16", smooth_v=True)
-    with pytest.warns(UserWarning, match="smooth_v will be ignored"):
-        sage2.sageattn_qk_int8_pv_fp8_asc(q, k, v, pv_accum_dtype="fp32+fp32", smooth_v=True)
+    info = "shape=[1, 4, 256, 128], dtype=float16, layout=HND, smooth_v/smooth_k behavior"
+    with npu_timeout_guard(seconds=20, name="test_tc03", extra_info=info):
+        q, k, v = make_qkv(1, 4, 4, 256, 256, 128, torch.float16, "HND", 300)
+        with pytest.warns(UserWarning, match="smooth_v will be ignored"):
+            sage2.sageattn_qk_int8_pv_fp8_asc(q, k, v, pv_accum_dtype="fp32+fp16", smooth_v=True)
+        with pytest.warns(UserWarning, match="smooth_v will be ignored"):
+            sage2.sageattn_qk_int8_pv_fp8_asc(q, k, v, pv_accum_dtype="fp32+fp32", smooth_v=True)
 
-    with warnings.catch_warnings():
-        warnings.simplefilter("error")
-        out_v = sage2.sageattn_qk_int8_pv_fp8_asc(q, k, v, pv_accum_dtype="fp32", smooth_v=True)
-    assert torch.isfinite(out_v).all()
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            out_v = sage2.sageattn_qk_int8_pv_fp8_asc(q, k, v, pv_accum_dtype="fp32", smooth_v=True)
+        assert torch.isfinite(out_v).all()
 
-    out = sage2.sageattn_qk_int8_pv_fp8_asc(q, k, v, smooth_k=False)
-    assert_mixed(out, sdpa_reference(q, k, v), torch.float16, "TC-03 smooth_k=False")
+        out = sage2.sageattn_qk_int8_pv_fp8_asc(q, k, v, smooth_k=False)
+        assert_mixed(out, sdpa_reference(q, k, v), torch.float16, "TC-03 smooth_k=False")
 
 
 def test_tc04_return_lse_shape_and_value():
     """TC-04：return_lse 形状 [B,Hq,Sq]/FP32，数值与自然域 logsumexp 参考一致（含 GQA 校正）。"""
-    q, k, v = make_qkv(1, 4, 2, 512, 512, 128, torch.float16, "HND", 400)
-    out, lse = sage2.sageattn(q, k, v, return_lse=True)
-    assert_mixed(out, sdpa_reference(q, k, v), torch.float16, "TC-04 out")
-    assert_lse(lse, lse_reference(q, k), "TC-04 smooth_k=True")
+    info = "shape=[1, 4, 512, 128], Hkv=2, dtype=float16, layout=HND, return_lse=True"
+    with npu_timeout_guard(seconds=20, name="test_tc04", extra_info=info):
+        q, k, v = make_qkv(1, 4, 2, 512, 512, 128, torch.float16, "HND", 400)
+        out, lse = sage2.sageattn(q, k, v, return_lse=True)
+        assert_mixed(out, sdpa_reference(q, k, v), torch.float16, "TC-04 out")
+        assert_lse(lse, lse_reference(q, k), "TC-04 smooth_k=True")
 
-    _, lse_nc = sage2.sageattn_qk_int8_pv_fp8_asc(q, k, v, smooth_k=False, return_lse=True)
-    assert_lse(lse_nc, lse_reference(q, k), "TC-04 smooth_k=False")
+        _, lse_nc = sage2.sageattn_qk_int8_pv_fp8_asc(q, k, v, smooth_k=False, return_lse=True)
+        assert_lse(lse_nc, lse_reference(q, k), "TC-04 smooth_k=False")
 
-    single = sage2.sageattn(q, k, v, return_lse=False)
-    assert isinstance(single, torch.Tensor), "return_lse=False must return a single tensor"
+        single = sage2.sageattn(q, k, v, return_lse=False)
+        assert isinstance(single, torch.Tensor), "return_lse=False must return a single tensor"
 
 
 def test_tc05_head_dim_pad_and_crop():
@@ -213,9 +269,11 @@ def test_tc05_head_dim_pad_and_crop():
     seed = 500
     for d in (48, 96):
         seed += 1
-        q, k, v = make_qkv(1, 4, 4, 128, 128, d, torch.float16, "HND", seed)
-        out = sage2.sageattn(q, k, v)
-        assert_mixed(out, sdpa_reference(q, k, v), torch.float16, f"TC-05 D={d}")
+        info = f"shape=[1, 4, 128, {d}], pad_d={64 if d == 48 else 128}, dtype=float16, layout=HND"
+        with npu_timeout_guard(seconds=20, name="test_tc05", extra_info=info):
+            q, k, v = make_qkv(1, 4, 4, 128, 128, d, torch.float16, "HND", seed)
+            out = sage2.sageattn(q, k, v)
+            assert_mixed(out, sdpa_reference(q, k, v), torch.float16, f"TC-05 D={d}")
 
 
 def test_tc06_gqa_and_sq_ne_sk():
@@ -223,51 +281,59 @@ def test_tc06_gqa_and_sq_ne_sk():
     seed = 600
     for layout in ("HND", "NHD"):
         seed += 1
-        q, k, v = make_qkv(1, 8, 2, 128, 256, 128, torch.float16, layout, seed)
-        out = sage2.sageattn(q, k, v, tensor_layout=layout)
-        ref = sdpa_reference(to_hnd(q, layout), to_hnd(k, layout), to_hnd(v, layout))
-        if layout == "NHD":
-            ref = ref.transpose(1, 2)
-        assert_mixed(out, ref, torch.float16, f"TC-06 {layout}")
+        info = f"GQA Hq=8/Hkv=2, Sq=128, Sk=256, D=128, dtype=float16, layout={layout}, is_causal=False"
+        with npu_timeout_guard(seconds=20, name="test_tc06", extra_info=info):
+            q, k, v = make_qkv(1, 8, 2, 128, 256, 128, torch.float16, layout, seed)
+            out = sage2.sageattn(q, k, v, tensor_layout=layout)
+            ref = sdpa_reference(to_hnd(q, layout), to_hnd(k, layout), to_hnd(v, layout))
+            if layout == "NHD":
+                ref = ref.transpose(1, 2)
+            assert_mixed(out, ref, torch.float16, f"TC-06 {layout}")
 
-    with pytest.raises(ValueError, match="qo_len == kv_len"):
-        sage2.sageattn(q, k, v, is_causal=True)
+    info_rej = "causal rejection check: Sq=128 != Sk=256 with is_causal=True"
+    with npu_timeout_guard(seconds=20, name="test_tc06", extra_info=info_rej):
+        with pytest.raises(ValueError, match="qo_len == kv_len"):
+            sage2.sageattn(q, k, v, is_causal=True)
 
 
 def test_tc07_causal():
     """TC-07：因果 mask 输出与 LSE 均对齐参考，且确实区别于非因果结果。"""
-    q, k, v = make_qkv(1, 4, 4, 256, 256, 128, torch.float16, "HND", 700)
-    out = sage2.sageattn(q, k, v, is_causal=True)
-    assert_mixed(out, sdpa_reference(q, k, v, is_causal=True), torch.float16, "TC-07 causal")
+    info = "shape=[1, 4, 256, 128], dtype=float16, layout=HND, is_causal=True"
+    with npu_timeout_guard(seconds=20, name="test_tc07", extra_info=info):
+        q, k, v = make_qkv(1, 4, 4, 256, 256, 128, torch.float16, "HND", 700)
+        out = sage2.sageattn(q, k, v, is_causal=True)
+        assert_mixed(out, sdpa_reference(q, k, v, is_causal=True), torch.float16, "TC-07 causal")
 
-    out_plain = sage2.sageattn(q, k, v, is_causal=False)
-    assert not torch.allclose(out, out_plain, rtol=0.05, atol=0.05), \
-        "TC-07: causal output equals non-causal output, mask not applied"
+        out_plain = sage2.sageattn(q, k, v, is_causal=False)
+        assert not torch.allclose(out, out_plain, rtol=0.05, atol=0.05), \
+            "TC-07: causal output equals non-causal output, mask not applied"
 
-    _, lse = sage2.sageattn(q, k, v, is_causal=True, return_lse=True)
-    assert_lse(lse, lse_reference(q, k, is_causal=True), "TC-07 lse")
+        _, lse = sage2.sageattn(q, k, v, is_causal=True, return_lse=True)
+        assert_lse(lse, lse_reference(q, k, is_causal=True), "TC-07 lse")
 
 
 def test_tc08_error_cases():
     """TC-08：D>128 / 非连续末维 / 非法 gran / 非法 accum / 非空 attn_mask 显式报错。"""
-    q, k, v = make_qkv(1, 4, 4, 128, 128, 128, torch.float16, "HND", 800)
+    info = "parameter validation & illegal argument rejection"
+    with npu_timeout_guard(seconds=20, name="test_tc08", extra_info=info):
+        q, k, v = make_qkv(1, 4, 4, 128, 128, 128, torch.float16, "HND", 800)
 
-    q_big, k_big, v_big = make_qkv(1, 2, 2, 64, 64, 256, torch.float16, "HND", 801)
-    with pytest.raises(ValueError, match="head_dim"):
-        sage2.sageattn(q_big, k_big, v_big)
+        q_big, k_big, v_big = make_qkv(1, 2, 2, 64, 64, 256, torch.float16, "HND", 801)
+        with pytest.raises(ValueError, match="head_dim"):
+            sage2.sageattn(q_big, k_big, v_big)
 
-    base = torch.randn(1, 4, 128, 256, device=DEVICE, dtype=torch.float16)
-    with pytest.raises(AssertionError, match="contiguous"):
-        sage2.sageattn(base[..., ::2], k, v)
+        base = torch.randn(1, 4, 128, 256, device=DEVICE, dtype=torch.float16)
+        with pytest.raises(AssertionError, match="contiguous"):
+            sage2.sageattn(base[..., ::2], k, v)
 
-    with pytest.raises(ValueError, match="per_warp"):
-        sage2.sageattn(q, k, v, qk_quant_gran="per_token")
+        with pytest.raises(ValueError, match="per_warp"):
+            sage2.sageattn(q, k, v, qk_quant_gran="per_token")
 
-    with pytest.raises(ValueError, match="pv_accum_dtype"):
-        sage2.sageattn(q, k, v, pv_accum_dtype="int8")
+        with pytest.raises(ValueError, match="pv_accum_dtype"):
+            sage2.sageattn(q, k, v, pv_accum_dtype="int8")
 
-    with pytest.raises(ValueError, match="attn_mask is not supported"):
-        sage2.sageattn(q, k, v, attn_mask=torch.zeros(1, device=DEVICE))
+        with pytest.raises(ValueError, match="attn_mask is not supported"):
+            sage2.sageattn(q, k, v, attn_mask=torch.zeros(1, device=DEVICE))
 
 
 def test_tc09_long_sequence_8k_16k():
@@ -275,33 +341,38 @@ def test_tc09_long_sequence_8k_16k():
     seed = 900
     for s in (8192, 16384):
         seed += 1
-        q, k, v = make_qkv(1, 8, 8, s, s, 128, torch.float16, "HND", seed)
-        if s == 8192:
-            out, lse = sage2.sageattn(q, k, v, return_lse=True)
-            assert lse.shape == (1, 8, s) and lse.dtype == torch.float32
-            assert bool(torch.isfinite(lse).all())
-        else:
-            out = sage2.sageattn(q, k, v)
-        assert_mixed(out, sdpa_reference(q, k, v, chunk=1024), torch.float16, f"TC-09 S={s}")
-        assert torch.isfinite(out).all()
+        info = f"shape=[1, 8, {s}, 128], dtype=float16, layout=HND, is_causal=False"
+        with npu_timeout_guard(seconds=20, name="test_tc09", extra_info=info):
+            q, k, v = make_qkv(1, 8, 8, s, s, 128, torch.float16, "HND", seed)
+            if s == 8192:
+                out, lse = sage2.sageattn(q, k, v, return_lse=True)
+                assert lse.shape == (1, 8, s) and lse.dtype == torch.float32
+                assert bool(torch.isfinite(lse).all())
+            else:
+                out = sage2.sageattn(q, k, v)
+            assert_mixed(out, sdpa_reference(q, k, v, chunk=1024), torch.float16, f"TC-09 S={s}")
+            assert torch.isfinite(out).all()
 
 
 def test_tc10_sdpa_monkey_patch_smoke():
     """TC-10：F.scaled_dot_product_attention 热替换冒烟——patch 内路由到 sageattn，作用域还原。"""
-    q, k, v = make_qkv(1, 4, 4, 256, 256, 128, torch.float16, "HND", 1000)
-    direct = sage2.sageattn(q, k, v)
+    info = "shape=[1, 4, 256, 128], dtype=float16, layout=HND, F.scaled_dot_product_attention monkey patch"
+    with npu_timeout_guard(seconds=20, name="test_tc10", extra_info=info):
+        q, k, v = make_qkv(1, 4, 4, 256, 256, 128, torch.float16, "HND", 1000)
+        direct = sage2.sageattn(q, k, v)
 
-    prev = sage2.replace_sdpa()
-    try:
-        assert sage2.is_sdpa_patched()
-        patched = F.scaled_dot_product_attention(q, k, v)
-    finally:
-        sage2.restore_sdpa(prev)
-    assert not sage2.is_sdpa_patched()
-    assert torch.equal(patched, direct), "patched SDPA output diverges from direct sageattn call"
+        prev = sage2.replace_sdpa()
+        try:
+            assert sage2.is_sdpa_patched()
+            patched = F.scaled_dot_product_attention(q, k, v)
+        finally:
+            sage2.restore_sdpa(prev)
+        assert not sage2.is_sdpa_patched()
+        assert torch.equal(patched, direct), "patched SDPA output diverges from direct sageattn call"
 
-    with sage2.sdpa_patch():
-        assert sage2.is_sdpa_patched()
-        in_ctx = F.scaled_dot_product_attention(q, k, v)
-    assert not sage2.is_sdpa_patched()
-    assert torch.equal(in_ctx, direct)
+        with sage2.sdpa_patch():
+            assert sage2.is_sdpa_patched()
+            in_ctx = F.scaled_dot_product_attention(q, k, v)
+        assert not sage2.is_sdpa_patched()
+        assert torch.equal(in_ctx, direct)
+

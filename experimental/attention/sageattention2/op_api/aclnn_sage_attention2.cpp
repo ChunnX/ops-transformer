@@ -27,8 +27,13 @@ aclnnStatus BuildSage(const aclTensor *q, const aclTensor *k, const aclTensor *v
                       const char *accum, bool smoothK, bool smoothV,
                       const aclTensor *out, const aclTensor *lse, aclOpExecutor *executor)
 {
+    if (lse != nullptr) {
+        return ADD_TO_LAUNCHER_LIST_AICORE(
+            SageAttention2, OP_INPUT(q, k, v), OP_OUTPUT(out, lse),
+            OP_ATTR(layout, causal, gran, scale, accum, smoothK, smoothV));
+    }
     return ADD_TO_LAUNCHER_LIST_AICORE(
-        SageAttention2, OP_INPUT(q, k, v), OP_OUTPUT(out, lse),
+        SageAttention2, OP_INPUT(q, k, v), OP_OUTPUT(out),
         OP_ATTR(layout, causal, gran, scale, accum, smoothK, smoothV));
 }
 } // namespace l0op
@@ -140,9 +145,15 @@ extern "C" aclnnStatus aclnnSageAttention2GetWorkspaceSize(
         return ACLNN_ERR_INNER_NULLPTR;
     }
     auto outTensor = owner->AllocTensor(qShape, query->GetDataType());
-    auto lseTensor = owner->AllocTensor(lseShape, DataType::DT_FLOAT);
-    if (outTensor == nullptr || lseTensor == nullptr) {
+    if (outTensor == nullptr) {
         return ACLNN_ERR_INNER_NULLPTR;
+    }
+    const aclTensor *lseTensor = nullptr;
+    if (returnLse) {
+        lseTensor = owner->AllocTensor(lseShape, DataType::DT_FLOAT);
+        if (lseTensor == nullptr) {
+            return ACLNN_ERR_INNER_NULLPTR;
+        }
     }
     const aclnnStatus ret = l0op::BuildSage(
         qc, kc, vc, static_cast<float>(smScale),

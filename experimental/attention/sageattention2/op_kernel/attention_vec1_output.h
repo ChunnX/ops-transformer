@@ -146,21 +146,11 @@ public:
         LocalTensor<half> ub_half(TPosition::VECCALC, SlotV1FixpipeRecv::Offset(), ctx.d);
         LocalTensor<float> ub_running_sum(TPosition::VECCALC, SlotV1RowSum::Offset(), MAX_PACK_ROWS);
         LocalTensor<float> ub_running_max(TPosition::VECCALC, SlotV1RowMax::Offset(), MAX_PACK_ROWS);
-        if (ctx.lse_gm != nullptr) {
-            Catlass::SageAttn::Sync<HardEvent::V_S>();
-        }
 
+        // 1. 最终输出归一化与写回 GM（纯向量流水与 MTE3 搬运，零标量计算、零 LSE 耦合）
         for (uint32_t g = 0; g < ctx.cur_heads; ++g) {
             const int64_t hq_curr = hkv_idx * static_cast<int64_t>(ctx.gqa_ratio) + static_cast<int64_t>(ctx.cur_g0) + g;
             if (hq_curr >= ctx.hq) break;
-
-            int64_t lse_elem_base = 0;
-            bool lse_burst_ok = false;
-            LocalTensor<float> ub_lse_row(TPosition::VECCALC, SlotV1LseRow::Offset(), ctx.cur_q_len);
-            if (ctx.lse_gm != nullptr) {
-                lse_elem_base = lse_layout(tla::MakeCoord(b_idx, hq_curr, sq_start));
-                lse_burst_ok = (static_cast<uint64_t>(lse_elem_base) % 8u == 0u) && ((ctx.cur_q_len % 8u) == 0u);
-            }
 
             for (uint32_t i = 0; i < ctx.cur_q_len; ++i) {
                 const uint32_t r = g * ctx.cur_q_len + i;
@@ -192,8 +182,24 @@ public:
                     DataCopy(gm_out, ub_half, ctx.tiling->d_og);
                 }
                 Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
+            }
+        }
 
-                if (ctx.lse_gm != nullptr) {
+        // 2. LSE 计算与写回 GM（严格收敛在 has_lse 内部，has_lse == 0 时彻底旁路，零标量开销、零同步等待）
+        if (ctx.tiling->has_lse != 0 && ctx.lse_gm != nullptr) {
+            Catlass::SageAttn::Sync<HardEvent::V_S>();
+            for (uint32_t g = 0; g < ctx.cur_heads; ++g) {
+                const int64_t hq_curr = hkv_idx * static_cast<int64_t>(ctx.gqa_ratio) + static_cast<int64_t>(ctx.cur_g0) + g;
+                if (hq_curr >= ctx.hq) break;
+
+                const int64_t lse_elem_base = lse_layout(tla::MakeCoord(b_idx, hq_curr, sq_start));
+                const uint32_t lse_len_padded = ((ctx.cur_q_len + 7u) / 8u) * 8u;
+                LocalTensor<float> ub_lse_row(TPosition::VECCALC, SlotV1LseRow::Offset(), lse_len_padded);
+
+                for (uint32_t i = 0; i < ctx.cur_q_len; ++i) {
+                    const uint32_t r = g * ctx.cur_q_len + i;
+                    if (r >= MAX_PACK_ROWS) break;
+
                     const float m_val = ub_running_max.GetValue(r);
                     const float d_val = ub_running_sum.GetValue(r);
                     const float lse_exp2 = (d_val > 0.0f)
@@ -202,23 +208,22 @@ public:
                     const float lse_host = OnlineSoftmaxTransformer::ConvertLseToHost(
                         lse_exp2, ctx.tiling->sm_scale_log2e * INV_LOG2E,
                         0.0f, false, S_FP8_OFFSET);
-
-                    if (lse_burst_ok) {
-                        ub_lse_row.SetValue(i, lse_host);
-                    } else {
-                        const int64_t lse_offset = lse_layout(tla::MakeCoord(b_idx, hq_curr, sq_start + i)) *
-                                                   static_cast<int64_t>(sizeof(float));
-                        *reinterpret_cast<__gm__ float*>(ctx.lse_gm + lse_offset) = lse_host;
-                    }
+                    ub_lse_row.SetValue(i, lse_host);
                 }
-            }
-            if (ctx.lse_gm != nullptr && lse_burst_ok) {
+
                 Catlass::SageAttn::Sync<HardEvent::S_MTE3>();
                 GlobalTensor<float> gm_lse;
                 gm_lse.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(
                     ctx.lse_gm + lse_elem_base * static_cast<int64_t>(sizeof(float))));
                 gm_lse.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
-                DataCopy(gm_lse, ub_lse_row, ctx.cur_q_len);
+
+                const bool lse_burst_ok = (static_cast<uint64_t>(lse_elem_base) % 8u == 0u) && ((ctx.cur_q_len % 8u) == 0u);
+                if (lse_burst_ok) {
+                    DataCopy(gm_lse, ub_lse_row, ctx.cur_q_len);
+                } else {
+                    AscendC::DataCopyExtParams copyOutParams(1, static_cast<uint32_t>(ctx.cur_q_len) * sizeof(float), 0, 0, 0);
+                    AscendC::DataCopyPad(gm_lse, ub_lse_row, copyOutParams);
+                }
                 Catlass::SageAttn::Sync<HardEvent::MTE3_S>();
             }
         }
@@ -237,8 +242,18 @@ public:
                     const int64_t out_elem = out_layout(tla::MakeCoord(b_idx, hq_curr, sq_start + i, c));
                     WriteOutputBits(reinterpret_cast<uint16_t *>(ctx.out_gm) + out_elem, 0, val);
                 }
+            }
+        }
 
-                if (ctx.lse_gm != nullptr) {
+        if (ctx.tiling->has_lse != 0 && ctx.lse_gm != nullptr) {
+            for (uint32_t g = 0; g < ctx.cur_heads; ++g) {
+                const int64_t hq_curr = hkv_idx * static_cast<int64_t>(ctx.gqa_ratio) + static_cast<int64_t>(ctx.cur_g0) + g;
+                if (hq_curr >= ctx.hq) break;
+
+                for (uint32_t i = 0; i < ctx.cur_q_len; ++i) {
+                    const uint32_t r = g * ctx.cur_q_len + i;
+                    if (r >= MAX_PACK_ROWS) break;
+
                     float lse_corr_val = 0.0f;
                     bool has_corr = false;
                     if (ctx.tiling->smooth_k != 0) {

@@ -268,10 +268,15 @@ struct __attribute__((packed, aligned(32))) SageAttention2TilingData {
     // 8. dtype 与补齐保留字段：输入位型分派（任务书 §3 支持 FP16/BF16）。
     // 编码：0 视作 fp16 缺省（消费方 (==2)?2:1 归一），1=float16, 2=bfloat16
     uint8_t input_dtype;  // 1=fp16（缺省）, 2=bf16
-    // 尾部保留域 (7 字节)：吸收原 causal_early_exit（kernel 从未读取，host 写值无消费者）
-    // 与 s_fp8_offset（kernel 直读 S_FP8_OFFSET 常量）删除后的冗余位，
-    // 160 字节 TilingData 布局契约（ctypes 镜像断言）不变。
-    uint8_t reserved[7];
+    // 尾部保留域 (7 字节)：offset 153，首字节用作 has_lse (0=无 LSE 输出, 1=写回 LSE)
+    // 保持 160 字节 TilingData 布局契约与 offsetof(..., reserved) == 153 严格不变
+    union {
+        uint8_t reserved[7];
+        struct {
+            uint8_t has_lse;
+            uint8_t reserved_bytes[6];
+        };
+    };
 
     // 便捷访问辅助函数（仅 host 侧使用；设备核内因 bisheng 对 const __gm__ this
     // 的成员函数限制，一律直接读字段——见 op_kernel/sageattention2.cpp Init 注释）

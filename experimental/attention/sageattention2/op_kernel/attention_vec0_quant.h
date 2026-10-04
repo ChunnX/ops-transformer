@@ -98,6 +98,7 @@ public:
                                    quant::FinalizeQkScale(amax, per_thread_q));
             }
         }
+        Catlass::SageAttn::Sync<HardEvent::S_V>();
 
         // C. 逐行量化写 L1 (复用已在片上 UB 中的数据，消除逐行 GM 读与流水气泡)
         for (uint32_t r = 0; r < act_rows_q; ++r) {
@@ -116,17 +117,16 @@ public:
         // A7 V0：行解析 q_scale 写入片上 L1 Bank 0 专有槽位（彻底消灭 GM 往返）
         LocalTensor<float> ub_stage_q(TPosition::VECCALC, SlotV0StageStrip::Offset(), STAGE_SLOT_FLOATS);
         dev_vf::FillF32VF(reinterpret_cast<__ubuf__ float*>(ub_stage_q.GetPhyAddr()), 0.0f, STAGE_SLOT_FLOATS);
+        Catlass::SageAttn::Sync<HardEvent::V_S>();
         for (uint32_t r = 0; r < act_rows_q; ++r) {
             const uint32_t g = r / ctx.cur_q_len;
             const uint32_t token = ctx.cur_q_start + (r % ctx.cur_q_len);
             ub_stage_q.SetValue(r, ub_scales.GetValue((ctx.cur_g0 + g) * kQScaleSlotStride + quant::QScaleIndex(token, per_thread_q)));
         }
-        Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
         Catlass::SageAttn::Sync<HardEvent::S_MTE3>();
         GlobalTensor<float> gm_stage_q;
         gm_stage_q.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(ctx.StageStrip() + STAGE_Q_SCALE_OFFSET));
         DataCopy(gm_stage_q, ub_stage_q, STAGE_SLOT_FLOATS);
-        Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
         Catlass::SageAttn::Sync<HardEvent::MTE3_S>();
 #else
         const bool per_thread = (ctx.tiling->qk_quant_gran == QUANT_GRAN_PER_THREAD);
