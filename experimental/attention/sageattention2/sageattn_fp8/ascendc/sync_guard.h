@@ -73,6 +73,7 @@ namespace CrossCoreFlags {
  * Cube (AIC) 在与 Vector 1 同步时必须将 flag_id 加上 16。
  * PIPE_S 为全局作用域常量，不可加名字空间限定。
  */
+template <auto pipe = PIPE_S>
 __aicore__ inline __attribute__((always_inline)) void CrossCoreSet(CrossCoreDirection dir, uint32_t flag_id) {
 #if SAGE_ATTN_KERNEL_API
     uint32_t hw_flag_id = flag_id;
@@ -82,7 +83,7 @@ __aicore__ inline __attribute__((always_inline)) void CrossCoreSet(CrossCoreDire
         }
     }
     Catlass::Arch::CrossCoreFlag flag{static_cast<Catlass::Arch::FlagID>(hw_flag_id)};
-    Catlass::Arch::CrossCoreSetFlag<4, PIPE_S>(flag);
+    Catlass::Arch::CrossCoreSetFlag<4, pipe>(flag);
 #else
     (void)dir;
     (void)flag_id;

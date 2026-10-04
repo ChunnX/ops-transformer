@@ -68,8 +68,7 @@ public:
     __aicore__ inline __attribute__((always_inline)) static void CubeSignalQkReady()
     {
 #if SAGE_ATTN_DEVICE_COMPILE
-        Catlass::SageAttn::Sync<HardEvent::FIX_S>();
-        CrossCoreSet(CrossCoreDirection::CUBE_TO_VEC1, CrossCoreFlags::FLAG_QK_P_READY);
+        CrossCoreSet<PIPE_FIX>(CrossCoreDirection::CUBE_TO_VEC1, CrossCoreFlags::FLAG_QK_P_READY);
 #endif
     }
 
@@ -127,8 +126,7 @@ public:
     __aicore__ inline __attribute__((always_inline)) static void CubeSignalPartialReady()
     {
 #if SAGE_ATTN_DEVICE_COMPILE
-        Catlass::SageAttn::Sync<HardEvent::FIX_S>();
-        CrossCoreSet(CrossCoreDirection::CUBE_TO_VEC1, CrossCoreFlags::FLAG_PV_PARTIAL_READY);
+        CrossCoreSet<PIPE_FIX>(CrossCoreDirection::CUBE_TO_VEC1, CrossCoreFlags::FLAG_PV_PARTIAL_READY);
 #endif
     }
 
