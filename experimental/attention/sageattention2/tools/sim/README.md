@@ -1,4 +1,4 @@
-# SageAttention2 设备核 camodel 仿真 harness（B2 门禁）
+# SageAttention2 设备核 camodel 仿真 harness（e2e 已禁用，真机验证取代；harness 保留待复用）
 
 本目录是设备核第一次获得本地数值证据的仿真工具链：在 CANN 9.2.0-beta.1 容器的
 Ascend950PR camodel（dav-3510，1C2V 拓扑）上跑通 `op_kernel/sageattention2.cpp`
@@ -13,7 +13,7 @@ canonical 注册内核，并与宿主孪生真值（`sageattn_fp8/ascendc/twin_r
 | `sim_reference.cpp` | golden 参考程序（bisheng 宿主模式编译）：生成输入 + tiling bin，孪生流水算 O/LSE |
 | `sim_main.cpp` | 设备 harness（bisheng `--run-mode=sim` 混编）：读 bin → GM → chevron 发射 → 回读落盘 |
 | `compare_outputs.py` | numpy 比对：O 位级一致率/ulp 分布、LSE 相对差、结论判定 |
-| `run_sim_e2e.sh` | 一键编排：参考编译运行 → sim 编译 → camodel 运行 → 比对 |
+| `run_sim_e2e.sh` | 一键编排（现仅参考编译运行；sim 编译/camodel 运行/比对已禁用，见下） |
 
 ## 用例（任务书冻结小 case）
 
@@ -34,9 +34,10 @@ SAGE_ATTN_SIM_OUT=/work/out/sa2_sim_out \
 # 并把 <算子仓根> 参数换成快照里的 /work/ops-transformer 对应挂载路径, 其余参数不变。
 ```
 
-四步：bisheng 宿主模式参考程序 → bisheng 设备 sim 编译 → camodel 仿真运行 → 数值比对
-（全部编译统一采用 BiSheng 编译器）。
-退出码 0 = 数值判定 PASS。
+run_sim_e2e.sh 现仅执行第一步（bisheng 宿主模式参考程序）；其后的 bisheng 设备 sim 编译 →
+camodel 仿真运行 → 数值比对三步已于 2026-10-04 按指令全局禁用（camodel 纯软件逐时钟周期
+仿真极度消耗 CPU 且耗时长达数小时，改用真机 Atlas 950PR 验证），脚本退出码恒 0、不再作
+数值判定。harness 各文件与上述启动机制结论保留，供手动复用 camodel 比对时参照。
 
 ## 启动机制结论（2026-10-03 实证）
 

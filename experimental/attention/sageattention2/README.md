@@ -16,7 +16,7 @@
 - `./op_host/`：CANN 标准 REG_OP/InferShape 注册层；交付态 op_api 层两段式 C 接口唯一实现位于 `./op_api/`（字符串属性 ABI，经 `OP_API_DIR` 随 run 包打包安装），TilingImpl 复用 `./aclnn/sage_attn_host_tiling.h` 的闭式 `ComputeHostTiling`
 - `./python/sageattention2/`：PyTorch 接入包（`dispatch.py` 前端分派与环境变量解析、`_ops.py` PyTorch 自定义算子注册与后端绑定、`_extension.py` C++ 扩展加载、`error_check.py` 输入校验与预处理、`monkey_patch.py` SDPA 热替换工具）
 - `./tests/`、`./benchmarks/`：容器门禁单测与独立基准工具（`./benchmarks/benchmark_aclnn.cpp` aclnn 路径、`./benchmarks/run_validation_performance.py` PyTorch 路径）
-- `./tools/sim/`：设备核 camodel 仿真 harness（B2 门禁数值比对；依赖门禁容器 bisheng `--run-mode=sim` 运行，用法见 `./tools/sim/README.md`，不属于 run.sh 容器门禁主链）
+- `./tools/sim/`：设备核 camodel 仿真 harness（camodel e2e 已禁用、改真机 Atlas 950PR 验证，harness 保留待复用；用法见 `./tools/sim/README.md`，不属于 run.sh 容器门禁主链）
 - `./docker/`：算子门禁容器（唯一编译与测试环境；Dockerfile/compose/生命周期入口 `sage`/一键初始化 `init.sh`/CATLASS 内聚目录 `third_party/`，卷挂载全部为仓库内相对路径，见 `./docker/README.md`）
 - `./run.sh`：门禁统一入口（宿主只依赖 docker，所有目标自动包装进容器，容器内统一 BiSheng 编译）
 

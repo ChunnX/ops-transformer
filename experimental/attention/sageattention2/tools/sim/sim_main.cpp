@@ -11,8 +11,8 @@
  * - KERNEL_TYPE_MIX_AIC_1_2 下 blockDim = AIC 任务数（core_num_used）；每个任务
  *   1 AIC + 2 AIV，AIC 与 AIV 侧 GetBlockIdx 相同（等于 core_idx_），AIV 侧以
  *   GetSubBlockIdx() 区分 Vector 0 与 Vector 1。
- * - 运行环境：LD_LIBRARY_PATH 指向 cann-9.2.0-beta.1 camodel 栈目录（见
- *   run_sim_e2e.sh），CAMODEL_LOG_PATH 指向日志目录。
+ * - 运行环境：LD_LIBRARY_PATH 指向 cann-9.2.0-beta.1 camodel 栈目录（路径与两栈
+ *   混用禁忌见同目录 README.md「启动机制结论」），CAMODEL_LOG_PATH 指向日志目录。
  *
  * 数据流：读 sim_reference.cpp 产出的输入/tiling bin → rtMalloc/rtMemcpy 上卡 →
  * chevron 发射 9 参（query,key,value,keyMean,lseCorrection,attentionOut,softmaxLse,
