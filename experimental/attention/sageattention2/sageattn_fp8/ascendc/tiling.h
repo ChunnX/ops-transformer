@@ -1,6 +1,7 @@
 #ifndef SAGE_ATTN_FP8_ASCENDC_TILING_H
 #define SAGE_ATTN_FP8_ASCENDC_TILING_H
 
+#include <cstddef>
 #include <cstdint>
 
 // 官方 CATLASS 容量常量一致性锁：本头文件保持零依赖基座（被 quant 裸编译等无
