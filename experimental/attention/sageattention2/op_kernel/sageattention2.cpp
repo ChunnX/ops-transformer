@@ -215,11 +215,13 @@ public:
                                    // 定址）与 smooth_v 均值区（workspace_vm_offset）均自本指针实址消费。
 
         // 1C2V (KERNEL_TYPE_MIX_AIC_1_2) 模式下：
-        // AIC 与同一物理核内的两个 AIV 共享相同的 GetBlockIdx()（即 core_idx_）；
-        // AIV 侧区分 Vector 0 与 Vector 1 必须使用 AscendC::GetSubBlockIdx() (返回 0 或 1)。
+        // AIC 核心数 N（GetBlockIdx: 0..N-1），AIV 核心数 2N（GetBlockIdx: 0..2N-1）。
+        // AIV 侧必须 core_idx_ /= 2，使其与同物理核的 AIC core_idx 对齐；
+        // AIV 侧区分 Vector 0 与 Vector 1 使用 AscendC::GetSubBlockIdx() (返回 0 或 1)。
         core_idx_ = static_cast<uint32_t>(GetBlockIdx());
         if ASCEND_IS_AIV {
             sub_core_idx_ = static_cast<uint32_t>(AscendC::GetSubBlockIdx());
+            core_idx_ /= 2;
         } else {
             sub_core_idx_ = 0u;
         }
