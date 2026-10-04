@@ -55,7 +55,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--gate", type=float, default=SPEEDUP_GATE, help="Per-case speedup gate threshold")
     parser.add_argument(
         "--l2-flush-mb", type=int, default=0,
-        help="L2 flush buffer (MB) zeroed before each measured iteration; 0=off (task-doc default)",
+        help="L2 flush buffer (MB) zeroed before each measured iteration; 0=off here "
+             "(task/06_benchmark.md protocol default: 256MB; pass --l2-flush-mb 256 "
+             "for a protocol-conform run)",
     )
     parser.add_argument("--output", default="pyperf_report.json", help="Output JSON report path")
     return parser

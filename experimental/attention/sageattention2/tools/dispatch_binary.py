@@ -281,7 +281,7 @@ def generate_single_target(base_dev_elf_bytes, bin_name, out_o_path):
         f.write(transformed)
 
 
-def dispatch_kernel_binaries(kernel_obj_path, meta_dir, output_vendors_dir, soc="ascend950", objcopy_path=None):
+def dispatch_kernel_binaries(kernel_obj_path, meta_dir, output_vendors_dir, soc="ascend950"):
     """核心调度分发主流程"""
     if not os.path.isfile(kernel_obj_path):
         raise FileNotFoundError(f"Compiled kernel object not found: {kernel_obj_path}")
@@ -396,15 +396,13 @@ def main():
     parser.add_argument("--meta-dir", required=True, help="Path to kernel_meta directory containing JSON templates")
     parser.add_argument("--output-dir", required=True, help="Path to output vendors root directory (e.g. build/opp/vendors)")
     parser.add_argument("--soc", default="ascend950", help="Target SoC version (default: ascend950)")
-    parser.add_argument("--objcopy", default=None, help="Explicit path to llvm-objcopy binary (unused, pure-Python ELF generator)")
     args = parser.parse_args()
 
     dispatch_kernel_binaries(
         kernel_obj_path=args.kernel_obj,
         meta_dir=args.meta_dir,
         output_vendors_dir=args.output_dir,
-        soc=args.soc,
-        objcopy_path=args.objcopy
+        soc=args.soc
     )
 
 
