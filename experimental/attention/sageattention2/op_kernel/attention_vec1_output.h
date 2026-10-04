@@ -355,6 +355,7 @@ public:
         ctx_.lse_gm = softmaxLse;
         ctx_.workspace_gm = workspace;
 
+#if SAGE_ATTN_DEVICE_COMPILE
         ctx_.core_idx = static_cast<uint32_t>(GetBlockIdx());
         if ASCEND_IS_AIV {
             ctx_.sub_core_idx = static_cast<uint32_t>(AscendC::GetSubBlockIdx());
@@ -362,6 +363,10 @@ public:
         } else {
             ctx_.sub_core_idx = 0u;
         }
+#else
+        ctx_.core_idx = 0u;
+        ctx_.sub_core_idx = 0u;
+#endif
 
         ctx_.b = ctx_.tiling->b;
         ctx_.hq = ctx_.tiling->hq;

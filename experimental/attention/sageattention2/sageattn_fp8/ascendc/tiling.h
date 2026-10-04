@@ -45,6 +45,39 @@
 #endif
 #endif
 
+#if !SAGE_ATTN_DEVICE_COMPILE
+#ifndef __global__
+#define __global__
+#endif
+
+#ifndef __gm__
+#define __gm__
+#endif
+
+#ifndef KERNEL_TASK_TYPE_DEFAULT
+#define KERNEL_TASK_TYPE_DEFAULT(x)
+#endif
+
+#ifndef KERNEL_TYPE_MIX_AIC_1_2
+#define KERNEL_TYPE_MIX_AIC_1_2 0
+#endif
+
+#ifndef ASCEND_IS_AIC
+#define ASCEND_IS_AIC (true)
+#endif
+
+#ifndef ASCEND_IS_AIV
+#define ASCEND_IS_AIV (false)
+#endif
+
+inline uint32_t GetBlockIdx() { return 0; }
+namespace AscendC {
+inline uint32_t GetSubBlockIdx() { return 0; }
+inline void SetSysWorkspaceForce(uint8_t *workspace) { (void)workspace; }
+constexpr size_t RESERVED_WORKSPACE = 16 * 1024 * 1024;
+} // namespace AscendC
+#endif
+
 
 namespace sage_attn {
 
