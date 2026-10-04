@@ -1,164 +1,164 @@
 {
- "binFileName": "SageAttention2_de3f42312ac6f7e300678483940cffa1",
- "binFileSuffix": ".o",
- "blockDim": -1,
- "coreType": "MIX",
- "intercoreSync": 1,
- "kernelName": "SageAttention2_de3f42312ac6f7e300678483940cffa1",
- "magic": "RT_DEV_BINARY_MAGIC_ELF",
- "memoryStamping": [],
- "opParaSize": 168,
- "parameters": [
-  null,
-  null,
-  null,
-  null,
-  null,
-  null,
-  null
- ],
- "sha256": "efebc5b84337ddcf4bd81cc9da33260ee3f26bfbb59f613f713acf8160f7d607",
- "workspace": {
-  "num": 1,
-  "size": [
-   -1
+  "binFileName": "SageAttention2_de3f42312ac6f7e300678483940cffa1",
+  "binFileSuffix": ".o",
+  "blockDim": -1,
+  "coreType": "MIX",
+  "intercoreSync": 1,
+  "kernelName": "SageAttention2_de3f42312ac6f7e300678483940cffa1",
+  "magic": "RT_DEV_BINARY_MAGIC_ELF",
+  "memoryStamping": [],
+  "opParaSize": 168,
+  "parameters": [
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null
   ],
-  "type": [
-   0
-  ]
- },
- "kernelList": [
-  {
-   "tilingKey": 1,
-   "kernelType": "MIX_AIC",
-   "crossCoreSync": 1,
-   "taskRation": "1:2",
-   "kernelName": "SageAttention2_de3f42312ac6f7e300678483940cffa1_1"
+  "sha256": "0de9343c93fbe3783602d52d338510cfa490855a27928ad10dc990c6212ccb60",
+  "workspace": {
+    "num": 1,
+    "size": [
+      -1
+    ],
+    "type": [
+      0
+    ]
   },
-  {
-   "tilingKey": 2,
-   "kernelType": "MIX_AIC",
-   "crossCoreSync": 1,
-   "taskRation": "1:2",
-   "kernelName": "SageAttention2_de3f42312ac6f7e300678483940cffa1_2"
-  }
- ],
- "taskRation": "tilingKey",
- "optionalInputMode": "gen_placeholder",
- "optionalOutputMode": "gen_placeholder",
- "supportSuperKernel": 1,
- "compileInfo": {},
- "supportInfo": {
-  "implMode": "high_performance",
-  "int64Mode": false,
-  "simplifiedKeyMode": 0,
-  "simplifiedKey": [
-   "SageAttention2/d=0,p=1/1,2/1,2/27,2/1,2",
-   "SageAttention2/d=0,p=0/1,2/1,2/27,2/1,2",
-   "SageAttention2/d=1,p=1/1,2/1,2/27,2/1,2",
-   "SageAttention2/d=1,p=0/1,2/1,2/27,2/1,2"
+  "kernelList": [
+    {
+      "tilingKey": 1,
+      "kernelType": "MIX_AIC",
+      "crossCoreSync": 1,
+      "taskRation": "1:2",
+      "kernelName": "SageAttention2_de3f42312ac6f7e300678483940cffa1_1"
+    },
+    {
+      "tilingKey": 2,
+      "kernelType": "MIX_AIC",
+      "crossCoreSync": 1,
+      "taskRation": "1:2",
+      "kernelName": "SageAttention2_de3f42312ac6f7e300678483940cffa1_2"
+    }
   ],
+  "taskRation": "tilingKey",
   "optionalInputMode": "gen_placeholder",
   "optionalOutputMode": "gen_placeholder",
-  "staticKey": "3c6ff5dc3c7da0810b84557aeca28655b772e3c595d6c587770a0290aeb2bb30,c19aa5c5961b7600f2c52a840921010ec282035425b0797bfb3aff8caf5f3ddf",
-  "inputs": [
-   {
-    "name": "query",
-    "index": 0,
-    "dtype": "float16",
-    "format": "ND",
-    "paramType": "required",
-    "shape": [
-     -2
+  "supportSuperKernel": 1,
+  "compileInfo": {},
+  "supportInfo": {
+    "implMode": "high_performance",
+    "int64Mode": false,
+    "simplifiedKeyMode": 0,
+    "simplifiedKey": [
+      "SageAttention2/d=0,p=1/1,2/1,2/27,2/1,2",
+      "SageAttention2/d=0,p=0/1,2/1,2/27,2/1,2",
+      "SageAttention2/d=1,p=1/1,2/1,2/27,2/1,2",
+      "SageAttention2/d=1,p=0/1,2/1,2/27,2/1,2"
     ],
-    "format_match_mode": "FormatAgnostic"
-   },
-   {
-    "name": "key",
-    "index": 1,
-    "dtype": "float16",
-    "format": "ND",
-    "paramType": "required",
-    "shape": [
-     -2
+    "optionalInputMode": "gen_placeholder",
+    "optionalOutputMode": "gen_placeholder",
+    "staticKey": "3c6ff5dc3c7da0810b84557aeca28655b772e3c595d6c587770a0290aeb2bb30,c19aa5c5961b7600f2c52a840921010ec282035425b0797bfb3aff8caf5f3ddf",
+    "inputs": [
+      {
+        "name": "query",
+        "index": 0,
+        "dtype": "float16",
+        "format": "ND",
+        "paramType": "required",
+        "shape": [
+          -2
+        ],
+        "format_match_mode": "FormatAgnostic"
+      },
+      {
+        "name": "key",
+        "index": 1,
+        "dtype": "float16",
+        "format": "ND",
+        "paramType": "required",
+        "shape": [
+          -2
+        ],
+        "format_match_mode": "FormatAgnostic"
+      },
+      {
+        "name": "value",
+        "index": 2,
+        "dtype": "bfloat16",
+        "format": "ND",
+        "paramType": "required",
+        "shape": [
+          -2
+        ],
+        "format_match_mode": "FormatAgnostic"
+      }
     ],
-    "format_match_mode": "FormatAgnostic"
-   },
-   {
-    "name": "value",
-    "index": 2,
-    "dtype": "bfloat16",
-    "format": "ND",
-    "paramType": "required",
-    "shape": [
-     -2
+    "outputs": [
+      {
+        "name": "output",
+        "index": 0,
+        "dtype": "float16",
+        "format": "ND",
+        "paramType": "required",
+        "shape": [
+          -2
+        ],
+        "format_match_mode": "FormatAgnostic"
+      },
+      {
+        "name": "lse",
+        "index": 1,
+        "dtype": "float32",
+        "format": "ND",
+        "paramType": "optional",
+        "shape": [
+          -2
+        ],
+        "format_match_mode": "FormatAgnostic"
+      }
     ],
-    "format_match_mode": "FormatAgnostic"
-   }
-  ],
-  "outputs": [
-   {
-    "name": "output",
-    "index": 0,
-    "dtype": "float16",
-    "format": "ND",
-    "paramType": "required",
-    "shape": [
-     -2
+    "attrs": [
+      {
+        "name": "tensor_layout",
+        "dtype": "str",
+        "value": ""
+      },
+      {
+        "name": "is_causal",
+        "dtype": "bool",
+        "value": false
+      },
+      {
+        "name": "qk_quant_gran",
+        "dtype": "str",
+        "value": ""
+      },
+      {
+        "name": "sm_scale",
+        "dtype": "float",
+        "value": 0.0
+      },
+      {
+        "name": "pv_accum_dtype",
+        "dtype": "str",
+        "value": ""
+      },
+      {
+        "name": "smooth_k",
+        "dtype": "bool",
+        "value": false
+      },
+      {
+        "name": "smooth_v",
+        "dtype": "bool",
+        "value": false
+      }
     ],
-    "format_match_mode": "FormatAgnostic"
-   },
-   {
-    "name": "lse",
-    "index": 1,
-    "dtype": "float32",
-    "format": "ND",
-    "paramType": "optional",
-    "shape": [
-     -2
-    ],
-    "format_match_mode": "FormatAgnostic"
-   }
-  ],
-  "attrs": [
-   {
-    "name": "tensor_layout",
-    "dtype": "str",
-    "value": ""
-   },
-   {
-    "name": "is_causal",
-    "dtype": "bool",
-    "value": false
-   },
-   {
-    "name": "qk_quant_gran",
-    "dtype": "str",
-    "value": ""
-   },
-   {
-    "name": "sm_scale",
-    "dtype": "float",
-    "value": 0.0
-   },
-   {
-    "name": "pv_accum_dtype",
-    "dtype": "str",
-    "value": ""
-   },
-   {
-    "name": "smooth_k",
-    "dtype": "bool",
-    "value": false
-   },
-   {
-    "name": "smooth_v",
-    "dtype": "bool",
-    "value": false
-   }
-  ],
-  "opMode": "dynamic",
-  "deterministic": "ignore"
- },
- "filePath": "ascend950/bin/sageattention2/SageAttention2_de3f42312ac6f7e300678483940cffa1.json"
+    "opMode": "dynamic",
+    "deterministic": "ignore"
+  },
+  "filePath": "ascend950/bin/sageattention2/SageAttention2_de3f42312ac6f7e300678483940cffa1.json"
 }

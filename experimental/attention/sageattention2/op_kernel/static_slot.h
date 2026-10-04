@@ -71,10 +71,6 @@ using SlotL1KvPing      = StaticSlot<Catlass::SageAttn::L1DoubleBankContract::KV
 using SlotL1KvPong      = StaticSlot<Catlass::SageAttn::L1DoubleBankContract::KV_PONG_OFFSET, Catlass::SageAttn::L1DoubleBankContract::KV_SLOT_BYTES>;
 using SlotL1SoftmaxPPing = StaticSlot<Catlass::SageAttn::L1DoubleBankContract::P_PING_OFFSET, Catlass::SageAttn::L1DoubleBankContract::P_SLOT_BYTES>;
 using SlotL1SoftmaxPPong = StaticSlot<Catlass::SageAttn::L1DoubleBankContract::P_PONG_OFFSET, Catlass::SageAttn::L1DoubleBankContract::P_SLOT_BYTES>;
-using SlotL1QScale       = StaticSlot<Catlass::SageAttn::L1DoubleBankContract::Q_SCALE_SLOT_OFFSET, Catlass::SageAttn::L1DoubleBankContract::Q_SCALE_SLOT_BYTES>;
-using SlotL1VScale       = StaticSlot<Catlass::SageAttn::L1DoubleBankContract::V_SCALE_SLOT_OFFSET, Catlass::SageAttn::L1DoubleBankContract::V_SCALE_SLOT_BYTES>;
-using SlotL1KScalePing   = StaticSlot<Catlass::SageAttn::L1DoubleBankContract::K_SCALE_PING_OFFSET, Catlass::SageAttn::L1DoubleBankContract::K_SCALE_SLOT_BYTES>;
-using SlotL1KScalePong   = StaticSlot<Catlass::SageAttn::L1DoubleBankContract::K_SCALE_PONG_OFFSET, Catlass::SageAttn::L1DoubleBankContract::K_SCALE_SLOT_BYTES>;
 
 #if !SAGE_ATTN_DEVICE_COMPILE
 /**
@@ -89,6 +85,7 @@ struct SimMemory {
     float k_scales[kKScaleSlotStride]{0.0f};
     float v_scales[256]{0.0f};
     float v_means[256]{0.0f};
+    uint8_t stage_strip[STAGE_CORE_STRIDE]{0};
 };
 #endif
 
@@ -145,6 +142,18 @@ struct TaskContext {
     {
         const int64_t sk_start = static_cast<int64_t>(cur_k) * block_n;
         return (sk_start + block_n <= sk) ? block_n : static_cast<uint32_t>(sk - sk_start);
+    }
+
+    [[nodiscard]] __aicore__ inline __attribute__((always_inline)) __gm__ uint8_t *StageStrip() const
+    {
+#if SAGE_ATTN_DEVICE_COMPILE
+        return workspace_gm + static_cast<uint64_t>(core_idx) * STAGE_CORE_STRIDE;
+#else
+        if (workspace_gm != nullptr) {
+            return workspace_gm + static_cast<uint64_t>(core_idx) * STAGE_CORE_STRIDE;
+        }
+        return (sim_mem != nullptr) ? sim_mem->stage_strip : nullptr;
+#endif
     }
 
     [[nodiscard]] __aicore__ inline __attribute__((always_inline)) uint32_t SoftmaxSlotOffset(bool is_ping) const

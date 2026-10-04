@@ -44,32 +44,34 @@ public:
 
 #if SAGE_ATTN_DEVICE_COMPILE
     /**
-     * \brief A7 scale 条带桥：加载 Q scale 与 V scale (片上 L1 Bank 0 专有槽直通)
+     * \brief A7 scale 条带桥：加载 Q scale 与 V scale (片外 L2 Cache 暂存条带)
      */
     __aicore__ inline __attribute__((always_inline)) void StageV1ScaleStrips(const TaskContext &ctx)
     {
-        (void)ctx;
+        Catlass::SageAttn::Sync<HardEvent::V_MTE2>();
+        __gm__ uint8_t *strip = ctx.StageStrip();
+        GlobalTensor<float> gm_strip;
         LocalTensor<float> ub_qs(TPosition::VECCALC, SlotV1QsRow::Offset(), STAGE_SLOT_FLOATS);
-        LocalTensor<float> l1_qs(TPosition::A1, SlotL1QScale::Offset(), STAGE_SLOT_FLOATS);
-        DataCopy(ub_qs, l1_qs, STAGE_SLOT_FLOATS);
-
         LocalTensor<float> ub_vs(TPosition::VECCALC, SlotV1VsChan::Offset(), STAGE_SLOT_FLOATS);
-        LocalTensor<float> l1_vs(TPosition::A1, SlotL1VScale::Offset(), STAGE_SLOT_FLOATS);
-        DataCopy(ub_vs, l1_vs, STAGE_SLOT_FLOATS);
+        gm_strip.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(strip + STAGE_Q_SCALE_OFFSET));
+        DataCopy(ub_qs, gm_strip, STAGE_SLOT_FLOATS);
+        gm_strip.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(strip + STAGE_V_SCALE_OFFSET));
+        DataCopy(ub_vs, gm_strip, STAGE_SLOT_FLOATS);
         Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
     }
 
     /**
-     * \brief A7 scale 条带桥：加载第 k 块的 K scale (片上 L1 Bank 0 Ping-Pong 专有槽直通)
+     * \brief A7 scale 条带桥：加载第 k 块的 K scale (片外 L2 Cache 暂存条带)
      */
     __aicore__ inline __attribute__((always_inline)) void StageKScaleStrip(const TaskContext &ctx, uint32_t k)
     {
         Catlass::SageAttn::Sync<HardEvent::V_MTE2>();
-        const bool is_ping = ((k % 2) == 0);
-        const uint32_t l1_k_scale_offset = is_ping ? SlotL1KScalePing::Offset() : SlotL1KScalePong::Offset();
-        LocalTensor<float> l1_ks(TPosition::A1, l1_k_scale_offset, ctx.block_n);
-        LocalTensor<float> ub_ks(TPosition::VECCALC, SlotV1KsRow::Offset(), ctx.block_n);
-        DataCopy(ub_ks, l1_ks, ctx.block_n);
+        __gm__ uint8_t *strip = ctx.StageStrip();
+        GlobalTensor<float> gm_strip;
+        LocalTensor<float> ub_ks(TPosition::VECCALC, SlotV1KsRow::Offset(), STAGE_SLOT_FLOATS);
+        uint32_t k_offset = STAGE_K_SCALE_BASE_OFFSET + (k % STAGE_K_SCALE_NUM_SLOTS) * STAGE_SLOT_BYTES;
+        gm_strip.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(strip + k_offset));
+        DataCopy(ub_ks, gm_strip, ctx.block_n);
         Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
     }
 #endif
@@ -111,10 +113,11 @@ public:
         const TaskContext &ctx,
         uint32_t row, float &cur_max, float &cur_sum, uint32_t k)
     {
+        const bool per_thread = (ctx.tiling->qk_quant_gran == QUANT_GRAN_PER_THREAD);
+        const uint32_t g = row / ctx.cur_q_len;
         const uint32_t token_q = ctx.cur_q_start + (row % ctx.cur_q_len);
-        const float *l1_q_scale = reinterpret_cast<const float *>(
-            ctx.sim_mem->l1_mem + SlotL1QScale::Offset());
-        const float q_scale = l1_q_scale[row];
+        const float q_scale =
+            ctx.sim_mem->q_scales[(ctx.cur_g0 + g) * kQScaleSlotStride + quant::QScaleIndex(token_q, per_thread)];
         float *logits_row = &ctx.sim_mem->logits[static_cast<size_t>(row) * ctx.block_n];
         const int8_t *l1_q = reinterpret_cast<const int8_t *>(
             ctx.sim_mem->l1_mem + ctx.tiling->l1_q_offset);
@@ -122,9 +125,6 @@ public:
         const uint32_t cur_kv_base = is_ping ? SlotL1KvPing::Offset() : SlotL1KvPong::Offset();
         const int8_t *l1_k = reinterpret_cast<const int8_t *>(
             ctx.sim_mem->l1_mem + cur_kv_base);
-        const uint32_t cur_k_scale_offset = is_ping ? SlotL1KScalePing::Offset() : SlotL1KScalePong::Offset();
-        const float *l1_k_scale = reinterpret_cast<const float *>(
-            ctx.sim_mem->l1_mem + cur_k_scale_offset);
         const uint32_t cur_k_start = k * ctx.block_n;
 
         for (uint32_t j = 0; j < ctx.block_n; ++j) {
@@ -142,7 +142,7 @@ public:
             }
             logits_row[j] = twin::DequantQkLogit(
                 dot, q_scale,
-                l1_k_scale[j],
+                ctx.sim_mem->k_scales[quant::KScaleIndex(token_k, per_thread)],
                 ctx.tiling->sm_scale_log2e);
         }
 
@@ -247,6 +247,7 @@ public:
         const uint32_t l1_p_addr = is_ping ? SlotL1SoftmaxPPing::Offset() : SlotL1SoftmaxPPong::Offset();
         LocalTensor<float8_e4m3_t> l1_p(TPosition::A1, l1_p_addr, rows * ctx.block_n);
         Catlass::SageAttn::CopyUbToL1(l1_p, ub_out_p, rows * ctx.block_n);
+        Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
         Catlass::SageAttn::Sync<HardEvent::MTE3_S>();
 #else
         RestageKvBlockHost(ctx, k);

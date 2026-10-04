@@ -123,8 +123,10 @@ public:
         }
         Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
         Catlass::SageAttn::Sync<HardEvent::S_MTE3>();
-        LocalTensor<float> l1_q_scale(TPosition::A1, SlotL1QScale::Offset(), STAGE_SLOT_FLOATS);
-        Catlass::SageAttn::CopyUbToL1(l1_q_scale, ub_stage_q, STAGE_SLOT_BYTES);
+        GlobalTensor<float> gm_stage_q;
+        gm_stage_q.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(ctx.StageStrip() + STAGE_Q_SCALE_OFFSET));
+        DataCopy(gm_stage_q, ub_stage_q, STAGE_SLOT_FLOATS);
+        Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
         Catlass::SageAttn::Sync<HardEvent::MTE3_S>();
 #else
         const bool per_thread = (ctx.tiling->qk_quant_gran == QUANT_GRAN_PER_THREAD);
@@ -176,11 +178,13 @@ public:
             }
         }
 
-        float *l1_q_scale = reinterpret_cast<float *>(ctx.sim_mem->l1_mem + SlotL1QScale::Offset());
-        for (uint32_t r = 0; r < ctx.TotalRows() && r < MAX_PACK_ROWS; ++r) {
-            const uint32_t g = r / ctx.cur_q_len;
-            const uint32_t token = ctx.cur_q_start + (r % ctx.cur_q_len);
-            l1_q_scale[r] = ctx.sim_mem->q_scales[(ctx.cur_g0 + g) * kQScaleSlotStride + quant::QScaleIndex(token, per_thread)];
+        if (ctx.sim_mem != nullptr) {
+            float *stage_q = reinterpret_cast<float *>(ctx.sim_mem->stage_strip + STAGE_Q_SCALE_OFFSET);
+            for (uint32_t r = 0; r < ctx.TotalRows() && r < MAX_PACK_ROWS; ++r) {
+                const uint32_t g = r / ctx.cur_q_len;
+                const uint32_t token = ctx.cur_q_start + (r % ctx.cur_q_len);
+                stage_q[r] = ctx.sim_mem->q_scales[(ctx.cur_g0 + g) * kQScaleSlotStride + quant::QScaleIndex(token, per_thread)];
+            }
         }
 #endif
     }
@@ -265,10 +269,11 @@ public:
         }
         Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
         Catlass::SageAttn::Sync<HardEvent::S_MTE3>();
-        const bool is_ping = ((cur_k % 2) == 0);
-        const uint32_t l1_k_scale_offset = is_ping ? SlotL1KScalePing::Offset() : SlotL1KScalePong::Offset();
-        LocalTensor<float> l1_k_scale(TPosition::A1, l1_k_scale_offset, STAGE_SLOT_FLOATS);
-        Catlass::SageAttn::CopyUbToL1(l1_k_scale, ub_stage_k, STAGE_SLOT_BYTES);
+        GlobalTensor<float> gm_stage_k;
+        uint32_t k_offset = STAGE_K_SCALE_BASE_OFFSET + (cur_k % STAGE_K_SCALE_NUM_SLOTS) * STAGE_SLOT_BYTES;
+        gm_stage_k.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(ctx.StageStrip() + k_offset));
+        DataCopy(gm_stage_k, ub_stage_k, STAGE_SLOT_FLOATS);
+        Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
         Catlass::SageAttn::Sync<HardEvent::MTE3_S>();
 
         // 逐行量化写 L1：复用已在片上 UB 中的数据，消除逐行 GM 读与流水气泡
@@ -319,15 +324,16 @@ public:
             ctx.sim_mem->k_scales[s] = scale;
         }
 
-        const bool is_ping = ((cur_k % 2) == 0);
-        const uint32_t l1_k_scale_offset = is_ping ? SlotL1KScalePing::Offset() : SlotL1KScalePong::Offset();
-        float *l1_k_scale = reinterpret_cast<float *>(ctx.sim_mem->l1_mem + l1_k_scale_offset);
-        for (uint32_t j = 0; j < block_n; ++j) {
-            if (j < block_k) {
-                const uint32_t token = cur_k_start + j;
-                l1_k_scale[j] = ctx.sim_mem->k_scales[quant::KScaleIndex(token, per_thread)];
-            } else {
-                l1_k_scale[j] = 0.0f;
+        if (ctx.sim_mem != nullptr) {
+            uint32_t k_offset = STAGE_K_SCALE_BASE_OFFSET + (cur_k % STAGE_K_SCALE_NUM_SLOTS) * STAGE_SLOT_BYTES;
+            float *stage_k = reinterpret_cast<float *>(ctx.sim_mem->stage_strip + k_offset);
+            for (uint32_t j = 0; j < block_n; ++j) {
+                if (j < block_k) {
+                    const uint32_t token = cur_k_start + j;
+                    stage_k[j] = ctx.sim_mem->k_scales[quant::KScaleIndex(token, per_thread)];
+                } else {
+                    stage_k[j] = 0.0f;
+                }
             }
         }
 
@@ -426,8 +432,10 @@ public:
             }
 
             Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
-            LocalTensor<float> l1_v_scale(TPosition::A1, SlotL1VScale::Offset(), STAGE_SLOT_FLOATS);
-            Catlass::SageAttn::CopyUbToL1(l1_v_scale, ub_v_scale, STAGE_SLOT_BYTES);
+            Catlass::SageAttn::Sync<HardEvent::S_MTE3>();
+            GlobalTensor<float> gm_stage_v;
+            gm_stage_v.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(ctx.StageStrip() + STAGE_V_SCALE_OFFSET));
+            DataCopy(gm_stage_v, ub_v_scale, STAGE_SLOT_FLOATS);
             if (smooth_v != 0u) {
                 GlobalTensor<float> gm_vm;
                 gm_vm.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(
@@ -436,6 +444,7 @@ public:
                     static_cast<int64_t>(ctx.cur_hkv) * d * sizeof(float)));
                 DataCopy(gm_vm, ub_v_sum, d);
             }
+            Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
             Catlass::SageAttn::Sync<HardEvent::MTE3_S>();
         }
 
@@ -492,9 +501,11 @@ public:
                     ctx.sim_mem->v_scales[c] = amax / scale_max;
                 }
             }
-            float *l1_v_scale = reinterpret_cast<float *>(ctx.sim_mem->l1_mem + SlotL1VScale::Offset());
-            for (uint32_t c = 0; c < d; ++c) {
-                l1_v_scale[c] = ctx.sim_mem->v_scales[c];
+            if (ctx.sim_mem != nullptr) {
+                float *stage_v = reinterpret_cast<float *>(ctx.sim_mem->stage_strip + STAGE_V_SCALE_OFFSET);
+                for (uint32_t c = 0; c < d; ++c) {
+                    stage_v[c] = ctx.sim_mem->v_scales[c];
+                }
             }
         }
 

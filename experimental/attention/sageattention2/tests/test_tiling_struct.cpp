@@ -154,24 +154,6 @@ void TestCatlassContracts() {
                       L1DoubleBankContract::KV_PING_OFFSET + L1DoubleBankContract::KV_SLOT_BYTES,
                   "ping/pong slots must be adjacent in Bank 1");
 
-    // L1 Bank 0 Scale 专有槽位契约（彻底消灭 GM 往返，100% 片上 1C2V 直通）
-    static_assert(SlotL1QScale::OFFSET == 32 * 1024, "Q scale slot at 32KB");
-    static_assert(SlotL1QScale::BYTES == 2048, "Q scale slot size 2048 bytes");
-    static_assert(SlotL1VScale::OFFSET == 34 * 1024, "V scale slot at 34KB");
-    static_assert(SlotL1VScale::BYTES == 1024, "V scale slot size 1024 bytes");
-    static_assert(SlotL1KScalePing::OFFSET == 36 * 1024, "K scale ping slot at 36KB");
-    static_assert(SlotL1KScalePing::BYTES == 1024, "K scale ping slot size 1024 bytes");
-    static_assert(SlotL1KScalePong::OFFSET == 38 * 1024, "K scale pong slot at 38KB");
-    static_assert(SlotL1KScalePong::BYTES == 1024, "K scale pong slot size 1024 bytes");
-    static_assert(SlotL1QScale::End() <= SlotL1VScale::OFFSET,
-                  "Q scale slot must end before V scale slot");
-    static_assert(SlotL1VScale::End() <= SlotL1KScalePing::OFFSET,
-                  "V scale slot must end before K scale ping slot");
-    static_assert(SlotL1KScalePing::End() <= SlotL1KScalePong::OFFSET,
-                  "K scale ping slot must end before K scale pong slot");
-    static_assert(SlotL1KScalePong::End() <= L1DoubleBankContract::P_PING_OFFSET,
-                  "K scale pong slot must end before P matrix ping buffer");
-
     // A7 GM scale 交接条带（V0→V1 桥，STAGE_* 唯一定义点 tiling.h；kernel 侧
     // StageV1ScaleStrips/StageKScaleStrip/QuantizeAndStageKey 全按本组常量槽寻址，
     // aclnn host tiling 按 STAGE_CORE_STRIDE × core_num_used 预留）：三段布局单调相接，
@@ -184,6 +166,16 @@ void TestCatlassContracts() {
     static_assert(STAGE_K_SCALE_BASE_OFFSET + STAGE_K_SCALE_NUM_SLOTS * STAGE_SLOT_BYTES ==
                       STAGE_CORE_STRIDE,
                   "K scale slots must exactly fill the per-core stage strip");
+
+    // 硬件 32 字节对齐守卫（昇腾 MTE2/MTE3 通路硬性约束，彻底杜绝非对齐 TRAP）
+    static_assert(STAGE_CORE_STRIDE % 32 == 0, "STAGE_CORE_STRIDE must be 32-byte aligned");
+    static_assert(STAGE_Q_SCALE_OFFSET % 32 == 0, "STAGE_Q_SCALE_OFFSET must be 32-byte aligned");
+    static_assert(STAGE_V_SCALE_OFFSET % 32 == 0, "STAGE_V_SCALE_OFFSET must be 32-byte aligned");
+    static_assert(STAGE_K_SCALE_BASE_OFFSET % 32 == 0, "STAGE_K_SCALE_BASE_OFFSET must be 32-byte aligned");
+    static_assert(STAGE_SLOT_BYTES % 32 == 0, "STAGE_SLOT_BYTES must be 32-byte aligned");
+    static_assert((STAGE_SLOT_FLOATS * sizeof(float)) % 32 == 0, "STAGE_SLOT_FLOATS bytes must be 32-byte aligned");
+    static_assert((64 * sizeof(float)) % 32 == 0, "block_n=64 float bytes must be 32-byte aligned");
+    static_assert((128 * sizeof(float)) % 32 == 0, "block_n=128 float bytes must be 32-byte aligned");
 
     // 清理记录（2026-10-03 死代码清扫随动）：
     // - KvSlotLayoutContract：生产链路零实例化且槽内 Scale 偏移描述与核内实际

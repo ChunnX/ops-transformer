@@ -233,11 +233,8 @@ chunks=1，任务解码与调度算术逐位不变（twin 25 桶 golden 回归�
       投影与指数求和熔断为单拍硬件本征指令；严格对齐底层 `MulDstAdd(dst, src0, src1)`
       硬件语义（`dst = dst * src0 + src1`，vmadd），单拍闭环指数累加、Online 更新与
       部分和并入，消灭中间寄存器与 RAW 依赖延迟；
-    - 片上 L1 Bank 0 专有槽位 Scale 100% 片上流式直通：
-      在 `L1DoubleBankContract` 中编排 Bank 0 严密专有槽位（`Q_SCALE`、`V_SCALE`、
-      `K_SCALE_PING`、`K_SCALE_PONG`），Vector 0 经 `CopyUbToL1` 直写 L1 Bank 0，
-      Vector 1 经 `DataCopy` 直读 L1，彻底拔除 GM StageStrip 中转，实现 100% 片上
-      1C2V 直通零 GM 往返；
+    - 片外 L2 Cache 暂存条带 StageStrip 通路（A7 架构闭环）：
+      Vector 0 经 MTE3（`DataCopy`）将行/块/通道解析的 Q/K/V scale 写至 GM StageStrip（按核划分 64KB 槽位，在 Die-local 64MB 片上 L2 Cache 驻留），Vector 1 经 MTE2（`DataCopy`）拉入 UB，彻底拔除硬件不支持的 A1->UB 非法通路，保证 100% 硬件兼容与微架构时序保真；
     - `LoadDist::DIST_BRC_B32` UB 标量加载与全局广播随路融合：
       `QuantRowInt8VF` 直接接收 `__ubuf__ float* scale_ptr`，单条指令随路完成加载与
       64 通道广播，彻底消灭标量单元 `GetValue` 回读与独立 `Duplicate` 指令；
