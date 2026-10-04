@@ -1173,6 +1173,8 @@ __simd_vf__ void GetKVPhyAddrVFImpl(__ubuf__ uint32_t *kvPhyAddrUb, __ubuf__ int
     Reg::MaskReg preg_tail_neg_2_b32;
     Reg::MaskReg preg_neg_idx_1;
     Reg::MaskReg preg_neg_idx_2;
+    Reg::MaskReg preg_gather_1;
+    Reg::MaskReg preg_gather_2;
 
     Reg::RegTensor<uint32_t> vreg_kvStride;
     Reg::RegTensor<uint32_t> vreg_sparse_idx_1;
@@ -1235,9 +1237,11 @@ __simd_vf__ void GetKVPhyAddrVFImpl(__ubuf__ uint32_t *kvPhyAddrUb, __ubuf__ int
             Reg::Muls(vreg_phy_offset_1, vreg_pa_offset_1, kvDim, preg_all_b32);
             Reg::Muls(vreg_phy_offset_2, vreg_pa_offset_2, kvDim, preg_all_b32);
 
-            // int32 paBlockId -> 物理id
-            DataCopyGather(vreg_phy_blk_idx_1, blkTableUb, vreg_pa_blk_idx_1, preg_all_b32);
-            DataCopyGather(vreg_phy_blk_idx_2, blkTableUb, vreg_pa_blk_idx_2, preg_all_b32);
+            // 原始下标为 -1 的车道不参与页表寻址，避免用 0xFFFFFFFF 右移后的页号越界读 block table
+            Reg::Not(preg_gather_1, preg_neg_idx_1, preg_all_b32);
+            Reg::Not(preg_gather_2, preg_neg_idx_2, preg_all_b32);
+            DataCopyGather(vreg_phy_blk_idx_1, blkTableUb, vreg_pa_blk_idx_1, preg_gather_1);
+            DataCopyGather(vreg_phy_blk_idx_2, blkTableUb, vreg_pa_blk_idx_2, preg_gather_2);
 
             // 分高低32位计算int64物理地址 -- 乘 stride
             // 低位乘 带进位
@@ -1300,9 +1304,13 @@ __simd_vf__ void GetKVPhyAddrVFImpl(__ubuf__ uint32_t *kvPhyAddrUb, __ubuf__ int
         Reg::Muls(vreg_phy_offset_1, vreg_pa_offset_1, kvDim, preg_tail_1_b32);
         Reg::Muls(vreg_phy_offset_2, vreg_pa_offset_2, kvDim, preg_tail_2_b32);
 
-        // int32 paBlockId -> 物理id
-        DataCopyGather(vreg_phy_blk_idx_1, blkTableUb, vreg_pa_blk_idx_1, preg_tail_1_b32);
-        DataCopyGather(vreg_phy_blk_idx_2, blkTableUb, vreg_pa_blk_idx_2, preg_tail_2_b32);
+        // 有效尾数里去掉原始 -1，避免用越界页号读 block table
+        Reg::Not(preg_gather_1, preg_neg_idx_1, preg_all_b32);
+        Reg::Not(preg_gather_2, preg_neg_idx_2, preg_all_b32);
+        Reg::And(preg_gather_1, preg_gather_1, preg_tail_1_b32, preg_all_b32);
+        Reg::And(preg_gather_2, preg_gather_2, preg_tail_2_b32, preg_all_b32);
+        DataCopyGather(vreg_phy_blk_idx_1, blkTableUb, vreg_pa_blk_idx_1, preg_gather_1);
+        DataCopyGather(vreg_phy_blk_idx_2, blkTableUb, vreg_pa_blk_idx_2, preg_gather_2);
 
         // 分高低32位计算int64物理地址 -- 乘 stride
         // 低位乘 带进位
