@@ -1214,9 +1214,10 @@ private:
         }
 
         // A7 V0（task/12 第五节第 3 条）：块解析 k_scale 暂存写——逐 token 展开写
-        // GM 条带 ping/pong 槽（按 cur_k_ 奇偶，零填充至 128 槽），V1 反量化按当前块
-        // 奇偶读取。S→MTE3 / MTE3→S 双自配对排空后方由调用方 raise KV_*_READY
-        //（GM 可见性，task/12 第四节；QK_P 传递性保证 V1 读取时序）。
+        // GM 条带独立 k 槽（STAGE_K_SCALE_BASE_OFFSET + (cur_k_ % 126u) * 512，126 槽
+        // 轮转隔离防覆写，槽内零填充至 128 float=512B），V1 反量化按同式 k % 126 槽号
+        // 读取（StageKScaleStrip 同源）。S→MTE3 / MTE3→S 双自配对排空后方由调用方
+        // raise KV_*_READY（GM 可见性，task/12 第四节；QK_P 传递性保证 V1 读取时序）。
         LocalTensor<float> ub_stage_k(TPosition::VECCALC,
                                       Catlass::SageAttn::Vector0UbBudget::QUANT_STAGE_STRIP_OFFSET,
                                       STAGE_SLOT_FLOATS);
