@@ -86,7 +86,10 @@ constexpr uint32_t ATLAS_950_DIE_NUM = 2;              // Atlas 950PR 标配 2 �
 
 /**
  * STARS 2.0 硬件调度拓扑（白皮书第 4.4 节：AI Core 分为最多 8 个 Group，支持按 Die
- * 进行亲和性调度）：Atlas 950PR 满配网格 = 2 Die × 每 Die 4 Group × 每 Group 4 核。
+ * 进行亲和性调度；注意白皮书「Group 内核数可软件配置」为系统级资源池语境，非算子
+ * tiling 编程面）：Atlas 950PR 满配网格 2 Die × 每 Die 4 Group × 每 Group 4 核为
+ * 本仓推断拆分（白皮书原文仅约束上限 8 Group 与按 Die 亲和，未规定均分），仅被
+ * 下方 static_assert 与契约测试消费，无运行时行为。
  * 接口考证结论（CANN 9.2.0-beta.1，容器内 ${ASCEND_HOME_PATH}/include，grep 全树）：
  * host tiling 层无 STARS Group 直控公开 API——
  * - acl/acl_rt.h:978 aclrtHacType 仅暴露 ACL_RT_HAC_TYPE_STARS 硬件队列类型枚举；
@@ -95,7 +98,8 @@ constexpr uint32_t ATLAS_950_DIE_NUM = 2;              // Atlas 950PR 标配 2 �
  *   查询面（host 流级，非 per-op tiling 面）；
  * - 全 include 树无 HSCB 关键词（HSCB 为纯硬件总线，无软件编程面）；gert 侧任务下发
  *   仅 SetBlockDim/SetScheduleMode（exe_graph/runtime/tiling_context.h:227/254）；
- * - ./git/catlass 全仓无 STARS 关键词（官方 CATLASS 未封装 Die 亲和组件）。
+ * - ./git/catlass 无 Die 亲和/Group 调度封装；STARS 仅现于 tools/tuner/src/profiler.cpp:17,20,190-192,225
+ *   的 prof_drv_start 性能采集通道（STARS_ENABLE_FLAG/CHANNEL_STARS_SOC_LOG_BUFFER），非 per-op 调度面。
  * 故本算子 Die 亲和分组按仓内既有惯例落地：TilingData 第 7 段四字段
  * （enable_die_affinity/die_num/cores_per_die/tasks_per_die，布局冻结 160 字节，不新增
  * 字段）显式编码 2 个物理 Die Group 配置（enable_die_affinity=1 即下发 Die 亲和调度），
