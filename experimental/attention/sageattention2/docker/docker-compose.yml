@@ -23,8 +23,10 @@ services:
       dockerfile: Dockerfile
       args:
         CANN_IMAGE: ${CANN_IMAGE:-swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:9.2.0-beta.1-950-ubuntu22.04-py3.10-devel}
-        TORCH_SPEC: ${TORCH_SPEC:-torch==2.12.0}
-        TORCH_NPU_SPEC: ${TORCH_NPU_SPEC:-torch-npu==2.12.0}
+        # torch 两项用 "-" 而非 ":-"：.env 置空(=)时保持空值，经 Dockerfile -n 守卫
+        # 跳过安装（README「置空可跳过」口径）；":-" 会把空值回落成默认，置空失效
+        TORCH_SPEC: ${TORCH_SPEC-torch==2.12.0}
+        TORCH_NPU_SPEC: ${TORCH_NPU_SPEC-torch-npu==2.12.0}
         TORCH_INDEX: ${TORCH_INDEX:-https://mirrors.aliyun.com/pytorch-wheels/cpu/}
     image: ${SAGE_IMAGE:-sageattn2-op-dev:latest}
     container_name: sageattn2-op-dev

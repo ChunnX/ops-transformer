@@ -214,13 +214,14 @@ public:
         workspace_gm_ = workspace; // 遵循 CANN 算子签名契约：用户 Workspace 指针经 GetUserWorkspace 直达入口，
                                    // 保留以保持结构签名一致。
 
-        // GetBlockIdx 设备端返回 int64_t，显式收窄避免隐式截断
+        // 1C2V (KERNEL_TYPE_MIX_AIC_1_2) 模式下：
+        // AIC 与同一物理核内的两个 AIV 共享相同的 GetBlockIdx()（即 core_idx_）；
+        // AIV 侧区分 Vector 0 与 Vector 1 必须使用 AscendC::GetSubBlockIdx() (返回 0 或 1)。
         core_idx_ = static_cast<uint32_t>(GetBlockIdx());
         if ASCEND_IS_AIV {
-            sub_core_idx_ = core_idx_ % 2;
-            core_idx_ /= 2;
+            sub_core_idx_ = static_cast<uint32_t>(AscendC::GetSubBlockIdx());
         } else {
-            sub_core_idx_ = 0;
+            sub_core_idx_ = 0u;
         }
 
         // 提取核心 tiling 常量
@@ -390,9 +391,9 @@ private:
                                      : Catlass::SageAttn::L1DoubleBankContract::KV_PONG_OFFSET;
     }
 
-    __aicore__ __gm__ uint8_t *StageStrip() const
+    __aicore__ inline __gm__ uint8_t *StageStrip() const
     {
-        return workspace_gm_ + static_cast<int64_t>(core_idx_) * STAGE_CORE_STRIDE;
+        return workspace_gm_ + static_cast<uint64_t>(core_idx_) * STAGE_CORE_STRIDE;
     }
 
     /**
@@ -861,7 +862,7 @@ private:
 #if SAGE_ATTN_DEVICE_COMPILE
     /**
      * A7 scale 条带桥（task/12 第四节；GM 暂存条带常量以 tiling.h 为唯一定义点）：
-     * V0 产出 scale → GetUserWorkspace 用户区按核条带（core_idx 折半后 × STAGE_CORE_STRIDE）
+     * V0 产出 scale → GetUserWorkspace 用户区按核条带（core_idx × STAGE_CORE_STRIDE）
      * → V1 以 MTE2 接入 UB 副本。GM 可见性序：V0 条带写以 S_MTE3/MTE3_S 双自配对排空后
      * 方随 Q_READY/KV_*_READY raise（LoadAndQuantizeQ/QuantizeAndStageKey/Value 设备分支），
      * 本侧一律在 wait QK_P_READY 之后读取（跨核 flag 链传递保序）。

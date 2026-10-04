@@ -56,9 +56,8 @@ SAGE_ATTN_SIM_OUT=/work/out/sa2_sim_out \
    `msprof op simulator`（缺 libascend_hal）与 `npusim record -s Ascend950`（同样
    落到 9589 栈）均可用，但直接以 env 驱动 `./sim_app` 最小可控，本 harness 采用之。
 3. **blockDim 语义**：MIX_AIC_1_2 下 blockDim = AIC 任务数（tiling.core_num_used）；
-   每任务硬件展开 1 AIC + 2 AIV，AIV 侧 `GetBlockIdx() = 2*aic_blk + sub`、
-   `GetSubBlockIdx() = sub`，与内核 `Init` 的 `core_idx_ = GetBlockIdx()/2` 约定一致
-   （探针实证：blockDim=1 时 AIV 两上下文为 (0,0)/(1,1)）。
+   每任务硬件展开 1 AIC + 2 AIV，AIC 与 AIV 侧 `GetBlockIdx()` 相同（等于 `core_idx_`），
+   AIV 侧以 `GetSubBlockIdx()` 区分 Vector 0 与 Vector 1。
 4. **rt 宿主 API**：camodel 的 `libruntime_camodel.so` 导出全量 `rt*` C ABI
    （rtSetDevice/rtMalloc/rtMemcpy/rtMemset/rtStreamCreate/rtStreamSynchronize/
    rtDeviceReset），harness 用 `extern "C"` 自声明直连，不依赖 acl 框 compelled 头。

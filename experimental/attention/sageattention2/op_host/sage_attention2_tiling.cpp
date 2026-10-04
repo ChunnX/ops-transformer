@@ -198,6 +198,11 @@ static ge::graphStatus TilingSageAttention2(gert::TilingContext *context)
             reserved = platform_ascendc::PlatformAscendC(context->GetPlatformInfo())
                            .GetLibApiWorkSpaceSize();
         }
+        // 确保分配的 workspace 大小至少为 tiling_data.core_num_used * STAGE_CORE_STRIDE，防止核间越界
+        const uint64_t min_stage_ws = static_cast<uint64_t>(tiling_data.core_num_used) * sage_attn::STAGE_CORE_STRIDE;
+        if (workspace_bytes < min_stage_ws) {
+            workspace_bytes = min_stage_ws;
+        }
         workspaces[0] = static_cast<size_t>(reserved + workspace_bytes);
     }
 

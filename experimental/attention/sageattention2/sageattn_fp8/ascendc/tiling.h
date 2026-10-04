@@ -75,6 +75,9 @@
 
 #if !defined(__CCE__) && !defined(__CCE_KT_TEST__)
 inline uint32_t GetBlockIdx() { return 0; }
+namespace AscendC {
+inline uint32_t GetSubBlockIdx() { return 0; }
+} // namespace AscendC
 #endif
 #endif
 

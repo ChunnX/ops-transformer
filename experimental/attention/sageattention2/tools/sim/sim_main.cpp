@@ -9,8 +9,8 @@
  *   aclrtLaunchKernelWithHostArgs 链路，由 camodel 栈（libascendcl 桩 +
  *   libruntime_camodel.so 的 *Impl 符号）承接。
  * - KERNEL_TYPE_MIX_AIC_1_2 下 blockDim = AIC 任务数（core_num_used）；每个任务
- *   1 AIC + 2 AIV，AIV 侧 GetBlockIdx = 2*aic_blk + sub、GetSubBlockIdx = sub，
- *   与内核 Init 的 core_idx_ = GetBlockIdx()/2 约定一致。
+ *   1 AIC + 2 AIV，AIC 与 AIV 侧 GetBlockIdx 相同（等于 core_idx_），AIV 侧以
+ *   GetSubBlockIdx() 区分 Vector 0 与 Vector 1。
  * - 运行环境：LD_LIBRARY_PATH 指向 cann-9.2.0-beta.1 camodel 栈目录（见
  *   run_sim_e2e.sh），CAMODEL_LOG_PATH 指向日志目录。
  *
