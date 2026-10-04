@@ -1152,7 +1152,7 @@ private:
     {
 #if SAGE_ATTN_DEVICE_COMPILE
         // DEFECT-F-1 重构：组粒度两阶段（组边界 quant::KScaleIndex 单点，
-        // 块内本地序号写 l1_k_scale——Data+Scale 相邻契约）
+        // 定档后经 GM StageStrip 暂存写供 V1 消费）
         const bool per_thread_k = (tiling_->qk_quant_gran == QUANT_GRAN_PER_THREAD);
         // M5：输入位型档位为编译期常量 kDtype（VF 调用模板实参，原 dtype_mode 形参删除）
         const uint32_t grp_per_blk = per_thread_k ? 4u : 1u;
@@ -1171,7 +1171,6 @@ private:
         LocalTensor<half> ub_in(TPosition::VECCALC, Catlass::SageAttn::Vector0UbBudget::GM_INPUT_PING_OFFSET, MAX_PACK_ROWS * d);
         LocalTensor<int8_t> ub_out(TPosition::VECCALC, Catlass::SageAttn::Vector0UbBudget::NZ_OUTPUT_OFFSET, d);
         LocalTensor<int8_t> l1_k(TPosition::B1, l1_dst_addr, block_n_ * d);
-        LocalTensor<float> l1_k_scale(TPosition::B1, l1_dst_addr + static_cast<uint32_t>(block_n_ * d), kKScaleSlotStride);
         const uint32_t has_km = (km_ptr != nullptr) ? 1u : 0u;
 
         if (has_km) {
@@ -1210,7 +1209,7 @@ private:
         // V 管写 → S 管读同步（DEFECT-G-1）
         Catlass::SageAttn::Sync<HardEvent::V_S>();
 
-        // B. 组归并（pair/块粒度，KScaleIndex 单点）+ 定档 + l1_k_scale 本地写出
+        // B. 组归并（pair/块粒度，KScaleIndex 单点）+ 定档
         //（P2-8：归并/定档保留标量，理由同 LoadAndQuantizeQ B 段——交织组散布写 +
         // quant 单点公式；amax 单次读出替代原条件真分支的二次 GetValue）
         for (uint32_t j = 0; j < block_k; ++j) {
@@ -1222,7 +1221,6 @@ private:
             const float amax = ub_k_scales.GetValue(s);
             const float scale = quant::FinalizeQkScale(amax, per_thread_k);
             ub_k_scales.SetValue(s, scale);
-            l1_k_scale.SetValue(s - grp_lo, scale);
         }
 
         // A7 V0（task/12 第五节第 3 条）：块解析 k_scale 暂存写——逐 token 展开写
