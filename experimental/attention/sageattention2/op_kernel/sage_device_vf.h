@@ -397,14 +397,19 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void BlockMaxAndSum
 
         // exp2 域 + 448· 放大（twin OnlineBlockExp2Sum 同式，收敛轮 F/DEFECT-F-2）：
         // cur_sum = Σ 2^(x-m)·448 = 448·Σ Exp((x-m)·ln2)；掩码哨兵 -1e30 经 Exp 下溢自然为 0
+        // CATLASS 950 MicroAPI ExpSub + MulDstAdd 指令级下沉：
+        // 1. max_val 预缩放为自然域 max_nat，内部循环用 ExpSub 熔断减法与指数本征指令；
+        // 2. MulDstAdd 单拍 FMA 硬件熔断 nat * FP8_E4M3_MAX 并入 sum_val 累加器。
+        RegTensor<float> max_nat, e4m3_max_reg;
+        Muls(max_nat, max_val, INV_LOG2E, full);
+        Duplicate(e4m3_max_reg, FP8_E4M3_MAX);
+
         for (uint32_t col = 0; col < block_n; col += 64) {
-            RegTensor<float> x, diff, nat;
+            RegTensor<float> x, x_nat, nat;
             LoadAlign(x, logits + col);
-            Sub(diff, x, max_val, full);
-            Muls(diff, diff, INV_LOG2E, full);
-            Exp(nat, diff, full);
-            Muls(nat, nat, FP8_E4M3_MAX, full);
-            Add(sum_val, sum_val, nat, full);
+            Muls(x_nat, x, INV_LOG2E, full);
+            ExpSub(nat, x_nat, max_nat, full);
+            MulDstAdd(sum_val, nat, e4m3_max_reg, full);
         }
         ReduceSum(sum_val, sum_val, full);
 
@@ -457,17 +462,15 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void UpdateOnlineSo
             // m_new = max(m_old, m_cur)
             Max(m_new, m_old, m_cur, full);
 
-            // alpha_old = exp2(m_old - m_new) = exp((m_old - m_new) * ln2)
-            RegTensor<float> diff_old;
-            Sub(diff_old, m_old, m_new, full);
-            Muls(diff_old, diff_old, INV_LOG2E, full);
-            Exp(alpha_old, diff_old, full);
-
-            // alpha_cur = exp2(m_cur - m_new) = exp((m_cur - m_new) * ln2)
-            RegTensor<float> diff_cur, alpha_cur;
-            Sub(diff_cur, m_cur, m_new, full);
-            Muls(diff_cur, diff_cur, INV_LOG2E, full);
-            Exp(alpha_cur, diff_cur, full);
+            // alpha_old = exp2(m_old - m_new) = exp((m_old - m_new) * ln2) (ExpSub 熔断)
+            // alpha_cur = exp2(m_cur - m_new) = exp((m_cur - m_new) * ln2) (ExpSub 熔断)
+            RegTensor<float> m_old_nat, m_cur_nat, m_new_nat;
+            RegTensor<float> alpha_cur;
+            Muls(m_old_nat, m_old, INV_LOG2E, full);
+            Muls(m_cur_nat, m_cur, INV_LOG2E, full);
+            Muls(m_new_nat, m_new, INV_LOG2E, full);
+            ExpSub(alpha_old, m_old_nat, m_new_nat, full);
+            ExpSub(alpha_cur, m_cur_nat, m_new_nat, full);
 
             // d_new = d_old * alpha_old + d_cur * alpha_cur (fused via MulDstAdd)
             Mul(d_new, d_old, alpha_old, full);
@@ -521,20 +524,18 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void SoftmaxProbRow
     using namespace AscendC::MicroAPI;
     auto full = CreateMask<float, MaskPattern::ALL>();
     static constexpr CastTrait toFp8{RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
-    RegTensor<float> ln2_reg;
-    Duplicate(ln2_reg, INV_LOG2E);
     for (uint32_t r = 0; r < rows; ++r) {
-        RegTensor<float> m_reg;
+        RegTensor<float> m_reg, m_nat;
         LoadAlign<float, LoadDist::DIST_BRC_B32>(m_reg, running_max + r);
+        Muls(m_nat, m_reg, INV_LOG2E, full);
         __ubuf__ float* logits = logits_base + r * block_n;
         __ubuf__ float8_e4m3_t* out_p = out_p_base + r * block_n;
         for (uint32_t j = 0; j < block_n; j += 64) {
-            RegTensor<float> logit_val, diff, exp_val;
+            RegTensor<float> logit_val, logit_nat, exp_val;
             RegTensor<float8_e4m3_t> packed;
             LoadAlign(logit_val, logits + j);
-            Sub(diff, logit_val, m_reg, full);
-            Mul(diff, diff, ln2_reg, full);
-            Exp(exp_val, diff, full);
+            Muls(logit_nat, logit_val, INV_LOG2E, full);
+            ExpSub(exp_val, logit_nat, m_nat, full);
             Muls(exp_val, exp_val, FP8_E4M3_MAX, full);
             Cast<float8_e4m3_t, float, toFp8>(packed, exp_val, full);
             StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(out_p + j, packed, full);
@@ -571,14 +572,16 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void MergePvPartial
             RegTensor<float> partial, vs, o;
             LoadAlign(partial, partial_row + c);
             LoadAlign(vs, v_scale_ptr + c);
-            Mul(partial, partial, vs, full);
+            LoadAlign(o, o_row + c);
             if (fp16_round != 0u) {
+                Mul(partial, partial, vs, full);
                 RegTensor<half> rounded;
                 Cast<half, float, toFp16>(rounded, partial, full);
                 Cast<float, half, toFp32>(partial, rounded, full);
+                Add(o, o, partial, full);
+            } else {
+                MulDstAdd(o, partial, vs, full);
             }
-            LoadAlign(o, o_row + c);
-            Add(o, o, partial, full);
             StoreAlign(o_row + c, o, full);
         }
     }
