@@ -1,6 +1,6 @@
 // 2026-10-03 自 sageattn_fp8/ascendc/sage_attn_kernel.cpp 物理迁移至本路径
 // （CANN opc autogen 打包约定：优先解析 <op>/op_kernel/<opFile>.cpp，布局 A；
-// sageattn_fp8/ascendc/ 仍保留 tiling/softmax/accum/sync 等头文件与宿主孪生实现）。
+// sageattn_fp8/ascendc/ 仍保留 tiling/softmax/sync 等头文件与宿主孪生实现）。
 
 // 注意：本文件位于 op_kernel/，包含 ascendc/ 头必须用相对路径——
 // 裸 "tiling.h" 会按 -I 顺序误解析到 CANN 的 adv_api/matmul/tiling.h
@@ -143,7 +143,7 @@ using Catlass::SageAttn::Vector1UbBudget;
  *   ub_softmax_offset 读取约定一致）；
  * - o_accum：V1 UB O 主累加器（[GQA 行][d_pad] fp32，Vector1UbBudget::O_ACCUM 契约归属 V1）；
  * - logits：当前拍反量化 logit（[GQA 行][block_n]，exp2 域，含 causal 掩码哨兵 -1e30）；
- * - q/k/v_scales：本任务 (b, hkv) 的量化 scale（q 按 GQA 头分段 [g*2048+组号]）；
+ * - q/k/v_scales：本任务 (b, hkv) 的量化 scale（q 按 GQA 头分段 [g*kQScaleSlotStride+组号]）；
  * - v_means：smooth_v 的 per-channel 均值（V0 预扫产出，PV 反量化时加回，[通道]）。
  * GQA 行 = g * cur_q_len + i（g 为 KV 头内 Q 头序号），上限 MAX_PACK_ROWS。
  */
@@ -932,7 +932,7 @@ private:
      *   scale = amax/INT8_QUANT_MAX，RoundNearestEven 舍入；
      * - 保持除法运算（val / scale）以对齐 GPU/孪生 ULP 舍入轨迹（禁止换乘倒数）；
      * - GQA 聚合沿 M 维堆叠行：逻辑行 r = g * cur_q_len + i（g 为 KV 头内 Q 头序号），
-     *   Q scale 按头分段存放 sim q_scales[g*2048 + 组号]（KT 基线的 scale 暂存；
+     *   Q scale 按头分段存放 sim q_scales[g*kQScaleSlotStride + 组号]（KT 基线的 scale 暂存；
      *   L1 内 scale 摆放随 tiling.l1_q_scale_offset 于向量化 pass 落地），L1 内 [行][d] 摆放；
      * - smooth_k 的行级 lse_correction 不在核内计算：桥接层按开源契约
      *   （core.py:593-597，fp32 matmul q·km_broadcast^T）算好经 lseCorrection GM
