@@ -41,9 +41,11 @@
 #if SAGE_ATTN_KERNEL_API
 #include "kernel_operator.h"
 #if SAGE_ATTN_DEVICE_COMPILE
-// canonical 注册三件套：正式出包由 ops-transformer 构建体系注入同义宏；
+// canonical 注册宏：正式出包由 ops-transformer 构建体系注入同义宏；
 // 独立 bisheng 编译门（run.sh kernel）经此处 #ifndef 定义补齐，
 // 语义对齐 cmake/scripts/utest/gen_tiling_data_stub.py 的构建体系形态。
+// 注意：GetUserWorkspace 为 CANN 官方 AscendC API（kernel_operator.h），
+// 硬件实现会自动跳过 CANN 系统保留空间，严禁在此使用宏劫持覆盖。
 #ifndef REGISTER_TILING_DEFAULT
 #define REGISTER_TILING_DEFAULT(tiling_struct)
 #endif
@@ -55,9 +57,6 @@
             reinterpret_cast<uint8_t *>(&tiling_data)[sage_tiling_i] = tiling_arg[sage_tiling_i]; \
         }                                                                                         \
     } while (0)
-#endif
-#ifndef GetUserWorkspace
-#define GetUserWorkspace(workspace) (workspace)
 #endif
 #endif
 using namespace AscendC;
@@ -2047,7 +2046,7 @@ __global__ __aicore__ void sage_attention2(
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     REGISTER_TILING_DEFAULT(sage_attn::SageAttention2TilingData);
     GET_TILING_DATA_WITH_STRUCT(sage_attn::SageAttention2TilingData, t, tiling);
-    __gm__ uint8_t *user_workspace = GetUserWorkspace(workspace);
+    __gm__ uint8_t *user_workspace = AscendC::GetUserWorkspace(workspace);
     sage_attn::SageAttnLaunch::Run<INPUT_DTYPE>(query, key, value, keyMean, lseCorrection,
                                                 attentionOut, softmaxLse, user_workspace, &t);
 }
@@ -2070,12 +2069,12 @@ extern "C" __global__ __aicore__ void sage_attention2(
 
     // canonical 注册宏（对齐仓内规范；宿主与 KT 编译环境提供等价模拟宏）：
     // REGISTER_TILING_DEFAULT 登记 TilingData 类型；GET_TILING_DATA_WITH_STRUCT 把
-    // GM tiling 一次性拷入核内结构体（免 __gm__ 逐字段远端读）；GetUserWorkspace
+    // GM tiling 一次性拷入核内结构体（免 __gm__ 逐字段远端读）；AscendC::GetUserWorkspace
     // 取得跳过 CANN 系统 workspace 前缀后的用户区指针。
 #if SAGE_ATTN_DEVICE_COMPILE
     REGISTER_TILING_DEFAULT(sage_attn::SageAttention2TilingData);
     GET_TILING_DATA_WITH_STRUCT(sage_attn::SageAttention2TilingData, t, tiling);
-    __gm__ uint8_t *user_workspace = GetUserWorkspace(workspace);
+    __gm__ uint8_t *user_workspace = AscendC::GetUserWorkspace(workspace);
     // M5：裸 bisheng 形态按 tiling.input_dtype 运行时一次分派到模板实例
     //（分派在任务 prologue，热路径零位型分支；canonical 模板档位出包时由
     // 上方模板入口直连，无此运行时归一）

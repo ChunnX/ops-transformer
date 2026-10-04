@@ -20,7 +20,8 @@ ACLNN C 接口唯一实现在 `../op_api/aclnn_sage_attention2.cpp`，字符串�
 - 参数校验唯一点：闭式计算核心内的域校验（head_dim、GQA 整除、gran/accum/layout
   枚举域、causal 要求 Sq==Sk、sm_scale 非正值拒绝）+ 资源台账 fail-fast
   （`InspectTilingPlan`）。Python 边界（`error_check`）与 op_api 白名单按同一域拒绝，
-  不在第三处复制。
+  不在第三处复制；sm_scale 例外分层——Python 拒非正值与非有限值，op_api 仅拒
+  非有限值，`0`/缺省经 TilingImpl 折叠为默认值、负值由 TilingImpl 报错。
 
 ## 3. 两段式 C 接口（交付态签名）
 
@@ -31,8 +32,9 @@ ACLNN C 接口唯一实现在 `../op_api/aclnn_sage_attention2.cpp`，字符串�
   `qkQuantGran`（`"per_thread"`/`"per_warp"`）、`pvAccumDtype`
   （`"fp32"`/`"fp32+fp32"`/`"fp32+fp16"`），顺序与 `op_host/sage_attention2_def.cpp`
   注册的 7 项属性一致；
-- `smScale` 冻结语义：默认 `1/sqrt(head_dim)` 仅由上层桥接在 `sm_scale=None` 时
-  折叠后传入，C 入口收到非正值/非有限值返回 `ACLNN_ERR_PARAM_INVALID`；
+- `smScale` 冻结语义：默认 `1/sqrt(head_dim)` 由上层桥接在 `sm_scale=None` 时
+  折叠后传入，C 入口收到非有限值返回 `ACLNN_ERR_PARAM_INVALID`（`0`/缺省经
+  TilingImpl 折叠为该默认，负值由 TilingImpl 报错拒绝）；
 - 数值编码（0=NHD/1=HND、2=per_warp/3=per_thread、0/1/2 累加档）仅供 Host 内部
   消费（TilingImpl/设备核），经本目录 `sage_attn_proto.h` 的 `*CodeFromString`
   唯一映射产生，禁止作为跨语言 ABI 形参再引入。

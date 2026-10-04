@@ -151,8 +151,10 @@ inline aclnnStatus ComputeHostTiling(
     tiling_out.smooth_v = (smoothV && pvAccumDtype == PV_ACCUM_FP32) ? 1 : 0;
 
     // 7. 预计算与常量折叠数值字段 (8 字节)
-    // sm_scale 冻结语义：默认值 1/sqrt(d) 仅由上层桥接在
-    // Python sm_scale=None 时折叠后传入；C 接口收到 0 或负值一律判非法报错
+    // sm_scale 冻结语义：默认值 1/sqrt(d) 由上层桥接在
+    // Python sm_scale=None 时折叠后传入；gert 路径 0/缺省已由 TilingImpl 折叠、
+    // 负值已被上游拒绝，本检查覆盖直连调用方（tests/test_aclnn_host.cpp）
+    // 与漏网的非有限值
     if (!(smScale > 0.0) || !std::isfinite(smScale)) {
         return ACLNN_ERR_PARAM_INVALID;
     }
