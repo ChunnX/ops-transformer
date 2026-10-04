@@ -209,7 +209,6 @@ public:
     {
 #if SAGE_ATTN_DEVICE_COMPILE
         CrossCoreWait(CrossCoreDirection::CUBE_TO_VEC1, CrossCoreFlags::FLAG_PV_PARTIAL_READY);
-        Catlass::SageAttn::Sync<HardEvent::S_V>();
 #endif
     }
 
@@ -242,7 +241,6 @@ public:
     {
 #if SAGE_ATTN_DEVICE_COMPILE
         CrossCoreWait(CrossCoreDirection::CUBE_TO_VEC1, CrossCoreFlags::FLAG_QK_P_READY);
-        Catlass::SageAttn::Sync<HardEvent::S_V>();
 #endif
     }
 
@@ -276,7 +274,6 @@ public:
     {
 #if SAGE_ATTN_DEVICE_COMPILE
         CrossCoreWait(CrossCoreDirection::CUBE_TO_VEC1, CrossCoreFlags::FLAG_PV_O_DONE);
-        Catlass::SageAttn::Sync<HardEvent::S_V>();
 #endif
     }
 
