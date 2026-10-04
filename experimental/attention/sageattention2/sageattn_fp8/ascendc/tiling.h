@@ -45,37 +45,6 @@
 #endif
 #endif
 
-#if !SAGE_ATTN_DEVICE_COMPILE
-#ifndef __global__
-#define __global__
-#endif
-
-#ifndef __gm__
-#define __gm__
-#endif
-
-#ifndef KERNEL_TASK_TYPE_DEFAULT
-#define KERNEL_TASK_TYPE_DEFAULT(x)
-#endif
-
-#ifndef KERNEL_TYPE_MIX_AIC_1_2
-#define KERNEL_TYPE_MIX_AIC_1_2 0
-#endif
-
-#ifndef ASCEND_IS_AIC
-#define ASCEND_IS_AIC (true)
-#endif
-
-#ifndef ASCEND_IS_AIV
-#define ASCEND_IS_AIV (false)
-#endif
-
-// 宿主串行仿真桩：GetBlockIdx 恒 0（单核串行跑满全部任务），GetSubBlockIdx 恒 0
-inline uint32_t GetBlockIdx() { return 0; }
-namespace AscendC {
-inline uint32_t GetSubBlockIdx() { return 0; }
-} // namespace AscendC
-#endif
 
 namespace sage_attn {
 

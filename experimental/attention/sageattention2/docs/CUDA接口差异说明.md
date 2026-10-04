@@ -33,7 +33,7 @@ NPU 侧两种粒度是两套独立存在的量化内核，不是兼容别名；�
 
 ## S_FP8_OFFSET：P 矩阵按 log2(448) 精确放大
 
-- NPU 语义：Softmax 全程在 exp2 域计算，running max 记为 $m$；P 矩阵按 $P = 2^{\text{score} - m + 8.807355}$ 生成，其中偏置常数 $8.807355 = \log_2 448$（`S_FP8_OFFSET`，唯一定义位于 `./sageattn_fp8/ascendc/tiling.h`；设备侧 P 量化注入点为 `./op_kernel/sage_device_vf.h` 的 `SoftmaxProbRowsVF` 与宿主基线 `./op_kernel/sageattention2.cpp` 的 `ComputeSoftmaxProbability`——448· 放大经乘法恒启用，LSE 出口恒以该常量补扣）
+- NPU 语义：Softmax 全程在 exp2 域计算，running max 记为 $m$；P 矩阵按 $P = 2^{\text{score} - m + 8.807355}$ 生成，其中偏置常数 $8.807355 = \log_2 448$（`S_FP8_OFFSET`，唯一定义位于 `./sageattn_fp8/ascendc/tiling.h`；设备侧 P 量化注入点为 `./op_kernel/sage_device_vf.h` 的 `SoftmaxProbRowsVF` 与宿主基线 `./op_kernel/attention_vec1_softmax.h` 的 `ComputeSoftmaxProbability`——448· 放大经乘法恒启用，LSE 出口恒以该常量补扣）
 - 效果：P 落在 $[0, 448]$，直接按 e4m3 饱和量化，P 的量化 scale 固定为单位 1，省去逐元素乘 scale 的 Vector 开销
 - 分母一致性：softmax 分母按同一放大尺度在线累计，归一化经 `OnlineSoftmaxTransformer::GetFinalInvDenominator`（O 与分母同处 448· 放大域，除法处放大精确相消，见 `./sageattn_fp8/ascendc/online_softmax.h`）；偏置抵消由 `./tests/test_kernel_twin.py` 的 golden 交叉验证覆盖
 - 与 CUDA 的关系：上游 FP8 路径同样通过 448 平移/缩放方案把概率幅度送入 e4m3 表示域（见上游 `csrc/qattn/attn_utils.cuh`），数值设计目标一致；但上游在 FP16 域做 max 平移后再换算，本实现在 exp2 域以单次加法注入偏置，舍入轨迹不同，不承诺逐位一致
@@ -115,7 +115,7 @@ NPU 侧两种粒度是两套独立存在的量化内核，不是兼容别名；�
 ## 源码依据
 
 - NPU 量化内核与舍入：`./quant/quant_int8.cpp`（half-away 与 RNE 两条路径）、`./quant/quant_fp8.cpp`（V e4m3 与 vm 统计）、`./sageattn_fp8/ascendc/tiling.h`（`S_FP8_OFFSET`、`SCALE_MAX_*` 等常量唯一定义）、`./quant/quant_common.h`（`QScaleCount`/`KScaleCount` 分组数公式）、`./quant/quant_host.h`（using 引入常量并提供 `GetVScaleMax`）
-- 设备侧累加与偏置：`./sageattn_fp8/ascendc/online_softmax.h`（`GetFinalInvDenominator` 归一化）、`./op_kernel/sageattention2.cpp`（`ComputeSoftmaxProbability` 注入偏置）、`./op_kernel/sage_device_vf.h`（设备态 `SoftmaxProbRowsVF` / `FinalizeRowVF`）
+- 设备侧累加与偏置：`./sageattn_fp8/ascendc/online_softmax.h`（`GetFinalInvDenominator` 归一化）、`./op_kernel/attention_vec1_softmax.h`（`ComputeSoftmaxProbability` 注入偏置）、`./op_kernel/sage_device_vf.h`（设备态 `SoftmaxProbRowsVF` / `FinalizeRowVF`）
 - Tiling 契约：`./sageattn_fp8/ascendc/tiling.h`（`PvAccumDtype`、`QkQuantGran`、`workspace_vm_offset`）
 - 接口与告警语义：`./python/sageattention2/error_check.py`（`handle_smooth_v`、档位白名单）、`./python/sageattention2/dispatch.py`（`per_thread`/`per_warp` 双实现参考实现）
 - 数值期望值：仓库根 golden 数据集的 TC-02（量化粒度）、TC-03（smooth_v/no_smooth_k）、TC-09（长序列）系列

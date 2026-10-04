@@ -21,9 +21,6 @@ if (BUILD_OPEN_PROJECT)
         target_sources(op_kernel_binary PRIVATE ${SAGE_ATTN_KERNEL_SOURCES})
         target_include_directories(op_kernel_binary PRIVATE ${SAGE_ATTN_KERNEL_INCLUDE_DIRS})
     endif()
-elseif(NOT TARGET sageattention2_kernel)
-    # 独立构建支持 (在容器内或配合官方 CATLASS 毕昇编译器直接编译设备核)
-    add_library(sageattention2_kernel OBJECT ${SAGE_ATTN_KERNEL_SOURCES})
-    target_include_directories(sageattention2_kernel PUBLIC ${SAGE_ATTN_KERNEL_INCLUDE_DIRS})
-    target_compile_features(sageattention2_kernel PUBLIC cxx_std_17)
 endif()
+# 独立构建 fallback 目标已随 2026-10-04 死代码清扫删除：设备核统一经 run.sh kernel /
+# build_opp.sh 直连 bisheng 交叉编译，全仓无 cmake 独立构建入口（容器-only BiSheng 纪律）。

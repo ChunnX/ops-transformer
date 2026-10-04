@@ -57,13 +57,6 @@ if (NOT BUILD_OPS_RTY_KERNEL AND COMMAND add_modules_sources)
         OP_API_INDEPENDENT ON
         OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api)
 endif()
-
-# 支持独立构建 Host 共享库以供本地单测与集成测试
-if(NOT TARGET op_host_aclnn AND NOT TARGET sageattention2_host)
-    add_library(sageattention2_host SHARED
-        ${SAGE_ATTN_HOST_CORE_SOURCES}
-        ${SAGE_ATTN_QUANT_SOURCES}
-    )
-    target_include_directories(sageattention2_host PUBLIC ${SAGE_ATTN_HOST_INCLUDE_DIRS})
-    target_compile_features(sageattention2_host PUBLIC cxx_std_17)
-endif()
+# 独立构建 Host 共享库 fallback 已随 2026-10-04 死代码清扫删除：宿主单测统一经
+# run.sh host 直连 BiSheng 宿主模式编译（tests/_cxx.py 唯一定义点），
+# 全仓无 cmake 独立构建入口（容器-only BiSheng 纪律，无宿主编译器代偿路径）。

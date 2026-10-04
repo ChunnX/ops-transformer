@@ -5,8 +5,9 @@
  *        的 SAGEATTN_FORCE_* / SAGEATTN_TUNE_CASE 覆盖钩子驱动，见
  *        aclnn/sage_attn_host_tiling.h 门控注释）
  * \note 条目数值（m_per_core/block_n/k_step/use_die_grouped）严禁手工修改；
- *       仅消费调优值的四个字段保留（零调用字段已随 2026-10-04 清扫删除：
- *       skip_scale_tau / causal_early_exit / expected_speedup 与 TunedShapeKey）
+ *       仅消费调优值的四个字段与查询/匹配接口保留（零调用符号已随
+ *       2026-10-04 两轮清扫删除：skip_scale_tau / causal_early_exit /
+ *       expected_speedup / TunedShapeKey / kNumTunedEntries）
  */
 
 #ifndef SAGE_ATTN_AUTOTUNE_TILING_BANK_H
@@ -14,7 +15,6 @@
 #pragma once
 
 #include <cstdint>
-#include <cstddef>
 #include <string_view>
 
 namespace sage_attn {
@@ -37,8 +37,6 @@ static constexpr TunedTilingEntry kAscend950TunedBank[] = {
     {"P-06", 32u, 128u, 16u, true},
     {"P-07", 32u, 128u, 16u, true},
 };
-
-inline constexpr size_t kNumTunedEntries = sizeof(kAscend950TunedBank) / sizeof(kAscend950TunedBank[0]);
 
 [[nodiscard]] inline const TunedTilingEntry* QueryTunedTiling(std::string_view case_id) {
     for (const auto& e : kAscend950TunedBank) {
