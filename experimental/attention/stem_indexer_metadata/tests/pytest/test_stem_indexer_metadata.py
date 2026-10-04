@@ -13,6 +13,7 @@
 import torch
 import torch_npu
 import torchair
+import numpy as np
 import torch.nn as nn
 import npu_ops_transformer
 import pandas as pd
