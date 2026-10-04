@@ -67,8 +67,7 @@ inline void EnsureCannOpapiLoaded()
             ReleaseExecCommonCtx();                                                                        \
             return api_ret;                                                                                \
         };                                                                                                 \
-        int api_ret = acl_call();                                                                          \
-        TORCH_CHECK(api_ret == 0, "SageAttention2 aclnn launch failed: ", api_ret);                        \
+        RunAclCall("aclnnSageAttention2", acl_call);                                                       \
         UnInitExecCommonCtx();                                                                             \
     } while (false)
 #endif
