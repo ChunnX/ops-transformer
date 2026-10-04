@@ -544,6 +544,20 @@ public:
         output_.FinalizeAndStore(ctx_, softmax_.GetRowStates());
     }
 
+    __aicore__ inline __attribute__((always_inline)) void TestVec0NormalProcess()
+    {
+        if (!is_active_core_) return;
+        vec0_.Process(ctx_);
+    }
+
+    __aicore__ inline __attribute__((always_inline)) void TestCubeVec0Handshake()
+    {
+        if (!is_active_core_) return;
+        CubeBlockParams p{ctx_.TotalRows(), ctx_.block_n, ctx_.d};
+        cube_.TestProcessWithVec0(p, ctx_.active_kv_blocks, ctx_.tiling->l1_q_offset,
+                                 SlotV1Dot32::Offset(), SlotV1PvPartial::Offset());
+    }
+
 private:
     TaskContext ctx_;
     uint64_t task_end_{0};
