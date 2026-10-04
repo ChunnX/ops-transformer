@@ -348,10 +348,9 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void DequantMaskLog
 
             // Chunk 级态 3：混合边界，复用 CATLASS CreateMask 与 UpdateMask 动态尾块硬件掩码生成
             uint32_t tailN = bound_k - chunk_start;
-            MaskReg pregTailN = UpdateMask<uint32_t>(tailN);
-            RegTensor<float> masked_val;
-            Select(masked_val, val, neg_inf, pregTailN);
-            StoreAlign(logits_row + j, masked_val, full);
+            MaskReg pregTailN = UpdateMask<float>(tailN);
+            Select(val, val, neg_inf, pregTailN);
+            StoreAlign(logits_row + j, val, full);
         }
     }
 }
@@ -798,9 +797,9 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void FinalizeRowVF(
 /**
  * 8. UB float 区广播填充（P2-8 标量化收尾：scale 组清零 / STAGE 条带零填充等整区
  * 同值写的单点）：Duplicate 常量后按 64-lane chunk StoreAlign 写对齐段；
- * 尾部 ≥8 float 的 2 的幂段（32/16/8 float，均为 32 字节整数倍）以对齐掩码 StoreAlign 写出；
- * 尾部 <8 float（1~7 float，非 32 字节对齐）严禁使用 StoreAlign，转由 StoreUnAlign /
- * StoreUnAlignPost 写入，彻底根除非 32 字节对齐硬件 340 异常。
+ * 尾部 ≥8 float 且满足 32 字节对齐段通过 CATLASS UpdateMask<float>(rem_aligned) 动态硬件掩码 StoreAlign 写出；
+ * 尾部 <8 float（1~7 float，非 32 字节对齐）转由 MicroAPI StoreUnAlign / StoreUnAlignPost 写入，
+ * 彻底根除非 32 字节对齐硬件 340 异常，且零遗漏任意尾部元素。
  */
 __simd_vf__ __aicore__ inline __attribute__((always_inline)) void FillF32VF(__ubuf__ float* dst, float value, uint32_t count) {
     using namespace AscendC;

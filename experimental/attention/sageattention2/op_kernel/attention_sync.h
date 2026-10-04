@@ -169,7 +169,7 @@ public:
      * 集成 CATLASS CrossCoreFlagWithReverse 硬件队深 15 级防锁死安全防护：
      * 模 15 边界（(k + 1) % MAX_CROSS_CORE_SYNC_DEPTH == 0）等待 Cube 反向确认 ACK，解除单向长流累积。
      */
-    __aicore__ inline __attribute__((always_inline)) static void Vec0SignalKvReady(bool is_ping, uint32_t k = 0)
+    __aicore__ inline __attribute__((always_inline)) static void Vec0SignalKvReady(bool is_ping, uint32_t k)
     {
 #if SAGE_ATTN_DEVICE_COMPILE
         Catlass::SageAttn::Sync<HardEvent::MTE3_MTE2>();
