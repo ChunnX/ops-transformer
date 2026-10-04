@@ -558,6 +558,8 @@ public:
                                  SlotV1Dot32::Offset(), SlotV1PvPartial::Offset());
     }
 
+    __aicore__ inline const TaskContext &GetContext() const { return ctx_; }
+
 private:
     TaskContext ctx_;
     uint64_t task_end_{0};

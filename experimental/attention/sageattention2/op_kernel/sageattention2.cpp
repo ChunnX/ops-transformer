@@ -9,7 +9,7 @@
 #include "sage_attention2_template_tiling_key.h"
 
 #if SAGE_ATTN_DEVICE_COMPILE
-#define DEBUG_PHASE_6A 1
+#define DEBUG_PHASE_6B 1
 
 template <class ByteCountT>
 __inline__ __attribute__((always_inline)) __aicore__ void InitTilingDataHelper(
@@ -54,18 +54,33 @@ extern "C" __global__ __aicore__ void sage_attention2(
     GET_TILING_DATA_WITH_STRUCT(sage_attn::SageAttention2TilingData, t, tiling);
     AscendC::SetSysWorkspaceForce(workspace);
     __gm__ uint8_t *user_ws = workspace + AscendC::RESERVED_WORKSPACE;
-#if defined(DEBUG_PHASE_6A)
+#if defined(DEBUG_PHASE_6B)
     // 实例化内核并执行 Init
     sage_attn::SageAttnKernel<sage_attn::kTplDtypeFp16> kernel;
     kernel.Init(query, key, value, attentionOut, softmaxLse, user_ws, &t);
-    // 纯信号测试：Vector 0 触发 Q_READY 并等待 KV_PING_FREE；Cube 等待 Q_READY 并触发 KV_PING_FREE
+    // 纯循环信号握手测试：Cube 与 Vector 0 走完完整的 Q 和 KV_READY/FREE 握手循环
+    uint32_t active_kv_blocks = kernel.GetContext().active_kv_blocks;
     if ASCEND_IS_AIC {
         sage_attn::AttentionSync::CubeWaitQReady();
-        sage_attn::AttentionSync::CubeReleaseKvFree(true);
+        for (uint32_t k = 0; k < active_kv_blocks; ++k) {
+            bool is_ping = ((k % 2) == 0);
+            sage_attn::AttentionSync::CubeWaitKvReady(is_ping, k);
+            sage_attn::AttentionSync::CubeReleaseKvFree(is_ping);
+        }
     } else {
         if (AscendC::GetSubBlockIdx() == 0) {
             sage_attn::AttentionSync::Vec0SignalQReady();
-            sage_attn::AttentionSync::Vec0DrainKvPingFree();
+            for (uint32_t k = 0; k < active_kv_blocks; ++k) {
+                bool is_ping = ((k % 2) == 0);
+                sage_attn::AttentionSync::Vec0WaitKvFree(k, is_ping);
+                sage_attn::AttentionSync::Vec0SignalKvReady(is_ping, k);
+            }
+            if (active_kv_blocks >= 1) {
+                sage_attn::AttentionSync::Vec0DrainKvPingFree();
+            }
+            if (active_kv_blocks >= 2) {
+                sage_attn::AttentionSync::Vec0DrainKvPongFree();
+            }
         }
     }
     return;
