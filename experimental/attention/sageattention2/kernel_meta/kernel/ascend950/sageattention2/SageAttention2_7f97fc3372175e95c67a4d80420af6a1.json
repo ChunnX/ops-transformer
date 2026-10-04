@@ -18,7 +18,7 @@
   null,
   null
  ],
- "sha256": "33c7114fd1bd434927f4909c7303fd18cc07de88c57ff3304c4c0d8e1c820d33",
+ "sha256": "3262ddf7decd6c3e8175eb5900d62ceea38b0e8634308f3fb1056161b7b728b3",
  "workspace": {
   "num": 1,
   "size": [
@@ -30,11 +30,18 @@
  },
  "kernelList": [
   {
-   "tilingKey": 0,
+   "tilingKey": 1,
    "kernelType": "MIX_AIC",
    "crossCoreSync": 1,
    "taskRation": "1:2",
-   "kernelName": "SageAttention2_7f97fc3372175e95c67a4d80420af6a1_0"
+   "kernelName": "SageAttention2_7f97fc3372175e95c67a4d80420af6a1_1"
+  },
+  {
+   "tilingKey": 2,
+   "kernelType": "MIX_AIC",
+   "crossCoreSync": 1,
+   "taskRation": "1:2",
+   "kernelName": "SageAttention2_7f97fc3372175e95c67a4d80420af6a1_2"
   }
  ],
  "taskRation": "tilingKey",
