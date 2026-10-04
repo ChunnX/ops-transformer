@@ -76,6 +76,8 @@
 inline uint32_t GetBlockIdx() { return 0; }
 namespace AscendC {
 inline uint32_t GetSubBlockIdx() { return 0; }
+inline void SetSysWorkspaceForce(uint8_t *workspace) { (void)workspace; }
+constexpr size_t RESERVED_WORKSPACE = 16 * 1024 * 1024;
 } // namespace AscendC
 #endif
 #endif
