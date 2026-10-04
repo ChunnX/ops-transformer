@@ -435,3 +435,37 @@ TEST_F(MoeTokenUnpermuteWithEpGradInferShape, MoeTokenUnpermuteWithEpGrad_infers
                                                       {{"padded_mode", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}});
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_FAILED);
 }
+
+TEST_F(MoeTokenUnpermuteWithEpGradInferShape, MoeTokenUnpermuteWithEpGrad_infershape_dynamic_batch_dim)
+{
+    gert::InfershapeContextPara infershapeContextPara(
+        "MoeTokenUnpermuteWithEpGrad",
+        {{{{-1, 64}, {-1, 64}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{{-1}, {-1}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{-1, 64}, {-1, 64}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{{-1, 3}, {-1, 3}}, ge::DT_BF16, ge::FORMAT_ND}},
+        {
+            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
+        },
+        {{"padded_mode", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}});
+    std::vector<std::vector<int64_t>> expectOutputShape = {{-1, 64}, {-1, 3}};
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
+}
+
+TEST_F(MoeTokenUnpermuteWithEpGradInferShape, MoeTokenUnpermuteWithEpGrad_infershape_dynamic_hidden_dim)
+{
+    gert::InfershapeContextPara infershapeContextPara(
+        "MoeTokenUnpermuteWithEpGrad",
+        {{{{10, -1}, {10, -1}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{{30}, {30}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{30, -1}, {30, -1}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{{10, 3}, {10, 3}}, ge::DT_BF16, ge::FORMAT_ND}},
+        {
+            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
+        },
+        {{"padded_mode", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}});
+    std::vector<std::vector<int64_t>> expectOutputShape = {{30, -1}, {10, 3}};
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
+}

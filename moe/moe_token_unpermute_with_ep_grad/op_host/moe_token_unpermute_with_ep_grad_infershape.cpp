@@ -61,8 +61,8 @@ static graphStatus MoeTokenUnpermuteWithEpGrad(gert::InferShapeContext* context)
                 permutedTokensShape->GetDimNum(), rowIdMapShape->GetDimNum());
             return ge::GRAPH_FAILED;
         }
-        uint32_t inputGradDim0 = rowIdMapShape->GetDim(DIM_0);
-        uint32_t hiddenSize = unpermutedOutputDShape->GetDim(DIM_1);
+        int64_t inputGradDim0 = rowIdMapShape->GetDim(DIM_0);
+        int64_t hiddenSize = unpermutedOutputDShape->GetDim(DIM_1);
         permutedTokensGradShape->SetDimNum(OUTPUT_INPUTGRAD_DIMNUM);
         permutedTokensGradShape->SetDim(DIM_0, inputGradDim0);
         permutedTokensGradShape->SetDim(DIM_1, hiddenSize);
