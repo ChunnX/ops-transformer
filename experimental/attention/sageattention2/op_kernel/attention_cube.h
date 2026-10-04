@@ -45,31 +45,15 @@ public:
 
         // 加载 Q 分块至 L0A: (rows, d)
         qk_mmad.LoadL0A(l1_q_offset, params.rows, params.d);
+        Catlass::SageAttn::Sync<HardEvent::MTE1_M>();
 
         // 延迟一拍宽流水主循环
         for (uint32_t k = 0; k < active_kv_blocks; ++k) {
             bool is_ping = ((k % 2) == 0);
             uint32_t l1_kv_addr = is_ping ? SlotL1KvPing::Offset() : SlotL1KvPong::Offset();
 
-            // 1. 等待 V0 当前 KV 分块量化就绪
-            AttentionSync::CubeWaitKvReady(is_ping);
-
-            // 2. 拍 k（Cube）：INT8 QK^T MMAD，加载 K 分块至 L0B: (block_n, d)
-            qk_mmad.LoadL0B(l1_kv_addr, params.block_n, params.d);
-            qk_mmad.Compute(true);
-
-            // 注意：严禁在此处立即释放 kv_free！
-            // l1_kv_addr 中同时驻留 K 与 V，V 必须在下一拍 (prev_k = k - 1) 由
-            // pv_mmad.LoadL0B 读取完毕后才能被覆写。过早归还 kv_free 会导致 V0 在
-            // beat k+2 提前覆写同奇偶 L1 槽，破坏尚未被 Cube 读取的 V 矩阵。
-            // 归还许可延迟至下方 PV MMAD 处 (prev_kv_free) 与 Drain 拍 (last_kv_free)。
-
-            // 3. QK dot32 裸搬 UB
-            AttentionSync::CubeWaitDotFree(k);
-            qk_mmad.EmitL0CToUbRaw(ub_dot32_offset, params.rows, params.block_n);
-            AttentionSync::CubeSignalQkReady();
-
-            // 4. 拍 k（Cube 并发）：计算上一拍的 FP8 PV MMAD (当 k > 0 时)
+            // 1. 拍 k（Cube 并发）：先发射上一拍的 FP8 PV MMAD 与交接（当 k > 0 时）
+            // 提至拍头立即发射 PartialReady 给 V1，彻底打破与 DotFree 的交织依赖
             if (k > 0) {
                 uint32_t prev_k = k - 1;
                 bool prev_is_ping = ((prev_k % 2) == 0);
@@ -80,10 +64,11 @@ public:
                 AttentionSync::CubeWaitSoftmaxReady(prev_is_ping);
 
                 // PV MMAD 契约：C[rows×d] = P[rows×block_n] × V[block_n×d]
-                // LoadL0A: (rows, block_n), LoadL0B: (block_n, d)，输出 C 为 rows × d
                 pv_mmad.LoadL0A(s_slot, params.rows, params.block_n);
                 pv_mmad.LoadL0B(prev_l1_v_addr, params.block_n, params.d);
+                Catlass::SageAttn::Sync<HardEvent::MTE1_M>();
                 pv_mmad.Compute(true);
+                Catlass::SageAttn::Sync<HardEvent::M_FIX>();
 
                 // S 槽消费完成：归还缓冲许可给 V1
                 AttentionSync::CubeReleaseSoftmaxFree(prev_is_ping);
@@ -94,8 +79,28 @@ public:
                 // PV 部分和裸搬 UB 交接槽
                 AttentionSync::CubeWaitPartialFree(k);
                 pv_mmad.ExecuteEpilogue(ub_pv_partial_offset);
+                Catlass::SageAttn::Sync<HardEvent::FIX_M>();
                 AttentionSync::CubeSignalPartialReady();
             }
+
+            // 2. 等待 V0 当前 KV 分块量化就绪
+            AttentionSync::CubeWaitKvReady(is_ping);
+
+            // 3. 拍 k（Cube）：INT8 QK^T MMAD
+            // 若执行过 PV MMAD（k > 0），L0A 已被 Softmax P 覆写，需重新从 L1 Bank 0 加载常驻 Q
+            if (k > 0) {
+                qk_mmad.LoadL0A(l1_q_offset, params.rows, params.d);
+            }
+            qk_mmad.LoadL0B(l1_kv_addr, params.block_n, params.d);
+            Catlass::SageAttn::Sync<HardEvent::MTE1_M>();
+            qk_mmad.Compute(true);
+            Catlass::SageAttn::Sync<HardEvent::M_FIX>();
+
+            // 4. QK dot32 裸搬 UB
+            AttentionSync::CubeWaitDotFree(k);
+            qk_mmad.EmitL0CToUbRaw(ub_dot32_offset, params.rows, params.block_n);
+            Catlass::SageAttn::Sync<HardEvent::FIX_M>();
+            AttentionSync::CubeSignalQkReady();
         }
 
         // Drain 拍：完成最后一个 KV 分块的 PV MMAD 与部分和搬出
@@ -110,7 +115,9 @@ public:
 
             pv_mmad.LoadL0A(s_slot, params.rows, params.block_n);
             pv_mmad.LoadL0B(last_l1_v_addr, params.block_n, params.d);
+            Catlass::SageAttn::Sync<HardEvent::MTE1_M>();
             pv_mmad.Compute(true);
+            Catlass::SageAttn::Sync<HardEvent::M_FIX>();
 
             AttentionSync::CubeReleaseSoftmaxFree(last_is_ping);
             // [A1-1] 最后一个分块 last_k 的 V 消费完毕，归还其 L1 KV 槽许可
@@ -120,6 +127,7 @@ public:
                 AttentionSync::CubeWaitPartialFree(active_kv_blocks);
             }
             pv_mmad.ExecuteEpilogue(ub_pv_partial_offset);
+            Catlass::SageAttn::Sync<HardEvent::FIX_M>();
             AttentionSync::CubeSignalPartialReady();
         }
 #else

@@ -150,6 +150,7 @@ public:
     __aicore__ inline __attribute__((always_inline)) static void Vec0SignalQReady()
     {
 #if SAGE_ATTN_DEVICE_COMPILE
+        Catlass::SageAttn::Sync<HardEvent::MTE3_S>();
         CrossCoreSet(CrossCoreDirection::VEC0_TO_CUBE, CrossCoreFlags::FLAG_Q_READY);
 #endif
     }
@@ -174,6 +175,7 @@ public:
     {
 #if SAGE_ATTN_DEVICE_COMPILE
         Catlass::SageAttn::Sync<HardEvent::MTE3_MTE2>();
+        Catlass::SageAttn::Sync<HardEvent::MTE3_S>();
         uint32_t kv_flag = is_ping ? CrossCoreFlags::FLAG_KV_PING_READY : CrossCoreFlags::FLAG_KV_PONG_READY;
         CrossCoreSet(CrossCoreDirection::VEC0_TO_CUBE, kv_flag);
 #endif
@@ -216,6 +218,7 @@ public:
     __aicore__ inline __attribute__((always_inline)) static void Vec1ReleasePartialFree()
     {
 #if SAGE_ATTN_DEVICE_COMPILE
+        Catlass::SageAttn::Sync<HardEvent::V_S>();
         CrossCoreSet(CrossCoreDirection::VEC1_TO_CUBE, CrossCoreFlags::FLAG_PV_PARTIAL_FREE);
 #endif
     }
@@ -259,6 +262,7 @@ public:
     __aicore__ inline __attribute__((always_inline)) static void Vec1SignalSoftmaxReady(bool is_ping)
     {
 #if SAGE_ATTN_DEVICE_COMPILE
+        Catlass::SageAttn::Sync<HardEvent::V_S>();
         uint32_t s_flag = is_ping ? CrossCoreFlags::FLAG_SOFTMAX_S_PING_READY
                                   : CrossCoreFlags::FLAG_SOFTMAX_S_PONG_READY;
         CrossCoreSet(CrossCoreDirection::VEC1_TO_CUBE, s_flag);
