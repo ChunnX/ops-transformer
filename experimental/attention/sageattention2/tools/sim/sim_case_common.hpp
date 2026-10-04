@@ -55,7 +55,6 @@ constexpr uint32_t kGran = sage_attn::QUANT_GRAN_PER_THREAD;  // 3 = per_thread
 constexpr uint32_t kPvAccum = sage_attn::PV_ACCUM_FP32_FP16;  // 2 = fp32+fp16
 constexpr uint32_t kIsCausal = 0;
 constexpr uint32_t kSmoothK = 1;    // smoothK 属性值（任务书冻结；生效门控见 BuildTiling）
-constexpr bool kHasKeyMean = false; // 标准 7 参收敛：无独立 key_mean 张量（op_host 实况）
 constexpr uint32_t kDtypeMode = 1;  // 1 = fp16
 constexpr float kSmScale = 0.125f;  // 1/8
 constexpr uint32_t kSeed = 20261003u;
@@ -89,15 +88,12 @@ inline void GenerateFp16Tensor(uint32_t seed, std::vector<uint16_t> &out_bits) {
 /**
  * Host Tiling 单点计算（复用 aclnn/sage_attn_host_tiling.h 的 ComputeHostTiling，
  * 与 op_host/aclnn 两形态共享同一闭式实现），并冻结语义对齐本 harness 的调用面。
- * hasKeyMean=false 与 op_host/sage_attention2_tiling.cpp 的 has_key_mean 实况
- * 同款门控（标准 7 参收敛，无独立 key_mean 张量）。
  */
 inline bool BuildTiling(sage_attn::SageAttention2TilingData &tiling, uint64_t &ws_bytes) {
     const aclnnStatus st = sage_attn::ComputeHostTiling(
         kB, kSq, kSk, kHq, kHkv, kDtypeMode, kDOg, static_cast<double>(kSmScale),
         kGran, kPvAccum, kIsCausal != 0, kLayout,
         kSmoothK != 0, false,            // smooth_v=false（非 fp32 档被 host 拒绝）
-        kHasKeyMean,                     // hasKeyMean（7 参收敛实况：false）
         true,                            // hasLse
         tiling, ws_bytes);
     return st == ACLNN_SUCCESS;

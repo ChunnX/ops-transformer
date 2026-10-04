@@ -23,18 +23,6 @@
           "index": 2,
           "paramType": "required",
           "formatMode": "static_nd_agnostic"
-        },
-        {
-          "name": "key_mean",
-          "index": 3,
-          "paramType": "optional",
-          "formatMode": "static_nd_agnostic"
-        },
-        {
-          "name": "lse_correction",
-          "index": 4,
-          "paramType": "optional",
-          "formatMode": "static_nd_agnostic"
         }
       ],
       "outputs": [

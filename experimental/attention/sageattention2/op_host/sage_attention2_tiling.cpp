@@ -23,17 +23,7 @@
 // 模板档位出包时宏映射 GET_TPL_TILING_KEY，裸 bisheng 出包为本仓冻结编码）
 #include "../op_kernel/sage_attention2_template_tiling_key.h"
 
-#if defined(SAGE_HAS_OP_IMPL_REGISTRY)
-#if defined(__has_include)
-#if __has_include("exe_graph/runtime/tiling_context.h")
 #include "exe_graph/runtime/tiling_context.h"
-#define SAGE_HAS_REAL_TILING_CONTEXT 1
-#endif
-#endif
-#endif
-
-#if defined(SAGE_HAS_REAL_TILING_CONTEXT)
-
 #include "tiling/platform/platform_ascendc.h"
 
 namespace ops {
@@ -145,7 +135,6 @@ static ge::graphStatus TilingSageAttention2(gert::TilingContext *context)
         layout_code,
         (smooth_k != nullptr) ? *smooth_k : true,
         smooth_v_val,
-        false, // has_key_mean 实况（标准 7 参收敛，无独立输入张量）
         context->GetOutputShape(sage_attn2_idx::OUT_LSE) != nullptr,   // has_lse 实况
         tiling_data,
         workspace_bytes);
@@ -192,17 +181,7 @@ static ge::graphStatus TilingSageAttention2(gert::TilingContext *context)
 
     size_t *workspaces = context->GetWorkspaceSizes(1);
     if (workspaces != nullptr) {
-        // dav-3510 GetUserWorkspace 会跳过 CANN 系统 workspace 前缀，host 侧须预留
-        uint64_t reserved = 16ULL * 1024 * 1024;
-        if (context->GetPlatformInfo() != nullptr) {
-            reserved = platform_ascendc::PlatformAscendC(context->GetPlatformInfo())
-                           .GetLibApiWorkSpaceSize();
-        }
-        // 确保分配的 workspace 大小至少为 tiling_data.core_num_used * STAGE_CORE_STRIDE，防止核间越界
-        const uint64_t min_stage_ws = static_cast<uint64_t>(tiling_data.core_num_used) * sage_attn::STAGE_CORE_STRIDE;
-        if (workspace_bytes < min_stage_ws) {
-            workspace_bytes = min_stage_ws;
-        }
+        constexpr uint64_t reserved = 16ULL * 1024 * 1024; // 16MB CANN 系统预留空间
         workspaces[0] = static_cast<size_t>(reserved + workspace_bytes);
     }
 
@@ -235,8 +214,3 @@ IMPL_OP_OPTILING(SageAttention2)
     .TilingParse<SageAttention2CompileInfo>(ParseSageAttention2CompileInfo);
 
 } // namespace ops
-
-#else
-// 本地无 CANN exe_graph 头文件环境：TilingImpl 由容器内构建启用，
-// 本地路径的 tiling 数值验证由 tests/test_aclnn_host.cpp 直测 ComputeHostTiling 覆盖。
-#endif // SAGE_HAS_REAL_TILING_CONTEXT

@@ -3,14 +3,15 @@
 #include <cstdint>
 #include <limits>
 #include "../sageattn_fp8/ascendc/tiling.h"
+#include "../sageattn_fp8/ascendc/online_softmax.h"
 
 
 #if SAGE_ATTN_DEVICE_COMPILE
 #include "kernel_operator.h"
 // 官方 CATLASS 设备函数宏（catlass/detail/macros.hpp）：CATLASS_DEVICE_SIMD_VF =
 // __simd_vf__ static（CATLASS_ARCH=3510），与官方 950 FA softmax epilogue 同款标记，
-// 取代本文件原裸 __simd_vf__ inline 书写（官方演进单点跟随；设备编译全路径已注入
-// -DCATLASS_ARCH=3510，见 run.sh kernel / build_opp.sh）。
+// 设备核内所有 VF 原语显式标注 __simd_vf__ __aicore__ inline __attribute__((always_inline))，
+// 保持绝对零函数调用栈帧开销。
 #include "catlass/detail/macros.hpp"
 
 // BiSheng 编译器缺陷约束（2026-10-04 真机编译崩溃定位，禁"优化"回旧写法）：
@@ -42,7 +43,7 @@ namespace dev_vf {
  * （与宿主串行路径逐步一致）。
  */
 template <uint32_t DTYPE_MODE>
-CATLASS_DEVICE_SIMD_VF void RowAbsMaxRowsVF(__ubuf__ half* in_base, __ubuf__ float* out_rowmax,
+__simd_vf__ __aicore__ inline __attribute__((always_inline)) void RowAbsMaxRowsVF(__ubuf__ half* in_base, __ubuf__ float* out_rowmax,
                                             __ubuf__ float* km_ptr, uint32_t rows, uint32_t d,
                                             uint32_t has_km) {
     using namespace AscendC;
@@ -107,7 +108,7 @@ CATLASS_DEVICE_SIMD_VF void RowAbsMaxRowsVF(__ubuf__ half* in_base, __ubuf__ flo
  * - 饱和 ±127（与两个 Round* 的 clamp 一致）。
  */
 template <uint32_t DTYPE_MODE>
-CATLASS_DEVICE_SIMD_VF void QuantRowInt8VF(__ubuf__ half* in_ptr, __ubuf__ int8_t* out_ptr,
+__simd_vf__ __aicore__ inline __attribute__((always_inline)) void QuantRowInt8VF(__ubuf__ half* in_ptr, __ubuf__ int8_t* out_ptr,
                                        float scale, uint32_t d,
                                        uint32_t per_thread, uint32_t has_km,
                                        __ubuf__ float* km_ptr) {
@@ -193,7 +194,7 @@ CATLASS_DEVICE_SIMD_VF void QuantRowInt8VF(__ubuf__ half* in_ptr, __ubuf__ int8_
  *   NaN 保真与 golden）；有限通道饱和 ±scale_max 后 RNE 转 e4m3。
  */
 template <uint32_t DTYPE_MODE>
-CATLASS_DEVICE_SIMD_VF void QuantVRowFp8VF(__ubuf__ half* in_ptr, __ubuf__ float8_e4m3_t* out_ptr,
+__simd_vf__ __aicore__ inline __attribute__((always_inline)) void QuantVRowFp8VF(__ubuf__ half* in_ptr, __ubuf__ float8_e4m3_t* out_ptr,
                                        __ubuf__ float* scale_ptr, __ubuf__ float* vm_ptr,
                                        uint32_t has_vm, uint32_t d,
                                        float scale_max) {
@@ -262,7 +263,7 @@ CATLASS_DEVICE_SIMD_VF void QuantVRowFp8VF(__ubuf__ half* in_ptr, __ubuf__ float
  *   ③ 混合边界态：仅对触碰因果对角线或尾块 pad 界的 chunk 执行硬件 int32 Arange 与 GT/GE 掩码 Select。
  * 行 max 与 exp2 和由调用方紧随调用 BlockMaxAndSumRowsVF 完成（组合即宿主同构语义）。
  */
-CATLASS_DEVICE_SIMD_VF void DequantMaskLogitsRowsVF(__ubuf__ float* logits_dot_base, uint32_t rows,
+__simd_vf__ __aicore__ inline __attribute__((always_inline)) void DequantMaskLogitsRowsVF(__ubuf__ float* logits_dot_base, uint32_t rows,
                                                __ubuf__ float* qs_row, __ubuf__ float* k_scale_row,
                                                float sm_scale_log2e, uint32_t cur_q_start,
                                                uint32_t cur_q_len, uint32_t k_start, uint32_t sk,
@@ -368,7 +369,7 @@ CATLASS_DEVICE_SIMD_VF void DequantMaskLogitsRowsVF(__ubuf__ float* logits_dot_b
  *    在寄存器中缓冲逐行单元素归约值，满 32 字节（8 float）对齐写出，循环后统一刷回 UB。
  *    行内两级 chunk 循环、ReduceMax/ReduceSum 归约树、掩码哨兵 -1e30 的 Exp 下溢行为逐位同原单行版本。
  */
-CATLASS_DEVICE_SIMD_VF void BlockMaxAndSumRowsVF(__ubuf__ float* logits_base, uint32_t rows, uint32_t block_n,
+__simd_vf__ __aicore__ inline __attribute__((always_inline)) void BlockMaxAndSumRowsVF(__ubuf__ float* logits_base, uint32_t rows, uint32_t block_n,
                                                  __ubuf__ float* out_max_row, __ubuf__ float* out_sum_row) {
     using namespace AscendC;
     using namespace AscendC::MicroAPI;
@@ -422,7 +423,7 @@ CATLASS_DEVICE_SIMD_VF void BlockMaxAndSumRowsVF(__ubuf__ float* logits_base, ui
  *    Load→Mul→Store 链与原 RescaleAccumRowVF 逐位同式。未置位行零访存零运算
  *    （不做 ×1.0f 恒等乘，保持原跳过语义的零开销）。
  */
-CATLASS_DEVICE_SIMD_VF void RescaleAccumRowsVF(__ubuf__ float* o_base, __ubuf__ float* factor_row,
+__simd_vf__ __aicore__ inline __attribute__((always_inline)) void RescaleAccumRowsVF(__ubuf__ float* o_base, __ubuf__ float* factor_row,
                                                uint32_t rows, uint32_t d,
                                                uint32_t bm0, uint32_t bm1, uint32_t bm2, uint32_t bm3) {
     using namespace AscendC;
@@ -459,7 +460,7 @@ CATLASS_DEVICE_SIMD_VF void RescaleAccumRowsVF(__ubuf__ float* o_base, __ubuf__ 
  *    Mul(ln2)→Sub(m_ln)→Exp→Muls(448)→Cast 链逐位同原单行版本；掩码行经 exp2
  *    下溢自然落到 e4m3 码 0。
  */
-CATLASS_DEVICE_SIMD_VF void SoftmaxProbRowsVF(__ubuf__ float* logits_base, __ubuf__ float8_e4m3_t* out_p_base,
+__simd_vf__ __aicore__ inline __attribute__((always_inline)) void SoftmaxProbRowsVF(__ubuf__ float* logits_base, __ubuf__ float8_e4m3_t* out_p_base,
                                               __ubuf__ float* m_ln_row, uint32_t rows, uint32_t block_n) {
     using namespace AscendC;
     using namespace AscendC::MicroAPI;
@@ -503,7 +504,7 @@ CATLASS_DEVICE_SIMD_VF void SoftmaxProbRowsVF(__ubuf__ float* logits_base, __ubu
  * 链；v_scale 通道向量全行共享（LoadAlign 同址同值）。
  * 调用方须保证 O 行经 S 槽 / dot32 同款握手串行化（FLAG_PV_PARTIAL_READY/FREE）。
  */
-CATLASS_DEVICE_SIMD_VF void MergePvPartialRowsVF(__ubuf__ float* partial_base, __ubuf__ float* o_base,
+__simd_vf__ __aicore__ inline __attribute__((always_inline)) void MergePvPartialRowsVF(__ubuf__ float* partial_base, __ubuf__ float* o_base,
                                                  __ubuf__ float* v_scale_ptr, uint32_t rows, uint32_t d,
                                                  uint32_t fp16_round) {
     using namespace AscendC;
@@ -537,7 +538,7 @@ CATLASS_DEVICE_SIMD_VF void MergePvPartialRowsVF(__ubuf__ float* partial_base, _
  * 由调用方先充零 amax 缓冲（twin/quant_fp8 per-channel 口径）。
  */
 template <uint32_t DTYPE_MODE>
-CATLASS_DEVICE_SIMD_VF void ChannelAmaxAccumVF(__ubuf__ half* in_ptr, __ubuf__ float* amax_ptr,
+__simd_vf__ __aicore__ inline __attribute__((always_inline)) void ChannelAmaxAccumVF(__ubuf__ half* in_ptr, __ubuf__ float* amax_ptr,
                                            uint32_t d) {
     using namespace AscendC;
     using namespace AscendC::MicroAPI;
@@ -567,7 +568,7 @@ CATLASS_DEVICE_SIMD_VF void ChannelAmaxAccumVF(__ubuf__ half* in_ptr, __ubuf__ f
  * quant_fp8 / 孪生；全零通道 amax=0 → scale=0，经 QuantVRowFp8VF 的 0/0=NaN →
  * e4m3 0x7f 容错）。可原地（out_scale_ptr == amax_ptr）。
  */
-CATLASS_DEVICE_SIMD_VF void FinalizeVScaleVF(__ubuf__ float* amax_ptr, __ubuf__ float* out_scale_ptr,
+__simd_vf__ __aicore__ inline __attribute__((always_inline)) void FinalizeVScaleVF(__ubuf__ float* amax_ptr, __ubuf__ float* out_scale_ptr,
                                          float scale_max, uint32_t d) {
     using namespace AscendC;
     using namespace AscendC::MicroAPI;
@@ -588,7 +589,7 @@ CATLASS_DEVICE_SIMD_VF void FinalizeVScaleVF(__ubuf__ float* amax_ptr, __ubuf__ 
  * 单趟读出三统计量；调用方按 max=-FLT_MAX / min=+FLT_MAX / sum=0 充初值）。
  */
 template <uint32_t DTYPE_MODE>
-CATLASS_DEVICE_SIMD_VF void ChannelStatsAccumVF(__ubuf__ half* in_ptr, __ubuf__ float* vmax_ptr,
+__simd_vf__ __aicore__ inline __attribute__((always_inline)) void ChannelStatsAccumVF(__ubuf__ half* in_ptr, __ubuf__ float* vmax_ptr,
                                             __ubuf__ float* vmin_ptr, __ubuf__ float* vsum_ptr,
                                             uint32_t d) {
     using namespace AscendC;
@@ -625,7 +626,7 @@ CATLASS_DEVICE_SIMD_VF void ChannelStatsAccumVF(__ubuf__ half* in_ptr, __ubuf__ 
  * scale[c] = amax[c] / scale_max（除法轨迹；全零通道 amax=0 → scale=0 的 NaN 容错
  * 与非 smooth 路径一致）。vm 原地写回 vsum_ptr，scale 写 scale_out_ptr。
  */
-CATLASS_DEVICE_SIMD_VF void FinalizeSmoothVScaleVF(__ubuf__ float* vmax_ptr, __ubuf__ float* vmin_ptr,
+__simd_vf__ __aicore__ inline __attribute__((always_inline)) void FinalizeSmoothVScaleVF(__ubuf__ float* vmax_ptr, __ubuf__ float* vmin_ptr,
                                                __ubuf__ float* vsum_ptr, __ubuf__ float* scale_out_ptr,
                                                uint32_t fp8_padded, uint32_t has_pad,
                                                float scale_max, uint32_t d) {
@@ -665,7 +666,7 @@ CATLASS_DEVICE_SIMD_VF void FinalizeSmoothVScaleVF(__ubuf__ float* vmax_ptr, __u
  * 恰好还原为 vm（不参与归一化），故出口直接逐通道加回（o·inv + vm）。
  */
 template <uint32_t DTYPE_MODE>
-CATLASS_DEVICE_SIMD_VF void FinalizeRowVF(__ubuf__ float* o_row, __ubuf__ uint16_t* out_row, float inv_d,
+__simd_vf__ __aicore__ inline __attribute__((always_inline)) void FinalizeRowVF(__ubuf__ float* o_row, __ubuf__ uint16_t* out_row, float inv_d,
                                       __ubuf__ float* vm_ptr, uint32_t d) {
     using namespace AscendC;
     using namespace AscendC::MicroAPI;
@@ -703,7 +704,7 @@ CATLASS_DEVICE_SIMD_VF void FinalizeRowVF(__ubuf__ float* o_row, __ubuf__ uint16
  * 尾部 <8 float（1~7 float，非 32 字节对齐）严禁使用 StoreAlign，转由 StoreUnAlign /
  * StoreUnAlignPost 写入，彻底根除非 32 字节对齐硬件 340 异常。
  */
-CATLASS_DEVICE_SIMD_VF void FillF32VF(__ubuf__ float* dst, float value, uint32_t count) {
+__simd_vf__ __aicore__ inline __attribute__((always_inline)) void FillF32VF(__ubuf__ float* dst, float value, uint32_t count) {
     using namespace AscendC;
     using namespace AscendC::MicroAPI;
     if (count == 0u) {

@@ -25,13 +25,13 @@ bool CallHostTiling(uint32_t b, uint32_t sq, uint32_t sk, uint32_t hq, uint32_t 
                     int dtype_mode, uint32_t d_og,
                     double sm_scale, int64_t qk_quant_gran, int64_t pv_accum_dtype,
                     bool is_causal, int64_t tensor_layout, bool smooth_k, bool smooth_v,
-                    bool has_km, bool has_lse,
+                    bool has_lse,
                     sage_attn::SageAttention2TilingData &td, uint64_t &ws)
 {
     return sage_attn::ComputeHostTiling(b, sq, sk, hq, hkv, dtype_mode, d_og,
                                         sm_scale, qk_quant_gran, pv_accum_dtype,
                                         is_causal, tensor_layout, smooth_k, smooth_v,
-                                        has_km, has_lse, td, ws) == ACLNN_SUCCESS;
+                                        has_lse, td, ws) == ACLNN_SUCCESS;
 }
 
 // 1. 测试 TilingData 结构体大小与内存对齐
@@ -108,7 +108,7 @@ bool TestHostTilingStandardGqa()
                               sage_attn::QUANT_GRAN_PER_THREAD, sage_attn::PV_ACCUM_FP32_FP16,
                               /*is_causal*/ false, sage_attn::LAYOUT_HND,
                               /*smooth_k*/ false, /*smooth_v*/ false,
-                              /*has_km*/ false, /*has_lse*/ true,
+                              /*has_lse*/ true,
                               td, ws_size),
                "ComputeHostTiling returned error");
     TEST_CHECK(ws_size > 0, "workspaceSize must cover lse temporary");
@@ -139,7 +139,7 @@ bool TestHostTilingFp32SmoothV()
                               1.0 / 8.0, sage_attn::QUANT_GRAN_PER_WARP, sage_attn::PV_ACCUM_FP32,
                               /*is_causal*/ true, sage_attn::LAYOUT_HND,
                               /*smooth_k*/ false, /*smooth_v*/ true,
-                              /*has_km*/ false, /*has_lse*/ false,
+                              /*has_lse*/ false,
                               td, ws_size),
                "ComputeHostTiling failed");
     // smooth_v 仅全精度 fp32 档生效：fuse_v_mean 均值空间必须入账
@@ -164,7 +164,7 @@ bool TestHostTilingSplitKvTrigger()
                               0.125, sage_attn::QUANT_GRAN_PER_THREAD, sage_attn::PV_ACCUM_FP32_FP16,
                               /*is_causal*/ false, sage_attn::LAYOUT_HND,
                               /*smooth_k*/ false, /*smooth_v*/ false,
-                              /*has_km*/ false, /*has_lse*/ false,
+                              /*has_lse*/ false,
                               td, ws_size),
                "ComputeHostTiling failed");
     // Split-KV 使能后需要为 partial O 和 partial LSE 分配显存
@@ -189,7 +189,7 @@ bool TestCoreCompatibility28()
                               0.125, sage_attn::QUANT_GRAN_PER_THREAD, sage_attn::PV_ACCUM_FP32_FP16,
                               /*is_causal*/ false, sage_attn::LAYOUT_HND,
                               /*smooth_k*/ false, /*smooth_v*/ false,
-                              /*has_km*/ false, /*has_lse*/ false,
+                              /*has_lse*/ false,
                               td, ws_size),
                "ComputeHostTiling failed with 28 cores");
     TEST_CHECK(td.core_num_used <= 28, "core_num_used must respect the 28-core topology");
@@ -211,37 +211,37 @@ bool TestParameterValidation()
     // 1. GQA 不可整除拦截 (Hq=31, Hkv=8)
     TEST_CHECK(!CallHostTiling(2, 128, 128, 31, 8, 1, 64, 0.1,
                                sage_attn::QUANT_GRAN_PER_THREAD, sage_attn::PV_ACCUM_FP32_FP16,
-                               false, sage_attn::LAYOUT_HND, false, false, false, false, td, ws),
+                               false, sage_attn::LAYOUT_HND, false, false, false, td, ws),
                "Should reject non-divisible GQA heads");
 
     // 2. HeadDim 越界拦截 (D=256 > 128 与 D=0)
     TEST_CHECK(!CallHostTiling(2, 128, 128, 32, 8, 1, 256, 0.1,
                                sage_attn::QUANT_GRAN_PER_THREAD, sage_attn::PV_ACCUM_FP32_FP16,
-                               false, sage_attn::LAYOUT_HND, false, false, false, false, td, ws),
+                               false, sage_attn::LAYOUT_HND, false, false, false, td, ws),
                "Should reject D > 128");
     TEST_CHECK(!CallHostTiling(2, 128, 128, 32, 8, 1, 0, 0.1,
                                sage_attn::QUANT_GRAN_PER_THREAD, sage_attn::PV_ACCUM_FP32_FP16,
-                               false, sage_attn::LAYOUT_HND, false, false, false, false, td, ws),
+                               false, sage_attn::LAYOUT_HND, false, false, false, td, ws),
                "Should reject D == 0");
 
     // 3. 非法量化粒度与累加精度
     TEST_CHECK(!CallHostTiling(2, 128, 128, 32, 8, 1, 64, 0.1, 999,
                                sage_attn::PV_ACCUM_FP32_FP16,
-                               false, sage_attn::LAYOUT_HND, false, false, false, false, td, ws),
+                               false, sage_attn::LAYOUT_HND, false, false, false, td, ws),
                "Should reject invalid qkQuantGran");
     TEST_CHECK(!CallHostTiling(2, 128, 128, 32, 8, 1, 64, 0.1,
                                sage_attn::QUANT_GRAN_PER_THREAD, 999,
-                               false, sage_attn::LAYOUT_HND, false, false, false, false, td, ws),
+                               false, sage_attn::LAYOUT_HND, false, false, false, td, ws),
                "Should reject invalid pvAccumDtype");
 
     // 4. 非法张量布局编码拦截（仅 0=NHD/1=HND 合法，乱码/负值显式报错不静默归一）
     TEST_CHECK(!CallHostTiling(2, 128, 128, 32, 8, 1, 64, 0.1,
                                sage_attn::QUANT_GRAN_PER_THREAD, sage_attn::PV_ACCUM_FP32_FP16,
-                               false, 7, false, false, false, false, td, ws),
+                               false, 7, false, false, false, td, ws),
                "Should reject invalid tensorLayout (7)");
     TEST_CHECK(!CallHostTiling(2, 128, 128, 32, 8, 1, 64, 0.1,
                                sage_attn::QUANT_GRAN_PER_THREAD, sage_attn::PV_ACCUM_FP32_FP16,
-                               false, -1, false, false, false, false, td, ws),
+                               false, -1, false, false, false, td, ws),
                "Should reject invalid tensorLayout (-1)");
 
     // 5. causal 与 Sq!=Sk 组合拒绝（DEFECT-L-2 负向锁：任务书 §2.2 因果掩码仅当
@@ -249,12 +249,12 @@ bool TestParameterValidation()
     //    ACLNN_ERR_PARAM_INVALID，gert TilingImpl 同点映射 GRAPH_FAILED）
     TEST_CHECK(!CallHostTiling(2, 128, 256, 32, 8, 1, 64, 0.1,
                                sage_attn::QUANT_GRAN_PER_THREAD, sage_attn::PV_ACCUM_FP32_FP16,
-                               true, sage_attn::LAYOUT_HND, false, false, false, false, td, ws),
+                               true, sage_attn::LAYOUT_HND, false, false, false, td, ws),
                "Should reject causal with Sq != Sk");
     // 非 causal 的 Sq!=Sk 为合法路径（Split-KV 域，参 TestHostTilingSplitKvTrigger），必须保留
     TEST_CHECK(CallHostTiling(2, 128, 256, 32, 8, 1, 64, 0.1,
                               sage_attn::QUANT_GRAN_PER_THREAD, sage_attn::PV_ACCUM_FP32_FP16,
-                              false, sage_attn::LAYOUT_HND, false, false, false, false, td, ws),
+                              false, sage_attn::LAYOUT_HND, false, false, false, td, ws),
                "Should retain non-causal with Sq != Sk");
 
     // 6. sm_scale 冻结语义（三层分治）：默认 1/sqrt(D) 由 Python 桥接（sm_scale=None）
@@ -262,11 +262,11 @@ bool TestParameterValidation()
     //    不折叠，对直连调用方拒绝 0/负值/非有限值（与 sage_attn_host_tiling.h 检查注释同口径）
     TEST_CHECK(!CallHostTiling(2, 128, 128, 32, 8, 1, 64, 0.0,
                                sage_attn::QUANT_GRAN_PER_THREAD, sage_attn::PV_ACCUM_FP32_FP16,
-                               false, sage_attn::LAYOUT_HND, false, false, false, false, td, ws),
+                               false, sage_attn::LAYOUT_HND, false, false, false, td, ws),
                "Should reject sm_scale == 0");
     TEST_CHECK(!CallHostTiling(2, 128, 128, 32, 8, 1, 64, -0.5,
                                sage_attn::QUANT_GRAN_PER_THREAD, sage_attn::PV_ACCUM_FP32_FP16,
-                               false, sage_attn::LAYOUT_HND, false, false, false, false, td, ws),
+                               false, sage_attn::LAYOUT_HND, false, false, false, td, ws),
                "Should reject negative sm_scale");
 
     std::cout << "[PASS] TestParameterValidation" << std::endl;
@@ -354,7 +354,7 @@ bool TestDieAffinityScheduling()
         1, 64, 128, 35, 35, /*dtype_mode*/ 1, 128,
         0.125, sage_attn::QUANT_GRAN_PER_THREAD, sage_attn::PV_ACCUM_FP32_FP16,
         false, sage_attn::LAYOUT_HND, false, false,
-        false, false,
+        false,
         td_odd, ws_odd);
     TEST_CHECK(t_ret_odd == ACLNN_SUCCESS, "ComputeHostTiling for odd tasks succeeded");
     TEST_CHECK(td_odd.enable_die_affinity == 0, "Odd task count (35) must disable die affinity for safety");
@@ -391,7 +391,7 @@ bool TestDieAffinityScheduling()
         1, 4096, 4096, 32, 32, /*dtype_mode*/ 1, 128,
         0.125, sage_attn::QUANT_GRAN_PER_THREAD, sage_attn::PV_ACCUM_FP32_FP16,
         false, sage_attn::LAYOUT_HND, false, false,
-        false, false, td_p01, ws_p01);
+        false, td_p01, ws_p01);
     TEST_CHECK(ret_p01 == ACLNN_SUCCESS, "P-01 ComputeHostTiling succeeded");
     TEST_CHECK(td_p01.m_per_core == 32, "P-01 tuned m_per_core must be 32");
     TEST_CHECK(td_p01.block_n == 128, "P-01 tuned block_n must be 128");
@@ -405,7 +405,7 @@ bool TestDieAffinityScheduling()
         1, 8192, 8192, 32, 32, /*dtype_mode*/ 1, 128,
         0.125, sage_attn::QUANT_GRAN_PER_THREAD, sage_attn::PV_ACCUM_FP32_FP16,
         true, sage_attn::LAYOUT_HND, false, false,
-        false, false, td_p03, ws_p03);
+        false, td_p03, ws_p03);
     TEST_CHECK(ret_p03 == ACLNN_SUCCESS, "P-03 ComputeHostTiling succeeded");
     TEST_CHECK(td_p03.m_per_core == 32, "P-03 tuned m_per_core must be 32");
     TEST_CHECK(td_p03.block_n == 128, "P-03 tuned block_n must be 128");
@@ -419,7 +419,7 @@ bool TestDieAffinityScheduling()
         3, 1000, 1500, 16, 16, /*dtype_mode*/ 1, 128,
         0.125, sage_attn::QUANT_GRAN_PER_THREAD, sage_attn::PV_ACCUM_FP32_FP16,
         false, sage_attn::LAYOUT_HND, false, false,
-        false, false, td_dyn, ws_dyn);
+        false, td_dyn, ws_dyn);
     TEST_CHECK(ret_dyn == ACLNN_SUCCESS, "Dynamic shape ComputeHostTiling succeeded");
     TEST_CHECK(td_dyn.m_per_core == 64, "Dynamic shape fallback m_per_core must be 64");
     TEST_CHECK(td_dyn.block_n == 64, "Dynamic shape (sk=1500 < 2048) fallback block_n must be 64");

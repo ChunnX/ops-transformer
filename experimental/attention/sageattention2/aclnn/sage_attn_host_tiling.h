@@ -93,7 +93,6 @@ inline aclnnStatus ComputeHostTiling(
     int64_t tensorLayout,
     bool smoothK,
     bool smoothV,
-    bool hasKeyMean,
     bool hasLse,
     SageAttention2TilingData &tiling_out,
     uint64_t &workspace_bytes_out)
@@ -146,7 +145,8 @@ inline aclnnStatus ComputeHostTiling(
     tiling_out.tensor_layout = (tensorLayout == LAYOUT_HND) ? LAYOUT_HND : LAYOUT_NHD;
     tiling_out.qk_quant_gran = static_cast<uint32_t>(qkQuantGran);
     tiling_out.pv_accum_dtype = static_cast<uint32_t>(pvAccumDtype);
-    tiling_out.smooth_k = (smoothK && hasKeyMean) ? 1 : 0;
+    (void)smoothK;
+    tiling_out.smooth_k = 0; // 标准 7 参收敛无 keyMean 输入，恒置 0
     // 对齐设计文档：若非全精度 fp32 档，则忽略 smooth_v
     tiling_out.smooth_v = (smoothV && pvAccumDtype == PV_ACCUM_FP32) ? 1 : 0;
 

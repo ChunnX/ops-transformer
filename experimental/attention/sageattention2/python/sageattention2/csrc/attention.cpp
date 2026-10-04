@@ -75,24 +75,7 @@ inline void EnsureCannOpapiLoaded()
 
 
 namespace op_api {
-namespace {
-#if SAGE_NPU_AVAILABLE
-constexpr int64_t ND_FORMAT = 2;
-constexpr int64_t NCHW_FORMAT = 0;
 
-void check_storage_format(const at::Tensor &tensor)
-{
-    auto format = at_npu::native::custom_ops::get_npu_format(tensor);
-    TORCH_CHECK(format == ND_FORMAT || format == NCHW_FORMAT,
-                "SageAttention2 requires base ND/NCHW storage on Ascend 950; private formats are unsupported");
-}
-#endif
-} // namespace
-
-// 桥接层职责收敛（P1-4）：只保留 ABI 调用必需的最小断言（NPU 设备一致性、
-// forward-only 契约）；形状/dtype/布局/粒度/累加档/causal/sm_scale 的完整校验
-// 唯一属于 Python 边界（error_check）与 aclnn C 入口（op_api 白名单 +
-// ComputeHostTiling），此处不再复制第二份。
 std::tuple<at::Tensor, c10::optional<at::Tensor>> sageattention2(
     const at::Tensor &q,
     const at::Tensor &k,
@@ -106,15 +89,6 @@ std::tuple<at::Tensor, c10::optional<at::Tensor>> sageattention2(
     bool smooth_v,
     bool return_lse)
 {
-    // ABI 必需最小断言：NPU 设备一致性与 forward-only 契约
-    for (const auto &tensor : {q, k, v}) {
-#if SAGE_NPU_AVAILABLE
-        TORCH_CHECK(tensor.device().type() == c10::DeviceType::PrivateUse1 && tensor.device() == q.device(),
-                    "q/k/v must share an NPU device");
-#endif
-        TORCH_CHECK(!tensor.requires_grad(), "forward-only operator does not support autograd");
-    }
-
     auto out = at::empty(q.sizes(), q.options());
     const int64_t head_axis = (tensor_layout == "HND") ? 1 : 2;
     const int64_t seq_axis = (tensor_layout == "HND") ? 2 : 1;
@@ -124,26 +98,19 @@ std::tuple<at::Tensor, c10::optional<at::Tensor>> sageattention2(
     }
 
 #if SAGE_NPU_AVAILABLE
-    // sm_scale 冻结语义：None 才默认 1/sqrt(D)（显式非法值由 Python 边界与 C 入口拒绝）
+    const c10::OptionalDeviceGuard device_guard(q.device());
     double scale = sm_scale.value_or(1.0 / std::sqrt(static_cast<double>(q.size(-1))));
 
-    const c10::OptionalDeviceGuard device_guard(q.device());
-    check_storage_format(q);
-    check_storage_format(k);
-    check_storage_format(v);
-
-    // 交付态字符串属性 ABI：layout/gran/accum 直传字符串（op_api 白名单校验），
-    // 禁止回退数值编码形态（与 benchmarks/benchmark_aclnn.cpp 同一口径）
     const char *layout_cstr = tensor_layout.c_str();
     const char *gran_cstr = qk_quant_gran.c_str();
     const char *accum_cstr = pv_accum_dtype.c_str();
     SAGE_EXEC_NPU_DIRECT(aclnnSageAttention2GetWorkspaceSize, aclnnSageAttention2,
-                     q, k, v,
-                     layout_cstr, is_causal,
-                     gran_cstr, scale,
-                     accum_cstr,
-                     smooth_k, smooth_v,
-                     out, lse);
+                         q, k, v,
+                         layout_cstr, is_causal,
+                         gran_cstr, scale,
+                         accum_cstr,
+                         smooth_k, smooth_v,
+                         out, lse);
 #else
     TORCH_CHECK(false, "SageAttention2 C++ extension requires Ascend NPU hardware environment.");
 #endif

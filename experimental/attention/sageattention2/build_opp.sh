@@ -166,7 +166,7 @@ cp -f "${CUSTOM_DIR}/op_api/lib/libcust_opapi.so" "${CUSTOM_DIR}/op_proto/lib/li
 
 # liboptiling.so（算子 TilingImpl 与 InferShape；tiling 数值唯一实现
 # aclnn/sage_attn_host_tiling.h 的 ComputeHostTiling）
-OPTILING_EXTRA_FLAGS=(-DSAGE_HAS_OP_IMPL_REGISTRY=1)
+OPTILING_EXTRA_FLAGS=()
 if [ -d "${ASCEND_HOME_PATH}/x86_64-linux/asc/include" ]; then
     OPTILING_EXTRA_FLAGS+=(-I"${ASCEND_HOME_PATH}/x86_64-linux/asc/include")
 fi
