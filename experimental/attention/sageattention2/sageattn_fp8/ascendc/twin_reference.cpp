@@ -13,8 +13,9 @@ extern "C" {
 /**
  * CPU 孪生全流水入口。参数口径与 TwinIo 字段序一一对应；返回 0 成功。
  * lse 传 nullptr 表示 return_lse=False；key_mean 传 nullptr 且 smooth_k=1 时内部自算 km；
- * lse_correction 为 smooth_k=1 时调用方按开源公式预计算的行级校正（[b*hq*sq] fp32，
- * 与设备核同契约——外部传入，孪生不自算）；smooth_v 仅 pv_accum=fp32 档生效。
+ * lse_correction 为 smooth_k=1 时调用方可按开源公式预计算传入（[b*hq*sq] fp32），
+ * 传 nullptr 则内部自算（quant::LseCorrDot，与宿主 kernel V1 同式位级一致）；
+ * smooth_v 仅 pv_accum=fp32 档生效。
  */
 int SageAttnTwinRunForward(
     const void* q, const void* k, const void* v,

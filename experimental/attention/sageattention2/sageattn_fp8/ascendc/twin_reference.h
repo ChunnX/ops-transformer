@@ -47,10 +47,12 @@ struct TwinIo {
     const void* v;
     void* out;
     float* lse;             // 可为 nullptr（等价 return_lse=False）
-    const float* key_mean;  // 预计算的 km [b*hkv*d_pad]，smooth_k=0 时可为 nullptr
+    const float* key_mean;  // 预计算的 km [b*hkv*d_pad]；nullptr 且 smooth_k=1 时内部自算
+                            //（quant::KeyMeanElement，与宿主 kernel 同式位级一致）
     const float* lse_correction;  // 预计算的行级校正 [b*hq*sq] fp32（q·km_broadcast^T）；
-                                  // smooth_k=1 时调用方必须传入（与设备核同契约：桥接层/
-                                  // 上游算好传入，核/孪生不自算），smooth_k=0 时忽略
+                                  // smooth_k=1 且需 LSE 时可为 nullptr——为空则内部自算
+                                  //（quant::LseCorrDot，与宿主 kernel V1 同式位级一致）；
+                                  // smooth_k=0 时忽略
 
     uint32_t b;
     uint32_t hq;
@@ -299,7 +301,8 @@ inline int RunSequential(const TwinIo& io) {
         }
     }
 
-    // 2. smooth_k 的 km（double 累加求均值后舍入回输入 dtype，对齐 torch.mean 行为）
+    // 2. smooth_k 的 km（核内化单点 quant::KeyMeanElement：double 累加求均值后
+    //    舍回输入 dtype，对齐 torch.mean 行为；宿主 kernel 自算同式，km 位级一致）
     std::vector<float> km;
     if (smooth_k) {
         if (io.key_mean != nullptr) {
@@ -309,19 +312,13 @@ inline int RunSequential(const TwinIo& io) {
             for (uint32_t bi = 0; bi < io.b; ++bi) {
                 for (uint32_t hi = 0; hi < io.hkv; ++hi) {
                     for (uint32_t di = 0; di < d_pad; ++di) {
-                        double sum = 0.0;
-                        for (uint32_t si = 0; si < io.sk; ++si) {
-                            sum += detail::ReadInput(
-                                k_pad.data(),
-                                detail::ElemOffset(bi, hi, si, di, io.b, io.hkv, io.sk, d_pad, true),
-                                io.dtype_mode);
-                        }
-                        const float mean = (io.sk > 0) ? static_cast<float>(sum / io.sk) : 0.0f;
-                        const uint16_t rounded = (io.dtype_mode == 2)
-                            ? quant::Fp32ToBf16(mean)
-                            : quant::Fp32ToFp16(mean);
                         km[(static_cast<size_t>(bi) * io.hkv + hi) * d_pad + di] =
-                            (io.dtype_mode == 2) ? quant::Bf16ToFp32(rounded) : quant::Fp16ToFp32(rounded);
+                            quant::KeyMeanElement(io.sk, io.dtype_mode, [&](uint32_t si) {
+                                return detail::ReadInput(
+                                    k_pad.data(),
+                                    detail::ElemOffset(bi, hi, si, di, io.b, io.hkv, io.sk, d_pad, true),
+                                    io.dtype_mode);
+                            });
                     }
                 }
             }
@@ -380,6 +377,36 @@ inline int RunSequential(const TwinIo& io) {
     std::vector<float> s_row(io.sk);
     std::vector<float> inv_row(io.sq);
 
+    // smooth_k 行级 LSE 校正供给（双通道，与宿主 kernel 侧同契约）：
+    // - io.lse_correction 非空：调用方预计算直用（外部供给契约保留）；
+    // - 为空且需 LSE：核内化自算（quant::LseCorrDot，q·km fp32 左至右点积，km 即
+    //  上方自算缓冲——与宿主 kernel V1 Finalize 同式位级一致，gqa 分块 parity 前提）。
+    std::vector<float> corr_self;
+    const float* corr_base = nullptr;
+    if (smooth_k && io.lse != nullptr) {
+        if (io.lse_correction != nullptr) {
+            corr_base = io.lse_correction;
+        } else {
+            corr_self.resize(static_cast<size_t>(io.b) * io.hq * io.sq);
+            for (uint32_t bi = 0; bi < io.b; ++bi) {
+                for (uint32_t hi = 0; hi < io.hq; ++hi) {
+                    const uint32_t kh = hi / gqa;
+                    const float* km_head = km.data() + (static_cast<size_t>(bi) * io.hkv + kh) * d_pad;
+                    for (uint32_t i = 0; i < io.sq; ++i) {
+                        corr_self[(static_cast<size_t>(bi) * io.hq + hi) * io.sq + i] =
+                            quant::LseCorrDot(d_pad, [&](uint32_t c) {
+                                return detail::ReadInput(
+                                    q_pad.data(),
+                                    detail::ElemOffset(bi, hi, i, c, io.b, io.hq, io.sq, d_pad, true),
+                                    io.dtype_mode);
+                            }, km_head);
+                    }
+                }
+            }
+            corr_base = corr_self.data();
+        }
+    }
+
     for (uint32_t bi = 0; bi < io.b; ++bi) {
         for (uint32_t hi = 0; hi < io.hq; ++hi) {
             const uint32_t kh = hi / gqa;
@@ -388,11 +415,10 @@ inline int RunSequential(const TwinIo& io) {
             const int8_t* k_head = k_int8.data() + (static_cast<size_t>(bi) * io.hkv + kh) * io.sk * d_pad;
             const float* ks_head = k_scale.data() + (static_cast<size_t>(bi) * io.hkv + kh) * k_scales;
 
-            // smooth_k 的行级 LSE 校正项：与设备核同契约，由调用方按开源公式
-            // （q·km_broadcast^T，fp32）算好经 io.lse_correction 传入，孪生不自算
+            // 行级校正项指针（nullptr = 无校正口径；供给双通道见上方 corr 段）
             const float* corr_head =
-                (smooth_k && io.lse_correction != nullptr)
-                    ? io.lse_correction + (static_cast<size_t>(bi) * io.hq + hi) * io.sq
+                corr_base != nullptr
+                    ? corr_base + (static_cast<size_t>(bi) * io.hq + hi) * io.sq
                     : nullptr;
 
             std::fill(o_acc.begin(), o_acc.end(), 0.0f);

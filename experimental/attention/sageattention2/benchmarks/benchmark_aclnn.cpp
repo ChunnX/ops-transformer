@@ -74,14 +74,11 @@ struct DeviceRuntime {
     }
 };
 
-// Element size by acl dtype: this tool hosts ACL_BOOL masks (1B), the fp32
-// keyMean input (4B) and fp16/bf16 tensors (2B); byteSize must follow the dtype.
+// Element size by acl dtype: this tool hosts ACL_BOOL masks (1B) and fp16/bf16
+// tensors (2B); byteSize must follow the dtype.
 static size_t AclElemBytes(aclDataType type) {
     if (type == ACL_BOOL) {
         return 1;
-    }
-    if (type == ACL_FLOAT) {
-        return 4;
     }
     return 2;
 }
@@ -596,27 +593,6 @@ int main(int argc, char **argv) {
 
         auto kHost = makeRandomHostData(kvElements);
         DeviceTensor k({cfg.batch, cfg.kvHeads, cfg.seq, cfg.dim}, dtype, kHost.data());
-
-        // keyMean（fp32，[B, Hkv, d_pad]）：smooth_k=true 验收默认档的真实入参，
-        // 计算口径对齐交付桥接层 python/sageattention2/csrc/attention.cpp——
-        // k.mean(seq_dim)（fp32 累加 → 输入位型 RNE 舍回 → fp32 承载），
-        // pad 通道补零（上游 pad_head_dim 同契约：d<=64→64，否则 128）
-        const int64_t dPadKm = (cfg.dim <= 64) ? 64 : 128;
-        std::vector<float> kmHost(static_cast<size_t>(cfg.batch) * cfg.kvHeads * dPadKm, 0.0f);
-        for (int64_t b = 0; b < cfg.batch; ++b) {
-            for (int64_t h = 0; h < cfg.kvHeads; ++h) {
-                for (int64_t d = 0; d < cfg.dim; ++d) {
-                    float acc = 0.0f;
-                    for (int64_t s = 0; s < cfg.seq; ++s) {
-                        acc += DecodeFloat(kHost[(b * cfg.kvHeads + h) * cfg.seq * cfg.dim + s * cfg.dim + d],
-                                           cfg.bf16);
-                    }
-                    kmHost[(b * cfg.kvHeads + h) * dPadKm + d] =
-                        DecodeFloat(EncodeFloat(acc / static_cast<float>(cfg.seq), cfg.bf16), cfg.bf16);
-                }
-            }
-        }
-        DeviceTensor keyMean({cfg.batch, cfg.kvHeads, dPadKm}, ACL_FLOAT, kmHost.data());
         kHost.clear();
         kHost.shrink_to_fit();
 
@@ -668,9 +644,8 @@ int main(int argc, char **argv) {
             if (isSage) {
                 // 字符串属性形态（交付 op_api ABI）：顺序 layout, causal, gran,
                 // scale, accum, smoothK, smoothV；基准跑验收默认档
-                // per_thread + fp32+fp16 + smooth_k=true（真实 keyMean 入参，
-                // 与桥接层 python/sageattention2/csrc/attention.cpp 交付路径一致；
-                // lseCorrection 仅 return_lse 路径需要，此处恒为 nullptr）
+                // per_thread + fp32+fp16 + smooth_k=true（标准 7 参 ABI 已无
+                // keyMean/lseCorrection 入参，平滑统计由算子侧门控）
                 CheckAcl(dispatcher.sageNativePrepare(q.handle, k.handle, v.handle,
                                                      "HND", cfg.causal, "per_thread", smScale,
                                                      "fp32+fp16", true,

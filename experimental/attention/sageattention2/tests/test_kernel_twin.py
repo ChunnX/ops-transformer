@@ -9,8 +9,8 @@
    （SAGE_ATTN_DEVICE_COMPILE=0 路径，SimMemory 模拟 L1/UB/L0）——经 extern "C"
    sage_attention2 入口直驱，Host Tiling 同款 TilingData（core_num_used=1 + 关闭
    Die 亲和串行覆盖全部任务），验证 V0 量化 prologue / V1 softmax 与 PV 的核内
-   数值路径与 GM 出入口（含 d_pad pad/crop、NHD 原生布局、smooth_k LSE 校正、
-   smooth_v 的 V 减均值量化与 PV +vm）。
+   数值路径与 GM 出入口（含 d_pad pad/crop、NHD 原生布局、smooth_v 的 V 减均值
+   量化与 PV +vm；7 参收敛后 km/corr 无 GM 入参，smooth_k 校正仅孪生路径覆盖）。
 
 比对基线：golden/manifest.json 全部 25 桶的落盘 out/lse（CPU 高保真参考轨迹）。
 容差口径（与 tests/test_golden_precision.py 的 L-A/L-B 一致）：
@@ -26,13 +26,14 @@
   独立性"取 128 对齐行窗口执行（窗口内 Q 量化组按 32-token 组边界整组包含，与整桶
   golden 量化轨迹逐位同源），测试名以 row_window 如实标注；
 - kernel 宿主串行分支：TC-05（pad d48/d96 补零+裁剪，覆盖 pad64/pad128 两域）、
-  TC-07（causal + per_warp）、TC-01（NHD 原生布局 fp16/bf16）、TC-04（smooth_k LSE
-  校正）、TC-03（smooth_v 正路径）、P-01 主档共 8 桶（宿主标量路径每任务重摆 KV，
-  代价高于孪生，取代表性覆盖）。
+  TC-07（causal + per_warp）、TC-01（NHD 原生布局 fp16/bf16）、TC-04（return_lse
+  出入口）、TC-03（smooth_v 正路径）、P-01 主档
+  共 8 桶（宿主标量路径每任务重摆 KV，代价高于孪生，取代表性覆盖）。
 
-lse_correction 喂法（开源契约）：km 与 corr = q·km_broadcast^T（fp32 matmul）均在
-上层算好传入——孪生经 C-ABI lse_correction 形参、kernel 经 GM 入参 5，两条路径
-消费同一 `_lse_correction` 产出（本文件唯一定义）。
+smooth_k 供给（核内化，7 参收敛后双路径同式）：7 参入口无 key_mean/lse_correction
+GM 入参，km 与 corr = q·km_broadcast^T（fp32）由 quant::KeyMeanElement /
+LseCorrDot 单点核内自算（孪生自算支路与 kernel 宿主串行共用，位级一致）——
+C-ABI lse_correction 形参保留外部预计算通道（传非空即直用）。
 
 运行方式：run.sh python（自动进容器）或容器内 python tests/test_kernel_twin.py；
 动态库现场编译（首次约 1 s，按源码 mtime 缓存，编译器唯一定义点 tests/_cxx.py：BiSheng），
@@ -73,18 +74,6 @@ from tiling_mirror import (  # noqa: E402
 # 全精度 exp2 域换算系数（宿主 tiling 填充同 tiling.h 的 C++ LOG2E 全精度值；
 # 与 dispatch golden 冻结截断值 1.44269504 是两个不同常量）
 LOG2E = 1.4426950408889634
-
-
-def _lse_correction(q: torch.Tensor, k: torch.Tensor, hnd: bool) -> torch.Tensor:
-    """smooth_k 行级 lse_correction（[b, hq, sq] fp32，开源契约 core.py:593-597）。"""
-    if not hnd:
-        q = q.transpose(1, 2)
-        k = k.transpose(1, 2)
-    km = k.mean(dim=2, keepdim=True)
-    q_per_kv = q.shape[1] // k.shape[1]
-    if q_per_kv > 1:
-        km = km.repeat_interleave(q_per_kv, dim=1)
-    return torch.matmul(q.float(), km.float().transpose(2, 3)).squeeze(-1).contiguous()
 
 
 def _effective_smooth_v(case: dict) -> bool:
@@ -205,8 +194,9 @@ def _run_twin(case: dict, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor):
     smooth_v = 1 if _effective_smooth_v(case) else 0
     out = torch.empty_like(q)
     lse = torch.zeros(b * hq * sq, dtype=torch.float32)
-    # smooth_k 校正项由上层算好传入（开源契约，与设备核 GM 入参同式）
-    corr = _lse_correction(q, k, hnd) if smooth_k else None
+    # smooth_k 校正项走孪生内部自算（quant::LseCorrDot 单点，传 nullptr 即自算）——
+    # 与 kernel 宿主串行的核内自算同式位级一致，gqa 分块位级 parity 的前提
+    corr = None
     rc = _LIB.SageAttnTwinRunForward(
         ctypes.c_void_p(q.data_ptr()), ctypes.c_void_p(k.data_ptr()), ctypes.c_void_p(v.data_ptr()),
         None,
@@ -224,10 +214,11 @@ def _run_twin(case: dict, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor):
 def _run_kernel_host(case: dict, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor):
     """直驱 op_kernel/sageattention2.cpp 的宿主串行分支（SimMemory 标量基线）。
 
-    入出口契约：Q/K/V/OUT 的 GM 视图按 d_pad 步长寻址（d_og < d_pad 时调用方补零
-    pad、出参裁剪，与设备包装层职责一致）；key_mean 为 fp32 [b, hkv, d_pad]；
-    lse_correction 为 fp32 [b, hq, sq]（smooth_k 时非空，核 V1 Finalize 按
-    (b, hq, token) 全局下标直读——与设备 GM 入参同契约）；TilingData 与
+    入出口契约：标准 7 参入口（q/k/v/out/lse/workspace/tiling）——7 参收敛后无
+    key_mean/lse_correction 形参，smooth_k 的 km/corr 由核内自算供给
+    （quant::KeyMeanElement / LseCorrDot 单点，与孪生自算支路同式位级一致）；
+    Q/K/V/OUT 的 GM 视图按 d_pad 步长寻址（d_og < d_pad 时调用方补零 pad、出参
+    裁剪，与设备包装层职责一致）；TilingData 与
     aclnn/sage_attn_host_tiling.h ComputeHostTiling 同式填充，
     core_num_used=1 + 关闭 Die 亲和使单核串行覆盖全部任务。
     """
@@ -256,12 +247,6 @@ def _run_kernel_host(case: dict, q: torch.Tensor, k: torch.Tensor, v: torch.Tens
         return p.contiguous()
 
     qp, kp, vp = pad(q, hq, sq), pad(k, hkv, sk), pad(v, hkv, sk)
-    km = None
-    if smooth_k:
-        km = kp.mean(dim=2 if hnd else 1).float().contiguous()
-        corr = _lse_correction(qp, kp, hnd).contiguous().view(-1)
-    else:
-        corr = None
     out_pad = torch.zeros_like(qp)
     lse = torch.zeros(b * hq * sq, dtype=torch.float32)
 
@@ -291,7 +276,6 @@ def _run_kernel_host(case: dict, q: torch.Tensor, k: torch.Tensor, v: torch.Tens
     t.enable_die_affinity, t.die_num = 0, 1
     t.cores_per_die, t.tasks_per_die = 1, b * hkv * t.q_blk_num
 
-    km_ptr = ctypes.c_void_p(km.data_ptr()) if km is not None else None
     _LIB.sage_attention2(
         ctypes.c_void_p(qp.data_ptr()), ctypes.c_void_p(kp.data_ptr()), ctypes.c_void_p(vp.data_ptr()),
         ctypes.c_void_p(out_pad.data_ptr()), ctypes.c_void_p(lse.data_ptr()),
@@ -487,8 +471,9 @@ class TestKernelHostSerialBranchVsGolden(GoldenTwinTestBase):
     """kernel 宿主串行分支（op_kernel SageAttnKernel + SimMemory）vs golden。
 
     以 TilingData 直驱 extern "C" sage_attention2 入口（SAGE_ATTN_DEVICE_COMPILE=0
-    路径），验证 V0 量化 prologue（含 km 减法与 smooth_v 的 vm 预扫）、V1 块内 logit/
-    softmax/P 量化/PV 与 GM 出入口（lse_correction 按 GM 入参直读）；KV ping-pong 槽的
+    路径），验证 V0 量化 prologue（含 smooth_k 核内自算 km 的 K 减均值量化与
+    smooth_v 的 vm 预扫）、V1 块内 logit/softmax/P 量化/PV 与 GM 出入口
+    （smooth_k 核内自算 lse_correction 进 LSE 出口）；KV ping-pong 槽的
     宿主整段时序约束由 RestageKvBlockHost 保证，本测试即其 golden 级回归。
     """
 

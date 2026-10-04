@@ -93,9 +93,8 @@ def main():
     lse_ok = bool(rel_lse.max() <= 1e-3)
     print(f"判定: O 位级全一致={o_bit_ok}  O ≤1ulp={o_ulp_ok}  LSE 相对差≤1e-3={lse_ok}")
     if not lse_ok:
-        print("  LSE 超差提示：smooth_k=1 用例下 LSE 含 q·km 校正项（×sm_scale），")
-        print("  该项经 lseCorrection GM 入参两侧同源传入（V1 FinalizeAndStoreOutput 直读），")
-        print("  超差不属预期域，须查 harness/kernel 数值轨迹。")
+        print("  LSE 超差提示：本用例 smooth_k 生效门控为关（标准 7 参收敛后无校正项供给），")
+        print("  LSE 为无校正口径且两侧同源；超差不属预期域，须查 harness/kernel 数值轨迹。")
     print(f"结论: {'PASS' if (o_bit_ok or o_ulp_ok) and lse_ok else 'FAIL'}"
           f"（FastExp2 多项式 vs std::exp2 的 ≤1ulp 预期 {'成立' if o_ulp_ok else '不成立'}）")
     sys.exit(0 if (o_bit_ok or o_ulp_ok) and lse_ok else 1)

@@ -6,9 +6,12 @@
  * \brief SageAttention2 camodel 仿真 harness 的共享用例定义（B2 门禁数值比对）。
  *
  * 唯一定义点：用例形状/模式参数、输入生成算法（固定种子 std::mt19937 + 整数域
- * 确定性映射，杜绝跨编译器 uniform_real_distribution 实现差异）、smooth_k 的
- * key_mean 预计算（与 twin_reference.h RunSequential 内置口径一致：double 累加
- * 求均值后舍入回 fp16）、bin 文件读写辅助。
+ * 确定性映射，杜绝跨编译器 uniform_real_distribution 实现差异）、bin 文件读写辅助。
+ *
+ * smooth_k 生效门控（op_host 实况同式）：标准 7 参收敛后入口无 key_mean/
+ * lse_correction 独立张量，op_host/sage_attention2_tiling.cpp 以 has_key_mean=false
+ * 门控——tiling.smooth_k = smoothK && has_key_mean = 0，核内 K 不减均值、LSE 无
+ * 校正项；孪生 golden 同口径（io.smooth_k=0），设备与参考逐位可比。
  *
  * 被两个编译域共享：
  * - sim_reference.cpp（容器内 BiSheng 宿主模式编译，产出输入 bin + tiling bin + golden bin）；
@@ -38,7 +41,8 @@ namespace sage_attn_sim {
 
 // -------------------------------------------------------------------------
 // 用例参数（任务书冻结小 case）：B=1、Hq=Hkv=1、Sq=Sk=128、D=64、fp16、
-// per_thread、pv_accum=fp32+fp16、非因果、smooth_k=1、sm_scale=1/8。
+// per_thread、pv_accum=fp32+fp16、非因果、sm_scale=1/8；smooth_k 属性冻结为 1，
+// 但标准 7 参收敛后无 key_mean 供给，生效口径恒为关（见文件头门控注记）。
 // -------------------------------------------------------------------------
 constexpr uint32_t kB = 1;
 constexpr uint32_t kHq = 1;
@@ -50,7 +54,8 @@ constexpr uint32_t kLayout = sage_attn::LAYOUT_NHD;           // 0 = NHD
 constexpr uint32_t kGran = sage_attn::QUANT_GRAN_PER_THREAD;  // 3 = per_thread
 constexpr uint32_t kPvAccum = sage_attn::PV_ACCUM_FP32_FP16;  // 2 = fp32+fp16
 constexpr uint32_t kIsCausal = 0;
-constexpr uint32_t kSmoothK = 1;
+constexpr uint32_t kSmoothK = 1;    // smoothK 属性值（任务书冻结；生效门控见 BuildTiling）
+constexpr bool kHasKeyMean = false; // 标准 7 参收敛：无独立 key_mean 张量（op_host 实况）
 constexpr uint32_t kDtypeMode = 1;  // 1 = fp16
 constexpr float kSmScale = 0.125f;  // 1/8
 constexpr uint32_t kSeed = 20261003u;
@@ -59,19 +64,11 @@ constexpr uint32_t kSeed = 20261003u;
 constexpr const char *kQBin = "input_q_fp16.bin";
 constexpr const char *kKBin = "input_k_fp16.bin";
 constexpr const char *kVBin = "input_v_fp16.bin";
-constexpr const char *kKmBin = "input_key_mean_f32.bin";
-constexpr const char *kLseCorrBin = "input_lse_correction_f32.bin";
 constexpr const char *kTilingBin = "tiling_160.bin";
 constexpr const char *kGoldenOBin = "golden_o_fp16.bin";
 constexpr const char *kGoldenLseBin = "golden_lse_f32.bin";
 constexpr const char *kDeviceOBin = "device_o_fp16.bin";
 constexpr const char *kDeviceLseBin = "device_lse_f32.bin";
-
-// NHD 布局元素偏移：[b, s, h, d]
-inline size_t NhdOffset(uint32_t b, uint32_t s, uint32_t h, uint32_t d,
-                        uint32_t /*dim_b*/, uint32_t dim_s, uint32_t dim_h, uint32_t dim_d) {
-    return ((static_cast<size_t>(b) * dim_s + s) * dim_h + h) * dim_d + d;
-}
 
 /**
  * 确定性输入生成：mt19937 原始 32 位 → [0,2^24) 整数 → [-2,2) float。
@@ -90,61 +87,17 @@ inline void GenerateFp16Tensor(uint32_t seed, std::vector<uint16_t> &out_bits) {
 }
 
 /**
- * smooth_k 的 key_mean 预计算（单点，设备与 golden 共用同一份）：
- * 按 K 逐 (b, h, d) 通道做 double 累加均值，舍入回 fp16 后以 float 返回，
- * 与 twin_reference.h 步骤 2 的内置口径逐位一致。
- */
-inline void ComputeKeyMean(const std::vector<uint16_t> &k_bits, std::vector<float> &km) {
-    km.assign(static_cast<size_t>(kB) * kHkv * 128u, 0.0f);  // d_pad=128 上界，尾段 0
-    for (uint32_t bi = 0; bi < kB; ++bi) {
-        for (uint32_t hi = 0; hi < kHkv; ++hi) {
-            for (uint32_t di = 0; di < kDOg; ++di) {
-                double sum = 0.0;
-                for (uint32_t si = 0; si < kSk; ++si) {
-                    const size_t off = NhdOffset(bi, si, hi, di, kB, kSk, kHkv, kDOg);
-                    sum += sage_attn::quant::Fp16ToFp32(k_bits[off]);
-                }
-                const float mean = static_cast<float>(sum / kSk);
-                km[(static_cast<size_t>(bi) * kHkv + hi) * 128u + di] =
-                    sage_attn::quant::Fp16ToFp32(sage_attn::quant::Fp32ToFp16(mean));
-            }
-        }
-    }
-}
-
-/**
- * smooth_k 的行级 lse_correction 预计算（[b*hq*sq] fp32，开源契约 q·km_broadcast^T）：
- * 与 key_mean 同为"上层算好传入"的外部张量——设备核经 GM 入参 5 直读、孪生经
- * TwinIo.lse_correction 消费，本端产出保证两侧同源（gqa=1，km 广播为恒等）。
- */
-inline void ComputeLseCorrection(const std::vector<uint16_t> &q_bits, const std::vector<float> &km,
-                                 std::vector<float> &corr) {
-    corr.assign(static_cast<size_t>(kB) * kHq * kSq, 0.0f);
-    for (uint32_t bi = 0; bi < kB; ++bi) {
-        for (uint32_t hi = 0; hi < kHq; ++hi) {
-            const float *km_head = km.data() + (static_cast<size_t>(bi) * kHkv + hi) * 128u;
-            for (uint32_t si = 0; si < kSq; ++si) {
-                float acc = 0.0f;
-                for (uint32_t di = 0; di < kDOg; ++di) {
-                    const size_t off = NhdOffset(bi, si, hi, di, kB, kSq, kHq, kDOg);
-                    acc += sage_attn::quant::Fp16ToFp32(q_bits[off]) * km_head[di];
-                }
-                corr[(static_cast<size_t>(bi) * kHq + hi) * kSq + si] = acc;
-            }
-        }
-    }
-}
-
-/**
  * Host Tiling 单点计算（复用 aclnn/sage_attn_host_tiling.h 的 ComputeHostTiling，
  * 与 op_host/aclnn 两形态共享同一闭式实现），并冻结语义对齐本 harness 的调用面。
+ * hasKeyMean=false 与 op_host/sage_attention2_tiling.cpp 的 has_key_mean 实况
+ * 同款门控（标准 7 参收敛，无独立 key_mean 张量）。
  */
 inline bool BuildTiling(sage_attn::SageAttention2TilingData &tiling, uint64_t &ws_bytes) {
     const aclnnStatus st = sage_attn::ComputeHostTiling(
         kB, kSq, kSk, kHq, kHkv, kDtypeMode, kDOg, static_cast<double>(kSmScale),
         kGran, kPvAccum, kIsCausal != 0, kLayout,
         kSmoothK != 0, false,            // smooth_v=false（非 fp32 档被 host 拒绝）
-        kSmoothK != 0,                   // hasKeyMean
+        kHasKeyMean,                     // hasKeyMean（7 参收敛实况：false）
         true,                            // hasLse
         tiling, ws_bytes);
     return st == ACLNN_SUCCESS;

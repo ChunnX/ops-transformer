@@ -353,6 +353,26 @@ private:
 
         // 初始化两级累加控制器与因果掩码活跃分块数 (Causal Mask Early Exit)
         active_kv_blocks_ = ActiveKvBlocks();
+
+#if !SAGE_ATTN_DEVICE_COMPILE
+        // smooth_k 核内化（宿主串行）：7 参收敛后入口无 keyMean GM 入参，按任务
+        // (cur_b_, cur_hkv_) 自算 km——quant::KeyMeanElement 单点（double 累加均值
+        // 舍回输入位型，与孪生 RunSequential 自算支路同式位级一致，两侧 int8 K
+        // 轨迹逐位相同是 gqa 分块位级 parity 的前提）。smooth_k=0 时缓冲不消费。
+        if (tiling_->smooth_k != 0) {
+            const Catlass::SageAttn::GmBhsdLayout km_layout =
+                Catlass::SageAttn::MakeGmBhsdLayout(b_, hkv_, sk_, d_, tiling_->tensor_layout == LAYOUT_HND);
+            const uint16_t *k_bits = reinterpret_cast<const uint16_t *>(key_gm_);
+            const int64_t km_b = static_cast<int64_t>(cur_b_);
+            const int64_t km_hkv = static_cast<int64_t>(cur_hkv_);
+            for (uint32_t di = 0; di < d_; ++di) {
+                km_self_[di] = quant::KeyMeanElement(sk_, kDtype, [&](uint32_t si) {
+                    return ReadInputBits(
+                        k_bits + km_layout(tla::MakeCoord(km_b, km_hkv, static_cast<int64_t>(si), 0u)), di);
+                });
+            }
+        }
+#endif
     }
 
     /**
@@ -445,7 +465,6 @@ private:
         for (uint32_t k = 0; k < active_kv_blocks; ++k) {
             bool is_ping = ((k % 2) == 0);
             uint32_t kv_flag = is_ping ? CrossCoreFlags::FLAG_KV_PING_READY : CrossCoreFlags::FLAG_KV_PONG_READY;
-            uint32_t kv_free = is_ping ? CrossCoreFlags::FLAG_KV_PING_FREE : CrossCoreFlags::FLAG_KV_PONG_FREE;
             uint32_t l1_kv_addr = is_ping ? Catlass::SageAttn::L1DoubleBankContract::KV_PING_OFFSET
                                           : Catlass::SageAttn::L1DoubleBankContract::KV_PONG_OFFSET;
 
@@ -457,8 +476,11 @@ private:
             qk_mmad.LoadL0B(l1_kv_addr, block_n_, d_);
             qk_mmad.Compute(true); // 逐块独立部分和（golden 逐块锚定轨迹，task/12 归约粒度定案）
 
-            // K 块（L1 Bank 1 槽）消费完成：归还缓冲许可，V0 在重写同奇偶槽（k+2）前会 wait。
-            CrossCoreSet(CrossCoreDirection::CUBE_TO_VEC0, kv_free);
+            // 注意：严禁在此处立即释放 kv_free！
+            // 因为 l1_kv_addr 中同时驻留了 K 与 V，V 必须在下一拍 (prev_k = k - 1) 由
+            // pv_mmad.LoadL0B 读取完毕后才能被覆写。过早归还 kv_free 会导致 V0 在
+            // beat k+2 提前覆写同奇偶 L1 槽，破坏尚未被 Cube 读取的 V 矩阵。
+            // 归还许可延迟至下方 PV MMAD 处 (prev_kv_free) 与 Drain 拍 (last_kv_free)。
 
             // 3. A7：QK dot32 裸搬 UB（首拍 k=0 缓冲区天然为空无需等待；k > 0 时等待 V1 读毕上一拍 dot32；
             //    FixPipe 走 FIX 管，CrossCoreSet 在 S 管——先自配对排空 FIX 再 raise flag 保 GM/UB 可见序）
@@ -495,6 +517,12 @@ private:
                 // S[prev_k]（UB 槽）消费完成：归还缓冲许可，V1 在重写同奇偶槽前会 wait
                 CrossCoreSet(CrossCoreDirection::CUBE_TO_VEC1, s_free);
 
+                // prev_k 块的 K 与 V 均已在 L0 消费完毕（K 在 beat prev_k 加载，V 在上方 LoadL0B 加载完毕）。
+                // 此时归还 prev_k 块的 L1 KV 槽许可，V0 在重写同奇偶槽（k+1）前方可放行。
+                uint32_t prev_kv_free = prev_is_ping ? CrossCoreFlags::FLAG_KV_PING_FREE
+                                                     : CrossCoreFlags::FLAG_KV_PONG_FREE;
+                CrossCoreSet(CrossCoreDirection::CUBE_TO_VEC0, prev_kv_free);
+
                 // A7：PV 部分和裸搬 UB 交接槽（首个 partial k=1 槽天然为空；k > 1 时等待 V1 合并完上一块交接槽）
                 if (k > 1) {
                     CrossCoreWait(CrossCoreDirection::VEC1_TO_CUBE, CrossCoreFlags::FLAG_PV_PARTIAL_FREE);
@@ -526,6 +554,11 @@ private:
 
             // 归还最后一个 S 槽许可（V1 退域回收依赖此配平）
             CrossCoreSet(CrossCoreDirection::CUBE_TO_VEC1, s_free);
+
+            // 最后一个分块 last_k 的 V 消费完毕，归还其 L1 KV 槽许可
+            uint32_t last_kv_free = last_is_ping ? CrossCoreFlags::FLAG_KV_PING_FREE
+                                                 : CrossCoreFlags::FLAG_KV_PONG_FREE;
+            CrossCoreSet(CrossCoreDirection::CUBE_TO_VEC0, last_kv_free);
 
             // 最后一块部分和搬出（当 active_kv_blocks > 1 时需等待 V1 释放上一块 partial 交接槽）
             if (active_kv_blocks > 1) {
@@ -603,11 +636,21 @@ private:
 
             // 获取 K 均值指针 (若启用 smooth_k)。
             // __gm__ 地址空间限定显式保留，统一保持 `const __gm__ float *` 贯穿传递。
+            // 7 参收敛后入口无 keyMean GM 入参（key_mean_gm_ 恒空）：宿主串行消费
+            // DecodeTask 的核内自算缓冲 km_self_（quant::KeyMeanElement 单点）；设备态
+            // 保留 GM 通道形态并以缓冲非空为守卫——生产路径 smooth_k 经 host tiling
+            // 门控恒 0，直填 1 时降级为不减均值而非空基址偏移出的野指针解引用。
             const __gm__ float *km_ptr = nullptr;
+#if !SAGE_ATTN_DEVICE_COMPILE
             if (tiling_->smooth_k != 0) {
+                km_ptr = reinterpret_cast<const __gm__ float *>(km_self_);
+            }
+#else
+            if (tiling_->smooth_k != 0 && key_mean_gm_ != nullptr) {
                 int64_t km_offset = (b_idx * static_cast<int64_t>(hkv_) + hkv_idx) * d_;
                 km_ptr = reinterpret_cast<const __gm__ float*>(key_mean_gm_ + km_offset * sizeof(float));
             }
+#endif
 
             // 执行 K 减均值 + INT8 量化 + 摆放，写入 L1 Bank 1
             QuantizeAndStageKey(key_gm_ + kv_gm_offset * sizeof(uint16_t), km_ptr, l1_dst_offset, cur_block_k, d_, kv_layout);
@@ -925,10 +968,11 @@ private:
      * - GQA 聚合沿 M 维堆叠行：逻辑行 r = g * cur_q_len + i（g 为 KV 头内 Q 头序号），
      *   Q scale 按头分段存放 sim q_scales[g*kQScaleSlotStride + 组号]（KT 基线的 scale 暂存；
      *   L1 内 scale 摆放随 tiling.l1_q_scale_offset 于向量化 pass 落地），L1 内 [行][d] 摆放；
-     * - smooth_k 的行级 lse_correction 不在核内计算：桥接层按开源契约
-     *   （core.py:593-597，fp32 matmul q·km_broadcast^T）算好经 lseCorrection GM
-     *   入参传入，V1 FinalizeAndStoreOutput 按 (b, hq, token) 全局下标直读
-     *   （V0/V1 跨 AIV 不共享私有状态，核内算 corr 本就无法送达 V1）。
+     * - smooth_k 的行级 lse_correction 不在 V0 计算：标准 7 参收敛后入口无
+     *   lseCorrection GM 入参，设备态核内 lse_correction_gm_ 恒空（启用与否以其
+     *   非空为唯一定义），V1 FinalizeAndStoreOutput 按 (b, hq, token) 全局下标
+     *   直读（V0/V1 跨 AIV 不共享私有状态，V0 算 corr 本就无法送达 V1）；宿主
+     *   串行由 V1 Finalize 核内化自算（quant::LseCorrDot 单点）。
      */
 #if !SAGE_ATTN_DEVICE_COMPILE
     /**
@@ -1683,10 +1727,11 @@ private:
         const Catlass::SageAttn::GmBhsdLayout kv_layout =
             Catlass::SageAttn::MakeGmBhsdLayout(b_, hkv_, sk_, d_, tiling_->tensor_layout == LAYOUT_HND);
         const int64_t kv_gm_offset = kv_layout(tla::MakeCoord(b_idx, hkv_idx, sk_start, 0u));
+        // km 指针：核内化自算缓冲（DecodeTask 每任务按 (cur_b_, cur_hkv_) 重算，
+        // quant::KeyMeanElement 单点，与孪生同式位级一致）
         const __gm__ float *km_ptr = nullptr;
         if (tiling_->smooth_k != 0) {
-            const int64_t km_offset = (b_idx * static_cast<int64_t>(hkv_) + hkv_idx) * d_;
-            km_ptr = reinterpret_cast<const __gm__ float *>(key_mean_gm_ + km_offset * sizeof(float));
+            km_ptr = reinterpret_cast<const __gm__ float *>(km_self_);
         }
 
         QuantizeAndStageKey(key_gm_ + kv_gm_offset * sizeof(uint16_t), km_ptr, l1_dst_offset,
@@ -1737,10 +1782,12 @@ private:
      * 7. V1：最终归一化与 LSE 换算写回 GM（twin 5.5/5.6 单点轨迹）：
      * - 行级 inv_d = GetFinalInvDenominator(row_states_[r])（O 与分母同处 448· 放大域，
      *   除法处放大精确相消）；
-     * - smooth_k 的行级 lse_correction 由桥接层算好（fp32 matmul q·km_broadcast^T，
-     *   开源契约 core.py:593-597）经 lseCorrection GM 入参传入，对齐域逐头整行
-     *   MTE2 接入 UB（未对齐域逐 token 直读）——校正项启用与否以该张量存在
-     *   （非 nullptr）为唯一定义，V0/V1 跨 AIV 不共享私有状态，核内不得自算；
+     * - smooth_k 的行级 lse_correction：标准 7 参收敛后入口无 lseCorrection GM
+     *   入参（数学定义仍为 fp32 q·km_broadcast^T，开源契约 core.py:593-597），
+     *   供给双通道——设备态以 lse_correction_gm_ 非空为守卫直读 GM（对齐域逐头
+     *   整行 MTE2 接入 UB、未对齐域逐 token 直读的通路保留）；宿主串行核内化
+     *   自算（quant::LseCorrDot 单点，与孪生自算支路同式位级一致，V0/V1 跨 AIV
+     *   不共享私有状态的纪律在设备态保持不变）；
      * - smooth_v（host 门控仅 fp32 档）：V 减均值量化下 PV 分子分母的 vm·Σp 项
      *   归一化后恰还原为 vm，Finalize 经 workspace GM 区（workspace_vm_offset）
      *   读回 vm 后逐通道加回（o·inv + vm）；
@@ -1761,8 +1808,9 @@ private:
         const Catlass::SageAttn::GmBhsLayout lse_layout =
             Catlass::SageAttn::MakeGmBhsLayout(b_, hq_, sq_);
 
-        // smooth_k 校正项启用唯一定义：lseCorrection GM 张量存在（桥接层仅在
-        // smooth_k && return_lse 时产出该张量）
+        // smooth_k 校正项启用唯一定义：lse_correction_gm_ 非空（设备态 GM 通道守卫；
+        // 标准 7 参收敛后入口无该张量，设备态恒走无校正口径——生产路径 smooth_k 经
+        // host tiling 门控恒 0；宿主串行的自算通道见下方 #else 分支）
         const bool has_lse_corr = (lse_correction_gm_ != nullptr);
 #if SAGE_ATTN_DEVICE_COMPILE
         // smooth_v 的 vm 通道向量：V0 首块产出并写 workspace GM 区，本侧 Finalize 前
@@ -1886,16 +1934,27 @@ private:
                 if (r >= MAX_PACK_ROWS) break;
                 const float inv_row =
                     OnlineSoftmaxTransformer::GetFinalInvDenominator(row_states_[r]);
-                // LSE 校正项：lseCorrection GM 按 (b, hq, token) 全局下标直读（与设备分支同式）
+                // LSE 校正项：lseCorrection GM 按 (b, hq, token) 全局下标直读（与设备分支
+                // 同式）；7 参收敛后入口无该 GM 入参（指针恒空），smooth_k 时宿主串行
+                // 核内化自算——quant::LseCorrDot 单点（q·km fp32 左至右点积，km 取
+                // DecodeTask 自算缓冲，与孪生自算支路同式位级一致，gqa 分块 LSE 位级
+                // parity 的前提；Q 行与 O 同一 MakeGmBhsdLayout 布局单点）。
                 float lse_corr_val = 0.0f;
+                bool has_corr = has_lse_corr;
                 if (has_lse_corr) {
                     const int64_t corr_offset = lse_layout(tla::MakeCoord(b_idx, hq_curr, sq_start + i)) *
                                                 static_cast<int64_t>(sizeof(float));
                     lse_corr_val = *reinterpret_cast<const float*>(lse_correction_gm_ + corr_offset);
+                } else if (tiling_->smooth_k != 0) {
+                    const uint16_t *q_row = reinterpret_cast<const uint16_t *>(query_gm_) +
+                                            out_layout(tla::MakeCoord(b_idx, hq_curr, sq_start + i, 0u));
+                    lse_corr_val = quant::LseCorrDot(d_, [&](uint32_t c) { return ReadInputBits(q_row, c); },
+                                                     km_self_);
+                    has_corr = true;
                 }
                 const float lse_host = OnlineSoftmaxTransformer::ConvertLseToHost(
                     row_states_[r].lse, tiling_->sm_scale_log2e * INV_LOG2E,
-                    lse_corr_val, has_lse_corr, S_FP8_OFFSET);
+                    lse_corr_val, has_corr, S_FP8_OFFSET);
 
                 for (uint32_t c = 0; c < tiling_->d_og; ++c) {
                     const float val = sim_mem_->o_accum[static_cast<size_t>(r) * d_ + c] * inv_row;
@@ -1917,16 +1976,24 @@ private:
 #if !SAGE_ATTN_DEVICE_COMPILE
     // 宿主仿真缓冲（unique_ptr 生命周期管理）
     std::unique_ptr<SimMemory> sim_mem_{nullptr};
+    // smooth_k 核内化自算缓冲（宿主串行）：DecodeTask 每任务按 (cur_b_, cur_hkv_)
+    // 经 quant::KeyMeanElement 重算；d_pad ∈ {64, 128}（TilingData 布局契约）故定长
+    // 128 足额。V0 量化（ProcessVec0/RestageKvBlockHost）与 V1 Finalize corr 自算
+    // 共同消费——宿主串行为同一核对象顺序执行，缓冲跨阶段一致。
+    float km_self_[128]{0.0f};
 #endif
     const SageAttention2TilingData *tiling_{nullptr};
     __gm__ uint8_t *query_gm_{nullptr};
     __gm__ uint8_t *key_gm_{nullptr};
     __gm__ uint8_t *value_gm_{nullptr};
+    // smooth_k 的 keyMean：标准 7 参收敛后入口无对应 GM 入参，Init 恒置空——设备态
+    // 保留 GM 通道形态并以非空为守卫（ProcessVec0 km_ptr 段），宿主串行走 km_self_
+    // 核内自算（quant::KeyMeanElement 单点）。
     __gm__ uint8_t *key_mean_gm_{nullptr};
-    // smooth_k 的行级 lse_correction（注册入参 4）：桥接层按开源契约算好（fp32
-    // q·km_broadcast^T，仅 return_lse 时非空），V1 Finalize 按 (b, hq, token) 全局
-    // 下标直读；校正项启用与否以本指针非空为唯一定义（V0/V1 跨 AIV 不共享私有
-    // 状态，核内不得自算）。
+    // smooth_k 的行级 lse_correction：标准 7 参收敛后入口无对应 GM 入参，Init 恒
+    // 置空——设备态以其非空为唯一启用定义（保留 GM 通道形态，供给门控见 op_host
+    // has_key_mean 实况）；宿主串行在 V1 Finalize 核内化自算（quant::LseCorrDot
+    // 单点，与孪生自算支路同式位级一致）。
     __gm__ uint8_t *lse_correction_gm_{nullptr};
     __gm__ uint8_t *out_gm_{nullptr};
     __gm__ uint8_t *lse_gm_{nullptr};

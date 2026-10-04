@@ -390,6 +390,52 @@ __aicore__ __host__ inline float SubKm(float val, const float* km_vec, uint32_t 
                               : HalfReader::Sub(val, km_vec[c]);
 }
 
+/**
+ * smooth_k 核内化的 km 自算单点（7 参收敛后核内无 keyMean GM 入参的替代通道）：
+ * double 累加对全序列求均值后舍回输入位型再回 fp32（对齐 torch.mean 行为，与
+ * 孪生 RunSequential 自算支路同式——宿主 kernel 与孪生共用本式保证 km 位级一致，
+ * 进而锁定两侧 int8 K 轨迹逐位相同）。read_k(si) 由调用方供给 si 行 di 列的 fp32
+ * 读数（孪生 k_pad / kernel GM 直读两条寻址路径各自注入），本函数禁改求和序。
+ */
+#if defined(__CCE_AICORE__)
+template <typename ReadK>
+__aicore__ inline float KeyMeanElement(uint32_t sk, uint32_t dtype_mode, ReadK&& read_k) noexcept {
+    float sum = 0.0f;
+    for (uint32_t si = 0; si < sk; ++si) {
+        sum += read_k(si);
+    }
+    const float mean = (sk > 0) ? (sum / static_cast<float>(sk)) : 0.0f;
+    const uint16_t rounded = (dtype_mode == 2u) ? Fp32ToBf16(mean) : Fp32ToFp16(mean);
+    return (dtype_mode == 2u) ? Bf16ToFp32(rounded) : Fp16ToFp32(rounded);
+}
+#else
+template <typename ReadK>
+inline float KeyMeanElement(uint32_t sk, uint32_t dtype_mode, ReadK&& read_k) noexcept {
+    double sum = 0.0;
+    for (uint32_t si = 0; si < sk; ++si) {
+        sum += read_k(si);
+    }
+    const float mean = (sk > 0) ? static_cast<float>(sum / sk) : 0.0f;
+    const uint16_t rounded = (dtype_mode == 2u) ? Fp32ToBf16(mean) : Fp32ToFp16(mean);
+    return (dtype_mode == 2u) ? Bf16ToFp32(rounded) : Fp16ToFp32(rounded);
+}
+#endif
+
+/**
+ * smooth_k 核内化的行级 lse_correction 自算单点（q·km fp32 左至右点积，开源契约
+ * core.py:593-597 的标量形态）：km 自 KeyMeanElement 产出（pad 列恒 0，追零不改变
+ * 左至右 fp32 和的位型）；孪生自算支路与宿主 kernel V1 Finalize 共用本式，两侧
+ * corr 位级一致是 gqa 分块位级 parity 的前提。read_q(c) 供给 Q 行 c 列 fp32 读数。
+ */
+template <typename ReadQ>
+__aicore__ __host__ inline float LseCorrDot(uint32_t d_pad, ReadQ&& read_q, const float* km) noexcept {
+    float dot = 0.0f;
+    for (uint32_t c = 0; c < d_pad; ++c) {
+        dot += read_q(c) * km[c];
+    }
+    return dot;
+}
+
 } // namespace quant
 } // namespace sage_attn
 

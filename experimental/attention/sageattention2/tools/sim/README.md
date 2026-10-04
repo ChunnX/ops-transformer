@@ -9,7 +9,7 @@ canonical 注册内核，并与宿主孪生真值（`sageattn_fp8/ascendc/twin_r
 
 | 文件 | 作用 |
 | --- | --- |
-| `sim_case_common.hpp` | 共享用例定义（形状/模式/种子/输入生成/key_mean/tiling 单点/bin IO） |
+| `sim_case_common.hpp` | 共享用例定义（形状/模式/种子/输入生成/tiling 单点/bin IO） |
 | `sim_reference.cpp` | golden 参考程序（bisheng 宿主模式编译）：生成输入 + tiling bin，孪生流水算 O/LSE |
 | `sim_main.cpp` | 设备 harness（bisheng `--run-mode=sim` 混编）：读 bin → GM → chevron 发射 → 回读落盘 |
 | `compare_outputs.py` | numpy 比对：O 位级一致率/ulp 分布、LSE 相对差、结论判定 |
@@ -18,8 +18,10 @@ canonical 注册内核，并与宿主孪生真值（`sageattn_fp8/ascendc/twin_r
 ## 用例（任务书冻结小 case）
 
 B=1、Hq=Hkv=1、Sq=Sk=128、D=64、fp16、per_thread、pv_accum=fp32+fp16、非因果、
-smooth_k=1、sm_scale=1/8；输入 `std::mt19937(20261003±{1,2,3})` 生成 fp16 [-2,2)
-（整数域确定性映射，跨编译器位级一致）。
+sm_scale=1/8；输入 `std::mt19937(20261003±{1,2,3})` 生成 fp16 [-2,2)
+（整数域确定性映射，跨编译器位级一致）。smooth_k 属性冻结为 1，但标准 7 参收敛后
+无 key_mean/lse_correction 供给（op_host has_key_mean=false 实况同款门控），生效
+口径恒为关：核内 K 不减均值、LSE 无校正项，孪生 golden 同口径（2026-10-04 随动）。
 
 ## 复现步骤（算子门禁容器内一次性命令形态）
 
@@ -69,9 +71,8 @@ camodel 仿真运行 → 数值比对三步已于 2026-10-04 按指令全局禁�
 
 ## 已知边界
 
-- smooth_k=1 用例的 LSE 含 `q·km × sm_scale` 校正项；核内不算该项（桥接层契约，
-  见 op_kernel LoadAndQuantizeQ 注释），参考程序与设备 harness 经 `lseCorrection`
-  GM 入参两侧同源传入、V1 FinalizeAndStoreOutput 直读；LSE 超差即属数值失真，
-  比对脚本单独标注。
+- smooth_k 生效门控为关（标准 7 参收敛后无 key_mean/lse_correction 供给，op_host
+  has_key_mean=false 实况同款）：LSE 为无校正口径，golden 与设备两侧同源；LSE 超差
+  即属数值失真，比对脚本单独标注。
 - 快照运行：并发会话在迭代 op_kernel/ 既有文件，端到端验证须对 git 快照（HEAD
   archive）执行，避免工作树中间态污染编译。

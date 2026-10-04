@@ -20,16 +20,15 @@ import test_kernel_twin as tk  # noqa: E402  （复用孪生 dylib 装载与 run
 from sageattention2.dispatch import v_scale_max_for  # noqa: E402
 
 
-def _run_kernel_host_gqa8(q, k, v, km, gran_code, causal):
+def _run_kernel_host_gqa8(q, k, v, gran_code, causal):
     """kernel 宿主串行分支 @ gqa=8：m_per_core=32 → 2 chunk × 4 头 × 32 行。
 
-    lse_correction 与孪生侧同源（tk._lse_correction 唯一定义，fp32 matmul q·km^T），
-    两侧消费同值缓冲，LSE 位级可比。
+    smooth_k 的 km/lse_correction 走核内自算（quant::KeyMeanElement/LseCorrDot
+    单点），与孪生自算支路同式位级一致，LSE 位级可比。
     """
     b, hq, hkv, sq, sk, d = 1, 32, 4, q.shape[2], q.shape[3], q.shape[3]
     out_pad = torch.zeros_like(q)
     lse = torch.zeros(b * hq * sq, dtype=torch.float32)
-    corr = tk._lse_correction(q, k, True).contiguous().view(-1)
     t = tk.SageAttention2TilingData()
     t.b, t.hq, t.hkv, t.sq, t.sk, t.d_og, t.d_pad = b, hq, hkv, sq, sk, d, 128
     t.is_causal, t.tensor_layout = causal, tk.LAYOUT_HND
@@ -75,7 +74,6 @@ class TestGqaChunkedPacking(unittest.TestCase):
         q = torch.randn(b, hq, sq, d, dtype=torch.float16)
         k = torch.randn(b, hkv, sk, d, dtype=torch.float16)
         v = torch.randn_like(k)
-        km = k.mean(dim=2).float().contiguous()
         for gran_name, gran_code in (("per_thread", tk.GRAN_PER_THREAD),
                                      ("per_warp", tk.GRAN_PER_WARP)):
             for causal in (0, 1):
@@ -87,7 +85,7 @@ class TestGqaChunkedPacking(unittest.TestCase):
                             "is_causal": bool(causal), "smooth_k": True,
                             "tensor_layout": "HND"}
                     out_t, lse_t = tk._run_twin(case, q, k, v)
-                    out_k, lse_k = _run_kernel_host_gqa8(q, k, v, km, gran_code, causal)
+                    out_k, lse_k = _run_kernel_host_gqa8(q, k, v, gran_code, causal)
                     self.assertTrue(torch.equal(out_t, out_k),
                                     f"{gran_name} causal={causal}: output bit mismatch")
                     self.assertTrue(torch.equal(lse_t, lse_k),
