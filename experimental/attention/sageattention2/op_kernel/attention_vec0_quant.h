@@ -117,7 +117,7 @@ public:
             Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
         }
 
-        // A7 V0：行解析 q_scale 暂存写
+        // A7 V0：行解析 q_scale 写入片上 L1 Bank 0 专有槽位（彻底消灭 GM 往返）
         LocalTensor<float> ub_stage_q(TPosition::VECCALC, SlotV0StageStrip::Offset(), STAGE_SLOT_FLOATS);
         dev_vf::FillF32VF(reinterpret_cast<__ubuf__ float*>(ub_stage_q.GetPhyAddr()), 0.0f, STAGE_SLOT_FLOATS);
         for (uint32_t r = 0; r < total_rows_q && r < MAX_PACK_ROWS; ++r) {
@@ -125,10 +125,10 @@ public:
             const uint32_t token = ctx.cur_q_start + (r % ctx.cur_q_len);
             ub_stage_q.SetValue(r, ub_scales.GetValue((ctx.cur_g0 + g) * kQScaleSlotStride + quant::QScaleIndex(token, per_thread_q)));
         }
+        Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
         Catlass::SageAttn::Sync<HardEvent::S_MTE3>();
-        GlobalTensor<float> gm_stage_q;
-        gm_stage_q.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(ctx.StageStrip() + STAGE_Q_SCALE_OFFSET));
-        DataCopy(gm_stage_q, ub_stage_q, STAGE_SLOT_FLOATS);
+        LocalTensor<float> l1_q_scale(TPosition::A1, SlotL1QScale::Offset(), STAGE_SLOT_FLOATS);
+        Catlass::SageAttn::CopyUbToL1(l1_q_scale, ub_stage_q, STAGE_SLOT_BYTES);
         Catlass::SageAttn::Sync<HardEvent::MTE3_S>();
 #else
         const bool per_thread = (ctx.tiling->qk_quant_gran == QUANT_GRAN_PER_THREAD);
@@ -178,6 +178,13 @@ public:
                 row_out[c] = per_thread ? quant::RoundHalfAwayFromZero(val / scale)
                                         : quant::RoundNearestEven(val / scale);
             }
+        }
+
+        float *l1_q_scale = reinterpret_cast<float *>(ctx.sim_mem->l1_mem + SlotL1QScale::Offset());
+        for (uint32_t r = 0; r < ctx.TotalRows() && r < MAX_PACK_ROWS; ++r) {
+            const uint32_t g = r / ctx.cur_q_len;
+            const uint32_t token = ctx.cur_q_start + (r % ctx.cur_q_len);
+            l1_q_scale[r] = ctx.sim_mem->q_scales[(ctx.cur_g0 + g) * kQScaleSlotStride + quant::QScaleIndex(token, per_thread)];
         }
 #endif
     }
@@ -263,11 +270,12 @@ public:
                 ub_stage_k.SetValue(j, ub_k_scales.GetValue(quant::KScaleIndex(token, per_thread_k)));
             }
         }
+        Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
         Catlass::SageAttn::Sync<HardEvent::S_MTE3>();
-        GlobalTensor<float> gm_stage_k;
-        uint32_t k_offset = STAGE_K_SCALE_BASE_OFFSET + (cur_k % STAGE_K_SCALE_NUM_SLOTS) * STAGE_SLOT_BYTES;
-        gm_stage_k.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(ctx.StageStrip() + k_offset));
-        DataCopy(gm_stage_k, ub_stage_k, STAGE_SLOT_FLOATS);
+        const bool is_ping = ((cur_k % 2) == 0);
+        const uint32_t l1_k_scale_offset = is_ping ? SlotL1KScalePing::Offset() : SlotL1KScalePong::Offset();
+        LocalTensor<float> l1_k_scale(TPosition::A1, l1_k_scale_offset, STAGE_SLOT_FLOATS);
+        Catlass::SageAttn::CopyUbToL1(l1_k_scale, ub_stage_k, STAGE_SLOT_BYTES);
         Catlass::SageAttn::Sync<HardEvent::MTE3_S>();
 
         for (uint32_t j = 0; j < block_n; ++j) {
@@ -295,8 +303,6 @@ public:
         const bool per_thread = (ctx.tiling->qk_quant_gran == QUANT_GRAN_PER_THREAD);
         const uint16_t *k_u16 = reinterpret_cast<const uint16_t *>(k_src);
         int8_t *l1_k = reinterpret_cast<int8_t *>(ctx.sim_mem->l1_mem + l1_dst_addr);
-        float *l1_k_scale = reinterpret_cast<float *>(
-            ctx.sim_mem->l1_mem + l1_dst_addr + static_cast<size_t>(block_n) * d);
 
         const uint32_t grp_per_blk = per_thread ? 4u : 1u;
         const uint32_t blk_first = cur_k_start / quant::K_BLK;
@@ -323,7 +329,18 @@ public:
             const float amax = ctx.sim_mem->k_scales[s];
             const float scale = quant::FinalizeQkScale(amax, per_thread);
             ctx.sim_mem->k_scales[s] = scale;
-            l1_k_scale[s - grp_lo] = scale;
+        }
+
+        const bool is_ping = ((cur_k % 2) == 0);
+        const uint32_t l1_k_scale_offset = is_ping ? SlotL1KScalePing::Offset() : SlotL1KScalePong::Offset();
+        float *l1_k_scale = reinterpret_cast<float *>(ctx.sim_mem->l1_mem + l1_k_scale_offset);
+        for (uint32_t j = 0; j < block_n; ++j) {
+            if (j < block_k) {
+                const uint32_t token = cur_k_start + j;
+                l1_k_scale[j] = ctx.sim_mem->k_scales[quant::KScaleIndex(token, per_thread)];
+            } else {
+                l1_k_scale[j] = 0.0f;
+            }
         }
 
         for (uint32_t j = 0; j < block_n; ++j) {

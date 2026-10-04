@@ -71,6 +71,9 @@ using SlotL1KvPing      = StaticSlot<Catlass::SageAttn::L1DoubleBankContract::KV
 using SlotL1KvPong      = StaticSlot<Catlass::SageAttn::L1DoubleBankContract::KV_PONG_OFFSET, Catlass::SageAttn::L1DoubleBankContract::KV_SLOT_BYTES>;
 using SlotL1SoftmaxPPing = StaticSlot<Catlass::SageAttn::L1DoubleBankContract::P_PING_OFFSET, Catlass::SageAttn::L1DoubleBankContract::P_SLOT_BYTES>;
 using SlotL1SoftmaxPPong = StaticSlot<Catlass::SageAttn::L1DoubleBankContract::P_PONG_OFFSET, Catlass::SageAttn::L1DoubleBankContract::P_SLOT_BYTES>;
+using SlotL1QScale       = StaticSlot<Catlass::SageAttn::L1DoubleBankContract::Q_SCALE_SLOT_OFFSET, Catlass::SageAttn::L1DoubleBankContract::Q_SCALE_SLOT_BYTES>;
+using SlotL1KScalePing   = StaticSlot<Catlass::SageAttn::L1DoubleBankContract::K_SCALE_PING_OFFSET, Catlass::SageAttn::L1DoubleBankContract::K_SCALE_SLOT_BYTES>;
+using SlotL1KScalePong   = StaticSlot<Catlass::SageAttn::L1DoubleBankContract::K_SCALE_PONG_OFFSET, Catlass::SageAttn::L1DoubleBankContract::K_SCALE_SLOT_BYTES>;
 
 #if !SAGE_ATTN_DEVICE_COMPILE
 /**

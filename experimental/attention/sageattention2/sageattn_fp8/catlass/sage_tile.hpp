@@ -308,6 +308,13 @@ struct L1DoubleBankContract {
     static constexpr uint32_t Q_MAX_BYTES   = 128 * 128 * sizeof(int8_t); // 16 KB
     static constexpr uint32_t Q_SCALE_OFFSET = Q_DATA_OFFSET + Q_MAX_BYTES; // Q 数据区后紧邻 scale（Data+Scale 相邻）
 
+    // L1 Scale 静态专有槽位 (Bank 0，彻底消灭 GM 往返)
+    static constexpr uint32_t Q_SCALE_SLOT_OFFSET = BANK0_START + 32 * 1024; // 32 KB
+    static constexpr uint32_t Q_SCALE_SLOT_BYTES  = 2048;                    // 2 KB (512 float)
+    static constexpr uint32_t K_SCALE_PING_OFFSET = BANK0_START + 36 * 1024; // 36 KB
+    static constexpr uint32_t K_SCALE_PONG_OFFSET = BANK0_START + 38 * 1024; // 38 KB
+    static constexpr uint32_t K_SCALE_SLOT_BYTES  = 1024;                    // 1 KB (256 float)
+
     // P 矩阵在 Bank 0 中的双缓冲槽位（供 Vector 1 写入，Cube 读取；单槽最大 128x128 = 16KB）
     static constexpr uint32_t P_SLOT_BYTES   = 16 * 1024;
     static constexpr uint32_t P_PING_OFFSET  = BANK0_START + 64 * 1024; // 64 KB

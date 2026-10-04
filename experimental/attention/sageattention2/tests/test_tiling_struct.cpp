@@ -12,6 +12,7 @@
 #include "../sageattn_fp8/catlass/sage_resource.hpp"
 #include "../sageattn_fp8/catlass/sage_qk_mmad.hpp"
 #include "../sageattn_fp8/catlass/sage_pv_mmad.hpp"
+#include "../op_kernel/static_slot.h"
 
 using namespace sage_attn;
 using namespace Catlass::SageAttn;
@@ -149,6 +150,16 @@ void TestCatlassContracts() {
     static_assert(L1DoubleBankContract::KV_PONG_OFFSET ==
                       L1DoubleBankContract::KV_PING_OFFSET + L1DoubleBankContract::KV_SLOT_BYTES,
                   "ping/pong slots must be adjacent in Bank 1");
+
+    // L1 Bank 0 Scale 专有槽位契约（彻底消灭 GM 往返，100% 片上 1C2V 直通）
+    static_assert(SlotL1QScale::OFFSET == 32 * 1024, "Q scale slot at 32KB");
+    static_assert(SlotL1QScale::BYTES == 2048, "Q scale slot size 2048 bytes");
+    static_assert(SlotL1KScalePing::OFFSET == 36 * 1024, "K scale ping slot at 36KB");
+    static_assert(SlotL1KScalePing::BYTES == 1024, "K scale ping slot size 1024 bytes");
+    static_assert(SlotL1KScalePong::OFFSET == 38 * 1024, "K scale pong slot at 38KB");
+    static_assert(SlotL1KScalePong::BYTES == 1024, "K scale pong slot size 1024 bytes");
+    static_assert(SlotL1KScalePong::End() <= L1DoubleBankContract::P_PING_OFFSET,
+                  "K scale pong slot must end before P matrix ping buffer");
 
     // A7 GM scale 交接条带（V0→V1 桥，STAGE_* 唯一定义点 tiling.h；kernel 侧
     // StageV1ScaleStrips/StageKScaleStrip/QuantizeAndStageKey 全按本组常量槽寻址，
