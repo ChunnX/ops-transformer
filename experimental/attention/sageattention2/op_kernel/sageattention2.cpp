@@ -484,15 +484,10 @@ private:
                 // 等待 V1 上一拍 Softmax 概率矩阵 S 就绪（按 prev_k 奇偶双缓冲）
                 CrossCoreWait(CrossCoreDirection::VEC1_TO_CUBE, s_flag);
 
-                // 加载 S 矩阵至 L0A（对应奇偶槽），加载 V 矩阵至 L0B。
-                // 形状记账（DEFECT-M-2）：PV MMAD 契约为 C[rows×d] = P[rows×block_n] ×
-                // V[block_n×d]——LoadL0B 的 (n,k) 须为 (d, block_n)（n_=输出列 d、
-                // k_=收缩维 block_n）。原参 (block_n_, d_) 会把 LoadL0A 设定的 k_=block_n
-                // 覆写为 d_：收缩维读越 S 的 block_n 宽行（L0A 越读）、L0C 产 rows×block_n
-                // 与 pv_partial 区/MergePvPartialRows 的 rows×d 契约错位。nZ 分形转置
-                // 语义（16×16 ifTranspose）为真机 L-A 复核项，与 A7 族登记一致。
+                // 形状记账：PV MMAD 契约为 C[rows×d] = P[rows×block_n] × V[block_n×d]
+                // LoadL0A: (rows, block_n), LoadL0B: (block_n, d_)，输出 C 为 rows × d
                 pv_mmad.LoadL0A(SoftmaxSlotOffset(prev_is_ping), rows, block_n_);
-                pv_mmad.LoadL0B(prev_l1_v_addr, d_, block_n_);
+                pv_mmad.LoadL0B(prev_l1_v_addr, block_n_, d_);
 
                 // 每块独立部分和（init=true；两级累加的二级归并由 V1 按 pv_accum_dtype 档位执行）
                 pv_mmad.Compute(true);
@@ -525,8 +520,8 @@ private:
             CrossCoreWait(CrossCoreDirection::VEC1_TO_CUBE, s_flag);
 
             pv_mmad.LoadL0A(SoftmaxSlotOffset(last_is_ping), TotalRows(), block_n_);
-            // (n,k)=(d, block_n) 同上：PV 收缩维 block_n、输出列 d（DEFECT-M-2）
-            pv_mmad.LoadL0B(last_l1_v_addr, d_, block_n_);
+            // (k,n)=(block_n, d): PV 收缩维 block_n、输出列 d
+            pv_mmad.LoadL0B(last_l1_v_addr, block_n_, d_);
             pv_mmad.Compute(true);
 
             // 归还最后一个 S 槽许可（V1 退域回收依赖此配平）
