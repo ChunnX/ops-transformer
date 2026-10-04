@@ -510,6 +510,12 @@ public:
         }
     }
 
+    __aicore__ inline __attribute__((always_inline)) void TestVec0Standalone()
+    {
+        if (!is_active_core_) return;
+        vec0_.ProcessStandalone(ctx_);
+    }
+
 private:
     TaskContext ctx_;
     uint64_t task_end_{0};
