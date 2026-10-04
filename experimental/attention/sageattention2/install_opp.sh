@@ -107,54 +107,36 @@ if [ "${REBUILD}" = true ] || [ ! -d "${PKG_SRC_DIR}/vendors/customize" ]; then
     bash "${OP_DIR}/build_opp.sh" --output-dir="${PKG_SRC_DIR}" --soc="${SOC}" "${PASSTHROUGH_ARGS[@]}"
 fi
 
-# 2. 如果存在官方整包出包的 .run 安装包，优先调用官方 run 脚本（真机交付形态）
-# （find 只输出已存在的路径，非空判定即为存在性判定）
-RUN_PKG=$(find "${REPO_DIR}/build_out" -name "cann-ops-transformer-custom_*.run" 2>/dev/null | head -n 1 || true)
-if [ -n "${RUN_PKG}" ]; then
-    if [ "${QUIET}" = false ]; then
-        echo ">>> Executing official CANN custom opp run package: ${RUN_PKG}..."
-    fi
-    bash "${RUN_PKG}" --quiet --install-path="${INSTALL_PATH}"
-    CONFIG_FILE="${INSTALL_PATH}/vendors/config.ini"
-    if [ ! -f "${CONFIG_FILE}" ]; then
-        cat << 'EOF' > "${CONFIG_FILE}"
-[common]
-load_priority=custom_transformer,customize
-EOF
-    fi
-else
-    # 本地标准 Vendor 目录部署
-    if [ "${QUIET}" = false ]; then
-        echo ">>> Deploying vendor tree to ${INSTALL_PATH}/vendors..."
-    fi
-
-    mkdir -p "${INSTALL_PATH}/vendors/customize"
-
-    # 同步 op_api, op_proto, op_impl, bin
-    cp -rf "${PKG_SRC_DIR}/vendors/customize/"* "${INSTALL_PATH}/vendors/customize/"
-
-    # 配置 vendors/config.ini 优先级
-    CONFIG_FILE="${INSTALL_PATH}/vendors/config.ini"
-    if [ ! -f "${CONFIG_FILE}" ]; then
-        cat << 'EOF' > "${CONFIG_FILE}"
-[common]
-load_priority=customize
-EOF
-    else
-        # 确保 load_priority 包含 customize
-        if ! grep -q "customize" "${CONFIG_FILE}"; then
-            sed -i 's/load_priority=/load_priority=customize,/' "${CONFIG_FILE}" 2>/dev/null || true
-        fi
-    fi
-
-    # 更新部署目录下的 set_env.bash 路径
-    cat << EOF > "${INSTALL_PATH}/vendors/customize/bin/set_env.bash"
-#!/usr/bin/env bash
-export ASCEND_CUSTOM_OPP_PATH="${INSTALL_PATH}:\${ASCEND_CUSTOM_OPP_PATH:-}"
-export LD_LIBRARY_PATH="${INSTALL_PATH}/vendors/customize/op_api/lib:${INSTALL_PATH}/vendors/customize/op_impl/ai_core/tbe/op_tiling/lib:\${LD_LIBRARY_PATH:-}"
-EOF
-    chmod +x "${INSTALL_PATH}/vendors/customize/bin/set_env.bash"
+# 2. 本地标准 Vendor 目录部署（双 Vendor 目录 customize 与 custom_transformer 同步置备）
+if [ "${QUIET}" = false ]; then
+    echo ">>> Deploying vendor tree to ${INSTALL_PATH}/vendors..."
 fi
+
+mkdir -p "${INSTALL_PATH}/vendors/customize"
+mkdir -p "${INSTALL_PATH}/vendors/custom_transformer"
+
+# 同步 customize 与 custom_transformer 双 vendor 树
+cp -rf "${PKG_SRC_DIR}/vendors/customize/"* "${INSTALL_PATH}/vendors/customize/"
+if [ -d "${PKG_SRC_DIR}/vendors/custom_transformer" ]; then
+    cp -rf "${PKG_SRC_DIR}/vendors/custom_transformer/"* "${INSTALL_PATH}/vendors/custom_transformer/"
+fi
+
+# 配置 vendors/config.ini 优先级
+CONFIG_FILE="${INSTALL_PATH}/vendors/config.ini"
+cat << 'EOF' > "${CONFIG_FILE}"
+[common]
+load_priority=customize,custom_transformer
+EOF
+
+# 更新部署目录下的 set_env.bash 路径（同时提供给 customize 与 custom_transformer）
+cat << EOF > "${INSTALL_PATH}/vendors/customize/bin/set_env.bash"
+#!/usr/bin/env bash
+export ASCEND_CUSTOM_OPP_PATH="${INSTALL_PATH}:${INSTALL_PATH}/vendors/customize:${INSTALL_PATH}/vendors/custom_transformer:\${ASCEND_CUSTOM_OPP_PATH:-}"
+export LD_LIBRARY_PATH="${INSTALL_PATH}/vendors/customize/op_api/lib:${INSTALL_PATH}/vendors/custom_transformer/op_api/lib:${INSTALL_PATH}/vendors/customize/op_impl/ai_core/tbe/op_tiling/lib:\${LD_LIBRARY_PATH:-}"
+EOF
+chmod +x "${INSTALL_PATH}/vendors/customize/bin/set_env.bash"
+mkdir -p "${INSTALL_PATH}/vendors/custom_transformer/bin"
+cp -f "${INSTALL_PATH}/vendors/customize/bin/set_env.bash" "${INSTALL_PATH}/vendors/custom_transformer/bin/set_env.bash"
 
 # 3. 部署后自检验证
 if [ "${QUIET}" = false ]; then
@@ -164,13 +146,24 @@ fi
 test -f "${INSTALL_PATH}/vendors/config.ini" || { echo "[ERROR] ${INSTALL_PATH}/vendors/config.ini missing!"; exit 1; }
 test -f "${INSTALL_PATH}/vendors/customize/op_api/lib/libcust_opapi.so" || { echo "[ERROR] libcust_opapi.so missing!"; exit 1; }
 test -f "${INSTALL_PATH}/vendors/customize/op_impl/ai_core/tbe/op_tiling/lib/liboptiling.so" || { echo "[ERROR] liboptiling.so missing!"; exit 1; }
+test -f "${INSTALL_PATH}/vendors/customize/op_impl/ai_core/tbe/kernel/${SOC}/sageattention2.o" || { echo "[ERROR] sageattention2.o missing!"; exit 1; }
+test -f "${INSTALL_PATH}/vendors/customize/op_impl/ai_core/tbe/kernel/config/${SOC}/sageattention2.json" || { echo "[ERROR] sageattention2.json missing!"; exit 1; }
+test -f "${INSTALL_PATH}/vendors/customize/op_impl/ai_core/tbe/kernel/${SOC}/sageattention2/SageAttention2_121380ebee0a454d81284ec537f30989.o" || { echo "[ERROR] SageAttention2_121380ebee0a454d81284ec537f30989.o missing in customize!"; exit 1; }
+test -f "${INSTALL_PATH}/vendors/custom_transformer/op_impl/ai_core/tbe/kernel/${SOC}/sageattention2/SageAttention2_121380ebee0a454d81284ec537f30989.o" || { echo "[ERROR] SageAttention2_121380ebee0a454d81284ec537f30989.o missing in custom_transformer!"; exit 1; }
 test -f "${INSTALL_PATH}/vendors/customize/bin/set_env.bash" || { echo "[ERROR] set_env.bash missing!"; exit 1; }
+
+DISPATCH_COUNT=$(find "${INSTALL_PATH}/vendors/customize/op_impl/ai_core/tbe/kernel/${SOC}/sageattention2" -name "*.o" | wc -l | tr -d ' ')
+if [ "${DISPATCH_COUNT}" -ne 16 ]; then
+    echo "[ERROR] Expected 16 deployed target binaries in customize, found ${DISPATCH_COUNT}" >&2
+    exit 1
+fi
 
 if [ "${QUIET}" = false ]; then
     echo "================================================================================"
     echo ">>> SageAttention2 CANN Custom OPP Successfully Installed!"
     echo "Installation directory: ${INSTALL_PATH}/vendors"
-    echo "Active vendor:          customize"
+    echo "Active vendors:         customize, custom_transformer"
+    echo "Dispatched targets:     16 static binary targets in kernel/${SOC}/sageattention2/"
     echo "To enable environment in your current shell, execute:"
     echo "  source \"${INSTALL_PATH}/vendors/customize/bin/set_env.bash\""
     echo "or evaluate dynamically:"

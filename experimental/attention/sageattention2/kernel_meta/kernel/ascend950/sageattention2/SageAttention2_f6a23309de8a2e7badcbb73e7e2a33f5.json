@@ -1,0 +1,180 @@
+{
+ "binFileName": "SageAttention2_f6a23309de8a2e7badcbb73e7e2a33f5",
+ "binFileSuffix": ".o",
+ "blockDim": -1,
+ "coreType": "MIX",
+ "intercoreSync": 1,
+ "kernelName": "SageAttention2_f6a23309de8a2e7badcbb73e7e2a33f5",
+ "magic": "RT_DEV_BINARY_MAGIC_ELF",
+ "memoryStamping": [],
+ "opParaSize": 168,
+ "parameters": [
+  null,
+  null,
+  null,
+  null,
+  null,
+  null,
+  null,
+  null
+ ],
+ "sha256": "5014565acfccb76d5ed54e6d124e34ccfe0944aaf95c61fe45a14dc990ec1df9",
+ "workspace": {
+  "num": 1,
+  "size": [
+   -1
+  ],
+  "type": [
+   0
+  ]
+ },
+ "kernelList": [
+  {
+   "tilingKey": 0,
+   "kernelType": "MIX_AIC",
+   "crossCoreSync": 1,
+   "taskRation": "1:2",
+   "kernelName": "SageAttention2_f6a23309de8a2e7badcbb73e7e2a33f5_0"
+  }
+ ],
+ "taskRation": "tilingKey",
+ "optionalInputMode": "gen_placeholder",
+ "optionalOutputMode": "gen_placeholder",
+ "supportSuperKernel": 1,
+ "compileInfo": {},
+ "supportInfo": {
+  "implMode": "high_performance",
+  "int64Mode": false,
+  "simplifiedKeyMode": 0,
+  "simplifiedKey": [
+   "SageAttention2/d=0,p=1/27,2/1,2/1,2/1,2",
+   "SageAttention2/d=0,p=0/27,2/1,2/1,2/1,2",
+   "SageAttention2/d=1,p=1/27,2/1,2/1,2/1,2",
+   "SageAttention2/d=1,p=0/27,2/1,2/1,2/1,2"
+  ],
+  "optionalInputMode": "gen_placeholder",
+  "optionalOutputMode": "gen_placeholder",
+  "staticKey": "6cd81aabb34d756eaa0c947f1269da6b56cdd66f6ec75a7fa147b7da7725e3c5,29354ae48587d7bb3621881d7eaef9316eda5d99e42cf79ad0684f8d63af087b",
+  "inputs": [
+   {
+    "name": "query",
+    "index": 0,
+    "dtype": "bfloat16",
+    "format": "ND",
+    "paramType": "required",
+    "shape": [
+     -2
+    ],
+    "format_match_mode": "FormatAgnostic"
+   },
+   {
+    "name": "key",
+    "index": 1,
+    "dtype": "float16",
+    "format": "ND",
+    "paramType": "required",
+    "shape": [
+     -2
+    ],
+    "format_match_mode": "FormatAgnostic"
+   },
+   {
+    "name": "value",
+    "index": 2,
+    "dtype": "float16",
+    "format": "ND",
+    "paramType": "required",
+    "shape": [
+     -2
+    ],
+    "format_match_mode": "FormatAgnostic"
+   },
+   {
+    "name": "key_mean",
+    "index": 3,
+    "dtype": "float32",
+    "format": "ND",
+    "paramType": "optional",
+    "shape": [
+     -2
+    ],
+    "format_match_mode": "FormatAgnostic"
+   },
+   {
+    "name": "lse_correction",
+    "index": 4,
+    "dtype": "float32",
+    "format": "ND",
+    "paramType": "optional",
+    "shape": [
+     -2
+    ],
+    "format_match_mode": "FormatAgnostic"
+   }
+  ],
+  "outputs": [
+   {
+    "name": "output",
+    "index": 0,
+    "dtype": "float16",
+    "format": "ND",
+    "paramType": "required",
+    "shape": [
+     -2
+    ],
+    "format_match_mode": "FormatAgnostic"
+   },
+   {
+    "name": "lse",
+    "index": 1,
+    "dtype": "float32",
+    "format": "ND",
+    "paramType": "optional",
+    "shape": [
+     -2
+    ],
+    "format_match_mode": "FormatAgnostic"
+   }
+  ],
+  "attrs": [
+   {
+    "name": "tensor_layout",
+    "dtype": "str",
+    "value": ""
+   },
+   {
+    "name": "is_causal",
+    "dtype": "bool",
+    "value": false
+   },
+   {
+    "name": "qk_quant_gran",
+    "dtype": "str",
+    "value": ""
+   },
+   {
+    "name": "sm_scale",
+    "dtype": "float",
+    "value": 0.0
+   },
+   {
+    "name": "pv_accum_dtype",
+    "dtype": "str",
+    "value": ""
+   },
+   {
+    "name": "smooth_k",
+    "dtype": "bool",
+    "value": false
+   },
+   {
+    "name": "smooth_v",
+    "dtype": "bool",
+    "value": false
+   }
+  ],
+  "opMode": "dynamic",
+  "deterministic": "ignore"
+ },
+ "filePath": "ascend950/bin/sageattention2/SageAttention2_f6a23309de8a2e7badcbb73e7e2a33f5.json"
+}

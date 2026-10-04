@@ -188,18 +188,18 @@ mkdir -p "${CUSTOM_DIR}/op_impl/ai_core/tbe/op_tiling/lib/linux/x86_64"
 cp -f "${CUSTOM_DIR}/op_impl/ai_core/tbe/op_tiling/lib/liboptiling.so" "${CUSTOM_DIR}/op_impl/ai_core/tbe/op_tiling/lib/linux/x86_64/liboptiling.so"
 
 echo "2. Compiling op_kernel device object for ${SOC} with BiSheng (-xasc ${NPU_ARCH})..."
-# 若 build/sageattention2_bisheng.o 存在且不旧于 kernel 源文件和全部包含头文件，则复用已编译目标
+mkdir -p "${OP_DIR}/build"
+KERNEL_OBJ="${OP_DIR}/build/sageattention2_bisheng.o"
 KERNEL_REUSE=false
-if [ -f "${OP_DIR}/build/sageattention2_bisheng.o" ]; then
-    if [ ! "${OP_DIR}/op_kernel/sageattention2.cpp" -nt "${OP_DIR}/build/sageattention2_bisheng.o" ] && \
-       [ -z "$(find "${OP_DIR}/op_kernel" "${OP_DIR}/sageattn_fp8" "${OP_DIR}/quant" \( -name "*.h" -o -name "*.hpp" \) -newer "${OP_DIR}/build/sageattention2_bisheng.o" 2>/dev/null)" ]; then
+if [ -f "${KERNEL_OBJ}" ]; then
+    if [ ! "${OP_DIR}/op_kernel/sageattention2.cpp" -nt "${KERNEL_OBJ}" ] && \
+       [ -z "$(find "${OP_DIR}/op_kernel" "${OP_DIR}/sageattn_fp8" "${OP_DIR}/quant" \( -name "*.h" -o -name "*.hpp" \) -newer "${KERNEL_OBJ}" 2>/dev/null)" ]; then
         KERNEL_REUSE=true
     fi
 fi
 
 if [ "${KERNEL_REUSE}" = true ]; then
-    echo "Reusing precompiled device object ${OP_DIR}/build/sageattention2_bisheng.o..."
-    cp -f "${OP_DIR}/build/sageattention2_bisheng.o" "${CUSTOM_DIR}/op_impl/ai_core/tbe/kernel/${SOC}/sageattention2.o"
+    echo "Reusing precompiled device object ${KERNEL_OBJ}..."
 else
     # -DCATLASS_ARCH=3510：官方 CATLASS 架构选择宏（与 run.sh kernel / tools/sim 同一口径）。
     # 真实消费方：3510 档官方常量（catlass.hpp BYTE_PER_FRACTAL/BYTE_PER_BLK/
@@ -214,53 +214,48 @@ else
         -I"${OP_DIR}/sageattn_fp8/catlass" \
         -I"${OP_DIR}/quant" \
         -I"${CATLASS_DIR}" \
-        -o "${CUSTOM_DIR}/op_impl/ai_core/tbe/kernel/${SOC}/sageattention2.o"
+        -o "${KERNEL_OBJ}"
 fi
 
-echo "3. Packaging headers and configuration files..."
+echo "3. Dispatching device binary to 16 static targets and packaging configurations..."
+python3 "${OP_DIR}/tools/dispatch_binary.py" \
+    --kernel-obj="${KERNEL_OBJ}" \
+    --meta-dir="${OP_DIR}/kernel_meta" \
+    --output-dir="${VENDORS_DIR}" \
+    --soc="${SOC}"
 
-# 安装头文件（交付面必含 aclnn 头，缺失由 set -e 直接失败，不做静默跳过）
-cp -f "${OP_DIR}/op_api/aclnn_sage_attention2.h" "${CUSTOM_DIR}/op_api/include/"
-cp -f "${OP_DIR}/op_host/sage_attention2_def.h" "${CUSTOM_DIR}/op_proto/inc/"
+# 同步头文件、动态库与 set_env.bash 到 customize 与 custom_transformer 双 vendor 树
+for VENDOR in customize custom_transformer; do
+    VDIR="${VENDORS_DIR}/${VENDOR}"
+    mkdir -p "${VDIR}/op_api/include" "${VDIR}/op_api/lib"
+    mkdir -p "${VDIR}/op_proto/inc" "${VDIR}/op_proto/lib"
+    mkdir -p "${VDIR}/bin"
 
-# 生成 vendors/config.ini（标准 CANN 格式无 [common] section）
-cat << 'EOF' > "${VENDORS_DIR}/config.ini"
-load_priority=customize
-EOF
+    cp -f "${OP_DIR}/op_api/aclnn_sage_attention2.h" "${VDIR}/op_api/include/"
+    cp -f "${OP_DIR}/op_host/sage_attention2_def.h" "${VDIR}/op_proto/inc/"
+    if [ -f "${OP_DIR}/aclnn/sage_attn_proto.h" ]; then
+        cp -f "${OP_DIR}/aclnn/sage_attn_proto.h" "${VDIR}/op_proto/inc/"
+    fi
 
-# 生成 op_impl 算子配置文件
-cat << EOF > "${CUSTOM_DIR}/op_impl/ai_core/tbe/config/${SOC}/sageattention2.ini"
-[SageAttention2]
-opFile.value=sageattention2
-opInterface.value=sage_attention2
-dynamicFormat.flag=true
-dynamicRankSupport.flag=true
-dynamicShapeSupport.flag=true
-needCheckSupport.flag=false
-precisionReduce.flag=true
-soc.version=${SOC}
-deterministic.flag=false
-EOF
+    if [ "${VENDOR}" != "customize" ]; then
+        cp -f "${CUSTOM_DIR}/op_api/lib/libcust_opapi.so" "${VDIR}/op_api/lib/"
+        cp -f "${CUSTOM_DIR}/op_proto/lib/libcust_opapi.so" "${VDIR}/op_proto/lib/"
+        mkdir -p "${VDIR}/op_impl/ai_core/tbe/op_tiling/lib"
+        cp -f "${CUSTOM_DIR}/op_impl/ai_core/tbe/op_tiling/lib/liboptiling.so" "${VDIR}/op_impl/ai_core/tbe/op_tiling/lib/"
+        cp -f "${CUSTOM_DIR}/op_impl/ai_core/tbe/op_tiling/liboptiling.so" "${VDIR}/op_impl/ai_core/tbe/op_tiling/"
+        mkdir -p "${VDIR}/op_impl/ai_core/tbe/op_tiling/lib/linux/x86_64"
+        cp -f "${CUSTOM_DIR}/op_impl/ai_core/tbe/op_tiling/lib/linux/x86_64/liboptiling.so" "${VDIR}/op_impl/ai_core/tbe/op_tiling/lib/linux/x86_64/"
+    fi
 
-# 同步已编译 kernel 目录与 binary_info 配置文件（若存在）
-if [ -d "${OP_DIR}/build/opp_installed/vendors/customize/op_impl/ai_core/tbe/kernel/config/${SOC}" ]; then
-    mkdir -p "${CUSTOM_DIR}/op_impl/ai_core/tbe/kernel/config/${SOC}"
-    cp -rf "${OP_DIR}/build/opp_installed/vendors/customize/op_impl/ai_core/tbe/kernel/config/${SOC}/"* "${CUSTOM_DIR}/op_impl/ai_core/tbe/kernel/config/${SOC}/" 2>/dev/null || true
-fi
-if [ -d "${OP_DIR}/build/opp_installed/vendors/customize/op_impl/ai_core/tbe/kernel/${SOC}/sageattention2" ]; then
-    mkdir -p "${CUSTOM_DIR}/op_impl/ai_core/tbe/kernel/${SOC}/sageattention2"
-    cp -rf "${OP_DIR}/build/opp_installed/vendors/customize/op_impl/ai_core/tbe/kernel/${SOC}/sageattention2/"* "${CUSTOM_DIR}/op_impl/ai_core/tbe/kernel/${SOC}/sageattention2/" 2>/dev/null || true
-fi
-
-# 生成环境变量导入脚本 set_env.bash
-cat << 'EOF' > "${CUSTOM_DIR}/bin/set_env.bash"
+    cat << 'EOF' > "${VDIR}/bin/set_env.bash"
 #!/usr/bin/env bash
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CUSTOM_VENDOR_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-export ASCEND_CUSTOM_OPP_PATH="${CUSTOM_VENDOR_DIR}:${ASCEND_CUSTOM_OPP_PATH:-}"
-export LD_LIBRARY_PATH="${CUSTOM_VENDOR_DIR}/customize/op_api/lib:${CUSTOM_VENDOR_DIR}/customize/op_impl/ai_core/tbe/op_tiling/lib:${LD_LIBRARY_PATH:-}"
+export ASCEND_CUSTOM_OPP_PATH="${CUSTOM_VENDOR_DIR}:${CUSTOM_VENDOR_DIR}/customize:${CUSTOM_VENDOR_DIR}/custom_transformer:${ASCEND_CUSTOM_OPP_PATH:-}"
+export LD_LIBRARY_PATH="${CUSTOM_VENDOR_DIR}/customize/op_api/lib:${CUSTOM_VENDOR_DIR}/custom_transformer/op_api/lib:${CUSTOM_VENDOR_DIR}/customize/op_impl/ai_core/tbe/op_tiling/lib:${LD_LIBRARY_PATH:-}"
 EOF
-chmod +x "${CUSTOM_DIR}/bin/set_env.bash"
+    chmod +x "${VDIR}/bin/set_env.bash"
+done
 
 # 4. 验证打包产物完整性
 echo "4. Verifying package integrity and layout..."
@@ -269,6 +264,17 @@ test -f "${CUSTOM_DIR}/op_api/lib/libcust_opapi.so" || { echo "[ERROR] libcust_o
 test -f "${CUSTOM_DIR}/op_impl/ai_core/tbe/op_tiling/lib/liboptiling.so" || { echo "[ERROR] liboptiling.so missing!"; exit 1; }
 test -f "${CUSTOM_DIR}/op_impl/ai_core/tbe/kernel/${SOC}/sageattention2.o" || { echo "[ERROR] sageattention2.o missing!"; exit 1; }
 test -f "${CUSTOM_DIR}/op_impl/ai_core/tbe/config/${SOC}/sageattention2.ini" || { echo "[ERROR] sageattention2.ini missing!"; exit 1; }
+test -f "${CUSTOM_DIR}/op_impl/ai_core/tbe/config/${SOC}/aic-${SOC}-ops-info.json" || { echo "[ERROR] aic-${SOC}-ops-info.json missing!"; exit 1; }
+test -f "${CUSTOM_DIR}/op_impl/ai_core/tbe/kernel/config/${SOC}/sageattention2.json" || { echo "[ERROR] sageattention2.json missing!"; exit 1; }
+test -f "${CUSTOM_DIR}/op_impl/ai_core/tbe/kernel/config/${SOC}/binary_info_config.json" || { echo "[ERROR] binary_info_config.json missing!"; exit 1; }
+test -f "${CUSTOM_DIR}/op_impl/ai_core/tbe/kernel/${SOC}/sageattention2/SageAttention2_121380ebee0a454d81284ec537f30989.o" || { echo "[ERROR] SageAttention2_121380ebee0a454d81284ec537f30989.o missing!"; exit 1; }
+test -f "${CUSTOM_DIR}/op_impl/ai_core/tbe/kernel/${SOC}/sageattention2/SageAttention2_121380ebee0a454d81284ec537f30989.json" || { echo "[ERROR] SageAttention2_121380ebee0a454d81284ec537f30989.json missing!"; exit 1; }
+
+DISPATCH_COUNT=$(find "${CUSTOM_DIR}/op_impl/ai_core/tbe/kernel/${SOC}/sageattention2" -name "*.o" | wc -l | tr -d ' ')
+if [ "${DISPATCH_COUNT}" -ne 16 ]; then
+    echo "[ERROR] Expected 16 dispatched target binaries, found ${DISPATCH_COUNT}" >&2
+    exit 1
+fi
 
 echo "================================================================================"
 echo ">>> CANN Custom OPP Package Successfully Built (all artifacts by BiSheng)!"
@@ -279,6 +285,11 @@ echo "  - ${OUTPUT_DIR}/vendors/customize/op_api/lib/libcust_opapi.so"
 echo "  - ${OUTPUT_DIR}/vendors/customize/op_impl/ai_core/tbe/op_tiling/lib/liboptiling.so"
 echo "  - ${OUTPUT_DIR}/vendors/customize/op_impl/ai_core/tbe/kernel/${SOC}/sageattention2.o"
 echo "  - ${OUTPUT_DIR}/vendors/customize/op_impl/ai_core/tbe/config/${SOC}/sageattention2.ini"
+echo "  - ${OUTPUT_DIR}/vendors/customize/op_impl/ai_core/tbe/config/${SOC}/aic-${SOC}-ops-info.json"
+echo "  - ${OUTPUT_DIR}/vendors/customize/op_impl/ai_core/tbe/kernel/config/${SOC}/sageattention2.json"
+echo "  - ${OUTPUT_DIR}/vendors/customize/op_impl/ai_core/tbe/kernel/config/${SOC}/binary_info_config.json"
+echo "  - ${OUTPUT_DIR}/vendors/customize/op_impl/ai_core/tbe/kernel/${SOC}/sageattention2/ (16 target binaries & jsons)"
+echo "  - ${OUTPUT_DIR}/vendors/custom_transformer/ (mirrored full vendor tree)"
 echo "  - ${OUTPUT_DIR}/vendors/customize/bin/set_env.bash"
 echo "================================================================================"
 

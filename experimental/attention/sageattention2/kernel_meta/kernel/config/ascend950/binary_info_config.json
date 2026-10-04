@@ -1,0 +1,273 @@
+{
+  "SageAttention2": {
+    "dynamicRankSupport": true,
+    "simplifiedKeyMode": 0,
+    "optionalInputMode": "gen_placeholder",
+    "optionalOutputMode": "gen_placeholder",
+    "params": {
+      "inputs": [
+        {
+          "name": "query",
+          "index": 0,
+          "paramType": "required",
+          "formatMode": "static_nd_agnostic"
+        },
+        {
+          "name": "key",
+          "index": 1,
+          "paramType": "required",
+          "formatMode": "static_nd_agnostic"
+        },
+        {
+          "name": "value",
+          "index": 2,
+          "paramType": "required",
+          "formatMode": "static_nd_agnostic"
+        },
+        {
+          "name": "key_mean",
+          "index": 3,
+          "paramType": "optional",
+          "formatMode": "static_nd_agnostic"
+        },
+        {
+          "name": "lse_correction",
+          "index": 4,
+          "paramType": "optional",
+          "formatMode": "static_nd_agnostic"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "output",
+          "index": 0,
+          "paramType": "required",
+          "formatMode": "static_nd_agnostic"
+        },
+        {
+          "name": "lse",
+          "index": 1,
+          "paramType": "optional",
+          "formatMode": "static_nd_agnostic"
+        }
+      ],
+      "attrs": [
+        {
+          "name": "tensor_layout"
+        },
+        {
+          "name": "is_causal"
+        },
+        {
+          "name": "qk_quant_gran"
+        },
+        {
+          "name": "sm_scale"
+        },
+        {
+          "name": "pv_accum_dtype"
+        },
+        {
+          "name": "smooth_k"
+        },
+        {
+          "name": "smooth_v"
+        }
+      ]
+    },
+    "binaryList": [
+      {
+        "coreType": 0,
+        "simplifiedKey": [
+          "SageAttention2/d=0,p=1/1,2/1,2/1,2/1,2",
+          "SageAttention2/d=0,p=0/1,2/1,2/1,2/1,2",
+          "SageAttention2/d=1,p=1/1,2/1,2/1,2/1,2",
+          "SageAttention2/d=1,p=0/1,2/1,2/1,2/1,2"
+        ],
+        "multiKernelType": 1,
+        "binPath": "ascend950/sageattention2/SageAttention2_121380ebee0a454d81284ec537f30989.o",
+        "jsonPath": "ascend950/sageattention2/SageAttention2_121380ebee0a454d81284ec537f30989.json"
+      },
+      {
+        "coreType": 0,
+        "simplifiedKey": [
+          "SageAttention2/d=0,p=1/1,2/27,2/1,2/1,2",
+          "SageAttention2/d=0,p=0/1,2/27,2/1,2/1,2",
+          "SageAttention2/d=1,p=1/1,2/27,2/1,2/1,2",
+          "SageAttention2/d=1,p=0/1,2/27,2/1,2/1,2"
+        ],
+        "multiKernelType": 1,
+        "binPath": "ascend950/sageattention2/SageAttention2_15863c3e23e9a5d4ceac22ede1e92c73.o",
+        "jsonPath": "ascend950/sageattention2/SageAttention2_15863c3e23e9a5d4ceac22ede1e92c73.json"
+      },
+      {
+        "coreType": 0,
+        "simplifiedKey": [
+          "SageAttention2/d=0,p=1/27,2/27,2/27,2/27,2",
+          "SageAttention2/d=0,p=0/27,2/27,2/27,2/27,2",
+          "SageAttention2/d=1,p=1/27,2/27,2/27,2/27,2",
+          "SageAttention2/d=1,p=0/27,2/27,2/27,2/27,2"
+        ],
+        "multiKernelType": 1,
+        "binPath": "ascend950/sageattention2/SageAttention2_25c2e290b6b6cc1af021571d74abfd5b.o",
+        "jsonPath": "ascend950/sageattention2/SageAttention2_25c2e290b6b6cc1af021571d74abfd5b.json"
+      },
+      {
+        "coreType": 0,
+        "simplifiedKey": [
+          "SageAttention2/d=0,p=1/27,2/27,2/27,2/1,2",
+          "SageAttention2/d=0,p=0/27,2/27,2/27,2/1,2",
+          "SageAttention2/d=1,p=1/27,2/27,2/27,2/1,2",
+          "SageAttention2/d=1,p=0/27,2/27,2/27,2/1,2"
+        ],
+        "multiKernelType": 1,
+        "binPath": "ascend950/sageattention2/SageAttention2_315ac991126bed0c8bfbb7161c493aae.o",
+        "jsonPath": "ascend950/sageattention2/SageAttention2_315ac991126bed0c8bfbb7161c493aae.json"
+      },
+      {
+        "coreType": 0,
+        "simplifiedKey": [
+          "SageAttention2/d=0,p=1/27,2/1,2/27,2/27,2",
+          "SageAttention2/d=0,p=0/27,2/1,2/27,2/27,2",
+          "SageAttention2/d=1,p=1/27,2/1,2/27,2/27,2",
+          "SageAttention2/d=1,p=0/27,2/1,2/27,2/27,2"
+        ],
+        "multiKernelType": 1,
+        "binPath": "ascend950/sageattention2/SageAttention2_425a5c705d226b16bea566d8ff5d4d57.o",
+        "jsonPath": "ascend950/sageattention2/SageAttention2_425a5c705d226b16bea566d8ff5d4d57.json"
+      },
+      {
+        "coreType": 0,
+        "simplifiedKey": [
+          "SageAttention2/d=0,p=1/27,2/1,2/27,2/1,2",
+          "SageAttention2/d=0,p=0/27,2/1,2/27,2/1,2",
+          "SageAttention2/d=1,p=1/27,2/1,2/27,2/1,2",
+          "SageAttention2/d=1,p=0/27,2/1,2/27,2/1,2"
+        ],
+        "multiKernelType": 1,
+        "binPath": "ascend950/sageattention2/SageAttention2_47eff5d204b01c0da0b088899ee51b43.o",
+        "jsonPath": "ascend950/sageattention2/SageAttention2_47eff5d204b01c0da0b088899ee51b43.json"
+      },
+      {
+        "coreType": 0,
+        "simplifiedKey": [
+          "SageAttention2/d=0,p=1/27,2/27,2/1,2/27,2",
+          "SageAttention2/d=0,p=0/27,2/27,2/1,2/27,2",
+          "SageAttention2/d=1,p=1/27,2/27,2/1,2/27,2",
+          "SageAttention2/d=1,p=0/27,2/27,2/1,2/27,2"
+        ],
+        "multiKernelType": 1,
+        "binPath": "ascend950/sageattention2/SageAttention2_640bb64251386bd3f03e685073cbca08.o",
+        "jsonPath": "ascend950/sageattention2/SageAttention2_640bb64251386bd3f03e685073cbca08.json"
+      },
+      {
+        "coreType": 0,
+        "simplifiedKey": [
+          "SageAttention2/d=0,p=1/27,2/1,2/1,2/27,2",
+          "SageAttention2/d=0,p=0/27,2/1,2/1,2/27,2",
+          "SageAttention2/d=1,p=1/27,2/1,2/1,2/27,2",
+          "SageAttention2/d=1,p=0/27,2/1,2/1,2/27,2"
+        ],
+        "multiKernelType": 1,
+        "binPath": "ascend950/sageattention2/SageAttention2_761a91903e0d8a715d131596ce8a18d8.o",
+        "jsonPath": "ascend950/sageattention2/SageAttention2_761a91903e0d8a715d131596ce8a18d8.json"
+      },
+      {
+        "coreType": 0,
+        "simplifiedKey": [
+          "SageAttention2/d=0,p=1/1,2/27,2/27,2/1,2",
+          "SageAttention2/d=0,p=0/1,2/27,2/27,2/1,2",
+          "SageAttention2/d=1,p=1/1,2/27,2/27,2/1,2",
+          "SageAttention2/d=1,p=0/1,2/27,2/27,2/1,2"
+        ],
+        "multiKernelType": 1,
+        "binPath": "ascend950/sageattention2/SageAttention2_7b4ac44f0d8b31d7578723594ec0782d.o",
+        "jsonPath": "ascend950/sageattention2/SageAttention2_7b4ac44f0d8b31d7578723594ec0782d.json"
+      },
+      {
+        "coreType": 0,
+        "simplifiedKey": [
+          "SageAttention2/d=0,p=1/1,2/27,2/1,2/27,2",
+          "SageAttention2/d=0,p=0/1,2/27,2/1,2/27,2",
+          "SageAttention2/d=1,p=1/1,2/27,2/1,2/27,2",
+          "SageAttention2/d=1,p=0/1,2/27,2/1,2/27,2"
+        ],
+        "multiKernelType": 1,
+        "binPath": "ascend950/sageattention2/SageAttention2_7d9a2a30c56e0a56010c4ff1c3ba00f3.o",
+        "jsonPath": "ascend950/sageattention2/SageAttention2_7d9a2a30c56e0a56010c4ff1c3ba00f3.json"
+      },
+      {
+        "coreType": 0,
+        "simplifiedKey": [
+          "SageAttention2/d=0,p=1/1,2/27,2/27,2/27,2",
+          "SageAttention2/d=0,p=0/1,2/27,2/27,2/27,2",
+          "SageAttention2/d=1,p=1/1,2/27,2/27,2/27,2",
+          "SageAttention2/d=1,p=0/1,2/27,2/27,2/27,2"
+        ],
+        "multiKernelType": 1,
+        "binPath": "ascend950/sageattention2/SageAttention2_7f97fc3372175e95c67a4d80420af6a1.o",
+        "jsonPath": "ascend950/sageattention2/SageAttention2_7f97fc3372175e95c67a4d80420af6a1.json"
+      },
+      {
+        "coreType": 0,
+        "simplifiedKey": [
+          "SageAttention2/d=0,p=1/1,2/1,2/27,2/27,2",
+          "SageAttention2/d=0,p=0/1,2/1,2/27,2/27,2",
+          "SageAttention2/d=1,p=1/1,2/1,2/27,2/27,2",
+          "SageAttention2/d=1,p=0/1,2/1,2/27,2/27,2"
+        ],
+        "multiKernelType": 1,
+        "binPath": "ascend950/sageattention2/SageAttention2_be77374030c3650b7607024926516399.o",
+        "jsonPath": "ascend950/sageattention2/SageAttention2_be77374030c3650b7607024926516399.json"
+      },
+      {
+        "coreType": 0,
+        "simplifiedKey": [
+          "SageAttention2/d=0,p=1/27,2/27,2/1,2/1,2",
+          "SageAttention2/d=0,p=0/27,2/27,2/1,2/1,2",
+          "SageAttention2/d=1,p=1/27,2/27,2/1,2/1,2",
+          "SageAttention2/d=1,p=0/27,2/27,2/1,2/1,2"
+        ],
+        "multiKernelType": 1,
+        "binPath": "ascend950/sageattention2/SageAttention2_ddb3c047ed64851d75f745e357b793b5.o",
+        "jsonPath": "ascend950/sageattention2/SageAttention2_ddb3c047ed64851d75f745e357b793b5.json"
+      },
+      {
+        "coreType": 0,
+        "simplifiedKey": [
+          "SageAttention2/d=0,p=1/1,2/1,2/27,2/1,2",
+          "SageAttention2/d=0,p=0/1,2/1,2/27,2/1,2",
+          "SageAttention2/d=1,p=1/1,2/1,2/27,2/1,2",
+          "SageAttention2/d=1,p=0/1,2/1,2/27,2/1,2"
+        ],
+        "multiKernelType": 1,
+        "binPath": "ascend950/sageattention2/SageAttention2_de3f42312ac6f7e300678483940cffa1.o",
+        "jsonPath": "ascend950/sageattention2/SageAttention2_de3f42312ac6f7e300678483940cffa1.json"
+      },
+      {
+        "coreType": 0,
+        "simplifiedKey": [
+          "SageAttention2/d=0,p=1/1,2/1,2/1,2/27,2",
+          "SageAttention2/d=0,p=0/1,2/1,2/1,2/27,2",
+          "SageAttention2/d=1,p=1/1,2/1,2/1,2/27,2",
+          "SageAttention2/d=1,p=0/1,2/1,2/1,2/27,2"
+        ],
+        "multiKernelType": 1,
+        "binPath": "ascend950/sageattention2/SageAttention2_e71981c55f92008f10a3d62a921e2c17.o",
+        "jsonPath": "ascend950/sageattention2/SageAttention2_e71981c55f92008f10a3d62a921e2c17.json"
+      },
+      {
+        "coreType": 0,
+        "simplifiedKey": [
+          "SageAttention2/d=0,p=1/27,2/1,2/1,2/1,2",
+          "SageAttention2/d=0,p=0/27,2/1,2/1,2/1,2",
+          "SageAttention2/d=1,p=1/27,2/1,2/1,2/1,2",
+          "SageAttention2/d=1,p=0/27,2/1,2/1,2/1,2"
+        ],
+        "multiKernelType": 1,
+        "binPath": "ascend950/sageattention2/SageAttention2_f6a23309de8a2e7badcbb73e7e2a33f5.o",
+        "jsonPath": "ascend950/sageattention2/SageAttention2_f6a23309de8a2e7badcbb73e7e2a33f5.json"
+      }
+    ]
+  }
+}
