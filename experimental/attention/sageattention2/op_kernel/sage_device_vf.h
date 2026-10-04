@@ -104,6 +104,8 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void RowAbsMaxRowsV
  * - 除法轨迹：val / scale（禁 inv-scale 乘法）；
  * - CATLASS 950 模式：直接由 scale_ptr 经 LoadAlign<float, LoadDist::DIST_BRC_B32>
  *   随路完成 UB 标量加载与 64 通道全局广播，彻底消除标量单元 GetValue 与独立的向量 Duplicate 指令；
+ * - 指针对齐与微架构安全：scale_ptr 继承 UB Slot 32 字节对齐基址与 float（4 字节）步长偏移，
+ *   严格满足 LoadDist::DIST_BRC_B32 在 dav-3510 下的 32 位（4 字节）对齐约束，微架构执行零风险；
  * - per_thread：half-away-from-zero——x 加 0.5·sign(x) 后 CAST_TRUNC（对齐
  *   quant::RoundHalfAwayFromZero 的 floor(|x|+0.5)·sign）；
  * - per_warp：CAST_RINT（对齐 quant::RoundNearestEven / cvt.rni）；
@@ -189,77 +191,6 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void QuantRowInt8VF
     }
 }
 
-// 标量兼容重载：支持接收标量 float scale，函数内调用 Duplicate 全通道广播
-template <uint32_t DTYPE_MODE>
-__simd_vf__ __aicore__ inline __attribute__((always_inline)) void QuantRowInt8VF(__ubuf__ half* in_ptr, __ubuf__ int8_t* out_ptr,
-                                       float scale, uint32_t d,
-                                       uint32_t per_thread, uint32_t has_km,
-                                       __ubuf__ float* km_ptr) {
-    using namespace AscendC;
-    using namespace AscendC::MicroAPI;
-    auto full = CreateMask<float, MaskPattern::ALL>();
-    static constexpr CastTrait toFp32{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
-    static constexpr CastTrait toHalf{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
-    static constexpr CastTrait toBf16{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
-    static constexpr CastTrait toI32Trunc{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_TRUNC};
-    static constexpr CastTrait toI32Rint{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
-    static constexpr CastTrait toI8Sat{RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_TRUNC};
-
-    RegTensor<float> scale_reg, neg127, pos127;
-    Duplicate(scale_reg, scale);
-    Duplicate(neg127, -INT8_QUANT_MAX);
-    Duplicate(pos127, INT8_QUANT_MAX);
-    RegTensor<float> zero, half_reg, neg_half_reg;
-    Duplicate(zero, 0.0f);
-    Duplicate(half_reg, 0.5f);
-    Duplicate(neg_half_reg, -0.5f);
-
-    for (uint32_t c = 0; c < d; c += 64) {
-        RegTensor<float> val;
-        if constexpr (DTYPE_MODE == 2u) {
-            RegTensor<bfloat16_t> raw;
-            LoadAlign<bfloat16_t, LoadDist::DIST_UNPACK_B16>(raw, reinterpret_cast<__ubuf__ bfloat16_t*>(in_ptr) + c);
-            Cast<float, bfloat16_t, toFp32>(val, raw, full);
-        } else {
-            RegTensor<half> raw;
-            LoadAlign<half, LoadDist::DIST_UNPACK_B16>(raw, in_ptr + c);
-            Cast<float, half, toFp32>(val, raw, full);
-        }
-        if (has_km) {
-            RegTensor<float> km_val;
-            LoadAlign(km_val, km_ptr + c);
-            Sub(val, val, km_val, full);
-            if constexpr (DTYPE_MODE == 2u) {
-                RegTensor<bfloat16_t> rt;
-                Cast<bfloat16_t, float, toBf16>(rt, val, full);
-                Cast<float, bfloat16_t, toFp32>(val, rt, full);
-            } else {
-                RegTensor<half> rt;
-                Cast<half, float, toHalf>(rt, val, full);
-                Cast<float, half, toFp32>(val, rt, full);
-            }
-        }
-        Div(val, val, scale_reg, full);
-
-        RegTensor<int32_t> packed_i;
-        if (per_thread) {
-            RegTensor<float> bias;
-            MaskReg neg;
-            Compare<float, CMPMODE::LT>(neg, val, zero, full);
-            Select(bias, neg_half_reg, half_reg, neg);
-            Add(val, val, bias, full);
-            Cast<int32_t, float, toI32Trunc>(packed_i, val, full);
-        } else {
-            Cast<int32_t, float, toI32Rint>(packed_i, val, full);
-        }
-        Cast<float, int32_t, toFp32>(val, packed_i, full);
-        Max(val, val, neg127, full);
-        Min(val, val, pos127, full);
-        Cast<int32_t, float, toI8Sat>(packed_i, val, full);
-        StoreAlign<int8_t, StoreDist::DIST_PACK4_B32>(out_ptr + c,
-            reinterpret_cast<RegTensor<int8_t>&>(packed_i), full);
-    }
-}
 
 /**
  * 3. V 行 FP8 量化（DEFECT-F-1：per-channel scale 分档）：
@@ -462,6 +393,8 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void DequantMaskMax
     Duplicate(sm_reg, sm_scale_log2e);
     RegTensor<float> neg_inf;
     Duplicate(neg_inf, SAGE_MASK_SENTINEL);
+    RegTensor<float> e4m3_max_reg;
+    Duplicate(e4m3_max_reg, FP8_E4M3_MAX);
 
     for (uint32_t r = 0; r < rows; ++r) {
         const uint32_t token_q = cur_q_start + (r % cur_q_len);
@@ -478,9 +411,14 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void DequantMaskMax
         Duplicate(sum_val, 0.0f);
 
         RegTensor<float> val0;
+        RegTensor<float> val1;
         if (is_pure_masked) {
             val0 = neg_inf;
             StoreAlign(logits_row, neg_inf, full);
+            if constexpr (NCHUNK > 1u) {
+                val1 = neg_inf;
+                StoreAlign(logits_row + 64u, neg_inf, full);
+            }
         } else {
             // 行解析 q_scale：DIST_BRC_B32 单元素广播 Load（读 ub_qs[r] 原 float，位保搬运）
             RegTensor<float> qs_reg;
@@ -488,17 +426,8 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void DequantMaskMax
             DequantStoreLogitChunkVF(dot_row, logits_row, 0u, qs_reg, k_scale_row, sm_reg, neg_inf,
                                      token_q, k_start, sk, is_causal, is_pure_active, val0);
             Max(max_val, max_val, val0, full);
-        }
-
-        RegTensor<float> val1;
-        if constexpr (NCHUNK > 1u) {
-            if (is_pure_masked) {
-                val1 = neg_inf;
-                StoreAlign(logits_row + 64u, neg_inf, full);
-            } else {
-                RegTensor<float> qs_reg;
-                LoadAlign<float, LoadDist::DIST_BRC_B32>(qs_reg, qs_row + r);
-                DequantStoreLogitChunkVF(dot_row + 64u, logits_row + 64u, 64u, qs_reg, k_scale_row, sm_reg, neg_inf,
+            if constexpr (NCHUNK > 1u) {
+                DequantStoreLogitChunkVF(dot_row, logits_row, 64u, qs_reg, k_scale_row, sm_reg, neg_inf,
                                          token_q, k_start, sk, is_causal, is_pure_active, val1);
                 Max(max_val, max_val, val1, full);
             }
@@ -506,9 +435,8 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void DequantMaskMax
 
         ReduceMax(max_val, max_val, full);
 
-        RegTensor<float> max_nat, e4m3_max_reg;
+        RegTensor<float> max_nat;
         Muls(max_nat, max_val, INV_LOG2E, full);
-        Duplicate(e4m3_max_reg, FP8_E4M3_MAX);
 
         ExpSubAccumChunkVF(val0, max_nat, e4m3_max_reg, sum_val);
         if constexpr (NCHUNK > 1u) {
