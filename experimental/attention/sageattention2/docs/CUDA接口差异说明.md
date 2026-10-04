@@ -74,9 +74,9 @@ NPU 侧两种粒度是两套独立存在的量化内核，不是兼容别名；�
 
 ## smooth_k 与 LSE 补偿
 
-- NPU 语义：`smooth_k=True`（默认）时 K 沿序列维减均值 `km`（量化核 `QuantizeKInt8Ascend` 的 `km_in` 入参，`./quant/quant_int8.cpp`），并预计算 LSE 修正项 `lse_correction = Q * km^T`（补偿项数学定义；标准 7 参收敛后算子接口不再携带独立 `key_mean`/`lse_correction` 输入、桥接层 `./python/sageattention2/csrc/attention.cpp` 亦不再预计算——平滑统计与修正项的核内供给以 `./op_kernel/sageattention2.cpp` 与 `./op_host/sage_attention2_tiling.cpp` 的 `has_key_mean` 门控为准）
-- 对外 LSE 换算：`lse_out = (lse_exp2 - S_FP8_OFFSET) * ln(2) + lse_correction * sm_scale`（`ConvertLseToHost`，`./sageattn_fp8/ascendc/online_softmax.h`；即 exp2 域 LSE 先补扣 `S_FP8_OFFSET` 常量再除以 $\log_2 e$ 换回自然对数域），减均值引入的行常数在返回前精确补偿
-- 意义：开启 smooth_k 后对外 LSE 与"不减均值"的参考实现可证等价；CUDA 上游 `return_lse` 语义仅在部分入口提供，且补偿路径实现不同，跨实现比较 LSE 时以本公式为准
+- NPU 实况：`smooth_k=True`（默认）形参仅为开源 API 兼容保留——标准 7 参收敛后算子接口不携带独立 `key_mean`/`lse_correction` 输入、桥接层 `./python/sageattention2/csrc/attention.cpp` 不预计算、设备核内亦无均值统计供给（核内 key_mean/lse_correction 指针恒空；`./op_host/sage_attention2_tiling.cpp` 的 `has_key_mean` 恒为 false 台账位，无核内消费方）：K 不减均值、LSE 不加校正。补偿项数学定义仍为 `lse_correction = Q * km^T`（`km` 为 K 沿序列维均值；量化核 `QuantizeKInt8Ascend` 的 `km_in` 入参，`./quant/quant_int8.cpp` 保留该能力，CPU 高保真参考 `run_sageattn_cpu_reference` 亦按含补偿口径产出 golden 轨迹）
+- 对外 LSE 换算：`lse_out = (lse_exp2 - S_FP8_OFFSET) * ln(2)`（`ConvertLseToHost`，`./sageattn_fp8/ascendc/online_softmax.h`；即 exp2 域 LSE 先补扣 `S_FP8_OFFSET` 常量再除以 $\log_2 e$ 换回自然对数域；校正加项 `lse_correction * sm_scale` 仅在 `is_smooth_k` 为真分支生效，核内恒走无校正分支）
+- 意义：本算子 `smooth_k=True` 的输出即"不减均值"口径，与 CUDA 上游（真实减均值并补偿 LSE）数值不等价，跨实现对齐需注意；CUDA 上游 `return_lse` 语义仅在部分入口提供，跨实现比较 LSE 时以本换算式为准
 
 ## 差异速查（条目式对照）
 

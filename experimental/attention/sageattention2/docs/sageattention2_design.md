@@ -108,12 +108,12 @@ chunks=1，任务解码与调度算术逐位不变（twin 25 桶 golden 回归�
 - 主计算流：
   - O = softmax(QK^T * s) * V
 - 量化与平滑：
-  - K' = K - k_mean
-  - Q_hat = quant_int8(Q), K_hat = quant_int8(K'), V_hat = quant_fp8(V)
+  - K 侧不做均值扣减（7 参收敛后核内无 key_mean 供给，K_hat = quant_int8(K)）；smooth_v 生效档（fp32）为 V 减均值量化 + 输出端 vm 补偿
+  - Q_hat = quant_int8(Q), K_hat = quant_int8(K), V_hat = quant_fp8(V)
   - P = softmax(Q_hat * K_hat^T * scale_q * scale_k * s)
   - O = P * V_hat * scale_v
 - LSE 语义与校正：
-  - LSE = lse_raw / 1.44269504 + (Q * k_mean) * s（GQA 下 k_mean 经 repeat_interleave 广播）
+  - LSE = lse_raw / 1.44269504（exp2 域补扣 S_FP8_OFFSET 后换回自然域；7 参收敛后核内无 lse_correction 供给，`Q * k_mean * sm_scale` 校正加项不生效，该数学定义仅存于 CPU 参考轨迹与上游 CUDA）
 
 ### 支持数据类型
 
@@ -239,7 +239,7 @@ chunks=1，任务解码与调度算术逐位不变（twin 25 桶 golden 回归�
       （写 P/部分和 + 读回归并），长序列显存带宽 +50% 量级，直接劣化对 FIA 的
       Speedup 门禁——本算子 L1↔L0↔UB 全片上闭环（零 GM 往返热路径）为其核心
       性能优势，坚决不采用。
-  - V0 向量核：负责 MTE2 搬入、smooth_k 均值扣减、INT8/FP8 量化、scale 提取与 ND2NZ 排布转换；
+  - V0 向量核：负责 MTE2 搬入、INT8/FP8 量化、scale 提取与 ND2NZ 排布转换（7 参收敛后 K 侧均值扣减摘除，核内 km 槽位恒空直通）；
   - V1 向量核：负责 L0C FixPipe 接收、exp2 域 online softmax、行 max 与恒逐块强锚定重缩放、两级累加归约与 LSE 累计；
 - 延迟一拍软件流水：
   - Cube 计算与 Vector 计算深度交叠，消灭 Vector 成为关键路径的等待气泡；

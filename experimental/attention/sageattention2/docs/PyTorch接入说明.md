@@ -61,7 +61,7 @@ sageattn_qk_int8_pv_fp8_asc(q, k, v, tensor_layout="HND", is_causal=False,
 
 - 返回值契约：`return_lse=False`（默认）单张量返回 `o`；`return_lse=True` 返回 `(o, lse)` 二元组
 - `o`：shape/布局与 `q` 相同，dtype 与 `q` 相同（pad 的 head_dim 已裁回原值）
-- `lse`：FP32，shape `[B, Hq, Sq]`，为 `QK^T * sm_scale` 各行的自然域 logsumexp（smooth_k 校正语义对齐开源 `core.py` 返回路径）
+- `lse`：FP32，shape `[B, Hq, Sq]`，为 `QK^T * sm_scale` 各行的自然域 logsumexp（无 smooth_k 校正加项——7 参收敛后核内不供给 lse_correction，详见《CUDA接口差异说明》）
 - `tensor_layout`：`"HND"` 为 `[B, H, S, D]`，`"NHD"` 为 `[B, S, H, D]`
 - `sm_scale=None` 时自动取 `1.0 / sqrt(head_dim)`（pad 前的原始 head_dim）
 - `pv_accum_dtype` 合法取值与覆盖优先级：kwargs 显式传参 高于 环境变量 `SAGEATTN_PV_ACCUM_DTYPE` 高于 默认 `"fp32+fp16"`（默认验收档）；非法取值直接抛 `ValueError`，无静默回退
