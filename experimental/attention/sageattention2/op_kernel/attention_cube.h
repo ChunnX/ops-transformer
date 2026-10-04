@@ -55,8 +55,8 @@ public:
                 StepPvMmad(pv_mmad, params, prev_is_ping, ub_pv_partial_offset, k, true);
             }
 
-            // 2. 等待 V0 当前 KV 分块量化就绪
-            AttentionSync::CubeWaitKvReady(is_ping);
+            // 2. 等待 V0 当前 KV 分块量化就绪（CATLASS 模 15 级防锁死安全防护）
+            AttentionSync::CubeWaitKvReady(is_ping, k);
 
             // 3. 拍 k（Cube）：INT8 QK^T MMAD
             // 若执行过 PV MMAD（k > 0），L0A 已被 Softmax P 覆写，需重新从 L1 Bank 0 加载常驻 Q

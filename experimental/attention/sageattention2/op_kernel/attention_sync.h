@@ -4,6 +4,7 @@
 #include "../sageattn_fp8/ascendc/tiling.h"
 #include "../sageattn_fp8/ascendc/sync_guard.h"
 #include "../sageattn_fp8/catlass/sage_tile.hpp"
+#include "../sageattn_fp8/catlass/sage_resource.hpp"
 
 namespace sage_attn {
 
@@ -30,12 +31,18 @@ public:
 
     /**
      * \brief 等待 V0 拍 k 的 KV 分块量化就绪
+     * 集成 CATLASS CrossCoreFlagWithReverse 硬件队深 15 级防锁死安全防护：
+     * 模 15 边界（(k + 1) % MAX_CROSS_CORE_SYNC_DEPTH == 0）向 V0 发送轻量反向确认 ACK，解除单向长流累积。
      */
-    __aicore__ inline __attribute__((always_inline)) static void CubeWaitKvReady(bool is_ping)
+    __aicore__ inline __attribute__((always_inline)) static void CubeWaitKvReady(bool is_ping, uint32_t k = 0)
     {
 #if SAGE_ATTN_DEVICE_COMPILE
         uint32_t kv_flag = is_ping ? CrossCoreFlags::FLAG_KV_PING_READY : CrossCoreFlags::FLAG_KV_PONG_READY;
         CrossCoreWait(CrossCoreDirection::VEC0_TO_CUBE, kv_flag);
+        // CATLASS CrossCoreFlagWithReverse 硬件队深 15 级反向确认握手
+        if ((k + 1) % Catlass::SageAttn::HardwareResourceQuota::MAX_CROSS_CORE_SYNC_DEPTH == 0) {
+            CrossCoreSet(CrossCoreDirection::CUBE_TO_VEC0, CrossCoreFlags::FLAG_KV_REVERSE_ACK);
+        }
 #endif
     }
 
@@ -159,14 +166,20 @@ public:
 
     /**
      * \brief MTE3_MTE2 自配对排空后，通知 Cube 拍 k 的 KV 分块量化就绪
+     * 集成 CATLASS CrossCoreFlagWithReverse 硬件队深 15 级防锁死安全防护：
+     * 模 15 边界（(k + 1) % MAX_CROSS_CORE_SYNC_DEPTH == 0）等待 Cube 反向确认 ACK，解除单向长流累积。
      */
-    __aicore__ inline __attribute__((always_inline)) static void Vec0SignalKvReady(bool is_ping)
+    __aicore__ inline __attribute__((always_inline)) static void Vec0SignalKvReady(bool is_ping, uint32_t k = 0)
     {
 #if SAGE_ATTN_DEVICE_COMPILE
         Catlass::SageAttn::Sync<HardEvent::MTE3_MTE2>();
         Catlass::SageAttn::Sync<HardEvent::MTE3_S>();
         uint32_t kv_flag = is_ping ? CrossCoreFlags::FLAG_KV_PING_READY : CrossCoreFlags::FLAG_KV_PONG_READY;
         CrossCoreSet(CrossCoreDirection::VEC0_TO_CUBE, kv_flag);
+        // CATLASS CrossCoreFlagWithReverse 硬件队深 15 级反向确认握手
+        if ((k + 1) % Catlass::SageAttn::HardwareResourceQuota::MAX_CROSS_CORE_SYNC_DEPTH == 0) {
+            CrossCoreWait(CrossCoreDirection::CUBE_TO_VEC0, CrossCoreFlags::FLAG_KV_REVERSE_ACK);
+        }
 #endif
     }
 

@@ -311,6 +311,8 @@ struct L1DoubleBankContract {
     // L1 Scale 静态专有槽位 (Bank 0，彻底消灭 GM 往返)
     static constexpr uint32_t Q_SCALE_SLOT_OFFSET = BANK0_START + 32 * 1024; // 32 KB
     static constexpr uint32_t Q_SCALE_SLOT_BYTES  = 2048;                    // 2 KB (512 float)
+    static constexpr uint32_t V_SCALE_SLOT_OFFSET = BANK0_START + 34 * 1024; // 34 KB
+    static constexpr uint32_t V_SCALE_SLOT_BYTES  = 1024;                    // 1 KB (256 float)
     static constexpr uint32_t K_SCALE_PING_OFFSET = BANK0_START + 36 * 1024; // 36 KB
     static constexpr uint32_t K_SCALE_PONG_OFFSET = BANK0_START + 38 * 1024; // 38 KB
     static constexpr uint32_t K_SCALE_SLOT_BYTES  = 1024;                    // 1 KB (256 float)

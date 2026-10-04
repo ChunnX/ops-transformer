@@ -320,10 +320,13 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void DequantMaskLog
 
         for (uint32_t j = 0; j < block_n; j += 64) {
             const uint32_t chunk_start = k_start + j;
-            const uint32_t chunk_end = chunk_start + 63u;
+            uint32_t bound_k = sk;
+            if (is_causal != 0u && token_q + 1u < bound_k) {
+                bound_k = token_q + 1u;
+            }
 
             // Chunk 级态 1：全掩码（因果上三角或超 sk 尾界），跳过点积读取与乘法直接落哨兵
-            if ((is_causal != 0u && token_q < chunk_start) || (chunk_start >= sk)) {
+            if (chunk_start >= bound_k) {
                 StoreAlign(logits_row + j, neg_inf, full);
                 continue;
             }
@@ -338,25 +341,17 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void DequantMaskLog
             Mul(val, val, sm_reg, full);
 
             // Chunk 级态 2：全活跃（完全在因果下三角与 sk 尾界内），直接写反量化结果
-            if ((is_causal == 0u || token_q >= chunk_end) && (chunk_start + 64u <= sk)) {
+            if (chunk_start + 64u <= bound_k) {
                 StoreAlign(logits_row + j, val, full);
                 continue;
             }
 
-            // Chunk 级态 3：混合边界，调用硬件 Arange/Compare/Select 精确掩码
-            RegTensor<int32_t> idx, tok_q_bound, sk_bound;
-            Arange<int32_t>(idx, 0);
-            Duplicate(tok_q_bound, (is_causal != 0u)
-                                       ? static_cast<int32_t>(token_q) - static_cast<int32_t>(chunk_start)
-                                       : 2147483647);
-            Duplicate(sk_bound, static_cast<int32_t>(sk) - static_cast<int32_t>(chunk_start));
-            MaskReg gt_tok_q, ge_sk;
-            Compare<int32_t, CMPMODE::GT>(gt_tok_q, idx, tok_q_bound, full);
-            RegTensor<float> masked_q, masked_k;
-            Select(masked_q, neg_inf, val, gt_tok_q);         // causal：token_k > token_q → -1e30
-            Compare<int32_t, CMPMODE::GE>(ge_sk, idx, sk_bound, full);
-            Select(masked_k, neg_inf, masked_q, ge_sk);       // 尾块 pad：token_k ≥ sk → -1e30
-            StoreAlign(logits_row + j, masked_k, full);
+            // Chunk 级态 3：混合边界，复用 CATLASS CreateMask 与 UpdateMask 动态尾块硬件掩码生成
+            uint32_t tailN = bound_k - chunk_start;
+            MaskReg pregTailN = UpdateMask<uint32_t>(tailN);
+            RegTensor<float> masked_val;
+            Select(masked_val, val, neg_inf, pregTailN);
+            StoreAlign(logits_row + j, masked_val, full);
         }
     }
 }
@@ -822,9 +817,12 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void FillF32VF(__ub
     }
     uint32_t rem = count - c;
     uint32_t off = c;
-    if (rem & 32u) { auto m = CreateMask<float, MaskPattern::VL32>(); StoreAlign(dst + off, vreg, m); off += 32u; }
-    if (rem & 16u) { auto m = CreateMask<float, MaskPattern::VL16>(); StoreAlign(dst + off, vreg, m); off += 16u; }
-    if (rem & 8u)  { auto m = CreateMask<float, MaskPattern::VL8>();  StoreAlign(dst + off, vreg, m); off += 8u;  }
+    uint32_t rem_aligned = rem & ~7u;
+    if (rem_aligned > 0u) {
+        MaskReg m = UpdateMask<float>(rem_aligned);
+        StoreAlign(dst + off, vreg, m);
+        off += rem_aligned;
+    }
     uint32_t tail = rem & 7u;
     if (tail > 0u) {
         UnalignReg tail_store;

@@ -82,6 +82,8 @@ void TestTilingDataLayout() {
     assert(UB_TOTAL_SIZE_PER_V == 256 * 1024);
     static_assert(HardwareResourceQuota::L0C_TOTAL_BYTES == Catlass::Arch::Ascend950::L0C_SIZE,
                   "L0C quota must map the official Ascend950 constant");
+    static_assert(HardwareResourceQuota::MAX_CROSS_CORE_SYNC_DEPTH == 15,
+                  "Cross-core sync queue depth quota must be 15 (Ascend 950/910B hardware limit)");
     assert(L1_TOTAL_SIZE == Catlass::Arch::Ascend950::L1_SIZE);
 
     std::cout << "[Test 1 Passed] All TilingData offsets and constants match specification!" << std::endl;
@@ -154,10 +156,18 @@ void TestCatlassContracts() {
     // L1 Bank 0 Scale 专有槽位契约（彻底消灭 GM 往返，100% 片上 1C2V 直通）
     static_assert(SlotL1QScale::OFFSET == 32 * 1024, "Q scale slot at 32KB");
     static_assert(SlotL1QScale::BYTES == 2048, "Q scale slot size 2048 bytes");
+    static_assert(SlotL1VScale::OFFSET == 34 * 1024, "V scale slot at 34KB");
+    static_assert(SlotL1VScale::BYTES == 1024, "V scale slot size 1024 bytes");
     static_assert(SlotL1KScalePing::OFFSET == 36 * 1024, "K scale ping slot at 36KB");
     static_assert(SlotL1KScalePing::BYTES == 1024, "K scale ping slot size 1024 bytes");
     static_assert(SlotL1KScalePong::OFFSET == 38 * 1024, "K scale pong slot at 38KB");
     static_assert(SlotL1KScalePong::BYTES == 1024, "K scale pong slot size 1024 bytes");
+    static_assert(SlotL1QScale::End() <= SlotL1VScale::OFFSET,
+                  "Q scale slot must end before V scale slot");
+    static_assert(SlotL1VScale::End() <= SlotL1KScalePing::OFFSET,
+                  "V scale slot must end before K scale ping slot");
+    static_assert(SlotL1KScalePing::End() <= SlotL1KScalePong::OFFSET,
+                  "K scale ping slot must end before K scale pong slot");
     static_assert(SlotL1KScalePong::End() <= L1DoubleBankContract::P_PING_OFFSET,
                   "K scale pong slot must end before P matrix ping buffer");
 

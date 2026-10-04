@@ -6,6 +6,9 @@
 #include "../ascendc/tiling.h"
 #include "sage_tile.hpp"
 #include "catlass/arch/arch.hpp"
+#if SAGE_ATTN_KERNEL_API
+#include "catlass/arch/cross_core_sync.hpp"
+#endif
 
 namespace Catlass::SageAttn {
 
@@ -22,6 +25,12 @@ struct HardwareResourceQuota {
     static constexpr uint32_t L0C_TOTAL_BYTES  = Arch::L0C_SIZE;                  // 256 KB
     // UB 封顶唯一定义点 ascendc/tiling.h（UB_TOTAL_SIZE_PER_V），此处仅 constexpr 别名
     static constexpr uint32_t UB_PER_V_BYTES   = sage_attn::UB_TOTAL_SIZE_PER_V;
+    // 昇腾 950 硬件跨核同步队列深度上限（复用 CATLASS Arch::MAX_REVERSE_DEPTH）
+#if SAGE_ATTN_KERNEL_API
+    static constexpr uint32_t MAX_CROSS_CORE_SYNC_DEPTH = Catlass::Arch::MAX_REVERSE_DEPTH;
+#else
+    static constexpr uint32_t MAX_CROSS_CORE_SYNC_DEPTH = 15;
+#endif
 };
 
 /**

@@ -435,9 +435,8 @@ public:
             }
 
             Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
-            GlobalTensor<float> gm_stage_v;
-            gm_stage_v.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(ctx.StageStrip() + STAGE_V_SCALE_OFFSET));
-            DataCopy(gm_stage_v, ub_v_scale, d);
+            LocalTensor<float> l1_v_scale(TPosition::A1, SlotL1VScale::Offset(), STAGE_SLOT_FLOATS);
+            Catlass::SageAttn::CopyUbToL1(l1_v_scale, ub_v_scale, STAGE_SLOT_BYTES);
             if (smooth_v != 0u) {
                 GlobalTensor<float> gm_vm;
                 gm_vm.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(
@@ -503,6 +502,10 @@ public:
                     }
                     ctx.sim_mem->v_scales[c] = amax / scale_max;
                 }
+            }
+            float *l1_v_scale = reinterpret_cast<float *>(ctx.sim_mem->l1_mem + SlotL1VScale::Offset());
+            for (uint32_t c = 0; c < d; ++c) {
+                l1_v_scale[c] = ctx.sim_mem->v_scales[c];
             }
         }
 
@@ -577,7 +580,7 @@ public:
                                   l1_dst_offset + Catlass::SageAttn::L1DoubleBankContract::KV_V_SUB_OFFSET,
                                   k, cur_block_k, kv_layout);
 
-            AttentionSync::Vec0SignalKvReady(is_ping);
+            AttentionSync::Vec0SignalKvReady(is_ping, k);
         }
 
 #if SAGE_ATTN_DEVICE_COMPILE

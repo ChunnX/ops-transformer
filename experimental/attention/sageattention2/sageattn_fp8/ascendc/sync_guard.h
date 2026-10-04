@@ -63,7 +63,15 @@ namespace CrossCoreFlags {
     // beat k+1 覆写 dot32 区（单 L0C 要求 QK fp 先于 PV Mmad，无法借道 S(k) 排序；
     // R17-2 后 dot32 区定址 [96K,160K)，Vector1UbBudget 唯一定义点）
     constexpr uint32_t FLAG_DOT_FREE             = 13; // dot32 区已读毕，Cube 可覆写 (V1 set → Cube wait)
+    // CATLASS CrossCoreFlagWithReverse 硬件队深 15 级防锁死安全防护：
+    // 在长序列（如 S=8K/16K）下，V0 向 Cube 单向发射超过 15 次 FLAG_KV_READY 时，
+    // 通过 FLAG_KV_REVERSE_ACK 进行模 15 轻量反向确认握手，彻底杜绝硬件同步队列溢出。
+    constexpr uint32_t FLAG_KV_REVERSE_ACK       = 14; // V0 ↔ Cube 硬件模 15 级反向确认旗标 (Cube set → V0 wait)
 }
+
+#if SAGE_ATTN_KERNEL_API
+using CrossCoreFlagWithReverse = Catlass::Arch::CrossCoreFlagWithReverse<Catlass::Arch::MAX_REVERSE_DEPTH>;
+#endif
 
 /**
  * 跨核同步原语封装 (1C2V 硬件跨核信号灯)
