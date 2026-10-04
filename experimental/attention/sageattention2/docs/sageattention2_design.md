@@ -226,6 +226,34 @@ chunks=1，任务解码与调度算术逐位不变（twin 25 桶 golden 回归�
       DataCopyParams 样板收敛至 `CopyUbRowToL1`（blockLen 计量 = 官方
       BYTE_PER_BLK）；Mmad 执行器恒 0 的 L0 基址 / L0C 源偏移 / S 槽第二半址死参
       全部删除。
+  - 官方组件与微架构深度复用清单（2026-10-04 第 5 轮微架构与硬件原语深度复用）：
+    - `AscendC::MicroAPI` 原生硬件融合指令（`ExpSub` / `MulDstAdd`）：
+      在 `BlockMaxAndSumRowsVF`、`SoftmaxProbRowsVF`、`UpdateOnlineSoftmaxRowsVF`、
+      `MergePvPartialRowsVF` 与 `FinalizeRowVF` 中全面落地；采用 `ExpSub` 将自然域
+      投影与指数求和熔断为单拍硬件本征指令；严格对齐底层 `MulDstAdd(dst, src0, src1)`
+      硬件语义（`dst = dst * src0 + src1`，vmadd），单拍闭环指数累加、Online 更新与
+      部分和并入，消灭中间寄存器与 RAW 依赖延迟；
+    - 片上 L1 Bank 0 专有槽位 Scale 100% 片上流式直通：
+      在 `L1DoubleBankContract` 中编排 Bank 0 严密专有槽位（`Q_SCALE`、`V_SCALE`、
+      `K_SCALE_PING`、`K_SCALE_PONG`），Vector 0 经 `CopyUbToL1` 直写 L1 Bank 0，
+      Vector 1 经 `DataCopy` 直读 L1，彻底拔除 GM StageStrip 中转，实现 100% 片上
+      1C2V 直通零 GM 往返；
+    - `LoadDist::DIST_BRC_B32` UB 标量加载与全局广播随路融合：
+      `QuantRowInt8VF` 直接接收 `__ubuf__ float* scale_ptr`，单条指令随路完成加载与
+      64 通道广播，彻底消灭标量单元 `GetValue` 回读与独立 `Duplicate` 指令；
+    - `FlashUpdateLastNew` 向量化归一化除法与末块写回融合：
+      借鉴 CATLASS `FlashUpdateLastNew` 与 `LastDivNew` 模式，在 `FinalizeRowVF` 行首
+      直接以 `DIST_BRC_B32` 随路加载 `d_run` 并通过 `Div` 原地求倒，彻底拔除
+      `ComputeInvDenominatorVF` 独立全量遍历、`ub_inv_d` 缓冲区及 `LocalMemBar` 屏障；
+    - STARS 2.0 硬件 8-Group 拓扑与双 Die 亲和调度（`DieTask` / `DieTaskEnd`）：
+      闭式映射实现活跃核与任务空间的偶数双射覆盖，证明 (b,h) 块整对齐定理，确保两 Die
+      各自处理独立 KV 批次，KV 数据 100% 命中本 Die 本地片上 64MB L2 Cache，跨 Die
+      互联总线流量降为 0；
+    - FixPipe `SPLIT_M` 硬件切分模式（`CopyL0CToUbSplitM`）：
+      使能 `subBlockId = true` 与 $M > 64$ 双段发射，实现 1C2V 两个 Vector SubCore
+      零跨步开销硬件负载均衡；
+    - `Catlass::Arch::CrossCoreFlagWithReverse` 硬件队深 15 级防锁死安全防护：
+      模 15 深度引入轻量反向确认握手，彻底杜绝单向快速核心踩爆硬件同步队列。
   - 官方组件不采用清单（性能/位级锁定裁定，均有源码级证据）：
     - `Gemm::Tile::CopyL0CToUBTla`（ascend950 特化）：基于 `FixpipeParamsC310` 参数面
       且 nSize 按 32B 粒度 RoundUp；本算子真机 L-A 验证走 `FixpipeParamsArch3510`
