@@ -105,14 +105,12 @@ public:
     }
 
     /**
-     * \brief 等待 V1 释放上一块 partial 交接槽 (k > 1)
+     * \brief 等待 V1 释放上一块 partial 交接槽
      */
-    __aicore__ inline __attribute__((always_inline)) static void CubeWaitPartialFree(uint32_t k)
+    __aicore__ inline __attribute__((always_inline)) static void CubeWaitPartialFree()
     {
 #if SAGE_ATTN_DEVICE_COMPILE
-        if (k > 1) {
-            CrossCoreWait(CrossCoreDirection::VEC1_TO_CUBE, CrossCoreFlags::FLAG_PV_PARTIAL_FREE);
-        }
+        CrossCoreWait(CrossCoreDirection::VEC1_TO_CUBE, CrossCoreFlags::FLAG_PV_PARTIAL_FREE);
 #endif
     }
 

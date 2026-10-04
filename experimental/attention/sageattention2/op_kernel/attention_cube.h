@@ -60,7 +60,7 @@ public:
             if (k > 0) {
                 uint32_t prev_k = k - 1;
                 bool prev_is_ping = ((prev_k % 2) == 0);
-                StepPvMmad(pv_mmad, params, prev_is_ping, ub_pv_partial_offset, k, true);
+                StepPvMmad(pv_mmad, params, prev_is_ping, ub_pv_partial_offset, k > 1);
             }
 
             // 2. 等待 V0 当前 KV 分块量化就绪（CATLASS 模 15 级防锁死安全防护）
@@ -87,7 +87,7 @@ public:
         if (active_kv_blocks > 0) {
             uint32_t last_k = active_kv_blocks - 1;
             bool last_is_ping = ((last_k % 2) == 0);
-            StepPvMmad(pv_mmad, params, last_is_ping, ub_pv_partial_offset, active_kv_blocks, active_kv_blocks > 1);
+            StepPvMmad(pv_mmad, params, last_is_ping, ub_pv_partial_offset, active_kv_blocks > 1);
         }
 #else
         (void)params;
@@ -107,7 +107,6 @@ private:
         const CubeBlockParams &params,
         bool is_ping,
         uint32_t ub_pv_partial_offset,
-        uint32_t partial_free_k,
         bool wait_partial_free)
     {
         uint32_t l1_v_addr = (is_ping ? SlotL1KvPing::Offset() : SlotL1KvPong::Offset())
@@ -126,7 +125,7 @@ private:
         AttentionSync::CubeReleaseKvFree(is_ping);
 
         if (wait_partial_free) {
-            AttentionSync::CubeWaitPartialFree(partial_free_k);
+            AttentionSync::CubeWaitPartialFree();
         }
         pv_mmad.ExecuteEpilogue(ub_pv_partial_offset);
         Catlass::SageAttn::Sync<HardEvent::FIX_M>();

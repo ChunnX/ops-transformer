@@ -176,8 +176,8 @@ static ge::graphStatus TilingSageAttention2(gert::TilingContext *context)
     // 出包核内按 tiling.input_dtype 经 RunByDtype 等效一次分派。
     context->SetTilingKey(SAGE_TPL_TILING_KEY(static_cast<uint32_t>(dtype_mode)));
 
-    // SyncAll/三段式调度要求 MIX 1:2 全网格驻留
-    context->SetScheduleMode(1);
+    // 1C2V 架构使用私有 ModeId 4 跨核 flag，非活跃核提前退域无需全局 Barrier，
+    // 禁止设置 SetScheduleMode(1)（否则 CANN 批调度器等待全核同步触发 507014 死锁超时）。
 
     size_t *workspaces = context->GetWorkspaceSizes(1);
     if (workspaces != nullptr) {

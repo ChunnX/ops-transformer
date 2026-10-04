@@ -384,17 +384,16 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void DequantMaskMax
     using namespace AscendC::MicroAPI;
     auto full = CreateMask<float, MaskPattern::ALL>();
     __ubuf__ int32_t* dot_base = reinterpret_cast<__ubuf__ int32_t*>(logits_dot_base);
-    __ubuf__ float* max_ptr = out_max_row;
-    __ubuf__ float* sum_ptr = out_sum_row;
-    UnalignReg max_store;
-    UnalignReg sum_store;
 
+    // Pass 1: 反量化 + 三态掩码 + 行内 Max，写 logits_row 与 out_max_row
+    // 独立循环驱动单一 StoreUnAlign 流，防止硬件未对齐合并寄存器交织写冲突
     RegTensor<float> sm_reg;
     Duplicate(sm_reg, sm_scale_log2e);
     RegTensor<float> neg_inf;
     Duplicate(neg_inf, SAGE_MASK_SENTINEL);
-    RegTensor<float> e4m3_max_reg;
-    Duplicate(e4m3_max_reg, FP8_E4M3_MAX);
+
+    __ubuf__ float* max_ptr = out_max_row;
+    UnalignReg max_store;
 
     for (uint32_t r = 0; r < rows; ++r) {
         const uint32_t token_q = cur_q_start + (r % cur_q_len);
@@ -406,27 +405,24 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void DequantMaskMax
         // 行级快速路径 2：全活跃行（整行完全在因果下三角与 sk 尾界内），免除全部掩码计算
         const bool is_pure_active = (is_causal == 0u || token_q >= k_start + block_n - 1) && (k_start + block_n <= sk);
 
-        RegTensor<float> max_val, sum_val;
+        RegTensor<float> max_val;
         Duplicate(max_val, SAGE_MASK_SENTINEL);
-        Duplicate(sum_val, 0.0f);
 
-        RegTensor<float> val0;
-        RegTensor<float> val1;
         if (is_pure_masked) {
-            val0 = neg_inf;
             StoreAlign(logits_row, neg_inf, full);
             if constexpr (NCHUNK > 1u) {
-                val1 = neg_inf;
                 StoreAlign(logits_row + 64u, neg_inf, full);
             }
         } else {
             // 行解析 q_scale：DIST_BRC_B32 单元素广播 Load（读 ub_qs[r] 原 float，位保搬运）
             RegTensor<float> qs_reg;
             LoadAlign<float, LoadDist::DIST_BRC_B32>(qs_reg, qs_row + r);
+            RegTensor<float> val0;
             DequantStoreLogitChunkVF(dot_row, logits_row, 0u, qs_reg, k_scale_row, sm_reg, neg_inf,
                                      token_q, k_start, sk, is_causal, is_pure_active, val0);
             Max(max_val, max_val, val0, full);
             if constexpr (NCHUNK > 1u) {
+                RegTensor<float> val1;
                 DequantStoreLogitChunkVF(dot_row, logits_row, 64u, qs_reg, k_scale_row, sm_reg, neg_inf,
                                          token_q, k_start, sk, is_causal, is_pure_active, val1);
                 Max(max_val, max_val, val1, full);
@@ -434,20 +430,47 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void DequantMaskMax
         }
 
         ReduceMax(max_val, max_val, full);
-
-        RegTensor<float> max_nat;
-        Muls(max_nat, max_val, INV_LOG2E, full);
-
-        ExpSubAccumChunkVF(val0, max_nat, e4m3_max_reg, sum_val);
-        if constexpr (NCHUNK > 1u) {
-            ExpSubAccumChunkVF(val1, max_nat, e4m3_max_reg, sum_val);
-        }
-        ReduceSum(sum_val, sum_val, full);
-
         StoreUnAlign<float, PostLiteral::POST_MODE_UPDATE>(max_ptr, max_val, max_store, 1);
-        StoreUnAlign<float, PostLiteral::POST_MODE_UPDATE>(sum_ptr, sum_val, sum_store, 1);
     }
     StoreUnAlignPost(max_ptr, max_store, 0);
+    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+
+    // Pass 2: ExpSub 指数求和，写 out_sum_row
+    // 独立循环驱动单一 StoreUnAlign 流；对全掩码行守卫赋 0.0f，防止 e^(sentinel - sentinel)=1 虚假和
+    RegTensor<float> e4m3_max_reg;
+    Duplicate(e4m3_max_reg, FP8_E4M3_MAX);
+
+    __ubuf__ float* sum_ptr = out_sum_row;
+    UnalignReg sum_store;
+
+    for (uint32_t r = 0; r < rows; ++r) {
+        const uint32_t token_q = cur_q_start + (r % cur_q_len);
+        const bool is_pure_masked = (is_causal != 0u && token_q < k_start) || (k_start >= sk);
+
+        RegTensor<float> sum_val;
+        Duplicate(sum_val, 0.0f);
+
+        if (!is_pure_masked) {
+            __ubuf__ float* logits_row = logits_dot_base + r * block_n;
+            RegTensor<float> max_val;
+            LoadAlign<float, LoadDist::DIST_BRC_B32>(max_val, out_max_row + r);
+
+            RegTensor<float> max_nat;
+            Muls(max_nat, max_val, INV_LOG2E, full);
+
+            RegTensor<float> val0;
+            LoadAlign(val0, logits_row);
+            ExpSubAccumChunkVF(val0, max_nat, e4m3_max_reg, sum_val);
+            if constexpr (NCHUNK > 1u) {
+                RegTensor<float> val1;
+                LoadAlign(val1, logits_row + 64u);
+                ExpSubAccumChunkVF(val1, max_nat, e4m3_max_reg, sum_val);
+            }
+            ReduceSum(sum_val, sum_val, full);
+        }
+
+        StoreUnAlign<float, PostLiteral::POST_MODE_UPDATE>(sum_ptr, sum_val, sum_store, 1);
+    }
     StoreUnAlignPost(sum_ptr, sum_store, 0);
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 }
