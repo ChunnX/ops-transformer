@@ -809,13 +809,16 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void FinalizeRowVF(
     static constexpr CastTrait toBf16{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
 
     // CATLASS 950 模式（FlashUpdateLastNew / LastDivNew）：随路加载分母并在寄存器内求倒数
-    RegTensor<float> d_reg, inv_reg, zero_reg, one_reg;
+    // 微架构安全：d_run_ptr 继承 SlotV1RowSum 32B 对齐基址，row_idx 步长 4B，严格满足 DIST_BRC_B32 32 位对齐约束；
+    // 寄存器分配打磨：Duplicate(inv_reg, 1.0f) 后 Div(inv_reg, inv_reg, d_reg) 原地求倒，彻底消除 one_reg 冗余寄存器；
+    // 乱序与流水线掩盖：在 Div 发射前就绪 pos_mask，当 d <= 0.0f 时 Select 填 0.0f 防护非正常行数值溢出。
+    RegTensor<float> d_reg, inv_reg, zero_reg;
     LoadAlign<float, LoadDist::DIST_BRC_B32>(d_reg, d_run_ptr + row_idx);
-    Duplicate(one_reg, 1.0f);
     Duplicate(zero_reg, 0.0f);
-    Div(inv_reg, one_reg, d_reg, full);
     MaskReg pos_mask;
     Compare<float, CMPMODE::GT>(pos_mask, d_reg, zero_reg, full);
+    Duplicate(inv_reg, 1.0f);
+    Div(inv_reg, inv_reg, d_reg, full);
     Select(inv_reg, inv_reg, zero_reg, pos_mask);
 
     for (uint32_t c = 0; c < d; c += 64) {
