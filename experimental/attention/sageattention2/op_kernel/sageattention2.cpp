@@ -9,7 +9,7 @@
 #include "sage_attention2_template_tiling_key.h"
 
 #if SAGE_ATTN_DEVICE_COMPILE
-#define DEBUG_PHASE_3 1
+#define DEBUG_PHASE_4 1
 
 template <class ByteCountT>
 __inline__ __attribute__((always_inline)) __aicore__ void InitTilingDataHelper(
@@ -54,15 +54,15 @@ extern "C" __global__ __aicore__ void sage_attention2(
     GET_TILING_DATA_WITH_STRUCT(sage_attn::SageAttention2TilingData, t, tiling);
     AscendC::SetSysWorkspaceForce(workspace);
     __gm__ uint8_t *user_ws = workspace + AscendC::RESERVED_WORKSPACE;
-#if defined(DEBUG_PHASE_3)
+#if defined(DEBUG_PHASE_4)
     // 实例化内核并执行 Init
     sage_attn::SageAttnKernel<sage_attn::kTplDtypeFp16> kernel;
     kernel.Init(query, key, value, attentionOut, softmaxLse, user_ws, &t);
-    // 仅在 Vector 0 执行纯计算与访存测试（V0 的 Process），Cube 和 Vector 1 直接退出
+    // 仅在 Vector 1 执行纯计算与访存测试（V1 的 Process），Cube 和 Vector 0 直接退出
     if ASCEND_IS_AIV {
-        if (AscendC::GetSubBlockIdx() == 0) {
-            // Vector 0 执行，但为了避免跨核等待，调用特化纯净运行测试
-            kernel.TestVec0Standalone();
+        if (AscendC::GetSubBlockIdx() == 1) {
+            // Vector 1 执行，剥离跨核等待
+            kernel.TestVec1Standalone();
         }
     }
     return;
