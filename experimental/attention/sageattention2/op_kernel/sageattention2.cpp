@@ -12,7 +12,13 @@
 #ifndef GET_TILING_DATA_WITH_STRUCT
 #define GET_TILING_DATA_WITH_STRUCT(tiling_struct, tiling_data, tiling_arg) \
     tiling_struct tiling_data; \
-    for (uint32_t i = 0; i < sizeof(tiling_struct); ++i) { reinterpret_cast<uint8_t *>(&tiling_data)[i] = tiling_arg[i]; }
+    do { \
+        const __gm__ uint32_t *src_w = reinterpret_cast<const __gm__ uint32_t *>(tiling_arg); \
+        uint32_t *dst_w = reinterpret_cast<uint32_t *>(&tiling_data); \
+        for (uint32_t w = 0; w < sizeof(tiling_struct) / sizeof(uint32_t); ++w) { \
+            dst_w[w] = src_w[w]; \
+        } \
+    } while (0)
 #endif
 
 extern "C" __global__ __aicore__ void sage_attention2(

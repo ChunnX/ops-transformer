@@ -52,6 +52,7 @@ def _run_kernel_host_gqa8(q, k, v, gran_code, causal):
     t.workspace_lse_offset, t.workspace_vm_offset = 0, 0
     t.enable_die_affinity, t.die_num = 0, 1
     t.cores_per_die, t.tasks_per_die = 1, b * hkv * 2 * t.q_blk_num
+    t.has_lse = 1 if lse is not None else 0
     tk._LIB.sage_attention2(
         ctypes.c_void_p(q.data_ptr()), ctypes.c_void_p(k.data_ptr()), ctypes.c_void_p(v.data_ptr()),
         ctypes.c_void_p(out_pad.data_ptr()), ctypes.c_void_p(lse.data_ptr()),
