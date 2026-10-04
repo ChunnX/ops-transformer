@@ -173,6 +173,7 @@ constexpr uint32_t STAGE_V_SCALE_OFFSET = 512;            // V scale 起始字�
 constexpr uint32_t STAGE_K_SCALE_BASE_OFFSET = 1024;      // K scale 独立 slot 基址偏移 [1024, 65536)
 constexpr uint32_t STAGE_K_SCALE_NUM_SLOTS = 126;         // 126 个独立 K scale slot，避免轮转覆盖
 constexpr uint32_t STAGE_SLOT_FLOATS = 128;               // 单区域容量（float 数，512B）
+constexpr uint32_t STAGE_SLOT_BYTES = STAGE_SLOT_FLOATS * sizeof(float);  // 单区域字节容量（512B，K scale 环形槽步进）
 
 /**
  * 布局编码枚举（对齐 core.py 行 745）

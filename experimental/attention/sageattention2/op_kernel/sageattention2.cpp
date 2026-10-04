@@ -853,7 +853,8 @@ private:
      * → V1 以 MTE2 接入 UB 副本。GM 可见性序：V0 条带写以 S_MTE3/MTE3_S 双自配对排空后
      * 方随 Q_READY/KV_*_READY raise（LoadAndQuantizeQ/QuantizeAndStageKey/Value 设备分支），
      * 本侧一律在 wait QK_P_READY 之后读取（跨核 flag 链传递保序）。
-     * 槽位隔离闭环：k 块解析 scale 经 STAGE_K_SCALE_BASE_OFFSET + (k % 126u) * 512 独立槽存放，
+     * 槽位隔离闭环：k 块解析 scale 经 STAGE_K_SCALE_BASE_OFFSET + (k % STAGE_K_SCALE_NUM_SLOTS)
+     * × STAGE_SLOT_BYTES 独立槽存放，
      * 彻底消除覆写竞争隐患，无需硬件不支持的跨 Vector 同步。
      * R4 注：qs/ks 消费端已由 S 管 GetValue 改为 V 管 VF LoadAlign / DIST_BRC_B32 广播
      * Load（行批化 DequantMaskLogitsRowsVF），MTE2 写 → V 管读由本函数尾部 MTE2_V 单点
@@ -877,7 +878,7 @@ private:
         __gm__ uint8_t *strip = StageStrip();
         GlobalTensor<float> gm_strip;
         LocalTensor<float> ub_ks(TPosition::VECCALC, SAGE_UB_V1_KS_ROW_OFFSET, STAGE_SLOT_FLOATS);
-        uint32_t k_offset = STAGE_K_SCALE_BASE_OFFSET + (k % 126u) * 512u;
+        uint32_t k_offset = STAGE_K_SCALE_BASE_OFFSET + (k % STAGE_K_SCALE_NUM_SLOTS) * STAGE_SLOT_BYTES;
         gm_strip.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(strip + k_offset));
         DataCopy(ub_ks, gm_strip, block_n_);
         Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
@@ -1216,10 +1217,10 @@ private:
         }
 
         // A7 V0（task/12 第五节第 3 条）：块解析 k_scale 暂存写——逐 token 展开写
-        // GM 条带独立 k 槽（STAGE_K_SCALE_BASE_OFFSET + (cur_k_ % 126u) * 512，126 槽
-        // 轮转隔离防覆写，槽内零填充至 128 float=512B），V1 反量化按同式 k % 126 槽号
-        // 读取（StageKScaleStrip 同源）。S→MTE3 / MTE3→S 双自配对排空后方由调用方
-        // raise KV_*_READY（GM 可见性，task/12 第四节；QK_P 传递性保证 V1 读取时序）。
+        // GM 条带独立 k 槽（STAGE_K_SCALE_BASE_OFFSET + (cur_k_ % STAGE_K_SCALE_NUM_SLOTS)
+        // × STAGE_SLOT_BYTES，126 槽轮转隔离防覆写，槽内零填充至 STAGE_SLOT_FLOATS），V1
+        // 反量化按同式槽号读取（StageKScaleStrip 同源）。S→MTE3 / MTE3→S 双自配对排空后方
+        // 由调用方 raise KV_*_READY（GM 可见性，task/12 第四节；QK_P 传递性保证 V1 读取时序）。
         LocalTensor<float> ub_stage_k(TPosition::VECCALC,
                                       Catlass::SageAttn::Vector0UbBudget::QUANT_STAGE_STRIP_OFFSET,
                                       STAGE_SLOT_FLOATS);
@@ -1234,7 +1235,7 @@ private:
         }
         Catlass::SageAttn::Sync<HardEvent::S_MTE3>();
         GlobalTensor<float> gm_stage_k;
-        uint32_t k_offset = STAGE_K_SCALE_BASE_OFFSET + (cur_k_ % 126u) * 512u;
+        uint32_t k_offset = STAGE_K_SCALE_BASE_OFFSET + (cur_k_ % STAGE_K_SCALE_NUM_SLOTS) * STAGE_SLOT_BYTES;
         gm_stage_k.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(StageStrip() + k_offset));
         DataCopy(gm_stage_k, ub_stage_k, STAGE_SLOT_FLOATS);
         Catlass::SageAttn::Sync<HardEvent::MTE3_S>();
