@@ -74,7 +74,7 @@ NPU 侧两种粒度是两套独立存在的量化内核，不是兼容别名；�
 
 ## smooth_k 与 LSE 补偿
 
-- NPU 语义：`smooth_k=True`（默认）时 K 沿序列维减均值 `km`（量化核 `QuantizeKInt8Ascend` 的 `km_in` 入参，`./quant/quant_int8.cpp`），并预计算 LSE 修正项 `lse_correction = Q * km^T`（融合在设备核内，`./op_kernel/sageattention2.cpp` 的 `lse_corr`）
+- NPU 语义：`smooth_k=True`（默认）时 K 沿序列维减均值 `km`（量化核 `QuantizeKInt8Ascend` 的 `km_in` 入参，`./quant/quant_int8.cpp`），并预计算 LSE 修正项 `lse_correction = Q * km^T`（桥接层 fp32 matmul 算好经 `lseCorrection` GM 入参传入，`./python/sageattention2/csrc/attention.cpp`；设备核不自算，`./op_kernel/sageattention2.cpp` 的 `FinalizeAndStoreOutput` 直读消费）
 - 对外 LSE 换算：`lse_out = (lse_exp2 - S_FP8_OFFSET) * ln(2) + lse_correction * sm_scale`（`ConvertLseToHost`，`./sageattn_fp8/ascendc/online_softmax.h`；即 exp2 域 LSE 先补扣 `S_FP8_OFFSET` 常量再除以 $\log_2 e$ 换回自然对数域），减均值引入的行常数在返回前精确补偿
 - 意义：开启 smooth_k 后对外 LSE 与"不减均值"的参考实现可证等价；CUDA 上游 `return_lse` 语义仅在部分入口提供，且补偿路径实现不同，跨实现比较 LSE 时以本公式为准
 
@@ -115,7 +115,7 @@ NPU 侧两种粒度是两套独立存在的量化内核，不是兼容别名；�
 ## 源码依据
 
 - NPU 量化内核与舍入：`./quant/quant_int8.cpp`（half-away 与 RNE 两条路径）、`./quant/quant_fp8.cpp`（V e4m3 与 vm 统计）、`./sageattn_fp8/ascendc/tiling.h`（`S_FP8_OFFSET`、`SCALE_MAX_*` 等常量唯一定义）、`./quant/quant_common.h`（`QScaleCount`/`KScaleCount` 分组数公式）、`./quant/quant_host.h`（using 引入常量并提供 `GetVScaleMax`）
-- 设备侧累加与偏置：`./sageattn_fp8/ascendc/online_softmax.h`（`GetFinalInvDenominator` 归一化）、`./op_kernel/sageattention2.cpp`（`ComputeSoftmaxProbability` 注入偏置）、`./op_kernel/sage_device_vf.h`（设备态 `SoftmaxProbRowVF` / `FinalizeRowVF`）
+- 设备侧累加与偏置：`./sageattn_fp8/ascendc/online_softmax.h`（`GetFinalInvDenominator` 归一化）、`./op_kernel/sageattention2.cpp`（`ComputeSoftmaxProbability` 注入偏置）、`./op_kernel/sage_device_vf.h`（设备态 `SoftmaxProbRowsVF` / `FinalizeRowVF`）
 - Tiling 契约：`./sageattn_fp8/ascendc/tiling.h`（`PvAccumDtype`、`QkQuantGran`、`workspace_vm_offset`）
 - 接口与告警语义：`./python/sageattention2/error_check.py`（`handle_smooth_v`、档位白名单）、`./python/sageattention2/dispatch.py`（`per_thread`/`per_warp` 双实现参考实现）
 - 数值期望值：仓库根 golden 数据集的 TC-02（量化粒度）、TC-03（smooth_v/no_smooth_k）、TC-09（长序列）系列

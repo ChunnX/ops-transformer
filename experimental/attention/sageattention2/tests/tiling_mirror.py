@@ -3,7 +3,7 @@
 权威定义：sageattn_fp8/ascendc/tiling.h 的 SageAttention2TilingData
 （160 字节、32 字节对齐、Host/Device 共享只读）。
 两个消费方：
-- tests/test_tiling_struct.py：40 个字段偏移断言（对镜像的逐字段锁）
+- tests/test_tiling_struct.py：38 个字段偏移断言（对镜像的逐字段锁）
 - tests/test_kernel_twin.py：宿主串行分支的 tiling 填充
 本模块 import 时自检 sizeof == struct.calcsize(FMT) == 160，作为第一道护栏。
 任何字段改动必须先通过 tiling.h 的 static_assert 与 test_tiling_struct 的偏移断言。
