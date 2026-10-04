@@ -30,7 +30,7 @@
 
 /**
  * 编译域判定宏（全仓唯一定义点，其余头文件禁止再定义或重复守卫）：
- * - SAGE_ATTN_DEVICE_COMPILE：bisheng -xasc 真机/camodal 设备编译语义分支；
+ * - SAGE_ATTN_DEVICE_COMPILE：bisheng -xasc 真机/camodel 设备编译语义分支；
  * - SAGE_ATTN_KERNEL_API：kernel_operator.h 可用域（设备编译或 KT 单测桩），
  *   兼作 "设备态执行路径" 判定（宿主串行仿真为 0）。
  */

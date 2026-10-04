@@ -91,9 +91,6 @@ namespace sage_attn {
 // 原四个 no-op 宿主包装（SyncMte2ToV 等）与文件内散装 SetFlag/WaitFlag 直配对
 // 已删——事件对单点化后本文件不再持有任何裸 SetFlag/WaitFlag。
 
-
-
-
 // GQA 聚合后的窗口行上限（m_per_core 为 64 的倍数、gqa_ratio ≤ 8 的验收域内恒满足；
 // 常量不随 SimMemory 分支门控，row_states_ 成员在设备分支亦需该界）
 // 行打包上限唯一定义点：tiling.h MAX_PACK_ROWS（host/InspectTilingPlan 同源）
@@ -627,9 +624,6 @@ private:
 #endif
             CrossCoreSet(CrossCoreDirection::VEC0_TO_CUBE, kv_flag);
         }
-
-
-
 
     }
 

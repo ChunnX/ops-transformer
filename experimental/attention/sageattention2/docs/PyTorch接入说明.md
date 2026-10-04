@@ -28,7 +28,7 @@ bash run.sh opp
 eval "$(./install_opp.sh --export-env)"
 ```
 
-- 接入 Python 包（无 setup.py，按源码路径接入）：将 `./python` 加入 `PYTHONPATH`；首次 NPU 调用会经 `torch.utils.cpp_extension` JIT 编译 C++ 桥接扩展（依赖 `ASCEND_HOME_PATH` 指向的 CANN 与 torch_npu 头库，编译缓存由 torch 扩展缓存托管；`SAGEATTN_BUILD_VERBOSE=1` 可输出编译日志）
+- 接入 Python 包（按源码路径接入；算子根目录另含可选 `setup.py`，默认同样走 JIT 编译，`BUILD_NPU_EXT=1` 时改为 AOT 编译同一桥接扩展）：将 `./python` 加入 `PYTHONPATH`；首次 NPU 调用会经 `torch.utils.cpp_extension` JIT 编译 C++ 桥接扩展（依赖 `ASCEND_HOME_PATH` 指向的 CANN 与 torch_npu 头库，编译缓存由 torch 扩展缓存托管；`SAGEATTN_BUILD_VERBOSE=1` 可输出编译日志）
 - 自检（应能正常导入并列出两个入口函数）：
 
 ```bash
@@ -155,7 +155,7 @@ with sageattention2.sdpa_patch(pv_accum_dtype="fp32+fp16"):
 ## 环境变量汇总
 
 - `SAGEATTN_PV_ACCUM_DTYPE`：`sageattn` 入口 `pv_accum_dtype` 默认值覆盖
-- `SAGEATTN_ALLOW_CPU_STUB`：置 `1`/`true`/`yes` 允许 CPU 张量走高保真参考实现（输出为 CPU 参考结果，禁止作为 NPU 精度与性能验收证据；NPU 张量不受影响）
+- `SAGEATTN_ALLOW_CPU_STUB`：CPU 张量恒走高保真 CPU 参考实现（torch.library CPU 后端；输出为 CPU 参考结果，禁止作为 NPU 精度与性能验收证据），置 `1`/`true`/`yes` 时该路径附带 `UserWarning`（默认不告警）。NPU 张量始终走 PrivateUse1 真机算子，不存在 CPU 回退
 - `SAGEATTN_NUM_CORES`：Host Tiling 参与调度的 AI Core 数覆盖（如 28 核减配拓扑）
 - `SAGEATTN_BUILD_VERBOSE`：置 `1` 输出 C++ 扩展 JIT 编译日志
 - `SAGE_OPAPI_LIBRARY` / `FIA_OPAPI_LIBRARY`：仅 `./benchmarks/` 基准工具 dlsym 外部算子库时的路径

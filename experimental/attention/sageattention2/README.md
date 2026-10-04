@@ -79,7 +79,7 @@ bash build.sh --pkg --experimental --soc=ascend950 --vendor_name=customize --ops
 - 覆盖优先级：`kwargs` 中的 `pv_accum_dtype` 高于环境变量 `SAGEATTN_PV_ACCUM_DTYPE`，环境变量高于默认值 `"fp32+fp16"`（实现在 `./python/sageattention2/dispatch.py` 的 `sageattn`）
 - 非法取值直接抛 `ValueError`，不做静默回退
 
-- `SAGEATTN_ALLOW_CPU_STUB` 语义：默认关闭；设为 `1`/`true`/`yes` 时，即使检测到 NPU 可用也允许走高保真 CPU 参考实现（与 golden 数据生成算法逐位同源），用于无卡环境的功能验证与 CI。该模式输出为 CPU 参考结果，禁止作为 NPU 性能与精度验收证据
+- `SAGEATTN_ALLOW_CPU_STUB` 语义：CPU 张量恒走高保真 CPU 参考实现（torch.library CPU 后端，与 golden 数据生成算法逐位同源），用于无卡环境的功能验证与 CI；设为 `1`/`true`/`yes` 时该路径附带 `UserWarning`（默认不告警）。CPU 参考输出禁止作为 NPU 性能与精度验收证据；NPU 张量始终走 PrivateUse1 真机算子，无 CPU 回退
 
 ### 两段式 ACLNN C 接口（交付态 `./op_api/` 唯一实现）
 
@@ -92,7 +92,7 @@ bash build.sh --pkg --experimental --soc=ascend950 --vendor_name=customize --ops
 ### 环境变量汇总
 
 - `SAGEATTN_PV_ACCUM_DTYPE`：`sageattn` 入口的 `pv_accum_dtype` 默认值覆盖
-- `SAGEATTN_ALLOW_CPU_STUB`：允许 CPU 参考回退（语义见上）
+- `SAGEATTN_ALLOW_CPU_STUB`：CPU 参考路径的告警开关（语义见上）
 - `SAGEATTN_NUM_CORES`：Host Tiling 参与调度的 AI Core 数覆盖（如 `28` 用于减配拓扑，实现见 `./aclnn/sage_attn_host_tiling.h` 的 `GetHardwareCoreNum`）
 - `SAGEATTN_TUNE_CASE`：强制 Host Tiling 命中调优知识库指定用例（`P-01`..`P-07`），供调优评估与测试覆盖使用（实现见 `./aclnn/sage_attn_host_tiling.h` 的 `ComputeHostTiling` 查询与 `./aclnn/autotune_tiling_bank.h`）；与 `SAGEATTN_FORCE_MPERCORE`/`_BLOCKN`/`_KSTEP`/`_DIE`/`_SPLITKV` 覆盖钩子同属调优会话专用，仅在 `SAGE_AUTOTUNE_HOOKS=1` 调优构建（`build_opp.sh`）中编入生效，正式发布构建不参与编译
 - `SAGEATTN_BUILD_VERBOSE`：置 `1` 时输出 C++ 扩展编译日志

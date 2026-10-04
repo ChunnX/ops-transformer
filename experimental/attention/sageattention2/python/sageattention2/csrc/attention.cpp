@@ -1,4 +1,5 @@
 #include <cmath>
+#include <dlfcn.h>
 #include <string>
 #include <tuple>
 #include <torch/extension.h>
@@ -12,6 +13,65 @@
 #include "op_plugin/utils/op_api_common_base.h"
 #define SAGE_NPU_AVAILABLE 1
 #endif
+
+#if SAGE_NPU_AVAILABLE
+namespace sage_direct {
+
+// 直连符号两段式执行（与 benchmarks/benchmark_aclnn.cpp 的 dlsym 直调同口径）：
+// 本扩展以 -lcust_opapi 链接 op_api 库，两段式入口即链接期符号，无需经
+// torch_npu GetApiFunc 字符串解析器。该解析路径要求 vendor config.ini
+// load_priority 注册，实测会令内置算子（FIA 基线）的内核解析同样落到本算子
+// vendor 而设备态崩溃——2026-10-04 真机定位，plog 指纹与本算子 trap 完全一致。
+// 同时不走 hit_cache_ext 执行器缓存：每次调用重走 GetWorkspaceSize → TilingImpl，
+// Host Tiling 输入（含调优会话的 SAGEATTN_FORCE_* 覆盖）逐调用生效。
+// 余下步骤（上下文/流/确定性配置/参数转换/workspace/发射/释放）与
+// EXEC_NPU_CMD_V1_EXT 逐一相同，仅符号来源与缓存行为不同。
+
+inline void EnsureCannOpapiLoaded()
+{
+    static bool done = []() {
+        // libopapi.so 提供 l0op::Contiguous 等 op_api 运行时符号；显式
+        // RTLD_GLOBAL 预载，规避懒绑定在 libopapi 未入全局域时的
+        // symbol lookup error（2026-10-04 真机实测）。
+        if (dlopen("libopapi.so", RTLD_NOW | RTLD_GLOBAL) == nullptr) {
+            TORCH_WARN("SageAttention2: preload libopapi.so failed: ", dlerror());
+        }
+        return true;
+    }();
+    (void)done;
+}
+
+} // namespace sage_direct
+
+// ws_fn / run_fn 为链接期可见的两段式入口符号名（非字符串解析）
+#define SAGE_EXEC_NPU_DIRECT(ws_fn, run_fn, ...)                                                           \
+    do {                                                                                                   \
+        sage_direct::EnsureCannOpapiLoaded();                                                              \
+        InitExecCommonCtx();                                                                               \
+        auto acl_stream = GetAclStream();                                                                  \
+        SetExecConfig();                                                                                   \
+        uint64_t workspace_size = 0;                                                                       \
+        uint64_t *workspace_size_addr = &workspace_size;                                                   \
+        aclOpExecutor *executor = nullptr;                                                                 \
+        aclOpExecutor **executor_addr = &executor;                                                         \
+        auto converted_params = ConvertTypes(__VA_ARGS__, workspace_size_addr, executor_addr);             \
+        auto get_workspace_func = ConvertToOpApiFunc(converted_params, (void *)&(ws_fn));                  \
+        auto workspace_status = call(get_workspace_func, converted_params);                                \
+        TORCH_CHECK(workspace_status == 0, "SageAttention2 GetWorkspaceSize failed: ", workspace_status);  \
+        void *workspace_addr = GetWorkSpaceAddr(workspace_size);                                           \
+        auto acl_call = [converted_params, workspace_addr, workspace_size, acl_stream, executor, run_fn]() -> int { \
+            InitExecSubTheadCtx(acl_stream);                                                               \
+            auto api_ret = ExecuteApiFunc((void *)(run_fn), acl_stream, workspace_addr, workspace_size, executor); \
+            ReleaseConvertTypes(converted_params);                                                         \
+            ReleaseExecCommonCtx();                                                                        \
+            return api_ret;                                                                                \
+        };                                                                                                 \
+        int api_ret = acl_call();                                                                          \
+        TORCH_CHECK(api_ret == 0, "SageAttention2 aclnn launch failed: ", api_ret);                        \
+        UnInitExecCommonCtx();                                                                             \
+    } while (false)
+#endif
+
 
 namespace op_api {
 namespace {
@@ -95,7 +155,7 @@ std::tuple<at::Tensor, c10::optional<at::Tensor>> sageattention2(
     const char *layout_cstr = tensor_layout.c_str();
     const char *gran_cstr = qk_quant_gran.c_str();
     const char *accum_cstr = pv_accum_dtype.c_str();
-    EXEC_NPU_CMD_EXT(aclnnSageAttention2,
+    SAGE_EXEC_NPU_DIRECT(aclnnSageAttention2GetWorkspaceSize, aclnnSageAttention2,
                      q, k, v,
                      km_tensor, lse_corr_tensor,
                      layout_cstr, is_causal,

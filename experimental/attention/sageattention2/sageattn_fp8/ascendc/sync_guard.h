@@ -30,9 +30,11 @@ enum class CrossCoreDirection : uint32_t {
 };
 
 /**
- * 跨核 flag 语义表（每个 flag 的 set/wait 均须 1:1 配对，符合同步规范）
- * 生命周期 = 单个任务（DecodeTask 一次解码到 Finalize 输出），跨任务波次的
- * 进域预置 / 退域回收纪律见 op_kernel/sageattention2.cpp 各 Process 入口与出口。
+ * 跨核 flag 语义表（生产者在前、消费者在后；task/02_code.md B-2 按旗标族分治）：
+ * S 槽 FREE 跨任务波次进域预置/退域回收配平；KV/DOT/PARTIAL FREE 首拍缓冲区天然
+ * 为空即许可，生产者跳过首拍等待、不预置不回收（避免跨核伪预置首拍死锁）。
+ * 生命周期 = 单个任务（DecodeTask 一次解码到 Finalize 输出），
+ * 逐 flag 配平见 op_kernel/sageattention2.cpp 各 Process 入口与出口。
  */
 namespace CrossCoreFlags {
     constexpr uint32_t FLAG_Q_READY              = 0;  // Q 量化常驻已就位 (V0 set → Cube wait)
