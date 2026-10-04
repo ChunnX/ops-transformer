@@ -133,6 +133,28 @@ public:
      * fixpipe_cfg 死参数链已删（P11）：随路量化不在 Fixpipe——fp32+fp16 档的
      * FP16 RNE 舍回定在 V1 合并处（MergePvPartialRowsVF，档位直读 tiling）。
      * l0c_src_offset 参数已删：L0C 单缓冲，全调用域恒 0（死参清理）。
+     *
+     * SPLIT_M 考证结论（task/todo.md 复用 5，独立评审通过，2026-10-04）：
+     * 官方 CopyL0CToUBMode::SPLIT_M（dualDstCtl=1）是把 M/2*N 并行写入两个
+     * Vector SubCore 各自 UB 的双目的地模式（仓内佐证：git/catlass
+     * examples/46_ascend950_matmul_fixpipe_opti/README.md:15、迁移指南
+     * .agents/skills/catlass-ascend950-migration/README.zh.md:353-355；特化实现
+     * gemm/tile/ascend950/copy_l0c_to_ub.hpp:184-189 仅 ROW_MAJOR+NoQuant、
+     * :210 mSize 偶数约束、:218 dualDstCtl=1）。其收益前提是两个 SubCore 对称
+     * 各消费半幅（block_epilogue_fixpipe.hpp:44-46 `if (!SPLIT_M &&
+     * GetSubBlockIdx() > 0) return;`；examples/49 fai_kernel.h:576/:365/:442
+     * 双 AIV 半幅偏移互证）。本核 V0 专职量化、从不消费 Cube 产出：dot32 槽
+     * 唯一消费者 attention_vec1_softmax.h:210，pv_partial 槽唯一消费者
+     * attention_vec1_output.h:69，subCore 分派见 attention_vec1_output.h:471-480。
+     * 若启用 dualDstCtl=1，上半 M/2 行将按 V1 槽偏移写进 V0 UB，与 V0 现役
+     * QUANT_WORKSPACE/NZ_OUTPUT 工作区（sage_resource.hpp:14-16,27,92-95）
+     * 正面碰撞，属活性覆写而非死数据——SPLIT_M 在本 1C2V 单消费者拓扑不可落地。
+     * 现行 dualDstCtl=0 + subBlockId=true（sage_tile.hpp:155-156）即官方
+     * NO_SPLIT 单目的地等效档（gemm/tile/ascend950/copy_l0c_to_ub.hpp:91-92）：
+     * 整幅单指令硬件直通，零软件切分、零复制、零 GM 往返；双 SubCore 吞吐匹配
+     * 预期由 V0 量化 / V1 Softmax 职责分工结构性达成（msprof 待证）。
+     * 真机跟进候选：m=128 单条发射省一次双段发射（官方 gemm/tile/ascend950/
+     * copy_l0c_to_ub.hpp:210 提示可行，未经真机 msprof 实测不改动）。
      */
     __aicore__ inline __attribute__((always_inline)) void ExecuteEpilogue(uint32_t ub_dst_offset) {
         CopyL0CToUbSplitM<ElementC>(0U, ub_dst_offset, m_, n_);

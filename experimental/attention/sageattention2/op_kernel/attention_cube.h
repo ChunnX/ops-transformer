@@ -22,6 +22,14 @@ struct CubeBlockParams {
 
 /**
  * \brief 专职 Cube 侧 QK MMAD、PV MMAD 与 FixPipe 发射执行器
+ *
+ * FixPipe 单目的地纪律：QK/PV 两路 L0C 产出统一经 CopyL0CToUbSplitM
+ * 单目的地硬件直送 V1 UB（dualDstCtl=0 + subBlockId=true，
+ * sage_tile.hpp:155-156）。官方 SPLIT_M 双目的地模式（dualDstCtl=1，
+ * M/2 各写一个 SubCore 的 UB）与本核 1C2V 拓扑不兼容——V0 专职量化、
+ * V1 是 Cube 产出的唯一消费者，双目的地会把半幅结果覆写进 V0 工作区；
+ * 完整考证证据链见 sage_pv_mmad.hpp ExecuteEpilogue 文档块。双 SubCore
+ * 吞吐匹配预期由 V0 量化 / V1 Softmax 职责分工结构性达成（msprof 待证）。
  */
 class AttentionCube {
 public:
