@@ -399,17 +399,19 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void BlockMaxAndSum
         // cur_sum = Σ 2^(x-m)·448 = 448·Σ Exp((x-m)·ln2)；掩码哨兵 -1e30 经 Exp 下溢自然为 0
         // CATLASS 950 MicroAPI ExpSub + MulDstAdd 指令级下沉：
         // 1. max_val 预缩放为自然域 max_nat，内部循环用 ExpSub 熔断减法与指数本征指令；
-        // 2. MulDstAdd 单拍 FMA 硬件熔断 nat * FP8_E4M3_MAX 并入 sum_val 累加器。
+        // 2. MulDstAdd 硬件语义 (dst = dst * src0 + src1): nat (dst) * e4m3_max_reg (src0) + sum_val (src1) -> nat，
+        //    消除冗余 x_nat 寄存器分配与中间指令，并入 sum_val 累加器。
         RegTensor<float> max_nat, e4m3_max_reg;
         Muls(max_nat, max_val, INV_LOG2E, full);
         Duplicate(e4m3_max_reg, FP8_E4M3_MAX);
 
         for (uint32_t col = 0; col < block_n; col += 64) {
-            RegTensor<float> x, x_nat, nat;
+            RegTensor<float> x, nat;
             LoadAlign(x, logits + col);
-            Muls(x_nat, x, INV_LOG2E, full);
-            ExpSub(nat, x_nat, max_nat, full);
-            MulDstAdd(sum_val, nat, e4m3_max_reg, full);
+            Muls(x, x, INV_LOG2E, full);
+            ExpSub(nat, x, max_nat, full);
+            MulDstAdd(nat, e4m3_max_reg, sum_val, full);
+            sum_val = nat;
         }
         ReduceSum(sum_val, sum_val, full);
 
@@ -464,22 +466,30 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void UpdateOnlineSo
 
             // alpha_old = exp2(m_old - m_new) = exp((m_old - m_new) * ln2) (ExpSub 熔断)
             // alpha_cur = exp2(m_cur - m_new) = exp((m_cur - m_new) * ln2) (ExpSub 熔断)
-            RegTensor<float> m_old_nat, m_cur_nat, m_new_nat;
-            RegTensor<float> alpha_cur;
-            Muls(m_old_nat, m_old, INV_LOG2E, full);
-            Muls(m_cur_nat, m_cur, INV_LOG2E, full);
+            // 原地缩放 m_old 与 m_cur 至自然域，消除冗余寄存器分配
+            RegTensor<float> m_new_nat, alpha_cur;
+            Muls(m_old, m_old, INV_LOG2E, full);
+            Muls(m_cur, m_cur, INV_LOG2E, full);
             Muls(m_new_nat, m_new, INV_LOG2E, full);
-            ExpSub(alpha_old, m_old_nat, m_new_nat, full);
-            ExpSub(alpha_cur, m_cur_nat, m_new_nat, full);
+            ExpSub(alpha_old, m_old, m_new_nat, full);
+            ExpSub(alpha_cur, m_cur, m_new_nat, full);
 
-            // d_new = d_old * alpha_old + d_cur * alpha_cur (fused via MulDstAdd)
-            Mul(d_new, d_old, alpha_old, full);
-            MulDstAdd(d_new, d_cur, alpha_cur, full);
+            // 先行将 alpha_old 刷入 ub_factor（用于主累加器 O 的原地重缩放因子）
+            StoreAlign(ub_factor + r, alpha_old, full);
+
+            // d_new = d_old * alpha_old + d_cur * alpha_cur (CATLASS MicroAPI MulDstAdd 硬件熔断)
+            // MulDstAdd(dst, src0, src1): dst = dst * src0 + src1
+            // 此处 alpha_old (dst) * d_old (src0) + (d_cur * alpha_cur) (src1) -> alpha_old (即 d_new)
+            Mul(alpha_cur, d_cur, alpha_cur, full);
+            MulDstAdd(alpha_old, d_old, alpha_cur, full);
+            d_new = alpha_old;
         }
 
         StoreAlign(running_max + r, m_new, full);
         StoreAlign(running_sum + r, d_new, full);
-        StoreAlign(ub_factor + r, alpha_old, full);
+        if (k == 0) {
+            StoreAlign(ub_factor + r, alpha_old, full);
+        }
     }
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 }
@@ -525,17 +535,17 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void SoftmaxProbRow
     auto full = CreateMask<float, MaskPattern::ALL>();
     static constexpr CastTrait toFp8{RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
     for (uint32_t r = 0; r < rows; ++r) {
-        RegTensor<float> m_reg, m_nat;
-        LoadAlign<float, LoadDist::DIST_BRC_B32>(m_reg, running_max + r);
-        Muls(m_nat, m_reg, INV_LOG2E, full);
+        RegTensor<float> m_nat;
+        LoadAlign<float, LoadDist::DIST_BRC_B32>(m_nat, running_max + r);
+        Muls(m_nat, m_nat, INV_LOG2E, full);
         __ubuf__ float* logits = logits_base + r * block_n;
         __ubuf__ float8_e4m3_t* out_p = out_p_base + r * block_n;
         for (uint32_t j = 0; j < block_n; j += 64) {
-            RegTensor<float> logit_val, logit_nat, exp_val;
+            RegTensor<float> logit_val, exp_val;
             RegTensor<float8_e4m3_t> packed;
             LoadAlign(logit_val, logits + j);
-            Muls(logit_nat, logit_val, INV_LOG2E, full);
-            ExpSub(exp_val, logit_nat, m_nat, full);
+            Muls(logit_val, logit_val, INV_LOG2E, full);
+            ExpSub(exp_val, logit_val, m_nat, full);
             Muls(exp_val, exp_val, FP8_E4M3_MAX, full);
             Cast<float8_e4m3_t, float, toFp8>(packed, exp_val, full);
             StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(out_p + j, packed, full);
@@ -580,7 +590,10 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void MergePvPartial
                 Cast<float, half, toFp32>(partial, rounded, full);
                 Add(o, o, partial, full);
             } else {
-                MulDstAdd(o, partial, vs, full);
+                // CATLASS MicroAPI MulDstAdd: dst = dst * src0 + src1
+                // 此处 partial (dst) * vs (src0) + o (src1) -> partial (累加和)
+                MulDstAdd(partial, vs, o, full);
+                o = partial;
             }
             StoreAlign(o_row + c, o, full);
         }
@@ -765,11 +778,14 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void FinalizeRowVF(
     for (uint32_t c = 0; c < d; c += 64) {
         RegTensor<float> x;
         LoadAlign(x, o_row + c);
-        Mul(x, x, inv_reg, full);
         if (vm_ptr != nullptr) {
             RegTensor<float> vm_val;
             LoadAlign(vm_val, vm_ptr + c);
-            Add(x, x, vm_val, full);
+            // CATLASS MicroAPI MulDstAdd: dst = dst * src0 + src1
+            // x (dst) * inv_reg (src0) + vm_val (src1) -> x
+            MulDstAdd(x, inv_reg, vm_val, full);
+        } else {
+            Mul(x, x, inv_reg, full);
         }
         if constexpr (DTYPE_MODE == 2u) {
             // bf16 输出（收敛轮 F/DEFECT-F-3）：与宿主 WriteOutputBits 的 Fp32ToBf16 口径一致
