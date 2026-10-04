@@ -9,7 +9,7 @@
 #include "sage_attention2_template_tiling_key.h"
 
 #if SAGE_ATTN_DEVICE_COMPILE
-#define DEBUG_PHASE_0 1
+#define DEBUG_PHASE_1 1
 
 template <class ByteCountT>
 __inline__ __attribute__((always_inline)) __aicore__ void InitTilingDataHelper(
@@ -50,14 +50,14 @@ extern "C" __global__ __aicore__ void sage_attention2(
     __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-#if defined(DEBUG_PHASE_0)
-    (void)query; (void)key; (void)value; (void)attentionOut; (void)softmaxLse; (void)workspace; (void)tiling;
-    return;
-#endif
     REGISTER_TILING_DEFAULT(sage_attn::SageAttention2TilingData);
     GET_TILING_DATA_WITH_STRUCT(sage_attn::SageAttention2TilingData, t, tiling);
     AscendC::SetSysWorkspaceForce(workspace);
     __gm__ uint8_t *user_ws = workspace + AscendC::RESERVED_WORKSPACE;
+#if defined(DEBUG_PHASE_1)
+    (void)query; (void)key; (void)value; (void)attentionOut; (void)softmaxLse; (void)user_ws;
+    return;
+#endif
     sage_attn::SageAttnLaunch::RunByDtype(t.input_dtype, query, key, value, attentionOut, softmaxLse, user_ws, &t);
 }
 #else
