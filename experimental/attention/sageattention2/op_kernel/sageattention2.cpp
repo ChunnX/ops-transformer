@@ -165,7 +165,7 @@ extern "C" __global__ __aicore__ void sage_attention2(
             sage_attn::AttentionSync::CubeWaitQReady();
             Catlass::SageAttn::SageQkMmad<> qk_mmad;
             qk_mmad.LoadL0A(kernel.GetContext().tiling->l1_q_offset, kernel.GetContext().TotalRows(), kernel.GetContext().d);
-            Catlass::SageAttn::Sync<HardEvent::MTE1_M>();
+            Catlass::SageAttn::Sync<AscendC::HardEvent::MTE1_M>();
 
             for (uint32_t k = 0; k < active_kv_blocks; ++k) {
                 bool is_ping = ((k % 2) == 0);
@@ -173,11 +173,11 @@ extern "C" __global__ __aicore__ void sage_attention2(
 
                 sage_attn::AttentionSync::CubeWaitKvReady(is_ping);
                 qk_mmad.LoadL0B(l1_kv_addr, kernel.GetContext().block_n, kernel.GetContext().d);
-                Catlass::SageAttn::Sync<HardEvent::MTE1_M>();
+                Catlass::SageAttn::Sync<AscendC::HardEvent::MTE1_M>();
                 qk_mmad.Compute(true);
-                Catlass::SageAttn::Sync<HardEvent::M_FIX>();
+                Catlass::SageAttn::Sync<AscendC::HardEvent::M_FIX>();
                 qk_mmad.EmitL0CToUbRaw(sage_attn::SlotV1Dot32::Offset(), kernel.GetContext().TotalRows(), kernel.GetContext().block_n);
-                Catlass::SageAttn::Sync<HardEvent::FIX_M>();
+                Catlass::SageAttn::Sync<AscendC::HardEvent::FIX_M>();
                 sage_attn::AttentionSync::CubeReleaseKvFree(is_ping);
             }
         } else {
