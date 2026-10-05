@@ -47,7 +47,7 @@ public:
         LocalTensor<float> ub_rowmax(TPosition::VECCALC, SlotV0RowMax::Offset(), MAX_PACK_ROWS);
         LocalTensor<float> ub_scales(TPosition::VECCALC, SlotV0Scales::Offset(), kQScaleSlotStride);
         LocalTensor<half> ub_in(TPosition::VECCALC, SlotV0InputPing::Offset(), MAX_PACK_ROWS * d);
-        LocalTensor<int8_t> ub_out(TPosition::VECCALC, SlotV0NzOutput::Offset(), d);
+        LocalTensor<int8_t> ub_stage_q_mat(TPosition::VECCALC, SlotV0VStageTok::Offset(), MAX_PACK_ROWS * d);
         LocalTensor<int8_t> l1_q(TPosition::A1, ctx.l1_q_offset, total_rows_q * d);
 
         // 窗口 scale 组清零
@@ -99,19 +99,23 @@ public:
         }
         Catlass::SageAttn::Sync<HardEvent::S_V>();
 
-        // C. 逐行量化写 L1 (复用已在片上 UB 中的数据，消除逐行 GM 读与流水气泡)
+        // C. 批量量化与 MTE3 2D DMA 分形重组写入 L1 zN 布局
+        const uint32_t m_aligned_q = (act_rows_q + 15u) & ~15u;
         for (uint32_t r = 0; r < act_rows_q; ++r) {
             const uint32_t g = r / ctx.cur_q_len;
             const uint32_t i = r % ctx.cur_q_len;
             const uint32_t token = ctx.cur_q_start + i;
             __ubuf__ float* scale_ptr = ub_scales_ptr + (ctx.cur_g0 + g) * kQScaleSlotStride + quant::QScaleIndex(token, per_thread_q);
             dev_vf::QuantRowInt8VF<kDtype>(reinterpret_cast<__ubuf__ half*>(ub_in[r * d].GetPhyAddr()),
-                                           reinterpret_cast<__ubuf__ int8_t*>(ub_out.GetPhyAddr()),
+                                           reinterpret_cast<__ubuf__ int8_t*>(ub_stage_q_mat[r * d].GetPhyAddr()),
                                            scale_ptr, d, per_thread_q ? 1u : 0u, 0u, nullptr);
-            Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
-            Catlass::SageAttn::CopyUbToL1(l1_q[r * d], ub_out, d);
-            Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
         }
+        for (uint32_t r = act_rows_q; r < m_aligned_q; ++r) {
+            Duplicate(ub_stage_q_mat[r * d], int8_t(0), d);
+        }
+        Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
+        Catlass::SageAttn::CopyUbToL1zN(l1_q, ub_stage_q_mat, act_rows_q, d);
+        Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
 
         // A7 V0：行解析 q_scale 写入片上 L1 Bank 0 专有槽位（彻底消灭 GM 往返）
         LocalTensor<float> ub_stage_q(TPosition::VECCALC, SlotV0StageStrip::Offset(), STAGE_SLOT_FLOATS);
@@ -169,11 +173,11 @@ public:
             const uint32_t token = ctx.cur_q_start + i;
             const float scale = ctx.sim_mem->q_scales[(ctx.cur_g0 + g) * kQScaleSlotStride + quant::QScaleIndex(token, per_thread)];
             const uint16_t *row_ptr = q_u16 + q_layout(tla::MakeCoord(0u, g, i, 0u));
-            int8_t *row_out = l1_q + static_cast<size_t>(r) * d;
             for (uint32_t c = 0; c < d; ++c) {
                 const float val = ReadInputBits(row_ptr, c);
-                row_out[c] = per_thread ? quant::RoundHalfAwayFromZero(val / scale)
-                                        : quant::RoundNearestEven(val / scale);
+                const int8_t code = per_thread ? quant::RoundHalfAwayFromZero(val / scale)
+                                               : quant::RoundNearestEven(val / scale);
+                l1_q[Catlass::SageAttn::ZnIndex(r, c, ctx.TotalRows())] = code;
             }
         }
 
@@ -216,7 +220,7 @@ public:
         __ubuf__ float *ub_k_scales_ptr = reinterpret_cast<__ubuf__ float*>(ub_k_scales.GetPhyAddr());
         LocalTensor<float> ub_km(TPosition::VECCALC, SlotV0Km::Offset(), d);
         LocalTensor<half> ub_in(TPosition::VECCALC, SlotV0InputPing::Offset(), MAX_PACK_ROWS * d);
-        LocalTensor<int8_t> ub_out(TPosition::VECCALC, SlotV0NzOutput::Offset(), d);
+        LocalTensor<int8_t> ub_stage_k_mat(TPosition::VECCALC, SlotV0VStageTok::Offset(), block_n * d);
         LocalTensor<int8_t> l1_k(TPosition::B1, l1_dst_addr, block_n * d);
         const uint32_t has_km = (km_ptr != nullptr) ? 1u : 0u;
 
@@ -275,22 +279,22 @@ public:
         DataCopy(gm_stage_k, ub_stage_k, STAGE_SLOT_FLOATS);
         Catlass::SageAttn::Sync<HardEvent::MTE3_S>();
 
-        // 逐行量化写 L1：复用已在片上 UB 中的数据，消除逐行 GM 读与流水气泡
+        // 批量量化与 MTE3 2D DMA 分形重组写入 L1 zN 布局
         for (uint32_t j = 0; j < block_n; ++j) {
             if (j < block_k) {
                 const uint32_t token = cur_k_start + j;
                 __ubuf__ float* scale_ptr = ub_k_scales_ptr + quant::KScaleIndex(token, per_thread_k);
                 dev_vf::QuantRowInt8VF<kDtype>(reinterpret_cast<__ubuf__ half*>(ub_in[j * d].GetPhyAddr()),
-                                               reinterpret_cast<__ubuf__ int8_t*>(ub_out.GetPhyAddr()),
+                                               reinterpret_cast<__ubuf__ int8_t*>(ub_stage_k_mat[j * d].GetPhyAddr()),
                                                scale_ptr, d, per_thread_k ? 1u : 0u, has_km,
                                                reinterpret_cast<__ubuf__ float*>(ub_km.GetPhyAddr()));
             } else {
-                Duplicate(ub_out, int8_t(0), d);
+                Duplicate(ub_stage_k_mat[j * d], int8_t(0), d);
             }
-            Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
-            Catlass::SageAttn::CopyUbToL1(l1_k[j * d], ub_out, d);
-            Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
         }
+        Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
+        Catlass::SageAttn::CopyUbToL1zN(l1_k, ub_stage_k_mat, block_n, d);
+        Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
 #else
         const bool per_thread = (ctx.qk_quant_gran == QUANT_GRAN_PER_THREAD);
         const uint16_t *k_u16 = reinterpret_cast<const uint16_t *>(k_src);
@@ -337,7 +341,6 @@ public:
         }
 
         for (uint32_t j = 0; j < block_n; ++j) {
-            int8_t *row_out = l1_k + static_cast<size_t>(j) * d;
             if (j < block_k) {
                 const uint32_t token = cur_k_start + j;
                 const float scale = ctx.sim_mem->k_scales[quant::KScaleIndex(token, per_thread)];
@@ -345,12 +348,13 @@ public:
                 for (uint32_t c = 0; c < d; ++c) {
                     float val = ReadInputBits(row_ptr, c);
                     val = quant::SubKm(val, km_ptr, c, kDtype);
-                    row_out[c] = per_thread ? quant::RoundHalfAwayFromZero(val / scale)
-                                            : quant::RoundNearestEven(val / scale);
+                    const int8_t code = per_thread ? quant::RoundHalfAwayFromZero(val / scale)
+                                                   : quant::RoundNearestEven(val / scale);
+                    l1_k[Catlass::SageAttn::ZnIndex(j, c, block_n)] = code;
                 }
             } else {
                 for (uint32_t c = 0; c < d; ++c) {
-                    row_out[c] = 0;
+                    l1_k[Catlass::SageAttn::ZnIndex(j, c, block_n)] = 0;
                 }
             }
         }
@@ -378,7 +382,6 @@ public:
         LocalTensor<float> ub_v_sum(TPosition::VECCALC, SlotV0VSum::Offset(), d);
         LocalTensor<half> ub_in(TPosition::VECCALC, SlotV0InputPing::Offset(), MAX_PACK_ROWS * d);
         LocalTensor<float8_e4m3_t> ub_stage_tok(TPosition::VECCALC, SlotV0VStageTok::Offset(), block_n * d);
-        LocalTensor<float8_e4m3_t> ub_stage_tr(TPosition::VECCALC, SlotV0VStageTr::Offset(), d * block_n);
         LocalTensor<float8_e4m3_t> l1_v(TPosition::B1, l1_dst_addr, block_n * d);
         const uint32_t smooth_v = (ctx.smooth_v != 0) ? 1u : 0u;
         const uint32_t stride_v = Catlass::SageAttn::CalcGm2dStride32B(ctx.hkv, d, sizeof(half), ctx.tensor_layout);
@@ -464,31 +467,9 @@ public:
             }
         }
 
-        // 阶段二：V 矩阵物理几何重排为昇腾 Cube L0B 要求的 nZ 分形排布
-        // 单个分形 32(K, token) x 16(N, channel) = 512 字节，分形内列优先，分形间行优先
-        // nz_idx = ((j / 32) * (d / 16) + (c / 16)) * 512 + (c % 16) * 32 + (j % 32)
-        // 注意：当前实现为功能与精度验证版（Functional Verification Only，标量 UB 读写）
-        // 已知限制：每块 8K 次标量 S-pipe 读写，在真机 99% 精度判决后，于 P5 性能阶段替换为向量化/uint16 转置
-        Catlass::SageAttn::Sync<HardEvent::V_S>();
-        auto tok_u8 = ub_stage_tok.ReinterpretCast<uint8_t>();
-        auto tr_u8 = ub_stage_tr.ReinterpretCast<uint8_t>();
-        const uint32_t d_fractals = d >> 4;
-        for (uint32_t j = 0; j < block_n; ++j) {
-            const uint32_t fk = j >> 5;
-            const uint32_t in_k = j & 31u;
-            const uint32_t tok_row = j * d;
-            const uint32_t k_base = fk * d_fractals;
-            for (uint32_t c = 0; c < d; ++c) {
-                const uint32_t fn = c >> 4;
-                const uint32_t in_n = c & 15u;
-                const uint32_t nz_idx = ((k_base + fn) << 9) + (in_n << 5) + in_k;
-                tr_u8.SetValue(nz_idx, tok_u8.GetValue(tok_row + c));
-            }
-        }
-
-        // 阶段三：S 核写入完成与 MTE3 单次整块 DMA 写入 L1 槽
-        Catlass::SageAttn::Sync<HardEvent::S_MTE3>();
-        Catlass::SageAttn::CopyUbToL1(l1_v, ub_stage_tr, d * block_n);
+        // 阶段二：MTE3 2D DMA 分形重组写入 L1 zN 布局（硬件 L0B 加载时原生转置为 nZ）
+        Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
+        Catlass::SageAttn::CopyUbToL1zN(l1_v, ub_stage_tok, block_n, d);
         Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
 #else
         const uint16_t *v_u16 = reinterpret_cast<const uint16_t *>(v_src);
@@ -533,12 +514,9 @@ public:
         }
 
         const bool smooth_v = (ctx.smooth_v != 0);
-        const uint32_t d_fractals = d / 16u;
         for (uint32_t c = 0; c < d; ++c) {
             const float scale = (c < 256u) ? ctx.sim_mem->v_scales[c] : 1.0f;
             const float vm = (smooth_v && c < 256u) ? ctx.sim_mem->v_means[c] : 0.0f;
-            const uint32_t fn = c / 16u;
-            const uint32_t in_n = c % 16u;
             for (uint32_t jl = 0; jl < block_n; ++jl) {
                 uint8_t code = 0;
                 if (jl < block_k) {
@@ -548,10 +526,7 @@ public:
                     if (scaled < -scale_max) scaled = -scale_max;
                     code = quant::FloatToE4m3fn(scaled);
                 }
-                const uint32_t fk = jl / 32u;
-                const uint32_t in_k = jl % 32u;
-                const uint32_t nz_idx = (fk * d_fractals + fn) * 512u + in_n * 32u + in_k;
-                l1_v[nz_idx] = code;
+                l1_v[Catlass::SageAttn::ZnIndex(jl, c, block_n)] = code;
             }
         }
 #endif

@@ -107,14 +107,9 @@ public:
                 fp16_accum ? PV_ACCUM_FP32_FP16 : PV_ACCUM_FP32, ctx.k_step,
                 [&](uint32_t j, uint32_t c) -> float {
                     const uint32_t jl = j - cur_k_start;
-                    const uint32_t d_fractals = ctx.d / 16u;
-                    const uint32_t fk = jl / 32u;
-                    const uint32_t in_k = jl % 32u;
-                    const uint32_t fn = c / 16u;
-                    const uint32_t in_n = c % 16u;
-                    const uint32_t nz_idx = (fk * d_fractals + fn) * 512u + in_n * 32u + in_k;
+                    const uint32_t zn_idx = Catlass::SageAttn::ZnIndex(jl, c, ctx.block_n);
                     const float vm = (ctx.smooth_v != 0) ? ctx.sim_mem->v_means[c] : 0.0f;
-                    return quant::E4m3fnToFloat(l1_v[nz_idx]) * ctx.sim_mem->v_scales[c] + vm;
+                    return quant::E4m3fnToFloat(l1_v[zn_idx]) * ctx.sim_mem->v_scales[c] + vm;
                 });
         }
     }

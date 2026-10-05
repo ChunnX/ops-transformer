@@ -68,16 +68,16 @@ public:
     __aicore__ inline __attribute__((always_inline)) void LoadL0A(uint32_t l1_q_addr, uint32_t m, uint32_t k) {
         m_ = m;
         k_ = k;
-        LoadTile2D<ElementA, AscendC::TPosition::A2, AscendC::TPosition::A1>(0U, l1_q_addr, m, k);
+        LoadTile2D<ElementA, AscendC::TPosition::A2, AscendC::TPosition::A1>(0U, l1_q_addr, m, k, false);
     }
 
     /**
-     * 加载 K 分块：从 L1 Bank 1 搬入 L0B（ND 行布局，理由同 LoadL0A）
+     * 加载 K 分块：从 L1 Bank 1 搬入 L0B（zN -> nZ 硬件转置）
      */
     __aicore__ inline __attribute__((always_inline)) void LoadL0B(uint32_t l1_k_addr, uint32_t n, uint32_t k) {
         n_ = n;
         k_ = k;
-        LoadTile2D<ElementB, AscendC::TPosition::B2, AscendC::TPosition::B1>(0U, l1_k_addr, n, k);
+        LoadTile2D<ElementB, AscendC::TPosition::B2, AscendC::TPosition::B1>(0U, l1_k_addr, n, k, true);
     }
 
     /**

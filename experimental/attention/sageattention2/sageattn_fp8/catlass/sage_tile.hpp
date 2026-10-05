@@ -82,11 +82,33 @@ __aicore__ inline __attribute__((always_inline)) void Sync() {
 constexpr uint32_t LOADDATA2D_REPEAT_BYTES = Catlass::BYTE_PER_FRACTAL;
 
 /**
- * 通用 2D 分块搬运原语：从片上源位置搬入目标寄存器/缓冲（L1/UB -> L0A/L0B）
- * 统一收敛 LoadData2D 样板代码，杜绝多处重复 TBuffAddr 描述符装配。
+ * 统一分形坐标映射原语（ZnIndex）：
+ * 对形状为 (M, K) 的矩阵，按昇腾硬件 zN 分形布局计算线性字节偏移。
+ * 以 32 字节为一个分形列块（C0）：
+ * col_block = col / 32, col_in = col % 32
+ * m_aligned = (total_rows + 15u) & ~15u
+ * offset = (col_block * m_aligned + row) * 32 + col_in
+ */
+__aicore__ inline __attribute__((always_inline)) constexpr uint32_t ZnIndex(
+    uint32_t row, uint32_t col, uint32_t total_rows)
+{
+    const uint32_t m_aligned = (total_rows + 15u) & ~15u;
+    const uint32_t col_block = col / 32u;
+    const uint32_t col_in = col % 32u;
+    return (col_block * m_aligned + row) * 32u + col_in;
+}
+
+/**
+ * 通用 2D 分块搬运原语：从片上源位置搬入目标寄存器/缓冲（L1 -> L0A/L0B，基于 LoadData2DParamsV2）
+ * 官方 CATLASS 最佳实践：
+ * - L1 统一保存为 zN 分形布局；
+ * - 载入 L0A：if_transpose = false，硬件直载 zN；
+ * - 载入 L0B：if_transpose = true，硬件 MTE1 自动转置分形内元素为 nZ（支持 int8 与 fp8）。
  */
 template <typename Element, AscendC::TPosition DstPos, AscendC::TPosition SrcPos>
-__aicore__ inline __attribute__((always_inline)) void LoadTile2D(uint32_t dst_addr, uint32_t src_addr, uint32_t rows, uint32_t cols, bool if_transpose = false) {
+__aicore__ inline __attribute__((always_inline)) void LoadTile2D(
+    uint32_t dst_addr, uint32_t src_addr, uint32_t rows, uint32_t cols, bool if_transpose = false)
+{
 #if SAGE_ATTN_DEVICE_COMPILE
     const uint32_t total_bytes = rows * cols * static_cast<uint32_t>(sizeof(Element));
     AscendC::TBuffAddr dst_desc{};
@@ -105,10 +127,13 @@ __aicore__ inline __attribute__((always_inline)) void LoadTile2D(uint32_t dst_ad
     AscendC::LocalTensor<Element> src_tensor;
     src_tensor.SetAddr(src_desc);
 
-    AscendC::LoadData2DParams load_params;
-    // 官方 Catlass 对齐组件（catlass/detail/alignment.hpp，全局命名空间）
-    load_params.repeatTimes = static_cast<uint16_t>(::CeilDiv<LOADDATA2D_REPEAT_BYTES>(total_bytes));
-    load_params.srcStride = 0;
+    AscendC::LoadData2DParamsV2 load_params;
+    load_params.mStartPosition = 0;
+    load_params.kStartPosition = 0;
+    load_params.mStep = static_cast<uint16_t>(::RoundUp<2>(::CeilDiv<16>(rows)));
+    load_params.kStep = static_cast<uint16_t>(::CeilDiv<32>(cols));
+    load_params.srcStride = static_cast<int32_t>(load_params.mStep);
+    load_params.dstStride = static_cast<uint16_t>(load_params.mStep);
     load_params.ifTranspose = if_transpose;
     AscendC::LoadData(dst_tensor, src_tensor, load_params);
 #else
@@ -221,6 +246,46 @@ __aicore__ inline __attribute__((always_inline)) void CopyUbRowToL1(AscendC::Loc
 {
     CopyUbToL1(l1_dst, ub_src, row_bytes);
 }
+
+/**
+ * 官方 CATLASS CopyUb2L1Tla 最佳实践原语（UB RowMajor -> L1 zN）：
+ * UB 侧 RowMajor 矩阵经 MTE3 硬件 2D DMA 分形重组写入 L1 侧 zN 布局。
+ * 对于每个 32 字节列块（cols / 32），发起一次跨步 DMA：
+ * blockCount = m_aligned, blockLen = 1 (32B), srcStride = (cols / 32) - 1, dstStride = 0
+ * 零 Vector ALU 算力占用，零标量循环，满线速硬件内存重组。
+ */
+template <typename Element>
+__aicore__ inline __attribute__((always_inline)) void CopyUbToL1zN(
+    AscendC::LocalTensor<Element> l1_dst,
+    AscendC::LocalTensor<Element> ub_src,
+    uint32_t rows,
+    uint32_t cols)
+{
+    const uint32_t m_aligned = (rows + 15u) & ~15u;
+    const uint32_t col_blocks = cols / 32u;
+    AscendC::DataCopyParams cp;
+    cp.blockCount = static_cast<uint16_t>(m_aligned);
+    cp.blockLen = 1;
+    cp.srcStride = static_cast<uint16_t>(col_blocks - 1u);
+    cp.dstStride = 0;
+    for (uint32_t c = 0; c < col_blocks; ++c) {
+        AscendC::DataCopy(l1_dst[c * m_aligned * 32u], ub_src[c * 32u], cp);
+    }
+}
+#else
+template <typename Element>
+__aicore__ inline __attribute__((always_inline)) void CopyUbToL1zN(
+    AscendC::LocalTensor<Element> l1_dst,
+    AscendC::LocalTensor<Element> ub_src,
+    uint32_t rows,
+    uint32_t cols)
+{
+    (void)l1_dst;
+    (void)ub_src;
+    (void)rows;
+    (void)cols;
+}
+#endif
 
 /**
  * 通用 2D 分块从 GM 搬入 UB 原语（利用 Ascend 950 NDDMA 2D/Strided DMA 硬件指令）：

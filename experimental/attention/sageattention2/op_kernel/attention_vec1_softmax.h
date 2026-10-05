@@ -134,11 +134,11 @@ public:
                 logits_row[j] = SAGE_MASK_SENTINEL;
                 continue;
             }
-            const int8_t *qr = l1_q + static_cast<size_t>(row) * ctx.d;
-            const int8_t *kr = l1_k + static_cast<size_t>(j) * ctx.d;
             int32_t dot = 0;
             for (uint32_t c = 0; c < ctx.d; ++c) {
-                dot += qr[c] * kr[c];
+                const int8_t q_val = l1_q[Catlass::SageAttn::ZnIndex(row, c, ctx.TotalRows())];
+                const int8_t k_val = l1_k[Catlass::SageAttn::ZnIndex(j, c, ctx.block_n)];
+                dot += static_cast<int32_t>(q_val) * static_cast<int32_t>(k_val);
             }
             logits_row[j] = twin::DequantQkLogit(
                 dot, q_scale,
@@ -246,7 +246,7 @@ public:
         Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
         const uint32_t l1_p_addr = is_ping ? SlotL1SoftmaxPPing::Offset() : SlotL1SoftmaxPPong::Offset();
         LocalTensor<float8_e4m3_t> l1_p(TPosition::A1, l1_p_addr, rows * ctx.block_n);
-        Catlass::SageAttn::CopyUbToL1(l1_p, ub_out_p, rows * ctx.block_n);
+        Catlass::SageAttn::CopyUbToL1zN(l1_p, ub_out_p, rows, ctx.block_n);
         Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
         Catlass::SageAttn::Sync<HardEvent::MTE3_S>();
 #else

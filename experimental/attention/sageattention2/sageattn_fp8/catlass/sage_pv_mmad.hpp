@@ -66,17 +66,16 @@ public:
         m_ = m;
         k_ = k;
         // L0 寻址恒为基址 0（单缓冲无分片，原 l0a/l0b 基址参数全调用域恒 0，死参清理）
-        LoadTile2D<ElementA, AscendC::TPosition::A2, AscendC::TPosition::A1>(0U, s_addr, m, k);
+        LoadTile2D<ElementA, AscendC::TPosition::A2, AscendC::TPosition::A1>(0U, s_addr, m, k, false);
     }
 
     /**
-     * 加载 V 分块至 L0B（从 L1 Bank 1 槽搬运，(n,k)=(d, block_n) 记账见
-     * op_kernel ProcessCube 的 DEFECT-M-2 注释）
+     * 加载 V 分块至 L0B（从 L1 Bank 1 槽搬运，zN -> nZ 硬件转置）
      */
     __aicore__ inline __attribute__((always_inline)) void LoadL0B(uint32_t l1_v_addr, uint32_t k, uint32_t n) {
         k_ = k;
         n_ = n;
-        LoadTile2D<ElementB, AscendC::TPosition::B2, AscendC::TPosition::B1>(0U, l1_v_addr, k, n);
+        LoadTile2D<ElementB, AscendC::TPosition::B2, AscendC::TPosition::B1>(0U, l1_v_addr, k, n, true);
     }
 
     /**
