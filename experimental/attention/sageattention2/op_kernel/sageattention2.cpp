@@ -162,19 +162,19 @@ extern "C" __global__ __aicore__ void sage_attention2(
     }
     return;
 #elif SAGE_DIAG_STAGE == 8
-    // Phase 6B: 测量 V0 标量延迟循环耗时 (AIC 不等待)
+    // Phase 6B: 测试 PIPE_S 跨核信号与标量延迟
     sage_attn::SageAttnKernel<sage_attn::kTplDtypeFp16> kernel;
     kernel.Init(query, key, value, attentionOut, softmaxLse, user_ws, &t);
     if (kernel.IsActiveCore()) {
         if ASCEND_IS_AIC {
-            // Cube 不等待
+            AscendC::CrossCoreWaitFlag<4, PIPE_S>(sage_attn::SyncFlags::Q_READY);
         } else {
             if (kernel.GetContext().sub_core_idx == 0) {
                 volatile uint32_t cnt = 0;
                 for (uint32_t i = 0; i < 5000000u; ++i) {
                     cnt += i;
                 }
-                sage_attn::AttentionSync::V0SignalQReady();
+                AscendC::CrossCoreSetFlag<4, PIPE_S>(sage_attn::SyncFlags::Q_READY);
             }
         }
     }

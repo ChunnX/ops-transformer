@@ -312,11 +312,11 @@ def main():
         args.hkv = args.h
 
     print("================================================================================")
-    print("      🚀 SageAttention2 线上/真机硬件诊断与看门狗调试工具 (Watchdog Suite)")
+    print("      SageAttention2 线上/真机硬件诊断与看门狗调试工具 (Watchdog Suite)")
     print("================================================================================")
-    print(f"🔧 测试配置: B={args.b}, Hq={args.h}, Hkv={args.hkv}, Sq={args.sq}, Sk={args.sk}, D={args.d}")
-    print(f"🔧 数据规格: Dtype={args.dtype}, Layout={args.layout}, Causal={args.causal}, Device={args.device}")
-    print(f"🛡️  看门狗限额: {args.timeout}s (三层隔离: aclrtSetOpExecuteTimeOut + signal.alarm + mp.Process)")
+    print(f"测试配置: B={args.b}, Hq={args.h}, Hkv={args.hkv}, Sq={args.sq}, Sk={args.sk}, D={args.d}")
+    print(f"数据规格: Dtype={args.dtype}, Layout={args.layout}, Causal={args.causal}, Device={args.device}")
+    print(f"看门狗限额: {args.timeout}s (三层隔离: aclrtSetOpExecuteTimeOut + signal.alarm + mp.Process)")
     print("--------------------------------------------------------------------------------")
 
     args_dict = vars(args)
@@ -334,35 +334,35 @@ def main():
         # 等待并在超时后由 Tier 3 强杀
         p.join(timeout=args.timeout + 2)
         if p.is_alive():
-            print(f"\n❌ [TIER-3 WATCHDOG TRIGGERED] 算子进程超时 ({args.timeout}s)！可能发生跨核硬件死锁！")
+            print(f"\n[Tier-3 WATCHDOG TRIGGERED] 算子进程超时 ({args.timeout}s)！可能发生跨核硬件死锁！")
             p.terminate()
             time.sleep(1.0)
             if p.is_alive():
                 p.kill()
             p.join()
-            print("🛑 沙箱子进程已彻底终止并隔离清理，宿主终端安全返回。")
+            print("沙箱子进程已彻底终止并隔离清理，宿主终端安全返回。")
             sys.exit(124)
 
         if q.empty():
-            print("\n❌ [FATAL ERROR] 子进程异常退出，未返回诊断结果（可能发生底层 SIGSEGV / core dump）。")
+            print("\n[FATAL ERROR] 子进程异常退出，未返回诊断结果（可能发生底层 SIGSEGV / core dump）。")
             sys.exit(1)
         res = q.get()
 
     if res["status"] != "SUCCESS":
-        print(f"\n❌ 算子执行报错:\n{res.get('error_msg')}")
+        print(f"\n算子执行报错:\n{res.get('error_msg')}")
         if "traceback" in res:
             print(f"\n调用栈:\n{res['traceback']}")
         sys.exit(1)
 
-    print("\n📊 【输入张量统计】")
+    print("\n【输入张量统计】")
     print(format_stats_table(res["input_stats"]))
 
-    print("\n📊 【输出张量统计】")
+    print("\n【输出张量统计】")
     print(format_stats_table(res["output_stats"]))
 
     avg_time = sum(res["times_ms"]) / len(res["times_ms"])
     min_time = min(res["times_ms"])
-    print(f"\n⏱️  【性能时延】")
+    print(f"\n【性能时延】")
     print(f"   - 重复次数: {len(res['times_ms'])} 次")
     print(f"   - 平均时延: {avg_time:.3f} ms (最优: {min_time:.3f} ms)")
 
@@ -376,18 +376,18 @@ def main():
 
     if args.check_golden and res["golden_report"]:
         g = res["golden_report"]
-        print(f"\n🎯 【Golden 参比校验结果】")
+        print(f"\n【Golden 参比校验结果】")
         print(f"   - 最大绝对误差 (Max Err)   : {g['max_err']:.6f}")
         print(f"   - 平均绝对误差 (Mean Err)  : {g['mean_err']:.6f}")
         print(f"   - 余弦相似度 (Cosine Sim)  : {g['cos_sim']:.6f}")
         print(f"   - 元素匹配率 (Matched >= 99%): {g['matched_ratio'] * 100:.2f}% (容差阈值: {g['tol']})")
         if g["pass_matched"]:
-            print("   ✅ [PASS] 精度验收通过！")
+            print("   [PASS] 精度验收通过！")
         else:
-            print("   ⚠️  [WARN] 元素匹配率未达 99% 门禁线，请检查数值反量化与缩放系数！")
+            print("   [WARN] 元素匹配率未达 99% 门禁线，请检查数值反量化与缩放系数！")
 
     print("\n================================================================================")
-    print("      🎉 诊断探测完成，硬件执行正常！")
+    print("      诊断探测完成，硬件执行正常！")
     print("================================================================================")
     sys.stdout.flush()
     os._exit(0)
