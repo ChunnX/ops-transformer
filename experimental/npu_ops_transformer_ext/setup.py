@@ -75,7 +75,7 @@ class CMakeBuild(build_ext):
             raise RuntimeError("CMake must be installed to build the extensions")
 
         try:
-            subprocess.check_output([cmake_path, "--version"])
+            subprocess.check_output([cmake_path, "--version"], check=True)
         except OSError as e:
             raise RuntimeError(
                 f"Failed to execute CMake: {e}\n"
