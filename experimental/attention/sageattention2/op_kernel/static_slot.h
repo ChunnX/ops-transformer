@@ -35,8 +35,6 @@ struct StaticSlot {
     static_assert(BYTES % 32 == 0, "StaticSlot BYTES must be 32-byte aligned!");
 
     [[nodiscard]] __aicore__ inline __attribute__((always_inline)) static constexpr uint32_t Offset() { return OFFSET; }
-    [[nodiscard]] __aicore__ inline __attribute__((always_inline)) static constexpr uint32_t Bytes() { return BYTES; }
-    [[nodiscard]] __aicore__ inline __attribute__((always_inline)) static constexpr uint32_t End() { return OFFSET + BYTES; }
 };
 
 // --- Vector 0 UB 槽编译期守卫 ---

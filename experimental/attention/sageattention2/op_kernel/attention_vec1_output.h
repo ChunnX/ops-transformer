@@ -191,6 +191,45 @@ public:
                     }
                     Catlass::SageAttn::Sync<HardEvent::S_MTE3>();
                 }
+#elif defined(SAGE_PROBE_DIAG_MODE) && (SAGE_PROBE_DIAG_MODE == 3)
+                // 探针模式 3：深入遥测 ub_o_row 原始 float 与 running_sum 分母
+                if (g == 0 && i == 0) {
+                    float s_val = ub_running_sum.GetValue(0);
+                    float m_val = ub_running_max.GetValue(0);
+                    float o_0 = ub_o_row.GetValue(0);
+                    float o_1 = ub_o_row.GetValue(1);
+                    float o_2 = ub_o_row.GetValue(2);
+                    float o_3 = ub_o_row.GetValue(3);
+                    ub_half.SetValue(0, static_cast<half>(99.0f));
+                    ub_half.SetValue(1, static_cast<half>(s_val));
+                    ub_half.SetValue(2, static_cast<half>(m_val));
+                    ub_half.SetValue(3, static_cast<half>(o_0));
+                    ub_half.SetValue(4, static_cast<half>(o_1));
+                    ub_half.SetValue(5, static_cast<half>(o_2));
+                    ub_half.SetValue(6, static_cast<half>(o_3));
+                    ub_half.SetValue(7, static_cast<half>(88.0f));
+                    for (uint32_t di = 8; di < ctx.d_og; ++di) {
+                        ub_half.SetValue(di, static_cast<half>(o_0));
+                    }
+                    Catlass::SageAttn::Sync<HardEvent::S_MTE3>();
+                }
+#elif defined(SAGE_PROBE_DIAG_MODE) && (SAGE_PROBE_DIAG_MODE == 4)
+                // 探针模式 4：标量归一化旁路 FinalizeRowVF 向量通路，验证端到端数学流水正确性
+                {
+                    float s_val = ub_running_sum.GetValue(r);
+                    float inv_s = (s_val > 0.0f) ? (1.0f / s_val) : 0.0f;
+                    if constexpr (kDtype == kTplDtypeBf16) {
+                        LocalTensor<bfloat16_t> ub_b = ub_half.ReinterpretCast<bfloat16_t>();
+                        for (uint32_t di = 0; di < ctx.d_og; ++di) {
+                            ub_b.SetValue(di, static_cast<bfloat16_t>(ub_o_row.GetValue(di) * inv_s));
+                        }
+                    } else {
+                        for (uint32_t di = 0; di < ctx.d_og; ++di) {
+                            ub_half.SetValue(di, static_cast<half>(ub_o_row.GetValue(di) * inv_s));
+                        }
+                    }
+                    Catlass::SageAttn::Sync<HardEvent::S_MTE3>();
+                }
 #endif
 
                 const int64_t out_gm_offset = out_layout(tla::MakeCoord(b_idx, hq_curr, sq_start + i, 0u)) *
@@ -570,10 +609,6 @@ public:
 
     __aicore__ inline const TaskContext &GetContext() const { return ctx_; }
     __aicore__ inline bool IsActiveCore() const { return is_active_core_; }
-    __aicore__ inline AttentionCube &GetCube() { return cube_; }
-    __aicore__ inline AttentionVec0Quant<DTYPE_MODE> &GetVec0() { return vec0_; }
-    __aicore__ inline AttentionVec1Softmax<DTYPE_MODE> &GetSoftmax() { return softmax_; }
-    __aicore__ inline AttentionVec1Output<DTYPE_MODE> &GetOutput() { return output_; }
 
 private:
     TaskContext ctx_;
