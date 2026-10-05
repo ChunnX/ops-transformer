@@ -101,6 +101,7 @@ def compute_tensor_stats(t: Any, name: str) -> Dict[str, Any]:
         "norm": norm_v,
         "isnan": isnan,
         "isinf": isinf,
+        "raw_prefix": [int(x) for x in t.cpu().view(torch.int32).flatten()[:24].tolist()] if t.numel() >= 24 else [],
     }
 
 
@@ -120,6 +121,8 @@ def format_stats_table(stats_list: list[Dict[str, Any]]) -> str:
                 f"{s['min']:<10.4g} | {s['max']:<10.4g} | {s['mean']:<10.4g} | "
                 f"{s['std']:<10.4g} | {s['norm']:<10.4g} | {nan_inf:<8}"
             )
+            if s.get("raw_prefix"):
+                row += f"\n  -> raw[:24]: {s['raw_prefix']}"
         rows.append(row)
     return "\n".join(rows)
 

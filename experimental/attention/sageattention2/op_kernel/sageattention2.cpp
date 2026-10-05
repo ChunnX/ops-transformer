@@ -78,8 +78,17 @@ extern "C" __global__ __aicore__ void sage_attention2(
     __gm__ uint8_t *user_ws = workspace + AscendC::RESERVED_WORKSPACE;
 
 #if SAGE_DIAG_STAGE == 2
-    // Phase 1: Tiling 加载与 SysWorkspace 初始化测试
-    (void)query; (void)key; (void)value; (void)attentionOut; (void)softmaxLse; (void)user_ws;
+    // Phase 1: 硬件核拓扑实测探测 (GetBlockIdx / GetSubBlockIdx 映射真机验证)
+    __gm__ uint32_t *out_u32 = reinterpret_cast<__gm__ uint32_t *>(attentionOut);
+    uint32_t blk = static_cast<uint32_t>(GetBlockIdx());
+    if ASCEND_IS_AIC {
+        out_u32[blk * 8 + 0] = blk;
+        out_u32[blk * 8 + 1] = 100; // AIC
+    } else {
+        uint32_t sub = static_cast<uint32_t>(AscendC::GetSubBlockIdx());
+        out_u32[blk * 8 + 2 + sub * 2] = blk;
+        out_u32[blk * 8 + 3 + sub * 2] = 200 + sub; // AIV0 = 200, AIV1 = 201
+    }
     return;
 #elif SAGE_DIAG_STAGE == 3
     // Phase 2: 实例化内核并执行 Init 任务切分与 Die 拓扑绑定
