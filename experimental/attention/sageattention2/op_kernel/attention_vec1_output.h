@@ -302,8 +302,10 @@ __aicore__ inline __attribute__((always_inline)) void ProcessVec1(
         }
 #endif
 
-        // 等待当前槽位可用（首两拍由预置 Token 直接通行）
-        AttentionSync::V1WaitSoftmaxFree(is_ping);
+        // 等待当前 Softmax P 槽位可用（首两拍 k < 2 L1 槽天然空闲，k >= 2 起受 Cube 消费进度回压）
+        if (k >= 2) {
+            AttentionSync::V1WaitSoftmaxFree(is_ping);
+        }
         AttentionSync::V1WaitQkReady();
 
 #if SAGE_ATTN_DEVICE_COMPILE

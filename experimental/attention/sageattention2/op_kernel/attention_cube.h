@@ -56,7 +56,7 @@ public:
             if (k > 0) {
                 uint32_t prev_k = k - 1;
                 bool prev_is_ping = ((prev_k % 2) == 0);
-                StepPvMmad(pv_mmad, params, prev_is_ping, ub_pv_partial_offset);
+                StepPvMmad(pv_mmad, params, prev_is_ping, ub_pv_partial_offset, prev_k > 0);
             }
 
             // 2. 等待 V0 当前 KV 分块量化就绪
@@ -72,8 +72,10 @@ public:
             qk_mmad.Compute(true);
             Catlass::SageAttn::Sync<HardEvent::M_FIX>();
 
-            // 4. QK dot32 裸搬 UB（首拍由预置 Token 直接通行，后续拍受 V1 读毕释放保护）
-            AttentionSync::CubeWaitDotFree();
+            // 4. QK dot32 裸搬 UB（首拍 dot32 槽天然空，k >= 1 受 V1 读毕释放保护）
+            if (k > 0) {
+                AttentionSync::CubeWaitDotFree();
+            }
             qk_mmad.EmitL0CToUbRaw(ub_dot32_offset, params.rows, params.block_n);
             Catlass::SageAttn::Sync<HardEvent::FIX_M>();
             AttentionSync::CubeSignalQkReady();
@@ -83,7 +85,7 @@ public:
         if (active_kv_blocks > 0) {
             uint32_t last_k = active_kv_blocks - 1;
             bool last_is_ping = ((last_k % 2) == 0);
-            StepPvMmad(pv_mmad, params, last_is_ping, ub_pv_partial_offset);
+            StepPvMmad(pv_mmad, params, last_is_ping, ub_pv_partial_offset, last_k > 0);
         }
 #else
         (void)params;
@@ -170,7 +172,8 @@ private:
         Catlass::SageAttn::SagePvMmad<> &pv_mmad,
         const CubeBlockParams &params,
         bool is_ping,
-        uint32_t ub_pv_partial_offset)
+        uint32_t ub_pv_partial_offset,
+        bool wait_partial_free = true)
     {
         AttentionSync::CubeWaitSoftmaxReady(is_ping);
 
@@ -179,7 +182,9 @@ private:
         AttentionSync::CubeReleaseSoftmaxFree(is_ping);
         AttentionSync::CubeReleaseKvFree(is_ping);
 
-        AttentionSync::CubeWaitPartialFree();
+        if (wait_partial_free) {
+            AttentionSync::CubeWaitPartialFree();
+        }
         pv_mmad.ExecuteEpilogue(ub_pv_partial_offset);
         Catlass::SageAttn::Sync<HardEvent::FIX_M>();
         AttentionSync::CubeSignalPartialReady();

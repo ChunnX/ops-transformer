@@ -553,8 +553,10 @@ public:
             bool is_ping = ((k % 2) == 0);
             uint32_t l1_dst_offset = is_ping ? SlotL1KvPing::Offset() : SlotL1KvPong::Offset();
 
-            // 缓冲回收握手：首两拍由预置 Token 直接通行，后续拍严格受 Cube 消费进度回压
-            AttentionSync::V0WaitKvFree(is_ping);
+            // 缓冲回收握手：首两拍 (k < 2) L1 槽天然空闲，k >= 2 起严格受 Cube 消费进度回压
+            if (k >= 2) {
+                AttentionSync::V0WaitKvFree(is_ping);
+            }
 
             int64_t sk_start = static_cast<int64_t>(k) * ctx.block_n;
             uint32_t cur_block_k = ctx.CurBlockK(k);

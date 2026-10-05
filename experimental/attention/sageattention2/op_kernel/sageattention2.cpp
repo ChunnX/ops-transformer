@@ -38,8 +38,9 @@ __inline__ __attribute__((always_inline)) __aicore__ void InitTilingDataHelper(
     for (uint64_t i = 0; i < (copy_bytes + 3) / 4; i++) {
         *(dst + i) = *(src + i);
     }
-#elif defined(__DAV_C220_CUBE__) || defined(__DAV_C310_CUBE__) || defined(__DAV_310R6_CUBE__) || \
-      defined(__GET_CODE_CHANNEL__) || (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201))
+#elif defined(__DAV_C220_CUBE__) || defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__) || \
+      defined(__DAV_310R6_CUBE__) || defined(__GET_CODE_CHANNEL__) || \
+      (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201))
     copy_data_align64(tilingdata, const_cast<__gm__ uint8_t *>(p_tilingdata), copy_bytes);
 #else
     __ubuf__ uint8_t *tilingdata_in_ub = (__ubuf__ uint8_t *)get_imm(0);
@@ -197,23 +198,76 @@ extern "C" __global__ __aicore__ void sage_attention2(
             }
         }
 #elif SAGE_DIAG_STAGE == 9
-    // Phase 6C: 探测每个核上的 core_idx, sub_core_idx, is_active, active_kv_blocks
+    // Phase 6C: 三核完整多拍跨核同步回归测试 (Counter-Guard Multi-Beat Protocol)
     sage_attn::SageAttnKernel<sage_attn::kTplDtypeFp16> kernel;
     kernel.Init(query, key, value, attentionOut, softmaxLse, user_ws, &t);
-    AscendC::GlobalTensor<uint32_t> gm_out;
-    gm_out.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(attentionOut));
-    uint32_t blk = static_cast<uint32_t>(AscendC::GetBlockIdx());
-    if ASCEND_IS_AIV {
-        AscendC::LocalTensor<uint32_t> ub(AscendC::TPosition::VECCALC, sage_attn::SlotV0NzOutput::Offset(), 8);
-        ub.SetValue(0, t.b);
-        ub.SetValue(1, t.hq);
-        ub.SetValue(2, t.sq);
-        ub.SetValue(3, t.m_per_core);
-        ub.SetValue(4, t.block_n);
-        ub.SetValue(5, t.core_num_used);
-        ub.SetValue(6, t.enable_die_affinity);
-        ub.SetValue(7, kernel.IsActiveCore() ? 1u : 0u);
-        AscendC::DataCopy(gm_out[blk * 8], ub, 8);
+    if (!kernel.IsActiveCore()) {
+        return;
+    }
+    const uint32_t active_kv_blocks = kernel.GetContext().active_kv_blocks;
+    if ASCEND_IS_AIC {
+        sage_attn::AttentionSync::CubeWaitQReady();
+        for (uint32_t k = 0; k < active_kv_blocks; ++k) {
+            if (k > 0) {
+                uint32_t prev_k = k - 1;
+                bool prev_is_ping = ((prev_k % 2) == 0);
+                sage_attn::AttentionSync::CubeWaitSoftmaxReady(prev_is_ping);
+                sage_attn::AttentionSync::CubeReleaseSoftmaxFree(prev_is_ping);
+                sage_attn::AttentionSync::CubeReleaseKvFree(prev_is_ping);
+                if (prev_k > 0) {
+                    sage_attn::AttentionSync::CubeWaitPartialFree();
+                }
+                sage_attn::AttentionSync::CubeSignalPartialReady();
+            }
+            bool is_ping = ((k % 2) == 0);
+            sage_attn::AttentionSync::CubeWaitKvReady(is_ping);
+            if (k > 0) {
+                sage_attn::AttentionSync::CubeWaitDotFree();
+            }
+            sage_attn::AttentionSync::CubeSignalQkReady();
+        }
+        if (active_kv_blocks > 0) {
+            uint32_t last_k = active_kv_blocks - 1;
+            bool last_is_ping = ((last_k % 2) == 0);
+            sage_attn::AttentionSync::CubeWaitSoftmaxReady(last_is_ping);
+            sage_attn::AttentionSync::CubeReleaseSoftmaxFree(last_is_ping);
+            sage_attn::AttentionSync::CubeReleaseKvFree(last_is_ping);
+            if (last_k > 0) {
+                sage_attn::AttentionSync::CubeWaitPartialFree();
+            }
+            sage_attn::AttentionSync::CubeSignalPartialReady();
+        }
+        sage_attn::AttentionSync::CubeSignalPvDone();
+    } else {
+        if (AscendC::GetSubBlockIdx() == 0) {
+            sage_attn::AttentionSync::V0SignalQReady();
+            for (uint32_t k = 0; k < active_kv_blocks; ++k) {
+                bool is_ping = ((k % 2) == 0);
+                if (k >= 2) {
+                    sage_attn::AttentionSync::V0WaitKvFree(is_ping);
+                }
+                sage_attn::AttentionSync::V0SignalKvReady(is_ping);
+            }
+        } else {
+            for (uint32_t k = 0; k < active_kv_blocks; ++k) {
+                if (k > 0) {
+                    sage_attn::AttentionSync::V1WaitPartialReady();
+                    sage_attn::AttentionSync::V1ReleasePartialFree();
+                }
+                bool is_ping = ((k % 2) == 0);
+                if (k >= 2) {
+                    sage_attn::AttentionSync::V1WaitSoftmaxFree(is_ping);
+                }
+                sage_attn::AttentionSync::V1WaitQkReady();
+                sage_attn::AttentionSync::V1ReleaseDotFree();
+                sage_attn::AttentionSync::V1SignalSoftmaxReady(is_ping);
+            }
+            if (active_kv_blocks > 0) {
+                sage_attn::AttentionSync::V1WaitPartialReady();
+                sage_attn::AttentionSync::V1ReleasePartialFree();
+            }
+            sage_attn::AttentionSync::V1WaitPvDone();
+        }
     }
     return;
 #else

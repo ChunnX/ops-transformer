@@ -49,27 +49,14 @@ class AttentionSync {
 public:
     static constexpr uint8_t MODE = 4; // 1C2V Intra-Block 模式
 
+    static_assert(SyncFlags::KV_PONG_FREE < 11, "V0 SyncFlags must avoid hardware reserved IDs [11, 14]");
+    static_assert(SyncFlags::PV_DONE < 11, "V1 SyncFlags must avoid hardware reserved IDs [11, 14]");
+
     // -------------------------------------------------------------
-    // 1. 初始化预置初始 Token（Token Pre-setting in Init）
+    // 1. 初始化预置初始 Token（官方拍计数模型下已废弃，保留空函数防调用报错）
     // -------------------------------------------------------------
     __aicore__ inline static void InitSyncTokens()
     {
-#if SAGE_ATTN_DEVICE_COMPILE
-        if ASCEND_IS_AIC {
-            // Cube 预置 L1 KV 槽空闲 Token 给 Vector 0 (Ping & Pong)
-            AscendC::CrossCoreSetFlag<MODE, PIPE_MTE1>(SyncFlags::KV_PING_FREE);
-            AscendC::CrossCoreSetFlag<MODE, PIPE_MTE1>(SyncFlags::KV_PONG_FREE);
-            // Cube 预置 L1 S 槽空闲 Token 给 Vector 1 (SubBlock 1 对应 16 + flag)
-            AscendC::CrossCoreSetFlag<MODE, PIPE_MTE1>(16 + SyncFlags::S_PING_FREE);
-            AscendC::CrossCoreSetFlag<MODE, PIPE_MTE1>(16 + SyncFlags::S_PONG_FREE);
-        } else {
-            if (AscendC::GetSubBlockIdx() == 1) {
-                // Vector 1 预置 UB 接收槽空闲 Token 给 Cube
-                AscendC::CrossCoreSetFlag<MODE, PIPE_V>(SyncFlags::DOT_FREE);
-                AscendC::CrossCoreSetFlag<MODE, PIPE_V>(SyncFlags::PV_PARTIAL_FREE);
-            }
-        }
-#endif
     }
 
     // -------------------------------------------------------------
