@@ -205,11 +205,14 @@ extern "C" __global__ __aicore__ void sage_attention2(
     uint32_t blk = static_cast<uint32_t>(AscendC::GetBlockIdx());
     if ASCEND_IS_AIV {
         AscendC::LocalTensor<uint32_t> ub(AscendC::TPosition::VECCALC, sage_attn::SlotV0NzOutput::Offset(), 8);
-        ub.SetValue(0, kernel.GetContext().core_idx);
-        ub.SetValue(1, kernel.GetContext().sub_core_idx);
-        ub.SetValue(2, kernel.IsActiveCore() ? 1u : 0u);
-        ub.SetValue(3, kernel.GetContext().active_kv_blocks);
-        for (int i = 4; i < 8; ++i) ub.SetValue(i, 0);
+        ub.SetValue(0, t.b);
+        ub.SetValue(1, t.hq);
+        ub.SetValue(2, t.sq);
+        ub.SetValue(3, t.m_per_core);
+        ub.SetValue(4, t.block_n);
+        ub.SetValue(5, t.core_num_used);
+        ub.SetValue(6, t.enable_die_affinity);
+        ub.SetValue(7, kernel.IsActiveCore() ? 1u : 0u);
         AscendC::DataCopy(gm_out[blk * 8], ub, 8);
     }
     return;
