@@ -72,12 +72,28 @@ public:
     }
 
     // -------------------------------------------------------------
-    // 2. 终止退域同步屏障
+    // 2. 终止退域同步屏障与残留 Token 归零回收 (Token Drain)
     // -------------------------------------------------------------
-    __aicore__ inline static void ReleaseSyncTokens()
+    __aicore__ inline static void ReleaseSyncTokens(uint32_t active_kv_blocks = 0)
     {
 #if SAGE_ATTN_DEVICE_COMPILE
+        if (active_kv_blocks > 0) {
+            if ASCEND_IS_AIC {
+                CubeWaitDotFree();
+                CubeWaitPartialFree();
+            } else {
+                if (AscendC::GetSubBlockIdx() == 0) {
+                    V0WaitKvFree(true);
+                    V0WaitKvFree(false);
+                } else {
+                    V1WaitSoftmaxFree(true);
+                    V1WaitSoftmaxFree(false);
+                }
+            }
+        }
         AscendC::PipeBarrier<PIPE_ALL>();
+#else
+        (void)active_kv_blocks;
 #endif
     }
 

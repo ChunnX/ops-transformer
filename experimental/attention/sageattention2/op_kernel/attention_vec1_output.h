@@ -365,6 +365,7 @@ public:
 #if SAGE_ATTN_DEVICE_COMPILE
         ctx_.core_idx = static_cast<uint32_t>(AscendC::GetBlockIdx());
         if ASCEND_IS_AIV {
+            ctx_.core_idx /= 2;
             ctx_.sub_core_idx = static_cast<uint32_t>(AscendC::GetSubBlockIdx());
         } else {
             ctx_.sub_core_idx = 0u;
@@ -489,7 +490,7 @@ public:
             ProcessVec1(ctx_, softmax_, output_);
 #endif
 
-            AttentionSync::ReleaseSyncTokens();
+            AttentionSync::ReleaseSyncTokens(ctx_.active_kv_blocks);
         }
     }
 
