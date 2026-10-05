@@ -162,7 +162,7 @@ extern "C" __global__ __aicore__ void sage_attention2(
     }
     return;
 #elif SAGE_DIAG_STAGE == 8
-    // Phase 6B: 测试 LoadAndQuantizeQ 之后的 Q_READY 跨核唤醒
+    // Phase 6B: 假时延隔离测试：纯标量循环延迟后发送 Q_READY
     sage_attn::SageAttnKernel<sage_attn::kTplDtypeFp16> kernel;
     kernel.Init(query, key, value, attentionOut, softmaxLse, user_ws, &t);
     if (kernel.IsActiveCore()) {
@@ -170,15 +170,10 @@ extern "C" __global__ __aicore__ void sage_attention2(
             sage_attn::AttentionSync::CubeWaitQReady();
         } else {
             if (kernel.GetContext().sub_core_idx == 0) {
-                const auto &ctx = kernel.GetContext();
-                int64_t b_idx = static_cast<int64_t>(ctx.cur_b);
-                int64_t hkv_idx = static_cast<int64_t>(ctx.cur_hkv);
-                int64_t sq_start = static_cast<int64_t>(ctx.cur_q_start);
-                int64_t hq_first = hkv_idx * static_cast<int64_t>(ctx.gqa_ratio) + static_cast<int64_t>(ctx.cur_g0);
-                const Catlass::SageAttn::GmBhsdLayout q_layout =
-                    Catlass::SageAttn::MakeGmBhsdLayout(ctx.b, ctx.hq, ctx.sq, ctx.d, ctx.tiling->tensor_layout == sage_attn::LAYOUT_HND);
-                const int64_t q_gm_offset = q_layout(tla::MakeCoord(b_idx, hq_first, sq_start, 0u));
-                kernel.GetVec0().LoadAndQuantizeQ(ctx, ctx.query_gm + q_gm_offset * sizeof(uint16_t), q_layout);
+                volatile uint32_t cnt = 0;
+                for (uint32_t i = 0; i < 5000000u; ++i) {
+                    cnt += i;
+                }
                 sage_attn::AttentionSync::V0SignalQReady();
             }
         }
