@@ -47,41 +47,87 @@
 
 ## 单一定义点清单（2026-10-03 打磨轮）
 
-| 不变量 | 唯一定义点 | 消费方 |
-|---|---|---|
-| 分形粒度（M0/N0/K0、LoadData2D repeat） | 官方 catlass.hpp（sage_tile.hpp include 直引派生） | kernel 全部 MMA/搬运 |
-| 行打包上限 MAX_PACK_ROWS=128 | tiling.h | kernel 窗口/host total_rows/InspectTilingPlan |
-| Q/K scale 槽步长 kQScaleSlotStride=4096 / kKScaleSlotStride=2048 | tiling.h（容量域经 QScaleCount/KScaleCount constexpr static_assert 锁定） | SimMemory/设备 UB 槽寻址 |
-| QK scale 定档公式 FinalizeQkScale | quant_common.h | kernel 双分支 + quant 参考实现（8 处收敛） |
-| 量化组号 QScaleIndex/KScaleIndex（constexpr） | quant_common.h | 全链路 |
-| V 物理槽寻址 VSlotOfToken | quant_common.h | golden/twin/kernel（3 处收敛） |
-| 因果掩码哨兵 SAGE_MASK_SENTINEL | online_softmax.h | kernel/VF/twin（12 处收敛） |
-| 编译域单宏 SAGE_ATTN_DEVICE_COMPILE（__CCE__ 直判）与 __aicore__ 桩 | tiling.h | 全部头文件（历史 SAGE_ATTN_KERNEL_API / __CCE_KT_TEST__ 桩域随 2026-10-04 死代码清扫并入本宏） |
-| TilingData ctypes 镜像 | tests/tiling_mirror.py | test_tiling_struct/test_kernel_twin |
-| FP16/BF16 位型转换（RNE） | quant_common.h | 算子/golden/benchmark（截断版已删除） |
-| 数值常量（Python 侧） | error_check.py | dispatch/_ops/golden 生成器 import（本地副本已删） |
-| CATLASS_ROOT 解析 | cmake/SageAttnDeps.cmake | op_kernel/op_host CMake |
-| 接口布局字符串（仅 HND/NHD） | op_api 白名单报错 | op_host/proto/def 默认值 HND |
-| 接口默认值常量（Python DEFAULT_*） | error_check.py | dispatch/_ops 签名默认 |
-| 接口默认值常量（C++ kDefault*） | aclnn/sage_attn_proto.h | op_host tiling 缺省折叠 |
-| V 量化 scale_max 分档 v_scale_max_for | dispatch.py | golden 生成器/测试填充（2.25/448 字面量已消） |
-| tiling 枚举编码镜像（LAYOUT/GRAN/ACCUM） | tests/tiling_mirror.py | test_kernel_twin 等 |
-| ActiveKvBlocks/SubKm 核内辅助 | op_kernel 私有方法 | 4 处重算 + 2 处 km 舍回收敛 |
-| 输入位型档位归一 NormDtypeMode（M5） | op_kernel/sage_attention2_template_tiling_key.h | 核内 kDtype / host tiling / tiling key 编码共用，消费侧禁再展开三元式 |
-| L1 Data+Scale 相邻摆布契约 CopyUbRowToL1 | sageattn_fp8/catlass/sage_tile.hpp | 核内 Q/K/V 三处 UB→L1 行搬（原 host 侧 PackDataAndScaleAdjacent 死链已删，2026-10-04） |
-| LSE_ROW_STRIDE / MAX_GQA_RATIO | sage_resource.hpp / tiling.h | V1 子偏移、SimMemory 配额、host 上限 |
+- 分形粒度（M0/N0/K0、LoadData2D repeat）：
+  - 唯一定义点：官方 catlass.hpp（sage_tile.hpp include 直引派生）
+  - 消费方：kernel 全部 MMA/搬运
+- 行打包上限 MAX_PACK_ROWS=128：
+  - 唯一定义点：tiling.h
+  - 消费方：kernel 窗口/host total_rows/InspectTilingPlan
+- Q/K scale 槽步长 kQScaleSlotStride=4096 / kKScaleSlotStride=2048：
+  - 唯一定义点：tiling.h（容量域经 QScaleCount/KScaleCount constexpr static_assert 锁定）
+  - 消费方：SimMemory/设备 UB 槽寻址
+- QK scale 定档公式 FinalizeQkScale：
+  - 唯一定义点：quant_common.h
+  - 消费方：kernel 双分支 + quant 参考实现（8 处收敛）
+- 量化组号 QScaleIndex/KScaleIndex（constexpr）：
+  - 唯一定义点：quant_common.h
+  - 消费方：全链路
+- V 物理槽寻址 VSlotOfToken：
+  - 唯一定义点：quant_common.h
+  - 消费方：golden/twin/kernel（3 处收敛）
+- 因果掩码哨兵 SAGE_MASK_SENTINEL：
+  - 唯一定义点：online_softmax.h
+  - 消费方：kernel/VF/twin（12 处收敛）
+- 编译域单宏 SAGE_ATTN_DEVICE_COMPILE（__CCE__ 直判）与 __aicore__ 桩：
+  - 唯一定义点：tiling.h
+  - 消费方：全部头文件（历史 SAGE_ATTN_KERNEL_API / __CCE_KT_TEST__ 桩域随 2026-10-04 死代码清扫并入本宏）
+- TilingData ctypes 镜像：
+  - 唯一定义点：tests/tiling_mirror.py
+  - 消费方：test_tiling_struct/test_kernel_twin
+- FP16/BF16 位型转换（RNE）：
+  - 唯一定义点：quant_common.h
+  - 消费方：算子/golden/benchmark（截断版已删除）
+- 数值常量（Python 侧）：
+  - 唯一定义点：error_check.py
+  - 消费方：dispatch/_ops/golden 生成器 import（本地副本已删）
+- CATLASS_ROOT 解析：
+  - 唯一定义点：cmake/SageAttnDeps.cmake
+  - 消费方：op_kernel/op_host CMake
+- 接口布局字符串（仅 HND/NHD）：
+  - 唯一定义点：op_api 白名单报错
+  - 消费方：op_host/proto/def 默认值 HND
+- 接口默认值常量（Python DEFAULT_*）：
+  - 唯一定义点：error_check.py
+  - 消费方：dispatch/_ops 签名默认
+- 接口默认值常量（C++ kDefault*）：
+  - 唯一定义点：aclnn/sage_attn_proto.h
+  - 消费方：op_host tiling 缺省折叠
+- V 量化 scale_max 分档 v_scale_max_for：
+  - 唯一定义点：dispatch.py
+  - 消费方：golden 生成器/测试填充（2.25/448 字面量已消）
+- tiling 枚举编码镜像（LAYOUT/GRAN/ACCUM）：
+  - 唯一定义点：tests/tiling_mirror.py
+  - 消费方：test_kernel_twin 等
+- ActiveKvBlocks/SubKm 核内辅助：
+  - 唯一定义点：op_kernel 私有方法
+  - 消费方：4 处重算 + 2 处 km 舍回收敛
+- 输入位型档位归一 NormDtypeMode（M5）：
+  - 唯一定义点：op_kernel/sage_attention2_template_tiling_key.h
+  - 消费方：核内 kDtype / host tiling / tiling key 编码共用，消费侧禁再展开三元式
+- L1 Data+Scale 相邻摆布契约 CopyUbRowToL1：
+  - 唯一定义点：sageattn_fp8/catlass/sage_tile.hpp
+  - 消费方：核内 Q/K/V 三处 UB→L1 行搬（原 host 侧 PackDataAndScaleAdjacent 死链已删，2026-10-04）
+- LSE_ROW_STRIDE / MAX_GQA_RATIO：
+  - 唯一定义点：sage_resource.hpp / tiling.h
+  - 消费方：V1 子偏移、SimMemory 配额、host 上限
 
 ## 死代码清扫记录（2026-10-03）
 
 以下四件为零生产消费的"已弃用策略"载体，经全仓引用图核验后删除（测试同步退役，
 决策上下文以本节与本文件"同步与流水守卫"节注记存档）：
 
-| 删除件 | 原职责 | 删除依据 |
-|---|---|---|
-| `sageattn_fp8/ascendc/pipeline_guard.h`（319 行） | UbTile 类型状态守卫（RES-05，编译期约束 DMA/计算状态转移） | 设备核热路径以 attention_sync.h 显式 flag 协议保序，该头零生产 include，仅 tests/test_pipeline_guard.cpp 引用 |
-| `sageattn_fp8/ascendc/accum_reduce.h`（111 行） | AccumReduceController 归约节奏控制器、FixpipeConfig、QuantizeToFp16 仿真壳 | PV 归约节奏唯一定义点已收敛至 twin::AccumulatePvRow（k_step 子块域）+ 设备侧逐块 FixPipe 裸搬合并（档位直读 tiling.pv_accum_dtype）；三符号零非测试消费 |
-| `tests/test_output_queue.cpp`（约 1000 行） | OutputRetireQueue（3 槽延迟成对归约 + skip-scale 变体）回归 | 队列类本体即测试文件内本地定义（"非交付热路径组件"），其 skip-scale 双锚点策略与 golden 逐块锚定强制 rescale 轨迹冲突，A7（task/12 D3）已裁定热路径弃用 |
-| `tests/test_pipeline_guard.cpp` | pipeline_guard 类型状态协议测试 | 随被测载体删除 |
+- `sageattn_fp8/ascendc/pipeline_guard.h`（319 行）：
+  - 原职责：UbTile 类型状态守卫（RES-05，编译期约束 DMA/计算状态转移）
+  - 删除依据：设备核热路径以 attention_sync.h 显式 flag 协议保序，该头零生产 include，仅 tests/test_pipeline_guard.cpp 引用
+- `sageattn_fp8/ascendc/accum_reduce.h`（111 行）：
+  - 原职责：AccumReduceController 归约节奏控制器、FixpipeConfig、QuantizeToFp16 仿真壳
+  - 删除依据：PV 归约节奏唯一定义点已收敛至 twin::AccumulatePvRow（k_step 子块域）+ 设备侧逐块 FixPipe 裸搬合并（档位直读 tiling.pv_accum_dtype）；三符号零非测试消费
+- `tests/test_output_queue.cpp`（约 1000 行）：
+  - 原职责：OutputRetireQueue（3 槽延迟成对归约 + skip-scale 变体）回归
+  - 删除依据：队列类本体即测试文件内本地定义（"非交付热路径组件"），其 skip-scale 双锚点策略与 golden 逐块锚定强制 rescale 轨迹冲突，A7（task/12 D3）已裁定热路径弃用
+- `tests/test_pipeline_guard.cpp`：
+  - 原职责：pipeline_guard 类型状态协议测试
+  - 删除依据：随被测载体删除
 
 随动清理：op_kernel/sageattention2.cpp 与 sage_pv_mmad.hpp 的 accum_reduce.h include、
 run.sh 对应编译/运行钩子、test_tiling_struct.cpp 的 AccumReduceController 用例
