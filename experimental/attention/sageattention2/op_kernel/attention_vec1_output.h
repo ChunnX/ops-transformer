@@ -366,7 +366,6 @@ public:
         ctx_.core_idx = static_cast<uint32_t>(AscendC::GetBlockIdx());
         if ASCEND_IS_AIV {
             ctx_.sub_core_idx = static_cast<uint32_t>(AscendC::GetSubBlockIdx());
-            ctx_.core_idx /= 2;
         } else {
             ctx_.sub_core_idx = 0u;
         }
