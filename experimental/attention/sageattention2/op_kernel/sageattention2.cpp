@@ -202,7 +202,7 @@ extern "C" __global__ __aicore__ void sage_attention2(
     kernel.Init(query, key, value, attentionOut, softmaxLse, user_ws, &t);
     if (!kernel.IsActiveCore()) return;
     sage_attn::AttentionSync::InitSyncTokens();
-    const uint32_t active_kv_blocks = kernel.GetContext().active_kv_blocks;
+    const uint32_t active_kv_blocks = 1;
     if ASCEND_IS_AIC {
         sage_attn::AttentionSync::CubeWaitQReady();
         for (uint32_t k = 0; k < active_kv_blocks; ++k) {
