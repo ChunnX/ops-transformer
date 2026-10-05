@@ -116,22 +116,30 @@ extern "C" __global__ __aicore__ void sage_attention2(
     }
     return;
 #elif SAGE_DIAG_STAGE == 7
-    // Phase 6A: 纯跨核信号灯单步握手测试
+    // Phase 6A: 纯跨核信号灯单步握手测试 (Cube + V0 + V1)
     sage_attn::SageAttnKernel<sage_attn::kTplDtypeFp16> kernel;
     kernel.Init(query, key, value, attentionOut, softmaxLse, user_ws, &t);
     if ASCEND_IS_AIC {
+        // 1. 与 V0 握手
         sage_attn::AttentionSync::CubeWaitQReady();
         sage_attn::AttentionSync::CubeWaitKvReady(true);
         sage_attn::AttentionSync::CubeReleaseKvFree(true);
-        sage_attn::AttentionSync::CubeWaitKvReady(false);
-        sage_attn::AttentionSync::CubeReleaseKvFree(false);
+
+        // 2. 与 V1 握手
+        sage_attn::AttentionSync::CubeSignalQkReady();
+        sage_attn::AttentionSync::CubeWaitDotFree();
+        sage_attn::AttentionSync::CubeWaitSoftmaxReady(true);
+        sage_attn::AttentionSync::CubeReleaseSoftmaxFree(true);
     } else {
         if (AscendC::GetSubBlockIdx() == 0) {
             sage_attn::AttentionSync::V0SignalQReady();
             sage_attn::AttentionSync::V0SignalKvReady(true);
             sage_attn::AttentionSync::V0WaitKvFree(true);
-            sage_attn::AttentionSync::V0SignalKvReady(false);
-            sage_attn::AttentionSync::V0WaitKvFree(false);
+        } else {
+            sage_attn::AttentionSync::V1WaitQkReady();
+            sage_attn::AttentionSync::V1ReleaseDotFree();
+            sage_attn::AttentionSync::V1SignalSoftmaxReady(true);
+            sage_attn::AttentionSync::V1WaitSoftmaxFree(true);
         }
     }
     return;
