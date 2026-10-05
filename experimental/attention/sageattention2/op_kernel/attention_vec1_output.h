@@ -167,6 +167,32 @@ public:
                                              ctx.d_og);
                 Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
 
+#if defined(SAGE_PROBE_DIAG_MODE) && (SAGE_PROBE_DIAG_MODE == 1)
+                // 探针模式 1：魔数写入（验证 MTE3 搬运通路与 out_gm 地址正确性）
+                for (uint32_t di = 0; di < ctx.d_og; ++di) {
+                    ub_half.SetValue(di, static_cast<half>(1.0f));
+                }
+                Catlass::SageAttn::Sync<HardEvent::S_MTE3>();
+#elif defined(SAGE_PROBE_DIAG_MODE) && (SAGE_PROBE_DIAG_MODE == 2)
+                // 探针模式 2：运行期状态遥测（验证分母、最大值、核心号、任务数）
+                if (g == 0 && i == 0) {
+                    float s_val = ub_running_sum.GetValue(0);
+                    float m_val = ub_running_max.GetValue(0);
+                    ub_half.SetValue(0, static_cast<half>(1.0f));
+                    ub_half.SetValue(1, static_cast<half>(2.0f));
+                    ub_half.SetValue(2, static_cast<half>(ctx.core_idx));
+                    ub_half.SetValue(3, static_cast<half>(ctx.active_kv_blocks));
+                    ub_half.SetValue(4, static_cast<half>(s_val));
+                    ub_half.SetValue(5, static_cast<half>(m_val));
+                    ub_half.SetValue(6, static_cast<half>(ctx.d_og));
+                    ub_half.SetValue(7, static_cast<half>(88.0f));
+                    for (uint32_t di = 8; di < ctx.d_og; ++di) {
+                        ub_half.SetValue(di, static_cast<half>(1.0f));
+                    }
+                    Catlass::SageAttn::Sync<HardEvent::S_MTE3>();
+                }
+#endif
+
                 const int64_t out_gm_offset = out_layout(tla::MakeCoord(b_idx, hq_curr, sq_start + i, 0u)) *
                                               static_cast<int64_t>(sizeof(half));
                 if constexpr (kDtype == kTplDtypeBf16) {
