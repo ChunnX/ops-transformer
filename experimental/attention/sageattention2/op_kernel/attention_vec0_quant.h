@@ -464,18 +464,25 @@ public:
             }
         }
 
-        // 阶段二：V 矩阵物理几何转置与段内重排 [block_n, d] -> [d, block_n] + VSlotOfToken
+        // 阶段二：V 矩阵物理几何重排为昇腾 Cube L0B 要求的 nZ 分形排布
+        // 单个分形 32(K, token) x 16(N, channel) = 512 字节，分形内列优先，分形间行优先
+        // nz_idx = ((j / 32) * (d / 16) + (c / 16)) * 512 + (c % 16) * 32 + (j % 32)
         // 注意：当前实现为功能与精度验证版（Functional Verification Only，标量 UB 读写）
-        // 已知限制：每块 16K 次标量 S-pipe 读写带来约 5ms 级开销，在真机 99% 精度判决后，于 P5 性能阶段替换为向量化/uint16 转置
+        // 已知限制：每块 8K 次标量 S-pipe 读写，在真机 99% 精度判决后，于 P5 性能阶段替换为向量化/uint16 转置
         Catlass::SageAttn::Sync<HardEvent::V_S>();
         auto tok_u8 = ub_stage_tok.ReinterpretCast<uint8_t>();
         auto tr_u8 = ub_stage_tr.ReinterpretCast<uint8_t>();
-        for (uint32_t c = 0; c < d; ++c) {
-            const uint32_t chan_offset = c * block_n;
-            for (uint32_t j = 0; j < block_n; ++j) {
-                const uint32_t tr_idx = chan_offset + quant::VSlotOfToken(j);
-                const uint32_t tok_idx = j * d + c;
-                tr_u8.SetValue(tr_idx, tok_u8.GetValue(tok_idx));
+        const uint32_t d_fractals = d >> 4;
+        for (uint32_t j = 0; j < block_n; ++j) {
+            const uint32_t fk = j >> 5;
+            const uint32_t in_k = j & 31u;
+            const uint32_t tok_row = j * d;
+            const uint32_t k_base = fk * d_fractals;
+            for (uint32_t c = 0; c < d; ++c) {
+                const uint32_t fn = c >> 4;
+                const uint32_t in_n = c & 15u;
+                const uint32_t nz_idx = ((k_base + fn) << 9) + (in_n << 5) + in_k;
+                tr_u8.SetValue(nz_idx, tok_u8.GetValue(tok_row + c));
             }
         }
 
@@ -526,10 +533,12 @@ public:
         }
 
         const bool smooth_v = (ctx.smooth_v != 0);
+        const uint32_t d_fractals = d / 16u;
         for (uint32_t c = 0; c < d; ++c) {
             const float scale = (c < 256u) ? ctx.sim_mem->v_scales[c] : 1.0f;
             const float vm = (smooth_v && c < 256u) ? ctx.sim_mem->v_means[c] : 0.0f;
-            uint8_t *chan_out = l1_v + static_cast<size_t>(c) * block_n;
+            const uint32_t fn = c / 16u;
+            const uint32_t in_n = c % 16u;
             for (uint32_t jl = 0; jl < block_n; ++jl) {
                 uint8_t code = 0;
                 if (jl < block_k) {
@@ -539,7 +548,10 @@ public:
                     if (scaled < -scale_max) scaled = -scale_max;
                     code = quant::FloatToE4m3fn(scaled);
                 }
-                chan_out[quant::VSlotOfToken(jl)] = code;
+                const uint32_t fk = jl / 32u;
+                const uint32_t in_k = jl % 32u;
+                const uint32_t nz_idx = (fk * d_fractals + fn) * 512u + in_n * 32u + in_k;
+                l1_v[nz_idx] = code;
             }
         }
 #endif
