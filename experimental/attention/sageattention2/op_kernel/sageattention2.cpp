@@ -153,20 +153,39 @@ extern "C" __global__ __aicore__ void sage_attention2(
     }
     return;
 #elif SAGE_DIAG_STAGE == 8
-    // Phase 6B: 生产全流水执行 (剥离 ReleaseSyncTokens 终结回收)
+    // Phase 6B: Cube + Vector 0 真实计算流水联调 (剥离 V1)
     sage_attn::SageAttnKernel<sage_attn::kTplDtypeFp16> kernel;
     kernel.Init(query, key, value, attentionOut, softmaxLse, user_ws, &t);
     if (kernel.IsActiveCore()) {
-        sage_attn::AttentionSync::InitSyncTokens();
+        uint32_t active_kv_blocks = kernel.GetContext().active_kv_blocks;
         if ASCEND_IS_AIC {
-            sage_attn::CubeBlockParams p{kernel.GetContext().TotalRows(), kernel.GetContext().block_n, kernel.GetContext().d};
-            kernel.GetCube().Process(p, kernel.GetContext().active_kv_blocks, kernel.GetContext().tiling->l1_q_offset,
-                                     sage_attn::SlotV1Dot32::Offset(), sage_attn::SlotV1PvPartial::Offset());
+            sage_attn::AttentionSync::CubeReleaseKvFree(true);
+            sage_attn::AttentionSync::CubeReleaseKvFree(false);
+
+            sage_attn::AttentionSync::CubeWaitQReady();
+            Catlass::SageAttn::SageQkMmad<> qk_mmad;
+            qk_mmad.LoadL0A(kernel.GetContext().tiling->l1_q_offset, kernel.GetContext().TotalRows(), kernel.GetContext().d);
+            Catlass::SageAttn::Sync<HardEvent::MTE1_M>();
+
+            for (uint32_t k = 0; k < active_kv_blocks; ++k) {
+                bool is_ping = ((k % 2) == 0);
+                uint32_t l1_kv_addr = is_ping ? sage_attn::SlotL1KvPing::Offset() : sage_attn::SlotL1KvPong::Offset();
+
+                sage_attn::AttentionSync::CubeWaitKvReady(is_ping);
+                qk_mmad.LoadL0B(l1_kv_addr, kernel.GetContext().block_n, kernel.GetContext().d);
+                Catlass::SageAttn::Sync<HardEvent::MTE1_M>();
+                qk_mmad.Compute(true);
+                Catlass::SageAttn::Sync<HardEvent::M_FIX>();
+                qk_mmad.EmitL0CToUbRaw(sage_attn::SlotV1Dot32::Offset(), kernel.GetContext().TotalRows(), kernel.GetContext().block_n);
+                Catlass::SageAttn::Sync<HardEvent::FIX_M>();
+                sage_attn::AttentionSync::CubeReleaseKvFree(is_ping);
+            }
         } else {
             if (kernel.GetContext().sub_core_idx == 0) {
                 kernel.GetVec0().Process(kernel.GetContext());
-            } else {
-                sage_attn::ProcessVec1(kernel.GetContext(), kernel.GetSoftmax(), kernel.GetOutput());
+                // 回收双缓冲未用许可
+                sage_attn::AttentionSync::V0WaitKvFree(true);
+                sage_attn::AttentionSync::V0WaitKvFree(false);
             }
         }
     }
