@@ -132,9 +132,16 @@ __aicore__ inline __attribute__((always_inline)) void LoadTile2D(
     load_params.kStartPosition = 0;
     load_params.mStep = static_cast<uint16_t>(::RoundUp<2>(::CeilDiv<16>(rows)));
     load_params.kStep = static_cast<uint16_t>(::CeilDiv<32>(cols));
-    load_params.srcStride = static_cast<int32_t>(load_params.mStep);
-    load_params.dstStride = static_cast<uint16_t>(load_params.mStep);
     load_params.ifTranspose = if_transpose;
+    if (if_transpose) {
+        // 官方 copy_l1_to_l0b_tla: zN -> nZ 转置装载，跨步计量为列分形数 (cols / 32)
+        load_params.srcStride = static_cast<int32_t>(load_params.kStep);
+        load_params.dstStride = static_cast<uint16_t>(load_params.kStep);
+    } else {
+        // 官方 copy_l1_to_l0a_tla: zN -> zN 直载，跨步计量为行分形数 (rows / 16)
+        load_params.srcStride = static_cast<int32_t>(load_params.mStep);
+        load_params.dstStride = static_cast<uint16_t>(load_params.mStep);
+    }
     AscendC::LoadData(dst_tensor, src_tensor, load_params);
 #else
     (void)dst_addr;
