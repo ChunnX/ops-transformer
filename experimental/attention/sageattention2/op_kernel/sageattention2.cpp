@@ -162,18 +162,18 @@ extern "C" __global__ __aicore__ void sage_attention2(
     }
     return;
 #elif SAGE_DIAG_STAGE == 8
-    // Phase 6B: 测试 PIPE_S 跨核信号与标量延迟
+    // Phase 6B: 测试 V1 保持存活时的跨核握手
     sage_attn::SageAttnKernel<sage_attn::kTplDtypeFp16> kernel;
     kernel.Init(query, key, value, attentionOut, softmaxLse, user_ws, &t);
     if (kernel.IsActiveCore()) {
         if ASCEND_IS_AIC {
             AscendC::CrossCoreWaitFlag<4, PIPE_S>(sage_attn::SyncFlags::Q_READY);
         } else {
+            volatile uint32_t cnt = 0;
+            for (uint32_t i = 0; i < 5000000u; ++i) {
+                cnt += i;
+            }
             if (kernel.GetContext().sub_core_idx == 0) {
-                volatile uint32_t cnt = 0;
-                for (uint32_t i = 0; i < 5000000u; ++i) {
-                    cnt += i;
-                }
                 AscendC::CrossCoreSetFlag<4, PIPE_S>(sage_attn::SyncFlags::Q_READY);
             }
         }
