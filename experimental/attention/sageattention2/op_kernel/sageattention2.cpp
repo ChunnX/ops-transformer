@@ -32,26 +32,12 @@ template <class ByteCountT>
 __inline__ __attribute__((always_inline)) __aicore__ void InitTilingDataHelper(
     const __gm__ uint8_t *p_tilingdata, uint8_t *tilingdata, ByteCountT all_bytes)
 {
-    const uint64_t copy_bytes = static_cast<uint64_t>(all_bytes);
-#if defined(ASCENDC_CPU_DEBUG)
-    const __gm__ uint32_t *src = (const __gm__ uint32_t *)p_tilingdata;
-    uint32_t *dst = (uint32_t *)tilingdata;
-    for (uint64_t i = 0; i < (copy_bytes + 3) / 4; i++) {
-        *(dst + i) = *(src + i);
+    const __gm__ uint32_t *src = reinterpret_cast<const __gm__ uint32_t *>(p_tilingdata);
+    uint32_t *dst = reinterpret_cast<uint32_t *>(tilingdata);
+    const uint64_t words = (static_cast<uint64_t>(all_bytes) + 3) / 4;
+    for (uint64_t i = 0; i < words; ++i) {
+        dst[i] = src[i];
     }
-#elif defined(__DAV_C220_CUBE__) || defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__) || \
-      defined(__DAV_310R6_CUBE__) || defined(__GET_CODE_CHANNEL__) || \
-      (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201))
-    copy_data_align64(tilingdata, const_cast<__gm__ uint8_t *>(p_tilingdata), copy_bytes);
-#else
-    __ubuf__ uint8_t *tilingdata_in_ub = (__ubuf__ uint8_t *)get_imm(0);
-    uint32_t len_burst = (copy_bytes + 31) / 32;
-    copy_gm_to_ubuf_align_v2(tilingdata_in_ub, const_cast<__gm__ uint8_t *>(p_tilingdata),
-        0, 1, len_burst * 32, 0, 0, false, 0, 0, 0);
-    set_flag(PIPE_MTE2, PIPE_S, EVENT_ID0);
-    wait_flag(PIPE_MTE2, PIPE_S, EVENT_ID0);
-    copy_data_align64(tilingdata, tilingdata_in_ub, copy_bytes);
-#endif
     pipe_barrier(PIPE_ALL);
 }
 
@@ -107,10 +93,14 @@ extern "C" __global__ __aicore__ void sage_attention2(
         uint32_t sub = static_cast<uint32_t>(AscendC::GetSubBlockIdx());
         if (blk == 0 || blk == 1) {
             AscendC::LocalTensor<uint32_t> ub(AscendC::TPosition::VECCALC, sage_attn::SlotV0NzOutput::Offset(), 8);
-            const __gm__ uint32_t *raw_t = reinterpret_cast<const __gm__ uint32_t *>(tiling);
-            for (int i = 0; i < 8; ++i) {
-                ub.SetValue(i, raw_t[i]);
-            }
+            ub.SetValue(0, t.b);
+            ub.SetValue(1, t.hq);
+            ub.SetValue(2, t.sq);
+            ub.SetValue(3, t.sk);
+            ub.SetValue(4, kernel.GetContext().core_idx);
+            ub.SetValue(5, kernel.GetContext().active_kv_blocks);
+            ub.SetValue(6, kernel.IsActiveCore() ? 1 : 0);
+            ub.SetValue(7, 100 + sub);
             AscendC::DataCopy(gm_out[blk * 8], ub, 8);
         }
     }

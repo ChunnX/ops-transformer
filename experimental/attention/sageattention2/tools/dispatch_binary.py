@@ -29,26 +29,50 @@ import shutil
 import struct
 
 
+# ELF 字段宽度随 32/64 位变化，统一封装避免散落的条件格式串
+_SHDR_FMT = {True: "<IIQQQQIIQQ", False: "<IIIIII"}
+_SHDR_SIZE = {True: 64, False: 24}
+_SHNUM_OFF = {True: (58, 60, 62), False: (46, 48, 50)}  # e_shentsize/e_shnum/e_shstrndx
+AIMACHINE_ASCEND = 0x1029
+_NO_OFFSET = 1 << 62           # 未布局 section 的排序哨兵
+
+
+def _read_addr(data, is_64, off64, off32):
+    """读取一个 8 字节(64 位) / 4 字节(32 位) 的偏移或地址字段。"""
+    return struct.unpack("<Q" if is_64 else "<I",
+                         data[off64:off64 + 8] if is_64 else data[off32:off32 + 4])[0]
+
+
+def _read_half(data, is_64, idx):
+    """读取第 idx 个 2 字节字段(e_shentsize / e_shnum / e_shstrndx)。"""
+    off = _SHNUM_OFF[is_64][idx]
+    return struct.unpack("<H", data[off:off + 2])[0]
+
+
+def _unpack_shdr(data, off, is_64):
+    """解析一个 Section Header，返回 10 元组。"""
+    return struct.unpack(_SHDR_FMT[is_64], data[off:off + _SHDR_SIZE[is_64]])
+
+
 def extract_aicore_binary(data):
     """从输入 ELF 数据中提取纯设备 ELF (e_machine == 0x1029)"""
     if len(data) < 64 or data[:4] != b"\x7fELF":
         raise ValueError("Input data is not a valid ELF file")
     is_64 = (data[4] == 2)
-    e_type, e_machine = struct.unpack("<HH", data[16:20])
-    if e_machine == 0x1029:
+    _, e_machine = struct.unpack("<HH", data[16:20])
+    if e_machine == AIMACHINE_ASCEND:
         # 已经是 Ascend AI Core 设备 ELF
         return bytes(data)
 
     # 宿主包含异构目标，在 section 表中查找 .aicore_binary
-    e_shoff = struct.unpack("<Q" if is_64 else "<I", data[40:48] if is_64 else data[32:36])[0]
-    e_shentsize = struct.unpack("<H", data[58:60] if is_64 else data[46:48])[0]
-    e_shnum = struct.unpack("<H", data[60:62] if is_64 else data[48:50])[0]
-    e_shstrndx = struct.unpack("<H", data[62:64] if is_64 else data[50:52])[0]
+    e_shoff = _read_addr(data, is_64, 40, 32)
+    e_shentsize = _read_half(data, is_64, 0)
+    e_shnum = _read_half(data, is_64, 1)
+    e_shstrndx = _read_half(data, is_64, 2)
 
     # 读取 shstrtab
     shstr_entry = e_shoff + e_shstrndx * e_shentsize
-    shstr_hdr = data[shstr_entry:shstr_entry + e_shentsize]
-    _, _, _, _, shstr_offset, shstr_size = struct.unpack("<IIQQQQ" if is_64 else "<IIIIII", shstr_hdr[: (40 if is_64 else 24)])
+    _, _, _, _, shstr_offset, shstr_size = _unpack_shdr(data, shstr_entry, is_64)
     shstrtab = data[shstr_offset:shstr_offset + shstr_size]
 
     def get_sec_name(name_idx):
@@ -56,17 +80,10 @@ def extract_aicore_binary(data):
         return shstrtab[name_idx:end].decode("latin1", errors="ignore")
 
     for i in range(e_shnum):
-        off = e_shoff + i * e_shentsize
-        hdr = data[off:off + e_shentsize]
-        sh_name, sh_type, sh_flags, sh_addr, sec_offset, sec_size = struct.unpack("<IIQQQQ" if is_64 else "<IIIIII", hdr[: (40 if is_64 else 24)])
-        name = get_sec_name(sh_name)
-        if name == ".aicore_binary":
-            embedded = data[sec_offset:sec_offset + sec_size]
-            if len(embedded) >= 64 and embedded[:4] == b"\x7fELF":
-                _, dev_machine = struct.unpack("<HH", embedded[16:20])
-                if dev_machine == 0x1029:
-                    return bytes(embedded)
-            return bytes(embedded)
+        sh_name, _, _, _, sec_offset, sec_size = _unpack_shdr(
+            data, e_shoff + i * e_shentsize, is_64)
+        if get_sec_name(sh_name) == ".aicore_binary":
+            return bytes(data[sec_offset:sec_offset + sec_size])
 
     raise ValueError("Could not find .aicore_binary section in host ELF")
 
@@ -124,39 +141,15 @@ def generate_dual_target_elf(base_dev_elf_bytes, bin_name):
     aiv_meta_sec["name_idx"] = add_shstr(aiv_meta_sec["name"])
 
     # 2. 克隆 section 为 _2 (BF16)
-    k2_aic_meta_sec = {
-        "idx": len(shdrs),
-        "name": f".ascend.meta.{k2}_mix_aic",
-        "name_idx": add_shstr(f".ascend.meta.{k2}_mix_aic"),
-        "type": aic_meta_sec["type"],
-        "flags": aic_meta_sec["flags"],
-        "addr": aic_meta_sec["addr"],
-        "offset": 0,
-        "size": len(aic_meta_sec["data"]),
-        "link": aic_meta_sec["link"],
-        "info": aic_meta_sec["info"],
-        "addralign": aic_meta_sec["addralign"],
-        "entsize": aic_meta_sec["entsize"],
-        "data": bytearray(aic_meta_sec["data"]),
-    }
-    shdrs.append(k2_aic_meta_sec)
-
-    k2_aiv_meta_sec = {
-        "idx": len(shdrs),
-        "name": f".ascend.meta.{k2}_mix_aiv",
-        "name_idx": add_shstr(f".ascend.meta.{k2}_mix_aiv"),
-        "type": aiv_meta_sec["type"],
-        "flags": aiv_meta_sec["flags"],
-        "addr": aiv_meta_sec["addr"],
-        "offset": 0,
-        "size": len(aiv_meta_sec["data"]),
-        "link": aiv_meta_sec["link"],
-        "info": aiv_meta_sec["info"],
-        "addralign": aiv_meta_sec["addralign"],
-        "entsize": aiv_meta_sec["entsize"],
-        "data": bytearray(aiv_meta_sec["data"]),
-    }
-    shdrs.append(k2_aiv_meta_sec)
+    # 2. 克隆 section 为 _2 (BF16)，并登记新旧 section 索引供符号表重定位使用
+    k2_meta_secs = []
+    for src_sec, kind in ((aic_meta_sec, "aic"), (aiv_meta_sec, "aiv")):
+        name = f".ascend.meta.{k2}_mix_{kind}"
+        clone = dict(src_sec, name=name, name_idx=add_shstr(name),
+                     idx=len(shdrs), offset=0, data=bytearray(src_sec["data"]))
+        shdrs.append(clone)
+        k2_meta_secs.append(clone)
+    k2_aic_meta_sec, k2_aiv_meta_sec = k2_meta_secs
 
     shstr_sec["size"] = len(shstr_sec["data"])
 
@@ -249,7 +242,8 @@ def generate_dual_target_elf(base_dev_elf_bytes, bin_name):
     if e_phnum > 0 and e_phoff > 0:
         out.extend(dev_elf[64:e_phoff + e_phnum * e_phentsize])
 
-    sorted_shdrs = sorted(shdrs, key=lambda s: s["offset"] if s["offset"] > 0 else 999999999)
+    # 保留原有 section 顺序，未布局(offset==0)的排到末尾
+    sorted_shdrs = sorted(shdrs, key=lambda s: s["offset"] or _NO_OFFSET)
     for s in sorted_shdrs:
         if s["type"] == 0:
             s["offset"] = 0
@@ -307,37 +301,37 @@ def dispatch_kernel_binaries(kernel_obj_path, meta_dir, output_vendors_dir, soc=
 
     print(f"[dispatch] Found {len(json_templates)} static dispatch JSON descriptors")
 
+    # 静态配置与 ops-info：源模板 -> vendor 内目标目录（缺失即跳过，非致命）
+    static_configs = [
+        (os.path.join("kernel", "config", soc, "binary_info_config.json"), "kernel_config"),
+        (os.path.join("kernel", "config", soc, "sageattention2.json"), "kernel_config"),
+        (os.path.join("config", soc, f"aic-{soc}-ops-info.json"), "op_config"),
+        (os.path.join("config", soc, "sageattention2.ini"), "op_config"),
+    ]
+
     # 双 Vendor 目录统一置备：customize 与 custom_transformer
     vendor_names = ["customize", "custom_transformer"]
     for vname in vendor_names:
         vdir = os.path.join(output_vendors_dir, vname)
         k_soc_dir = os.path.join(vdir, "op_impl", "ai_core", "tbe", "kernel", soc)
         k_disp_dir = os.path.join(k_soc_dir, "sageattention2")
-        k_cfg_dir = os.path.join(vdir, "op_impl", "ai_core", "tbe", "kernel", "config", soc)
-        op_cfg_dir = os.path.join(vdir, "op_impl", "ai_core", "tbe", "config", soc)
+        cfg_dirs = {
+            "kernel_config": os.path.join(vdir, "op_impl", "ai_core", "tbe", "kernel", "config", soc),
+            "op_config": os.path.join(vdir, "op_impl", "ai_core", "tbe", "config", soc),
+        }
 
-        os.makedirs(k_disp_dir, exist_ok=True)
-        os.makedirs(k_cfg_dir, exist_ok=True)
-        os.makedirs(op_cfg_dir, exist_ok=True)
+        for d in (k_disp_dir, *cfg_dirs.values()):
+            os.makedirs(d, exist_ok=True)
 
         # 写入根级 sageattention2.o
         with open(os.path.join(k_soc_dir, "sageattention2.o"), "wb") as f:
             f.write(base_dev_elf)
 
         # 同步静态配置与 ops-info
-        src_bin_cfg = os.path.join(meta_dir, "kernel", "config", soc, "binary_info_config.json")
-        src_sage_json = os.path.join(meta_dir, "kernel", "config", soc, "sageattention2.json")
-        src_aic_info = os.path.join(meta_dir, "config", soc, f"aic-{soc}-ops-info.json")
-        src_sage_ini = os.path.join(meta_dir, "config", soc, "sageattention2.ini")
-
-        if os.path.isfile(src_bin_cfg):
-            shutil.copy2(src_bin_cfg, k_cfg_dir)
-        if os.path.isfile(src_sage_json):
-            shutil.copy2(src_sage_json, k_cfg_dir)
-        if os.path.isfile(src_aic_info):
-            shutil.copy2(src_aic_info, op_cfg_dir)
-        if os.path.isfile(src_sage_ini):
-            shutil.copy2(src_sage_ini, op_cfg_dir)
+        for rel_path, cfg_key in static_configs:
+            src = os.path.join(meta_dir, rel_path)
+            if os.path.isfile(src):
+                shutil.copy2(src, cfg_dirs[cfg_key])
 
         # 生成 16 个 static target .o 与回填 sha256 后的 .json
         for jf in json_templates:
