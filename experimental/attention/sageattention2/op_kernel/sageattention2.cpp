@@ -201,7 +201,7 @@ extern "C" __global__ __aicore__ void sage_attention2(
     sage_attn::SageAttnKernel<sage_attn::kTplDtypeFp16> kernel;
     kernel.Init(query, key, value, attentionOut, softmaxLse, user_ws, &t);
     sage_attn::AttentionSync::InitSyncTokens();
-    const uint32_t active_kv_blocks = 2;
+    const uint32_t active_kv_blocks = kernel.GetContext().active_kv_blocks;
     if ASCEND_IS_AIC {
         sage_attn::AttentionSync::CubeWaitQReady();
         for (uint32_t k = 0; k < active_kv_blocks; ++k) {
