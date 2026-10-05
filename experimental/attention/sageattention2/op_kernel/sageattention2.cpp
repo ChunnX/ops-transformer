@@ -162,50 +162,36 @@ extern "C" __global__ __aicore__ void sage_attention2(
     }
     return;
 #elif SAGE_DIAG_STAGE == 8
-    // Phase 6B: 循环跨核信号灯握手测试 (2-Iteration Ping-Pong via Token Pre-setting)
+    // Phase 6B: 循环跨核信号灯握手测试 (1-Iteration Handshake with Token Pre-setting)
     sage_attn::SageAttnKernel<sage_attn::kTplDtypeFp16> kernel;
     kernel.Init(query, key, value, attentionOut, softmaxLse, user_ws, &t);
     if (kernel.IsActiveCore()) {
         sage_attn::AttentionSync::InitSyncTokens();
-        for (uint32_t iter = 0; iter < 2; ++iter) {
-            bool is_ping = ((iter % 2) == 0);
-            if ASCEND_IS_AIC {
-                if (iter == 0) {
-                    sage_attn::AttentionSync::CubeWaitQReady();
-                }
-                sage_attn::AttentionSync::CubeWaitKvReady(is_ping);
-                sage_attn::AttentionSync::CubeWaitDotFree();
-                sage_attn::AttentionSync::CubeSignalQkReady();
-                sage_attn::AttentionSync::CubeWaitSoftmaxReady(is_ping);
-                sage_attn::AttentionSync::CubeReleaseSoftmaxFree(is_ping);
-                sage_attn::AttentionSync::CubeReleaseKvFree(is_ping);
-                sage_attn::AttentionSync::CubeWaitPartialFree();
-                sage_attn::AttentionSync::CubeSignalPartialReady();
-            } else {
-                if (kernel.GetContext().sub_core_idx == 0) {
-                    if (iter == 0) {
-                        sage_attn::AttentionSync::V0SignalQReady();
-                    }
-                    sage_attn::AttentionSync::V0WaitKvFree(is_ping);
-                    sage_attn::AttentionSync::V0SignalKvReady(is_ping);
-                } else {
-                    if (iter > 0) {
-                        sage_attn::AttentionSync::V1WaitPartialReady();
-                        sage_attn::AttentionSync::V1ReleasePartialFree();
-                    }
-                    sage_attn::AttentionSync::V1WaitSoftmaxFree(is_ping);
-                    sage_attn::AttentionSync::V1WaitQkReady();
-                    sage_attn::AttentionSync::V1ReleaseDotFree();
-                    sage_attn::AttentionSync::V1SignalSoftmaxReady(is_ping);
-                }
-            }
-        }
         if ASCEND_IS_AIC {
+            sage_attn::AttentionSync::CubeWaitQReady();
+            sage_attn::AttentionSync::CubeWaitKvReady(true);
+            sage_attn::AttentionSync::CubeWaitDotFree();
+            sage_attn::AttentionSync::CubeSignalQkReady();
+            sage_attn::AttentionSync::CubeWaitSoftmaxReady(true);
+            sage_attn::AttentionSync::CubeReleaseSoftmaxFree(true);
+            sage_attn::AttentionSync::CubeReleaseKvFree(true);
+            sage_attn::AttentionSync::CubeWaitPartialFree();
+            sage_attn::AttentionSync::CubeSignalPartialReady();
             sage_attn::AttentionSync::CubeSignalPvDone();
-        } else if (kernel.GetContext().sub_core_idx == 1) {
-            sage_attn::AttentionSync::V1WaitPartialReady();
-            sage_attn::AttentionSync::V1ReleasePartialFree();
-            sage_attn::AttentionSync::V1WaitPvDone();
+        } else {
+            if (AscendC::GetSubBlockIdx() == 0) {
+                sage_attn::AttentionSync::V0SignalQReady();
+                sage_attn::AttentionSync::V0WaitKvFree(true);
+                sage_attn::AttentionSync::V0SignalKvReady(true);
+            } else {
+                sage_attn::AttentionSync::V1WaitSoftmaxFree(true);
+                sage_attn::AttentionSync::V1WaitQkReady();
+                sage_attn::AttentionSync::V1ReleaseDotFree();
+                sage_attn::AttentionSync::V1SignalSoftmaxReady(true);
+                sage_attn::AttentionSync::V1WaitPartialReady();
+                sage_attn::AttentionSync::V1ReleasePartialFree();
+                sage_attn::AttentionSync::V1WaitPvDone();
+            }
         }
         sage_attn::AttentionSync::ReleaseSyncTokens();
     }
