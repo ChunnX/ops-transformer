@@ -363,7 +363,7 @@ public:
         ctx_.workspace_gm = workspace;
 
 #if SAGE_ATTN_DEVICE_COMPILE
-        ctx_.core_idx = static_cast<uint32_t>(GetBlockIdx());
+        ctx_.core_idx = static_cast<uint32_t>(AscendC::GetBlockIdx());
         if ASCEND_IS_AIV {
             ctx_.sub_core_idx = static_cast<uint32_t>(AscendC::GetSubBlockIdx());
             ctx_.core_idx /= 2;

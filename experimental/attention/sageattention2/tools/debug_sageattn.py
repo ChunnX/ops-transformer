@@ -4,7 +4,10 @@
 debug_sageattn.py: 华为昇腾 SageAttention2 线上/真机单核与全链路诊断调试看门狗工具
 
 功能特性：
-1. 标准 CLI 接口：--b, --h, --sq, --sk, --d, --dtype (fp16/bf16), --causal, --timeout, --device 等；
+1. 标准 CLI 接口与丰富预设：
+   - 快速预设：-p/--preset [quick|standard|standard_bf16|causal|gqa|perf|long]
+   - 全量矩阵扫描：--sweep 自动执行 8 大典型规格覆盖，生成表格化诊断报告；
+   - 细粒度参数：--b, --h, --hkv, --sq, --sk, --d, --dtype, --causal, --timeout, --device 等；
 2. 三层看门狗架构（3-Tier Watchdog）：
    - Tier 1: CANN 底层 aclrtSetOpExecuteTimeOut 驱动级算子超时限制；
    - Tier 2: 线程/进程级 POSIX signal.alarm 硬件中断探针；
@@ -24,7 +27,77 @@ import os
 import signal
 import sys
 import time
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
+
+
+# =========================================================================
+# 标准测试预设体系 (Presets)
+# =========================================================================
+PRESETS: Dict[str, Dict[str, Any]] = {
+    "quick": {
+        "description": "极速冒烟验证 (B=1, H=4, S=128, D=128, fp16, check_golden)",
+        "b": 1, "h": 4, "hkv": 4, "sq": 128, "sk": 128, "d": 128,
+        "dtype": "fp16", "layout": "HND", "causal": False,
+        "smooth_k": False, "smooth_v": False,
+        "warmup": 1, "repeat": 2, "check_golden": True, "timeout": 10,
+    },
+    "standard": {
+        "description": "标准 FP16 对拍验证 (B=1, H=8, S=256, D=128, fp16, check_golden)",
+        "b": 1, "h": 8, "hkv": 8, "sq": 256, "sk": 256, "d": 128,
+        "dtype": "fp16", "layout": "HND", "causal": False,
+        "smooth_k": False, "smooth_v": False,
+        "warmup": 2, "repeat": 5, "check_golden": True, "timeout": 15,
+    },
+    "standard_bf16": {
+        "description": "标准 BF16 对拍验证 (B=1, H=8, S=256, D=128, bf16, check_golden)",
+        "b": 1, "h": 8, "hkv": 8, "sq": 256, "sk": 256, "d": 128,
+        "dtype": "bf16", "layout": "HND", "causal": False,
+        "smooth_k": False, "smooth_v": False,
+        "warmup": 2, "repeat": 5, "check_golden": True, "timeout": 15,
+    },
+    "causal": {
+        "description": "因果掩码对拍验证 (B=1, H=8, S=512, D=128, causal=True)",
+        "b": 1, "h": 8, "hkv": 8, "sq": 512, "sk": 512, "d": 128,
+        "dtype": "fp16", "layout": "HND", "causal": True,
+        "smooth_k": False, "smooth_v": False,
+        "warmup": 2, "repeat": 5, "check_golden": True, "timeout": 20,
+    },
+    "gqa": {
+        "description": "GQA 8:1 分块打包对拍验证 (B=1, Hq=32, Hkv=4, S=1024, D=128)",
+        "b": 1, "h": 32, "hkv": 4, "sq": 1024, "sk": 1024, "d": 128,
+        "dtype": "fp16", "layout": "HND", "causal": False,
+        "smooth_k": False, "smooth_v": False,
+        "warmup": 2, "repeat": 5, "check_golden": True, "timeout": 25,
+    },
+    "perf": {
+        "description": "高吞吐长序列压测 (B=1, H=32, S=2048, D=128, repeat=20)",
+        "b": 1, "h": 32, "hkv": 32, "sq": 2048, "sk": 2048, "d": 128,
+        "dtype": "fp16", "layout": "HND", "causal": False,
+        "smooth_k": False, "smooth_v": False,
+        "warmup": 3, "repeat": 20, "check_golden": False, "timeout": 30,
+    },
+    "long": {
+        "description": "4K 长上下文吞吐压测 (B=1, H=8, S=4096, D=128, repeat=5)",
+        "b": 1, "h": 8, "hkv": 8, "sq": 4096, "sk": 4096, "d": 128,
+        "dtype": "fp16", "layout": "HND", "causal": False,
+        "smooth_k": False, "smooth_v": False,
+        "warmup": 2, "repeat": 5, "check_golden": False, "timeout": 45,
+    },
+}
+
+# =========================================================================
+# 全量矩阵扫描用例表 (Sweep Matrix)
+# =========================================================================
+SWEEP_CASES: List[Dict[str, Any]] = [
+    {"name": "Quick Smoke", "b": 1, "h": 4, "hkv": 4, "sq": 128, "sk": 128, "d": 128, "dtype": "fp16", "layout": "HND", "causal": False, "check_golden": True, "warmup": 1, "repeat": 3, "timeout": 10},
+    {"name": "Standard FP16", "b": 1, "h": 8, "hkv": 8, "sq": 256, "sk": 256, "d": 128, "dtype": "fp16", "layout": "HND", "causal": False, "check_golden": True, "warmup": 2, "repeat": 5, "timeout": 15},
+    {"name": "Standard BF16", "b": 1, "h": 8, "hkv": 8, "sq": 256, "sk": 256, "d": 128, "dtype": "bf16", "layout": "HND", "causal": False, "check_golden": True, "warmup": 2, "repeat": 5, "timeout": 15},
+    {"name": "Causal Mask", "b": 1, "h": 8, "hkv": 8, "sq": 512, "sk": 512, "d": 128, "dtype": "fp16", "layout": "HND", "causal": True, "check_golden": True, "warmup": 2, "repeat": 5, "timeout": 20},
+    {"name": "GQA 8:1 Packing", "b": 1, "h": 32, "hkv": 4, "sq": 1024, "sk": 1024, "d": 128, "dtype": "fp16", "layout": "HND", "causal": False, "check_golden": True, "warmup": 2, "repeat": 5, "timeout": 25},
+    {"name": "HeadDim 64", "b": 1, "h": 8, "hkv": 8, "sq": 256, "sk": 256, "d": 64, "dtype": "fp16", "layout": "HND", "causal": False, "check_golden": True, "warmup": 2, "repeat": 5, "timeout": 15},
+    {"name": "Long Seq 2K", "b": 1, "h": 8, "hkv": 8, "sq": 2048, "sk": 2048, "d": 128, "dtype": "fp16", "layout": "HND", "causal": False, "check_golden": True, "warmup": 2, "repeat": 5, "timeout": 30},
+    {"name": "Long Seq 4K", "b": 1, "h": 8, "hkv": 8, "sq": 4096, "sk": 4096, "d": 128, "dtype": "fp16", "layout": "HND", "causal": False, "check_golden": False, "warmup": 2, "repeat": 5, "timeout": 45},
+]
 
 
 def try_set_acl_timeout(timeout_sec: int) -> bool:
@@ -105,7 +178,7 @@ def compute_tensor_stats(t: Any, name: str) -> Dict[str, Any]:
     }
 
 
-def format_stats_table(stats_list: list[Dict[str, Any]]) -> str:
+def format_stats_table(stats_list: List[Dict[str, Any]]) -> str:
     """格式化张量统计表格"""
     header = f"{'Tensor':<10} | {'Shape':<20} | {'Dtype':<8} | {'Min':<10} | {'Max':<10} | {'Mean':<10} | {'Std':<10} | {'Norm':<10} | {'NaN/Inf':<8}"
     sep = "-" * len(header)
@@ -189,10 +262,10 @@ def _worker_run_op(args_dict: Dict[str, Any], queue: mp.Queue):
         import torch
         import torch_npu
 
-        device_id = args_dict["device"]
+        device_id = args_dict.get("device", 0)
         torch.npu.set_device(device_id)
 
-        timeout = args_dict["timeout"]
+        timeout = args_dict.get("timeout", 10)
         acl_ok = try_set_acl_timeout(timeout)
 
         # 动态加载算子库
@@ -204,12 +277,12 @@ def _worker_run_op(args_dict: Dict[str, Any], queue: mp.Queue):
         dtype = torch.float16 if args_dict["dtype"] == "fp16" else torch.bfloat16
         b, hq, hkv = args_dict["b"], args_dict["h"], args_dict["hkv"]
         sq, sk, d = args_dict["sq"], args_dict["sk"], args_dict["d"]
-        layout = args_dict["layout"]
-        is_causal = args_dict["causal"]
-        smooth_k = args_dict["smooth_k"]
-        smooth_v = args_dict["smooth_v"]
+        layout = args_dict.get("layout", "HND")
+        is_causal = args_dict.get("causal", False)
+        smooth_k = args_dict.get("smooth_k", False)
+        smooth_v = args_dict.get("smooth_v", False)
 
-        gen = torch.Generator(device="cpu").manual_seed(args_dict["seed"])
+        gen = torch.Generator(device="cpu").manual_seed(args_dict.get("seed", 42))
         q = torch.randn(b, hq, sq, d, generator=gen, dtype=torch.float32).to(dtype).npu()
         k = torch.randn(b, hkv, sk, d, generator=gen, dtype=torch.float32).to(dtype).npu()
         v = torch.randn(b, hkv, sk, d, generator=gen, dtype=torch.float32).to(dtype).npu()
@@ -227,7 +300,7 @@ def _worker_run_op(args_dict: Dict[str, Any], queue: mp.Queue):
 
         # Warmup
         with alarm_watchdog(timeout, "Warmup Run"):
-            for _ in range(args_dict["warmup"]):
+            for _ in range(args_dict.get("warmup", 1)):
                 _ = sage2.sageattn(
                     q, k, v,
                     is_causal=is_causal,
@@ -241,7 +314,7 @@ def _worker_run_op(args_dict: Dict[str, Any], queue: mp.Queue):
         times_ms = []
         out = None
         with alarm_watchdog(timeout, "Benchmark Timed Run"):
-            for _ in range(args_dict["repeat"]):
+            for _ in range(args_dict.get("repeat", 1)):
                 t0 = time.perf_counter()
                 out = sage2.sageattn(
                     q, k, v,
@@ -259,7 +332,7 @@ def _worker_run_op(args_dict: Dict[str, Any], queue: mp.Queue):
         ]
 
         golden_report = None
-        if args_dict["check_golden"]:
+        if args_dict.get("check_golden", False):
             q_hnd = q if layout == "HND" else q.transpose(1, 2)
             k_hnd = k if layout == "HND" else k.transpose(1, 2)
             v_hnd = v if layout == "HND" else v.transpose(1, 2)
@@ -284,10 +357,126 @@ def _worker_run_op(args_dict: Dict[str, Any], queue: mp.Queue):
         })
 
 
+def run_case_in_sandbox(args_dict: Dict[str, Any]) -> Dict[str, Any]:
+    """统一沙箱运行守护器：管理三层看门狗生命周期"""
+    timeout = args_dict.get("timeout", 10)
+    ctx = mp.get_context("spawn")
+    q = ctx.Queue()
+    p = ctx.Process(target=_worker_run_op, args=(args_dict, q))
+    p.start()
+
+    p.join(timeout=timeout + 2)
+    if p.is_alive():
+        p.terminate()
+        time.sleep(1.0)
+        if p.is_alive():
+            p.kill()
+        p.join()
+        return {
+            "status": "TIMEOUT",
+            "error_msg": f"[Tier-3 WATCHDOG TRIGGERED] 算子进程超时 ({timeout}s)！可能发生跨核硬件死锁或流同步未返回！",
+        }
+
+    if q.empty():
+        return {
+            "status": "ERROR",
+            "error_msg": "[FATAL ERROR] 子进程异常退出，未返回诊断结果（可能发生底层 SIGSEGV / core dump）。",
+        }
+
+    res = q.get()
+    return res
+
+
+def compute_tflops(b: int, h: int, sq: int, sk: int, d: int, causal: bool, time_ms: float) -> float:
+    """计算实际执行的有效 TFLOPS"""
+    if time_ms <= 0:
+        return 0.0
+    flops = 4.0 * b * h * sq * sk * d
+    if causal:
+        flops /= 2.0
+    return (flops / (time_ms * 1e-3)) / 1e12
+
+
+def run_sweep():
+    """执行全量矩阵扫描测试并输出表格"""
+    print("\n" + "=" * 105)
+    print("      SageAttention2 真机测试矩阵全量扫描 (Automated Hardware Test Sweep)")
+    print("=" * 105)
+    print(f"总计用例: {len(SWEEP_CASES)} 项典型硬件规格")
+    print("-" * 105)
+
+    results = []
+    for idx, case in enumerate(SWEEP_CASES, 1):
+        print(f"[{idx}/{len(SWEEP_CASES)}] 正在测试: {case['name']} (B={case['b']}, H={case['h']}:{case['hkv']}, S={case['sq']}, D={case['d']}, {case['dtype']})...", end="", flush=True)
+        t_start = time.perf_counter()
+        res = run_case_in_sandbox(case)
+        elapsed = time.perf_counter() - t_start
+
+        if res["status"] == "SUCCESS":
+            min_time = min(res["times_ms"])
+            tflops = compute_tflops(case["b"], case["h"], case["sq"], case["sk"], case["d"], case["causal"], min_time)
+            g = res.get("golden_report")
+            matched_pct = f"{g['matched_ratio']*100:.1f}%" if g else "N/A"
+            cos_sim = f"{g['cos_sim']:.4f}" if g else "N/A"
+            pass_status = "PASS" if (not g or g["pass_matched"]) else "WARN"
+            print(f" -> [{pass_status}] {min_time:.3f} ms, {tflops:.1f} TFLOPS (Matched: {matched_pct})")
+            results.append({
+                "id": idx, "name": case["name"], "b": case["b"], "h": case["h"], "hkv": case["hkv"],
+                "sq": case["sq"], "sk": case["sk"], "d": case["d"], "dtype": case["dtype"],
+                "causal": case["causal"], "time_ms": min_time, "tflops": tflops,
+                "matched": matched_pct, "cos_sim": cos_sim, "status": pass_status
+            })
+        elif res["status"] == "TIMEOUT":
+            print(f" -> [TIMEOUT] 超过 {case['timeout']}s 看门狗阈值！")
+            results.append({
+                "id": idx, "name": case["name"], "b": case["b"], "h": case["h"], "hkv": case["hkv"],
+                "sq": case["sq"], "sk": case["sk"], "d": case["d"], "dtype": case["dtype"],
+                "causal": case["causal"], "time_ms": float("nan"), "tflops": 0.0,
+                "matched": "-", "cos_sim": "-", "status": "TIMEOUT"
+            })
+        else:
+            print(f" -> [FAIL] {res.get('error_msg', 'Unknown error')[:40]}...")
+            results.append({
+                "id": idx, "name": case["name"], "b": case["b"], "h": case["h"], "hkv": case["hkv"],
+                "sq": case["sq"], "sk": case["sk"], "d": case["d"], "dtype": case["dtype"],
+                "causal": case["causal"], "time_ms": float("nan"), "tflops": 0.0,
+                "matched": "-", "cos_sim": "-", "status": "FAIL"
+            })
+
+    # 打印最终表格
+    print("\n" + "=" * 105)
+    print("                                  扫描测试汇总报告 (SWEEP SUMMARY)")
+    print("=" * 105)
+    header = f"{'#':<3} | {'Case Name':<18} | {'Shape (B,Hq,Hk,Sq,Sk,D)':<24} | {'Dtype':<6} | {'Causal':<6} | {'Time(ms)':<9} | {'TFLOPS':<8} | {'Match%':<7} | {'Status':<7}"
+    sep = "-" * len(header)
+    print(header)
+    print(sep)
+    pass_cnt = sum(1 for r in results if r["status"] == "PASS")
+    timeout_cnt = sum(1 for r in results if r["status"] == "TIMEOUT")
+    fail_cnt = sum(1 for r in results if r["status"] in ("FAIL", "WARN"))
+
+    for r in results:
+        shape_str = f"({r['b']},{r['h']},{r['hkv']},{r['sq']},{r['sk']},{r['d']})"
+        time_str = f"{r['time_ms']:.3f}" if not math.isnan(r["time_ms"]) else "-"
+        tflops_str = f"{r['tflops']:.1f}" if r['tflops'] > 0 else "-"
+        print(f"{r['id']:<3} | {r['name']:<18} | {shape_str:<24} | {r['dtype']:<6} | {str(r['causal']):<6} | {time_str:<9} | {tflops_str:<8} | {r['matched']:<7} | {r['status']:<7}")
+    print(sep)
+    print(f"测试统计: 共 {len(results)} 项 | 通过: {pass_cnt} 项 | 超时: {timeout_cnt} 项 | 异常: {fail_cnt} 项")
+    print("=" * 105)
+    if pass_cnt == len(results):
+        print("🎉 恭喜！全量硬件规格扫描 100% 验收通过！")
+    else:
+        print("⚠️  存在部分规格未通过，请根据超时/报错信息针对性排查。")
+
+
 def main():
     parser = argparse.ArgumentParser(
-        description="SageAttention2 在线/真机诊断看门狗工具 (3-Tier Watchdog & Multi-Metric Diagnostics)"
+        description="SageAttention2 线上/真机诊断看门狗工具 (3-Tier Watchdog, Presets & Sweep)"
     )
+    parser.add_argument("-p", "--preset", type=str, default=None, choices=list(PRESETS.keys()),
+                        help=f"快速配置预设: {', '.join(PRESETS.keys())}")
+    parser.add_argument("--sweep", action="store_true", default=False,
+                        help="自动运行全量矩阵扫描测试 (8 组典型规格覆盖)")
     parser.add_argument("--b", type=int, default=1, help="Batch size (default: 1)")
     parser.add_argument("--h", "--hq", dest="h", type=int, default=4, help="Query heads (default: 4)")
     parser.add_argument("--hkv", type=int, default=None, help="Key/Value heads (default: match hq)")
@@ -308,48 +497,52 @@ def main():
     parser.add_argument("--no-sandbox", action="store_true", default=False, help="Run without mp sandbox")
 
     args = parser.parse_args()
-    if args.hkv is None:
-        args.hkv = args.h
+
+    # 1. 扫描模式
+    if args.sweep:
+        run_sweep()
+        sys.exit(0)
+
+    # 2. 预设处理
+    args_dict = vars(args)
+    if args.preset and args.preset in PRESETS:
+        p_cfg = PRESETS[args.preset]
+        print(f"🚀 应用预设 [{args.preset}]: {p_cfg['description']}")
+        # 仅当命令行未显式覆盖时填充预设值
+        for k, v in p_cfg.items():
+            if k == "description":
+                continue
+            if parser.get_default(k) == args_dict.get(k):
+                args_dict[k] = v
+
+    if args_dict["hkv"] is None:
+        args_dict["hkv"] = args_dict["h"]
 
     print("================================================================================")
     print("      SageAttention2 线上/真机硬件诊断与看门狗调试工具 (Watchdog Suite)")
     print("================================================================================")
-    print(f"测试配置: B={args.b}, Hq={args.h}, Hkv={args.hkv}, Sq={args.sq}, Sk={args.sk}, D={args.d}")
-    print(f"数据规格: Dtype={args.dtype}, Layout={args.layout}, Causal={args.causal}, Device={args.device}")
-    print(f"看门狗限额: {args.timeout}s (三层隔离: aclrtSetOpExecuteTimeOut + signal.alarm + mp.Process)")
+    print(f"测试配置: B={args_dict['b']}, Hq={args_dict['h']}, Hkv={args_dict['hkv']}, Sq={args_dict['sq']}, Sk={args_dict['sk']}, D={args_dict['d']}")
+    print(f"数据规格: Dtype={args_dict['dtype']}, Layout={args_dict['layout']}, Causal={args_dict['causal']}, Device={args_dict['device']}")
+    print(f"看门狗限额: {args_dict['timeout']}s (三层隔离: aclrtSetOpExecuteTimeOut + signal.alarm + mp.Process)")
     print("--------------------------------------------------------------------------------")
 
-    args_dict = vars(args)
-
-    if args.no_sandbox:
+    if args_dict.get("no_sandbox"):
         q = mp.Queue()
         _worker_run_op(args_dict, q)
         res = q.get()
     else:
-        ctx = mp.get_context("spawn")
-        q = ctx.Queue()
-        p = ctx.Process(target=_worker_run_op, args=(args_dict, q))
-        p.start()
-        
-        # 等待并在超时后由 Tier 3 强杀
-        p.join(timeout=args.timeout + 2)
-        if p.is_alive():
-            print(f"\n[Tier-3 WATCHDOG TRIGGERED] 算子进程超时 ({args.timeout}s)！可能发生跨核硬件死锁！")
-            p.terminate()
-            time.sleep(1.0)
-            if p.is_alive():
-                p.kill()
-            p.join()
-            print("沙箱子进程已彻底终止并隔离清理，宿主终端安全返回。")
-            sys.exit(124)
+        res = run_case_in_sandbox(args_dict)
 
-        if q.empty():
-            print("\n[FATAL ERROR] 子进程异常退出，未返回诊断结果（可能发生底层 SIGSEGV / core dump）。")
-            sys.exit(1)
-        res = q.get()
+    if res["status"] == "TIMEOUT":
+        print(f"\n❌ {res['error_msg']}")
+        print("💡 排查建议:")
+        print("   1. 检查是否存在跨核未完成等待（如 Cube 等待 V0 的 Q_READY 或 KV_READY）；")
+        print("   2. 检查 SAGE_DIAG_STAGE 编译宏（建议从 Stage 1~7 逐级隔离确认硬件通路）；")
+        print("   3. 检查任务切分是否导致部分 Core 提前退出而对端核仍在等待。")
+        sys.exit(124)
 
     if res["status"] != "SUCCESS":
-        print(f"\n算子执行报错:\n{res.get('error_msg')}")
+        print(f"\n❌ 算子执行报错:\n{res.get('error_msg')}")
         if "traceback" in res:
             print(f"\n调用栈:\n{res['traceback']}")
         sys.exit(1)
@@ -367,14 +560,10 @@ def main():
     print(f"   - 平均时延: {avg_time:.3f} ms (最优: {min_time:.3f} ms)")
 
     # 理论 TFLOPS 计算
-    # 标准注意力 FLOPs: 4 * B * Hq * Sq * Sk * D (非 Causal) / 2 (Causal)
-    flops = 4.0 * args.b * args.h * args.sq * args.sk * args.d
-    if args.causal:
-        flops /= 2.0
-    tflops = (flops / (min_time * 1e-3)) / 1e12
+    tflops = compute_tflops(args_dict["b"], args_dict["h"], args_dict["sq"], args_dict["sk"], args_dict["d"], args_dict["causal"], min_time)
     print(f"   - 理论算力: {tflops:.2f} TFLOPS")
 
-    if args.check_golden and res["golden_report"]:
+    if args_dict.get("check_golden") and res.get("golden_report"):
         g = res["golden_report"]
         print(f"\n【Golden 参比校验结果】")
         print(f"   - 最大绝对误差 (Max Err)   : {g['max_err']:.6f}")
@@ -382,9 +571,9 @@ def main():
         print(f"   - 余弦相似度 (Cosine Sim)  : {g['cos_sim']:.6f}")
         print(f"   - 元素匹配率 (Matched >= 99%): {g['matched_ratio'] * 100:.2f}% (容差阈值: {g['tol']})")
         if g["pass_matched"]:
-            print("   [PASS] 精度验收通过！")
+            print("   ✅ [PASS] 精度验收通过！")
         else:
-            print("   [WARN] 元素匹配率未达 99% 门禁线，请检查数值反量化与缩放系数！")
+            print("   ⚠️  [WARN] 元素匹配率未达 99% 门禁线，请检查数值反量化与缩放系数！")
 
     print("\n================================================================================")
     print("      诊断探测完成，硬件执行正常！")
@@ -395,4 +584,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

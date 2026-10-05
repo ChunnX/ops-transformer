@@ -125,6 +125,11 @@ kernel)
 python)
   run_python_tests
   ;;
+test)
+  run_host_tests
+  run_python_tests
+  echo "=== SageAttention2 宿主与 Python 门禁全部通过 ==="
+  ;;
 opp)
   run_opp_tests
   ;;
@@ -137,7 +142,7 @@ all)
   ;;
 *)
   echo "Unknown target: ${1}" >&2
-  echo "Usage: $0 [all|host|kernel|python|opp]" >&2
+  echo "Usage: $0 [all|test|host|kernel|python|opp]" >&2
   exit 1
   ;;
 esac
