@@ -14,6 +14,7 @@ SOC="ascend950"            # 官方 vendor 目录/ini 的 SoC 标识
 NPU_ARCH="dav-3510"        # BiSheng 设备架构（ascend950 对应 dav-3510）
 CLEAN_BUILD=false
 VERBOSE=false
+SYNC_META_SHA256=""       # 置 1 (或传 --sync-meta-sha256) 才把新 sha256 回写进 kernel_meta 源模板
 
 print_usage() {
     echo "Usage: $0 [options]"
@@ -22,6 +23,8 @@ print_usage() {
     echo "  --soc=<soc>              Target SoC version (default: ascend950; BiSheng arch dav-3510)"
     echo "  --output-dir=<path>      Output package directory (default: build/opp)"
     echo "  --clean                  Clean output directory before building"
+    echo "  --sync-meta-sha256       Also write freshly computed .o sha256 back into kernel_meta/"
+    echo "                          JSON templates (default: off, keeps the source tree clean)"
     echo "  --verbose                Enable verbose build logging"
     echo "  -h, --help               Display this help message"
 }
@@ -38,6 +41,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --clean)
             CLEAN_BUILD=true
+            shift
+            ;;
+        --sync-meta-sha256)
+            SYNC_META_SHA256=1
             shift
             ;;
         --verbose)
@@ -222,7 +229,8 @@ python3 "${OP_DIR}/tools/dispatch_binary.py" \
     --kernel-obj="${KERNEL_OBJ}" \
     --meta-dir="${OP_DIR}/kernel_meta" \
     --output-dir="${VENDORS_DIR}" \
-    --soc="${SOC}"
+    --soc="${SOC}" \
+    ${SYNC_META_SHA256:+--sync-meta-sha256}
 
 # 同步头文件、动态库与 set_env.bash 到 customize 与 custom_transformer 双 vendor 树
 for VENDOR in customize custom_transformer; do

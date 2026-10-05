@@ -107,14 +107,10 @@ extern "C" __global__ __aicore__ void sage_attention2(
         uint32_t sub = static_cast<uint32_t>(AscendC::GetSubBlockIdx());
         if (blk == 0 || blk == 1) {
             AscendC::LocalTensor<uint32_t> ub(AscendC::TPosition::VECCALC, sage_attn::SlotV0NzOutput::Offset(), 8);
-            ub.SetValue(0, t.b);
-            ub.SetValue(1, t.hq);
-            ub.SetValue(2, t.sq);
-            ub.SetValue(3, t.sk);
-            ub.SetValue(4, kernel.GetContext().core_idx);
-            ub.SetValue(5, kernel.GetContext().active_kv_blocks);
-            ub.SetValue(6, kernel.IsActiveCore() ? 1 : 0);
-            ub.SetValue(7, 100 + sub);
+            const __gm__ uint32_t *raw_t = reinterpret_cast<const __gm__ uint32_t *>(tiling);
+            for (int i = 0; i < 8; ++i) {
+                ub.SetValue(i, raw_t[i]);
+            }
             AscendC::DataCopy(gm_out[blk * 8], ub, 8);
         }
     }

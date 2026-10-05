@@ -281,8 +281,16 @@ def generate_single_target(base_dev_elf_bytes, bin_name, out_o_path):
         f.write(transformed)
 
 
-def dispatch_kernel_binaries(kernel_obj_path, meta_dir, output_vendors_dir, soc="ascend950"):
-    """核心调度分发主流程"""
+def dispatch_kernel_binaries(kernel_obj_path, meta_dir, output_vendors_dir, soc="ascend950",
+                             sync_meta_sha256=False):
+    """
+    核心调度分发主流程。
+
+    sync_meta_sha256: 是否把生成 .o 的新 sha256 回写到 meta-dir 源模板。
+      默认 False —— 源模板是手写的 dtype 分派表（binary_info_config.json 按文件名硬引用它们），
+      其中的 sha256 在每次构建时都会被无条件重算覆盖，从不被读取校验，回写只会让源码树
+      每次编译都产生 16 个文件的无关 diff。仅在需要固化产物校验和时显式开启。
+    """
     if not os.path.isfile(kernel_obj_path):
         raise FileNotFoundError(f"Compiled kernel object not found: {kernel_obj_path}")
 
@@ -375,8 +383,8 @@ def dispatch_kernel_binaries(kernel_obj_path, meta_dir, output_vendors_dir, soc=
                 json.dump(jdata, fp, indent=1)
                 fp.write("\n")
 
-            # 同步写回源模板，保持 meta-dir 模板与生成的二进制完全一致
-            if vname == vendor_names[0]:
+            # 可选：同步写回源模板，固化当前产物的 sha256（默认关闭，见 sync_meta_sha256）
+            if sync_meta_sha256 and vname == vendor_names[0]:
                 with open(jf, "w") as fp:
                     json.dump(jdata, fp, indent=1)
                     fp.write("\n")
@@ -396,13 +404,19 @@ def main():
     parser.add_argument("--meta-dir", required=True, help="Path to kernel_meta directory containing JSON templates")
     parser.add_argument("--output-dir", required=True, help="Path to output vendors root directory (e.g. build/opp/vendors)")
     parser.add_argument("--soc", default="ascend950", help="Target SoC version (default: ascend950)")
+    parser.add_argument("--sync-meta-sha256", action="store_true",
+                        help="Also write the freshly computed sha256 back into the meta-dir source "
+                             "templates. Off by default: the templates are hand-written dispatch "
+                             "descriptors and their sha256 is always recomputed, so syncing only "
+                             "creates unrelated diffs in the source tree.")
     args = parser.parse_args()
 
     dispatch_kernel_binaries(
         kernel_obj_path=args.kernel_obj,
         meta_dir=args.meta_dir,
         output_vendors_dir=args.output_dir,
-        soc=args.soc
+        soc=args.soc,
+        sync_meta_sha256=args.sync_meta_sha256
     )
 
 
