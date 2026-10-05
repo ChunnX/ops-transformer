@@ -197,27 +197,65 @@ extern "C" __global__ __aicore__ void sage_attention2(
             }
         }
 #elif SAGE_DIAG_STAGE == 9
-    // Phase 6C: V0 与 Cube 纯双拍握手隔离测试 (排除量化计算)
+    // Phase 6C: 三核完整多拍跨核同步隔离测试 (排除实际矩阵与向量计算)
     sage_attn::SageAttnKernel<sage_attn::kTplDtypeFp16> kernel;
     kernel.Init(query, key, value, attentionOut, softmaxLse, user_ws, &t);
+    if (!kernel.IsActiveCore()) return;
     sage_attn::AttentionSync::InitSyncTokens();
+    const uint32_t active_kv_blocks = kernel.GetContext().active_kv_blocks;
     if ASCEND_IS_AIC {
         sage_attn::AttentionSync::CubeWaitQReady();
-        for (uint32_t k = 0; k < kernel.GetContext().active_kv_blocks; ++k) {
+        for (uint32_t k = 0; k < active_kv_blocks; ++k) {
+            if (k > 0) {
+                bool prev_is_ping = (((k - 1) % 2) == 0);
+                sage_attn::AttentionSync::CubeWaitSoftmaxReady(prev_is_ping);
+                sage_attn::AttentionSync::CubeReleaseSoftmaxFree(prev_is_ping);
+                sage_attn::AttentionSync::CubeReleaseKvFree(prev_is_ping);
+                sage_attn::AttentionSync::CubeWaitPartialFree();
+                sage_attn::AttentionSync::CubeSignalPartialReady();
+            }
             bool is_ping = ((k % 2) == 0);
             sage_attn::AttentionSync::CubeWaitKvReady(is_ping);
-            sage_attn::AttentionSync::CubeReleaseKvFree(is_ping);
+            sage_attn::AttentionSync::CubeWaitDotFree();
+            sage_attn::AttentionSync::CubeSignalQkReady();
         }
+        if (active_kv_blocks > 0) {
+            bool last_is_ping = (((active_kv_blocks - 1) % 2) == 0);
+            sage_attn::AttentionSync::CubeWaitSoftmaxReady(last_is_ping);
+            sage_attn::AttentionSync::CubeReleaseSoftmaxFree(last_is_ping);
+            sage_attn::AttentionSync::CubeReleaseKvFree(last_is_ping);
+            sage_attn::AttentionSync::CubeWaitPartialFree();
+            sage_attn::AttentionSync::CubeSignalPartialReady();
+        }
+        sage_attn::AttentionSync::CubeSignalPvDone();
     } else {
-        if (AscendC::GetSubBlockIdx() == 0) {
+        if (kernel.GetContext().sub_core_idx == 0) {
             sage_attn::AttentionSync::V0SignalQReady();
-            for (uint32_t k = 0; k < kernel.GetContext().active_kv_blocks; ++k) {
+            for (uint32_t k = 0; k < active_kv_blocks; ++k) {
                 bool is_ping = ((k % 2) == 0);
                 sage_attn::AttentionSync::V0WaitKvFree(is_ping);
                 sage_attn::AttentionSync::V0SignalKvReady(is_ping);
             }
+        } else {
+            for (uint32_t k = 0; k < active_kv_blocks; ++k) {
+                if (k > 0) {
+                    sage_attn::AttentionSync::V1WaitPartialReady();
+                    sage_attn::AttentionSync::V1ReleasePartialFree();
+                }
+                bool is_ping = ((k % 2) == 0);
+                sage_attn::AttentionSync::V1WaitSoftmaxFree(is_ping);
+                sage_attn::AttentionSync::V1WaitQkReady();
+                sage_attn::AttentionSync::V1ReleaseDotFree();
+                sage_attn::AttentionSync::V1SignalSoftmaxReady(is_ping);
+            }
+            if (active_kv_blocks > 0) {
+                sage_attn::AttentionSync::V1WaitPartialReady();
+                sage_attn::AttentionSync::V1ReleasePartialFree();
+            }
+            sage_attn::AttentionSync::V1WaitPvDone();
         }
     }
+    sage_attn::AttentionSync::ReleaseSyncTokens(active_kv_blocks);
     return;
 #else
     // Phase 0: 生产全量流水执行
