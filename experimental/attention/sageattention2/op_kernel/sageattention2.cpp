@@ -193,7 +193,7 @@ extern "C" __global__ __aicore__ void sage_attention2(
             }
         }
 #elif SAGE_DIAG_STAGE == 9
-    // Phase 6C: V0 真实流水与 Cube 握手隔离测试
+    // Phase 6C: V0 与 Cube 纯双拍握手隔离测试 (排除量化计算)
     sage_attn::SageAttnKernel<sage_attn::kTplDtypeFp16> kernel;
     kernel.Init(query, key, value, attentionOut, softmaxLse, user_ws, &t);
     sage_attn::AttentionSync::InitSyncTokens();
@@ -206,7 +206,12 @@ extern "C" __global__ __aicore__ void sage_attention2(
         }
     } else {
         if (AscendC::GetSubBlockIdx() == 0) {
-            kernel.GetVec0().Process(kernel.GetContext());
+            sage_attn::AttentionSync::V0SignalQReady();
+            for (uint32_t k = 0; k < kernel.GetContext().active_kv_blocks; ++k) {
+                bool is_ping = ((k % 2) == 0);
+                sage_attn::AttentionSync::V0WaitKvFree(is_ping);
+                sage_attn::AttentionSync::V0SignalKvReady(is_ping);
+            }
         }
     }
     return;
