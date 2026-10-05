@@ -85,9 +85,7 @@ extern "C" __global__ __aicore__ void sage_attention2(
     uint32_t sub = static_cast<uint32_t>(AscendC::GetSubBlockIdx());
     uint32_t sub_num = static_cast<uint32_t>(AscendC::GetSubBlockNum());
     if ASCEND_IS_AIV {
-        AscendC::TBuf<AscendC::TPosition::VECCALC> tbuf;
-        tbuf.InitBuffer(32);
-        AscendC::LocalTensor<uint32_t> ub = tbuf.Get<uint32_t>();
+        AscendC::LocalTensor<uint32_t> ub(AscendC::TPosition::VECCALC, sage_attn::SlotV0NzOutput::Offset(), 8);
         ub.SetValue(0, blk);
         ub.SetValue(1, sub);
         ub.SetValue(2, sub_num);
