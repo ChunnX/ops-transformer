@@ -116,7 +116,7 @@ extern "C" __global__ __aicore__ void sage_attention2(
     }
     return;
 #elif SAGE_DIAG_STAGE == 7
-    // Phase 6A: 纯跨核信号灯单步握手测试 (Cube + V0 + V1)
+    // Phase 6A: 纯跨核信号灯单步握手测试 (Cube + V0 + V1 全信道)
     sage_attn::SageAttnKernel<sage_attn::kTplDtypeFp16> kernel;
     kernel.Init(query, key, value, attentionOut, softmaxLse, user_ws, &t);
     if ASCEND_IS_AIC {
@@ -125,11 +125,16 @@ extern "C" __global__ __aicore__ void sage_attention2(
         sage_attn::AttentionSync::CubeWaitKvReady(true);
         sage_attn::AttentionSync::CubeReleaseKvFree(true);
 
-        // 2. 与 V1 握手
+        // 2. 与 V1 握手 (QK & Softmax)
         sage_attn::AttentionSync::CubeSignalQkReady();
         sage_attn::AttentionSync::CubeWaitDotFree();
         sage_attn::AttentionSync::CubeWaitSoftmaxReady(true);
         sage_attn::AttentionSync::CubeReleaseSoftmaxFree(true);
+
+        // 3. 与 V1 握手 (PV Partial & Done)
+        sage_attn::AttentionSync::CubeSignalPartialReady();
+        sage_attn::AttentionSync::CubeWaitPartialFree();
+        sage_attn::AttentionSync::CubeSignalPvDone();
     } else {
         if (AscendC::GetSubBlockIdx() == 0) {
             sage_attn::AttentionSync::V0SignalQReady();
@@ -140,6 +145,10 @@ extern "C" __global__ __aicore__ void sage_attention2(
             sage_attn::AttentionSync::V1ReleaseDotFree();
             sage_attn::AttentionSync::V1SignalSoftmaxReady(true);
             sage_attn::AttentionSync::V1WaitSoftmaxFree(true);
+
+            sage_attn::AttentionSync::V1WaitPartialReady();
+            sage_attn::AttentionSync::V1ReleasePartialFree();
+            sage_attn::AttentionSync::V1WaitPvDone();
         }
     }
     return;
