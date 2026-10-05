@@ -226,15 +226,8 @@ public:
                 {
                     float s_val = ub_running_sum.GetValue(r);
                     float inv_s = (s_val > 0.0f) ? (1.0f / s_val) : 0.0f;
-                    if constexpr (kDtype == kTplDtypeBf16) {
-                        LocalTensor<bfloat16_t> ub_b = ub_half.ReinterpretCast<bfloat16_t>();
-                        for (uint32_t di = 0; di < ctx.d_og; ++di) {
-                            ub_b.SetValue(di, static_cast<bfloat16_t>(ub_o_row.GetValue(di) * inv_s));
-                        }
-                    } else {
-                        for (uint32_t di = 0; di < ctx.d_og; ++di) {
-                            ub_half.SetValue(di, static_cast<half>(ub_o_row.GetValue(di) * inv_s));
-                        }
+                    for (uint32_t di = 0; di < ctx.d_og; ++di) {
+                        ub_half.SetValue(di, static_cast<half>(ub_o_row.GetValue(di) * inv_s));
                     }
                     Catlass::SageAttn::Sync<HardEvent::S_MTE3>();
                 }
