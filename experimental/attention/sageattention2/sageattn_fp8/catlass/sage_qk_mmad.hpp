@@ -73,11 +73,12 @@ public:
 
     /**
      * 加载 K 分块：从 L1 Bank 1 搬入 L0B（zN -> nZ 硬件转置）
+     * K^T 矩阵在 L1 中按 [k, n] = [d, block_n] 存放
      */
-    __aicore__ inline __attribute__((always_inline)) void LoadL0B(uint32_t l1_k_addr, uint32_t n, uint32_t k) {
-        n_ = n;
+    __aicore__ inline __attribute__((always_inline)) void LoadL0B(uint32_t l1_k_addr, uint32_t k, uint32_t n) {
         k_ = k;
-        LoadTile2D<ElementB, AscendC::TPosition::B2, AscendC::TPosition::B1>(0U, l1_k_addr, n, k, true);
+        n_ = n;
+        LoadTile2D<ElementB, AscendC::TPosition::B2, AscendC::TPosition::B1>(0U, l1_k_addr, k, n, true);
     }
 
     /**
@@ -100,7 +101,7 @@ public:
 
         AscendC::TBuffAddr l0b_desc{};
         l0b_desc.logicPos = static_cast<uint8_t>(AscendC::TPosition::B2);
-        l0b_desc.dataLen = n_ * k_ * sizeof(ElementB);
+        l0b_desc.dataLen = k_ * n_ * sizeof(ElementB);
         AscendC::LocalTensor<ElementB> l0b_tensor;
         l0b_tensor.SetAddr(l0b_desc);
 
@@ -111,7 +112,7 @@ public:
         l0c_tensor.SetAddr(l0c_desc);
 
         auto layout_a = tla::MakeLayout(tla::MakeShape(m_, k_), tla::MakeStride(k_, tla::Int<1>{}));
-        auto layout_b = tla::MakeLayout(tla::MakeShape(n_, k_), tla::MakeStride(k_, tla::Int<1>{}));
+        auto layout_b = tla::MakeLayout(tla::MakeShape(k_, n_), tla::MakeStride(n_, tla::Int<1>{}));
         // L0C 布局官方单点（tla/layout.hpp MakeLayoutL0C）：zN 分形 shape/stride +
         // originShape=(rows,cols) 由官方一处派生，取代手写行主 MakeLayout 装配；
         // 本处 TileMmadTla 的显式 (m,n,k) 重载仅消费 tensor.data()，位元零变化。

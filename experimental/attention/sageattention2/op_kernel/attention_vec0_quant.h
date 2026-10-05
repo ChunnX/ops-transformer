@@ -221,7 +221,8 @@ public:
         LocalTensor<float> ub_km(TPosition::VECCALC, SlotV0Km::Offset(), d);
         LocalTensor<half> ub_in(TPosition::VECCALC, SlotV0InputPing::Offset(), MAX_PACK_ROWS * d);
         LocalTensor<int8_t> ub_stage_k_mat(TPosition::VECCALC, SlotV0VStageTok::Offset(), block_n * d);
-        LocalTensor<int8_t> l1_k(TPosition::B1, l1_dst_addr, block_n * d);
+        LocalTensor<int8_t> ub_stage_k_tr(TPosition::VECCALC, SlotV0VStageTr::Offset(), d * block_n);
+        LocalTensor<int8_t> l1_k(TPosition::B1, l1_dst_addr, d * block_n);
         const uint32_t has_km = (km_ptr != nullptr) ? 1u : 0u;
 
         if (has_km) {
@@ -279,7 +280,7 @@ public:
         DataCopy(gm_stage_k, ub_stage_k, STAGE_SLOT_FLOATS);
         Catlass::SageAttn::Sync<HardEvent::MTE3_S>();
 
-        // 批量量化与 MTE3 2D DMA 分形重组写入 L1 zN 布局
+        // 批量量化 INT8 矩阵 [block_n, d]
         for (uint32_t j = 0; j < block_n; ++j) {
             if (j < block_k) {
                 const uint32_t token = cur_k_start + j;
@@ -292,8 +293,19 @@ public:
                 Duplicate(ub_stage_k_mat[j * d], int8_t(0), d);
             }
         }
-        Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
-        Catlass::SageAttn::CopyUbToL1zN(l1_k, ub_stage_k_mat, block_n, d);
+        Catlass::SageAttn::Sync<HardEvent::V_S>();
+
+        // K 矩阵预转置 [block_n, d] -> [d, block_n] (通道主序 K^T)
+        auto tok_u8 = ub_stage_k_mat.ReinterpretCast<uint8_t>();
+        auto tr_u8 = ub_stage_k_tr.ReinterpretCast<uint8_t>();
+        for (uint32_t j = 0; j < block_n; ++j) {
+            for (uint32_t c = 0; c < d; ++c) {
+                tr_u8.SetValue(c * block_n + j, tok_u8.GetValue(j * d + c));
+            }
+        }
+
+        Catlass::SageAttn::Sync<HardEvent::S_MTE3>();
+        Catlass::SageAttn::CopyUbToL1zN(l1_k, ub_stage_k_tr, d, block_n);
         Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
 #else
         const bool per_thread = (ctx.qk_quant_gran == QUANT_GRAN_PER_THREAD);
@@ -350,11 +362,11 @@ public:
                     val = quant::SubKm(val, km_ptr, c, kDtype);
                     const int8_t code = per_thread ? quant::RoundHalfAwayFromZero(val / scale)
                                                    : quant::RoundNearestEven(val / scale);
-                    l1_k[Catlass::SageAttn::ZnIndex(j, c, block_n)] = code;
+                    l1_k[Catlass::SageAttn::ZnIndex(c, j, d)] = code;
                 }
             } else {
                 for (uint32_t c = 0; c < d; ++c) {
-                    l1_k[Catlass::SageAttn::ZnIndex(j, c, block_n)] = 0;
+                    l1_k[Catlass::SageAttn::ZnIndex(c, j, d)] = 0;
                 }
             }
         }

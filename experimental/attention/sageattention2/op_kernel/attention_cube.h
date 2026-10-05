@@ -67,7 +67,7 @@ public:
             if (k > 0) {
                 qk_mmad.LoadL0A(l1_q_offset, params.rows, params.d);
             }
-            qk_mmad.LoadL0B(l1_kv_addr, params.block_n, params.d);
+            qk_mmad.LoadL0B(l1_kv_addr, params.d, params.block_n);
             Catlass::SageAttn::Sync<HardEvent::MTE1_M>();
             qk_mmad.Compute(true);
             Catlass::SageAttn::Sync<HardEvent::M_FIX>();
@@ -124,7 +124,7 @@ public:
             if (k > 0) {
                 qk_mmad.LoadL0A(l1_q_offset, params.rows, params.d);
             }
-            qk_mmad.LoadL0B(l1_kv_addr, params.block_n, params.d);
+            qk_mmad.LoadL0B(l1_kv_addr, params.d, params.block_n);
             Catlass::SageAttn::Sync<HardEvent::MTE1_M>();
             qk_mmad.Compute(true);
             Catlass::SageAttn::Sync<HardEvent::M_FIX>();
