@@ -15,8 +15,8 @@
 // 支持编译时通过 -DSAGE_DIAG_STAGE=N 一键注入探针，无需侵入源码：
 // 0: 生产全量执行 (Production Run, Default)
 // 1: Phase 0 空入口 (Empty Kernel Entry)
-// 2: Phase 1 Tiling 加载 (Tiling & Workspace Load Probe)
-// 3: Phase 2 Init 调度 (Kernel Init Probe)
+// 2: Phase 1 核拓扑实测 (Core Topology Probe: GetBlockIdx / GetSubBlockIdx 映射)
+// 3: Phase 2 Init 与 Tiling 字段探测 (Init / IsActiveCore / TilingData Field Probe)
 // 4: Phase 3 V0 单核流水 (Vector 0 Standalone Pipeline)
 // 5: Phase 4 V1 单核流水 (Vector 1 Standalone Pipeline)
 // 6: Phase 5 Cube 单核流水 (Cube Standalone Pipeline)

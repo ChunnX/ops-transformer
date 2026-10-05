@@ -195,6 +195,14 @@ mkdir -p "${CUSTOM_DIR}/op_impl/ai_core/tbe/op_tiling/lib/linux/x86_64"
 cp -f "${CUSTOM_DIR}/op_impl/ai_core/tbe/op_tiling/lib/liboptiling.so" "${CUSTOM_DIR}/op_impl/ai_core/tbe/op_tiling/lib/linux/x86_64/liboptiling.so"
 
 echo "2. Compiling op_kernel device object for ${SOC} with BiSheng (-xasc ${NPU_ARCH})..."
+# 防复发守卫（2026-10-05 事故）：诊断期在 shell 导出的 -DSAGE_DIAG_STAGE=N 若残留于
+# EXTRA_KERNEL_FLAGS，正式构建会静默产出探针内核（Stage N≠0 不写输出/不推进流水），
+# 上板即得全零输出或假性 0.25% 匹配率。检测到即拒绝构建，需显式确认方可放行。
+if [[ "${EXTRA_KERNEL_FLAGS:-}" == *"SAGE_DIAG_STAGE"* && "${ALLOW_DIAG_KERNEL:-0}" != "1" ]]; then
+    echo "[ERROR] EXTRA_KERNEL_FLAGS contains SAGE_DIAG_STAGE (diag probe would ship in this build)." >&2
+    echo "        正式构建请: unset EXTRA_KERNEL_FLAGS  （诊断构建请: ALLOW_DIAG_KERNEL=1 复用本脚本）" >&2
+    exit 1
+fi
 mkdir -p "${OP_DIR}/build"
 KERNEL_OBJ="${OP_DIR}/build/sageattention2_bisheng.o"
 KERNEL_REUSE=false
