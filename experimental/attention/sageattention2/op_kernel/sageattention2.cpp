@@ -176,7 +176,7 @@ extern "C" __global__ __aicore__ void sage_attention2(
                 int64_t sq_start = static_cast<int64_t>(ctx.cur_q_start);
                 int64_t hq_first = hkv_idx * static_cast<int64_t>(ctx.gqa_ratio) + static_cast<int64_t>(ctx.cur_g0);
                 const Catlass::SageAttn::GmBhsdLayout q_layout =
-                    Catlass::SageAttn::MakeGmBhsdLayout(ctx.b, ctx.hq, ctx.sq, ctx.d, ctx.tiling->tensor_layout == LAYOUT_HND);
+                    Catlass::SageAttn::MakeGmBhsdLayout(ctx.b, ctx.hq, ctx.sq, ctx.d, ctx.tiling->tensor_layout == sage_attn::LAYOUT_HND);
                 const int64_t q_gm_offset = q_layout(tla::MakeCoord(b_idx, hq_first, sq_start, 0u));
                 kernel.GetVec0().LoadAndQuantizeQ(ctx, ctx.query_gm + q_gm_offset * sizeof(uint16_t), q_layout);
                 sage_attn::AttentionSync::V0SignalQReady();
