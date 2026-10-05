@@ -88,12 +88,18 @@ struct SimMemory {
 };
 #endif
 
+#if SAGE_ATTN_DEVICE_COMPILE
+using TilingPtr = const __gm__ SageAttention2TilingData *;
+#else
+using TilingPtr = const SageAttention2TilingData *;
+#endif
+
 /**
  * \brief 统一任务上下文结构 TaskContext
  * 承载当前分核任务的只读元数据与运行时指针，零运行时拷贝
  */
 struct TaskContext {
-    const SageAttention2TilingData *tiling{nullptr};
+    TilingPtr tiling{nullptr};
     __gm__ uint8_t *query_gm{nullptr};
     __gm__ uint8_t *key_gm{nullptr};
     __gm__ uint8_t *value_gm{nullptr};

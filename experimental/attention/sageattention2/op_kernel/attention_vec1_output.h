@@ -354,7 +354,7 @@ public:
         __gm__ uint8_t *attentionOut,
         __gm__ uint8_t *softmaxLse,
         __gm__ uint8_t *workspace,
-        const SageAttention2TilingData *__restrict tilingData)
+        TilingPtr tilingData)
     {
         ctx_.tiling = tilingData;
         ctx_.query_gm = query;
@@ -567,7 +567,7 @@ struct SageAttnLaunch {
         __gm__ uint8_t *attentionOut,
         __gm__ uint8_t *softmaxLse,
         __gm__ uint8_t *workspace,
-        const SageAttention2TilingData *tiling_data)
+        TilingPtr tiling_data)
     {
 #if SAGE_ATTN_DEVICE_COMPILE
         SageAttnKernel<DTYPE_MODE> kernel;
@@ -588,7 +588,7 @@ struct SageAttnLaunch {
         __gm__ uint8_t *attentionOut,
         __gm__ uint8_t *softmaxLse,
         __gm__ uint8_t *workspace,
-        const SageAttention2TilingData *tiling_data)
+        TilingPtr tiling_data)
     {
         if (NormDtypeMode(dtype_mode) == kTplDtypeBf16) {
             Run<kTplDtypeBf16>(query, key, value, attentionOut, softmaxLse, workspace, tiling_data);

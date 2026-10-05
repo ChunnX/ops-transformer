@@ -55,12 +55,14 @@ public:
     static_assert(SyncFlags::PV_DONE < 11, "V1 SyncFlags must avoid hardware reserved IDs [11, 14]");
 
     // -------------------------------------------------------------
-    // 1. 终止退域同步屏障
+    // 1. 终止退域同步屏障（仅 AIV 执行 MTE3 落盘屏障，AIC 严格禁 PipeBarrier<PIPE_ALL>）
     // -------------------------------------------------------------
     __aicore__ inline static void ReleaseSyncTokens()
     {
 #if SAGE_ATTN_DEVICE_COMPILE
-        AscendC::PipeBarrier<PIPE_ALL>();
+        if ASCEND_IS_AIV {
+            AscendC::PipeBarrier<PIPE_ALL>();
+        }
 #endif
     }
 

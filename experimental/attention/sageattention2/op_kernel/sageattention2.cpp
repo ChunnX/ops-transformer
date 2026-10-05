@@ -28,25 +28,6 @@
 #define SAGE_DIAG_STAGE 0
 #endif
 
-template <class ByteCountT>
-__inline__ __attribute__((always_inline)) __aicore__ void InitTilingDataHelper(
-    const __gm__ uint8_t *p_tilingdata, uint8_t *tilingdata, ByteCountT all_bytes)
-{
-    const __gm__ uint32_t *src = reinterpret_cast<const __gm__ uint32_t *>(p_tilingdata);
-    uint32_t *dst = reinterpret_cast<uint32_t *>(tilingdata);
-    const uint64_t words = (static_cast<uint64_t>(all_bytes) + 3) / 4;
-    for (uint64_t i = 0; i < words; ++i) {
-        dst[i] = src[i];
-    }
-    pipe_barrier(PIPE_ALL);
-}
-
-#ifndef GET_TILING_DATA_WITH_STRUCT
-#define GET_TILING_DATA_WITH_STRUCT(tiling_struct, tiling_data, tiling_arg) \
-    tiling_struct tiling_data; \
-    InitTilingDataHelper(tiling_arg, reinterpret_cast<uint8_t *>(&tiling_data), sizeof(tiling_struct))
-#endif
-
 extern "C" __global__ __aicore__ void sage_attention2(
     __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
     __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse,
@@ -61,7 +42,7 @@ extern "C" __global__ __aicore__ void sage_attention2(
 #endif
 
     REGISTER_TILING_DEFAULT(sage_attn::SageAttention2TilingData);
-    GET_TILING_DATA_WITH_STRUCT(sage_attn::SageAttention2TilingData, t, tiling);
+    auto t = reinterpret_cast<sage_attn::TilingPtr>(tiling);
     AscendC::SetSysWorkspaceForce(workspace);
     __gm__ uint8_t *user_ws = workspace + AscendC::RESERVED_WORKSPACE;
 
@@ -85,7 +66,7 @@ extern "C" __global__ __aicore__ void sage_attention2(
 #elif SAGE_DIAG_STAGE == 3
     // Phase 2: 实例化内核并执行 Init 任务切分与 Die 拓扑绑定
     sage_attn::SageAttnKernel<sage_attn::kTplDtypeFp16> kernel;
-    kernel.Init(query, key, value, attentionOut, softmaxLse, user_ws, &t);
+    kernel.Init(query, key, value, attentionOut, softmaxLse, user_ws, t);
     AscendC::GlobalTensor<uint32_t> gm_out;
     gm_out.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(attentionOut));
     uint32_t blk = static_cast<uint32_t>(AscendC::GetBlockIdx());
@@ -93,10 +74,10 @@ extern "C" __global__ __aicore__ void sage_attention2(
         uint32_t sub = static_cast<uint32_t>(AscendC::GetSubBlockIdx());
         if (blk == 0 || blk == 1) {
             AscendC::LocalTensor<uint32_t> ub(AscendC::TPosition::VECCALC, sage_attn::SlotV0NzOutput::Offset(), 8);
-            ub.SetValue(0, t.b);
-            ub.SetValue(1, t.hq);
-            ub.SetValue(2, t.sq);
-            ub.SetValue(3, t.sk);
+            ub.SetValue(0, t->b);
+            ub.SetValue(1, t->hq);
+            ub.SetValue(2, t->sq);
+            ub.SetValue(3, t->sk);
             ub.SetValue(4, kernel.GetContext().core_idx);
             ub.SetValue(5, kernel.GetContext().active_kv_blocks);
             ub.SetValue(6, kernel.IsActiveCore() ? 1 : 0);
@@ -108,7 +89,7 @@ extern "C" __global__ __aicore__ void sage_attention2(
 #elif SAGE_DIAG_STAGE == 4
     // Phase 3: Vector 0 单核流水纯计算与访存测试（剥离跨核依赖）
     sage_attn::SageAttnKernel<sage_attn::kTplDtypeFp16> kernel;
-    kernel.Init(query, key, value, attentionOut, softmaxLse, user_ws, &t);
+    kernel.Init(query, key, value, attentionOut, softmaxLse, user_ws, t);
     if ASCEND_IS_AIV {
         if (AscendC::GetSubBlockIdx() == 0) {
             kernel.TestVec0Standalone();
@@ -118,7 +99,7 @@ extern "C" __global__ __aicore__ void sage_attention2(
 #elif SAGE_DIAG_STAGE == 5
     // Phase 4: Vector 1 单核流水测试（剥离跨核依赖）
     sage_attn::SageAttnKernel<sage_attn::kTplDtypeFp16> kernel;
-    kernel.Init(query, key, value, attentionOut, softmaxLse, user_ws, &t);
+    kernel.Init(query, key, value, attentionOut, softmaxLse, user_ws, t);
     if ASCEND_IS_AIV {
         if (AscendC::GetSubBlockIdx() == 1) {
             kernel.TestVec1Standalone();
@@ -128,7 +109,7 @@ extern "C" __global__ __aicore__ void sage_attention2(
 #elif SAGE_DIAG_STAGE == 6
     // Phase 5: Cube 单核流水 MMAD 计算与 Fixpipe 搬出测试
     sage_attn::SageAttnKernel<sage_attn::kTplDtypeFp16> kernel;
-    kernel.Init(query, key, value, attentionOut, softmaxLse, user_ws, &t);
+    kernel.Init(query, key, value, attentionOut, softmaxLse, user_ws, t);
     if ASCEND_IS_AIC {
         kernel.TestCubeStandalone();
     }
@@ -136,7 +117,7 @@ extern "C" __global__ __aicore__ void sage_attention2(
 #elif SAGE_DIAG_STAGE == 7
     // Phase 6A: 纯跨核信号灯单步握手测试 (Cube + V0 + V1 全信道)
     sage_attn::SageAttnKernel<sage_attn::kTplDtypeFp16> kernel;
-    kernel.Init(query, key, value, attentionOut, softmaxLse, user_ws, &t);
+    kernel.Init(query, key, value, attentionOut, softmaxLse, user_ws, t);
     if ASCEND_IS_AIC {
         // 1. 与 V0 握手
         sage_attn::AttentionSync::CubeWaitQReady();
@@ -173,7 +154,7 @@ extern "C" __global__ __aicore__ void sage_attention2(
 #elif SAGE_DIAG_STAGE == 8
     // Phase 6B: 3-Beat 跨核信号灯计数守卫回归测试 (3-Beat Handshake with Counter Guards)
     sage_attn::SageAttnKernel<sage_attn::kTplDtypeFp16> kernel;
-    kernel.Init(query, key, value, attentionOut, softmaxLse, user_ws, &t);
+    kernel.Init(query, key, value, attentionOut, softmaxLse, user_ws, t);
     const uint32_t active_kv_blocks = 3;
     if ASCEND_IS_AIC {
         sage_attn::AttentionSync::CubeWaitQReady();
@@ -206,8 +187,8 @@ extern "C" __global__ __aicore__ void sage_attention2(
                 sage_attn::AttentionSync::CubeWaitPartialFree();
             }
             sage_attn::AttentionSync::CubeSignalPartialReady();
-            sage_attn::AttentionSync::CubeSignalPvDone();
         }
+        sage_attn::AttentionSync::CubeSignalPvDone();
     } else {
         if (AscendC::GetSubBlockIdx() == 0) {
             sage_attn::AttentionSync::V0SignalQReady();
@@ -220,8 +201,6 @@ extern "C" __global__ __aicore__ void sage_attention2(
             }
         } else {
             for (uint32_t k = 0; k < active_kv_blocks; ++k) {
-                sage_attn::AttentionSync::V1WaitQkReady();
-                sage_attn::AttentionSync::V1ReleaseDotFree();
                 if (k > 0) {
                     sage_attn::AttentionSync::V1WaitPartialReady();
                     sage_attn::AttentionSync::V1ReleasePartialFree();
@@ -230,20 +209,22 @@ extern "C" __global__ __aicore__ void sage_attention2(
                 if (k >= 2) {
                     sage_attn::AttentionSync::V1WaitSoftmaxFree(is_ping);
                 }
+                sage_attn::AttentionSync::V1WaitQkReady();
+                sage_attn::AttentionSync::V1ReleaseDotFree();
                 sage_attn::AttentionSync::V1SignalSoftmaxReady(is_ping);
             }
             if (active_kv_blocks > 0) {
                 sage_attn::AttentionSync::V1WaitPartialReady();
                 sage_attn::AttentionSync::V1ReleasePartialFree();
-                sage_attn::AttentionSync::V1WaitPvDone();
             }
+            sage_attn::AttentionSync::V1WaitPvDone();
         }
     }
     return;
 #elif SAGE_DIAG_STAGE == 9
     // Phase 6C: 三核完整多拍跨核同步回归测试 (Counter-Guard Multi-Beat Protocol)
     sage_attn::SageAttnKernel<sage_attn::kTplDtypeFp16> kernel;
-    kernel.Init(query, key, value, attentionOut, softmaxLse, user_ws, &t);
+    kernel.Init(query, key, value, attentionOut, softmaxLse, user_ws, t);
     if (!kernel.IsActiveCore()) {
         return;
     }
@@ -315,7 +296,7 @@ extern "C" __global__ __aicore__ void sage_attention2(
     return;
 #else
     // Phase 0: 生产全量流水执行
-    sage_attn::SageAttnLaunch::RunByDtype(t.input_dtype, query, key, value, attentionOut, softmaxLse, user_ws, &t);
+    sage_attn::SageAttnLaunch::RunByDtype(t->input_dtype, query, key, value, attentionOut, softmaxLse, user_ws, t);
 #endif
 }
 #else
