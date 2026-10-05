@@ -191,7 +191,7 @@ echo "2. Compiling op_kernel device object for ${SOC} with BiSheng (-xasc ${NPU_
 mkdir -p "${OP_DIR}/build"
 KERNEL_OBJ="${OP_DIR}/build/sageattention2_bisheng.o"
 KERNEL_REUSE=false
-if [ -f "${KERNEL_OBJ}" ]; then
+if [ -f "${KERNEL_OBJ}" ] && [ "${CLEAN_BUILD}" = false ] && [ -z "${EXTRA_KERNEL_FLAGS:-}" ]; then
     if [ ! "${OP_DIR}/op_kernel/sageattention2.cpp" -nt "${KERNEL_OBJ}" ] && \
        [ -z "$(find "${OP_DIR}/op_kernel" "${OP_DIR}/sageattn_fp8" "${OP_DIR}/quant" \( -name "*.h" -o -name "*.hpp" \) -newer "${KERNEL_OBJ}" 2>/dev/null)" ]; then
         KERNEL_REUSE=true
@@ -207,7 +207,7 @@ else
     # CATLASS_DEVICE_SIMD_VF 宏（仅 3510 档有定义，sage_device_vf.h 全部 VF 原语取用）；
     # TileMmadTla 的 3510 特化由 --npu-arch（__NPU_ARCH__）选路，两口径须一致。
     "${BISHENG}" --npu-arch="${NPU_ARCH}" -std=c++17 -xasc -DCATLASS_ARCH=3510 -g \
-        -DENABLE_CV_COMM_VIA_SSBUF=1 --cce-no-dcache-flush -c \
+        -DENABLE_CV_COMM_VIA_SSBUF=1 --cce-no-dcache-flush ${EXTRA_KERNEL_FLAGS:-} -c \
         "${OP_DIR}/op_kernel/sageattention2.cpp" \
         -I"${ASCEND_HOME_PATH}/include" \
         -I"${OP_DIR}/sageattn_fp8/ascendc" \
