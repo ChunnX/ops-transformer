@@ -90,7 +90,7 @@ public:
      */
     __aicore__ inline __attribute__((always_inline)) void Compute([[maybe_unused]] bool init = false) {
 #if SAGE_ATTN_DEVICE_COMPILE
-        using Fp8Code = AscendC::float8_e4m3_t;
+        using Fp8Code = ::float8_e4m3_t;
 
         AscendC::TBuffAddr l0a_desc{};
         l0a_desc.logicPos = static_cast<uint8_t>(AscendC::TPosition::A2);
