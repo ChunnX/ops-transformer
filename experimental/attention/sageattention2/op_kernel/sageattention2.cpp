@@ -200,7 +200,6 @@ extern "C" __global__ __aicore__ void sage_attention2(
     // Phase 6C: 三核完整多拍跨核同步隔离测试 (排除实际矩阵与向量计算)
     sage_attn::SageAttnKernel<sage_attn::kTplDtypeFp16> kernel;
     kernel.Init(query, key, value, attentionOut, softmaxLse, user_ws, &t);
-    if (!kernel.IsActiveCore()) return;
     sage_attn::AttentionSync::InitSyncTokens();
     const uint32_t active_kv_blocks = 1;
     if ASCEND_IS_AIC {
@@ -229,7 +228,7 @@ extern "C" __global__ __aicore__ void sage_attention2(
         }
         sage_attn::AttentionSync::CubeSignalPvDone();
     } else {
-        if (kernel.GetContext().sub_core_idx == 0) {
+        if (AscendC::GetSubBlockIdx() == 0) {
             sage_attn::AttentionSync::V0SignalQReady();
             for (uint32_t k = 0; k < active_kv_blocks; ++k) {
                 bool is_ping = ((k % 2) == 0);
@@ -255,7 +254,6 @@ extern "C" __global__ __aicore__ void sage_attention2(
             sage_attn::AttentionSync::V1WaitPvDone();
         }
     }
-    sage_attn::AttentionSync::ReleaseSyncTokens(active_kv_blocks);
     return;
 #else
     // Phase 0: 生产全量流水执行
