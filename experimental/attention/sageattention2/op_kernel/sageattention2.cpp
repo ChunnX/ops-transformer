@@ -121,10 +121,12 @@ extern "C" __global__ __aicore__ void sage_attention2(
     kernel.Init(query, key, value, attentionOut, softmaxLse, user_ws, &t);
     if ASCEND_IS_AIC {
         sage_attn::AttentionSync::CubeWaitQReady();
+        sage_attn::AttentionSync::CubeWaitKvReady(true);
         sage_attn::AttentionSync::CubeReleaseKvFree(true);
     } else {
         if (AscendC::GetSubBlockIdx() == 0) {
             sage_attn::AttentionSync::V0SignalQReady();
+            sage_attn::AttentionSync::V0SignalKvReady(true);
             sage_attn::AttentionSync::V0WaitKvFree(true);
         }
     }
