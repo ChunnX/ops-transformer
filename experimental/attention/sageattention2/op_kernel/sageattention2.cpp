@@ -162,12 +162,12 @@ extern "C" __global__ __aicore__ void sage_attention2(
     }
     return;
 #elif SAGE_DIAG_STAGE == 8
-    // Phase 6B: 测试真实 V0 计算下 Q_READY 跨核唤醒
+    // Phase 6B: 隔离测试：仅 V0 执行计算并发送 Q_READY，AIC 侧不等待
     sage_attn::SageAttnKernel<sage_attn::kTplDtypeFp16> kernel;
     kernel.Init(query, key, value, attentionOut, softmaxLse, user_ws, &t);
     if (kernel.IsActiveCore()) {
         if ASCEND_IS_AIC {
-            sage_attn::AttentionSync::CubeWaitQReady();
+            // Cube 不等待
         } else {
             if (kernel.GetContext().sub_core_idx == 0) {
                 kernel.GetVec0().ProcessStandalone(kernel.GetContext());
