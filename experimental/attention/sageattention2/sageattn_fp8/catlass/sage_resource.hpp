@@ -88,7 +88,7 @@ struct Vector1UbBudget {
                                                                       //  实际占用 2·rows·block_n ≤ 32K)
 
     // A7 设备态交接区（task/12 D1/D2：Cube FixPipe 裸搬落点，V1 消费；单缓冲读保护
-    // 握手 FLAG_DOT_FREE=13 / FLAG_PV_PARTIAL_FREE=12，sync_guard.h）
+    // 握手 DOT_FREE / PV_PARTIAL_FREE，attention_sync.h）
     static constexpr uint32_t A7_DOT32_OFFSET          = 96 * 1024;
     static constexpr uint32_t A7_DOT32_BYTES           = 64 * 1024;  // rows·block_n·4 ≤ 128·128·4
     static constexpr uint32_t A7_PV_PARTIAL_OFFSET     = 160 * 1024;

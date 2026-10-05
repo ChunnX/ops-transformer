@@ -13,7 +13,6 @@
  * BiSheng 宿主模式不定义 __CCE__，走 std 数学函数分支。
  * 实测依据：设备侧 C 库仅 fabsf 等少数符号有实现，exp2f/log2f 链接期报 undefined symbol，
  * 故设备端 exp2/log2 必须按位构造自实现（见 FastExp2/FastLog2）。
- * 与 sync_guard.h 的定义点共用同一 #ifndef 守卫，保证任意包含顺序下仅定义一次。
  */
 
 
