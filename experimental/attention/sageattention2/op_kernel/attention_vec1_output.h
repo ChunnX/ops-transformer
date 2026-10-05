@@ -408,6 +408,14 @@ __aicore__ inline __attribute__((always_inline)) void ProcessVec1(
         output.MergePartialRows(ctx);
         AttentionSync::V1ReleasePartialFree();
     }
+
+    // 尾拍配平：回收 Cube 释放的最后两拍 Softmax 许可，保证信道零残留
+    if (active_kv_blocks >= 1) {
+        AttentionSync::V1WaitSoftmaxFree(true);
+    }
+    if (active_kv_blocks >= 2) {
+        AttentionSync::V1WaitSoftmaxFree(false);
+    }
 #endif
 
     AttentionSync::V1WaitPvDone();

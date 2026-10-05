@@ -599,6 +599,14 @@ public:
 
             AttentionSync::V0SignalKvReady(is_ping);
         }
+
+        // 尾拍配平：等待 Cube 释放最后两拍的 KV 缓冲，保证信道零残留并在退出前与 Cube 对齐
+        if (active_kv_blocks >= 1) {
+            AttentionSync::V0WaitKvFree(true);
+        }
+        if (active_kv_blocks >= 2) {
+            AttentionSync::V0WaitKvFree(false);
+        }
     }
 
     __aicore__ inline __attribute__((always_inline)) void ProcessStandalone(const TaskContext &ctx)

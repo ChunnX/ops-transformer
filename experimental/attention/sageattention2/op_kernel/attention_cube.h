@@ -86,6 +86,9 @@ public:
             uint32_t last_k = active_kv_blocks - 1;
             bool last_is_ping = ((last_k % 2) == 0);
             StepPvMmad(pv_mmad, params, last_is_ping, ub_pv_partial_offset, last_k > 0);
+            // 尾拍配平：回收 V1 释放的末拍 dot32 与 drain partial 信号，确保信道零遗留
+            AttentionSync::CubeWaitDotFree();
+            AttentionSync::CubeWaitPartialFree();
         }
 #else
         (void)params;

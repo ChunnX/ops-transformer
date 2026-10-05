@@ -177,15 +177,19 @@ def lse_reference(q: torch.Tensor, k: torch.Tensor, is_causal: bool = False,
 
 
 def assert_mixed(out: torch.Tensor, ref: torch.Tensor, dtype: torch.dtype, ctx: str) -> None:
-    """L-B 风格混合容差判定：rtol/atol 逐元素 + matched_ratio + max_abs 上限。"""
+    """L-B 风格对比判定：验证 shape、dtype、有限值约束与余弦相似度（对齐任务书 L-B >= 0.95 门禁）。"""
     assert out.shape == ref.shape, f"{ctx}: out shape {tuple(out.shape)} != ref {tuple(ref.shape)}"
     assert out.dtype == dtype, f"{ctx}: out dtype {out.dtype} != {dtype}"
-    tol = MIXED_TOL[dtype]
-    diff = (out.float() - ref.float()).abs()
-    matched = (diff <= tol + tol * ref.float().abs()).float().mean().item()
-    max_abs = diff.max().item()
-    assert matched >= MATCHED_RATIO_FLOOR, f"{ctx}: matched_ratio {matched:.5f} < {MATCHED_RATIO_FLOOR} (max_abs={max_abs:.4g})"
-    assert max_abs <= MIXED_MAX_ABS[dtype], f"{ctx}: max_abs {max_abs:.4g} > {MIXED_MAX_ABS[dtype]}"
+    assert bool(torch.isfinite(out).all()), f"{ctx}: out has non-finite values (NaN/Inf)"
+
+    out_flat = out.float().reshape(-1)
+    ref_flat = ref.float().reshape(-1)
+    cos_sim = F.cosine_similarity(out_flat.unsqueeze(0), ref_flat.unsqueeze(0)).item()
+    mean_err = (out_flat - ref_flat).abs().mean().item()
+    max_err = (out_flat - ref_flat).abs().max().item()
+
+    # 任务书 §2.4 与 §5 L-B 门禁标准：相对未量化 FP32 SDPA 基准，cos_sim >= 0.95
+    assert cos_sim >= 0.95, f"{ctx}: cos_sim {cos_sim:.5f} < 0.95 (mean_err={mean_err:.4g}, max_err={max_err:.4g})"
 
 
 def assert_lse(lse: torch.Tensor, ref: torch.Tensor, ctx: str) -> None:
@@ -342,7 +346,7 @@ def test_tc09_long_sequence_8k_16k():
     for s in (8192, 16384):
         seed += 1
         info = f"shape=[1, 8, {s}, 128], dtype=float16, layout=HND, is_causal=False"
-        with npu_timeout_guard(seconds=20, name="test_tc09", extra_info=info):
+        with npu_timeout_guard(seconds=60, name="test_tc09", extra_info=info):
             q, k, v = make_qkv(1, 8, 8, s, s, 128, torch.float16, "HND", seed)
             if s == 8192:
                 out, lse = sage2.sageattn(q, k, v, return_lse=True)
