@@ -72,26 +72,11 @@ public:
     }
 
     // -------------------------------------------------------------
-    // 2. 终止退域回收 Token（保证跨任务波次 Flag 净余量恒为 0）
+    // 2. 终止退域同步屏障
     // -------------------------------------------------------------
     __aicore__ inline static void ReleaseSyncTokens()
     {
 #if SAGE_ATTN_DEVICE_COMPILE
-        if ASCEND_IS_AIC {
-            // Cube 回收由 Vector 1 预置的未用 Token
-            AscendC::CrossCoreWaitFlag<MODE, PIPE_FIX>(16 + SyncFlags::DOT_FREE);
-            AscendC::CrossCoreWaitFlag<MODE, PIPE_FIX>(16 + SyncFlags::PV_PARTIAL_FREE);
-        } else {
-            if (AscendC::GetSubBlockIdx() == 0) {
-                // Vector 0 回收由 Cube 预置的未用 Token
-                AscendC::CrossCoreWaitFlag<MODE, PIPE_MTE3>(SyncFlags::KV_PING_FREE);
-                AscendC::CrossCoreWaitFlag<MODE, PIPE_MTE3>(SyncFlags::KV_PONG_FREE);
-            } else {
-                // Vector 1 回收由 Cube 预置的未用 Token
-                AscendC::CrossCoreWaitFlag<MODE, PIPE_MTE3>(SyncFlags::S_PING_FREE);
-                AscendC::CrossCoreWaitFlag<MODE, PIPE_MTE3>(SyncFlags::S_PONG_FREE);
-            }
-        }
         AscendC::PipeBarrier<PIPE_ALL>();
 #endif
     }
