@@ -192,8 +192,24 @@ extern "C" __global__ __aicore__ void sage_attention2(
                 sage_attn::AttentionSync::V1WaitPvDone();
             }
         }
-        // sage_attn::AttentionSync::ReleaseSyncTokens();
-        return;
+#elif SAGE_DIAG_STAGE == 9
+    // Phase 6C: V0 真实流水与 Cube 握手隔离测试
+    sage_attn::SageAttnKernel<sage_attn::kTplDtypeFp16> kernel;
+    kernel.Init(query, key, value, attentionOut, softmaxLse, user_ws, &t);
+    sage_attn::AttentionSync::InitSyncTokens();
+    if ASCEND_IS_AIC {
+        sage_attn::AttentionSync::CubeWaitQReady();
+        for (uint32_t k = 0; k < kernel.GetContext().active_kv_blocks; ++k) {
+            bool is_ping = ((k % 2) == 0);
+            sage_attn::AttentionSync::CubeWaitKvReady(is_ping);
+            sage_attn::AttentionSync::CubeReleaseKvFree(is_ping);
+        }
+    } else {
+        if (AscendC::GetSubBlockIdx() == 0) {
+            kernel.GetVec0().Process(kernel.GetContext());
+        }
+    }
+    return;
 #else
     // Phase 0: 生产全量流水执行
     sage_attn::SageAttnLaunch::RunByDtype(t.input_dtype, query, key, value, attentionOut, softmaxLse, user_ws, &t);
