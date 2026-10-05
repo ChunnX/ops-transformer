@@ -152,7 +152,7 @@ extern "C" __global__ __aicore__ void sage_attention2(
             }
         }
     }
-    sage_attn::AttentionSync::ReleaseSyncTokens();
+    // sage_attn::AttentionSync::ReleaseSyncTokens();
     return;
 #else
     // Phase 0: 生产全量流水执行
