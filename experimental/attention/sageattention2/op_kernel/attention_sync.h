@@ -26,15 +26,16 @@ namespace SyncFlags {
     constexpr uint32_t KV_PONG_FREE     = 4;  // L1 Pong KV 槽空闲许可 (Cube set → V0 wait)
 
     // Vector 1 (SubBlock 1) 通信信道 (V1 视角 0 ~ 15 / AIC 视角 16 + ID)
-    constexpr uint32_t QK_READY         = 5;  // QK dot32 写入 V1 UB 完成 (Cube set → V1 wait)
-    constexpr uint32_t DOT_FREE         = 6;  // V1 dot32 读毕释放 (V1 set → Cube wait)
-    constexpr uint32_t S_PING_READY     = 7;  // V1 Ping S 写入 L1 完成 (V1 set → Cube wait)
-    constexpr uint32_t S_PONG_READY     = 8;  // V1 Pong S 写入 L1 完成 (V1 set → Cube wait)
-    constexpr uint32_t S_PING_FREE      = 9;  // L1 Ping S 槽空闲许可 (Cube set → V1 wait)
-    constexpr uint32_t S_PONG_FREE      = 10; // L1 Pong S 槽空闲许可 (Cube set → V1 wait)
-    constexpr uint32_t PV_PARTIAL_READY = 11; // PV 部分和写入 V1 UB 完成 (Cube set → V1 wait)
-    constexpr uint32_t PV_PARTIAL_FREE  = 12; // V1 部分和累加完毕释放 (V1 set → Cube wait)
-    constexpr uint32_t PV_DONE          = 13; // Cube 全部 PV 运算完成 (Cube set → V1 wait)
+    // 严格避让硬件保留区 [11, 14]，全部使用 0 ~ 8
+    constexpr uint32_t QK_READY         = 0;  // QK dot32 写入 V1 UB 完成 (Cube set → V1 wait)
+    constexpr uint32_t DOT_FREE         = 1;  // V1 dot32 读毕释放 (V1 set → Cube wait)
+    constexpr uint32_t S_PING_READY     = 2;  // V1 Ping S 写入 L1 完成 (V1 set → Cube wait)
+    constexpr uint32_t S_PONG_READY     = 3;  // V1 Pong S 写入 L1 完成 (V1 set → Cube wait)
+    constexpr uint32_t S_PING_FREE      = 4;  // L1 Ping S 槽空闲许可 (Cube set → V1 wait)
+    constexpr uint32_t S_PONG_FREE      = 5;  // L1 Pong S 槽空闲许可 (Cube set → V1 wait)
+    constexpr uint32_t PV_PARTIAL_READY = 6;  // PV 部分和写入 V1 UB 完成 (Cube set → V1 wait)
+    constexpr uint32_t PV_PARTIAL_FREE  = 7;  // V1 部分和累加完毕释放 (V1 set → Cube wait)
+    constexpr uint32_t PV_DONE          = 8;  // Cube 全部 PV 运算完成 (Cube set → V1 wait)
 }
 
 /**
