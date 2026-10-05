@@ -167,36 +167,75 @@ extern "C" __global__ __aicore__ void sage_attention2(
     }
     return;
 #elif SAGE_DIAG_STAGE == 8
-    // Phase 6B: 循环跨核信号灯握手测试 (1-Iteration Handshake with Token Pre-setting)
+    // Phase 6B: 3-Beat 跨核信号灯计数守卫回归测试 (3-Beat Handshake with Counter Guards)
     sage_attn::SageAttnKernel<sage_attn::kTplDtypeFp16> kernel;
     kernel.Init(query, key, value, attentionOut, softmaxLse, user_ws, &t);
-    sage_attn::AttentionSync::InitSyncTokens();
+    const uint32_t active_kv_blocks = 3;
     if ASCEND_IS_AIC {
-            sage_attn::AttentionSync::CubeWaitQReady();
-            sage_attn::AttentionSync::CubeWaitKvReady(true);
-            sage_attn::AttentionSync::CubeWaitDotFree();
+        sage_attn::AttentionSync::CubeWaitQReady();
+        for (uint32_t k = 0; k < active_kv_blocks; ++k) {
+            if (k > 0) {
+                uint32_t prev_k = k - 1;
+                bool prev_is_ping = ((prev_k % 2) == 0);
+                sage_attn::AttentionSync::CubeWaitSoftmaxReady(prev_is_ping);
+                sage_attn::AttentionSync::CubeReleaseSoftmaxFree(prev_is_ping);
+                sage_attn::AttentionSync::CubeReleaseKvFree(prev_is_ping);
+                if (prev_k > 0) {
+                    sage_attn::AttentionSync::CubeWaitPartialFree();
+                }
+                sage_attn::AttentionSync::CubeSignalPartialReady();
+            }
+            bool is_ping = ((k % 2) == 0);
+            sage_attn::AttentionSync::CubeWaitKvReady(is_ping);
+            if (k > 0) {
+                sage_attn::AttentionSync::CubeWaitDotFree();
+            }
             sage_attn::AttentionSync::CubeSignalQkReady();
-            sage_attn::AttentionSync::CubeWaitSoftmaxReady(true);
-            sage_attn::AttentionSync::CubeReleaseSoftmaxFree(true);
-            sage_attn::AttentionSync::CubeReleaseKvFree(true);
-            sage_attn::AttentionSync::CubeWaitPartialFree();
+        }
+        if (active_kv_blocks > 0) {
+            uint32_t last_k = active_kv_blocks - 1;
+            bool last_is_ping = ((last_k % 2) == 0);
+            sage_attn::AttentionSync::CubeWaitSoftmaxReady(last_is_ping);
+            sage_attn::AttentionSync::CubeReleaseSoftmaxFree(last_is_ping);
+            sage_attn::AttentionSync::CubeReleaseKvFree(last_is_ping);
+            if (last_k > 0) {
+                sage_attn::AttentionSync::CubeWaitPartialFree();
+            }
             sage_attn::AttentionSync::CubeSignalPartialReady();
             sage_attn::AttentionSync::CubeSignalPvDone();
+        }
+    } else {
+        if (AscendC::GetSubBlockIdx() == 0) {
+            sage_attn::AttentionSync::V0SignalQReady();
+            for (uint32_t k = 0; k < active_kv_blocks; ++k) {
+                bool is_ping = ((k % 2) == 0);
+                if (k >= 2) {
+                    sage_attn::AttentionSync::V0WaitKvFree(is_ping);
+                }
+                sage_attn::AttentionSync::V0SignalKvReady(is_ping);
+            }
         } else {
-            if (AscendC::GetSubBlockIdx() == 0) {
-                sage_attn::AttentionSync::V0SignalQReady();
-                sage_attn::AttentionSync::V0WaitKvFree(true);
-                sage_attn::AttentionSync::V0SignalKvReady(true);
-            } else {
-                sage_attn::AttentionSync::V1WaitSoftmaxFree(true);
+            for (uint32_t k = 0; k < active_kv_blocks; ++k) {
                 sage_attn::AttentionSync::V1WaitQkReady();
                 sage_attn::AttentionSync::V1ReleaseDotFree();
-                sage_attn::AttentionSync::V1SignalSoftmaxReady(true);
+                if (k > 0) {
+                    sage_attn::AttentionSync::V1WaitPartialReady();
+                    sage_attn::AttentionSync::V1ReleasePartialFree();
+                }
+                bool is_ping = ((k % 2) == 0);
+                if (k >= 2) {
+                    sage_attn::AttentionSync::V1WaitSoftmaxFree(is_ping);
+                }
+                sage_attn::AttentionSync::V1SignalSoftmaxReady(is_ping);
+            }
+            if (active_kv_blocks > 0) {
                 sage_attn::AttentionSync::V1WaitPartialReady();
                 sage_attn::AttentionSync::V1ReleasePartialFree();
                 sage_attn::AttentionSync::V1WaitPvDone();
             }
         }
+    }
+    return;
 #elif SAGE_DIAG_STAGE == 9
     // Phase 6C: 三核完整多拍跨核同步回归测试 (Counter-Guard Multi-Beat Protocol)
     sage_attn::SageAttnKernel<sage_attn::kTplDtypeFp16> kernel;

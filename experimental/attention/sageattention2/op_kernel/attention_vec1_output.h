@@ -470,8 +470,6 @@ public:
                 DecodeTask(mapped_task, q_blks_per_head_);
             }
 
-            AttentionSync::InitSyncTokens();
-
 #if SAGE_ATTN_DEVICE_COMPILE
             if ASCEND_IS_AIC {
                 CubeBlockParams p{ctx_.TotalRows(), ctx_.block_n, ctx_.d};
@@ -492,7 +490,7 @@ public:
             ProcessVec1(ctx_, softmax_, output_);
 #endif
 
-            AttentionSync::ReleaseSyncTokens(ctx_.active_kv_blocks);
+            AttentionSync::ReleaseSyncTokens();
         }
     }
 

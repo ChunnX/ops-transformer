@@ -78,7 +78,7 @@
 
 | 删除件 | 原职责 | 删除依据 |
 |---|---|---|
-| `sageattn_fp8/ascendc/pipeline_guard.h`（319 行） | UbTile 类型状态守卫（RES-05，编译期约束 DMA/计算状态转移） | 设备核热路径以 sync_guard.h 显式 flag 协议保序，该头零生产 include，仅 tests/test_pipeline_guard.cpp 引用 |
+| `sageattn_fp8/ascendc/pipeline_guard.h`（319 行） | UbTile 类型状态守卫（RES-05，编译期约束 DMA/计算状态转移） | 设备核热路径以 attention_sync.h 显式 flag 协议保序，该头零生产 include，仅 tests/test_pipeline_guard.cpp 引用 |
 | `sageattn_fp8/ascendc/accum_reduce.h`（111 行） | AccumReduceController 归约节奏控制器、FixpipeConfig、QuantizeToFp16 仿真壳 | PV 归约节奏唯一定义点已收敛至 twin::AccumulatePvRow（k_step 子块域）+ 设备侧逐块 FixPipe 裸搬合并（档位直读 tiling.pv_accum_dtype）；三符号零非测试消费 |
 | `tests/test_output_queue.cpp`（约 1000 行） | OutputRetireQueue（3 槽延迟成对归约 + skip-scale 变体）回归 | 队列类本体即测试文件内本地定义（"非交付热路径组件"），其 skip-scale 双锚点策略与 golden 逐块锚定强制 rescale 轨迹冲突，A7（task/12 D3）已裁定热路径弃用 |
 | `tests/test_pipeline_guard.cpp` | pipeline_guard 类型状态协议测试 | 随被测载体删除 |
@@ -190,9 +190,9 @@ chunks=1，任务解码与调度算术逐位不变（twin 25 桶 golden 回归�
       相邻对齐、LoadData2D repeat 计数、因果活跃块上限；标量 min 不再自造）。
   - 官方组件复用清单（2026-10-03 深化接入，全部为位元等价的 constexpr/forceinline 替换）：
     - `Arch::CrossCoreFlag` + `CrossCoreSetFlag/WaitFlag<MODE,PIPE>`
-      （arch/cross_core_sync.hpp）：1C2V 14 flag 跨核同步原语委托官方薄封装单点
-      （sync_guard.h；modeId=4 块内 + PIPE_S 语义不变，forceinline 直译 AscendC
-      原语、指令流零变化）；
+      （arch/cross_core_sync.hpp）：1C2V 跨核同步原语委托官方薄封装单点
+      （attention_sync.h；modeId=4 块内 + PIPE_S/MTE 语义，forceinline 直译 AscendC
+      原语、指令流零变化；采用官方拍计数守卫纪律，零预置零泄漏）；
     - MMA 累加位型与 FP8 L0 寄存器位型直接显式书写（轮 5 复审后口径）：Traits
       ElementC 取朴素 `int32_t`（QK int8×int8→INT32）/ `float`（PV fp8×fp8→FP32），
       PV Compute 的 L0A/L0B 张量按 `AscendC::mx_fp8_e4m3_t` 直承载（位元等价于
@@ -258,7 +258,7 @@ chunks=1，任务解码与调度算术逐位不变（twin 25 桶 golden 回归�
     - `TileCopyTla` L1→L0A/L0B 特化：EnableIf 强约束 L1 侧 zN 分形布局，与本算子
       ND 行 + Data/Scale 相邻 L1 契约不匹配；
     - `Arch::Resource` / `LocalTensorBuffer`（TPipe InitBuffer）：官方头注释自证
-      "Tpipe 初始化会插入同步接口，可能与使用者冲突"——与本核手管 14 flag 流水
+      "Tpipe 初始化会插入同步接口，可能与使用者冲突"——与本核手管跨核计数守卫流水
       相斥，且零收益，不引入；
     - 竞品（A2 同类算子）"PV 中间结果写回 GM 再读回归并"策略：新增 2 次 GM 往返
       （写 P/部分和 + 读回归并），长序列显存带宽 +50% 量级，直接劣化对 FIA 的
@@ -269,12 +269,14 @@ chunks=1，任务解码与调度算术逐位不变（twin 25 桶 golden 回归�
 - 延迟一拍软件流水：
   - Cube 计算与 Vector 计算深度交叠，消灭 Vector 成为关键路径的等待气泡；
 - 同步与流水守卫：
-  - 采用现役 14 flag 有界缓冲协议（`sync_guard.h` FLAG 0~13）实现核间/核内定向通知，
-    按旗标族分治（2026-10-04 首拍死锁修复）：S 槽双缓冲保留进域预置/退域回收配平
-    （V1 退域回收消费 Cube 预置的最后两个 S 槽许可）；KV/DOT/PARTIAL 交接旗标首拍
-    缓冲区天然为空，生产者跳过首拍等待、不预置不回收（避免跨核伪预置首拍死锁）。
-    （历史 RES-05 类型状态守卫 `pipeline_guard.h` 经死代码清扫删除：设备核热路径
-    以显式 flag 协议保序，该头文件零生产消费，仅测试引用。）
+  - 采用 CATLASS 官方拍计数守卫协议（`attention_sync.h` 封装 `Arch::CrossCoreFlag`）实现核间/核内定向通知：
+    首两拍双缓冲槽位天然为空，生产者（V0/V1/Cube）在 k < 2（或 k == 0）时直接写入，跳过释放等待；
+    第 k >= 2 拍开始等待消费者的释放信号。彻底废弃历史的 Token 预置模型（InitSyncTokens 零开销），
+    根治预置令牌导致的死锁；
+  - 双 Bank 独立 Flag 映射：Vector 0 使用 Bank 0（Flag 0~4），Vector 1 使用 Bank 1（Flag 0~8），
+    Cube 侧经统一 16 偏移跨核访问，全表 Flag ID 严格小于 11，彻底避让 CANN 硬件保留 ID [11, 14]。
+    （历史 RES-05 类型状态守卫 `pipeline_guard.h` 与旧 `sync_guard.h` 经死代码清扫删除：设备核热路径
+    以显式 flag 协议保序，零生产消费。）
 
 ## 支持硬件
 

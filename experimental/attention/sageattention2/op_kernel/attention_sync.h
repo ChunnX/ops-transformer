@@ -62,9 +62,8 @@ public:
     // -------------------------------------------------------------
     // 2. 终止退域同步屏障与排空
     // -------------------------------------------------------------
-    __aicore__ inline static void ReleaseSyncTokens(uint32_t active_kv_blocks = 0)
+    __aicore__ inline static void ReleaseSyncTokens()
     {
-        (void)active_kv_blocks;
 #if SAGE_ATTN_DEVICE_COMPILE
         AscendC::PipeBarrier<PIPE_ALL>();
 #endif
