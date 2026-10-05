@@ -40,7 +40,7 @@ public:
         const Catlass::SageAttn::GmBhsdLayout &q_layout)
     {
 #if SAGE_ATTN_DEVICE_COMPILE
-        const bool per_thread_q = (ctx.tiling->qk_quant_gran == QUANT_GRAN_PER_THREAD);
+        const bool per_thread_q = (ctx.qk_quant_gran == QUANT_GRAN_PER_THREAD);
         const uint32_t total_rows_q = ctx.TotalRows();
         const uint32_t d = ctx.d;
 
@@ -48,7 +48,7 @@ public:
         LocalTensor<float> ub_scales(TPosition::VECCALC, SlotV0Scales::Offset(), kQScaleSlotStride);
         LocalTensor<half> ub_in(TPosition::VECCALC, SlotV0InputPing::Offset(), MAX_PACK_ROWS * d);
         LocalTensor<int8_t> ub_out(TPosition::VECCALC, SlotV0NzOutput::Offset(), d);
-        LocalTensor<int8_t> l1_q(TPosition::A1, ctx.tiling->l1_q_offset, total_rows_q * d);
+        LocalTensor<int8_t> l1_q(TPosition::A1, ctx.l1_q_offset, total_rows_q * d);
 
         // 窗口 scale 组清零
         const uint32_t grp_first_q = quant::QScaleIndex(ctx.cur_q_start, per_thread_q);
@@ -65,7 +65,7 @@ public:
 
         // A. 行批 abs-max (利用 950 NDDMA 2D/Strided DMA 硬件指令按 Head 批量拉入 UB)
         const uint32_t act_rows_q = ::Min(total_rows_q, static_cast<uint32_t>(MAX_PACK_ROWS));
-        const uint32_t stride_q = Catlass::SageAttn::CalcGm2dStride32B(ctx.hq, d, sizeof(half), ctx.tiling->tensor_layout);
+        const uint32_t stride_q = Catlass::SageAttn::CalcGm2dStride32B(ctx.hq, d, sizeof(half), ctx.tensor_layout);
         Catlass::SageAttn::Sync<HardEvent::V_MTE2>();
         for (uint32_t g = 0; g < ctx.cur_heads; ++g) {
             const uint32_t head_start_row = g * ctx.cur_q_len;
@@ -128,9 +128,9 @@ public:
         DataCopy(gm_stage_q, ub_stage_q, STAGE_SLOT_FLOATS);
         Catlass::SageAttn::Sync<HardEvent::MTE3_S>();
 #else
-        const bool per_thread = (ctx.tiling->qk_quant_gran == QUANT_GRAN_PER_THREAD);
+        const bool per_thread = (ctx.qk_quant_gran == QUANT_GRAN_PER_THREAD);
         const uint16_t *q_u16 = reinterpret_cast<const uint16_t *>(q_src);
-        int8_t *l1_q = reinterpret_cast<int8_t *>(ctx.sim_mem->l1_mem + ctx.tiling->l1_q_offset);
+        int8_t *l1_q = reinterpret_cast<int8_t *>(ctx.sim_mem->l1_mem + ctx.l1_q_offset);
         const uint32_t d = ctx.d;
 
         const uint32_t grp_first = quant::QScaleIndex(ctx.cur_q_start, per_thread);
@@ -205,7 +205,7 @@ public:
         const uint32_t block_n = ctx.block_n;
 
 #if SAGE_ATTN_DEVICE_COMPILE
-        const bool per_thread_k = (ctx.tiling->qk_quant_gran == QUANT_GRAN_PER_THREAD);
+        const bool per_thread_k = (ctx.qk_quant_gran == QUANT_GRAN_PER_THREAD);
         const uint32_t grp_per_blk = per_thread_k ? 4u : 1u;
         const uint32_t blk_first = cur_k_start / quant::K_BLK;
         const uint32_t grp_lo = blk_first * grp_per_blk;
@@ -237,7 +237,7 @@ public:
         }
 
         // 单条 2D Strided DMA 猝发读整个 block_k 分块拉入 UB，消灭逐行 GM 读与流水气泡
-        const uint32_t stride_k = Catlass::SageAttn::CalcGm2dStride32B(ctx.hkv, d, sizeof(half), ctx.tiling->tensor_layout);
+        const uint32_t stride_k = Catlass::SageAttn::CalcGm2dStride32B(ctx.hkv, d, sizeof(half), ctx.tensor_layout);
         Catlass::SageAttn::Sync<HardEvent::V_MTE2>();
         Catlass::SageAttn::LoadTile2DFromGm(ub_in, reinterpret_cast<__gm__ half*>(k_src), block_k, d, stride_k);
         Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
@@ -292,7 +292,7 @@ public:
             Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
         }
 #else
-        const bool per_thread = (ctx.tiling->qk_quant_gran == QUANT_GRAN_PER_THREAD);
+        const bool per_thread = (ctx.qk_quant_gran == QUANT_GRAN_PER_THREAD);
         const uint16_t *k_u16 = reinterpret_cast<const uint16_t *>(k_src);
         int8_t *l1_k = reinterpret_cast<int8_t *>(ctx.sim_mem->l1_mem + l1_dst_addr);
 
@@ -370,7 +370,7 @@ public:
     {
         const uint32_t d = ctx.d;
         const uint32_t block_n = ctx.block_n;
-        const float scale_max = ctx.tiling->v_scale_max;
+        const float scale_max = ctx.v_scale_max;
 
 #if SAGE_ATTN_DEVICE_COMPILE
         LocalTensor<float> ub_v_scale(TPosition::VECCALC, SlotV0RowMax::Offset(), d);
@@ -379,8 +379,8 @@ public:
         LocalTensor<half> ub_in(TPosition::VECCALC, SlotV0InputPing::Offset(), MAX_PACK_ROWS * d);
         LocalTensor<float8_e4m3_t> ub_out(TPosition::VECCALC, SlotV0NzOutput::Offset(), d);
         LocalTensor<float8_e4m3_t> l1_v(TPosition::B1, l1_dst_addr, block_n * d);
-        const uint32_t smooth_v = (ctx.tiling->smooth_v != 0) ? 1u : 0u;
-        const uint32_t stride_v = Catlass::SageAttn::CalcGm2dStride32B(ctx.hkv, d, sizeof(half), ctx.tiling->tensor_layout);
+        const uint32_t smooth_v = (ctx.smooth_v != 0) ? 1u : 0u;
+        const uint32_t stride_v = Catlass::SageAttn::CalcGm2dStride32B(ctx.hkv, d, sizeof(half), ctx.tensor_layout);
 
         if (cur_k == 0) {
             const uint32_t fp8_padded = ::RoundUp<16u>(ctx.sk);
@@ -437,7 +437,7 @@ public:
             if (smooth_v != 0u) {
                 GlobalTensor<float> gm_vm;
                 gm_vm.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(
-                    ctx.workspace_gm + ctx.tiling->workspace_vm_offset +
+                    ctx.workspace_gm + ctx.workspace_vm_offset +
                     static_cast<int64_t>(ctx.cur_b) * ctx.hkv * d * sizeof(float) +
                     static_cast<int64_t>(ctx.cur_hkv) * d * sizeof(float)));
                 DataCopy(gm_vm, ub_v_sum, d);
@@ -471,7 +471,7 @@ public:
         if (cur_k == 0) {
             const uint16_t *v_head = v_u16 - kv_layout(tla::MakeCoord(0u, 0u, cur_k * block_n, 0u));
             const uint32_t fp8_padded = ::RoundUp<16u>(ctx.sk);
-            const bool smooth_v = (ctx.tiling->smooth_v != 0);
+            const bool smooth_v = (ctx.smooth_v != 0);
             for (uint32_t c = 0; c < d && c < 256u; ++c) {
                 if (smooth_v) {
                     float sum_v = 0.0f;
@@ -506,7 +506,7 @@ public:
             }
         }
 
-        const bool smooth_v = (ctx.tiling->smooth_v != 0);
+        const bool smooth_v = (ctx.smooth_v != 0);
         for (uint32_t c = 0; c < d; ++c) {
             const float scale = (c < 256u) ? ctx.sim_mem->v_scales[c] : 1.0f;
             const float vm = (smooth_v && c < 256u) ? ctx.sim_mem->v_means[c] : 0.0f;
@@ -537,7 +537,7 @@ public:
         int64_t hq_first = hkv_idx * static_cast<int64_t>(ctx.gqa_ratio) + static_cast<int64_t>(ctx.cur_g0);
 
         const Catlass::SageAttn::GmBhsdLayout q_layout =
-            Catlass::SageAttn::MakeGmBhsdLayout(ctx.b, ctx.hq, ctx.sq, ctx.d, ctx.tiling->tensor_layout == LAYOUT_HND);
+            Catlass::SageAttn::MakeGmBhsdLayout(ctx.b, ctx.hq, ctx.sq, ctx.d, ctx.is_hnd != 0);
         const int64_t q_gm_offset = q_layout(tla::MakeCoord(b_idx, hq_first, sq_start, 0u));
 
         // 1. Prologue：加载当前核负责的 Q，执行 INT8 量化并写入 L1 Bank 0
@@ -547,6 +547,8 @@ public:
         AttentionSync::V0SignalQReady();
 
         const uint32_t active_kv_blocks = ctx.active_kv_blocks;
+        const Catlass::SageAttn::GmBhsdLayout kv_layout =
+            Catlass::SageAttn::MakeGmBhsdLayout(ctx.b, ctx.hkv, ctx.sk, ctx.d, ctx.is_hnd != 0);
 
         // 2. 流水循环：流式预取第 k 块 KV 并执行 INT8/FP8 量化
         for (uint32_t k = 0; k < active_kv_blocks; ++k) {
@@ -561,13 +563,11 @@ public:
             int64_t sk_start = static_cast<int64_t>(k) * ctx.block_n;
             uint32_t cur_block_k = ctx.CurBlockK(k);
 
-            const Catlass::SageAttn::GmBhsdLayout kv_layout =
-                Catlass::SageAttn::MakeGmBhsdLayout(ctx.b, ctx.hkv, ctx.sk, ctx.d, ctx.tiling->tensor_layout == LAYOUT_HND);
             const int64_t kv_gm_offset = kv_layout(tla::MakeCoord(b_idx, hkv_idx, sk_start, 0u));
 
             const __gm__ float *km_ptr = nullptr;
 #if !SAGE_ATTN_DEVICE_COMPILE
-            if (ctx.tiling->smooth_k != 0) {
+            if (ctx.smooth_k != 0) {
                 km_ptr = reinterpret_cast<const __gm__ float *>(ctx.km_self);
             }
 #endif
@@ -592,21 +592,21 @@ public:
         int64_t hq_first = hkv_idx * static_cast<int64_t>(ctx.gqa_ratio) + static_cast<int64_t>(ctx.cur_g0);
 
         const Catlass::SageAttn::GmBhsdLayout q_layout =
-            Catlass::SageAttn::MakeGmBhsdLayout(ctx.b, ctx.hq, ctx.sq, ctx.d, ctx.tiling->tensor_layout == LAYOUT_HND);
+            Catlass::SageAttn::MakeGmBhsdLayout(ctx.b, ctx.hq, ctx.sq, ctx.d, ctx.is_hnd != 0);
         const int64_t q_gm_offset = q_layout(tla::MakeCoord(b_idx, hq_first, sq_start, 0u));
 
         // 1. Prologue：加载 Q，执行量化写 L1 和 StageStrip
         LoadAndQuantizeQ(ctx, ctx.query_gm + q_gm_offset * sizeof(uint16_t), q_layout);
 
         const uint32_t active_kv_blocks = ctx.active_kv_blocks;
+        const Catlass::SageAttn::GmBhsdLayout kv_layout =
+            Catlass::SageAttn::MakeGmBhsdLayout(ctx.b, ctx.hkv, ctx.sk, ctx.d, ctx.is_hnd != 0);
         for (uint32_t k = 0; k < active_kv_blocks; ++k) {
             bool is_ping = ((k % 2) == 0);
             uint32_t l1_dst_offset = is_ping ? SlotL1KvPing::Offset() : SlotL1KvPong::Offset();
             int64_t sk_start = static_cast<int64_t>(k) * ctx.block_n;
             uint32_t cur_block_k = ctx.CurBlockK(k);
 
-            const Catlass::SageAttn::GmBhsdLayout kv_layout =
-                Catlass::SageAttn::MakeGmBhsdLayout(ctx.b, ctx.hkv, ctx.sk, ctx.d, ctx.tiling->tensor_layout == LAYOUT_HND);
             const int64_t kv_gm_offset = kv_layout(tla::MakeCoord(b_idx, hkv_idx, sk_start, 0u));
 
             QuantizeAndStageKey(ctx, ctx.key_gm + kv_gm_offset * sizeof(uint16_t), nullptr,

@@ -94,10 +94,10 @@ public:
         const int64_t sk_start = static_cast<int64_t>(k * ctx.block_n);
 
         const Catlass::SageAttn::GmBhsdLayout kv_layout =
-            Catlass::SageAttn::MakeGmBhsdLayout(ctx.b, ctx.hkv, ctx.sk, ctx.d, ctx.tiling->tensor_layout == LAYOUT_HND);
+            Catlass::SageAttn::MakeGmBhsdLayout(ctx.b, ctx.hkv, ctx.sk, ctx.d, ctx.is_hnd != 0);
         const int64_t kv_gm_offset = kv_layout(tla::MakeCoord(b_idx, hkv_idx, sk_start, 0u));
         const __gm__ float *km_ptr = nullptr;
-        if (ctx.tiling->smooth_k != 0) {
+        if (ctx.smooth_k != 0) {
             km_ptr = reinterpret_cast<const __gm__ float *>(ctx.km_self);
         }
 
@@ -113,14 +113,14 @@ public:
         const TaskContext &ctx,
         uint32_t row, float &cur_max, float &cur_sum, uint32_t k)
     {
-        const bool per_thread = (ctx.tiling->qk_quant_gran == QUANT_GRAN_PER_THREAD);
+        const bool per_thread = (ctx.qk_quant_gran == QUANT_GRAN_PER_THREAD);
         const uint32_t g = row / ctx.cur_q_len;
         const uint32_t token_q = ctx.cur_q_start + (row % ctx.cur_q_len);
         const float q_scale =
             ctx.sim_mem->q_scales[(ctx.cur_g0 + g) * kQScaleSlotStride + quant::QScaleIndex(token_q, per_thread)];
         float *logits_row = &ctx.sim_mem->logits[static_cast<size_t>(row) * ctx.block_n];
         const int8_t *l1_q = reinterpret_cast<const int8_t *>(
-            ctx.sim_mem->l1_mem + ctx.tiling->l1_q_offset);
+            ctx.sim_mem->l1_mem + ctx.l1_q_offset);
         const bool is_ping = ((k % 2) == 0);
         const uint32_t cur_kv_base = is_ping ? SlotL1KvPing::Offset() : SlotL1KvPong::Offset();
         const int8_t *l1_k = reinterpret_cast<const int8_t *>(
@@ -129,7 +129,7 @@ public:
 
         for (uint32_t j = 0; j < ctx.block_n; ++j) {
             const uint32_t token_k = cur_k_start + j;
-            if (token_k >= ctx.sk || (ctx.tiling->is_causal != 0 &&
+            if (token_k >= ctx.sk || (ctx.is_causal != 0 &&
                                       static_cast<int64_t>(token_k) > static_cast<int64_t>(token_q))) {
                 logits_row[j] = SAGE_MASK_SENTINEL;
                 continue;
@@ -143,7 +143,7 @@ public:
             logits_row[j] = twin::DequantQkLogit(
                 dot, q_scale,
                 ctx.sim_mem->k_scales[quant::KScaleIndex(token_k, per_thread)],
-                ctx.tiling->sm_scale_log2e);
+                ctx.sm_scale_log2e);
         }
 
         float row_max = SAGE_MASK_SENTINEL;
@@ -158,7 +158,7 @@ public:
         cur_max = row_max;
         cur_sum = twin::OnlineBlockExp2Sum(logits_row, cur_k_start,
                                            cur_k_start, cur_k_start + ctx.block_n,
-                                           ctx.tiling->is_causal != 0, token_q, row_max);
+                                           ctx.is_causal != 0, token_q, row_max);
     }
 
     __aicore__ inline __attribute__((always_inline)) void RescaleAccumulator(
@@ -219,8 +219,8 @@ public:
         dev_vf::DequantMaskMaxSumRowsVF(reinterpret_cast<__ubuf__ float*>(ub_logits_dot.GetPhyAddr()), rows,
                                         reinterpret_cast<__ubuf__ float*>(ub_qs.GetPhyAddr()),
                                         reinterpret_cast<__ubuf__ float*>(ub_ks.GetPhyAddr()),
-                                        ctx.tiling->sm_scale_log2e, ctx.cur_q_start, ctx.cur_q_len,
-                                        cur_k_start, ctx.sk, ctx.tiling->is_causal, ctx.block_n,
+                                        ctx.sm_scale_log2e, ctx.cur_q_start, ctx.cur_q_len,
+                                        cur_k_start, ctx.sk, ctx.is_causal, ctx.block_n,
                                         reinterpret_cast<__ubuf__ float*>(ub_block_max.GetPhyAddr()),
                                         reinterpret_cast<__ubuf__ float*>(ub_block_sum.GetPhyAddr()));
 

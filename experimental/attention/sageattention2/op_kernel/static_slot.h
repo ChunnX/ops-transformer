@@ -133,6 +133,20 @@ struct TaskContext {
     uint32_t cur_q_len{0};
     uint32_t active_kv_blocks{0};
 
+    uint32_t is_causal{0};
+    uint32_t is_hnd{1};
+    uint32_t smooth_k{0};
+    uint32_t smooth_v{0};
+    float sm_scale_log2e{0.0f};
+    uint32_t d_og{0};
+    uint32_t has_lse{0};
+    uint32_t qk_quant_gran{0};
+    uint32_t pv_accum_dtype{0};
+    uint32_t l1_q_offset{0};
+    uint64_t workspace_vm_offset{0};
+    uint32_t tensor_layout{0};
+    float v_scale_max{0.0f};
+
 #if !SAGE_ATTN_DEVICE_COMPILE
     SimMemory *sim_mem{nullptr};
     float *km_self{nullptr};

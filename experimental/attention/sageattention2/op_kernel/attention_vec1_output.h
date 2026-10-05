@@ -64,7 +64,7 @@ public:
     {
 #if SAGE_ATTN_DEVICE_COMPILE
         const uint32_t rows = ctx.TotalRows();
-        const uint32_t fp16_round = (ctx.tiling->pv_accum_dtype == PV_ACCUM_FP32_FP16) ? 1u : 0u;
+        const uint32_t fp16_round = (ctx.pv_accum_dtype == PV_ACCUM_FP32_FP16) ? 1u : 0u;
         LocalTensor<float> ub_vs(TPosition::VECCALC, SlotV1VsChan::Offset(), ctx.d);
         LocalTensor<float> ub_partial(TPosition::VECCALC, SlotV1PvPartial::Offset(), rows * ctx.d);
         LocalTensor<float> ub_o(TPosition::VECCALC, SlotV1OAccum::Offset(), rows * ctx.d);
@@ -88,7 +88,7 @@ public:
         uint32_t block_k,
         const OnlineSoftmaxState row_states_[MAX_PACK_ROWS])
     {
-        const bool fp16_accum = (ctx.tiling->pv_accum_dtype == PV_ACCUM_FP32_FP16);
+        const bool fp16_accum = (ctx.pv_accum_dtype == PV_ACCUM_FP32_FP16);
         const bool is_ping = ((cur_k % 2) == 0);
         const uint32_t cur_kv_base = is_ping ? SlotL1KvPing::Offset() : SlotL1KvPong::Offset();
         const uint8_t *l1_v = ctx.sim_mem->l1_mem + cur_kv_base +
@@ -103,12 +103,12 @@ public:
                 &ctx.sim_mem->o_accum[static_cast<size_t>(r) * ctx.d], ctx.d,
                 &ctx.sim_mem->logits[static_cast<size_t>(r) * ctx.block_n], cur_k_start,
                 cur_k_start, cur_k_start + block_k,
-                ctx.tiling->is_causal != 0, token_q, m_prime,
+                ctx.is_causal != 0, token_q, m_prime,
                 fp16_accum ? PV_ACCUM_FP32_FP16 : PV_ACCUM_FP32, ctx.k_step,
                 [&](uint32_t j, uint32_t c) -> float {
                     const uint32_t jl = j - cur_k_start;
                     const uint32_t slot = quant::VSlotOfToken(jl);
-                    const float vm = (ctx.tiling->smooth_v != 0) ? ctx.sim_mem->v_means[c] : 0.0f;
+                    const float vm = (ctx.smooth_v != 0) ? ctx.sim_mem->v_means[c] : 0.0f;
                     return quant::E4m3fnToFloat(l1_v[static_cast<size_t>(c) * ctx.block_n + slot]) *
                                ctx.sim_mem->v_scales[c] + vm;
                 });
@@ -128,17 +128,17 @@ public:
         const int64_t sq_start = static_cast<int64_t>(ctx.cur_q_start);
 
         const Catlass::SageAttn::GmBhsdLayout out_layout =
-            Catlass::SageAttn::MakeGmBhsdLayout(ctx.b, ctx.hq, ctx.sq, ctx.d, ctx.tiling->tensor_layout == LAYOUT_HND);
+            Catlass::SageAttn::MakeGmBhsdLayout(ctx.b, ctx.hq, ctx.sq, ctx.d, ctx.is_hnd != 0);
         const Catlass::SageAttn::GmBhsLayout lse_layout =
             Catlass::SageAttn::MakeGmBhsLayout(ctx.b, ctx.hq, ctx.sq);
 
 #if SAGE_ATTN_DEVICE_COMPILE
-        const bool has_vm = (ctx.tiling->smooth_v != 0);
+        const bool has_vm = (ctx.smooth_v != 0);
         LocalTensor<float> ub_vm(TPosition::VECCALC, SlotV1VmChan::Offset(), ctx.d);
         if (has_vm) {
             GlobalTensor<float> gm_vm;
             gm_vm.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(
-                ctx.workspace_gm + ctx.tiling->workspace_vm_offset +
+                ctx.workspace_gm + ctx.workspace_vm_offset +
                 (b_idx * static_cast<int64_t>(ctx.hkv) + hkv_idx) * ctx.d * sizeof(float)));
             DataCopy(ub_vm, gm_vm, ctx.d);
             Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
@@ -164,7 +164,7 @@ public:
                                              reinterpret_cast<__ubuf__ float*>(ub_running_sum.GetPhyAddr()),
                                              r,
                                              has_vm ? reinterpret_cast<__ubuf__ float*>(ub_vm.GetPhyAddr()) : nullptr,
-                                             ctx.tiling->d_og);
+                                             ctx.d_og);
                 Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
 
                 const int64_t out_gm_offset = out_layout(tla::MakeCoord(b_idx, hq_curr, sq_start + i, 0u)) *
@@ -174,19 +174,19 @@ public:
                     gm_out.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(ctx.out_gm + out_gm_offset));
                     gm_out.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
                     LocalTensor<bfloat16_t> ub_bf16 = ub_half.ReinterpretCast<bfloat16_t>();
-                    DataCopy(gm_out, ub_bf16, ctx.tiling->d_og);
+                    DataCopy(gm_out, ub_bf16, ctx.d_og);
                 } else {
                     GlobalTensor<half> gm_out;
                     gm_out.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(ctx.out_gm + out_gm_offset));
                     gm_out.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
-                    DataCopy(gm_out, ub_half, ctx.tiling->d_og);
+                    DataCopy(gm_out, ub_half, ctx.d_og);
                 }
                 Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
             }
         }
 
         // 2. LSE 计算与写回 GM（严格收敛在 has_lse 内部，has_lse == 0 时彻底旁路，零标量开销、零同步等待）
-        if (ctx.tiling->has_lse != 0 && ctx.lse_gm != nullptr) {
+        if (ctx.has_lse != 0 && ctx.lse_gm != nullptr) {
             Catlass::SageAttn::Sync<HardEvent::V_S>();
             for (uint32_t g = 0; g < ctx.cur_heads; ++g) {
                 const int64_t hq_curr = hkv_idx * static_cast<int64_t>(ctx.gqa_ratio) + static_cast<int64_t>(ctx.cur_g0) + g;
@@ -206,7 +206,7 @@ public:
                         ? (m_val + OnlineSoftmaxTransformer::FastLog2(d_val))
                         : MIN_FLOAT_VAL;
                     const float lse_host = OnlineSoftmaxTransformer::ConvertLseToHost(
-                        lse_exp2, ctx.tiling->sm_scale_log2e * INV_LOG2E,
+                        lse_exp2, ctx.sm_scale_log2e * INV_LOG2E,
                         0.0f, false, S_FP8_OFFSET);
                     ub_lse_row.SetValue(i, lse_host);
                 }
@@ -237,7 +237,7 @@ public:
                 if (r >= MAX_PACK_ROWS) break;
                 const float inv_row = OnlineSoftmaxTransformer::GetFinalInvDenominator(row_states_[r]);
 
-                for (uint32_t c = 0; c < ctx.tiling->d_og; ++c) {
+                for (uint32_t c = 0; c < ctx.d_og; ++c) {
                     const float val = ctx.sim_mem->o_accum[static_cast<size_t>(r) * ctx.d + c] * inv_row;
                     const int64_t out_elem = out_layout(tla::MakeCoord(b_idx, hq_curr, sq_start + i, c));
                     WriteOutputBits(reinterpret_cast<uint16_t *>(ctx.out_gm) + out_elem, 0, val);
@@ -245,7 +245,7 @@ public:
             }
         }
 
-        if (ctx.tiling->has_lse != 0 && ctx.lse_gm != nullptr) {
+        if (ctx.has_lse != 0 && ctx.lse_gm != nullptr) {
             for (uint32_t g = 0; g < ctx.cur_heads; ++g) {
                 const int64_t hq_curr = hkv_idx * static_cast<int64_t>(ctx.gqa_ratio) + static_cast<int64_t>(ctx.cur_g0) + g;
                 if (hq_curr >= ctx.hq) break;
@@ -256,7 +256,7 @@ public:
 
                     float lse_corr_val = 0.0f;
                     bool has_corr = false;
-                    if (ctx.tiling->smooth_k != 0) {
+                    if (ctx.smooth_k != 0) {
                         const uint16_t *q_row = reinterpret_cast<const uint16_t *>(ctx.query_gm) +
                                                 out_layout(tla::MakeCoord(b_idx, hq_curr, sq_start + i, 0u));
                         lse_corr_val = quant::LseCorrDot(ctx.d, [&](uint32_t c) { return ReadInputBits(q_row, c); },
@@ -264,7 +264,7 @@ public:
                         has_corr = true;
                     }
                     const float lse_host = OnlineSoftmaxTransformer::ConvertLseToHost(
-                        row_states_[r].lse, ctx.tiling->sm_scale_log2e * INV_LOG2E,
+                        row_states_[r].lse, ctx.sm_scale_log2e * INV_LOG2E,
                         lse_corr_val, has_corr, S_FP8_OFFSET);
 
                     const int64_t lse_offset = lse_layout(tla::MakeCoord(b_idx, hq_curr, sq_start + i)) *
@@ -389,6 +389,20 @@ public:
         ctx_.block_n = ctx_.tiling->block_n;
         ctx_.k_step = (ctx_.tiling->k_step != 0u) ? ctx_.tiling->k_step : DEFAULT_K_STEP;
 
+        ctx_.is_causal = ctx_.tiling->is_causal;
+        ctx_.is_hnd = (ctx_.tiling->tensor_layout == LAYOUT_HND) ? 1u : 0u;
+        ctx_.smooth_k = ctx_.tiling->smooth_k;
+        ctx_.smooth_v = ctx_.tiling->smooth_v;
+        ctx_.sm_scale_log2e = ctx_.tiling->sm_scale_log2e;
+        ctx_.d_og = ctx_.tiling->d_og;
+        ctx_.has_lse = ctx_.tiling->has_lse;
+        ctx_.qk_quant_gran = ctx_.tiling->qk_quant_gran;
+        ctx_.pv_accum_dtype = ctx_.tiling->pv_accum_dtype;
+        ctx_.l1_q_offset = ctx_.tiling->l1_q_offset;
+        ctx_.workspace_vm_offset = ctx_.tiling->workspace_vm_offset;
+        ctx_.tensor_layout = ctx_.tiling->tensor_layout;
+        ctx_.v_scale_max = ctx_.tiling->v_scale_max;
+
         const uint32_t pack_cap = (ctx_.m_per_core > 0u) ? (MAX_PACK_ROWS / ctx_.m_per_core) : 1u;
         ctx_.pack_heads = (ctx_.gqa_ratio < pack_cap) ? ctx_.gqa_ratio : pack_cap;
         ctx_.gqa_chunks = (ctx_.pack_heads > 0u) ? ::CeilDiv(ctx_.gqa_ratio, ctx_.pack_heads) : 1u;
@@ -437,14 +451,14 @@ public:
         ctx_.cur_heads = (ctx_.cur_g0 + ctx_.pack_heads <= ctx_.gqa_ratio) ? ctx_.pack_heads : (ctx_.gqa_ratio - ctx_.cur_g0);
 
         const uint32_t total_kv_blocks = ::CeilDiv(ctx_.sk, ctx_.block_n);
-        ctx_.active_kv_blocks = (ctx_.tiling->is_causal != 0)
+        ctx_.active_kv_blocks = (ctx_.is_causal != 0)
             ? ::Min(total_kv_blocks, ::CeilDiv(ctx_.cur_q_start + ctx_.cur_q_len, ctx_.block_n))
             : total_kv_blocks;
 
 #if !SAGE_ATTN_DEVICE_COMPILE
-        if (ctx_.tiling->smooth_k != 0) {
+        if (ctx_.smooth_k != 0) {
             const Catlass::SageAttn::GmBhsdLayout km_layout =
-                Catlass::SageAttn::MakeGmBhsdLayout(ctx_.b, ctx_.hkv, ctx_.sk, ctx_.d, ctx_.tiling->tensor_layout == LAYOUT_HND);
+                Catlass::SageAttn::MakeGmBhsdLayout(ctx_.b, ctx_.hkv, ctx_.sk, ctx_.d, ctx_.is_hnd != 0);
             const uint16_t *k_bits = reinterpret_cast<const uint16_t *>(ctx_.key_gm);
             const int64_t km_b = static_cast<int64_t>(ctx_.cur_b);
             const int64_t km_hkv = static_cast<int64_t>(ctx_.cur_hkv);
@@ -473,7 +487,7 @@ public:
 #if SAGE_ATTN_DEVICE_COMPILE
             if ASCEND_IS_AIC {
                 CubeBlockParams p{ctx_.TotalRows(), ctx_.block_n, ctx_.d};
-                cube_.Process(p, ctx_.active_kv_blocks, ctx_.tiling->l1_q_offset,
+                cube_.Process(p, ctx_.active_kv_blocks, ctx_.l1_q_offset,
                               SlotV1Dot32::Offset(), SlotV1PvPartial::Offset());
             } else {
                 if (ctx_.sub_core_idx == 0) {
@@ -485,7 +499,7 @@ public:
 #else
             vec0_.Process(ctx_);
             CubeBlockParams p{ctx_.TotalRows(), ctx_.block_n, ctx_.d};
-            cube_.Process(p, ctx_.active_kv_blocks, ctx_.tiling->l1_q_offset,
+            cube_.Process(p, ctx_.active_kv_blocks, ctx_.l1_q_offset,
                           SlotV1Dot32::Offset(), SlotV1PvPartial::Offset());
             ProcessVec1(ctx_, softmax_, output_);
 #endif
@@ -504,7 +518,7 @@ public:
     {
         if (!is_active_core_) return;
         CubeBlockParams p{ctx_.TotalRows(), ctx_.block_n, ctx_.d};
-        cube_.TestProcessStandalone(p, ctx_.active_kv_blocks, ctx_.tiling->l1_q_offset,
+        cube_.TestProcessStandalone(p, ctx_.active_kv_blocks, ctx_.l1_q_offset,
                                    SlotV1Dot32::Offset(), SlotV1PvPartial::Offset());
     }
 
