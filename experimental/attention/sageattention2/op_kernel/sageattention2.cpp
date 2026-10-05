@@ -162,28 +162,16 @@ extern "C" __global__ __aicore__ void sage_attention2(
     }
     return;
 #elif SAGE_DIAG_STAGE == 8
-    // Phase 6B: V0 + Cube 真实量化与握手隔离测试 (剥离 V1 与 Fixpipe)
+    // Phase 6B: 测试真实 V0 计算下 Q_READY 跨核唤醒
     sage_attn::SageAttnKernel<sage_attn::kTplDtypeFp16> kernel;
     kernel.Init(query, key, value, attentionOut, softmaxLse, user_ws, &t);
     if (kernel.IsActiveCore()) {
-        uint32_t active_kv_blocks = kernel.GetContext().active_kv_blocks;
         if ASCEND_IS_AIC {
-            sage_attn::AttentionSync::CubeReleaseKvFree(true);
-            sage_attn::AttentionSync::CubeReleaseKvFree(false);
-
             sage_attn::AttentionSync::CubeWaitQReady();
-
-            for (uint32_t k = 0; k < active_kv_blocks; ++k) {
-                bool is_ping = ((k % 2) == 0);
-                sage_attn::AttentionSync::CubeWaitKvReady(is_ping);
-                sage_attn::AttentionSync::CubeReleaseKvFree(is_ping);
-            }
         } else {
             if (kernel.GetContext().sub_core_idx == 0) {
-                kernel.GetVec0().Process(kernel.GetContext());
-                // 回收双缓冲未用许可
-                sage_attn::AttentionSync::V0WaitKvFree(true);
-                sage_attn::AttentionSync::V0WaitKvFree(false);
+                kernel.GetVec0().ProcessStandalone(kernel.GetContext());
+                sage_attn::AttentionSync::V0SignalQReady();
             }
         }
     }
