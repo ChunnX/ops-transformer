@@ -15,9 +15,12 @@ dispatch_binary.py: CANN ACLNN 静态二进制调度生成器
       SageAttention2_<hash>_1_mix_aiv__ / SageAttention2_<hash>_2_mix_aiv__
       .ascend.meta.SageAttention2_<hash>_1_mix_aic / .ascend.meta.SageAttention2_<hash>_2_mix_aic
       .ascend.meta.SageAttention2_<hash>_1_mix_aiv / .ascend.meta.SageAttention2_<hash>_2_mix_aiv
-  - 重新计算生成目标文件的 SHA256 并回填对应 JSON 描述符
+  - 重新计算生成目标文件的 SHA256 并回填产物 JSON 描述符（CANN 依此校验 .o 完整性）
   - 同步安装 kernel/config、sageattention2.json、binary_info_config.json 与 aic-ops-info.json
   - 统一置备 vendors/customize 与 vendors/custom_transformer 双 vendor 目录并配置 config.ini
+
+源模板 kernel_meta/kernel/<soc>/sageattention2/*.json 是手写的 dtype 分派表，
+binary_info_config.json 按文件名硬引用它们，不可由本脚本生成，需随源码入库。
 """
 
 import argparse
@@ -72,7 +75,8 @@ def extract_aicore_binary(data):
 
     # 读取 shstrtab
     shstr_entry = e_shoff + e_shstrndx * e_shentsize
-    _, _, _, _, shstr_offset, shstr_size = _unpack_shdr(data, shstr_entry, is_64)
+    shdr_str = _unpack_shdr(data, shstr_entry, is_64)
+    shstr_offset, shstr_size = shdr_str[4], shdr_str[5]
     shstrtab = data[shstr_offset:shstr_offset + shstr_size]
 
     def get_sec_name(name_idx):
@@ -80,8 +84,8 @@ def extract_aicore_binary(data):
         return shstrtab[name_idx:end].decode("latin1", errors="ignore")
 
     for i in range(e_shnum):
-        sh_name, _, _, _, sec_offset, sec_size = _unpack_shdr(
-            data, e_shoff + i * e_shentsize, is_64)
+        shdr = _unpack_shdr(data, e_shoff + i * e_shentsize, is_64)
+        sh_name, sec_offset, sec_size = shdr[0], shdr[4], shdr[5]
         if get_sec_name(sh_name) == ".aicore_binary":
             return bytes(data[sec_offset:sec_offset + sec_size])
 
@@ -275,6 +279,12 @@ def generate_single_target(base_dev_elf_bytes, bin_name, out_o_path):
         f.write(transformed)
 
 
+def vendor_dispatch_dir(vendors_root, vendor, soc):
+    """返回某vendor 内 static target(.o/.json) 的分发目录。"""
+    return os.path.join(vendors_root, vendor, "op_impl", "ai_core", "tbe",
+                        "kernel", soc, "sageattention2")
+
+
 def dispatch_kernel_binaries(kernel_obj_path, meta_dir, output_vendors_dir, soc="ascend950",
                              sync_meta_sha256=False):
     """
@@ -314,7 +324,7 @@ def dispatch_kernel_binaries(kernel_obj_path, meta_dir, output_vendors_dir, soc=
     for vname in vendor_names:
         vdir = os.path.join(output_vendors_dir, vname)
         k_soc_dir = os.path.join(vdir, "op_impl", "ai_core", "tbe", "kernel", soc)
-        k_disp_dir = os.path.join(k_soc_dir, "sageattention2")
+        k_disp_dir = vendor_dispatch_dir(output_vendors_dir, vname, soc)
         cfg_dirs = {
             "kernel_config": os.path.join(vdir, "op_impl", "ai_core", "tbe", "kernel", "config", soc),
             "op_config": os.path.join(vdir, "op_impl", "ai_core", "tbe", "config", soc),
@@ -333,7 +343,7 @@ def dispatch_kernel_binaries(kernel_obj_path, meta_dir, output_vendors_dir, soc=
             if os.path.isfile(src):
                 shutil.copy2(src, cfg_dirs[cfg_key])
 
-        # 生成 16 个 static target .o 与回填 sha256 后的 .json
+        # 生成每个 static target 的 .o 与配套 .json
         for jf in json_templates:
             with open(jf, "r") as fp:
                 jdata = json.load(fp)
@@ -343,47 +353,41 @@ def dispatch_kernel_binaries(kernel_obj_path, meta_dir, output_vendors_dir, soc=
             # 标准 CANN 规范：严格包含 tilingKey: 1 (_1, FP16) 与 tilingKey: 2 (_2, BF16)
             jdata["kernelList"] = [
                 {
-                    "tilingKey": 1,
+                    "tilingKey": tiling_key,
                     "kernelType": "MIX_AIC",
                     "crossCoreSync": 1,
                     "taskRation": "1:2",
-                    "kernelName": f"{bin_name}_1"
-                },
-                {
-                    "tilingKey": 2,
-                    "kernelType": "MIX_AIC",
-                    "crossCoreSync": 1,
-                    "taskRation": "1:2",
-                    "kernelName": f"{bin_name}_2"
+                    "kernelName": f"{bin_name}_{tiling_key}",
                 }
+                for tiling_key in (1, 2)
             ]
             jdata["taskRation"] = "tilingKey"
 
             out_o = os.path.join(k_disp_dir, f"{bin_name}.o")
             out_json = os.path.join(k_disp_dir, f"{bin_name}.json")
 
-            # 首次生成目标文件（customize），次 vendor 直接复制提速
-            if vname == vendor_names[0] or not os.path.isfile(out_o):
+            # 首个 vendor 生成 .o，其余 vendor 直接复制（同内容，避免重复 ELF 重写）
+            if vname == vendor_names[0]:
                 generate_single_target(base_dev_elf, bin_name, out_o)
             else:
-                src_first_o = os.path.join(output_vendors_dir, vendor_names[0], "op_impl", "ai_core", "tbe", "kernel", soc, "sageattention2", f"{bin_name}.o")
-                shutil.copy2(src_first_o, out_o)
+                shutil.copy2(os.path.join(vendor_dispatch_dir(output_vendors_dir, vendor_names[0], soc),
+                                        f"{bin_name}.o"), out_o)
 
             with open(out_o, "rb") as fp:
-                new_sha256 = hashlib.sha256(fp.read()).hexdigest()
+                # CANN 依此校验 .o 完整性，必须与实际产物一致
+                jdata["sha256"] = hashlib.sha256(fp.read()).hexdigest()
 
-            jdata["sha256"] = new_sha256
             with open(out_json, "w") as fp:
                 json.dump(jdata, fp, indent=1)
                 fp.write("\n")
 
-            # 可选：同步写回源模板，固化当前产物的 sha256（默认关闭，见 sync_meta_sha256）
+            # 可选：把新sha256 固化回源模板（默认关闭，见 sync_meta_sha256）
             if sync_meta_sha256 and vname == vendor_names[0]:
                 with open(jf, "w") as fp:
                     json.dump(jdata, fp, indent=1)
                     fp.write("\n")
 
-        print(f"[dispatch] Successfully dispatched 16 binaries to {vname}: {k_disp_dir}")
+        print(f"[dispatch] Successfully dispatched {len(json_templates)} binaries to {vname}: {k_disp_dir}")
 
     # 写入 vendors/config.ini 配置双优先级
     config_ini_path = os.path.join(output_vendors_dir, "config.ini")
