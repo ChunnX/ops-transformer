@@ -330,8 +330,9 @@ constexpr uint32_t V_PERM_INV_PATTERN[16] = {0, 1, 4, 5, 8, 9, 12, 13, 2, 3, 6, 
 static_assert(V_PERM_PATTERN[V_PERM_INV_PATTERN[3]] == 3, "V perm inverse must be consistent");
 
 /**
- * token 在 16-token 段内的物理 V 槽号（V_PERM_INV_PATTERN 寻址唯一定义点）：
- * golden v_fp8 排布、twin v_deq 读取与 kernel V 量化写槽共用，禁止再展开公式。
+ * token 在 16-token 段内的物理 V 槽号（V_PERM_INV_PATTERN 寻址）：
+ * golden v_fp8 排布与 CPU 离线 twin v_deq 读取保留使用；
+ * 片上 kernel 现已全面升级为 CATLASS 官方 CopyUbToL1zN 2D DMA 与 LoadTile2D V2 硬件原生转置。
  */
 [[nodiscard]] __aicore__ __host__ inline __attribute__((always_inline)) uint32_t VSlotOfToken(uint32_t token_in_block) noexcept {
     return (token_in_block / 16u) * 16u + V_PERM_INV_PATTERN[token_in_block % 16u];

@@ -272,20 +272,6 @@ __aicore__ inline __attribute__((always_inline)) void CopyUbToL1zN(
         AscendC::DataCopy(l1_dst[c * m_aligned * 32u], ub_src[c * 32u], cp);
     }
 }
-#else
-template <typename Element>
-__aicore__ inline __attribute__((always_inline)) void CopyUbToL1zN(
-    AscendC::LocalTensor<Element> l1_dst,
-    AscendC::LocalTensor<Element> ub_src,
-    uint32_t rows,
-    uint32_t cols)
-{
-    (void)l1_dst;
-    (void)ub_src;
-    (void)rows;
-    (void)cols;
-}
-#endif
 
 /**
  * 通用 2D 分块从 GM 搬入 UB 原语（利用 Ascend 950 NDDMA 2D/Strided DMA 硬件指令）：
