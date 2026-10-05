@@ -165,9 +165,8 @@ extern "C" __global__ __aicore__ void sage_attention2(
     // Phase 6B: 循环跨核信号灯握手测试 (1-Iteration Handshake with Token Pre-setting)
     sage_attn::SageAttnKernel<sage_attn::kTplDtypeFp16> kernel;
     kernel.Init(query, key, value, attentionOut, softmaxLse, user_ws, &t);
-    if (kernel.IsActiveCore()) {
-        sage_attn::AttentionSync::InitSyncTokens();
-        if ASCEND_IS_AIC {
+    sage_attn::AttentionSync::InitSyncTokens();
+    if ASCEND_IS_AIC {
             sage_attn::AttentionSync::CubeWaitQReady();
             sage_attn::AttentionSync::CubeWaitKvReady(true);
             sage_attn::AttentionSync::CubeWaitDotFree();
@@ -193,9 +192,8 @@ extern "C" __global__ __aicore__ void sage_attention2(
                 sage_attn::AttentionSync::V1WaitPvDone();
             }
         }
-        sage_attn::AttentionSync::ReleaseSyncTokens();
-    }
-    return;
+        // sage_attn::AttentionSync::ReleaseSyncTokens();
+        return;
 #else
     // Phase 0: 生产全量流水执行
     sage_attn::SageAttnLaunch::RunByDtype(t.input_dtype, query, key, value, attentionOut, softmaxLse, user_ws, &t);
