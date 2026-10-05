@@ -39,11 +39,13 @@ namespace SyncFlags {
 }
 
 /**
- * \brief 基于 CATLASS Token 预置模型的 1C2V 硬件管道精准同步控制器
+ * \brief CATLASS 官方拍计数守卫模型的 1C2V 硬件管道精准同步控制器
  *
- * 彻底消除运行时 if (k >= 2) / if (k > 0) 分支判断与脆弱退域补等；
+ * 零预置零泄漏：首拍信用来自几何（双缓冲槽位天然为空），生产者在 k < 2（或 k == 0）
+ * 直接写入，消费侧自 k >= 2 起等待释放信号（守卫为标量拍计数分支，官方 950 FAI 同款）；
  * 跨核事件精准绑定专用硬件执行管道 (PIPE_FIX / PIPE_MTE3 / PIPE_MTE1 / PIPE_V)，
- * 彻底杜绝全局 generic PIPE_S 标量单元暂停死锁。
+ * 避开全局 generic PIPE_S 标量单元暂停死锁。Flag ID 全表严格小于 11（编译期断言锁定），
+ * 避让 CANN 框架保留区 [11, 14]；V0/V1 分属独立 Bank（Cube 侧以 16 + ID 访问 Bank 1）。
  */
 class AttentionSync {
 public:
@@ -53,14 +55,7 @@ public:
     static_assert(SyncFlags::PV_DONE < 11, "V1 SyncFlags must avoid hardware reserved IDs [11, 14]");
 
     // -------------------------------------------------------------
-    // 1. 初始化预置初始 Token（官方拍计数模型下已废弃，保留空函数防调用报错）
-    // -------------------------------------------------------------
-    __aicore__ inline static void InitSyncTokens()
-    {
-    }
-
-    // -------------------------------------------------------------
-    // 2. 终止退域同步屏障与排空
+    // 1. 终止退域同步屏障
     // -------------------------------------------------------------
     __aicore__ inline static void ReleaseSyncTokens()
     {

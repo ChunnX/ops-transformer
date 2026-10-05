@@ -271,8 +271,8 @@ chunks=1，任务解码与调度算术逐位不变（twin 25 桶 golden 回归�
 - 同步与流水守卫：
   - 采用 CATLASS 官方拍计数守卫协议（`attention_sync.h` 封装 `Arch::CrossCoreFlag`）实现核间/核内定向通知：
     首两拍双缓冲槽位天然为空，生产者（V0/V1/Cube）在 k < 2（或 k == 0）时直接写入，跳过释放等待；
-    第 k >= 2 拍开始等待消费者的释放信号。彻底废弃历史的 Token 预置模型（InitSyncTokens 零开销），
-    根治预置令牌导致的死锁；
+    第 k >= 2 拍开始等待消费者的释放信号。彻底废弃并删除历史的 Token 预置模型
+    （InitSyncTokens 已随死代码清扫移除），根治预置令牌导致的死锁；
   - 双 Bank 独立 Flag 映射：Vector 0 使用 Bank 0（Flag 0~4），Vector 1 使用 Bank 1（Flag 0~8），
     Cube 侧经统一 16 偏移跨核访问，全表 Flag ID 严格小于 11，彻底避让 CANN 硬件保留 ID [11, 14]。
     （历史 RES-05 类型状态守卫 `pipeline_guard.h` 与旧 `sync_guard.h` 经死代码清扫删除：设备核热路径

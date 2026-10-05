@@ -20,8 +20,9 @@
 // 4: Phase 3 V0 单核流水 (Vector 0 Standalone Pipeline)
 // 5: Phase 4 V1 单核流水 (Vector 1 Standalone Pipeline)
 // 6: Phase 5 Cube 单核流水 (Cube Standalone Pipeline)
-// 7: Phase 6A 纯信号灯握手 (Pure Cross-Core Flag Handshake)
-// 8: Phase 6B 循环信号灯握手 (Loop Cross-Core Handshake via Token Pre-setting)
+// 7: Phase 6A 纯信号灯握手 (Pure Cross-Core Flag Handshake, Single Beat)
+// 8: Phase 6B 三拍计数守卫握手 (3-Beat Counter-Guard Handshake, Ping/Pong 槽重访)
+// 9: Phase 6C 三核动态多拍回归 (Dynamic Multi-Beat Regression, IsActiveCore + Tiling 校验)
 // =========================================================================
 #ifndef SAGE_DIAG_STAGE
 #define SAGE_DIAG_STAGE 0
@@ -99,7 +100,24 @@ extern "C" __global__ __aicore__ void sage_attention2(
     // Phase 2: 实例化内核并执行 Init 任务切分与 Die 拓扑绑定
     sage_attn::SageAttnKernel<sage_attn::kTplDtypeFp16> kernel;
     kernel.Init(query, key, value, attentionOut, softmaxLse, user_ws, &t);
-    (void)kernel;
+    AscendC::GlobalTensor<uint32_t> gm_out;
+    gm_out.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(attentionOut));
+    uint32_t blk = static_cast<uint32_t>(AscendC::GetBlockIdx());
+    if ASCEND_IS_AIV {
+        uint32_t sub = static_cast<uint32_t>(AscendC::GetSubBlockIdx());
+        if (blk == 0 || blk == 1) {
+            AscendC::LocalTensor<uint32_t> ub(AscendC::TPosition::VECCALC, sage_attn::SlotV0NzOutput::Offset(), 8);
+            ub.SetValue(0, t.b);
+            ub.SetValue(1, t.hq);
+            ub.SetValue(2, t.sq);
+            ub.SetValue(3, t.sk);
+            ub.SetValue(4, kernel.GetContext().core_idx);
+            ub.SetValue(5, kernel.GetContext().active_kv_blocks);
+            ub.SetValue(6, kernel.IsActiveCore() ? 1 : 0);
+            ub.SetValue(7, 100 + sub);
+            AscendC::DataCopy(gm_out[blk * 8], ub, 8);
+        }
+    }
     return;
 #elif SAGE_DIAG_STAGE == 4
     // Phase 3: Vector 0 单核流水纯计算与访存测试（剥离跨核依赖）
