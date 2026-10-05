@@ -162,12 +162,12 @@ extern "C" __global__ __aicore__ void sage_attention2(
     }
     return;
 #elif SAGE_DIAG_STAGE == 8
-    // Phase 6B: 假时延隔离测试：纯标量循环延迟后发送 Q_READY
+    // Phase 6B: 测量 V0 标量延迟循环耗时 (AIC 不等待)
     sage_attn::SageAttnKernel<sage_attn::kTplDtypeFp16> kernel;
     kernel.Init(query, key, value, attentionOut, softmaxLse, user_ws, &t);
     if (kernel.IsActiveCore()) {
         if ASCEND_IS_AIC {
-            sage_attn::AttentionSync::CubeWaitQReady();
+            // Cube 不等待
         } else {
             if (kernel.GetContext().sub_core_idx == 0) {
                 volatile uint32_t cnt = 0;
