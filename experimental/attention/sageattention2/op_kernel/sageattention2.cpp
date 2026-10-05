@@ -79,15 +79,21 @@ extern "C" __global__ __aicore__ void sage_attention2(
 
 #if SAGE_DIAG_STAGE == 2
     // Phase 1: 硬件核拓扑实测探测 (GetBlockIdx / GetSubBlockIdx 映射真机验证)
-    __gm__ uint32_t *out_u32 = reinterpret_cast<__gm__ uint32_t *>(attentionOut);
+    AscendC::GlobalTensor<uint32_t> gm_out;
+    gm_out.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(attentionOut));
     uint32_t blk = static_cast<uint32_t>(AscendC::GetBlockIdx());
-    if ASCEND_IS_AIC {
-        out_u32[blk * 8 + 0] = blk;
-        out_u32[blk * 8 + 1] = 100; // AIC
-    } else {
-        uint32_t sub = static_cast<uint32_t>(AscendC::GetSubBlockIdx());
-        out_u32[blk * 8 + 2 + sub * 2] = blk;
-        out_u32[blk * 8 + 3 + sub * 2] = 200 + sub; // AIV0 = 200, AIV1 = 201
+    uint32_t sub = static_cast<uint32_t>(AscendC::GetSubBlockIdx());
+    uint32_t sub_num = static_cast<uint32_t>(AscendC::GetSubBlockNum());
+    if ASCEND_IS_AIV {
+        AscendC::TBuf<AscendC::TPosition::VECCALC> tbuf;
+        tbuf.InitBuffer(32);
+        AscendC::LocalTensor<uint32_t> ub = tbuf.Get<uint32_t>();
+        ub.SetValue(0, blk);
+        ub.SetValue(1, sub);
+        ub.SetValue(2, sub_num);
+        ub.SetValue(3, 200 + sub);
+        for (int i = 4; i < 8; ++i) ub.SetValue(i, 0);
+        AscendC::DataCopy(gm_out[blk * 8], ub, 8);
     }
     return;
 #elif SAGE_DIAG_STAGE == 3
