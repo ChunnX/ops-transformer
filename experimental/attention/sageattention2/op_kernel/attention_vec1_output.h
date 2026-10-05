@@ -192,10 +192,11 @@ public:
                     Catlass::SageAttn::Sync<HardEvent::S_MTE3>();
                 }
 #elif defined(SAGE_PROBE_DIAG_MODE) && (SAGE_PROBE_DIAG_MODE == 3)
-                // 探针模式 3：深入遥测 ub_partial, ub_vs 与 ub_o_row
+                // 探针模式 3：深入遥测 ub_partial (含 77.0 探针), ub_vs, ub_o_row 与 ub_out_p
                 if (g == 0 && i == 0) {
                     LocalTensor<float> ub_partial_chk(TPosition::VECCALC, SlotV1PvPartial::Offset(), ctx.d);
                     LocalTensor<float> ub_vs_chk(TPosition::VECCALC, SlotV1VsChan::Offset(), ctx.d);
+                    LocalTensor<uint8_t> ub_p_chk(TPosition::VECCALC, SlotV1FixpipeRecv::Offset(), 16);
                     float s_val = ub_running_sum.GetValue(0);
                     float m_val = ub_running_max.GetValue(0);
                     float p_0 = ub_partial_chk.GetValue(0);
@@ -203,6 +204,8 @@ public:
                     float vs_0 = ub_vs_chk.GetValue(0);
                     float vs_1 = ub_vs_chk.GetValue(1);
                     float o_0 = ub_o_row.GetValue(0);
+                    float p_ub_0 = static_cast<float>(ub_p_chk.GetValue(0));
+                    float p_ub_1 = static_cast<float>(ub_p_chk.GetValue(1));
                     ub_half.SetValue(0, static_cast<half>(99.0f));
                     ub_half.SetValue(1, static_cast<half>(s_val));
                     ub_half.SetValue(2, static_cast<half>(m_val));
@@ -211,7 +214,9 @@ public:
                     ub_half.SetValue(5, static_cast<half>(vs_0));
                     ub_half.SetValue(6, static_cast<half>(vs_1));
                     ub_half.SetValue(7, static_cast<half>(o_0));
-                    for (uint32_t di = 8; di < ctx.d_og; ++di) {
+                    ub_half.SetValue(8, static_cast<half>(p_ub_0));
+                    ub_half.SetValue(9, static_cast<half>(p_ub_1));
+                    for (uint32_t di = 10; di < ctx.d_og; ++di) {
                         ub_half.SetValue(di, static_cast<half>(p_0));
                     }
                     Catlass::SageAttn::Sync<HardEvent::S_MTE3>();
@@ -364,6 +369,11 @@ __aicore__ inline __attribute__((always_inline)) void ProcessVec1(
 
 #if SAGE_ATTN_DEVICE_COMPILE
         if (k > 0) {
+#if defined(SAGE_PROBE_DIAG_MODE) && (SAGE_PROBE_DIAG_MODE == 3)
+            LocalTensor<float> ub_p_pre(TPosition::VECCALC, SlotV1PvPartial::Offset(), 8);
+            ub_p_pre.SetValue(0, 77.0f);
+            ub_p_pre.SetValue(1, 77.0f);
+#endif
             AttentionSync::V1WaitPartialReady();
             output.MergePartialRows(ctx);
             AttentionSync::V1ReleasePartialFree();
@@ -397,6 +407,11 @@ __aicore__ inline __attribute__((always_inline)) void ProcessVec1(
 #if SAGE_ATTN_DEVICE_COMPILE
     // Drain 拍：接收并累加最后一拍的 PV 部分和，并归还许可
     if (active_kv_blocks > 0) {
+#if defined(SAGE_PROBE_DIAG_MODE) && (SAGE_PROBE_DIAG_MODE == 3)
+        LocalTensor<float> ub_p_pre(TPosition::VECCALC, SlotV1PvPartial::Offset(), 8);
+        ub_p_pre.SetValue(0, 77.0f);
+        ub_p_pre.SetValue(1, 77.0f);
+#endif
         AttentionSync::V1WaitPartialReady();
         output.MergePartialRows(ctx);
         AttentionSync::V1ReleasePartialFree();
