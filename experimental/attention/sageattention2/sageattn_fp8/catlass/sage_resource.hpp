@@ -41,6 +41,20 @@ struct Vector0UbBudget {
     static constexpr uint32_t GM_INPUT_PING_OFFSET     = 0;
     static constexpr uint32_t GM_INPUT_PING_BYTES      = 48 * 1024;  // 48 KB
 
+    // V 矩阵分块转置暂存区（48KB~96KB 空闲带承载：tok 暂存 [128,128] fp8=16KB + tr 暂存 [128,128] fp8=16KB，共 32KB）
+    // 供 V 矩阵硬件分形排布 [d, block_n] + VSlotOfToken 重排使用（阶段验证版：标量重排；P5 性能阶段向量化升级）
+    static constexpr uint32_t V_STAGE_TOK_OFFSET       = 48 * 1024;
+    static constexpr uint32_t V_STAGE_TOK_BYTES        = 16 * 1024;  // 16 KB
+    static constexpr uint32_t V_STAGE_TR_OFFSET        = V_STAGE_TOK_OFFSET + V_STAGE_TOK_BYTES;
+    static constexpr uint32_t V_STAGE_TR_BYTES         = 16 * 1024;  // 16 KB
+
+    static_assert(GM_INPUT_PING_OFFSET + GM_INPUT_PING_BYTES <= V_STAGE_TOK_OFFSET,
+                  "Vector0 GM_INPUT_PING overlaps V_STAGE_TOK");
+    static_assert(V_STAGE_TOK_OFFSET + V_STAGE_TOK_BYTES <= V_STAGE_TR_OFFSET,
+                  "Vector0 V_STAGE_TOK overlaps V_STAGE_TR");
+    static_assert(V_STAGE_TR_OFFSET + V_STAGE_TR_BYTES <= 96 * 1024,
+                  "Vector0 V_STAGE_TR overlaps QUANT_WORKSPACE");
+
     static constexpr uint32_t QUANT_WORKSPACE_OFFSET   = 96 * 1024;
     static constexpr uint32_t QUANT_WORKSPACE_BYTES    = 48 * 1024;  // 48 KB
 

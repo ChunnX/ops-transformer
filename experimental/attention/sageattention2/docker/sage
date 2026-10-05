@@ -18,7 +18,7 @@ fi
 case "${1:-}" in
     up)
         shift
-        "${COMPOSE[@]}" up -d --build
+        "${COMPOSE[@]}" up -d "$@"
         "${COMPOSE[@]}" ps
         ;;
     exec)
@@ -28,7 +28,11 @@ case "${1:-}" in
         ;;
     run)
         shift
-        "${COMPOSE[@]}" run --rm dev "$@"
+        if docker ps --format '{{.Names}}' | grep -q "^sageattn2-dev$"; then
+            exec docker exec -i sageattn2-dev "$@"
+        else
+            "${COMPOSE[@]}" run --rm dev "$@"
+        fi
         ;;
     init)
         shift

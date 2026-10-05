@@ -29,8 +29,10 @@ services:
         TORCH_NPU_SPEC: ${TORCH_NPU_SPEC-torch-npu==2.12.0}
         TORCH_INDEX: ${TORCH_INDEX:-https://mirrors.aliyun.com/pytorch-wheels/cpu/}
     image: ${SAGE_IMAGE:-sageattn2-op-dev:latest}
-    container_name: sageattn2-op-dev
+    container_name: sageattn2-dev
     init: true
+    stdin_open: true
+    tty: true
     working_dir: /work/ops-transformer/experimental/attention/sageattention2
     volumes:
       - ../../../..:/work/ops-transformer

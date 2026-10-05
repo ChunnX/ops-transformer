@@ -377,7 +377,8 @@ public:
         LocalTensor<float> ub_v_min(TPosition::VECCALC, SlotV0VMin::Offset(), d);
         LocalTensor<float> ub_v_sum(TPosition::VECCALC, SlotV0VSum::Offset(), d);
         LocalTensor<half> ub_in(TPosition::VECCALC, SlotV0InputPing::Offset(), MAX_PACK_ROWS * d);
-        LocalTensor<float8_e4m3_t> ub_out(TPosition::VECCALC, SlotV0NzOutput::Offset(), d);
+        LocalTensor<float8_e4m3_t> ub_stage_tok(TPosition::VECCALC, SlotV0VStageTok::Offset(), block_n * d);
+        LocalTensor<float8_e4m3_t> ub_stage_tr(TPosition::VECCALC, SlotV0VStageTr::Offset(), d * block_n);
         LocalTensor<float8_e4m3_t> l1_v(TPosition::B1, l1_dst_addr, block_n * d);
         const uint32_t smooth_v = (ctx.smooth_v != 0) ? 1u : 0u;
         const uint32_t stride_v = Catlass::SageAttn::CalcGm2dStride32B(ctx.hkv, d, sizeof(half), ctx.tensor_layout);
@@ -450,20 +451,38 @@ public:
         Catlass::SageAttn::LoadTile2DFromGm(ub_in, reinterpret_cast<__gm__ half*>(v_src), block_k, d, stride_v);
         Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
 
+        // 阶段一：V 行 FP8 量化写入 tok 暂存 [block_n, d]
         for (uint32_t j = 0; j < block_n; ++j) {
             if (j < block_k) {
                 dev_vf::QuantVRowFp8VF<kDtype>(reinterpret_cast<__ubuf__ half*>(ub_in[j * d].GetPhyAddr()),
-                                               reinterpret_cast<__ubuf__ float8_e4m3_t*>(ub_out.GetPhyAddr()),
+                                               reinterpret_cast<__ubuf__ float8_e4m3_t*>(ub_stage_tok[j * d].GetPhyAddr()),
                                                reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
                                                reinterpret_cast<__ubuf__ float*>(ub_v_sum.GetPhyAddr()),
                                                smooth_v, d, scale_max);
             } else {
-                Duplicate(ub_out.ReinterpretCast<int8_t>(), int8_t(0), d);
+                Duplicate(ub_stage_tok[j * d].ReinterpretCast<int8_t>(), int8_t(0), d);
             }
-            Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
-            Catlass::SageAttn::CopyUbToL1(l1_v[j * d], ub_out, d);
-            Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
         }
+
+        // 阶段二：V 矩阵物理几何转置与段内重排 [block_n, d] -> [d, block_n] + VSlotOfToken
+        // 注意：当前实现为功能与精度验证版（Functional Verification Only，标量 UB 读写）
+        // 已知限制：每块 16K 次标量 S-pipe 读写带来约 5ms 级开销，在真机 99% 精度判决后，于 P5 性能阶段替换为向量化/uint16 转置
+        Catlass::SageAttn::Sync<HardEvent::V_S>();
+        auto tok_u8 = ub_stage_tok.ReinterpretCast<uint8_t>();
+        auto tr_u8 = ub_stage_tr.ReinterpretCast<uint8_t>();
+        for (uint32_t c = 0; c < d; ++c) {
+            const uint32_t chan_offset = c * block_n;
+            for (uint32_t j = 0; j < block_n; ++j) {
+                const uint32_t tr_idx = chan_offset + quant::VSlotOfToken(j);
+                const uint32_t tok_idx = j * d + c;
+                tr_u8.SetValue(tr_idx, tok_u8.GetValue(tok_idx));
+            }
+        }
+
+        // 阶段三：S 核写入完成与 MTE3 单次整块 DMA 写入 L1 槽
+        Catlass::SageAttn::Sync<HardEvent::S_MTE3>();
+        Catlass::SageAttn::CopyUbToL1(l1_v, ub_stage_tr, d * block_n);
+        Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
 #else
         const uint16_t *v_u16 = reinterpret_cast<const uint16_t *>(v_src);
         uint8_t *l1_v = ctx.sim_mem->l1_mem + l1_dst_addr;
