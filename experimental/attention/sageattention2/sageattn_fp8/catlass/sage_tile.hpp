@@ -134,11 +134,15 @@ __aicore__ inline __attribute__((always_inline)) void LoadTile2D(
     load_params.kStep = static_cast<uint16_t>(::CeilDiv<32>(cols));
     load_params.ifTranspose = if_transpose;
     if (if_transpose) {
-        // 官方 copy_l1_to_l0b_tla: zN -> nZ 转置装载，跨步计量为列分形数 (cols / 32)
-        load_params.srcStride = static_cast<int32_t>(load_params.kStep);
-        load_params.dstStride = static_cast<uint16_t>(load_params.kStep);
+        // 官方 copy_l1_to_l0b.hpp B8/B4 特化：
+        // 源 zN 外步长 srcOuterStrideCol = rowsRound * ELE_NUM_PER_C0 = rowsRound * 32
+        // srcStride = srcOuterStrideCol / 512 = rowsRound / 16
+        // 目的 nZ 外步长 dstOuterStrideRow = colsRound * ELE_NUM_PER_C0 = colsRound * 32
+        // dstStride = dstOuterStrideRow / 512 = colsRound / 16
+        load_params.srcStride = static_cast<int32_t>(::CeilDiv<16>(rows));
+        load_params.dstStride = static_cast<uint16_t>(::CeilDiv<16>(cols));
     } else {
-        // 官方 copy_l1_to_l0a_tla: zN -> zN 直载，跨步计量为行分形数 (rows / 16)
+        // 官方 copy_l1_to_l0a.hpp 直载特化：
         load_params.srcStride = static_cast<int32_t>(load_params.mStep);
         load_params.dstStride = static_cast<uint16_t>(load_params.mStep);
     }
