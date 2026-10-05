@@ -134,8 +134,10 @@ extern "C" __global__ __aicore__ void sage_attention2(
     sage_attn::SageAttnKernel<sage_attn::kTplDtypeFp16> kernel;
     kernel.Init(query, key, value, attentionOut, softmaxLse, user_ws, &t);
     uint32_t active_kv_blocks = kernel.GetContext().active_kv_blocks;
-    sage_attn::AttentionSync::InitSyncTokens();
     if ASCEND_IS_AIC {
+        // Cube 预置 Ping 和 Pong 空闲 Token
+        sage_attn::AttentionSync::CubeReleaseKvFree(true);
+        sage_attn::AttentionSync::CubeReleaseKvFree(false);
         sage_attn::AttentionSync::CubeWaitQReady();
         for (uint32_t k = 0; k < active_kv_blocks; ++k) {
             bool is_ping = ((k % 2) == 0);
@@ -150,9 +152,11 @@ extern "C" __global__ __aicore__ void sage_attention2(
                 sage_attn::AttentionSync::V0WaitKvFree(is_ping);
                 sage_attn::AttentionSync::V0SignalKvReady(is_ping);
             }
+            // 回收两槽未用 Token
+            sage_attn::AttentionSync::V0WaitKvFree(true);
+            sage_attn::AttentionSync::V0WaitKvFree(false);
         }
     }
-    // sage_attn::AttentionSync::ReleaseSyncTokens();
     return;
 #else
     // Phase 0: 生产全量流水执行
