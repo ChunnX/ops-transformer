@@ -529,6 +529,11 @@ public:
     }
 
     __aicore__ inline const TaskContext &GetContext() const { return ctx_; }
+    __aicore__ inline bool IsActiveCore() const { return is_active_core_; }
+    __aicore__ inline AttentionCube &GetCube() { return cube_; }
+    __aicore__ inline AttentionVec0Quant<DTYPE_MODE> &GetVec0() { return vec0_; }
+    __aicore__ inline AttentionVec1Softmax<DTYPE_MODE> &GetSoftmax() { return softmax_; }
+    __aicore__ inline AttentionVec1Output<DTYPE_MODE> &GetOutput() { return output_; }
 
 private:
     TaskContext ctx_;

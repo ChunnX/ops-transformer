@@ -153,31 +153,21 @@ extern "C" __global__ __aicore__ void sage_attention2(
     }
     return;
 #elif SAGE_DIAG_STAGE == 8
-    // Phase 6B: 循环信号灯握手测试（CATLASS Token 预置模型驱动）
+    // Phase 6B: 生产全流水执行 (剥离 ReleaseSyncTokens 终结回收)
     sage_attn::SageAttnKernel<sage_attn::kTplDtypeFp16> kernel;
     kernel.Init(query, key, value, attentionOut, softmaxLse, user_ws, &t);
-    uint32_t active_kv_blocks = kernel.GetContext().active_kv_blocks;
-    if ASCEND_IS_AIC {
-        // Cube 预置 Ping 和 Pong 空闲 Token
-        sage_attn::AttentionSync::CubeReleaseKvFree(true);
-        sage_attn::AttentionSync::CubeReleaseKvFree(false);
-        sage_attn::AttentionSync::CubeWaitQReady();
-        for (uint32_t k = 0; k < active_kv_blocks; ++k) {
-            bool is_ping = ((k % 2) == 0);
-            sage_attn::AttentionSync::CubeWaitKvReady(is_ping);
-            sage_attn::AttentionSync::CubeReleaseKvFree(is_ping);
-        }
-    } else {
-        if (AscendC::GetSubBlockIdx() == 0) {
-            sage_attn::AttentionSync::V0SignalQReady();
-            for (uint32_t k = 0; k < active_kv_blocks; ++k) {
-                bool is_ping = ((k % 2) == 0);
-                sage_attn::AttentionSync::V0WaitKvFree(is_ping);
-                sage_attn::AttentionSync::V0SignalKvReady(is_ping);
+    if (kernel.IsActiveCore()) {
+        sage_attn::AttentionSync::InitSyncTokens();
+        if ASCEND_IS_AIC {
+            sage_attn::CubeBlockParams p{kernel.GetContext().TotalRows(), kernel.GetContext().block_n, kernel.GetContext().d};
+            kernel.GetCube().Process(p, kernel.GetContext().active_kv_blocks, kernel.GetContext().tiling->l1_q_offset,
+                                     sage_attn::SlotV1Dot32::Offset(), sage_attn::SlotV1PvPartial::Offset());
+        } else {
+            if (kernel.GetContext().sub_core_idx == 0) {
+                kernel.GetVec0().Process(kernel.GetContext());
+            } else {
+                sage_attn::ProcessVec1(kernel.GetContext(), kernel.GetSoftmax(), kernel.GetOutput());
             }
-            // 回收两槽未用 Token
-            sage_attn::AttentionSync::V0WaitKvFree(true);
-            sage_attn::AttentionSync::V0WaitKvFree(false);
         }
     }
     return;
