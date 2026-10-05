@@ -123,11 +123,15 @@ extern "C" __global__ __aicore__ void sage_attention2(
         sage_attn::AttentionSync::CubeWaitQReady();
         sage_attn::AttentionSync::CubeWaitKvReady(true);
         sage_attn::AttentionSync::CubeReleaseKvFree(true);
+        sage_attn::AttentionSync::CubeWaitKvReady(false);
+        sage_attn::AttentionSync::CubeReleaseKvFree(false);
     } else {
         if (AscendC::GetSubBlockIdx() == 0) {
             sage_attn::AttentionSync::V0SignalQReady();
             sage_attn::AttentionSync::V0SignalKvReady(true);
             sage_attn::AttentionSync::V0WaitKvFree(true);
+            sage_attn::AttentionSync::V0SignalKvReady(false);
+            sage_attn::AttentionSync::V0WaitKvFree(false);
         }
     }
     return;
