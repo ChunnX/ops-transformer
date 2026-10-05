@@ -24,6 +24,7 @@ OP_ROOT = current_file.parent.parent
 
 sys.path.insert(0, str(current_file.parent))  # tests/ 共享模块（判据唯一定义点）
 from _golden_utils import (  # noqa: E402
+    case_call_kwargs,
     find_golden_dir,
     load_case_tensors,
     l_a_metrics,
@@ -59,21 +60,9 @@ class TestGoldenPrecision(unittest.TestCase):
     def _execute_case(self, case_meta: dict):
         tensors = load_case_tensors(case_meta)
 
-        q = tensors["q"]
-        k = tensors["k"]
-        v = tensors["v"]
-
         out, lse = sage2_pkg.sageattn_qk_int8_pv_fp8_asc(
-            q=q,
-            k=k,
-            v=v,
-            tensor_layout=case_meta["tensor_layout"],
-            is_causal=case_meta["is_causal"],
-            qk_quant_gran=case_meta["qk_quant_gran"],
-            pv_accum_dtype=case_meta["pv_accum_dtype"],
-            smooth_k=case_meta["smooth_k"],
-            smooth_v=case_meta["smooth_v"],
-            return_lse=True,
+            tensors["q"], tensors["k"], tensors["v"],
+            **case_call_kwargs(case_meta), return_lse=True,
         )
 
         return out, lse, tensors
@@ -175,25 +164,11 @@ class TestGoldenPrecision(unittest.TestCase):
         tensors = load_case_tensors(c)
 
         out_direct, lse_direct = sage2_pkg.sageattn_qk_int8_pv_fp8_asc(
-            tensors["q"], tensors["k"], tensors["v"],
-            tensor_layout=c["tensor_layout"],
-            is_causal=c["is_causal"],
-            qk_quant_gran=c["qk_quant_gran"],
-            pv_accum_dtype=c["pv_accum_dtype"],
-            smooth_k=c["smooth_k"],
-            smooth_v=c["smooth_v"],
-            return_lse=True,
+            tensors["q"], tensors["k"], tensors["v"], **case_call_kwargs(c), return_lse=True,
         )
 
         out_routed, lse_routed = sage2_pkg.sageattn(
-            tensors["q"], tensors["k"], tensors["v"],
-            tensor_layout=c["tensor_layout"],
-            is_causal=c["is_causal"],
-            qk_quant_gran=c["qk_quant_gran"],
-            pv_accum_dtype=c["pv_accum_dtype"],
-            smooth_k=c["smooth_k"],
-            smooth_v=c["smooth_v"],
-            return_lse=True,
+            tensors["q"], tensors["k"], tensors["v"], **case_call_kwargs(c), return_lse=True,
         )
 
         self.assertTrue(torch.equal(out_direct, out_routed))

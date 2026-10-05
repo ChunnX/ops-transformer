@@ -21,7 +21,6 @@
 #include "../quant/quant_host.h"
 
 #include <cmath>
-#include <cstring>
 #include <cstdlib>
 
 // aclnn 状态码词汇表（ComputeHostTiling 返回值；原 sage_attn_proto.h 承载，

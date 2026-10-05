@@ -3,7 +3,6 @@
 #pragma once
 
 #include <cstdint>
-#include <cstring>
 #include <string_view>
 
 // 接口数值编码（gran/accum/layout）与共享数学常量的唯一定义位于

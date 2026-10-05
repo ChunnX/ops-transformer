@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cstdint>
-#include <algorithm>
 #include "static_slot.h"
 #include "attention_sync.h"
 #include "sage_device_vf.h"

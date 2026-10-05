@@ -27,7 +27,7 @@ import os
 import signal
 import sys
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 
 # =========================================================================
@@ -181,8 +181,7 @@ def compute_tensor_stats(t: Any, name: str) -> Dict[str, Any]:
 def format_stats_table(stats_list: List[Dict[str, Any]]) -> str:
     """格式化张量统计表格"""
     header = f"{'Tensor':<10} | {'Shape':<20} | {'Dtype':<8} | {'Min':<10} | {'Max':<10} | {'Mean':<10} | {'Std':<10} | {'Norm':<10} | {'NaN/Inf':<8}"
-    sep = "-" * len(header)
-    rows = [header, sep]
+    rows = [header]
     for s in stats_list:
         if s["shape"] == "None":
             row = f"{s['name']:<10} | {'None':<20} | {'None':<8} | {'-':<10} | {'-':<10} | {'-':<10} | {'-':<10} | {'-':<10} | {'-':<8}"
@@ -399,11 +398,8 @@ def compute_tflops(b: int, h: int, sq: int, sk: int, d: int, causal: bool, time_
 
 def run_sweep():
     """执行全量矩阵扫描测试并输出表格"""
-    print("\n" + "=" * 105)
-    print("      SageAttention2 真机测试矩阵全量扫描 (Automated Hardware Test Sweep)")
-    print("=" * 105)
+    print("\nSageAttention2 真机测试矩阵全量扫描 (Automated Hardware Test Sweep)")
     print(f"总计用例: {len(SWEEP_CASES)} 项典型硬件规格")
-    print("-" * 105)
 
     results = []
     for idx, case in enumerate(SWEEP_CASES, 1):
@@ -444,13 +440,9 @@ def run_sweep():
             })
 
     # 打印最终表格
-    print("\n" + "=" * 105)
-    print("                                  扫描测试汇总报告 (SWEEP SUMMARY)")
-    print("=" * 105)
+    print("\n扫描测试汇总报告 (SWEEP SUMMARY)")
     header = f"{'#':<3} | {'Case Name':<18} | {'Shape (B,Hq,Hk,Sq,Sk,D)':<24} | {'Dtype':<6} | {'Causal':<6} | {'Time(ms)':<9} | {'TFLOPS':<8} | {'Match%':<7} | {'Status':<7}"
-    sep = "-" * len(header)
     print(header)
-    print(sep)
     pass_cnt = sum(1 for r in results if r["status"] == "PASS")
     timeout_cnt = sum(1 for r in results if r["status"] == "TIMEOUT")
     fail_cnt = sum(1 for r in results if r["status"] in ("FAIL", "WARN"))
@@ -460,13 +452,11 @@ def run_sweep():
         time_str = f"{r['time_ms']:.3f}" if not math.isnan(r["time_ms"]) else "-"
         tflops_str = f"{r['tflops']:.1f}" if r['tflops'] > 0 else "-"
         print(f"{r['id']:<3} | {r['name']:<18} | {shape_str:<24} | {r['dtype']:<6} | {str(r['causal']):<6} | {time_str:<9} | {tflops_str:<8} | {r['matched']:<7} | {r['status']:<7}")
-    print(sep)
     print(f"测试统计: 共 {len(results)} 项 | 通过: {pass_cnt} 项 | 超时: {timeout_cnt} 项 | 异常: {fail_cnt} 项")
-    print("=" * 105)
     if pass_cnt == len(results):
-        print("🎉 恭喜！全量硬件规格扫描 100% 验收通过！")
+        print("全量硬件规格扫描 100% 验收通过！")
     else:
-        print("⚠️  存在部分规格未通过，请根据超时/报错信息针对性排查。")
+        print("存在部分规格未通过，请根据超时/报错信息针对性排查。")
 
 
 def main():
@@ -507,7 +497,7 @@ def main():
     args_dict = vars(args)
     if args.preset and args.preset in PRESETS:
         p_cfg = PRESETS[args.preset]
-        print(f"🚀 应用预设 [{args.preset}]: {p_cfg['description']}")
+        print(f"应用预设 [{args.preset}]: {p_cfg['description']}")
         # 仅当命令行未显式覆盖时填充预设值
         for k, v in p_cfg.items():
             if k == "description":
@@ -518,13 +508,10 @@ def main():
     if args_dict["hkv"] is None:
         args_dict["hkv"] = args_dict["h"]
 
-    print("================================================================================")
-    print("      SageAttention2 线上/真机硬件诊断与看门狗调试工具 (Watchdog Suite)")
-    print("================================================================================")
+    print("SageAttention2 线上/真机硬件诊断与看门狗调试工具 (Watchdog Suite)")
     print(f"测试配置: B={args_dict['b']}, Hq={args_dict['h']}, Hkv={args_dict['hkv']}, Sq={args_dict['sq']}, Sk={args_dict['sk']}, D={args_dict['d']}")
     print(f"数据规格: Dtype={args_dict['dtype']}, Layout={args_dict['layout']}, Causal={args_dict['causal']}, Device={args_dict['device']}")
     print(f"看门狗限额: {args_dict['timeout']}s (三层隔离: aclrtSetOpExecuteTimeOut + signal.alarm + mp.Process)")
-    print("--------------------------------------------------------------------------------")
 
     if args_dict.get("no_sandbox"):
         q = mp.Queue()
@@ -535,7 +522,7 @@ def main():
 
     if res["status"] == "TIMEOUT":
         print(f"\n❌ {res['error_msg']}")
-        print("💡 排查建议:")
+        print("排查建议:")
         print("   1. 检查是否存在跨核未完成等待（如 Cube 等待 V0 的 Q_READY 或 KV_READY）；")
         print("   2. 检查 SAGE_DIAG_STAGE 编译宏（建议从 Stage 1~7 逐级隔离确认硬件通路）；")
         print("   3. 检查任务切分是否导致部分 Core 提前退出而对端核仍在等待。")
@@ -573,11 +560,9 @@ def main():
         if g["pass_matched"]:
             print("   ✅ [PASS] 精度验收通过！")
         else:
-            print("   ⚠️  [WARN] 元素匹配率未达 99% 门禁线，请检查数值反量化与缩放系数！")
+            print("   [WARN] 元素匹配率未达 99% 门禁线，请检查数值反量化与缩放系数！")
 
-    print("\n================================================================================")
-    print("      诊断探测完成，硬件执行正常！")
-    print("================================================================================")
+    print("\n诊断探测完成，硬件执行正常！")
     sys.stdout.flush()
     os._exit(0)
 

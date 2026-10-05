@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cstdint>
-#include <cstddef>
 #include "../sageattn_fp8/ascendc/tiling.h"
 #include "../sageattn_fp8/ascendc/online_softmax.h"
 

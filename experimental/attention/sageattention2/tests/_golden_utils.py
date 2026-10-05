@@ -67,6 +67,20 @@ def load_case_tensors(case_meta: dict) -> dict:
     return res
 
 
+def case_call_kwargs(case_meta: dict, **overrides) -> dict:
+    """golden manifest case 契约字段 → 算子 API kwargs 的唯一转发点。
+
+    收口 tensor_layout/is_causal/qk_quant_gran/pv_accum_dtype/smooth_k/smooth_v
+    六个契约字段（原 6 处测试调用点逐字段手抄）；overrides 覆盖同名键。
+    """
+    kw = {k: case_meta[k] for k in (
+        "tensor_layout", "is_causal", "qk_quant_gran",
+        "pv_accum_dtype", "smooth_k", "smooth_v",
+    )}
+    kw.update(overrides)
+    return kw
+
+
 def atol_for(is_bf16: bool) -> float:
     return ATOL_BF16 if is_bf16 else ATOL_FP16
 

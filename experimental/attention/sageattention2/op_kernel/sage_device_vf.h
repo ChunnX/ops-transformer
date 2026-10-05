@@ -33,6 +33,67 @@ namespace dev_vf {
  */
 
 /**
+ * CastTrait 常量作用域约束（BiSheng dav-3510 多遍编译实证）：MicroAPI 的实际内容
+ * （RegTensor/CastTrait/指令内在函数）由编译器在 .vector 专用遍注入，TU 作用域的
+ * 命名空间级 constexpr 初始化器在通用遍解析时不可见（AscendC::Reg 在 kernel_macros.h
+ * 仅空前向声明，AscendC::MicroAPI = Reg 别名受 __NPU_ARCH__ 守卫）——**CastTrait
+ * 常量只能函数局 static constexpr 定义**（官方 CATLASS 同款形态），禁止上收至
+ * 命名空间作用域。 */
+
+/**
+ * dtype 无关 UB 行 chunk 加载→FP32 寄存器（M5 位型双支路单点：原 5 处函数局
+ * if constexpr 加载收口）。__simd_callee__ ABI 约束同 DequantStoreLogitChunkVF
+ * （dav-3510 前端"simd_vf 只可调用 simd_callee"；寄存器瓦片形参以全限定
+ * AscendC::Reg::RegTensor 承接；MaskReg 形参禁用，full 由助手内部 CreateMask
+ * 现场生成）；always_inline 内联后与原函数局展开同构、零调用栈帧。
+ */
+template <uint32_t DTYPE_MODE>
+__simd_callee__ __aicore__ inline __attribute__((always_inline)) void LoadRowChunkF32(
+    AscendC::Reg::RegTensor<float>& val, __ubuf__ half* in_ptr, uint32_t c) {
+    using namespace AscendC;
+    using namespace AscendC::MicroAPI;
+    auto full = CreateMask<float, MaskPattern::ALL>();
+    static constexpr CastTrait toFp32{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+    if constexpr (DTYPE_MODE == 2u) {
+        RegTensor<bfloat16_t> raw;
+        LoadAlign<bfloat16_t, LoadDist::DIST_UNPACK_B16>(raw, reinterpret_cast<__ubuf__ bfloat16_t*>(in_ptr) + c);
+        Cast<float, bfloat16_t, toFp32>(val, raw, full);
+    } else {
+        RegTensor<half> raw;
+        LoadAlign<half, LoadDist::DIST_UNPACK_B16>(raw, in_ptr + c);
+        Cast<float, half, toFp32>(val, raw, full);
+    }
+}
+
+/**
+ * 可选均值减法 + 差值位型舍回单点（Q/K 行统计与行 INT8 量化共享；对齐孪生
+ * Half/Bf16Reader::Sub 口径：FP32 域直减后舍回输入位型再参与统计/量化）。
+ * __simd_callee__ ABI 约束同 LoadRowChunkF32。
+ */
+template <uint32_t DTYPE_MODE>
+__simd_callee__ __aicore__ inline __attribute__((always_inline)) void SubMeanRoundBackF32(
+    AscendC::Reg::RegTensor<float>& val, __ubuf__ float* mean_ptr, uint32_t c) {
+    using namespace AscendC;
+    using namespace AscendC::MicroAPI;
+    auto full = CreateMask<float, MaskPattern::ALL>();
+    static constexpr CastTrait toFp32{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+    static constexpr CastTrait toHalf{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+    static constexpr CastTrait toBf16{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+    RegTensor<float> mean_val;
+    LoadAlign(mean_val, mean_ptr + c);
+    Sub(val, val, mean_val, full);
+    if constexpr (DTYPE_MODE == 2u) {
+        RegTensor<bfloat16_t> rt;
+        Cast<bfloat16_t, float, toBf16>(rt, val, full);
+        Cast<float, bfloat16_t, toFp32>(val, rt, full);
+    } else {
+        RegTensor<half> rt;
+        Cast<half, float, toHalf>(rt, val, full);
+        Cast<float, half, toFp32>(val, rt, full);
+    }
+}
+
+/**
  * 1a. 行批绝对值最大（DEFECT-F-1 组粒度量化的行内阶段，R4 行批化）：
  * 可选 kMean 减法（带输入位型舍回），Abs 后 ReduceMax。
  * 针对昇腾 DaVinci 硬件 VEC 访 UB 必须 32 字节对齐约束（彻底根除逐行 +4 字节非对齐
@@ -65,29 +126,9 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void RowAbsMaxRowsV
         Duplicate(amax_reg, 0.0f);
         for (uint32_t c = 0; c < d; c += 64) {
             RegTensor<float> val;
-            if constexpr (DTYPE_MODE == 2u) {
-                RegTensor<bfloat16_t> raw;
-                LoadAlign<bfloat16_t, LoadDist::DIST_UNPACK_B16>(raw, reinterpret_cast<__ubuf__ bfloat16_t*>(in_ptr) + c);
-                Cast<float, bfloat16_t, toFp32>(val, raw, full);
-            } else {
-                RegTensor<half> raw;
-                LoadAlign<half, LoadDist::DIST_UNPACK_B16>(raw, in_ptr + c);
-                Cast<float, half, toFp32>(val, raw, full);
-            }
+            LoadRowChunkF32<DTYPE_MODE>(val, in_ptr, c);
             if (has_km) {
-                RegTensor<float> km_val;
-                LoadAlign(km_val, km_ptr + c);
-                Sub(val, val, km_val, full);
-                // 差值位型舍回（对齐孪生 Half/Bf16Reader::Sub 口径）
-                if constexpr (DTYPE_MODE == 2u) {
-                    RegTensor<bfloat16_t> rt;
-                    Cast<bfloat16_t, float, toBf16>(rt, val, full);
-                    Cast<float, bfloat16_t, toFp32>(val, rt, full);
-                } else {
-                    RegTensor<half> rt;
-                    Cast<half, float, toHalf>(rt, val, full);
-                    Cast<float, half, toFp32>(val, rt, full);
-                }
+                SubMeanRoundBackF32<DTYPE_MODE>(val, km_ptr, c);
             }
             Abs(val, val, full);
             Max(amax_reg, amax_reg, val, full);
@@ -140,28 +181,9 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void QuantRowInt8VF
 
     for (uint32_t c = 0; c < d; c += 64) {
         RegTensor<float> val;
-        if constexpr (DTYPE_MODE == 2u) {
-            RegTensor<bfloat16_t> raw;
-            LoadAlign<bfloat16_t, LoadDist::DIST_UNPACK_B16>(raw, reinterpret_cast<__ubuf__ bfloat16_t*>(in_ptr) + c);
-            Cast<float, bfloat16_t, toFp32>(val, raw, full);
-        } else {
-            RegTensor<half> raw;
-            LoadAlign<half, LoadDist::DIST_UNPACK_B16>(raw, in_ptr + c);
-            Cast<float, half, toFp32>(val, raw, full);
-        }
+        LoadRowChunkF32<DTYPE_MODE>(val, in_ptr, c);
         if (has_km) {
-            RegTensor<float> km_val;
-            LoadAlign(km_val, km_ptr + c);
-            Sub(val, val, km_val, full);
-            if constexpr (DTYPE_MODE == 2u) {
-                RegTensor<bfloat16_t> rt;
-                Cast<bfloat16_t, float, toBf16>(rt, val, full);
-                Cast<float, bfloat16_t, toFp32>(val, rt, full);
-            } else {
-                RegTensor<half> rt;
-                Cast<half, float, toHalf>(rt, val, full);
-                Cast<float, half, toFp32>(val, rt, full);
-            }
+            SubMeanRoundBackF32<DTYPE_MODE>(val, km_ptr, c);
         }
         Div(val, val, scale_reg, full);
 
@@ -219,15 +241,7 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void QuantVRowFp8VF
     for (uint32_t c = 0; c < d; c += 64) {
         RegTensor<float> val, scale_reg;
         RegTensor<float8_e4m3_t> packed;
-        if constexpr (DTYPE_MODE == 2u) {
-            RegTensor<bfloat16_t> raw;
-            LoadAlign<bfloat16_t, LoadDist::DIST_UNPACK_B16>(raw, reinterpret_cast<__ubuf__ bfloat16_t*>(in_ptr) + c);
-            Cast<float, bfloat16_t, toFp32>(val, raw, full);
-        } else {
-            RegTensor<half> raw;
-            LoadAlign<half, LoadDist::DIST_UNPACK_B16>(raw, in_ptr + c);
-            Cast<float, half, toFp32>(val, raw, full);
-        }
+        LoadRowChunkF32<DTYPE_MODE>(val, in_ptr, c);
         if (has_vm != 0u) {
             RegTensor<float> vm_val;
             LoadAlign(vm_val, vm_ptr + c);
@@ -693,15 +707,7 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void ChannelAmaxAcc
 
     for (uint32_t c = 0; c < d; c += 64) {
         RegTensor<float> val, amax;
-        if constexpr (DTYPE_MODE == 2u) {
-            RegTensor<bfloat16_t> raw;
-            LoadAlign<bfloat16_t, LoadDist::DIST_UNPACK_B16>(raw, reinterpret_cast<__ubuf__ bfloat16_t*>(in_ptr) + c);
-            Cast<float, bfloat16_t, toFp32>(val, raw, full);
-        } else {
-            RegTensor<half> raw;
-            LoadAlign<half, LoadDist::DIST_UNPACK_B16>(raw, in_ptr + c);
-            Cast<float, half, toFp32>(val, raw, full);
-        }
+        LoadRowChunkF32<DTYPE_MODE>(val, in_ptr, c);
         Abs(val, val, full);
         LoadAlign(amax, amax_ptr + c);
         Max(amax, amax, val, full);
@@ -745,15 +751,7 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void ChannelStatsAc
 
     for (uint32_t c = 0; c < d; c += 64) {
         RegTensor<float> val, vmax, vmin, vsum;
-        if constexpr (DTYPE_MODE == 2u) {
-            RegTensor<bfloat16_t> raw;
-            LoadAlign<bfloat16_t, LoadDist::DIST_UNPACK_B16>(raw, reinterpret_cast<__ubuf__ bfloat16_t*>(in_ptr) + c);
-            Cast<float, bfloat16_t, toFp32>(val, raw, full);
-        } else {
-            RegTensor<half> raw;
-            LoadAlign<half, LoadDist::DIST_UNPACK_B16>(raw, in_ptr + c);
-            Cast<float, half, toFp32>(val, raw, full);
-        }
+        LoadRowChunkF32<DTYPE_MODE>(val, in_ptr, c);
         LoadAlign(vmax, vmax_ptr + c);
         LoadAlign(vmin, vmin_ptr + c);
         LoadAlign(vsum, vsum_ptr + c);

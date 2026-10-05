@@ -31,7 +31,7 @@ current_file = Path(__file__).resolve()
 OP_ROOT = current_file.parent.parent
 
 sys.path.insert(0, str(current_file.parent))  # tests/ 共享模块
-from _golden_utils import find_golden_dir, load_case_tensors, make_qkv  # noqa: E402
+from _golden_utils import case_call_kwargs, find_golden_dir, load_case_tensors, make_qkv  # noqa: E402
 if str(OP_ROOT / "python") not in sys.path:
     sys.path.insert(0, str(OP_ROOT / "python"))
 
@@ -330,14 +330,7 @@ class TestSageAttention2Function(unittest.TestCase):
             ref_lse = tensors["lse"]
 
             _, got_lse = sage2_pkg.sageattn_qk_int8_pv_fp8_asc(
-                q_g, k_g, v_g,
-                tensor_layout=c["tensor_layout"],
-                is_causal=c["is_causal"],
-                qk_quant_gran=c["qk_quant_gran"],
-                pv_accum_dtype=c["pv_accum_dtype"],
-                smooth_k=c["smooth_k"],
-                smooth_v=c["smooth_v"],
-                return_lse=True,
+                q_g, k_g, v_g, **case_call_kwargs(c), return_lse=True,
             )
             diff_lse = (got_lse - ref_lse).abs().max().item()
             self.assertLess(diff_lse, 1e-4)
@@ -441,13 +434,7 @@ class TestSageAttention2Function(unittest.TestCase):
         if "TC-07_causal_per_warp" in self.manifest.get("cases", {}):
             c, tensors = self._load_golden_case("TC-07_causal_per_warp")
             out_golden = sage2_pkg.sageattn_qk_int8_pv_fp8_asc(
-                tensors["q"], tensors["k"], tensors["v"],
-                tensor_layout=c["tensor_layout"],
-                is_causal=c["is_causal"],
-                qk_quant_gran=c["qk_quant_gran"],
-                pv_accum_dtype=c["pv_accum_dtype"],
-                smooth_k=c["smooth_k"],
-                smooth_v=c["smooth_v"],
+                tensors["q"], tensors["k"], tensors["v"], **case_call_kwargs(c),
             )
             diff = (out_golden.float() - tensors["out"].float()).abs().max().item()
             self.assertLess(diff, 1e-4)
@@ -547,13 +534,7 @@ class TestSageAttention2Function(unittest.TestCase):
         if "TC-09_long_seq_2k" in self.manifest.get("cases", {}):
             c, tensors = self._load_golden_case("TC-09_long_seq_2k")
             out_golden = sage2_pkg.sageattn_qk_int8_pv_fp8_asc(
-                tensors["q"], tensors["k"], tensors["v"],
-                tensor_layout=c["tensor_layout"],
-                is_causal=c["is_causal"],
-                qk_quant_gran=c["qk_quant_gran"],
-                pv_accum_dtype=c["pv_accum_dtype"],
-                smooth_k=c["smooth_k"],
-                smooth_v=c["smooth_v"],
+                tensors["q"], tensors["k"], tensors["v"], **case_call_kwargs(c),
             )
             max_err = (out_golden.float() - tensors["out"].float()).abs().max().item()
             self.assertLess(max_err, 1e-4)
