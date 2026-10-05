@@ -155,7 +155,8 @@ def process_profiler_data(args):
         return
 
     logging.info(
-        "=================处理完成！性能失败用例如下=================\n", perf_fail_list
+        "=================处理完成！性能失败用例如下=================\n%s",
+        perf_fail_list,
     )
 
     prof_folder = Path(prof_folder)
@@ -164,7 +165,7 @@ def process_profiler_data(args):
             shutil.rmtree(prof_folder)
             logging.info(f"成功删除文件夹及其内容: {prof_folder}")
         except OSError as e:
-            logging.warning("删除PROF文件夹失败：", e)
+            logging.warning("删除PROF文件夹失败： %s", e)
 
     return new_result_path
 
