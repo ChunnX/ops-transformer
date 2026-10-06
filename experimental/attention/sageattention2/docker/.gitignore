@@ -1,0 +1,7 @@
+# Docker 运行与依赖目录忽略
+golden/
+cache/
+out/
+third_party/
+.env
+*.pt

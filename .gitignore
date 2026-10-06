@@ -29,6 +29,10 @@ output/
 # binary files
 *.so
 *.a
+*.o
+*.out
+a.out
+*.dylib
 
 # python cache
 *.pyc
