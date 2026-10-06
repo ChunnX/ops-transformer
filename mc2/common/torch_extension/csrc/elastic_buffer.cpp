@@ -715,8 +715,11 @@ private:
     {
         if (externalHostPtr != nullptr) {
             // Map caller-owned storage memory directly (zero-copy): plain memory is supported
-            aclError ar =
-                aclrtHostRegisterV2(externalHostPtr, static_cast<uint64_t>(externalBytes), ACL_HOST_REG_MAPPED);
+            aclError ar = aclrtHostRegisterV2(externalHostPtr, static_cast<uint64_t>(externalBytes),
+                                              ACL_HOST_REG_MAPPED | ACL_HOST_REG_PINNED);
+            if (ar != ACL_SUCCESS) {
+                ar = aclrtHostRegisterV2(externalHostPtr, static_cast<uint64_t>(externalBytes), ACL_HOST_REG_MAPPED);
+            }
             if (ar != ACL_SUCCESS) {
                 ASCEND_LOGW("aclrtHostRegisterV2(%lld B) failed, ret=%d, fallback to existing registration",
                             externalBytes, static_cast<int>(ar));
@@ -805,7 +808,11 @@ private:
     // SF 表仅本核经映射地址直读 (参数路由): 只做 host->device 映射, 不自建内存、不入 HCCL 通信域。
     static void MapSfTableBuffer(EngramContextResources& resources, void* sfHostPtr, int64_t sfBytes)
     {
-        aclError ar = aclrtHostRegisterV2(sfHostPtr, static_cast<uint64_t>(sfBytes), ACL_HOST_REG_MAPPED);
+        aclError ar = aclrtHostRegisterV2(sfHostPtr, static_cast<uint64_t>(sfBytes),
+                                          ACL_HOST_REG_MAPPED | ACL_HOST_REG_PINNED);
+        if (ar != ACL_SUCCESS) {
+            ar = aclrtHostRegisterV2(sfHostPtr, static_cast<uint64_t>(sfBytes), ACL_HOST_REG_MAPPED);
+        }
         if (ar != ACL_SUCCESS) {
             ASCEND_LOGW("aclrtHostRegisterV2(%lld B) failed, ret=%d, fallback to existing registration", sfBytes,
                         static_cast<int>(ar));
