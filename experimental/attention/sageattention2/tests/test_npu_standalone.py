@@ -297,7 +297,7 @@ def test_tc06_gqa_and_sq_ne_sk():
     info_rej = "causal rejection check: Sq=128 != Sk=256 with is_causal=True"
     with npu_timeout_guard(seconds=20, name="test_tc06", extra_info=info_rej):
         with pytest.raises(ValueError, match="qo_len == kv_len"):
-            sage2.sageattn(q, k, v, is_causal=True)
+            sage2.sageattn(q, k, v, tensor_layout=layout, is_causal=True)
 
 
 def test_tc07_causal():
