@@ -148,7 +148,7 @@ void TestCatlassContracts() {
     std::cout << "[Test 3] Testing CATLASS tile and resource contracts..." << std::endl;
 
     // L1 双 Bank 契约（生产链路实际消费的槽布局唯一定义点：kernel LoadAndQuantizeQ /
-    // QuantizeAndStageKey/Value 与 aclnn host tiling 均按此寻址）
+    // LoadAndQuantizeK/QuantizeAndStageValue 与 aclnn host tiling 均按此寻址）
     static_assert(L1DoubleBankContract::BANK0_START == 0, "Bank 0 must start at 0");
     static_assert(L1DoubleBankContract::BANK1_START == 256 * 1024, "Bank 1 must start at 256KB");
     static_assert(L1DoubleBankContract::Q_MAX_BYTES == 128 * 128, "Q data region 128x128 INT8");
@@ -159,7 +159,7 @@ void TestCatlassContracts() {
                   "ping/pong slots must be adjacent in Bank 1");
 
     // A7 GM scale 交接条带（V0→V1 桥，STAGE_* 唯一定义点 tiling.h；kernel 侧
-    // StageV1ScaleStrips/StageKScaleStrip/QuantizeAndStageKey 全按本组常量槽寻址，
+    // StageV1ScaleStrips/StageKScaleStrip/LoadAndQuantizeK 全按本组常量槽寻址，
     // aclnn host tiling 按 STAGE_CORE_STRIDE × core_num_used 预留）：三段布局单调相接，
     // 126 个 K scale 槽恰好填满单核条带余量
     static_assert(STAGE_Q_SCALE_OFFSET == 0, "Q scale at stage strip start");

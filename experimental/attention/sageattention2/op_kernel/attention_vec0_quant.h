@@ -301,11 +301,10 @@ public:
         LocalTensor<float> ub_stage_k(TPosition::VECCALC, SlotV0StageStrip::Offset(), STAGE_SLOT_FLOATS);
         dev_vf::FillF32VF(reinterpret_cast<__ubuf__ float*>(ub_stage_k.GetPhyAddr()), 0.0f, STAGE_SLOT_FLOATS);
         Catlass::SageAttn::Sync<HardEvent::V_S>();
-        for (uint32_t j = 0; j < block_n; ++j) {
-            if (j < block_k) {
-                const uint32_t token = cur_k_start + j;
-                ub_stage_k.SetValue(j, ub_k_scales.GetValue(quant::KScaleIndex<PER_THREAD>(token)));
-            }
+        // 尾块 padding 槽保持 FillF32VF 预置的 0.0f，循环只覆盖有效 token 区间
+        for (uint32_t j = 0; j < block_k; ++j) {
+            const uint32_t token = cur_k_start + j;
+            ub_stage_k.SetValue(j, ub_k_scales.GetValue(quant::KScaleIndex<PER_THREAD>(token)));
         }
         Catlass::SageAttn::Sync<HardEvent::S_MTE3>();
         GlobalTensor<float> gm_stage_k;
@@ -446,20 +445,6 @@ public:
                 LoadAndQuantizeKImpl<false, 0u>(ctx, k_src, km_ptr, cur_k, l1_dst_addr);
             }
         }
-    }
-
-    __aicore__ inline __attribute__((always_inline)) void QuantizeAndStageKey(
-        const TaskContext &ctx,
-        __gm__ uint8_t *k_src,
-        const __gm__ float *km_ptr,
-        uint32_t l1_dst_addr,
-        uint32_t cur_k,
-        uint32_t block_k = 0,
-        const Catlass::SageAttn::GmBhsdLayout &kv_layout = Catlass::SageAttn::GmBhsdLayout{})
-    {
-        (void)block_k;
-        (void)kv_layout;
-        LoadAndQuantizeK(ctx, k_src, km_ptr, cur_k, l1_dst_addr);
     }
 
     /**
