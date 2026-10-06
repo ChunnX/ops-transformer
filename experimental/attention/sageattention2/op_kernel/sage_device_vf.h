@@ -682,10 +682,8 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void MergePvPartial
                 Cast<float, half, toFp32>(partial, rounded, full);
                 Add(o, o, partial, full);
             } else {
-                // CATLASS MicroAPI MulDstAdd: dst = dst * src0 + src1
-                // 此处 partial (dst) * vs (src0) + o (src1) -> partial (累加和)
-                MulDstAdd(partial, vs, o, full);
-                o = partial;
+                Mul(partial, partial, vs, full);
+                Add(o, o, partial, full);
             }
             StoreAlign(o_row + c, o, full);
         }

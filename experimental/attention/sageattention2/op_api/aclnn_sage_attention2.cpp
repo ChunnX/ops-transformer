@@ -1,8 +1,9 @@
 /**
  * canonical aclnn 两段式（对齐仓内规范）：
- * 一段式 L2_DFX_PHASE_1 → CREATE_EXECUTOR → Canonical 视图（HND/NHD 互换）→
- * l0op::Contiguous → AllocTensor → ADD_TO_LAUNCHER_LIST_AICORE → ViewCopy 回写 →
- * GetWorkspaceSize/ReleaseTo；二段式 L2_DFX_PHASE_2 → CommonOpExecutorRun。
+ * 一段式 L2_DFX_PHASE_1 → CREATE_EXECUTOR → l0op::Contiguous → AllocTensor →
+ * ADD_TO_LAUNCHER_LIST_AICORE → ViewCopy 回写 → GetWorkspaceSize/ReleaseTo；
+ * 二段式 L2_DFX_PHASE_2 → CommonOpExecutorRun。
+ * 支持 HND 与 NHD 原生布局直通，无需转置。
  * 两段式 C 接口唯一交付实现（aclnn/ 目录仅承载闭式 Host Tiling 计算核心与
  * 字符串属性编码协议，不含第二套两段式实现）。
  */
@@ -34,19 +35,6 @@ aclnnStatus BuildSage(const aclTensor *q, const aclTensor *k, const aclTensor *v
 } // namespace l0op
 
 namespace {
-// HND/NHD 的 1、2 维互换视图（kernel 内部统一按 HND 消费），storage 不变
-const aclTensor *Canonical(const aclTensor *t, bool nhd, aclOpExecutor *executor)
-{
-    if (!nhd) {
-        return t;
-    }
-    auto shape = t->GetViewShape();
-    auto strides = t->GetViewStrides();
-    std::swap(shape[1], shape[2]);
-    std::swap(strides[1], strides[2]);
-    return executor->CreateView(t, shape, t->GetStorageShape(), strides, t->GetViewOffset());
-}
-
 bool TensorValid(const aclTensor *t)
 {
     if (t == nullptr || t->GetViewShape().GetDimNum() != 4) {
@@ -103,6 +91,25 @@ extern "C" aclnnStatus aclnnSageAttention2GetWorkspaceSize(
         return ACLNN_ERR_PARAM_INVALID;
     }
 
+    const int hq_idx = nhd ? 2 : 1;
+    const int sq_idx = nhd ? 1 : 2;
+    const auto &qShape = query->GetViewShape();
+    const auto &kShape = key->GetViewShape();
+    const auto &vShape = value->GetViewShape();
+    const auto &outShape = attentionOut->GetViewShape();
+
+    if (outShape != qShape || kShape != vShape || qShape[0] != kShape[0] || qShape[3] != kShape[3] ||
+        qShape[3] > 128 || qShape[hq_idx] % kShape[hq_idx] != 0 ||
+        static_cast<uint64_t>(kShape[0]) * kShape[hq_idx] >= UINT32_MAX ||
+        (isCausal && qShape[sq_idx] != kShape[sq_idx])) {
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    Shape lseShape{qShape[0], qShape[hq_idx], qShape[sq_idx]};
+    if (returnLse && (softmaxLse->GetDataType() != DataType::DT_FLOAT ||
+                      softmaxLse->GetViewShape() != lseShape)) {
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+
     L2_DFX_PHASE_1(aclnnSageAttention2,
                    DFX_IN(query, key, value,
                           tensorLayout, isCausal, qkQuantGran, smScale, pvAccumDtype,
@@ -112,30 +119,10 @@ extern "C" aclnnStatus aclnnSageAttention2GetWorkspaceSize(
     if (owner.get() == nullptr) {
         return ACLNN_ERR_INNER_CREATE_EXECUTOR;
     }
-    auto qc = Canonical(query, nhd, owner.get());
-    auto kc = Canonical(key, nhd, owner.get());
-    auto vc = Canonical(value, nhd, owner.get());
-    auto oc = Canonical(attentionOut, nhd, owner.get());
-    if (qc == nullptr || kc == nullptr || vc == nullptr || oc == nullptr) {
-        return ACLNN_ERR_INNER_NULLPTR;
-    }
-    const auto &qShape = qc->GetViewShape();
-    const auto &kShape = kc->GetViewShape();
-    if (kShape != vc->GetViewShape() || qShape[0] != kShape[0] || qShape[3] != kShape[3] ||
-        qShape[3] > 128 || qShape[1] % kShape[1] != 0 ||
-        static_cast<uint64_t>(kShape[0]) * kShape[1] >= UINT32_MAX ||
-        (isCausal && qShape[2] != kShape[2])) {
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    Shape lseShape{qShape[0], qShape[1], qShape[2]};
-    if (returnLse && (softmaxLse->GetDataType() != DataType::DT_FLOAT ||
-                      softmaxLse->GetViewShape() != lseShape)) {
-        return ACLNN_ERR_PARAM_INVALID;
-    }
 
-    qc = l0op::Contiguous(qc, owner.get());
-    kc = l0op::Contiguous(kc, owner.get());
-    vc = l0op::Contiguous(vc, owner.get());
+    auto qc = l0op::Contiguous(query, owner.get());
+    auto kc = l0op::Contiguous(key, owner.get());
+    auto vc = l0op::Contiguous(value, owner.get());
     if (qc == nullptr || kc == nullptr || vc == nullptr) {
         return ACLNN_ERR_INNER_NULLPTR;
     }
@@ -154,7 +141,7 @@ extern "C" aclnnStatus aclnnSageAttention2GetWorkspaceSize(
     if (ret != ACLNN_SUCCESS) {
         return ret;
     }
-    if (!l0op::ViewCopy(outTensor, oc, owner.get()) ||
+    if (!l0op::ViewCopy(outTensor, attentionOut, owner.get()) ||
         (returnLse && !l0op::ViewCopy(lseTensor, softmaxLse, owner.get()))) {
         return ACLNN_ERR_INNER_NULLPTR;
     }
