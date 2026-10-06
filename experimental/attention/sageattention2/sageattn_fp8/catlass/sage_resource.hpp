@@ -31,6 +31,13 @@ struct HardwareResourceQuota {
 #else
     static constexpr uint32_t MAX_CROSS_CORE_SYNC_DEPTH = 15;
 #endif
+
+    static constexpr uint32_t QK_L0C_OFFSET = 0;
+    static constexpr uint32_t QK_L0C_BYTES = 64 * 1024;
+    static constexpr uint32_t O_CHAIN_L0C_OFFSET = 64 * 1024;
+    static constexpr uint32_t O_CHAIN_L0C_BYTES = 64 * 1024;
+    static_assert(QK_L0C_OFFSET + QK_L0C_BYTES <= O_CHAIN_L0C_OFFSET, "QK and O Chain must not overlap in L0C");
+    static_assert(O_CHAIN_L0C_OFFSET + O_CHAIN_L0C_BYTES <= L0C_TOTAL_BYTES, "L0C quota exceeded");
 };
 
 /**
@@ -222,9 +229,10 @@ public:
             return FootprintViolation::kL1Bank1Kv;
         }
 
-        // L0C：QK^T INT32 累加器 [total_rows][block_n]
-        const uint64_t l0c_bytes = static_cast<uint64_t>(total_rows) * block_n * 4u;
-        if (l0c_bytes > HardwareResourceQuota::L0C_TOTAL_BYTES) {
+        // L0C：QK^T INT32 累加器和 O Chain 累加器
+        const uint64_t qk_l0c = static_cast<uint64_t>(total_rows) * block_n * 4u;
+        const uint64_t o_chain_l0c = static_cast<uint64_t>(total_rows) * head_dim * 4u;
+        if (qk_l0c + o_chain_l0c > HardwareResourceQuota::L0C_TOTAL_BYTES) {
             return FootprintViolation::kL0CAccum;
         }
 

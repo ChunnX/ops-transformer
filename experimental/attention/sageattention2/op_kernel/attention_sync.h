@@ -36,6 +36,7 @@ namespace SyncFlags {
     constexpr uint32_t PV_PARTIAL_READY = 6;  // PV 部分和写入 V1 UB 完成 (Cube set → V1 wait)
     constexpr uint32_t PV_PARTIAL_FREE  = 7;  // V1 部分和累加完毕释放 (V1 set → Cube wait)
     constexpr uint32_t PV_DONE          = 8;  // Cube 全部 PV 运算完成 (Cube set → V1 wait)
+    constexpr uint32_t PV_CHAIN         = 9;  // V1 级联读取 L0C 许可 (V1 set → Cube wait)
 }
 
 /**
@@ -52,7 +53,7 @@ public:
     static constexpr uint8_t MODE = 4; // 1C2V Intra-Block 模式
 
     static_assert(SyncFlags::KV_PONG_FREE < 11, "V0 SyncFlags must avoid hardware reserved IDs [11, 14]");
-    static_assert(SyncFlags::PV_DONE < 11, "V1 SyncFlags must avoid hardware reserved IDs [11, 14]");
+    static_assert(SyncFlags::PV_CHAIN < 11, "V1 SyncFlags must avoid hardware reserved IDs [11, 14]");
 
     // -------------------------------------------------------------
     // 1. 终止退域同步屏障（仅 AIV 执行 MTE3 落盘屏障，AIC 严格禁 PipeBarrier<PIPE_ALL>）
@@ -242,6 +243,23 @@ public:
     {
 #if SAGE_ATTN_DEVICE_COMPILE
         AscendC::CrossCoreWaitFlag<MODE, PIPE_V>(SyncFlags::PV_DONE);
+#endif
+    }
+
+    // -------------------------------------------------------------
+    // 8. Vector 1 -> Cube PV Chain L0C 复用 (PIPE_V -> PIPE_FIX)
+    // -------------------------------------------------------------
+    __aicore__ inline static void V1SignalPvChain()
+    {
+#if SAGE_ATTN_DEVICE_COMPILE
+        AscendC::CrossCoreSetFlag<MODE, PIPE_V>(SyncFlags::PV_CHAIN);
+#endif
+    }
+
+    __aicore__ inline static void CubeWaitPvChain()
+    {
+#if SAGE_ATTN_DEVICE_COMPILE
+        AscendC::CrossCoreWaitFlag<MODE, PIPE_FIX>(16 + SyncFlags::PV_CHAIN);
 #endif
     }
 };

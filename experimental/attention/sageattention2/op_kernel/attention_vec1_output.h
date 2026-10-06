@@ -355,6 +355,10 @@ __aicore__ inline __attribute__((always_inline)) void ProcessVec1(
     softmax.ResetRowStates(ctx.TotalRows());
     output.ResetAccumulator(ctx);
 
+#if SAGE_ATTN_DEVICE_COMPILE
+    uint32_t chain_len = 0;
+#endif
+
     const uint32_t active_kv_blocks = ctx.active_kv_blocks;
     for (uint32_t k = 0; k < active_kv_blocks; ++k) {
         bool is_ping = ((k % 2) == 0);
@@ -362,14 +366,24 @@ __aicore__ inline __attribute__((always_inline)) void ProcessVec1(
 
 #if SAGE_ATTN_DEVICE_COMPILE
         if (k > 0) {
+            bool initC = (chain_len == 0);
+            chain_len++;
+            // Note: must match the condition in Cube exactly
+            bool emit = (chain_len >= 1 || k == active_kv_blocks);
+            
+            if (emit) {
 #if defined(SAGE_PROBE_DIAG_MODE) && (SAGE_PROBE_DIAG_MODE == 3)
-            LocalTensor<float> ub_p_pre(TPosition::VECCALC, SlotV1PvPartial::Offset(), 8);
-            ub_p_pre.SetValue(0, 77.0f);
-            ub_p_pre.SetValue(1, 77.0f);
+                LocalTensor<float> ub_p_pre(TPosition::VECCALC, SlotV1PvPartial::Offset(), 8);
+                ub_p_pre.SetValue(0, 77.0f);
+                ub_p_pre.SetValue(1, 77.0f);
 #endif
-            AttentionSync::V1WaitPartialReady();
-            output.MergePartialRows(ctx, k);
-            AttentionSync::V1ReleasePartialFree();
+                AttentionSync::V1WaitPartialReady();
+                output.MergePartialRows(ctx, k);
+                AttentionSync::V1ReleasePartialFree();
+                chain_len = 0;
+            } else {
+                AttentionSync::V1SignalPvChain();
+            }
         }
 #endif
 

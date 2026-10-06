@@ -106,6 +106,7 @@ public:
         AscendC::TBuffAddr l0c_desc{};
         l0c_desc.logicPos = static_cast<uint8_t>(AscendC::TPosition::CO1);
         l0c_desc.dataLen = m_ * n_ * sizeof(ElementC);
+        l0c_desc.bufferAddr = HardwareResourceQuota::O_CHAIN_L0C_OFFSET;
         AscendC::LocalTensor<ElementC> l0c_tensor;
         l0c_tensor.SetAddr(l0c_desc);
 
@@ -156,7 +157,7 @@ public:
      * copy_l0c_to_ub.hpp:210 提示可行，未经真机 msprof 实测不改动）。
      */
     __aicore__ inline __attribute__((always_inline)) void ExecuteEpilogue(uint32_t ub_dst_offset) {
-        CopyL0CToUbSplitM<ElementC>(0U, ub_dst_offset, m_, n_);
+        CopyL0CToUbSplitM<ElementC>(HardwareResourceQuota::O_CHAIN_L0C_OFFSET, ub_dst_offset, m_, n_);
     }
 
 private:
