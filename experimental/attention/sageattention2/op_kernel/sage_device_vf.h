@@ -18,7 +18,7 @@
 // 本文件（含全部 dev_vf 原语）禁止 64 位操作数的变量移位（64-bit value 按非常量
 // 移位会触发 BiSheng LLVM SelectionDAG 编译期崩溃）。行寻址等索引算术一律留在
 // uint32_t 域——本算子行数 ≤ MAX_PACK_ROWS=128、行宽 ≤ 128 元素，32 位乘积无溢出；
-// 行级位图拆 4 个 uint32_t 字、以 `& 31` 掩码移位取位（RescaleAccumRowsVF 与
+// 行级位图拆 4 个 uint32_t 字、以 `& 31` 掩码移位取位（FusedRescaleMergeVF 与
 // sageattention2.cpp 的 bm 组装同款）。改回 uint64_t 偏移/位图会原样复现崩溃。
 
 namespace sage_attn {
@@ -36,8 +36,8 @@ namespace dev_vf {
  * CastTrait 常量作用域约束（BiSheng dav-3510 多遍编译实证）：MicroAPI 的实际内容
  * （RegTensor/CastTrait/指令内在函数）由编译器在 .vector 专用遍注入，TU 作用域的
  * 命名空间级 constexpr 初始化器在通用遍解析时不可见（AscendC::Reg 在 kernel_macros.h
- * 仅空前向声明，AscendC::MicroAPI = Reg 别名受 __NPU_ARCH__ 守卫）——**CastTrait
- * 常量只能函数局 static constexpr 定义**（官方 CATLASS 同款形态），禁止上收至
+ * 仅空前向声明，AscendC::MicroAPI = Reg 别名受 __NPU_ARCH__ 守卫）——CastTrait
+ * 常量只能函数局 static constexpr 定义（官方 CATLASS 同款形态），禁止上收至
  * 命名空间作用域。 */
 
 /**
@@ -238,26 +238,41 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void QuantVRowFp8VF
     Duplicate(neg_scale_max_reg, -scale_max);
     Duplicate(zero_reg, 0.0f);
     Duplicate(nan_reg, std::numeric_limits<float>::quiet_NaN());
-    for (uint32_t c = 0; c < d; c += 64) {
-        RegTensor<float> val, scale_reg;
-        RegTensor<float8_e4m3_t> packed;
-        LoadRowChunkF32<DTYPE_MODE>(val, in_ptr, c);
-        if (has_vm != 0u) {
+    if (has_vm != 0u) {
+        for (uint32_t c = 0; c < d; c += 64) {
+            RegTensor<float> val, scale_reg;
+            RegTensor<float8_e4m3_t> packed;
+            LoadRowChunkF32<DTYPE_MODE>(val, in_ptr, c);
             RegTensor<float> vm_val;
             LoadAlign(vm_val, vm_ptr + c);
             Sub(val, val, vm_val, full);
+            LoadAlign(scale_reg, scale_ptr + c);
+            Div(val, val, scale_reg, full);
+            // 全零通道 NaN 守卫（收敛轮 1/R1-1）：不依赖硬件 Min/Max NaN 语义——
+            // scale=0 → Div 产 NaN → SAT cast 保留 e4m3 0x7f（对齐 golden）
+            MaskReg zero_scale;
+            Compare<float, CMPMODE::EQ>(zero_scale, scale_reg, zero_reg, full);
+            Select(val, nan_reg, val, zero_scale);
+            Min(val, val, scale_max_reg, full);
+            Max(val, val, neg_scale_max_reg, full);
+            Cast<float8_e4m3_t, float, toFp8>(packed, val, full);
+            StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(out_ptr + c, packed, full);
         }
-        LoadAlign(scale_reg, scale_ptr + c);
-        Div(val, val, scale_reg, full);
-        // 全零通道 NaN 守卫（收敛轮 1/R1-1）：不依赖硬件 Min/Max NaN 语义——
-        // scale=0 → Div 产 NaN → SAT cast 保留 e4m3 0x7f（对齐 golden）
-        MaskReg zero_scale;
-        Compare<float, CMPMODE::EQ>(zero_scale, scale_reg, zero_reg, full);
-        Select(val, nan_reg, val, zero_scale);
-        Min(val, val, scale_max_reg, full);
-        Max(val, val, neg_scale_max_reg, full);
-        Cast<float8_e4m3_t, float, toFp8>(packed, val, full);
-        StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(out_ptr + c, packed, full);
+    } else {
+        for (uint32_t c = 0; c < d; c += 64) {
+            RegTensor<float> val, scale_reg;
+            RegTensor<float8_e4m3_t> packed;
+            LoadRowChunkF32<DTYPE_MODE>(val, in_ptr, c);
+            LoadAlign(scale_reg, scale_ptr + c);
+            Div(val, val, scale_reg, full);
+            MaskReg zero_scale;
+            Compare<float, CMPMODE::EQ>(zero_scale, scale_reg, zero_reg, full);
+            Select(val, nan_reg, val, zero_scale);
+            Min(val, val, scale_max_reg, full);
+            Max(val, val, neg_scale_max_reg, full);
+            Cast<float8_e4m3_t, float, toFp8>(packed, val, full);
+            StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(out_ptr + c, packed, full);
+        }
     }
 }
 
@@ -610,12 +625,16 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void FusedRescaleMe
         }
         __ubuf__ float* o_row = o_base + r * d;
         __ubuf__ float* partial_row = partial_base + r * d;
-        for (uint32_t c = 0; c < d; c += 64) {
-            RegTensor<float> partial, o;
-            LoadAlign(partial, partial_row + c);
-            if (k == 1) {
+        if (k == 1) {
+            for (uint32_t c = 0; c < d; c += 64) {
+                RegTensor<float> partial;
+                LoadAlign(partial, partial_row + c);
                 StoreAlign(o_row + c, partial, full);
-            } else {
+            }
+        } else {
+            for (uint32_t c = 0; c < d; c += 64) {
+                RegTensor<float> partial, o;
+                LoadAlign(partial, partial_row + c);
                 LoadAlign(o, o_row + c);
                 MulDstAdd(o, factor_reg, partial, full);
                 StoreAlign(o_row + c, o, full);

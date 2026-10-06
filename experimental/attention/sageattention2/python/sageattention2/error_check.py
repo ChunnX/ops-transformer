@@ -121,7 +121,13 @@ def validate_tensors(q: Any, k: Any, v: Any, tensor_layout: str, is_causal: bool
     if q.dtype not in valid_dtypes: raise AssertionError("Input tensors must be in dtype of torch.float16 or torch.bfloat16")
     if q.dtype != k.dtype or q.dtype != v.dtype: raise AssertionError("All tensors (q, k, v) must have the same dtype")
     assert q.stride(-1) == 1 and k.stride(-1) == 1 and v.stride(-1) == 1, "Last dim of qkv must be contiguous."
-
+    
+    if hasattr(torch, 'npu') and hasattr(torch.npu, 'get_npu_format'):
+        for name, t in [("q", q), ("k", k), ("v", v)]:
+            fmt = torch.npu.get_npu_format(t)
+            if fmt not in (0, 2):
+                raise ValueError(f"{name} tensor storage format must be ND (2) or NCHW (0), but got {fmt}. "
+                                 f"Please call .npu_format_cast_(2) on the tensor before passing it to SageAttention2.")
 
 def pad_head_dim(q: Any, k: Any, v: Any) -> Tuple[Any, Any, Any, int]:
     # head_dim 值域门（<=0 / >128 拒绝）唯一定义在 validate_tensors（三后端前置），

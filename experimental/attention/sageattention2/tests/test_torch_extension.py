@@ -152,6 +152,24 @@ class TestTorchExtension(unittest.TestCase):
         with self.assertRaises(ValueError):
             sage2.sageattn(q, k, v, qk_quant_gran="invalid_gran")
 
+    def test_private_format_is_rejected_before_aclnn(self):
+        """Verify that private (non-ND/NCHW) storage formats are rejected."""
+        q = torch.randn(1, 4, 32, 64, dtype=torch.float16)
+        k = torch.randn(1, 2, 32, 64, dtype=torch.float16)
+        v = torch.randn(1, 2, 32, 64, dtype=torch.float16)
+
+        if not (hasattr(torch, 'npu') and hasattr(torch.npu, 'get_npu_format')):
+            self.skipTest("torch.npu is not available")
+
+        # Force a non-ND/NCHW format (e.g. 29 for FRACTAL_NZ)
+        try:
+            q.npu_format_cast_(29)
+        except Exception:
+            self.skipTest("npu_format_cast_ failed or unsupported")
+            
+        with self.assertRaisesRegex(ValueError, "tensor storage format must be ND \\(2\\) or NCHW \\(0\\)"):
+            sage2.sageattn(q, k, v)
+
         # Invalid accum dtype must be rejected
         with self.assertRaises(ValueError):
             sage2.sageattn(q, k, v, pv_accum_dtype="int32")

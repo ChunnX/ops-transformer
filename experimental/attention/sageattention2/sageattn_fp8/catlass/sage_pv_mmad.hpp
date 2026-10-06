@@ -131,8 +131,8 @@ public:
      * sage_qk_mmad.hpp EmitL0CToUbRaw：C310 参数面 + dualDstCtl 硬件分段与已验证
      * 的 Arch3510 手动分段不同构，golden 位级锁定域不替换）。
      * fixpipe_cfg 死参数链已删（P11）：随路量化不在 Fixpipe——fp32+fp16 档的
-     * FP16 RNE 舍回定在 V1 合并处（MergePvPartialRowsVF，档位直读 tiling）。
-     * l0c_src_offset 参数已删：L0C 单缓冲，全调用域恒 0（死参清理）。
+     * FP16 RNE 舍回定在 V1 合并处（FusedRescaleMergeVF，档位直读 tiling）。
+     * l0c_src_offset 参数已删：现已映射至 HardwareResourceQuota::O_CHAIN_L0C_OFFSET。
      *
      * SPLIT_M 考证结论（task/todo.md 复用 5，独立评审通过，2026-10-04）：
      * 官方 CopyL0CToUBMode::SPLIT_M（dualDstCtl=1）是把 M/2*N 并行写入两个

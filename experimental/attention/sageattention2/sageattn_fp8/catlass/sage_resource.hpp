@@ -257,7 +257,7 @@ public:
         }
 
         // V1 UB：A7 PV 部分和交接槽 [total_rows][head_dim] FP32（ExecuteEpilogue 落点、
-        // V1 MergePvPartialRowsVF 消费，FLAG_PV_PARTIAL_FREE 读保护）
+        // V1 FusedRescaleMergeVF 消费，FLAG_PV_PARTIAL_FREE 读保护）
         const uint64_t pv_partial_bytes = static_cast<uint64_t>(total_rows) * head_dim * 4u;
         if (pv_partial_bytes > Vector1UbBudget::A7_PV_PARTIAL_BYTES) {
             return FootprintViolation::kUbV1A7Handoff;

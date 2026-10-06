@@ -18,6 +18,14 @@
 namespace sage_direct {
 
 // 直连符号两段式执行（与 benchmarks/benchmark_aclnn.cpp 的 dlsym 直调同口径）：
+inline void check_storage_format(const at::Tensor& t, const char* name) {
+    int64_t format = at_npu::native::custom_ops::get_npu_format(t);
+    // FORMAT_ND is 2, FORMAT_NCHW is 0
+    TORCH_CHECK(format == 2 || format == 0,
+                name, " tensor storage format must be ND (2) or NCHW (0), but got ", format,
+                ". Please call .npu_format_cast_(2) on the tensor before passing it to SageAttention2.");
+}
+
 // 本扩展以 -lcust_opapi 链接 op_api 库，两段式入口即链接期符号，无需经
 // torch_npu GetApiFunc 字符串解析器。该解析路径要求 vendor config.ini
 // load_priority 注册，实测会令内置算子（FIA 基线）的内核解析同样落到本算子
@@ -98,6 +106,10 @@ std::tuple<at::Tensor, c10::optional<at::Tensor>> sageattention2(
 
 #if SAGE_NPU_AVAILABLE
     const c10::OptionalDeviceGuard device_guard(q.device());
+    sage_direct::check_storage_format(q, "q");
+    sage_direct::check_storage_format(k, "k");
+    sage_direct::check_storage_format(v, "v");
+
     double scale = sm_scale.value_or(1.0 / std::sqrt(static_cast<double>(q.size(-1))));
 
     const char *layout_cstr = tensor_layout.c_str();
