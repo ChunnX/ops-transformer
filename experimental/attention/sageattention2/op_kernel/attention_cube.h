@@ -59,7 +59,7 @@ public:
                 if (k > 0) {
                     uint32_t prev_k = k - 1;
                     bool prev_is_ping = ((prev_k % 2) == 0);
-                    StepPvMmad(pv_mmad, params, prev_is_ping, ub_pv_partial_offset, prev_k > 0, true, true, true);
+                    StepPvMmad<true>(pv_mmad, params, prev_is_ping, ub_pv_partial_offset, prev_k > 0);
                 }
 
                 // 2. 等待 V0 当前 KV 分块量化就绪
@@ -88,7 +88,7 @@ public:
             if (active_kv_blocks > 0) {
                 uint32_t last_k = active_kv_blocks - 1;
                 bool last_is_ping = ((last_k % 2) == 0);
-                StepPvMmad(pv_mmad, params, last_is_ping, ub_pv_partial_offset, last_k > 0, true, true, true);
+                StepPvMmad<true>(pv_mmad, params, last_is_ping, ub_pv_partial_offset, last_k > 0);
 
                 // 尾拍配平：回收 V1 释放的末拍 dot32 与 drain partial 信号，确保信道零遗留
                 AttentionSync::CubeWaitDotFree();
@@ -112,7 +112,7 @@ public:
                     chain_len++;
                     bool emit = (chain_len >= PV_CHAIN_CAP || k == active_kv_blocks);
 
-                    StepPvMmad(pv_mmad, params, prev_is_ping, ub_pv_partial_offset, prev_k > 0, prev_emitted, initC, emit);
+                    StepPvMmad<false>(pv_mmad, params, prev_is_ping, ub_pv_partial_offset, prev_k > 0, prev_emitted, initC, emit);
                     if (emit) {
                         chain_len = 0;
                     }
@@ -150,7 +150,7 @@ public:
                 chain_len++;
                 bool emit = true; // drain always emits
 
-                StepPvMmad(pv_mmad, params, last_is_ping, ub_pv_partial_offset, last_k > 0, prev_emitted, initC, emit);
+                StepPvMmad<false>(pv_mmad, params, last_is_ping, ub_pv_partial_offset, last_k > 0, prev_emitted, initC, emit);
 
                 // 尾拍配平：回收 V1 释放的末拍 dot32 与 drain partial 信号，确保信道零遗留
                 AttentionSync::CubeWaitDotFree();
@@ -238,48 +238,57 @@ private:
         Catlass::SageAttn::Sync<HardEvent::M_FIX>();
     }
 
+    template <bool PV_CHAIN_CAP_IS_1 = true>
     __aicore__ inline __attribute__((always_inline)) void StepPvMmad(
         Catlass::SageAttn::SagePvMmad<> &pv_mmad,
         const CubeBlockParams &params,
         bool is_ping,
         uint32_t ub_pv_partial_offset,
         bool prev_valid,
-        bool prev_emitted,
-        bool initC,
-        bool emit)
+        bool prev_emitted = true,
+        bool initC = true,
+        bool emit = true)
     {
         AttentionSync::CubeWaitSoftmaxReady(is_ping);
 
-        StepPvMmadCore(pv_mmad, params, is_ping, initC);
+        if constexpr (PV_CHAIN_CAP_IS_1) {
+            StepPvMmadCore(pv_mmad, params, is_ping, true);
 
-        AttentionSync::CubeReleaseSoftmaxFree(is_ping);
-        AttentionSync::CubeReleaseKvFree(is_ping);
+            AttentionSync::CubeReleaseSoftmaxFree(is_ping);
+            AttentionSync::CubeReleaseKvFree(is_ping);
 
-        if (emit) {
             if (prev_valid) {
-                if (prev_emitted) {
-                    AttentionSync::CubeWaitPartialFree();
-                } else {
-                    AttentionSync::CubeWaitPvChain();
-                }
+                AttentionSync::CubeWaitPartialFree();
             }
             pv_mmad.ExecuteEpilogue(ub_pv_partial_offset);
             Catlass::SageAttn::Sync<HardEvent::FIX_M>();
             AttentionSync::CubeSignalPartialReady();
         } else {
-            // When not emitting, L0C holds the partial result. 
-            // V1 must grant permission to proceed to avoid overwriting or getting out of sync.
-            if (prev_valid) {
-                if (prev_emitted) {
-                    AttentionSync::CubeWaitPartialFree();
-                } else {
-                    AttentionSync::CubeWaitPvChain();
+            StepPvMmadCore(pv_mmad, params, is_ping, initC);
+
+            AttentionSync::CubeReleaseSoftmaxFree(is_ping);
+            AttentionSync::CubeReleaseKvFree(is_ping);
+
+            if (emit) {
+                if (prev_valid) {
+                    if (prev_emitted) {
+                        AttentionSync::CubeWaitPartialFree();
+                    } else {
+                        AttentionSync::CubeWaitPvChain();
+                    }
+                }
+                pv_mmad.ExecuteEpilogue(ub_pv_partial_offset);
+                Catlass::SageAttn::Sync<HardEvent::FIX_M>();
+                AttentionSync::CubeSignalPartialReady();
+            } else {
+                if (prev_valid) {
+                    if (prev_emitted) {
+                        AttentionSync::CubeWaitPartialFree();
+                    } else {
+                        AttentionSync::CubeWaitPvChain();
+                    }
                 }
             }
-            // Even if not emitting, we might need a delay or just wait until next time we emit.
-            // But wait, ExecuteEpilogue is what takes L0C to UB.
-            // If we don't ExecuteEpilogue, we don't use UB, so we don't need PartialFree/PvChain for UB,
-            // BUT we still need to wait for V1 to consume the *previous* partial if it emitted.
         }
     }
 

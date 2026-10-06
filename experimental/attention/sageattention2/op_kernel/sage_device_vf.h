@@ -252,15 +252,17 @@ __aicore__ inline __attribute__((always_inline)) void QuantRowInt8VF(
  * - 全零通道 scale=0 → 0/0=NaN → e4m3 编码 0x7f（对齐 quant::FloatToE4m3fn 的
  *   NaN 保真与 golden）；有限通道饱和 ±scale_max 后 RNE 转 e4m3。
  */
-template <uint32_t DTYPE_MODE>
-__simd_vf__ __aicore__ inline __attribute__((always_inline)) void QuantVRowFp8VF(__ubuf__ half* in_ptr, __ubuf__ float8_e4m3_t* out_ptr,
-                                       __ubuf__ float* scale_ptr, __ubuf__ float* vm_ptr,
-                                       uint32_t has_vm, uint32_t d,
-                                       float scale_max) {
+template <uint32_t DTYPE_MODE, bool HAS_VM>
+__simd_vf__ __aicore__ inline __attribute__((always_inline)) void QuantVRowFp8VF(
+    __ubuf__ half* in_ptr,
+    __ubuf__ float8_e4m3_t* out_ptr,
+    __ubuf__ float* scale_ptr,
+    __ubuf__ float* vm_ptr,
+    uint32_t d,
+    float scale_max) {
     using namespace AscendC;
     using namespace AscendC::MicroAPI;
     auto full = CreateMask<float, MaskPattern::ALL>();
-    static constexpr CastTrait toFp32{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
     static constexpr CastTrait toFp8{RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
 
     RegTensor<float> scale_max_reg, neg_scale_max_reg, zero_reg, nan_reg;
@@ -268,41 +270,43 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void QuantVRowFp8VF
     Duplicate(neg_scale_max_reg, -scale_max);
     Duplicate(zero_reg, 0.0f);
     Duplicate(nan_reg, std::numeric_limits<float>::quiet_NaN());
-    if (has_vm != 0u) {
-        for (uint32_t c = 0; c < d; c += 64) {
-            RegTensor<float> val, scale_reg;
-            RegTensor<float8_e4m3_t> packed;
-            LoadRowChunkF32<DTYPE_MODE>(val, in_ptr, c);
+
+    for (uint32_t c = 0; c < d; c += 64) {
+        RegTensor<float> val, scale_reg;
+        RegTensor<float8_e4m3_t> packed;
+        LoadRowChunkF32<DTYPE_MODE>(val, in_ptr, c);
+        if constexpr (HAS_VM) {
             RegTensor<float> vm_val;
             LoadAlign(vm_val, vm_ptr + c);
             Sub(val, val, vm_val, full);
-            LoadAlign(scale_reg, scale_ptr + c);
-            Div(val, val, scale_reg, full);
-            // 全零通道 NaN 守卫（收敛轮 1/R1-1）：不依赖硬件 Min/Max NaN 语义——
-            // scale=0 → Div 产 NaN → SAT cast 保留 e4m3 0x7f（对齐 golden）
-            MaskReg zero_scale;
-            Compare<float, CMPMODE::EQ>(zero_scale, scale_reg, zero_reg, full);
-            Select(val, nan_reg, val, zero_scale);
-            Min(val, val, scale_max_reg, full);
-            Max(val, val, neg_scale_max_reg, full);
-            Cast<float8_e4m3_t, float, toFp8>(packed, val, full);
-            StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(out_ptr + c, packed, full);
         }
+        LoadAlign(scale_reg, scale_ptr + c);
+        Div(val, val, scale_reg, full);
+        // 全零通道 NaN 守卫（收敛轮 1/R1-1）：不依赖硬件 Min/Max NaN 语义——
+        // scale=0 → Div 产 NaN → SAT cast 保留 e4m3 0x7f（对齐 golden）
+        MaskReg zero_scale;
+        Compare<float, CMPMODE::EQ>(zero_scale, scale_reg, zero_reg, full);
+        Select(val, nan_reg, val, zero_scale);
+        Min(val, val, scale_max_reg, full);
+        Max(val, val, neg_scale_max_reg, full);
+        Cast<float8_e4m3_t, float, toFp8>(packed, val, full);
+        StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(out_ptr + c, packed, full);
+    }
+}
+
+template <uint32_t DTYPE_MODE>
+__aicore__ inline __attribute__((always_inline)) void QuantVRowFp8VF(
+    __ubuf__ half* in_ptr,
+    __ubuf__ float8_e4m3_t* out_ptr,
+    __ubuf__ float* scale_ptr,
+    __ubuf__ float* vm_ptr,
+    uint32_t has_vm,
+    uint32_t d,
+    float scale_max) {
+    if (has_vm != 0u) {
+        QuantVRowFp8VF<DTYPE_MODE, true>(in_ptr, out_ptr, scale_ptr, vm_ptr, d, scale_max);
     } else {
-        for (uint32_t c = 0; c < d; c += 64) {
-            RegTensor<float> val, scale_reg;
-            RegTensor<float8_e4m3_t> packed;
-            LoadRowChunkF32<DTYPE_MODE>(val, in_ptr, c);
-            LoadAlign(scale_reg, scale_ptr + c);
-            Div(val, val, scale_reg, full);
-            MaskReg zero_scale;
-            Compare<float, CMPMODE::EQ>(zero_scale, scale_reg, zero_reg, full);
-            Select(val, nan_reg, val, zero_scale);
-            Min(val, val, scale_max_reg, full);
-            Max(val, val, neg_scale_max_reg, full);
-            Cast<float8_e4m3_t, float, toFp8>(packed, val, full);
-            StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(out_ptr + c, packed, full);
-        }
+        QuantVRowFp8VF<DTYPE_MODE, false>(in_ptr, out_ptr, scale_ptr, vm_ptr, d, scale_max);
     }
 }
 
@@ -650,20 +654,22 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void FusedRescaleMe
     using namespace AscendC;
     using namespace AscendC::MicroAPI;
     auto full = CreateMask<float, MaskPattern::ALL>();
-    for (uint32_t r = 0; r < rows; ++r) {
-        RegTensor<float> factor_reg;
-        if (k > 1) {
-            LoadAlign<float, LoadDist::DIST_BRC_B32>(factor_reg, factor_row + r);
-        }
-        __ubuf__ float* o_row = o_base + r * d;
-        __ubuf__ float* partial_row = partial_base + r * d;
-        if (k == 1) {
+    if (k == 1) {
+        for (uint32_t r = 0; r < rows; ++r) {
+            __ubuf__ float* o_row = o_base + r * d;
+            __ubuf__ float* partial_row = partial_base + r * d;
             for (uint32_t c = 0; c < d; c += 64) {
                 RegTensor<float> partial;
                 LoadAlign(partial, partial_row + c);
                 StoreAlign(o_row + c, partial, full);
             }
-        } else {
+        }
+    } else {
+        for (uint32_t r = 0; r < rows; ++r) {
+            RegTensor<float> factor_reg;
+            LoadAlign<float, LoadDist::DIST_BRC_B32>(factor_reg, factor_row + r);
+            __ubuf__ float* o_row = o_base + r * d;
+            __ubuf__ float* partial_row = partial_base + r * d;
             for (uint32_t c = 0; c < d; c += 64) {
                 RegTensor<float> partial, o;
                 LoadAlign(partial, partial_row + c);
@@ -832,7 +838,7 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void FinalizeSmooth
  * - 可选 smooth_v 的 vm 偏置：V 减均值量化下 PV 分子分母的 vm·Σp 项在归一化中
  *   恰好还原为 vm（不参与归一化），故出口直接逐通道加回（MulDstAdd 熔断 o·inv + vm）。
  */
-template <uint32_t DTYPE_MODE>
+template <uint32_t DTYPE_MODE, bool HAS_VM>
 __simd_vf__ __aicore__ inline __attribute__((always_inline)) void FinalizeRowVF(
     __ubuf__ float* o_row,
     __ubuf__ uint16_t* out_row,
@@ -867,7 +873,7 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void FinalizeRowVF(
         RegTensor<float> vs, scale;
         LoadAlign(vs, vs_ptr + c);
         Mul(scale, vs, inv_reg, full);
-        if (vm_ptr != nullptr) {
+        if constexpr (HAS_VM) {
             RegTensor<float> vm_val;
             LoadAlign(vm_val, vm_ptr + c);
             // x * scale + vm_val
@@ -885,6 +891,23 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void FinalizeRowVF(
             Cast<half, float, toHalf>(h, x, full);
             StoreAlign<half, StoreDist::DIST_PACK_B32>(reinterpret_cast<__ubuf__ half*>(out_row) + c, h, full);
         }
+    }
+}
+
+template <uint32_t DTYPE_MODE>
+__aicore__ inline __attribute__((always_inline)) void FinalizeRowVF(
+    __ubuf__ float* o_row,
+    __ubuf__ uint16_t* out_row,
+    __ubuf__ float* d_run_ptr,
+    uint32_t row_idx,
+    __ubuf__ float* vm_ptr,
+    __ubuf__ float* vs_ptr,
+    uint32_t d)
+{
+    if (vm_ptr != nullptr) {
+        FinalizeRowVF<DTYPE_MODE, true>(o_row, out_row, d_run_ptr, row_idx, vm_ptr, vs_ptr, d);
+    } else {
+        FinalizeRowVF<DTYPE_MODE, false>(o_row, out_row, d_run_ptr, row_idx, vm_ptr, vs_ptr, d);
     }
 }
 

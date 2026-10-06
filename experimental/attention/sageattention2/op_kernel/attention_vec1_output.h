@@ -157,80 +157,26 @@ public:
                 LocalTensor<float> ub_o_row(TPosition::VECCALC,
                                             SlotV1OAccum::Offset() + r * ctx.d * sizeof(float),
                                             ctx.d);
-                dev_vf::FinalizeRowVF<kDtype>(reinterpret_cast<__ubuf__ float*>(ub_o_row.GetPhyAddr()),
-                                             reinterpret_cast<__ubuf__ uint16_t*>(ub_half.GetPhyAddr()),
-                                             reinterpret_cast<__ubuf__ float*>(ub_running_sum.GetPhyAddr()),
-                                             r,
-                                             has_vm ? reinterpret_cast<__ubuf__ float*>(ub_vm.GetPhyAddr()) : nullptr,
-                                             reinterpret_cast<__ubuf__ float*>(ub_vs.GetPhyAddr()),
-                                             ctx.d_og);
+                if (has_vm) {
+                    dev_vf::FinalizeRowVF<kDtype, true>(
+                        reinterpret_cast<__ubuf__ float*>(ub_o_row.GetPhyAddr()),
+                        reinterpret_cast<__ubuf__ uint16_t*>(ub_half.GetPhyAddr()),
+                        reinterpret_cast<__ubuf__ float*>(ub_running_sum.GetPhyAddr()),
+                        r,
+                        reinterpret_cast<__ubuf__ float*>(ub_vm.GetPhyAddr()),
+                        reinterpret_cast<__ubuf__ float*>(ub_vs.GetPhyAddr()),
+                        ctx.d_og);
+                } else {
+                    dev_vf::FinalizeRowVF<kDtype, false>(
+                        reinterpret_cast<__ubuf__ float*>(ub_o_row.GetPhyAddr()),
+                        reinterpret_cast<__ubuf__ uint16_t*>(ub_half.GetPhyAddr()),
+                        reinterpret_cast<__ubuf__ float*>(ub_running_sum.GetPhyAddr()),
+                        r,
+                        nullptr,
+                        reinterpret_cast<__ubuf__ float*>(ub_vs.GetPhyAddr()),
+                        ctx.d_og);
+                }
                 Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
-
-#if defined(SAGE_PROBE_DIAG_MODE) && (SAGE_PROBE_DIAG_MODE == 1)
-                // 探针模式 1：魔数写入（验证 MTE3 搬运通路与 out_gm 地址正确性）
-                for (uint32_t di = 0; di < ctx.d_og; ++di) {
-                    ub_half.SetValue(di, static_cast<half>(1.0f));
-                }
-                Catlass::SageAttn::Sync<HardEvent::S_MTE3>();
-#elif defined(SAGE_PROBE_DIAG_MODE) && (SAGE_PROBE_DIAG_MODE == 2)
-                // 探针模式 2：运行期状态遥测（验证分母、最大值、核心号、任务数）
-                if (g == 0 && i == 0) {
-                    float s_val = ub_running_sum.GetValue(0);
-                    float m_val = ub_running_max.GetValue(0);
-                    ub_half.SetValue(0, static_cast<half>(1.0f));
-                    ub_half.SetValue(1, static_cast<half>(2.0f));
-                    ub_half.SetValue(2, static_cast<half>(ctx.core_idx));
-                    ub_half.SetValue(3, static_cast<half>(ctx.active_kv_blocks));
-                    ub_half.SetValue(4, static_cast<half>(s_val));
-                    ub_half.SetValue(5, static_cast<half>(m_val));
-                    ub_half.SetValue(6, static_cast<half>(ctx.d_og));
-                    ub_half.SetValue(7, static_cast<half>(88.0f));
-                    for (uint32_t di = 8; di < ctx.d_og; ++di) {
-                        ub_half.SetValue(di, static_cast<half>(1.0f));
-                    }
-                    Catlass::SageAttn::Sync<HardEvent::S_MTE3>();
-                }
-#elif defined(SAGE_PROBE_DIAG_MODE) && (SAGE_PROBE_DIAG_MODE == 3)
-                // 探针模式 3：深入遥测 ub_partial (含 77.0 探针), ub_vs, ub_o_row 与 ub_out_p
-                if (g == 0 && i == 0) {
-                    LocalTensor<float> ub_partial_chk(TPosition::VECCALC, SlotV1PvPartial::Offset(), ctx.d);
-                    LocalTensor<float> ub_vs_chk(TPosition::VECCALC, SlotV1VsChan::Offset(), ctx.d);
-                    LocalTensor<uint8_t> ub_p_chk(TPosition::VECCALC, SlotV1FixpipeRecv::Offset(), 16);
-                    float s_val = ub_running_sum.GetValue(0);
-                    float m_val = ub_running_max.GetValue(0);
-                    float p_0 = ub_partial_chk.GetValue(0);
-                    float p_1 = ub_partial_chk.GetValue(1);
-                    float vs_0 = ub_vs_chk.GetValue(0);
-                    float vs_1 = ub_vs_chk.GetValue(1);
-                    float o_0 = ub_o_row.GetValue(0);
-                    float p_ub_0 = static_cast<float>(ub_p_chk.GetValue(0));
-                    float p_ub_1 = static_cast<float>(ub_p_chk.GetValue(1));
-                    ub_half.SetValue(0, static_cast<half>(99.0f));
-                    ub_half.SetValue(1, static_cast<half>(s_val));
-                    ub_half.SetValue(2, static_cast<half>(m_val));
-                    ub_half.SetValue(3, static_cast<half>(p_0));
-                    ub_half.SetValue(4, static_cast<half>(p_1));
-                    ub_half.SetValue(5, static_cast<half>(vs_0));
-                    ub_half.SetValue(6, static_cast<half>(vs_1));
-                    ub_half.SetValue(7, static_cast<half>(o_0));
-                    ub_half.SetValue(8, static_cast<half>(p_ub_0));
-                    ub_half.SetValue(9, static_cast<half>(p_ub_1));
-                    for (uint32_t di = 10; di < ctx.d_og; ++di) {
-                        ub_half.SetValue(di, static_cast<half>(p_0));
-                    }
-                    Catlass::SageAttn::Sync<HardEvent::S_MTE3>();
-                }
-#elif defined(SAGE_PROBE_DIAG_MODE) && (SAGE_PROBE_DIAG_MODE == 4)
-                // 探针模式 4：标量归一化旁路 FinalizeRowVF 向量通路，验证端到端数学流水正确性
-                {
-                    float s_val = ub_running_sum.GetValue(r);
-                    float inv_s = (s_val > 0.0f) ? (1.0f / s_val) : 0.0f;
-                    for (uint32_t di = 0; di < ctx.d_og; ++di) {
-                        ub_half.SetValue(di, static_cast<half>(ub_o_row.GetValue(di) * inv_s));
-                    }
-                    Catlass::SageAttn::Sync<HardEvent::S_MTE3>();
-                }
-#endif
 
                 const int64_t out_gm_offset = out_layout(tla::MakeCoord(b_idx, hq_curr, sq_start + i, 0u)) *
                                               static_cast<int64_t>(sizeof(half));
@@ -345,7 +291,7 @@ public:
 /**
  * \brief Vector 1 协同流水主过程
  */
-template <uint32_t DTYPE_MODE>
+template <uint8_t PV_CHAIN_CAP = 1, uint32_t DTYPE_MODE>
 __aicore__ inline __attribute__((always_inline)) void ProcessVec1(
     const TaskContext &ctx,
     AttentionVec1Softmax<DTYPE_MODE> &softmax,
@@ -354,70 +300,83 @@ __aicore__ inline __attribute__((always_inline)) void ProcessVec1(
     softmax.ResetRowStates(ctx.TotalRows());
     output.ResetAccumulator(ctx);
 
-#if SAGE_ATTN_DEVICE_COMPILE
-    uint32_t chain_len = 0;
-#endif
-
     const uint32_t active_kv_blocks = ctx.active_kv_blocks;
-    for (uint32_t k = 0; k < active_kv_blocks; ++k) {
-        bool is_ping = ((k % 2) == 0);
-        uint32_t block_k = ctx.CurBlockK(k);
-
-#if SAGE_ATTN_DEVICE_COMPILE
-        if (k > 0) {
-            bool initC = (chain_len == 0);
-            chain_len++;
-            // Note: must match the condition in Cube exactly
-            bool emit = (chain_len >= 1 || k == active_kv_blocks);
-            
-            if (emit) {
-#if defined(SAGE_PROBE_DIAG_MODE) && (SAGE_PROBE_DIAG_MODE == 3)
-                LocalTensor<float> ub_p_pre(TPosition::VECCALC, SlotV1PvPartial::Offset(), 8);
-                ub_p_pre.SetValue(0, 77.0f);
-                ub_p_pre.SetValue(1, 77.0f);
-#endif
+    if constexpr (PV_CHAIN_CAP == 1) {
+        for (uint32_t k = 0; k < active_kv_blocks; ++k) {
+            bool is_ping = ((k % 2) == 0);
+            uint32_t block_k = ctx.CurBlockK(k);
+            if (k > 0) {
                 AttentionSync::V1WaitPartialReady();
                 output.MergePartialRows(ctx, k);
                 AttentionSync::V1ReleasePartialFree();
-                chain_len = 0;
-            } else {
-                AttentionSync::V1SignalPvChain();
             }
-        }
+            if (k >= 2) {
+                AttentionSync::V1WaitSoftmaxFree(is_ping);
+            }
+            AttentionSync::V1WaitQkReady();
+            if (k == 0) {
+                softmax.StageV1ScaleStrips(ctx);
+            }
+            softmax.StageKScaleStrip(ctx, k);
+            softmax.ProcessBlock(ctx, k, is_ping);
+#if !SAGE_ATTN_DEVICE_COMPILE
+            output.AccumulatePvBlockTwin(ctx, k, block_k, softmax.GetRowStates());
 #endif
-
-        // 等待当前 Softmax P 槽位可用（首两拍 k < 2 L1 槽天然空闲，k >= 2 起受 Cube 消费进度回压）
-        if (k >= 2) {
-            AttentionSync::V1WaitSoftmaxFree(is_ping);
+            AttentionSync::V1ReleaseDotFree();
+            AttentionSync::V1SignalSoftmaxReady(is_ping);
         }
-        AttentionSync::V1WaitQkReady();
+    } else {
+#if SAGE_ATTN_DEVICE_COMPILE
+        uint32_t chain_len = 0;
+#endif
+        for (uint32_t k = 0; k < active_kv_blocks; ++k) {
+            bool is_ping = ((k % 2) == 0);
+            uint32_t block_k = ctx.CurBlockK(k);
 
 #if SAGE_ATTN_DEVICE_COMPILE
-        if (k == 0) {
-            softmax.StageV1ScaleStrips(ctx);
-        }
-        softmax.StageKScaleStrip(ctx, k);
+            if (k > 0) {
+                bool initC = (chain_len == 0);
+                chain_len++;
+                // Note: must match the condition in Cube exactly
+                bool emit = (chain_len >= PV_CHAIN_CAP || k == active_kv_blocks);
+                
+                if (emit) {
+                    AttentionSync::V1WaitPartialReady();
+                    output.MergePartialRows(ctx, k);
+                    AttentionSync::V1ReleasePartialFree();
+                    chain_len = 0;
+                } else {
+                    AttentionSync::V1SignalPvChain();
+                }
+            }
 #endif
 
-        softmax.ProcessBlock(ctx, k, is_ping);
+            // 等待当前 Softmax P 槽位可用（首两拍 k < 2 L1 槽天然空闲，k >= 2 起受 Cube 消费进度回压）
+            if (k >= 2) {
+                AttentionSync::V1WaitSoftmaxFree(is_ping);
+            }
+            AttentionSync::V1WaitQkReady();
+
+            if (k == 0) {
+                softmax.StageV1ScaleStrips(ctx);
+            }
+            softmax.StageKScaleStrip(ctx, k);
+
+            softmax.ProcessBlock(ctx, k, is_ping);
 
 #if !SAGE_ATTN_DEVICE_COMPILE
-        output.AccumulatePvBlockTwin(ctx, k, block_k, softmax.GetRowStates());
+            output.AccumulatePvBlockTwin(ctx, k, block_k, softmax.GetRowStates());
 #endif
 
-        // 读毕当前 dot32 立即归还缓冲给 Cube
-        AttentionSync::V1ReleaseDotFree();
-        AttentionSync::V1SignalSoftmaxReady(is_ping);
+            // 读毕当前 dot32 立即归还缓冲给 Cube
+            AttentionSync::V1ReleaseDotFree();
+            AttentionSync::V1SignalSoftmaxReady(is_ping);
+        }
     }
 
 #if SAGE_ATTN_DEVICE_COMPILE
     // Drain 拍：接收并累加最后一拍的 PV 部分和，并归还许可
     if (active_kv_blocks > 0) {
-#if defined(SAGE_PROBE_DIAG_MODE) && (SAGE_PROBE_DIAG_MODE == 3)
-        LocalTensor<float> ub_p_pre(TPosition::VECCALC, SlotV1PvPartial::Offset(), 8);
-        ub_p_pre.SetValue(0, 77.0f);
-        ub_p_pre.SetValue(1, 77.0f);
-#endif
         AttentionSync::V1WaitPartialReady();
         output.MergePartialRows(ctx, active_kv_blocks);
         AttentionSync::V1ReleasePartialFree();
@@ -589,14 +548,14 @@ public:
                 if (ctx_.sub_core_idx == 0) {
                     vec0_.Process(ctx_);
                 } else {
-                    ProcessVec1(ctx_, softmax_, output_);
+                    ProcessVec1<1>(ctx_, softmax_, output_);
                 }
             }
 #else
             vec0_.Process(ctx_);
             CubeBlockParams p{ctx_.TotalRows(), ctx_.block_n, ctx_.d};
             cube_.Process(p, ctx_.active_kv_blocks, ctx_.l1_q_offset);
-            ProcessVec1(ctx_, softmax_, output_);
+            ProcessVec1<1>(ctx_, softmax_, output_);
 #endif
 
             AttentionSync::ReleaseSyncTokens();

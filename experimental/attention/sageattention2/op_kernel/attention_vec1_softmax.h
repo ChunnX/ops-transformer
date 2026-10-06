@@ -77,6 +77,9 @@ public:
 #endif
 
 #if !SAGE_ATTN_DEVICE_COMPILE
+    __aicore__ inline __attribute__((always_inline)) void StageV1ScaleStrips(const TaskContext &ctx) { (void)ctx; }
+    __aicore__ inline __attribute__((always_inline)) void StageKScaleStrip(const TaskContext &ctx, uint32_t k) { (void)ctx; (void)k; }
+
     /**
      * \brief 宿主串行仿真重摆：恢复设备分支“V0 产出→消费”的逐拍序（幂等）
      */

@@ -528,16 +528,27 @@ public:
         Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
 
         // 阶段一：V 行 FP8 量化写入 tok 暂存 [block_n, d]
-        for (uint32_t j = 0; j < block_n; ++j) {
-            if (j < block_k) {
-                dev_vf::QuantVRowFp8VF<kDtype>(reinterpret_cast<__ubuf__ half*>(ub_in[j * d].GetPhyAddr()),
-                                               reinterpret_cast<__ubuf__ float8_e4m3_t*>(ub_stage_tok[j * d].GetPhyAddr()),
-                                               reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
-                                               reinterpret_cast<__ubuf__ float*>(ub_v_sum.GetPhyAddr()),
-                                               smooth_v, d, scale_max);
-            } else {
-                Duplicate(ub_stage_tok[j * d].ReinterpretCast<int8_t>(), int8_t(0), d);
+        if (smooth_v != 0u) {
+            for (uint32_t j = 0; j < block_k; ++j) {
+                dev_vf::QuantVRowFp8VF<kDtype, true>(
+                    reinterpret_cast<__ubuf__ half*>(ub_in[j * d].GetPhyAddr()),
+                    reinterpret_cast<__ubuf__ float8_e4m3_t*>(ub_stage_tok[j * d].GetPhyAddr()),
+                    reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
+                    reinterpret_cast<__ubuf__ float*>(ub_v_sum.GetPhyAddr()),
+                    d, scale_max);
             }
+        } else {
+            for (uint32_t j = 0; j < block_k; ++j) {
+                dev_vf::QuantVRowFp8VF<kDtype, false>(
+                    reinterpret_cast<__ubuf__ half*>(ub_in[j * d].GetPhyAddr()),
+                    reinterpret_cast<__ubuf__ float8_e4m3_t*>(ub_stage_tok[j * d].GetPhyAddr()),
+                    reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
+                    nullptr,
+                    d, scale_max);
+            }
+        }
+        for (uint32_t j = block_k; j < block_n; ++j) {
+            Duplicate(ub_stage_tok[j * d].ReinterpretCast<int8_t>(), int8_t(0), d);
         }
 
         // 阶段二：MTE3 2D DMA 分形重组写入 L1 zN 布局（硬件 L0B 加载时原生转置为 nZ）
