@@ -194,6 +194,7 @@ public:
     /**
      * \brief 拍 k 的 Softmax 概率矩阵生成与行状态步进
      */
+    template <bool IS_CAUSAL = false>
     __aicore__ inline __attribute__((always_inline)) void ProcessBlock(
         const TaskContext &ctx,
         uint32_t k,
@@ -218,13 +219,13 @@ public:
         // 对 UB Logits 的 3 次重复加载消除为 1 次流式读取（Max/Sum 中间状态完全驻留向量
         // 寄存器），Logits 仅 1 次流式写出供下游 SoftmaxProbRowsVF 按 running max 铸 FP8；
         // chunk 顺序 Max 链与 MulDstAdd 累加链严格同序，位级语义与原两趟一致。
-        dev_vf::DequantMaskMaxSumRowsVF(reinterpret_cast<__ubuf__ float*>(ub_logits_dot.GetPhyAddr()), rows,
-                                        reinterpret_cast<__ubuf__ float*>(ub_qs.GetPhyAddr()),
-                                        reinterpret_cast<__ubuf__ float*>(ub_ks.GetPhyAddr()),
-                                        ctx.sm_scale_log2e, ctx.cur_q_start, ctx.cur_q_len,
-                                        cur_k_start, ctx.sk, ctx.is_causal, ctx.block_n,
-                                        reinterpret_cast<__ubuf__ float*>(ub_block_max.GetPhyAddr()),
-                                        reinterpret_cast<__ubuf__ float*>(ub_block_sum.GetPhyAddr()));
+        dev_vf::DequantMaskMaxSumRowsVF<IS_CAUSAL>(reinterpret_cast<__ubuf__ float*>(ub_logits_dot.GetPhyAddr()), rows,
+                                                   reinterpret_cast<__ubuf__ float*>(ub_qs.GetPhyAddr()),
+                                                   reinterpret_cast<__ubuf__ float*>(ub_ks.GetPhyAddr()),
+                                                   ctx.sm_scale_log2e, ctx.cur_q_start, ctx.cur_q_len,
+                                                   cur_k_start, ctx.sk, ctx.is_causal, ctx.block_n,
+                                                   reinterpret_cast<__ubuf__ float*>(ub_block_max.GetPhyAddr()),
+                                                   reinterpret_cast<__ubuf__ float*>(ub_block_sum.GetPhyAddr()));
 
         dev_vf::UpdateOnlineSoftmaxRowsVF(reinterpret_cast<__ubuf__ float*>(ub_running_max.GetPhyAddr()),
                                           reinterpret_cast<__ubuf__ float*>(ub_running_sum.GetPhyAddr()),
@@ -233,12 +234,17 @@ public:
                                           reinterpret_cast<__ubuf__ float*>(ub_factor.GetPhyAddr()),
                                           rows, k);
 
-
-
-        dev_vf::SoftmaxProbRowsVF(reinterpret_cast<__ubuf__ float*>(ub_logits_dot.GetPhyAddr()),
-                                  reinterpret_cast<__ubuf__ float8_e4m3_t*>(ub_out_p.GetPhyAddr()),
-                                  reinterpret_cast<__ubuf__ float*>(ub_running_max.GetPhyAddr()),
-                                  rows, ctx.block_n);
+        if (ctx.block_n <= 64u) {
+            dev_vf::SoftmaxProbRowsVF<1u>(reinterpret_cast<__ubuf__ float*>(ub_logits_dot.GetPhyAddr()),
+                                          reinterpret_cast<__ubuf__ float8_e4m3_t*>(ub_out_p.GetPhyAddr()),
+                                          reinterpret_cast<__ubuf__ float*>(ub_running_max.GetPhyAddr()),
+                                          rows, ctx.block_n);
+        } else {
+            dev_vf::SoftmaxProbRowsVF<2u>(reinterpret_cast<__ubuf__ float*>(ub_logits_dot.GetPhyAddr()),
+                                          reinterpret_cast<__ubuf__ float8_e4m3_t*>(ub_out_p.GetPhyAddr()),
+                                          reinterpret_cast<__ubuf__ float*>(ub_running_max.GetPhyAddr()),
+                                          rows, ctx.block_n);
+        }
 
         // 通过片上 SSBUF 高速通路将 FP8 P 矩阵搬入 L1 Bank 0 专有双缓冲槽，供 Cube PV MMAD 读取
         Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
@@ -267,6 +273,18 @@ public:
 
         ComputeSoftmaxProbability(ctx, is_ping);
 #endif
+    }
+
+    __aicore__ inline __attribute__((always_inline)) void ProcessBlock(
+        const TaskContext &ctx,
+        uint32_t k,
+        bool is_ping)
+    {
+        if (ctx.is_causal != 0) {
+            ProcessBlock<true>(ctx, k, is_ping);
+        } else {
+            ProcessBlock<false>(ctx, k, is_ping);
+        }
     }
 
 private:

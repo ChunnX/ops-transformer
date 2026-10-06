@@ -146,18 +146,18 @@ public:
         LocalTensor<float> ub_vs(TPosition::VECCALC, SlotV1VsChan::Offset(), ctx.d);
 
         // 1. 最终输出归一化与写回 GM（纯向量流水与 MTE3 搬运，零标量计算、零 LSE 耦合）
-        for (uint32_t g = 0; g < ctx.cur_heads; ++g) {
-            const int64_t hq_curr = hkv_idx * static_cast<int64_t>(ctx.gqa_ratio) + static_cast<int64_t>(ctx.cur_g0) + g;
-            if (hq_curr >= ctx.hq) break;
+        if (has_vm) {
+            for (uint32_t g = 0; g < ctx.cur_heads; ++g) {
+                const int64_t hq_curr = hkv_idx * static_cast<int64_t>(ctx.gqa_ratio) + static_cast<int64_t>(ctx.cur_g0) + g;
+                if (hq_curr >= ctx.hq) break;
 
-            for (uint32_t i = 0; i < ctx.cur_q_len; ++i) {
-                const uint32_t r = g * ctx.cur_q_len + i;
-                if (r >= MAX_PACK_ROWS) break;
+                for (uint32_t i = 0; i < ctx.cur_q_len; ++i) {
+                    const uint32_t r = g * ctx.cur_q_len + i;
+                    if (r >= MAX_PACK_ROWS) break;
 
-                LocalTensor<float> ub_o_row(TPosition::VECCALC,
-                                            SlotV1OAccum::Offset() + r * ctx.d * sizeof(float),
-                                            ctx.d);
-                if (has_vm) {
+                    LocalTensor<float> ub_o_row(TPosition::VECCALC,
+                                                SlotV1OAccum::Offset() + r * ctx.d * sizeof(float),
+                                                ctx.d);
                     dev_vf::FinalizeRowVF<kDtype, true>(
                         reinterpret_cast<__ubuf__ float*>(ub_o_row.GetPhyAddr()),
                         reinterpret_cast<__ubuf__ uint16_t*>(ub_half.GetPhyAddr()),
@@ -166,7 +166,37 @@ public:
                         reinterpret_cast<__ubuf__ float*>(ub_vm.GetPhyAddr()),
                         reinterpret_cast<__ubuf__ float*>(ub_vs.GetPhyAddr()),
                         ctx.d_og);
-                } else {
+                    Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
+
+                    const int64_t out_gm_offset = out_layout(tla::MakeCoord(b_idx, hq_curr, sq_start + i, 0u)) *
+                                                  static_cast<int64_t>(sizeof(half));
+                    if constexpr (kDtype == kTplDtypeBf16) {
+                        GlobalTensor<bfloat16_t> gm_out;
+                        gm_out.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(ctx.out_gm + out_gm_offset));
+                        gm_out.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+                        LocalTensor<bfloat16_t> ub_bf16 = ub_half.ReinterpretCast<bfloat16_t>();
+                        DataCopy(gm_out, ub_bf16, ctx.d_og);
+                    } else {
+                        GlobalTensor<half> gm_out;
+                        gm_out.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(ctx.out_gm + out_gm_offset));
+                        gm_out.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+                        DataCopy(gm_out, ub_half, ctx.d_og);
+                    }
+                    Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
+                }
+            }
+        } else {
+            for (uint32_t g = 0; g < ctx.cur_heads; ++g) {
+                const int64_t hq_curr = hkv_idx * static_cast<int64_t>(ctx.gqa_ratio) + static_cast<int64_t>(ctx.cur_g0) + g;
+                if (hq_curr >= ctx.hq) break;
+
+                for (uint32_t i = 0; i < ctx.cur_q_len; ++i) {
+                    const uint32_t r = g * ctx.cur_q_len + i;
+                    if (r >= MAX_PACK_ROWS) break;
+
+                    LocalTensor<float> ub_o_row(TPosition::VECCALC,
+                                                SlotV1OAccum::Offset() + r * ctx.d * sizeof(float),
+                                                ctx.d);
                     dev_vf::FinalizeRowVF<kDtype, false>(
                         reinterpret_cast<__ubuf__ float*>(ub_o_row.GetPhyAddr()),
                         reinterpret_cast<__ubuf__ uint16_t*>(ub_half.GetPhyAddr()),
@@ -175,24 +205,24 @@ public:
                         nullptr,
                         reinterpret_cast<__ubuf__ float*>(ub_vs.GetPhyAddr()),
                         ctx.d_og);
-                }
-                Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
+                    Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
 
-                const int64_t out_gm_offset = out_layout(tla::MakeCoord(b_idx, hq_curr, sq_start + i, 0u)) *
-                                              static_cast<int64_t>(sizeof(half));
-                if constexpr (kDtype == kTplDtypeBf16) {
-                    GlobalTensor<bfloat16_t> gm_out;
-                    gm_out.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(ctx.out_gm + out_gm_offset));
-                    gm_out.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
-                    LocalTensor<bfloat16_t> ub_bf16 = ub_half.ReinterpretCast<bfloat16_t>();
-                    DataCopy(gm_out, ub_bf16, ctx.d_og);
-                } else {
-                    GlobalTensor<half> gm_out;
-                    gm_out.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(ctx.out_gm + out_gm_offset));
-                    gm_out.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
-                    DataCopy(gm_out, ub_half, ctx.d_og);
+                    const int64_t out_gm_offset = out_layout(tla::MakeCoord(b_idx, hq_curr, sq_start + i, 0u)) *
+                                                  static_cast<int64_t>(sizeof(half));
+                    if constexpr (kDtype == kTplDtypeBf16) {
+                        GlobalTensor<bfloat16_t> gm_out;
+                        gm_out.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(ctx.out_gm + out_gm_offset));
+                        gm_out.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+                        LocalTensor<bfloat16_t> ub_bf16 = ub_half.ReinterpretCast<bfloat16_t>();
+                        DataCopy(gm_out, ub_bf16, ctx.d_og);
+                    } else {
+                        GlobalTensor<half> gm_out;
+                        gm_out.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(ctx.out_gm + out_gm_offset));
+                        gm_out.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+                        DataCopy(gm_out, ub_half, ctx.d_og);
+                    }
+                    Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
                 }
-                Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
             }
         }
 
@@ -291,7 +321,7 @@ public:
 /**
  * \brief Vector 1 协同流水主过程
  */
-template <uint8_t PV_CHAIN_CAP = 1, uint32_t DTYPE_MODE>
+template <uint8_t PV_CHAIN_CAP = 1, uint32_t DTYPE_MODE = 1u, bool IS_CAUSAL = false>
 __aicore__ inline __attribute__((always_inline)) void ProcessVec1(
     const TaskContext &ctx,
     AttentionVec1Softmax<DTYPE_MODE> &softmax,
@@ -318,7 +348,7 @@ __aicore__ inline __attribute__((always_inline)) void ProcessVec1(
                 softmax.StageV1ScaleStrips(ctx);
             }
             softmax.StageKScaleStrip(ctx, k);
-            softmax.ProcessBlock(ctx, k, is_ping);
+            softmax.template ProcessBlock<IS_CAUSAL>(ctx, k, is_ping);
 #if !SAGE_ATTN_DEVICE_COMPILE
             output.AccumulatePvBlockTwin(ctx, k, block_k, softmax.GetRowStates());
 #endif
@@ -362,7 +392,7 @@ __aicore__ inline __attribute__((always_inline)) void ProcessVec1(
             }
             softmax.StageKScaleStrip(ctx, k);
 
-            softmax.ProcessBlock(ctx, k, is_ping);
+            softmax.template ProcessBlock<IS_CAUSAL>(ctx, k, is_ping);
 
 #if !SAGE_ATTN_DEVICE_COMPILE
             output.AccumulatePvBlockTwin(ctx, k, block_k, softmax.GetRowStates());
@@ -393,6 +423,19 @@ __aicore__ inline __attribute__((always_inline)) void ProcessVec1(
 
     AttentionSync::V1WaitPvDone();
     output.FinalizeAndStore(ctx, softmax.GetRowStates());
+}
+
+template <uint8_t PV_CHAIN_CAP = 1, uint32_t DTYPE_MODE = 1u>
+__aicore__ inline __attribute__((always_inline)) void ProcessVec1(
+    const TaskContext &ctx,
+    AttentionVec1Softmax<DTYPE_MODE> &softmax,
+    AttentionVec1Output<DTYPE_MODE> &output)
+{
+    if (ctx.is_causal != 0) {
+        ProcessVec1<PV_CHAIN_CAP, DTYPE_MODE, true>(ctx, softmax, output);
+    } else {
+        ProcessVec1<PV_CHAIN_CAP, DTYPE_MODE, false>(ctx, softmax, output);
+    }
 }
 
 /**
@@ -548,14 +591,22 @@ public:
                 if (ctx_.sub_core_idx == 0) {
                     vec0_.Process(ctx_);
                 } else {
-                    ProcessVec1<1>(ctx_, softmax_, output_);
+                    if (ctx_.is_causal != 0) {
+                        ProcessVec1<1, kDtype, true>(ctx_, softmax_, output_);
+                    } else {
+                        ProcessVec1<1, kDtype, false>(ctx_, softmax_, output_);
+                    }
                 }
             }
 #else
             vec0_.Process(ctx_);
             CubeBlockParams p{ctx_.TotalRows(), ctx_.block_n, ctx_.d};
             cube_.Process(p, ctx_.active_kv_blocks, ctx_.l1_q_offset);
-            ProcessVec1<1>(ctx_, softmax_, output_);
+            if (ctx_.is_causal != 0) {
+                ProcessVec1<1, kDtype, true>(ctx_, softmax_, output_);
+            } else {
+                ProcessVec1<1, kDtype, false>(ctx_, softmax_, output_);
+            }
 #endif
 
             AttentionSync::ReleaseSyncTokens();
