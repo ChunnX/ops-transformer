@@ -219,11 +219,11 @@ chunks=1，任务解码与调度算术逐位不变（twin 25 桶 golden 回归�
 
 - 1C2V 协同流水：
   - Cube 引擎：负责 INT8 MMAD（QK^T）与 FP8 MMAD（PV），由 CATLASS 矩阵乘模板驱动；
-  - CATLASS 接入边界（2026-10-03 收敛）：分形常量唯一定义源为官方 cann/catlass 仓
+  - CATLASS 接入边界：分形常量唯一定义源为官方 cann/catlass 仓
     `<catlass/catlass.hpp>`（sage_tile.hpp include 直引派生，构建接线见
-    cmake/SageAttnDeps.cmake）；LoadData2D/Fixpipe 数据通路因本算子 L1 为 ND 行布局
-    + Data/Scale 相邻契约（与官方 TileCopyTla 的 zN 前置不匹配），保持 AscendC 自研，
-    为任务书"按 Cube/CATLASS 微调分块"授权范围；
+    cmake/SageAttnDeps.cmake）；L1 矩阵全面统一为 zN 分形布局；片上搬运由
+    LoadTile2D（位级等价官方 copy_l1_to_l0a.hpp / copy_l1_to_l0b.hpp）与
+    CopyUbToL1zN（位级等价官方 copy_ub_to_l1_tla.hpp）驱动；
   - 官方组件复用清单（2026-10-03 复用度盘点）：
     - `Gemm::Tile::TileMmadTla<Ascend950>`：INT8 QK^T 与 FP8 PV 两条 MMAD 发射单点
       （sage_qk_mmad.hpp / sage_pv_mmad.hpp Compute，取代原手写 ExecuteTileMmad）；
@@ -297,19 +297,18 @@ chunks=1，任务解码与调度算术逐位不变（twin 25 桶 golden 回归�
       零跨步开销硬件负载均衡；
     - `Catlass::Arch::CrossCoreFlagWithReverse` 硬件队深 15 级防锁死安全防护：
       模 15 深度引入轻量反向确认握手，彻底杜绝单向快速核心踩爆硬件同步队列。
-  - 官方组件不采用清单（性能/位级锁定裁定，均有源码级证据）：
-    - `Gemm::Tile::CopyL0CToUBTla`（ascend950 特化）：基于 `FixpipeParamsC310` 参数面
-      且 nSize 按 32B 粒度 RoundUp；本算子真机 L-A 验证走 `FixpipeParamsArch3510`
-      精确 nSize + SPLIT_M 手动双段发射（golden 位级锁定域），不同构不替换；
-    - `TileCopyTla` L1→L0A/L0B 特化：EnableIf 强约束 L1 侧 zN 分形布局，与本算子
-      ND 行 + Data/Scale 相邻 L1 契约不匹配；
-    - `Arch::Resource` / `LocalTensorBuffer`（TPipe InitBuffer）：官方头注释自证
-      "Tpipe 初始化会插入同步接口，可能与使用者冲突"——与本核手管跨核计数守卫流水
-      相斥，且零收益，不引入；
-    - 竞品（A2 同类算子）"PV 中间结果写回 GM 再读回归并"策略：新增 2 次 GM 往返
-      （写 P/部分和 + 读回归并），长序列显存带宽 +50% 量级，直接劣化对 FIA 的
-      Speedup 门禁——本算子 L1↔L0↔UB 全片上闭环（零 GM 往返热路径）为其核心
-      性能优势，坚决不采用。
+  - 官方底层 copy 组件对账与收敛清单（P2a 闭环）：
+    - LoadTile2D 与 CATLASS copy_l1_to_l0a.hpp / copy_l1_to_l0b.hpp 对账：
+      - QK 的 Q 载入与 PV 的 P 载入：LoadTile2D 设 ifTranspose=false，参数计算 mStep = RoundUp<2>(CeilDiv<16>(rows))，kStep = CeilDiv<32>(cols)，srcStride = dstStride = mStep，完全等价于 copy_l1_to_l0a.hpp 中 TileCopyTla 的 LoadData2DParamsV2 配置；
+      - QK 的 K 载入与 PV 的 V 载入：LoadTile2D 设 ifTranspose=true，参数计算 srcStride = CeilDiv<16>(rows)，dstStride = CeilDiv<16>(cols)，完全等价于 copy_l1_to_l0b.hpp 中 TileCopyTla 的 B8 硬件转置配置，硬件 MTE1 原生转置生成 nZ 格式；
+      - 对比直接继承 TileCopyTla，LoadTile2D 规避了 tla::Tensor 抽象包装的深层模板展开，直调 AscendC::LoadData，保持位级等价且编译零冗余。
+    - CopyUbToL1zN 与 CATLASS copy_ub_to_l1_tla.hpp 对账：
+      - UB 行主序至 L1 zN：CopyUbToL1zN 按 col_blocks = cols / 32 发起 MTE3 跨步 DMA，单块 blockCount = m_aligned，blockLen = 1，srcStride = col_blocks - 1，dstStride = 0，与 Catlass::Epilogue::Tile::CopyUb2L1Tla 的 cols <= rows 硬件指令序列完全一致，零 Vector ALU 算力占用。
+  - 官方组件豁免清单（明确记录理由）：
+    - 豁免 1：CopyL0CToUbSplitM。官方 Gemm::Tile::CopyL0CToUBTla 基于 C310 参数面且采用 dualDstCtl=1 硬件双目的地切分；在 1C2V 单消费者（仅 V1 消费 Cube 产出）拓扑下，dualDstCtl=1 会导致上半部分数据覆写 V0 UB 工作区；本算子采用 FixpipeParamsArch3510 精确位型透传（NoQuant）与手动双段发射，受 golden 位级锁定。
+    - 豁免 2：K^T UB 预转置与 L1 写路径。CATLASS 官方未提供直接将行主序在片上 UB 转置为 nZ 写入 L1 的复合原语；本算子在 V0 内部完成 UB 转置后以 CopyUbToL1zN 写入 L1，Cube 读取时通过 LoadTile2D 原生 MTE1 转置直达 MMAD nZ 格式，零 GM 往返。
+    - 豁免 3：Arch::Resource / LocalTensorBuffer（TPipe InitBuffer）。官方头注释自证 Tpipe 初始化会插入同步接口可能与使用者冲突，与本核手管跨核计数守卫流水相斥，且零收益，不引入。
+    - 豁免 4：竞品 A2 同类算子 PV 中间结果写回 GM 再读回归并策略。新增 2 次 GM 往返导致长序列显存带宽严重增加，劣化 Speedup 门禁；本算子 L1-L0-UB 全片上闭环为核心优势，坚决不采用。
   - V0 向量核：负责 MTE2 搬入、INT8/FP8 量化、scale 提取与 ND2NZ 排布转换（7 参收敛后 K 侧均值扣减摘除，核内 km 槽位恒空直通）；
   - V1 向量核：负责 L0C FixPipe 接收、exp2 域 online softmax、行 max 与恒逐块强锚定重缩放、两级累加归约与 LSE 累计；
 - 延迟一拍软件流水：

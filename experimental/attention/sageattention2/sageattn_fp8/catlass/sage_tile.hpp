@@ -13,9 +13,9 @@
  * C0_NUM_PER_FRACTAL=16、BYTE_PER_FRACTAL=512），本文件一律经官方常量派生
  * （如 LOADDATA2D_REPEAT_BYTES = BYTE_PER_FRACTAL），官方演进自动跟随，
  * 不做字面量锁定。
- * 设备态热路径的 LoadData2D/Fixpipe 搬运为 ND 布局 + Data/Scale 相邻等本算子
- * 自定义契约（官方 TileCopyTla 组件要求 L1 侧 zN 分形布局，不匹配本算子 V0 产出
- * 布局——该数据通路重构须随 camodel 仿真/真机 L-A 循环推进，见设计文档模块边界）。
+ * 设备态热路径的搬运原语（LoadTile2D、CopyUbToL1zN）：L1 全面统一为 zN 分形布局，
+ * 硬件直连 LoadTile2D（位级对齐 CATLASS copy_l1_to_l0a.hpp / copy_l1_to_l0b.hpp）与
+ * CopyUbToL1zN（位级对齐 CATLASS copy_ub_to_l1_tla.hpp），架构豁免项见设计文档。
  */
 #include "catlass/catlass.hpp"
 // 官方对齐/极值组件显式声明（catlass/detail/alignment.hpp，全局 ::RoundUp/::RoundDown/
