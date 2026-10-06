@@ -1,0 +1,473 @@
+"""
+Dispatcher and execution backend router for SageAttention2 on Ascend NPU.
+Implements auto-routing to NPU FP8 PV path, pv_accum_dtype override via kwargs/env,
+multi-backend auto-detection (NPU C++ extension: csrc bridge -> op_api aclnn two-phase
+interface vs high-fidelity CPU simulation).
+"""
+
+from __future__ import annotations
+
+import os
+from typing import Any, Optional, Tuple, Union
+
+import torch
+import torch.nn.functional as F
+
+from .error_check import (
+    DEFAULT_PV_ACCUM_DTYPE,
+    DEFAULT_QK_QUANT_GRAN,
+    DEFAULT_TENSOR_LAYOUT,
+    INT8_QUANT_MAX,
+    K_STEP,
+    LOG2E,
+    S_FP8_OFFSET,
+    S_FP8_SCALE_MAX,
+    SCALE_EPSILON,
+    SCALE_MAX_FP16_ACCUM,
+    VALID_PV_ACCUM_DTYPES,
+    V_FP8_INV_PERM,
+    V_FP8_PERM,
+)
+
+
+# 默认档唯一定义点：error_check.DEFAULT_PV_ACCUM_DTYPE（本名曾为
+# SAGEATTN_PV_ACCUM_DTYPE_DEFAULT，别名已收敛）。
+# 数值常量唯一定义点：error_check（自 sageattn_fp8/ascendc/tiling.h 直读或单点定义），
+# 本模块经 import 引用，禁止再复制数值字面量。
+
+
+def v_scale_max_for(pv_accum_dtype: str) -> float:
+    """V 量化 scale_max 分档（fp32+fp16 档 2.25，其余 448.0；对齐开源超参，
+    C++ 对应点 quant::GetVScaleMax）。"""
+    return SCALE_MAX_FP16_ACCUM if pv_accum_dtype == DEFAULT_PV_ACCUM_DTYPE else S_FP8_SCALE_MAX
+
+
+def _quant_qk_per_warp(
+    q_hnd: torch.Tensor,
+    k_centered_hnd: torch.Tensor,
+    sq: int,
+    sk: int,
+    d: int,
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """per_warp INT8 quantization for Q and K (RNE rounding + saturation).
+
+    返回 (q_deq, k_deq, q_int8, q_scale, k_int8, k_scale)。中间态格式与 golden
+    台账一致（q_int8/k_int8 裁回 sq/sk；q_scale [b,hq,blk*4]；k_scale [b,hkv,blk]），
+    供单一基准整合（golden 生成器编排复用）。
+    """
+    b, hq = q_hnd.shape[0], q_hnd.shape[1]
+    _, hkv = k_centered_hnd.shape[0], k_centered_hnd.shape[1]
+
+    # Q per_warp: BLKQ=128, WARPQ=32 -> 4 scales per 128 tokens
+    num_blkq = (sq + 127) // 128
+    pad_sq = num_blkq * 128
+    q_pad = F.pad(q_hnd, (0, 0, 0, pad_sq - sq)) if pad_sq > sq else q_hnd
+    q_view = q_pad.view(b, hq, num_blkq, 4, 32, d).float()
+    amax_q = q_view.abs().amax(dim=(4, 5)).clamp(min=SCALE_EPSILON)
+    scale_q = amax_q / INT8_QUANT_MAX
+    q_scale = scale_q.view(b, hq, num_blkq * 4)
+    q_scaled = q_view / scale_q.unsqueeze(4).unsqueeze(5)
+    q_quant = torch.round(q_scaled).clamp(-128, 127).to(torch.int8)
+    q_int8 = q_quant.view(b, hq, pad_sq, d)[:, :, :sq, :]
+    q_deq = (q_quant.float() * scale_q.unsqueeze(4).unsqueeze(5)).view(b, hq, pad_sq, d)[:, :, :sq, :]
+
+    # K per_block: BLKK=64 -> 1 scale per 64 tokens
+    num_blkk = (sk + 63) // 64
+    pad_sk = num_blkk * 64
+    k_pad = F.pad(k_centered_hnd, (0, 0, 0, pad_sk - sk)) if pad_sk > sk else k_centered_hnd
+    k_view = k_pad.view(b, hkv, num_blkk, 64, d).float()
+    amax_k = k_view.abs().amax(dim=(3, 4)).clamp(min=SCALE_EPSILON)
+    scale_k = amax_k / INT8_QUANT_MAX
+    k_scale = scale_k.view(b, hkv, num_blkk)
+    k_scaled = k_view / scale_k.unsqueeze(3).unsqueeze(4)
+    k_quant = torch.round(k_scaled).clamp(-128, 127).to(torch.int8)
+    k_int8 = k_quant.view(b, hkv, pad_sk, d)[:, :, :sk, :]
+    k_deq = (k_quant.float() * scale_k.unsqueeze(3).unsqueeze(4)).view(b, hkv, pad_sk, d)[:, :, :sk, :]
+
+    return q_deq, k_deq, q_int8, q_scale, k_int8, k_scale
+
+
+def _quant_qk_per_thread(
+    q_hnd: torch.Tensor,
+    k_centered_hnd: torch.Tensor,
+    sq: int,
+    sk: int,
+    d: int,
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """per_thread INT8 quantization for Q and K (half-away-from-zero rounding + clamp[-127, 127]).
+
+    返回 (q_deq, k_deq, q_int8, q_scale, k_int8, k_scale)。中间态格式与 golden
+    台账一致（q_int8/k_int8 裁回 sq/sk；q_scale [b,hq,blk*32]；k_scale [b,hkv,blk*4]）。
+    """
+    b, hq = q_hnd.shape[0], q_hnd.shape[1]
+    _, hkv = k_centered_hnd.shape[0], k_centered_hnd.shape[1]
+
+    # Q per_thread: 128 tokens -> 4 subblocks of 32 -> 8 groups of 4 tokens (stride 8)
+    num_blkq = (sq + 127) // 128
+    pad_sq = num_blkq * 128
+    q_pad = F.pad(q_hnd, (0, 0, 0, pad_sq - sq)) if pad_sq > sq else q_hnd
+    q_view = q_pad.view(b, hq, num_blkq, 4, 4, 8, d).float()
+    amax_q = q_view.abs().amax(dim=(4, 6))
+    scale_q = amax_q / INT8_QUANT_MAX + SCALE_EPSILON
+    scale_exp_q = scale_q.unsqueeze(4).unsqueeze(6)
+    q_scaled = q_view / scale_exp_q
+    q_quant = torch.clamp(torch.floor(torch.abs(q_scaled) + 0.5) * torch.sign(q_scaled), -127, 127).to(torch.int8)
+    q_int8 = q_quant.view(b, hq, pad_sq, d)[:, :, :sq, :]
+    q_deq = (q_quant.float() * scale_exp_q).view(b, hq, pad_sq, d)[:, :, :sq, :]
+    q_scale = scale_q.view(b, hq, num_blkq * 32)
+
+    # K per_thread: 64 tokens -> 4 groups of 8 pairs (adjacent columns)
+    num_blkk = (sk + 63) // 64
+    pad_sk = num_blkk * 64
+    k_pad = F.pad(k_centered_hnd, (0, 0, 0, pad_sk - sk)) if pad_sk > sk else k_centered_hnd
+    k_view = k_pad.view(b, hkv, num_blkk, 8, 4, 2, d).float()
+    amax_k = k_view.abs().amax(dim=(3, 5, 6))
+    scale_k = amax_k / INT8_QUANT_MAX + SCALE_EPSILON
+    scale_exp_k = scale_k.unsqueeze(3).unsqueeze(5).unsqueeze(6)
+    k_scaled = k_view / scale_exp_k
+    k_quant = torch.clamp(torch.floor(torch.abs(k_scaled) + 0.5) * torch.sign(k_scaled), -127, 127).to(torch.int8)
+    k_int8 = k_quant.view(b, hkv, pad_sk, d)[:, :, :sk, :]
+    k_deq = (k_quant.float() * scale_exp_k).view(b, hkv, pad_sk, d)[:, :, :sk, :]
+    k_scale = scale_k.view(b, hkv, num_blkk * 4)
+
+    return q_deq, k_deq, q_int8, q_scale, k_int8, k_scale
+
+
+def _encode_fp8_and_unperm(
+    v_norm: torch.Tensor,
+    has_fp8: bool,
+    b: int,
+    hkv: int,
+    d: int,
+    num_16: int,
+    pad_sk_v: int,
+    sk: int,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """v_norm -> (v_fp8, v_fp8_unperm)：e4m3 量化 + NaN 规整 0x7F + 16-token 逆 permute
+    裁回 sk。smooth_v 两分支位级同一段，唯一定义于此。"""
+    v_fp8 = v_norm.clamp(-S_FP8_SCALE_MAX, S_FP8_SCALE_MAX).to(torch.float8_e4m3fn) if has_fp8 else v_norm.clamp(-S_FP8_SCALE_MAX, S_FP8_SCALE_MAX)
+    if has_fp8:  # 谓词归并：has_fp8 即 hasattr 本名，dtype 恒由上一行条件表达式决定
+        v_u8 = torch.where(torch.isnan(v_norm), torch.tensor(0x7F, dtype=torch.uint8, device=v_norm.device), v_fp8.view(torch.uint8))
+        v_fp8 = v_u8.view(torch.float8_e4m3fn)
+        v_fp8_unperm = v_u8.view(b, hkv, d, num_16, 16)[:, :, :, :, V_FP8_INV_PERM].view(torch.float8_e4m3fn).contiguous().view(b, hkv, d, pad_sk_v)[:, :, :, :sk]
+    else:
+        v_fp8_unperm = v_fp8.view(b, hkv, d, num_16, 16)[:, :, :, :, V_FP8_INV_PERM].contiguous().view(b, hkv, d, pad_sk_v)[:, :, :, :sk]
+    return v_fp8, v_fp8_unperm
+
+
+def _quant_v_fp8(
+    v_hnd: torch.Tensor,
+    sk: int,
+    d: int,
+    pv_accum_dtype: str,
+    smooth_v: bool,
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
+    """Quantize V to FP8 e4m3fn with sequence padding and permuted layout.
+
+    返回 (v_deq_hnd, v_fp8, v_scale, vm)。中间态格式与 golden 台账
+    一致（v_fp8 [b,hkv,d,pad_sk_v] permuted、v_scale [b,hkv,d]、vm 仅 smooth_v 路径
+    非 None），供单一基准整合（golden 生成器编排复用）。
+    """
+    b, hkv = v_hnd.shape[0], v_hnd.shape[1]
+    scale_max = v_scale_max_for(pv_accum_dtype)
+
+    pad_sk_v = (sk + 63) // 64 * 64
+    v_t = v_hnd.transpose(2, 3)  # (b, hkv, d, sk)
+    v_pad = F.pad(v_t, (0, pad_sk_v - sk)) if pad_sk_v > sk else v_t
+
+    num_16 = pad_sk_v // 16
+    v_16 = v_pad.view(b, hkv, d, num_16, 16)
+    v_perm = v_16[:, :, :, :, V_FP8_PERM].contiguous().view(b, hkv, d, pad_sk_v)
+
+    fp8_padded_tokens = (sk + 15) // 16 * 16
+    v_sub = v_perm[:, :, :, :fp8_padded_tokens].float()
+
+    has_fp8 = hasattr(torch, "float8_e4m3fn")
+
+    if smooth_v:
+        vm = v_sub.sum(dim=-1) / fp8_padded_tokens
+        amax_v = torch.max((v_sub.amax(dim=-1) - vm).abs(), (v_sub.amin(dim=-1) - vm).abs())
+        v_scale = amax_v / scale_max
+        v_norm = (v_perm.float() - vm.unsqueeze(-1)) / v_scale.unsqueeze(-1)
+        v_fp8, v_fp8_unperm = _encode_fp8_and_unperm(v_norm, has_fp8, b, hkv, d, num_16, pad_sk_v, sk)
+        v_deq_hnd = (v_fp8_unperm.float() * v_scale.unsqueeze(-1) + vm.unsqueeze(-1)).transpose(2, 3)
+    else:
+        vm = None
+        amax_v = torch.max(v_sub.amax(dim=-1).abs(), v_sub.amin(dim=-1).abs())
+        v_scale = amax_v / scale_max
+        v_norm = v_perm.float() / v_scale.unsqueeze(-1)
+        v_fp8, v_fp8_unperm = _encode_fp8_and_unperm(v_norm, has_fp8, b, hkv, d, num_16, pad_sk_v, sk)
+        v_deq_hnd = (v_fp8_unperm.float() * v_scale.unsqueeze(-1)).transpose(2, 3)
+
+    return v_deq_hnd, v_fp8, v_scale, vm
+
+
+def run_sageattn_cpu_reference(
+    q_pad: torch.Tensor,
+    k_pad: torch.Tensor,
+    v_pad: torch.Tensor,
+    tensor_layout: str,
+    is_causal: bool,
+    qk_quant_gran: str,
+    sm_scale: float,
+    pv_accum_dtype: str,
+    smooth_k: bool,
+    smooth_v: bool,
+    return_lse: bool,
+    return_intermediates: bool = False,
+):
+    """
+    High-fidelity CPU reference simulation for SageAttention2 on Ascend NPU.
+    单一基准（Group J）：本函数是算子侧唯一 Python 数值参考；golden 生成器
+    （tools/generate_golden.py）经 return_intermediates=True 编排复用，两份
+    量化/仿真实现已删除。中间态格式 = golden 台账格式（HND 域：q_int8 裁回
+    sq、q_scale 组序、v_fp8 permuted [b,hkv,d,pad_sk_v]、v_scale [b,hkv,d]）。
+    """
+    dtype = q_pad.dtype
+    sm_scale_log2e = sm_scale * LOG2E
+
+    # Convert layout to HND for standardized tile processing
+    if tensor_layout == "NHD":
+        q_hnd = q_pad.transpose(1, 2).contiguous()
+        k_hnd = k_pad.transpose(1, 2).contiguous()
+        v_hnd = v_pad.transpose(1, 2).contiguous()
+    else:
+        q_hnd = q_pad
+        k_hnd = k_pad
+        v_hnd = v_pad
+
+    b, hq, sq, d = q_hnd.shape
+    _, hkv, sk, _ = k_hnd.shape
+
+    # 1. smooth_k and lse_correction
+    if smooth_k:
+        km = k_hnd.mean(dim=2, keepdim=True)
+        q_per_kv = hq // hkv
+        km_broadcast = km.repeat_interleave(q_per_kv, dim=1) if q_per_kv > 1 else km
+        lse_correction = torch.matmul(q_hnd.float(), km_broadcast.float().transpose(2, 3)).squeeze(-1).float()
+        k_centered_hnd = k_hnd - km
+    else:
+        k_centered_hnd = k_hnd
+        lse_correction = torch.zeros((b, hq, sq), dtype=torch.float32, device=q_hnd.device)
+
+    # 2. Quantize Q & K（返回中间态：q_int8/q_scale/k_int8/k_scale，golden 台账格式）
+    if qk_quant_gran == "per_thread":
+        q_deq_hnd, k_deq_hnd, q_int8, q_scale, k_int8, k_scale = _quant_qk_per_thread(q_hnd, k_centered_hnd, sq, sk, d)
+    else:
+        q_deq_hnd, k_deq_hnd, q_int8, q_scale, k_int8, k_scale = _quant_qk_per_warp(q_hnd, k_centered_hnd, sq, sk, d)
+
+    # 3. Quantize V to FP8（返回中间态：v_fp8 permuted / v_scale / vm）
+    v_deq_hnd, v_fp8, v_scale, vm = _quant_v_fp8(v_hnd, sk, d, pv_accum_dtype, smooth_v)
+
+    # 4. GQA broadcasting
+    if hq != hkv:
+        rep = hq // hkv
+        k_deq_hnd = k_deq_hnd.repeat_interleave(rep, dim=1)
+        v_deq_hnd = v_deq_hnd.repeat_interleave(rep, dim=1)
+
+    # 5. Online Softmax and Two-level Accumulation Simulation
+    # S_FP8_OFFSET 放大语义（task/01_design 2.4，对齐 GPU attn_utils.cuh 的
+    # m' = m - log2(448) 冻结轨迹）：P 在转 e4m3 前放大 448 倍填满 e4m3 动态范围，
+    # 分母在放大域累加，输出归一化时分子分母相消，LSE 减去 log2(448) 偏置。
+    cta_k = 64
+    k_step = K_STEP
+    num_cta_k = (sk + cta_k - 1) // cta_k
+    ro = torch.zeros((b, hq, sq, d), dtype=torch.float32, device=q_hnd.device)
+    m = torch.full((b, hq, sq, 1), -5000000.0, dtype=torch.float32, device=q_hnd.device)
+    d_denom = torch.ones((b, hq, sq, 1), dtype=torch.float32, device=q_hnd.device)
+
+    has_fp8 = hasattr(torch, "float8_e4m3fn")
+
+    for k_blk in range(num_cta_k):
+        k_start = k_blk * cta_k
+        k_end = min(sk, (k_blk + 1) * cta_k)
+        k_chunk = k_deq_hnd[:, :, k_start:k_end, :]
+        v_chunk = v_deq_hnd[:, :, k_start:k_end, :]
+
+        # Scores in exp2 domain
+        s_chunk = torch.matmul(q_deq_hnd, k_chunk.transpose(-2, -1)) * sm_scale_log2e
+
+        if is_causal:
+            q_indices = torch.arange(sq, device=s_chunk.device).view(1, 1, sq, 1)
+            k_indices = torch.arange(k_start, k_end, device=s_chunk.device).view(1, 1, 1, k_end - k_start)
+            causal_mask = q_indices < k_indices
+            s_chunk = s_chunk.masked_fill(causal_mask, -5000000.0)
+
+        m_local = s_chunk.max(dim=-1, keepdim=True)[0]
+        m_new = torch.maximum(m, m_local)
+        o_scale = torch.pow(2.0, m - m_new)
+        d_denom = d_denom * o_scale
+        ro = ro * o_scale
+
+        p_exp2 = torch.pow(2.0, s_chunk - m_new)
+        if is_causal:
+            p_exp2 = p_exp2.masked_fill(causal_mask, 0.0)
+
+        # Quantize P to e4m3 with S_FP8_OFFSET (= log2(448)) scaling:
+        # P 先放大 448 倍再 clamp/转 e4m3，分母在放大域累加
+        p_scaled = p_exp2 * S_FP8_SCALE_MAX
+        p_f8 = p_scaled.clamp(-S_FP8_SCALE_MAX, S_FP8_SCALE_MAX).to(torch.float8_e4m3fn).float() if has_fp8 else p_scaled.clamp(-S_FP8_SCALE_MAX, S_FP8_SCALE_MAX)
+        d_denom = d_denom + p_scaled.sum(dim=-1, keepdim=True)
+
+        # Two-level accumulation（冻结语义轨迹：fp32+fp16 档为 "FP16 主累加器 +
+        # 每 k_step 归约回 FP32"——每 k_step=16 个 KV token 的 PV 在 FP16 域
+        # 累加，经一次 FP16 舍入后归约进 FP32 主累加器）
+        if pv_accum_dtype == "fp32+fp16":
+            pv_chunk = torch.zeros(
+                (b, hq, sq, d), dtype=torch.float32, device=q_hnd.device
+            )
+            for ks_start in range(0, k_end - k_start, k_step):
+                ks_end = min(ks_start + k_step, k_end - k_start)
+                p_sub = p_f8[:, :, :, ks_start:ks_end].contiguous().half()
+                v_sub = v_chunk[:, :, ks_start:ks_end, :].contiguous().half()
+                pv_sub = torch.matmul(p_sub, v_sub)
+                pv_chunk = pv_chunk + pv_sub.float()
+        else:
+            pv_chunk = torch.matmul(p_f8, v_chunk)
+
+        ro = ro + pv_chunk
+        m = m_new
+
+    # Output normalization（448 放大在分子分母间相消）
+    out_hnd = ro / d_denom
+
+    # LSE calculation（分母处于 448 放大域，需减去 S_FP8_OFFSET = log2(448) 偏置）
+    if return_lse:
+        lse_exp2 = torch.log2(d_denom.squeeze(-1).clamp(min=1e-12)) + m.squeeze(-1) - S_FP8_OFFSET
+        lse_out = lse_exp2 / LOG2E + (lse_correction * sm_scale if smooth_k else 0.0)
+    else:
+        lse_out = None
+
+    # Cast back to input dtype
+    out_hnd = out_hnd.to(dtype)
+
+    # Restore output layout
+    if tensor_layout == "NHD":
+        out = out_hnd.transpose(1, 2).contiguous()
+    else:
+        out = out_hnd
+
+    if return_intermediates:
+        intermediates = {
+            "q_int8": q_int8,        # [b, hq, sq, d] HND，裁回 sq
+            "q_scale": q_scale,      # [b, hq, blk*(32|4)]
+            "k_int8": k_int8,        # [b, hkv, sk, d] HND，裁回 sk
+            "k_scale": k_scale,      # [b, hkv, blk*(4|1)]
+            "v_fp8": v_fp8,          # [b, hkv, d, pad_sk_v] 16-token permuted
+            "v_scale": v_scale,      # [b, hkv, d]
+            "vm": vm,                # 仅 smooth_v 路径非 None
+        }
+        return out, lse_out, intermediates
+    return out, lse_out
+
+
+def resolve_pv_accum_dtype(pv_accum_dtype: Optional[str] = None) -> str:
+    """Resolve pv_accum_dtype with priority: explicit parameter > SAGEATTN_PV_ACCUM_DTYPE env > default ('fp32+fp16').
+    Strictly validates legality against VALID_PV_ACCUM_DTYPES.
+    """
+    if pv_accum_dtype is not None:
+        target = str(pv_accum_dtype).strip()
+        if target not in VALID_PV_ACCUM_DTYPES:
+            raise ValueError(
+                f"Invalid pv_accum_dtype '{pv_accum_dtype}', must be one of {sorted(VALID_PV_ACCUM_DTYPES)}"
+            )
+        return target
+
+    env_val = os.environ.get("SAGEATTN_PV_ACCUM_DTYPE")
+    if env_val is not None and env_val.strip() != "":
+        target = env_val.strip()
+        if target not in VALID_PV_ACCUM_DTYPES:
+            raise ValueError(
+                f"Invalid SAGEATTN_PV_ACCUM_DTYPE environment variable '{env_val}', "
+                f"must be one of {sorted(VALID_PV_ACCUM_DTYPES)}"
+            )
+        return target
+
+    return DEFAULT_PV_ACCUM_DTYPE
+
+
+def sageattn(
+    q: torch.Tensor,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    tensor_layout: str = DEFAULT_TENSOR_LAYOUT,
+    is_causal: bool = False,
+    sm_scale: Optional[float] = None,
+    return_lse: bool = False,
+    **kwargs: Any,
+) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+    """
+    Dispatch sageattn to sageattn_qk_int8_pv_fp8_asc on Ascend NPU / CPU reference simulation.
+    When return_lse=False, directly returns single tensor o.
+    When return_lse=True, returns tuple (o, lse).
+
+    数值形参（pv_accum_dtype/qk_quant_gran/smooth_k/smooth_v）与 SDPA 形态 kwargs
+    （attn_mask/dropout_p/scale/enable_gqa）的缺省、解析（pv_accum_dtype 优先级：
+    显式传参 > SAGEATTN_PV_ACCUM_DTYPE env > 默认 'fp32+fp16'）与拒绝全部唯一定义在
+    sageattn_qk_int8_pv_fp8_asc——同名具名形参承接 **kwargs 转发，本层零重复缺省/零重复解析。
+    """
+    return sageattn_qk_int8_pv_fp8_asc(
+        q=q,
+        k=k,
+        v=v,
+        tensor_layout=tensor_layout,
+        is_causal=is_causal,
+        sm_scale=sm_scale,
+        return_lse=return_lse,
+        **kwargs,
+    )
+
+
+def sageattn_qk_int8_pv_fp8_asc(
+    q: torch.Tensor,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    tensor_layout: str = DEFAULT_TENSOR_LAYOUT,
+    is_causal: bool = False,
+    qk_quant_gran: str = DEFAULT_QK_QUANT_GRAN,
+    sm_scale: Optional[float] = None,
+    pv_accum_dtype: Optional[str] = None,
+    smooth_k: bool = True,
+    smooth_v: bool = False,
+    return_lse: bool = False,
+    **kwargs: Any,
+) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+    """
+    Dispatch sageattn_qk_int8_pv_fp8_asc to PyTorch registered custom op torch.ops.sageattention2.forward.
+    When return_lse=False, directly returns single tensor o.
+    When return_lse=True, returns tuple (o, lse).
+    """
+    if isinstance(tensor_layout, torch.Tensor):
+        raise ValueError("attn_mask is not supported")
+    if kwargs.pop("attn_mask", None) is not None:
+        raise ValueError("attn_mask is not supported")
+    if kwargs.pop("dropout_p", 0.0) != 0.0:
+        raise ValueError("dropout is not supported")
+    if sm_scale is None and "scale" in kwargs:
+        sm_scale = kwargs.pop("scale")
+    kwargs.pop("enable_gqa", None)
+
+    pv_accum_dtype = resolve_pv_accum_dtype(pv_accum_dtype)
+
+    if kwargs:
+        raise TypeError(f"unsupported arguments: {sorted(kwargs)}")
+
+    out, lse = torch.ops.sageattention2.forward(
+        q,
+        k,
+        v,
+        tensor_layout=tensor_layout,
+        is_causal=is_causal,
+        qk_quant_gran=qk_quant_gran,
+        sm_scale=sm_scale,
+        pv_accum_dtype=pv_accum_dtype,
+        smooth_k=smooth_k,
+        smooth_v=smooth_v,
+        return_lse=return_lse,
+    )
+
+    if return_lse:
+        return out, lse
+    return out
+
+
