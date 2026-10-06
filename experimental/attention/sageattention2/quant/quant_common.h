@@ -264,15 +264,33 @@ constexpr uint32_t K_BLK = 64;
 /**
  * Q 的 scale 组数（每 head）：per_thread 为 blk×32，per_warp 为 blk×4
  */
+template <bool PER_THREAD>
+[[nodiscard]] __aicore__ __host__ constexpr inline __attribute__((always_inline)) uint32_t QScaleCount(uint32_t seq_len) noexcept {
+    if constexpr (PER_THREAD) {
+        return QBlockNum(seq_len) * 32u;
+    } else {
+        return QBlockNum(seq_len) * 4u;
+    }
+}
+
 [[nodiscard]] __aicore__ __host__ constexpr inline __attribute__((always_inline)) uint32_t QScaleCount(uint32_t seq_len, bool per_thread) noexcept {
-    return QBlockNum(seq_len) * (per_thread ? 32u : 4u);
+    return per_thread ? QScaleCount<true>(seq_len) : QScaleCount<false>(seq_len);
 }
 
 /**
  * K 的 scale 组数（每 head）：per_thread 为 blk×4，per_warp 为 blk×1
  */
+template <bool PER_THREAD>
+[[nodiscard]] __aicore__ __host__ constexpr inline __attribute__((always_inline)) uint32_t KScaleCount(uint32_t seq_len) noexcept {
+    if constexpr (PER_THREAD) {
+        return KBlockNum(seq_len) * 4u;
+    } else {
+        return KBlockNum(seq_len) * 1u;
+    }
+}
+
 [[nodiscard]] __aicore__ __host__ constexpr inline __attribute__((always_inline)) uint32_t KScaleCount(uint32_t seq_len, bool per_thread) noexcept {
-    return KBlockNum(seq_len) * (per_thread ? 4u : 1u);
+    return per_thread ? KScaleCount<true>(seq_len) : KScaleCount<false>(seq_len);
 }
 
 /**
@@ -281,13 +299,22 @@ constexpr uint32_t K_BLK = 64;
     // 设备分支 Phase-B 组归并调用（DEFECT-F-1 随动）：不带 __host__——bisheng 对
     // 仅标 __host__ 的函数不在设备 pass 发射函数体，链接期 undefined（归并/定档
     // 为纯整数算术，host/device 双 pass 同结果）
-[[nodiscard]] __aicore__ inline __attribute__((always_inline)) uint32_t QScaleIndex(uint32_t token, bool per_thread) noexcept {
+template <bool PER_THREAD>
+[[nodiscard]] __aicore__ inline __attribute__((always_inline)) uint32_t QScaleIndex(uint32_t token) noexcept {
     const uint32_t blk = token / Q_BLK;
     const uint32_t in_blk = token % Q_BLK;
-    if (per_thread) {
+    if constexpr (PER_THREAD) {
         return blk * 32u + (in_blk / Q_SUB) * 8u + (in_blk % 8u);
+    } else {
+        return blk * 4u + in_blk / Q_SUB;
     }
-    return blk * 4u + in_blk / Q_SUB;
+}
+
+[[nodiscard]] __aicore__ inline __attribute__((always_inline)) uint32_t QScaleIndex(uint32_t token, bool per_thread) noexcept {
+    if (per_thread) {
+        return QScaleIndex<true>(token);
+    }
+    return QScaleIndex<false>(token);
 }
 
 /**
@@ -296,9 +323,20 @@ constexpr uint32_t K_BLK = 64;
  * - per_warp：clamp(amax, 1e-7)/127（与 RoundNearestEven 舍入路径配对）。
  * 禁止在调用方复制本公式——一处修舍入/兜底，处处生效。
  */
+template <bool PER_THREAD>
+[[nodiscard]] __aicore__ __host__ inline __attribute__((always_inline)) float FinalizeQkScale(float amax) noexcept {
+    if constexpr (PER_THREAD) {
+        return amax / INT8_QUANT_MAX + SCALE_EPSILON;
+    } else {
+        return (amax < SCALE_EPSILON ? SCALE_EPSILON : amax) / INT8_QUANT_MAX;
+    }
+}
+
 [[nodiscard]] __aicore__ __host__ inline __attribute__((always_inline)) float FinalizeQkScale(float amax, bool per_thread) noexcept {
-    return per_thread ? (amax / INT8_QUANT_MAX + SCALE_EPSILON)
-                      : ((amax < SCALE_EPSILON ? SCALE_EPSILON : amax) / INT8_QUANT_MAX);
+    if (per_thread) {
+        return FinalizeQkScale<true>(amax);
+    }
+    return FinalizeQkScale<false>(amax);
 }
 
 // 槽区步长容量域锁定（与 tiling.h kQScaleSlotStride/kKScaleSlotStride 配对）
@@ -312,13 +350,22 @@ static_assert(KScaleCount(32768, true) <= kKScaleSlotStride,
  * per_thread 组 g 含 8 对相邻 token：token = blk*64 + p*8 + 2g + e (p∈[0,8), e∈{0,1})，
  * 即组号由序列内 8 交织相的相邻对决定（对齐 quant_per_thread.py 的 (8,4,2) 分解）
  */
-[[nodiscard]] __aicore__ inline __attribute__((always_inline)) uint32_t KScaleIndex(uint32_t token, bool per_thread) noexcept {
+template <bool PER_THREAD>
+[[nodiscard]] __aicore__ inline __attribute__((always_inline)) uint32_t KScaleIndex(uint32_t token) noexcept {
     const uint32_t blk = token / K_BLK;
     const uint32_t in_blk = token % K_BLK;
-    if (per_thread) {
+    if constexpr (PER_THREAD) {
         return blk * 4u + (in_blk % 8u) / 2u;
+    } else {
+        return blk;
     }
-    return blk;
+}
+
+[[nodiscard]] __aicore__ inline __attribute__((always_inline)) uint32_t KScaleIndex(uint32_t token, bool per_thread) noexcept {
+    if (per_thread) {
+        return KScaleIndex<true>(token);
+    }
+    return KScaleIndex<false>(token);
 }
 
 /**
@@ -378,13 +425,24 @@ struct Bf16Reader {
  * km 为 nullptr 时原值直通。kernel 设备/宿主分支与 quant 参考实现共用，
  * 禁止在调用方展开 (dtype==2)?Bf16:Half 三元式。
  */
-[[nodiscard]] __aicore__ __host__ inline __attribute__((always_inline)) float SubKm(float val, const float* km_vec, uint32_t c,
-                                       uint32_t dtype_mode) noexcept {
+template <uint32_t DTYPE_MODE = 1u>
+[[nodiscard]] __aicore__ __host__ inline __attribute__((always_inline)) float SubKm(float val, const float* km_vec, uint32_t c) noexcept {
     if (km_vec == nullptr) {
         return val;
     }
-    return (dtype_mode == 2u) ? Bf16Reader::Sub(val, km_vec[c])
-                              : HalfReader::Sub(val, km_vec[c]);
+    if constexpr (DTYPE_MODE == 2u) {
+        return Bf16Reader::Sub(val, km_vec[c]);
+    } else {
+        return HalfReader::Sub(val, km_vec[c]);
+    }
+}
+
+[[nodiscard]] __aicore__ __host__ inline __attribute__((always_inline)) float SubKm(float val, const float* km_vec, uint32_t c,
+                                       uint32_t dtype_mode) noexcept {
+    if (dtype_mode == 2u) {
+        return SubKm<2u>(val, km_vec, c);
+    }
+    return SubKm<1u>(val, km_vec, c);
 }
 
 /**
@@ -395,26 +453,52 @@ struct Bf16Reader {
  * 读数（孪生 k_pad / kernel GM 直读两条寻址路径各自注入），本函数禁改求和序。
  */
 #if defined(__CCE_AICORE__)
-template <typename ReadK>
-[[nodiscard]] __aicore__ inline __attribute__((always_inline)) float KeyMeanElement(uint32_t sk, uint32_t dtype_mode, ReadK&& read_k) noexcept {
+template <uint32_t DTYPE_MODE, typename ReadK>
+[[nodiscard]] __aicore__ inline __attribute__((always_inline)) float KeyMeanElement(uint32_t sk, ReadK&& read_k) noexcept {
     float sum = 0.0f;
     for (uint32_t si = 0; si < sk; ++si) {
         sum += read_k(si);
     }
     const float mean = (sk > 0) ? (sum / static_cast<float>(sk)) : 0.0f;
-    const uint16_t rounded = (dtype_mode == 2u) ? Fp32ToBf16(mean) : Fp32ToFp16(mean);
-    return (dtype_mode == 2u) ? Bf16ToFp32(rounded) : Fp16ToFp32(rounded);
+    if constexpr (DTYPE_MODE == 2u) {
+        const uint16_t rounded = Fp32ToBf16(mean);
+        return Bf16ToFp32(rounded);
+    } else {
+        const uint16_t rounded = Fp32ToFp16(mean);
+        return Fp16ToFp32(rounded);
+    }
+}
+
+template <typename ReadK>
+[[nodiscard]] __aicore__ inline __attribute__((always_inline)) float KeyMeanElement(uint32_t sk, uint32_t dtype_mode, ReadK&& read_k) noexcept {
+    if (dtype_mode == 2u) {
+        return KeyMeanElement<2u>(sk, static_cast<ReadK&&>(read_k));
+    }
+    return KeyMeanElement<1u>(sk, static_cast<ReadK&&>(read_k));
 }
 #else
-template <typename ReadK>
-[[nodiscard]] inline float KeyMeanElement(uint32_t sk, uint32_t dtype_mode, ReadK&& read_k) noexcept {
+template <uint32_t DTYPE_MODE, typename ReadK>
+[[nodiscard]] inline float KeyMeanElement(uint32_t sk, ReadK&& read_k) noexcept {
     double sum = 0.0;
     for (uint32_t si = 0; si < sk; ++si) {
         sum += read_k(si);
     }
     const float mean = (sk > 0) ? static_cast<float>(sum / sk) : 0.0f;
-    const uint16_t rounded = (dtype_mode == 2u) ? Fp32ToBf16(mean) : Fp32ToFp16(mean);
-    return (dtype_mode == 2u) ? Bf16ToFp32(rounded) : Fp16ToFp32(rounded);
+    if constexpr (DTYPE_MODE == 2u) {
+        const uint16_t rounded = Fp32ToBf16(mean);
+        return Bf16ToFp32(rounded);
+    } else {
+        const uint16_t rounded = Fp32ToFp16(mean);
+        return Fp16ToFp32(rounded);
+    }
+}
+
+template <typename ReadK>
+[[nodiscard]] inline float KeyMeanElement(uint32_t sk, uint32_t dtype_mode, ReadK&& read_k) noexcept {
+    if (dtype_mode == 2u) {
+        return KeyMeanElement<2u>(sk, static_cast<ReadK&&>(read_k));
+    }
+    return KeyMeanElement<1u>(sk, static_cast<ReadK&&>(read_k));
 }
 #endif
 

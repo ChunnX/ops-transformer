@@ -52,8 +52,22 @@ class AttentionSync {
 public:
     static constexpr uint8_t MODE = 4; // 1C2V Intra-Block 模式
 
-    static_assert(SyncFlags::KV_PONG_FREE < 11, "V0 SyncFlags must avoid hardware reserved IDs [11, 14]");
-    static_assert(SyncFlags::PV_CHAIN < 11, "V1 SyncFlags must avoid hardware reserved IDs [11, 14]");
+    static_assert(SyncFlags::Q_READY < 11, "SyncFlags::Q_READY must avoid hardware reserved IDs [11, 14]");
+    static_assert(SyncFlags::KV_PING_READY < 11, "SyncFlags::KV_PING_READY must avoid hardware reserved IDs [11, 14]");
+    static_assert(SyncFlags::KV_PONG_READY < 11, "SyncFlags::KV_PONG_READY must avoid hardware reserved IDs [11, 14]");
+    static_assert(SyncFlags::KV_PING_FREE < 11, "SyncFlags::KV_PING_FREE must avoid hardware reserved IDs [11, 14]");
+    static_assert(SyncFlags::KV_PONG_FREE < 11, "SyncFlags::KV_PONG_FREE must avoid hardware reserved IDs [11, 14]");
+
+    static_assert(SyncFlags::QK_READY < 11, "SyncFlags::QK_READY must avoid hardware reserved IDs [11, 14]");
+    static_assert(SyncFlags::DOT_FREE < 11, "SyncFlags::DOT_FREE must avoid hardware reserved IDs [11, 14]");
+    static_assert(SyncFlags::S_PING_READY < 11, "SyncFlags::S_PING_READY must avoid hardware reserved IDs [11, 14]");
+    static_assert(SyncFlags::S_PONG_READY < 11, "SyncFlags::S_PONG_READY must avoid hardware reserved IDs [11, 14]");
+    static_assert(SyncFlags::S_PING_FREE < 11, "SyncFlags::S_PING_FREE must avoid hardware reserved IDs [11, 14]");
+    static_assert(SyncFlags::S_PONG_FREE < 11, "SyncFlags::S_PONG_FREE must avoid hardware reserved IDs [11, 14]");
+    static_assert(SyncFlags::PV_PARTIAL_READY < 11, "SyncFlags::PV_PARTIAL_READY must avoid hardware reserved IDs [11, 14]");
+    static_assert(SyncFlags::PV_PARTIAL_FREE < 11, "SyncFlags::PV_PARTIAL_FREE must avoid hardware reserved IDs [11, 14]");
+    static_assert(SyncFlags::PV_DONE < 11, "SyncFlags::PV_DONE must avoid hardware reserved IDs [11, 14]");
+    static_assert(SyncFlags::PV_CHAIN < 11, "SyncFlags::PV_CHAIN must avoid hardware reserved IDs [11, 14]");
 
     // -------------------------------------------------------------
     // 1. 终止退域同步屏障（仅 AIV 执行 MTE3 落盘屏障，AIC 严格禁 PipeBarrier<PIPE_ALL>）
@@ -84,44 +98,80 @@ public:
 #endif
     }
 
-    __aicore__ inline static void V0WaitKvFree(bool is_ping)
+    template <bool IS_PING>
+    __aicore__ inline static void V0WaitKvFree()
     {
 #if SAGE_ATTN_DEVICE_COMPILE
-        uint32_t flag = is_ping ? SyncFlags::KV_PING_FREE : SyncFlags::KV_PONG_FREE;
+        constexpr uint32_t flag = IS_PING ? SyncFlags::KV_PING_FREE : SyncFlags::KV_PONG_FREE;
+        static_assert(flag < 11, "SyncFlags must avoid hardware reserved IDs [11, 14]");
         AscendC::CrossCoreWaitFlag<MODE, PIPE_MTE3>(flag);
-#else
-        (void)is_ping;
+#endif
+    }
+
+    __aicore__ inline static void V0WaitKvFree(bool is_ping)
+    {
+        if (is_ping) {
+            V0WaitKvFree<true>();
+        } else {
+            V0WaitKvFree<false>();
+        }
+    }
+
+    template <bool IS_PING>
+    __aicore__ inline static void V0SignalKvReady()
+    {
+#if SAGE_ATTN_DEVICE_COMPILE
+        constexpr uint32_t flag = IS_PING ? SyncFlags::KV_PING_READY : SyncFlags::KV_PONG_READY;
+        static_assert(flag < 11, "SyncFlags must avoid hardware reserved IDs [11, 14]");
+        AscendC::CrossCoreSetFlag<MODE, PIPE_MTE3>(flag);
 #endif
     }
 
     __aicore__ inline static void V0SignalKvReady(bool is_ping)
     {
+        if (is_ping) {
+            V0SignalKvReady<true>();
+        } else {
+            V0SignalKvReady<false>();
+        }
+    }
+
+    template <bool IS_PING>
+    __aicore__ inline static void CubeWaitKvReady()
+    {
 #if SAGE_ATTN_DEVICE_COMPILE
-        uint32_t flag = is_ping ? SyncFlags::KV_PING_READY : SyncFlags::KV_PONG_READY;
-        AscendC::CrossCoreSetFlag<MODE, PIPE_MTE3>(flag);
-#else
-        (void)is_ping;
+        constexpr uint32_t flag = IS_PING ? SyncFlags::KV_PING_READY : SyncFlags::KV_PONG_READY;
+        static_assert(flag < 11, "SyncFlags must avoid hardware reserved IDs [11, 14]");
+        AscendC::CrossCoreWaitFlag<MODE, PIPE_MTE1>(flag);
 #endif
     }
 
     __aicore__ inline static void CubeWaitKvReady(bool is_ping)
     {
+        if (is_ping) {
+            CubeWaitKvReady<true>();
+        } else {
+            CubeWaitKvReady<false>();
+        }
+    }
+
+    template <bool IS_PING>
+    __aicore__ inline static void CubeReleaseKvFree()
+    {
 #if SAGE_ATTN_DEVICE_COMPILE
-        uint32_t flag = is_ping ? SyncFlags::KV_PING_READY : SyncFlags::KV_PONG_READY;
-        AscendC::CrossCoreWaitFlag<MODE, PIPE_MTE1>(flag);
-#else
-        (void)is_ping;
+        constexpr uint32_t flag = IS_PING ? SyncFlags::KV_PING_FREE : SyncFlags::KV_PONG_FREE;
+        static_assert(flag < 11, "SyncFlags must avoid hardware reserved IDs [11, 14]");
+        AscendC::CrossCoreSetFlag<MODE, PIPE_MTE1>(flag);
 #endif
     }
 
     __aicore__ inline static void CubeReleaseKvFree(bool is_ping)
     {
-#if SAGE_ATTN_DEVICE_COMPILE
-        uint32_t flag = is_ping ? SyncFlags::KV_PING_FREE : SyncFlags::KV_PONG_FREE;
-        AscendC::CrossCoreSetFlag<MODE, PIPE_MTE1>(flag);
-#else
-        (void)is_ping;
-#endif
+        if (is_ping) {
+            CubeReleaseKvFree<true>();
+        } else {
+            CubeReleaseKvFree<false>();
+        }
     }
 
     // -------------------------------------------------------------
@@ -158,44 +208,80 @@ public:
     // -------------------------------------------------------------
     // 5. Vector 1 <-> Cube L1 Softmax S 硬件信道 (PIPE_MTE3 <-> PIPE_MTE1)
     // -------------------------------------------------------------
-    __aicore__ inline static void V1WaitSoftmaxFree(bool is_ping)
+    template <bool IS_PING>
+    __aicore__ inline static void V1WaitSoftmaxFree()
     {
 #if SAGE_ATTN_DEVICE_COMPILE
-        uint32_t flag = is_ping ? SyncFlags::S_PING_FREE : SyncFlags::S_PONG_FREE;
+        constexpr uint32_t flag = IS_PING ? SyncFlags::S_PING_FREE : SyncFlags::S_PONG_FREE;
+        static_assert(flag < 11, "SyncFlags must avoid hardware reserved IDs [11, 14]");
         AscendC::CrossCoreWaitFlag<MODE, PIPE_MTE3>(flag);
-#else
-        (void)is_ping;
+#endif
+    }
+
+    __aicore__ inline static void V1WaitSoftmaxFree(bool is_ping)
+    {
+        if (is_ping) {
+            V1WaitSoftmaxFree<true>();
+        } else {
+            V1WaitSoftmaxFree<false>();
+        }
+    }
+
+    template <bool IS_PING>
+    __aicore__ inline static void V1SignalSoftmaxReady()
+    {
+#if SAGE_ATTN_DEVICE_COMPILE
+        constexpr uint32_t flag = IS_PING ? SyncFlags::S_PING_READY : SyncFlags::S_PONG_READY;
+        static_assert(flag < 11, "SyncFlags must avoid hardware reserved IDs [11, 14]");
+        AscendC::CrossCoreSetFlag<MODE, PIPE_MTE3>(flag);
 #endif
     }
 
     __aicore__ inline static void V1SignalSoftmaxReady(bool is_ping)
     {
+        if (is_ping) {
+            V1SignalSoftmaxReady<true>();
+        } else {
+            V1SignalSoftmaxReady<false>();
+        }
+    }
+
+    template <bool IS_PING>
+    __aicore__ inline static void CubeWaitSoftmaxReady()
+    {
 #if SAGE_ATTN_DEVICE_COMPILE
-        uint32_t flag = is_ping ? SyncFlags::S_PING_READY : SyncFlags::S_PONG_READY;
-        AscendC::CrossCoreSetFlag<MODE, PIPE_MTE3>(flag);
-#else
-        (void)is_ping;
+        constexpr uint32_t flag = IS_PING ? SyncFlags::S_PING_READY : SyncFlags::S_PONG_READY;
+        static_assert(flag < 11, "SyncFlags must avoid hardware reserved IDs [11, 14]");
+        AscendC::CrossCoreWaitFlag<MODE, PIPE_MTE1>(16 + flag);
 #endif
     }
 
     __aicore__ inline static void CubeWaitSoftmaxReady(bool is_ping)
     {
+        if (is_ping) {
+            CubeWaitSoftmaxReady<true>();
+        } else {
+            CubeWaitSoftmaxReady<false>();
+        }
+    }
+
+    template <bool IS_PING>
+    __aicore__ inline static void CubeReleaseSoftmaxFree()
+    {
 #if SAGE_ATTN_DEVICE_COMPILE
-        uint32_t flag = is_ping ? SyncFlags::S_PING_READY : SyncFlags::S_PONG_READY;
-        AscendC::CrossCoreWaitFlag<MODE, PIPE_MTE1>(16 + flag);
-#else
-        (void)is_ping;
+        constexpr uint32_t flag = IS_PING ? SyncFlags::S_PING_FREE : SyncFlags::S_PONG_FREE;
+        static_assert(flag < 11, "SyncFlags must avoid hardware reserved IDs [11, 14]");
+        AscendC::CrossCoreSetFlag<MODE, PIPE_MTE1>(16 + flag);
 #endif
     }
 
     __aicore__ inline static void CubeReleaseSoftmaxFree(bool is_ping)
     {
-#if SAGE_ATTN_DEVICE_COMPILE
-        uint32_t flag = is_ping ? SyncFlags::S_PING_FREE : SyncFlags::S_PONG_FREE;
-        AscendC::CrossCoreSetFlag<MODE, PIPE_MTE1>(16 + flag);
-#else
-        (void)is_ping;
-#endif
+        if (is_ping) {
+            CubeReleaseSoftmaxFree<true>();
+        } else {
+            CubeReleaseSoftmaxFree<false>();
+        }
     }
 
     // -------------------------------------------------------------

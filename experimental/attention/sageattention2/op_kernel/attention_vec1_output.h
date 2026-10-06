@@ -425,10 +425,10 @@ __aicore__ inline __attribute__((always_inline)) void ProcessVec1(
 
     // 尾拍配平：回收 Cube 释放的最后两拍 Softmax 许可，保证信道零残留
     if (active_kv_blocks >= 1) {
-        AttentionSync::V1WaitSoftmaxFree(true);
+        AttentionSync::V1WaitSoftmaxFree<true>();
     }
     if (active_kv_blocks >= 2) {
-        AttentionSync::V1WaitSoftmaxFree(false);
+        AttentionSync::V1WaitSoftmaxFree<false>();
     }
 #endif
 
@@ -560,7 +560,7 @@ public:
             const int64_t km_b = static_cast<int64_t>(ctx_.cur_b);
             const int64_t km_hkv = static_cast<int64_t>(ctx_.cur_hkv);
             for (uint32_t di = 0; di < ctx_.d; ++di) {
-                km_self_[di] = quant::KeyMeanElement(ctx_.sk, kDtype, [&](uint32_t si) {
+                km_self_[di] = quant::KeyMeanElement<kDtype>(ctx_.sk, [&](uint32_t si) {
                     return AttentionVec0Quant<DTYPE_MODE>::ReadInputBits(
                         k_bits + km_layout(tla::MakeCoord(km_b, km_hkv, static_cast<int64_t>(si), 0u)), di);
                 });
@@ -584,8 +584,7 @@ public:
 #if SAGE_ATTN_DEVICE_COMPILE
             if ASCEND_IS_AIC {
                 CubeBlockParams p{ctx_.TotalRows(), ctx_.block_n, ctx_.d};
-                cube_.Process(p, ctx_.active_kv_blocks, ctx_.l1_q_offset,
-                              SlotV1Dot32::Offset(), SlotV1PvPartial::Offset());
+                cube_.Process(p, ctx_.active_kv_blocks, ctx_.l1_q_offset);
             } else {
                 if (ctx_.sub_core_idx == 0) {
                     vec0_.Process(ctx_);
@@ -596,8 +595,7 @@ public:
 #else
             vec0_.Process(ctx_);
             CubeBlockParams p{ctx_.TotalRows(), ctx_.block_n, ctx_.d};
-            cube_.Process(p, ctx_.active_kv_blocks, ctx_.l1_q_offset,
-                          SlotV1Dot32::Offset(), SlotV1PvPartial::Offset());
+            cube_.Process(p, ctx_.active_kv_blocks, ctx_.l1_q_offset);
             ProcessVec1(ctx_, softmax_, output_);
 #endif
 

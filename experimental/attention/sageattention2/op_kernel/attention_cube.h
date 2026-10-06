@@ -29,13 +29,13 @@ struct CubeBlockParams {
  */
 class AttentionCube {
 public:
+    template <uint8_t PV_CHAIN_CAP = 1>
     __aicore__ inline __attribute__((always_inline)) void Process(
         const CubeBlockParams &params,
         uint32_t active_kv_blocks,
         uint32_t l1_q_offset,
-        uint32_t ub_dot32_offset,
-        uint32_t ub_pv_partial_offset,
-        uint8_t pv_chain_cap = 1)
+        uint32_t ub_dot32_offset = SlotV1Dot32::Offset(),
+        uint32_t ub_pv_partial_offset = SlotV1PvPartial::Offset())
     {
 #if SAGE_ATTN_DEVICE_COMPILE
         Catlass::SageAttn::SageQkMmad<> qk_mmad;
@@ -48,66 +48,114 @@ public:
         qk_mmad.LoadL0A(l1_q_offset, params.rows, params.d);
         Catlass::SageAttn::Sync<HardEvent::MTE1_M>();
 
-        uint32_t chain_len = 0;
-        bool prev_emitted = false;
+        if constexpr (PV_CHAIN_CAP == 1) {
+            // PV_CHAIN_CAP == 1 优化路径：initC 恒为 true，emit 恒为 true，prev_emitted 恒为 true
+            // 消除动态 chain tracking 与分支开销
+            for (uint32_t k = 0; k < active_kv_blocks; ++k) {
+                bool is_ping = ((k % 2) == 0);
+                uint32_t l1_kv_addr = is_ping ? SlotL1KvPing::Offset() : SlotL1KvPong::Offset();
 
-        // 延迟一拍宽流水主循环
-        for (uint32_t k = 0; k < active_kv_blocks; ++k) {
-            bool is_ping = ((k % 2) == 0);
-            uint32_t l1_kv_addr = is_ping ? SlotL1KvPing::Offset() : SlotL1KvPong::Offset();
+                // 1. 拍 k（Cube 并发）：先发射上一拍的 FP8 PV MMAD 与交接（当 k > 0 时）
+                if (k > 0) {
+                    uint32_t prev_k = k - 1;
+                    bool prev_is_ping = ((prev_k % 2) == 0);
+                    StepPvMmad(pv_mmad, params, prev_is_ping, ub_pv_partial_offset, prev_k > 0, true, true, true);
+                }
 
-            // 1. 拍 k（Cube 并发）：先发射上一拍的 FP8 PV MMAD 与交接（当 k > 0 时）
-            if (k > 0) {
-                uint32_t prev_k = k - 1;
-                bool prev_is_ping = ((prev_k % 2) == 0);
-                
+                // 2. 等待 V0 当前 KV 分块量化就绪
+                AttentionSync::CubeWaitKvReady(is_ping);
+
+                // 3. 拍 k（Cube）：INT8 QK^T MMAD
+                // 若执行过 PV MMAD（k > 0），L0A 已被 Softmax P 覆写，需重新从 L1 Bank 0 加载常驻 Q
+                if (k > 0) {
+                    qk_mmad.LoadL0A(l1_q_offset, params.rows, params.d);
+                }
+                qk_mmad.LoadL0B(l1_kv_addr, params.d, params.block_n);
+                Catlass::SageAttn::Sync<HardEvent::MTE1_M>();
+                qk_mmad.Compute(true);
+                Catlass::SageAttn::Sync<HardEvent::M_FIX>();
+
+                // 4. QK dot32 裸搬 UB（首拍 dot32 槽天然空，k >= 1 受 V1 读毕释放保护）
+                if (k > 0) {
+                    AttentionSync::CubeWaitDotFree();
+                }
+                qk_mmad.EmitL0CToUbRaw(ub_dot32_offset, params.rows, params.block_n);
+                Catlass::SageAttn::Sync<HardEvent::FIX_M>();
+                AttentionSync::CubeSignalQkReady();
+            }
+
+            // Drain 拍：完成最后一个 KV 分块的 PV MMAD 与部分和搬出
+            if (active_kv_blocks > 0) {
+                uint32_t last_k = active_kv_blocks - 1;
+                bool last_is_ping = ((last_k % 2) == 0);
+                StepPvMmad(pv_mmad, params, last_is_ping, ub_pv_partial_offset, last_k > 0, true, true, true);
+
+                // 尾拍配平：回收 V1 释放的末拍 dot32 与 drain partial 信号，确保信道零遗留
+                AttentionSync::CubeWaitDotFree();
+                AttentionSync::CubeWaitPartialFree();
+            }
+        } else {
+            uint32_t chain_len = 0;
+            bool prev_emitted = false;
+
+            // 延迟一拍宽流水主循环
+            for (uint32_t k = 0; k < active_kv_blocks; ++k) {
+                bool is_ping = ((k % 2) == 0);
+                uint32_t l1_kv_addr = is_ping ? SlotL1KvPing::Offset() : SlotL1KvPong::Offset();
+
+                // 1. 拍 k（Cube 并发）：先发射上一拍的 FP8 PV MMAD 与交接（当 k > 0 时）
+                if (k > 0) {
+                    uint32_t prev_k = k - 1;
+                    bool prev_is_ping = ((prev_k % 2) == 0);
+
+                    bool initC = (chain_len == 0);
+                    chain_len++;
+                    bool emit = (chain_len >= PV_CHAIN_CAP || k == active_kv_blocks);
+
+                    StepPvMmad(pv_mmad, params, prev_is_ping, ub_pv_partial_offset, prev_k > 0, prev_emitted, initC, emit);
+                    if (emit) {
+                        chain_len = 0;
+                    }
+                    prev_emitted = emit;
+                }
+
+                // 2. 等待 V0 当前 KV 分块量化就绪
+                AttentionSync::CubeWaitKvReady(is_ping);
+
+                // 3. 拍 k（Cube）：INT8 QK^T MMAD
+                // 若执行过 PV MMAD（k > 0），L0A 已被 Softmax P 覆写，需重新从 L1 Bank 0 加载常驻 Q
+                if (k > 0) {
+                    qk_mmad.LoadL0A(l1_q_offset, params.rows, params.d);
+                }
+                qk_mmad.LoadL0B(l1_kv_addr, params.d, params.block_n);
+                Catlass::SageAttn::Sync<HardEvent::MTE1_M>();
+                qk_mmad.Compute(true);
+                Catlass::SageAttn::Sync<HardEvent::M_FIX>();
+
+                // 4. QK dot32 裸搬 UB（首拍 dot32 槽天然空，k >= 1 受 V1 读毕释放保护）
+                if (k > 0) {
+                    AttentionSync::CubeWaitDotFree();
+                }
+                qk_mmad.EmitL0CToUbRaw(ub_dot32_offset, params.rows, params.block_n);
+                Catlass::SageAttn::Sync<HardEvent::FIX_M>();
+                AttentionSync::CubeSignalQkReady();
+            }
+
+            // Drain 拍：完成最后一个 KV 分块的 PV MMAD 与部分和搬出
+            if (active_kv_blocks > 0) {
+                uint32_t last_k = active_kv_blocks - 1;
+                bool last_is_ping = ((last_k % 2) == 0);
+
                 bool initC = (chain_len == 0);
                 chain_len++;
-                bool emit = (chain_len >= pv_chain_cap || k == active_kv_blocks);
-                
-                StepPvMmad(pv_mmad, params, prev_is_ping, ub_pv_partial_offset, prev_k > 0, prev_emitted, initC, emit);
-                if (emit) {
-                    chain_len = 0;
-                }
-                prev_emitted = emit;
-            }
+                bool emit = true; // drain always emits
 
-            // 2. 等待 V0 当前 KV 分块量化就绪
-            AttentionSync::CubeWaitKvReady(is_ping);
+                StepPvMmad(pv_mmad, params, last_is_ping, ub_pv_partial_offset, last_k > 0, prev_emitted, initC, emit);
 
-            // 3. 拍 k（Cube）：INT8 QK^T MMAD
-            // 若执行过 PV MMAD（k > 0），L0A 已被 Softmax P 覆写，需重新从 L1 Bank 0 加载常驻 Q
-            if (k > 0) {
-                qk_mmad.LoadL0A(l1_q_offset, params.rows, params.d);
-            }
-            qk_mmad.LoadL0B(l1_kv_addr, params.d, params.block_n);
-            Catlass::SageAttn::Sync<HardEvent::MTE1_M>();
-            qk_mmad.Compute(true);
-            Catlass::SageAttn::Sync<HardEvent::M_FIX>();
-
-            // 4. QK dot32 裸搬 UB（首拍 dot32 槽天然空，k >= 1 受 V1 读毕释放保护）
-            if (k > 0) {
+                // 尾拍配平：回收 V1 释放的末拍 dot32 与 drain partial 信号，确保信道零遗留
                 AttentionSync::CubeWaitDotFree();
+                AttentionSync::CubeWaitPartialFree();
             }
-            qk_mmad.EmitL0CToUbRaw(ub_dot32_offset, params.rows, params.block_n);
-            Catlass::SageAttn::Sync<HardEvent::FIX_M>();
-            AttentionSync::CubeSignalQkReady();
-        }
-
-        // Drain 拍：完成最后一个 KV 分块的 PV MMAD 与部分和搬出
-        if (active_kv_blocks > 0) {
-            uint32_t last_k = active_kv_blocks - 1;
-            bool last_is_ping = ((last_k % 2) == 0);
-            
-            bool initC = (chain_len == 0);
-            chain_len++;
-            bool emit = true; // drain always emits
-            
-            StepPvMmad(pv_mmad, params, last_is_ping, ub_pv_partial_offset, last_k > 0, prev_emitted, initC, emit);
-            
-            // 尾拍配平：回收 V1 释放的末拍 dot32 与 drain partial 信号，确保信道零遗留
-            AttentionSync::CubeWaitDotFree();
-            AttentionSync::CubeWaitPartialFree();
         }
 #else
         (void)params;
@@ -115,7 +163,6 @@ public:
         (void)l1_q_offset;
         (void)ub_dot32_offset;
         (void)ub_pv_partial_offset;
-        (void)pv_chain_cap;
 #endif
         // 通知 V1：整个 Attention 的 PV 累加已全部完成
         AttentionSync::CubeSignalPvDone();

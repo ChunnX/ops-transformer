@@ -327,7 +327,7 @@ public:
             const uint16_t *row_ptr = k_u16 + kv_layout(tla::MakeCoord(0u, 0u, j, 0u));
             for (uint32_t c = 0; c < d; ++c) {
                 float val = ReadInputBits(row_ptr, c);
-                val = quant::SubKm(val, km_ptr, c, kDtype);
+                val = quant::SubKm<kDtype>(val, km_ptr, c);
                 const float abs_v = SageFastAbs(val);
                 if (abs_v > *scale_slot) *scale_slot = abs_v;
             }
@@ -359,7 +359,7 @@ public:
                 const uint16_t *row_ptr = k_u16 + kv_layout(tla::MakeCoord(0u, 0u, j, 0u));
                 for (uint32_t c = 0; c < d; ++c) {
                     float val = ReadInputBits(row_ptr, c);
-                    val = quant::SubKm(val, km_ptr, c, kDtype);
+                    val = quant::SubKm<kDtype>(val, km_ptr, c);
                     const int8_t code = per_thread ? quant::RoundHalfAwayFromZero(val / scale)
                                                    : quant::RoundNearestEven(val / scale);
                     l1_k[Catlass::SageAttn::ZnIndex(c, j, d)] = code;
@@ -604,10 +604,10 @@ public:
 
         // 尾拍配平：等待 Cube 释放最后两拍的 KV 缓冲，保证信道零残留并在退出前与 Cube 对齐
         if (active_kv_blocks >= 1) {
-            AttentionSync::V0WaitKvFree(true);
+            AttentionSync::V0WaitKvFree<true>();
         }
         if (active_kv_blocks >= 2) {
-            AttentionSync::V0WaitKvFree(false);
+            AttentionSync::V0WaitKvFree<false>();
         }
     }
 
