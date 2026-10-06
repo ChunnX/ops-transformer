@@ -156,7 +156,8 @@ namespace sage_attn {
     bool smoothV,
     bool hasLse,
     SageAttention2TilingData &tiling_out,
-    uint64_t &workspace_bytes_out)
+    uint64_t &workspace_bytes_out,
+    uint32_t hw_cores_in = 0)
 {
     // 1. 头维度对齐与校验 (head_dim 小于等于 64 补 64，(64, 128] 补 128)
     if (d_og == 0 || d_og > 128) {
@@ -350,7 +351,7 @@ namespace sage_attn {
     // 9. 分核计算与 Split-KV 判定 (分核字段，20 字节)
     // 分块计数的向上取整统一走官方 CATLASS 对齐组件（catlass/detail/alignment.hpp
     // 全局 ::CeilDiv，constexpr 纯整数算术，与手写 (a+b-1)/b 位元一致）
-    uint32_t hw_cores = GetHardwareCoreNum();
+    uint32_t hw_cores = (hw_cores_in > 0) ? hw_cores_in : GetHardwareCoreNum();
     uint32_t q_blk_num = ::CeilDiv(sq, m_per_core);
     uint32_t kv_blk_num = ::CeilDiv(sk, block_n);
 

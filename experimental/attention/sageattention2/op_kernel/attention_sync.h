@@ -24,9 +24,11 @@ namespace SyncFlags {
     constexpr uint32_t KV_PONG_READY    = 2;  // V0 Pong KV 写入 L1 完成 (V0 set → Cube wait)
     constexpr uint32_t KV_PING_FREE     = 3;  // L1 Ping KV 槽空闲许可 (Cube set → V0 wait)
     constexpr uint32_t KV_PONG_FREE     = 4;  // L1 Pong KV 槽空闲许可 (Cube set → V0 wait)
+    constexpr uint32_t V0_TASK_DONE     = 5;  // V0 任务全部完成 (V0 set → Cube wait)
+    constexpr uint32_t V0_TASK_ACK      = 6;  // Cube 任务结束确认 (Cube set → V0 wait)
 
     // Vector 1 (SubBlock 1) 通信信道 (V1 视角 0 ~ 15 / AIC 视角 16 + ID)
-    // 严格避让硬件保留区 [11, 14]，全部使用 0 ~ 8
+    // 严格避让硬件保留区 [11, 14]，全部使用 0 ~ 10
     constexpr uint32_t QK_READY         = 0;  // QK dot32 写入 V1 UB 完成 (Cube set → V1 wait)
     constexpr uint32_t DOT_FREE         = 1;  // V1 dot32 读毕释放 (V1 set → Cube wait)
     constexpr uint32_t S_PING_READY     = 2;  // V1 Ping S 写入 L1 完成 (V1 set → Cube wait)
@@ -35,8 +37,9 @@ namespace SyncFlags {
     constexpr uint32_t S_PONG_FREE      = 5;  // L1 Pong S 槽空闲许可 (Cube set → V1 wait)
     constexpr uint32_t PV_PARTIAL_READY = 6;  // PV 部分和写入 V1 UB 完成 (Cube set → V1 wait)
     constexpr uint32_t PV_PARTIAL_FREE  = 7;  // V1 部分和累加完毕释放 (V1 set → Cube wait)
-    constexpr uint32_t PV_DONE          = 8;  // Cube 全部 PV 运算完成 (Cube set → V1 wait)
+    constexpr uint32_t PV_DONE          = 8;  // Cube 全部 PV 运算完成 / 任务结束确认 (Cube set → V1 wait)
     constexpr uint32_t PV_CHAIN         = 9;  // V1 级联读取 L0C 许可 (V1 set → Cube wait)
+    constexpr uint32_t V1_TASK_DONE     = 10; // V1 任务全量落盘完成 (V1 set → Cube wait)
 }
 
 /**
@@ -57,6 +60,8 @@ public:
     static_assert(SyncFlags::KV_PONG_READY < 11, "SyncFlags::KV_PONG_READY must avoid hardware reserved IDs [11, 14]");
     static_assert(SyncFlags::KV_PING_FREE < 11, "SyncFlags::KV_PING_FREE must avoid hardware reserved IDs [11, 14]");
     static_assert(SyncFlags::KV_PONG_FREE < 11, "SyncFlags::KV_PONG_FREE must avoid hardware reserved IDs [11, 14]");
+    static_assert(SyncFlags::V0_TASK_DONE < 11, "SyncFlags::V0_TASK_DONE must avoid hardware reserved IDs [11, 14]");
+    static_assert(SyncFlags::V0_TASK_ACK < 11, "SyncFlags::V0_TASK_ACK must avoid hardware reserved IDs [11, 14]");
 
     static_assert(SyncFlags::QK_READY < 11, "SyncFlags::QK_READY must avoid hardware reserved IDs [11, 14]");
     static_assert(SyncFlags::DOT_FREE < 11, "SyncFlags::DOT_FREE must avoid hardware reserved IDs [11, 14]");
@@ -68,6 +73,7 @@ public:
     static_assert(SyncFlags::PV_PARTIAL_FREE < 11, "SyncFlags::PV_PARTIAL_FREE must avoid hardware reserved IDs [11, 14]");
     static_assert(SyncFlags::PV_DONE < 11, "SyncFlags::PV_DONE must avoid hardware reserved IDs [11, 14]");
     static_assert(SyncFlags::PV_CHAIN < 11, "SyncFlags::PV_CHAIN must avoid hardware reserved IDs [11, 14]");
+    static_assert(SyncFlags::V1_TASK_DONE < 11, "SyncFlags::V1_TASK_DONE must avoid hardware reserved IDs [11, 14]");
 
     // -------------------------------------------------------------
     // 1. 终止退域同步屏障（仅 AIV 执行 MTE3 落盘屏障，AIC 严格禁 PipeBarrier<PIPE_ALL>）
@@ -274,6 +280,65 @@ public:
     {
 #if SAGE_ATTN_DEVICE_COMPILE
         AscendC::CrossCoreWaitFlag<MODE, PIPE_FIX>(16 + SyncFlags::PV_CHAIN);
+#endif
+    }
+
+    // -------------------------------------------------------------
+    // 9. 任务退域三管精准同步屏障 (MODE=4 Intra-Block)
+    // -------------------------------------------------------------
+    __aicore__ inline static void V0SignalTaskDone()
+    {
+#if SAGE_ATTN_DEVICE_COMPILE
+        AscendC::CrossCoreSetFlag<MODE, PIPE_MTE3>(SyncFlags::V0_TASK_DONE);
+#endif
+    }
+
+    __aicore__ inline static void V0WaitTaskAck()
+    {
+#if SAGE_ATTN_DEVICE_COMPILE
+        AscendC::CrossCoreWaitFlag<MODE, PIPE_MTE3>(SyncFlags::V0_TASK_ACK);
+#endif
+    }
+
+    __aicore__ inline static void CubeWaitV0TaskDone()
+    {
+#if SAGE_ATTN_DEVICE_COMPILE
+        AscendC::CrossCoreWaitFlag<MODE, PIPE_MTE1>(SyncFlags::V0_TASK_DONE);
+#endif
+    }
+
+    __aicore__ inline static void CubeSignalV0TaskAck()
+    {
+#if SAGE_ATTN_DEVICE_COMPILE
+        AscendC::CrossCoreSetFlag<MODE, PIPE_MTE1>(SyncFlags::V0_TASK_ACK);
+#endif
+    }
+
+    __aicore__ inline static void V1SignalTaskDone()
+    {
+#if SAGE_ATTN_DEVICE_COMPILE
+        AscendC::CrossCoreSetFlag<MODE, PIPE_V>(SyncFlags::V1_TASK_DONE);
+#endif
+    }
+
+    __aicore__ inline static void V1WaitTaskAck()
+    {
+#if SAGE_ATTN_DEVICE_COMPILE
+        AscendC::CrossCoreWaitFlag<MODE, PIPE_V>(SyncFlags::PV_DONE);
+#endif
+    }
+
+    __aicore__ inline static void CubeWaitV1TaskDone()
+    {
+#if SAGE_ATTN_DEVICE_COMPILE
+        AscendC::CrossCoreWaitFlag<MODE, PIPE_FIX>(16 + SyncFlags::V1_TASK_DONE);
+#endif
+    }
+
+    __aicore__ inline static void CubeSignalV1TaskAck()
+    {
+#if SAGE_ATTN_DEVICE_COMPILE
+        AscendC::CrossCoreSetFlag<MODE, PIPE_FIX>(16 + SyncFlags::PV_DONE);
 #endif
     }
 };

@@ -907,6 +907,13 @@ public:
         if (active_kv_blocks >= 2) {
             AttentionSync::V0WaitKvFree<false>();
         }
+
+#if SAGE_ATTN_DEVICE_COMPILE
+        // 任务退域同步：确保 V0 全部本地流水刷盘并向 Cube 报告完成
+        AscendC::PipeBarrier<PIPE_ALL>();
+        AttentionSync::V0SignalTaskDone();
+        AttentionSync::V0WaitTaskAck();
+#endif
     }
 
 private:

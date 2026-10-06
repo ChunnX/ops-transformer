@@ -459,6 +459,12 @@ __aicore__ inline __attribute__((always_inline)) void ProcessVec1(
 
     AttentionSync::V1WaitPvDone();
     output.FinalizeAndStore(ctx, softmax.GetRowStates());
+#if SAGE_ATTN_DEVICE_COMPILE
+    // 任务退域同步：确保 V1 GM 写回刷盘完毕并向 Cube 报告完成
+    AscendC::PipeBarrier<PIPE_ALL>();
+    AttentionSync::V1SignalTaskDone();
+    AttentionSync::V1WaitTaskAck();
+#endif
 }
 
 template <uint8_t PV_CHAIN_CAP = 1, uint32_t DTYPE_MODE = 1u>
@@ -680,6 +686,7 @@ public:
             if (virtual_task > ctx_.core_idx) {
                 uint64_t mapped_task = use_die_ ? DieTask(virtual_task, total_tasks_, cores_) : virtual_task;
                 DecodeTask(mapped_task, q_blks_per_head_);
+                vec0_.InvalidateCache();
             }
             RunTask();
         }

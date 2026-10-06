@@ -137,6 +137,11 @@ static ge::graphStatus TilingSageAttention2(gert::TilingContext *context)
     const int dtype_mode = (query_dtype == ge::DT_BF16) ? static_cast<int>(sage_attn::kTplDtypeBf16)
                                                         : static_cast<int>(sage_attn::kTplDtypeFp16);
 
+    uint32_t hw_cores = 0;
+    if (context->GetPlatformInfo() != nullptr) {
+        hw_cores = platform_ascendc::PlatformAscendC(context->GetPlatformInfo()).GetCoreNumAic();
+    }
+
     aclnnStatus status = sage_attn::ComputeHostTiling(
         b, sq, sk, hq, hkv, dtype_mode, d_og,
         scale,
@@ -148,7 +153,8 @@ static ge::graphStatus TilingSageAttention2(gert::TilingContext *context)
         smooth_v_val,
         context->GetOutputShape(sage_attn2_idx::OUT_LSE) != nullptr,   // has_lse 实况
         tiling_data,
-        workspace_bytes);
+        workspace_bytes,
+        hw_cores);
     if (status != ACLNN_SUCCESS) {
         return ge::GRAPH_FAILED;
     }

@@ -180,6 +180,15 @@ public:
 #endif
         // 通知 V1：整个 Attention 的 PV 累加已全部完成
         AttentionSync::CubeSignalPvDone();
+#if SAGE_ATTN_DEVICE_COMPILE
+        // 跨核任务同步屏障：等待 V0 与 V1 均完成当前任务工作
+        AttentionSync::CubeWaitV0TaskDone();
+        AttentionSync::CubeWaitV1TaskDone();
+
+        // 向 V0 与 V1 发送任务退域确认，确保三管同频退出
+        AttentionSync::CubeSignalV0TaskAck();
+        AttentionSync::CubeSignalV1TaskAck();
+#endif
     }
 
 private:
