@@ -284,6 +284,40 @@ struct __attribute__((packed, aligned(32))) SageAttention2TilingData {
     }
 };
 
+/**
+ * Step 1: 自研 KV 前置单次流式量化 workspace 空间计算
+ */
+struct KvPreQuantWorkspaceOffsets {
+    uint64_t key_offset{0};
+    uint64_t key_scale_offset{0};
+    uint64_t val_offset{0};
+    uint64_t val_scale_offset{0};
+    uint64_t total_core_bytes{0};
+};
+
+[[nodiscard]] __aicore__ __host__ inline __attribute__((always_inline)) constexpr KvPreQuantWorkspaceOffsets ComputeKvPreQuantCoreOffsets(
+    uint32_t sk, uint32_t d_pad) noexcept
+{
+    KvPreQuantWorkspaceOffsets ws{};
+    auto align512 = [](uint64_t size) -> uint64_t {
+        return (size + 511ULL) & ~511ULL;
+    };
+    ws.key_offset = 0;
+    const uint64_t k_bytes = align512(static_cast<uint64_t>(sk) * d_pad * sizeof(int8_t));
+
+    ws.key_scale_offset = ws.key_offset + k_bytes;
+    const uint64_t k_scale_bytes = align512(static_cast<uint64_t>(sk) * sizeof(float));
+
+    ws.val_offset = ws.key_scale_offset + k_scale_bytes;
+    const uint64_t v_bytes = align512(static_cast<uint64_t>(sk) * d_pad * sizeof(uint8_t));
+
+    ws.val_scale_offset = ws.val_offset + v_bytes;
+    const uint64_t v_scale_bytes = align512(static_cast<uint64_t>(d_pad) * sizeof(float));
+
+    ws.total_core_bytes = ws.val_scale_offset + v_scale_bytes;
+    return ws;
+}
+
 // 静态断言验证结构体大小和对齐属性
 static_assert(sizeof(SageAttention2TilingData) == 160, "SageAttention2TilingData size must be exactly 160 bytes");
 static_assert(sizeof(SageAttention2TilingData) % 32 == 0, "SageAttention2TilingData size must be a multiple of 32 bytes");

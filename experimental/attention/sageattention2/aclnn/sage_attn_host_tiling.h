@@ -488,6 +488,11 @@ namespace sage_attn {
         tiling_out.workspace_vm_offset = 0;
     }
 
+    // (5) Step 1: 自研 KV 前置单次流式量化 workspace 空间
+    // 预留各核心的局部预量化张量缓冲与 Scale 空间 (按 core_num_used 隔离分配)
+    const KvPreQuantWorkspaceOffsets core_ws = ComputeKvPreQuantCoreOffsets(sk, d_pad);
+    current_ws_offset += align512(core_ws.total_core_bytes * tiling_out.core_num_used);
+
     workspace_bytes_out = current_ws_offset;
     return ACLNN_SUCCESS;
 }

@@ -181,6 +181,42 @@ struct TaskContext {
         const uint32_t tile_bytes = TotalRows() * block_n;
         return SlotV1FixpipeRecv::Offset() + (is_ping ? 0u : tile_bytes);
     }
+
+    [[nodiscard]] __aicore__ inline __attribute__((always_inline)) uint64_t CoreKvWorkspaceBase() const
+    {
+        auto align512 = [](uint64_t size) -> uint64_t {
+            return (size + 511ULL) & ~511ULL;
+        };
+        const uint32_t active_cores = tiling ? tiling->core_num_used : 1u;
+        uint64_t base = align512(static_cast<uint64_t>(active_cores) * STAGE_CORE_STRIDE);
+        const uint32_t split_kv = tiling ? tiling->split_kv_num : 1u;
+        const bool has_lse_val = (has_lse != 0u);
+        if (split_kv > 1 || has_lse_val) {
+            base += align512(static_cast<uint64_t>(b) * hq * sq * split_kv * sizeof(float));
+        }
+        if (split_kv > 1) {
+            const uint32_t d_pad_val = tiling ? tiling->d_pad : d;
+            base += align512(static_cast<uint64_t>(b) * hq * sq * d_pad_val * split_kv * sizeof(float));
+        }
+        if (smooth_v != 0u) {
+            const uint32_t d_pad_val = tiling ? tiling->d_pad : d;
+            base += align512(static_cast<uint64_t>(b) * hkv * d_pad_val * sizeof(float));
+        }
+        return base;
+    }
+
+    [[nodiscard]] __aicore__ inline __attribute__((always_inline)) __gm__ uint8_t *CoreKvWorkspacePtr() const
+    {
+#if SAGE_ATTN_DEVICE_COMPILE
+        if (workspace_gm == nullptr) return nullptr;
+        const uint32_t d_pad_val = tiling ? tiling->d_pad : d;
+        const KvPreQuantWorkspaceOffsets ws = ComputeKvPreQuantCoreOffsets(sk, d_pad_val);
+        const uint64_t core_offset = CoreKvWorkspaceBase() + static_cast<uint64_t>(core_idx) * ws.total_core_bytes;
+        return workspace_gm + core_offset;
+#else
+        return nullptr;
+#endif
+    }
 };
 
 } // namespace sage_attn
