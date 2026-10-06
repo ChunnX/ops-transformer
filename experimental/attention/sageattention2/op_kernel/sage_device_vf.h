@@ -625,18 +625,9 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void FusedRescaleMe
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 }
 
-// DEPRECATED: Use FusedRescaleMergeVF instead.
-__simd_vf__ __aicore__ inline __attribute__((always_inline)) void RescaleAccumRowsVF(
-    __ubuf__ float* o_base,
-    __ubuf__ float* factor_row,
-    uint32_t rows,
-    uint32_t d)
-{
-    // Deprecated
-}
-
 /**
- * 6. Softmax 概率矩阵生成（R4 行批化）：exp2 域恒等 P = 2^(x-m')·448，并饱和转换至 FP8 e4m3fn
+ * 6. Softmax 概率矩阵生成（P0.5 shifted-max）：exp2 域 P = 2^(x - m_shift) <= 448，
+ * 无显式乘 448、无饱和钳制分支，直接 Cast 至 FP8 e4m3fn
  */
 __simd_vf__ __aicore__ inline __attribute__((always_inline)) void SoftmaxProbRowsVF(
     __ubuf__ float* logits_base,
@@ -666,37 +657,6 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void SoftmaxProbRow
         }
     }
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
-}
-
-/**
- * A7（task/12 D2，R4 行批化）pv_partial 交接槽整窗合并：partial[r][c] → O[r][c]。
- * 轨迹 = 宿主 twin::AccumulatePvRow（AccumulatePvBlockTwin 调用）的设备段实例：
- * o_row[c] += partial[r][c] · v_scale[c]，其中 partial 为 Cube PV MMAD 的 FP32
- * 部分和（P8 码 × V8 码，P 侧 448· 放大域与 v_scale 的 V 通道域拆分同宿主 v_at 分解）。
- * - fp32+fp16 档（fp16_round=1，档位判据由调用方直读 tiling.pv_accum_dtype）：
- *   并入前做 FP16 RNE 舍回（与宿主 quant::Fp32ToFp16/Fp16ToFp32 同 RNE 口径——
- *   块内求和已由 PV MMAD 承担（设备段粒度替代 twin k_step 子块，L-A 容差域，task/12）；
- * - fp32 / fp32+fp32 档：FP32 直通并入。
- * 行批等价论证（R4）：行间独立，跨行交织不改各行 Load→Mul(→FP16 RNE 舍回)→Add→Store
- * 链；v_scale 通道向量全行共享（LoadAlign 同址同值）。
- * 调用方须保证 O 行经 S 槽 / dot32 同款握手串行化（FLAG_PV_PARTIAL_READY/FREE）。
- */
-// DEPRECATED: Use FusedRescaleMergeVF instead.
-__simd_vf__ __aicore__ inline __attribute__((always_inline)) void MergePvPartialRowsVF(__ubuf__ float* partial_base, __ubuf__ float* o_base,
-                                                 __ubuf__ float* v_scale_ptr, uint32_t rows, uint32_t d,
-                                                 uint32_t fp16_round) {
-    // Deprecated
-}
-
-/**
- * A7-1（task/12 第五节第 3 条 V0 侧）V per-channel 全序列 amax 预扫·通道累加步：amax[c] = max(amax[c], |val[c]|)
- * （输入位型 cast + 可选 kMean 域外无——V 无 kMean），逐 token 行调用一次，
- * 由调用方先充零 amax 缓冲（twin/quant_fp8 per-channel 口径）。
- */
-// DEPRECATED: Use ChannelAmaxAccumTileVF instead.
-template <uint32_t DTYPE_MODE>
-__simd_vf__ __aicore__ inline __attribute__((always_inline)) void ChannelAmaxAccumVF(__ubuf__ half* in_ptr, __ubuf__ float* amax_ptr, uint32_t d) {
-    // Deprecated
 }
 
 /**
@@ -739,13 +699,6 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void FinalizeVScale
         Div(amax, amax, smax_reg, full);
         StoreAlign(out_scale_ptr + c, amax, full);
     }
-}
-
-// DEPRECATED: Use ChannelStatsAccumTileVF instead.
-template <uint32_t DTYPE_MODE>
-__simd_vf__ __aicore__ inline __attribute__((always_inline)) void ChannelStatsAccumVF(__ubuf__ half* in_ptr, __ubuf__ float* vmax_ptr,
-                                            __ubuf__ float* vmin_ptr, __ubuf__ float* vsum_ptr, uint32_t d) {
-    // Deprecated
 }
 
 /**
