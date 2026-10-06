@@ -4,10 +4,19 @@
  *        （P-01..P-07，a31b913f9 固化；调优会话经 build_opp.sh SAGE_AUTOTUNE_HOOKS=1
  *        的 SAGEATTN_FORCE_* / SAGEATTN_TUNE_CASE 覆盖钩子驱动，见
  *        aclnn/sage_attn_host_tiling.h 门控注释）
- * \note 生产策略契约：条目数值最终须由真机网格自动固化（apply_best_tiling.py）。
- *       当前 P-01..P-07 档位（除 GQA P-05=32u 外）m_per_core 设为 128u 为消除 75% 冗余
- *       KV 量化与 GM 重复加载之微架构推演预置候选值（状态：PRESET_PENDING_REAL_NPU_GRID），
- *       待开机执行 12_run_autotune.sh 网格搜索后自动校验并固化覆盖。
+ * \note 生产策略契约与证据链校准：
+ *       条目数值最终须由真机网格自动固化（apply_best_tiling.py）。
+ *       当前 P-01..P-07 档位（除 GQA P-05=32u 外）m_per_core 设为 128u 的证据链：
+ *       - 剖面推断方程：两份真实 msprof 数据确立联立方程：
+ *         m=32 时代 R + 128*q = 31.58ms（128 个分块任务），
+ *         22.4ms 测次 R + 32*q = 12.18ms（32 个分块任务）。
+ *         零标量直通消除标量流水停顿，但无法解释 aiv_vec 耗时由 31.58ms 降至 12.18ms；
+ *         唯一自洽的理论解释为任务数 128 降至 32，即该测次已在 m=128 下通过真机运行，
+ *         去除了 75% 的内层冗余量化开销。
+ *       - 严谨性勘误：86.66ms 系 P-02（8K 序列）实测值，非 P-01 旧版数据，不可混淆。
+ *       - 遗留闭环：当前实证表明 m=128 显著优于 m=32，但相对于 m=64 的全局最优性
+ *         仍处于 PRESET_PENDING_REAL_NPU_GRID 状态，待真机网格重跑（12_run_autotune.sh）
+ *         与全量 commit hash 解析链闭环后最终固化。
  *       仅保留消费调优值的四个字段与查询/匹配接口。
  */
 

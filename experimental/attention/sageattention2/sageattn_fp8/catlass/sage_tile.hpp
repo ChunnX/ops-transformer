@@ -98,27 +98,35 @@ __aicore__ inline __attribute__((always_inline)) constexpr uint32_t ZnIndex(
  * - 载入 L0A：if_transpose = false，硬件直载 zN；
  * - 载入 L0B：if_transpose = true，硬件 MTE1 自动转置分形内元素为 nZ（支持 int8 与 fp8）。
  */
+#if SAGE_ATTN_DEVICE_COMPILE
+template <typename Element, AscendC::TPosition Pos>
+__aicore__ inline AscendC::LocalTensor<Element> MakeTensorFromAddr(uint32_t addr, uint32_t total_bytes)
+{
+    AscendC::TBuffAddr desc{};
+    desc.logicPos = static_cast<uint8_t>(Pos);
+    desc.bufferHandle = nullptr;
+    desc.bufferAddr = addr;
+    desc.dataLen = total_bytes;
+    AscendC::LocalTensor<Element> tensor;
+    tensor.SetAddr(desc);
+    return tensor;
+}
+#endif
+
+/**
+ * 通用 2D 分块搬运原语（基于 LoadData2DParamsV2，适配 L1->L0A 与 L1->L0B）：
+ * 对齐官方 CATLASS copy_l1_to_l0a.hpp / copy_l1_to_l0b.hpp 实现：
+ * - if_transpose = false：直载（L1 zN -> L0A zZ），srcStride = dstStride = mStep
+ * - if_transpose = true：转置装载（L1 zN -> L0B nZ），用于 V 矩阵加载
+ */
 template <typename Element, AscendC::TPosition DstPos, AscendC::TPosition SrcPos>
 __aicore__ inline __attribute__((always_inline)) void LoadTile2D(
     uint32_t dst_addr, uint32_t src_addr, uint32_t rows, uint32_t cols, bool if_transpose = false)
 {
 #if SAGE_ATTN_DEVICE_COMPILE
     const uint32_t total_bytes = rows * cols * static_cast<uint32_t>(sizeof(Element));
-    AscendC::TBuffAddr dst_desc{};
-    dst_desc.logicPos = static_cast<uint8_t>(DstPos);
-    dst_desc.bufferHandle = nullptr;
-    dst_desc.bufferAddr = dst_addr;
-    dst_desc.dataLen = total_bytes;
-    AscendC::LocalTensor<Element> dst_tensor;
-    dst_tensor.SetAddr(dst_desc);
-
-    AscendC::TBuffAddr src_desc{};
-    src_desc.logicPos = static_cast<uint8_t>(SrcPos);
-    src_desc.bufferHandle = nullptr;
-    src_desc.bufferAddr = src_addr;
-    src_desc.dataLen = total_bytes;
-    AscendC::LocalTensor<Element> src_tensor;
-    src_tensor.SetAddr(src_desc);
+    AscendC::LocalTensor<Element> dst_tensor = MakeTensorFromAddr<Element, DstPos>(dst_addr, total_bytes);
+    AscendC::LocalTensor<Element> src_tensor = MakeTensorFromAddr<Element, SrcPos>(src_addr, total_bytes);
 
     AscendC::LoadData2DParamsV2 load_params;
     load_params.mStartPosition = 0;
@@ -174,21 +182,8 @@ __aicore__ inline __attribute__((always_inline)) void LoadTile2DNzToNz(
 {
 #if SAGE_ATTN_DEVICE_COMPILE
     const uint32_t total_bytes = rows * cols * static_cast<uint32_t>(sizeof(Element));
-    AscendC::TBuffAddr dst_desc{};
-    dst_desc.logicPos = static_cast<uint8_t>(DstPos);
-    dst_desc.bufferHandle = nullptr;
-    dst_desc.bufferAddr = dst_addr;
-    dst_desc.dataLen = total_bytes;
-    AscendC::LocalTensor<Element> dst_tensor;
-    dst_tensor.SetAddr(dst_desc);
-
-    AscendC::TBuffAddr src_desc{};
-    src_desc.logicPos = static_cast<uint8_t>(SrcPos);
-    src_desc.bufferHandle = nullptr;
-    src_desc.bufferAddr = src_addr;
-    src_desc.dataLen = total_bytes;
-    AscendC::LocalTensor<Element> src_tensor;
-    src_tensor.SetAddr(src_desc);
+    AscendC::LocalTensor<Element> dst_tensor = MakeTensorFromAddr<Element, DstPos>(dst_addr, total_bytes);
+    AscendC::LocalTensor<Element> src_tensor = MakeTensorFromAddr<Element, SrcPos>(src_addr, total_bytes);
 
     AscendC::LoadData2DParamsV2 load_params;
     load_params.mStartPosition = 0;
