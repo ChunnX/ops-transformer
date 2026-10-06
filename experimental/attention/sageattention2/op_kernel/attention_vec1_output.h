@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <type_traits>
 #include <memory>
 #include <algorithm>
 #include "static_slot.h"
@@ -350,8 +351,8 @@ __aicore__ inline __attribute__((always_inline)) void ProcessVec1(
 
     const uint32_t active_kv_blocks = ctx.active_kv_blocks;
     if constexpr (PV_CHAIN_CAP == 1) {
-        for (uint32_t k = 0; k < active_kv_blocks; ++k) {
-            bool is_ping = ((k % 2) == 0);
+        auto StepVec1Block = [&](uint32_t k, auto is_ping_tag) __aicore__ {
+            constexpr bool IS_PING = decltype(is_ping_tag)::value;
             uint32_t block_k = ctx.CurBlockK(k);
             if (k > 0) {
                 AttentionSync::V1WaitPartialReady();
@@ -359,19 +360,28 @@ __aicore__ inline __attribute__((always_inline)) void ProcessVec1(
                 AttentionSync::V1ReleasePartialFree();
             }
             if (k >= 2) {
-                AttentionSync::V1WaitSoftmaxFree(is_ping);
+                AttentionSync::V1WaitSoftmaxFree<IS_PING>();
             }
             AttentionSync::V1WaitQkReady();
             if (k == 0) {
                 softmax.StageV1ScaleStrips(ctx);
             }
             softmax.StageKScaleStrip(ctx, k);
-            softmax.template ProcessBlock<IS_CAUSAL>(ctx, k, is_ping);
+            softmax.template ProcessBlock<IS_CAUSAL, IS_PING>(ctx, k);
 #if !SAGE_ATTN_DEVICE_COMPILE
             output.AccumulatePvBlockTwin(ctx, k, block_k, softmax.GetRowStates());
 #endif
             AttentionSync::V1ReleaseDotFree();
-            AttentionSync::V1SignalSoftmaxReady(is_ping);
+            AttentionSync::V1SignalSoftmaxReady<IS_PING>();
+        };
+
+        uint32_t k = 0;
+        for (; k + 1 < active_kv_blocks; k += 2) {
+            StepVec1Block(k, std::true_type{});
+            StepVec1Block(k + 1, std::false_type{});
+        }
+        if (k < active_kv_blocks) {
+            StepVec1Block(k, std::true_type{});
         }
     } else {
 #if SAGE_ATTN_DEVICE_COMPILE
@@ -401,7 +411,11 @@ __aicore__ inline __attribute__((always_inline)) void ProcessVec1(
 
             // 等待当前 Softmax P 槽位可用（首两拍 k < 2 L1 槽天然空闲，k >= 2 起受 Cube 消费进度回压）
             if (k >= 2) {
-                AttentionSync::V1WaitSoftmaxFree(is_ping);
+                if (is_ping) {
+                    AttentionSync::V1WaitSoftmaxFree<true>();
+                } else {
+                    AttentionSync::V1WaitSoftmaxFree<false>();
+                }
             }
             AttentionSync::V1WaitQkReady();
 
@@ -418,7 +432,11 @@ __aicore__ inline __attribute__((always_inline)) void ProcessVec1(
 
             // 读毕当前 dot32 立即归还缓冲给 Cube
             AttentionSync::V1ReleaseDotFree();
-            AttentionSync::V1SignalSoftmaxReady(is_ping);
+            if (is_ping) {
+                AttentionSync::V1SignalSoftmaxReady<true>();
+            } else {
+                AttentionSync::V1SignalSoftmaxReady<false>();
+            }
         }
     }
 

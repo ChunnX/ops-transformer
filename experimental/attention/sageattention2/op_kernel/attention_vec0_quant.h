@@ -642,6 +642,44 @@ public:
         }
     }
 
+private:
+    template <bool IS_PING>
+    __aicore__ inline __attribute__((always_inline)) void StepKvBlock(
+        const TaskContext &ctx,
+        uint32_t k,
+        int64_t b_idx,
+        int64_t hkv_idx,
+        const Catlass::SageAttn::GmBhsdLayout &kv_layout)
+    {
+        constexpr uint32_t l1_dst_offset = IS_PING ? SlotL1KvPing::Offset() : SlotL1KvPong::Offset();
+        constexpr uint32_t l1_v_offset = IS_PING ? SlotL1VPing::Offset() : SlotL1VPong::Offset();
+
+        if (k >= 2) {
+            AttentionSync::V0WaitKvFree<IS_PING>();
+        }
+
+        int64_t sk_start = static_cast<int64_t>(k) * ctx.block_n;
+        uint32_t cur_block_k = ctx.CurBlockK(k);
+
+        const int64_t kv_gm_offset = kv_layout(tla::MakeCoord(b_idx, hkv_idx, sk_start, 0u));
+
+        const __gm__ float *km_ptr = nullptr;
+#if !SAGE_ATTN_DEVICE_COMPILE
+        if (ctx.smooth_k != 0) {
+            km_ptr = reinterpret_cast<const __gm__ float *>(ctx.km_self);
+        }
+#endif
+
+        LoadAndQuantizeK(ctx, ctx.key_gm + kv_gm_offset * sizeof(uint16_t), km_ptr,
+                         k, l1_dst_offset);
+
+        QuantizeAndStageValue(ctx, ctx.value_gm + kv_gm_offset * sizeof(uint16_t),
+                              l1_v_offset, k, cur_block_k, kv_layout);
+
+        AttentionSync::V0SignalKvReady<IS_PING>();
+    }
+
+public:
     /**
      * \brief Vector 0 主执行流程
      */
@@ -667,35 +705,13 @@ public:
             Catlass::SageAttn::MakeGmBhsdLayout(ctx.b, ctx.hkv, ctx.sk, ctx.d, ctx.is_hnd != 0);
 
         // 2. 流水循环：流式预取第 k 块 KV 并执行 INT8/FP8 量化
-        for (uint32_t k = 0; k < active_kv_blocks; ++k) {
-            bool is_ping = ((k % 2) == 0);
-            uint32_t l1_dst_offset = is_ping ? SlotL1KvPing::Offset() : SlotL1KvPong::Offset();
-
-            // 缓冲回收握手：首两拍 (k < 2) L1 槽天然空闲，k >= 2 起严格受 Cube 消费进度回压
-            if (k >= 2) {
-                AttentionSync::V0WaitKvFree(is_ping);
-            }
-
-            int64_t sk_start = static_cast<int64_t>(k) * ctx.block_n;
-            uint32_t cur_block_k = ctx.CurBlockK(k);
-
-            const int64_t kv_gm_offset = kv_layout(tla::MakeCoord(b_idx, hkv_idx, sk_start, 0u));
-
-            const __gm__ float *km_ptr = nullptr;
-#if !SAGE_ATTN_DEVICE_COMPILE
-            if (ctx.smooth_k != 0) {
-                km_ptr = reinterpret_cast<const __gm__ float *>(ctx.km_self);
-            }
-#endif
-
-            LoadAndQuantizeK(ctx, ctx.key_gm + kv_gm_offset * sizeof(uint16_t), km_ptr,
-                             k, l1_dst_offset);
-
-            QuantizeAndStageValue(ctx, ctx.value_gm + kv_gm_offset * sizeof(uint16_t),
-                                  is_ping ? SlotL1VPing::Offset() : SlotL1VPong::Offset(),
-                                  k, cur_block_k, kv_layout);
-
-            AttentionSync::V0SignalKvReady(is_ping);
+        uint32_t k = 0;
+        for (; k + 1 < active_kv_blocks; k += 2) {
+            StepKvBlock<true>(ctx, k, b_idx, hkv_idx, kv_layout);
+            StepKvBlock<false>(ctx, k + 1, b_idx, hkv_idx, kv_layout);
+        }
+        if (k < active_kv_blocks) {
+            StepKvBlock<true>(ctx, k, b_idx, hkv_idx, kv_layout);
         }
 
         // 尾拍配平：等待 Cube 释放最后两拍的 KV 缓冲，保证信道零残留并在退出前与 Cube 对齐

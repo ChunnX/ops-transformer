@@ -10,9 +10,8 @@
  * 全部编译场景——宿主门禁/OPP 打包/BiSheng 设备与 sim 混编——均带该 -I，故
  * catlass.hpp 无条件直含，不再保留本地字面值回退分支）：
  * 分形粒度常量以官方 catlass.hpp 为唯一定义源（BYTE_PER_C0=32、
- * C0_NUM_PER_FRACTAL=16、BYTE_PER_FRACTAL=512），本文件一律经官方常量派生
- * （如 LOADDATA2D_REPEAT_BYTES = BYTE_PER_FRACTAL），官方演进自动跟随，
- * 不做字面量锁定。
+ * C0_NUM_PER_FRACTAL=16、BYTE_PER_FRACTAL=512），本文件一律经官方常量派生，
+ * 官方演进自动跟随，不做字面量锁定。
  * 设备态热路径的搬运原语（LoadTile2D、CopyUbToL1zN）：L1 全面统一为 zN 分形布局，
  * 硬件直连 LoadTile2D（位级对齐 CATLASS copy_l1_to_l0a.hpp / copy_l1_to_l0b.hpp）与
  * CopyUbToL1zN（位级对齐 CATLASS copy_ub_to_l1_tla.hpp），架构豁免项见设计文档。
@@ -65,7 +64,7 @@ enum class HardEvent : uint8_t {
 namespace Catlass::SageAttn {
 
 /**
- * 昇腾硬件事件同步模板（对齐竞品 PR#12430 / common.h 原语，消除冗余配对代码）
+ * 昇腾硬件事件同步模板（CATLASS 硬件事件配对原语，消除冗余代码）
  */
 template <AscendC::HardEvent E>
 __aicore__ inline __attribute__((always_inline)) void Sync() {
@@ -74,12 +73,6 @@ __aicore__ inline __attribute__((always_inline)) void Sync() {
     AscendC::WaitFlag<E>(0);
 #endif
 }
-
-/**
- * LoadData 2D 单 repeat 搬运字节数（512B，CANN LoadData2DParams.repeatTimes 的计量单位）
- * 直接引用官方 CATLASS BYTE_PER_FRACTAL 常量（32 * 16 = 512B，一处定义）
- */
-constexpr uint32_t LOADDATA2D_REPEAT_BYTES = Catlass::BYTE_PER_FRACTAL;
 
 /**
  * 统一分形坐标映射原语（ZnIndex）：

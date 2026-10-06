@@ -194,11 +194,10 @@ public:
     /**
      * \brief 拍 k 的 Softmax 概率矩阵生成与行状态步进
      */
-    template <bool IS_CAUSAL = false>
+    template <bool IS_CAUSAL = false, bool IS_PING = true>
     __aicore__ inline __attribute__((always_inline)) void ProcessBlock(
         const TaskContext &ctx,
-        uint32_t k,
-        bool is_ping)
+        uint32_t k)
     {
 #if SAGE_ATTN_DEVICE_COMPILE
         const uint32_t rows = ctx.TotalRows();
@@ -248,7 +247,7 @@ public:
 
         // 通过片上 SSBUF 高速通路将 FP8 P 矩阵搬入 L1 Bank 0 专有双缓冲槽，供 Cube PV MMAD 读取
         Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
-        const uint32_t l1_p_addr = is_ping ? SlotL1SoftmaxPPing::Offset() : SlotL1SoftmaxPPong::Offset();
+        constexpr uint32_t l1_p_addr = IS_PING ? SlotL1SoftmaxPPing::Offset() : SlotL1SoftmaxPPong::Offset();
         LocalTensor<float8_e4m3_t> l1_p(TPosition::A1, l1_p_addr, rows * ctx.block_n);
         Catlass::SageAttn::CopyUbToL1zN(l1_p, ub_out_p, rows, ctx.block_n);
         Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
@@ -271,8 +270,21 @@ public:
             }
         }
 
-        ComputeSoftmaxProbability(ctx, is_ping);
+        ComputeSoftmaxProbability(ctx, IS_PING);
 #endif
+    }
+
+    template <bool IS_CAUSAL = false>
+    __aicore__ inline __attribute__((always_inline)) void ProcessBlock(
+        const TaskContext &ctx,
+        uint32_t k,
+        bool is_ping)
+    {
+        if (is_ping) {
+            ProcessBlock<IS_CAUSAL, true>(ctx, k);
+        } else {
+            ProcessBlock<IS_CAUSAL, false>(ctx, k);
+        }
     }
 
     __aicore__ inline __attribute__((always_inline)) void ProcessBlock(

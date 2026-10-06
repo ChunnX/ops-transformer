@@ -108,15 +108,6 @@ public:
 #endif
     }
 
-    __aicore__ inline static void V0WaitKvFree(bool is_ping)
-    {
-        if (is_ping) {
-            V0WaitKvFree<true>();
-        } else {
-            V0WaitKvFree<false>();
-        }
-    }
-
     template <bool IS_PING>
     __aicore__ inline static void V0SignalKvReady()
     {
@@ -125,15 +116,6 @@ public:
         static_assert(flag < 11, "SyncFlags must avoid hardware reserved IDs [11, 14]");
         AscendC::CrossCoreSetFlag<MODE, PIPE_MTE3>(flag);
 #endif
-    }
-
-    __aicore__ inline static void V0SignalKvReady(bool is_ping)
-    {
-        if (is_ping) {
-            V0SignalKvReady<true>();
-        } else {
-            V0SignalKvReady<false>();
-        }
     }
 
     template <bool IS_PING>
@@ -146,15 +128,6 @@ public:
 #endif
     }
 
-    __aicore__ inline static void CubeWaitKvReady(bool is_ping)
-    {
-        if (is_ping) {
-            CubeWaitKvReady<true>();
-        } else {
-            CubeWaitKvReady<false>();
-        }
-    }
-
     template <bool IS_PING>
     __aicore__ inline static void CubeReleaseKvFree()
     {
@@ -163,15 +136,6 @@ public:
         static_assert(flag < 11, "SyncFlags must avoid hardware reserved IDs [11, 14]");
         AscendC::CrossCoreSetFlag<MODE, PIPE_MTE1>(flag);
 #endif
-    }
-
-    __aicore__ inline static void CubeReleaseKvFree(bool is_ping)
-    {
-        if (is_ping) {
-            CubeReleaseKvFree<true>();
-        } else {
-            CubeReleaseKvFree<false>();
-        }
     }
 
     // -------------------------------------------------------------
@@ -218,15 +182,6 @@ public:
 #endif
     }
 
-    __aicore__ inline static void V1WaitSoftmaxFree(bool is_ping)
-    {
-        if (is_ping) {
-            V1WaitSoftmaxFree<true>();
-        } else {
-            V1WaitSoftmaxFree<false>();
-        }
-    }
-
     template <bool IS_PING>
     __aicore__ inline static void V1SignalSoftmaxReady()
     {
@@ -235,15 +190,6 @@ public:
         static_assert(flag < 11, "SyncFlags must avoid hardware reserved IDs [11, 14]");
         AscendC::CrossCoreSetFlag<MODE, PIPE_MTE3>(flag);
 #endif
-    }
-
-    __aicore__ inline static void V1SignalSoftmaxReady(bool is_ping)
-    {
-        if (is_ping) {
-            V1SignalSoftmaxReady<true>();
-        } else {
-            V1SignalSoftmaxReady<false>();
-        }
     }
 
     template <bool IS_PING>
@@ -256,15 +202,6 @@ public:
 #endif
     }
 
-    __aicore__ inline static void CubeWaitSoftmaxReady(bool is_ping)
-    {
-        if (is_ping) {
-            CubeWaitSoftmaxReady<true>();
-        } else {
-            CubeWaitSoftmaxReady<false>();
-        }
-    }
-
     template <bool IS_PING>
     __aicore__ inline static void CubeReleaseSoftmaxFree()
     {
@@ -273,15 +210,6 @@ public:
         static_assert(flag < 11, "SyncFlags must avoid hardware reserved IDs [11, 14]");
         AscendC::CrossCoreSetFlag<MODE, PIPE_MTE1>(16 + flag);
 #endif
-    }
-
-    __aicore__ inline static void CubeReleaseSoftmaxFree(bool is_ping)
-    {
-        if (is_ping) {
-            CubeReleaseSoftmaxFree<true>();
-        } else {
-            CubeReleaseSoftmaxFree<false>();
-        }
     }
 
     // -------------------------------------------------------------
