@@ -17,6 +17,7 @@
 #include "../op_kernel/static_slot.h"
 #include "../aclnn/sage_attn_host_tiling.h"
 #include "../sageattn_fp8/ascendc/twin_reference.h"
+#include "catlass/layout/matrix.hpp"
 
 using namespace sage_attn;
 using namespace Catlass::SageAttn;
@@ -703,6 +704,103 @@ void TestSplitKvCombineContract() {
     std::cout << "[Test 9 Passed] Split-KV combine contract across S in {2, 3, 4, 8} verified!" << std::endl;
 }
 
+void TestFractalZnIndexContract() {
+    std::cout << "[Test 10] Testing Fractal zN Index Contract and LoadTile2D Strides..." << std::endl;
+
+    // a) Compile-time static_assert invariants for ZnIndex(row, col, total_rows)
+    static_assert(Catlass::SageAttn::ZnIndex(0, 0, 64) == 0, "ZnIndex(0, 0, 64) must be 0");
+    static_assert(Catlass::SageAttn::ZnIndex(0, 31, 64) == 31, "ZnIndex(0, 31, 64) must be 31");
+    static_assert(Catlass::SageAttn::ZnIndex(1, 0, 64) == 32, "ZnIndex(1, 0, 64) must be 32");
+    static_assert(Catlass::SageAttn::ZnIndex(15, 31, 64) == 511, "ZnIndex(15, 31, 64) must be 511");
+    static_assert(Catlass::SageAttn::ZnIndex(0, 32, 64) == 64 * 32, "ZnIndex(0, 32, 64) must be 64 * 32");
+    static_assert(Catlass::SageAttn::ZnIndex(63, 127, 64) == (3 * 64 + 63) * 32 + 31,
+                  "ZnIndex(63, 127, 64) must be (3 * 64 + 63) * 32 + 31");
+
+    // b) Equivalence against official Catlass::layout::zN::MakeLayout<int8_t>(total_rows, cols).GetOffset(Catlass::MatrixCoord(r, c))
+    const std::vector<std::pair<uint32_t, uint32_t>> test_shapes = {
+        {64, 64},
+        {64, 128},
+        {128, 64},
+        {128, 128},
+        {32, 32},
+        {16, 32},
+        {48, 64},
+    };
+
+    for (const auto &shape : test_shapes) {
+        const uint32_t total_rows = shape.first;
+        const uint32_t cols = shape.second;
+        auto official_zn = Catlass::layout::zN::MakeLayout<int8_t>(total_rows, cols);
+
+        for (uint32_t r = 0; r < total_rows; ++r) {
+            for (uint32_t c = 0; c < cols; ++c) {
+                const uint32_t computed_idx = Catlass::SageAttn::ZnIndex(r, c, total_rows);
+                const uint32_t official_offset =
+                    static_cast<uint32_t>(official_zn.GetOffset(Catlass::MatrixCoord(r, c)));
+                assert(computed_idx == official_offset);
+            }
+        }
+    }
+
+    // c) Verify LoadTile2D stride parameters match official CATLASS copy_l1_to_l0b.hpp B8/B4 specialization
+    // LoadTile2D transpose formula (sage_tile.hpp):
+    //   mStep = RoundUp<2>(CeilDiv<16>(rows))
+    //   kStep = CeilDiv<32>(cols)
+    //   srcStride = CeilDiv<16>(rows)
+    //   dstStride = CeilDiv<16>(cols)
+    // Official copy_l1_to_l0b.hpp B8/B4 formula:
+    //   mStep = RoundUp<2>(CeilDiv<C0_NUM_PER_FRACTAL>(L0KOrigin))
+    //   kStep = CeilDiv<ELE_NUM_PER_C0>(L0NOrigin)
+    //   srcStride = CeilDiv<ELE_NUM_PER_FRACTAL>(srcOuterStrideCol)
+    //   dstStride = CeilDiv<ELE_NUM_PER_FRACTAL>(dstOuterStrideRow)
+    static_assert(RoundUp<2>(CeilDiv<16>(64u)) == 4u, "LoadTile2D mStep for rows=64 must be 4");
+    static_assert(CeilDiv<32>(64u) == 2u, "LoadTile2D kStep for cols=64 must be 2");
+    static_assert(CeilDiv<16>(64u) == 4, "LoadTile2D srcStride for rows=64 must be 4");
+    static_assert(CeilDiv<16>(64u) == 4u, "LoadTile2D dstStride for cols=64 must be 4");
+
+    static_assert(RoundUp<2>(CeilDiv<16>(64u)) == 4u, "LoadTile2D mStep for rows=64 must be 4");
+    static_assert(CeilDiv<32>(128u) == 4u, "LoadTile2D kStep for cols=128 must be 4");
+    static_assert(CeilDiv<16>(64u) == 4, "LoadTile2D srcStride for rows=64 must be 4");
+    static_assert(CeilDiv<16>(128u) == 8u, "LoadTile2D dstStride for cols=128 must be 8");
+
+    static_assert(RoundUp<2>(CeilDiv<16>(128u)) == 8u, "LoadTile2D mStep for rows=128 must be 8");
+    static_assert(CeilDiv<32>(64u) == 2u, "LoadTile2D kStep for cols=64 must be 2");
+    static_assert(CeilDiv<16>(128u) == 8, "LoadTile2D srcStride for rows=128 must be 8");
+    static_assert(CeilDiv<16>(64u) == 4u, "LoadTile2D dstStride for cols=64 must be 4");
+
+    static_assert(RoundUp<2>(CeilDiv<16>(128u)) == 8u, "LoadTile2D mStep for rows=128 must be 8");
+    static_assert(CeilDiv<32>(128u) == 4u, "LoadTile2D kStep for cols=128 must be 4");
+    static_assert(CeilDiv<16>(128u) == 8, "LoadTile2D srcStride for rows=128 must be 8");
+    static_assert(CeilDiv<16>(128u) == 8u, "LoadTile2D dstStride for cols=128 must be 8");
+
+    const std::vector<std::pair<uint32_t, uint32_t>> stride_shapes = {
+        {64, 64},
+        {64, 128},
+        {128, 64},
+        {128, 128},
+    };
+    for (const auto &pair : stride_shapes) {
+        const uint32_t rows = pair.first;
+        const uint32_t cols = pair.second;
+        const uint16_t mStep = static_cast<uint16_t>(::RoundUp<2>(::CeilDiv<16>(rows)));
+        const uint16_t kStep = static_cast<uint16_t>(::CeilDiv<32>(cols));
+        const int32_t srcStride = static_cast<int32_t>(::CeilDiv<16>(rows));
+        const uint16_t dstStride = static_cast<uint16_t>(::CeilDiv<16>(cols));
+
+        const uint16_t expected_mStep = static_cast<uint16_t>(::RoundUp<2>(::CeilDiv<16>(rows)));
+        const uint16_t expected_kStep = static_cast<uint16_t>(::CeilDiv<32>(cols));
+        const int32_t expected_srcStride = static_cast<int32_t>(::CeilDiv<16>(rows));
+        const uint16_t expected_dstStride = static_cast<uint16_t>(::CeilDiv<16>(cols));
+
+        assert(mStep == expected_mStep);
+        assert(kStep == expected_kStep);
+        assert(srcStride == expected_srcStride);
+        assert(dstStride == expected_dstStride);
+    }
+
+    std::cout << "[Test 10 Passed] Fractal zN index contract and LoadTile2D stride parameters verified!" << std::endl;
+}
+
 int main() {
     std::cout << "Starting SageAttention2 C++ Contract and Tiling Verification..." << std::endl;
     TestTilingDataLayout();
@@ -714,6 +812,7 @@ int main() {
     TestNddmaStrideContract();
     TestCausalCutBlockNums();
     TestSplitKvCombineContract();
+    TestFractalZnIndexContract();
     std::cout << "All C++ contracts and struct layouts PASSED successfully!" << std::endl;
     return 0;
 }

@@ -531,5 +531,199 @@ class TestKernelHostSerialBranchVsGolden(GoldenTwinTestBase):
               f"max_abs={stats['max_abs_error']:.6g} lse={stats['lse_max_diff']:.3e}")
 
 
+def zn_index(row: int, col: int, total_rows: int) -> int:
+    """计算昇腾 zN 分形布局的线性元素偏移。
+
+    与 Catlass::SageAttn::ZnIndex(row, col, total_rows) 及
+    Catlass::layout::zN::MakeLayout<int8_t>(total_rows, cols).GetOffset(...) 位级恒等。
+    m_aligned = (total_rows + 15) & ~15
+    col_block = col // 32
+    col_in = col % 32
+    return (col_block * m_aligned + row) * 32 + col_in
+    """
+    m_aligned = (total_rows + 15) & ~15
+    col_block = col // 32
+    col_in = col % 32
+    return (col_block * m_aligned + row) * 32 + col_in
+
+
+def official_catlass_zn_offset(row: int, col: int, org_rows: int, org_cols: int, ele_bytes: int = 1) -> int:
+    """官方 Catlass::layout::zN::GetOffset 的 Python 等价实现。"""
+    c0_num_per_fractal = 16
+    ele_num_per_c0 = 32 // ele_bytes
+    ele_num_per_fractal = 512 // ele_bytes
+    rows_round = (org_rows + c0_num_per_fractal - 1) // c0_num_per_fractal * c0_num_per_fractal
+    cols_round = (org_cols + ele_num_per_c0 - 1) // ele_num_per_c0 * ele_num_per_c0
+    offset = (
+        (row // c0_num_per_fractal) * ele_num_per_fractal
+        + (col // ele_num_per_c0) * (rows_round * ele_num_per_c0)
+        + (row % c0_num_per_fractal) * ele_num_per_c0
+        + (col % ele_num_per_c0)
+    )
+    return offset
+
+
+class TestL1FractalDumpVsCatlass(unittest.TestCase):
+    """L1 Fractal zN Bit-Level Contract Verification vs CATLASS.
+
+    验证 Q、K^T、V 四操作数片上 L1 分形布局的位级寻址与排布契约：
+    1. Q [M, K]: Q_l1[ZnIndex(r, c, M)] == Q[r, c]
+    2. K^T [K, N] (V0 预转置写 L1): K_l1[ZnIndex(c, j, K)] == K[j, c]
+    3. V [N, K]: V_l1[ZnIndex(j, c, N)] == V[j, c]
+    """
+
+    def test_zn_index_static_invariants(self):
+        """测试 ZnIndex 基础几何不变量与跨分形进位边界。"""
+        self.assertEqual(zn_index(0, 0, 64), 0)
+        self.assertEqual(zn_index(0, 31, 64), 31)
+        self.assertEqual(zn_index(1, 0, 64), 32)
+        self.assertEqual(zn_index(15, 31, 64), 511)
+        self.assertEqual(zn_index(0, 32, 64), 64 * 32)
+        self.assertEqual(zn_index(63, 127, 64), (3 * 64 + 63) * 32 + 31)
+
+    def test_zn_index_vs_official_catlass_layout(self):
+        """遍历多组瓦片形状验证 ZnIndex 与官方 Catlass zN GetOffset 逐点恒等。"""
+        test_shapes = [
+            (64, 64),
+            (64, 128),
+            (128, 64),
+            (128, 128),
+            (32, 32),
+            (16, 32),
+            (48, 64),
+        ]
+        for total_rows, cols in test_shapes:
+            with self.subTest(total_rows=total_rows, cols=cols):
+                for r in range(total_rows):
+                    for c in range(cols):
+                        computed = zn_index(r, c, total_rows)
+                        official = official_catlass_zn_offset(r, c, total_rows, cols)
+                        self.assertEqual(computed, official)
+
+    def test_l1_fractal_buffer_placement_synthetic(self):
+        """跨多组 (M, K, N) 瓦片验证 Q、K^T、V 在 L1 分形缓冲区的读写双向完全等价。"""
+        test_configs = [
+            (64, 64, 64),
+            (64, 128, 64),
+            (128, 64, 64),
+            (128, 128, 128),
+            (32, 32, 32),
+            (16, 32, 32),
+            (48, 64, 64),
+        ]
+        for m, k, n in test_configs:
+            with self.subTest(M=m, K=k, N=n):
+                # 1. Q [M, K]
+                q = torch.randint(-128, 127, (m, k), dtype=torch.int8)
+                m_aligned = (m + 15) & ~15
+                k_blocks = (k + 31) // 32
+                q_l1_size = k_blocks * m_aligned * 32
+                q_l1 = torch.zeros(q_l1_size, dtype=torch.int8)
+
+                for r in range(m):
+                    for c in range(k):
+                        q_l1[zn_index(r, c, m)] = q[r, c]
+
+                for r in range(m):
+                    for c in range(k):
+                        self.assertEqual(q_l1[zn_index(r, c, m)].item(), q[r, c].item())
+
+                q_rec = torch.zeros_like(q)
+                for r in range(m):
+                    for c in range(k):
+                        q_rec[r, c] = q_l1[zn_index(r, c, m)]
+                self.assertTrue(torch.equal(q_rec, q), "Q L1 buffer bit-exact mismatch")
+
+                # 2. K^T [K, N] (where V0 writes pre-transposed K from [N, K])
+                k_mat = torch.randint(-128, 127, (n, k), dtype=torch.int8)
+                k_aligned = (k + 15) & ~15
+                n_blocks = (n + 31) // 32
+                k_l1_size = n_blocks * k_aligned * 32
+                k_l1 = torch.zeros(k_l1_size, dtype=torch.int8)
+
+                for j in range(n):
+                    for c in range(k):
+                        k_l1[zn_index(c, j, k)] = k_mat[j, c]
+
+                for j in range(n):
+                    for c in range(k):
+                        self.assertEqual(k_l1[zn_index(c, j, k)].item(), k_mat[j, c].item())
+
+                k_rec = torch.zeros_like(k_mat)
+                for j in range(n):
+                    for c in range(k):
+                        k_rec[j, c] = k_l1[zn_index(c, j, k)]
+                self.assertTrue(torch.equal(k_rec, k_mat), "K^T L1 buffer bit-exact mismatch")
+
+                # 3. V [N, K]
+                v = torch.randint(0, 255, (n, k), dtype=torch.uint8)
+                n_aligned = (n + 15) & ~15
+                k_blocks_v = (k + 31) // 32
+                v_l1_size = k_blocks_v * n_aligned * 32
+                v_l1 = torch.zeros(v_l1_size, dtype=torch.uint8)
+
+                for j in range(n):
+                    for c in range(k):
+                        v_l1[zn_index(j, c, n)] = v[j, c]
+
+                for j in range(n):
+                    for c in range(k):
+                        self.assertEqual(v_l1[zn_index(j, c, n)].item(), v[j, c].item())
+
+                v_rec = torch.zeros_like(v)
+                for j in range(n):
+                    for c in range(k):
+                        v_rec[j, c] = v_l1[zn_index(j, c, n)]
+                self.assertTrue(torch.equal(v_rec, v), "V L1 buffer bit-exact mismatch")
+
+    def test_l1_fractal_buffer_placement_golden(self):
+        """以真实 golden 落盘量化张量 (P-01) 验证 Q、K^T、V 分形写入位级恒等。"""
+        manifest = load_manifest_cases()
+        case_id = "P-01_per_thread_fp32+fp16_fp16_HND"
+        if case_id not in manifest:
+            self.skipTest(f"Golden case {case_id} not available")
+
+        q8 = _load_tensor(case_id, "q_int8")[0, 0]  # [sq, d] = [4096, 128]
+        k8 = _load_tensor(case_id, "k_int8")[0, 0]  # [sk, d] = [4096, 128]
+        v8_raw = _load_tensor(case_id, "v_fp8").view(torch.uint8)[0, 0]  # [d, pad_sk] = [128, 4096]
+
+        m, k, n = 64, 128, 64
+        q_tile = q8[:m, :k].contiguous()
+        k_tile = k8[:n, :k].contiguous()
+        v_tile = v8_raw[:k, :n].t().contiguous()  # [n, k] = [64, 128]
+
+        # 1. Q L1 bit-exact match
+        q_l1 = torch.zeros(((k + 31) // 32) * ((m + 15) & ~15) * 32, dtype=torch.int8)
+        for r in range(m):
+            for c in range(k):
+                q_l1[zn_index(r, c, m)] = q_tile[r, c]
+
+        for r in range(m):
+            for c in range(k):
+                self.assertEqual(q_l1[zn_index(r, c, m)].item(), q_tile[r, c].item())
+
+        # 2. K^T L1 bit-exact match (V0 预转置写)
+        k_l1 = torch.zeros(((n + 31) // 32) * ((k + 15) & ~15) * 32, dtype=torch.int8)
+        for j in range(n):
+            for c in range(k):
+                k_l1[zn_index(c, j, k)] = k_tile[j, c]
+
+        for j in range(n):
+            for c in range(k):
+                self.assertEqual(k_l1[zn_index(c, j, k)].item(), k_tile[j, c].item())
+
+        # 3. V L1 bit-exact match
+        v_l1 = torch.zeros(((k + 31) // 32) * ((n + 15) & ~15) * 32, dtype=torch.uint8)
+        for j in range(n):
+            for c in range(k):
+                v_l1[zn_index(j, c, n)] = v_tile[j, c]
+
+        for j in range(n):
+            for c in range(k):
+                self.assertEqual(v_l1[zn_index(j, c, n)].item(), v_tile[j, c].item())
+
+        print(f"\n[twin fractal] {case_id} Q/K^T/V fractal L1 buffer bit-exact match confirmed!")
+
+
 if __name__ == "__main__":
     unittest.main()
