@@ -77,9 +77,9 @@ public:
                                                 rows_to_load, d, stride_q);
         }
         Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
-        dev_vf::RowAbsMaxRowsVF<kDtype>(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
-                                        reinterpret_cast<__ubuf__ float*>(ub_rowmax.GetPhyAddr()),
-                                        nullptr, act_rows_q, d, 0u);
+        dev_vf::RowAbsMaxRowsVF<kDtype, false>(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
+                                               reinterpret_cast<__ubuf__ float*>(ub_rowmax.GetPhyAddr()),
+                                               nullptr, act_rows_q, d);
         Catlass::SageAttn::Sync<HardEvent::V_S>();
 
         // B. 组归并 + scale 定档
@@ -106,9 +106,10 @@ public:
             const uint32_t i = r % ctx.cur_q_len;
             const uint32_t token = ctx.cur_q_start + i;
             __ubuf__ float* scale_ptr = ub_scales_ptr + (ctx.cur_g0 + g) * kQScaleSlotStride + quant::QScaleIndex<PER_THREAD>(token);
-            dev_vf::QuantRowInt8VF<kDtype>(reinterpret_cast<__ubuf__ half*>(ub_in[r * d].GetPhyAddr()),
-                                           reinterpret_cast<__ubuf__ int8_t*>(ub_stage_q_mat[r * d].GetPhyAddr()),
-                                           scale_ptr, d, PER_THREAD ? 1u : 0u, 0u, nullptr);
+            dev_vf::QuantRowInt8VF<kDtype, PER_THREAD, false>(
+                reinterpret_cast<__ubuf__ half*>(ub_in[r * d].GetPhyAddr()),
+                reinterpret_cast<__ubuf__ int8_t*>(ub_stage_q_mat[r * d].GetPhyAddr()),
+                scale_ptr, d);
         }
         for (uint32_t r = act_rows_q; r < m_aligned_q; ++r) {
             Duplicate(ub_stage_q_mat[r * d], int8_t(0), d);
@@ -233,7 +234,7 @@ public:
         LocalTensor<int8_t> ub_stage_k_mat(TPosition::VECCALC, SlotV0VStageTok::Offset(), block_n * d);
         LocalTensor<int8_t> ub_stage_k_tr(TPosition::VECCALC, SlotV0VStageTr::Offset(), d * block_n);
         LocalTensor<int8_t> l1_k(TPosition::B1, l1_dst_addr, d * block_n);
-        const uint32_t has_km = (km_ptr != nullptr) ? 1u : 0u;
+        const bool has_km = (km_ptr != nullptr);
 
         if (has_km) {
             GlobalTensor<float> gm_km;
@@ -256,10 +257,17 @@ public:
         Catlass::SageAttn::Sync<HardEvent::V_MTE2>();
         Catlass::SageAttn::LoadTile2DFromGm(ub_in, reinterpret_cast<__gm__ half*>(k_src), block_k, d, stride_k);
         Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
-        dev_vf::RowAbsMaxRowsVF<kDtype>(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
-                                        reinterpret_cast<__ubuf__ float*>(ub_rowmax.GetPhyAddr()),
-                                        reinterpret_cast<__ubuf__ float*>(ub_km.GetPhyAddr()),
-                                        block_k, d, has_km);
+        if (has_km) {
+            dev_vf::RowAbsMaxRowsVF<kDtype, true>(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
+                                                  reinterpret_cast<__ubuf__ float*>(ub_rowmax.GetPhyAddr()),
+                                                  reinterpret_cast<__ubuf__ float*>(ub_km.GetPhyAddr()),
+                                                  block_k, d);
+        } else {
+            dev_vf::RowAbsMaxRowsVF<kDtype, false>(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
+                                                   reinterpret_cast<__ubuf__ float*>(ub_rowmax.GetPhyAddr()),
+                                                   nullptr,
+                                                   block_k, d);
+        }
         Catlass::SageAttn::Sync<HardEvent::V_S>();
 
         for (uint32_t j = 0; j < block_k; ++j) {
@@ -291,17 +299,29 @@ public:
         Catlass::SageAttn::Sync<HardEvent::MTE3_S>();
 
         // 批量量化 INT8 矩阵 [block_n, d]
-        for (uint32_t j = 0; j < block_n; ++j) {
-            if (j < block_k) {
+        if (has_km) {
+            for (uint32_t j = 0; j < block_k; ++j) {
                 const uint32_t token = cur_k_start + j;
                 __ubuf__ float* scale_ptr = ub_k_scales_ptr + quant::KScaleIndex<PER_THREAD>(token);
-                dev_vf::QuantRowInt8VF<kDtype>(reinterpret_cast<__ubuf__ half*>(ub_in[j * d].GetPhyAddr()),
-                                               reinterpret_cast<__ubuf__ int8_t*>(ub_stage_k_mat[j * d].GetPhyAddr()),
-                                               scale_ptr, d, PER_THREAD ? 1u : 0u, has_km,
-                                               reinterpret_cast<__ubuf__ float*>(ub_km.GetPhyAddr()));
-            } else {
-                Duplicate(ub_stage_k_mat[j * d], int8_t(0), d);
+                dev_vf::QuantRowInt8VF<kDtype, PER_THREAD, true>(
+                    reinterpret_cast<__ubuf__ half*>(ub_in[j * d].GetPhyAddr()),
+                    reinterpret_cast<__ubuf__ int8_t*>(ub_stage_k_mat[j * d].GetPhyAddr()),
+                    scale_ptr, d,
+                    reinterpret_cast<__ubuf__ float*>(ub_km.GetPhyAddr()));
             }
+        } else {
+            for (uint32_t j = 0; j < block_k; ++j) {
+                const uint32_t token = cur_k_start + j;
+                __ubuf__ float* scale_ptr = ub_k_scales_ptr + quant::KScaleIndex<PER_THREAD>(token);
+                dev_vf::QuantRowInt8VF<kDtype, PER_THREAD, false>(
+                    reinterpret_cast<__ubuf__ half*>(ub_in[j * d].GetPhyAddr()),
+                    reinterpret_cast<__ubuf__ int8_t*>(ub_stage_k_mat[j * d].GetPhyAddr()),
+                    scale_ptr, d,
+                    nullptr);
+            }
+        }
+        for (uint32_t j = block_k; j < block_n; ++j) {
+            Duplicate(ub_stage_k_mat[j * d], int8_t(0), d);
         }
         Catlass::SageAttn::Sync<HardEvent::V_S>();
 

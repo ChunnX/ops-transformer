@@ -103,19 +103,16 @@ __simd_callee__ __aicore__ inline __attribute__((always_inline)) void SubMeanRou
  * 组间归并与 scale 定档由调用方按 quant::QScaleIndex/KScaleIndex 单点完成
  * （与宿主串行路径逐步一致）。
  */
-template <uint32_t DTYPE_MODE>
-__simd_vf__ __aicore__ inline __attribute__((always_inline)) void RowAbsMaxRowsVF(__ubuf__ half* in_base, __ubuf__ float* out_rowmax,
-                                            __ubuf__ float* km_ptr, uint32_t rows, uint32_t d,
-                                            uint32_t has_km) {
+template <uint32_t DTYPE_MODE, bool HAS_KM = false>
+__simd_vf__ __aicore__ inline __attribute__((always_inline)) void RowAbsMaxRowsVF(
+    __ubuf__ half* in_base, __ubuf__ float* out_rowmax,
+    __ubuf__ float* km_ptr, uint32_t rows, uint32_t d) {
     using namespace AscendC;
     using namespace AscendC::MicroAPI;
     if (rows == 0u) {
         return;
     }
     auto full = CreateMask<float, MaskPattern::ALL>();
-    static constexpr CastTrait toFp32{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
-    static constexpr CastTrait toHalf{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
-    static constexpr CastTrait toBf16{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
 
     __ubuf__ float* dst = out_rowmax;
     UnalignReg compact;
@@ -127,7 +124,7 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void RowAbsMaxRowsV
         for (uint32_t c = 0; c < d; c += 64) {
             RegTensor<float> val;
             LoadRowChunkF32<DTYPE_MODE>(val, in_ptr, c);
-            if (has_km) {
+            if constexpr (HAS_KM) {
                 SubMeanRoundBackF32<DTYPE_MODE>(val, km_ptr, c);
             }
             Abs(val, val, full);
@@ -138,6 +135,18 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void RowAbsMaxRowsV
     }
     StoreUnAlignPost(dst, compact, 0);
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+}
+
+template <uint32_t DTYPE_MODE>
+__aicore__ inline __attribute__((always_inline)) void RowAbsMaxRowsVF(
+    __ubuf__ half* in_base, __ubuf__ float* out_rowmax,
+    __ubuf__ float* km_ptr, uint32_t rows, uint32_t d,
+    uint32_t has_km) {
+    if (has_km != 0u) {
+        RowAbsMaxRowsVF<DTYPE_MODE, true>(in_base, out_rowmax, km_ptr, rows, d);
+    } else {
+        RowAbsMaxRowsVF<DTYPE_MODE, false>(in_base, out_rowmax, km_ptr, rows, d);
+    }
 }
 
 /**
@@ -153,17 +162,15 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void RowAbsMaxRowsV
  * - 饱和 ±127（与两个 Round* 的 clamp 一致）；
  * - 打包与写出：微架构 StoreDist::DIST_PACK4_B32 硬件压包直写 UB。
  */
-template <uint32_t DTYPE_MODE>
-__simd_vf__ __aicore__ inline __attribute__((always_inline)) void QuantRowInt8VF(__ubuf__ half* in_ptr, __ubuf__ int8_t* out_ptr,
-                                       __ubuf__ float* scale_ptr, uint32_t d,
-                                       uint32_t per_thread, uint32_t has_km,
-                                       __ubuf__ float* km_ptr) {
+template <uint32_t DTYPE_MODE, bool PER_THREAD = false, bool HAS_KM = false>
+__simd_vf__ __aicore__ inline __attribute__((always_inline)) void QuantRowInt8VF(
+    __ubuf__ half* in_ptr, __ubuf__ int8_t* out_ptr,
+    __ubuf__ float* scale_ptr, uint32_t d,
+    __ubuf__ float* km_ptr = nullptr) {
     using namespace AscendC;
     using namespace AscendC::MicroAPI;
     auto full = CreateMask<float, MaskPattern::ALL>();
     static constexpr CastTrait toFp32{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
-    static constexpr CastTrait toHalf{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
-    static constexpr CastTrait toBf16{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
     static constexpr CastTrait toI32Trunc{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_TRUNC};
     static constexpr CastTrait toI32Rint{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
     static constexpr CastTrait toI8Sat{RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_TRUNC};
@@ -175,20 +182,22 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void QuantRowInt8VF
     Duplicate(neg127, -INT8_QUANT_MAX);
     Duplicate(pos127, INT8_QUANT_MAX);
     RegTensor<float> zero, half_reg, neg_half_reg;
-    Duplicate(zero, 0.0f);
-    Duplicate(half_reg, 0.5f);
-    Duplicate(neg_half_reg, -0.5f);
+    if constexpr (PER_THREAD) {
+        Duplicate(zero, 0.0f);
+        Duplicate(half_reg, 0.5f);
+        Duplicate(neg_half_reg, -0.5f);
+    }
 
     for (uint32_t c = 0; c < d; c += 64) {
         RegTensor<float> val;
         LoadRowChunkF32<DTYPE_MODE>(val, in_ptr, c);
-        if (has_km) {
+        if constexpr (HAS_KM) {
             SubMeanRoundBackF32<DTYPE_MODE>(val, km_ptr, c);
         }
         Div(val, val, scale_reg, full);
 
         RegTensor<int32_t> packed_i;
-        if (per_thread) {
+        if constexpr (PER_THREAD) {
             // half-away：x + 0.5·sign(x) 后截断（对 -0 边界与宿主 floor(|x|+0.5)·sign 同值）。
             // MicroAPI 语义（dav-3510 头与 CANN 内置实现核对）：Compare<LT>(a,b) = a<b，
             // Select(dst,s0,s1,mask) = mask ? s0 : s1——neg(val<0) 须取 neg_half_reg(-0.5)
@@ -210,6 +219,27 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void QuantRowInt8VF
         Cast<int32_t, float, toI8Sat>(packed_i, val, full);
         StoreAlign<int8_t, StoreDist::DIST_PACK4_B32>(out_ptr + c,
             reinterpret_cast<RegTensor<int8_t>&>(packed_i), full);
+    }
+}
+
+template <uint32_t DTYPE_MODE>
+__aicore__ inline __attribute__((always_inline)) void QuantRowInt8VF(
+    __ubuf__ half* in_ptr, __ubuf__ int8_t* out_ptr,
+    __ubuf__ float* scale_ptr, uint32_t d,
+    uint32_t per_thread, uint32_t has_km,
+    __ubuf__ float* km_ptr = nullptr) {
+    if (per_thread != 0u) {
+        if (has_km != 0u) {
+            QuantRowInt8VF<DTYPE_MODE, true, true>(in_ptr, out_ptr, scale_ptr, d, km_ptr);
+        } else {
+            QuantRowInt8VF<DTYPE_MODE, true, false>(in_ptr, out_ptr, scale_ptr, d, km_ptr);
+        }
+    } else {
+        if (has_km != 0u) {
+            QuantRowInt8VF<DTYPE_MODE, false, true>(in_ptr, out_ptr, scale_ptr, d, km_ptr);
+        } else {
+            QuantRowInt8VF<DTYPE_MODE, false, false>(in_ptr, out_ptr, scale_ptr, d, km_ptr);
+        }
     }
 }
 
@@ -554,28 +584,34 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void UpdateOnlineSo
     using namespace AscendC::MicroAPI;
     auto full = CreateMask<float, MaskPattern::ALL>();
 
-    for (uint32_t r = 0; r < rows; r += 64) {
-        RegTensor<float> m_cur, d_cur;
-        LoadAlign(m_cur, block_max + r);
-        LoadAlign(d_cur, block_sum + r);
+    if (k == 0u) {
+        for (uint32_t r = 0; r < rows; r += 64) {
+            RegTensor<float> m_cur, d_cur, alpha_one;
+            LoadAlign(m_cur, block_max + r);
+            LoadAlign(d_cur, block_sum + r);
+            Duplicate(alpha_one, 1.0f);
+            StoreAlign(running_max + r, m_cur, full);
+            StoreAlign(running_sum + r, d_cur, full);
+            StoreAlign(ub_factor + r, alpha_one, full);
+        }
+    } else {
+        for (uint32_t r = 0; r < rows; r += 64) {
+            RegTensor<float> m_cur, d_cur;
+            LoadAlign(m_cur, block_max + r);
+            LoadAlign(d_cur, block_sum + r);
 
-        RegTensor<float> m_new, d_new, alpha_old;
-        if (k == 0) {
-            m_new = m_cur;
-            d_new = d_cur;
-            Duplicate(alpha_old, 1.0f);
-        } else {
             RegTensor<float> m_old, d_old;
             LoadAlign(m_old, running_max + r);
             LoadAlign(d_old, running_sum + r);
 
             // m_new = max(m_old, m_cur)
+            RegTensor<float> m_new;
             Max(m_new, m_old, m_cur, full);
 
             // alpha_old = exp2(m_old - m_new) = exp((m_old - m_new) * ln2) (ExpSub 熔断)
             // alpha_cur = exp2(m_cur - m_new) = exp((m_cur - m_new) * ln2) (ExpSub 熔断)
             // 原地缩放 m_old 与 m_cur 至自然域，消除冗余寄存器分配
-            RegTensor<float> m_new_nat, alpha_cur;
+            RegTensor<float> m_new_nat, alpha_old, alpha_cur;
             Muls(m_old, m_old, INV_LOG2E, full);
             Muls(m_cur, m_cur, INV_LOG2E, full);
             Muls(m_new_nat, m_new, INV_LOG2E, full);
@@ -590,13 +626,9 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void UpdateOnlineSo
             // 此处 alpha_old (dst) * d_old (src0) + (d_cur * alpha_cur) (src1) -> alpha_old (即 d_new)
             Mul(alpha_cur, d_cur, alpha_cur, full);
             MulDstAdd(alpha_old, d_old, alpha_cur, full);
-            d_new = alpha_old;
-        }
 
-        StoreAlign(running_max + r, m_new, full);
-        StoreAlign(running_sum + r, d_new, full);
-        if (k == 0) {
-            StoreAlign(ub_factor + r, alpha_old, full);
+            StoreAlign(running_max + r, m_new, full);
+            StoreAlign(running_sum + r, alpha_old, full);
         }
     }
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
