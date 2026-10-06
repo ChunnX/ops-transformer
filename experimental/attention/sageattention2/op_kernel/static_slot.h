@@ -40,7 +40,6 @@ struct StaticSlot {
 // --- Vector 0 UB 槽编译期守卫 ---
 using SlotV0InputPing   = StaticSlot<Catlass::SageAttn::Vector0UbBudget::GM_INPUT_PING_OFFSET, Catlass::SageAttn::Vector0UbBudget::GM_INPUT_PING_BYTES>;
 using SlotV0VStageTok   = StaticSlot<Catlass::SageAttn::Vector0UbBudget::V_STAGE_TOK_OFFSET, Catlass::SageAttn::Vector0UbBudget::V_STAGE_TOK_BYTES>;
-using SlotV0VStageTr    = StaticSlot<Catlass::SageAttn::Vector0UbBudget::V_STAGE_TR_OFFSET, Catlass::SageAttn::Vector0UbBudget::V_STAGE_TR_BYTES>;
 using SlotV0RowMax      = StaticSlot<Catlass::SageAttn::Vector0UbBudget::QUANT_ROWMAX_OFFSET, 512>;
 using SlotV0Scales      = StaticSlot<Catlass::SageAttn::Vector0UbBudget::QUANT_SCALES_OFFSET, 16384>;
 using SlotV0Km          = StaticSlot<Catlass::SageAttn::Vector0UbBudget::QUANT_KM_OFFSET, 512>;

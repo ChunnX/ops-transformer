@@ -393,7 +393,7 @@ bool TestDieAffinityScheduling()
         false, sage_attn::LAYOUT_HND, false, false,
         false, td_p01, ws_p01);
     TEST_CHECK(ret_p01 == ACLNN_SUCCESS, "P-01 ComputeHostTiling succeeded");
-    TEST_CHECK(td_p01.m_per_core == 32, "P-01 tuned m_per_core must be 32");
+    TEST_CHECK(td_p01.m_per_core == 128, "P-01 tuned m_per_core must be 128");
     TEST_CHECK(td_p01.block_n == 128, "P-01 tuned block_n must be 128");
     TEST_CHECK(td_p01.k_step == 8 || td_p01.k_step == 16, "P-01 tuned k_step must be 8 or 16");
     TEST_CHECK(td_p01.enable_die_affinity == 1, "P-01 use_die_grouped must be 1");
@@ -407,7 +407,7 @@ bool TestDieAffinityScheduling()
         true, sage_attn::LAYOUT_HND, false, false,
         false, td_p03, ws_p03);
     TEST_CHECK(ret_p03 == ACLNN_SUCCESS, "P-03 ComputeHostTiling succeeded");
-    TEST_CHECK(td_p03.m_per_core == 32, "P-03 tuned m_per_core must be 32");
+    TEST_CHECK(td_p03.m_per_core == 128, "P-03 tuned m_per_core must be 128");
     TEST_CHECK(td_p03.block_n == 128, "P-03 tuned block_n must be 128");
     TEST_CHECK(td_p03.k_step == 8 || td_p03.k_step == 16, "P-03 tuned k_step must be 8 or 16");
     TEST_CHECK(td_p03.enable_die_affinity == 1, "P-03 use_die_grouped must be 1");

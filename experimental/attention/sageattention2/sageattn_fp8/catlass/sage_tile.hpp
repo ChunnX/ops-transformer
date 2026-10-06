@@ -159,7 +159,55 @@ __aicore__ inline __attribute__((always_inline)) void LoadTile2D(
 #endif
 }
 
+/**
+ * 通用 2D 分块搬运原语（L1 nZ -> L0B nZ 直载，基于 LoadData2DParamsV2）：
+ * 对齐官方 CATLASS copy_l1_to_l0b.hpp Ascend950 B8 nZ -> nZ 偏特化（354-362 行）：
+ * 配合数学恒等式 zN(block_n, d) ≡ nZ(d, block_n)，V0 写入 L1 的 K 矩阵已天然为 nZ([d, block_n])。
+ * 载入 L0B 时直接发起硬件直载（ifTranspose = false）：
+ * - load_params.mStep = CeilDiv<16>(cols);
+ * - load_params.kStep = CeilDiv<32>(rows);
+ * - load_params.srcStride = load_params.mStep;
+ * - load_params.dstStride = load_params.mStep;
+ * 零标量转置，零 Vector ALU 开销，零中间 UB 缓冲区。
+ */
+template <typename Element, AscendC::TPosition DstPos, AscendC::TPosition SrcPos>
+__aicore__ inline __attribute__((always_inline)) void LoadTile2DNzToNz(
+    uint32_t dst_addr, uint32_t src_addr, uint32_t rows, uint32_t cols)
+{
+#if SAGE_ATTN_DEVICE_COMPILE
+    const uint32_t total_bytes = rows * cols * static_cast<uint32_t>(sizeof(Element));
+    AscendC::TBuffAddr dst_desc{};
+    dst_desc.logicPos = static_cast<uint8_t>(DstPos);
+    dst_desc.bufferHandle = nullptr;
+    dst_desc.bufferAddr = dst_addr;
+    dst_desc.dataLen = total_bytes;
+    AscendC::LocalTensor<Element> dst_tensor;
+    dst_tensor.SetAddr(dst_desc);
 
+    AscendC::TBuffAddr src_desc{};
+    src_desc.logicPos = static_cast<uint8_t>(SrcPos);
+    src_desc.bufferHandle = nullptr;
+    src_desc.bufferAddr = src_addr;
+    src_desc.dataLen = total_bytes;
+    AscendC::LocalTensor<Element> src_tensor;
+    src_tensor.SetAddr(src_desc);
+
+    AscendC::LoadData2DParamsV2 load_params;
+    load_params.mStartPosition = 0;
+    load_params.kStartPosition = 0;
+    load_params.mStep = static_cast<uint16_t>(::CeilDiv<16>(cols));
+    load_params.kStep = static_cast<uint16_t>(::CeilDiv<32>(rows));
+    load_params.srcStride = static_cast<int32_t>(load_params.mStep);
+    load_params.dstStride = static_cast<uint16_t>(load_params.mStep);
+    load_params.ifTranspose = false;
+    AscendC::LoadData(dst_tensor, src_tensor, load_params);
+#else
+    (void)dst_addr;
+    (void)src_addr;
+    (void)rows;
+    (void)cols;
+#endif
+}
 
 /**
  * 通用 Fixpipe L0C -> UB 裸搬原语（SPLIT_M 分段发射）：

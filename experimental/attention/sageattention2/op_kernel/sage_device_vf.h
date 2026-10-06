@@ -1738,34 +1738,6 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void FillF32VF(__ub
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 }
 
-/**
- * \brief B8 (INT8/FP8) 瓦片矩阵高效片上转置原语：
- * 将 UB 内部 [rows, cols] (即 [block_n, d]) 的行主序矩阵转置为 [cols, rows] (即 [d, block_n])。
- * 1. 采用原始 __ubuf__ 指针直接寻址，彻底摒弃 LocalTensor::GetValue / SetValue
- *    强制绑定的 inout_pipe("S") 冗余栈帧与内部重复地址算术；
- * 2. 8x8 瓦片局部重排展开，连续密集加载与局部写回，消除全矩阵跨步跳跃；
- * 3. 模板参数 D 特化使编译器能够将 cols 乘法折叠为位移 (LSL)。
- */
-template <uint32_t D = 0u>
-__aicore__ inline __attribute__((always_inline)) void TransposeB8VF(
-    __ubuf__ uint8_t* __restrict__ dst,
-    const __ubuf__ uint8_t* __restrict__ src,
-    uint32_t rows, uint32_t cols)
-{
-    const uint32_t c_stride = (D != 0u) ? D : cols;
-    for (uint32_t r = 0; r < rows; r += 8u) {
-        for (uint32_t c = 0; c < cols; c += 8u) {
-            #pragma unroll
-            for (uint32_t dr = 0; dr < 8u; ++dr) {
-                #pragma unroll
-                for (uint32_t dc = 0; dc < 8u; ++dc) {
-                    dst[(c + dc) * rows + (r + dr)] = src[(r + dr) * c_stride + (c + dc)];
-                }
-            }
-        }
-    }
-}
-
 } // namespace dev_vf
 } // namespace sage_attn
 #endif

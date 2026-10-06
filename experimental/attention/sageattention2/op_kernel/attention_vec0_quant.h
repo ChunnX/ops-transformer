@@ -248,7 +248,6 @@ public:
         LocalTensor<float> ub_km(TPosition::VECCALC, SlotV0Km::Offset(), d);
         LocalTensor<half> ub_in(TPosition::VECCALC, SlotV0InputPing::Offset(), MAX_PACK_ROWS * d);
         LocalTensor<int8_t> ub_stage_k_mat(TPosition::VECCALC, SlotV0VStageTok::Offset(), block_n * d);
-        LocalTensor<int8_t> ub_stage_k_tr(TPosition::VECCALC, SlotV0VStageTr::Offset(), d * block_n);
         LocalTensor<int8_t> l1_k(TPosition::B1, l1_dst_addr, d * block_n);
         const bool has_km = (km_ptr != nullptr);
 
@@ -338,16 +337,12 @@ public:
         for (uint32_t j = block_k; j < block_n; ++j) {
             Duplicate(ub_stage_k_mat[j * d], int8_t(0), d);
         }
-        Catlass::SageAttn::Sync<HardEvent::V_S>();
-
-        // K 矩阵预转置 [block_n, d] -> [d, block_n] (通道主序 K^T)
-        dev_vf::TransposeB8VF<D>(
-            reinterpret_cast<__ubuf__ uint8_t*>(ub_stage_k_tr.GetPhyAddr()),
-            reinterpret_cast<__ubuf__ const uint8_t*>(ub_stage_k_mat.GetPhyAddr()),
-            block_n, d);
-
-        Catlass::SageAttn::Sync<HardEvent::S_MTE3>();
-        Catlass::SageAttn::CopyUbToL1zN(l1_k, ub_stage_k_tr, d, block_n);
+        // 零标量 DMA 直通链路：
+        // 由数学恒等式 zN(block_n, d) ≡ nZ(d, block_n)，K 矩阵无需任何 UB 转置与标量搬移，
+        // 直接以 CopyUbToL1zN 2D DMA 发射写入 L1，L1 中字节排布天然等价于 nZ([d, block_n])！
+        // 彻底消除标量内存指令、释放 16KB ub_stage_k_tr 缓冲、消除 V_S 与 S_MTE3 气泡！
+        Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
+        Catlass::SageAttn::CopyUbToL1zN(l1_k, ub_stage_k_mat, block_n, d);
         Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
 #else
         const uint16_t *k_u16 = reinterpret_cast<const uint16_t *>(k_src);
@@ -405,11 +400,11 @@ public:
                     val = quant::SubKm<kDtype>(val, km_ptr, c);
                     const int8_t code = PER_THREAD ? quant::RoundHalfAwayFromZero(val / scale)
                                                    : quant::RoundNearestEven(val / scale);
-                    l1_k[Catlass::SageAttn::ZnIndex(c, j, d)] = code;
+                    l1_k[Catlass::SageAttn::ZnIndex(j, c, block_n)] = code;
                 }
             } else {
                 for (uint32_t c = 0; c < d; ++c) {
-                    l1_k[Catlass::SageAttn::ZnIndex(c, j, d)] = 0;
+                    l1_k[Catlass::SageAttn::ZnIndex(j, c, block_n)] = 0;
                 }
             }
         }

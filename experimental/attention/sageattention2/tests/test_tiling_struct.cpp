@@ -811,13 +811,39 @@ void TestFractalZnIndexContract() {
         assert(dstStride == official_dstStride);
     }
 
-    // tiling 域锁：block_n/d_pad 的合法值域恒为 {64, 128}（aclnn/sage_attn_host_tiling.h
-    // 推导式与 SAGEATTN_FORCE_BLOCKN 校验共同锁定），全部是 32 的倍数，
-    // 故 LoadTile2D 无需实现官方 split 分支。若未来扩域（如 80/112，≡16 mod 32），
-    // 必须先在 sage_tile.hpp 移植官方 split 分支（mStep=2 循环装载）。
-    static_assert(64 % 32 == 0 && 128 % 32 == 0, "LoadTile2D single-load branch requires 32-multiple tile dims");
+    // d) Verify LoadTile2DNzToNz parameters match official CATLASS copy_l1_to_l0b.hpp nZ -> nZ specialization
+    // (ascend950/copy_l1_to_l0b.hpp 347-362 行)：
+    // 对于 B 矩阵 [rows=d, cols=block_n]：
+    //   mStep = CeilDiv<16>(cols)
+    //   kStep = CeilDiv<32>(rows)
+    //   srcStride = mStep
+    //   dstStride = mStep
+    //   ifTranspose = false
+    static_assert(CeilDiv<16>(64u) == 4u, "LoadTile2DNzToNz mStep for cols=64 must be 4");
+    static_assert(CeilDiv<32>(64u) == 2u, "LoadTile2DNzToNz kStep for rows=64 must be 2");
+    static_assert(CeilDiv<16>(128u) == 8u, "LoadTile2DNzToNz mStep for cols=128 must be 8");
+    static_assert(CeilDiv<32>(128u) == 4u, "LoadTile2DNzToNz kStep for rows=128 must be 4");
 
-    std::cout << "[Test 10 Passed] Fractal zN index contract and LoadTile2D stride parameters verified!" << std::endl;
+    for (const auto &pair : stride_shapes) {
+        const uint32_t rows = pair.first;
+        const uint32_t cols = pair.second;
+        const uint16_t nz_mStep = static_cast<uint16_t>(::CeilDiv<16>(cols));
+        const uint16_t nz_kStep = static_cast<uint16_t>(::CeilDiv<32>(rows));
+        const int32_t nz_srcStride = static_cast<int32_t>(nz_mStep);
+        const uint16_t nz_dstStride = static_cast<uint16_t>(nz_mStep);
+
+        const uint16_t off_dstOuterShapeCol = static_cast<uint16_t>(::CeilDiv(cols, 16u));
+        const uint16_t off_dstOuterShapeRow = static_cast<uint16_t>(::CeilDiv(rows, 32u));
+        const int32_t off_srcStride = static_cast<int32_t>(cols * 32u / 512u);
+        const uint16_t off_dstStride = static_cast<uint16_t>(cols * 32u / 512u);
+
+        assert(nz_mStep == off_dstOuterShapeCol);
+        assert(nz_kStep == off_dstOuterShapeRow);
+        assert(nz_srcStride == off_srcStride);
+        assert(nz_dstStride == off_dstStride);
+    }
+
+    std::cout << "[Test 10 Passed] Fractal zN index contract, LoadTile2D and LoadTile2DNzToNz parameters verified!" << std::endl;
 }
 
 int main() {

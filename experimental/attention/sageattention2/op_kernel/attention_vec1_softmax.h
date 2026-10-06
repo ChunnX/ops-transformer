@@ -140,7 +140,7 @@ public:
             int32_t dot = 0;
             for (uint32_t c = 0; c < ctx.d; ++c) {
                 const int8_t q_val = l1_q[Catlass::SageAttn::ZnIndex(row, c, ctx.TotalRows())];
-                const int8_t k_val = l1_k[Catlass::SageAttn::ZnIndex(c, j, ctx.d)];
+                const int8_t k_val = l1_k[Catlass::SageAttn::ZnIndex(j, c, ctx.block_n)];
                 dot += static_cast<int32_t>(q_val) * static_cast<int32_t>(k_val);
             }
             logits_row[j] = twin::DequantQkLogit(

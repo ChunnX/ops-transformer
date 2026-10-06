@@ -72,13 +72,14 @@ public:
     }
 
     /**
-     * 加载 K 分块：从 L1 Bank 1 搬入 L0B（zN -> nZ 硬件转置）
-     * K^T 矩阵在 L1 中按 [k, n] = [d, block_n] 存放
+     * 加载 K 分块：从 L1 Bank 1 搬入 L0B（零标量 DMA 直通链路，nZ -> nZ 硬件直载）
+     * 配合数学恒等式 zN(block_n, d) ≡ nZ(d, block_n)，K 矩阵在 L1 中已天然为 nZ([d, block_n]) 存放。
+     * 消灭 UB 标量转置与 MTE1 硬件转置，直达 MMAD nZ 格式。
      */
     __aicore__ inline __attribute__((always_inline)) void LoadL0B(uint32_t l1_k_addr, uint32_t k, uint32_t n) {
         k_ = k;
         n_ = n;
-        LoadTile2D<ElementB, AscendC::TPosition::B2, AscendC::TPosition::B1>(0U, l1_k_addr, k, n, true);
+        LoadTile2DNzToNz<ElementB, AscendC::TPosition::B2, AscendC::TPosition::B1>(0U, l1_k_addr, k, n);
     }
 
     /**

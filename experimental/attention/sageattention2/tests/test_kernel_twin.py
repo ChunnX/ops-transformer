@@ -563,6 +563,23 @@ def official_catlass_zn_offset(row: int, col: int, org_rows: int, org_cols: int,
     return offset
 
 
+def official_catlass_nz_offset(row: int, col: int, org_rows: int, org_cols: int, ele_bytes: int = 1) -> int:
+    """官方 Catlass::layout::nZ::GetOffset 的 Python 等价实现。"""
+    c0_num_per_fractal = 16
+    ele_num_per_c0 = 32 // ele_bytes
+    ele_num_per_fractal = 512 // ele_bytes
+    rows_round = (org_rows + ele_num_per_c0 - 1) // ele_num_per_c0 * ele_num_per_c0
+    cols_round = (org_cols + c0_num_per_fractal - 1) // c0_num_per_fractal * c0_num_per_fractal
+    stride_rows_by_fractal = cols_round * ele_num_per_c0
+    offset = (
+        (row // ele_num_per_c0) * stride_rows_by_fractal
+        + (col // c0_num_per_fractal) * ele_num_per_fractal
+        + (row % ele_num_per_c0) * 1
+        + (col % c0_num_per_fractal) * ele_num_per_c0
+    )
+    return offset
+
+
 class TestL1FractalDumpVsCatlass(unittest.TestCase):
     """L1 Fractal zN Formula Contract vs CATLASS.
 
@@ -635,30 +652,30 @@ class TestL1FractalDumpVsCatlass(unittest.TestCase):
                         q_rec[r, c] = q_l1[zn_index(r, c, m)]
                 self.assertTrue(torch.equal(q_rec, q), "Q L1 buffer bit-exact mismatch")
 
-                # 2. K^T [K, N] (where V0 writes pre-transposed K from [N, K])
+                # 2. K [N, K] (V0 零标量直写 CopyUbToL1zN，经恒等式 zN(N, K) ≡ nZ(K, N) 直达 L0B)
                 k_mat = torch.randint(-128, 127, (n, k), dtype=torch.int8)
-                k_aligned = (k + 15) & ~15
-                n_blocks = (n + 31) // 32
-                k_l1_size = n_blocks * k_aligned * 32
+                n_aligned = (n + 15) & ~15
+                k_blocks = (k + 31) // 32
+                k_l1_size = k_blocks * n_aligned * 32
                 k_l1 = torch.zeros(k_l1_size, dtype=torch.int8)
 
                 for j in range(n):
                     for c in range(k):
-                        k_l1[zn_index(c, j, k)] = k_mat[j, c]
+                        k_l1[zn_index(j, c, n)] = k_mat[j, c]
 
                 for j in range(n):
                     for c in range(k):
-                        self.assertEqual(k_l1[zn_index(c, j, k)].item(), k_mat[j, c].item())
+                        self.assertEqual(k_l1[zn_index(j, c, n)].item(), k_mat[j, c].item())
+                        self.assertEqual(zn_index(j, c, n), official_catlass_nz_offset(c, j, k, n))
 
                 k_rec = torch.zeros_like(k_mat)
                 for j in range(n):
                     for c in range(k):
-                        k_rec[j, c] = k_l1[zn_index(c, j, k)]
-                self.assertTrue(torch.equal(k_rec, k_mat), "K^T L1 buffer bit-exact mismatch")
+                        k_rec[j, c] = k_l1[official_catlass_nz_offset(c, j, k, n)]
+                self.assertTrue(torch.equal(k_rec, k_mat), "K direct L1 buffer nZ bit-exact mismatch")
 
                 # 3. V [N, K]
                 v = torch.randint(0, 255, (n, k), dtype=torch.uint8)
-                n_aligned = (n + 15) & ~15
                 k_blocks_v = (k + 31) // 32
                 v_l1_size = k_blocks_v * n_aligned * 32
                 v_l1 = torch.zeros(v_l1_size, dtype=torch.uint8)
@@ -703,15 +720,16 @@ class TestL1FractalDumpVsCatlass(unittest.TestCase):
             for c in range(k):
                 self.assertEqual(q_l1[zn_index(r, c, m)].item(), q_tile[r, c].item())
 
-        # 2. K^T L1 bit-exact match (V0 预转置写)
-        k_l1 = torch.zeros(((n + 31) // 32) * ((k + 15) & ~15) * 32, dtype=torch.int8)
+        # 2. K L1 bit-exact match (V0 零标量 DMA 直通链路：CopyUbToL1zN 直写)
+        k_l1 = torch.zeros(((k + 31) // 32) * ((n + 15) & ~15) * 32, dtype=torch.int8)
         for j in range(n):
             for c in range(k):
-                k_l1[zn_index(c, j, k)] = k_tile[j, c]
+                k_l1[zn_index(j, c, n)] = k_tile[j, c]
 
         for j in range(n):
             for c in range(k):
-                self.assertEqual(k_l1[zn_index(c, j, k)].item(), k_tile[j, c].item())
+                self.assertEqual(k_l1[zn_index(j, c, n)].item(), k_tile[j, c].item())
+                self.assertEqual(zn_index(j, c, n), official_catlass_nz_offset(c, j, k, n))
 
         # 3. V L1 bit-exact match
         v_l1 = torch.zeros(((k + 31) // 32) * ((n + 15) & ~15) * 32, dtype=torch.uint8)
@@ -723,35 +741,7 @@ class TestL1FractalDumpVsCatlass(unittest.TestCase):
             for c in range(k):
                 self.assertEqual(v_l1[zn_index(j, c, n)].item(), v_tile[j, c].item())
 
-        print(f"\n[twin fractal] {case_id} Q/K^T/V fractal L1 buffer bit-exact match confirmed!")
-
-    def test_transpose_b8_tiled_vs_scalar(self):
-        """验证 8x8 分块转置原语 TransposeB8VF 与逐点标量转置位级 100% 严格恒等。"""
-        test_shapes = [
-            (64, 64),
-            (64, 128),
-            (128, 64),
-            (128, 128),
-            (32, 64),
-            (16, 128),
-        ]
-        for rows, cols in test_shapes:
-            with self.subTest(rows=rows, cols=cols):
-                src = torch.randint(-128, 127, (rows, cols), dtype=torch.int8)
-                dst_scalar = torch.zeros((cols, rows), dtype=torch.int8)
-                for r in range(rows):
-                    for c in range(cols):
-                        dst_scalar[c, r] = src[r, c]
-
-                dst_tiled = torch.zeros((cols, rows), dtype=torch.int8)
-                for r in range(0, rows, 8):
-                    for c in range(0, cols, 8):
-                        for dr in range(8):
-                            for dc in range(8):
-                                dst_tiled[c + dc, r + dr] = src[r + dr, c + dc]
-
-                self.assertTrue(torch.equal(dst_scalar, dst_tiled))
-                self.assertTrue(torch.equal(dst_tiled, src.t()))
+        print(f"\n[twin fractal] {case_id} Q/K/V fractal L1 buffer bit-exact match confirmed!")
 
 
 if __name__ == "__main__":

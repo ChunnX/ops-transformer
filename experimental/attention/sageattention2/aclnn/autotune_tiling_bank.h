@@ -29,13 +29,13 @@ struct TunedTilingEntry {
 };
 
 static constexpr TunedTilingEntry kAscend950TunedBank[] = {
-    {"P-01", 32u, 128u, 16u, true},
-    {"P-02", 32u, 128u, 16u, true},
-    {"P-03", 32u, 128u, 16u, true},
-    {"P-04", 32u, 128u, 16u, true},
+    {"P-01", 128u, 128u, 16u, true},
+    {"P-02", 128u, 128u, 16u, true},
+    {"P-03", 128u, 128u, 16u, true},
+    {"P-04", 128u, 128u, 16u, true},
     {"P-05", 32u, 128u, 16u, true},
-    {"P-06", 32u, 128u, 16u, true},
-    {"P-07", 32u, 128u, 16u, true},
+    {"P-06", 128u, 128u, 16u, true},
+    {"P-07", 128u, 128u, 16u, true},
 };
 
 [[nodiscard]] inline const TunedTilingEntry* QueryTunedTiling(std::string_view case_id) {
