@@ -47,7 +47,6 @@ using SlotV0StageStrip  = StaticSlot<Catlass::SageAttn::Vector0UbBudget::QUANT_S
 using SlotV0VMin        = StaticSlot<Catlass::SageAttn::Vector0UbBudget::QUANT_VMIN_OFFSET, 512>;
 using SlotV0VSum        = StaticSlot<Catlass::SageAttn::Vector0UbBudget::QUANT_VSUM_OFFSET, 512>;
 using SlotV0VScale      = StaticSlot<Catlass::SageAttn::Vector0UbBudget::QUANT_VSCALE_OFFSET, 512>;
-using SlotV0NzOutput    = StaticSlot<Catlass::SageAttn::Vector0UbBudget::NZ_OUTPUT_OFFSET, 512>;
 
 // --- Vector 1 UB 槽编译期守卫 ---
 using SlotV1OAccum      = StaticSlot<Catlass::SageAttn::Vector1UbBudget::O_ACCUM_OFFSET, Catlass::SageAttn::Vector1UbBudget::O_ACCUM_BYTES>;

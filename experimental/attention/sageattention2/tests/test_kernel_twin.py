@@ -62,6 +62,11 @@ if str(OP_ROOT / "python") not in sys.path:
 from _cxx import cxx, cxx_link_flags  # noqa: E402
 
 
+def _log_debug(msg: str) -> None:
+    if os.environ.get("SAGE_VERBOSE"):
+        print(msg)
+
+
 # 与 tiling.h / quant_common.h 的编码唯一定义一致
 # 编码镜像唯一定义点：tests/tiling_mirror.py（锚定 tiling.h 枚举）
 from tiling_mirror import (  # noqa: E402
@@ -344,9 +349,9 @@ class TestTwinFullPipelineVsGolden(GoldenTwinTestBase):
         """P-01 主档整桶：per_thread + fp32+fp16 + smooth_k，另附量化中间态位级比对。"""
         case_id = "P-01_per_thread_fp32+fp16_fp16_HND"
         stats = self._run_full_bucket(case_id)
-        print(f"\n[twin] {case_id}: matched={stats['matched_ratio']:.6f} "
-              f"max_abs={stats['max_abs_error']:.6g} lse={stats['lse_max_diff']:.3e} "
-              f"lb=({stats['ratio_max']:.3f}/{stats['ratio_mean']:.3f}/{stats['ratio_rmse']:.3f})")
+        _log_debug(f"\n[twin] {case_id}: matched={stats['matched_ratio']:.6f} "
+                   f"max_abs={stats['max_abs_error']:.6g} lse={stats['lse_max_diff']:.3e} "
+                   f"lb=({stats['ratio_max']:.3f}/{stats['ratio_mean']:.3f}/{stats['ratio_rmse']:.3f})")
 
         # 量化中间态位级比对（孪生经 quant 层唯一定义产出，与 golden 落盘逐字节对照）
         q = _load_tensor(case_id, "q")
@@ -384,14 +389,14 @@ class TestTwinFullPipelineVsGolden(GoldenTwinTestBase):
     def test_tc05_pad_d48_bucket(self):
         """TC-05_pad_d48 整桶：d48→d_pad64 补零与 d_og 裁剪全链路。"""
         stats = self._run_full_bucket("TC-05_pad_d48")
-        print(f"\n[twin] TC-05_pad_d48: matched={stats['matched_ratio']:.6f} "
-              f"max_abs={stats['max_abs_error']:.6g} lse={stats['lse_max_diff']:.3e}")
+        _log_debug(f"\n[twin] TC-05_pad_d48: matched={stats['matched_ratio']:.6f} "
+                   f"max_abs={stats['max_abs_error']:.6g} lse={stats['lse_max_diff']:.3e}")
 
     def test_tc07_causal_per_warp_bucket(self):
         """TC-07_causal_per_warp 整桶：causal 掩码 + per_warp RNE 量化。"""
         stats = self._run_full_bucket("TC-07_causal_per_warp")
-        print(f"\n[twin] TC-07_causal_per_warp: matched={stats['matched_ratio']:.6f} "
-              f"max_abs={stats['max_abs_error']:.6g} lse={stats['lse_max_diff']:.3e}")
+        _log_debug(f"\n[twin] TC-07_causal_per_warp: matched={stats['matched_ratio']:.6f} "
+                   f"max_abs={stats['max_abs_error']:.6g} lse={stats['lse_max_diff']:.3e}")
 
     def test_p_bucket_matrix(self):
         """P-02/P-03(causal)/P-04(batch2)/P-06(bf16) 整桶 L-A/L-B。"""
@@ -447,9 +452,9 @@ class TestTwinFullPipelineVsGolden(GoldenTwinTestBase):
                         ref_out[0, head, w_beg:w_end].unsqueeze(0),
                         ref_lse[0, head, w_beg:w_end].unsqueeze(0),
                         _load_tensor(case_id, "out_sdpa_fp32")[0, head, w_beg:w_end].unsqueeze(0))
-                    print(f"\n[twin row_window] {case_id}[h{head},{w_beg}:{w_end}]: "
-                          f"matched={stats['matched_ratio']:.6f} max_abs={stats['max_abs_error']:.6g} "
-                          f"lse={stats['lse_max_diff']:.3e}")
+                    _log_debug(f"\n[twin row_window] {case_id}[h{head},{w_beg}:{w_end}]: "
+                               f"matched={stats['matched_ratio']:.6f} max_abs={stats['max_abs_error']:.6g} "
+                               f"lse={stats['lse_max_diff']:.3e}")
 
     def test_manifest_bucket_coverage(self):
         """门禁自检：25 桶全部被本文件覆盖（整桶或行窗口；smooth_v 正路径已入基线）。"""
@@ -488,47 +493,47 @@ class TestKernelHostSerialBranchVsGolden(GoldenTwinTestBase):
     def test_tc03_smooth_v_kernel_host(self):
         """TC-03 smooth_v 正路径（fp32 档）：V 减均值量化 + PV 反量化 +vm 全链路。"""
         stats = self._run_kernel_host_bucket("TC-03_smooth_v_fp32")
-        print(f"\n[kernel-host] TC-03_smooth_v_fp32: matched={stats['matched_ratio']:.6f} "
-              f"max_abs={stats['max_abs_error']:.6g} lse={stats['lse_max_diff']:.3e}")
+        _log_debug(f"\n[kernel-host] TC-03_smooth_v_fp32: matched={stats['matched_ratio']:.6f} "
+                   f"max_abs={stats['max_abs_error']:.6g} lse={stats['lse_max_diff']:.3e}")
 
     def test_tc05_pad_d48_kernel_host(self):
         stats = self._run_kernel_host_bucket("TC-05_pad_d48")
-        print(f"\n[kernel-host] TC-05_pad_d48: matched={stats['matched_ratio']:.6f} "
-              f"max_abs={stats['max_abs_error']:.6g} lse={stats['lse_max_diff']:.3e}")
+        _log_debug(f"\n[kernel-host] TC-05_pad_d48: matched={stats['matched_ratio']:.6f} "
+                   f"max_abs={stats['max_abs_error']:.6g} lse={stats['lse_max_diff']:.3e}")
 
     def test_tc05_pad_d96_kernel_host(self):
         """TC-05_pad_d96 kernel 宿主分支：d96→d_pad128 补零与裁剪（pad128 域，
         与 d48 的 pad64 域互补；C++ 宿主仿真 tests/test_kernel_host_sim.cpp 的
         pad_d48/pad_d96 用例为同域位级判据）。"""
         stats = self._run_kernel_host_bucket("TC-05_pad_d96")
-        print(f"\n[kernel-host] TC-05_pad_d96: matched={stats['matched_ratio']:.6f} "
-              f"max_abs={stats['max_abs_error']:.6g} lse={stats['lse_max_diff']:.3e}")
+        _log_debug(f"\n[kernel-host] TC-05_pad_d96: matched={stats['matched_ratio']:.6f} "
+                   f"max_abs={stats['max_abs_error']:.6g} lse={stats['lse_max_diff']:.3e}")
 
     def test_tc07_causal_per_warp_kernel_host(self):
         stats = self._run_kernel_host_bucket("TC-07_causal_per_warp")
-        print(f"\n[kernel-host] TC-07_causal_per_warp: matched={stats['matched_ratio']:.6f} "
-              f"max_abs={stats['max_abs_error']:.6g} lse={stats['lse_max_diff']:.3e}")
+        _log_debug(f"\n[kernel-host] TC-07_causal_per_warp: matched={stats['matched_ratio']:.6f} "
+                   f"max_abs={stats['max_abs_error']:.6g} lse={stats['lse_max_diff']:.3e}")
 
     def test_tc01_nhd_kernel_host(self):
         stats = self._run_kernel_host_bucket("TC-01_nhd_layout_fp16")
-        print(f"\n[kernel-host] TC-01_nhd_layout_fp16: matched={stats['matched_ratio']:.6f} "
-              f"max_abs={stats['max_abs_error']:.6g} lse={stats['lse_max_diff']:.3e}")
+        _log_debug(f"\n[kernel-host] TC-01_nhd_layout_fp16: matched={stats['matched_ratio']:.6f} "
+                   f"max_abs={stats['max_abs_error']:.6g} lse={stats['lse_max_diff']:.3e}")
 
     def test_tc04_smooth_lse_kernel_host(self):
         stats = self._run_kernel_host_bucket("TC-04_return_lse")
-        print(f"\n[kernel-host] TC-04_return_lse: matched={stats['matched_ratio']:.6f} "
-              f"max_abs={stats['max_abs_error']:.6g} lse={stats['lse_max_diff']:.3e}")
+        _log_debug(f"\n[kernel-host] TC-04_return_lse: matched={stats['matched_ratio']:.6f} "
+                   f"max_abs={stats['max_abs_error']:.6g} lse={stats['lse_max_diff']:.3e}")
 
     def test_p01_main_bucket_kernel_host(self):
         stats = self._run_kernel_host_bucket("P-01_per_thread_fp32+fp16_fp16_HND")
-        print(f"\n[kernel-host] P-01 主档: matched={stats['matched_ratio']:.6f} "
-              f"max_abs={stats['max_abs_error']:.6g} lse={stats['lse_max_diff']:.3e}")
+        _log_debug(f"\n[kernel-host] P-01 主档: matched={stats['matched_ratio']:.6f} "
+                   f"max_abs={stats['max_abs_error']:.6g} lse={stats['lse_max_diff']:.3e}")
 
     def test_tc01_nhd_bf16_kernel_host(self):
         """TC-01 NHD bf16 桶：核内 input_dtype==2 分支（bf16 读写与 km 差值位型舍回）。"""
         stats = self._run_kernel_host_bucket("TC-01_nhd_layout_bf16")
-        print(f"\n[kernel-host] TC-01_nhd_layout_bf16: matched={stats['matched_ratio']:.6f} "
-              f"max_abs={stats['max_abs_error']:.6g} lse={stats['lse_max_diff']:.3e}")
+        _log_debug(f"\n[kernel-host] TC-01_nhd_layout_bf16: matched={stats['matched_ratio']:.6f} "
+                   f"max_abs={stats['max_abs_error']:.6g} lse={stats['lse_max_diff']:.3e}")
 
 
 def zn_index(row: int, col: int, total_rows: int) -> int:
@@ -741,7 +746,7 @@ class TestL1FractalDumpVsCatlass(unittest.TestCase):
             for c in range(k):
                 self.assertEqual(v_l1[zn_index(j, c, n)].item(), v_tile[j, c].item())
 
-        print(f"\n[twin fractal] {case_id} Q/K/V fractal L1 buffer bit-exact match confirmed!")
+        _log_debug(f"\n[twin fractal] {case_id} Q/K/V fractal L1 buffer bit-exact match confirmed!")
 
 
 if __name__ == "__main__":

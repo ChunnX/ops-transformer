@@ -246,7 +246,6 @@ def twin_reference(
     smooth_k: bool = False, smooth_v: bool = False, pv_accum_dtype: str = "fp32+fp16"
 ) -> Any:
     """SageAttention2 CPU 孪生参考计算 (高保真 INT8 QK + FP8 PV 量化参比)"""
-    import math
     from sageattention2.dispatch import run_sageattn_cpu_reference
 
     d = q.shape[-1]

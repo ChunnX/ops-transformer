@@ -638,43 +638,6 @@ public:
         }
     }
 
-    __aicore__ inline __attribute__((always_inline)) void TestVec0Standalone()
-    {
-        if (!is_active_core_) return;
-        vec0_.ProcessStandalone(ctx_);
-    }
-
-    __aicore__ inline __attribute__((always_inline)) void TestCubeStandalone()
-    {
-        if (!is_active_core_) return;
-        CubeBlockParams p{ctx_.TotalRows(), ctx_.block_n, ctx_.d};
-        cube_.TestProcessStandalone(p, ctx_.active_kv_blocks, ctx_.l1_q_offset,
-                                   SlotV1Dot32::Offset(), SlotV1PvPartial::Offset());
-    }
-
-    __aicore__ inline __attribute__((always_inline)) void TestVec1Standalone()
-    {
-        if (!is_active_core_) return;
-        softmax_.ResetRowStates(ctx_.TotalRows());
-        output_.ResetAccumulator(ctx_);
-        const uint32_t active_kv_blocks = ctx_.active_kv_blocks;
-        for (uint32_t k = 0; k < active_kv_blocks; ++k) {
-            bool is_ping = ((k % 2) == 0);
-            if (k == 0) {
-                softmax_.StageV1ScaleStrips(ctx_);
-            }
-            softmax_.StageKScaleStrip(ctx_, k);
-            softmax_.ProcessBlock(ctx_, k, is_ping);
-        }
-        if (active_kv_blocks > 0) {
-            output_.MergePartialRows(ctx_, active_kv_blocks);
-        }
-        output_.FinalizeAndStore(ctx_, softmax_.GetRowStates());
-    }
-
-    __aicore__ inline const TaskContext &GetContext() const { return ctx_; }
-    __aicore__ inline bool IsActiveCore() const { return is_active_core_; }
-
 private:
     TaskContext ctx_;
     uint64_t task_end_{0};

@@ -168,60 +168,11 @@ public:
         AttentionSync::CubeSignalPvDone();
     }
 
-    __aicore__ inline __attribute__((always_inline)) void TestProcessStandalone(
-        const CubeBlockParams &params,
-        uint32_t active_kv_blocks,
-        uint32_t l1_q_offset,
-        uint32_t ub_dot32_offset,
-        uint32_t ub_pv_partial_offset)
-    {
-#if SAGE_ATTN_DEVICE_COMPILE
-        Catlass::SageAttn::SageQkMmad<> qk_mmad;
-        Catlass::SageAttn::SagePvMmad<> pv_mmad;
-
-        // 加载 Q 分块至 L0A: (rows, d)
-        qk_mmad.LoadL0A(l1_q_offset, params.rows, params.d);
-        Catlass::SageAttn::Sync<HardEvent::MTE1_M>();
-
-        for (uint32_t k = 0; k < active_kv_blocks; ++k) {
-            bool is_ping = ((k % 2) == 0);
-            uint32_t l1_kv_addr = is_ping ? SlotL1KvPing::Offset() : SlotL1KvPong::Offset();
-
-            if (k > 0) {
-                StepPvMmadBare(pv_mmad, params, ((k - 1) % 2) == 0, ub_pv_partial_offset);
-            }
-
-            if (k > 0) {
-                qk_mmad.LoadL0A(l1_q_offset, params.rows, params.d);
-            }
-            qk_mmad.LoadL0B(l1_kv_addr, params.d, params.block_n);
-            Catlass::SageAttn::Sync<HardEvent::MTE1_M>();
-            qk_mmad.Compute(true);
-            Catlass::SageAttn::Sync<HardEvent::M_FIX>();
-
-            qk_mmad.EmitL0CToUbRaw(ub_dot32_offset, params.rows, params.block_n);
-            Catlass::SageAttn::Sync<HardEvent::FIX_M>();
-        }
-
-        if (active_kv_blocks > 0) {
-            StepPvMmadBare(pv_mmad, params, ((active_kv_blocks - 1) % 2) == 0, ub_pv_partial_offset);
-        }
-#else
-        (void)params;
-        (void)active_kv_blocks;
-        (void)l1_q_offset;
-        (void)ub_dot32_offset;
-        (void)ub_pv_partial_offset;
-#endif
-    }
-
-
 private:
 #if SAGE_ATTN_DEVICE_COMPILE
     /**
      * \brief PV MMAD 裸指令核（Load L0A/L0B → Compute，L0C 结果在途）：
-     * StepPvMmad 与诊断探针 TestProcessStandalone 共用的最小序列；跨核同步
-     * （Softmax/Partial 握手）由各调用方按各自流水语义显式编排，核内零同步。
+     * StepPvMmad 共用的最小指令序列；跨核同步（Softmax/Partial 握手）由各调用方按各自流水语义显式编排，核内零同步。
      */
     __aicore__ inline __attribute__((always_inline)) void StepPvMmadCore(
         Catlass::SageAttn::SagePvMmad<> &pv_mmad,
@@ -282,18 +233,6 @@ private:
                 AttentionSync::CubeSignalPartialReady();
             }
         }
-    }
-
-    /** 诊断探针专用：裸核 + 部分和搬出（无跨核握手，Stage 单核流水观测用）。 */
-    __aicore__ inline __attribute__((always_inline)) void StepPvMmadBare(
-        Catlass::SageAttn::SagePvMmad<> &pv_mmad,
-        const CubeBlockParams &params,
-        bool is_ping,
-        uint32_t ub_pv_partial_offset)
-    {
-        StepPvMmadCore(pv_mmad, params, is_ping, true);
-        pv_mmad.ExecuteEpilogue(ub_pv_partial_offset);
-        Catlass::SageAttn::Sync<HardEvent::FIX_M>();
     }
 #endif
 };

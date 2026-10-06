@@ -707,44 +707,6 @@ public:
         }
     }
 
-    __aicore__ inline __attribute__((always_inline)) void ProcessStandalone(const TaskContext &ctx)
-    {
-#if SAGE_ATTN_DEVICE_COMPILE
-        int64_t b_idx = static_cast<int64_t>(ctx.cur_b);
-        int64_t hkv_idx = static_cast<int64_t>(ctx.cur_hkv);
-        int64_t sq_start = static_cast<int64_t>(ctx.cur_q_start);
-        int64_t hq_first = hkv_idx * static_cast<int64_t>(ctx.gqa_ratio) + static_cast<int64_t>(ctx.cur_g0);
-
-        const Catlass::SageAttn::GmBhsdLayout q_layout =
-            Catlass::SageAttn::MakeGmBhsdLayout(ctx.b, ctx.hq, ctx.sq, ctx.d, ctx.is_hnd != 0);
-        const int64_t q_gm_offset = q_layout(tla::MakeCoord(b_idx, hq_first, sq_start, 0u));
-
-        // 1. Prologue：加载 Q，执行量化写 L1 和 StageStrip
-        LoadAndQuantizeQ(ctx, ctx.query_gm + q_gm_offset * sizeof(uint16_t), q_layout);
-
-        const uint32_t active_kv_blocks = ctx.active_kv_blocks;
-        const Catlass::SageAttn::GmBhsdLayout kv_layout =
-            Catlass::SageAttn::MakeGmBhsdLayout(ctx.b, ctx.hkv, ctx.sk, ctx.d, ctx.is_hnd != 0);
-        for (uint32_t k = 0; k < active_kv_blocks; ++k) {
-            bool is_ping = ((k % 2) == 0);
-            uint32_t l1_dst_offset = is_ping ? SlotL1KvPing::Offset() : SlotL1KvPong::Offset();
-            int64_t sk_start = static_cast<int64_t>(k) * ctx.block_n;
-            uint32_t cur_block_k = ctx.CurBlockK(k);
-
-            const int64_t kv_gm_offset = kv_layout(tla::MakeCoord(b_idx, hkv_idx, sk_start, 0u));
-
-            LoadAndQuantizeK(ctx, ctx.key_gm + kv_gm_offset * sizeof(uint16_t), nullptr,
-                             k, l1_dst_offset);
-
-            QuantizeAndStageValue(ctx, ctx.value_gm + kv_gm_offset * sizeof(uint16_t),
-                                  is_ping ? SlotL1VPing::Offset() : SlotL1VPong::Offset(),
-                                  k, cur_block_k, kv_layout);
-        }
-#else
-        (void)ctx;
-#endif
-    }
-
 private:
     uint32_t cached_b_{UINT32_MAX};
     uint32_t cached_hkv_{UINT32_MAX};

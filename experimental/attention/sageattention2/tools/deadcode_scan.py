@@ -49,9 +49,7 @@ FP_PY_DUP_IMPORT_OK = {"torch", "torch_npu", "F"}  # 函数级重复导入 = spa
 FP_CPP_FUNC = re.compile(      # 零调用扫描的活类别（框架宏注册/外部绑定/局部变量等）
     r"^(OP_TYPE_REGISTER|ADD_TO_LAUNCHER_LIST_AICORE|OP_INPUT|OP_ATTR|L2_DFX_PHASE"
     r"|DFX_IN|DFX_OUT|CommonOpExecutorRun|OP_ADD|REG_OP|IMPL_OP|TilingSage"
-    r"|ParseSage|aclrt|aclDestroy|aclFinalize|PYBIND11_MODULE"
-    r"|TestVec\d|TestCube|GetCube|GetVec\d|GetSoftmax|GetOutput|IsActiveCore"
-    r"|TestProcessStandalone|GetContext)"
+    r"|ParseSage|aclrt|aclDestroy|aclFinalize|PYBIND11_MODULE)"
     r"|^(SageAttnTwinRunForward|SageAttnTwinQuantDump)"  # ctypes 绑定孪生入口
     r"|^(setenv|unsetenv|memcmp|fflush|memset|memcpy|printf)$"  # C 标准库调用伪检测
     r"|^(NodeInfoWithAttrs|TestInferShapeContextHolder|TestInferDataTypeContextHolder"
