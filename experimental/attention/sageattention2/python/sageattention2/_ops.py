@@ -148,33 +148,3 @@ if not hasattr(getattr(torch.ops, "sageattention2", None), "forward"):
         out = out_pad[..., :head_dim_og].contiguous()
         return out, lse
 
-
-def run(
-    q: torch.Tensor,
-    k: torch.Tensor,
-    v: torch.Tensor,
-    *,
-    tensor_layout: str = DEFAULT_TENSOR_LAYOUT,
-    is_causal: bool = False,
-    qk_quant_gran: str = DEFAULT_QK_QUANT_GRAN,
-    sm_scale: float | None = None,
-    pv_accum_dtype: str = DEFAULT_PV_ACCUM_DTYPE,
-    smooth_k: bool = True,
-    smooth_v: bool = False,
-    return_lse: bool = False,
-) -> tuple[torch.Tensor, torch.Tensor | None]:
-    """Helper invoking torch.ops.sageattention2.forward directly."""
-    return torch.ops.sageattention2.forward(
-        q,
-        k,
-        v,
-        tensor_layout=tensor_layout,
-        is_causal=is_causal,
-        qk_quant_gran=qk_quant_gran,
-        sm_scale=sm_scale,
-        pv_accum_dtype=pv_accum_dtype,
-        smooth_k=smooth_k,
-        smooth_v=smooth_v,
-        return_lse=return_lse,
-    )
-

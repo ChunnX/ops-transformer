@@ -41,7 +41,7 @@ def source_files(exts):
 
 # --- 已归档误报类别（历轮裁定记录，删改前先对码台账） ---
 FP_PY_IGNORE_DEF = re.compile(
-    r"^(Test|test_)"              # pytest 发现面
+    r"^(Test|test_|pytest_)"      # pytest 发现面与生命周期钩子（如 pytest_sessionfinish）
     r"|^_timeout_handler$"        # signal handler 签名
     r"|^main$")
 FP_PY_SIDE_EFFECT_IMPORT = {"torch_npu"}   # 注册 torch.npu 后端的副作用导入
