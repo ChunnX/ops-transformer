@@ -335,15 +335,14 @@ __simd_callee__ __aicore__ inline __attribute__((always_inline)) void DequantSto
  */
 __simd_callee__ __aicore__ inline __attribute__((always_inline)) void ExpSubAccumChunkVF(
     AscendC::Reg::RegTensor<float>& val, AscendC::Reg::RegTensor<float>& max_nat,
-    AscendC::Reg::RegTensor<float>& e4m3_max_reg, AscendC::Reg::RegTensor<float>& sum_val) {
+    AscendC::Reg::RegTensor<float>& sum_val) {
     using namespace AscendC;
     using namespace AscendC::MicroAPI;
     auto full = CreateMask<float, MaskPattern::ALL>();
     RegTensor<float> nat;
     Muls(val, val, INV_LOG2E, full);
     ExpSub(nat, val, max_nat, full);
-    MulDstAdd(nat, e4m3_max_reg, sum_val, full);
-    sum_val = nat;
+    Add(sum_val, sum_val, nat, full);
 }
 
 /**
@@ -444,6 +443,10 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void DequantMaskMax
         }
 
         ReduceMax(max_val, max_val, full);
+        // Shifted max: m_shift = max_val - S_FP8_OFFSET
+        RegTensor<float> offset;
+        Duplicate(offset, S_FP8_OFFSET);
+        Sub(max_val, max_val, offset, full);
         StoreUnAlign<float, PostLiteral::POST_MODE_UPDATE>(max_ptr, max_val, max_store, 1);
     }
     StoreUnAlignPost(max_ptr, max_store, 0);
@@ -451,8 +454,6 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void DequantMaskMax
 
     // Pass 2: ExpSub 指数求和，写 out_sum_row
     // 独立循环驱动单一 StoreUnAlign 流；对全掩码行守卫赋 0.0f，防止 e^(sentinel - sentinel)=1 虚假和
-    RegTensor<float> e4m3_max_reg;
-    Duplicate(e4m3_max_reg, FP8_E4M3_MAX);
 
     __ubuf__ float* sum_ptr = out_sum_row;
     UnalignReg sum_store;
@@ -474,11 +475,11 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void DequantMaskMax
 
             RegTensor<float> val0;
             LoadAlign(val0, logits_row);
-            ExpSubAccumChunkVF(val0, max_nat, e4m3_max_reg, sum_val);
+            ExpSubAccumChunkVF(val0, max_nat, sum_val);
             if constexpr (NCHUNK > 1u) {
                 RegTensor<float> val1;
                 LoadAlign(val1, logits_row + 64u);
-                ExpSubAccumChunkVF(val1, max_nat, e4m3_max_reg, sum_val);
+                ExpSubAccumChunkVF(val1, max_nat, sum_val);
             }
             ReduceSum(sum_val, sum_val, full);
         }
@@ -625,7 +626,7 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void SoftmaxProbRow
     using namespace AscendC;
     using namespace AscendC::MicroAPI;
     auto full = CreateMask<float, MaskPattern::ALL>();
-    static constexpr CastTrait toFp8{RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+    static constexpr CastTrait toFp8{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
     for (uint32_t r = 0; r < rows; ++r) {
         RegTensor<float> m_nat;
         LoadAlign<float, LoadDist::DIST_BRC_B32>(m_nat, running_max + r);
@@ -638,7 +639,6 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void SoftmaxProbRow
             LoadAlign(logit_val, logits + j);
             Muls(logit_val, logit_val, INV_LOG2E, full);
             ExpSub(exp_val, logit_val, m_nat, full);
-            Muls(exp_val, exp_val, FP8_E4M3_MAX, full);
             Cast<float8_e4m3_t, float, toFp8>(packed, exp_val, full);
             StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(out_p + j, packed, full);
         }

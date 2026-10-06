@@ -155,10 +155,10 @@ public:
             cur_sum = 0.0f;
             return;
         }
-        cur_max = row_max;
+        cur_max = row_max - S_FP8_OFFSET;
         cur_sum = twin::OnlineBlockExp2Sum(logits_row, cur_k_start,
                                            cur_k_start, cur_k_start + ctx.block_n,
-                                           ctx.is_causal != 0, token_q, row_max);
+                                           ctx.is_causal != 0, token_q, cur_max);
     }
 
     __aicore__ inline __attribute__((always_inline)) void RescaleAccumulator(

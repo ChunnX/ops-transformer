@@ -214,7 +214,8 @@ public:
         bool is_smooth_k,
         float s_fp8_offset) {
 
-        float lse_true = (lse_exp2 - s_fp8_offset) * INV_LOG2E;
+        // With shifted max, lse_exp2 is already the true exp2 LSE, so we do not subtract s_fp8_offset
+        float lse_true = lse_exp2 * INV_LOG2E;
         if (is_smooth_k) {
             lse_true += lse_correction * sm_scale;
         }

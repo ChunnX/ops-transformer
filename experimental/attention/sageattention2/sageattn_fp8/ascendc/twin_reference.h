@@ -14,9 +14,8 @@
  *    不变量 m_scale == m_run 下 m_scale→m_run 补偿因子恒为 1.0f，不再保留恒等乘式）；
  * 3. QK^T 以 INT32 精确累加后一次性乘 (q_scale·k_scale·sm_scale_log2e)，与设备核
  *    INT8 MMAD + 反量化 scale 广播的舍入轨迹一致（优于逐元素反量化相乘的参考路径）；
- * 4. P 矩阵 e4m3 域默认即 448· 放大域：SoftmaxProbCode/OnlineBlockExp2Sum 乘
- *    FP8_E4M3_MAX，LSE 出口 ConvertLseToHost 扣 S_FP8_OFFSET（与已对齐 golden 的
- *    Python 原型口径一致）。恒逐块强锚定重缩放下 m_scale 恒等于 m_run（Step 每块
+ * 4. P 矩阵 e4m3 域默认即 448· 放大域：shifted-max 约定，块内 max 减去 S_FP8_OFFSET
+ *    生成 m_shift，无需显式乘 448。恒逐块强锚定重缩放下 m_scale 恒等于 m_run（Step 每块
  *    必触发 O 重缩放），S_FP8_OFFSET 由 tiling.h 常量唯一定义，设备核同口径
  *    （P 量化锚点 = m_scale）；
  * 5. PV 累加三档独立轨迹（AccumulatePvRow 单点，语义定标见其注释）：fp32 单一运行和 /
@@ -133,15 +132,14 @@ inline float DequantQkLogit(int32_t dot, float q_scale, float k_scale,
  * 轨迹），块行 max 元素恰为 448，填满 e4m3 动态范围后饱和截断 + RNE 转 e4m3 码。
  * m' 为锚点（基线 = 行锚 m_scale，恒逐块强锚定重缩放下恒等于 m_run）。
  */
-inline uint8_t SoftmaxProbCode(float logit_exp2, float m_prime) noexcept {
-    float p = OnlineSoftmaxTransformer::FastExp2(logit_exp2 - m_prime) * FP8_E4M3_MAX;
-    p = std::clamp(p, -FP8_E4M3_MAX, FP8_E4M3_MAX);
+inline uint8_t SoftmaxProbCode(float logit_exp2, float m_shift) noexcept {
+    float p = OnlineSoftmaxTransformer::FastExp2(logit_exp2 - m_shift);
     return quant::FloatToE4m3fn(p);
 }
 
 /** SoftmaxProbCode 的反量化视图（e4m3 码 → float，供标量 PV 累加） */
-inline float SoftmaxProbDequant(float logit_exp2, float m_prime) noexcept {
-    return quant::E4m3fnToFloat(SoftmaxProbCode(logit_exp2, m_prime));
+inline float SoftmaxProbDequant(float logit_exp2, float m_shift) noexcept {
+    return quant::E4m3fnToFloat(SoftmaxProbCode(logit_exp2, m_shift));
 }
 
 /**
@@ -151,13 +149,13 @@ inline float SoftmaxProbDequant(float logit_exp2, float m_prime) noexcept {
  */
 inline float OnlineBlockExp2Sum(const float* s_row, uint32_t s_base,
                                 uint32_t j_beg, uint32_t j_end,
-                                bool is_causal, uint32_t token_q, float cur_max) noexcept {
+                                bool is_causal, uint32_t token_q, float cur_shift_max) noexcept {
     float cur_sum = 0.0f;
     for (uint32_t j = j_beg; j < j_end; ++j) {
         if (is_causal && static_cast<int64_t>(j) > static_cast<int64_t>(token_q)) {
             continue;
         }
-        cur_sum += OnlineSoftmaxTransformer::FastExp2(s_row[j - s_base] - cur_max) * FP8_E4M3_MAX;
+        cur_sum += OnlineSoftmaxTransformer::FastExp2(s_row[j - s_base] - cur_shift_max);
     }
     return cur_sum;
 }
@@ -465,13 +463,14 @@ inline int RunSequential(const TwinIo& io) {
                         continue;  // 整块被因果掩码（前缀行），无贡献
                     }
 
-                    // 5.2 块内 exp2 和（相对块内 max；掩码列不进分母；448· 放大域）——单点
+                    // 5.2 块内 exp2 和
+                    const float cur_shift_max = cur_max - S_FP8_OFFSET;
                     const float cur_sum =
-                        OnlineBlockExp2Sum(s_row.data(), 0, j_beg, j_end, io.is_causal != 0, i, cur_max);
+                        OnlineBlockExp2Sum(s_row.data(), 0, j_beg, j_end, io.is_causal != 0, i, cur_shift_max);
 
-                    // 5.3 在线状态步进（恒逐块强锚定重缩放：对齐 golden 的逐块锚定轨迹）
+                    // 5.3 在线状态步进
                     const float rescale =
-                        OnlineSoftmaxTransformer::Step(state, cur_max, cur_sum);
+                        OnlineSoftmaxTransformer::Step(state, cur_shift_max, cur_sum);
                     if (state.need_rescale && std::fabs(rescale - 1.0f) > SCALE_ONE_TOLERANCE) {
                         for (uint32_t c = 0; c < d_pad; ++c) {
                             o_row[c] *= rescale;
