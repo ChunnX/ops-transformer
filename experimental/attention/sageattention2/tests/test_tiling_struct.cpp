@@ -846,6 +846,42 @@ void TestFractalZnIndexContract() {
     std::cout << "[Test 10 Passed] Fractal zN index contract, LoadTile2D and LoadTile2DNzToNz parameters verified!" << std::endl;
 }
 
+void TestAttributeValidationContract() {
+    std::cout << "[Test 11] Testing attribute whitelist validation contract (layout, gran, accum)..." << std::endl;
+
+    // Compile-time and runtime validation checks
+    static_assert(sage_attn::IsValidTensorLayout("HND"), "HND must be valid");
+    static_assert(sage_attn::IsValidTensorLayout("NHD"), "NHD must be valid");
+    static_assert(!sage_attn::IsValidTensorLayout("BNSD"), "BNSD must be invalid");
+    static_assert(!sage_attn::IsValidTensorLayout(""), "empty layout must be invalid");
+
+    static_assert(sage_attn::IsValidQuantGran("per_thread"), "per_thread must be valid");
+    static_assert(sage_attn::IsValidQuantGran("per_warp"), "per_warp must be valid");
+    static_assert(!sage_attn::IsValidQuantGran("per_token"), "per_token must be invalid (not allowed by contract)");
+    static_assert(!sage_attn::IsValidQuantGran("per_block"), "per_block must be invalid");
+
+    static_assert(sage_attn::IsValidPvAccumDtype("fp32"), "fp32 must be valid");
+    static_assert(sage_attn::IsValidPvAccumDtype("fp32+fp32"), "fp32+fp32 must be valid");
+    static_assert(sage_attn::IsValidPvAccumDtype("fp32+fp16"), "fp32+fp16 must be valid");
+    static_assert(!sage_attn::IsValidPvAccumDtype("fp16"), "fp16 must be invalid");
+    static_assert(!sage_attn::IsValidPvAccumDtype("fp16+fp16"), "fp16+fp16 must be invalid");
+
+    assert(sage_attn::IsValidTensorLayout("HND") == true);
+    assert(sage_attn::IsValidTensorLayout("NHD") == true);
+    assert(sage_attn::IsValidTensorLayout("BNSD") == false);
+
+    assert(sage_attn::IsValidQuantGran("per_thread") == true);
+    assert(sage_attn::IsValidQuantGran("per_warp") == true);
+    assert(sage_attn::IsValidQuantGran("per_token") == false);
+
+    assert(sage_attn::IsValidPvAccumDtype("fp32") == true);
+    assert(sage_attn::IsValidPvAccumDtype("fp32+fp32") == true);
+    assert(sage_attn::IsValidPvAccumDtype("fp32+fp16") == true);
+    assert(sage_attn::IsValidPvAccumDtype("fp16") == false);
+
+    std::cout << "[Test 11 Passed] Attribute whitelist validation contract verified!" << std::endl;
+}
+
 int main() {
     std::cout << "Starting SageAttention2 C++ Contract and Tiling Verification..." << std::endl;
     TestTilingDataLayout();
@@ -858,6 +894,7 @@ int main() {
     TestCausalCutBlockNums();
     TestSplitKvCombineContract();
     TestFractalZnIndexContract();
+    TestAttributeValidationContract();
     std::cout << "All C++ contracts and struct layouts PASSED successfully!" << std::endl;
     return 0;
 }

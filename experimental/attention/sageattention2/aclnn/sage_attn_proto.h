@@ -30,6 +30,21 @@ inline constexpr const char *kDefaultLayout = "HND";
 inline constexpr const char *kDefaultQkQuantGran = "per_thread";
 inline constexpr const char *kDefaultPvAccumDtype = "fp32+fp16";
 
+[[nodiscard]] constexpr inline bool IsValidTensorLayout(std::string_view layout) noexcept
+{
+    return (layout == "HND" || layout == "NHD");
+}
+
+[[nodiscard]] constexpr inline bool IsValidQuantGran(std::string_view gran) noexcept
+{
+    return (gran == "per_thread" || gran == "per_warp");
+}
+
+[[nodiscard]] constexpr inline bool IsValidPvAccumDtype(std::string_view accum) noexcept
+{
+    return (accum == "fp32" || accum == "fp32+fp32" || accum == "fp32+fp16");
+}
+
 [[nodiscard]] inline int64_t TensorLayoutCodeFromString(std::string_view layout) noexcept
 {
     return (layout == "NHD") ? static_cast<int64_t>(TensorLayout::LAYOUT_NHD)

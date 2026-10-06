@@ -69,6 +69,17 @@ static ge::graphStatus TilingSageAttention2(gert::TilingContext *context)
     const bool *smooth_k = (attrs != nullptr) ? attrs->GetBool(sage_attn2_idx::ATTR_SMOOTH_K) : nullptr;
     const bool *smooth_v = (attrs != nullptr) ? attrs->GetBool(sage_attn2_idx::ATTR_SMOOTH_V) : nullptr;
 
+    // 任务书硬契约：严格白名单校验（非法字符串属性必须报错返回 fail-closed）
+    if (layout_str != nullptr && !sage_attn::IsValidTensorLayout(layout_str)) {
+        return ge::GRAPH_FAILED;
+    }
+    if (gran_str != nullptr && !sage_attn::IsValidQuantGran(gran_str)) {
+        return ge::GRAPH_FAILED;
+    }
+    if (accum_str != nullptr && !sage_attn::IsValidPvAccumDtype(accum_str)) {
+        return ge::GRAPH_FAILED;
+    }
+
     // 微秒级极速发射：tiling 热路径禁止 std::string 堆分配，
     // 缺省折叠与编码映射全部走 const char* 比较
     const char *layout = (layout_str != nullptr) ? layout_str : sage_attn::kDefaultLayout;
