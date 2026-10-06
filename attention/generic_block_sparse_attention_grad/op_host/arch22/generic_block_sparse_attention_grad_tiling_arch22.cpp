@@ -565,11 +565,11 @@ ge::graphStatus GBSAGTiling::CalculateWorkSpace(gert::TilingContext *context)
     dPOutSize_ = blockDim_ * WORKSPACE_BLOCK_NUM * WORKSPACE_BLOCK_SIZE * sizeof(float);
     if (layout_ == GsagInputLayout::TND) {
         dQOutSize_ = totalTokensT_ * numHeads_ * headDim_ * sizeof(float);
-        dKOutSize_ = kvTotalSeqlen_ * kvHeads_ * headDim_ * sizeof(float);
+        dKOutSize_ = static_cast<uint64_t>(kvTotalSeqlen_) * kvHeads_ * headDim_ * sizeof(float);
         dVOutSize_ = dKOutSize_;
     } else {
-        dQOutSize_ = batch_ * numHeads_ * maxQSeqlen_ * headDim_ * sizeof(float);
-        dKOutSize_ = batch_ * kvHeads_ * maxKvSeqlen_ * headDim_ * sizeof(float);
+        dQOutSize_ = static_cast<uint64_t>(batch_) * numHeads_ * maxQSeqlen_ * headDim_ * sizeof(float);
+        dKOutSize_ = static_cast<uint64_t>(batch_) * kvHeads_ * maxKvSeqlen_ * headDim_ * sizeof(float);
         dVOutSize_ = dKOutSize_;
     }
     gradSize_ = 0;
