@@ -621,9 +621,58 @@ public:
 #endif
     }
 
+    __aicore__ inline __attribute__((always_inline)) void RunTask()
+    {
+#if SAGE_ATTN_DEVICE_COMPILE
+        if ASCEND_IS_AIC {
+            CubeBlockParams p{ctx_.TotalRows(), ctx_.block_n, ctx_.d};
+            cube_.template Process<1>(p, ctx_.active_kv_blocks, ctx_.l1_q_offset);
+        } else {
+            if (ctx_.sub_core_idx == 0) {
+                vec0_.Process(ctx_);
+            } else {
+                // causal×D 六路派发单点在 ProcessVec1 包装层，此处不重复展开
+                ProcessVec1<1, kDtype>(ctx_, softmax_, output_);
+            }
+        }
+#else
+        vec0_.Process(ctx_);
+        CubeBlockParams p{ctx_.TotalRows(), ctx_.block_n, ctx_.d};
+        cube_.template Process<1>(p, ctx_.active_kv_blocks, ctx_.l1_q_offset);
+        ProcessVec1<1, kDtype>(ctx_, softmax_, output_);
+#endif
+
+        AttentionSync::ReleaseSyncTokens();
+    }
+
     __aicore__ inline __attribute__((always_inline)) void Process()
     {
         if (!is_active_core_) {
+            return;
+        }
+
+        const uint32_t total_heads = ctx_.b * ctx_.hkv * ctx_.gqa_chunks;
+        if (total_heads >= cores_) {
+            uint32_t h_start = ctx_.core_idx;
+            uint32_t h_step = cores_;
+            uint32_t h_limit = total_heads;
+            if (use_die_ && cores_ >= 2u && (cores_ % 2u == 0u) && (total_heads % 2u == 0u)) {
+                const uint32_t half = cores_ / 2u;
+                const uint32_t rank = ctx_.core_idx % half;
+                const uint32_t die_idx = ctx_.core_idx / half;
+                const uint32_t half_heads = total_heads / 2u;
+                h_step = half;
+                h_start = die_idx * half_heads + rank;
+                h_limit = (die_idx + 1u) * half_heads;
+            }
+            for (uint32_t h = h_start; h < h_limit; h += h_step) {
+                vec0_.InvalidateCache();
+                for (uint32_t q = 0; q < q_blks_per_head_; ++q) {
+                    uint64_t task = static_cast<uint64_t>(h) * q_blks_per_head_ + q;
+                    DecodeTask(task, q_blks_per_head_);
+                    RunTask();
+                }
+            }
             return;
         }
 
@@ -632,27 +681,7 @@ public:
                 uint64_t mapped_task = use_die_ ? DieTask(virtual_task, total_tasks_, cores_) : virtual_task;
                 DecodeTask(mapped_task, q_blks_per_head_);
             }
-
-#if SAGE_ATTN_DEVICE_COMPILE
-            if ASCEND_IS_AIC {
-                CubeBlockParams p{ctx_.TotalRows(), ctx_.block_n, ctx_.d};
-                cube_.template Process<1>(p, ctx_.active_kv_blocks, ctx_.l1_q_offset);
-            } else {
-                if (ctx_.sub_core_idx == 0) {
-                    vec0_.Process(ctx_);
-                } else {
-                    // causal×D 六路派发单点在 ProcessVec1 包装层，此处不重复展开
-                    ProcessVec1<1, kDtype>(ctx_, softmax_, output_);
-                }
-            }
-#else
-            vec0_.Process(ctx_);
-            CubeBlockParams p{ctx_.TotalRows(), ctx_.block_n, ctx_.d};
-            cube_.template Process<1>(p, ctx_.active_kv_blocks, ctx_.l1_q_offset);
-            ProcessVec1<1, kDtype>(ctx_, softmax_, output_);
-#endif
-
-            AttentionSync::ReleaseSyncTokens();
+            RunTask();
         }
     }
 
