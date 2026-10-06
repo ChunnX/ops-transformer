@@ -447,6 +447,8 @@ struct L1DoubleBankContract {
     static constexpr uint32_t KV_V_SUB_OFFSET = KV_SLOT_BYTES / 2;          // 槽内 V 子区偏移 (K 居槽首)
     static constexpr uint32_t KV_PING_OFFSET  = BANK1_START;
     static constexpr uint32_t KV_PONG_OFFSET  = BANK1_START + KV_SLOT_BYTES;
+    static constexpr uint32_t V_PING_OFFSET   = KV_PING_OFFSET + KV_V_SUB_OFFSET;
+    static constexpr uint32_t V_PONG_OFFSET   = KV_PONG_OFFSET + KV_V_SUB_OFFSET;
 };
 
 } // namespace Catlass::SageAttn

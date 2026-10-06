@@ -91,8 +91,7 @@ public:
         const bool fp16_accum = (ctx.pv_accum_dtype == PV_ACCUM_FP32_FP16);
         const bool is_ping = ((cur_k % 2) == 0);
         const uint32_t cur_kv_base = is_ping ? SlotL1KvPing::Offset() : SlotL1KvPong::Offset();
-        const uint8_t *l1_v = ctx.sim_mem->l1_mem + cur_kv_base +
-                              Catlass::SageAttn::L1DoubleBankContract::KV_V_SUB_OFFSET;
+        const uint8_t *l1_v = ctx.sim_mem->l1_mem + (is_ping ? SlotL1VPing::Offset() : SlotL1VPong::Offset());
         const uint32_t rows = ctx.TotalRows();
         const uint32_t cur_k_start = cur_k * ctx.block_n;
 

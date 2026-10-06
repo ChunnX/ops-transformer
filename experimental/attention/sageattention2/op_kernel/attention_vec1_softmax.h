@@ -105,7 +105,7 @@ public:
         vec0.QuantizeAndStageKey(ctx, ctx.key_gm + kv_gm_offset * sizeof(uint16_t), km_ptr, l1_dst_offset,
                                  k, cur_block_k, kv_layout);
         vec0.QuantizeAndStageValue(ctx, ctx.value_gm + kv_gm_offset * sizeof(uint16_t),
-                                   l1_dst_offset + Catlass::SageAttn::L1DoubleBankContract::KV_V_SUB_OFFSET,
+                                   is_ping ? SlotL1VPing::Offset() : SlotL1VPong::Offset(),
                                    k, cur_block_k, kv_layout);
     }
 

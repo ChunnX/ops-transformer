@@ -596,7 +596,7 @@ public:
                                 l1_dst_offset, k, cur_block_k, kv_layout);
 
             QuantizeAndStageValue(ctx, ctx.value_gm + kv_gm_offset * sizeof(uint16_t),
-                                  l1_dst_offset + Catlass::SageAttn::L1DoubleBankContract::KV_V_SUB_OFFSET,
+                                  is_ping ? SlotL1VPing::Offset() : SlotL1VPong::Offset(),
                                   k, cur_block_k, kv_layout);
 
             AttentionSync::V0SignalKvReady(is_ping);
@@ -641,7 +641,7 @@ public:
                                 l1_dst_offset, k, cur_block_k, kv_layout);
 
             QuantizeAndStageValue(ctx, ctx.value_gm + kv_gm_offset * sizeof(uint16_t),
-                                  l1_dst_offset + Catlass::SageAttn::L1DoubleBankContract::KV_V_SUB_OFFSET,
+                                  is_ping ? SlotL1VPing::Offset() : SlotL1VPong::Offset(),
                                   k, cur_block_k, kv_layout);
         }
 #else

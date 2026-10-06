@@ -23,7 +23,7 @@ struct CubeBlockParams {
 /**
  * \brief 专职 Cube 侧 QK MMAD、PV MMAD 与 FixPipe 发射执行器
  *
- * 采用 CATLASS Token 预置模型驱动的无阻塞流水：
+ * 采用 CATLASS 拍计数守卫模型驱动的无阻塞流水：
  * - 矩阵乘与 Fixpipe 发射精准绑定 PIPE_MTE1 与 PIPE_FIX，杜绝标量等待；
  * - 槽位释放与交接严格对称，零动态 if (k >= 2) 分支。
  */
@@ -182,8 +182,7 @@ private:
         bool is_ping,
         bool initC)
     {
-        uint32_t l1_v_addr = (is_ping ? SlotL1KvPing::Offset() : SlotL1KvPong::Offset())
-                             + Catlass::SageAttn::L1DoubleBankContract::KV_V_SUB_OFFSET;
+        uint32_t l1_v_addr = is_ping ? SlotL1VPing::Offset() : SlotL1VPong::Offset();
         uint32_t s_slot = is_ping ? SlotL1SoftmaxPPing::Offset() : SlotL1SoftmaxPPong::Offset();
         pv_mmad.LoadL0A(s_slot, params.rows, params.block_n);
         pv_mmad.LoadL0B(l1_v_addr, params.block_n, params.d);

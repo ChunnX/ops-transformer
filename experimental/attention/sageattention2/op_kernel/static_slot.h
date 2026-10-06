@@ -69,6 +69,8 @@ using SlotV1RsFactor    = StaticSlot<Catlass::SageAttn::Vector1UbBudget::V1_RS_F
 // --- L1 Bank 双缓冲槽编译期守卫 ---
 using SlotL1KvPing      = StaticSlot<Catlass::SageAttn::L1DoubleBankContract::KV_PING_OFFSET, Catlass::SageAttn::L1DoubleBankContract::KV_SLOT_BYTES>;
 using SlotL1KvPong      = StaticSlot<Catlass::SageAttn::L1DoubleBankContract::KV_PONG_OFFSET, Catlass::SageAttn::L1DoubleBankContract::KV_SLOT_BYTES>;
+using SlotL1VPing       = StaticSlot<Catlass::SageAttn::L1DoubleBankContract::V_PING_OFFSET, Catlass::SageAttn::L1DoubleBankContract::KV_V_SUB_OFFSET>;
+using SlotL1VPong       = StaticSlot<Catlass::SageAttn::L1DoubleBankContract::V_PONG_OFFSET, Catlass::SageAttn::L1DoubleBankContract::KV_V_SUB_OFFSET>;
 using SlotL1SoftmaxPPing = StaticSlot<Catlass::SageAttn::L1DoubleBankContract::P_PING_OFFSET, Catlass::SageAttn::L1DoubleBankContract::P_SLOT_BYTES>;
 using SlotL1SoftmaxPPong = StaticSlot<Catlass::SageAttn::L1DoubleBankContract::P_PONG_OFFSET, Catlass::SageAttn::L1DoubleBankContract::P_SLOT_BYTES>;
 
