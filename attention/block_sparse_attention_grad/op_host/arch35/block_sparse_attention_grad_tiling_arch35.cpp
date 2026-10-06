@@ -303,15 +303,16 @@ protected:
         uint64_t sys_workspace_size = ascendcPlatform.GetLibApiWorkSpaceSize();
         uint64_t usr_workspace_offset = 0;
         if (strcmp(layout_, BSND_STR) == 0 || strcmp(layout_, BNSD_STR) == 0) {
-            dq_size = batch_num_ * q_seq_len_ * q_head_num_ * head_dim_;
-            dk_size = batch_num_ * kv_seq_len_ * kv_head_num_ * head_dim_;
+            // 首个操作数提宽到 uint64_t，避免中间乘积在 int32 域回绕导致 workspace 申报不足
+            dq_size = static_cast<uint64_t>(batch_num_) * q_seq_len_ * q_head_num_ * head_dim_;
+            dk_size = static_cast<uint64_t>(batch_num_) * kv_seq_len_ * kv_head_num_ * head_dim_;
             dv_size = dk_size;
-            sftg_size = batch_num_ * q_head_num_ * q_seq_len_ * 8;
+            sftg_size = static_cast<uint64_t>(batch_num_) * q_head_num_ * q_seq_len_ * 8;
         } else if (strcmp(layout_, TND_STR) == 0) {
-            dq_size = q_seq_len_ * q_head_num_ * head_dim_;
-            dk_size = kv_seq_len_ * kv_head_num_ * head_dim_;
+            dq_size = static_cast<uint64_t>(q_seq_len_) * q_head_num_ * head_dim_;
+            dk_size = static_cast<uint64_t>(kv_seq_len_) * kv_head_num_ * head_dim_;
             dv_size = dk_size;
-            sftg_size = q_seq_len_ * q_head_num_ * 8; // 存放逻辑按[B,N,S,8]
+            sftg_size = static_cast<uint64_t>(q_seq_len_) * q_head_num_ * 8; // 存放逻辑按[B,N,S,8]
         } else {
             OP_LOGE(context_->GetNodeName(), "Invaild Input Layout: InputLayout must be BSDN or BNSD or TND.");
             return ge::GRAPH_FAILED;
