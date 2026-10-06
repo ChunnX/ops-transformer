@@ -67,6 +67,7 @@ run_host_tests() {
   echo "-- 编译 test_tiling_struct"
   "${BISHENG}" "${HOST_CXX_FLAGS[@]}" \
     "${WORK_DIR}/tests/test_tiling_struct.cpp" \
+    -I"${WORK_DIR}/aclnn" \
     "${COMMON_INCLUDES[@]}" \
     -o "${BUILD_DIR}/test_tiling_struct"
   "${BUILD_DIR}/test_tiling_struct"

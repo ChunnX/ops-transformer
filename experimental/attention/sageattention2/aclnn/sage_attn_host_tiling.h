@@ -20,6 +20,7 @@
 #include "../sageattn_fp8/catlass/sage_resource.hpp"
 #include "../quant/quant_host.h"
 
+#include <cassert>
 #include <cmath>
 #include <cstdlib>
 
@@ -63,6 +64,66 @@ namespace sage_attn {
 
     // 默认 Atlas 950PR 标配 32 个 AI Core
     return ATLAS_950_AIC_NUM;
+}
+
+/**
+ * \brief 官方 CATLASS 49 FAI 移植：GetCutBlockNums 等差数列求和扣除因果全零块
+ * 用于 Host 端计算因果注意力下的实际有效计算块数与精确负载均衡。
+ */
+[[nodiscard]] constexpr inline int64_t GetCutBlockNums(
+    int64_t blockSeqLengthKV, int64_t blockSeqLength, int64_t sInner, int64_t sOuter, int64_t token)
+{
+    if (sInner == 0 || sOuter == 0) {
+        return 0;
+    }
+    int64_t blockNums = 0;
+    int64_t blockToken = token > 0 ? ((token + sInner - 1) / sInner * sInner) : (token / sInner * sInner);
+    int64_t outDivIn = sOuter > sInner ? sOuter / sInner : 1;
+    int64_t InDivOut = sInner > sOuter ? sInner / sOuter : 1;
+    int64_t tolerance = 0;
+    int64_t smallSize = 0;
+    if (outDivIn >= 1) {
+        tolerance = outDivIn;
+        smallSize = sInner;
+    } else {
+        tolerance = InDivOut;
+        smallSize = sOuter;
+    }
+    int64_t innerCutBlockNums = (blockSeqLengthKV - blockToken) / smallSize - tolerance;
+    int64_t innerCutBlockLeftNums = -blockToken / smallSize - tolerance;
+    int64_t innerCutBlockDownNums = (blockSeqLengthKV - blockSeqLength - blockToken) / smallSize - tolerance;
+    int64_t tmpInnerCutBlockNums =
+        (innerCutBlockNums > 0) ?
+            (innerCutBlockNums % tolerance + innerCutBlockNums) * (innerCutBlockNums / tolerance + 1) / 2 :
+            0;
+    blockNums += tmpInnerCutBlockNums;
+    int64_t tmpInnerCutBlockLeftNums =
+        (innerCutBlockLeftNums > 0) ?
+            (innerCutBlockLeftNums % tolerance + innerCutBlockLeftNums) * (innerCutBlockLeftNums / tolerance + 1) / 2 :
+            0;
+    blockNums -= tmpInnerCutBlockLeftNums;
+    int64_t tmpInnerCutBlockDownNums =
+        (innerCutBlockDownNums > 0) ?
+            (innerCutBlockDownNums % tolerance + innerCutBlockDownNums) * (innerCutBlockDownNums / tolerance + 1) / 2 :
+            0;
+    blockNums -= tmpInnerCutBlockDownNums;
+    return blockNums;
+}
+
+[[nodiscard]] constexpr inline int64_t GetCalcBlockNumsOneHead(
+    int64_t actualSeqLength, int64_t actualSeqLengthKV, int64_t sOuterSize, int64_t sInnerSize, bool isCausal)
+{
+    int64_t outerBlockNums = (actualSeqLength + sOuterSize - 1) / sOuterSize;
+    int64_t innerBlockNums = (actualSeqLengthKV + sInnerSize - 1) / sInnerSize;
+    int64_t toCalcBlockNums = innerBlockNums * outerBlockNums;
+    if (!isCausal) {
+        return toCalcBlockNums;
+    }
+    int64_t blockSeqLengthKV = innerBlockNums * sInnerSize;
+    int64_t blockSeqLength = outerBlockNums * sOuterSize;
+    toCalcBlockNums -= GetCutBlockNums(
+        blockSeqLengthKV, blockSeqLength, sInnerSize, sOuterSize, 0);
+    return toCalcBlockNums;
 }
 
 /**
@@ -295,6 +356,12 @@ namespace sage_attn {
 
     tiling_out.q_blk_num = q_blk_num;
     tiling_out.kv_blk_num = kv_blk_num;
+
+    const int64_t effective_blocks_per_head = GetCalcBlockNumsOneHead(sq, sk, m_per_core, block_n, isCausal);
+    if (sq > 0 && sk > 0) {
+        assert(effective_blocks_per_head > 0);
+    }
+    (void)effective_blocks_per_head;
 
     // 任务切分单位为 (Batch, Hkv, Q_blk)；64 位乘法防回绕
     const uint64_t total_tasks_64 = static_cast<uint64_t>(b) * hkv * q_blk_num;

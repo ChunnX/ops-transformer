@@ -15,6 +15,7 @@
 #include "../sageattn_fp8/catlass/sage_qk_mmad.hpp"
 #include "../sageattn_fp8/catlass/sage_pv_mmad.hpp"
 #include "../op_kernel/static_slot.h"
+#include "../aclnn/sage_attn_host_tiling.h"
 
 using namespace sage_attn;
 using namespace Catlass::SageAttn;
@@ -430,6 +431,48 @@ void TestNddmaStrideContract() {
     std::cout << "[Test 7 Passed] NDDMA 2D Strided DMA contract verified!" << std::endl;
 }
 
+void TestCausalCutBlockNums() {
+    std::cout << "[Test 8] Testing official CATLASS 49 GetCutBlockNums and GetCalcBlockNumsOneHead..." << std::endl;
+
+    // Compile-time static_assert check for constexpr correctness
+    static_assert(sage_attn::GetCutBlockNums(128, 128, 64, 64, 0) == 1,
+                  "sq=128, sk=128 causal cut block num must be 1 at compile time");
+    static_assert(sage_attn::GetCalcBlockNumsOneHead(128, 128, 64, 64, true) == 3,
+                  "sq=128, sk=128 causal calc block num must be 3 at compile time");
+    static_assert(sage_attn::GetCutBlockNums(256, 256, 64, 64, 0) == 6,
+                  "sq=256, sk=256 causal cut block num must be 6 at compile time");
+    static_assert(sage_attn::GetCalcBlockNumsOneHead(256, 256, 64, 64, true) == 10,
+                  "sq=256, sk=256 causal calc block num must be 10 at compile time");
+    static_assert(sage_attn::GetCutBlockNums(512, 512, 64, 64, 0) == 28,
+                  "sq=512, sk=512 causal cut block num must be 28 at compile time");
+    static_assert(sage_attn::GetCalcBlockNumsOneHead(512, 512, 64, 64, true) == 36,
+                  "sq=512, sk=512 causal calc block num must be 36 at compile time");
+    static_assert(sage_attn::GetCalcBlockNumsOneHead(512, 512, 64, 64, false) == 64,
+                  "sq=512, sk=512 non-causal calc block num must be 64 at compile time");
+
+    // Runtime checks against exact triangular arithmetic formulas:
+    // Case 1: sq=128, sk=128, m_per_core=64, block_n=64, causal: cut 1, to_calc 3
+    assert(sage_attn::GetCutBlockNums(128, 128, 64, 64, 0) == 1);
+    assert(sage_attn::GetCalcBlockNumsOneHead(128, 128, 64, 64, true) == 3);
+
+    // Case 2: sq=256, sk=256, m_per_core=64, block_n=64, causal: cut 6, to_calc 10
+    assert(sage_attn::GetCutBlockNums(256, 256, 64, 64, 0) == 6);
+    assert(sage_attn::GetCalcBlockNumsOneHead(256, 256, 64, 64, true) == 10);
+
+    // Case 3: sq=512, sk=512, m_per_core=64, block_n=64, causal: cut 28, to_calc 36
+    assert(sage_attn::GetCutBlockNums(512, 512, 64, 64, 0) == 28);
+    assert(sage_attn::GetCalcBlockNumsOneHead(512, 512, 64, 64, true) == 36);
+
+    // Case 4: sq=512, sk=512, m_per_core=64, block_n=64, non-causal: cut 0, to_calc 64
+    assert(sage_attn::GetCalcBlockNumsOneHead(512, 512, 64, 64, false) == 64);
+
+    // Edge cases: zero tile size
+    assert(sage_attn::GetCutBlockNums(128, 128, 0, 64, 0) == 0);
+    assert(sage_attn::GetCutBlockNums(128, 128, 64, 0, 0) == 0);
+
+    std::cout << "[Test 8 Passed] Causal cut block nums verified!" << std::endl;
+}
+
 int main() {
     std::cout << "Starting SageAttention2 C++ Contract and Tiling Verification..." << std::endl;
     TestTilingDataLayout();
@@ -439,6 +482,7 @@ int main() {
     TestGmTlaLayouts();
     TestDieAffinityContract();
     TestNddmaStrideContract();
+    TestCausalCutBlockNums();
     std::cout << "All C++ contracts and struct layouts PASSED successfully!" << std::endl;
     return 0;
 }
