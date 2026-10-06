@@ -52,16 +52,16 @@ public:
     __aicore__ inline EngramFetchLocalArch35() = default;
 
     __aicore__ inline void Init(GM_ADDR commContext, GM_ADDR indices, GM_ADDR fetched, GM_ADDR sfTable,
-                                GM_ADDR fetchedSf, GM_ADDR workspaceGM, AscendC::TPipe *pipe,
-                                const EngramFetchTilingData *tilingData);
+                                GM_ADDR fetchedSf, GM_ADDR workspaceGM, AscendC::TPipe* pipe,
+                                const EngramFetchTilingData* tilingData);
 
     __aicore__ inline void Process();
 
 private:
     __aicore__ inline void GatherRange(uint32_t start, uint32_t end);
-    __aicore__ inline void GatherWave(const AscendC::LocalTensor<int32_t> &indicesLocal, uint32_t batchOffset,
+    __aicore__ inline void GatherWave(const AscendC::LocalTensor<int32_t>& indicesLocal, uint32_t batchOffset,
                                       uint32_t waveLen, uint32_t tokenBase);
-    __aicore__ inline void GatherRowsLegacy(const AscendC::LocalTensor<int32_t> &indicesLocal, uint32_t batchLen,
+    __aicore__ inline void GatherRowsLegacy(const AscendC::LocalTensor<int32_t>& indicesLocal, uint32_t batchLen,
                                             uint32_t tokenBase);
 
     uint32_t totalBlocks_{1};
@@ -72,14 +72,14 @@ private:
 
 __aicore__ inline void EngramFetchLocalArch35::Init(GM_ADDR commContext, GM_ADDR indices, GM_ADDR fetched,
                                                     GM_ADDR sfTable, GM_ADDR fetchedSf, GM_ADDR workspaceGM,
-                                                    AscendC::TPipe *pipe, const EngramFetchTilingData *tilingData)
+                                                    AscendC::TPipe* pipe, const EngramFetchTilingData* tilingData)
 {
     (void)workspaceGM;
     InitInferBase(commContext, indices, fetched, sfTable, fetchedSf, pipe, tilingData);
     totalBlocks_ = AscendC::GetBlockNum();
 
     AscendC::GlobalTensor<uint64_t> commBufferGm;
-    commBufferGm.SetGlobalBuffer((__gm__ uint64_t *)&ctxPtr_->commBuffer[0]);
+    commBufferGm.SetGlobalBuffer((__gm__ uint64_t*)&ctxPtr_->commBuffer[0]);
     tableBase_ = commBufferGm.GetValue(rankId_);
 
     // Batched-wave gather packs rowsPerWave_ consecutive rows into one relay buffer (all row loads
@@ -132,7 +132,7 @@ __aicore__ inline void EngramFetchLocalArch35::Init(GM_ADDR commContext, GM_ADDR
 // so the contiguous store always writes well-defined bytes (the legacy path leaves the destination row
 // untouched instead). The 6-deep relay queue lets consecutive waves overlap: MTE2 loads of wave i+1
 // run while the MTE3 stores of earlier waves drain.
-__aicore__ inline void EngramFetchLocalArch35::GatherWave(const AscendC::LocalTensor<int32_t> &indicesLocal,
+__aicore__ inline void EngramFetchLocalArch35::GatherWave(const AscendC::LocalTensor<int32_t>& indicesLocal,
                                                           uint32_t batchOffset, uint32_t waveLen, uint32_t tokenBase)
 {
     const bool hasSf = HasSf();
@@ -141,22 +141,21 @@ __aicore__ inline void EngramFetchLocalArch35::GatherWave(const AscendC::LocalTe
     const uint32_t sfSlot = hasSf ? (sfBytes + UB_ALIGN - 1U) / UB_ALIGN * UB_ALIGN : 0U;
 
     AscendC::GlobalTensor<uint8_t> srcGm;
-    srcGm.SetGlobalBuffer((__gm__ uint8_t *)tableBase_);
+    srcGm.SetGlobalBuffer((__gm__ uint8_t*)tableBase_);
     AscendC::LocalTensor<uint8_t> buf = relayQue_.AllocTensor<uint8_t>();
+    AscendC::DataCopyPadExtParams<uint8_t> loadPad{false, 0, 0, 0};
 
     // Wave layout inside one relay buffer: [waveLen rows of hiddenBytes data][waveLen 32B-aligned SF
     // slots]. waveLen * rowBytes <= tileBytes_ holds by construction, so every offset stays in-buffer
     // and the single data store never exceeds tileBytes_ (blockLen is uint16 in bytes).
-    AscendC::DataCopyExtParams loadParams{1U, static_cast<uint32_t>(hiddenBytes), 0U, 0U, 0U};
-    AscendC::DataCopyPadExtParams<uint8_t> loadPad{false, 0, 0, 0};
     const uint32_t dataBytes = static_cast<uint32_t>(waveLen * hiddenBytes);
     for (uint32_t j = 0; j < waveLen; j++) {
         int32_t entry = indicesLocal.GetValue(batchOffset + j);
         if (entry < 0 || entry >= numEntriesPerRank_) {
             entry = 0;
         }
-        AscendC::DataCopyPad(buf[static_cast<uint32_t>(j * hiddenBytes)],
-                             srcGm[static_cast<uint64_t>(entry) * hiddenBytes], loadParams, loadPad);
+        AscendC::DataCopy(buf[static_cast<uint32_t>(j * hiddenBytes)],
+                          srcGm[static_cast<uint64_t>(entry) * hiddenBytes], static_cast<uint32_t>(hiddenBytes));
     }
     if (sfBytes > 0U) {
         AscendC::GlobalTensor<uint8_t> sfSrcGm;
@@ -176,12 +175,11 @@ __aicore__ inline void EngramFetchLocalArch35::GatherWave(const AscendC::LocalTe
     buf = relayQue_.DeQue<uint8_t>();
 
     AscendC::GlobalTensor<uint8_t> dstGm;
-    dstGm.SetGlobalBuffer((__gm__ uint8_t *)fetchedGM_);
-    AscendC::DataCopyParams dataStoreParams{1U, static_cast<uint16_t>(dataBytes), 0U, 0U};
-    AscendC::DataCopyPad(dstGm[static_cast<uint64_t>(tokenBase) * hiddenBytes], buf, dataStoreParams);
+    dstGm.SetGlobalBuffer((__gm__ uint8_t*)fetchedGM_);
+    AscendC::DataCopy(dstGm[static_cast<uint64_t>(tokenBase) * hiddenBytes], buf, dataBytes);
     if (sfBytes > 0U) {
         AscendC::GlobalTensor<uint8_t> sfDstGm;
-        sfDstGm.SetGlobalBuffer((__gm__ uint8_t *)fetchedSfGM_);
+        sfDstGm.SetGlobalBuffer((__gm__ uint8_t*)fetchedSfGM_);
         AscendC::DataCopyParams sfStoreParams{1U, static_cast<uint16_t>(sfBytes), 0U, 0U};
         for (uint32_t j = 0; j < waveLen; j++) {
             AscendC::DataCopyPad(sfDstGm[static_cast<uint64_t>(tokenBase + j) * sfBytes], buf[dataBytes + j * sfSlot],
@@ -194,7 +192,7 @@ __aicore__ inline void EngramFetchLocalArch35::GatherWave(const AscendC::LocalTe
 // Legacy per-row relay path, kept for row strides that are not 32B-aligned or too large to pack a
 // wave (rowsPerWave_ < 8): one LocalCopySlice relay round per row, invalid ids are skipped and the
 // destination row is left untouched.
-__aicore__ inline void EngramFetchLocalArch35::GatherRowsLegacy(const AscendC::LocalTensor<int32_t> &indicesLocal,
+__aicore__ inline void EngramFetchLocalArch35::GatherRowsLegacy(const AscendC::LocalTensor<int32_t>& indicesLocal,
                                                                 uint32_t batchLen, uint32_t tokenBase)
 {
     const bool hasSf = HasSf();
