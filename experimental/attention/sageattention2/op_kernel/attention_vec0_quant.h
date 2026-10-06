@@ -399,51 +399,53 @@ public:
         const uint32_t stride_v = Catlass::SageAttn::CalcGm2dStride32B(ctx.hkv, d, sizeof(half), ctx.tensor_layout);
 
         if (cur_k == 0) {
-            const uint32_t fp8_padded = ::RoundUp<16u>(ctx.sk);
-            if (smooth_v != 0u) {
-                Duplicate(ub_v_scale, MIN_FLOAT_VAL, d);
-                Duplicate(ub_v_min, -MIN_FLOAT_VAL, d);
-                Duplicate(ub_v_sum, 0.0f, d);
-                for (uint32_t t_start = 0; t_start < ctx.sk; t_start += MAX_PACK_ROWS) {
-                    const uint32_t chunk_len = ::Min(static_cast<uint32_t>(MAX_PACK_ROWS), ctx.sk - t_start);
-                    const int64_t chunk_gm_offset = kv_layout(tla::MakeCoord(0u, 0u, t_start, 0u)) * static_cast<int64_t>(sizeof(half));
-                    Catlass::SageAttn::Sync<HardEvent::V_MTE2>();
-                    Catlass::SageAttn::LoadTile2DFromGm(ub_in, reinterpret_cast<__gm__ half*>(v_src + chunk_gm_offset),
-                                                        chunk_len, d, stride_v);
-                    Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
-                    for (uint32_t c = 0; c < chunk_len; ++c) {
-                        dev_vf::ChannelStatsAccumVF<kDtype>(reinterpret_cast<__ubuf__ half*>(ub_in[c * d].GetPhyAddr()),
-                                                            reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
-                                                            reinterpret_cast<__ubuf__ float*>(ub_v_min.GetPhyAddr()),
-                                                            reinterpret_cast<__ubuf__ float*>(ub_v_sum.GetPhyAddr()),
-                                                            d);
+            bool is_head_cached = (ctx.cur_b == cached_b_ && ctx.cur_hkv == cached_hkv_ && v_scale_cached_);
+            if (!is_head_cached) {
+                const uint32_t fp8_padded = ::RoundUp<16u>(ctx.sk);
+                if (smooth_v != 0u) {
+                    Duplicate(ub_v_scale, MIN_FLOAT_VAL, d);
+                    Duplicate(ub_v_min, -MIN_FLOAT_VAL, d);
+                    Duplicate(ub_v_sum, 0.0f, d);
+                    for (uint32_t t_start = 0; t_start < ctx.sk; t_start += MAX_PACK_ROWS) {
+                        const uint32_t chunk_len = ::Min(static_cast<uint32_t>(MAX_PACK_ROWS), ctx.sk - t_start);
+                        const int64_t chunk_gm_offset = kv_layout(tla::MakeCoord(0u, 0u, t_start, 0u)) * static_cast<int64_t>(sizeof(half));
+                        Catlass::SageAttn::Sync<HardEvent::V_MTE2>();
+                        Catlass::SageAttn::LoadTile2DFromGm(ub_in, reinterpret_cast<__gm__ half*>(v_src + chunk_gm_offset),
+                                                            chunk_len, d, stride_v);
+                        Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
+                        dev_vf::ChannelStatsAccumTileVF<kDtype>(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
+                                                                reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
+                                                                reinterpret_cast<__ubuf__ float*>(ub_v_min.GetPhyAddr()),
+                                                                reinterpret_cast<__ubuf__ float*>(ub_v_sum.GetPhyAddr()),
+                                                                chunk_len, d);
                     }
-                }
-                Catlass::SageAttn::Sync<HardEvent::V_S>();
-                dev_vf::FinalizeSmoothVScaleVF(reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
-                                               reinterpret_cast<__ubuf__ float*>(ub_v_min.GetPhyAddr()),
-                                               reinterpret_cast<__ubuf__ float*>(ub_v_sum.GetPhyAddr()),
-                                               reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
-                                               fp8_padded, (fp8_padded > ctx.sk) ? 1u : 0u, scale_max, d);
-                Catlass::SageAttn::Sync<HardEvent::V_S>();
-            } else {
-                Duplicate(ub_v_scale, 0.0f, d);
-                for (uint32_t t_start = 0; t_start < ctx.sk; t_start += MAX_PACK_ROWS) {
-                    const uint32_t chunk_len = ::Min(static_cast<uint32_t>(MAX_PACK_ROWS), ctx.sk - t_start);
-                    const int64_t chunk_gm_offset = kv_layout(tla::MakeCoord(0u, 0u, t_start, 0u)) * static_cast<int64_t>(sizeof(half));
-                    Catlass::SageAttn::Sync<HardEvent::V_MTE2>();
-                    Catlass::SageAttn::LoadTile2DFromGm(ub_in, reinterpret_cast<__gm__ half*>(v_src + chunk_gm_offset),
-                                                        chunk_len, d, stride_v);
-                    Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
-                    for (uint32_t c = 0; c < chunk_len; ++c) {
-                        dev_vf::ChannelAmaxAccumVF<kDtype>(reinterpret_cast<__ubuf__ half*>(ub_in[c * d].GetPhyAddr()),
-                                                            reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
-                                                            d);
+                    Catlass::SageAttn::Sync<HardEvent::V_S>();
+                    dev_vf::FinalizeSmoothVScaleVF(reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
+                                                   reinterpret_cast<__ubuf__ float*>(ub_v_min.GetPhyAddr()),
+                                                   reinterpret_cast<__ubuf__ float*>(ub_v_sum.GetPhyAddr()),
+                                                   reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
+                                                   fp8_padded, (fp8_padded > ctx.sk) ? 1u : 0u, scale_max, d);
+                    Catlass::SageAttn::Sync<HardEvent::V_S>();
+                } else {
+                    Duplicate(ub_v_scale, 0.0f, d);
+                    for (uint32_t t_start = 0; t_start < ctx.sk; t_start += MAX_PACK_ROWS) {
+                        const uint32_t chunk_len = ::Min(static_cast<uint32_t>(MAX_PACK_ROWS), ctx.sk - t_start);
+                        const int64_t chunk_gm_offset = kv_layout(tla::MakeCoord(0u, 0u, t_start, 0u)) * static_cast<int64_t>(sizeof(half));
+                        Catlass::SageAttn::Sync<HardEvent::V_MTE2>();
+                        Catlass::SageAttn::LoadTile2DFromGm(ub_in, reinterpret_cast<__gm__ half*>(v_src + chunk_gm_offset),
+                                                            chunk_len, d, stride_v);
+                        Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
+                        dev_vf::ChannelAmaxAccumTileVF<kDtype>(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
+                                                               reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
+                                                               chunk_len, d);
                     }
+                    dev_vf::FinalizeVScaleVF(reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
+                                             reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
+                                             scale_max, d);
                 }
-                dev_vf::FinalizeVScaleVF(reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
-                                         reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
-                                         scale_max, d);
+                cached_b_ = ctx.cur_b;
+                cached_hkv_ = ctx.cur_hkv;
+                v_scale_cached_ = true;
             }
 
             Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
@@ -645,6 +647,18 @@ public:
 #else
         (void)ctx;
 #endif
+    }
+
+private:
+    uint32_t cached_b_{UINT32_MAX};
+    uint32_t cached_hkv_{UINT32_MAX};
+    bool v_scale_cached_{false};
+
+public:
+    __aicore__ inline __attribute__((always_inline)) void InvalidateCache() {
+        cached_b_ = UINT32_MAX;
+        cached_hkv_ = UINT32_MAX;
+        v_scale_cached_ = false;
     }
 };
 

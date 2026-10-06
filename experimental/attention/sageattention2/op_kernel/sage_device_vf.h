@@ -693,28 +693,37 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void MergePvPartial
  * （输入位型 cast + 可选 kMean 域外无——V 无 kMean），逐 token 行调用一次，
  * 由调用方先充零 amax 缓冲（twin/quant_fp8 per-channel 口径）。
  */
+// DEPRECATED: Use ChannelAmaxAccumTileVF instead.
 template <uint32_t DTYPE_MODE>
-__simd_vf__ __aicore__ inline __attribute__((always_inline)) void ChannelAmaxAccumVF(__ubuf__ half* in_ptr, __ubuf__ float* amax_ptr,
-                                           uint32_t d) {
+__simd_vf__ __aicore__ inline __attribute__((always_inline)) void ChannelAmaxAccumVF(__ubuf__ half* in_ptr, __ubuf__ float* amax_ptr, uint32_t d) {
+    // Deprecated
+}
+
+/**
+ * A7-1 Tile V per-channel amax accum
+ */
+template <uint32_t DTYPE_MODE>
+__simd_vf__ __aicore__ inline __attribute__((always_inline)) void ChannelAmaxAccumTileVF(__ubuf__ half* in_tile_ptr, __ubuf__ float* amax_ptr, uint32_t rows, uint32_t d) {
     using namespace AscendC;
     using namespace AscendC::MicroAPI;
     auto full = CreateMask<float, MaskPattern::ALL>();
     static constexpr CastTrait toFp32{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
 
     for (uint32_t c = 0; c < d; c += 64) {
-        RegTensor<float> val, amax;
-        LoadRowChunkF32<DTYPE_MODE>(val, in_ptr, c);
-        Abs(val, val, full);
+        RegTensor<float> amax;
         LoadAlign(amax, amax_ptr + c);
-        Max(amax, amax, val, full);
+        for (uint32_t r = 0; r < rows; ++r) {
+            RegTensor<float> val;
+            LoadRowChunkF32<DTYPE_MODE>(val, in_tile_ptr + r * d, c);
+            Abs(val, val, full);
+            Max(amax, amax, val, full);
+        }
         StoreAlign(amax_ptr + c, amax, full);
     }
 }
 
 /**
- * A7-2 V per-channel 定标：scale[c] = amax[c] / scale_max（除法轨迹，对齐宿主
- * quant_fp8 / 孪生；全零通道 amax=0 → scale=0，经 QuantVRowFp8VF 的 0/0=NaN →
- * e4m3 0x7f 容错）。可原地（out_scale_ptr == amax_ptr）。
+ * A7-2 V per-channel 定标：scale[c] = amax[c] / scale_max
  */
 __simd_vf__ __aicore__ inline __attribute__((always_inline)) void FinalizeVScaleVF(__ubuf__ float* amax_ptr, __ubuf__ float* out_scale_ptr,
                                          float scale_max, uint32_t d) {
@@ -732,28 +741,37 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void FinalizeVScale
     }
 }
 
-/**
- * A7-3 smooth_v 预扫·通道 max/min/sum 累加步（smooth_v 生效时替代 ChannelAmaxAccumVF，
- * 单趟读出三统计量；调用方按 max=-FLT_MAX / min=+FLT_MAX / sum=0 充初值）。
- */
+// DEPRECATED: Use ChannelStatsAccumTileVF instead.
 template <uint32_t DTYPE_MODE>
 __simd_vf__ __aicore__ inline __attribute__((always_inline)) void ChannelStatsAccumVF(__ubuf__ half* in_ptr, __ubuf__ float* vmax_ptr,
+                                            __ubuf__ float* vmin_ptr, __ubuf__ float* vsum_ptr, uint32_t d) {
+    // Deprecated
+}
+
+/**
+ * A7-3 Tile smooth_v stats accum
+ */
+template <uint32_t DTYPE_MODE>
+__simd_vf__ __aicore__ inline __attribute__((always_inline)) void ChannelStatsAccumTileVF(__ubuf__ half* in_tile_ptr, __ubuf__ float* vmax_ptr,
                                             __ubuf__ float* vmin_ptr, __ubuf__ float* vsum_ptr,
-                                            uint32_t d) {
+                                            uint32_t rows, uint32_t d) {
     using namespace AscendC;
     using namespace AscendC::MicroAPI;
     auto full = CreateMask<float, MaskPattern::ALL>();
     static constexpr CastTrait toFp32{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
 
     for (uint32_t c = 0; c < d; c += 64) {
-        RegTensor<float> val, vmax, vmin, vsum;
-        LoadRowChunkF32<DTYPE_MODE>(val, in_ptr, c);
+        RegTensor<float> vmax, vmin, vsum;
         LoadAlign(vmax, vmax_ptr + c);
         LoadAlign(vmin, vmin_ptr + c);
         LoadAlign(vsum, vsum_ptr + c);
-        Max(vmax, vmax, val, full);
-        Min(vmin, vmin, val, full);
-        Add(vsum, vsum, val, full);
+        for (uint32_t r = 0; r < rows; ++r) {
+            RegTensor<float> val;
+            LoadRowChunkF32<DTYPE_MODE>(val, in_tile_ptr + r * d, c);
+            Max(vmax, vmax, val, full);
+            Min(vmin, vmin, val, full);
+            Add(vsum, vsum, val, full);
+        }
         StoreAlign(vmax_ptr + c, vmax, full);
         StoreAlign(vmin_ptr + c, vmin, full);
         StoreAlign(vsum_ptr + c, vsum, full);
