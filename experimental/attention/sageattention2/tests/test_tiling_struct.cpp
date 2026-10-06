@@ -882,6 +882,39 @@ void TestAttributeValidationContract() {
     std::cout << "[Test 11 Passed] Attribute whitelist validation contract verified!" << std::endl;
 }
 
+void TestHardwareCoreDetectionContract() {
+    std::cout << "[Test 12] Testing hardware core detection contract (GetHardwareCoreNum / 3-tier fallback)..." << std::endl;
+
+    static_assert(sage_attn::ATLAS_950_AIC_NUM == 32, "Atlas 950PR default AIC count must be 32");
+
+    // Tier 1: SAGEATTN_NUM_CORES 显式覆盖（自动化测试与特定减配拓扑）
+    ::setenv("SAGEATTN_NUM_CORES", "28", 1);
+    assert(sage_attn::GetHardwareCoreNum() == 28);
+
+    ::setenv("SAGEATTN_NUM_CORES", "16", 1);
+    assert(sage_attn::GetHardwareCoreNum() == 16);
+
+    ::setenv("SAGEATTN_NUM_CORES", "32", 1);
+    assert(sage_attn::GetHardwareCoreNum() == 32);
+
+    // 非法值守卫（<= 0 或 > 64）：必须安全回退至系统基准（32 核）
+    ::setenv("SAGEATTN_NUM_CORES", "0", 1);
+    assert(sage_attn::GetHardwareCoreNum() == 32);
+
+    ::setenv("SAGEATTN_NUM_CORES", "99", 1);
+    assert(sage_attn::GetHardwareCoreNum() == 32);
+
+    ::setenv("SAGEATTN_NUM_CORES", "-4", 1);
+    assert(sage_attn::GetHardwareCoreNum() == 32);
+
+    // 清理环境变量：回退至 Tier 2/3（默认 32 核）
+    ::unsetenv("SAGEATTN_NUM_CORES");
+    const uint32_t default_cores = sage_attn::GetHardwareCoreNum();
+    assert(default_cores >= 16 && default_cores <= 64);
+
+    std::cout << "[Test 12 Passed] Hardware core detection contract verified!" << std::endl;
+}
+
 int main() {
     std::cout << "Starting SageAttention2 C++ Contract and Tiling Verification..." << std::endl;
     TestTilingDataLayout();
@@ -895,6 +928,7 @@ int main() {
     TestSplitKvCombineContract();
     TestFractalZnIndexContract();
     TestAttributeValidationContract();
+    TestHardwareCoreDetectionContract();
     std::cout << "All C++ contracts and struct layouts PASSED successfully!" << std::endl;
     return 0;
 }

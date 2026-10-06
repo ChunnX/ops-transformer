@@ -43,14 +43,18 @@ constexpr aclnnStatus ACLNN_SUCCESS = 0;
 constexpr aclnnStatus ACLNN_ERR_PARAM_INVALID = 161002;
 #endif
 
+#if (defined(__linux__) || defined(__unix__)) && !defined(__NPU_DEVICE__)
+#include <dlfcn.h>
+#endif
+
 namespace sage_attn {
 
 /**
  * 获取硬件可用 AI Core 核心数量
  * 动态支持 32 核 (Atlas 950PR 满配) 与 28 核 (减配版)：
- * 环境变量覆盖供自动化测试/特定拓扑使用；核数的设备侧权威源是
- * op_host TilingImpl 的 platform_ascendc AIC 钳制（sage_attention2_tiling.cpp，
- * op_host 库被 op_build dlopen，禁止引用 libnnopbase 运行时符号）。
+ * 优先级 1：SAGEATTN_NUM_CORES 环境变量显式覆盖（自动化测试与特定拓扑模拟）；
+ * 优先级 2：动态查询 ACL 运行时（对齐竞品 GWE 与官方最佳实践，避免硬编码，且无编译期强符号链接依赖）；
+ * 优先级 3：默认 Atlas 950PR 标配 32 个 AI Core。
  */
 [[nodiscard]] inline uint32_t GetHardwareCoreNum()
 {
@@ -61,6 +65,21 @@ namespace sage_attn {
             return static_cast<uint32_t>(c);
         }
     }
+
+#if (defined(__linux__) || defined(__unix__)) && !defined(__NPU_DEVICE__)
+    auto getDevice = reinterpret_cast<int (*)(int32_t *)>(dlsym(RTLD_DEFAULT, "aclrtGetDevice"));
+    auto getInfo = reinterpret_cast<int (*)(uint32_t, int, int64_t *)>(dlsym(RTLD_DEFAULT, "aclrtGetDeviceInfo"));
+    if (getDevice != nullptr && getInfo != nullptr) {
+        int32_t device = 0;
+        int64_t aic = 0;
+        // 0 == ACL_SUCCESS, 102 == ACL_DEV_ATTR_CUBE_CORE_NUM
+        if (getDevice(&device) == 0 && getInfo(static_cast<uint32_t>(device), 102, &aic) == 0) {
+            if (aic > 0 && aic <= 64) {
+                return static_cast<uint32_t>(aic);
+            }
+        }
+    }
+#endif
 
     // 默认 Atlas 950PR 标配 32 个 AI Core
     return ATLAS_950_AIC_NUM;
