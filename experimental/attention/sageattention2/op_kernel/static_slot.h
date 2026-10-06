@@ -86,6 +86,7 @@ struct SimMemory {
     float v_scales[256]{0.0f};
     float v_means[256]{0.0f};
     uint8_t stage_strip[STAGE_CORE_STRIDE]{0};
+    uint8_t sim_ws[4 * 1024 * 1024]{0};
 };
 #endif
 
@@ -214,7 +215,13 @@ struct TaskContext {
         const uint64_t core_offset = CoreKvWorkspaceBase() + static_cast<uint64_t>(core_idx) * ws.total_core_bytes;
         return workspace_gm + core_offset;
 #else
-        return nullptr;
+        if (workspace_gm != nullptr) {
+            const uint32_t d_pad_val = tiling ? tiling->d_pad : d;
+            const KvPreQuantWorkspaceOffsets ws = ComputeKvPreQuantCoreOffsets(sk, d_pad_val);
+            const uint64_t core_offset = CoreKvWorkspaceBase() + static_cast<uint64_t>(core_idx) * ws.total_core_bytes;
+            return workspace_gm + core_offset;
+        }
+        return (sim_mem != nullptr) ? sim_mem->sim_ws : nullptr;
 #endif
     }
 };

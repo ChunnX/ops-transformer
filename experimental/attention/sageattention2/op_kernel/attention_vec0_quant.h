@@ -310,6 +310,16 @@ public:
         uint32_t k_offset = STAGE_K_SCALE_BASE_OFFSET + (cur_k % STAGE_K_SCALE_NUM_SLOTS) * STAGE_SLOT_BYTES;
         gm_stage_k.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(ctx.StageStrip() + k_offset));
         DataCopy(gm_stage_k, ub_stage_k, STAGE_SLOT_FLOATS);
+
+        __gm__ uint8_t *core_ws = ctx.CoreKvWorkspacePtr();
+        if (core_ws != nullptr) {
+            const uint32_t d_pad_val = ctx.tiling ? ctx.tiling->d_pad : ctx.d;
+            const KvPreQuantWorkspaceOffsets ws = ComputeKvPreQuantCoreOffsets(ctx.sk, d_pad_val);
+            const uint64_t ks_block_offset = ws.key_scale_offset + static_cast<uint64_t>(cur_k) * STAGE_SLOT_BYTES;
+            GlobalTensor<float> gm_ks_save;
+            gm_ks_save.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(core_ws + ks_block_offset));
+            DataCopy(gm_ks_save, ub_stage_k, STAGE_SLOT_FLOATS);
+        }
         Catlass::SageAttn::Sync<HardEvent::MTE3_S>();
 
         // 批量量化 INT8 矩阵 [block_n, d]
@@ -342,6 +352,15 @@ public:
         // 直接以 CopyUbToL1zN 2D DMA 发射写入 L1，L1 中字节排布天然等价于 nZ([d, block_n])！
         // 彻底消除标量内存指令、释放 16KB ub_stage_k_tr 缓冲、消除 V_S 与 S_MTE3 气泡！
         Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
+        if (core_ws != nullptr) {
+            const uint32_t d_pad_val = ctx.tiling ? ctx.tiling->d_pad : ctx.d;
+            const KvPreQuantWorkspaceOffsets ws = ComputeKvPreQuantCoreOffsets(ctx.sk, d_pad_val);
+            const uint64_t tile_bytes = static_cast<uint64_t>(block_n) * d;
+            const uint64_t k_block_offset = ws.key_offset + static_cast<uint64_t>(cur_k) * tile_bytes;
+            GlobalTensor<int8_t> gm_k_save;
+            gm_k_save.SetGlobalBuffer(reinterpret_cast<__gm__ int8_t*>(core_ws + k_block_offset));
+            DataCopy(gm_k_save, ub_stage_k_mat, tile_bytes);
+        }
         Catlass::SageAttn::CopyUbToL1zN(l1_k, ub_stage_k_mat, block_n, d);
         Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
 #else
@@ -405,6 +424,43 @@ public:
             } else {
                 for (uint32_t c = 0; c < d; ++c) {
                     l1_k[Catlass::SageAttn::ZnIndex(j, c, block_n)] = 0;
+                }
+            }
+        }
+
+        __gm__ uint8_t *core_ws = ctx.CoreKvWorkspacePtr();
+        if (core_ws != nullptr) {
+            const uint32_t d_pad_val = ctx.tiling ? ctx.tiling->d_pad : ctx.d;
+            const KvPreQuantWorkspaceOffsets ws = ComputeKvPreQuantCoreOffsets(ctx.sk, d_pad_val);
+            const uint64_t ks_block_offset = ws.key_scale_offset + static_cast<uint64_t>(cur_k) * STAGE_SLOT_BYTES;
+            float *ks_save = reinterpret_cast<float*>(core_ws + ks_block_offset);
+            for (uint32_t j = 0; j < block_n; ++j) {
+                if (j < block_k) {
+                    const uint32_t token = cur_k_start + j;
+                    ks_save[j] = ctx.sim_mem->k_scales[quant::KScaleIndex<PER_THREAD>(token)];
+                } else {
+                    ks_save[j] = 0.0f;
+                }
+            }
+            const uint64_t tile_bytes = static_cast<uint64_t>(block_n) * d;
+            const uint64_t k_block_offset = ws.key_offset + static_cast<uint64_t>(cur_k) * tile_bytes;
+            int8_t *k_save = reinterpret_cast<int8_t*>(core_ws + k_block_offset);
+            for (uint32_t j = 0; j < block_n; ++j) {
+                if (j < block_k) {
+                    const uint32_t token = cur_k_start + j;
+                    const float scale = ctx.sim_mem->k_scales[quant::KScaleIndex<PER_THREAD>(token)];
+                    const uint16_t *row_ptr = k_u16 + kv_layout(tla::MakeCoord(0u, 0u, j, 0u));
+                    for (uint32_t c = 0; c < d; ++c) {
+                        float val = ReadInputBits(row_ptr, c);
+                        val = quant::SubKm<kDtype>(val, km_ptr, c);
+                        const int8_t code = PER_THREAD ? quant::RoundHalfAwayFromZero(val / scale)
+                                                       : quant::RoundNearestEven(val / scale);
+                        k_save[j * d + c] = code;
+                    }
+                } else {
+                    for (uint32_t c = 0; c < d; ++c) {
+                        k_save[j * d + c] = 0;
+                    }
                 }
             }
         }
@@ -562,6 +618,16 @@ public:
 
         // 阶段二：MTE3 2D DMA 分形重组写入 L1 zN 布局（硬件 L0B 加载时原生转置为 nZ）
         Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
+        __gm__ uint8_t *core_ws = ctx.CoreKvWorkspacePtr();
+        if (core_ws != nullptr) {
+            const uint32_t d_pad_val = ctx.tiling ? ctx.tiling->d_pad : ctx.d;
+            const KvPreQuantWorkspaceOffsets ws = ComputeKvPreQuantCoreOffsets(ctx.sk, d_pad_val);
+            const uint64_t tile_bytes = static_cast<uint64_t>(block_n) * d;
+            const uint64_t v_block_offset = ws.val_offset + static_cast<uint64_t>(cur_k) * tile_bytes;
+            GlobalTensor<float8_e4m3_t> gm_v_save;
+            gm_v_save.SetGlobalBuffer(reinterpret_cast<__gm__ float8_e4m3_t*>(core_ws + v_block_offset));
+            DataCopy(gm_v_save, ub_stage_tok, tile_bytes);
+        }
         Catlass::SageAttn::CopyUbToL1zN(l1_v, ub_stage_tok, block_n, d);
         Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
 #else
@@ -622,6 +688,32 @@ public:
                 l1_v[Catlass::SageAttn::ZnIndex(jl, c, block_n)] = code;
             }
         }
+
+        __gm__ uint8_t *core_ws = ctx.CoreKvWorkspacePtr();
+        if (core_ws != nullptr) {
+            const uint32_t d_pad_val = ctx.tiling ? ctx.tiling->d_pad : ctx.d;
+            const KvPreQuantWorkspaceOffsets ws = ComputeKvPreQuantCoreOffsets(ctx.sk, d_pad_val);
+            const uint64_t tile_bytes = static_cast<uint64_t>(block_n) * d;
+            const uint64_t v_block_offset = ws.val_offset + static_cast<uint64_t>(cur_k) * tile_bytes;
+            uint8_t *v_save = core_ws + v_block_offset;
+            for (uint32_t jl = 0; jl < block_n; ++jl) {
+                if (jl < block_k) {
+                    const uint16_t *row_ptr = v_u16 + kv_layout(tla::MakeCoord(0u, 0u, jl, 0u));
+                    for (uint32_t c = 0; c < d; ++c) {
+                        const float scale = (c < 256u) ? ctx.sim_mem->v_scales[c] : 1.0f;
+                        const float vm = (smooth_v && c < 256u) ? ctx.sim_mem->v_means[c] : 0.0f;
+                        float scaled = (ReadInputBits(row_ptr, c) - vm) / scale;
+                        if (scaled > scale_max) scaled = scale_max;
+                        if (scaled < -scale_max) scaled = -scale_max;
+                        v_save[jl * d + c] = quant::FloatToE4m3fn(scaled);
+                    }
+                } else {
+                    for (uint32_t c = 0; c < d; ++c) {
+                        v_save[jl * d + c] = 0;
+                    }
+                }
+            }
+        }
 #endif
     }
 
@@ -653,12 +745,10 @@ private:
     {
         constexpr uint32_t l1_dst_offset = IS_PING ? SlotL1KvPing::Offset() : SlotL1KvPong::Offset();
         constexpr uint32_t l1_v_offset = IS_PING ? SlotL1VPing::Offset() : SlotL1VPong::Offset();
-
         if (k >= 2) {
             AttentionSync::V0WaitKvFree<IS_PING>();
         }
 
-#if SAGE_ATTN_DEVICE_COMPILE
         __gm__ uint8_t *core_ws = ctx.CoreKvWorkspacePtr();
         const bool can_reuse_kv = (core_ws != nullptr && kv_prequant_cached_ &&
                                    ctx.cur_b == cached_b_ && ctx.cur_hkv == cached_hkv_);
@@ -670,6 +760,7 @@ private:
             const uint64_t v_block_offset = ws.val_offset + static_cast<uint64_t>(k) * tile_bytes;
             const uint64_t ks_block_offset = ws.key_scale_offset + static_cast<uint64_t>(k) * STAGE_SLOT_BYTES;
 
+#if SAGE_ATTN_DEVICE_COMPILE
             // 1. 搬移缓存的 K Scale 到 stage strip
             LocalTensor<float> ub_stage_k(TPosition::VECCALC, SlotV0StageStrip::Offset(), STAGE_SLOT_FLOATS);
             GlobalTensor<float> gm_ks_cached;
@@ -710,9 +801,40 @@ private:
             Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
 
             AttentionSync::V0SignalKvReady<IS_PING>();
+#else
+            const float *ks_src = reinterpret_cast<const float*>(core_ws + ks_block_offset);
+            const uint32_t cur_k_start = k * ctx.block_n;
+            const uint32_t cur_block_k = ctx.CurBlockK(k);
+            const bool per_thread = (ctx.qk_quant_gran == QUANT_GRAN_PER_THREAD);
+            if (ctx.sim_mem != nullptr) {
+                uint32_t k_offset = STAGE_K_SCALE_BASE_OFFSET + (k % STAGE_K_SCALE_NUM_SLOTS) * STAGE_SLOT_BYTES;
+                float *stage_k = reinterpret_cast<float *>(ctx.sim_mem->stage_strip + k_offset);
+                for (uint32_t j = 0; j < ctx.block_n; ++j) {
+                    stage_k[j] = (j < cur_block_k) ? ks_src[j] : 0.0f;
+                }
+                for (uint32_t j = 0; j < cur_block_k; ++j) {
+                    const uint32_t token = cur_k_start + j;
+                    uint32_t s_idx = per_thread ? quant::KScaleIndex<true>(token) : quant::KScaleIndex<false>(token);
+                    ctx.sim_mem->k_scales[s_idx] = ks_src[j];
+                }
+                int8_t *l1_k = reinterpret_cast<int8_t *>(ctx.sim_mem->l1_mem + l1_dst_offset);
+                const int8_t *k_src_cached = reinterpret_cast<const int8_t*>(core_ws + k_block_offset);
+                for (uint32_t j = 0; j < ctx.block_n; ++j) {
+                    for (uint32_t c = 0; c < ctx.d; ++c) {
+                        l1_k[Catlass::SageAttn::ZnIndex(j, c, ctx.block_n)] = k_src_cached[j * ctx.d + c];
+                    }
+                }
+                uint8_t *l1_v = ctx.sim_mem->l1_mem + l1_v_offset;
+                const uint8_t *v_src_cached = reinterpret_cast<const uint8_t*>(core_ws + v_block_offset);
+                for (uint32_t j = 0; j < ctx.block_n; ++j) {
+                    for (uint32_t c = 0; c < ctx.d; ++c) {
+                        l1_v[Catlass::SageAttn::ZnIndex(j, c, ctx.block_n)] = v_src_cached[j * ctx.d + c];
+                    }
+                }
+            }
+#endif
             return;
         }
-#endif
 
         int64_t sk_start = static_cast<int64_t>(k) * ctx.block_n;
         uint32_t cur_block_k = ctx.CurBlockK(k);
@@ -731,34 +853,6 @@ private:
 
         QuantizeAndStageValue(ctx, ctx.value_gm + kv_gm_offset * sizeof(uint16_t),
                               l1_v_offset, k, cur_block_k, kv_layout);
-
-#if SAGE_ATTN_DEVICE_COMPILE
-        if (core_ws != nullptr) {
-            const uint32_t d_pad_val = ctx.tiling ? ctx.tiling->d_pad : ctx.d;
-            const KvPreQuantWorkspaceOffsets ws = ComputeKvPreQuantCoreOffsets(ctx.sk, d_pad_val);
-            const uint64_t tile_bytes = static_cast<uint64_t>(ctx.block_n) * ctx.d;
-            const uint64_t k_block_offset = ws.key_offset + static_cast<uint64_t>(k) * tile_bytes;
-            const uint64_t v_block_offset = ws.val_offset + static_cast<uint64_t>(k) * tile_bytes;
-            const uint64_t ks_block_offset = ws.key_scale_offset + static_cast<uint64_t>(k) * STAGE_SLOT_BYTES;
-
-            LocalTensor<int8_t> ub_k_mat(TPosition::VECCALC, SlotV0VStageTok::Offset(), tile_bytes);
-            GlobalTensor<int8_t> gm_k_save;
-            gm_k_save.SetGlobalBuffer(reinterpret_cast<__gm__ int8_t*>(core_ws + k_block_offset));
-            Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
-            DataCopy(gm_k_save, ub_k_mat, tile_bytes);
-
-            LocalTensor<float8_e4m3_t> ub_v_tok(TPosition::VECCALC, SlotV0VStageTok::Offset(), tile_bytes);
-            GlobalTensor<float8_e4m3_t> gm_v_save;
-            gm_v_save.SetGlobalBuffer(reinterpret_cast<__gm__ float8_e4m3_t*>(core_ws + v_block_offset));
-            DataCopy(gm_v_save, ub_v_tok, tile_bytes);
-
-            LocalTensor<float> ub_ks_strip(TPosition::VECCALC, SlotV0StageStrip::Offset(), STAGE_SLOT_FLOATS);
-            GlobalTensor<float> gm_ks_save;
-            gm_ks_save.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(core_ws + ks_block_offset));
-            DataCopy(gm_ks_save, ub_ks_strip, STAGE_SLOT_FLOATS);
-            Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
-        }
-#endif
 
         AttentionSync::V0SignalKvReady<IS_PING>();
     }

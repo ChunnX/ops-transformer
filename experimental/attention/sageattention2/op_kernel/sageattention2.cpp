@@ -29,8 +29,7 @@ extern "C" void sage_attention2(
     uint8_t *attentionOut, uint8_t *softmaxLse,
     uint8_t *workspace, uint8_t *tiling)
 {
-    (void)workspace;
     const auto *t = reinterpret_cast<const sage_attn::SageAttention2TilingData *>(tiling);
-    sage_attn::SageAttnLaunch::RunByDtype(t->input_dtype, query, key, value, attentionOut, softmaxLse, nullptr, t);
+    sage_attn::SageAttnLaunch::RunByDtype(t->input_dtype, query, key, value, attentionOut, softmaxLse, workspace, t);
 }
 #endif

@@ -719,14 +719,8 @@ struct SageAttnLaunch {
         __gm__ uint8_t *workspace,
         TilingPtr tiling_data)
     {
-#if SAGE_ATTN_DEVICE_COMPILE
         SageAttnKernel<DTYPE_MODE> kernel;
         kernel.Init(query, key, value, attentionOut, softmaxLse, workspace, tiling_data);
-#else
-        (void)workspace;
-        SageAttnKernel<DTYPE_MODE> kernel;
-        kernel.Init(query, key, value, attentionOut, softmaxLse, nullptr, tiling_data);
-#endif
         kernel.Process();
     }
 

@@ -282,10 +282,11 @@ def _run_kernel_host(case: dict, q: torch.Tensor, k: torch.Tensor, v: torch.Tens
     t.cores_per_die, t.tasks_per_die = 1, b * hkv * t.q_blk_num
     t.has_lse = 1 if lse is not None else 0
 
+    ws = torch.zeros(16 * 1024 * 1024, dtype=torch.uint8)
     _LIB.sage_attention2(
         ctypes.c_void_p(qp.data_ptr()), ctypes.c_void_p(kp.data_ptr()), ctypes.c_void_p(vp.data_ptr()),
         ctypes.c_void_p(out_pad.data_ptr()), ctypes.c_void_p(lse.data_ptr()),
-        None, ctypes.cast(ctypes.byref(t), ctypes.c_void_p),
+        ctypes.c_void_p(ws.data_ptr()), ctypes.cast(ctypes.byref(t), ctypes.c_void_p),
     )
     if d_og == d_pad:
         out = out_pad
@@ -534,6 +535,12 @@ class TestKernelHostSerialBranchVsGolden(GoldenTwinTestBase):
         stats = self._run_kernel_host_bucket("TC-01_nhd_layout_bf16")
         _log_debug(f"\n[kernel-host] TC-01_nhd_layout_bf16: matched={stats['matched_ratio']:.6f} "
                    f"max_abs={stats['max_abs_error']:.6g} lse={stats['lse_max_diff']:.3e}")
+
+    def test_kv_prequant_cache_multi_q_blocks(self):
+        """验证多 Query 块下 KV 前置量化切片缓存与复用（q=0 写切片，q>0 读切片）的输出与黄金参考 100% 位级对齐。"""
+        stats = self._run_kernel_host_bucket("P-01_per_thread_fp32+fp16_fp16_HND")
+        self.assertEqual(stats["matched_ratio"], 1.0)
+        self.assertLessEqual(stats["max_abs_error"], 0.05)
 
 
 def zn_index(row: int, col: int, total_rows: int) -> int:

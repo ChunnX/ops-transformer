@@ -81,7 +81,7 @@ public:
     __aicore__ inline __attribute__((always_inline)) void StageKScaleStrip(const TaskContext &ctx, uint32_t k) { (void)ctx; (void)k; }
 
     /**
-     * \brief 宿主串行仿真重摆：恢复设备分支“V0 产出→消费”的逐拍序（幂等）
+     * \brief 宿主串行仿真重摆：恢复设备分支“V0 产出→消费”的逐拍序（幂等，与设备 can_reuse_kv 快路分支成对修改）
      */
     __aicore__ inline __attribute__((always_inline)) void RestageKvBlockHost(const TaskContext &ctx, uint32_t k)
     {
@@ -91,6 +91,48 @@ public:
         const uint32_t cur_block_k = ctx.CurBlockK(k);
         const bool is_ping = ((k % 2) == 0);
         const uint32_t l1_dst_offset = is_ping ? SlotL1KvPing::Offset() : SlotL1KvPong::Offset();
+        const uint32_t l1_v_offset = is_ping ? SlotL1VPing::Offset() : SlotL1VPong::Offset();
+
+        const uint8_t *core_ws = ctx.CoreKvWorkspacePtr();
+        if (core_ws != nullptr) {
+            const uint32_t d_pad_val = ctx.tiling ? ctx.tiling->d_pad : ctx.d;
+            const KvPreQuantWorkspaceOffsets ws = ComputeKvPreQuantCoreOffsets(ctx.sk, d_pad_val);
+            const uint64_t tile_bytes = static_cast<uint64_t>(ctx.block_n) * ctx.d;
+            const uint64_t k_block_offset = ws.key_offset + static_cast<uint64_t>(k) * tile_bytes;
+            const uint64_t v_block_offset = ws.val_offset + static_cast<uint64_t>(k) * tile_bytes;
+            const uint64_t ks_block_offset = ws.key_scale_offset + static_cast<uint64_t>(k) * STAGE_SLOT_BYTES;
+
+            const float *ks_src = reinterpret_cast<const float*>(core_ws + ks_block_offset);
+            const uint32_t cur_k_start = k * ctx.block_n;
+            const bool per_thread = (ctx.qk_quant_gran == QUANT_GRAN_PER_THREAD);
+            if (ctx.sim_mem != nullptr) {
+                uint32_t k_offset = STAGE_K_SCALE_BASE_OFFSET + (k % STAGE_K_SCALE_NUM_SLOTS) * STAGE_SLOT_BYTES;
+                float *stage_k = reinterpret_cast<float *>(ctx.sim_mem->stage_strip + k_offset);
+                for (uint32_t j = 0; j < ctx.block_n; ++j) {
+                    stage_k[j] = (j < cur_block_k) ? ks_src[j] : 0.0f;
+                }
+                for (uint32_t j = 0; j < cur_block_k; ++j) {
+                    const uint32_t token = cur_k_start + j;
+                    uint32_t s_idx = per_thread ? quant::KScaleIndex<true>(token) : quant::KScaleIndex<false>(token);
+                    ctx.sim_mem->k_scales[s_idx] = ks_src[j];
+                }
+                int8_t *l1_k = reinterpret_cast<int8_t *>(ctx.sim_mem->l1_mem + l1_dst_offset);
+                const int8_t *k_src_cached = reinterpret_cast<const int8_t*>(core_ws + k_block_offset);
+                for (uint32_t j = 0; j < ctx.block_n; ++j) {
+                    for (uint32_t c = 0; c < ctx.d; ++c) {
+                        l1_k[Catlass::SageAttn::ZnIndex(j, c, ctx.block_n)] = k_src_cached[j * ctx.d + c];
+                    }
+                }
+                uint8_t *l1_v = ctx.sim_mem->l1_mem + l1_v_offset;
+                const uint8_t *v_src_cached = reinterpret_cast<const uint8_t*>(core_ws + v_block_offset);
+                for (uint32_t j = 0; j < ctx.block_n; ++j) {
+                    for (uint32_t c = 0; c < ctx.d; ++c) {
+                        l1_v[Catlass::SageAttn::ZnIndex(j, c, ctx.block_n)] = v_src_cached[j * ctx.d + c];
+                    }
+                }
+            }
+            return;
+        }
 
         const int64_t b_idx = static_cast<int64_t>(ctx.cur_b);
         const int64_t hkv_idx = static_cast<int64_t>(ctx.cur_hkv);

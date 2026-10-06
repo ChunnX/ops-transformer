@@ -306,7 +306,8 @@ struct KvPreQuantWorkspaceOffsets {
     const uint64_t k_bytes = align512(static_cast<uint64_t>(sk) * d_pad * sizeof(int8_t));
 
     ws.key_scale_offset = ws.key_offset + k_bytes;
-    const uint64_t k_scale_bytes = align512(static_cast<uint64_t>(sk) * sizeof(float));
+    const uint64_t max_kv_blocks = static_cast<uint64_t>((sk + 63u) / 64u);
+    const uint64_t k_scale_bytes = align512(max_kv_blocks * STAGE_SLOT_BYTES);
 
     ws.val_offset = ws.key_scale_offset + k_scale_bytes;
     const uint64_t v_bytes = align512(static_cast<uint64_t>(sk) * d_pad * sizeof(uint8_t));
