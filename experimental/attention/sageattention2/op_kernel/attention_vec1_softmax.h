@@ -102,8 +102,8 @@ public:
         }
 
         AttentionVec0Quant<DTYPE_MODE> vec0;
-        vec0.QuantizeAndStageKey(ctx, ctx.key_gm + kv_gm_offset * sizeof(uint16_t), km_ptr, l1_dst_offset,
-                                 k, cur_block_k, kv_layout);
+        vec0.LoadAndQuantizeK(ctx, ctx.key_gm + kv_gm_offset * sizeof(uint16_t), km_ptr,
+                              k, l1_dst_offset);
         vec0.QuantizeAndStageValue(ctx, ctx.value_gm + kv_gm_offset * sizeof(uint16_t),
                                    is_ping ? SlotL1VPing::Offset() : SlotL1VPong::Offset(),
                                    k, cur_block_k, kv_layout);
@@ -208,7 +208,6 @@ public:
         LocalTensor<float> ub_block_sum(TPosition::VECCALC, SlotV1BlockSum::Offset(), MAX_PACK_ROWS);
         LocalTensor<float> ub_factor(TPosition::VECCALC, SlotV1RsFactor::Offset(), MAX_PACK_ROWS);
         LocalTensor<float> ub_logits_dot(TPosition::VECCALC, SlotV1Dot32::Offset(), rows * ctx.block_n);
-        LocalTensor<float> ub_o(TPosition::VECCALC, SlotV1OAccum::Offset(), rows * ctx.d);
         LocalTensor<float8_e4m3_t> ub_out_p(TPosition::VECCALC, SlotV1FixpipeRecv::Offset(), rows * ctx.block_n);
 
         // M6-3 Logits 瓦片寄存器流式融合：反量化 + 三态掩码 + 行内 Max + ExpSub 指数求和

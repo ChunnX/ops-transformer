@@ -34,13 +34,13 @@ public:
     /**
      * \brief 1. V0：GM→L1 Q 搬入与 INT8 量化
      */
-    __aicore__ inline __attribute__((always_inline)) void LoadAndQuantizeQ(
+    template <bool PER_THREAD>
+    __aicore__ inline __attribute__((always_inline)) void LoadAndQuantizeQImpl(
         const TaskContext &ctx,
         __gm__ uint8_t *q_src,
         const Catlass::SageAttn::GmBhsdLayout &q_layout)
     {
 #if SAGE_ATTN_DEVICE_COMPILE
-        const bool per_thread_q = (ctx.qk_quant_gran == QUANT_GRAN_PER_THREAD);
         const uint32_t total_rows_q = ctx.TotalRows();
         const uint32_t d = ctx.d;
 
@@ -51,8 +51,8 @@ public:
         LocalTensor<int8_t> l1_q(TPosition::A1, ctx.l1_q_offset, total_rows_q * d);
 
         // 窗口 scale 组清零
-        const uint32_t grp_first_q = quant::QScaleIndex(ctx.cur_q_start, per_thread_q);
-        const uint32_t grp_last_q = quant::QScaleIndex(ctx.cur_q_start + ctx.cur_q_len - 1u, per_thread_q);
+        const uint32_t grp_first_q = quant::QScaleIndex<PER_THREAD>(ctx.cur_q_start);
+        const uint32_t grp_last_q = quant::QScaleIndex<PER_THREAD>(ctx.cur_q_start + ctx.cur_q_len - 1u);
         const uint32_t grp_first_aligned = (grp_first_q / 8u) * 8u;
         const uint32_t grp_last_aligned = ::Min(((grp_last_q + 8u) / 8u) * 8u, static_cast<uint32_t>(kQScaleSlotStride));
         const uint32_t grp_cnt_aligned = (grp_first_aligned < grp_last_aligned)
@@ -87,14 +87,14 @@ public:
             const uint32_t g = r / ctx.cur_q_len;
             const uint32_t token = ctx.cur_q_start + (r % ctx.cur_q_len);
             const float amax = ub_rowmax.GetValue(r);
-            const uint32_t slot = (ctx.cur_g0 + g) * kQScaleSlotStride + quant::QScaleIndex(token, per_thread_q);
+            const uint32_t slot = (ctx.cur_g0 + g) * kQScaleSlotStride + quant::QScaleIndex<PER_THREAD>(token);
             if (amax > ub_scales.GetValue(slot)) ub_scales.SetValue(slot, amax);
         }
         for (uint32_t g = 0; g < ctx.cur_heads; ++g) {
             for (uint32_t s = grp_first_q; s <= grp_last_q && s < kQScaleSlotStride; ++s) {
                 const float amax = ub_scales.GetValue((ctx.cur_g0 + g) * kQScaleSlotStride + s);
                 ub_scales.SetValue((ctx.cur_g0 + g) * kQScaleSlotStride + s,
-                                   quant::FinalizeQkScale(amax, per_thread_q));
+                                   quant::FinalizeQkScale<PER_THREAD>(amax));
             }
         }
         Catlass::SageAttn::Sync<HardEvent::S_V>();
@@ -105,10 +105,10 @@ public:
             const uint32_t g = r / ctx.cur_q_len;
             const uint32_t i = r % ctx.cur_q_len;
             const uint32_t token = ctx.cur_q_start + i;
-            __ubuf__ float* scale_ptr = ub_scales_ptr + (ctx.cur_g0 + g) * kQScaleSlotStride + quant::QScaleIndex(token, per_thread_q);
+            __ubuf__ float* scale_ptr = ub_scales_ptr + (ctx.cur_g0 + g) * kQScaleSlotStride + quant::QScaleIndex<PER_THREAD>(token);
             dev_vf::QuantRowInt8VF<kDtype>(reinterpret_cast<__ubuf__ half*>(ub_in[r * d].GetPhyAddr()),
                                            reinterpret_cast<__ubuf__ int8_t*>(ub_stage_q_mat[r * d].GetPhyAddr()),
-                                           scale_ptr, d, per_thread_q ? 1u : 0u, 0u, nullptr);
+                                           scale_ptr, d, PER_THREAD ? 1u : 0u, 0u, nullptr);
         }
         for (uint32_t r = act_rows_q; r < m_aligned_q; ++r) {
             Duplicate(ub_stage_q_mat[r * d], int8_t(0), d);
@@ -124,7 +124,7 @@ public:
         for (uint32_t r = 0; r < act_rows_q; ++r) {
             const uint32_t g = r / ctx.cur_q_len;
             const uint32_t token = ctx.cur_q_start + (r % ctx.cur_q_len);
-            ub_stage_q.SetValue(r, ub_scales.GetValue((ctx.cur_g0 + g) * kQScaleSlotStride + quant::QScaleIndex(token, per_thread_q)));
+            ub_stage_q.SetValue(r, ub_scales.GetValue((ctx.cur_g0 + g) * kQScaleSlotStride + quant::QScaleIndex<PER_THREAD>(token)));
         }
         Catlass::SageAttn::Sync<HardEvent::S_MTE3>();
         GlobalTensor<float> gm_stage_q;
@@ -132,13 +132,12 @@ public:
         DataCopy(gm_stage_q, ub_stage_q, STAGE_SLOT_FLOATS);
         Catlass::SageAttn::Sync<HardEvent::MTE3_S>();
 #else
-        const bool per_thread = (ctx.qk_quant_gran == QUANT_GRAN_PER_THREAD);
         const uint16_t *q_u16 = reinterpret_cast<const uint16_t *>(q_src);
         int8_t *l1_q = reinterpret_cast<int8_t *>(ctx.sim_mem->l1_mem + ctx.l1_q_offset);
         const uint32_t d = ctx.d;
 
-        const uint32_t grp_first = quant::QScaleIndex(ctx.cur_q_start, per_thread);
-        const uint32_t grp_last = quant::QScaleIndex(ctx.cur_q_start + ctx.cur_q_len - 1u, per_thread);
+        const uint32_t grp_first = quant::QScaleIndex<PER_THREAD>(ctx.cur_q_start);
+        const uint32_t grp_last = quant::QScaleIndex<PER_THREAD>(ctx.cur_q_start + ctx.cur_q_len - 1u);
         for (uint32_t g = 0; g < ctx.cur_heads; ++g) {
             for (uint32_t s = grp_first; s <= grp_last && s < kQScaleSlotStride; ++s) {
                 ctx.sim_mem->q_scales[(ctx.cur_g0 + g) * kQScaleSlotStride + s] = 0.0f;
@@ -150,7 +149,7 @@ public:
             if (r >= MAX_PACK_ROWS || g >= ctx.cur_heads) break;
             const uint32_t i = r % ctx.cur_q_len;
             const uint32_t token = ctx.cur_q_start + i;
-            float *scale_slot = &ctx.sim_mem->q_scales[(ctx.cur_g0 + g) * kQScaleSlotStride + quant::QScaleIndex(token, per_thread)];
+            float *scale_slot = &ctx.sim_mem->q_scales[(ctx.cur_g0 + g) * kQScaleSlotStride + quant::QScaleIndex<PER_THREAD>(token)];
             const uint16_t *row_ptr = q_u16 + q_layout(tla::MakeCoord(0u, g, i, 0u));
             for (uint32_t c = 0; c < d; ++c) {
                 const float abs_v = SageFastAbs(ReadInputBits(row_ptr, c));
@@ -162,7 +161,7 @@ public:
             for (uint32_t s = grp_first; s <= grp_last && s < kQScaleSlotStride; ++s) {
                 const float amax = ctx.sim_mem->q_scales[(ctx.cur_g0 + g) * kQScaleSlotStride + s];
                 ctx.sim_mem->q_scales[(ctx.cur_g0 + g) * kQScaleSlotStride + s] =
-                    quant::FinalizeQkScale(amax, per_thread);
+                    quant::FinalizeQkScale<PER_THREAD>(amax);
             }
         }
 
@@ -171,11 +170,11 @@ public:
             if (r >= MAX_PACK_ROWS || g >= ctx.cur_heads) break;
             const uint32_t i = r % ctx.cur_q_len;
             const uint32_t token = ctx.cur_q_start + i;
-            const float scale = ctx.sim_mem->q_scales[(ctx.cur_g0 + g) * kQScaleSlotStride + quant::QScaleIndex(token, per_thread)];
+            const float scale = ctx.sim_mem->q_scales[(ctx.cur_g0 + g) * kQScaleSlotStride + quant::QScaleIndex<PER_THREAD>(token)];
             const uint16_t *row_ptr = q_u16 + q_layout(tla::MakeCoord(0u, g, i, 0u));
             for (uint32_t c = 0; c < d; ++c) {
                 const float val = ReadInputBits(row_ptr, c);
-                const int8_t code = per_thread ? quant::RoundHalfAwayFromZero(val / scale)
+                const int8_t code = PER_THREAD ? quant::RoundHalfAwayFromZero(val / scale)
                                                : quant::RoundNearestEven(val / scale);
                 l1_q[Catlass::SageAttn::ZnIndex(r, c, ctx.TotalRows())] = code;
             }
@@ -186,31 +185,42 @@ public:
             for (uint32_t r = 0; r < ctx.TotalRows() && r < MAX_PACK_ROWS; ++r) {
                 const uint32_t g = r / ctx.cur_q_len;
                 const uint32_t token = ctx.cur_q_start + (r % ctx.cur_q_len);
-                stage_q[r] = ctx.sim_mem->q_scales[(ctx.cur_g0 + g) * kQScaleSlotStride + quant::QScaleIndex(token, per_thread)];
+                stage_q[r] = ctx.sim_mem->q_scales[(ctx.cur_g0 + g) * kQScaleSlotStride + quant::QScaleIndex<PER_THREAD>(token)];
             }
         }
 #endif
     }
 
+    __aicore__ inline __attribute__((always_inline)) void LoadAndQuantizeQ(
+        const TaskContext &ctx,
+        __gm__ uint8_t *q_src,
+        const Catlass::SageAttn::GmBhsdLayout &q_layout)
+    {
+        if (ctx.qk_quant_gran == QUANT_GRAN_PER_THREAD) {
+            LoadAndQuantizeQImpl<true>(ctx, q_src, q_layout);
+        } else {
+            LoadAndQuantizeQImpl<false>(ctx, q_src, q_layout);
+        }
+    }
+
     /**
      * \brief 2. V0：K 减 kMean + INT8 量化 + 摆放写 L1 槽首
      */
-    __aicore__ inline __attribute__((always_inline)) void QuantizeAndStageKey(
+    template <bool PER_THREAD>
+    __aicore__ inline __attribute__((always_inline)) void LoadAndQuantizeKImpl(
         const TaskContext &ctx,
         __gm__ uint8_t *k_src,
         const __gm__ float *km_ptr,
-        uint32_t l1_dst_addr,
         uint32_t cur_k,
-        uint32_t block_k,
-        const Catlass::SageAttn::GmBhsdLayout &kv_layout)
+        uint32_t l1_dst_addr)
     {
         const uint32_t cur_k_start = cur_k * ctx.block_n;
         const uint32_t d = ctx.d;
         const uint32_t block_n = ctx.block_n;
+        const uint32_t block_k = ctx.CurBlockK(cur_k);
 
 #if SAGE_ATTN_DEVICE_COMPILE
-        const bool per_thread_k = (ctx.qk_quant_gran == QUANT_GRAN_PER_THREAD);
-        const uint32_t grp_per_blk = per_thread_k ? 4u : 1u;
+        constexpr uint32_t grp_per_blk = PER_THREAD ? 4u : 1u;
         const uint32_t blk_first = cur_k_start / quant::K_BLK;
         const uint32_t grp_lo = blk_first * grp_per_blk;
         const uint32_t grp_hi = ((cur_k_start + block_n - 1u) / quant::K_BLK + 1u) * grp_per_blk;
@@ -253,13 +263,13 @@ public:
         Catlass::SageAttn::Sync<HardEvent::V_S>();
 
         for (uint32_t j = 0; j < block_k; ++j) {
-            const uint32_t slot = quant::KScaleIndex(cur_k_start + j, per_thread_k);
+            const uint32_t slot = quant::KScaleIndex<PER_THREAD>(cur_k_start + j);
             const float amax = ub_rowmax.GetValue(j);
             if (amax > ub_k_scales.GetValue(slot)) ub_k_scales.SetValue(slot, amax);
         }
         for (uint32_t s = grp_lo; s < grp_hi && s < kKScaleSlotStride; ++s) {
             const float amax = ub_k_scales.GetValue(s);
-            const float scale = quant::FinalizeQkScale(amax, per_thread_k);
+            const float scale = quant::FinalizeQkScale<PER_THREAD>(amax);
             ub_k_scales.SetValue(s, scale);
         }
         Catlass::SageAttn::Sync<HardEvent::S_V>();
@@ -270,7 +280,7 @@ public:
         for (uint32_t j = 0; j < block_n; ++j) {
             if (j < block_k) {
                 const uint32_t token = cur_k_start + j;
-                ub_stage_k.SetValue(j, ub_k_scales.GetValue(quant::KScaleIndex(token, per_thread_k)));
+                ub_stage_k.SetValue(j, ub_k_scales.GetValue(quant::KScaleIndex<PER_THREAD>(token)));
             }
         }
         Catlass::SageAttn::Sync<HardEvent::S_MTE3>();
@@ -284,10 +294,10 @@ public:
         for (uint32_t j = 0; j < block_n; ++j) {
             if (j < block_k) {
                 const uint32_t token = cur_k_start + j;
-                __ubuf__ float* scale_ptr = ub_k_scales_ptr + quant::KScaleIndex(token, per_thread_k);
+                __ubuf__ float* scale_ptr = ub_k_scales_ptr + quant::KScaleIndex<PER_THREAD>(token);
                 dev_vf::QuantRowInt8VF<kDtype>(reinterpret_cast<__ubuf__ half*>(ub_in[j * d].GetPhyAddr()),
                                                reinterpret_cast<__ubuf__ int8_t*>(ub_stage_k_mat[j * d].GetPhyAddr()),
-                                               scale_ptr, d, per_thread_k ? 1u : 0u, has_km,
+                                               scale_ptr, d, PER_THREAD ? 1u : 0u, has_km,
                                                reinterpret_cast<__ubuf__ float*>(ub_km.GetPhyAddr()));
             } else {
                 Duplicate(ub_stage_k_mat[j * d], int8_t(0), d);
@@ -308,11 +318,12 @@ public:
         Catlass::SageAttn::CopyUbToL1zN(l1_k, ub_stage_k_tr, d, block_n);
         Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
 #else
-        const bool per_thread = (ctx.qk_quant_gran == QUANT_GRAN_PER_THREAD);
         const uint16_t *k_u16 = reinterpret_cast<const uint16_t *>(k_src);
         int8_t *l1_k = reinterpret_cast<int8_t *>(ctx.sim_mem->l1_mem + l1_dst_addr);
+        const Catlass::SageAttn::GmBhsdLayout kv_layout =
+            Catlass::SageAttn::MakeGmBhsdLayout(ctx.b, ctx.hkv, ctx.sk, ctx.d, ctx.is_hnd != 0);
 
-        const uint32_t grp_per_blk = per_thread ? 4u : 1u;
+        constexpr uint32_t grp_per_blk = PER_THREAD ? 4u : 1u;
         const uint32_t blk_first = cur_k_start / quant::K_BLK;
         const uint32_t blk_last = (cur_k_start + block_n - 1u) / quant::K_BLK;
         const uint32_t grp_lo = blk_first * grp_per_blk;
@@ -323,7 +334,7 @@ public:
 
         for (uint32_t j = 0; j < block_k; ++j) {
             const uint32_t token = cur_k_start + j;
-            float *scale_slot = &ctx.sim_mem->k_scales[quant::KScaleIndex(token, per_thread)];
+            float *scale_slot = &ctx.sim_mem->k_scales[quant::KScaleIndex<PER_THREAD>(token)];
             const uint16_t *row_ptr = k_u16 + kv_layout(tla::MakeCoord(0u, 0u, j, 0u));
             for (uint32_t c = 0; c < d; ++c) {
                 float val = ReadInputBits(row_ptr, c);
@@ -335,7 +346,7 @@ public:
 
         for (uint32_t s = grp_lo; s < grp_hi && s < kKScaleSlotStride; ++s) {
             const float amax = ctx.sim_mem->k_scales[s];
-            const float scale = quant::FinalizeQkScale(amax, per_thread);
+            const float scale = quant::FinalizeQkScale<PER_THREAD>(amax);
             ctx.sim_mem->k_scales[s] = scale;
         }
 
@@ -345,7 +356,7 @@ public:
             for (uint32_t j = 0; j < block_n; ++j) {
                 if (j < block_k) {
                     const uint32_t token = cur_k_start + j;
-                    stage_k[j] = ctx.sim_mem->k_scales[quant::KScaleIndex(token, per_thread)];
+                    stage_k[j] = ctx.sim_mem->k_scales[quant::KScaleIndex<PER_THREAD>(token)];
                 } else {
                     stage_k[j] = 0.0f;
                 }
@@ -355,12 +366,12 @@ public:
         for (uint32_t j = 0; j < block_n; ++j) {
             if (j < block_k) {
                 const uint32_t token = cur_k_start + j;
-                const float scale = ctx.sim_mem->k_scales[quant::KScaleIndex(token, per_thread)];
+                const float scale = ctx.sim_mem->k_scales[quant::KScaleIndex<PER_THREAD>(token)];
                 const uint16_t *row_ptr = k_u16 + kv_layout(tla::MakeCoord(0u, 0u, j, 0u));
                 for (uint32_t c = 0; c < d; ++c) {
                     float val = ReadInputBits(row_ptr, c);
                     val = quant::SubKm<kDtype>(val, km_ptr, c);
-                    const int8_t code = per_thread ? quant::RoundHalfAwayFromZero(val / scale)
+                    const int8_t code = PER_THREAD ? quant::RoundHalfAwayFromZero(val / scale)
                                                    : quant::RoundNearestEven(val / scale);
                     l1_k[Catlass::SageAttn::ZnIndex(c, j, d)] = code;
                 }
@@ -371,6 +382,34 @@ public:
             }
         }
 #endif
+    }
+
+    __aicore__ inline __attribute__((always_inline)) void LoadAndQuantizeK(
+        const TaskContext &ctx,
+        __gm__ uint8_t *k_src,
+        const __gm__ float *km_ptr,
+        uint32_t cur_k,
+        uint32_t l1_dst_addr)
+    {
+        if (ctx.qk_quant_gran == QUANT_GRAN_PER_THREAD) {
+            LoadAndQuantizeKImpl<true>(ctx, k_src, km_ptr, cur_k, l1_dst_addr);
+        } else {
+            LoadAndQuantizeKImpl<false>(ctx, k_src, km_ptr, cur_k, l1_dst_addr);
+        }
+    }
+
+    __aicore__ inline __attribute__((always_inline)) void QuantizeAndStageKey(
+        const TaskContext &ctx,
+        __gm__ uint8_t *k_src,
+        const __gm__ float *km_ptr,
+        uint32_t l1_dst_addr,
+        uint32_t cur_k,
+        uint32_t block_k = 0,
+        const Catlass::SageAttn::GmBhsdLayout &kv_layout = Catlass::SageAttn::GmBhsdLayout{})
+    {
+        (void)block_k;
+        (void)kv_layout;
+        LoadAndQuantizeK(ctx, k_src, km_ptr, cur_k, l1_dst_addr);
     }
 
     /**
@@ -592,8 +631,8 @@ public:
             }
 #endif
 
-            QuantizeAndStageKey(ctx, ctx.key_gm + kv_gm_offset * sizeof(uint16_t), km_ptr,
-                                l1_dst_offset, k, cur_block_k, kv_layout);
+            LoadAndQuantizeK(ctx, ctx.key_gm + kv_gm_offset * sizeof(uint16_t), km_ptr,
+                             k, l1_dst_offset);
 
             QuantizeAndStageValue(ctx, ctx.value_gm + kv_gm_offset * sizeof(uint16_t),
                                   is_ping ? SlotL1VPing::Offset() : SlotL1VPong::Offset(),
@@ -637,8 +676,8 @@ public:
 
             const int64_t kv_gm_offset = kv_layout(tla::MakeCoord(b_idx, hkv_idx, sk_start, 0u));
 
-            QuantizeAndStageKey(ctx, ctx.key_gm + kv_gm_offset * sizeof(uint16_t), nullptr,
-                                l1_dst_offset, k, cur_block_k, kv_layout);
+            LoadAndQuantizeK(ctx, ctx.key_gm + kv_gm_offset * sizeof(uint16_t), nullptr,
+                             k, l1_dst_offset);
 
             QuantizeAndStageValue(ctx, ctx.value_gm + kv_gm_offset * sizeof(uint16_t),
                                   is_ping ? SlotL1VPing::Offset() : SlotL1VPong::Offset(),
