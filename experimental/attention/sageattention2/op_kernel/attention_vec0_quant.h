@@ -389,7 +389,7 @@ public:
         const float scale_max = ctx.v_scale_max;
 
 #if SAGE_ATTN_DEVICE_COMPILE
-        LocalTensor<float> ub_v_scale(TPosition::VECCALC, SlotV0RowMax::Offset(), d);
+        LocalTensor<float> ub_v_scale(TPosition::VECCALC, SlotV0VScale::Offset(), d);
         LocalTensor<float> ub_v_min(TPosition::VECCALC, SlotV0VMin::Offset(), d);
         LocalTensor<float> ub_v_sum(TPosition::VECCALC, SlotV0VSum::Offset(), d);
         LocalTensor<half> ub_in(TPosition::VECCALC, SlotV0InputPing::Offset(), MAX_PACK_ROWS * d);

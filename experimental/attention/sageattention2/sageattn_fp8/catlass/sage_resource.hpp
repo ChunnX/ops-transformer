@@ -68,12 +68,14 @@ struct Vector0UbBudget {
     static constexpr uint32_t QUANT_STAGE_STRIP_END    = QUANT_STAGE_STRIP_OFFSET + 512;
     static constexpr uint32_t QUANT_VMIN_OFFSET        = QUANT_STAGE_STRIP_END;
     static constexpr uint32_t QUANT_VSUM_OFFSET        = QUANT_VMIN_OFFSET + 512;
+    static constexpr uint32_t QUANT_VSCALE_OFFSET      = QUANT_VSUM_OFFSET + 512;
     static_assert(QUANT_ROWMAX_OFFSET < QUANT_SCALES_OFFSET &&
                   QUANT_SCALES_OFFSET < QUANT_KM_OFFSET &&
                   QUANT_KM_OFFSET < QUANT_STAGE_STRIP_OFFSET &&
                   QUANT_STAGE_STRIP_END <= QUANT_VMIN_OFFSET &&
                   QUANT_VMIN_OFFSET < QUANT_VSUM_OFFSET &&
-                  QUANT_VSUM_OFFSET + 512 <= QUANT_WORKSPACE_OFFSET + QUANT_WORKSPACE_BYTES,
+                  QUANT_VSUM_OFFSET < QUANT_VSCALE_OFFSET &&
+                  QUANT_VSCALE_OFFSET + 512 <= QUANT_WORKSPACE_OFFSET + QUANT_WORKSPACE_BYTES,
                   "Vector0 quant workspace sub-offsets overlap or exceed the region");
 
     static constexpr uint32_t NZ_OUTPUT_OFFSET         = 144 * 1024;
