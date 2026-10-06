@@ -658,6 +658,62 @@ private:
             AttentionSync::V0WaitKvFree<IS_PING>();
         }
 
+#if SAGE_ATTN_DEVICE_COMPILE
+        __gm__ uint8_t *core_ws = ctx.CoreKvWorkspacePtr();
+        const bool can_reuse_kv = (core_ws != nullptr && kv_prequant_cached_ &&
+                                   ctx.cur_b == cached_b_ && ctx.cur_hkv == cached_hkv_);
+        if (can_reuse_kv) {
+            const uint32_t d_pad_val = ctx.tiling ? ctx.tiling->d_pad : ctx.d;
+            const KvPreQuantWorkspaceOffsets ws = ComputeKvPreQuantCoreOffsets(ctx.sk, d_pad_val);
+            const uint64_t tile_bytes = static_cast<uint64_t>(ctx.block_n) * ctx.d;
+            const uint64_t k_block_offset = ws.key_offset + static_cast<uint64_t>(k) * tile_bytes;
+            const uint64_t v_block_offset = ws.val_offset + static_cast<uint64_t>(k) * tile_bytes;
+            const uint64_t ks_block_offset = ws.key_scale_offset + static_cast<uint64_t>(k) * STAGE_SLOT_BYTES;
+
+            // 1. 搬移缓存的 K Scale 到 stage strip
+            LocalTensor<float> ub_stage_k(TPosition::VECCALC, SlotV0StageStrip::Offset(), STAGE_SLOT_FLOATS);
+            GlobalTensor<float> gm_ks_cached;
+            gm_ks_cached.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(core_ws + ks_block_offset));
+            Catlass::SageAttn::Sync<HardEvent::V_MTE2>();
+            DataCopy(ub_stage_k, gm_ks_cached, STAGE_SLOT_FLOATS);
+            Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
+
+            Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
+            GlobalTensor<float> gm_stage_k;
+            uint32_t k_offset = STAGE_K_SCALE_BASE_OFFSET + (k % STAGE_K_SCALE_NUM_SLOTS) * STAGE_SLOT_BYTES;
+            gm_stage_k.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(ctx.StageStrip() + k_offset));
+            DataCopy(gm_stage_k, ub_stage_k, STAGE_SLOT_FLOATS);
+            Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
+
+            // 2. 搬移缓存的 INT8 K 到 L1
+            LocalTensor<int8_t> ub_stage_k_mat(TPosition::VECCALC, SlotV0VStageTok::Offset(), tile_bytes);
+            LocalTensor<int8_t> l1_k(TPosition::B1, l1_dst_offset, tile_bytes);
+            GlobalTensor<int8_t> gm_k_cached;
+            gm_k_cached.SetGlobalBuffer(reinterpret_cast<__gm__ int8_t*>(core_ws + k_block_offset));
+            Catlass::SageAttn::Sync<HardEvent::V_MTE2>();
+            DataCopy(ub_stage_k_mat, gm_k_cached, tile_bytes);
+            Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
+            Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
+            Catlass::SageAttn::CopyUbToL1zN(l1_k, ub_stage_k_mat, ctx.block_n, ctx.d);
+            Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
+
+            // 3. 搬移缓存的 FP8 V 到 L1
+            LocalTensor<float8_e4m3_t> ub_stage_tok(TPosition::VECCALC, SlotV0VStageTok::Offset(), tile_bytes);
+            LocalTensor<float8_e4m3_t> l1_v(TPosition::B1, l1_v_offset, tile_bytes);
+            GlobalTensor<float8_e4m3_t> gm_v_cached;
+            gm_v_cached.SetGlobalBuffer(reinterpret_cast<__gm__ float8_e4m3_t*>(core_ws + v_block_offset));
+            Catlass::SageAttn::Sync<HardEvent::V_MTE2>();
+            DataCopy(ub_stage_tok, gm_v_cached, tile_bytes);
+            Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
+            Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
+            Catlass::SageAttn::CopyUbToL1zN(l1_v, ub_stage_tok, ctx.block_n, ctx.d);
+            Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
+
+            AttentionSync::V0SignalKvReady<IS_PING>();
+            return;
+        }
+#endif
+
         int64_t sk_start = static_cast<int64_t>(k) * ctx.block_n;
         uint32_t cur_block_k = ctx.CurBlockK(k);
 
@@ -675,6 +731,34 @@ private:
 
         QuantizeAndStageValue(ctx, ctx.value_gm + kv_gm_offset * sizeof(uint16_t),
                               l1_v_offset, k, cur_block_k, kv_layout);
+
+#if SAGE_ATTN_DEVICE_COMPILE
+        if (core_ws != nullptr) {
+            const uint32_t d_pad_val = ctx.tiling ? ctx.tiling->d_pad : ctx.d;
+            const KvPreQuantWorkspaceOffsets ws = ComputeKvPreQuantCoreOffsets(ctx.sk, d_pad_val);
+            const uint64_t tile_bytes = static_cast<uint64_t>(ctx.block_n) * ctx.d;
+            const uint64_t k_block_offset = ws.key_offset + static_cast<uint64_t>(k) * tile_bytes;
+            const uint64_t v_block_offset = ws.val_offset + static_cast<uint64_t>(k) * tile_bytes;
+            const uint64_t ks_block_offset = ws.key_scale_offset + static_cast<uint64_t>(k) * STAGE_SLOT_BYTES;
+
+            LocalTensor<int8_t> ub_k_mat(TPosition::VECCALC, SlotV0VStageTok::Offset(), tile_bytes);
+            GlobalTensor<int8_t> gm_k_save;
+            gm_k_save.SetGlobalBuffer(reinterpret_cast<__gm__ int8_t*>(core_ws + k_block_offset));
+            Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
+            DataCopy(gm_k_save, ub_k_mat, tile_bytes);
+
+            LocalTensor<float8_e4m3_t> ub_v_tok(TPosition::VECCALC, SlotV0VStageTok::Offset(), tile_bytes);
+            GlobalTensor<float8_e4m3_t> gm_v_save;
+            gm_v_save.SetGlobalBuffer(reinterpret_cast<__gm__ float8_e4m3_t*>(core_ws + v_block_offset));
+            DataCopy(gm_v_save, ub_v_tok, tile_bytes);
+
+            LocalTensor<float> ub_ks_strip(TPosition::VECCALC, SlotV0StageStrip::Offset(), STAGE_SLOT_FLOATS);
+            GlobalTensor<float> gm_ks_save;
+            gm_ks_save.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(core_ws + ks_block_offset));
+            DataCopy(gm_ks_save, ub_ks_strip, STAGE_SLOT_FLOATS);
+            Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
+        }
+#endif
 
         AttentionSync::V0SignalKvReady<IS_PING>();
     }
@@ -714,6 +798,14 @@ public:
             StepKvBlock<true>(ctx, k, b_idx, hkv_idx, kv_layout);
         }
 
+        // 首个 Query 块执行完所有 active_kv_blocks 之后，如果覆盖了全量 sk 则标记为已缓存
+        const uint32_t total_kv_blocks = ::CeilDiv(ctx.sk, ctx.block_n);
+        if (active_kv_blocks >= total_kv_blocks) {
+            kv_prequant_cached_ = true;
+            cached_b_ = ctx.cur_b;
+            cached_hkv_ = ctx.cur_hkv;
+        }
+
         // 尾拍配平：等待 Cube 释放最后两拍的 KV 缓冲，保证信道零残留并在退出前与 Cube 对齐
         if (active_kv_blocks >= 1) {
             AttentionSync::V0WaitKvFree<true>();
@@ -727,12 +819,14 @@ private:
     uint32_t cached_b_{UINT32_MAX};
     uint32_t cached_hkv_{UINT32_MAX};
     bool v_scale_cached_{false};
+    bool kv_prequant_cached_{false};
 
 public:
     __aicore__ inline __attribute__((always_inline)) void InvalidateCache() {
         cached_b_ = UINT32_MAX;
         cached_hkv_ = UINT32_MAX;
         v_scale_cached_ = false;
+        kv_prequant_cached_ = false;
     }
 };
 
