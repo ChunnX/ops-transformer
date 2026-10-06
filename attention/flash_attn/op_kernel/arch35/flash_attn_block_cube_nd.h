@@ -17,6 +17,7 @@
 
 #include "../utils/flash_attn_type.h"
 #include "../../../common/op_kernel/matmul.h"
+#include "../../../common/op_kernel/const_def.h"
 
 using namespace fa_base_matmul;
 
