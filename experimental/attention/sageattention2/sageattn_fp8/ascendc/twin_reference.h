@@ -81,6 +81,7 @@ struct TwinQuantDump {
     const float* q_scale = nullptr;
     const float* k_scale = nullptr;
     const float* v_scale = nullptr;   // [b, hkv, d_pad]
+    const float* v_mean = nullptr;    // [b, hkv, d_pad]
     uint32_t d_pad = 0;
     uint32_t pad_sk_v = 0;
 };
@@ -517,6 +518,7 @@ inline int RunSequential(const TwinIo& io) {
     g_last_dump.q_scale = q_scale.data();
     g_last_dump.k_scale = k_scale.data();
     g_last_dump.v_scale = v_scale.data();
+    g_last_dump.v_mean = smooth_v ? vm.data() : nullptr;
     g_last_dump.d_pad = d_pad;
     g_last_dump.pad_sk_v = pad_sk_v;
     return 0;
@@ -539,6 +541,92 @@ inline void ExportQuantDump(const signed char** q8, const signed char** k8,
     *vs = g_last_dump.v_scale;
     *d_pad = g_last_dump.d_pad;
     *pad_sk_v = g_last_dump.pad_sk_v;
+}
+
+struct SplitKvPartial {
+    std::vector<float> o_row; // [d_pad]
+    float m_shift{0.0f};
+    float d_sum{0.0f};
+};
+
+/**
+ * \brief P2c Split-KV LSE 跨分块归并宿主孪生参考实现：
+ * 验证 shifted-max 域闭式合并算法精度与一致性。
+ */
+inline void CombineSplitsReference(
+    float* o_final,
+    float* lse_final,
+    const SplitKvPartial* splits,
+    uint32_t num_splits,
+    uint32_t d_pad,
+    uint32_t d_og,
+    const float* vs,
+    const float* vm,
+    bool smooth_v,
+    float sm_scale,
+    bool return_lse)
+{
+    if (num_splits == 0u || splits == nullptr || o_final == nullptr) {
+        return;
+    }
+
+    // 1. 全局最大值 m_glob 查找
+    float m_glob = MIN_FLOAT_VAL;
+    bool has_valid = false;
+    for (uint32_t s = 0; s < num_splits; ++s) {
+        if (splits[s].d_sum > 0.0f && splits[s].m_shift > SAGE_MASK_SENTINEL) {
+            if (!has_valid || splits[s].m_shift > m_glob) {
+                m_glob = splits[s].m_shift;
+                has_valid = true;
+            }
+        }
+    }
+
+    if (!has_valid) {
+        for (uint32_t c = 0; c < d_og; ++c) {
+            o_final[c] = (smooth_v && vm != nullptr) ? vm[c] : 0.0f;
+        }
+        if (return_lse && lse_final != nullptr) {
+            *lse_final = MIN_FLOAT_VAL;
+        }
+        return;
+    }
+
+    // 2. 闭式累加：d_glob = sum(d_s * alpha_s), o_glob = sum(o_s * alpha_s)
+    float d_glob = 0.0f;
+    std::vector<float> o_glob(d_pad, 0.0f);
+
+    for (uint32_t s = 0; s < num_splits; ++s) {
+        if (splits[s].d_sum > 0.0f && splits[s].m_shift > SAGE_MASK_SENTINEL) {
+            const float alpha_s = OnlineSoftmaxTransformer::FastExp2(splits[s].m_shift - m_glob);
+            d_glob += splits[s].d_sum * alpha_s;
+            const float* os = splits[s].o_row.data();
+            for (uint32_t c = 0; c < d_pad; ++c) {
+                o_glob[c] += os[c] * alpha_s;
+            }
+        }
+    }
+
+    const float inv_d = (d_glob > 0.0f) ? (1.0f / d_glob) : 0.0f;
+
+    // 3. 归一化与 vm 偏置还原
+    for (uint32_t c = 0; c < d_og; ++c) {
+        float val = o_glob[c] * (vs[c] * inv_d);
+        if (smooth_v && vm != nullptr) {
+            val += vm[c];
+        }
+        o_final[c] = val;
+    }
+
+    // 4. LSE 计算与 host 域换算
+    if (return_lse && lse_final != nullptr) {
+        if (d_glob > 0.0f) {
+            const float lse_exp2 = m_glob + OnlineSoftmaxTransformer::FastLog2(d_glob);
+            *lse_final = OnlineSoftmaxTransformer::ConvertLseToHost(lse_exp2, sm_scale, 0.0f, false, S_FP8_OFFSET);
+        } else {
+            *lse_final = MIN_FLOAT_VAL;
+        }
+    }
 }
 
 }  // namespace twin

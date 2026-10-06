@@ -28,7 +28,7 @@ export CATLASS_ROOT
 CATLASS_INC="${CATLASS_ROOT}/include"
 
 # bisheng 宿主模式链接不自动携带 C++ 运行时，链接型编译需显式 -lstdc++；CANN 库统一使用 CXX11_ABI=0
-HOST_CXX_FLAGS=(-std=c++17 -O2 -D_GLIBCXX_USE_CXX11_ABI=0 -Wall -Wextra -Wno-ignored-qualifiers -Wno-reorder -Wno-unused-parameter -lstdc++)
+HOST_CXX_FLAGS=(-std=c++17 -O2 -D_GLIBCXX_USE_CXX11_ABI=0 -Wall -Wextra -Wno-ignored-qualifiers -Wno-reorder -Wno-unused-parameter -lstdc++ -lm)
 COMMON_INCLUDES=(
   -I"${ASCEND_HOME_PATH}/include"
   -I"${ASCEND_HOME_PATH}/include/aclnn"
@@ -67,6 +67,8 @@ run_host_tests() {
   echo "-- 编译 test_tiling_struct"
   "${BISHENG}" "${HOST_CXX_FLAGS[@]}" \
     "${WORK_DIR}/tests/test_tiling_struct.cpp" \
+    "${WORK_DIR}/quant/quant_int8.cpp" \
+    "${WORK_DIR}/quant/quant_fp8.cpp" \
     -I"${WORK_DIR}/aclnn" \
     "${COMMON_INCLUDES[@]}" \
     -o "${BUILD_DIR}/test_tiling_struct"

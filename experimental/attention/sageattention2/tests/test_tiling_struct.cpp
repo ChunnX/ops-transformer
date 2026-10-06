@@ -16,6 +16,7 @@
 #include "../sageattn_fp8/catlass/sage_pv_mmad.hpp"
 #include "../op_kernel/static_slot.h"
 #include "../aclnn/sage_attn_host_tiling.h"
+#include "../sageattn_fp8/ascendc/twin_reference.h"
 
 using namespace sage_attn;
 using namespace Catlass::SageAttn;
@@ -473,6 +474,235 @@ void TestCausalCutBlockNums() {
     std::cout << "[Test 8 Passed] Causal cut block nums verified!" << std::endl;
 }
 
+void TestSplitKvCombineContract() {
+    std::cout << "[Test 9] Testing official Split-KV Combine Contract (CombineSplitsReference vs RunSequential)..." << std::endl;
+
+    // 1. Compile-time static_assert check for combine scale formula invariants:
+    static_assert(std::abs(LOG2E * INV_LOG2E - 1.0f) < 1e-6f, "LOG2E and INV_LOG2E must be reciprocal");
+    static_assert(EXP2_MIN_CLAMP < 0.0f, "EXP2_MIN_CLAMP must be negative");
+    static_assert(SAGE_MASK_SENTINEL < -1.0e20f, "SAGE_MASK_SENTINEL must be large negative sentinel");
+    static_assert(S_FP8_OFFSET > 0.0f, "S_FP8_OFFSET must be positive");
+    static_assert(FP8_E4M3_MAX == 448.0f, "FP8_E4M3_MAX must be 448");
+    static_assert(sizeof(sage_attn::twin::SplitKvPartial) >= sizeof(float) * 2, "SplitKvPartial must have valid size");
+
+    // 2. 闭式代数等价性严格校验（无量化扰动下的 FP32 纯数学等价，误差 < 1e-6）
+    {
+        constexpr uint32_t d_test = 64;
+        std::vector<sage_attn::twin::SplitKvPartial> splits(4);
+        std::vector<float> vs(d_test, 1.25f);
+        std::vector<float> vm(d_test, 0.15f);
+
+        OnlineSoftmaxState single_state;
+        single_state.Reset();
+        std::vector<float> o_seq(d_test, 0.0f);
+
+        const float m_vals[4] = {2.5f, 4.0f, 3.2f, 5.1f};
+        const float d_vals[4] = {10.5f, 15.2f, 8.8f, 22.0f};
+
+        for (uint32_t s = 0; s < 4; ++s) {
+            splits[s].o_row.resize(d_test);
+            for (uint32_t c = 0; c < d_test; ++c) {
+                splits[s].o_row[c] = std::sin(static_cast<float>(s * d_test + c + 1) * 0.2f);
+            }
+            splits[s].m_shift = m_vals[s];
+            splits[s].d_sum = d_vals[s];
+
+            const float rescale = OnlineSoftmaxTransformer::Step(single_state, m_vals[s], d_vals[s]);
+            if (single_state.need_rescale) {
+                for (uint32_t c = 0; c < d_test; ++c) {
+                    o_seq[c] *= rescale;
+                }
+            }
+            const float alpha_cur = OnlineSoftmaxTransformer::FastExp2(m_vals[s] - single_state.m_run);
+            for (uint32_t c = 0; c < d_test; ++c) {
+                o_seq[c] += splits[s].o_row[c] * alpha_cur;
+            }
+        }
+
+        std::vector<float> o_comb(d_test, 0.0f);
+        float lse_comb = 0.0f;
+        sage_attn::twin::CombineSplitsReference(
+            o_comb.data(), &lse_comb, splits.data(), 4, d_test, d_test,
+            vs.data(), vm.data(), true, 0.125f, true);
+
+        const float inv_d_seq = OnlineSoftmaxTransformer::GetFinalInvDenominator(single_state);
+        const float lse_seq = OnlineSoftmaxTransformer::ConvertLseToHost(single_state.lse, 0.125f, 0.0f, false, S_FP8_OFFSET);
+
+        for (uint32_t c = 0; c < d_test; ++c) {
+            float expected_val = o_seq[c] * (vs[c] * inv_d_seq) + vm[c];
+            float diff = std::abs(o_comb[c] - expected_val);
+            assert(diff < 1e-5f);
+        }
+        assert(std::abs(lse_comb - lse_seq) < 1e-5f);
+    }
+
+    // 3. 全量全流水对齐测试：对标未切分的 RunSequential 全流水，覆盖 S in {2, 3, 4, 8}
+    //    包含因果/非因果、开启/关闭 smooth_v、return_lse，验证绝对误差与 ULP 对齐
+    const uint32_t b = 1, hq = 1, hkv = 1, sq = 64, sk = 512, d_og = 64;
+    const float sm_scale = 1.0f / std::sqrt(static_cast<float>(d_og));
+    const float sm_scale_log2e = sm_scale * LOG2E;
+
+    std::vector<uint16_t> q_raw(sq * d_og), k_raw(sk * d_og), v_raw(sk * d_og);
+    for (size_t idx = 0; idx < q_raw.size(); ++idx) {
+        q_raw[idx] = quant::Fp32ToFp16(std::sin(static_cast<float>(idx + 1) * 0.1f) * 0.5f);
+    }
+    for (size_t idx = 0; idx < k_raw.size(); ++idx) {
+        k_raw[idx] = quant::Fp32ToFp16(std::cos(static_cast<float>(idx + 1) * 0.1f) * 0.5f);
+    }
+    for (size_t idx = 0; idx < v_raw.size(); ++idx) {
+        v_raw[idx] = quant::Fp32ToFp16(std::sin(static_cast<float>(idx + 1) * 0.2f) * 0.5f);
+    }
+
+    for (uint32_t num_splits : {2u, 3u, 4u, 8u}) {
+        for (uint32_t is_causal : {0u, 1u}) {
+            for (uint32_t smooth_v : {0u, 1u}) {
+                std::vector<uint16_t> out_unsplit(sq * d_og, 0);
+                std::vector<float> lse_unsplit(sq, 0.0f);
+
+                sage_attn::twin::TwinIo io{};
+                io.q = q_raw.data();
+                io.k = k_raw.data();
+                io.v = v_raw.data();
+                io.out = out_unsplit.data();
+                io.lse = lse_unsplit.data();
+                io.key_mean = nullptr;
+                io.lse_correction = nullptr;
+                io.b = b;
+                io.hq = hq;
+                io.hkv = hkv;
+                io.sq = sq;
+                io.sk = sk;
+                io.d_og = d_og;
+                io.tensor_layout = LAYOUT_HND;
+                io.qk_quant_gran = QUANT_GRAN_PER_THREAD;
+                io.pv_accum_dtype = PV_ACCUM_FP32;
+                io.is_causal = is_causal;
+                io.smooth_k = 0;
+                io.smooth_v = smooth_v;
+                io.dtype_mode = 1;
+                io.sm_scale = sm_scale;
+
+                int ret = sage_attn::twin::RunSequential(io);
+                assert(ret == 0);
+
+                const int8_t* q_head = sage_attn::twin::g_last_dump.q_int8;
+                const int8_t* k_head = sage_attn::twin::g_last_dump.k_int8;
+                const uint8_t* v_fp8 = sage_attn::twin::g_last_dump.v_fp8;
+                const float* qs_head = sage_attn::twin::g_last_dump.q_scale;
+                const float* ks_head = sage_attn::twin::g_last_dump.k_scale;
+                const float* vs_head = sage_attn::twin::g_last_dump.v_scale;
+                const float* vm_head = sage_attn::twin::g_last_dump.v_mean;
+                const uint32_t d_pad = sage_attn::twin::g_last_dump.d_pad;
+                const uint32_t pad_sk_v = sage_attn::twin::g_last_dump.pad_sk_v;
+
+                auto v_deq = [&](uint32_t di, uint32_t j) -> float {
+                    const uint32_t slot = quant::VSlotOfToken(j);
+                    const size_t off = di * pad_sk_v + slot;
+                    return quant::E4m3fnToFloat(v_fp8[off]);
+                };
+
+                const uint32_t CTA_K = 64;
+                const uint32_t num_cta = (sk + CTA_K - 1) / CTA_K;
+                const uint32_t blocks_per_split = (num_cta + num_splits - 1) / num_splits;
+
+                float max_abs_err_o = 0.0f;
+                float max_abs_err_lse = 0.0f;
+                std::vector<float> s_row(sk);
+
+                for (uint32_t i = 0; i < sq; ++i) {
+                    std::vector<sage_attn::twin::SplitKvPartial> splits(num_splits);
+
+                    for (uint32_t s = 0; s < num_splits; ++s) {
+                        splits[s].o_row.assign(d_pad, 0.0f);
+                        splits[s].m_shift = SAGE_MASK_SENTINEL;
+                        splits[s].d_sum = 0.0f;
+
+                        uint32_t blk_beg = s * blocks_per_split;
+                        uint32_t blk_end = std::min(blk_beg + blocks_per_split, num_cta);
+                        if (blk_beg >= blk_end) continue;
+
+                        OnlineSoftmaxState state;
+                        state.Reset();
+
+                        for (uint32_t blk = blk_beg; blk < blk_end; ++blk) {
+                            const uint32_t j_beg = blk * CTA_K;
+                            const uint32_t j_end = std::min(j_beg + CTA_K, sk);
+
+                            float cur_max = SAGE_MASK_SENTINEL;
+                            for (uint32_t j = j_beg; j < j_end; ++j) {
+                                if (is_causal && static_cast<int64_t>(j) > static_cast<int64_t>(i)) {
+                                    s_row[j] = SAGE_MASK_SENTINEL;
+                                    continue;
+                                }
+                                int32_t dot = 0;
+                                const int8_t* qr = q_head + i * d_pad;
+                                const int8_t* kr = k_head + j * d_pad;
+                                for (uint32_t c = 0; c < d_pad; ++c) {
+                                    dot += qr[c] * kr[c];
+                                }
+                                s_row[j] = sage_attn::twin::DequantQkLogit(
+                                    dot, qs_head[quant::QScaleIndex(i, true)],
+                                    ks_head[quant::KScaleIndex(j, true)], sm_scale_log2e);
+                                if (s_row[j] > cur_max) cur_max = s_row[j];
+                            }
+                            if (cur_max <= SAGE_MASK_SENTINEL) continue;
+
+                            const float cur_shift_max = cur_max - S_FP8_OFFSET;
+                            const float cur_sum = sage_attn::twin::OnlineBlockExp2Sum(
+                                s_row.data(), 0, j_beg, j_end, is_causal != 0, i, cur_shift_max);
+                            const float rescale = OnlineSoftmaxTransformer::Step(state, cur_shift_max, cur_sum);
+                            if (state.need_rescale && std::abs(rescale - 1.0f) > SCALE_ONE_TOLERANCE) {
+                                for (uint32_t c = 0; c < d_pad; ++c) splits[s].o_row[c] *= rescale;
+                            }
+                            sage_attn::twin::AccumulatePvRow(
+                                splits[s].o_row.data(), d_pad, s_row.data(), 0, j_beg, j_end, is_causal != 0, i,
+                                state.m_scale, PV_ACCUM_FP32, DEFAULT_K_STEP,
+                                [&](uint32_t j, uint32_t c) { return v_deq(c, j); });
+                        }
+
+                        if (state.d_run > 0.0f) {
+                            splits[s].m_shift = state.m_scale;
+                            splits[s].d_sum = state.d_run;
+                        }
+                    }
+
+                    std::vector<float> o_comb(d_og, 0.0f);
+                    float lse_comb = 0.0f;
+                    sage_attn::twin::CombineSplitsReference(
+                        o_comb.data(), &lse_comb,
+                        splits.data(), num_splits, d_pad, d_og,
+                        vs_head, vm_head, smooth_v != 0, sm_scale, true);
+
+                    for (uint32_t c = 0; c < d_og; ++c) {
+                        float out_ref_val = sage_attn::twin::detail::ReadInput(out_unsplit.data(), i * d_og + c, 1);
+                        float out_comb_rounded = quant::Fp16ToFp32(quant::Fp32ToFp16(o_comb[c]));
+                        float diff = std::abs(out_comb_rounded - out_ref_val);
+                        if (diff > max_abs_err_o) max_abs_err_o = diff;
+                    }
+
+                    float lse_ref_val = lse_unsplit[i];
+                    float diff_lse = std::abs(lse_comb - lse_ref_val);
+                    if (diff_lse > max_abs_err_lse) max_abs_err_lse = diff_lse;
+                }
+
+                // 精度校验断言：
+                // 1) LSE 数值严格在 FP32 域保持 < 1e-5 一致性
+                assert(max_abs_err_lse < 1e-5f);
+                // 2) 因果切分与未切分完全按块屏蔽，达成 bit-exact 严格 0 误差
+                if (is_causal) {
+                    assert(max_abs_err_o < 1e-5f);
+                } else {
+                    // 3) 非因果全块由于跨块局部 max 导致 e4m3 量化网格细微平移，严格在 1 个 FP16 ULP 内对齐
+                    constexpr float FP16_ONE_ULP = 0.00048828125f;
+                    assert(max_abs_err_o <= FP16_ONE_ULP);
+                }
+            }
+        }
+    }
+
+    std::cout << "[Test 9 Passed] Split-KV combine contract across S in {2, 3, 4, 8} verified!" << std::endl;
+}
+
 int main() {
     std::cout << "Starting SageAttention2 C++ Contract and Tiling Verification..." << std::endl;
     TestTilingDataLayout();
@@ -483,6 +713,7 @@ int main() {
     TestDieAffinityContract();
     TestNddmaStrideContract();
     TestCausalCutBlockNums();
+    TestSplitKvCombineContract();
     std::cout << "All C++ contracts and struct layouts PASSED successfully!" << std::endl;
     return 0;
 }

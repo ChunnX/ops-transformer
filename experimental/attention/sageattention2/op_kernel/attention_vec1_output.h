@@ -281,7 +281,9 @@ public:
                 const float inv_row = OnlineSoftmaxTransformer::GetFinalInvDenominator(row_states_[r]);
 
                 for (uint32_t c = 0; c < ctx.d_og; ++c) {
-                    const float val = ctx.sim_mem->o_accum[static_cast<size_t>(r) * ctx.d + c] * inv_row;
+                    const float vs = (c < 256u) ? ctx.sim_mem->v_scales[c] : 1.0f;
+                    const float vm = (ctx.smooth_v != 0 && c < 256u) ? ctx.sim_mem->v_means[c] : 0.0f;
+                    const float val = ctx.sim_mem->o_accum[static_cast<size_t>(r) * ctx.d + c] * (vs * inv_row) + vm;
                     const int64_t out_elem = out_layout(tla::MakeCoord(b_idx, hq_curr, sq_start + i, c));
                     WriteOutputBits(reinterpret_cast<uint16_t *>(ctx.out_gm) + out_elem, 0, val);
                 }
