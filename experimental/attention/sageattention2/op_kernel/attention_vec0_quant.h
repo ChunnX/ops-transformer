@@ -341,13 +341,10 @@ public:
         Catlass::SageAttn::Sync<HardEvent::V_S>();
 
         // K 矩阵预转置 [block_n, d] -> [d, block_n] (通道主序 K^T)
-        auto tok_u8 = ub_stage_k_mat.ReinterpretCast<uint8_t>();
-        auto tr_u8 = ub_stage_k_tr.ReinterpretCast<uint8_t>();
-        for (uint32_t j = 0; j < block_n; ++j) {
-            for (uint32_t c = 0; c < d; ++c) {
-                tr_u8.SetValue(c * block_n + j, tok_u8.GetValue(j * d + c));
-            }
-        }
+        dev_vf::TransposeB8VF<D>(
+            reinterpret_cast<__ubuf__ uint8_t*>(ub_stage_k_tr.GetPhyAddr()),
+            reinterpret_cast<__ubuf__ const uint8_t*>(ub_stage_k_mat.GetPhyAddr()),
+            block_n, d);
 
         Catlass::SageAttn::Sync<HardEvent::S_MTE3>();
         Catlass::SageAttn::CopyUbToL1zN(l1_k, ub_stage_k_tr, d, block_n);

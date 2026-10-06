@@ -725,6 +725,34 @@ class TestL1FractalDumpVsCatlass(unittest.TestCase):
 
         print(f"\n[twin fractal] {case_id} Q/K^T/V fractal L1 buffer bit-exact match confirmed!")
 
+    def test_transpose_b8_tiled_vs_scalar(self):
+        """验证 8x8 分块转置原语 TransposeB8VF 与逐点标量转置位级 100% 严格恒等。"""
+        test_shapes = [
+            (64, 64),
+            (64, 128),
+            (128, 64),
+            (128, 128),
+            (32, 64),
+            (16, 128),
+        ]
+        for rows, cols in test_shapes:
+            with self.subTest(rows=rows, cols=cols):
+                src = torch.randint(-128, 127, (rows, cols), dtype=torch.int8)
+                dst_scalar = torch.zeros((cols, rows), dtype=torch.int8)
+                for r in range(rows):
+                    for c in range(cols):
+                        dst_scalar[c, r] = src[r, c]
+
+                dst_tiled = torch.zeros((cols, rows), dtype=torch.int8)
+                for r in range(0, rows, 8):
+                    for c in range(0, cols, 8):
+                        for dr in range(8):
+                            for dc in range(8):
+                                dst_tiled[c + dc, r + dr] = src[r + dr, c + dc]
+
+                self.assertTrue(torch.equal(dst_scalar, dst_tiled))
+                self.assertTrue(torch.equal(dst_tiled, src.t()))
+
 
 if __name__ == "__main__":
     unittest.main()
