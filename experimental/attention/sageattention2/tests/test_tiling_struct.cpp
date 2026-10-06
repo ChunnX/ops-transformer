@@ -773,11 +773,23 @@ void TestFractalZnIndexContract() {
     static_assert(CeilDiv<16>(128u) == 8, "LoadTile2D srcStride for rows=128 must be 8");
     static_assert(CeilDiv<16>(128u) == 8u, "LoadTile2D dstStride for cols=128 must be 8");
 
+    // 官方 B8/B4 单装载分支字面形式（copy_l1_to_l0b.hpp ascend950 特化，int8 时
+    // ELE_NUM_PER_C0=32、C0_NUM_PER_FRACTAL=16、ELE_NUM_PER_FRACTAL=512）：
+    //   mStep     = RoundUp<2>(CeilDiv<16>(K))
+    //   kStep     = CeilDiv<32>(N)
+    //   srcStride = RoundUp<16>(K) * 32 / 512 = RoundUp<16>(K) / 16
+    //   dstStride = RoundUp<16>(N) / 16
+    // 期望值按官方字面式独立重算，与本仓 LoadTile2D 的 CeilDiv 形式做非同义反复交叉验证。
+    // 128x128 的官方值：mStep=8、kStep=4、srcStride=8、dstStride=8。
+    // split 分支（RoundUp<16>(N) % 32 != 0，官方以 mStep=2 循环装载）在本仓不可达：
+    // block_n ∈ {64,128}、d_pad ∈ {64,128}，装载行/列恒为 32 的倍数。
     const std::vector<std::pair<uint32_t, uint32_t>> stride_shapes = {
         {64, 64},
         {64, 128},
         {128, 64},
         {128, 128},
+        {48, 64},
+        {64, 48},
     };
     for (const auto &pair : stride_shapes) {
         const uint32_t rows = pair.first;
@@ -787,16 +799,23 @@ void TestFractalZnIndexContract() {
         const int32_t srcStride = static_cast<int32_t>(::CeilDiv<16>(rows));
         const uint16_t dstStride = static_cast<uint16_t>(::CeilDiv<16>(cols));
 
-        const uint16_t expected_mStep = static_cast<uint16_t>(::RoundUp<2>(::CeilDiv<16>(rows)));
-        const uint16_t expected_kStep = static_cast<uint16_t>(::CeilDiv<32>(cols));
-        const int32_t expected_srcStride = static_cast<int32_t>(::CeilDiv<16>(rows));
-        const uint16_t expected_dstStride = static_cast<uint16_t>(::CeilDiv<16>(cols));
+        const auto round_up = [](uint32_t v, uint32_t a) { return (v + a - 1) / a * a; };
+        const uint16_t official_mStep = static_cast<uint16_t>(::RoundUp<2>(::CeilDiv<16>(round_up(rows, 32))));
+        const uint16_t official_kStep = static_cast<uint16_t>(::CeilDiv<32>(round_up(cols, 16)));
+        const int32_t official_srcStride = static_cast<int32_t>(round_up(rows, 16) * 32 / 512);
+        const uint16_t official_dstStride = static_cast<uint16_t>(round_up(cols, 16) / 16);
 
-        assert(mStep == expected_mStep);
-        assert(kStep == expected_kStep);
-        assert(srcStride == expected_srcStride);
-        assert(dstStride == expected_dstStride);
+        assert(mStep == official_mStep);
+        assert(kStep == official_kStep);
+        assert(srcStride == official_srcStride);
+        assert(dstStride == official_dstStride);
     }
+
+    // tiling 域锁：block_n/d_pad 的合法值域恒为 {64, 128}（aclnn/sage_attn_host_tiling.h
+    // 推导式与 SAGEATTN_FORCE_BLOCKN 校验共同锁定），全部是 32 的倍数，
+    // 故 LoadTile2D 无需实现官方 split 分支。若未来扩域（如 80/112，≡16 mod 32），
+    // 必须先在 sage_tile.hpp 移植官方 split 分支（mStep=2 循环装载）。
+    static_assert(64 % 32 == 0 && 128 % 32 == 0, "LoadTile2D single-load branch requires 32-multiple tile dims");
 
     std::cout << "[Test 10 Passed] Fractal zN index contract and LoadTile2D stride parameters verified!" << std::endl;
 }

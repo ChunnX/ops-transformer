@@ -134,11 +134,14 @@ __aicore__ inline __attribute__((always_inline)) void LoadTile2D(
     load_params.kStep = static_cast<uint16_t>(::CeilDiv<32>(cols));
     load_params.ifTranspose = if_transpose;
     if (if_transpose) {
-        // 官方 copy_l1_to_l0b.hpp B8/B4 特化：
+        // 官方 copy_l1_to_l0b.hpp B8/B4 特化（单装载分支，RoundUp<16>(N) % 32 == 0）：
         // 源 zN 外步长 srcOuterStrideCol = rowsRound * ELE_NUM_PER_C0 = rowsRound * 32
         // srcStride = srcOuterStrideCol / 512 = rowsRound / 16
         // 目的 nZ 外步长 dstOuterStrideRow = colsRound * ELE_NUM_PER_C0 = colsRound * 32
         // dstStride = dstOuterStrideRow / 512 = colsRound / 16
+        // 本仓只取官方单装载分支：block_n ∈ {64,128}、d_pad ∈ {64,128} 恒为 32 的倍数，
+        // N ≡ 16 (mod 32) 的 split 分支（mStep=2 循环装载，官方 169-182 行）不可达；
+        // 域锁见 tests/test_tiling_struct.cpp Test 10，扩域前必须先移植 split 分支。
         load_params.srcStride = static_cast<int32_t>(::CeilDiv<16>(rows));
         load_params.dstStride = static_cast<uint16_t>(::CeilDiv<16>(cols));
     } else {
