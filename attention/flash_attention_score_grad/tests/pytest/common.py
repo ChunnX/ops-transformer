@@ -9,6 +9,8 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # ======================================================================================================================
 
+import os
+import sys
 import torch
 import numpy as np
 from dataclasses import dataclass, field
@@ -22,6 +24,7 @@ PER_VCORE_BLOCK_SIZE = 64
 EPSILON = 1e-8
 DEVICE_ID = 0
 pta_mode = "only_grad"
+
 
 @dataclass
 class CalculationContext:
@@ -47,13 +50,15 @@ class CalculationContext:
     dscale_o_npu: Optional[torch.Tensor] = None
     out_npu: Optional[torch.Tensor] = None
 
+
 def log(text):
     print(text)
-    log_file = open('run_log.txt' , 'a')
-    log_file.write(str(datetime.datetime.now()) + '  ')
+    log_file = open("run_log.txt", "a")
+    log_file.write(str(datetime.datetime.now()) + "  ")
     log_file.write(text)
     log_file.write("\n")
     log_file.close()
+
 
 def print_log(data=None):
     """
@@ -63,8 +68,11 @@ def print_log(data=None):
     :return:
     """
     level = "INFO"
-    log_info = ("%s - [%s]-%s:%s - %s" % (datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S,%f")[:-3], level,
-                                          os.path.basename(
-                                              sys._getframe().f_back.f_code.co_filename),
-                                          str(sys._getframe().f_back.f_lineno).zfill(4), data))
+    log_info = "%s - [%s]-%s:%s - %s" % (
+        datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S,%f")[:-3],
+        level,
+        os.path.basename(sys._getframe().f_back.f_code.co_filename),
+        str(sys._getframe().f_back.f_lineno).zfill(4),
+        data,
+    )
     log(log_info)
