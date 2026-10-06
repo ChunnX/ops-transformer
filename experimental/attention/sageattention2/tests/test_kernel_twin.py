@@ -564,11 +564,12 @@ def official_catlass_zn_offset(row: int, col: int, org_rows: int, org_cols: int,
 
 
 class TestL1FractalDumpVsCatlass(unittest.TestCase):
-    """L1 Fractal zN Bit-Level Contract Verification vs CATLASS.
+    """L1 Fractal zN Formula Contract vs CATLASS.
 
-    验证 Q、K^T、V 四操作数片上 L1 分形布局的位级寻址与排布契约：
+    验证 ZnIndex 寻址公式与官方 zN::GetOffset 位级恒等（非 V0 设备写入对账；
+    V0 调用点实参的正确性由设备侧 L1 dump 诊断另行判死）：
     1. Q [M, K]: Q_l1[ZnIndex(r, c, M)] == Q[r, c]
-    2. K^T [K, N] (V0 预转置写 L1): K_l1[ZnIndex(c, j, K)] == K[j, c]
+    2. K^T [K, N]: K_l1[ZnIndex(c, j, K)] == K[j, c]   （V0 目标排布的公式镜像）
     3. V [N, K]: V_l1[ZnIndex(j, c, N)] == V[j, c]
     """
 
@@ -677,7 +678,7 @@ class TestL1FractalDumpVsCatlass(unittest.TestCase):
                 self.assertTrue(torch.equal(v_rec, v), "V L1 buffer bit-exact mismatch")
 
     def test_l1_fractal_buffer_placement_golden(self):
-        """以真实 golden 落盘量化张量 (P-01) 验证 Q、K^T、V 分形写入位级恒等。"""
+        """以真实 golden 量化张量 (P-01) 驱动 ZnIndex 公式回读自洽（非 V0 设备写入比对）。"""
         manifest = load_manifest_cases()
         case_id = "P-01_per_thread_fp32+fp16_fp16_HND"
         if case_id not in manifest:

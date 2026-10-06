@@ -339,7 +339,7 @@ public:
 /**
  * \brief Vector 1 协同流水主过程
  */
-template <uint8_t PV_CHAIN_CAP = 1, uint32_t DTYPE_MODE = 1u, bool IS_CAUSAL = false, uint32_t D = 0u>
+template <uint8_t PV_CHAIN_CAP, uint32_t DTYPE_MODE, bool IS_CAUSAL, uint32_t D = 0u>
 __aicore__ inline __attribute__((always_inline)) void ProcessVec1(
     const TaskContext &ctx,
     AttentionVec1Softmax<DTYPE_MODE> &softmax,
@@ -623,50 +623,15 @@ public:
                 if (ctx_.sub_core_idx == 0) {
                     vec0_.Process(ctx_);
                 } else {
-                    const bool is_causal = (ctx_.is_causal != 0);
-                    const uint32_t d = ctx_.d;
-                    if (is_causal) {
-                        if (d == 64u) {
-                            ProcessVec1<1, kDtype, true, 64u>(ctx_, softmax_, output_);
-                        } else if (d == 128u) {
-                            ProcessVec1<1, kDtype, true, 128u>(ctx_, softmax_, output_);
-                        } else {
-                            ProcessVec1<1, kDtype, true, 0u>(ctx_, softmax_, output_);
-                        }
-                    } else {
-                        if (d == 64u) {
-                            ProcessVec1<1, kDtype, false, 64u>(ctx_, softmax_, output_);
-                        } else if (d == 128u) {
-                            ProcessVec1<1, kDtype, false, 128u>(ctx_, softmax_, output_);
-                        } else {
-                            ProcessVec1<1, kDtype, false, 0u>(ctx_, softmax_, output_);
-                        }
-                    }
+                    // causal×D 六路派发单点在 ProcessVec1 包装层，此处不重复展开
+                    ProcessVec1<1, kDtype>(ctx_, softmax_, output_);
                 }
             }
 #else
             vec0_.Process(ctx_);
             CubeBlockParams p{ctx_.TotalRows(), ctx_.block_n, ctx_.d};
             cube_.template Process<1>(p, ctx_.active_kv_blocks, ctx_.l1_q_offset);
-            const bool is_causal = (ctx_.is_causal != 0);
-            const uint32_t d = ctx_.d;
-            if (is_causal) {
-                if (d == 64u) {
-                    ProcessVec1<1, kDtype, true, 64u>(ctx_, softmax_, output_);
-                } else if (d == 128u) {
-                    ProcessVec1<1, kDtype, true, 128u>(ctx_, softmax_, output_);
-                } else {
-                    ProcessVec1<1, kDtype, true, 0u>(ctx_, softmax_, output_);
-                }
-            } else {
-                if (d == 64u) {
-                    ProcessVec1<1, kDtype, false, 64u>(ctx_, softmax_, output_);
-                } else if (d == 128u) {
-                    ProcessVec1<1, kDtype, false, 128u>(ctx_, softmax_, output_);
-                } else {
-                    ProcessVec1<1, kDtype, false, 0u>(ctx_, softmax_, output_);
-                }
-            }
+            ProcessVec1<1, kDtype>(ctx_, softmax_, output_);
 #endif
 
             AttentionSync::ReleaseSyncTokens();

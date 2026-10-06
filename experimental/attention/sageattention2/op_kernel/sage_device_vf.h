@@ -1576,17 +1576,52 @@ __aicore__ inline __attribute__((always_inline)) void FinalizeRowVF(
     }
 }
 
+template <uint32_t DTYPE_MODE, bool HAS_VM>
+__simd_callee__ __aicore__ inline __attribute__((always_inline)) void ScaleVmCastStoreChunk(
+    __ubuf__ float* o_chunk,
+    __ubuf__ float* vs_chunk,
+    __ubuf__ float* vm_chunk,
+    __ubuf__ uint16_t* out_chunk,
+    float inv_denom)
+{
+    using namespace AscendC;
+    using namespace AscendC::MicroAPI;
+    auto full = CreateMask<float, MaskPattern::ALL>();
+    static constexpr CastTrait toHalf{RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+    static constexpr CastTrait toBf16{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+
+    RegTensor<float> x, vs, scale;
+    LoadAlign(x, o_chunk);
+    LoadAlign(vs, vs_chunk);
+    RegTensor<float> inv_reg;
+    Duplicate(inv_reg, inv_denom);
+    Mul(scale, vs, inv_reg, full);
+    if constexpr (HAS_VM) {
+        RegTensor<float> vm_val;
+        LoadAlign(vm_val, vm_chunk);
+        MulDstAdd(x, scale, vm_val, full);
+    } else {
+        Mul(x, x, scale, full);
+    }
+    if constexpr (DTYPE_MODE == 2u) {
+        RegTensor<bfloat16_t> b;
+        Cast<bfloat16_t, float, toBf16>(b, x, full);
+        StoreAlign<bfloat16_t, StoreDist::DIST_PACK_B32>(
+            reinterpret_cast<__ubuf__ bfloat16_t*>(out_chunk), b, full);
+    } else {
+        RegTensor<half> h;
+        Cast<half, float, toHalf>(h, x, full);
+        StoreAlign<half, StoreDist::DIST_PACK_B32>(
+            reinterpret_cast<__ubuf__ half*>(out_chunk), h, full);
+    }
+}
+
 /**
- * \brief P2c Split-KV LSE 跨分块归并向量原语：
- * 沿 KV 序列轴切分为 num_splits 个分块时，各分块独立产出 (O_partial, m_shift, d_sum)。
- * 本原语在 AIV 侧纯向量寄存器中以 shifted-max 域闭式合并：
- * - m_glob = max_{s}(m_s)
- * - alpha_s = 2^(m_s - m_glob) (ExpSub 原语就地求取)
- * - d_glob = sum_{s}(d_s * alpha_s) (MulDstAdd 熔断累加)
- * - inv_d = (d_glob > 0.0f) ? (1.0f / d_glob) : 0.0f
- * - o_glob[c] = sum_{s}(o_s[c] * alpha_s)
- * - out[c] = o_glob[c] * (vs[c] * inv_d) + (vm[c] if HAS_VM)
- * 无全局原子锁，纯 AIV 线程级并行归并。
+ * \brief P2c Split-KV LSE 跨分块归并·末段缩放落盘原语（归并累加侧见接线评审稿）：
+ * 输入 o_glob 已是 Σ_s(o_s·alpha_s) 的合并分子、inv_denom = 1/Σ_s(d_s·alpha_s) 预计算值；
+ * 本原语只负责 out = o_glob·(vs·inv_d) + (vm if HAS_VM) 的寄存器单趟缩放与 cast 落盘。
+ * m_glob/alpha_s/d_glob 的 AIV 侧累加在 split-KV 接线时实现（域约定：shifted-max，
+ * d==0 → inv=0 → 全掩码行出口 = vm，与单趟 FinalizeRowVF 约定一致）。
  */
 template <uint32_t DTYPE_MODE, bool HAS_VM = false, uint32_t D = 0u>
 __simd_vf__ __aicore__ inline __attribute__((always_inline)) void CombineLseSplitsRowVF(
@@ -1597,107 +1632,19 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void CombineLseSpli
     __ubuf__ float* vm_ptr,
     uint32_t d)
 {
-    using namespace AscendC;
-    using namespace AscendC::MicroAPI;
-    auto full = CreateMask<float, MaskPattern::ALL>();
-    static constexpr CastTrait toHalf{RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
-    static constexpr CastTrait toBf16{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
-
-    RegTensor<float> inv_reg;
-    Duplicate(inv_reg, inv_denom);
-
     if constexpr (D == 64u) {
-        RegTensor<float> x;
-        LoadAlign(x, o_glob);
-        RegTensor<float> vs, scale;
-        LoadAlign(vs, vs_ptr);
-        Mul(scale, vs, inv_reg, full);
-        if constexpr (HAS_VM) {
-            RegTensor<float> vm_val;
-            LoadAlign(vm_val, vm_ptr);
-            MulDstAdd(x, scale, vm_val, full);
-        } else {
-            Mul(x, x, scale, full);
-        }
-        if constexpr (DTYPE_MODE == 2u) {
-            RegTensor<bfloat16_t> b;
-            Cast<bfloat16_t, float, toBf16>(b, x, full);
-            StoreAlign<bfloat16_t, StoreDist::DIST_PACK_B32>(reinterpret_cast<__ubuf__ bfloat16_t*>(out_row), b, full);
-        } else {
-            RegTensor<half> h;
-            Cast<half, float, toHalf>(h, x, full);
-            StoreAlign<half, StoreDist::DIST_PACK_B32>(reinterpret_cast<__ubuf__ half*>(out_row), h, full);
-        }
+        ScaleVmCastStoreChunk<DTYPE_MODE, HAS_VM>(o_glob, vs_ptr, vm_ptr, out_row, inv_denom);
     } else if constexpr (D == 128u) {
-        {
-            RegTensor<float> x;
-            LoadAlign(x, o_glob);
-            RegTensor<float> vs, scale;
-            LoadAlign(vs, vs_ptr);
-            Mul(scale, vs, inv_reg, full);
-            if constexpr (HAS_VM) {
-                RegTensor<float> vm_val;
-                LoadAlign(vm_val, vm_ptr);
-                MulDstAdd(x, scale, vm_val, full);
-            } else {
-                Mul(x, x, scale, full);
-            }
-            if constexpr (DTYPE_MODE == 2u) {
-                RegTensor<bfloat16_t> b;
-                Cast<bfloat16_t, float, toBf16>(b, x, full);
-                StoreAlign<bfloat16_t, StoreDist::DIST_PACK_B32>(reinterpret_cast<__ubuf__ bfloat16_t*>(out_row), b, full);
-            } else {
-                RegTensor<half> h;
-                Cast<half, float, toHalf>(h, x, full);
-                StoreAlign<half, StoreDist::DIST_PACK_B32>(reinterpret_cast<__ubuf__ half*>(out_row), h, full);
-            }
-        }
-        {
-            RegTensor<float> x;
-            LoadAlign(x, o_glob + 64u);
-            RegTensor<float> vs, scale;
-            LoadAlign(vs, vs_ptr + 64u);
-            Mul(scale, vs, inv_reg, full);
-            if constexpr (HAS_VM) {
-                RegTensor<float> vm_val;
-                LoadAlign(vm_val, vm_ptr + 64u);
-                MulDstAdd(x, scale, vm_val, full);
-            } else {
-                Mul(x, x, scale, full);
-            }
-            if constexpr (DTYPE_MODE == 2u) {
-                RegTensor<bfloat16_t> b;
-                Cast<bfloat16_t, float, toBf16>(b, x, full);
-                StoreAlign<bfloat16_t, StoreDist::DIST_PACK_B32>(reinterpret_cast<__ubuf__ bfloat16_t*>(out_row + 64u), b, full);
-            } else {
-                RegTensor<half> h;
-                Cast<half, float, toHalf>(h, x, full);
-                StoreAlign<half, StoreDist::DIST_PACK_B32>(reinterpret_cast<__ubuf__ half*>(out_row + 64u), h, full);
-            }
-        }
+        ScaleVmCastStoreChunk<DTYPE_MODE, HAS_VM>(o_glob, vs_ptr, vm_ptr, out_row, inv_denom);
+        __ubuf__ float* vm_next = (vm_ptr != nullptr) ? (vm_ptr + 64u) : nullptr;
+        ScaleVmCastStoreChunk<DTYPE_MODE, HAS_VM>(o_glob + 64u, vs_ptr + 64u, vm_next, out_row + 64u, inv_denom);
     } else {
+        // 防御性回退：生产域 d_pad ∈ {64,128}（见 Test 10 域锁），此分支不可达；
+        // 仅当 tiling 扩域到非 64 倍数 d 时启用——末块 LoadAlign 整块读依赖 UB 槽
+        // padding 余量，扩域前必须复核 UB 足迹台账。
         for (uint32_t c = 0; c < d; c += 64) {
-            RegTensor<float> x;
-            LoadAlign(x, o_glob + c);
-            RegTensor<float> vs, scale;
-            LoadAlign(vs, vs_ptr + c);
-            Mul(scale, vs, inv_reg, full);
-            if constexpr (HAS_VM) {
-                RegTensor<float> vm_val;
-                LoadAlign(vm_val, vm_ptr + c);
-                MulDstAdd(x, scale, vm_val, full);
-            } else {
-                Mul(x, x, scale, full);
-            }
-            if constexpr (DTYPE_MODE == 2u) {
-                RegTensor<bfloat16_t> b;
-                Cast<bfloat16_t, float, toBf16>(b, x, full);
-                StoreAlign<bfloat16_t, StoreDist::DIST_PACK_B32>(reinterpret_cast<__ubuf__ bfloat16_t*>(out_row + c), b, full);
-            } else {
-                RegTensor<half> h;
-                Cast<half, float, toHalf>(h, x, full);
-                StoreAlign<half, StoreDist::DIST_PACK_B32>(reinterpret_cast<__ubuf__ half*>(out_row + c), h, full);
-            }
+            __ubuf__ float* vm_c = (vm_ptr != nullptr) ? (vm_ptr + c) : nullptr;
+            ScaleVmCastStoreChunk<DTYPE_MODE, HAS_VM>(o_glob + c, vs_ptr + c, vm_c, out_row + c, inv_denom);
         }
     }
 }
