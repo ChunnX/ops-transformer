@@ -103,7 +103,7 @@ __simd_callee__ __aicore__ inline __attribute__((always_inline)) void SubMeanRou
  * 组间归并与 scale 定档由调用方按 quant::QScaleIndex/KScaleIndex 单点完成
  * （与宿主串行路径逐步一致）。
  */
-template <uint32_t DTYPE_MODE, bool HAS_KM = false>
+template <uint32_t DTYPE_MODE, bool HAS_KM = false, uint32_t D = 0u>
 __simd_vf__ __aicore__ inline __attribute__((always_inline)) void RowAbsMaxRowsVF(
     __ubuf__ half* in_base, __ubuf__ float* out_rowmax,
     __ubuf__ float* km_ptr, uint32_t rows, uint32_t d) {
@@ -116,25 +116,68 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void RowAbsMaxRowsV
 
     __ubuf__ float* dst = out_rowmax;
     UnalignReg compact;
+    const uint32_t d_stride = (D != 0u) ? D : d;
 
     for (uint32_t r = 0; r < rows; ++r) {
-        __ubuf__ half* in_ptr = in_base + r * d;
+        __ubuf__ half* in_ptr = in_base + r * d_stride;
         RegTensor<float> amax_reg;
         Duplicate(amax_reg, 0.0f);
-        for (uint32_t c = 0; c < d; c += 64) {
+        if constexpr (D == 64u) {
             RegTensor<float> val;
-            LoadRowChunkF32<DTYPE_MODE>(val, in_ptr, c);
+            LoadRowChunkF32<DTYPE_MODE>(val, in_ptr, 0u);
             if constexpr (HAS_KM) {
-                SubMeanRoundBackF32<DTYPE_MODE>(val, km_ptr, c);
+                SubMeanRoundBackF32<DTYPE_MODE>(val, km_ptr, 0u);
             }
             Abs(val, val, full);
             Max(amax_reg, amax_reg, val, full);
+        } else if constexpr (D == 128u) {
+            {
+                RegTensor<float> val;
+                LoadRowChunkF32<DTYPE_MODE>(val, in_ptr, 0u);
+                if constexpr (HAS_KM) {
+                    SubMeanRoundBackF32<DTYPE_MODE>(val, km_ptr, 0u);
+                }
+                Abs(val, val, full);
+                Max(amax_reg, amax_reg, val, full);
+            }
+            {
+                RegTensor<float> val;
+                LoadRowChunkF32<DTYPE_MODE>(val, in_ptr, 64u);
+                if constexpr (HAS_KM) {
+                    SubMeanRoundBackF32<DTYPE_MODE>(val, km_ptr, 64u);
+                }
+                Abs(val, val, full);
+                Max(amax_reg, amax_reg, val, full);
+            }
+        } else {
+            for (uint32_t c = 0; c < d; c += 64) {
+                RegTensor<float> val;
+                LoadRowChunkF32<DTYPE_MODE>(val, in_ptr, c);
+                if constexpr (HAS_KM) {
+                    SubMeanRoundBackF32<DTYPE_MODE>(val, km_ptr, c);
+                }
+                Abs(val, val, full);
+                Max(amax_reg, amax_reg, val, full);
+            }
         }
         ReduceMax(amax_reg, amax_reg, full);
         StoreUnAlign<float, PostLiteral::POST_MODE_UPDATE>(dst, amax_reg, compact, 1);
     }
     StoreUnAlignPost(dst, compact, 0);
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+}
+
+template <uint32_t DTYPE_MODE, bool HAS_KM>
+__aicore__ inline __attribute__((always_inline)) void RowAbsMaxRowsVF(
+    __ubuf__ half* in_base, __ubuf__ float* out_rowmax,
+    __ubuf__ float* km_ptr, uint32_t rows, uint32_t d) {
+    if (d == 64u) {
+        RowAbsMaxRowsVF<DTYPE_MODE, HAS_KM, 64u>(in_base, out_rowmax, km_ptr, rows, d);
+    } else if (d == 128u) {
+        RowAbsMaxRowsVF<DTYPE_MODE, HAS_KM, 128u>(in_base, out_rowmax, km_ptr, rows, d);
+    } else {
+        RowAbsMaxRowsVF<DTYPE_MODE, HAS_KM, 0u>(in_base, out_rowmax, km_ptr, rows, d);
+    }
 }
 
 template <uint32_t DTYPE_MODE>
@@ -162,7 +205,7 @@ __aicore__ inline __attribute__((always_inline)) void RowAbsMaxRowsVF(
  * - 饱和 ±127（与两个 Round* 的 clamp 一致）；
  * - 打包与写出：微架构 StoreDist::DIST_PACK4_B32 硬件压包直写 UB。
  */
-template <uint32_t DTYPE_MODE, bool PER_THREAD = false, bool HAS_KM = false>
+template <uint32_t DTYPE_MODE, bool PER_THREAD = false, bool HAS_KM = false, uint32_t D = 0u>
 __simd_vf__ __aicore__ inline __attribute__((always_inline)) void QuantRowInt8VF(
     __ubuf__ half* in_ptr, __ubuf__ int8_t* out_ptr,
     __ubuf__ float* scale_ptr, uint32_t d,
@@ -188,20 +231,16 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void QuantRowInt8VF
         Duplicate(neg_half_reg, -0.5f);
     }
 
-    for (uint32_t c = 0; c < d; c += 64) {
+    if constexpr (D == 64u) {
         RegTensor<float> val;
-        LoadRowChunkF32<DTYPE_MODE>(val, in_ptr, c);
+        LoadRowChunkF32<DTYPE_MODE>(val, in_ptr, 0u);
         if constexpr (HAS_KM) {
-            SubMeanRoundBackF32<DTYPE_MODE>(val, km_ptr, c);
+            SubMeanRoundBackF32<DTYPE_MODE>(val, km_ptr, 0u);
         }
         Div(val, val, scale_reg, full);
 
         RegTensor<int32_t> packed_i;
         if constexpr (PER_THREAD) {
-            // half-away：x + 0.5·sign(x) 后截断（对 -0 边界与宿主 floor(|x|+0.5)·sign 同值）。
-            // MicroAPI 语义（dav-3510 头与 CANN 内置实现核对）：Compare<LT>(a,b) = a<b，
-            // Select(dst,s0,s1,mask) = mask ? s0 : s1——neg(val<0) 须取 neg_half_reg(-0.5)
-            // 才是 +0.5·sign(x)；反接会退化为 round-half-toward-zero（R16 审查修正）
             RegTensor<float> bias;
             MaskReg neg;
             Compare<float, CMPMODE::LT>(neg, val, zero, full);
@@ -214,11 +253,105 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void QuantRowInt8VF
         Cast<float, int32_t, toFp32>(val, packed_i, full);
         Max(val, val, neg127, full);
         Min(val, val, pos127, full);
-        // 硬件 vconv 无 float→int8 直转（dav-3510 static assert）：int32 中转后
-        // DIST_PACK4_B32 打包窄化（±127 已在 float 域 clamp，窄化无损）
         Cast<int32_t, float, toI8Sat>(packed_i, val, full);
-        StoreAlign<int8_t, StoreDist::DIST_PACK4_B32>(out_ptr + c,
+        StoreAlign<int8_t, StoreDist::DIST_PACK4_B32>(out_ptr,
             reinterpret_cast<RegTensor<int8_t>&>(packed_i), full);
+    } else if constexpr (D == 128u) {
+        {
+            RegTensor<float> val;
+            LoadRowChunkF32<DTYPE_MODE>(val, in_ptr, 0u);
+            if constexpr (HAS_KM) {
+                SubMeanRoundBackF32<DTYPE_MODE>(val, km_ptr, 0u);
+            }
+            Div(val, val, scale_reg, full);
+
+            RegTensor<int32_t> packed_i;
+            if constexpr (PER_THREAD) {
+                RegTensor<float> bias;
+                MaskReg neg;
+                Compare<float, CMPMODE::LT>(neg, val, zero, full);
+                Select(bias, neg_half_reg, half_reg, neg);
+                Add(val, val, bias, full);
+                Cast<int32_t, float, toI32Trunc>(packed_i, val, full);
+            } else {
+                Cast<int32_t, float, toI32Rint>(packed_i, val, full);
+            }
+            Cast<float, int32_t, toFp32>(val, packed_i, full);
+            Max(val, val, neg127, full);
+            Min(val, val, pos127, full);
+            Cast<int32_t, float, toI8Sat>(packed_i, val, full);
+            StoreAlign<int8_t, StoreDist::DIST_PACK4_B32>(out_ptr,
+                reinterpret_cast<RegTensor<int8_t>&>(packed_i), full);
+        }
+        {
+            RegTensor<float> val;
+            LoadRowChunkF32<DTYPE_MODE>(val, in_ptr, 64u);
+            if constexpr (HAS_KM) {
+                SubMeanRoundBackF32<DTYPE_MODE>(val, km_ptr, 64u);
+            }
+            Div(val, val, scale_reg, full);
+
+            RegTensor<int32_t> packed_i;
+            if constexpr (PER_THREAD) {
+                RegTensor<float> bias;
+                MaskReg neg;
+                Compare<float, CMPMODE::LT>(neg, val, zero, full);
+                Select(bias, neg_half_reg, half_reg, neg);
+                Add(val, val, bias, full);
+                Cast<int32_t, float, toI32Trunc>(packed_i, val, full);
+            } else {
+                Cast<int32_t, float, toI32Rint>(packed_i, val, full);
+            }
+            Cast<float, int32_t, toFp32>(val, packed_i, full);
+            Max(val, val, neg127, full);
+            Min(val, val, pos127, full);
+            Cast<int32_t, float, toI8Sat>(packed_i, val, full);
+            StoreAlign<int8_t, StoreDist::DIST_PACK4_B32>(out_ptr + 64u,
+                reinterpret_cast<RegTensor<int8_t>&>(packed_i), full);
+        }
+    } else {
+        for (uint32_t c = 0; c < d; c += 64) {
+            RegTensor<float> val;
+            LoadRowChunkF32<DTYPE_MODE>(val, in_ptr, c);
+            if constexpr (HAS_KM) {
+                SubMeanRoundBackF32<DTYPE_MODE>(val, km_ptr, c);
+            }
+            Div(val, val, scale_reg, full);
+
+            RegTensor<int32_t> packed_i;
+            if constexpr (PER_THREAD) {
+                RegTensor<float> bias;
+                MaskReg neg;
+                Compare<float, CMPMODE::LT>(neg, val, zero, full);
+                Select(bias, neg_half_reg, half_reg, neg);
+                Add(val, val, bias, full);
+                Cast<int32_t, float, toI32Trunc>(packed_i, val, full);
+            } else {
+                Cast<int32_t, float, toI32Rint>(packed_i, val, full);
+            }
+            Cast<float, int32_t, toFp32>(val, packed_i, full);
+            Max(val, val, neg127, full);
+            Min(val, val, pos127, full);
+            // 硬件 vconv 无 float→int8 直转（dav-3510 static assert）：int32 中转后
+            // DIST_PACK4_B32 打包窄化（±127 已在 float 域 clamp，窄化无损）
+            Cast<int32_t, float, toI8Sat>(packed_i, val, full);
+            StoreAlign<int8_t, StoreDist::DIST_PACK4_B32>(out_ptr + c,
+                reinterpret_cast<RegTensor<int8_t>&>(packed_i), full);
+        }
+    }
+}
+
+template <uint32_t DTYPE_MODE, bool PER_THREAD, bool HAS_KM>
+__aicore__ inline __attribute__((always_inline)) void QuantRowInt8VF(
+    __ubuf__ half* in_ptr, __ubuf__ int8_t* out_ptr,
+    __ubuf__ float* scale_ptr, uint32_t d,
+    __ubuf__ float* km_ptr = nullptr) {
+    if (d == 64u) {
+        QuantRowInt8VF<DTYPE_MODE, PER_THREAD, HAS_KM, 64u>(in_ptr, out_ptr, scale_ptr, d, km_ptr);
+    } else if (d == 128u) {
+        QuantRowInt8VF<DTYPE_MODE, PER_THREAD, HAS_KM, 128u>(in_ptr, out_ptr, scale_ptr, d, km_ptr);
+    } else {
+        QuantRowInt8VF<DTYPE_MODE, PER_THREAD, HAS_KM, 0u>(in_ptr, out_ptr, scale_ptr, d, km_ptr);
     }
 }
 
@@ -252,7 +385,7 @@ __aicore__ inline __attribute__((always_inline)) void QuantRowInt8VF(
  * - 全零通道 scale=0 → 0/0=NaN → e4m3 编码 0x7f（对齐 quant::FloatToE4m3fn 的
  *   NaN 保真与 golden）；有限通道饱和 ±scale_max 后 RNE 转 e4m3。
  */
-template <uint32_t DTYPE_MODE, bool HAS_VM>
+template <uint32_t DTYPE_MODE, bool HAS_VM = false, uint32_t D = 0u>
 __simd_vf__ __aicore__ inline __attribute__((always_inline)) void QuantVRowFp8VF(
     __ubuf__ half* in_ptr,
     __ubuf__ float8_e4m3_t* out_ptr,
@@ -271,26 +404,102 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void QuantVRowFp8VF
     Duplicate(zero_reg, 0.0f);
     Duplicate(nan_reg, std::numeric_limits<float>::quiet_NaN());
 
-    for (uint32_t c = 0; c < d; c += 64) {
+    if constexpr (D == 64u) {
         RegTensor<float> val, scale_reg;
         RegTensor<float8_e4m3_t> packed;
-        LoadRowChunkF32<DTYPE_MODE>(val, in_ptr, c);
+        LoadRowChunkF32<DTYPE_MODE>(val, in_ptr, 0u);
         if constexpr (HAS_VM) {
             RegTensor<float> vm_val;
-            LoadAlign(vm_val, vm_ptr + c);
+            LoadAlign(vm_val, vm_ptr);
             Sub(val, val, vm_val, full);
         }
-        LoadAlign(scale_reg, scale_ptr + c);
+        LoadAlign(scale_reg, scale_ptr);
         Div(val, val, scale_reg, full);
-        // 全零通道 NaN 守卫（收敛轮 1/R1-1）：不依赖硬件 Min/Max NaN 语义——
-        // scale=0 → Div 产 NaN → SAT cast 保留 e4m3 0x7f（对齐 golden）
         MaskReg zero_scale;
         Compare<float, CMPMODE::EQ>(zero_scale, scale_reg, zero_reg, full);
         Select(val, nan_reg, val, zero_scale);
         Min(val, val, scale_max_reg, full);
         Max(val, val, neg_scale_max_reg, full);
         Cast<float8_e4m3_t, float, toFp8>(packed, val, full);
-        StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(out_ptr + c, packed, full);
+        StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(out_ptr, packed, full);
+    } else if constexpr (D == 128u) {
+        {
+            RegTensor<float> val, scale_reg;
+            RegTensor<float8_e4m3_t> packed;
+            LoadRowChunkF32<DTYPE_MODE>(val, in_ptr, 0u);
+            if constexpr (HAS_VM) {
+                RegTensor<float> vm_val;
+                LoadAlign(vm_val, vm_ptr);
+                Sub(val, val, vm_val, full);
+            }
+            LoadAlign(scale_reg, scale_ptr);
+            Div(val, val, scale_reg, full);
+            MaskReg zero_scale;
+            Compare<float, CMPMODE::EQ>(zero_scale, scale_reg, zero_reg, full);
+            Select(val, nan_reg, val, zero_scale);
+            Min(val, val, scale_max_reg, full);
+            Max(val, val, neg_scale_max_reg, full);
+            Cast<float8_e4m3_t, float, toFp8>(packed, val, full);
+            StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(out_ptr, packed, full);
+        }
+        {
+            RegTensor<float> val, scale_reg;
+            RegTensor<float8_e4m3_t> packed;
+            LoadRowChunkF32<DTYPE_MODE>(val, in_ptr, 64u);
+            if constexpr (HAS_VM) {
+                RegTensor<float> vm_val;
+                LoadAlign(vm_val, vm_ptr + 64u);
+                Sub(val, val, vm_val, full);
+            }
+            LoadAlign(scale_reg, scale_ptr + 64u);
+            Div(val, val, scale_reg, full);
+            MaskReg zero_scale;
+            Compare<float, CMPMODE::EQ>(zero_scale, scale_reg, zero_reg, full);
+            Select(val, nan_reg, val, zero_scale);
+            Min(val, val, scale_max_reg, full);
+            Max(val, val, neg_scale_max_reg, full);
+            Cast<float8_e4m3_t, float, toFp8>(packed, val, full);
+            StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(out_ptr + 64u, packed, full);
+        }
+    } else {
+        for (uint32_t c = 0; c < d; c += 64) {
+            RegTensor<float> val, scale_reg;
+            RegTensor<float8_e4m3_t> packed;
+            LoadRowChunkF32<DTYPE_MODE>(val, in_ptr, c);
+            if constexpr (HAS_VM) {
+                RegTensor<float> vm_val;
+                LoadAlign(vm_val, vm_ptr + c);
+                Sub(val, val, vm_val, full);
+            }
+            LoadAlign(scale_reg, scale_ptr + c);
+            Div(val, val, scale_reg, full);
+            // 全零通道 NaN 守卫（收敛轮 1/R1-1）：不依赖硬件 Min/Max NaN 语义——
+            // scale=0 → Div 产 NaN → SAT cast 保留 e4m3 0x7f（对齐 golden）
+            MaskReg zero_scale;
+            Compare<float, CMPMODE::EQ>(zero_scale, scale_reg, zero_reg, full);
+            Select(val, nan_reg, val, zero_scale);
+            Min(val, val, scale_max_reg, full);
+            Max(val, val, neg_scale_max_reg, full);
+            Cast<float8_e4m3_t, float, toFp8>(packed, val, full);
+            StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(out_ptr + c, packed, full);
+        }
+    }
+}
+
+template <uint32_t DTYPE_MODE, bool HAS_VM>
+__aicore__ inline __attribute__((always_inline)) void QuantVRowFp8VF(
+    __ubuf__ half* in_ptr,
+    __ubuf__ float8_e4m3_t* out_ptr,
+    __ubuf__ float* scale_ptr,
+    __ubuf__ float* vm_ptr,
+    uint32_t d,
+    float scale_max) {
+    if (d == 64u) {
+        QuantVRowFp8VF<DTYPE_MODE, HAS_VM, 64u>(in_ptr, out_ptr, scale_ptr, vm_ptr, d, scale_max);
+    } else if (d == 128u) {
+        QuantVRowFp8VF<DTYPE_MODE, HAS_VM, 128u>(in_ptr, out_ptr, scale_ptr, vm_ptr, d, scale_max);
+    } else {
+        QuantVRowFp8VF<DTYPE_MODE, HAS_VM, 0u>(in_ptr, out_ptr, scale_ptr, vm_ptr, d, scale_max);
     }
 }
 
@@ -854,72 +1063,221 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void SoftmaxProbRow
 /**
  * A7-1 Tile V per-channel amax accum
  */
-template <uint32_t DTYPE_MODE>
-__simd_vf__ __aicore__ inline __attribute__((always_inline)) void ChannelAmaxAccumTileVF(__ubuf__ half* in_tile_ptr, __ubuf__ float* amax_ptr, uint32_t rows, uint32_t d) {
+template <uint32_t DTYPE_MODE, uint32_t D = 0u>
+__simd_vf__ __aicore__ inline __attribute__((always_inline)) void ChannelAmaxAccumTileVF(
+    __ubuf__ half* in_tile_ptr, __ubuf__ float* amax_ptr, uint32_t rows, uint32_t d) {
     using namespace AscendC;
     using namespace AscendC::MicroAPI;
     auto full = CreateMask<float, MaskPattern::ALL>();
     static constexpr CastTrait toFp32{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+    const uint32_t d_stride = (D != 0u) ? D : d;
 
-    for (uint32_t c = 0; c < d; c += 64) {
+    if constexpr (D == 64u) {
         RegTensor<float> amax;
-        LoadAlign(amax, amax_ptr + c);
+        LoadAlign(amax, amax_ptr);
         for (uint32_t r = 0; r < rows; ++r) {
             RegTensor<float> val;
-            LoadRowChunkF32<DTYPE_MODE>(val, in_tile_ptr + r * d, c);
+            LoadRowChunkF32<DTYPE_MODE>(val, in_tile_ptr + r * d_stride, 0u);
             Abs(val, val, full);
             Max(amax, amax, val, full);
         }
-        StoreAlign(amax_ptr + c, amax, full);
+        StoreAlign(amax_ptr, amax, full);
+    } else if constexpr (D == 128u) {
+        {
+            RegTensor<float> amax;
+            LoadAlign(amax, amax_ptr);
+            for (uint32_t r = 0; r < rows; ++r) {
+                RegTensor<float> val;
+                LoadRowChunkF32<DTYPE_MODE>(val, in_tile_ptr + r * d_stride, 0u);
+                Abs(val, val, full);
+                Max(amax, amax, val, full);
+            }
+            StoreAlign(amax_ptr, amax, full);
+        }
+        {
+            RegTensor<float> amax;
+            LoadAlign(amax, amax_ptr + 64u);
+            for (uint32_t r = 0; r < rows; ++r) {
+                RegTensor<float> val;
+                LoadRowChunkF32<DTYPE_MODE>(val, in_tile_ptr + r * d_stride, 64u);
+                Abs(val, val, full);
+                Max(amax, amax, val, full);
+            }
+            StoreAlign(amax_ptr + 64u, amax, full);
+        }
+    } else {
+        for (uint32_t c = 0; c < d; c += 64) {
+            RegTensor<float> amax;
+            LoadAlign(amax, amax_ptr + c);
+            for (uint32_t r = 0; r < rows; ++r) {
+                RegTensor<float> val;
+                LoadRowChunkF32<DTYPE_MODE>(val, in_tile_ptr + r * d_stride, c);
+                Abs(val, val, full);
+                Max(amax, amax, val, full);
+            }
+            StoreAlign(amax_ptr + c, amax, full);
+        }
+    }
+}
+
+template <uint32_t DTYPE_MODE>
+__aicore__ inline __attribute__((always_inline)) void ChannelAmaxAccumTileVF(
+    __ubuf__ half* in_tile_ptr, __ubuf__ float* amax_ptr, uint32_t rows, uint32_t d) {
+    if (d == 64u) {
+        ChannelAmaxAccumTileVF<DTYPE_MODE, 64u>(in_tile_ptr, amax_ptr, rows, d);
+    } else if (d == 128u) {
+        ChannelAmaxAccumTileVF<DTYPE_MODE, 128u>(in_tile_ptr, amax_ptr, rows, d);
+    } else {
+        ChannelAmaxAccumTileVF<DTYPE_MODE, 0u>(in_tile_ptr, amax_ptr, rows, d);
     }
 }
 
 /**
  * A7-2 V per-channel 定标：scale[c] = amax[c] / scale_max
  */
-__simd_vf__ __aicore__ inline __attribute__((always_inline)) void FinalizeVScaleVF(__ubuf__ float* amax_ptr, __ubuf__ float* out_scale_ptr,
-                                         float scale_max, uint32_t d) {
+template <uint32_t D = 0u>
+__simd_vf__ __aicore__ inline __attribute__((always_inline)) void FinalizeVScaleVF(
+    __ubuf__ float* amax_ptr, __ubuf__ float* out_scale_ptr,
+    float scale_max, uint32_t d) {
     using namespace AscendC;
     using namespace AscendC::MicroAPI;
     auto full = CreateMask<float, MaskPattern::ALL>();
 
     RegTensor<float> smax_reg;
     Duplicate(smax_reg, scale_max);
-    for (uint32_t c = 0; c < d; c += 64) {
+    if constexpr (D == 64u) {
         RegTensor<float> amax;
-        LoadAlign(amax, amax_ptr + c);
+        LoadAlign(amax, amax_ptr);
         Div(amax, amax, smax_reg, full);
-        StoreAlign(out_scale_ptr + c, amax, full);
+        StoreAlign(out_scale_ptr, amax, full);
+    } else if constexpr (D == 128u) {
+        {
+            RegTensor<float> amax;
+            LoadAlign(amax, amax_ptr);
+            Div(amax, amax, smax_reg, full);
+            StoreAlign(out_scale_ptr, amax, full);
+        }
+        {
+            RegTensor<float> amax;
+            LoadAlign(amax, amax_ptr + 64u);
+            Div(amax, amax, smax_reg, full);
+            StoreAlign(out_scale_ptr + 64u, amax, full);
+        }
+    } else {
+        for (uint32_t c = 0; c < d; c += 64) {
+            RegTensor<float> amax;
+            LoadAlign(amax, amax_ptr + c);
+            Div(amax, amax, smax_reg, full);
+            StoreAlign(out_scale_ptr + c, amax, full);
+        }
+    }
+}
+
+__aicore__ inline __attribute__((always_inline)) void FinalizeVScaleVF(
+    __ubuf__ float* amax_ptr, __ubuf__ float* out_scale_ptr,
+    float scale_max, uint32_t d) {
+    if (d == 64u) {
+        FinalizeVScaleVF<64u>(amax_ptr, out_scale_ptr, scale_max, d);
+    } else if (d == 128u) {
+        FinalizeVScaleVF<128u>(amax_ptr, out_scale_ptr, scale_max, d);
+    } else {
+        FinalizeVScaleVF<0u>(amax_ptr, out_scale_ptr, scale_max, d);
     }
 }
 
 /**
  * A7-3 Tile smooth_v stats accum
  */
-template <uint32_t DTYPE_MODE>
-__simd_vf__ __aicore__ inline __attribute__((always_inline)) void ChannelStatsAccumTileVF(__ubuf__ half* in_tile_ptr, __ubuf__ float* vmax_ptr,
-                                            __ubuf__ float* vmin_ptr, __ubuf__ float* vsum_ptr,
-                                            uint32_t rows, uint32_t d) {
+template <uint32_t DTYPE_MODE, uint32_t D = 0u>
+__simd_vf__ __aicore__ inline __attribute__((always_inline)) void ChannelStatsAccumTileVF(
+    __ubuf__ half* in_tile_ptr, __ubuf__ float* vmax_ptr,
+    __ubuf__ float* vmin_ptr, __ubuf__ float* vsum_ptr,
+    uint32_t rows, uint32_t d) {
     using namespace AscendC;
     using namespace AscendC::MicroAPI;
     auto full = CreateMask<float, MaskPattern::ALL>();
     static constexpr CastTrait toFp32{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+    const uint32_t d_stride = (D != 0u) ? D : d;
 
-    for (uint32_t c = 0; c < d; c += 64) {
+    if constexpr (D == 64u) {
         RegTensor<float> vmax, vmin, vsum;
-        LoadAlign(vmax, vmax_ptr + c);
-        LoadAlign(vmin, vmin_ptr + c);
-        LoadAlign(vsum, vsum_ptr + c);
+        LoadAlign(vmax, vmax_ptr);
+        LoadAlign(vmin, vmin_ptr);
+        LoadAlign(vsum, vsum_ptr);
         for (uint32_t r = 0; r < rows; ++r) {
             RegTensor<float> val;
-            LoadRowChunkF32<DTYPE_MODE>(val, in_tile_ptr + r * d, c);
+            LoadRowChunkF32<DTYPE_MODE>(val, in_tile_ptr + r * d_stride, 0u);
             Max(vmax, vmax, val, full);
             Min(vmin, vmin, val, full);
             Add(vsum, vsum, val, full);
         }
-        StoreAlign(vmax_ptr + c, vmax, full);
-        StoreAlign(vmin_ptr + c, vmin, full);
-        StoreAlign(vsum_ptr + c, vsum, full);
+        StoreAlign(vmax_ptr, vmax, full);
+        StoreAlign(vmin_ptr, vmin, full);
+        StoreAlign(vsum_ptr, vsum, full);
+    } else if constexpr (D == 128u) {
+        {
+            RegTensor<float> vmax, vmin, vsum;
+            LoadAlign(vmax, vmax_ptr);
+            LoadAlign(vmin, vmin_ptr);
+            LoadAlign(vsum, vsum_ptr);
+            for (uint32_t r = 0; r < rows; ++r) {
+                RegTensor<float> val;
+                LoadRowChunkF32<DTYPE_MODE>(val, in_tile_ptr + r * d_stride, 0u);
+                Max(vmax, vmax, val, full);
+                Min(vmin, vmin, val, full);
+                Add(vsum, vsum, val, full);
+            }
+            StoreAlign(vmax_ptr, vmax, full);
+            StoreAlign(vmin_ptr, vmin, full);
+            StoreAlign(vsum_ptr, vsum, full);
+        }
+        {
+            RegTensor<float> vmax, vmin, vsum;
+            LoadAlign(vmax, vmax_ptr + 64u);
+            LoadAlign(vmin, vmin_ptr + 64u);
+            LoadAlign(vsum, vsum_ptr + 64u);
+            for (uint32_t r = 0; r < rows; ++r) {
+                RegTensor<float> val;
+                LoadRowChunkF32<DTYPE_MODE>(val, in_tile_ptr + r * d_stride, 64u);
+                Max(vmax, vmax, val, full);
+                Min(vmin, vmin, val, full);
+                Add(vsum, vsum, val, full);
+            }
+            StoreAlign(vmax_ptr + 64u, vmax, full);
+            StoreAlign(vmin_ptr + 64u, vmin, full);
+            StoreAlign(vsum_ptr + 64u, vsum, full);
+        }
+    } else {
+        for (uint32_t c = 0; c < d; c += 64) {
+            RegTensor<float> vmax, vmin, vsum;
+            LoadAlign(vmax, vmax_ptr + c);
+            LoadAlign(vmin, vmin_ptr + c);
+            LoadAlign(vsum, vsum_ptr + c);
+            for (uint32_t r = 0; r < rows; ++r) {
+                RegTensor<float> val;
+                LoadRowChunkF32<DTYPE_MODE>(val, in_tile_ptr + r * d_stride, c);
+                Max(vmax, vmax, val, full);
+                Min(vmin, vmin, val, full);
+                Add(vsum, vsum, val, full);
+            }
+            StoreAlign(vmax_ptr + c, vmax, full);
+            StoreAlign(vmin_ptr + c, vmin, full);
+            StoreAlign(vsum_ptr + c, vsum, full);
+        }
+    }
+}
+
+template <uint32_t DTYPE_MODE>
+__aicore__ inline __attribute__((always_inline)) void ChannelStatsAccumTileVF(
+    __ubuf__ half* in_tile_ptr, __ubuf__ float* vmax_ptr,
+    __ubuf__ float* vmin_ptr, __ubuf__ float* vsum_ptr,
+    uint32_t rows, uint32_t d) {
+    if (d == 64u) {
+        ChannelStatsAccumTileVF<DTYPE_MODE, 64u>(in_tile_ptr, vmax_ptr, vmin_ptr, vsum_ptr, rows, d);
+    } else if (d == 128u) {
+        ChannelStatsAccumTileVF<DTYPE_MODE, 128u>(in_tile_ptr, vmax_ptr, vmin_ptr, vsum_ptr, rows, d);
+    } else {
+        ChannelStatsAccumTileVF<DTYPE_MODE, 0u>(in_tile_ptr, vmax_ptr, vmin_ptr, vsum_ptr, rows, d);
     }
 }
 
@@ -929,10 +1287,12 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void ChannelStatsAc
  * scale[c] = amax[c] / scale_max（除法轨迹；全零通道 amax=0 → scale=0 的 NaN 容错
  * 与非 smooth 路径一致）。vm 原地写回 vsum_ptr，scale 写 scale_out_ptr。
  */
-__simd_vf__ __aicore__ inline __attribute__((always_inline)) void FinalizeSmoothVScaleVF(__ubuf__ float* vmax_ptr, __ubuf__ float* vmin_ptr,
-                                               __ubuf__ float* vsum_ptr, __ubuf__ float* scale_out_ptr,
-                                               uint32_t fp8_padded, uint32_t has_pad,
-                                               float scale_max, uint32_t d) {
+template <uint32_t D = 0u>
+__simd_vf__ __aicore__ inline __attribute__((always_inline)) void FinalizeSmoothVScaleVF(
+    __ubuf__ float* vmax_ptr, __ubuf__ float* vmin_ptr,
+    __ubuf__ float* vsum_ptr, __ubuf__ float* scale_out_ptr,
+    uint32_t fp8_padded, uint32_t has_pad,
+    float scale_max, uint32_t d) {
     using namespace AscendC;
     using namespace AscendC::MicroAPI;
     auto full = CreateMask<float, MaskPattern::ALL>();
@@ -941,11 +1301,11 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void FinalizeSmooth
     Duplicate(pad_reg, static_cast<float>(fp8_padded));
     Duplicate(smax_reg, scale_max);
     Duplicate(zero_reg, 0.0f);
-    for (uint32_t c = 0; c < d; c += 64) {
+    if constexpr (D == 64u) {
         RegTensor<float> vmax, vmin, vm, hi, lo, amax;
-        LoadAlign(vmax, vmax_ptr + c);
-        LoadAlign(vmin, vmin_ptr + c);
-        LoadAlign(vm, vsum_ptr + c);
+        LoadAlign(vmax, vmax_ptr);
+        LoadAlign(vmin, vmin_ptr);
+        LoadAlign(vm, vsum_ptr);
         Div(vm, vm, pad_reg, full);            // vm = sum / fp8_padded
         Sub(hi, vmax, vm, full);
         Abs(hi, hi, full);
@@ -958,8 +1318,84 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void FinalizeSmooth
             Max(amax, amax, vm_abs, full);
         }
         Div(amax, amax, smax_reg, full);       // scale = amax / scale_max
-        StoreAlign(scale_out_ptr + c, amax, full);
-        StoreAlign(vsum_ptr + c, vm, full);    // vm 原地写回
+        StoreAlign(scale_out_ptr, amax, full);
+        StoreAlign(vsum_ptr, vm, full);    // vm 原地写回
+    } else if constexpr (D == 128u) {
+        {
+            RegTensor<float> vmax, vmin, vm, hi, lo, amax;
+            LoadAlign(vmax, vmax_ptr);
+            LoadAlign(vmin, vmin_ptr);
+            LoadAlign(vm, vsum_ptr);
+            Div(vm, vm, pad_reg, full);            // vm = sum / fp8_padded
+            Sub(hi, vmax, vm, full);
+            Abs(hi, hi, full);
+            Sub(lo, vmin, vm, full);
+            Abs(lo, lo, full);
+            Max(amax, hi, lo, full);
+            if (has_pad != 0u) {
+                RegTensor<float> vm_abs;
+                Abs(vm_abs, vm, full);             // pad token (val=0) 贡献 |0 - vm|
+                Max(amax, amax, vm_abs, full);
+            }
+            Div(amax, amax, smax_reg, full);       // scale = amax / scale_max
+            StoreAlign(scale_out_ptr, amax, full);
+            StoreAlign(vsum_ptr, vm, full);    // vm 原地写回
+        }
+        {
+            RegTensor<float> vmax, vmin, vm, hi, lo, amax;
+            LoadAlign(vmax, vmax_ptr + 64u);
+            LoadAlign(vmin, vmin_ptr + 64u);
+            LoadAlign(vm, vsum_ptr + 64u);
+            Div(vm, vm, pad_reg, full);            // vm = sum / fp8_padded
+            Sub(hi, vmax, vm, full);
+            Abs(hi, hi, full);
+            Sub(lo, vmin, vm, full);
+            Abs(lo, lo, full);
+            Max(amax, hi, lo, full);
+            if (has_pad != 0u) {
+                RegTensor<float> vm_abs;
+                Abs(vm_abs, vm, full);             // pad token (val=0) 贡献 |0 - vm|
+                Max(amax, amax, vm_abs, full);
+            }
+            Div(amax, amax, smax_reg, full);       // scale = amax / scale_max
+            StoreAlign(scale_out_ptr + 64u, amax, full);
+            StoreAlign(vsum_ptr + 64u, vm, full);    // vm 原地写回
+        }
+    } else {
+        for (uint32_t c = 0; c < d; c += 64) {
+            RegTensor<float> vmax, vmin, vm, hi, lo, amax;
+            LoadAlign(vmax, vmax_ptr + c);
+            LoadAlign(vmin, vmin_ptr + c);
+            LoadAlign(vm, vsum_ptr + c);
+            Div(vm, vm, pad_reg, full);            // vm = sum / fp8_padded
+            Sub(hi, vmax, vm, full);
+            Abs(hi, hi, full);
+            Sub(lo, vmin, vm, full);
+            Abs(lo, lo, full);
+            Max(amax, hi, lo, full);
+            if (has_pad != 0u) {
+                RegTensor<float> vm_abs;
+                Abs(vm_abs, vm, full);             // pad token (val=0) 贡献 |0 - vm|
+                Max(amax, amax, vm_abs, full);
+            }
+            Div(amax, amax, smax_reg, full);       // scale = amax / scale_max
+            StoreAlign(scale_out_ptr + c, amax, full);
+            StoreAlign(vsum_ptr + c, vm, full);    // vm 原地写回
+        }
+    }
+}
+
+__aicore__ inline __attribute__((always_inline)) void FinalizeSmoothVScaleVF(
+    __ubuf__ float* vmax_ptr, __ubuf__ float* vmin_ptr,
+    __ubuf__ float* vsum_ptr, __ubuf__ float* scale_out_ptr,
+    uint32_t fp8_padded, uint32_t has_pad,
+    float scale_max, uint32_t d) {
+    if (d == 64u) {
+        FinalizeSmoothVScaleVF<64u>(vmax_ptr, vmin_ptr, vsum_ptr, scale_out_ptr, fp8_padded, has_pad, scale_max, d);
+    } else if (d == 128u) {
+        FinalizeSmoothVScaleVF<128u>(vmax_ptr, vmin_ptr, vsum_ptr, scale_out_ptr, fp8_padded, has_pad, scale_max, d);
+    } else {
+        FinalizeSmoothVScaleVF<0u>(vmax_ptr, vmin_ptr, vsum_ptr, scale_out_ptr, fp8_padded, has_pad, scale_max, d);
     }
 }
 

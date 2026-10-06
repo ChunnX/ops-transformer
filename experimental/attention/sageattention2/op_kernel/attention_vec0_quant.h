@@ -34,7 +34,7 @@ public:
     /**
      * \brief 1. V0：GM→L1 Q 搬入与 INT8 量化
      */
-    template <bool PER_THREAD>
+    template <bool PER_THREAD, uint32_t D = 0u>
     __aicore__ inline __attribute__((always_inline)) void LoadAndQuantizeQImpl(
         const TaskContext &ctx,
         __gm__ uint8_t *q_src,
@@ -42,7 +42,8 @@ public:
     {
 #if SAGE_ATTN_DEVICE_COMPILE
         const uint32_t total_rows_q = ctx.TotalRows();
-        const uint32_t d = ctx.d;
+        const uint32_t d_step = (D != 0u) ? D : ctx.d;
+        const uint32_t d = d_step;
 
         LocalTensor<float> ub_rowmax(TPosition::VECCALC, SlotV0RowMax::Offset(), MAX_PACK_ROWS);
         LocalTensor<float> ub_scales(TPosition::VECCALC, SlotV0Scales::Offset(), kQScaleSlotStride);
@@ -77,7 +78,7 @@ public:
                                                 rows_to_load, d, stride_q);
         }
         Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
-        dev_vf::RowAbsMaxRowsVF<kDtype, false>(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
+        dev_vf::RowAbsMaxRowsVF<kDtype, false, D>(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
                                                reinterpret_cast<__ubuf__ float*>(ub_rowmax.GetPhyAddr()),
                                                nullptr, act_rows_q, d);
         Catlass::SageAttn::Sync<HardEvent::V_S>();
@@ -106,7 +107,7 @@ public:
             const uint32_t i = r % ctx.cur_q_len;
             const uint32_t token = ctx.cur_q_start + i;
             __ubuf__ float* scale_ptr = ub_scales_ptr + (ctx.cur_g0 + g) * kQScaleSlotStride + quant::QScaleIndex<PER_THREAD>(token);
-            dev_vf::QuantRowInt8VF<kDtype, PER_THREAD, false>(
+            dev_vf::QuantRowInt8VF<kDtype, PER_THREAD, false, D>(
                 reinterpret_cast<__ubuf__ half*>(ub_in[r * d].GetPhyAddr()),
                 reinterpret_cast<__ubuf__ int8_t*>(ub_stage_q_mat[r * d].GetPhyAddr()),
                 scale_ptr, d);
@@ -197,17 +198,31 @@ public:
         __gm__ uint8_t *q_src,
         const Catlass::SageAttn::GmBhsdLayout &q_layout)
     {
-        if (ctx.qk_quant_gran == QUANT_GRAN_PER_THREAD) {
-            LoadAndQuantizeQImpl<true>(ctx, q_src, q_layout);
+        if (ctx.d == 64u) {
+            if (ctx.qk_quant_gran == QUANT_GRAN_PER_THREAD) {
+                LoadAndQuantizeQImpl<true, 64u>(ctx, q_src, q_layout);
+            } else {
+                LoadAndQuantizeQImpl<false, 64u>(ctx, q_src, q_layout);
+            }
+        } else if (ctx.d == 128u) {
+            if (ctx.qk_quant_gran == QUANT_GRAN_PER_THREAD) {
+                LoadAndQuantizeQImpl<true, 128u>(ctx, q_src, q_layout);
+            } else {
+                LoadAndQuantizeQImpl<false, 128u>(ctx, q_src, q_layout);
+            }
         } else {
-            LoadAndQuantizeQImpl<false>(ctx, q_src, q_layout);
+            if (ctx.qk_quant_gran == QUANT_GRAN_PER_THREAD) {
+                LoadAndQuantizeQImpl<true, 0u>(ctx, q_src, q_layout);
+            } else {
+                LoadAndQuantizeQImpl<false, 0u>(ctx, q_src, q_layout);
+            }
         }
     }
 
     /**
      * \brief 2. V0：K 减 kMean + INT8 量化 + 摆放写 L1 槽首
      */
-    template <bool PER_THREAD>
+    template <bool PER_THREAD, uint32_t D = 0u>
     __aicore__ inline __attribute__((always_inline)) void LoadAndQuantizeKImpl(
         const TaskContext &ctx,
         __gm__ uint8_t *k_src,
@@ -216,7 +231,8 @@ public:
         uint32_t l1_dst_addr)
     {
         const uint32_t cur_k_start = cur_k * ctx.block_n;
-        const uint32_t d = ctx.d;
+        const uint32_t d_step = (D != 0u) ? D : ctx.d;
+        const uint32_t d = d_step;
         const uint32_t block_n = ctx.block_n;
         const uint32_t block_k = ctx.CurBlockK(cur_k);
 
@@ -258,12 +274,12 @@ public:
         Catlass::SageAttn::LoadTile2DFromGm(ub_in, reinterpret_cast<__gm__ half*>(k_src), block_k, d, stride_k);
         Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
         if (has_km) {
-            dev_vf::RowAbsMaxRowsVF<kDtype, true>(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
+            dev_vf::RowAbsMaxRowsVF<kDtype, true, D>(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
                                                   reinterpret_cast<__ubuf__ float*>(ub_rowmax.GetPhyAddr()),
                                                   reinterpret_cast<__ubuf__ float*>(ub_km.GetPhyAddr()),
                                                   block_k, d);
         } else {
-            dev_vf::RowAbsMaxRowsVF<kDtype, false>(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
+            dev_vf::RowAbsMaxRowsVF<kDtype, false, D>(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
                                                    reinterpret_cast<__ubuf__ float*>(ub_rowmax.GetPhyAddr()),
                                                    nullptr,
                                                    block_k, d);
@@ -303,7 +319,7 @@ public:
             for (uint32_t j = 0; j < block_k; ++j) {
                 const uint32_t token = cur_k_start + j;
                 __ubuf__ float* scale_ptr = ub_k_scales_ptr + quant::KScaleIndex<PER_THREAD>(token);
-                dev_vf::QuantRowInt8VF<kDtype, PER_THREAD, true>(
+                dev_vf::QuantRowInt8VF<kDtype, PER_THREAD, true, D>(
                     reinterpret_cast<__ubuf__ half*>(ub_in[j * d].GetPhyAddr()),
                     reinterpret_cast<__ubuf__ int8_t*>(ub_stage_k_mat[j * d].GetPhyAddr()),
                     scale_ptr, d,
@@ -313,7 +329,7 @@ public:
             for (uint32_t j = 0; j < block_k; ++j) {
                 const uint32_t token = cur_k_start + j;
                 __ubuf__ float* scale_ptr = ub_k_scales_ptr + quant::KScaleIndex<PER_THREAD>(token);
-                dev_vf::QuantRowInt8VF<kDtype, PER_THREAD, false>(
+                dev_vf::QuantRowInt8VF<kDtype, PER_THREAD, false, D>(
                     reinterpret_cast<__ubuf__ half*>(ub_in[j * d].GetPhyAddr()),
                     reinterpret_cast<__ubuf__ int8_t*>(ub_stage_k_mat[j * d].GetPhyAddr()),
                     scale_ptr, d,
@@ -411,10 +427,24 @@ public:
         uint32_t cur_k,
         uint32_t l1_dst_addr)
     {
-        if (ctx.qk_quant_gran == QUANT_GRAN_PER_THREAD) {
-            LoadAndQuantizeKImpl<true>(ctx, k_src, km_ptr, cur_k, l1_dst_addr);
+        if (ctx.d == 64u) {
+            if (ctx.qk_quant_gran == QUANT_GRAN_PER_THREAD) {
+                LoadAndQuantizeKImpl<true, 64u>(ctx, k_src, km_ptr, cur_k, l1_dst_addr);
+            } else {
+                LoadAndQuantizeKImpl<false, 64u>(ctx, k_src, km_ptr, cur_k, l1_dst_addr);
+            }
+        } else if (ctx.d == 128u) {
+            if (ctx.qk_quant_gran == QUANT_GRAN_PER_THREAD) {
+                LoadAndQuantizeKImpl<true, 128u>(ctx, k_src, km_ptr, cur_k, l1_dst_addr);
+            } else {
+                LoadAndQuantizeKImpl<false, 128u>(ctx, k_src, km_ptr, cur_k, l1_dst_addr);
+            }
         } else {
-            LoadAndQuantizeKImpl<false>(ctx, k_src, km_ptr, cur_k, l1_dst_addr);
+            if (ctx.qk_quant_gran == QUANT_GRAN_PER_THREAD) {
+                LoadAndQuantizeKImpl<true, 0u>(ctx, k_src, km_ptr, cur_k, l1_dst_addr);
+            } else {
+                LoadAndQuantizeKImpl<false, 0u>(ctx, k_src, km_ptr, cur_k, l1_dst_addr);
+            }
         }
     }
 
@@ -435,7 +465,8 @@ public:
     /**
      * \brief 3. V0：V 转置 + 16-token permute + per-channel FP8 量化写 L1 槽内 V 子区
      */
-    __aicore__ inline __attribute__((always_inline)) void QuantizeAndStageValue(
+    template <uint32_t D = 0u>
+    __aicore__ inline __attribute__((always_inline)) void QuantizeAndStageValueImpl(
         const TaskContext &ctx,
         __gm__ uint8_t *v_src,
         uint32_t l1_dst_addr,
@@ -443,7 +474,8 @@ public:
         uint32_t block_k,
         const Catlass::SageAttn::GmBhsdLayout &kv_layout)
     {
-        const uint32_t d = ctx.d;
+        const uint32_t d_step = (D != 0u) ? D : ctx.d;
+        const uint32_t d = d_step;
         const uint32_t block_n = ctx.block_n;
         const float scale_max = ctx.v_scale_max;
 
@@ -472,14 +504,14 @@ public:
                         Catlass::SageAttn::LoadTile2DFromGm(ub_in, reinterpret_cast<__gm__ half*>(v_src + chunk_gm_offset),
                                                             chunk_len, d, stride_v);
                         Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
-                        dev_vf::ChannelStatsAccumTileVF<kDtype>(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
+                        dev_vf::ChannelStatsAccumTileVF<kDtype, D>(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
                                                                 reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
                                                                 reinterpret_cast<__ubuf__ float*>(ub_v_min.GetPhyAddr()),
                                                                 reinterpret_cast<__ubuf__ float*>(ub_v_sum.GetPhyAddr()),
                                                                 chunk_len, d);
                     }
                     Catlass::SageAttn::Sync<HardEvent::V_S>();
-                    dev_vf::FinalizeSmoothVScaleVF(reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
+                    dev_vf::FinalizeSmoothVScaleVF<D>(reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
                                                    reinterpret_cast<__ubuf__ float*>(ub_v_min.GetPhyAddr()),
                                                    reinterpret_cast<__ubuf__ float*>(ub_v_sum.GetPhyAddr()),
                                                    reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
@@ -494,11 +526,11 @@ public:
                         Catlass::SageAttn::LoadTile2DFromGm(ub_in, reinterpret_cast<__gm__ half*>(v_src + chunk_gm_offset),
                                                             chunk_len, d, stride_v);
                         Catlass::SageAttn::Sync<HardEvent::MTE2_V>();
-                        dev_vf::ChannelAmaxAccumTileVF<kDtype>(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
+                        dev_vf::ChannelAmaxAccumTileVF<kDtype, D>(reinterpret_cast<__ubuf__ half*>(ub_in.GetPhyAddr()),
                                                                reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
                                                                chunk_len, d);
                     }
-                    dev_vf::FinalizeVScaleVF(reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
+                    dev_vf::FinalizeVScaleVF<D>(reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
                                              reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
                                              scale_max, d);
                 }
@@ -530,7 +562,7 @@ public:
         // 阶段一：V 行 FP8 量化写入 tok 暂存 [block_n, d]
         if (smooth_v != 0u) {
             for (uint32_t j = 0; j < block_k; ++j) {
-                dev_vf::QuantVRowFp8VF<kDtype, true>(
+                dev_vf::QuantVRowFp8VF<kDtype, true, D>(
                     reinterpret_cast<__ubuf__ half*>(ub_in[j * d].GetPhyAddr()),
                     reinterpret_cast<__ubuf__ float8_e4m3_t*>(ub_stage_tok[j * d].GetPhyAddr()),
                     reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
@@ -539,7 +571,7 @@ public:
             }
         } else {
             for (uint32_t j = 0; j < block_k; ++j) {
-                dev_vf::QuantVRowFp8VF<kDtype, false>(
+                dev_vf::QuantVRowFp8VF<kDtype, false, D>(
                     reinterpret_cast<__ubuf__ half*>(ub_in[j * d].GetPhyAddr()),
                     reinterpret_cast<__ubuf__ float8_e4m3_t*>(ub_stage_tok[j * d].GetPhyAddr()),
                     reinterpret_cast<__ubuf__ float*>(ub_v_scale.GetPhyAddr()),
@@ -614,6 +646,23 @@ public:
             }
         }
 #endif
+    }
+
+    __aicore__ inline __attribute__((always_inline)) void QuantizeAndStageValue(
+        const TaskContext &ctx,
+        __gm__ uint8_t *v_src,
+        uint32_t l1_dst_addr,
+        uint32_t cur_k,
+        uint32_t block_k,
+        const Catlass::SageAttn::GmBhsdLayout &kv_layout)
+    {
+        if (ctx.d == 64u) {
+            QuantizeAndStageValueImpl<64u>(ctx, v_src, l1_dst_addr, cur_k, block_k, kv_layout);
+        } else if (ctx.d == 128u) {
+            QuantizeAndStageValueImpl<128u>(ctx, v_src, l1_dst_addr, cur_k, block_k, kv_layout);
+        } else {
+            QuantizeAndStageValueImpl<0u>(ctx, v_src, l1_dst_addr, cur_k, block_k, kv_layout);
+        }
     }
 
     /**
