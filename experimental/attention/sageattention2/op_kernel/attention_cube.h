@@ -178,8 +178,6 @@ public:
         (void)ub_dot32_offset;
         (void)ub_pv_partial_offset;
 #endif
-        // 通知 V1：整个 Attention 的 PV 累加已全部完成
-        AttentionSync::CubeSignalPvDone();
 #if SAGE_ATTN_DEVICE_COMPILE
         // 跨核任务同步屏障：等待 V0 与 V1 均完成当前任务工作
         AttentionSync::CubeWaitV0TaskDone();

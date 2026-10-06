@@ -373,7 +373,8 @@ namespace sage_attn {
     uint32_t split_kv_num = 1;
 
     // 尾核利用优化：当任务总数不足以填满硬件核心时，自动沿 KV 序列维实施 Split-KV
-    if (total_tasks < hw_cores && kv_blk_num > 1) {
+    // 注意：因果掩码下存在下三角不等长依赖，内核未接入跨核 Merge 算子前严禁自动提升 Split-KV
+    if (!isCausal && total_tasks < hw_cores && kv_blk_num > 1) {
         uint32_t factor = ::CeilDiv(hw_cores, total_tasks);
         split_kv_num = (factor < kv_blk_num) ? factor : kv_blk_num;
         if (split_kv_num > 8) {
@@ -384,6 +385,9 @@ namespace sage_attn {
     const int64_t forced_split = env_forced("SAGEATTN_FORCE_SPLITKV");
     if (forced_split >= 1) {
         if (forced_split > 8 || forced_split > static_cast<int64_t>(kv_blk_num)) {
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        if (isCausal && forced_split > 1) {
             return ACLNN_ERR_PARAM_INVALID;
         }
         split_kv_num = static_cast<uint32_t>(forced_split);

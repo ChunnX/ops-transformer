@@ -37,7 +37,7 @@ namespace SyncFlags {
     constexpr uint32_t S_PONG_FREE      = 5;  // L1 Pong S 槽空闲许可 (Cube set → V1 wait)
     constexpr uint32_t PV_PARTIAL_READY = 6;  // PV 部分和写入 V1 UB 完成 (Cube set → V1 wait)
     constexpr uint32_t PV_PARTIAL_FREE  = 7;  // V1 部分和累加完毕释放 (V1 set → Cube wait)
-    constexpr uint32_t PV_DONE          = 8;  // Cube 全部 PV 运算完成 / 任务结束确认 (Cube set → V1 wait)
+    constexpr uint32_t V1_TASK_ACK      = 8;  // Cube 任务结束确认 (Cube set → V1 wait)
     constexpr uint32_t PV_CHAIN         = 9;  // V1 级联读取 L0C 许可 (V1 set → Cube wait)
     constexpr uint32_t V1_TASK_DONE     = 10; // V1 任务全量落盘完成 (V1 set → Cube wait)
 }
@@ -71,7 +71,7 @@ public:
     static_assert(SyncFlags::S_PONG_FREE < 11, "SyncFlags::S_PONG_FREE must avoid hardware reserved IDs [11, 14]");
     static_assert(SyncFlags::PV_PARTIAL_READY < 11, "SyncFlags::PV_PARTIAL_READY must avoid hardware reserved IDs [11, 14]");
     static_assert(SyncFlags::PV_PARTIAL_FREE < 11, "SyncFlags::PV_PARTIAL_FREE must avoid hardware reserved IDs [11, 14]");
-    static_assert(SyncFlags::PV_DONE < 11, "SyncFlags::PV_DONE must avoid hardware reserved IDs [11, 14]");
+    static_assert(SyncFlags::V1_TASK_ACK < 11, "SyncFlags::V1_TASK_ACK must avoid hardware reserved IDs [11, 14]");
     static_assert(SyncFlags::PV_CHAIN < 11, "SyncFlags::PV_CHAIN must avoid hardware reserved IDs [11, 14]");
     static_assert(SyncFlags::V1_TASK_DONE < 11, "SyncFlags::V1_TASK_DONE must avoid hardware reserved IDs [11, 14]");
 
@@ -250,24 +250,7 @@ public:
     }
 
     // -------------------------------------------------------------
-    // 7. Cube -> Vector 1 任务收尾握手 (PIPE_FIX -> PIPE_V)
-    // -------------------------------------------------------------
-    __aicore__ inline static void CubeSignalPvDone()
-    {
-#if SAGE_ATTN_DEVICE_COMPILE
-        AscendC::CrossCoreSetFlag<MODE, PIPE_FIX>(16 + SyncFlags::PV_DONE);
-#endif
-    }
-
-    __aicore__ inline static void V1WaitPvDone()
-    {
-#if SAGE_ATTN_DEVICE_COMPILE
-        AscendC::CrossCoreWaitFlag<MODE, PIPE_V>(SyncFlags::PV_DONE);
-#endif
-    }
-
-    // -------------------------------------------------------------
-    // 8. Vector 1 -> Cube PV Chain L0C 复用 (PIPE_V -> PIPE_FIX)
+    // 7. Vector 1 -> Cube PV Chain L0C 复用 (PIPE_V -> PIPE_FIX)
     // -------------------------------------------------------------
     __aicore__ inline static void V1SignalPvChain()
     {
@@ -284,7 +267,7 @@ public:
     }
 
     // -------------------------------------------------------------
-    // 9. 任务退域三管精准同步屏障 (MODE=4 Intra-Block)
+    // 8. 任务退域三管精准同步屏障 (MODE=4 Intra-Block)
     // -------------------------------------------------------------
     __aicore__ inline static void V0SignalTaskDone()
     {
@@ -324,7 +307,7 @@ public:
     __aicore__ inline static void V1WaitTaskAck()
     {
 #if SAGE_ATTN_DEVICE_COMPILE
-        AscendC::CrossCoreWaitFlag<MODE, PIPE_V>(SyncFlags::PV_DONE);
+        AscendC::CrossCoreWaitFlag<MODE, PIPE_V>(SyncFlags::V1_TASK_ACK);
 #endif
     }
 
@@ -338,7 +321,7 @@ public:
     __aicore__ inline static void CubeSignalV1TaskAck()
     {
 #if SAGE_ATTN_DEVICE_COMPILE
-        AscendC::CrossCoreSetFlag<MODE, PIPE_FIX>(16 + SyncFlags::PV_DONE);
+        AscendC::CrossCoreSetFlag<MODE, PIPE_FIX>(16 + SyncFlags::V1_TASK_ACK);
 #endif
     }
 };

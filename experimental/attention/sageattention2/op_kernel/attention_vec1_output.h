@@ -457,7 +457,6 @@ __aicore__ inline __attribute__((always_inline)) void ProcessVec1(
     }
 #endif
 
-    AttentionSync::V1WaitPvDone();
     output.FinalizeAndStore(ctx, softmax.GetRowStates());
 #if SAGE_ATTN_DEVICE_COMPILE
     // 任务退域同步：确保 V1 GM 写回刷盘完毕并向 Cube 报告完成
