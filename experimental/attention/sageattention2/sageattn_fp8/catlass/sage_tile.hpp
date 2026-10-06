@@ -169,6 +169,11 @@ __aicore__ inline __attribute__((always_inline)) void LoadTile2D(
  * - load_params.srcStride = load_params.mStep;
  * - load_params.dstStride = load_params.mStep;
  * 零标量转置，零 Vector ALU 开销，零中间 UB 缓冲区。
+ * 域锁契约：
+ * - 官方 copy_l1_to_l0b.hpp 354-362 行 nZ -> nZ 偏特化原生无 split 分支；
+ * - 本算子 K 路径 cols (block_n) ∈ {64, 128}、rows (d) ∈ {64, 128}，恒为 16/32 整数倍；
+ * - 域锁参数经 tests/test_tiling_struct.cpp Test 10 d) 段以官方字面式交叉验证锁定；
+ * - 对应 V 路径继续由 LoadTile2D（if_transpose = true，单装载分支，N ≡ 0 mod 32）严密覆盖。
  */
 template <typename Element, AscendC::TPosition DstPos, AscendC::TPosition SrcPos>
 __aicore__ inline __attribute__((always_inline)) void LoadTile2DNzToNz(

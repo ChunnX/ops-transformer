@@ -4,10 +4,11 @@
  *        （P-01..P-07，a31b913f9 固化；调优会话经 build_opp.sh SAGE_AUTOTUNE_HOOKS=1
  *        的 SAGEATTN_FORCE_* / SAGEATTN_TUNE_CASE 覆盖钩子驱动，见
  *        aclnn/sage_attn_host_tiling.h 门控注释）
- * \note 条目数值（m_per_core/block_n/k_step/use_die_grouped）严禁手工修改；
- *       仅消费调优值的四个字段与查询/匹配接口保留（零调用符号已随
- *       2026-10-04 两轮清扫删除：skip_scale_tau / causal_early_exit /
- *       expected_speedup / TunedShapeKey / kNumTunedEntries）
+ * \note 生产策略契约：条目数值最终须由真机网格自动固化（apply_best_tiling.py）。
+ *       当前 P-01..P-07 档位（除 GQA P-05=32u 外）m_per_core 设为 128u 为消除 75% 冗余
+ *       KV 量化与 GM 重复加载之微架构推演预置候选值（状态：PRESET_PENDING_REAL_NPU_GRID），
+ *       待开机执行 12_run_autotune.sh 网格搜索后自动校验并固化覆盖。
+ *       仅保留消费调优值的四个字段与查询/匹配接口。
  */
 
 #ifndef SAGE_ATTN_AUTOTUNE_TILING_BANK_H

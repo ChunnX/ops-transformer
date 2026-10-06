@@ -195,14 +195,12 @@ mkdir -p "${CUSTOM_DIR}/op_impl/ai_core/tbe/op_tiling/lib/linux/x86_64"
 cp -f "${CUSTOM_DIR}/op_impl/ai_core/tbe/op_tiling/lib/liboptiling.so" "${CUSTOM_DIR}/op_impl/ai_core/tbe/op_tiling/lib/linux/x86_64/liboptiling.so"
 
 echo "2. Compiling op_kernel device object for ${SOC} with BiSheng (-xasc ${NPU_ARCH})..."
-# 防复发守卫（2026-10-05 事故）：诊断期在 shell 导出的 -DSAGE_DIAG_STAGE=N 若残留于
-# EXTRA_KERNEL_FLAGS，正式构建会静默产出探针内核（Stage N≠0 不写输出/不推进流水），
-# 上板即得全零输出或假性 0.25% 匹配率。检测到即拒绝构建，需显式确认方可放行。
-# SAGE_PROBE_DIAG_MODE 同理（FinalizeAndStore 探针模式 1~3 会把魔数写进输出 GM）。
-if [[ "${EXTRA_KERNEL_FLAGS:-}" == *"SAGE_DIAG_STAGE"* || "${EXTRA_KERNEL_FLAGS:-}" == *"SAGE_PROBE_DIAG_MODE"* ]] \
-   && [ "${ALLOW_DIAG_KERNEL:-0}" != "1" ]; then
-    echo "[ERROR] EXTRA_KERNEL_FLAGS contains a diag macro (SAGE_DIAG_STAGE / SAGE_PROBE_DIAG_MODE); the probe would ship in this build." >&2
-    echo "        正式构建请: unset EXTRA_KERNEL_FLAGS  （诊断构建请: ALLOW_DIAG_KERNEL=1 复用本脚本）" >&2
+# 防复发守卫（2026-10-05 事故）：SAGE_DIAG_STAGE 与 SAGE_PROBE_DIAG_MODE 已随 978224541
+# 彻底退役。若外部环境或旧脚本在 EXTRA_KERNEL_FLAGS 中仍传入此类失效宏，
+# 显式拒绝构建，避免构建环境污染与非预期行为。
+if [[ "${EXTRA_KERNEL_FLAGS:-}" == *"SAGE_DIAG_STAGE"* || "${EXTRA_KERNEL_FLAGS:-}" == *"SAGE_PROBE_DIAG_MODE"* ]]; then
+    echo "[ERROR] EXTRA_KERNEL_FLAGS contains a retired diag macro (SAGE_DIAG_STAGE / SAGE_PROBE_DIAG_MODE)." >&2
+    echo "        诊断宏已彻底移除，算子走纯净生产路径，请: unset EXTRA_KERNEL_FLAGS" >&2
     exit 1
 fi
 mkdir -p "${OP_DIR}/build"

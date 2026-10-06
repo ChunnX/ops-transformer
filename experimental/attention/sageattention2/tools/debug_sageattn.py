@@ -586,7 +586,7 @@ def main():
         print(f"\n❌ {res['error_msg']}")
         print("排查建议:")
         print("   1. 检查是否存在跨核未完成等待（如 Cube 等待 V0 的 Q_READY 或 KV_READY）；")
-        print("   2. 检查 SAGE_DIAG_STAGE 编译宏（建议从 Stage 1~7 逐级隔离确认硬件通路）；")
+        print("   2. 使用 CANN msprof 工具抓取硬件 Timeline 与 AICore/AIVec 事件，排查流水挂起位置；")
         print("   3. 检查任务切分是否导致部分 Core 提前退出而对端核仍在等待。")
         sys.exit(124)
 
