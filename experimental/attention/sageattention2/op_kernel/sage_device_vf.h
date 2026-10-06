@@ -588,29 +588,51 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void UpdateOnlineSo
 }
 
 /**
- * 5. O 累加器行批原地缩放（R4）：纯向量 SIMD 广播缩放
+ * 5. Fused Rescale and Merge (P1)
+ * o = o * alpha + partial
+ * For k=0: o = partial
  */
-__simd_vf__ __aicore__ inline __attribute__((always_inline)) void RescaleAccumRowsVF(
+__simd_vf__ __aicore__ inline __attribute__((always_inline)) void FusedRescaleMergeVF(
     __ubuf__ float* o_base,
+    __ubuf__ float* partial_base,
     __ubuf__ float* factor_row,
     uint32_t rows,
-    uint32_t d)
+    uint32_t d,
+    uint32_t k)
 {
     using namespace AscendC;
     using namespace AscendC::MicroAPI;
     auto full = CreateMask<float, MaskPattern::ALL>();
     for (uint32_t r = 0; r < rows; ++r) {
         RegTensor<float> factor_reg;
-        LoadAlign<float, LoadDist::DIST_BRC_B32>(factor_reg, factor_row + r);
+        if (k > 1) {
+            LoadAlign<float, LoadDist::DIST_BRC_B32>(factor_reg, factor_row + r);
+        }
         __ubuf__ float* o_row = o_base + r * d;
+        __ubuf__ float* partial_row = partial_base + r * d;
         for (uint32_t c = 0; c < d; c += 64) {
-            RegTensor<float> x;
-            LoadAlign(x, o_row + c);
-            Mul(x, x, factor_reg, full);
-            StoreAlign(o_row + c, x, full);
+            RegTensor<float> partial, o;
+            LoadAlign(partial, partial_row + c);
+            if (k == 1) {
+                StoreAlign(o_row + c, partial, full);
+            } else {
+                LoadAlign(o, o_row + c);
+                MulDstAdd(o, factor_reg, partial, full);
+                StoreAlign(o_row + c, o, full);
+            }
         }
     }
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+}
+
+// DEPRECATED: Use FusedRescaleMergeVF instead.
+__simd_vf__ __aicore__ inline __attribute__((always_inline)) void RescaleAccumRowsVF(
+    __ubuf__ float* o_base,
+    __ubuf__ float* factor_row,
+    uint32_t rows,
+    uint32_t d)
+{
+    // Deprecated
 }
 
 /**
@@ -659,35 +681,11 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void SoftmaxProbRow
  * 链；v_scale 通道向量全行共享（LoadAlign 同址同值）。
  * 调用方须保证 O 行经 S 槽 / dot32 同款握手串行化（FLAG_PV_PARTIAL_READY/FREE）。
  */
+// DEPRECATED: Use FusedRescaleMergeVF instead.
 __simd_vf__ __aicore__ inline __attribute__((always_inline)) void MergePvPartialRowsVF(__ubuf__ float* partial_base, __ubuf__ float* o_base,
                                                  __ubuf__ float* v_scale_ptr, uint32_t rows, uint32_t d,
                                                  uint32_t fp16_round) {
-    using namespace AscendC;
-    using namespace AscendC::MicroAPI;
-    auto full = CreateMask<float, MaskPattern::ALL>();
-    static constexpr CastTrait toFp16{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
-    static constexpr CastTrait toFp32{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
-    for (uint32_t r = 0; r < rows; ++r) {
-        __ubuf__ float* partial_row = partial_base + r * d;
-        __ubuf__ float* o_row = o_base + r * d;
-        for (uint32_t c = 0; c < d; c += 64) {
-            RegTensor<float> partial, vs, o;
-            LoadAlign(partial, partial_row + c);
-            LoadAlign(vs, v_scale_ptr + c);
-            LoadAlign(o, o_row + c);
-            if (fp16_round != 0u) {
-                Mul(partial, partial, vs, full);
-                RegTensor<half> rounded;
-                Cast<half, float, toFp16>(rounded, partial, full);
-                Cast<float, half, toFp32>(partial, rounded, full);
-                Add(o, o, partial, full);
-            } else {
-                Mul(partial, partial, vs, full);
-                Add(o, o, partial, full);
-            }
-            StoreAlign(o_row + c, o, full);
-        }
-    }
+    // Deprecated
 }
 
 /**
@@ -819,6 +817,7 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void FinalizeRowVF(
     __ubuf__ float* d_run_ptr,
     uint32_t row_idx,
     __ubuf__ float* vm_ptr,
+    __ubuf__ float* vs_ptr,
     uint32_t d)
 {
     using namespace AscendC;
@@ -843,14 +842,16 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void FinalizeRowVF(
     for (uint32_t c = 0; c < d; c += 64) {
         RegTensor<float> x;
         LoadAlign(x, o_row + c);
+        RegTensor<float> vs, scale;
+        LoadAlign(vs, vs_ptr + c);
+        Mul(scale, vs, inv_reg, full);
         if (vm_ptr != nullptr) {
             RegTensor<float> vm_val;
             LoadAlign(vm_val, vm_ptr + c);
-            // CATLASS MicroAPI MulDstAdd: dst = dst * src0 + src1
-            // x (dst) * inv_reg (src0) + vm_val (src1) -> x
-            MulDstAdd(x, inv_reg, vm_val, full);
+            // x * scale + vm_val
+            MulDstAdd(x, scale, vm_val, full);
         } else {
-            Mul(x, x, inv_reg, full);
+            Mul(x, x, scale, full);
         }
         if constexpr (DTYPE_MODE == 2u) {
             // bf16 输出（收敛轮 F/DEFECT-F-3）：与宿主 WriteOutputBits 的 Fp32ToBf16 口径一致

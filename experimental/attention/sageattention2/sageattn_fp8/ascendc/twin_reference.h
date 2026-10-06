@@ -361,11 +361,7 @@ inline int RunSequential(const TwinIo& io) {
     auto v_deq = [&](uint32_t bi, uint32_t hi, uint32_t di, uint32_t j) -> float {
         const uint32_t slot = quant::VSlotOfToken(j);
         const size_t off = ((static_cast<size_t>(bi) * io.hkv + hi) * d_pad + di) * pad_sk_v + slot;
-        const float deq = E4m3fnToFloat(v_fp8[off]) * v_scale[(static_cast<size_t>(bi) * io.hkv + hi) * d_pad + di];
-        if (!smooth_v) {
-            return deq;
-        }
-        return deq + vm[(static_cast<size_t>(bi) * io.hkv + hi) * d_pad + di];
+        return E4m3fnToFloat(v_fp8[off]);
     };
 
     // 5. 主循环：逐 (b, hq) 头，QK^T → online softmax（锚点纪律）→ FP8 PV → 归一化
@@ -501,10 +497,14 @@ inline int RunSequential(const TwinIo& io) {
             for (uint32_t i = 0; i < io.sq; ++i) {
                 const float* o_row = o_acc.data() + static_cast<size_t>(i) * d_pad;
                 for (uint32_t c = 0; c < io.d_og; ++c) {
+                    float val = o_row[c];
+                    float vs = v_scale[(static_cast<size_t>(bi) * io.hkv + kh) * d_pad + c];
+                    float mean = smooth_v ? vm[(static_cast<size_t>(bi) * io.hkv + kh) * d_pad + c] : 0.0f;
+                    val = val * (vs * inv_row[i]) + mean;
                     detail::WriteOutput(io.out,
                                         detail::ElemOffset(bi, hi, i, c, io.b, io.hq, io.sq,
                                                            io.d_og, is_hnd),
-                                        io.dtype_mode, o_row[c] * inv_row[i]);
+                                        io.dtype_mode, val);
                 }
             }
         }

@@ -60,21 +60,21 @@ public:
     /**
      * \brief A7：pv_partial 交接槽全行合并
      */
-    __aicore__ inline __attribute__((always_inline)) void MergePartialRows(const TaskContext &ctx)
+    __aicore__ inline __attribute__((always_inline)) void MergePartialRows(const TaskContext &ctx, uint32_t k)
     {
 #if SAGE_ATTN_DEVICE_COMPILE
         const uint32_t rows = ctx.TotalRows();
-        const uint32_t fp16_round = (ctx.pv_accum_dtype == PV_ACCUM_FP32_FP16) ? 1u : 0u;
-        LocalTensor<float> ub_vs(TPosition::VECCALC, SlotV1VsChan::Offset(), ctx.d);
         LocalTensor<float> ub_partial(TPosition::VECCALC, SlotV1PvPartial::Offset(), rows * ctx.d);
         LocalTensor<float> ub_o(TPosition::VECCALC, SlotV1OAccum::Offset(), rows * ctx.d);
-        dev_vf::MergePvPartialRowsVF(
-            reinterpret_cast<__ubuf__ float*>(ub_partial.GetPhyAddr()),
+        LocalTensor<float> ub_factor(TPosition::VECCALC, SlotV1RsFactor::Offset(), MAX_PACK_ROWS);
+        dev_vf::FusedRescaleMergeVF(
             reinterpret_cast<__ubuf__ float*>(ub_o.GetPhyAddr()),
-            reinterpret_cast<__ubuf__ float*>(ub_vs.GetPhyAddr()),
-            rows, ctx.d, fp16_round);
+            reinterpret_cast<__ubuf__ float*>(ub_partial.GetPhyAddr()),
+            reinterpret_cast<__ubuf__ float*>(ub_factor.GetPhyAddr()),
+            rows, ctx.d, k);
 #else
         (void)ctx;
+        (void)k;
 #endif
     }
 
@@ -108,8 +108,7 @@ public:
                 [&](uint32_t j, uint32_t c) -> float {
                     const uint32_t jl = j - cur_k_start;
                     const uint32_t zn_idx = Catlass::SageAttn::ZnIndex(jl, c, ctx.block_n);
-                    const float vm = (ctx.smooth_v != 0) ? ctx.sim_mem->v_means[c] : 0.0f;
-                    return quant::E4m3fnToFloat(l1_v[zn_idx]) * ctx.sim_mem->v_scales[c] + vm;
+                    return quant::E4m3fnToFloat(l1_v[zn_idx]);
                 });
         }
     }
@@ -145,6 +144,7 @@ public:
         LocalTensor<half> ub_half(TPosition::VECCALC, SlotV1FixpipeRecv::Offset(), ctx.d);
         LocalTensor<float> ub_running_sum(TPosition::VECCALC, SlotV1RowSum::Offset(), MAX_PACK_ROWS);
         LocalTensor<float> ub_running_max(TPosition::VECCALC, SlotV1RowMax::Offset(), MAX_PACK_ROWS);
+        LocalTensor<float> ub_vs(TPosition::VECCALC, SlotV1VsChan::Offset(), ctx.d);
 
         // 1. 最终输出归一化与写回 GM（纯向量流水与 MTE3 搬运，零标量计算、零 LSE 耦合）
         for (uint32_t g = 0; g < ctx.cur_heads; ++g) {
@@ -163,6 +163,7 @@ public:
                                              reinterpret_cast<__ubuf__ float*>(ub_running_sum.GetPhyAddr()),
                                              r,
                                              has_vm ? reinterpret_cast<__ubuf__ float*>(ub_vm.GetPhyAddr()) : nullptr,
+                                             reinterpret_cast<__ubuf__ float*>(ub_vs.GetPhyAddr()),
                                              ctx.d_og);
                 Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
 
@@ -367,7 +368,7 @@ __aicore__ inline __attribute__((always_inline)) void ProcessVec1(
             ub_p_pre.SetValue(1, 77.0f);
 #endif
             AttentionSync::V1WaitPartialReady();
-            output.MergePartialRows(ctx);
+            output.MergePartialRows(ctx, k);
             AttentionSync::V1ReleasePartialFree();
         }
 #endif
@@ -405,7 +406,7 @@ __aicore__ inline __attribute__((always_inline)) void ProcessVec1(
         ub_p_pre.SetValue(1, 77.0f);
 #endif
         AttentionSync::V1WaitPartialReady();
-        output.MergePartialRows(ctx);
+        output.MergePartialRows(ctx, active_kv_blocks);
         AttentionSync::V1ReleasePartialFree();
     }
 
@@ -620,7 +621,7 @@ public:
             softmax_.ProcessBlock(ctx_, k, is_ping);
         }
         if (active_kv_blocks > 0) {
-            output_.MergePartialRows(ctx_);
+            output_.MergePartialRows(ctx_, active_kv_blocks);
         }
         output_.FinalizeAndStore(ctx_, softmax_.GetRowStates());
     }

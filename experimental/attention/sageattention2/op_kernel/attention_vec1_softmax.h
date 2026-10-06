@@ -231,11 +231,7 @@ public:
                                           reinterpret_cast<__ubuf__ float*>(ub_factor.GetPhyAddr()),
                                           rows, k);
 
-        if (k > 0) {
-            dev_vf::RescaleAccumRowsVF(reinterpret_cast<__ubuf__ float*>(ub_o.GetPhyAddr()),
-                                       reinterpret_cast<__ubuf__ float*>(ub_factor.GetPhyAddr()),
-                                       rows, ctx.d);
-        }
+
 
         dev_vf::SoftmaxProbRowsVF(reinterpret_cast<__ubuf__ float*>(ub_logits_dot.GetPhyAddr()),
                                   reinterpret_cast<__ubuf__ float8_e4m3_t*>(ub_out_p.GetPhyAddr()),
