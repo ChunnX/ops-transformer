@@ -701,6 +701,7 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void UpdateOnlineSo
  * o = o * alpha + partial
  * For k=0: o = partial
  */
+template <uint32_t D = 0u>
 __simd_vf__ __aicore__ inline __attribute__((always_inline)) void FusedRescaleMergeVF(
     __ubuf__ float* o_base,
     __ubuf__ float* partial_base,
@@ -716,10 +717,22 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void FusedRescaleMe
         for (uint32_t r = 0; r < rows; ++r) {
             __ubuf__ float* o_row = o_base + r * d;
             __ubuf__ float* partial_row = partial_base + r * d;
-            for (uint32_t c = 0; c < d; c += 64) {
+            if constexpr (D == 64u) {
                 RegTensor<float> partial;
-                LoadAlign(partial, partial_row + c);
-                StoreAlign(o_row + c, partial, full);
+                LoadAlign(partial, partial_row);
+                StoreAlign(o_row, partial, full);
+            } else if constexpr (D == 128u) {
+                RegTensor<float> partial0, partial1;
+                LoadAlign(partial0, partial_row);
+                StoreAlign(o_row, partial0, full);
+                LoadAlign(partial1, partial_row + 64u);
+                StoreAlign(o_row + 64u, partial1, full);
+            } else {
+                for (uint32_t c = 0; c < d; c += 64) {
+                    RegTensor<float> partial;
+                    LoadAlign(partial, partial_row + c);
+                    StoreAlign(o_row + c, partial, full);
+                }
             }
         }
     } else {
@@ -728,16 +741,53 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void FusedRescaleMe
             LoadAlign<float, LoadDist::DIST_BRC_B32>(factor_reg, factor_row + r);
             __ubuf__ float* o_row = o_base + r * d;
             __ubuf__ float* partial_row = partial_base + r * d;
-            for (uint32_t c = 0; c < d; c += 64) {
+            if constexpr (D == 64u) {
                 RegTensor<float> partial, o;
-                LoadAlign(partial, partial_row + c);
-                LoadAlign(o, o_row + c);
+                LoadAlign(partial, partial_row);
+                LoadAlign(o, o_row);
                 MulDstAdd(o, factor_reg, partial, full);
-                StoreAlign(o_row + c, o, full);
+                StoreAlign(o_row, o, full);
+            } else if constexpr (D == 128u) {
+                RegTensor<float> partial0, o0;
+                LoadAlign(partial0, partial_row);
+                LoadAlign(o0, o_row);
+                MulDstAdd(o0, factor_reg, partial0, full);
+                StoreAlign(o_row, o0, full);
+
+                RegTensor<float> partial1, o1;
+                LoadAlign(partial1, partial_row + 64u);
+                LoadAlign(o1, o_row + 64u);
+                MulDstAdd(o1, factor_reg, partial1, full);
+                StoreAlign(o_row + 64u, o1, full);
+            } else {
+                for (uint32_t c = 0; c < d; c += 64) {
+                    RegTensor<float> partial, o;
+                    LoadAlign(partial, partial_row + c);
+                    LoadAlign(o, o_row + c);
+                    MulDstAdd(o, factor_reg, partial, full);
+                    StoreAlign(o_row + c, o, full);
+                }
             }
         }
     }
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+}
+
+__aicore__ inline __attribute__((always_inline)) void FusedRescaleMergeVF(
+    __ubuf__ float* o_base,
+    __ubuf__ float* partial_base,
+    __ubuf__ float* factor_row,
+    uint32_t rows,
+    uint32_t d,
+    uint32_t k)
+{
+    if (d == 64u) {
+        FusedRescaleMergeVF<64u>(o_base, partial_base, factor_row, rows, d, k);
+    } else if (d == 128u) {
+        FusedRescaleMergeVF<128u>(o_base, partial_base, factor_row, rows, d, k);
+    } else {
+        FusedRescaleMergeVF<0u>(o_base, partial_base, factor_row, rows, d, k);
+    }
 }
 
 /**
@@ -923,7 +973,7 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void FinalizeSmooth
  * - 可选 smooth_v 的 vm 偏置：V 减均值量化下 PV 分子分母的 vm·Σp 项在归一化中
  *   恰好还原为 vm（不参与归一化），故出口直接逐通道加回（MulDstAdd 熔断 o·inv + vm）。
  */
-template <uint32_t DTYPE_MODE, bool HAS_VM>
+template <uint32_t DTYPE_MODE, bool HAS_VM, uint32_t D = 0u>
 __simd_vf__ __aicore__ inline __attribute__((always_inline)) void FinalizeRowVF(
     __ubuf__ float* o_row,
     __ubuf__ uint16_t* out_row,
@@ -952,15 +1002,15 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void FinalizeRowVF(
     Div(inv_reg, inv_reg, d_reg, full);
     Select(inv_reg, inv_reg, zero_reg, pos_mask);
 
-    for (uint32_t c = 0; c < d; c += 64) {
+    if constexpr (D == 64u) {
         RegTensor<float> x;
-        LoadAlign(x, o_row + c);
+        LoadAlign(x, o_row);
         RegTensor<float> vs, scale;
-        LoadAlign(vs, vs_ptr + c);
+        LoadAlign(vs, vs_ptr);
         Mul(scale, vs, inv_reg, full);
         if constexpr (HAS_VM) {
             RegTensor<float> vm_val;
-            LoadAlign(vm_val, vm_ptr + c);
+            LoadAlign(vm_val, vm_ptr);
             // x * scale + vm_val
             MulDstAdd(x, scale, vm_val, full);
         } else {
@@ -970,12 +1020,104 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void FinalizeRowVF(
             // bf16 输出（收敛轮 F/DEFECT-F-3）：与宿主 WriteOutputBits 的 Fp32ToBf16 口径一致
             RegTensor<bfloat16_t> b;
             Cast<bfloat16_t, float, toBf16>(b, x, full);
-            StoreAlign<bfloat16_t, StoreDist::DIST_PACK_B32>(reinterpret_cast<__ubuf__ bfloat16_t*>(out_row) + c, b, full);
+            StoreAlign<bfloat16_t, StoreDist::DIST_PACK_B32>(reinterpret_cast<__ubuf__ bfloat16_t*>(out_row), b, full);
         } else {
             RegTensor<half> h;
             Cast<half, float, toHalf>(h, x, full);
-            StoreAlign<half, StoreDist::DIST_PACK_B32>(reinterpret_cast<__ubuf__ half*>(out_row) + c, h, full);
+            StoreAlign<half, StoreDist::DIST_PACK_B32>(reinterpret_cast<__ubuf__ half*>(out_row), h, full);
         }
+    } else if constexpr (D == 128u) {
+        {
+            RegTensor<float> x;
+            LoadAlign(x, o_row);
+            RegTensor<float> vs, scale;
+            LoadAlign(vs, vs_ptr);
+            Mul(scale, vs, inv_reg, full);
+            if constexpr (HAS_VM) {
+                RegTensor<float> vm_val;
+                LoadAlign(vm_val, vm_ptr);
+                MulDstAdd(x, scale, vm_val, full);
+            } else {
+                Mul(x, x, scale, full);
+            }
+            if constexpr (DTYPE_MODE == 2u) {
+                RegTensor<bfloat16_t> b;
+                Cast<bfloat16_t, float, toBf16>(b, x, full);
+                StoreAlign<bfloat16_t, StoreDist::DIST_PACK_B32>(reinterpret_cast<__ubuf__ bfloat16_t*>(out_row), b, full);
+            } else {
+                RegTensor<half> h;
+                Cast<half, float, toHalf>(h, x, full);
+                StoreAlign<half, StoreDist::DIST_PACK_B32>(reinterpret_cast<__ubuf__ half*>(out_row), h, full);
+            }
+        }
+        {
+            RegTensor<float> x;
+            LoadAlign(x, o_row + 64u);
+            RegTensor<float> vs, scale;
+            LoadAlign(vs, vs_ptr + 64u);
+            Mul(scale, vs, inv_reg, full);
+            if constexpr (HAS_VM) {
+                RegTensor<float> vm_val;
+                LoadAlign(vm_val, vm_ptr + 64u);
+                MulDstAdd(x, scale, vm_val, full);
+            } else {
+                Mul(x, x, scale, full);
+            }
+            if constexpr (DTYPE_MODE == 2u) {
+                RegTensor<bfloat16_t> b;
+                Cast<bfloat16_t, float, toBf16>(b, x, full);
+                StoreAlign<bfloat16_t, StoreDist::DIST_PACK_B32>(reinterpret_cast<__ubuf__ bfloat16_t*>(out_row) + 64u, b, full);
+            } else {
+                RegTensor<half> h;
+                Cast<half, float, toHalf>(h, x, full);
+                StoreAlign<half, StoreDist::DIST_PACK_B32>(reinterpret_cast<__ubuf__ half*>(out_row) + 64u, h, full);
+            }
+        }
+    } else {
+        for (uint32_t c = 0; c < d; c += 64) {
+            RegTensor<float> x;
+            LoadAlign(x, o_row + c);
+            RegTensor<float> vs, scale;
+            LoadAlign(vs, vs_ptr + c);
+            Mul(scale, vs, inv_reg, full);
+            if constexpr (HAS_VM) {
+                RegTensor<float> vm_val;
+                LoadAlign(vm_val, vm_ptr + c);
+                // x * scale + vm_val
+                MulDstAdd(x, scale, vm_val, full);
+            } else {
+                Mul(x, x, scale, full);
+            }
+            if constexpr (DTYPE_MODE == 2u) {
+                // bf16 输出（收敛轮 F/DEFECT-F-3）：与宿主 WriteOutputBits 的 Fp32ToBf16 口径一致
+                RegTensor<bfloat16_t> b;
+                Cast<bfloat16_t, float, toBf16>(b, x, full);
+                StoreAlign<bfloat16_t, StoreDist::DIST_PACK_B32>(reinterpret_cast<__ubuf__ bfloat16_t*>(out_row) + c, b, full);
+            } else {
+                RegTensor<half> h;
+                Cast<half, float, toHalf>(h, x, full);
+                StoreAlign<half, StoreDist::DIST_PACK_B32>(reinterpret_cast<__ubuf__ half*>(out_row) + c, h, full);
+            }
+        }
+    }
+}
+
+template <uint32_t DTYPE_MODE, bool HAS_VM>
+__aicore__ inline __attribute__((always_inline)) void FinalizeRowVF(
+    __ubuf__ float* o_row,
+    __ubuf__ uint16_t* out_row,
+    __ubuf__ float* d_run_ptr,
+    uint32_t row_idx,
+    __ubuf__ float* vm_ptr,
+    __ubuf__ float* vs_ptr,
+    uint32_t d)
+{
+    if (d == 64u) {
+        FinalizeRowVF<DTYPE_MODE, HAS_VM, 64u>(o_row, out_row, d_run_ptr, row_idx, vm_ptr, vs_ptr, d);
+    } else if (d == 128u) {
+        FinalizeRowVF<DTYPE_MODE, HAS_VM, 128u>(o_row, out_row, d_run_ptr, row_idx, vm_ptr, vs_ptr, d);
+    } else {
+        FinalizeRowVF<DTYPE_MODE, HAS_VM, 0u>(o_row, out_row, d_run_ptr, row_idx, vm_ptr, vs_ptr, d);
     }
 }
 

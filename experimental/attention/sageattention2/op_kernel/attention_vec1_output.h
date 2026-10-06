@@ -113,6 +113,70 @@ public:
     }
 #endif
 
+private:
+#if SAGE_ATTN_DEVICE_COMPILE
+    template <bool HAS_VM, uint32_t D>
+    __aicore__ inline __attribute__((always_inline)) void FinalizeRowsImpl(
+        const TaskContext &ctx,
+        const Catlass::SageAttn::GmBhsdLayout &out_layout,
+        int64_t b_idx,
+        int64_t hkv_idx,
+        int64_t sq_start,
+        LocalTensor<float> ub_vm,
+        LocalTensor<half> ub_half,
+        LocalTensor<float> ub_running_sum,
+        LocalTensor<float> ub_vs)
+    {
+        constexpr uint32_t d_step = (D != 0u) ? D : 0u;
+        const uint32_t d_stride = (d_step != 0u) ? d_step : ctx.d;
+        const uint32_t d_elem = (d_step != 0u) ? d_step : ctx.d_og;
+
+        for (uint32_t g = 0; g < ctx.cur_heads; ++g) {
+            const int64_t hq_curr = hkv_idx * static_cast<int64_t>(ctx.gqa_ratio) + static_cast<int64_t>(ctx.cur_g0) + g;
+            if (hq_curr >= ctx.hq) break;
+
+            for (uint32_t i = 0; i < ctx.cur_q_len; ++i) {
+                const uint32_t r = g * ctx.cur_q_len + i;
+                if (r >= MAX_PACK_ROWS) break;
+
+                LocalTensor<float> ub_o_row(TPosition::VECCALC,
+                                            SlotV1OAccum::Offset() + r * d_stride * sizeof(float),
+                                            d_stride);
+                __ubuf__ float* vm_phy_ptr = nullptr;
+                if constexpr (HAS_VM) {
+                    vm_phy_ptr = reinterpret_cast<__ubuf__ float*>(ub_vm.GetPhyAddr());
+                }
+                dev_vf::FinalizeRowVF<kDtype, HAS_VM, D>(
+                    reinterpret_cast<__ubuf__ float*>(ub_o_row.GetPhyAddr()),
+                    reinterpret_cast<__ubuf__ uint16_t*>(ub_half.GetPhyAddr()),
+                    reinterpret_cast<__ubuf__ float*>(ub_running_sum.GetPhyAddr()),
+                    r,
+                    vm_phy_ptr,
+                    reinterpret_cast<__ubuf__ float*>(ub_vs.GetPhyAddr()),
+                    d_elem);
+                Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
+
+                const int64_t out_gm_offset = out_layout(tla::MakeCoord(b_idx, hq_curr, sq_start + i, 0u)) *
+                                              static_cast<int64_t>(sizeof(half));
+                if constexpr (kDtype == kTplDtypeBf16) {
+                    GlobalTensor<bfloat16_t> gm_out;
+                    gm_out.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(ctx.out_gm + out_gm_offset));
+                    gm_out.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+                    LocalTensor<bfloat16_t> ub_bf16 = ub_half.ReinterpretCast<bfloat16_t>();
+                    DataCopy(gm_out, ub_bf16, d_elem);
+                } else {
+                    GlobalTensor<half> gm_out;
+                    gm_out.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(ctx.out_gm + out_gm_offset));
+                    gm_out.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+                    DataCopy(gm_out, ub_half, d_elem);
+                }
+                Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
+            }
+        }
+    }
+#endif
+
+public:
     /**
      * \brief 最终输出归一化与 LSE 换算写回 GM
      */
@@ -147,82 +211,20 @@ public:
 
         // 1. 最终输出归一化与写回 GM（纯向量流水与 MTE3 搬运，零标量计算、零 LSE 耦合）
         if (has_vm) {
-            for (uint32_t g = 0; g < ctx.cur_heads; ++g) {
-                const int64_t hq_curr = hkv_idx * static_cast<int64_t>(ctx.gqa_ratio) + static_cast<int64_t>(ctx.cur_g0) + g;
-                if (hq_curr >= ctx.hq) break;
-
-                for (uint32_t i = 0; i < ctx.cur_q_len; ++i) {
-                    const uint32_t r = g * ctx.cur_q_len + i;
-                    if (r >= MAX_PACK_ROWS) break;
-
-                    LocalTensor<float> ub_o_row(TPosition::VECCALC,
-                                                SlotV1OAccum::Offset() + r * ctx.d * sizeof(float),
-                                                ctx.d);
-                    dev_vf::FinalizeRowVF<kDtype, true>(
-                        reinterpret_cast<__ubuf__ float*>(ub_o_row.GetPhyAddr()),
-                        reinterpret_cast<__ubuf__ uint16_t*>(ub_half.GetPhyAddr()),
-                        reinterpret_cast<__ubuf__ float*>(ub_running_sum.GetPhyAddr()),
-                        r,
-                        reinterpret_cast<__ubuf__ float*>(ub_vm.GetPhyAddr()),
-                        reinterpret_cast<__ubuf__ float*>(ub_vs.GetPhyAddr()),
-                        ctx.d_og);
-                    Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
-
-                    const int64_t out_gm_offset = out_layout(tla::MakeCoord(b_idx, hq_curr, sq_start + i, 0u)) *
-                                                  static_cast<int64_t>(sizeof(half));
-                    if constexpr (kDtype == kTplDtypeBf16) {
-                        GlobalTensor<bfloat16_t> gm_out;
-                        gm_out.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(ctx.out_gm + out_gm_offset));
-                        gm_out.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
-                        LocalTensor<bfloat16_t> ub_bf16 = ub_half.ReinterpretCast<bfloat16_t>();
-                        DataCopy(gm_out, ub_bf16, ctx.d_og);
-                    } else {
-                        GlobalTensor<half> gm_out;
-                        gm_out.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(ctx.out_gm + out_gm_offset));
-                        gm_out.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
-                        DataCopy(gm_out, ub_half, ctx.d_og);
-                    }
-                    Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
-                }
+            if (ctx.d == 64u && ctx.d_og == 64u) {
+                FinalizeRowsImpl<true, 64u>(ctx, out_layout, b_idx, hkv_idx, sq_start, ub_vm, ub_half, ub_running_sum, ub_vs);
+            } else if (ctx.d == 128u && ctx.d_og == 128u) {
+                FinalizeRowsImpl<true, 128u>(ctx, out_layout, b_idx, hkv_idx, sq_start, ub_vm, ub_half, ub_running_sum, ub_vs);
+            } else {
+                FinalizeRowsImpl<true, 0u>(ctx, out_layout, b_idx, hkv_idx, sq_start, ub_vm, ub_half, ub_running_sum, ub_vs);
             }
         } else {
-            for (uint32_t g = 0; g < ctx.cur_heads; ++g) {
-                const int64_t hq_curr = hkv_idx * static_cast<int64_t>(ctx.gqa_ratio) + static_cast<int64_t>(ctx.cur_g0) + g;
-                if (hq_curr >= ctx.hq) break;
-
-                for (uint32_t i = 0; i < ctx.cur_q_len; ++i) {
-                    const uint32_t r = g * ctx.cur_q_len + i;
-                    if (r >= MAX_PACK_ROWS) break;
-
-                    LocalTensor<float> ub_o_row(TPosition::VECCALC,
-                                                SlotV1OAccum::Offset() + r * ctx.d * sizeof(float),
-                                                ctx.d);
-                    dev_vf::FinalizeRowVF<kDtype, false>(
-                        reinterpret_cast<__ubuf__ float*>(ub_o_row.GetPhyAddr()),
-                        reinterpret_cast<__ubuf__ uint16_t*>(ub_half.GetPhyAddr()),
-                        reinterpret_cast<__ubuf__ float*>(ub_running_sum.GetPhyAddr()),
-                        r,
-                        nullptr,
-                        reinterpret_cast<__ubuf__ float*>(ub_vs.GetPhyAddr()),
-                        ctx.d_og);
-                    Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
-
-                    const int64_t out_gm_offset = out_layout(tla::MakeCoord(b_idx, hq_curr, sq_start + i, 0u)) *
-                                                  static_cast<int64_t>(sizeof(half));
-                    if constexpr (kDtype == kTplDtypeBf16) {
-                        GlobalTensor<bfloat16_t> gm_out;
-                        gm_out.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(ctx.out_gm + out_gm_offset));
-                        gm_out.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
-                        LocalTensor<bfloat16_t> ub_bf16 = ub_half.ReinterpretCast<bfloat16_t>();
-                        DataCopy(gm_out, ub_bf16, ctx.d_og);
-                    } else {
-                        GlobalTensor<half> gm_out;
-                        gm_out.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(ctx.out_gm + out_gm_offset));
-                        gm_out.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
-                        DataCopy(gm_out, ub_half, ctx.d_og);
-                    }
-                    Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
-                }
+            if (ctx.d == 64u && ctx.d_og == 64u) {
+                FinalizeRowsImpl<false, 64u>(ctx, out_layout, b_idx, hkv_idx, sq_start, ub_vm, ub_half, ub_running_sum, ub_vs);
+            } else if (ctx.d == 128u && ctx.d_og == 128u) {
+                FinalizeRowsImpl<false, 128u>(ctx, out_layout, b_idx, hkv_idx, sq_start, ub_vm, ub_half, ub_running_sum, ub_vs);
+            } else {
+                FinalizeRowsImpl<false, 0u>(ctx, out_layout, b_idx, hkv_idx, sq_start, ub_vm, ub_half, ub_running_sum, ub_vs);
             }
         }
 

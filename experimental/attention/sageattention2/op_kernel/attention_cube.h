@@ -269,25 +269,17 @@ private:
             AttentionSync::CubeReleaseSoftmaxFree(is_ping);
             AttentionSync::CubeReleaseKvFree(is_ping);
 
-            if (emit) {
-                if (prev_valid) {
-                    if (prev_emitted) {
-                        AttentionSync::CubeWaitPartialFree();
-                    } else {
-                        AttentionSync::CubeWaitPvChain();
-                    }
+            if (prev_valid) {
+                if (prev_emitted) {
+                    AttentionSync::CubeWaitPartialFree();
+                } else {
+                    AttentionSync::CubeWaitPvChain();
                 }
+            }
+            if (emit) {
                 pv_mmad.ExecuteEpilogue(ub_pv_partial_offset);
                 Catlass::SageAttn::Sync<HardEvent::FIX_M>();
                 AttentionSync::CubeSignalPartialReady();
-            } else {
-                if (prev_valid) {
-                    if (prev_emitted) {
-                        AttentionSync::CubeWaitPartialFree();
-                    } else {
-                        AttentionSync::CubeWaitPvChain();
-                    }
-                }
             }
         }
     }
