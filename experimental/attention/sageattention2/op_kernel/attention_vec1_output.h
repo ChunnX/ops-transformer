@@ -60,14 +60,17 @@ public:
     /**
      * \brief A7：pv_partial 交接槽全行合并
      */
+    template <uint32_t D = 0u>
     __aicore__ inline __attribute__((always_inline)) void MergePartialRows(const TaskContext &ctx, uint32_t k)
     {
 #if SAGE_ATTN_DEVICE_COMPILE
         const uint32_t rows = ctx.TotalRows();
-        LocalTensor<float> ub_partial(TPosition::VECCALC, SlotV1PvPartial::Offset(), rows * ctx.d);
-        LocalTensor<float> ub_o(TPosition::VECCALC, SlotV1OAccum::Offset(), rows * ctx.d);
+        constexpr uint32_t d_step = (D != 0u) ? D : 0u;
+        const uint32_t d_stride = (d_step != 0u) ? d_step : ctx.d;
+        LocalTensor<float> ub_partial(TPosition::VECCALC, SlotV1PvPartial::Offset(), rows * d_stride);
+        LocalTensor<float> ub_o(TPosition::VECCALC, SlotV1OAccum::Offset(), rows * d_stride);
         LocalTensor<float> ub_factor(TPosition::VECCALC, SlotV1RsFactor::Offset(), MAX_PACK_ROWS);
-        dev_vf::FusedRescaleMergeVF(
+        dev_vf::FusedRescaleMergeVF<D>(
             reinterpret_cast<__ubuf__ float*>(ub_o.GetPhyAddr()),
             reinterpret_cast<__ubuf__ float*>(ub_partial.GetPhyAddr()),
             reinterpret_cast<__ubuf__ float*>(ub_factor.GetPhyAddr()),
@@ -76,6 +79,17 @@ public:
         (void)ctx;
         (void)k;
 #endif
+    }
+
+    __aicore__ inline __attribute__((always_inline)) void MergePartialRows(const TaskContext &ctx, uint32_t k)
+    {
+        if (ctx.d == 64u) {
+            MergePartialRows<64u>(ctx, k);
+        } else if (ctx.d == 128u) {
+            MergePartialRows<128u>(ctx, k);
+        } else {
+            MergePartialRows<0u>(ctx, k);
+        }
     }
 
 #if !SAGE_ATTN_DEVICE_COMPILE
@@ -325,7 +339,7 @@ public:
 /**
  * \brief Vector 1 协同流水主过程
  */
-template <uint8_t PV_CHAIN_CAP = 1, uint32_t DTYPE_MODE = 1u, bool IS_CAUSAL = false>
+template <uint8_t PV_CHAIN_CAP = 1, uint32_t DTYPE_MODE = 1u, bool IS_CAUSAL = false, uint32_t D = 0u>
 __aicore__ inline __attribute__((always_inline)) void ProcessVec1(
     const TaskContext &ctx,
     AttentionVec1Softmax<DTYPE_MODE> &softmax,
@@ -341,7 +355,7 @@ __aicore__ inline __attribute__((always_inline)) void ProcessVec1(
             uint32_t block_k = ctx.CurBlockK(k);
             if (k > 0) {
                 AttentionSync::V1WaitPartialReady();
-                output.MergePartialRows(ctx, k);
+                output.template MergePartialRows<D>(ctx, k);
                 AttentionSync::V1ReleasePartialFree();
             }
             if (k >= 2) {
@@ -376,7 +390,7 @@ __aicore__ inline __attribute__((always_inline)) void ProcessVec1(
                 
                 if (emit) {
                     AttentionSync::V1WaitPartialReady();
-                    output.MergePartialRows(ctx, k);
+                    output.template MergePartialRows<D>(ctx, k);
                     AttentionSync::V1ReleasePartialFree();
                     chain_len = 0;
                 } else {
@@ -412,7 +426,7 @@ __aicore__ inline __attribute__((always_inline)) void ProcessVec1(
     // Drain 拍：接收并累加最后一拍的 PV 部分和，并归还许可
     if (active_kv_blocks > 0) {
         AttentionSync::V1WaitPartialReady();
-        output.MergePartialRows(ctx, active_kv_blocks);
+        output.template MergePartialRows<D>(ctx, active_kv_blocks);
         AttentionSync::V1ReleasePartialFree();
     }
 
@@ -435,10 +449,24 @@ __aicore__ inline __attribute__((always_inline)) void ProcessVec1(
     AttentionVec1Softmax<DTYPE_MODE> &softmax,
     AttentionVec1Output<DTYPE_MODE> &output)
 {
-    if (ctx.is_causal != 0) {
-        ProcessVec1<PV_CHAIN_CAP, DTYPE_MODE, true>(ctx, softmax, output);
+    const bool is_causal = (ctx.is_causal != 0);
+    const uint32_t d = ctx.d;
+    if (is_causal) {
+        if (d == 64u) {
+            ProcessVec1<PV_CHAIN_CAP, DTYPE_MODE, true, 64u>(ctx, softmax, output);
+        } else if (d == 128u) {
+            ProcessVec1<PV_CHAIN_CAP, DTYPE_MODE, true, 128u>(ctx, softmax, output);
+        } else {
+            ProcessVec1<PV_CHAIN_CAP, DTYPE_MODE, true, 0u>(ctx, softmax, output);
+        }
     } else {
-        ProcessVec1<PV_CHAIN_CAP, DTYPE_MODE, false>(ctx, softmax, output);
+        if (d == 64u) {
+            ProcessVec1<PV_CHAIN_CAP, DTYPE_MODE, false, 64u>(ctx, softmax, output);
+        } else if (d == 128u) {
+            ProcessVec1<PV_CHAIN_CAP, DTYPE_MODE, false, 128u>(ctx, softmax, output);
+        } else {
+            ProcessVec1<PV_CHAIN_CAP, DTYPE_MODE, false, 0u>(ctx, softmax, output);
+        }
     }
 }
 
@@ -590,26 +618,54 @@ public:
 #if SAGE_ATTN_DEVICE_COMPILE
             if ASCEND_IS_AIC {
                 CubeBlockParams p{ctx_.TotalRows(), ctx_.block_n, ctx_.d};
-                cube_.Process(p, ctx_.active_kv_blocks, ctx_.l1_q_offset);
+                cube_.template Process<1>(p, ctx_.active_kv_blocks, ctx_.l1_q_offset);
             } else {
                 if (ctx_.sub_core_idx == 0) {
                     vec0_.Process(ctx_);
                 } else {
-                    if (ctx_.is_causal != 0) {
-                        ProcessVec1<1, kDtype, true>(ctx_, softmax_, output_);
+                    const bool is_causal = (ctx_.is_causal != 0);
+                    const uint32_t d = ctx_.d;
+                    if (is_causal) {
+                        if (d == 64u) {
+                            ProcessVec1<1, kDtype, true, 64u>(ctx_, softmax_, output_);
+                        } else if (d == 128u) {
+                            ProcessVec1<1, kDtype, true, 128u>(ctx_, softmax_, output_);
+                        } else {
+                            ProcessVec1<1, kDtype, true, 0u>(ctx_, softmax_, output_);
+                        }
                     } else {
-                        ProcessVec1<1, kDtype, false>(ctx_, softmax_, output_);
+                        if (d == 64u) {
+                            ProcessVec1<1, kDtype, false, 64u>(ctx_, softmax_, output_);
+                        } else if (d == 128u) {
+                            ProcessVec1<1, kDtype, false, 128u>(ctx_, softmax_, output_);
+                        } else {
+                            ProcessVec1<1, kDtype, false, 0u>(ctx_, softmax_, output_);
+                        }
                     }
                 }
             }
 #else
             vec0_.Process(ctx_);
             CubeBlockParams p{ctx_.TotalRows(), ctx_.block_n, ctx_.d};
-            cube_.Process(p, ctx_.active_kv_blocks, ctx_.l1_q_offset);
-            if (ctx_.is_causal != 0) {
-                ProcessVec1<1, kDtype, true>(ctx_, softmax_, output_);
+            cube_.template Process<1>(p, ctx_.active_kv_blocks, ctx_.l1_q_offset);
+            const bool is_causal = (ctx_.is_causal != 0);
+            const uint32_t d = ctx_.d;
+            if (is_causal) {
+                if (d == 64u) {
+                    ProcessVec1<1, kDtype, true, 64u>(ctx_, softmax_, output_);
+                } else if (d == 128u) {
+                    ProcessVec1<1, kDtype, true, 128u>(ctx_, softmax_, output_);
+                } else {
+                    ProcessVec1<1, kDtype, true, 0u>(ctx_, softmax_, output_);
+                }
             } else {
-                ProcessVec1<1, kDtype, false>(ctx_, softmax_, output_);
+                if (d == 64u) {
+                    ProcessVec1<1, kDtype, false, 64u>(ctx_, softmax_, output_);
+                } else if (d == 128u) {
+                    ProcessVec1<1, kDtype, false, 128u>(ctx_, softmax_, output_);
+                } else {
+                    ProcessVec1<1, kDtype, false, 0u>(ctx_, softmax_, output_);
+                }
             }
 #endif
 

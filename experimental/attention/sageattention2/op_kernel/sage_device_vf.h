@@ -922,10 +922,12 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void FusedRescaleMe
     using namespace AscendC;
     using namespace AscendC::MicroAPI;
     auto full = CreateMask<float, MaskPattern::ALL>();
+    constexpr uint32_t d_step = (D != 0u) ? D : 0u;
+    const uint32_t d_stride = (d_step != 0u) ? d_step : d;
     if (k == 1) {
         for (uint32_t r = 0; r < rows; ++r) {
-            __ubuf__ float* o_row = o_base + r * d;
-            __ubuf__ float* partial_row = partial_base + r * d;
+            __ubuf__ float* o_row = o_base + r * d_stride;
+            __ubuf__ float* partial_row = partial_base + r * d_stride;
             if constexpr (D == 64u) {
                 RegTensor<float> partial;
                 LoadAlign(partial, partial_row);
@@ -948,8 +950,8 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void FusedRescaleMe
         for (uint32_t r = 0; r < rows; ++r) {
             RegTensor<float> factor_reg;
             LoadAlign<float, LoadDist::DIST_BRC_B32>(factor_reg, factor_row + r);
-            __ubuf__ float* o_row = o_base + r * d;
-            __ubuf__ float* partial_row = partial_base + r * d;
+            __ubuf__ float* o_row = o_base + r * d_stride;
+            __ubuf__ float* partial_row = partial_base + r * d_stride;
             if constexpr (D == 64u) {
                 RegTensor<float> partial, o;
                 LoadAlign(partial, partial_row);
