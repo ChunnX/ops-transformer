@@ -1,0 +1,21 @@
+# 本地与容器构建产物
+build/
+build_out/
+out/
+docker/out/
+docker/cache/
+docker/third_party/
+docker/golden/
+docker/.env
+*.o
+*.so
+*.dylib
+*.pt
+
+# Python 虚拟环境与测试缓存
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+*.log
+golden/
