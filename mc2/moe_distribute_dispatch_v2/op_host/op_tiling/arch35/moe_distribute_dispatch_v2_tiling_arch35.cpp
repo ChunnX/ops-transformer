@@ -1006,6 +1006,7 @@ ge::graphStatus MoeDistributeDispatchTilingImpl(gert::TilingContext *context, ui
     OP_LOGD(nodeName, "Start MoeDistributeDispatch tiling.");
     MoeDistributeDispatchV2TilingData *tilingData = context->GetTilingData<MoeDistributeDispatchV2TilingData>();
     OP_TILING_CHECK(tilingData == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "tilingData"), return ge::GRAPH_FAILED);
+    (void)memset(tilingData, 0, sizeof(MoeDistributeDispatchV2TilingData));
     std::string groupEp = "";
     uint32_t localMoeExpertNum = 1;
     // Attrs
