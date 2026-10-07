@@ -78,6 +78,7 @@ public:
                                    uint32_t kvDealRows, uint32_t kvColumns, uint32_t kvActualColumns);
     // ================================Vector0==========================================
     __aicore__ inline void MergeKv(const RunInfo &kvVecRunInfo);
+    __aicore__ inline int64_t GetS2IdLimit(const RunInfo &kvVecRunInfo);
     __aicore__ inline int64_t GetKeyBNBOffset(int64_t realS2Idx, const RunInfo &kvVecRunInfo, int64_t s2IdLimit);
     __aicore__ inline void GetRealS2Idx(int64_t s2GmOffset, int64_t &realS2Idx, int64_t topkGmBaseOffset,
                                         const RunInfo &kvVecRunInfo);
@@ -449,26 +450,13 @@ __aicore__ inline void QSFAVectorService<QSFAT>::ElewiseCompute(const RunInfo &k
         uint64_t qsfaS2ValidSizeSecondPart = v0ValidSizeUb_.GetValue(256 + kvVecInfo.loop % MERGE_CACHE_GM_BUF_NUM);
 
         int64_t qsfaS2ProcessSize = kvVecInfo.actualSingleProcessSInnerSize;
-        int64_t qsfaS2Pair = CeilDiv(qsfaS2ProcessSize, 2L * kvVecConstInfo.sparseBlockSize);
-        int64_t qsfaS2Mid = CeilDiv(qsfaS2Pair, 2L) * 2 * kvVecConstInfo.sparseBlockSize;
+        // MergeKv compacts a partial physical KV block, so the first AIV can produce
+        // fewer rows than the block-aligned midpoint. By construction its actual row
+        // count (first part) IS the mask midpoint; only the second half can still
+        // leave rows to mask below.
+        int64_t qsfaS2Mid = static_cast<int64_t>(qsfaS2ValidSizeFirstPart);
         if (qsfaS2Mid > qsfaS2ProcessSize) {
             qsfaS2Mid = qsfaS2ProcessSize;
-        }
-        if (unlikely(qsfaS2ValidSizeFirstPart < qsfaS2Mid)) {
-            int64_t qsfaS2StartCeilAlign = CeilAlign(qsfaS2ValidSizeFirstPart, 8);
-            int64_t qsfaS2MidFloorAlign = qsfaS2Mid / 8 * 8;
-            // 场景一 s2Mid > s2ValidSizeFirstPart + oneBlk
-            // 可以推导出s2StartCeilAlign < s2Mid   第一阶段取到s2StartCeilAlign
-            // s2StartCeilAlign <= s2MidFloorAlign 第二阶段取到s2MidFloorAlign
-            // 场景二 s2Mid <= s2ValidSizeFirstPart + oneBlk
-            // 可以推导出 s2StartCeilAlign >= s2Mid 第一阶段取到mid
-            // s2StartCeilAlign > s2MidFloorAlign 第二阶段取到s2StartCeilAlign
-            SetInfInBlk(mmResUb, kvDealRows, kvColumns, qsfaS2ValidSizeFirstPart,
-                        qsfaS2StartCeilAlign >= qsfaS2Mid ? qsfaS2Mid : qsfaS2StartCeilAlign);
-            SetMidInf(mmResUb, kvDealRows, kvColumns, qsfaS2StartCeilAlign, qsfaS2MidFloorAlign);
-            SetInfInBlk(mmResUb, kvDealRows, kvColumns,
-                        qsfaS2StartCeilAlign <= qsfaS2MidFloorAlign ? qsfaS2MidFloorAlign : qsfaS2StartCeilAlign,
-                        qsfaS2Mid);
         }
         if (unlikely(qsfaS2ValidSizeSecondPart < qsfaS2ProcessSize - qsfaS2Mid)) {
             // 场景一 s2Mid + s2ValidSizeSecondPart > s2ProcessSize + oneBlk
@@ -849,15 +837,22 @@ __aicore__ inline void QSFAVectorService<QSFAT>::CopyInSingleKv(int64_t &mte2Siz
 }
 
 template <typename QSFAT>
-__aicore__ inline void QSFAVectorService<QSFAT>::CopyInKv(int64_t &mte2Size, int64_t mte3Size, int64_t mergeMte3Idx,
-                                                          int64_t realS2Idx1, int64_t realS2Idx2,
-                                                          const RunInfo &kvVecRunInfo)
+__aicore__ inline int64_t QSFAVectorService<QSFAT>::GetS2IdLimit(const RunInfo &kvVecRunInfo)
 {
     int64_t s2IdLimit = kvVecRunInfo.curActualSeqLenOri;
     if (kvVecConstInfo.sparseMode == 3) {
         s2IdLimit =
             kvVecRunInfo.curActualSeqLenOri - kvVecRunInfo.actS1Size + kvVecRunInfo.gS1Idx / kvVecConstInfo.gSize + 1;
     }
+    return s2IdLimit;
+}
+
+template <typename QSFAT>
+__aicore__ inline void QSFAVectorService<QSFAT>::CopyInKv(int64_t &mte2Size, int64_t mte3Size, int64_t mergeMte3Idx,
+                                                          int64_t realS2Idx1, int64_t realS2Idx2,
+                                                          const RunInfo &kvVecRunInfo)
+{
+    int64_t s2IdLimit = GetS2IdLimit(kvVecRunInfo);
 
     int64_t keyBNBOffset1 = GetKeyBNBOffset(realS2Idx1, kvVecRunInfo, s2IdLimit);
     int64_t keyBNBOffset2 = GetKeyBNBOffset(realS2Idx2, kvVecRunInfo, s2IdLimit);
@@ -1113,13 +1108,45 @@ __aicore__ inline void QSFAVectorService<QSFAT>::MergeKv(const RunInfo &kvVecRun
     bool qsfaNeedWaitMte3ToMte2 = true;
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(0);
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(1);
-    int64_t qsfaS2GmStartOffset = GetSubBlockIdx() == 0 ? 0 : CeilDiv(s2Pair, 2L) * 2 * kvVecConstInfo.sparseBlockSize;
-    int64_t qsfaS2GmLimit =
-        GetSubBlockIdx() == 0 ? CeilDiv(s2Pair, 2L) * 2 * kvVecConstInfo.sparseBlockSize : s2ProcessSize;
-    if (qsfaS2GmLimit > s2ProcessSize) {
-        qsfaS2GmLimit = s2ProcessSize;
+    // The loops below still advance by fixed sparse-block slots so that
+    // GetRealS2Idx() visits the correct top-k entries. The destination offset is
+    // separate: CopyInSingleKv() compacts a partial physical last block and can
+    // therefore produce fewer rows than one sparseBlockSize slot.
+    int64_t qsfaS2IdLimit = GetS2IdLimit(kvVecRunInfo);
+    int64_t qsfaS2LogicalMid = CeilDiv(s2Pair, 2L) * 2 * kvVecConstInfo.sparseBlockSize;
+    if (qsfaS2LogicalMid > s2ProcessSize) {
+        qsfaS2LogicalMid = s2ProcessSize;
     }
-    for (int64_t s2GmOffsetArray = qsfaS2GmStartOffset; s2GmOffsetArray < qsfaS2GmLimit;
+    // Row count the first AIV will emit: walk the first-half slots exactly like
+    // the main loop below, including the break on an invalid entry, so this
+    // estimate cannot diverge from what AIV0 actually writes.
+    int64_t qsfaS2OutputMid = 0;
+    for (int64_t qsfaS2Offset = 0; qsfaS2Offset < qsfaS2LogicalMid;
+         qsfaS2Offset += 2 * kvVecConstInfo.sparseBlockSize) {
+        int64_t qsfaRealS2Idx0 = -1;
+        int64_t qsfaRealS2Idx1 = -1;
+        GetRealS2Idx(qsfaS2Offset, qsfaRealS2Idx0, topkGmBaseOffset, kvVecRunInfo);
+        if (unlikely(qsfaRealS2Idx0 < 0)) {
+            break;
+        }
+        GetRealS2Idx(qsfaS2Offset + kvVecConstInfo.sparseBlockSize, qsfaRealS2Idx1, topkGmBaseOffset,
+                      kvVecRunInfo);
+        int64_t qsfaKeyBNBOffset0 = GetKeyBNBOffset(qsfaRealS2Idx0, kvVecRunInfo, qsfaS2IdLimit);
+        int64_t qsfaKeyBNBOffset1 = GetKeyBNBOffset(qsfaRealS2Idx1, kvVecRunInfo, qsfaS2IdLimit);
+        if (qsfaKeyBNBOffset0 >= 0) {
+            qsfaS2OutputMid += (qsfaRealS2Idx0 + kvVecConstInfo.sparseBlockSize > qsfaS2IdLimit) ?
+                                   (qsfaS2IdLimit - qsfaRealS2Idx0) : kvVecConstInfo.sparseBlockSize;
+        }
+        if (qsfaKeyBNBOffset1 >= 0) {
+            qsfaS2OutputMid += (qsfaRealS2Idx1 + kvVecConstInfo.sparseBlockSize > qsfaS2IdLimit) ?
+                                   (qsfaS2IdLimit - qsfaRealS2Idx1) : kvVecConstInfo.sparseBlockSize;
+        }
+    }
+    int64_t qsfaS2LogicalStart = GetSubBlockIdx() == 0 ? 0 : qsfaS2LogicalMid;
+    int64_t qsfaS2LogicalLimit = GetSubBlockIdx() == 0 ? qsfaS2LogicalMid : s2ProcessSize;
+    int64_t qsfaS2GmStartOffset = GetSubBlockIdx() == 0 ? 0 : qsfaS2OutputMid;
+    int64_t qsfaS2GmLimit = GetSubBlockIdx() == 0 ? qsfaS2OutputMid : s2ProcessSize;
+    for (int64_t s2GmOffsetArray = qsfaS2LogicalStart; s2GmOffsetArray < qsfaS2LogicalLimit;
          s2GmOffsetArray += 2 * kvVecConstInfo.sparseBlockSize) {
         if (qsfaNeedWaitMte3ToMte2) {
             WaitFlag<AscendC::HardEvent::MTE3_MTE2>(qsfaMergeMte3Idx % 2);
@@ -1134,8 +1161,11 @@ __aicore__ inline void QSFAVectorService<QSFAT>::MergeKv(const RunInfo &kvVecRun
         }
         GetRealS2Idx(s2GmOffsetArray + kvVecConstInfo.sparseBlockSize, qsfaS2IdxArray1, topkGmBaseOffset, kvVecRunInfo);
         CopyInKv(qsfaMte2Size, qsfaMte3Size, qsfaMergeMte3Idx, qsfaS2IdxArray0, qsfaS2IdxArray1, kvVecRunInfo);
+        // s2GmOffsetArray is a logical slot offset while the row budget counts
+        // output rows; compare against the logical loop bound so the end-of-loop
+        // flush fires with matching units.
         if ((qsfaMte2Size - qsfaMte3Size + 2 * kvVecConstInfo.sparseBlockSize > 32) ||
-            s2GmOffsetArray + 2 * kvVecConstInfo.sparseBlockSize >= qsfaS2GmLimit) {
+            s2GmOffsetArray + 2 * kvVecConstInfo.sparseBlockSize >= qsfaS2LogicalLimit) {
             CopyOutMrgeResult(qsfaMte2Size, qsfaMte3Size, qsfaS2GmStartOffset, qsfaMergeMte3Idx, kvVecRunInfo);
             qsfaMte3Size = qsfaMte2Size;
             SetFlag<AscendC::HardEvent::MTE3_MTE2>(qsfaMergeMte3Idx % 2);
