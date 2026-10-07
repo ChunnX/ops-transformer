@@ -459,6 +459,61 @@ __aicore__ inline __attribute__((always_inline)) void ProcessVec1(
 
     output.FinalizeAndStore(ctx, softmax.GetRowStates());
 #if SAGE_ATTN_DEVICE_COMPILE
+    // DBG-QB1（临时调试桩，定位 causal NaN 后删除）：qb1 任务 dump 状态/partial/O/P
+    if (ctx.cur_q_start == 128 && ctx.is_causal != 0 && ctx.d == 128) {
+        const int64_t dbg_b = static_cast<int64_t>(ctx.cur_b);
+        const int64_t dbg_h = static_cast<int64_t>(ctx.cur_hkv) * static_cast<int64_t>(ctx.gqa_ratio)
+                              + static_cast<int64_t>(ctx.cur_g0);
+        const Catlass::SageAttn::GmBhsdLayout dbg_layout =
+            Catlass::SageAttn::MakeGmBhsdLayout(ctx.b, ctx.hq, ctx.sq, ctx.d, ctx.is_hnd != 0);
+        Catlass::SageAttn::Sync<HardEvent::V_S>();
+        LocalTensor<float> ub_fac(TPosition::VECCALC, SlotV1RsFactor::Offset(), 128u);
+        LocalTensor<float> ub_sum(TPosition::VECCALC, SlotV1RowSum::Offset(), 128u);
+        LocalTensor<float> ub_max(TPosition::VECCALC, SlotV1RowMax::Offset(), 128u);
+        for (uint32_t i = 0; i < 32u; ++i) {
+            const int64_t off = dbg_layout(tla::MakeCoord(dbg_b, dbg_h, static_cast<int64_t>(128 + i), 0u)) * static_cast<int64_t>(sizeof(half));
+            __gm__ float* gp = reinterpret_cast<__gm__ float*>(ctx.out_gm + off);
+            gp[0] = ub_fac.GetValue(i);
+            gp[1] = ub_sum.GetValue(i);
+            gp[2] = ub_max.GetValue(i);
+            gp[4] = ub_fac.GetValue(32u + i);
+            gp[5] = ub_sum.GetValue(32u + i);
+            gp[6] = ub_max.GetValue(32u + i);
+        }
+        // 最后一块的 PV partial（drain 合并后仍驻留 SlotV1PvPartial）rows 0..63 → GM rows 160..191
+        for (uint32_t r = 0; r < 64u; ++r) {
+            Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
+            LocalTensor<float> ub_pa_row(TPosition::VECCALC,
+                                         SlotV1PvPartial::Offset() + r * 128u * sizeof(float), 128u);
+            GlobalTensor<float> gm_pa;
+            const int64_t off = dbg_layout(tla::MakeCoord(dbg_b, dbg_h, static_cast<int64_t>(160 + r), 0u)) * static_cast<int64_t>(sizeof(half));
+            gm_pa.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(ctx.out_gm + off));
+            DataCopy(gm_pa, ub_pa_row, 128u);
+        }
+        Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
+        // O 累加器 rows 0..31 → GM rows 192..223
+        for (uint32_t r = 0; r < 32u; ++r) {
+            Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
+            LocalTensor<float> ub_o_row(TPosition::VECCALC,
+                                        SlotV1OAccum::Offset() + r * 128u * sizeof(float), 128u);
+            GlobalTensor<float> gm_o;
+            const int64_t off = dbg_layout(tla::MakeCoord(dbg_b, dbg_h, static_cast<int64_t>(192 + r), 0u)) * static_cast<int64_t>(sizeof(half));
+            gm_o.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(ctx.out_gm + off));
+            DataCopy(gm_o, ub_o_row, 128u);
+        }
+        Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
+        // 最后一块的 P 矩阵（fp8 原始字节）rows 0..31 → GM rows 224..255 前 128 字节
+        for (uint32_t r = 0; r < 32u; ++r) {
+            Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
+            LocalTensor<float8_e4m3_t> ub_p_row(TPosition::VECCALC,
+                                                SlotV1FixpipeRecv::Offset() + r * 128u, 128u);
+            GlobalTensor<uint8_t> gm_p;
+            const int64_t off = dbg_layout(tla::MakeCoord(dbg_b, dbg_h, static_cast<int64_t>(224 + r), 0u)) * static_cast<int64_t>(sizeof(half));
+            gm_p.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t*>(ctx.out_gm + off));
+            DataCopy(gm_p, ub_p_row.ReinterpretCast<uint8_t>(), 128u);
+        }
+        Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
+    }
     // 任务退域同步：确保 V1 GM 写回刷盘完毕并向 Cube 报告完成
     AscendC::PipeBarrier<PIPE_ALL>();
     AttentionSync::V1SignalTaskDone();
