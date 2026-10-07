@@ -303,7 +303,7 @@ public:
             const Catlass::SageAttn::GmBhsdLayout dbg_layout =
                 Catlass::SageAttn::MakeGmBhsdLayout(ctx.b, ctx.hq, ctx.sq, ctx.d, ctx.is_hnd != 0);
 
-            auto dump_64 = [&](uint32_t row_idx, const LocalTensor<float>& ub_src) {
+            auto dump_64 = [&](uint32_t row_idx, const LocalTensor<float>& ub_src) __aicore__ {
                 Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
                 GlobalTensor<float> gm_dst;
                 const int64_t off = dbg_layout(tla::MakeCoord(dbg_b, dbg_h, static_cast<int64_t>(row_idx), 0u)) * static_cast<int64_t>(sizeof(half));
