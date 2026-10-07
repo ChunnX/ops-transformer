@@ -32,9 +32,6 @@ using AscendC::Reg::RegTensor;
 using AscendC::Reg::StoreDist;
 using AscendC::Reg::UpdateMask;
 
-// VL_FP32 / CAST_* / CONST_* 常量与 LoadTensorForDtypeT / StoreTensorForDtypeTOut / StoreUnAlignOneTensor
-// 等 Reg helper 已移至 kv_rms_norm_rope_cache_regbase_vf.h（VF 整改），此处经 include 可见
-
 constexpr int64_t BLOCK_SIZE = 32;
 // Constants for buffer counts to replace magic numbers
 constexpr int32_t BUFFER_COUNT_SINGLE = 1;

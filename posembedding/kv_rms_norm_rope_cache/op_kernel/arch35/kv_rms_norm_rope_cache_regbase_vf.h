@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -10,20 +10,17 @@
 
 /*!
  * \file kv_rms_norm_rope_cache_regbase_vf.h
- * \brief KvRmsNormRopeCache 的 Reg 矢量（VF）计算段（arch35）
+ * \brief Register-level vector functions of KvRmsNormRopeCache on Ascend 950 (arch35).
  *
- * 本文件由原 Reg 内联矢量块整改而来：原块内容逐字搬入 __simd_vf__ 自由函数，
- * 宿主成员函数保留原签名，变为 asc_vf_call 薄包装（调用方零改动）。
+ * All __simd_vf__ entry functions operate on UB addresses and scalar arguments;
+ * GM transfers, synchronization, and dispatch are handled by the host classes.
+ * Shared Reg helpers and constants used across the three host files are also
+ * defined here as __simd_callee__ free functions.
  *
- * 命名约定（同 namespace 下去重）：
- *   - base.h 各分支块：RmsNormXxxSingleVF / DoubleVF（rSize 单/双 VL 分支）、RmsNormXxxSmallColVF
- *   - full_load.h 各块：FullLoad 前缀
- *   - recompute.h 各块：Recompute 前缀
- *
- * 嵌套 helper（仅被 VF 体内调用）统一为 __simd_callee__ 自由函数：
- *   LoadTensorForDtypeT / StoreTensorForDtypeTOut / StoreUnAlignOneTensor（原 base.h 自由函数）
- *   LoadDataAndCast2Fp32 / StoreDataAndCastFromFp32 / StoreQuantAndCastFromFp32（原 recompute.h 类成员）
- *   RopeBasicComputeVF（原 full_load.h 类成员，名字带 VF 但为普通 __aicore__ helper，提取为自由函数）
+ * Naming convention:
+ *   - RmsNormXxxSingleVF / DoubleVF: rSize fits one / two vector lanes.
+ *   - RmsNormXxxSmallColVF: small-column direct path (actualCol <= 2 * VL).
+ *   - FullLoad* / Recompute* prefix: contributed by the host file of the same name.
  */
 
 #ifndef KV_RMS_NORM_ROPE_CACHE_REGBASE_VF_H_
