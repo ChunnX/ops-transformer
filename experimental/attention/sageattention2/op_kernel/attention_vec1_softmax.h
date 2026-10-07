@@ -260,6 +260,28 @@ public:
         // 对 UB Logits 的 3 次重复加载消除为 1 次流式读取（Max/Sum 中间状态完全驻留向量
         // 寄存器），Logits 仅 1 次流式写出供下游 SoftmaxProbRowsVF 按 running max 铸 FP8；
         // chunk 顺序 Max 链与 MulDstAdd 累加链严格同序，位级语义与原两趟一致。
+        // DBG-RAW（临时调试桩）：VF 改写前 dump 原始 int32 dot32 前 4 行（qb1=176..179 / qb0=180..183）
+        if (ctx.is_causal != 0 && ctx.d == 128 && k == 0u &&
+            (ctx.cur_q_start == 128 || ctx.cur_q_start == 0)) {
+            const int64_t dbg_b = static_cast<int64_t>(ctx.cur_b);
+            const int64_t dbg_h = static_cast<int64_t>(ctx.cur_hkv) * static_cast<int64_t>(ctx.gqa_ratio)
+                                  + static_cast<int64_t>(ctx.cur_g0);
+            const int64_t dbg_row0 = (ctx.cur_q_start == 128) ? 176 : 180;
+            const Catlass::SageAttn::GmBhsdLayout dbg_layout =
+                Catlass::SageAttn::MakeGmBhsdLayout(ctx.b, ctx.hq, ctx.sq, ctx.d, ctx.is_hnd != 0);
+            for (uint32_t r = 0; r < 4u; ++r) {
+                Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
+                LocalTensor<int32_t> dbg_dot(TPosition::VECCALC,
+                                             SlotV1Dot32::Offset() + r * ctx.block_n * sizeof(int32_t), ctx.block_n);
+                GlobalTensor<int32_t> gm_dot;
+                const int64_t off = dbg_layout(tla::MakeCoord(dbg_b, dbg_h,
+                                                 static_cast<int64_t>(dbg_row0 + r), 0u))
+                                    * static_cast<int64_t>(sizeof(half));
+                gm_dot.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(ctx.out_gm + off));
+                DataCopy(gm_dot, dbg_dot, ctx.block_n);
+            }
+            Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
+        }
         dev_vf::DequantMaskMaxSumRowsVF<IS_CAUSAL>(reinterpret_cast<__ubuf__ float*>(ub_logits_dot.GetPhyAddr()), rows,
                                                    reinterpret_cast<__ubuf__ float*>(ub_qs.GetPhyAddr()),
                                                    reinterpret_cast<__ubuf__ float*>(ub_ks.GetPhyAddr()),
@@ -274,6 +296,27 @@ public:
                                           reinterpret_cast<__ubuf__ float*>(ub_block_sum.GetPhyAddr()),
                                           reinterpret_cast<__ubuf__ float*>(ub_factor.GetPhyAddr()),
                                           rows, k);
+
+        // DBG-FAC（临时调试桩）：k=0 qb1 在 Update 后立即 dump fac 两半（写坏=立即异常 / 后被覆盖=两时点差异）
+        if (ctx.cur_q_start == 128 && ctx.is_causal != 0 && ctx.d == 128 && k == 0u) {
+            const int64_t dbg_b = static_cast<int64_t>(ctx.cur_b);
+            const int64_t dbg_h = static_cast<int64_t>(ctx.cur_hkv) * static_cast<int64_t>(ctx.gqa_ratio)
+                                  + static_cast<int64_t>(ctx.cur_g0);
+            const Catlass::SageAttn::GmBhsdLayout dbg_layout =
+                Catlass::SageAttn::MakeGmBhsdLayout(ctx.b, ctx.hq, ctx.sq, ctx.d, ctx.is_hnd != 0);
+            for (uint32_t half_i = 0; half_i < 2u; ++half_i) {
+                Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
+                LocalTensor<float> dbg_fac(TPosition::VECCALC,
+                                           SlotV1RsFactor::Offset() + half_i * 64u * sizeof(float), 64u);
+                GlobalTensor<float> gm_fac;
+                const int64_t off = dbg_layout(tla::MakeCoord(dbg_b, dbg_h,
+                                                 static_cast<int64_t>(184 + half_i), 0u))
+                                    * static_cast<int64_t>(sizeof(half));
+                gm_fac.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(ctx.out_gm + off));
+                DataCopy(gm_fac, dbg_fac, 64u);
+            }
+            Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
+        }
 
         if (ctx.block_n <= 64u) {
             dev_vf::SoftmaxProbRowsVF<1u>(reinterpret_cast<__ubuf__ float*>(ub_logits_dot.GetPhyAddr()),
