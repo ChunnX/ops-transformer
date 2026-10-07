@@ -611,22 +611,13 @@ __simd_callee__ __aicore__ inline __attribute__((always_inline)) void SafeExpSub
     using namespace AscendC;
     using namespace AscendC::MicroAPI;
     auto full = CreateMask<float, MaskPattern::ALL>();
-    RegTensor<float> sentinel_threshold;
-    Duplicate(sentinel_threshold, -1.0e20f);
-    MaskReg is_sentinel;
-    Compare<float, CMPMODE::LE>(is_sentinel, val_nat, sentinel_threshold, full);
-
-    RegTensor<float> safe_val;
-    Select(safe_val, floor_val, val_nat, is_sentinel);
-
     RegTensor<float> diff;
-    Sub(diff, safe_val, max_nat, full);
+    Sub(diff, val_nat, max_nat, full);
     Max(diff, diff, floor_val, full);
     ExpSub(dst, diff, zero_reg, full);
     MaskReg underflow;
     Compare<float, CMPMODE::LE>(underflow, diff, floor_val, full);
     Select(dst, zero_reg, dst, underflow);
-    Select(dst, zero_reg, dst, is_sentinel);
 }
 
 /**
