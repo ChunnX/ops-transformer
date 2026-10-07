@@ -164,7 +164,7 @@ cann_ops_transformer.sparse_flash_mla(
 | max_seqlen_q | int32 | 可选 | `q`的最大有效序列长度，BSND场景必须传入S1的值。默认值为0。 | int32 | - | - |
 | max_seqlen_ori_kv | int32 | 可选 | `ori_kv`的最大有效序列长度，默认值为0。 | int32 | - | - |
 | max_seqlen_cmp_kv | int32 | 可选 | `cmp_kv`的最大有效序列长度，默认值为0。 | int32 | - | - |
-| ori_topk | int32 | 可选 | 表示`ori_kv`中筛选出的关键稀疏token的个数。0表示非稀疏场景。默认值为0 。 | int32 | - | - |
+| ori_topk | int32 | 可选 | 表示`ori_kv`中筛选出的关键稀疏token的个数。0表示非稀疏场景。默认值为0。 | int32 | - | - |
 | cmp_topk | int32 | 可选 | 表示`cmp_kv`中筛选出的关键稀疏token的个数。0表示非稀疏场景。默认值为0。 | int32 | - | - |
 | cmp_ratio | int32 | 可选 | `cmp_kv`相对于压缩前kv的压缩倍率，取值范围为1-128，默认值为1。 | int32 | - | - |
 | ori_mask_mode | int32 | 可选 | `q`与`ori_kv`的mask模式：0（No Mask）、3（RightDownCausal）或4（Band）。 | int32 | - | - |
@@ -340,7 +340,7 @@ layout匹配关系表：
 
 | 参数 | 单参数校验 | 存在性拦截 | 一致性拦截 | 特性交叉拦截 |
 | :--- | :--- | :--- | :--- | :--- |
-| ori_sparse_indices | `int32`、ND。 | 必须不传。 | 与`ori_topk=0`和`ori_topk_length=None`一致。 | 当mask mode ！=0时，有效长度必须与参与计算的序列长度保持一致， 且不支持传入topk_length。当mask mode ==0时，ori_kv_k 需要大于等于对应的topklength。 |
+| ori_sparse_indices | `int32`、ND。 | 必须不传。 | 与`ori_topk=0`和`ori_topk_length=None`一致。 | 当mask mode！=0时，有效长度必须与参与计算的序列长度保持一致， 且不支持传入topk_length。当mask mode ==0时，ori_kv_k 需要大于等于对应的topklength。 |
 | cmp_sparse_indices | `int32`、ND；`BSND`为(b, q_s, kv_n, cmp_kv_k)，`TND`为(q_t, kv_n, cmp_kv_k)；值必须为-1或有效的cmp token索引。 | 仅CSA必传；SWA/HCA必须不传。 | b/q_t、kv_n必须与`q`一致，cmp_kv_k必须与`cmp_topk`一致。 | <term>Atlas A3系列产品</term>：cmp_kv_k取大于8192或小于等于0时拦截；<term>Ascend 950PR&950DT系列产品</term>：cmp_kv_k取小于等于0时拦截。无效位置填-1，索引具体取值由用户保证。 |
 | ori_topk_length | `int32`、ND、shape为(b, q_s, kv_n)或(q_t, kv_n)。 | `ori_topk_length` 在ori+cmp稀疏时必传。 | 与`ori_sparse_indices=None`和`ori_topk=0`一致。 | CSA/ALL_CSA场景可选，其他场景不能传；传入时，不需要传入`seqused_ori_kv`。 |
 | cmp_topk_length | `int32`、ND、shape为(b, q_s, kv_n)或(q_t, kv_n)。 | `cmp_topk_length` 在ori+cmp稀疏时必传。 | 与`cmp_sparse_indices`和`cmp_topk`的状态一致。 | CSA/ALL_CSA场景可选，其他场景不能传；传入时，不需要传入`seqused_cmp_kv`。 |

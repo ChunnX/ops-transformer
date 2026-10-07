@@ -27,7 +27,7 @@
 
 - **接口功能**：推理场景下 Recurrent KDA 的前处理计算。对输入 $x$ 分别投影得到 `qkv`、`beta`、`gate`、`g`：
     - Stage1：AIC 并行计算 `X @ W_beta`、`X @ W_gate`、`X @ W_g`（BF16 Cube，FP32 累加）；AIV 并行执行 DynamicMxQuant。
-    - Stage2：AIV 对 `beta` 做逐元素 Sigmoid 并写回 FP32；AIC 执行 QuantMatmul(`qkv`) 。
+    - Stage2：AIV 对 `beta` 做逐元素 Sigmoid 并写回 FP32；AIC 执行 QuantMatmul(`qkv`)。
 - **计算公式**：
 
     $$

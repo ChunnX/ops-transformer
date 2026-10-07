@@ -259,7 +259,7 @@ N1 * G * alignedS1 * alignedS2 <= bestBasicBlockNum。 </td>
 
   **xxx.o**: 表示经过基本块切分后某根轴的分数，xxx可以是B、N2、G、S1、S2;
 
-  例如，S1 = 512, S2 = 1024， S1.i = 64, S2.i = 128,表示把[S1, S2]切分成大小是[64, 128]的基本块，S1.o = 512 / 64 = 8, S2.o = 1024 / 128 = 8 ，一共切分成8 * 8个基本块。
+  例如，S1 = 512, S2 = 1024， S1.i = 64, S2.i = 128,表示把[S1, S2]切分成大小是[64, 128]的基本块，S1.o = 512 / 64 = 8, S2.o = 1024 / 128 = 8，一共切分成8 * 8个基本块。
 
   - **<term>Atlas A2训练系列产品</term>**
   FAG算子的模板划分如下，以下模板，序号越大，模板的优先级越高，序号1的模板是泛化模板（支持所有shape）：
@@ -305,7 +305,7 @@ N1 * G * alignedS1 * alignedS2 <= bestBasicBlockNum。 </td>
     >
     >
     >
-    > 4. 核间切分B轴，核内计算B.i 、N2、 G、S1、S2轴，该模板是为了优化N2 *G* S1 * S2比较小时的性能
+    > 4. 核间切分B轴，核内计算B.i、N2、 G、S1、S2轴，该模板是为了优化N2 *G* S1 * S2比较小时的性能
     >
     >    tiling代码文件：ops-transformer-dev/attention/flash_attention_score_grad/op_host/flash_attention_score_grad_tiling_bngs1s2_b.cpp
     >

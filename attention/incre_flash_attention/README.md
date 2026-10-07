@@ -116,7 +116,7 @@
     - per-channel模式：两个参数的shape可支持(2, N, 1, D)，(2, N, D)，(2, H)，N为numKeyValueHeads。参数数据类型和query数据类型相同。
     - per-tensor模式：两个参数的shape均为(2)，数据类型和query数据类型相同。
 
-- 入参quantScale2和quantOffset2支持per-tensor/per-channel两种格式和FLOAT32/BFLOAT16两种数据类型。若传入quantOffset2 ，需保证其类型和shape信息与quantScale2一致。当输入为BFLOAT16时，同时支持FLOAT32和BFLOAT16，否则仅支持FLOAT32 。per-channel格式，当输出layout为BSH时，要求quantScale2所有维度的乘积等于H；其他layout要求乘积等于N*D。（建议输出layout为BSH时，quantScale2 shape传入[1,1,H]或[H]；输出为BNSD时，建议传入[1,N,1,D]或[N,D]；输出为BSND时，建议传入[1,1,N,D]或[N,D]）。
+- 入参quantScale2和quantOffset2支持per-tensor/per-channel两种格式和FLOAT32/BFLOAT16两种数据类型。若传入quantOffset2，需保证其类型和shape信息与quantScale2一致。当输入为BFLOAT16时，同时支持FLOAT32和BFLOAT16，否则仅支持FLOAT32。per-channel格式，当输出layout为BSH时，要求quantScale2所有维度的乘积等于H；其他layout要求乘积等于N*D。（建议输出layout为BSH时，quantScale2 shape传入[1,1,H]或[H]；输出为BNSD时，建议传入[1,N,1,D]或[N,D]；输出为BSND时，建议传入[1,1,N,D]或[N,D]）。
 
 - page attention场景:
 
