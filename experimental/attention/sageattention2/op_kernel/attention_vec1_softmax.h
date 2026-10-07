@@ -295,38 +295,41 @@ public:
         Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
         Catlass::SageAttn::Sync<HardEvent::MTE3_S>();
 
-        // DBG-K（临时调试桩）：qb1 任务按 k dump block_max/block_sum 与 logits 前 8 行
-        if (ctx.cur_q_start == 128 && ctx.is_causal != 0 && ctx.d == 128 && k < 2u) {
+        // DBG-K（临时调试桩）：qb1 任务按 k dump block_max/block_sum、运行状态与 logits 前 8 行
+        if (ctx.cur_q_start == 128 && ctx.is_causal != 0 && ctx.d == 128 && k < 3u) {
             const int64_t dbg_b = static_cast<int64_t>(ctx.cur_b);
             const int64_t dbg_h = static_cast<int64_t>(ctx.cur_hkv) * static_cast<int64_t>(ctx.gqa_ratio)
                                   + static_cast<int64_t>(ctx.cur_g0);
             const Catlass::SageAttn::GmBhsdLayout dbg_layout =
                 Catlass::SageAttn::MakeGmBhsdLayout(ctx.b, ctx.hq, ctx.sq, ctx.d, ctx.is_hnd != 0);
-            Catlass::SageAttn::Sync<HardEvent::V_S>();
+
+            auto dump_64 = [&](uint32_t row_idx, const LocalTensor<float>& ub_src) {
+                Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
+                GlobalTensor<float> gm_dst;
+                const int64_t off = dbg_layout(tla::MakeCoord(dbg_b, dbg_h, static_cast<int64_t>(row_idx), 0u)) * static_cast<int64_t>(sizeof(half));
+                gm_dst.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(ctx.out_gm + off));
+                DataCopy(gm_dst, ub_src, 64u);
+                Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
+            };
+
+            const uint32_t base_r = 128u + k * 16u;
             LocalTensor<float> dbg_bmax(TPosition::VECCALC, SlotV1BlockMax::Offset(), 64u);
             LocalTensor<float> dbg_bsum(TPosition::VECCALC, SlotV1BlockSum::Offset(), 64u);
-            for (uint32_t i = 0; i < 16u; ++i) {
-                const int64_t off = dbg_layout(tla::MakeCoord(dbg_b, dbg_h,
-                                                 static_cast<int64_t>(128 + k * 16 + i), 0u))
-                                    * static_cast<int64_t>(sizeof(half));
-                __gm__ float* gp = reinterpret_cast<__gm__ float*>(ctx.out_gm + off);
-                gp[0] = dbg_bmax.GetValue(i);
-                gp[1] = dbg_bsum.GetValue(i);
-                gp[4] = dbg_bmax.GetValue(32u + i);
-                gp[5] = dbg_bsum.GetValue(32u + i);
-            }
+            LocalTensor<float> dbg_rmax(TPosition::VECCALC, SlotV1RowMax::Offset(), 64u);
+            LocalTensor<float> dbg_rsum(TPosition::VECCALC, SlotV1RowSum::Offset(), 64u);
+            LocalTensor<float> dbg_fac(TPosition::VECCALC, SlotV1RsFactor::Offset(), 64u);
+
+            dump_64(base_r + 0u, dbg_bmax);
+            dump_64(base_r + 1u, dbg_bsum);
+            dump_64(base_r + 2u, dbg_rmax);
+            dump_64(base_r + 3u, dbg_rsum);
+            dump_64(base_r + 4u, dbg_fac);
+
             for (uint32_t r = 0; r < 8u; ++r) {
-                Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
                 LocalTensor<float> dbg_lg(TPosition::VECCALC,
-                                          SlotV1Dot32::Offset() + r * ctx.block_n * sizeof(float), ctx.block_n);
-                GlobalTensor<float> gm_lg;
-                const int64_t off = dbg_layout(tla::MakeCoord(dbg_b, dbg_h,
-                                                 static_cast<int64_t>(160 + k * 8 + r), 0u))
-                                    * static_cast<int64_t>(sizeof(half));
-                gm_lg.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(ctx.out_gm + off));
-                DataCopy(gm_lg, dbg_lg, ctx.block_n);
+                                          SlotV1Dot32::Offset() + r * ctx.block_n * sizeof(float), 64u);
+                dump_64(base_r + 5u + r, dbg_lg);
             }
-            Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
         }
 #else
         RestageKvBlockHost(ctx, k);
