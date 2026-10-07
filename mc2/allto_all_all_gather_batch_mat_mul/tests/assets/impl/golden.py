@@ -430,6 +430,8 @@ def a2a_ag_bmm_multi_device_golden(thread_contexts, device_ids, all_precision):
 def a2a_ag_bmm_e2e_golden(
     cpu_inputs_per_rank, attrs, rank=None, ws=None, dist_avail=True
 ):
+    import torch
+
     x_cpu = cpu_inputs_per_rank[rank][0].float()
     w_cpu = cpu_inputs_per_rank[rank][1].float()
     shard_type = int(attrs.get("shard_type", attrs.get("xShardType", 0)))

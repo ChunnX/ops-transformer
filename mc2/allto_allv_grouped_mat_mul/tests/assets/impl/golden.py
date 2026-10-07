@@ -458,6 +458,7 @@ def alltoallv_gmm_e2e_golden(
     cpu_inputs_per_rank, attrs, rank=None, ws=None, dist_avail=True
 ):
     import numpy as _np
+    import torch
 
     epc = int(attrs.get("expPerCard", 1))
     seed = int(attrs.get("seed", 1))

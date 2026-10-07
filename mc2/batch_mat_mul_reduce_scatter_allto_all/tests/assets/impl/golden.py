@@ -380,6 +380,7 @@ def bmm_rs_a2a_e2e_golden(
     cpu_inputs_per_rank, attrs, rank=None, ws=None, dist_avail=True
 ):
     import numpy as _np
+    import torch
 
     shard_type = int(attrs.get("shard_type", attrs.get("yShardType", 0)))
     ep_ws = int(attrs.get("epWorldSize", 0))
