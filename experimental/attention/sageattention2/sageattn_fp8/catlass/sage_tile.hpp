@@ -239,9 +239,6 @@ __aicore__ inline __attribute__((always_inline)) void CopyL0CToUbSplitM(
     fp.quantPre = QuantMode_t::NoQuant;
     fp.dualDstCtl = 0;
     fp.subBlockId = true;
-    // DBG-FIX2（临时实验）：unitFlag=1 硬件完成跟踪——官方 C310 面语义（跨核 UB 写入的
-    // 全旅程完成事件），我们此前恒缺省 0（无跟踪），疑似 QK_READY 先于 SSBUF 数据可见
-    fp.unitFlag = 1;
 
     AscendC::TBuffAddr l0c_desc{};
     l0c_desc.logicPos = static_cast<uint8_t>(AscendC::TPosition::CO1);
