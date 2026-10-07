@@ -198,7 +198,7 @@
       <td style="white-space: nowrap">positions</td>
       <td style="white-space: nowrap">输入</td>
       <td style="white-space: nowrap">Device侧的aclTensor，输入索引。</td>
-      <td style="white-space: nowrap">INT32、INT64</td>
+      <td style="white-space: nowrap">INT64</td>
       <td style="white-space: nowrap">ND</td>
     </tr>
     <tr>
@@ -223,24 +223,59 @@
       <td style="white-space: nowrap">ND</td>
     </tr>
     <tr>
-      <td style="white-space: nowrap">mropeSection</td>
-      <td style="white-space: nowrap">输入</td>
-      <td style="white-space: nowrap">mrope模式下用于整合输入的位置编码张量信息，公式中的`mropeSection`。</td>
-      <td style="white-space: nowrap">INT64</td>
+      <td style="white-space: nowrap">numQHeads</td>
+      <td style="white-space: nowrap">属性</td>
+      <td style="white-space: nowrap">query的头数，等于queryIn第1维大小除以headSize。</td>
+      <td style="white-space: nowrap">INT</td>
+      <td style="white-space: nowrap">-</td>
+    </tr>
+    <tr>
+      <td style="white-space: nowrap">numKHeads</td>
+      <td style="white-space: nowrap">属性</td>
+      <td style="white-space: nowrap">key的头数，等于keyIn第1维大小除以headSize。</td>
+      <td style="white-space: nowrap">INT</td>
       <td style="white-space: nowrap">-</td>
     </tr>
     <tr>
       <td style="white-space: nowrap">headSize</td>
-      <td style="white-space: nowrap">输入</td>
+      <td style="white-space: nowrap">属性</td>
       <td style="white-space: nowrap">表示每个注意力头维度大小。</td>
-      <td style="white-space: nowrap">INT64</td>
+      <td style="white-space: nowrap">INT</td>
+      <td style="white-space: nowrap">-</td>
+    </tr>
+    <tr>
+      <td style="white-space: nowrap">mropeSection</td>
+      <td style="white-space: nowrap">可选属性</td>
+      <td style="white-space: nowrap">mrope模式下用于整合输入的位置编码张量信息，公式中的`mropeSection`。</td>
+      <td style="white-space: nowrap">ListInt</td>
+      <td style="white-space: nowrap">-</td>
+    </tr>
+    <tr>
+      <td style="white-space: nowrap">qStride</td>
+      <td style="white-space: nowrap">可选属性</td>
+      <td style="white-space: nowrap">queryIn第0维的步长（stride）。</td>
+      <td style="white-space: nowrap">INT</td>
+      <td style="white-space: nowrap">-</td>
+    </tr>
+    <tr>
+      <td style="white-space: nowrap">kStride</td>
+      <td style="white-space: nowrap">可选属性</td>
+      <td style="white-space: nowrap">keyIn第0维的步长（stride）。</td>
+      <td style="white-space: nowrap">INT</td>
       <td style="white-space: nowrap">-</td>
     </tr>
     <tr>
       <td style="white-space: nowrap">isNeoxStyle</td>
-      <td style="white-space: nowrap">输入</td>
+      <td style="white-space: nowrap">可选属性</td>
       <td style="white-space: nowrap">true表示rotate\_half（GPT-NeoX style）计算模式，false表示rotate\_interleaved（GPT-J style）计算模式。</td>
       <td style="white-space: nowrap">BOOL</td>
+      <td style="white-space: nowrap">-</td>
+    </tr>
+    <tr>
+      <td style="white-space: nowrap">cacheMode</td>
+      <td style="white-space: nowrap">可选属性</td>
+      <td style="white-space: nowrap">表示cos和sin的拼接方式，取值仅支持0和1，0表示分段式，1表示交错式；mropeSection为[16, 16, 16, 16]时仅支持0。</td>
+      <td style="white-space: nowrap">INT</td>
       <td style="white-space: nowrap">-</td>
     </tr>
     <tr>
@@ -266,10 +301,10 @@
 - queryIn、keyIn、cosSinCache只支持2维shape输入。
 - queryIn和keyIn的1维大小必须是headSize的整数倍。
 - headSize: 数据类型为BFLOAT16或FLOAT16时为32的倍数，数据类型为FLOAT32时为16的倍数。
-- rotaryDim: 始终小于等于headSize；数据类型为BFLOAT16或FLOAT16时为32的倍数，数据类型为FLOAT32时为16的倍数;mrope模式下应满足rotaryDim = mropeSection[0] + mropeSection[1] + mropeSection[2]。
+- rotaryDim: 始终小于等于headSize；数据类型为BFLOAT16或FLOAT16时为32的倍数，数据类型为FLOAT32时为16的倍数;mrope模式下应满足mropeSection所有元素累加为rotaryDim值的一半。
 - 输入tensor positions的取值应小于cosSinCache的0维maxSeqLen。
 - aclnnRopeWithSinCosCache默认确定性实现。
-- mropeSection:取值限制为[16, 24, 24]。
+- mropeSection:取值当前仅支持[16, 24, 24]、[8, 12, 12]、[24, 20, 20]、[11, 11, 10]和[16, 16, 16, 16]。
 
 ## 调用说明
 
