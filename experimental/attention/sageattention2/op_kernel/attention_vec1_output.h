@@ -76,31 +76,6 @@ public:
             reinterpret_cast<__ubuf__ float*>(ub_partial.GetPhyAddr()),
             reinterpret_cast<__ubuf__ float*>(ub_factor.GetPhyAddr()),
             rows, ctx.d, k);
-
-        if (ctx.cur_q_start == 128 && ctx.is_causal != 0 && ctx.d == 128) {
-            Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
-            LocalTensor<half> ub_dump(TPosition::VECCALC, SlotV1FixpipeRecv::Offset(), 128);
-            auto full = AscendC::CreateMask<float, AscendC::MaskPattern::ALL>();
-            static constexpr AscendC::CastTrait toHalf{AscendC::RegLayout::ZERO, AscendC::SatMode::SAT, AscendC::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
-            AscendC::Reg::RegTensor<float> p0, p1;
-            AscendC::Reg::LoadAlign(p0, reinterpret_cast<__ubuf__ float*>(ub_partial.GetPhyAddr()));
-            AscendC::Reg::LoadAlign(p1, reinterpret_cast<__ubuf__ float*>(ub_partial.GetPhyAddr()) + 64u);
-            AscendC::Reg::RegTensor<half> h0, h1;
-            AscendC::Reg::Cast<half, float, toHalf>(h0, p0, full);
-            AscendC::Reg::Cast<half, float, toHalf>(h1, p1, full);
-            AscendC::Reg::StoreAlign<half, AscendC::Reg::StoreDist::DIST_PACK_B32>(reinterpret_cast<__ubuf__ half*>(ub_dump.GetPhyAddr()), h0, full);
-            AscendC::Reg::StoreAlign<half, AscendC::Reg::StoreDist::DIST_PACK_B32>(reinterpret_cast<__ubuf__ half*>(ub_dump.GetPhyAddr()) + 64u, h1, full);
-            AscendC::LocalMemBar<AscendC::MemType::VEC_STORE, AscendC::MemType::VEC_LOAD>();
-
-            const Catlass::SageAttn::GmBhsdLayout out_layout =
-                Catlass::SageAttn::MakeGmBhsdLayout(ctx.b, ctx.hq, ctx.sq, ctx.d, ctx.is_hnd != 0);
-            const int64_t dump_row = 127 + k;
-            const int64_t off = out_layout(tla::MakeCoord(0u, 0u, dump_row, 0u)) * sizeof(half);
-            GlobalTensor<half> gm_dump;
-            gm_dump.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(ctx.out_gm + off));
-            DataCopy(gm_dump, ub_dump, 128);
-            Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
-        }
 #else
         (void)ctx;
         (void)k;
