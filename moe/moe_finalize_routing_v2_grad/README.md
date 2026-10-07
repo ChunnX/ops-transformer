@@ -173,3 +173,20 @@
 | ---------------- | --------------------------- | --------------------------------------------------- |
 | aclnn接口  | [test_aclnn_moe_finalize_routing_v2_grad.cpp](examples/test_aclnn_moe_finalize_routing_v2_grad.cpp) | 通过[aclnnMoeFinalizeRoutingV2Grad](docs/aclnnMoeFinalizeRoutingV2Grad.md)接口方式调用MoeFinalizeRoutingV2Grad算子。 |
 | PyTorch API | - | 通过[moe_finalize_routing_grad](../../moe/moe_finalize_routing_v2_grad/docs/torchapi_moe_finalize_routing_grad.md)接口调用moe_finalize_routing_grad算子。 |
+
+
+## 标杆回归
+
+ACLNN 标杆中 `scalesOptional` 和 `gradScalesOut` 的形状为 `(R, K)`；
+`expandedRowIdx` 长度为 `R * K`。两者不应混淆，否则 K 大于 1 时无法生成标杆。
+
+安装 NumPy 和 PyTorch CPU 后，在仓库根目录执行：
+
+```sh
+TORCH_DEVICE_BACKEND_AUTOLOAD=0 python3 moe/moe_finalize_routing_v2_grad/tests/assets/test_finalize_routing_grad_scale_shape.py
+```
+
+Host 回归通过实际注册入口检查 K 为 1、2、4 的 scales，dropless、activeNum、
+drop/padding 和非连续输入，以及无 scales 的 K=1 控制。参考结果由正向
+`gather → scale → sum` 的 FLOAT64 CPU autograd 生成；本回归使用空 bias，
+不验证 bias 分支、设备 ACLNN 或 NPU Kernel。输入不变、输出形状和数据类型均检查。
