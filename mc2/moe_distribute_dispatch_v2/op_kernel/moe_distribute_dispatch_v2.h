@@ -1546,8 +1546,9 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Loca
                 expandScalesOutGlobal.SetGlobalBuffer((__gm__ float *)(expandScalesOutGM_) + beginIdx +
                                                       tokenCopiedNumThisExpert);
                 DataCopyExtParams expertScaleCopyInParams{blockCount, static_cast<uint32_t>(sizeof(float)),
-                                                          static_cast<uint32_t>(hAlignWinSize_ - sizeof(float)), 0U,
-                                                          0U};
+                                                          static_cast<uint32_t>((hAlignWinSize_ - sizeof(float)) /
+                                                                                UB_ALIGN),
+                                                          0U, 0U};
                 DataCopyPadExtParams<float> expertScalePadParams{false, 0U, 0U, 0.0f};
                 DataCopyExtParams expertScaleCopyOutParams{blockCount, static_cast<uint32_t>(sizeof(float)), 0U, 0U,
                                                            0U};
