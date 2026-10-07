@@ -154,7 +154,11 @@ __aicore__ inline void BroadcastAdd(const LocalTensor<T> &src0Tensor, const Loca
         binaryRepeatParams.src1BlkStride = 1;
         binaryRepeatParams.src1RepStride = 0;
         binaryRepeatParams.dstRepStride = binaryRepeatParams.src0RepStride;
-        binaryRepeatParams.blockNumber = binaryRepeatParams.src0RepStride;
+        /* One repeat only handles repeatMaxSize elements, that is repeatMaxSize / blockSize blocks.
+         * blockNumber (used by the sanitizer to estimate the access range) must be the block number of
+         * a single repeat instead of the whole row stride, otherwise the access range of the sub tensor
+         * is over estimated and fake out-of-bound reports are raised. */
+        binaryRepeatParams.blockNumber = repeatMaxSize / blockSize;
 
         for (int32_t j = 0; j < innerLoop; j++) {
             auto innerOffset = j * repeatMaxSize;
@@ -163,6 +167,7 @@ __aicore__ inline void BroadcastAdd(const LocalTensor<T> &src0Tensor, const Loca
                 binaryRepeatParams);
         }
         if (innerRemain > 0) {
+            binaryRepeatParams.blockNumber = CeilDiv(innerRemain, blockSize);
             auto innerOffset = innerLoop * repeatMaxSize;
             auto ubOffset = src0Offset + innerOffset;
             Add(src0Tensor[ubOffset], src0Tensor[ubOffset], src1Tensor[innerOffset], innerRemain, repeatTimes,
