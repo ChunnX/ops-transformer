@@ -41,7 +41,7 @@
 
 - <term>Atlas推理系列产品</term>：全部使用该模板。
 
-- <term>Atlas A2系列产品</term>：非PA,非GQA,且Q、KV 、Output类型全部为FP16 。
+- <term>Atlas A2系列产品</term>：非PA,非GQA,且Q、KV、Output类型全部为FP16。
 
 3. matmul基础API模板: 对应文件名incre_flash_attention_preload.h,为了优化性能，基于C+V模板使用AscendC提供的matmul基础API对matmul部分重写。在C+V模板的基础上主要做了如下改动：
 

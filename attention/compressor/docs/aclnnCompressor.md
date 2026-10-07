@@ -340,7 +340,7 @@ aclnnStatus aclnnCompressor(
   - D（Head Dim）表示hidden层的最小单元大小，D取值由wkv的第一维大小除以coff得到。
 
   <!-- npu="A3,910b" id7 -->
-  - <term>Atlas A3系列产品</term>、<term>Atlas A2系列产品</term> ：
+  - <term>Atlas A3系列产品</term>、<term>Atlas A2系列产品</term>：
     - cmpRatio仅支持2/4/8/16/32/64/128。
     - gradEnabled不支持为true。
   <!-- end id7 -->

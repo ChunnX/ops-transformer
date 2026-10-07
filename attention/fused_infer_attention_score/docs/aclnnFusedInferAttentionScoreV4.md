@@ -1239,7 +1239,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
             </tr>
             <tr>
                 <td>quantOffset2</td>
-                <td>可选参数，若传入quantOffset2 ，需保证其类型和shape信息与quantScale2一致。不传时默认为nullptr，表示为0。
+                <td>可选参数，若传入quantOffset2，需保证其类型和shape信息与quantScale2一致。不传时默认为nullptr，表示为0。
                 </td>
             </tr>
             <tr>
@@ -1320,7 +1320,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
             </tr>
             <tr>
                 <td>quantOffset2</td>
-                <td>可选参数，若传入quantOffset2 ，需保证其类型和shape信息与quantScale2一致。不传时默认为nullptr,表示为0。
+                <td>可选参数，若传入quantOffset2，需保证其类型和shape信息与quantScale2一致。不传时默认为nullptr,表示为0。
                 </td>
             </tr>
             <tr>

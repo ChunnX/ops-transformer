@@ -211,7 +211,7 @@
 </tbody>
 </table>
 
-- <term>Atlas A3系列产品</term> 、<term>Atlas A2系列产品</term> ：
+- <term>Atlas A3系列产品</term>、<term>Atlas A2系列产品</term>：
   - cmp_ratio仅支持2/4/8/16/32/64/128。
   - gradEnabled不支持为true。
 
@@ -269,7 +269,7 @@
 
 ## 调用说明
 
-- <term>Ascend 950PR&950DT系列产品</term>、<term>Atlas A3系列产品</term> 、 <term>Atlas A2系列产品</term>：
+- <term>Ascend 950PR&950DT系列产品</term>、<term>Atlas A3系列产品</term>、 <term>Atlas A2系列产品</term>：
 
   | 调用方式   | 样例代码 | 说明                                          |
   | ---------- | -------- | --------------------------------------------- |

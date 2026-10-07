@@ -288,13 +288,13 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGradMetadata(
 
   <ul>
     <!-- npu="950" id7 -->
-    <li><term>Ascend 950PR&950DT系列产品</term> ：topk仅支持[1, 2048]。</li>
+    <li><term>Ascend 950PR&950DT系列产品</term>：topk仅支持[1, 2048]。</li>
     <!-- end id7 -->
     <!-- npu="A3" id8 -->
-    <li><term>Atlas A3系列产品</term> ：不支持seqUsedQOptional、seqUsedKOptional、cmpResidualKOptional，numHeadsQ仅支持8/16/32/64，topk仅支持512/1024/2048/4096/8192。</li>
+    <li><term>Atlas A3系列产品</term>：不支持seqUsedQOptional、seqUsedKOptional、cmpResidualKOptional，numHeadsQ仅支持8/16/32/64，topk仅支持512/1024/2048/4096/8192。</li>
     <!-- end id8 -->
     <!-- npu="910b" id9 -->
-    <li><term>Atlas A2系列产品</term> ：不支持seqUsedQOptional、seqUsedKOptional、cmpResidualKOptional，numHeadsQ仅支持8/16/32/64，topk仅支持512/1024/2048/4096/8192。</li>
+    <li><term>Atlas A2系列产品</term>：不支持seqUsedQOptional、seqUsedKOptional、cmpResidualKOptional，numHeadsQ仅支持8/16/32/64，topk仅支持512/1024/2048/4096/8192。</li>
     <!-- end id9 -->
   </ul>
 
@@ -500,7 +500,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGradMetadata(
   metadata输出为INT32 Tensor，当前shape固定为(64,)，字段布局如下。
   <ul>
   <!-- npu="950" id16 -->
-  <li><term>Ascend 950PR&950DT系列产品</term> ：
+  <li><term>Ascend 950PR&950DT系列产品</term>：
   <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
     <col style="width: 180px">
     <col style="width: 150px">
@@ -544,7 +544,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGradMetadata(
   </li>
   <!-- end id16 -->
   <!-- npu="A3" id17 -->
-  <li><term>Atlas A3系列产品</term> ：
+  <li><term>Atlas A3系列产品</term>：
   <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
     <col style="width: 180px">
     <col style="width: 150px">
@@ -588,7 +588,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGradMetadata(
   </li>
   <!-- end id17 -->
   <!-- npu="910b" id18 -->
-  <li><term>Atlas A2系列产品</term> ：
+  <li><term>Atlas A2系列产品</term>：
   <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
     <col style="width: 180px">
     <col style="width: 150px">

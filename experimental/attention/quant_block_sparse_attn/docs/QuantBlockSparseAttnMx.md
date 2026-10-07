@@ -617,7 +617,7 @@ QuantBlockSparseAttnMx 算子约束分为 4 个档位，按约束复杂程度递
   - `sparse_indices` 必须按 `(BatchSize, N1, max_Qb, max_Kb)` 传入，`sparse_seq_len` 必须按 `(BatchSize, N1, max_Qb)` 传入；host 校验这些 Tensor 的 shape 一致性；BSND/BNSD 还要求 max_Qb 至少为 ceil(Sq/sparse_q_block_size)。
   - `block_table` 必须按 `(BatchSize, max_block_num_per_batch)` 传入。主算子使用 `sparse_indices.shape[2]` 作为 `max_Qb`，使用 `block_table.shape[1]` 作为 `max_block_num_per_batch`，二者均必须大于 0。
   - `BatchSize`、`N1`、`N2`、`G` 均必须大于 0。`BatchSize`<= `65536`，`N1` <= `128`，`N2` <= `8`，`G` <= `16`。
-  - `S1`、`S2` 均小于 `20M` ，不拦截。
+  - `S1`、`S2` 均小于 `20M`，不拦截。
   - MXFP8 路径的 `D` 必须属于 `{64, 128, 256}`，且 `D_v = D`；FP8 路径仍要求二者均为 128。
 
 - 特性交叉约束

@@ -119,7 +119,7 @@ cann_ops_transformer.generic_block_sparse_attention(
 
 ## 枚举说明
 
-`quant_mode` 、 `mask_mode` 与`residual_block_mode`在 Python 接口中支持传入 `IntEnum` 枚举或对应 int 值，枚举定义于 `cann_ops_transformer.ops.generic_block_sparse_attention`：
+`quant_mode`、 `mask_mode` 与`residual_block_mode`在 Python 接口中支持传入 `IntEnum` 枚举或对应 int 值，枚举定义于 `cann_ops_transformer.ops.generic_block_sparse_attention`：
 
 ### quant_mode 枚举
 

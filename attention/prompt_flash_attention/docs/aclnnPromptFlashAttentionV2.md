@@ -655,7 +655,7 @@ aclnnStatus aclnnPromptFlashAttentionV2(
     - 输入为INT8，输出为INT8的场景：入参deqScale1、quantScale1、deqScale2、quantScale2需要同时存在，quantOffset2可选，不传时默认为0。
     - 输入为INT8，输出为FLOAT16的场景：入参deqScale1、quantScale1、deqScale2需要同时存在，若存在入参quantOffset2或quantScale2（即不为nullptr），则报错并返回。
     - 输入为FLOAT16或BFLOAT16，输出为INT8的场景：入参quantScale2需存在，quantOffset2可选，不传时默认为0，若存在入参deqScale1或quantScale1或deqScale2（即不为nullptr），则报错并返回。
-    - 入参quantScale2和quantOffset2支持per-tensor/per-channel两种格式和FLOAT32/BFLOAT16两种数据类型。若传入quantOffset2 ，需保证其类型和shape信息与quantScale2一致。当输入为BFLOAT16时，同时支持FLOAT32和BFLOAT16 ，否则仅支持FLOAT32 。per-channel格式，当输出layout为BSH时，要求quantScale2所有维度的乘积等于H；其他layout要求乘积等于N*D。（建议输出layout为BSH时，quantScale2 shape传入[1,1,H]或[H]；输出为BNSD时，建议传入[1,N,1,D]或[N,D]；输出为BSND时，建议传入[1,1,N,D]或[N,D]）
+    - 入参quantScale2和quantOffset2支持per-tensor/per-channel两种格式和FLOAT32/BFLOAT16两种数据类型。若传入quantOffset2，需保证其类型和shape信息与quantScale2一致。当输入为BFLOAT16时，同时支持FLOAT32和BFLOAT16，否则仅支持FLOAT32。per-channel格式，当输出layout为BSH时，要求quantScale2所有维度的乘积等于H；其他layout要求乘积等于N*D。（建议输出layout为BSH时，quantScale2 shape传入[1,1,H]或[H]；输出为BNSD时，建议传入[1,N,1,D]或[N,D]；输出为BSND时，建议传入[1,1,N,D]或[N,D]）
     - 输出为int8，quantScale2和quantOffset2为per-channel时，暂不支持左padding、Ring Attention或者D非32Byte对齐的场景。
     - 输出为int8时，暂不支持sparse为band且preTokens/nextTokens为负数。
   - 当输出为INT8，入参quantOffset2传入非空指针和非空tensor值，并且sparseMode、preTokens和nextTokens满足以下条件，矩阵会存在某几行不参与计算的情况，导致计算结果误差，该场景会拦截（解决方案：如果希望该场景不被拦截，需要在PFA接口外部做后量化操作，不在PFA接口内部开启）:

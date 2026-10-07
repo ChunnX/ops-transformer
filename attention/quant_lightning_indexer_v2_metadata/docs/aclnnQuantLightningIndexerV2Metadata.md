@@ -299,10 +299,10 @@ aclnnStatus aclnnQuantLightningIndexerV2Metadata(
 
   <ul>
     <!-- npu="A3" id7 -->
-    <li><term>Atlas A3系列产品</term> ：numHeadsQ仅支持64，不支持quantMode = 1/3/4/5，topk仅支持[1, 2048]，不支持layoutKOptional = BSND/TND，不支持cmpRatio在[1，128]任意取值，仅支持cmpRatio = 1/2/4/8/16/32/64/128。</li>
+    <li><term>Atlas A3系列产品</term>：numHeadsQ仅支持64，不支持quantMode = 1/3/4/5，topk仅支持[1, 2048]，不支持layoutKOptional = BSND/TND，不支持cmpRatio在[1，128]任意取值，仅支持cmpRatio = 1/2/4/8/16/32/64/128。</li>
     <!-- end id7 -->
     <!-- npu="910b" id8 -->
-    <li><term>Atlas A2系列产品</term> ：numHeadsQ仅支持64，不支持quantMode = 1/3/4/5，topk仅支持[1, 2048]，不支持layoutKOptional = BSND/TND，不支持cmpRatio在[1，128]任意取值，仅支持cmpRatio = 1/2/4/8/16/32/64/128。</li>
+    <li><term>Atlas A2系列产品</term>：numHeadsQ仅支持64，不支持quantMode = 1/3/4/5，topk仅支持[1, 2048]，不支持layoutKOptional = BSND/TND，不支持cmpRatio在[1，128]任意取值，仅支持cmpRatio = 1/2/4/8/16/32/64/128。</li>
     <!-- end id8 -->
   </ul>
 
