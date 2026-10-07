@@ -26,9 +26,11 @@ logger.setLevel(logging.INFO)
 logger.propagate = False
 
 
-def build_case_script(case: Dict, runs: int, case_name: str, device_id: int = 0) -> str:
+def build_case_script(
+    case: Dict, runs: int, case_name: str, device_id: int = 0, cold_thr: int = 16
+) -> str:
     """Build a single-case Python script for msprof."""
-    is_hot = case.get("S1", 9999) > 16
+    is_hot = case.get("S1", 9999) > cold_thr
     mode = "hot" if is_hot else "cold"
     params_repr = _serialize_params(case)
 
@@ -209,7 +211,7 @@ def run_all_perf(
         case_dir = output_dir / case_dir_name
         case_dir.mkdir(parents=True, exist_ok=True)
 
-        script = build_case_script(c, runs, name, device_id)
+        script = build_case_script(c, runs, name, device_id, cold_thr=cold_thr)
         script_path = case_dir / "_perf_sweep.py"
         script_path.write_text(script)
 
@@ -361,7 +363,7 @@ def build_batch_script(
     cold = [(i, c) for i, c in enumerate(cases) if c.get("S1", 9999) <= cold_thr]
     names = case_names or [f"case_{i}" for i in range(len(cases))]
 
-    case_dicts = _serialize_cases(cases)
+    case_dicts = _serialize_cases(cases, cold_thr)
     hot_names = repr([names[i] for i, _ in hot])
     cold_names = repr([names[i] for i, _ in cold])
 
@@ -393,14 +395,13 @@ def build_batch_script(
     return "\n".join(lines)
 
 
-def _serialize_cases(cases):
+def _serialize_cases(cases, cold_thr=16):
     """For batch mode: serialize only the cases used."""
     hot_items = []
     cold_items = []
-    thr = 16
     for c in cases:
         s = _serialize_one(c)
-        if c.get("S1", 9999) > thr:
+        if c.get("S1", 9999) > cold_thr:
             hot_items.append(s)
         else:
             cold_items.append(s)
