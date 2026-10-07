@@ -88,11 +88,11 @@ __aicore__ inline void EngramFetchLocalArch35::Init(GM_ADDR commContext, GM_ADDR
     // to a single row (tileBytes_ = AlignUp(hiddenBytes_, 32B), capped at TILE_BYTES_INFER_MAX),
     // which leaves no room to pack rows, so the relay is re-widened to the 24KB infer tile and every
     // wave keeps rowsPerWave_ * rowBytes <= tileBytes_.
-    uint32_t sfBytes = 0U;
+    uint64_t sfBytes = 0U;
     if (HasSf()) {
-        sfBytes = static_cast<uint32_t>(numSfPacks_) * static_cast<uint32_t>(sfElemSize_);
+        sfBytes = static_cast<uint64_t>(numSfPacks_) * static_cast<uint64_t>(sfElemSize_);
     }
-    uint32_t sfSlot = (sfBytes + UB_ALIGN - 1U) / UB_ALIGN * UB_ALIGN; // 32B-aligned SF slot in UB
+    uint64_t sfSlot = (sfBytes + UB_ALIGN - 1U) / UB_ALIGN * UB_ALIGN; // 32B-aligned SF slot in UB
     uint64_t rowBytes = static_cast<uint64_t>(hiddenBytes_);
     if (sfBytes > 0U) {
         rowBytes += sfSlot;
@@ -137,8 +137,8 @@ __aicore__ inline void EngramFetchLocalArch35::GatherWave(const AscendC::LocalTe
 {
     const bool hasSf = HasSf();
     const uint64_t hiddenBytes = static_cast<uint64_t>(hiddenBytes_);
-    const uint32_t sfBytes = hasSf ? static_cast<uint32_t>(numSfPacks_) * static_cast<uint32_t>(sfElemSize_) : 0U;
-    const uint32_t sfSlot = hasSf ? (sfBytes + UB_ALIGN - 1U) / UB_ALIGN * UB_ALIGN : 0U;
+    const uint64_t sfBytes = hasSf ? static_cast<uint64_t>(numSfPacks_) * static_cast<uint64_t>(sfElemSize_) : 0U;
+    const uint32_t sfSlot = hasSf ? static_cast<uint32_t>((sfBytes + UB_ALIGN - 1U) / UB_ALIGN * UB_ALIGN) : 0U;
 
     AscendC::GlobalTensor<uint8_t> srcGm;
     srcGm.SetGlobalBuffer((__gm__ uint8_t*)tableBase_);
