@@ -316,6 +316,7 @@ private:
     void InitParams();
 
     void SplitBalanced();
+    bool IsSplitKVSupported() const;
     void CalcInnerSize(uint32_t sfaS2Size);
 
     bool IsFlashDecode(uint32_t coreNum);

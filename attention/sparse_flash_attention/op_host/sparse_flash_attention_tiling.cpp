@@ -393,6 +393,23 @@ void SFAMlaTiling::CalcInnerSize(uint32_t sfaS2Size)
     CheckUbSpace();
 }
 
+bool SFAMlaTiling::IsSplitKVSupported() const
+{
+    const auto &info = *sfaInfo_;
+    // Common validation guarantees B > 0, N2 == 1, sparse block size 1 on A5,
+    // and output dtype matching Q. Only split-KV-specific restrictions belong here.
+    const bool kernelSupported =
+        info.isA5 && info.gSize == 8 && info.ropeHeadDim == 64 &&
+        info.inputQType == ge::DT_BF16 && info.inputKvType == ge::DT_BF16 &&
+        info.qLayout == SFALayout::TND && info.kvLayout == SFALayout::PA_BSND &&
+        info.sparseMode == 0 && !info.returnSoftmaxLse && info.opParamInfo.sinks.tensor == nullptr;
+    const bool workloadSupported =
+        info.s1Size > 0 && info.s2Size >= info.sparseBlockCount &&
+        info.sparseBlockCount >= 256 && info.sparseBlockCount <= 2048 &&
+        (info.bSize == 1 || info.sparseBlockCount == 2048);
+    return kernelSupported && workloadSupported;
+}
+
 void SFAMlaTiling::SplitBalanced()
 {
     CalcInnerSize(sfaInfo_->s2Size);
@@ -404,18 +421,12 @@ void SFAMlaTiling::SplitBalanced()
     tilingData_.innerSplitParams.set_s2BaseSize(sfaInnerSplitParams.s2BaseSize);
 
     usedCoreNum_ = aicNum_;
+    if (!IsSplitKVSupported()) {
+        return;
+    }
     const uint32_t sparseBlocks = (sfaInfo_->sparseBlockCount + 127U) / 128U;
-    const bool splitKVSupported =
-        sfaInfo_->isA5 && sfaInfo_->bSize > 0 && (sfaInfo_->bSize == 1 || sfaInfo_->sparseBlockCount == 2048) &&
-        sfaInfo_->n2Size == 1 && sfaInfo_->s1Size > 0 && sfaInfo_->s2Size >= sfaInfo_->sparseBlockCount &&
-        sfaInfo_->sparseBlockCount >= 256 && sfaInfo_->sparseBlockCount <= 2048 && sfaInfo_->sparseBlockSize == 1 &&
-        sfaInfo_->gSize == 8 && sfaInfo_->ropeHeadDim == 64 && sfaInfo_->inputQType == ge::DT_BF16 &&
-        sfaInfo_->inputKvType == ge::DT_BF16 && sfaInfo_->outputType == ge::DT_BF16 &&
-        sfaInfo_->qLayout == SFALayout::TND && sfaInfo_->kvLayout == SFALayout::PA_BSND && sfaInfo_->sparseMode == 0 &&
-        !sfaInfo_->returnSoftmaxLse && sfaInfo_->opParamInfo.sinks.tensor == nullptr;
     // Each split processes at least one 128-index block. The merge UB holds at most 16 splits.
-    const uint32_t maxSplitCount =
-        splitKVSupported ? std::min({16U, aicNum_ / sfaInfo_->s1Size, sparseBlocks}) : 1U;
+    const uint32_t maxSplitCount = std::min({16U, aicNum_ / sfaInfo_->s1Size, sparseBlocks});
     uint32_t splitCount = 1;
     while (splitCount * 2U <= maxSplitCount) {
         splitCount *= 2U;
