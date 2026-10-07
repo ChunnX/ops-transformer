@@ -356,8 +356,10 @@ __aicore__ inline void QSFAVectorService<QSFAT>::ElewiseCompute(const RunInfo &i
         uint64_t qsfaS2ValidSizeSecondPart = v0ValidSizeUb_.GetValue(256 + info.loop % MERGE_CACHE_GM_BUF_NUM);
 
         int64_t qsfaS2ProcessSize = info.actualSingleProcessSInnerSize;
-        int64_t qsfaS2Pair = CeilDiv(qsfaS2ProcessSize, 2L * constInfo.sparseBlockSize);
-        int64_t qsfaS2Mid = CeilDiv(qsfaS2Pair, 2L) * 2 * constInfo.sparseBlockSize;
+        // MergeKv compacts a partial physical KV block. The split between the
+        // two AIVs therefore has to use the number of valid rows produced by
+        // the first half, rather than the fixed block-aligned midpoint.
+        int64_t qsfaS2Mid = static_cast<int64_t>(qsfaS2ValidSizeFirstPart);
         if (qsfaS2Mid > qsfaS2ProcessSize) {
             qsfaS2Mid = qsfaS2ProcessSize;
         }
@@ -818,12 +820,34 @@ __aicore__ inline void QSFAVectorService<QSFAT>::MergeKv(const RunInfo &runInfo)
     bool qsfaNeedWaitMte3ToMte2 = true;
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(0);
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(1);
-    int64_t qsfaS2GmStartOffset = GetSubBlockIdx() == 0 ? 0 : CeilDiv(s2Pair, 2L) * 2 * constInfo.sparseBlockSize;
-    int64_t qsfaS2GmLimit = GetSubBlockIdx() == 0 ? CeilDiv(s2Pair, 2L) * 2 * constInfo.sparseBlockSize : s2ProcessSize;
-    if (qsfaS2GmLimit > s2ProcessSize) {
-        qsfaS2GmLimit = s2ProcessSize;
+    // The logical loop below still advances by fixed sparse-block slots so
+    // that GetRealS2Idx visits the correct top-k entries. The destination
+    // offset is separate: CopyInSingleKv compacts a partial last block and
+    // can therefore produce fewer rows than one sparseBlockSize slot.
+    int64_t s2IdLimit = runInfo.curActualSeqLenOri;
+    if (constInfo.sparseMode == 3) {
+        s2IdLimit = runInfo.curActualSeqLenOri - runInfo.actS1Size + runInfo.gS1Idx / constInfo.gSize + 1;
     }
-    for (int64_t s2GmOffsetArray = qsfaS2GmStartOffset; s2GmOffsetArray < qsfaS2GmLimit;
+    int64_t qsfaS2LogicalMid = CeilDiv(s2Pair, 2L) * 2 * constInfo.sparseBlockSize;
+    if (qsfaS2LogicalMid > s2ProcessSize) {
+        qsfaS2LogicalMid = s2ProcessSize;
+    }
+    int64_t qsfaS2OutputMid = 0;
+    for (int64_t s2GmOffset = 0; s2GmOffset < qsfaS2LogicalMid; s2GmOffset += constInfo.sparseBlockSize) {
+        int64_t qsfaRealS2Idx = -1;
+        GetRealS2Idx(s2GmOffset, qsfaRealS2Idx, topkGmBaseOffset, runInfo);
+        int64_t qsfaKeyBNBOffset = GetKeyBNBOffset(qsfaRealS2Idx, runInfo, s2IdLimit);
+        if (qsfaKeyBNBOffset >= 0) {
+            qsfaS2OutputMid += (qsfaRealS2Idx + constInfo.sparseBlockSize > s2IdLimit) ?
+                                   (s2IdLimit - qsfaRealS2Idx) : constInfo.sparseBlockSize;
+        }
+    }
+
+    int64_t qsfaS2LogicalStart = GetSubBlockIdx() == 0 ? 0 : qsfaS2LogicalMid;
+    int64_t qsfaS2LogicalLimit = GetSubBlockIdx() == 0 ? qsfaS2LogicalMid : s2ProcessSize;
+    int64_t qsfaS2GmStartOffset = GetSubBlockIdx() == 0 ? 0 : qsfaS2OutputMid;
+    int64_t qsfaS2GmLimit = GetSubBlockIdx() == 0 ? qsfaS2OutputMid : s2ProcessSize;
+    for (int64_t s2GmOffsetArray = qsfaS2LogicalStart; s2GmOffsetArray < qsfaS2LogicalLimit;
          s2GmOffsetArray += 2 * constInfo.sparseBlockSize) {
         if (qsfaNeedWaitMte3ToMte2) {
             WaitFlag<AscendC::HardEvent::MTE3_MTE2>(qsfaMergeMte3Idx % 2);
