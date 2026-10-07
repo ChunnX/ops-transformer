@@ -3,12 +3,12 @@
 ## 产品支持情况
 | 产品                                                         | 是否支持 |
 | ------------------------------------------------------------ | :------: |
-|<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
+|<term>Ascend 950PR&950DT系列产品</term>|      ×     |
+|<term>Atlas A3系列产品</term>|      √     |
+|<term>Atlas A2系列产品</term>|      √     |
+|<term>Atlas 200I/500 A2推理产品</term>|      ×     |
+|<term>Atlas推理系列产品</term>|      ×     |
+|<term>Atlas训练系列产品</term>|      ×     |
 
 ## 功能说明
 - API功能：TurboQuantSparseFlashAttention算子面向 MLA（Multi-head Latent Attention）推理场景，对 4bit 量化存储的 KV latent 执行稀疏 Attention 计算。算子内部完成 KV 的反量化与 Attention 计算的融合，避免将反量化结果落盘到 GM，从而在 4bit KV 压缩比下保持访存效率。
@@ -75,6 +75,6 @@
 
 ## 精度说明
 -   本算子为 4bit 量化算子，其输出与全精度 Attention 之间存在量化本身引入的固有偏差，不属于算子实现缺陷。因此精度对标的标杆取**与算子采用相同量化方案的高精度 CPU 实现**（量化与反量化过程按 float64 计算），以剥离量化误差、只考察算子实现误差。
--   判定沿用 [experimental 精度标准](https://gitcode.com/cann/opbase/blob/master/docs/zh/ops_precision_standard/experimental_standard.md) 的双条件：
+-   判定沿用 [experimental 精度标准](https://atomgit.com/cann/opbase/blob/master/docs/zh/ops_precision_standard/mixed_tolerance_standard.md) 的双条件：
     -   匹配率：满足 $|actual - golden| \le atol + rtol \times |golden|$ 的元素占比 $\ge 0.99$；
     -   最大绝对误差不超过对应数据类型的硬上限。
