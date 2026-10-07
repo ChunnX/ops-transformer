@@ -263,6 +263,8 @@ def all_gather_matmul_multi_device_golden(thread_contexts, device_ids, all_preci
 def all_gather_base_mm_e2e_golden(
     cpu_inputs_per_rank, attrs, rank=None, ws=None, dist_avail=True
 ):
+    import torch
+
     world_size = len(cpu_inputs_per_rank)
     all_x1 = [inp[0].float() for inp in cpu_inputs_per_rank]
     gathered = torch.cat(all_x1, dim=0)

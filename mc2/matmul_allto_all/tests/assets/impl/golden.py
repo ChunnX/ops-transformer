@@ -286,6 +286,8 @@ def matmul_allto_all_multi_device_golden(thread_contexts, device_ids, all_precis
 def matmul_all_to_all_e2e_golden(
     cpu_inputs_per_rank, attrs, rank=None, ws=None, dist_avail=True
 ):
+    import torch
+
     world_size = len(cpu_inputs_per_rank)
     t_x1 = bool(attrs.get("transposeX1", False))
     t_x2 = bool(attrs.get("transposeX2", False))
