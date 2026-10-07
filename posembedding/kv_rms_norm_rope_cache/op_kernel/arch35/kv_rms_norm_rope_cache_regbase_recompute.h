@@ -148,17 +148,6 @@ public:
                                           innerLoopStride, count);
     }
 
-    __aicore__ inline void CalculateVOutVF(__ubuf__ T_KV*& yPtr, __ubuf__ T_KV*& xPtr, __ubuf__ T_KV*& gammaPtr,
-                                           __ubuf__ float*& xSumPtr, uint32_t ubFactor)
-    {
-        float reciprocal = this->reciprocal;
-        float epsilon = this->epsilon;
-        uint16_t repeatTimesFloor = ops::FloorDiv(ubFactor, VL_FP32);
-        uint16_t regTailWidth = ubFactor - repeatTimesFloor * VL_FP32;
-        asc_vf_call<CalculateVOutComputeVF<T_KV>>(yPtr, xPtr, gammaPtr, xSumPtr, ubFactor, reciprocal, epsilon,
-                                                  repeatTimesFloor, regTailWidth);
-    }
-
     // LoadDataAndCast2Fp32 / StoreQuantAndCastFromFp32 / StoreDataAndCastFromFp32 已提取为
     // kv_rms_norm_rope_cache_regbase_vf.h 中的 __simd_callee__ 自由模板函数，
     // 调用点全部位于各 VF 体内，此处不再保留类成员定义
@@ -274,7 +263,12 @@ public:
             xLocal = inQueueX.DeQue<T_KV>();
             gammaLocal = inQueueGamma.DeQue<T_KV>();
 
-            CalculateVOutVF(vPtr, xPtr, gammaPtr, xSumPtr, tmpFactor);
+            float reciprocal = this->reciprocal;
+            float epsilon = this->epsilon;
+            uint16_t repeatTimesFloor = ops::FloorDiv(tmpFactor, VL_FP32);
+            uint16_t regTailWidth = tmpFactor - repeatTimesFloor * VL_FP32;
+            asc_vf_call<CalculateVOutComputeVF<T_KV>>(vPtr, xPtr, gammaPtr, xSumPtr, tmpFactor, reciprocal, epsilon,
+                                                      repeatTimesFloor, regTailWidth);
 
             outQueue.EnQue<T_KV>(vOutLocal);
             vOutLocal = outQueue.DeQue<T_KV>();
@@ -296,20 +290,6 @@ public:
     }
 
     // 需要中间结果+量化+偏移
-    __aicore__ inline void CalculateVOutAsymQuantWithKvVF(__ubuf__ T_KV*& outPtr, __ubuf__ T_KV*& xPtr,
-                                                          __ubuf__ T_KV*& gammaPtr, __ubuf__ float*& xSumPtr,
-                                                          __ubuf__ float*& vScalePtr, __ubuf__ float*& vOffsetPtr,
-                                                          __ubuf__ T_V_CACHE*& vQuantPtr, uint32_t ubFactor)
-    {
-        float reciprocal = this->reciprocal;
-        float epsilon = this->epsilon;
-        uint16_t repeatTimesFloor = ops::FloorDiv(ubFactor, VL_FP32);
-        uint16_t regTailWidth = ubFactor - repeatTimesFloor * VL_FP32;
-        asc_vf_call<CalculateVOutAsymQuantWithKvComputeVF<T_KV, T_V_CACHE>>(outPtr, xPtr, gammaPtr, xSumPtr, vScalePtr,
-                                                                            vOffsetPtr, vQuantPtr, ubFactor, reciprocal,
-                                                                            epsilon, repeatTimesFloor, regTailWidth);
-    }
-
     __aicore__ inline void RmsNormAsymQuantWithVCache(int64_t xDimOffset, int64_t rowIdx, int64_t vCacheRowOffset)
     {
         // RmsNorm: step 1. Σ x^2
@@ -381,7 +361,13 @@ public:
                 AscendC::Duplicate<float>(vOffsetLocal, vOffsetLocal, this->ubFactor);
             }
 
-            CalculateVOutAsymQuantWithKvVF(vPtr, xPtr, gammaPtr, xSumPtr, vScalePtr, vOffsetPtr, vQuantPtr, tmpFactor);
+            float reciprocal = this->reciprocal;
+            float epsilon = this->epsilon;
+            uint16_t repeatTimesFloor = ops::FloorDiv(tmpFactor, VL_FP32);
+            uint16_t regTailWidth = tmpFactor - repeatTimesFloor * VL_FP32;
+            asc_vf_call<CalculateVOutAsymQuantWithKvComputeVF<T_KV, T_V_CACHE>>(
+                vPtr, xPtr, gammaPtr, xSumPtr, vScalePtr, vOffsetPtr, vQuantPtr, tmpFactor, reciprocal, epsilon,
+                repeatTimesFloor, regTailWidth);
 
             outQueue.EnQue<T_KV>(vOutLocal);
             vOutLocal = outQueue.DeQue<T_KV>();
@@ -403,20 +389,6 @@ public:
     }
 
     // 需要中间结果 + 量化
-    __aicore__ inline void CalculateVOutSymQuantWithKvVF(__ubuf__ T_KV*& outPtr, __ubuf__ T_KV*& xPtr,
-                                                         __ubuf__ T_KV*& gammaPtr, __ubuf__ float*& xSumPtr,
-                                                         __ubuf__ float*& vScalePtr, __ubuf__ T_V_CACHE*& vQuantPtr,
-                                                         uint32_t ubFactor)
-    {
-        float reciprocal = this->reciprocal;
-        float epsilon = this->epsilon;
-        uint16_t repeatTimesFloor = ops::FloorDiv(ubFactor, VL_FP32);
-        uint16_t regTailWidth = ubFactor - repeatTimesFloor * VL_FP32;
-        asc_vf_call<CalculateVOutSymQuantWithKvComputeVF<T_KV, T_V_CACHE>>(outPtr, xPtr, gammaPtr, xSumPtr, vScalePtr,
-                                                                           vQuantPtr, ubFactor, reciprocal, epsilon,
-                                                                           repeatTimesFloor, regTailWidth);
-    }
-
     __aicore__ inline void RmsNormSymQuantWithVCache(int64_t xDimOffset, int64_t rowIdx, int64_t vCacheRowOffset)
     {
         // RmsNorm: step 1. Σ x^2
@@ -473,7 +445,13 @@ public:
                 AscendC::Duplicate<float>(vScaleLocal, vScaleLocal, this->ubFactor);
             }
 
-            CalculateVOutSymQuantWithKvVF(vPtr, xPtr, gammaPtr, xSumPtr, vScalePtr, vQuantPtr, tmpFactor);
+            float reciprocal = this->reciprocal;
+            float epsilon = this->epsilon;
+            uint16_t repeatTimesFloor = ops::FloorDiv(tmpFactor, VL_FP32);
+            uint16_t regTailWidth = tmpFactor - repeatTimesFloor * VL_FP32;
+            asc_vf_call<CalculateVOutSymQuantWithKvComputeVF<T_KV, T_V_CACHE>>(vPtr, xPtr, gammaPtr, xSumPtr, vScalePtr,
+                                                                               vQuantPtr, tmpFactor, reciprocal,
+                                                                               epsilon, repeatTimesFloor, regTailWidth);
 
             outQueue.EnQue<T_KV>(vOutLocal);
             vOutLocal = outQueue.DeQue<T_KV>();
@@ -495,20 +473,6 @@ public:
     }
 
     // 不需要中间结果+量化+偏移
-    __aicore__ inline void CalculateVOutAsymQuantVF(__ubuf__ T_KV*& xPtr, __ubuf__ T_KV*& gammaPtr,
-                                                    __ubuf__ float*& xSumPtr, __ubuf__ float*& vScalePtr,
-                                                    __ubuf__ float*& vOffsetPtr, __ubuf__ T_V_CACHE*& vQuantPtr,
-                                                    uint32_t ubFactor)
-    {
-        float reciprocal = this->reciprocal;
-        float epsilon = this->epsilon;
-        uint16_t repeatTimesFloor = ops::FloorDiv(ubFactor, VL_FP32);
-        uint16_t regTailWidth = ubFactor - repeatTimesFloor * VL_FP32;
-        asc_vf_call<CalculateVOutAsymQuantComputeVF<T_KV, T_V_CACHE>>(xPtr, gammaPtr, xSumPtr, vScalePtr, vOffsetPtr,
-                                                                      vQuantPtr, ubFactor, reciprocal, epsilon,
-                                                                      repeatTimesFloor, regTailWidth);
-    }
-
     __aicore__ inline void RmsNormAsymQuant(int64_t xDimOffset, int64_t vCacheRowOffset)
     {
         // RmsNorm: step 1. Σ x^2
@@ -577,7 +541,13 @@ public:
                 AscendC::Duplicate<float>(vOffsetLocal, vOffsetLocal, this->ubFactor);
             }
 
-            CalculateVOutAsymQuantVF(xPtr, gammaPtr, xSumPtr, vScalePtr, vOffsetPtr, vQuantPtr, tmpFactor);
+            float reciprocal = this->reciprocal;
+            float epsilon = this->epsilon;
+            uint16_t repeatTimesFloor = ops::FloorDiv(tmpFactor, VL_FP32);
+            uint16_t regTailWidth = tmpFactor - repeatTimesFloor * VL_FP32;
+            asc_vf_call<CalculateVOutAsymQuantComputeVF<T_KV, T_V_CACHE>>(xPtr, gammaPtr, xSumPtr, vScalePtr,
+                                                                          vOffsetPtr, vQuantPtr, tmpFactor, reciprocal,
+                                                                          epsilon, repeatTimesFloor, regTailWidth);
 
             outQueue.EnQue<T_KV>(vOutLocal);
             vOutLocal = outQueue.DeQue<T_KV>();
@@ -593,20 +563,6 @@ public:
             outQueue.FreeTensor(vOutLocal);
             vScaleOffsetQueue.FreeTensor(vScaleLocal);
         }
-    }
-
-    // 不需要中间结果 + 量化
-    __aicore__ inline void CalculateVOutSymQuantVF(__ubuf__ T_V_CACHE*& vQuantPtr, __ubuf__ T_KV*& xPtr,
-                                                   __ubuf__ T_KV*& gammaPtr, __ubuf__ float*& xSumPtr,
-                                                   __ubuf__ float*& vScalePtr, uint32_t ubFactor)
-    {
-        float reciprocal = this->reciprocal;
-        float epsilon = this->epsilon;
-        uint16_t repeatTimesFloor = ops::FloorDiv(ubFactor, VL_FP32);
-        uint16_t regTailWidth = ubFactor - repeatTimesFloor * VL_FP32;
-        asc_vf_call<CalculateVOutSymQuantComputeVF<T_KV, T_V_CACHE>>(vQuantPtr, xPtr, gammaPtr, xSumPtr, vScalePtr,
-                                                                     ubFactor, reciprocal, epsilon, repeatTimesFloor,
-                                                                     regTailWidth);
     }
 
     __aicore__ inline void ScatterUpdateV(int64_t rowIdx, int64_t ubIdx, int64_t tmpFactor)
@@ -778,7 +734,13 @@ public:
                 AscendC::Duplicate<float>(vScaleLocal, vScaleLocal, this->ubFactor);
             }
 
-            CalculateVOutSymQuantVF(vQuantPtr, xPtr, gammaPtr, xSumPtr, vScalePtr, tmpFactor);
+            float reciprocal = this->reciprocal;
+            float epsilon = this->epsilon;
+            uint16_t repeatTimesFloor = ops::FloorDiv(tmpFactor, VL_FP32);
+            uint16_t regTailWidth = tmpFactor - repeatTimesFloor * VL_FP32;
+            asc_vf_call<CalculateVOutSymQuantComputeVF<T_KV, T_V_CACHE>>(vQuantPtr, xPtr, gammaPtr, xSumPtr, vScalePtr,
+                                                                         tmpFactor, reciprocal, epsilon,
+                                                                         repeatTimesFloor, regTailWidth);
 
             outQueue.EnQue<T_KV>(vOutLocal);
             vOutLocal = outQueue.DeQue<T_KV>();
@@ -823,45 +785,6 @@ public:
             // 普通情况， outLocal的类型需要指定
             RmsNormWithoutQuant(xDimOffset, rowIdx, vCacheRowOffset);
         }
-    }
-
-    __aicore__ inline void RopeVF(__ubuf__ T_KV*& outPtr1, __ubuf__ T_KV*& outPtr2, __ubuf__ T_KV*& ropePtr,
-                                  __ubuf__ T_KV*& cosPtr1, __ubuf__ T_KV*& cosPtr2, __ubuf__ T_KV*& sinPtr1,
-                                  __ubuf__ T_KV*& sinPtr2, __ubuf__ float*& tmpBufferPtr, uint32_t ubFactor)
-    {
-        uint32_t vlStride = VL_FP32 * CONST_TWO;
-        uint16_t repeatTimesFloor = ops::FloorDiv(ubFactor, vlStride);
-        uint16_t regTailWidth = (ubFactor - repeatTimesFloor * vlStride) / CONST_TWO;
-        asc_vf_call<RecomputeRopeComputeVF<T_KV>>(outPtr1, outPtr2, ropePtr, cosPtr1, cosPtr2, sinPtr1, sinPtr2,
-                                                  tmpBufferPtr, ubFactor, repeatTimesFloor, regTailWidth);
-    }
-
-    __aicore__ inline void RopeSymQuantVF(__ubuf__ T_K_CACHE*& quantPtr1, __ubuf__ T_K_CACHE*& quantPtr2,
-                                          __ubuf__ T_KV*& ropePtr, __ubuf__ T_KV*& cosPtr1, __ubuf__ T_KV*& cosPtr2,
-                                          __ubuf__ T_KV*& sinPtr1, __ubuf__ T_KV*& sinPtr2, __ubuf__ float*& scalePtr1,
-                                          __ubuf__ float*& scalePtr2, __ubuf__ float*& tmpBufferPtr, uint32_t ubFactor)
-    {
-        uint32_t vlStride = VL_FP32 * CONST_TWO;
-        uint16_t repeatTimesFloor = ops::FloorDiv(ubFactor, vlStride);
-        uint16_t regTailWidth = (ubFactor - repeatTimesFloor * vlStride) / CONST_TWO;
-        asc_vf_call<RecomputeRopeSymQuantComputeVF<T_KV, T_K_CACHE>>(
-            quantPtr1, quantPtr2, ropePtr, cosPtr1, cosPtr2, sinPtr1, sinPtr2, scalePtr1, scalePtr2, tmpBufferPtr,
-            ubFactor, repeatTimesFloor, regTailWidth);
-    }
-
-    __aicore__ inline void RopeSymQuantWithVF(__ubuf__ T_KV*& outPtr1, __ubuf__ T_KV*& outPtr2,
-                                              __ubuf__ T_K_CACHE*& quantPtr1, __ubuf__ T_K_CACHE*& quantPtr2,
-                                              __ubuf__ T_KV*& ropePtr, __ubuf__ T_KV*& cosPtr1, __ubuf__ T_KV*& cosPtr2,
-                                              __ubuf__ T_KV*& sinPtr1, __ubuf__ T_KV*& sinPtr2,
-                                              __ubuf__ float*& scalePtr1, __ubuf__ float*& scalePtr2,
-                                              __ubuf__ float*& tmpBufferPtr, uint32_t ubFactor)
-    {
-        uint32_t vlStride = VL_FP32 * CONST_TWO;
-        uint16_t repeatTimesFloor = ops::FloorDiv(ubFactor, vlStride);
-        uint16_t regTailWidth = (ubFactor - repeatTimesFloor * vlStride) / CONST_TWO;
-        asc_vf_call<RecomputeRopeSymQuantWithComputeVF<T_KV, T_K_CACHE>>(
-            outPtr1, outPtr2, quantPtr1, quantPtr2, ropePtr, cosPtr1, cosPtr2, sinPtr1, sinPtr2, scalePtr1, scalePtr2,
-            tmpBufferPtr, ubFactor, repeatTimesFloor, regTailWidth);
     }
 
     __aicore__ inline void RopeSymQuantWithKCache(int64_t xDimOffset, int64_t rowIdx, int64_t cosSinDimOffset,
@@ -942,8 +865,13 @@ public:
                 AscendC::Duplicate<float>(kScaleLocalPart1, kScaleLocalPart1, this->ubFactor);
             }
 
-            RopeSymQuantWithVF(kOutPtr1, kOutPtr2, kQuantPtr1, kQuantPtr2, ropePtr, cosPtr1, cosPtr2, sinPtr1, sinPtr2,
-                               scalePtr1, scalePtr2, tmpBufferPtr, tmpFactor);
+            uint32_t ubFactor = tmpFactor;
+            uint32_t vlStride = VL_FP32 * CONST_TWO;
+            uint16_t repeatTimesFloor = ops::FloorDiv(ubFactor, vlStride);
+            uint16_t regTailWidth = (ubFactor - repeatTimesFloor * vlStride) / CONST_TWO;
+            asc_vf_call<RecomputeRopeSymQuantWithComputeVF<T_KV, T_K_CACHE>>(
+                kOutPtr1, kOutPtr2, kQuantPtr1, kQuantPtr2, ropePtr, cosPtr1, cosPtr2, sinPtr1, sinPtr2, scalePtr1,
+                scalePtr2, tmpBufferPtr, ubFactor, repeatTimesFloor, regTailWidth);
 
             outQueue.EnQue<T_KV>(kOutLocal);
             kOutLocal = outQueue.DeQue<T_KV>();
@@ -963,21 +891,6 @@ public:
             kScaleOffsetQueue.FreeTensor(kScaleLocalPart1);
             inQueueX.FreeTensor(ropeLocal);
         }
-    }
-
-    __aicore__ inline void RopeAsymQuantVF(__ubuf__ T_K_CACHE*& quantPtr1, __ubuf__ T_K_CACHE*& quantPtr2,
-                                           __ubuf__ T_KV*& ropePtr, __ubuf__ T_KV*& cosPtr1, __ubuf__ T_KV*& cosPtr2,
-                                           __ubuf__ T_KV*& sinPtr1, __ubuf__ T_KV*& sinPtr2, __ubuf__ float*& scalePtr1,
-                                           __ubuf__ float*& scalePtr2, __ubuf__ float*& offsetPtr1,
-                                           __ubuf__ float*& offsetPtr2, __ubuf__ float*& tmpBufferPtr,
-                                           uint32_t ubFactor)
-    {
-        uint32_t vlStride = VL_FP32 * CONST_TWO;
-        uint16_t repeatTimesFloor = ops::FloorDiv(ubFactor, vlStride);
-        uint16_t regTailWidth = (ubFactor - repeatTimesFloor * vlStride) / CONST_TWO;
-        asc_vf_call<RecomputeRopeAsymQuantComputeVF<T_KV, T_K_CACHE>>(
-            quantPtr1, quantPtr2, ropePtr, cosPtr1, cosPtr2, sinPtr1, sinPtr2, scalePtr1, scalePtr2, offsetPtr1,
-            offsetPtr2, tmpBufferPtr, ubFactor, repeatTimesFloor, regTailWidth);
     }
 
     __aicore__ inline void RopeAsymQuant(int64_t xDimOffset, int64_t rowIdx, int64_t cosSinDimOffset,
@@ -1068,8 +981,13 @@ public:
                 AscendC::Duplicate<float>(kOffsetLocalPart1, kOffsetLocalPart1, this->ubFactor);
             }
 
-            RopeAsymQuantVF(kQuantPtr1, kQuantPtr2, ropePtr, cosPtr1, cosPtr2, sinPtr1, sinPtr2, scalePtr1, scalePtr2,
-                            offsetPtr1, offsetPtr2, tmpBufferPtr, tmpFactor);
+            uint32_t ubFactor = tmpFactor;
+            uint32_t vlStride = VL_FP32 * CONST_TWO;
+            uint16_t repeatTimesFloor = ops::FloorDiv(ubFactor, vlStride);
+            uint16_t regTailWidth = (ubFactor - repeatTimesFloor * vlStride) / CONST_TWO;
+            asc_vf_call<RecomputeRopeAsymQuantComputeVF<T_KV, T_K_CACHE>>(
+                kQuantPtr1, kQuantPtr2, ropePtr, cosPtr1, cosPtr2, sinPtr1, sinPtr2, scalePtr1, scalePtr2, offsetPtr1,
+                offsetPtr2, tmpBufferPtr, ubFactor, repeatTimesFloor, regTailWidth);
 
             outQueue.EnQue<T_K_CACHE>(kQuantLocal);
             kQuantLocal = outQueue.DeQue<T_K_CACHE>();
@@ -1386,8 +1304,13 @@ public:
                 AscendC::Duplicate<float>(kScaleLocalPart1, kScaleLocalPart1, this->ubFactor);
             }
 
-            RopeSymQuantVF(kQuantPtr1, kQuantPtr2, ropePtr, cosPtr1, cosPtr2, sinPtr1, sinPtr2, scalePtr1, scalePtr2,
-                           tmpBufferPtr, tmpFactor);
+            uint32_t ubFactor = tmpFactor;
+            uint32_t vlStride = VL_FP32 * CONST_TWO;
+            uint16_t repeatTimesFloor = ops::FloorDiv(ubFactor, vlStride);
+            uint16_t regTailWidth = (ubFactor - repeatTimesFloor * vlStride) / CONST_TWO;
+            asc_vf_call<RecomputeRopeSymQuantComputeVF<T_KV, T_K_CACHE>>(
+                kQuantPtr1, kQuantPtr2, ropePtr, cosPtr1, cosPtr2, sinPtr1, sinPtr2, scalePtr1, scalePtr2, tmpBufferPtr,
+                ubFactor, repeatTimesFloor, regTailWidth);
 
             outQueue.EnQue<T_K_CACHE>(kQuantLocal);
             kQuantLocal = outQueue.DeQue<T_K_CACHE>();
@@ -1456,7 +1379,12 @@ public:
             inQueueCosSin.EnQue<T_KV>(cosLocalPart1);
             cosLocalPart1 = inQueueCosSin.DeQue<T_KV>();
 
-            RopeVF(outPtr1, outPtr2, ropePtr, cosPtr1, cosPtr2, sinPtr1, sinPtr2, tmpBufferPtr, tmpFactor);
+            uint32_t ubFactor = tmpFactor;
+            uint32_t vlStride = VL_FP32 * CONST_TWO;
+            uint16_t repeatTimesFloor = ops::FloorDiv(ubFactor, vlStride);
+            uint16_t regTailWidth = (ubFactor - repeatTimesFloor * vlStride) / CONST_TWO;
+            asc_vf_call<RecomputeRopeComputeVF<T_KV>>(outPtr1, outPtr2, ropePtr, cosPtr1, cosPtr2, sinPtr1, sinPtr2,
+                                                      tmpBufferPtr, ubFactor, repeatTimesFloor, regTailWidth);
 
             outQueue.EnQue<T_KV>(kOutLocal);
             kOutLocal = outQueue.DeQue<T_KV>();
@@ -1476,20 +1404,6 @@ public:
             inQueueCosSin.FreeTensor(cosLocalPart1);
             inQueueX.FreeTensor(ropeLocal);
         }
-    }
-
-    __aicore__ inline void RopeAsymQuantWithKvVF(
-        __ubuf__ T_KV*& outPtr1, __ubuf__ T_KV*& outPtr2, __ubuf__ T_K_CACHE*& quantPtr1,
-        __ubuf__ T_K_CACHE*& quantPtr2, __ubuf__ T_KV*& ropePtr, __ubuf__ T_KV*& cosPtr1, __ubuf__ T_KV*& cosPtr2,
-        __ubuf__ T_KV*& sinPtr1, __ubuf__ T_KV*& sinPtr2, __ubuf__ float*& scalePtr1, __ubuf__ float*& scalePtr2,
-        __ubuf__ float*& offsetPtr1, __ubuf__ float*& offsetPtr2, __ubuf__ float*& tmpBufferPtr, uint32_t ubFactor)
-    {
-        uint32_t vlStride = VL_FP32 * CONST_TWO;
-        uint16_t repeatTimesFloor = ops::FloorDiv(ubFactor, vlStride);
-        uint16_t regTailWidth = (ubFactor - repeatTimesFloor * vlStride) / CONST_TWO;
-        asc_vf_call<RecomputeRopeAsymQuantWithKvComputeVF<T_KV, T_K_CACHE>>(
-            outPtr1, outPtr2, quantPtr1, quantPtr2, ropePtr, cosPtr1, cosPtr2, sinPtr1, sinPtr2, scalePtr1, scalePtr2,
-            offsetPtr1, offsetPtr2, tmpBufferPtr, ubFactor, repeatTimesFloor, regTailWidth);
     }
 
     __aicore__ inline void RopeAsymQuantWithKCache(int64_t xDimOffset, int64_t rowIdx, int64_t cosSinDimOffset,
@@ -1589,8 +1503,13 @@ public:
                 AscendC::Duplicate<float>(kOffsetLocalPart1, kOffsetLocalPart1, this->ubFactor);
             }
 
-            RopeAsymQuantWithKvVF(kOutPtr1, kOutPtr2, kQuantPtr1, kQuantPtr2, ropePtr, cosPtr1, cosPtr2, sinPtr1,
-                                  sinPtr2, scalePtr1, scalePtr2, offsetPtr1, offsetPtr2, tmpBufferPtr, tmpFactor);
+            uint32_t ubFactor = tmpFactor;
+            uint32_t vlStride = VL_FP32 * CONST_TWO;
+            uint16_t repeatTimesFloor = ops::FloorDiv(ubFactor, vlStride);
+            uint16_t regTailWidth = (ubFactor - repeatTimesFloor * vlStride) / CONST_TWO;
+            asc_vf_call<RecomputeRopeAsymQuantWithKvComputeVF<T_KV, T_K_CACHE>>(
+                kOutPtr1, kOutPtr2, kQuantPtr1, kQuantPtr2, ropePtr, cosPtr1, cosPtr2, sinPtr1, sinPtr2, scalePtr1,
+                scalePtr2, offsetPtr1, offsetPtr2, tmpBufferPtr, ubFactor, repeatTimesFloor, regTailWidth);
 
             outQueue.EnQue<T_KV>(kOutLocal);
             kOutLocal = outQueue.DeQue<T_KV>();

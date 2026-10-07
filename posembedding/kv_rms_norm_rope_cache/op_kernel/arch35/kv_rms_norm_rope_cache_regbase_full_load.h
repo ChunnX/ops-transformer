@@ -264,65 +264,8 @@ public:
         }
     }
 
-    __aicore__ inline void RopeAsymQuantWithKvVF(
-        __ubuf__ T_KV* outFront, __ubuf__ T_KV* outBack, __ubuf__ T_K_CACHE* quantFront, __ubuf__ T_K_CACHE* quantBack,
-        __ubuf__ T_KV* x, __ubuf__ T_KV* realCos, __ubuf__ T_KV* imgCos, __ubuf__ T_KV* realSin, __ubuf__ T_KV* imgSin,
-        __ubuf__ float* realKScale, __ubuf__ float* imgKScale, __ubuf__ float* realKOffset, __ubuf__ float* imgKOffset,
-        __ubuf__ float* ws, uint16_t row, uint16_t colLoopCount, uint32_t colCosSin, uint32_t xOffset,
-        uint32_t cosSinOffset, uint32_t quantOutOffset)
-    {
-        asc_vf_call<FullLoadRopeAsymQuantWithKvComputeVF<T_KV, T_K_CACHE>>(
-            outFront, outBack, quantFront, quantBack, x, realCos, imgCos, realSin, imgSin, realKScale, imgKScale,
-            realKOffset, imgKOffset, ws, row, colLoopCount, colCosSin, xOffset, cosSinOffset, quantOutOffset, kVFTail);
-    }
-
-    __aicore__ inline void RopeSymQuantWithKvVF(
-        __ubuf__ T_KV* outFront, __ubuf__ T_KV* outBack, __ubuf__ T_K_CACHE* quantFront, __ubuf__ T_K_CACHE* quantBack,
-        __ubuf__ T_KV* x, __ubuf__ T_KV* realCos, __ubuf__ T_KV* imgCos, __ubuf__ T_KV* realSin, __ubuf__ T_KV* imgSin,
-        __ubuf__ float* realKScale, __ubuf__ float* imgKScale, __ubuf__ float* ws, uint16_t row, uint16_t colLoopCount,
-        uint32_t colCosSin, uint32_t xOffset, uint32_t cosSinOffset, uint32_t quantOutOffset)
-    {
-        asc_vf_call<FullLoadRopeSymQuantWithKvComputeVF<T_KV, T_K_CACHE>>(
-            outFront, outBack, quantFront, quantBack, x, realCos, imgCos, realSin, imgSin, realKScale, imgKScale, ws,
-            row, colLoopCount, colCosSin, xOffset, cosSinOffset, quantOutOffset, kVFTail);
-    }
-
-    __aicore__ inline void RopeAsymQuantVF(__ubuf__ T_K_CACHE* quantFront, __ubuf__ T_K_CACHE* quantBack,
-                                           __ubuf__ T_KV* x, __ubuf__ T_KV* realCos, __ubuf__ T_KV* imgCos,
-                                           __ubuf__ T_KV* realSin, __ubuf__ T_KV* imgSin, __ubuf__ float* realKScale,
-                                           __ubuf__ float* imgKScale, __ubuf__ float* realKOffset,
-                                           __ubuf__ float* imgKOffset, __ubuf__ float* ws, uint16_t row,
-                                           uint16_t colLoopCount, uint32_t colCosSin, uint32_t xOffset,
-                                           uint32_t cosSinOffset, uint32_t quantOutOffset)
-    {
-        asc_vf_call<FullLoadRopeAsymQuantComputeVF<T_KV, T_K_CACHE>>(
-            quantFront, quantBack, x, realCos, imgCos, realSin, imgSin, realKScale, imgKScale, realKOffset, imgKOffset,
-            ws, row, colLoopCount, colCosSin, xOffset, cosSinOffset, quantOutOffset, kVFTail);
-    }
-
-    __aicore__ inline void RopeSymQuantVF(__ubuf__ T_K_CACHE* quantFront, __ubuf__ T_K_CACHE* quantBack,
-                                          __ubuf__ T_KV* x, __ubuf__ T_KV* realCos, __ubuf__ T_KV* imgCos,
-                                          __ubuf__ T_KV* realSin, __ubuf__ T_KV* imgSin, __ubuf__ float* realKScale,
-                                          __ubuf__ float* imgKScale, __ubuf__ float* ws, uint16_t row,
-                                          uint16_t colLoopCount, uint32_t colCosSin, uint32_t xOffset,
-                                          uint32_t cosSinOffset, uint32_t quantOutOffset)
-    {
-        asc_vf_call<FullLoadRopeSymQuantComputeVF<T_KV, T_K_CACHE>>(
-            quantFront, quantBack, x, realCos, imgCos, realSin, imgSin, realKScale, imgKScale, ws, row, colLoopCount,
-            colCosSin, xOffset, cosSinOffset, quantOutOffset, kVFTail);
-    }
-
     // RopeBasicComputeVF 已提取为 kv_rms_norm_rope_cache_regbase_vf.h 中的 __simd_callee__ 自由模板函数，
     // 调用点全部位于各 VF 体内，此处不再保留类成员定义
-
-    __aicore__ inline void RopeVF(__ubuf__ T_KV* outFront, __ubuf__ T_KV* outBack, __ubuf__ T_KV* x,
-                                  __ubuf__ T_KV* realCos, __ubuf__ T_KV* imgCos, __ubuf__ T_KV* realSin,
-                                  __ubuf__ T_KV* imgSin, __ubuf__ float* ws, uint16_t row, uint16_t colLoopCount,
-                                  uint32_t colCosSin, uint32_t xOffset, uint32_t cosSinOffset)
-    {
-        asc_vf_call<FullLoadRopeComputeVF<T_KV>>(outFront, outBack, x, realCos, imgCos, realSin, imgSin, ws, row,
-                                                 colLoopCount, colCosSin, xOffset, cosSinOffset, kVFTail);
-    }
 
     __aicore__ inline void Rope(const LocalTensor<T_KV>& xLocal, const LocalTensor<T_KV>& realCosLocal,
                                 const LocalTensor<T_KV>& imgCosLocal, const LocalTensor<T_KV>& realSinLocal,
@@ -362,13 +305,14 @@ public:
                 __ubuf__ T_K_CACHE* quantFront = (__ubuf__ T_K_CACHE*)kQuantLocal.GetPhyAddr();
                 __ubuf__ T_K_CACHE* quantBack = (__ubuf__ T_K_CACHE*)kQuantLocal.GetPhyAddr() + tilingData_->halfDk;
                 if (tilingData_->kOffsetType > 0) {
-                    RopeAsymQuantWithKvVF(outFront, outBack, quantFront, quantBack, x, realCos, imgCos, realSin, imgSin,
-                                          realKScale, imgKScale, realKOffset, imgKOffset, ws, row, kVFLoop, colCosSin,
-                                          xOffset, cosSinOffset, quantOutOffset);
+                    asc_vf_call<FullLoadRopeAsymQuantWithKvComputeVF<T_KV, T_K_CACHE>>(
+                        outFront, outBack, quantFront, quantBack, x, realCos, imgCos, realSin, imgSin, realKScale,
+                        imgKScale, realKOffset, imgKOffset, ws, row, kVFLoop, colCosSin, xOffset, cosSinOffset,
+                        quantOutOffset, kVFTail);
                 } else {
-                    RopeSymQuantWithKvVF(outFront, outBack, quantFront, quantBack, x, realCos, imgCos, realSin, imgSin,
-                                         realKScale, imgKScale, ws, row, kVFLoop, colCosSin, xOffset, cosSinOffset,
-                                         quantOutOffset);
+                    asc_vf_call<FullLoadRopeSymQuantWithKvComputeVF<T_KV, T_K_CACHE>>(
+                        outFront, outBack, quantFront, quantBack, x, realCos, imgCos, realSin, imgSin, realKScale,
+                        imgKScale, ws, row, kVFLoop, colCosSin, xOffset, cosSinOffset, quantOutOffset, kVFTail);
                 }
                 outQueue.EnQue(kOutLocal);
                 kOutLocal = outQueue.DeQue<T_KV>();
@@ -377,12 +321,13 @@ public:
                 __ubuf__ T_K_CACHE* quantFront = (__ubuf__ T_K_CACHE*)kQuantLocal.GetPhyAddr();
                 __ubuf__ T_K_CACHE* quantBack = (__ubuf__ T_K_CACHE*)kQuantLocal.GetPhyAddr() + tilingData_->halfDk;
                 if (tilingData_->kOffsetType > 0) {
-                    RopeAsymQuantVF(quantFront, quantBack, x, realCos, imgCos, realSin, imgSin, realKScale, imgKScale,
-                                    realKOffset, imgKOffset, ws, row, kVFLoop, colCosSin, xOffset, cosSinOffset,
-                                    quantOutOffset);
+                    asc_vf_call<FullLoadRopeAsymQuantComputeVF<T_KV, T_K_CACHE>>(
+                        quantFront, quantBack, x, realCos, imgCos, realSin, imgSin, realKScale, imgKScale, realKOffset,
+                        imgKOffset, ws, row, kVFLoop, colCosSin, xOffset, cosSinOffset, quantOutOffset, kVFTail);
                 } else {
-                    RopeSymQuantVF(quantFront, quantBack, x, realCos, imgCos, realSin, imgSin, realKScale, imgKScale,
-                                   ws, row, kVFLoop, colCosSin, xOffset, cosSinOffset, quantOutOffset);
+                    asc_vf_call<FullLoadRopeSymQuantComputeVF<T_KV, T_K_CACHE>>(
+                        quantFront, quantBack, x, realCos, imgCos, realSin, imgSin, realKScale, imgKScale, ws, row,
+                        kVFLoop, colCosSin, xOffset, cosSinOffset, quantOutOffset, kVFTail);
                 }
                 outQueue.EnQue(kQuantLocal);
                 kQuantLocal = outQueue.DeQue<T_K_CACHE>();
@@ -391,8 +336,8 @@ public:
             kOutLocal = outQueue.AllocTensor<T_KV>();
             __ubuf__ T_KV* outFront = (__ubuf__ T_KV*)kOutLocal.GetPhyAddr();
             __ubuf__ T_KV* outBack = (__ubuf__ T_KV*)kOutLocal.GetPhyAddr() + tilingData_->halfDk;
-            RopeVF(outFront, outBack, x, realCos, imgCos, realSin, imgSin, ws, row, kVFLoop, colCosSin, xOffset,
-                   cosSinOffset);
+            asc_vf_call<FullLoadRopeComputeVF<T_KV>>(outFront, outBack, x, realCos, imgCos, realSin, imgSin, ws, row,
+                                                     kVFLoop, colCosSin, xOffset, cosSinOffset, kVFTail);
             outQueue.EnQue(kOutLocal);
             kOutLocal = outQueue.DeQue<T_K_CACHE>();
         }
