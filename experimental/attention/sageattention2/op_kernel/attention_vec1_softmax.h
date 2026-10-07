@@ -294,6 +294,40 @@ public:
         Catlass::SageAttn::CopyUbToL1zN(l1_p, ub_out_p, rows, ctx.block_n);
         Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
         Catlass::SageAttn::Sync<HardEvent::MTE3_S>();
+
+        // DBG-K（临时调试桩）：qb1 任务按 k dump block_max/block_sum 与 logits 前 8 行
+        if (ctx.cur_q_start == 128 && ctx.is_causal != 0 && ctx.d == 128 && k < 2u) {
+            const int64_t dbg_b = static_cast<int64_t>(ctx.cur_b);
+            const int64_t dbg_h = static_cast<int64_t>(ctx.cur_hkv) * static_cast<int64_t>(ctx.gqa_ratio)
+                                  + static_cast<int64_t>(ctx.cur_g0);
+            const Catlass::SageAttn::GmBhsdLayout dbg_layout =
+                Catlass::SageAttn::MakeGmBhsdLayout(ctx.b, ctx.hq, ctx.sq, ctx.d, ctx.is_hnd != 0);
+            Catlass::SageAttn::Sync<HardEvent::V_S>();
+            LocalTensor<float> dbg_bmax(TPosition::VECCALC, SlotV1BlockMax::Offset(), 64u);
+            LocalTensor<float> dbg_bsum(TPosition::VECCALC, SlotV1BlockSum::Offset(), 64u);
+            for (uint32_t i = 0; i < 16u; ++i) {
+                const int64_t off = dbg_layout(tla::MakeCoord(dbg_b, dbg_h,
+                                                 static_cast<int64_t>(128 + k * 16 + i), 0u))
+                                    * static_cast<int64_t>(sizeof(half));
+                __gm__ float* gp = reinterpret_cast<__gm__ float*>(ctx.out_gm + off);
+                gp[0] = dbg_bmax.GetValue(i);
+                gp[1] = dbg_bsum.GetValue(i);
+                gp[4] = dbg_bmax.GetValue(32u + i);
+                gp[5] = dbg_bsum.GetValue(32u + i);
+            }
+            for (uint32_t r = 0; r < 8u; ++r) {
+                Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
+                LocalTensor<float> dbg_lg(TPosition::VECCALC,
+                                          SlotV1Dot32::Offset() + r * ctx.block_n * sizeof(float), ctx.block_n);
+                GlobalTensor<float> gm_lg;
+                const int64_t off = dbg_layout(tla::MakeCoord(dbg_b, dbg_h,
+                                                 static_cast<int64_t>(160 + k * 8 + r), 0u))
+                                    * static_cast<int64_t>(sizeof(half));
+                gm_lg.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(ctx.out_gm + off));
+                DataCopy(gm_lg, dbg_lg, ctx.block_n);
+            }
+            Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
+        }
 #else
         RestageKvBlockHost(ctx, k);
 
