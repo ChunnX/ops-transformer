@@ -913,10 +913,17 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::CopyInKv(
     }
     if (mqVecConstInfo.kvQuantMode == 3) {
         int64_t validHitCount = (keyOffset1 >= 0) + (keyOffset2 >= 0);
-        int64_t keySrcStride = keyOffset2 - keyOffset1 - static_cast<int64_t>(TQ4_SLOT_BYTES);
+        // DataCopyExtParams.srcStride is expressed in 32-byte units on
+        // DAV_2201, while the cache offsets above are byte offsets.  C4 rows
+        // are 258 bytes, so only gaps that are representable in 32-byte units
+        // can use the two-burst fast path.  Otherwise use the ordered single
+        // row copies below; passing a byte gap directly here scales the GM
+        // address by 32 and can trigger an invalid-address device fault.
+        int64_t keySrcGap = keyOffset2 - keyOffset1 - static_cast<int64_t>(TQ4_SLOT_BYTES);
         // A two-burst copy is valid only when increasing GM order matches logical sparse-index order.
         // Descending, duplicate, tail, and stride-limit cases retain the ordered single-slot path.
-        if (validHitCount == 2 && keySrcStride >= 0 && keySrcStride < INT32_MAX) {
+        if (validHitCount == 2 && keySrcGap >= 0 && keySrcGap % static_cast<int64_t>(BYTE_BLOCK) == 0 &&
+            keySrcGap / static_cast<int64_t>(BYTE_BLOCK) < INT32_MAX) {
             int64_t stagedRow = mte2Size - mte3Size;
             if (stagedRow == 0) {
                 SetFlag<HardEvent::V_MTE2>(0);
@@ -926,7 +933,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::CopyInKv(
                 tmpBuff1.Get<uint8_t>()[TQ4_RAW_OFFSET + mergeMte3Idx % 2 * TQ4_RAW_REGION_BYTES +
                                         stagedRow * TQ4_SLOT_ROW_BYTES];
             DataCopyExtParams copyParams{static_cast<uint16_t>(validHitCount), TQ4_SLOT_BYTES,
-                                         static_cast<uint32_t>(keySrcStride), 0, 0};
+                                         static_cast<uint32_t>(keySrcGap / static_cast<int64_t>(BYTE_BLOCK)), 0, 0};
             DataCopyPadExtParams<uint8_t> padParams{true, 0, static_cast<uint8_t>(TQ4_SLOT_ROW_BYTES - TQ4_SLOT_BYTES),
                                                     0};
             DataCopyPad(slot, cmpTqGm_[keyOffset1], copyParams, padParams);
