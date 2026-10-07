@@ -225,9 +225,7 @@ public:
         LocalTensor<float> ub_vs(TPosition::VECCALC, SlotV1VsChan::Offset(), ctx.d);
 
         // 1. 最终输出归一化与写回 GM（纯向量流水与 MTE3 搬运，零标量计算、零 LSE 耦合）
-        if (ctx.cur_q_start == 128 && ctx.is_causal != 0 && ctx.d == 128) {
-            // bypass finalization to preserve dumped partials in rows 128, 129, 130
-        } else if (has_vm) {
+        if (has_vm) {
             if (ctx.d == 64u && ctx.d_og == 64u) {
                 FinalizeRowsImpl<true, 64u>(ctx, out_layout, b_idx, hkv_idx, sq_start, ub_vm, ub_half, ub_running_sum, ub_vs);
             } else if (ctx.d == 128u && ctx.d_og == 128u) {
