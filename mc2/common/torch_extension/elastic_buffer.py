@@ -952,6 +952,18 @@ class ElasticBuffer:
                 lambda: "engram_write in with_grad mode requires a non-empty storage",
             )
         if sf is not None:
+            torch._check(
+                sf.dim() == 2,
+                lambda: f"sf must be 2D, got dimensions: {sf.dim()}",
+            )
+            torch._check(
+                sf.is_contiguous(),
+                lambda: "sf must be contiguous",
+            )
+            torch._check(
+                sf.size(1) > 0,
+                lambda: f"sf second dimension must be positive, got: {sf.size(1)}",
+            )
             if self._with_grad:
                 torch._check(
                     sf.is_cpu,
@@ -976,6 +988,17 @@ class ElasticBuffer:
                     sf.size(0) == storage.size(0),
                     lambda: f"sf dim0 ({sf.size(0)}) must match full-table storage dim0 "
                     f"({storage.size(0)}) in local fetch_mode",
+                )
+            else:
+                torch._check(
+                    sf.size(0) == storage.size(0),
+                    lambda: f"sf dim0 ({sf.size(0)}) must match per-rank storage dim0 "
+                    f"({storage.size(0)}) in sliced fetch_mode",
+                )
+            if not self._with_grad:
+                torch._check(
+                    sf.device.type == torch.device("npu").type,
+                    lambda: f"inference sf must be on NPU, got device: {sf.device}",
                 )
             torch._check(
                 sf.dtype in _ENGRAM_SF_DTYPES,
@@ -1601,6 +1624,13 @@ class ElasticBuffer:
             raise RuntimeError(f"indices must be 1D, got dimensions: {indices.dim()}")
         if indices.dtype != torch.int32:
             raise RuntimeError(f"indices dtype must be int32, got: {indices.dtype}")
+        if not indices.is_contiguous():
+            raise RuntimeError("indices must be contiguous")
+        if self._engram_sf is not None and self._engram_sf.device != indices.device:
+            raise RuntimeError(
+                f"indices and sf must be on the same NPU device, got indices: {indices.device}, "
+                f"sf: {self._engram_sf.device}"
+            )
         if self._runtime is None:
             raise RuntimeError(
                 "engram_fetch cannot be called after destroy, please create a new ElasticBuffer instance"
