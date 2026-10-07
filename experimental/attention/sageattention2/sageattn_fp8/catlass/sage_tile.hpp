@@ -256,7 +256,8 @@ __aicore__ inline __attribute__((always_inline)) void CopyL0CToUbSplitM(
     AscendC::LocalTensor<ElementC> ub_dst0;
     ub_dst0.SetAddr(ub0_desc);
 
-    if (m <= M_SPLIT) {
+    if (m <= M_SPLIT || true) {
+        // DBG-FIX1（临时实验）：单条发射 mSize=128，替代双段手发——验证 SSBUF 完成语义假设
         fp.mSize = static_cast<uint16_t>(m);
         AscendC::Fixpipe<ElementC, ElementC, cfg>(ub_dst0, l0c_tensor, fp);
     } else {
