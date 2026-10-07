@@ -1053,7 +1053,7 @@ __simd_vf__ __aicore__ inline __attribute__((always_inline)) void SoftmaxProbRow
     using namespace AscendC;
     using namespace AscendC::MicroAPI;
     auto full = CreateMask<float, MaskPattern::ALL>();
-    static constexpr CastTrait toFp8{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+    static constexpr CastTrait toFp8{RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
     RegTensor<float> floor_val, zero_reg, sentinel_reg;
     Duplicate(floor_val, -88.0f);
     Duplicate(zero_reg, 0.0f);

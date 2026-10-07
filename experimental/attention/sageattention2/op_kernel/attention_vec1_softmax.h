@@ -295,42 +295,7 @@ public:
         Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
         Catlass::SageAttn::Sync<HardEvent::MTE3_S>();
 
-        // DBG-K（临时调试桩）：qb1 任务按 k dump block_max/block_sum、运行状态与 logits 前 8 行
-        if (ctx.cur_q_start == 128 && ctx.is_causal != 0 && ctx.d == 128 && k < 3u) {
-            const int64_t dbg_b = static_cast<int64_t>(ctx.cur_b);
-            const int64_t dbg_h = static_cast<int64_t>(ctx.cur_hkv) * static_cast<int64_t>(ctx.gqa_ratio)
-                                  + static_cast<int64_t>(ctx.cur_g0);
-            const Catlass::SageAttn::GmBhsdLayout dbg_layout =
-                Catlass::SageAttn::MakeGmBhsdLayout(ctx.b, ctx.hq, ctx.sq, ctx.d, ctx.is_hnd != 0);
 
-            auto dump_64 = [&](uint32_t row_idx, const LocalTensor<float>& ub_src) __aicore__ {
-                Catlass::SageAttn::Sync<HardEvent::V_MTE3>();
-                GlobalTensor<float> gm_dst;
-                const int64_t off = dbg_layout(tla::MakeCoord(dbg_b, dbg_h, static_cast<int64_t>(row_idx), 0u)) * static_cast<int64_t>(sizeof(half));
-                gm_dst.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(ctx.out_gm + off));
-                DataCopy(gm_dst, ub_src, 64u);
-                Catlass::SageAttn::Sync<HardEvent::MTE3_V>();
-            };
-
-            const uint32_t base_r = 128u + k * 16u;
-            LocalTensor<float> dbg_bmax(TPosition::VECCALC, SlotV1BlockMax::Offset(), 64u);
-            LocalTensor<float> dbg_bsum(TPosition::VECCALC, SlotV1BlockSum::Offset(), 64u);
-            LocalTensor<float> dbg_rmax(TPosition::VECCALC, SlotV1RowMax::Offset(), 64u);
-            LocalTensor<float> dbg_rsum(TPosition::VECCALC, SlotV1RowSum::Offset(), 64u);
-            LocalTensor<float> dbg_fac(TPosition::VECCALC, SlotV1RsFactor::Offset(), 64u);
-
-            dump_64(base_r + 0u, dbg_bmax);
-            dump_64(base_r + 1u, dbg_bsum);
-            dump_64(base_r + 2u, dbg_rmax);
-            dump_64(base_r + 3u, dbg_rsum);
-            dump_64(base_r + 4u, dbg_fac);
-
-            for (uint32_t r = 0; r < 8u; ++r) {
-                LocalTensor<float> dbg_lg(TPosition::VECCALC,
-                                          SlotV1Dot32::Offset() + r * ctx.block_n * sizeof(float), 64u);
-                dump_64(base_r + 5u + r, dbg_lg);
-            }
-        }
 #else
         RestageKvBlockHost(ctx, k);
 
