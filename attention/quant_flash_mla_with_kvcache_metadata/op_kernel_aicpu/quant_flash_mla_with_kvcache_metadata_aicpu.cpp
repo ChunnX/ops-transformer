@@ -195,7 +195,7 @@ bool QuantFlashMlaWithKvcacheMetadataCpuKernel::ParamsInit()
     // KV cache为PA布局, 分核侧统一按BSND处理
     baseInfo.layoutKv = ConvertToLayout("BSND");
     // MLA量化场景: quantMode 1=FP8_E4M3, 0=HIFLOAT8, 按量化模式设置分核代价估算的数据类型(均为1字节)
-    load_balance::DataType quantDtype = (quantMode_ == 1) ? load_balance::DataType::FP8 :
+    load_balance::DataType quantDtype = (quantMode_ == 1) ? load_balance::DataType::FP8_E4M3FN :
                                         (quantMode_ == 0) ? load_balance::DataType::HIFP8 :
                                                             load_balance::DataType::INT8;
     baseInfo.queryType = quantDtype;
