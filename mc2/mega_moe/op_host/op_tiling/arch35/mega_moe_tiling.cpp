@@ -2561,11 +2561,10 @@ static ge::graphStatus CheckAndSetTensorMetadata(const gert::TilingContext* cont
 }
 
 /*
- * 从 x 和 topkIds 提取 bs、H 与 topK，校验取值范围以及按拓扑和权重分形确定的 H 对齐要求。
+ * 从 x 和 topkIds 提取 bs、H 与 topK，校验取值范围以及按拓扑确定的 H 对齐要求。
  */
 static ge::graphStatus CheckAndSetTokenDimensions(const gert::TilingContext* context, MegaMoeTilingData* tilingData,
-                                                  const MegaMoeConfig& config, const MegaMoeExpertParams& expertParams,
-                                                  const char* nodeName)
+                                                  const MegaMoeConfig& config, const char* nodeName)
 {
     const gert::StorageShape* xStorageShape = context->GetInputShape(config.xIndex);
     const gert::StorageShape* topkIdsStorageShape = context->GetInputShape(config.topkIdsIndex);
@@ -2586,7 +2585,8 @@ static ge::graphStatus CheckAndSetTokenDimensions(const gert::TilingContext* con
             nodeName, "H", std::to_string(xDim1).c_str(),
             (std::string("should in [") + std::to_string(MIN_H) + ", " + std::to_string(MAX_H) + "]").c_str()),
         return ge::GRAPH_FAILED);
-    // URMA/Layered 保持 1K 对齐；其余 MTE 路径（含 A8W8 ND）统一按 64 对齐。
+    // URMA/Layered 保持 1K 对齐；其余 MTE 路径统一按 64 对齐——W4 的 NZ_C0_32 分形硬性要求
+    // GMM K 按 64 对齐，A8W8 的 ND/NZ 路径按需求对齐到同一口径（原为 32）。
     int64_t requiredHAlignment = tilingData->topoType == TOPO_TYPE_URMA ? URMA_H_ALIGN : MTE_H_ALIGN;
     OP_TILING_CHECK(
         xDim1 % requiredHAlignment != 0,
@@ -2681,7 +2681,7 @@ static ge::graphStatus CheckAndSetExpertExecutionParams(const gert::TilingContex
                         ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "expert GMM modes are invalid."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
-        CheckAndSetTokenDimensions(context, tilingData, config, expertParams, nodeName) != ge::GRAPH_SUCCESS,
+        CheckAndSetTokenDimensions(context, tilingData, config, nodeName) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "token dimensions are invalid."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckAndSetHiddenDim(context, tilingData, expertParams, nodeName) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "hiddenDim is invalid."), return ge::GRAPH_FAILED);
