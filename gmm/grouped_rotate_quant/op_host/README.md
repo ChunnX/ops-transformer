@@ -12,7 +12,7 @@
 | `grouped_rotate_quant_infershape.cpp` | 注册 InferShape / InferDataType，分别处理 y 与 scale 两个动态列表 |
 | `op_tiling/arch35/grouped_rotate_quant_tiling.h/.cpp` | CompileInfo、TilingBaseClass 实现、平台读取、workspace、tilingData 保存及注册入口 |
 | `op_tiling/arch35/grouped_rotate_quant_planner.h` | 资源约束、三种 R 的分块配置、静态任务数及启动核数计算 |
-| `../op_kernel/arch35/grouped_rotate_quant_tiling_data.h` | Host/device 共用的固定 128 字节协议；当前仅有协议头文件 |
+| `../op_kernel/arch35/grouped_rotate_quant_tiling_data.h` | Host/device 共用的固定 128 字节协议；外层入口已实现，计算后端待接入，见 `../op_kernel/README.md` |
 
 根 CMake 通过 `op_host/CMakeLists.txt` 的 `add_modules_sources(OP_API_INDEPENDENT ON ...)` 接入 API、推导及 tiling，替代 API 阶段的临时源文件注册。当前只有一个 Ascend950 策略，直接调用 `GroupedRotateQuantTiling950::DoTiling()`，无需 GMM 的多模板回退或量化输入 scale tiling。
 
@@ -36,7 +36,7 @@
 
 每个 scale 的 shape 为对应 y 的 `[...,ceil(N/64),2]`。已知 rank 下的未知维度 -1 在推导阶段保留；未知 rank 不在本版支持范围。tiling 需要具体输入和输出描述符，且 ND 的 origin/storage shape 一致。
 
-ACLNN 路径已由调用方提供具体输出 shape，L0 按这些 shape 分配 Tensor，并不依赖上述符号输出分配。**单 x、多 y 的图模式还需要图框架提供可分配的具体输出 shape；本 Host 实现不把设备 group_list 声明为 Host 值依赖，也不完成数据依赖的图模式输出分配。**
+ACLNN 路径已由调用方提供具体输出 shape，L0 按这些 shape 分配 Tensor，并不依赖上述符号输出分配。当前仅支持 ACLNN 直调和 Torch 单算子调用，不支持图模式，也不把设备 group_list 声明为 Host 值依赖。
 
 ## 分块与资源约束
 
@@ -51,8 +51,8 @@ K/N 方向基础块均为 R，不进行 K 累加分块；M 方向块长 16 对�
 ```text
 L0A: 4*mTile*R <= L0A_size         # 两份 FP16/BF16 A
 L0B: 4*R*R <= L0B_size            # 两份 FP16/BF16 rotation
-L0C: 8*mTile*R <= L0C_size        # 保守沿用半 L0C 限制
-L1:  4*mTile*R + 2*R*R <= L1_size # A 双缓冲 + rotation 单缓冲
+L0C: 8*mTile*R <= L0C_size        # FP32 C 双缓冲
+L1:  4*mTile*R + 4*R*R <= L1_size # A 双缓冲 + rotation 双缓冲
 UB:  mTile*R <= 16384             # 每个 AIV 处理完整 tile
 UB:  52736 + 32*mTile <= UB_size  # 固定区域 + scale 行缓冲
 ```
@@ -84,4 +84,4 @@ tilingData 仅保存列表长度、分组/量化属性、输入总容量、runti
 
 `tests/ut/op_host` 包含元数据/分块模型测试，以及通过仓库 context faker 执行的注册入口测试，覆盖两种旋转布局、四种 split 模式、动态 M、空组、三种 R、异构 shape、128 字节协议、输出容量、dtype、平台及缓冲不足。
 
-本地 Windows 验证使用 g++ C++17 与最小 GTest/GE 接口替身执行模型及 Host 入口检查；替身用于检查本地 C++ 语法与控制流程，不能代替真实 CANN SDK 编译、仓库 UT 和 NPU 精度/性能测试。接入 Tensor API kernel 后仍需完成这些验证。
+外层入口另有 `tests/ut/op_kernel/run_outer_contract_tests.py`，可用普通 C++17 编译器及最小 SDK 替身验证参数传递和 ABI，并调用真实 Host model/planner 检查资源边界。这不等同于完整 Host UT；接入 Tensor API 后端后仍需完成真实 CANN SDK 编译、仓库 UT 和 NPU 精度/性能测试。

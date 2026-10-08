@@ -149,7 +149,7 @@ TEST(GroupedRotateQuantModel, WholeTileFitsEveryBuffer)
         EXPECT_LE(m * r * 4, h.l0ASize);
         EXPECT_LE(r * r * 4, h.l0BSize);
         EXPECT_LE(m * r * 8, h.l0CSize);
-        EXPECT_LE(m * r * 4 + r * r * 2, h.l1Size);
+        EXPECT_LE(m * r * 4 + r * r * 4, h.l1Size);
         EXPECT_LE(m * r, 16384U);
         EXPECT_LE(52736U + m * 32, h.ubSize);
     }
@@ -178,6 +178,19 @@ TEST(GroupedRotateQuantModel, HardwareLimitsAndTinyResourceRejection)
     EXPECT_FALSE(Plan(p, d, h));
     h.aicNum = 0;
     EXPECT_FALSE(Plan(p, d, h));
+}
+TEST(GroupedRotateQuantModel, RotationDoubleBufferL1Boundary)
+{
+    auto h = Hardware950();
+    uint32_t maxM = 0;
+    // R=128: two rotation slots (65536 B) plus two 16x128 A slots (8192 B).
+    h.l1Size = 40960; // the former single-rotation budget incorrectly accepted this
+    EXPECT_FALSE(ResourceLimit(h, 128, maxM));
+    h.l1Size = 73727;
+    EXPECT_FALSE(ResourceLimit(h, 128, maxM));
+    h.l1Size = 73728;
+    ASSERT_TRUE(ResourceLimit(h, 128, maxM));
+    EXPECT_EQ(maxM, 16U);
 }
 TEST(GroupedRotateQuantModel, EmptyInputsAndMixedEmptyGroups)
 {

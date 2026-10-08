@@ -30,11 +30,14 @@ inline size_t ProfileIndex(int64_t r) { return r == 32 ? 0 : (r == 64 ? 1 : 2); 
 inline bool ResourceLimit(const Hardware &h, uint64_t r, uint32_t &maxM)
 {
     const uint64_t rotationBytes = r * r * 2;
-    if (h.l1Size <= rotationBytes || h.l0BSize < rotationBytes * 2 || h.ubSize <= EPILOGUE_FIXED_BYTES) {
+    // The rotation-changing path uses two L1 B slots. Reserve both for every
+    // profile because the same R can serve shared and per-column rotations.
+    const uint64_t rotationL1Bytes = rotationBytes * 2;
+    if (h.l1Size <= rotationL1Bytes || h.l0BSize < rotationBytes * 2 || h.ubSize <= EPILOGUE_FIXED_BYTES) {
         return false;
     }
     const uint64_t limit = std::min({h.l0ASize / (r * 4), h.l0CSize / (r * 8),
-        (h.l1Size - rotationBytes) / (r * 4), EPILOGUE_MAX_ELEMENTS / r,
+        (h.l1Size - rotationL1Bytes) / (r * 4), EPILOGUE_MAX_ELEMENTS / r,
         (h.ubSize - EPILOGUE_FIXED_BYTES) / 32});
     maxM = static_cast<uint32_t>(limit / 16 * 16);
     return maxM >= 16;
