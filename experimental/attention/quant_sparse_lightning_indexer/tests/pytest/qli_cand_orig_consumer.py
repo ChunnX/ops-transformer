@@ -16,7 +16,7 @@
 #   cand_mode 切片迁移而来，承载全部 cand_mode=2（第二级 consumer）用例；2026-10-08 并入原
 #   qli_consumer_two_level.py（算子级精度矩阵）中形状不重复的 13 个用例与其端到端检查。
 #   - 本算子无 candidate_mode 属性：固定消费第一级输出的块级候选索引，候选尺寸约定与第一级一致
-#     （candidate_topk_blocks=2048 / candidate_block_size=8）
+#     （候选块个数由 candidate_topk_index 末维推导；候选块大小 candidate_block_size=8）
 #   - 每条用例默认「吃 golden 候选」比对（隔离 consumer 自身精度）；E2E_IDS 中的用例额外跑一遍
 #     「吃第一级 NPU 候选」的端到端比对（_e2e_check：以第一级真实输出为输入，与同一候选下的
 #     golden 比对，属链路一致性验证；第一级自身精度由主算子测试 qli_cand_orig.py 覆盖）
@@ -401,7 +401,7 @@ def gen_case_inputs(case):
 
 
 def npu_run(inputs, case, cand_in_npu=None):
-    """第二级 consumer 入口（candidate_topk_blocks=2048 / candidate_block_size=8）。
+    """第二级 consumer 入口（候选块个数由 candidate_topk_index 末维推导 / candidate_block_size=8）。
 
     本文件承载 cand_mode=2 用例：候选索引输入由 gen_cand_input 用 golden 候选准备（隔离 consumer
     自身精度）；含第一级 NPU 候选的生产链路端到端用例见同目录 qli_consumer_two_level.py。
@@ -430,9 +430,7 @@ def npu_run(inputs, case, cand_in_npu=None):
     )
     cand_blocks = case.get("cand_blocks", CAND_BLOCKS)
     if cand_blocks != CAND_BLOCKS:
-        pytest.skip(
-            f"本分支 candidate_topk_blocks 仅支持 {CAND_BLOCKS}（用例给 {cand_blocks}）"
-        )
+        pytest.skip(f"本分支候选块个数仅支持 {CAND_BLOCKS}（用例给 {cand_blocks}）")
     idx, vals = quant_sparse_lightning_indexer(
         inputs["q"],
         inputs["k_phys"],
@@ -440,7 +438,6 @@ def npu_run(inputs, case, cand_in_npu=None):
         inputs["q_scale"],
         inputs["k_scale_phys"],
         candidate_topk_index=cand_in_npu,
-        candidate_topk_blocks=CAND_BLOCKS,
         candidate_block_size=CAND_BS,
         **common,
     )

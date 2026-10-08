@@ -236,6 +236,14 @@ void QLIV2InfoParserConsumer::GetOptionalInputParaInfo()
     opParamInfo_.candidateTopkIndex.desc = context_->GetOptionalInputDesc(CANDIDATE_TOPK_INDEX_INPUT_INDEX);
     opParamInfo_.candidateBlockLength.tensor = context_->GetOptionalInputTensor(CANDIDATE_BLOCK_LENGTH_INDEX);
     opParamInfo_.candidateBlockLength.desc = context_->GetOptionalInputDesc(CANDIDATE_BLOCK_LENGTH_INDEX);
+    // candidate_topk_blocks 不再是入参: 候选块个数 = 输入 candidate_topk_index 的末维
+    // (与第一级输出维度一致; 取值校验见 CheckAttrParaInfo)
+    if (opParamInfo_.candidateTopkIndex.tensor != nullptr) {
+        const auto &candShape = opParamInfo_.candidateTopkIndex.tensor->GetStorageShape();
+        if (candShape.GetDimNum() >= 1) {
+            opParamInfo_.candidateTopkBlocks = static_cast<uint32_t>(candShape.GetDim(candShape.GetDimNum() - 1));
+        }
+    }
 }
 
 void QLIV2InfoParserConsumer::GetInputParaInfo()
@@ -277,7 +285,6 @@ ge::graphStatus QLIV2InfoParserConsumer::GetAttrParaInfo()
     opParamInfo_.sparseMode = attrs->GetAttrPointer<int32_t>(ATTR_MASK_MODE_INDEX);
     opParamInfo_.cmpRatio = attrs->GetAttrPointer<int32_t>(ATTR_CMP_RATIO_INDEX);
     opParamInfo_.returnValue = attrs->GetAttrPointer<int32_t>(ATTR_RETURN_VALUE_INDEX);
-    opParamInfo_.candidateTopkBlocks = attrs->GetAttrPointer<int32_t>(ATTR_CANDIDATE_TOPK_BLOCKS_INDEX);
     opParamInfo_.candidateBlockSize = attrs->GetAttrPointer<int32_t>(ATTR_CANDIDATE_BLOCK_SIZE_INDEX);
     // key 0 轴非连续 — stride 唯一来源为输入描述符 (PR 12740 机制, 不注册属性):
     // GetDynamicInputStride (携带非连续描述时有值); 为空 = 紧凑存储, kernel 兜底紧凑公式
@@ -399,9 +406,9 @@ ge::graphStatus QLIV2InfoParserConsumer::CheckAttrParaInfo()
                         OP_LOGE(opName_, "candidate with layout_q=TND requires cu_seqlens_q."),
                         return ge::GRAPH_FAILED);
         }
-        uint32_t candBlocks = (opParamInfo_.candidateTopkBlocks != nullptr) ?
-                                  static_cast<uint32_t>(*opParamInfo_.candidateTopkBlocks) :
-                                  CANDIDATE_TOPK_BLOCKS_FIX;
+        // candidate_topk_blocks 不再是入参: 候选块个数 = 输入 candidate_topk_index 末维
+        // (GetOptionalInputParaInfo 已推导, 缺省为 CANDIDATE_TOPK_BLOCKS_FIX)
+        uint32_t candBlocks = opParamInfo_.candidateTopkBlocks;
         // candidate_block_length: 预留接口, 仅接受空 tensor (N4/O13, 本期不消费)
         OP_CHECK_IF((opParamInfo_.candidateBlockLength.tensor != nullptr) &&
                         (opParamInfo_.candidateBlockLength.tensor->GetShapeSize() != 0),
@@ -412,8 +419,9 @@ ge::graphStatus QLIV2InfoParserConsumer::CheckAttrParaInfo()
                     return ge::GRAPH_FAILED);
         // 当前仅支持 2048 (累加器/抽取/拷出逻辑均按 64 对齐设计, 与第一级输出维度保持一致)
         OP_CHECK_IF(candBlocks != CANDIDATE_TOPK_BLOCKS_FIX,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "candidate_topk_blocks", std::to_string(candBlocks),
-                                                          "Candidate_topk_blocks only supports 2048"),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        opName_, "candidate_topk_index", std::to_string(candBlocks),
+                        "The last dim of candidate_topk_index (candidate block count) only supports 2048"),
                     return ge::GRAPH_FAILED);
         uint32_t candBlkSize = (opParamInfo_.candidateBlockSize != nullptr) ?
                                    static_cast<uint32_t>(*opParamInfo_.candidateBlockSize) :
@@ -1440,9 +1448,7 @@ void QLIV2InfoParserConsumer::GenerateInfo(QLIV2TilingInfoConsumer &QLIV2InfoCon
     QLIV2InfoConsumer.returnValue = *opParamInfo_.returnValue;
     QLIV2InfoConsumer.maxSeqlenQ = (opParamInfo_.maxSeqlenQ != nullptr) ? *opParamInfo_.maxSeqlenQ : -1;
     QLIV2InfoConsumer.candidateMode = CANDIDATE_MODE_CONSUMER; // consumer 算子模式固定为候选消费级
-    QLIV2InfoConsumer.candidateTopkBlocks = (opParamInfo_.candidateTopkBlocks != nullptr) ?
-                                                static_cast<uint32_t>(*opParamInfo_.candidateTopkBlocks) :
-                                                CANDIDATE_TOPK_BLOCKS_FIX;
+    QLIV2InfoConsumer.candidateTopkBlocks = opParamInfo_.candidateTopkBlocks; // 由输入末维推导
     QLIV2InfoConsumer.candidateBlockSize = (opParamInfo_.candidateBlockSize != nullptr) ?
                                                static_cast<uint32_t>(*opParamInfo_.candidateBlockSize) :
                                                CANDIDATE_BLOCK_SIZE_DEFAULT;

@@ -72,8 +72,8 @@ constexpr uint32_t ATTR_MASK_MODE_INDEX = 5;
 constexpr uint32_t ATTR_CMP_RATIO_INDEX = 6;
 constexpr uint32_t ATTR_RETURN_VALUE_INDEX = 7;
 // candidate_mode attr 已随拆分删除 (mode 固定 CONSUMER)
-constexpr uint32_t ATTR_CANDIDATE_TOPK_BLOCKS_INDEX = 8;
-constexpr uint32_t ATTR_CANDIDATE_BLOCK_SIZE_INDEX = 9;
+// candidate_topk_blocks 不再是入参 (候选块个数由输入 candidate_topk_index 末维推导)
+constexpr uint32_t ATTR_CANDIDATE_BLOCK_SIZE_INDEX = 8;
 // key/k_descale 的 0 轴 stride 不走属性 (PR 12740: 描述符 stride 机制)
 
 // Dim Index
@@ -173,7 +173,7 @@ struct QLIV2ParaInfo {
     const int32_t *cmpRatio = nullptr;
     const int32_t *returnValue = nullptr;
     const int32_t *candidateMode = nullptr;
-    const int32_t *candidateTopkBlocks = nullptr;
+    uint32_t candidateTopkBlocks = CANDIDATE_TOPK_BLOCKS_FIX; // 由输入 candidate_topk_index 末维推导
     const int32_t *candidateBlockSize = nullptr;
 };
 

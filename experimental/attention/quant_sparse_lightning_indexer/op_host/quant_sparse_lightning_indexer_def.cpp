@@ -94,7 +94,8 @@ public:
         this->Attr("mask_mode").AttrType(OPTIONAL).Int(0); // 0: 默认值，无mask
         this->Attr("cmp_ratio").AttrType(OPTIONAL).Int(1);
         this->Attr("return_value").AttrType(OPTIONAL).Int(0); //  0: 默认值
-        this->Attr("candidate_topk_blocks").AttrType(OPTIONAL).Int(2048);    // 块级topk候选块个数, 当前仅支持 2048
+        // candidate_topk_blocks 不再是入参: 候选块个数 = 输入 candidate_topk_index 的末维
+        // (tiling 从输入形状推导并校验, 当前仅支持 2048)
         this->Attr("candidate_block_size").AttrType(OPTIONAL).Int(8);        // 候选块大小(位置数), 须 > 0, 当前仅支持 8
         // 0 轴非连续支持不注册属性: stride 由输入描述符经 GetDynamicInputStride 进入 tiling
         // (对齐上游 PR 12740 / 稳定算子 9.2.0 机制), kernel 侧 keyStride0==0 时兜底紧凑公式

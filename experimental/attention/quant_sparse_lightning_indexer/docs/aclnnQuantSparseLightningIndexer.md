@@ -70,7 +70,6 @@ aclnnStatus aclnnQuantSparseLightningIndexerGetWorkspaceSize(
     int64_t          maskMode,
     int64_t          cmpRatio,
     int64_t          returnValue,
-    int64_t          candidateTopkBlocks,
     int64_t          candidateBlockSize,
     const aclTensor *sparseIndicesOut,
     const aclTensor *sparseValuesOut,
@@ -316,15 +315,15 @@ aclnnStatus aclnnQuantSparseLightningIndexer(
           <ul>
                 <li>必传，不支持空tensor。</li>
                 <li>值域为[0, numBlocks)或-1（无效槽）。</li>
-                <li>元素个数必须等于B*S1*N2*candidateTopkBlocks（BSND）或T1*N2*candidateTopkBlocks（TND）。</li>
+                <li>末维即候选块个数（当前仅支持 2048），元素个数必须等于B*S1*N2*末维（BSND）或T1*N2*末维（TND）。</li>
           </ul>
       </td>
       <td>INT32</td>
       <td>ND</td>
       <td>
           <ul>
-                <li>layout_q为BSND时，shape为(B,S1,N2,candidateTopkBlocks)。</li>
-                <li>layout_q为TND时，shape为(T1,N2,candidateTopkBlocks)。</li>
+                <li>layout_q为BSND时，shape为(B,S1,N2,候选块个数)。</li>
+                <li>layout_q为TND时，shape为(T1,N2,候选块个数)。</li>
           </ul>
       </td>
       <td>x</td>
@@ -428,16 +427,6 @@ aclnnStatus aclnnQuantSparseLightningIndexer(
       <td>-</td>
     </tr>
     <tr>
-      <td>candidateTopkBlocks</td>
-      <td>可选属性</td>
-      <td>块级TopK的候选块个数。</td>
-      <td>当前仅支持 2048，默认值2048。</td>
-      <td>INT32</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
       <td>candidateBlockSize</td>
       <td>可选属性</td>
       <td>候选块大小（每个块包含的位置数）。</td>
@@ -520,7 +509,7 @@ aclnnStatus aclnnQuantSparseLightningIndexer(
             <tr>
                 <td>ACLNN_ERR_PARAM_INVALID</td>
                 <td>161002</td>
-                <td>q、k、w、qDescale、kDescale、cuSeqlensQOptional、cuSeqlensKOptional、sequsedQOptional、sequsedKOptional、cmpResidualKOptional、blockTableOptional、outputIdxOffsetOptional、metadataOptional、candidateTopkIndex、layoutQOptional、layoutKOptional、topk、quantMode、maskMode、cmpRatio、returnValue、candidateTopkBlocks、candidateBlockSize、sparseIndicesOut、sparseValuesOut的数据类型、数据格式或取值不在支持的范围内。</td>
+                <td>q、k、w、qDescale、kDescale、cuSeqlensQOptional、cuSeqlensKOptional、sequsedQOptional、sequsedKOptional、cmpResidualKOptional、blockTableOptional、outputIdxOffsetOptional、metadataOptional、candidateTopkIndex、layoutQOptional、layoutKOptional、topk、quantMode、maskMode、cmpRatio、returnValue、candidateBlockSize、sparseIndicesOut、sparseValuesOut的数据类型、数据格式或取值不在支持的范围内。</td>
             </tr>
         </tbody>
     </table>
@@ -598,8 +587,8 @@ aclnnStatus aclnnQuantSparseLightningIndexer(
 - `topk`支持[1, 2048]。
 - `layout_k`仅支持`PA_BBND`，因此`blockTableOptional`与`sequsedKOptional`必传，`cuSeqlensKOptional`不能传入。
 - `layout_q`支持`BSND`与`TND`；为`TND`时必须传入`cuSeqlensQOptional`，且`layout_k`必须为`PA_BBND`。
-- `candidateTopkIndex`为必传输入，数据类型为INT32，元素个数必须与`candidateTopkBlocks`匹配（见参数说明），否则报错。
-- `candidateTopkBlocks`当前仅支持 2048；`candidateBlockSize`当前仅支持8。
+- `candidateTopkIndex`为必传输入，数据类型为INT32；末维为候选块个数（当前仅支持 2048），元素个数必须为B*S1*N2*末维（BSND）或T1*N2*末维（TND），否则报错。
+- `candidateBlockSize`当前仅支持8。
 - `candidateBlockLengthOptional`为预留接口（N4/O13，本期不消费），仅接受空 tensor，传入非空值会在 tiling 报错。
 - `metadataOptional`必传，不能为空，需由`aclnnQuantLightningIndexerV2Metadata`生成且与本次调用的query/key形状匹配。
 - 不支持`returnValue`为1，`sparseValuesOut`恒为shape (0,)。
