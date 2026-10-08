@@ -141,6 +141,13 @@ struct ConfigParams {
     inferS2TemplateType s2;
     inferDTemplateType d;
     inferDTemplateType dv;
+    uint32_t ubMm1ResBufcnt;
+    uint32_t ubMm2ResBufcnt;
+    uint32_t ubVec1ResBufcnt;
+    uint32_t ubMaskBufcnt;
+    uint32_t l1PBufcnt;
+    uint32_t l1QBufcnt;
+    uint32_t l1KvBufcnt;
 };
 
 // config:
@@ -177,6 +184,41 @@ static constexpr ConfigParams ConfigValue[] = {
     {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned192,
      inferDTemplateType::Aligned128}, // config=7
 };
+
+
+static constexpr ConfigParams ConfigValueArch92[] = {
+    // 下标 0: 占位, arch92 host 不会下发; 仅为 tiling key 全组合(config 0-7)实例化占位, 档位对齐下标 2
+    {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned128,
+     inferDTemplateType::Aligned64, inferDTemplateType::Aligned64,
+     /*ubMm1*/2, /*ubMm2*/1, /*ubVec1*/2, /*ubMask*/1, /*l1P*/3, /*l1Q*/2, /*l1Kv*/4},
+    // 下标 1: (M=64, S2=256, D=64, DV=64)   仅 ND(D=64) 使用
+    {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned256,
+     inferDTemplateType::Aligned64, inferDTemplateType::Aligned64,
+     /*ubMm1*/2, /*ubMm2*/2, /*ubVec1*/2, /*ubMask*/1, /*l1P*/3, /*l1Q*/2, /*l1Kv*/4},
+    // 下标 2: (M=128, S2=128, D=128, DV=128) 仅 ND(D=128) 使用
+    {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned128,
+     inferDTemplateType::Aligned128, inferDTemplateType::Aligned128,
+     /*ubMm1*/2, /*ubMm2*/1, /*ubVec1*/2, /*ubMask*/1, /*l1P*/3, /*l1Q*/2, /*l1Kv*/4},
+    // 下标 3: (M=128, S2=256, D=128, DV=128) 仅 DN(D=128) 使用
+    {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned256,
+     inferDTemplateType::Aligned128, inferDTemplateType::Aligned128,
+     /*ubMm1*/1, /*ubMm2*/1, /*ubVec1*/1, /*ubMask*/1, /*l1P*/3, /*l1Q*/2, /*l1Kv*/4},
+    // 下标 4: (M=64, S2=256, D=256, DV=256)   仅 ND(D=256) 使用
+    {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned256,
+     inferDTemplateType::Aligned256, inferDTemplateType::Aligned256,
+     /*ubMm1*/2, /*ubMm2*/1, /*ubVec1*/2, /*ubMask*/1, /*l1P*/3, /*l1Q*/2, /*l1Kv*/2},
+    // 下标 5-7: 占位, arch92 host 不会下发; 档位分别对齐下标 4/2/3
+    {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned256,
+     inferDTemplateType::Aligned256, inferDTemplateType::Aligned256,
+     /*ubMm1*/2, /*ubMm2*/1, /*ubVec1*/2, /*ubMask*/1, /*l1P*/3, /*l1Q*/2, /*l1Kv*/2},
+    {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned128,
+     inferDTemplateType::Aligned128, inferDTemplateType::Aligned128,
+     /*ubMm1*/2, /*ubMm2*/1, /*ubVec1*/2, /*ubMask*/1, /*l1P*/3, /*l1Q*/2, /*l1Kv*/4},
+    {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned256,
+     inferDTemplateType::Aligned128, inferDTemplateType::Aligned128,
+     /*ubMm1*/1, /*ubMm2*/1, /*ubVec1*/1, /*ubMask*/1, /*l1P*/3, /*l1Q*/2, /*l1Kv*/4},
+};
+
 
 // Config macro definitions for D=64
 #define Config_S1Aligned128_S2Aligned128_DAligned64_DVAligned64 0
