@@ -34,15 +34,16 @@ ge::graphStatus GroupedMatmulSwigluQuantV2WeightQuantASWTiling::GetShapeAttrsInf
     OP_LOGI(context_, "Compile info: npuArch(%u) aicNum(%u) aivNum(%u) ubSize(%lu) l0cSize(%lu).",
             static_cast<uint32_t>(compileInfoPtr_->npuArch_), compileInfoPtr_->aicNum_, compileInfoPtr_->aivNum_,
             compileInfoPtr_->ubSize_, compileInfoPtr_->l0cSize_);
-    return ValidateWeightQuantAsw(*context_, inputParams_, compileInfoPtr_->npuArch_, sizeof(tilingData_));
+    const NpuArch npuArch = static_cast<NpuArch>(compileInfoPtr_->npuArch_);
+    return ValidateWeightQuantAsw(*context_, inputParams_, npuArch, sizeof(tilingData_));
 }
 
 ge::graphStatus GroupedMatmulSwigluQuantV2WeightQuantASWTiling::GetPlatformInfo()
 {
     // GetShapeAttrsInfo在GetPlatformInfo之前调用，但需要用到npuarch，compileInfoPtr_获取提到GetShapeAttrsInfo中
     // 此处仅保留AIC/AIV核数校验
-    OP_CHECK_IF(!CheckWeightQuantAswCoreNum(compileInfoPtr_->npuArch_, compileInfoPtr_->aicNum_,
-                                           compileInfoPtr_->aivNum_),
+    const NpuArch npuArch = static_cast<NpuArch>(compileInfoPtr_->npuArch_);
+    OP_CHECK_IF(!CheckWeightQuantAswCoreNum(npuArch, compileInfoPtr_->aicNum_, compileInfoPtr_->aivNum_),
                 OP_LOGE(context_, "Invalid core number ratio."), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

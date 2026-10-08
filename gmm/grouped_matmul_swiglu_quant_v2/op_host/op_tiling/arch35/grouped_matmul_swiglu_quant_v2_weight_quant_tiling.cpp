@@ -718,13 +718,13 @@ ge::graphStatus GroupedMatmulSwigluQuantV2WeightQuantTiling::GetShapeAttrsInfo()
     if (!CheckAttrs(*context_, inputParams_)) {
         return ge::GRAPH_FAILED;
     }
-    if (!CheckDtypes(*context_, false, compileInfoPtr_->npuArch_)) {
+    if (!CheckDtypes(*context_, false, static_cast<NpuArch>(compileInfoPtr_->npuArch_))) {
         return ge::GRAPH_FAILED;
     }
     if (!GetInputs(inputParams_, *context_)) {
         return ge::GRAPH_FAILED;
     }
-    if (!CheckInputs(*context_, inputParams_, false, compileInfoPtr_->npuArch_)) {
+    if (!CheckInputs(*context_, inputParams_, false, static_cast<NpuArch>(compileInfoPtr_->npuArch_))) {
         return ge::GRAPH_FAILED;
     }
 
