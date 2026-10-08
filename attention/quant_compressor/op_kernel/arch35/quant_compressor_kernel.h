@@ -236,6 +236,11 @@ __aicore__ inline void QuantCompressorKernel<COMP, IS_FULL_LOAD>::SplitK()
     if (constInfo.dBasicBlockNum * mBaseNum < constInfo.usedCoreNum &&
         constInfo.batchConsistency != BATCH_CONSISTENCY) {
         constInfo.kBaseNum = constInfo.usedCoreNum / constInfo.dBasicBlockNum;
+        // K轴最多切 hSize/块宽 段（fp8等1字节类型块宽为32）：超出时裁剪kBaseNum，
+        // 否则kAlignSize上取整后被Trunc截成0（如36核+K=1024+fp8：kBaseNum=36>32
+        // ->kBaseSize=0，仅最后一个核算全K，vec累加36组含未初始化区域，结果全错）
+        uint32_t kBlockSize = static_cast<uint32_t>(BUFFER_SIZE_BYTE_32B / sizeof(X_T));
+        constInfo.kBaseNum = min(constInfo.kBaseNum, constInfo.hSize / kBlockSize);
         uint32_t kAlignSize = CeilDivT(
             Align(constInfo.hSize, static_cast<uint32_t>(BUFFER_SIZE_BYTE_32B / sizeof(X_T))), constInfo.kBaseNum);
         constInfo.kBaseSize = Trunc(kAlignSize, static_cast<uint32_t>(BUFFER_SIZE_BYTE_32B / sizeof(X_T)));
@@ -246,12 +251,17 @@ __aicore__ inline void QuantCompressorKernel<COMP, IS_FULL_LOAD>::SplitK()
     // 每轮固定不变，预计算后主循环直接复用
     if (constInfo.kBaseNum > 1) {
         kStartIdx_ = constInfo.aiCoreIdx / constInfo.dBasicBlockNum;
-        if (constInfo.curGroupIdx + 1 < constInfo.coreGroupNum) {
+        if (kStartIdx_ + 1 < constInfo.kBaseNum) {
             dealKSize_ = constInfo.kBaseSize;
             hStart_ = kStartIdx_ * dealKSize_;
-        } else {
-            dealKSize_ = kStartIdx_ < constInfo.coreGroupNum ? constInfo.hSize - kStartIdx_ * constInfo.kBaseSize : 0;
+        } else if (kStartIdx_ < constInfo.kBaseNum) {
+            // 最后一个有效K段处理剩余部分
+            dealKSize_ = constInfo.hSize - kStartIdx_ * constInfo.kBaseSize;
             hStart_ = kStartIdx_ * constInfo.kBaseSize;
+        } else {
+            // kBaseNum被容量裁剪后（如36核+K=1024+fp8裁剪为32段），超出段数的核空转
+            dealKSize_ = 0;
+            hStart_ = 0;
         }
     } else {
         kStartIdx_ = 0;

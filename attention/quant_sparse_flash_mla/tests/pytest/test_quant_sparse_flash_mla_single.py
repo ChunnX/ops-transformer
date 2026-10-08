@@ -100,11 +100,16 @@ for params in ENABLED_PARAMS:
         "cmp_sparse_indices_mode": params.get("cmp_sparse_indices_mode", ["full"]),
         "ori_topk_length": params.get("ori_topk_length", [None]),
         "cmp_topk_length": params.get("cmp_topk_length", [None]),
+        "topk_value_mode": params.get("topk_value_mode", [1]),
         "return_softmax_lse": params.get("return_softmax_lse", [False]),
         "q_datarange": params.get("q_datarange", [[-5, 5]]),
         "ori_kv_datarange": params.get("ori_kv_datarange", [[-5, 5]]),
         "cmp_kv_datarange": params.get("cmp_kv_datarange", [[-5, 5]]),
         "batch_consistency": params.get("batch_consistency", [None]),
+        "fd_mode": params.get("fd_mode", [None]),
+        "fd_aic_core_num": params.get("fd_aic_core_num", [None]),
+        "fd_aiv_core_num": params.get("fd_aiv_core_num", [None]),
+        "fd_require_split": params.get("fd_require_split", [None]),
         "batch_consistency_seed": params.get("batch_consistency_seed", [None]),
         "batch_consistency_order": params.get("batch_consistency_order", [None]),
         "batch_consistency_batch_split": params.get(
@@ -138,6 +143,9 @@ def qsmla(param_combinations):
     params = utils.fill_none_params(param_combinations)
     batch_consistency_policy = os.environ.get("QSMLA_BATCH_CONSISTENCY", "auto")
     prepare_consistency_params(params, batch_consistency_policy)
+    quant_sparse_flash_mla_golden.prepare_fd_params(
+        params, os.environ.get("QSMLA_FD", "auto")
+    )
 
     # 生成测试用例名称
     Testcase_Name = params["Testcase_Name"]
@@ -148,6 +156,11 @@ def qsmla(param_combinations):
         Testcase_Name = f"quantSparseFlashMla_{params['template_run_mode']}_{ops_mode}_{params['layout_q']}_{q_type_str}_{params['layout_kv']}_{kv_type_str}_{params['B']}_{params['N1']}_{params['N2']}_{params['S1']}_{params['S2']}_{params['D']}_{params['K']}_{case_id:06d}"
         params["Testcase_Name"] = Testcase_Name
 
+    if params.get("fd_mode"):
+        params["Testcase_Name"] += (
+            f"_fd_aic{params['fd_aic_core_num']}_aiv{params['fd_aiv_core_num']}"
+        )
+
     # 输入参数的合法性校验
     try:
         check_valid_param.check_valid_param(params)
@@ -156,6 +169,13 @@ def qsmla(param_combinations):
 
     # 生成测试数据及golden
     test_data = quant_sparse_flash_mla_golden.gen_data(params)
+    if params.get("fd_mode"):
+        logging.info(
+            "FD AIC=%s AIV=%s actual_split=%s",
+            params["fd_aic_core_num"],
+            params["fd_aiv_core_num"],
+            test_data["fd_actual_split"],
+        )
     consistency_config = resolve_consistency_config(
         test_data,
         batch_consistency_policy,

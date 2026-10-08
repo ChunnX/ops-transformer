@@ -26,14 +26,51 @@ const int64_t QBSA_MXFP8_FULL_QUANT_MODE = 2;
 const int64_t QBSA_MXFP8_SCALE_GROUP_SIZE = 64;
 const int64_t QBSA_MXFP8_SCALE_LAST_DIM = 2;
 
-// 工具函数，推导输出 attention_out / softmax_lse 的 shape 与 dtype
-//   - attention_out: BF16，TND 保持原布局，NTD 转为 TND
-//   - softmax_lse:   FLOAT32，FP8 为 (N1,T)，MXFP8 为 (T,N1)
-std::tuple<at::Tensor, at::Tensor> construct_bsa_output_tensors(const at::Tensor &query, const at::Tensor &value,
-                                                                c10::string_view layout_q, int64_t quant_mode,
-                                                                bool return_softmax_lse)
+void CheckPaddedQueryInputs(const at::Tensor &query, const at::Tensor &qDescale,
+                            const c10::optional<at::Tensor> &cuSeqlensQ, const c10::optional<at::Tensor> &sequsedQ,
+                            c10::string_view layoutQ)
 {
+    if (layoutQ != "BSND" && layoutQ != "BNSD") {
+        return;
+    }
+    TORCH_CHECK(!cuSeqlensQ.has_value(), "BSND/BNSD requires cu_seqlens_q=None; Q length comes from shape S.");
+    TORCH_CHECK(!sequsedQ.has_value(), "BSND/BNSD requires seqused_q=None.");
+    TORCH_CHECK(query.dim() == DIM_FOUR && query.numel() > 0, "BSND/BNSD query must be nonempty and 4D");
+    TORCH_CHECK(qDescale.dim() == DIM_FIVE, "BSND/BNSD q_descale must be 5D");
+    TORCH_CHECK(query.is_contiguous() && qDescale.is_contiguous(), "BSND/BNSD Q and q_descale must be contiguous");
+    TORCH_CHECK(
+        qDescale.size(0) == query.size(0) && qDescale.size(1) == query.size(1) && qDescale.size(2) == query.size(2) &&
+            qDescale.size(3) == (query.size(3) + QBSA_MXFP8_SCALE_GROUP_SIZE - 1) / QBSA_MXFP8_SCALE_GROUP_SIZE &&
+            qDescale.size(4) == QBSA_MXFP8_SCALE_LAST_DIM,
+        "BSND/BNSD q_descale must match Q batch/sequence/head axes and [ceil(D/64),2]");
+}
+
+// 工具函数，推导输出 attention_out / softmax_lse 的 shape 与 dtype
+//   - attention_out: BF16，保持 Q 布局（NTD 转为 TND），末维取 Value 的 Dv
+//   - softmax_lse: FLOAT32，FP8 为 (N1,T)，MXFP8 TND 为 (T,N1)，BSND/BNSD 为 (B,N1,S)
+std::tuple<at::Tensor, at::Tensor> construct_bsa_output_tensors(const at::Tensor &query, const at::Tensor &value,
+                                                                c10::string_view layout_q, c10::string_view layout_out,
+                                                                int64_t quant_mode, bool return_softmax_lse)
+{
+    TORCH_CHECK(value.dim() == DIM_FOUR, "value should be 4D PA_BNBD [blockNum, Nkv, blockSize, headDim], but got ",
+                value.dim(), "D.");
+    const int64_t valueHeadDim = value.size(-1);
     const std::string layout_q_str(layout_q);
+    const bool padded = layout_q_str == "BSND" || layout_q_str == "BNSD";
+    if (padded) {
+        TORCH_CHECK(quant_mode == QBSA_MXFP8_FULL_QUANT_MODE && std::string(layout_out) == layout_q_str,
+                    "BSND/BNSD require MXFP8 and matching layout_out");
+        TORCH_CHECK(query.dim() == 4, "BSND/BNSD query must be 4D");
+        TORCH_CHECK(query.is_contiguous(), "BSND/BNSD query must be contiguous");
+        const bool bsnd = layout_q_str == "BSND";
+        at::SmallVector<int64_t, SIZE> out_size = {query.size(0), query.size(1), query.size(2), valueHeadDim};
+        at::SmallVector<int64_t, SIZE> lse_size = {query.size(0), query.size(bsnd ? 2 : 1), query.size(bsnd ? 1 : 2)};
+        if (!return_softmax_lse) {
+            lse_size = {0};
+        }
+        return {at::empty(out_size, query.options().dtype(at::kBFloat16)),
+                at::empty(lse_size, query.options().dtype(at::kFloat))};
+    }
     TORCH_CHECK(query.dim() == DIM_THREE, "query should be 3D for layout_q TND/NTD, but got ", query.dim(), "D.");
     TORCH_CHECK(layout_q_str == "TND" || layout_q_str == "NTD", "layout_q should be TND or NTD, but got ",
                 layout_q_str);
@@ -49,8 +86,7 @@ std::tuple<at::Tensor, at::Tensor> construct_bsa_output_tensors(const at::Tensor
     const bool is_ntd = layout_q_str == "NTD";
     int64_t t_size = is_ntd ? query.size(1) : query.size(0);
     int64_t n1_size = is_ntd ? query.size(0) : query.size(1);
-    int64_t d_size = query.size(2);
-    at::SmallVector<int64_t, SIZE> atten_out_size = {t_size, n1_size, d_size};
+    at::SmallVector<int64_t, SIZE> atten_out_size = {t_size, n1_size, valueHeadDim};
     at::SmallVector<int64_t, SIZE> softmax_lse_size;
     if (quant_mode == QBSA_MXFP8_FULL_QUANT_MODE) {
         softmax_lse_size = {t_size, n1_size};
@@ -78,6 +114,7 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn_npu(
     c10::string_view layout_q, c10::string_view layout_sparse_indices, c10::string_view layout_out, int64_t quant_mode,
     int64_t mask_mode, bool return_softmax_lse)
 {
+    CheckPaddedQueryInputs(query, q_descale, cu_seqlens_q, seqused_q, layout_q);
     TORCH_CHECK(query.numel() > 0, "Tensor query is empty.");
     TORCH_CHECK(key.dim() == DIM_FOUR && value.dim() == DIM_FOUR,
                 "key/value should be 4D PA_BNBD [blockNum, Nkv, blockSize, headDim], but got dims ", key.dim(), "/",
@@ -161,7 +198,7 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn_npu(
 
     // construct the output tensors
     std::tuple<at::Tensor, at::Tensor> outputs =
-        construct_bsa_output_tensors(query, value, layout_q, quant_mode, return_softmax_lse);
+        construct_bsa_output_tensors(query, value, layout_q, layout_out, quant_mode, return_softmax_lse);
     at::Tensor attention_out = std::get<0>(outputs);
     at::Tensor softmax_lse = std::get<1>(outputs);
 
@@ -210,7 +247,8 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn_meta(
     c10::string_view layout_q, c10::string_view layout_sparse_indices, c10::string_view layout_out, int64_t quant_mode,
     int64_t mask_mode, bool return_softmax_lse)
 {
-    return construct_bsa_output_tensors(query, value, layout_q, quant_mode, return_softmax_lse);
+    CheckPaddedQueryInputs(query, q_descale, cu_seqlens_q, seqused_q, layout_q);
+    return construct_bsa_output_tensors(query, value, layout_q, layout_out, quant_mode, return_softmax_lse);
 }
 } // namespace custom
 

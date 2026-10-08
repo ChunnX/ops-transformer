@@ -3,22 +3,22 @@
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：支持
+- <term>Ascend 950PR&950DT系列产品</term>：支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+- <term>Atlas A3系列产品</term>：支持
 <!-- end id2 -->
 <!-- npu="910b" id3 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+- <term>Atlas A2系列产品</term>：支持
 <!-- end id3 -->
 <!-- npu="310b" id4 -->
-- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+- <term>Atlas 200I/500 A2推理产品</term>：不支持
 <!-- end id4 -->
 <!-- npu="310p" id5 -->
-- <term>Atlas 推理系列产品</term>：不支持
+- <term>Atlas推理系列产品</term>：不支持
 <!-- end id5 -->
 <!-- npu="910" id6 -->
-- <term>Atlas 训练系列产品</term>：不支持
+- <term>Atlas训练系列产品</term>：不支持
 <!-- end id6 -->
 
 ## 功能说明
@@ -442,7 +442,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
     </table>
 
 <!-- npu="A3,910b" id7 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+- <term>Atlas A2系列产品</term>、<term>Atlas A3系列产品</term>：
   - T1支持大于等于actualSeqLengthsQuery的累加和，T2支持大于等于actualSeqLengthsKey的累加和。
 
 <!-- end id7 -->
@@ -667,7 +667,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
         </tbody>
     </table>
     <!-- npu="950" id8 -->
-    <term>Ascend 950PR/Ascend 950DT</term>：N1额外支持48，Nidx1额外支持24，二者仅允许(48,24)组合，禁止其余数值配对; B、S1、S2均支持泛化。
+    <term>Ascend 950PR&950DT系列产品</term>：N1额外支持48，Nidx1额外支持24，二者仅允许(48,24)组合，禁止其余数值配对; B、S1、S2均支持泛化。
     <!-- end id8 -->
 
 ## 调用示例
@@ -818,20 +818,21 @@ int main() {
   aclTensor* dWeight = nullptr;
   aclTensor* loss = nullptr;
 
-  std::vector<float> qHostData(1*64*512, 1);
-  std::vector<float> kHostData(1*1*512, 1);
-  std::vector<float> qRopeHostData(1*64*64, 1);
-  std::vector<float> kRopeHostData(1*1*64, 1);
-  std::vector<float> qIndexHostData(1*32*128, 1);
-  std::vector<float> kIndexHostData(1*1*128, 1);
-  std::vector<float> weightHostData(1*32, 1);
-  std::vector<int32_t> sparseIndicesHostData(2048, 1);
-  std::vector<float> softmaxMaxHostData(1*64, 1);
+  std::vector<aclFloat16> qHostData(1*64*512, aclFloatToFloat16(0.1));
+  std::vector<aclFloat16> kHostData(1*1*512, aclFloatToFloat16(0.2));
+  std::vector<aclFloat16> qRopeHostData(1*64*64, aclFloatToFloat16(0.1));
+  std::vector<aclFloat16> kRopeHostData(1*1*64, aclFloatToFloat16(0.2));
+  std::vector<aclFloat16> qIndexHostData(1*32*128, aclFloatToFloat16(0.2));
+  std::vector<aclFloat16> kIndexHostData(1*1*128, aclFloatToFloat16(0.1));
+  std::vector<aclFloat16> weightHostData(1*32, aclFloatToFloat16(0.005));
+  std::vector<int32_t> sparseIndicesHostData(2048, -1);
+  sparseIndicesHostData[0] = 0;
+  std::vector<float> softmaxMaxHostData(1*64, 25.4483f);
   std::vector<float> softmaxSumHostData(1*64, 1);
 
-  std::vector<float> dQIndexHostData(1*32*128, 1);
-  std::vector<float> dKIndexHostData(1*1*128, 1);
-  std::vector<float> dWeightHostData(1*32, 1);
+  std::vector<aclFloat16> dQIndexHostData(1*32*128, 1);
+  std::vector<aclFloat16> dKIndexHostData(1*1*128, 1);
+  std::vector<aclFloat16> dWeightHostData(1*32, 1);
   std::vector<float> lossHostData(1, 1);
 
   ret = CreateAclTensor(qHostData, qShape, &qDeviceAddr, aclDataType::ACL_FLOAT16, &q);

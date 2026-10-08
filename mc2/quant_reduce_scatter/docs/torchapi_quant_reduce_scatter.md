@@ -3,22 +3,22 @@
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
-- <term>Ascend 950DT</term>：支持
+- <term>Ascend 950DT系列产品</term>：支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
+- <term>Atlas A3系列产品</term>：不支持
 <!-- end id2 -->
 <!-- npu="910b" id3 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
+- <term>Atlas A2系列产品</term>：不支持
 <!-- end id3 -->
 <!-- npu="310b" id4 -->
-- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+- <term>Atlas 200I/500 A2推理产品</term>：不支持
 <!-- end id4 -->
 <!-- npu="310p" id5 -->
-- <term>Atlas 推理系列产品</term>：不支持
+- <term>Atlas推理系列产品</term>：不支持
 <!-- end id5 -->
 <!-- npu="910" id6 -->
-- <term>Atlas 训练系列产品</term>：不支持
+- <term>Atlas训练系列产品</term>：不支持
 <!-- end id6 -->
 
 **说明：** 使用该接口时，请确保驱动固件包和CANN包都为配套的9.2.0版本或者配套的更高版本，否则将会引发报错，比如BUS ERROR等。
@@ -43,9 +43,11 @@
 
     其中的Reduce计算是将来自不同rank的数据进行reduce计算。
 
-    - 情形1：如果x数据类型为float8_e4m3fn、float8_e5m2、int8和hifloat8时，入参scale为float32时，先进行reduce_scatter通信，然后进行pertoken-pergroup反量化，得到bfloat16、float16或者float32数据类型的输出。
+    - 情形1：如果x数据类型为float8_e4m3fn、float8_e5m2、int8和hifloat8时，入参scale为float32且shape为(1)时，先进行reduce_scatter通信，然后进行pertensor反量化，得到bfloat16、float16或者float32数据类型的输出。
 
-    - 情形2：如果x数据类型为float8_e4m3fn、float8_e5m2时，入参scales为float8_e8m0时，先进行reduce_scatter通信，然后进行MX反量化，得到bfloat16、float16或者float32数据类型的输出。
+    - 情形2：如果x数据类型为float8_e4m3fn、float8_e5m2、int8和hifloat8时，入参scale为float32且shape维度与x相同时，先进行reduce_scatter通信，然后进行pertoken-pergroup反量化，得到bfloat16、float16或者float32数据类型的输出。
+
+    - 情形3：如果x数据类型为float8_e4m3fn、float8_e5m2时，入参scales为float8_e8m0时，先进行reduce_scatter通信，然后进行MX反量化，得到bfloat16、float16或者float32数据类型的输出。
 
 ## 函数原型
 
@@ -69,7 +71,7 @@ cann_ops_transformer.ops.quant_reduce_scatter(
 
 - x（Tensor）：必选参数，代表需要进行通信的数据，数据类型支持float8_e4m3fn、float8_e5m2、int8和hifloat8，数据格式支持ND，输入shape支持2维和3维，形如(bs, h)和(b, s, h)，且h满足128对齐。该参数不支持空tensor。
 
-- scales（Tensor）：必选参数，代表通信数据的量化系数，数据类型支持float32、float8_e8m0，数据格式支持ND，当数据类型为float32，量化模式为pertoken-pergroup量化（KG量化），若x为2维(bs, h)，则scales为2维(bs, h/128)，若x为3维(b, s, h)，则scales为3维(b, s, h/128)。当数据类型为float8_e8m0，且x数据类型为float8_e4m3fn，float8_e5m2时，量化模式为MX量化，若x为2维，scales的shape则为3维(bs, h/64, 2)，若x为3维，scales的shape则为4维(b, s, h/64, 2)。h的范围在[1024, 8192]内，且h满足128对齐。该参数不支持空tensor。
+- scales（Tensor）：必选参数，代表通信数据的量化系数，数据类型支持float32、float8_e8m0，数据格式支持ND，当数据类型为float32，量化模式根据shape而定。当scales的shape为(1)时为pertensor量化；当scales的shape维度与x的相同时为pertoken-pergroup量化（KG量化），若x为2维(bs, h)，则scales为2维(bs, h/128)，若x为3维(b, s, h)，则scales为3维(b, s, h/128)。当数据类型为float8_e8m0，且x数据类型为float8_e4m3fn，float8_e5m2时，量化模式为MX量化，若x为2维，scales的shape则为3维(bs, h/64, 2)，若x为3维，scales的shape则为4维(b, s, h/64, 2)。h的范围在[1024, 8192]内，且h满足128对齐。该参数不支持空tensor。
 
 - hcom（str）：必须参数，表示通信域handle名。通过get_hccl_comm_name接口获取。
 
@@ -96,13 +98,13 @@ cann_ops_transformer.ops.quant_reduce_scatter(
 - 该接口支持训练场景下使用。
 
 - 通信引擎约束：
-  - Ascend950DT: 仅支持UB-Memory通信。
+  - Ascend950DT：仅支持UB-Memory通信。
 
 - 通信域大小支持2、4、8。
 
 - 通信域使用约束：
   - 同一通信域内仅允许连续执行`aclnnQuantAllReduce`和`aclnnQuantReduceScatter`算子，且该通信域中不允许有其他通信算子。
-  - `HCCL_BUFFSIZE`：调用本算子前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。要求满足`HCCL_BUFFSIZE`>= 2 * (`xDataSize` + `scalesDataSize + 1`)。其中`xDataSize`为输入`x`的数据大小，计算公式为：`xDataSize = BS * H * 1 (Byte)`，`scalesDataSize`为`scales`的数据大小，当量化方式为pertoken-pergroup量化时，计算公式为：`scalesDataSize = BS * H / 128 * 4 (Byte)`，当量化方式为mx量化时，计算公式为：`scalesDataSize = BS * H / 32 * 1 (Byte)`。
+  - `HCCL_BUFFSIZE`：调用本算子前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。要求满足`HCCL_BUFFSIZE`>= 2 * (`xDataSize` + `scalesDataSize + 1`)。其中`xDataSize`为输入`x`的数据大小，计算公式为：`xDataSize = BS * H * 1 (Byte)`，`scalesDataSize`为`scales`的数据大小，当量化方式为pertensor时，`scalesDataSize = 1 (Byte)`，当量化方式为pertoken-pergroup量化时，计算公式为：`scalesDataSize = BS * H / 128 * 4 (Byte)`，当量化方式为mx量化时，计算公式为：`scalesDataSize = BS * H / 32 * 1 (Byte)`。
 
 - 数据类型约束：
 
@@ -121,7 +123,7 @@ cann_ops_transformer.ops.quant_reduce_scatter(
     </tr></thead>
     <tbody>
     <tr>
-        <td>pertoken-pergroup量化</td>
+        <td>pertensor量化<br>pertoken-pergroup量化</td>
         <td>hifloat8、int8、float8_e4m3fn、float8_e5m2</td>
         <td>float32</td>
         <td>float16、bfloat16、float32</td>
@@ -148,6 +150,11 @@ cann_ops_transformer.ops.quant_reduce_scatter(
         <th>scales</th>
     </tr></thead>
     <tbody>
+    <tr>
+        <td>pertensor量化</td>
+        <td>2维tensor，shape为(bs, h)<br>3维tensor，shape为(b, s, h)</td>
+        <td>1维tensor，shape为(1)</td>
+    </tr>
     <tr>
         <td>pertoken-pergroup量化</td>
         <td>2维tensor，shape为(bs, h)</td>
@@ -181,7 +188,7 @@ cann_ops_transformer.ops.quant_reduce_scatter(
 - 单算子模式调用：
 
   <!-- npu="950" id7 -->
-  - **Ascend 950DT**：
+  - **Ascend 950DT系列产品**：
 
     ```python
     import torch
@@ -232,7 +239,7 @@ cann_ops_transformer.ops.quant_reduce_scatter(
 - 图模式调用：
 
   <!-- npu="950" id8 -->
-  - **Ascend 950DT**：
+  - **Ascend 950DT系列产品**：
 
     ```python
     import torch
