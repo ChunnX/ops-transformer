@@ -8,21 +8,21 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 operator_group_1:
-- apply_rotary_pos_emb
-- fused_infer_attention_score,4-2
-- mla_prolog
-- quant_flash_attn
+# - apply_rotary_pos_emb
+# - fused_infer_attention_score,4-2
+# - mla_prolog
+# - quant_flash_attn
 operator_group_2:
 - compressor
-- fused_infer_attention_score,4-3
-- mla_prolog_v2
-- rotary_position_embedding
+# - fused_infer_attention_score,4-3
+# - mla_prolog_v2
+# - rotary_position_embedding
 operator_group_3:
-- fused_infer_attention_score,4-0
-- inplace_partial_rotary_mul
-- mla_prolog_v3
-- rotary_position_embedding_grad
+# - fused_infer_attention_score,4-0
+# - inplace_partial_rotary_mul
+# - mla_prolog_v3
+# - rotary_position_embedding_grad
 operator_group_4:
-- fused_infer_attention_score,4-1
-- inplace_partial_rotary_mul_grad
-- quant_compressor
+# - fused_infer_attention_score,4-1
+# - inplace_partial_rotary_mul_grad
+# - quant_compressor
