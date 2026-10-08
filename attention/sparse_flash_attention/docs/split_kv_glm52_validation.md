@@ -13,7 +13,7 @@
   per-tile quantization and tile size 128. G64 calls requesting LSE partition
   heads, not short DCP KV shards; each head writes its own output/statistics.
   Valid-prefix / -1-suffix rows are bounded by their valid length. An empty
-  local shard writes zero output and sum, yielding negative-infinite LSE.
+  G64 LSE shard writes zero output and sum, yielding negative-infinite LSE.
 
 The tilers separate kernel capability checks from partition-count selection.
 Unsupported configurations continue to use the original operator path.
@@ -104,6 +104,43 @@ issue), A2 C8 numerical/LSE tests with uninitialized output/statistics
 final UB-scratch G64 reduction implementation. The C8 reference independently
 dequantizes KV and computes softmax on CPU; coverage includes multi-batch,
 padding, empty local shards, disjoint-shard merges and graph replay.
+
+### Fresh post-synchronization regression (2026-10-08)
+
+Source commit `2034354e277e376fc0baf71d8c17506d407663f0` includes master
+`1461cca857ff3b2018404c0275e80e7aa13a3fc9`, the adaptation and host eligibility
+refactoring. Complete architecture-specific packages were rebuilt with
+CANN 9.1.0 and installed under isolated vendor paths on CANN 9.2.0 devices.
+The device tests use Python 3.11.10 and torch 2.10.0+cpu; torch_npu is
+2.10.0.post4 on A5 and 2.10.0.post7.dev20260918 on A2.
+
+| Fresh check | Result |
+| --- | --- |
+| A5 host regression | 11 passed |
+| A2 SFA / C8 V1 / C8 V2 host regression | 63 passed |
+| A5 SFA complete package | Build and isolated install passed |
+| A2 SFA / C8 V1 / C8 V2 complete package | Build and isolated install passed |
+| A5 SFA mode0/3 device regression | 115 passed, 4 skipped, 1 known baseline xfail |
+| A2 ordinary SFA G8/G64 output/LSE and graph regression | 256 passed |
+| A2 C8 V2 with repository full/zero allocation | 210 passed, 30 skipped |
+| A2 C8 V2 with benchmark-bridge empty allocation | 210 passed, 30 skipped |
+
+The 30 skips in each C8 run exclude empty-shard combinations outside the
+G64-with-LSE scope; they are not successful numerical tests. The A5 xfail
+is the pre-existing mode-3 padding/non-finite-output baseline issue, not
+a newly fixed case. Both C8 allocation policies use the current repository
+ACLNN common header. This checks the fresh source's numerical and ABI
+compatibility, not a fresh full-model performance comparison.
+
+Fresh package-file SHA256 identifiers (not the archive's internal payload hash):
+
+- A5 SFA:
+  `73fd8589a48899dcb2b0bfe81dd6d308083039eb7b7be74dd88ec688277be054`.
+- A2 complete SFA / C8 V1 / C8 V2:
+  `1c50855baf8136a07d7b36043a2d7dd63e6a8b3d7719d0dff011f1b6edf6150b`.
+
+These are regression packages, distinct from the historical AISBench packages
+above. The end-to-end tables have not been rerun after master synchronization.
 
 Host regression commands:
 
