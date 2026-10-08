@@ -97,3 +97,15 @@ Q/B 表示每 batch 的 query 数，下降比例为 `(baseline-with)/baseline`�
 总计对比 31 个配置，包括上述 G、不同 B/Q、FP16 和无 RoPE。
 本实现另测 G8/G128 × FP16/BF16 × 有/无 RoPE 的 B1/Q1 LSE 开关成本，
 8 个配置的时延变化范围为 -0.6% 至 +0.5%。
+
+完整 31 个对照配置与 8 个 LSE 开关配置见 [测量数据](./sfa_split_kv_arch22_results.csv)，
+包含每轮中位数和三轮中位数；LSE=true 行不填写不支持该能力的 master 基线。
+[计时脚本](../tests/pytest/bench_sfa_split_kv_arch22.py) 与上述测量使用相同逻辑。
+分别加载对应隔离 vendor 后，交替执行三轮：
+
+```bash
+python attention/sparse_flash_attention/tests/pytest/bench_sfa_split_kv_arch22.py \
+    --variant baseline > baseline_1.jsonl
+python attention/sparse_flash_attention/tests/pytest/bench_sfa_split_kv_arch22.py \
+    --variant candidate --include-lse > candidate_1.jsonl
+```
