@@ -29,9 +29,6 @@ constexpr uint32_t PARTIAL_SLOT_ELEMS = 8;    // 每个sibling AIV的partial固�
 constexpr uint16_t MID_READY_FLAG = 0;        // RMS_mid平方和交换完成标志
 constexpr uint16_t PAIR_READY_FLAG = 1;       // 平方和与投影 partial交换完成标志
 
-// ---------------------------------------------------------------------------
-// Type trait: fp32->half uses CAST_NONE, fp32->bfloat16_t uses CAST_RINT
-// ---------------------------------------------------------------------------
 template <typename A, typename B>
 struct IsSameT {
     static constexpr bool value = false;
@@ -899,72 +896,5 @@ __aicore__ inline void VFAxpyB16WithUbScalar(const LocalTensor<float> &dst, cons
 // clang-format off
 }
 // clang-format on
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// 引入各执行路径的方法实现
 
 #endif // MHC_NORM_POST_PREONLY_KERNEL_SUPPORT_H_
