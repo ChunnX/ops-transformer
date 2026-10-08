@@ -214,22 +214,20 @@ __aicore__ inline WorkRange GetRotatedBalancedWorkRange(uint32_t totalWorkItems,
     return GetBalancedWorkRange(totalWorkItems, {.jobIndex = logicalWorkerIdx, .totalJobs = workerCount});
 }
 
-#if defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__)
-// range 以逻辑 count 槽为单位；调用方提供已填零且非空的 UB Tensor，并保护其 MTE3 生命周期。
-// 仅清各槽首个 4B count/epoch，不触碰 padding、未使用槽或后续路由区。
-__aicore__ inline void ResetExpertCountSlots(const WorkRange& range, GM_ADDR regionPtr,
-                                             LocalTensor<int32_t>& resetTensor)
+// 按 strideBytes 字节间距清零 int32；range 以逻辑元素为单位，strideBytes 至少为 4 且为 4 的倍数。
+// 调用方提供已填零、非空且 32B 对齐的 UB Tensor，并保护其 MTE3 生命周期。
+__aicore__ inline void ResetWorkspaceRegionWithStride(const WorkRange& range, GM_ADDR regionPtr, uint64_t strideBytes,
+                                                      LocalTensor<int32_t>& resetTensor)
 {
     GlobalTensor<int32_t> regionGm;
     regionGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(regionPtr));
-    const uint32_t batchCapacity = resetTensor.GetSize();
+    const uint32_t batchCapacity = resetTensor.GetSize() < UINT16_MAX ? resetTensor.GetSize() : UINT16_MAX;
     for (uint32_t offset = 0U; offset < range.count;) {
         const uint32_t remaining = range.count - offset;
         const uint32_t batchCount = remaining < batchCapacity ? remaining : batchCapacity;
-        const uint64_t dstElement =
-            static_cast<uint64_t>(range.start + offset) * (MTE_COUNT_SLOT_BYTES / sizeof(int32_t));
+        const uint64_t dstElement = (static_cast<uint64_t>(range.start) + offset) * (strideBytes / sizeof(int32_t));
         DataCopyExtParams copyParams{static_cast<uint16_t>(batchCount), sizeof(int32_t), 0U,
-                                     MTE_COUNT_SLOT_BYTES - sizeof(int32_t), 0U};
+                                     static_cast<int64_t>(strideBytes - sizeof(int32_t)), 0U};
         DataCopyPad<int32_t, PaddingMode::Compact>(regionGm[dstElement], resetTensor, copyParams);
         offset += batchCount;
     }
@@ -259,8 +257,6 @@ __aicore__ inline void ResetWorkspaceRegion(const AivJobContext& job, GM_ADDR re
                                                static_cast<uint32_t>(JobAlignment));
     ResetWorkspaceRegion(range, regionPtr, batchElementCount, resetTensor);
 }
-
-#endif
 
 __aicore__ inline void TilingByCore(int32_t totalLen, int32_t& coreLen, int32_t& coreOffset, int32_t align = ALIGN_32)
 {

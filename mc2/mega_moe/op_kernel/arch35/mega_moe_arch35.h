@@ -902,7 +902,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ExportAndResetExpertCou
         SyncFuncStatic<HardEvent::MTE3_V, SYNC_EVENT_ID2>();
         Duplicate<int32_t>(resetTensor_, 0, resetTensor_.GetSize());
         SyncFuncStatic<HardEvent::V_MTE3, SYNC_EVENT_ID2>();
-        ResetExpertCountSlots(resetRange, params_.peermemInfo.expertCountRecvPtr, resetTensor_);
+        ResetWorkspaceRegionWithStride(resetRange, params_.peermemInfo.expertCountRecvPtr, MTE_COUNT_SLOT_BYTES,
+                                       resetTensor_);
     }
     // 输出和本轮有效 count 槽清零均完成后，才进入共享 GMM2 及出口跨卡握手。
     PipeBarrier<PIPE_ALL>();
