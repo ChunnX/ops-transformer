@@ -230,17 +230,10 @@ static ge::fusion::PatternUniqPtr MakePattern(const OriginalGraphInfo& info)
         dequantIn = MaybeBitcastAfterTranspose(info.dequantBitcast, transposeDequant);
     }
 
-<<<<<<< Updated upstream
-    const char* group = "";
-    // x3 / pertoken / comm_quant 固定 nullptr（不参与融合效果）
-    auto y = ge::es::MatmulAllReduce(x1, transposeX2, bias, nullptr, scaleIn, offsetIn, dequantIn, nullptr, nullptr,
-                                     nullptr, group);
-=======
     const char* group = "";
     // x3 按是否存在透传；pertoken / comm_quant 仍固定 nullptr
     auto y = ge::es::MatmulAllReduce(x1, transposeX2, bias, x3, scaleIn, offsetIn, dequantIn, nullptr, nullptr, nullptr,
                                      group);
->>>>>>> Stashed changes
     auto graph = graphBuilder.BuildAndReset({y});
     auto pattern = std::make_unique<ge::fusion::Pattern>(std::move(*graph));
     // Capture：0=mc2；其后按 x2 → scale → offset → dequant 顺序追加 Transpose
@@ -480,8 +473,6 @@ static bool IsDequantDirectConnectAllowed(const std::unique_ptr<ge::fusion::Matc
     return true;
 }
 
-<<<<<<< Updated upstream
-=======
 static bool Mc2HasConnectedInput(const ge::GNode& mc2Node, int32_t inputIdx)
 {
     ge::TensorDesc desc;
@@ -536,16 +527,6 @@ static bool IsOptionalInputPresenceConsistent(const ge::GNode& mc2Node, const st
     return true;
 }
 
-ge::Status MatmulAllReduceTransposeA5FusionPass::Run(ge::GraphPtr& graph, ge::CustomPassContext& pass_context)
-{
-    if (graph == nullptr || !GraphHasAnyOpType(*graph, {"MatmulAllReduce"})) {
-        OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Skip Patterns: no MatmulAllReduce in graph.");
-        return ge::SUCCESS;
-    }
-    return PatternFusionPass::Run(graph, pass_context);
-}
-
->>>>>>> Stashed changes
 std::vector<ge::fusion::PatternUniqPtr> MatmulAllReduceTransposeA5FusionPass::Patterns()
 {
     OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Enter Patterns for MatmulAllReduceTransposeA5FusionPass");
@@ -625,12 +606,8 @@ bool MatmulAllReduceTransposeA5FusionPass::MeetRequirements(const std::unique_pt
         return false;
     }
 
-<<<<<<< Updated upstream
-    if (!IsAntiquantDirectConnectAllowed(matchResult, patternNameStr)) {
-=======
     ge::GNode mc2Node;
-    if (!ops::GetCapturedMc2Node(matchResult, mc2Node, MC2_CAPTURE_IDX, FUSION_PASS_NAME.c_str(),
-                                 "Capture MatmulAllReduce node failed.")) {
+    if (!GetCapturedMc2Node(matchResult, mc2Node)) {
         return false;
     }
 
@@ -638,8 +615,7 @@ bool MatmulAllReduceTransposeA5FusionPass::MeetRequirements(const std::unique_pt
         return false;
     }
 
-    if (!IsAntiquantDirectConnectAllowed(mc2Node, patternNameStr)) {
->>>>>>> Stashed changes
+    if (!IsAntiquantDirectConnectAllowed(matchResult, patternNameStr)) {
         OPS_LOG_D(FUSION_PASS_NAME.c_str(), "antiquant direct connect check failed.");
         return false;
     }
