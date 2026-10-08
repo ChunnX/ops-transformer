@@ -70,6 +70,22 @@ MTP acceptance recorded during the test was 0.232152 (baseline) and 0.243453
 
 ## Reproducing correctness checks
 
+On 2026-10-08, the independent A5 branch was rebuilt from code commit
+`9b9886b5b2c925825eb56bb699a6ab3411ee4934`:
+
+- Host UT: 11 tests passed (two suites, including arch35 tiling and inference).
+- Complete `ascend950` SFA package: built successfully with CANN 9.1.
+- Device regression: 115 passed, 4 skipped, 1 xfailed on Ascend950DT_9582,
+  CANN 9.1, Python 3.11.10, PyTorch 2.10.0 / torch_npu 2.10.0.post4.
+  Four skips are inapplicable one-query mixed-row cases; the xfail is the
+  existing mode-3 padded-index non-finite output case.
+- Repository pre-commit checks: clang-format 18.1.8, Ruff 0.14.14, OAT,
+  duplicate-header and basic file checks passed.
+
+The package was installed in a private vendor prefix; system CANN was not
+changed. Package SHA256:
+`5a2435aa80f28ba697b70e5c80206c0923f57b2519898c8dbbeb10ba97da47c6`.
+
 Build an isolated operator package:
 
 ```bash
