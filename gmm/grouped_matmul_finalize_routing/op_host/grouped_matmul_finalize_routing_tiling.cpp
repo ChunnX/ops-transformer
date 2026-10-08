@@ -47,7 +47,9 @@ static ge::graphStatus GroupedMatmulFinalizeRoutingTilingFunc(gert::TilingContex
     if (compileInfoPtr->npuArch == NpuArch::DAV_3510) {
         auto w0Desc = context->GetDynamicInputDesc(W_INDEX, 0);
         OP_CHECK_NULL_WITH_CONTEXT(context, w0Desc);
-        if (ge::GetPrimaryFormat(w0Desc->GetStorageFormat()) == ge::FORMAT_FRACTAL_NZ) {
+        auto scaleDesc = context->GetOptionalInputDesc(SCALE_INDEX);
+        if (ge::GetPrimaryFormat(w0Desc->GetStorageFormat()) == ge::FORMAT_FRACTAL_NZ && scaleDesc != nullptr &&
+            scaleDesc->GetDataType() == ge::DT_FLOAT8_E8M0) {
             auto atomicRet = context->SetNeedAtomic(true);
             OP_CHECK_IF(atomicRet != ge::GRAPH_SUCCESS,
                         OPS_REPORT_CUBE_INNER_ERR(context->GetNodeName(), "SetNeedAtomic failed"),
