@@ -11,9 +11,10 @@ an additional merge kernel, or enable an unimplemented FlashDecode tiling key.
 Host tiling selects this path only on A5 for BF16 output and inputs, TND query,
 PA_BSND KV, one KV head, eight query heads, 512-dimensional values, 64-dimensional
 RoPE, sparse block size 1, 256 to 2048 sparse indices, KV sequence length at
-least the index count, sparse mode 0, no sinks, and no requested softmax LSE.
-Multi-batch splitting is initially restricted to TopK=2048; smaller TopK
-multi-batch inputs continue through the original SFA path.
+least the index count, sparse mode 0 or 3, no sinks, and no requested softmax LSE.
+Mode 3 additionally requires each query's causal window to cover the entire
+index row; otherwise that query uses the existing unsplit path. Single- and
+multi-batch inputs share the same partition selection.
 For TND, `Q` below means total query tokens across all batches. The kernel
 uses `actual_seq_lengths_query` (cumulative per-batch lengths) to map each
 global query token back to its batch and batch-local position. This keeps the
@@ -44,6 +45,10 @@ identity `w_i = sum_i * exp(max_i - max(max_j))`, then writes the final BF16
 output. The merge workspace size accounts for both AIV subblocks per AIC.
 
 ## Verification
+
+For the A2 G64/C8/LSE extension and the paired GLM-5.2 end-to-end results,
+see [GLM-5.2 validation](split_kv_glm52_validation.md). The measurements below
+are earlier single-operator tests, not the end-to-end measurements.
 
 Build: `bash build.sh --pkg --soc=ascend950 --ops=sparse_flash_attention`
 with an isolated vendor name and install prefix; no system CANN files were

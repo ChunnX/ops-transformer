@@ -155,6 +155,7 @@ TEST_F(SparseFlashAttentionTilingArch35, SplitKvRespectsAvailableAicCores)
 {
     struct SparseFlashAttentionCompileInfo {
     } compileInfo;
+    for (int64_t sparseMode : {0, 3}) {
     for (const auto &[batchCount, queryCount, topK, aicCores, expectedBlocks] :
          {std::tuple<int64_t, int64_t, int64_t, int64_t, uint32_t>{1, 1, 2048, 8, 8},
           {1, 1, 2048, 24, 16},
@@ -164,7 +165,9 @@ TEST_F(SparseFlashAttentionTilingArch35, SplitKvRespectsAvailableAicCores)
           {1, 4, 2048, 56, 32},
           {1, 1, 1024, 24, 8},
           {1, 4, 1024, 24, 16},
-          {2, 4, 1024, 24, 24},
+          {2, 4, 1024, 24, 16},
+          {4, 4, 1024, 24, 16},
+          {8, 8, 1024, 24, 16},
           {1, 1, 256, 24, 2},
           {1, 4, 256, 24, 8},
           {1, 1, 768, 24, 4},
@@ -175,11 +178,15 @@ TEST_F(SparseFlashAttentionTilingArch35, SplitKvRespectsAvailableAicCores)
           {1, 8, 2048, 24, 16},
           {1, 16, 2048, 56, 32},
           {2, 20, 2048, 24, 24},
-          {2, 4, 256, 24, 24},
+          {2, 4, 256, 24, 8},
           {1, 1, 4096, 24, 24},
           {1, 1, 128, 24, 24}}) {
-        int32_t actualSeqQ[] = {static_cast<int32_t>(queryCount / batchCount), static_cast<int32_t>(queryCount)};
-        int32_t actualSeqKV[] = {4096, 4096};
+        int32_t actualSeqQ[8] = {};
+        int32_t actualSeqKV[8] = {};
+        for (int64_t batch = 0; batch < batchCount; ++batch) {
+            actualSeqQ[batch] = static_cast<int32_t>((batch + 1) * queryCount / batchCount);
+            actualSeqKV[batch] = 4096;
+        }
         gert::TilingContextPara para(
             "SparseFlashAttention",
             {{{{queryCount, 8, 512}, {queryCount, 8, 512}}, ge::DT_BF16, ge::FORMAT_ND},
@@ -198,7 +205,7 @@ TEST_F(SparseFlashAttentionTilingArch35, SplitKvRespectsAvailableAicCores)
              {"sparse_block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
              {"layout_query", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
              {"layout_kv", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},
-             {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+             {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(sparseMode)},
              {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
              {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
              {"attention_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
@@ -209,9 +216,10 @@ TEST_F(SparseFlashAttentionTilingArch35, SplitKvRespectsAvailableAicCores)
         EXPECT_EQ(info.blockNum, expectedBlocks)
             << "B=" << batchCount << ", Q=" << queryCount << ", TopK=" << topK << ", AIC=" << aicCores;
     }
+    }
 }
 
-TEST_F(SparseFlashAttentionTilingArch35, SplitKvUnsupportedFeaturesKeepOriginalPath)
+TEST_F(SparseFlashAttentionTilingArch35, SplitKvFeaturesRespectKernelSupport)
 {
     struct SparseFlashAttentionCompileInfo {
     } compileInfo;
@@ -222,7 +230,7 @@ TEST_F(SparseFlashAttentionTilingArch35, SplitKvUnsupportedFeaturesKeepOriginalP
           {ge::DT_BF16, ge::DT_FLOAT16, 8, 0, false, 24},
           {ge::DT_BF16, ge::DT_BF16, 16, 0, false, 24},
           {ge::DT_BF16, ge::DT_BF16, 64, 0, false, 24},
-          {ge::DT_BF16, ge::DT_BF16, 8, 3, false, 24},
+          {ge::DT_BF16, ge::DT_BF16, 8, 3, false, 16},
           {ge::DT_BF16, ge::DT_BF16, 8, 0, true, 24}}) {
         int32_t actualSeqQ[] = {1};
         int32_t actualSeqKV[] = {4096};

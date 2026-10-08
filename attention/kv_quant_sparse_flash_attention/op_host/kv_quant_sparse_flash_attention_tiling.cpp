@@ -45,6 +45,7 @@ constexpr uint32_t PRE_LOAD_NUM = 2;
 constexpr uint32_t BLOCK_TABLE_ELEM_BYTE = 4;
 constexpr int32_t SPARSE_MODE_BAND = 4;
 constexpr int32_t KEY_QUANT_MODE_TQ4 = 3; // 3:TQ4
+constexpr int32_t KEY_QUANT_MODE_PER_TILE = 2;
 // 缓存有效 mte2 size 的环缓冲每个 AIV 占用的字节数：长度 * 份数 * 512B对齐长度
 constexpr uint64_t VALID_SIZE_RING_BYTES = 4 * 128 * 4;
 constexpr uint64_t AIV_PER_AIC = 2;
@@ -386,6 +387,23 @@ void QSFAMlaTiling::CalcInnerSize(uint32_t qsfaS2Size)
     CheckUbSpace();
 }
 
+bool QSFAMlaTiling::IsSplitKVSupported() const
+{
+    const auto &info = *qsfaInfo_;
+    const bool kernelSupported =
+        info.npuArch == NpuArch::DAV_2201 && info.n2Size == 1 && (info.gSize == 8 || info.gSize == 64) &&
+        info.qLayout == QSFALayout::TND && info.kvLayout == QSFALayout::PA_BSND &&
+        info.inputQType == ge::DT_BF16 && info.inputKvType == ge::DT_INT8 && info.outputType == ge::DT_BF16 &&
+        info.sparseBlockSize == 1 && info.sparseMode == 0 && info.opParamInfo.sinks.tensor == nullptr;
+    const bool quantSupported =
+        info.keyQuantMode == KEY_QUANT_MODE_PER_TILE && info.valueQuantMode == KEY_QUANT_MODE_PER_TILE &&
+        info.quantScaleRepoMode == 1 && info.tileSize == 128 && info.dSizeVInput == 656;
+    const bool workloadSupported =
+        info.bSize > 0 && info.s1Size > 0 && info.s2Size >= info.sparseBlockCount &&
+        info.sparseBlockCount >= 1024 && info.sparseBlockCount <= 2048;
+    return kernelSupported && quantSupported && workloadSupported;
+}
+
 void QSFAMlaTiling::SplitBalanced()
 {
     CalcInnerSize(qsfaInfo_->s2Size);
@@ -397,6 +415,34 @@ void QSFAMlaTiling::SplitBalanced()
     tilingData_.innerSplitParams.set_s2BaseSize(qsfaInnerSplitParams.s2BaseSize);
 
     usedCoreNum_ = aicNum_;
+    const bool splitSupported = IsSplitKVSupported();
+    const uint32_t blocks = (qsfaInfo_->sparseBlockCount + sInnerSize_ - 1) / sInnerSize_;
+    const uint32_t maxSplits = splitSupported ? std::min({16U, aicNum_ / qsfaInfo_->s1Size, blocks}) : 1U;
+    uint32_t splits = 1;
+    while (splits * 2U <= maxSplits) {
+        splits *= 2U;
+    }
+    // DCP compacts about 1/8 of TopK into each rank and pads the rest with -1.
+    // Splitting the 64 query heads avoids splitting these short KV shards and
+    // needs no cross-core output/LSE reduction: each head has one owner.
+    if (splitSupported && qsfaInfo_->gSize == 64 && qsfaInfo_->returnSoftmaxLse) {
+        const uint32_t maxHeadSplits = std::min(8U, aicNum_ / qsfaInfo_->s1Size);
+        uint32_t headSplits = 1;
+        while (headSplits * 2U <= maxHeadSplits) {
+            headSplits *= 2U;
+        }
+        if (headSplits > 1) {
+            headSplitPart_ = headSplits;
+            usedCoreNum_ = qsfaInfo_->s1Size * headSplits;
+            tilingData_.innerSplitParams.set_mBaseSize(qsfaInfo_->gSize / headSplits);
+            return;
+        }
+    }
+    if (splits > 1) {
+        splitKVFlag_ = true;
+        kvSplitPart_ = splits;
+        usedCoreNum_ = qsfaInfo_->s1Size * splits;
+    }
 }
 
 void QSFAMlaTiling::Split()
@@ -444,6 +490,7 @@ void QSFAMlaTiling::FillTilingSplitKVMla()
 void QSFAMlaTiling::FillTilingSingleCoreParamsMla()
 {
     tilingData_.singleCoreParams.set_usedCoreNum(usedCoreNum_);
+    tilingData_.singleCoreParams.set_headSplitNum(headSplitPart_);
 }
 
 void QSFAMlaTiling::FillTilingSingleCoreTensorSizeMla()
@@ -541,6 +588,15 @@ void QSFAMlaTiling::GetWorkspaceSize()
     }
 
     CalcFDWorkSpace(actCoreNum);
+    tilingData_.splitKVParams.set_stagingOffset(0);
+    if (splitKVFlag_ && !qsfaInfo_->isA5) {
+        workspaceSize_ = (workspaceSize_ + BYTE_BLOCK - 1) / BYTE_BLOCK * BYTE_BLOCK;
+        // The kernel receives GetUserWorkspace(), which already skips the
+        // CANN system workspace. Keep all device offsets relative to that base.
+        tilingData_.splitKVParams.set_stagingOffset(workspaceSize_ - libapiSize_);
+        const size_t slots = static_cast<size_t>(kvSplitPart_) * qsfaInfo_->s1Size * qsfaInfo_->gSize;
+        workspaceSize_ += slots * (headDimAlign_ * GetTypeSize(qsfaInfo_->outputType) + 2U * sizeof(float));
+    }
 }
 
 void QSFAMlaTiling::CalcBlockDim()
@@ -587,6 +643,12 @@ ge::graphStatus TilingKvQuantSparseFlashAttention(gert::TilingContext *context)
     if (tilingChecker.Process() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
+
+    OP_CHECK_IF(qsfaInfo.isV2Op && !qsfaInfo.isA5 &&
+                    ((qsfaInfo.gSize != 8 && qsfaInfo.gSize != 64) || qsfaInfo.qLayout != QSFALayout::TND ||
+                     qsfaInfo.kvLayout != QSFALayout::PA_BSND || qsfaInfo.opParamInfo.sinks.tensor != nullptr),
+                OP_LOGE(qsfaInfo.opName, "A2 QSFA V2 supports TND, PA_BSND, G=8/64 and no sinks only."),
+                return ge::GRAPH_FAILED);
 
     QSFAMlaTiling tiling(context);
     return tiling.DoOpTiling(&qsfaInfo);

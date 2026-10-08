@@ -6,7 +6,7 @@
 |:----------------------------|:-----------:|
 |<term>Ascend 950PR&950DT系列产品</term>|      √     |
 |<term>Atlas A3系列产品</term>|      ×     |
-|<term>Atlas A2系列产品</term>|      ×     |
+|<term>Atlas A2系列产品</term>|      √（TND、G=8/64、C8、无sinks）     |
 |<term>Atlas 200I/500 A2推理产品</term>|      ×     |
 |<term>Atlas推理系列产品</term>|      ×     |
 |<term>Atlas训练系列产品</term>|      ×     |
@@ -220,6 +220,11 @@
 
 - 该接口支持图模式。
 - 非PageAttention场景layout\_query和layout\_kv取值需要保持一致。
+- <term>Atlas A2系列产品</term>：
+  - 支持TND query和PA_BSND KV，KV_N=1，Q_N=8或64，key/value为int8，不支持sinks。
+  - 支持返回softmax_max和softmax_sum，用于DCP分片输出合并。
+  - BF16、per-tile C8、tile_size=128、sparse_mode=0的小Query调用支持分核；64头且返回LSE时按头分核，各头独立写出输出和LSE。
+  - sparse_indices中有效索引必须位于前缀，后缀使用-1填充；64头LSE调用按有效前缀长度计算，空分片输出为0、softmax_sum为0。
 - <term>Ascend 950PR&950DT系列产品</term>：
   - 参数key、value数据类型仅支持float8_e4m3、int8、hifloat8数据类型。
   - 参数sparse\_block\_size仅支持1。

@@ -222,7 +222,7 @@
   - 参数sparse_block_size支持[1,128]，且要求是2的幂次方，在PageAttention场景下要求sparse_block_size整除block_size。
   - 不支持sinks。
   - key、value和key_rope不支持非连续。
-  - return_softmax_lse为True时，layout_kv不支持PA_BSND。
+  - return_softmax_lse为True时，Ascend 910B支持TND query配合PA_BSND KV；其他场景保留原限制。
 
 ## 调用示例
 

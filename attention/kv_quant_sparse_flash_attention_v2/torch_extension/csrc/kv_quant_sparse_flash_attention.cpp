@@ -60,11 +60,6 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> KvQuantSparseFlashAttention(
     outSizes.back() -= ropeHeadDim;
     at::Tensor attenOut = at::empty(outSizes, query.options().dtype(query.dtype()));
 
-    int64_t numHeads = (layoutQStr == "BSND") ? query.size(DIM_2) : query.size(DIM_1);
-    at::Tensor sinksVal = (sinks.has_value() && sinks->defined()) ?
-                              sinks.value() :
-                              at::zeros({numHeads}, query.options().dtype(torch::kFloat32));
-
     at::Tensor softmaxMax;
     at::Tensor softmaxSum;
     auto opts_f32 = query.options().dtype(torch::kFloat32);
@@ -89,13 +84,13 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> KvQuantSparseFlashAttention(
         TensorWrapper keyWrapper = MakeWrapper(key, GetAclDataType(keyDtype.value()));
         TensorWrapper valueWrapper = MakeWrapper(value, GetAclDataType(valueDtype.value()));
         ACLNN_CMD(aclnnKvQuantSparseFlashAttentionV2, query, keyWrapper, valueWrapper, sparseIndices, keyDequantScale,
-                  valueDequantScale, blockTable, actualSeqLengthsQuery, actualSeqLengthsKv, sinksVal, scaleValue,
+                  valueDequantScale, blockTable, actualSeqLengthsQuery, actualSeqLengthsKv, sinks, scaleValue,
                   keyQuantMode, valueQuantMode, sparseBlockSize, layoutQPtr, layoutKvPtr, sparseMode, preTokens,
                   nextTokens, attentionMode, quantScaleRepoMode, tileSize, ropeHeadDim, returnSoftmaxLse, attenOut,
                   softmaxMax, softmaxSum);
     } else {
         ACLNN_CMD(aclnnKvQuantSparseFlashAttentionV2, query, key, value, sparseIndices, keyDequantScale,
-                  valueDequantScale, blockTable, actualSeqLengthsQuery, actualSeqLengthsKv, sinksVal, scaleValue,
+                  valueDequantScale, blockTable, actualSeqLengthsQuery, actualSeqLengthsKv, sinks, scaleValue,
                   keyQuantMode, valueQuantMode, sparseBlockSize, layoutQPtr, layoutKvPtr, sparseMode, preTokens,
                   nextTokens, attentionMode, quantScaleRepoMode, tileSize, ropeHeadDim, returnSoftmaxLse, attenOut,
                   softmaxMax, softmaxSum);

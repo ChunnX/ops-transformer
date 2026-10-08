@@ -9,7 +9,7 @@
 - <term>Atlas A3系列产品</term>：不支持
 <!-- end id2 -->
 <!-- npu="910b" id3 -->
-- <term>Atlas A2系列产品</term>：不支持
+- <term>Atlas A2系列产品</term>：支持TND、G=8/64、C8、无sinks场景
 <!-- end id3 -->
 <!-- npu="310b" id4 -->
 - <term>Atlas 200I/500 A2推理产品</term>：不支持
@@ -135,6 +135,10 @@ cann_ops_transformer.kv_quant_sparse_flash_attention(
 - 该接口支持单算子模式调用。
 - 非PageAttention场景`layout_query`和`layout_kv`取值需要保持一致。
 - `return_softmax_lse=False`时返回空shape为`[0]`的float32占位Tensor；`return_softmax_lse=True`时返回float32的softmax_max与softmax_sum结果。
+- <term>Atlas A2系列产品</term>：
+  - 支持`layout_query="TND"`、`layout_kv="PA_BSND"`、KV_N=1、Q_N=8或64，key/value为int8，不支持sinks。
+  - 支持`return_softmax_lse=True`，返回shape为`(1, Q_T, Q_N)`的float32统计量。
+  - 64头LSE调用按有效索引前缀计算；空KV分片的attention_out和softmax_sum为0，`softmax_max + log(softmax_sum)`为负无穷。
 - <term>Ascend 950PR&950DT系列产品</term>：
   - 参数key、value数据类型仅支持float8_e4m3、int8、hifloat8数据类型。
   - 参数`sparse_block_size`仅支持1。

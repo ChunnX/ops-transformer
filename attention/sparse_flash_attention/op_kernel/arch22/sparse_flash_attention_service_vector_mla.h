@@ -21,6 +21,7 @@
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
 #include "sparse_flash_attention_common.h"
+#include "../../../common/op_kernel/sparse_split_kv_merge.h"
 
 using AscendC::CrossCoreSetFlag;
 using AscendC::CrossCoreWaitFlag;
@@ -55,6 +56,9 @@ public:
     __aicore__ inline void InitVec2GlobalTensor(GlobalTensor<T> accumOutGm, GlobalTensor<UPDATE_T> vec2ResGm,
                                                 GlobalTensor<MM2_OUT_T> mm2ResGm, GlobalTensor<OUT_T> attentionOutGm);
     __aicore__ inline void InitSoftmaxDefaultBuffer();
+    __aicore__ inline void MergeSplitKV(GlobalTensor<OUT_T> &partialOut, GlobalTensor<T> &partialMax,
+                                      GlobalTensor<T> &partialSum, GlobalTensor<OUT_T> &finalOut,
+                                      GlobalTensor<T> &finalMax, GlobalTensor<T> &finalSum, uint32_t queryIdx);
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
     // ================================Base Vector==========================================
@@ -338,6 +342,22 @@ __aicore__ inline void SFAVectorService<SFAT>::InitSoftmaxDefaultBuffer()
 {
     Duplicate(softmaxMaxDefaultUb, SOFTMAX_MIN_NUM, SOFTMAX_TMP_BUFFER_OFFSET / sizeof(T));
     Duplicate(softmaxSumDefaultUb, ConstInfo::FLOAT_ZERO, SOFTMAX_TMP_BUFFER_OFFSET / sizeof(T));
+}
+
+template <typename SFAT>
+__aicore__ inline void SFAVectorService<SFAT>::MergeSplitKV(GlobalTensor<OUT_T> &partialOut,
+                                                            GlobalTensor<T> &partialMax,
+                                                            GlobalTensor<T> &partialSum,
+                                                            GlobalTensor<OUT_T> &finalOut,
+                                                            GlobalTensor<T> &finalMax, GlobalTensor<T> &finalSum,
+                                                            uint32_t queryIdx)
+{
+    AttentionCommon::MergeSparseSplitKV(sfaVecConstInfo.qSeqSize, queryIdx, sfaVecConstInfo.splitKVNum,
+        sfaVecConstInfo.gSize,
+        tilingData->baseParams.returnSoftmaxLse, partialOut, partialMax, partialSum, finalOut, finalMax, finalSum,
+        inputBuff1.template Get<OUT_T>(), inputBuff2.template Get<T>(), tmpBuff1.template Get<T>(),
+        inputBuff1.template Get<T>()[ConstInfo::SFA_BUFFER_BYTES_32K / sizeof(T)],
+        outputBuff2.template Get<T>(), outputBuff1.template Get<OUT_T>());
 }
 
 template <typename SFAT>

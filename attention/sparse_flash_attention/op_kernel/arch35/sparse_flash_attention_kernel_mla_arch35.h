@@ -557,7 +557,17 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
 
     if (sfaConstInfo.splitKVNum > 1) {
         const uint32_t queryIdx = aicIdx / sfaConstInfo.splitKVNum;
+        if (queryIdx >= actualSeqQlenAddr[sfaConstInfo.bSize - 1]) {
+            return;
+        }
+        const uint32_t batchIdx = sfaConstInfo.bN2Start;
+        const int64_t actualKv = actualSeqKvlenAddr[batchIdx];
         sfaConstInfo.splitKVActive = sparseIndexAddr[(queryIdx + 1) * sfaConstInfo.sparseBlockCount - 1] >= 0;
+        // Keep the original mode-3 loop bound. Short causal rows use the unsplit path.
+        const int64_t queryEnd = actualSeqQlenAddr[batchIdx];
+        const int64_t causalEnd = actualKv - queryEnd + queryIdx + 1;
+        sfaConstInfo.splitKVActive = sfaConstInfo.splitKVActive && actualKv >= sfaConstInfo.sparseBlockCount &&
+                                    (sfaConstInfo.sparseMode == 0 || causalEnd >= sfaConstInfo.sparseBlockCount);
         if (!sfaConstInfo.splitKVActive && sfaConstInfo.splitKVPart != 0) {
             return;
         }

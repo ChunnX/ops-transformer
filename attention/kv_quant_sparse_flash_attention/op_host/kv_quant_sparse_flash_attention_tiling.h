@@ -188,6 +188,7 @@ END_TILING_DATA_DEF
 
 BEGIN_TILING_DATA_DEF(KvQuantSparseFlashAttentionSingleCoreParamsMla)
 TILING_DATA_FIELD_DEF(uint32_t, usedCoreNum);
+TILING_DATA_FIELD_DEF(uint32_t, headSplitNum); // Reuses the previous 8-byte alignment padding.
 END_TILING_DATA_DEF
 
 BEGIN_TILING_DATA_DEF(KvQuantSparseFlashAttentionSingleCoreTensorSizeMla)
@@ -199,6 +200,7 @@ BEGIN_TILING_DATA_DEF(KvQuantSparseFlashAttentionSplitKVParamsMla)
 TILING_DATA_FIELD_DEF(uint32_t, s2)            // S2切分份数
 TILING_DATA_FIELD_DEF(uint32_t, accumOutSize)  // FD workspace
 TILING_DATA_FIELD_DEF(uint32_t, logSumExpSize) // FD workspace
+TILING_DATA_FIELD_DEF(uint32_t, stagingOffset)
 END_TILING_DATA_DEF
 
 // 内切基本块参数
@@ -328,6 +330,7 @@ private:
     bool IsBalanceSplitCore();
 
     void SplitBalanced();
+    bool IsSplitKVSupported() const;
     void CalcInnerSize(uint32_t qsfaS2Size);
 
     bool IsFlashDecode(uint32_t coreNum);
@@ -356,6 +359,7 @@ private:
     uint32_t coreNum_ = 0;
     QSFAPerfMode perfMode_ = QSFAPerfMode::V_TEMPLATE_MODE;
     uint32_t kvSplitPart_ = 1;
+    uint32_t headSplitPart_ = 0;
     size_t mmResUbSize_ = 0;
     size_t bmm2ResUbSize_ = 0;
     size_t qPreSizeMla_ = 0;
