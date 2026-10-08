@@ -98,9 +98,9 @@ std::vector<gert::TilingContextPara::TensorDescription> MakeOutputs(ge::DataType
 
 std::vector<gert::TilingContextPara::OpAttr> MakeAttrs(
     int64_t maskType, int64_t quantType, int64_t softmaxPrec, int64_t returnLse, float dstTypeMax = 0.0f,
-    int64_t winLeft = -1, int64_t winRight = -1, int64_t layoutSparsePattern = 4, const std::string& layoutQ = "TND",
-    const std::string& layoutKv = "PA_BBND", int64_t residualBlockMode = 0, bool isConsistentTopk = false,
-    const std::vector<int64_t>& blockShape = kBlockShape, float scaleValue = kScale)
+    int64_t winLeft = -1, int64_t winRight = -1, int64_t layoutSparsePattern = 4, const std::string &layoutQ = "TND",
+    const std::string &layoutKv = "PA_BBND", int64_t residualBlockMode = 0, bool isConsistentTopk = false,
+    const std::vector<int64_t> &blockShape = kBlockShape, float scaleValue = kScale)
 {
     return {
         {"block_shape", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(blockShape)},
