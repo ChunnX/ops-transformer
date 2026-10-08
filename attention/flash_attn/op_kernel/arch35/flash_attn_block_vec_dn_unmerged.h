@@ -25,7 +25,7 @@
 #include "../../../common/op_kernel/const_def.h"
 #include "../../../common/op_kernel/vector_common.h"
 #include "../../../common/op_kernel/init_output.h"
-#include "memory_copy_arch35.h"
+#include "../memory_copy_arch35.h"
 #include "../utils/attn_sink_gs1.h"
 #include "../utils/attenmask_gs1.h"
 #include "../../../common/op_kernel/arch_info.h"
@@ -187,7 +187,7 @@ public:
     T negativeFloatScalar_;
     // DN 每个任务只处理一个 G 头, M 轴为该头的连续 S1; mask 按单 G 的 GS 形态搬入,
     // BSND/TND 不能沿用 ND 的 S1G 展开, 否则会把相邻 G 的 mask 行搬进当前 M 块。
-    static constexpr MaskFormat MASK_LAYOUT = MaskFormat::GS;
+    static constexpr MaskFormat MASK_LAYOUT = MaskFormat::S1_ONLY;
     static constexpr T BOOL_ATTEN_MASK_SCALAR_VALUE = -1000000000000.0;
     uint32_t negativeIntScalar_ = *((uint32_t *)&BOOL_ATTEN_MASK_SCALAR_VALUE);
 
@@ -517,7 +517,7 @@ public:
 
     __aicore__ inline bool AttenMaskCopyIn(LocalTensor<uint8_t> attenMaskUb, RunInfo &runInfo)
     {
-        MaskInfo maskInfo;
+        MaskInfo<MASK_LAYOUT> maskInfo;
         // mask 工具按单 G 的 GS 线性坐标搬入, G 已在 BN1 轴展开; gs1StartIdx 即本头纯 s1 起始
         const uint32_t maskS1Start = runInfo.s1Idx + runInfo.vecMbaseIdx;
         maskInfo.gs1StartIdx = maskS1Start;
@@ -538,7 +538,6 @@ public:
         maskInfo.maskValue = negativeIntScalar_;
         maskInfo.s1LeftPaddingSize = 0;
         maskInfo.s2LeftPaddingSize = 0;
-        maskInfo.maskFormat = MASK_LAYOUT;
         maskInfo.attenMaskType = MASK_BOOL;
 
         const uint32_t bufIdx = runInfo.loop & (DB - 1);
