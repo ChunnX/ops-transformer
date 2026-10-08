@@ -11,18 +11,21 @@
 # -----------------------------------------------------------------------------------------------------------
 # QuantSparseLightningIndexer（两级TopK 第二级 consumer）设备测试 —— cand_mode=2 用例
 #
-# 来源与本分支改造 (2026-09-30):
+# 来源与本分支改造:
 #   由主算子测试 tests/pytest/qli_cand_orig.py（其上溯 /opt/tjj/qli_cand_test/test_qli_cand.py）按
-#   cand_mode 切片迁移而来：承载原 harness 中 cand_mode=2 的用例（大 shape、TND、
-#   pa_gap 0 轴非连续、offset 等形态），路由只保留 consumer 入口；
-#   1M 组与 cand_blocks=64（超出本分支 2048-only 契约）的用例 2026-10-08 按约定删除。
+#   cand_mode 切片迁移而来，承载全部 cand_mode=2（第二级 consumer）用例；2026-10-08 并入原
+#   qli_consumer_two_level.py（算子级精度矩阵）中形状不重复的 13 个用例与其端到端检查。
 #   - 本算子无 candidate_mode 属性：固定消费第一级输出的块级候选索引，候选尺寸约定与第一级一致
 #     （candidate_topk_blocks=2048 / candidate_block_size=8）
+#   - 每条用例默认「吃 golden 候选」比对（隔离 consumer 自身精度）；E2E_IDS 中的用例额外跑一遍
+#     「吃第一级 NPU 候选」的端到端比对（_e2e_check：以第一级真实输出为输入，与同一候选下的
+#     golden 比对，属链路一致性验证；第一级自身精度由主算子测试 qli_cand_orig.py 覆盖）
 #   - 用例返回统一补成 3 元组（第三元恒空，与该 mode 语义一致），下游比对代码无需改动
-#   - 删除「新接口规范适配层」相关用例：该 py 适配层（candidate_source/candidate_consumer 封装）已在本分支删除
-#   - 官方比对规则 result_compare_method 改为取自本目录（仓库内），去掉对 /opt 绝对路径的依赖
+#   - 删除「新接口规范适配层」相关用例（该 py 适配层已在本分支删除）；
+#     1M 组与 cand_blocks=64（超出本分支 2048-only 契约）的用例 2026-10-08 按约定删除
+#   - 官方比对规则 result_compare_method 取自主算子测试目录（仓库内）
 # 自包含 harness: 输入生成(910b int8/PA) + torch 参考实现 + NPU 调用 + 集合比较
-# 用例矩阵: 设计文档 §6.5 (cmp_ratio 1/2 x mode 1/2/3, g64/32, decode/prefill, numBlocks 边界)
+# 用例矩阵: 设计文档 §6.5 + 算子级精度矩阵（pin 边界、单行长上下文等锚点）
 #
 # 运行（需先 source CANN 的 set_env.sh，否则拿不到含本算子的 cann_ops_transformer 包）:
 #   source <CANN>/set_env.sh
@@ -53,6 +56,7 @@ _MAIN_TESTS_DIR = os.path.normpath(
 if _MAIN_TESTS_DIR not in sys.path:
     sys.path.insert(0, _MAIN_TESTS_DIR)
 from cann_ops_transformer.ops.attention.quant_lightning_indexer_v2 import (  # noqa: E402
+    quant_lightning_indexer_candidate,
     quant_lightning_indexer_metadata,
 )
 from cann_ops_transformer.ops.attention.quant_sparse_lightning_indexer import (  # noqa: E402
@@ -441,6 +445,82 @@ def npu_run(inputs, case, cand_in_npu=None):
         **common,
     )
     return idx, vals, torch.empty(0, dtype=torch.int32, device=inputs["q"].device)
+
+
+def npu_run_source(inputs, case):
+    """第一级（candidate/source）入口: 仅为端到端路径生成候选输入（candidate_topk_blocks=2048）。
+
+    返回块级候选索引张量 [.., candidate_topk_blocks]，直接作为第二级的 candidate_topk_index 传入。
+    """
+    ret = quant_lightning_indexer_candidate(
+        inputs["q"],
+        inputs["k_phys"],
+        inputs["w"],
+        inputs["q_scale"],
+        inputs["k_scale_phys"],
+        topk=case["topk"],
+        quant_mode=2,
+        cu_seqlens_q=inputs.get("cu_q_t"),
+        cu_seqlens_k=inputs.get("cu_k_t"),
+        seqused_k=inputs["seqused_k_t"],
+        cmp_residual_k=inputs.get("cmp_res_t"),
+        block_table=inputs["block_table"],
+        output_idx_offset=inputs.get("output_idx_offset_t"),
+        metadata=inputs["metadata"],
+        max_seqlen_q=max(case.get("seqs_q", [case["q_seq"]])),
+        layout_q=case.get("layout", "BSND"),
+        layout_k="PA_BBND",
+        mask_mode=case["mask_mode"],
+        cmp_ratio=case["cmp_ratio"],
+        candidate_topk_blocks=CAND_BLOCKS,
+        candidate_block_size=CAND_BS,
+    )
+    return ret[2]
+
+
+def _e2e_check(inputs, case, seqs_q, s2max, topk):
+    """端到端检查: 第一级 NPU 候选 -> 第二级 -> 与「同一候选下」的 golden 比对。
+
+    迁移自原 qli_consumer_two_level.py 的路径②（生产链路形态）。属一致性验证: 候选来自第一级
+    真实输出而非 golden，因此校验的是"consumer 在真实候选下行为正确"，不校验第一级精度。
+    """
+    cand_src = npu_run_source(inputs, case)
+    idx_e2e, _, cand_dummy = npu_run(inputs, case, cand_src)
+    torch.npu.synchronize()
+    assert cand_dummy.numel() == 0, "consumer 输出第三元应为空"
+    idx_gold, _, score_rows, _ = golden_run_ext(inputs, case, cand_src.cpu())
+    if case.get("layout") == "TND":
+        fails = []
+        for r in range(sum(seqs_q)):
+            v4 = score_rows[r].reshape(1, 1, 1, -1).numpy()
+            ok_r, msg_r = cmp_indices(
+                idx_e2e.reshape(-1, topk)[r].cpu().unsqueeze(0),
+                idx_gold.reshape(-1, topk)[r].unsqueeze(0),
+                f"e2e@r{r}",
+                v4,
+                1,
+            )
+            if not ok_r:
+                fails.append(msg_r)
+        assert not fails, (
+            f"[{case['name']}] 端到端(第一级NPU候选) TND 逐行比对失败: {fails[:3]}"
+        )
+    else:
+        v4 = (
+            torch.stack(score_rows)
+            .reshape(case["batch"], case["q_seq"], s2max)
+            .unsqueeze(1)
+            .numpy()
+        )
+        ok, msg = cmp_indices(
+            idx_e2e.reshape(-1, topk),
+            idx_gold.reshape(-1, topk),
+            "sparse_indices(端到端)",
+            v4,
+            case["q_seq"],
+        )
+        assert ok, f"[{case['name']}] 端到端(第一级NPU候选) {msg}"
+    print(f"[{case['name']}] 端到端(第一级 NPU 候选) 一致")
 
 
 def golden_run(inputs, case, cand_blocks_in=None):
@@ -1921,6 +2001,209 @@ NEW_CASES = [
     # R13 契约门禁: prefill (行级 vl < topk → 输出含 -1 槽) + 非零 offset →
     # 有效槽 = idx+offset, -1 槽必须保持 -1 (对齐模型 where(idxs < compress_lens, idxs+offset, -1);
     # 修复前 kernel/golden 全元素加 → -1 槽变 off-1)
+    # ---- 2026-10-08 并入: 原 qli_consumer_two_level.py（算子级精度矩阵）中形状不重复的用例 ----
+    # 已剔除与 harness 完全同规格的两条: r1_decode_m0（同 r1_m2_self）、r2_decode（同 r2_m2_self）
+    (
+        "r1_decode",
+        {
+            "name": "r1_decode",
+            "batch": 1,
+            "q_seq": 1,
+            "seqused_k": [2048],
+            "cmp_ratio": 1,
+            "mask_mode": 3,
+            "cand_mode": 2,
+            "g": 32,
+            "topk": 512,
+        },
+        None,
+    ),
+    (
+        "r1_prefill_m3",
+        {
+            "name": "r1_prefill_m3",
+            "batch": 2,
+            "q_seq": 8,
+            "seqused_k": [1024, 2048],
+            "cmp_ratio": 1,
+            "mask_mode": 3,
+            "cand_mode": 2,
+            "g": 32,
+            "topk": 512,
+        },
+        None,
+    ),
+    (
+        "r1_tail",
+        {
+            "name": "r1_tail",
+            "batch": 2,
+            "q_seq": 4,
+            "seqused_k": [1000, 2000],
+            "cmp_ratio": 1,
+            "mask_mode": 3,
+            "cand_mode": 2,
+            "g": 32,
+            "topk": 512,
+        },
+        None,
+    ),
+    (
+        "r2_prefill",
+        {
+            "name": "r2_prefill",
+            "batch": 1,
+            "q_seq": 16,
+            "seqused_k": [1024],
+            "cmp_ratio": 2,
+            "cmp_res": [1],
+            "mask_mode": 3,
+            "cand_mode": 2,
+            "g": 32,
+            "topk": 512,
+        },
+        None,
+    ),
+    (
+        "g64_decode",
+        {
+            "name": "g64_decode",
+            "batch": 1,
+            "q_seq": 1,
+            "seqused_k": [2048],
+            "cmp_ratio": 1,
+            "mask_mode": 0,
+            "cand_mode": 2,
+            "g": 64,
+            "topk": 512,
+        },
+        None,
+    ),
+    (
+        "sparse2048",
+        {
+            "name": "sparse2048",
+            "batch": 1,
+            "q_seq": 1,
+            "seqused_k": [4096],
+            "cmp_ratio": 1,
+            "mask_mode": 0,
+            "cand_mode": 2,
+            "g": 32,
+            "topk": 2048,
+        },
+        None,
+    ),
+    # 锚点: 位置块数 2049 = 候选容量 2048 + 1（触发部分覆盖 + pin 尾块）
+    (
+        "pin_overflow",
+        {
+            "name": "pin_overflow",
+            "batch": 1,
+            "q_seq": 1,
+            "seqused_k": [16392],
+            "cmp_ratio": 1,
+            "mask_mode": 0,
+            "cand_mode": 2,
+            "g": 32,
+            "topk": 512,
+        },
+        None,
+    ),
+    (
+        "b4_varlen",
+        {
+            "name": "b4_varlen",
+            "batch": 4,
+            "q_seq": 4,
+            "seqused_k": [512, 1024, 1536, 2048],
+            "cmp_ratio": 1,
+            "mask_mode": 3,
+            "cand_mode": 2,
+            "g": 32,
+            "topk": 512,
+        },
+        None,
+    ),
+    (
+        "s1tail7",
+        {
+            "name": "s1tail7",
+            "batch": 2,
+            "q_seq": 7,
+            "seqused_k": [1024, 2048],
+            "cmp_ratio": 1,
+            "mask_mode": 3,
+            "cand_mode": 2,
+            "g": 32,
+            "topk": 512,
+        },
+        None,
+    ),
+    (
+        "tiny",
+        {
+            "name": "tiny",
+            "batch": 1,
+            "q_seq": 1,
+            "seqused_k": [1],
+            "cmp_ratio": 1,
+            "mask_mode": 0,
+            "cand_mode": 2,
+            "g": 32,
+            "topk": 512,
+        },
+        None,
+    ),
+    (
+        "tnd_decode",
+        {
+            "name": "tnd_decode",
+            "batch": 1,
+            "q_seq": 1,
+            "seqused_k": [2048],
+            "layout": "TND",
+            "cmp_ratio": 1,
+            "mask_mode": 3,
+            "cand_mode": 2,
+            "g": 32,
+            "topk": 512,
+        },
+        None,
+    ),
+    (
+        "partial_m3_prefill",
+        {
+            "name": "partial_m3_prefill",
+            "batch": 1,
+            "q_seq": 8,
+            "seqused_k": [16392],
+            "cmp_ratio": 1,
+            "mask_mode": 3,
+            "cand_mode": 2,
+            "g": 32,
+            "topk": 512,
+        },
+        None,
+    ),
+    # 锚点: 单行 query + 长上下文 128K（生产 pool/table 规格；R14 修复的触发 regime）
+    (
+        "decode_long_m1",
+        {
+            "name": "decode_long_m1",
+            "batch": 1,
+            "q_seq": 1,
+            "seqused_k": [131072],
+            "pool": 7936,
+            "table_w": 1055,
+            "cmp_ratio": 1,
+            "mask_mode": 3,
+            "cand_mode": 2,
+            "g": 32,
+            "topk": 512,
+        },
+        None,
+    ),
 ]
 
 ARGVALUES = [tuple(c) for c in CASES] + [
@@ -1930,6 +2213,20 @@ ARGVALUES = [tuple(c) for c in CASES] + [
     for nid, d, reason in NEW_CASES
 ]
 ALL_IDS = [c[0] for c in CASES] + [nid for nid, _, _ in NEW_CASES]
+
+
+# 端到端（吃第一级 NPU 候选）额外跑一遍的用例: 覆盖 decode/prefill/TND/0 轴非连续/offset
+# 与两个锚点（pin_overflow: 位置块数 2049=容量+1；decode_long_m1: s1=1 x s2=131072）
+E2E_IDS = {
+    "r1_m2_self",
+    "r1_m2_prefill",
+    "r2_m2_self",
+    "tnd_m2_rand",
+    "pa_gap_m2",
+    "off_m2",
+    "pin_overflow",
+    "decode_long_m1",
+}
 
 
 def _sample_rows(case):
@@ -2021,6 +2318,8 @@ def test_qli_cand(t):
             ]
             if case["cand_mode"] == 2:
                 assert cand_npu.numel() == 0
+            if case["cand_mode"] == 2 and case["name"] in E2E_IDS:
+                _e2e_check(inputs, case, seqs_q, s2max, topk)
             print(f"[{case['name']}] PASS")
             return
         # BSND 统一矩阵路径: values4d [B,1,S1,s2max] (每批行数统一 q_seq; TND 已走上方逐行分支)
@@ -2106,4 +2405,6 @@ def test_qli_cand(t):
     if case["cand_mode"] == 2:
         # 消费不改变候选输入, 校验透传无关性: 输出第三元为空
         assert cand_npu.numel() == 0
+    if case["cand_mode"] == 2 and case["name"] in E2E_IDS:
+        _e2e_check(inputs, case, seqs_q, s2max, topk)
     print(f"[{case['name']}] PASS")
