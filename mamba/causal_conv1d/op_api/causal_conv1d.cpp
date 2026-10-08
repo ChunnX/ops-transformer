@@ -24,10 +24,10 @@ using namespace op;
 namespace l0op {
 OP_TYPE_REGISTER(CausalConv1d);
 
-bool CausalConv1d(const aclTensor *x, const aclTensor *weight, aclTensor *convStates, const aclTensor *bias,
-                  const aclTensor *queryStartLoc, const aclTensor *cacheIndices, const aclTensor *initialStateMode,
-                  const aclTensor *numAcceptedTokens, const char *activation, int64_t nullBlockId, aclTensor *y,
-                  aclOpExecutor *executor)
+bool CausalConv1d(const aclTensor* x, const aclTensor* weight, aclTensor* convStates, const aclTensor* bias,
+                  const aclTensor* queryStartLoc, const aclTensor* cacheIndices, const aclTensor* initialStateMode,
+                  const aclTensor* numAcceptedTokens, const char* activation, int64_t nullBlockId, aclTensor* y,
+                  aclOpExecutor* executor)
 {
     L0_DFX(CausalConv1d, x, weight, convStates, bias, queryStartLoc, cacheIndices, initialStateMode, numAcceptedTokens,
            activation, nullBlockId, y, convStates);

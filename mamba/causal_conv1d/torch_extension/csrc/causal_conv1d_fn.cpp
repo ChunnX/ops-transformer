@@ -18,15 +18,15 @@
 
 namespace op_api {
 
-at::Tensor CausalConv1dFn(const at::Tensor &x, const at::Tensor &weight, const c10::optional<at::Tensor> &bias,
-                          at::Tensor &convStates, const c10::optional<at::Tensor> &queryStartLoc,
-                          const c10::optional<at::Tensor> &cacheIndices,
-                          const c10::optional<at::Tensor> &hasInitialState, const std::string &activation,
+at::Tensor CausalConv1dFn(const at::Tensor& x, const at::Tensor& weight, const c10::optional<at::Tensor>& bias,
+                          at::Tensor& convStates, const c10::optional<at::Tensor>& queryStartLoc,
+                          const c10::optional<at::Tensor>& cacheIndices,
+                          const c10::optional<at::Tensor>& hasInitialState, const std::string& activation,
                           int64_t padSlotId, int64_t nullBlockId,
-                          const c10::optional<at::Tensor> &blockIdxFirstScheduledToken,
-                          const c10::optional<at::Tensor> &blockIdxLastScheduledToken,
-                          const c10::optional<at::Tensor> &initialStateIdx,
-                          const c10::optional<at::Tensor> &numComputedTokens, int64_t blockSizeToAlign)
+                          const c10::optional<at::Tensor>& blockIdxFirstScheduledToken,
+                          const c10::optional<at::Tensor>& blockIdxLastScheduledToken,
+                          const c10::optional<at::Tensor>& initialStateIdx,
+                          const c10::optional<at::Tensor>& numComputedTokens, int64_t blockSizeToAlign)
 {
     TORCH_CHECK(activation == "silu" || activation == "none", "activation must be 'silu' or 'none', got: ", activation);
 
@@ -37,7 +37,7 @@ at::Tensor CausalConv1dFn(const at::Tensor &x, const at::Tensor &weight, const c
         y = at::empty_like(x);
     }
 
-    const char *activationMode = activation.c_str();
+    const char* activationMode = activation.c_str();
     ACLNN_CMD(aclnnCausalConv1dFn, x, weight, convStates, bias, queryStartLoc, cacheIndices, hasInitialState,
               blockIdxFirstScheduledToken, blockIdxLastScheduledToken, initialStateIdx, numComputedTokens,
               activationMode, nullBlockId, blockSizeToAlign, y);
@@ -45,6 +45,9 @@ at::Tensor CausalConv1dFn(const at::Tensor &x, const at::Tensor &weight, const c
     return y;
 }
 
-PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) { m.def("causal_conv1d_fn", &CausalConv1dFn, "causal_conv1d prefill"); }
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
+{
+    m.def("causal_conv1d_fn", &CausalConv1dFn, "causal_conv1d prefill");
+}
 
 } // namespace op_api

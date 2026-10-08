@@ -50,14 +50,14 @@ TEST_F(AclnnAttentionToFfnTest, TestAttentionToFfnNoQuant)
     TensorDesc expertRankTable = TensorDesc({1, 9, 4}, ACL_INT32, ACL_FORMAT_ND);
     // TensorDesc scales = TensorDesc({9, 7168}, ACL_FLOAT, ACL_FORMAT_ND);
     TensorDesc activeMask = TensorDesc({1, 16}, ACL_BOOL, ACL_FORMAT_ND);
-    const char *group = "test_attention_to_ffn_group";
+    const char* group = "test_attention_to_ffn_group";
     int64_t worldSize = 16;
     std::vector<int64_t> ffnTokenInfoTable = {11, 1, 146};
     std::vector<int64_t> ffnTokenData = {11, 1, 16, 9, 7168};
     std::vector<int64_t> attnTokenInfoTable = {1, 16, 9};
-    aclIntArray *ffnTokenInfoTableShape = aclCreateIntArray(ffnTokenInfoTable.data(), ffnTokenInfoTable.size());
-    aclIntArray *ffnTokenDataShape = aclCreateIntArray(ffnTokenData.data(), ffnTokenData.size());
-    aclIntArray *attnTokenInfoTableShape = aclCreateIntArray(attnTokenInfoTable.data(), attnTokenInfoTable.size());
+    aclIntArray* ffnTokenInfoTableShape = aclCreateIntArray(ffnTokenInfoTable.data(), ffnTokenInfoTable.size());
+    aclIntArray* ffnTokenDataShape = aclCreateIntArray(ffnTokenData.data(), ffnTokenData.size());
+    aclIntArray* attnTokenInfoTableShape = aclCreateIntArray(attnTokenInfoTable.data(), attnTokenInfoTable.size());
     int64_t moeExpertNum = 8;
     int64_t quantMode = 0;
     int64_t syncFlag = 0;
@@ -69,7 +69,7 @@ TEST_F(AclnnAttentionToFfnTest, TestAttentionToFfnNoQuant)
                               moeExpertNum, quantMode, syncFlag, ffnStartRankId),
                         OUTPUT());
     uint64_t workspaceSize = 0;
-    aclOpExecutor *executor = nullptr;
+    aclOpExecutor* executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
@@ -84,14 +84,14 @@ TEST_F(AclnnAttentionToFfnTest, TestAttentionToFfnQuant)
     TensorDesc expertRankTable = TensorDesc({1, 9, 4}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc scales = TensorDesc({9, 7168}, ACL_FLOAT, ACL_FORMAT_ND);
     TensorDesc activeMask = TensorDesc({1, 16}, ACL_BOOL, ACL_FORMAT_ND);
-    const char *group = "test_attention_to_ffn_group";
+    const char* group = "test_attention_to_ffn_group";
     int64_t worldSize = 16;
     std::vector<int64_t> ffnTokenInfoTable = {11, 1, 146};
     std::vector<int64_t> ffnTokenData = {11, 1, 16, 9, 7296};
     std::vector<int64_t> attnTokenInfoTable = {1, 16, 9};
-    aclIntArray *ffnTokenInfoTableShape = aclCreateIntArray(ffnTokenInfoTable.data(), ffnTokenInfoTable.size());
-    aclIntArray *ffnTokenDataShape = aclCreateIntArray(ffnTokenData.data(), ffnTokenData.size());
-    aclIntArray *attnTokenInfoTableShape = aclCreateIntArray(attnTokenInfoTable.data(), attnTokenInfoTable.size());
+    aclIntArray* ffnTokenInfoTableShape = aclCreateIntArray(ffnTokenInfoTable.data(), ffnTokenInfoTable.size());
+    aclIntArray* ffnTokenDataShape = aclCreateIntArray(ffnTokenData.data(), ffnTokenData.size());
+    aclIntArray* attnTokenInfoTableShape = aclCreateIntArray(attnTokenInfoTable.data(), attnTokenInfoTable.size());
     int64_t moeExpertNum = 8;
     int64_t quantMode = 2;
     int64_t syncFlag = 0;
@@ -103,7 +103,7 @@ TEST_F(AclnnAttentionToFfnTest, TestAttentionToFfnQuant)
                               moeExpertNum, quantMode, syncFlag, ffnStartRankId),
                         OUTPUT());
     uint64_t workspaceSize = 0;
-    aclOpExecutor *executor = nullptr;
+    aclOpExecutor* executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }

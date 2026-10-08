@@ -15,6 +15,8 @@ __all__ = ["flash_attn_minimal"]
 import torch
 from torch import Tensor
 
-def flash_attn_minimal(query: Tensor, key: Tensor, value: Tensor,
-    softmaxScale: float) -> Tensor:
+
+def flash_attn_minimal(
+    query: Tensor, key: Tensor, value: Tensor, softmaxScale: float
+) -> Tensor:
     return torch.ops.ascend_ops.flash_attn_minimal(query, key, value, softmaxScale)
