@@ -1355,9 +1355,9 @@ TestCases = {
         "mask_mode": [3],
         "seqused_kv": [[48, 128, 256]],
         "sinks": [True],
-        # No-sink LSE is about 145~400 for seed 21.  Cover the competitive
-        # and sink-dominant regions instead of a numerically invisible 0~1.
-        "sinks_datarange": [(250.0, 420.0)],
+        # Exercise sink-dominant, QK-dominant, and competitive logits. The
+        # wide range also checks stable online-softmax and FD merging.
+        "sinks_datarange": [(-600.0, 600.0)],
         "max_seqlen_q": [5],
         "max_seqlen_kv": [256],
         "softmax_scale": 0.08838834764831843,
