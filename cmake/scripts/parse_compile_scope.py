@@ -45,6 +45,7 @@ LONG_SOC = {
     "ascend910b": "Ascend910B1",
     "ascend910_93": "Ascend910_9391",
     "ascend950": "Ascend950PR_9599",
+    "ascend960dt": "Ascend960DT_968B7",
     "ascend350": "Ascend350_355e",
     "kirinx90": "KirinX90",
     "kirin9030": "Kirin9030",
@@ -275,6 +276,17 @@ def collect_compile_ops(changed_file, soc_text, experimental):
     target_socs = split_socs(soc_text)
 
     chosen_names = set()
+    framework_changed = any(
+        path in {"CMakeLists.txt", "build.sh", "version.cmake"}
+        or path.startswith(
+            ("cmake/", "common/", "scripts/ci/", "scripts/util/", ".gitcode/")
+        )
+        for path in read_changed_files(changed_file)
+    )
+    if framework_changed:
+        chosen_names.update(name for _, name, _ in filter_by_soc(ops, target_socs))
+        starts.update(whitelist)
+
     fallback_starts = set()
     for key in sorted(starts):
         entry = whitelist.get(key)
