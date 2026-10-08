@@ -481,10 +481,10 @@ public:
 
             // Q task splitting按照[qNBlockNum, qHead]
             uint32_t taskIdxCurBatch = taskIdx - preTotalTaskNum;
-            uint32_t qSBlockIdx = taskIdxCurBatch / curQNBlockNum;
+            uint32_t qNBlockIdx = taskIdxCurBatch / curQSBlockNum;
+            uint32_t qSBlockIdx = taskIdxCurBatch - qNBlockIdx * curQSBlockNum;
             uint32_t qXIdx = qSBlockIdx / qBlockInX;
             uint32_t qXInnerIdx = qSBlockIdx - qXIdx * qBlockInX;
-            uint32_t qNBlockIdx = taskIdxCurBatch - qSBlockIdx * curQNBlockNum;
             uint32_t qNBlockIdxCurGroup = qNBlockIdx % qNBlockNumPerGroup;
             uint32_t xBlockNum = qSeqlen / qBlockX;
             uint32_t xTailNum = qSeqlen - xBlockNum * qBlockX;
