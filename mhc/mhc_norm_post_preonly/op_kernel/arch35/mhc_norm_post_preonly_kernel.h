@@ -13,7 +13,7 @@
 
 #include "mhc_norm_post_preonly_kernel_support.h"
 
-template<typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING = false>
+template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING = false>
 class KernelMhcNormPostPreonly {
 public:
     __aicore__ inline KernelMhcNormPostPreonly() {}
@@ -21,13 +21,10 @@ public:
     // =====================================================================
     //  Init: 解析 tiling, 设置 GM buffer, 分配 UB
     // =====================================================================
-    __aicore__ inline void Init(
-        GM_ADDR h_out_gm, GM_ADDR residual_gm,
-        GM_ADDR h_post_gm, GM_ADDR h_res_gm,
-        GM_ADDR phi_gm, GM_ADDR alpha_0_gm, GM_ADDR bias_gm,
-        GM_ADDR gamma_0_gm, GM_ADDR gamma_1_gm, GM_ADDR gamma_2_gm,
-        GM_ADDR h_in_prime_gm, GM_ADDR x_2_out_gm, GM_ADDR h_in_f32_gm,
-        GM_ADDR workspace, GM_ADDR tiling);
+    __aicore__ inline void Init(GM_ADDR h_out_gm, GM_ADDR residual_gm, GM_ADDR h_post_gm, GM_ADDR h_res_gm,
+                                GM_ADDR phi_gm, GM_ADDR alpha_0_gm, GM_ADDR bias_gm, GM_ADDR gamma_0_gm,
+                                GM_ADDR gamma_1_gm, GM_ADDR gamma_2_gm, GM_ADDR h_in_prime_gm, GM_ADDR x_2_out_gm,
+                                GM_ADDR h_in_f32_gm, GM_ADDR workspace, GM_ADDR tiling);
 
     // =====================================================================
     //  Process: gamma hoisting + token loop dispatch
@@ -40,15 +37,16 @@ public:
 private:
     __aicore__ inline void ProcessTokenSingleAiv(uint32_t token);
     __aicore__ inline void ProcessTokenDualSiblingAiv(uint32_t token);
-    __aicore__ inline void ComputeX2PostTile(uint32_t token, uint32_t tOff, uint32_t tD,
-        float invRms0, const float (&postVals)[N_MAX], const float (&combVals)[N_MAX * N_MAX]);
+    __aicore__ inline void ComputeX2PostTile(uint32_t token, uint32_t tOff, uint32_t tD, float invRms0,
+                                             const float (&postVals)[N_MAX]);
     __aicore__ inline void CacheX2Tile(uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput);
     __aicore__ inline void CacheX2TileForLane(uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput);
     __aicore__ inline void LoadX2CacheTile(uint32_t tOff, uint32_t tD);
     __aicore__ inline void CacheHInTile(uint32_t tOff, uint32_t tD, LocalTensor<float> hIn);
     __aicore__ inline void LoadHInCacheTile(uint32_t tOff, uint32_t tD, LocalTensor<float> hIn);
-    __aicore__ inline void AccumulateHalfPartials(uint32_t tOff, uint32_t tD,
-        float (&sumSqHalf)[2], float (&dotHalf)[2][N_MAX], uint32_t halfBegin = 0, uint32_t halfEnd = 2);
+    __aicore__ inline void AccumulateHalfPartials(uint32_t tOff, uint32_t tD, float (&sumSqHalf)[2],
+                                                  float (&dotHalf)[2][N_MAX], uint32_t halfBegin = 0,
+                                                  uint32_t halfEnd = 2);
 
     // =================================================================
     //  共享计算模块
@@ -63,13 +61,31 @@ private:
 // 数据加载
 
 /// 加载一个token的h_post[N]和h_res[N*N]。
-__aicore__ inline void LoadTokenWeights(uint32_t token, float (&postVals)[N_MAX], float (&combVals)[N_MAX * N_MAX]);
+__aicore__ inline void LoadTokenWeights(uint32_t token, float (&postVals)[N_MAX]);
 
-/// 将h_out[token, tOff:tOff+tD]从低精度加载并转换为FP32。
+/// 把一个h_out分块预取到输入队列；双槽允许下一分块MTE2与当前分块Vector重叠。
+__aicore__ inline void PrefetchHOutTile(uint64_t gmOffset, uint32_t tD);
+
+/// 按队列顺序取出已经预取的h_out分块并转换为FP32。
+__aicore__ inline void ConsumeHOutTile(uint32_t tD);
+
+/// 非流水调用点仍使用成对的预取与消费。
 __aicore__ inline void LoadHOutAndCast(uint64_t gmOffset, uint32_t tD);
 
-/// 将residual[token, 0:N, tOff:tOff+tD]从低精度加载并转换为FP32。
-__aicore__ inline void LoadResidualAndCast(uint64_t gmBaseOffset, uint32_t tD);
+/// 提前搬运完整h_out；后续权重加载的全流水等待同时保证该数据对Vector可见。
+__aicore__ inline void CacheHOut(uint64_t gmOffset);
+
+/// 每个token一次搬运完整gamma0，与h_out和权重共用初始全流水等待。
+__aicore__ inline void CacheGamma0();
+
+/// R6归约完成后发起完整gamma1搬运，与invRms1标量计算重叠。
+__aicore__ inline void StartCacheGamma1();
+
+/// R7读取完整gamma1前回收MTE2到Vector事件。
+__aicore__ inline void WaitCacheGamma1();
+
+/// 第二遍R1/R2直接从x2缓存恢复h_out，避免再次从GM读取。
+__aicore__ inline void LoadCachedHOut(uint32_t tOff, uint32_t tD);
 
 /// 将gamma的[tOff, tOff+tD)分块加载到指定缓存。
 __aicore__ inline void LoadGammaInto(LocalTensor<float> dst, GlobalTensor<float> &src, uint32_t tOff, uint32_t tD);
@@ -90,19 +106,14 @@ __aicore__ inline void ApplyScaleAndGamma(LocalTensor<float> buf, float scale, L
 
 // MHC_Post计算
 
-/// 单核批量计算全部N个head的x2，并写入bufX2Fp32_。
-__aicore__ inline void ComputeX2AllHeadsBatched(const float (&postVals)[N_MAX], const float (&combVals)[N_MAX * N_MAX],
-                                                uint32_t tD);
-
-/// 单核多分块路径按head串行计算全部x2。
-__aicore__ inline void ComputeX2AllHeadsSerial(const float (&postVals)[N_MAX], const float (&combVals)[N_MAX * N_MAX],
-                                               uint32_t tD);
+/// 批量加载低精度残差，在R2的VF内完成转换并计算全部N个head的x2。
+__aicore__ inline void ComputeX2AllHeadsBatched(const float (&postVals)[N_MAX], uint64_t gmBaseOffset, uint32_t tD);
 
 // 门控计算
 
 /// 由xHatVals计算gate[0..N-1]，其中包含invRmsPre缩放：
 ///   gate[i] = sigmoid(alpha0 * xHat[i] + bias[i]) + hcEps
-__aicore__ inline void ComputeGateValues(float totalSumSqPre, float (&xHatVals)[N_MAX], float (&gate)[N_MAX]);
+__aicore__ inline void ComputeGateValues(float totalSumSqPre, float (&xHatVals)[N_MAX]);
 
 
 
@@ -118,11 +129,11 @@ __aicore__ inline void FenceMte3ToV();
 
 __aicore__ inline void FenceVToMte2();
 
-__aicore__ inline void LoadLowPrecisionTile(
-    GlobalTensor<T> &src, uint64_t gmOffset, LocalTensor<float> dst, uint32_t count);
+__aicore__ inline void LoadLowPrecisionTile(GlobalTensor<T> &src, uint64_t gmOffset, LocalTensor<float> dst,
+                                            uint32_t count);
 
-__aicore__ inline void WriteLowPrecisionTile(
-    GlobalTensor<T> &dst, uint64_t gmOffset, LocalTensor<float> src, uint32_t count);
+__aicore__ inline void WriteLowPrecisionTile(GlobalTensor<T> &dst, uint64_t gmOffset, LocalTensor<float> src,
+                                             uint32_t count);
 
 __aicore__ inline void WriteHInPrimeTile(LocalTensor<float> src, uint64_t gmOffset, uint32_t count);
 
@@ -137,23 +148,20 @@ __aicore__ inline uint32_t GetTileD(uint32_t tile) const;
     TPipe pipe_;
 
     // UB缓存
-    TQue<TPosition::VECIN, 1>  bufHOutBf16_;
-    TBuf<TPosition::VECCALC>   bufHOutFp32_;
-    TBuf<TPosition::VECCALC>   bufGamma0Fp32_;
-    TBuf<TPosition::VECCALC>   bufGamma1Fp32_;
-    TBuf<TPosition::VECCALC>   bufGamma2Fp32_;
-    TBuf<TPosition::VECCALC>   bufX2Fp32_;
-    TBuf<TPosition::VECCALC>   bufX2Cache_;
-    TQue<TPosition::VECIN, 1>  bufResidualBf16_;
-    TBuf<TPosition::VECCALC>   bufResFp32_;
-    TBuf<TPosition::VECCALC>   bufSqFp32_;
-    TBuf<TPosition::VECCALC>   bufPostComb_;
-    TQue<TPosition::VECIN, BUFFER_NUM_TWO>  bufPhiFp32_;
-    TQue<TPosition::VECOUT, 1> bufHInPrimeBf16_;
-    TBuf<TPosition::VECCALC>   bufScalar_;
+    TQue<TPosition::VECIN, BUFFER_NUM_ONE> bufHOutBf16_;
+    TBuf<TPosition::VECCALC> bufGamma0Fp32_;
+    TBuf<TPosition::VECCALC> bufGamma2Fp32_;
+    TBuf<TPosition::VECCALC> bufX2Fp32_;
+    TBuf<TPosition::VECCALC> bufX2Cache_;
+    TQue<TPosition::VECIN, 1> bufResidualBf16_;
+    TBuf<TPosition::VECCALC> bufResFp32_;
+    TBuf<TPosition::VECCALC> bufPostComb_;
+    TQue<TPosition::VECIN, BUFFER_NUM_TWO> bufPhiFp32_;
+    TQue<TPosition::VECOUT, BUFFER_NUM_ONE> bufHInPrimeBf16_;
+    TBuf<TPosition::VECCALC> bufScalar_;
 
     // GM张量
-    GlobalTensor<T>     hOutGm_, residualGm_, hInPrimeGm_, x2OutGm_;
+    GlobalTensor<T> hOutGm_, residualGm_, hInPrimeGm_, x2OutGm_;
     GlobalTensor<float> hPostGm_, hResGm_, phiGm_;
     GlobalTensor<float> alpha0Gm_, biasGm_;
     GlobalTensor<float> gamma0Gm_, gamma1Gm_, gamma2Gm_;
