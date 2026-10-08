@@ -586,12 +586,12 @@ __aicore__ inline void VFComputePostHead(const LocalTensor<float> &dst, const Lo
             mask = Reg::UpdateMask<float>(remain);
             Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(hOutReg, hOutAddr + i * VL_FP32);
             Reg::Muls(dstReg, hOutReg, postWeight, mask);
-            for (uint16_t j = 0; j < static_cast<uint16_t>(N_MAX); ++j) {
+            for (uint16_t j = 0; j < static_cast<uint16_t>(N); ++j) {
                 const uint32_t row = static_cast<uint32_t>(j);
                 Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(residualB16Reg,
                                                                   residualAddr + row * rowStride + i * VL_FP32);
                 Reg::Cast<float, T, CAST_B16_TO_FP32>(residualReg, residualB16Reg, mask);
-                Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(weightReg, combAddr + row * N_MAX + headIndex);
+                Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(weightReg, combAddr + row * N + headIndex);
                 Reg::MulAddDst(dstReg, residualReg, weightReg, mask);
             }
             Reg::StoreAlign(dstAddr + i * VL_FP32, dstReg, mask);
@@ -631,12 +631,12 @@ __aicore__ inline void VFComputePostHeadPair(const LocalTensor<T> &dst0, const L
         // 8个组合权重与D无关，在循环外一次广播，避免每个vector block重复从UB取标量。
         Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(weight00Reg, combAddr + headIndex);
         Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(weight01Reg, combAddr + headIndex + 1U);
-        Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(weight10Reg, combAddr + N_MAX + headIndex);
-        Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(weight11Reg, combAddr + N_MAX + headIndex + 1U);
-        Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(weight20Reg, combAddr + 2U * N_MAX + headIndex);
-        Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(weight21Reg, combAddr + 2U * N_MAX + headIndex + 1U);
-        Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(weight30Reg, combAddr + 3U * N_MAX + headIndex);
-        Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(weight31Reg, combAddr + 3U * N_MAX + headIndex + 1U);
+        Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(weight10Reg, combAddr + N + headIndex);
+        Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(weight11Reg, combAddr + N + headIndex + 1U);
+        Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(weight20Reg, combAddr + 2U * N + headIndex);
+        Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(weight21Reg, combAddr + 2U * N + headIndex + 1U);
+        Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(weight30Reg, combAddr + 3U * N + headIndex);
+        Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(weight31Reg, combAddr + 3U * N + headIndex + 1U);
         for (uint16_t i = 0; i < loops; ++i) {
             mask = Reg::UpdateMask<float>(remain);
             if constexpr (FUSE_NORM_SQUARE) {
