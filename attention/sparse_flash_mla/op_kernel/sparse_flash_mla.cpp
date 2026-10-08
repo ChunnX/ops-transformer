@@ -45,10 +45,10 @@ using namespace SMLAKernel;
     do { \
         using CubeBlockType = \
             typename std::conditional<g_coreType == AscendC::AIC, SMLAKernel::CSABlockCube<__VA_ARGS__>, \
-                                      SMLAKernel::SmlaCsaBlockCubeDummy<__VA_ARGS__>>::type; \
+                                      SMLAKernel::CSABlockCubeDummy<__VA_ARGS__>>::type; \
         using VecBlockType = \
             typename std::conditional<g_coreType == AscendC::AIC, SMLAKernel::CSABlockVecDummy<__VA_ARGS__>, \
-                                      SMLAKernel::SmlaCsaBlockVector<__VA_ARGS__>>::type; \
+                                      SMLAKernel::CSABlockVec<__VA_ARGS__>>::type; \
         templateClass<CubeBlockType, VecBlockType> op; \
         GET_TILING_DATA_WITH_STRUCT(tilingdataClass, tilingDataIn, tiling); \
         const tilingdataClass* __restrict tilingData = &tilingDataIn; \
@@ -61,11 +61,11 @@ using namespace SMLAKernel;
 #define SMLA_OP_IMPL(templateClass, tilingdataClass, ...) \
     do { \
         using CubeBlockType = \
-            typename std::conditional<g_coreType == AscendC::AIC, SMLAKernel::SmlaCsaBlockCube<__VA_ARGS__>, \
-                                      SMLAKernel::SmlaCsaBlockCubeDummy<__VA_ARGS__>>::type; \
+            typename std::conditional<g_coreType == AscendC::AIC, SMLAKernel::CSABlockCube<__VA_ARGS__>, \
+                                      SMLAKernel::CSABlockCubeDummy<__VA_ARGS__>>::type; \
         using VecBlockType = \
             typename std::conditional<g_coreType == AscendC::AIC, SMLAKernel::CSABlockVecDummy<__VA_ARGS__>, \
-                                      SMLAKernel::SmlaCsaBlockVector<__VA_ARGS__>>::type; \
+                                      SMLAKernel::CSABlockVec<__VA_ARGS__>>::type; \
         templateClass<CubeBlockType, VecBlockType> op; \
         GET_TILING_DATA_WITH_STRUCT(tilingdataClass, tilingDataIn, tiling); \
         const tilingdataClass* __restrict tilingData = &tilingDataIn; \
@@ -102,33 +102,32 @@ __global__ __aicore__ void sparse_flash_mla(
 #else
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
 #endif
-    __gm__ uint8_t *user = GetUserWorkspace(workspace);
+    __gm__ uint8_t* user = GetUserWorkspace(workspace);
 
 #if (__NPU_ARCH__ == 9201 || __NPU_ARCH__ == 9202)
     TPipe tPipe;
     if constexpr (ORIG_DTYPE_Q == DT_FLOAT16 && ORIG_DTYPE_ORI_KV == DT_FLOAT16 && ORIG_DTYPE_ATTN_OUT == DT_FLOAT16) {
         if constexpr (TEMPLATE_MODE == CSA_TEMPLATE) {
-                        SMLA_OP_IMPL(SMLAKernel::SparseFlashMlaCsaKernel, SparseFlashMlaTilingData, half, half, float, half,
+            SMLA_OP_IMPL(SMLAKernel::SparseFlashMlaCsaKernel, SparseFlashMlaTilingData, half, half, float, half,
                          FLASH_DECODE, static_cast<SMLA_LAYOUT>(LAYOUT_T), static_cast<SMLA_LAYOUT>(KV_LAYOUT_T),
-                         static_cast<SMLATemplateMode>(TEMPLATE_MODE), SPLIT_G, BATCH_CONSISTENCY, IS_VEC_S2PHYADDR,
-                         static_cast<TopkValueMode>(TOPK_VALUE_MODE));
+                         static_cast<SMLATemplateMode>(TEMPLATE_MODE), SPLIT_G, BATCH_CONSISTENCY, IS_VEC_S2PHYADDR);
         } else {
             SMLA_OP_IMPL(SMLAKernel::SparseFlashMlaSwaKernel, SparseFlashMlaTilingData, half, half, float, half,
                          FLASH_DECODE, static_cast<SMLA_LAYOUT>(LAYOUT_T), static_cast<SMLA_LAYOUT>(KV_LAYOUT_T),
-                         static_cast<SMLATemplateMode>(TEMPLATE_MODE), SPLIT_G, BATCH_CONSISTENCY, IS_VEC_S2PHYADDR,
-                         static_cast<TopkValueMode>(TOPK_VALUE_MODE));
+                         static_cast<SMLATemplateMode>(TEMPLATE_MODE), SPLIT_G, BATCH_CONSISTENCY, IS_VEC_S2PHYADDR);
+        }
     }
     if constexpr (ORIG_DTYPE_Q == DT_BF16 && ORIG_DTYPE_ORI_KV == DT_BF16 && ORIG_DTYPE_ATTN_OUT == DT_BF16) {
         if constexpr (TEMPLATE_MODE == CSA_TEMPLATE) {
-           SMLA_OP_IMPL(SMLAKernel::SparseFlashMlaCsaKernel, SparseFlashMlaTilingData, bfloat16_t, bfloat16_t, float,
+            SMLA_OP_IMPL(SMLAKernel::SparseFlashMlaCsaKernel, SparseFlashMlaTilingData, bfloat16_t, bfloat16_t, float,
                          bfloat16_t, FLASH_DECODE, static_cast<SMLA_LAYOUT>(LAYOUT_T),
                          static_cast<SMLA_LAYOUT>(KV_LAYOUT_T), static_cast<SMLATemplateMode>(TEMPLATE_MODE), SPLIT_G,
-                         BATCH_CONSISTENCY, IS_VEC_S2PHYADDR, static_cast<TopkValueMode>(TOPK_VALUE_MODE));
+                         BATCH_CONSISTENCY, IS_VEC_S2PHYADDR);
         } else {
             SMLA_OP_IMPL(SMLAKernel::SparseFlashMlaSwaKernel, SparseFlashMlaTilingData, bfloat16_t, bfloat16_t, float,
                          bfloat16_t, FLASH_DECODE, static_cast<SMLA_LAYOUT>(LAYOUT_T),
                          static_cast<SMLA_LAYOUT>(KV_LAYOUT_T), static_cast<SMLATemplateMode>(TEMPLATE_MODE), SPLIT_G,
-                         BATCH_CONSISTENCY, IS_VEC_S2PHYADDR, static_cast<TopkValueMode>(TOPK_VALUE_MODE));
+                         BATCH_CONSISTENCY, IS_VEC_S2PHYADDR);
         }
     }
 #elif (__CCE_AICORE__ == 310)
