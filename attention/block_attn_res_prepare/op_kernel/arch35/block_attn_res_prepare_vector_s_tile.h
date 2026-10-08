@@ -129,6 +129,13 @@ private:
     static constexpr uint32_t MAX_PIPE_ID = 8U;
     static constexpr uint32_t MTE3_MAX_PIPE_ID = 4U;
     static constexpr uint32_t STAT_BUFFER_NUM = 4U;
+    static constexpr uint32_t SINGLE_STAT_BUFFER_NUM = 2U;
+    static constexpr uint32_t N_FOUR_GROUP = 4U;
+    static constexpr uint32_t N_PAIR_GROUP = 2U;
+    static constexpr uint32_t S_PAIR_ROWS = 2U;
+    static constexpr uint32_t FOUR_N_MIN_T = 64U;
+    static constexpr event_t GROUP_STAT_EVENT_ID = static_cast<event_t>(2);
+    static constexpr event_t GROUP_Q_EVENT_ID = static_cast<event_t>(0);
     __aicore__ inline static void WaitMte2ToVector(event_t eventId)
     {
         set_flag(PIPE_MTE2, PIPE_V, eventId);
@@ -366,7 +373,7 @@ private:
     __aicore__ inline void ProcessWork(uint64_t tIndex, uint64_t sIndex, bool firstS, uint32_t validN,
                                        __ubuf__ INPUT_T *qAddr, event_t qEvent)
     {
-        const uint32_t statBufferIndex = statLoop_ % 2U;
+        const uint32_t statBufferIndex = statLoop_ % SINGLE_STAT_BUFFER_NUM;
         const event_t statEvent = static_cast<event_t>(tilingData_->oBufferNum + statBufferIndex);
         const uint64_t statByteOffset =
             statUbOffset_ + static_cast<uint64_t>(statBufferIndex) * tilingData_->statUbElems * FP32_BYTES;
@@ -420,7 +427,7 @@ private:
 
     __aicore__ inline void CopyGroupedStats(uint64_t tIndex, uint32_t sBase)
     {
-        WaitVectorToMte3(static_cast<event_t>(2));
+        WaitVectorToMte3(GROUP_STAT_EVENT_ID);
         auto logitMaxTensor = MakeGmTensor<float>(logitMaxAddr_, tilingData_->totalS, tilingData_->totalT);
         auto expSumTensor = MakeGmTensor<float>(expSumAddr_, tilingData_->totalS, tilingData_->totalT);
         for (uint32_t row = 0; row < STAT_BUFFER_NUM; ++row) {
@@ -433,7 +440,7 @@ private:
                 statOffset + static_cast<uint64_t>(BlockAttnResPrepareVF::SUM_OFFSET) * FP32_BYTES,
                 1, FP32_32B_ALIGN_ELEMS);
         }
-        set_flag(PIPE_MTE3, PIPE_V, static_cast<event_t>(2));
+        set_flag(PIPE_MTE3, PIPE_V, GROUP_STAT_EVENT_ID);
     }
 
     __aicore__ inline void ProcessGroupedOutputPair(uint64_t tIndex, uint32_t sIndex,
@@ -460,8 +467,8 @@ private:
             __ubuf__ float *output1Addr = GetUbAddr<float>(oUbOffset_ +
                 static_cast<uint64_t>(outputBuffer1) * baseDAlign_ * FP32_BYTES);
             uint32_t nIndex = 0U;
-            if (tilingData_->totalT >= 64U) {
-                for (; nIndex + 3U < validN; nIndex += 4U) {
+            if (tilingData_->totalT >= FOUR_N_MIN_T) {
+                for (; nIndex + N_FOUR_GROUP - 1U < validN; nIndex += N_FOUR_GROUP) {
                     __ubuf__ INPUT_T *vAddr = GetUbAddr<INPUT_T>(
                         vCacheUbOffset_ + static_cast<uint64_t>(nIndex) * dAlign_ * INPUT_BYTES);
                     if (nIndex == 0U) {
@@ -475,7 +482,7 @@ private:
                     }
                 }
             }
-            for (; nIndex + 1U < validN; nIndex += 2U) {
+            for (; nIndex + N_PAIR_GROUP - 1U < validN; nIndex += N_PAIR_GROUP) {
                 __ubuf__ INPUT_T *v0Addr = GetUbAddr<INPUT_T>(
                     vCacheUbOffset_ + static_cast<uint64_t>(nIndex) * dAlign_ * INPUT_BYTES);
                 __ubuf__ INPUT_T *v1Addr = GetUbAddr<INPUT_T>(
@@ -515,15 +522,15 @@ private:
     {
         LoadVTile(tIndex, validN);
         for (uint32_t sBase = sStart; sBase < sEnd; sBase += STAT_BUFFER_NUM) {
-            wait_flag(PIPE_MTE3, PIPE_V, static_cast<event_t>(2));
-            wait_flag(PIPE_V, PIPE_MTE2, static_cast<event_t>(0));
+            wait_flag(PIPE_MTE3, PIPE_V, GROUP_STAT_EVENT_ID);
+            wait_flag(PIPE_V, PIPE_MTE2, GROUP_Q_EVENT_ID);
             for (uint32_t row = 0; row < STAT_BUFFER_NUM; ++row) {
                 PrefetchQ(sBase + row, row);
             }
-            WaitMte2ToVector(static_cast<event_t>(0));
+            WaitMte2ToVector(GROUP_Q_EVENT_ID);
             __ubuf__ INPUT_T *qAddr = GetUbAddr<INPUT_T>(qUbOffset_);
             uint32_t nIndex = 0U;
-            for (; nIndex + 1U < validN; nIndex += 2U) {
+            for (; nIndex + N_PAIR_GROUP - 1U < validN; nIndex += N_PAIR_GROUP) {
                 __ubuf__ INPUT_T *v0Addr = GetUbAddr<INPUT_T>(
                     vCacheUbOffset_ + static_cast<uint64_t>(nIndex) * dAlign_ * INPUT_BYTES);
                 __ubuf__ INPUT_T *v1Addr = GetUbAddr<INPUT_T>(
@@ -551,13 +558,13 @@ private:
                         tilingData_->totalD, nIndex, baseDAlign_, tilingData_->statUbElems);
                 }
             }
-            set_flag(PIPE_V, PIPE_MTE2, static_cast<event_t>(0));
+            set_flag(PIPE_V, PIPE_MTE2, GROUP_Q_EVENT_ID);
             for (uint32_t row = 0; row < STAT_BUFFER_NUM; ++row) {
                 FinalizeStats(GetUbAddr<float>(statUbOffset_ +
                     static_cast<uint64_t>(row) * tilingData_->statUbElems * FP32_BYTES), validN);
             }
             CopyGroupedStats(tIndex, sBase);
-            for (uint32_t row = 0; row < STAT_BUFFER_NUM; row += 2U) {
+            for (uint32_t row = 0; row < STAT_BUFFER_NUM; row += S_PAIR_ROWS) {
                 ProcessGroupedOutputPair(tIndex, sBase + row, row, validN);
             }
         }

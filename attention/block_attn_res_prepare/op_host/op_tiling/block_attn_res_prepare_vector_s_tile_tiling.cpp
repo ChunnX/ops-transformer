@@ -25,16 +25,25 @@ constexpr uint64_t UB_RESERVED_BYTES = 8UL * 1024UL;
 constexpr uint64_t BF16_BYTES = sizeof(uint16_t);
 constexpr uint64_t FP32_BYTES = sizeof(float);
 constexpr uint64_t REG_ELEMS = 64UL;
-constexpr uint64_t STAT_UB_ELEMS = 2UL * (REG_ELEMS + 8UL);
+constexpr uint64_t STAT_VECTOR_COUNT = 2UL;
+constexpr uint64_t STAT_SCALAR_BLOCK_ELEMS = 8UL;
+constexpr uint64_t STAT_UB_ELEMS = STAT_VECTOR_COUNT * (REG_ELEMS + STAT_SCALAR_BLOCK_ELEMS);
 constexpr uint64_t STAT_BUFFER_NUM = 4UL;
 constexpr uint64_t NORM_CACHE_BYTES = REG_ELEMS * FP32_BYTES;
 constexpr uint64_t Q_BUFFER_NUM = 4UL;
+constexpr uint64_t V_BUFFER_NUM = 1UL;
 constexpr uint64_t O_BUFFER_NUM = 2UL;
+constexpr uint64_t MIN_S_ROWS = 8UL;
+constexpr uint64_t MIN_D_ELEMS = 256UL;
+constexpr uint64_t AIV_CORE_REUSE_FACTOR = 2UL;
+constexpr uint64_t S_SPLIT_MIN_ROWS = 16UL;
+constexpr uint32_t S_TILE_PARTITIONS = 2U;
 } // namespace
 
 bool BlockAttnResPrepareVectorSTileTiling::IsCapable()
 {
-    if (!inputBf16_ || totalS_ < 8U || totalT_ < aivCoreNum_ / 2U || totalD_ < 256U ||
+    if (!inputBf16_ || totalS_ < MIN_S_ROWS || totalT_ < aivCoreNum_ / AIV_CORE_REUSE_FACTOR ||
+        totalD_ < MIN_D_ELEMS ||
         totalD_ % REG_ELEMS != 0U || ubSize_ <= UB_RESERVED_BYTES) {
         return false;
     }
@@ -48,7 +57,8 @@ bool BlockAttnResPrepareVectorSTileTiling::IsCapable()
 
 ge::graphStatus BlockAttnResPrepareVectorSTileTiling::DoOpTiling()
 {
-    const uint32_t sTileNum = (totalS_ >= 16U && totalT_ * 2U <= aivCoreNum_) ? 2U : 1U;
+    const uint32_t sTileNum = (totalS_ >= S_SPLIT_MIN_ROWS &&
+                               totalT_ * S_TILE_PARTITIONS <= aivCoreNum_) ? S_TILE_PARTITIONS : 1U;
     WorkDistribution distribution;
     if (CalculateWorkDistribution(totalT_ * sTileNum, aivCoreNum_, "VectorSTile", distribution) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
@@ -66,7 +76,7 @@ ge::graphStatus BlockAttnResPrepareVectorSTileTiling::DoOpTiling()
     tilingData_.baseD = static_cast<uint32_t>(totalD_);
     tilingData_.vCacheRows = static_cast<uint8_t>(totalN_);
     tilingData_.qBufferNum = static_cast<uint8_t>(Q_BUFFER_NUM);
-    tilingData_.vBufferNum = 1U;
+    tilingData_.vBufferNum = static_cast<uint8_t>(V_BUFFER_NUM);
     tilingData_.oBufferNum = static_cast<uint8_t>(O_BUFFER_NUM);
     tilingData_.sTileNum = static_cast<uint8_t>(sTileNum);
     tilingData_.statUbElems = static_cast<uint32_t>(STAT_UB_ELEMS);
@@ -88,9 +98,9 @@ void BlockAttnResPrepareVectorSTileTiling::DumpTilingInfo()
 {
     OP_LOGI(context_->GetNodeName(),
             "BlockAttnResPrepare VectorSTile: T=%lu N=%lu S=%lu D=%lu cores=%u baseT=1 baseS=%lu baseD=%lu "
-            "q/o buffers=2/2 vCacheRows=%lu",
+            "q/o buffers=%lu/%lu vCacheRows=%lu",
             totalT_, totalN_, totalS_, totalD_, usedCoreNum_, CeilDiv(totalS_, static_cast<uint64_t>(tilingData_.sTileNum)),
-            totalD_, totalN_);
+            totalD_, Q_BUFFER_NUM, O_BUFFER_NUM, totalN_);
 }
 
 REGISTER_TILING_TEMPLATE_WITH_ARCH(BlockAttnResPrepare, BlockAttnResPrepareVectorSTileTiling, supportedNpuArch,
