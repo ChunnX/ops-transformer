@@ -136,6 +136,36 @@ static constexpr inferPFALayoutTypeEnum InOutLayoutPFATypeValue[5][2] = {
 #define FA_Template_DN 1
 #define FA_Template_DN_Unmerged 2 // 不合轴 DN(预埋, 路由入口默认关闭)
 
+// ==================== V2-skip 块级 max 变化标志 (DN 路径专用) ====================
+// v1 阶段将块级标志(0表示本 AIV 半块所有行 mj == mj-1)写出到 GM workspace 槽位,
+// C2 据此决定 BMM2 是否在 L0C 上跨 tile 累加 Oj(累加时跳过 fixpipe 与整个 v2 阶段),
+// v2 阶段读同一槽位保持与 C2 的 fixpipe 行为一致(消费/释放 mmRes buffer 的次数必须逐 tile 相同)。
+// 槽位布局(单位: float 元素): [aicIdx][loop % LOOPS][subBlockIdx], 每槽 32B;
+// 槽深 4: 覆盖 PRELOAD_N=2 流水中 C2/V2 的滞后读取窗口(loop+4 的 v1 才会覆写同槽)。
+// GM 区域大小 = AIC核数 * 4 * 2 * 32B, host 侧 CalcWorkspaceSize 按此预留。
+static constexpr uint32_t FA_SKIP_FLAG_LOOPS = 4U;
+static constexpr uint32_t FA_SKIP_FLAG_SUBS = 2U;
+static constexpr uint32_t FA_SKIP_FLAG_SLOT_BYTES = 32U;
+static constexpr uint32_t FA_SKIP_FLAG_SLOT_FLOATS = FA_SKIP_FLAG_SLOT_BYTES / sizeof(float);
+static constexpr uint32_t FA_SKIP_FLAG_AIC_FLOATS = FA_SKIP_FLAG_LOOPS * FA_SKIP_FLAG_SUBS * FA_SKIP_FLAG_SLOT_FLOATS;
+static constexpr uint32_t FA_SKIP_FLAG_AIC_BYTES = FA_SKIP_FLAG_LOOPS * FA_SKIP_FLAG_SUBS * FA_SKIP_FLAG_SLOT_BYTES;
+
+// 标志区在 user workspace 中的字节偏移: [PA对齐区(仅PA)] [FD区(仅FD)] [标志区]
+// 与 host 侧 CalcWorkspaceSize 的 user 区排布严格一致(DN 模板 dSize<=192, bmm2/vec2 暂存区恒为0)
+// 仅kernel编译可见(host tiling 亦包含本头文件, 无 __aicore__ 扩展)
+#ifdef __aicore__
+__aicore__ inline uint64_t GetFaSkipFlagGmOffset(bool pageAttention, uint32_t coreNum, uint32_t accumOutSize,
+                                                 uint32_t logSumExpSize)
+{
+    uint64_t offset = static_cast<uint64_t>(accumOutSize + 2U * logSumExpSize) * sizeof(float);
+    if (pageAttention) {
+        // 与 host: workspaceSize_ += coreNum * 2 * 2 * 64 对齐
+        offset += static_cast<uint64_t>(coreNum) * 2U * 2U * 64U;
+    }
+    return offset;
+}
+#endif
+
 struct ConfigParams {
     inferS1TemplateType s1;
     inferS2TemplateType s2;

@@ -198,6 +198,125 @@ __aicore__ inline void FlashUpdateNew(const LocalTensor<T> &dstTensor, const Loc
 
 template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t srcD, uint16_t reduceSize, bool isUpdatePre,
           bool isMlaFullQuant>
+__simd_vf__ inline void FlashUpdateAddOnlyVF(__ubuf__ float *dstUb, __ubuf__ float *curUb, __ubuf__ float *preUb,
+                                             const uint16_t m, const uint16_t d, const float deScaleV)
+{
+    RegTensor<float> vreg_input_pre;
+    RegTensor<float> vreg_input_cur;
+    RegTensor<float> vreg_add;
+
+    MaskReg preg_all = CreateMask<float, MaskPattern::ALL>();
+    constexpr uint16_t floatRepSize = 64;
+    constexpr uint16_t dLoops = srcD / floatRepSize;
+
+    // dstTensor = preTensor + curTensor, mj == mj-1 时 rescale因子exp(mj-1-mj)恒为1, 跳过rescale乘法
+    for (uint16_t i = 0; i < m; ++i) {
+        for (uint16_t j = 0; j < dLoops; ++j) {
+            LoadAlign(vreg_input_pre, preUb + i * d + j * floatRepSize);
+            LoadAlign(vreg_input_cur, curUb + i * d + j * floatRepSize);
+            if constexpr (IsSameType<INPUT_T, fp8_e5m2_t>::value || IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
+                          IsSameType<INPUT_T, hifloat8_t>::value || IsSameType<INPUT_T, int8_t>::value) {
+                Muls(vreg_input_cur, vreg_input_cur, deScaleV, preg_all);
+            }
+            Add(vreg_add, vreg_input_pre, vreg_input_cur, preg_all);
+            StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)dstUb + i * d + j * floatRepSize, vreg_add,
+                                                         preg_all);
+        }
+    }
+}
+
+/*
+ * @ingroup FlashUpdateAdd
+ * @brief compute, dstTensor = preTensor + curTensor
+ * @brief mj == mj-1 时 rescale因子exp(mj-1-mj)恒为1, v2阶段跳过rescale乘法的特化路径
+ * @param [out] dstTensor, output LocalTensor
+ * @param [in] curTensor, input LocalTensor
+ * @param [in] preTensor, input LocalTensor
+ * @param [in] m, input rows
+ * @param [in] d, input colums, should be 64 aligned
+ */
+template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t srcD, bool isUpdatePre, bool isMlaFullQuant>
+__aicore__ inline void FlashUpdateAddNew(const LocalTensor<T> &dstTensor, const LocalTensor<T> &curTensor,
+                                         const LocalTensor<T> &preTensor, const uint16_t m, const uint16_t d,
+                                         const float deScaleV)
+{
+    static_assert(IsSameType<T, float>::value, "VF FlashUpdateAdd, T must be float");
+    static_assert(srcD % 64 == 0, "VF FlashUpdateAdd, srcD should be 64 aligned");
+
+    __ubuf__ float *dstUb = (__ubuf__ T *)dstTensor.GetPhyAddr();
+    __ubuf__ float *curUb = (__ubuf__ T *)curTensor.GetPhyAddr();
+    __ubuf__ float *preUb = (__ubuf__ T *)preTensor.GetPhyAddr();
+
+    FlashUpdateAddOnlyVF<T, INPUT_T, OUTPUT_T, srcD, REDUCE_SIZE, isUpdatePre, isMlaFullQuant>(dstUb, curUb, preUb, m,
+                                                                                                d, deScaleV);
+}
+
+template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t srcD, uint16_t reduceSize, bool isUpdatePre,
+          bool isMlaFullQuant>
+__simd_vf__ inline void FlashUpdateAddMulVF(__ubuf__ float *dstUb, __ubuf__ float *curUb, __ubuf__ float *preUb,
+                                            __ubuf__ float *expUb, const uint16_t m, const uint16_t d,
+                                            const float deScaleV)
+{
+    RegTensor<float> vreg_input_pre;
+    RegTensor<float> vreg_input_cur;
+    RegTensor<float> vreg_add;
+    RegTensor<float> vreg_exp;
+
+    MaskReg preg_all = CreateMask<float, MaskPattern::ALL>();
+    constexpr uint16_t floatRepSize = 64;
+    constexpr uint16_t dLoops = srcD / floatRepSize;
+
+    // dstTensor = (preTensor + curTensor) * expTensor
+    // v2-skip场景flush合并专用: ubVec2Res_与flush出的L0C累加器同在旧max尺度,
+    // 合并后统一重标定到新max尺度, Oj = (Oj-1 + exp(mj-2-mj-1)*部分和) * exp(mj-1-mj)
+    for (uint16_t i = 0; i < m; ++i) {
+        LoadAlign<T, Reg::LoadDist::DIST_BRC_B32>(vreg_exp, expUb + i * reduceSize);
+        for (uint16_t j = 0; j < dLoops; ++j) {
+            LoadAlign(vreg_input_pre, preUb + i * d + j * floatRepSize);
+            LoadAlign(vreg_input_cur, curUb + i * d + j * floatRepSize);
+            if constexpr (IsSameType<INPUT_T, fp8_e5m2_t>::value || IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
+                          IsSameType<INPUT_T, hifloat8_t>::value || IsSameType<INPUT_T, int8_t>::value) {
+                Muls(vreg_input_cur, vreg_input_cur, deScaleV, preg_all);
+            }
+            Add(vreg_add, vreg_input_pre, vreg_input_cur, preg_all);
+            Mul(vreg_add, vreg_add, vreg_exp, preg_all);
+            StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)dstUb + i * d + j * floatRepSize, vreg_add,
+                                                         preg_all);
+        }
+    }
+}
+
+/*
+ * @ingroup FlashUpdateAddMul
+ * @brief compute, dstTensor = (preTensor + curTensor) * expTensor
+ * @brief v2-skip场景: C2在L0C累加的部分和flush到UB后, 与ubVec2Res_合并并统一按
+ * @brief exp(mj-1-mj)重标定(两者同在旧max尺度), 首次flush时preTensor为0等价纯copy
+ * @param [out] dstTensor, output LocalTensor
+ * @param [in] curTensor, input LocalTensor (flush出的L0C累加器部分和)
+ * @param [in] preTensor, input LocalTensor (ubVec2Res_)
+ * @param [in] expTensor, input LocalTensor (v1写出的exp(mj-1-mj), 每行标量)
+ * @param [in] m, input rows
+ * @param [in] d, input colums, should be 64 aligned
+ */
+template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t srcD, bool isUpdatePre, bool isMlaFullQuant>
+__aicore__ inline void FlashUpdateAddMulNew(const LocalTensor<T> &dstTensor, const LocalTensor<T> &curTensor,
+                                            const LocalTensor<T> &preTensor, const LocalTensor<T> &expTensor,
+                                            const uint16_t m, const uint16_t d, const float deScaleV)
+{
+    static_assert(IsSameType<T, float>::value, "VF FlashUpdateAddMul, T must be float");
+    static_assert(srcD % 64 == 0, "VF FlashUpdateAddMul, srcD should be 64 aligned");
+
+    __ubuf__ float *dstUb = (__ubuf__ T *)dstTensor.GetPhyAddr();
+    __ubuf__ float *curUb = (__ubuf__ T *)curTensor.GetPhyAddr();
+    __ubuf__ float *preUb = (__ubuf__ T *)preTensor.GetPhyAddr();
+    __ubuf__ float *expUb = (__ubuf__ T *)expTensor.GetPhyAddr();
+
+    FlashUpdateAddMulVF<T, INPUT_T, OUTPUT_T, srcD, REDUCE_SIZE, isUpdatePre, isMlaFullQuant>(dstUb, curUb, preUb,
+                                                                                              expUb, m, d, deScaleV);
+}
+
+template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t srcD, uint16_t reduceSize, bool isUpdatePre,
+          bool isMlaFullQuant>
 __simd_vf__ inline void FlashUpdateLastBasicVF(__ubuf__ float *dstUb, __ubuf__ float *curUb, __ubuf__ float *preUb,
                                                __ubuf__ float *expMaxUb, __ubuf__ float *expSumUb,
                                                __ubuf__ float *rowMaxUb, const uint16_t m, const uint16_t d,
@@ -391,6 +510,68 @@ __aicore__ inline void FlashUpdateLastNew(const LocalTensor<T> &dstTensor, const
         FlashUpdateLastGeneral<T, INPUT_T, OUTPUT_T, REDUCE_SIZE, isUpdatePre>(
             dstTensor, curTensor, preTensor, expMaxTensor, expSumTensor, m, d, deScaleV, deScaleVPre);
     }
+}
+
+template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t srcD, uint16_t reduceSize, bool isUpdatePre,
+          bool isMlaFullQuant>
+__simd_vf__ inline void FlashUpdateLastAddOnlyVF(__ubuf__ float *dstUb, __ubuf__ float *curUb, __ubuf__ float *preUb,
+                                                 __ubuf__ float *expSumUb, const uint16_t m, const uint16_t d,
+                                                 const float deScaleV)
+{
+    RegTensor<float> vreg_input_pre;
+    RegTensor<float> vreg_input_cur;
+    RegTensor<float> vreg_add;
+    RegTensor<float> vreg_div;
+    RegTensor<float> vreg_exp_sum;
+
+    MaskReg preg_all = CreateMask<float, MaskPattern::ALL>();
+    constexpr uint16_t floatRepSize = 64;
+    constexpr uint16_t dLoops = srcD / floatRepSize;
+
+    // dstTensor = (preTensor + curTensor) / expSumTensor, mj == mj-1 时跳过rescale乘法的最后一块S2特化路径
+    for (uint16_t i = 0; i < m; ++i) {
+        LoadAlign<T, Reg::LoadDist::DIST_BRC_B32>(vreg_exp_sum, expSumUb + i * reduceSize);
+        for (uint16_t j = 0; j < dLoops; ++j) {
+            LoadAlign(vreg_input_pre, preUb + i * d + j * floatRepSize);
+            LoadAlign(vreg_input_cur, curUb + i * d + j * floatRepSize);
+            if constexpr (IsSameType<INPUT_T, fp8_e5m2_t>::value || IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
+                          IsSameType<INPUT_T, hifloat8_t>::value || IsSameType<INPUT_T, int8_t>::value) {
+                Muls(vreg_input_cur, vreg_input_cur, deScaleV, preg_all);
+            }
+            Add(vreg_add, vreg_input_pre, vreg_input_cur, preg_all);
+            Div(vreg_div, vreg_add, vreg_exp_sum, preg_all);
+            StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)dstUb + i * d + j * floatRepSize, vreg_div,
+                                                         preg_all);
+        }
+    }
+}
+
+/*
+ * @ingroup FlashUpdateLastAdd
+ * @brief compute, dstTensor = (preTensor + curTensor) / expSumTensor
+ * @brief mj == mj-1 时 rescale因子exp(mj-1-mj)恒为1, 最后一块S2跳过rescale乘法的特化路径
+ * @param [out] dstTensor, output LocalTensor
+ * @param [in] curTensor, input LocalTensor
+ * @param [in] preTensor, input LocalTensor
+ * @param [in] expSumTensor, input LocalTensor
+ * @param [in] m, input rows
+ * @param [in] d, input colums, should be 64 aligned
+ */
+template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t srcD, bool isUpdatePre, bool isMlaFullQuant>
+__aicore__ inline void FlashUpdateLastAddNew(const LocalTensor<T> &dstTensor, const LocalTensor<T> &curTensor,
+                                             const LocalTensor<T> &preTensor, const LocalTensor<T> &expSumTensor,
+                                             const uint16_t m, const uint16_t d, const float deScaleV)
+{
+    static_assert(IsSameType<T, float>::value, "VF FlashUpdateLastAdd, T must be float");
+    static_assert(srcD % 64 == 0, "VF FlashUpdateLastAdd, srcD should be 64 aligned");
+
+    __ubuf__ float *dstUb = (__ubuf__ T *)dstTensor.GetPhyAddr();
+    __ubuf__ float *curUb = (__ubuf__ T *)curTensor.GetPhyAddr();
+    __ubuf__ float *preUb = (__ubuf__ T *)preTensor.GetPhyAddr();
+    __ubuf__ float *expSumUb = (__ubuf__ T *)expSumTensor.GetPhyAddr();
+
+    FlashUpdateLastAddOnlyVF<T, INPUT_T, OUTPUT_T, srcD, REDUCE_SIZE, isUpdatePre, isMlaFullQuant>(
+        dstUb, curUb, preUb, expSumUb, m, d, deScaleV);
 }
 
 template <typename T, typename INPUT_T, typename OUTPUT_T, uint32_t srcD, bool isMlaFullQuant>

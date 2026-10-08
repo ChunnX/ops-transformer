@@ -31,6 +31,9 @@ using namespace AscendC;
 namespace optiling {
 namespace flash_attn {
 constexpr uint64_t PRE_LOAD_NUM_GQA_ARCH35 = 3;
+// v2-skip块级max变化标志区: 每AIC核 4 loop × 2 sub × 32B = 256B
+// (kernel侧槽位常量FA_SKIP_FLAG_*见 op_kernel/utils/flash_attn_common_def.h)
+constexpr uint64_t FA_SKIP_FLAG_AIC_NUM_BYTES = 4U * 2U * 32U;
 
 void FlashAttnTilingImpl::InitTilingInfo(TilingInfo *tilingInfo)
 {
@@ -291,6 +294,10 @@ void FlashAttnTilingImpl::CalcWorkspaceSize()
         tilingData_.baseTiling.flashAttnWorkspaceParams.accumOutSize = faTmpAttenGmSize;
         tilingData_.baseTiling.flashAttnWorkspaceParams.logSumExpSize = fatmpResLseGmSize;
     }
+
+    // v2-skip块级max变化标志区(用户区末尾): [AIC核数][4 loop][2 sub]×32B
+    // kernel侧槽位布局见 op_kernel/utils/flash_attn_common_def.h (FA_SKIP_FLAG_*)
+    workspaceSize_ += static_cast<uint64_t>(platformInfo_.aicNum) * FA_SKIP_FLAG_AIC_NUM_BYTES;
 
     OP_LOGI(faInfo_->opName, "Workspaces: %ld", workspaceSize_);
 }

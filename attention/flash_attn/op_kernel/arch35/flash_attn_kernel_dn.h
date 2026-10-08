@@ -135,7 +135,7 @@ public:
                             constInfo_.s2Size);
 
         if ASCEND_IS_AIC {
-            cubeBlock_.InitBlock(query, key, value, blockTable);
+            cubeBlock_.InitBlock(query, key, value, blockTable, workspace);
         }
         if ASCEND_IS_AIV {
             vecFaBlock_.InitBlock(attenMask, learnableSink, softmaxLse, attentionOut, workspace);
@@ -222,6 +222,9 @@ public:
     {
         if (constInfo_.aicIdx >= constInfo_.coreNum) {
             return;
+        }
+        if ASCEND_IS_AIC {
+            cubeBlock_.ResetAccState(); // L0C Oj累加器状态按section复位(行不跨section)
         }
 
         GetFASectionInfo(sectionIdx);
