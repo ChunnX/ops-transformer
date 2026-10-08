@@ -21,7 +21,8 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     float midSqHalf[2] = {0.0f, 0.0f};
     CacheHOut((uint64_t)token * D_);
     CacheGamma0();
-    LoadTokenWeights(token, postVals);
+    const uint32_t headBegin = laneId_ * 2U;
+    LoadTokenWeights(token, postVals, headBegin, headBegin + 2U);
 
     // 两个lane按完全相同的分块和顺序冗余执行R1。
     float sumSq0 = 0.0f;
@@ -33,11 +34,11 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     }
     const float invRms0 = ComputeInvRms(sumSq0, invD_);
 
-    // 两个lane冗余构造完整x2，但只写各自负责的展平半片。
+    // 两个lane分别构造自己负责的两个x2 head。
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
-        ComputeX2PostTile(token, tOff, tD, invRms0, postVals);
+        ComputeX2PostTileForLane(token, tOff, tD, invRms0, postVals);
         CacheX2TileForLane(token, tOff, tD, !false, false);
 
         {
@@ -59,7 +60,8 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         }
         SetFlag<HardEvent::S_MTE3>(evtStoMte3_);
         WaitFlag<HardEvent::S_MTE3>(evtStoMte3_);
-        DataCopy(partial1Gm_[(uint64_t)token * PARTIAL_SLOT_ELEMS], partialBuf, PARTIAL_SLOT_ELEMS);
+        const uint64_t followerSlot = ((uint64_t)token * 2U + 1U) * PARTIAL_SLOT_ELEMS;
+        DataCopy(partial1Gm_[followerSlot], partialBuf, PARTIAL_SLOT_ELEMS);
     }
 
     // 两个lane均无条件执行一次mode1 Set/Wait；该等待不替代本核流水事件。
@@ -70,7 +72,8 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
 
     // 发出本核MTE3完成事件，同时读取follower的partial1，用32B搬运隐藏事件等待。
     SetFlag<HardEvent::MTE3_V>(evtMte3toV_);
-    DataCopy(partialBuf, partial1Gm_[(uint64_t)token * PARTIAL_SLOT_ELEMS], PARTIAL_SLOT_ELEMS);
+    const uint64_t followerSlot = ((uint64_t)token * 2U + 1U) * PARTIAL_SLOT_ELEMS;
+    DataCopy(partialBuf, partial1Gm_[followerSlot], PARTIAL_SLOT_ELEMS);
     SetFlag<HardEvent::MTE2_S>(evtMte2toS_);
     WaitFlag<HardEvent::MTE3_V>(evtMte3toV_);
     WaitFlag<HardEvent::MTE2_S>(evtMte2toS_);
@@ -86,7 +89,16 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     }
     ComputeGateValues(totalSumSqPre, xHatVals);
 
-    // 会合后只有leader继续执行R6、R7和最终输出。
+    // 会合后只有leader继续执行R6、R7和最终输出。leader的私有缓存仅包含
+    // 自己完成R3的前两行，从已经同步写出的x2_out恢复follower负责的后两行。
+    // follower负责的两个head在GM和UB中均连续，一次恢复完整2D区间，
+    // 避免按tile、按head重复发出MTE2搬运指令。
+    LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
+    const uint64_t followerHeadOffset = (uint64_t)token * N_ * D_ + 2U * D_;
+    DataCopy(x2Cache[2U * D_], x2OutGm_[followerHeadOffset], 2U * D_);
+    SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
+    WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
+
     float sumSq1 = 0.0f;
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);

@@ -23,6 +23,7 @@ constexpr uint32_t HOST_D_ALIGN_ELEM = 16;
 constexpr uint32_t HOST_MAX_TOKENS = 1024 * 1024; // B*S 上限
 constexpr uint32_t NUM_TWO = 2;
 constexpr uint32_t PARTIAL_SLOT_BYTES = 32;
+constexpr uint32_t PARTIAL_SLOTS_PER_TOKEN = 2;
 
 constexpr uint64_t TILING_KEY_USE_RMS_MID = 1ULL << 0;
 constexpr uint64_t TILING_KEY_RETURN_H_IN_F32 = 1ULL << 1;
@@ -187,10 +188,11 @@ static ge::graphStatus TilingMhcNormPostPreonly(gert::TilingContext *context)
     uint32_t lastDimTile = D % dimTile;
     uint32_t dimLoop = D / dimTile + (lastDimTile ? 1 : 0);
 
-    // 首个双sibling候选只覆盖当前固定性能形状；其余组合继续走已验证的单AIV回退。
     // A5的MIX_AIC_1_2以一个物理AI Core为blockDim单位，并展开两个sibling AIV。
-    const bool enableDualSibling =
-        totalTokens == 4U && D == 5120U && useRmsMid && !returnHInF32 && hOutDesc->GetDataType() == ge::DT_BF16;
+    // 对精度集覆盖的四档D分别实测双AIV收益，由tiling按已验证维度稳定路由。
+    const bool dualSiblingDim = D == 2560U || D == 5120U || D == 6144U || D == 7168U;
+    const bool enableDualSibling = totalTokens == 4U && dualSiblingDim && useRmsMid && !returnHInF32 &&
+                                   hOutDesc->GetDataType() == ge::DT_BF16;
     const uint32_t coresPerToken = enableDualSibling ? 2U : 1U;
     const uint32_t usedCoreNum = std::min(totalTokens, enableDualSibling ? (coreNumAiv / 2U) : coreNumAiv);
     uint32_t rowsPerCore = totalTokens / usedCoreNum;
@@ -228,7 +230,8 @@ static ge::graphStatus TilingMhcNormPostPreonly(gert::TilingContext *context)
         OP_LOGE("MhcNormPostPreonly", "GetWorkspaceSizes is nullptr");
         return ge::GRAPH_FAILED;
     }
-    currentWorkspace[0] = sysWsBytes + (enableDualSibling ? (size_t)totalTokens * PARTIAL_SLOT_BYTES : 0U);
+    currentWorkspace[0] = sysWsBytes +
+                          (enableDualSibling ? (size_t)totalTokens * PARTIAL_SLOTS_PER_TOKEN * PARTIAL_SLOT_BYTES : 0U);
 
     // 输出Tiling数据
     context->SetBlockDim(usedCoreNum);
