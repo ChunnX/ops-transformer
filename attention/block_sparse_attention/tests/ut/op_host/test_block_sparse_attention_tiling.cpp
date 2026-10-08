@@ -11,6 +11,7 @@
 #include <iostream>
 #include <string>
 #include <cmath>
+#include <limits>
 #include <gtest/gtest.h>
 #include "tiling_context_faker.h"
 #include "tiling_case_executor.h"
@@ -80,6 +81,56 @@ TEST_F(block_sparse_attention_tiling_ut, tnd_normal)
          {"softmaxLseFlag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
         &compileInfo, "Ascend910B", 64, 196608, 16384);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 9000000030100002);
+}
+
+// ============================================================================
+// 用例 1b: blockShapeY=64 正常场景（A2/A3 支持 64 块）
+// ============================================================================
+TEST_F(block_sparse_attention_tiling_ut, tnd_normal_block_shape_64)
+{
+    struct BlockSparseAttentionCompileInfo {
+    } compileInfo;
+    constexpr int64_t blockShapeX64 = 128;
+    constexpr int64_t blockShapeY64 = 64;
+    constexpr int64_t qSeqlen64 = 128;
+    constexpr int64_t kvSeqlen64 = 128;
+    int64_t blockShapeData64[] = {blockShapeX64, blockShapeY64};
+    constexpr int64_t qBlockNum64 = (qSeqlen64 + blockShapeX64 - 1) / blockShapeX64;
+    constexpr int64_t kvBlockNum64 = (kvSeqlen64 + blockShapeY64 - 1) / blockShapeY64;
+    constexpr int64_t tokenQ64 = batch * qSeqlen64;
+    constexpr int64_t tokenKv64 = batch * kvSeqlen64;
+    int64_t actualSeqLengthsData64[] = {qSeqlen64};
+    int64_t actualSeqLengthsKvData64[] = {kvSeqlen64};
+    gert::TilingContextPara tilingContextPara(
+        "BlockSparseAttention",
+        {{{{tokenQ64, numHeads, headDim}, {tokenQ64, numHeads, headDim}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{tokenKv64, numKvHeads, headDim}, {tokenKv64, numKvHeads, headDim}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{tokenKv64, numKvHeads, headDim}, {tokenKv64, numKvHeads, headDim}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{batch, numHeads, qBlockNum64, kvBlockNum64}, {batch, numHeads, qBlockNum64, kvBlockNum64}},
+          ge::DT_INT8,
+          ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},
+         {{{2}, {2}}, ge::DT_INT64, ge::FORMAT_ND, true, blockShapeData64},
+         {{{batch}, {batch}}, ge::DT_INT64, ge::FORMAT_ND, true, actualSeqLengthsData64},
+         {{{batch}, {batch}}, ge::DT_INT64, ge::FORMAT_ND, true, actualSeqLengthsKvData64},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {{{{tokenQ64, numHeads, headDim}, {tokenQ64, numHeads, headDim}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{tokenQ64, numHeads, 1}, {tokenQ64, numHeads, 1}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {{"qInputLayout", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
+         {"kvInputLayout", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
+         {"numKeyValueHeads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(numKvHeads)},
+         {"maskType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"scaleValue", Ops::Transformer::AnyValue::CreateFrom<float>(scaleValue)},
+         {"innerPrecise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+         {"blockSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"preTokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+         {"nextTokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+         {"softmaxLseFlag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
+        &compileInfo, "Ascend910B", 64, 196608, 16384);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, std::numeric_limits<uint64_t>::max());
 }
 
 // ============================================================================
