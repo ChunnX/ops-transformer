@@ -465,7 +465,8 @@ bool IsFAIRoutingCandidate(const aclTensor* query, const aclTensorList* key, con
                                !(sparseMode == SPARSE_MODE_NO_MASK && attenMaskOptional != nullptr);
     const bool nonMhaConditions =
         !isMha && innerPrecise == INNER_PRECISE_HIGH_PRECISION &&
-        !(sparseMode == SPARSE_MODE_NO_MASK && attenMaskOptional != nullptr && queryHeadDim == MAX_HEAD_DIM);
+        !(sparseMode == SPARSE_MODE_NO_MASK && attenMaskOptional != nullptr &&
+        queryHeadDim == MAX_HEAD_DIM);
     if (inputLayoutStr != "TND" || !learnableSinkSupported || isRopeSplitMla || !sparseModeSupported ||
         (!mhaConditions && !nonMhaConditions)) {
         return false;
