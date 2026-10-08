@@ -224,6 +224,12 @@
   - key、value和key_rope不支持非连续。
   - return_softmax_lse为True时，layout_kv不支持PA_BSND。
 
+## A5 Split-KV 优化
+
+Ascend 950 小 query 场景的分核范围、算法及测试方法见
+[A5 SFA Split-KV](docs/sfa_split_kv_arch35.md)，性能数据见
+[A5 验证结果](docs/sfa_split_kv_arch35_validation.md)。
+
 ## 调用示例
 
 <table class="tg"><thead>
