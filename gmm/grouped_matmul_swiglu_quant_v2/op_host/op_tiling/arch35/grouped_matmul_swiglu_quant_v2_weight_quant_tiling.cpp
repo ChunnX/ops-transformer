@@ -305,7 +305,7 @@ bool CheckAttrs([[maybe_unused]] const gert::TilingContext &context, const GMMSQ
     return true;
 }
 
-bool CheckDtypes(const gert::TilingContext &context, bool isAsw, NpuArch npuArch)
+bool CheckDtypes(const gert::TilingContext &context, bool isAsw, int32_t npuArch)
 {
     const auto *xDesc = context.GetInputDesc(X_INDEX);
     const auto *wDesc = context.GetDynamicInputDesc(WEIGHT_INDEX, 0);
@@ -325,7 +325,8 @@ bool CheckDtypes(const gert::TilingContext &context, bool isAsw, NpuArch npuArch
 
     const auto weightDtype = wDesc->GetDataType();
     const bool validWeightDtype = weightDtype == ge::DT_FLOAT4_E2M1 ||
-                                  (isAsw && npuArch == NpuArch::DAV_9201 && weightDtype == ge::DT_HIFLOAT4);
+                                  (isAsw && npuArch == static_cast<int32_t>(NpuArch::DAV_9201) &&
+                                   weightDtype == ge::DT_HIFLOAT4);
     if (unlikely(!validWeightDtype)) {
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
             OP_NAME, "weight", ge::TypeUtils::DataTypeToSerialString(wDesc->GetDataType()),
@@ -412,7 +413,7 @@ bool GetInputs(GMMSQWeightQuantInputParams &params, const gert::TilingContext &c
 }
 
 bool CheckInputFormats(const gert::TilingContext &context, const GMMSQWeightQuantInputParams &params, bool isAsw,
-                       NpuArch npuArch)
+                       int32_t npuArch)
 {
     const auto *xDesc = context.GetInputDesc(X_INDEX);
     auto xFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(xDesc->GetFormat().GetStorageFormat()));
@@ -446,7 +447,8 @@ bool CheckInputFormats(const gert::TilingContext &context, const GMMSQWeightQuan
         const auto weightFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(weightDesc->GetStorageFormat()));
         const auto scaleFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(weightScaleDesc->GetStorageFormat()));
         OP_CHECK_IF(weightFormat != ge::FORMAT_FRACTAL_NZ &&
-                        !(npuArch == NpuArch::DAV_3510 && weightFormat == ge::FORMAT_FRACTAL_NZ_C0_32),
+                        !(npuArch == static_cast<int32_t>(NpuArch::DAV_3510) &&
+                          weightFormat == ge::FORMAT_FRACTAL_NZ_C0_32),
                     OP_LOGE(OP_NAME, "Unsupported ASW weight storage format."), return false);
         OP_CHECK_IF(scaleFormat != ge::FORMAT_ND && scaleFormat != ge::FORMAT_NCHW,
                     OP_LOGE(OP_NAME, "Unsupported ASW weightScale storage format."), return false);
@@ -580,7 +582,7 @@ static bool CheckScaleAndGroupListShapes(gert::TilingContext &context, const GMM
     return true;
 }
 
-bool CheckInputs(gert::TilingContext &context, const GMMSQWeightQuantInputParams &params, bool isAsw, NpuArch npuArch)
+bool CheckInputs(gert::TilingContext &context, const GMMSQWeightQuantInputParams &params, bool isAsw, int32_t npuArch)
 {
     if (!IsInputShapeValid(context, params)) {
         return false;
@@ -655,10 +657,11 @@ void PrintInputParams(gert::TilingContext &context, const GMMSQWeightQuantInputP
             params.wTrans ? "true" : "false", static_cast<long long>(params.groupListType));
 }
 
-bool CheckWeightQuantAswCoreNum(NpuArch npuArch, uint32_t aicNum, uint32_t aivNum)
+bool CheckWeightQuantAswCoreNum(int32_t npuArch, uint32_t aicNum, uint32_t aivNum)
 {
     constexpr uint32_t AIC_AIV_CORE_RATIO_ASW = 1;
-    const uint32_t ratio = npuArch == NpuArch::DAV_3510 ? AIC_AIV_CORE_RATIO : AIC_AIV_CORE_RATIO_ASW;
+    const uint32_t ratio = npuArch == static_cast<int32_t>(NpuArch::DAV_3510) ? AIC_AIV_CORE_RATIO
+                                                                               : AIC_AIV_CORE_RATIO_ASW;
     OP_CHECK_IF(aicNum == 0 || aivNum == 0 || aicNum * ratio != aivNum,
                 OP_LOGE(OP_NAME, "ASW requires cube:vector core ratio 1:%u; got %u:%u.", ratio, aicNum, aivNum),
                 return false);
@@ -666,7 +669,7 @@ bool CheckWeightQuantAswCoreNum(NpuArch npuArch, uint32_t aicNum, uint32_t aivNu
 }
 
 ge::graphStatus ValidateWeightQuantAsw(gert::TilingContext &context, GMMSQWeightQuantInputParams &params,
-                                       NpuArch npuArch, uint64_t tilingDataSize)
+                                       int32_t npuArch, uint64_t tilingDataSize)
 {
     OP_CHECK_IF(context.GetInputShape(X_INDEX) == nullptr || context.GetInputShape(X_SCALE_INDEX) == nullptr ||
                     context.GetInputShape(GROUPLIST_INDEX) == nullptr,
@@ -718,13 +721,13 @@ ge::graphStatus GroupedMatmulSwigluQuantV2WeightQuantTiling::GetShapeAttrsInfo()
     if (!CheckAttrs(*context_, inputParams_)) {
         return ge::GRAPH_FAILED;
     }
-    if (!CheckDtypes(*context_, false, static_cast<NpuArch>(compileInfoPtr_->npuArch_))) {
+    if (!CheckDtypes(*context_, false, compileInfoPtr_->npuArch_)) {
         return ge::GRAPH_FAILED;
     }
     if (!GetInputs(inputParams_, *context_)) {
         return ge::GRAPH_FAILED;
     }
-    if (!CheckInputs(*context_, inputParams_, false, static_cast<NpuArch>(compileInfoPtr_->npuArch_))) {
+    if (!CheckInputs(*context_, inputParams_, false, compileInfoPtr_->npuArch_)) {
         return ge::GRAPH_FAILED;
     }
 
