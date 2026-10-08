@@ -25,6 +25,7 @@ struct allToAllMmMatmulTilingData {
     // 非量化 matmul tiling（mL1/nL1/kL1/l1BufferNum/l0cDB 等，无 scale 字段）
     MatmulTilingData tileMmTilingData;
     uint32_t localMatmul{0}; // 0：remote融合；1：DEFERRED_SYNC；2：GM累加（LOCAL + REMOTE）
+    uint32_t testMode{0};    // 0：FUSED（通信+计算融合）；1：COMM_ONLY（仅通信）；2：MM_ONLY（仅计算，窗口需预填）
 };
 
 struct CommContext {

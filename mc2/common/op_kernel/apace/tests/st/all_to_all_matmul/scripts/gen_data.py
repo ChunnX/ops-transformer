@@ -50,6 +50,9 @@ def write_artifacts(base_dir, rank_id, a_segment, b_ori, bias, out, a_after):
     #   故窗口内 self 槽位保持 memset 的 0，期望文件需将 self 槽位置 0。
     #   用于单独验证通信：对比 main.cpp dump 的 comm_buffer.bin。
     write_tensor(a_after, os.path.join(output_dir, "expected_comm.bin"))
+    # MM_ONLY（testMode=2）预填用：kernel 纯计算时 AIV 不通信，host 需把期望窗口
+    # 直接预填到通信窗口，内容与 expected_comm.bin 一致（self 槽位为 0，kernel 不用）。
+    write_tensor(a_after, os.path.join(input_dir, "comm_window.bin"))
 
 
 def gen_golden_data_all_to_all_matmul(m, k, n, rank_num, dtype="fp16", lm=0):

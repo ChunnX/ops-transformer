@@ -114,6 +114,7 @@ public:
         uint32_t localMatmul; // 0: remote, 1: DEFERRED_SYNC 语义, 2: GM 累加
         MatmulMode matmulMode; // 1: LOCAL, 2: REMOTE, 3: DEFERRED_SYNC
         uint32_t headTileSize;
+        bool skipCommWait{false}; // MM_ONLY 测试模式：跳过所有 WaitTile（窗口数据已由 host 预填）
     };
 
     /**
@@ -342,9 +343,11 @@ __aicore__ inline void AllToAllMmKernel<MM_KERNEL_FUNC_TEM_PARAMS>::ProcessSingl
             // Phase 2: 在 self rank mmad 之后 wait，阻塞后续 shmem 读（去重：同一 tile 只 wait 一次）
             int64_t blockM = Te::Get<IDX_M_TILEIDX>(singleShape);
             int32_t dependTileIdx = CalcDependTileIdx(mPos + blockM - 1, params.localParams.headTileSize, totalTiles);
-            while (readyTileIdx < dependTileIdx) {
-                readyTileIdx++;
-                commPolicy_.WaitTile(readyTileIdx);
+            if (!params.localParams.skipCommWait) {
+                while (readyTileIdx < dependTileIdx) {
+                    readyTileIdx++;
+                    commPolicy_.WaitTile(readyTileIdx);
+                }
             }
             // Phase 3: 遍历其它 rank，在 L0C 上累加（最后一个 rank 触发 fixpipe）
             uint32_t remoteRankCnt = 1;
@@ -367,9 +370,11 @@ __aicore__ inline void AllToAllMmKernel<MM_KERNEL_FUNC_TEM_PARAMS>::ProcessSingl
             int64_t blockM = Te::Get<IDX_M_TILEIDX>(singleShape);
             int32_t dependTileIdx = CalcDependTileIdx(mPos + blockM - 1, params.localParams.headTileSize, totalTiles);
             // 等待当前 block 依赖的通信 tile 完成（去重：同一 tile 只 wait 一次）
-            while (readyTileIdx < dependTileIdx) {
-                readyTileIdx++;
-                commPolicy_.WaitTile(readyTileIdx);
+            if (!params.localParams.skipCommWait) {
+                while (readyTileIdx < dependTileIdx) {
+                    readyTileIdx++;
+                    commPolicy_.WaitTile(readyTileIdx);
+                }
             }
             for (uint64_t rank = 0; rank < rankSize; rank++) {
                 auto actualMPos = rank * oriM + mPos;
@@ -401,9 +406,11 @@ __aicore__ inline void AllToAllMmKernel<MM_KERNEL_FUNC_TEM_PARAMS>::ProcessSingl
 
     // 存在尾核没用满核，所以这里要等flag兜底
     if (!localFirst) {
-        while (readyTileIdx < totalTiles - 1) {
-            readyTileIdx++;
-            commPolicy_.WaitTile(readyTileIdx);
+        if (!params.localParams.skipCommWait) {
+            while (readyTileIdx < totalTiles - 1) {
+                readyTileIdx++;
+                commPolicy_.WaitTile(readyTileIdx);
+            }
         }
     }
 }

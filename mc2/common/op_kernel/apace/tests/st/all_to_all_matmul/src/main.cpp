@@ -55,22 +55,25 @@ inline uint64_t CeilDiv(uint32_t a, uint32_t b)
 
 void printUsage(const std::string &programName)
 {
-    std::cerr << "Usage: " << programName << " m k n rankNum [localMatmul] [headMSize] [mode] [dtype]" << std::endl;
+    std::cerr << "Usage: " << programName << " m k n rankNum [localMatmul] [headMSize] [mode] [dtype] [testMode]"
+              << std::endl;
     std::cerr << "Args: " << std::endl;
     std::cerr << "  m: row of matrix A" << std::endl;
     std::cerr << "  k: col of matrix A (total K, distributed across ranks)" << std::endl;
     std::cerr << "  n: col of matrix B" << std::endl;
     std::cerr << "  rankNum: number of ranks" << std::endl;
-    std::cerr << "  localMatmul: optional, 0=REMOTE融合 | 1=DEFERRED_SYNC | 2=GM累加(LOCAL+REMOTE) (default 0)" << std::endl;
+    std::cerr << "  localMatmul: optional, 0=REMOTE融合 | 1=DEFERRED_SYNC | 2=GM累加(LOCAL+REMOTE) (default 0)"
+              << std::endl;
     std::cerr << "  headMSize: optional, long block M size (default 0 = auto from tiling; >0 overrides)" << std::endl;
     std::cerr << "  mode: optional, 'precision' (default) | 'perf'" << std::endl;
     std::cerr << "  dtype: optional, 'fp16' (default) | 'bf16'" << std::endl;
+    std::cerr << "  testMode: optional, 0=FUSED (default) | 1=COMM_ONLY | 2=MM_ONLY" << std::endl;
     std::cerr << "Example: " << programName << " 100 200 64 4" << std::endl;
     std::cerr << "         " << programName << " 2048 3584 4096 2 1 512 perf bf16" << std::endl;
 }
 
 void parseArguments(int argc, char *argv[], int &m, int &k, int &n, int &rankNum, int &localMatmul, int &headMSize,
-                    std::string &mode, std::string &dtype)
+                    std::string &mode, std::string &dtype, int &testMode)
 {
     if (argc >= 2 && (std::string(argv[1]) == "--help" || std::string(argv[1]) == "-h")) {
         printUsage(argv[0]);
@@ -108,6 +111,11 @@ void parseArguments(int argc, char *argv[], int &m, int &k, int &n, int &rankNum
         throw std::invalid_argument("ERROR: dtype must be 'fp16' or 'bf16'");
     }
 
+    testMode = (argc >= 10) ? std::stoi(argv[9]) : 0;
+    if (testMode < 0 || testMode > 2) {
+        throw std::invalid_argument("ERROR: testMode must be in [0, 2]");
+    }
+
     if (m <= 0 || k <= 0 || n <= 0 || rankNum <= 0) {
         throw std::invalid_argument("ERROR: m k n rankNum must be positive");
     }
@@ -118,11 +126,11 @@ void parseArguments(int argc, char *argv[], int &m, int &k, int &n, int &rankNum
 }
 
 int runAllToAllMatmul(int rankNum, int rankId, int m, int k, int n, int localMatmul, int headMSizeArg,
-                      const std::string &mode, const std::string &dtype)
+                      const std::string &mode, const std::string &dtype, int testMode)
 {
     const char *ipport = "tcp://127.0.0.1:8998";
-    INFO_LOG("rankNum=%d, rankId=%d, ipport=%s, localMatmul=%d, headMSize=%d, mode=%s, dtype=%s", rankNum, rankId,
-             ipport, localMatmul, headMSizeArg, mode.c_str(), dtype.c_str());
+    INFO_LOG("rankNum=%d, rankId=%d, ipport=%s, localMatmul=%d, headMSize=%d, mode=%s, dtype=%s, testMode=%d", rankNum,
+             rankId, ipport, localMatmul, headMSizeArg, mode.c_str(), dtype.c_str(), testMode);
 
     uint32_t ka = k / rankNum;
 
@@ -154,6 +162,7 @@ int runAllToAllMatmul(int rankNum, int rankId, int m, int k, int n, int localMat
     tilingData.commTilingData.splitAxisTailCnt = static_cast<uint64_t>(tailTileCnt);
     tilingData.commTilingData.nonSplitAxisSize = ka;
     tilingData.localMatmul = static_cast<uint32_t>(localMatmul);
+    tilingData.testMode = static_cast<uint32_t>(testMode);
 
     INFO_LOG("TileCnt=%u, HeadTileCnt=%u, HeadMSize=%u, TailTileCnt=%u, TailMSize=%u", tileCnt, headTileCnt, headMSize,
              tailTileCnt, tailMSize);
@@ -245,6 +254,20 @@ int runAllToAllMatmul(int rankNum, int rankId, int m, int k, int n, int localMat
     ACL_CHECK(aclrtMemcpy(deviceA, sizeA, hostA.data(), sizeA, ACL_MEMCPY_HOST_TO_DEVICE));
     ACL_CHECK(aclrtMemcpy(deviceB, sizeB, hostB.data(), sizeB, ACL_MEMCPY_HOST_TO_DEVICE));
     ACL_CHECK(aclrtMemcpy(deviceBias, sizeBias, hostBias.data(), sizeBias, ACL_MEMCPY_HOST_TO_DEVICE));
+
+    // MM_ONLY（testMode==2）：AIV 不通信，需把期望通信窗口预填到设备端 commBuffer
+    // （内容 = gen_data 的 comm_window.bin，self 槽位为 0；kernel 自 rank 贡献走 localAGmAddr）
+    if (testMode == 2) {
+        size_t commPayload = static_cast<size_t>(m) * static_cast<size_t>(k) * sizeof(uint16_t);
+        std::vector<uint16_t> commWin(m * k, 0);
+        if (!ReadFile(inputDir + "/comm_window.bin", commWin.data(), commPayload)) {
+            ERROR_LOG("rank %d failed to read comm_window.bin for MM_ONLY prefill", rankId);
+            return -1;
+        }
+        uint64_t winAddr = hostCtx.udmaCtx.commBufferAddrs[rankId];
+        ACL_CHECK(aclrtMemcpy(reinterpret_cast<void *>(winAddr), commPayload, commWin.data(), commPayload,
+                              ACL_MEMCPY_HOST_TO_DEVICE));
+    }
 
     // 按 dtype 选择 fp16/bf16 内核（两者数据宽度均为 2 字节，host 侧 buffer/tiling 一致）
     auto LaunchKernel = [&]() {
@@ -340,10 +363,10 @@ int runAllToAllMatmul(int rankNum, int rankId, int m, int k, int n, int localMat
 
 int main(int argc, char *argv[])
 {
-    int m, k, n, rankNum, localMatmul, headMSize;
+    int m, k, n, rankNum, localMatmul, headMSize, testMode;
     std::string mode, dtype;
     try {
-        parseArguments(argc, argv, m, k, n, rankNum, localMatmul, headMSize, mode, dtype);
+        parseArguments(argc, argv, m, k, n, rankNum, localMatmul, headMSize, mode, dtype, testMode);
     } catch (const std::invalid_argument &e) {
         std::cerr << e.what() << std::endl;
         printUsage(argv[0]);
@@ -361,7 +384,7 @@ int main(int argc, char *argv[])
             ERROR_LOG("Fork failed for rank %d", rankId);
             exit(-1);
         } else if (pid == 0) {
-            int ret = runAllToAllMatmul(rankNum, rankId, m, k, n, localMatmul, headMSize, mode, dtype);
+            int ret = runAllToAllMatmul(rankNum, rankId, m, k, n, localMatmul, headMSize, mode, dtype, testMode);
             exit(ret);
         } else {
             pids[rankId] = pid;

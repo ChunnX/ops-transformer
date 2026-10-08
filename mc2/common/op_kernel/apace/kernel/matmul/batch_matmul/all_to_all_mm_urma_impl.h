@@ -185,6 +185,26 @@ __aicore__ inline void AllToAllMmUrmaImpl<AType, BType, CType, TransA, TransB>::
 template <typename AType, typename BType, typename CType, bool TransA, bool TransB>
 __aicore__ inline void AllToAllMmUrmaImpl<AType, BType, CType, TransA, TransB>::Run()
 {
+    // 测试模式分派（用于拆分配通/计算 latency）：
+    //   COMM_ONLY (testMode==1)：AIV 正常通信（set flag），AIC 空转 —— 测得纯通信 latency
+    //   MM_ONLY   (testMode==2)：AIV 不通信（无 flag），AIC 全量计算但跳过 WaitTile —— 测得纯计算 latency
+    if (tilingData_->testMode == 1) {
+        if ASCEND_IS_AIV {
+            RunAllToAll();
+        }
+        return;
+    }
+
+    if (tilingData_->testMode == 2) {
+        if ASCEND_IS_AIC {
+            if (tilingData_->localMatmul == 2) {
+                RunLocalMatmul(); // AIC local计算前置（GM累加模式）
+            }
+            RunMatmul(); // AIC 通信块计算（skipCommWait 已置位，不等待 flag）
+        }
+        return;
+    }
+
     if ASCEND_IS_AIV {
         RunAllToAll(); // AIV 通信
     }
@@ -254,7 +274,8 @@ __aicore__ inline void AllToAllMmUrmaImpl<AType, BType, CType, TransA, TransB>::
                             baseParams_.aGm,
                             tilingData_->localMatmul,
                             matmulMode,
-                            static_cast<uint32_t>(baseParams_.headMSize)};
+                            static_cast<uint32_t>(baseParams_.headMSize),
+                            (tilingData_->testMode == 2)}; // MM_ONLY：跳过通信等待（窗口已预填）
 
     if (matmulMode == MatmulMode::LOCAL) {
         mmadParams.cGmAddr = baseParams_.cGm; // 本地模式直接写入输出

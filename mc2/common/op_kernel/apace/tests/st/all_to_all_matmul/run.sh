@@ -10,11 +10,12 @@
 #   bash run.sh 2-4                    # 运行 CSV 第 2~4 行
 #   bash run.sh all                    # 运行 CSV 全部行
 #   bash run.sh --csv <file> 1 3       # 指定 csv 文件 + 行号
-#   bash run.sh --cli m k n r [lm] [h] [mode] [dtype]  # 命令行模式(绕过 csv)
+#   bash run.sh --cli m k n r [lm] [h] [mode] [dtype] [testMode]  # 命令行模式(绕过 csv)
 #   bash run.sh --skip-build ...       # 跳过编译
 #   bash run.sh --gen-only ...         # 仅生成 CPU golden
 #   bash run.sh --verify-only ...      # 仅精度比对
 #   bash run.sh --perf ...             # 性能模式(msprof采集)
+#   bash run.sh --test-mode N ...      # 0=FUSED | 1=COMM_ONLY | 2=MM_ONLY（拆分通信/计算 latency）
 #   环境变量 KERNEL_TIMEOUT=<秒>       # 覆盖默认超时(600s)
 #   perf 模式跑完后: python3 scripts/parse_prof.py --all  解析性能数据
 set -e
@@ -25,7 +26,7 @@ BUILD_DIR="${ST_DIR}/build"
 PROF_DIR="${SCRIPT_DIR}/prof"
 KERNEL_TIMEOUT=${KERNEL_TIMEOUT:-600}  # 默认600秒(10分钟)，可用环境变量 KERNEL_TIMEOUT 覆盖
 
-SKIP_BUILD=0; GEN_ONLY=0; VERIFY_ONLY=0; CLI_MODE=0; PERF_MODE=0; DTYPE="fp16"
+SKIP_BUILD=0; GEN_ONLY=0; VERIFY_ONLY=0; CLI_MODE=0; PERF_MODE=0; DTYPE="fp16"; TEST_MODE=0
 CSV_FILE="${SCRIPT_DIR}/cases.csv"
 
 # ---- 解析参数 ----
@@ -39,6 +40,7 @@ while [ $# -gt 0 ]; do
         --csv)         CSV_FILE="$2"; shift 2 ;;
         --perf)        PERF_MODE=1; shift ;;
         --dtype)       DTYPE="$2"; shift 2 ;;
+        --test-mode)   TEST_MODE="$2"; shift 2 ;;
         -h|--help)
             sed -n '1,20p' "$0"; exit 0 ;;
         *)
@@ -96,11 +98,11 @@ print_perf_hint() {
 
 # ---- 单 case 执行函数 ----
 run_single() {
-    local M=$1 K=$2 N=$3 RANK_NUM=$4 HEAD_M_SIZE=$5 LOCAL_MATMUL=$6
+    local M=$1 K=$2 N=$3 RANK_NUM=$4 HEAD_M_SIZE=$5 LOCAL_MATMUL=$6 TEST_MODE=${7:-$TEST_MODE}
     echo ""
     echo "=========================================="
     echo "apace AllToAllMatmul (non-quantized) ST"
-    echo "  M=$M K=$K N=$N rankNum=$RANK_NUM headMSize=$HEAD_M_SIZE localMatmul=$LOCAL_MATMUL"
+    echo "  M=$M K=$K N=$N rankNum=$RANK_NUM headMSize=$HEAD_M_SIZE localMatmul=$LOCAL_MATMUL testMode=$TEST_MODE"
     echo "=========================================="
 
     cd "$SCRIPT_DIR"
@@ -156,17 +158,17 @@ run_single() {
                 local before_dirs after_dirs new_dirs
                 before_dirs=$(get_prof_dirs)
 
-                echo "  [msprof] Running $EXE_PATH $M $K $N $RANK_NUM $LOCAL_MATMUL $HEAD_M_SIZE $MODE $DTYPE ..."
+                echo "  [msprof] Running $EXE_PATH $M $K $N $RANK_NUM $LOCAL_MATMUL $HEAD_M_SIZE $MODE $DTYPE $TEST_MODE ..."
                 if command -v timeout >/dev/null 2>&1; then
                     set +e
                     timeout ${KERNEL_TIMEOUT}s msprof --output="$PROF_DIR" \
-                        --application="$EXE_PATH $M $K $N $RANK_NUM $LOCAL_MATMUL $HEAD_M_SIZE $MODE $DTYPE" 2>&1
+                        --application="$EXE_PATH $M $K $N $RANK_NUM $LOCAL_MATMUL $HEAD_M_SIZE $MODE $DTYPE $TEST_MODE" 2>&1
                     local MSPROF_RC=$?
                     set -e
                 else
                     set +e
                     msprof --output="$PROF_DIR" \
-                        --application="$EXE_PATH $M $K $N $RANK_NUM $LOCAL_MATMUL $HEAD_M_SIZE $MODE $DTYPE" 2>&1
+                        --application="$EXE_PATH $M $K $N $RANK_NUM $LOCAL_MATMUL $HEAD_M_SIZE $MODE $DTYPE $TEST_MODE" 2>&1
                     local MSPROF_RC=$?
                     set -e
                 fi
@@ -193,7 +195,7 @@ run_single() {
                 fi
 
                 for d in $new_dirs; do
-                    echo "M=$M K=$K N=$N headM=$HEAD_M_SIZE lm=$LOCAL_MATMUL dtype=$DTYPE" > "$PROF_DIR/$d/case_info.txt"
+                    echo "M=$M K=$K N=$N headM=$HEAD_M_SIZE lm=$LOCAL_MATMUL dtype=$DTYPE testMode=$TEST_MODE" > "$PROF_DIR/$d/case_info.txt"
                 done
 
                 # ---- 校验 PROF 数据有效性（op_summary CSV 是否能解析出 latency）----
@@ -219,20 +221,23 @@ run_single() {
                     cp "$EXE_DIR/output/$r/npu_out.bin" "output/$r/npu_out.bin" 2>/dev/null || true
                 done
 
-                local precision="FAIL"
-                if [ -d "$SCRIPT_DIR/output" ]; then
-                    set +e
-                    python3 scripts/verify_result.py "$M" "$N" "$RANK_NUM" "$SCRIPT_DIR/output" --dtype "$DTYPE" >/dev/null 2>&1
-                    local verify_rc=$?
-                    set -e
-                    if [ $verify_rc -eq 0 ]; then precision="PASS"; fi
+                local precision="N/A"
+                if [ "$TEST_MODE" != "1" ]; then
+                    precision="FAIL"
+                    if [ -d "$SCRIPT_DIR/output" ]; then
+                        set +e
+                        python3 scripts/verify_result.py "$M" "$N" "$RANK_NUM" "$SCRIPT_DIR/output" --dtype "$DTYPE" >/dev/null 2>&1
+                        local verify_rc=$?
+                        set -e
+                        if [ $verify_rc -eq 0 ]; then precision="PASS"; fi
+                    fi
                 fi
 
                 for d in $new_dirs; do
                     echo "$precision" > "$PROF_DIR/$d/case_precision.txt"
                 done
 
-                if [ "$precision" != "PASS" ]; then
+                if [ "$precision" = "FAIL" ]; then
                     echo "  [retry ${RETRY}/${MAX_RETRY}] Precision FAILED"
                     for d in $new_dirs; do rm -rf "$PROF_DIR/$d"; done
                     RETRY=$((RETRY + 1))
@@ -246,7 +251,7 @@ run_single() {
                 # ---- precision 模式: 直接调 exe ----
                 set +e
                 KERNEL_OUT=$(timeout ${KERNEL_TIMEOUT}s "$EXE_PATH" $M $K $N $RANK_NUM \
-                    "$LOCAL_MATMUL" "$HEAD_M_SIZE" "$MODE" "$DTYPE" 2>&1)
+                    "$LOCAL_MATMUL" "$HEAD_M_SIZE" "$MODE" "$DTYPE" "$TEST_MODE" 2>&1)
                 KERNEL_RC=$?
                 set -e
                 echo "${KERNEL_OUT}"
@@ -290,11 +295,16 @@ run_single() {
 
     # ---- 4. 精度比对（perf 模式已在步骤3内完成 verify，此处跳过）----
     if [ "$PERF_MODE" -eq 0 ]; then
-        echo "[4/4] Verify..."
-        python3 scripts/verify_result.py "$M" "$N" "$RANK_NUM" "./output" --dtype "$DTYPE" || return 1
-        echo "[4/4] Verify comm window..."
-        python3 scripts/verify_comm.py "$M" "$K" "$RANK_NUM" "./output"
-        return $?
+        # testMode=1(COMM_ONLY)：无 matmul 输出，只验通信；testMode=2(MM_ONLY)：只验 matmul
+        if [ "$TEST_MODE" -ne 1 ]; then
+            echo "[4/4] Verify matmul..."
+            python3 scripts/verify_result.py "$M" "$N" "$RANK_NUM" "./output" --dtype "$DTYPE" || return 1
+        fi
+        if [ "$TEST_MODE" -ne 2 ]; then
+            echo "[4/4] Verify comm window..."
+            python3 scripts/verify_comm.py "$M" "$K" "$RANK_NUM" "./output" || return 1
+        fi
+        return 0
     fi
     echo "[4/4] Verify (done in perf loop)"
     return 0
@@ -323,7 +333,16 @@ if [ "${CLI_MODE:-0}" -eq 1 ]; then
         esac
     fi
     [ -n "$DTYPE_POS" ] && DTYPE="$DTYPE_POS"
-    run_single "$M" "$K" "$N" "$RANK_NUM" "$HEAD_M_SIZE" "$LOCAL_MATMUL"
+    # 第 9 位可选：testMode(0=FUSED / 1=COMM_ONLY / 2=MM_ONLY)，也可用 --test-mode 指定
+    TEST_MODE_POS=""
+    [ $idx -lt ${#ARGS[@]} ] && { TEST_MODE_POS=${ARGS[$idx]}; idx=$((idx+1)); }
+    if [ -n "$TEST_MODE_POS" ]; then
+        case "$TEST_MODE_POS" in
+            0|1|2) TEST_MODE="$TEST_MODE_POS" ;;
+            *) echo "ERROR: 9th arg must be testMode(0/1/2): $TEST_MODE_POS"; exit 1 ;;
+        esac
+    fi
+    run_single "$M" "$K" "$N" "$RANK_NUM" "$HEAD_M_SIZE" "$LOCAL_MATMUL" "$TEST_MODE"
     rc=$?
     print_perf_hint
     exit $rc
@@ -374,16 +393,18 @@ for row in "${SELECTED_ROWS[@]}"; do
     RANK_NUM=$(echo "$SELECTED" | awk -F, '{print $4}')
     HEAD_M_SIZE=$(echo "$SELECTED" | awk -F, '{print $5}')
     LOCAL_MATMUL=$(echo "$SELECTED" | awk -F, '{print $6}')
+    CSV_TEST_MODE=$(echo "$SELECTED" | awk -F, '{print $7}')   # 第7列可选：testMode
+    [ -n "$CSV_TEST_MODE" ] && TEST_MODE="$CSV_TEST_MODE"
 
     echo ""
     echo "########## CSV row ${row}/${TOTAL_LINES} ##########"
 
-    if run_single "$M" "$K" "$N" "$RANK_NUM" "$HEAD_M_SIZE" "$LOCAL_MATMUL"; then
+    if run_single "$M" "$K" "$N" "$RANK_NUM" "$HEAD_M_SIZE" "$LOCAL_MATMUL" "$TEST_MODE"; then
         PASS_CNT=$((PASS_CNT + 1))
-        RESULTS+=("PASS  row$row  M=$M K=$K N=$N rank=$RANK_NUM headM=$HEAD_M_SIZE localMatmul=$LOCAL_MATMUL")
+        RESULTS+=("PASS  row$row  M=$M K=$K N=$N rank=$RANK_NUM headM=$HEAD_M_SIZE localMatmul=$LOCAL_MATMUL testMode=$TEST_MODE")
     else
         FAIL_CNT=$((FAIL_CNT + 1))
-        RESULTS+=("FAIL  row$row  M=$M K=$K N=$N rank=$RANK_NUM headM=$HEAD_M_SIZE localMatmul=$LOCAL_MATMUL")
+        RESULTS+=("FAIL  row$row  M=$M K=$K N=$N rank=$RANK_NUM headM=$HEAD_M_SIZE localMatmul=$LOCAL_MATMUL testMode=$TEST_MODE")
     fi
     # 首次编译后，后续 case 跳过编译
     SKIP_BUILD=1
