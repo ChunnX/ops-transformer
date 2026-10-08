@@ -296,6 +296,10 @@ __aicore__ inline void AllToAllMmKernel<MM_KERNEL_FUNC_TEM_PARAMS>::ProcessSingl
     uint32_t totalTiles = (oriM + params.localParams.headTileSize - 1) / params.localParams.headTileSize;
     int32_t readyTileIdx = -1;
     int64_t curBlockIdx = AscendC::GetBlockIdx();
+    if (curBlockIdx == 0) {
+        printf("a2a_mm_dbg: blockNum=%ld coreNums=%ld blockNums=%ld\n", static_cast<long>(AscendC::GetBlockNum()),
+               static_cast<long>(bs.GetCoreNums()), static_cast<long>(bs.GetBlockNums()));
+    }
     if (curBlockIdx >= bs.GetCoreNums()) {
         return; // 核数超出实际所需（如 blockNums < coreNums），直接退出
     }
