@@ -9,11 +9,12 @@
  */
 
 /*!
- * \file arch_info_arch36.h
- * \brief Common constants
+ * \file arch_info_arch92.h
+ * \brief
  */
-#ifndef ARCH_INFO_ARCH36_H
-#define ARCH_INFO_ARCH36_H
+
+#ifndef ARCH_INFO_ARCH92_H
+#define ARCH_INFO_ARCH92_H
 
 namespace ArchInfo {
 constexpr uint32_t CV_RATIO = 1;
