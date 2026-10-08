@@ -210,7 +210,7 @@
 - block_size为一个block的token数，block_size取值为16的倍数，且最大支持1024。
 - 参数query中的Q_D和key、value的KV_D值相等为512，参数query_rope中的Dr和key_rope的Dr值相等为64。
 - 参数query、key、value的数据类型必须保持一致。
-- 当前只支持query_rope和key_rope传入，不支持rope为空。
+- query_rope与key_rope须同时为None或同时传入非空tensor；同时为None时不使用RoPE，传入时Dr相等为64。不支持空tensor。
 - sinks仅支持Ascend 950PR&950DT系列产品。
 - <term>Ascend 950PR&950DT系列产品</term>：
   - Q_N支持1~128。

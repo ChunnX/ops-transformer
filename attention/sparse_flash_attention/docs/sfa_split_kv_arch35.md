@@ -9,15 +9,16 @@ does not change the operator signature, duplicate queries or indices, launch
 an additional merge kernel, or change dense attention.
 
 Host tiling selects this path only on A5 for matching FP16 or BF16 inputs and output, TND query,
-PA_BSND KV, one KV head, 1–128 query heads, 512-dimensional values, 64-dimensional
-RoPE, sparse block size 1, 256 to 2048 sparse indices, KV sequence length at
+PA_BSND KV, one KV head, 1–128 query heads, 512-dimensional values, absent or
+64-dimensional RoPE, sparse block size 1, 256 to 2048 sparse indices, KV sequence length at
 least the index count, sparse mode 0 or 3, and no sinks. Returned softmax max/sum
 are supported with and without KV partitioning.
 Mode 3 additionally requires each query's causal window to cover the entire
 index row; otherwise that query uses the existing unsplit path. Single- and
 multi-batch inputs share the same partition selection.
 The existing OpDef signature enforces matching Q/K/V/output dtypes, and common
-tiling validation enforces A5 sparse block size 1. The Split-KV selector does
+tiling validation enforces A5 sparse block size 1 and, when supplied, RoPE dimension 64.
+Both `HAS_ROPE=0` and `HAS_ROPE=1` FD instances are registered. The Split-KV selector does
 not duplicate these checks; mixed dtypes remain unsupported by the interface.
 For TND, `Q` below means total query tokens across all batches. The kernel
 uses `actual_seq_lengths_query` (cumulative per-batch lengths) to map each
@@ -29,8 +30,8 @@ Other shapes retain the existing unsplit SFA tiling and kernel, not dense
 attention. The same original path is selected when there are too many queries
 for at least two partitions, including large multi-batch workloads. Each row
 whose last index is `-1` uses the original unsplit row computation at runtime;
-this preserves the existing handling of trailing padding. Interior invalid
-indices are not newly supported.
+only its valid prefix is passed to QK/softmax/PV. Interior invalid indices
+followed by valid indices remain outside the documented input contract.
 
 The tiler reads the available AIC count from the platform. It assigns the
 largest power-of-two partition count no greater than
@@ -86,7 +87,7 @@ Host tiling selects the existing `FLASH_DECODE` template parameter, propagated
 as `isFd` into arch35 services. `if constexpr (isFd)` isolates partition
 scheduling, workspace staging, the final synchronization, merge and extra UB
 allocation. `FLASH_DECODE=0` instances compile without those operations.
-The new template combinations are limited to TND/PA_BSND with RoPE;
+The new template combinations are limited to TND/PA_BSND, with or without RoPE;
 all original template combinations retain `FLASH_DECODE=0`.
 
 Within an FD instance, a runtime per-query check still handles trailing
@@ -94,10 +95,26 @@ Within an FD instance, a runtime per-query check still handles trailing
 such a row, without the final FD merge. These tensor-content decisions
 cannot be made by host tiling.
 
+## Trailing sparse padding
+
+The interface requires valid indices before a contiguous `-1` suffix. A padded
+row is computed by partition zero without an FD merge. Before scheduling its
+QK/softmax/PV loops, the kernel finds the valid prefix length and clamps both
+the final tile width and the number of S2 iterations. The index tensor's
+original row stride is unchanged. A row with no valid indices writes zero
+attention output and zero max/sum, matching the existing golden reference.
+The same length handling applies to unsplit arch35 rows without sinks.
+
+This addresses the unwritten-gather-scratch failure described in
+[Issue #5208](https://gitcode.com/cann/ops-transformer/issues/5208).
+It does not implement interleaved valid/invalid indices, add sinks support to
+FD, or change the sparse-mode contract. Full FD rows bypass the prefix search.
+
 ## Verification
 
 See [A5 validation results](sfa_split_kv_arch35_validation.md) for the
-single-operator B-by-Q grid and the A5 64K end-to-end measurements.
+single-operator B-by-Q grid, one-factor-at-a-time generalization sweeps and
+padding regressions.
 This change does not modify arch22 kernels, C8 operators, or A2 LSE support.
 
 Build: `bash build.sh --pkg --soc=ascend950 --ops=sparse_flash_attention`
@@ -107,18 +124,18 @@ modified. Host tiling UT:
 Device regression: `pytest -q attention/sparse_flash_attention/tests/pytest/test_sfa_split_kv_arch35.py`
 with the isolated package selected.
 The test covers
-both FP16 and BF16, every head count 1–128, LSE on/off, single- and multi-batch
+both FP16 and BF16, every head count 1–128, absent/64-dimensional RoPE, LSE on/off, single- and multi-batch
 TND input, various total Q counts and TopK values,
-full index rows, trailing `-1` padding, mixed rows, eager execution and NPU
-graph replay. Full rows are compared with an independent PyTorch softmax
-reference (relative L2 < 0.02 for BF16 and < 0.005 for FP16). Mixed Q/KV
+full index rows, trailing `-1` padding, all-empty rows, mixed rows, eager execution
+and NPU graph replay. Every row is compared with an independent PyTorch softmax
+reference (relative L2 < 0.02 for BF16 and < 0.005 for FP16). Returned FP32
+softmax max/sum are checked separately. Mixed Q/KV
 dtype combinations must be rejected by the existing OpDef signature check.
-Single-batch padded rows are finite-output
-smoke checks; for multi-batch mixed input only the full-index row is checked.
-The installed baseline operator itself differs from that naive reference for
-padded rows and may produce non-finite values for multi-batch padded rows, so
-no padded-row numerical equivalence is claimed here.
 
 `tests/pytest/bench_sfa_split_kv_arch35.py` provides FP16/BF16 NPU-graph timing
-with configurable heads, sparse mode and LSE. The historical grid uses the minimum of 102 event-timed samples
-per shape on a shared device; it is not a median-latency table.
+with configurable heads, sparse mode, LSE and RoPE.
+`tests/pytest/bench_sfa_split_kv_sweeps_arch35.py` adds a B/Q grid and fixed-B/Q
+sweeps of every G in [1,128], dtype, mode, LSE, RoPE, TopK, page size and KV length.
+Each round contains 32 calls per graph and 101 event-timed replays. The validation
+table reports the median of three interleaved rounds' per-call medians against
+the target master baseline.

@@ -29,20 +29,32 @@ def measure(
     dtype=torch.bfloat16,
     sparse_mode=0,
     return_lse=False,
+    rope_dim=64,
+    kv_length=4096,
+    page_size=128,
 ):
     generator = torch.Generator().manual_seed(
         20260928 + query_count + topk_count + (batch_count - 1) * 1000
     )
-    kv_length, page_size = 4096, 128
-    query_counts = [1] * (batch_count - 1) + [query_count - batch_count + 1]
+    assert kv_length % page_size == 0 and topk_count <= kv_length - query_count
+    queries_per_batch, remainder = divmod(query_count, batch_count)
+    query_counts = [
+        queries_per_batch + (index < remainder) for index in range(batch_count)
+    ]
     query_ends = [sum(query_counts[: index + 1]) for index in range(batch_count)]
     query = torch.randn(query_count, heads, 512, generator=generator).to(dtype).npu()
     query_rope = (
-        torch.randn(query_count, heads, 64, generator=generator).to(dtype).npu()
+        torch.randn(query_count, heads, rope_dim, generator=generator).to(dtype).npu()
+        if rope_dim
+        else None
     )
     key = torch.randn(batch_count * kv_length, 512, generator=generator).to(dtype).npu()
     key_rope = (
-        torch.randn(batch_count * kv_length, 64, generator=generator).to(dtype).npu()
+        torch.randn(batch_count * kv_length, rope_dim, generator=generator)
+        .to(dtype)
+        .npu()
+        if rope_dim
+        else None
     )
     indices = (
         torch.stack(
@@ -69,12 +81,12 @@ def measure(
             key.reshape(-1, page_size, 1, 512),
             key.reshape(-1, page_size, 1, 512),
             indices,
-            1.0 / (576**0.5),
+            1.0 / ((512 + rope_dim) ** 0.5),
             block_table=block_table,
             actual_seq_lengths_query=query_lengths,
             actual_seq_lengths_kv=kv_lengths,
             query_rope=query_rope,
-            key_rope=key_rope.reshape(-1, page_size, 1, 64),
+            key_rope=key_rope.reshape(-1, page_size, 1, rope_dim) if rope_dim else None,
             sparse_block_size=1,
             layout_query="TND",
             layout_kv="PA_BSND",
@@ -113,6 +125,9 @@ def measure(
         "dtype": str(dtype),
         "sparse_mode": sparse_mode,
         "return_lse": return_lse,
+        "rope_dim": rope_dim,
+        "kv_length": kv_length,
+        "page_size": page_size,
         "min_us": min(times_us),
         "median_us": statistics.median(times_us),
         "samples_us": times_us,
@@ -138,6 +153,9 @@ def main():
     parser.add_argument(
         "--lse-modes", nargs="+", choices=["off", "on"], default=["off"]
     )
+    parser.add_argument(
+        "--rope-dims", nargs="+", type=int, choices=[0, 64], default=[64]
+    )
     args = parser.parse_args()
     print(
         json.dumps(
@@ -157,20 +175,22 @@ def main():
                     for dtype in args.dtypes:
                         for sparse_mode in args.sparse_modes:
                             for lse_mode in args.lse_modes:
-                                result = measure(
-                                    batch_count,
-                                    query_count,
-                                    topk_count,
-                                    args.calls,
-                                    args.repetitions,
-                                    heads,
-                                    torch.bfloat16
-                                    if dtype == "bf16"
-                                    else torch.float16,
-                                    sparse_mode,
-                                    lse_mode == "on",
-                                )
-                                print(json.dumps(result), flush=True)
+                                for rope_dim in args.rope_dims:
+                                    result = measure(
+                                        batch_count,
+                                        query_count,
+                                        topk_count,
+                                        args.calls,
+                                        args.repetitions,
+                                        heads,
+                                        torch.bfloat16
+                                        if dtype == "bf16"
+                                        else torch.float16,
+                                        sparse_mode,
+                                        lse_mode == "on",
+                                        rope_dim,
+                                    )
+                                    print(json.dumps(result), flush=True)
 
 
 if __name__ == "__main__":

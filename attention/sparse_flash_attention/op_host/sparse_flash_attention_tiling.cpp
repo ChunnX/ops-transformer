@@ -398,9 +398,9 @@ bool SFAMlaTiling::IsSplitKVSupported() const
     const auto& info = *sfaInfo_;
     // OpDef requires matching FP16/BF16 Q/K/V/output. Common validation guarantees
     // B > 0, N2 == 1, mode 0/3 and A5 sparse block size 1.
-    // Common validation also guarantees G in [1, 128]. Reuse the native head tiles.
-    const bool kernelSupported = info.isA5 && info.ropeHeadDim == 64 && info.qLayout == SFALayout::TND &&
-                                 info.kvLayout == SFALayout::PA_BSND && info.opParamInfo.sinks.tensor == nullptr;
+    // Common validation also guarantees G in [1, 128] and absent or 64-dimensional RoPE.
+    const bool kernelSupported = info.isA5 && info.qLayout == SFALayout::TND && info.kvLayout == SFALayout::PA_BSND &&
+                                 info.opParamInfo.sinks.tensor == nullptr;
     const bool workloadSupported =
         info.s2Size >= info.sparseBlockCount && info.sparseBlockCount >= 256 && info.sparseBlockCount <= 2048;
     return kernelSupported && workloadSupported;

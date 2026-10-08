@@ -74,6 +74,7 @@ private:
     __aicore__ inline void InitUniqueConstInfo();
     __aicore__ inline void ComputeAxisIdxByBnAndGs1(int64_t bnIndex, int64_t gS1Index, RunParamStr& sfaRunParam);
     __aicore__ inline void InitUniqueRunInfo(const RunParamStr& sfaRunParam, RunInfo& sfaRunInfo);
+    __aicore__ inline bool TrimSparsePadding(RunParamStr& runParam);
 
     __aicore__ inline void InitCalcParamsEach();
     __aicore__ inline uint64_t GetBalanceActualSeqLengths(GlobalTensor<int32_t>& actualSeqLengths, uint32_t bIdx);
@@ -100,6 +101,7 @@ private:
     __gm__ int32_t* actualSeqKvlenAddr = nullptr;
     __gm__ int32_t* actualSeqQlenAddr = nullptr;
     __gm__ int32_t* sparseIndexAddr = nullptr;
+    bool hasSinks = false;
 
     GlobalTensor<int32_t> actualSeqLengthsQGm;
     uint32_t usedCoreNum = 0U;
@@ -133,6 +135,7 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
     const SparseFlashAttentionTilingDataMla* __restrict tiling, __gm__ uint8_t* gmTiling, TPipe* tPipe)
 {
     fa_base_matmul::ResetIdCounter();
+    hasSinks = sinks != nullptr;
     sfaConstInfo.subBlockIdx = GetSubBlockIdx();
     if ASCEND_IS_AIC {
         this->aicIdx = GetBlockIdx();
@@ -547,6 +550,39 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
 }
 
 template <typename CubeBlockType, typename VecBlockType>
+__aicore__ inline bool SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType>::TrimSparsePadding(
+    RunParamStr& runParam)
+{
+    int64_t queryIdx = runParam.s1oIdx;
+    if constexpr (LAYOUT_T == SFA_LAYOUT::TND) {
+        queryIdx += runParam.boIdx == 0 ? 0 : actualSeqQlenAddr[runParam.boIdx - 1];
+    } else {
+        queryIdx += runParam.boIdx * sfaConstInfo.s1Size;
+    }
+    const int64_t rowOffset = queryIdx * sfaConstInfo.sparseBlockCount;
+    uint32_t validCount = sfaConstInfo.sparseBlockCount;
+    if (sparseIndexAddr[rowOffset + validCount - 1] < 0) {
+        // Valid sparse indices precede a contiguous -1 suffix. Keep the original
+        // row stride, but never feed unwritten gather scratch into QK/softmax/PV.
+        uint32_t low = 0;
+        uint32_t high = validCount;
+        while (low < high) {
+            const uint32_t middle = low + (high - low) / 2;
+            if (sparseIndexAddr[rowOffset + middle] >= 0) {
+                low = middle + 1;
+            } else {
+                high = middle;
+            }
+        }
+        validCount = low;
+    }
+    runParam.s2LineEndIdx = Min(runParam.s2LineEndIdx, validCount);
+    runParam.kvLoopEndIdx = (runParam.s2LineEndIdx + sfaConstInfo.s2BaseSize - 1) / sfaConstInfo.s2BaseSize;
+    runParam.s2LoopEndIdx = runParam.kvLoopEndIdx;
+    return runParam.s2LineEndIdx <= runParam.s2LineStartIdx;
+}
+
+template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType>::ProcessMainLoop()
 {
     bool hasLoad = aicIdx < usedCoreNum;
@@ -643,6 +679,20 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
                                                                        this->actualSeqQlenAddr);
                 // s1和s2有任意一个不需要算, 则continue, 如果是当前核最后一次循环，则补充计算taskIdx+2的部分
                 bool s2NoNeedCalc = ComputeS2LoopInfo<TEMPLATE_INTF_ARGS>(sfaRunParam, this->sfaConstInfo);
+                if (!s1NoNeedCalc && !s2NoNeedCalc && !hasSinks) {
+                    if constexpr (isFd) {
+                        if (!sfaConstInfo.splitKVActive) {
+                            s2NoNeedCalc = TrimSparsePadding(sfaRunParam);
+                        }
+                    } else {
+                        s2NoNeedCalc = TrimSparsePadding(sfaRunParam);
+                    }
+                    if (s2NoNeedCalc) {
+                        if ASCEND_IS_AIV {
+                            vecBlock.ZeroSparseRow(sfaRunParam, sfaConstInfo);
+                        }
+                    }
+                }
                 if (s1NoNeedCalc || s2NoNeedCalc) {
                     continue;
                 }

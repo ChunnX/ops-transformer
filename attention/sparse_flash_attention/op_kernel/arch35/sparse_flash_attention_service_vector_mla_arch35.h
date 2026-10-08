@@ -93,6 +93,7 @@ public:
     __aicore__ inline void ProcessVec2(mm2ResPos& bmm2ResBuf, RunInfo& runInfo, ConstInfo& constInfo);
     __aicore__ inline void InitSplitKVStaging(__gm__ uint8_t* workspace, const ConstInfo& constInfo);
     __aicore__ inline void MergeSplitKV(uint32_t queryIdx, ConstInfo& constInfo);
+    __aicore__ inline void ZeroSparseRow(const RunParamStr& runParam, const ConstInfo& constInfo);
 
 private:
     __aicore__ inline void ProcessVec1SoftmaxDispatchSFA(LocalTensor<Q_T>& stage1CastTensor, LocalTensor<T>& mmRes,
@@ -769,6 +770,43 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
     }
 }
 
+TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::ZeroSparseRow(
+    const RunParamStr& runParam, const ConstInfo& constInfo)
+{
+    if (runParam.halfMRealSize == 0) {
+        return;
+    }
+    // Reuse transient scratch, not the live attention accumulator: an empty
+    // query can be encountered while the preceding query is still in flight.
+    constexpr uint32_t ZERO_BYTES = 512;
+    LocalTensor<OUTPUT_T> zeros = commonTBuf.Get<OUTPUT_T>();
+    WaitFlag<HardEvent::MTE3_V>(mte3ToVAttnOutId);
+    Duplicate(zeros, static_cast<OUTPUT_T>(0), ZERO_BYTES / sizeof(OUTPUT_T));
+    SetFlag<HardEvent::V_MTE3>(vToMte3AttnOutId);
+    WaitFlag<HardEvent::V_MTE3>(vToMte3AttnOutId);
+    DataCopyExtParams outputParams{1, ZERO_BYTES, 0, 0, 0};
+    const int64_t elements = runParam.halfMRealSize * constInfo.dSizeV;
+    for (int64_t offset = 0; offset < elements; offset += ZERO_BYTES / sizeof(OUTPUT_T)) {
+        DataCopyPad(attentionOutGm[runParam.attentionOutOffset + offset], zeros, outputParams);
+    }
+    SetFlag<HardEvent::MTE3_V>(mte3ToVAttnOutId);
+    WaitFlag<HardEvent::MTE3_V>(mte3ToVAttnOutId);
+    SetFlag<HardEvent::MTE3_V>(mte3ToVAttnOutId);
+    if (constInfo.returnSoftmaxLse) {
+        LocalTensor<float> stats = commonTBuf.Get<float>();
+        WaitFlag<HardEvent::MTE3_V>(mte3ToVLseOutId);
+        Duplicate(stats, 0.0f, ZERO_BYTES / sizeof(float));
+        SetFlag<HardEvent::V_MTE3>(vToMte3LseOutId);
+        WaitFlag<HardEvent::V_MTE3>(vToMte3LseOutId);
+        DataCopyExtParams statsParams{1, static_cast<uint32_t>(runParam.halfMRealSize * sizeof(float)), 0, 0, 0};
+        DataCopyPad(softmaxMaxGm[runParam.softmaxLseOffset], stats, statsParams);
+        DataCopyPad(softmaxSumGm[runParam.softmaxLseOffset], stats, statsParams);
+        SetFlag<HardEvent::MTE3_V>(mte3ToVLseOutId);
+        WaitFlag<HardEvent::MTE3_V>(mte3ToVLseOutId);
+        SetFlag<HardEvent::MTE3_V>(mte3ToVLseOutId);
+    }
+}
+
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::InitSplitKVStaging(
     __gm__ uint8_t* workspace, const ConstInfo& constInfo)
 {
@@ -1082,6 +1120,7 @@ public:
     __aicore__ inline void ProcessVec2(mm2ResPos& bmm2ResBuf, RunInfo& runInfo, ConstInfo& constInfo) {}
     __aicore__ inline void InitSplitKVStaging(__gm__ uint8_t* workspace, const ConstInfo& constInfo) {}
     __aicore__ inline void MergeSplitKV(uint32_t queryIdx, ConstInfo& constInfo) {}
+    __aicore__ inline void ZeroSparseRow(const RunParamStr& runParam, const ConstInfo& constInfo) {}
 };
 } // namespace BaseApi
 

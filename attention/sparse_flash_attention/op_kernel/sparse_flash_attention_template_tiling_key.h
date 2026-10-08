@@ -36,7 +36,7 @@
                          ASCENDC_TPL_UINT_SEL(LAYOUT_T, ASCENDC_TPL_UI_LIST, SFA_LAYOUT_TND), \
                          ASCENDC_TPL_UINT_SEL(KV_LAYOUT_T, ASCENDC_TPL_UI_LIST, SFA_LAYOUT_PA_BSND), \
                          ASCENDC_TPL_UINT_SEL(TEMPLATE_MODE, ASCENDC_TPL_UI_LIST, C_TEMPLATE, V_TEMPLATE), \
-                         ASCENDC_TPL_BOOL_SEL(IS_SPLIT_G, 0, 1), ASCENDC_TPL_BOOL_SEL(HAS_ROPE, 1), ),
+                         ASCENDC_TPL_BOOL_SEL(IS_SPLIT_G, 0, 1), ASCENDC_TPL_BOOL_SEL(HAS_ROPE, 0, 1), ),
 #endif
 
 // 模板参数支持的范围定义
