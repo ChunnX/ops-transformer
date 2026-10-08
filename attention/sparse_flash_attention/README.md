@@ -210,15 +210,13 @@
 - block_size为一个block的token数，block_size取值为16的倍数，且最大支持1024。
 - 参数query中的Q_D和key、value的KV_D值相等为512，参数query_rope中的Dr和key_rope的Dr值相等为64。
 - 参数query、key、value的数据类型必须保持一致。
-- query_rope与key_rope须同时为None或同时传入非空tensor；同时为None时不使用RoPE，传入时Dr相等为64。不支持空tensor。
+- 当前只支持query_rope和key_rope传入，不支持rope为空。
 - sinks仅支持Ascend 950PR&950DT系列产品。
 - <term>Ascend 950PR&950DT系列产品</term>：
   - Q_N支持1~128。
   - sparse_block_size仅支持1。
   - 仅在layout_key为PA_BSND时，key、value和key_rope支持0轴非连续。
   - return_softmax_lse为True时，支持layout_kv为PA_BSND。
-  - layout_query为TND、layout_kv为PA_BSND、不传sinks、sparse_size在[256,2048]且KV长度不小于sparse_size时，算子根据可用核数、query数量与head数量自动选择KV分核，无需额外参数。支持FP16/BF16、Q_N为1~128、可选RoPE、sparse_mode为0/3以及返回softmax统计量；其他合法配置使用原有计算路径。
-  - sparse_indices每行有效索引须位于连续前缀，无效索引用-1连续填充在行尾，不支持有效与无效索引交错。TND/PA_BSND布局下，尾部-1、实际KV长度不足或mode 3因果窗口不足的行使用不分核计算；不传sinks且全-1行的attention_out为零，请求返回统计量时softmax_max_out与softmax_sum_out也为零。
 - <term>Atlas A3系列产品</term>、<term>Atlas A2系列产品</term>：
   - Q_N支持1/2/4/8/16/32/64/128。
   - 参数sparse_block_size支持[1,128]，且要求是2的幂次方，在PageAttention场景下要求sparse_block_size整除block_size。
@@ -227,8 +225,6 @@
   - return_softmax_lse为True时，layout_kv不支持PA_BSND。
 
 ## 调用示例
-
-使用TND/PA_BSND布局时，须传入block_table、actual_seq_lengths_query和actual_seq_lengths_kv；query长度为各batch的累积长度，KV长度为各batch的实际长度。KV分核由算子自动选择，接口调用方式不变，ACLNN workspace大小仍通过GetWorkspaceSize接口获取。
 
 <table class="tg"><thead>
   <tr>
