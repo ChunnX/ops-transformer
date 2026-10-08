@@ -24,7 +24,7 @@
 
 namespace NpuArch::Epilogue::Block {
 
-struct SinkLoopParam
+struct SinkLoopParam 
 {
     uint32_t rowOffsetIoGm;
     uint32_t rowNumCurLoop;
