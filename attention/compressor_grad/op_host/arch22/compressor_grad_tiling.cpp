@@ -373,13 +373,16 @@ ge::graphStatus CompressorGradTilingA3::CalcSchedule()
                                               "scatter UB budget exceeded even at segLen=16; shape not supported"),
         return ge::GRAPH_FAILED);
 
-    // ---- gemm dx/dw 核数划分（A3 R7 形状自适应公式）----
-    // Post-R6/R7-s1 the dw branch is far cheaper per output tile (dn A tiles
-    // L2-hot + x B contiguous), so mid-size shapes are dx-bound at the even
-    // split. Tile-count cost model calibrated on dev10: dx tile ~1.0; dw tile
-    // ~0.62 when the x workspace stays L2-resident, ~1.16 when it is
-    // HBM-streamed. Shift cores dx-ward only when dx clearly dominates
-    // (>=1.25x), clamp to [half, half+4]: balanced shapes keep the even split.
+    // ---- gemm dx/dw 核数划分（同步独立工程 R8 重标定公式）----
+    // PX flattened the dx branch into a cross-pair term stream, cutting
+    // the per-k-tile dx cost ~33%; what remains per dx unit is a fixed
+    // overhead (accumulator rotation, FixOut drain, stream prologue)
+    // that does not scale with C. Model: dx unit = 4 per k-tile (C/128)
+    // + 2 fixed per unit; fp16 HiLo scales x4/3 (dual A planes). dw
+    // unchanged: dw tile ~0.62 when the x workspace stays L2-resident,
+    // ~1.16 when it is HBM-streamed. Shift cores dx-ward when dx
+    // dominates (>=1.15x, lowered from 1.25 as dx got cheaper), clamp to
+    // [half, half+4]: balanced shapes keep the even split.
     const int64_t gemmCores = aicNum_;
     int64_t gDx = std::max<int64_t>(1, gemmCores / 2);
     {
@@ -388,11 +391,11 @@ ge::graphStatus CompressorGradTilingA3::CalcSchedule()
         const int64_t nCn = cSize / CG_A3_NZ_TILE; // C % 128 == 0
         const int64_t nPairRow = (nH + 1) / 2;
         const bool fp16 = (context_->dtype == ge::DT_FLOAT16);
-        const double dxCost = static_cast<double>(nM * nPairRow * (cSize / CG_A3_NZ_TILE)) * (fp16 ? 8 : 6);
+        const double dxCost = static_cast<double>(nM * nPairRow) * (4.0 * nCn + 2.0) * (fp16 ? 4.0 / 3.0 : 1.0);
         const double dwTiles = static_cast<double>(nCn * nH * (tPad_ / CG_A3_NZ_TILE)) * (fp16 ? 5 : 3);
         const bool xResident = (tPad_ * hSize * 2) <= static_cast<int64_t>(128) * 1024 * 1024;
         const double dwCost = dwTiles * (xResident ? 0.62 : 1.16);
-        if (dxCost >= 1.25 * dwCost) {
+        if (dxCost >= 1.15 * dwCost) {
             int64_t g = static_cast<int64_t>(static_cast<double>(gemmCores) * dxCost / (dxCost + dwCost) + 0.5);
             g = std::min<int64_t>(std::max<int64_t>(g, gemmCores / 2), gemmCores / 2 + 4);
             g = std::min<int64_t>(g, gemmCores);
