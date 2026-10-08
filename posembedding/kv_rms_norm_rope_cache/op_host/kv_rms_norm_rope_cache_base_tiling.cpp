@@ -271,20 +271,39 @@ bool KvRmsNormRopeCacheTilingBase::CheckCacheValidPA(const gert::TilingContext *
     int64_t cacheD = std::get<SHAPE_IDX_D>(cacheShapeTuple);
 
     if (cacheBlkSize < DIM_ONE) {
-        // block size must be larger than 1 under all PageAttention modes.
+        // block size must be larger than 0 under all PageAttention modes.
+        OP_LOGE(context_->GetNodeName(),
+                "Block size of [%s] must be positive integer, but got %ld.", cacheName, cacheBlkSize);
         return false;
     }
     if (cacheN != this->numHeadKv_) {
+        OP_LOGE(context_->GetNodeName(),
+                "Numhead of [%s] must be consist with input kv(%ld), but got %ld.",
+                cacheName, this->numHeadKv_, cacheN);
         return false;
     }
     if (cacheD != headSize) {
         // Inconsist cache hDim size with the expected value headSize
+        OP_LOGE(context_->GetNodeName(),
+                "Expected hDim size of [%s] is %ld, but got %ld.", cacheName, headSize, cacheD);
         return false;
     }
 
-    // Total PA slots must meet block_num * block_size ≥ Bkv × Skv
-    // here let block_num ≥ Ceil(Skv / block_size) ∗ Bkv
-    return (cacheBlkNum >= ((this->seqLenKv_ + cacheBlkSize - 1) / cacheBlkSize) * this->batchKv_);
+    // Total PA slots must meet cache demands
+    bool enoughSlots = false;
+    const CacheMode &mode = currentCacheMode_;
+    if (mode == CacheMode::Norm || mode == CacheMode::PA || mode == CacheMode::PA_NZ) {
+        // For non-block modes, block_num * block_size ≥ Bkv × Skv
+        enoughSlots = (cacheBlkNum * cacheBlkSize >= this->batchKv_ * this->seqLenKv_);
+    } else {
+        // For PA_BLK_* modes, block_num ≥ Ceil(Skv / block_size) ∗ Bkv
+        enoughSlots = (cacheBlkNum >= ((this->seqLenKv_ + cacheBlkSize - 1) / cacheBlkSize) * this->batchKv_);
+    }
+    if (!enoughSlots) {
+        OP_LOGE(context_->GetNodeName(),
+                "Insufficient cache slots for %s.", cacheName);
+    }
+    return enoughSlots;
 }
 
 bool KvRmsNormRopeCacheTilingBase::CheckKCacheValidPA(const gert::TilingContext *context, int64_t numHead,
@@ -476,6 +495,9 @@ ge::graphStatus KvRmsNormRopeCacheTilingBase::GetShapeAttrsInfo()
     int64_t batchSize = std::get<SHAPE_IDX_B>(kvShapeTuple);
     int64_t numHead = std::get<SHAPE_IDX_N>(kvShapeTuple);
     int64_t seqLen = std::get<SHAPE_IDX_S>(kvShapeTuple);
+    this->batchKv_ = batchSize;
+    this->seqLenKv_ = seqLen;
+    this->numHeadKv_ = numHead;
 
     OP_CHECK_IF(!ValidateCacheShapes(),
                 OP_LOGE(context_->GetNodeName(),

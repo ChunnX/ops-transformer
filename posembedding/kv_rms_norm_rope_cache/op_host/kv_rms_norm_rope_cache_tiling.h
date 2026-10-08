@@ -216,6 +216,10 @@ public:
     int64_t vlFp16_ = 0;
     bool isRegbase_{false};
 
+    int64_t batchKv_ = 0;
+    int64_t seqLenKv_ = 0;
+    int64_t numHeadKv_ = 0;
+
     int64_t kv_{DIM_NUM_ONE};
     int64_t dv_{DIM_NUM_ONE};
     int64_t dk_{DIM_NUM_ONE};

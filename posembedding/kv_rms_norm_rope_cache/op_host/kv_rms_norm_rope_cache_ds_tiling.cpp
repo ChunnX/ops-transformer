@@ -235,7 +235,7 @@ ge::graphStatus KvRmsNormRopeCacheTilingDs::DoOpTiling()
     } else {
         OP_CHECK_IF(!CheckCacheValidPA(context_, hDimKCache, K_CACHE_INDEX, "k_cache"),
                     OP_LOGE(context_->GetNodeName(), "k_cache shape invalid."), return ge::GRAPH_FAILED);
-        OP_CHECK_IF(!CheckCacheValidPA(context_, hDimVCache, V_CACHE_INDEX, "v_cache"),
+        OP_CHECK_IF(!CheckCacheValidPA(context_, hDimVCache, V_CACHE_INDEX, "ckv_cache"),
                     OP_LOGE(context_->GetNodeName(), "ckv_cache shape invalid."), return ge::GRAPH_FAILED);
     }
 
