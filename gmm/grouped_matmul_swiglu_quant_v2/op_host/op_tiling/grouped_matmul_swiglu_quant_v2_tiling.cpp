@@ -62,6 +62,14 @@ REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulSwigluQuantV2, GroupedMatmulSwigluQuan
 
 constexpr int64_t SWIGLU_MODE_V3 = 2;
 
+static bool IsA4W4(const gert::TilingContext* context)
+{
+    const auto* xDesc = context->GetInputDesc(X_INDEX);
+    const auto* weightDesc = context->GetDynamicInputDesc(WEIGHT_INDEX, 0);
+    return xDesc != nullptr && weightDesc != nullptr && xDesc->GetDataType() == ge::DT_FLOAT4_E2M1 &&
+           weightDesc->GetDataType() == ge::DT_FLOAT4_E2M1;
+}
+
 // Check every list instance before routing: a present tensor list does not imply
 // that every descriptor and shape exists. Reject missing metadata before use.
 static ge::graphStatus CheckDynamicInputDescriptorsAndShapes(const gert::TilingContext* context, size_t irIndex,
@@ -115,7 +123,9 @@ static ge::graphStatus CheckRequiredTilingContext(gert::TilingContext* context)
 
     // Legacy V2 tiling does not consume output metadata. Both outputs are mandatory for the V3 interface.
     const auto* swigluMode = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_SWIGLU_MODE);
-    if (swigluMode != nullptr && *swigluMode == SWIGLU_MODE_V3) {
+    const bool useV3Path =
+        swigluMode != nullptr && (*swigluMode == SWIGLU_MODE_V3 || (*swigluMode == 0 && IsA4W4(context)));
+    if (useV3Path) {
         OP_CHECK_IF(context->GetOutputDesc(Y_INDEX) == nullptr || context->GetOutputShape(Y_INDEX) == nullptr,
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(OP_NAME, "y", "does not support nullptr"),
                     return ge::GRAPH_FAILED);
@@ -149,13 +159,16 @@ static ge::graphStatus GroupedMatmulSwigluQuantV2TilingFunc(gert::TilingContext*
                 return ge::GRAPH_FAILED);
     const auto* attrs = context->GetAttrs();
     const auto* swigluMode = attrs == nullptr ? nullptr : attrs->GetAttrPointer<int64_t>(ATTR_INDEX_SWIGLU_MODE);
-    if (swigluMode != nullptr && *swigluMode != 0) {
-        OP_CHECK_IF(*swigluMode != SWIGLU_MODE_V3,
-                    OP_LOGE(context->GetNodeName(), "swiglu_mode only supports 0 or 2, but got %ld", *swigluMode),
-                    return ge::GRAPH_FAILED);
+    OP_CHECK_IF(swigluMode != nullptr && *swigluMode != 0 && *swigluMode != SWIGLU_MODE_V3,
+                OP_LOGE(context->GetNodeName(), "swiglu_mode only supports 0 or 2, but got %ld", *swigluMode),
+                return ge::GRAPH_FAILED);
+    const bool useV3Path =
+        swigluMode != nullptr && (*swigluMode == SWIGLU_MODE_V3 || (*swigluMode == 0 && IsA4W4(context)));
+    if (useV3Path) {
         OP_CHECK_IF(compileInfoPtr->npuArch_ != static_cast<int32_t>(NpuArch::DAV_3510),
-                    OP_LOGE(context->GetNodeName(), "swiglu_mode=2 only supports Ascend 950"), return ge::GRAPH_FAILED);
-        OP_LOGD("GroupedMatmulSwigluQuantV2TilingFunc", "Using the shared MXFP8 weight-NZ tiling with V3 attributes");
+                    OP_LOGE(context->GetNodeName(), "A4W4 direct BF16 only supports Ascend 950"),
+                    return ge::GRAPH_FAILED);
+        OP_LOGD("GroupedMatmulSwigluQuantV2TilingFunc", "Using the V3 TensorAPI tiling path");
         return TilingRegistry::GetInstance().DoTilingImpl(context, {GMMSQ_950_TILING_TEMPLATE});
     }
     if (compileInfoPtr->supportL12BtBf16) {
