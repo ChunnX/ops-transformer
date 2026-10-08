@@ -384,7 +384,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
          <tr>
        <td>valueAntiquantOffsetOptional</td>
         <td>输入</td>
-        <td>kv伪量化参数分离时表示value的反量化因子。</td>
+        <td>kv伪量化参数分离时表示value的反量化偏移。</td>
         <td><ul><li>不支持空Tensor。</li>
         <li>使用时，shape必须与valueAntiquantScaleOptional保持一致。</li>
             <li>不使用该功能时可传入nullptr。</li>
@@ -775,7 +775,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
 
   <!-- npu="910b" id6 -->
   - <term>Atlas A2系列产品</term>：
-    - sparse模式仅支持sparse=0且attenMask为nullptr，或sparse=3且attenMask不为nullptr，或sparse=4且传入attenMask不为nullptr；
+    - sparse模式仅支持sparse=0（attenMask为nullptr，此时不做mask操作；TND场景下满足下述head配比与D轴约束时，也可传入完整的defaultMask矩阵），或sparse=3且attenMask不为nullptr，或sparse=4且传入attenMask不为nullptr；
     - 当query的d等于512时：
       - 支持TND、TND_NTD;
       - 必须开启page attention，此时actualSeqLengthsKv长度等于key/value的batch值，代表每个batch的实际长度，值不大于KV_S；
@@ -789,12 +789,12 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
       - 支持TND、NTD_TND；
       - TND场景，数据类型仅支持FLOAT16、BFLOAT16；NTD_TND场景，数据类型仅支持BFLOAT16；
       - TND场景，当head配比为GQA/MQA时（即必须完整传入numHeads和numKeyValueHeads参数，且numHeads是numKeyValueHeads的整数倍，且二者不相等），有如下约束：
-        - 当数据类型为FLOAT16、BFLOAT16时，支持sparse=0且attenMask为nullptr，或sparse=3且传入优化后的attenMask：
+        - 当数据类型为FLOAT16、BFLOAT16时，支持sparse=0（attenMask为nullptr，此时不做mask操作；仅当Q_D=K_D=V_D=256且不传query_rope/key_rope时，才可传入完整的defaultMask矩阵，shape为(B,Q_S,KV_S)、(1,Q_S,KV_S)、(B,1,Q_S,KV_S)或(1,1,Q_S,KV_S)，其中Q_S、KV_S分别为各batch有效Sequence Length的最大值），或sparse=1（传入allMask），或sparse=3且传入优化后的attenMask：
              - Q_D、K_D、V_D相等且小于等于256或Q_D、K_D等于192，V_D等于128/192场景下，支持sparse=4且传入优化后的attenMask，要求preTokens>=-actualSeqLengths、nextTokens>=-actualSeqLengthsKv、preTokens+nextTokens>=0;
         - 仅支持innerPrecise=0，即不带行无效的高精度模式；
         - 支持page attention，kv cache排布格式支持BnBsH（blocknum, blocksize, H），H不大于65535，blockSize支持<=128 16对齐；
       - TND场景，当head配比为MHA时，有如下约束：
-        - 当数据类型为FLOAT16、BFLOAT16时，支持sparse=0且attenMask为nullptr，或sparse=3，4且传入优化后的attenMask；
+        - 当数据类型为FLOAT16、BFLOAT16时，支持sparse=0（attenMask可为nullptr，也可传入完整的defaultMask矩阵，shape同GQA/MQA场景），或sparse=3，4且传入优化后的attenMask；
         - 当数据类型为FLOAT16时，支持innerPrecise=0和innerPrecise=1；
         - 当数据类型为BFLOAT16时，仅支持innerPrecise=0；
         - 支持page attention，kv cache排布格式支持BnBsH（blocknum, blocksize, H），H不大于65535，blockSize支持<=128 16对齐；
@@ -857,7 +857,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
 
     <!-- end id9 -->
 
-- numKeyValueHeads使用限制：需要满足numHeads整除numKeyValueHeads。在BSND、BNSD、BNSD_BSND、TND场景下，还需要与shape中的key/value的N轴shape值相同，否则执行异常。
+- numKeyValueHeads使用限制：需要满足numKeyValueHeads整除numHeads，即numHeads % numKeyValueHeads == 0。在BSND、BNSD、BNSD_BSND、TND场景下，还需要与shape中的key/value的N轴shape值相同，否则执行异常。
 
   <!-- npu="950" id10 -->
   - <term>Ascend 950PR&950DT系列产品</term>：
