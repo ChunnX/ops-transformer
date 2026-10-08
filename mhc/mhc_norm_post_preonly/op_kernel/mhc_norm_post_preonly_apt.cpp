@@ -14,18 +14,20 @@
 // 文件结构：
 //   mhc_norm_post_preonly_common.h       — 常量和类型特征
 //   mhc_norm_post_preonly_kernel.h       — 类定义、初始化、执行和共享计算模块
+//   mhc_norm_post_preonly_kernel_compute.h — 单双AIV共用的计算、IO和同步辅助函数
 //   mhc_norm_post_preonly_single_aiv.h   — 已验证的单AIV回退路径
 //   mhc_norm_post_preonly_dual_sibling_aiv.h — A5双sibling AIV路径
-//   mhc_norm_post_preonly_crosscore_sync.h — mode1核间同步封装
 //   mhc_norm_post_preonly_apt.cpp        — Kernel入口
 // ========================================================================
 
 #include "arch35/mhc_norm_post_preonly_kernel.h"
 
-extern "C" __global__ __aicore__ void mhc_norm_post_preonly(
-    GM_ADDR h_out, GM_ADDR residual, GM_ADDR h_post, GM_ADDR h_res, GM_ADDR phi, GM_ADDR alpha, GM_ADDR bias,
-    GM_ADDR pre_mix, GM_ADDR gamma_0, GM_ADDR gamma_1, GM_ADDR gamma_2, GM_ADDR h_in_prime, GM_ADDR x_2_out,
-    GM_ADDR h_in_f32, GM_ADDR h_pre, GM_ADDR workspace, GM_ADDR tiling)
+extern "C" __global__ __aicore__ void mhc_norm_post_preonly(GM_ADDR h_out, GM_ADDR residual, GM_ADDR h_post,
+                                                            GM_ADDR h_res, GM_ADDR phi, GM_ADDR alpha, GM_ADDR bias,
+                                                            GM_ADDR pre_mix, GM_ADDR gamma_0, GM_ADDR gamma_1,
+                                                            GM_ADDR gamma_2, GM_ADDR h_in_prime, GM_ADDR x_2_out,
+                                                            GM_ADDR h_in_f32, GM_ADDR h_pre, GM_ADDR workspace,
+                                                            GM_ADDR tiling)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
 
