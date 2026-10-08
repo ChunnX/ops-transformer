@@ -23,27 +23,27 @@ namespace MhcSandwichNormPostPreonlyl0op {
 OP_TYPE_REGISTER(MhcSandwichNormPostPreonly);
 
 bool MhcSandwichNormPostPreonly(const aclTensor *hOut, const aclTensor *residual, const aclTensor *hPost,
-                                       const aclTensor *hRes, const aclTensor *phi, const aclTensor *alpha0,
-                                       const aclTensor *bias, const aclTensor *gamma0, const aclTensor *gamma1,
-                                       const aclTensor *gamma2Optional, double normEps, double mhcPreNormEps,
-                                       double hcEps, bool returnHInF32,
-                                       const aclTensor *hInPrime, const aclTensor *x2Out, const aclTensor *hInF32,
-                                       aclOpExecutor *executor)
+                                const aclTensor *hResOptional, const aclTensor *phi, const aclTensor *alpha0,
+                                const aclTensor *bias, const aclTensor *gamma0Optional, const aclTensor *gamma1,
+                                const aclTensor *gamma2Optional, float normEps, float mhcPreNormEps, float hcEps,
+                                bool returnHInF32, const aclTensor *hInPrimeOut, const aclTensor *x2Out,
+                                const aclTensor *hInF32OutOptional, aclOpExecutor *executor)
 {
-    if (returnHInF32 == false) {
-        hInF32 = executor->AllocTensor(hPost->GetDataType(), Format::FORMAT_ND, Format::FORMAT_ND);
-        if (hInF32 == nullptr) {
-            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "hInF32 AllocTensor failed.");
+    const aclTensor *hInF32ForKernel = hInF32OutOptional;
+    if (hInF32ForKernel == nullptr) {
+        hInF32ForKernel = executor->AllocTensor(hPost->GetDataType(), Format::FORMAT_ND, Format::FORMAT_ND);
+        if (hInF32ForKernel == nullptr) {
+            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "hInF32ForKernel AllocTensor failed.");
             return false;
         }
     }
 
-    L0_DFX(MhcSandwichNormPostPreonly, hOut, residual, hPost, hRes, phi, alpha0, bias, gamma0, gamma1,
-           gamma2Optional, hInPrime, x2Out, hInF32);
+    L0_DFX(MhcSandwichNormPostPreonly, hOut, residual, hPost, hResOptional, phi, alpha0, bias, gamma0Optional, gamma1,
+           gamma2Optional, hInPrimeOut, x2Out, hInF32OutOptional);
     auto ret = ADD_TO_LAUNCHER_LIST_AICORE(
         MhcSandwichNormPostPreonly,
-        OP_INPUT(hOut, residual, hPost, hRes, phi, alpha0, bias, gamma0, gamma1, gamma2Optional),
-        OP_OUTPUT(hInPrime, x2Out, hInF32),
+        OP_INPUT(hOut, residual, hPost, hResOptional, phi, alpha0, bias, gamma0Optional, gamma1, gamma2Optional),
+        OP_OUTPUT(hInPrimeOut, x2Out, hInF32ForKernel),
         OP_ATTR(static_cast<float>(normEps), static_cast<float>(mhcPreNormEps), static_cast<float>(hcEps),
                 returnHInF32));
     OP_CHECK_ADD_TO_LAUNCHER_LIST_AICORE(ret != ACLNN_SUCCESS, return false,
@@ -52,4 +52,4 @@ bool MhcSandwichNormPostPreonly(const aclTensor *hOut, const aclTensor *residual
     return true;
 }
 
-} // namespace l0op
+} // namespace MhcSandwichNormPostPreonlyl0op

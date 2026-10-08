@@ -37,7 +37,7 @@ class MhcSandwichNormPostPreonlyOpBuilder(OpBuilder):
 
     def schema(self) -> List[str]:
         return [
-            f"{_OP_NAME}(Tensor h_out, Tensor residual, Tensor h_post, Tensor h_res, "
+            f"{_OP_NAME}(Tensor h_out, Tensor residual, Tensor h_post, Tensor? h_res, "
             "Tensor phi, Tensor alpha_0, Tensor bias, Tensor gamma_0, Tensor gamma_1, "
             "Tensor? gamma_2=None, float norm_eps=1e-6, float mhc_pre_norm_eps=1e-6, "
             "float hc_eps=1e-6, bool return_h_in_f32=False) -> "
@@ -118,7 +118,7 @@ def mhc_sandwich_norm_post_preonly(
     h_out: torch.Tensor,
     residual: torch.Tensor,
     h_post: torch.Tensor,
-    h_res: torch.Tensor,
+    h_res: Optional[torch.Tensor],
     phi: torch.Tensor,
     alpha: torch.Tensor,
     bias: torch.Tensor,
@@ -132,8 +132,14 @@ def mhc_sandwich_norm_post_preonly(
     return_h_in_f32: bool = False,
 ):
     """Fused RMSNorm + MHC post + MHC pre-only + RMSNorm operator."""
+    if h_res is None:
+        raise ValueError(
+            "h_res is an interface-reserved optional input and must not be None currently"
+        )
     if gamma_0 is None:
-        raise ValueError("gamma_0=None is reserved but is not supported in this release")
+        raise ValueError(
+            "gamma_0=None is reserved but is not supported in this release"
+        )
     outputs = op_builder.load().mhc_sandwich_norm_post_preonly(
         h_out,
         residual,
