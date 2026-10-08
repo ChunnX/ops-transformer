@@ -112,21 +112,35 @@
 
 ```Cpp
 aclnnStatus aclnnMhcNormPostPreonlyGetWorkspaceSize(
-    const aclTensor *hOut, const aclTensor *residual, const aclTensor *hPost,
-    const aclTensor *hResOptional, const aclTensor *phi, const aclTensor *alpha,
-    const aclTensor *bias, const aclTensor *gamma1,
+    const aclTensor *hOut,
+    const aclTensor *residual,
+    const aclTensor *hPost,
+    const aclTensor *hResOptional,
+    const aclTensor *phi,
+    const aclTensor *alpha,
+    const aclTensor *bias,
+    const aclTensor *gamma1,
     const aclTensor *preMixOptional,
-    const aclTensor *gamma0Optional, const aclTensor *gamma2Optional,
-    float normEps, float mhcPreNormEps, float hcEps,
-    bool returnHInF32, const aclTensor *hInPrimeOut,
-    const aclTensor *x2Out, const aclTensor *hInF32OutOptional,
-    const aclTensor *hPreOptional,
-    uint64_t *workspaceSize, aclOpExecutor **executor)
+    const aclTensor *gamma0Optional,
+    const aclTensor *gamma2Optional,
+    float           normEps,
+    float           mhcPreNormEps,
+    float           hcEps,
+    bool            returnHInF32,
+    aclTensor      *hInPrimeOut,
+    aclTensor      *x2Out,
+    aclTensor      *hInF32OutOptional,
+    aclTensor      *hPreOptional,
+    uint64_t       *workspaceSize,
+    aclOpExecutor **executor)
 ```
 
 ```Cpp
 aclnnStatus aclnnMhcNormPostPreonly(
-    void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)
+    void          *workspace,
+    uint64_t       workspaceSize,
+    aclOpExecutor *executor,
+    aclrtStream    stream)
 ```
 
 ## aclnnMhcNormPostPreonlyGetWorkspaceSize
@@ -134,30 +148,237 @@ aclnnStatus aclnnMhcNormPostPreonly(
 - **参数说明：**
 
   <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
-  <col style="width: 187px"><col style="width: 121px"><col style="width: 287px"><col style="width: 387px">
-  <col style="width: 187px"><col style="width: 187px"><col style="width: 187px"><col style="width: 146px">
-  </colgroup><thead><tr><th>参数名</th><th>输入/输出</th><th>描述</th><th>使用说明</th><th>数据类型</th><th>数据格式</th><th>维度(shape)</th><th>非连续Tensor</th></tr></thead><tbody>
-  <tr><td>hOut（aclTensor*）</td><td>输入</td><td>MHC_Post的主分支输入，对应公式中的hOut。</td><td><ul><li>不支持空Tensor。</li><li>shape为(T, D)或(B, S, D)。</li></ul></td><td>FLOAT16、BFLOAT16</td><td>ND</td><td>2-3</td><td>√</td></tr>
-  <tr><td>residual（aclTensor*）</td><td>输入</td><td>MHC_Post的多路残差输入。</td><td><ul><li>不支持空Tensor。</li><li>shape为(T, N, D)或(B, S, N, D)，数据类型与hOut一致。</li></ul></td><td>FLOAT16、BFLOAT16</td><td>ND</td><td>3-4</td><td>√</td></tr>
-  <tr><td>hPost（aclTensor*）</td><td>输入</td><td>MHC_Post的主分支权重。</td><td><ul><li>不支持空Tensor。</li><li>shape为(T, N)或(B, S, N)。</li></ul></td><td>FLOAT32</td><td>ND</td><td>2-3</td><td>√</td></tr>
-  <tr><td>hResOptional（aclTensor*）</td><td>可选输入</td><td>mHC的hRes变换矩阵，是做完sinkhorn变换后的双随机矩阵。该参数为接口预留，暂不支持传空指针。</td><td><ul><li>shape为(T, N, N)或(B, S, N, N)。</li></ul></td><td>FLOAT32</td><td>ND</td><td>3-4</td><td>√</td></tr>
-  <tr><td>phi（aclTensor*）</td><td>输入</td><td>MHC_Pre的投影参数。</td><td><ul><li>不支持空Tensor。</li><li>shape为(N, N×D)。</li></ul></td><td>FLOAT32</td><td>ND</td><td>2</td><td>√</td></tr>
-  <tr><td>alpha（aclTensor*）</td><td>输入</td><td>MHC_Pre的缩放参数。</td><td><ul><li>不支持空Tensor。</li><li>shape为(1)。</li></ul></td><td>FLOAT32</td><td>ND</td><td>1</td><td>√</td></tr>
-  <tr><td>bias（aclTensor*）</td><td>输入</td><td>MHC_Pre的偏置参数。</td><td><ul><li>不支持空Tensor。</li><li>shape为(N)。</li></ul></td><td>FLOAT32</td><td>ND</td><td>1</td><td>√</td></tr>
-  <tr><td>gamma1（aclTensor*）</td><td>输入</td><td>RMSNorm_1的缩放因子。</td><td><ul><li>不支持空Tensor。</li><li>shape为(D)。</li></ul></td><td>FLOAT32</td><td>ND</td><td>1</td><td>√</td></tr>
-  <tr><td>preMixOptional（aclTensor*）</td><td>可选输入</td><td>MHC_Pre门控加权系数的外部替代输入（典型用法为回填上一轮hPre输出）。该参数为接口预留，暂不支持非空输入。</td><td><ul><li>当前仅支持传空指针。</li><li>shape为(T, N)或(B, S, N)。</li></ul></td><td>FLOAT32</td><td>ND</td><td>2-3</td><td>√</td></tr>
-  <tr><td>gamma0Optional（aclTensor*）</td><td>可选输入</td><td>RMSNorm_0的缩放因子。</td><td><ul><li>暂不支持传空指针。</li><li>shape为(D)。</li></ul></td><td>FLOAT32</td><td>ND</td><td>1</td><td>√</td></tr>
-  <tr><td>gamma2Optional（aclTensor*）</td><td>可选输入</td><td>RMSNorm_mid的缩放因子。</td><td><ul><li>可传空指针，表示跳过RMSNorm_mid。</li><li>非空时shape为(N×D)。</li></ul></td><td>FLOAT32</td><td>ND</td><td>1</td><td>√</td></tr>
-  <tr><td>normEps（float）</td><td>可选输入</td><td>RMSNorm的防除零参数。</td><td>建议值：1e-6。</td><td>FLOAT</td><td>-</td><td>-</td><td>-</td></tr>
-  <tr><td>mhcPreNormEps（float）</td><td>可选输入</td><td>MHC_Pre内部RMS的防除零参数。</td><td>建议值：1e-6。</td><td>FLOAT</td><td>-</td><td>-</td><td>-</td></tr>
-  <tr><td>hcEps（float）</td><td>可选输入</td><td>Sigmoid门控结果的加性偏移。</td><td>建议值：1e-6。</td><td>FLOAT</td><td>-</td><td>-</td><td>-</td></tr>
-  <tr><td>returnHInF32（bool）</td><td>可选输入</td><td>是否返回RMSNorm_1的FLOAT计算结果。</td><td><ul><li>取值为true时，hInF32OutOptional必须为非空指针。</li><li>取值为false时，hInF32OutOptional必须为空指针。</li></ul></td><td>BOOL</td><td>-</td><td>-</td><td>-</td></tr>
-  <tr><td>hInPrimeOut（aclTensor*）</td><td>输出</td><td>下一层输入，对应公式中的hInPrime。</td><td><ul><li>不支持空Tensor。</li><li>shape为(T, D)或(B, S, D)，数据类型与hOut一致。</li></ul></td><td>FLOAT16、BFLOAT16</td><td>ND</td><td>2-3</td><td>×</td></tr>
-  <tr><td>x2Out（aclTensor*）</td><td>输出</td><td>MHC_Post或可选RMSNorm_mid的输出。</td><td><ul><li>不支持空Tensor。</li><li>shape为(T, N, D)或(B, S, N, D)，数据类型与hOut一致。</li></ul></td><td>FLOAT16、BFLOAT16</td><td>ND</td><td>3-4</td><td>×</td></tr>
-  <tr><td>hInF32OutOptional（aclTensor*）</td><td>可选输出</td><td>RMSNorm_1的FLOAT计算结果。</td><td><ul><li>returnHInF32为false时必须传空指针。</li><li>returnHInF32为true时不支持空Tensor，shape为(T, D)或(B, S, D)。</li></ul></td><td>FLOAT32</td><td>ND</td><td>2-3</td><td>×</td></tr>
-  <tr><td>hPreOptional（aclTensor*）</td><td>可选输出</td><td>本轮内部计算的pre结果（sigmoid后的加权系数），可作为下一轮preMixOptional的输入。该参数为接口预留，暂不支持输出。</td><td><ul><li>当前仅支持传空指针。</li><li>shape为(T, N)或(B, S, N)。</li></ul></td><td>FLOAT32</td><td>ND</td><td>2-3</td><td>×</td></tr>
-  <tr><td>workspaceSize（uint64_t*）</td><td>输出</td><td>返回需要在Device侧申请的workspace大小。</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td></tr>
-  <tr><td>executor（aclOpExecutor**）</td><td>输出</td><td>返回op执行器，包含了算子计算流程。</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td></tr>
+  <col style="width: 187px">
+  <col style="width: 121px">
+  <col style="width: 287px">
+  <col style="width: 387px">
+  <col style="width: 187px">
+  <col style="width: 187px">
+  <col style="width: 187px">
+  <col style="width: 146px">
+  </colgroup>
+  <thead>
+  <tr>
+      <th>参数名</th>
+      <th>输入/输出</th>
+      <th>描述</th>
+      <th>使用说明</th>
+      <th>数据类型</th>
+      <th>数据格式</th>
+      <th>维度(shape)</th>
+      <th>非连续Tensor</th>
+  </tr></thead>
+  <tbody>
+  <tr>
+      <td>hOut（aclTensor*）</td>
+      <td>输入</td>
+      <td>Atten/MLP 层的输出。</td>
+      <td><ul><li>不支持空指针。</li><li>shape为(T, D)或(B, S, D)。</li></ul></td>
+      <td>FLOAT16、BFLOAT16</td>
+      <td>ND</td>
+      <td>2-3</td>
+      <td>√</td>
+  </tr>
+  <tr>
+      <td>residual（aclTensor*）</td>
+      <td>输入</td>
+      <td>MHC 多路残差输入；dtype 必须与 hOut 一致。</td>
+      <td><ul><li>不支持空指针。</li><li>shape为(T, N, D)或(B, S, N, D)，数据类型与hOut一致。</li></ul></td>
+      <td>FLOAT16、BFLOAT16</td>
+      <td>ND</td>
+      <td>3-4</td>
+      <td>√</td>
+  </tr>
+  <tr>
+      <td>hPost（aclTensor*）</td>
+      <td>输入</td>
+      <td>MHC_Post 主分支权重。</td>
+      <td><ul><li>不支持空指针。</li><li>shape为(T, N)或(B, S, N)。</li></ul></td>
+      <td>FLOAT32</td>
+      <td>ND</td>
+      <td>2-3</td>
+      <td>√</td>
+  </tr>
+  <tr>
+      <td>hResOptional（aclTensor*）</td>
+      <td>可选输入</td>
+      <td>mHC 的 hRes 变换矩阵，是做完 Sinkhorn 变换后的双随机矩阵；索引顺序为 [j,n]。接口预留参数，暂不支持传空指针。</td>
+      <td><ul><li>shape为(T, N, N)或(B, S, N, N)。</li></ul></td>
+      <td>FLOAT32</td>
+      <td>ND</td>
+      <td>3-4</td>
+      <td>√</td>
+  </tr>
+  <tr>
+      <td>phi（aclTensor*）</td>
+      <td>输入</td>
+      <td>MHC_Pre 投影矩阵。</td>
+      <td><ul><li>不支持空指针。</li><li>shape为(N, N×D)。</li></ul></td>
+      <td>FLOAT32</td>
+      <td>ND</td>
+      <td>2</td>
+      <td>√</td>
+  </tr>
+  <tr>
+      <td>alpha（aclTensor*）</td>
+      <td>输入</td>
+      <td>Sigmoid 门控缩放系数。</td>
+      <td><ul><li>不支持空指针。</li><li>shape为(1)。</li></ul></td>
+      <td>FLOAT32</td>
+      <td>ND</td>
+      <td>1</td>
+      <td>√</td>
+  </tr>
+  <tr>
+      <td>bias（aclTensor*）</td>
+      <td>输入</td>
+      <td>Sigmoid 门控偏置。</td>
+      <td><ul><li>不支持空指针。</li><li>shape为(N)。</li></ul></td>
+      <td>FLOAT32</td>
+      <td>ND</td>
+      <td>1</td>
+      <td>√</td>
+  </tr>
+  <tr>
+      <td>gamma1（aclTensor*）</td>
+      <td>输入</td>
+      <td>RMSNorm_1 缩放权重。</td>
+      <td><ul><li>不支持空指针。</li><li>shape为(D)。</li></ul></td>
+      <td>FLOAT32</td>
+      <td>ND</td>
+      <td>1</td>
+      <td>√</td>
+  </tr>
+  <tr>
+      <td>preMixOptional（aclTensor*）</td>
+      <td>可选输入</td>
+      <td>传入时，h_in 的加权求和直接使用 preMixOptional 作为权重（典型用法：填入上一轮 hPreOptional 的输出）；不传入时，h_in 使用本轮内部计算的 hPreOptional 进行加权求和。接口预留参数，当前仅支持传入空指针。</td>
+      <td><ul><li>当前仅支持传空指针。</li><li>shape为(T, N)或(B, S, N)。</li></ul></td>
+      <td>FLOAT32</td>
+      <td>ND</td>
+      <td>2-3</td>
+      <td>√</td>
+  </tr>
+  <tr>
+      <td>gamma0Optional（aclTensor*）</td>
+      <td>可选输入</td>
+      <td>RMSNorm_0 缩放权重。接口预留参数，当前暂不支持传空指针。</td>
+      <td><ul><li>该参数为接口预留，暂不支持传空指针。</li><li>shape为(D)。</li></ul></td>
+      <td>FLOAT32</td>
+      <td>ND</td>
+      <td>1</td>
+      <td>√</td>
+  </tr>
+  <tr>
+      <td>gamma2Optional（aclTensor*）</td>
+      <td>可选输入</td>
+      <td>RMSNorm_mid 缩放权重。默认值为空指针；非空时启用 RMSNorm_mid，为空时跳过。</td>
+      <td><ul><li>可传空指针，表示跳过RMSNorm_mid。</li><li>非空时shape为(N×D)。</li></ul></td>
+      <td>FLOAT32</td>
+      <td>ND</td>
+      <td>1</td>
+      <td>√</td>
+  </tr>
+  <tr>
+      <td>normEps（float）</td>
+      <td>可选输入</td>
+      <td>RMSNorm_0、RMSNorm_mid 和 RMSNorm_1 的数值稳定项，默认值为 1e-6。</td>
+      <td>建议值：1e-6。</td>
+      <td>FLOAT</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+  </tr>
+  <tr>
+      <td>mhcPreNormEps（float）</td>
+      <td>可选输入</td>
+      <td>MHC_Pre 内部 RMS 的数值稳定项，默认值为 1e-6。</td>
+      <td>建议值：1e-6。</td>
+      <td>FLOAT</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+  </tr>
+  <tr>
+      <td>hcEps（float）</td>
+      <td>可选输入</td>
+      <td>Sigmoid 门控结果的加性偏移，默认值为 1e-6。</td>
+      <td>建议值：1e-6。</td>
+      <td>FLOAT</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+  </tr>
+  <tr>
+      <td>returnHInF32（bool）</td>
+      <td>可选输入</td>
+      <td>是否额外返回 FP32 的 hInF32OutOptional，默认值为 false。</td>
+      <td><ul><li>取值为true时，hInF32OutOptional必须为非空指针。</li><li>取值为false时，hInF32OutOptional必须为空指针。</li></ul></td>
+      <td>BOOL</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+  </tr>
+  <tr>
+      <td>hInPrimeOut（aclTensor*）</td>
+      <td>输出</td>
+      <td>RMSNorm_1 FP32 结果转换为输入 dtype 后的下一层输入。</td>
+      <td><ul><li>不支持空指针。</li><li>shape为(T, D)或(B, S, D)，数据类型与hOut一致。</li></ul></td>
+      <td>FLOAT16、BFLOAT16</td>
+      <td>ND</td>
+      <td>2-3</td>
+      <td>×</td>
+  </tr>
+  <tr>
+      <td>x2Out（aclTensor*）</td>
+      <td>输出</td>
+      <td>MHC_Post 以及可选 RMSNorm_mid 后的中间结果。</td>
+      <td><ul><li>不支持空指针。</li><li>shape为(T, N, D)或(B, S, N, D)，数据类型与hOut一致。</li></ul></td>
+      <td>FLOAT16、BFLOAT16</td>
+      <td>ND</td>
+      <td>3-4</td>
+      <td>×</td>
+  </tr>
+  <tr>
+      <td>hInF32OutOptional（aclTensor*）</td>
+      <td>可选输出</td>
+      <td>RMSNorm_1 的 FP32 结果，仅在 returnHInF32=true 时返回。</td>
+      <td><ul><li>returnHInF32为false时必须传空指针。</li><li>returnHInF32为true时不支持空Tensor，shape为(T, D)或(B, S, D)。</li></ul></td>
+      <td>FLOAT32</td>
+      <td>ND</td>
+      <td>2-3</td>
+      <td>×</td>
+  </tr>
+  <tr>
+      <td>hPreOptional（aclTensor*）</td>
+      <td>可选输出</td>
+      <td>本轮内部计算的 pre 结果（sigmoid 后的加权系数），可作为下一轮 preMixOptional 的输入。接口预留参数，当前暂不支持输出。</td>
+      <td><ul><li>当前仅支持传空指针。</li><li>shape为(T, N)或(B, S, N)。</li></ul></td>
+      <td>FLOAT32</td>
+      <td>ND</td>
+      <td>2-3</td>
+      <td>×</td>
+  </tr>
+  <tr>
+      <td>workspaceSize（uint64_t*）</td>
+      <td>输出</td>
+      <td>返回需要在Device侧申请的workspace大小。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+  </tr>
+  <tr>
+      <td>executor（aclOpExecutor**）</td>
+      <td>输出</td>
+      <td>返回op执行器，包含了算子计算流程。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+  </tr>
   </tbody></table>
 
 - **返回值**
@@ -183,26 +404,162 @@ aclnnStatus aclnnMhcNormPostPreonly(
 
 ## 约束说明
 
-- 仅支持 N=4。
+### 确定性计算
+
+- 默认确定性实现，不支持 Batch 一致性。
+
+### 公共约束
+
+1. 输入约束：
+   - 必选输入均不支持空Tensor，所有输入、输出Tensor必须位于同一NPU；
+   - 所有输入、输出Tensor的数据格式仅支持`ACL_FORMAT_ND`；
+   - `hOut`、`residual`、`hInPrimeOut`和`x2Out`的数据类型必须一致，仅支持BFLOAT16或FLOAT16；
+   - 两种前导维形式不可混用：`hOut`为`[B,S,D]`时，其余带前导维Tensor必须使用`[B,S,...]`；`hOut`为`[T,D]`时，其余带前导维Tensor必须使用`[T,...]`；
+   - 当前仅支持`N=4`；
+   - `gamma0Optional`为可选输入，当前仅支持传入非空指针；
+   - `preMixOptional`为可选输入，当前仅支持传入空指针；
+   - `hResOptional`为可选输入，当前仅支持传入非空指针；
+   - `gamma2Optional`为可选输入，传入空指针表示关闭RMSNorm_mid，传入非空指针表示开启RMSNorm_mid；
+   - `returnHInF32`为true时，`hInF32OutOptional`必须为非空指针；为false时，`hInF32OutOptional`必须为空指针。
+2. 内存约束：
+   - Workspace内存需在Device侧申请，且大小不得小于第一段接口返回值；
+   - 非连续输入Tensor无需提前转为连续，算子内部自动处理；调用者预分配的输出Tensor必须为连续Tensor。
+
+### 规格约束
+
+| 规格项 | 规格 | 规格说明 |
+|:--- |:--- |:--- |
+| T或B*S | 正数 | T、B、S必须为正数；实际可用规模还受Device内存和Workspace资源约束。 |
+| N | 4 | MHC head数，固定值。 |
+| 维度数 | hOut为2/3 | `hOut`支持二维(T,D)或三维(B,S,D)，其他输入、输出的rank与其联动。 |
+| normEps、mhcPreNormEps、hcEps | 建议值1e-6 | 三者均按FLOAT精度参与计算，用于对应阶段的防除零处理。 |
 
 ## 调用示例
 
-调用示例与 [test_aclnn_mhc_norm_post_preonly.cpp](../examples/test_aclnn_mhc_norm_post_preonly.cpp) 保持一致。以下代码中的输入、输出 TensorResource 和 stream 均由该示例完成创建。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
-```Cpp
-uint64_t workspaceSize = 0;
-aclOpExecutor *executor = nullptr;
-aclnnStatus ret = aclnnMhcNormPostPreonlyGetWorkspaceSize(
-    hOut.tensor, residual.tensor, hPost.tensor, hResOptional.tensor, phi.tensor, alpha.tensor, bias.tensor, gamma1.tensor,
-    nullptr, gamma0.tensor, nullptr, 1e-6, 1e-6, 1e-6, false, hInPrimeOut.tensor, x2Out.tensor, nullptr, nullptr,
-    &workspaceSize, &executor);
-CHECK_RET(ret == ACLNN_SUCCESS, LOG_PRINT("GetWorkspaceSize failed, error: %d\n", ret); return -1);
+```cpp
+#include <iostream>
+#include <vector>
+#include "acl/acl.h"
+#include "aclnnop/aclnn_mhc_norm_post_preonly.h"
 
-void *workspace = nullptr;
-if (workspaceSize > 0) {
-    CHECK_RET(aclrtMalloc(&workspace, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST) == ACL_SUCCESS, return -1);
+#define CHECK_RET(cond, return_expr) \
+    do { \
+        if (!(cond)) { \
+            return_expr; \
+        } \
+    } while (0)
+#define LOG_PRINT(message, ...) printf(message, ##__VA_ARGS__)
+
+int64_t GetShapeSize(const std::vector<int64_t> &shape)
+{
+    int64_t size = 1;
+    for (int64_t dim : shape) {
+        size *= dim;
+    }
+    return size;
 }
-ret = aclnnMhcNormPostPreonly(workspace, workspaceSize, executor, stream);
-CHECK_RET(ret == ACLNN_SUCCESS, LOG_PRINT("Execute failed, error: %d\n", ret); return -1);
-CHECK_RET(aclrtSynchronizeStream(stream) == ACL_SUCCESS, return -1);
+
+struct TensorResource {
+    void *deviceAddr = nullptr;
+    aclTensor *tensor = nullptr;
+};
+
+int CreateTensor(const std::vector<int64_t> &shape, aclDataType dtype, bool initialize, TensorResource &resource)
+{
+    const int64_t elementCount = GetShapeSize(shape);
+    const size_t elementSize = dtype == ACL_FLOAT ? sizeof(float) : sizeof(aclFloat16);
+    const size_t byteSize = elementCount * elementSize;
+    aclError ret = aclrtMalloc(&resource.deviceAddr, byteSize, ACL_MEM_MALLOC_HUGE_FIRST);
+    CHECK_RET(ret == ACL_SUCCESS, return -1);
+
+    if (initialize) {
+        if (dtype == ACL_FLOAT) {
+            std::vector<float> hostData(elementCount, 1.0f);
+            ret = aclrtMemcpy(resource.deviceAddr, byteSize, hostData.data(), byteSize, ACL_MEMCPY_HOST_TO_DEVICE);
+        } else {
+            std::vector<aclFloat16> hostData(elementCount, aclFloat16(1.0f));
+            ret = aclrtMemcpy(resource.deviceAddr, byteSize, hostData.data(), byteSize, ACL_MEMCPY_HOST_TO_DEVICE);
+        }
+        CHECK_RET(ret == ACL_SUCCESS, return -1);
+    }
+
+    std::vector<int64_t> strides(shape.size(), 1);
+    for (int64_t i = static_cast<int64_t>(shape.size()) - 2; i >= 0; --i) {
+        strides[i] = strides[i + 1] * shape[i + 1];
+    }
+    resource.tensor = aclCreateTensor(shape.data(), shape.size(), dtype, strides.data(), 0, ACL_FORMAT_ND, shape.data(),
+                                      shape.size(), resource.deviceAddr);
+    CHECK_RET(resource.tensor != nullptr, return -1);
+    return 0;
+}
+
+void DestroyTensor(TensorResource &resource)
+{
+    if (resource.tensor != nullptr) {
+        aclDestroyTensor(resource.tensor);
+    }
+    if (resource.deviceAddr != nullptr) {
+        aclrtFree(resource.deviceAddr);
+    }
+}
+
+int main()
+{
+    constexpr int32_t deviceId = 0;
+    constexpr int64_t T = 1;
+    constexpr int64_t N = 4;
+    constexpr int64_t D = 2560;
+    aclrtContext context = nullptr;
+    aclrtStream stream = nullptr;
+    CHECK_RET(aclInit(nullptr) == ACL_SUCCESS, return -1);
+    CHECK_RET(aclrtSetDevice(deviceId) == ACL_SUCCESS, return -1);
+    CHECK_RET(aclrtCreateContext(&context, deviceId) == ACL_SUCCESS, return -1);
+    CHECK_RET(aclrtCreateStream(&stream) == ACL_SUCCESS, return -1);
+
+    TensorResource hOut, residual, hPost, hResOptional, phi, alpha, bias, gamma1, gamma0;
+    TensorResource hInPrimeOut, x2Out;
+    CHECK_RET(CreateTensor({T, D}, ACL_FLOAT16, true, hOut) == 0, return -1);
+    CHECK_RET(CreateTensor({T, N, D}, ACL_FLOAT16, true, residual) == 0, return -1);
+    CHECK_RET(CreateTensor({T, N}, ACL_FLOAT, true, hPost) == 0, return -1);
+    CHECK_RET(CreateTensor({T, N, N}, ACL_FLOAT, true, hResOptional) == 0, return -1);
+    CHECK_RET(CreateTensor({N, N * D}, ACL_FLOAT, true, phi) == 0, return -1);
+    CHECK_RET(CreateTensor({1}, ACL_FLOAT, true, alpha) == 0, return -1);
+    CHECK_RET(CreateTensor({N}, ACL_FLOAT, true, bias) == 0, return -1);
+    CHECK_RET(CreateTensor({D}, ACL_FLOAT, true, gamma1) == 0, return -1);
+    CHECK_RET(CreateTensor({D}, ACL_FLOAT, true, gamma0) == 0, return -1);
+    CHECK_RET(CreateTensor({T, D}, ACL_FLOAT16, false, hInPrimeOut) == 0, return -1);
+    CHECK_RET(CreateTensor({T, N, D}, ACL_FLOAT16, false, x2Out) == 0, return -1);
+
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus ret = aclnnMhcNormPostPreonlyGetWorkspaceSize(
+        hOut.tensor, residual.tensor, hPost.tensor, hResOptional.tensor, phi.tensor, alpha.tensor, bias.tensor,
+        gamma1.tensor, nullptr, gamma0.tensor, nullptr, 1e-6, 1e-6, 1e-6, false, hInPrimeOut.tensor, x2Out.tensor,
+        nullptr, nullptr, &workspaceSize, &executor);
+    CHECK_RET(ret == ACLNN_SUCCESS, LOG_PRINT("GetWorkspaceSize failed, error: %d\n", ret); return -1);
+
+    void *workspace = nullptr;
+    if (workspaceSize > 0) {
+        CHECK_RET(aclrtMalloc(&workspace, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST) == ACL_SUCCESS, return -1);
+    }
+    ret = aclnnMhcNormPostPreonly(workspace, workspaceSize, executor, stream);
+    CHECK_RET(ret == ACLNN_SUCCESS, LOG_PRINT("Execute failed, error: %d\n", ret); return -1);
+    CHECK_RET(aclrtSynchronizeStream(stream) == ACL_SUCCESS, return -1);
+    LOG_PRINT("MhcNormPostPreonly compute success!\n");
+
+    for (TensorResource *resource :
+         {&hOut, &residual, &hPost, &hResOptional, &phi, &alpha, &bias, &gamma1, &gamma0, &hInPrimeOut, &x2Out}) {
+        DestroyTensor(*resource);
+    }
+    if (workspace != nullptr) {
+        aclrtFree(workspace);
+    }
+    aclrtDestroyStream(stream);
+    aclrtDestroyContext(context);
+    aclrtResetDevice(deviceId);
+    aclFinalize();
+    return 0;
+}
 ```

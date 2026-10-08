@@ -642,6 +642,16 @@ __aicore__ inline float KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32
 }
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
+__aicore__ inline float KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ReduceSumSqFromCache(uint32_t tOff, uint32_t tD)
+{
+    LocalTensor<T> hOutCache = bufX2Cache_.Get<T>()[tOff];
+    LocalTensor<float> sqBuf = bufGamma2Fp32_.Get<float>();
+    MhcSandwichRegBase::CastB16ToFp32Square(sqBuf, hOutCache, tD);
+    PipeBarrier<PIPE_V>();
+    return ReduceSumPrecise(sqBuf, tD);
+}
+
+template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::StartCacheGamma1()
 {
     if (D_ > GAMMA1_CACHE_MAX_D) {

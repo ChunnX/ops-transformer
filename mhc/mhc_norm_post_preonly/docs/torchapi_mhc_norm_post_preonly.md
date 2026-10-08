@@ -116,7 +116,7 @@ cann_ops_transformer.mhc_norm_post_preonly(
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
 | --- | --- | --- | --- | --- | --- |
-| h_out | Tensor | 必选 | RMSNorm_0 的输入。数据格式为 ND。 | float16、bfloat16 | [T, D] 或 [B, S, D] |
+| h_out | Tensor | 必选 | Atten/MLP 层的输出。数据格式为 ND。 | float16、bfloat16 | [T, D] 或 [B, S, D] |
 | residual | Tensor | 必选 | MHC 多路残差输入；dtype 必须与 h_out 一致。 | 同 h_out | [T, N, D] 或 [B, S, N, D] |
 | h_post | Tensor | 必选 | MHC_Post 主分支权重。 | float32 | [T, N] 或 [B, S, N] |
 | h_res | Tensor | 可选 | mHC 的 hRes 变换矩阵，是做完 Sinkhorn 变换后的双随机矩阵；索引顺序为 $[j,n]$。接口预留参数，暂不支持传 None。 | float32 | [T, N, N] 或 [B, S, N, N] |
@@ -125,7 +125,7 @@ cann_ops_transformer.mhc_norm_post_preonly(
 | bias | Tensor | 必选 | Sigmoid 门控偏置。 | float32 | [N] |
 | gamma_1 | Tensor | 必选 | RMSNorm_1 缩放权重。 | float32 | [D] |
 | pre_mix | Tensor | 可选 | 传入时，h_in 的加权求和直接使用 pre_mix 作为权重（典型用法：填入上一轮 h_pre 的输出）；不传入时，h_in 使用本轮内部计算的 h_pre 进行加权求和。不支持非连续。接口预留参数，当前仅支持传入 None。 | float32 | [T, N] 或 [B, S, N] |
-| gamma_0 | Tensor | 可选 | RMSNorm_0 缩放权重。当前暂不支持传 None。 | float32 | [D] |
+| gamma_0 | Tensor | 可选 | RMSNorm_0 缩放权重。接口预留参数，当前暂不支持传 None。 | float32 | [D] |
 | gamma_2 | Tensor | 可选 | RMSNorm_mid 缩放权重。默认值为 None；非空时启用 RMSNorm_mid，为空时跳过。 | float32 | [N*D] |
 | norm_eps | float | 可选 | RMSNorm_0、RMSNorm_mid 和 RMSNorm_1 的数值稳定项，默认值为 1e-6。 | float | - |
 | mhc_pre_norm_eps | float | 可选 | MHC_Pre 内部 RMS 的数值稳定项，默认值为 1e-6。 | float | - |
@@ -145,8 +145,14 @@ cann_ops_transformer.mhc_norm_post_preonly(
 
 ## 约束说明
 
-- 支持单算子模式、TorchAir 图模式调用。
-- 仅支持 N=4。
+- 该接口支持单算子模式调用、TorchAir 图模式调用。
+- 仅支持 `N=4`。
+- 主路径 dtype 必须一致：`h_out`、`residual`、`h_in_prime`、`x_2_out` 仅支持 float16 / bfloat16，且类型一致。
+- 输入支持 `[T, D]` 或 `[B, S, D]` 两种前导维形式，且各输入的前导维形式须保持一致。
+- `gamma_0` 为接口预留参数，当前暂不支持传 `None`。
+- `gamma_2` 默认值为 `None`，传入 `None` 时跳过 RMSNorm_mid。
+- `pre_mix`、`h_pre` 为接口预留参数，当前暂不支持使用。
+- `norm_eps`、`mhc_pre_norm_eps`、`hc_eps` 默认值为 `1e-6`。
 
 ## 确定性/Batch一致性
 
