@@ -67,7 +67,7 @@ size_t GetTensorElementSizes(ge::DataType dType)
 uint32_t GatherPaKvCacheGetBlockDim(gert::TilingContext *context)
 {
     auto kShape = context->GetOutputShape(DIM_0);
-    uint32_t sumContextLens = static_cast<uint32_t>(kShape->GetOriginShape().GetDim(DIM_0));
+    uint32_t sumContextLens = static_cast<uint32_t>(kShape->GetStorageShape().GetDim(DIM_0));
     auto platformInfo = context->GetPlatformInfo();
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     uint32_t blockDim = static_cast<uint32_t>(ascendcPlatform.GetCoreNumAiv());
@@ -97,25 +97,28 @@ bool CommonGatherPaKvCacheTiling(gert::TilingContext *context)
     int32_t tokenSizeV;
     auto inDtype = context->GetInputDesc(DIM_0)->GetDataType();
     uint32_t typeByte = static_cast<uint32_t>(GetTensorElementSizes(inDtype));
+    bool isViewKCache = context->InputIsView(DIM_0);
+    bool isViewVCache = context->InputIsView(DIM_1);
     if (strcmp(mode, "PA_NZ") == 0) {
-        blockSize = static_cast<int32_t>(kCacheShape->GetOriginShape().GetDim(DIM_2));
-        tokenSizeK = static_cast<int32_t>(kShape->GetOriginShape().GetDim(DIM_1));
-        tokenSizeV = static_cast<int32_t>(vShape->GetOriginShape().GetDim(DIM_1));
+        blockSize = static_cast<int32_t>(kCacheShape->GetStorageShape().GetDim(DIM_2));
+        tokenSizeK = static_cast<int32_t>(kShape->GetStorageShape().GetDim(DIM_1));
+        tokenSizeV = static_cast<int32_t>(vShape->GetStorageShape().GetDim(DIM_1));
         context->SetTilingKey(TILING_KEY_NZ);
     } else if (strcmp(mode, "Norm") == 0) {
-        blockSize = static_cast<int32_t>(kCacheShape->GetOriginShape().GetDim(DIM_1));
+        blockSize = isViewKCache ? static_cast<int32_t>(kCacheShape->GetOriginShape().GetDim(DIM_1)) :
+                                   static_cast<int32_t>(kCacheShape->GetStorageShape().GetDim(DIM_1));
         tokenSizeK =
-            static_cast<int32_t>(kShape->GetOriginShape().GetDim(DIM_1) * kShape->GetOriginShape().GetDim(DIM_2));
+            static_cast<int32_t>(kShape->GetStorageShape().GetDim(DIM_1) * kShape->GetStorageShape().GetDim(DIM_2));
         tokenSizeV =
-            static_cast<int32_t>(vShape->GetOriginShape().GetDim(DIM_1) * vShape->GetOriginShape().GetDim(DIM_2));
+            static_cast<int32_t>(vShape->GetStorageShape().GetDim(DIM_1) * vShape->GetStorageShape().GetDim(DIM_2));
         context->SetTilingKey(TILING_KEY_ND + typeByte);
     } else {
         return false;
     }
 
-    int32_t numTokens = static_cast<int32_t>(blockTablesShape->GetOriginShape().GetDim(DIM_0)); // block tables row
+    int32_t numTokens = static_cast<int32_t>(blockTablesShape->GetStorageShape().GetDim(DIM_0)); // block tables row
     int32_t numblkTabCol =
-        static_cast<int32_t>(blockTablesShape->GetOriginShape().GetDim(DIM_1)); // block tables column
+        static_cast<int32_t>(blockTablesShape->GetStorageShape().GetDim(DIM_1)); // block tables column
 
     OP_CHECK_IF((blockSize <= 0 || blockSize > INT_MAX), OP_LOGE(context, "blockSize is invalid."),
                 return ge::GRAPH_FAILED);
@@ -139,8 +142,7 @@ bool CommonGatherPaKvCacheTiling(gert::TilingContext *context)
     bool isSeqLensCumsum = (isSeqLensCumsumPtr == nullptr) ? true : *isSeqLensCumsumPtr;
     int64_t kCacheBlockStride = 0;
     int64_t vCacheBlockStride = 0;
-    bool isViewKCache = context->InputIsView(DIM_0);
-    bool isViewVCache = context->InputIsView(DIM_1);
+
     if (isViewKCache) {
         auto *kCacheStride = context->GetInputStride(DIM_0);
         if (kCacheStride != nullptr) {
