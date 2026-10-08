@@ -94,11 +94,18 @@ class MixedQuantSparseFlashMlaOpBuilder(OpBuilder):
             has_ori_kv: Optional[bool] = None,
             has_cmp_kv: Optional[bool] = None,
         ):
-            return torch.empty((MQSMLA_METADATA_SIZE), dtype=torch.int32, device="npu")
+            inputs = (
+                cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv,
+                seqused_q, seqused_ori_kv, seqused_cmp_kv,
+                cmp_residual_kv, ori_topk_length, cmp_topk_length,
+            )
+            device = next((tensor.device for tensor in inputs if tensor is not None), "npu")
+            return torch.empty((MQSMLA_METADATA_SIZE,), dtype=torch.int32, device=device)
 
         @impl(get_as_library(), self.name, "Meta")
         def mixed_quant_sparse_flash_mla_meta(
             q,
+            quant_mode,
             ori_kv=None,
             cmp_kv=None,
             ori_sparse_indices=None,
@@ -116,7 +123,6 @@ class MixedQuantSparseFlashMlaOpBuilder(OpBuilder):
             cmp_topk_length=None,
             sinks=None,
             metadata=None,
-            quant_mode=None,
             rope_head_dim=None,
             softmax_scale=None,
             cmp_ratio=1,
@@ -178,7 +184,7 @@ class MixedQuantSparseFlashMlaOpBuilder(OpBuilder):
                         device=q.device,
                     )
             else:
-                softmax_lse = torch.empty([], dtype=torch.float32, device=q.device)
+                softmax_lse = torch.empty((0,), dtype=torch.float32, device=q.device)
             return (attn_out, softmax_lse)
 
 
