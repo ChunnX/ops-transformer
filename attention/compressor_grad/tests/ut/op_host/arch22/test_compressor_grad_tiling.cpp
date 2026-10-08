@@ -156,24 +156,24 @@ TEST_F(CompressorGradTilingArch22Test, bsh_c4li_bf16)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
-// C128A bf16: B=2, S=16, H=4096, D=512, coff=1, cmp_ratio=128
+// C128A bf16: B=2, S=256, H=4096, D=512, coff=1, cmp_ratio=128 (nblk=2; arch22 要求 S>=cr)
 TEST_F(CompressorGradTilingArch22Test, bsh_c128a_bf16)
 {
     optiling::CompressorGradCompileInfo compileInfo = {};
     gert::TilingContextPara tilingContextPara("CompressorGrad",
                                               {
-                                                  {{{2, 16, 4096}, {2, 16, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {{{2, 256, 4096}, {2, 256, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
                                                   {{{512, 4096}, {512, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
                                                   {{{512, 4096}, {512, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
-                                                  {{{2, 1, 512}, {2, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},
-                                                  {{{2, 1, 128, 512}, {2, 1, 128, 512}}, ge::DT_FLOAT, ge::FORMAT_ND},
-                                                  {{{2, 1, 128, 512}, {2, 1, 128, 512}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {{{2, 2, 512}, {2, 2, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {{{2, 2, 128, 512}, {2, 2, 128, 512}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {{{2, 2, 128, 512}, {2, 2, 128, 512}}, ge::DT_FLOAT, ge::FORMAT_ND},
                                                   {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
                                                   {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
                                                   {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
                                               },
                                               {
-                                                  {{{2, 16, 4096}, {2, 16, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {{{2, 256, 4096}, {2, 256, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
                                                   {{{512, 4096}, {512, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
                                                   {{{512, 4096}, {512, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
                                                   {{{128, 512}, {128, 512}}, ge::DT_FLOAT, ge::FORMAT_ND},
