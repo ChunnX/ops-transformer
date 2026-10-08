@@ -80,10 +80,8 @@ template<typename A> struct IsSameT<A, A> { static constexpr bool value = true; 
 // 写回x2_out时每个lane只写自己负责的两个head，避免任何输出竞争。
 
 
-
-
-// R6读取完当前x2分块后，首个head的对应缓存区已经不会再被使用，
-// 将其复用为低精度h_in缓存，保留量化往返边界并避免GM临时写回。
+// R6读取完当前x2分块后，复用首个head缓存保留低精度h_in。
+// 恢复FP32与平方在同一VF内完成，保留量化往返边界并减少UB中间写读。
 
 
 
