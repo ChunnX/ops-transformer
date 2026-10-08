@@ -186,6 +186,10 @@ function(gen_opapi_symbol)
     opapi_math
     dl
   )
+  if (TARGET cannbotdsl_aclnn)
+    target_link_libraries(${OPAPI_NAME} PRIVATE
+      "-Wl,--no-as-needed" cannbotdsl_aclnn "-Wl,--as-needed")
+  endif()
 endfunction()
 
 function(gen_built_in_opapi_symbol)

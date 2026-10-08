@@ -152,6 +152,18 @@ set_directory_properties(PROPERTIES
     ADDITIONAL_MAKE_CLEAN_FILES "${CMAKE_BINARY_DIR}/_CPack_Packages"
 )
 
+# Discover OpKit operators before AscendC preparation.
+include(cmake/cannbotdsl.cmake)
+if (TARGET cannbotdsl_aclnn AND NOT ASCENDC_BUILD_OPS)
+    include(cmake/config.cmake)
+    set(CMAKE_INSTALL_PREFIX "${CMAKE_SOURCE_DIR}/build_out")
+    set(CMAKE_INSTALL_DEFAULT_COMPONENT_NAME ops-transformer)
+    file(REMOVE "${CMAKE_BINARY_DIR}/no_ops.flag")
+    include(cmake/package.cmake)
+    pack_built_in()
+    return()
+endif()
+
 include(cmake/third_party/opbase.cmake)
 if(DOWNLOAD_OPS_TEST_KIT)
   include(cmake/third_party/ops_test_kit.cmake)
