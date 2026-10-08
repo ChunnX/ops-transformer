@@ -37,6 +37,7 @@ constexpr uint32_t N_MAX  = 4;
 constexpr uint32_t ALIGN8 = 8;
 constexpr uint32_t BUFFER_NUM_TWO = 2;
 constexpr uint32_t BUFFER_NUM_ONE = 1;
+constexpr uint32_t BUFFER_NUM_FOUR = 4; // phi ping-pong：4槽让相邻o的搬运与计算重叠
 constexpr uint32_t GAMMA1_CACHE_MAX_D = 5120; // 目标模型维度以内缓存完整gamma1
 constexpr uint32_t SCALAR_BUF_SIZE   = 256;    // 标量计算 UB buffer 大小 (bytes)
 constexpr uint32_t EXP_DIV_ELEM      = 8;      // sigmoid ExpDiv 计算元素数
