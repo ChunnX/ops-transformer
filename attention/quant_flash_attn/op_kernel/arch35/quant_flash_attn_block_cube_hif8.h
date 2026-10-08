@@ -102,14 +102,14 @@ public:
     using MM2_ABUF_T = Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
     using MM2_DBUF_T = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
 
-    static constexpr bool ENABLE_UNIT_FLAG = LAYOUT == LayOutTypeEnum::LAYOUT_TND && !PAGE_ATTENTION &&
-        mBaseSize == 128 && s2BaseSize == 256 && dBaseSize == 128 && dVBaseSize == 128;
+    // HIF8 host validation and tiling guarantee D=Dv=128 and a 128x256 base tile.
+    static constexpr bool ENABLE_UNIT_FLAG = LAYOUT == LayOutTypeEnum::LAYOUT_TND && !PAGE_ATTENTION;
 
     __aicore__ inline bool UseUnitFlag(const RunInfoX &runInfo) const
     {
-        return ENABLE_UNIT_FLAG &&
-            runInfo.actMSize == 128 && runInfo.actSingleLoopS2Size == 256 &&
-            constInfo_.dSize == 128 && constInfo_.dSizeV == 128;
+        // Keep partial tiles on event synchronization so L0C writes and reads match.
+        return ENABLE_UNIT_FLAG && runInfo.actMSize == mBaseSize &&
+            runInfo.actSingleLoopS2Size == s2BaseSize;
     }
 
     using L1KvType = BuffersPolicy4buff<BufferType::L1>;
@@ -188,9 +188,7 @@ public:
     __aicore__ inline void InitBuffers()
     {
         if constexpr (ENABLE_UNIT_FLAG) {
-            if (constInfo_.dSize == 128 && constInfo_.dSizeV == 128) {
-                SetMMRowMajor();
-            }
+            SetMMRowMajor();
         }
         constexpr uint32_t s2BaseSizeCur = s2BaseSize;
         constexpr uint32_t mm1QSize = mBaseSize * dBaseSize * sizeof(INPUT_T);

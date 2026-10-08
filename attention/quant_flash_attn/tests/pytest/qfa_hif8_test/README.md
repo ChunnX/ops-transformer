@@ -86,6 +86,29 @@ pytest -m func_rdv -v
 pytest -m ci -v
 ```
 
+### 性能快速模式与精度开关
+
+`perf_rdv` 用例默认只跑性能：优先复用 `--cache-dir` 中的输入，缺失时仅生成并缓存输入；执行 NPU 并同步等待完成。此模式不生成或加载 CPU golden，不做精度比对，也不将 NPU 输出搬回 CPU 或保存到磁盘。
+首次输入准备、扩展加载和 profiler 启动仍需时间；算子性能应看 msprof 的 kernel Duration。
+
+```bash
+# 快速采集性能：无需提前生成 golden，支持空缓存目录。
+pytest test_quant_flash_attn_perf_rdv.py -v --msprof
+
+# 最终精度验收：生成输入、CPU golden，执行 NPU 并比对。
+pytest test_quant_flash_attn_perf_rdv.py -v --check-accuracy
+
+# 对 debug/功能用例显式使用快速模式。
+pytest test_quant_flash_attn_debug.py -v --golden-mode=perf --msprof
+
+# 已有匹配的输入和 golden 缓存时，仅重跑 NPU 并比对。
+pytest test_quant_flash_attn_perf_rdv.py -v --golden-mode=npu,compare
+```
+
+功能/debug 用例默认仍执行完整精度验证。显式 `--golden-mode` 保留原有手动阶段选择；`perf` 必须单独使用，`--check-accuracy` 与 `--golden-mode` 不可同时指定。
+性能模式的 passed 仅表示 NPU 执行成功，不代表精度通过。pytest 会汇总提示未做精度比对，并在报告属性中记录 `accuracy_checked=False`。
+仅在参数和输入生成逻辑一致时复用缓存，否则请指定新的缓存目录。
+
 ### 4.3 过滤用例（-k）
 
 ```bash
@@ -115,7 +138,8 @@ pytest -v -k "not BSND"
 
 | 模式 | 作用 |
 |------|------|
-| `all` | 全流程：生成数据 → CPU → NPU → 精度对比（**默认值**） |
+| `all` | 全流程：生成数据 → CPU → NPU → 精度对比（功能/debug 用例默认值） |
+| `perf` | 性能用例默认：复用/生成输入 → NPU → 同步；无 golden、比对、输出落盘 |
 | `gen` | 仅生成并保存输入数据 |
 | `cpu` | 加载输入缓存 → 跑 CPU 并保存输出 |
 | `npu` | 加载输入缓存 → 跑 NPU 并保存输出 |
@@ -133,7 +157,7 @@ pytest test_quant_flash_attn_func_rdv.py -v --golden-mode=npu,compare
 pytest test_quant_flash_attn_func_rdv.py -v --cache-dir=/tmp/my_cache
 ```
 
-每个 case 生成 3 个 `.pt` 文件：
+完整流程为每个 case 生成以下 3 个 `.pt` 文件；`perf` 模式仅生成或复用输入文件：
 
 ```
 golden_cache/
