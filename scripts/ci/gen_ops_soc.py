@@ -59,7 +59,7 @@ group_op_dict = {
         "flash_attention_score_grad": 5,
     },
     "ascend960dt": {
-        "flash_attention_score_grad": 5
+        "fused_infer_attention_score": 20
     },
 }
 

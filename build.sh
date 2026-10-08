@@ -1052,6 +1052,7 @@ function process_soc_input(){
         [ascend910_93]="Atlas A3"
         [ascend310p]="Ascend310P3"
         [ascend950]="Ascend 950PR/Ascend 950DT"
+        [ascend960dt]="Ascend960DT_968B7"
         [kirinx90]="KirinX90"
         [kirin9030]="Kirin9030"
         # mc62 在本仓 README/docs/const_var.py 及 ops-nn 仓中均无官方产品命名, 暂不配置, 走通用提示
