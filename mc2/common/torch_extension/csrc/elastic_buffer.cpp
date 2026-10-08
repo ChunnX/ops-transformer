@@ -38,6 +38,7 @@
 
 // HCCL common utilities
 #include "hccl_common.h"
+#include "moe_shared_jetty_adapter.h"
 
 // ACLNN common utilities
 #include "aclnn_common.h"
@@ -1837,32 +1838,26 @@ void ElasticBuffer::EnsureMoeContext(int64_t cclBufferSize)
 {
     TORCH_CHECK(!destroyed_, "ElasticBuffer cannot be used after destroy, please create a new ElasticBuffer instance");
     if (moeContextInitialized_) {
+        TORCH_CHECK(cclBufferSize <= moeCclBufferSize_,
+                    "MoE communication buffer cannot grow after shared Jetty initialization, requested ", cclBufferSize,
+                    ", allocated ", moeCclBufferSize_, "; use a new communication group");
         return;
     }
-    MoeContextBuilder builder;
-    MoeContextResources resources = builder.Build(groupName_, cclBufferSize);
-    moeContextTensor_ = resources.contextTensor;
-    moeCclBufferSize_ = resources.cclBufferSize;
-    moeRankSizePerServer_ = resources.rankSizePerServer;
-    moeDeviceBufPtr_ = resources.deviceBufPtr;
-    moePhysicalMemHandle_ = resources.physicalMemHandle;
-    moeMemHandle_ = resources.memHandle;
-    moeContextTag_ = resources.contextTag;
+    moeContextTensor_ = BuildMoeSharedJettyContext(groupName_, static_cast<uint64_t>(cclBufferSize));
+    moeCclBufferSize_ = cclBufferSize;
     moeContextInitialized_ = true;
 }
 
 int64_t ElasticBuffer::ResolveRankNumPerServer(int64_t epWorldSize) const
 {
-    int64_t rankNumPerServer = static_cast<int64_t>(moeRankSizePerServer_);
-    TORCH_CHECK(rankNumPerServer > 0, "rank_num_per_server must be positive, got ", rankNumPerServer);
-    TORCH_CHECK(epWorldSize % rankNumPerServer == 0, "ep_world_size must be divisible by rank_num_per_server, got ",
-                epWorldSize, " and ", rankNumPerServer);
-    return rankNumPerServer;
+    return epWorldSize;
 }
 
 int64_t ElasticBuffer::ResolveTopoType(int64_t epWorldSize, int64_t rankNumPerServer) const
 {
-    return (epWorldSize / rankNumPerServer > 1) ? NETWORK_HYBRID : NETWORK_DIRECT;
+    (void)epWorldSize;
+    (void)rankNumPerServer;
+    return NETWORK_DIRECT;
 }
 
 // EngramWrite - write data with automatic barrier.

@@ -31,6 +31,7 @@ _ENGRAM_INT_TO_DTYPE = {v: k for k, v in _ENGRAM_DTYPE_TO_INT.items()}
 _ENGRAM_SF_DTYPES = (torch.float32, torch.float8_e8m0fnu)
 _ENGRAM_GRAD_DTYPES = (torch.bfloat16, torch.float16, torch.float32)
 _MOE_EP_METADATA_FIELDS = 5
+_MOE_SHARED_JETTY_NUM = 32
 
 _MOE_EP_METADATA_ALIGN_ELEMENTS = 128  # 512 bytes, int32 elements
 
@@ -149,7 +150,11 @@ class ElasticBufferOpBuilder(OpBuilder):
 
     def sources(self):
         """Path to C++ source code."""
-        return ["csrc/mc2/elastic_buffer.cpp"]
+        return [
+            "csrc/mc2/elastic_buffer.cpp",
+            "csrc/mc2/moe_shared_jetty_context.cpp",
+            "csrc/mc2/moe_shared_jetty_adapter.cpp",
+        ]
 
     def schema(self):
         """PyTorch operator signature."""
@@ -348,10 +353,6 @@ def _get_moe_ep_window_layout(
 ) -> _MoeEpWindowLayout:
     win_addr_align = 512
     ub_align = 32
-    max_dispatch_channel_count = 56
-    max_dispatch_notify_count = 8
-    # Must match ElasticBuffer's direct-network MOE_CHANNEL_HANDLE_NUM reservation.
-    combine_channel_handle_count = 64
     max_out_dtype_size = 2
     metadata_dtype_size = 4
     state_dtype_size = 4
@@ -362,10 +363,7 @@ def _get_moe_ep_window_layout(
     dispatch_count_size = world_size * _inline_align(
         local_experts_num * state_dtype_size, win_addr_align
     )
-    dispatch_notify_count = min(
-        max_dispatch_notify_count, max_dispatch_channel_count // (world_size - 1)
-    )
-    dispatch_notify_count = max(dispatch_notify_count, 1)
+    dispatch_notify_count = _MOE_SHARED_JETTY_NUM
 
     dispatch_notify_size = (
         world_size * win_addr_align
@@ -373,7 +371,7 @@ def _get_moe_ep_window_layout(
     )
     combine_state_size = (
         num_max_tokens_per_rank * topk * win_addr_align
-        + max(world_size, combine_channel_handle_count) * win_addr_align
+        + world_size * _MOE_SHARED_JETTY_NUM * win_addr_align
         + win_addr_align  # Persistent constant source for asynchronous combine completion flags.
     )
     # payload 发送状态位区: 按每对端预留 notify 槽位数预留
@@ -461,48 +459,7 @@ def _get_moe_ep_window_bytes(
         num_max_tokens_per_rank,
         topk,
     )
-    win_addr_align = 512
-    state_dtype_size = 4
-
-    def get_dispatch_buffer_size(rank_num_per_server):
-        scaleout_rank_count = world_size // rank_num_per_server
-        scaleout_per_slot_bytes = _inline_align(
-            window_layout.dispatch_slot_bytes + topk * state_dtype_size,
-            win_addr_align,
-        )
-        scaleout_recv_data_size = (
-            scaleout_rank_count * num_max_tokens_per_rank * scaleout_per_slot_bytes
-        )
-        scaleout_recv_status_size = (
-            scaleout_rank_count * num_max_tokens_per_rank * win_addr_align
-        )
-        payload_stash_size = num_max_tokens_per_rank * scaleout_per_slot_bytes
-        return (
-            scaleout_recv_data_size
-            + window_layout.scaleup_receive_buffer_bytes
-            + scaleout_recv_status_size
-            + payload_stash_size
-        )
-
-    # Context topology is unavailable here, so reserve for the largest valid hybrid layout.
-    rank_num_per_server_candidates = [
-        rank_num_per_server
-        for rank_num_per_server in range(1, world_size + 1)
-        if world_size % rank_num_per_server == 0
-    ]
-    dispatch_buffer_size = max(
-        get_dispatch_buffer_size(rank_num_per_server)
-        for rank_num_per_server in rank_num_per_server_candidates
-    )
-    combine_buffer_size = (
-        num_max_tokens_per_rank * window_layout.combine_slot_bytes * topk
-    )
-
-    hybrid_minimum_window_bytes = (
-        window_layout.state_buffer_bytes + dispatch_buffer_size + combine_buffer_size
-    )
-    minimum_window_bytes = max(direct_minimum_window_bytes, hybrid_minimum_window_bytes)
-    return _inline_align(minimum_window_bytes, 2 * mb_conversion)
+    return _inline_align(direct_minimum_window_bytes, 2 * mb_conversion)
 
 
 @dataclass

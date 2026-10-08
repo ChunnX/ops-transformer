@@ -43,6 +43,7 @@
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #include "../../common/op_kernel/mc2_moe_context.h"
+#include "../../common/op_kernel/moe_shared_jetty_context.h"
 #include "../../common/op_kernel/moe_ep_exception_dump_writer.h"
 #include "../../common/op_kernel/moe_ep_send_completion.h"
 
@@ -124,7 +125,8 @@ private:
 
     __aicore__ inline void SplitToCore(uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t& startId, uint32_t& endId,
                                        uint32_t& sendNum);
-    __aicore__ inline GM_ADDR GetWinAddrByRankId(__gm__ Mc2Aclnn::MoeCommContext* ctx, uint32_t rankId, uint64_t offset)
+    __aicore__ inline GM_ADDR GetWinAddrByRankId(__gm__ Mc2Aclnn::MoeSharedJettyContext* ctx, uint32_t rankId,
+                                                 uint64_t offset)
     {
         return (GM_ADDR)ctx->epHcclBuffer[rankId] + offset;
     }
@@ -138,7 +140,7 @@ private:
     }
 
     TPipe* tpipe_{nullptr};
-    __gm__ Mc2Aclnn::MoeCommContext* mc2Context_{nullptr};
+    __gm__ Mc2Aclnn::MoeSharedJettyContext* mc2Context_{nullptr};
     MoeEpExceptionDump::MoeEpCoreDiagWriter diagWriter_;
     uint32_t epRankId_{0};
     uint32_t networkMode_{0};      // 0 = direct(自段 x 直读输入), 1 = hybrid(自段 x 读win)
@@ -291,12 +293,12 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     winDataOffset_ = tilingData->winDataOffset;
     slotWinStateOffset_ = tilingData->slotWinStateOffset;
 
-    mc2Context_ = reinterpret_cast<__gm__ Mc2Aclnn::MoeCommContext*>(context);
+    mc2Context_ = reinterpret_cast<__gm__ Mc2Aclnn::MoeSharedJettyContext*>(context);
     epRankId_ = mc2Context_->epRankId;
     constexpr size_t metadataOffset = offsetof(MoeEpDispatchEpilogueTilingData, moeEpDispatchEpilogueInfo) +
                                       offsetof(MoeEpDispatchEpilogueInfo, dumpMetadata);
-    MoeEpExceptionDump::WriteMetadata(context, tilingGM + metadataOffset);
-    diagWriter_.Init(context, MOE_EP_CORE_DIAG_DISPATCH_EPILOGUE, tpipe_);
+    MoeEpExceptionDump::WriteMetadata<Mc2Aclnn::MoeSharedJettyContext>(context, tilingGM + metadataOffset);
+    diagWriter_.Init<Mc2Aclnn::MoeSharedJettyContext>(context, MOE_EP_CORE_DIAG_DISPATCH_EPILOGUE, tpipe_);
     localSlotStateWinAddr_ = GetWinAddrByRankId(mc2Context_, epRankId_, slotWinStateOffset_);
     localWinAddr_ = GetWinAddrByRankId(mc2Context_, epRankId_, winDataOffset_);
     // 槽内 scales/meta 基址: direct 紧拼 tokenSize; hybrid 为 ALIGN32(tokenSize)（hybrid dispatch 整槽布局）

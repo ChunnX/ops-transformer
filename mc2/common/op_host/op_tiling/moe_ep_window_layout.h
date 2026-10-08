@@ -15,16 +15,14 @@
 
 #include "graph/ge_error_codes.h"
 #include "../../op_kernel/moe_ep_exception_dump_defs.h"
+#include "../../op_kernel/moe_shared_jetty_context.h"
 
 namespace Mc2Tiling {
 
 constexpr uint64_t MOE_EP_UB_ALIGN = 32UL;
 constexpr uint64_t MOE_EP_WIN_ALIGN = 512UL;
-constexpr uint64_t MOE_EP_CHANNEL_BUDGET = 56UL;
-constexpr uint64_t MOE_EP_DISPATCH_NOTIFY_COUNT = 8UL;
-// ElasticBuffer creates at most 64 direct-network channel handles in total. UB-GPeer uses one channel per rank,
-// so reserve whichever completion-flag count is larger without depending on the device context at tiling time.
-constexpr uint64_t MOE_EP_COMBINE_CHANNEL_HANDLE_COUNT = 64UL;
+constexpr uint64_t MOE_EP_JETTY_COUNT = Mc2Aclnn::MOE_SHARED_JETTY_NUM;
+constexpr uint64_t MOE_EP_DISPATCH_NOTIFY_COUNT = Mc2Aclnn::MOE_SHARED_JETTY_NUM;
 constexpr uint64_t MOE_EP_MAX_OUT_DTYPE_SIZE = 2UL;
 constexpr uint64_t MOE_EP_METADATA_DTYPE_SIZE = 4UL;
 constexpr uint32_t MOE_EP_NETWORK_DIRECT = 0U;
@@ -87,13 +85,13 @@ uint64_t AlignMoeEpUb(uint64_t value);
 uint64_t AlignMoeEpWin(uint64_t value);
 
 ge::graphStatus ResolveMoeEpTopology(uint32_t epWorldSize, int64_t requestedNetworkMode, int64_t rankNumPerServer,
-                                     MoeEpTopology &topology);
+                                     MoeEpTopology& topology);
 
-ge::graphStatus CalcMoeEpWindowLayout(const MoeEpWindowLayoutParams &params, MoeEpWindowLayout &layout);
+ge::graphStatus CalcMoeEpWindowLayout(const MoeEpWindowLayoutParams& params, MoeEpWindowLayout& layout);
 
-ge::graphStatus CheckMoeEpWindowCapacity(uint64_t requiredBytes, uint64_t cclBufferSize, const char *nodeName);
+ge::graphStatus CheckMoeEpWindowCapacity(uint64_t requiredBytes, uint64_t cclBufferSize, const char* nodeName);
 
-MoeEpDumpMetadata BuildMoeEpDumpMetadata(const MoeEpWindowLayoutParams &params, const MoeEpWindowLayout &layout,
+MoeEpDumpMetadata BuildMoeEpDumpMetadata(const MoeEpWindowLayoutParams& params, const MoeEpWindowLayout& layout,
                                          uint32_t aivNum);
 
 } // namespace Mc2Tiling

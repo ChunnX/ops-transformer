@@ -75,8 +75,8 @@ __aicore__ inline void GetExpertFreq(LocalTensor<uint16_t>& dstLocal, LocalTenso
     PipeBarrier<PIPE_V>();
 }
 
-__aicore__ inline GM_ADDR GetWindowAddrByRankId(__gm__ Mc2Aclnn::MoeCommContext* context, uint32_t rankId,
-                                                uint64_t offset)
+template <typename ContextType>
+__aicore__ inline GM_ADDR GetWindowAddrByRankId(__gm__ ContextType* context, uint32_t rankId, uint64_t offset)
 {
     return (GM_ADDR)context->epHcclBuffer[rankId] + offset;
 }
@@ -116,7 +116,8 @@ namespace Mc2Kernel {
 using MoeEpDispatchBase::GetCommHandle;
 using MoeEpDispatchBase::GetExpertFreq;
 
-__aicore__ inline GM_ADDR GetWinAddrByRankId(__gm__ Mc2Aclnn::MoeCommContext* context, uint32_t rankId, uint64_t offset)
+template <typename ContextType>
+__aicore__ inline GM_ADDR GetWinAddrByRankId(__gm__ ContextType* context, uint32_t rankId, uint64_t offset)
 {
     return MoeEpDispatchBase::GetWindowAddrByRankId(context, rankId, offset);
 }

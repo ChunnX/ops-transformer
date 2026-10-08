@@ -29,6 +29,7 @@
 #include "tiling/tiling_api.h"
 #include "../../op_kernel/moe_ep_dispatch_tiling.h"
 #include "../../op_kernel/moe_ep_dispatch_tiling_key.h"
+#include "../../../common/op_kernel/moe_shared_jetty_context.h"
 
 using namespace AscendC;
 using namespace ge;
@@ -144,6 +145,11 @@ static bool CheckInputTensorShape(const gert::TilingContext* context, const char
         contextShape->GetStorageShape().GetDimNum() != ONE_DIM,
         OP_LOGE(nodeName, "context dims must be 1, but got %lu.", contextShape->GetStorageShape().GetDimNum()),
         return false);
+    constexpr int64_t expectedContextElements = sizeof(Mc2Aclnn::MoeSharedJettyContext) / sizeof(int32_t);
+    OP_TILING_CHECK(contextShape->GetStorageShape().GetDim(0) != expectedContextElements,
+                    OP_LOGE(nodeName, "Shared Jetty context length must be %ld, but got %ld.", expectedContextElements,
+                            contextShape->GetStorageShape().GetDim(0)),
+                    return false);
     OP_TILING_CHECK(xShape->GetStorageShape().GetDimNum() != TWO_DIMS,
                     OP_LOGE(nodeName, "x dims must be 2, but got %lu.", xShape->GetStorageShape().GetDimNum()),
                     return false);
@@ -680,6 +686,8 @@ static ge::graphStatus CheckCommAttr(const gert::TilingContext* context, const c
     OP_TILING_CHECK(*cclBufferSizePtr <= 0,
                     OP_LOGE(nodeName, "ccl_buffer_size must be positive, but got %ld.", *cclBufferSizePtr),
                     return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(requestedNetworkMode != NETWORK_DIRECT,
+                    OP_LOGE(nodeName, "Shared Jetty dispatch supports direct topology only."), return ge::GRAPH_FAILED);
 
     MoeEpTopology topology{};
     OP_TILING_CHECK(ResolveMoeEpTopology(static_cast<uint32_t>(epWorldSize), requestedNetworkMode, rankNumPerServer,
@@ -959,7 +967,11 @@ static ge::graphStatus SetPlatformAndNetworkInfo(gert::TilingContext* context, M
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     uint64_t ubSize = 0UL;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
-    OP_TILING_CHECK(aivNum == 0U, OP_LOGE(nodeName, "Platform reports aiv_num=0."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(aivNum < Mc2Aclnn::MOE_SHARED_JETTY_NUM,
+                    OP_LOGE(nodeName, "Shared Jetty dispatch requires at least %u AIVs, but got %u.",
+                            Mc2Aclnn::MOE_SHARED_JETTY_NUM, aivNum),
+                    return ge::GRAPH_FAILED);
+    aivNum = Mc2Aclnn::MOE_SHARED_JETTY_NUM;
     OP_TILING_CHECK(ubSize == 0UL, OP_LOGE(nodeName, "Platform reports ub_size=0."), return ge::GRAPH_FAILED);
     uint32_t blockDim = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
     info.aivNum = aivNum;
