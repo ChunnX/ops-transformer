@@ -14,17 +14,18 @@
 # 来源与本分支改造 (2026-09-30):
 #   本文件由 /opt/tjj/qli_cand_test/test_qli_cand.py 拷贝后，按本分支现状改造:
 #   - 属性 candidate_mode 已删除：开关改由 candidate_topk_blocks 承载（-1=关闭/现网，2048=开启第一级/source）
-#   - 用例按 cand_mode 路由到三个入口（见 npu_run）：
+#   - 用例按 cand_mode 路由到两个入口（见 npu_run）：
 #       cand_mode=3 -> quant_lightning_indexer            现网基础入口（候选关闭，2 输出）
 #       cand_mode=1 -> quant_lightning_indexer_candidate  第一级 source（3 输出，末元为块级候选索引）
-#       cand_mode=2 -> quant_sparse_lightning_indexer     第二级 consumer 独立算子（吃候选索引，2 输出）
 #     返回统一补成 3 元组，下游比对代码（pin/透传检查）无需改动
+#   - cand_mode=2（第二级 consumer 独立算子 quant_sparse_lightning_indexer）的 33 个用例已迁至
+#     该算子的测试目录：quant_sparse_lightning_indexer/tests/pytest/qli_cand_orig_consumer.py
 #   - 删除「新接口规范适配层」相关用例：该 py 适配层（candidate_source/candidate_consumer 封装）已在本分支删除
 #   - 官方比对规则 result_compare_method 改为取自本目录（仓库内），去掉对 /opt 绝对路径的依赖
 # 自包含 harness: 输入生成(910b int8/PA) + torch 参考实现 + NPU 调用 + 集合比较
-# 用例矩阵: 设计文档 §6.5 (cmp_ratio 1/2 x mode 1/2/3, g64/32, decode/prefill, numBlocks 边界)
+# 用例矩阵: 设计文档 §6.5 (cmp_ratio 1/2 x mode 1/3, g64/32, decode/prefill, numBlocks 边界)
 #
-# 运行（需先 source CANN 的 set_env.sh，否则拿不到含 consumer 算子的 cann_ops_transformer 包）:
+# 运行（需先 source CANN 的 set_env.sh，以取到仓库侧的 cann_ops_transformer 包）:
 #   source <CANN>/set_env.sh
 #   ASCEND_RT_VISIBLE_DEVICES=<空闲卡> pytest qli_cand_orig.py [-k <用例 id>]
 #   注: 文件名不是 test_*.py，pytest 默认收集不到，需显式指定本文件路径（或改名）
@@ -43,9 +44,6 @@ from cann_ops_transformer.ops.attention.quant_lightning_indexer_v2 import (  # n
     quant_lightning_indexer,
     quant_lightning_indexer_candidate,
     quant_lightning_indexer_metadata,
-)
-from cann_ops_transformer.ops.attention.quant_sparse_lightning_indexer import (  # noqa: E402
-    quant_sparse_lightning_indexer,
 )
 from result_compare_method import compare_topk_valid  # noqa: E402
 
@@ -386,10 +384,9 @@ def gen_case_inputs(case):
 
 
 def npu_run(inputs, case, cand_in_npu=None):
-    """按本分支契约分发到三个入口（无 candidate_mode 属性，开关= candidate_topk_blocks）：
+    """按本分支契约分发到两个入口（无 candidate_mode 属性，开关= candidate_topk_blocks）：
       cand_mode=3 -> 现网基础入口（候选关闭；2 输出）
       cand_mode=1 -> 第一级 source（candidate_topk_blocks=2048；3 输出，末元为块级候选索引）
-      cand_mode=2 -> 第二级 consumer 独立算子（吃第一级候选索引；2 输出）
     统一返回 3 元组 (indices, values, candidate)，与下游比对/pin/透传检查约定一致。"""
     layout = case.get("layout", "BSND")
     mode = case["cand_mode"]
@@ -442,21 +439,6 @@ def npu_run(inputs, case, cand_in_npu=None):
         )
         # 末元为块级候选索引；第 4 元（若存在）是预留空输出 candidate_block_length，比对只覆盖前 3 输出
         return ret[0], ret[1], ret[2]
-
-    if mode == 2:
-        assert cand_in_npu is not None, "cand_mode=2 用例需先准备候选索引输入"
-        idx, vals = quant_sparse_lightning_indexer(
-            inputs["q"],
-            inputs["k_phys"],
-            inputs["w"],
-            inputs["q_scale"],
-            inputs["k_scale_phys"],
-            candidate_topk_index=cand_in_npu,
-            candidate_topk_blocks=CAND_BLOCKS,
-            candidate_block_size=CAND_BS,
-            **common,
-        )
-        return idx, vals, empty_cand
 
     raise RuntimeError(f"未知 cand_mode={mode}")
 
@@ -1503,14 +1485,9 @@ CASES = [
     ("r1_m0_decode", 1, 1, [2048], 1, None, 0, 1, 32, 512),
     ("r1_m1_prefill_m3", 2, 8, [1024, 2048], 1, None, 3, 1, 32, 512),
     ("r1_m1_tail", 2, 4, [1000, 2000], 1, None, 3, 1, 32, 512),
-    ("r1_m2_self", 1, 1, [2048], 1, None, 0, 2, 32, 512),
-    ("r1_m2_rand", 1, 1, [4096], 1, None, 0, 2, 32, 512),
-    ("r1_m2_few", 1, 1, [20000], 1, None, 0, 2, 32, 512),
     # R6 回归: prefill s1>1 的 mode=2 (每 AIV 2 行共核, candBuf 按行分区前该场景必错)
-    ("r1_m2_prefill", 1, 8, [2048], 1, None, 0, 2, 32, 512),
     ("r2_m1_decode", 1, 1, [1024], 2, [1], 3, 1, 32, 512),
     ("r2_m1_prefill_m3", 1, 16, [1024], 2, [1], 3, 1, 32, 512),
-    ("r2_m2_self", 1, 1, [1024], 2, [1], 3, 2, 32, 512),
     ("r1_m1_g64_regress", 1, 1, [2048], 1, None, 0, 1, 64, 512),
     ("r1_m1_sparse2048", 1, 1, [4096], 1, None, 0, 1, 32, 2048),
     # pin 生效场景: candBlocks=64 < 总块数 512 (s2=4096, bs=8), 最新块必须被 pin 进候选
@@ -1528,11 +1505,9 @@ CASES = [
     # 极小 S2: actS2Size=1 (单块单位置, 块数=1)
     ("r1_m1_tiny", 1, 1, [1], 1, None, 0, 1, 32, 512),
     # candBlocks=64 x mode=2 (掩码窗口 + topk_blocks<候选数的部分选)
-    ("r1_m2_cand64", 1, 1, [4096], 1, None, 0, 2, 32, 512, 64),
     # R11 leak 回归 (v41 issue 场景门禁): prefill + candBlocks=64 (128 块缺 64) +
     # vl<=topk 的行 (0..511) → 输出必须完整 0..vl (候选只降级排序不取消资格);
     # 行 512+ 覆盖 regime 2: 候选外按索引升序泄漏填充
-    ("r1_m2_leakprefill", 1, 1024, [1024], 1, None, 3, 2, 32, 512, 64),
     # g=64 prefill 扩展 (此前仅 decode 一例)
     ("r1_m1_g64_prefill", 1, 8, [2048], 1, None, 3, 1, 64, 512),
 ]
@@ -1803,99 +1778,7 @@ NEW_CASES = [
         None,
     ),
     # 生产规格: key pool [7936,128,1,128], block_table [B,1055]; 1M pool 8192/表 8192
-    (
-        "big128k_m2",
-        {
-            "name": "big128k_m2",
-            "batch": 1,
-            "q_seq": 131072,
-            "seqused_k": [131072],
-            "cmp_ratio": 1,
-            "mask_mode": 3,
-            "cand_mode": 2,
-            "g": 32,
-            "topk": 512,
-            "pool": 7936,
-            "table_w": 1055,
-            "sample_rows": True,
-        },
-        None,
-    ),
     # ---- 大 shape mode=2 遍历补缺 (2026-09-08): TND / ratio2 / 1M / 16K ----
-    (
-        "big16k_m2",
-        {
-            "name": "big16k_m2",
-            "batch": 1,
-            "q_seq": 16384,
-            "seqused_k": [16384],
-            "cmp_ratio": 1,
-            "mask_mode": 3,
-            "cand_mode": 2,
-            "g": 32,
-            "topk": 512,
-            "pool": 7936,
-            "table_w": 1055,
-            "sample_rows": True,
-        },
-        None,
-    ),
-    (
-        "big128k_tnd_m2",
-        {
-            "name": "big128k_tnd_m2",
-            "batch": 1,
-            "q_seq": 131072,
-            "seqs_q": [131072],
-            "seqused_k": [131072],
-            "cmp_ratio": 1,
-            "mask_mode": 3,
-            "cand_mode": 2,
-            "g": 32,
-            "topk": 512,
-            "pool": 7936,
-            "table_w": 1055,
-            "sample_rows": True,
-            "layout": "TND",
-        },
-        None,
-    ),
-    (
-        "big128k_r2_m2",
-        {
-            "name": "big128k_r2_m2",
-            "batch": 1,
-            "q_seq": 131072,
-            "seqused_k": [131072],
-            "cmp_ratio": 2,
-            "cmp_res": [1],
-            "mask_mode": 3,
-            "cand_mode": 2,
-            "g": 32,
-            "topk": 512,
-            "pool": 7936,
-            "table_w": 1055,
-            "sample_rows": True,
-        },
-        None,
-    ),
-    (
-        "big1m_m2",
-        {
-            "name": "big1m_m2",
-            "batch": 1,
-            "q_seq": 1048576,
-            "seqused_k": [1048576],
-            "cmp_ratio": 1,
-            "mask_mode": 3,
-            "cand_mode": 2,
-            "g": 32,
-            "topk": 512,
-            "sample_rows": True,
-            "sample_rand": 2,
-        },
-        None,
-    ),
     (
         "tnd_m1_decode",
         {
@@ -1924,23 +1807,6 @@ NEW_CASES = [
             "cmp_ratio": 1,
             "mask_mode": 3,
             "cand_mode": 1,
-            "g": 32,
-            "topk": 512,
-            "layout": "TND",
-        },
-        None,
-    ),
-    (
-        "tnd_m2_rand",
-        {
-            "name": "tnd_m2_rand",
-            "batch": 1,
-            "q_seq": 1,
-            "seqs_q": [1],
-            "seqused_k": [4096],
-            "cmp_ratio": 1,
-            "mask_mode": 0,
-            "cand_mode": 2,
             "g": 32,
             "topk": 512,
             "layout": "TND",
@@ -2025,25 +1891,6 @@ NEW_CASES = [
         None,
     ),
     (
-        "dec_128k_m2",
-        {
-            "name": "dec_128k_m2",
-            "batch": 1,
-            "q_seq": 1,
-            "seqused_k": [131072],
-            "cmp_ratio": 1,
-            "mask_mode": 0,
-            "cand_mode": 2,
-            "g": 32,
-            "topk": 512,
-            "pool": 2048,
-            "table_w": 1024,
-            "sample_rows": True,
-            "sample_rand": 6,
-        },
-        None,
-    ),
-    (
         "dec_128k_m1",
         {
             "name": "dec_128k_m1",
@@ -2072,22 +1919,6 @@ NEW_CASES = [
             "cmp_ratio": 1,
             "mask_mode": 3,
             "cand_mode": 1,
-            "g": 32,
-            "topk": 512,
-            "pa_gap": True,
-        },
-        None,
-    ),
-    (
-        "pa_gap_m2",
-        {
-            "name": "pa_gap_m2",
-            "batch": 1,
-            "q_seq": 1,
-            "seqused_k": [4096],
-            "cmp_ratio": 1,
-            "mask_mode": 0,
-            "cand_mode": 2,
             "g": 32,
             "topk": 512,
             "pa_gap": True,
@@ -2133,44 +1964,6 @@ NEW_CASES = [
         None,
     ),
     (
-        "pa_gap_16k_m2",
-        {
-            "name": "pa_gap_16k_m2",
-            "batch": 1,
-            "q_seq": 16384,
-            "seqused_k": [16384],
-            "cmp_ratio": 1,
-            "mask_mode": 3,
-            "cand_mode": 2,
-            "g": 32,
-            "topk": 512,
-            "pool": 15872,
-            "table_w": 1055,
-            "pa_gap": True,
-            "sample_rows": True,
-        },
-        None,
-    ),
-    (
-        "pa_gap_128k_m2",
-        {
-            "name": "pa_gap_128k_m2",
-            "batch": 1,
-            "q_seq": 131072,
-            "seqused_k": [131072],
-            "cmp_ratio": 1,
-            "mask_mode": 3,
-            "cand_mode": 2,
-            "g": 32,
-            "topk": 512,
-            "pool": 15872,
-            "table_w": 1055,
-            "pa_gap": True,
-            "sample_rows": True,
-        },
-        None,
-    ),
-    (
         "pa_gap_1m_m1",
         {
             "name": "pa_gap_1m_m1",
@@ -2180,24 +1973,6 @@ NEW_CASES = [
             "cmp_ratio": 1,
             "mask_mode": 3,
             "cand_mode": 1,
-            "g": 32,
-            "topk": 512,
-            "pa_gap": True,
-            "sample_rows": True,
-            "sample_rand": 2,
-        },
-        None,
-    ),
-    (
-        "pa_gap_1m_m2",
-        {
-            "name": "pa_gap_1m_m2",
-            "batch": 1,
-            "q_seq": 1048576,
-            "seqused_k": [1048576],
-            "cmp_ratio": 1,
-            "mask_mode": 3,
-            "cand_mode": 2,
             "g": 32,
             "topk": 512,
             "pa_gap": True,
@@ -2223,26 +1998,6 @@ NEW_CASES = [
             "table_w": 1024,
             "sample_rows": True,
             "force_rows": [64, 73, 95, 16448, 16457, 16479],
-        },
-        None,
-    ),
-    (
-        "big128k_b2_tnd_m2",
-        {
-            "name": "big128k_b2_tnd_m2",
-            "batch": 2,
-            "q_seq": 16384,
-            "seqs_q": [16384, 16384],
-            "seqused_k": [98304, 131072],
-            "cmp_ratio": 1,
-            "mask_mode": 3,
-            "cand_mode": 2,
-            "g": 32,
-            "topk": 512,
-            "pool": 2048,
-            "table_w": 1024,
-            "sample_rows": True,
-            "layout": "TND",
         },
         None,
     ),
@@ -2316,26 +2071,6 @@ NEW_CASES = [
         None,
     ),
     (
-        "big128k_b4_tnd_m2",
-        {
-            "name": "big128k_b4_tnd_m2",
-            "batch": 4,
-            "q_seq": 16384,
-            "seqs_q": [16384, 16384, 16384, 16384],
-            "seqused_k": [65536, 98432, 131072, 81920],
-            "cmp_ratio": 1,
-            "mask_mode": 3,
-            "cand_mode": 2,
-            "g": 32,
-            "topk": 512,
-            "pool": 4100,
-            "table_w": 1024,
-            "sample_rows": True,
-            "layout": "TND",
-        },
-        None,
-    ),
-    (
         "big128k_b4_mask0_r2",
         {
             "name": "big128k_b4_mask0_r2",
@@ -2393,44 +2128,6 @@ NEW_CASES = [
         None,
     ),
     (
-        "mask0_16k_bsnd_m2_r1",
-        {
-            "name": "mask0_16k_bsnd_m2_r1",
-            "batch": 1,
-            "q_seq": 16384,
-            "seqused_k": [16384],
-            "cmp_ratio": 1,
-            "mask_mode": 0,
-            "cand_mode": 2,
-            "g": 32,
-            "topk": 512,
-            "pool": 7936,
-            "table_w": 1055,
-            "sample_rows": True,
-            "sample_rand": 4,
-        },
-        None,
-    ),
-    (
-        "mask0_16k_bsnd_m2_r2",
-        {
-            "name": "mask0_16k_bsnd_m2_r2",
-            "batch": 1,
-            "q_seq": 16384,
-            "seqused_k": [16384],
-            "cmp_ratio": 2,
-            "mask_mode": 0,
-            "cand_mode": 2,
-            "g": 32,
-            "topk": 512,
-            "pool": 7936,
-            "table_w": 1055,
-            "sample_rows": True,
-            "sample_rand": 4,
-        },
-        None,
-    ),
-    (
         "mask0_16k_tnd_m1_r1",
         {
             "name": "mask0_16k_tnd_m1_r1",
@@ -2473,48 +2170,6 @@ NEW_CASES = [
         None,
     ),
     (
-        "mask0_16k_tnd_m2_r1",
-        {
-            "name": "mask0_16k_tnd_m2_r1",
-            "batch": 1,
-            "q_seq": 16384,
-            "seqs_q": [16384],
-            "seqused_k": [16384],
-            "cmp_ratio": 1,
-            "mask_mode": 0,
-            "cand_mode": 2,
-            "g": 32,
-            "topk": 512,
-            "pool": 7936,
-            "table_w": 1055,
-            "sample_rows": True,
-            "sample_rand": 4,
-            "layout": "TND",
-        },
-        None,
-    ),
-    (
-        "mask0_16k_tnd_m2_r2",
-        {
-            "name": "mask0_16k_tnd_m2_r2",
-            "batch": 1,
-            "q_seq": 16384,
-            "seqs_q": [16384],
-            "seqused_k": [16384],
-            "cmp_ratio": 2,
-            "mask_mode": 0,
-            "cand_mode": 2,
-            "g": 32,
-            "topk": 512,
-            "pool": 7936,
-            "table_w": 1055,
-            "sample_rows": True,
-            "sample_rand": 4,
-            "layout": "TND",
-        },
-        None,
-    ),
-    (
         "mask0_128k_bsnd_m1_r1",
         {
             "name": "mask0_128k_bsnd_m1_r1",
@@ -2543,44 +2198,6 @@ NEW_CASES = [
             "cmp_ratio": 2,
             "mask_mode": 0,
             "cand_mode": 1,
-            "g": 32,
-            "topk": 512,
-            "pool": 7936,
-            "table_w": 1055,
-            "sample_rows": True,
-            "sample_rand": 4,
-        },
-        None,
-    ),
-    (
-        "mask0_128k_bsnd_m2_r1",
-        {
-            "name": "mask0_128k_bsnd_m2_r1",
-            "batch": 1,
-            "q_seq": 131072,
-            "seqused_k": [131072],
-            "cmp_ratio": 1,
-            "mask_mode": 0,
-            "cand_mode": 2,
-            "g": 32,
-            "topk": 512,
-            "pool": 7936,
-            "table_w": 1055,
-            "sample_rows": True,
-            "sample_rand": 4,
-        },
-        None,
-    ),
-    (
-        "mask0_128k_bsnd_m2_r2",
-        {
-            "name": "mask0_128k_bsnd_m2_r2",
-            "batch": 1,
-            "q_seq": 131072,
-            "seqused_k": [131072],
-            "cmp_ratio": 2,
-            "mask_mode": 0,
-            "cand_mode": 2,
             "g": 32,
             "topk": 512,
             "pool": 7936,
@@ -2633,48 +2250,6 @@ NEW_CASES = [
         None,
     ),
     (
-        "mask0_128k_tnd_m2_r1",
-        {
-            "name": "mask0_128k_tnd_m2_r1",
-            "batch": 1,
-            "q_seq": 131072,
-            "seqs_q": [131072],
-            "seqused_k": [131072],
-            "cmp_ratio": 1,
-            "mask_mode": 0,
-            "cand_mode": 2,
-            "g": 32,
-            "topk": 512,
-            "pool": 7936,
-            "table_w": 1055,
-            "sample_rows": True,
-            "sample_rand": 4,
-            "layout": "TND",
-        },
-        None,
-    ),
-    (
-        "mask0_128k_tnd_m2_r2",
-        {
-            "name": "mask0_128k_tnd_m2_r2",
-            "batch": 1,
-            "q_seq": 131072,
-            "seqs_q": [131072],
-            "seqused_k": [131072],
-            "cmp_ratio": 2,
-            "mask_mode": 0,
-            "cand_mode": 2,
-            "g": 32,
-            "topk": 512,
-            "pool": 7936,
-            "table_w": 1055,
-            "sample_rows": True,
-            "sample_rand": 4,
-            "layout": "TND",
-        },
-        None,
-    ),
-    (
         "mask0_1m_bsnd_m1_r1",
         {
             "name": "mask0_1m_bsnd_m1_r1",
@@ -2701,40 +2276,6 @@ NEW_CASES = [
             "cmp_ratio": 2,
             "mask_mode": 0,
             "cand_mode": 1,
-            "g": 32,
-            "topk": 512,
-            "sample_rows": True,
-            "sample_rand": 2,
-        },
-        None,
-    ),
-    (
-        "mask0_1m_bsnd_m2_r1",
-        {
-            "name": "mask0_1m_bsnd_m2_r1",
-            "batch": 1,
-            "q_seq": 1048576,
-            "seqused_k": [1048576],
-            "cmp_ratio": 1,
-            "mask_mode": 0,
-            "cand_mode": 2,
-            "g": 32,
-            "topk": 512,
-            "sample_rows": True,
-            "sample_rand": 2,
-        },
-        None,
-    ),
-    (
-        "mask0_1m_bsnd_m2_r2",
-        {
-            "name": "mask0_1m_bsnd_m2_r2",
-            "batch": 1,
-            "q_seq": 1048576,
-            "seqused_k": [1048576],
-            "cmp_ratio": 2,
-            "mask_mode": 0,
-            "cand_mode": 2,
             "g": 32,
             "topk": 512,
             "sample_rows": True,
@@ -2780,44 +2321,6 @@ NEW_CASES = [
         },
         None,
     ),
-    (
-        "mask0_1m_tnd_m2_r1",
-        {
-            "name": "mask0_1m_tnd_m2_r1",
-            "batch": 1,
-            "q_seq": 1048576,
-            "seqs_q": [1048576],
-            "seqused_k": [1048576],
-            "cmp_ratio": 1,
-            "mask_mode": 0,
-            "cand_mode": 2,
-            "g": 32,
-            "topk": 512,
-            "sample_rows": True,
-            "sample_rand": 2,
-            "layout": "TND",
-        },
-        None,
-    ),
-    (
-        "mask0_1m_tnd_m2_r2",
-        {
-            "name": "mask0_1m_tnd_m2_r2",
-            "batch": 1,
-            "q_seq": 1048576,
-            "seqs_q": [1048576],
-            "seqused_k": [1048576],
-            "cmp_ratio": 2,
-            "mask_mode": 0,
-            "cand_mode": 2,
-            "g": 32,
-            "topk": 512,
-            "sample_rows": True,
-            "sample_rand": 2,
-            "layout": "TND",
-        },
-        None,
-    ),
     # ---- output_idx_offset (§11.6, A15 未实施) ----
     (
         "off_m1_decode",
@@ -2851,22 +2354,6 @@ NEW_CASES = [
         },
         None,
     ),  # 零偏移等价回归: 应与不传一致
-    (
-        "off_m2",
-        {
-            "name": "off_m2",
-            "batch": 1,
-            "q_seq": 1,
-            "seqused_k": [4096],
-            "cmp_ratio": 1,
-            "mask_mode": 0,
-            "cand_mode": 2,
-            "g": 32,
-            "topk": 512,
-            "output_idx_offset": [777],
-        },
-        None,
-    ),
     # R13 契约门禁: prefill (行级 vl < topk → 输出含 -1 槽) + 非零 offset →
     # 有效槽 = idx+offset, -1 槽必须保持 -1 (对齐模型 where(idxs < compress_lens, idxs+offset, -1);
     # 修复前 kernel/golden 全元素加 → -1 槽变 off-1)
