@@ -13,360 +13,335 @@
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::AccumulateHalfPartials(uint32_t tOff, uint32_t tD, float (&sumSqHalf)[2],
-                                              float (&dotHalf)[2][N_MAX], uint32_t halfBegin, uint32_t halfEnd)
+                                                  float (&dotHalf)[2][N_MAX], uint32_t halfBegin,
+                                                  uint32_t halfEnd)
 {
-    LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
-    LocalTensor<float> reduceRows = bufResFp32_.Get<float>();
-    LocalTensor<float> tmp = bufGamma2Fp32_.Get<float>();
+        LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
+        LocalTensor<float> reduceRows = bufResFp32_.Get<float>();
 
-    DataCopyExtParams copyParams = {1, 0, 0, 0, 0};
-    copyParams.blockLen = tD * sizeof(float);
-    DataCopyPadExtParams<float> copyPad = {false, 0, 0, 0};
+        DataCopyExtParams copyParams = {1, 0, 0, 0, 0};
+        copyParams.blockLen = tD * sizeof(float);
+        DataCopyPadExtParams<float> copyPad = {false, 0, 0, 0};
 
-    // 尾块的物理行跨度仍为dimTile_，不能作为紧凑二维张量归约；
-    // 尾块保持逐行归约，完整分块才使用五行批量归约。
-    if (tD != dimTile_) {
-        LocalTensor<float> out = reduceRows[N_MAX * dimTile_];
+        // 尾块的物理行跨度仍为dimTile_，不能作为紧凑二维张量归约；
+        // 尾块保持逐行归约，完整分块才使用五行批量归约。
+        if (tD != dimTile_) {
+            LocalTensor<float> out = reduceRows[N_MAX * dimTile_];
+            for (uint32_t half = halfBegin; half < halfEnd; ++half) {
+                const uint32_t h0 = half * 2;
+                const uint32_t h1 = h0 + 1;
+                const uint32_t x2h0 = DUAL_SIBLING ? 0U : h0;
+                const uint32_t x2h1 = DUAL_SIBLING ? 1U : h1;
+
+                MhcNormRegBase::VFPairSquareAdd(out, x2[x2h0 * dimTile_], x2[x2h1 * dimTile_], tD);
+                PipeBarrier<PIPE_V>();
+                sumSqHalf[half] += ReduceSumPrecise(out, tD);
+
+                for (uint32_t o = 0; o < N_MAX; ++o) {
+                    LocalTensor<float> phi0 = bufPhiFp32_.AllocTensor<float>();
+                    LocalTensor<float> phi1 = bufPhiFp32_.AllocTensor<float>();
+                    const uint64_t phiBaseOffset = (uint64_t)o * phiCols_ + tOff;
+                    DataCopyPad(phi0, phiGm_[phiBaseOffset + (uint64_t)h0 * D_], copyParams, copyPad);
+                    DataCopyPad(phi1, phiGm_[phiBaseOffset + (uint64_t)h1 * D_], copyParams, copyPad);
+                    bufPhiFp32_.EnQue(phi0);
+                    bufPhiFp32_.EnQue(phi1);
+                    phi0 = bufPhiFp32_.DeQue<float>();
+                    phi1 = bufPhiFp32_.DeQue<float>();
+                    MhcNormRegBase::VFPairMulAdd(out, x2[x2h0 * dimTile_], phi0, x2[x2h1 * dimTile_], phi1, tD);
+                    PipeBarrier<PIPE_V>();
+                    bufPhiFp32_.FreeTensor(phi0);
+                    bufPhiFp32_.FreeTensor(phi1);
+                    dotHalf[half][o] += ReduceSumPrecise(out, tD);
+                }
+            }
+            return;
+        }
+
         for (uint32_t half = halfBegin; half < halfEnd; ++half) {
             const uint32_t h0 = half * 2;
             const uint32_t h1 = h0 + 1;
             const uint32_t x2h0 = DUAL_SIBLING ? 0U : h0;
             const uint32_t x2h1 = DUAL_SIBLING ? 1U : h1;
 
-            MhcNormRegBase::Mul(out, x2[x2h0 * dimTile_], x2[x2h0 * dimTile_], tD);
-            PipeBarrier<PIPE_V>();
-            MhcNormRegBase::Mul(tmp, x2[x2h1 * dimTile_], x2[x2h1 * dimTile_], tD);
-            PipeBarrier<PIPE_V>();
-            MhcNormRegBase::Add(out, out, tmp, tD);
-            PipeBarrier<PIPE_V>();
-            sumSqHalf[half] += ReduceSumPrecise(out, tD);
+            // 五行依次保存{sumSqPre,dot0,dot1,dot2,dot3}，一次按行归约，
+            // 避免每个标量结果都单独触发一次Vector到Scalar的等待。
+            MhcNormRegBase::VFPairSquareAdd(reduceRows, x2[x2h0 * dimTile_], x2[x2h1 * dimTile_], tD);
+
+            // phi ping-pong：prologue预取o=0的两路，后续算o时预取o+1，4槽使MTE2与Vector重叠。
+            LocalTensor<float> curPhi0 = bufPhiFp32_.AllocTensor<float>();
+            LocalTensor<float> curPhi1 = bufPhiFp32_.AllocTensor<float>();
+            DataCopyPad(curPhi0, phiGm_[(uint64_t)h0 * D_ + tOff], copyParams, copyPad);
+            DataCopyPad(curPhi1, phiGm_[(uint64_t)h1 * D_ + tOff], copyParams, copyPad);
+            bufPhiFp32_.EnQue(curPhi0);
+            bufPhiFp32_.EnQue(curPhi1);
 
             for (uint32_t o = 0; o < N_MAX; ++o) {
-                LocalTensor<float> phi = bufPhiFp32_.AllocTensor<float>();
-                uint64_t phiOffset = (uint64_t)o * phiCols_ + (uint64_t)h0 * D_ + tOff;
-                DataCopyPad(phi, phiGm_[phiOffset], copyParams, copyPad);
-                bufPhiFp32_.EnQue(phi);
-                phi = bufPhiFp32_.DeQue<float>();
-                MhcNormRegBase::Mul(out, x2[x2h0 * dimTile_], phi, tD);
-                PipeBarrier<PIPE_V>();
-                bufPhiFp32_.FreeTensor(phi);
+                // 预取下一轮o+1的两路phi，与当前dot计算重叠。
+                LocalTensor<float> nextPhi0;
+                LocalTensor<float> nextPhi1;
+                if (o + 1U < N_MAX) {
+                    nextPhi0 = bufPhiFp32_.AllocTensor<float>();
+                    nextPhi1 = bufPhiFp32_.AllocTensor<float>();
+                    DataCopyPad(nextPhi0, phiGm_[(uint64_t)(o + 1U) * phiCols_ + (uint64_t)h0 * D_ + tOff], copyParams,
+                                copyPad);
+                    DataCopyPad(nextPhi1, phiGm_[(uint64_t)(o + 1U) * phiCols_ + (uint64_t)h1 * D_ + tOff], copyParams,
+                                copyPad);
+                    bufPhiFp32_.EnQue(nextPhi0);
+                    bufPhiFp32_.EnQue(nextPhi1);
+                }
 
-                phi = bufPhiFp32_.AllocTensor<float>();
-                phiOffset = (uint64_t)o * phiCols_ + (uint64_t)h1 * D_ + tOff;
-                DataCopyPad(phi, phiGm_[phiOffset], copyParams, copyPad);
-                bufPhiFp32_.EnQue(phi);
-                phi = bufPhiFp32_.DeQue<float>();
-                MhcNormRegBase::Mul(tmp, x2[x2h1 * dimTile_], phi, tD);
-                PipeBarrier<PIPE_V>();
-                bufPhiFp32_.FreeTensor(phi);
+                LocalTensor<float> dotRow = reduceRows[(o + 1) * dimTile_];
+                curPhi0 = bufPhiFp32_.DeQue<float>();
+                curPhi1 = bufPhiFp32_.DeQue<float>();
+                MhcNormRegBase::VFPairMulAdd(dotRow, x2[x2h0 * dimTile_], curPhi0, x2[x2h1 * dimTile_], curPhi1, tD);
+                bufPhiFp32_.FreeTensor(curPhi0);
+                bufPhiFp32_.FreeTensor(curPhi1);
 
-                MhcNormRegBase::Add(out, out, tmp, tD);
-                PipeBarrier<PIPE_V>();
-                dotHalf[half][o] += ReduceSumPrecise(out, tD);
-            }
-        }
-        return;
-    }
-
-    for (uint32_t half = halfBegin; half < halfEnd; ++half) {
-        const uint32_t h0 = half * 2;
-        const uint32_t h1 = h0 + 1;
-        const uint32_t x2h0 = DUAL_SIBLING ? 0U : h0;
-        const uint32_t x2h1 = DUAL_SIBLING ? 1U : h1;
-
-        // 五行依次保存{sumSqPre,dot0,dot1,dot2,dot3}，一次按行归约，
-        // 避免每个标量结果都单独触发一次Vector到Scalar的等待。
-        MhcNormRegBase::Mul(reduceRows, x2[x2h0 * dimTile_], x2[x2h0 * dimTile_], tD);
-        PipeBarrier<PIPE_V>();
-        MhcNormRegBase::Mul(tmp, x2[x2h1 * dimTile_], x2[x2h1 * dimTile_], tD);
-        PipeBarrier<PIPE_V>();
-        MhcNormRegBase::Add(reduceRows, reduceRows, tmp, tD);
-
-        // phi ping-pong：prologue预取o=0的两路，后续算o时预取o+1，4槽使MTE2与Vector重叠。
-        LocalTensor<float> curPhi0 = bufPhiFp32_.AllocTensor<float>();
-        LocalTensor<float> curPhi1 = bufPhiFp32_.AllocTensor<float>();
-        DataCopyPad(curPhi0, phiGm_[(uint64_t)h0 * D_ + tOff], copyParams, copyPad);
-        DataCopyPad(curPhi1, phiGm_[(uint64_t)h1 * D_ + tOff], copyParams, copyPad);
-        bufPhiFp32_.EnQue(curPhi0);
-        bufPhiFp32_.EnQue(curPhi1);
-
-        for (uint32_t o = 0; o < N_MAX; ++o) {
-            // 预取下一轮o+1的两路phi，与当前dot计算重叠。
-            LocalTensor<float> nextPhi0;
-            LocalTensor<float> nextPhi1;
-            if (o + 1U < N_MAX) {
-                nextPhi0 = bufPhiFp32_.AllocTensor<float>();
-                nextPhi1 = bufPhiFp32_.AllocTensor<float>();
-                DataCopyPad(nextPhi0, phiGm_[(uint64_t)(o + 1U) * phiCols_ + (uint64_t)h0 * D_ + tOff], copyParams,
-                            copyPad);
-                DataCopyPad(nextPhi1, phiGm_[(uint64_t)(o + 1U) * phiCols_ + (uint64_t)h1 * D_ + tOff], copyParams,
-                            copyPad);
-                bufPhiFp32_.EnQue(nextPhi0);
-                bufPhiFp32_.EnQue(nextPhi1);
+                if (o + 1U < N_MAX) {
+                    curPhi0 = nextPhi0;
+                    curPhi1 = nextPhi1;
+                }
             }
 
-            LocalTensor<float> dotRow = reduceRows[(o + 1) * dimTile_];
-            curPhi0 = bufPhiFp32_.DeQue<float>();
-            curPhi1 = bufPhiFp32_.DeQue<float>();
-            MhcNormRegBase::Mul(dotRow, x2[x2h0 * dimTile_], curPhi0, tD);
             PipeBarrier<PIPE_V>();
-            MhcNormRegBase::Mul(tmp, x2[x2h1 * dimTile_], curPhi1, tD);
+            LocalTensor<float> scBuf = bufScalar_.Get<float>();
+            uint32_t reduceShape[2] = {N_MAX + 1, tD};
+            // 五行输入在归约后不再使用，允许接口复用源缓冲，避免额外申请UB。
+            ReduceSum<float, AscendC::Pattern::Reduce::AR, true>(scBuf, reduceRows, reduceShape, true);
             PipeBarrier<PIPE_V>();
-            MhcNormRegBase::Add(dotRow, dotRow, tmp, tD);
-            bufPhiFp32_.FreeTensor(curPhi0);
-            bufPhiFp32_.FreeTensor(curPhi1);
-
-            if (o + 1U < N_MAX) {
-                curPhi0 = nextPhi0;
-                curPhi1 = nextPhi1;
+            sumSqHalf[half] += scBuf.GetValue(0);
+            for (uint32_t o = 0; o < N_MAX; ++o) {
+                dotHalf[half][o] += scBuf.GetValue(o + 1);
             }
-        }
-
-        PipeBarrier<PIPE_V>();
-        LocalTensor<float> scBuf = bufScalar_.Get<float>();
-        uint32_t reduceShape[2] = {N_MAX + 1, tD};
-        // 五行输入在归约后不再使用，允许接口复用源缓冲，避免额外申请UB。
-        ReduceSum<float, AscendC::Pattern::Reduce::AR, true>(scBuf, reduceRows, reduceShape, true);
-        PipeBarrier<PIPE_V>();
-        sumSqHalf[half] += scBuf.GetValue(0);
-        for (uint32_t o = 0; o < N_MAX; ++o) {
-            dotHalf[half][o] += scBuf.GetValue(o + 1);
         }
     }
-}
-
-template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ApplyScaleAndGamma(LocalTensor<float> buf, float scale, LocalTensor<float> gamma, uint32_t tD)
-{
-    // TODO：完成多VF融合和双缓冲后，执行Membase回退消融，复测改回高层接口的组合收益。
-    MhcNormRegBase::ScaleAndMulGamma(buf, buf, gamma, scale, tD);
-    PipeBarrier<PIPE_V>();
-}
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::CacheGamma0()
 {
-    LocalTensor<float> gamma0 = bufGamma0Fp32_.Get<float>();
-    DataCopyExtParams params = {1, 0, 0, 0, 0};
-    params.blockLen = D_ * sizeof(float);
-    DataCopyPadExtParams<float> pad = {false, 0, 0, 0};
-    DataCopyPad(gamma0, gamma0Gm_, params, pad);
-}
-
-template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline float KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::CacheHInAndReduceSumSq(uint32_t tOff, uint32_t tD, LocalTensor<float> hIn)
-{
-    LocalTensor<T> hInCache = bufX2Cache_.Get<T>()[tOff];
-    CastToIO(hInCache, hIn, tD);
-    PipeBarrier<PIPE_V>();
-    LocalTensor<float> sqBuf = bufGamma2Fp32_.Get<float>();
-    MhcNormRegBase::CastB16ToFp32Square(sqBuf, hInCache, tD);
-    PipeBarrier<PIPE_V>();
-    return ReduceSumPrecise(sqBuf, tD);
-}
+        LocalTensor<float> gamma0 = bufGamma0Fp32_.Get<float>();
+        DataCopyExtParams params = {1, 0, 0, 0, 0};
+        params.blockLen = D_ * sizeof(float);
+        DataCopyPadExtParams<float> pad = {false, 0, 0, 0};
+        DataCopyPad(gamma0, gamma0Gm_, params, pad);
+    }
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::CacheHOut(uint64_t gmOffset)
 {
-    LocalTensor<T> hOutCache = bufX2Cache_.Get<T>();
-    DataCopy(hOutCache, hOutGm_[gmOffset], D_);
-}
+        LocalTensor<T> hOutCache = bufX2Cache_.Get<T>();
+        DataCopy(hOutCache, hOutGm_[gmOffset], D_);
+    }
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::CacheX2Tile(uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput,
-                                   bool quantizeInput)
+                                       bool quantizeInput)
 {
-    LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
-    LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
-    const uint64_t outBase = (uint64_t)token * N_ * D_ + tOff;
+        LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
+        LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
+        const uint64_t outBase = (uint64_t)token * N_ * D_ + tOff;
 
-    // R2已在成对VF尾部完成首次量化；R3后的第二次量化仍使用该路径。
-    if (quantizeInput) {
-        for (uint32_t n = 0; n < N_MAX; n += 2U) {
-            MhcNormRegBase::CastFp32PairToB16(x2Cache[n * D_ + tOff], x2Cache[(n + 1U) * D_ + tOff], x2[n * dimTile_],
-                                              x2[(n + 1U) * dimTile_], tD);
+        // R2已在成对VF尾部完成首次量化；R3后的第二次量化仍使用该路径。
+        if (quantizeInput) {
+            for (uint32_t n = 0; n < N_MAX; n += 2U) {
+                MhcNormRegBase::VFCastFp32PairToB16(x2Cache[n * D_ + tOff], x2Cache[(n + 1U) * D_ + tOff],
+                                                    x2[n * dimTile_], x2[(n + 1U) * dimTile_], tD);
+            }
+            PipeBarrier<PIPE_V>();
         }
-        PipeBarrier<PIPE_V>();
-    }
-    // RMS_mid第一遍直接从低精度缓存计算平方和；R3后必须恢复，
-    // 保证后续R4/R5仍使用低精度往返后的x2。
-    if (!USE_RMS_MID || writeOutput) {
-        for (uint32_t n = 0; n < N_MAX; n += 2U) {
-            MhcNormRegBase::CastB16PairToFp32(x2[n * dimTile_], x2[(n + 1U) * dimTile_], x2Cache[n * D_ + tOff],
-                                              x2Cache[(n + 1U) * D_ + tOff], tD);
+        // RMS_mid第一遍直接从低精度缓存计算平方和；R3后必须恢复，
+        // 保证后续R4/R5仍使用低精度往返后的x2。
+        if (!USE_RMS_MID || writeOutput) {
+            for (uint32_t n = 0; n < N_MAX; n += 2U) {
+                MhcNormRegBase::VFCastB16PairToFp32(x2[n * dimTile_], x2[(n + 1U) * dimTile_], x2Cache[n * D_ + tOff],
+                                                    x2Cache[(n + 1U) * D_ + tOff], tD);
+            }
+            PipeBarrier<PIPE_V>();
         }
-        PipeBarrier<PIPE_V>();
-    }
 
-    if (writeOutput) {
-        // cacheTile已经是x2_out所需的最终低精度位值，直接写GM，
-        // 避免先恢复FP32再重复量化和反复申请输出队列。
-        SetFlag<HardEvent::V_MTE3>(evtVtoMte3_);
-        WaitFlag<HardEvent::V_MTE3>(evtVtoMte3_);
-        for (uint32_t n = 0; n < N_MAX; ++n) {
-            DataCopy(x2OutGm_[outBase + (uint64_t)n * D_], x2Cache[n * D_ + tOff], tD);
+        if (writeOutput) {
+            // cacheTile已经是x2_out所需的最终低精度位值，直接写GM，
+            // 避免先恢复FP32再重复量化和反复申请输出队列。
+            SetFlag<HardEvent::V_MTE3>(evtVtoMte3_);
+            WaitFlag<HardEvent::V_MTE3>(evtVtoMte3_);
+            for (uint32_t n = 0; n < N_MAX; ++n) {
+                DataCopy(x2OutGm_[outBase + (uint64_t)n * D_], x2Cache[n * D_ + tOff], tD);
+            }
         }
     }
-}
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::CacheX2TileForLane(uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput,
-                                          bool quantizeInput)
+                                              bool quantizeInput)
 {
-    LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
-    LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
-    const uint64_t outBase = (uint64_t)token * N_ * D_ + tOff;
-    const uint32_t headBegin = laneId_ * 2U;
+        LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
+        LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
+        const uint64_t outBase = (uint64_t)token * N_ * D_ + tOff;
+        const uint32_t headBegin = laneId_ * 2U;
 
-    if (quantizeInput) {
-        for (uint32_t n = 0; n < N_MAX; n += 2U) {
-            MhcNormRegBase::CastFp32PairToB16(x2Cache[n * D_ + tOff], x2Cache[(n + 1U) * D_ + tOff], x2[n * dimTile_],
-                                              x2[(n + 1U) * dimTile_], tD);
+        if (quantizeInput) {
+            for (uint32_t n = 0; n < N_MAX; n += 2U) {
+                MhcNormRegBase::VFCastFp32PairToB16(x2Cache[n * D_ + tOff], x2Cache[(n + 1U) * D_ + tOff],
+                                                    x2[n * dimTile_], x2[(n + 1U) * dimTile_], tD);
+            }
+            PipeBarrier<PIPE_V>();
         }
-        PipeBarrier<PIPE_V>();
-    }
-    if (!USE_RMS_MID || writeOutput) {
-        // 双路R4/R5只读取本lane负责的相邻两行，避免恢复另一lane的无效副本。
-        MhcNormRegBase::CastB16PairToFp32(x2, x2[dimTile_], x2Cache[headBegin * D_ + tOff],
-                                          x2Cache[(headBegin + 1U) * D_ + tOff], tD);
-        PipeBarrier<PIPE_V>();
-    }
+        if (!USE_RMS_MID || writeOutput) {
+            // 双路R4/R5只读取本lane负责的相邻两行，避免恢复另一lane的无效副本。
+            MhcNormRegBase::VFCastB16PairToFp32(x2, x2[dimTile_], x2Cache[headBegin * D_ + tOff],
+                                                x2Cache[(headBegin + 1U) * D_ + tOff], tD);
+            PipeBarrier<PIPE_V>();
+        }
 
-    if (writeOutput) {
-        SetFlag<HardEvent::V_MTE3>(evtVtoMte3_);
-        WaitFlag<HardEvent::V_MTE3>(evtVtoMte3_);
-        for (uint32_t n = headBegin; n < headBegin + 2U; ++n) {
-            DataCopy(x2OutGm_[outBase + (uint64_t)n * D_], x2Cache[n * D_ + tOff], tD);
+        if (writeOutput) {
+            SetFlag<HardEvent::V_MTE3>(evtVtoMte3_);
+            WaitFlag<HardEvent::V_MTE3>(evtVtoMte3_);
+            for (uint32_t n = headBegin; n < headBegin + 2U; ++n) {
+                DataCopy(x2OutGm_[outBase + (uint64_t)n * D_], x2Cache[n * D_ + tOff], tD);
+            }
         }
     }
-}
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::CastToIO(LocalTensor<T> dst, LocalTensor<float> src, uint32_t count)
 {
-    MhcNormRegBase::CastFp32ToB16(dst, src, count);
-}
+        MhcNormRegBase::VFCastFp32ToB16(dst, src, count);
+    }
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ComputeGateValues(float totalSumSqPre, float (&xHatVals)[N_MAX])
 {
-    // Host已固定校验N为4，使用编译期常量便于展开标量循环。
-    constexpr uint32_t N = N_MAX;
-    float invRmsPre = 1.0f / sqrt(totalSumSqPre * invK_ + mhcPreNormEps_);
-    for (uint32_t o = 0; o < N; ++o)
-        xHatVals[o] *= invRmsPre;
+        // Host已固定校验N为4，使用编译期常量便于展开标量循环。
+        constexpr uint32_t N = N_MAX;
+        float invRmsPre = 1.0f / sqrt(totalSumSqPre * invK_ + mhcPreNormEps_);
+        for (uint32_t o = 0; o < N; ++o)
+            xHatVals[o] *= invRmsPre;
 
-    LocalTensor<float> scBuf = bufScalar_.Get<float>();
-    for (uint32_t i = 0; i < N; ++i)
-        scBuf.SetValue(i, -(alpha0_ * xHatVals[i] + biasCache_[i]));
-    LocalTensor<float> gateBuf = scBuf[EXP_DIV_ELEM];
-    // TODO：后续单独评估固定四元素循环展开，本轮保持通用VF循环。
-    MhcNormRegBase::SigmoidAddEps(gateBuf, scBuf, hcEps_, N);
-    PipeBarrier<PIPE_V>();
-}
+        LocalTensor<float> scBuf = bufScalar_.Get<float>();
+        for (uint32_t i = 0; i < N; ++i)
+            scBuf.SetValue(i, -(alpha0_ * xHatVals[i] + biasCache_[i]));
+        LocalTensor<float> gateBuf = scBuf[EXP_DIV_ELEM];
+        // TODO：后续单独评估固定四元素循环展开，本轮保持通用VF循环。
+        MhcNormRegBase::VFSigmoidAddEps(gateBuf, scBuf, hcEps_, N);
+        PipeBarrier<PIPE_V>();
+    }
+
+template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
+__aicore__ inline float KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ComputeHInCacheAndReduceSumSq(uint32_t tOff, uint32_t tD, LocalTensor<T> x2Cache,
+                                                          LocalTensor<float> gateBuf)
+{
+        LocalTensor<T> hInCache = bufX2Cache_.Get<T>()[tOff];
+        LocalTensor<float> sqBuf = bufGamma2Fp32_.Get<float>();
+        MhcNormRegBase::VFGateWeightedSumQuantizeSquare<T>(hInCache, sqBuf, x2Cache, D_, gateBuf, tD);
+        PipeBarrier<PIPE_V>();
+        return ReduceSumPrecise(sqBuf, tD);
+    }
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline __attribute__((always_inline)) float KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ComputeInvRms(float sumSq, float invCount)
 {
-    return 1.0f / sqrt(sumSq * invCount + normEps_);
-}
+        return 1.0f / sqrt(sumSq * invCount + normEps_);
+    }
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ComputeX2AllHeadsBatched(const float (&postVals)[N_MAX], uint64_t gmBaseOffset, uint32_t tOff,
-                                                uint32_t tD)
+__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ComputeX2AllHeadsBatched(const float (&postVals)[N_MAX], uint64_t gmBaseOffset,
+                                                    uint32_t tOff, uint32_t tD)
 {
-    // Host已固定校验N为4，使用编译期常量便于展开标量循环。
-    constexpr uint32_t N = N_MAX;
-    LocalTensor<T> residual = bufResidualBf16_.AllocTensor<T>();
-    for (uint32_t n = 0; n < N; ++n)
-        DataCopy(residual[n * dimTile_], residualGm_[gmBaseOffset + (uint64_t)n * D_], tD);
-    bufResidualBf16_.EnQue(residual);
-    residual = bufResidualBf16_.DeQue<T>();
-    LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
-    LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
-    LocalTensor<float> combWeights = bufPostComb_.Get<float>()[ALIGN8];
+        // Host已固定校验N为4，使用编译期常量便于展开标量循环。
+        constexpr uint32_t N = N_MAX;
+        LocalTensor<T> residual = bufResidualBf16_.AllocTensor<T>();
+        for (uint32_t n = 0; n < N; ++n)
+            DataCopy(residual[n * dimTile_], residualGm_[gmBaseOffset + (uint64_t)n * D_], tD);
+        bufResidualBf16_.EnQue(residual);
+        residual = bufResidualBf16_.DeQue<T>();
+        LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
+        LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
+        LocalTensor<float> combWeights = bufPostComb_.Get<float>()[ALIGN8];
 
-    for (uint32_t h = 0; h < N; h += 2U) {
-        MhcNormRegBase::ComputePostHeadPair<T>(x2Cache[h * D_ + tOff], x2Cache[(h + 1U) * D_ + tOff], hOut, residual,
-                                               combWeights, dimTile_, h, postVals[h], postVals[h + 1U], tD);
+        for (uint32_t h = 0; h < N; h += 2U) {
+            MhcNormRegBase::VFComputePostHeadPair<T>(x2Cache[h * D_ + tOff], x2Cache[(h + 1U) * D_ + tOff], hOut,
+                                                     residual, combWeights, dimTile_, h, postVals[h], postVals[h + 1U],
+                                                     tD);
+        }
+        PipeBarrier<PIPE_V>();
+        bufResidualBf16_.FreeTensor(residual);
     }
-    PipeBarrier<PIPE_V>();
-    bufResidualBf16_.FreeTensor(residual);
-}
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ComputeX2PostTile(uint32_t token, uint32_t tOff, uint32_t tD, float invRms0,
-                                         const float (&postVals)[N_MAX])
+                                             const float (&postVals)[N_MAX])
 {
-    LoadCachedHOut(tOff, tD);
-    LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
-    ApplyScaleAndGamma(hOut, invRms0, bufGamma0Fp32_.Get<float>()[tOff], tD);
-    QuantizeRoundTrip(hOut, tD);
+        LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
+        LocalTensor<T> hOutCache = bufX2Cache_.Get<T>()[tOff];
+        MhcNormRegBase::VFCastB16ScaleGammaQuantizeToFp32(hOut, hOutCache, bufGamma0Fp32_.Get<float>()[tOff], invRms0,
+                                                          tD);
+        PipeBarrier<PIPE_V>();
 
-    ComputeX2AllHeadsBatched(postVals, (uint64_t)token * N_ * D_ + tOff, tOff, tD);
-}
+        ComputeX2AllHeadsBatched(postVals, (uint64_t)token * N_ * D_ + tOff, tOff, tD);
+    }
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ComputeX2PostTileForLane(uint32_t token, uint32_t tOff, uint32_t tD, float invRms0,
-                                                const float (&postVals)[N_MAX])
+                                                    const float (&postVals)[N_MAX])
 {
-    LoadCachedHOut(tOff, tD);
-    LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
+        LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
+        LocalTensor<T> hOutCache = bufX2Cache_.Get<T>()[tOff];
 
-    // 提前发起residual搬运（MTE2），与下方h_out的scale/gamma/quantize（Vector）重叠。
-    const uint32_t headBegin = laneId_ * 2U;
-    const uint64_t gmBaseOffset = (uint64_t)token * N_ * D_ + tOff;
-    LocalTensor<T> residual = bufResidualBf16_.AllocTensor<T>();
-    for (uint32_t n = 0; n < N_MAX; ++n) {
-        DataCopy(residual[n * dimTile_], residualGm_[gmBaseOffset + (uint64_t)n * D_], tD);
+        // 提前发起residual搬运（MTE2），与下方h_out的scale/gamma/quantize（Vector）重叠。
+        const uint32_t headBegin = laneId_ * 2U;
+        const uint64_t gmBaseOffset = (uint64_t)token * N_ * D_ + tOff;
+        LocalTensor<T> residual = bufResidualBf16_.AllocTensor<T>();
+        for (uint32_t n = 0; n < N_MAX; ++n) {
+            DataCopy(residual[n * dimTile_], residualGm_[gmBaseOffset + (uint64_t)n * D_], tD);
+        }
+        bufResidualBf16_.EnQue(residual);
+
+        MhcNormRegBase::VFCastB16ScaleGammaQuantizeToFp32(hOut, hOutCache, bufGamma0Fp32_.Get<float>()[tOff], invRms0,
+                                                          tD);
+        PipeBarrier<PIPE_V>();
+
+        residual = bufResidualBf16_.DeQue<T>();
+        LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
+        LocalTensor<float> combWeights = bufPostComb_.Get<float>()[ALIGN8];
+        MhcNormRegBase::VFComputePostHeadPair<T>(x2Cache[headBegin * D_ + tOff], x2Cache[(headBegin + 1U) * D_ + tOff],
+                                                 hOut, residual, combWeights, dimTile_, headBegin, postVals[headBegin],
+                                                 postVals[headBegin + 1U], tD);
+        PipeBarrier<PIPE_V>();
+        bufResidualBf16_.FreeTensor(residual);
     }
-    bufResidualBf16_.EnQue(residual);
-
-    ApplyScaleAndGamma(hOut, invRms0, bufGamma0Fp32_.Get<float>()[tOff], tD);
-    QuantizeRoundTrip(hOut, tD);
-
-    residual = bufResidualBf16_.DeQue<T>();
-    LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
-    LocalTensor<float> combWeights = bufPostComb_.Get<float>()[ALIGN8];
-    MhcNormRegBase::ComputePostHeadPair<T>(x2Cache[headBegin * D_ + tOff], x2Cache[(headBegin + 1U) * D_ + tOff], hOut,
-                                           residual, combWeights, dimTile_, headBegin, postVals[headBegin],
-                                           postVals[headBegin + 1U], tD);
-    PipeBarrier<PIPE_V>();
-    bufResidualBf16_.FreeTensor(residual);
-}
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ConsumeHOutTile(uint32_t tD)
 {
-    LocalTensor<T> hBf16 = bufHOutBf16_.DeQue<T>();
-    LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
-    MhcNormRegBase::CastB16ToFp32(hOut, hBf16, tD);
-    PipeBarrier<PIPE_V>();
-    bufHOutBf16_.FreeTensor(hBf16);
-}
+        LocalTensor<T> hBf16 = bufHOutBf16_.DeQue<T>();
+        LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
+        MhcNormRegBase::VFCastB16ToFp32(hOut, hBf16, tD);
+        PipeBarrier<PIPE_V>();
+        bufHOutBf16_.FreeTensor(hBf16);
+    }
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::FenceMte3ToV()
 {
-    SetFlag<HardEvent::MTE3_V>(evtMte3toV_);
-    WaitFlag<HardEvent::MTE3_V>(evtMte3toV_);
-}
+        SetFlag<HardEvent::MTE3_V>(evtMte3toV_);
+        WaitFlag<HardEvent::MTE3_V>(evtMte3toV_);
+    }
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::FenceVToMte2()
 {
-    SetFlag<HardEvent::V_MTE2>(evtVtoMte2_);
-    WaitFlag<HardEvent::V_MTE2>(evtVtoMte2_);
-}
+        SetFlag<HardEvent::V_MTE2>(evtVtoMte2_);
+        WaitFlag<HardEvent::V_MTE2>(evtVtoMte2_);
+    }
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline uint32_t KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::GetTileD(uint32_t tile) const
 {
-    if (lastDimTile_ != 0 && tile == dimLoop_ - 1) {
-        return lastDimTile_;
+        if (lastDimTile_ != 0 && tile == dimLoop_ - 1) {
+            return lastDimTile_;
+        }
+        return dimTile_;
     }
-    return dimTile_;
-}
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Init(GM_ADDR h_out_gm, GM_ADDR residual_gm, GM_ADDR h_post_gm, GM_ADDR h_res_gm,
@@ -377,7 +352,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
 {
         GET_TILING_DATA(td, tiling);
 
-        // pre_mix 为接口预留的可选输入，h_pre 为接口预留的可选输出，当前版本均不参与计算。
+        // pre_mix 为接口预留的可选输入，h_pre 为接口预留的可选输出，当前均不参与计算。
         (void)pre_mix_gm;
         (void)h_pre_gm;
 
@@ -402,8 +377,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         coresPerToken_ = td.coresPerToken;
 
         const uint32_t aivIdx = GetBlockIdx();
-        // MIX_AIC_1_2在A5上按每个物理AI Core展开两个连续AIV。
-        // 该映射与同平台算子保持一致，只在双sibling模板中使用。
+        // MIX_AIC_1_2按每个物理AI Core展开两个连续AIV。
         laneId_ = DUAL_SIBLING ? (aivIdx & 1U) : 0U;
         const uint32_t blockIdx = DUAL_SIBLING ? (aivIdx >> 1U) : aivIdx;
         if (blockIdx >= usedCoreNum_) {
@@ -477,71 +451,54 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     }
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::LoadCachedHOut(uint32_t tOff, uint32_t tD)
-{
-    LocalTensor<T> hOutCache = bufX2Cache_.Get<T>()[tOff];
-    LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
-    MhcNormRegBase::CastB16ToFp32(hOut, hOutCache, tD);
-    PipeBarrier<PIPE_V>();
-}
-
-template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::LoadGammaInto(LocalTensor<float> dst, GlobalTensor<float> &src, uint32_t tOff, uint32_t tD)
 {
-    DataCopyExtParams gP = {1, 0, 0, 0, 0};
-    gP.blockLen = tD * sizeof(float);
-    DataCopyPadExtParams<float> gPad = {false, 0, 0, 0};
-    DataCopyPad(dst, src[tOff], gP, gPad);
-}
-
-template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::LoadHInCacheTile(uint32_t tOff, uint32_t tD, LocalTensor<float> hIn)
-{
-    LocalTensor<T> hInCache = bufX2Cache_.Get<T>()[tOff];
-    MhcNormRegBase::CastB16ToFp32(hIn, hInCache, tD);
-    PipeBarrier<PIPE_V>();
-}
+        DataCopyExtParams gP = {1, 0, 0, 0, 0};
+        gP.blockLen = tD * sizeof(float);
+        DataCopyPadExtParams<float> gPad = {false, 0, 0, 0};
+        DataCopyPad(dst, src[tOff], gP, gPad);
+    }
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::LoadHOutAndCast(uint64_t gmOffset, uint32_t tD)
 {
-    PrefetchHOutTile(gmOffset, tD);
-    ConsumeHOutTile(tD);
-}
+        PrefetchHOutTile(gmOffset, tD);
+        ConsumeHOutTile(tD);
+    }
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::LoadTokenWeights(uint32_t token, float (&postVals)[N_MAX], uint32_t headBegin,
-                                        uint32_t headEnd)
+                                            uint32_t headEnd)
 {
-    // Host已固定校验N为4，使用编译期常量便于展开标量循环。
-    constexpr uint32_t N = N_MAX;
-    LocalTensor<float> postCombUb = bufPostComb_.Get<float>();
-    LocalTensor<float> hPostUb = postCombUb;
-    LocalTensor<float> hResUb = postCombUb[ALIGN8]; // h_post[N] aligned to 8 elements
-    {
-        DataCopyExtParams pp = {1, 0, 0, 0, 0};
-        pp.blockLen = N * sizeof(float);
-        DataCopyPadExtParams<float> pad = {true, 0, 0, 0};
-        DataCopyPad(hPostUb, hPostGm_[(uint64_t)token * N], pp, pad);
+        // Host已固定校验N为4，使用编译期常量便于展开标量循环。
+        constexpr uint32_t N = N_MAX;
+        LocalTensor<float> postCombUb = bufPostComb_.Get<float>();
+        LocalTensor<float> hPostUb = postCombUb;
+        LocalTensor<float> hResUb = postCombUb[ALIGN8]; // h_post[N] aligned to 8 elements
+        {
+            DataCopyExtParams pp = {1, 0, 0, 0, 0};
+            pp.blockLen = N * sizeof(float);
+            DataCopyPadExtParams<float> pad = {true, 0, 0, 0};
+            DataCopyPad(hPostUb, hPostGm_[(uint64_t)token * N], pp, pad);
 
-        DataCopyExtParams cp = {1, 0, 0, 0, 0};
-        cp.blockLen = N * N * sizeof(float);
-        DataCopyPadExtParams<float> cpad = {true, 0, 0, 0};
-        DataCopyPad(hResUb, hResGm_[(uint64_t)token * N * N], cp, cpad);
+            DataCopyExtParams cp = {1, 0, 0, 0, 0};
+            cp.blockLen = N * N * sizeof(float);
+            DataCopyPadExtParams<float> cpad = {true, 0, 0, 0};
+            DataCopyPad(hResUb, hResGm_[(uint64_t)token * N * N], cp, cpad);
+        }
+        PipeBarrier<PIPE_ALL>();
+        // 双AIV每条lane只消费自己负责的两个post标量，避免无效UB到Scalar回读。
+        for (uint32_t i = headBegin; i < headEnd; ++i)
+            postVals[i] = hPostUb.GetValue(i);
     }
-    PipeBarrier<PIPE_ALL>();
-    // 双AIV每条lane只消费自己负责的两个post标量，避免无效UB到Scalar回读。
-    for (uint32_t i = headBegin; i < headEnd; ++i)
-        postVals[i] = hPostUb.GetValue(i);
-}
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::PrefetchHOutTile(uint64_t gmOffset, uint32_t tD)
 {
-    LocalTensor<T> hBf16 = bufHOutBf16_.AllocTensor<T>();
-    DataCopy(hBf16, hOutGm_[gmOffset], tD);
-    bufHOutBf16_.EnQue(hBf16);
-}
+        LocalTensor<T> hBf16 = bufHOutBf16_.AllocTensor<T>();
+        DataCopy(hBf16, hOutGm_[gmOffset], tD);
+        bufHOutBf16_.EnQue(hBf16);
+    }
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process()
@@ -593,94 +550,83 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     }
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::QuantizeRoundTrip(LocalTensor<float> buf, uint32_t count)
-{
-    LocalTensor<T> tmp = bufHInPrimeBf16_.AllocTensor<T>();
-    CastToIO(tmp, buf, count);
-    PipeBarrier<PIPE_V>();
-    MhcNormRegBase::CastB16ToFp32(buf, tmp, count);
-    PipeBarrier<PIPE_V>();
-    bufHInPrimeBf16_.FreeTensor(tmp);
-}
-
-template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline float KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ReduceSumPrecise(LocalTensor<float> src, uint32_t tD)
 {
-    LocalTensor<float> scBuf = bufScalar_.Get<float>();
-    constexpr uint32_t REDUCE_ALIGN = 16; // ReduceSum要求16个元素对齐
-    uint32_t tDAligned = (tD + REDUCE_ALIGN - 1) / REDUCE_ALIGN * REDUCE_ALIGN;
-    uint32_t srcShape[2] = {1, tDAligned};
-    // 输入在归约后不再使用，允许归约过程复用输入缓冲，减少内部UB与标量调度开销。
-    ReduceSum<float, AscendC::Pattern::Reduce::AR, true>(scBuf, src, srcShape, true);
-    PipeBarrier<PIPE_V>();
-    return scBuf.GetValue(0);
-}
+        LocalTensor<float> scBuf = bufScalar_.Get<float>();
+        constexpr uint32_t REDUCE_ALIGN = 16; // ReduceSum要求16个元素对齐
+        uint32_t tDAligned = (tD + REDUCE_ALIGN - 1) / REDUCE_ALIGN * REDUCE_ALIGN;
+        uint32_t srcShape[2] = {1, tDAligned};
+        // 输入在归约后不再使用，允许归约过程复用输入缓冲，减少内部UB与标量调度开销。
+        ReduceSum<float, AscendC::Pattern::Reduce::AR, true>(scBuf, src, srcShape, true);
+        PipeBarrier<PIPE_V>();
+        return scBuf.GetValue(0);
+    }
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline float KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ReduceSumSq(LocalTensor<float> src, uint32_t tD)
 {
-    // gamma2缓存与平方归约不同时存活，复用同一块UB作为平方临时区。
-    LocalTensor<float> sqBuf = bufGamma2Fp32_.Get<float>();
-    MhcNormRegBase::Mul(sqBuf, src, src, tD);
-    PipeBarrier<PIPE_V>();
-    return ReduceSumPrecise(sqBuf, tD);
-}
+        // gamma2缓存与平方归约不同时存活，复用同一块UB作为平方临时区。
+        LocalTensor<float> sqBuf = bufGamma2Fp32_.Get<float>();
+        MhcNormRegBase::VFMul(sqBuf, src, src, tD);
+        PipeBarrier<PIPE_V>();
+        return ReduceSumPrecise(sqBuf, tD);
+    }
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline float KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ReduceSumSqFromCache(uint32_t tOff, uint32_t tD)
 {
-    LocalTensor<T> hOutCache = bufX2Cache_.Get<T>()[tOff];
-    LocalTensor<float> sqBuf = bufGamma2Fp32_.Get<float>();
-    MhcNormRegBase::CastB16ToFp32Square(sqBuf, hOutCache, tD);
-    PipeBarrier<PIPE_V>();
-    return ReduceSumPrecise(sqBuf, tD);
-}
+        LocalTensor<T> hOutCache = bufX2Cache_.Get<T>()[tOff];
+        LocalTensor<float> sqBuf = bufGamma2Fp32_.Get<float>();
+        MhcNormRegBase::VFCastB16ToFp32Square(sqBuf, hOutCache, tD);
+        PipeBarrier<PIPE_V>();
+        return ReduceSumPrecise(sqBuf, tD);
+    }
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::StartCacheGamma1()
 {
-    if (D_ > GAMMA1_CACHE_MAX_D) {
-        return;
+        if (D_ > GAMMA1_CACHE_MAX_D) {
+            return;
+        }
+        LocalTensor<float> gamma1 = bufGamma0Fp32_.Get<float>();
+        DataCopyExtParams params = {1, 0, 0, 0, 0};
+        params.blockLen = D_ * sizeof(float);
+        DataCopyPadExtParams<float> pad = {false, 0, 0, 0};
+        DataCopyPad(gamma1, gamma1Gm_, params, pad);
+        SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
     }
-    LocalTensor<float> gamma1 = bufGamma0Fp32_.Get<float>();
-    DataCopyExtParams params = {1, 0, 0, 0, 0};
-    params.blockLen = D_ * sizeof(float);
-    DataCopyPadExtParams<float> pad = {false, 0, 0, 0};
-    DataCopyPad(gamma1, gamma1Gm_, params, pad);
-    SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
-}
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::WaitCacheGamma1()
 {
-    if (D_ > GAMMA1_CACHE_MAX_D) {
-        return;
+        if (D_ > GAMMA1_CACHE_MAX_D) {
+            return;
+        }
+        WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
     }
-    WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
-}
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::WriteHInPrimeTile(LocalTensor<float> src, uint64_t gmOffset, uint32_t count)
 {
-    WriteLowPrecisionTile(hInPrimeGm_, gmOffset, src, count);
-    if constexpr (RETURN_H_IN_F32) {
-        SetFlag<HardEvent::V_MTE3>(evtVtoMte3_);
-        WaitFlag<HardEvent::V_MTE3>(evtVtoMte3_);
-        DataCopy(hInF32Gm_[gmOffset], src, count);
-        FenceMte3ToV();
+        WriteLowPrecisionTile(hInPrimeGm_, gmOffset, src, count);
+        if constexpr (RETURN_H_IN_F32) {
+            SetFlag<HardEvent::V_MTE3>(evtVtoMte3_);
+            WaitFlag<HardEvent::V_MTE3>(evtVtoMte3_);
+            DataCopy(hInF32Gm_[gmOffset], src, count);
+            FenceMte3ToV();
+        }
     }
-}
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::WriteLowPrecisionTile(GlobalTensor<T> &dst, uint64_t gmOffset, LocalTensor<float> src,
-                                             uint32_t count)
+                                                 uint32_t count)
 {
-    LocalTensor<T> tmp = bufHInPrimeBf16_.AllocTensor<T>();
-    CastToIO(tmp, src, count);
-    bufHInPrimeBf16_.EnQue(tmp);
-    tmp = bufHInPrimeBf16_.DeQue<T>();
-    DataCopy(dst[gmOffset], tmp, count);
-    bufHInPrimeBf16_.FreeTensor(tmp);
-}
+        LocalTensor<T> tmp = bufHInPrimeBf16_.AllocTensor<T>();
+        CastToIO(tmp, src, count);
+        bufHInPrimeBf16_.EnQue(tmp);
+        tmp = bufHInPrimeBf16_.DeQue<T>();
+        DataCopy(dst[gmOffset], tmp, count);
+        bufHInPrimeBf16_.FreeTensor(tmp);
+    }
 
 #endif // MHC_NORM_POST_PREONLY_KERNEL_IMPL_H_

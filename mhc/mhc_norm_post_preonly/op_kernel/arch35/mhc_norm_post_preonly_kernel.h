@@ -18,9 +18,6 @@ class KernelMhcNormPostPreonly {
 public:
     __aicore__ inline KernelMhcNormPostPreonly() {}
 
-    // =====================================================================
-    //  Init: 解析 tiling, 设置 GM buffer, 分配 UB
-    // =====================================================================
     __aicore__ inline void Init(GM_ADDR h_out_gm, GM_ADDR residual_gm, GM_ADDR h_post_gm, GM_ADDR h_res_gm,
                                 GM_ADDR phi_gm, GM_ADDR alpha_gm, GM_ADDR bias_gm, GM_ADDR pre_mix_gm,
                                 GM_ADDR gamma_0_gm, GM_ADDR gamma_1_gm, GM_ADDR gamma_2_gm, GM_ADDR h_in_prime_gm,
@@ -41,124 +38,125 @@ private:
     // =================================================================
     //  共享计算模块
     // =================================================================
+    /**
+     * Copyright (c) 2026 Huawei Technologies Co., Ltd. All rights reserved.
+     * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+     * CANN Open Software License Agreement Version 2.0 (the "License").
+     * Please refer to the License for details. You may not use this file except in compliance with the License.
+     * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+     * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+     * See LICENSE in the root of the software repository for the full text of the License.
+     */
 
+    // ========================================================================
+    // mhc_norm_post_preonly_kernel_compute.h
+    // 共享计算模块：数据加载、RMSNorm、MHC Post、门控
+    // ========================================================================
 
-// ========================================================================
-// mhc_norm_post_preonly_kernel_compute.h
-// 共享计算模块：数据加载、RMSNorm、MHC Post、门控
-// ========================================================================
+    // 数据加载
 
-// 数据加载
+    /// 加载一个token的h_post[N]和h_res[N*N]。
+    __aicore__ inline void LoadTokenWeights(uint32_t token, float (&postVals)[N_MAX], uint32_t headBegin = 0U,
+                                            uint32_t headEnd = N_MAX);
 
-/// 加载一个token的h_post[N]和h_res[N*N]。
-__aicore__ inline void LoadTokenWeights(uint32_t token, float (&postVals)[N_MAX], uint32_t headBegin = 0U,
-                                        uint32_t headEnd = N_MAX);
+    /// 把一个h_out分块预取到输入队列；双槽允许下一分块MTE2与当前分块Vector重叠。
+    __aicore__ inline void PrefetchHOutTile(uint64_t gmOffset, uint32_t tD);
 
-/// 把一个h_out分块预取到输入队列；双槽允许下一分块MTE2与当前分块Vector重叠。
-__aicore__ inline void PrefetchHOutTile(uint64_t gmOffset, uint32_t tD);
+    /// 按队列顺序取出已经预取的h_out分块并转换为FP32。
+    __aicore__ inline void ConsumeHOutTile(uint32_t tD);
 
-/// 按队列顺序取出已经预取的h_out分块并转换为FP32。
-__aicore__ inline void ConsumeHOutTile(uint32_t tD);
+    /// 非流水调用点仍使用成对的预取与消费。
+    __aicore__ inline void LoadHOutAndCast(uint64_t gmOffset, uint32_t tD);
 
-/// 非流水调用点仍使用成对的预取与消费。
-__aicore__ inline void LoadHOutAndCast(uint64_t gmOffset, uint32_t tD);
+    /// 提前搬运完整h_out；后续权重加载的全流水等待同时保证该数据对Vector可见。
+    __aicore__ inline void CacheHOut(uint64_t gmOffset);
 
-/// 提前搬运完整h_out；后续权重加载的全流水等待同时保证该数据对Vector可见。
-__aicore__ inline void CacheHOut(uint64_t gmOffset);
+    /// 每个token一次搬运完整gamma0，与h_out和权重共用初始全流水等待。
+    __aicore__ inline void CacheGamma0();
 
-/// 每个token一次搬运完整gamma0，与h_out和权重共用初始全流水等待。
-__aicore__ inline void CacheGamma0();
+    /// 提前发起完整gamma1搬运到bufGamma0Fp32_，使MTE2与R6的Vector计算重叠。
+    /// bufGamma0Fp32_在R3完成后即空闲，R6的平方缓存bufGamma2Fp32_不受影响。
+    __aicore__ inline void StartCacheGamma1();
 
-/// 提前发起完整gamma1搬运到bufGamma0Fp32_，使MTE2与R6的Vector计算重叠。
-/// bufGamma0Fp32_在R3完成后即空闲，R6的平方缓存bufGamma2Fp32_不受影响。
-__aicore__ inline void StartCacheGamma1();
+    /// R7读取完整gamma1前回收MTE2到Vector事件。
+    __aicore__ inline void WaitCacheGamma1();
 
-/// R7读取完整gamma1前回收MTE2到Vector事件。
-__aicore__ inline void WaitCacheGamma1();
+    /// 第二遍R1/R2直接从x2缓存恢复h_out，避免再次从GM读取。
+    /// 将gamma的[tOff, tOff+tD)分块加载到指定缓存。
+    __aicore__ inline void LoadGammaInto(LocalTensor<float> dst, GlobalTensor<float> &src, uint32_t tOff, uint32_t tD);
 
-/// 第二遍R1/R2直接从x2缓存恢复h_out，避免再次从GM读取。
-__aicore__ inline void LoadCachedHOut(uint32_t tOff, uint32_t tD);
+    // RMSNorm基础计算
 
-/// 将gamma的[tOff, tOff+tD)分块加载到指定缓存。
-__aicore__ inline void LoadGammaInto(LocalTensor<float> dst, GlobalTensor<float> &src, uint32_t tOff, uint32_t tD);
+    /// 使用二叉树累加模式执行高精度ReduceSum。
+    __aicore__ inline float ReduceSumPrecise(LocalTensor<float> src, uint32_t tD);
 
-// RMSNorm基础计算
+    /// 使用ReduceSumPrecise计算平方和。
+    __aicore__ inline float ReduceSumSq(LocalTensor<float> src, uint32_t tD);
 
-/// 使用二叉树累加模式执行高精度ReduceSum。
-__aicore__ inline float ReduceSumPrecise(LocalTensor<float> src, uint32_t tD);
+    /// R1直接从低精度h_out缓存计算平方和，省去先恢复完整FP32 h_out再平方的中间UB写读。
+    __aicore__ inline float ReduceSumSqFromCache(uint32_t tOff, uint32_t tD);
 
-/// 使用ReduceSumPrecise计算平方和。
-__aicore__ inline float ReduceSumSq(LocalTensor<float> src, uint32_t tD);
+    /// 使用标量精度计算1/sqrt(sumSq * invCount + eps)。
+    __aicore__ inline __attribute__((always_inline)) float ComputeInvRms(float sumSq, float invCount);
 
-/// R1直接从低精度h_out缓存计算平方和，省去先恢复完整FP32 h_out再平方的中间UB写读。
-__aicore__ inline float ReduceSumSqFromCache(uint32_t tOff, uint32_t tD);
+    /// 原地依次执行标量缩放和gamma缩放。
+    // MHC_Post计算
 
-/// 使用标量精度计算1/sqrt(sumSq * invCount + eps)。
-__aicore__ inline __attribute__((always_inline)) float ComputeInvRms(float sumSq, float invCount);
+    /// 批量加载低精度残差，在R2的VF内完成转换并计算全部N个head的x2。
+    __aicore__ inline void ComputeX2AllHeadsBatched(const float (&postVals)[N_MAX], uint64_t gmBaseOffset,
+                                                    uint32_t tOff, uint32_t tD);
 
-/// 原地依次执行标量缩放和gamma缩放。
-__aicore__ inline void ApplyScaleAndGamma(LocalTensor<float> buf, float scale, LocalTensor<float> gamma, uint32_t tD);
+    // 门控计算
 
-// MHC_Post计算
+    /// 由xHatVals计算gate[0..N-1]，其中包含invRmsPre缩放：
+    ///   gate[i] = sigmoid(alpha0 * xHat[i] + bias[i]) + hcEps
+    __aicore__ inline void ComputeGateValues(float totalSumSqPre, float (&xHatVals)[N_MAX]);
 
-/// 批量加载低精度残差，在R2的VF内完成转换并计算全部N个head的x2。
-__aicore__ inline void ComputeX2AllHeadsBatched(const float (&postVals)[N_MAX], uint64_t gmBaseOffset, uint32_t tOff,
-                                                uint32_t tD);
+    // 输入输出与本核流水同步辅助函数。
 
-// 门控计算
+    __aicore__ inline void CastToIO(LocalTensor<T> dst, LocalTensor<float> src, uint32_t count);
 
-/// 由xHatVals计算gate[0..N-1]，其中包含invRmsPre缩放：
-///   gate[i] = sigmoid(alpha0 * xHat[i] + bias[i]) + hcEps
-__aicore__ inline void ComputeGateValues(float totalSumSqPre, float (&xHatVals)[N_MAX]);
+    __aicore__ inline void FenceMte3ToV();
 
-// 输入输出与本核流水同步辅助函数。
+    __aicore__ inline void FenceVToMte2();
 
-__aicore__ inline void QuantizeRoundTrip(LocalTensor<float> buf, uint32_t count);
+    __aicore__ inline void WriteLowPrecisionTile(GlobalTensor<T> &dst, uint64_t gmOffset, LocalTensor<float> src,
+                                                 uint32_t count);
 
-__aicore__ inline void CastToIO(LocalTensor<T> dst, LocalTensor<float> src, uint32_t count);
+    __aicore__ inline void WriteHInPrimeTile(LocalTensor<float> src, uint64_t gmOffset, uint32_t count);
 
-__aicore__ inline void FenceMte3ToV();
+    __aicore__ inline uint32_t GetTileD(uint32_t tile) const;
 
-__aicore__ inline void FenceVToMte2();
+    // 单AIV和双sibling AIV路径共用的分块计算。
 
-__aicore__ inline void WriteLowPrecisionTile(GlobalTensor<T> &dst, uint64_t gmOffset, LocalTensor<float> src,
-                                             uint32_t count);
+    // 构造一个低精度x2_post分块。R1使用normEps_，R2保持h_res的[j,n]索引顺序，
+    // 并显式保留设计规定的两处低精度往返边界。
+    __aicore__ inline void ComputeX2PostTile(uint32_t token, uint32_t tOff, uint32_t tD, float invRms0,
+                                             const float (&postVals)[N_MAX]);
 
-__aicore__ inline void WriteHInPrimeTile(LocalTensor<float> src, uint64_t gmOffset, uint32_t count);
+    // 双AIV仍需读取全部残差行，但每个lane只计算自己负责的两个输出head。
+    __aicore__ inline void ComputeX2PostTileForLane(uint32_t token, uint32_t tOff, uint32_t tD, float invRms0,
+                                                    const float (&postVals)[N_MAX]);
 
-__aicore__ inline uint32_t GetTileD(uint32_t tile) const;
+    // 将完整x2以输出dtype常驻UB，同时完成设计要求的低精度往返；写GM仅用于保留x2_out输出语义。
+    __aicore__ inline void CacheX2Tile(uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput,
+                                       bool quantizeInput = true);
 
-// 单AIV和双sibling AIV路径共用的分块计算。
+    // 双sibling路径仍在每个lane的私有UB中保留完整x2，便于两个lane按同一顺序执行R1/R2/R3；
+    // 写回x2_out时每个lane只写自己负责的两个head，避免任何输出竞争。
+    __aicore__ inline void CacheX2TileForLane(uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput,
+                                              bool quantizeInput = true);
 
-// 构造一个低精度x2_post分块。R1使用normEps_，R2保持h_res的[j,n]索引顺序，
-// 并显式保留设计规定的两处低精度往返边界。
-__aicore__ inline void ComputeX2PostTile(uint32_t token, uint32_t tOff, uint32_t tD, float invRms0,
-                                         const float (&postVals)[N_MAX]);
+    // R6读取完当前x2分块后，复用首个head缓存保留低精度h_in。
+    // 恢复FP32与平方在同一VF内完成，保留量化往返边界并减少UB中间写读。
+    __aicore__ inline float ComputeHInCacheAndReduceSumSq(uint32_t tOff, uint32_t tD, LocalTensor<T> x2Cache,
+                                                          LocalTensor<float> gateBuf);
 
-// 双AIV仍需读取全部残差行，但每个lane只计算自己负责的两个输出head。
-__aicore__ inline void ComputeX2PostTileForLane(uint32_t token, uint32_t tOff, uint32_t tD, float invRms0,
-                                                const float (&postVals)[N_MAX]);
-
-// 将完整x2以输出dtype常驻UB，同时完成设计要求的低精度往返；写GM仅用于保留x2_out输出语义。
-__aicore__ inline void CacheX2Tile(uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput,
-                                   bool quantizeInput = true);
-
-// 双sibling路径仍在每个lane的私有UB中保留完整x2，便于两个lane按同一顺序执行R1/R2/R3；
-// 写回x2_out时每个lane只写自己负责的两个head，避免任何输出竞争。
-__aicore__ inline void CacheX2TileForLane(uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput,
-                                          bool quantizeInput = true);
-
-// R6读取完当前x2分块后，复用首个head缓存保留低精度h_in。
-// 恢复FP32与平方在同一VF内完成，保留量化往返边界并减少UB中间写读。
-__aicore__ inline float CacheHInAndReduceSumSq(uint32_t tOff, uint32_t tD, LocalTensor<float> hIn);
-
-__aicore__ inline void LoadHInCacheTile(uint32_t tOff, uint32_t tD, LocalTensor<float> hIn);
-
-// 固定的R4/R5归约树由单AIV和双sibling AIV路径共用。half0固定覆盖展平区间[0,2D)，
-// half1固定覆盖[2D,4D)，调用方只执行一次顶层合并partial0+partial1。
-__aicore__ inline void AccumulateHalfPartials(uint32_t tOff, uint32_t tD, float (&sumSqHalf)[2],
-                                              float (&dotHalf)[2][N_MAX], uint32_t halfBegin = 0, uint32_t halfEnd = 2);
-
+    // 固定的R4/R5归约树由单AIV和双sibling AIV路径共用。half0固定覆盖展平区间[0,2D)，
+    // half1固定覆盖[2D,4D)，调用方只执行一次顶层合并partial0+partial1。
+    __aicore__ inline void AccumulateHalfPartials(uint32_t tOff, uint32_t tD, float (&sumSqHalf)[2],
+                                                  float (&dotHalf)[2][N_MAX], uint32_t halfBegin = 0,
+                                                  uint32_t halfEnd = 2);
 
     // =================================================================
     //  成员变量

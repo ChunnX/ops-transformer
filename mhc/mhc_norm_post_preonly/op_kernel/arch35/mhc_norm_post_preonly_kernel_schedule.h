@@ -47,7 +47,7 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
             for (uint32_t half = laneId_; half < laneId_ + 1U; ++half) {
                 const uint32_t h0 = half * 2U;
                 const uint32_t h1 = h0 + 1;
-                MhcNormRegBase::PairSquareB16ToFp32(out, x2Cache[h0 * D_ + tOff], x2Cache[h1 * D_ + tOff], tD);
+                MhcNormRegBase::VFPairSquareB16ToFp32(out, x2Cache[h0 * D_ + tOff], x2Cache[h1 * D_ + tOff], tD);
                 PipeBarrier<PIPE_V>();
                 midSqHalf[half] += ReduceSumPrecise(out, tD);
             }
@@ -87,13 +87,13 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
             SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
             WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
             LoadGammaInto(gammaOdd, gamma2Gm_, (headBegin + 1U) * D_ + tOff, tD);
-            MhcNormRegBase::CastB16ScaleAndMulGammaToB16(x2Cache[headBegin * D_ + tOff], x2Cache[headBegin * D_ + tOff],
-                                                         gammaEven, invRmsMid, tD);
+            MhcNormRegBase::VFCastB16ScaleAndMulGammaToB16(x2Cache[headBegin * D_ + tOff],
+                                                           x2Cache[headBegin * D_ + tOff], gammaEven, invRmsMid, tD);
             PipeBarrier<PIPE_V>();
 
             SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
             WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
-            MhcNormRegBase::CastB16ScaleAndMulGammaToB16(
+            MhcNormRegBase::VFCastB16ScaleAndMulGammaToB16(
                 x2Cache[(headBegin + 1U) * D_ + tOff], x2Cache[(headBegin + 1U) * D_ + tOff], gammaOdd, invRmsMid, tD);
             PipeBarrier<PIPE_V>();
             CacheX2TileForLane(token, tOff, tD, true, false);
@@ -165,12 +165,9 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
-        LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
         LocalTensor<T> x2Cache = bufX2Cache_.Get<T>()[tOff];
         LocalTensor<float> gateBuf = bufScalar_.Get<float>()[EXP_DIV_ELEM];
-        MhcNormRegBase::GateWeightedSum<T>(hIn, x2Cache, D_, gateBuf, tD);
-        PipeBarrier<PIPE_V>();
-        sumSq1 += CacheHInAndReduceSumSq(tOff, tD, hIn);
+        sumSq1 += ComputeHInCacheAndReduceSumSq(tOff, tD, x2Cache, gateBuf);
     }
 
     const float invRms1 = ComputeInvRms(sumSq1, invD_);
@@ -179,7 +176,7 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
         LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
-        LoadHInCacheTile(tOff, tD, hIn);
+        LocalTensor<T> hInCache = bufX2Cache_.Get<T>()[tOff];
         LocalTensor<float> gamma1 = bufGamma0Fp32_.Get<float>();
         if (D_ > GAMMA1_CACHE_MAX_D) {
             LoadGammaInto(gamma1, gamma1Gm_, tOff, tD);
@@ -188,7 +185,8 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         } else {
             gamma1 = gamma1[tOff];
         }
-        ApplyScaleAndGamma(hIn, invRms1, gamma1, tD);
+        MhcNormRegBase::VFCastB16ScaleAndMulGamma(hIn, hInCache, gamma1, invRms1, tD);
+        PipeBarrier<PIPE_V>();
         if (D_ > GAMMA1_CACHE_MAX_D) {
             FenceVToMte2();
         }
@@ -231,7 +229,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
             for (uint32_t half = 0; half < 2; ++half) {
                 const uint32_t h0 = half * 2;
                 const uint32_t h1 = h0 + 1;
-                MhcNormRegBase::PairSquareB16ToFp32(out, x2Cache[h0 * D_ + tOff], x2Cache[h1 * D_ + tOff], tD);
+                MhcNormRegBase::VFPairSquareB16ToFp32(out, x2Cache[h0 * D_ + tOff], x2Cache[h1 * D_ + tOff], tD);
                 PipeBarrier<PIPE_V>();
                 midSqHalf[half] += ReduceSumPrecise(out, tD);
             }
@@ -265,8 +263,8 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
                 if (n + 1 < N_MAX) {
                     LoadGammaInto(gammaNext, gamma2Gm_, (n + 1) * D_ + tOff, tD);
                 }
-                MhcNormRegBase::CastB16ScaleAndMulGammaToB16(x2Cache[n * D_ + tOff], x2Cache[n * D_ + tOff],
-                                                             gammaCurrent, invRmsMid, tD);
+                MhcNormRegBase::VFCastB16ScaleAndMulGammaToB16(x2Cache[n * D_ + tOff], x2Cache[n * D_ + tOff],
+                                                               gammaCurrent, invRmsMid, tD);
                 PipeBarrier<PIPE_V>();
                 // 当前缓存会在两轮后再次由MTE2写入，前两轮显式建立V到MTE2依赖。
                 if (n + 2 < N_MAX) {
@@ -295,12 +293,9 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
-        LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
         LocalTensor<T> x2Cache = bufX2Cache_.Get<T>()[tOff];
         LocalTensor<float> gateBuf = bufScalar_.Get<float>()[EXP_DIV_ELEM];
-        MhcNormRegBase::GateWeightedSum<T>(hIn, x2Cache, D_, gateBuf, tD);
-        PipeBarrier<PIPE_V>();
-        sumSq1 += CacheHInAndReduceSumSq(tOff, tD, hIn);
+        sumSq1 += ComputeHInCacheAndReduceSumSq(tOff, tD, x2Cache, gateBuf);
     }
 
     // 第四遍：沿完整D轴计算R7并写最终输出。
@@ -310,7 +305,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
         LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
-        LoadHInCacheTile(tOff, tD, hIn);
+        LocalTensor<T> hInCache = bufX2Cache_.Get<T>()[tOff];
         LocalTensor<float> gamma1 = bufGamma0Fp32_.Get<float>();
         if (D_ > GAMMA1_CACHE_MAX_D) {
             LoadGammaInto(gamma1, gamma1Gm_, tOff, tD);
@@ -319,7 +314,8 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         } else {
             gamma1 = gamma1[tOff];
         }
-        ApplyScaleAndGamma(hIn, invRms1, gamma1, tD);
+        MhcNormRegBase::VFCastB16ScaleAndMulGamma(hIn, hInCache, gamma1, invRms1, tD);
+        PipeBarrier<PIPE_V>();
         if (D_ > GAMMA1_CACHE_MAX_D) {
             FenceVToMte2();
         }
