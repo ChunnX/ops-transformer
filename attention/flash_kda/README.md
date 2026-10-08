@@ -1,89 +1,84 @@
-# FlashKDA（CANNBotDSL frozen bundle）
+# FlashKDA built-in integration
 
-本目录不再维护 Transformer 私有的 FlashKDA kernel/driver。唯一实现
-`op_kernel/flash_kda.py` 直接同步自：
+FlashKDA consumes reusable int32 scheduling metadata and supports contiguous
+BF16 BNSD, BSND, and packed TND inputs, with `Dk = Dv = 128`. Initial/final state,
+A_log, and dt_bias use FP32. The metadata producer is maintained by the arena;
+it is not compiled or bundled by this operator. Metadata must match the batch,
+value-head count, sequence layout and current stream core count.
 
-```text
-/home/z00947297/run_toolkit/cannbot-arena/
-  samples/native_example/attention/flash_kda/op_kernel/flash_kda.py
-```
+The public ACLNN entry is `aclnnFlashKDAGetWorkspaceSize`, followed by
+`aclnnFlashKDA`. Its arguments follow `flash_kda_aclnn` in
+`op_kernel/flash_kda.py`, with caller-owned output and final-state tensors added
+by OpKit. The host layer validates descriptors, maps each layout to logical
+BNSD views, uses caller-owned logical output storage and executor-owned scratch.
+The kernel clips tail writes to valid rows, so ACLNN outputs do not require
+padded backing storage. One Native provider initializes the internal
+16x16 identity and launches FlashKDA. Consumers need no Python at runtime.
 
-该源文件使用新框架的 `@cannbotdsl.entry(name="FlashKda")` 和
-`build_flash_kda(target)`：构建时先生成不可变 `OperatorBundle`，再由
-`cannbot_framework.stage` 生成 ACLNN L0/L2/adapter，最终生成 built-in
-`libopapi_cannbot_transformer.so`。mixed 包中的主 `libopapi_transformer.so` 以带
-`$ORIGIN` 的 DT_NEEDED 保留该依赖，因此无需修改全局 `LD_LIBRARY_PATH`，通过主 opapi
-handle 查找符号时也可见。Transformer 仓不再复制 Python eager driver、手写 provider
-cache 或第二套 ACLNN host。
+## Build
 
-## 公开接口
-
-生成的两阶段接口为：
-
-```text
-aclnnFlashKdaGetWorkspaceSize(...)
-aclnnFlashKda(...)
-```
-
-当前公开合约只认证连续 BNSD：
-
-- `q/k`: BF16 `[B, NK, S, 128]`
-- `v/g`: BF16 `[B, NV, S, 128]`
-- `beta`: BF16 `[B, NV, S]`
-- `initial_state`: FP32 `[B, NV, 128, 128]`
-- `A_log`: FP32 `[NV]`
-- `dt_bias`: FP32 `[NV, 128]`
-- `B=1..32`、`S=64..65536` 且为 64 的倍数、`NK/NV=1..96`
-- `scale=0..1`、`lower_bound=-5..0`
-
-BSND/TND、metadata 参数及旧 Torch dispatcher 接口不属于该 frozen Entry 合约；
-对应的 Transformer 老实现已经删除。独立的 AICPU metadata API 仍然交付，但它使用
-`attention/flash_kda_metadata` 中同步自 arena 的源码，不进入本 Entry 的参数列表。
-
-## built-in RUN 包构建
-
-框架和 CANNBotDSL 必须来自相互匹配的 v2 版本；nnopbase 必须包含 External Task
-ABI v1（`opdev/external_op_task.h` 和 `op::AddExternalOpTask`）。示例：
+Install both wheels from `zyh-cannbot-dsl/build_out` in a Python 3.12 environment:
 
 ```bash
-cmake -S . -B build/builtin \
-  -DENABLE_BUILT_IN=ON \
-  -DPACKAGE_TYPE=run \
-  -DASCEND_COMPUTE_UNIT=ascend950 \
-  '-DASCEND_OP_NAME=flash_kda;flash_kda_metadata' \
-  -DCANNBOTDSL_SOURCE_DIR=/path/to/cannbot-dsl \
-  -DCANNBOTDSL_PYTHON_EXECUTABLE=/path/to/python3 \
-  -DCANNBOTDSL_PYTHONPATH=/path/to/v2/site-packages:/path/to/cannbot-dsl/framework/python \
+python3.12 -m venv --system-site-packages /tmp/flash-kda-build-env
+/tmp/flash-kda-build-env/bin/python -m pip install --no-deps /path/to/build_out/*.whl
+source /path/to/cann/set_env.sh
+cmake -S . -B build-flash-kda \
+  -DENABLE_BUILT_IN=ON -DENABLE_OPS_HOST=ON -DENABLE_OPS_KERNEL=ON \
+  -DASCEND_OP_NAME=flash_kda -DASCEND_COMPUTE_UNIT=ascend950 \
+  -DCANNBOTDSL_PYTHON_EXECUTABLE=/tmp/flash-kda-build-env/bin/python \
   -DCANNBOTDSL_NNOPBASE_INCLUDE_DIR=/path/to/opbase/include/nnopbase \
   -DCANNBOTDSL_NNOPBASE_LIBRARY=/path/to/libnnopbase.so
-cmake --build build/builtin --target package -j16
+cmake --build build-flash-kda -j8
+cmake --build build-flash-kda --target package
 ```
 
-构建链：
+The nnopbase headers must contain `opdev/direct_invoke_task.h`, and the matching
+library must export `op::AddDirectInvokeTask`. This replaces the previous
+External Task / frozen OperatorBundle bridge. A DSL source checkout and
+`cannbot_framework` are no longer build dependencies. The stage cache includes
+operator source, builder, wheel RECORD hashes, target and SDK identity.
 
-```text
-arena FlashKDA Entry
-  -> build_operator(Target dav-3510)
-  -> frozen OperatorBundle
-  -> cannbot_framework.stage
-  -> generated ACLNN objects
-  -> libopapi_cannbot_transformer.so
-  -> libopapi_transformer.so (DT_NEEDED)
-  -> built-in RUN package
+Built-in artifacts:
+
+- `opp/built-in/op_impl/cannbotdsl/<binary-key>/provider.so` and its metadata.
+- `opp/built-in/op_api/lib/libopapi_cannbot_transformer.so`.
+- `x86_64-linux/include/aclnnop/aclnn_flash_kda.h` (or the target processor).
+
+Mixed AscendC/OpKit packages retain the mainline AscendC flow and attach the
+helper DSO to the normal opapi library. An OpKit-only package skips AscendC
+preparation and unrelated third-party builds. Unsupported explicit selections
+fail at configuration; ALL selections skip OpKit on unsupported targets.
+
+## Validation
+
+```bash
+python -m pytest attention/flash_kda/test/test_aclnn_adapter.py -q
+FLASH_KDA_METADATA_SOURCE=/path/to/arena/samples/flash_kda_metadata/flash_kda_metadata.py \
+  python -m pytest attention/flash_kda/test/test_flash_kda.py -q -s
 ```
 
-安装内容沿用 CANN built-in 布局：
+The adapter tests cover layout/stride bindings, tail output slices, workspace
+shapes and invalid-layout rejection. Precision tests require torch_npu, the
+matching CANN runtime, an Ascend950 device and the arena metadata producer.
 
-```text
-<arch>-linux/lib64/libopapi_transformer.so
-<arch>-linux/include/aclnnop/aclnn_FlashKda.h
-opp/built-in/op_api/lib/libopapi_cannbot_transformer.so
-opp/built-in/op_impl/cannbotdsl/FlashKda/...
-```
+The matching DirectInvoke nnopbase must also be available at runtime. Linking
+against it during the build does not replace the SDK's installed library.
+For an isolated validation directory, select it with `LD_PRELOAD` and set
+`FLASH_KDA_NNOPBASE_LIBRARY`; a product SDK should install the matching opbase.
+The installed DSO integration tests additionally take
+`FLASH_KDA_ACLNN_LIBRARY=/absolute/path/opp/built-in/op_api/lib/libopapi_cannbot_transformer.so`.
 
-bundle/stage 在 CMake configure 阶段生成，因为框架的 CMake API需要读取冻结
-`stage.json` 后才能声明 object target。输入哈希未变化时会复用已有 stage。默认
-`libopapi_transformer.so` 直接依赖 External Task ABI；目标 CANN 安装也必须提供匹配的
-patched nnopbase，不能在运行时退回旧系统库。公共接入按源码中的
-`@cannbotdsl.entry` 和约定的 `build_<文件名>(target)` 自动发现 bundle，不包含
-FlashKDA 专用的框架分支。
+## Framework delta against upstream
+
+`torch_extension/setup.py` now follows upstream, including operator locations
+and exported filtering. The obsolete legacy `build_cannbotdsl` command and its
+Python environment hook are removed. The bridge detects `@aclnn` sources and
+uses OpKit's generated HostAPI and operator modules instead of frozen bundles.
+The root CMake and `config.cmake` retain the separation between selected DSL
+and AscendC operators, allowing a DSL-only package to skip AscendC preparation.
+Mixed packages retain AscendC and attach the helper DSO in `symbol.cmake`.
+`package.cmake` omits the unrelated torch-extension wheel for a DSL-only build;
+OpsTransformer.xml delivers Native providers and the ACLNN DSO. The installer
+only creates the TBE init file when that directory exists. Obsolete custom
+vendor handling introduced by the previous bridge has been removed.

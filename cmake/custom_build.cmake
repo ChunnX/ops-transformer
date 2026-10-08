@@ -1278,16 +1278,12 @@ endif ()
 endif()
 
 if (NOT ENABLE_BUILT_IN AND BUILD_OPEN_PROJECT)
-    if(TARGET ops_transformer_cannbotdsl AND NOT ASCENDC_BUILD_OPS)
-        add_cann_third_party(makeself-fetch)
-    endif()
     add_custom_target(modify_vendor ALL
             DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/scripts/install.sh ${CMAKE_CURRENT_BINARY_DIR}/scripts/upgrade.sh
     )
 
     # modify VENDOR_NAME in install.sh and upgrade.sh
-    if (EXISTS ${ASCEND_PROJECT_DIR}/fwk_modules/scripts AND
-        (NOT TARGET ops_transformer_cannbotdsl OR TARGET cust_opapi))
+    if (EXISTS ${ASCEND_PROJECT_DIR}/fwk_modules/scripts)
         set(ASCEND_PROJECT_DIR_SCRIPTS_PATH ${ASCEND_PROJECT_DIR}/fwk_modules/scripts)
     else()
         set(ASCEND_PROJECT_DIR_SCRIPTS_PATH ${CMAKE_SOURCE_DIR}/cmake/scripts/custom)
