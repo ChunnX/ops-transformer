@@ -1598,6 +1598,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
                 <li>sparse模式：
                     <ul>
                     <li>sparse=0（attenMask为nullptr）</li>
+                    <li>sparse=3/4（传优化后的attenMask）</li>
                     </ul>
                 </li>
                 <li>innerPrecise：
