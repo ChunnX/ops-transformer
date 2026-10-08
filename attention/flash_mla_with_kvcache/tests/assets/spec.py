@@ -39,13 +39,23 @@ class FlashMlaWithKvcacheSpec:
     def customize_inputs(*args, **kwargs):
         return _load("inputs").customize_inputs(*args, **kwargs)
 
-    @staticmethod
-    def compare(*outputs, **kwargs):
-        return _load("compare").compare(*outputs)
+    # Let TTK receive the remote CUDA outputs in cross_check mode; the normal
+    # custom comparator receives only NPU and golden and cannot do three-way checks.
+    compare = _load("cross_check").CompareForMode(_load("compare").compare)
+
+    third_party = {"torch": _load("cuda").DeepSeekFlashMla}
 
     tolerance = {
-        "float16": {"standard": "stat_rel_err"},
-        "bfloat16": {"standard": "stat_rel_err"},
+        dtype: {
+            "standard": "stat_rel_err",
+            "level": "L0",
+            "mare_ratio": 10.0,
+            "mere_ratio": 2.0,
+            "rmse_ratio": 2.0,
+            "small_value": 2**-10,
+            "small_value_atol": 2**-16,
+        }
+        for dtype in ("float16", "bfloat16", "float32")
     }
     torch_graph = _load("graph").FlashMlaWithKvcacheAclGraph
     npu_preprocess = staticmethod(_load("npu_preprocess").run)
