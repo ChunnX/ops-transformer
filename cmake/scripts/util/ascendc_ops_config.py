@@ -200,7 +200,9 @@ def gen_ops_config(json_file, soc, binary_info_config, config):
     task_ration = contents.get("taskRation")
     core_type = core_type_map.get(core_type, -1)
     if core_type == -1 and soc != "ascend310b":
-        raise Exception("[ERROR]: must set coreType in json when soc version is {soc}.")
+        raise Exception(
+            f"[ERROR]: must set coreType in json when soc version is {soc}."
+        )
 
     bin_file_name = bin_name + bin_suffix
     op_type = bin_name.split("_")[0]
