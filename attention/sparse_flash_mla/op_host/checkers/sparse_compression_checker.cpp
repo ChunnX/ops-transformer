@@ -62,9 +62,10 @@ ge::graphStatus SparseCompressionChecker::CheckTopkLength(const CheckContext &co
 ge::graphStatus SparseCompressionChecker::CheckSinglePara(const CheckContext &context) const
 {
     OP_CHECK_IF(
-        context.cmpRatio < 1 || context.cmpRatio > 128,
+        context.cmpRatio < 0 || context.cmpRatio > 128 || (context.cmpKv.present && context.cmpRatio == 0),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(Op(context), "cmp_ratio", std::to_string(context.cmpRatio).c_str(),
-                                              "Cmp_ratio must be in range [1, 128]"),
+                                              "Cmp_ratio must be 0 or 1 when cmp_kv is absent, or in range [1, 128] "
+                                              "when cmp_kv is present"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(
         context.topkValueMode != 1,
@@ -120,9 +121,9 @@ ge::graphStatus SparseCompressionChecker::CheckParaExistence(const CheckContext 
             OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(Op(context), "seqused_cmp_kv", "Seqused_cmp_kv requires cmp_kv"),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(
-            context.cmpRatio != 1,
+            context.cmpRatio != 0 && context.cmpRatio != 1,
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(Op(context), "cmp_ratio", std::to_string(context.cmpRatio).c_str(),
-                                                  "Cmp_ratio must be 1 when cmp_kv is absent"),
+                                                  "Cmp_ratio must be 0 or 1 when cmp_kv is absent"),
             return ge::GRAPH_FAILED);
     }
 
@@ -131,13 +132,6 @@ ge::graphStatus SparseCompressionChecker::CheckParaExistence(const CheckContext 
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
                     Op(context), "cmp_residual_kv",
                     "Cmp_residual_kv is required when cmp_mask_mode is 3 and cmp_ratio is not 1"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context.cmpResidualKv.present && (context.cmpMaskMode == 0 || context.cmpRatio == 1),
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
-                    Op(context), "cmp_residual_kv",
-                    std::string("Cmp_residual_kv is not supported when cmp_mask_mode is 0 or cmp_ratio is 1, "
-                                "but got cmp_mask_mode=") +
-                        std::to_string(context.cmpMaskMode) + ", cmp_ratio=" + std::to_string(context.cmpRatio)),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(context.oriSparseIndices.present && context.oriMaskMode == 0 && !context.oriTopkLength.present,
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
