@@ -344,7 +344,7 @@ static bool CheckMXQuantDtypesValidA5(const aclTensor *x1, const aclTensor *x2, 
     return true;
 }
 
-// HiF4全量化场景下，校验所有输入的参数类型是否正确(A5)
+// HiF4全量化场景下，校验所有输入的参数类型是否正确(A6)
 // x1/x2均为hifloat4, scale为hifloat4_scale(shape [M, K/64, 1]), y仅支持FP16/BF16, bias/alltoAllOut仅支持None
 static bool CheckHiF4QuantDtypesValidA6(const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
                                         const aclTensor *x1ScaleOptional, const aclTensor *x2Scale,

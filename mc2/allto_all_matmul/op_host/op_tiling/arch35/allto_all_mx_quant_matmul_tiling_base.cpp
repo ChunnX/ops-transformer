@@ -360,18 +360,16 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::CheckMxQuantShapeInfo(const ger
                 "The dim(n) of x2 must be even when transposeX2 is false."),
             return ge::GRAPH_FAILED);
     }
-    if (!isHiF4_) {
-        OP_TILING_CHECK(
-            (x1Dim1 % MX_SCALE_ALIGN != 0),
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "x1", Ops::Base::ToString(x1Shape->GetStorageShape()).c_str(),
-                                                  "The dim(k) of x1 must be divisible by 64."),
-            return ge::GRAPH_FAILED);
-        OP_TILING_CHECK(
-            (x2KDim % MX_SCALE_ALIGN != 0),
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "x2", Ops::Base::ToString(x2Shape->GetStorageShape()).c_str(),
-                                                  "The dim(k) of x2 must be divisible by 64."),
-            return ge::GRAPH_FAILED);
-    }
+    OP_TILING_CHECK(
+        (x1Dim1 % MX_SCALE_ALIGN != 0),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "x1", Ops::Base::ToString(x1Shape->GetStorageShape()).c_str(),
+                                              "The dim(k) of x1 must be divisible by 64."),
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        (x2KDim % MX_SCALE_ALIGN != 0),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "x2", Ops::Base::ToString(x2Shape->GetStorageShape()).c_str(),
+                                              "The dim(k) of x2 must be divisible by 64."),
+        return ge::GRAPH_FAILED);
     const char *group = attrs->GetAttrPointer<char>(ATTR_GROUP_INDEX);
     int64_t rankDim = 0;
     if (MatmulAlltoAllTilingUtil::GetAndValidateRankSize(context, opName, group, rankDim) != ge::GRAPH_SUCCESS) {
@@ -380,8 +378,7 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::CheckMxQuantShapeInfo(const ger
     uint64_t x1ScaleDim0 = x1ScaleShape->GetStorageShape().GetDim(DIM_ZERO);
     uint64_t x1ScaleDim1 = x1ScaleShape->GetStorageShape().GetDim(DIM_ONE);
     uint64_t x1ScaleDim2 = x1ScaleShape->GetStorageShape().GetDim(DIM_TWO);
-    const uint64_t expertX1ScaleDim1 =
-        static_cast<uint64_t>(((static_cast<int64_t>(x1Dim1) + MX_SCALE_ALIGN - 1) / MX_SCALE_ALIGN));
+    const uint64_t expertX1ScaleDim1 = x1Dim1 / MX_SCALE_ALIGN;
     // scale 末维: MX 为 2 (每 64 元素 2 个 E8M0); HiF4 为 1 (每 64 元素 1 个 4-byte hif4_scale)
     const uint64_t expectScaleLastDim = isHiF4_ ? HIF4_SCALE_LAST_DIM : DIM_TWO;
     OP_TILING_CHECK((x1ScaleDim0 != x1Dim0),
@@ -402,8 +399,7 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::CheckMxQuantShapeInfo(const ger
     uint64_t x2ScaleDim0 = x2ScaleShape->GetStorageShape().GetDim(DIM_ZERO);
     uint64_t x2ScaleDim1 = x2ScaleShape->GetStorageShape().GetDim(DIM_ONE);
     uint64_t x2ScaleDim2 = x2ScaleShape->GetStorageShape().GetDim(DIM_TWO);
-    const uint64_t expertX2ScaleDim1 =
-        static_cast<uint64_t>(((static_cast<int64_t>(x2KDim) + MX_SCALE_ALIGN - 1) / MX_SCALE_ALIGN));
+    const uint64_t expertX2ScaleDim1 = x2KDim / MX_SCALE_ALIGN;
     OP_TILING_CHECK((x2ScaleDim2 != expectScaleLastDim),
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                         opName, "x2Scale", Ops::Base::ToString(x2ScaleShape->GetStorageShape()).c_str(),
