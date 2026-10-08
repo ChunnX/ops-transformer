@@ -87,8 +87,9 @@ remaining AscendC selection to preparation. `custom_build.cmake` is identical
 to upstream. The real ACLNN DSO target replaces the old empty umbrella target,
 and symbol linking uses that target directly.
 Mixed packages retain AscendC and attach the helper DSO in `symbol.cmake`.
-`package.cmake` omits the unrelated torch-extension wheel for a DSL-only build;
-OpsTransformer.xml delivers Native providers and the ACLNN DSO. The installer
+`package.cmake` is identical to upstream, including its existing optional
+torch-extension wheel packaging. OpsTransformer.xml delivers Native providers
+and the ACLNN DSO. The installer
 only creates the TBE init file when that directory exists. Obsolete custom
 vendor handling introduced by the previous bridge has been removed.
 
