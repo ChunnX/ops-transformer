@@ -36,10 +36,10 @@ extern "C" {
 #endif
 
 aclnnStatus aclnnQuantFlashMlaWithKvcacheMetadataGetWorkspaceSize(
-    const aclTensor *cacheSeqlens, int64_t numHeadsQ, int64_t numHeadsKv, int64_t quantMode,
-    const aclTensor *cuSeqlensQOptional, const aclTensor *sequsedQOptional, int64_t maxSeqlenQ,
-    int64_t maxSeqlenKv, int64_t headDimQk, int64_t headDimV, int64_t maskMode, const char *layoutQ,
-    const aclTensor *metaData, uint64_t *workspaceSize, aclOpExecutor **executor)
+    const aclTensor* cacheSeqlens, int64_t numHeadsQ, int64_t numHeadsKv, int64_t quantMode,
+    const aclTensor* cuSeqlensQOptional, const aclTensor* sequsedQOptional, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
+    int64_t headDimQk, int64_t headDimV, int64_t maskMode, const char* layoutQ, const aclTensor* metaData,
+    uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     L2_DFX_PHASE_1(aclnnQuantFlashMlaWithKvcacheMetadata,
                    DFX_IN(cacheSeqlens, numHeadsQ, numHeadsKv, quantMode, cuSeqlensQOptional, sequsedQOptional,
@@ -58,11 +58,11 @@ aclnnStatus aclnnQuantFlashMlaWithKvcacheMetadataGetWorkspaceSize(
     maskMode = (maskMode >= 0) ? maskMode : NO_MASK;
     layoutQ = (layoutQ != nullptr && strlen(layoutQ) > 0) ? layoutQ : "BSND";
 
-    auto ret = QuantFlashMlaMetadataCheck::ParamsCheck(cacheSeqlens, cuSeqlensQOptional, sequsedQOptional,
-                                                       maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDimQk,
-                                                       headDimV, quantMode, maskMode, layoutQ, metaData);
+    auto ret = QuantFlashMlaMetadataCheck::ParamsCheck(cacheSeqlens, cuSeqlensQOptional, sequsedQOptional, maxSeqlenQ,
+                                                       maxSeqlenKv, numHeadsQ, numHeadsKv, headDimQk, headDimV,
+                                                       quantMode, maskMode, layoutQ, metaData);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
-    const aclTensor *cacheSeqlensContiguous = nullptr;
+    const aclTensor* cacheSeqlensContiguous = nullptr;
     if (cacheSeqlens != nullptr) {
         cacheSeqlensContiguous = l0op::Contiguous(cacheSeqlens, uniqueExecutor.get());
         if (cacheSeqlensContiguous == nullptr) {
@@ -70,7 +70,7 @@ aclnnStatus aclnnQuantFlashMlaWithKvcacheMetadataGetWorkspaceSize(
             return ACLNN_ERR_INNER_NULLPTR;
         }
     }
-    const aclTensor *cuSeqlensQOptionalContiguous = nullptr;
+    const aclTensor* cuSeqlensQOptionalContiguous = nullptr;
     if (cuSeqlensQOptional != nullptr) {
         cuSeqlensQOptionalContiguous = l0op::Contiguous(cuSeqlensQOptional, uniqueExecutor.get());
         if (cuSeqlensQOptionalContiguous == nullptr) {
@@ -78,7 +78,7 @@ aclnnStatus aclnnQuantFlashMlaWithKvcacheMetadataGetWorkspaceSize(
             return ACLNN_ERR_INNER_NULLPTR;
         }
     }
-    const aclTensor *sequsedQOptionalContiguous = nullptr;
+    const aclTensor* sequsedQOptionalContiguous = nullptr;
     if (sequsedQOptional != nullptr) {
         sequsedQOptionalContiguous = l0op::Contiguous(sequsedQOptional, uniqueExecutor.get());
         if (sequsedQOptionalContiguous == nullptr) {
@@ -88,7 +88,7 @@ aclnnStatus aclnnQuantFlashMlaWithKvcacheMetadataGetWorkspaceSize(
     }
     // 与主算子 ACLNN tiling 保持一致：优先获取当前线程的有效核数（含 stream 控核）。
     // 查询失败时，与 opbase InitL2Phase1Context 一样回退到硬件平台核数。
-    const op::PlatformInfo &npuInfo = op::GetCurrentPlatformInfo();
+    const op::PlatformInfo& npuInfo = op::GetCurrentPlatformInfo();
     uint32_t aicCoreNum = 0;
     uint32_t aivCoreNum = 0;
     if (aclrtGetResInCurrentThread(ACL_RT_DEV_RES_CUBE_CORE, &aicCoreNum) != ACL_SUCCESS) {
@@ -97,12 +97,12 @@ aclnnStatus aclnnQuantFlashMlaWithKvcacheMetadataGetWorkspaceSize(
     if (aclrtGetResInCurrentThread(ACL_RT_DEV_RES_VECTOR_CORE, &aivCoreNum) != ACL_SUCCESS) {
         aivCoreNum = npuInfo.GetVectorCoreNum();
     }
-    const char *socVersion = npuInfo.GetSocLongVersion().c_str();
+    const char* socVersion = npuInfo.GetSocLongVersion().c_str();
 
     auto output = l0op::QuantFlashMlaWithKvcacheMetadata(
-        cacheSeqlensContiguous, cuSeqlensQOptionalContiguous, sequsedQOptionalContiguous, maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv,
-        headDimQk, headDimV, quantMode, maskMode, layoutQ, socVersion, aicCoreNum, aivCoreNum, metaData,
-        uniqueExecutor.get());
+        cacheSeqlensContiguous, cuSeqlensQOptionalContiguous, sequsedQOptionalContiguous, maxSeqlenQ, maxSeqlenKv,
+        numHeadsQ, numHeadsKv, headDimQk, headDimV, quantMode, maskMode, layoutQ, socVersion, aicCoreNum, aivCoreNum,
+        metaData, uniqueExecutor.get());
     CHECK_RET(output != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
@@ -110,9 +110,9 @@ aclnnStatus aclnnQuantFlashMlaWithKvcacheMetadataGetWorkspaceSize(
     return ACLNN_SUCCESS;
 }
 
-__attribute__((visibility("default"))) aclnnStatus aclnnQuantFlashMlaWithKvcacheMetadata(void *workspace,
+__attribute__((visibility("default"))) aclnnStatus aclnnQuantFlashMlaWithKvcacheMetadata(void* workspace,
                                                                                          uint64_t workspaceSize,
-                                                                                         aclOpExecutor *executor,
+                                                                                         aclOpExecutor* executor,
                                                                                          aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnQuantFlashMlaWithKvcacheMetadata);

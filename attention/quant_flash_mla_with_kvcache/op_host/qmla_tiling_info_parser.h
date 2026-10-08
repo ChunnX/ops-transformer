@@ -52,27 +52,27 @@ constexpr size_t ATTR_LAYOUT_OUT_INDEX = 8;
 constexpr size_t ATTR_RETURN_SOFTMAX_LSE_INDEX = 9;
 
 // 参数名
-constexpr const char *QUERY_NAME = "q";
-constexpr const char *K_CACHE_NAME = "k_cache";
-constexpr const char *Q_DESCALE_NAME = "q_descale";
-constexpr const char *K_DESCALE_NAME = "k_descale";
-constexpr const char *BLOCK_TABLE_NAME = "block_table";
-constexpr const char *CACHE_SEQLENS_NAME = "cache_seqlens";
-constexpr const char *CU_SEQLENS_Q_NAME = "cu_seqlens_q";
-constexpr const char *SEQUSED_Q_NAME = "seqused_q";
-constexpr const char *ATTN_MASK_NAME = "attn_mask";
-constexpr const char *METADATA_NAME = "metadata";
-constexpr const char *ATTN_OUT_NAME = "attn_out";
-constexpr const char *SOFTMAX_LSE_NAME = "softmax_lse";
+constexpr const char* QUERY_NAME = "q";
+constexpr const char* K_CACHE_NAME = "k_cache";
+constexpr const char* Q_DESCALE_NAME = "q_descale";
+constexpr const char* K_DESCALE_NAME = "k_descale";
+constexpr const char* BLOCK_TABLE_NAME = "block_table";
+constexpr const char* CACHE_SEQLENS_NAME = "cache_seqlens";
+constexpr const char* CU_SEQLENS_Q_NAME = "cu_seqlens_q";
+constexpr const char* SEQUSED_Q_NAME = "seqused_q";
+constexpr const char* ATTN_MASK_NAME = "attn_mask";
+constexpr const char* METADATA_NAME = "metadata";
+constexpr const char* ATTN_OUT_NAME = "attn_out";
+constexpr const char* SOFTMAX_LSE_NAME = "softmax_lse";
 
 class QmlaInfoParser {
 public:
-    explicit QmlaInfoParser(const gert::TilingContext *context)
+    explicit QmlaInfoParser(const gert::TilingContext* context)
         : context_(context)
     {}
     ~QmlaInfoParser() = default;
 
-    ge::graphStatus Parse(QmlaTilingInfo &qmlaInfo);
+    ge::graphStatus Parse(QmlaTilingInfo& qmlaInfo);
 
 private:
     ge::graphStatus GetOpName();
@@ -84,15 +84,15 @@ private:
     ge::graphStatus GetQuantMode();
     ge::graphStatus ParseAxisInfo();
     ge::graphStatus ParseFeatureInfo();
-    void GenerateInfo(QmlaTilingInfo &qmlaInfo);
+    void GenerateInfo(QmlaTilingInfo& qmlaInfo);
 
     // 轴解析
-    ge::graphStatus GetQShapeInfo();    // bSize/n1Size/s1Size/qTSize/headDimQk
+    ge::graphStatus GetQShapeInfo();       // bSize/n1Size/s1Size/qTSize/headDimQk
     ge::graphStatus GetKvCacheShapeInfo(); // blockSize/blockNum/n2Size校验
     ge::graphStatus GetS2Size();
 
-    const gert::TilingContext *context_ = nullptr;
-    const char *opName_ = nullptr;
+    const gert::TilingContext* context_ = nullptr;
+    const char* opName_ = nullptr;
     QmlaParaInfo opParamInfo_;
 
     // 轴
@@ -134,7 +134,7 @@ private:
     QmlaKvLayout layoutKv_ = QmlaKvLayout::PA_BNBD;
 
     // strides (for non-contiguous k_cache check)
-    const gert::Stride *keyStrides_ = nullptr;
+    const gert::Stride* keyStrides_ = nullptr;
     bool hasStride_ = false;
 
     // 特性

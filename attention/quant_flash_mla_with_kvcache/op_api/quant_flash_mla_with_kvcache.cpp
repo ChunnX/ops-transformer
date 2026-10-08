@@ -18,13 +18,12 @@ namespace l0op {
 
 OP_TYPE_REGISTER(QuantFlashMlaWithKvcache);
 
-const std::array<const aclTensor *, 2> QuantFlashMlaWithKvcache(
-    const aclTensor *q, const aclTensor *kCache, const aclTensor *qDescale, const aclTensor *kDescale,
-    const aclTensor *blockTable, const aclTensor *cacheSeqlens, const aclTensor *cuSeqlensQOptional,
-    const aclTensor *sequsedQOptional, const aclTensor *attnMaskOptional, const aclTensor *metadataOptional,
-    int64_t quantMode, double softmaxScale, int64_t maskMode, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
-    int64_t headDimV, const char *layoutQ, const char *layoutKv, const char *layoutOut, bool returnSoftmaxLse,
-    aclOpExecutor *executor)
+const std::array<const aclTensor*, 2> QuantFlashMlaWithKvcache(
+    const aclTensor* q, const aclTensor* kCache, const aclTensor* qDescale, const aclTensor* kDescale,
+    const aclTensor* blockTable, const aclTensor* cacheSeqlens, const aclTensor* cuSeqlensQOptional,
+    const aclTensor* sequsedQOptional, const aclTensor* attnMaskOptional, const aclTensor* metadataOptional,
+    int64_t quantMode, double softmaxScale, int64_t maskMode, int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t headDimV,
+    const char* layoutQ, const char* layoutKv, const char* layoutOut, bool returnSoftmaxLse, aclOpExecutor* executor)
 {
     L0_DFX(QuantFlashMlaWithKvcache, q, kCache, qDescale, kDescale, blockTable, cacheSeqlens, cuSeqlensQOptional,
            sequsedQOptional, attnMaskOptional, metadataOptional, quantMode, softmaxScale, maskMode, maxSeqlenQ,
@@ -57,13 +56,13 @@ const std::array<const aclTensor *, 2> QuantFlashMlaWithKvcache(
         return {nullptr, nullptr};
     }
 
-    ret = ADD_TO_LAUNCHER_LIST_AICORE(
-        QuantFlashMlaWithKvcache,
-        OP_INPUT(q, kCache, qDescale, kDescale, blockTable, cacheSeqlens, cuSeqlensQOptional, sequsedQOptional,
-                 attnMaskOptional, metadataOptional),
-        OP_OUTPUT(attentionOutAlloc, softmaxLseAlloc),
-        OP_ATTR(quantMode, softmaxScale, maskMode, maxSeqlenQ, maxSeqlenKv, headDimV, layoutQ, layoutKv, layoutOut,
-                returnSoftmaxLse));
+    ret =
+        ADD_TO_LAUNCHER_LIST_AICORE(QuantFlashMlaWithKvcache,
+                                    OP_INPUT(q, kCache, qDescale, kDescale, blockTable, cacheSeqlens,
+                                             cuSeqlensQOptional, sequsedQOptional, attnMaskOptional, metadataOptional),
+                                    OP_OUTPUT(attentionOutAlloc, softmaxLseAlloc),
+                                    OP_ATTR(quantMode, softmaxScale, maskMode, maxSeqlenQ, maxSeqlenKv, headDimV,
+                                            layoutQ, layoutKv, layoutOut, returnSoftmaxLse));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "QuantFlashMlaWithKvcache launch kernel failed.");
         return {nullptr, nullptr};

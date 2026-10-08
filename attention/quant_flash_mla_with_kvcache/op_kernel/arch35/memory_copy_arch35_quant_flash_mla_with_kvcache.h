@@ -121,7 +121,7 @@ __aicore__ inline constexpr UbFormat GetOutUbFormat()
 template <typename T, typename CONST_INFO_T>
 __aicore__ inline void DataCopySoftmaxLseBSNDArch35(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc,
                                                     uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount,
-                                                    const CONST_INFO_T &constInfo, uint64_t s1LeftPaddingSize = 0)
+                                                    const CONST_INFO_T& constInfo, uint64_t s1LeftPaddingSize = 0)
 {
     uint32_t startS1Idx = mOffset / constInfo.realGSize;
     uint32_t startGIdx = mOffset % constInfo.realGSize;
@@ -152,7 +152,7 @@ __aicore__ inline void DataCopySoftmaxLseBSNDArch35(GlobalTensor<float> softmaxL
 template <typename T, typename CONST_INFO_T>
 __aicore__ inline void DataCopySoftmaxLseBNSDArch35(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc,
                                                     uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount,
-                                                    const CONST_INFO_T &constInfo, uint64_t qActSeqLens,
+                                                    const CONST_INFO_T& constInfo, uint64_t qActSeqLens,
                                                     uint64_t s1LeftPaddingSize = 0)
 {
     uint64_t gOffset = mOffset / qActSeqLens * constInfo.s1Size;
@@ -205,10 +205,9 @@ __aicore__ inline void DataCopySoftmaxLseBNSDArch35(GlobalTensor<float> softmaxL
 }
 
 template <typename T, typename CONST_INFO_T>
-__aicore__ inline void DataCopySoftmaxLseTNDArch35NoGS1Merge(GlobalTensor<float> softmaxLseGm,
-                                                              LocalTensor<T> lseSrc, uint64_t bN2Offset,
-                                                              uint32_t mOffset, uint32_t dealCount,
-                                                              const CONST_INFO_T &constInfo)
+__aicore__ inline void DataCopySoftmaxLseTNDArch35NoGS1Merge(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc,
+                                                             uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount,
+                                                             const CONST_INFO_T& constInfo)
 {
     uint32_t startS1Idx = mOffset / constInfo.realGSize;
     uint32_t startGIdx = mOffset % constInfo.realGSize;
@@ -241,7 +240,7 @@ template <typename T, typename CONST_INFO_T>
 __aicore__ inline void DataCopySoftmaxLseTNDtoNTArch35NoGS1Merge(GlobalTensor<float> softmaxLseGm,
                                                                  LocalTensor<T> lseSrc, uint64_t bN2Offset,
                                                                  uint32_t mOffset, uint32_t dealCount,
-                                                                 const CONST_INFO_T &constInfo)
+                                                                 const CONST_INFO_T& constInfo)
 {
     uint32_t startS1Idx = mOffset / constInfo.realGSize;
     uint32_t startGIdx = mOffset % constInfo.realGSize;
@@ -272,7 +271,7 @@ __aicore__ inline void DataCopySoftmaxLseTNDtoNTArch35NoGS1Merge(GlobalTensor<fl
 template <typename T, typename CONST_INFO_T>
 __aicore__ inline void DataCopySoftmaxLseNTDArch35(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc,
                                                    uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount,
-                                                   const CONST_INFO_T &constInfo, uint32_t s1Size)
+                                                   const CONST_INFO_T& constInfo, uint32_t s1Size)
 {
     uint32_t startS1Idx = mOffset % s1Size;
     uint32_t startGIdx = mOffset / s1Size;

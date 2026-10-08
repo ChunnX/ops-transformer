@@ -35,9 +35,9 @@ constexpr uint32_t MLA_WS_WRITE_NUM_PER_CORE = 2;
 constexpr uint64_t MLA_CACHELINE_ALIGN_SIZE = 64;
 constexpr uint64_t MLA_RES_LSE_NUM = 2; // ResLse有2份，sum和max
 
-void QuantFlashMlaWithKvcacheTilingFp8Impl::InitTilingInfo(TilingInfo *tilingInfo)
+void QuantFlashMlaWithKvcacheTilingFp8Impl::InitTilingInfo(TilingInfo* tilingInfo)
 {
-    qmlaInfo_ = static_cast<QmlaTilingInfo *>(tilingInfo);
+    qmlaInfo_ = static_cast<QmlaTilingInfo*>(tilingInfo);
 }
 
 bool QuantFlashMlaWithKvcacheTilingFp8Impl::IsCapable()
@@ -108,9 +108,9 @@ ge::graphStatus QuantFlashMlaWithKvcacheTilingFp8Impl::SetPlatMemoryInfo()
 void QuantFlashMlaWithKvcacheTilingFp8Impl::InitImplParam()
 {
     // Online static compilation provides input shapes without runtime tensor data.
-    const auto *cuSeqLenQShape = qmlaInfo_->opParamInfo.cuSeqlensQ.shape;
+    const auto* cuSeqLenQShape = qmlaInfo_->opParamInfo.cuSeqlensQ.shape;
     cuSeqLenQFlag_ = cuSeqLenQShape != nullptr && cuSeqLenQShape->GetStorageShape().GetShapeSize() > 0;
-    const auto *seqUsedQShape = qmlaInfo_->opParamInfo.sequsedQ.shape;
+    const auto* seqUsedQShape = qmlaInfo_->opParamInfo.sequsedQ.shape;
     seqUsedQFlag_ = seqUsedQShape != nullptr && seqUsedQShape->GetStorageShape().GetShapeSize() > 0;
 
     // MLA固定切分
@@ -306,9 +306,9 @@ bool QuantFlashMlaWithKvcacheTilingFp8Impl::CheckNeedInitOutput() const
     return false;
 }
 
-ge::graphStatus QuantFlashMlaWithKvcacheTilingFp8Impl::SetTilingData(QuantFlashMlaWithKvcacheTilingData &tilingData)
+ge::graphStatus QuantFlashMlaWithKvcacheTilingFp8Impl::SetTilingData(QuantFlashMlaWithKvcacheTilingData& tilingData)
 {
-    QuantFlashMlaWithKvcacheTilingData *tiling = context_->GetTilingData<QuantFlashMlaWithKvcacheTilingData>();
+    QuantFlashMlaWithKvcacheTilingData* tiling = context_->GetTilingData<QuantFlashMlaWithKvcacheTilingData>();
     OP_CHECK_IF(tiling == nullptr, OP_LOGE(qmlaInfo_->opName, "The tiling data is nullptr"), return ge::GRAPH_FAILED);
     *tiling = tilingData;
     return ge::GRAPH_SUCCESS;
@@ -316,10 +316,10 @@ ge::graphStatus QuantFlashMlaWithKvcacheTilingFp8Impl::SetTilingData(QuantFlashM
 
 void QuantFlashMlaWithKvcacheTilingFp8Impl::PrintAllTilingData()
 {
-    QuantFlashMlaWithKvcacheBaseParams &params = tilingData_.baseParams;
-    QuantFlashMlaWithKvcacheAttenMaskParams &maskParams = tilingData_.attenMaskParams;
-    QuantFlashMlaWithKvcachePageAttentionParams &paParams = tilingData_.pageAttentionParams;
-    QuantFlashMlaWithKvcacheWorkspaceParams &wsParams = tilingData_.workspaceParams;
+    QuantFlashMlaWithKvcacheBaseParams& params = tilingData_.baseParams;
+    QuantFlashMlaWithKvcacheAttenMaskParams& maskParams = tilingData_.attenMaskParams;
+    QuantFlashMlaWithKvcachePageAttentionParams& paParams = tilingData_.pageAttentionParams;
+    QuantFlashMlaWithKvcacheWorkspaceParams& wsParams = tilingData_.workspaceParams;
 
     OP_LOGD(qmlaInfo_->opName, "MLA bSize:%d", params.bSize);
     OP_LOGD(qmlaInfo_->opName, "MLA t1Size:%d", params.t1Size);

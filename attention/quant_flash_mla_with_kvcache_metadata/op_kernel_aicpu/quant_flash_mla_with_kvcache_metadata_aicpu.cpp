@@ -23,7 +23,7 @@
 #define KERNEL_STATUS_PARAM_INVALID 1
 
 namespace aicpu {
-uint32_t QuantFlashMlaWithKvcacheMetadataCpuKernel::Compute(CpuKernelContext &ctx)
+uint32_t QuantFlashMlaWithKvcacheMetadataCpuKernel::Compute(CpuKernelContext& ctx)
 {
     bool success = Prepare(ctx);
     if (!success) {
@@ -34,7 +34,7 @@ uint32_t QuantFlashMlaWithKvcacheMetadataCpuKernel::Compute(CpuKernelContext &ct
     return success ? KERNEL_STATUS_OK : KERNEL_STATUS_PARAM_INVALID;
 }
 
-bool QuantFlashMlaWithKvcacheMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
+bool QuantFlashMlaWithKvcacheMetadataCpuKernel::Prepare(CpuKernelContext& ctx)
 {
     cacheSeqlens_ = ctx.Input(static_cast<uint32_t>(ParamId::cacheSeqlens));
     cuSeqlensQ_ = ctx.Input(static_cast<uint32_t>(ParamId::cuSeqlensQ));
@@ -58,7 +58,7 @@ bool QuantFlashMlaWithKvcacheMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     return ParamsInit();
 }
 
-std::vector<int64_t> QuantFlashMlaWithKvcacheMetadataCpuKernel::GetTensorDataAsInt64(Tensor *tensor, size_t size)
+std::vector<int64_t> QuantFlashMlaWithKvcacheMetadataCpuKernel::GetTensorDataAsInt64(Tensor* tensor, size_t size)
 {
     std::vector<int64_t> result(size);
     if (tensor == nullptr || tensor->GetData() == nullptr || size == 0) {
@@ -66,46 +66,46 @@ std::vector<int64_t> QuantFlashMlaWithKvcacheMetadataCpuKernel::GetTensorDataAsI
     }
 
     DataType dataType = tensor->GetDataType();
-    void *data = tensor->GetData();
+    void* data = tensor->GetData();
 
     switch (dataType) {
         case DT_INT32: {
-            int32_t *ptr = static_cast<int32_t *>(data);
+            int32_t* ptr = static_cast<int32_t*>(data);
             for (size_t i = 0; i < size; ++i) {
                 result[i] = static_cast<int64_t>(ptr[i]);
             }
             break;
         }
         case DT_INT64: {
-            int64_t *ptr = static_cast<int64_t *>(data);
+            int64_t* ptr = static_cast<int64_t*>(data);
             for (size_t i = 0; i < size; ++i) {
                 result[i] = ptr[i];
             }
             break;
         }
         case DT_INT16: {
-            int16_t *ptr = static_cast<int16_t *>(data);
+            int16_t* ptr = static_cast<int16_t*>(data);
             for (size_t i = 0; i < size; ++i) {
                 result[i] = static_cast<int64_t>(ptr[i]);
             }
             break;
         }
         case DT_UINT32: {
-            uint32_t *ptr = static_cast<uint32_t *>(data);
+            uint32_t* ptr = static_cast<uint32_t*>(data);
             for (size_t i = 0; i < size; ++i) {
                 result[i] = static_cast<int64_t>(ptr[i]);
             }
             break;
         }
         case DT_UINT64: {
-            uint64_t *ptr = static_cast<uint64_t *>(data);
+            uint64_t* ptr = static_cast<uint64_t*>(data);
             for (size_t i = 0; i < size; ++i) {
                 result[i] = static_cast<int64_t>(ptr[i]);
             }
             break;
         }
         case DT_UINT16: {
-            uint16_t *ptr = static_cast<uint16_t *>(data);
+            uint16_t* ptr = static_cast<uint16_t*>(data);
             for (size_t i = 0; i < size; ++i) {
                 result[i] = static_cast<int64_t>(ptr[i]);
             }
@@ -224,7 +224,7 @@ bool QuantFlashMlaWithKvcacheMetadataCpuKernel::ParamsInit()
     return true;
 }
 
-bool QuantFlashMlaWithKvcacheMetadataCpuKernel::BalanceSchedule(SectionStreamKResult &splitRes)
+bool QuantFlashMlaWithKvcacheMetadataCpuKernel::BalanceSchedule(SectionStreamKResult& splitRes)
 {
     auto ret = load_balance::SectionStreamK::Compute(deviceInfo, baseInfo, param, splitRes) == SECTION_STREAM_K_SUCCESS;
     return ret;
@@ -281,7 +281,7 @@ bool QuantFlashMlaWithKvcacheMetadataCpuKernel::CheckNeedInitOutput()
     return false;
 }
 
-bool QuantFlashMlaWithKvcacheMetadataCpuKernel::GenMetaData(SectionStreamKResult &splitRes)
+bool QuantFlashMlaWithKvcacheMetadataCpuKernel::GenMetaData(SectionStreamKResult& splitRes)
 {
     if (metaData_ == nullptr || metaData_->GetData() == nullptr) {
         KERNEL_LOG_ERROR("metadata is empty");
@@ -360,7 +360,7 @@ bool QuantFlashMlaWithKvcacheMetadataCpuKernel::GenMetaData(SectionStreamKResult
 }
 
 namespace {
-static const char *kernelType = "QuantFlashMlaWithKvcacheMetadata";
+static const char* kernelType = "QuantFlashMlaWithKvcacheMetadata";
 REGISTER_CPU_KERNEL(kernelType, QuantFlashMlaWithKvcacheMetadataCpuKernel);
 } // namespace
 

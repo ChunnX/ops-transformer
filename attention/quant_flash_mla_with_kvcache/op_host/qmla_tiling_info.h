@@ -58,9 +58,9 @@ enum class QmlaQuantMode : int64_t {
 };
 
 struct QmlaTensorInfo {
-    const gert::Tensor *tensor = nullptr;
-    const gert::CompileTimeTensorDesc *desc = nullptr;
-    const gert::StorageShape *shape = nullptr;
+    const gert::Tensor* tensor = nullptr;
+    const gert::CompileTimeTensorDesc* desc = nullptr;
+    const gert::StorageShape* shape = nullptr;
 };
 
 struct QmlaParaInfo {
@@ -72,7 +72,7 @@ struct QmlaParaInfo {
     QmlaTensorInfo blockTable;
     QmlaTensorInfo cacheSeqlens;
     // 可选输入
-    QmlaTensorInfo cuSeqlensQ;  // cu_seq: Q累积序列长度(B+1), layout_q为TND时必传
+    QmlaTensorInfo cuSeqlensQ; // cu_seq: Q累积序列长度(B+1), layout_q为TND时必传
     QmlaTensorInfo sequsedQ;   // seq_used: 每batch实际使用的Q长度(B)
     QmlaTensorInfo attnMask;
     QmlaTensorInfo metadata;
@@ -80,20 +80,20 @@ struct QmlaParaInfo {
     QmlaTensorInfo attnOut;
     QmlaTensorInfo softmaxLse;
     // 属性
-    const int64_t *quantMode = nullptr;
-    const float *softmaxScale = nullptr;
-    const int64_t *maskMode = nullptr;
-    const int64_t *maxSeqlenQ = nullptr;
-    const int64_t *maxSeqlenKv = nullptr;
-    const int64_t *headDimV = nullptr;
-    const char *layoutQ = nullptr;
-    const char *layoutKv = nullptr;
-    const char *layoutOut = nullptr;
-    const bool *returnSoftmaxLse = nullptr;
+    const int64_t* quantMode = nullptr;
+    const float* softmaxScale = nullptr;
+    const int64_t* maskMode = nullptr;
+    const int64_t* maxSeqlenQ = nullptr;
+    const int64_t* maxSeqlenKv = nullptr;
+    const int64_t* headDimV = nullptr;
+    const char* layoutQ = nullptr;
+    const char* layoutKv = nullptr;
+    const char* layoutOut = nullptr;
+    const bool* returnSoftmaxLse = nullptr;
 };
 
 struct QmlaTilingInfo : public TilingInfo {
-    const char *opName = nullptr;
+    const char* opName = nullptr;
     QmlaParaInfo opParamInfo; // 输入/输出tensor与属性原始信息
 
     // 轴信息
@@ -109,8 +109,8 @@ struct QmlaTilingInfo : public TilingInfo {
     int64_t t2Size = 0; // KV total
 
     // SeqLengths（act_seq分裂：cu_seq与seq_used）
-    bool cuSeqLenQFlag = false;  // cu_seqlens_q 已传入
-    bool seqUsedQFlag = false;   // seqused_q 已传入
+    bool cuSeqLenQFlag = false; // cu_seqlens_q 已传入
+    bool seqUsedQFlag = false;  // seqused_q 已传入
     int64_t maxSeqQ = -1;
     int64_t maxSeqKv = -1;
 
@@ -135,7 +135,7 @@ struct QmlaTilingInfo : public TilingInfo {
     QmlaKvLayout layoutKv = QmlaKvLayout::PA_BNBD;
 
     // Strides (for non-contiguous k_cache check)
-    const gert::Stride *keyStrides = nullptr;
+    const gert::Stride* keyStrides = nullptr;
     bool hasStride = false;
 
     // SoftmaxLse

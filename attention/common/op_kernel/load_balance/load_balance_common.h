@@ -184,7 +184,7 @@ inline bool IsWithinTolerance(T limit, T tolerance, T value)
     return limit + tolerance >= value;
 }
 
-static inline Layout ConvertToLayout(const std::string &layoutStr)
+static inline Layout ConvertToLayout(const std::string& layoutStr)
 {
     static std::unordered_map<std::string, Layout> layoutTable{
         {"BSND", Layout::BSND}, {"BNSD", Layout::BNSD}, {"BSH", Layout::BSH},    {"NBSD", Layout::NBSD},

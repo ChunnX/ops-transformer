@@ -21,12 +21,12 @@ const int64_t DIM_THREE = 3;
 const int64_t DIM_FOUR = 4;
 const int64_t MAX_DIM_SIZE = 8;
 
-at::Tensor quant_flash_mla_with_kvcache_metadata(const at::Tensor &cache_seqlens, int64_t num_heads_q,
+at::Tensor quant_flash_mla_with_kvcache_metadata(const at::Tensor& cache_seqlens, int64_t num_heads_q,
                                                  int64_t num_heads_kv, int64_t quant_mode,
-                                                 const at::Tensor &cu_seqlens_q, const at::Tensor &seqused_q,
+                                                 const at::Tensor& cu_seqlens_q, const at::Tensor& seqused_q,
                                                  int64_t max_seqlen_q, int64_t max_seqlen_kv, int64_t head_dim_qk,
                                                  int64_t head_dim_v, int64_t mask_mode, std::string layout_q,
-                                                 const at::Tensor &output)
+                                                 const at::Tensor& output)
 {
     ACLNN_CMD(aclnnQuantFlashMlaWithKvcacheMetadata, cache_seqlens, num_heads_q, num_heads_kv, quant_mode, cu_seqlens_q,
               seqused_q, max_seqlen_q, max_seqlen_kv, head_dim_qk, head_dim_v, mask_mode, layout_q, output);
@@ -34,10 +34,10 @@ at::Tensor quant_flash_mla_with_kvcache_metadata(const at::Tensor &cache_seqlens
 }
 
 std::tuple<at::Tensor, at::Tensor> quant_flash_mla_with_kvcache(
-    const at::Tensor &q, const at::Tensor &k_cache, const at::Tensor &q_descale, const at::Tensor &k_descale,
-    const at::Tensor &block_table, const at::Tensor &cache_seqlens, int64_t quant_mode,
-    const c10::optional<at::Tensor> &cu_seqlens_q, const c10::optional<at::Tensor> &seqused_q,
-    const c10::optional<at::Tensor> &attn_mask, const c10::optional<at::Tensor> &metadata, double softmax_scale,
+    const at::Tensor& q, const at::Tensor& k_cache, const at::Tensor& q_descale, const at::Tensor& k_descale,
+    const at::Tensor& block_table, const at::Tensor& cache_seqlens, int64_t quant_mode,
+    const c10::optional<at::Tensor>& cu_seqlens_q, const c10::optional<at::Tensor>& seqused_q,
+    const c10::optional<at::Tensor>& attn_mask, const c10::optional<at::Tensor>& metadata, double softmax_scale,
     int64_t mask_mode, int64_t max_seqlen_q, int64_t max_seqlen_kv, int64_t head_dim_v, std::string layout_q,
     std::string layout_kv, std::string layout_out, bool return_softmax_lse)
 {

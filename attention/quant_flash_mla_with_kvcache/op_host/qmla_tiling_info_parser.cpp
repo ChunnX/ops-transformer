@@ -66,7 +66,7 @@ ge::graphStatus QmlaInfoParser::GetNpuInfo()
 
 ge::graphStatus QmlaInfoParser::CheckRequiredParaExistence() const
 {
-    auto checkTensor = [this](const QmlaTensorInfo &t, const char *name) -> bool {
+    auto checkTensor = [this](const QmlaTensorInfo& t, const char* name) -> bool {
         if (t.shape == nullptr) {
             OP_LOGE_WITH_INVALID_INPUT(opName_, (std::string("Shape of ") + name).c_str());
             return false;
@@ -91,14 +91,13 @@ ge::graphStatus QmlaInfoParser::CheckRequiredParaExistence() const
 
 ge::graphStatus QmlaInfoParser::GetEmptyTensorFlag()
 {
-    auto checkEmptyTensor = [this](const gert::StorageShape *shape, const std::string &name) -> bool {
+    auto checkEmptyTensor = [this](const gert::StorageShape* shape, const std::string& name) -> bool {
         if (shape == nullptr) {
             return false;
         }
         for (size_t i = 0; i < shape->GetStorageShape().GetDimNum(); i++) {
             if (shape->GetStorageShape().GetDim(i) == 0) {
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, ToString(shape->GetStorageShape()).c_str(),
-                                                      name.c_str(),
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, ToString(shape->GetStorageShape()).c_str(), name.c_str(),
                                                       ("Tensor " + name + " has empty dimension at axis " +
                                                        std::to_string(i) + ", size is 0, which is not supported")
                                                           .c_str());
@@ -121,7 +120,7 @@ ge::graphStatus QmlaInfoParser::GetEmptyTensorFlag()
 
 ge::graphStatus QmlaInfoParser::GetOpParaInfo()
 {
-    auto fillTensorInfo = [this](QmlaTensorInfo &t, size_t idx, bool optional) {
+    auto fillTensorInfo = [this](QmlaTensorInfo& t, size_t idx, bool optional) {
         if (optional) {
             t.tensor = context_->GetOptionalInputTensor(idx);
             t.desc = context_->GetOptionalInputDesc(idx);
@@ -224,7 +223,7 @@ ge::graphStatus QmlaInfoParser::GetQuantMode()
 
 ge::graphStatus QmlaInfoParser::GetQShapeInfo()
 {
-    const auto &qShape = opParamInfo_.query.shape->GetStorageShape();
+    const auto& qShape = opParamInfo_.query.shape->GetStorageShape();
     if (layoutQ_ == QmlaLayout::TND) {
         if (qShape.GetDimNum() != 3) {
             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, QUERY_NAME,
@@ -236,14 +235,12 @@ ge::graphStatus QmlaInfoParser::GetQShapeInfo()
         n1Size_ = qShape.GetDim(1);
         headDimQk_ = qShape.GetDim(2);
         OP_CHECK_IF(opParamInfo_.cuSeqlensQ.tensor == nullptr,
-                   OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                       opName_, CU_SEQLENS_Q_NAME, "provided",
-                       "When layout_q is TND, cu_seqlens_q must be provided"),
-                   return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, CU_SEQLENS_Q_NAME, "provided",
+                                                          "When layout_q is TND, cu_seqlens_q must be provided"),
+                    return ge::GRAPH_FAILED);
         int64_t cuSeqLenQSize = opParamInfo_.cuSeqlensQ.tensor->GetShapeSize();
         bSize_ = cuSeqLenQSize - 1;
-        s1Size_ = (opParamInfo_.maxSeqlenQ != nullptr && *opParamInfo_.maxSeqlenQ > 0)
-                      ? *opParamInfo_.maxSeqlenQ : -1;
+        s1Size_ = (opParamInfo_.maxSeqlenQ != nullptr && *opParamInfo_.maxSeqlenQ > 0) ? *opParamInfo_.maxSeqlenQ : -1;
     } else {
         if (qShape.GetDimNum() != 4) {
             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, QUERY_NAME,
@@ -270,13 +267,12 @@ ge::graphStatus QmlaInfoParser::GetQShapeInfo()
 
 ge::graphStatus QmlaInfoParser::GetKvCacheShapeInfo()
 {
-    const auto &kvShape = opParamInfo_.kCache.shape->GetStorageShape();
+    const auto& kvShape = opParamInfo_.kCache.shape->GetStorageShape();
     size_t kvDimNum = kvShape.GetDimNum();
     // PA_BBND: (blockNum, blockSize, KV_N, D) / PA_BNBD: (blockNum, KV_N, blockSize, D)
     if (layoutKv_ == QmlaKvLayout::PA_BBND) {
         if (kvDimNum != 4) {
-            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, K_CACHE_NAME,
-                                                     (std::to_string(kvDimNum) + "D").c_str(),
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, K_CACHE_NAME, (std::to_string(kvDimNum) + "D").c_str(),
                                                      "The shape dim of k_cache must be 4D when layout_kv is PA_BBND");
             return ge::GRAPH_FAILED;
         }
@@ -285,8 +281,7 @@ ge::graphStatus QmlaInfoParser::GetKvCacheShapeInfo()
         n2Size_ = kvShape.GetDim(2);
     } else if (layoutKv_ == QmlaKvLayout::PA_BNBD) {
         if (kvDimNum != 4) {
-            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, K_CACHE_NAME,
-                                                     (std::to_string(kvDimNum) + "D").c_str(),
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, K_CACHE_NAME, (std::to_string(kvDimNum) + "D").c_str(),
                                                      "The shape dim of k_cache must be 4D when layout_kv is PA_BNBD");
             return ge::GRAPH_FAILED;
         }
@@ -295,8 +290,7 @@ ge::graphStatus QmlaInfoParser::GetKvCacheShapeInfo()
         blockSize_ = kvShape.GetDim(2);
     } else { // PA_NZ
         if (kvDimNum != 5) {
-            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, K_CACHE_NAME,
-                                                     (std::to_string(kvDimNum) + "D").c_str(),
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, K_CACHE_NAME, (std::to_string(kvDimNum) + "D").c_str(),
                                                      "The shape dim of k_cache must be 5D when layout_kv is PA_NZ");
             return ge::GRAPH_FAILED;
         }
@@ -310,15 +304,14 @@ ge::graphStatus QmlaInfoParser::GetKvCacheShapeInfo()
 
 ge::graphStatus QmlaInfoParser::GetS2Size()
 {
-    const gert::Tensor *blockTable = opParamInfo_.blockTable.tensor;
+    const gert::Tensor* blockTable = opParamInfo_.blockTable.tensor;
     OP_CHECK_IF(blockTable == nullptr,
-               OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, BLOCK_TABLE_NAME, "provided",
-                                                     "block_table must be provided in paged attention scenario"),
-               return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, BLOCK_TABLE_NAME, "provided",
+                                                      "block_table must be provided in paged attention scenario"),
+                return ge::GRAPH_FAILED);
     if (blockTable->GetStorageShape().GetDimNum() != 2) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-            opName_, BLOCK_TABLE_NAME,
-            (std::to_string(blockTable->GetStorageShape().GetDimNum()) + "D").c_str(),
+            opName_, BLOCK_TABLE_NAME, (std::to_string(blockTable->GetStorageShape().GetDimNum()) + "D").c_str(),
             "The shape dim of block_table must be 2D (B, maxBlockNumPerBatch)");
         return ge::GRAPH_FAILED;
     }
@@ -354,12 +347,10 @@ ge::graphStatus QmlaInfoParser::ParseAxisInfo()
     // k_descale: per-tensor量化, 1D (1,)
     if (opParamInfo_.kDescale.shape->GetStorageShape().GetDimNum() != 1 ||
         opParamInfo_.kDescale.shape->GetStorageShape().GetShapeSize() != 1) {
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, K_DESCALE_NAME,
-                                                 (std::to_string(
-                                                      opParamInfo_.kDescale.shape->GetStorageShape().GetDimNum()) +
-                                                  "D")
-                                                     .c_str(),
-                                                 "k_descale is per-tensor quantization, shape must be (1,)");
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+            opName_, K_DESCALE_NAME,
+            (std::to_string(opParamInfo_.kDescale.shape->GetStorageShape().GetDimNum()) + "D").c_str(),
+            "k_descale is per-tensor quantization, shape must be (1,)");
         return ge::GRAPH_FAILED;
     }
 
@@ -372,7 +363,7 @@ ge::graphStatus QmlaInfoParser::ParseFeatureInfo()
     maskMode_ = (opParamInfo_.maskMode == nullptr) ? 0 : *opParamInfo_.maskMode;
     attnMaskFlag_ = (opParamInfo_.attnMask.tensor != nullptr);
     if (attnMaskFlag_) {
-        const auto &maskShape = opParamInfo_.attnMask.shape->GetStorageShape();
+        const auto& maskShape = opParamInfo_.attnMask.shape->GetStorageShape();
         if (maskShape.GetDimNum() == 2) {
             attenMaskS1Size_ = maskShape.GetDim(0);
             attenMaskS2Size_ = maskShape.GetDim(1);
@@ -388,7 +379,7 @@ ge::graphStatus QmlaInfoParser::ParseFeatureInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-void QmlaInfoParser::GenerateInfo(QmlaTilingInfo &qmlaInfo)
+void QmlaInfoParser::GenerateInfo(QmlaTilingInfo& qmlaInfo)
 {
     qmlaInfo.opName = opName_;
     qmlaInfo.opParamInfo = opParamInfo_;
@@ -437,15 +428,14 @@ void QmlaInfoParser::GenerateInfo(QmlaTilingInfo &qmlaInfo)
     qmlaInfo.outType = outType_;
 }
 
-ge::graphStatus QmlaInfoParser::Parse(QmlaTilingInfo &qmlaInfo)
+ge::graphStatus QmlaInfoParser::Parse(QmlaTilingInfo& qmlaInfo)
 {
     if (context_ == nullptr) {
         OP_LOGE("QuantFlashMlaWithKvcache", "tiling context is nullptr!");
         return ge::GRAPH_FAILED;
     }
-    if (GetOpName() != ge::GRAPH_SUCCESS || GetNpuInfo() != ge::GRAPH_SUCCESS ||
-        GetOpParaInfo() != ge::GRAPH_SUCCESS || CheckRequiredParaExistence() != ge::GRAPH_SUCCESS ||
-        GetEmptyTensorFlag() != ge::GRAPH_SUCCESS) {
+    if (GetOpName() != ge::GRAPH_SUCCESS || GetNpuInfo() != ge::GRAPH_SUCCESS || GetOpParaInfo() != ge::GRAPH_SUCCESS ||
+        CheckRequiredParaExistence() != ge::GRAPH_SUCCESS || GetEmptyTensorFlag() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     if (emptyTensorFlag_) {

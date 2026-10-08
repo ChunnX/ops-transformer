@@ -33,10 +33,10 @@
 
 /* ============静态张量编程所需的宏与常量============= */
 #ifndef OFFSET_OF_MEMBER
-#define OFFSET_OF_MEMBER(TYPE, MEMBER) ((uint64_t) & ((TYPE *)0)->MEMBER)
+#define OFFSET_OF_MEMBER(TYPE, MEMBER) ((uint64_t) & ((TYPE*)0)->MEMBER)
 #endif
 #ifndef SIZE_OF_MEMBER
-#define SIZE_OF_MEMBER(TYPE, MEMBER) sizeof(((TYPE *)0)->MEMBER)
+#define SIZE_OF_MEMBER(TYPE, MEMBER) sizeof(((TYPE*)0)->MEMBER)
 #endif
 #ifndef BUFFER_SIZE_BYTE_32K
 #define BUFFER_SIZE_BYTE_32K 32768U
@@ -51,8 +51,8 @@ using namespace AttentionCommon;
 namespace BaseApi {
 
 template <bool first, bool last>
-__simd_vf__ inline void QmlaOutputUpdate(__ubuf__ float *dst, __ubuf__ float *cur, __ubuf__ float *exp,
-                                         __ubuf__ float *sum, uint16_t rows, float outScale)
+__simd_vf__ inline void QmlaOutputUpdate(__ubuf__ float* dst, __ubuf__ float* cur, __ubuf__ float* exp,
+                                         __ubuf__ float* sum, uint16_t rows, float outScale)
 {
     using namespace AscendC;
     using namespace AscendC::Reg;
@@ -131,9 +131,9 @@ __simd_vf__ inline void QmlaOutputUpdate(__ubuf__ float *dst, __ubuf__ float *cu
 }
 
 template <bool FIRST, bool MASK>
-__simd_vf__ inline void QmlaSoftmax256(__ubuf__ fp8_e4m3fn_t *out, __ubuf__ float *src, __ubuf__ float *qscale,
-                                       __ubuf__ float *oldMax, __ubuf__ float *newMax, __ubuf__ float *newSum,
-                                       __ubuf__ uint8_t *maskData, __ubuf__ uint8_t *indices, uint16_t rows,
+__simd_vf__ inline void QmlaSoftmax256(__ubuf__ fp8_e4m3fn_t* out, __ubuf__ float* src, __ubuf__ float* qscale,
+                                       __ubuf__ float* oldMax, __ubuf__ float* newMax, __ubuf__ float* newSum,
+                                       __ubuf__ uint8_t* maskData, __ubuf__ uint8_t* indices, uint16_t rows,
                                        uint32_t cols, float scale, float kscale)
 {
     using namespace AscendC::Reg;
@@ -160,7 +160,7 @@ __simd_vf__ inline void QmlaSoftmax256(__ubuf__ fp8_e4m3fn_t *out, __ubuf__ floa
         Select(x0, x0, minusInf, valid0);
         if constexpr (MASK) {
             MaskReg masked0;
-            LoadAlign<uint32_t, MaskDist::DIST_DS>(masked0, (__ubuf__ uint32_t *)(maskData + i * 256U + 0U));
+            LoadAlign<uint32_t, MaskDist::DIST_DS>(masked0, (__ubuf__ uint32_t*)(maskData + i * 256U + 0U));
             Select(x0, minusInf, x0, masked0);
         }
         StoreAlign<float, StoreDist::DIST_NORM_B32>(src + i * 256U + 0U, x0, all);
@@ -171,7 +171,7 @@ __simd_vf__ inline void QmlaSoftmax256(__ubuf__ fp8_e4m3fn_t *out, __ubuf__ floa
         Select(x1, x1, minusInf, valid1);
         if constexpr (MASK) {
             MaskReg masked1;
-            LoadAlign<uint32_t, MaskDist::DIST_DS>(masked1, (__ubuf__ uint32_t *)(maskData + i * 256U + 64U));
+            LoadAlign<uint32_t, MaskDist::DIST_DS>(masked1, (__ubuf__ uint32_t*)(maskData + i * 256U + 64U));
             Select(x1, minusInf, x1, masked1);
         }
         StoreAlign<float, StoreDist::DIST_NORM_B32>(src + i * 256U + 64U, x1, all);
@@ -182,7 +182,7 @@ __simd_vf__ inline void QmlaSoftmax256(__ubuf__ fp8_e4m3fn_t *out, __ubuf__ floa
         Select(x2, x2, minusInf, valid2);
         if constexpr (MASK) {
             MaskReg masked2;
-            LoadAlign<uint32_t, MaskDist::DIST_DS>(masked2, (__ubuf__ uint32_t *)(maskData + i * 256U + 128U));
+            LoadAlign<uint32_t, MaskDist::DIST_DS>(masked2, (__ubuf__ uint32_t*)(maskData + i * 256U + 128U));
             Select(x2, minusInf, x2, masked2);
         }
         StoreAlign<float, StoreDist::DIST_NORM_B32>(src + i * 256U + 128U, x2, all);
@@ -193,7 +193,7 @@ __simd_vf__ inline void QmlaSoftmax256(__ubuf__ fp8_e4m3fn_t *out, __ubuf__ floa
         Select(x3, x3, minusInf, valid3);
         if constexpr (MASK) {
             MaskReg masked3;
-            LoadAlign<uint32_t, MaskDist::DIST_DS>(masked3, (__ubuf__ uint32_t *)(maskData + i * 256U + 192U));
+            LoadAlign<uint32_t, MaskDist::DIST_DS>(masked3, (__ubuf__ uint32_t*)(maskData + i * 256U + 192U));
             Select(x3, minusInf, x3, masked3);
         }
         StoreAlign<float, StoreDist::DIST_NORM_B32>(src + i * 256U + 192U, x3, all);
@@ -231,7 +231,7 @@ __simd_vf__ inline void QmlaSoftmax256(__ubuf__ fp8_e4m3fn_t *out, __ubuf__ floa
         Muls(e1, e1, 448.0f, all);
         Cast<fp8_e4m3fn_t, float, castTraitRintZero>(c0, e0, all);
         Cast<fp8_e4m3fn_t, float, castTraitRintTwo>(c1, e1, all);
-        Or((RegTensor<uint8_t> &)packed, (RegTensor<uint8_t> &)c0, (RegTensor<uint8_t> &)c1, bytes);
+        Or((RegTensor<uint8_t>&)packed, (RegTensor<uint8_t>&)c0, (RegTensor<uint8_t>&)c1, bytes);
         Gather(ordered, packed, idx);
         auto out0 = out + i * 32U + 0U;
         StoreAlign<fp8_e4m3fn_t, DataCopyMode::DATA_BLOCK_COPY, PostLiteral::POST_MODE_UPDATE>(out0, ordered, 33U, 1U,
@@ -240,7 +240,7 @@ __simd_vf__ inline void QmlaSoftmax256(__ubuf__ fp8_e4m3fn_t *out, __ubuf__ floa
         Muls(e3, e3, 448.0f, all);
         Cast<fp8_e4m3fn_t, float, castTraitRintZero>(c0, e2, all);
         Cast<fp8_e4m3fn_t, float, castTraitRintTwo>(c1, e3, all);
-        Or((RegTensor<uint8_t> &)packed, (RegTensor<uint8_t> &)c0, (RegTensor<uint8_t> &)c1, bytes);
+        Or((RegTensor<uint8_t>&)packed, (RegTensor<uint8_t>&)c0, (RegTensor<uint8_t>&)c1, bytes);
         Gather(ordered, packed, idx);
         auto out1 = out + i * 32U + 4224U;
         StoreAlign<fp8_e4m3fn_t, DataCopyMode::DATA_BLOCK_COPY, PostLiteral::POST_MODE_UPDATE>(out1, ordered, 33U, 1U,
@@ -292,7 +292,7 @@ public:
     using pseShiftType = half;
 
     static constexpr T BOOL_ATTEN_MASK_SCALAR_VALUE = -1000000000000.0;
-    uint32_t negativeIntScalar = *((uint32_t *)&BOOL_ATTEN_MASK_SCALAR_VALUE);
+    uint32_t negativeIntScalar = *((uint32_t*)&BOOL_ATTEN_MASK_SCALAR_VALUE);
 
     using ConstInfoX = QmlaConstInfo;
     using flashdecodeGmType = typename std::conditional<FLASH_DECODE, GlobalTensor<float>, int8_t>::type;
@@ -362,7 +362,7 @@ public:
     // gm
     GlobalTensor<OUTPUT_T> attentionOutGm_;
     GlobalTensor<float> softmaxLseGm_;
-    QSeqParserType *qSeqParserPtr_ = nullptr;
+    QSeqParserType* qSeqParserPtr_ = nullptr;
     GlobalTensor<uint8_t> attenMaskGmInt_;
     GlobalTensor<float> deScaleQGm_;
     GlobalTensor<float> deScaleKGm_;
@@ -403,79 +403,79 @@ public:
     uint32_t vec1ResUbBufId_ = 0U;
     uint32_t lseOutUbBufId_ = 0U;
 
-    const ConstInfoX &constInfo_;
+    const ConstInfoX& constInfo_;
     T negativeFloatScalar_;
     float deScaleKValue_{1.0f};
     float deScaleVValue_{1.0f};
     uint32_t minValue_{NEGATIVE_MIN_VALUE_FP32};
 
-    __aicore__ inline QuantFlashMlaBlockVecFp8(ConstInfoX &constInfo)
+    __aicore__ inline QuantFlashMlaBlockVecFp8(ConstInfoX& constInfo)
         : constInfo_(constInfo){};
 
-    __aicore__ inline void InitVecBlock(__gm__ uint8_t *dequantScaleQuery, __gm__ uint8_t *dequantScaleKey,
-                                        __gm__ uint8_t *dequantScaleValue, __gm__ uint8_t *softmaxLse,
-                                        __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace,
-                                        QSeqParserType &qParser, __gm__ uint8_t *attenMask)
+    __aicore__ inline void InitVecBlock(__gm__ uint8_t* dequantScaleQuery, __gm__ uint8_t* dequantScaleKey,
+                                        __gm__ uint8_t* dequantScaleValue, __gm__ uint8_t* softmaxLse,
+                                        __gm__ uint8_t* attentionOut, __gm__ uint8_t* workspace,
+                                        QSeqParserType& qParser, __gm__ uint8_t* attenMask)
     {
         qSeqParserPtr_ = &qParser;
         uint32_t tmp1 = NEGATIVE_MIN_VALUE_FP32;
-        this->negativeFloatScalar_ = *((T *)&tmp1);
+        this->negativeFloatScalar_ = *((T*)&tmp1);
 
         InitVecInput(dequantScaleQuery, dequantScaleKey, dequantScaleValue, softmaxLse, attentionOut, workspace,
                      attenMask);
     }
 
-    __aicore__ inline void InitVecInput(__gm__ uint8_t *dequantScaleQuery, __gm__ uint8_t *dequantScaleKey,
-                                        __gm__ uint8_t *dequantScaleValue, __gm__ uint8_t *softmaxLse,
-                                        __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace,
-                                        __gm__ uint8_t *attenMask)
+    __aicore__ inline void InitVecInput(__gm__ uint8_t* dequantScaleQuery, __gm__ uint8_t* dequantScaleKey,
+                                        __gm__ uint8_t* dequantScaleValue, __gm__ uint8_t* softmaxLse,
+                                        __gm__ uint8_t* attentionOut, __gm__ uint8_t* workspace,
+                                        __gm__ uint8_t* attenMask)
     {
-        this->attentionOutGm_.SetGlobalBuffer((__gm__ OUTPUT_T *)attentionOut);
+        this->attentionOutGm_.SetGlobalBuffer((__gm__ OUTPUT_T*)attentionOut);
         if (constInfo_.isSoftmaxLseEnable) {
-            softmaxLseGm_.SetGlobalBuffer((__gm__ float *)softmaxLse);
+            softmaxLseGm_.SetGlobalBuffer((__gm__ float*)softmaxLse);
         }
 
         if constexpr (HAS_MASK) {
-            attenMaskGmInt_.SetGlobalBuffer((__gm__ uint8_t *)attenMask);
+            attenMaskGmInt_.SetGlobalBuffer((__gm__ uint8_t*)attenMask);
         }
 
         // MLA全量化dequantScale: Q per-token-head, KV per-tensor
         if (dequantScaleQuery != nullptr) {
-            deScaleQGm_.SetGlobalBuffer((__gm__ float *)dequantScaleQuery);
+            deScaleQGm_.SetGlobalBuffer((__gm__ float*)dequantScaleQuery);
             InitQScaleBuffer(constInfo_.bSize, constInfo_.realN2Size, constInfo_.realGSize, constInfo_.s1Size, 1,
                              queryScaleGm_, dequantScaleQuery);
         }
         if (dequantScaleKey != nullptr) {
-            deScaleKGm_.SetGlobalBuffer((__gm__ float *)dequantScaleKey);
+            deScaleKGm_.SetGlobalBuffer((__gm__ float*)dequantScaleKey);
             deScaleKValue_ = this->deScaleKGm_.GetValue(0);
         }
         if (dequantScaleValue != nullptr) {
-            deScaleVGm_.SetGlobalBuffer((__gm__ float *)dequantScaleValue);
+            deScaleVGm_.SetGlobalBuffer((__gm__ float*)dequantScaleValue);
             deScaleVValue_ = this->deScaleVGm_.GetValue(0);
         }
 
         if constexpr (FLASH_DECODE) {
-            accumOutGm_.SetGlobalBuffer((__gm__ float *)workspace);
-            softmaxFDSumGm_.SetGlobalBuffer((__gm__ float *)workspace + constInfo_.accumOutSize);
-            softmaxFDMaxGm_.SetGlobalBuffer((__gm__ float *)workspace + constInfo_.accumOutSize +
+            accumOutGm_.SetGlobalBuffer((__gm__ float*)workspace);
+            softmaxFDSumGm_.SetGlobalBuffer((__gm__ float*)workspace + constInfo_.accumOutSize);
+            softmaxFDMaxGm_.SetGlobalBuffer((__gm__ float*)workspace + constInfo_.accumOutSize +
                                             constInfo_.logSumExpSize);
         }
     }
 
     __aicore__ inline void InitQScaleBuffer(uint32_t batchSize, uint32_t n2Size, uint32_t gSize, uint32_t qSeqSize,
                                             uint32_t headDim,
-                                            FaGmTensor<float, Q_SCALE_FORMAT, int32_t, true> &qScaleGmTensor,
-                                            __gm__ uint8_t *gm)
+                                            FaGmTensor<float, Q_SCALE_FORMAT, int32_t, true>& qScaleGmTensor,
+                                            __gm__ uint8_t* gm)
     {
-        qScaleGmTensor.gmTensor.SetGlobalBuffer((__gm__ float *)gm);
+        qScaleGmTensor.gmTensor.SetGlobalBuffer((__gm__ float*)gm);
         if constexpr (GmLayoutParams<Q_SCALE_FORMAT>::CATEGORY == FormatCategory::GM_ANTIQ_TN) {
             qScaleGmTensor.offsetCalculator.Init(n2Size, gSize, *qSeqParserPtr_);
         }
     }
 
     // MLA q_descale: 复用common层 CopyQueryScaleGmToUb
-    __aicore__ inline void CopyQueryScaleSlice(const LocalTensor<float> &dstTensor, uint32_t dOffset,
-                                               uint32_t dRealSize, RunInfoX &runInfo)
+    __aicore__ inline void CopyQueryScaleSlice(const LocalTensor<float>& dstTensor, uint32_t dOffset,
+                                               uint32_t dRealSize, RunInfoX& runInfo)
     {
         FaUbTensor<float> ubTensor{
             .tensor = dstTensor,
@@ -493,7 +493,7 @@ public:
         copyQueryScaleGmToUb_(ubTensor, queryScaleGm_, gmCoord);
     }
 
-    __aicore__ inline void CopyQueryScaleTile(const LocalTensor<float> &dstTensor, RunInfoX &runInfo)
+    __aicore__ inline void CopyQueryScaleTile(const LocalTensor<float>& dstTensor, RunInfoX& runInfo)
     {
         CopyQueryScaleSlice(dstTensor, 0, 1, runInfo);
     }
@@ -624,7 +624,7 @@ public:
     __aicore__ inline void UnInitCrossCoreSync() {}
 
     __aicore__ inline void AttenMaskCopyIn(LocalTensor<uint8_t> attenMaskUb, uint32_t vecMIdx, uint32_t mDealSize,
-                                           RunInfoX &runInfo)
+                                           RunInfoX& runInfo)
     {
         uint32_t s2RealSize = runInfo.actSingleLoopS2Size;
         constexpr uint32_t s2BaseSizeCur = s2BaseSize;
@@ -741,7 +741,7 @@ public:
         }
     }
 
-    __aicore__ inline void ProcessVec1Nd(LocalTensor<INPUT_T> &pL1Tensor, LocalTensor<T> &mm1ResUbTensor,
+    __aicore__ inline void ProcessVec1Nd(LocalTensor<INPUT_T>& pL1Tensor, LocalTensor<T>& mm1ResUbTensor,
                                          RunInfoX runInfo)
     {
         LocalTensor<pseShiftType> pseUb;
@@ -797,17 +797,17 @@ public:
         auto tmp = apiTmpBuffer.template ReinterpretCast<float>();
         if (runInfo.isFirstS2Loop) {
             QmlaSoftmax256<true, HAS_MASK>(
-                (__ubuf__ fp8_e4m3fn_t *)stage1CastTensor.GetPhyAddr(), (__ubuf__ float *)mmRes.GetPhyAddr(),
-                (__ubuf__ float *)queryScaleUb.GetPhyAddr(), (__ubuf__ float *)maxUb.GetPhyAddr(),
-                (__ubuf__ float *)maxUb.GetPhyAddr(), (__ubuf__ float *)sumUb.GetPhyAddr(),
-                (__ubuf__ uint8_t *)attenMaskUb.GetPhyAddr(), (__ubuf__ uint8_t *)idx.GetPhyAddr(), runInfo.actVecMSize,
+                (__ubuf__ fp8_e4m3fn_t*)stage1CastTensor.GetPhyAddr(), (__ubuf__ float*)mmRes.GetPhyAddr(),
+                (__ubuf__ float*)queryScaleUb.GetPhyAddr(), (__ubuf__ float*)maxUb.GetPhyAddr(),
+                (__ubuf__ float*)maxUb.GetPhyAddr(), (__ubuf__ float*)sumUb.GetPhyAddr(),
+                (__ubuf__ uint8_t*)attenMaskUb.GetPhyAddr(), (__ubuf__ uint8_t*)idx.GetPhyAddr(), runInfo.actVecMSize,
                 s2CalcSize, constInfo_.scaleValue, deScaleKValue_);
         } else {
             QmlaSoftmax256<false, HAS_MASK>(
-                (__ubuf__ fp8_e4m3fn_t *)stage1CastTensor.GetPhyAddr(), (__ubuf__ float *)mmRes.GetPhyAddr(),
-                (__ubuf__ float *)queryScaleUb.GetPhyAddr(), (__ubuf__ float *)maxUb.GetPhyAddr(),
-                (__ubuf__ float *)tmp[64].GetPhyAddr(), (__ubuf__ float *)tmp.GetPhyAddr(),
-                (__ubuf__ uint8_t *)attenMaskUb.GetPhyAddr(), (__ubuf__ uint8_t *)idx.GetPhyAddr(), runInfo.actVecMSize,
+                (__ubuf__ fp8_e4m3fn_t*)stage1CastTensor.GetPhyAddr(), (__ubuf__ float*)mmRes.GetPhyAddr(),
+                (__ubuf__ float*)queryScaleUb.GetPhyAddr(), (__ubuf__ float*)maxUb.GetPhyAddr(),
+                (__ubuf__ float*)tmp[64].GetPhyAddr(), (__ubuf__ float*)tmp.GetPhyAddr(),
+                (__ubuf__ uint8_t*)attenMaskUb.GetPhyAddr(), (__ubuf__ uint8_t*)idx.GetPhyAddr(), runInfo.actVecMSize,
                 s2CalcSize, constInfo_.scaleValue, deScaleKValue_);
         }
 
@@ -851,7 +851,7 @@ public:
         }
     }
 
-    __aicore__ inline void SoftmaxDataCopyOut(RunInfoX runInfo, LocalTensor<float> &sumUb, LocalTensor<float> &maxUb)
+    __aicore__ inline void SoftmaxDataCopyOut(RunInfoX runInfo, LocalTensor<float>& sumUb, LocalTensor<float>& maxUb)
     {
         if constexpr (FLASH_DECODE) {
             if (runInfo.isS2SplitCore) {
@@ -867,8 +867,8 @@ public:
         }
     }
 
-    __aicore__ inline void SoftmaxLseCopyOut(LocalTensor<float> &softmaxSumTmp, LocalTensor<float> &softmaxMaxTmp,
-                                             RunInfoX &runInfo)
+    __aicore__ inline void SoftmaxLseCopyOut(LocalTensor<float>& softmaxSumTmp, LocalTensor<float>& softmaxMaxTmp,
+                                             RunInfoX& runInfo)
     {
         if (unlikely(runInfo.actVecMSize == 0)) {
             return;
@@ -894,8 +894,8 @@ public:
         lseOutUbBufId_ = (lseOutUbBufId_ + 1) % UB_LSE_OUT_BUFCNT;
     }
 
-    __aicore__ inline void BroadCastAndCopyOut(const RunInfoX &runInfo, LocalTensor<float> &sumUb,
-                                               LocalTensor<float> &maxUb, int64_t gmOffset, int64_t calculateSize)
+    __aicore__ inline void BroadCastAndCopyOut(const RunInfoX& runInfo, LocalTensor<float>& sumUb,
+                                               LocalTensor<float>& maxUb, int64_t gmOffset, int64_t calculateSize)
     {
         // Copy sum to gm
         Mutex::Lock<PIPE_V>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId_);
@@ -916,8 +916,8 @@ public:
         lseOutUbBufId_ = (lseOutUbBufId_ + 1) % UB_LSE_OUT_BUFCNT;
     }
 
-    __aicore__ inline void ComputeLogSumExpAndCopyToGm(const RunInfoX &runInfo, LocalTensor<float> &sumUb,
-                                                       LocalTensor<float> &maxUb)
+    __aicore__ inline void ComputeLogSumExpAndCopyToGm(const RunInfoX& runInfo, LocalTensor<float>& sumUb,
+                                                       LocalTensor<float>& maxUb)
     {
         if (unlikely(runInfo.actVecMSize == 0)) {
             return;
@@ -958,23 +958,23 @@ public:
         Mutex::Lock<PIPE_V>(UB_OUT_VEC2_RES_EVENT0);
         if (runInfo.isFirstS2Loop) {
             if (runInfo.isLastS2Loop) {
-                QmlaOutputUpdate<true, true>((__ubuf__ float *)vec2ResUb.GetPhyAddr(),
-                                             (__ubuf__ float *)mmRes.GetPhyAddr(), (__ubuf__ float *)exp.GetPhyAddr(),
-                                             (__ubuf__ float *)sum.GetPhyAddr(), vecMSize, deScaleVValue_ / 448.0f);
+                QmlaOutputUpdate<true, true>((__ubuf__ float*)vec2ResUb.GetPhyAddr(),
+                                             (__ubuf__ float*)mmRes.GetPhyAddr(), (__ubuf__ float*)exp.GetPhyAddr(),
+                                             (__ubuf__ float*)sum.GetPhyAddr(), vecMSize, deScaleVValue_ / 448.0f);
             } else {
-                QmlaOutputUpdate<true, false>((__ubuf__ float *)vec2ResUb.GetPhyAddr(),
-                                              (__ubuf__ float *)mmRes.GetPhyAddr(), (__ubuf__ float *)exp.GetPhyAddr(),
-                                              (__ubuf__ float *)sum.GetPhyAddr(), vecMSize, deScaleVValue_ / 448.0f);
+                QmlaOutputUpdate<true, false>((__ubuf__ float*)vec2ResUb.GetPhyAddr(),
+                                              (__ubuf__ float*)mmRes.GetPhyAddr(), (__ubuf__ float*)exp.GetPhyAddr(),
+                                              (__ubuf__ float*)sum.GetPhyAddr(), vecMSize, deScaleVValue_ / 448.0f);
             }
         } else {
             if (runInfo.isLastS2Loop) {
-                QmlaOutputUpdate<false, true>((__ubuf__ float *)vec2ResUb.GetPhyAddr(),
-                                              (__ubuf__ float *)mmRes.GetPhyAddr(), (__ubuf__ float *)exp.GetPhyAddr(),
-                                              (__ubuf__ float *)sum.GetPhyAddr(), vecMSize, deScaleVValue_ / 448.0f);
+                QmlaOutputUpdate<false, true>((__ubuf__ float*)vec2ResUb.GetPhyAddr(),
+                                              (__ubuf__ float*)mmRes.GetPhyAddr(), (__ubuf__ float*)exp.GetPhyAddr(),
+                                              (__ubuf__ float*)sum.GetPhyAddr(), vecMSize, deScaleVValue_ / 448.0f);
             } else {
-                QmlaOutputUpdate<false, false>((__ubuf__ float *)vec2ResUb.GetPhyAddr(),
-                                               (__ubuf__ float *)mmRes.GetPhyAddr(), (__ubuf__ float *)exp.GetPhyAddr(),
-                                               (__ubuf__ float *)sum.GetPhyAddr(), vecMSize, deScaleVValue_ / 448.0f);
+                QmlaOutputUpdate<false, false>((__ubuf__ float*)vec2ResUb.GetPhyAddr(),
+                                               (__ubuf__ float*)mmRes.GetPhyAddr(), (__ubuf__ float*)exp.GetPhyAddr(),
+                                               (__ubuf__ float*)sum.GetPhyAddr(), vecMSize, deScaleVValue_ / 448.0f);
             }
         }
         Mutex::Unlock<PIPE_V>(UB_OUT_VEC2_RES_EVENT0);
@@ -984,7 +984,7 @@ public:
         }
     }
 
-    __aicore__ inline void CopyOutAttentionOut(RunInfoX runInfo, LocalTensor<T> &vec2ResUb, uint32_t mStartVec,
+    __aicore__ inline void CopyOutAttentionOut(RunInfoX runInfo, LocalTensor<T>& vec2ResUb, uint32_t mStartVec,
                                                uint32_t mDealSize)
     {
         if constexpr (FLASH_DECODE) {
@@ -998,7 +998,7 @@ public:
         }
     }
 
-    __aicore__ inline void Bmm2ResCastAndCopyOut(RunInfoX &runInfo, LocalTensor<T> &vec2ResUb, uint32_t mStartVec,
+    __aicore__ inline void Bmm2ResCastAndCopyOut(RunInfoX& runInfo, LocalTensor<T>& vec2ResUb, uint32_t mStartVec,
                                                  uint32_t mDealSize)
     {
         LocalTensor<OUTPUT_T> attenOut;
@@ -1017,8 +1017,8 @@ public:
     }
 
     template <typename VEC2_RES_T>
-    __aicore__ inline void RowInvalid(LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t mStartVec, int64_t mDealSize,
-                                      RunInfoX &runInfo, int64_t dSizeAligned64)
+    __aicore__ inline void RowInvalid(LocalTensor<VEC2_RES_T>& vec2ResUb, int64_t mStartVec, int64_t mDealSize,
+                                      RunInfoX& runInfo, int64_t dSizeAligned64)
     {
         if constexpr (HAS_MASK) {
             int64_t s1FirstValidToken =
@@ -1042,7 +1042,7 @@ public:
         }
     }
 
-    __aicore__ inline bool CalcBlockNeedRowInvalid(RunInfoX &runInfo, int64_t s1FirstValidToken,
+    __aicore__ inline bool CalcBlockNeedRowInvalid(RunInfoX& runInfo, int64_t s1FirstValidToken,
                                                    int64_t s1LastValidToken)
     {
         int32_t vecMStartIdx = runInfo.gS1Idx + runInfo.vecMbaseIdx;
@@ -1070,7 +1070,7 @@ public:
         return ret;
     }
 
-    __aicore__ inline void Bmm2ResForFDCopyOut(const RunInfoX &runInfo, LocalTensor<T> &vec2ResUb, uint32_t mStartVec,
+    __aicore__ inline void Bmm2ResForFDCopyOut(const RunInfoX& runInfo, LocalTensor<T>& vec2ResUb, uint32_t mStartVec,
                                                uint32_t mDealSize)
     {
         int64_t dSizeAligned64 = (int64_t)dVTemplateType;
@@ -1087,21 +1087,21 @@ public:
         Mutex::Unlock<PIPE_MTE3>(UB_OUT_VEC2_RES_EVENT0);
     }
 
-    __aicore__ inline void Bmm2DataCopyOutTrans(const RunInfoX &info, LocalTensor<OUTPUT_T> &attenOutUb,
+    __aicore__ inline void Bmm2DataCopyOutTrans(const RunInfoX& info, LocalTensor<OUTPUT_T>& attenOutUb,
                                                 uint32_t vecMIdx, uint32_t dealRowCount)
     {
         FaUbTensor<OUTPUT_T> ubTensor{
             .tensor = attenOutUb, .rowCount = dealRowCount, .colCount = (uint32_t)dTemplateAlign64};
         GmCoordGs1Merge gmCoord{.bIdx = info.bIdx,
-                        .n2Idx = info.realN2Idx,
-                        .gS1Idx = info.gS1Idx + info.vecMbaseIdx + vecMIdx,
-                        .dIdx = 0,
-                        .gS1DealSize = dealRowCount,
-                        .dDealSize = (uint32_t)constInfo_.dSizeV};
+                                .n2Idx = info.realN2Idx,
+                                .gS1Idx = info.gS1Idx + info.vecMbaseIdx + vecMIdx,
+                                .dIdx = 0,
+                                .gS1DealSize = dealRowCount,
+                                .dDealSize = (uint32_t)constInfo_.dSizeV};
         CopyAttentionOut(ubTensor, gmCoord);
     }
 
-    __aicore__ inline void CopyAttentionOut(FaUbTensor<OUTPUT_T> &ubTensor, GmCoordGs1Merge &gmCoord)
+    __aicore__ inline void CopyAttentionOut(FaUbTensor<OUTPUT_T>& ubTensor, GmCoordGs1Merge& gmCoord)
     {
         if constexpr (outLayout == LayOutTypeEnum::LAYOUT_TND) {
             constexpr GmFormat OUT_FORMAT = GmFormat::TNGD;
@@ -1156,7 +1156,7 @@ public:
     static constexpr bool FLASH_DECODE = isFd;
     using OUT_T = OUTPUT_T;
     using ConstInfoX = QmlaConstInfo;
-    __aicore__ inline QuantFlashMlaBlockVecFp8Dummy(ConstInfoX &constInfo){};
+    __aicore__ inline QuantFlashMlaBlockVecFp8Dummy(ConstInfoX& constInfo){};
 };
 
 } // namespace BaseApi

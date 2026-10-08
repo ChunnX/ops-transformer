@@ -42,29 +42,29 @@ static constexpr int64_t MLA_HEAD_DIM_V_DEFAULT = 512;
 
 static std::string ToUpper(std::string s)
 {
-    for (auto &c : s) {
+    for (auto& c : s) {
         c = static_cast<char>(toupper(static_cast<unsigned char>(c)));
     }
     return s;
 }
 
-ge::graphStatus InferShapeQuantFlashMlaWithKvcache(gert::InferShapeContext *context)
+ge::graphStatus InferShapeQuantFlashMlaWithKvcache(gert::InferShapeContext* context)
 {
     OP_LOGI(context, "QuantFlashMlaWithKvcache InferShape start.");
     if (context == nullptr) {
         return ge::GRAPH_FAILED;
     }
 
-    const gert::Shape *qShape = context->GetInputShape(INPUT_IDX_Q);
+    const gert::Shape* qShape = context->GetInputShape(INPUT_IDX_Q);
     OP_CHECK_NULL_WITH_CONTEXT(context, qShape);
 
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
 
-    const char *layoutQ = attrs->GetAttrPointer<char>(ATTR_IDX_LAYOUT_Q);
-    const char *layoutOut = attrs->GetAttrPointer<char>(ATTR_IDX_LAYOUT_OUT);
-    const int64_t *headDimVPtr = attrs->GetAttrPointer<int64_t>(ATTR_IDX_HEAD_DIM_V);
-    const bool *returnSoftmaxLsePtr = attrs->GetAttrPointer<bool>(ATTR_IDX_RETURN_SOFTMAX_LSE);
+    const char* layoutQ = attrs->GetAttrPointer<char>(ATTR_IDX_LAYOUT_Q);
+    const char* layoutOut = attrs->GetAttrPointer<char>(ATTR_IDX_LAYOUT_OUT);
+    const int64_t* headDimVPtr = attrs->GetAttrPointer<int64_t>(ATTR_IDX_HEAD_DIM_V);
+    const bool* returnSoftmaxLsePtr = attrs->GetAttrPointer<bool>(ATTR_IDX_RETURN_SOFTMAX_LSE);
     OP_CHECK_NULL_WITH_CONTEXT(context, layoutQ);
     OP_CHECK_NULL_WITH_CONTEXT(context, layoutOut);
     OP_CHECK_NULL_WITH_CONTEXT(context, headDimVPtr);
@@ -123,7 +123,7 @@ ge::graphStatus InferShapeQuantFlashMlaWithKvcache(gert::InferShapeContext *cont
         return ge::GRAPH_FAILED;
     }
 
-    gert::Shape *attnOutShape = context->GetOutputShape(OUTPUT_IDX_ATTN_OUT);
+    gert::Shape* attnOutShape = context->GetOutputShape(OUTPUT_IDX_ATTN_OUT);
     OP_CHECK_NULL_WITH_CONTEXT(context, attnOutShape);
 
     if (layoutOutStr == "BSND") {
@@ -154,7 +154,7 @@ ge::graphStatus InferShapeQuantFlashMlaWithKvcache(gert::InferShapeContext *cont
         return ge::GRAPH_FAILED;
     }
 
-    gert::Shape *lseShape = context->GetOutputShape(OUTPUT_IDX_SOFTMAX_LSE);
+    gert::Shape* lseShape = context->GetOutputShape(OUTPUT_IDX_SOFTMAX_LSE);
     if (lseShape != nullptr) {
         if (returnSoftmaxLse) {
             if (isTND) {
@@ -177,7 +177,7 @@ ge::graphStatus InferShapeQuantFlashMlaWithKvcache(gert::InferShapeContext *cont
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus InferDataTypeQuantFlashMlaWithKvcache(gert::InferDataTypeContext *context)
+ge::graphStatus InferDataTypeQuantFlashMlaWithKvcache(gert::InferDataTypeContext* context)
 {
     if (context == nullptr) {
         return ge::GRAPH_FAILED;

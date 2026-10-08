@@ -134,7 +134,9 @@ class QuantFlashMlaWithKvcacheOpBuilder(OpBuilder):
             max_schedule_size = _calculate_max_schedule_size()
             return torch.empty((2, max_schedule_size), dtype=torch.int32, device="meta")
 
-        @torch.library.register_fake("cann_ops_transformer::quant_flash_mla_with_kvcache")
+        @torch.library.register_fake(
+            "cann_ops_transformer::quant_flash_mla_with_kvcache"
+        )
         def quant_flash_mla_with_kvcache_meta(
             q: torch.Tensor,
             k_cache: torch.Tensor,
@@ -372,7 +374,9 @@ def quant_flash_mla_with_kvcache(
             f"k_cache with layout {layout_kv} expects {kv_expected} dims, but got {k_cache.dim()} dims"
         )
     if metadata is None:
-        raise ValueError("metadata should be provided by quant_flash_mla_with_kvcache_metadata")
+        raise ValueError(
+            "metadata should be provided by quant_flash_mla_with_kvcache_metadata"
+        )
     if quant_mode == int(QuantMode.MLA_FP8_E4M3_FULLQUANT):
         if q.dtype != torch.float8_e4m3fn:
             raise ValueError(
@@ -413,7 +417,9 @@ quant_flash_mla_with_kvcache.MaskMode = MaskMode
 quant_flash_mla_with_kvcache_metadata.QuantMode = QuantMode
 quant_flash_mla_with_kvcache_metadata.MaskMode = MaskMode
 
-quant_flash_mla_with_kvcache = torch.ops.cann_ops_transformer.quant_flash_mla_with_kvcache
+quant_flash_mla_with_kvcache = (
+    torch.ops.cann_ops_transformer.quant_flash_mla_with_kvcache
+)
 quant_flash_mla_with_kvcache_metadata = (
     torch.ops.cann_ops_transformer.quant_flash_mla_with_kvcache_metadata
 )

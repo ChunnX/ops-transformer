@@ -1,6 +1,6 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms of
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
@@ -28,12 +28,12 @@ namespace quant_flash_mla_with_kvcache {
 
 class QuantFlashMlaWithKvcacheTilingFp8Impl : public FiaTilingBase {
 public:
-    explicit QuantFlashMlaWithKvcacheTilingFp8Impl(gert::TilingContext *context)
+    explicit QuantFlashMlaWithKvcacheTilingFp8Impl(gert::TilingContext* context)
         : FiaTilingBase(context)
     {}
     ~QuantFlashMlaWithKvcacheTilingFp8Impl() override = default;
 
-    void InitTilingInfo(TilingInfo *tilingInfo) override;
+    void InitTilingInfo(TilingInfo* tilingInfo) override;
     bool IsCapable() override;
     ge::graphStatus DoOpTiling() override;
 
@@ -53,7 +53,7 @@ private:
     void CalcScheduleMode();
     void CalcNumBlocks(uint32_t aicNum);
     void FillTiling();
-    ge::graphStatus SetTilingData(QuantFlashMlaWithKvcacheTilingData &tilingData);
+    ge::graphStatus SetTilingData(QuantFlashMlaWithKvcacheTilingData& tilingData);
     bool CheckNeedInitOutput() const;
 
     QuantFlashMlaWithKvcacheTilingData tilingData_;
@@ -68,7 +68,7 @@ private:
     ScheduleMode scheduleMode_ = ScheduleMode::BATCH_MODE;
     uint32_t numBlocks_ = 0;
 
-    QmlaTilingInfo *qmlaInfo_ = nullptr;
+    QmlaTilingInfo* qmlaInfo_ = nullptr;
 };
 
 } // namespace quant_flash_mla_with_kvcache

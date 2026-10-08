@@ -54,12 +54,12 @@ constexpr uint32_t FD_M_NUM_INDEX = 5U;
 namespace detail {
 struct FaMetaData {
     uint32_t sectionNum;
-    uint32_t *headMedata;
-    uint32_t *faMetadata;
-    uint32_t *fdMetadata;
-    FaMetaData(void *metadataPtr, uint32_t sectionNum)
+    uint32_t* headMedata;
+    uint32_t* faMetadata;
+    uint32_t* fdMetadata;
+    FaMetaData(void* metadataPtr, uint32_t sectionNum)
         : sectionNum(sectionNum),
-          headMedata(static_cast<uint32_t *>(metadataPtr)),
+          headMedata(static_cast<uint32_t*>(metadataPtr)),
           faMetadata(headMedata + HEAD_METADATA_SIZE),
           fdMetadata(faMetadata + sectionNum * AIC_CORE_NUM * FA_METADATA_SIZE)
     {

@@ -39,21 +39,21 @@ class QuantFlashMlaWithKvcacheMetadataCpuKernel : public CpuKernel {
 public:
     QuantFlashMlaWithKvcacheMetadataCpuKernel() = default;
     ~QuantFlashMlaWithKvcacheMetadataCpuKernel() = default;
-    uint32_t Compute(CpuKernelContext &ctx) override;
+    uint32_t Compute(CpuKernelContext& ctx) override;
 
 private:
-    bool Prepare(CpuKernelContext &ctx);
-    bool BalanceSchedule(SectionStreamKResult &splitRes);
-    bool GenMetaData(SectionStreamKResult &splitRes);
+    bool Prepare(CpuKernelContext& ctx);
+    bool BalanceSchedule(SectionStreamKResult& splitRes);
+    bool GenMetaData(SectionStreamKResult& splitRes);
     bool ParamsInit();
     bool CheckNeedInitOutput();
-    std::vector<int64_t> GetTensorDataAsInt64(Tensor *tensor, size_t size);
+    std::vector<int64_t> GetTensorDataAsInt64(Tensor* tensor, size_t size);
 
 private:
-    Tensor *cacheSeqlens_ = nullptr;
-    Tensor *cuSeqlensQ_ = nullptr;
-    Tensor *sequsedQ_ = nullptr;
-    Tensor *metaData_ = nullptr;
+    Tensor* cacheSeqlens_ = nullptr;
+    Tensor* cuSeqlensQ_ = nullptr;
+    Tensor* sequsedQ_ = nullptr;
+    Tensor* metaData_ = nullptr;
 
     int32_t batchSize_ = 0;
     int32_t maxSeqlenQ_ = -1;

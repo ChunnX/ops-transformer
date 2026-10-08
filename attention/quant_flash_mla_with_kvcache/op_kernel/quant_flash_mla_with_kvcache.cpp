@@ -37,13 +37,13 @@ using namespace optiling;
 // ─────────────────────────────────────────────────────────
 template <typename INPUT_T, typename OUT_T, uint8_t inOutLayoutType, uint8_t KvLayoutType, bool hasAttenMask,
           uint16_t config, bool isFd>
-inline __aicore__ void quant_flash_mla_with_kvcache_fp8(__gm__ uint8_t *query, __gm__ uint8_t *key,
-                                                        __gm__ uint8_t *qDescale, __gm__ uint8_t *kDescale,
-                                                        __gm__ uint8_t *blockTable, __gm__ uint8_t *cacheSeqLens,
-                                                        __gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *sequsedQ,
-                                                        __gm__ uint8_t *attnMask, __gm__ uint8_t *metadata,
-                                                        __gm__ uint8_t *attnOut, __gm__ uint8_t *softmaxLse,
-                                                        __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
+inline __aicore__ void quant_flash_mla_with_kvcache_fp8(__gm__ uint8_t* query, __gm__ uint8_t* key,
+                                                        __gm__ uint8_t* qDescale, __gm__ uint8_t* kDescale,
+                                                        __gm__ uint8_t* blockTable, __gm__ uint8_t* cacheSeqLens,
+                                                        __gm__ uint8_t* cuSeqLensQ, __gm__ uint8_t* sequsedQ,
+                                                        __gm__ uint8_t* attnMask, __gm__ uint8_t* metadata,
+                                                        __gm__ uint8_t* attnOut, __gm__ uint8_t* softmaxLse,
+                                                        __gm__ uint8_t* workspace, __gm__ uint8_t* tiling)
 {
     fa_base_matmul::ResetIdCounter();
 
@@ -97,13 +97,13 @@ inline __aicore__ void quant_flash_mla_with_kvcache_fp8(__gm__ uint8_t *query, _
 
 template <uint8_t inOutLayoutType, uint16_t config, uint8_t quantMode, bool hasAttenMask, uint8_t KvLayoutType,
           bool isFd>
-__global__ __aicore__ void quant_flash_mla_with_kvcache(__gm__ uint8_t *query, __gm__ uint8_t *key,
-                                                        __gm__ uint8_t *qDescale, __gm__ uint8_t *kDescale,
-                                                        __gm__ uint8_t *blockTable, __gm__ uint8_t *cacheSeqLens,
-                                                        __gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *sequsedQ,
-                                                        __gm__ uint8_t *attnMask, __gm__ uint8_t *metadata,
-                                                        __gm__ uint8_t *attnOut, __gm__ uint8_t *softmaxLse,
-                                                        __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
+__global__ __aicore__ void quant_flash_mla_with_kvcache(__gm__ uint8_t* query, __gm__ uint8_t* key,
+                                                        __gm__ uint8_t* qDescale, __gm__ uint8_t* kDescale,
+                                                        __gm__ uint8_t* blockTable, __gm__ uint8_t* cacheSeqLens,
+                                                        __gm__ uint8_t* cuSeqLensQ, __gm__ uint8_t* sequsedQ,
+                                                        __gm__ uint8_t* attnMask, __gm__ uint8_t* metadata,
+                                                        __gm__ uint8_t* attnOut, __gm__ uint8_t* softmaxLse,
+                                                        __gm__ uint8_t* workspace, __gm__ uint8_t* tiling)
 {
     REGISTER_TILING_DEFAULT(QuantFlashMlaWithKvcacheTilingData);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);

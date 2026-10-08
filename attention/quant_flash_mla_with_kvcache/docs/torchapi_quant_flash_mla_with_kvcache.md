@@ -78,8 +78,8 @@
 >
 > Q、K、V数据排布格式支持从多种维度解读，其中B（Batch）表示输入样本批量大小batch_size、S（Seq-Length）表示输入样本序列长度、H（Hidden-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸headdim，且满足D=H/N、Q_T表示所有query Batch输入样本序列长度的累加和，KV_T表示所有K、V Batch输入样本序列长度的累加和。Q_S表示输入q tensor的序列长度，Q_N表示输入q tensor的头数，KV_S表示输入k/v tensor的序列长度，KV_N表示输入k/v tensor的头数。
 
-> [!NOTE]	 
- > 
+> [!NOTE]
+ >
  > MLA中K与V复用同一份数据（KV复用/KV共享），因此主算子`quant_flash_mla_with_kvcache`的输入中只有`k_cache`，不单独接收`v_cache`。算子内部基于这份共用的KV cache同时完成Key与Value的计算，无需（也不支持）额外传入V。对应的量化参数仅需提供K的`k_descale`（per-tensor静态量化，shape为(1,)）。
 > 该接口仅支持Paged Attention（PA）KV-cache场景，即必须传入`block_table`与`cache_seqlens`。
 

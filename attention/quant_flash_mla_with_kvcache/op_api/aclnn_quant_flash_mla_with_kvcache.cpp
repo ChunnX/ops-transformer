@@ -29,7 +29,7 @@ extern "C" {
 // 新版本opbase存在TensorV2的新接口，用弱符号判断当前opbase是新版本还是旧版本，旧版本不支持传入非连续tensor
 bool NnopbaseSupportTensorV2() __attribute__((weak));
 
-static aclnnStatus CheckTensorContiguous(const aclTensor *kCache)
+static aclnnStatus CheckTensorContiguous(const aclTensor* kCache)
 {
     if (kCache != nullptr && !IsContiguous(kCache)) {
         return ACLNN_ERR_INNER;
@@ -38,13 +38,12 @@ static aclnnStatus CheckTensorContiguous(const aclTensor *kCache)
 }
 
 aclnnStatus aclnnQuantFlashMlaWithKvcacheGetWorkspaceSize(
-    const aclTensor *q, const aclTensor *kCache, const aclTensor *qDescale, const aclTensor *kDescale,
-    const aclTensor *blockTable, const aclTensor *cacheSeqlens, const aclTensor *cuSeqlensQOptional,
-    const aclTensor *sequsedQOptional, const aclTensor *attnMaskOptional, const aclTensor *metadataOptional,
-    int64_t quantMode, double softmaxScale, int64_t maskMode, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
-    int64_t headDimV, const char *layoutQ, const char *layoutKv, const char *layoutOut, bool returnSoftmaxLse,
-    const aclTensor *attnOut, const aclTensor *softmaxLseOptional, uint64_t *workspaceSize,
-    aclOpExecutor **executor)
+    const aclTensor* q, const aclTensor* kCache, const aclTensor* qDescale, const aclTensor* kDescale,
+    const aclTensor* blockTable, const aclTensor* cacheSeqlens, const aclTensor* cuSeqlensQOptional,
+    const aclTensor* sequsedQOptional, const aclTensor* attnMaskOptional, const aclTensor* metadataOptional,
+    int64_t quantMode, double softmaxScale, int64_t maskMode, int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t headDimV,
+    const char* layoutQ, const char* layoutKv, const char* layoutOut, bool returnSoftmaxLse, const aclTensor* attnOut,
+    const aclTensor* softmaxLseOptional, uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     OP_LOGD("start aclnnQuantFlashMlaWithKvcacheGetWorkspaceSize");
 
@@ -56,8 +55,8 @@ aclnnStatus aclnnQuantFlashMlaWithKvcacheGetWorkspaceSize(
     CHECK_COND(layoutKv != nullptr, ACLNN_ERR_PARAM_INVALID, "layoutKv should be provided, but got null");
     CHECK_COND(layoutOut != nullptr, ACLNN_ERR_PARAM_INVALID, "layoutOut should be provided, but got null");
 
-    const aclTensor *placeHolder = nullptr;
-    const aclTensor *tempTensor = nullptr;
+    const aclTensor* placeHolder = nullptr;
+    const aclTensor* tempTensor = nullptr;
 
     QuantFlashMlaWithKvcacheProcessSoftmaxLse(returnSoftmaxLse, softmaxLseOptional, tempTensor, placeHolder);
 
@@ -68,9 +67,9 @@ aclnnStatus aclnnQuantFlashMlaWithKvcacheGetWorkspaceSize(
     }
 
     ret = aclnnInnerQuantFlashMlaWithKvcacheGetWorkspaceSize(
-        q, kCache, qDescale, kDescale, blockTable, cacheSeqlens, cuSeqlensQOptional, sequsedQOptional,
-        attnMaskOptional, metadataOptional, quantMode, softmaxScale, maskMode, maxSeqlenQ, maxSeqlenKv, headDimV,
-        const_cast<char *>(layoutQ), const_cast<char *>(layoutKv), const_cast<char *>(layoutOut), returnSoftmaxLse,
+        q, kCache, qDescale, kDescale, blockTable, cacheSeqlens, cuSeqlensQOptional, sequsedQOptional, attnMaskOptional,
+        metadataOptional, quantMode, softmaxScale, maskMode, maxSeqlenQ, maxSeqlenKv, headDimV,
+        const_cast<char*>(layoutQ), const_cast<char*>(layoutKv), const_cast<char*>(layoutOut), returnSoftmaxLse,
         attnOut, placeHolder, workspaceSize, executor);
 
     if (!returnSoftmaxLse) {
@@ -80,7 +79,7 @@ aclnnStatus aclnnQuantFlashMlaWithKvcacheGetWorkspaceSize(
     return ret;
 }
 
-aclnnStatus aclnnQuantFlashMlaWithKvcache(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+aclnnStatus aclnnQuantFlashMlaWithKvcache(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
                                           const aclrtStream stream)
 {
     return aclnnInnerQuantFlashMlaWithKvcache(workspace, workspaceSize, executor, stream);

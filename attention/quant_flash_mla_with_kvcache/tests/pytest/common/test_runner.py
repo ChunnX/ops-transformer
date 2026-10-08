@@ -205,9 +205,7 @@ def execute_test(params, mode, cdir=None):
 
     # ---- Step 4/5: 精度对比 ----
     compare_layout = "TND" if golden.ENABLE_PA else golden.INPUT_LAYOUT
-    cpu_cmp = golden.convert_q_bnsd_to_layout(
-        cpu_out, golden.SEQUSED_Q, compare_layout
-    )
+    cpu_cmp = golden.convert_q_bnsd_to_layout(cpu_out, golden.SEQUSED_Q, compare_layout)
     logger.info("========== Attn OUT 精度对比 ==========")
     logger.info("CPU shape: %s, NPU shape: %s", cpu_cmp.shape, npu_out.shape)
     atten_result = result_compare_method.check_result(cpu_cmp, npu_out)
@@ -220,7 +218,9 @@ def execute_test(params, mode, cdir=None):
         # 算子输出 LSE 为 NT layout (N, T)，需将 CPU LSE 从 BNSD 转为 NT
         lse_cmp = lse_cmp.permute(1, 0, 2).squeeze(-1).contiguous()
         logger.info("========== LSE 精度对比 ==========")
-        logger.info("CPU LSE shape: %s, NPU LSE shape: %s", lse_cmp.shape, lse_out.shape)
+        logger.info(
+            "CPU LSE shape: %s, NPU LSE shape: %s", lse_cmp.shape, lse_out.shape
+        )
         lse_result = result_compare_method.check_result(lse_cmp, lse_out)
 
     return atten_result, lse_result
