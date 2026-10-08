@@ -17,8 +17,11 @@ import torch
 import pytest
 
 from core.case_loader import (
-    load_testcase_files, expand_cases, normalize_params,
-    resolve_case_ids, get_data_dir
+    load_testcase_files,
+    expand_cases,
+    normalize_params,
+    resolve_case_ids,
+    get_data_dir,
 )
 from core.gen_data import generate_inputs
 from core.postprocess import PostProcessor
@@ -81,7 +84,9 @@ def _build_parametrize_args(valid_cases, skip_set=None):
     args = []
     for name in valid_cases:
         if name in skip_set:
-            args.append(pytest.param(name, marks=pytest.mark.skip(reason="in SKIP_CASES")))
+            args.append(
+                pytest.param(name, marks=pytest.mark.skip(reason="in SKIP_CASES"))
+            )
         else:
             args.append(name)
     return args
@@ -146,6 +151,7 @@ def _execute_step(case_name, params, case_dir, mode, dev_id, seed_val):
 
         elif mode_ == "cpu":
             from core.cpu import run_cpu_golden
+
             if not os.path.exists(input_path):
                 pytest.skip(f"Input file not found: {input_path}")
             print(f"  [cpu] Computing CPU golden for {case_name}")
@@ -157,9 +163,12 @@ def _execute_step(case_name, params, case_dir, mode, dev_id, seed_val):
 
         elif mode_ == "cpu_high":
             from core.cpu import run_cpu_golden
+
             if not os.path.exists(input_path):
                 pytest.skip(f"Input file not found: {input_path}")
-            print(f"  [cpu_high] Computing CPU golden (aclnnBatchMatMul) for {case_name}")
+            print(
+                f"  [cpu_high] Computing CPU golden (aclnnBatchMatMul) for {case_name}"
+            )
             input_data = torch.load(input_path, map_location="cpu", weights_only=False)
             input_data["use_npu"] = True
             result = run_cpu_golden(input_data)
@@ -168,6 +177,8 @@ def _execute_step(case_name, params, case_dir, mode, dev_id, seed_val):
 
         elif mode_ == "npu":
             from core.npu import run_npu
+            from core.ci_diagnostics import check_fd_metadata, record_esl_metadata
+
             if not os.path.exists(input_path):
                 pytest.skip(f"Input file not found: {input_path}")
             print(f"  [npu] Computing NPU result for {case_name}")
@@ -185,14 +196,22 @@ def _execute_step(case_name, params, case_dir, mode, dev_id, seed_val):
             # if layout_kv.startswith("PA_") and "block_table" in p:
             #     input_data["block_table"] = p["block_table"]
 
-            result = run_npu(input_data, device_id=dev_id)
+            with record_esl_metadata() as captured_metadata:
+                result = run_npu(input_data, device_id=dev_id)
+            # Save the exact scheduler result alongside the uploaded outputs.
+            # fdOn alone does not prove that a case exercised split-KV merging.
+            metadata = captured_metadata[-1] if captured_metadata else None
+            if metadata is not None:
+                result["metadata"] = metadata
             torch.save(result, npu_path)
             print(f"  [npu] Saved to {npu_path}")
+            check_fd_metadata(metadata, require_fd=params.get("require_fd", False))
             gc.collect()
             torch.npu.empty_cache()
 
         elif mode_ == "compare":
             from core.compare import compare_results
+
             if not os.path.exists(cpu_path):
                 pytest.skip(f"CPU result not found: {cpu_path}")
             if not os.path.exists(npu_path):
@@ -215,13 +234,15 @@ def _check_results(cmp):
         return
     if not cmp["attn_out"]["passed"]:
         pytest.fail(
-            f"Precision check failed: fail_ratio={cmp['attn_out']['fail_ratio']*100:.4f}%"
+            f"Precision check failed: fail_ratio={cmp['attn_out']['fail_ratio'] * 100:.4f}%"
         )
 
 
 @pytest.mark.func_rdv
 @pytest.mark.ci
-def test_func_rdv(case_name, params_for_case, data_dir, mode, device_id, seed, postproc):
+def test_func_rdv(
+    case_name, params_for_case, data_dir, mode, device_id, seed, postproc
+):
     cmp = _execute_step(case_name, params_for_case, data_dir, mode, device_id, seed)
     if cmp is not None:
         postproc.record(case_name, cmp)
@@ -229,7 +250,9 @@ def test_func_rdv(case_name, params_for_case, data_dir, mode, device_id, seed, p
 
 
 @pytest.mark.func_redline
-def test_func_redline(case_name, params_for_case, data_dir, mode, device_id, seed, postproc):
+def test_func_redline(
+    case_name, params_for_case, data_dir, mode, device_id, seed, postproc
+):
     cmp = _execute_step(case_name, params_for_case, data_dir, mode, device_id, seed)
     if cmp is not None:
         postproc.record(case_name, cmp)
@@ -237,7 +260,9 @@ def test_func_redline(case_name, params_for_case, data_dir, mode, device_id, see
 
 
 @pytest.mark.func_B250_redline
-def test_func_B250_redline(case_name, params_for_case, data_dir, mode, device_id, seed, postproc):
+def test_func_B250_redline(
+    case_name, params_for_case, data_dir, mode, device_id, seed, postproc
+):
     cmp = _execute_step(case_name, params_for_case, data_dir, mode, device_id, seed)
     if cmp is not None:
         postproc.record(case_name, cmp)
@@ -245,7 +270,9 @@ def test_func_B250_redline(case_name, params_for_case, data_dir, mode, device_id
 
 
 @pytest.mark.func_stc
-def test_func_stc(case_name, params_for_case, data_dir, mode, device_id, seed, postproc):
+def test_func_stc(
+    case_name, params_for_case, data_dir, mode, device_id, seed, postproc
+):
     cmp = _execute_step(case_name, params_for_case, data_dir, mode, device_id, seed)
     if cmp is not None:
         postproc.record(case_name, cmp)
@@ -253,7 +280,9 @@ def test_func_stc(case_name, params_for_case, data_dir, mode, device_id, seed, p
 
 
 @pytest.mark.func_test
-def test_func_test(case_name, params_for_case, data_dir, mode, device_id, seed, postproc):
+def test_func_test(
+    case_name, params_for_case, data_dir, mode, device_id, seed, postproc
+):
     cmp = _execute_step(case_name, params_for_case, data_dir, mode, device_id, seed)
     if cmp is not None:
         postproc.record(case_name, cmp)
@@ -261,7 +290,9 @@ def test_func_test(case_name, params_for_case, data_dir, mode, device_id, seed, 
 
 
 @pytest.mark.perf_rdv
-def test_perf_rdv(case_name, params_for_case, data_dir, mode, device_id, seed, postproc):
+def test_perf_rdv(
+    case_name, params_for_case, data_dir, mode, device_id, seed, postproc
+):
     cmp = _execute_step(case_name, params_for_case, data_dir, mode, device_id, seed)
     if cmp is not None:
         postproc.record(case_name, cmp)
@@ -269,7 +300,9 @@ def test_perf_rdv(case_name, params_for_case, data_dir, mode, device_id, seed, p
 
 
 @pytest.mark.perf_redline
-def test_perf_redline(case_name, params_for_case, data_dir, mode, device_id, seed, postproc):
+def test_perf_redline(
+    case_name, params_for_case, data_dir, mode, device_id, seed, postproc
+):
     cmp = _execute_step(case_name, params_for_case, data_dir, mode, device_id, seed)
     if cmp is not None:
         postproc.record(case_name, cmp)
@@ -283,6 +316,7 @@ def test_debug(case_name, params_for_case, data_dir, mode, device_id, seed, post
         postproc.record(case_name, cmp)
     _check_results(cmp)
 
+
 @pytest.mark.func_L0
 def test_func_L0(case_name, params_for_case, data_dir, mode, device_id, seed, postproc):
     cmp = _execute_step(case_name, params_for_case, data_dir, mode, device_id, seed)
@@ -290,40 +324,56 @@ def test_func_L0(case_name, params_for_case, data_dir, mode, device_id, seed, po
         postproc.record(case_name, cmp)
     _check_results(cmp)
 
+
 @pytest.mark.perf_batch
-def test_perf_batch(case_name, params_for_case, data_dir, mode, device_id, seed, postproc):
+def test_perf_batch(
+    case_name, params_for_case, data_dir, mode, device_id, seed, postproc
+):
     cmp = _execute_step(case_name, params_for_case, data_dir, mode, device_id, seed)
     if cmp is not None:
         postproc.record(case_name, cmp)
     _check_results(cmp)
+
 
 @pytest.mark.perf_mtp
-def test_perf_mtp(case_name, params_for_case, data_dir, mode, device_id, seed, postproc):
+def test_perf_mtp(
+    case_name, params_for_case, data_dir, mode, device_id, seed, postproc
+):
     cmp = _execute_step(case_name, params_for_case, data_dir, mode, device_id, seed)
     if cmp is not None:
         postproc.record(case_name, cmp)
     _check_results(cmp)
+
 
 @pytest.mark.perf_kvs
-def test_perf_kvs(case_name, params_for_case, data_dir, mode, device_id, seed, postproc):
+def test_perf_kvs(
+    case_name, params_for_case, data_dir, mode, device_id, seed, postproc
+):
     cmp = _execute_step(case_name, params_for_case, data_dir, mode, device_id, seed)
     if cmp is not None:
         postproc.record(case_name, cmp)
     _check_results(cmp)
+
 
 @pytest.mark.perf_load_balance
-def perf_load_balance(case_name, params_for_case, data_dir, mode, device_id, seed, postproc):
+def perf_load_balance(
+    case_name, params_for_case, data_dir, mode, device_id, seed, postproc
+):
     cmp = _execute_step(case_name, params_for_case, data_dir, mode, device_id, seed)
     if cmp is not None:
         postproc.record(case_name, cmp)
     _check_results(cmp)
 
+
 @pytest.mark.perf_low_latency
-def test_perf_low_latency(case_name, params_for_case, data_dir, mode, device_id, seed, postproc):
+def test_perf_low_latency(
+    case_name, params_for_case, data_dir, mode, device_id, seed, postproc
+):
     cmp = _execute_step(case_name, params_for_case, data_dir, mode, device_id, seed)
     if cmp is not None:
         postproc.record(case_name, cmp)
     _check_results(cmp)
+
 
 def test_summary(postproc, mode):
     if mode == "compare":

@@ -1356,10 +1356,36 @@ TestCases = {
         "seqused_kv": [[48, 128, 256]],
         "sinks": [True],
         # Exercise sink-dominant, QK-dominant, and competitive logits. The
-        # wide range also checks stable online-softmax and FD merging.
+        # Short KV exercises stable softmax; the companion case below checks FD.
         "sinks_datarange": [(-600.0, 600.0)],
         "max_seqlen_q": [5],
         "max_seqlen_kv": [256],
+        "softmax_scale": 0.08838834764831843,
+        "q_range": [(-10.0, 10.0)],
+        "kv_range": [(-10.0, 10.0)],
+    },
+    # The CI case filter selects this prefix as well as the original short-KV
+    # case. Keep the original reproduction unchanged, and explicitly prove FD.
+    "b270_sink_n1_6_fd_lse": {
+        "B": [1],
+        "N1": [6],
+        "N2": [1],
+        "S1": [5],
+        "S2": [1025],
+        "D": [128],
+        "layout_q": ["BSND"],
+        "layout_kv": ["PA_NZ"],
+        "block_size": [64],
+        "q_dtype": ["fp16"],
+        "quant_compute_mode": [1],
+        "mask_mode": [3],
+        "seqused_kv": [[1025]],
+        "sinks": [True, False],
+        "sinks_datarange": [(-600.0, 600.0)],
+        "return_softmax_lse": [True],
+        "require_fd": [True],
+        "max_seqlen_q": [5],
+        "max_seqlen_kv": [1025],
         "softmax_scale": 0.08838834764831843,
         "q_range": [(-10.0, 10.0)],
         "kv_range": [(-10.0, 10.0)],
