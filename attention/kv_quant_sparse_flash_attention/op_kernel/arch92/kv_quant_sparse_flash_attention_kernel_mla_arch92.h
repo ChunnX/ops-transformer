@@ -29,8 +29,8 @@
 #include "kv_quant_sparse_flash_attention_service_vector_mla_arch92.h"
 #include "kv_quant_sparse_flash_attention_common_arch92.h"
 #include "kv_quant_sparse_flash_attention_kvcache_arch92.h"
-#include "common/qsfa_CopyInL1.h"
-#include "common/qsfa_matmul.h"
+#include "../../../common/op_kernel/CopyInL1.h"
+#include "../../../common/op_kernel/matmul.h"
 #include "../../../common/op_kernel/FixpipeOut.h"
 
 using matmul::MatmulType;

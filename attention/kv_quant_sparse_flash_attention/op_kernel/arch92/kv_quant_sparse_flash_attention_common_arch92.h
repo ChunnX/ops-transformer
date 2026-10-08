@@ -17,9 +17,9 @@
 #include <type_traits>
 #include "kernel_tiling/kernel_tiling.h"
 #include "../../../sparse_flash_attention/op_kernel/arch35/common/util_regbase.h"
-#include "common/qsfa_attn_buffer.h"
-#include "common/qsfa_attn_buffer_manager.h"
-#include "common/qsfa_buffers_policy.h"
+#include "../../../common/op_kernel/attn_buffer.h"
+#include "../../../common/op_kernel/attn_buffer_manager.h"
+#include "../../../common/op_kernel/buffers_policy.h"
 
 constexpr uint64_t BLOCK_BYTE = 32;
 constexpr uint32_t NEGATIVE_MIN_VALUE_FP32 = 0xFF7FFFFF;
