@@ -116,6 +116,12 @@ private:
 
     __aicore__ inline void WriteHInPrimeTile(LocalTensor<float> src, uint64_t gmOffset, uint32_t count);
 
+    // RETURN_H_IN_F32关闭时，直接在已消费完的x2低精度缓存上完成R7量化，避免FP32中间区和二次转换。
+    __aicore__ inline void WriteHInPrimeTileFromCache(LocalTensor<T> srcDst,
+                                                       LocalTensor<float> gamma,
+                                                       float scale, uint64_t gmOffset,
+                                                       uint32_t count);
+
     __aicore__ inline uint32_t GetTileD(uint32_t tile) const;
 
     // 单AIV和双sibling AIV路径共用的分块计算。
@@ -161,7 +167,7 @@ private:
     TQue<TPosition::VECIN, 1> bufResidualBf16_;
     TBuf<TPosition::VECCALC> bufResFp32_;
     TBuf<TPosition::VECCALC> bufPostComb_;
-    TQue<TPosition::VECIN, BUFFER_NUM_FOUR> bufPhiFp32_;
+    TQue<TPosition::VECIN, 2> bufPhiFp32_;
     TQue<TPosition::VECOUT, BUFFER_NUM_ONE> bufHInPrimeBf16_;
     TBuf<TPosition::VECCALC> bufScalar_;
 

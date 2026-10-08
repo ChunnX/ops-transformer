@@ -601,22 +601,30 @@ __aicore__ inline void VFComputePostHead(const LocalTensor<float> &dst, const Lo
 }
 
 // 一个VF同时计算相邻两个head，共用h_out与residual的寄存器加载，并保持各自四路累加顺序不变。
-template <typename T>
+template <typename T, bool FUSE_NORM_SQUARE = false>
 __aicore__ inline void VFComputePostHeadPair(const LocalTensor<T> &dst0, const LocalTensor<T> &dst1,
                                              const LocalTensor<float> &hOut, const LocalTensor<T> &residual,
                                              const LocalTensor<float> &combWeights, uint32_t rowStride,
-                                             uint32_t headIndex, float postWeight0, float postWeight1, uint32_t count)
+                                             uint32_t headIndex, float postWeight0, float postWeight1, uint32_t count,
+                                             const LocalTensor<T> &rawHOut = LocalTensor<T>(),
+                                             const LocalTensor<float> &gamma = LocalTensor<float>(), float invRms = 1.0f)
 {
     __local_mem__ T *dst0Addr = (__local_mem__ T *)dst0.GetPhyAddr();
     __local_mem__ T *dst1Addr = (__local_mem__ T *)dst1.GetPhyAddr();
     __local_mem__ float *hOutAddr = (__local_mem__ float *)hOut.GetPhyAddr();
     __local_mem__ T *residualAddr = (__local_mem__ T *)residual.GetPhyAddr();
     __local_mem__ float *combAddr = (__local_mem__ float *)combWeights.GetPhyAddr();
+    __local_mem__ T *rawAddr = nullptr;
+    __local_mem__ float *gammaAddr = nullptr;
+    if constexpr (FUSE_NORM_SQUARE) {
+        rawAddr = (__local_mem__ T *)rawHOut.GetPhyAddr();
+        gammaAddr = (__local_mem__ float *)gamma.GetPhyAddr();
+    }
     uint32_t remain = count;
     const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
     __VEC_SCOPE__
     {
-        Reg::RegTensor<T> residualB16Reg, dst0B16Reg, dst1B16Reg;
+        Reg::RegTensor<T> residualB16Reg, dst0B16Reg, dst1B16Reg, normB16Reg;
         Reg::RegTensor<float> hOutReg, residualReg, dst0Reg, dst1Reg;
         Reg::RegTensor<float> weight00Reg, weight01Reg, weight10Reg, weight11Reg;
         Reg::RegTensor<float> weight20Reg, weight21Reg, weight30Reg, weight31Reg;
@@ -632,7 +640,21 @@ __aicore__ inline void VFComputePostHeadPair(const LocalTensor<T> &dst0, const L
         Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(weight31Reg, combAddr + 3U * N_MAX + headIndex + 1U);
         for (uint16_t i = 0; i < loops; ++i) {
             mask = Reg::UpdateMask<float>(remain);
-            Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(hOutReg, hOutAddr + i * VL_FP32);
+            if constexpr (FUSE_NORM_SQUARE) {
+                Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(normB16Reg, rawAddr + i * VL_FP32);
+                Reg::Cast<float, T, CAST_B16_TO_FP32>(hOutReg, normB16Reg, mask);
+                Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(residualReg, gammaAddr + i * VL_FP32);
+                Reg::Muls(hOutReg, hOutReg, invRms, mask);
+                Reg::Mul(hOutReg, hOutReg, residualReg, mask);
+                if constexpr (IsSameT<T, bfloat16_t>::value) {
+                    Reg::Cast<T, float, CAST_FP32_TO_B16_RINT>(normB16Reg, hOutReg, mask);
+                } else {
+                    Reg::Cast<T, float, CAST_FP32_TO_B16_NONE>(normB16Reg, hOutReg, mask);
+                }
+                Reg::Cast<float, T, CAST_B16_TO_FP32>(hOutReg, normB16Reg, mask);
+            } else {
+                Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(hOutReg, hOutAddr + i * VL_FP32);
+            }
             Reg::Muls(dst0Reg, hOutReg, postWeight0, mask);
             Reg::Muls(dst1Reg, hOutReg, postWeight1, mask);
             Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(residualB16Reg, residualAddr + i * VL_FP32);
@@ -663,6 +685,16 @@ __aicore__ inline void VFComputePostHeadPair(const LocalTensor<T> &dst0, const L
             }
             Reg::StoreAlign<T, Reg::StoreDist::DIST_PACK_B32>(dst0Addr + i * VL_FP32, dst0B16Reg, mask);
             Reg::StoreAlign<T, Reg::StoreDist::DIST_PACK_B32>(dst1Addr + i * VL_FP32, dst1B16Reg, mask);
+            if constexpr (FUSE_NORM_SQUARE) {
+                // Mid-RMS must square the quantized post outputs, not the
+                // pre-quantization FP32 registers. Keep both rounding points.
+                Reg::Cast<float, T, CAST_B16_TO_FP32>(dst0Reg, dst0B16Reg, mask);
+                Reg::Cast<float, T, CAST_B16_TO_FP32>(dst1Reg, dst1B16Reg, mask);
+                Reg::Mul(dst0Reg, dst0Reg, dst0Reg, mask);
+                Reg::Mul(dst1Reg, dst1Reg, dst1Reg, mask);
+                Reg::Add(dst0Reg, dst0Reg, dst1Reg, mask);
+                Reg::StoreAlign(hOutAddr + i * VL_FP32, dst0Reg, mask);
+            }
         }
     }
 }
