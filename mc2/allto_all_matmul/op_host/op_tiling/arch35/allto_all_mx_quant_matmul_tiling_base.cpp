@@ -417,28 +417,21 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::InitTilingContextParameters()
 
 CutResult AllToAllMxQuantMatmulTilingBase::GetCutResOfCommAndCompute()
 {
-    constexpr uint32_t COMM_RANKDIM_FOUR = 4;
     uint8_t commMode = mc2tiling::A5_AICPU_TS_ENGINE;
     if (MatmulAlltoAllTilingUtil::GetAndConvertCommMode(context_, opName_, contextInfo_, ALLTOALL_MATMUL_INDEX_SCHEMA,
                                                         commMode) != ge::GRAPH_SUCCESS) {
         OP_LOGD(opName_, "GetAndConvertCommMode failed, use default commMode AICPU for tiling.");
     }
     CutResult cutRes;
-    if ((!usingApaceImpl_) && (contextInfo_.args_.rankDim == COMM_RANKDIM_FOUR)) {
-        // A5的4卡形态使用基于拟合数据的公式化tiling
-        AlltoAllMatmulFitBalanceTiling tiling(matmulQuantType_, contextInfo_.args_, TopoType::STANDARD_CARD, commMode);
-        cutRes = tiling.GetTiling();
-    } else {
-        OP_LOGD(opName_, "Falling back to formulaic tiling for arch35 tiling");
-        AlltoAllMM alltoallMatmulTileFormulate(contextInfo_.args_, contextInfo_.args_.rankDim, KernelType::ALL_TO_ALL,
-                                               Ops::Base::DAV_3510, true);
-        if (commMode == mc2tiling::A5_AICPU_TS_ENGINE) {
-            constexpr uint64_t MX_AICPU_TILING_MAX_NUM = 3;
-            alltoallMatmulTileFormulate.tilingM_.SetMaxTileCnt(MX_AICPU_TILING_MAX_NUM);
-        }
-        alltoallMatmulTileFormulate.GetTiling();
-        cutRes = alltoallMatmulTileFormulate.tilingM_.cutRes;
+    OP_LOGD(opName_, "Using formulaic tiling for arch35 tiling");
+    AlltoAllMM alltoallMatmulTileFormulate(contextInfo_.args_, contextInfo_.args_.rankDim, KernelType::ALL_TO_ALL,
+                                           Ops::Base::DAV_3510, true);
+    if (commMode == mc2tiling::A5_AICPU_TS_ENGINE) {
+        constexpr uint64_t MX_AICPU_TILING_MAX_NUM = 3;
+        alltoallMatmulTileFormulate.tilingM_.SetMaxTileCnt(MX_AICPU_TILING_MAX_NUM);
     }
+    alltoallMatmulTileFormulate.GetTiling();
+    cutRes = alltoallMatmulTileFormulate.tilingM_.cutRes;
     if (usingApaceImpl_) {
         AlignCutResForKernel(cutRes, contextInfo_.args_.mValue);
     }
@@ -475,6 +468,25 @@ void AllToAllMxQuantMatmulTilingBase::AlignCutResForKernel(CutResult& cutRes, ui
             cutRes.longTileLen, cutRes.numLongTile, cutRes.shortTileLen, cutRes.numShortTile, cutRes.shortTileAtBack);
 }
 
+ge::graphStatus AllToAllMxQuantMatmulTilingBase::CheckHcommTileInfo() const
+{
+    const uint64_t mValue = contextInfo_.args_.mValue;
+    const uint64_t tileM = inferredInfo_.tileM;
+    OP_TILING_CHECK(tileM == 0,
+                    OP_LOGE(opName_, "Invalid HCOMM tile size: M=%lu, tileM=0, tileCnt=%u, tailM=%u, tailCnt=%u.",
+                            mValue, inferredInfo_.tileCnt, inferredInfo_.tailM, inferredInfo_.tailCnt),
+                    return ge::GRAPH_FAILED);
+    // Matmul maps rows to communication tiles using mPos / tileM, with at most one short tail tile.
+    const uint64_t tailM = mValue % tileM;
+    const uint64_t tailCnt = tailM == 0 ? 0 : 1;
+    OP_TILING_CHECK(
+        inferredInfo_.tileCnt != mValue / tileM || inferredInfo_.tailM != tailM || inferredInfo_.tailCnt != tailCnt,
+        OP_LOGE(opName_, "Invalid HCOMM tile split: M=%lu, tileM=%lu, tileCnt=%u, tailM=%u, tailCnt=%u.", mValue, tileM,
+                inferredInfo_.tileCnt, inferredInfo_.tailM, inferredInfo_.tailCnt),
+        return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 /**
  * @brief 主要处理逻辑，设置hccl参数；进行通算切分, 获取mm tiling等
  *
@@ -488,6 +500,9 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::DoOpTiling()
     MC2_CHECK_LOG_RET(opName_, InitTilingContextParameters());
     // 进行通算切分
     MC2_CHECK_LOG_RET(opName_, TileCommAndCompute());
+    if (usingApaceImpl_) {
+        MC2_CHECK_LOG_RET(opName_, CheckHcommTileInfo());
+    }
     // 调用量化Matmul的tiling方法进行切分
     MC2_CHECK_LOG_RET(opName_, DoMxQuantMMTiling());
     // hccl的tiling参数赋值处理
