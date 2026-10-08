@@ -200,7 +200,7 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
     int64_t cmpS2LoopCnt = runInfo.s2LoopCount;
     int64_t topkKIdx = s2IdxInBase + cmpS2LoopCnt * constInfo.s2BaseSize;
     int64_t tokenOffset = runInfo.s2StartIdx;
-    if constexpr (isFd) {
+    if constexpr (IS_FD) {
         if (constInfo.splitKVActive) {
             topkKIdx += runInfo.s2StartIdx;
             tokenOffset = 0;
@@ -378,7 +378,7 @@ __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::CopyOutKvUb2Gm(
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::CalSparseCalSize(const RunInfo& runInfo, ConstInfo& constInfo)
 {
-    if constexpr (IS_SPLIT_G && !isFd) {
+    if constexpr (IS_SPLIT_G && !IS_FD) {
         uint32_t aicIdx = constInfo.aivIdx >> 1U;
         uint32_t v0S2SizeFirstCore = CeilDiv(runInfo.s2RealSize, 2);
         uint32_t v0S2SizeSecondCore = runInfo.s2RealSize - v0S2SizeFirstCore;
@@ -421,7 +421,7 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
 
     CalSparseCalSize(runInfo, constInfo);
     ProcessSparseKv(outputL1, v0ResGm, runInfo, constInfo, startPos);
-    if constexpr (IS_SPLIT_G && !isFd) {
+    if constexpr (IS_SPLIT_G && !IS_FD) {
         CrossCoreSetFlag<0, PIPE_MTE3>(15);  // 15: 跨核同步标志位值
         CrossCoreWaitFlag<0, PIPE_MTE3>(15); // 15: 跨核同步标志位值
     }
@@ -513,11 +513,11 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
     if (runInfo.s2LoopCount != 0 || (runInfo.s2LoopCount == 0 && isSinks)) {
         SFAUpdateExpSumAndExpMax<T>(sumUb, maxUb, sfaExpUb, sumUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize);
     }
-    if (constInfo.returnSoftmaxLse && (!isFd || !constInfo.splitKVActive) &&
+    if (constInfo.returnSoftmaxLse && (!IS_FD || !constInfo.splitKVActive) &&
         runInfo.s2LoopCount == runInfo.s2LoopLimit) {
         CopyFALseToGm(runInfo, constInfo);
     }
-    if constexpr (isFd) {
+    if constexpr (IS_FD) {
         if (constInfo.splitKVActive && runInfo.halfMRealSize > 0 && runInfo.s2LoopCount == runInfo.s2LoopLimit) {
             constexpr uint32_t headParts = IS_SPLIT_G ? 2U : 1U;
             AttentionCommon::S2SplitFdStagingLayout layout = {
@@ -624,7 +624,7 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
                                                                      sfaDTemplateAlign64, 1.0);
         }
 
-        if constexpr (isFd) {
+        if constexpr (IS_FD) {
             if (constInfo.splitKVActive) {
                 constexpr uint32_t headParts = IS_SPLIT_G ? 2U : 1U;
                 AttentionCommon::S2SplitFdStagingLayout layout = {
@@ -947,7 +947,7 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
                                                                                                  ConstInfo& constInfo)
 {
     SoftmaxInitBuffer();
-    if constexpr (isFd) {
+    if constexpr (IS_FD) {
         tPipe->InitBuffer(splitKVStatsTmpBuf, 2048);
     }
 

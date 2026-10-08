@@ -84,7 +84,7 @@ appropriate here. The original non-FD shared-gather path is unchanged.
 ## Compile-time FD isolation
 
 Host tiling selects the existing `FLASH_DECODE` template parameter, propagated
-as `isFd` into arch35 services. `if constexpr (isFd)` isolates partition
+as `IS_FD` into arch35 services. `if constexpr (IS_FD)` isolates partition
 scheduling, workspace staging, the final synchronization, merge and extra UB
 allocation. `FLASH_DECODE=0` instances compile without those operations.
 The new template combinations are limited to TND/PA_BSND, with or without RoPE;
