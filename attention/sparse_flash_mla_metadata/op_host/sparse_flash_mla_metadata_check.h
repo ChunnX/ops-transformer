@@ -61,7 +61,8 @@ inline bool IsA5Smla(const char *socVersion)
 
 inline bool IsA6Smla(const char *socVersion)
 {
-    return socVersion != nullptr && strstr(socVersion, "Ascend960DT") != nullptr;
+    return socVersion != nullptr &&
+           (strstr(socVersion, "Ascend960DT") != nullptr || strstr(socVersion, "Ascend960PR") != nullptr);
 }
 inline int64_t GetSmlaAicCoreMaxNum(const char *socVersion)
 {
