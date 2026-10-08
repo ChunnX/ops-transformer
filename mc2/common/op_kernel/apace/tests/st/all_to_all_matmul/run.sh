@@ -162,13 +162,15 @@ run_single() {
                 if command -v timeout >/dev/null 2>&1; then
                     set +e
                     timeout ${KERNEL_TIMEOUT}s msprof --output="$PROF_DIR" \
-                        --application="$EXE_PATH $M $K $N $RANK_NUM $LOCAL_MATMUL $HEAD_M_SIZE $MODE $DTYPE $TEST_MODE" 2>&1
+                        --application="$EXE_PATH $M $K $N $RANK_NUM $LOCAL_MATMUL $HEAD_M_SIZE $MODE $DTYPE $TEST_MODE" \
+                        --task-time on --ai-core on 2>&1
                     local MSPROF_RC=$?
                     set -e
                 else
                     set +e
                     msprof --output="$PROF_DIR" \
-                        --application="$EXE_PATH $M $K $N $RANK_NUM $LOCAL_MATMUL $HEAD_M_SIZE $MODE $DTYPE $TEST_MODE" 2>&1
+                        --application="$EXE_PATH $M $K $N $RANK_NUM $LOCAL_MATMUL $HEAD_M_SIZE $MODE $DTYPE $TEST_MODE" \
+                        --task-time on --ai-core on 2>&1
                     local MSPROF_RC=$?
                     set -e
                 fi
