@@ -58,6 +58,27 @@ struct CoreAssignment {
     uint32_t rankGroupSize;  // 远端核=该卡通道数；本地核=本地核总数
 };
 
+struct TokenRangeAssignment {
+    uint32_t start;
+    uint32_t count;
+};
+
+// Remainder-aware contiguous token range split (same style as GetCoreAssignment):
+// the first (numTokens % totalBlocks) cores take one extra token, so every core participates and the
+// per-core load differs by at most 1.
+__aicore__ inline TokenRangeAssignment GetTokenRangeAssignment(uint32_t totalBlocks, uint32_t aivId, uint32_t numTokens)
+{
+    TokenRangeAssignment result{0, 0};
+    if (totalBlocks == 0U) {
+        return result;
+    }
+    uint32_t base = numTokens / totalBlocks;
+    uint32_t remainder = numTokens % totalBlocks;
+    result.start = aivId * base + ((aivId < remainder) ? aivId : remainder);
+    result.count = base + ((aivId < remainder) ? 1U : 0U);
+    return result;
+}
+
 __aicore__ inline CoreAssignment GetCoreAssignment(uint32_t totalBlocks, uint32_t aivId, uint32_t numRanks,
                                                    uint32_t rankId, uint32_t channelsPerRank)
 {

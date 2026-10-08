@@ -28,9 +28,24 @@ _ENGRAM_DTYPE_TO_INT = {
     torch.float8_e4m3fn: 24,
 }
 _ENGRAM_INT_TO_DTYPE = {v: k for k, v in _ENGRAM_DTYPE_TO_INT.items()}
-_ENGRAM_SF_DTYPES = (torch.float32, torch.float8_e8m0fnu)
+_ENGRAM_SF_DTYPES = (
+    torch.float16,
+    torch.float32,
+    torch.bfloat16,
+    torch.float8_e5m2,
+    torch.float8_e4m3fn,
+    torch.float8_e8m0fnu,
+)
 _ENGRAM_GRAD_DTYPES = (torch.bfloat16, torch.float16, torch.float32)
 _MOE_EP_METADATA_FIELDS = 5
+
+# engram fetch modes: 0 = sliced sharding + cross-NPU comm (default, same as before, train/infer);
+# 1 = full table replicated on every NPU, purely local gather (infer only, not with with_grad=True).
+# Values must stay in sync with op-side mc2/engram_fetch/op_api/engram_fetch_mode_def.h and the
+# ENGRAM_FETCH_MODE_* constants in elastic_buffer.cpp.
+FETCH_MODE_SLICED = 0
+FETCH_MODE_LOCAL = 1
+_FETCH_MODES = (FETCH_MODE_SLICED, FETCH_MODE_LOCAL)
 
 _MOE_EP_METADATA_ALIGN_ELEMENTS = 128  # 512 bytes, int32 elements
 
@@ -155,7 +170,8 @@ class ElasticBufferOpBuilder(OpBuilder):
         """PyTorch operator signature."""
         return [
             "engram_fetch(Tensor context, Tensor indices, int hidden_size, "
-            "int num_entries, int dtype, Tensor sf_table, Tensor fetched_sf) -> Tensor",
+            "int num_entries, int dtype, Tensor sf_table, Tensor fetched_sf, "
+            "int fetch_mode=0) -> Tensor",
             "engram_fetch_train(Tensor context, Tensor indices, int hidden_size, "
             "int num_entries, int dtype, Tensor local_storage_addr, "
             "Tensor sf_table_addr, Tensor fetched_sf, "
@@ -173,7 +189,19 @@ class ElasticBufferOpBuilder(OpBuilder):
 
         @impl(get_as_library(), "engram_fetch", "Meta")
         def engram_fetch_meta(
-            context, indices, hidden_size, num_entries, dtype, sf_table, fetched_sf
+            context,
+            indices,
+            hidden_size,
+            num_entries,
+            dtype,
+            sf_table,
+            fetched_sf,
+            # The trailing default must mirror the schema's `int fetch_mode=0`:
+            # torch (2.7.1) drops schema-defaulted args (omitted OR equal to the
+            # default value) before invoking Python kernels, so without this
+            # default a call with fetch_mode=0 raises
+            # "engram_fetch() missing 1 required positional argument: 'fetch_mode'".
+            fetch_mode=FETCH_MODE_SLICED,
         ):
             return torch.empty(
                 (indices.size(0), hidden_size),
@@ -276,11 +304,30 @@ _elastic_buffer_op_builder._ensure_initialized()
 
 @impl(get_as_library(), "engram_fetch", "PrivateUse1")
 def engram_fetch(
-    context, indices, hidden_size, num_entries, dtype, sf_table, fetched_sf
+    context,
+    indices,
+    hidden_size,
+    num_entries,
+    dtype,
+    sf_table,
+    fetched_sf,
+    # Must mirror the schema's `int fetch_mode=0`: torch (2.7.1) drops
+    # schema-defaulted args (omitted OR equal to the default value) before
+    # invoking Python kernels; without this default, sliced inference
+    # (fetch_mode=0 == default) fails with
+    # "engram_fetch() missing 1 required positional argument: 'fetch_mode'".
+    fetch_mode=FETCH_MODE_SLICED,
 ):
     op_module = _elastic_buffer_op_builder.load()
     return op_module.ElasticBuffer.engram_fetch(
-        context, indices, hidden_size, num_entries, dtype, sf_table, fetched_sf
+        context,
+        indices,
+        hidden_size,
+        num_entries,
+        dtype,
+        sf_table,
+        fetched_sf,
+        fetch_mode,
     )
 
 
@@ -606,7 +653,17 @@ class _EPEpilogueEvent:
 class ElasticBuffer:
     """
     ElasticBuffer for distributed Engram storage management and MoE dispatch/combine operations.
+
+    Engram fetch modes:
+        FETCH_MODE_SLICED (0, default): global table sharded across ranks,
+            fetching requires cross-NPU communication (inference & training).
+        FETCH_MODE_LOCAL (1, inference only): full global table replicated
+            on every NPU, fetching is purely local (no cross-NPU
+            communication); not supported with with_grad=True.
     """
+
+    FETCH_MODE_SLICED = FETCH_MODE_SLICED
+    FETCH_MODE_LOCAL = FETCH_MODE_LOCAL
 
     def __init__(
         self,
@@ -618,6 +675,7 @@ class ElasticBuffer:
         num_topk: Optional[int] = None,
         with_grad: bool = False,
         explicitly_destroy: bool = False,
+        fetch_mode: int = FETCH_MODE_SLICED,
     ):
         """
         Initialize the ElasticBuffer.
@@ -625,6 +683,19 @@ class ElasticBuffer:
         Arguments:
             group: the distributed process group.
             num_cpu_bytes: the CPU buffer size in bytes (must be 2MB-aligned).
+                In sliced mode (fetch_mode=0) it only needs to hold this
+                rank's shard of the table. In local mode (fetch_mode=1) it is
+                only used as the capacity of the copy fallback window:
+                ``engram_write`` first tries to register the caller's storage
+                host memory in place (zero-copy, no window and no copy at
+                all, all ranks sharing the same host memory map the SAME
+                table onto their devices); when that host memory is not
+                device-registerable, a per-rank window of ``num_cpu_bytes``
+                is allocated and the full table is memcpy'd into it
+                (engram_write fails fast when the capacity is insufficient).
+                Pass 0 to auto-size it via
+                ``ElasticBuffer.get_engram_storage_size_hint`` (the computed
+                size already includes the per-row aligned SF overhead).
             num_max_tokens_per_rank: maximum MoE dispatch tokens per rank.
             hidden: hidden dimension for MoE dispatch/combine.
             num_topk: top-k value for MoE dispatch/combine.
@@ -635,14 +706,48 @@ class ElasticBuffer:
                 instance is garbage collected. Note that Engram host pinned
                 memory is retained in a process-level pool after ``destroy``
                 and freed when the process exits (see ``destroy``).
+            fetch_mode: engram fetch mode. 0 (FETCH_MODE_SLICED, default):
+                global table is sharded across ranks, fetching goes through
+                cross-NPU communication (RDMA / a2a); 1 (FETCH_MODE_LOCAL,
+                inference only): the full global table is mapped on every
+                NPU, fetching is purely local with no cross-NPU
+                communication; ``engram_write`` registers the caller's
+                storage host memory in place (zero-copy) when it is
+                device-registerable, so ranks sharing the same host memory
+                (e.g. a fork-shared mmap of one vocab file) register the
+                SAME table on every NPU with a single host copy; otherwise it
+                falls back to per-rank table replication;
+                not supported together with with_grad=True.
         """
         moe_args = (num_max_tokens_per_rank, hidden, num_topk)
         self._validate_init_args(group, num_cpu_bytes, moe_args, with_grad)
+        _torch_check(
+            isinstance(fetch_mode, int) and not isinstance(fetch_mode, bool),
+            lambda: (
+                f"fetch_mode must be an int, got {type(fetch_mode).__name__}: {fetch_mode!r}."
+            ),
+        )
+        _torch_check(
+            fetch_mode in _FETCH_MODES,
+            lambda: (
+                f"fetch_mode must be one of {_FETCH_MODES} "
+                f"(0=FETCH_MODE_SLICED, 1=FETCH_MODE_LOCAL), got {fetch_mode}."
+            ),
+        )
+        _torch_check(
+            not (with_grad and fetch_mode == FETCH_MODE_LOCAL),
+            lambda: (
+                "fetch_mode=1 (FETCH_MODE_LOCAL, full replication) only supports inference, "
+                f"with_grad=True is not supported in local fetch_mode, got with_grad={with_grad}, "
+                f"fetch_mode={fetch_mode}."
+            ),
+        )
 
         self._group = group
         self._num_cpu_bytes = num_cpu_bytes
         self._with_grad = with_grad
         self._explicitly_destroy = explicitly_destroy
+        self._fetch_mode = fetch_mode
         self._rank_id = dist.get_rank(self._group)
         self._ep_world_size = dist.get_world_size(self._group)
 
@@ -661,6 +766,7 @@ class ElasticBuffer:
             num_max_tokens_per_rank if num_max_tokens_per_rank is not None else 0,
             self._with_grad,
             self._explicitly_destroy,
+            self._fetch_mode,
         )
 
         self._num_max_tokens_per_rank = num_max_tokens_per_rank
@@ -801,6 +907,21 @@ class ElasticBuffer:
             `storage` must be pinned (e.g. allocated via `storage.pin_memory()` or
             `torch.empty(..., pin_memory=True)`); plain (non-pinned) CPU memory is not
             supported by the driver's host-register path.
+            In local inference mode (fetch_mode=1), the same zero-copy mapping is applied
+            to the full-table `storage` when its host memory is device-registerable (e.g.
+            a shared file mmap, read-write); ranks sharing the same host memory then
+            register the SAME table on every NPU (one host copy in total) and in-place
+            updates of `storage` are visible to subsequent engram_fetch calls. When the
+            host memory is not registerable, a per-rank copy window sized by
+            `num_cpu_bytes` is used instead and the table is memcpy'd into it (the
+            current `storage` no longer needs to outlive the write). Whether zero-copy
+            is active can be queried via `engram_storage_zero_copy`.
+            In sliced inference mode (fetch_mode=0), the same applies to the per-rank
+            `storage` shard: when its host memory is device-registerable and the comm
+            domain accepts the registration, the shard is mapped in place (no per-rank
+            window, no memcpy) and in-place updates of `storage` are visible to
+            subsequent engram_fetch calls from every rank; otherwise a per-rank copy
+            window is used as in local mode.
         """
         torch._check(
             storage.is_cpu,
@@ -841,6 +962,18 @@ class ElasticBuffer:
                 lambda: "engram_write in with_grad mode requires a non-empty storage",
             )
         if sf is not None:
+            torch._check(
+                sf.dim() == 2,
+                lambda: f"sf must be 2D, got dimensions: {sf.dim()}",
+            )
+            torch._check(
+                sf.is_contiguous(),
+                lambda: "sf must be contiguous",
+            )
+            torch._check(
+                sf.size(1) > 0,
+                lambda: f"sf second dimension must be positive, got: {sf.size(1)}",
+            )
             if self._with_grad:
                 torch._check(
                     sf.is_cpu,
@@ -859,15 +992,42 @@ class ElasticBuffer:
                     lambda: f"sf dim0 ({sf.size(0)}) must match storage dim0 "
                     f"({storage.size(0)}) in with_grad mode, sf must be the per-rank table",
                 )
+            elif self._fetch_mode == FETCH_MODE_LOCAL:
+                # Local mode: storage is the full global table, sf is full-table too (same rows).
+                torch._check(
+                    sf.size(0) == storage.size(0),
+                    lambda: f"sf dim0 ({sf.size(0)}) must match full-table storage dim0 "
+                    f"({storage.size(0)}) in local fetch_mode",
+                )
+            else:
+                # Sliced inference gathers SF rows by GLOBAL vocab index on every rank
+                # (remote-owned tokens included), so each rank must hold the full-vocab
+                # SF table: per-rank storage rows * world_size.
+                torch._check(
+                    sf.size(0) == storage.size(0) * self._ep_world_size,
+                    lambda: (
+                        f"sliced fetch_mode requires the full-vocab sf table on every rank: "
+                        f"sf dim0 ({sf.size(0)}) must equal per-rank storage dim0 "
+                        f"({storage.size(0)}) * world_size ({self._ep_world_size}) = "
+                        f"{storage.size(0) * self._ep_world_size}; the kernel gathers sf "
+                        f"by global vocab index"
+                    ),
+                )
+            if not self._with_grad:
+                torch._check(
+                    sf.device.type == torch.device("npu").type,
+                    lambda: f"inference sf must be on NPU, got device: {sf.device}",
+                )
             torch._check(
                 sf.dtype in _ENGRAM_SF_DTYPES,
                 lambda: f"sf dtype must be one of {_ENGRAM_SF_DTYPES}, got: {sf.dtype}",
             )
         self._runtime.engram_write(storage, sf)
-        if self._with_grad:
-            self._engram_storage_ref = storage
-            if sf is not None:
-                self._engram_sf_ref = sf
+        # 推理模式(local 整表 / sliced 分片)存储可能被原地零拷贝注册, with_grad 模式存储 host 内存
+        # 被直接映射: 都必须持有引用保证映射内存存活 (回退拷贝路径下持有无害)。
+        self._engram_storage_ref = storage
+        if self._with_grad and sf is not None:
+            self._engram_sf_ref = sf
         self._engram_context_tensor = self._runtime.get_context_tensor()
         self._engram_hidden_size = storage.size(1)
         self._engram_num_entries = storage.size(0)
@@ -878,6 +1038,28 @@ class ElasticBuffer:
             self._local_sf_table_addr = self._runtime.get_local_sf_table_addr()
         self._comm_buffer_size = self._runtime.get_comm_buffer_size()
         self._rank_size = self._runtime.get_rank_size()
+
+    @property
+    def engram_storage_zero_copy(self) -> bool:
+        """Whether the engram storage host memory is registered in place (zero-copy).
+
+        True when the storage passed to ``engram_write`` is mapped directly as the
+        engram window (with_grad mode, or local/sliced inference mode with
+        device-registerable host memory and a successful comm-domain registration);
+        False when a per-rank copy window is used instead. In local mode, ranks
+        sharing the same host memory report True with identical
+        ``engram_host_buf_ptr`` values, i.e. the SAME vocab is mapped on every NPU.
+        """
+        return bool(self._runtime.get_storage_zero_copy())
+
+    @property
+    def engram_host_buf_ptr(self) -> int:
+        """Host address of the engram window (0 before engram_write).
+
+        Zero-copy: the data_ptr of the registered storage (identical across ranks that
+        share the same host memory). Copy fallback: this rank's private window.
+        """
+        return int(self._runtime.get_host_buf_ptr())
 
     def engram_fetch(self, indices: torch.Tensor) -> Callable:
         """
@@ -959,10 +1141,18 @@ class ElasticBuffer:
             fetched_sf
             if fetched_sf is not None
             else torch.empty(0, device=indices.device),
+            self._fetch_mode,
         )
 
         def _wait():
-            result = torch.ops.cann_ops_transformer.engram_fetch_wait(context, fetched)
+            # Local mode: no in-flight RDMA reads, data is visible once the kernel completes;
+            # skip the cross-NPU wait.
+            if self._fetch_mode == FETCH_MODE_LOCAL:
+                result = fetched
+            else:
+                result = torch.ops.cann_ops_transformer.engram_fetch_wait(
+                    context, fetched
+                )
             self._engram_fetch_in_progress = False
             if sf is not None:
                 return result, fetched_sf
@@ -1452,6 +1642,13 @@ class ElasticBuffer:
             raise RuntimeError(f"indices must be 1D, got dimensions: {indices.dim()}")
         if indices.dtype != torch.int32:
             raise RuntimeError(f"indices dtype must be int32, got: {indices.dtype}")
+        if not indices.is_contiguous():
+            raise RuntimeError("indices must be contiguous")
+        if self._engram_sf is not None and self._engram_sf.device != indices.device:
+            raise RuntimeError(
+                f"indices and sf must be on the same NPU device, got indices: {indices.device}, "
+                f"sf: {self._engram_sf.device}"
+            )
         if self._runtime is None:
             raise RuntimeError(
                 "engram_fetch cannot be called after destroy, please create a new ElasticBuffer instance"

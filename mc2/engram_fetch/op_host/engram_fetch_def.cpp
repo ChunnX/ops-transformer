@@ -23,7 +23,11 @@ public:
         this->Input("comm_context").ParamType(REQUIRED).DataTypeList({ge::DT_INT32}).FormatList({ge::FORMAT_ND});
         this->Input("indices").ParamType(REQUIRED).DataTypeList({ge::DT_INT32}).FormatList({ge::FORMAT_ND});
         this->Input("local_storage_addr").ParamType(OPTIONAL).DataTypeList({ge::DT_INT64}).FormatList({ge::FORMAT_ND});
-        this->Input("sf_table").ParamType(OPTIONAL).DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT8_E8M0, ge::DT_INT64}).FormatList({ge::FORMAT_ND});
+        this->Input("sf_table")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2,
+                           ge::DT_FLOAT8_E8M0, ge::DT_INT64})
+            .FormatList({ge::FORMAT_ND});
 
         this->Output("fetched")
             .ParamType(REQUIRED)
@@ -37,12 +41,17 @@ public:
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND});
         this->Output("num_recv_out").ParamType(OPTIONAL).DataTypeList({ge::DT_INT32}).FormatList({ge::FORMAT_ND});
-        this->Output("fetched_sf").ParamType(OPTIONAL).DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT8_E8M0}).FormatList({ge::FORMAT_ND});
+        this->Output("fetched_sf")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2,
+                           ge::DT_FLOAT8_E8M0})
+            .FormatList({ge::FORMAT_ND});
         this->Attr("hidden_size").AttrType(REQUIRED).Int();
         this->Attr("num_entries_per_rank").AttrType(REQUIRED).Int();
         this->Attr("num_max_tokens_per_rank").AttrType(OPTIONAL).Int();
         this->Attr("comm_buffer_size").AttrType(OPTIONAL).Int();
         this->Attr("with_grad").AttrType(OPTIONAL).Int();
+        this->Attr("fetch_mode").AttrType(OPTIONAL).Int();
 
         OpAICoreConfig aicore_config_a5;
         aicore_config_a5.DynamicCompileStaticFlag(true)
