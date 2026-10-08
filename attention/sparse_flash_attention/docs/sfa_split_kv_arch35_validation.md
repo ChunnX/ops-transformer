@@ -9,11 +9,8 @@ no sinks. Other valid shapes retain the original tiling. Trailing sparse
 padding is handled by the corrected unsplit row computation described in
 [the algorithm](sfa_split_kv_arch35.md).
 
-Measurements were collected on 2026-10-08 against the target master's native
-SFA at `d5b874d33cbaafbb31af55e57e296c50933aca0f`, not against an earlier
-partitioned implementation. Both source trees were built with the same
-toolchain and installed under separate private vendor prefixes. No system
-CANN files were changed.
+The baseline is master's native SFA. Both implementations use the same
+toolchain and separate vendor prefixes.
 
 Environment: Ascend950DT_9582 (36 AICs), CANN 9.1, Python 3.11.10,
 PyTorch 2.10.0 and torch_npu 2.10.0.post4.
@@ -126,29 +123,23 @@ B=1, Q=1, G=8. Each group changes only the specified field from the default.
 | KV 长度 | 65536 | 71.161 | 19.764 | 3.601x | 72.2% |
 
 
-## Correctness and regression
+## Test coverage
 
-- Host UT: 12/12 passed, including RoPE absent/64, head splits, available
+- Host UT covers RoPE absent/64, head splits, available
   AIC counts, FD template keys/workspace sizes, and common-validation rejection
   of invalid sparse block sizes and RoPE dimensions.
-- Complete Ascend 950 SFA operator package built successfully.
-- Template probes: A5 registers FD for HAS_ROPE=0/1; A2 registers no new FD selection.
-- Device regression: 7820 passed, 32 skipped, zero failures and zero xfails.
-  The two disjoint selections were 3136 padding tests and the remaining
-  4684 passed/32 skipped tests. Skips are single-query mixed-row cases.
-- Coverage includes every head count 1–128, FP16/BF16, modes 0/3,
+- Template probes check FD registration for HAS_ROPE=0/1.
+- Device coverage includes every head count 1–128, FP16/BF16, modes 0/3,
   RoPE absent/64, LSE off/on, single/multiple batches and eager/graph replay.
-- The 3136 dedicated padding tests cover G=1/3/8/64/65/97/128 and valid-prefix
+- Padding tests cover G=1/3/8/64/65/97/128 and valid-prefix
   lengths 0/1/63/64/65/127/128/129/255/256/257/2047, mixed full/short rows and
-  mixed full/empty rows. Another 384 tests check non-FD padding with 40 queries.
-- Dedicated non-FD coverage totals 1056 cases, including TopK 128/4096 and
+  mixed full/empty rows, plus non-FD padding with 40 queries.
+- Non-FD coverage includes TopK 128/4096 and
   workloads with too many queries to enable FD.
 - All output rows are included in independent FP32 softmax-reference checks:
   relative L2 <0.02 for BF16 and <0.005 for FP16. Returned FP32 max/sum
   are checked separately. Empty rows must have zero output/max/sum.
-  No padded rows are exempted and no mixed-row test checks only its first row.
-- All 168 timing configurations also undergo independent numerical checks.
-  Both baseline and candidate passed all 168 configurations.
+- Each timing configuration also undergoes independent numerical checks.
 - Existing OpDef validation rejects both mixed Q/KV dtype combinations in
   modes 0 and 3. Common tiling validation continues to reject unsupported
   sparse block sizes and RoPE dimensions.
@@ -189,8 +180,3 @@ export MAX_JOBS=2
 
 The same environment variable is honored by correctness and timing scripts.
 This opt-in adapter is not used by the packaged operator or production kernel.
-
-Package SHA256:
-
-- Baseline: `78fddcd96e1a65460c559b47551fe382b79526c5da2fc63d4effde39aa4b06e7`.
-- Candidate: `07706d6d0c1fae50c9464b20325e5f9952d09046b7d2d1a46680de4a897a078b`.

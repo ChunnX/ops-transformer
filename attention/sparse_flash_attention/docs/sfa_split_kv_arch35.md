@@ -115,11 +115,8 @@ FD, or change the sparse-mode contract. Full FD rows bypass the prefix search.
 See [A5 validation results](sfa_split_kv_arch35_validation.md) for the
 single-operator B-by-Q grid, one-factor-at-a-time generalization sweeps and
 padding regressions.
-This change does not modify arch22 kernels, C8 operators, or A2 LSE support.
-
 Build: `bash build.sh --pkg --soc=ascend950 --ops=sparse_flash_attention`
-with an isolated vendor name and install prefix; no system CANN files were
-modified. Host tiling UT:
+with a separate vendor name and install prefix. Host tiling UT:
 `bash build.sh --ophost_test --ops=sparse_flash_attention --soc=ascend950`.
 Device regression: `pytest -q attention/sparse_flash_attention/tests/pytest/test_sfa_split_kv_arch35.py`
 with the isolated package selected.
