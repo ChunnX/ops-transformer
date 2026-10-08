@@ -393,6 +393,23 @@ void SFAMlaTiling::CalcInnerSize(uint32_t sfaS2Size)
     CheckUbSpace();
 }
 
+bool SFAMlaTiling::IsSplitKVSupported() const
+{
+    const auto &info = *sfaInfo_;
+    // Common validation guarantees B > 0, N2 == 1, mode 0/3 and output dtype matching Q.
+    const bool platformSupported = info.isA5 ? info.gSize == 8 && !info.returnSoftmaxLse :
+        info.npuArch == NpuArch::DAV_2201 && (info.gSize == 8 || info.gSize == 64) && info.sparseMode == 0;
+    const bool kernelSupported =
+        platformSupported && info.ropeHeadDim == 64 && info.sparseBlockSize == 1 &&
+        info.inputQType == ge::DT_BF16 && info.inputKvType == ge::DT_BF16 &&
+        info.qLayout == SFALayout::TND && info.kvLayout == SFALayout::PA_BSND &&
+        info.opParamInfo.sinks.tensor == nullptr;
+    const bool workloadSupported =
+        info.s1Size > 0 && info.s2Size >= info.sparseBlockCount &&
+        info.sparseBlockCount >= 256 && info.sparseBlockCount <= 2048;
+    return kernelSupported && workloadSupported;
+}
+
 void SFAMlaTiling::SplitBalanced()
 {
     CalcInnerSize(sfaInfo_->s2Size);
@@ -404,6 +421,22 @@ void SFAMlaTiling::SplitBalanced()
     tilingData_.innerSplitParams.set_s2BaseSize(sfaInnerSplitParams.s2BaseSize);
 
     usedCoreNum_ = aicNum_;
+    if (!IsSplitKVSupported()) {
+        return;
+    }
+    const uint32_t splitBlockSize = sfaInfo_->isA5 ? 128U : sInnerSize_;
+    const uint32_t sparseBlocks = (sfaInfo_->sparseBlockCount + splitBlockSize - 1U) / splitBlockSize;
+    // Each split processes at least one inner block. The A5 merge UB holds at most 16 splits.
+    const uint32_t maxSplitCount = std::min({16U, aicNum_ / sfaInfo_->s1Size, sparseBlocks});
+    uint32_t splitCount = 1;
+    while (splitCount * 2U <= maxSplitCount) {
+        splitCount *= 2U;
+    }
+    if (splitCount > 1) {
+        splitKVFlag_ = true;
+        kvSplitPart_ = splitCount;
+        usedCoreNum_ = sfaInfo_->s1Size * splitCount;
+    }
 }
 
 void SFAMlaTiling::Split()
@@ -507,6 +540,9 @@ void SFAMlaTiling::GetWorkspaceSize()
         if (sfaInfo_->gSize > 64) { // N1大于64时切G，相邻两个cube核处理同一个s2Base
             sfaAicNum = sfaAicNum >> 1;
         }
+        if (splitKVFlag_) {
+            sfaAicNum = usedCoreNum_;
+        }
         workspaceSize_ +=
             (S2_BASE_SIZE * D_SIZE * SFAGetTypeSize(sfaInfo_->inputQType) * TRIPLE_BUFFER_NUM * sfaAicNum);
     } else {
@@ -541,7 +577,22 @@ void SFAMlaTiling::GetWorkspaceSize()
             4 * 128 * 4 * (2 * actCoreNum); // 4:缓存有效mte2 size的长度 128:份数  4:512B对齐的长度  2:aiv核数
     }
 
-    CalcFDWorkSpace(actCoreNum);
+    tilingData_.splitKVParams.set_stagingOffset(workspaceSize_ - libapiSize_);
+    if (sfaInfo_->isA5 && splitKVFlag_) {
+        // One slot per (query, KV split, vector sub-block): FP32 O and
+        // separately aligned max/sum rows for the two AIVs on each AIC.
+        constexpr uint32_t VECTOR_SUBBLOCKS = 2;
+        constexpr uint32_t HEADS_PER_SUBBLOCK = 4;
+        constexpr uint32_t STATS_STRIDE = 8;
+        const uint64_t slots = static_cast<uint64_t>(usedCoreNum_) * VECTOR_SUBBLOCKS;
+        workspaceSize_ += slots * HEADS_PER_SUBBLOCK * (512 + 2 * STATS_STRIDE) * sizeof(float);
+    } else if (splitKVFlag_) {
+        // arch22 stores one BF16 output and two FP32 statistics per (split, query, head).
+        workspaceSize_ += static_cast<uint64_t>(kvSplitPart_) * sfaInfo_->s1Size * sfaInfo_->gSize *
+                          (headDimAlign_ * sizeof(uint16_t) + 2 * sizeof(float));
+    } else {
+        CalcFDWorkSpace(actCoreNum);
+    }
 }
 
 void SFAMlaTiling::CalcBlockDim()
@@ -2029,11 +2080,11 @@ ge::graphStatus SFAInfoParser::GetKvLayout()
         return ge::GRAPH_FAILED;
     }
     OP_CHECK_IF(
-        *opParamInfo_.returnSoftmaxLse && kvLayout_ == SFALayout::PA_BSND && !isA5_,
+        *opParamInfo_.returnSoftmaxLse && kvLayout_ == SFALayout::PA_BSND && !isA5_ &&
+            !(npuArch_ == NpuArch::DAV_2201 && qLayout_ == SFALayout::TND),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
             opName_, "layout_key", SFALayoutToSerialString(kvLayout_).c_str(),
-            "When return_softmax_lse is true, layout_kv does not support PA_BSND, it is only supported on Ascend "
-            "950PR/Ascend 950DT"),
+            "PA_BSND with return_softmax_lse requires Ascend 950 or Ascend 910B with TND query"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

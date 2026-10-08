@@ -22,10 +22,15 @@
 #endif
 
 #include "../../kv_quant_sparse_flash_attention/op_kernel/kv_quant_sparse_flash_attention_template_tiling_key.h"
+#if (__CCE_AICORE__ == 310)
 #include "../../kv_quant_sparse_flash_attention/op_kernel/arch35/kv_quant_sparse_flash_attention_kernel_mla_arch35.h"
+#else
+#include "../../kv_quant_sparse_flash_attention/op_kernel/arch22/kv_quant_sparse_flash_attention_kernel_mla.h"
+#endif
 
 using namespace AscendC;
 
+#if (__CCE_AICORE__ == 310)
 #if defined(__DAV_C310_CUBE__)
 #define QSFA_V2_OP_IMPL(templateClass, tilingdataClass, ...) \
     do { \
@@ -107,6 +112,7 @@ __aicore__ inline void DispatchKernelDtype310V2(__gm__ uint8_t *query, __gm__ ui
                         IS_VEC_S2PHYADDR);
     }
 }
+#endif
 
 template <int FLASH_DECODE, int PAGE_ATTENTION, int LAYOUT_T, int KV_LAYOUT_T, int TEMPLATE_MODE, int IS_SPLIT_G,
           int IS_VEC_S2PHYADDR>
@@ -121,8 +127,25 @@ __global__ __aicore__ void kv_quant_sparse_flash_attention_v2(
 
     TPipe tPipe;
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
+#if (__CCE_AICORE__ == 310)
     DispatchKernelDtype310V2<FLASH_DECODE, PAGE_ATTENTION, LAYOUT_T, KV_LAYOUT_T, TEMPLATE_MODE, IS_SPLIT_G,
                              IS_VEC_S2PHYADDR>(query, key, value, sparseIndices, keyScale, valueScale, blocktable,
                                                actualSeqLengthsQuery, actualSeqLengthsKV, sinks, attentionOut,
                                                softmaxMax, softmaxSum, user, tiling, tPipe);
+#else
+    GET_TILING_DATA_WITH_STRUCT(KvQuantSparseFlashAttentionTilingDataMla, tilingData, tiling);
+    if constexpr (ORIG_DTYPE_QUERY == DT_FLOAT16) {
+        KvQuantSparseFlashAttentionMla<QSFAType<half, int8_t, half, FLASH_DECODE,
+            static_cast<QSFA_LAYOUT>(LAYOUT_T), static_cast<QSFA_LAYOUT>(KV_LAYOUT_T), TEMPLATE_MODE>> op;
+        op.Init(query, key, value, sparseIndices, keyScale, valueScale, blocktable, actualSeqLengthsQuery,
+                actualSeqLengthsKV, attentionOut, user, &tilingData, tiling, &tPipe, softmaxMax, softmaxSum);
+        op.Process();
+    } else {
+        KvQuantSparseFlashAttentionMla<QSFAType<bfloat16_t, int8_t, bfloat16_t, FLASH_DECODE,
+            static_cast<QSFA_LAYOUT>(LAYOUT_T), static_cast<QSFA_LAYOUT>(KV_LAYOUT_T), TEMPLATE_MODE>> op;
+        op.Init(query, key, value, sparseIndices, keyScale, valueScale, blocktable, actualSeqLengthsQuery,
+                actualSeqLengthsKV, attentionOut, user, &tilingData, tiling, &tPipe, softmaxMax, softmaxSum);
+        op.Process();
+    }
+#endif
 }

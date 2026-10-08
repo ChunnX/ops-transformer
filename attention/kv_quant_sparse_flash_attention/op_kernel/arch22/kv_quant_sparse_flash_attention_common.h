@@ -178,9 +178,12 @@ struct ConstInfo {
     int64_t kvCacheBlockSize = 0;     // PA场景的block size
     uint32_t maxBlockNumPerBatch = 0; // PA场景的最大单batch block number
     uint32_t splitKVNum = 0U;         // S2核间切分的切分份数
+    uint32_t headSplitNum = 0U;
+    uint32_t headSplitOffset = 0U;
     QSFA_LAYOUT outputLayout;         // 输出的Transpose格式
     uint32_t sparseMode = 0;
     bool needInit = false;
+    bool returnSoftmaxLse = false;
 
     // FlashDecoding
     uint64_t combineLseOffset = 0ULL;

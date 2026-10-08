@@ -98,6 +98,7 @@ private:
     /* GM信息 */
     __gm__ int32_t* actualSeqKvlenAddr = nullptr;
     __gm__ int32_t* actualSeqQlenAddr = nullptr;
+    __gm__ int32_t* sparseIndexAddr = nullptr;
 
     GlobalTensor<int32_t> actualSeqLengthsQGm;
     uint32_t usedCoreNum = 0U;
@@ -193,6 +194,31 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
     uint32_t actBatchS2 = 1;
     uint32_t coreNum = GetBlockNum(); // G128时相邻两个cube核处理一个s1，coreNum减半
     uint32_t sfaCurrCoreIdx = aicIdx;
+    if (sharedParams.splitKVNum > 1) {
+        sfaConstInfo.splitKVNum = sharedParams.splitKVNum;
+        sfaConstInfo.splitKVPart = aicIdx % sfaConstInfo.splitKVNum;
+        usedCoreNum = sfaConstInfo.s1Size * sfaConstInfo.splitKVNum;
+        if (aicIdx < usedCoreNum) {
+            const uint32_t queryIdx = aicIdx / sfaConstInfo.splitKVNum;
+            uint32_t batchIdx = 0;
+            while (batchIdx + 1 < sfaConstInfo.bSize && queryIdx >= actualSeqQlenAddr[batchIdx]) {
+                ++batchIdx;
+            }
+            const uint32_t batchStart = batchIdx == 0 ? 0 : actualSeqQlenAddr[batchIdx - 1];
+            sfaConstInfo.bN2Start = batchIdx;
+            sfaConstInfo.bN2End = batchIdx;
+            sfaConstInfo.gS1Start = queryIdx - batchStart;
+            sfaConstInfo.gS1End = sfaConstInfo.gS1Start;
+            const uint32_t sparseBlocks = (sfaConstInfo.sparseBlockCount + sfaConstInfo.s2BaseSize - 1) /
+                                          sfaConstInfo.s2BaseSize;
+            sfaConstInfo.s2Start = sparseBlocks * sfaConstInfo.splitKVPart / sfaConstInfo.splitKVNum *
+                                   sfaConstInfo.s2BaseSize;
+            sfaConstInfo.s2End = Min(sfaConstInfo.sparseBlockCount,
+                                     sparseBlocks * (sfaConstInfo.splitKVPart + 1) / sfaConstInfo.splitKVNum *
+                                         sfaConstInfo.s2BaseSize);
+        }
+        return;
+    }
     if constexpr (IS_SPLIT_G) {
         coreNum = coreNum >> 1;
         sfaCurrCoreIdx = sfaCurrCoreIdx >> 1;
@@ -334,7 +360,11 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
         actualSeqKvlenAddr = (__gm__ int32_t*)actualSeqLengths;
     }
 
+    sparseIndexAddr = (__gm__ int32_t *)sparseIndices;
     vecBlock.InitGlobalBuffer(key, value, keyRope, sparseIndices, blockTable, softmaxMax, softmaxSum, sinks);
+    if ASCEND_IS_AIV {
+        vecBlock.InitSplitKVStaging(workspace, sfaConstInfo);
+    }
     cubeBlock.InitCubeInput(key, keyRope, sparseIndices, blockTable, actualSeqLengthsQ, sfaConstInfo);
 }
 
@@ -402,6 +432,7 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
 {
     // 计算轴的乘积
     usedCoreNum = sharedParams.usedCoreNum;
+    sfaConstInfo.splitKVNum = sharedParams.splitKVNum;
 
     if ASCEND_IS_AIC {
         sfaConstInfo.bSize = this->sharedParams.bSize;
@@ -483,6 +514,14 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
     }
 
     ProcessMainLoop();
+    if ASCEND_IS_AIV {
+        if (sfaConstInfo.splitKVNum > 1) {
+            SyncAll();
+            if (sfaConstInfo.splitKVActive && sfaConstInfo.splitKVPart == 0) {
+                vecBlock.MergeSplitKV(aicIdx / sfaConstInfo.splitKVNum, sfaConstInfo);
+            }
+        }
+    }
     FreeEvent();
 }
 
@@ -514,6 +553,24 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
             }
         }
         return;
+    }
+
+    if (sfaConstInfo.splitKVNum > 1) {
+        const uint32_t queryIdx = aicIdx / sfaConstInfo.splitKVNum;
+        if (queryIdx >= actualSeqQlenAddr[sfaConstInfo.bSize - 1]) {
+            return;
+        }
+        const uint32_t batchIdx = sfaConstInfo.bN2Start;
+        const int64_t actualKv = actualSeqKvlenAddr[batchIdx];
+        sfaConstInfo.splitKVActive = sparseIndexAddr[(queryIdx + 1) * sfaConstInfo.sparseBlockCount - 1] >= 0;
+        // Keep the original mode-3 loop bound. Short causal rows use the unsplit path.
+        const int64_t queryEnd = actualSeqQlenAddr[batchIdx];
+        const int64_t causalEnd = actualKv - queryEnd + queryIdx + 1;
+        sfaConstInfo.splitKVActive = sfaConstInfo.splitKVActive && actualKv >= sfaConstInfo.sparseBlockCount &&
+                                    (sfaConstInfo.sparseMode == 0 || causalEnd >= sfaConstInfo.sparseBlockCount);
+        if (!sfaConstInfo.splitKVActive && sfaConstInfo.splitKVPart != 0) {
+            return;
+        }
     }
 
     // 适配分核左闭右开
@@ -581,6 +638,14 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
                 bool s2NoNeedCalc = ComputeS2LoopInfo<TEMPLATE_INTF_ARGS>(sfaRunParam, this->sfaConstInfo);
                 if (s1NoNeedCalc || s2NoNeedCalc) {
                     continue;
+                }
+                if (sfaConstInfo.splitKVActive) {
+                    sfaRunParam.s2LineStartIdx = sfaConstInfo.s2Start;
+                    sfaRunParam.s2LineEndIdx = sfaConstInfo.s2End;
+                    sfaRunParam.kvLoopEndIdx =
+                        (sfaConstInfo.s2End - sfaConstInfo.s2Start + sfaConstInfo.s2BaseSize - 1) /
+                        sfaConstInfo.s2BaseSize;
+                    sfaRunParam.s2LoopEndIdx = sfaRunParam.kvLoopEndIdx;
                 }
                 s2LoopLimit = sfaRunParam.s2LoopEndIdx - 1;
                 if constexpr (IS_SPLIT_G) {

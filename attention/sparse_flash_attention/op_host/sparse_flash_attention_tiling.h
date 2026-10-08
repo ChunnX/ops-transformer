@@ -194,6 +194,7 @@ BEGIN_TILING_DATA_DEF(SparseFlashAttentionSplitKVParamsMla)
 TILING_DATA_FIELD_DEF(uint32_t, s2)            // S2切分份数
 TILING_DATA_FIELD_DEF(uint32_t, accumOutSize)  // FD workspace
 TILING_DATA_FIELD_DEF(uint32_t, logSumExpSize) // FD workspace
+TILING_DATA_FIELD_DEF(uint64_t, stagingOffset) // offset within the user workspace
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(SparseFlashAttentionSplitKVParamsMlaOp, SparseFlashAttentionSplitKVParamsMla)
 
@@ -316,6 +317,7 @@ private:
     void InitParams();
 
     void SplitBalanced();
+    bool IsSplitKVSupported() const;
     void CalcInnerSize(uint32_t sfaS2Size);
 
     bool IsFlashDecode(uint32_t coreNum);

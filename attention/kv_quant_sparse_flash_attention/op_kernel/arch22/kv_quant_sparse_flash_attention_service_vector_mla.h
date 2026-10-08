@@ -33,6 +33,7 @@ static_assert((TQ4_SCALE_UB_F32 + TQ4_SCALE_SLOT_STRIDE) * sizeof(float) <= 4096
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
 #include "kv_quant_sparse_flash_attention_common.h"
+#include "../../../common/op_kernel/sparse_split_kv_merge.h"
 
 using AscendC::CrossCoreSetFlag;
 using AscendC::CrossCoreWaitFlag;
@@ -54,6 +55,25 @@ public:
     __aicore__ inline void ProcessVec1L(const RunInfo &kvVecInfo);
     __aicore__ inline void ProcessVec2L(const RunInfo &kvVecInfo);
     __aicore__ inline void InitBuffers(TPipe *pipe);
+    __aicore__ inline void InitSoftmaxGlobalTensor(GlobalTensor<T> max, GlobalTensor<T> sum)
+    {
+        softmaxMaxGm = max;
+        softmaxSumGm = sum;
+    }
+    __aicore__ inline void MergeSplitKV(GlobalTensor<OUT_T> &partialOut, GlobalTensor<T> &partialMax,
+        GlobalTensor<T> &partialSum, GlobalTensor<OUT_T> &finalOut, GlobalTensor<T> &finalMax,
+        GlobalTensor<T> &finalSum, uint32_t queryIdx)
+    {
+        AttentionCommon::MergeSparseSplitKV(kvVecConstInfo.qSeqSize, queryIdx, kvVecConstInfo.splitKVNum,
+            kvVecConstInfo.gSize,
+            tilingData->baseParams.returnSoftmaxLse, partialOut, partialMax, partialSum, finalOut, finalMax,
+            finalSum, inputBuff1.template Get<OUT_T>(), inputBuff2.template Get<T>(), tmpBuff1.template Get<T>(),
+            // The compute pipeline has drained. Partial output uses at most
+            // the first 16 KiB; reuse the upper 32 KiB for merge statistics.
+            // A separate G64 stats allocation would exceed the A2 192 KiB UB.
+            inputBuff1.template Get<T>()[ConstInfo::BUFFER_SIZE_BYTE_32K / sizeof(T)],
+            outputBuff2.template Get<T>(), outputBuff1.template Get<OUT_T>());
+    }
     __aicore__ inline void InitParams(const struct ConstInfo &kvVecConstInfo,
                                       const KvQuantSparseFlashAttentionTilingDataMla *__restrict tilingData);
     __aicore__ inline void InitMm2ResInt32GmGlobalTensor(GlobalTensor<int32_t> mm2ResInt32Gm);
@@ -107,6 +127,8 @@ public:
                                           uint32_t kvColumns);
     __aicore__ inline void ComputeLogSumExpAndCopyToGm(const RunInfo &kvVecInfo, const MSplitInfo &kvVecSplitInfo,
                                                        LocalTensor<T> &softmaxSumUb, LocalTensor<T> &softmaxMaxUb);
+    __aicore__ inline void CopyFALseToGm(const RunInfo &info, const MSplitInfo &split,
+                                      LocalTensor<T> &sum, LocalTensor<T> &max);
     // ================================Vecotr2==========================================
     __aicore__ inline void ProcessVec2SingleBuf(const RunInfo &kvVecInfo, const MSplitInfo &kvVecSplitInfo);
     __aicore__ inline void DealBmm2ResBaseBlock(const RunInfo &kvVecInfo, const MSplitInfo &kvVecSplitInfo,
@@ -206,6 +228,8 @@ private:
     TBuf<> softmaxSumBuff;        // PRE_LOAD_NUM * 1K
     TBuf<> softmaxMaxDefaultBuff; // 1K
     TBuf<> softmaxSumDefaultBuff; // 1K
+    GlobalTensor<T> softmaxMaxGm;
+    GlobalTensor<T> softmaxSumGm;
 
     LocalTensor<T> softmaxMaxDefaultUb;
     LocalTensor<T> softmaxSumDefaultUb;
@@ -389,6 +413,34 @@ __aicore__ inline void QSFAVectorService<QSFAT>::InitSoftmaxDefaultBuffer()
 {
     Duplicate(softmaxMaxDefaultUb, SOFTMAX_MIN_NUM, SOFTMAX_TMP_BUFFER_OFFSET);
     Duplicate(softmaxSumDefaultUb, ConstInfo::FLOAT_ZERO, SOFTMAX_TMP_BUFFER_OFFSET);
+}
+
+template <typename QSFAT>
+__aicore__ inline void QSFAVectorService<QSFAT>::CopyFALseToGm(
+    const RunInfo &info, const MSplitInfo &split, LocalTensor<T> &sum, LocalTensor<T> &max)
+{
+    if (split.vecDealM == 0) {
+        return;
+    }
+    const uint64_t queryStart = info.bIdx == 0 ? 0 : actualSeqLengthsQGm.GetValue(info.bIdx - 1);
+    const uint64_t offset = (queryStart + info.gS1Idx / kvVecConstInfo.gSize) * kvVecConstInfo.qHeadNum +
+                            kvVecConstInfo.headSplitOffset + split.nBufferStartM + split.vecStartM;
+    const uint64_t base = split.nBufferStartM / 2;
+    const uint32_t alignedSize = (split.vecDealM + 7) / 8 * 8;
+    DataCopyExtParams params{1, static_cast<uint32_t>(split.vecDealM * sizeof(T)), 0, 0, 0};
+    LocalTensor<T> tmp = outputBuff2.Get<T>();
+    WaitFlag<HardEvent::MTE3_V>(SYNC_OUTPUT_BUF2_FLAG);
+    DataCopy(tmp, max[base], alignedSize);
+    SetFlag<HardEvent::V_MTE3>(SYNC_OUTPUT_BUF2_FLAG);
+    WaitFlag<HardEvent::V_MTE3>(SYNC_OUTPUT_BUF2_FLAG);
+    DataCopyPad(softmaxMaxGm[offset], tmp, params);
+    SetFlag<HardEvent::MTE3_V>(SYNC_OUTPUT_BUF2_FLAG);
+    WaitFlag<HardEvent::MTE3_V>(SYNC_OUTPUT_BUF2_FLAG);
+    DataCopy(tmp, sum[base], alignedSize);
+    SetFlag<HardEvent::V_MTE3>(SYNC_OUTPUT_BUF2_FLAG);
+    WaitFlag<HardEvent::V_MTE3>(SYNC_OUTPUT_BUF2_FLAG);
+    DataCopyPad(softmaxSumGm[offset], tmp, params);
+    SetFlag<HardEvent::MTE3_V>(SYNC_OUTPUT_BUF2_FLAG);
 }
 
 template <typename QSFAT>
@@ -1213,6 +1265,12 @@ __aicore__ inline void QSFAVectorService<QSFAT>::ProcessVec1L(const RunInfo &kvV
         CrossCoreWaitFlag(kvVecConstInfo.syncC1V1);
         // vec1 compute
         ProcessVec1SingleBuf(kvVecInfo, kvVecSplitInfo);
+        if (kvVecConstInfo.returnSoftmaxLse && kvVecInfo.isLastS2Loop) {
+            const uint32_t outIdx = kvVecInfo.loop % kvVecConstInfo.preLoadNum;
+            auto sum = softmaxSumUb[outIdx * SOFTMAX_TMP_BUFFER_OFFSET];
+            auto max = softmaxMaxUb[outIdx * SOFTMAX_TMP_BUFFER_OFFSET];
+            CopyFALseToGm(kvVecInfo, kvVecSplitInfo, sum, max);
+        }
         CrossCoreSetFlag<ConstInfo::QSFA_SYNC_MODE2, PIPE_MTE3>(kvVecConstInfo.syncV1C2);
         // move lse for flash decode
         if (kvVecInfo.s2Idx == kvVecInfo.curSInnerLoopTimes - 1) {
@@ -1286,7 +1344,7 @@ __aicore__ inline void QSFAVectorService<QSFAT>::DealBmm2ResBaseBlock(const RunI
     SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF1_FLAG + pingpongFlag);
 
     // 除第一个循环外，均需要更新中间计算结果
-    if (kvVecInfo.s2Idx > 0) {
+    if (!kvVecInfo.isFirstSInnerLoop) {
         event_t eventIdMte2WaitMte3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
         SetFlag<HardEvent::MTE3_MTE2>(eventIdMte2WaitMte3);
         WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte2WaitMte3);
