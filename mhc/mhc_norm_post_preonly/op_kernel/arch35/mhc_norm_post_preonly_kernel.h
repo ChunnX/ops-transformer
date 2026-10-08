@@ -138,6 +138,7 @@ private:
 
     // R6读取完当前x2分块后，复用首个head缓存保留低精度h_in。
     // 恢复FP32与平方在同一VF内完成，保留量化往返边界并减少UB中间写读。
+    // TODO: 4op可评估寄存器内跨D lane归约；bf4f875d4对4op全shape有收益，但5op全面退化，当前不分流。
     __aicore__ inline float ComputeHInCacheAndReduceSumSq(uint32_t tOff, uint32_t tD, LocalTensor<T> x2Cache,
                                                           LocalTensor<float> gateBuf);
 
