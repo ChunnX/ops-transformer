@@ -60,6 +60,12 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::GetDimFromEnd(const acl
 }
 
 // 根据 apiVersion 返回对应的 aclnn 函数名字符串
+// WeightNzPool 与 WeightNz 共用同一套校验语义，检查时按 WeightNz 处理。
+static gmm::GMMApiVersion NormalizeApiVersionForCheck(gmm::GMMApiVersion apiVersion)
+{
+    return apiVersion == gmm::GMMApiVersion::WeightNzPool ? gmm::GMMApiVersion::WeightNz : apiVersion;
+}
+
 const char *AclnnGroupedMatmulWeightQuantDAV3510Checker::GetAclnnName() const
 {
     switch (gmmParams_.apiVersion) {
@@ -75,6 +81,8 @@ const char *AclnnGroupedMatmulWeightQuantDAV3510Checker::GetAclnnName() const
             return "aclnnGroupedMatmulV5GetWorkspaceSize";
         case gmm::GMMApiVersion::WeightNz:
             return "aclnnGroupedMatmulWeightNzGetWorkspaceSize";
+        case gmm::GMMApiVersion::WeightNzPool:
+            return "aclnnGroupedMatmulWeightNzPoolGetWorkspaceSize";
         case gmm::GMMApiVersion::QuantGroupedMatmulInplaceAdd:
             return "aclnnQuantGroupedMatmulInplaceAddGetWorkspaceSize";
         default:
@@ -587,6 +595,17 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckTransposeStatus() 
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), "transposeX", "true",
                                               "x cannot be transposed, when weight quant");
         return ACLNN_ERR_PARAM_INVALID;
+    }
+
+    if (gmmParams_.isPoolMode) {
+        // The pool rectangle has no (K, N) axes to transpose, and tiling/x host both take the pool as
+        // non-transposed, so reject a pool that claims otherwise rather than silently misreading it.
+        if (unlikely(gmmParams_.transposeWeight)) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), "transposeWeight", "true",
+                                                  "the pool rectangle is not transposable, when weight quant");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        return ACLNN_SUCCESS;
     }
 
     if (gmmParams_.groupType == NO_SPLIT) {

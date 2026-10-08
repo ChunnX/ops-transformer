@@ -27,6 +27,7 @@ constexpr size_t GMM_INDEX_IN_ANTIQUANT_SCALE = 5UL;
 constexpr size_t GMM_INDEX_IN_ANTIQUANT_OFFSET = 6UL;
 constexpr size_t GMM_INDEX_IN_GROUP_LIST = 7UL;
 constexpr size_t GMM_INDEX_IN_PERTOKEN_SCALE = 8UL;
+constexpr size_t GMM_INDEX_IN_SLOT_TABLE = 9UL;
 
 constexpr size_t GMM_INDEX_OUT_Y = 0UL;
 constexpr size_t GMM_INDEX_ATTR_SPLIT_ITEM = 0UL;
@@ -37,6 +38,9 @@ constexpr size_t GMM_INDEX_ATTR_GROUP_TYPE = 4UL;
 constexpr size_t GMM_INDEX_ATTR_GROUP_LIST_TYPE = 5UL;
 constexpr size_t GMM_INDEX_ATTR_ACT_TYPE = 6UL;
 constexpr size_t GMM_INDEX_ATTR_TUNING_CONFIG = 7UL;
+// Pool row layout for indirect weight addressing: [row_bytes, w_seg_off, s_seg_off, n].
+constexpr size_t GMM_INDEX_ATTR_POOL_META = 8UL;
+constexpr size_t GMM_POOL_META_N_INDEX = 3UL;
 
 constexpr int64_t GMM_X_Y_SEPARATED = 0; // x,y have been separated
 constexpr int64_t GMM_Y_SEPARATED = 1;   // y has been separated

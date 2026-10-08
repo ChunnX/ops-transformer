@@ -275,7 +275,8 @@ template <int8_t NO_QUANT_B_TRANS, int8_t NO_QUANT_A_TRANS, int8_t NO_QUANT_ACT>
 #endif
 __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM_ADDR scale, GM_ADDR offset,
                                           GM_ADDR antiquantScale, GM_ADDR antiquantOffset, GM_ADDR groupList,
-                                          GM_ADDR perTokenScale, GM_ADDR y, GM_ADDR workspace, GM_ADDR tiling)
+                                          GM_ADDR perTokenScale, GM_ADDR slotTable, GM_ADDR y, GM_ADDR workspace,
+                                          GM_ADDR tiling)
 {
 #if !defined(V310_GMM_ANTI_QUANT) || !defined(ORIG_DTYPE_X) || !defined(DT_FLOAT8_E4M3FN) || \
     ORIG_DTYPE_X != DT_FLOAT8_E4M3FN || !IS_BLAZE
@@ -487,7 +488,8 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
             GET_TILING_DATA_MEMBER(GMMWeightQuantTilingData, mmTilingData, mmTilingData_, tiling);
             GROUPED_MATMUL::GmmWeightQuantTensorApiMxKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_ANTIQUANT_SCALE, DTYPE_BIAS,
                                                             DTYPE_Y, IS_SINGLE_MULTI_SINGLE>(
-                x, weight, antiquantScale, bias, groupList, perTokenScale, y, &gmmBaseParams_, &mmTilingData_);
+                x, weight, antiquantScale, bias, groupList, perTokenScale, y, slotTable, &gmmBaseParams_,
+                &mmTilingData_);
 #else
             INVOKE_GMM_WEIGHT_QUANT_MXA8W4_CONTROLLER_OP_IMPL(GMMWeightQuantResplitController, MXA8W4_NZNK,
                                                               VEC_ANTIQUANT_CONFIG_DYNAMIC);

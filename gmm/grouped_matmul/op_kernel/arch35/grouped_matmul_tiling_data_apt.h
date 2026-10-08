@@ -103,6 +103,15 @@ struct GMMWeightQuantParam {
     uint16_t secondTailBlockSize = 0;
     uint16_t firstTailBlockCount = 0;
     uint16_t secondTailBlockCount = 0;
+    // 0: expert weights are addressed directly (DIRECT). 1: the weight/scale GM pointers are re-resolved
+    // for each group from slot_table plus the pool row layout below (POOL indirect addressing).
+    uint8_t weightAddressMode = 0;
+    uint8_t reserved1 = 0;
+    uint16_t reserved2 = 0;
+    uint32_t reserved3 = 0;
+    uint64_t poolRowBytes = 0; // bytes of one pool row, i.e. the stride from one slot to the next
+    uint64_t poolWSegOff = 0;  // offset of the weight segment inside a pool row
+    uint64_t poolSSegOff = 0;  // offset of the antiquant scale segment inside a pool row
 };
 #pragma pack(pop)
 

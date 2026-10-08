@@ -94,6 +94,16 @@ bool GroupedMatmulWeightQuantChecker::IsMultiTensorWeight(const gert::InferShape
     return weightShape->GetDimNum() == GMM_SEPARATED_WEIGHT_DIM;
 }
 
+bool GroupedMatmulWeightQuantChecker::IsPoolMode(const gert::InferShapeContext *context) const
+{
+    const auto attrs = context->GetAttrs();
+    if (attrs == nullptr) {
+        return false;
+    }
+    const auto poolMetaPtr = attrs->GetAttrPointer<gert::TypedContinuousVector<int64_t>>(GMM_INDEX_ATTR_POOL_META);
+    return poolMetaPtr != nullptr && poolMetaPtr->GetSize() > GMM_POOL_META_N_INDEX;
+}
+
 ge::graphStatus GroupedMatmulWeightQuantChecker::GetXandWeightDtype(const gert::InferShapeContext *context)
 {
     auto xDesc = context->GetDynamicInputDesc(GMM_INDEX_IN_X, 0);
@@ -116,6 +126,7 @@ ge::graphStatus GroupedMatmulWeightQuantChecker::GetXAndWeightDimValue(const ger
 {
     OP_CHECK_IF(GetXandWeightDtype(context) != ge::GRAPH_SUCCESS,
                 OP_LOGE(context->GetNodeName(), "GetXandWeightDtype failed."), return ge::GRAPH_FAILED);
+    isPoolMode_ = IsPoolMode(context);
 
     auto xShape = context->GetDynamicInputShape(GMM_INDEX_IN_X, 0);
     auto weightShape = context->GetDynamicInputShape(GMM_INDEX_IN_WEIGHT, 0);
@@ -134,12 +145,44 @@ ge::graphStatus GroupedMatmulWeightQuantChecker::GetXAndWeightDimValue(const ger
                         "The dim num of weight's 1st tensor should be greater than 1, but it is [%zu].", weightdimNum_),
                 return ge::GRAPH_FAILED);
 
+    OP_CHECK_IF(isPoolMode_ && gmmAttrs.groupType != GMM_SPLIT_M,
+                OP_LOGE(context->GetNodeName(),
+                        "Pool indirect addressing requires groupType == 0 (split M), but it is [%ld].",
+                        gmmAttrs.groupType),
+                return ge::GRAPH_FAILED);
+
     if (gmmAttrs.groupType == GMM_NO_SPLIT) {
         return ge::GRAPH_SUCCESS;
     }
 
     xMDim_ = gmmAttrs.transposeX ? xShape->GetDim(xdimNum_ - 1) : xShape->GetDim(xdimNum_ - PENULTIMATE_DIM);
     xKDim_ = gmmAttrs.transposeX ? xShape->GetDim(xdimNum_ - PENULTIMATE_DIM) : xShape->GetDim(xdimNum_ - 1);
+
+    if (isPoolMode_) {
+        // POOL mode: weight carries the whole pool, so its two axes are [slotCount, rowBytes]
+        // and describe nothing about N or K. N comes from pool_meta, K from x.
+        const auto poolMetaPtr = context->GetAttrs()->GetAttrPointer<gert::TypedContinuousVector<int64_t>>(
+            GMM_INDEX_ATTR_POOL_META);
+        poolNDim_ = poolMetaPtr->GetData()[GMM_POOL_META_N_INDEX];
+        OP_CHECK_IF(poolNDim_ <= 0 || poolNDim_ % GMM_N_K_ALIGN_VALUE_WEIGHT_QUANT_4BIT != 0,
+                    OP_LOGE(context->GetNodeName(),
+                            "The n from pool_meta must be a positive integer multiple of [%ld], but it is [%ld].",
+                            GMM_N_K_ALIGN_VALUE_WEIGHT_QUANT_4BIT, poolNDim_),
+                    return ge::GRAPH_FAILED);
+        weightNDim_ = poolNDim_;
+        weightKDim_ = xKDim_;
+        // CheckShapeForXAndWeight is bypassed in pool mode, so the 4bit N/K alignment it normally enforces
+        // is re-applied here: N against the pool's n, K against x's k (the pool rectangle itself is opaque).
+        OP_CHECK_IF(xKDim_ <= 0 || xKDim_ % GMM_N_K_ALIGN_VALUE_WEIGHT_QUANT_4BIT != 0,
+                    OP_LOGE(context->GetNodeName(),
+                            "In POOL mode the k axis of x must be a positive multiple of [%ld], but it is [%ld].",
+                            GMM_N_K_ALIGN_VALUE_WEIGHT_QUANT_4BIT, xKDim_),
+                    return ge::GRAPH_FAILED);
+        OP_LOGD(context->GetNodeName(), "POOL mode: poolN = [%lld], xM = [%lld], xK = [%lld].", weightNDim_, xMDim_,
+                xKDim_);
+        return ge::GRAPH_SUCCESS;
+    }
+
     weightKDim_ = gmmAttrs.transposeWeight ? weightShape->GetDim(weightdimNum_ - 1) :
                                              weightShape->GetDim(weightdimNum_ - PENULTIMATE_DIM);
     weightNDim_ = gmmAttrs.transposeWeight ? weightShape->GetDim(weightdimNum_ - PENULTIMATE_DIM) :
@@ -166,6 +209,11 @@ ge::graphStatus GroupedMatmulWeightQuantChecker::GetXAndWeightDimValue(const ger
 
 ge::graphStatus GroupedMatmulWeightQuantChecker::CheckShapeForXAndWeight(const gert::InferShapeContext *context) const
 {
+    if (isPoolMode_) {
+        // POOL mode: weight carries the whole pool, so its axes describe the pool rectangle and none of
+        // the x/weight shape relations hold. N/K are taken from pool_meta/x in GetXAndWeightDimValue.
+        return ge::GRAPH_SUCCESS;
+    }
     OP_CHECK_IF(xKDim_ != weightKDim_,
                 OP_LOGE(context->GetNodeName(),
                         "The k dim of x should be equal to the k dim of weight, "
@@ -593,6 +641,11 @@ ge::graphStatus GroupedMatmulWeightQuantChecker::CheckShapeForTensorList(const g
     // 其他场景及参数校验shape为(g, n)
     auto tensorShape = context->GetDynamicInputShape(gmm_index, 0);
     if (IsNonEmpty(tensorShape)) {
+        if (isPoolMode_) {
+            // POOL mode: antiquantScale carries the whole pool, so its axes describe the pool rectangle
+            // rather than (g, n, k/groupSize/2, 2). The per-expert scale geometry is only known to tiling.
+            return ge::GRAPH_SUCCESS;
+        }
         size_t tensorDimNum = tensorShape->GetDimNum();
         size_t expectedDimNum = OPTIONAL_PARAM_DIM_NUM_DEFAULT_SINGLE;
         if ((gmm_index == GMM_INDEX_IN_ANTIQUANT_SCALE || gmm_index == GMM_INDEX_IN_ANTIQUANT_OFFSET) &&
@@ -657,6 +710,11 @@ ge::graphStatus GroupedMatmulWeightQuantChecker::CheckShapeForTensorListAtIndex(
 {
     auto tensorShape = context->GetDynamicInputShape(gmm_index, tensorIdx);
     if (IsNonEmpty(tensorShape)) {
+        if (isPoolMode_) {
+            // POOL mode: antiquantScale carries the whole pool, so its axes describe the pool rectangle
+            // rather than (g, n, k/groupSize/2, 2). The per-expert scale geometry is only known to tiling.
+            return ge::GRAPH_SUCCESS;
+        }
         size_t tensorDimNum = tensorShape->GetDimNum();
         size_t expectedDimNum = OPTIONAL_PARAM_DIM_NUM_DEFAULT_SINGLE;
         if ((gmm_index == GMM_INDEX_IN_ANTIQUANT_SCALE || gmm_index == GMM_INDEX_IN_ANTIQUANT_OFFSET) &&
@@ -754,6 +812,16 @@ ge::graphStatus GroupedMatmulWeightQuantChecker::CheckGroupSize(const gert::Infe
     auto antiquantScaleDimNum = antiquantScaleShape->GetDimNum();
     // 2含义: (g, k/groupSize, n)的k轴索引，此处groupNum是K轴上量化分组的groupNum，与groupNum_含义不同
     int64_t groupNum;
+    if (isPoolMode_) {
+        // POOL mode: antiquantScale carries the whole pool, so its axes say nothing about K or groupSize.
+        // The MX group size is fixed at 32, so no inference from the scale shape is needed here.
+        OP_CHECK_IF(weightKDim_ % MX_GROUP_SIZE != 0,
+                    OP_LOGE(context->GetNodeName(),
+                            "The k axis of x must be a multiple of [%ld] in Mx quant, but it is [%ld].", MX_GROUP_SIZE,
+                            weightKDim_),
+                    return ge::GRAPH_FAILED);
+        return ge::GRAPH_SUCCESS;
+    }
     if (IsMxA8W4NZ(xDtype_, weightDtype_)) {
         // antiquantScaleShape: (g,n,k/64,2) (g, k/64, n, 2) 静态图两次infershape，两个分支
         groupNum = gmmAttrs.transposeWeight ?

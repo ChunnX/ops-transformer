@@ -24,14 +24,15 @@ const aclTensorList *GroupedMatmul(const aclTensorList *x, const aclTensorList *
                                    const aclTensorList *biasOptional, const aclTensorList *scaleOptional,
                                    const aclTensorList *offsetOptional, const aclTensorList *antiquantScaleOptional,
                                    const aclTensorList *antiquantOffsetOptional, const aclTensor *groupListOptional,
-                                   const aclTensor *perTokenScaleOptional, int64_t splitItem, op::DataType yDtype,
-                                   bool transposeWeight, bool transposeX, int64_t groupType, int64_t groupListType,
-                                   int64_t actType, const aclIntArray *tuningConfig, size_t outLength,
+                                   const aclTensor *perTokenScaleOptional, const aclTensor *slotTableOptional,
+                                   int64_t splitItem, op::DataType yDtype, bool transposeWeight, bool transposeX,
+                                   int64_t groupType, int64_t groupListType, int64_t actType,
+                                   const aclIntArray *tuningConfig, const aclIntArray *poolMeta, size_t outLength,
                                    aclOpExecutor *executor)
 {
     L0_DFX(GroupedMatmul, x, weight, biasOptional, scaleOptional, offsetOptional, antiquantScaleOptional,
-           antiquantOffsetOptional, groupListOptional, perTokenScaleOptional, splitItem, yDtype, transposeWeight,
-           transposeX, groupType, groupListType, actType, tuningConfig, outLength);
+           antiquantOffsetOptional, groupListOptional, perTokenScaleOptional, slotTableOptional, splitItem, yDtype,
+           transposeWeight, transposeX, groupType, groupListType, actType, tuningConfig, poolMeta, outLength);
 
     std::vector<const aclTensor *> tensorsVec;
     const aclTensor *x0 = x->Size() > 0 ? (*x)[0] : nullptr;
@@ -62,9 +63,10 @@ const aclTensorList *GroupedMatmul(const aclTensorList *x, const aclTensorList *
     auto ret = INFER_SHAPE(
         GroupedMatmul,
         OP_INPUT(x, weight, biasOptional, scaleOptional, offsetOptional, antiquantScaleOptional,
-                 antiquantOffsetOptional, groupListOptional, perTokenScaleOptional),
+                 antiquantOffsetOptional, groupListOptional, perTokenScaleOptional, slotTableOptional),
         OP_OUTPUT(out),
-        OP_ATTR(splitItem, outputDtype, transposeWeight, transposeX, groupType, groupListType, actType, tuningConfig));
+        OP_ATTR(splitItem, outputDtype, transposeWeight, transposeX, groupType, groupListType, actType, tuningConfig,
+                poolMeta));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
             "GroupedMatmul", "input", "InferShape failed, ret = " + std::to_string(static_cast<int64_t>(ret)));
@@ -73,9 +75,10 @@ const aclTensorList *GroupedMatmul(const aclTensorList *x, const aclTensorList *
     ret = ADD_TO_LAUNCHER_LIST_AICORE(
         GroupedMatmul,
         OP_INPUT(x, weight, biasOptional, scaleOptional, offsetOptional, antiquantScaleOptional,
-                 antiquantOffsetOptional, groupListOptional, perTokenScaleOptional),
+                 antiquantOffsetOptional, groupListOptional, perTokenScaleOptional, slotTableOptional),
         OP_OUTPUT(out),
-        OP_ATTR(splitItem, outputDtype, transposeWeight, transposeX, groupType, groupListType, actType, tuningConfig));
+        OP_ATTR(splitItem, outputDtype, transposeWeight, transposeX, groupType, groupListType, actType, tuningConfig,
+                poolMeta));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
             "GroupedMatmul", "input",

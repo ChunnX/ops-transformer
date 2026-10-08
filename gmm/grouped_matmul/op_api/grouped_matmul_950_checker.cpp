@@ -142,6 +142,8 @@ const char *AclnnGroupedMatmulDAV3510Checker<T>::GetAclnnOpName() const
             return "aclnnGroupedMatmulV5GetWorkspaceSize";
         case gmm::GMMApiVersion::WeightNz:
             return "aclnnGroupedMatmulWeightNzGetWorkspaceSize";
+        case gmm::GMMApiVersion::WeightNzPool:
+            return "aclnnGroupedMatmulWeightNzPoolGetWorkspaceSize";
         case gmm::GMMApiVersion::QuantGroupedMatmulInplaceAdd:
             return "aclnnQuantGroupedMatmulInplaceAddGetWorkspaceSize";
         default:
@@ -457,7 +459,8 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckWeightNzSpecialParams() co
 {
     CHECK_RET_CODE(CheckWeightNzMultiTensorElements(), "Invalid WeightNz tensor list elements.");
     GMM_CHECK_REPORT(
-        gmmParams_.apiVersion == gmm::GMMApiVersion::WeightNz,
+        gmmParams_.apiVersion == gmm::GMMApiVersion::WeightNz ||
+            gmmParams_.apiVersion == gmm::GMMApiVersion::WeightNzPool,
         OP_LOGE_FOR_INVALID_VALUE(GetAclnnOpName(), "apiVersion", GetAclnnOpName(), "aclnnGroupedMatmulWeightNz"));
 
     auto wDtype = GetInputTensor(gmmParams_.weight)->GetDataType();
@@ -1769,7 +1772,8 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckQuantShapeAndFormat() cons
             "in quant case, only single-single-single or WeightNz MX A8W8/MX A4W4 single-multi-single tensor "
             "list combinations are supported"));
     CHECK_RET(CheckQuantCasesFormat() == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
-    if (GetInputTensor(gmmParams_.weight)->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ) {
+    if (!gmmParams_.isPoolMode &&
+        GetInputTensor(gmmParams_.weight)->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ) {
         CHECK_RET_CODE(CheckWeightNzSpecialParams(), "Invalid WeightNz parameters.");
     }
     CHECK_RET(CheckGeneralQuantShape() == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);

@@ -87,6 +87,9 @@ private:
     bool IsA16W4Pergroup(const ge::DataType xDtype, const ge::DataType weightDtype,
                          const gert::InferShapeContext *context, const size_t tensorIdx) const;
     bool IsMultiTensorWeight(const gert::InferShapeContext *context) const;
+    // Pool indirect addressing: weight/antiquantScale carry the whole pool, so their shape
+    // describes the pool rectangle rather than a per-expert weight. N/K come from pool_meta/x instead.
+    bool IsPoolMode(const gert::InferShapeContext *context) const;
 
 private:
     int64_t groupNum_;
@@ -101,6 +104,8 @@ private:
     bool hasBias_ = false;
     bool hasAntiquantOffset_ = false;
     bool isMultiTensorWeight_ = false;
+    bool isPoolMode_ = false;
+    int64_t poolNDim_ = 0;
     size_t numWeight_ = 0;
 };
 
