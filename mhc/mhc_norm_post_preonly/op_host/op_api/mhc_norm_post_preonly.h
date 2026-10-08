@@ -16,11 +16,12 @@
 namespace MhcNormPostPreonlyl0op {
 
 bool MhcNormPostPreonly(const aclTensor *hOut, const aclTensor *residual, const aclTensor *hPost,
-                                const aclTensor *hResOptional, const aclTensor *phi, const aclTensor *alpha0,
-                                const aclTensor *bias, const aclTensor *gamma0Optional, const aclTensor *gamma1,
-                                const aclTensor *gamma2Optional, float normEps, float mhcPreNormEps, float hcEps,
-                                bool returnHInF32, const aclTensor *hInPrimeOut, const aclTensor *x2Out,
-                                const aclTensor *hInF32OutOptional, aclOpExecutor *executor);
+                                const aclTensor *hResOptional, const aclTensor *phi, const aclTensor *alpha,
+                                const aclTensor *bias, const aclTensor *preMixOptional, const aclTensor *gamma0Optional,
+                                const aclTensor *gamma1, const aclTensor *gamma2Optional, float normEps,
+                                float mhcPreNormEps, float hcEps, bool returnHInF32, const aclTensor *hInPrimeOut,
+                                const aclTensor *x2Out, const aclTensor *hInF32OutOptional,
+                                const aclTensor *hPreOptional, aclOpExecutor *executor);
 
 } // namespace MhcNormPostPreonlyl0op
 
