@@ -13,7 +13,7 @@
  * \brief
  */
 
-#include "flash_attn_tiling_arch35.h"
+#include "flash_attn_tiling.h"
 #include "../flash_attn_tiling.h"
 #include "../fa_adjust_sinner_souter.h"
 #include <map>
@@ -32,9 +32,9 @@ namespace optiling {
 namespace flash_attn {
 constexpr uint64_t PRE_LOAD_NUM_GQA_ARCH35 = 3;
 
-void FlashAttnTilingImpl::InitTilingInfo(TilingInfo* tilingInfo)
+void FlashAttnTilingImpl::InitTilingInfo(TilingInfo *tilingInfo)
 {
-    faInfo_ = static_cast<FaTilingInfo*>(tilingInfo);
+    faInfo_ = static_cast<FaTilingInfo *>(tilingInfo);
 }
 
 bool FlashAttnTilingImpl::IsCapable()
@@ -95,8 +95,8 @@ ge::graphStatus FlashAttnTilingImpl::SetPlatMemoryInfo()
 
 void FlashAttnTilingImpl::InitImplParam()
 {
-    const gert::Tensor* cuSeqLenQ = faInfo_->opParamInfo.cuSeqlensQ.tensor;
-    const gert::Tensor* cuSeqLenKV = faInfo_->opParamInfo.cuSeqlensKv.tensor;
+    const gert::Tensor *cuSeqLenQ = faInfo_->opParamInfo.cuSeqlensQ.tensor;
+    const gert::Tensor *cuSeqLenKV = faInfo_->opParamInfo.cuSeqlensKv.tensor;
     uint32_t cuSeqLenQDims = 0;
     uint32_t cuSeqLenKVDims = 0;
     cuSeqLenQDims = (cuSeqLenQ != nullptr) ? cuSeqLenQ->GetShapeSize() : 0;
@@ -104,8 +104,8 @@ void FlashAttnTilingImpl::InitImplParam()
     cuSeqLenQFlag_ = !((cuSeqLenQDims == 0) || (cuSeqLenQ == nullptr));
     cuSeqLenKVFlag_ = !((cuSeqLenKVDims == 0) || (cuSeqLenKV == nullptr));
 
-    const gert::Tensor* seqUsedQ = faInfo_->opParamInfo.sequsedQ.tensor;
-    const gert::Tensor* seqUsedKv = faInfo_->opParamInfo.sequsedKv.tensor;
+    const gert::Tensor *seqUsedQ = faInfo_->opParamInfo.sequsedQ.tensor;
+    const gert::Tensor *seqUsedKv = faInfo_->opParamInfo.sequsedKv.tensor;
     uint32_t seqUsedQDims = (seqUsedQ != nullptr) ? seqUsedQ->GetShapeSize() : 0;
     uint32_t seqUsedKvDims = (seqUsedKv != nullptr) ? seqUsedKv->GetShapeSize() : 0;
     seqUsedQFlag_ = !((seqUsedQDims == 0) || (seqUsedQ == nullptr));
@@ -121,52 +121,41 @@ void FlashAttnTilingImpl::SplitPolicy()
         winLeft = MASK_MODE_INT_MAX;
         winRight = MASK_MODE_INT_MAX;
     }
-    if (winLeft == -1) {
-        winLeft = MASK_MODE_INT_MAX;
-    }
-    if (winRight == -1) {
-        winRight = MASK_MODE_INT_MAX;
-    }
-    fa_tiling_util::AdjustSinnerAndSouter(static_cast<uint32_t>(faInfo_->vHeadDim),
-                                          static_cast<uint32_t>(faInfo_->gSize), faInfo_->maxSeqQ, faInfo_->maxSeqKv,
-                                          static_cast<int32_t>(faInfo_->maskMode), winLeft, winRight,
-                                          static_cast<uint32_t>(faInfo_->qLayout), sOuterFactor_, sInnerFactor_);
-    // 不合轴 DN(预埋): 模板判定需在 CalcWorkspaceSize 之前完成(templateId 影响 workspace 分配),
-    // 判定仅依赖 D/DV 维度; 开关关闭时不执行, 保持原行为不变
-    if (fa_tiling_util::DN_UNMERGED_ROUTE_ENABLED) {
-        UpdateTilingKeyTemplateId();
-    }
-    uint32_t maxUsedAicCores = fa_tiling_util::GetMaxUsedAicCores(platformInfo_.aicNum, faInfo_->bSize, faInfo_->n2Size,
-                                                                  faInfo_->gSize, faInfo_->maxSeqQ, faInfo_->maxSeqKv,
-                                                                  sOuterFactor_ * platformInfo_.cvRatio, sInnerFactor_);
-    CalcNumBlocks(maxUsedAicCores);
+    fa_tiling_util::GetConfigInfo(static_cast<uint32_t>(faInfo_->vHeadDim), static_cast<int32_t>(faInfo_->maskMode),
+        faInfo_->maxSeqQ, templateId_, sOuterFactor_, sInnerFactor_);
+
+    OP_LOGI(faInfo_->opName, "vHeadDim:%d, maskMode:%d, maxSeqQ:%d, templateId_:%d, sOuterFactor_:%d, sInnerFactor_:%d",
+        faInfo_->vHeadDim, faInfo_->maskMode, faInfo_->maxSeqQ, templateId_, sOuterFactor_, sInnerFactor_);
+
+    CalcNumBlocks(platformInfo_.aicNum);
     flashDecodeFlag_ = true;
 }
 
 void FlashAttnTilingImpl::UpdateTilingKeyConfig()
 {
-    if (faInfo_->qkHeadDim == faInfo_->vHeadDim) {
-        // 等长 (QK D == V DV) 按 D 值映射:
-        //   config=0: Dk=64,  Dv=64,  sOuter=64,  sInner=128
-        //   config=1: Dk=64,  Dv=64,  sOuter=32,  sInner=256
-        //   config=2: Dk=128, Dv=128, sOuter=64,  sInner=128 (Dk=72 复用, kernel 内 pad 到 128)
-        //   config=3: Dk=128, Dv=128, sOuter=32,  sInner=256 (Dk=72 复用, kernel 内 pad 到 128)
-        //   config=4: Dk=256, Dv=256, sOuter=64, sInner=128
-        //   config=5: Dk=256, Dv=256, sOuter=32, sInner=256
+    if (tilingKeyInfo_.TemplateId == FA_Template_ND) {
         if (faInfo_->qkHeadDim == 64) {
-            tilingKeyInfo_.config = (sOuterFactor_ == fa_tiling_util::SOUTER_64) ? 0 : 1;
-        } else if (faInfo_->qkHeadDim == 128 || faInfo_->qkHeadDim == 72) {
-            tilingKeyInfo_.config = (sOuterFactor_ == fa_tiling_util::SOUTER_64) ? 2 : 3;
+            tilingKeyInfo_.config = 1;       // (M=64, S2=256, D=64)
+        } else if (faInfo_->qkHeadDim == 128) {
+            tilingKeyInfo_.config = 2;       // (M=128, S2=128, D=128)
         } else if (faInfo_->qkHeadDim == 256) {
-            tilingKeyInfo_.config = (sOuterFactor_ == fa_tiling_util::SOUTER_64) ? 4 : 5;
+            tilingKeyInfo_.config = 4;       // (M=64, S2=256, D=256)
+        } else {
+            OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(faInfo_->opName, "qkHeadDim(Head num of Q/K)",
+                                                   std::to_string(faInfo_->qkHeadDim).c_str(),
+                                                   "The value of qkHeadDim(Head num of Q/K) can only be 64/128/256");
         }
-    } else {
-        // 不等长 (qkHeadDim != vHeadDim) 按 (QK D, V DV) 组合映射:
-        if (faInfo_->qkHeadDim == 192 && faInfo_->vHeadDim == 128) {
-            // QK D=192 且 V DV=128 (MLA 非吸收形态) 进入此分支:
-            //   config=6: Dk=192, Dv=128, sOuter=64, sInner=128
-            //   config=7: Dk=192, Dv=128, sOuter=32, sInner=256
-            tilingKeyInfo_.config = (sOuterFactor_ == fa_tiling_util::SOUTER_64) ? 6 : 7;
+    } else {  // FA_Template_DN
+        if (faInfo_->qkHeadDim == 64) {
+            tilingKeyInfo_.config = 1;       // (M=64, S2=256, D=64)
+        } else if (faInfo_->qkHeadDim == 128) {
+            tilingKeyInfo_.config = 3;       // (M=128, S2=256, D=128)
+        } else if (faInfo_->qkHeadDim == 256) {
+            tilingKeyInfo_.config = 4;       // (M=64, S2=256, D=256)
+        } else {
+            OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(faInfo_->opName, "qkHeadDim(Head num of Q/K)",
+                                                   std::to_string(faInfo_->qkHeadDim).c_str(),
+                                                   "The value of qkHeadDim(Head num of Q/K) can only be 64/128/256");
         }
     }
 }
@@ -197,45 +186,28 @@ void FlashAttnTilingImpl::UpdateTilingKeyKvLayout()
     }
 }
 
-void FlashAttnTilingImpl::UpdateTilingKeyTemplateId()
-{
-    if (fa_tiling_util::DN_UNMERGED_ROUTE_ENABLED) {
-        // 不合轴 DN(预埋): 全量路由, 判定与 flash_attn_metadata(AICPU) 共享
-        // fa_tiling_util::GetFlashAttnTemplateId, 两侧严格一致; dnFlag_ 仍表示旧合轴 DN 模板
-        tilingKeyInfo_.templateId = fa_tiling_util::GetFlashAttnTemplateId(static_cast<uint32_t>(faInfo_->qkHeadDim),
-                                                                           static_cast<uint32_t>(faInfo_->vHeadDim));
-        dnFlag_ = false;
-        return;
-    }
-    // templateId: 0=ND模板, 1=DN模板
-    // DN模板仅支持无attenMask且config=0/2/6（sOuter=64, D=64/128, QK
-    // D=192/DV=128）场景，与kernel侧模板实例化范围保持一致
-    dnFlag_ = (!tilingKeyInfo_.hasAttenMask) &&
-              ((tilingKeyInfo_.config == 0) || (tilingKeyInfo_.config == 2) || (tilingKeyInfo_.config == 6));
-    tilingKeyInfo_.templateId = dnFlag_ ? 1 : 0;
-}
-
 void FlashAttnTilingImpl::UpdateTilingKeyInfo()
 {
     UpdateTilingKeyLayout();
-    UpdateTilingKeyConfig();
     UpdateTilingKeyKvLayout();
     tilingKeyInfo_.hasAttenMask = (faInfo_->maskMode == static_cast<int64_t>(MaskMode::NO_MASK)) ? 0 : 1;
-    UpdateTilingKeyTemplateId();
+    tilingKeyInfo_.TemplateId = templateId_;
+
+    UpdateTilingKeyConfig();
 }
 
 void FlashAttnTilingImpl::GenTilingKey()
 {
     UpdateTilingKeyInfo();
     tilingKey_ = GET_TPL_TILING_KEY(tilingKeyInfo_.inputLayout, tilingKeyInfo_.kvLayoutType,
-                                    tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.templateId, tilingKeyInfo_.config);
+                                    tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.TemplateId, tilingKeyInfo_.config);
     OP_LOGI(faInfo_->opName, "The tilingkey is %llu.", tilingKey_);
     OP_LOGI(faInfo_->opName,
-            "The tilingkey param is inOutLayoutType: %llu, kvLayoutType: %llu, hasAttenMask: %llu, templateId: %llu, "
-            "config: %llu.",
-            tilingKeyInfo_.inputLayout, tilingKeyInfo_.kvLayoutType, tilingKeyInfo_.hasAttenMask,
-            tilingKeyInfo_.templateId, tilingKeyInfo_.config);
+            "The tilingkey param is inOutLayoutType: %llu, kvLayoutType: %llu, hasAttenMask: %llu, tilingKeyInfo_.TemplateId: %llu, config: %llu.",
+            tilingKeyInfo_.inputLayout, tilingKeyInfo_.kvLayoutType, tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.TemplateId,
+            tilingKeyInfo_.config);
 }
+
 
 void FlashAttnTilingImpl::CalcNumBlocks(uint32_t aicNum)
 {
@@ -264,7 +236,6 @@ void FlashAttnTilingImpl::CalcWorkspaceSize()
 
     workspaceSize_ = sysWorkspaceSize;
 
-    // TODO，确认这段workspace分配逻辑
     int64_t bmm2Bytes = 0;
     int64_t vec2Bytes = 0;
     int64_t bmm2ResBlockSize = dVBasicBlock;
@@ -337,7 +308,6 @@ void FlashAttnTilingImpl::SetFATilingData()
     tilingData_.baseTiling.flashAttnBaseParams.bSize = faInfo_->bSize;
     tilingData_.baseTiling.flashAttnBaseParams.t1Size = faInfo_->qTSize;
     tilingData_.baseTiling.flashAttnBaseParams.t2Size = faInfo_->kTSize;
-    tilingData_.baseTiling.flashAttnBaseParams.n1Size = faInfo_->n1Size;
     tilingData_.baseTiling.flashAttnBaseParams.n2Size = faInfo_->n2Size;
     tilingData_.baseTiling.flashAttnBaseParams.gSize = faInfo_->gSize;
     tilingData_.baseTiling.flashAttnBaseParams.s1Size = faInfo_->s1Size;
@@ -345,12 +315,11 @@ void FlashAttnTilingImpl::SetFATilingData()
     tilingData_.baseTiling.flashAttnBaseParams.dSize = faInfo_->qkHeadDim;
     tilingData_.baseTiling.flashAttnBaseParams.dSizeV = faInfo_->vHeadDim;
     tilingData_.baseTiling.flashAttnBaseParams.scaleValue = faInfo_->softmaxScale;
-    tilingData_.baseTiling.flashAttnBaseParams.cuSeqLensQSize =
-        faInfo_->qLayout == FaLayout::TND ? (faInfo_->bSize + 1) : 0;
-    tilingData_.baseTiling.flashAttnBaseParams.cuSeqLensKVSize =
-        faInfo_->kvLayout == FaLayout::TND ? (faInfo_->bSize + 1) : 0;
+    tilingData_.baseTiling.flashAttnBaseParams.cuSeqLensQSize = faInfo_->qLayout == FaLayout::TND ? (faInfo_->bSize + 1) : 0;
+    tilingData_.baseTiling.flashAttnBaseParams.cuSeqLensKVSize = faInfo_->kvLayout == FaLayout::TND ? (faInfo_->bSize + 1) : 0;
     tilingData_.baseTiling.flashAttnBaseParams.seqUsedQSize = seqUsedQFlag_ ? faInfo_->bSize : 0;
     tilingData_.baseTiling.flashAttnBaseParams.seqUsedKvSize = seqUsedKvFlag_ ? faInfo_->bSize : 0;
+    tilingData_.baseTiling.flashAttnBaseParams.isKvContinuous = true;
     tilingData_.baseTiling.flashAttnBaseParams.isSoftMaxLseEnable = faInfo_->softmaxLseFlag;
     tilingData_.baseTiling.flashAttnBaseParams.iscuSeqLengthsNull = !cuSeqLenQFlag_;
     tilingData_.baseTiling.flashAttnBaseParams.iscuSeqLengthsKVNull = !cuSeqLenKVFlag_;
@@ -410,9 +379,9 @@ bool FlashAttnTilingImpl::CheckNeedInitOutput() const
     return false;
 }
 
-ge::graphStatus FlashAttnTilingImpl::SetTilingData(FlashAttnTilingData& tilingData)
+ge::graphStatus FlashAttnTilingImpl::SetTilingData(FlashAttnTilingData &tilingData)
 {
-    FlashAttnTilingData* tiling = context_->GetTilingData<FlashAttnTilingData>();
+    FlashAttnTilingData *tiling = context_->GetTilingData<FlashAttnTilingData>();
     OP_CHECK_IF(tiling == nullptr, OP_LOGE(faInfo_->opName, "The tiling data is nullptr"), return ge::GRAPH_FAILED);
     *tiling = tilingData;
     return ge::GRAPH_SUCCESS;
@@ -420,12 +389,12 @@ ge::graphStatus FlashAttnTilingImpl::SetTilingData(FlashAttnTilingData& tilingDa
 
 void FlashAttnTilingImpl::PrintAllTilingData()
 {
-    FlashAttnNoQuantTilingArch35& baseTiling = tilingData_.baseTiling;
-    FlashAttnBaseParams& flashAttnBaseParams = baseTiling.flashAttnBaseParams;
-    FlashAttnAttenMaskParams& flashAttnAttenMaskParams = baseTiling.flashAttnAttenMaskParams;
-    FlashAttnPageAttentionParams& flashAttnPageAttentionParams = baseTiling.flashAttnPageAttentionParams;
-    FlashAttnWorkspaceParams& flashAttnWorkspaceParams = baseTiling.flashAttnWorkspaceParams;
-    FlashAttnS1OuterSplitCoreParams& flashAttnS1OuterSplitCoreParams = baseTiling.flashAttnS1OuterSplitCoreParams;
+    FlashAttnNoQuantTilingArch35 &baseTiling = tilingData_.baseTiling;
+    FlashAttnBaseParams &flashAttnBaseParams = baseTiling.flashAttnBaseParams;
+    FlashAttnAttenMaskParams &flashAttnAttenMaskParams = baseTiling.flashAttnAttenMaskParams;
+    FlashAttnPageAttentionParams &flashAttnPageAttentionParams = baseTiling.flashAttnPageAttentionParams;
+    FlashAttnWorkspaceParams &flashAttnWorkspaceParams = baseTiling.flashAttnWorkspaceParams;
+    FlashAttnS1OuterSplitCoreParams &flashAttnS1OuterSplitCoreParams = baseTiling.flashAttnS1OuterSplitCoreParams;
 
     OP_LOGD(faInfo_->opName, "bSize:%d", flashAttnBaseParams.bSize);
     OP_LOGD(faInfo_->opName, "t1Size:%d", flashAttnBaseParams.t1Size);
@@ -444,6 +413,7 @@ void FlashAttnTilingImpl::PrintAllTilingData()
     OP_LOGD(faInfo_->opName, "scaleValue:%f", flashAttnBaseParams.scaleValue);
     OP_LOGD(faInfo_->opName, "iscuSeqLengthsNull:%d", flashAttnBaseParams.iscuSeqLengthsNull);
     OP_LOGD(faInfo_->opName, "iscuSeqLengthsKVNull:%d", flashAttnBaseParams.iscuSeqLengthsKVNull);
+    OP_LOGD(faInfo_->opName, "isKvContinuous:%d", flashAttnBaseParams.isKvContinuous);
     OP_LOGD(faInfo_->opName, "isSoftMaxLseEnable:%d", flashAttnBaseParams.isSoftMaxLseEnable);
     OP_LOGD(faInfo_->opName, "coreNum:%d", flashAttnBaseParams.coreNum);
 
@@ -472,5 +442,5 @@ using flash_attn::FlashAttnTilingImpl;
 
 // 值越小表示优先级越高
 REGISTER_TILING_TEMPLATE_FIA(FlashAttn, FlashAttnTilingImpl,
-                             std::vector<int32_t>({static_cast<int32_t>(NpuArch::DAV_3510)}), 1);
+                             std::vector<int32_t>({static_cast<int32_t>(NpuArch::DAV_9201)}), 2);
 } // namespace optiling

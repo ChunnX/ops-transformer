@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file flash_attn_tiling_arch35.h
+ * \file flash_attn_tiling.h
  * \brief
  */
-#ifndef FLASH_ATTN_TILING_IMPL_H__ARCH35
-#define FLASH_ATTN_TILING_IMPL_H__ARCH35
+#ifndef FLASH_ATTN_TILING_IMPL_H_
+#define FLASH_ATTN_TILING_IMPL_H_
 
 #include "register/tilingdata_base.h"
 #include "exe_graph/runtime/tiling_context.h"
@@ -25,12 +25,12 @@
 namespace optiling {
 namespace flash_attn {
 
-// 5字段 tiling key
+// 4字段 tiling key
 struct FaTilingKeyInfo {
     uint64_t inputLayout = 0;
     uint64_t kvLayoutType = 0;
     bool hasAttenMask = false;
-    uint64_t templateId = 0;
+    uint64_t TemplateId = false;
     uint64_t config = 0;
 };
 
@@ -50,13 +50,13 @@ struct FaPlatFormInfo {
 
 class FlashAttnTilingImpl : public FiaTilingBase {
 public:
-    explicit FlashAttnTilingImpl(gert::TilingContext* context)
-        : FiaTilingBase(context)
-    {}
+    explicit FlashAttnTilingImpl(gert::TilingContext *context) : FiaTilingBase(context)
+    {
+    }
     ~FlashAttnTilingImpl() override = default;
 
     // protected:
-    void InitTilingInfo(TilingInfo* tilingInfo) override;
+    void InitTilingInfo(TilingInfo *tilingInfo) override;
     bool IsCapable() override;
     ge::graphStatus DoOpTiling() override;
 
@@ -69,7 +69,6 @@ private:
     void UpdateTilingKeyConfig();
     void UpdateTilingKeyLayout();
     void UpdateTilingKeyKvLayout();
-    void UpdateTilingKeyTemplateId();
     void UpdateTilingKeyInfo();
     void SetFATilingData();
     void InitImplParam();
@@ -79,7 +78,7 @@ private:
 
     void CalcNumBlocks(uint32_t aicNum);
     void FillTiling();
-    ge::graphStatus SetTilingData(FlashAttnTilingData& tilingData);
+    ge::graphStatus SetTilingData(FlashAttnTilingData &tilingData);
     bool CheckNeedInitOutput() const;
 
     FlashAttnTilingData tilingData_;
@@ -87,6 +86,7 @@ private:
     FaPlatFormInfo platformInfo_;
     uint32_t sOuterFactor_;
     uint32_t sInnerFactor_;
+    uint32_t templateId_ = FA_Template_ND;
     bool flashDecodeFlag_ = false;
     bool dnFlag_ = false;
     bool cuSeqLenQFlag_ = false;
@@ -101,9 +101,9 @@ private:
     ScheduleMode scheduleMode_ = ScheduleMode::BATCH_MODE;
     uint32_t numBlocks_ = 0;
 
-    FaTilingInfo* faInfo_ = nullptr;
+    FaTilingInfo *faInfo_ = nullptr;
 };
 
 } // namespace flash_attn
 } // namespace optiling
-#endif // FLASH_ATTN_TILING_IMPL_H__ARCH35
+#endif // FLASH_ATTN_TILING_IMPL_H_
