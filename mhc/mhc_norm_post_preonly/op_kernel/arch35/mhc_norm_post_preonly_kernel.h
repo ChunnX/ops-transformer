@@ -126,7 +126,7 @@ private:
     TBuf<TPosition::VECCALC> bufResFp32_;
     TBuf<TPosition::VECCALC> bufPostComb_;
     TQue<TPosition::VECIN, 2> bufPhiFp32_;
-    TQue<TPosition::VECOUT, BUFFER_NUM_ONE> bufHInPrimeBf16_;
+    TBuf<TPosition::VECCALC> bufHInPrimeBf16_;
     TBuf<TPosition::VECCALC> bufScalar_;
 
     GlobalTensor<T> hOutGm_, residualGm_, hInPrimeGm_, x2OutGm_;
@@ -486,12 +486,12 @@ template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::CopyOutLowPrecisionTile(GlobalTensor<T> &dst, uint64_t gmOffset, LocalTensor<float> src,
                                                     uint32_t count)
 {
-        LocalTensor<T> tmp = bufHInPrimeBf16_.AllocTensor<T>();
+        LocalTensor<T> tmp = bufHInPrimeBf16_.Get<T>();
         CastToIO(tmp, src, count);
-        bufHInPrimeBf16_.EnQue(tmp);
-        tmp = bufHInPrimeBf16_.DeQue<T>();
+        SetFlag<HardEvent::V_MTE3>(evtVtoMte3_);
+        WaitFlag<HardEvent::V_MTE3>(evtVtoMte3_);
         DataCopy(dst[gmOffset], tmp, count);
-        bufHInPrimeBf16_.FreeTensor(tmp);
+        FenceMte3ToV();
     }
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
@@ -622,7 +622,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         pipe_.InitBuffer(bufResFp32_, (N_ + 1) * dTile_ * sizeof(float));
         pipe_.InitBuffer(bufPostComb_, POST_COMB_SIZE * sizeof(float));
         pipe_.InitBuffer(bufPhiFp32_, 2, 2U * dTile_ * sizeof(float));
-        pipe_.InitBuffer(bufHInPrimeBf16_, BUFFER_NUM_ONE, dTile_ * sizeof(T));
+        pipe_.InitBuffer(bufHInPrimeBf16_, dTile_ * sizeof(T));
         pipe_.InitBuffer(bufScalar_, SCALAR_BUF_SIZE);
         const uint32_t gamma1CacheElems = (DUAL_SIBLING && USE_RMS_MID) || D_ <= GAMMA1_CACHE_MAX_D ? D_ : dTile_;
         pipe_.InitBuffer(bufScratchFp32_, gamma1CacheElems * sizeof(float));
@@ -663,6 +663,22 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
             DataCopyPadExtParams<float> gPad = {false, 0, 0, 0};
             DataCopyPad(bufGammaFp32_.Get<float>(), gamma0Gm_[0], gP, gPad);
             // gamma_2的形状为[N*D]，在RMSNorm_mid中按head加载
+        }
+
+        // 为initcheck建立一次性的MTE2初始化；后续Vector结果会覆盖这些槽位。
+        DataCopy(bufScalar_.Get<float>(), gamma0Gm_, PARTIAL_SLOT_ELEMS);
+        LocalTensor<T> x2Cache = bufActivationLowp_.Get<T>();
+        const uint32_t nBegin = DUAL_SIBLING ? siblingAivIdx_ * HEADS_PER_SIBLING : 0U;
+        const uint32_t nEnd = DUAL_SIBLING ? nBegin + HEADS_PER_SIBLING : N;
+        const uint64_t residualBase = (uint64_t)tStart_ * N_ * D_;
+        for (uint32_t n = nBegin; n < nEnd; ++n) {
+            if (n != 0U) {
+                DataCopy(x2Cache[n * D_], residualGm_[residualBase + (uint64_t)n * D_], D_);
+            }
+        }
+        if constexpr (RETURN_H_IN_F32) {
+            DataCopy(bufResFp32_.Get<float>()[N * dTile_], gamma0Gm_, dTile_);
+            DataCopy(bufHInPrimeBf16_.Get<T>(), hOutGm_[(uint64_t)tStart_ * D_], dTile_);
         }
 
         SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
