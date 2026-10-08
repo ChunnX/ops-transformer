@@ -23,7 +23,7 @@ namespace optiling {
 using namespace Ops::Transformer::OpTiling;
 
 namespace {
-constexpr uint32_t HOST_N_MAX = 4U;
+constexpr uint32_t SUPPORTED_N = 4U;
 constexpr uint32_t HOST_D_TILE_MAX = 2560U;
 constexpr uint32_t HOST_MAX_TOKENS = 1024U * 1024U;
 constexpr uint32_t NUM_TWO = 2U;
@@ -201,39 +201,39 @@ ge::graphStatus MhcNormPostPreonlyTiling::CheckInputShape()
         T_ == 0U || T_ > HOST_MAX_TOKENS,
         OP_LOGE(context_->GetNodeName(), "T (B*S) must be in [1, %u], got %u", HOST_MAX_TOKENS, T_),
         return ge::GRAPH_FAILED);
-    OP_CHECK_IF(N_ != HOST_N_MAX,
-                OP_LOGE(context_->GetNodeName(), "N must be %u, got %u", HOST_N_MAX, N_),
+    OP_CHECK_IF(N_ != SUPPORTED_N,
+                OP_LOGE(context_->GetNodeName(), "N must be %u, got %u", SUPPORTED_N, N_),
                 return ge::GRAPH_FAILED);
 
     const int64_t tokenDim0 = hOut.GetDim(0);
     const int64_t tokenDim1 = hOutDimNum == 3U ? hOut.GetDim(1) : 0;
     if (hOutDimNum == 2U) {
-        OP_CHECK_IF(residual.GetDimNum() != 3U || residual.GetDim(0) != tokenDim0 || residual.GetDim(1) != HOST_N_MAX ||
+        OP_CHECK_IF(residual.GetDimNum() != 3U || residual.GetDim(0) != tokenDim0 || residual.GetDim(1) != SUPPORTED_N ||
                         residual.GetDim(2) != D_,
                     OP_LOGE(context_->GetNodeName(), "residual must be [T,4,D] matching h_out"),
                     return ge::GRAPH_FAILED);
-        OP_CHECK_IF(hPost.GetDimNum() != 2U || hPost.GetDim(0) != tokenDim0 || hPost.GetDim(1) != HOST_N_MAX,
+        OP_CHECK_IF(hPost.GetDimNum() != 2U || hPost.GetDim(0) != tokenDim0 || hPost.GetDim(1) != SUPPORTED_N,
                     OP_LOGE(context_->GetNodeName(), "h_post must be [T,4] matching h_out"), return ge::GRAPH_FAILED);
-        OP_CHECK_IF(hRes.GetDimNum() != 3U || hRes.GetDim(0) != tokenDim0 || hRes.GetDim(1) != HOST_N_MAX ||
-                        hRes.GetDim(2) != HOST_N_MAX,
+        OP_CHECK_IF(hRes.GetDimNum() != 3U || hRes.GetDim(0) != tokenDim0 || hRes.GetDim(1) != SUPPORTED_N ||
+                        hRes.GetDim(2) != SUPPORTED_N,
                     OP_LOGE(context_->GetNodeName(), "h_res must be [T,4,4] matching h_out"), return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(residual.GetDimNum() != 4U || residual.GetDim(0) != tokenDim0 || residual.GetDim(1) != tokenDim1 ||
-                        residual.GetDim(2) != HOST_N_MAX || residual.GetDim(3) != D_,
+                        residual.GetDim(2) != SUPPORTED_N || residual.GetDim(3) != D_,
                     OP_LOGE(context_->GetNodeName(), "residual must be [B,S,4,D] matching h_out"),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(hPost.GetDimNum() != 3U || hPost.GetDim(0) != tokenDim0 || hPost.GetDim(1) != tokenDim1 ||
-                        hPost.GetDim(2) != HOST_N_MAX,
+                        hPost.GetDim(2) != SUPPORTED_N,
                     OP_LOGE(context_->GetNodeName(), "h_post must be [B,S,4] matching h_out"), return ge::GRAPH_FAILED);
         OP_CHECK_IF(hRes.GetDimNum() != 4U || hRes.GetDim(0) != tokenDim0 || hRes.GetDim(1) != tokenDim1 ||
-                        hRes.GetDim(2) != HOST_N_MAX || hRes.GetDim(3) != HOST_N_MAX,
+                        hRes.GetDim(2) != SUPPORTED_N || hRes.GetDim(3) != SUPPORTED_N,
                     OP_LOGE(context_->GetNodeName(), "h_res must be [B,S,4,4] matching h_out"),
                     return ge::GRAPH_FAILED);
     }
 
     OP_CHECK_IF(alpha.GetDimNum() != 1U || alpha.GetDim(0) != 1, OP_LOGE(context_->GetNodeName(), "alpha must be [1]"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(bias.GetDimNum() != 1U || bias.GetDim(0) != HOST_N_MAX,
+    OP_CHECK_IF(bias.GetDimNum() != 1U || bias.GetDim(0) != SUPPORTED_N,
                 OP_LOGE(context_->GetNodeName(), "bias must be [4]"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(gamma0.GetDimNum() != 1U || gamma0.GetDim(0) != D_ || gamma1.GetDimNum() != 1U ||
                     gamma1.GetDim(0) != D_,
@@ -245,7 +245,7 @@ ge::graphStatus MhcNormPostPreonlyTiling::CheckInputShape()
                 return ge::GRAPH_FAILED);
     if (gamma2Shape != nullptr) {
         const auto &gamma2 = gamma2Shape->GetStorageShape();
-        OP_CHECK_IF(gamma2.GetDimNum() != 1U || gamma2.GetDim(0) != static_cast<int64_t>(HOST_N_MAX * D_),
+        OP_CHECK_IF(gamma2.GetDimNum() != 1U || gamma2.GetDim(0) != static_cast<int64_t>(SUPPORTED_N * D_),
                     OP_LOGE(context_->GetNodeName(), "gamma_2 must be [4*D] when provided"), return ge::GRAPH_FAILED);
     }
     OP_CHECK_IF(
