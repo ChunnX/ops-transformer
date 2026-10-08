@@ -38,20 +38,6 @@ public:
 private:
     __aicore__ inline void ProcessTokenSingleAiv(uint32_t token);
     __aicore__ inline void ProcessTokenDualSiblingAiv(uint32_t token);
-    __aicore__ inline void ComputeX2PostTile(uint32_t token, uint32_t tOff, uint32_t tD, float invRms0,
-                                             const float (&postVals)[N_MAX]);
-    __aicore__ inline void ComputeX2PostTileForLane(uint32_t token, uint32_t tOff, uint32_t tD, float invRms0,
-                                                    const float (&postVals)[N_MAX]);
-    __aicore__ inline void CacheX2Tile(uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput,
-                                       bool quantizeInput = true);
-    __aicore__ inline void CacheX2TileForLane(uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput,
-                                              bool quantizeInput = true);
-    __aicore__ inline float CacheHInAndReduceSumSq(uint32_t tOff, uint32_t tD, LocalTensor<float> hIn);
-    __aicore__ inline void LoadHInCacheTile(uint32_t tOff, uint32_t tD, LocalTensor<float> hIn);
-    __aicore__ inline void AccumulateHalfPartials(uint32_t tOff, uint32_t tD, float (&sumSqHalf)[2],
-                                                  float (&dotHalf)[2][N_MAX], uint32_t halfBegin = 0,
-                                                  uint32_t halfEnd = 2);
-
     // =================================================================
     //  共享计算模块
     // =================================================================
@@ -125,31 +111,53 @@ __aicore__ inline void ComputeX2AllHeadsBatched(const float (&postVals)[N_MAX], 
 ///   gate[i] = sigmoid(alpha0 * xHat[i] + bias[i]) + hcEps
 __aicore__ inline void ComputeGateValues(float totalSumSqPre, float (&xHatVals)[N_MAX]);
 
-
-
-// A5单AIV与双sibling AIV路径共用的输入输出辅助函数。
+// 输入输出与本核流水同步辅助函数。
 
 __aicore__ inline void QuantizeRoundTrip(LocalTensor<float> buf, uint32_t count);
 
 __aicore__ inline void CastToIO(LocalTensor<T> dst, LocalTensor<float> src, uint32_t count);
 
-__aicore__ inline void FenceMte3ToMte2();
-
 __aicore__ inline void FenceMte3ToV();
 
 __aicore__ inline void FenceVToMte2();
-
-__aicore__ inline void LoadLowPrecisionTile(GlobalTensor<T> &src, uint64_t gmOffset, LocalTensor<float> dst,
-                                            uint32_t count);
 
 __aicore__ inline void WriteLowPrecisionTile(GlobalTensor<T> &dst, uint64_t gmOffset, LocalTensor<float> src,
                                              uint32_t count);
 
 __aicore__ inline void WriteHInPrimeTile(LocalTensor<float> src, uint64_t gmOffset, uint32_t count);
 
-__aicore__ inline void WriteX2OutTile(LocalTensor<float> src, uint64_t gmOffset, uint32_t count);
-
 __aicore__ inline uint32_t GetTileD(uint32_t tile) const;
+
+// 单AIV和双sibling AIV路径共用的分块计算。
+
+// 构造一个低精度x2_post分块。R1使用normEps_，R2保持h_res的[j,n]索引顺序，
+// 并显式保留设计规定的两处低精度往返边界。
+__aicore__ inline void ComputeX2PostTile(uint32_t token, uint32_t tOff, uint32_t tD, float invRms0,
+                                         const float (&postVals)[N_MAX]);
+
+// 双AIV仍需读取全部残差行，但每个lane只计算自己负责的两个输出head。
+__aicore__ inline void ComputeX2PostTileForLane(uint32_t token, uint32_t tOff, uint32_t tD, float invRms0,
+                                                const float (&postVals)[N_MAX]);
+
+// 将完整x2以输出dtype常驻UB，同时完成设计要求的低精度往返；写GM仅用于保留x2_out输出语义。
+__aicore__ inline void CacheX2Tile(uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput,
+                                   bool quantizeInput = true);
+
+// 双sibling路径仍在每个lane的私有UB中保留完整x2，便于两个lane按同一顺序执行R1/R2/R3；
+// 写回x2_out时每个lane只写自己负责的两个head，避免任何输出竞争。
+__aicore__ inline void CacheX2TileForLane(uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput,
+                                          bool quantizeInput = true);
+
+// R6读取完当前x2分块后，复用首个head缓存保留低精度h_in。
+// 恢复FP32与平方在同一VF内完成，保留量化往返边界并减少UB中间写读。
+__aicore__ inline float CacheHInAndReduceSumSq(uint32_t tOff, uint32_t tD, LocalTensor<float> hIn);
+
+__aicore__ inline void LoadHInCacheTile(uint32_t tOff, uint32_t tD, LocalTensor<float> hIn);
+
+// 固定的R4/R5归约树由单AIV和双sibling AIV路径共用。half0固定覆盖展平区间[0,2D)，
+// half1固定覆盖[2D,4D)，调用方只执行一次顶层合并partial0+partial1。
+__aicore__ inline void AccumulateHalfPartials(uint32_t tOff, uint32_t tD, float (&sumSqHalf)[2],
+                                              float (&dotHalf)[2][N_MAX], uint32_t halfBegin = 0, uint32_t halfEnd = 2);
 
 
     // =================================================================
@@ -195,7 +203,6 @@ __aicore__ inline uint32_t GetTileD(uint32_t tile) const;
     int32_t evtVtoMte2_ = 0;
     int32_t evtMte3toV_ = 0;
     int32_t evtVtoMte3_ = 0;
-    int32_t evtMte3toMte2_ = 0;
     int32_t evtMte2toS_ = 0;
     int32_t evtStoMte3_ = 0;
 

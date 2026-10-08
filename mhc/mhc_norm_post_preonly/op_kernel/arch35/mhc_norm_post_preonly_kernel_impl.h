@@ -12,9 +12,8 @@
 #define MHC_NORM_POST_PREONLY_KERNEL_IMPL_H_
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline void
-KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::AccumulateHalfPartials(
-    uint32_t tOff, uint32_t tD, float (&sumSqHalf)[2], float (&dotHalf)[2][N_MAX], uint32_t halfBegin, uint32_t halfEnd)
+__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::AccumulateHalfPartials(uint32_t tOff, uint32_t tD, float (&sumSqHalf)[2],
+                                              float (&dotHalf)[2][N_MAX], uint32_t halfBegin, uint32_t halfEnd)
 {
     LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
     LocalTensor<float> reduceRows = bufResFp32_.Get<float>();
@@ -155,10 +154,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
 }
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline float KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
-                                                         DUAL_SIBLING>::CacheHInAndReduceSumSq(uint32_t tOff,
-                                                                                               uint32_t tD,
-                                                                                               LocalTensor<float> hIn)
+__aicore__ inline float KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::CacheHInAndReduceSumSq(uint32_t tOff, uint32_t tD, LocalTensor<float> hIn)
 {
     LocalTensor<T> hInCache = bufX2Cache_.Get<T>()[tOff];
     CastToIO(hInCache, hIn, tD);
@@ -177,8 +173,8 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
 }
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::CacheX2Tile(
-    uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput, bool quantizeInput)
+__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::CacheX2Tile(uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput,
+                                   bool quantizeInput)
 {
     LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
     LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
@@ -187,8 +183,8 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     // R2已在成对VF尾部完成首次量化；R3后的第二次量化仍使用该路径。
     if (quantizeInput) {
         for (uint32_t n = 0; n < N_MAX; n += 2U) {
-            MhcNormRegBase::CastFp32PairToB16(x2Cache[n * D_ + tOff], x2Cache[(n + 1U) * D_ + tOff],
-                                                  x2[n * dimTile_], x2[(n + 1U) * dimTile_], tD);
+            MhcNormRegBase::CastFp32PairToB16(x2Cache[n * D_ + tOff], x2Cache[(n + 1U) * D_ + tOff], x2[n * dimTile_],
+                                              x2[(n + 1U) * dimTile_], tD);
         }
         PipeBarrier<PIPE_V>();
     }
@@ -196,8 +192,8 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     // 保证后续R4/R5仍使用低精度往返后的x2。
     if (!USE_RMS_MID || writeOutput) {
         for (uint32_t n = 0; n < N_MAX; n += 2U) {
-            MhcNormRegBase::CastB16PairToFp32(x2[n * dimTile_], x2[(n + 1U) * dimTile_],
-                                                  x2Cache[n * D_ + tOff], x2Cache[(n + 1U) * D_ + tOff], tD);
+            MhcNormRegBase::CastB16PairToFp32(x2[n * dimTile_], x2[(n + 1U) * dimTile_], x2Cache[n * D_ + tOff],
+                                              x2Cache[(n + 1U) * D_ + tOff], tD);
         }
         PipeBarrier<PIPE_V>();
     }
@@ -214,10 +210,8 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
 }
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
-                                                        DUAL_SIBLING>::CacheX2TileForLane(uint32_t token, uint32_t tOff,
-                                                                                          uint32_t tD, bool writeOutput,
-                                                                                          bool quantizeInput)
+__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::CacheX2TileForLane(uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput,
+                                          bool quantizeInput)
 {
     LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
     LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
@@ -226,16 +220,15 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
 
     if (quantizeInput) {
         for (uint32_t n = 0; n < N_MAX; n += 2U) {
-            MhcNormRegBase::CastFp32PairToB16(x2Cache[n * D_ + tOff], x2Cache[(n + 1U) * D_ + tOff],
-                                                  x2[n * dimTile_], x2[(n + 1U) * dimTile_], tD);
+            MhcNormRegBase::CastFp32PairToB16(x2Cache[n * D_ + tOff], x2Cache[(n + 1U) * D_ + tOff], x2[n * dimTile_],
+                                              x2[(n + 1U) * dimTile_], tD);
         }
         PipeBarrier<PIPE_V>();
     }
     if (!USE_RMS_MID || writeOutput) {
         // 双路R4/R5只读取本lane负责的相邻两行，避免恢复另一lane的无效副本。
-        MhcNormRegBase::CastB16PairToFp32(x2, x2[dimTile_],
-                                              x2Cache[headBegin * D_ + tOff],
-                                              x2Cache[(headBegin + 1U) * D_ + tOff], tD);
+        MhcNormRegBase::CastB16PairToFp32(x2, x2[dimTile_], x2Cache[headBegin * D_ + tOff],
+                                          x2Cache[(headBegin + 1U) * D_ + tOff], tD);
         PipeBarrier<PIPE_V>();
     }
 
@@ -294,19 +287,16 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     LocalTensor<float> combWeights = bufPostComb_.Get<float>()[ALIGN8];
 
     for (uint32_t h = 0; h < N; h += 2U) {
-        MhcNormRegBase::ComputePostHeadPair<T>(x2Cache[h * D_ + tOff], x2Cache[(h + 1U) * D_ + tOff], hOut,
-                                                   residual, combWeights, dimTile_, h, postVals[h], postVals[h + 1U],
-                                                   tD);
+        MhcNormRegBase::ComputePostHeadPair<T>(x2Cache[h * D_ + tOff], x2Cache[(h + 1U) * D_ + tOff], hOut, residual,
+                                               combWeights, dimTile_, h, postVals[h], postVals[h + 1U], tD);
     }
     PipeBarrier<PIPE_V>();
     bufResidualBf16_.FreeTensor(residual);
 }
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
-                                                        DUAL_SIBLING>::ComputeX2PostTile(uint32_t token, uint32_t tOff,
-                                                                                         uint32_t tD, float invRms0,
-                                                                                         const float (&postVals)[N_MAX])
+__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ComputeX2PostTile(uint32_t token, uint32_t tOff, uint32_t tD, float invRms0,
+                                         const float (&postVals)[N_MAX])
 {
     LoadCachedHOut(tOff, tD);
     LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
@@ -317,9 +307,8 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
 }
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
-                                                        DUAL_SIBLING>::ComputeX2PostTileForLane(
-    uint32_t token, uint32_t tOff, uint32_t tD, float invRms0, const float (&postVals)[N_MAX])
+__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ComputeX2PostTileForLane(uint32_t token, uint32_t tOff, uint32_t tD, float invRms0,
+                                                const float (&postVals)[N_MAX])
 {
     LoadCachedHOut(tOff, tD);
     LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
@@ -339,9 +328,9 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     residual = bufResidualBf16_.DeQue<T>();
     LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
     LocalTensor<float> combWeights = bufPostComb_.Get<float>()[ALIGN8];
-    MhcNormRegBase::ComputePostHeadPair<T>(
-        x2Cache[headBegin * D_ + tOff], x2Cache[(headBegin + 1U) * D_ + tOff], hOut, residual, combWeights,
-        dimTile_, headBegin, postVals[headBegin], postVals[headBegin + 1U], tD);
+    MhcNormRegBase::ComputePostHeadPair<T>(x2Cache[headBegin * D_ + tOff], x2Cache[(headBegin + 1U) * D_ + tOff], hOut,
+                                           residual, combWeights, dimTile_, headBegin, postVals[headBegin],
+                                           postVals[headBegin + 1U], tD);
     PipeBarrier<PIPE_V>();
     bufResidualBf16_.FreeTensor(residual);
 }
@@ -354,13 +343,6 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     MhcNormRegBase::CastB16ToFp32(hOut, hBf16, tD);
     PipeBarrier<PIPE_V>();
     bufHOutBf16_.FreeTensor(hBf16);
-}
-
-template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::FenceMte3ToMte2()
-{
-    SetFlag<HardEvent::MTE3_MTE2>(evtMte3toMte2_);
-    WaitFlag<HardEvent::MTE3_MTE2>(evtMte3toMte2_);
 }
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
@@ -488,7 +470,6 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         evtVtoMte2_ = static_cast<int32_t>(pipe_.AllocEventID<HardEvent::V_MTE2>());
         evtMte3toV_ = static_cast<int32_t>(pipe_.AllocEventID<HardEvent::MTE3_V>());
         evtVtoMte3_ = static_cast<int32_t>(pipe_.AllocEventID<HardEvent::V_MTE3>());
-        evtMte3toMte2_ = static_cast<int32_t>(pipe_.AllocEventID<HardEvent::MTE3_MTE2>());
         if constexpr (DUAL_SIBLING) {
             evtMte2toS_ = static_cast<int32_t>(pipe_.AllocEventID<HardEvent::MTE2_S>());
             evtStoMte3_ = static_cast<int32_t>(pipe_.AllocEventID<HardEvent::S_MTE3>());
@@ -514,9 +495,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
 }
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
-                                                        DUAL_SIBLING>::LoadHInCacheTile(uint32_t tOff, uint32_t tD,
-                                                                                        LocalTensor<float> hIn)
+__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::LoadHInCacheTile(uint32_t tOff, uint32_t tD, LocalTensor<float> hIn)
 {
     LocalTensor<T> hInCache = bufX2Cache_.Get<T>()[tOff];
     MhcNormRegBase::CastB16ToFp32(hIn, hInCache, tD);
@@ -528,19 +507,6 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
 {
     PrefetchHOutTile(gmOffset, tD);
     ConsumeHOutTile(tD);
-}
-
-template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::LoadLowPrecisionTile(GlobalTensor<T> &src, uint64_t gmOffset, LocalTensor<float> dst,
-                                            uint32_t count)
-{
-    LocalTensor<T> tmp = bufHOutBf16_.AllocTensor<T>();
-    DataCopy(tmp, src[gmOffset], count);
-    bufHOutBf16_.EnQue(tmp);
-    tmp = bufHOutBf16_.DeQue<T>();
-    MhcNormRegBase::CastB16ToFp32(dst, tmp, count);
-    PipeBarrier<PIPE_V>();
-    bufHOutBf16_.FreeTensor(tmp);
 }
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
@@ -620,7 +586,6 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         pipe_.ReleaseEventID<HardEvent::V_MTE2>(evtVtoMte2_);
         pipe_.ReleaseEventID<HardEvent::MTE3_V>(evtMte3toV_);
         pipe_.ReleaseEventID<HardEvent::V_MTE3>(evtVtoMte3_);
-        pipe_.ReleaseEventID<HardEvent::MTE3_MTE2>(evtMte3toMte2_);
         if constexpr (DUAL_SIBLING) {
             pipe_.ReleaseEventID<HardEvent::MTE2_S>(evtMte2toS_);
             pipe_.ReleaseEventID<HardEvent::S_MTE3>(evtStoMte3_);
@@ -716,12 +681,6 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     tmp = bufHInPrimeBf16_.DeQue<T>();
     DataCopy(dst[gmOffset], tmp, count);
     bufHInPrimeBf16_.FreeTensor(tmp);
-}
-
-template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::WriteX2OutTile(LocalTensor<float> src, uint64_t gmOffset, uint32_t count)
-{
-    WriteLowPrecisionTile(x2OutGm_, gmOffset, src, count);
 }
 
 #endif // MHC_NORM_POST_PREONLY_KERNEL_IMPL_H_

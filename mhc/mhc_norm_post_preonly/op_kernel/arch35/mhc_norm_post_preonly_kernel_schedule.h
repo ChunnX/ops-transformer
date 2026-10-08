@@ -12,8 +12,8 @@
 #define MHC_NORM_POST_PREONLY_KERNEL_SCHEDULE_H_
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
-                                                        DUAL_SIBLING>::ProcessTokenDualSiblingAiv(uint32_t token)
+__aicore__ inline void
+KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ProcessTokenDualSiblingAiv(uint32_t token)
 {
     float postVals[N_MAX];
     float sumSqHalf[2] = {0.0f, 0.0f};
@@ -47,8 +47,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
             for (uint32_t half = laneId_; half < laneId_ + 1U; ++half) {
                 const uint32_t h0 = half * 2U;
                 const uint32_t h1 = h0 + 1;
-                MhcNormRegBase::PairSquareB16ToFp32(out, x2Cache[h0 * D_ + tOff],
-                                                       x2Cache[h1 * D_ + tOff], tD);
+                MhcNormRegBase::PairSquareB16ToFp32(out, x2Cache[h0 * D_ + tOff], x2Cache[h1 * D_ + tOff], tD);
                 PipeBarrier<PIPE_V>();
                 midSqHalf[half] += ReduceSumPrecise(out, tD);
             }
@@ -67,7 +66,8 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         WaitFlag<HardEvent::S_MTE3>(evtStoMte3_);
         const uint64_t ownSlot = ((uint64_t)token * 2U + laneId_) * PARTIAL_SLOT_ELEMS;
         DataCopy(partial1Gm_[ownSlot], midBuf, PARTIAL_SLOT_ELEMS);
-        MhcPairMidReadySync();
+        CrossCoreSetFlag<0x1, PIPE_MTE3>(MID_READY_FLAG);
+        CrossCoreWaitFlag<0x1, PIPE_MTE2>(MID_READY_FLAG);
         const uint64_t siblingSlot = ((uint64_t)token * 2U + (1U - laneId_)) * PARTIAL_SLOT_ELEMS;
         DataCopy(midBuf, partial1Gm_[siblingSlot], PARTIAL_SLOT_ELEMS);
         SetFlag<HardEvent::MTE2_S>(evtMte2toS_);
@@ -83,22 +83,19 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
             LoadGammaInto(gammaEven, gamma2Gm_, headBegin * D_ + tOff, tD);
             LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
             // 每个lane只执行自己负责的两个head，另一半由sibling并行完成。
-            for (uint32_t n = headBegin; n < headBegin + 2U; ++n) {
-                const uint32_t laneHead = n - headBegin;
-                LocalTensor<float> gammaCurrent = ((laneHead & 1U) == 0) ? gammaEven : gammaOdd;
-                LocalTensor<float> gammaNext = ((laneHead & 1U) == 0) ? gammaOdd : gammaEven;
-                SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
-                WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
-                if (n + 1U < headBegin + 2U) {
-                    LoadGammaInto(gammaNext, gamma2Gm_, (n + 1) * D_ + tOff, tD);
-                }
-                MhcNormRegBase::CastB16ScaleAndMulGammaToB16(
-                    x2Cache[n * D_ + tOff], x2Cache[n * D_ + tOff], gammaCurrent, invRmsMid, tD);
-                PipeBarrier<PIPE_V>();
-                if (n + 2U < headBegin + 2U) {
-                    FenceVToMte2();
-                }
-            }
+            // 固定两次迭代显式展开；第二个head的MTE2仍与第一个head的Vector重叠。
+            SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
+            WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
+            LoadGammaInto(gammaOdd, gamma2Gm_, (headBegin + 1U) * D_ + tOff, tD);
+            MhcNormRegBase::CastB16ScaleAndMulGammaToB16(x2Cache[headBegin * D_ + tOff], x2Cache[headBegin * D_ + tOff],
+                                                         gammaEven, invRmsMid, tD);
+            PipeBarrier<PIPE_V>();
+
+            SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
+            WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
+            MhcNormRegBase::CastB16ScaleAndMulGammaToB16(
+                x2Cache[(headBegin + 1U) * D_ + tOff], x2Cache[(headBegin + 1U) * D_ + tOff], gammaOdd, invRmsMid, tD);
+            PipeBarrier<PIPE_V>();
             CacheX2TileForLane(token, tOff, tD, true, false);
             AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf, laneId_, laneId_ + 1U);
         }
@@ -121,7 +118,8 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     }
 
     // 两个lane均无条件执行一次mode1 Set/Wait；该等待不替代本核流水事件。
-    MhcPairReadySync();
+    CrossCoreSetFlag<0x1, PIPE_MTE3>(PAIR_READY_FLAG);
+    CrossCoreWaitFlag<0x1, PIPE_MTE2>(PAIR_READY_FLAG);
     if (laneId_ == 1U) {
         return;
     }
@@ -138,6 +136,15 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         dotHalf[1][o] = partialBuf.GetValue(o + 1U);
     }
 
+    // follower负责的两个head在GM和UB中均连续。partial到达后立即发起2D回读，
+    // 用下方Gate的Scalar/Vector计算隐藏这段MTE2；R6消费x2前再等待完成。
+    LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
+    const uint64_t followerHeadOffset = (uint64_t)token * N_ * D_ + 2U * D_;
+    if constexpr (USE_RMS_MID) {
+        DataCopy(x2Cache[2U * D_], x2OutGm_[followerHeadOffset], 2U * D_);
+        SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
+    }
+
     const float totalSumSqPre = sumSqHalf[0] + sumSqHalf[1];
     float xHatVals[N_MAX];
     for (uint32_t o = 0; o < N_MAX; ++o) {
@@ -145,14 +152,11 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     }
     ComputeGateValues(totalSumSqPre, xHatVals);
 
-    // 会合后只有leader继续执行R6、R7和最终输出。leader的私有缓存仅包含
-    // 自己完成R3的前两行，从已经同步写出的x2_out恢复follower负责的后两行。
-    // follower负责的两个head在GM和UB中均连续，一次恢复完整2D区间，
-    // 避免按tile、按head重复发出MTE2搬运指令。
-    LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
-    const uint64_t followerHeadOffset = (uint64_t)token * N_ * D_ + 2U * D_;
-    DataCopy(x2Cache[2U * D_], x2OutGm_[followerHeadOffset], 2U * D_);
-    SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
+    // 会合后只有leader继续执行R6、R7和最终输出。
+    if constexpr (!USE_RMS_MID) {
+        DataCopy(x2Cache[2U * D_], x2OutGm_[followerHeadOffset], 2U * D_);
+        SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
+    }
     WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
 
     float sumSq1 = 0.0f;
@@ -193,8 +197,8 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
 }
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline void
-KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ProcessTokenSingleAiv(uint32_t token)
+__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ProcessTokenSingleAiv(
+    uint32_t token)
 {
     float postVals[N_MAX];
     float sumSqHalf[2] = {0.0f, 0.0f};
@@ -227,8 +231,7 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
             for (uint32_t half = 0; half < 2; ++half) {
                 const uint32_t h0 = half * 2;
                 const uint32_t h1 = h0 + 1;
-                MhcNormRegBase::PairSquareB16ToFp32(out, x2Cache[h0 * D_ + tOff],
-                                                       x2Cache[h1 * D_ + tOff], tD);
+                MhcNormRegBase::PairSquareB16ToFp32(out, x2Cache[h0 * D_ + tOff], x2Cache[h1 * D_ + tOff], tD);
                 PipeBarrier<PIPE_V>();
                 midSqHalf[half] += ReduceSumPrecise(out, tD);
             }
@@ -262,8 +265,8 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
                 if (n + 1 < N_MAX) {
                     LoadGammaInto(gammaNext, gamma2Gm_, (n + 1) * D_ + tOff, tD);
                 }
-                MhcNormRegBase::CastB16ScaleAndMulGammaToB16(
-                    x2Cache[n * D_ + tOff], x2Cache[n * D_ + tOff], gammaCurrent, invRmsMid, tD);
+                MhcNormRegBase::CastB16ScaleAndMulGammaToB16(x2Cache[n * D_ + tOff], x2Cache[n * D_ + tOff],
+                                                             gammaCurrent, invRmsMid, tD);
                 PipeBarrier<PIPE_V>();
                 // 当前缓存会在两轮后再次由MTE2写入，前两轮显式建立V到MTE2依赖。
                 if (n + 2 < N_MAX) {
