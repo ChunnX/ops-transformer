@@ -7,6 +7,13 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
+# ============================================================
+# CMakeLists.txt — apace AllGatherQuantMatmul ubmem ST
+# ============================================================
+# Direct kernel launch (<<<>>>) with HCCL context obtained on
+# the host side via HcclAllocComResourceByTiling (driven by
+# Mc2CcTilingConfig) and passed as the first kernel parameter.
+# main.cpp is compiled in kernel mode (-xasc).
 
 set(APACE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../../..")
 set(OP_KERNEL_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../../../..")
