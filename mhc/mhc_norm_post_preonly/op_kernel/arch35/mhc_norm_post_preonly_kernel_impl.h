@@ -83,27 +83,44 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Accumul
         PipeBarrier<PIPE_V>();
         MhcSandwichRegBase::Add(reduceRows, reduceRows, tmp, tD);
 
+        // phi ping-pong：prologue预取o=0的两路，后续算o时预取o+1，4槽使MTE2与Vector重叠。
+        LocalTensor<float> curPhi0 = bufPhiFp32_.AllocTensor<float>();
+        LocalTensor<float> curPhi1 = bufPhiFp32_.AllocTensor<float>();
+        DataCopyPad(curPhi0, phiGm_[(uint64_t)h0 * D_ + tOff], copyParams, copyPad);
+        DataCopyPad(curPhi1, phiGm_[(uint64_t)h1 * D_ + tOff], copyParams, copyPad);
+        bufPhiFp32_.EnQue(curPhi0);
+        bufPhiFp32_.EnQue(curPhi1);
+
         for (uint32_t o = 0; o < N_MAX; ++o) {
+            // 预取下一轮o+1的两路phi，与当前dot计算重叠。
+            LocalTensor<float> nextPhi0;
+            LocalTensor<float> nextPhi1;
+            if (o + 1U < N_MAX) {
+                nextPhi0 = bufPhiFp32_.AllocTensor<float>();
+                nextPhi1 = bufPhiFp32_.AllocTensor<float>();
+                DataCopyPad(nextPhi0, phiGm_[(uint64_t)(o + 1U) * phiCols_ + (uint64_t)h0 * D_ + tOff], copyParams,
+                            copyPad);
+                DataCopyPad(nextPhi1, phiGm_[(uint64_t)(o + 1U) * phiCols_ + (uint64_t)h1 * D_ + tOff], copyParams,
+                            copyPad);
+                bufPhiFp32_.EnQue(nextPhi0);
+                bufPhiFp32_.EnQue(nextPhi1);
+            }
+
             LocalTensor<float> dotRow = reduceRows[(o + 1) * dimTile_];
-            LocalTensor<float> phi = bufPhiFp32_.AllocTensor<float>();
-            uint64_t phiOffset = (uint64_t)o * phiCols_ + (uint64_t)h0 * D_ + tOff;
-            DataCopyPad(phi, phiGm_[phiOffset], copyParams, copyPad);
-            bufPhiFp32_.EnQue(phi);
-            phi = bufPhiFp32_.DeQue<float>();
-            MhcSandwichRegBase::Mul(dotRow, x2[x2h0 * dimTile_], phi, tD);
+            curPhi0 = bufPhiFp32_.DeQue<float>();
+            curPhi1 = bufPhiFp32_.DeQue<float>();
+            MhcSandwichRegBase::Mul(dotRow, x2[x2h0 * dimTile_], curPhi0, tD);
             PipeBarrier<PIPE_V>();
-            bufPhiFp32_.FreeTensor(phi);
-
-            phi = bufPhiFp32_.AllocTensor<float>();
-            phiOffset = (uint64_t)o * phiCols_ + (uint64_t)h1 * D_ + tOff;
-            DataCopyPad(phi, phiGm_[phiOffset], copyParams, copyPad);
-            bufPhiFp32_.EnQue(phi);
-            phi = bufPhiFp32_.DeQue<float>();
-            MhcSandwichRegBase::Mul(tmp, x2[x2h1 * dimTile_], phi, tD);
+            MhcSandwichRegBase::Mul(tmp, x2[x2h1 * dimTile_], curPhi1, tD);
             PipeBarrier<PIPE_V>();
-            bufPhiFp32_.FreeTensor(phi);
-
             MhcSandwichRegBase::Add(dotRow, dotRow, tmp, tD);
+            bufPhiFp32_.FreeTensor(curPhi0);
+            bufPhiFp32_.FreeTensor(curPhi1);
+
+            if (o + 1U < N_MAX) {
+                curPhi0 = nextPhi0;
+                curPhi1 = nextPhi1;
+            }
         }
 
         PipeBarrier<PIPE_V>();
@@ -306,9 +323,8 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
 {
     LoadCachedHOut(tOff, tD);
     LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
-    ApplyScaleAndGamma(hOut, invRms0, bufGamma0Fp32_.Get<float>()[tOff], tD);
-    QuantizeRoundTrip(hOut, tD);
 
+    // 提前发起residual搬运（MTE2），与下方h_out的scale/gamma/quantize（Vector）重叠。
     const uint32_t headBegin = laneId_ * 2U;
     const uint64_t gmBaseOffset = (uint64_t)token * N_ * D_ + tOff;
     LocalTensor<T> residual = bufResidualBf16_.AllocTensor<T>();
@@ -316,6 +332,10 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         DataCopy(residual[n * dimTile_], residualGm_[gmBaseOffset + (uint64_t)n * D_], tD);
     }
     bufResidualBf16_.EnQue(residual);
+
+    ApplyScaleAndGamma(hOut, invRms0, bufGamma0Fp32_.Get<float>()[tOff], tD);
+    QuantizeRoundTrip(hOut, tD);
+
     residual = bufResidualBf16_.DeQue<T>();
     LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
     LocalTensor<float> combWeights = bufPostComb_.Get<float>()[ALIGN8];
@@ -457,7 +477,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         // h_out失效后再复用为R6/R7的h_in和通用输出暂存。
         pipe_.InitBuffer(bufResFp32_, (N_ + 1) * dimTile_ * sizeof(float));
         pipe_.InitBuffer(bufPostComb_, POST_COMB_SIZE * sizeof(float));
-        pipe_.InitBuffer(bufPhiFp32_, BUFFER_NUM_TWO, dimTile_ * sizeof(float));
+        pipe_.InitBuffer(bufPhiFp32_, BUFFER_NUM_FOUR, dimTile_ * sizeof(float));
         // TODO: 后续重新设计流水并单独验证输入、输出双缓冲收益。
         pipe_.InitBuffer(bufHInPrimeBf16_, BUFFER_NUM_ONE, dimTile_ * sizeof(T));
         pipe_.InitBuffer(bufScalar_, SCALAR_BUF_SIZE);
