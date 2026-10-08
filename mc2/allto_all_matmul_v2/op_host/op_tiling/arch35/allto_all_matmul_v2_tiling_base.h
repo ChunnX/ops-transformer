@@ -18,8 +18,8 @@
 #include <ascendc/host_api/tiling/template_argument.h>
 #include "securec.h"
 #include "apace/kernel/fusions/all_to_all_quant_matmul/all_to_all_matmul_tiling_data.h"
-#include "apace/tiling/quant_matmul_tiling_swat.h"
-#include "apace/tiling/comm_tiling_base.h"
+#include "apace/tiling/matmul_tiling/quant_matmul_tiling.h"
+#include "apace/tiling/core_occupancy_first_tiling.h"
 #include "tiling/platform/platform_ascendc.h"
 #include "op_host/tiling_base.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
@@ -32,7 +32,7 @@ using namespace Ops::Transformer::OpTiling;
 
 class AlltoAllMatmulV2TilingClass : public TilingBaseClass {
 public:
-    explicit AlltoAllMatmulV2TilingClass(gert::TilingContext *context)
+    explicit AlltoAllMatmulV2TilingClass(gert::TilingContext* context)
         : TilingBaseClass(context)
     {}
     ~AlltoAllMatmulV2TilingClass() override = default;
@@ -78,35 +78,35 @@ protected:
 
     ge::graphStatus CheckTensorAttrs();
 
-    bool CheckInputDescs(const char *opName);
+    bool CheckInputDescs(const char* opName);
 
-    bool CheckWorldSizeAttr(const char *opName);
+    bool CheckWorldSizeAttr(const char* opName);
 
-    bool CheckGroupAttr(const char *opName);
+    bool CheckGroupAttr(const char* opName);
 
-    bool CheckTensorFormats(const char *opName);
+    bool CheckTensorFormats(const char* opName);
 
-    bool CheckTensorDtypes(const char *opName);
+    bool CheckTensorDtypes(const char* opName);
 
-    bool CheckScaleDesc(const char *opName);
+    bool CheckScaleDesc(const char* opName);
 
-    bool CheckBiasDesc(const char *opName);
+    bool CheckBiasDesc(const char* opName);
 
-    bool CheckQuantAndYDtypeAttr(const char *opName);
+    bool CheckQuantAndYDtypeAttr(const char* opName);
 
-    bool CheckOtherAttrs(const char *opName);
+    bool CheckOtherAttrs(const char* opName);
 
-    bool CheckGroupSizeAttr(const char *opName);
+    bool CheckGroupSizeAttr(const char* opName);
 
     ge::graphStatus CheckTensorShapes();
 
-    bool CheckMatmulDimsAndBounds(const char *opName);
+    bool CheckMatmulDimsAndBounds(const char* opName);
 
-    bool CheckMatmulDivisibility(const char *opName);
+    bool CheckMatmulDivisibility(const char* opName);
 
-    bool CheckBiasShape(const char *opName);
+    bool CheckBiasShape(const char* opName);
 
-    bool CheckScaleShapes(const char *opName);
+    bool CheckScaleShapes(const char* opName);
 
     ge::graphStatus CheckOpInputInfo();
 
