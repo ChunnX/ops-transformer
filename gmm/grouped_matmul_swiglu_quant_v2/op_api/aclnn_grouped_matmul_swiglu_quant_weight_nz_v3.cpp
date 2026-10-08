@@ -45,6 +45,7 @@ constexpr size_t BATCHED_MATRIX_COLUMN_DIM = 2;
 constexpr size_t SCALE_PAIR_DIM = 3;
 constexpr size_t EMPTY_TENSOR_RANK = 1;
 constexpr int64_t MIN_GROUP_NUM = 1;
+constexpr int64_t NO_CLAMP_SWIGLU_MODE = 0;
 constexpr int64_t SPLIT_SWIGLU_MODE = 2;
 constexpr int64_t GROUP_LIST_COUNTS = 1;
 constexpr size_t OUTPUT_SCALE_RESULT_INDEX = 1;
@@ -225,26 +226,31 @@ bool IsRepresentableFloat(double value)
 }
 
 aclnnStatus CheckSwigluAttrs(int64_t swigluMode, double clampLimit, double gluAlpha, double gluBias,
-                             const char* roundMode, int64_t scaleAlg, double dstTypeMax)
+                             const char* roundMode, int64_t scaleAlg, double dstTypeMax, bool allowNoClamp)
 {
     GMM_SWIGLU_V3_CHECK_WITH_LOG(
-        swigluMode == SPLIT_SWIGLU_MODE, ACLNN_ERR_PARAM_INVALID,
+        swigluMode == SPLIT_SWIGLU_MODE || (allowNoClamp && swigluMode == NO_CLAMP_SWIGLU_MODE),
+        ACLNN_ERR_PARAM_INVALID,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(API_NAME, "swigluMode", std::to_string(swigluMode),
-                                              "currently only 2 is supported"));
-    GMM_SWIGLU_V3_CHECK_WITH_LOG(
-        IsRepresentableFloat(clampLimit), ACLNN_ERR_PARAM_INVALID,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(API_NAME, "clampLimit", std::to_string(clampLimit),
-                                              "must be finite and representable by float32"));
-    GMM_SWIGLU_V3_CHECK_WITH_LOG(
-        clampLimit > 0.0, ACLNN_ERR_PARAM_INVALID,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(API_NAME, "clampLimit", std::to_string(clampLimit),
-                                              "must be greater than 0 for swigluMode 2"));
-    GMM_SWIGLU_V3_CHECK_WITH_LOG(IsRepresentableFloat(gluAlpha), ACLNN_ERR_PARAM_INVALID,
-                                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(API_NAME, "gluAlpha", std::to_string(gluAlpha),
-                                                                       "must be finite and representable by float32"));
-    GMM_SWIGLU_V3_CHECK_WITH_LOG(IsRepresentableFloat(gluBias), ACLNN_ERR_PARAM_INVALID,
-                                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(API_NAME, "gluBias", std::to_string(gluBias),
-                                                                       "must be finite and representable by float32"));
+                                              "only 2, or 0 for FLOAT4_E2M1 A4W4, is supported"));
+    if (swigluMode == SPLIT_SWIGLU_MODE) {
+        GMM_SWIGLU_V3_CHECK_WITH_LOG(
+            IsRepresentableFloat(clampLimit), ACLNN_ERR_PARAM_INVALID,
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(API_NAME, "clampLimit", std::to_string(clampLimit),
+                                                  "must be finite and representable by float32"));
+        GMM_SWIGLU_V3_CHECK_WITH_LOG(
+            clampLimit > 0.0, ACLNN_ERR_PARAM_INVALID,
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(API_NAME, "clampLimit", std::to_string(clampLimit),
+                                                  "must be greater than 0 for swigluMode 2"));
+        GMM_SWIGLU_V3_CHECK_WITH_LOG(
+            IsRepresentableFloat(gluAlpha), ACLNN_ERR_PARAM_INVALID,
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(API_NAME, "gluAlpha", std::to_string(gluAlpha),
+                                                  "must be finite and representable by float32"));
+        GMM_SWIGLU_V3_CHECK_WITH_LOG(
+            IsRepresentableFloat(gluBias), ACLNN_ERR_PARAM_INVALID,
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(API_NAME, "gluBias", std::to_string(gluBias),
+                                                  "must be finite and representable by float32"));
+    }
     GMM_SWIGLU_V3_CHECK_WITH_LOG(
         roundMode == nullptr || roundMode[0] == '\0' ||
             std::strcmp(roundMode, gmm_swiglu_quant_v3::DEFAULT_ROUND_MODE) == 0,
@@ -549,14 +555,14 @@ aclnnStatus CheckParams(const aclTensor* x, const aclTensorList* weight, const a
 {
     CHECK_RET(CheckOptionalInputs(weightAssistMatrix, bias, smoothScale, tuningConfigOptional) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
-    CHECK_RET(
-        CheckSwigluAttrs(swigluMode, clampLimit, gluAlpha, gluBias, roundMode, scaleAlg, dstTypeMax) == ACLNN_SUCCESS,
-        ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckGmmAttrs(dequantMode, dequantDtype, quantMode, groupListType) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckDimensionNumbers(x, weight, weightScale, xScale, groupList, output, outputScale) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckDtype(x, weight, weightScale, xScale, groupList, output, outputScale) == ACLNN_SUCCESS,
+              ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckSwigluAttrs(swigluMode, clampLimit, gluAlpha, gluBias, roundMode, scaleAlg, dstTypeMax,
+                               IsA4W4Bf16Output(x, weight, output)) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
     GMM_SWIGLU_V3_CHECK_WITH_LOG(op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510,
                                  ACLNN_ERR_PARAM_INVALID,
