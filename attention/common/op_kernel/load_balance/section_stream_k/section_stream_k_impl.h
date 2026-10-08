@@ -101,7 +101,7 @@ private:
 
     struct GridInfo {
         uint32_t sectionNum{0U};              // section
-        std::vector<uint32_t> sectionBnIdx{}; // OutputLayout对应BN方向，section的切分点
+        std::vector<uint32_t> sectionBnIdx{}; // KernelSplitMode对应BN方向，section的切分点
         std::vector<uint32_t> mBaseNum{};     // M方向，切了多少个基本块
         std::vector<uint32_t> s2BaseNum{};    // S2方向，切了多少个基本块
         std::vector<uint32_t> mTailSize{};    // M方向，尾块size
@@ -206,7 +206,7 @@ private:
     inline static int64_t CalcCost(uint32_t basicM, uint32_t basicS2);
     inline uint32_t GetHeadNum(const IBaseInfo &baseInfo) const;
     inline uint32_t GetMSize(uint32_t batchIdx, const IBaseInfo &baseInfo) const;
-    inline uint32_t ToOutputLayoutBnIdx(uint32_t bn2Idx, const IBaseInfo &baseInfo) const;
+    inline uint32_t ToKernelSplitModeBnIdx(uint32_t bn2Idx, const IBaseInfo &baseInfo) const;
     inline CostTable CalcCostTable(uint32_t s1NormalSize, uint32_t s2NormalSize, uint32_t mTailSize,
                                    uint32_t s2TailSize);
     static inline Range<uint32_t> CalcCoreRange(uint32_t sectionIdx, const ComputeContext &computeContext);
@@ -341,7 +341,7 @@ inline void SectionStreamKImpl::CalcGridInfoSection(ComputeContext &computeConte
         maxMSize = std::max(maxMSize, GetMSize(bIdx, baseInfo));
         for (uint32_t n2Idx = 0; n2Idx < baseInfo.GetKvHeadNum(); ++n2Idx) {
             if (tokenSize != 0 && !IsWithinTolerance(tokenLimit, INT64_ZERO, tokenSize + singleHeadCost)) {
-                gridInfo.sectionBnIdx.emplace_back(ToOutputLayoutBnIdx(bn2Idx, baseInfo));
+                gridInfo.sectionBnIdx.emplace_back(ToKernelSplitModeBnIdx(bn2Idx, baseInfo));
                 gridInfo.sectionNum++;
                 tokenSize = 0L;
             }
@@ -502,7 +502,7 @@ inline int64_t SectionStreamKImpl::CalcCost(uint32_t basicM, uint32_t basicS2)
 
 inline uint32_t SectionStreamKImpl::GetHeadNum(const IBaseInfo &baseInfo) const
 {
-    if (m_param.outputLayout == OutputLayout::BN1_S1) {
+    if (m_param.kernelSplitMode == KernelSplitMode::BN1_S1_S2) {
         return baseInfo.GetQueryHeadNum();
     }
     return baseInfo.GetKvHeadNum();
@@ -511,15 +511,15 @@ inline uint32_t SectionStreamKImpl::GetHeadNum(const IBaseInfo &baseInfo) const
 inline uint32_t SectionStreamKImpl::GetMSize(uint32_t batchIdx, const IBaseInfo &baseInfo) const
 {
     uint32_t s1Size = baseInfo.GetQuerySeqSize(batchIdx);
-    if (m_param.outputLayout == OutputLayout::BN1_S1) {
+    if (m_param.kernelSplitMode == KernelSplitMode::BN1_S1_S2) {
         return s1Size;
     }
     return s1Size * baseInfo.GetGroupSize();
 }
 
-inline uint32_t SectionStreamKImpl::ToOutputLayoutBnIdx(uint32_t bn2Idx, const IBaseInfo &baseInfo) const
+inline uint32_t SectionStreamKImpl::ToKernelSplitModeBnIdx(uint32_t bn2Idx, const IBaseInfo &baseInfo) const
 {
-    if (m_param.outputLayout == OutputLayout::BN1_S1) {
+    if (m_param.kernelSplitMode == KernelSplitMode::BN1_S1_S2) {
         return bn2Idx * baseInfo.GetGroupSize();
     }
     return bn2Idx;
@@ -582,7 +582,7 @@ inline Range<uint32_t> SectionStreamKImpl::CalcS2Range(uint32_t mIdx, const IBas
 
     int64_t s1FirstToken;
     int64_t s1LastToken;
-    if (m_param.outputLayout == OutputLayout::BN1_S1) {
+    if (m_param.kernelSplitMode == KernelSplitMode::BN1_S1_S2) {
         // 非合轴模式：M轴即S1轴，无需按G映射
         s1FirstToken = mFirstToken;
         s1LastToken = mLastToken;

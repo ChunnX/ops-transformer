@@ -296,7 +296,7 @@ bool FlashMlaWithKvcacheMetadataCpuKernel::GenMetadata(load_balance::SectionStre
     faMetadata.SetHeadMetadata(HEAD_AIC_NUM_INDEX, static_cast<FA_METADATA_T>(aicCoreNum_));
     faMetadata.SetHeadMetadata(HEAD_AIV_NUM_INDEX, static_cast<FA_METADATA_T>(aivCoreNum_));
     faMetadata.SetHeadMetadata(HEAD_OUTPUT_LAYOUT_INDEX,
-                               static_cast<FA_METADATA_T>(load_balance::OutputLayout::BN2_S1G));
+                               static_cast<FA_METADATA_T>(load_balance::KernelSplitMode::BN2_S1G_S2));
     if (std::any_of(splitRes.sectionFdResult.begin(), splitRes.sectionFdResult.end(),
                     [](load_balance::SectionStreamKFdResult result) { return result.usedVecNum > 0U; })) {
         faMetadata.SetHeadMetadata(HEAD_IS_FD_INDEX, 1U);

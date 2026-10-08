@@ -251,7 +251,8 @@ void FlashAttnMetadataCpuKernel::InitLoadBalanceParams()
     param.fdLeastBlock = 3;             // 3: least block
     param.fdOn = true;
     param.costFunc = FlashAttnMetadataCpuKernel::CostFunc;
-    param.outputLayout = dnUnmergedRouted ? load_balance::OutputLayout::BN1_S1 : load_balance::OutputLayout::BN2_S1G;
+    param.kernelSplitMode = dnUnmergedRouted ? load_balance::KernelSplitMode::BN1_S1_S2 :
+        load_balance::KernelSplitMode::BN2_S1G_S2;
 }
 
 void FlashAttnMetadataCpuKernel::InitBaseInfo()
@@ -309,7 +310,7 @@ void FlashAttnMetadataCpuKernel::SetMetadataHead(const load_balance::SectionStre
     }
     faMetadata.SetHeadMetadata(HEAD_AIC_NUM_INDEX, aicCoreNum_);
     faMetadata.SetHeadMetadata(HEAD_AIV_NUM_INDEX, aivCoreNum_);
-    faMetadata.SetHeadMetadata(HEAD_OUTPUT_LAYOUT_INDEX, static_cast<FA_METADATA_T>(param.outputLayout));
+    faMetadata.SetHeadMetadata(HEAD_OUTPUT_LAYOUT_INDEX, static_cast<FA_METADATA_T>(param.kernelSplitMode));
 }
 
 void FlashAttnMetadataCpuKernel::SetMetadataFa(const load_balance::SectionStreamKResult &splitRes,

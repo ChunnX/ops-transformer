@@ -324,7 +324,7 @@ bool QuantFlashAttnMetadataCpuKernel::ParamsInit()
         param.fdTolerance = 300;
         param.fdOn = false;
     }
-    param.outputLayout = load_balance::OutputLayout::BN2_S1G;
+    param.kernelSplitMode = load_balance::KernelSplitMode::BN2_S1G_S2;
 
     if (isGradEnabled_) {
         // 等长场景的 deterMaxRound, 由 GenMetaData 在 Clear 之后写入第二行槽位 0。

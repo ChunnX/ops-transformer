@@ -193,7 +193,7 @@ bool StemIndexerMetadataCpuKernel::GenerateSectionStreamKParam(load_balance::Sec
     param.mBaseSize = STEM_M_BASE_SIZE;
     param.s2BaseSize = STEM_S2_BASE_SIZE;
     param.fdOn = false;
-    param.outputLayout = load_balance::OutputLayout::BN2_S1G;
+    param.kernelSplitMode = load_balance::KernelSplitMode::BN2_S1G_S2;
     return true;
 }
 
