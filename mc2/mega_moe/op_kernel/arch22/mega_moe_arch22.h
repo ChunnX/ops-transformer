@@ -57,7 +57,15 @@ using namespace AscendC;
 #include "utils/const_args.hpp"
 #include "utils/dispatch_policy_custom.hpp"
 #include "mc2_moe_context.h"
+#include "utilsA2/block_epilogue_pertoken_v2_int8_a2.hpp"
+#include "utilsA2/block_epilogue_pertoken_v2_bf16_a2.hpp"
+#include "utilsA2/block_epilogue_pertoken_swiglu_a2_int8.hpp"
+#include "utilsA2/block_epilogue_pertoken_swiglu_a2_bf16.hpp"
+#include "utils/block_epilogue_w4a8post_pertoken_v2.hpp"
 #include "utils/block_epilogue_pertoken_v2.hpp"
+#include "mega_moe_kernel_a2_int8.hpp"
+#include "mega_moe_kernel_a2_bf16.hpp"
+#include "mega_moe_kernel_a2_bf16_w4a8.hpp"
 #include "mega_moe_kernel_a3.hpp"
 
 namespace MegaMoeImpl {
@@ -133,7 +141,7 @@ private:
     float activationParams2_;
 
     // Quant/NonQuant 两种 tiling 结构的 common 字段类型一致，此处统一加载公共字段
-    __aicore__ inline void LoadCommonTiling(const MegaMoeA2A3TilingData &common)
+    __aicore__ inline void LoadCommonTiling(const MegaMoeA2A3TilingData& common)
     {
         aivNum_ = common.aivNum;
         m_ = common.M;
@@ -251,10 +259,18 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Process()
 
     constexpr uint32_t ubStages = 2;
 
-    using EpilogueDispatchPolicy1 =
-        std::conditional_t<isW4A8, Epilogue::EpilogueAtlasA2W4A8PostPerTokenDequantSwigluQuant<ubStages>,
-                           Epilogue::EpilogueAtlasA2PerTokenDequantSwigluQuant<ubStages>>;
-    using EpilogueDispatchPolicy2 = Epilogue::EpilogueAtlasA2PerTokenDequant<ubStages>;
+    using A2EpiloguePolicy1 =
+        std::conditional_t<isInt8, Epilogue::EpilogueAtlasA2PerTokenDequantSwigluQuantInt8<ubStages>,
+                           Epilogue::EpilogueAtlasA2PerTokenDequantSwigluQuantBF16<ubStages>>;
+    using EpilogueDispatchPolicy1 = std::conditional_t<
+        isW4A8, Epilogue::EpilogueAtlasA2W4A8PostPerTokenDequantSwigluQuant<ubStages>,
+        std::conditional_t<IS_A2_, A2EpiloguePolicy1, Epilogue::EpilogueAtlasA2PerTokenDequantSwigluQuant<ubStages>>>;
+    using A2EpiloguePolicy2 =
+        std::conditional_t<isW4A8, Epilogue::EpilogueAtlasA2W4A8PostPerTokenDequantV2<ubStages>,
+                           std::conditional_t<isInt8, Epilogue::EpilogueAtlasA2PerTokenDequantV2Int8<ubStages>,
+                                              Epilogue::EpilogueAtlasA2PerTokenDequantV2BF16<ubStages>>>;
+    using EpilogueDispatchPolicy2 =
+        std::conditional_t<IS_A2_, A2EpiloguePolicy2, Epilogue::EpilogueAtlasA2PerTokenDequant<ubStages>>;
     using EpilogueDispatchPolicy3 =
         std::conditional_t<isW4A8, Epilogue::EpilogueAtlasA2W4A8PostPerTokenDequantV2<ubStages>,
                            Epilogue::EpilogueAtlasA2PerTokenDequantV2<ubStages>>;
@@ -270,8 +286,10 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Process()
 
     using TileCopy2 = Epilogue::Tile::TileCopy<ArchTag, CType, ScaleType, PerTokenScaleType, D2Type>;
     using IS_A2 = Epilogue::Block::IS_A2_T<IS_A2_>;
-    using BlockEpilogue2 =
-        Epilogue::Block::BlockEpilogue<EpilogueDispatchPolicy2, CType, PerTokenScaleType, D2Type, TileCopy2>;
+    using BlockEpilogue2 = std::conditional_t<
+        IS_A2_ && isW4A8,
+        Epilogue::Block::BlockEpilogue<EpilogueDispatchPolicy2, CType, PerTokenScaleType, D2Type, TileCopy2, IS_A2>,
+        Epilogue::Block::BlockEpilogue<EpilogueDispatchPolicy2, CType, PerTokenScaleType, D2Type, TileCopy2>>;
     using BlockEpilogue3 = std::conditional_t<
         isW4A8,
         Epilogue::Block::BlockEpilogue<EpilogueDispatchPolicy3, CType, PerTokenScaleType, D2Type, TileCopy2, IS_A2>,
@@ -280,10 +298,10 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Process()
     using BlockScheduler = typename Gemm::Block::GemmIdentityBlockSwizzle<9, 1>;
     using ElementGroupList = int64_t;
 
-    using MatmulKernel = Gemm::Kernel::MegaMoeKernel<BlockMmad, BlockScheduler, ElementGroupList, BlockEpilogue1,
-                                                     BlockEpilogue2, BlockEpilogue3>;
-
-    LayoutA layoutA1{static_cast<uint32_t>(m_), static_cast<uint32_t>(k_)};
+    // A2 W4A8 reuses the GMM1 input workspace; only this path pads its row stride.
+    uint32_t layoutA1RowStride =
+        IS_A2_ && isW4A8 ? static_cast<uint32_t>(k_ > k2 ? k_ : k2) : static_cast<uint32_t>(k_);
+    LayoutA layoutA1{static_cast<uint32_t>(m_), static_cast<uint32_t>(k_), layoutA1RowStride};
     LayoutA layoutA2{static_cast<uint32_t>(m_), static_cast<uint32_t>(k2)};
     layout::VectorLayout layoutScale1{static_cast<uint32_t>(n_)};
     layout::VectorLayout layoutScale2{static_cast<uint32_t>(n2)};
@@ -298,14 +316,32 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Process()
         epilogueCoreNum = static_cast<uint32_t>(aivNum_);
         epilogueGranularity = 0U;
     } else if constexpr (isInt8) {
-        epilogueCoreNum = static_cast<uint32_t>(aivNum_); // INT8：所有 AIV 参与
-        epilogueGranularity = (expertPerRank_ > 4) ? static_cast<uint32_t>(expertPerRank_ - 3) :
-                              (expertPerRank_ > 1) ? static_cast<uint32_t>(expertPerRank_ - 1) :
-                                                     1u;
+        if constexpr (IS_A2_) {
+            epilogueCoreNum = aivNum_ / 2;
+            epilogueGranularity = (expertPerRank_ > 1) ? static_cast<uint32_t>(expertPerRank_ - 1) : 1u;
+        } else {
+            epilogueCoreNum = static_cast<uint32_t>(aivNum_);
+            epilogueGranularity = (expertPerRank_ > 4) ? static_cast<uint32_t>(expertPerRank_ - 3) :
+                                  (expertPerRank_ > 1) ? static_cast<uint32_t>(expertPerRank_ - 1) :
+                                                         1u;
+        }
     } else {
         epilogueCoreNum = static_cast<uint32_t>(aivNum_); // BF16/FP16：所有 AIV 参与
         epilogueGranularity = (expertPerRank_ > 2) ? static_cast<uint32_t>(expertPerRank_ - 2) : 1u;
     }
+
+    using A2MatmulKernel = std::conditional_t<
+        isW4A8,
+        Gemm::Kernel::MegaMoeKernelA2Bf16W4A8<BlockMmad, BlockScheduler, ElementGroupList, BlockEpilogue1,
+                                              BlockEpilogue2>,
+        std::conditional_t<isInt8,
+                           Gemm::Kernel::MegaMoeKernelA2Int8<BlockMmad, BlockScheduler, ElementGroupList,
+                                                             BlockEpilogue1, BlockEpilogue2>,
+                           Gemm::Kernel::MegaMoeKernelA2BF16<BlockMmad, BlockScheduler, ElementGroupList,
+                                                             BlockEpilogue1, BlockEpilogue2>>>;
+    using A3MatmulKernel = Gemm::Kernel::MegaMoeKernel<BlockMmad, BlockScheduler, ElementGroupList, BlockEpilogue1,
+                                                       BlockEpilogue2, BlockEpilogue3>;
+    using MatmulKernel = std::conditional_t<IS_A2_, A2MatmulKernel, A3MatmulKernel>;
 
     typename MatmulKernel::Params params{problemShape,
                                          static_cast<uint32_t>(epWorldSize_),
@@ -345,10 +381,12 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Process()
                                          activationCode_,
                                          activationParams1_,
                                          activationParams2_,
-                                         tilingGM_,
-                                         maskBufferGM_};
-
-    params.recvRoundsMax = recvRoundsMax_;
+                                         tilingGM_};
+    if constexpr (!IS_A2_) {
+        // A3 has two additional routing fields; its Params constructor otherwise matches A2.
+        params.ptrMaskBuffer = maskBufferGM_;
+        params.recvRoundsMax = recvRoundsMax_;
+    }
 
     MatmulKernel kernel(params);
     kernel(params);

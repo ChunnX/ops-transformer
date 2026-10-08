@@ -29,6 +29,7 @@
 #include "get_tensor_addr.hpp"
 #include "hccl_shmem.hpp"
 #include "layout3d.hpp"
+#include "per_token_v2_route_utils.hpp"
 
 #define NO_POST_PROCESS
 
@@ -64,7 +65,7 @@ public:
     using CopyGMToUBW = typename TileCopy2::CopyGmToUbC;
 
     struct Params {
-        __gm__ int32_t *ptrTokenPerExpert{nullptr};
+        __gm__ int32_t* ptrTokenPerExpert{nullptr};
         int32_t EP;
         int32_t expertPerRank;
         int32_t n2;
@@ -83,8 +84,8 @@ public:
         CATLASS_DEVICE
         Params() {};
         CATLASS_DEVICE
-        Params(int32_t EP_, int32_t expertPerRank_, int32_t rank_, __gm__ int32_t *ptrTokenPerExpert_, LayoutC layoutC_,
-               int32_t n2_, int32_t n0_, HcclShmem<IS_A2> &shmem_, int64_t offsetD_, Layout3D tokenPerExpertLayout_)
+        Params(int32_t EP_, int32_t expertPerRank_, int32_t rank_, __gm__ int32_t* ptrTokenPerExpert_, LayoutC layoutC_,
+               int32_t n2_, int32_t n0_, HcclShmem<IS_A2>& shmem_, int64_t offsetD_, Layout3D tokenPerExpertLayout_)
             : ptrTokenPerExpert(ptrTokenPerExpert_),
               EP(EP_),
               expertPerRank(expertPerRank_),
@@ -99,7 +100,7 @@ public:
     };
 
     CATLASS_DEVICE
-    BlockEpilogue(Arch::Resource<ArchTag> const &resource, Params const &params = Params{})
+    BlockEpilogue(Arch::Resource<ArchTag> const& resource, Params const& params = Params{})
         : params(params)
     {
         // ub:192KB
@@ -135,7 +136,7 @@ public:
         ubFp32L = resource.ubBuf.template GetBufferByByte<float>(ubOffset); // Lower 4 bits to fp32
         ubOffset += max_len * sizeof(float);
 
-        tokenPerExpert.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params.ptrTokenPerExpert));
+        tokenPerExpert.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(params.ptrTokenPerExpert));
         tokenPerExpertLayout = params.tokenPerExpertLayout;
         is_ping = true;
         rankIdx = params.rank;
@@ -165,33 +166,27 @@ public:
 
     CATLASS_DEVICE int32_t GetLenRankInExpert(int32_t dstEpIdx, int32_t groupIdx) const
     {
-        if (params.useUbRouteCache) {
-            int32_t stride = params.ubRouteStride > 0 ? params.ubRouteStride : params.expertPerRank;
-            return params.ubTokenPerExpert.GetValue(dstEpIdx * stride + groupIdx);
-        }
-        return tokenPerExpert(tokenPerExpertLayout(dstEpIdx, params.rank, groupIdx));
+        return ::Catlass::Epilogue::Block::detail::GetLenRankInExpert(params, tokenPerExpert, tokenPerExpertLayout,
+                                                                      dstEpIdx, groupIdx);
     }
 
     CATLASS_DEVICE int32_t GetDstExpertOffset(int32_t dstEpIdx, int32_t groupIdx,
-                                              AscendC::GlobalTensor<int32_t> const &preSumBeforeRank) const
+                                              AscendC::GlobalTensor<int32_t> const& preSumBeforeRank) const
     {
-        if (params.useUbRouteCache) {
-            return params.ubPreSumBeforeRank.GetValue(dstEpIdx * params.expertPerRank + groupIdx);
-        }
-        return preSumBeforeRank(dstEpIdx * params.expertPerRank + groupIdx);
+        return ::Catlass::Epilogue::Block::detail::GetDstExpertOffset(params, preSumBeforeRank, dstEpIdx, groupIdx);
     }
 
     CATLASS_DEVICE
-    void operator()(AscendC::GlobalTensor<ElementC> const &gmC,
-                    AscendC::GlobalTensor<ElementPerTokenScale> const &gmPerTokenScale, __gm__ float *gmWeightAux,
-                    GemmCoord &blockCoord, GemmCoord &actualBlockShape, int32_t groupIdx, int32_t preSrcExpertSum,
+    void operator()(AscendC::GlobalTensor<ElementC> const& gmC,
+                    AscendC::GlobalTensor<ElementPerTokenScale> const& gmPerTokenScale, __gm__ float* gmWeightAux,
+                    GemmCoord& blockCoord, GemmCoord& actualBlockShape, int32_t groupIdx, int32_t preSrcExpertSum,
                     AscendC::GlobalTensor<int32_t> preSumBeforeRank, int32_t listLen)
     {
-        auto &ubCH = ubCHList[ubListId];
-        auto &ubCL = ubCLList[ubListId];
-        auto &ubD = ubDList[ubListId];
-        auto &scaleUb = scaleUbList[ubListId];
-        auto &ubweighAux = ubweighAuxList[ubListId];
+        auto& ubCH = ubCHList[ubListId];
+        auto& ubCL = ubCLList[ubListId];
+        auto& ubD = ubDList[ubListId];
+        auto& scaleUb = scaleUbList[ubListId];
+        auto& ubweighAux = ubweighAuxList[ubListId];
         int64_t gmCOffsetH =
             (static_cast<int64_t>(preSrcExpertSum) * params.n2 + blockCoord.m() * params.n2) + blockCoord.n();
         int64_t gmCOffsetL = gmCOffsetH + params.n2;
@@ -201,7 +196,7 @@ public:
         AscendC::GlobalTensor<float> gmWeighAux;
 
         int32_t arrayGroupIdx = listLen == 1 ? 0 : groupIdx;
-        weightAux.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(
+        weightAux.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(
             GetTensorAddr<float>(arrayGroupIdx, reinterpret_cast<GM_ADDR>(gmWeightAux))));
         int64_t gmOffsetwA = blockCoord.n() + (listLen == 1 ? groupIdx * params.n2 : 0);
         gmWeighAux = weightAux[gmOffsetwA];
@@ -272,28 +267,20 @@ public:
         for (int32_t dstEpIdx = 0; dstEpIdx < params.EP; dstEpIdx++) {
             int32_t lenRankInExpert = GetLenRankInExpert(dstEpIdx, groupIdx);
             int32_t dstExpertOffset = GetDstExpertOffset(dstEpIdx, groupIdx, preSumBeforeRank);
-            int32_t stRankInExpert = preSumRankInExpert;
-            int32_t edRankInExpert = stRankInExpert + lenRankInExpert;
-            preSumRankInExpert += lenRankInExpert;
-            if (stRankInExpert >= edTile) {
+            auto routeRange =
+                ::Catlass::Epilogue::Block::detail::GetRouteRange(lenRankInExpert, stTile, edTile, preSumRankInExpert);
+            if (routeRange.action == ::Catlass::Epilogue::Block::detail::RouteAction::STOP) {
                 break;
-            } else if (edRankInExpert <= stTile) {
+            }
+            if (routeRange.action == ::Catlass::Epilogue::Block::detail::RouteAction::SKIP) {
                 continue;
             }
-            int32_t stData = max(stRankInExpert, stTile);
-            int32_t edData = min(edRankInExpert, edTile);
-            uint32_t lenData = edData - stData;
-            if (lenData <= 0) {
-                continue;
-            }
-
-            uint32_t dstOffsetInExpert = 0;
-            if (stTile > stRankInExpert) {
-                dstOffsetInExpert = stTile - stRankInExpert;
-            }
+            int32_t stData = routeRange.stData;
+            uint32_t lenData = routeRange.lenData;
+            uint32_t dstOffsetInExpert = routeRange.dstOffsetInExpert;
             AscendC::GlobalTensor<ElementD> gmRemotePeer;
-            __gm__ void *dstPeermemPtr = params.shmem(params.offsetD, dstEpIdx);
-            gmRemotePeer.SetGlobalBuffer(reinterpret_cast<__gm__ ElementD *>(dstPeermemPtr));
+            __gm__ void* dstPeermemPtr = params.shmem(params.offsetD, dstEpIdx);
+            gmRemotePeer.SetGlobalBuffer(reinterpret_cast<__gm__ ElementD*>(dstPeermemPtr));
             MatrixCoord dstOffset{dstOffsetInExpert + dstExpertOffset, blockCoord.n()};
             int64_t gmDstOffset = params.layoutC.GetOffset(dstOffset);
             auto gmTileD = gmRemotePeer[gmDstOffset];
@@ -304,7 +291,7 @@ public:
                 if (isCrossServer) {
                     AscendC::GlobalTensor<ElementD> gmLocalWindowsOut;
                     gmLocalWindowsOut.SetGlobalBuffer(
-                        reinterpret_cast<__gm__ ElementD *>(params.shmem.windowsOutAddr() + params.offsetWinOutD));
+                        reinterpret_cast<__gm__ ElementD*>(params.shmem.windowsOutAddr() + params.offsetWinOutD));
                     MatrixCoord srcOffset{(uint32_t)(stData + preSrcExpertSum / 2), blockCoord.n()};
                     int64_t gmSrcOffset = params.layoutC.GetOffset(srcOffset);
                     auto gmTileLocal = gmLocalWindowsOut[gmSrcOffset];
