@@ -24,19 +24,18 @@ using Ops::Transformer::OpTiling::TilingRegistryNew;
 using Ops::Transformer::OpTiling::TilingRegistryArch;
 
 namespace optiling {
-static ge::graphStatus Tiling4MhcPostBackward(gert::TilingContext *context)
+static ge::graphStatus Tiling4MhcPostBackward(gert::TilingContext* context)
 {
     auto platformInfo = context->GetPlatformInfo();
     platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
     NpuArch npuArch = ascendcPlatform.GetCurNpuArch();
-    if (npuArch == NpuArch::DAV_3510) {
+    if (npuArch == NpuArch::DAV_3510 || npuArch == NpuArch::DAV_9201) {
         return TilingRegistryArch::GetInstance().DoTilingImpl(context);
     }
     return TilingRegistryNew::GetInstance().DoTilingImpl(context);
 }
 
-
-static ge::graphStatus TilingPrepareForMhcPostBackward(gert::TilingParseContext *context)
+static ge::graphStatus TilingPrepareForMhcPostBackward(gert::TilingParseContext* context)
 {
     (void)context;
     return ge::GRAPH_SUCCESS;
