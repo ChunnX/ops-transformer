@@ -111,6 +111,10 @@ protected:
         const gert::StorageShape* valueShape = context_->GetInputShape(3);
         const char* qInputLayout = context_->GetAttrs()->GetAttrPointer<char>(0);
         const char* kvInputLayout = context_->GetAttrs()->GetAttrPointer<char>(1);
+        if (qInputLayout == nullptr || kvInputLayout == nullptr) {
+            OP_LOGE(context_->GetNodeName(), "qInputLayout or kvInputLayout is nullptr.");
+            return ge::GRAPH_FAILED;
+        }
         const float softmaxScale = *context_->GetAttrs()->GetAttrPointer<float>(4);
         auto blockShapeOptional = context_->GetInputTensor(8);
         if (blockShapeOptional == nullptr) {
@@ -214,7 +218,7 @@ protected:
             v_head_dim = valueShape->GetStorageShape().GetDim(2);
             q_group = q_head_num / k_head_num;
         } else {
-            OP_LOGE(context_->GetNodeName(), "Invaild Input Layout: InputLayout must be BSND or BNSD or TND.");
+            OP_LOGE(context_->GetNodeName(), "Invalid Input Layout: InputLayout must be BSND or BNSD or TND.");
             return ge::GRAPH_FAILED;
         }
 
@@ -314,7 +318,7 @@ protected:
             dv_size = dk_size;
             sftg_size = static_cast<uint64_t>(q_seq_len_) * q_head_num_ * 8; // 存放逻辑按[B,N,S,8]
         } else {
-            OP_LOGE(context_->GetNodeName(), "Invaild Input Layout: InputLayout must be BSDN or BNSD or TND.");
+            OP_LOGE(context_->GetNodeName(), "Invalid Input Layout: InputLayout must be BSND or BNSD or TND.");
             return ge::GRAPH_FAILED;
         }
 
