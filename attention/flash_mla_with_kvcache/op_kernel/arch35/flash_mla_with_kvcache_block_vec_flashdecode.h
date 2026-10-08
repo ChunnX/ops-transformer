@@ -257,11 +257,14 @@ protected:
         LocalTensor<T> lseMax = (cntM & 1) == 0 ? fdMaxBuf1_ : fdMaxBuf2_;
         LocalTensor<T> lseMaxUb = (cntM & 1) == 0 ? fdLseMaxUbBuf1_ : fdLseMaxUbBuf2_;
 
-        LocalTensor<T> sinkExpBuf;
+        // FD consumes partial max/sum that already include any FA-prologue sink.
+        // Keep a valid UB tensor as the unused sink argument; an empty
+        // LocalTensor can still be materialized/dereferenced by the wrapper.
+        LocalTensor<T> sinkExpBuf = lseMax;
         LocalTensor<T> maxLseUb = fdLseUbBuf_;
-        bool learnableSinkFlag = false;
-        ComputeScaleValue_VF_FD(sinkExpBuf, lseMax, lseSum, lseExp, maxLseUb, lseMaxUb, dealRowCount,
-                                actualCombineLoopSize, constInfo_.isSoftmaxLseEnable, learnableSinkFlag);
+        ComputeScaleValue_VF_FD<T, T, SinkInjectStage::AT_FA_PROLOGUE>(sinkExpBuf, lseMax, lseSum, lseExp, maxLseUb,
+                                                                       lseMaxUb, dealRowCount, actualCombineLoopSize,
+                                                                       constInfo_.isSoftmaxLseEnable, false);
     }
 
     __aicore__ inline void Bmm2DataCopyOutTrans(LocalTensor<OUTPUT_T> &attenOutUb, uint32_t startRow,
