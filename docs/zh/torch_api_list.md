@@ -56,6 +56,7 @@
 |[generic_block_sparse_attention](../../attention/generic_block_sparse_attention/docs/torchapi_generic_block_sparse_attention.md)|调用`GenericBlockSparseAttention`完成任意粒度块稀疏注意力计算。|-|-|
 |[generic_block_sparse_attention_grad](../../attention/generic_block_sparse_attention_grad/docs/torchapi_generic_block_sparse_attention_grad.md)|调用`GenericBlockSparseAttentionGrad`完成通用块稀疏注意力反向计算。|-|-|
 |[grouped_matmul_activation_quant](../../gmm/grouped_matmul_activation_quant/docs/torchapi_grouped_matmul_activation_quant.md)|融合GMM、激活函数和量化算子，完成分组矩阵乘、激活和量化计算，输出量化结果及量化因子。|-|默认确定性实现|
+|[grouped_matmul_swiglu_quant](../../gmm/grouped_matmul_swiglu_quant_v2/docs/torchapi_grouped_matmul_swiglu_quant.md)|融合GMM、SwiGLU和MX量化，当前支持MXFP8 weightNZ的`swiglu_mode=2`场景。|-|默认确定性实现|
 |[indexer_quant_cache](../../attention/indexer_quant_cache/docs/torchapi_indexer_quant_cache.md)| 在Indexer注意力机制的Epilog阶段对KV Cache进行原地动态量化压缩更新，封装aclnnIndexerQuantCache。  |-|默认确定性实现|
 |[inplace_partial_rotary_mul](../../posembedding/inplace_partial_rotary_mul/docs/torchapi_inplace_partial_rotary_mul.md)|执行单路旋转位置编码的Inplace计算，直接修改输入张量，不产生新的输出张量。|默认确定性实现|默认确定性实现|
 |[inplace_partial_rotary_mul_backward](../../posembedding/inplace_partial_rotary_mul_grad/docs/torchapi_inplace_partial_rotary_mul_backward.md)|执行`inplace_partial_rotary_mul`的反向计算，对输入梯度张量执行inplace更新，切片内替换为RoPE梯度，切片外保持不变。|-|默认支持确定性计算|
@@ -69,7 +70,7 @@
 |[low_latency_combine](../../mc2/common/docs/torchapi_low_latency_combine.md)|与low_latency_dispatch配套，按dispatch原路返回完成token的低时延combine反向聚合；topk_weights非空时乘路由权重再相加，为None时直接相加。|默认支持确定性计算|默认支持确定性计算|
 |[mega_moe](../../mc2/mega_moe/docs/torchapi_mega_moe.md)|MoE端到端通算融合算子，将Dispatch+GroupMatmul1+SwiGLUQuant+GroupMatmul2+Combine融合为单算子；配套get_mega_moe_ccl_buffer_size、get_symm_buffer_for_mega_moe使用。|-|默认支持确定性计算|
 |[mhc_post](../../mhc/mhc_post/docs/torchapi_mhc_post.md)|实现MHC Post组件的前向计算，用于Transformer模型中多层残差连接的后处理阶段。该算子将残差矩阵变换与输出状态投影融合为单次计算，避免多次独立算子调用带来的额外开销。|默认确定性实现|-|
-|[mhc_pre_sinkhorn](../../mhc/mhc_pre_sinkhorn/docs/torchapi_mhc_pre_sinkhorn.md)|基于一系列计算得到MHC架构中hidden层的$\mathbf{H}'_{\text{res}}$和$\mathbf{H}_{\text{post}}$投影矩阵以及Attention或MLP层的输入矩阵$\mathbf{h}_{\text{in}}$。对$\mathbf{H}'_{\text{res}}$矩阵执行Sinkhorn迭代归一化变换，最终得到双随机矩阵$\mathbf{H}_{\text{res}}$；支持输出中间计算结果，用于反向梯度计算。|默认确定性实现|默认确定性实现|
+|[mhc_pre_sinkhorn](../../mhc/mhc_pre_sinkhorn/docs/torchapi_mhc_pre_sinkhorn.md)|基于一系列计算得到MHC架构中hidden层的$\mathbf{H}'_{\text{res}}$和$\mathbf{H}_{\text{post}}$投影矩阵以及Attention或MLP层的输入矩阵$\mathbf{h}_{\text{in}}$。对$\mathbf{H}'_{\text{res}}$矩阵执行Sinkhorn迭代归一化变换，最终得到双随机矩阵$\mathbf{H}_{\text{res}}$；支持输出中间计算结果，用于反向梯度计算。其中，该接口在Cube中的计算模式为HF32。|默认确定性实现|默认确定性实现|
 |[mixed_quant_sparse_flash_mla](../../attention/mixed_quant_sparse_flash_mla/docs/torchapi_mixed_quant_sparse_flash_mla.md)|量化场景下基于共享KV完成MixedQuantSparseFlashMla稀疏注意力计算。需与`mixed_quant_sparse_flash_mla_metadata`配套使用。|默认确定性实现|默认确定性实现|
 |[mla_prolog](../../attention/mla_prolog_v3/docs/torchapi_mla_prolog.md)|调用`MlaPrologV4WeightNz`完成MLA Decoder前向中Query/KV相关预处理。|默认支持确定性计算|默认支持确定性计算|
 |[moe_finalize_routing](../../moe/moe_finalize_routing_v2/docs/torchapi_moe_finalize_routing.md)|将各专家FFN的输出结果按路由权重加权合并，还原为原始token序列。|默认支持确定性计算。|默认支持确定性计算。|
