@@ -19,7 +19,20 @@ if(NOT _wheel_result EQUAL 0)
 endif()
 set(_builder "${CMAKE_CURRENT_SOURCE_DIR}/scripts/build_cannbotdsl.py")
 file(SHA256 "${_builder}" _builder_hash)
-set(CANNBOTDSL_ACLNN_STAGES)
+# Seed typed defaults without overriding a parent project's cache. Set the
+# operator-specific bindings locally after that: generated CMake uses CACHE
+# declarations, which preserve these locals once the cache entries are typed.
+function(_cannbotdsl_add_hostapi stage)
+  set(CANN_ROOT "${ASCEND_CANN_PACKAGE_PATH}" CACHE PATH "CANN SDK for OpKit")
+  set(OPBASE_INCLUDE_DIR "${CANNBOTDSL_NNOPBASE_INCLUDE_DIR}" CACHE PATH "DirectInvoke headers for OpKit")
+  set(OPBASE_LIBRARY "${CANNBOTDSL_NNOPBASE_LIBRARY}" CACHE STRING "DirectInvoke library for OpKit")
+  set(CANN_ROOT "${ASCEND_CANN_PACKAGE_PATH}")
+  set(OPBASE_INCLUDE_DIR "${CANNBOTDSL_NNOPBASE_INCLUDE_DIR}")
+  set(OPBASE_LIBRARY "${CANNBOTDSL_NNOPBASE_LIBRARY}")
+  add_subdirectory("${stage}/common/hostapi" "cannbotdsl/hostapi")
+endfunction()
+
+add_library(cannbotdsl_aclnn SHARED)
 foreach(_source IN LISTS CANNBOTDSL_SOURCES)
   get_filename_component(_op "${_source}" NAME_WE)
   set(_stage "${CMAKE_CURRENT_BINARY_DIR}/cannbotdsl/${_op}.stage")
@@ -31,28 +44,23 @@ foreach(_source IN LISTS CANNBOTDSL_SOURCES)
   if(EXISTS "${_stamp}" AND EXISTS "${_stage}/package.json")
     file(READ "${_stamp}" _existing_hash)
   endif()
+  set(_mode --verify-only)
   if(NOT _existing_hash STREQUAL _input_hash)
     file(REMOVE_RECURSE "${_stage}")
-    execute_process(COMMAND "${CMAKE_COMMAND}" -E env
-      "ASCEND_HOME_PATH=${ASCEND_CANN_PACKAGE_PATH}" TORCH_DEVICE_BACKEND_AUTOLOAD=0
-      PYTHONDONTWRITEBYTECODE=1 "${CANNBOTDSL_PYTHON_EXECUTABLE}" "${_builder}"
-      --source "${_source}" --output "${_stage}" --npu-arch "${CANNBOTDSL_NPU_ARCH}"
-      RESULT_VARIABLE _result OUTPUT_VARIABLE _stdout ERROR_VARIABLE _stderr)
-    if(NOT _result EQUAL 0)
-      message(FATAL_ERROR "OpKit generation failed for ${_op}: ${_stdout}\n${_stderr}")
-    endif()
-    file(WRITE "${_stamp}" "${_input_hash}")
+    set(_mode)
   endif()
-  list(APPEND CANNBOTDSL_ACLNN_STAGES "${_stage}")
-endforeach()
-
-set(CANN_ROOT "${ASCEND_CANN_PACKAGE_PATH}" CACHE PATH "CANN SDK for OpKit" FORCE)
-set(OPBASE_INCLUDE_DIR "${CANNBOTDSL_NNOPBASE_INCLUDE_DIR}" CACHE PATH "DirectInvoke headers for OpKit" FORCE)
-set(OPBASE_LIBRARY "${CANNBOTDSL_NNOPBASE_LIBRARY}" CACHE STRING "DirectInvoke library for OpKit" FORCE)
-list(GET CANNBOTDSL_ACLNN_STAGES 0 _first_stage)
-add_subdirectory("${_first_stage}/common/hostapi" "cannbotdsl/hostapi")
-add_library(cannbotdsl_aclnn SHARED)
-foreach(_stage IN LISTS CANNBOTDSL_ACLNN_STAGES)
+  execute_process(COMMAND "${CMAKE_COMMAND}" -E env
+    "ASCEND_HOME_PATH=${ASCEND_CANN_PACKAGE_PATH}" TORCH_DEVICE_BACKEND_AUTOLOAD=0
+    PYTHONDONTWRITEBYTECODE=1 "${CANNBOTDSL_PYTHON_EXECUTABLE}" "${_builder}"
+    --source "${_source}" --output "${_stage}" --npu-arch "${CANNBOTDSL_NPU_ARCH}" ${_mode}
+    RESULT_VARIABLE _result OUTPUT_VARIABLE _stdout ERROR_VARIABLE _stderr)
+  if(NOT _result EQUAL 0)
+    message(FATAL_ERROR "OpKit generation or cache verification failed for ${_op}: ${_stdout}\n${_stderr}\nRemove ${_stage} and reconfigure to regenerate it.")
+  endif()
+  file(WRITE "${_stamp}" "${_input_hash}")
+  if(NOT TARGET cannbot_hostapi)
+    _cannbotdsl_add_hostapi("${_stage}")
+  endif()
   file(READ "${_stage}/package.json" _package)
   string(JSON _count LENGTH "${_package}" operators)
   math(EXPR _last "${_count} - 1")

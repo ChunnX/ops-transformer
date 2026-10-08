@@ -44,6 +44,10 @@ library must export `op::AddDirectInvokeTask`. This replaces the previous
 External Task / frozen OperatorBundle bridge. A DSL source checkout and
 `cannbot_framework` are no longer build dependencies. The stage cache includes
 operator source, builder, wheel RECORD hashes, target and SDK identity.
+Cache hits verify the artifact manifest before CMake consumes the stage; damaged
+stages fail configuration with the regeneration path. Generation and module
+registration use one source traversal. The generated HostAPI receives SDK and
+opbase bindings in a local scope without overriding parent cache values.
 
 Built-in artifacts:
 
@@ -60,7 +64,7 @@ fail at configuration; ALL selections skip OpKit on unsupported targets.
 
 ```bash
 python -m pytest attention/flash_kda/test/test_aclnn_adapter.py -q
-FLASH_KDA_METADATA_SOURCE=/path/to/arena/samples/flash_kda_metadata/flash_kda_metadata.py \
+FLASH_KDA_METADATA_SOURCE=/path/to/arena/samples/flash_kda/flash_kda_metadata.py \
   python -m pytest attention/flash_kda/test/test_flash_kda.py -q -s
 ```
 
