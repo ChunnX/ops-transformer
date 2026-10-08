@@ -45,16 +45,21 @@ static ge::graphStatus GroupedMatmulFinalizeRoutingTilingFunc(gert::TilingContex
                 OPS_REPORT_CUBE_INNER_ERR("GroupedMatmulFinalizeRouting", "CompileInfo is null"),
                 return ge::GRAPH_FAILED);
     if (compileInfoPtr->npuArch == NpuArch::DAV_3510) {
-        auto atomicRet = context->SetNeedAtomic(true);
-        OP_CHECK_IF(atomicRet != ge::GRAPH_SUCCESS,
-                    OPS_REPORT_CUBE_INNER_ERR(context->GetNodeName(), "SetNeedAtomic failed"), return ge::GRAPH_FAILED);
+        auto w0Desc = context->GetDynamicInputDesc(W_INDEX, 0);
+        OP_CHECK_NULL_WITH_CONTEXT(context, w0Desc);
+        auto scaleDesc = context->GetOptionalInputDesc(SCALE_INDEX);
+        if (ge::GetPrimaryFormat(w0Desc->GetStorageFormat()) == ge::FORMAT_FRACTAL_NZ && scaleDesc != nullptr &&
+            scaleDesc->GetDataType() == ge::DT_FLOAT8_E8M0) {
+            auto atomicRet = context->SetNeedAtomic(true);
+            OP_CHECK_IF(atomicRet != ge::GRAPH_SUCCESS,
+                        OPS_REPORT_CUBE_INNER_ERR(context->GetNodeName(), "SetNeedAtomic failed"),
+                        return ge::GRAPH_FAILED);
+        }
 
         OP_CHECK_NULL_WITH_CONTEXT(context, context);
         auto xDesc = context->GetDynamicInputDesc(X_INDEX, 0);
         OP_CHECK_NULL_WITH_CONTEXT(context, xDesc); // check xDesc is not null
         ge::DataType xDType = xDesc->GetDataType();
-        auto w0Desc = context->GetDynamicInputDesc(W_INDEX, 0);
-        OP_CHECK_NULL_WITH_CONTEXT(context, w0Desc);
         ge::DataType weightDtype = w0Desc->GetDataType();
         if (GetSizeByDataType(xDType) != GetSizeByDataType(weightDtype)) {
             OP_LOGI(context->GetNodeName(), "Enter WeightQuant Tiling of A5");
