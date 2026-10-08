@@ -8,9 +8,8 @@
 
 """FlashKDA AICore consumer for BNSD, BSND, and packed TND storage."""
 
-import dataclasses
 import os
-from typing import NamedTuple, Optional, Tuple
+from typing import Tuple
 
 from cannbotdsl.lang.host import host
 from cannbotdsl.tensor import idx2crd, reinterpret, tile_slice
@@ -21,7 +20,7 @@ import cannbotdsl
 from cannbotdsl import aot
 from opkit import aclnn
 import torch
-from cannbotdsl import dtypes, get_platform_info
+from cannbotdsl import dtypes
 from cannbotdsl.ops.arch import get_block_idx, get_block_num, get_subblock_id
 from cannbotdsl.buffer import Buffer
 from cannbotdsl.channel import Channel
@@ -167,43 +166,6 @@ def nd2nz_tile(dst, src, elem_bits: int = 16):
 
 
 
-class _Stage1Constants(NamedTuple):
-    identity16: torch.Tensor
-
-
-_STAGE1_CONSTANTS_CACHE: dict[tuple[str, int | None, torch.dtype], _Stage1Constants] = {}
-
-
-@dataclasses.dataclass
-class StageOneWorkspace:
-    Q_decayed: torch.Tensor
-    Mqk: torch.Tensor
-    K_restored: torch.Tensor
-    gamma_C: torch.Tensor
-    U_pre: torch.Tensor
-    W: torch.Tensor
-    identity16: torch.Tensor
-
-
-def _empty_like_device(
-    shape: tuple[int, ...],
-    *,
-    ref: torch.Tensor,
-    dtype: torch.dtype = torch.float32,
-) -> torch.Tensor:
-    return torch.empty(shape, dtype=dtype, device=ref.device)
-
-
-def allocate_qk_exchange_workspace(
-    *, active_block_num: int, ref: torch.Tensor,
-) -> torch.Tensor:
-    """Allocate two Q/K partial sums in each AIV exchange direction."""
-    assert active_block_num > 0, "active_block_num must be positive"
-    return _empty_like_device(
-        (active_block_num, 2, 2, CHUNK_SIZE), ref=ref, dtype=HIGH_DTYPE,
-    )
-
-
 def qk_exchange_slices(
     workspace: torch.Tensor, *, block_idx: int,
 ) -> tuple[torch.Tensor, torch.Tensor]:
@@ -212,58 +174,6 @@ def qk_exchange_slices(
     assert workspace.dim() == 4 and tuple(workspace.shape[1:]) == (2, 2, CHUNK_SIZE)
     assert 0 <= block_idx < workspace.shape[0], "block_idx is outside the exchange workspace"
     return workspace[block_idx, 0], workspace[block_idx, 1]
-
-
-def _resolved_device_key(ref: torch.Tensor) -> tuple[str, int | None]:
-    device = ref.device
-    device_type = getattr(device, "type", "cpu")
-    device_index = getattr(device, "index", None)
-    if device_type in {"npu", "privateuseone"} and device_index is None:
-        npu = getattr(torch, "npu", None)
-        current_device = getattr(npu, "current_device", None) if npu is not None else None
-        if current_device is not None:
-            device_index = int(current_device())
-    return device_type, device_index
-
-
-def _stage1_constants_for(
-    ref: torch.Tensor,
-    *,
-    identity_dtype: torch.dtype = torch.float16,
-) -> _Stage1Constants:
-    device_type, device_index = _resolved_device_key(ref)
-    key = (device_type, device_index, identity_dtype)
-    cached = _STAGE1_CONSTANTS_CACHE.get(key)
-    if cached is not None:
-        return cached
-
-    constants = _Stage1Constants(
-        identity16=torch.eye(16, dtype=identity_dtype, device=ref.device).contiguous(),
-    )
-    _STAGE1_CONSTANTS_CACHE[key] = constants
-    return constants
-
-
-def allocate_stage1_workspace(
-    batch: int,
-    heads: int,
-    eff_group: int,
-    dim: int,
-    *,
-    ref: torch.Tensor,
-) -> StageOneWorkspace:
-    # Scratch is reused for each chunk group rather than spanning the sequence.
-    bn_chunks = batch * heads * eff_group
-    constants = _stage1_constants_for(ref)
-    return StageOneWorkspace(
-        Q_decayed=_empty_like_device((bn_chunks * CHUNK_SIZE, dim), ref=ref, dtype=LOW_DTYPE),
-        Mqk=_empty_like_device((bn_chunks * CHUNK_SIZE, CHUNK_SIZE), ref=ref, dtype=LOW_DTYPE),
-        K_restored=_empty_like_device((bn_chunks * CHUNK_SIZE, dim), ref=ref, dtype=LOW_DTYPE),
-        gamma_C=_empty_like_device((bn_chunks * dim, 1), ref=ref, dtype=HIGH_DTYPE),
-        U_pre=_empty_like_device((bn_chunks * CHUNK_SIZE, dim), ref=ref, dtype=LOW_DTYPE),
-        W=_empty_like_device((bn_chunks * CHUNK_SIZE, dim), ref=ref, dtype=LOW_DTYPE),
-        identity16=constants.identity16,
-    )
 
 
 ELEM_BYTES = 4
@@ -2030,28 +1940,6 @@ HEADER_WORDS = 9
 STATUS_OK = 0
 
 
-def _device_block_num(ref: Optional[torch.Tensor] = None) -> int:
-    """Return a grid-barrier-safe launch size for the current NPU stream."""
-    if ref is not None and ref.device.type not in {"npu", "privateuseone"}:
-        return MAX_AIC_CORES
-    npu = getattr(torch, "npu", None)
-    if npu is None:
-        return MAX_AIC_CORES
-    device_index = ref.device.index if ref is not None else None
-    if device_index is None:
-        try:
-            device_index = npu.current_device()
-        except RuntimeError:
-            return MAX_AIC_CORES
-    stream = npu.current_stream(device_index)
-    platform_info = get_platform_info(stream=stream)
-    try:
-        cube_core_num = int(platform_info.cube_core_num)
-    except (AttributeError, TypeError, ValueError) as exc:
-        raise RuntimeError(f"NPU {device_index} does not expose a valid cube_core_num") from exc
-    if cube_core_num <= 0:
-        raise RuntimeError(f"NPU {device_index} reports invalid cube_core_num={cube_core_num}")
-    return min(cube_core_num, MAX_AIC_CORES)
 
 
 def _rewind_mutually_exclusive_stage2_branch() -> None:
@@ -2553,10 +2441,6 @@ def _compile_flash_kda():
         dtypes.int64,
     )
 
-def _get_compiled_kernel():
-    return _compile_flash_kda()
-
-
 def flash_kda(
     q: torch.Tensor,
     k: torch.Tensor,
@@ -2588,7 +2472,7 @@ def flash_kda(
         metadata (torch.Tensor): Reusable int32 scheduling metadata returned by ``flash_kda_metadata()``.
 
     Returns:
-        out (torch.Tensor): Output in the same physical layout as ``v``. Padding rows are undefined.
+        out (torch.Tensor): Output in the same physical layout and logical shape as ``v``.
         final_state (torch.Tensor): Final recurrent state, fp32, shape ``[B, Nv, D, D]``.
 
     Notes:
@@ -2597,104 +2481,14 @@ def flash_kda(
         * ``Nv <= 96``.
         * ``Nv % Nqk == 0``.
         * ``lower_bound`` is in ``[-5, 0]``.
-        * Internal output storage is padded to a multiple of 64 rows for kernel computation.
+        * Tail writes are clipped to valid rows; output storage needs no padding.
     """
-    assert layout_qkv in ("TND", "BNSD", "BSND"), f"layout_qkv must be TND, BNSD, or BSND, got {layout_qkv!r}"
-    assert initial_state.dim() == 4, "initial_state must be rank-4"
-    batch, n_v, state_dv, state_dk = initial_state.shape
-    assert state_dv == state_dk == SUPPORTED_HEAD_DIM, f"FlashKDA only supports D={SUPPORTED_HEAD_DIM}"
-
-    if layout_qkv == "TND":
-        assert q.dim() == k.dim() == v.dim() == g.dim() == 3, "TND q/k/v/g must be rank-3"
-        storage_length, n_qk, dim = q.shape
-        assert k.shape == q.shape, "q/k shape does not match TND layout"
-        assert v.shape == g.shape == (storage_length, n_v, dim), "v/g shape does not match TND layout"
-        assert beta.dim() == 2 and beta.shape == (storage_length, n_v), "beta must be [T, Nv] for TND"
-        q_logical = torch.as_strided(q, (1, n_qk, storage_length, dim), (storage_length * n_qk * dim, dim, n_qk * dim, 1))
-        k_logical = torch.as_strided(k, (1, n_qk, storage_length, dim), (storage_length * n_qk * dim, dim, n_qk * dim, 1))
-        v_logical = torch.as_strided(v, (1, n_v, storage_length, dim), (storage_length * n_v * dim, dim, n_v * dim, 1))
-        g_logical = torch.as_strided(g, (1, n_v, storage_length, dim), (storage_length * n_v * dim, dim, n_v * dim, 1))
-        beta_logical = torch.as_strided(beta, (1, n_v, storage_length, 1), (storage_length * n_v, 1, n_v, 1))
-        padded_length = ((storage_length + CHUNK_SIZE - 1) // CHUNK_SIZE) * CHUNK_SIZE
-        out_stage_storage = torch.empty(padded_length, n_v, dim, dtype=LOW_DTYPE, device=q.device)
-        out = out_stage_storage[:storage_length]
-        out_stage = torch.as_strided(out_stage_storage, (1, n_v, padded_length, dim), (padded_length * n_v * dim, dim, n_v * dim, 1))
-    else:
-        assert q.dim() == k.dim() == v.dim() == g.dim() == 4, "BNSD/BSND q/k/v/g must be rank-4"
-        if layout_qkv == "BNSD":
-            physical_batches, n_qk, storage_length, dim = q.shape
-            assert k.shape == q.shape, "q/k shape does not match BNSD layout"
-            assert v.shape == g.shape == (physical_batches, n_v, storage_length, dim), "v/g shape does not match BNSD layout"
-            assert beta.dim() == 3 and beta.shape == (physical_batches, n_v, storage_length), "beta must be [B, Nv, S] for BNSD"
-            q_logical, k_logical, v_logical, g_logical = q, k, v, g
-            beta_logical = beta.unsqueeze(-1)
-        else:
-            physical_batches, storage_length, n_qk, dim = q.shape
-            assert k.shape == q.shape, "q/k shape does not match BSND layout"
-            assert v.shape == g.shape == (physical_batches, storage_length, n_v, dim), "v/g shape does not match BSND layout"
-            assert beta.dim() == 3 and beta.shape == (physical_batches, storage_length, n_v), "beta must be [B, S, Nv] for BSND"
-            q_logical = q.transpose(1, 2)
-            k_logical = k.transpose(1, 2)
-            v_logical = v.transpose(1, 2)
-            g_logical = g.transpose(1, 2)
-            beta_logical = beta.unsqueeze(-1).transpose(1, 2)
-        assert physical_batches == batch, "padded storage batch must match initial_state"
-        padded_length = ((storage_length + CHUNK_SIZE - 1) // CHUNK_SIZE) * CHUNK_SIZE
-        if layout_qkv == "BNSD":
-            out_stage_storage = torch.empty(batch, n_v, padded_length, dim, dtype=LOW_DTYPE, device=q.device)
-            out = out_stage_storage[:, :, :storage_length, :]
-            out_stage = out_stage_storage
-        else:
-            out_stage_storage = torch.empty(batch, padded_length, n_v, dim, dtype=LOW_DTYPE, device=q.device)
-            out = out_stage_storage[:, :storage_length, :, :]
-            out_stage = out_stage_storage.transpose(1, 2)
-
-    assert dim == SUPPORTED_HEAD_DIM, f"FlashKDA only supports D={SUPPORTED_HEAD_DIM}"
-    assert n_v % n_qk == 0, f"GQA requires Nv % Nqk == 0, got Nv={n_v}, Nqk={n_qk}"
-    assert storage_length > 0, "storage sequence length must be positive"
-    assert q.dtype == k.dtype == v.dtype == g.dtype == beta.dtype == LOW_DTYPE, "q/k/v/g/beta must be bf16"
-    assert initial_state.dtype == HIGH_DTYPE, "initial_state must be fp32"
-    assert A_log.dtype == HIGH_DTYPE and A_log.shape == (n_v,), f"A_log must be fp32 with shape ({n_v},)"
-    assert dt_bias.dtype == HIGH_DTYPE and dt_bias.shape == (n_v, dim), f"dt_bias must be fp32 with shape ({n_v}, {dim})"
-    assert -5.0 <= float(lower_bound) <= 0.0, "lower_bound must be in [-5, 0]"
-    tensors = (q, k, v, g, beta, initial_state, A_log, dt_bias)
+    tensors = (q, k, v, g, beta, initial_state, A_log, dt_bias, metadata)
     assert all(tensor.device == q.device for tensor in tensors), "all inputs must be on the same device"
-    assert all(tensor.is_contiguous() for tensor in tensors), "all public inputs must be contiguous"
-    assert metadata.dtype == torch.int32, "metadata must be int32"
-    assert metadata.dim() == 1, "metadata must be rank-1"
-    assert metadata.is_contiguous(), "metadata must be contiguous"
-    assert metadata.device == q.device, "all inputs must be on the same device"
-
-    core_num = _device_block_num(q)
-    workspace = allocate_stage1_workspace(1, 1, WORKSPACE_SLOTS, SUPPORTED_HEAD_DIM, ref=q)
-    qk_exchange = allocate_qk_exchange_workspace(active_block_num=core_num, ref=q)
-    final_state = torch.empty(initial_state.shape, dtype=initial_state.dtype, device=initial_state.device)
-    fn = _get_compiled_kernel()
-    fn(
-        k_logical,
-        v_logical,
-        q_logical,
-        beta_logical,
-        g_logical,
-        qk_exchange,
-        A_log,
-        dt_bias,
-        workspace.K_restored,
-        workspace.gamma_C,
-        workspace.Q_decayed,
-        workspace.W,
-        workspace.Mqk,
-        workspace.U_pre,
-        out_stage,
-        initial_state,
-        final_state,
-        workspace.identity16,
-        metadata,
-        float(scale),
-        float(lower_bound),
-        core_num,
-    )
-    return out, final_state
+    # The shared host queries the current stream, so select the input device.
+    with torch.npu.device(q.device):
+        return flash_kda_aclnn(q, k, v, g, beta, scale, initial_state,
+                               A_log, dt_bias, lower_bound, layout_qkv, metadata)
 
 
 def clear_caches():
@@ -2791,51 +2585,23 @@ def flash_kda_aclnn(
         storage_length = q.shape[0]
         n_qk = q.shape[1]
         dim = q.shape[2]
-        assert k.shape == q.shape, "q/k shape does not match TND layout"
         assert v.shape == g.shape == (storage_length, n_v, dim), "v/g shape does not match TND layout"
         assert beta.dim() == 2 and beta.shape == (storage_length, n_v), "beta must be [T, Nv] for TND"
-        q_logical = torch.as_strided(q, (1, n_qk, storage_length, dim), (storage_length * n_qk * dim, dim, n_qk * dim, 1))
-        k_logical = torch.as_strided(k, (1, n_qk, storage_length, dim), (storage_length * n_qk * dim, dim, n_qk * dim, 1))
-        v_logical = torch.as_strided(v, (1, n_v, storage_length, dim), (storage_length * n_v * dim, dim, n_v * dim, 1))
-        g_logical = torch.as_strided(g, (1, n_v, storage_length, dim), (storage_length * n_v * dim, dim, n_v * dim, 1))
-        beta_logical = torch.as_strided(beta, (1, n_v, storage_length, 1), (storage_length * n_v, 1, n_v, 1))
-        out_stage_storage = torch.empty((storage_length, n_v, dim), dtype=LOW_DTYPE, device=q.device)
-        out = out_stage_storage[:storage_length]
-        out_stage = torch.as_strided(out_stage_storage, (1, n_v, storage_length, dim), (storage_length * n_v * dim, dim, n_v * dim, 1))
     else:
         assert q.dim() == k.dim() == v.dim() == g.dim() == 4, "BNSD/BSND q/k/v/g must be rank-4"
+        assert q.shape[0] == batch, "storage batch must match initial_state"
+        dim = q.shape[3]
         if layout_qkv == "BNSD":
-            physical_batches = q.shape[0]
             n_qk = q.shape[1]
             storage_length = q.shape[2]
-            dim = q.shape[3]
-            assert k.shape == q.shape, "q/k shape does not match BNSD layout"
-            assert v.shape == g.shape == (physical_batches, n_v, storage_length, dim), "v/g shape does not match BNSD layout"
-            assert beta.dim() == 3 and beta.shape == (physical_batches, n_v, storage_length), "beta must be [B, Nv, S] for BNSD"
-            q_logical, k_logical, v_logical, g_logical = q, k, v, g
-            beta_logical = beta.unsqueeze(-1)
+            assert v.shape == g.shape == (batch, n_v, storage_length, dim), "v/g shape does not match BNSD layout"
+            assert beta.dim() == 3 and beta.shape == (batch, n_v, storage_length), "beta must be [B, Nv, S] for BNSD"
         else:
-            physical_batches = q.shape[0]
             storage_length = q.shape[1]
             n_qk = q.shape[2]
-            dim = q.shape[3]
-            assert k.shape == q.shape, "q/k shape does not match BSND layout"
-            assert v.shape == g.shape == (physical_batches, storage_length, n_v, dim), "v/g shape does not match BSND layout"
-            assert beta.dim() == 3 and beta.shape == (physical_batches, storage_length, n_v), "beta must be [B, S, Nv] for BSND"
-            q_logical = q.transpose(1, 2)
-            k_logical = k.transpose(1, 2)
-            v_logical = v.transpose(1, 2)
-            g_logical = g.transpose(1, 2)
-            beta_logical = beta.unsqueeze(-1).transpose(1, 2)
-        assert physical_batches == batch, "padded storage batch must match initial_state"
-        if layout_qkv == "BNSD":
-            out_stage_storage = torch.empty((batch, n_v, storage_length, dim), dtype=LOW_DTYPE, device=q.device)
-            out = out_stage_storage[:, :, :storage_length, :]
-            out_stage = out_stage_storage
-        else:
-            out_stage_storage = torch.empty((batch, storage_length, n_v, dim), dtype=LOW_DTYPE, device=q.device)
-            out = out_stage_storage[:, :storage_length, :, :]
-            out_stage = out_stage_storage.transpose(1, 2)
+            assert v.shape == g.shape == (batch, storage_length, n_v, dim), "v/g shape does not match BSND layout"
+            assert beta.dim() == 3 and beta.shape == (batch, storage_length, n_v), "beta must be [B, S, Nv] for BSND"
+    assert k.shape == q.shape, "q/k shapes must match"
 
     assert dim == SUPPORTED_HEAD_DIM, "FlashKDA input shape or layout is invalid"
     assert batch > 0 and n_qk > 0 and n_v > 0 and n_v <= 96
@@ -2853,7 +2619,25 @@ def flash_kda_aclnn(
     assert metadata.is_contiguous(), "metadata must be contiguous"
     assert metadata.shape[0] >= HEADER_WORDS + MAX_AIC_CORES * 2
 
-    core_num = min(cannbotdsl.get_platform_info().cube_core_num, 32)
+    q_logical, k_logical, v_logical, g_logical = q, k, v, g
+    beta_logical = beta.unsqueeze(-1)
+    out = torch.empty_like(v)
+    out_stage = out
+    if layout_qkv == "TND":
+        q_logical = q.unsqueeze(0)
+        k_logical = k.unsqueeze(0)
+        v_logical = v.unsqueeze(0)
+        g_logical = g.unsqueeze(0)
+        beta_logical = beta_logical.unsqueeze(0)
+        out_stage = out.unsqueeze(0)
+    if layout_qkv != "BNSD":
+        q_logical = q_logical.transpose(1, 2)
+        k_logical = k_logical.transpose(1, 2)
+        v_logical = v_logical.transpose(1, 2)
+        g_logical = g_logical.transpose(1, 2)
+        beta_logical = beta_logical.transpose(1, 2)
+        out_stage = out_stage.transpose(1, 2)
+    core_num = min(cannbotdsl.get_platform_info().cube_core_num, MAX_AIC_CORES)
     assert core_num > 0
     scratch_tokens = WORKSPACE_SLOTS * CHUNK_SIZE
     gamma_rows = WORKSPACE_SLOTS * SUPPORTED_HEAD_DIM
@@ -2863,7 +2647,7 @@ def flash_kda_aclnn(
     w = torch.empty((scratch_tokens, SUPPORTED_HEAD_DIM), dtype=torch.bfloat16, device=q.device)
     mqk = torch.empty((scratch_tokens, CHUNK_SIZE), dtype=torch.bfloat16, device=q.device)
     u = torch.empty((scratch_tokens, SUPPORTED_HEAD_DIM), dtype=torch.bfloat16, device=q.device)
-    qk_exchange = torch.empty((core_num, 2, 2, 64), dtype=torch.float32, device=q.device)
+    qk_exchange = torch.empty((core_num, 2, 2, CHUNK_SIZE), dtype=torch.float32, device=q.device)
     identity = torch.empty((16, 16), dtype=torch.float16, device=q.device)
     final_state = torch.empty(initial_state.shape, dtype=initial_state.dtype, device=initial_state.device)
     fn = _compile_flash_kda()

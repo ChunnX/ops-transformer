@@ -14,6 +14,10 @@ BNSD views, uses caller-owned logical output storage and executor-owned scratch.
 The kernel clips tail writes to valid rows, so ACLNN outputs do not require
 padded backing storage. One Native provider initializes the internal
 16x16 identity and launches FlashKDA. Consumers need no Python at runtime.
+Eager `flash_kda` selects the input NPU device and delegates to the same
+`flash_kda_aclnn` host body. Validation, layout conversion, allocation, and
+launch bindings have one implementation. The small
+identity kernel remains because the OpKit host subset cannot lower `torch.eye`.
 
 ## Build
 
