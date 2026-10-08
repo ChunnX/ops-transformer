@@ -13,6 +13,10 @@ on:
         required: false
         type: string
         default: ''
+      soc:
+        required: false
+        type: string
+        default: ''
       arch:
         required: false
         type: string
@@ -64,7 +68,12 @@ jobs:
             export GE_ST_RT2=${{ inputs.ge_st_rt2 }}
             export GIT_TARGET_BRANCH=${{ env.TARGET_BRANCH }}
             export OS_TYPE=${{ inputs.arch == 'arm64' && 'aarch64' || 'x86_64' }}
-            BuildAccelerate bash compile.sh
+            export CI_SOC='${{ inputs.soc }}'
+            if [ "${CI_SOC}" = "ascend960dt" ]; then
+              BuildAccelerate bash .gitcode/scripts/compile.sh
+            else
+              BuildAccelerate bash compile.sh
+            fi
           AC_SERVER_IP: ${{ vars.AC_SERVER_IP }}
       -
         name: rename_package

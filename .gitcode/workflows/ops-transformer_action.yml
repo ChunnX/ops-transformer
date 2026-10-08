@@ -75,6 +75,24 @@ stages:
           image_version: ${{ jobs.JOB_image.outputs.Compile_Ascend_ARM }}
           arch: 'arm64'
           package_name: 'cann-ops-transformer_linux-aarch64.run'
+      JOB_x86_960dt_compile:
+        name: Compile_960dt_x86
+        uses: .gitcode/workflows/compile_action.yml
+        with:
+          task_name: 'Compile_Ascend_X86_960dt'
+          soc: 'ascend960dt'
+          image_version: ${{ jobs.JOB_image.outputs.Compile_Ascend_X86 }}
+          arch: 'x64'
+          package_name: 'cann-ops-transformer-960dt_linux-x86_64.run'
+      JOB_arm_960dt_compile:
+        name: Compile_960dt_arm
+        uses: .gitcode/workflows/compile_action.yml
+        with:
+          task_name: 'Compile_Ascend_ARM_960dt'
+          soc: 'ascend960dt'
+          image_version: ${{ jobs.JOB_image.outputs.Compile_Ascend_ARM }}
+          arch: 'arm64'
+          package_name: 'cann-ops-transformer-960dt_linux-aarch64.run'
       JOB_experimental_compile:
         name: Compile_experimental_x86
         uses: .gitcode/workflows/compile_action.yml
