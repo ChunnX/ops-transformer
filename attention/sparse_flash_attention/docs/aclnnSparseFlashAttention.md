@@ -530,6 +530,8 @@ aclnnStatus aclnnSparseFlashAttention(
   - N1支持1~128。
   - 仅支持sparseBlockSize为1。
   - returnSoftmaxLse为True时，支持layoutKv为PA_BSND。
+  - layoutQuery为TND、layoutKv为PA_BSND、sparseSize在[256,2048]且KV长度不小于sparseSize时，算子根据可用核数、query数量与head数量自动选择KV分核，无需额外参数。支持FLOAT16/BFLOAT16、N1为1~128、可选RoPE、sparseMode为0/3以及返回softmax统计量；其他合法配置使用原有计算路径。
+  - sparseIndices每行有效索引须位于连续前缀，无效索引用-1连续填充在行尾，不支持有效与无效索引交错。TND/PA_BSND布局下，尾部-1、实际KV长度不足或mode 3因果窗口不足的行使用不分核计算；全-1行的attentionOut为零，请求返回统计量时softmaxMaxOut与softmaxSumOut也为零。
   - 当layoutKv为PA_BBND时，key、value和key_rope支持0轴非连续，非连续Tensor的每一维的stride均不能为0。不支持其他非连续。
 - <term>Atlas A3系列产品</term>、<term>Atlas A2系列产品</term>：
   - N1支持1/2/4/8/16/32/64/128。
@@ -538,6 +540,8 @@ aclnnStatus aclnnSparseFlashAttention(
   - returnSoftmaxLse为True时，layoutKv不支持PA_BSND。
 
 ## 调用示例
+
+使用TND/PA_BSND布局时，须传入blockTable、actualSeqLengthsQuery和actualSeqLengthsKv；actualSeqLengthsQuery为各batch的累积query长度，actualSeqLengthsKv为各batch的实际KV长度。KV分核由算子自动选择，仍先调用GetWorkspaceSize接口获取workspace大小，再调用执行接口；请求返回统计量时，按(N2,T1,N1/N2)申请FLOAT类型的softmaxMaxOut和softmaxSumOut。
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 

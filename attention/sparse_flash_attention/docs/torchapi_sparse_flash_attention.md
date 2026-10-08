@@ -143,12 +143,16 @@ cann_ops_transformer.sparse_flash_attention(
 - 参数 query、key、value 的数据类型必须保持一致。
 - `layout_kv` 为 PA_BSND 时，`layout_query` 和 `layout_kv` 无需一致；`layout_kv` 为 BSND 或 TND 时，`layout_query` 和 `layout_kv` 需保持一致。
 - 仅在 `layout_kv` 为 PA_BSND 时，key、value 和 key_rope 支持 0 轴非连续。
-- 当前只支持 query_rope 和 key_rope 传入，不支持 rope 为空。
+- query_rope 与 key_rope 须同时为 None 或同时传入非空 tensor；同时为 None 时不使用 RoPE，传入时 d_r 相等为 64。不支持空 tensor。
+- layout_query 为 TND、layout_kv 为 PA_BSND、sinks 为 None、sparse_size 在 [256,2048] 且 KV 长度不小于 sparse_size 时，算子根据可用核数、query 数量与 head 数量自动选择 KV 分核，无需额外参数。支持 float16/bfloat16、q_n 为 1~128、可选 RoPE、sparse_mode 为 0/3 以及返回 softmax 统计量；其他合法配置使用原有计算路径。
+- sparse_indices 每行有效索引须位于连续前缀，无效索引用 -1 连续填充在行尾，不支持有效与无效索引交错。TND/PA_BSND 布局下，尾部 -1、实际 KV 长度不足或 mode 3 因果窗口不足的行使用不分核计算；sinks 为 None 且全 -1 行的 attention_out 为零，请求返回统计量时 softmax_max 与 softmax_sum 也为零。
 
 ## 确定性计算
 - 默认支持确定性计算
 
 ## 调用示例
+
+使用 TND/PA_BSND 布局时，须传入 block_table、actual_seq_lengths_query 和 actual_seq_lengths_kv；query 长度为各 batch 的累积长度，KV 长度为各 batch 的实际长度。KV 分核由算子自动选择，调用方式不变；return_softmax_lse=True 时返回 float32 类型、shape 为 (kv_n,q_t,q_n/kv_n) 的 softmax_max 与 softmax_sum。
 
 - 单算子模式调用
 

@@ -217,6 +217,8 @@
   - sparse_block_size仅支持1。
   - 仅在layout_key为PA_BSND时，key、value和key_rope支持0轴非连续。
   - return_softmax_lse为True时，支持layout_kv为PA_BSND。
+  - layout_query为TND、layout_kv为PA_BSND、不传sinks、sparse_size在[256,2048]且KV长度不小于sparse_size时，算子根据可用核数、query数量与head数量自动选择KV分核，无需额外参数。支持FP16/BF16、Q_N为1~128、可选RoPE、sparse_mode为0/3以及返回softmax统计量；其他合法配置使用原有计算路径。
+  - sparse_indices每行有效索引须位于连续前缀，无效索引用-1连续填充在行尾，不支持有效与无效索引交错。TND/PA_BSND布局下，尾部-1、实际KV长度不足或mode 3因果窗口不足的行使用不分核计算；不传sinks且全-1行的attention_out为零，请求返回统计量时softmax_max_out与softmax_sum_out也为零。
 - <term>Atlas A3系列产品</term>、<term>Atlas A2系列产品</term>：
   - Q_N支持1/2/4/8/16/32/64/128。
   - 参数sparse_block_size支持[1,128]，且要求是2的幂次方，在PageAttention场景下要求sparse_block_size整除block_size。
@@ -224,13 +226,9 @@
   - key、value和key_rope不支持非连续。
   - return_softmax_lse为True时，layout_kv不支持PA_BSND。
 
-## A5 Split-KV 优化
-
-Ascend 950 小 query 场景的分核范围、算法及测试方法见
-[A5 SFA Split-KV](docs/sfa_split_kv_arch35.md)，性能数据见
-[A5 验证结果](docs/sfa_split_kv_arch35_validation.md)。
-
 ## 调用示例
+
+使用TND/PA_BSND布局时，须传入block_table、actual_seq_lengths_query和actual_seq_lengths_kv；query长度为各batch的累积长度，KV长度为各batch的实际长度。KV分核由算子自动选择，接口调用方式不变，ACLNN workspace大小仍通过GetWorkspaceSize接口获取。
 
 <table class="tg"><thead>
   <tr>
