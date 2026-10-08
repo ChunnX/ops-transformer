@@ -34,6 +34,7 @@ constexpr int V_DEQUANT_SCALE_INDEX = 9;
 constexpr int P_QUANT_SCALE_INDEX = 10;
 constexpr int CU_SEQ_LENGTHS_Q_INDEX = 11;
 constexpr int CU_SEQ_LENGTHS_KV_INDEX = 12;
+constexpr int SEQUSED_Q_INDEX = 13;
 constexpr int SEQUSED_KV_INDEX = 14;
 constexpr int BLOCK_TABLE_INDEX = 15;
 
@@ -428,7 +429,8 @@ ge::graphStatus GBSATiling::ParseQueryKeyShapes(gert::TilingContext* context)
         return ge::GRAPH_FAILED;
     }
 
-    // Query 3D / key 4D dim-num guards are enforced by InferShape, which runs before tiling.
+    // Query 3D / key 4D dim-num relies on InferShape (same origin shape) running before tiling;
+    // tiling-side UT fakers bypass InferShape, so callers must keep dims well-formed.
     numHeads_ = static_cast<uint32_t>(queryShape->GetStorageShape().GetDim(TND_DIM_N));
     embeddingSize_ = static_cast<uint32_t>(queryShape->GetStorageShape().GetDim(TND_DIM_D));
     if (embeddingSize_ != 128) {
@@ -468,6 +470,16 @@ ge::graphStatus GBSATiling::ParseSparseTensors(gert::TilingContext* context)
         OP_LOGE(context->GetNodeName(),
                 "sparseBlockIdx must be 3D [N_kv, totalQBlocks, topK] for TND, but got %zu dims.",
                 sparseIdxShape->GetStorageShape().GetDimNum());
+        return ge::GRAPH_FAILED;
+    }
+    auto sparseIdxDesc = context->GetInputDesc(SPARSE_BLOCK_IDX_INDEX);
+    if (sparseIdxDesc == nullptr) {
+        OP_LOGE(context->GetNodeName(), "sparseBlockIdx desc is nullptr.");
+        return ge::GRAPH_FAILED;
+    }
+    if (sparseIdxDesc->GetDataType() != ge::DT_INT32) {
+        OP_LOGE(context->GetNodeName(), "sparseBlockIdx dtype must be DT_INT32, but got %d.",
+                static_cast<int32_t>(sparseIdxDesc->GetDataType()));
         return ge::GRAPH_FAILED;
     }
 
@@ -512,6 +524,16 @@ ge::graphStatus GBSATiling::ParseSparseTensors(gert::TilingContext* context)
                 sparseCountShape->GetStorageShape().GetDimNum());
         return ge::GRAPH_FAILED;
     }
+    auto sparseCountDesc = context->GetInputDesc(SPARSE_BLOCK_COUNT_INDEX);
+    if (sparseCountDesc == nullptr) {
+        OP_LOGE(context->GetNodeName(), "sparseBlockCount desc is nullptr.");
+        return ge::GRAPH_FAILED;
+    }
+    if (sparseCountDesc->GetDataType() != ge::DT_INT32) {
+        OP_LOGE(context->GetNodeName(), "sparseBlockCount dtype must be DT_INT32, but got %d.",
+                static_cast<int32_t>(sparseCountDesc->GetDataType()));
+        return ge::GRAPH_FAILED;
+    }
 
     const uint32_t sparseCountKvHeads =
         static_cast<uint32_t>(sparseCountShape->GetStorageShape().GetDim(SPARSE_COUNT_DIM_KV_HEAD));
@@ -552,13 +574,17 @@ ge::graphStatus GBSATiling::ParseBlockTable(gert::TilingContext* context)
                 static_cast<int32_t>(blockTableDesc->GetDataType()));
         return ge::GRAPH_FAILED;
     }
-    batch_ = static_cast<uint32_t>(blockTableShape->GetStorageShape().GetDim(BLOCK_TABLE_DIM_BATCH));
-    maxBlocksPerBatch_ = static_cast<uint32_t>(blockTableShape->GetStorageShape().GetDim(BLOCK_TABLE_DIM_MAX_BLOCKS));
-    if (batch_ == 0 || maxBlocksPerBatch_ == 0) {
-        OP_LOGE(context->GetNodeName(), "blockTable dims must be positive, got batch=%u, maxBlocksPerBatch=%u.", batch_,
-                maxBlocksPerBatch_);
+    // Validate on int64_t before narrowing: dynamic shapes may carry -1, which would wrap to
+    // 4294967295 after the uint32_t cast and silently bypass the zero check.
+    const int64_t batchDim = blockTableShape->GetStorageShape().GetDim(BLOCK_TABLE_DIM_BATCH);
+    const int64_t maxBlocksPerBatchDim = blockTableShape->GetStorageShape().GetDim(BLOCK_TABLE_DIM_MAX_BLOCKS);
+    if (batchDim <= 0 || maxBlocksPerBatchDim <= 0) {
+        OP_LOGE(context->GetNodeName(), "blockTable dims must be positive, got batch=%ld, maxBlocksPerBatch=%ld.",
+                batchDim, maxBlocksPerBatchDim);
         return ge::GRAPH_FAILED;
     }
+    batch_ = static_cast<uint32_t>(batchDim);
+    maxBlocksPerBatch_ = static_cast<uint32_t>(maxBlocksPerBatchDim);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -779,6 +805,34 @@ ge::graphStatus GBSATiling::CheckCuSeqLengths(gert::TilingContext* context)
         OP_LOGE(context->GetNodeName(), "sequsedKv size=%ld must equal blockTable batch=%u.",
                 sequsedKvShape->GetStorageShape().GetShapeSize(), batch_);
         return ge::GRAPH_FAILED;
+    }
+    // sequsedQ is optional: when present, the kernel reads it as int32 [batch] to override per-batch Q length.
+    if (context->GetOptionalInputTensor(SEQUSED_Q_INDEX) != nullptr) {
+        auto sequsedQDesc = context->GetOptionalInputDesc(SEQUSED_Q_INDEX);
+        if (sequsedQDesc == nullptr) {
+            OP_LOGE(context->GetNodeName(), "sequsedQ desc is nullptr.");
+            return ge::GRAPH_FAILED;
+        }
+        if (sequsedQDesc->GetDataType() != ge::DT_INT32) {
+            OP_LOGE(context->GetNodeName(), "sequsedQ dtype must be DT_INT32, but got %d.",
+                    static_cast<int32_t>(sequsedQDesc->GetDataType()));
+            return ge::GRAPH_FAILED;
+        }
+        const gert::StorageShape* sequsedQShape = context->GetOptionalInputShape(SEQUSED_Q_INDEX);
+        if (sequsedQShape == nullptr) {
+            OP_LOGE(context->GetNodeName(), "sequsedQ shape is nullptr.");
+            return ge::GRAPH_FAILED;
+        }
+        if (sequsedQShape->GetStorageShape().GetDimNum() != 1) {
+            OP_LOGE(context->GetNodeName(), "sequsedQ must be 1D [batch], but got %zu dims.",
+                    sequsedQShape->GetStorageShape().GetDimNum());
+            return ge::GRAPH_FAILED;
+        }
+        if (sequsedQShape->GetStorageShape().GetShapeSize() != static_cast<int64_t>(batch_)) {
+            OP_LOGE(context->GetNodeName(), "sequsedQ size=%ld must equal blockTable batch=%u.",
+                    sequsedQShape->GetStorageShape().GetShapeSize(), batch_);
+            return ge::GRAPH_FAILED;
+        }
     }
     if (context->GetOptionalInputTensor(CU_SEQ_LENGTHS_KV_INDEX) != nullptr) {
         OP_LOGE(context->GetNodeName(),
