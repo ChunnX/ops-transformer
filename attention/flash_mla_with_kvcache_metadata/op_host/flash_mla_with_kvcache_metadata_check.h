@@ -100,10 +100,10 @@ inline aclnnStatus FlashMlaWithKvcacheMetadataCheck::CheckBaseAttr(int64_t maxSe
                                                                    int64_t headDimQk, int64_t headDimV,
                                                                    const char *layoutQ)
 {
-    CHECK_COND((maxSeqlenQ == NONE_VALUE || maxSeqlenQ >= 0), ACLNN_ERR_RUNTIME_ERROR,
-               "maxSeqlenQ must be %ld or greater than or equal to 0, but got %ld", NONE_VALUE, maxSeqlenQ);
-    CHECK_COND((maxSeqlenKv == NONE_VALUE || maxSeqlenKv >= 0), ACLNN_ERR_RUNTIME_ERROR,
-               "maxSeqlenKv must be %ld or greater than or equal to 0, but got %ld", NONE_VALUE, maxSeqlenKv);
+    CHECK_COND(maxSeqlenQ == NONE_VALUE, ACLNN_ERR_RUNTIME_ERROR, "maxSeqlenQ must be %ld, but got %ld", NONE_VALUE,
+               maxSeqlenQ);
+    CHECK_COND(maxSeqlenKv == NONE_VALUE, ACLNN_ERR_RUNTIME_ERROR, "maxSeqlenKv must be %ld, but got %ld", NONE_VALUE,
+               maxSeqlenKv);
 
     CHECK_COND(numHeadsQ > 0, ACLNN_ERR_RUNTIME_ERROR, "numHeadsQ must be greater than 0, but got %ld", numHeadsQ);
     CHECK_COND(numHeadsKv == MLA_KV_HEADS, ACLNN_ERR_RUNTIME_ERROR, "MLA kv head num must be %ld, but got %ld",

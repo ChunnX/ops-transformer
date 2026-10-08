@@ -207,12 +207,11 @@ ge::graphStatus CommonChecker::CheckAxis(const FlashMlaWithKvcacheTilingInfo &fa
                     return ge::GRAPH_FAILED);
     }
 
-    OP_CHECK_IF(
-        faInfo.n1Size != 8 && faInfo.n1Size != 12 && faInfo.n1Size != 16 && faInfo.n1Size != 64 && faInfo.n1Size != 96,
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(faInfo.opName, "query",
-                                              ToString(faInfo.opParamInfo.query.shape->GetStorageShape()).c_str(),
-                                              "N of query must be 8, 12, 16, 64 or 96"),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(faInfo.n1Size != 8 && faInfo.n1Size != 12 && faInfo.n1Size != 64 && faInfo.n1Size != 96,
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                    faInfo.opName, "query", ToString(faInfo.opParamInfo.query.shape->GetStorageShape()).c_str(),
+                    "N of query must be 8, 12, 64 or 96"),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(faInfo.n2Size <= 0,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                     faInfo.opName, "k_cache", ToString(faInfo.opParamInfo.kCache.shape->GetStorageShape()).c_str(),

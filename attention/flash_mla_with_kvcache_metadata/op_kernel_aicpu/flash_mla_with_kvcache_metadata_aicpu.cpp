@@ -96,6 +96,8 @@ bool FlashMlaWithKvcacheMetadataCpuKernel::ParamsCheck()
 
 bool FlashMlaWithKvcacheMetadataCpuKernel::CheckAttrs()
 {
+    KERNEL_CHECK_FALSE(maxSeqlenQ_ == -1, false, "maxSeqlenQ must be -1, but got %d", maxSeqlenQ_);
+    KERNEL_CHECK_FALSE(maxSeqlenKv_ == -1, false, "maxSeqlenKv must be -1, but got %d", maxSeqlenKv_);
     KERNEL_CHECK_FALSE(numHeadsQ_ > 0, false, "numHeadsQ must be greater than 0, but got %d", numHeadsQ_);
     KERNEL_CHECK_FALSE(numHeadsKv_ == MLA_KV_HEADS, false, "MLA kv head num must be %ld, but got %d", MLA_KV_HEADS,
                        numHeadsKv_);
