@@ -160,7 +160,8 @@ __aicore__ inline void EngramFetchLocalArch35::GatherWave(const AscendC::LocalTe
     if (sfBytes > 0U) {
         AscendC::GlobalTensor<uint8_t> sfSrcGm;
         sfSrcGm.SetGlobalBuffer(sfTableGM_);
-        AscendC::DataCopyExtParams sfLoadParams{1U, sfBytes, 0U, 0U, 0U};
+        const uint32_t sfCopyBytes = static_cast<uint32_t>(sfBytes);
+        AscendC::DataCopyExtParams sfLoadParams{1U, sfCopyBytes, 0U, 0U, 0U};
         for (uint32_t j = 0; j < waveLen; j++) {
             int32_t entry = indicesLocal.GetValue(batchOffset + j);
             if (entry < 0 || entry >= numEntriesPerRank_) {

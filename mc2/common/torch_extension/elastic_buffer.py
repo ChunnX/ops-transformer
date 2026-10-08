@@ -993,10 +993,18 @@ class ElasticBuffer:
                     f"({storage.size(0)}) in local fetch_mode",
                 )
             else:
+                # Sliced inference gathers SF rows by GLOBAL vocab index on every rank
+                # (remote-owned tokens included), so each rank must hold the full-vocab
+                # SF table: per-rank storage rows * world_size.
                 torch._check(
-                    sf.size(0) == storage.size(0),
-                    lambda: f"sf dim0 ({sf.size(0)}) must match per-rank storage dim0 "
-                    f"({storage.size(0)}) in sliced fetch_mode",
+                    sf.size(0) == storage.size(0) * self._ep_world_size,
+                    lambda: (
+                        f"sliced fetch_mode requires the full-vocab sf table on every rank: "
+                        f"sf dim0 ({sf.size(0)}) must equal per-rank storage dim0 "
+                        f"({storage.size(0)}) * world_size ({self._ep_world_size}) = "
+                        f"{storage.size(0) * self._ep_world_size}; the kernel gathers sf "
+                        f"by global vocab index"
+                    ),
                 )
             if not self._with_grad:
                 torch._check(

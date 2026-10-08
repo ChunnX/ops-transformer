@@ -499,7 +499,8 @@ static bool IsSupportedSfDtype(ge::DataType dtype)
     return dtype == ge::DT_FLOAT || dtype == ge::DT_FLOAT8_E8M0;
 }
 
-static ge::graphStatus CheckSfTensors(const gert::TilingContext* context, bool isTraining, int64_t numTokens)
+static ge::graphStatus CheckSfTensors(const gert::TilingContext* context, bool isTraining, bool isLocalMode,
+                                      int64_t numTokens)
 {
     const char* nodeName = context->GetNodeName();
     auto sfTableDesc = context->GetInputDesc(SF_TABLE_INDEX);
@@ -551,12 +552,29 @@ static ge::graphStatus CheckSfTensors(const gert::TilingContext* context, bool i
     int64_t sfTableDim1 = sfTableShape->GetStorageShape().GetDim(1);
     auto attrs = context->GetAttrs();
     auto numEntriesPerRankPtr = attrs->GetAttrPointer<int64_t>(ATTR_NUM_ENTRIES_PER_RANK_INDEX);
-    OP_TILING_CHECK(
-        sfTableDim0 != *numEntriesPerRankPtr,
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-            nodeName, "sfTable", (std::string("dim0=") + std::to_string(sfTableDim0)).c_str(),
-            (std::string("dim0 must equal num_entries_per_rank=") + std::to_string(*numEntriesPerRankPtr)).c_str()),
-        return ge::GRAPH_FAILED);
+    if (isLocalMode) {
+        // Local mode: num_entries_per_rank is the FULL vocab row count and the kernel
+        // gathers SF by that same global index, so sfTable must match exactly.
+        OP_TILING_CHECK(
+            sfTableDim0 != *numEntriesPerRankPtr,
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                nodeName, "sfTable", (std::string("dim0=") + std::to_string(sfTableDim0)).c_str(),
+                (std::string("dim0 must equal num_entries_per_rank=") + std::to_string(*numEntriesPerRankPtr)).c_str()),
+            return ge::GRAPH_FAILED);
+    } else {
+        // Sliced inference gathers SF rows by GLOBAL vocab index on every rank
+        // (remote-owned tokens included), so each rank must supply a whole-shard
+        // multiple of its per-rank table, typically the full vocab. The exact
+        // full-vocab equality is enforced by the Python wrapper, which knows
+        // world_size; the tiling cannot read rankSize from the opaque comm context.
+        OP_TILING_CHECK(*numEntriesPerRankPtr <= 0 || sfTableDim0 <= 0 || sfTableDim0 % *numEntriesPerRankPtr != 0,
+                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                            nodeName, "sfTable", (std::string("dim0=") + std::to_string(sfTableDim0)).c_str(),
+                            (std::string("dim0 must be a positive multiple of num_entries_per_rank=") +
+                             std::to_string(*numEntriesPerRankPtr))
+                                .c_str()),
+                        return ge::GRAPH_FAILED);
+    }
     OP_TILING_CHECK(sfTableDim1 != fetchedSfDim1,
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                         nodeName, "sfTable", (std::string("dim1=") + std::to_string(sfTableDim1)).c_str(),
@@ -885,7 +903,7 @@ static ge::graphStatus EngramFetchTilingFunc(gert::TilingContext* context)
                     return ge::GRAPH_FAILED);
 
     // 2.1 SF tensor contract check
-    OP_TILING_CHECK(CheckSfTensors(context, isTraining, numTokens) != ge::GRAPH_SUCCESS,
+    OP_TILING_CHECK(CheckSfTensors(context, isTraining, isLocalMode, numTokens) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "check sf tensors failed."), return ge::GRAPH_FAILED);
 
     // 2.2 training params check
