@@ -182,8 +182,9 @@ public:
 
                 auto layoutBTile = layoutB.GetTileLayout(MakeCoord(kActual, actualYSize));
 
-                copyGmToL1B(l1BTensor[l1KvPingPongFlag][processSize], gB[offsetInKV * strideKV], layoutBInL1,
-                            layoutBTile);
+                MatrixCoord l1BTileCoord{0, processSize};
+                auto l1BTile = l1BTensor[l1KvPingPongFlag][layoutBInL1.GetOffset(l1BTileCoord)];
+                copyGmToL1B(l1BTile, gB[offsetInKV * strideKV], layoutBInL1, layoutBTile);
 
                 processSize += actualYSize;
                 currentYoffset += actualYSize;
