@@ -3,18 +3,79 @@
 ## Scope and versions
 
 This PR contains only the Ascend 950 (A5) `sparse_flash_attention` path:
-matching FP16 or BF16 inputs/output, TND/PA_BSND, one KV head, G=8,
-sparse mode 0/3, TopK 256–2048,
-without sinks or returned LSE. Unsupported shapes retain the original path.
+matching FP16 or BF16 inputs/output, TND/PA_BSND, one KV head, G=1–128,
+sparse mode 0/3, TopK 256–2048, LSE on/off, without sinks.
+Unsupported shapes retain the original path.
 It does not change arch22, C8, indexer, or model integration code.
 
 The performance measurements below were collected on 2026-09-30 (single
 operator) and 2026-10-06 (AISBench) before the A5/A2 PR split. They are reused
 A5 results, not a new performance comparison against current master.
 The new branch is based on `d5b874d33cbaafbb31af55e57e296c50933aca0f`;
-the arch35 kernel changes are retained from PR !13112.
+the original arch35 optimization was retained from PR !13112. The newer
+generalization and template-isolation checks are listed separately below.
 
-## Single-operator timing
+## 2026-10-08 head generalization / FD isolation
+
+- Host UT: 12/12 passed. Partition/core-count coverage now includes G=1,3,8,64,65,97,128,
+  8/24/56 AICs, TopK boundaries and query counts that disable FD. Tests check
+  both the FD template key and workspace lower bounds.
+- Final-package device regression: 2067 passed, 16 skipped, 1 xfailed. Every integer G in
+  [1,128] is checked in FP16 and BF16 with returned max/sum. A broader matrix
+  covers 21 boundary/odd head counts, modes 0/3, eager/graph replay and LSE on/off.
+  Full rows are compared independently for attention output and both softmax statistics.
+- All 336 dedicated non-FD cases passed: G=1,3,8,64,65,97,128, TopK=128/4096
+  or total Q=40, both dtypes, modes 0/3, LSE on/off and eager/graph replay.
+- The 16 skips are one-query mixed-row cases. The conditional xfail is a
+  pre-existing eager padded-index non-finite case, not a full-row exemption.
+  The old package was also run: 1727 passed, 16 skipped, 4 xfailed, and one
+  additional BF16 mode-0 eager padded-index non-finite failure. The new package
+  passed that case; padded-row numerical equivalence is still not claimed.
+- Compile-time template-scope probes confirm one FD selection on arch35 and
+  none on arch22. The final A5-only template guard produces byte-identical
+  FP16/BF16 kernel objects to the earlier package used for timing. The complete
+  final package was also installed in its own vendor prefix and device-tested.
+
+The device uses Ascend950DT_9582, CANN 9.1, PyTorch 2.10.0 and torch_npu
+2.10.0.post4. Its old TorchNPU PA/LSE wrapper allocates an incorrect output
+shape before kernel launch. The repository's existing ACLNN V2 extension
+was used for both arms instead, with no changes to its calculation or output
+allocation logic. The opt-in test adapter is described below.
+
+### Current single-operator comparison
+
+Baseline is the previously published A5 code `f7a34b774`, not master:
+G8/no-LSE already uses partitioning; other heads and LSE use its original
+unsplit path. Candidate adds generic heads, LSE and FD template isolation.
+Both arms use identical inputs and the same repository ACLNN adapter.
+The runs are interleaved baseline/candidate for three rounds. Each round
+uses 32 calls per graph and 101 event-timed replays. Values below are the
+median of the three per-round medians, in microseconds. B=1, TopK=2048,
+BF16, sparse mode 0, KV length 4096.
+
+| G | Total Q | LSE | Old A5 PR (us) | New (us) | Latency reduction |
+| --- | --- | --- | --- | --- | --- |
+| 8 | 1 | off | 17.488 | 17.259 | 1.3% |
+| 8 | 1 | on | 70.329 | 17.307 | 75.4% |
+| 8 | 4 | on | 70.273 | 20.260 | 71.2% |
+| 64 | 1 | off | 72.119 | 40.420 | 44.0% |
+| 64 | 1 | on | 72.209 | 40.422 | 44.0% |
+| 64 | 4 | off | 72.193 | 30.250 | 58.1% |
+| 64 | 4 | on | 72.238 | 30.200 | 58.2% |
+| 128 | 1 | off | 53.844 | 42.105 | 21.8% |
+| 128 | 4 | off | 54.027 | 33.628 | 37.8% |
+
+The complete timing matrix has 96 configurations: Q=1/4, TopK=256/2048,
+G=8/64/128, FP16/BF16, modes 0/3 and LSE off/on. Within the candidate,
+LSE overhead has a median of 0.18% and a maximum of 5.35%; the largest absolute
+increase is 0.662 us. G8/no-LSE changes range from -2.67% to +0.77% latency,
+with a median of -1.27%. These are single-operator measurements; AISBench
+has not been rerun for this revision.
+
+Final isolated package SHA256:
+`e314a8d550ff555e845bd7a4ebe2f8ffecb70060a053e0b165fc3bbeb9c081de`.
+
+## Historical G8 single-operator timing
 
 Ascend950DT_9582, CANN 9.1, PyTorch 2.7.1 / torch_npu 2.7.1.post4.
 G=8, BF16, TND/PA_BSND, physical KV length 4096, TopK 2048,
@@ -47,7 +108,7 @@ The table reports the minimum per-call latency (microseconds) across all
 For B=1/Q=1 and B=2/Q=2, full-index outputs were compared against an
 independent softmax reference. Relative L2 errors were 0.00190 and 0.00191.
 
-## A5 64K AISBench end-to-end timing
+## Historical A5 64K AISBench end-to-end timing
 
 GLM-5.2, A5 TP8 without DCP, DSpark7. C8/indexer-C8, Pivot and DSACP disabled.
 `FULL_DECODE_ONLY`, `max_num_seqs=1`, `max_model_len=73728`,
@@ -69,7 +130,7 @@ AISBench stream-chunk interval.
 MTP acceptance recorded during the test was 0.232152 (baseline) and 0.243453
 (partitioned). Precision settings were unchanged; acceptance fluctuated slightly.
 
-## Reproducing correctness checks
+## Previous G8/FP16 correctness checks
 
 On 2026-10-08, the independent A5 branch was rebuilt from code commit
 `f7a34b774` (FP16 support and redundant selector checks removed):
@@ -115,3 +176,20 @@ disabled (BF16 mode 3 and FP16 modes 0/3). Only the BF16 case was non-finite in
 this run. These checks do not assert padded-row numerical equivalence.
 The historical performance tables above remain BF16 measurements; FP16
 coverage added here is correctness validation, not a new performance result.
+
+## Running the current regression on older TorchNPU
+
+If the installed TorchNPU already allocates correct PA LSE outputs, no test
+adapter is needed. Otherwise, use the repository's unchanged C++ extension:
+
+```bash
+mkdir -p /tmp/sfa_arch35_test_adapter
+cp attention/sparse_flash_attention/torch_extension/csrc/sparse_flash_attention.cpp \
+  torch_extension/cann_ops_transformer/common/aclnn_common.h /tmp/sfa_arch35_test_adapter/
+export SFA_TEST_EXTENSION_DIR=/tmp/sfa_arch35_test_adapter
+export MAX_JOBS=2
+python3 -m pytest -q attention/sparse_flash_attention/tests/pytest/test_sfa_split_kv_arch35.py
+```
+
+The same `SFA_TEST_EXTENSION_DIR` is honored by the timing script. Neither
+adapter is used by the packaged operator or production kernel.

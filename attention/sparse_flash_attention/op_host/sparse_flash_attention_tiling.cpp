@@ -317,8 +317,8 @@ void SFAMlaTiling::GenTilingKey()
     }
 
     tilingKey_ = GET_TPL_TILING_KEY(
-        0U, pageAttention, layoutQuery, layoutKV, perfMode_ == SFAPerfMode::V_TEMPLATE_MODE,
-        static_cast<uint32_t>(sfaInfo_->gSize > 64),
+        static_cast<uint32_t>(splitKVFlag_), pageAttention, layoutQuery, layoutKV,
+        perfMode_ == SFAPerfMode::V_TEMPLATE_MODE, static_cast<uint32_t>(sfaInfo_->gSize > 64),
         static_cast<uint32_t>(sfaInfo_->ropeHeadDim != 0)); // N1 > 64时核间切G; rope 用独立 tiling key 避免污染原路径
 
     OP_LOGI(sfaInfo_->opName, "SFA tilingKey_: %lu.", tilingKey_);
@@ -398,11 +398,11 @@ bool SFAMlaTiling::IsSplitKVSupported() const
     const auto& info = *sfaInfo_;
     // OpDef requires matching FP16/BF16 Q/K/V/output. Common validation guarantees
     // B > 0, N2 == 1, mode 0/3 and A5 sparse block size 1.
-    const bool kernelSupported = info.isA5 && info.gSize == 8 && !info.returnSoftmaxLse && info.ropeHeadDim == 64 &&
-                                 info.qLayout == SFALayout::TND && info.kvLayout == SFALayout::PA_BSND &&
-                                 info.opParamInfo.sinks.tensor == nullptr;
-    const bool workloadSupported = info.s1Size > 0 && info.s2Size >= info.sparseBlockCount &&
-                                   info.sparseBlockCount >= 256 && info.sparseBlockCount <= 2048;
+    // Common validation also guarantees G in [1, 128]. Reuse the native head tiles.
+    const bool kernelSupported = info.isA5 && info.ropeHeadDim == 64 && info.qLayout == SFALayout::TND &&
+                                 info.kvLayout == SFALayout::PA_BSND && info.opParamInfo.sinks.tensor == nullptr;
+    const bool workloadSupported =
+        info.s2Size >= info.sparseBlockCount && info.sparseBlockCount >= 256 && info.sparseBlockCount <= 2048;
     return kernelSupported && workloadSupported;
 }
 
@@ -423,7 +423,8 @@ void SFAMlaTiling::SplitBalanced()
     constexpr uint32_t splitBlockSize = 128U;
     const uint32_t sparseBlocks = (sfaInfo_->sparseBlockCount + splitBlockSize - 1U) / splitBlockSize;
     // Each split processes at least one inner block. The A5 merge UB holds at most 16 splits.
-    const uint32_t maxSplitCount = std::min({16U, aicNum_ / sfaInfo_->s1Size, sparseBlocks});
+    const uint32_t headParts = sfaInfo_->gSize > 64 ? 2U : 1U;
+    const uint32_t maxSplitCount = std::min({16U, aicNum_ / sfaInfo_->s1Size / headParts, sparseBlocks});
     uint32_t splitCount = 1;
     while (splitCount * 2U <= maxSplitCount) {
         splitCount *= 2U;
@@ -431,7 +432,7 @@ void SFAMlaTiling::SplitBalanced()
     if (splitCount > 1) {
         splitKVFlag_ = true;
         kvSplitPart_ = splitCount;
-        usedCoreNum_ = sfaInfo_->s1Size * splitCount;
+        usedCoreNum_ = sfaInfo_->s1Size * splitCount * headParts;
     }
 }
 
@@ -577,10 +578,12 @@ void SFAMlaTiling::GetWorkspaceSize()
         // One slot per (query, KV split, vector sub-block): FP32 O and
         // separately aligned max/sum rows for the two AIVs on each AIC.
         constexpr uint32_t VECTOR_SUBBLOCKS = 2;
-        constexpr uint32_t HEADS_PER_SUBBLOCK = 4;
+        const uint32_t headParts = sfaInfo_->gSize > 64 ? 2U : 1U;
+        const uint32_t vectorParts = headParts * VECTOR_SUBBLOCKS;
+        const uint32_t headsPerSubblock = (sfaInfo_->gSize + vectorParts - 1) / vectorParts;
         constexpr uint32_t STATS_STRIDE = 8;
         const uint64_t slots = static_cast<uint64_t>(usedCoreNum_) * VECTOR_SUBBLOCKS;
-        workspaceSize_ += slots * HEADS_PER_SUBBLOCK * (512 + 2 * STATS_STRIDE) * sizeof(float);
+        workspaceSize_ += slots * headsPerSubblock * (512 + 2 * STATS_STRIDE) * sizeof(float);
     } else {
         CalcFDWorkSpace(actCoreNum);
     }

@@ -16,6 +16,8 @@ import torch
 
 torch_npu = pytest.importorskip("torch_npu")
 
+from sfa_test_operator import get_sfa_operator
+
 
 @pytest.mark.parametrize(
     ("query_dtype", "kv_dtype"),
@@ -71,8 +73,17 @@ def test_mixed_query_kv_types_rejected(query_dtype, kv_dtype, sparse_mode):
 @pytest.mark.parametrize("replay_graph", [False, True])
 @pytest.mark.parametrize("sparse_mode", [0, 3])
 @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16], ids=["bf16", "fp16"])
+@pytest.mark.parametrize("return_lse", [False, True], ids=["no-lse", "lse"])
 def test_split_kv_pa_bsnd(
-    batch_count, query_count, topk_count, valid_count, replay_graph, sparse_mode, dtype
+    batch_count,
+    query_count,
+    topk_count,
+    valid_count,
+    replay_graph,
+    sparse_mode,
+    dtype,
+    return_lse,
+    heads=8,
 ):
     if "950" not in torch.npu.get_device_name(0):
         pytest.skip("This tiling is only selected on Ascend 950")
@@ -83,7 +94,7 @@ def test_split_kv_pa_bsnd(
     generator = torch.Generator().manual_seed(
         20260928 + query_count + seed + (batch_count - 1) * 1000
     )
-    kv_length, page_size, heads = 4096, 128, 8
+    kv_length, page_size = max(4096, 2 * topk_count), 128
     query_counts = [1] * (batch_count - 1) + [query_count - batch_count + 1]
     query_ends = [sum(query_counts[: index + 1]) for index in range(batch_count)]
     query = torch.randn(query_count, heads, 512, generator=generator).to(dtype).npu()
@@ -116,8 +127,10 @@ def test_split_kv_pa_bsnd(
     kv_lengths = torch.full((batch_count,), kv_length, dtype=torch.int32).npu()
     scale = 1.0 / math.sqrt(576)
 
+    sfa_operator = get_sfa_operator()
+
     def run_operator():
-        return torch_npu.npu_sparse_flash_attention(
+        return sfa_operator(
             query,
             key_pages,
             key_pages,
@@ -133,19 +146,20 @@ def test_split_kv_pa_bsnd(
             layout_kv="PA_BSND",
             sparse_mode=sparse_mode,
             attention_mode=2,
-            return_softmax_lse=False,
-        )[0]
+            return_softmax_lse=return_lse,
+        )
 
     if replay_graph:
         run_operator()
         graph = torch.npu.NPUGraph()
         with torch.npu.graph(graph):
-            actual = run_operator()
+            outputs = run_operator()
         graph.replay()
     else:
-        actual = run_operator()
+        outputs = run_operator()
 
     torch.npu.synchronize()
+    actual, actual_max, actual_sum = outputs
     assert actual.dtype == dtype
     checked_rows = 1 if valid_count == "mixed" else query_count
     # Reproduced with Split-KV disabled for both dtypes: the Q=4 eager
@@ -164,13 +178,18 @@ def test_split_kv_pa_bsnd(
             "The unsplit baseline also produces nonfinite output for this padded-index fallback"
         )
     assert torch.isfinite(actual[:checked_rows]).all()
+    if return_lse:
+        assert actual_max.shape == actual_sum.shape == (1, query_count, heads)
+        assert actual_max.dtype == actual_sum.dtype == torch.float32
+        assert torch.isfinite(actual_max[:, :checked_rows]).all()
+        assert torch.isfinite(actual_sum[:, :checked_rows]).all()
     if valid_count == 256 and topk_count > 256:
         # The installed operator's padded-index output differs from a naive
         # reference and its Q=4 graph replay differs from eager. This is a
         # fallback smoke check only; full TopK cases carry accuracy assertions.
         return
 
-    expected = []
+    expected, expected_max, expected_sum = [], [], []
     for row in range(checked_rows):
         batch_index = next(index for index, end in enumerate(query_ends) if row < end)
         selected = indices[row, 0, :topk_count].long()
@@ -182,8 +201,100 @@ def test_split_kv_pa_bsnd(
         scores = torch.matmul(q, k.T) * scale
         weights = scores.softmax(dim=-1)
         expected.append(torch.matmul(weights, key_flat[kv_positions].float()))
+        maximum = scores.max(dim=-1).values
+        expected_max.append(maximum)
+        expected_sum.append((scores - maximum[:, None]).exp().sum(dim=-1))
     reference = torch.stack(expected)
     difference = actual[:checked_rows].float() - reference
     relative_l2 = difference.norm() / reference.norm()
     tolerance = 0.02 if dtype == torch.bfloat16 else 0.005
     assert relative_l2.item() < tolerance, f"relative L2 error: {relative_l2.item()}"
+    if return_lse:
+        # QK accumulation is not bitwise identical to the FP32 reference.
+        # Check both interface statistics, not only attentionOut/logsumexp.
+        stats_tolerance = 0.02 if dtype == torch.bfloat16 else 0.005
+        torch.testing.assert_close(
+            actual_max[0, :checked_rows],
+            torch.stack(expected_max),
+            rtol=stats_tolerance,
+            atol=stats_tolerance,
+        )
+        torch.testing.assert_close(
+            actual_sum[0, :checked_rows],
+            torch.stack(expected_sum),
+            rtol=stats_tolerance,
+            atol=stats_tolerance,
+        )
+
+
+@pytest.mark.parametrize(
+    "heads",
+    [1, 2, 3, 4, 7, 9, 15, 16, 17, 31, 32, 33, 63, 64, 65, 66, 95, 96, 97, 127, 128],
+)
+@pytest.mark.parametrize(
+    ("batch_count", "query_count", "topk_count"),
+    [(1, 1, 256), (1, 1, 2048), (2, 4, 2048)],
+)
+@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16], ids=["bf16", "fp16"])
+@pytest.mark.parametrize("sparse_mode", [0, 3])
+@pytest.mark.parametrize("replay_graph", [False, True])
+@pytest.mark.parametrize("return_lse", [False, True], ids=["no-lse", "lse"])
+def test_split_kv_head_counts(
+    heads,
+    batch_count,
+    query_count,
+    topk_count,
+    dtype,
+    sparse_mode,
+    replay_graph,
+    return_lse,
+):
+    test_split_kv_pa_bsnd(
+        batch_count,
+        query_count,
+        topk_count,
+        topk_count,
+        replay_graph,
+        sparse_mode,
+        dtype,
+        return_lse,
+        heads,
+    )
+
+
+@pytest.mark.parametrize("heads", range(1, 129))
+@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16], ids=["bf16", "fp16"])
+def test_split_kv_all_head_counts(heads, dtype):
+    test_split_kv_pa_bsnd(1, 1, 2048, 2048, False, 0, dtype, True, heads)
+
+
+@pytest.mark.parametrize("heads", [1, 3, 8, 64, 65, 97, 128])
+@pytest.mark.parametrize(
+    ("batch_count", "query_count", "topk_count"),
+    [(1, 1, 128), (1, 1, 4096), (2, 40, 2048)],
+)
+@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16], ids=["bf16", "fp16"])
+@pytest.mark.parametrize("sparse_mode", [0, 3])
+@pytest.mark.parametrize("replay_graph", [False, True])
+@pytest.mark.parametrize("return_lse", [False, True], ids=["no-lse", "lse"])
+def test_non_fd_template(
+    heads,
+    batch_count,
+    query_count,
+    topk_count,
+    dtype,
+    sparse_mode,
+    replay_graph,
+    return_lse,
+):
+    test_split_kv_pa_bsnd(
+        batch_count,
+        query_count,
+        topk_count,
+        topk_count,
+        replay_graph,
+        sparse_mode,
+        dtype,
+        return_lse,
+        heads,
+    )
