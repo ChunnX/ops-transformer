@@ -8,13 +8,26 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------
 set(OPTENSOR_TAG_ID deea03a7d112b002a986783e39d4f91c92949518)
+set(OPS_TENSOR_SOURCE_DIR "" CACHE PATH "Use an existing ops-tensor source tree without fetching or checking it out")
 
-if(EXISTS "${PROJECT_SOURCE_DIR}/../ops-tensor")
+if(OPS_TENSOR_SOURCE_DIR)
+  if(NOT EXISTS "${OPS_TENSOR_SOURCE_DIR}/include/blaze")
+    message(FATAL_ERROR "OPS_TENSOR_SOURCE_DIR must contain include/blaze")
+  endif()
+  get_filename_component(OPTENSOR_SOURCE_PATH ${OPS_TENSOR_SOURCE_DIR} REALPATH)
+  get_filename_component(TENSOR_API ${ASCEND_DIR}/${SYSTEM_PREFIX}/asc REALPATH)
+  message(STATUS "Use explicit ops-tensor source dir: ${OPTENSOR_SOURCE_PATH}")
+elseif(EXISTS "${PROJECT_SOURCE_DIR}/../ops-tensor")
   get_filename_component(OPTENSOR_SOURCE_PATH
                          ${PROJECT_SOURCE_DIR}/../ops-tensor REALPATH)
   message(STATUS "Find ops-tensor source dir: ${OPTENSOR_SOURCE_PATH}")
   get_filename_component(TENSOR_API
                          ${ASCEND_DIR}/${SYSTEM_PREFIX}/asc REALPATH)
+elseif(EXISTS "${PROJECT_SOURCE_DIR}/../ops-tensor_gmm_rotate_quant/include/blaze/attention/kernel/kernel_grouped_rotate_quant.h")
+  # Local development sibling; never checkout or mutate this user's working tree.
+  get_filename_component(OPTENSOR_SOURCE_PATH ${PROJECT_SOURCE_DIR}/../ops-tensor_gmm_rotate_quant REALPATH)
+  get_filename_component(TENSOR_API ${ASCEND_DIR}/${SYSTEM_PREFIX}/asc REALPATH)
+  message(STATUS "Use GroupedRotateQuant ops-tensor source dir: ${OPTENSOR_SOURCE_PATH}")
 elseif(EXISTS "${CANN_3RD_LIB_PATH}/ops-tensor")
   get_filename_component(OPTENSOR_SOURCE_PATH
                          ${CANN_3RD_LIB_PATH}/ops-tensor REALPATH)
