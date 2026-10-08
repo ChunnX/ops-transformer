@@ -134,14 +134,18 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
 }
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::CacheHInTile(
-    uint32_t tOff, uint32_t tD, LocalTensor<float> hIn)
+__aicore__ inline float KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
+                                                         DUAL_SIBLING>::CacheHInAndReduceSumSq(uint32_t tOff,
+                                                                                               uint32_t tD,
+                                                                                               LocalTensor<float> hIn)
 {
     LocalTensor<T> hInCache = bufX2Cache_.Get<T>()[tOff];
     CastToIO(hInCache, hIn, tD);
     PipeBarrier<PIPE_V>();
-    MhcSandwichRegBase::CastB16ToFp32(hIn, hInCache, tD);
+    LocalTensor<float> sqBuf = bufGamma2Fp32_.Get<float>();
+    MhcSandwichRegBase::CastB16ToFp32Square(sqBuf, hInCache, tD);
     PipeBarrier<PIPE_V>();
+    return ReduceSumPrecise(sqBuf, tD);
 }
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
@@ -153,24 +157,29 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::CacheX2Tile(
-    uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput)
+    uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput, bool quantizeInput)
 {
     LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
     LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
     const uint64_t outBase = (uint64_t)token * N_ * D_ + tOff;
 
-    // 四个head写入互不重叠的低精度缓存，统一等待后再恢复FP32，
-    // 保留逐元素量化边界并减少重复的Vector流水屏障。
-    for (uint32_t n = 0; n < N_MAX; ++n) {
-        LocalTensor<T> cacheTile = x2Cache[n * D_ + tOff];
-        CastToIO(cacheTile, x2[n * dimTile_], tD);
+    // R2已在成对VF尾部完成首次量化；R3后的第二次量化仍使用该路径。
+    if (quantizeInput) {
+        for (uint32_t n = 0; n < N_MAX; n += 2U) {
+            MhcSandwichRegBase::CastFp32PairToB16(x2Cache[n * D_ + tOff], x2Cache[(n + 1U) * D_ + tOff],
+                                                  x2[n * dimTile_], x2[(n + 1U) * dimTile_], tD);
+        }
+        PipeBarrier<PIPE_V>();
     }
-    PipeBarrier<PIPE_V>();
-    for (uint32_t n = 0; n < N_MAX; ++n) {
-        LocalTensor<T> cacheTile = x2Cache[n * D_ + tOff];
-        MhcSandwichRegBase::CastB16ToFp32(x2[n * dimTile_], cacheTile, tD);
+    // RMS_mid第一遍直接从低精度缓存计算平方和；R3后必须恢复，
+    // 保证后续R4/R5仍使用低精度往返后的x2。
+    if (!USE_RMS_MID || writeOutput) {
+        for (uint32_t n = 0; n < N_MAX; n += 2U) {
+            MhcSandwichRegBase::CastB16PairToFp32(x2[n * dimTile_], x2[(n + 1U) * dimTile_],
+                                                  x2Cache[n * D_ + tOff], x2Cache[(n + 1U) * D_ + tOff], tD);
+        }
+        PipeBarrier<PIPE_V>();
     }
-    PipeBarrier<PIPE_V>();
 
     if (writeOutput) {
         // cacheTile已经是x2_out所需的最终低精度位值，直接写GM，
@@ -186,20 +195,27 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
                                                         DUAL_SIBLING>::CacheX2TileForLane(uint32_t token, uint32_t tOff,
-                                                                                          uint32_t tD, bool writeOutput)
+                                                                                          uint32_t tD, bool writeOutput,
+                                                                                          bool quantizeInput)
 {
     LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
     LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
     const uint64_t outBase = (uint64_t)token * N_ * D_ + tOff;
 
-    for (uint32_t n = 0; n < N_MAX; ++n) {
-        CastToIO(x2Cache[n * D_ + tOff], x2[n * dimTile_], tD);
+    if (quantizeInput) {
+        for (uint32_t n = 0; n < N_MAX; n += 2U) {
+            MhcSandwichRegBase::CastFp32PairToB16(x2Cache[n * D_ + tOff], x2Cache[(n + 1U) * D_ + tOff],
+                                                  x2[n * dimTile_], x2[(n + 1U) * dimTile_], tD);
+        }
+        PipeBarrier<PIPE_V>();
     }
-    PipeBarrier<PIPE_V>();
-    for (uint32_t n = 0; n < N_MAX; ++n) {
-        MhcSandwichRegBase::CastB16ToFp32(x2[n * dimTile_], x2Cache[n * D_ + tOff], tD);
+    if (!USE_RMS_MID || writeOutput) {
+        for (uint32_t n = 0; n < N_MAX; n += 2U) {
+            MhcSandwichRegBase::CastB16PairToFp32(x2[n * dimTile_], x2[(n + 1U) * dimTile_],
+                                                  x2Cache[n * D_ + tOff], x2Cache[(n + 1U) * D_ + tOff], tD);
+        }
+        PipeBarrier<PIPE_V>();
     }
-    PipeBarrier<PIPE_V>();
 
     if (writeOutput) {
         SetFlag<HardEvent::V_MTE3>(evtVtoMte3_);
@@ -242,7 +258,8 @@ __aicore__ inline __attribute__((always_inline)) float KernelMhcNormPostPreonly<
 }
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ComputeX2AllHeadsBatched(const float (&postVals)[N_MAX], uint64_t gmBaseOffset, uint32_t tD)
+__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ComputeX2AllHeadsBatched(const float (&postVals)[N_MAX], uint64_t gmBaseOffset, uint32_t tOff,
+                                                uint32_t tD)
 {
     // Host已固定校验N为4，使用编译期常量便于展开标量循环。
     constexpr uint32_t N = N_MAX;
@@ -251,13 +268,14 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         DataCopy(residual[n * dimTile_], residualGm_[gmBaseOffset + (uint64_t)n * D_], tD);
     bufResidualBf16_.EnQue(residual);
     residual = bufResidualBf16_.DeQue<T>();
-    LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
+    LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
     LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
     LocalTensor<float> combWeights = bufPostComb_.Get<float>()[ALIGN8];
 
-    for (uint32_t h = 0; h < N; ++h) {
-        MhcSandwichRegBase::ComputePostHead<T>(x2[h * dimTile_], hOut, residual, combWeights, dimTile_, h, postVals[h],
-                                               tD);
+    for (uint32_t h = 0; h < N; h += 2U) {
+        MhcSandwichRegBase::ComputePostHeadPair<T>(x2Cache[h * D_ + tOff], x2Cache[(h + 1U) * D_ + tOff], hOut,
+                                                   residual, combWeights, dimTile_, h, postVals[h], postVals[h + 1U],
+                                                   tD);
     }
     PipeBarrier<PIPE_V>();
     bufResidualBf16_.FreeTensor(residual);
@@ -274,7 +292,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     ApplyScaleAndGamma(hOut, invRms0, bufGamma0Fp32_.Get<float>()[tOff], tD);
     QuantizeRoundTrip(hOut, tD);
 
-    ComputeX2AllHeadsBatched(postVals, (uint64_t)token * N_ * D_ + tOff, tD);
+    ComputeX2AllHeadsBatched(postVals, (uint64_t)token * N_ * D_ + tOff, tOff, tD);
 }
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
@@ -489,18 +507,6 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     PipeBarrier<PIPE_ALL>();
     for (uint32_t i = 0; i < N; ++i)
         postVals[i] = hPostUb.GetValue(i);
-}
-
-template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::LoadX2CacheTile(
-    uint32_t tOff, uint32_t tD)
-{
-    LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
-    LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
-    for (uint32_t n = 0; n < N_MAX; ++n) {
-        MhcSandwichRegBase::CastB16ToFp32(x2[n * dimTile_], x2Cache[n * D_ + tOff], tD);
-    }
-    PipeBarrier<PIPE_V>();
 }
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>

@@ -39,10 +39,11 @@ private:
     __aicore__ inline void ProcessTokenDualSiblingAiv(uint32_t token);
     __aicore__ inline void ComputeX2PostTile(uint32_t token, uint32_t tOff, uint32_t tD, float invRms0,
                                              const float (&postVals)[N_MAX]);
-    __aicore__ inline void CacheX2Tile(uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput);
-    __aicore__ inline void CacheX2TileForLane(uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput);
-    __aicore__ inline void LoadX2CacheTile(uint32_t tOff, uint32_t tD);
-    __aicore__ inline void CacheHInTile(uint32_t tOff, uint32_t tD, LocalTensor<float> hIn);
+    __aicore__ inline void CacheX2Tile(uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput,
+                                      bool quantizeInput = true);
+    __aicore__ inline void CacheX2TileForLane(uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput,
+                                             bool quantizeInput = true);
+    __aicore__ inline float CacheHInAndReduceSumSq(uint32_t tOff, uint32_t tD, LocalTensor<float> hIn);
     __aicore__ inline void LoadHInCacheTile(uint32_t tOff, uint32_t tD, LocalTensor<float> hIn);
     __aicore__ inline void AccumulateHalfPartials(uint32_t tOff, uint32_t tD, float (&sumSqHalf)[2],
                                                   float (&dotHalf)[2][N_MAX], uint32_t halfBegin = 0,
@@ -107,7 +108,8 @@ __aicore__ inline void ApplyScaleAndGamma(LocalTensor<float> buf, float scale, L
 // MHC_Post计算
 
 /// 批量加载低精度残差，在R2的VF内完成转换并计算全部N个head的x2。
-__aicore__ inline void ComputeX2AllHeadsBatched(const float (&postVals)[N_MAX], uint64_t gmBaseOffset, uint32_t tD);
+__aicore__ inline void ComputeX2AllHeadsBatched(const float (&postVals)[N_MAX], uint64_t gmBaseOffset, uint32_t tOff,
+                                                uint32_t tD);
 
 // 门控计算
 
