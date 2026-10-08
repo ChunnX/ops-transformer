@@ -10,7 +10,7 @@
 
 /*!
  * \file all_gather_matmul_v2_apt.cpp
- * \brief arch35 apt 入口：非量化恒 APACE（AIC_ONLY 核型，SEL 表逐组合供给）+ 量化 v1 主线（MIX_AIC_1_2）
+ * \brief
  */
 
 #include "lib/matmul_intf.h"
@@ -19,7 +19,6 @@
 
 #if ((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && ((ORIG_DTYPE_X1 == DT_FLOAT16) || (ORIG_DTYPE_X1 == DT_BF16)))
 #include "all_gather_matmul_fp16_bf16.h"
-// APACE 非量化路径（N5）：a2a 相对路径 include 先例（a2a apt L31-32 同款机制）
 #include "../../../common/op_kernel/apace/kernel/fusions/all_gather_matmul/all_gather_matmul_hcomm_impl.h"
 #endif
 #if (((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && (ORIG_DTYPE_X1 == DT_HIFLOAT8)) || \
@@ -40,20 +39,16 @@ using namespace AllGatherMatmulImpl;
         using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, typename BiasType<BIAS_DTYPE>::type>; \
         using cType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, C_DTYPE>; \
         REGISTER_TILING_DEFAULT(Mc2Tiling::AllGatherMatmulTilingDataV2); \
-        auto tiling = (__gm__ Mc2Tiling::AllGatherMatmulTilingDataV2 *)tilingGM; \
-        __gm__ void *mc2InitTiling = (__gm__ void *)(&(tiling->mc2InitTiling)); \
-        __gm__ void *mc2CcTiling = (__gm__ void *)(&(tiling->mc2CcTiling)); \
+        auto tiling = (__gm__ Mc2Tiling::AllGatherMatmulTilingDataV2*)tilingGM; \
+        __gm__ void* mc2InitTiling = (__gm__ void*)(&(tiling->mc2InitTiling)); \
+        __gm__ void* mc2CcTiling = (__gm__ void*)(&(tiling->mc2CcTiling)); \
         GET_TILING_DATA(tilingData, tilingGM); \
         templateClass<aType, bType, biasType, cType, hcclCommType> op; \
-        op.Init(aGM, bGM, biasGM, cGM, (__gm__ uint8_t *)context, workspaceGM, gatherOut, &tilingData, mc2InitTiling, \
+        op.Init(aGM, bGM, biasGM, cGM, (__gm__ uint8_t*)context, workspaceGM, gatherOut, &tilingData, mc2InitTiling, \
                 mc2CcTiling, &pipe); \
         op.Process(); \
     } while (0)
 
-// APACE 非量化路径（N5，a2a apt L161-186 同款范式）：
-//   REGISTER_TILING_DEFAULT 按最大结构申请（v1 容量兼容）；GET_TILING_DATA_WITH_STRUCT
-//   取窄结构视图；AIC_ONLY 核型（R13：核型由 SEL 表逐组合供给，非量化无 AIV block，
-//   入口不再声明 KERNEL_TASK_TYPE_DEFAULT）
 #define INVOKE_AGMV2_APACE_HCOMM_OP_IMPL(hcclServerType) \
     do { \
         REGISTER_TILING_DEFAULT(Mc2Tiling::AllGatherMatmulTilingDataV2); \
@@ -66,12 +61,12 @@ using namespace AllGatherMatmulImpl;
 #define INVOKE_ALL_GATHER_QUANT_BATCHMATMUL_OP_IMPL(templateClass, isMxFp4, hcclCommType, ...) \
     do { \
         REGISTER_TILING_DEFAULT(Mc2Tiling::AllGatherMatmulTilingDataFp8); \
-        auto tiling = (__gm__ Mc2Tiling::AllGatherMatmulTilingDataFp8 *)tilingGM; \
-        __gm__ void *mc2InitTiling = (__gm__ void *)(&(tiling->mc2InitTiling)); \
-        __gm__ void *mc2CcTiling = (__gm__ void *)(&(tiling->mc2CcTiling)); \
+        auto tiling = (__gm__ Mc2Tiling::AllGatherMatmulTilingDataFp8*)tilingGM; \
+        __gm__ void* mc2InitTiling = (__gm__ void*)(&(tiling->mc2InitTiling)); \
+        __gm__ void* mc2CcTiling = (__gm__ void*)(&(tiling->mc2CcTiling)); \
         GET_TILING_DATA(tilingData, tilingGM); \
         templateClass<DTYPE_X1, DTYPE_X2, DTYPE_BIAS, uint64_t, DTYPE_Y, __VA_ARGS__, isMxFp4, hcclCommType> op; \
-        op.Init(aGM, bGM, scaleInv1, scaleInv2, biasGM, scale, cGM, gatherOut, workspaceGM, (__gm__ uint8_t *)context, \
+        op.Init(aGM, bGM, scaleInv1, scaleInv2, biasGM, scale, cGM, gatherOut, workspaceGM, (__gm__ uint8_t*)context, \
                 &tilingData, mc2InitTiling, mc2CcTiling, &pipe); \
         op.Process(); \
     } while (0)
@@ -79,12 +74,12 @@ using namespace AllGatherMatmulImpl;
 #define INVOKE_ALL_GATHER_QUANT_BATCHMATMUL_MX_OP_IMPL(templateClass, isMxFp4, hcclCommType, ...) \
     do { \
         REGISTER_TILING_DEFAULT(Mc2Tiling::AllGatherMatmulTilingDataFp8); \
-        auto tiling = (__gm__ Mc2Tiling::AllGatherMatmulTilingDataFp8 *)tilingGM; \
-        __gm__ void *mc2InitTiling = (__gm__ void *)(&(tiling->mc2InitTiling)); \
-        __gm__ void *mc2CcTiling = (__gm__ void *)(&(tiling->mc2CcTiling)); \
+        auto tiling = (__gm__ Mc2Tiling::AllGatherMatmulTilingDataFp8*)tilingGM; \
+        __gm__ void* mc2InitTiling = (__gm__ void*)(&(tiling->mc2InitTiling)); \
+        __gm__ void* mc2CcTiling = (__gm__ void*)(&(tiling->mc2CcTiling)); \
         GET_TILING_DATA(tilingData, tilingGM); \
         templateClass<DTYPE_X1, DTYPE_X2, DTYPE_BIAS, fp8_e8m0_t, DTYPE_Y, __VA_ARGS__, isMxFp4, hcclCommType> op; \
-        op.Init(aGM, bGM, scaleInv1, scaleInv2, biasGM, scale, cGM, gatherOut, workspaceGM, (__gm__ uint8_t *)context, \
+        op.Init(aGM, bGM, scaleInv1, scaleInv2, biasGM, scale, cGM, gatherOut, workspaceGM, (__gm__ uint8_t*)context, \
                 &tilingData, mc2InitTiling, mc2CcTiling, &pipe); \
         op.Process(); \
     } while (0)
@@ -95,7 +90,7 @@ __global__ __aicore__ void all_gather_matmul_v2(GM_ADDR aGM, GM_ADDR bGM, GM_ADD
                                                 GM_ADDR amax, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     TPipe pipe;
-    __gm__ HcclCombinOpParam *context = (__gm__ HcclCombinOpParam *)(GetHcclContext<0>());
+    __gm__ HcclCombinOpParam* context = (__gm__ HcclCombinOpParam*)(GetHcclContext<0>());
 
 #if (((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && (ORIG_DTYPE_X1 == DT_HIFLOAT8)) || \
      (((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) && \
@@ -119,7 +114,6 @@ __global__ __aicore__ void all_gather_matmul_v2(GM_ADDR aGM, GM_ADDR bGM, GM_ADD
                                                              Mc2CoreType::ON_CUBE, HCCL_COMM_MODE, false, TRANS_B);
     }
 #elif ((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && ((ORIG_DTYPE_X1 == DT_FLOAT16) || (ORIG_DTYPE_X1 == DT_BF16)))
-    // 非量化恒 APACE（R13）：核型 AIC_ONLY（SEL 表供给），v1 实现源码级保留不派发
     if constexpr (INPUT_IS_BF16FP16) {
         constexpr HcclServerType hcclServerType = HCCL_COMM_MODE == HCCL_COMM_MODE_CCU ?
                                                       HcclServerType::HCCL_SERVER_TYPE_CCU :

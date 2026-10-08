@@ -136,8 +136,8 @@ public:
     }
 
 public:
-    __aicore__ inline void Init(const ProblemShape &problemShape, const BlockShape &l0TileShape,
-                                const L1Params &l1Params, bool isBias, bool dbL0C, uint64_t splitKNum = 1)
+    __aicore__ inline void Init(const ProblemShape& problemShape, const BlockShape& l0TileShape,
+                                const L1Params& l1Params, bool isBias, bool dbL0C, uint64_t splitKNum = 1)
     {
         k_ = asc::te::get<Blaze::Gemm::IDX_K_IDX>(problemShape);
         kL1_ = l1Params.kL1;
@@ -190,7 +190,7 @@ public:
     }
 
     template <typename TensorA>
-    __aicore__ inline auto CopyAInL1(TensorA const &gmA, TileL1L0Param &tileL1L0Param, uint64_t l1BufId, uint64_t iter0)
+    __aicore__ inline auto CopyAInL1(TensorA const& gmA, TileL1L0Param& tileL1L0Param, uint64_t l1BufId, uint64_t iter0)
     {
         auto copyGM2L1 = asc::te::make_copy(asc::te::copy_gm_to_l1{});
         if constexpr (DispatchPolicy::FULL_LOAD_MODE == 0) {
@@ -198,7 +198,7 @@ public:
             auto tensorAL1 = asc::te::make_tensor(
                 asc::te::make_mem_ptr<asc::te::location::l1, AType>(l1BufferAOffset_[l1BufId]), layoutAL1);
             auto blockA = gmA.Slice(asc::te::make_coord(0, iter0 * kL1_),
-                                     asc::te::make_shape(tileL1L0Param.curM, tileL1L0Param.curGmAKL1));
+                                    asc::te::make_shape(tileL1L0Param.curM, tileL1L0Param.curGmAKL1));
             Apace::Basic::FragmentSliceCopy<false>(copyGM2L1, tensorAL1, blockA);
             return tensorAL1;
         } else {
@@ -210,7 +210,7 @@ public:
                                                   asc::te::make_shape(tileL1L0Param.curM, tileL1L0Param.curGmAKL1));
             if (abL1LoopCnt_ < kL1Iter_) {
                 auto blockA = gmA.Slice(asc::te::make_coord(0, iter0 * kL1_),
-                                         asc::te::make_shape(tileL1L0Param.curM, tileL1L0Param.curGmAKL1));
+                                        asc::te::make_shape(tileL1L0Param.curM, tileL1L0Param.curGmAKL1));
                 Apace::Basic::FragmentSliceCopy<false>(copyGM2L1, tensorAL1, blockA);
             }
             return tensorAL1;
@@ -218,8 +218,8 @@ public:
     }
 
     template <typename TensorAL1, typename TensorBL1, typename TensorBiasL1, typename TensorL0C>
-    __aicore__ inline void Iterate(TileL1L0Param &tileL1L0Param, uint64_t iter0, TensorAL1 &tensorAL1,
-                                   TensorBL1 &tensorBL1, TensorBiasL1 &tensorBiasL1, TensorL0C &tensorL0C,
+    __aicore__ inline void Iterate(TileL1L0Param& tileL1L0Param, uint64_t iter0, TensorAL1& tensorAL1,
+                                   TensorBL1& tensorBL1, TensorBiasL1& tensorBiasL1, TensorL0C& tensorL0C,
                                    uint64_t splitKIdx)
     {
         uint64_t kL0Iter = Blaze::Gemm::CeilDiv(tileL1L0Param.curGmBKL1, baseK_);
@@ -272,11 +272,11 @@ public:
     }
 
     template <typename TensorA, typename TensorB, typename TensorBias, typename TensorC = int>
-    __aicore__ inline void operator()(TensorA const &gmA, TensorB const &gmB, TensorBias const &gmBias,
-                                      GM_ADDR *cFragAddrs, uint64_t mPerRank, uint64_t tileM, uint64_t tileCnt,
+    __aicore__ inline void operator()(TensorA const& gmA, TensorB const& gmB, TensorBias const& gmBias,
+                                      GM_ADDR* cFragAddrs, uint64_t mPerRank, uint64_t tileM, uint64_t tileCnt,
                                       uint64_t tailM, uint64_t remoteRankCnt, int64_t cRowStride,
-                                      BlockShape const &singleShape, int64_t mPosGlobal, int64_t nPosGlobal,
-                                      uint64_t splitKIdx = 0, TensorC const &gmC = 0)
+                                      BlockShape const& singleShape, int64_t mPosGlobal, int64_t nPosGlobal,
+                                      uint64_t splitKIdx = 0, TensorC const& gmC = 0)
     {
         TileL1L0Param tileL1L0Param;
         tileL1L0Param.curM = asc::te::get<Blaze::Gemm::IDX_M_TILEIDX>(singleShape);
@@ -304,8 +304,7 @@ public:
             auto layoutBiasL1 = asc::te::frame_layout_format<asc::te::nd_ext_layout_ptn>{}(
                 1UL, Blaze::Gemm::CeilAlign(tileL1L0Param.curN, Blaze::Gemm::BLOCK_CUBE));
             auto tensorBiasL1 = asc::te::make_tensor(
-                asc::te::make_mem_ptr<asc::te::location::l1, BiasType>(l1BufferBiasOffset_[biasBufId_]),
-                layoutBiasL1);
+                asc::te::make_mem_ptr<asc::te::location::l1, BiasType>(l1BufferBiasOffset_[biasBufId_]), layoutBiasL1);
             if (isBias_ && iter0 == 0 && splitKIdx == 0) {
                 asc::te::copy(copyGM2L1, tensorBiasL1, gmBias);
             }
@@ -332,7 +331,7 @@ public:
     }
 
     template <typename TensorC, typename TensorL0C>
-    __aicore__ inline void ScatterL0C2GM(TensorC const &gmC, TensorL0C &tensorL0C)
+    __aicore__ inline void ScatterL0C2GM(TensorC const& gmC, TensorL0C& tensorL0C)
     {
         auto copyL0C2GM = asc::te::make_copy(asc::te::copy_l0c_to_gm{});
         Apace::Basic::FragmentSliceCopy<true>(
@@ -349,9 +348,9 @@ private:
     }
 
     template <typename TensorL0CType, typename TensorAL0, typename TensorBL0, typename TensorBT>
-    __aicore__ inline void Mmad(TileL1L0Param &tileL1L0Param, uint64_t iter0, uint64_t iter1, uint64_t kL0Iter,
-                                uint64_t curKL0, TensorL0CType &tensorL0C, TensorAL0 const &tensorAL0,
-                                TensorBL0 const &tensorBL0, TensorBT const &tensorBt, uint64_t splitKIdx)
+    __aicore__ inline void Mmad(TileL1L0Param& tileL1L0Param, uint64_t iter0, uint64_t iter1, uint64_t kL0Iter,
+                                uint64_t curKL0, TensorL0CType& tensorL0C, TensorAL0 const& tensorAL0,
+                                TensorBL0 const& tensorBL0, TensorBT const& tensorBt, uint64_t splitKIdx)
     {
         // 非量化默认 trait（对齐 Blaze block_mmad_matmul_basic.h Compute 的 mmad_trait_default）
         constexpr auto mmadAtom = asc::te::make_mmad(asc::te::mmad_operation{}, asc::te::mmad_trait_default{});
