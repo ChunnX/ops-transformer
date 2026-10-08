@@ -19,24 +19,24 @@
 namespace optiling {
 
 BEGIN_TILING_DATA_DEF(MhcNormPostPreonlyTilingData)
-// 形状信息，totalTokens为展平后的B*S
-TILING_DATA_FIELD_DEF(uint32_t, totalTokens); // M = B*S
-TILING_DATA_FIELD_DEF(uint32_t, headCount);   // N固定为4
-TILING_DATA_FIELD_DEF(uint32_t, embedDim);    // D按16个元素对齐
+// 形状信息，T为展平后的B*S
+TILING_DATA_FIELD_DEF(uint32_t, T); // T = B*S
+TILING_DATA_FIELD_DEF(uint32_t, N); // N固定为4
+TILING_DATA_FIELD_DEF(uint32_t, D); // D按16个元素对齐
 
-// 核映射，沿totalTokens均衡切分
+// 核映射，沿T均衡切分
 TILING_DATA_FIELD_DEF(uint32_t, usedCoreNum);
-TILING_DATA_FIELD_DEF(uint32_t, rowsPerCore);
-TILING_DATA_FIELD_DEF(uint32_t, rowsPerCoreSp);
-TILING_DATA_FIELD_DEF(uint32_t, blockPivot);
+TILING_DATA_FIELD_DEF(uint32_t, baseTPerCore);
+TILING_DATA_FIELD_DEF(uint32_t, remainderT);
 
 // D轴分块
-TILING_DATA_FIELD_DEF(uint32_t, dimTile);     // 单块元素数
-TILING_DATA_FIELD_DEF(uint32_t, dimLoop);     // 分块数量
-TILING_DATA_FIELD_DEF(uint32_t, lastDimTile); // 尾块元素数，0表示整除
+TILING_DATA_FIELD_DEF(uint32_t, dTile);     // 单块元素数
+TILING_DATA_FIELD_DEF(uint32_t, dLoop);     // 分块数量
+TILING_DATA_FIELD_DEF(uint32_t, lastDTile); // 尾块元素数，0表示整除
 
 // MHC_Pre参数，phi行数固定为N=4，Kernel只需要每行跨度N*D
 TILING_DATA_FIELD_DEF(uint32_t, phiCols);
+TILING_DATA_FIELD_DEF(uint32_t, reserved); // 保持TilingData长度按8字节对齐
 
 // 数值稳定项
 TILING_DATA_FIELD_DEF(float, normEps);
@@ -90,18 +90,17 @@ private:
     void PrintTilingData() const;
 
     MhcNormPostPreonlyTilingData tilingData_;
-    uint32_t coreNumAiv_{0U};
-    uint32_t totalTokens_{0U};
-    uint32_t headCount_{0U};
-    uint32_t embedDim_{0U};
+    uint32_t totalAivNum_{0U};
+    uint32_t T_{0U};
+    uint32_t N_{0U};
+    uint32_t D_{0U};
     uint32_t phiCols_{0U};
     uint32_t usedCoreNum_{0U};
-    uint32_t rowsPerCore_{0U};
-    uint32_t rowsPerCoreSp_{0U};
-    uint32_t blockPivot_{0U};
-    uint32_t dimTile_{0U};
-    uint32_t dimLoop_{0U};
-    uint32_t lastDimTile_{0U};
+    uint32_t baseTPerCore_{0U};
+    uint32_t remainderT_{0U};
+    uint32_t dTile_{0U};
+    uint32_t dLoop_{0U};
+    uint32_t lastDTile_{0U};
     float normEps_{1e-6F};
     float mhcPreNormEps_{1e-6F};
     float hcEps_{1e-6F};

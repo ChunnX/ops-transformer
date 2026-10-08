@@ -172,7 +172,7 @@ aclnnStatus aclnnMhcNormPostPreonly(
   <tr>
       <td>hOut（aclTensor*）</td>
       <td>输入</td>
-      <td>Atten/MLP 层的输出。</td>
+      <td>Atten/MLP 层的输出，对应公式中的 h_out。</td>
       <td><ul><li>不支持空指针。</li><li>shape为(T, D)或(B, S, D)。</li></ul></td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
@@ -182,7 +182,7 @@ aclnnStatus aclnnMhcNormPostPreonly(
   <tr>
       <td>residual（aclTensor*）</td>
       <td>输入</td>
-      <td>MHC 多路残差输入；dtype 必须与 hOut 一致。</td>
+      <td>MHC 多路残差输入，对应公式中的 residual；dtype 必须与 hOut 一致。</td>
       <td><ul><li>不支持空指针。</li><li>shape为(T, N, D)或(B, S, N, D)，数据类型与hOut一致。</li></ul></td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
@@ -192,7 +192,7 @@ aclnnStatus aclnnMhcNormPostPreonly(
   <tr>
       <td>hPost（aclTensor*）</td>
       <td>输入</td>
-      <td>MHC_Post 主分支权重。</td>
+      <td>MHC_Post 主分支权重，对应公式中的 h_post。</td>
       <td><ul><li>不支持空指针。</li><li>shape为(T, N)或(B, S, N)。</li></ul></td>
       <td>FLOAT32</td>
       <td>ND</td>
@@ -202,7 +202,7 @@ aclnnStatus aclnnMhcNormPostPreonly(
   <tr>
       <td>hResOptional（aclTensor*）</td>
       <td>可选输入</td>
-      <td>mHC 的 hRes 变换矩阵，是做完 Sinkhorn 变换后的双随机矩阵；索引顺序为 [j,n]。接口预留参数，暂不支持传空指针。</td>
+      <td>mHC 的变换矩阵，对应公式中的 h_res，是 Sinkhorn 变换后的双随机矩阵；索引顺序为 [j,n]。接口预留参数，暂不支持传空指针。</td>
       <td><ul><li>shape为(T, N, N)或(B, S, N, N)。</li></ul></td>
       <td>FLOAT32</td>
       <td>ND</td>
@@ -212,7 +212,7 @@ aclnnStatus aclnnMhcNormPostPreonly(
   <tr>
       <td>phi（aclTensor*）</td>
       <td>输入</td>
-      <td>MHC_Pre 投影矩阵。</td>
+      <td>MHC_Pre 投影矩阵，对应公式中的 phi。</td>
       <td><ul><li>不支持空指针。</li><li>shape为(N, N×D)。</li></ul></td>
       <td>FLOAT32</td>
       <td>ND</td>
@@ -222,7 +222,7 @@ aclnnStatus aclnnMhcNormPostPreonly(
   <tr>
       <td>alpha（aclTensor*）</td>
       <td>输入</td>
-      <td>Sigmoid 门控缩放系数。</td>
+      <td>Sigmoid 门控缩放系数，对应公式中的 alpha_0。</td>
       <td><ul><li>不支持空指针。</li><li>shape为(1)。</li></ul></td>
       <td>FLOAT32</td>
       <td>ND</td>
@@ -232,7 +232,7 @@ aclnnStatus aclnnMhcNormPostPreonly(
   <tr>
       <td>bias（aclTensor*）</td>
       <td>输入</td>
-      <td>Sigmoid 门控偏置。</td>
+      <td>Sigmoid 门控偏置，对应公式中的 bias。</td>
       <td><ul><li>不支持空指针。</li><li>shape为(N)。</li></ul></td>
       <td>FLOAT32</td>
       <td>ND</td>
@@ -242,7 +242,7 @@ aclnnStatus aclnnMhcNormPostPreonly(
   <tr>
       <td>gamma1（aclTensor*）</td>
       <td>输入</td>
-      <td>RMSNorm_1 缩放权重。</td>
+      <td>RMSNorm_1 缩放权重，对应公式中的 gamma_1。</td>
       <td><ul><li>不支持空指针。</li><li>shape为(D)。</li></ul></td>
       <td>FLOAT32</td>
       <td>ND</td>
@@ -252,7 +252,7 @@ aclnnStatus aclnnMhcNormPostPreonly(
   <tr>
       <td>preMixOptional（aclTensor*）</td>
       <td>可选输入</td>
-      <td>传入时，h_in 的加权求和直接使用 preMixOptional 作为权重（典型用法：填入上一轮 hPreOptional 的输出）；不传入时，h_in 使用本轮内部计算的 hPreOptional 进行加权求和。接口预留参数，当前仅支持传入空指针。</td>
+      <td>预留的门控权重输入，对应公式中的 h_pre；当前仅支持传入空指针，不参与计算。</td>
       <td><ul><li>当前仅支持传空指针。</li><li>shape为(T, N)或(B, S, N)。</li></ul></td>
       <td>FLOAT32</td>
       <td>ND</td>
@@ -262,7 +262,7 @@ aclnnStatus aclnnMhcNormPostPreonly(
   <tr>
       <td>gamma0Optional（aclTensor*）</td>
       <td>可选输入</td>
-      <td>RMSNorm_0 缩放权重。接口预留参数，当前暂不支持传空指针。</td>
+      <td>RMSNorm_0 缩放权重，对应公式中的 gamma_0。接口预留参数，当前暂不支持传空指针。</td>
       <td><ul><li>该参数为接口预留，暂不支持传空指针。</li><li>shape为(D)。</li></ul></td>
       <td>FLOAT32</td>
       <td>ND</td>
@@ -272,7 +272,7 @@ aclnnStatus aclnnMhcNormPostPreonly(
   <tr>
       <td>gamma2Optional（aclTensor*）</td>
       <td>可选输入</td>
-      <td>RMSNorm_mid 缩放权重。默认值为空指针；非空时启用 RMSNorm_mid，为空时跳过。</td>
+      <td>RMSNorm_mid 缩放权重，对应公式中的 gamma_2。默认值为空指针；非空时启用 RMSNorm_mid，为空时跳过。</td>
       <td><ul><li>可传空指针，表示跳过RMSNorm_mid。</li><li>非空时shape为(N×D)。</li></ul></td>
       <td>FLOAT32</td>
       <td>ND</td>
@@ -282,7 +282,7 @@ aclnnStatus aclnnMhcNormPostPreonly(
   <tr>
       <td>normEps（float）</td>
       <td>可选输入</td>
-      <td>RMSNorm_0、RMSNorm_mid 和 RMSNorm_1 的数值稳定项，默认值为 1e-6。</td>
+      <td>归一化数值稳定项，对应公式中的 norm_eps，用于 RMSNorm_0、RMSNorm_mid 和 RMSNorm_1；默认值为 1e-6。</td>
       <td>建议值：1e-6。</td>
       <td>FLOAT</td>
       <td>-</td>
@@ -292,7 +292,7 @@ aclnnStatus aclnnMhcNormPostPreonly(
   <tr>
       <td>mhcPreNormEps（float）</td>
       <td>可选输入</td>
-      <td>MHC_Pre 内部 RMS 的数值稳定项，默认值为 1e-6。</td>
+      <td>MHC_Pre 内部 RMS 的数值稳定项，对应公式中的 mhc_pre_norm_eps；默认值为 1e-6。</td>
       <td>建议值：1e-6。</td>
       <td>FLOAT</td>
       <td>-</td>
@@ -302,7 +302,7 @@ aclnnStatus aclnnMhcNormPostPreonly(
   <tr>
       <td>hcEps（float）</td>
       <td>可选输入</td>
-      <td>Sigmoid 门控结果的加性偏移，默认值为 1e-6。</td>
+      <td>Sigmoid 门控结果的加性偏移，对应公式中的 hc_eps；默认值为 1e-6。</td>
       <td>建议值：1e-6。</td>
       <td>FLOAT</td>
       <td>-</td>
@@ -312,7 +312,7 @@ aclnnStatus aclnnMhcNormPostPreonly(
   <tr>
       <td>returnHInF32（bool）</td>
       <td>可选输入</td>
-      <td>是否额外返回 FP32 的 hInF32OutOptional，默认值为 false。</td>
+      <td>是否额外返回公式中的 h_in_f32，默认值为 false。</td>
       <td><ul><li>取值为true时，hInF32OutOptional必须为非空指针。</li><li>取值为false时，hInF32OutOptional必须为空指针。</li></ul></td>
       <td>BOOL</td>
       <td>-</td>
@@ -322,7 +322,7 @@ aclnnStatus aclnnMhcNormPostPreonly(
   <tr>
       <td>hInPrimeOut（aclTensor*）</td>
       <td>输出</td>
-      <td>RMSNorm_1 FP32 结果转换为输入 dtype 后的下一层输入。</td>
+      <td>下一层输入，对应公式中的 h_in_prime，由 RMSNorm_1 的 FP32 结果转换为输入 dtype 得到。</td>
       <td><ul><li>不支持空指针。</li><li>shape为(T, D)或(B, S, D)，数据类型与hOut一致。</li></ul></td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
@@ -332,7 +332,7 @@ aclnnStatus aclnnMhcNormPostPreonly(
   <tr>
       <td>x2Out（aclTensor*）</td>
       <td>输出</td>
-      <td>MHC_Post 以及可选 RMSNorm_mid 后的中间结果。</td>
+      <td>中间结果，对应公式中的 x_2_out，来自 MHC_Post 及可选 RMSNorm_mid。</td>
       <td><ul><li>不支持空指针。</li><li>shape为(T, N, D)或(B, S, N, D)，数据类型与hOut一致。</li></ul></td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
@@ -342,7 +342,7 @@ aclnnStatus aclnnMhcNormPostPreonly(
   <tr>
       <td>hInF32OutOptional（aclTensor*）</td>
       <td>可选输出</td>
-      <td>RMSNorm_1 的 FP32 结果，仅在 returnHInF32=true 时返回。</td>
+      <td>RMSNorm_1 的 FP32 结果，对应公式中的 h_in_f32，仅在 returnHInF32=true 时返回。</td>
       <td><ul><li>returnHInF32为false时必须传空指针。</li><li>returnHInF32为true时不支持空Tensor，shape为(T, D)或(B, S, D)。</li></ul></td>
       <td>FLOAT32</td>
       <td>ND</td>
@@ -352,7 +352,7 @@ aclnnStatus aclnnMhcNormPostPreonly(
   <tr>
       <td>hPreOptional（aclTensor*）</td>
       <td>可选输出</td>
-      <td>本轮内部计算的 pre 结果（sigmoid 后的加权系数），可作为下一轮 preMixOptional 的输入。接口预留参数，当前暂不支持输出。</td>
+      <td>Sigmoid 后的加权系数，对应公式中的 h_pre。接口预留参数，当前暂不支持输出。</td>
       <td><ul><li>当前仅支持传空指针。</li><li>shape为(T, N)或(B, S, N)。</li></ul></td>
       <td>FLOAT32</td>
       <td>ND</td>
