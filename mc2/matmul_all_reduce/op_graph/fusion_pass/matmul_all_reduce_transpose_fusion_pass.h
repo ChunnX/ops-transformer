@@ -16,7 +16,7 @@
 #include "ge/fusion/pass/pattern_fusion_pass.h"
 
 namespace ops {
-// 对齐 canndev MatmulAllReduceTransposeFusionPass：非 310P
+// 非 310P
 class __attribute__((visibility("default"))) MatmulAllReduceTransposeFusionPass : public ge::fusion::PatternFusionPass {
 public:
     ge::Status Run(ge::GraphPtr& graph, ge::CustomPassContext& pass_context) override;

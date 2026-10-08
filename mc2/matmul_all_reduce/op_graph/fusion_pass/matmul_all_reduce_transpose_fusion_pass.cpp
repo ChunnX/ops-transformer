@@ -281,18 +281,6 @@ std::vector<ge::fusion::PatternUniqPtr> BuildAllPatterns(const std::string& pass
     }
     return patternGraphs;
 }
-
-bool GetPatternNameStr(const std::unique_ptr<ge::fusion::MatchResult>& matchResult, std::string& patternNameStr)
-{
-    ge::AscendString patternName = "";
-    if (matchResult->GetPatternGraph().GetName(patternName) != ge::SUCCESS) {
-        OPS_LOG_W(PASS_NAME.c_str(), "Get pattern graph name failed.");
-        return false;
-    }
-    patternNameStr = patternName.GetString() != nullptr ? patternName.GetString() : "";
-    return true;
-}
-
 size_t GetExpectedSubgraphInputNum(const std::string& patternNameStr)
 {
     OriginalGraphInfo info;
@@ -355,16 +343,6 @@ bool IsLastTwoDimsSwapPermValid(const std::vector<int64_t>& permValue)
     }
     return true;
 }
-
-bool GetCapturedMc2Node(const std::unique_ptr<ge::fusion::MatchResult>& matchResult, ge::GNode& mc2Node)
-{
-    ge::fusion::NodeIo mc2NodeIo;
-    OP_LOGE_IF(matchResult->GetCapturedTensor(MC2_CAPTURE_IDX, mc2NodeIo) != ge::SUCCESS, false, PASS_NAME.c_str(),
-               "Capture MC2 node failed.");
-    mc2Node = mc2NodeIo.node;
-    return true;
-}
-
 bool ValidateCapturedTransposePerm(const std::unique_ptr<ge::fusion::MatchResult>& matchResult, int64_t captureIdx)
 {
     ge::fusion::NodeIo transposeOutput;
@@ -400,18 +378,12 @@ bool IsTransposePermValid(const std::unique_ptr<ge::fusion::MatchResult>& matchR
     return true;
 }
 
-bool IsAntiquantDirectConnectAllowed(const std::unique_ptr<ge::fusion::MatchResult>& matchResult,
-                                     const std::string& patternNameStr)
+bool IsAntiquantDirectConnectAllowed(const ge::GNode& mc2Node, const std::string& patternNameStr)
 {
     const bool hasScale = patternNameStr.find(PATTERN_SCALE) != std::string::npos;
     const bool hasOffset = patternNameStr.find(PATTERN_OFFSET) != std::string::npos;
     if (!hasScale && !hasOffset) {
         return true;
-    }
-
-    ge::GNode mc2Node;
-    if (!GetCapturedMc2Node(matchResult, mc2Node)) {
-        return false;
     }
 
     ge::AscendString nodeType("");
@@ -460,13 +432,8 @@ int32_t GetDequantInputIdx(const std::string& patternNameStr)
 }
 
 // ES pattern 对 optional 口可能误匹配；以原 MC2 节点是否真有 dequant 边为准
-bool IsDequantPresenceConsistent(const std::unique_ptr<ge::fusion::MatchResult>& matchResult,
-                                 const std::string& patternNameStr)
+bool IsDequantPresenceConsistent(const ge::GNode& mc2Node, const std::string& patternNameStr)
 {
-    ge::GNode mc2Node;
-    if (!GetCapturedMc2Node(matchResult, mc2Node)) {
-        return false;
-    }
     const bool patternHasDequant = patternNameStr.find(PATTERN_DEQUANT) != std::string::npos;
     const bool nodeHasDequant = Mc2HasConnectedInput(mc2Node, GetDequantInputIdx(patternNameStr));
     if (patternHasDequant != nodeHasDequant) {
@@ -487,7 +454,7 @@ bool MeetCore(const std::unique_ptr<ge::fusion::MatchResult>& matchResult, const
     }
 
     std::string patternNameStr;
-    if (!GetPatternNameStr(matchResult, patternNameStr)) {
+    if (!ops::GetPatternNameStr(matchResult, patternNameStr, PASS_NAME.c_str())) {
         return false;
     }
 
@@ -503,10 +470,16 @@ bool MeetCore(const std::unique_ptr<ge::fusion::MatchResult>& matchResult, const
     if (!IsTransposePermValid(matchResult, patternNameStr)) {
         return false;
     }
-    if (!IsAntiquantDirectConnectAllowed(matchResult, patternNameStr)) {
+
+    ge::GNode mc2Node;
+    if (!ops::GetCapturedMc2Node(matchResult, mc2Node, MC2_CAPTURE_IDX, PASS_NAME.c_str(),
+                                 "Capture MC2 node failed.")) {
         return false;
     }
-    if (!IsDequantPresenceConsistent(matchResult, patternNameStr)) {
+    if (!IsAntiquantDirectConnectAllowed(mc2Node, patternNameStr)) {
+        return false;
+    }
+    if (!IsDequantPresenceConsistent(mc2Node, patternNameStr)) {
         return false;
     }
     OPS_LOG_I(passName, "Found One pattern that meets requirements, pattern=%s", patternNameStr.c_str());
@@ -634,7 +607,7 @@ ge::fusion::GraphUniqPtr BuildReplaceGraph(const std::vector<ge::fusion::Subgrap
 {
     auto replaceGraphBuilder = ge::es::EsGraphBuilder("replacement");
     std::string patternNameStr;
-    if (!GetPatternNameStr(matchResult, patternNameStr)) {
+    if (!ops::GetPatternNameStr(matchResult, patternNameStr, PASS_NAME.c_str())) {
         OPS_LOG_E(passName, "Get pattern graph name failed in BuildReplaceGraph.");
         return nullptr;
     }
@@ -645,7 +618,8 @@ ge::fusion::GraphUniqPtr BuildReplaceGraph(const std::vector<ge::fusion::Subgrap
     }
 
     ge::GNode mc2Node;
-    if (!GetCapturedMc2Node(matchResult, mc2Node)) {
+    if (!ops::GetCapturedMc2Node(matchResult, mc2Node, MC2_CAPTURE_IDX, PASS_NAME.c_str(),
+                                 "Capture MC2 node failed.")) {
         return nullptr;
     }
 
@@ -763,7 +737,7 @@ std::vector<ge::fusion::PatternUniqPtr> MatmulAllReduceTransposeFusionPass::Patt
 bool MatmulAllReduceTransposeFusionPass::MeetRequirements(const std::unique_ptr<ge::fusion::MatchResult>& matchResult)
 {
     OPS_LOG_D(PASS_NAME.c_str(), "Enter MeetRequirements for MatmulAllReduceTransposeFusionPass");
-    // 对齐 canndev SocversionCheck：不支持 310P
+    // 不支持 310P
     if (IsTargetPlatformNpuArch(PASS_NAME.c_str(), NPUARCH_310P)) {
         OPS_LOG_D(PASS_NAME.c_str(), "Currently not supports NPUARCH 310P.");
         return false;

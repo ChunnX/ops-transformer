@@ -137,7 +137,7 @@ static ge::es::EsTensorHolder MaybeBitcastAfterTranspose(bool needBitcast, const
     if (!needBitcast) {
         return transposed;
     }
-    // 对齐 canndev：仅 dequant 支持 Transpose → Bitcast → MC2
+    // 仅 dequant 支持 Transpose → Bitcast → MC2
     return ge::es::Bitcast(transposed, BITCAST_PATTERN_DTYPE);
 }
 
@@ -193,7 +193,7 @@ static ge::fusion::PatternUniqPtr MakePattern(const OriginalGraphInfo& info)
         dequantScale = inputs[idx++];
     }
 
-    // x2 必挂 Transpose（对齐 canndev：无 Bitcast）
+    // x2 必挂 Transpose（无 Bitcast）
     auto transposeX2 = MakeTransposeNode(x2);
 
     ge::es::EsTensorHolder transposeScale = nullptr;
@@ -236,18 +236,6 @@ static ge::fusion::PatternUniqPtr MakePattern(const OriginalGraphInfo& info)
     }
     return pattern;
 }
-
-static bool GetPatternNameStr(const std::unique_ptr<ge::fusion::MatchResult>& matchResult, std::string& patternNameStr)
-{
-    ge::AscendString patternName = "";
-    if (matchResult->GetPatternGraph().GetName(patternName) != ge::SUCCESS) {
-        OPS_LOG_W(FUSION_PASS_NAME.c_str(), "Get pattern graph name failed.");
-        return false;
-    }
-    patternNameStr = patternName.GetString() != nullptr ? patternName.GetString() : "";
-    return true;
-}
-
 static size_t GetExpectedSubgraphInputNum(const std::string& patternNameStr)
 {
     OriginalGraphInfo info;
@@ -319,7 +307,7 @@ static bool IsLastTwoDimsSwapPermValid(const std::vector<int64_t>& permValue)
 static bool IsDequantTransposePermValid(const std::vector<int64_t>& permValue)
 {
     const size_t permSize = permValue.size();
-    // canndev：先要求 size∈{2,3}，再校验前两维 [1,0]
+    // 先要求 size∈{2,3}，再校验前两维 [1,0]
     if (permSize != PERM_SIZE_TWO && permSize != PERM_SIZE_THREE) {
         OPS_LOG_D(FUSION_PASS_NAME.c_str(), "dequant transpose permutation size must be 2 or 3, but got %zu.",
                   permSize);
@@ -331,16 +319,6 @@ static bool IsDequantTransposePermValid(const std::vector<int64_t>& permValue)
     }
     return true;
 }
-
-static bool GetCapturedMc2Node(const std::unique_ptr<ge::fusion::MatchResult>& matchResult, ge::GNode& mc2Node)
-{
-    ge::fusion::NodeIo mc2NodeIo;
-    OP_LOGE_IF(matchResult->GetCapturedTensor(MC2_CAPTURE_IDX, mc2NodeIo) != ge::SUCCESS, false,
-               FUSION_PASS_NAME.c_str(), "Capture MatmulAllReduce node failed.");
-    mc2Node = mc2NodeIo.node;
-    return true;
-}
-
 static bool ValidateCapturedTransposePerm(const std::unique_ptr<ge::fusion::MatchResult>& matchResult,
                                           int64_t captureIdx, TransposePort port)
 {
@@ -389,19 +367,13 @@ static bool IsTransposePermValid(const std::unique_ptr<ge::fusion::MatchResult>&
     return true;
 }
 
-// 对齐 canndev：antiquant dim>1 且无合法 Transpose → 整次不融；offset 门控用 scale 的 dim
-static bool IsAntiquantDirectConnectAllowed(const std::unique_ptr<ge::fusion::MatchResult>& matchResult,
-                                            const std::string& patternNameStr)
+// antiquant dim>1 且无合法 Transpose → 整次不融；offset 门控用 scale 的 dim
+static bool IsAntiquantDirectConnectAllowed(const ge::GNode& mc2Node, const std::string& patternNameStr)
 {
     const bool hasScale = patternNameStr.find(PATTERN_SCALE) != std::string::npos;
     const bool hasOffset = patternNameStr.find(PATTERN_OFFSET) != std::string::npos;
     if (!hasScale && !hasOffset) {
         return true;
-    }
-
-    ge::GNode mc2Node;
-    if (!GetCapturedMc2Node(matchResult, mc2Node)) {
-        return false;
     }
 
     const int32_t scaleIdx = static_cast<int32_t>(ops::MC2InputIdx::K_SCALE);
@@ -429,19 +401,13 @@ static bool IsAntiquantDirectConnectAllowed(const std::unique_ptr<ge::fusion::Ma
     return true;
 }
 
-static bool IsDequantDirectConnectAllowed(const std::unique_ptr<ge::fusion::MatchResult>& matchResult,
-                                          const std::string& patternNameStr)
+static bool IsDequantDirectConnectAllowed(const ge::GNode& mc2Node, const std::string& patternNameStr)
 {
     if (patternNameStr.find(PATTERN_DEQUANT) == std::string::npos) {
         return true;
     }
     if (patternNameStr.find(PATTERN_DEQUANT_TRANSPOSE) != std::string::npos) {
         return true;
-    }
-
-    ge::GNode mc2Node;
-    if (!GetCapturedMc2Node(matchResult, mc2Node)) {
-        return false;
     }
 
     const int32_t dequantIdx = static_cast<int32_t>(ops::MC2InputIdx::K_DEQUANT);
@@ -524,7 +490,7 @@ bool MatmulAllReduceTransposeA5FusionPass::MeetRequirements(const std::unique_pt
     }
 
     std::string patternNameStr;
-    if (!GetPatternNameStr(matchResult, patternNameStr)) {
+    if (!ops::GetPatternNameStr(matchResult, patternNameStr, FUSION_PASS_NAME.c_str())) {
         return false;
     }
 
@@ -544,12 +510,18 @@ bool MatmulAllReduceTransposeA5FusionPass::MeetRequirements(const std::unique_pt
         return false;
     }
 
-    if (!IsAntiquantDirectConnectAllowed(matchResult, patternNameStr)) {
+    ge::GNode mc2Node;
+    if (!ops::GetCapturedMc2Node(matchResult, mc2Node, MC2_CAPTURE_IDX, FUSION_PASS_NAME.c_str(),
+                                 "Capture MatmulAllReduce node failed.")) {
+        return false;
+    }
+
+    if (!IsAntiquantDirectConnectAllowed(mc2Node, patternNameStr)) {
         OPS_LOG_D(FUSION_PASS_NAME.c_str(), "antiquant direct connect check failed.");
         return false;
     }
 
-    if (!IsDequantDirectConnectAllowed(matchResult, patternNameStr)) {
+    if (!IsDequantDirectConnectAllowed(mc2Node, patternNameStr)) {
         OPS_LOG_D(FUSION_PASS_NAME.c_str(), "dequant direct connect check failed.");
         return false;
     }
@@ -639,7 +611,7 @@ static bool CreateReplaceGraphInputs(ReplaceGraphInputs& inputs, ge::es::EsGraph
     return true;
 }
 
-// 对齐 canndev FusionTransposeBitcast：吸掉 Transpose，保留 Bitcast，dtype 取自原 MC2 该口输入
+// 吸掉 Transpose，保留 Bitcast，dtype 取自原 MC2 该口输入
 static ge::es::EsTensorHolder MaybeKeepBitcast(const ge::GNode& mc2Node, int64_t inputIdx,
                                                const ge::es::EsTensorHolder& x, bool keepBitcast)
 {
@@ -661,7 +633,7 @@ static ge::fusion::GraphUniqPtr BuildReplaceGraph(const std::vector<ge::fusion::
     auto replaceGraphBuilder = ge::es::EsGraphBuilder("replacement");
 
     std::string patternNameStr;
-    if (!GetPatternNameStr(matchResult, patternNameStr)) {
+    if (!ops::GetPatternNameStr(matchResult, patternNameStr, FUSION_PASS_NAME.c_str())) {
         OPS_LOG_E(FUSION_PASS_NAME.c_str(), "Get pattern graph name failed in BuildReplaceGraph.");
         return nullptr;
     }
@@ -673,7 +645,8 @@ static ge::fusion::GraphUniqPtr BuildReplaceGraph(const std::vector<ge::fusion::
     }
 
     ge::GNode mc2Node;
-    if (!GetCapturedMc2Node(matchResult, mc2Node)) {
+    if (!ops::GetCapturedMc2Node(matchResult, mc2Node, MC2_CAPTURE_IDX, FUSION_PASS_NAME.c_str(),
+                                 "Capture MatmulAllReduce node failed.")) {
         return nullptr;
     }
 
@@ -696,7 +669,7 @@ static ge::fusion::GraphUniqPtr BuildReplaceGraph(const std::vector<ge::fusion::
     bool isTransB = false;
     OP_LOGE_IF(mc2Node.GetAttr("is_trans_b", isTransB) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
                "Get Attr is_trans_b failed.");
-    // 吸收 x2 Transpose 后置反（对齐 canndev UpdateTransAttrOfMc2）
+    // 吸收 x2 Transpose 后置反
     isTransB = !isTransB;
 
     int64_t commTurn = 0;

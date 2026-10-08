@@ -43,7 +43,7 @@ const ge::DataType BITCAST_PATTERN_DTYPE = ge::DT_HIFLOAT8;
 
 struct OriginalGraphInfo {
     bool hasBias = false;
-    bool hasBitcast = false; // true：Transpose → Bitcast → x2（对齐 canndev）
+    bool hasBitcast = false; // true：Transpose → Bitcast → x2
 };
 
 struct ReplaceGraphInputs {
@@ -101,7 +101,7 @@ static ge::es::EsTensorHolder MaybeBitcastAfterTranspose(bool needBitcast, const
     if (!needBitcast) {
         return transposed;
     }
-    // 对齐 canndev：Transpose → Bitcast → MC2；type 占位，matcher 默认只比 op type
+    // Transpose → Bitcast → MC2；type 占位，matcher 默认只比 op type
     return ge::es::Bitcast(transposed, BITCAST_PATTERN_DTYPE);
 }
 
@@ -261,21 +261,9 @@ static bool CollectSubgraphInputsInfo(const std::vector<ge::fusion::SubgraphInpu
     }
     return true;
 }
-
-static bool GetPatternNameStr(const std::unique_ptr<ge::fusion::MatchResult>& matchResult, std::string& patternNameStr)
-{
-    ge::AscendString patternName = "";
-    if (matchResult->GetPatternGraph().GetName(patternName) != ge::SUCCESS) {
-        OPS_LOG_W(FUSION_PASS_NAME.c_str(), "Get pattern graph name failed.");
-        return false;
-    }
-    patternNameStr = patternName.GetString() != nullptr ? patternName.GetString() : "";
-    return true;
-}
-
 static bool CreateReplaceGraphInputs(ReplaceGraphInputs& inputs, ge::es::EsGraphBuilder& replaceGraphBuilder,
                                      const std::vector<ge::fusion::SubgraphInput>& subgraphInputs,
-                                     const std::unique_ptr<ge::fusion::MatchResult>& matchResult)
+                                     const std::string& patternNameStr)
 {
     std::vector<ge::Shape> inputShapes;
     std::vector<ge::DataType> inputDTypes;
@@ -287,12 +275,6 @@ static bool CreateReplaceGraphInputs(ReplaceGraphInputs& inputs, ge::es::EsGraph
     if (inputShapes.size() < INPUT_NUM_NO_BIAS) {
         OPS_LOG_E(FUSION_PASS_NAME.c_str(), "Input Nums do not meet requirement without bias, size=%zu.",
                   inputShapes.size());
-        return false;
-    }
-
-    std::string patternNameStr;
-    if (!GetPatternNameStr(matchResult, patternNameStr)) {
-        OPS_LOG_E(FUSION_PASS_NAME.c_str(), "Get pattern graph name failed in CreateReplaceGraphInputs.");
         return false;
     }
 
@@ -324,17 +306,7 @@ static bool CreateReplaceGraphInputs(ReplaceGraphInputs& inputs, ge::es::EsGraph
     inputs.rX2Offset = nullptr;
     return true;
 }
-
-static bool GetCapturedMc2Node(const std::unique_ptr<ge::fusion::MatchResult>& matchResult, ge::GNode& mc2Node)
-{
-    ge::fusion::NodeIo mc2NodeIo;
-    OP_LOGE_IF(matchResult->GetCapturedTensor(MMALL2ALL_CAPTURE_IDX, mc2NodeIo) != ge::SUCCESS, false,
-               FUSION_PASS_NAME.c_str(), "Capture MatmulAlltoAll node failed.");
-    mc2Node = mc2NodeIo.node;
-    return true;
-}
-
-// 对齐 canndev FusionTransposeWithBitcast：吸掉 Transpose，保留 Bitcast，dtype 取自原 MC2 该口输入
+// 吸掉 Transpose，保留 Bitcast，dtype 取自原 MC2 该口输入
 static ge::es::EsTensorHolder MaybeKeepBitcast(const ge::GNode& mc2Node, int64_t inputIdx,
                                                const ge::es::EsTensorHolder& x, bool keepBitcast)
 {
@@ -355,22 +327,24 @@ static ge::fusion::GraphUniqPtr BuildReplaceGraph(const std::vector<ge::fusion::
 {
     auto replaceGraphBuilder = ge::es::EsGraphBuilder("replacement");
 
+    std::string patternNameStr;
+    if (!ops::GetPatternNameStr(matchResult, patternNameStr, FUSION_PASS_NAME.c_str())) {
+        OPS_LOG_E(FUSION_PASS_NAME.c_str(), "Get pattern graph name failed in BuildReplaceGraph.");
+        return nullptr;
+    }
+
     ReplaceGraphInputs inputTensors;
-    if (!CreateReplaceGraphInputs(inputTensors, replaceGraphBuilder, subgraphInputs, matchResult)) {
+    if (!CreateReplaceGraphInputs(inputTensors, replaceGraphBuilder, subgraphInputs, patternNameStr)) {
         OPS_LOG_E(FUSION_PASS_NAME.c_str(), "CreateReplaceGraphInputs failed.");
         return nullptr;
     }
 
     ge::GNode mc2Node;
-    if (!GetCapturedMc2Node(matchResult, mc2Node)) {
+    if (!ops::GetCapturedMc2Node(matchResult, mc2Node, MMALL2ALL_CAPTURE_IDX, FUSION_PASS_NAME.c_str(),
+                                 "Capture MatmulAlltoAll node failed.")) {
         return nullptr;
     }
 
-    std::string patternNameStr;
-    if (!GetPatternNameStr(matchResult, patternNameStr)) {
-        OPS_LOG_E(FUSION_PASS_NAME.c_str(), "Get pattern graph name failed in BuildReplaceGraph.");
-        return nullptr;
-    }
     const bool keepX2Bitcast = patternNameStr.find(PATTERN_BITCAST) != std::string::npos;
     auto x2In = MaybeKeepBitcast(mc2Node, X2_INPUT_IDX, inputTensors.rX2, keepX2Bitcast);
 
@@ -413,7 +387,7 @@ static ge::fusion::GraphUniqPtr BuildReplaceGraph(const std::vector<ge::fusion::
     bool transposeX2 = false;
     OP_LOGE_IF(mc2Node.GetAttr("transpose_x2", transposeX2) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
                "Get Attr transpose_x2 failed.");
-    // 对齐 canndev UpdateTransAttr：吸收 x2 Transpose 后置反
+    // 吸收 x2 Transpose 后置反
     transposeX2 = !transposeX2;
 
     int64_t groupSize = 0;
@@ -511,7 +485,7 @@ bool MatmulAllToAllTransposeA5FusionPass::MeetRequirements(const std::unique_ptr
         return false;
     }
     std::string patternNameStr;
-    if (!GetPatternNameStr(matchResult, patternNameStr)) {
+    if (!ops::GetPatternNameStr(matchResult, patternNameStr, FUSION_PASS_NAME.c_str())) {
         return false;
     }
     const bool hasBias = patternNameStr.find(PATTERN_BIAS) != std::string::npos;
