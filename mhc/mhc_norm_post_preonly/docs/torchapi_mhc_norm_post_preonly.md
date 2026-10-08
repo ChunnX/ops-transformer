@@ -117,7 +117,7 @@ cann_ops_transformer.mhc_norm_post_preonly(
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
 | --- | --- | --- | --- | --- | --- |
 | h_out | Tensor | 必选 | Atten/MLP 层的输出。数据格式为 ND。 | float16、bfloat16 | [T, D] 或 [B, S, D] |
-| residual | Tensor | 必选 | MHC 多路残差输入；dtype 必须与 h_out 一致。 | 同 h_out | [T, N, D] 或 [B, S, N, D] |
+| residual | Tensor | 必选 | MHC 多路残差输入；dtype 必须与 h_out 一致。 | float16、bfloat16 | [T, N, D] 或 [B, S, N, D] |
 | h_post | Tensor | 必选 | MHC_Post 主分支权重。 | float32 | [T, N] 或 [B, S, N] |
 | h_res | Tensor | 可选 | mHC 的 hRes 变换矩阵，是做完 Sinkhorn 变换后的双随机矩阵；索引顺序为 $[j,n]$。接口预留参数，暂不支持传 None。 | float32 | [T, N, N] 或 [B, S, N, N] |
 | phi | Tensor | 必选 | MHC_Pre 投影矩阵。 | float32 | [N, N*D] |
@@ -138,8 +138,8 @@ cann_ops_transformer.mhc_norm_post_preonly(
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
 | --- | --- | --- | --- | --- | --- |
-| h_in_prime | Tensor | 必选 | RMSNorm_1 FP32 结果转换为输入 dtype 后的下一层输入。 | 同 h_out | [T, D] 或 [B, S, D] |
-| x_2_out | Tensor | 必选 | MHC_Post 以及可选 RMSNorm_mid 后的中间结果。 | 同 h_out | [T, N, D] 或 [B, S, N, D] |
+| h_in_prime | Tensor | 必选 | RMSNorm_1 FP32 结果转换为输入 dtype 后的下一层输入。 | float16、bfloat16 | [T, D] 或 [B, S, D] |
+| x_2_out | Tensor | 必选 | MHC_Post 以及可选 RMSNorm_mid 后的中间结果。 | float16、bfloat16 | [T, N, D] 或 [B, S, N, D] |
 | h_in_f32 | Tensor | 可选 | RMSNorm_1 的 FP32 结果，仅在 return_h_in_f32=True 时返回。 | float32 | [T, D] 或 [B, S, D] |
 | h_pre | Tensor | 可选 | 本轮内部计算的 pre 结果（sigmoid 后的加权系数），可作为下一轮 pre_mix 的输入。不支持非连续。接口预留参数，当前暂不支持输出。 | float32 | [T, N] 或 [B, S, N] |
 
@@ -147,6 +147,7 @@ cann_ops_transformer.mhc_norm_post_preonly(
 
 - 该接口支持单算子模式调用、TorchAir 图模式调用。
 - 仅支持 `N=4`。
+- `D` 仅支持 2560、5120、6144、7168。
 - 主路径 dtype 必须一致：`h_out`、`residual`、`h_in_prime`、`x_2_out` 仅支持 float16 / bfloat16，且类型一致。
 - 输入支持 `[T, D]` 或 `[B, S, D]` 两种前导维形式，且各输入的前导维形式须保持一致。
 - `gamma_0` 为接口预留参数，当前暂不支持传 `None`。
