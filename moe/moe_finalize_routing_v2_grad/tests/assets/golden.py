@@ -92,9 +92,9 @@ class AclnnMoeFinalizeRoutingV2GradTestSpec:
             return [grad_expanded_x.to(grad_y_dtype), grad_scales]
         else:
             scales_dtype = scalesOptional.dtype
-            scales = scalesOptional.reshape(BSK, topK).to(torch.float32)
+            scales = scalesOptional.reshape(N, topK).to(torch.float32)
             grad_expanded_x = torch.zeros((out_rows, H), dtype=torch.float32)
-            grad_scales = torch.zeros((BSK, topK), dtype=torch.float32)
+            grad_scales = torch.zeros((N, topK), dtype=torch.float32)
 
             expanded_x = (
                 expandedXOptional.to(torch.float32)
