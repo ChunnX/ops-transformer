@@ -1,11 +1,9 @@
 # aclnnQuantLightningIndexerV2
 
-[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/attention/quant_lightning_indexer_v2)
-
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：不支持（本分支已移除 arch35/950 实现，仅保留 arch22）
+- <term>Ascend 950PR/Ascend 950DT</term>：不支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
@@ -178,8 +176,7 @@ aclnnStatus aclnnQuantLightningIndexerV2(
       <td>ND</td>
       <td>
           <ul>
-                <li>quantMode为4时，shape为(1,)。</li>
-                <li>其他场景shape与weights保持一致。</li>
+                <li>shape与weights保持一致。</li>
           </ul>
       </td>
       <td>x</td>
@@ -193,8 +190,7 @@ aclnnStatus aclnnQuantLightningIndexerV2(
       <td>ND</td>
       <td>
           <ul>
-                <li>quantMode为4时，shape为(1,)。</li>
-                <li>其他场景下，layout_key为PA_BSND、BSND、TND对应的shape分别为(block_num,block_size,N2)、(B,K_S,N2)、(K_T,N2)。</li>
+                <li>layout_key为PA_BSND、BSND、TND对应的shape分别为(block_num,block_size,N2)、(B,K_S,N2)、(K_T,N2)。</li>
           </ul>
       </td>
       <td>支持0轴非连续</td>
@@ -408,29 +404,14 @@ aclnnStatus aclnnQuantLightningIndexerV2(
       <td>-</td>
     </tr>
     <tr>
-      <td>candidateMode</td>
-      <td>属性</td>
-      <td>两级TopK（two-level topk，先按块粗筛再在块内精筛）第一级开关。</td>
-      <td>
-          <ul>
-                <li>1表示source：输出块级候选索引candidateTopkIndexOut，供aclnnQuantSparseLightningIndexer消费。</li>
-                <li>3表示关闭（默认值）。</li>
-                <li>取值2（consumer）已拆分为独立算子aclnnQuantSparseLightningIndexer，本接口对取值2会报错拒绝。</li>
-                <li>仅在910B/910_93（arch22）上支持。</li>
-          </ul>
-      </td>
-      <td>INT64</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
       <td>candidateTopkBlocks</td>
       <td>属性</td>
-      <td>块级TopK的候选块个数。</td>
+      <td>两级TopK（two-level topk，先按块粗筛再在块内精筛）第一级开关，同时给出候选块个数。</td>
       <td>
           <ul>
-                <li>当前仅支持 -1（关闭，默认）与 2048（开启 source）。</li>
+                <li>-1表示关闭（默认值，现网行为）；2048表示开启第一级（source），输出块级候选索引candidateTopkIndexOut，供aclnnQuantSparseLightningIndexer消费。当前仅支持这两个取值。</li>
+                <li>第二级（consumer，候选块内选token级topk）已拆分为独立算子aclnnQuantSparseLightningIndexer，不再由本接口的属性取值表达（本接口无独立的模式属性）。</li>
+                <li>仅在910B/910_93（arch22）上支持。</li>
           </ul>
       </td>
       <td>INT64</td>
@@ -487,7 +468,7 @@ aclnnStatus aclnnQuantLightningIndexerV2(
       <td>两级TopK第一级的输出：块级候选索引（无序，槽位语义为块号或-1无效槽）。</td>
       <td>
           <ul>
-                <li>candidateMode为1时输出有效值；为3（默认）时输出shape为(0,)的空tensor。</li>
+                <li>candidateTopkBlocks为2048（开启第一级）时输出有效值；为-1（默认，关闭）时输出shape为(0,)的空tensor。</li>
           </ul>
       </td>
       <td>INT32</td>
@@ -498,6 +479,21 @@ aclnnStatus aclnnQuantLightningIndexerV2(
                 <li>layout_query为"TND"时输出shape为[T1, N2, candidateTopkBlocks]。</li>
           </ul>
       </td>
+      <td>x</td>
+    </tr>
+    <tr>
+      <td>candidateBlockLengthOutOptional</td>
+      <td>输出</td>
+      <td>两级TopK第一级的预留输出（候选块长度），恒为空tensor，本期不产出实际值。</td>
+      <td>
+          <ul>
+                <li>与candidateTopkBlocks取值无关，恒输出shape为(0,)的空tensor。</li>
+                <li>为后续接口扩展预留；第二级算子aclnnQuantSparseLightningIndexer的对应输入当前只接受空tensor，传入非空tensor会在其tiling报错。</li>
+          </ul>
+      </td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td>恒为(0,)。</td>
       <td>x</td>
     </tr>
     <tr>
@@ -535,10 +531,10 @@ aclnnStatus aclnnQuantLightningIndexerV2(
   - weights：支持 FLOAT16，不支持 FLOAT32。
   - key 的 N 仅支持 1；query Q_N 与 key 的 N 之比仅支持 64 或 32（即 query Q_N 支持 64 或 32）。
   - topk 仅支持 [1, 2048]。
-  - 两级TopK第一级（`candidateMode`）当前仅在910B/910_93（arch22）上实现：
-    - `candidateMode`仅支持 1（source，输出 `candidateTopkIndexOutOutOptional`）与 3（关闭，默认值）；取值 2（consumer，候选块内选token级topk）已拆分为独立算子 `aclnnQuantSparseLightningIndexer`，本接口对取值 2 会报错拒绝。
-    - `candidateMode` 为 1 时，`layoutQOptional` 支持 BSND 与 TND（TND 需传入 `cuSeqlensQOptional`，且 `layoutKOptional` 必须为 PA_BBND）。
-    - `candidateTopkBlocks` 当前仅支持 -1（关闭，默认）与 2048（开启 source）；`candidateBlockSize` 在关闭时必须为 -1、开启时必须 > 0（当前仅支持 8）。
+  - 两级TopK第一级由 `candidateTopkBlocks` 开关控制（本接口无独立的模式属性），当前仅在910B/910_93（arch22）上实现：
+    - `candidateTopkBlocks` 仅支持 -1（关闭，默认值）与 2048（开启第一级/source，输出 `candidateTopkIndexOutOutOptional`）；`candidateBlockSize` 在关闭时必须为 -1、开启时必须 > 0（当前仅支持 8）。
+    - 开启时 `layoutQOptional` 支持 BSND 与 TND（TND 需传入 `cuSeqlensQOptional`，且 `layoutKOptional` 必须为 PA_BBND）。
+    - 第二级（consumer，候选块内选token级topk）已拆分为独立算子 `aclnnQuantSparseLightningIndexer`：本接口不再有表达它的属性取值，其输入即本接口输出的 `candidateTopkIndexOutOutOptional`。
 <!-- end id11 -->
 
 - **返回值：**
@@ -619,7 +615,6 @@ aclnnStatus aclnnQuantLightningIndexerV2(
 - headdim 支持 128。
 - block_size 取值为 16 的倍数，最大支持 1024。
 - 当 `layout_key` 不为 PA_BSND 时，`layout_query` 和 `layout_key` 必须一致。
-- 当 `quant_mode` 为 3/5 时，`queryDequantScale` 和 `keyDequantScale` 的维数分别比 `query` 和 `key` 多 1，前缀维度保持一致，末两维为(D/64, 2)；D必须为64的倍数，每个scale对应D轴上连续32个逻辑元素。
 - 当传入的参数layout_query为TND时，必须传入cuSeqlensQOptional，如果也传入sequsedQOptional，应保证由sequsedQOptional传入的各个batch的query长度不超过根据cuSeqlensQOptional计算出的各个batch的q序列长度。当某个batch由sequsedQOptional传入的q序列长度seqlen1小于由cuSeqlensQOptional计算出的query长度seqlen2时，会启用TND Padding功能，将该batch的seqlen2与seqlen1差值部分的query输出的sparseIndices和sparseValues全部置为无效值。部分长序列场景下，如果需要填充的无效数据过多，由于硬件限制可能会导致aicore执行超时，可以通过(seqlen2 - seqlen1) * topk来计算需要填充的数据量，建议将这个数据量控制在4亿以内。
 - **确定性说明：** aclnnQuantLightningIndexerV2 默认确定性实现。
 

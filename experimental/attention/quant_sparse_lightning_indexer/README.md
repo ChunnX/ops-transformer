@@ -48,7 +48,7 @@
 | output_idx_offset                    | 可选输入      | 输出索引的偏移量，仅加到`sparse_indices`上；维数比`sparse_indices`少1：BSND为(B,S1,N2)，TND为(T,N2) | INT32       | ND         |
 | candidate_block_length                    | 可选输入      | **预留接口**（N4/O13，本期不消费），仅接受空 tensor；传入非空 tensor 会在 tiling 报错 | INT32       | ND         |
 | metadata                    | 输入（必选）      | QuantLightningIndexerV2Metadata算子传入的分核信息，包含使用核数、分块大小以及每个核处理数据的起始点等内容，**不能为空** | INT32       | ND         |
-| candidate_topk_index                    | 输入（必选）      | 第一级算子QuantLightningIndexerV2在开启 source（`candidate_topk_blocks=2048`）时输出的块级候选索引。元素个数必须等于BSND：B\*S1\*N2\*candidate_topk_blocks；TND：T\*N2\*candidate_topk_blocks（T为`q`第0维）。值域\[0, numBlocks)或-1（无效槽） | INT32       | ND         |
+| candidate_topk_index                    | 输入（必选）      | 第一级算子QuantLightningIndexerV2在开启 source（`candidate_topk_blocks=2048`）时输出的块级候选索引。**末维即候选块个数（当前仅支持 2048，不再是本算子的入参）**；元素个数必须等于BSND：B\*S1\*N2\*末维；TND：T\*N2\*末维（T为`q`第0维）。值域\[0, numBlocks)或-1（无效槽） | INT32       | ND         |
 | topk  | 属性      | 代表topK阶段需要保留的索引数量，默认值2048。 | INT32          | -         |
 | quant_mode                 | 属性      | 用于标识输入的量化模式，本算子**仅支持2**（INT8量化）。def默认值1在本算子非法 | INT32          | -         |
 | max_seqlen_q                 | 可选属性| Query的最大序列长度，默认值-1表示任意可能长度 | INT32 | -         |
@@ -57,7 +57,6 @@
 | mask_mode | 可选属性      | 表示mask的模式，仅支持0（无mask）或3（下三角），默认值0。 | INT32          | -         |
 | cmp_ratio      | 可选属性      | 用于稀疏计算，表示key的压缩倍数，默认值1。 | INT32          | -         |
 | return_value      |  可选属性     | 表示是否输出`sparse_values`，默认值0；910B/910_93上仅支持0（不支持输出value） | INT32          | -         |
-| candidate_topk_blocks      |  可选属性     | 块级TopK的候选块个数，默认值2048；当前仅支持 2048 | INT32          | -         |
 | candidate_block_size      |  可选属性     | 候选块大小（每个块包含的位置数），须 > 0，当前仅支持8 | INT32          | -         |
 | sparse_indices     | 输出      | 参与稀疏attention计算的token索引值。BSND shape为(B,S1,N2,topk)，TND shape为(T,N2,topk) | INT32          | ND         |
 | sparse_values           | 输出      | 与`sparse_indices`对应的value值。910B/910_93上`return_value`固定为0，shape为(0,) | BFLOAT16         | ND          |
@@ -76,8 +75,8 @@
   - `layout_k`仅支持`PA_BBND`，因此`block_table`与`seqused_k`必传，`cu_seqlens_k`不能传入。
   - `layout_q`支持`BSND`与`TND`；为`TND`时必须传入`cu_seqlens_q`，且`layout_k`必须为`PA_BBND`。
 - 候选相关约束：
-  - `candidate_topk_index`为必传输入，数据类型INT32，元素个数必须等于BSND：`B*S1*N2*candidate_topk_blocks`，TND：`T*N2*candidate_topk_blocks`，否则tiling报错。
-  - `candidate_topk_blocks`当前仅支持 2048（累加器、抽取与拷出逻辑均按64对齐设计，且需与第一级输出的候选维度一致）。
+  - `candidate_topk_index`为必传输入，数据类型INT32；**末维即候选块个数（当前仅支持 2048）**，元素个数必须等于BSND：`B*S1*N2*末维`，TND：`T*N2*末维`，否则tiling报错。
+  - 候选块个数不再是本算子入参：tiling 从 `candidate_topk_index` 末维推导并校验（累加器、抽取与拷出逻辑均按64对齐设计，且需与第一级输出的候选维度一致）。
   - `candidate_block_size`须 > 0，当前仅支持8（BlockReduceMax以32B块即8个float32为归约粒度）。
   - `candidate_block_length`为预留接口（N4/O13，本期不消费），仅接受空 tensor，传入非空值会在 tiling 报错。
   - `metadata`为必传输入，不能为空。
@@ -90,9 +89,3 @@
 |----------|----------|------|
 | PyTorch API | [quant_sparse_lightning_indexer.py](torch_extension/quant_sparse_lightning_indexer.py) | 通过`torch.ops.cann_ops_transformer.quant_sparse_lightning_indexer`调用本算子（入参为`candidate_topk_index`，即第一级算子输出的块级候选索引）。图模式暂不支持。 `metadata` 需先用 metadata 算子生成后传入（本扩展不跨算子自动构建）。 |
 | aclnn API | [test_aclnn_quant_sparse_lightning_indexer](examples/test_aclnn_quant_sparse_lightning_indexer.cpp) | 通过[aclnnQuantSparseLightningIndexer](docs/aclnnQuantSparseLightningIndexer.md)两段式接口调用本算子。 |
-
-## 相关文档
-
-- 第一级算子：[QuantLightningIndexerV2](../quant_lightning_indexer_v2/README.md)
-- 分核信息算子：[QuantLightningIndexerV2Metadata](../quant_lightning_indexer_v2_metadata/README.md)
-- 两级TopK设计文档：[qli_v2_two_level_topk_design.md](../quant_lightning_indexer_v2/docs/qli_v2_two_level_topk_design.md)（该文档描述拆分前的单算子设计，其中`candidate_mode`相关章节为历史记录：该属性已删除、开关语义并入`candidate_topk_blocks`，consumer 实现已迁至本算子）

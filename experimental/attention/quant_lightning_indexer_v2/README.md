@@ -1,6 +1,6 @@
 # QuantLightningIndexerV2
 
-本算子是两级 TopK（two-level TopK，先按块粗筛再在块内精筛）方案的**第一级**（source，候选块筛选级）：`candidate_topk_blocks` 取 2048（当前唯一有效值）时开启 source，按块粒度选出候选块并输出块级索引 `candidate_topk_index_out`；取 -1（默认）时关闭，为现网行为。第二级（consumer，在候选块内选 token 级 TopK）已拆分为独立算子 [QuantSparseLightningIndexer](../quant_sparse_lightning_indexer/README.md)。
+本算子是两级 TopK（two-level TopK，先按块粗筛再在块内精筛）方案的**第一级**（source，候选块筛选级）：`candidate_topk_blocks` 取 2048（当前唯一有效值）时开启 source，按块粒度选出候选块并输出块级索引 `candidate_topk_index_out`；取 -1（默认）时关闭，为现网行为。
 
 ## 产品支持情况
 
@@ -78,9 +78,3 @@
 |----------|----------|------|
 | PyTorch API | [quant_lightning_indexer.py](torch_extension/quant_lightning_indexer.py) | 通过`torch.ops.cann_ops_transformer.quant_lightning_indexer`（基础接口）或`torch.ops.cann_ops_transformer.quant_lightning_indexer_candidate`（两级TopK第一级接口，以`candidate_topk_blocks`有效值开启 source）调用本算子。 |
 | aclnn API | [test_aclnn_quant_lightning_indexer_v2](examples/test_aclnn_quant_lightning_indexer_v2.cpp) | 通过[aclnnQuantLightningIndexerV2](docs/aclnnQuantLightningIndexerV2.md)两段式接口调用QuantLightningIndexerV2算子。 |
-
-## 相关文档
-
-- 两级TopK第二级（候选消费级）：[QuantSparseLightningIndexer](../quant_sparse_lightning_indexer/README.md)
-- 分核信息算子：[QuantLightningIndexerV2Metadata](../quant_lightning_indexer_v2_metadata/README.md)
-- 两级TopK设计文档：[qli_v2_two_level_topk_design.md](docs/qli_v2_two_level_topk_design.md)（该文档描述**拆分前**的单算子设计，其中`candidate_mode`相关章节为历史记录：该属性已删除，开关语义并入`candidate_topk_blocks`，consumer 实现已迁至 QuantSparseLightningIndexer）

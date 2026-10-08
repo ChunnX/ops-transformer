@@ -38,7 +38,7 @@ class QuantSparseLightningIndexerOpBuilder(OpBuilder):
             "Tensor? seqused_q=None, Tensor? seqused_k=None, Tensor? cmp_residual_k=None, "
             "Tensor? block_table=None, Tensor? output_idx_offset=None, Tensor? metadata=None, "
             'int max_seqlen_q=-1, str layout_q="BSND", str layout_k="BSND", int mask_mode=0, '
-            "int cmp_ratio=1, int candidate_topk_blocks=2048, "
+            "int cmp_ratio=1, "
             "int candidate_block_size=8) -> (Tensor, Tensor)",
         ]
 
@@ -79,7 +79,6 @@ class QuantSparseLightningIndexerOpBuilder(OpBuilder):
             layout_k="BSND",
             mask_mode=0,
             cmp_ratio=1,
-            candidate_topk_blocks=2048,
             candidate_block_size=8,
         ):
             key_head_num = key.shape[1] if layout_k == "TND" else key.shape[2]
@@ -142,10 +141,10 @@ def quant_sparse_lightning_indexer(
     layout_k="BSND",
     mask_mode=0,
     cmp_ratio=1,
-    candidate_topk_blocks=2048,
     candidate_block_size=8,
 ):
-    """consumer 专属入口: candidate_topk_index 必传, 在候选块内选 topk"""
+    """consumer 专属入口: candidate_topk_index 必传, 在候选块内选 topk
+    (候选块个数由 candidate_topk_index 末维决定, 不再是入参)"""
     op_module = quant_sparse_lightning_indexer_op_builder.load()
     return op_module.quant_sparse_lightning_indexer(
         query,
@@ -170,7 +169,6 @@ def quant_sparse_lightning_indexer(
         layout_k,
         mask_mode,
         cmp_ratio,
-        candidate_topk_blocks,
         candidate_block_size,
     )
 
