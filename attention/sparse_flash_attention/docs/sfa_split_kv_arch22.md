@@ -41,7 +41,7 @@ G64 的归并每次处理至多 16 个 head，流水排空后复用 UB scratch�
 
 ## 验证
 
-2026-10-08 独立分支基于 master `45227fd67`：host UT 35/35 通过，
+2026-10-08 独立分支基于 master `45227fd67`，代码提交 `74db99f57`：host UT 35/35 通过，
 包括 G8/G64、LSE 开关、多 batch、TopK 512–2048 的分核数选择，
 以及既有 shape/dtype 推导测试。
 
@@ -62,6 +62,15 @@ NPU graph。完整索引输出对照独立 FP32 softmax reference，relative L2 
 为 0.02；LSE 通过 `max + log(sum)` 与 reference 比较。Padding 用例仅做
 有限输出和回退 smoke 检查。
 
-单算子包编译和本次独立设备回归正在进行；尚未在该分支重测性能。
+完整单算子包以 CANN 9.1.0 编译成功，安装到隔离 vendor 后，Ascend910B2
+设备回归 **256 passed，0 skipped，0 failure/error**。设备环境为 CANN 9.2.0、
+Python 3.11.10、PyTorch 2.10.0 / torch_npu 2.10.0.post7.dev20260918。
+未替换系统 CANN，也未修改其他运行服务。
+
+包文件 `cann-ops-transformer-sfa_a2_only_20261008_linux-aarch64.run` 的 SHA256 为
+`2c168fb56891a6b18c3fd2955273f9006eba7c27ae2e0457504b4bf3a93aa4e5`，
+已确认本地与设备端一致。仓库 pre-commit 检查通过。
+
+尚未在该分支重测性能。
 原综合优化的 A2 128K/256K AISBench 命中量化 C8 算子，不作为本普通 SFA
 改动的端到端性能数据。
