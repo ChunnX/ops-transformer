@@ -125,8 +125,9 @@ static inline void CheckMoeEpMetadataTensor(const at::Tensor& metadata, const ch
         AlignTo(capacity * MOE_EP_METADATA_FIELDS * elementBytes, MOE_EP_METADATA_ALIGN_BYTES);
     const int64_t localIndexOffset =
         rankOffsetsOffset + AlignTo((epWorldSize + 1) * elementBytes, MOE_EP_METADATA_ALIGN_BYTES);
-    const int64_t elements =
-        (localIndexOffset + AlignTo(routeSlots * elementBytes, MOE_EP_METADATA_ALIGN_BYTES)) / elementBytes;
+    const int64_t elements = (localIndexOffset + AlignTo(routeSlots * elementBytes, MOE_EP_METADATA_ALIGN_BYTES) +
+                              2 * AlignTo(capacity * elementBytes, MOE_EP_METADATA_ALIGN_BYTES)) /
+                             elementBytes;
     TORCH_CHECK(metadata.scalar_type() == at::kInt && metadata.dim() == DIM_ONE, name,
                 " must be a 1D int32 packed tensor");
     TORCH_CHECK(metadata.numel() == static_cast<int64_t>(elements), name, " packed length must be ", elements);
@@ -575,13 +576,13 @@ public:
                         "group may have failed midway, please use a new comm group");
             entry = iter->second;
         }
+        TORCH_CHECK(entry.withGrad == withGrad_ && entry.fetchMode == fetchMode_, "Engram comm context of group '",
+                    contextTag, "' was created with with_grad=", entry.withGrad, ", fetch_mode=", entry.fetchMode,
+                    "; rebuild requires the same with_grad=", withGrad_, " and fetch_mode=", fetchMode_,
+                    ". Use a new comm group for a different mode.");
         bool callerHasBuffer = (numCpuBytes > 0) || (externalHostPtr != nullptr);
         if (!callerHasBuffer) {
             // 仅初始化 ctx(如 engram_barrier 无存储场景)：复用共享池既有状态
-            TORCH_CHECK(!(withGrad_ && entry.fetchMode == ENGRAM_FETCH_MODE_LOCAL), "Engram comm context of group '",
-                        contextTag,
-                        "' was created in local fetch mode and has no cross-NPU channel; a training instance "
-                        "requires channels to fetch remotely, please use a new comm group");
             resources.hostBufPtr = entry.hostBufPtr;
             resources.deviceBufPtr = entry.deviceBufPtr;
             resources.memHandle = entry.memHandle;
@@ -667,10 +668,6 @@ public:
                         "; the shared engram storage is sized by the first ElasticBuffer created on this group, "
                         "destroy and recreate with a larger size is not supported, please use a new comm group");
         }
-        TORCH_CHECK(!(entry.fetchMode == ENGRAM_FETCH_MODE_LOCAL && fetchMode_ == ENGRAM_FETCH_MODE_SLICED),
-                    "Engram comm context of group '", contextTag,
-                    "' was created in local fetch mode and holds no cross-NPU channels; sliced fetch-mode "
-                    "rebuild on this group is not supported, please use a new comm group");
         resources.hostBufPtr = entry.hostBufPtr;
         resources.deviceBufPtr = entry.deviceBufPtr;
         resources.memHandle = entry.memHandle;

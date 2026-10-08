@@ -212,10 +212,11 @@ static ge::graphStatus CheckTensorDim(const gert::TilingContext* context, int64_
             "The shape dim of indices must be 1D."),
         return ge::GRAPH_FAILED);
     numTokens = indicesShape->GetStorageShape().GetDim(0);
-    OP_TILING_CHECK(numTokens < 0,
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "indices",
-                                              (std::string("dim0=") + std::to_string(numTokens)).c_str(), ">= 0"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        numTokens < 0 || numTokens > UINT32_MAX,
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "indices", (std::string("dim0=") + std::to_string(numTokens)).c_str(),
+                                  "[0, UINT32_MAX]"),
+        return ge::GRAPH_FAILED);
     OP_LOGD(nodeName, "indices dim0 (numTokens) = %ld", numTokens);
 
     // output dim check
@@ -493,6 +494,101 @@ static ge::graphStatus CheckAttrs(const gert::TilingContext* context)
     return ge::GRAPH_SUCCESS;
 }
 
+static bool IsSupportedSfDtype(ge::DataType dtype)
+{
+    return dtype == ge::DT_FLOAT || dtype == ge::DT_FLOAT8_E8M0;
+}
+
+static ge::graphStatus CheckSfTensors(const gert::TilingContext* context, bool isTraining, bool isLocalMode,
+                                      int64_t numTokens)
+{
+    const char* nodeName = context->GetNodeName();
+    auto sfTableDesc = context->GetInputDesc(SF_TABLE_INDEX);
+    auto sfTableShape = context->GetInputShape(SF_TABLE_INDEX);
+    auto fetchedSfDesc = context->GetOutputDesc(FETCHED_SF_INDEX);
+    auto fetchedSfShape = context->GetOutputShape(FETCHED_SF_INDEX);
+
+    // A non-2D fetchedSf is the no-SF placeholder. Once a 2D output is supplied,
+    // its input contract must be complete and consistent.
+    if (fetchedSfDesc == nullptr || fetchedSfShape == nullptr ||
+        fetchedSfShape->GetStorageShape().GetDimNum() != DIM_TWO) {
+        return ge::GRAPH_SUCCESS;
+    }
+
+    int64_t fetchedSfDim0 = fetchedSfShape->GetStorageShape().GetDim(0);
+    int64_t fetchedSfDim1 = fetchedSfShape->GetStorageShape().GetDim(1);
+    OP_TILING_CHECK(fetchedSfDim1 <= 0 || !IsSupportedSfDtype(fetchedSfDesc->GetDataType()),
+                    OP_LOGE(nodeName,
+                            "invalid fetchedSf: dim0=%ld, dim1=%ld, dtype=%s; when fetchedSf is 2D, dim1 must be "
+                            "positive and dtype must be DT_FLOAT or DT_FLOAT8_E8M0.",
+                            fetchedSfDim0, fetchedSfDim1, Ops::Base::ToString(fetchedSfDesc->GetDataType()).c_str()),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(fetchedSfDim0 != numTokens,
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        nodeName, "fetchedSf", (std::string("dim0=") + std::to_string(fetchedSfDim0)).c_str(),
+                        (std::string("dim0 must equal numTokens=") + std::to_string(numTokens)).c_str()),
+                    return ge::GRAPH_FAILED);
+
+    if (isTraining) {
+        OP_TILING_CHECK(sfTableDesc == nullptr || sfTableShape == nullptr ||
+                            sfTableShape->GetStorageShape().GetDimNum() != DIM_ONE ||
+                            sfTableShape->GetStorageShape().GetDim(0) != 1 ||
+                            sfTableDesc->GetDataType() != ge::DT_INT64,
+                        OP_LOGE(nodeName, "training sfTable must be a 1-element DT_INT64 device-address tensor when "
+                                          "fetchedSf is provided."),
+                        return ge::GRAPH_FAILED);
+        return ge::GRAPH_SUCCESS;
+    }
+
+    OP_TILING_CHECK(
+        sfTableDesc == nullptr || sfTableShape == nullptr || sfTableShape->GetStorageShape().GetDimNum() != DIM_TWO,
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+            nodeName, "sfTable",
+            (std::to_string(sfTableShape == nullptr ? 0 : sfTableShape->GetStorageShape().GetDimNum()) + "D").c_str(),
+            "The shape dim of inference sfTable must be 2D when fetchedSf is provided."),
+        return ge::GRAPH_FAILED);
+
+    int64_t sfTableDim0 = sfTableShape->GetStorageShape().GetDim(0);
+    int64_t sfTableDim1 = sfTableShape->GetStorageShape().GetDim(1);
+    auto attrs = context->GetAttrs();
+    auto numEntriesPerRankPtr = attrs->GetAttrPointer<int64_t>(ATTR_NUM_ENTRIES_PER_RANK_INDEX);
+    if (isLocalMode) {
+        // Local mode: num_entries_per_rank is the FULL vocab row count and the kernel
+        // gathers SF by that same global index, so sfTable must match exactly.
+        OP_TILING_CHECK(
+            sfTableDim0 != *numEntriesPerRankPtr,
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                nodeName, "sfTable", (std::string("dim0=") + std::to_string(sfTableDim0)).c_str(),
+                (std::string("dim0 must equal num_entries_per_rank=") + std::to_string(*numEntriesPerRankPtr)).c_str()),
+            return ge::GRAPH_FAILED);
+    } else {
+        // Sliced inference gathers SF rows by GLOBAL vocab index on every rank
+        // (remote-owned tokens included), so each rank must supply a whole-shard
+        // multiple of its per-rank table, typically the full vocab. The exact
+        // full-vocab equality is enforced by the Python wrapper, which knows
+        // world_size; the tiling cannot read rankSize from the opaque comm context.
+        OP_TILING_CHECK(*numEntriesPerRankPtr <= 0 || sfTableDim0 <= 0 || sfTableDim0 % *numEntriesPerRankPtr != 0,
+                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                            nodeName, "sfTable", (std::string("dim0=") + std::to_string(sfTableDim0)).c_str(),
+                            (std::string("dim0 must be a positive multiple of num_entries_per_rank=") +
+                             std::to_string(*numEntriesPerRankPtr))
+                                .c_str()),
+                        return ge::GRAPH_FAILED);
+    }
+    OP_TILING_CHECK(sfTableDim1 != fetchedSfDim1,
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        nodeName, "sfTable", (std::string("dim1=") + std::to_string(sfTableDim1)).c_str(),
+                        (std::string("dim1 must equal fetchedSf dim1=") + std::to_string(fetchedSfDim1)).c_str()),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        !IsSupportedSfDtype(sfTableDesc->GetDataType()) || sfTableDesc->GetDataType() != fetchedSfDesc->GetDataType(),
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+            nodeName, "sfTable", Ops::Base::ToString(sfTableDesc->GetDataType()).c_str(),
+            "The dtype of inference sfTable must match fetchedSf and be DT_FLOAT or DT_FLOAT8_E8M0."),
+        return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 /**
  * @brief 设置平台信息
  */
@@ -581,6 +677,13 @@ static ge::graphStatus SetTilingData(const gert::TilingContext* context, EngramF
         }
         ge::DataType sfDtype = fetchedSfDesc->GetDataType();
         tilingData.sfElemSize = ge::GetSizeByDataType(sfDtype);
+    }
+    if (tilingData.numSfPacks != 0) {
+        OP_TILING_CHECK(tilingData.numSfPacks < 0 || tilingData.sfElemSize <= 0 ||
+                            tilingData.numSfPacks > INT64_MAX / tilingData.sfElemSize,
+                        OP_LOGE(nodeName, "invalid sf row size: numSfPacks=%ld, sfElemSize=%ld", tilingData.numSfPacks,
+                                tilingData.sfElemSize),
+                        return ge::GRAPH_FAILED);
     }
 
     auto platformInfo = context->GetPlatformInfo();
@@ -799,7 +902,11 @@ static ge::graphStatus EngramFetchTilingFunc(gert::TilingContext* context)
     OP_TILING_CHECK(CheckAttrs(context) != ge::GRAPH_SUCCESS, OP_LOGE(nodeName, "check attrs failed."),
                     return ge::GRAPH_FAILED);
 
-    // 2.1 training params check
+    // 2.1 SF tensor contract check
+    OP_TILING_CHECK(CheckSfTensors(context, isTraining, isLocalMode, numTokens) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(nodeName, "check sf tensors failed."), return ge::GRAPH_FAILED);
+
+    // 2.2 training params check
     if (isTraining) {
         OP_TILING_CHECK(CheckTrainingParams(context, numTokens) != ge::GRAPH_SUCCESS,
                         OP_LOGE(nodeName, "check training params failed."), return ge::GRAPH_FAILED);
