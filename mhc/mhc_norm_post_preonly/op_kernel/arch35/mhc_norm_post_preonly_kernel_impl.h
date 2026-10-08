@@ -677,7 +677,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     if (D_ > GAMMA1_CACHE_MAX_D) {
         return;
     }
-    LocalTensor<float> gamma1 = bufGamma2Fp32_.Get<float>();
+    LocalTensor<float> gamma1 = bufGamma0Fp32_.Get<float>();
     DataCopyExtParams params = {1, 0, 0, 0, 0};
     params.blockLen = D_ * sizeof(float);
     DataCopyPadExtParams<float> pad = {false, 0, 0, 0};

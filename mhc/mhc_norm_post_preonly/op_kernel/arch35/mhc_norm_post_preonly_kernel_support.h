@@ -552,6 +552,8 @@ __aicore__ inline void ComputePostHeadPair(const LocalTensor<T> &dst0, const Loc
 }
 
 // R6在一个VF内完成四路低精度读取、FP32转换和门控累加，不生成四行FP32中间张量。
+// 四个gate权重对整个D循环不变，外提到循环外广播一次，循环内显式展开四路累加，
+// 避免每轮重复广播（参考mhc_pre::VFDoV1ProcessHInRows）。
 template <typename T>
 __aicore__ inline void GateWeightedSum(const LocalTensor<float> &dst, const LocalTensor<T> &src, uint32_t headStride,
                                        const LocalTensor<float> &gate, uint32_t count)
@@ -564,23 +566,29 @@ __aicore__ inline void GateWeightedSum(const LocalTensor<float> &dst, const Loca
     __VEC_SCOPE__
     {
         RegTensor<T> srcReg;
-        RegTensor<float> srcFp32Reg, weightReg, accReg;
+        RegTensor<float> srcFp32Reg, accReg;
+        RegTensor<float> g0Reg, g1Reg, g2Reg, g3Reg;
         MaskReg mask;
+        // 四个gate权重只依赖head，对整个D循环不变，广播一次。
+        DataCopy<float, LoadDist::DIST_BRC_B32>(g0Reg, gateAddr + 0U);
+        DataCopy<float, LoadDist::DIST_BRC_B32>(g1Reg, gateAddr + 1U);
+        DataCopy<float, LoadDist::DIST_BRC_B32>(g2Reg, gateAddr + 2U);
+        DataCopy<float, LoadDist::DIST_BRC_B32>(g3Reg, gateAddr + 3U);
         for (uint16_t i = 0; i < loops; ++i) {
             mask = UpdateMask<float>(remain);
             const uint32_t offset = static_cast<uint32_t>(i) * VL_FP32;
-            // TODO：组合优化稳定后，单独评估固定四路循环展开，避免混入本轮性能结论。
-            for (uint16_t n = 0; n < static_cast<uint16_t>(N_MAX); ++n) {
-                const uint32_t head = static_cast<uint32_t>(n);
-                DataCopy<T, LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + head * headStride + offset);
-                Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
-                DataCopy<float, LoadDist::DIST_BRC_B32>(weightReg, gateAddr + head);
-                if (n == 0U) {
-                    AscendC::Reg::Mul(accReg, srcFp32Reg, weightReg, mask);
-                } else {
-                    AscendC::Reg::MulAddDst(accReg, srcFp32Reg, weightReg, mask);
-                }
-            }
+            DataCopy<T, LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + 0U * headStride + offset);
+            Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
+            AscendC::Reg::Mul(accReg, srcFp32Reg, g0Reg, mask);
+            DataCopy<T, LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + 1U * headStride + offset);
+            Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
+            AscendC::Reg::MulAddDst(accReg, srcFp32Reg, g1Reg, mask);
+            DataCopy<T, LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + 2U * headStride + offset);
+            Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
+            AscendC::Reg::MulAddDst(accReg, srcFp32Reg, g2Reg, mask);
+            DataCopy<T, LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + 3U * headStride + offset);
+            Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
+            AscendC::Reg::MulAddDst(accReg, srcFp32Reg, g3Reg, mask);
             DataCopy(dstAddr + offset, accReg, mask);
         }
     }

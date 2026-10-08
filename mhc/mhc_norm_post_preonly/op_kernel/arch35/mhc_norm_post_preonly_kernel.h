@@ -83,7 +83,8 @@ __aicore__ inline void CacheHOut(uint64_t gmOffset);
 /// 每个token一次搬运完整gamma0，与h_out和权重共用初始全流水等待。
 __aicore__ inline void CacheGamma0();
 
-/// R6归约完成后发起完整gamma1搬运，与invRms1标量计算重叠。
+/// 提前发起完整gamma1搬运到bufGamma0Fp32_，使MTE2与R6的Vector计算重叠。
+/// bufGamma0Fp32_在R3完成后即空闲，R6的平方缓存bufGamma2Fp32_不受影响。
 __aicore__ inline void StartCacheGamma1();
 
 /// R7读取完整gamma1前回收MTE2到Vector事件。
