@@ -350,8 +350,8 @@ __simd_vf__ inline void SinkMergeStableBlockVF(__ubuf__ T *sumUb, __ubuf__ T *ma
                                                __ubuf__ T *sinkUb, uint32_t offset, uint32_t validCount)
 {
     // newSum = oldSum * exp(oldMax - newMax) + exp(sink - newMax).
-    // Vec2 normalizes the KV numerator with the merged sum; only the max
-    // reference used by the precomputed KV probabilities needs correction.
+    // FlashUpdateLast divides the KV numerator by the merged sum.  The
+    // post-update scale only shifts that numerator from oldMax to newMax.
     RegTensor<T> sinkReg;
     RegTensor<T> sumReg;
     RegTensor<T> maxReg;
