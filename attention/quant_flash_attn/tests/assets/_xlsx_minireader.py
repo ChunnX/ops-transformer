@@ -65,6 +65,8 @@ def _cell_text(cell, shared_strings):
     """
     t = cell.getAttribute("t")
     v_els = cell.getElementsByTagName("v")
+    if v_els and v_els[0].firstChild is None:
+        return None
     if t == "s" and v_els:
         idx = int(v_els[0].firstChild.data)
         return shared_strings[idx]
