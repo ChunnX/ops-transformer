@@ -38,6 +38,7 @@
 #endif
 
 namespace optiling {
+namespace {
 
 // INPUT
 constexpr uint32_t TOKEN_X_INPUT_INDEX = 0;
@@ -198,7 +199,6 @@ enum class TemplateId : uint8_t {
     FULL_LOAD = 2
 };
 
-CMP_EXTERN_C ge::graphStatus TilingQuantCompressor(gert::TilingContext *context);
 struct QuantCompressorBaseShapeInfo {
     uint32_t bSize = 0;    // B
     uint32_t sSize = 0;    // S
@@ -369,6 +369,9 @@ private:
     QuantCompressorWorkspaceParams *workspaceParams_ = nullptr;
 };
 
+} // namespace
+
+CMP_EXTERN_C ge::graphStatus TilingQuantCompressorArch35(gert::TilingContext *context);
 } // namespace optiling
 
 #endif

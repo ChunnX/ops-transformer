@@ -649,6 +649,11 @@ ge::graphStatus ScatterPaKvCacheMembaseTiling::DoNoCompressOpTiling()
 
 ge::graphStatus ScatterPaKvCacheMembaseTiling::DoCompressAlibiOpTiling()
 {
+    bool isAlign =
+        ((params_.kHeadSize * params_.typeByteK) % ALIGN == 0 && (params_.vHeadSize * params_.typeByteV) % ALIGN == 0);
+    OP_CHECK_IF((!isAlign), OP_LOGE(context_, "kHeadSize and vHeadSize should be align to 32."),
+                return ge::GRAPH_FAILED);
+
     params_.usedCoreNum = params_.numTokens < params_.usedCoreNum ? params_.numTokens : params_.usedCoreNum;
 
     params_.tilingKey = TILING_ID_TEMPLATE * params_.templateType;
@@ -657,6 +662,11 @@ ge::graphStatus ScatterPaKvCacheMembaseTiling::DoCompressAlibiOpTiling()
 
 ge::graphStatus ScatterPaKvCacheMembaseTiling::DoCompressRopeAndOmniOpTiling()
 {
+    bool isAlign =
+        ((params_.kHeadSize * params_.typeByteK) % ALIGN == 0 && (params_.vHeadSize * params_.typeByteV) % ALIGN == 0);
+    OP_CHECK_IF((!isAlign), OP_LOGE(context_, "kHeadSize and vHeadSize should be align to 32."),
+                return ge::GRAPH_FAILED);
+
     params_.usedCoreNum = params_.numTokens * TASK_MULTIPLE <= params_.usedCoreNum ? params_.numTokens * TASK_MULTIPLE :
                                                                                      params_.usedCoreNum;
     params_.tilingKey = TILING_ID_TEMPLATE * params_.templateType;

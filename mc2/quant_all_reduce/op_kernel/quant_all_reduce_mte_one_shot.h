@@ -189,7 +189,7 @@ __aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::ComputeBlockDistr
     uint64_t blockIdx = aivId * round_ + (aivId < tailBlockNums_ ? aivId : tailBlockNums_);
     xOffset_ = blockIdx * xPerBlock_;
     scaleOffset_ = blockIdx * scaleNumsPerBlock_;
-    tailXNums_ = BlockAlignMod(xNums_, xPerBlock_);
+    tailXNums_ = static_cast<uint32_t>(BlockAlignMod(xNums_, xPerBlock_));
 }
 
 // 初始化 vecComp、mteComm 子模块参数并分配其 UB buffer，绑定 GM Tensor
@@ -283,7 +283,7 @@ __aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::ExecuteAllReduce(
             // 读取对端对应地址的 x 和 scale数据，进行反量化和求和
             ReadDataBlockReduceSum(currXOffset, currScaleOffset, currXNum, currScaleNum);
         }
-
+        PipeBarrier<PIPE_V>();
         // 将计算好的数据拷贝到输出tensor
         mteComm_.CopyResultToOutput(currXOffset, sumTensor_, currXNum);
     }

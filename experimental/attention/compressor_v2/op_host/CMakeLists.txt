@@ -29,6 +29,7 @@ if (NOT BUILD_OPS_RTY_KERNEL)
 
     target_sources(${OPHOST_NAME}_tiling_obj PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/compressor_v2_tiling_register.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/arch22/compressor_tiling.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/arch35/compressor_tiling.cpp
     )
 endif()

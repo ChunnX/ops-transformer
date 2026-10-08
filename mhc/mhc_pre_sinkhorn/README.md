@@ -4,16 +4,16 @@
 
 | 产品                                                     | 是否支持 |
 | :------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                   |    √    |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> |    √    |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √    |
-| <term>Atlas 200I/500 A2 推理产品</term>                  |    ×    |
-| <term>Atlas 推理系列产品</term>                          |    ×    |
-| <term>Atlas 训练系列产品</term>                          |    ×    |
+| <term>Ascend 950PR&950DT系列产品</term>                   |    √    |
+| <term>Atlas A3系列产品</term> |    √    |
+| <term>Atlas A2系列产品</term> |    √    |
+| <term>Atlas 200I/500 A2推理产品</term>                  |    ×    |
+| <term>Atlas推理系列产品</term>                          |    ×    |
+| <term>Atlas训练系列产品</term>                          |    ×    |
 
 ## 功能说明
 
-- **算子功能**：基于一系列计算得到MHC架构中hidden层的$\mathbf{H}'_{\text{res}}$和$\mathbf{H}_{\text{post}}$投影矩阵以及Attention或MLP层的输入矩阵$\mathbf{h}_{\text{in}}$。对$\mathbf{H}'_{\text{res}}$矩阵执行Sinkhorn迭代归一化变换，最终得到双随机矩阵$\mathbf{H}_{\text{res}}$；支持输出中间计算结果，用于反向梯度计算。包括sigmoid计算之后的$\mathbf{H^{pre}_l}$矩阵、$\vec{x^{'}_{l}}$与$\mathbf{\varphi}$矩阵乘的结果，输入x的RmsNorm结果$\mathbf{\vec{x^{'}_{l}}}$、迭代过程中的中间归一化结果和$\mathbf{normOut}$和求和结果$\mathbf{sumOut}$。
+- **算子功能**：基于一系列计算得到MHC架构中hidden层的$\mathbf{H}'_{\text{res}}$和$\mathbf{H}_{\text{post}}$投影矩阵以及Attention或MLP层的输入矩阵$\mathbf{h}_{\text{in}}$。对$\mathbf{H}'_{\text{res}}$矩阵执行Sinkhorn迭代归一化变换，最终得到双随机矩阵$\mathbf{H}_{\text{res}}$；支持输出中间计算结果，用于反向梯度计算。包括sigmoid计算之后的$\mathbf{H^{pre}_l}$矩阵、$\vec{x^{'}_{l}}$与$\mathbf{\varphi}$矩阵乘的结果，输入x的RmsNorm结果$\mathbf{\vec{x^{'}_{l}}}$、迭代过程中的中间归一化结果和$\mathbf{normOut}$和求和结果$\mathbf{sumOut}$。其中，该算子在Cube中使用的计算模式为HF32。
 
 - **计算公式**：
 
@@ -202,10 +202,10 @@
 - n目前支持4。
 - numIters目前仅支持20。
 
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+- <term>Atlas A2系列产品</term>、<term>Atlas A3系列产品</term>：
   - 输入x仅支持4维BSND格式，shape为(bs, seq_len, n, c)。
   - 输入x的最后一维c需满足128对齐，且取值范围为[1, 100000]。
-- <term>Ascend 950PR/Ascend 950DT</term>：
+- <term>Ascend 950PR&950DT系列产品</term>：
   - 输入x支持4维BSND格式和3维TND格式，shape分别为(bs, seq_len, n, c)和(t, n, c)。
   - TND格式下，t表示所有Batch序列长度的累加和。
   - 输入x的最后一维c仅支持4096、7168。

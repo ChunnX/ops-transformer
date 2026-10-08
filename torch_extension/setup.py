@@ -11,12 +11,8 @@
 import os
 import shutil
 import glob
+import re
 import logging
-import ast
-import importlib
-import sys
-import tempfile
-from dataclasses import dataclass
 from setuptools import setup, find_packages
 from setuptools import Command
 from setuptools.command.build_py import build_py as _build_py
@@ -46,6 +42,9 @@ _selected_ops = (
 )
 
 _vendor_env = os.environ.get("TORCH_EXTENSION_VENDOR", "").strip()
+
+_experimental_env = os.environ.get("TORCH_EXTENSION_EXPERIMENTAL", "").strip()
+_enable_experimental = _experimental_env.upper() == "TRUE"
 
 if _selected_ops:
     PACKAGE_NAME = "%s_%s" % (BASE_PACKAGE_NAME, _vendor_env or "custom")
@@ -81,7 +80,7 @@ def _non_python_files(directory):
             if (
                 len(parts) >= 2
                 and parts[0] in ("ops", "csrc")
-                and parts[1] not in _selected_ops
+                and parts[1] not in _collection_names
             ):
                 continue
         for filename in filenames:
@@ -103,80 +102,19 @@ for _subdir in ("csrc", "common"):
 _op_category_inits = {}
 _op_py_files = []
 _op_cpp_files = []
-_op_cannbotdsl_builds = []
-_cannbotdsl_build = "build_cannbotdsl" in sys.argv
+_op_locations = {}
 
 
-@dataclass(frozen=True)
-class _NativeBuildTask:
-    kernel_file: str
-    destination: str
-    frontend: str
-    aicpu_function: str | None = None
+def _collect_op(op_cat, op_dir, op_te_dir, exported=True):
+    if exported:
+        _selected_op_categories.append((op_cat, op_dir))
 
-
-def _decorated_functions(declarations, decorator):
-    for node in declarations:
-        if isinstance(node, ast.FunctionDef):
-            for mark in node.decorator_list:
-                if isinstance(mark, ast.Call):
-                    mark = mark.func
-                if isinstance(mark, ast.Name) and mark.id == decorator:
-                    yield node.name
-
-
-def _build_cannbotdsl(task, output, target):
-    operator = os.path.splitext(os.path.basename(task.kernel_file))[0]
-    if task.frontend == "aicpu":
-        from cannbotdsl.aicpu.toolchain import compile_aicpu_kernel
-
-        module_name = os.path.relpath(task.kernel_file, OPS_TRANSFORMER_ROOT)[:-3].replace(os.sep, ".")
-        kernel = getattr(importlib.import_module(module_name), task.aicpu_function)
-        os.makedirs(output, exist_ok=False)
-        with tempfile.TemporaryDirectory(prefix="cannbotdsl_aicpu_") as workdir:
-            compiled = compile_aicpu_kernel(kernel, workdir=workdir,
-                                           launch_mode="interface", npu_arch=target)
-            shutil.copy2(compiled.so_path, os.path.join(output, operator + ".so"))
-    else:
-        from cannbotdsl.package.native import build
-
-        category = os.path.dirname(os.path.dirname(os.path.dirname(task.kernel_file)))
-        build(collectors=category, operators=[operator], pattern=os.path.basename(task.kernel_file),
-              target=target, output=output)
-
-
-def _collect_op(op_cat, op_dir, te_dir):
-    # Discover the DSL declarations; export policy belongs to the framework build.
-    kernel_dir = os.path.join(os.path.dirname(te_dir), "op_kernel")
-    kernel_file = os.path.join(kernel_dir, op_dir + ".py")
-    if os.path.isfile(kernel_file):
-        with open(kernel_file) as stream:
-            declarations = ast.parse(stream.read()).body
-        aicpu_functions = list(_decorated_functions(declarations, "aicpu_kernel"))
-        has_provider = any(_decorated_functions(declarations, "register"))
-        if aicpu_functions or has_provider:
-            # Native resources are installed directly by CMake, not in the legacy wheel.
-            if not _cannbotdsl_build:
-                return
-            destination = os.path.join("ops", op_cat, op_dir)
-            if len(aicpu_functions) > 1:
-                raise ValueError(f"Expected one public AICPU kernel in {kernel_file}")
-            _op_cannbotdsl_builds.append(_NativeBuildTask(
-                kernel_file, destination,
-                "aicpu" if aicpu_functions else "provider",
-                aicpu_functions[0] if aicpu_functions else None))
-            for filename in sorted(os.listdir(kernel_dir)):
-                if filename.endswith(".py"):
-                    _op_py_files.append((os.path.join(destination, "op_kernel", filename),
-                                         os.path.join(kernel_dir, filename)))
-
-    _selected_op_categories.append((op_cat, op_dir))
-    for f in sorted(os.listdir(te_dir)):
+    for f in sorted(os.listdir(op_te_dir)):
         if f.endswith(".py"):
-            f_src = os.path.join(te_dir, f)
+            f_src = os.path.join(op_te_dir, f)
             _op_py_files.append((os.path.join("ops", op_cat, op_dir, f), f_src))
 
-    csrc_dir = os.path.join(te_dir, "csrc")
+    csrc_dir = os.path.join(op_te_dir, "csrc")
     if os.path.isdir(csrc_dir):
         for cpp in sorted(os.listdir(csrc_dir)):
             if cpp.endswith(".cpp"):
@@ -185,9 +123,16 @@ def _collect_op(op_cat, op_dir, te_dir):
                 )
 
 
+# 第一遍：登记全部候选算子位置（依赖闭包解析需要全量目录表）
 for cat in sorted(os.listdir(OPS_TRANSFORMER_ROOT)):
     cat_path = os.path.join(OPS_TRANSFORMER_ROOT, cat)
     if not os.path.isdir(cat_path) or cat.startswith((".", "_")):
+        continue
+
+    is_experimental = cat == "experimental"
+    if is_experimental and not _enable_experimental:
+        continue
+    if not is_experimental and _enable_experimental:
         continue
 
     cat_init_src = os.path.join(cat_path, "__init__.py")
@@ -200,20 +145,78 @@ for cat in sorted(os.listdir(OPS_TRANSFORMER_ROOT)):
         # 2-level: <cat>/<name>/torch_extension  (e.g. attention/flash_attn)
         torch_extension = os.path.join(sub_path, "torch_extension")
         if os.path.isdir(torch_extension):
-            if _selected_ops is not None and name not in _selected_ops:
-                continue
-            _collect_op(cat, name, torch_extension)
+            _op_locations[(cat, name)] = torch_extension
             continue
 
         # 3-level: <cat>/<subcat>/<op>/torch_extension  (e.g. experimental/attention/<op>)
         if not os.path.isdir(sub_path):
             continue
         for op_name in sorted(os.listdir(sub_path)):
-            if _selected_ops is not None and op_name not in _selected_ops:
-                continue
             torch_extension = os.path.join(sub_path, op_name, "torch_extension")
             if os.path.isdir(torch_extension):
-                _collect_op(name, op_name, torch_extension)
+                _op_locations[(name, op_name)] = torch_extension
+
+
+# 第二遍：依赖闭包解析。被选算子内 `from ..X` 引用到的兄弟模块（如 mc2/common）会一并收集，
+# 但只收集不导出（不进 entry_points、不写进 ops/<cat>/__init__.py）。
+_SIBLING_IMPORT_RE = re.compile(r"from \.\.+([a-zA-Z_][a-zA-Z0-9_]*)")
+
+
+def _scan_sibling_deps(op_te_dir):
+    deps = []
+    for root_dir, _, filenames in os.walk(op_te_dir):
+        for filename in filenames:
+            if not filename.endswith(".py"):
+                continue
+            path = os.path.join(root_dir, filename)
+            try:
+                with open(path, "r", errors="ignore") as fh:
+                    text = fh.read()
+            except OSError:
+                continue
+            for match in _SIBLING_IMPORT_RE.finditer(text):
+                deps.append(match.group(1))
+    return deps
+
+
+def _resolve_required_ops(selected_pairs):
+    required = set(selected_pairs)
+    queue = list(selected_pairs)
+    while queue:
+        cur_cat, cur_op = queue.pop()
+        op_te_dir = _op_locations.get((cur_cat, cur_op))
+        if not op_te_dir:
+            continue
+        for dep_name in _scan_sibling_deps(op_te_dir):
+            dep_pair = (cur_cat, dep_name)
+            if dep_pair in _op_locations and dep_pair not in required:
+                required.add(dep_pair)
+                queue.append(dep_pair)
+    return required
+
+
+if _selected_ops is not None:
+    _selected_pairs = frozenset(
+        (cat, op) for (cat, op) in _op_locations if op in _selected_ops
+    )
+    _collected_pairs = _resolve_required_ops(_selected_pairs)
+else:
+    _selected_pairs = None
+    _collected_pairs = frozenset(_op_locations.keys())
+
+_collection_names = frozenset(op for _, op in _collected_pairs)
+
+for (cat, op_name), te_dir in _op_locations.items():
+    if _selected_ops is not None and (cat, op_name) not in _collected_pairs:
+        continue
+    _collect_op(
+        cat,
+        op_name,
+        te_dir,
+        exported=(cat, op_name) in _selected_pairs
+        if _selected_pairs is not None
+        else True,
+    )
 
 
 _sorted_selected_op_categories = sorted(set(_selected_op_categories))
@@ -250,9 +253,7 @@ class Clean(Command):
 
 class BuildPyWithOps(_build_py):
     def run(self):
-        # CMake owns the Native staging directory; preserve the legacy wheel in dist.
-        if not _cannbotdsl_build:
-            _clean_build_artifacts()
+        _clean_build_artifacts()
         super().run()
         build_pkg = os.path.join(self.build_lib, PACKAGE_NAME)
         if _selected_ops is not None:
@@ -265,7 +266,7 @@ class BuildPyWithOps(_build_py):
                     if not os.path.isdir(cat_dir):
                         continue
                     for sub_op in os.listdir(cat_dir):
-                        if sub_op not in _selected_ops and sub_op != "__pycache__":
+                        if sub_op not in _collection_names and sub_op != "__pycache__":
                             target = os.path.join(cat_dir, sub_op)
                             if os.path.isdir(target):
                                 shutil.rmtree(target)
@@ -285,7 +286,7 @@ class BuildPyWithOps(_build_py):
                 os.makedirs(os.path.dirname(dst), exist_ok=True)
                 with open(dst, "w") as f:
                     for sel_op in sel_ops:
-                        f.write("from .%s import %s\n" % (sel_op, sel_op))
+                        f.write("from .%s import *\n" % sel_op)
         else:
             for category, init_src in _op_category_inits.items():
                 dst = os.path.join(build_pkg, "ops", category, "__init__.py")
@@ -313,14 +314,6 @@ class BuildPyWithOps(_build_py):
             dst = os.path.join(build_pkg, rel_path)
             os.makedirs(os.path.dirname(dst), exist_ok=True)
             shutil.copy2(src_abs, dst)
-        if _op_cannbotdsl_builds:
-            sys.path.insert(0, OPS_TRANSFORMER_ROOT)
-            try:
-                target = os.environ.get("CANNBOTDSL_NPU_ARCH", "dav-3510")
-                for task in _op_cannbotdsl_builds:
-                    _build_cannbotdsl(task, os.path.join(build_pkg, task.destination, "_native"), target)
-            finally:
-                sys.path.remove(OPS_TRANSFORMER_ROOT)
         common_src_dir = os.path.join(_src_path, "common")
         if os.path.isdir(common_src_dir):
             for root_dir, _, filenames in os.walk(common_src_dir):
@@ -377,7 +370,6 @@ else:
 
 _cmdclass = {
     "build_py": BuildPyWithOps,
-    "build_cannbotdsl": BuildPyWithOps,
     "sdist": SdistWithClean,
     "clean": Clean,
 }
@@ -391,7 +383,7 @@ setup(
     description=DESCRIPTION,
     author="CANN",
     license="CANN Open Software License Agreement Version 2.0",
-    url="https://gitcode.com/cann/ops-transformer/tree/master/torch_extension",
+    url="https://atomgit.com/cann/ops-transformer/tree/master/torch_extension",
     install_requires=["torch>=2.6.0", "torch_npu"],
     packages=_all_packages,
     package_data={PACKAGE_NAME: _non_python_files(_src_path)},

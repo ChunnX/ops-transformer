@@ -40,8 +40,12 @@ TILING_DATA_FIELD_DEF(int64_t, s2_outer)
 TILING_DATA_FIELD_DEF(int64_t, s1_tail)
 TILING_DATA_FIELD_DEF(int64_t, s2_tail)
 TILING_DATA_FIELD_DEF(float, softmax_scale)
-TILING_DATA_FIELD_DEF(bool, has_seq_used_q)
-TILING_DATA_FIELD_DEF(bool, has_seq_used_k)
+// 说明: tilingdata 的实际内存布局由 op_kernel/quant_flash_attn_grad.py 的
+// QuantFlashAttnGradTiling dataclass 生成 (构建时 force-include
+// QuantFlashAttnGradTiling_tiling.h), 此处的字段列表只用于向框架注册并预留空间。
+// has_seq_used_q / has_seq_used_kv 已改为编译期 tilingkey, 这两个字段仅保留占位。
+TILING_DATA_FIELD_DEF(bool, has_seq_used_q_reserved)
+TILING_DATA_FIELD_DEF(bool, has_seq_used_k_reserved)
 
 TILING_DATA_FIELD_DEF(int64_t, dq_work_space_offset)
 TILING_DATA_FIELD_DEF(int64_t, dk_work_space_offset)
@@ -83,6 +87,10 @@ TILING_DATA_FIELD_DEF(int64_t, v_post_block_factor)
 TILING_DATA_FIELD_DEF(int64_t, v_post_block_total)
 TILING_DATA_FIELD_DEF(int64_t, v_post_base_num)
 TILING_DATA_FIELD_DEF(int64_t, v_post_tail_num)
+TILING_DATA_FIELD_DEF(int64_t, deter_max_round)
+TILING_DATA_FIELD_DEF(int64_t, mask_mode)
+TILING_DATA_FIELD_DEF(int64_t, s1_token)
+TILING_DATA_FIELD_DEF(int64_t, s2_token)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(QuantFlashAttnGrad, QuantFlashAttnGradTilingData)
 

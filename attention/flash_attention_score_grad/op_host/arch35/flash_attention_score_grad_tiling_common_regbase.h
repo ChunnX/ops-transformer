@@ -565,8 +565,8 @@ inline std::vector<T> SliceVector(const std::vector<T> &arr, const int64_t step)
     }
 
     std::vector<T> result;
-    for (auto it = arr.begin(); it < arr.end(); it += step) {
-        result.push_back(*it);
+    for (size_t i = 0; i < arr.size(); i += static_cast<size_t>(step)) {
+        result.push_back(arr[i]);
     }
     return result;
 }

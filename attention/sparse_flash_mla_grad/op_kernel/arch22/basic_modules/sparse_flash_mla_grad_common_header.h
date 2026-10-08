@@ -27,7 +27,13 @@ namespace SMLAG_BASIC {
 #define SMLAG_SCFA_MODE 2
 
 constexpr static uint64_t MAX_CORE_NUM = 24;
-
+// SCFA deter mm4/mm5 scatter staging：2 面 ping-pong（对齐 SFAG，非三缓冲）
+constexpr static uint64_t SCFA_SCATTER_DB_NUM = 2;
+// AccMeta：每 cube 8x int64（64B 对齐），供全 AIV 均分 Acc 时广播 pending RunInfo
+// 字段: valid, selCnt, outOffset, isOri, dbIdx, rsv[3]
+constexpr static uint64_t DETER_ACC_META_FIELDS = 8;
+constexpr static uint64_t DETER_ACC_META_BYTES =
+    ((MAX_CORE_NUM * DETER_ACC_META_FIELDS * sizeof(int64_t) + 511) / 512) * 512;
 #define SET_FLAG(trigger, waiter, e) AscendC::SetFlag<AscendC::HardEvent::trigger##_##waiter>((e))
 #define WAIT_FLAG(trigger, waiter, e) AscendC::WaitFlag<AscendC::HardEvent::trigger##_##waiter>((e))
 #define PIPE_BARRIER(pipe) AscendC::PipeBarrier<pipe>()
@@ -37,14 +43,23 @@ constexpr static uint64_t MAX_CORE_NUM = 24;
 /////////////////////////////////////////////////////
 
 template <class TILING_CLASS, typename T1, const bool IS_BSND = false, const uint32_t MODE = SMLAG_SCFA_MODE,
-          const bool HAS_SEQUSED = false, typename... Args>
+          const bool HAS_SEQUSED = false, const bool IS_DETER = false, typename... Args>
 struct SMLAG_TYPE {
     using tiling_class = TILING_CLASS;
     using t1 = T1;
     static constexpr bool is_bsnd = IS_BSND;
     static constexpr uint32_t mode = MODE;
     static constexpr bool has_seqused = HAS_SEQUSED;
+    static constexpr bool is_deter = IS_DETER;
 };
+
+// Deterministic sync flags (AIV-AIV mode=0 / mode=1)
+// 与 sfag_basic DETER_KV_SYNC_FLAG(7, mode2) 错开，避免同 id 不同 mode 冲突
+constexpr uint32_t DETER_SCATTER_VEC_SYNC_FLAG = 10;
+constexpr uint32_t DETER_CMP_L1_SYNC_FLAG = 8;
+// AccumulateKvDeter：入口 mode0（等 AccMeta Publish）后按全局 S2 列并行 Acc；
+// 各 AIV 独占 globalRow%totalVec，core 贡献按 core0..N-1 固定序累加；出口再 mode0
+constexpr uint32_t DETER_ACC_VEC_SYNC_FLAG = 9;
 
 struct RunInfo {
     int64_t task;
@@ -63,6 +78,8 @@ struct RunInfo {
     int64_t dqOutGmOffset;
     int64_t actualSelCntOffset;
     int64_t scatterTaskId;
+    int64_t s1Round{0};    // processBS1 轮次 i，供全局 ScatterAddDeter 解析各 core 的 S1
+    int64_t roundDbIdx{0}; // SCFA scatter staging face：s1Round & 1（2-buffer）
     int64_t s1Index;
     int64_t actualSelectedBlockCount;
     int64_t changeS1 = false;
