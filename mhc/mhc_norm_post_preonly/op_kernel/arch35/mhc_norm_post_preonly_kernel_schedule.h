@@ -118,15 +118,18 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
 
     LocalTensor<float> midBuf = bufScalar_.Get<float>();
+    for (uint32_t i = 1U; i < PARTIAL_SLOT_ELEMS; ++i) {
+        midBuf.SetValue(i, 0.0f);
+    }
     midBuf.SetValue(0, midSqHalf[siblingAivIdx_]);
-    // 32B槽的其余元素不会被sibling读取，无需在关键同步路径上做Scalar清零。
     SetFlag<HardEvent::S_MTE3>(evtStoMte3_);
     WaitFlag<HardEvent::S_MTE3>(evtStoMte3_);
     const uint64_t ownSlot = ((uint64_t)token * SIBLING_AIV_COUNT + siblingAivIdx_) * PARTIAL_SLOT_ELEMS;
     DataCopy(partial1Gm_[ownSlot], midBuf, PARTIAL_SLOT_ELEMS);
     CrossCoreSetFlag<0x1, PIPE_MTE3>(MID_READY_FLAG);
     CrossCoreWaitFlag<0x1, PIPE_MTE2>(MID_READY_FLAG);
-    const uint64_t siblingSlot = ((uint64_t)token * SIBLING_AIV_COUNT + (1U - siblingAivIdx_)) * PARTIAL_SLOT_ELEMS;
+    const uint64_t siblingSlot =
+        ((uint64_t)token * SIBLING_AIV_COUNT + (1U - siblingAivIdx_)) * PARTIAL_SLOT_ELEMS;
     DataCopy(midBuf, partial1Gm_[siblingSlot], PARTIAL_SLOT_ELEMS);
     SetFlag<HardEvent::MTE2_S>(evtMte2toS_);
     WaitFlag<HardEvent::MTE2_S>(evtMte2toS_);
@@ -174,10 +177,13 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         for (uint32_t o = 0; o < N; ++o) {
             partialBuf.SetValue(o + 1U, dotHalf[1][o]);
         }
-        // leader只读取前五个有效partial，槽尾三个元素无需清零。
+        for (uint32_t i = N + 1U; i < PARTIAL_SLOT_ELEMS; ++i) {
+            partialBuf.SetValue(i, 0.0f);
+        }
         SetFlag<HardEvent::S_MTE3>(evtStoMte3_);
         WaitFlag<HardEvent::S_MTE3>(evtStoMte3_);
-        const uint64_t followerSlot = ((uint64_t)token * SIBLING_AIV_COUNT + 1U) * PARTIAL_SLOT_ELEMS;
+        const uint64_t followerSlot =
+            ((uint64_t)T_ * SIBLING_AIV_COUNT + (uint64_t)token * SIBLING_AIV_COUNT + 1U) * PARTIAL_SLOT_ELEMS;
         DataCopy(partial1Gm_[followerSlot], partialBuf, PARTIAL_SLOT_ELEMS);
     }
 
@@ -190,7 +196,8 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
 
     // 发出本核MTE3完成事件，同时读取follower的partial1，用32B搬运隐藏事件等待。
     SetFlag<HardEvent::MTE3_V>(evtMte3toV_);
-    const uint64_t followerSlot = ((uint64_t)token * SIBLING_AIV_COUNT + 1U) * PARTIAL_SLOT_ELEMS;
+    const uint64_t followerSlot =
+        ((uint64_t)T_ * SIBLING_AIV_COUNT + (uint64_t)token * SIBLING_AIV_COUNT + 1U) * PARTIAL_SLOT_ELEMS;
     DataCopy(partialBuf, partial1Gm_[followerSlot], PARTIAL_SLOT_ELEMS);
     SetFlag<HardEvent::MTE2_S>(evtMte2toS_);
     WaitFlag<HardEvent::MTE3_V>(evtMte3toV_);
@@ -281,6 +288,9 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         partialBuf.SetValue(0, sumSqHalf[1]);
         for (uint32_t o = 0; o < N; ++o) {
             partialBuf.SetValue(o + 1U, dotHalf[1][o]);
+        }
+        for (uint32_t i = N + 1U; i < PARTIAL_SLOT_ELEMS; ++i) {
+            partialBuf.SetValue(i, 0.0f);
         }
         SetFlag<HardEvent::S_MTE3>(evtStoMte3_);
         WaitFlag<HardEvent::S_MTE3>(evtStoMte3_);
@@ -389,6 +399,9 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
             SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
             WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
             if (n + 1 < N) {
+                if (n != 0U) {
+                    PipeBarrier<PIPE_MTE2>();
+                }
                 CopyInGammaTile(gammaNext, gamma2Gm_, (n + 1) * D_ + tOff, tD);
             }
             MhcNormRegBase::VFCastB16ScaleAndMulGammaToB16(x2Cache[n * D_ + tOff], x2Cache[n * D_ + tOff],

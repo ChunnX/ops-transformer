@@ -465,8 +465,9 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
             hInF32Gm_.SetGlobalBuffer((__gm__ float *)h_in_f32_gm, (uint64_t)T_ * D_);
         }
         if constexpr (DUAL_SIBLING) {
+            constexpr uint32_t slotsPerToken = USE_RMS_MID ? HAS_MID_SLOTS_PER_TOKEN : SIBLING_AIV_COUNT;
             partial1Gm_.SetGlobalBuffer((__gm__ float *)workspace,
-                                        (uint64_t)T_ * SIBLING_AIV_COUNT * PARTIAL_SLOT_ELEMS);
+                                        (uint64_t)T_ * slotsPerToken * PARTIAL_SLOT_ELEMS);
         }
 
         pipe_.InitBuffer(bufGammaFp32_, D_ * sizeof(float));
