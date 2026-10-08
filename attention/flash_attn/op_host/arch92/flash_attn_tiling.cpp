@@ -23,7 +23,7 @@
 #include <graph/utils/type_utils.h>
 #include "log/log.h"
 #include "../flash_attn_tiling_utils.h"
-#include "../../op_kernel/arch92/flash_attn_template_tiling_key_arch92.h"
+#include "../../op_kernel/flash_attn_template_tiling_key.h"
 #include "../../../common/op_host/fia_tiling_templates_registry.h"
 
 using namespace ge;
@@ -308,6 +308,7 @@ void FlashAttnTilingImplArch92::SetFATilingData()
     tilingData_.baseTiling.flashAttnBaseParams.bSize = faInfo_->bSize;
     tilingData_.baseTiling.flashAttnBaseParams.t1Size = faInfo_->qTSize;
     tilingData_.baseTiling.flashAttnBaseParams.t2Size = faInfo_->kTSize;
+    tilingData_.baseTiling.flashAttnBaseParams.n1Size = faInfo_->n1Size;
     tilingData_.baseTiling.flashAttnBaseParams.n2Size = faInfo_->n2Size;
     tilingData_.baseTiling.flashAttnBaseParams.gSize = faInfo_->gSize;
     tilingData_.baseTiling.flashAttnBaseParams.s1Size = faInfo_->s1Size;

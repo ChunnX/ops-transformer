@@ -12,10 +12,17 @@
 #define MEMORY_COPY_ARCH35_H
 
 #include "adv_api/activation/softmax.h"
+#if __has_include("../../../common/op_kernel/vector_common.h")
 #include "../../../common/op_kernel/vector_common.h"
 #include "../../../common/op_kernel/memcopy/fa_gm_tensor.h"
 #include "../../../common/op_kernel/memcopy/attn_copy_gm_to_l1.h"
 #include "../../../common/op_kernel/memcopy/copy_ub_to_gm.h"
+#else
+#include "../../common/vector_common.h"
+#include "../../common/memcopy/fa_gm_tensor.h"
+#include "../../common/memcopy/copy_gm_to_l1.h"
+#include "../../common/memcopy/copy_ub_to_gm.h"
+#endif
 
 // ----------------------------------------------Copy LSE UB To Gm arch35--------------------------------
 template <typename T, typename CONST_INFO_T>
@@ -156,6 +163,45 @@ __aicore__ inline void DataCopySoftmaxLseS1Only(GlobalTensor<float> softmaxLseGm
     dataCopyParams.srcStride = 0;
     dataCopyParams.dstStride = 0;
     DataCopyPad(softmaxLseGm[offset], lseSrc, dataCopyParams);
+}
+
+// ----------------------------------------------Copy LSE UB To Gm arch35 (S1_ONLY)--------------------------------
+// Dn 模板专用：M 方向只有 S1，G 为外层独立循环，n1Idx = n2Idx * gSize + gIdx 由调用方计算
+// gmBaseOffset 由调用方按 layout 预计算：
+//   TND:  n1Idx * t1Size + prefixBS1
+//   BSND/BNSD: bIdx * n1Size * s1Size + n1Idx * s1Size
+template <typename T>
+__aicore__ inline void DataCopySoftmaxLseS1OnlyTNDtoNTArch35(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc,
+                                                             uint64_t gmBaseOffset, uint32_t s1Offset,
+                                                             uint32_t dealCount)
+{
+    uint64_t gmOffset = gmBaseOffset + s1Offset;
+    DataCopyExtParams dataCopyParams;
+    dataCopyParams.blockCount = dealCount;
+    dataCopyParams.blockLen = sizeof(float);
+    dataCopyParams.srcStride = 0;
+    dataCopyParams.dstStride = 0;
+    DataCopyPad(softmaxLseGm[gmOffset], lseSrc, dataCopyParams);
+}
+
+template <typename T>
+__aicore__ inline void DataCopySoftmaxLseS1OnlyBXXDArch35(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc,
+                                                          uint64_t gmBaseOffset, uint32_t s1Offset, uint32_t dealCount,
+                                                          uint64_t qActSeqLens)
+{
+    uint64_t gmOffset = gmBaseOffset + s1Offset;
+    uint32_t copySize = dealCount;
+    if (s1Offset + copySize > qActSeqLens) {
+        copySize = (s1Offset < qActSeqLens) ? static_cast<uint32_t>(qActSeqLens - s1Offset) : 0;
+    }
+    if (copySize > 0) {
+        DataCopyExtParams dataCopyParams;
+        dataCopyParams.blockCount = copySize;
+        dataCopyParams.blockLen = sizeof(float);
+        dataCopyParams.srcStride = 0;
+        dataCopyParams.dstStride = 0;
+        DataCopyPad(softmaxLseGm[gmOffset], lseSrc, dataCopyParams);
+    }
 }
 
 #endif

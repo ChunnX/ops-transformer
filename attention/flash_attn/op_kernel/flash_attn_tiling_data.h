@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file flash_attn_tiling_data_arch92.h
+ * \file flash_attn_tiling_data.h
  * \brief
  */
 
-#ifndef FLASH_ATTN_TILING_DATA_ARCH92_H_
-#define FLASH_ATTN_TILING_DATA_ARCH92_H_
+#ifndef FLASH_ATTN_TILING_DATA_H_
+#define FLASH_ATTN_TILING_DATA_H_
 
 namespace optiling {
 // AICPU metadata format: 16 fields per core (FA and FD both)
@@ -41,7 +41,8 @@ constexpr uint32_t FLASH_ATTN_FIRST_FD_DATA_WORKSPACE_IDX_INDEX = 6;
 
 // FD Metadata Index Definitions (0-based, matching AICPU flash_attn_metadata.h)
 // No CORE_ENABLE field; active state is indicated by FA_FD_M_NUM_INDEX > 0.
-constexpr uint32_t FA_FD_BN_IDX_INDEX = 0;
+constexpr uint32_t FA_FD_BN1_IDX_INDEX = 0;
+constexpr uint32_t FA_FD_BN2_IDX_INDEX = 0;
 constexpr uint32_t FA_FD_M_IDX_INDEX = 1;
 constexpr uint32_t FA_FD_WORKSPACE_IDX_INDEX = 2;
 constexpr uint32_t FA_FD_WORKSPACE_NUM_INDEX = 3;
@@ -52,6 +53,7 @@ struct FlashAttnBaseParams {
     uint32_t bSize;
     uint32_t t1Size;
     uint32_t t2Size;
+    uint32_t n1Size;
     uint32_t n2Size;
     uint32_t gSize;
     uint32_t s1Size;
@@ -66,7 +68,8 @@ struct FlashAttnBaseParams {
     float scaleValue;
     uint8_t iscuSeqLengthsNull;
     uint8_t iscuSeqLengthsKVNull;
-    uint8_t isKvContinuous;
+    // KV是否连续(非tensor-list); arch92 kernel 读取, arch35 不读取
+    uint8_t isKvContinuous = 1;
     uint8_t isSoftMaxLseEnable;
     uint32_t coreNum;
     uint32_t outputLayout;

@@ -39,7 +39,7 @@
 #include "../../common/init_output.h"
 #endif
 
-#include "memory_copy_arch92.h"
+#include "../memory_copy_arch35.h"
 
 using namespace AscendC;
 using namespace FaVectorApi;

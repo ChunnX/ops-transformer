@@ -10,7 +10,7 @@
 
 /*!
  * \file flash_attn_block_vec_dn_arch92.h
- * \brief FANoQuantGqaBlockVecDn —— Dn 路径专用 Vec Block 模板（独立类，无 base 基类）。
+ * \brief FANoQuantGqaBlockVecDnUnmerged —— Dn 路径专用 Vec Block 模板（独立类，无 base 基类）。
  */
 #ifndef FLASH_ATTN_BLOCK_VEC_DN_ARCH92_H_
 #define FLASH_ATTN_BLOCK_VEC_DN_ARCH92_H_
@@ -38,7 +38,7 @@
 #endif
 
 #include "../utils/attenmask_gs1.h"
-#include "memory_copy_arch92.h"
+#include "../memory_copy_arch35.h"
 
 using namespace AscendC;
 using namespace FaVectorApi;
@@ -50,7 +50,7 @@ namespace BaseApi {
 using ArchInfo::CV_RATIO;
 
 template <typename FA_T>
-class FANoQuantGqaBlockVecDn {
+class FANoQuantGqaBlockVecDnUnmerged {
 public:
     using INPUT_T = typename FA_T::inputType;
     using OUTPUT_T = typename FA_T::outputType;
@@ -158,7 +158,7 @@ public:
     T negativeFloatScalar_;
 
     // ==================== Functions ======================
-    __aicore__ inline FANoQuantGqaBlockVecDn(ConstInfoX& constInfo, SeqLensTool<LAYOUT_T, SEQLEN_T>& qSeqLensTool,
+    __aicore__ inline FANoQuantGqaBlockVecDnUnmerged(ConstInfoX& constInfo, SeqLensTool<LAYOUT_T, SEQLEN_T>& qSeqLensTool,
                                              SeqLensTool<LAYOUT_KV, SEQLEN_T>& kvSeqLensTool)
         : constInfo_(constInfo),
           qSeqLensTool_(qSeqLensTool),
@@ -669,14 +669,14 @@ public:
 
 // AIC/AIV 分编译占位（Mix kernel 在 AIC 侧重编译时使用）
 template <typename FA_T>
-class FANoQuantGqaBlockVecDummyDn {
+class FANoQuantGqaBlockVecDummyDnUnmerged {
 public:
     static constexpr FA_LAYOUT LAYOUT_T = FA_T::qLayout;
     static constexpr FA_LAYOUT LAYOUT_KV = FA_T::kvLayout;
     using SEQLEN_T = uint32_t;
     using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
 
-    __aicore__ inline FANoQuantGqaBlockVecDummyDn(ConstInfoX& constInfo, SeqLensTool<LAYOUT_T, SEQLEN_T>& qSeqLensTool,
+    __aicore__ inline FANoQuantGqaBlockVecDummyDnUnmerged(ConstInfoX& constInfo, SeqLensTool<LAYOUT_T, SEQLEN_T>& qSeqLensTool,
                                                   SeqLensTool<LAYOUT_KV, SEQLEN_T>& kvSeqLensTool){};
 };
 

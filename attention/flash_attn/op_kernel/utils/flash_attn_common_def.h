@@ -141,6 +141,13 @@ struct ConfigParams {
     inferS2TemplateType s2;
     inferDTemplateType d;
     inferDTemplateType dv;
+    uint32_t ubMm1ResBufcnt;
+    uint32_t ubMm2ResBufcnt;
+    uint32_t ubVec1ResBufcnt;
+    uint32_t ubMaskBufcnt;
+    uint32_t l1PBufcnt;
+    uint32_t l1QBufcnt;
+    uint32_t l1KvBufcnt;
 };
 
 // config:
@@ -177,6 +184,29 @@ static constexpr ConfigParams ConfigValue[] = {
     {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned192,
      inferDTemplateType::Aligned128}, // config=7
 };
+
+
+static constexpr ConfigParams ConfigValueArch92[] = {
+    // 下标 0: 占位（未使用）
+    {},
+    // 下标 1: (M=64, S2=256, D=64, DV=64)   仅 ND(D=64) 使用
+    {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned256,
+     inferDTemplateType::Aligned64, inferDTemplateType::Aligned64,
+     /*ubMm1*/2, /*ubMm2*/2, /*ubVec1*/2, /*ubMask*/1, /*l1P*/3, /*l1Q*/2, /*l1Kv*/4},
+    // 下标 2: (M=128, S2=128, D=128, DV=128) 仅 ND(D=128) 使用
+    {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned128,
+     inferDTemplateType::Aligned128, inferDTemplateType::Aligned128,
+     /*ubMm1*/2, /*ubMm2*/1, /*ubVec1*/2, /*ubMask*/1, /*l1P*/3, /*l1Q*/2, /*l1Kv*/4},
+    // 下标 3: (M=128, S2=256, D=128, DV=128) 仅 DN(D=128) 使用
+    {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned256,
+     inferDTemplateType::Aligned128, inferDTemplateType::Aligned128,
+     /*ubMm1*/1, /*ubMm2*/1, /*ubVec1*/1, /*ubMask*/1, /*l1P*/3, /*l1Q*/2, /*l1Kv*/4},
+    // 下标 4: (M=64, S2=256, D=256, DV=256)   仅 ND(D=256) 使用
+    {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned256,
+     inferDTemplateType::Aligned256, inferDTemplateType::Aligned256,
+     /*ubMm1*/2, /*ubMm2*/1, /*ubVec1*/2, /*ubMask*/1, /*l1P*/3, /*l1Q*/2, /*l1Kv*/2},
+};
+
 
 // Config macro definitions for D=64
 #define Config_S1Aligned128_S2Aligned128_DAligned64_DVAligned64 0
@@ -249,6 +279,71 @@ struct RunInfo {
     bool isS2SplitCore = false;
     uint32_t faTmpOutWsPos = 0; // FA阶段，S2外切，需要写到workspace时，写出到第几块M*D的GM块
     bool isFirstFdBlock = false;
+
+    int64_t preTokensLeftUp = 0;
+    int64_t nextTokensLeftUp = 0;
+
+    uint64_t qPaddingBeginOffset = 0;
+    uint64_t kvPaddingBeginOffset = 0;
+};
+
+struct RunInfoGS1Merge {
+    uint32_t loop = 0;
+    uint32_t mloop = 0;
+    bool isValid = false;
+    bool isChangeBatch = false;
+    bool isFirstS2Loop = false;
+    bool isLastS2Loop = false;
+
+    uint32_t bIdx = 0;
+    uint32_t n2Idx = 0;
+    uint32_t gIdx = 0;
+    uint32_t s1Idx = 0;
+    uint32_t gS1Idx = 0;
+    uint32_t s2Idx = 0;
+    uint64_t actS1Size = 1;   // 当前处理head的S1轴实际大小
+    uint64_t actS2Size = 1;   // 当前处理head的S2轴实际大小
+    uint32_t actMSize = 0;    // GS1方向上的长度
+    uint32_t actVecMSize;     // VEC 视角, 基本块GS1方向长度
+    uint32_t vecMbaseIdx;     // VEC 对应的M 轴起始位置,V0 为0， V1 为 V0的actVecMSize
+
+    uint32_t actSingleLoopS2Size = 0; // S2方向长度
+    uint32_t actSingleLoopS2SizeAlign;
+    // uint32_t curS2LoopTimes = 0;
+    bool isS2SplitCore = false;
+    uint32_t faTmpOutWsPos = 0; // FA阶段，S2外切，需要写到workspace时，写出到第几块M*D的GM块
+
+    int64_t preTokensLeftUp = 0;
+    int64_t nextTokensLeftUp = 0;
+
+    uint64_t qPaddingBeginOffset = 0;
+    uint64_t kvPaddingBeginOffset = 0;
+};
+
+struct RunInfoS1Only {
+    uint32_t loop = 0;
+    uint32_t mloop = 0;
+    bool isValid = false;
+    bool isChangeBatch = false;
+    bool isFirstS2Loop = false;
+    bool isLastS2Loop = false;
+
+    uint32_t bIdx = 0;
+    uint32_t n2Idx = 0;
+    uint32_t gIdx = 0;
+    uint32_t s1Idx = 0;
+    uint32_t s2Idx = 0;
+    uint64_t actS1Size = 1;   // 当前处理head的S1轴实际大小
+    uint64_t actS2Size = 1;   // 当前处理head的S2轴实际大小
+    uint32_t actMSize = 0;    // GS1方向上的长度
+    uint32_t actVecMSize;     // VEC 视角, 基本块GS1方向长度
+    uint32_t vecMbaseIdx;     // VEC 对应的M 轴起始位置,V0 为0， V1 为 V0的actVecMSize
+
+    uint32_t actSingleLoopS2Size = 0; // S2方向长度
+    uint32_t actSingleLoopS2SizeAlign;
+    // uint32_t curS2LoopTimes = 0;
+    bool isS2SplitCore = false;
+    uint32_t faTmpOutWsPos = 0; // FA阶段，S2外切，需要写到workspace时，写出到第几块M*D的GM块
 
     int64_t preTokensLeftUp = 0;
     int64_t nextTokensLeftUp = 0;
