@@ -52,7 +52,8 @@ def report(
     case: str,
     expected_commit: str | None = None,
     changed_paths: list[str] | None = None,
-) -> bool:
+    strict: bool = False,
+) -> bool | None:
     paths = changed_paths if changed_paths is not None else summary_paths(repo, ref)
     for path in reversed(paths):
         summary = blob(repo, ref, path)
@@ -110,8 +111,15 @@ def report(
                 re.I,
             ):
                 print(f"  {line.strip()}")
-        return True
-    return False
+        if not strict:
+            return True
+
+        fail_elements = re.search(r"FailElems\s*:\s*(\d+)\s*/", detail)
+        precision_ok = fail_elements is not None and int(fail_elements.group(1)) == 0
+        result_ok = fields.get("result", "").strip().upper() == "PASS"
+        compile_ok = compile_result.startswith("PASS")
+        return result_ok and compile_ok and precision_ok
+    return None
 
 
 def main() -> int:
@@ -130,6 +138,11 @@ def main() -> int:
         action="store_true",
         help="fetch and report the latest result, then exit",
     )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="require a matching PASS result with zero failed elements; return nonzero otherwise",
+    )
     args = parser.parse_args()
     repo = args.repo.resolve()
     if args.interval <= 0:
@@ -144,12 +157,16 @@ def main() -> int:
         git(repo, "fetch", "--quiet", "origin", "log")
         tip = git(repo, "rev-parse", "origin/log")
         if args.once:
-            if not report(repo, "origin/log", args.case, args.commit):
+            status = report(
+                repo, "origin/log", args.case, args.commit, strict=args.check
+            )
+            if status is None:
                 print(
                     f"No CI summary found for case {args.case}"
                     f"{f' and commit {args.commit}' if args.commit else ''} on origin/log."
                 )
-            return 0
+                return 1 if args.check else 0
+            return 0 if status else 1
 
         last = (
             state_path.read_text(encoding="utf-8").strip()
@@ -157,7 +174,15 @@ def main() -> int:
             else ""
         )
         if not last:
-            report(repo, "origin/log", args.case, args.commit)
+            status = report(
+                repo, "origin/log", args.case, args.commit, strict=args.check
+            )
+            if args.check and status is True:
+                state_path.write_text(tip + "\n", encoding="utf-8")
+                return 0
+            if args.check and status is False:
+                state_path.write_text(tip + "\n", encoding="utf-8")
+                return 1
             state_path.write_text(tip + "\n", encoding="utf-8")
         elif last != tip:
             merge_base = git(repo, "merge-base", last, tip, check=False)
@@ -175,7 +200,20 @@ def main() -> int:
                 message = git(repo, "show", "-s", "--format=%s", commit)
                 print(f"log branch update {commit[:12]}: {message}")
                 if summaries:
-                    report(repo, commit, args.case, args.commit, summaries)
+                    status = report(
+                        repo,
+                        commit,
+                        args.case,
+                        args.commit,
+                        summaries,
+                        strict=args.check,
+                    )
+                    if args.check and status is True:
+                        state_path.write_text(tip + "\n", encoding="utf-8")
+                        return 0
+                    if args.check and status is False:
+                        state_path.write_text(tip + "\n", encoding="utf-8")
+                        return 1
             state_path.write_text(tip + "\n", encoding="utf-8")
 
         if args.once:
