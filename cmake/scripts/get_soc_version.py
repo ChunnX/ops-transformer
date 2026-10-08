@@ -66,9 +66,9 @@ class GetSocModules(Module):
                 return any(
                     folder in path_obj.parts for folder in ascend950_exclued_folders
                 )
-            if option[0] == "ascend960dt":
+            if option[0] == "ascend910_96":
                 # A6复用arch35(950)代码路径，排除目录与ascend950保持一致
-                ascend960dt_exclude_folders = [
+                ascend910_96_exclude_folders = [
                     "arch22",
                     "arch20",
                     "arch31",
@@ -78,7 +78,7 @@ class GetSocModules(Module):
                     "ascend350",
                 ]
                 return any(
-                    folder in path_obj.parts for folder in ascend960dt_exclude_folders
+                    folder in path_obj.parts for folder in ascend910_96_exclude_folders
                 )
             if option[0] == "ascend350":
                 ascend350_exclude_folders = [

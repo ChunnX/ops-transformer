@@ -256,7 +256,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::QuantGetAndConvertCommMode(gert::
         auto platformInfo = context->GetPlatformInfo();
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
         if (ascendcPlatform.GetCurNpuArch() == Ops::Base::DAV_9201) {
-            OP_LOGE(context->GetNodeName(), "ascend960dt does not support commMode 'ccu'.");
+            OP_LOGE(context->GetNodeName(), "ascend910_96 does not support commMode 'ccu'.");
             return ge::GRAPH_FAILED;
         }
         commMode = Mc2Comm::COMM_MODE_CCU;

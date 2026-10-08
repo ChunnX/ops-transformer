@@ -19,7 +19,7 @@ cleanup() {
         fi
 
         # 2. 执行兜底杀进程命令
-        kill -9 $(ps -ef | grep -E 'run.sh|build.sh --pkg --soc=ascend960dt' | grep -v grep | awk '{print $2}') 2>/dev/null
+        kill -9 $(ps -ef | grep -E 'run.sh|build.sh --pkg --soc=ascend910_96' | grep -v grep | awk '{print $2}') 2>/dev/null
         kill -9 $(ps -ef | grep bisheng | grep -v grep | awk '{print $2}') 2>/dev/null
 
         echo "[$(date)] 所有编译进程已清理完毕！"
@@ -36,7 +36,7 @@ trap '' SIGTSTP  # 屏蔽Ctrl+Z，避免卡死
 echo "[$(date)] 开始执行编译流程（按Ctrl+C可强制终止并清理）..."
 rm -rf build
 source /home/z00939165/Ascend96/cann/set_env.sh
-bash build.sh --pkg --soc=ascend960dt --ops="allto_allv_quant_grouped_mat_mul" 2>&1 | tee 1.log &
+bash build.sh --pkg --soc=ascend910_96 --ops="allto_allv_quant_grouped_mat_mul" 2>&1 | tee 1.log &
 BUILD_CHILD_PID=$!
 
 # 等待子进程执行，并捕获编译返回码

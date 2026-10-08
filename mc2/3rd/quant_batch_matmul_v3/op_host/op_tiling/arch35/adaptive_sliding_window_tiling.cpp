@@ -334,7 +334,7 @@ bool Mc2AdaptiveSlidingWindowTiling::CalcBasicBlock()
             adaptiveWin_.baseK = PER_BLOCK_SIZE;
         }
     } else {
-        if (compileInfo_.socVersion == platform_ascendc::SocVersion::ASCEND960DT) {
+        if (compileInfo_.socVersion == platform_ascendc::SocVersion::ASCEND910_96) {
             maxBaseM = BASIC_BLOCK_SIZE_128;
             maxBaseN = BASIC_BLOCK_SIZE_128;
             maxBaseK = BASIC_BLOCK_SIZE_256;

@@ -29,7 +29,7 @@ COMPUTE_UNIT = None
 ENABLE_EXPERIMENTAL = "OFF"
 PYPTO_ARCH_MAP = {
     "ascend950": "a5",
-    # TODO: ascend960dt 的 pypto arch 映射待确认（A6如有pypto二进制交付需求，确认后按需添加）
+    # TODO: ascend910_96 的 pypto arch 映射待确认（A6如有pypto二进制交付需求，确认后按需添加）
 }
 
 if const_var.CHECK_ASC_DEVKIT_VERSION:
@@ -758,8 +758,8 @@ class AdpBuilder(opdesc_parser.OpDesc):
                 arch_version = "arch31"
             elif compute_unit == "ascend950":
                 arch_version = "arch35"
-            elif compute_unit == "ascend960dt":
-                arch_version = "arch35"  # A6(ascend960dt)复用arch35(950)代码路径
+            elif compute_unit == "ascend910_96":
+                arch_version = "arch35"  # A6(ascend910_96)复用arch35(950)代码路径
             else:
                 arch_version = "arch22"
 

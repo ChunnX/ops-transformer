@@ -68,7 +68,7 @@ if (BUILD_OPEN_PROJECT)
         op_graph/matmul_all_reduce_gen_task_ops_utils.cpp
         op_graph/mc2_moe_gen_task_ops_utils.cpp
     )
-    if("${CONDITION_UNIT_COMMON}" STREQUAL "ascend950" OR "${CONDITION_UNIT_COMMON}" STREQUAL "ascend960dt")
+    if("${CONDITION_UNIT_COMMON}" STREQUAL "ascend950" OR "${CONDITION_UNIT_COMMON}" STREQUAL "ascend910_96")
         list(APPEND GENTASK_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/op_graph/mc2_gen_task_ops_utils_arch35.cpp)
     else()
         list(APPEND GENTASK_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/op_graph/mc2_gen_task_ops_utils_arch35_stub.cpp)
