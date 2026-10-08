@@ -11,28 +11,9 @@
 #ifndef MHC_NORM_POST_PREONLY_COMMON_H_
 #define MHC_NORM_POST_PREONLY_COMMON_H_
 
-// ========================================================================
-// mhc_norm_post_preonly_kernel.h — 类定义和共享计算模块
-//
-// 文件结构:
-//   1. 类声明 + Init / Process
-//   2. 共享计算成员实现
-//   3. 成员变量
-//   4. 引入各执行路径的实现头文件
-// ========================================================================
-
-
-
-// ========================================================================
-// mhc_norm_post_preonly_common.h — 常量、类型萃取、workspace layout 定义
-// ========================================================================
-
 #include "kernel_operator.h"
 using namespace AscendC;
 
-// ---------------------------------------------------------------------------
-// 全局常量
-// ---------------------------------------------------------------------------
 constexpr uint32_t N_MAX = 4;
 constexpr uint32_t ALIGN8 = 8;
 constexpr uint32_t BUFFER_NUM_ONE = 1;
@@ -42,12 +23,11 @@ constexpr uint32_t SCALAR_BUF_SIZE = 256;     // 标量计算 UB buffer 大小 (
 constexpr uint32_t EXP_DIV_ELEM = 8;          // sigmoid ExpDiv 计算元素数
 constexpr uint32_t POST_COMB_SIZE = 8 + 16;   // h_post[8] + h_res[16] buffer 大小
 constexpr uint32_t PARTIAL_SLOT_ELEMS = 8;    // 每个lane的partial固定占32B
-constexpr uint16_t MID_READY_FLAG = 0;        // R3/RMS_mid平方和交换完成标志
-constexpr uint16_t PAIR_READY_FLAG = 1;       // R4/R5 partial交换完成标志
+constexpr uint16_t MID_READY_FLAG = 0;        // RMS_mid平方和交换完成标志
+constexpr uint16_t PAIR_READY_FLAG = 1;       // 平方和与投影 partial交换完成标志
 
 // ---------------------------------------------------------------------------
 // Type trait: fp32->half uses CAST_NONE, fp32->bfloat16_t uses CAST_RINT
-// (per CANN RmsNorm reference)
 // ---------------------------------------------------------------------------
 template <typename A, typename B>
 struct IsSameT {

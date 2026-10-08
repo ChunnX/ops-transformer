@@ -116,21 +116,21 @@ cann_ops_transformer.mhc_norm_post_preonly(
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
 | --- | --- | --- | --- | --- | --- |
-| h_out | Tensor | 必选 | Atten/MLP 层的输出。数据格式为 ND。 | float16、bfloat16 | [T, D] 或 [B, S, D] |
-| residual | Tensor | 必选 | MHC 多路残差输入；dtype 必须与 h_out 一致。 | float16、bfloat16 | [T, N, D] 或 [B, S, N, D] |
-| h_post | Tensor | 必选 | MHC_Post 主分支权重。 | float32 | [T, N] 或 [B, S, N] |
-| h_res | Tensor | 可选 | mHC 的 hRes 变换矩阵，是做完 Sinkhorn 变换后的双随机矩阵；索引顺序为 $[j,n]$。接口预留参数，暂不支持传 None。 | float32 | [T, N, N] 或 [B, S, N, N] |
-| phi | Tensor | 必选 | MHC_Pre 投影矩阵。 | float32 | [N, N*D] |
-| alpha | Tensor | 必选 | Sigmoid 门控缩放系数。 | float32 | [1] |
-| bias | Tensor | 必选 | Sigmoid 门控偏置。 | float32 | [N] |
-| gamma_1 | Tensor | 必选 | RMSNorm_1 缩放权重。 | float32 | [D] |
-| pre_mix | Tensor | 可选 | 传入时，h_in 的加权求和直接使用 pre_mix 作为权重（典型用法：填入上一轮 h_pre 的输出）；不传入时，h_in 使用本轮内部计算的 h_pre 进行加权求和。不支持非连续。接口预留参数，当前仅支持传入 None。 | float32 | [T, N] 或 [B, S, N] |
-| gamma_0 | Tensor | 可选 | RMSNorm_0 缩放权重。接口预留参数，当前暂不支持传 None。 | float32 | [D] |
-| gamma_2 | Tensor | 可选 | RMSNorm_mid 缩放权重。默认值为 None；非空时启用 RMSNorm_mid，为空时跳过。 | float32 | [N*D] |
-| norm_eps | float | 可选 | RMSNorm_0、RMSNorm_mid 和 RMSNorm_1 的数值稳定项，默认值为 1e-6。 | float | - |
-| mhc_pre_norm_eps | float | 可选 | MHC_Pre 内部 RMS 的数值稳定项，默认值为 1e-6。 | float | - |
-| hc_eps | float | 可选 | Sigmoid 门控结果的加性偏移，默认值为 1e-6。 | float | - |
-| return_h_in_f32 | bool | 可选 | 是否额外返回 FP32 的 h_in_f32，默认值为 False。 | bool | - |
+| h_out | Tensor | 必选 | Atten/MLP 层的输出，对应公式中的 h_out。数据格式为 ND。 | float16、bfloat16 | [T, D] 或 [B, S, D] |
+| residual | Tensor | 必选 | MHC 多路残差输入，对应公式中的 residual；dtype 必须与 h_out 一致。 | float16、bfloat16 | [T, N, D] 或 [B, S, N, D] |
+| h_post | Tensor | 必选 | MHC_Post 主分支权重，对应公式中的 h_post。 | float32 | [T, N] 或 [B, S, N] |
+| h_res | Tensor | 可选 | mHC 变换矩阵，对应公式中的 h_res，是 Sinkhorn 变换后的双随机矩阵；索引顺序为 $[j,n]$。接口预留参数，暂不支持传 None。 | float32 | [T, N, N] 或 [B, S, N, N] |
+| phi | Tensor | 必选 | MHC_Pre 投影矩阵，对应公式中的 phi。 | float32 | [N, N*D] |
+| alpha | Tensor | 必选 | Sigmoid 门控缩放系数，对应公式中的 alpha_0。 | float32 | [1] |
+| bias | Tensor | 必选 | Sigmoid 门控偏置，对应公式中的 bias。 | float32 | [N] |
+| gamma_1 | Tensor | 必选 | RMSNorm_1 缩放权重，对应公式中的 gamma_1。 | float32 | [D] |
+| pre_mix | Tensor | 可选 | 预留的门控权重输入，对应公式中的 h_pre；当前仅支持传入 None，不参与计算。 | float32 | [T, N] 或 [B, S, N] |
+| gamma_0 | Tensor | 可选 | RMSNorm_0 缩放权重，对应公式中的 gamma_0。接口预留参数，当前暂不支持传 None。 | float32 | [D] |
+| gamma_2 | Tensor | 可选 | RMSNorm_mid 缩放权重，对应公式中的 gamma_2。默认值为 None；非空时启用 RMSNorm_mid，为空时跳过。 | float32 | [N*D] |
+| norm_eps | float | 可选 | 归一化数值稳定项，对应公式中的 norm_eps，用于 RMSNorm_0、RMSNorm_mid 和 RMSNorm_1；默认值为 1e-6。 | float | - |
+| mhc_pre_norm_eps | float | 可选 | MHC_Pre 内部 RMS 的数值稳定项，对应公式中的 mhc_pre_norm_eps；默认值为 1e-6。 | float | - |
+| hc_eps | float | 可选 | Sigmoid 门控结果的加性偏移，对应公式中的 hc_eps；默认值为 1e-6。 | float | - |
+| return_h_in_f32 | bool | 可选 | 是否额外返回公式中的 h_in_f32，默认值为 False。 | bool | - |
 
 ## 返回值说明
 
@@ -138,10 +138,10 @@ cann_ops_transformer.mhc_norm_post_preonly(
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
 | --- | --- | --- | --- | --- | --- |
-| h_in_prime | Tensor | 必选 | RMSNorm_1 FP32 结果转换为输入 dtype 后的下一层输入。 | float16、bfloat16 | [T, D] 或 [B, S, D] |
-| x_2_out | Tensor | 必选 | MHC_Post 以及可选 RMSNorm_mid 后的中间结果。 | float16、bfloat16 | [T, N, D] 或 [B, S, N, D] |
-| h_in_f32 | Tensor | 可选 | RMSNorm_1 的 FP32 结果，仅在 return_h_in_f32=True 时返回。 | float32 | [T, D] 或 [B, S, D] |
-| h_pre | Tensor | 可选 | 本轮内部计算的 pre 结果（sigmoid 后的加权系数），可作为下一轮 pre_mix 的输入。不支持非连续。接口预留参数，当前暂不支持输出。 | float32 | [T, N] 或 [B, S, N] |
+| h_in_prime | Tensor | 必选 | 下一层输入，对应公式中的 h_in_prime，由 RMSNorm_1 的 FP32 结果转换为输入 dtype 得到。 | float16、bfloat16 | [T, D] 或 [B, S, D] |
+| x_2_out | Tensor | 必选 | 中间结果，对应公式中的 x_2_out，来自 MHC_Post 及可选 RMSNorm_mid。 | float16、bfloat16 | [T, N, D] 或 [B, S, N, D] |
+| h_in_f32 | Tensor | 可选 | RMSNorm_1 的 FP32 结果，对应公式中的 h_in_f32，仅在 return_h_in_f32=True 时返回。 | float32 | [T, D] 或 [B, S, D] |
+| h_pre | Tensor | 可选 | Sigmoid 后的加权系数，对应公式中的 h_pre。接口预留参数，当前暂不支持输出。 | float32 | [T, N] 或 [B, S, N] |
 
 ## 约束说明
 

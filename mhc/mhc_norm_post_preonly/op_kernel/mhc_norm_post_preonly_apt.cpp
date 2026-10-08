@@ -15,8 +15,8 @@
 //   mhc_norm_post_preonly_common.h       — 常量和类型特征
 //   mhc_norm_post_preonly_kernel.h       — 类定义、初始化、执行和共享计算模块
 //   mhc_norm_post_preonly_kernel_compute.h — 单双AIV共用的计算、IO和同步辅助函数
-//   mhc_norm_post_preonly_single_aiv.h   — 已验证的单AIV回退路径
-//   mhc_norm_post_preonly_dual_sibling_aiv.h — A5双sibling AIV路径
+//   mhc_norm_post_preonly_single_aiv.h   — 单AIV
+//   mhc_norm_post_preonly_dual_sibling_aiv.h — 双sibling AIV路径
 //   mhc_norm_post_preonly_apt.cpp        — Kernel入口
 // ========================================================================
 
