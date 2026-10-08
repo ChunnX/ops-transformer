@@ -126,9 +126,7 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
 
         LocalTensor<float> midBuf = bufScalar_.Get<float>();
         midBuf.SetValue(0, midSqHalf[laneId_]);
-        for (uint32_t i = 1U; i < PARTIAL_SLOT_ELEMS; ++i) {
-            midBuf.SetValue(i, 0.0f);
-        }
+        // 32B槽的其余元素不会被sibling读取，无需在关键同步路径上做Scalar清零。
         SetFlag<HardEvent::S_MTE3>(evtStoMte3_);
         WaitFlag<HardEvent::S_MTE3>(evtStoMte3_);
         const uint64_t ownSlot = ((uint64_t)token * 2U + laneId_) * PARTIAL_SLOT_ELEMS;
@@ -173,9 +171,7 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         for (uint32_t o = 0; o < N_MAX; ++o) {
             partialBuf.SetValue(o + 1U, dotHalf[1][o]);
         }
-        for (uint32_t i = N_MAX + 1U; i < PARTIAL_SLOT_ELEMS; ++i) {
-            partialBuf.SetValue(i, 0.0f);
-        }
+        // leader只读取前五个有效partial，槽尾三个元素无需清零。
         SetFlag<HardEvent::S_MTE3>(evtStoMte3_);
         WaitFlag<HardEvent::S_MTE3>(evtStoMte3_);
         const uint64_t followerSlot = ((uint64_t)token * 2U + 1U) * PARTIAL_SLOT_ELEMS;
@@ -310,10 +306,12 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
             const uint32_t tD = GetTileD(tile);
             const uint32_t tOff = tile * dimTile_;
-            // R3阶段gamma0缓存已经空闲，与gamma2缓存组成双缓冲；
+            // 单分块时复用R2结束后已空闲的residual scratch作为第二个gamma2槽，
+            // 保留Process预载的gamma0供后续token复用；多分块仍复用gamma0缓冲。
             // 首个gamma2搬运和x2缓存恢复重叠，后续搬运与前一head的Vector计算重叠。
             LocalTensor<float> gammaEven = bufGamma2Fp32_.Get<float>();
-            LocalTensor<float> gammaOdd = bufGamma0Fp32_.Get<float>();
+            LocalTensor<float> gammaOdd =
+                dimLoop_ == 1U ? bufResFp32_.Get<float>() : bufGamma0Fp32_.Get<float>();
             LoadGammaInto(gammaEven, gamma2Gm_, tOff, tD);
             LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
             for (uint32_t n = 0; n < N_MAX; ++n) {
