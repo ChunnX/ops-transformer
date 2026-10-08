@@ -404,11 +404,11 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
     l1RightBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID);
     crossCoreSyncBufId++;
 
-    if ASCEND_IS_AIC {
-        l1RightBuffers.Get().SetCrossCore();
-        l1RightBuffers.Get().SetCrossCore();
-        l1RightBuffers.Get().SetCrossCore();
-    }
+    // if ASCEND_IS_AIC {
+    //     l1RightBuffers.Get().SetCrossCore();
+    //     l1RightBuffers.Get().SetCrossCore();
+    //     l1RightBuffers.Get().SetCrossCore();
+    // }
 }
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -553,6 +553,8 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
 {
     if ASCEND_IS_AIC {
         cubeBlock.UninitLocalBuffer();
+        bmm1Buffers.Get().WaitCrossCore();
+        bmm2Buffers.Get().WaitCrossCore();
     }
     if ASCEND_IS_AIV {
         vecBlock.UninitLocalBuffer();
