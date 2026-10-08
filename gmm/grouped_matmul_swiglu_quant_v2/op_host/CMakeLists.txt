@@ -15,7 +15,14 @@ if (BUILD_OPEN_PROJECT)
     target_sources(op_host_aclnnExc PRIVATE
         grouped_matmul_swiglu_quant_v2_def.cpp
     )
-    if(NOT CONDITION_UNIT STREQUAL "ascend950")
+    if(CONDITION_UNIT STREQUAL "ascend960dt")
+        add_ops_compile_options(
+            OP_NAME GroupedMatmulSwigluQuantV2
+            OPTIONS --cce-auto-sync=on
+                    -Wno-deprecated-declarations
+                    -Werror
+        )
+    elseif(NOT CONDITION_UNIT STREQUAL "ascend950")
         add_ops_compile_options(
             OP_NAME GroupedMatmulSwigluQuantV2
             OPTIONS --cce-auto-sync=off
@@ -23,6 +30,15 @@ if (BUILD_OPEN_PROJECT)
                     -Werror
         )
     endif()
+endif()
+
+if(BUILD_OPS_RTY_KERNEL AND NOT BUILD_OPEN_PROJECT AND CONDITION_UNIT STREQUAL "ascend960dt")
+    add_ops_compile_options(
+        OP_NAME GroupedMatmulSwigluQuantV2
+        OPTIONS --cce-auto-sync=on
+                -Wno-deprecated-declarations
+                -Werror
+    )
 endif()
 
 if(NOT BUILD_OPS_RTY_KERNEL)

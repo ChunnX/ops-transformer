@@ -28,6 +28,8 @@
 #include "arch35/grouped_matmul_swiglu_quant_v2_basic_tiling.h"
 #include "arch35/grouped_matmul_swiglu_quant_v2_basic_api_tiling.h"
 #include "arch35/grouped_matmul_swiglu_quant_v2_weight_quant_tiling.h"
+#include "arch35/grouped_matmul_swiglu_quant_v2_weight_quant_asw_tiling.h"
+#include "arch35/grouped_matmul_swiglu_quant_v2_hif4_tiling.h"
 #include "platform/platform_infos_def.h"
 
 using namespace ge;
@@ -55,6 +57,11 @@ REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulSwigluQuantV2, GroupedMatmulSwigluQuan
 constexpr int64_t GMMSQ_WEIGHT_QUANT_TILING_TEMPLATE = 3;
 REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulSwigluQuantV2, GroupedMatmulSwigluQuantV2WeightQuantTiling,
                              GMMSQ_WEIGHT_QUANT_TILING_TEMPLATE);
+
+constexpr int64_t GMMSQ_WEIGHT_QUANT_ASW_TILING_TEMPLATE = 5;
+constexpr int64_t GMMSQ_HIF4_TILING_TEMPLATE = 10;
+REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulSwigluQuantV2, GroupedMatmulSwigluQuantV2WeightQuantASWTiling,
+                             GMMSQ_WEIGHT_QUANT_ASW_TILING_TEMPLATE);
 
 constexpr int64_t GMMSQ_TENSOR_API_TILING_TEMPLATE = 4;
 REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulSwigluQuantV2, GroupedMatmulSwigluQuantV2BasicApiTiling950,
@@ -153,12 +160,12 @@ static ge::graphStatus GroupedMatmulSwigluQuantV2TilingFunc(gert::TilingContext*
         OP_CHECK_IF(*swigluMode != SWIGLU_MODE_V3,
                     OP_LOGE(context->GetNodeName(), "swiglu_mode only supports 0 or 2, but got %ld", *swigluMode),
                     return ge::GRAPH_FAILED);
-        OP_CHECK_IF(compileInfoPtr->npuArch_ != static_cast<int32_t>(NpuArch::DAV_3510),
+        OP_CHECK_IF(compileInfoPtr->npuArch_ != NPU_ARCH_DAV_3510,
                     OP_LOGE(context->GetNodeName(), "swiglu_mode=2 only supports Ascend 950"), return ge::GRAPH_FAILED);
         OP_LOGD("GroupedMatmulSwigluQuantV2TilingFunc", "Using the shared MXFP8 weight-NZ tiling with V3 attributes");
         return TilingRegistry::GetInstance().DoTilingImpl(context, {GMMSQ_950_TILING_TEMPLATE});
     }
-    if (compileInfoPtr->supportL12BtBf16) {
+    if (compileInfoPtr->supportL12BtBf16 || compileInfoPtr->npuArch_ == NPU_ARCH_DAV_9201) {
         std::vector<int32_t> registerList = {GMMSQ_950_TILING_TEMPLATE};
         auto xDesc = context->GetInputDesc(GroupedMatmulSwigluQuantV2Tiling::X_INDEX);
         auto wDesc = context->GetInputDesc(GroupedMatmulSwigluQuantV2Tiling::WEIGHT_INDEX);
@@ -170,11 +177,17 @@ static ge::graphStatus GroupedMatmulSwigluQuantV2TilingFunc(gert::TilingContext*
         ge::DataType wDtype = wDesc->GetDataType();
         ge::DataType xScaleDtype = xScaleDesc->GetDataType();
         ge::Format weightFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(wDesc->GetFormat().GetStorageFormat()));
-        if (xDtype == ge::DT_FLOAT8_E4M3FN && wDtype == ge::DT_FLOAT4_E2M1) {
+        if (compileInfoPtr->npuArch_ == NPU_ARCH_DAV_9201 && xDtype == ge::DT_FLOAT8_E4M3FN &&
+            (wDtype == ge::DT_FLOAT4_E2M1 || wDtype == ge::DT_HIFLOAT4)) {
+            registerList[0] = GMMSQ_WEIGHT_QUANT_ASW_TILING_TEMPLATE;
+        } else if (compileInfoPtr->npuArch_ == NPU_ARCH_DAV_9201 && xDtype == ge::DT_HIFLOAT4 &&
+                   wDtype == ge::DT_HIFLOAT4) {
+            registerList[0] = GMMSQ_HIF4_TILING_TEMPLATE;
+        } else if (xDtype == ge::DT_FLOAT8_E4M3FN && wDtype == ge::DT_FLOAT4_E2M1) {
             // 伪量化场景 MxA8W4: x=FP8_E4M3FN, w=FP4_E2M1
             OP_LOGD("GroupedMatmulSwigluQuantV2TilingFunc", "Using the weight quant tiling for MxA8W4");
             registerList[0] = GMMSQ_WEIGHT_QUANT_TILING_TEMPLATE;
-        } else if (xScaleDtype == ge::DT_FLOAT8_E8M0 &&
+        } else if (compileInfoPtr->npuArch_ != NPU_ARCH_DAV_9201 && xScaleDtype == ge::DT_FLOAT8_E8M0 &&
                    (weightFormat == ge::FORMAT_ND || weightFormat == ge::FORMAT_NCL)) {
             // Tensor API is preferred for MX quant with ND weight. Unsupported cases fall back to template 2.
             registerList = {GMMSQ_TENSOR_API_TILING_TEMPLATE, GMMSQ_950_TILING_TEMPLATE};
@@ -211,6 +224,9 @@ ASCENDC_EXTERN_C graphStatus TilingPrepareForGMMSwigluQuantV2(gert::TilingParseC
     std::string platformRes;
     platformInfoPtr->GetPlatformRes("AICoreintrinsicDtypeMap", "Intrinsic_data_move_l12bt", platformRes);
     compileInfoPtr->supportL12BtBf16 = (platformRes.find("bf16") != std::string::npos);
+    platformRes.clear();
+    platformInfoPtr->GetPlatformRes("AICoreintrinsicDtypeMap", "Intrinsic_mmad", platformRes);
+    compileInfoPtr->supportMmadF16S8 = (platformRes.find("f16s8") != std::string::npos);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, compileInfoPtr->ubSize_);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L1, compileInfoPtr->l1Size_);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, compileInfoPtr->l0CSize_);

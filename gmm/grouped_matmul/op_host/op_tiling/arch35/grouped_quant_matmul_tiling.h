@@ -56,7 +56,10 @@ constexpr uint64_t X_DIMS = 2UL;
 constexpr uint64_t BIAS_DIMS = 2UL;
 constexpr uint64_t GROUP_LIST_SPARSE_DIMS = 2UL;
 constexpr uint64_t MXFP_MULTI_BASE_SIZE = 2UL;
+constexpr uint64_t Hif4_MULTI_BASE_SIZE = 1UL;
+constexpr uint64_t MAX_BASEM_ONE_VECTOR = 128UL;
 constexpr uint64_t MXFP_BASEK_FACTOR = 64UL;
+constexpr uint64_t HIF4_BASEK_FACTOR = 64UL;
 constexpr size_t MXFP_TYPE_K_SCALE_DIM_NUM = 3;
 constexpr size_t MXFP_TYPE_M_SCALE_DIM_NUM = 4;
 // Scale FRACTAL_NZ single-tensor storage shape is (group, n1, kScale, n0, c0).
@@ -150,6 +153,7 @@ enum class QuantMode : uint32_t {
     MX_PERGROUP_MODE = 0x1U << 3,
     PERGROUP_MODE = 0x1U << 4,
     PERBLOCK_MODE = 0x1U << 5,
+    HIF4_PERGROUP_MODE = 0x1U << 6,
 };
 
 enum class GMMActType {

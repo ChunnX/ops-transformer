@@ -212,7 +212,8 @@ ge::graphStatus GroupedQmmBasicApiTiling::DoLibApiTiling()
     tilingData_.mmTilingData.kBL1 = basicTiling_.stepKb * basicTiling_.baseK;
     tilingData_.mmTilingData.isBias = inputParams_.hasBias ? 1 : 0;
     tilingData_.mmTilingData.dbL0C = basicTiling_.dbL0c;
-    if (inputParams_.bQuantMode == optiling::QuantMode::MX_PERGROUP_MODE) {
+    if (inputParams_.bQuantMode == optiling::QuantMode::MX_PERGROUP_MODE ||
+        inputParams_.bQuantMode == optiling::QuantMode::HIF4_PERGROUP_MODE) {
         tilingData_.mmTilingData.scaleKAL1 = std::min(
             std::max(basicTiling_.scaleFactorA * basicTiling_.stepKa, basicTiling_.scaleFactorB * basicTiling_.stepKb) *
                 basicTiling_.baseK,
@@ -278,7 +279,8 @@ ge::graphStatus GroupedQmmBasicApiTiling::CalL1Depth(uint64_t leftL1Size)
 
     uint64_t baseScaleASize = 0;
     uint64_t baseScaleBSize = 0;
-    if (inputParams_.bQuantMode == optiling::QuantMode::MX_PERGROUP_MODE) {
+    if (inputParams_.bQuantMode == optiling::QuantMode::MX_PERGROUP_MODE ||
+        inputParams_.bQuantMode == optiling::QuantMode::HIF4_PERGROUP_MODE) {
         CalcAlignedMxBaseScaleSize(baseScaleASize, baseScaleBSize);
     }
     uint64_t baseL1Size = baseASize + baseBSize + baseScaleASize + baseScaleBSize;
@@ -443,7 +445,8 @@ void GroupedQmmBasicApiTiling::ApplyThreeBufferSearchResult(const L1SearchResult
 ge::graphStatus GroupedQmmBasicApiTiling::FinalizeStepAndScale()
 {
     CalStepKs();
-    if (inputParams_.bQuantMode == optiling::QuantMode::MX_PERGROUP_MODE) {
+    if (inputParams_.bQuantMode == optiling::QuantMode::MX_PERGROUP_MODE ||
+        inputParams_.bQuantMode == optiling::QuantMode::HIF4_PERGROUP_MODE) {
         return CalScaleFactors();
     }
     return ge::GRAPH_SUCCESS;
@@ -509,10 +512,12 @@ ge::graphStatus GroupedQmmBasicApiTiling::CalScaleFactors()
 {
     uint64_t baseASize = GetSizeWithDataType(basicTiling_.baseM * basicTiling_.baseK, inputParams_.aDtype);
     uint64_t baseBSize = GetSizeWithDataType(basicTiling_.baseN * basicTiling_.baseK, inputParams_.bDtype);
-    uint64_t baseScaleASize = GetSizeWithDataType(CeilDiv(basicTiling_.baseK, MX_GROUP_SIZE) * basicTiling_.baseM,
+    uint64_t scaleGroup = inputParams_.bQuantMode == optiling::QuantMode::HIF4_PERGROUP_MODE ?
+                              HIF4_BASEK_FACTOR : MX_GROUP_SIZE;
+    uint64_t baseScaleASize = GetSizeWithDataType(CeilDiv(basicTiling_.baseK, scaleGroup) * basicTiling_.baseM,
                                                   inputParams_.perTokenScaleDtype);
     uint64_t baseScaleBSize =
-        GetSizeWithDataType(CeilDiv(basicTiling_.baseK, MX_GROUP_SIZE) * basicTiling_.baseN, inputParams_.scaleDtype);
+        GetSizeWithDataType(CeilDiv(basicTiling_.baseK, scaleGroup) * basicTiling_.baseN, inputParams_.scaleDtype);
     uint64_t biasDtypeSize = ge::GetSizeByDataType(inputParams_.biasDtype);
     uint64_t baseBiasSize = inputParams_.hasBias ? basicTiling_.baseN * biasDtypeSize : 0;
     uint64_t leftL1Size =

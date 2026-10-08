@@ -526,6 +526,12 @@ bool GroupedMatmulSwigluQuantV2Tiling950::SetQuantModeForGMMSwigluQuant(const ge
 
 bool GroupedMatmulSwigluQuantV2Tiling950::CheckDims(const gert::Shape& xShape, const gert::Shape& wShape) const
 {
+    const auto *compileInfo = context_->GetCompileInfo<GMMSwigluV2CompileInfo>();
+    // The 9201 MX path requires N to be 128-aligned for both ND and NZ weights.
+    if (compileInfo != nullptr && compileInfo->npuArch_ == NPU_ARCH_DAV_9201) {
+        OP_CHECK_IF(inputParams_.nSize % GmmConstant::BASIC_BLOCK_SIZE_128 != 0,
+                    OP_LOGE(inputParams_.opName, "On 9201, MX N must be a multiple of 128."), return false);
+    }
     auto aInnerSize = inputParams_.transA ? inputParams_.mSize : inputParams_.kSize;
     auto bInnerSize = inputParams_.transB ? inputParams_.kSize : inputParams_.nSize;
     OP_CHECK_IF(IsFp4Input() && (aInnerSize % B4_DATACOPY_MIN_NUM != 0 || bInnerSize % B4_DATACOPY_MIN_NUM != 0),
@@ -733,10 +739,10 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckCoreNum() const
     auto aivNum = compileInfo->aivNum_;
     OP_CHECK_IF(aicNum == 0, OP_LOGE(inputParams_.opName, "aicNum should be positive integer, actual is %u.", aicNum),
                 return false);
-    OP_CHECK_IF(
-        aivNum != GmmConstant::CORE_RATIO * aicNum,
-        OP_LOGE(inputParams_.opName, "aicNum:aivNum should be 1:2, actual aicNum: %u, aivNum: %u.", aicNum, aivNum),
-        return false);
+    const uint32_t coreRatio = compileInfo->npuArch_ == NPU_ARCH_DAV_9201 ? 1U : GmmConstant::CORE_RATIO;
+    OP_CHECK_IF(aivNum != coreRatio * aicNum,
+                OP_LOGE(inputParams_.opName, "Unexpected AIC/AIV ratio, aicNum: %u, aivNum: %u.", aicNum, aivNum),
+                return false);
     return true;
 }
 

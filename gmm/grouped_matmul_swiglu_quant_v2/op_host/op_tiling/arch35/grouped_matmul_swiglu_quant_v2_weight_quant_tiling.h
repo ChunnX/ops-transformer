@@ -46,6 +46,10 @@ struct GMMSQWeightQuantInputParams {
     bool isSingleMultiSingle = false;
 };
 
+ge::graphStatus ValidateWeightQuantAsw(gert::TilingContext &context, GMMSQWeightQuantInputParams &params,
+                                       int32_t npuArch, uint64_t tilingDataSize);
+bool CheckWeightQuantAswCoreNum(int32_t npuArch, uint32_t aicNum, uint32_t aivNum);
+
 class GroupedMatmulSwigluQuantV2WeightQuantTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
     explicit GroupedMatmulSwigluQuantV2WeightQuantTiling(gert::TilingContext *context)
