@@ -7,16 +7,18 @@ it is not compiled or bundled by this operator. Metadata must match the batch,
 value-head count, sequence layout and current stream core count.
 
 The public ACLNN entry is `aclnnFlashKDAGetWorkspaceSize`, followed by
-`aclnnFlashKDA`. Its arguments follow `flash_kda_aclnn` in
+`aclnnFlashKDA`. Its arguments follow the operator host `_flash_kda_impl` in
 `op_kernel/flash_kda.py`, with caller-owned output and final-state tensors added
 by OpKit. The host layer validates descriptors, maps each layout to logical
 BNSD views, uses caller-owned logical output storage and executor-owned scratch.
 The kernel clips tail writes to valid rows, so ACLNN outputs do not require
 padded backing storage. One Native provider initializes the internal
 16x16 identity and launches FlashKDA. Consumers need no Python at runtime.
-Eager `flash_kda` selects the input NPU device and delegates to the same
-`flash_kda_aclnn` host body. Validation, layout conversion, allocation, and
-launch bindings have one implementation. The small
+Eager `flash_kda` selects the input NPU device and calls `_flash_kda_impl`.
+All algorithm checks, layout conversion, allocation, and launch bindings remain
+in this ordinary operator host function. ACLNN registers it directly with
+`flash_kda_aclnn = aclnn("FlashKDA")(_flash_kda_impl)`; there is no separate
+ACLNN validation or forwarding body. The small
 identity kernel remains because the OpKit host subset cannot lower `torch.eye`.
 
 ## Build
@@ -92,15 +94,15 @@ vendor handling introduced by the previous bridge has been removed.
 
 ## Delta against the initial FlashKDA source
 
-The initial working-tree source had 2,772 lines; the final source has 2,676.
-The textual diff adds 192 lines and removes 288 (96 fewer overall). These
-counts include comments, validation, and moved host logic. An AST comparison
-finds 22 unchanged top-level definitions, including `flash_kda_kernel` and
-all stage compute functions. The compute algorithm is unchanged.
+Algorithm checks remain in the ordinary operator host `_flash_kda_impl`,
+shared by eager and the generated ACLNN entry. Only common-device checks and
+the eager NPU device context stay in public `flash_kda`, since ACLNN uses its
+execution context. The original layout/rank/shape/dtype/contiguity/GQA and
+`lower_bound` constraints are retained. Positive dimensions/head limits and
+minimum metadata capacity checks added during integration are also retained.
+Error messages are static strings supported by the OpKit compiler.
 
-The adaptation adds one shared ACLNN/eager host body and a small identity
-initializer. The compile-cache helper reuses the original launch bindings.
-Nine workspace/constants/cache helpers are removed; allocations live in the
-shared host body. The public eager entry only checks the common device, selects
-it, and delegates. Descriptor checks, manifest verification, and source/wheel
-cache invalidation remain because they protect runtime bindings and rebuilds.
+Core `flash_kda_kernel` and stage compute functions are unchanged. Identity
+initialization is the small extra kernel required by the current host compiler.
+The compile-cache helper reuses the original launch bindings; allocations live
+in the operator host instead of the removed workspace/constants wrappers.

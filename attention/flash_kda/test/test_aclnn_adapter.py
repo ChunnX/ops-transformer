@@ -52,3 +52,35 @@ def test_invalid_layout_rejected_before_launch(monkeypatch):
     with pytest.raises(AssertionError):
         module.flash_kda_aclnn(tensor, tensor, tensor, tensor, tensor, 1.0, tensor,
                               tensor, tensor, -1.0, "invalid", tensor)
+
+
+def test_aclnn_registers_operator_host_directly():
+    module = load_operator()
+    assert module.flash_kda_aclnn.fn is module._flash_kda_impl
+
+
+@pytest.mark.parametrize("invalid", ["dtype", "head_dim", "beta_shape", "state_shape", "lower_bound", "metadata_dtype"])
+@pytest.mark.parametrize("entry", ["_flash_kda_impl", "flash_kda_aclnn"])
+def test_operator_checks_are_shared(monkeypatch, invalid, entry):
+    module = load_operator()
+    monkeypatch.setattr(module, "_compile_flash_kda", lambda: pytest.fail("invalid inputs reached Native"))
+    q = torch.empty((1, 1, 65, 128), dtype=torch.bfloat16)
+    state = torch.empty((1, 1, 128, 128), dtype=torch.float32)
+    args = dict(q=q, k=q, v=q, g=q, beta=torch.empty((1, 1, 65), dtype=torch.bfloat16),
+                scale=0.125, initial_state=state, A_log=torch.empty(1),
+                dt_bias=torch.empty(1, 128), lower_bound=-1.0, layout_qkv="BNSD",
+                metadata=torch.empty(256, dtype=torch.int32))
+    if invalid == "dtype":
+        args["q"] = q.float()
+    elif invalid == "head_dim":
+        args["q"] = torch.empty((1, 1, 65, 64), dtype=torch.bfloat16)
+    elif invalid == "beta_shape":
+        args["beta"] = torch.empty((1, 1, 64), dtype=torch.bfloat16)
+    elif invalid == "state_shape":
+        args["initial_state"] = torch.empty((1, 1, 64, 128))
+    elif invalid == "lower_bound":
+        args["lower_bound"] = -6.0
+    else:
+        args["metadata"] = args["metadata"].long()
+    with pytest.raises(AssertionError):
+        getattr(module, entry)(**args)

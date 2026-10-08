@@ -7,6 +7,10 @@ import subprocess
 import pytest
 
 
+@pytest.mark.parametrize("registration", [
+    '@aclnn("FlashKDA")\ndef entry(): pass\n',
+    'def entry(): pass\nflash_kda_aclnn = aclnn("FlashKDA")(entry)\n',
+])
 @pytest.mark.parametrize("selected,builtin,soc,expected,has_dsl,error", [
     ("flash_kda", True, "ascend950", "", True, False),
     ("flash_kda,other", True, "ascend950", "other", True, False),
@@ -16,14 +20,14 @@ import pytest
     ("flash_kda", False, "ascend950", "", False, True),
     ("flash_kda", True, "ascend910b", "", False, True),
 ])
-def test_selection(tmp_path, selected, builtin, soc, expected, has_dsl, error):
+def test_selection(tmp_path, registration, selected, builtin, soc, expected, has_dsl, error):
     repo = Path(__file__).parents[3]
     (tmp_path / "cmake").mkdir()
     shutil.copy2(repo / "cmake/cannbotdsl.cmake", tmp_path / "cmake")
     (tmp_path / "cmake/cannbotdsl_aclnn.cmake").write_text("add_library(cannbotdsl_aclnn INTERFACE)\n")
     source = tmp_path / "attention/flash_kda/op_kernel"
     source.mkdir(parents=True)
-    (source / "flash_kda.py").write_text('@aclnn("FlashKDA")\ndef entry(): pass\n')
+    (source / "flash_kda.py").write_text(registration)
     (tmp_path / "CMakeLists.txt").write_text(f"""
 cmake_minimum_required(VERSION 3.19)
 project(selection NONE)

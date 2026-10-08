@@ -2441,6 +2441,128 @@ def _compile_flash_kda():
         dtypes.int64,
     )
 
+def _flash_kda_impl(
+    q: torch.Tensor,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    g: torch.Tensor,
+    beta: torch.Tensor,
+    scale: float,
+    initial_state: torch.Tensor,
+    A_log: torch.Tensor,
+    dt_bias: torch.Tensor,
+    lower_bound: float,
+    layout_qkv: str,
+    metadata: torch.Tensor,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Operator host: validate inputs, create views/workspace, and launch."""
+    assert (layout_qkv == "TND" or layout_qkv == "BNSD" or layout_qkv == "BSND"), "layout_qkv must be TND, BNSD, or BSND"
+    assert initial_state.dim() == 4, "initial_state must be rank-4"
+    batch = initial_state.shape[0]
+    n_v = initial_state.shape[1]
+    assert initial_state.shape[2] == initial_state.shape[3] == SUPPORTED_HEAD_DIM, "FlashKDA only supports state Dk = Dv = 128"
+
+    if layout_qkv == "TND":
+        assert q.dim() == k.dim() == v.dim() == g.dim() == 3, "TND q/k/v/g must be rank-3"
+        storage_length = q.shape[0]
+        n_qk = q.shape[1]
+        dim = q.shape[2]
+        assert v.shape == g.shape == (storage_length, n_v, dim), "v/g shape does not match TND layout"
+        assert beta.dim() == 2 and beta.shape == (storage_length, n_v), "beta must be [T, Nv] for TND"
+    else:
+        assert q.dim() == k.dim() == v.dim() == g.dim() == 4, "BNSD/BSND q/k/v/g must be rank-4"
+        assert q.shape[0] == batch, "storage batch must match initial_state"
+        dim = q.shape[3]
+        if layout_qkv == "BNSD":
+            n_qk = q.shape[1]
+            storage_length = q.shape[2]
+            assert v.shape == g.shape == (batch, n_v, storage_length, dim), "v/g shape does not match BNSD layout"
+            assert beta.dim() == 3 and beta.shape == (batch, n_v, storage_length), "beta must be [B, Nv, S] for BNSD"
+        else:
+            storage_length = q.shape[1]
+            n_qk = q.shape[2]
+            assert v.shape == g.shape == (batch, storage_length, n_v, dim), "v/g shape does not match BSND layout"
+            assert beta.dim() == 3 and beta.shape == (batch, storage_length, n_v), "beta must be [B, S, Nv] for BSND"
+    assert k.shape == q.shape, "q/k shapes must match"
+
+    assert dim == SUPPORTED_HEAD_DIM, "FlashKDA only supports D = 128"
+    assert batch > 0 and n_qk > 0 and n_v > 0 and n_v <= 96, "requires B > 0, Nqk > 0, and 0 < Nv <= 96"
+    assert n_v % n_qk == 0, "GQA requires Nv % Nqk == 0"
+    assert storage_length > 0, "storage sequence length must be positive"
+    assert q.dtype == k.dtype == v.dtype == g.dtype == beta.dtype == LOW_DTYPE, "q/k/v/g/beta must be bf16"
+    assert initial_state.dtype == HIGH_DTYPE, "initial_state must be fp32"
+    assert A_log.dtype == HIGH_DTYPE and A_log.shape == (n_v,), "A_log must be fp32 with shape [Nv]"
+    assert dt_bias.dtype == HIGH_DTYPE and dt_bias.shape == (n_v, dim), "dt_bias must be fp32 with shape [Nv, D]"
+    assert -5.0 <= float(lower_bound) <= 0.0, "lower_bound must be in [-5, 0]"
+    assert q.is_contiguous() and k.is_contiguous() and v.is_contiguous() and g.is_contiguous()
+    assert beta.is_contiguous() and initial_state.is_contiguous() and A_log.is_contiguous() and dt_bias.is_contiguous()
+    assert metadata.dtype == torch.int32, "metadata must be int32"
+    assert metadata.dim() == 1, "metadata must be rank-1"
+    assert metadata.is_contiguous(), "metadata must be contiguous"
+    assert metadata.shape[0] >= HEADER_WORDS + MAX_AIC_CORES * 2
+
+    q_logical, k_logical, v_logical, g_logical = q, k, v, g
+    beta_logical = beta.unsqueeze(-1)
+    out = torch.empty_like(v)
+    out_stage = out
+    if layout_qkv == "TND":
+        q_logical = q.unsqueeze(0)
+        k_logical = k.unsqueeze(0)
+        v_logical = v.unsqueeze(0)
+        g_logical = g.unsqueeze(0)
+        beta_logical = beta_logical.unsqueeze(0)
+        out_stage = out.unsqueeze(0)
+    if layout_qkv != "BNSD":
+        q_logical = q_logical.transpose(1, 2)
+        k_logical = k_logical.transpose(1, 2)
+        v_logical = v_logical.transpose(1, 2)
+        g_logical = g_logical.transpose(1, 2)
+        beta_logical = beta_logical.transpose(1, 2)
+        out_stage = out_stage.transpose(1, 2)
+    core_num = min(cannbotdsl.get_platform_info().cube_core_num, MAX_AIC_CORES)
+    assert core_num > 0
+    scratch_tokens = WORKSPACE_SLOTS * CHUNK_SIZE
+    gamma_rows = WORKSPACE_SLOTS * SUPPORTED_HEAD_DIM
+    kr = torch.empty((scratch_tokens, SUPPORTED_HEAD_DIM), dtype=torch.bfloat16, device=q.device)
+    gamma = torch.empty((gamma_rows, 1), dtype=torch.float32, device=q.device)
+    qd = torch.empty_like(kr)
+    w = torch.empty_like(kr)
+    mqk = torch.empty((scratch_tokens, CHUNK_SIZE), dtype=torch.bfloat16, device=q.device)
+    u = torch.empty_like(kr)
+    qk_exchange = torch.empty((core_num, 2, 2, CHUNK_SIZE), dtype=torch.float32, device=q.device)
+    identity = torch.empty((16, 16), dtype=torch.float16, device=q.device)
+    final_state = torch.empty_like(initial_state)
+    fn = _compile_flash_kda()
+    fn(
+        k_logical,
+        v_logical,
+        q_logical,
+        beta_logical,
+        g_logical,
+        qk_exchange,
+        A_log,
+        dt_bias,
+        kr,
+        gamma,
+        qd,
+        w,
+        mqk,
+        u,
+        out_stage,
+        initial_state,
+        final_state,
+        identity,
+        metadata,
+        float(scale),
+        float(lower_bound),
+        core_num,
+    )
+    return out, final_state
+
+# Register the operator host directly; ACLNN adds no separate validation body.
+flash_kda_aclnn = aclnn("FlashKDA")(_flash_kda_impl)
+
+
 def flash_kda(
     q: torch.Tensor,
     k: torch.Tensor,
@@ -2485,9 +2607,9 @@ def flash_kda(
     """
     tensors = (q, k, v, g, beta, initial_state, A_log, dt_bias, metadata)
     assert all(tensor.device == q.device for tensor in tensors), "all inputs must be on the same device"
-    # The shared host queries the current stream, so select the input device.
+    # The operator host queries the current stream, so select the input device.
     with torch.npu.device(q.device):
-        return flash_kda_aclnn(q, k, v, g, beta, scale, initial_state,
+        return _flash_kda_impl(q, k, v, g, beta, scale, initial_state,
                                A_log, dt_bias, lower_bound, layout_qkv, metadata)
 
 
@@ -2555,122 +2677,3 @@ flash_kda_op = torch.ops.cannbotdsl_flash_kda.flash_kda
 torch._dynamo.substitute_in_graph(
     flash_kda, can_constant_fold_through=False
 )(lambda *args, **kwargs: flash_kda_op(*args, **kwargs))
-
-
-@aclnn("FlashKDA")
-def flash_kda_aclnn(
-    q: torch.Tensor,
-    k: torch.Tensor,
-    v: torch.Tensor,
-    g: torch.Tensor,
-    beta: torch.Tensor,
-    scale: float,
-    initial_state: torch.Tensor,
-    A_log: torch.Tensor,
-    dt_bias: torch.Tensor,
-    lower_bound: float,
-    layout_qkv: str,
-    metadata: torch.Tensor,
-) -> Tuple[torch.Tensor, torch.Tensor]:
-    assert (layout_qkv == "TND" or layout_qkv == "BNSD" or layout_qkv == "BSND"), "FlashKDA input shape or layout is invalid"
-    assert initial_state.dim() == 4, "initial_state must be rank-4"
-    batch = initial_state.shape[0]
-    n_v = initial_state.shape[1]
-    assert initial_state.shape[2] == initial_state.shape[3] == SUPPORTED_HEAD_DIM, "FlashKDA input shape or layout is invalid"
-
-    if layout_qkv == "TND":
-        assert q.dim() == k.dim() == v.dim() == g.dim() == 3, "TND q/k/v/g must be rank-3"
-        storage_length = q.shape[0]
-        n_qk = q.shape[1]
-        dim = q.shape[2]
-        assert v.shape == g.shape == (storage_length, n_v, dim), "v/g shape does not match TND layout"
-        assert beta.dim() == 2 and beta.shape == (storage_length, n_v), "beta must be [T, Nv] for TND"
-    else:
-        assert q.dim() == k.dim() == v.dim() == g.dim() == 4, "BNSD/BSND q/k/v/g must be rank-4"
-        assert q.shape[0] == batch, "storage batch must match initial_state"
-        dim = q.shape[3]
-        if layout_qkv == "BNSD":
-            n_qk = q.shape[1]
-            storage_length = q.shape[2]
-            assert v.shape == g.shape == (batch, n_v, storage_length, dim), "v/g shape does not match BNSD layout"
-            assert beta.dim() == 3 and beta.shape == (batch, n_v, storage_length), "beta must be [B, Nv, S] for BNSD"
-        else:
-            storage_length = q.shape[1]
-            n_qk = q.shape[2]
-            assert v.shape == g.shape == (batch, storage_length, n_v, dim), "v/g shape does not match BSND layout"
-            assert beta.dim() == 3 and beta.shape == (batch, storage_length, n_v), "beta must be [B, S, Nv] for BSND"
-    assert k.shape == q.shape, "q/k shapes must match"
-
-    assert dim == SUPPORTED_HEAD_DIM, "FlashKDA input shape or layout is invalid"
-    assert batch > 0 and n_qk > 0 and n_v > 0 and n_v <= 96
-    assert n_v % n_qk == 0, "FlashKDA input shape or layout is invalid"
-    assert storage_length > 0, "storage sequence length must be positive"
-    assert q.dtype == k.dtype == v.dtype == g.dtype == beta.dtype == LOW_DTYPE, "q/k/v/g/beta must be bf16"
-    assert initial_state.dtype == HIGH_DTYPE, "initial_state must be fp32"
-    assert A_log.dtype == HIGH_DTYPE and A_log.shape == (n_v,), "FlashKDA input shape or layout is invalid"
-    assert dt_bias.dtype == HIGH_DTYPE and dt_bias.shape == (n_v, dim), "FlashKDA input shape or layout is invalid"
-    assert -5.0 <= float(lower_bound) <= 0.0, "lower_bound must be in [-5, 0]"
-    assert q.is_contiguous() and k.is_contiguous() and v.is_contiguous() and g.is_contiguous()
-    assert beta.is_contiguous() and initial_state.is_contiguous() and A_log.is_contiguous() and dt_bias.is_contiguous()
-    assert metadata.dtype == torch.int32, "metadata must be int32"
-    assert metadata.dim() == 1, "metadata must be rank-1"
-    assert metadata.is_contiguous(), "metadata must be contiguous"
-    assert metadata.shape[0] >= HEADER_WORDS + MAX_AIC_CORES * 2
-
-    q_logical, k_logical, v_logical, g_logical = q, k, v, g
-    beta_logical = beta.unsqueeze(-1)
-    out = torch.empty_like(v)
-    out_stage = out
-    if layout_qkv == "TND":
-        q_logical = q.unsqueeze(0)
-        k_logical = k.unsqueeze(0)
-        v_logical = v.unsqueeze(0)
-        g_logical = g.unsqueeze(0)
-        beta_logical = beta_logical.unsqueeze(0)
-        out_stage = out.unsqueeze(0)
-    if layout_qkv != "BNSD":
-        q_logical = q_logical.transpose(1, 2)
-        k_logical = k_logical.transpose(1, 2)
-        v_logical = v_logical.transpose(1, 2)
-        g_logical = g_logical.transpose(1, 2)
-        beta_logical = beta_logical.transpose(1, 2)
-        out_stage = out_stage.transpose(1, 2)
-    core_num = min(cannbotdsl.get_platform_info().cube_core_num, MAX_AIC_CORES)
-    assert core_num > 0
-    scratch_tokens = WORKSPACE_SLOTS * CHUNK_SIZE
-    gamma_rows = WORKSPACE_SLOTS * SUPPORTED_HEAD_DIM
-    kr = torch.empty((scratch_tokens, SUPPORTED_HEAD_DIM), dtype=torch.bfloat16, device=q.device)
-    gamma = torch.empty((gamma_rows, 1), dtype=torch.float32, device=q.device)
-    qd = torch.empty_like(kr)
-    w = torch.empty_like(kr)
-    mqk = torch.empty((scratch_tokens, CHUNK_SIZE), dtype=torch.bfloat16, device=q.device)
-    u = torch.empty_like(kr)
-    qk_exchange = torch.empty((core_num, 2, 2, CHUNK_SIZE), dtype=torch.float32, device=q.device)
-    identity = torch.empty((16, 16), dtype=torch.float16, device=q.device)
-    final_state = torch.empty_like(initial_state)
-    fn = _compile_flash_kda()
-    fn(
-        k_logical,
-        v_logical,
-        q_logical,
-        beta_logical,
-        g_logical,
-        qk_exchange,
-        A_log,
-        dt_bias,
-        kr,
-        gamma,
-        qd,
-        w,
-        mqk,
-        u,
-        out_stage,
-        initial_state,
-        final_state,
-        identity,
-        metadata,
-        float(scale),
-        float(lower_bound),
-        core_num,
-    )
-    return out, final_state
