@@ -63,7 +63,7 @@ def gen_golden_data_all_to_all_matmul(m, k, n, rank_num, dtype="fp16", lm=0):
         raise ValueError(f"K={K} must be divisible by rank_num={rank_num}")
 
     #np.random.seed(42)
-    np.random.seed(678)
+    np.random.seed(274)
 
     # fp16/bf16 输入取 [0.5, 1)，避免 K 较大时中间累加溢出
     a_local_f32 = [
