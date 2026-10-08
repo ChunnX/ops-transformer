@@ -1,0 +1,109 @@
+/workspace/huangqiang/hq_claude/.local/lib/python3.12/site-packages/torch_npu/utils/collect_env.py:58: UserWarning: Warning: The /home/developer/Ascend/cann-9.2.0-beta.1 owner does not match the current owner.
+  warnings.warn(f"Warning: The {path} owner does not match the current owner.")
+/workspace/huangqiang/hq_claude/.local/lib/python3.12/site-packages/torch_npu/utils/collect_env.py:58: UserWarning: Warning: The /home/developer/Ascend/cann-9.2.0-beta.1/x86_64-linux/ascend_ops_install.info owner does not match the current owner.
+  warnings.warn(f"Warning: The {path} owner does not match the current owner.")
+/workspace/huangqiang/hq_claude/.local/lib/python3.12/site-packages/torch_npu/utils/collect_env.py:58: UserWarning: Warning: The /home/developer/Ascend/cann-9.2.0-beta.1 owner does not match the current owner.
+  warnings.warn(f"Warning: The {path} owner does not match the current owner.")
+/workspace/huangqiang/hq_claude/.local/lib/python3.12/site-packages/torch_npu/utils/collect_env.py:58: UserWarning: Warning: The /home/developer/Ascend/cann-9.2.0-beta.1/x86_64-linux/ascend_ops_install.info owner does not match the current owner.
+  warnings.warn(f"Warning: The {path} owner does not match the current owner.")
+/opt/buildtools/python-3.12.9/lib/python3.12/site-packages/torch/autograd/__init__.py:221: UserWarning: Cannot create tensor with interal format while allow_internel_format=False, tensor will be created with base format. (Triggered internally at ../torch_npu/csrc/aten/common/TensorFactories.cpp:340.)
+  torch.ones_like(out, memory_format=torch.preserve_format)
+Using /workspace/huangqiang/hq_claude/.cache/torch_extensions/py312_cpu as PyTorch extensions root...
+Emitting ninja build file /workspace/huangqiang/hq_claude/.cache/torch_extensions/py312_cpu/causal_conv1d_fn/build.ninja...
+Building extension module causal_conv1d_fn...
+Allowing ninja to set a default number of workers... (overridable by setting the environment variable MAX_JOBS=N)
+====================================================================================================
+causal_conv1d 反向性能对比：小算子拼接(A) vs 自定义 kernel(B)  [bf16, NPU Ascend950PR]
+====================================================================================================
+DIM=12288, kW=4, dtype=torch.bfloat16, activation=silu, device=npu:0
+warmup=10, iters=30, rtol=0.004, atol=0.004, threshold=0.99
+ASCEND_CUSTOM_OPP_PATH=/workspace/huangqiang/hq_claude/code/cannbot-skills/plugins-official/ops-registry-invoke/operators/causal_conv1d_grad/custom_opp/vendors/causal_conv1d_grad_custom
+[A 路线实现模式] conv1d
+
+---- 正确性验证：A/B vs CPU golden (bf16 混合容差) ----
+  == shape B=2, T=16 ==
+  [A 路线 mode=conv1d]
+    [A dx] matched_ratio=1.0000 (threshold>=0.99) abs_err max=3.333e-04 mean=1.496e-05
+    [A dweight] matched_ratio=0.9999 (threshold>=0.99) abs_err max=4.802e-03 mean=4.976e-04
+    [A dbias] matched_ratio=1.0000 (threshold>=0.99) abs_err max=3.539e-03 mean=5.243e-04
+  [B 路线 causal_conv1d_grad kernel]
+ninja: no work to do.
+Loading extension module causal_conv1d_fn...
+Using /workspace/huangqiang/hq_claude/.cache/torch_extensions/py312_cpu as PyTorch extensions root...
+Emitting ninja build file /workspace/huangqiang/hq_claude/.cache/torch_extensions/py312_cpu/causal_conv1d_grad_ext/build.ninja...
+Building extension module causal_conv1d_grad_ext...
+Allowing ninja to set a default number of workers... (overridable by setting the environment variable MAX_JOBS=N)
+ninja: no work to do.
+Loading extension module causal_conv1d_grad_ext...
+    [B dx] matched_ratio=1.0000 (threshold>=0.99) abs_err max=2.399e-04 mean=9.963e-06
+    [B dweight] matched_ratio=1.0000 (threshold>=0.99) abs_err max=3.785e-03 mean=3.095e-04
+    [B dbias] matched_ratio=1.0000 (threshold>=0.99) abs_err max=3.539e-03 mean=3.274e-04
+  => A pass=True, B pass=True
+  == shape B=1, T=512 ==
+  [A 路线 mode=conv1d]
+    [A dx] matched_ratio=1.0000 (threshold>=0.99) abs_err max=4.681e-04 mean=1.614e-05
+    [A dweight] matched_ratio=0.9394 (threshold>=0.99) abs_err max=1.637e-02 mean=2.126e-03
+    [A dbias] matched_ratio=0.9395 (threshold>=0.99) abs_err max=1.804e-02 mean=2.124e-03
+  [B 路线 causal_conv1d_grad kernel]
+    [B dx] matched_ratio=1.0000 (threshold>=0.99) abs_err max=3.608e-04 mean=1.071e-05
+    [B dweight] matched_ratio=1.0000 (threshold>=0.99) abs_err max=1.558e-02 mean=1.307e-03
+    [B dbias] matched_ratio=1.0000 (threshold>=0.99) abs_err max=1.321e-02 mean=1.288e-03
+  => A pass=False, B pass=True
+  == shape B=1, T=8192 ==
+  [A 路线 mode=conv1d]
+    [A dx] matched_ratio=1.0000 (threshold>=0.99) abs_err max=6.187e-04 mean=1.612e-05
+    [A dweight] matched_ratio=0.7346 (threshold>=0.99) abs_err max=6.830e-02 mean=8.592e-03
+    [A dbias] matched_ratio=0.7361 (threshold>=0.99) abs_err max=5.956e-02 mean=8.399e-03
+  [B 路线 causal_conv1d_grad kernel]
+    [B dx] matched_ratio=1.0000 (threshold>=0.99) abs_err max=4.430e-04 mean=1.069e-05
+    [B dweight] matched_ratio=1.0000 (threshold>=0.99) abs_err max=6.159e-02 mean=5.270e-03
+    [B dbias] matched_ratio=1.0000 (threshold>=0.99) abs_err max=5.956e-02 mean=5.151e-03
+  => A pass=False, B pass=True
+正确性汇总：A=FAIL, B=PASS
+
+---- 性能矩阵 ----
+[B=1, T=  512] A: fwd=    129.4 bwd=    505.4 tot=    692.6 (bwd/fwd= 3.91) | B: fwd=     34.3 bwd=    447.4 tot=    470.2 (bwd/fwd=13.06) | speedup(bwd B:A)= 1.129 (0.2s)
+[B=1, T= 1024] A: fwd=    171.8 bwd=    940.9 tot=   1224.9 (bwd/fwd= 5.48) | B: fwd=     44.2 bwd=    925.9 tot=    976.1 (bwd/fwd=20.94) | speedup(bwd B:A)= 1.016 (0.3s)
+[B=1, T= 2048] A: fwd=    287.3 bwd=   1786.7 tot=   2331.8 (bwd/fwd= 6.22) | B: fwd=     82.5 bwd=   1908.2 tot=   1989.1 (bwd/fwd=23.14) | speedup(bwd B:A)= 0.936 (0.5s)
+[B=1, T= 4096] A: fwd=    695.1 bwd=   4599.0 tot=   5911.2 (bwd/fwd= 6.62) | B: fwd=    171.6 bwd=   3839.5 tot=   4003.3 (bwd/fwd=22.38) | speedup(bwd B:A)= 1.198 (1.2s)
+[B=1, T= 8192] A: fwd=   1566.2 bwd=  12801.3 tot=  16200.7 (bwd/fwd= 8.17) | B: fwd=    364.9 bwd=   7676.5 tot=   8023.1 (bwd/fwd=21.03) | speedup(bwd B:A)= 1.668 (2.7s)
+[B=2, T=  512] A: fwd=    171.6 bwd=    965.8 tot=   1256.2 (bwd/fwd= 5.63) | B: fwd=     35.7 bwd=    920.4 tot=    970.0 (bwd/fwd=25.79) | speedup(bwd B:A)= 1.049 (0.3s)
+[B=2, T= 1024] A: fwd=    292.4 bwd=   1620.5 tot=   2146.0 (bwd/fwd= 5.54) | B: fwd=     70.7 bwd=   1907.3 tot=   1986.3 (bwd/fwd=26.98) | speedup(bwd B:A)= 0.850 (0.6s)
+[B=2, T= 2048] A: fwd=    686.2 bwd=   2600.8 tot=   3762.5 (bwd/fwd= 3.79) | B: fwd=    180.8 bwd=   3839.7 tot=   4001.5 (bwd/fwd=21.24) | speedup(bwd B:A)= 0.677 (1.0s)
+[B=2, T= 4096] A: fwd=   1575.1 bwd=   7496.9 tot=  10316.7 (bwd/fwd= 4.76) | B: fwd=    366.0 bwd=   7673.7 tot=   8022.9 (bwd/fwd=20.97) | speedup(bwd B:A)= 0.977 (2.3s)
+[B=2, T= 8192] A: fwd=   2925.3 bwd=  27815.0 tot=  34709.2 (bwd/fwd= 9.51) | B: fwd=    724.8 bwd=  15329.1 tot=  16048.0 (bwd/fwd=21.15) | speedup(bwd B:A)= 1.815 (5.4s)
+[B=4, T=  512] A: fwd=    321.3 bwd=   1644.5 tot=   2190.0 (bwd/fwd= 5.12) | B: fwd=     70.3 bwd=   1905.0 tot=   1983.9 (bwd/fwd=27.09) | speedup(bwd B:A)= 0.863 (0.5s)
+[B=4, T= 1024] A: fwd=    676.0 bwd=   2342.1 tot=   3488.8 (bwd/fwd= 3.46) | B: fwd=    180.1 bwd=   3843.3 tot=   4001.3 (bwd/fwd=21.34) | speedup(bwd B:A)= 0.609 (1.0s)
+[B=4, T= 2048] A: fwd=   1489.2 bwd=   4334.3 tot=   6784.9 (bwd/fwd= 2.91) | B: fwd=    367.0 bwd=   7673.6 tot=   8020.6 (bwd/fwd=20.91) | speedup(bwd B:A)= 0.565 (1.9s)
+[B=4, T= 4096] A: fwd=   2995.7 bwd=  16039.7 tot=  21594.8 (bwd/fwd= 5.35) | B: fwd=    726.5 bwd=  15333.2 tot=  16044.4 (bwd/fwd=21.11) | speedup(bwd B:A)= 1.046 (4.5s)
+[B=4, T= 8192] A: fwd=   5669.7 bwd=  54925.1 tot=  68328.4 (bwd/fwd= 9.69) | B: fwd=   1445.7 bwd=  30638.1 tot=  32079.1 (bwd/fwd=21.19) | speedup(bwd B:A)= 1.793 (10.8s)
+
+======================================================================================================================
+性能对比汇总 (bf16, D=12288, kW=4, silu)  时间单位 us；speedup=A_bwd/B_bwd, <1 表示自定义 kernel 更慢
+======================================================================================================================
+B   T      |     A fwd     A bwd     A tot  A b/f |     B fwd     B bwd     B tot  B b/f |  spd bwd  spd tot
+----------------------------------------------------------------------------------------------------------------------
+1   512    |     129.4     505.4     692.6   3.91 |      34.3     447.4     470.2  13.06 |    1.129    1.473
+1   1024   |     171.8     940.9    1224.9   5.48 |      44.2     925.9     976.1  20.94 |    1.016    1.255
+1   2048   |     287.3    1786.7    2331.8   6.22 |      82.5    1908.2    1989.1  23.14 |    0.936    1.172
+1   4096   |     695.1    4599.0    5911.2   6.62 |     171.6    3839.5    4003.3  22.38 |    1.198    1.477
+1   8192   |    1566.2   12801.3   16200.7   8.17 |     364.9    7676.5    8023.1  21.03 |    1.668    2.019
+2   512    |     171.6     965.8    1256.2   5.63 |      35.7     920.4     970.0  25.79 |    1.049    1.295
+2   1024   |     292.4    1620.5    2146.0   5.54 |      70.7    1907.3    1986.3  26.98 |    0.850    1.080
+2   2048   |     686.2    2600.8    3762.5   3.79 |     180.8    3839.7    4001.5  21.24 |    0.677    0.940
+2   4096   |    1575.1    7496.9   10316.7   4.76 |     366.0    7673.7    8022.9  20.97 |    0.977    1.286
+2   8192   |    2925.3   27815.0   34709.2   9.51 |     724.8   15329.1   16048.0  21.15 |    1.815    2.163
+4   512    |     321.3    1644.5    2190.0   5.12 |      70.3    1905.0    1983.9  27.09 |    0.863    1.104
+4   1024   |     676.0    2342.1    3488.8   3.46 |     180.1    3843.3    4001.3  21.34 |    0.609    0.872
+4   2048   |    1489.2    4334.3    6784.9   2.91 |     367.0    7673.6    8020.6  20.91 |    0.565    0.846
+4   4096   |    2995.7   16039.7   21594.8   5.35 |     726.5   15333.2   16044.4  21.11 |    1.046    1.346
+4   8192   |    5669.7   54925.1   68328.4   9.69 |    1445.7   30638.1   32079.1  21.19 |    1.793    2.130
+======================================================================================================================
+speedup(bwd B:A) geomean=1.017 mean=1.079 min=0.565 max=1.815 over 15 shapes
+  T=  512: geomean=1.008 mean=1.014 min=0.863 max=1.129 (3 shapes)
+  T= 1024: geomean=0.807 mean=0.825 min=0.609 max=1.016 (3 shapes)
+  T= 2048: geomean=0.710 mean=0.726 min=0.565 max=0.936 (3 shapes)
+  T= 4096: geomean=1.070 mean=1.074 min=0.977 max=1.198 (3 shapes)
+  T= 8192: geomean=1.757 mean=1.758 min=1.668 max=1.815 (3 shapes)
+
+results saved to /workspace/huangqiang/hq_claude/code/ops-transformer/mamba/causal_conv1d/tests/perf/bwd_compare_results.json
