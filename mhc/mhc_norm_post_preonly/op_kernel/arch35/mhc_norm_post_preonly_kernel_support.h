@@ -12,9 +12,12 @@
 #define MHC_NORM_POST_PREONLY_KERNEL_SUPPORT_H_
 
 #include "kernel_operator.h"
+
 using namespace AscendC;
 
-constexpr uint32_t N_MAX = 4;
+constexpr uint32_t N = 4U;
+constexpr uint32_t SIBLING_AIV_COUNT = 2U;
+constexpr uint32_t HEADS_PER_SIBLING = N / SIBLING_AIV_COUNT;
 constexpr uint32_t ALIGN8 = 8;
 constexpr uint32_t BUFFER_NUM_ONE = 1;
 constexpr uint32_t BUFFER_NUM_FOUR = 4;       // phi ping-pong：4槽让相邻o的搬运与计算重叠
@@ -22,7 +25,7 @@ constexpr uint32_t GAMMA1_CACHE_MAX_D = 5120; // 目标模型维度以内缓存�
 constexpr uint32_t SCALAR_BUF_SIZE = 256;     // 标量计算 UB buffer 大小 (bytes)
 constexpr uint32_t EXP_DIV_ELEM = 8;          // sigmoid ExpDiv 计算元素数
 constexpr uint32_t POST_COMB_SIZE = 8 + 16;   // h_post[8] + h_res[16] buffer 大小
-constexpr uint32_t PARTIAL_SLOT_ELEMS = 8;    // 每个lane的partial固定占32B
+constexpr uint32_t PARTIAL_SLOT_ELEMS = 8;    // 每个sibling AIV的partial固定占32B
 constexpr uint16_t MID_READY_FLAG = 0;        // RMS_mid平方和交换完成标志
 constexpr uint16_t PAIR_READY_FLAG = 1;       // 平方和与投影 partial交换完成标志
 
@@ -37,8 +40,6 @@ template <typename A>
 struct IsSameT<A, A> {
     static constexpr bool value = true;
 };
-
-
 
 
 
@@ -616,12 +617,12 @@ __aicore__ inline void VFComputePostHead(const LocalTensor<float> &dst, const Lo
             mask = Reg::UpdateMask<float>(remain);
             Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(hOutReg, hOutAddr + i * VL_FP32);
             Reg::Muls(dstReg, hOutReg, postWeight, mask);
-            for (uint16_t j = 0; j < static_cast<uint16_t>(N_MAX); ++j) {
+            for (uint16_t j = 0; j < static_cast<uint16_t>(N); ++j) {
                 const uint32_t row = static_cast<uint32_t>(j);
                 Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(residualB16Reg,
                                                                   residualAddr + row * rowStride + i * VL_FP32);
                 Reg::Cast<float, T, CAST_B16_TO_FP32>(residualReg, residualB16Reg, mask);
-                Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(weightReg, combAddr + row * N_MAX + headIndex);
+                Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(weightReg, combAddr + row * N + headIndex);
                 Reg::MulAddDst(dstReg, residualReg, weightReg, mask);
             }
             Reg::StoreAlign(dstAddr + i * VL_FP32, dstReg, mask);
@@ -661,12 +662,12 @@ __aicore__ inline void VFComputePostHeadPair(const LocalTensor<T> &dst0, const L
         // 8个组合权重与D无关，在循环外一次广播，避免每个vector block重复从UB取标量。
         Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(weight00Reg, combAddr + headIndex);
         Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(weight01Reg, combAddr + headIndex + 1U);
-        Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(weight10Reg, combAddr + N_MAX + headIndex);
-        Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(weight11Reg, combAddr + N_MAX + headIndex + 1U);
-        Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(weight20Reg, combAddr + 2U * N_MAX + headIndex);
-        Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(weight21Reg, combAddr + 2U * N_MAX + headIndex + 1U);
-        Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(weight30Reg, combAddr + 3U * N_MAX + headIndex);
-        Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(weight31Reg, combAddr + 3U * N_MAX + headIndex + 1U);
+        Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(weight10Reg, combAddr + N + headIndex);
+        Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(weight11Reg, combAddr + N + headIndex + 1U);
+        Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(weight20Reg, combAddr + 2U * N + headIndex);
+        Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(weight21Reg, combAddr + 2U * N + headIndex + 1U);
+        Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(weight30Reg, combAddr + 3U * N + headIndex);
+        Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(weight31Reg, combAddr + 3U * N + headIndex + 1U);
         for (uint16_t i = 0; i < loops; ++i) {
             mask = Reg::UpdateMask<float>(remain);
             if constexpr (FUSE_NORM_SQUARE) {
@@ -898,6 +899,65 @@ __aicore__ inline void VFAxpyB16WithUbScalar(const LocalTensor<float> &dst, cons
 // clang-format off
 }
 // clang-format on
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
