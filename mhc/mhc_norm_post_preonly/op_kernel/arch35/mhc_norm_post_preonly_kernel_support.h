@@ -383,6 +383,38 @@ __aicore__ inline void VFPairMulAddCompact(const LocalTensor<float> &dst, const 
     }
 }
 
+// 平方行只加载两路x2，保持与通用紧凑归约相同的乘法、求和和累加顺序。
+template <bool ACCUMULATE = false>
+__aicore__ inline void VFPairSquareAddCompact(const LocalTensor<float> &dst, const LocalTensor<float> &src0,
+                                               const LocalTensor<float> &src1, uint32_t count)
+{
+    __local_mem__ float *dstAddr = (__local_mem__ float *)dst.GetPhyAddr();
+    __local_mem__ float *a = (__local_mem__ float *)src0.GetPhyAddr();
+    __local_mem__ float *c = (__local_mem__ float *)src1.GetPhyAddr();
+    const uint16_t loops = static_cast<uint16_t>(count / VL_FP32);
+    __VEC_SCOPE__
+    {
+        Reg::RegTensor<float> ar, cr, p0, p1, pair, acc;
+        Reg::MaskReg mask = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
+        Reg::Duplicate(acc, 0.0f, mask);
+        for (uint16_t i = 0; i < loops; ++i) {
+            const uint32_t off = static_cast<uint32_t>(i) * VL_FP32;
+            Reg::LoadAlign(ar, a + off);
+            Reg::LoadAlign(cr, c + off);
+            Reg::Mul(p0, ar, ar, mask);
+            Reg::Mul(p1, cr, cr, mask);
+            Reg::Add(pair, p0, p1, mask);
+            Reg::Add(acc, acc, pair, mask);
+        }
+        if constexpr (ACCUMULATE) {
+            Reg::RegTensor<float> previous;
+            Reg::LoadAlign(previous, dstAddr);
+            Reg::Add(acc, previous, acc, mask);
+        }
+        Reg::StoreAlign(dstAddr, acc, mask);
+    }
+}
+
 __aicore__ inline void VFMuls(const LocalTensor<float> &dst, const LocalTensor<float> &src, float scalar,
                               uint32_t count)
 {
