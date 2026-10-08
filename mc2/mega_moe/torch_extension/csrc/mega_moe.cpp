@@ -469,7 +469,7 @@ int64_t CalcLeastCclBufferSizeA3(int64_t h, int64_t epWorldSize, bool isQuantRou
 
 int64_t CalcTokenScaleBytesA5(int64_t hidden, int64_t numTopk, int64_t topkWeightsType)
 {
-    int64_t mxScaleNum = (hidden + ALIGN_32 - 1) / ALIGN_32;
+    int64_t mxScaleNum = (hidden + MXFP_SCALE_GROUP_NUM - 1) / MXFP_SCALE_GROUP_NUM;
     int64_t dataBytes = CeilAlign(hidden, ALIGN_256);
     int64_t tokenBytes = CeilAlign(dataBytes + mxScaleNum, ALIGN_32);
     if (topkWeightsType == 1) {
