@@ -25,7 +25,7 @@
 using namespace ge;
 namespace ops {
 
-static const std::set<std::string> GmmDavidSupportSoc = {"Ascend350", "Ascend950"};
+static const std::set<std::string> GmmDavidSupportSoc = {"Ascend350", "Ascend950", "Ascend960DT", "Ascend960PR"};
 
 enum class PlatformID : std::uint8_t {
     UNKNOWN,
