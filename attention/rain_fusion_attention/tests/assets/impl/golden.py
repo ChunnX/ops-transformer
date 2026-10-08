@@ -64,18 +64,24 @@ def _online_softmax_attention_torch_high(q_block, kv_blocks, scale):
     return O_final
 
 
-def _online_softmax_attention_torch(q_block, kv_blocks, scale, torch_dtype, inner_precise):
+def _online_softmax_attention_torch(
+    q_block, kv_blocks, scale, torch_dtype, inner_precise
+):
     q_block = q_block.cpu()
     device = torch.device("cpu")
     q_len = q_block.shape[1]
     head_size = q_block.shape[2]
 
     if inner_precise == 1:
-        m_i = torch.full((1, q_len, 1), -float("inf"), dtype=torch.float16, device=device)
+        m_i = torch.full(
+            (1, q_len, 1), -float("inf"), dtype=torch.float16, device=device
+        )
         l_i = torch.zeros((1, q_len, 1), dtype=torch.float16, device=device)
         O_i = torch.zeros((1, q_len, head_size), dtype=torch.float16, device=device)
     else:
-        m_i = torch.full((1, q_len, 1), -float("inf"), dtype=torch.float32, device=device)
+        m_i = torch.full(
+            (1, q_len, 1), -float("inf"), dtype=torch.float32, device=device
+        )
         l_i = torch.zeros((1, q_len, 1), dtype=torch.float32, device=device)
         O_i = torch.zeros((1, q_len, head_size), dtype=torch.float32, device=device)
 
