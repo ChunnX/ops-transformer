@@ -318,6 +318,10 @@ AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1, AlltoAllMa
 {
     if constexpr (EnableHcommAllToAllOut) {
         if ASCEND_IS_AIC {
+            if (tilingData_->localMatmul != 0) {
+                opStateDump_.DoDump(DUMP_FIELD_POSITION, POS_COMP_LOCAL_BEFORE);
+                MatmulProcess(MatmulMode::LOCAL);
+            }
             opStateDump_.DoDump(DUMP_FIELD_POSITION, POS_COMP_REMOTE_BEFORE);
             MatmulProcess(MatmulMode::REMOTE);
             quantMatmulKernelImpl_.GetBufferSyncMgr().FinishNotifications();
@@ -362,7 +366,6 @@ AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1, AlltoAllMa
                  pipe_);
     for (uint32_t tileIdx = 0; tileIdx < commState_.totalTileCnt_; ++tileIdx) {
         AscendC::CrossCoreWaitFlag(HCOMM_DATA_READY_FLAG);
-        AscendC::SyncAll<true>();
         const bool isHead = tileIdx < commTiling.splitAxisTileCnt;
         const uint64_t rowCount = isHead ? commTiling.splitAxisTileSize : commTiling.splitAxisTailSize;
         const uint64_t rowStart =
@@ -371,7 +374,7 @@ AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1, AlltoAllMa
                          (tileIdx - commTiling.splitAxisTileCnt) * commTiling.splitAxisTailSize;
         // AlltoAll's recv contract includes self rank. Keep matmul's original local-x1 path unchanged.
         permute.CopyTile(rowStart, rowCount);
-        // Idle AIVs still participate in every notification, barrier and window ACK.
+        // Idle AIVs still participate in every notification and window ACK.
         if ((tileIdx + 1) % HCOMM_NOTIFY_WINDOW == 0 || tileIdx + 1 == commState_.totalTileCnt_) {
             AscendC::CrossCoreSetFlag<2, PIPE_MTE3>(HCOMM_WINDOW_ACK_FLAG);
         }

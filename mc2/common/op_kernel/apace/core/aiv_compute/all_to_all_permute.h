@@ -18,7 +18,7 @@ namespace Apace {
 // No HCCL or cross-core operations: all workers must be notified before CopyTile.
 class AllToAllPermute {
 public:
-    static constexpr uint32_t BUFFER_BYTES = 16 * 1024;
+    static constexpr uint32_t BUFFER_BYTES = 248 * 1024;
 
     __aicore__ inline void Init(GM_ADDR rawInput, GM_ADDR output, uint64_t rows, uint32_t ranks, uint64_t bytesPerRank,
                                 uint32_t workerId, uint32_t workerCount, AscendC::TPipe* pipe)
