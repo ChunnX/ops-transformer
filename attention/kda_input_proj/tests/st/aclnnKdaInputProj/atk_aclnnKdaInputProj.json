@@ -1,0 +1,1143 @@
+[
+  {
+    "id": 0,
+    "name": "kda_input_proj",
+    "aclnn_name": "KdaInputProj",
+    "api_type": "ascend_kda_input_proj",
+    "aclnn_api_type": "ascend_kda_input_proj_npu",
+    "standard": {
+      "acc": {
+        "single_bm": {
+          "type": "vector_fused"
+        }
+      },
+      "perf": "not_key"
+    },
+    "inputs": [
+      {
+        "name": "x",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          1,
+          7168
+        ],
+        "range_values": [
+          -1,
+          1
+        ],
+        "backward": false,
+        "align_32B": null
+      },
+      {
+        "name": "weightQkv",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          7168,
+          4608
+        ],
+        "range_values": [
+          -1,
+          1
+        ],
+        "backward": false,
+        "align_32B": null
+      },
+      {
+        "name": "weightBeta",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          7168,
+          12
+        ],
+        "range_values": [
+          -1,
+          1
+        ],
+        "backward": false,
+        "align_32B": null
+      },
+      {
+        "name": "weightGate",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          7168,
+          1536
+        ],
+        "range_values": [
+          -1,
+          1
+        ],
+        "backward": false,
+        "align_32B": null
+      },
+      {
+        "name": "weightG",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          7168,
+          1536
+        ],
+        "range_values": [
+          -1,
+          1
+        ],
+        "backward": false,
+        "align_32B": null
+      },
+      {
+        "name": "weightQkvScale",
+        "type": "tensor",
+        "required": true,
+        "dtype": "int32",
+        "shape": [
+          112,
+          4608,
+          2
+        ],
+        "range_values": [
+          120,
+          132
+        ],
+        "backward": false,
+        "align_32B": null
+      }
+    ],
+    "is_boundary": true
+  },
+  {
+    "id": 1,
+    "name": "kda_input_proj",
+    "aclnn_name": "KdaInputProj",
+    "api_type": "ascend_kda_input_proj",
+    "aclnn_api_type": "ascend_kda_input_proj_npu",
+    "standard": {
+      "acc": {
+        "single_bm": {
+          "type": "vector_fused"
+        }
+      },
+      "perf": "not_key"
+    },
+    "inputs": [
+      {
+        "name": "x",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          8,
+          7168
+        ],
+        "range_values": [
+          -1,
+          1
+        ],
+        "backward": false,
+        "align_32B": null
+      },
+      {
+        "name": "weightQkv",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          7168,
+          4608
+        ],
+        "range_values": [
+          -1,
+          1
+        ],
+        "backward": false,
+        "align_32B": null
+      },
+      {
+        "name": "weightBeta",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          7168,
+          12
+        ],
+        "range_values": [
+          -1,
+          1
+        ],
+        "backward": false,
+        "align_32B": null
+      },
+      {
+        "name": "weightGate",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          7168,
+          1536
+        ],
+        "range_values": [
+          -1,
+          1
+        ],
+        "backward": false,
+        "align_32B": null
+      },
+      {
+        "name": "weightG",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          7168,
+          1536
+        ],
+        "range_values": [
+          -1,
+          1
+        ],
+        "backward": false,
+        "align_32B": null
+      },
+      {
+        "name": "weightQkvScale",
+        "type": "tensor",
+        "required": true,
+        "dtype": "int32",
+        "shape": [
+          112,
+          4608,
+          2
+        ],
+        "range_values": [
+          120,
+          132
+        ],
+        "backward": false,
+        "align_32B": null
+      }
+    ]
+  },
+  {
+    "id": 2,
+    "name": "kda_input_proj",
+    "aclnn_name": "KdaInputProj",
+    "api_type": "ascend_kda_input_proj",
+    "aclnn_api_type": "ascend_kda_input_proj_npu",
+    "standard": {
+      "acc": {
+        "single_bm": {
+          "type": "vector_fused"
+        }
+      },
+      "perf": "not_key"
+    },
+    "inputs": [
+      {
+        "name": "x",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          8,
+          7168
+        ],
+        "range_values": [
+          -1,
+          1
+        ],
+        "backward": false,
+        "align_32B": null
+      },
+      {
+        "name": "weightQkv",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          4608,
+          7168
+        ],
+        "range_values": [
+          -1,
+          1
+        ],
+        "backward": false,
+        "align_32B": null
+      },
+      {
+        "name": "weightBeta",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          12,
+          7168
+        ],
+        "range_values": [
+          -1,
+          1
+        ],
+        "backward": false,
+        "align_32B": null
+      },
+      {
+        "name": "weightGate",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          1536,
+          7168
+        ],
+        "range_values": [
+          -1,
+          1
+        ],
+        "backward": false,
+        "align_32B": null
+      },
+      {
+        "name": "weightG",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          1536,
+          7168
+        ],
+        "range_values": [
+          -1,
+          1
+        ],
+        "backward": false,
+        "align_32B": null
+      },
+      {
+        "name": "weightQkvScale",
+        "type": "tensor",
+        "required": true,
+        "dtype": "int32",
+        "shape": [
+          4608,
+          112,
+          2
+        ],
+        "range_values": [
+          120,
+          132
+        ],
+        "backward": false,
+        "align_32B": null
+      }
+    ]
+  },
+  {
+    "id": 3,
+    "name": "kda_input_proj",
+    "aclnn_name": "KdaInputProj",
+    "api_type": "ascend_kda_input_proj",
+    "aclnn_api_type": "ascend_kda_input_proj_npu",
+    "standard": {
+      "acc": {
+        "single_bm": {
+          "type": "vector_fused"
+        }
+      },
+      "perf": "not_key"
+    },
+    "inputs": [
+      {
+        "name": "x",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          225,
+          7168
+        ],
+        "range_values": [
+          -1,
+          1
+        ],
+        "backward": false,
+        "align_32B": null
+      },
+      {
+        "name": "weightQkv",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          7168,
+          4608
+        ],
+        "range_values": [
+          -1,
+          1
+        ],
+        "backward": false,
+        "align_32B": null
+      },
+      {
+        "name": "weightBeta",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          7168,
+          12
+        ],
+        "range_values": [
+          -1,
+          1
+        ],
+        "backward": false,
+        "align_32B": null
+      },
+      {
+        "name": "weightGate",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          7168,
+          1536
+        ],
+        "range_values": [
+          -1,
+          1
+        ],
+        "backward": false,
+        "align_32B": null
+      },
+      {
+        "name": "weightG",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          7168,
+          1536
+        ],
+        "range_values": [
+          -1,
+          1
+        ],
+        "backward": false,
+        "align_32B": null
+      },
+      {
+        "name": "weightQkvScale",
+        "type": "tensor",
+        "required": true,
+        "dtype": "int32",
+        "shape": [
+          112,
+          4608,
+          2
+        ],
+        "range_values": [
+          120,
+          132
+        ],
+        "backward": false,
+        "align_32B": null
+      }
+    ]
+  },
+  {
+    "id": 4,
+    "name": "kda_input_proj",
+    "aclnn_name": "KdaInputProj",
+    "api_type": "ascend_kda_input_proj",
+    "aclnn_api_type": "ascend_kda_input_proj_npu",
+    "standard": {
+      "acc": {
+        "single_bm": {
+          "type": "vector_fused"
+        }
+      },
+      "perf": "not_key"
+    },
+    "inputs": [
+      {
+        "name": "x",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          240,
+          7168
+        ],
+        "range_values": [
+          -1,
+          1
+        ],
+        "backward": false,
+        "align_32B": null
+      },
+      {
+        "name": "weightQkv",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          7168,
+          4608
+        ],
+        "range_values": [
+          -1,
+          1
+        ],
+        "backward": false,
+        "align_32B": null
+      },
+      {
+        "name": "weightBeta",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          7168,
+          12
+        ],
+        "range_values": [
+          -1,
+          1
+        ],
+        "backward": false,
+        "align_32B": null
+      },
+      {
+        "name": "weightGate",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          7168,
+          1536
+        ],
+        "range_values": [
+          -1,
+          1
+        ],
+        "backward": false,
+        "align_32B": null
+      },
+      {
+        "name": "weightG",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          7168,
+          1536
+        ],
+        "range_values": [
+          -1,
+          1
+        ],
+        "backward": false,
+        "align_32B": null
+      },
+      {
+        "name": "weightQkvScale",
+        "type": "tensor",
+        "required": true,
+        "dtype": "int32",
+        "shape": [
+          112,
+          4608,
+          2
+        ],
+        "range_values": [
+          120,
+          132
+        ],
+        "backward": false,
+        "align_32B": null
+      }
+    ]
+  },
+  {
+    "id": 5,
+    "name": "kda_input_proj",
+    "aclnn_name": "KdaInputProj",
+    "api_type": "ascend_kda_input_proj",
+    "aclnn_api_type": "ascend_kda_input_proj_npu",
+    "standard": {
+      "acc": {
+        "single_bm": {
+          "type": "vector_fused"
+        }
+      },
+      "perf": "not_key"
+    },
+    "inputs": [
+      {
+        "name": "x",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          256,
+          7168
+        ],
+        "range_values": [
+          -1,
+          1
+        ],
+        "backward": false,
+        "align_32B": null
+      },
+      {
+        "name": "weightQkv",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          7168,
+          4608
+        ],
+        "range_values": [
+          -1,
+          1
+        ],
+        "backward": false,
+        "align_32B": null
+      },
+      {
+        "name": "weightBeta",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          7168,
+          12
+        ],
+        "range_values": [
+          -1,
+          1
+        ],
+        "backward": false,
+        "align_32B": null
+      },
+      {
+        "name": "weightGate",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          7168,
+          1536
+        ],
+        "range_values": [
+          -1,
+          1
+        ],
+        "backward": false,
+        "align_32B": null
+      },
+      {
+        "name": "weightG",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          7168,
+          1536
+        ],
+        "range_values": [
+          -1,
+          1
+        ],
+        "backward": false,
+        "align_32B": null
+      },
+      {
+        "name": "weightQkvScale",
+        "type": "tensor",
+        "required": true,
+        "dtype": "int32",
+        "shape": [
+          112,
+          4608,
+          2
+        ],
+        "range_values": [
+          120,
+          132
+        ],
+        "backward": false,
+        "align_32B": null
+      }
+    ]
+  },
+  {
+    "id": 6,
+    "name": "kda_input_proj",
+    "aclnn_name": "KdaInputProj",
+    "api_type": "ascend_kda_input_proj",
+    "aclnn_api_type": "ascend_kda_input_proj_npu",
+    "standard": {
+      "acc": {
+        "single_bm": {
+          "type": "vector_fused"
+        }
+      },
+      "perf": "not_key"
+    },
+    "inputs": [
+      {
+        "name": "x",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          257,
+          7168
+        ],
+        "range_values": [
+          -1,
+          1
+        ],
+        "backward": false,
+        "align_32B": null
+      },
+      {
+        "name": "weightQkv",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          7168,
+          4608
+        ],
+        "range_values": [
+          -1,
+          1
+        ],
+        "backward": false,
+        "align_32B": null
+      },
+      {
+        "name": "weightBeta",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          7168,
+          12
+        ],
+        "range_values": [
+          -1,
+          1
+        ],
+        "backward": false,
+        "align_32B": null
+      },
+      {
+        "name": "weightGate",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          7168,
+          1536
+        ],
+        "range_values": [
+          -1,
+          1
+        ],
+        "backward": false,
+        "align_32B": null
+      },
+      {
+        "name": "weightG",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          7168,
+          1536
+        ],
+        "range_values": [
+          -1,
+          1
+        ],
+        "backward": false,
+        "align_32B": null
+      },
+      {
+        "name": "weightQkvScale",
+        "type": "tensor",
+        "required": true,
+        "dtype": "int32",
+        "shape": [
+          112,
+          4608,
+          2
+        ],
+        "range_values": [
+          120,
+          132
+        ],
+        "backward": false,
+        "align_32B": null
+      }
+    ]
+  },
+  {
+    "id": 7,
+    "name": "kda_input_proj",
+    "aclnn_name": "KdaInputProj",
+    "api_type": "ascend_kda_input_proj",
+    "aclnn_api_type": "ascend_kda_input_proj_npu",
+    "standard": {
+      "acc": {
+        "single_bm": {
+          "type": "vector_fused"
+        }
+      },
+      "perf": "not_key"
+    },
+    "inputs": [
+      {
+        "name": "x",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          512,
+          7168
+        ],
+        "range_values": [
+          -1,
+          1
+        ],
+        "backward": false,
+        "align_32B": null
+      },
+      {
+        "name": "weightQkv",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          7168,
+          4608
+        ],
+        "range_values": [
+          -1,
+          1
+        ],
+        "backward": false,
+        "align_32B": null
+      },
+      {
+        "name": "weightBeta",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          7168,
+          12
+        ],
+        "range_values": [
+          -1,
+          1
+        ],
+        "backward": false,
+        "align_32B": null
+      },
+      {
+        "name": "weightGate",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          7168,
+          1536
+        ],
+        "range_values": [
+          -1,
+          1
+        ],
+        "backward": false,
+        "align_32B": null
+      },
+      {
+        "name": "weightG",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          7168,
+          1536
+        ],
+        "range_values": [
+          -1,
+          1
+        ],
+        "backward": false,
+        "align_32B": null
+      },
+      {
+        "name": "weightQkvScale",
+        "type": "tensor",
+        "required": true,
+        "dtype": "int32",
+        "shape": [
+          112,
+          4608,
+          2
+        ],
+        "range_values": [
+          120,
+          132
+        ],
+        "backward": false,
+        "align_32B": null
+      }
+    ]
+  },
+  {
+    "id": 8,
+    "name": "kda_input_proj",
+    "aclnn_name": "KdaInputProj",
+    "api_type": "ascend_kda_input_proj",
+    "aclnn_api_type": "ascend_kda_input_proj_npu",
+    "standard": {
+      "acc": {
+        "single_bm": {
+          "type": "vector_fused"
+        }
+      },
+      "perf": "not_key"
+    },
+    "inputs": [
+      {
+        "name": "x",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          8,
+          256
+        ],
+        "range_values": [
+          -1,
+          1
+        ],
+        "backward": false,
+        "align_32B": null
+      },
+      {
+        "name": "weightQkv",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          256,
+          128
+        ],
+        "range_values": [
+          -1,
+          1
+        ],
+        "backward": false,
+        "align_32B": null
+      },
+      {
+        "name": "weightBeta",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          256,
+          16
+        ],
+        "range_values": [
+          -1,
+          1
+        ],
+        "backward": false,
+        "align_32B": null
+      },
+      {
+        "name": "weightGate",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          256,
+          64
+        ],
+        "range_values": [
+          -1,
+          1
+        ],
+        "backward": false,
+        "align_32B": null
+      },
+      {
+        "name": "weightG",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          256,
+          64
+        ],
+        "range_values": [
+          -1,
+          1
+        ],
+        "backward": false,
+        "align_32B": null
+      },
+      {
+        "name": "weightQkvScale",
+        "type": "tensor",
+        "required": true,
+        "dtype": "int32",
+        "shape": [
+          4,
+          128,
+          2
+        ],
+        "range_values": [
+          120,
+          132
+        ],
+        "backward": false,
+        "align_32B": null
+      }
+    ]
+  },
+  {
+    "id": 9,
+    "name": "kda_input_proj",
+    "aclnn_name": "KdaInputProj",
+    "api_type": "ascend_kda_input_proj",
+    "aclnn_api_type": "ascend_kda_input_proj_npu",
+    "standard": {
+      "acc": {
+        "single_bm": {
+          "type": "vector_fused"
+        }
+      },
+      "perf": "not_key"
+    },
+    "inputs": [
+      {
+        "name": "x",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          8,
+          256
+        ],
+        "range_values": [
+          -1,
+          1
+        ],
+        "backward": false,
+        "align_32B": null
+      },
+      {
+        "name": "weightQkv",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          256,
+          241
+        ],
+        "range_values": [
+          -1,
+          1
+        ],
+        "backward": false,
+        "align_32B": null
+      },
+      {
+        "name": "weightBeta",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          256,
+          16
+        ],
+        "range_values": [
+          -1,
+          1
+        ],
+        "backward": false,
+        "align_32B": null
+      },
+      {
+        "name": "weightGate",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          256,
+          64
+        ],
+        "range_values": [
+          -1,
+          1
+        ],
+        "backward": false,
+        "align_32B": null
+      },
+      {
+        "name": "weightG",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          256,
+          64
+        ],
+        "range_values": [
+          -1,
+          1
+        ],
+        "backward": false,
+        "align_32B": null
+      },
+      {
+        "name": "weightQkvScale",
+        "type": "tensor",
+        "required": true,
+        "dtype": "int32",
+        "shape": [
+          4,
+          241,
+          2
+        ],
+        "range_values": [
+          120,
+          132
+        ],
+        "backward": false,
+        "align_32B": null
+      }
+    ]
+  }
+]

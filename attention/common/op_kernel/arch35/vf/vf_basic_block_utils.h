@@ -40,9 +40,9 @@ using namespace Reg;
 
 constexpr static AscendC::Reg::CastTrait castTraitNoneZero = {
     AscendC::Reg::RegLayout::ZERO,
-    AscendC::Reg::SatMode::UNKNOWN,
+    AscendC::Reg::SatMode::SAT,
     AscendC::Reg::MaskMergeMode::ZEROING,
-    AscendC::RoundMode::CAST_NONE,
+    AscendC::RoundMode::CAST_TRUNC,
 };
 
 constexpr static AscendC::Reg::CastTrait castTraitZero = {
@@ -99,6 +99,13 @@ constexpr static AscendC::Reg::CastTrait castTraitRintThree = {
     AscendC::Reg::SatMode::SAT,
     AscendC::Reg::MaskMergeMode::ZEROING,
     AscendC::RoundMode::CAST_RINT,
+};
+
+constexpr static AscendC::Reg::CastTrait castTraitZeroMerge = {
+    AscendC::Reg::RegLayout::ZERO,
+    AscendC::Reg::SatMode::SAT,
+    AscendC::Reg::MaskMergeMode::MERGING,
+    AscendC::RoundMode::CAST_ROUND,
 };
 
 #define USE_MLA_FULLQUANT_V1_P(vreg_exp, vreg_rowmax_p, MaskReg) \

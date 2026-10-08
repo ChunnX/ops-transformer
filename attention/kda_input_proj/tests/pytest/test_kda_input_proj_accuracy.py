@@ -59,18 +59,51 @@ G_SIZE = 1536
 MX_SCALE_GROUP_K = 64
 
 
+_picked_device_id = None
+
+
+def _pick_device_id() -> int:
+    global _picked_device_id
+    if _picked_device_id is not None:
+        return _picked_device_id
+    env = os.environ.get("TEST_DEVICE_ID")
+    if env is not None:
+        _picked_device_id = int(env)
+        return _picked_device_id
+    # 共享机上 device0 常被占满，TsdOpen 失败；按 0,5,6,... 探测第一个能 set_device 的卡。
+    candidates = [0, 5, 6, 4, 3, 2, 1, 7]
+    count = 0
+    try:
+        count = int(torch.npu.device_count())
+    except Exception:
+        count = 8
+    for idx in candidates:
+        if idx >= count:
+            continue
+        try:
+            torch_npu.npu.set_device(idx)
+            _picked_device_id = idx
+            return idx
+        except Exception:
+            continue
+    _picked_device_id = 0
+    return _picked_device_id
+
+
 def _device():
-    return torch.device(f"npu:{int(os.environ.get('TEST_DEVICE_ID', '0'))}")
+    return torch.device(f"npu:{_pick_device_id()}")
 
 
 def _is_ascend950() -> bool:
-    # get_device_properties 必须在 set_device 之后才能拿到 HBM 信息，否则直接抛错。
+    # get_device_name 不依赖 set_device / TsdOpen，避免占用卡导致整份 ST 被 skip。
     try:
-        idx = _device().index
-        torch_npu.npu.set_device(idx)
-        return "Ascend950" in torch.npu.get_device_properties(idx).name
+        idx = int(os.environ.get("TEST_DEVICE_ID", "0"))
+        return "Ascend950" in str(torch.npu.get_device_name(idx))
     except Exception:  # pragma: no cover
-        return False
+        try:
+            return "Ascend950" in str(torch.npu.get_device_name(0))
+        except Exception:
+            return False
 
 
 pytestmark = pytest.mark.skipif(
@@ -78,23 +111,42 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def _make_weights(scale_kind: str = "vary"):
-    """权重按 [K, N] 连续存储（trans_weight_*=false），qkv scale 为 [ceil(K/64), N, 2]。"""
+def _make_weights(
+    scale_kind: str = "vary", trans_qkv: bool = False, trans_bgg: bool = False
+):
+    """默认权重按 [K, N] 连续存储（trans_weight_*=false），qkv scale 为 [ceil(K/64), N, 2]。
+
+    trans_qkv/trans_bgg=True 时改为 Linear 的 [N, K] 存储、公开 view [K, N]
+    （stride[-2]==1），由 aclnn 推断 trans=true。qkv scale 相应地变成 [N, ceil(K/64), 2]。
+    """
     torch.manual_seed(1234)
-    weight_qkv = (torch.randn(HIDDEN_SIZE, QKV_SIZE) * 0.3).to(torch.float8_e4m3fn)
-    if scale_kind == "const":
-        weight_qkv_scale = torch.full(
-            (HIDDEN_SIZE // MX_SCALE_GROUP_K, QKV_SIZE, 2), 1.0
+    kg = HIDDEN_SIZE // MX_SCALE_GROUP_K
+    if trans_qkv:
+        weight_qkv = (
+            (torch.randn(QKV_SIZE, HIDDEN_SIZE) * 0.3).to(torch.float8_e4m3fn).t()
         )
+        scale_shape = (QKV_SIZE, kg, 2)
     else:
-        exp = torch.randint(
-            120, 132, (HIDDEN_SIZE // MX_SCALE_GROUP_K, QKV_SIZE, 2)
-        ).float()
+        weight_qkv = (torch.randn(HIDDEN_SIZE, QKV_SIZE) * 0.3).to(torch.float8_e4m3fn)
+        scale_shape = (kg, QKV_SIZE, 2)
+    if scale_kind == "const":
+        weight_qkv_scale = torch.full(scale_shape, 1.0)
+    else:
+        exp = torch.randint(120, 132, scale_shape).float()
         weight_qkv_scale = torch.pow(2.0, exp - 127.0)
     # beta/gate/g 权重量级压小，避免 sigmoid 全部饱和到 0/1 而失去分辨力
-    weight_beta = (torch.randn(HIDDEN_SIZE, BETA_SIZE) * 0.02).to(torch.bfloat16)
-    weight_gate = (torch.randn(HIDDEN_SIZE, GATE_SIZE) * 0.02).to(torch.bfloat16)
-    weight_g = (torch.randn(HIDDEN_SIZE, G_SIZE) * 0.02).to(torch.bfloat16)
+    if trans_bgg:
+        weight_beta = (
+            (torch.randn(BETA_SIZE, HIDDEN_SIZE) * 0.02).to(torch.bfloat16).t()
+        )
+        weight_gate = (
+            (torch.randn(GATE_SIZE, HIDDEN_SIZE) * 0.02).to(torch.bfloat16).t()
+        )
+        weight_g = (torch.randn(G_SIZE, HIDDEN_SIZE) * 0.02).to(torch.bfloat16).t()
+    else:
+        weight_beta = (torch.randn(HIDDEN_SIZE, BETA_SIZE) * 0.02).to(torch.bfloat16)
+        weight_gate = (torch.randn(HIDDEN_SIZE, GATE_SIZE) * 0.02).to(torch.bfloat16)
+        weight_g = (torch.randn(HIDDEN_SIZE, G_SIZE) * 0.02).to(torch.bfloat16)
     return (
         weight_qkv,
         weight_qkv_scale.to(torch.float8_e8m0fnu),
@@ -166,7 +218,7 @@ def _assert_fp32_output(got, golden, golden_hp, name):
     )
 
 
-def _check_all(x, weights, tag):
+def _check_all(x, weights, tag, trans_qkv: bool = False):
     qkv, beta, gate, g = _run(x, weights)
     weight_qkv, weight_qkv_scale, weight_beta, weight_gate, weight_g = weights
 
@@ -174,8 +226,13 @@ def _check_all(x, weights, tag):
     quant_bytes, scale_bytes = mx_quant_golden(x)
     quant_x = quant_bytes.view(torch.float8_e4m3fn)
     x_scale = scale_bytes.view(torch.float8_e8m0fnu)
-    qkv_g = qkv_golden(quant_x, x_scale, weight_qkv, weight_qkv_scale)
-    qkv_hp = qkv_golden_hp(quant_x, x_scale, weight_qkv, weight_qkv_scale)
+    scale_kn = (
+        weight_qkv_scale.permute(1, 0, 2).contiguous()
+        if trans_qkv
+        else weight_qkv_scale
+    )
+    qkv_g = qkv_golden(quant_x, x_scale, weight_qkv, scale_kn)
+    qkv_hp = qkv_golden_hp(quant_x, x_scale, weight_qkv, scale_kn)
     _assert_bf16_output(qkv, qkv_g, qkv_hp, f"qkv[{tag}]")
 
     beta_g, gate_g, g_g = bgg_golden(x, weight_beta, weight_gate, weight_g)
@@ -183,6 +240,33 @@ def _check_all(x, weights, tag):
     _assert_fp32_output(beta, beta_g, beta_hp, f"beta[{tag}]")
     _assert_bf16_output(gate, gate_g, gate_hp, f"gate[{tag}]")
     _assert_bf16_output(g, g_g, g_hp, f"g[{tag}]")
+
+
+@pytest.mark.ci
+def test_transposed_bgg_weights():
+    """beta/gate/g 走 Linear [N,K] 存储，公开 [K,N] 转置 view。"""
+    weights = _make_weights(trans_bgg=True)
+    torch.manual_seed(16)
+    x = torch.randn(16, HIDDEN_SIZE).to(torch.bfloat16)
+    _check_all(x, weights, "trans_bgg")
+
+
+@pytest.mark.ci
+def test_transposed_qkv_weight():
+    """qkv 权重 [N,K] 存储 + scale [N, K/64, 2]，覆盖 trans_weight_qkv=true。"""
+    weights = _make_weights(trans_qkv=True)
+    torch.manual_seed(17)
+    x = torch.randn(16, HIDDEN_SIZE).to(torch.bfloat16)
+    _check_all(x, weights, "trans_qkv", trans_qkv=True)
+
+
+@pytest.mark.ci
+def test_all_transposed_linear_nk_storage():
+    """四路权重全部按 Linear [N,K] 存储，对应 tiling key 全 1。"""
+    weights = _make_weights(trans_qkv=True, trans_bgg=True)
+    torch.manual_seed(18)
+    x = torch.randn(16, HIDDEN_SIZE).to(torch.bfloat16)
+    _check_all(x, weights, "trans_all", trans_qkv=True)
 
 
 # 225/240/256 曾因 QMM L1 回退失效触发 LOAD2D 越界，作为回归点固定下来。

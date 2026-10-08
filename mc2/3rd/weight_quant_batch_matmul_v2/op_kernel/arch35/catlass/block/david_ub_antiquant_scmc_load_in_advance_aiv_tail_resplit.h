@@ -18,7 +18,7 @@
 #include "../pipeline/pipeline_state.h"
 #include "../simd/a16w4_pergroup_kn_nz.h"
 #include "../tile/mc2_3rd_copy_gm_to_ub.h"
-#include "../tile/copy_ub_to_l1.h"
+#include "../tile/mc2_3rd_copy_ub_to_l1.h"
 #include "../utils/wq_utils_constant.h"
 #include "../utils/wq_device_utils.h"
 #include "../utils/math_utils.h"

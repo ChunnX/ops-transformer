@@ -97,8 +97,8 @@ __aicore__ inline void CopyMultiMatrixNDToNZ(LocalTensor<T> l1Tensor, const Glob
             nd2nzPara.dValue = dValue / HALF_SIZE_DIVISOR;
             nd2nzPara.srcDValue = srcDValue / HALF_SIZE_DIVISOR;
         } else {
-            nd2nzPara.dValue = dValue;       // nd矩阵的列数
             nd2nzPara.srcDValue = srcDValue; // 同一nd矩阵相邻行起始地址间的偏移
+            nd2nzPara.dValue = dValue;       // nd矩阵的列数
         }
         nd2nzPara.dstNzC0Stride = dstNzC0Stride;
         nd2nzPara.dstNzNStride = 1;
@@ -123,10 +123,10 @@ public:
             ProcessS1G(dstTensor, srcTensor, gmCoord);
         } else if constexpr (GM_FORMAT == GmFormat::BNGSD) {
             auto &offsetCalculator = srcTensor.offsetCalculator;
-            if (offsetCalculator.actualSeqLensQParser.GetActualLenDims() != 0) {
-                ProcessGS1(dstTensor, srcTensor, gmCoord);
-            } else {
+            if (offsetCalculator.actualSeqLensQParser.GetActualLenDims() == 0) {
                 ProcessContinuous(dstTensor, srcTensor, gmCoord);
+            } else {
+                ProcessGS1(dstTensor, srcTensor, gmCoord);
             }
         } else if constexpr (GM_FORMAT == GmFormat::NGTD) {
             ProcessGS1(dstTensor, srcTensor, gmCoord);
@@ -206,8 +206,8 @@ private:
                                       GmCoordGs1Merge &gmCoord)
     {
         // N2*G*T(BS1)*D
-        auto &offsetCalculator = srcTensor.offsetCalculator;
         uint64_t s1Size = 0;
+        auto &offsetCalculator = srcTensor.offsetCalculator;
         if constexpr (GmLayoutParams<GM_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_TND) {
             s1Size = offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmCoord.bIdx);
         } else {
@@ -268,9 +268,9 @@ public:
     __aicore__ inline void operator()(FaL1Tensor<Q_T, L1_FORMAT> &dstTensor, FaGmTensorType &srcTensor,
                                       GmCoordS1Only &gmCoord)
     {
+        uint64_t offset = srcTensor.offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, gmCoord.gIdx, gmCoord.s1Idx,
+                                                               gmCoord.dIdx);
         auto &offsetCalculator = srcTensor.offsetCalculator;
-        uint64_t offset =
-            offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, gmCoord.gIdx, gmCoord.s1Idx, gmCoord.dIdx);
         CopySingleMatrixNDToNZ(dstTensor.tensor, srcTensor.gmTensor[offset], gmCoord.s1DealSize, gmCoord.dDealSize,
                                offsetCalculator.GetStrideS1(), dstTensor.rowCount);
     }
@@ -319,8 +319,8 @@ private:
                                                 GmKvCoord &gmCoord)
     {
         auto &offsetCalculator = srcTensor.offsetCalculator;
-        uint32_t curS2Idx = gmCoord.s2Idx;
         uint32_t copyFinishRowCnt = 0;
+        uint32_t curS2Idx = gmCoord.s2Idx;
         uint32_t blockElementCnt = 32 / sizeof(KV_T);
         if constexpr (IsSameType<KV_T, int4b_t>::value || IsSameType<KV_T, hifloat4x2_t>::value ||
                       IsSameType<KV_T, fp4x2_e2m1_t>::value) {
@@ -495,8 +495,8 @@ __aicore__ inline void CopySingleHIScaleDNToNZ(LocalTensor<T> l1Tensor, const Gl
     dn2nzPara.dstNzNStride = 1; // 转换为NZ矩阵后，ND之间相邻两行在NZ矩阵中起始地址之间的偏移， 单位为Block个数
     dn2nzPara.dstNzMatrixStride = dn2nzPara.nValue; // 两个NZ矩阵，起始地址之间的偏移， 单位为元素数量
 
-    LocalTensor<bfloat16_t> l1TensorCast = l1Tensor.template ReinterpretCast<bfloat16_t>();
     GlobalTensor<bfloat16_t> gmTensorCast;
+    LocalTensor<bfloat16_t> l1TensorCast = l1Tensor.template ReinterpretCast<bfloat16_t>();
     gmTensorCast.SetGlobalBuffer(((__gm__ bfloat16_t *)(gmTensor.GetPhyAddr())));
     DataCopy(l1TensorCast, gmTensorCast, dn2nzPara);
 }
@@ -550,8 +550,8 @@ private:
                                       GmCoordGs1Merge &gmCoord)
     {
         auto &offsetCalculator = srcTensor.offsetCalculator;
-        uint32_t s1IdxStart = gmCoord.gS1Idx / offsetCalculator.GetDimG();
         uint32_t gIdxStart = gmCoord.gS1Idx % offsetCalculator.GetDimG();
+        uint32_t s1IdxStart = gmCoord.gS1Idx / offsetCalculator.GetDimG();
         uint64_t queryScaleGmbaseOffset =
             offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, 0, s1IdxStart, gmCoord.dIdx) +
             gIdxStart * offsetCalculator.GetDimD();
@@ -613,8 +613,8 @@ private:
             }
         }
 
-        uint32_t gIdxStart = gmCoord.gS1Idx / s1Size;
         uint32_t s1IdxStart = gmCoord.gS1Idx % s1Size;
+        uint32_t gIdxStart = gmCoord.gS1Idx / s1Size;
         uint32_t gIdxEnd = (gmCoord.gS1Idx + gmCoord.gS1DealSize) / s1Size;
         uint32_t s1IdxEnd = (gmCoord.gS1Idx + gmCoord.gS1DealSize) % s1Size;
 
