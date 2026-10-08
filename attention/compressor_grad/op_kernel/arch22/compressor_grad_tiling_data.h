@@ -43,11 +43,11 @@ struct CompressorGradTilingDataA3 {
     int64_t segLen = 0;         // scatter D-segment length (64/32/16)
     int64_t gemmDxCores = 0;    // gDx: AIC cores assigned to the d_x branch
     // workspace byte offsets from the user workspace base
-    int64_t xF16WsOff = 0;      // x cast to fp16, blocked-NZ, tPad * H elements
-    int64_t wkvF16WsOff = 0;    // wkv cast to fp16, blocked-NZ, C * H elements
-    int64_t wgateF16WsOff = 0;  // wgate cast to fp16, blocked-NZ, C * H elements
-    int64_t dnKvWsOff = 0;      // dn_kv fp16, dnPlanes * tPad * C elements
-    int64_t dnScWsOff = 0;      // dn_sc fp16, dnPlanes * tPad * C elements
+    int64_t xF16WsOff = 0;     // x cast to fp16, blocked-NZ, tPad * H elements
+    int64_t wkvF16WsOff = 0;   // wkv cast to fp16, blocked-NZ, C * H elements
+    int64_t wgateF16WsOff = 0; // wgate cast to fp16, blocked-NZ, C * H elements
+    int64_t dnKvWsOff = 0;     // dn_kv fp16, dnPlanes * tPad * C elements
+    int64_t dnScWsOff = 0;     // dn_sc fp16, dnPlanes * tPad * C elements
 };
 } // namespace optiling
 

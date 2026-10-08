@@ -968,7 +968,9 @@ def write_scripts(
         # The pypto marker applies only to SOCs with a PyPTO backend mapping: a dual-stack op
         # (e.g. compressor_grad: PyPTO on ascend950, native AscendC on arch22) registers in the
         # ops-info of arch22 SOCs too, and must keep the normal cpp path there.
-        op_desc.is_pypto = op_desc.op_file in pypto_ops and PYPTO_ARCH_MAP.get(ini_soc) is not None
+        op_desc.is_pypto = (
+            op_desc.op_file in pypto_ops and PYPTO_ARCH_MAP.get(ini_soc) is not None
+        )
         if op_desc.is_pypto:
             if not ini_soc:
                 raise RuntimeError(

@@ -24,7 +24,7 @@
 
 // 可表示的tilingkey范围为64bit，注意不可超过限制
 ASCENDC_TPL_ARGS_DECL(CompressorGrad, // 算子唯一标识，与opType保持一致
-                      // bit:0-1 x的dtype  0:BF16 1:FP16
+                                      // bit:0-1 x的dtype  0:BF16 1:FP16
                       ASCENDC_TPL_UINT_DECL(D_TYPE, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_LIST, 0, 1), );
 
 ASCENDC_TPL_SEL(

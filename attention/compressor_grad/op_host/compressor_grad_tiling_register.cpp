@@ -27,12 +27,12 @@ namespace optiling {
 #define CMP_GRAD_EXTERN_C
 #endif
 
-CMP_GRAD_EXTERN_C ge::graphStatus TilingCompressorGradArch22(gert::TilingContext *context);
+CMP_GRAD_EXTERN_C ge::graphStatus TilingCompressorGradArch22(gert::TilingContext* context);
 #ifdef COMPRESSOR_GRAD_HAS_ARCH35
-CMP_GRAD_EXTERN_C ge::graphStatus TilingCompressorGradArch35(gert::TilingContext *context);
+CMP_GRAD_EXTERN_C ge::graphStatus TilingCompressorGradArch35(gert::TilingContext* context);
 #endif
 
-CMP_GRAD_EXTERN_C ge::graphStatus TilingCompressorGrad(gert::TilingContext *context)
+CMP_GRAD_EXTERN_C ge::graphStatus TilingCompressorGrad(gert::TilingContext* context)
 {
     OP_CHECK_IF(context == nullptr, OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("CompressorGrad", "context", "is nullptr"),
                 return ge::GRAPH_FAILED);
@@ -49,7 +49,7 @@ CMP_GRAD_EXTERN_C ge::graphStatus TilingCompressorGrad(gert::TilingContext *cont
     return TilingCompressorGradArch22(context);
 }
 
-ge::graphStatus TilingPrepareForCompressorGrad(gert::TilingParseContext *const context)
+ge::graphStatus TilingPrepareForCompressorGrad(gert::TilingParseContext* const context)
 {
     (void)context;
     return ge::GRAPH_SUCCESS;

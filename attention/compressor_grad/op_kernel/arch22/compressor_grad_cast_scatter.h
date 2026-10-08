@@ -60,17 +60,17 @@ public:
     __aicore__ inline CompressorGradCastKernel() {}
 
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR wkv, GM_ADDR wgate, GM_ADDR dApe, GM_ADDR userWs,
-                                const optiling::CompressorGradTilingDataA3 *tilingData, TPipe *pipe)
+                                const optiling::CompressorGradTilingDataA3* tilingData, TPipe* pipe)
     {
-        xGM_.SetGlobalBuffer(reinterpret_cast<__gm__ ioT *>(x));
-        wkvGM_.SetGlobalBuffer(reinterpret_cast<__gm__ ioT *>(wkv));
-        wgateGM_.SetGlobalBuffer(reinterpret_cast<__gm__ ioT *>(wgate));
-        xF16GM_.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(userWs + tilingData->xF16WsOff));
-        wkvF16GM_.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(userWs + tilingData->wkvF16WsOff));
-        wgateF16GM_.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(userWs + tilingData->wgateF16WsOff));
-        dnKvGM_.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(userWs + tilingData->dnKvWsOff));
-        dnScGM_.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(userWs + tilingData->dnScWsOff));
-        dApeGM_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(dApe));
+        xGM_.SetGlobalBuffer(reinterpret_cast<__gm__ ioT*>(x));
+        wkvGM_.SetGlobalBuffer(reinterpret_cast<__gm__ ioT*>(wkv));
+        wgateGM_.SetGlobalBuffer(reinterpret_cast<__gm__ ioT*>(wgate));
+        xF16GM_.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(userWs + tilingData->xF16WsOff));
+        wkvF16GM_.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(userWs + tilingData->wkvF16WsOff));
+        wgateF16GM_.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(userWs + tilingData->wgateF16WsOff));
+        dnKvGM_.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(userWs + tilingData->dnKvWsOff));
+        dnScGM_.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(userWs + tilingData->dnScWsOff));
+        dApeGM_.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(dApe));
         tLen_ = static_cast<uint32_t>(tilingData->tLen);
         hSize_ = static_cast<uint32_t>(tilingData->hiddenSize);
         cSize_ = static_cast<uint32_t>(tilingData->totalHeadDim);
@@ -123,8 +123,7 @@ private:
                 SetWaitFlag<HardEvent::V_MTE2>();
             }
             if (validRows > 0) {
-                DataCopyExtParams cp{static_cast<uint16_t>(validRows),
-                                     static_cast<uint32_t>(CG_X_TILE * sizeof(ioT)),
+                DataCopyExtParams cp{static_cast<uint16_t>(validRows), static_cast<uint32_t>(CG_X_TILE * sizeof(ioT)),
                                      static_cast<uint32_t>((hSize_ - CG_X_TILE) * sizeof(ioT)), 0, 0};
                 DataCopyPadExtParams<ioT> pp{false, 0, 0, static_cast<ioT>(0)};
                 DataCopyPad(inLocal, xGM_[static_cast<uint64_t>(rowBase) * hSize_ + nb * CG_X_TILE], cp, pp);
@@ -167,11 +166,10 @@ private:
             uint32_t tIn = gate ? (t - perTensor) : t;
             uint32_t nb = tIn / kTilesC;
             uint32_t kb = tIn - nb * kTilesC;
-            const GlobalTensor<ioT> &src = gate ? wgateGM_ : wkvGM_;
-            const GlobalTensor<half> &dst = gate ? wgateF16GM_ : wkvF16GM_;
+            const GlobalTensor<ioT>& src = gate ? wgateGM_ : wkvGM_;
+            const GlobalTensor<half>& dst = gate ? wgateF16GM_ : wkvF16GM_;
             SetWaitFlag<HardEvent::V_MTE2>(); // prior tile's casts done reading inLocal
-            DataCopyExtParams cp{static_cast<uint16_t>(CG_X_TILE),
-                                 static_cast<uint32_t>(CG_X_TILE * sizeof(ioT)),
+            DataCopyExtParams cp{static_cast<uint16_t>(CG_X_TILE), static_cast<uint32_t>(CG_X_TILE * sizeof(ioT)),
                                  static_cast<uint32_t>((hSize_ - CG_X_TILE) * sizeof(ioT)), 0, 0};
             DataCopyPadExtParams<ioT> pp{false, 0, 0, static_cast<ioT>(0)};
             DataCopyPad(inLocal, src[static_cast<uint64_t>(kb) * CG_X_TILE * hSize_ + nb * CG_X_TILE], cp, pp);
@@ -262,14 +260,14 @@ public:
     __aicore__ inline CompressorGradScatterKernel() {}
 
     __aicore__ inline void Init(GM_ADDR dCmpKv, GM_ADDR smScore, GM_ADDR kvIn, GM_ADDR dApe, GM_ADDR userWs,
-                                const optiling::CompressorGradTilingDataA3 *tilingData, TPipe *pipe)
+                                const optiling::CompressorGradTilingDataA3* tilingData, TPipe* pipe)
     {
-        dCkGM_.SetGlobalBuffer(reinterpret_cast<__gm__ ioT *>(dCmpKv));
-        smGM_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(smScore));
-        kvGM_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(kvIn));
-        dnKvGM_.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(userWs + tilingData->dnKvWsOff));
-        dnScGM_.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(userWs + tilingData->dnScWsOff));
-        dApeGM_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(dApe));
+        dCkGM_.SetGlobalBuffer(reinterpret_cast<__gm__ ioT*>(dCmpKv));
+        smGM_.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(smScore));
+        kvGM_.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(kvIn));
+        dnKvGM_.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(userWs + tilingData->dnKvWsOff));
+        dnScGM_.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(userWs + tilingData->dnScWsOff));
+        dApeGM_.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(dApe));
         bSize_ = static_cast<uint32_t>(tilingData->batchSize);
         sSize_ = static_cast<uint32_t>(tilingData->seqSize);
         dSize_ = static_cast<uint32_t>(tilingData->headDim);
@@ -292,7 +290,8 @@ public:
         // and flushed with one 2D DataCopyPad per tile instead of per-row copies.
         // fp32 region: ape 2*cr + sm/kv/dkv 3*N + colAcc 4 + dC32 1 [+ hBTile cr for fp16]
         uint32_t f32Elems = (2U * crSize_ + 3U * nRows_ + 5U) * seg + (planes - 1U) * crSize_ * seg;
-        uint32_t bufBytes = f32Elems * sizeof(float) + seg * sizeof(ioT) + slots * planes * crSize_ * seg * sizeof(half);
+        uint32_t bufBytes =
+            f32Elems * sizeof(float) + seg * sizeof(ioT) + slots * planes * crSize_ * seg * sizeof(half);
         pipe->InitBuffer(buf_, bufBytes);
         apeCur_ = buf_.Get<float>();
         apePrev_ = buf_.Get<float>()[crSize_ * seg];
@@ -441,7 +440,7 @@ private:
     // slot tiles; coff==1: rows map 1:1 onto the cur tile (contiguous cast);
     // coff==2: odd rows -> cur tile, even rows -> prev tile (strided casts).
     // fp16 additionally produces the lo tile: lo = fp16(row - fp32(hi)).
-    __aicore__ inline void StageTiles(const LocalTensor<float> &blk)
+    __aicore__ inline void StageTiles(const LocalTensor<float>& blk)
     {
         const uint32_t seg = segLen_;
         const uint8_t rowBlk = static_cast<uint8_t>(seg / 8);
@@ -472,7 +471,7 @@ private:
     // flush the staged slot tiles: cur tile -> tokens [j*cr, (j+1)*cr) cols
     // [(coff-1)*D+d0, +seg); prev tile (coff==2, j>=1) -> tokens [(j-1)*cr,
     // j*cr) cols [d0, +seg); one 2D DataCopyPad per tile per HiLo plane.
-    __aicore__ inline void FlushDn(const GlobalTensor<half> &dn, uint32_t b, uint32_t j, uint32_t d0)
+    __aicore__ inline void FlushDn(const GlobalTensor<half>& dn, uint32_t b, uint32_t j, uint32_t d0)
     {
         const uint32_t seg = segLen_;
         DataCopyExtParams cp{static_cast<uint16_t>(crSize_), static_cast<uint32_t>(seg * sizeof(half)), 0,

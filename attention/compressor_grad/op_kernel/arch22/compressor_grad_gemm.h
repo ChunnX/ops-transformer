@@ -74,7 +74,7 @@ using namespace AscendC;
 
 // GM(ND) -> L1(Nz), matrix (m, n) row-major with leading dim ld
 template <typename T>
-__aicore__ inline void LoadNdGmToNzL1(const LocalTensor<T> &dst, const GlobalTensor<T> &src, uint32_t m, uint32_t n,
+__aicore__ inline void LoadNdGmToNzL1(const LocalTensor<T>& dst, const GlobalTensor<T>& src, uint32_t m, uint32_t n,
                                       uint32_t ld)
 {
     Nd2NzParams params;
@@ -91,7 +91,7 @@ __aicore__ inline void LoadNdGmToNzL1(const LocalTensor<T> &dst, const GlobalTen
 
 // L1(Nz) -> L0A(Zz): A tile (m, k), non-transposed (A = src)
 template <typename T>
-__aicore__ inline void LoadNzL1ToZzL0A(const LocalTensor<T> &dst, const LocalTensor<T> &src, uint32_t m, uint32_t k,
+__aicore__ inline void LoadNzL1ToZzL0A(const LocalTensor<T>& dst, const LocalTensor<T>& src, uint32_t m, uint32_t k,
                                        uint32_t colC0Stride)
 {
     LoadData3DParamsV2<T> params;
@@ -115,7 +115,7 @@ __aicore__ inline void LoadNzL1ToZzL0A(const LocalTensor<T> &dst, const LocalTen
 // src NZ layout: m-direction C0(16) blocks; block j holds (k, 16) row-major at j*k*16.
 // dst ZZ layout: k-direction C0(16) blocks;  block f holds (m, 16) row-major at f*m*16.
 template <typename T>
-__aicore__ inline void LoadNzL1ToZzL0ATranspose(const LocalTensor<T> &dst, const LocalTensor<T> &src, uint32_t m,
+__aicore__ inline void LoadNzL1ToZzL0ATranspose(const LocalTensor<T>& dst, const LocalTensor<T>& src, uint32_t m,
                                                 uint32_t k)
 {
     constexpr uint32_t FRAC = 16;
@@ -139,7 +139,7 @@ __aicore__ inline void LoadNzL1ToZzL0ATranspose(const LocalTensor<T> &dst, const
 // (= Load3DSetFMatrixBCal / set_fmatrix_b, the B-operand fmatrix register).
 // bk/bn are compile-time 128 here, already 16-aligned -> no padding.
 template <typename T>
-__aicore__ inline void LoadNzL1ToZnL0BNatural(const LocalTensor<T> &dst, const LocalTensor<T> &src, uint32_t bk,
+__aicore__ inline void LoadNzL1ToZnL0BNatural(const LocalTensor<T>& dst, const LocalTensor<T>& src, uint32_t bk,
                                               uint32_t bn)
 {
     LoadData3DParamsV2Pro params;
@@ -175,16 +175,16 @@ public:
     __aicore__ inline CompressorGradGemmKernel() {}
 
     __aicore__ inline void Init(GM_ADDR dX, GM_ADDR dWkv, GM_ADDR dWgate, GM_ADDR userWs,
-                                const optiling::CompressorGradTilingDataA3 *tilingData, TPipe *pipe)
+                                const optiling::CompressorGradTilingDataA3* tilingData, TPipe* pipe)
     {
-        xF16GM_.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(userWs + tilingData->xF16WsOff));
-        wkvF16GM_.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(userWs + tilingData->wkvF16WsOff));
-        wgateF16GM_.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(userWs + tilingData->wgateF16WsOff));
-        dnKvGM_.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(userWs + tilingData->dnKvWsOff));
-        dnScGM_.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(userWs + tilingData->dnScWsOff));
-        dXGM_.SetGlobalBuffer(reinterpret_cast<__gm__ ioT *>(dX));
-        dWkvGM_.SetGlobalBuffer(reinterpret_cast<__gm__ ioT *>(dWkv));
-        dWgateGM_.SetGlobalBuffer(reinterpret_cast<__gm__ ioT *>(dWgate));
+        xF16GM_.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(userWs + tilingData->xF16WsOff));
+        wkvF16GM_.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(userWs + tilingData->wkvF16WsOff));
+        wgateF16GM_.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(userWs + tilingData->wgateF16WsOff));
+        dnKvGM_.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(userWs + tilingData->dnKvWsOff));
+        dnScGM_.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(userWs + tilingData->dnScWsOff));
+        dXGM_.SetGlobalBuffer(reinterpret_cast<__gm__ ioT*>(dX));
+        dWkvGM_.SetGlobalBuffer(reinterpret_cast<__gm__ ioT*>(dWkv));
+        dWgateGM_.SetGlobalBuffer(reinterpret_cast<__gm__ ioT*>(dWgate));
         tLen_ = static_cast<uint32_t>(tilingData->tLen);
         hSize_ = static_cast<uint32_t>(tilingData->hiddenSize);
         cSize_ = static_cast<uint32_t>(tilingData->totalHeadDim);
@@ -224,8 +224,8 @@ public:
 private:
     // Contiguous balanced partition of `total` units over `n` indices:
     // index i takes [start, start+count) with counts differing by <= 1.
-    __aicore__ inline void BalancedRange(uint32_t idx, uint32_t n, uint32_t total, uint32_t &start,
-                                         uint32_t &count) const
+    __aicore__ inline void BalancedRange(uint32_t idx, uint32_t n, uint32_t total, uint32_t& start,
+                                         uint32_t& count) const
     {
         uint32_t base = total / n;
         uint32_t rem = total % n;
@@ -268,7 +268,7 @@ private:
         return queL0B_.DeQue<half>();
     }
 
-    __aicore__ inline void DoMmad(LocalTensor<float> &cL0, const LocalTensor<half> &aL0, const LocalTensor<half> &bL0,
+    __aicore__ inline void DoMmad(LocalTensor<float>& cL0, const LocalTensor<half>& aL0, const LocalTensor<half>& bL0,
                                   bool init)
     {
         MmadParams mp;
@@ -284,7 +284,7 @@ private:
         Mmad(cL0, aL0, bL0, mp);
     }
 
-    __aicore__ inline void FixOut(const GlobalTensor<ioT> &dst, uint64_t dstOff, LocalTensor<float> &cL0,
+    __aicore__ inline void FixOut(const GlobalTensor<ioT>& dst, uint64_t dstOff, LocalTensor<float>& cL0,
                                   uint32_t mValid, uint32_t rowStride)
     {
         SetWaitFlag<HardEvent::M_FIX>();
@@ -305,7 +305,7 @@ private:
     // and the pair's two w/wgate B tiles are DeQue'd in enqueue order. The A
     // tile goes to L0A once and feeds both output tiles' Mmads; fp16 HiLo
     // accumulates the lo plane against the same L0B tiles.
-    __aicore__ inline void DxTerm(LocalTensor<float> &cA, LocalTensor<float> &cB, bool hasB, bool init)
+    __aicore__ inline void DxTerm(LocalTensor<float>& cA, LocalTensor<float>& cB, bool hasB, bool init)
     {
         LocalTensor<half> aL0 = DeQueAToL0A();
         LocalTensor<half> b0L0 = DeQueBToL0Natural();

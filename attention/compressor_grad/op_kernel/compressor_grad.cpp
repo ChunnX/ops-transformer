@@ -35,16 +35,16 @@
 using namespace AscendC;
 
 template <uint8_t D_TYPE>
-__global__ __aicore__ void compressor_grad(__gm__ uint8_t *x, __gm__ uint8_t *wkv, __gm__ uint8_t *wgate,
-                                           __gm__ uint8_t *dCmpKv, __gm__ uint8_t *softmaxScore, __gm__ uint8_t *kv,
-                                           __gm__ uint8_t *cuSeqlens, __gm__ uint8_t *seqUsed, __gm__ uint8_t *startPos,
-                                           __gm__ uint8_t *dX, __gm__ uint8_t *dWkv, __gm__ uint8_t *dWgate,
-                                           __gm__ uint8_t *dApe, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
+__global__ __aicore__ void compressor_grad(__gm__ uint8_t* x, __gm__ uint8_t* wkv, __gm__ uint8_t* wgate,
+                                           __gm__ uint8_t* dCmpKv, __gm__ uint8_t* softmaxScore, __gm__ uint8_t* kv,
+                                           __gm__ uint8_t* cuSeqlens, __gm__ uint8_t* seqUsed, __gm__ uint8_t* startPos,
+                                           __gm__ uint8_t* dX, __gm__ uint8_t* dWkv, __gm__ uint8_t* dWgate,
+                                           __gm__ uint8_t* dApe, __gm__ uint8_t* workspace, __gm__ uint8_t* tiling)
 {
     REGISTER_TILING_DEFAULT(optiling::CompressorGradTilingDataA3);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     GET_TILING_DATA_WITH_STRUCT(optiling::CompressorGradTilingDataA3, tilingDataIn, tiling);
-    const optiling::CompressorGradTilingDataA3 *__restrict tilingData = &tilingDataIn;
+    const optiling::CompressorGradTilingDataA3* __restrict tilingData = &tilingDataIn;
     GM_ADDR userWs = GetUserWorkspace(workspace);
     // D_TYPE tiling key 编码与 arch35 保持一致: 0 = BF16, 1 = FP16
     using ioT = typename AscendC::Conditional<(D_TYPE == 1), half, bfloat16_t>::type;

@@ -48,18 +48,18 @@ constexpr int64_t CG_A3_NZ_TILE = 128;
 
 class CompressorGradTilingA3 {
 public:
-    explicit CompressorGradTilingA3(CompressorGradContext *context)
+    explicit CompressorGradTilingA3(CompressorGradContext* context)
         : context_(context)
     {}
     ~CompressorGradTilingA3() = default;
 
-    static ge::graphStatus ConvertContext(gert::TilingContext &context, CompressorGradContext &compressorGradContext);
-    ge::graphStatus RunBigKernelTiling(CompressorGradTilingDataA3 *tilingData);
+    static ge::graphStatus ConvertContext(gert::TilingContext& context, CompressorGradContext& compressorGradContext);
+    ge::graphStatus RunBigKernelTiling(CompressorGradTilingDataA3* tilingData);
 
 private:
-    static ge::graphStatus ConvertRequiredParams(gert::TilingContext &context,
-                                                 CompressorGradContext &compressorGradContext);
-    static void ConvertOptionalParams(gert::TilingContext &context, CompressorGradContext &compressorGradContext);
+    static ge::graphStatus ConvertRequiredParams(gert::TilingContext& context,
+                                                 CompressorGradContext& compressorGradContext);
+    static void ConvertOptionalParams(gert::TilingContext& context, CompressorGradContext& compressorGradContext);
     ge::graphStatus GetNpuInfo();
     ge::graphStatus SetBaseInfo();
     ge::graphStatus CalcSchedule();
@@ -68,10 +68,10 @@ private:
     ge::graphStatus GenTilingKey() const;
     ge::graphStatus CheckSinglePara() const;
     ge::graphStatus CheckLayoutSupport() const;
-    ge::graphStatus CheckDimNumInLayoutSupport(const std::string &layout, const gert::StorageShape *shape,
-                                               const std::string &name) const;
-    ge::graphStatus CheckDtypeSupport(const gert::CompileTimeTensorDesc *desc, const std::string &name) const;
-    ge::graphStatus CheckDimNumSupport(const gert::StorageShape *shape, const std::string &name) const;
+    ge::graphStatus CheckDimNumInLayoutSupport(const std::string& layout, const gert::StorageShape* shape,
+                                               const std::string& name) const;
+    ge::graphStatus CheckDtypeSupport(const gert::CompileTimeTensorDesc* desc, const std::string& name) const;
+    ge::graphStatus CheckDimNumSupport(const gert::StorageShape* shape, const std::string& name) const;
     ge::graphStatus CheckSingleParaX() const;
     ge::graphStatus CheckSingleParaWkv() const;
     ge::graphStatus CheckSingleParaWgate() const;
@@ -92,7 +92,7 @@ private:
     ge::graphStatus CheckRequiredAttrExistence() const;
     ge::graphStatus CheckFeature() const;
     ge::graphStatus CheckShapeConsistency() const;
-    ge::graphStatus CheckDtypeConsistencyX(const gert::CompileTimeTensorDesc *desc, const std::string &name) const;
+    ge::graphStatus CheckDtypeConsistencyX(const gert::CompileTimeTensorDesc* desc, const std::string& name) const;
     ge::graphStatus CheckDtypeConsistency() const;
     ge::graphStatus CheckMultiParaConsistency() const;
     ge::graphStatus CheckDimNumConsistency() const;
@@ -127,13 +127,13 @@ private:
     int64_t dnScWsOff_ = 0;
 
     CompressorGradBaseParams baseParams_;
-    CompressorGradContext *context_ = nullptr;
-    CompressorGradTilingDataA3 *tilingData_ = nullptr;
+    CompressorGradContext* context_ = nullptr;
+    CompressorGradTilingDataA3* tilingData_ = nullptr;
 };
 
 } // namespace
 
-CMP_GRAD_EXTERN_C ge::graphStatus TilingCompressorGradArch22(gert::TilingContext *context);
+CMP_GRAD_EXTERN_C ge::graphStatus TilingCompressorGradArch22(gert::TilingContext* context);
 } // namespace optiling
 
 #endif // COMPRESSOR_GRAD_TILING_ARCH22_H
