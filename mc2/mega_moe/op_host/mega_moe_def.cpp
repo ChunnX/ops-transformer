@@ -294,6 +294,7 @@ public:
             .ExtendCfgInfo("opFile.value", "mega_moe_apt");
 
         this->AICore().AddConfig("ascend950", aicore_config);
+        this->AICore().AddConfig("ascend910_96", aicore_config);
 
         OpAICoreConfig aicore_config_arch22;
         aicore_config_arch22.Input("context")

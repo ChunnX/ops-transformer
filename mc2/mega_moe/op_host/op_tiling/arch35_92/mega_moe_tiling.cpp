@@ -31,10 +31,11 @@
 #include "mc2_hcom_topo_info.h"
 #include "mc2_exception_dump.h"
 #include "../mega_moe_tiling_host.h"
-#include "../../../op_kernel/arch35/mega_moe_tiling.h"
-#include "../../../op_kernel/arch35/mega_moe_tiling_key.h"
-#include "../../../op_kernel/arch35/common/mega_moe_constants.h"
-#include "../../../op_kernel/arch35/common/mega_moe_workspace.h"
+#include "../../../op_kernel/arch35_92/mega_moe_tiling.h"
+#include "../../../op_kernel/arch35_92/mega_moe_tiling_key.h"
+#include "../../../op_kernel/arch35_92/common/mega_moe_constants.h"
+#include "../../../op_kernel/arch35_92/common/mega_moe_workspace.h"
+#include "mega_moe_host_arch_policy.h"
 
 using namespace Mc2Tiling;
 using namespace AscendC;
@@ -1394,8 +1395,8 @@ static uint64_t CalcCombineSyncSlotCountPerExpert(const MegaMoeTilingData *tilin
         return 0U;
     }
 
-    // Layered Combine 仅由 subBlockIdx=1 的半数 AIV 执行。
-    uint64_t combineCoreCount = tilingData->blockAivNum / 2U;
+    // 每个 AIC 对应一个逻辑 Combine consumer；arch35 是 AIV1，arch92 是唯一 AIV。
+    uint64_t combineCoreCount = tilingData->aicNum;
     // 同一 token 的 topK expert id 不重复，因此单 expert 从每张卡最多接收 bs 个 token。
     uint64_t maxTokenCountForOneExpert =
         static_cast<uint64_t>(tilingData->numMaxTokensPerRank) * tilingData->epWorldSize;
@@ -1408,7 +1409,7 @@ static uint64_t CalcCombineSyncSlotCountPerExpert(const MegaMoeTilingData *tilin
 /*
  * 汇总各执行路径在 workspace 中需要的 host flag 与同步计数器元素数量。
  */
-static uint64_t CalcHostFlagElementCount(const MegaMoeTilingData *tilingData)
+static uint64_t CalcHostFlagElementCount(const MegaMoeTilingData *tilingData, bool useGmHandoffExpertWave)
 {
     uint64_t maxWavesPerExpert = ops::CeilDiv<uint64_t>(tilingData->maxOutputSize, L1_TILE_M_256);
     uint64_t waveFlagSlotsPerExpert = maxWavesPerExpert * INT_CACHELINE;
@@ -1419,12 +1420,17 @@ static uint64_t CalcHostFlagElementCount(const MegaMoeTilingData *tilingData)
     uint64_t flagElementCount = moeExpertCount * (activationFlagSlotsPerExpert + waveFlagSlotsPerExpert +
                                                   static_cast<uint64_t>(INT_CACHELINE) * tilingData->aicNum);
     bool hasSharedW4Gmm = tilingData->sharedExpertNum > 0 && IsW4GmmMode(tilingData->sharedGmmMode);
-    if (IsW4GmmMode(tilingData->moeGmmMode) || hasSharedW4Gmm ||
+    if (useGmHandoffExpertWave || IsW4GmmMode(tilingData->moeGmmMode) || hasSharedW4Gmm ||
         (tilingData->topoType == TOPO_TYPE_MTE && tilingData->combineQuantMode == COMBINE_NO_QUANT)) {
         flagElementCount += static_cast<uint64_t>(tilingData->aicNum) * INT_CACHELINE;
     }
-    if (tilingData->topoType == TOPO_TYPE_MTE && tilingData->combineQuantMode != COMBINE_NO_QUANT) {
+    if (tilingData->topoType == TOPO_TYPE_MTE &&
+        (tilingData->combineQuantMode != COMBINE_NO_QUANT || IsCombineDedupOn(tilingData->dedupMode))) {
         flagElementCount += moeExpertCount * tilingData->aicNum * INT_CACHELINE;
+    }
+    if (tilingData->topoType == TOPO_TYPE_MTE && tilingData->dedupMode != 0) {
+        flagElementCount += static_cast<uint64_t>(INT_CACHELINE) *
+                            (1U + static_cast<uint64_t>(tilingData->epWorldSize) * DEDUP_PREPASS_MAX_CHUNKS);
     }
     if (tilingData->topoType == TOPO_TYPE_URMA) {
         flagElementCount += tilingData->combineSyncSlotCountPerExpert * moeExpertCount * INT_CACHELINE;
@@ -1448,9 +1454,15 @@ static uint64_t CalcHostFlagElementCount(const MegaMoeTilingData *tilingData)
 static uint32_t CalcTopkValidIndexFixedBufferBytes(const MegaMoeTilingData *tilingData,
                                                    uint32_t moeActivationElementsPerByte,
                                                    uint32_t sharedActivationElementsPerByte,
-                                                   bool isSharedQuantIndependent, uint32_t topkValidIndexCoreNum)
+                                                   bool isSharedQuantIndependent, uint32_t topkValidIndexCoreNum,
+                                                   bool useGmHandoffExpertWave)
 {
-    uint64_t totalFlagElementCount = CalcHostFlagElementCount(tilingData);
+    uint64_t totalFlagElementCount = CalcHostFlagElementCount(tilingData, useGmHandoffExpertWave);
+    if (tilingData->topkWeightsPrefetch == 1) {
+        const uint64_t tileStatusElementCount =
+            (static_cast<uint64_t>(tilingData->moeExpertPerRank) * tilingData->maxTilesPerExpert + 1U) * INT_CACHELINE;
+        totalFlagElementCount = std::max(totalFlagElementCount, tileStatusElementCount);
+    }
     uint32_t resetElementCountPerCore =
         static_cast<uint32_t>(ops::CeilDiv(totalFlagElementCount, static_cast<uint64_t>(tilingData->blockAivNum)));
     uint32_t resetBatchElementCount = std::min(resetElementCountPerCore, static_cast<uint32_t>(DISPATCH_RESET_BATCH));
@@ -1485,13 +1497,14 @@ static uint32_t CalcTopkValidIndexFixedBufferBytes(const MegaMoeTilingData *tili
  */
 static void SetTopkValidIndexBufferConfigs(MegaMoeTilingData *tilingData, uint32_t moeActivationElementsPerByte,
                                            uint32_t sharedActivationElementsPerByte, bool isSharedQuantIndependent,
-                                           uint32_t availableUbBytes)
+                                           uint32_t availableUbBytes, bool useGmHandoffExpertWave)
 {
     const bool sharedMte = tilingData->sharedExpertNum > 0U && tilingData->topoType == TOPO_TYPE_MTE;
     const uint32_t topkValidIndexCoreNum = sharedMte ? tilingData->aicNum : tilingData->blockAivNum;
     uint32_t sendMaskFixedBufferBytes =
         CalcTopkValidIndexFixedBufferBytes(tilingData, moeActivationElementsPerByte, sharedActivationElementsPerByte,
-                                           isSharedQuantIndependent, topkValidIndexCoreNum);
+                                           isSharedQuantIndependent, topkValidIndexCoreNum,
+                                           useGmHandoffExpertWave);
 
     /*
      * 按发送核数均衡分配专家，前 remainder 个发送核多处理一个专家。
@@ -1558,8 +1571,13 @@ static void SetAdaptiveBufferConfigs(const gert::TilingContext *context, const M
     // 该依赖只经 tilingData 传递，调换顺序会静默改变 flag 区尺寸。
     tilingData->combineSyncSlotCountPerExpert = CalcCombineSyncSlotCountPerExpert(tilingData);
 
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
+    bool useGmHandoffExpertWave = MegaMoeHostArchitecturePolicy::FromNpuArch(
+                                      static_cast<int32_t>(ascendcPlatform.GetCurNpuArch()))
+                                      .isArch92;
     SetTopkValidIndexBufferConfigs(tilingData, activationElementsPerByte, sharedActivationElementsPerByte,
-                                   tilingData->isSharedQuantIndependent == 1U, availableUbBytes);
+                                   tilingData->isSharedQuantIndependent == 1U, availableUbBytes,
+                                   useGmHandoffExpertWave);
 
     ge::DataType topKWeightsDataType = topKWeightsDesc->GetDataType();
     SetUnpermuteBufferConfigs(tilingData, topKWeightsDataType, availableUbBytes);
@@ -2643,7 +2661,7 @@ static ge::graphStatus CheckAndSetCapacityAttrs(const gert::TilingContext *conte
  * 读取并校验平台 AIC/AIV 数量与 UB 容量，同时写入 kernel 分核所需字段。
  */
 static ge::graphStatus CheckAndSetPlatformParams(gert::TilingContext *context, MegaMoeTilingData *tilingData,
-                                                 uint32_t &aicNum, uint64_t &ubSize, const char *nodeName)
+                                                  uint32_t &aicNum, uint64_t &ubSize, const char *nodeName)
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
@@ -2654,6 +2672,14 @@ static ge::graphStatus CheckAndSetPlatformParams(gert::TilingContext *context, M
                                               "should both be > 0"),
                     return ge::GRAPH_FAILED);
 
+    MegaMoeHostArchitecturePolicy archPolicy = MegaMoeHostArchitecturePolicy::FromNpuArch(
+        static_cast<int32_t>(ascendcPlatform.GetCurNpuArch()));
+    OP_TILING_CHECK(!archPolicy.HasExpectedCvRatio(aicNum, aivNum),
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "aivNum/aicNum",
+                                              (std::to_string(aivNum) + ", " + std::to_string(aicNum)).c_str(),
+                                              archPolicy.isArch92 ? "arch92 requires 1C1V" : "arch35 requires 1C2V"),
+                    return ge::GRAPH_FAILED);
+
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
     tilingData->aicNum = aicNum;
     tilingData->blockAivNum = aivNum;
@@ -2662,8 +2688,31 @@ static ge::graphStatus CheckAndSetPlatformParams(gert::TilingContext *context, M
     return ge::GRAPH_SUCCESS;
 }
 
+// arch92 放行 A8W8/A4W4 + MTE；A8W4 待直接混合 FP8/FP4 BlockMmad 接口。
+static ge::graphStatus CheckArchitectureCapability(gert::TilingContext *context,
+                                                   const MegaMoeTilingData *tilingData, const char *nodeName)
+{
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
+    MegaMoeHostArchitecturePolicy archPolicy = MegaMoeHostArchitecturePolicy::FromNpuArch(
+        static_cast<int32_t>(ascendcPlatform.GetCurNpuArch()));
+    if (!archPolicy.isArch92) {
+        return ge::GRAPH_SUCCESS;
+    }
+
+    auto supportedGmmMode = [](uint8_t mode) {
+        return mode == GMM_MODE_A8W8_ND || mode == GMM_MODE_A8W8_NZ || mode == GMM_MODE_A4W4_ND ||
+               mode == GMM_MODE_A4W4_NZ;
+    };
+    bool moeSupported = supportedGmmMode(tilingData->moeGmmMode);
+    bool sharedSupported = tilingData->sharedExpertNum == 0U || supportedGmmMode(tilingData->sharedGmmMode);
+    OP_TILING_CHECK(tilingData->topoType != TOPO_TYPE_MTE || !moeSupported || !sharedSupported,
+                    OP_LOGE(nodeName, "arch92 only enables A8W8/A4W4 MTE"), return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 /*
- * A8W4 L1 allocation (512 KiB), computed once on host for all AIC/AIV consumers.
+ * A8W4 L1 allocation, computed once on host from the platform-reported L1 capacity
+ * for all AIC/AIV consumers.
  * M=N=KTile=256: each A/W8-B slot is 64 KiB. Every 32 K elements share one scale
  * byte; A/B scales cover the SAME K window, with two buffers for each matrix.
  * Full tiles determine capacity; M/N/K tails use the same slots and smaller copies.
@@ -2673,7 +2722,7 @@ static ge::graphStatus CheckAndSetPlatformParams(gert::TilingContext *context, M
  * | a * 64 KiB   | b * 64 KiB                  | 2 * (scaleABytes+scaleBBytes) |
  * A rotates linearly. B alternates between two halves: b=4 -> physical 0,2,1,3.
  *
- * Example max(GMM1 K, GMM2 K)=7168, all offsets below in KiB:
+ * Example for a 512 KiB L1 with max(GMM1 K, GMM2 K)=7168, all offsets below in KiB:
  * [0] A0 [64] A1 [128] A2 [192] B0 [256] B2 [320] B1 [384] B3
  * [448] scA0 [464] scB0 [480] scA1 [496] scB1 [512]
  * a=3, b=4, each scale slot=16 KiB, common scale K window=2048.
@@ -2684,9 +2733,9 @@ static ge::graphStatus CheckAndSetPlatformParams(gert::TilingContext *context, M
  *    The full-K budget in step 1 does not mean all K scales stay resident.
  * 4. Write every offset here; the device only reads the resulting layout.
  */
-static MegaMoeL1Layout CalcMegaMoeL1Layout(uint64_t maxGmmK)
+static ge::graphStatus CalcMegaMoeL1Layout(uint64_t maxGmmK, uint64_t l1Bytes, MegaMoeL1Layout &layout,
+                                           const char *nodeName)
 {
-    constexpr uint64_t L1_BYTES = 512 * 1024;
     constexpr uint64_t TILE_M = 256;
     constexpr uint64_t TILE_N = 256;
     constexpr uint64_t TILE_K = 256;
@@ -2697,21 +2746,28 @@ static MegaMoeL1Layout CalcMegaMoeL1Layout(uint64_t maxGmmK)
     constexpr uint64_t MIN_SCALE_A_BYTES = TILE_M * (TILE_K / K_PER_SCALE_BYTE);
     constexpr uint64_t MIN_SCALE_B_BYTES = TILE_N * (TILE_K / K_PER_SCALE_BYTE);
     constexpr uint64_t MIN_SCALE_TOTAL_BYTES = SCALE_BUFFER_NUM * (MIN_SCALE_A_BYTES + MIN_SCALE_B_BYTES);
+    constexpr uint64_t MIN_L1_BYTES = A_BYTES + B_BYTES + MIN_SCALE_TOTAL_BYTES;
+
+    OP_TILING_CHECK(l1Bytes < MIN_L1_BYTES,
+                    OP_LOGE(nodeName, "platform L1 size %lu is smaller than the minimum required size %lu",
+                            l1Bytes, MIN_L1_BYTES),
+                    return ge::GRAPH_FAILED);
 
     // Step 1: scale hardware stores K64 pairs (two scale bytes per row).
     // M/N and tile byte sizes are already aligned; no padding calculations are needed.
     const uint64_t fullKScaleBytesPerRow = (maxGmmK + 63) / 64 * 2;
     const uint64_t fullKScalePairBytes = (TILE_M + TILE_N) * fullKScaleBytesPerRow;
-    MegaMoeL1Layout layout{};
-    layout.aBufferNum = fullKScalePairBytes < L1_BYTES ? (L1_BYTES - fullKScalePairBytes) / (A_BYTES + B_BYTES) : 1;
+    layout = {};
+    layout.aBufferNum =
+        fullKScalePairBytes < l1Bytes ? (l1Bytes - fullKScalePairBytes) / (A_BYTES + B_BYTES) : 1;
     layout.aBufferNum = std::max(uint64_t{1}, std::min(layout.aBufferNum, MegaMoeL1Layout::MAX_A_BUFFER_NUM));
 
     // Step 2: A count is fixed; reserve two minimal scale pairs before assigning B.
-    layout.bBufferNum = (L1_BYTES - layout.aBufferNum * A_BYTES - MIN_SCALE_TOTAL_BYTES) / B_BYTES;
+    layout.bBufferNum = (l1Bytes - layout.aBufferNum * A_BYTES - MIN_SCALE_TOTAL_BYTES) / B_BYTES;
     layout.bBufferNum = std::min(layout.bBufferNum, MegaMoeL1Layout::MAX_B_BUFFER_NUM);
 
     // Step 3: both scale matrices cover the same number of K tiles; each has two slots.
-    const uint64_t scaleBudgetBytes = L1_BYTES - layout.aBufferNum * A_BYTES - layout.bBufferNum * B_BYTES;
+    const uint64_t scaleBudgetBytes = l1Bytes - layout.aBufferNum * A_BYTES - layout.bBufferNum * B_BYTES;
     const uint64_t requiredKTiles = std::max(uint64_t{1}, (maxGmmK + TILE_K - 1) / TILE_K);
     const uint64_t scaleKTiles = std::min(scaleBudgetBytes / MIN_SCALE_TOTAL_BYTES, requiredKTiles);
     layout.tileK = TILE_K;
@@ -2735,7 +2791,7 @@ static MegaMoeL1Layout CalcMegaMoeL1Layout(uint64_t maxGmmK)
         layout.scaleAOffsets[slot] = scaleBase + slot * (layout.scaleASlotBytes + layout.scaleBSlotBytes);
         layout.scaleBOffsets[slot] = layout.scaleAOffsets[slot] + layout.scaleASlotBytes;
     }
-    return layout;
+    return ge::GRAPH_SUCCESS;
 }
 
 /*
@@ -2870,15 +2926,25 @@ static ge::graphStatus CommitTilingResult(gert::TilingContext *context, const Me
                                           const MegaMoeExpertParams &expertParams, MegaMoeTilingData *tilingData,
                                           const char *nodeName)
 {
-    // Shared and routed experts have the same validated H/hiddenDim dimensions.
-    tilingData->a8w4L1Layout =
-        CalcMegaMoeL1Layout(std::max(uint64_t{tilingData->h}, uint64_t{tilingData->hiddenDim / 2U}));
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
+    uint64_t l1Size = 0;
+    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L1, l1Size);
+    OP_LOGD(nodeName, "platform L1 size is %lu bytes", l1Size);
 
-    WorkspaceLayout workspaceLayout(tilingData);
+    // Shared and routed experts have the same validated H/hiddenDim dimensions.
+    OP_TILING_CHECK(CalcMegaMoeL1Layout(
+                        std::max(uint64_t{tilingData->h}, uint64_t{tilingData->hiddenDim / 2U}), l1Size,
+                        tilingData->a8w4L1Layout, nodeName) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(nodeName, "calculate A8W4 L1 layout failed"), return ge::GRAPH_FAILED);
+
+    MegaMoeHostArchitecturePolicy archPolicy = MegaMoeHostArchitecturePolicy::FromNpuArch(
+        static_cast<int32_t>(ascendcPlatform.GetCurNpuArch()));
+    WorkspaceLayoutPolicy workspacePolicy = archPolicy.isArch92 ? WorkspaceLayoutPolicy::GM_HANDOFF_EXPERT_WAVE :
+                                                                  WorkspaceLayoutPolicy::DEFAULT;
+    WorkspaceLayout workspaceLayout(tilingData, workspacePolicy);
     OP_TILING_CHECK(SetWorkspace(context, workspaceLayout, nodeName) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Tiling set workspace failed."), return ge::GRAPH_FAILED);
 
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     context->SetBlockDim(
         ascendcPlatform.CalcTschBlockDim(tilingData->blockAivNum, tilingData->aicNum, tilingData->blockAivNum));
     context->SetScheduleMode(1);
@@ -2939,6 +3005,8 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
     uint64_t ubSize = 0U;
     OP_TILING_CHECK(CheckAndSetPlatformParams(context, tilingData, aicNum, ubSize, nodeName) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "platform parameters are invalid."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(CheckArchitectureCapability(context, tilingData, nodeName) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(nodeName, "architecture capability is invalid."), return ge::GRAPH_FAILED);
 
     SetPrefetchAndWaveParams(tilingData, aicNum);
     SetAdaptiveBufferConfigs(context, config, expertParams, tilingData, static_cast<uint32_t>(ubSize));

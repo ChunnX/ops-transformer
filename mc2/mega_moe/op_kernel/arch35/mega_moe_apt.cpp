@@ -42,8 +42,8 @@
 #include "mega_moe_layered.h"
 #endif
 
-#include "mega_moe_tiling.h"
-#include "mega_moe_tiling_key.h"
+#include "../arch35_92/mega_moe_tiling.h"
+#include "../arch35_92/mega_moe_tiling_key.h"
 #include <type_traits>
 
 using namespace AscendC;

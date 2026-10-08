@@ -17,7 +17,7 @@ namespace MegaMoeImpl {
 
 using namespace AscendC;
 
-#if defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__)
+#if defined(MEGA_MOE_IS_KERNEL_COMPILE)
 // 仅由 AIV 调用。清理连续 flag workspace；prefetch 路径额外清理独立分配的 GMM1 tile 状态区。
 // 清零范围一律取自 WorkspaceInfo 在分配处记账的元素数，与布局恒同源。
 template <bool TopkWeightsPrefetch>

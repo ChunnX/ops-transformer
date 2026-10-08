@@ -28,6 +28,11 @@ constexpr int64_t SIZE_BF_16 = 2U;
 
 constexpr int64_t INVALID_WORKSPACE_OFFSET = -1LL;
 
+enum class WorkspaceLayoutPolicy : uint8_t {
+    DEFAULT = 0,
+    GM_HANDOFF_EXPERT_WAVE = 1,
+};
+
 // 每个共享专家按 256-token group 预留独立的同步槽，所有量化模式使用相同布局。
 HOST_DEVICE int64_t CalcSharedActivationFlagElementsPerExpert(int64_t tokenNum)
 {
@@ -88,33 +93,37 @@ struct WorkspaceLayout {
     int64_t gmm1TileStatusElementCount{0};
 
     int64_t workspaceSize{0};
-    HOST_DEVICE explicit WorkspaceLayout(const MegaMoeTilingData *tilingData)
+    HOST_DEVICE explicit WorkspaceLayout(const MegaMoeTilingData *tilingData,
+                                         WorkspaceLayoutPolicy layoutPolicy = WorkspaceLayoutPolicy::DEFAULT)
     {
         uint32_t rankNumPerServer =
             tilingData->rankNumPerServer == 0U ? tilingData->epWorldSize : tilingData->rankNumPerServer;
         uint32_t serverNum = Ops::Base::CeilDiv(tilingData->epWorldSize, rankNumPerServer);
-        Initialize(tilingData, serverNum);
+        Initialize(tilingData, serverNum, layoutPolicy);
     }
 
-    HOST_DEVICE WorkspaceLayout(const MegaMoeTilingData *tilingData, uint32_t serverNum)
+    HOST_DEVICE WorkspaceLayout(const MegaMoeTilingData *tilingData, uint32_t serverNum,
+                                WorkspaceLayoutPolicy layoutPolicy = WorkspaceLayoutPolicy::DEFAULT)
     {
-        Initialize(tilingData, serverNum);
+        Initialize(tilingData, serverNum, layoutPolicy);
     }
 
 private:
-    HOST_DEVICE void Initialize(const MegaMoeTilingData *tilingData, uint32_t serverNum)
+    HOST_DEVICE void Initialize(const MegaMoeTilingData *tilingData, uint32_t serverNum,
+                                WorkspaceLayoutPolicy layoutPolicy)
     {
         workspaceSize = 0;
         // Tiling admits only MTE and URMA. Each path preserves its original allocation order.
         if (tilingData->topoType == TOPO_TYPE_MTE) {
-            InitializeMte(tilingData);
+            InitializeMte(tilingData, layoutPolicy);
         } else {
             InitializeUrma(tilingData, serverNum);
         }
     }
 
-    HOST_DEVICE void InitializeMte(const MegaMoeTilingData *tilingData)
+    HOST_DEVICE void InitializeMte(const MegaMoeTilingData *tilingData, WorkspaceLayoutPolicy layoutPolicy)
     {
+        const bool useGmHandoffExpertWave = layoutPolicy == WorkspaceLayoutPolicy::GM_HANDOFF_EXPERT_WAVE;
         InitializeDispatchBuffers(tilingData);
         // tkw=0 且 combine 去重：dispatch 把 LAST 行整 token 权重段落 revWeights 区、merge 读回乘权，
         // MTE 同样依赖本区。漏分配则 dispatchRevWeightsPtr 为 nullptr，首 launch 即 MTE invalid GM。
@@ -127,11 +136,11 @@ private:
             Ops::Base::CeilAlign(tilingData->moeExpertPerRank, static_cast<uint32_t>(INT_CACHELINE)));
         int64_t expertRecvTokenCountBytes =
             expertRecvTokenCountStride * static_cast<int64_t>(sizeof(int32_t)) * tilingData->aicNum;
-        InitializeActivationBuffers(tilingData);
+        InitializeActivationBuffers(tilingData, useGmHandoffExpertWave && IsA4W4GmmMode(tilingData->moeGmmMode));
         InitializeRoutingMetadata(tilingData, expertRecvTokenCountBytes);
-        InitializeMteSyncFlags(tilingData);
-        const bool needsReloadCumsum = IsW4GmmMode(tilingData->moeGmmMode);
-        InitializeGmmIntermediateBuffers(tilingData, needsReloadCumsum, true);
+        InitializeMteSyncFlags(tilingData, useGmHandoffExpertWave);
+        const bool needsReloadCumsum = IsW4GmmMode(tilingData->moeGmmMode) || useGmHandoffExpertWave;
+        InitializeGmmIntermediateBuffers(tilingData, needsReloadCumsum, true, useGmHandoffExpertWave);
         InitializeGmm1TileStatus(tilingData);
         InitializeDedupRowDesc(tilingData);
         if (tilingData->sharedExpertNum > 0) {
@@ -139,7 +148,8 @@ private:
             if (tilingData->isSharedQuantIndependent == 1U) {
                 InitializeMteSharedExpertInput(tilingData);
             }
-            InitializeSharedExpertActivationBuffers(tilingData);
+            InitializeSharedExpertActivationBuffers(
+                tilingData, useGmHandoffExpertWave && IsA4W4GmmMode(tilingData->sharedGmmMode));
         }
     }
 
@@ -149,18 +159,18 @@ private:
         InitializeDispatchRevWeights(tilingData);
         int64_t expertRecvTokenCountBytes =
             static_cast<int64_t>(tilingData->moeExpertPerRank) * ALIGN_32 * tilingData->aicNum;
-        InitializeActivationBuffers(tilingData);
+        InitializeActivationBuffers(tilingData, false);
         InitializeRoutingMetadata(tilingData, expertRecvTokenCountBytes);
         InitializeUrmaSyncFlags(tilingData);
         // All URMA GMM modes retain dispatch cumsum across activation.
-        InitializeGmmIntermediateBuffers(tilingData, true, false);
+        InitializeGmmIntermediateBuffers(tilingData, true, false, false);
         InitializeGmm1TileStatus(tilingData);
         InitializeDedupRowDesc(tilingData);
         InitializeUrmaDispatchBuffers(tilingData, serverNum);
         if (tilingData->sharedExpertNum > 0) {
             InitializeSharedExpertGmmOutputs(tilingData);
             InitializeUrmaSharedExpertInput(tilingData);
-            InitializeSharedExpertActivationBuffers(tilingData);
+            InitializeSharedExpertActivationBuffers(tilingData, false);
         }
     }
 
@@ -197,11 +207,13 @@ private:
         }
     }
 
-    HOST_DEVICE void InitializeActivationBuffers(const MegaMoeTilingData *tilingData)
+    HOST_DEVICE void InitializeActivationBuffers(const MegaMoeTilingData *tilingData, bool fp4Output)
     {
         activationQuantDataOffset = workspaceSize;
+        const int64_t elementsPerByte = fp4Output ? 2LL : 1LL;
         workspaceSize += Ops::Base::CeilAlign(
-            SIZE_INT_8 * tilingData->maxOutputSize * tilingData->hiddenDim / ACTIVATION_N_HALF, ALIGN_512);
+            SIZE_INT_8 * tilingData->maxOutputSize * tilingData->hiddenDim / ACTIVATION_N_HALF / elementsPerByte,
+            ALIGN_512);
 
         activationQuantScaleOffset = workspaceSize;
         workspaceSize +=
@@ -221,7 +233,7 @@ private:
         workspaceSize += Ops::Base::CeilAlign(tilingData->maxOutputSize * ALIGN_32, ALIGN_512);
     }
 
-    HOST_DEVICE void InitializeMteSyncFlags(const MegaMoeTilingData *tilingData)
+    HOST_DEVICE void InitializeMteSyncFlags(const MegaMoeTilingData *tilingData, bool useGmHandoffExpertWave)
     {
         // Keep all scalar flags contiguous for ResetFlagList.
         int64_t flagRegionBeginOffset = workspaceSize;
@@ -248,7 +260,8 @@ private:
         }
         const bool isMoeW4 = IsW4GmmMode(tilingData->moeGmmMode);
         const bool hasSharedW4 = tilingData->sharedExpertNum > 0 && IsW4GmmMode(tilingData->sharedGmmMode);
-        if (isMoeW4 || hasSharedW4 || tilingData->combineQuantMode == COMBINE_NO_QUANT) {
+        if (isMoeW4 || hasSharedW4 || tilingData->combineQuantMode == COMBINE_NO_QUANT ||
+            useGmHandoffExpertWave) {
             flagGmmToEpilogueOffset = workspaceSize;
             workspaceSize += static_cast<int64_t>(tilingData->aicNum) * INT_CACHELINE * SIZE_INT_32;
         }
@@ -307,7 +320,7 @@ private:
     }
 
     HOST_DEVICE void InitializeGmmIntermediateBuffers(const MegaMoeTilingData *tilingData, bool reserveCumsum,
-                                                      bool alignGmm2Output)
+                                                      bool alignGmm2Output, bool forceGmm1Output)
     {
         if (reserveCumsum) {
             // cumsumInfo：逐核备份 cumsum 状态，每核 moeExpertPerRank × epWorldSize 个 int32。
@@ -317,7 +330,7 @@ private:
                                                   ALIGN_32) *
                              tilingData->aicNum;
         }
-        if (tilingData->moeGmmMode == GMM_MODE_A8W4_NZ || tilingData->topkWeightsPrefetch == 1) {
+        if (tilingData->moeGmmMode == GMM_MODE_A8W4_NZ || tilingData->topkWeightsPrefetch == 1 || forceGmm1Output) {
             // gmm1MmadRes：GMM1 matmul 输出，布局为 maxOutputSize × hiddenDim 个 BF16。
             gmm1MmadResOffset = workspaceSize;
             workspaceSize += SIZE_BF_16 * tilingData->maxOutputSize * tilingData->hiddenDim;
@@ -419,12 +432,14 @@ private:
             ALIGN_512);
     }
 
-    HOST_DEVICE void InitializeSharedExpertActivationBuffers(const MegaMoeTilingData *tilingData)
+    HOST_DEVICE void InitializeSharedExpertActivationBuffers(const MegaMoeTilingData *tilingData, bool fp4Output)
     {
-        // sharedExpertActivationData：SwiGLU 量化输出 [sharedExpertNum × bs × hiddenDim / 2] FP8。
+        // sharedExpertActivationData: packed FP4 on arch92 A4W4, FP8 otherwise.
         sharedExpertActivationDataOffset = workspaceSize;
+        const int64_t elementsPerByte = fp4Output ? 2LL : 1LL;
         workspaceSize += Ops::Base::CeilAlign(
-            SIZE_INT_8 * tilingData->bs * tilingData->sharedExpertNum * tilingData->hiddenDim / ACTIVATION_N_HALF,
+            SIZE_INT_8 * tilingData->bs * tilingData->sharedExpertNum * tilingData->hiddenDim / ACTIVATION_N_HALF /
+                elementsPerByte,
             ALIGN_512);
         // sharedExpertActivationScale：每个 MXFP scale group 保存两个 multi-base 分量。
         sharedExpertActivationScaleOffset = workspaceSize;

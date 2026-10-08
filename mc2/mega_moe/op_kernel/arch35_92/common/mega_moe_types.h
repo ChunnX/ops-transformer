@@ -199,7 +199,7 @@ constexpr AxWMode ResolveAxWMode()
     return AxWMode::A4W4;
 }
 
-template <typename WeightType, int32_t QuantMode>
+template <typename WeightType, int32_t QuantMode, bool Fp4SwigluOutput = false>
 struct QuantConfig {
     using QuantOutType = typename QuantTypeTraits<QuantMode>::Type;
     // QuantOutType 表达量化算法和 GMM 的逻辑 dtype；QuantStorageType 用于 UB/GM 量化结果的物理承载。
@@ -209,8 +209,9 @@ struct QuantConfig {
     using QuantScaleType = typename std::conditional<(QuantMode >= E5M2_QUANT), fp8_e8m0_t, float>::type;
 
     static constexpr AxWMode AXW_MODE = ResolveAxWMode<WeightType, QuantOutType>();
-    using ActivationQuantOutType =
-        typename std::conditional<AXW_MODE == AxWMode::A4W4, fp8_e4m3fn_t, QuantOutType>::type;
+    static_assert(!Fp4SwigluOutput || AXW_MODE == AxWMode::A4W4, "FP4 SwiGLU output requires A4W4");
+    using ActivationQuantOutType = typename std::conditional<AXW_MODE == AxWMode::A4W4 && !Fp4SwigluOutput,
+                                                              fp8_e4m3fn_t, QuantOutType>::type;
 
     static constexpr uint32_t A_ELEMS_PER_BYTE = PackedElementTraits<QuantOutType>::ELEMENTS_PER_BYTE;
     static constexpr uint32_t B_ELEMS_PER_BYTE = PackedElementTraits<WeightType>::ELEMENTS_PER_BYTE;
