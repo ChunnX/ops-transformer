@@ -206,9 +206,9 @@ ge::graphStatus KvRmsNormRopeCacheTilingDs::DoOpTiling()
     int64_t numHead = std::get<SHAPE_IDX_N>(kvShapeTuple);
     int64_t seqLength = std::get<SHAPE_IDX_S>(kvShapeTuple);
 
-    tilingData_.set_batchSize(std::get<SHAPE_IDX_B>(kvShapeTuple));
-    tilingData_.set_numHead(std::get<SHAPE_IDX_N>(kvShapeTuple));
-    tilingData_.set_seqLength(std::get<SHAPE_IDX_S>(kvShapeTuple));
+    tilingData_.set_batchSize(batchSize);
+    tilingData_.set_numHead(numHead);
+    tilingData_.set_seqLength(seqLength);
     tilingData_.set_cacheLength(cacheLength_);
     tilingData_.set_blockSize(blockSize_);
     tilingData_.set_reciprocal(reciprocal_);
@@ -352,10 +352,6 @@ ge::graphStatus KvRmsNormRopeCacheTilingDs::DoOpTiling()
         tilingKey_ = TLING_KEY_5001;
         return ge::GRAPH_SUCCESS;
     }
-
-    int64_t batchSize = tilingData_.get_batchSize();
-    int64_t seqLen = tilingData_.get_seqLength();
-    int64_t numHead = tilingData_.get_numHead();
 
     if (IsB1SD(context_)) {
         int64_t bns = batchSize * numHead * seqLen;
