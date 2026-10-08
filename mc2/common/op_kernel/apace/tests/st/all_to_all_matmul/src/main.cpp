@@ -167,6 +167,11 @@ int runAllToAllMatmul(int rankNum, int rankId, int m, int k, int n, int localMat
     INFO_LOG("TileCnt=%u, HeadTileCnt=%u, HeadMSize=%u, TailTileCnt=%u, TailMSize=%u", tileCnt, headTileCnt, headMSize,
              tailTileCnt, tailMSize);
 
+    INFO_LOG("tiling: usedCoreNum=%u mL1=%u nL1=%u kL1=%u baseM=%u baseN=%u baseK=%u l0cDB=%u",
+             tilingData.tileMmTilingData.usedCoreNum, tilingData.tileMmTilingData.mL1, tilingData.tileMmTilingData.nL1,
+             tilingData.tileMmTilingData.kL1, tilingData.tileMmTilingData.baseM, tilingData.tileMmTilingData.baseN,
+             tilingData.tileMmTilingData.baseK, tilingData.tileMmTilingData.l0cDB);
+
     ACL_CHECK(aclInit(nullptr));
     int32_t deviceId = rankId;
     ACL_CHECK(aclrtSetDevice(deviceId));
