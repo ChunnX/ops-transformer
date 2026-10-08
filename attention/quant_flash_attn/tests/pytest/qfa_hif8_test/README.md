@@ -52,7 +52,7 @@ qfa_hif8_test/
 ├── quant_flash_attn_paramset_common.py         # 参数展开公共逻辑 + 默认值
 ├── quant_flash_attn_paramset_debug.py          # debug 参数集（少量用例，快速验证）
 ├── quant_flash_attn_paramset_func_rdv.py       # 功能正确性参数集（50 条）
-├── quant_flash_attn_paramset_perf_rdv.py       # 性能/压力参数集（3 条）
+├── quant_flash_attn_paramset_perf_rdv.py       # 性能/压力参数集（8 条）
 ├── test_quant_flash_attn_debug.py              # debug 测试入口
 ├── test_quant_flash_attn_func_rdv.py           # 功能正确性测试入口
 └── test_quant_flash_attn_perf_rdv.py           # 性能/压力测试入口
@@ -66,7 +66,7 @@ qfa_hif8_test/
 |----------|--------|--------|------|
 | `test_quant_flash_attn_debug.py` | `@pytest.mark.debug` | debug（2 条） | 快速验证基本功能 |
 | `test_quant_flash_attn_func_rdv.py` | `@pytest.mark.func_rdv` `@pytest.mark.ci` | func_rdv（50 条） | 功能正确性全覆盖 |
-| `test_quant_flash_attn_perf_rdv.py` | `@pytest.mark.perf_rdv` | perf_rdv（3 条） | 性能/压力验证 |
+| `test_quant_flash_attn_perf_rdv.py` | `@pytest.mark.perf_rdv` | perf_rdv（8 条） | 性能/压力验证 |
 
 ### 4.2 基本执行
 
@@ -108,6 +108,24 @@ pytest test_quant_flash_attn_perf_rdv.py -v --golden-mode=npu,compare
 功能/debug 用例默认仍执行完整精度验证。显式 `--golden-mode` 保留原有手动阶段选择；`perf` 必须单独使用，`--check-accuracy` 与 `--golden-mode` 不可同时指定。
 性能模式的 passed 仅表示 NPU 执行成功，不代表精度通过。pytest 会汇总提示未做精度比对，并在报告属性中记录 `accuracy_checked=False`。
 仅在参数和输入生成逻辑一致时复用缓存，否则请指定新的缓存目录。
+
+性能 RDV 共 8 条，其中以下 5 条长序列用例使用相同参数：B=1、Nq=20、Nkv=2、D=128、TND、SP0、LSE=false、p_scale=1.0；Q/KV 长度相同。
+
+| 场景 | Q 长度 | KV 长度 |
+| --- | ---: | ---: |
+| 10K | 10240 | 10240 |
+| 16K | 16384 | 16384 |
+| 20K | 20480 | 20480 |
+| 32K | 32768 | 32768 |
+| 64K | 65536 | 65536 |
+
+```bash
+# 仅采集这 5 条长序列用例。
+pytest test_quant_flash_attn_perf_rdv.py -k "Nq20_Nkv2_D128_SP0" --msprof -v
+
+# 仅采集 64K 用例。
+pytest test_quant_flash_attn_perf_rdv.py -k QS65536 --msprof -v
+```
 
 ### 4.3 过滤用例（-k）
 
