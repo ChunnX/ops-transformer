@@ -83,8 +83,8 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::InitBuffers(TPipe* p
     pipe->InitBuffer(this->outputQue1, 1, BUFFER_SIZE_BYTE_32K);
     pipe->InitBuffer(inputQueApe, 1, BUFFER_SIZE_BYTE_32K);
     pipe->InitBuffer(this->outputQue2, 1, BUFFER_SIZE_BYTE_16K);
-    pipe->InitBuffer(this->tmpBuff1, BUFFER_SIZE_BYTE_32K);
-    pipe->InitBuffer(this->tmpBuff2, BUFFER_SIZE_BYTE_32K);
+    pipe->InitBuffer(this->tmpBuff1, BUFFER_SIZE_BYTE_64K);
+    pipe->InitBuffer(this->tmpBuff2, BUFFER_SIZE_BYTE_64K);
     pipe->InitBuffer(this->apeBuf, BUFFER_SIZE_BYTE_32K);
     PipeBarrier<PIPE_V>();
 }
