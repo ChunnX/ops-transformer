@@ -58,7 +58,7 @@ template<typename A> struct IsSameT<A, A> { static constexpr bool value = true; 
 
 
 
-namespace MhcSandwichRegBase {
+namespace MhcNormRegBase {
 
 using namespace AscendC;
 using namespace AscendC::Reg;

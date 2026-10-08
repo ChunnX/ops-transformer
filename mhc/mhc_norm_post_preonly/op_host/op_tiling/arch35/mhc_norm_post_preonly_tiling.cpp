@@ -19,7 +19,6 @@ namespace optiling {
 // Host侧常量，与Kernel公共头文件保持一致
 constexpr uint32_t HOST_N_MAX = 4;
 constexpr uint32_t HOST_D_TILE_MAX = 2560;
-constexpr uint32_t HOST_D_ALIGN_ELEM = 16;
 constexpr uint32_t HOST_MAX_TOKENS = 1024 * 1024; // B*S 上限
 constexpr uint32_t NUM_TWO = 2;
 constexpr uint32_t PARTIAL_SLOT_BYTES = 32;
@@ -28,6 +27,11 @@ constexpr uint32_t PARTIAL_SLOTS_PER_TOKEN = 2;
 constexpr uint64_t TILING_KEY_USE_RMS_MID = 1ULL << 0;
 constexpr uint64_t TILING_KEY_RETURN_H_IN_F32 = 1ULL << 1;
 constexpr uint64_t TILING_KEY_DUAL_SIBLING_AIV = 1ULL << 2;
+
+static bool IsSupportedD(uint32_t d)
+{
+    return d == 2560U || d == 5120U || d == 6144U || d == 7168U;
+}
 
 static ge::graphStatus TilingMhcNormPostPreonly(gert::TilingContext *context)
 {
@@ -54,6 +58,10 @@ static ge::graphStatus TilingMhcNormPostPreonly(gert::TilingContext *context)
     auto residualDesc = context->GetInputDesc(1);
     if (hOutDesc == nullptr || residualDesc == nullptr || hOutDesc->GetDataType() != residualDesc->GetDataType()) {
         OP_LOGE("MhcNormPostPreonly", "h_out and residual must have the same dtype");
+        return ge::GRAPH_FAILED;
+    }
+    if (hOutDesc->GetDataType() != ge::DT_BF16 && hOutDesc->GetDataType() != ge::DT_FLOAT16) {
+        OP_LOGE("MhcNormPostPreonly", "h_out and residual dtype must be BFLOAT16 or FLOAT16");
         return ge::GRAPH_FAILED;
     }
 
@@ -126,9 +134,8 @@ static ge::graphStatus TilingMhcNormPostPreonly(gert::TilingContext *context)
         OP_LOGE("MhcNormPostPreonly", "headCount (N) must be %u, got %u", HOST_N_MAX, N);
         return ge::GRAPH_FAILED;
     }
-    if (D == 0 || D % HOST_D_ALIGN_ELEM != 0 || D > UINT32_MAX / HOST_N_MAX) {
-        OP_LOGE("MhcNormPostPreonly", "embedDim (D) must be positive and %u-element aligned, got %u",
-                HOST_D_ALIGN_ELEM, D);
+    if (!IsSupportedD(D)) {
+        OP_LOGE("MhcNormPostPreonly", "embedDim (D) must be one of 2560, 5120, 6144, or 7168, got %u", D);
         return ge::GRAPH_FAILED;
     }
     if (phiRows != N || phiCols != N * D) {
@@ -189,12 +196,9 @@ static ge::graphStatus TilingMhcNormPostPreonly(gert::TilingContext *context)
     uint32_t dimLoop = D / dimTile + (lastDimTile ? 1 : 0);
 
     // A5的MIX_AIC_1_2以一个物理AI Core为blockDim单位，并展开两个sibling AIV。
-    // 对精度集覆盖的四档D分别实测双AIV收益，由tiling按已验证维度稳定路由。
-    // 4op（无RMS_mid）与5op均走head切分双sibling；BF16/FP16均支持。
-    const bool dualSiblingDim = D == 2560U || D == 5120U || D == 6144U || D == 7168U;
-    const bool enableDualSibling =
-        totalTokens == 4U && dualSiblingDim && !returnHInF32 &&
-        (hOutDesc->GetDataType() == ge::DT_BF16 || hOutDesc->GetDataType() == ge::DT_FLOAT16);
+    // 输入能力已在上方统一校验；有足够的物理AI Core时，每个token分配一对sibling AIV。
+    const bool hasSiblingCapacity = totalTokens <= coreNumAiv / 2U;
+    const bool enableDualSibling = hasSiblingCapacity;
     const uint32_t coresPerToken = enableDualSibling ? 2U : 1U;
     const uint32_t usedCoreNum = std::min(totalTokens, enableDualSibling ? (coreNumAiv / 2U) : coreNumAiv);
     uint32_t rowsPerCore = totalTokens / usedCoreNum;

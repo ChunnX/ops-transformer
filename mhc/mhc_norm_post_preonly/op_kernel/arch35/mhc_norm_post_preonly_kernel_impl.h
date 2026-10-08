@@ -34,11 +34,11 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Accumul
             const uint32_t x2h0 = DUAL_SIBLING ? 0U : h0;
             const uint32_t x2h1 = DUAL_SIBLING ? 1U : h1;
 
-            MhcSandwichRegBase::Mul(out, x2[x2h0 * dimTile_], x2[x2h0 * dimTile_], tD);
+            MhcNormRegBase::Mul(out, x2[x2h0 * dimTile_], x2[x2h0 * dimTile_], tD);
             PipeBarrier<PIPE_V>();
-            MhcSandwichRegBase::Mul(tmp, x2[x2h1 * dimTile_], x2[x2h1 * dimTile_], tD);
+            MhcNormRegBase::Mul(tmp, x2[x2h1 * dimTile_], x2[x2h1 * dimTile_], tD);
             PipeBarrier<PIPE_V>();
-            MhcSandwichRegBase::Add(out, out, tmp, tD);
+            MhcNormRegBase::Add(out, out, tmp, tD);
             PipeBarrier<PIPE_V>();
             sumSqHalf[half] += ReduceSumPrecise(out, tD);
 
@@ -48,7 +48,7 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Accumul
                 DataCopyPad(phi, phiGm_[phiOffset], copyParams, copyPad);
                 bufPhiFp32_.EnQue(phi);
                 phi = bufPhiFp32_.DeQue<float>();
-                MhcSandwichRegBase::Mul(out, x2[x2h0 * dimTile_], phi, tD);
+                MhcNormRegBase::Mul(out, x2[x2h0 * dimTile_], phi, tD);
                 PipeBarrier<PIPE_V>();
                 bufPhiFp32_.FreeTensor(phi);
 
@@ -57,11 +57,11 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Accumul
                 DataCopyPad(phi, phiGm_[phiOffset], copyParams, copyPad);
                 bufPhiFp32_.EnQue(phi);
                 phi = bufPhiFp32_.DeQue<float>();
-                MhcSandwichRegBase::Mul(tmp, x2[x2h1 * dimTile_], phi, tD);
+                MhcNormRegBase::Mul(tmp, x2[x2h1 * dimTile_], phi, tD);
                 PipeBarrier<PIPE_V>();
                 bufPhiFp32_.FreeTensor(phi);
 
-                MhcSandwichRegBase::Add(out, out, tmp, tD);
+                MhcNormRegBase::Add(out, out, tmp, tD);
                 PipeBarrier<PIPE_V>();
                 dotHalf[half][o] += ReduceSumPrecise(out, tD);
             }
@@ -77,11 +77,11 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Accumul
 
         // 五行依次保存{sumSqPre,dot0,dot1,dot2,dot3}，一次按行归约，
         // 避免每个标量结果都单独触发一次Vector到Scalar的等待。
-        MhcSandwichRegBase::Mul(reduceRows, x2[x2h0 * dimTile_], x2[x2h0 * dimTile_], tD);
+        MhcNormRegBase::Mul(reduceRows, x2[x2h0 * dimTile_], x2[x2h0 * dimTile_], tD);
         PipeBarrier<PIPE_V>();
-        MhcSandwichRegBase::Mul(tmp, x2[x2h1 * dimTile_], x2[x2h1 * dimTile_], tD);
+        MhcNormRegBase::Mul(tmp, x2[x2h1 * dimTile_], x2[x2h1 * dimTile_], tD);
         PipeBarrier<PIPE_V>();
-        MhcSandwichRegBase::Add(reduceRows, reduceRows, tmp, tD);
+        MhcNormRegBase::Add(reduceRows, reduceRows, tmp, tD);
 
         // phi ping-pong：prologue预取o=0的两路，后续算o时预取o+1，4槽使MTE2与Vector重叠。
         LocalTensor<float> curPhi0 = bufPhiFp32_.AllocTensor<float>();
@@ -109,11 +109,11 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Accumul
             LocalTensor<float> dotRow = reduceRows[(o + 1) * dimTile_];
             curPhi0 = bufPhiFp32_.DeQue<float>();
             curPhi1 = bufPhiFp32_.DeQue<float>();
-            MhcSandwichRegBase::Mul(dotRow, x2[x2h0 * dimTile_], curPhi0, tD);
+            MhcNormRegBase::Mul(dotRow, x2[x2h0 * dimTile_], curPhi0, tD);
             PipeBarrier<PIPE_V>();
-            MhcSandwichRegBase::Mul(tmp, x2[x2h1 * dimTile_], curPhi1, tD);
+            MhcNormRegBase::Mul(tmp, x2[x2h1 * dimTile_], curPhi1, tD);
             PipeBarrier<PIPE_V>();
-            MhcSandwichRegBase::Add(dotRow, dotRow, tmp, tD);
+            MhcNormRegBase::Add(dotRow, dotRow, tmp, tD);
             bufPhiFp32_.FreeTensor(curPhi0);
             bufPhiFp32_.FreeTensor(curPhi1);
 
@@ -140,7 +140,7 @@ template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ApplyScaleAndGamma(LocalTensor<float> buf, float scale, LocalTensor<float> gamma, uint32_t tD)
 {
     // TODO：完成多VF融合和双缓冲后，执行Membase回退消融，复测改回高层接口的组合收益。
-    MhcSandwichRegBase::ScaleAndMulGamma(buf, buf, gamma, scale, tD);
+    MhcNormRegBase::ScaleAndMulGamma(buf, buf, gamma, scale, tD);
     PipeBarrier<PIPE_V>();
 }
 
@@ -164,7 +164,7 @@ __aicore__ inline float KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32
     CastToIO(hInCache, hIn, tD);
     PipeBarrier<PIPE_V>();
     LocalTensor<float> sqBuf = bufGamma2Fp32_.Get<float>();
-    MhcSandwichRegBase::CastB16ToFp32Square(sqBuf, hInCache, tD);
+    MhcNormRegBase::CastB16ToFp32Square(sqBuf, hInCache, tD);
     PipeBarrier<PIPE_V>();
     return ReduceSumPrecise(sqBuf, tD);
 }
@@ -187,7 +187,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     // R2已在成对VF尾部完成首次量化；R3后的第二次量化仍使用该路径。
     if (quantizeInput) {
         for (uint32_t n = 0; n < N_MAX; n += 2U) {
-            MhcSandwichRegBase::CastFp32PairToB16(x2Cache[n * D_ + tOff], x2Cache[(n + 1U) * D_ + tOff],
+            MhcNormRegBase::CastFp32PairToB16(x2Cache[n * D_ + tOff], x2Cache[(n + 1U) * D_ + tOff],
                                                   x2[n * dimTile_], x2[(n + 1U) * dimTile_], tD);
         }
         PipeBarrier<PIPE_V>();
@@ -196,7 +196,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     // 保证后续R4/R5仍使用低精度往返后的x2。
     if (!USE_RMS_MID || writeOutput) {
         for (uint32_t n = 0; n < N_MAX; n += 2U) {
-            MhcSandwichRegBase::CastB16PairToFp32(x2[n * dimTile_], x2[(n + 1U) * dimTile_],
+            MhcNormRegBase::CastB16PairToFp32(x2[n * dimTile_], x2[(n + 1U) * dimTile_],
                                                   x2Cache[n * D_ + tOff], x2Cache[(n + 1U) * D_ + tOff], tD);
         }
         PipeBarrier<PIPE_V>();
@@ -226,14 +226,14 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
 
     if (quantizeInput) {
         for (uint32_t n = 0; n < N_MAX; n += 2U) {
-            MhcSandwichRegBase::CastFp32PairToB16(x2Cache[n * D_ + tOff], x2Cache[(n + 1U) * D_ + tOff],
+            MhcNormRegBase::CastFp32PairToB16(x2Cache[n * D_ + tOff], x2Cache[(n + 1U) * D_ + tOff],
                                                   x2[n * dimTile_], x2[(n + 1U) * dimTile_], tD);
         }
         PipeBarrier<PIPE_V>();
     }
     if (!USE_RMS_MID || writeOutput) {
         // 双路R4/R5只读取本lane负责的相邻两行，避免恢复另一lane的无效副本。
-        MhcSandwichRegBase::CastB16PairToFp32(x2, x2[dimTile_],
+        MhcNormRegBase::CastB16PairToFp32(x2, x2[dimTile_],
                                               x2Cache[headBegin * D_ + tOff],
                                               x2Cache[(headBegin + 1U) * D_ + tOff], tD);
         PipeBarrier<PIPE_V>();
@@ -251,7 +251,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::CastToIO(LocalTensor<T> dst, LocalTensor<float> src, uint32_t count)
 {
-    MhcSandwichRegBase::CastFp32ToB16(dst, src, count);
+    MhcNormRegBase::CastFp32ToB16(dst, src, count);
 }
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
@@ -268,7 +268,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         scBuf.SetValue(i, -(alpha0_ * xHatVals[i] + biasCache_[i]));
     LocalTensor<float> gateBuf = scBuf[EXP_DIV_ELEM];
     // TODO：后续单独评估固定四元素循环展开，本轮保持通用VF循环。
-    MhcSandwichRegBase::SigmoidAddEps(gateBuf, scBuf, hcEps_, N);
+    MhcNormRegBase::SigmoidAddEps(gateBuf, scBuf, hcEps_, N);
     PipeBarrier<PIPE_V>();
 }
 
@@ -294,7 +294,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     LocalTensor<float> combWeights = bufPostComb_.Get<float>()[ALIGN8];
 
     for (uint32_t h = 0; h < N; h += 2U) {
-        MhcSandwichRegBase::ComputePostHeadPair<T>(x2Cache[h * D_ + tOff], x2Cache[(h + 1U) * D_ + tOff], hOut,
+        MhcNormRegBase::ComputePostHeadPair<T>(x2Cache[h * D_ + tOff], x2Cache[(h + 1U) * D_ + tOff], hOut,
                                                    residual, combWeights, dimTile_, h, postVals[h], postVals[h + 1U],
                                                    tD);
     }
@@ -339,7 +339,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     residual = bufResidualBf16_.DeQue<T>();
     LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
     LocalTensor<float> combWeights = bufPostComb_.Get<float>()[ALIGN8];
-    MhcSandwichRegBase::ComputePostHeadPair<T>(
+    MhcNormRegBase::ComputePostHeadPair<T>(
         x2Cache[headBegin * D_ + tOff], x2Cache[(headBegin + 1U) * D_ + tOff], hOut, residual, combWeights,
         dimTile_, headBegin, postVals[headBegin], postVals[headBegin + 1U], tD);
     PipeBarrier<PIPE_V>();
@@ -351,7 +351,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
 {
     LocalTensor<T> hBf16 = bufHOutBf16_.DeQue<T>();
     LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
-    MhcSandwichRegBase::CastB16ToFp32(hOut, hBf16, tD);
+    MhcNormRegBase::CastB16ToFp32(hOut, hBf16, tD);
     PipeBarrier<PIPE_V>();
     bufHOutBf16_.FreeTensor(hBf16);
 }
@@ -500,7 +500,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
 {
     LocalTensor<T> hOutCache = bufX2Cache_.Get<T>()[tOff];
     LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
-    MhcSandwichRegBase::CastB16ToFp32(hOut, hOutCache, tD);
+    MhcNormRegBase::CastB16ToFp32(hOut, hOutCache, tD);
     PipeBarrier<PIPE_V>();
 }
 
@@ -519,7 +519,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
                                                                                         LocalTensor<float> hIn)
 {
     LocalTensor<T> hInCache = bufX2Cache_.Get<T>()[tOff];
-    MhcSandwichRegBase::CastB16ToFp32(hIn, hInCache, tD);
+    MhcNormRegBase::CastB16ToFp32(hIn, hInCache, tD);
     PipeBarrier<PIPE_V>();
 }
 
@@ -538,7 +538,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     DataCopy(tmp, src[gmOffset], count);
     bufHOutBf16_.EnQue(tmp);
     tmp = bufHOutBf16_.DeQue<T>();
-    MhcSandwichRegBase::CastB16ToFp32(dst, tmp, count);
+    MhcNormRegBase::CastB16ToFp32(dst, tmp, count);
     PipeBarrier<PIPE_V>();
     bufHOutBf16_.FreeTensor(tmp);
 }
@@ -633,7 +633,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     LocalTensor<T> tmp = bufHInPrimeBf16_.AllocTensor<T>();
     CastToIO(tmp, buf, count);
     PipeBarrier<PIPE_V>();
-    MhcSandwichRegBase::CastB16ToFp32(buf, tmp, count);
+    MhcNormRegBase::CastB16ToFp32(buf, tmp, count);
     PipeBarrier<PIPE_V>();
     bufHInPrimeBf16_.FreeTensor(tmp);
 }
@@ -656,7 +656,7 @@ __aicore__ inline float KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32
 {
     // gamma2缓存与平方归约不同时存活，复用同一块UB作为平方临时区。
     LocalTensor<float> sqBuf = bufGamma2Fp32_.Get<float>();
-    MhcSandwichRegBase::Mul(sqBuf, src, src, tD);
+    MhcNormRegBase::Mul(sqBuf, src, src, tD);
     PipeBarrier<PIPE_V>();
     return ReduceSumPrecise(sqBuf, tD);
 }
@@ -666,7 +666,7 @@ __aicore__ inline float KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32
 {
     LocalTensor<T> hOutCache = bufX2Cache_.Get<T>()[tOff];
     LocalTensor<float> sqBuf = bufGamma2Fp32_.Get<float>();
-    MhcSandwichRegBase::CastB16ToFp32Square(sqBuf, hOutCache, tD);
+    MhcNormRegBase::CastB16ToFp32Square(sqBuf, hOutCache, tD);
     PipeBarrier<PIPE_V>();
     return ReduceSumPrecise(sqBuf, tD);
 }

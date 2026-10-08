@@ -47,7 +47,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
             for (uint32_t half = laneId_; half < laneId_ + 1U; ++half) {
                 const uint32_t h0 = half * 2U;
                 const uint32_t h1 = h0 + 1;
-                MhcSandwichRegBase::PairSquareB16ToFp32(out, x2Cache[h0 * D_ + tOff],
+                MhcNormRegBase::PairSquareB16ToFp32(out, x2Cache[h0 * D_ + tOff],
                                                        x2Cache[h1 * D_ + tOff], tD);
                 PipeBarrier<PIPE_V>();
                 midSqHalf[half] += ReduceSumPrecise(out, tD);
@@ -92,7 +92,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
                 if (n + 1U < headBegin + 2U) {
                     LoadGammaInto(gammaNext, gamma2Gm_, (n + 1) * D_ + tOff, tD);
                 }
-                MhcSandwichRegBase::CastB16ScaleAndMulGammaToB16(
+                MhcNormRegBase::CastB16ScaleAndMulGammaToB16(
                     x2Cache[n * D_ + tOff], x2Cache[n * D_ + tOff], gammaCurrent, invRmsMid, tD);
                 PipeBarrier<PIPE_V>();
                 if (n + 2U < headBegin + 2U) {
@@ -164,7 +164,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
         LocalTensor<T> x2Cache = bufX2Cache_.Get<T>()[tOff];
         LocalTensor<float> gateBuf = bufScalar_.Get<float>()[EXP_DIV_ELEM];
-        MhcSandwichRegBase::GateWeightedSum<T>(hIn, x2Cache, D_, gateBuf, tD);
+        MhcNormRegBase::GateWeightedSum<T>(hIn, x2Cache, D_, gateBuf, tD);
         PipeBarrier<PIPE_V>();
         sumSq1 += CacheHInAndReduceSumSq(tOff, tD, hIn);
     }
@@ -227,7 +227,7 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
             for (uint32_t half = 0; half < 2; ++half) {
                 const uint32_t h0 = half * 2;
                 const uint32_t h1 = h0 + 1;
-                MhcSandwichRegBase::PairSquareB16ToFp32(out, x2Cache[h0 * D_ + tOff],
+                MhcNormRegBase::PairSquareB16ToFp32(out, x2Cache[h0 * D_ + tOff],
                                                        x2Cache[h1 * D_ + tOff], tD);
                 PipeBarrier<PIPE_V>();
                 midSqHalf[half] += ReduceSumPrecise(out, tD);
@@ -262,7 +262,7 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
                 if (n + 1 < N_MAX) {
                     LoadGammaInto(gammaNext, gamma2Gm_, (n + 1) * D_ + tOff, tD);
                 }
-                MhcSandwichRegBase::CastB16ScaleAndMulGammaToB16(
+                MhcNormRegBase::CastB16ScaleAndMulGammaToB16(
                     x2Cache[n * D_ + tOff], x2Cache[n * D_ + tOff], gammaCurrent, invRmsMid, tD);
                 PipeBarrier<PIPE_V>();
                 // 当前缓存会在两轮后再次由MTE2写入，前两轮显式建立V到MTE2依赖。
@@ -295,7 +295,7 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
         LocalTensor<T> x2Cache = bufX2Cache_.Get<T>()[tOff];
         LocalTensor<float> gateBuf = bufScalar_.Get<float>()[EXP_DIV_ELEM];
-        MhcSandwichRegBase::GateWeightedSum<T>(hIn, x2Cache, D_, gateBuf, tD);
+        MhcNormRegBase::GateWeightedSum<T>(hIn, x2Cache, D_, gateBuf, tD);
         PipeBarrier<PIPE_V>();
         sumSq1 += CacheHInAndReduceSumSq(tOff, tD, hIn);
     }

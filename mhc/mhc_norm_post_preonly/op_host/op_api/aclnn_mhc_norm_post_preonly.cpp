@@ -26,6 +26,16 @@ extern "C" {
 
 namespace {
 
+constexpr int64_t SUPPORTED_D_2560 = 2560;
+constexpr int64_t SUPPORTED_D_5120 = 5120;
+constexpr int64_t SUPPORTED_D_6144 = 6144;
+constexpr int64_t SUPPORTED_D_7168 = 7168;
+
+static bool IsSupportedD(int64_t d)
+{
+    return d == SUPPORTED_D_2560 || d == SUPPORTED_D_5120 || d == SUPPORTED_D_6144 || d == SUPPORTED_D_7168;
+}
+
 static aclnnStatus MhcNormPostPreonlyCommonProcess(
     const aclTensor *hOut, const aclTensor *residual, const aclTensor *hPost, const aclTensor *hResOptional,
     const aclTensor *phi, const aclTensor *alpha, const aclTensor *bias, const aclTensor *preMixOptional,
@@ -52,6 +62,15 @@ static aclnnStatus MhcNormPostPreonlyCommonProcess(
 
     hOut = l0op::Contiguous(hOut, uniqueExecutor.get());
     CHECK_COND(hOut != nullptr, ACLNN_ERR_INNER_NULLPTR, "Contiguous hOut failed.");
+    const auto &hOutShape = hOut->GetViewShape();
+    const auto hOutDimNum = hOutShape.GetDimNum();
+    CHECK_COND(hOutDimNum == 2U || hOutDimNum == 3U, ACLNN_ERR_PARAM_INVALID,
+               "hOut must be 2D [T, D] or 3D [B, S, D].");
+    const int64_t d = hOutShape.GetDim(hOutDimNum - 1U);
+    CHECK_COND(IsSupportedD(d), ACLNN_ERR_PARAM_INVALID,
+               "The last dimension D of hOut must be one of 2560, 5120, 6144, or 7168, but got %ld.", d);
+    CHECK_COND(hOut->GetDataType() == DataType::DT_FLOAT16 || hOut->GetDataType() == DataType::DT_BF16,
+               ACLNN_ERR_PARAM_INVALID, "hOut dtype must be FLOAT16 or BFLOAT16.");
 
     residual = l0op::Contiguous(residual, uniqueExecutor.get());
     CHECK_COND(residual != nullptr, ACLNN_ERR_INNER_NULLPTR, "Contiguous residual failed.");
