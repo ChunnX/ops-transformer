@@ -14,10 +14,8 @@
  */
 
 #include <string>
-#include <cerrno>
 #include <climits>
 #include <cstdint>
-#include <cstdlib>
 #include <algorithm>
 #include "mc2_log.h"
 #include "graph/utils/type_utils.h"
@@ -67,27 +65,6 @@ static int64_t CeilDiv(int64_t x, int64_t y)
 static int64_t AlignTo(int64_t x, int64_t y)
 {
     return CeilDiv(x, y) * y;
-}
-
-static bool GetAivNumOverride(const char* nodeName, uint32_t physicalAivNum, uint32_t& aivNum)
-{
-    const char* overrideValue = std::getenv("ENGRAM_FETCH_AIV_NUM");
-    if (overrideValue == nullptr || *overrideValue == '\0') {
-        aivNum = physicalAivNum;
-        return true;
-    }
-
-    errno = 0;
-    char* endPtr = nullptr;
-    const unsigned long parsedValue = std::strtoul(overrideValue, &endPtr, 10);
-    if (errno != 0 || endPtr == overrideValue || *endPtr != '\0' || parsedValue == 0 || parsedValue > physicalAivNum) {
-        OP_LOGE(nodeName, "ENGRAM_FETCH_AIV_NUM must be an integer in [1, %u], got '%s'.", physicalAivNum,
-                overrideValue);
-        return false;
-    }
-
-    aivNum = static_cast<uint32_t>(parsedValue);
-    return true;
 }
 
 static const std::vector<ge::DataType> OUTPUT_DTYPE_LIST = {ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT,
@@ -599,20 +576,12 @@ static ge::graphStatus SetPlatformInfo(gert::TilingContext* context, EngramFetch
     auto platformInfo = context->GetPlatformInfo();
     OPS_CHECK_NULL_WITH_CONTEXT(context, platformInfo);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-    const uint32_t physicalAivNum = ascendcPlatform.GetCoreNumAiv();
+    uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
-    OP_TILING_CHECK(physicalAivNum == 0, OP_LOGE(nodeName, "physicalAivNum is 0."), return ge::GRAPH_FAILED);
-    uint32_t aivNum = physicalAivNum;
-    OP_TILING_CHECK(!GetAivNumOverride(nodeName, physicalAivNum, aivNum),
-                    OP_LOGE(nodeName, "invalid ENGRAM_FETCH_AIV_NUM override."), return ge::GRAPH_FAILED);
-    uint32_t numBlocks = ascendcPlatform.CalcTschBlockDim(aivNum, 0, physicalAivNum);
-    OP_TILING_CHECK(numBlocks != aivNum,
-                    OP_LOGE(nodeName, "AIV-only launch requires blockDim(%u) to equal aivNum(%u).", numBlocks, aivNum),
-                    return ge::GRAPH_FAILED);
+    uint32_t numBlocks = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
     context->SetBlockDim(numBlocks);
     tilingData.aivNum = aivNum;
-    OP_LOGI(nodeName, "aicNum=%u, physicalAivNum=%u, aivNum=%u, numBlocks=%u", aicNum, physicalAivNum, aivNum,
-            numBlocks);
+    OP_LOGD(nodeName, "aicNum=%u, aivNum=%u, numBlocks=%u", aicNum, aivNum, numBlocks);
 
     if (isTraining) {
         // 训练模式 kernel 内借用 SortLib（SIMT）做收端全局排序，须预留 SIMT dcache
