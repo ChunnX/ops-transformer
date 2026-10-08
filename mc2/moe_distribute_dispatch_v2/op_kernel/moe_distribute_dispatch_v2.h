@@ -823,6 +823,12 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Send
                                             (expertPerSizeOnWin_ *
                                              (epRankId_ * moeExpertNumPerRank_ + dstExpertId % moeExpertNumPerRank_)) +
                                             hAlignWinSize_ * curExpertCnt); // 计算地址偏移
+        // [DEBUG] 打印发送地址组成（全核）
+        AscendC::printf("[dispatch-mte][send] rank=%u core=%u idx=%d tokenIndex=%d topK=%d dstExpertId=%d "
+                        "toRankId=%d curExpertCnt=%d hasExpertScales=%u winBase=0x%lx rankGM=0x%lx slotOff=0x%lx\n",
+                        epRankId_, aivId_, index, tokenIndex, topKIndex, dstExpertId, toRankId, curExpertCnt,
+                        static_cast<uint32_t>(hasExpertScalesFlag_), (uint64_t)GetWindAddrByRankId(toRankId),
+                        (uint64_t)rankGM, (uint64_t)(rankGM - (GM_ADDR)GetWindAddrByRankId(toRankId)));
         dstWinGMTensor.SetGlobalBuffer((__gm__ XOutType *)rankGM);
         ProcessToken(dstWinGMTensor, tokenIndex, topKIndex, padParams, scaleInParams, dstExpertId + sharedExpertNum_,
                      writeExpertScale);
@@ -1508,6 +1514,9 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Loca
 
         uint32_t loopTimes = Ceil(count, countPerDataSize);
         uint32_t lastTimeCount = count - countPerDataSize * (loopTimes - 1);
+        AscendC::printf("[dispatch-mte][recv] rank=%u core=%u index=%u count=%u beginIdx=%u loopTimes=%u "
+                        "winOffset=%u wAddr=0x%lx\n",
+                        epRankId_, aivId_, index, count, beginIdx, loopTimes, winOffset, (uint64_t)wAddr);
         for (uint32_t loopIdx = 0; loopIdx < loopTimes; loopIdx++) {
             uint32_t tokenCopiedNumThisExpert = countPerDataSize * loopIdx;
             tokGlobal.SetGlobalBuffer((__gm__ XOutType *)(wAddr + tokenCopiedNumThisExpert * hAlignWinSize_));
@@ -1545,6 +1554,11 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Loca
                     wAddr + tokenCopiedNumThisExpert * hAlignWinSize_ + expertScaleAlign_ * sizeof(float)));
                 expandScalesOutGlobal.SetGlobalBuffer((__gm__ float *)(expandScalesOutGM_) + beginIdx +
                                                       tokenCopiedNumThisExpert);
+                AscendC::printf("[dispatch-mte][scale] rank=%u core=%u blockCount=%u tokenCopied=%u "
+                                "readAddr=0x%lx writeAddr=0x%lx\n",
+                                epRankId_, aivId_, blockCount, tokenCopiedNumThisExpert,
+                                (uint64_t)expertScaleInGlobal.GetPhyAddr(),
+                                (uint64_t)expandScalesOutGlobal.GetPhyAddr());
                 DataCopyExtParams expertScaleCopyInParams{blockCount, static_cast<uint32_t>(sizeof(float)),
                                                           static_cast<uint32_t>(hAlignWinSize_ - sizeof(float)), 0U,
                                                           0U};
