@@ -57,8 +57,8 @@ public:
             (static_cast<uint64_t>(tilingData_->totalD) + tilingData_->baseD - 1U) / tilingData_->baseD;
         dAlign_ = static_cast<uint32_t>(dAlign);
         dTileNum_ = static_cast<uint32_t>(dTileNum);
-        // LoadAlign reads a complete FP32 vector register. A 64-element pitch
-        // keeps a masked tail load inside the current Q/V/O logical UB row.
+        // [RegBase-native] DAV_3510 LoadAlign reads a 256-byte FP32 vector register
+        // (64 elements). This pitch keeps a masked tail load in its Q/V/O UB row.
         const uint64_t baseDAlign =
             ((static_cast<uint64_t>(tilingData_->baseD) + FP32_REG_ELEMS - 1U) / FP32_REG_ELEMS) * FP32_REG_ELEMS;
         baseDAlign_ = static_cast<uint32_t>(baseDAlign);
@@ -125,7 +125,11 @@ private:
     static constexpr uint64_t FP32_BYTES = sizeof(float);
     static constexpr uint64_t INPUT_BYTES = sizeof(INPUT_T);
     static constexpr uint32_t FP32_32B_ALIGN_ELEMS = 8U;
+    // [RegBase-native] DAV_3510 uses 256-byte vector registers; keep the pitch
+    // in sync with the VF register width in block_attn_res_prepare_vf.h.
     static constexpr uint32_t FP32_REG_ELEMS = BlockAttnResPrepareVF::FP32_REG_ELEMS;
+    // [RegBase-native] Event IDs 0..7 are reserved for V->MTE2 flags and
+    // 0..3 for MTE3->V flags in this kernel's DAV_3510 pipeline schedule.
     static constexpr uint32_t MAX_PIPE_ID = 8U;
     static constexpr uint32_t MTE3_MAX_PIPE_ID = 4U;
     static constexpr uint32_t STAT_BUFFER_NUM = 4U;

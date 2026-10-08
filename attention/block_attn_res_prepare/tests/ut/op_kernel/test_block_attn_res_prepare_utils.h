@@ -14,7 +14,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
-#include <cstring>
 #include <fstream>
 #include <limits>
 #include <sstream>
@@ -25,6 +24,7 @@
 
 #include "gmm_csv_parse_utils.h"
 #include "gtest/gtest.h"
+#include "securec.h"
 
 #ifdef __CCE_KT_TEST__
 #include "kernel_ut_runner.h"
@@ -89,6 +89,7 @@ public:
             const std::string caseName = fields.size() > 1UL ? ops::ut::Trim(fields[1]) : "";
             try {
                 constexpr size_t REQUIRED_COLUMN_COUNT = 15UL;
+                constexpr char BF16_DTYPE[] = "BF16";
                 if (fields.size() < REQUIRED_COLUMN_COUNT) {
                     throw std::runtime_error("invalid CSV column count");
                 }
@@ -114,7 +115,7 @@ public:
                 param.numBlocks = ParseU32(fields[index++], "numBlocks");
                 param.tilingKey = std::stoull(ops::ut::Trim(fields[index++]));
                 param.tilingData = ParseTilingData(fields[index++]);
-                if (index < fields.size() && ops::ut::Trim(fields[index]) == "BF16") {
+                if (index < fields.size() && ops::ut::Trim(fields[index]) == BF16_DTYPE) {
                     param.bf16 = true;
                 }
                 ValidateParam(param);
@@ -168,17 +169,26 @@ public:
             for (size_t index = 0UL; index < pseudoQueryElements; ++index) {
                 pseudoQueryBf16[index] = FloatToBf16(pseudoQueryInput[index]);
             }
-            std::memcpy(blockResGm.Get(), blockResBf16.data(), blockResElements * sizeof(uint16_t));
-            std::memcpy(pseudoQueryGm.Get(), pseudoQueryBf16.data(), pseudoQueryElements * sizeof(uint16_t));
+            ASSERT_EQ(memcpy_s(blockResGm.Get(), blockResElements * sizeof(InputStorageT), blockResBf16.data(),
+                               blockResElements * sizeof(uint16_t)), EOK);
+            ASSERT_EQ(memcpy_s(pseudoQueryGm.Get(), pseudoQueryElements * sizeof(InputStorageT), pseudoQueryBf16.data(),
+                               pseudoQueryElements * sizeof(uint16_t)), EOK);
         } else {
-            std::memcpy(blockResGm.Get(), blockResInput.data(), blockResElements * sizeof(float));
-            std::memcpy(pseudoQueryGm.Get(), pseudoQueryInput.data(), pseudoQueryElements * sizeof(float));
+            ASSERT_EQ(memcpy_s(blockResGm.Get(), blockResElements * sizeof(InputStorageT), blockResInput.data(),
+                               blockResElements * sizeof(float)), EOK);
+            ASSERT_EQ(memcpy_s(pseudoQueryGm.Get(), pseudoQueryElements * sizeof(InputStorageT), pseudoQueryInput.data(),
+                               pseudoQueryElements * sizeof(float)), EOK);
         }
-        std::memcpy(validBlocksGm.Get(), &param.validBlocks, sizeof(param.validBlocks));
-        std::memset(numeratorGm.Get(), 0xFF, numeratorElements * sizeof(float));
-        std::memset(logitMaxGm.Get(), 0xFF, statsElements * sizeof(float));
-        std::memset(expSumGm.Get(), 0xFF, statsElements * sizeof(float));
-        std::memcpy(tilingGm.Get(), param.tilingData.data(), param.tilingData.size() * sizeof(int32_t));
+        ASSERT_EQ(memcpy_s(validBlocksGm.Get(), sizeof(param.validBlocks), &param.validBlocks,
+                               sizeof(param.validBlocks)), EOK);
+        ASSERT_EQ(memset_s(numeratorGm.Get(), numeratorElements * sizeof(float), 0xFF,
+                               numeratorElements * sizeof(float)), EOK);
+        ASSERT_EQ(memset_s(logitMaxGm.Get(), statsElements * sizeof(float), 0xFF,
+                               statsElements * sizeof(float)), EOK);
+        ASSERT_EQ(memset_s(expSumGm.Get(), statsElements * sizeof(float), 0xFF,
+                               statsElements * sizeof(float)), EOK);
+        ASSERT_EQ(memcpy_s(tilingGm.Get(), param.tilingData.size() * sizeof(int32_t), param.tilingData.data(),
+                               param.tilingData.size() * sizeof(int32_t)), EOK);
 
         const uint32_t launchBlocks = std::min(MAX_NUM_BLOCKS, param.numBlocks);
         const auto kernelFunc = &block_attn_res_prepare<TEMPLATE_MODE>;
@@ -258,7 +268,9 @@ private:
         }
 
         optiling::BlockAttnResPrepareTilingData tiling{};
-        std::memcpy(&tiling, param.tilingData.data(), sizeof(tiling));
+        if (memcpy_s(&tiling, sizeof(tiling), param.tilingData.data(), sizeof(tiling)) != EOK) {
+            throw std::runtime_error("failed to copy tilingData");
+        }
         const uint64_t expectedWorkUnits = static_cast<uint64_t>(param.t) * param.s;
         if (tiling.totalT != param.t || tiling.totalN != param.n || tiling.totalS != param.s ||
             tiling.totalD != param.d || tiling.totalWorkUnits != expectedWorkUnits) {
@@ -335,10 +347,15 @@ private:
 
     static uint16_t FloatToBf16(float value)
     {
+        // Round to nearest even before discarding the low FP32 mantissa bits.
+        constexpr uint32_t FP32_TO_BF16_SHIFT = 16U;
+        constexpr uint32_t BF16_RNE_ROUND_BIAS = 0x7FFFU;
         uint32_t bits = 0U;
-        std::memcpy(&bits, &value, sizeof(bits));
-        const uint32_t roundingBias = 0x7FFFU + ((bits >> 16U) & 1U);
-        return static_cast<uint16_t>((bits + roundingBias) >> 16U);
+        if (memcpy_s(&bits, sizeof(bits), &value, sizeof(value)) != EOK) {
+            throw std::runtime_error("failed to copy FP32 bits");
+        }
+        const uint32_t roundingBias = BF16_RNE_ROUND_BIAS + ((bits >> FP32_TO_BF16_SHIFT) & 1U);
+        return static_cast<uint16_t>((bits + roundingBias) >> FP32_TO_BF16_SHIFT);
     }
 #endif
 };
