@@ -51,18 +51,18 @@ TEST_F(AclnnFfnToAttentionTest, TestFfnToAttentionAttnRankTable)
     TensorDesc actualTokenNum = TensorDesc({1}, ACL_INT64, ACL_FORMAT_ND);
     TensorDesc attnRankTable = TensorDesc({11}, ACL_INT32, ACL_FORMAT_ND);
     int64_t worldSize = 16;
-    const char *group = "test_ffn_to_attention_group";
+    const char* group = "test_ffn_to_attention_group";
     std::vector<int64_t> tokenInfoTable = {1, 16, 9};
     std::vector<int64_t> tokenData = {1, 16, 9, 7168};
-    aclIntArray *tokenInfoTableShape = aclCreateIntArray(tokenInfoTable.data(), tokenInfoTable.size());
-    aclIntArray *tokenDataShape = aclCreateIntArray(tokenData.data(), tokenData.size());
+    aclIntArray* tokenInfoTableShape = aclCreateIntArray(tokenInfoTable.data(), tokenInfoTable.size());
+    aclIntArray* tokenDataShape = aclCreateIntArray(tokenData.data(), tokenData.size());
 
     auto ut = OP_API_UT(aclnnFFNToAttention,
                         INPUT(x, sessionIds, microBatchIds, tokenIds, expertOffsets, actualTokenNum, attnRankTable,
                               group, worldSize, tokenInfoTableShape, tokenDataShape),
                         OUTPUT());
     uint64_t workspaceSize = 0;
-    aclOpExecutor *executor = nullptr;
+    aclOpExecutor* executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
@@ -75,20 +75,20 @@ TEST_F(AclnnFfnToAttentionTest, TestFfnToAttentionNoAttnRankTable)
     TensorDesc tokenIds = TensorDesc({1584}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc expertOffsets = TensorDesc({1584}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc actualTokenNum = TensorDesc({1}, ACL_INT64, ACL_FORMAT_ND);
-    aclTensor *attnRankTable = nullptr;
+    aclTensor* attnRankTable = nullptr;
     int64_t worldSize = 16;
-    const char *group = "test_ffn_to_attention_group";
+    const char* group = "test_ffn_to_attention_group";
     std::vector<int64_t> tokenInfoTable = {1, 16, 9};
     std::vector<int64_t> tokenData = {1, 16, 9, 7168};
-    aclIntArray *tokenInfoTableShape = aclCreateIntArray(tokenInfoTable.data(), tokenInfoTable.size());
-    aclIntArray *tokenDataShape = aclCreateIntArray(tokenData.data(), tokenData.size());
+    aclIntArray* tokenInfoTableShape = aclCreateIntArray(tokenInfoTable.data(), tokenInfoTable.size());
+    aclIntArray* tokenDataShape = aclCreateIntArray(tokenData.data(), tokenData.size());
 
     auto ut = OP_API_UT(aclnnFFNToAttention,
                         INPUT(x, sessionIds, microBatchIds, tokenIds, expertOffsets, actualTokenNum, attnRankTable,
                               group, worldSize, tokenInfoTableShape, tokenDataShape),
                         OUTPUT());
     uint64_t workspaceSize = 0;
-    aclOpExecutor *executor = nullptr;
+    aclOpExecutor* executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
