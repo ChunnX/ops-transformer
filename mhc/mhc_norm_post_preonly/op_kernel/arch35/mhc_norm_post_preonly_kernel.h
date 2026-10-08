@@ -221,11 +221,21 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
             // 避免每个标量结果都单独触发一次Vector到Scalar的等待。
             if (compactRows) {
                 if (accumulateRows) {
-                    MhcNormRegBase::VFPairMulAddCompact<true>(reduceRows, x2[x2h0 * dTile_], x2[x2h0 * dTile_],
-                                                               x2[x2h1 * dTile_], x2[x2h1 * dTile_], tD);
+                    if constexpr (USE_RMS_MID) {
+                        MhcNormRegBase::VFPairSquareAddCompact<true>(reduceRows, x2[x2h0 * dTile_],
+                                                                      x2[x2h1 * dTile_], tD);
+                    } else {
+                        MhcNormRegBase::VFPairMulAddCompact<true>(reduceRows, x2[x2h0 * dTile_], x2[x2h0 * dTile_],
+                                                                   x2[x2h1 * dTile_], x2[x2h1 * dTile_], tD);
+                    }
                 } else {
-                    MhcNormRegBase::VFPairMulAddCompact(reduceRows, x2[x2h0 * dTile_], x2[x2h0 * dTile_],
-                                                        x2[x2h1 * dTile_], x2[x2h1 * dTile_], tD);
+                    if constexpr (USE_RMS_MID) {
+                        MhcNormRegBase::VFPairSquareAddCompact(reduceRows, x2[x2h0 * dTile_],
+                                                               x2[x2h1 * dTile_], tD);
+                    } else {
+                        MhcNormRegBase::VFPairMulAddCompact(reduceRows, x2[x2h0 * dTile_], x2[x2h0 * dTile_],
+                                                            x2[x2h1 * dTile_], x2[x2h1 * dTile_], tD);
+                    }
                 }
             } else if (accumulateRows) {
                 MhcNormRegBase::VFPairSquareAdd<true>(reduceRows, x2[x2h0 * dTile_], x2[x2h1 * dTile_], tD);
