@@ -83,20 +83,20 @@ public:
 
     struct Params {
         GemmCoord problemShape;
-        __gm__ ElementABefore *ptrA;
+        __gm__ ElementABefore* ptrA;
         LayoutA layoutA;
         LayoutA layoutA2;
-        __gm__ ElementB *ptrB1;
+        __gm__ ElementB* ptrB1;
         LayoutB layoutB1;
-        __gm__ float *ptrBias1;
-        __gm__ ElementB *ptrB2;
+        __gm__ float* ptrBias1;
+        __gm__ ElementB* ptrB2;
         LayoutB layoutB2;
-        __gm__ float *ptrBias2;
-        __gm__ ElementScale *ptrScale1;
+        __gm__ float* ptrBias2;
+        __gm__ ElementScale* ptrScale1;
         LayoutScale layoutScale1;
-        __gm__ ElementScale *ptrScale2;
+        __gm__ ElementScale* ptrScale2;
         LayoutScale layoutScale2;
-        __gm__ ElementD2 *ptrOutput;
+        __gm__ ElementD2* ptrOutput;
         LayoutD1 layoutD1;
         LayoutD2 layoutD2;
         GM_ADDR ptrWorkspace;
@@ -156,20 +156,20 @@ public:
               activationParams2(activationParams2_),
               contextGM(contextGM_),
               tilingGM(tilingGM_),
-              ptrA(reinterpret_cast<__gm__ ElementABefore *>(ptrA_)),
+              ptrA(reinterpret_cast<__gm__ ElementABefore*>(ptrA_)),
               layoutA(layoutA_),
               layoutA2(layoutA2_),
-              ptrB1(reinterpret_cast<__gm__ ElementB *>(ptrB1_)),
+              ptrB1(reinterpret_cast<__gm__ ElementB*>(ptrB1_)),
               layoutB1(layoutB1_),
-              ptrBias1(reinterpret_cast<__gm__ float *>(ptrBias1_)),
-              ptrB2(reinterpret_cast<__gm__ ElementB *>(ptrB2_)),
+              ptrBias1(reinterpret_cast<__gm__ float*>(ptrBias1_)),
+              ptrB2(reinterpret_cast<__gm__ ElementB*>(ptrB2_)),
               layoutB2(layoutB2_),
-              ptrBias2(reinterpret_cast<__gm__ float *>(ptrBias2_)),
-              ptrScale1(reinterpret_cast<__gm__ ElementScale *>(ptrScale1_)),
+              ptrBias2(reinterpret_cast<__gm__ float*>(ptrBias2_)),
+              ptrScale1(reinterpret_cast<__gm__ ElementScale*>(ptrScale1_)),
               layoutScale1(layoutScale1_),
-              ptrScale2(reinterpret_cast<__gm__ ElementScale *>(ptrScale2_)),
+              ptrScale2(reinterpret_cast<__gm__ ElementScale*>(ptrScale2_)),
               layoutScale2(layoutScale2_),
-              ptrOutput(reinterpret_cast<__gm__ ElementD2 *>(ptrOutput_)),
+              ptrOutput(reinterpret_cast<__gm__ ElementD2*>(ptrOutput_)),
               layoutD1(layoutD1_),
               layoutD2(layoutD2_),
               expertIdx(expertIdx_),
@@ -187,7 +187,7 @@ public:
     };
 
     CATLASS_DEVICE
-    MegaMoeKernelA2(Params const &params)
+    MegaMoeKernelA2(Params const& params)
     {
         if ASCEND_IS_AIC {
             coreIdx = AscendC::GetBlockIdx();
@@ -205,17 +205,17 @@ public:
     ~MegaMoeKernelA2() {}
 
     template <int32_t CORE_TYPE = g_coreType>
-    CATLASS_DEVICE void operator()(Params const &params);
+    CATLASS_DEVICE void operator()(Params const& params);
 
     template <>
-    CATLASS_DEVICE void operator()<AscendC::AIC>(Params const &params)
+    CATLASS_DEVICE void operator()<AscendC::AIC>(Params const& params)
     {
         const int64_t bs = params.problemShape.m();
         const int64_t numChunks = (bs + PERMUTE_CHUNK - 1) / PERMUTE_CHUNK;
         for (int64_t chunkIdx = 0; chunkIdx < numChunks; ++chunkIdx) {
             // cumsumMM 每 chunk 指向独立缓冲区（不复用，规避跨 chunk cache 陈旧读）；
             // syncgmm / C2V / V2C 握手按 chunk 归零复用（与 AIV 每 chunk 的 set 序列严格配对）
-            cumsumMM.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
+            cumsumMM.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(
                 workspaceInfo.ptrcumsumMM +
                 chunkIdx * static_cast<int64_t>(paddedExpertNumAligned) * params.EP * sizeof(int32_t)));
             GMM1(params);
@@ -225,53 +225,53 @@ public:
     }
 
     template <>
-    CATLASS_DEVICE void operator()<AscendC::AIV>(Params const &params)
+    CATLASS_DEVICE void operator()<AscendC::AIV>(Params const& params)
     {
         DispatchAndCombine(params);
     }
 
 private:
-    CATLASS_DEVICE int32_t RuntimeRank(Params const &params) const
+    CATLASS_DEVICE int32_t RuntimeRank(Params const& params) const
     {
         (void)params;
         return shmem.Rank();
     }
 
-    CATLASS_DEVICE void initBuffer(Params const &params)
+    CATLASS_DEVICE void initBuffer(Params const& params)
     {
-        auto tmpContext = reinterpret_cast<__gm__ Mc2Aclnn::Mc2MoeContext *>(params.contextGM);
+        auto tmpContext = reinterpret_cast<__gm__ Mc2Aclnn::Mc2MoeContext*>(params.contextGM);
         shmem.initShmem(tmpContext);
         if ASCEND_IS_AIV {
             GM_ADDR dumpBase = shmem();
             exceptionDump_.Init(dumpBase, params.tilingGM);
         }
-        qp_info_ = reinterpret_cast<__gm__ HcclAiRMAInfo *>(
-            reinterpret_cast<__gm__ HcclA2CombineOpParam *>(shmem.WinContext_)->aiRMAInfo);
+        qp_info_ = reinterpret_cast<__gm__ HcclAiRMAInfo*>(
+            reinterpret_cast<__gm__ HcclA2CombineOpParam*>(shmem.WinContext_)->aiRMAInfo);
         const int32_t rank = RuntimeRank(params);
         serverId_ = static_cast<int32_t>(rank / SERVER_RANK_SIZE_A2);
         workspaceInfo = WorkspaceInfo(params);
         peermemInfo = PeermemInfo(params, shmem);
 
-        cumsumMM.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(workspaceInfo.ptrcumsumMM));
-        gmA.SetGlobalBuffer(reinterpret_cast<__gm__ ElementA *>(shmem() + peermemInfo.offsetA));
-        gmC.SetGlobalBuffer(reinterpret_cast<__gm__ ElementC *>(workspaceInfo.ptrC));
-        gmPermutedToken.SetGlobalBuffer(reinterpret_cast<__gm__ ElementD1 *>(workspaceInfo.ptrPermutedToken));
-        gmC2.SetGlobalBuffer(reinterpret_cast<__gm__ ElementC *>(workspaceInfo.ptrC2));
+        cumsumMM.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(workspaceInfo.ptrcumsumMM));
+        gmA.SetGlobalBuffer(reinterpret_cast<__gm__ ElementA*>(shmem() + peermemInfo.offsetA));
+        gmC.SetGlobalBuffer(reinterpret_cast<__gm__ ElementC*>(workspaceInfo.ptrC));
+        gmPermutedToken.SetGlobalBuffer(reinterpret_cast<__gm__ ElementD1*>(workspaceInfo.ptrPermutedToken));
+        gmC2.SetGlobalBuffer(reinterpret_cast<__gm__ ElementC*>(workspaceInfo.ptrC2));
         // per-token scale 的 GM 视图仅 int8 使用；bf16/fp16 的 peermem/workspace 布局里没有该区
         if constexpr (IS_INT8) {
             gmPerTokenScale1.SetGlobalBuffer(
-                reinterpret_cast<__gm__ ElementPerTokenScale *>(shmem() + peermemInfo.offsetPeerPerTokenScale));
+                reinterpret_cast<__gm__ ElementPerTokenScale*>(shmem() + peermemInfo.offsetPeerPerTokenScale));
             gmPerTokenScale2.SetGlobalBuffer(
-                reinterpret_cast<__gm__ ElementPerTokenScale *>(workspaceInfo.ptrPerTokenScale2));
+                reinterpret_cast<__gm__ ElementPerTokenScale*>(workspaceInfo.ptrPerTokenScale2));
         }
         tokenPerExpert.SetGlobalBuffer(
-            reinterpret_cast<__gm__ int32_t *>(shmem() + peermemInfo.offsetPeerTokenPerExpert));
+            reinterpret_cast<__gm__ int32_t*>(shmem() + peermemInfo.offsetPeerTokenPerExpert));
         paddedExpertNumAligned = AlignUp(params.EP * params.expertPerRank + 1, ALIGN_128);
         tokenPerExpertLayout = Layout3D(paddedExpertNumAligned, params.expertPerRank);
         preSumBeforeRankForDispatch.SetGlobalBuffer(
-            reinterpret_cast<__gm__ int32_t *>(workspaceInfo.ptrSumBeforeRankForDispatch));
+            reinterpret_cast<__gm__ int32_t*>(workspaceInfo.ptrSumBeforeRankForDispatch));
         preSumBeforeRankForCombine.SetGlobalBuffer(
-            reinterpret_cast<__gm__ int32_t *>(workspaceInfo.ptrSumBeforeRankForCombine));
+            reinterpret_cast<__gm__ int32_t*>(workspaceInfo.ptrSumBeforeRankForCombine));
 
         if ASCEND_IS_AIV {
             // 路由表 UB 缓存：dispatch/combine/epilogue 读取 tokenPerExpert / preSumBeforeRank
@@ -305,15 +305,15 @@ private:
     }
 
     template <typename T, typename CopyIn, typename CopyOut>
-    CATLASS_DEVICE void SendSelfTokens(AscendC::GlobalTensor<T> &dst, AscendC::GlobalTensor<T> &src, int32_t rows,
-                                       uint32_t copyInNum, AscendC::LocalTensor<T> &bufT, CopyIn &copyGmToUb,
-                                       CopyOut &copyUbToGm, uint32_t hiddenSize, int32_t rowStart,
-                                       AscendC::LocalTensor<float> &bufScale)
+    CATLASS_DEVICE void SendSelfTokens(AscendC::GlobalTensor<T>& dst, AscendC::GlobalTensor<T>& src, int32_t rows,
+                                       uint32_t copyInNum, AscendC::LocalTensor<T>& bufT, CopyIn& copyGmToUb,
+                                       CopyOut& copyUbToGm, uint32_t hiddenSize, int32_t rowStart,
+                                       AscendC::LocalTensor<float>& bufScale)
     {
         AscendC::GlobalTensor<ElementPerTokenScale> gmScale;
         if constexpr (IS_INT8) {
             gmScale.SetGlobalBuffer(
-                reinterpret_cast<__gm__ ElementPerTokenScale *>(shmem() + peermemInfo.offsetPeerPerTokenScale));
+                reinterpret_cast<__gm__ ElementPerTokenScale*>(shmem() + peermemInfo.offsetPeerPerTokenScale));
         }
 
         AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
@@ -336,10 +336,10 @@ private:
     }
 
     template <typename T, typename CopyIn, typename CopyOut>
-    CATLASS_DEVICE void SendSameServerTokens(AscendC::GlobalTensor<T> &dst, AscendC::GlobalTensor<T> &src, int32_t rows,
-                                             uint32_t copyInNum, AscendC::LocalTensor<T> &bufT, CopyIn &copyGmToUb,
-                                             CopyOut &copyUbToGm, int32_t rank, int32_t dstEpIdx, int32_t groupIdx,
-                                             Params const &params)
+    CATLASS_DEVICE void SendSameServerTokens(AscendC::GlobalTensor<T>& dst, AscendC::GlobalTensor<T>& src, int32_t rows,
+                                             uint32_t copyInNum, AscendC::LocalTensor<T>& bufT, CopyIn& copyGmToUb,
+                                             CopyOut& copyUbToGm, int32_t rank, int32_t dstEpIdx, int32_t groupIdx,
+                                             Params const& params)
     {
         AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
         for (int32_t i = 0; i < rows; ++i) {
@@ -360,21 +360,21 @@ private:
         //   2) gm_store：scalar 写 4B magic；
         //   3) gm_dcci：clean 本核 D-Cache，使远端通过 IPC / scalar 都能立即看到。
         // 每槽 64B 独占 cache line（kFlagSlotI32 = 16 个 int32），避免 false sharing。
-        __gm__ int32_t *remoteFlag = reinterpret_cast<__gm__ int32_t *>(shmem(0, dstEpIdx) + peermemInfo.offsetFlag) +
+        __gm__ int32_t* remoteFlag = reinterpret_cast<__gm__ int32_t*>(shmem(0, dstEpIdx) + peermemInfo.offsetFlag) +
                                      (rank * params.expertPerRank + groupIdx) * PeermemInfo::kFlagSlotI32;
 
         AscendC::PipeBarrier<PIPE_ALL>();
         gm_store(remoteFlag, FLAG_VALUE_MAGIC);
-        gm_dcci((__gm__ uint8_t *)remoteFlag);
+        gm_dcci((__gm__ uint8_t*)remoteFlag);
     }
 
     template <typename T>
-    CATLASS_DEVICE void SendCrossServerTokens(AscendC::GlobalTensor<T> &dst, AscendC::GlobalTensor<T> &src,
+    CATLASS_DEVICE void SendCrossServerTokens(AscendC::GlobalTensor<T>& dst, AscendC::GlobalTensor<T>& src,
                                               int32_t rows, uint32_t copyInNum, int32_t rank, int32_t dstEpIdx,
-                                              int32_t groupIdx, Params const &params,
-                                              AscendC::LocalTensor<uint64_t> &rdmaUbLocal,
-                                              AscendC::LocalTensor<uint32_t> &rdmaUbLocalHead,
-                                              AscendC::LocalTensor<int32_t> &flagUb)
+                                              int32_t groupIdx, Params const& params,
+                                              AscendC::LocalTensor<uint64_t>& rdmaUbLocal,
+                                              AscendC::LocalTensor<uint32_t>& rdmaUbLocalHead,
+                                              AscendC::LocalTensor<int32_t>& flagUb)
     {
         // 路径 C：跨 server（批量 RDMA 数据 + 32B RDMA flag）
         {
@@ -398,7 +398,7 @@ private:
             // 3. UB → 本地 winOut dispatch flag 槽（32B 一次写），供 RDMA 源使用
             AscendC::GlobalTensor<int32_t> localFlagGm;
             localFlagGm.SetGlobalBuffer(
-                reinterpret_cast<__gm__ int32_t *>(shmem.windowsOutAddr() + peermemInfo.offsetFlag) +
+                reinterpret_cast<__gm__ int32_t*>(shmem.windowsOutAddr() + peermemInfo.offsetFlag) +
                 (rank * params.expertPerRank + groupIdx) * PeermemInfo::kFlagSlotI32);
             AscendC::DataCopy(localFlagGm, flagUb, PeermemInfo::kFlagPayloadI32);
             AscendC::PipeBarrier<PIPE_ALL>();
@@ -430,7 +430,7 @@ private:
         uint32_t hiddenSize, int32_t dstEpIdx,
         int32_t groupIdx, // 当前专家组轮次（用于 epoch flag 值）
         int32_t rowStart, // dst 起始行号（路径 A 写 scale 时使用）
-        const Params &params)
+        const Params& params)
     {
         // rows == 0：无 token 可发，不写 flag，对端 RecvTokensV3 同样 rows2==0 会提前 return
         if (rows == 0)
@@ -501,7 +501,7 @@ private:
                                      uint32_t hiddenSize,
                                      int32_t srcEpIdx, // 数据来源 rank
                                      int32_t groupIdx, // 当前专家组轮次（用于 epoch flag 判定）
-                                     const Params &params)
+                                     const Params& params)
     {
         const int32_t rank = RuntimeRank(params);
         // 自身 rank 已在 SendTokensV3 路径 A 中完成搬运（含 scale 分离），跳过
@@ -514,7 +514,7 @@ private:
         // 等待 dispatch flag：精确匹配 FLAG_VALUE_MAGIC，避免上一轮残留误判
         //   slotIdx = srcEpIdx * expertPerRank + groupIdx
         //   每槽 16 个 int32（= 64B = 一个 cache line）
-        __gm__ int32_t *flagAddr = reinterpret_cast<__gm__ int32_t *>(shmem() + peermemInfo.offsetFlag) +
+        __gm__ int32_t* flagAddr = reinterpret_cast<__gm__ int32_t*>(shmem() + peermemInfo.offsetFlag) +
                                    (srcEpIdx * params.expertPerRank + groupIdx) * PeermemInfo::kFlagSlotI32;
         // 该 flag 由对端核（同 server gm_store / 跨 server RDMA）写入本 rank GM，属"数据被其他核修改"场景
         // Scalar 访问 GM 经过本核 D-Cache，存在与 GM 的一致性问题：
@@ -543,10 +543,10 @@ private:
             CopyUbToGm copyUbToGm;
 
             AscendC::GlobalTensor<T> gmDstA;
-            gmDstA.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(shmem() + peermemInfo.offsetA));
+            gmDstA.SetGlobalBuffer(reinterpret_cast<__gm__ T*>(shmem() + peermemInfo.offsetA));
             AscendC::GlobalTensor<ElementPerTokenScale> gmScale;
             gmScale.SetGlobalBuffer(
-                reinterpret_cast<__gm__ ElementPerTokenScale *>(shmem() + peermemInfo.offsetPeerPerTokenScale));
+                reinterpret_cast<__gm__ ElementPerTokenScale*>(shmem() + peermemInfo.offsetPeerPerTokenScale));
 
             AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
             for (int32_t i = 0; i < rows2; ++i) {
@@ -567,7 +567,7 @@ private:
     }
 
     CATLASS_DEVICE
-    void GetCumsumForMMAIV(AscendC::GlobalTensor<int32_t> &tokenPerExpert, AscendC::GlobalTensor<int32_t> &result,
+    void GetCumsumForMMAIV(AscendC::GlobalTensor<int32_t>& tokenPerExpert, AscendC::GlobalTensor<int32_t>& result,
                            uint32_t expertPerRank, uint32_t EP)
     {
         Detail::GetCumsumForMMAIVShared<ArchTag>(resource, paddedExpertNumAligned, tokenPerExpert, result,
@@ -575,7 +575,7 @@ private:
     }
 
     CATLASS_DEVICE
-    void GMM1(Params const &params)
+    void GMM1(Params const& params)
     {
         const int32_t rank = RuntimeRank(params);
         icache_preload(ICACHE_PRELOAD_LINES);
@@ -609,9 +609,9 @@ private:
             AscendC::GlobalTensor<ElementB> gmB1;
             AscendC::GlobalTensor<ElementScale> gmS;
             int32_t arrayGroupIdx = params.listLen == 1 ? 0 : groupIdx;
-            gmB1.SetGlobalBuffer(reinterpret_cast<__gm__ ElementB *>(
+            gmB1.SetGlobalBuffer(reinterpret_cast<__gm__ ElementB*>(
                 GetTensorAddr<int8_t>(arrayGroupIdx, reinterpret_cast<GM_ADDR>(params.ptrB1))));
-            gmS.SetGlobalBuffer(reinterpret_cast<__gm__ ElementScale *>(
+            gmS.SetGlobalBuffer(reinterpret_cast<__gm__ ElementScale*>(
                 GetTensorAddr<int64_t>(arrayGroupIdx, reinterpret_cast<GM_ADDR>(params.ptrScale1))));
             if constexpr (IS_INT8) {
                 AscendC::PipeBarrier<PIPE_ALL>();
@@ -696,7 +696,7 @@ private:
     }
 
     CATLASS_DEVICE
-    void GMM2(Params const &params)
+    void GMM2(Params const& params)
     {
         const int32_t rank = RuntimeRank(params);
         icache_preload(ICACHE_PRELOAD_LINES);
@@ -738,9 +738,9 @@ private:
             AscendC::GlobalTensor<ElementB> gmB2;
             AscendC::GlobalTensor<ElementScale> gmS2;
             int32_t arrayGroupIdx = params.listLen == 1 ? 0 : groupIdx;
-            gmB2.SetGlobalBuffer(reinterpret_cast<__gm__ ElementB *>(
+            gmB2.SetGlobalBuffer(reinterpret_cast<__gm__ ElementB*>(
                 GetTensorAddr<int8_t>(arrayGroupIdx, reinterpret_cast<GM_ADDR>(params.ptrB2))));
-            gmS2.SetGlobalBuffer(reinterpret_cast<__gm__ ElementScale *>(
+            gmS2.SetGlobalBuffer(reinterpret_cast<__gm__ ElementScale*>(
                 GetTensorAddr<int64_t>(arrayGroupIdx, reinterpret_cast<GM_ADDR>(params.ptrScale2))));
             if (currentM <= L1TileShape::M) {
                 gmB2.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
@@ -808,7 +808,7 @@ private:
     }
 
     CATLASS_DEVICE
-    void CrossRankSyncAndlocalTokenPerExpertAllGatherAndGetSumPreRankV2(Params const &params,
+    void CrossRankSyncAndlocalTokenPerExpertAllGatherAndGetSumPreRankV2(Params const& params,
                                                                         int64_t localTokenPerExpertOffset)
     {
         const int32_t rank = RuntimeRank(params);
@@ -819,7 +819,7 @@ private:
     }
 
     CATLASS_DEVICE
-    void ResetTokenPerExpert(const Params &params, int32_t num)
+    void ResetTokenPerExpert(const Params& params, int32_t num)
     {
         Detail::ResetTokenPerExpertShared(resource, shmem, peermemInfo, tokenPerExpert, coreNum, coreIdx, params.EP,
                                           params.expertPerRank, num);
@@ -847,7 +847,7 @@ private:
     // allgather + cumsum + SyncAll 之后由全部 AIV 核各刷一份），后续 dispatch /
     // combine / epilogue 的标量读取一律走 UB，不再直接读 GM。
     // winIn TPE / preSum 缓冲跨 chunk 复用，AIV 标量读存在 D-Cache 陈旧风险，由此规避。
-    CATLASS_DEVICE void CacheRouteTablesToUb(Params const &params)
+    CATLASS_DEVICE void CacheRouteTablesToUb(Params const& params)
     {
         if (routeCacheNum == 0) {
             return;
@@ -874,12 +874,12 @@ private:
     }
 
     CATLASS_DEVICE
-    void ResetExpertTokenNums(Params const &params)
+    void ResetExpertTokenNums(Params const& params)
     {
         // ExpertTokenNums 输出清零（进入 chunk 循环前一次，后续按 chunk 累加）
         {
             AscendC::GlobalTensor<int32_t> gmExpertTokenNums;
-            gmExpertTokenNums.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params.ptrExpertTokenNums));
+            gmExpertTokenNums.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(params.ptrExpertTokenNums));
             if (coreIdx == 0) {
                 AscendC::LocalTensor<int32_t> zeroBuf = resource.ubBuf.template GetBufferByByte<int32_t>(0);
                 AscendC::Duplicate(zeroBuf, 0, params.expertPerRank);
@@ -904,12 +904,12 @@ private:
     }
 
     CATLASS_DEVICE
-    void AccumulateExpertTokenNums(Params const &params, int32_t rank)
+    void AccumulateExpertTokenNums(Params const& params, int32_t rank)
     {
         // ExpertTokenNums 按 chunk 累加（core0，UB 读改写）
         {
             AscendC::GlobalTensor<int32_t> gmExpertTokenNums;
-            gmExpertTokenNums.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params.ptrExpertTokenNums));
+            gmExpertTokenNums.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(params.ptrExpertTokenNums));
             if (coreIdx == 0) {
                 AscendC::LocalTensor<int32_t> ubSum = resource.ubBuf.template GetBufferByByte<int32_t>(0);
                 AscendC::LocalTensor<int32_t> ubOut = resource.ubBuf.template GetBufferByByte<int32_t>(
@@ -932,7 +932,7 @@ private:
     }
 
     CATLASS_DEVICE
-    void RunChunkPrologue(Params const &params, int64_t chunkTokens, int64_t hidden, int64_t topK, int64_t tokenBase,
+    void RunChunkPrologue(Params const& params, int64_t chunkTokens, int64_t hidden, int64_t topK, int64_t tokenBase,
                           GM_ADDR localTokenPerExpert)
     {
         // 输入 X 始终为 bf16；量化路径输出 int8（per-token），非量化输出 bf16 透传。
@@ -955,27 +955,27 @@ private:
             MoePermute::MoePermutePrologue<PROLOGUE_UB_STAGES, ProloguePolicy, PrologueSrc, PrologueDst> prologue(
                 resource, prologueParams);
             AscendC::GlobalTensor<PrologueSrc> gmPermX;
-            gmPermX.SetGlobalBuffer(reinterpret_cast<__gm__ PrologueSrc *>(reinterpret_cast<GM_ADDR>(params.ptrA) +
-                                                                           tokenBase * hidden * sizeof(PrologueSrc)));
+            gmPermX.SetGlobalBuffer(reinterpret_cast<__gm__ PrologueSrc*>(reinterpret_cast<GM_ADDR>(params.ptrA) +
+                                                                          tokenBase * hidden * sizeof(PrologueSrc)));
             AscendC::GlobalTensor<int32_t> gmPermTopkIds;
-            gmPermTopkIds.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
+            gmPermTopkIds.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(
                 reinterpret_cast<GM_ADDR>(params.expertIdx) + tokenBase * topK * sizeof(int32_t)));
             // winOut A 按单 chunk 分配（host 侧收缩），逐 chunk 复用，源基址不变
             AscendC::GlobalTensor<PrologueDst> gmPermExpandX;
             gmPermExpandX.SetGlobalBuffer(
-                reinterpret_cast<__gm__ PrologueDst *>(shmem.windowsOutAddr() + peermemInfo.offsetWinOutA));
+                reinterpret_cast<__gm__ PrologueDst*>(shmem.windowsOutAddr() + peermemInfo.offsetWinOutA));
             AscendC::GlobalTensor<int32_t> gmTokenPerExpert;
-            gmTokenPerExpert.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(localTokenPerExpert));
+            gmTokenPerExpert.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(localTokenPerExpert));
             // expandedRowIdx 按单 chunk 尺寸分配，逐 chunk 复用（值为 chunk 局部 permute 行号）
             AscendC::GlobalTensor<int32_t> gmPermExpandRowIdx;
-            gmPermExpandRowIdx.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(workspaceInfo.expandedRowIdx));
+            gmPermExpandRowIdx.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(workspaceInfo.expandedRowIdx));
             prologue(gmPermX, gmPermTopkIds, gmPermExpandX, gmPermExpandRowIdx, gmTokenPerExpert, params.ptrWorkspace,
                      params.ptrXActiveMask != nullptr ? params.ptrXActiveMask + tokenBase : nullptr);
         }
     }
 
     CATLASS_DEVICE
-    void SendExpertRows(Params const &params, int32_t dstEpIdx, int32_t groupIdx, uint32_t rowStart)
+    void SendExpertRows(Params const& params, int32_t dstEpIdx, int32_t groupIdx, uint32_t rowStart)
     {
         // chunk 模式：路由表读走本核 UB 缓存（CacheRouteTablesToUb 每 chunk 刷新）
         uint32_t rows = static_cast<uint32_t>(ubTpeSendCache.GetValue(dstEpIdx * params.expertPerRank + groupIdx));
@@ -985,7 +985,7 @@ private:
         uint32_t rowSrc =
             static_cast<uint32_t>(ubPreSumDispatchCache.GetValue(dstEpIdx * params.expertPerRank + groupIdx));
         AscendC::GlobalTensor<ElementA> gmSrcA;
-        gmSrcA.SetGlobalBuffer(reinterpret_cast<__gm__ ElementA *>(shmem.windowsOutAddr() + peermemInfo.offsetWinOutA));
+        gmSrcA.SetGlobalBuffer(reinterpret_cast<__gm__ ElementA*>(shmem.windowsOutAddr() + peermemInfo.offsetWinOutA));
         // 行步长必须与 SendTokensV3 内部的 copyInNum 一致：int8 行尾带 512 元素的
         // per-token scale 区，bf16/fp16 为密排行。此处写死 k+ALIGN_512 会让 bf16/fp16
         // 从第 1 行起就按错误行距寻址（peer mem 里 bf16 的 A 区是 M×h×sizeof(int16_t)）。
@@ -993,7 +993,7 @@ private:
         int64_t gmSrcOffset = static_cast<int64_t>(rowSrc) * sendRowStride;
 
         AscendC::GlobalTensor<ElementA> gmRemoteDstA;
-        gmRemoteDstA.SetGlobalBuffer(reinterpret_cast<__gm__ ElementA *>(shmem(0, dstEpIdx) + peermemInfo.offsetA));
+        gmRemoteDstA.SetGlobalBuffer(reinterpret_cast<__gm__ ElementA*>(shmem(0, dstEpIdx) + peermemInfo.offsetA));
         int64_t gmDstOffset = static_cast<int64_t>(rowStart) * sendRowStride;
 
         SendTokensV3<ElementA>(gmRemoteDstA[gmDstOffset], gmSrcA[gmSrcOffset], static_cast<int32_t>(rows),
@@ -1001,7 +1001,7 @@ private:
     }
 
     CATLASS_DEVICE
-    void SendExpertTokens(Params const &params, int32_t rank, int32_t groupIdx,
+    void SendExpertTokens(Params const& params, int32_t rank, int32_t groupIdx,
                           uint32_t (&prevGroupSum1Arr)[MAX_RANK_PER_CORE])
     {
         // SEND 阶段：各 core 并行发送到对应 dstEpIdx
@@ -1024,7 +1024,7 @@ private:
     }
 
     CATLASS_DEVICE
-    void RecvExpertTokens(Params const &params, int32_t rank, int32_t groupIdx, uint32_t prevGroupSum2)
+    void RecvExpertTokens(Params const& params, int32_t rank, int32_t groupIdx, uint32_t prevGroupSum2)
     {
         // RECV 阶段：各 core 并行等 epoch flag 后做 scale 分离
         for (int32_t srcEpIdx = static_cast<int32_t>(coreIdx); srcEpIdx < params.EP;
@@ -1047,7 +1047,7 @@ private:
     }
 
     CATLASS_DEVICE
-    void RunChunkUnpermute(Params const &params, int64_t chunkTokens, int64_t topK, uint32_t n2, int64_t tokenBase,
+    void RunChunkUnpermute(Params const& params, int64_t chunkTokens, int64_t topK, uint32_t n2, int64_t tokenBase,
                            int64_t hidden)
     {
         // KernelMoeTokenUnpermute uses get_block_num() (= AIC tile count), not full AIV count.
@@ -1061,14 +1061,14 @@ private:
             KernelMoeTokenUnpermute<ElementD2, int32_t, float, true> kernelMoeTokenUnpermuteOp;
             kernelMoeTokenUnpermuteOp.Init(
                 shmem() + peermemInfo.offsetD, workspaceInfo.expandedRowIdx,
-                reinterpret_cast<GM_ADDR>(reinterpret_cast<__gm__ float *>(params.probs) + tokenBase * topK),
+                reinterpret_cast<GM_ADDR>(reinterpret_cast<__gm__ float*>(params.probs) + tokenBase * topK),
                 reinterpret_cast<GM_ADDR>(params.ptrOutput + tokenBase * hidden), &tilingData);
             kernelMoeTokenUnpermuteOp.Process();
         }
     }
 
     CATLASS_DEVICE
-    void RunSwiGluPart1(Params const &params, BlockEpilogue1 &blockEpilogue1, uint32_t dequantSum1)
+    void RunSwiGluPart1(Params const& params, BlockEpilogue1& blockEpilogue1, uint32_t dequantSum1)
     {
         if (dequantSum1 > 0) {
             uint32_t rowStartThisCore = 0;
@@ -1092,7 +1092,7 @@ private:
     }
 
     CATLASS_DEVICE
-    void RunSwiGluPart2(Params const &params, BlockEpilogue1 &blockEpilogue1, uint32_t dequantSum1,
+    void RunSwiGluPart2(Params const& params, BlockEpilogue1& blockEpilogue1, uint32_t dequantSum1,
                         uint32_t dequantSum2)
     {
         if (dequantSum2 > 0) {
@@ -1116,7 +1116,7 @@ private:
     }
 
     CATLASS_DEVICE
-    void DispatchAndCombine(Params const &params)
+    void DispatchAndCombine(Params const& params)
     {
         const int32_t rank = RuntimeRank(params);
         icache_preload(ICACHE_PRELOAD_LINES);
@@ -1140,7 +1140,7 @@ private:
             const int64_t tokenBase = chunkIdx * PERMUTE_CHUNK;
             const int64_t chunkTokens = (bs - tokenBase) < PERMUTE_CHUNK ? (bs - tokenBase) : PERMUTE_CHUNK;
             // cumsumMM 每 chunk 指向独立缓冲区（不复用，规避跨 chunk cache 陈旧读）
-            cumsumMM.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
+            cumsumMM.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(
                 workspaceInfo.ptrcumsumMM +
                 chunkIdx * static_cast<int64_t>(paddedExpertNumAligned) * params.EP * sizeof(int32_t)));
 
@@ -1206,7 +1206,7 @@ private:
                 static_cast<int32_t>(params.EP),
                 static_cast<int32_t>(params.expertPerRank),
                 static_cast<int32_t>(rank),
-                reinterpret_cast<__gm__ int32_t *>(shmem() + peermemInfo.offsetPeerTokenPerExpert),
+                reinterpret_cast<__gm__ int32_t*>(shmem() + peermemInfo.offsetPeerTokenPerExpert),
                 params.layoutD2,
                 static_cast<int32_t>(n2),
                 static_cast<int32_t>(L1TileShape::N),
@@ -1271,7 +1271,7 @@ private:
     }
 
     CATLASS_DEVICE
-    void CombineV2(Params const &params, BlockEpilogue2 &blockEpilogue)
+    void CombineV2(Params const& params, BlockEpilogue2& blockEpilogue)
     {
         const int32_t rank = RuntimeRank(params);
         BlockScheduler blockScheduler;
@@ -1289,7 +1289,7 @@ private:
             resource.ubBuf.template GetBufferByByte<uint32_t>(RDMA_UB_OFFSET_BYTES + UB_ALIGN);
         AscendC::GlobalTensor<ElementD2> gmLocalWindowsOut;
         gmLocalWindowsOut.SetGlobalBuffer(
-            reinterpret_cast<__gm__ ElementD2 *>(shmem.windowsOutAddr() + peermemInfo.offsetWinOutD));
+            reinterpret_cast<__gm__ ElementD2*>(shmem.windowsOutAddr() + peermemInfo.offsetWinOutD));
         icache_preload(ICACHE_PRELOAD_LINES);
         for (uint32_t groupIdx = 0; groupIdx < params.expertPerRank; ++groupIdx) {
             uint32_t currentExpertM = cumsumMM(tokenPerExpertLayout(params.EP - 1, rank, groupIdx));
@@ -1367,8 +1367,8 @@ private:
                 }
 
                 AscendC::GlobalTensor<ElementD2> gmRemotePeer;
-                __gm__ void *dstPeermemPtr = shmem(peermemInfo.offsetD, dstEpIdx);
-                gmRemotePeer.SetGlobalBuffer(reinterpret_cast<__gm__ ElementD2 *>(dstPeermemPtr));
+                __gm__ void* dstPeermemPtr = shmem(peermemInfo.offsetD, dstEpIdx);
+                gmRemotePeer.SetGlobalBuffer(reinterpret_cast<__gm__ ElementD2*>(dstPeermemPtr));
 
                 int32_t dstExpertOffset = ubPreSumCombineCache.GetValue(dstEpIdx * params.expertPerRank + groupIdx);
                 MatrixCoord srcOffset{preSrcExpertSum + static_cast<uint32_t>(stRankInExpert), 0};
@@ -1399,13 +1399,13 @@ private:
         GM_ADDR expandedRowIdx;
         GM_ADDR ptrSumBeforeRankForDispatch;
         GM_ADDR ptrSumBeforeRankForCombine;
-        __gm__ float *ptrSoftFlagBase;
+        __gm__ float* ptrSoftFlagBase;
 
         CATLASS_DEVICE
         WorkspaceInfo() {}
 
         CATLASS_DEVICE
-        WorkspaceInfo(const Params &params)
+        WorkspaceInfo(const Params& params)
         {
             uint32_t k2 = params.problemShape.n() / 2;
             uint64_t workspaceOffset = 0;
@@ -1453,7 +1453,7 @@ private:
             ptrSumBeforeRankForCombine = params.ptrWorkspace + workspaceOffset;
             workspaceOffset += params.EP * sizeof(int32_t) * params.expertPerRank;
 
-            ptrSoftFlagBase = reinterpret_cast<__gm__ float *>(params.ptrWorkspace + workspaceOffset);
+            ptrSoftFlagBase = reinterpret_cast<__gm__ float*>(params.ptrWorkspace + workspaceOffset);
         }
     };
 
@@ -1477,7 +1477,7 @@ private:
         PeermemInfoInt8() {}
 
         CATLASS_DEVICE
-        PeermemInfoInt8(const Params &params, const HcclShmem<true> &shmem)
+        PeermemInfoInt8(const Params& params, const HcclShmem<true>& shmem)
         {
             const int64_t EP = params.EP;
             const int64_t E = params.expertPerRank;
@@ -1545,7 +1545,7 @@ private:
         PeermemInfoBf16() {}
 
         CATLASS_DEVICE
-        PeermemInfoBf16(const Params &params, const HcclShmem<true> &shmem)
+        PeermemInfoBf16(const Params& params, const HcclShmem<true>& shmem)
         {
             const int64_t EP = params.EP;
             const int64_t E = params.expertPerRank;
@@ -1626,7 +1626,7 @@ private:
     AscendC::LocalTensor<int32_t> ubPreSumDispatchCache;
     AscendC::LocalTensor<int32_t> ubPreSumCombineCache;
 
-    __gm__ HcclAiRMAInfo *qp_info_ = nullptr;
+    __gm__ HcclAiRMAInfo* qp_info_ = nullptr;
 
     // ExceptionDump引擎：记录执行阶段时间戳，并提供Dump接口由host侧dump指定GM地址内容。
     static constexpr bool kRoutingIsQuant = IS_INT8 || IS_W4A8;

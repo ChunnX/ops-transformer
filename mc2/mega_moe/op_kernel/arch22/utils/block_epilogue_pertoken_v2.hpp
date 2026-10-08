@@ -63,7 +63,7 @@ public:
     using CopyUbToGmD = typename TileCopy_::CopyUbToGmD;
 
     struct Params {
-        __gm__ int32_t *ptrTokenPerExpert{nullptr};
+        __gm__ int32_t* ptrTokenPerExpert{nullptr};
         int32_t EP;
         int32_t expertPerRank;
         int32_t n2;
@@ -83,8 +83,8 @@ public:
         CATLASS_DEVICE
         Params() {};
         CATLASS_DEVICE
-        Params(int32_t EP_, int32_t expertPerRank_, int32_t rank_, __gm__ int32_t *ptrTokenPerExpert_, LayoutC layoutC_,
-               int32_t n2_, int32_t n0_, HcclShmem<IS_A2> &shmem_, int64_t offsetD_, Layout3D tokenPerExpertLayout_)
+        Params(int32_t EP_, int32_t expertPerRank_, int32_t rank_, __gm__ int32_t* ptrTokenPerExpert_, LayoutC layoutC_,
+               int32_t n2_, int32_t n0_, HcclShmem<IS_A2>& shmem_, int64_t offsetD_, Layout3D tokenPerExpertLayout_)
             : ptrTokenPerExpert(ptrTokenPerExpert_),
               EP(EP_),
               expertPerRank(expertPerRank_),
@@ -97,8 +97,8 @@ public:
               tokenPerExpertLayout(tokenPerExpertLayout_)
         {}
         CATLASS_DEVICE
-        Params(int32_t EP_, int32_t expertPerRank_, int32_t rank_, __gm__ int32_t *ptrTokenPerExpert_, LayoutC layoutC_,
-               int32_t n2_, int32_t n0_, HcclShmem<IS_A2> &shmem_, int64_t offsetD_, int64_t offsetWinOutD_,
+        Params(int32_t EP_, int32_t expertPerRank_, int32_t rank_, __gm__ int32_t* ptrTokenPerExpert_, LayoutC layoutC_,
+               int32_t n2_, int32_t n0_, HcclShmem<IS_A2>& shmem_, int64_t offsetD_, int64_t offsetWinOutD_,
                int32_t serverId_, Layout3D tokenPerExpertLayout_)
             : ptrTokenPerExpert(ptrTokenPerExpert_),
               EP(EP_),
@@ -116,7 +116,7 @@ public:
     };
 
     CATLASS_DEVICE
-    PerTokenV2Impl(Arch::Resource<ArchTag> const &resource, Params const &params = Params{})
+    PerTokenV2Impl(Arch::Resource<ArchTag> const& resource, Params const& params = Params{})
         : params(params)
     {
         n0 = params.n0;
@@ -132,7 +132,7 @@ public:
             ubOffset += (max_len / n0) * sizeof(float);
             source_scale_offset[i] = -1;
         }
-        tokenPerExpert.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params.ptrTokenPerExpert));
+        tokenPerExpert.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(params.ptrTokenPerExpert));
         tokenPerExpertLayout = params.tokenPerExpertLayout;
         is_ping = true;
     }
@@ -183,20 +183,20 @@ public:
     }
 
     CATLASS_DEVICE int32_t GetDstExpertOffset(int32_t dstEpIdx, int32_t groupIdx,
-                                              AscendC::GlobalTensor<int32_t> const &preSumBeforeRank) const
+                                              AscendC::GlobalTensor<int32_t> const& preSumBeforeRank) const
     {
         return ::Catlass::Epilogue::Block::detail::GetDstExpertOffset(params, preSumBeforeRank, dstEpIdx, groupIdx);
     }
 
     template <typename TileElement>
-    CATLASS_DEVICE void CopyRoutedSlice(AscendC::LocalTensor<TileElement> &ubTile, GemmCoord &blockCoord,
-                                        GemmCoord &actualBlockShape, int32_t preSrcExpertSum, int32_t dstEpIdx,
+    CATLASS_DEVICE void CopyRoutedSlice(AscendC::LocalTensor<TileElement>& ubTile, GemmCoord& blockCoord,
+                                        GemmCoord& actualBlockShape, int32_t preSrcExpertSum, int32_t dstEpIdx,
                                         int32_t stData, uint32_t lenData, uint32_t dstOffsetInExpert,
                                         int32_t dstExpertOffset, int32_t tileOffset)
     {
         AscendC::GlobalTensor<ElementD> gmRemotePeer;
-        __gm__ void *dstPeermemPtr = params.shmem(params.offsetD, dstEpIdx);
-        gmRemotePeer.SetGlobalBuffer(reinterpret_cast<__gm__ ElementD *>(dstPeermemPtr));
+        __gm__ void* dstPeermemPtr = params.shmem(params.offsetD, dstEpIdx);
+        gmRemotePeer.SetGlobalBuffer(reinterpret_cast<__gm__ ElementD*>(dstPeermemPtr));
         MatrixCoord dstOffset{dstOffsetInExpert + dstExpertOffset, blockCoord.n()};
         int64_t gmDstOffset = params.layoutC.GetOffset(dstOffset);
         auto gmTileD = gmRemotePeer[gmDstOffset];
@@ -207,7 +207,7 @@ public:
             if (isCrossServer) {
                 AscendC::GlobalTensor<ElementD> gmLocalWindowsOut;
                 gmLocalWindowsOut.SetGlobalBuffer(
-                    reinterpret_cast<__gm__ ElementD *>(params.shmem.windowsOutAddr() + params.offsetWinOutD));
+                    reinterpret_cast<__gm__ ElementD*>(params.shmem.windowsOutAddr() + params.offsetWinOutD));
                 MatrixCoord srcOffset{(uint32_t)(stData + preSrcExpertSum), blockCoord.n()};
                 int64_t gmSrcOffset = params.layoutC.GetOffset(srcOffset);
                 auto gmTileLocal = gmLocalWindowsOut[gmSrcOffset];
@@ -221,10 +221,10 @@ public:
     }
 
     template <typename TileElement>
-    CATLASS_DEVICE void CopyRoutedTile(AscendC::LocalTensor<TileElement> &ubTile, GemmCoord &blockCoord,
-                                       GemmCoord &actualBlockShape, int32_t groupIdx, int32_t preSrcExpertSum,
-                                       AscendC::GlobalTensor<int32_t> const &preSumBeforeRank, int32_t stTile,
-                                       int32_t edTile, int32_t &preSumRankInExpert, int32_t &tileOffset)
+    CATLASS_DEVICE void CopyRoutedTile(AscendC::LocalTensor<TileElement>& ubTile, GemmCoord& blockCoord,
+                                       GemmCoord& actualBlockShape, int32_t groupIdx, int32_t preSrcExpertSum,
+                                       AscendC::GlobalTensor<int32_t> const& preSumBeforeRank, int32_t stTile,
+                                       int32_t edTile, int32_t& preSumRankInExpert, int32_t& tileOffset)
     {
         for (int32_t dstEpIdx = 0; dstEpIdx < params.EP; dstEpIdx++) {
             int32_t lenRankInExpert = GetLenRankInExpert(dstEpIdx, groupIdx);
@@ -247,10 +247,10 @@ public:
     }
 
     template <typename EventId>
-    CATLASS_DEVICE void ApplyTokenScale(AscendC::GlobalTensor<ElementPerTokenScale> const &gmPerTokenScale,
-                                        GemmCoord &blockCoord, GemmCoord &actualBlockShape, int32_t preSrcExpertSum,
-                                        EventId event_id, EventId event_id_2, AscendC::LocalTensor<float> &ubCFp32,
-                                        AscendC::LocalTensor<ElementPerTokenScale> &scaleUb)
+    CATLASS_DEVICE void ApplyTokenScale(AscendC::GlobalTensor<ElementPerTokenScale> const& gmPerTokenScale,
+                                        GemmCoord& blockCoord, GemmCoord& actualBlockShape, int32_t preSrcExpertSum,
+                                        EventId event_id, EventId event_id_2, AscendC::LocalTensor<float>& ubCFp32,
+                                        AscendC::LocalTensor<ElementPerTokenScale>& scaleUb)
     {
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(event_id_2);
         AscendC::WaitFlag<AscendC::HardEvent::S_MTE2>(event_id_2);
@@ -277,9 +277,9 @@ public:
     }
 
     CATLASS_DEVICE
-    void operator()(AscendC::GlobalTensor<ElementC> const &gmC,
-                    AscendC::GlobalTensor<ElementPerTokenScale> const &gmPerTokenScale, GemmCoord &blockCoord,
-                    GemmCoord &actualBlockShape, int32_t groupIdx, int32_t preSrcExpertSum,
+    void operator()(AscendC::GlobalTensor<ElementC> const& gmC,
+                    AscendC::GlobalTensor<ElementPerTokenScale> const& gmPerTokenScale, GemmCoord& blockCoord,
+                    GemmCoord& actualBlockShape, int32_t groupIdx, int32_t preSrcExpertSum,
                     AscendC::GlobalTensor<int32_t> preSumBeforeRank)
     {
         if constexpr (!NEED_DEQUANT) {
@@ -291,14 +291,14 @@ public:
         auto event_id = is_ping ? EVENT_ID0 : EVENT_ID1;
         auto event_id_2 = is_ping ? EVENT_ID2 : EVENT_ID3;
 
-        auto &ubC = ubCList[is_ping];
-        auto &ubD = ubDList[is_ping];
+        auto& ubC = ubCList[is_ping];
+        auto& ubD = ubDList[is_ping];
         using GmCOffset = std::conditional_t<IS_A2, int32_t, int64_t>;
         GmCOffset gmCOffset =
             static_cast<GmCOffset>(preSrcExpertSum) * params.n2 + blockCoord.m() * params.n2 + blockCoord.n();
         auto gmTileC = gmC[gmCOffset];
-        auto &ubCFp32 = ubFp32List[is_ping];
-        auto &scaleUb = scaleUbList[is_ping];
+        auto& ubCFp32 = ubFp32List[is_ping];
+        auto& scaleUb = scaleUbList[is_ping];
 
         LayoutC layoutGM{actualBlockShape.m(), actualBlockShape.n(), params.n2};
         LayoutC layoutUB{actualBlockShape.m(), actualBlockShape.n(), n0};
@@ -333,13 +333,13 @@ public:
     }
 
     CATLASS_DEVICE
-    void operator()(AscendC::GlobalTensor<ElementC> const &gmC, GemmCoord &blockCoord, GemmCoord &actualBlockShape,
+    void operator()(AscendC::GlobalTensor<ElementC> const& gmC, GemmCoord& blockCoord, GemmCoord& actualBlockShape,
                     int32_t groupIdx, int32_t preSrcExpertSum, AscendC::GlobalTensor<int32_t> preSumBeforeRank)
     {
         is_ping = !is_ping;
         auto event_id = is_ping ? EVENT_ID0 : EVENT_ID1;
 
-        auto &ubC = ubCList[is_ping];
+        auto& ubC = ubCList[is_ping];
         int32_t gmCOffset = preSrcExpertSum * params.n2 + blockCoord.m() * params.n2 + blockCoord.n();
         auto gmTileC = gmC[gmCOffset];
 

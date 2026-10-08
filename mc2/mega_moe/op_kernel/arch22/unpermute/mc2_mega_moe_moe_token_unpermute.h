@@ -26,13 +26,13 @@ public:
     __aicore__ inline KernelMoeTokenUnpermute() {}
 
     __aicore__ inline void Init(GM_ADDR permuted_tokens, GM_ADDR sorted_indices, GM_ADDR probs,
-                                GM_ADDR unpermuted_tokens, const MoeTokenUnpermuteTilingData *__restrict tiling_data,
+                                GM_ADDR unpermuted_tokens, const MoeTokenUnpermuteTilingData* __restrict tiling_data,
                                 bool useAllVectorCore = false);
     __aicore__ inline void Process();
 
 protected:
-    __aicore__ inline void LoadTilingData(const MoeTokenUnpermuteTilingData *__restrict tiling_data);
-    __aicore__ inline void InitLocalBuffers(const MoeTokenUnpermuteTilingData *__restrict tiling_data, GM_ADDR probs,
+    __aicore__ inline void LoadTilingData(const MoeTokenUnpermuteTilingData* __restrict tiling_data);
+    __aicore__ inline void InitLocalBuffers(const MoeTokenUnpermuteTilingData* __restrict tiling_data, GM_ADDR probs,
                                             int64_t blockOffset, int64_t blockLength);
     __aicore__ inline int64_t CoreElementOffset(int64_t elementsPerToken) const;
     __aicore__ inline void CalMultiOutToken(const int64_t out_offset, const int64_t out_tokens_number);
@@ -81,7 +81,7 @@ protected:
 template <typename T1, typename T2, typename T3, bool PROBS>
 __aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS>::Init(
     GM_ADDR permuted_tokens, GM_ADDR sorted_indices, GM_ADDR probs, GM_ADDR unpermuted_tokens,
-    const MoeTokenUnpermuteTilingData *__restrict tiling_data, bool useAllVectorCore)
+    const MoeTokenUnpermuteTilingData* __restrict tiling_data, bool useAllVectorCore)
 {
     if (useAllVectorCore) {
         this->blockIdx = get_block_idx() + get_subblockid() * get_block_num();
@@ -101,12 +101,12 @@ __aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS>::Init(
 
     int64_t block_offset = CoreElementOffset(this->top_k);
 
-    this->tokensGM.SetGlobalBuffer((__gm__ T1 *)permuted_tokens);
-    this->indicesGM.SetGlobalBuffer((__gm__ T2 *)sorted_indices + block_offset, block_length);
+    this->tokensGM.SetGlobalBuffer((__gm__ T1*)permuted_tokens);
+    this->indicesGM.SetGlobalBuffer((__gm__ T2*)sorted_indices + block_offset, block_length);
 
     int64_t out_block_offset = CoreElementOffset(this->hidden_size);
 
-    this->outGM.SetGlobalBuffer((__gm__ T1 *)unpermuted_tokens + out_block_offset,
+    this->outGM.SetGlobalBuffer((__gm__ T1*)unpermuted_tokens + out_block_offset,
                                 this->tokens_core_length * this->hidden_size);
 
     InitLocalBuffers(tiling_data, probs, block_offset, block_length);
@@ -114,7 +114,7 @@ __aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS>::Init(
 
 template <typename T1, typename T2, typename T3, bool PROBS>
 __aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS>::LoadTilingData(
-    const MoeTokenUnpermuteTilingData *__restrict tiling_data)
+    const MoeTokenUnpermuteTilingData* __restrict tiling_data)
 {
     this->hidden_size = tiling_data->hidden_size;
     this->top_k = tiling_data->top_k;
@@ -136,7 +136,7 @@ __aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS>::LoadTilingDat
 
 template <typename T1, typename T2, typename T3, bool PROBS>
 __aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS>::InitLocalBuffers(
-    const MoeTokenUnpermuteTilingData *__restrict tiling_data, GM_ADDR probs, int64_t blockOffset, int64_t blockLength)
+    const MoeTokenUnpermuteTilingData* __restrict tiling_data, GM_ADDR probs, int64_t blockOffset, int64_t blockLength)
 {
     int64_t hidden_splited_length_align512 = (this->hidden_splited_length + ALIGN_512 - 1) & ~(ALIGN_512 - 1);
     int64_t block_splited_length = this->tokens_splited_length * this->top_k;
@@ -152,7 +152,7 @@ __aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS>::InitLocalBuff
     }
 
     if constexpr (PROBS) {
-        this->probsGM.SetGlobalBuffer((__gm__ T3 *)probs + blockOffset, blockLength);
+        this->probsGM.SetGlobalBuffer((__gm__ T3*)probs + blockOffset, blockLength);
         this->pipe.InitBuffer(probs_inque, 1, block_splited_length * (sizeof(T3)));
         if constexpr (!IsSameType<T3, float>::value) {
             this->pipe.InitBuffer(temp_buffer2, block_splited_length * sizeof(float));

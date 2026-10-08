@@ -26,9 +26,9 @@ using namespace AscendC;
 constexpr int32_t kA2UbMoveNum = 16 * 1024;
 
 template <class ArchTag>
-CATLASS_DEVICE void GetCumsumForMMAIVShared(Arch::Resource<ArchTag> &resource, int32_t paddedExpertNumAligned,
-                                            AscendC::GlobalTensor<int32_t> &tokenPerExpert,
-                                            AscendC::GlobalTensor<int32_t> &result, uint32_t expertPerRank, uint32_t EP)
+CATLASS_DEVICE void GetCumsumForMMAIVShared(Arch::Resource<ArchTag>& resource, int32_t paddedExpertNumAligned,
+                                            AscendC::GlobalTensor<int32_t>& tokenPerExpert,
+                                            AscendC::GlobalTensor<int32_t>& result, uint32_t expertPerRank, uint32_t EP)
 {
     constexpr uint32_t int32PerBlock = 8;
     constexpr uint32_t ubReservedBytes = 32;
@@ -74,7 +74,7 @@ CATLASS_DEVICE void GetCumsumForMMAIVShared(Arch::Resource<ArchTag> &resource, i
     AscendC::PipeBarrier<PIPE_MTE3>();
 }
 
-CATLASS_DEVICE void ResetGmBufferShared(AscendC::GlobalTensor<int32_t> &dst, AscendC::LocalTensor<int32_t> &zeroBuffer,
+CATLASS_DEVICE void ResetGmBufferShared(AscendC::GlobalTensor<int32_t>& dst, AscendC::LocalTensor<int32_t>& zeroBuffer,
                                         int32_t num)
 {
     for (int32_t offset = 0; offset < num; offset += kA2UbMoveNum) {
@@ -85,9 +85,9 @@ CATLASS_DEVICE void ResetGmBufferShared(AscendC::GlobalTensor<int32_t> &dst, Asc
 }
 
 template <class ArchTag, class PeerInfo>
-CATLASS_DEVICE void ResetTokenPerExpertShared(Arch::Resource<ArchTag> &resource, HcclShmem<true> &shmem,
-                                              const PeerInfo &peermemInfo,
-                                              AscendC::GlobalTensor<int32_t> &tokenPerExpert, int32_t coreNum,
+CATLASS_DEVICE void ResetTokenPerExpertShared(Arch::Resource<ArchTag>& resource, HcclShmem<true>& shmem,
+                                              const PeerInfo& peermemInfo,
+                                              AscendC::GlobalTensor<int32_t>& tokenPerExpert, int32_t coreNum,
                                               int32_t coreIdx, int32_t EP, int32_t expertPerRank, int32_t num)
 {
     if (coreNum == 0 || coreIdx != coreNum - 1 || num <= 0) {
@@ -106,38 +106,38 @@ CATLASS_DEVICE void ResetTokenPerExpertShared(Arch::Resource<ArchTag> &resource,
     // 2) tokenPerExpert winOut
     AscendC::GlobalTensor<int32_t> tokenPerExpertWinOut;
     tokenPerExpertWinOut.SetGlobalBuffer(
-        reinterpret_cast<__gm__ int32_t *>(shmem.windowsOutAddr() + peermemInfo.offsetPeerTokenPerExpert));
+        reinterpret_cast<__gm__ int32_t*>(shmem.windowsOutAddr() + peermemInfo.offsetPeerTokenPerExpert));
     ResetGmBufferShared(tokenPerExpertWinOut, tmp, num);
 
     // 3) Dispatch Flag winIn（按 64B 槽布局 = EP × expertPerRank × kFlagSlotI32 个 int32）
     int32_t dispatchFlagInts = EP * expertPerRank * PeerInfo::kFlagSlotI32;
     AscendC::GlobalTensor<int32_t> flagWinIn;
-    flagWinIn.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(shmem() + peermemInfo.offsetFlag));
+    flagWinIn.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(shmem() + peermemInfo.offsetFlag));
     ResetGmBufferShared(flagWinIn, tmp, dispatchFlagInts);
 
     // 4) Dispatch Flag winOut
     AscendC::GlobalTensor<int32_t> flagWinOut;
-    flagWinOut.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(shmem.windowsOutAddr() + peermemInfo.offsetFlag));
+    flagWinOut.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(shmem.windowsOutAddr() + peermemInfo.offsetFlag));
     ResetGmBufferShared(flagWinOut, tmp, dispatchFlagInts);
 
     // 5) Allgather Flag winIn（EP × kFlagSlotI32 个 int32）
     int32_t allgatherFlagInts = EP * PeerInfo::kFlagSlotI32;
     AscendC::GlobalTensor<int32_t> agFlagWinIn;
-    agFlagWinIn.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(shmem() + peermemInfo.offsetAllgatherFlag));
+    agFlagWinIn.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(shmem() + peermemInfo.offsetAllgatherFlag));
     ResetGmBufferShared(agFlagWinIn, tmp, allgatherFlagInts);
 
     // 6) Allgather Flag winOut
     AscendC::GlobalTensor<int32_t> agFlagWinOut;
     agFlagWinOut.SetGlobalBuffer(
-        reinterpret_cast<__gm__ int32_t *>(shmem.windowsOutAddr() + peermemInfo.offsetAllgatherFlag));
+        reinterpret_cast<__gm__ int32_t*>(shmem.windowsOutAddr() + peermemInfo.offsetAllgatherFlag));
     ResetGmBufferShared(agFlagWinOut, tmp, allgatherFlagInts);
     AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
 }
 
 template <class CopyUbToGm>
-CATLASS_DEVICE void CrossRankAllGatherSelfSendShared(AscendC::GlobalTensor<int32_t> &dstAddress,
-                                                     AscendC::LocalTensor<int32_t> &tmpBuffer, CopyUbToGm &copyUbToGm,
+CATLASS_DEVICE void CrossRankAllGatherSelfSendShared(AscendC::GlobalTensor<int32_t>& dstAddress,
+                                                     AscendC::LocalTensor<int32_t>& tmpBuffer, CopyUbToGm& copyUbToGm,
                                                      uint32_t numPerCore)
 {
     copyUbToGm(dstAddress, tmpBuffer, layout::RowMajor{1, numPerCore}, layout::RowMajor{1, numPerCore});
@@ -146,27 +146,27 @@ CATLASS_DEVICE void CrossRankAllGatherSelfSendShared(AscendC::GlobalTensor<int32
 }
 
 template <class PeerInfo, class CopyUbToGm>
-CATLASS_DEVICE void CrossRankAllGatherSameServerSendShared(HcclShmem<true> &shmem, const PeerInfo &peermemInfo,
+CATLASS_DEVICE void CrossRankAllGatherSameServerSendShared(HcclShmem<true>& shmem, const PeerInfo& peermemInfo,
                                                            int32_t rank, int32_t dstEpIdx, uint32_t numPerCore,
-                                                           AscendC::GlobalTensor<int32_t> &dstAddress,
-                                                           AscendC::LocalTensor<int32_t> &tmpBuffer,
-                                                           CopyUbToGm &copyUbToGm)
+                                                           AscendC::GlobalTensor<int32_t>& dstAddress,
+                                                           AscendC::LocalTensor<int32_t>& tmpBuffer,
+                                                           CopyUbToGm& copyUbToGm)
 {
     copyUbToGm(dstAddress, tmpBuffer, layout::RowMajor{1, numPerCore}, layout::RowMajor{1, numPerCore});
     AscendC::PipeBarrier<PIPE_ALL>();
-    __gm__ int32_t *remoteAgFlag =
-        reinterpret_cast<__gm__ int32_t *>(shmem(0, dstEpIdx) + peermemInfo.offsetAllgatherFlag) +
+    __gm__ int32_t* remoteAgFlag =
+        reinterpret_cast<__gm__ int32_t*>(shmem(0, dstEpIdx) + peermemInfo.offsetAllgatherFlag) +
         rank * PeerInfo::kFlagSlotI32;
     gm_store(remoteAgFlag, FLAG_VALUE_MAGIC);
-    gm_dcci((__gm__ uint8_t *)remoteAgFlag);
+    gm_dcci((__gm__ uint8_t*)remoteAgFlag);
 }
 
 template <class PeerInfo, class CopyUbToGm>
 CATLASS_DEVICE void CrossRankAllGatherRemoteSendShared(
-    HcclShmem<true> &shmem, const PeerInfo &peermemInfo, __gm__ HcclAiRMAInfo *qp_info_, int32_t rank, int32_t dstEpIdx,
-    uint32_t numPerCore, AscendC::GlobalTensor<int32_t> &dstAddress, AscendC::GlobalTensor<int32_t> &localDstAddress,
-    AscendC::LocalTensor<int32_t> &tmpBuffer, CopyUbToGm &copyUbToGm, AscendC::LocalTensor<uint64_t> &rdmaUbLocal,
-    AscendC::LocalTensor<uint32_t> &rdmaUbLocalHead, AscendC::LocalTensor<int32_t> &flagUb)
+    HcclShmem<true>& shmem, const PeerInfo& peermemInfo, __gm__ HcclAiRMAInfo* qp_info_, int32_t rank, int32_t dstEpIdx,
+    uint32_t numPerCore, AscendC::GlobalTensor<int32_t>& dstAddress, AscendC::GlobalTensor<int32_t>& localDstAddress,
+    AscendC::LocalTensor<int32_t>& tmpBuffer, CopyUbToGm& copyUbToGm, AscendC::LocalTensor<uint64_t>& rdmaUbLocal,
+    AscendC::LocalTensor<uint32_t>& rdmaUbLocalHead, AscendC::LocalTensor<int32_t>& flagUb)
 {
     // 路径 C：跨 server，先 RDMA 数据，再 RDMA 32B flag
     copyUbToGm(localDstAddress, tmpBuffer, layout::RowMajor{1, numPerCore}, layout::RowMajor{1, numPerCore});
@@ -186,7 +186,7 @@ CATLASS_DEVICE void CrossRankAllGatherRemoteSendShared(
     // UB → 本地 winOut allgather flag 槽（32B 一次写）
     AscendC::GlobalTensor<int32_t> localAgFlagGm;
     localAgFlagGm.SetGlobalBuffer(
-        reinterpret_cast<__gm__ int32_t *>(shmem.windowsOutAddr() + peermemInfo.offsetAllgatherFlag) +
+        reinterpret_cast<__gm__ int32_t*>(shmem.windowsOutAddr() + peermemInfo.offsetAllgatherFlag) +
         rank * PeerInfo::kFlagSlotI32);
     AscendC::DataCopy(localAgFlagGm, flagUb, PeerInfo::kFlagPayloadI32);
     AscendC::PipeBarrier<PIPE_ALL>();
@@ -203,25 +203,25 @@ CATLASS_DEVICE void CrossRankAllGatherRemoteSendShared(
 
 template <class ArchTag, class PeerInfo, class ServerId>
 CATLASS_DEVICE void CrossRankAllGatherSendShared(
-    HcclShmem<true> &shmem, const PeerInfo &peermemInfo, Layout3D &tokenPerExpertLayout, __gm__ HcclAiRMAInfo *qp_info_,
+    HcclShmem<true>& shmem, const PeerInfo& peermemInfo, Layout3D& tokenPerExpertLayout, __gm__ HcclAiRMAInfo* qp_info_,
     int64_t localTokenPerExpertOffset, int32_t rank, uint32_t coreIdx, uint32_t coreNum, ServerId serverId, int32_t EP,
-    uint32_t numPerCore, AscendC::LocalTensor<int32_t> &tmpBuffer, AscendC::LocalTensor<uint64_t> &rdmaUbLocal,
-    AscendC::LocalTensor<uint32_t> &rdmaUbLocalHead, AscendC::LocalTensor<int32_t> &flagUb)
+    uint32_t numPerCore, AscendC::LocalTensor<int32_t>& tmpBuffer, AscendC::LocalTensor<uint64_t>& rdmaUbLocal,
+    AscendC::LocalTensor<uint32_t>& rdmaUbLocalHead, AscendC::LocalTensor<int32_t>& flagUb)
 {
     // Stage 1：发送（每 core 处理若干 dstEpIdx）
     for (int32_t dstEpIdx = coreIdx, dstServerId = 0; dstEpIdx < EP; dstEpIdx += coreNum) {
         dstServerId = dstEpIdx / SERVER_RANK_SIZE_A2;
         AscendC::GlobalTensor<int32_t> srcAddress;
         srcAddress.SetGlobalBuffer(
-            reinterpret_cast<__gm__ int32_t *>(shmem.windowsOutAddr() + localTokenPerExpertOffset));
+            reinterpret_cast<__gm__ int32_t*>(shmem.windowsOutAddr() + localTokenPerExpertOffset));
         AscendC::GlobalTensor<int32_t> dstAddress;
-        __gm__ void *dstPeermemPtr = shmem(localTokenPerExpertOffset, dstEpIdx);
+        __gm__ void* dstPeermemPtr = shmem(localTokenPerExpertOffset, dstEpIdx);
 
-        dstAddress.SetGlobalBuffer((__gm__ int32_t *)dstPeermemPtr);
+        dstAddress.SetGlobalBuffer((__gm__ int32_t*)dstPeermemPtr);
         AscendC::GlobalTensor<int32_t> localDstAddress;
         GM_ADDR localDstPeermemPtr = shmem.windowsOutAddr() + peermemInfo.offsetPeerTokenPerExpert +
                                      tokenPerExpertLayout(dstEpIdx, 0, 0) * sizeof(int32_t);
-        localDstAddress.SetGlobalBuffer((__gm__ int32_t *)localDstPeermemPtr);
+        localDstAddress.SetGlobalBuffer((__gm__ int32_t*)localDstPeermemPtr);
 
         AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
         using TType = Gemm::GemmType<int32_t, layout::RowMajor>;
@@ -251,12 +251,12 @@ CATLASS_DEVICE void CrossRankAllGatherSendShared(
 }
 
 template <class PeerInfo>
-CATLASS_DEVICE void WaitAllGatherFlagShared(HcclShmem<true> &shmem, const PeerInfo &peermemInfo, int32_t dstEpIdx,
+CATLASS_DEVICE void WaitAllGatherFlagShared(HcclShmem<true>& shmem, const PeerInfo& peermemInfo, int32_t dstEpIdx,
                                             int32_t rank)
 {
     // self-rank 已在发送阶段本地搬运完毕，无 flag。
     if (dstEpIdx != rank) {
-        __gm__ int32_t *flagAddr = reinterpret_cast<__gm__ int32_t *>(shmem() + peermemInfo.offsetAllgatherFlag) +
+        __gm__ int32_t* flagAddr = reinterpret_cast<__gm__ int32_t*>(shmem() + peermemInfo.offsetAllgatherFlag) +
                                    dstEpIdx * PeerInfo::kFlagSlotI32;
         while (true) {
             gm_dcci(flagAddr);
@@ -269,11 +269,11 @@ CATLASS_DEVICE void WaitAllGatherFlagShared(HcclShmem<true> &shmem, const PeerIn
 
 template <class PeerInfo>
 CATLASS_DEVICE void CrossRankAllGatherCollectShared(
-    HcclShmem<true> &shmem, const PeerInfo &peermemInfo, Layout3D &tokenPerExpertLayout,
-    AscendC::GlobalTensor<int32_t> &tokenPerExpert, AscendC::GlobalTensor<int32_t> &preSumBeforeRankForDispatch,
-    AscendC::GlobalTensor<int32_t> &preSumBeforeRankForCombine, int32_t rank, uint32_t coreIdx, uint32_t coreNum,
-    int32_t EP, int32_t expertPerRank, uint32_t numPerCore, AscendC::LocalTensor<int32_t> &tmpBuffer,
-    AscendC::LocalTensor<int32_t> &prevSumBuf)
+    HcclShmem<true>& shmem, const PeerInfo& peermemInfo, Layout3D& tokenPerExpertLayout,
+    AscendC::GlobalTensor<int32_t>& tokenPerExpert, AscendC::GlobalTensor<int32_t>& preSumBeforeRankForDispatch,
+    AscendC::GlobalTensor<int32_t>& preSumBeforeRankForCombine, int32_t rank, uint32_t coreIdx, uint32_t coreNum,
+    int32_t EP, int32_t expertPerRank, uint32_t numPerCore, AscendC::LocalTensor<int32_t>& tmpBuffer,
+    AscendC::LocalTensor<int32_t>& prevSumBuf)
 {
     // Stage 2：等 flag + 读 tokenPerExpert + 算 preSumBeforeRank
     for (int32_t dstEpIdx = coreIdx; dstEpIdx < EP; dstEpIdx += coreNum) {
@@ -312,12 +312,12 @@ CATLASS_DEVICE void CrossRankAllGatherCollectShared(
 }
 
 template <class ArchTag, class PeerInfo, class ServerId>
-CATLASS_DEVICE void CrossRankAllGatherShared(Arch::Resource<ArchTag> &resource, HcclShmem<true> &shmem,
-                                             const PeerInfo &peermemInfo, Layout3D &tokenPerExpertLayout,
-                                             AscendC::GlobalTensor<int32_t> &tokenPerExpert,
-                                             AscendC::GlobalTensor<int32_t> &preSumBeforeRankForDispatch,
-                                             AscendC::GlobalTensor<int32_t> &preSumBeforeRankForCombine,
-                                             __gm__ HcclAiRMAInfo *qp_info_, int64_t localTokenPerExpertOffset,
+CATLASS_DEVICE void CrossRankAllGatherShared(Arch::Resource<ArchTag>& resource, HcclShmem<true>& shmem,
+                                             const PeerInfo& peermemInfo, Layout3D& tokenPerExpertLayout,
+                                             AscendC::GlobalTensor<int32_t>& tokenPerExpert,
+                                             AscendC::GlobalTensor<int32_t>& preSumBeforeRankForDispatch,
+                                             AscendC::GlobalTensor<int32_t>& preSumBeforeRankForCombine,
+                                             __gm__ HcclAiRMAInfo* qp_info_, int64_t localTokenPerExpertOffset,
                                              int32_t rank, uint32_t coreIdx, uint32_t coreNum, ServerId serverId,
                                              int32_t paddedExpertNumAligned, int32_t EP, int32_t expertPerRank)
 {
@@ -351,8 +351,8 @@ CATLASS_DEVICE void CrossRankAllGatherShared(Arch::Resource<ArchTag> &resource, 
 // ============================================================
 
 template <class L1TileShape, class TileCoord, class LayoutA, class LayoutB, class LayoutC>
-CATLASS_DEVICE void GetGmmTileOffsets(const TileCoord &blockCoord, LayoutA &layoutA, LayoutB &layoutB, LayoutC &layoutC,
-                                      int64_t &gmOffsetA, int64_t &gmOffsetB, int64_t &gmOffsetC)
+CATLASS_DEVICE void GetGmmTileOffsets(const TileCoord& blockCoord, LayoutA& layoutA, LayoutB& layoutB, LayoutC& layoutC,
+                                      int64_t& gmOffsetA, int64_t& gmOffsetB, int64_t& gmOffsetC)
 {
     MatrixCoord offsetA{blockCoord.m() * L1TileShape::M, blockCoord.k() * L1TileShape::K};
     MatrixCoord offsetB{blockCoord.k() * L1TileShape::K, blockCoord.n() * L1TileShape::N};

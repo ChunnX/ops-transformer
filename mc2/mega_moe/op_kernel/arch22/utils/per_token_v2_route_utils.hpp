@@ -17,8 +17,8 @@
 namespace Catlass::Epilogue::Block::detail {
 
 template <class Params>
-CATLASS_DEVICE int32_t GetLenRankInExpert(Params const &params, AscendC::GlobalTensor<int32_t> const &tokenPerExpert,
-                                          Layout3D const &tokenPerExpertLayout, int32_t dstEpIdx, int32_t groupIdx)
+CATLASS_DEVICE int32_t GetLenRankInExpert(Params const& params, AscendC::GlobalTensor<int32_t> const& tokenPerExpert,
+                                          Layout3D const& tokenPerExpertLayout, int32_t dstEpIdx, int32_t groupIdx)
 {
     if (params.useUbRouteCache) {
         int32_t stride = params.ubRouteStride > 0 ? params.ubRouteStride : params.expertPerRank;
@@ -28,7 +28,7 @@ CATLASS_DEVICE int32_t GetLenRankInExpert(Params const &params, AscendC::GlobalT
 }
 
 template <class Params>
-CATLASS_DEVICE int32_t GetDstExpertOffset(Params const &params, AscendC::GlobalTensor<int32_t> const &preSumBeforeRank,
+CATLASS_DEVICE int32_t GetDstExpertOffset(Params const& params, AscendC::GlobalTensor<int32_t> const& preSumBeforeRank,
                                           int32_t dstEpIdx, int32_t groupIdx)
 {
     if (params.useUbRouteCache) {
@@ -53,7 +53,7 @@ struct PerTokenV2RouteRange {
 // Pure scalar range calculation. The caller still controls the destination
 // tensor and performs its copy at the same point in the tile pipeline.
 CATLASS_DEVICE PerTokenV2RouteRange GetRouteRange(int32_t lenRankInExpert, int32_t stTile, int32_t edTile,
-                                                  int32_t &preSumRankInExpert)
+                                                  int32_t& preSumRankInExpert)
 {
     int32_t stRankInExpert = preSumRankInExpert;
     int32_t edRankInExpert = stRankInExpert + lenRankInExpert;

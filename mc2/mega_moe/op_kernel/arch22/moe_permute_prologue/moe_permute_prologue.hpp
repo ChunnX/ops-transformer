@@ -91,7 +91,7 @@ public:
     };
 
     CATLASS_DEVICE
-    MoePermutePrologue(Catlass::Arch::Resource<ArchTag> &resource, Params const &params)
+    MoePermutePrologue(Catlass::Arch::Resource<ArchTag>& resource, Params const& params)
         : params_(params)
     {
         InitCoreIndex();
@@ -140,9 +140,9 @@ public:
     }
 
     CATLASS_DEVICE
-    void operator()(AscendC::GlobalTensor<ElementSrc> const &gmX, AscendC::GlobalTensor<int32_t> const &gmTopkIds,
-                    AscendC::GlobalTensor<ElementDst> &gmExpandX, AscendC::GlobalTensor<int32_t> &gmExpandRowIdx,
-                    AscendC::GlobalTensor<int32_t> &gmTokenPerExpert, GM_ADDR workspaceAddr,
+    void operator()(AscendC::GlobalTensor<ElementSrc> const& gmX, AscendC::GlobalTensor<int32_t> const& gmTopkIds,
+                    AscendC::GlobalTensor<ElementDst>& gmExpandX, AscendC::GlobalTensor<int32_t>& gmExpandRowIdx,
+                    AscendC::GlobalTensor<int32_t>& gmTokenPerExpert, GM_ADDR workspaceAddr,
                     GM_ADDR xActiveMaskAddr = nullptr)
     {
         const int64_t numTokens = params_.numTokens;
@@ -152,7 +152,7 @@ public:
         // mask 为只读输入张量，执行期间不变化，标量读无 cache 陈旧风险。
         hasXActiveMask = (xActiveMaskAddr != nullptr);
         if (hasXActiveMask) {
-            gmXActiveMask.SetGlobalBuffer(reinterpret_cast<__gm__ bool *>(xActiveMaskAddr));
+            gmXActiveMask.SetGlobalBuffer(reinterpret_cast<__gm__ bool*>(xActiveMaskAddr));
         }
         InitCoreIndex();
 
@@ -205,7 +205,7 @@ private:
     }
 
     CATLASS_DEVICE
-    void AccumulateExpertCount(AscendC::LocalTensor<int32_t> &accum, AscendC::GlobalTensor<int32_t> &expertCountPerCore,
+    void AccumulateExpertCount(AscendC::LocalTensor<int32_t>& accum, AscendC::GlobalTensor<int32_t>& expertCountPerCore,
                                int64_t coreBegin, int64_t coreEnd)
     {
         for (int64_t c = coreBegin; c < coreEnd; ++c) {
@@ -220,10 +220,10 @@ private:
     }
 
     CATLASS_DEVICE
-    void CountAndPublishExperts(AscendC::GlobalTensor<int32_t> const &gmTopkIds,
-                                AscendC::GlobalTensor<int32_t> &gmTokenPerExpert, GM_ADDR workspaceAddr,
+    void CountAndPublishExperts(AscendC::GlobalTensor<int32_t> const& gmTopkIds,
+                                AscendC::GlobalTensor<int32_t>& gmTokenPerExpert, GM_ADDR workspaceAddr,
                                 int64_t tokenStartIdx, int64_t numTokensCurCore,
-                                AscendC::DataCopyExtParams &topkCopyParams)
+                                AscendC::DataCopyExtParams& topkCopyParams)
     {
         const int64_t numTopk = params_.numTopk;
         const int64_t numExperts = params_.numExperts;
@@ -246,7 +246,7 @@ private:
         AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
         AscendC::GlobalTensor<int32_t> expertCountPerCore;
         // Phase 1 writes this core's slot; phase 2 reads every core's slot.
-        expertCountPerCore.SetGlobalBuffer((__gm__ int32_t *)(workspaceAddr));
+        expertCountPerCore.SetGlobalBuffer((__gm__ int32_t*)(workspaceAddr));
         AscendC::DataCopy(expertCountPerCore[coreIdx * params_.alignedNumExperts], coreExpertCount,
                           params_.alignedNumExperts);
         AscendC::SyncAll<true>();
@@ -286,7 +286,7 @@ private:
     }
 
     CATLASS_DEVICE
-    void SplitCore(int64_t numTokens, int64_t &tokenStartIdx, int64_t &tokenEndIdx, int64_t &numTokensCurCore)
+    void SplitCore(int64_t numTokens, int64_t& tokenStartIdx, int64_t& tokenEndIdx, int64_t& numTokensCurCore)
     {
         const int64_t baseNum = numTokens / coreNum;
         const int64_t remainder = numTokens % coreNum;
@@ -298,8 +298,8 @@ private:
 
     template <bool QUANT>
     CATLASS_DEVICE void PermuteTokens(int64_t tokenStartIdx, int64_t tokenEndIdx,
-                                      AscendC::GlobalTensor<ElementSrc> const &gmX,
-                                      AscendC::GlobalTensor<ElementDst> &gmExpandX)
+                                      AscendC::GlobalTensor<ElementSrc> const& gmX,
+                                      AscendC::GlobalTensor<ElementDst>& gmExpandX)
     {
         const int64_t hidden = params_.hidden;
         const int64_t numTopk = params_.numTopk;
@@ -338,8 +338,8 @@ private:
     template <bool QUANT>
     CATLASS_DEVICE void PermuteOneToken(int64_t tokenIdx, uint32_t tokenListId, uint32_t rowIdxOffset,
                                         int64_t rowStride, int64_t outLen, int64_t topkBase, int64_t hidden,
-                                        AscendC::GlobalTensor<ElementSrc> const &gmX,
-                                        AscendC::GlobalTensor<ElementDst> &gmExpandX)
+                                        AscendC::GlobalTensor<ElementSrc> const& gmX,
+                                        AscendC::GlobalTensor<ElementDst>& gmExpandX)
     {
         if constexpr (QUANT) {
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(tokenListId);
@@ -366,7 +366,7 @@ private:
     }
 
     CATLASS_DEVICE
-    void ScatterToken(AscendC::LocalTensor<ElementDst> const &tokenOut, AscendC::GlobalTensor<ElementDst> &gmExpandX,
+    void ScatterToken(AscendC::LocalTensor<ElementDst> const& tokenOut, AscendC::GlobalTensor<ElementDst>& gmExpandX,
                       uint32_t rowIdxOffset, int64_t rowStride, int64_t copyLen, int64_t topkBase, int64_t tokenIdx)
     {
         // x_active_mask 融合（不改写输入 topk_ids）：被 mask 的 token 计数阶段已跳过
@@ -398,8 +398,8 @@ private:
     //   work [0,count)；abs 与 ReduceMax 的 max 复用 [count,2*count)；int32/half 复用 work（前类型字节数 >=
     //   后类型即可复用）
     CATLASS_DEVICE
-    void QuantizeToken(AscendC::LocalTensor<ElementDst> &dstTensor, AscendC::LocalTensor<float> &sharedTmpBuffer,
-                       AscendC::LocalTensor<ElementSrc> &srcTensor, uint32_t count)
+    void QuantizeToken(AscendC::LocalTensor<ElementDst>& dstTensor, AscendC::LocalTensor<float>& sharedTmpBuffer,
+                       AscendC::LocalTensor<ElementSrc>& srcTensor, uint32_t count)
     {
         AscendC::Cast(sharedTmpBuffer, srcTensor, AscendC::RoundMode::CAST_NONE, count);
         AscendC::PipeBarrier<PIPE_V>();

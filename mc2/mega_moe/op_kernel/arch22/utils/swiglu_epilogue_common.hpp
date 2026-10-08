@@ -16,8 +16,8 @@
 
 namespace Catlass::Epilogue::Block::detail {
 
-CATLASS_DEVICE bool SwigluTaskRange(uint32_t blockM, uint32_t epilogueCoreNum, uint32_t &loopStartIdx,
-                                    uint32_t &tasksForIdx)
+CATLASS_DEVICE bool SwigluTaskRange(uint32_t blockM, uint32_t epilogueCoreNum, uint32_t& loopStartIdx,
+                                    uint32_t& tasksForIdx)
 {
     uint32_t subblockIdx = get_block_idx() + get_subblockid() * get_block_num();
     uint32_t moveDataCoreNum = get_block_num() * 2 - epilogueCoreNum;
@@ -35,7 +35,7 @@ CATLASS_DEVICE bool SwigluTaskRange(uint32_t blockM, uint32_t epilogueCoreNum, u
 template <uint32_t SCALE_INPUT_COUNT, class ElementPerTokenScale>
 CATLASS_DEVICE ElementPerTokenScale
 ReadSwigluInputScale(AscendC::LocalTensor<ElementPerTokenScale> ubPerTokenScaleInput,
-                     AscendC::GlobalTensor<ElementPerTokenScale> const &gmPerTokenScale1, uint32_t loopIdx,
+                     AscendC::GlobalTensor<ElementPerTokenScale> const& gmPerTokenScale1, uint32_t loopIdx,
                      uint32_t loopStartIdx, uint32_t tasksForIdx)
 {
     uint32_t scaleOffsetInBatch = (loopIdx - loopStartIdx) % SCALE_INPUT_COUNT;
@@ -53,9 +53,9 @@ ReadSwigluInputScale(AscendC::LocalTensor<ElementPerTokenScale> ubPerTokenScaleI
 }
 
 template <class LayoutPerTokenScale, class CopyUbToGmDequantScale>
-CATLASS_DEVICE void FlushSwigluScaleBatch(AscendC::GlobalTensor<float> const &gmPerTokenScale,
+CATLASS_DEVICE void FlushSwigluScaleBatch(AscendC::GlobalTensor<float> const& gmPerTokenScale,
                                           AscendC::LocalTensor<float> ubScale,
-                                          CopyUbToGmDequantScale &copyUbToGmDequantScale, uint32_t gmOffset,
+                                          CopyUbToGmDequantScale& copyUbToGmDequantScale, uint32_t gmOffset,
                                           uint32_t scaleCount, uint32_t scaleStage)
 {
     if (scaleCount == 0) {

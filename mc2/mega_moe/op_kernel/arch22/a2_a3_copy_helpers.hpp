@@ -21,7 +21,7 @@ namespace Catlass::Gemm::Kernel::Detail {
 using namespace AscendC;
 
 template <class ArchTag, typename T>
-CATLASS_DEVICE void CopyGMToGMShared(Arch::Resource<ArchTag> &resource, AscendC::GlobalTensor<T> dst,
+CATLASS_DEVICE void CopyGMToGMShared(Arch::Resource<ArchTag>& resource, AscendC::GlobalTensor<T> dst,
                                      AscendC::GlobalTensor<T> src, int32_t elemNum, int32_t ubMoveNum)
 {
     AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
@@ -65,7 +65,7 @@ CATLASS_DEVICE void CopyGMToGMShared(Arch::Resource<ArchTag> &resource, AscendC:
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
 }
 
-CATLASS_DEVICE void CalculateTaskInfoEachCoreShared(uint32_t &curCoreTaskNum, uint32_t &curCoreStartOffset,
+CATLASS_DEVICE void CalculateTaskInfoEachCoreShared(uint32_t& curCoreTaskNum, uint32_t& curCoreStartOffset,
                                                     uint32_t totalM, uint32_t coreNum)
 {
     int64_t eachCoreTaskNum = (totalM + coreNum - 1) / coreNum;
@@ -79,7 +79,7 @@ CATLASS_DEVICE void CalculateTaskInfoEachCoreShared(uint32_t &curCoreTaskNum, ui
 }
 
 template <class ArchTag>
-CATLASS_DEVICE void FetchAndPreprocessInt8ToInt4Shared(Arch::Resource<ArchTag> &resource,
+CATLASS_DEVICE void FetchAndPreprocessInt8ToInt4Shared(Arch::Resource<ArchTag>& resource,
                                                        AscendC::GlobalTensor<int8_t> gmA1I4_I8, uint64_t gmOffsetA,
                                                        AscendC::GlobalTensor<float> dstScale,
                                                        AscendC::GlobalTensor<int8_t> src, int32_t rows,

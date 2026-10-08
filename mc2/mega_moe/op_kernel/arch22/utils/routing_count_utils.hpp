@@ -18,7 +18,7 @@ namespace Catlass::Gemm::Kernel {
 
 // These helpers only update scalar counts. Synchronization and data movement
 // stay in the caller at their original positions.
-CATLASS_DEVICE void AccumulateSingleDequantRows(uint32_t currentM, uint64_t maxOutputSize, uint32_t &sum)
+CATLASS_DEVICE void AccumulateSingleDequantRows(uint32_t currentM, uint64_t maxOutputSize, uint32_t& sum)
 {
     if (sum + currentM <= maxOutputSize) {
         sum += currentM;
@@ -28,7 +28,7 @@ CATLASS_DEVICE void AccumulateSingleDequantRows(uint32_t currentM, uint64_t maxO
 }
 
 CATLASS_DEVICE void AccumulateSplitDequantRows(uint32_t currentM, int32_t groupIdx, uint32_t epilogueGranularity,
-                                               uint64_t maxOutputSize, uint32_t &sum1, uint32_t &sum2)
+                                               uint64_t maxOutputSize, uint32_t& sum1, uint32_t& sum2)
 {
     if (groupIdx + 1 <= epilogueGranularity) {
         if (sum1 + currentM <= maxOutputSize) {

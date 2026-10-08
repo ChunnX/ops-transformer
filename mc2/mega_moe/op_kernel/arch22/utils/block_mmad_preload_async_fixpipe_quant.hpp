@@ -38,10 +38,10 @@ struct FixpipeScaleHandler;
 template <class ArchTag_, class AType_, class BType_, class CType_>
 struct FixpipeScaleHandler<false, ArchTag_, AType_, BType_, CType_> {
     CATLASS_DEVICE
-    void Init(Arch::Resource<ArchTag_> &, uint32_t) {}
+    void Init(Arch::Resource<ArchTag_>&, uint32_t) {}
 
     template <class LayoutScale_>
-    CATLASS_DEVICE void Copy(AscendC::LocalTensor<uint64_t> const &, LayoutScale_ const &)
+    CATLASS_DEVICE void Copy(AscendC::LocalTensor<uint64_t> const&, LayoutScale_ const&)
     {}
 };
 
@@ -51,13 +51,13 @@ struct FixpipeScaleHandler<true, ArchTag_, AType_, BType_, CType_> {
                                                           Gemm::Tile::ScaleGranularity::PER_CHANNEL>::CopyL1ToFP;
 
     CATLASS_DEVICE
-    void Init(Arch::Resource<ArchTag_> &resource, uint32_t fpAddrStart)
+    void Init(Arch::Resource<ArchTag_>& resource, uint32_t fpAddrStart)
     {
         fixpipeBuf = resource.fpBuf.template GetBufferByByte<uint64_t>(fpAddrStart);
     }
 
     template <class LayoutScale_>
-    CATLASS_DEVICE void Copy(AscendC::LocalTensor<uint64_t> const &l1Scale, LayoutScale_ const &layoutScale)
+    CATLASS_DEVICE void Copy(AscendC::LocalTensor<uint64_t> const& l1Scale, LayoutScale_ const& layoutScale)
     {
         copyL1ToFP(fixpipeBuf, l1Scale, layoutScale, layoutScale);
         AscendC::SetFlag<AscendC::HardEvent::FIX_MTE2>(0);
@@ -149,7 +149,7 @@ public:
     static constexpr auto L1B_LAYOUT = LayoutBInL1::template MakeLayout<ElementB>(L1TileShape::K, L1TileShape::N);
 
     CATLASS_DEVICE
-    BlockMmadPreloadAsyncFixpipeImpl(Arch::Resource<ArchTag> &resource, __gm__ int32_t *flagPtr = nullptr,
+    BlockMmadPreloadAsyncFixpipeImpl(Arch::Resource<ArchTag>& resource, __gm__ int32_t* flagPtr = nullptr,
                                      int32_t expertPerRank = 0, uint32_t l1BufAddrStart = 0, uint32_t fpAddrStart = 0)
     {
         syncGroupIdx = 0;
@@ -192,11 +192,11 @@ public:
     }
 
     CATLASS_DEVICE
-    void operator()(AscendC::GlobalTensor<ElementA> const &gmBlockA, LayoutA const &layoutA,
-                    AscendC::GlobalTensor<ElementB> const &gmBlockB, LayoutB const &layoutB,
-                    AscendC::GlobalTensor<ElementC> const &gmBlockC, LayoutC const &layoutC,
-                    AscendC::GlobalTensor<uint64_t> const &gmBlockS, layout::VectorLayout const &layoutScale,
-                    GemmCoord const &actualShape, int32_t syncLoopIdx = -1, int32_t flag = 0)
+    void operator()(AscendC::GlobalTensor<ElementA> const& gmBlockA, LayoutA const& layoutA,
+                    AscendC::GlobalTensor<ElementB> const& gmBlockB, LayoutB const& layoutB,
+                    AscendC::GlobalTensor<ElementC> const& gmBlockC, LayoutC const& layoutC,
+                    AscendC::GlobalTensor<uint64_t> const& gmBlockS, layout::VectorLayout const& layoutScale,
+                    GemmCoord const& actualShape, int32_t syncLoopIdx = -1, int32_t flag = 0)
     {
         uint32_t kTileCount = CeilDiv<L1TileShape::K>(actualShape.k());
 
@@ -240,7 +240,7 @@ public:
             uint32_t preloadL1TileMmadParamsId = (l1TileMmadParamsId + preloadCount < PRELOAD_STAGES) ?
                                                      (l1TileMmadParamsId + preloadCount) :
                                                      (l1TileMmadParamsId + preloadCount - PRELOAD_STAGES);
-            auto &l1TileMmadParams = l1TileMmadParamsList[preloadL1TileMmadParamsId];
+            auto& l1TileMmadParams = l1TileMmadParamsList[preloadL1TileMmadParamsId];
             l1TileMmadParams.l1ListId = l1ListId;
             l1TileMmadParams.mRound = mRound;
             l1TileMmadParams.nRound = nRound;
@@ -285,7 +285,7 @@ public:
             AscendC::SetFlag<AscendC::HardEvent::FIX_MTE3>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::FIX_MTE3>(EVENT_ID0);
             AscendC::GlobalTensor<int32_t> flagGlobal;
-            flagGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(ptrSoftFlagBase_) +
+            flagGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(ptrSoftFlagBase_) +
                                        (expertPerRank_ + AscendC::GetBlockIdx()) * FLAGSTRIDE);
             AscendC::DataCopy(flagGlobal, l1FTensor[target * 16], FLAGSTRIDE);
         } else {
@@ -316,7 +316,7 @@ private:
     };
 
     CATLASS_DEVICE
-    void InitL1(Arch::Resource<ArchTag> &resource, uint32_t l1BufAddrStart)
+    void InitL1(Arch::Resource<ArchTag>& resource, uint32_t l1BufAddrStart)
     {
         uint32_t l1AOffset = l1BufAddrStart;
         uint32_t l1BOffset = l1BufAddrStart + L1A_TILE_SIZE * L1_STAGES;
@@ -346,14 +346,14 @@ private:
             uint32_t l1FOffset = l1SOffset + L1S_TILE_SIZE;
             l1FTensor = resource.l1Buf.template GetBufferByByte<int32_t>(l1FOffset);
             AscendC::GlobalTensor<int32_t> flagBase;
-            flagBase.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(ptrSoftFlagBase_));
+            flagBase.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(ptrSoftFlagBase_));
             AscendC::DataCopy(l1FTensor, flagBase, expertPerRank_ * FLAGSTRIDE);
             l1EndOffset_ = l1FOffset + expertPerRank_ * FLAGSTRIDE * sizeof(int32_t);
         }
     }
 
     CATLASS_DEVICE
-    void InitL0A(Arch::Resource<ArchTag> &resource)
+    void InitL0A(Arch::Resource<ArchTag>& resource)
     {
         for (uint32_t i = 0; i < L0A_STAGES; ++i) {
             l0ATensorList[i] = resource.l0ABuf.template GetBufferByByte<ElementA>(L0A_TILE_SIZE * i);
@@ -363,7 +363,7 @@ private:
     }
 
     CATLASS_DEVICE
-    void InitL0B(Arch::Resource<ArchTag> &resource)
+    void InitL0B(Arch::Resource<ArchTag>& resource)
     {
         for (uint32_t i = 0; i < L0B_STAGES; ++i) {
             l0BTensorList[i] = resource.l0BBuf.template GetBufferByByte<ElementB>(L0B_TILE_SIZE * i);
@@ -373,7 +373,7 @@ private:
     }
 
     CATLASS_DEVICE
-    void InitL0C(Arch::Resource<ArchTag> &resource)
+    void InitL0C(Arch::Resource<ArchTag>& resource)
     {
         for (uint32_t i = 0; i < L0C_STAGES; ++i) {
             l0CTensorList[i] = resource.l0CBuf.template GetBufferByByte<ElementAccumulator>(L0C_TILE_SIZE * i);
@@ -383,15 +383,15 @@ private:
     }
 
     CATLASS_DEVICE
-    void L1TileMmad(L1TileMmadParams const &params)
+    void L1TileMmad(L1TileMmadParams const& params)
     {
         uint32_t mPartLoop = CeilDiv<L0TileShape::M>(params.mRound);
         uint32_t nPartLoop = CeilDiv<L0TileShape::N>(params.nRound);
         uint32_t kPartLoop = CeilDiv<L0TileShape::K>(params.kActual);
-        auto &l1ATensor = l1ATensorList[params.l1ListId];
-        auto &l1BTensor = l1BTensorList[params.l1ListId];
+        auto& l1ATensor = l1ATensorList[params.l1ListId];
+        auto& l1BTensor = l1BTensorList[params.l1ListId];
 
-        auto &l0CTensor = l0CTensorList[l0CListId];
+        auto& l0CTensor = l0CTensorList[l0CListId];
         LayoutCInL0 layoutCInL0 = LayoutCInL0::MakeLayoutInL0C(MakeCoord(params.mRound, params.nRound));
 
         if constexpr (!ENABLE_UNIT_FLAG) {
@@ -408,7 +408,7 @@ private:
                 uint32_t kPartActual =
                     (kPartIdx < kPartLoop - 1) ? L0TileShape::K : (params.kActual - kPartIdx * L0TileShape::K);
 
-                auto &l0ATile = l0ATensorList[l0AListId];
+                auto& l0ATile = l0ATensorList[l0AListId];
                 auto layoutAInL0 = LayoutAInL0::template MakeLayout<ElementA>(mPartActual, kPartActual);
                 auto l1AOffset = MakeCoord(mPartIdx, kPartIdx) * L0TileShape::ToCoordMK();
                 auto l1ATile = l1ATensor[L1A_LAYOUT.GetOffset(l1AOffset)];
@@ -426,7 +426,7 @@ private:
                     uint32_t nPartActual =
                         (nPartIdx < nPartLoop - 1) ? L0TileShape::N : (params.nRound - nPartIdx * L0TileShape::N);
 
-                    auto &l0BTile = l0BTensorList[l0BListId];
+                    auto& l0BTile = l0BTensorList[l0BListId];
                     auto layoutBInL0 = LayoutBInL0::template MakeLayout<ElementB>(kPartActual, nPartActual);
                     auto l1BOffset = MakeCoord(kPartIdx, nPartIdx) * L0TileShape::ToCoordKN();
                     auto l1BTile = l1BTensor[L1B_LAYOUT.GetOffset(l1BOffset)];
@@ -545,7 +545,7 @@ private:
     CopyL1ToL0B copyL1ToL0B;
     CopyL0CToGm copyL0CToGm;
 
-    __gm__ int32_t *ptrSoftFlagBase_ = nullptr;
+    __gm__ int32_t* ptrSoftFlagBase_ = nullptr;
     int32_t expertPerRank_;
 };
 
