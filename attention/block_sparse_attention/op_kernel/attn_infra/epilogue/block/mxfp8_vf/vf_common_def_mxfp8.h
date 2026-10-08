@@ -1,8 +1,5 @@
-/*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
- */
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -10,11 +7,6 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
-/*!
- * \file vf_mxfp8_attenout_dn.h
- * \brief
- */
-
 #ifndef VF_COMMON_DEF_MXFP8_H_
 #define VF_COMMON_DEF_MXFP8_H_
 #include "kernel_tensor.h"
@@ -119,8 +111,8 @@ constexpr half NEG_EIGHT_VALE = static_cast<half>(-7.8046875f);
 constexpr half TWO_VALE = static_cast<half>(2.0f);
 constexpr half MIN_VALUE = static_cast<half>(-65504.0f);
 
-// P 量化：fp16 Exp → Cast<float> → e4m3 RINT。
-// 3510 没有 bf16→e4m3 单指令；不再做 fp16↔bf16 RT4。
+// P 量化：fp16 Exp 后 Cast 到 float，再以 CAST_RINT 量化到 fp8_e4m3。
+// Ascend 950 没有 bfloat16 到 fp8_e4m3 的单条 Cast。
 
 // LoadAlign(+64)：128 half 的 even/odd 再 Interleave 成连续 qs[0:64) / qs[64:128)
 #define BSA_MXFP8_FP16_SPLIT_CONSEC64(fLo, fHi, srcHalf, preg16) \
@@ -130,8 +122,8 @@ constexpr half MIN_VALUE = static_cast<half>(-65504.0f);
         Interleave((fLo), (fHi), (fLo), (fHi)); \
     } while (0)
 
-// 3510 vexpdif：dst 只能 float；src half 时 ZERO/ONE = PART_EVEN/ODD。
-// 代替 Sub + fp16 Exp + SPLIT 里的两次 Cast；Interleave 语义与 SPLIT_CONSEC64 相同。
+// FusedExpSub 的目的寄存器只能是 float。源为 half 时，RegLayout::ZERO / ONE 分别取偶数、奇数元素。
+// Interleave 之后得到连续的 qs[0:64) 与 qs[64:128)。
 #define BSA_MXFP8_FUSED_EXPSUB_SPLIT_CONSEC64(fLo, fHi, srcHalf, maxHalf, preg16) \
     do { \
         FusedExpSub<float, half, MicroAPI::RegLayout::ZERO, MicroAPI::MaskMergeMode::ZEROING>((fLo), (srcHalf), \
@@ -141,14 +133,13 @@ constexpr half MIN_VALUE = static_cast<half>(-65504.0f);
         Interleave((fLo), (fHi), (fLo), (fHi)); \
     } while (0)
 
-// qs64 仅 lo 64：vexpdif ZERO，代替 Sub + fp16 Exp + Cast ZERO。
+// qs64 只取低 64 个元素，用 FusedExpSub 的 RegLayout::ZERO。
 #define BSA_MXFP8_FUSED_EXPSUB_EVEN64(fLo, srcHalf, maxHalf, preg16) \
     do { \
         FusedExpSub<float, half, MicroAPI::RegLayout::ZERO, MicroAPI::MaskMergeMode::ZEROING>((fLo), (srcHalf), \
                                                                                               (maxHalf), (preg16)); \
     } while (0)
 
-// O2：snap 把 P 折进 <448，不再 Mins。pregFp32 保留在形参里，调用点不用改。
 #define BSA_MXFP8_EXPSUB_EVEN64_4WAY_MINS(f0, f1, f2, f3, c0, c1, c2, c3, maxHalf, preg16, pregFp32) \
     do { \
         BSA_MXFP8_FUSED_EXPSUB_EVEN64((f0), (c0), (maxHalf), (preg16)); \
@@ -186,15 +177,15 @@ constexpr half MIN_VALUE = static_cast<half>(-65504.0f);
     do { \
         RegTensor<fp8_e4m3fn_t> _q0; \
         Cast<fp8_e4m3fn_t, float, castTraitRintZero>(_q0, (x0), (pregFp32)); \
-        Cast<fp8_e4m3fn_t, float, castTraitRintOne>((RegTensor<fp8_e4m3fn_t> &)(x0), (x1), (pregFp32)); \
-        Cast<fp8_e4m3fn_t, float, castTraitRintTwo>((RegTensor<fp8_e4m3fn_t> &)(x1), (x2), (pregFp32)); \
-        Cast<fp8_e4m3fn_t, float, castTraitRintThree>((RegTensor<fp8_e4m3fn_t> &)(x2), (x3), (pregFp32)); \
-        Or((RegTensor<uint8_t> &)_q0, (RegTensor<uint8_t> &)_q0, (RegTensor<uint8_t> &)(x0), (pregAll8)); \
-        Or((RegTensor<uint8_t> &)_q0, (RegTensor<uint8_t> &)_q0, (RegTensor<uint8_t> &)(x1), (pregAll8)); \
-        Or((RegTensor<uint8_t> &)_q0, (RegTensor<uint8_t> &)_q0, (RegTensor<uint8_t> &)(x2), (pregAll8)); \
-        Gather((RegTensor<uint8_t> &)_q0, (RegTensor<uint8_t> &)_q0, (idx)); \
+        Cast<fp8_e4m3fn_t, float, castTraitRintOne>((RegTensor<fp8_e4m3fn_t>&)(x0), (x1), (pregFp32)); \
+        Cast<fp8_e4m3fn_t, float, castTraitRintTwo>((RegTensor<fp8_e4m3fn_t>&)(x1), (x2), (pregFp32)); \
+        Cast<fp8_e4m3fn_t, float, castTraitRintThree>((RegTensor<fp8_e4m3fn_t>&)(x2), (x3), (pregFp32)); \
+        Or((RegTensor<uint8_t>&)_q0, (RegTensor<uint8_t>&)_q0, (RegTensor<uint8_t>&)(x0), (pregAll8)); \
+        Or((RegTensor<uint8_t>&)_q0, (RegTensor<uint8_t>&)_q0, (RegTensor<uint8_t>&)(x1), (pregAll8)); \
+        Or((RegTensor<uint8_t>&)_q0, (RegTensor<uint8_t>&)_q0, (RegTensor<uint8_t>&)(x2), (pregAll8)); \
+        Gather((RegTensor<uint8_t>&)_q0, (RegTensor<uint8_t>&)_q0, (idx)); \
         StoreAlign<fp8_e4m3fn_t, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>( \
-            ((__ubuf__ fp8_e4m3fn_t *&)(pPtr)), (RegTensor<fp8_e4m3fn_t> &)_q0, (blkStride), (repStride), (pregAll8)); \
+            ((__ubuf__ fp8_e4m3fn_t*&)(pPtr)), (RegTensor<fp8_e4m3fn_t>&)_q0, (blkStride), (repStride), (pregAll8)); \
     } while (0)
 
 // 连续 256B store（qs64 / 旧路径）
@@ -202,14 +193,14 @@ constexpr half MIN_VALUE = static_cast<half>(-65504.0f);
     do { \
         RegTensor<fp8_e4m3fn_t> _q0; \
         Cast<fp8_e4m3fn_t, float, castTraitRintZero>(_q0, (x0), (pregFp32)); \
-        Cast<fp8_e4m3fn_t, float, castTraitRintOne>((RegTensor<fp8_e4m3fn_t> &)(x0), (x1), (pregFp32)); \
-        Cast<fp8_e4m3fn_t, float, castTraitRintTwo>((RegTensor<fp8_e4m3fn_t> &)(x1), (x2), (pregFp32)); \
-        Cast<fp8_e4m3fn_t, float, castTraitRintThree>((RegTensor<fp8_e4m3fn_t> &)(x2), (x3), (pregFp32)); \
-        Or((RegTensor<uint8_t> &)_q0, (RegTensor<uint8_t> &)_q0, (RegTensor<uint8_t> &)(x0), (pregAll8)); \
-        Or((RegTensor<uint8_t> &)_q0, (RegTensor<uint8_t> &)_q0, (RegTensor<uint8_t> &)(x1), (pregAll8)); \
-        Or((RegTensor<uint8_t> &)_q0, (RegTensor<uint8_t> &)_q0, (RegTensor<uint8_t> &)(x2), (pregAll8)); \
-        Gather((RegTensor<uint8_t> &)_q0, (RegTensor<uint8_t> &)_q0, (idx)); \
-        StoreAlign(((__ubuf__ uint8_t *&)(pDest)) + (offset), (RegTensor<uint8_t> &)_q0, (pregAll8)); \
+        Cast<fp8_e4m3fn_t, float, castTraitRintOne>((RegTensor<fp8_e4m3fn_t>&)(x0), (x1), (pregFp32)); \
+        Cast<fp8_e4m3fn_t, float, castTraitRintTwo>((RegTensor<fp8_e4m3fn_t>&)(x1), (x2), (pregFp32)); \
+        Cast<fp8_e4m3fn_t, float, castTraitRintThree>((RegTensor<fp8_e4m3fn_t>&)(x2), (x3), (pregFp32)); \
+        Or((RegTensor<uint8_t>&)_q0, (RegTensor<uint8_t>&)_q0, (RegTensor<uint8_t>&)(x0), (pregAll8)); \
+        Or((RegTensor<uint8_t>&)_q0, (RegTensor<uint8_t>&)_q0, (RegTensor<uint8_t>&)(x1), (pregAll8)); \
+        Or((RegTensor<uint8_t>&)_q0, (RegTensor<uint8_t>&)_q0, (RegTensor<uint8_t>&)(x2), (pregAll8)); \
+        Gather((RegTensor<uint8_t>&)_q0, (RegTensor<uint8_t>&)_q0, (idx)); \
+        StoreAlign(((__ubuf__ uint8_t*&)(pDest)) + (offset), (RegTensor<uint8_t>&)_q0, (pregAll8)); \
     } while (0)
 
 // 4 行×64 e4m3 打成 256B 后按 VL128 拆 M（2 行×64 = 128B）
@@ -217,15 +208,15 @@ constexpr half MIN_VALUE = static_cast<half>(-65504.0f);
     do { \
         RegTensor<fp8_e4m3fn_t> _q0; \
         Cast<fp8_e4m3fn_t, float, castTraitRintZero>(_q0, (x0), (pregFp32)); \
-        Cast<fp8_e4m3fn_t, float, castTraitRintOne>((RegTensor<fp8_e4m3fn_t> &)(x0), (x1), (pregFp32)); \
-        Cast<fp8_e4m3fn_t, float, castTraitRintTwo>((RegTensor<fp8_e4m3fn_t> &)(x1), (x2), (pregFp32)); \
-        Cast<fp8_e4m3fn_t, float, castTraitRintThree>((RegTensor<fp8_e4m3fn_t> &)(x2), (x3), (pregFp32)); \
-        Or((RegTensor<uint8_t> &)_q0, (RegTensor<uint8_t> &)_q0, (RegTensor<uint8_t> &)(x0), (pregAll8)); \
-        Or((RegTensor<uint8_t> &)_q0, (RegTensor<uint8_t> &)_q0, (RegTensor<uint8_t> &)(x1), (pregAll8)); \
-        Or((RegTensor<uint8_t> &)_q0, (RegTensor<uint8_t> &)_q0, (RegTensor<uint8_t> &)(x2), (pregAll8)); \
-        Gather((RegTensor<uint8_t> &)_q0, (RegTensor<uint8_t> &)_q0, (idx)); \
-        StoreAlign(((__ubuf__ uint8_t *&)(pDest)) + (offLo), (RegTensor<uint8_t> &)_q0, (pregLo)); \
-        StoreAlign(((__ubuf__ uint8_t *&)(pDest)) + (offHi), (RegTensor<uint8_t> &)_q0, (pregHi)); \
+        Cast<fp8_e4m3fn_t, float, castTraitRintOne>((RegTensor<fp8_e4m3fn_t>&)(x0), (x1), (pregFp32)); \
+        Cast<fp8_e4m3fn_t, float, castTraitRintTwo>((RegTensor<fp8_e4m3fn_t>&)(x1), (x2), (pregFp32)); \
+        Cast<fp8_e4m3fn_t, float, castTraitRintThree>((RegTensor<fp8_e4m3fn_t>&)(x2), (x3), (pregFp32)); \
+        Or((RegTensor<uint8_t>&)_q0, (RegTensor<uint8_t>&)_q0, (RegTensor<uint8_t>&)(x0), (pregAll8)); \
+        Or((RegTensor<uint8_t>&)_q0, (RegTensor<uint8_t>&)_q0, (RegTensor<uint8_t>&)(x1), (pregAll8)); \
+        Or((RegTensor<uint8_t>&)_q0, (RegTensor<uint8_t>&)_q0, (RegTensor<uint8_t>&)(x2), (pregAll8)); \
+        Gather((RegTensor<uint8_t>&)_q0, (RegTensor<uint8_t>&)_q0, (idx)); \
+        StoreAlign(((__ubuf__ uint8_t*&)(pDest)) + (offLo), (RegTensor<uint8_t>&)_q0, (pregLo)); \
+        StoreAlign(((__ubuf__ uint8_t*&)(pDest)) + (offHi), (RegTensor<uint8_t>&)_q0, (pregHi)); \
     } while (0)
 
 } // namespace NpuArch::Epilogue::Block::Mxfp8VF

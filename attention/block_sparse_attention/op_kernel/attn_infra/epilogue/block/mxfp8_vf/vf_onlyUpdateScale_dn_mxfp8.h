@@ -1,8 +1,5 @@
-/*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
- */
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -10,11 +7,6 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
-/*!
- * \file vf_onlyUpdateScale_dn_mxfp8.h
- * \brief
- */
-
 #ifndef ONLYUPDATESCALE_DN_MXFP8_H_
 #define ONLYUPDATESCALE_DN_MXFP8_H_
 #include "kernel_tensor.h"
@@ -29,8 +21,8 @@ using namespace MicroAPI;
 
 // T: half
 template <bool clear_gmax, typename T, uint16_t m = 128>
-__simd_vf__ inline void computeOnlyScaleVF(__ubuf__ T *umax1, __ubuf__ T *umax2, __ubuf__ T *ugmax_old,
-                                           __ubuf__ float *urs, uint16_t coreIndex)
+__simd_vf__ inline void computeOnlyScaleVF(__ubuf__ T* umax1, __ubuf__ T* umax2, __ubuf__ T* ugmax_old,
+                                           __ubuf__ float* urs, uint16_t coreIndex)
 {
     MaskReg preg_all16 = CreateMask<uint16_t, MaskPattern::ALL>();
 
@@ -55,13 +47,13 @@ __simd_vf__ inline void computeOnlyScaleVF(__ubuf__ T *umax1, __ubuf__ T *umax2,
         Sub(vreg_rs16, vreg_gmax_old, vreg_gmax, preg_all16);
         Adds(vreg_rs16, vreg_rs16, NUM_127, preg_all16);
         Maxs(vreg_rs16, vreg_rs16, ZERO_VALUE, preg_all16);
-        Cast<int32_t, T, h2iZero>((RegTensor<int32_t> &)vreg_rs1, vreg_rs16, preg_all16);
-        Cast<int32_t, T, h2iOne>((RegTensor<int32_t> &)vreg_rs2, vreg_rs16, preg_all16);
-        ShiftLefts((RegTensor<int32_t> &)vreg_rs1, (RegTensor<int32_t> &)vreg_rs1, SHIFT_VALUE, preg_all16);
-        ShiftLefts((RegTensor<int32_t> &)vreg_rs2, (RegTensor<int32_t> &)vreg_rs2, SHIFT_VALUE, preg_all16);
+        Cast<int32_t, T, h2iZero>((RegTensor<int32_t>&)vreg_rs1, vreg_rs16, preg_all16);
+        Cast<int32_t, T, h2iOne>((RegTensor<int32_t>&)vreg_rs2, vreg_rs16, preg_all16);
+        ShiftLefts((RegTensor<int32_t>&)vreg_rs1, (RegTensor<int32_t>&)vreg_rs1, SHIFT_VALUE, preg_all16);
+        ShiftLefts((RegTensor<int32_t>&)vreg_rs2, (RegTensor<int32_t>&)vreg_rs2, SHIFT_VALUE, preg_all16);
 
-        Interleave((RegTensor<int32_t> &)vreg_rs1, (RegTensor<int32_t> &)vreg_rs2, (RegTensor<int32_t> &)vreg_rs1,
-                   (RegTensor<int32_t> &)vreg_rs2);
+        Interleave((RegTensor<int32_t>&)vreg_rs1, (RegTensor<int32_t>&)vreg_rs2, (RegTensor<int32_t>&)vreg_rs1,
+                   (RegTensor<int32_t>&)vreg_rs2);
         for (uint16_t i = 0; i < 1 - coreIndex; ++i) {
             StoreAlign(urs, vreg_rs1, preg_all16);
         }
@@ -73,14 +65,14 @@ __simd_vf__ inline void computeOnlyScaleVF(__ubuf__ T *umax1, __ubuf__ T *umax2,
 }
 
 template <bool clear_gmax, typename T, uint16_t QsBase = 128>
-__aicore__ inline void computeOnlyScale(const LocalTensor<T> &umax1, const LocalTensor<T> &umax2,
-                                        const LocalTensor<T> &ugmaxOld, const LocalTensor<float> &urs,
+__aicore__ inline void computeOnlyScale(const LocalTensor<T>& umax1, const LocalTensor<T>& umax2,
+                                        const LocalTensor<T>& ugmaxOld, const LocalTensor<float>& urs,
                                         uint16_t coreIndex)
 {
-    __ubuf__ T *umax1VF = (__ubuf__ T *)umax1.GetPhyAddr();
-    __ubuf__ T *umax2VF = (__ubuf__ T *)umax2.GetPhyAddr();
-    __ubuf__ T *ugmaxOldVF = (__ubuf__ T *)ugmaxOld.GetPhyAddr();
-    __ubuf__ float *ursVF = (__ubuf__ float *)urs.GetPhyAddr();
+    __ubuf__ T* umax1VF = (__ubuf__ T*)umax1.GetPhyAddr();
+    __ubuf__ T* umax2VF = (__ubuf__ T*)umax2.GetPhyAddr();
+    __ubuf__ T* ugmaxOldVF = (__ubuf__ T*)ugmaxOld.GetPhyAddr();
+    __ubuf__ float* ursVF = (__ubuf__ float*)urs.GetPhyAddr();
 
     computeOnlyScaleVF<clear_gmax, T, QsBase>(umax1VF, umax2VF, ugmaxOldVF, ursVF, coreIndex);
 }

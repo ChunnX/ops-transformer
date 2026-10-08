@@ -51,7 +51,7 @@ public:
     static constexpr float LSE_SNAP_PSCALE_CORR = (P_PSCALE_EMAX_FP32 - P_SNAP_EMAX_FP32) * LN2_FP32;
     static constexpr uint32_t NEG_INF_BITS = 0xFF800000u;
 
-    __aicore__ inline BlockEpilogue(Arch::Resource<ArchTag> &resource)
+    __aicore__ inline BlockEpilogue(Arch::Resource<ArchTag>& resource)
     {
         oTmpUBTensor = resource.ubBuf.template GetBufferByByte<ElementOTmp>(MXFP8::UB_OTMP_BUF_OFFSET);
         localRowSumUBTensor = resource.ubBuf.template GetBufferByByte<ElementSum>(MXFP8::UB_LOCAL_ROW_SUM_BUF_OFFSET);
@@ -67,7 +67,7 @@ public:
     __aicore__ inline ~BlockEpilogue() {}
 
     template <class TensorLseGm, class TensorLseUb>
-    __aicore__ inline void CopyUbToGmLse(TensorLseGm const &gLseTensorTlaTile, TensorLseUb const &ubLseTensorTla)
+    __aicore__ inline void CopyUbToGmLse(TensorLseGm const& gLseTensorTlaTile, TensorLseUb const& ubLseTensorTla)
     {
         AscendC::DataCopyExtParams repeatParams;
         if constexpr ((DispatchPolicy::LSE_FORMAT == LseFormat::TN1) ||
@@ -90,7 +90,7 @@ public:
     // softmaxMax 是 128-half even/odd pack；SPLIT_CONSEC64 后 AIV0=qs[0:64)、AIV1=qs[64:128)。
     // lse = K_g·ln2 + ln(ℓ) - Δ·ln2，Δ=7.8046875-8；ℓ=0 → -inf。TN1/BSN1 再 Expand。
     template <uint16_t coreIndex>
-    __simd_vf__ inline void ComputeMxfp8LseVF(__ubuf__ half *kgHalf, __ubuf__ float *rowsum, __ubuf__ float *lseUb,
+    __simd_vf__ inline void ComputeMxfp8LseVF(__ubuf__ half* kgHalf, __ubuf__ float* rowsum, __ubuf__ float* lseUb,
                                               uint32_t row)
     {
         using namespace AscendC::Reg;
@@ -123,7 +123,7 @@ public:
         RegTensor<float> negInf;
         LoadAlign(ell, rowsum);
         Duplicate(zeros, 0.0f);
-        float negInfVal = *((float *)&NEG_INF_BITS);
+        float negInfVal = *((float*)&NEG_INF_BITS);
         Duplicate(negInf, negInfVal);
         Ln<float, &lnMode>(logEll, ell, pregTail);
         Add(lse, logEll, kgSel, pregTail);
@@ -134,13 +134,13 @@ public:
     }
 
     template <uint16_t coreIndex>
-    __aicore__ inline void ComputeMxfp8Lse(const AscendC::LocalTensor<half> &kgSnap,
-                                           const AscendC::LocalTensor<float> &rowsum,
-                                           const AscendC::LocalTensor<float> &lseUb, uint32_t row)
+    __aicore__ inline void ComputeMxfp8Lse(const AscendC::LocalTensor<half>& kgSnap,
+                                           const AscendC::LocalTensor<float>& rowsum,
+                                           const AscendC::LocalTensor<float>& lseUb, uint32_t row)
     {
-        __ubuf__ half *kgHalf = (__ubuf__ half *)kgSnap.GetPhyAddr();
-        __ubuf__ float *rowsumPtr = (__ubuf__ float *)rowsum.GetPhyAddr();
-        __ubuf__ float *lsePtr = (__ubuf__ float *)lseUb.GetPhyAddr();
+        __ubuf__ half* kgHalf = (__ubuf__ half*)kgSnap.GetPhyAddr();
+        __ubuf__ float* rowsumPtr = (__ubuf__ float*)rowsum.GetPhyAddr();
+        __ubuf__ float* lsePtr = (__ubuf__ float*)lseUb.GetPhyAddr();
         ComputeMxfp8LseVF<coreIndex>(kgHalf, rowsumPtr, lsePtr, row);
         if constexpr ((DispatchPolicy::LSE_FORMAT == LseFormat::TN1) ||
                       (DispatchPolicy::LSE_FORMAT == LseFormat::BSN1)) {
@@ -150,7 +150,7 @@ public:
     }
 
     // 连续 64-float lse → 每行 32B 槽（与 regular Incontinuous 写出一致）
-    __simd_vf__ inline void ExpandLseToUnalignVF(__ubuf__ float *lseUb, uint32_t row)
+    __simd_vf__ inline void ExpandLseToUnalignVF(__ubuf__ float* lseUb, uint32_t row)
     {
         using namespace AscendC::Reg;
         UnalignReg ureg0;
@@ -159,7 +159,7 @@ public:
         uint16_t rowEven = static_cast<uint16_t>((row + 1u) & ~1u);
         // 先拷到 scratch：lse 连续区在 [0, row)，broadcast 写到 [64, ...) 再不回头踩。
         // 这里 lseUb 调用方保证 [0,64) 是连续结果、[64,64+row*8) 可写。
-        __ubuf__ float *dst = lseUb + 64;
+        __ubuf__ float* dst = lseUb + 64;
         for (uint16_t i = 0; i < rowEven; i += 2) {
             RegTensor<float> v0;
             RegTensor<float> v1;
@@ -172,14 +172,14 @@ public:
         StoreUnAlignPost<float, PostLiteral::POST_MODE_UPDATE>(dst, ureg1, postUpdateStride);
     }
 
-    __aicore__ inline void ExpandLseToUnalign(__ubuf__ float *lsePtr, uint32_t row)
+    __aicore__ inline void ExpandLseToUnalign(__ubuf__ float* lsePtr, uint32_t row)
     {
         ExpandLseToUnalignVF(lsePtr, row);
     }
 
     template <class TensorO, class TensorLse>
-    __aicore__ inline void operator()(TensorO &gOTensor, TensorLse &gLseTensor, AscendC::LocalTensor<half> &kgSnap,
-                                      GemmCoord &actualOriShape, TaskInfo &taskInfo, TileInfo &tileInfo)
+    __aicore__ inline void operator()(TensorO& gOTensor, TensorLse& gLseTensor, AscendC::LocalTensor<half>& kgSnap,
+                                      GemmCoord& actualOriShape, TaskInfo& taskInfo, TileInfo& tileInfo)
     {
         uint32_t subBlockIdx = AscendC::GetSubBlockIdx();
         AscendC::LocalTensor<ElementDm> dm = dmUBTensor[tileInfo.updateScaleIdx];
@@ -268,8 +268,8 @@ public:
 
     // NONE 路径：不碰 LSE GM / K_g snap，保持原调用。
     template <class TensorO>
-    __aicore__ inline void operator()(TensorO &gOTensor, GemmCoord &actualOriShape, TaskInfo &taskInfo,
-                                      TileInfo &tileInfo)
+    __aicore__ inline void operator()(TensorO& gOTensor, GemmCoord& actualOriShape, TaskInfo& taskInfo,
+                                      TileInfo& tileInfo)
     {
         auto dummySnap = oTransUBTensor.template ReinterpretCast<half>();
         operator()(gOTensor, gOTensor, dummySnap, actualOriShape, taskInfo, tileInfo);

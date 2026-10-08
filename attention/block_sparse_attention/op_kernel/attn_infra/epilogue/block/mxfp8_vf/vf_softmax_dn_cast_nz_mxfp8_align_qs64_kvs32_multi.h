@@ -1,20 +1,17 @@
-/*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
- */
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
+
 /*!
  * \file vf_softmax_dn_cast_nz_mxfp8_align_qs64_kvs32_multi.h
  * \brief softmax + mxfp8 quant for qs=64, kvs padding 32 multi (kvsActBaseTileAlign32 >= 64, runtime variable)
  */
-
 #ifndef VF_SOFTMAX_DN_CAST_NZ_MXFP8_ALIGN_QS64_KVS32_MULTI_H_
 #define VF_SOFTMAX_DN_CAST_NZ_MXFP8_ALIGN_QS64_KVS32_MULTI_H_
 #include "vf_common_def_mxfp8.h"
@@ -27,7 +24,7 @@ using namespace MicroAPI;
 
 template <MXQuantMode MX_QUANT_MODE = MXQuantMode::OCP, bool clear_gmax, typename T, typename T2, uint16_t QsBase = 128>
 __simd_vf__ inline void softmax_with_group_max_align_qs64_kvs32_multi_vf(
-    __ubuf__ T2 *pDest, __ubuf__ T *s, __ubuf__ T *local_group_max, __ubuf__ T *global_max, __ubuf__ uint8_t *indexesUb,
+    __ubuf__ T2* pDest, __ubuf__ T* s, __ubuf__ T* local_group_max, __ubuf__ T* global_max, __ubuf__ uint8_t* indexesUb,
     uint16_t KvsBaseAlign32, uint16_t KvsBaseAlign64)
 {
     // ====================== 寄存器定义 ======================
@@ -183,18 +180,18 @@ __simd_vf__ inline void softmax_with_group_max_align_qs64_kvs32_multi_vf(
 }
 
 template <MXQuantMode MX_QUANT_MODE = MXQuantMode::OCP, bool clear_gmax, typename T, typename T2, uint16_t QsBase = 128>
-__aicore__ inline void SoftmaxWithGroupMaxAlignQs64Kvs32MultiCallVF(const LocalTensor<T2> &dstTensor,
-                                                                    const LocalTensor<T> &srcTensor,
-                                                                    const LocalTensor<T> &local_group_max,
-                                                                    const LocalTensor<T> &global_max,
-                                                                    const LocalTensor<uint8_t> &indexesBuf,
+__aicore__ inline void SoftmaxWithGroupMaxAlignQs64Kvs32MultiCallVF(const LocalTensor<T2>& dstTensor,
+                                                                    const LocalTensor<T>& srcTensor,
+                                                                    const LocalTensor<T>& local_group_max,
+                                                                    const LocalTensor<T>& global_max,
+                                                                    const LocalTensor<uint8_t>& indexesBuf,
                                                                     uint16_t KvsBaseAlign32, uint16_t KvsBaseAlign64)
 {
-    __ubuf__ T2 *pDest = (__ubuf__ T2 *)dstTensor.GetPhyAddr();
-    __ubuf__ T *input_x_local_UB = (__ubuf__ T *)srcTensor.GetPhyAddr();
-    __ubuf__ T *localGroupMax = (__ubuf__ T *)local_group_max.GetPhyAddr();
-    __ubuf__ T *globalMax = (__ubuf__ T *)global_max.GetPhyAddr();
-    __ubuf__ uint8_t *indexesUb = (__ubuf__ uint8_t *)indexesBuf.GetPhyAddr();
+    __ubuf__ T2* pDest = (__ubuf__ T2*)dstTensor.GetPhyAddr();
+    __ubuf__ T* input_x_local_UB = (__ubuf__ T*)srcTensor.GetPhyAddr();
+    __ubuf__ T* localGroupMax = (__ubuf__ T*)local_group_max.GetPhyAddr();
+    __ubuf__ T* globalMax = (__ubuf__ T*)global_max.GetPhyAddr();
+    __ubuf__ uint8_t* indexesUb = (__ubuf__ uint8_t*)indexesBuf.GetPhyAddr();
 
     softmax_with_group_max_align_qs64_kvs32_multi_vf<MX_QUANT_MODE, clear_gmax, T, T2, QsBase>(
         pDest, input_x_local_UB, localGroupMax, globalMax, indexesUb, KvsBaseAlign32, KvsBaseAlign64);

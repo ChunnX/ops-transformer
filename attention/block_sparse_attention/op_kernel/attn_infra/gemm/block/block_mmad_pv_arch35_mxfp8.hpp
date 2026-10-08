@@ -73,7 +73,7 @@ public:
 
     static constexpr AscendC::FixpipeConfig CFG_ROW_MAJOR_UB = {AscendC::CO2Layout::ROW_MAJOR, true};
 
-    __aicore__ inline BlockMmadTla(Arch::Resource<ArchTag> &resource, uint32_t &kvBufId)
+    __aicore__ inline BlockMmadTla(Arch::Resource<ArchTag>& resource, uint32_t& kvBufId)
         : l1ABufId(kvBufId)
     {
         for (uint32_t i = 0; i < MXFP8::L1_P_BUF_CNT; i++) {
@@ -175,7 +175,7 @@ public:
     // firstYBlockIdx / firstOriYBlockIdx 由调用方提前预取，避免首个 index 的阻塞访存落在此处。
     template <class TensorV, class TensorL1A, class TensorVScale, class TensorL1AScale>
     __aicore__ inline void SparseVFusedBaseTileL1FullLoad(
-        TensorV &gVTensor, TensorL1A &l1ATensorTla, TensorVScale &gVScaleTensor, TensorL1AScale &l1AScaleTensorTla,
+        TensorV& gVTensor, TensorL1A& l1ATensorTla, TensorVScale& gVScaleTensor, TensorL1AScale& l1AScaleTensorTla,
         AscendC::GlobalTensor<int32_t> gSparseBlockIdx, uint32_t gatheredKvSTileIdx, int64_t kvSeqlen,
         uint32_t kvSBaseTile, uint32_t blockShapeY, uint32_t yBlockNumAval, uint32_t yBlockNumRsvd,
         uint32_t curBaseTileSize, uint32_t scaleRows, uint32_t embed, uint32_t firstYBlockIdx,
@@ -311,7 +311,7 @@ public:
 
     // L0C → UB fixpipe（SPLIT_N 模式）
     template <class TensorUB>
-    __aicore__ inline void FixpipeMm2(uint32_t s1Align64, TensorUB &ubOTmpTensor)
+    __aicore__ inline void FixpipeMm2(uint32_t s1Align64, TensorUB& ubOTmpTensor)
     {
         auto l0CTensorTla =
             tla::MakeTensor(l0CTensor[0], tla::MakeLayoutL0C(MXFP8::PV_MMAD_M_DIM, s1Align64), Arch::PositionL0C{});
@@ -324,7 +324,7 @@ public:
 
     // L0C → UB fixpipe（NO_SPLIT 模式，s1 ≤ 64 时单 vector 核搬出）
     template <class TensorUB>
-    __aicore__ inline void FixpipeMm2SingleVect(uint32_t s1Align64, TensorUB &ubOTmpTensor)
+    __aicore__ inline void FixpipeMm2SingleVect(uint32_t s1Align64, TensorUB& ubOTmpTensor)
     {
         auto l0CTensorTla =
             tla::MakeTensor(l0CTensor[0], tla::MakeLayoutL0C(MXFP8::PV_MMAD_M_DIM, s1Align64), Arch::PositionL0C{});
@@ -428,9 +428,9 @@ public:
     // 只发 GM→L1（even 256 / 尾块 128），不 Wait MTE2、不占 L0。odd 直接 return。
     // kernel 在 Wait(V2_C2)/pscale 之前调用，让 V 的 MTE2 和 AIV rescale 重叠。
     template <class TensorV, class TaskInfoT, class TileInfoT>
-    __aicore__ inline void PrefetchV(TensorV &gV, AscendC::GlobalTensor<uint8_t> gVDequantScale,
-                                     AscendC::GlobalTensor<int32_t> gSparseIdx, TileInfoT &delay20TileInfo,
-                                     TaskInfoT &delay20TaskInfo, uint32_t kvSBaseTile, uint32_t blockShapeY,
+    __aicore__ inline void PrefetchV(TensorV& gV, AscendC::GlobalTensor<uint8_t> gVDequantScale,
+                                     AscendC::GlobalTensor<int32_t> gSparseIdx, TileInfoT& delay20TileInfo,
+                                     TaskInfoT& delay20TaskInfo, uint32_t kvSBaseTile, uint32_t blockShapeY,
                                      uint32_t kvHeadMul, GemmCoord actualBlockShapePV)
     {
         uint32_t embedReal = actualBlockShapePV[1];
@@ -485,8 +485,8 @@ public:
 
     // 等本拍 V 的 MTE2 完成后 LoadV/mmad。P pad 每 128-tile 一次。odd 复用 even 的 L1。
     template <class TensorC, class TaskInfoT, class TileInfoT>
-    __aicore__ inline void ComputePV(TensorC &ubOTmpTensor, GemmCoord actualBlockShapePV, TileInfoT &delay20TileInfo,
-                                     TaskInfoT &delay20TaskInfo)
+    __aicore__ inline void ComputePV(TensorC& ubOTmpTensor, GemmCoord actualBlockShapePV, TileInfoT& delay20TileInfo,
+                                     TaskInfoT& delay20TaskInfo)
     {
         uint32_t embedReal = actualBlockShapePV[1];
         uint32_t gatheredKvSTileIdx = delay20TileInfo.pvGatheredKvSTileIdx;
@@ -566,7 +566,7 @@ protected:
     Tile::CopyL1ToL0BMxFp8A5 copyL1ToL0BMx;
 
     uint32_t pvL0abBufId = 0;
-    uint32_t &l1ABufId;
+    uint32_t& l1ABufId;
     // 偶 tile V gather 所用的 L1 槽和整槽 S2 对齐，奇 tile LoadV 复用。
     uint32_t pairVSlot_ = 0;
     uint32_t pairVL1Align64_ = 0;

@@ -61,7 +61,7 @@ public:
     // blockShapeX=64 的满块 qs=64。QK 的 N 用 64，S 写进 128 宽 UB 行的前 64 列。
     // softmax / pscale / P 拷贝仍按 128 宽；后 64 列不参与有效列。短尾不是 64，继续 align128。
     template <class TaskInfoT>
-    __aicore__ inline uint32_t QsMmadN(const TaskInfoT &info) const
+    __aicore__ inline uint32_t QsMmadN(const TaskInfoT& info) const
     {
         if (info.qsActBaseTile == 64) {
             return 64;
@@ -79,7 +79,7 @@ public:
     static constexpr uint32_t QK_L0C_EVENT0 = 2;
     static constexpr uint32_t QK_L0C_EVENT1 = 3;
 
-    __aicore__ inline BlockMmadTla(Arch::Resource<ArchTag> &resource, uint32_t &kvBufId, uint64_t softmaxScale)
+    __aicore__ inline BlockMmadTla(Arch::Resource<ArchTag>& resource, uint32_t& kvBufId, uint64_t softmaxScale)
         : kBufId(kvBufId)
     {
         softmaxScale_ = softmaxScale;
@@ -183,7 +183,7 @@ public:
 
     // Q-scale 稠密 GM → L1（Host 沿 D Dn2Nz）
     __aicore__ inline void CopyQScaleGmToL1(uint32_t qsActBaseTile, uint32_t scaleK,
-                                            AscendC::GlobalTensor<uint8_t> &gQDequantScale, uint32_t qBufId,
+                                            AscendC::GlobalTensor<uint8_t>& gQDequantScale, uint32_t qBufId,
                                             uint32_t qHeadMul)
     {
         copyGmToL1MxScaleDn2Nz(l1BScaleTensor[qBufId], gQDequantScale, qsActBaseTile, scaleK, 0, 0, qHeadMul);
@@ -416,7 +416,7 @@ public:
     // L0C → UB fixpipe（NO_SPLIT 模式，subBlockId 选目标 AIV）
     // l0cM / l0cRowStart：256 mmad 后两段 Fixpipe 从同一块 L0C 切 M。
     template <class TensorUB>
-    __aicore__ inline void FixpipeMm1(uint32_t qsActBaseTileAlign16, uint32_t n, TensorUB &ubSTensorTla,
+    __aicore__ inline void FixpipeMm1(uint32_t qsActBaseTileAlign16, uint32_t n, TensorUB& ubSTensorTla,
                                       bool subBlockId, uint32_t qkL0cBufId, uint32_t l0cM, uint32_t l0cRowStart)
     {
         auto l0CFullTla =
@@ -433,7 +433,7 @@ public:
 
     template <class TensorUB>
     __aicore__ inline void EmitFixpipeMm1(uint32_t l0cBufId, uint32_t nSubRowStart, uint32_t nCur, uint32_t qsMmadN,
-                                          TensorUB &ubSTensorTla, uint32_t subBlockIdx, uint32_t l0cM,
+                                          TensorUB& ubSTensorTla, uint32_t subBlockIdx, uint32_t l0cM,
                                           uint32_t l0cRowStart, bool waitMFix, bool setFixM)
     {
         if (waitMFix) {
@@ -453,11 +453,11 @@ public:
     // 只发 GM→L1（Q 首 tile + 每 tile K），不 Wait MTE2、不占 L0、不推进 kBufId。
     // kernel 在 Wait(V1_C1) 之前调用，让 K 的 MTE2 和 AIV softmax 重叠。
     template <class TensorQ, class TensorK, class TaskInfoT, class TileInfoT>
-    __aicore__ inline void PrefetchK(TensorQ &gQTensorTla, TensorK &gKTensorTla,
+    __aicore__ inline void PrefetchK(TensorQ& gQTensorTla, TensorK& gKTensorTla,
                                      AscendC::GlobalTensor<uint8_t> gQDequantScale,
                                      AscendC::GlobalTensor<uint8_t> gKDequantScale,
-                                     AscendC::GlobalTensor<int32_t> gSparseBlockIdx, TaskInfoT &curTaskInfo,
-                                     TileInfoT &curTileInfo, uint32_t embed, uint32_t kvSBaseTile, uint32_t blockShapeY,
+                                     AscendC::GlobalTensor<int32_t> gSparseBlockIdx, TaskInfoT& curTaskInfo,
+                                     TileInfoT& curTileInfo, uint32_t embed, uint32_t kvSBaseTile, uint32_t blockShapeY,
                                      uint32_t kvHeadMul, uint32_t qHeadMul)
     {
         uint32_t qsActBaseTile = curTaskInfo.qsActBaseTile;
@@ -522,7 +522,7 @@ public:
 
     // 偶拍：LoadK + mmad256 进同一块 L0C S，不碰 UB。kernel 可在 Wait(V1_C1) 之前调用。
     template <class TaskInfoT>
-    __aicore__ inline void ComputeQKMmad256Even(TaskInfoT &curTaskInfo, uint32_t embed)
+    __aicore__ inline void ComputeQKMmad256Even(TaskInfoT& curTaskInfo, uint32_t embed)
     {
         uint32_t qsMmadN = QsMmadN(curTaskInfo);
         uint32_t kSlot = pairKSlot_;
@@ -552,7 +552,7 @@ public:
 
     // 偶拍：把 L0C S 的前 128 行 Fixpipe 到 UB。不 Set FIX_M，槽留给奇拍第二段。
     template <class TensorUB, class TaskInfoT>
-    __aicore__ inline void EmitFixpipeQK256Even(TensorUB &ubSTensorTla, TaskInfoT &curTaskInfo, uint32_t subBlockIdx)
+    __aicore__ inline void EmitFixpipeQK256Even(TensorUB& ubSTensorTla, TaskInfoT& curTaskInfo, uint32_t subBlockIdx)
     {
         uint32_t qsMmadN = QsMmadN(curTaskInfo);
         uint32_t nFix0 = MinU32(MXFP8::QK_HALF_KVS, pairL0cM_);
@@ -561,7 +561,7 @@ public:
 
     // 等本拍 K 的 MTE2 完成后 LoadK/mmad。最后一次 LoadK 立刻放 L1，不把槽占到 fixpipe。
     template <class TensorUB, class TaskInfoT, class TileInfoT>
-    __aicore__ inline void ComputeQK(TensorUB &ubSTensorTla, TaskInfoT &curTaskInfo, TileInfoT &curTileInfo,
+    __aicore__ inline void ComputeQK(TensorUB& ubSTensorTla, TaskInfoT& curTaskInfo, TileInfoT& curTileInfo,
                                      uint32_t embed, uint32_t subBlockIdx)
     {
         uint32_t qsMmadN = QsMmadN(curTaskInfo);
@@ -662,7 +662,7 @@ protected:
     Tile::CopyGmToL1MxScaleDn2NzA5 copyGmToL1MxScaleDn2Nz;
 
     uint32_t qBufId = 0;
-    uint32_t &kBufId;
+    uint32_t& kBufId;
     uint32_t qkL0abBufId = 0;
     uint32_t qkL0cBufId = 0;
     uint64_t softmaxScale_;

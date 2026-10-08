@@ -2642,7 +2642,7 @@ TEST_F(block_sparse_attention_tiling_ut, A5_mxfp8_ocp_lse_two_q_tiles_per_core)
     // batch, numHeads, kvHeads, embeddingSize, blockSize, maxNumBlocksPerBatch,
     // firstBatchTaskNum, totalTaskNum, coreTaskNum
     ASSERT_GE(tilingInfo.tilingDataSize, sizeof(uint32_t) * 9);
-    const auto *words = reinterpret_cast<const uint32_t *>(tilingInfo.tilingData.get());
+    const auto* words = reinterpret_cast<const uint32_t*>(tilingInfo.tilingData.get());
     constexpr uint32_t kTotalTaskNumIndex = 7;
     constexpr uint32_t kCoreTaskNumIndex = 8;
     EXPECT_EQ(words[kTotalTaskNumIndex], kTotalTaskNum);
