@@ -1,5 +1,9 @@
 # 通算融合算子Experimental使用说明
 
+## 独立直调工程
+
+本目录中的 [LowLatencyDispatch](low_latency_dispatch/README.md)、[LowLatencyCombine](low_latency_combine/README.md)、[MegaMoE](mega_moe/README.md) 与 [QuantAllReduce](quant_all_reduce/README.md) 使用各自目录内的独立编译入口。迁移算子的 SHMEM/CATLASS 依赖准备和版本固定方式见 [共享运行时说明](common/deepep/README.md)。下文的 OPP `.run` 包流程适用于带有对应算子注册和打包配置的工程。
+
 ## 前提条件
 
 - 环境部署：调用算子之前，请先参考[环境部署](../../docs/zh/install/quick_install.md)完成基础环境搭建。

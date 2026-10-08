@@ -525,3 +525,47 @@ Apache License
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
+
+Software: MC2 DeepEP migration
+Source: https://gitcode.com/SimpleBright_Man/DeepEP.git
+Revision: 7c4b276e91fc6df0c1bc5141ae45272e1af4c2d0
+Location: experimental/mc2/common/deepep, experimental/mc2/low_latency_dispatch,
+          experimental/mc2/low_latency_combine, experimental/mc2/mega_moe
+Contribution copyright: Copyright (c) 2026, edconeone
+Original CANN copyright and license notices remain in the migrated source files.
+The original CANN license text supplied with the migration baseline is retained,
+without modification, at LICENSES/mc2/cann.LICENSE. The contribution's CANN 2.0
+license is the LICENSE in the root of this repository.
+DeepSeek DeepEP API signatures are adapted under the following MIT notice:
+
+MIT License
+
+Copyright (c) 2025 DeepSeek
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+Software: MC2 SHMEM and CATLASS dependencies
+SHMEM source: https://gitcode.com/cann/shmem
+SHMEM revision: 7f9d961d378225e69058080532cf4f5be16cc83d
+CATLASS source: https://gitcode.com/cann/catlass
+CATLASS revision: 2b4bd7cbf7e67ebab23d7d5a99d472c83f90d9a1
+These dependencies are fetched as independent, pinned source checkouts into the
+ignored third_party/mc2_deepep cache. Their copyright and license files remain
+in their respective upstream checkouts. No vendored dependency files are
+included in this contribution.
