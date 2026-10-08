@@ -61,8 +61,9 @@ const static int64_t MIN_EXPERT_PER_RANK = 1LL;
 const static int64_t MAX_EXPERT_PER_RANK = 1024LL;
 const static int64_t MIN_H = 1024LL;
 const static int64_t MAX_H = 8LL * 1024LL; // 8K
-const static int64_t H_ALIGN = 32LL;
-const static int64_t W4_K_ALIGN = 64LL;
+// MX 量化按每 32 个元素一组，仅用于 scales 的 shape 校验，与 H 的对齐要求无关
+const static int64_t MX_SCALE_GROUP = 32LL;
+const static int64_t MTE_H_ALIGN = 64LL;
 const static int64_t URMA_H_ALIGN = 1024LL;
 const static int64_t MAX_HIDDEN_DIM = 8LL * 1024LL; // 8K
 // hiddenDim 是 GMM1 含 gate/up 两路的完整输出宽度；MTE 与 URMA 共用支持尾 tile 的激活 epilogue。
@@ -2191,7 +2192,7 @@ static ge::graphStatus CheckXScalesShape(const gert::TilingContext *context, con
         OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, "scales", (std::to_string(scalesShape.GetDimNum()) + "D").c_str(),
                                      (std::to_string(TWO_DIMS) + "D").c_str()),
         return ge::GRAPH_FAILED);
-    const int64_t expectedScaleDim1 = ops::CeilDiv<int64_t>(h, H_ALIGN);
+    const int64_t expectedScaleDim1 = ops::CeilDiv<int64_t>(h, MX_SCALE_GROUP);
     OP_TILING_CHECK(scalesShape.GetDim(0) != bs || scalesShape.GetDim(1) != expectedScaleDim1,
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                         nodeName, "scales",
@@ -2513,11 +2514,8 @@ static ge::graphStatus CheckAndSetTokenDimensions(const gert::TilingContext *con
             nodeName, "H", std::to_string(xDim1).c_str(),
             (std::string("should in [") + std::to_string(MIN_H) + ", " + std::to_string(MAX_H) + "]").c_str()),
         return ge::GRAPH_FAILED);
-    bool usesW4C032WeightOne = expertParams.moe.gmmMode == GMM_MODE_A8W4_NZ ||
-                               (expertParams.shared.expertCount > 0 && expertParams.shared.gmmMode == GMM_MODE_A8W4_NZ);
-    // URMA/Layered 保持 1K 对齐；W4 的 NZ_C0_32 分形要求 GMM K 按 64 对齐；其余 MTE 路径按 32 对齐。
-    int64_t requiredHAlignment =
-        tilingData->topoType == TOPO_TYPE_URMA ? URMA_H_ALIGN : (usesW4C032WeightOne ? W4_K_ALIGN : H_ALIGN);
+    // URMA/Layered 保持 1K 对齐；其余 MTE 路径（含 A8W8 ND）统一按 64 对齐。
+    int64_t requiredHAlignment = tilingData->topoType == TOPO_TYPE_URMA ? URMA_H_ALIGN : MTE_H_ALIGN;
     OP_TILING_CHECK(
         xDim1 % requiredHAlignment != 0,
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "H", std::to_string(xDim1).c_str(),
