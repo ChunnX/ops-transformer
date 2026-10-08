@@ -392,10 +392,14 @@ def cpu_sparse_flash_attention_antiquant_gqa_s2split(
     query_type = query.dtype
     head_dim = query.shape[-1]
 
-    key = pa_to_bsnd(key, block_table, actual_seq_lengths_kv).to(torch.float32)
+    key = pa_to_bsnd(key, block_table, actual_seq_lengths_kv, layout_kv).to(
+        torch.float32
+    )
     key = (key * key_dequant_scale).to(query_type)
 
-    value = pa_to_bsnd(value, block_table, actual_seq_lengths_kv).to(torch.float32)
+    value = pa_to_bsnd(value, block_table, actual_seq_lengths_kv, layout_kv).to(
+        torch.float32
+    )
     value = (value * value_dequant_scale).to(query_type)
 
     batch_size = actual_seq_lengths_query.shape[0]
