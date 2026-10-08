@@ -16,6 +16,7 @@
 #define FLASH_ATTN_BLOCK_CUBE_DN_H_
 
 #include "../utils/flash_attn_type.h"
+#include "../utils/flash_attn_common_def.h"
 #include "../../../common/op_kernel/matmul.h"
 #include "../../../common/op_kernel/arch_info.h"
 
@@ -70,6 +71,11 @@ public:
     static constexpr uint32_t CROSSCORE_L1P_0 = 5U;
     static constexpr uint32_t CROSSCORE_L1P_1 = 6U;
     static constexpr uint32_t CROSSCORE_L1P_2 = 7U;
+    // C2决策完成ack(每tile一个): V2读取GM标志前必须等待, 该ack在两个AIV的L1P等待之后置位,
+    // 保证两个半块的v1标志GM写入对V2可见(含skip情形无fixpipe, 无CC_MM可接力)
+    // 3槽轮转: V1(loop+3)被AIV程序序约束在V2(loop)之后, C2(loop+3)晚于V2(loop)消费同槽
+    static constexpr uint32_t CROSSCORE_C2DONE_0 = 8U;
+    static constexpr uint32_t C2DONE_RING = 3U;
 
     // 核内同步ID
     static constexpr uint32_t Q_L1_BUFFER_ID0 = 0U;
@@ -106,11 +112,21 @@ public:
     uint32_t qL1BufId_ = 0U;
     uint32_t kvL1BufId_ = 0U;
     // L0C
+    // 瞬态L0C仅轮转id 0~2; id 3 固定用作 Oj 的跨tile累加器(v2-skip场景BMM2在L0C上原子累加),
+    // 累加器被 PIPE_M mutex 长期持有, 瞬态轮转必须避开, 否则BMM1取同一id会死锁
+    static constexpr uint32_t L0C_TRANS_BUFCNT = 3U;
+    static constexpr uint32_t L0C_ACC_BUF_ID = 3U;
+    static_assert(dVBaseSize <= 128, "L0C accum mode requires single N tile (dVBaseSize <= 128)");
+    static_assert(s2BaseSize == 128, "L0C accum mode requires single K tile (s2BaseSize == 128, DN configs 0/2/6)");
     static constexpr uint32_t L0C_BUFCNT = 4U;
     static constexpr uint32_t L0C_BUF_BYTES = 64U * 1024U;
     LocalTensor<uint8_t> l0CBuffers_;
     uint32_t l0cBufId_ = 0U;
     uint32_t mmResBufId_ = 0U;
+    // L0C Oj累加器状态: true表示id L0C_ACC_BUF_ID持有当前行(gS1)的部分和O
+    bool accValid_ = false;
+    // v1写出的块级max变化标志(v2-skip), C2读取后决定BMM2累加/flush
+    GlobalTensor<float> faSkipFlagGm_;
     // L0A/B
     fa_base_matmul::BufferManager<fa_base_matmul::BufferType::L0A> l0aBufferManager_;
     fa_base_matmul::BufferManager<fa_base_matmul::BufferType::L0B> l0bBufferManager_;
@@ -128,11 +144,14 @@ public:
           kvSeqLensTool_(kvSeqLensTool){};
 
     __aicore__ inline void InitBlock(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
-                                     __gm__ uint8_t *blockTable)
+                                     __gm__ uint8_t *blockTable, __gm__ uint8_t *workspace)
     {
         if constexpr (PAGE_ATTENTION) {
             blockTableGm_.SetGlobalBuffer((__gm__ int32_t *)blockTable);
         }
+        faSkipFlagGm_.SetGlobalBuffer((__gm__ float *)(workspace + GetFaSkipFlagGmOffset(
+                                                          PAGE_ATTENTION, constInfo_.coreNum,
+                                                          constInfo_.accumOutSize, constInfo_.logSumExpSize)));
 
         InitQBuffer(constInfo_.bSize, constInfo_.n2Size, constInfo_.gSize, constInfo_.s1Size, constInfo_.dSize,
                     queryGm_, query);
@@ -271,10 +290,37 @@ public:
         copyKvGmToL1_(l1Tensor, valueGm_, gmCoord);
     }
 
+    __aicore__ inline void ResetAccState()
+    {
+        accValid_ = false;
+    }
+
+    // mmRes UB buffer 与 CC_MM flag 一一对应, AIC/AIV 两侧按相同的消费序列推进计数器
+    __aicore__ inline uint32_t AllocMmResBufId()
+    {
+        uint32_t bufId = mmResBufId_;
+        mmResBufId_ = (mmResBufId_ + 1) % UB_MM_RES_BUFCNT;
+        return bufId;
+    }
+
+    __aicore__ inline LocalTensor<MM_T> GetAccL0CTensor()
+    {
+        return l0CBuffers_[L0C_ACC_BUF_ID * L0C_BUF_BYTES].template ReinterpretCast<MM_T>();
+    }
+
+    // 读取v1写出的块级max变化标志(两个AIV半块任一非0即为true)
+    __aicore__ inline bool ReadBlockFlushFlag(uint32_t loop)
+    {
+        uint32_t elemBase = constInfo_.aicIdx * FA_SKIP_FLAG_AIC_FLOATS +
+                            (loop % FA_SKIP_FLAG_LOOPS) * (FA_SKIP_FLAG_SUBS * FA_SKIP_FLAG_SLOT_FLOATS);
+        float flag0 = faSkipFlagGm_.GetValue(elemBase);
+        float flag1 = faSkipFlagGm_.GetValue(elemBase + FA_SKIP_FLAG_SLOT_FLOATS);
+        return (flag0 != 0.0f) || (flag1 != 0.0f);
+    }
+
     __aicore__ inline void IterateBmm1(RunInfo &runInfo)
     {
-        uint32_t mmResUbBufId = mmResBufId_;
-        mmResBufId_ = (mmResBufId_ + 1) % UB_MM_RES_BUFCNT;
+        uint32_t mmResUbBufId = AllocMmResBufId();
         LocalTensor<MM_T> mm1ResUbTensor =
             ubMmResBuffers_[mmResUbBufId * UB_MM_RES_BUF_BYTES].template ReinterpretCast<MM_T>();
         uint32_t mmSyncIdx = CROSSCORE_MM_0 + mmResUbBufId;
@@ -336,7 +382,7 @@ public:
             FixpipeMm1Dn(mm1ResUbTensor, l0CSubTensor, runInfo);
 
             Mutex::Unlock<PIPE_FIX>(L0C_BUFFER_ID0 + l0cBufId_);
-            l0cBufId_ = (l0cBufId_ + 1) % L0C_BUFCNT;
+            l0cBufId_ = (l0cBufId_ + 1) % L0C_TRANS_BUFCNT;
         }
         Mutex::Unlock<PIPE_MTE1>(KV_L1_BUFFER_ID0 + kvL1BufId_);
         kvL1BufId_ = (kvL1BufId_ + 1) % L1_KV_BUFCNT;
@@ -345,27 +391,6 @@ public:
             Mutex::Unlock<PIPE_MTE1>(Q_L1_BUFFER_ID0 + qL1BufId_);
             qL1BufId_ = (qL1BufId_ + 1) % L1_Q_BUFCNT;
         }
-    }
-
-    __aicore__ inline void IterateBmm2(RunInfo &runInfo)
-    {
-        uint32_t mmResUbBufId = mmResBufId_;
-        mmResBufId_ = (mmResBufId_ + 1) % UB_MM_RES_BUFCNT;
-        uint32_t pL1BufId = runInfo.loop % L1_P_BUFCNT;
-        uint32_t v1c2CrossCoreSyncIdx = CROSSCORE_L1P_0 + pL1BufId;
-        uint32_t mmSyncIdx = CROSSCORE_MM_0 + mmResUbBufId;
-        LocalTensor<Q_T> pL1Tensor = l1PBuffers_[pL1BufId * L1_P_BUF_BYTES].template ReinterpretCast<Q_T>();
-        LocalTensor<MM_T> mm2ResUbTensor =
-            ubMmResBuffers_[mmResUbBufId * UB_MM_RES_BUF_BYTES].template ReinterpretCast<MM_T>();
-
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(v1c2CrossCoreSyncIdx);
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(v1c2CrossCoreSyncIdx + AIV0_AIV1_OFFSET);
-
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(mmSyncIdx);
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(mmSyncIdx + AIV0_AIV1_OFFSET);
-        IterateBmm2l0Split(mm2ResUbTensor, pL1Tensor, runInfo);
-        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(mmSyncIdx);
-        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(mmSyncIdx + AIV0_AIV1_OFFSET);
     }
 
     template <typename DST_TENSOR_T>
@@ -384,66 +409,91 @@ public:
         Fixpipe<MM_T, MM_T, FIXPIPE_ROW_MAJOR_UB>(dstTensor, l0C, fixpipeParams);
     }
 
-    __aicore__ inline void IterateBmm2l0Split(LocalTensor<MM_T> &mm2ResUbTensor, LocalTensor<Q_T> &pL1Tensor,
-                                              RunInfo &runInfo)
+    // BMM2 的 L0C 累加器写法: cmatrixInitVal=true 时重置C矩阵(行首tile/flush后首个tile),
+    // false 时在已有部分和上原子累加(mj==mj-1 的 tile, Oj = Oj-1 + exp(Sj-mj)*Vj)
+    __aicore__ inline void IterateBmm2Acc(const LocalTensor<Q_T> &pL1Tensor, const LocalTensor<KV_T> &vL1Tensor,
+                                          RunInfo &runInfo, bool cmatrixInitVal)
     {
+        if (cmatrixInitVal) {
+            Mutex::Lock<PIPE_M>(L0C_BUFFER_ID0 + L0C_ACC_BUF_ID);
+        }
+        LocalTensor<MM_T> accL0C = GetAccL0CTensor();
+        MMParam param = MakeMMParam((uint32_t)mBaseSize, (uint32_t)constInfo_.dSizeV,
+                                    (uint32_t)runInfo.actSingleLoopS2Size, true, false, cmatrixInitVal, cmatrixInitVal,
+                                    0, 0, 0, AttentionCommon::Align(constInfo_.dSizeV, 16U));
+        MatmulFull<Q_T, KV_T, MM_T, 128, dVBaseSize, 128, ABLayout::MK, ABLayout::KN>(
+            pL1Tensor, vL1Tensor, mmL0APolicy_, mmL0BPolicy_, accL0C, param);
+        accValid_ = true;
+    }
+
+    // L0C 累加器 flush 到 UB(供 v2 合并/归一), 释放累加器占用
+    __aicore__ inline void FlushAccToUb(LocalTensor<MM_T> &dstUbTensor, RunInfo &runInfo)
+    {
+        Mutex::Unlock<PIPE_M>(L0C_BUFFER_ID0 + L0C_ACC_BUF_ID);
+        Mutex::Lock<PIPE_FIX>(L0C_BUFFER_ID0 + L0C_ACC_BUF_ID);
+        FixpipeMm2PartialN(dstUbTensor, GetAccL0CTensor(), constInfo_.dSizeV, runInfo);
+        Mutex::Unlock<PIPE_FIX>(L0C_BUFFER_ID0 + L0C_ACC_BUF_ID);
+        accValid_ = false;
+    }
+
+    // 输出一个 BMM2/累加器 fixpipe 结果: 分配mmRes buffer, 等释放, fixpipe, 置就绪
+    __aicore__ inline void FixpipeAccToMmRes(RunInfo &runInfo)
+    {
+        uint32_t mmResUbBufId = AllocMmResBufId();
+        uint32_t mmSyncIdx = CROSSCORE_MM_0 + mmResUbBufId;
+        LocalTensor<MM_T> mm2ResUbTensor =
+            ubMmResBuffers_[mmResUbBufId * UB_MM_RES_BUF_BYTES].template ReinterpretCast<MM_T>();
+        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(mmSyncIdx);
+        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(mmSyncIdx + AIV0_AIV1_OFFSET);
+        FlushAccToUb(mm2ResUbTensor, runInfo);
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(mmSyncIdx);
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(mmSyncIdx + AIV0_AIV1_OFFSET);
+    }
+
+    __aicore__ inline void IterateBmm2(RunInfo &runInfo)
+    {
+        uint32_t pL1BufId = runInfo.loop % L1_P_BUFCNT;
+        uint32_t v1c2CrossCoreSyncIdx = CROSSCORE_L1P_0 + pL1BufId;
+        LocalTensor<Q_T> pL1Tensor = l1PBuffers_[pL1BufId * L1_P_BUF_BYTES].template ReinterpretCast<Q_T>();
+
+        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(v1c2CrossCoreSyncIdx);
+        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(v1c2CrossCoreSyncIdx + AIV0_AIV1_OFFSET);
+
+        // v1写出的块级max变化标志: false表示所有行 mj == mj-1
+        bool blockFlush = false;
+        if (!runInfo.isFirstS2Loop) {
+            blockFlush = ReadBlockFlushFlag(runInfo.loop);
+        }
+        // 行首tile必然建立累加器; mj==mj-1且非行尾: 累加进L0C, 跳过fixpipe与整个v2阶段
+        bool isSkip = (!runInfo.isFirstS2Loop) && (!blockFlush) && (!runInfo.isLastS2Loop);
+
         LocalTensor<KV_T> vL1Tensor = l1KvBuffers_[kvL1BufId_ * L1_KV_BUF_BYTES].template ReinterpretCast<KV_T>();
         Mutex::Lock<PIPE_MTE2>(KV_L1_BUFFER_ID0 + kvL1BufId_);
         CopyValueSlice(vL1Tensor, 0, constInfo_.dSizeV, runInfo);
         Mutex::Unlock<PIPE_MTE2>(KV_L1_BUFFER_ID0 + kvL1BufId_);
         Mutex::Lock<PIPE_MTE1>(KV_L1_BUFFER_ID0 + kvL1BufId_);
-        {
-            uint32_t nLoops = (constInfo_.dSizeV + 128 - 1) / 128;
-            // Mmad N=真实尾块宽度精确计算; LoadData 搬运宽度按分形粒度对齐(D=72→80, 与Nd2Nz写入组数一致);
-            // Fixpipe nSize=真实列 + dstStride=128(UB行距) → vec2 128宽读, 尾列脏但 D 轴逐元素隔离无害
-            uint32_t lastTileN = constInfo_.dSizeV - (nLoops - 1) * 128;
-            uint32_t ldN = ((lastTileN + 15) >> 4) << 4;
-            for (uint32_t n = 0; n < nLoops; n++) {
-                uint32_t tileN = (n == nLoops - 1) ? lastTileN : 128;
-                uint32_t tileLdN = (n == nLoops - 1) ? ldN : 128;
-                Mutex::Lock<PIPE_M>(L0C_BUFFER_ID0 + l0cBufId_);
-                LocalTensor<MM_T> l0CSubTensor =
-                    l0CBuffers_[l0cBufId_ * L0C_BUF_BYTES].template ReinterpretCast<MM_T>();
-                MMParam param = {(uint32_t)mBaseSize,
-                                 tileN,
-                                 (uint32_t)runInfo.actSingleLoopS2Size,
-                                 true,
-                                 false,
-                                 true,
-                                 true,
-                                 0,
-                                 0,
-                                 0,
-                                 tileLdN};
 
-                uint32_t s2Aligned = AttentionCommon::Align(runInfo.actSingleLoopS2Size, 16U);
-                uint64_t vL1Offset = n * 128U / 16U * s2Aligned * 16U;
-                LocalTensor<KV_T> vL1TileTensor = vL1Tensor[vL1Offset];
-
-                if constexpr (dVBaseSize > 128) {
-                    MatmulFull<Q_T, KV_T, MM_T, 128, 128, s2BaseSize, ABLayout::MK, ABLayout::KN>(
-                        pL1Tensor, vL1TileTensor, mmL0APolicy_, mmL0BPolicy_, l0CSubTensor, param);
-                } else {
-                    if constexpr (s2BaseSize == 128) {
-                        MatmulFull<Q_T, KV_T, MM_T, 128, dVBaseSize, 128, ABLayout::MK, ABLayout::KN>(
-                            pL1Tensor, vL1TileTensor, mmL0APolicy_, mmL0BPolicy_, l0CSubTensor, param);
-                    } else {
-                        MatmulBase<Q_T, KV_T, MM_T, 128, dVBaseSize, 128, ABLayout::MK, ABLayout::KN>(
-                            pL1Tensor, vL1TileTensor, mmL0APolicy_, mmL0BPolicy_, l0CSubTensor, param);
-                    }
-                }
-                Mutex::Unlock<PIPE_M>(L0C_BUFFER_ID0 + l0cBufId_);
-                Mutex::Lock<PIPE_FIX>(L0C_BUFFER_ID0 + l0cBufId_);
-
-                uint32_t dstOffset = n * 128U;
-                FixpipeMm2PartialN(mm2ResUbTensor[dstOffset], l0CSubTensor, tileN, runInfo);
-
-                Mutex::Unlock<PIPE_FIX>(L0C_BUFFER_ID0 + l0cBufId_);
-                l0cBufId_ = (l0cBufId_ + 1) % L0C_BUFCNT;
+        if (isSkip) {
+            IterateBmm2Acc(pL1Tensor, vL1Tensor, runInfo, false);
+        } else {
+            if (!runInfo.isFirstS2Loop) {
+                // flush: 老累加器(旧max尺度部分和)fixpipe到UB, v2阶段合并并重标定
+                FixpipeAccToMmRes(runInfo);
+            }
+            // 新累加器: 本tile P*V 作为初值(重置C矩阵), 驻留L0C
+            IterateBmm2Acc(pL1Tensor, vL1Tensor, runInfo, true);
+            if (runInfo.isLastS2Loop) {
+                // 行尾: 最终累加器fixpipe到UB, v2阶段完成 (pre+cur)/sum 与写出
+                FixpipeAccToMmRes(runInfo);
             }
         }
         Mutex::Unlock<PIPE_MTE1>(KV_L1_BUFFER_ID0 + kvL1BufId_);
         kvL1BufId_ = (kvL1BufId_ + 1) % L1_KV_BUFCNT;
+
+        // C2决策完成ack: 通知V2可以读取GM标志(本tile的UB产出/跳过决策均已确定)
+        uint32_t doneSyncIdx = CROSSCORE_C2DONE_0 + (runInfo.loop % C2DONE_RING);
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(doneSyncIdx);
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(doneSyncIdx + AIV0_AIV1_OFFSET);
     }
 }; // FANoQuantGqaBlockCubeDn
 
