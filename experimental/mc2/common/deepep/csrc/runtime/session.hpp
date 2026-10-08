@@ -1,0 +1,110 @@
+// Copyright (c) 2026, edconeone
+// This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+// CANN Open Software License Agreement Version 2.0 (the "License").
+// Please refer to the License for details. You may not use this file except in compliance with the License.
+// THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+// INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+// See LICENSE in the root of the software repository for the full text of the License.
+
+// Adapted from DeepEP; original copyright and license notices follow.
+
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ */
+
+#pragma once
+#include <acl/acl.h>
+#include <cstddef>
+#include <cstdint>
+#include <string>
+#include <array>
+#include <limits>
+#include <stdexcept>
+
+namespace deepep {
+// The framework owns ACL initialization, device and context. Only this workspace
+// and the SHMEM instance are owned here. Destruction is an explicit collective.
+class Session {
+public:
+    Session(int rank, int size, uint64_t bytes, const std::string& endpoint, unsigned timeout, bool udma = false,
+            bool megamoe = false);
+    Session(const Session&) = delete;
+    Session& operator=(const Session&) = delete;
+    ~Session() = default; // Never start collectives from Python GC/interpreter exit.
+    void barrier();
+    void close();
+    bool closed() const
+    {
+        return closed_;
+    }
+    uint64_t capacity() const
+    {
+        return bytes_;
+    }
+    static bool busy();
+    // 仅借给可选 MegaMoE 扩展；内存仍由本 Session 独占并显式销毁。
+    uintptr_t workspace_address() const;
+
+    void* workspace() const
+    {
+        check_context();
+        return workspace_;
+    }
+    int rank() const
+    {
+        return rank_;
+    }
+    int world() const
+    {
+        return world_;
+    }
+    bool peer_table() const
+    {
+        return peer_table_;
+    }
+    uint64_t next_generation()
+    {
+        if (generation_ == std::numeric_limits<uint64_t>::max())
+            throw std::overflow_error("Dispatch generation exhausted; recreate Session");
+        return ++generation_;
+    }
+    using DispatchControlLayout = std::array<uint64_t, 10>;
+    bool dispatch_controls_match(const DispatchControlLayout& layout) const
+    {
+        return dispatch_controls_valid_ && dispatch_control_layout_ == layout;
+    }
+    void invalidate_dispatch_controls()
+    {
+        dispatch_controls_valid_ = false;
+    }
+    void remember_dispatch_controls(const DispatchControlLayout& layout)
+    {
+        dispatch_control_layout_ = layout;
+        dispatch_controls_valid_ = true;
+    }
+    bool udma() const
+    {
+        return udma_;
+    }
+
+private:
+    void check_context() const;
+    aclrtContext context_ = nullptr;
+    void* workspace_ = nullptr;
+    uint64_t bytes_ = 0;
+    bool closed_ = true;
+    bool poisoned_ = false;
+    int rank_ = 0;
+    int world_ = 0;
+    bool udma_ = false;
+    bool peer_table_ = false;
+    uint64_t generation_ = 0;
+    bool dispatch_controls_valid_ = false;
+    DispatchControlLayout dispatch_control_layout_{};
+};
+} // namespace deepep

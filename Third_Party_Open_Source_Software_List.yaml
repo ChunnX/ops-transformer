@@ -30,3 +30,12 @@ protobuf:
 libboundscheck:
   version: v1.1.16
   type: run
+mc2-deepep:
+  version: 7c4b276e91fc6df0c1bc5141ae45272e1af4c2d0
+  type: run
+mc2-shmem:
+  version: 7f9d961d378225e69058080532cf4f5be16cc83d
+  type: run
+mc2-catlass:
+  version: 2b4bd7cbf7e67ebab23d7d5a99d472c83f90d9a1
+  type: run
