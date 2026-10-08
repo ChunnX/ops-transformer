@@ -291,7 +291,6 @@ protected:
                                  int64_t cacheLen, int64_t headSize, size_t cacheIndex, const char *cacheName);
     virtual bool CheckCacheValidPA(const gert::TilingContext *context, int64_t headSize, size_t cacheIndex,
                                    const char *cacheName);
-
     bool CheckKCacheValidPA(const gert::TilingContext *context, int64_t numHead, int64_t headSize);
     bool CheckVCacheValidPA(const gert::TilingContext *context, int64_t numHead, int64_t headSize);
     bool CheckIndexValid(const gert::TilingContext *context, int64_t batchSize, int64_t seqLen, int64_t pageSize,
@@ -302,7 +301,8 @@ private:
     bool ValidateCacheShapes();
 };
 
-/* Atlas A2/A3 tiling*/
+// Atlas A2/A3 tiling
+
 class KvRmsNormRopeCacheTilingDs : virtual public KvRmsNormRopeCacheTilingBase {
 public:
     explicit KvRmsNormRopeCacheTilingDs(gert::TilingContext *tillingContext)
@@ -327,7 +327,8 @@ private:
     KvRmsNormRopeCacheTilingData tilingData_;
 };
 
-/*950 PR/DT Tiling*/
+// 950 PR/DT Tiling
+
 class KvRmsNormRopeCacheRegbaseFullLoadTiling : virtual public KvRmsNormRopeCacheTilingBase {
 public:
     explicit KvRmsNormRopeCacheRegbaseFullLoadTiling(gert::TilingContext *tillingContext)

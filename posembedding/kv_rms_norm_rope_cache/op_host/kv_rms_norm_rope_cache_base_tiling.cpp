@@ -466,14 +466,16 @@ bool KvRmsNormRopeCacheTilingBase::ValidateCacheShapes()
 
 ge::graphStatus KvRmsNormRopeCacheTilingBase::GetShapeAttrsInfo()
 {
-    OP_CHECK_IF(context_ == nullptr, OP_LOGE(context_->GetNodeName(), "context_ can not be nullptr."),
-                return ge::GRAPH_FAILED);
+    if (context_ == nullptr) {
+        // CANNOT OP_LOGE on nullptr context_ : "context_ can not be nullptr."
+        return ge::GRAPH_FAILED;
+    }
+
     isRegbase_ = Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_);
     // GetQuantMode
     quantMode_ = GetQuantMode(context_);
     // Basic info
     auto kvShapeTuple = GetShapeTuple(context_, KV_INDEX);
-    auto kCacheShapeTuple = GetShapeTuple(context_, K_CACHE_INDEX);
     // Dk
     auto cosShapeTuple = GetShapeTuple(context_, COS_INDEX);
     // Dv

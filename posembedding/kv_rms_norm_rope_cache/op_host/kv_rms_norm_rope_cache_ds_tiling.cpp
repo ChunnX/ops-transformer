@@ -139,7 +139,7 @@ bool KvRmsNormRopeCacheTilingDs::CheckOffsetValid(const gert::TilingContext *con
 }
 
 bool KvRmsNormRopeCacheTilingDs::CheckCacheValid(const gert::TilingContext *context, int64_t batchSize, int64_t numHead,
-                                                 int64_t cacheLen, int64_t headSize, size_t cacheIndex,
+                                                 int64_t sKv, int64_t headSize, size_t cacheIndex,
                                                  const char *cacheName)
 {
     auto cacheShapeTuple = GetShapeTuple(context, cacheIndex);
@@ -163,10 +163,10 @@ bool KvRmsNormRopeCacheTilingDs::CheckCacheValid(const gert::TilingContext *cont
                 cacheName, headSize);
         return false;
     }
-    if (cacheS < cacheLen) {
-        // 'cacheLen' here is seqlen of the input kv
+    if (cacheS < sKv) {
+        // 'sKv' here is seqlen of the input kv
         OP_LOGE(context->GetNodeName(), "In CacheMode::Norm, Scache %ld of %s is smaller than kv %ld.", cacheS,
-                cacheName, cacheLen);
+                cacheName, sKv);
         return false;
     }
 
