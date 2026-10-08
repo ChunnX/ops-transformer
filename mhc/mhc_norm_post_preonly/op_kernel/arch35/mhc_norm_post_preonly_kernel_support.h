@@ -41,8 +41,9 @@ constexpr uint32_t GAMMA1_CACHE_MAX_D = 5120; // 目标模型维度以内缓存�
 constexpr uint32_t SCALAR_BUF_SIZE   = 256;    // 标量计算 UB buffer 大小 (bytes)
 constexpr uint32_t EXP_DIV_ELEM      = 8;      // sigmoid ExpDiv 计算元素数
 constexpr uint32_t POST_COMB_SIZE    = 8 + 16; // h_post[8] + h_res[16] buffer 大小
-constexpr uint32_t PARTIAL_SLOT_ELEMS = 8;     // 每个token的partial1固定占32B
-constexpr uint16_t PAIR_READY_FLAG = 0;        // 每个token仅使用一次mode1握手
+constexpr uint32_t PARTIAL_SLOT_ELEMS = 8;     // 每个lane的partial固定占32B
+constexpr uint16_t MID_READY_FLAG = 0;         // R2平方和交换完成标志
+constexpr uint16_t PAIR_READY_FLAG = 1;        // R4/R5 partial交换完成标志
 
 // ---------------------------------------------------------------------------
 // Type trait: fp32->half uses CAST_NONE, fp32->bfloat16_t uses CAST_RINT
@@ -675,6 +676,9 @@ __aicore__ inline void AxpyB16WithUbScalar(const LocalTensor<float> &dst, const 
 // 并显式保留设计规定的两处低精度往返边界。
 
 
+// 双AIV仍需读取全部残差行，但每个lane只计算自己负责的两个输出head。
+
+
 // 将完整x2以输出dtype常驻UB，同时完成设计要求的低精度往返；写GM仅用于保留x2_out输出语义。
 
 
@@ -700,7 +704,13 @@ __aicore__ inline void AxpyB16WithUbScalar(const LocalTensor<float> &dst, const 
 
 
 // mode1只在同一物理AI Core的两个sibling AIV之间握手。
-// 调用点保持无条件控制流，保证每个lane、每个token各执行且只执行一次Set/Wait。
+__aicore__ inline void MhcPairMidReadySync()
+{
+    CrossCoreSetFlag<0x1, PIPE_MTE3>(MID_READY_FLAG);
+    CrossCoreWaitFlag<0x1, PIPE_MTE2>(MID_READY_FLAG);
+}
+
+// R4/R5使用独立flag，避免同一token内两次握手相互干扰。
 __aicore__ inline void MhcPairReadySync()
 {
     CrossCoreSetFlag<0x1, PIPE_MTE3>(PAIR_READY_FLAG);

@@ -39,6 +39,8 @@ private:
     __aicore__ inline void ProcessTokenDualSiblingAiv(uint32_t token);
     __aicore__ inline void ComputeX2PostTile(uint32_t token, uint32_t tOff, uint32_t tD, float invRms0,
                                              const float (&postVals)[N_MAX]);
+    __aicore__ inline void ComputeX2PostTileForLane(uint32_t token, uint32_t tOff, uint32_t tD, float invRms0,
+                                                    const float (&postVals)[N_MAX]);
     __aicore__ inline void CacheX2Tile(uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput,
                                       bool quantizeInput = true);
     __aicore__ inline void CacheX2TileForLane(uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput,
@@ -62,7 +64,8 @@ private:
 // 数据加载
 
 /// 加载一个token的h_post[N]和h_res[N*N]。
-__aicore__ inline void LoadTokenWeights(uint32_t token, float (&postVals)[N_MAX]);
+__aicore__ inline void LoadTokenWeights(uint32_t token, float (&postVals)[N_MAX], uint32_t headBegin = 0U,
+                                        uint32_t headEnd = N_MAX);
 
 /// 把一个h_out分块预取到输入队列；双槽允许下一分块MTE2与当前分块Vector重叠。
 __aicore__ inline void PrefetchHOutTile(uint64_t gmOffset, uint32_t tD);

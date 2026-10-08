@@ -21,7 +21,8 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     float midSqHalf[2] = {0.0f, 0.0f};
     CacheHOut((uint64_t)token * D_);
     CacheGamma0();
-    LoadTokenWeights(token, postVals);
+    const uint32_t headBegin = laneId_ * 2U;
+    LoadTokenWeights(token, postVals, headBegin, headBegin + 2U);
 
     // 两个lane按完全相同的分块和顺序冗余执行R1。
     float sumSq0 = 0.0f;
@@ -33,19 +34,19 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     }
     const float invRms0 = ComputeInvRms(sumSq0, invD_);
 
-    // 两个lane冗余构造完整x2，但只写各自负责的展平半片。
+    // 两个lane分别构造自己负责的两个x2 head。
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
-        ComputeX2PostTile(token, tOff, tD, invRms0, postVals);
+        ComputeX2PostTileForLane(token, tOff, tD, invRms0, postVals);
         CacheX2TileForLane(token, tOff, tD, !USE_RMS_MID, false);
 
         if constexpr (USE_RMS_MID) {
-            // R3的归一化范围是完整N*D，因此该标量也在两个lane上按相同树冗余计算。
+            // 每个lane只归约自己负责的两个head，循环结束后交换半和。
             LocalTensor<float> out = bufResFp32_.Get<float>()[N_MAX * dimTile_];
             LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
-            for (uint32_t half = 0; half < 2; ++half) {
-                const uint32_t h0 = half * 2;
+            for (uint32_t half = laneId_; half < laneId_ + 1U; ++half) {
+                const uint32_t h0 = half * 2U;
                 const uint32_t h1 = h0 + 1;
                 MhcSandwichRegBase::PairSquareB16ToFp32(out, x2Cache[h0 * D_ + tOff],
                                                        x2Cache[h1 * D_ + tOff], tD);
@@ -58,6 +59,21 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     }
 
     if constexpr (USE_RMS_MID) {
+        LocalTensor<float> midBuf = bufScalar_.Get<float>();
+        midBuf.SetValue(0, midSqHalf[laneId_]);
+        for (uint32_t i = 1U; i < PARTIAL_SLOT_ELEMS; ++i) {
+            midBuf.SetValue(i, 0.0f);
+        }
+        SetFlag<HardEvent::S_MTE3>(evtStoMte3_);
+        WaitFlag<HardEvent::S_MTE3>(evtStoMte3_);
+        const uint64_t ownSlot = ((uint64_t)token * 2U + laneId_) * PARTIAL_SLOT_ELEMS;
+        DataCopy(partial1Gm_[ownSlot], midBuf, PARTIAL_SLOT_ELEMS);
+        MhcPairMidReadySync();
+        const uint64_t siblingSlot = ((uint64_t)token * 2U + (1U - laneId_)) * PARTIAL_SLOT_ELEMS;
+        DataCopy(midBuf, partial1Gm_[siblingSlot], PARTIAL_SLOT_ELEMS);
+        SetFlag<HardEvent::MTE2_S>(evtMte2toS_);
+        WaitFlag<HardEvent::MTE2_S>(evtMte2toS_);
+        midSqHalf[1U - laneId_] = midBuf.GetValue(0);
         const float totalMidSq = midSqHalf[0] + midSqHalf[1];
         const float invRmsMid = 1.0f / sqrt(totalMidSq * invK_ + normEps_);
         for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
@@ -65,20 +81,22 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
             const uint32_t tOff = tile * dimTile_;
             LocalTensor<float> gammaEven = bufGamma2Fp32_.Get<float>();
             LocalTensor<float> gammaOdd = bufGamma0Fp32_.Get<float>();
-            LoadGammaInto(gammaEven, gamma2Gm_, tOff, tD);
+            LoadGammaInto(gammaEven, gamma2Gm_, headBegin * D_ + tOff, tD);
             LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
-            for (uint32_t n = 0; n < N_MAX; ++n) {
-                LocalTensor<float> gammaCurrent = ((n & 1U) == 0) ? gammaEven : gammaOdd;
-                LocalTensor<float> gammaNext = ((n & 1U) == 0) ? gammaOdd : gammaEven;
+            // 每个lane只执行自己负责的两个head，另一半由sibling并行完成。
+            for (uint32_t n = headBegin; n < headBegin + 2U; ++n) {
+                const uint32_t laneHead = n - headBegin;
+                LocalTensor<float> gammaCurrent = ((laneHead & 1U) == 0) ? gammaEven : gammaOdd;
+                LocalTensor<float> gammaNext = ((laneHead & 1U) == 0) ? gammaOdd : gammaEven;
                 SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
                 WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
-                if (n + 1 < N_MAX) {
+                if (n + 1U < headBegin + 2U) {
                     LoadGammaInto(gammaNext, gamma2Gm_, (n + 1) * D_ + tOff, tD);
                 }
                 MhcSandwichRegBase::CastB16ScaleAndMulGammaToB16(
                     x2Cache[n * D_ + tOff], x2Cache[n * D_ + tOff], gammaCurrent, invRmsMid, tD);
                 PipeBarrier<PIPE_V>();
-                if (n + 2 < N_MAX) {
+                if (n + 2U < headBegin + 2U) {
                     FenceVToMte2();
                 }
             }
@@ -99,7 +117,8 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         }
         SetFlag<HardEvent::S_MTE3>(evtStoMte3_);
         WaitFlag<HardEvent::S_MTE3>(evtStoMte3_);
-        DataCopy(partial1Gm_[(uint64_t)token * PARTIAL_SLOT_ELEMS], partialBuf, PARTIAL_SLOT_ELEMS);
+        const uint64_t followerSlot = ((uint64_t)token * 2U + 1U) * PARTIAL_SLOT_ELEMS;
+        DataCopy(partial1Gm_[followerSlot], partialBuf, PARTIAL_SLOT_ELEMS);
     }
 
     // 两个lane均无条件执行一次mode1 Set/Wait；该等待不替代本核流水事件。
@@ -110,7 +129,8 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
 
     // 发出本核MTE3完成事件，同时读取follower的partial1，用32B搬运隐藏事件等待。
     SetFlag<HardEvent::MTE3_V>(evtMte3toV_);
-    DataCopy(partialBuf, partial1Gm_[(uint64_t)token * PARTIAL_SLOT_ELEMS], PARTIAL_SLOT_ELEMS);
+    const uint64_t followerSlot = ((uint64_t)token * 2U + 1U) * PARTIAL_SLOT_ELEMS;
+    DataCopy(partialBuf, partial1Gm_[followerSlot], PARTIAL_SLOT_ELEMS);
     SetFlag<HardEvent::MTE2_S>(evtMte2toS_);
     WaitFlag<HardEvent::MTE3_V>(evtMte3toV_);
     WaitFlag<HardEvent::MTE2_S>(evtMte2toS_);
@@ -126,7 +146,16 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     }
     ComputeGateValues(totalSumSqPre, xHatVals);
 
-    // 会合后只有leader继续执行R6、R7和最终输出。
+    // 会合后只有leader继续执行R6、R7和最终输出。leader的私有缓存仅包含
+    // 自己完成R3的前两行，从已经同步写出的x2_out恢复follower负责的后两行。
+    // follower负责的两个head在GM和UB中均连续，一次恢复完整2D区间，
+    // 避免按tile、按head重复发出MTE2搬运指令。
+    LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
+    const uint64_t followerHeadOffset = (uint64_t)token * N_ * D_ + 2U * D_;
+    DataCopy(x2Cache[2U * D_], x2OutGm_[followerHeadOffset], 2U * D_);
+    SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
+    WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
+
     float sumSq1 = 0.0f;
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
