@@ -253,10 +253,18 @@ __aicore__ inline void MoeSortMultiCore<T>::VBSProcess()
 
         sortNum = Ceil(sortCoreLastLoopElements, ONE_REPEAT_SORT_NUM) * ONE_REPEAT_SORT_NUM;
         UBSortProcess(sortCoreLoops - 1, sortCoreLastLoopElements, sortNum);
+    }
 
+    // Every core writes its VBS result to GM before any core starts the
+    // cross-core merge.  Without this rendezvous, a fast core can issue the
+    // MTE2 reads in OneCoreVMSProcess while another core is still issuing its
+    // MTE3 write to the same workspace stage (GM WAR hazard).
+    PipeBarrier<PIPE_ALL>();
+    AscendC::SyncAll();
+
+    if (this->blockIdx < this->vbsTilingData->needCoreNum) {
         OneCoreVMSProcess(sortCoreLoops, sortCoreLoopElements, sortCoreLastLoopElements);
     }
-    AscendC::SyncAll();
 }
 
 template <typename T>
