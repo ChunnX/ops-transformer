@@ -10,28 +10,35 @@ namespace {
 int calls = 0;
 uint8_t addresses[6]{};
 GroupedRotateQuant::TilingData expected{};
-struct RecordingKernel {
-    void operator()(const GroupedRotateQuant::KernelArguments &args)
-    {
-        ++calls;
-        assert(AscendC::activePipes == 1);
-        assert(args.xList == &addresses[0]);
-        assert(args.rotationList == &addresses[1]);
-        assert(args.alpha == (expected.hasAlpha ? &addresses[2] : nullptr));
-        assert(args.groupList == (expected.hasGroupList ? &addresses[3] : nullptr));
-        assert(args.yList == &addresses[4]);
-        assert(args.scaleList == &addresses[5]);
-        assert(std::memcmp(&args.tiling, &expected, sizeof(expected)) == 0);
-    }
-};
 } // namespace
 
-#ifndef GRQ_TEST_MISSING_BACKEND
+namespace Blaze::Attention::Kernel {
+template<class Params> void RecordGroupedParams(const Params& params)
+{
+    ++calls;
+    assert(AscendC::activePipes == 1);
+    assert(params.xList == &addresses[0] && params.rotationList == &addresses[1]);
+    assert(params.alpha == (expected.hasAlpha ? &addresses[2] : nullptr));
+    assert(params.groupList == (expected.hasGroupList ? &addresses[3] : nullptr));
+    assert(params.yList == &addresses[4] && params.scaleList == &addresses[5]);
+    const auto& g=params.groups;
+    assert(g.groupNum==expected.groupNum && g.xNum==expected.xNum);
+    assert(g.rotationNum==expected.rotationNum && g.yNum==expected.yNum);
+    assert(g.groupType==expected.groupType && g.groupListType==expected.groupListType);
+    assert(g.hasGroupList==(expected.hasGroupList!=0) && g.runtimeM==(expected.runtimeM!=0));
+    assert(g.totalM==expected.totalM && g.totalElements==expected.totalElements && g.tileCount==expected.tileCount);
+    for(uint32_t i=0;i<3;++i) assert(g.mTile[i]==expected.tiles[i].mTile);
+    assert(params.usedCoreNum==expected.usedCoreNum && params.roundMode==expected.roundMode);
+    assert(params.scaleAlg==expected.scaleAlg && params.dstTypeMax==expected.dstTypeMax);
+    assert(params.invDstTypeMax==expected.invDstTypeMax);
+}
+}
+
+#ifdef GRQ_TEST_MISSING_BACKEND
 namespace GroupedRotateQuant {
 template <>
 struct TensorApiBackend<DTYPE_X, DTYPE_Y> {
-    static constexpr bool AVAILABLE = true;
-    using Kernel = RecordingKernel;
+    static constexpr bool AVAILABLE = false;
 };
 } // namespace GroupedRotateQuant
 #endif
@@ -126,6 +133,12 @@ int main()
     try { Invoke(); } catch (const std::runtime_error &) { rejected = true; }
     assert(rejected && calls == 10 && AscendC::activePipes == 0);
     expected.version--;
+    const auto savedProfile=expected.tiles[0].rotationSize;
+    expected.tiles[0].rotationSize=64;
+    rejected=false;
+    try { Invoke(); } catch (const std::runtime_error &) { rejected=true; }
+    assert(rejected && calls==10);
+    expected.tiles[0].rotationSize=savedProfile;
     testTilingKey = 1;
     Invoke();
     assert(calls == 10);

@@ -1,6 +1,6 @@
 # GroupedRotateQuant Host 与 tiling 设计
 
-目标平台为 Ascend 950 / DAV_3510。本目录实现算子定义、shape/dtype 推导、元数据校验及 Tensor API 路径的 tiling；Tensor API kernel 尚待实现和联调。
+目标平台为 Ascend 950 / DAV_3510。本目录实现算子定义、shape/dtype 推导、元数据校验及 Tensor API 路径的 tiling；分组 Tensor API kernel 已接入，真实 CANN 编译及设备联调仍待完成，见 `../op_kernel/README.md`。
 
 ## 文件结构
 
@@ -12,7 +12,7 @@
 | `grouped_rotate_quant_infershape.cpp` | 注册 InferShape / InferDataType，分别处理 y 与 scale 两个动态列表 |
 | `op_tiling/arch35/grouped_rotate_quant_tiling.h/.cpp` | CompileInfo、TilingBaseClass 实现、平台读取、workspace、tilingData 保存及注册入口 |
 | `op_tiling/arch35/grouped_rotate_quant_planner.h` | 资源约束、三种 R 的分块配置、静态任务数及启动核数计算 |
-| `../op_kernel/arch35/grouped_rotate_quant_tiling_data.h` | Host/device 共用的固定 128 字节协议；外层入口已实现，计算后端待接入，见 `../op_kernel/README.md` |
+| `../op_kernel/arch35/grouped_rotate_quant_tiling_data.h` | Host/device 共用的固定 128 字节协议；内外层已接线，设备验证状态见 `../op_kernel/README.md` |
 
 根 CMake 通过 `op_host/CMakeLists.txt` 的 `add_modules_sources(OP_API_INDEPENDENT ON ...)` 接入 API、推导及 tiling，替代 API 阶段的临时源文件注册。当前只有一个 Ascend950 策略，直接调用 `GroupedRotateQuantTiling950::DoTiling()`，无需 GMM 的多模板回退或量化输入 scale tiling。
 
@@ -69,7 +69,7 @@ workspace 预留 16 MiB 系统空间。计划中的计算沿用 L0C→UB→GM �
 
 tilingData 仅保存列表长度、分组/量化属性、输入总容量、runtimeM 标记、启动核数，以及 R=32/64/128 三个配置。未使用配置和保留字段清零。dtype 由编译描述符选择，tilingKey=0。每组 shape 已存在于 GM TensorList 描述符，避免重复序列化大数组。
 
-后续 kernel 必须完成以下工作：
+分组 kernel 按以下契约实现，后续设备验证也必须覆盖这些约束：
 
 1. 校验协议版本，按动态 TensorList 描述符解析 x/rotation/y/scale 地址及逻辑 shape；独立模式支持 rank 1..7 的 M 展平。
 2. group_list_type=0 时对累计端点作差，=1 时读取组长并累计。单 x 的每组 M 始终来自设备组表；多 x 可以没有组表，有组表时仍需检查值与描述符一致。

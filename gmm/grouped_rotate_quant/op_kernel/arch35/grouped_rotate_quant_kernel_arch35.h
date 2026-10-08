@@ -14,8 +14,7 @@ __aicore__ inline void RunGroupedRotateQuant(
     GM_ADDR x, GM_ADDR rotation, GM_ADDR alpha, GM_ADDR groupList, GM_ADDR y, GM_ADDR scale,
     const TilingData &tilingData)
 {
-    // Fail at compile time until a real grouped Tensor API backend is bound.
-    // Never publish an empty device implementation that reports success.
+    // Require an explicit backend binding, including in alternate test bindings.
     static_assert(Backend::AVAILABLE,
         "GroupedRotateQuant: grouped Tensor API backend is not integrated; "
         "complete arch35/grouped_rotate_quant_tensor_api.h before building this operator.");

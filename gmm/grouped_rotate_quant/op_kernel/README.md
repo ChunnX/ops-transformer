@@ -1,6 +1,6 @@
 # GroupedRotateQuant Ascend950 外层 kernel
 
-当前实现设备入口、tiling 解包、参数适配和 tensorApi 后端接入边界。分组计算后端尚未实现，**本算子当前不能完成设备编译或执行**；编译会给出明确的 `grouped Tensor API backend is not integrated` 静态断言，不会生成静默跳过计算的空 kernel。包含本算子的全量 kernel 构建也会遇到此断言。其他算子的源文件、公共组件和编译选项未修改。
+当前设备入口已接入 ops-tensor 的 `Blaze::Attention::Kernel::GroupedRotateQuantKernel`。分组元数据解析和调度为新增实现，矩阵计算、Fixpipe 和 MX 后处理复用 RotateQuant 组件。**源码接线已完成，真实 CANN 设备编译、出包及 Ascend950 功能/精度/性能验证尚未完成。**
 
 仅面向 Ascend950 / DAV_3510，支持范围沿用 ACLNN 直调和 Torch 单算子调用；不增加图模式能力。
 
@@ -11,7 +11,7 @@
 | `grouped_rotate_quant_apt.cpp` | 与 OpDef 一致的设备入口；单 key=0；MIX AIC:AIV=1:2；建立 TPipe |
 | `arch35/grouped_rotate_quant_kernel_arch35.h` | 读取 TilingData，检查版本，跳过全空输入，包装参数并调用一次后端 |
 | `arch35/grouped_rotate_quant_kernel_args.h` | 算子自身的外层/内层参数契约，不冒充已有 Blaze Params |
-| `arch35/grouped_rotate_quant_tensor_api.h` | 待接入的 tensorApi 类型绑定；未来在此组装真实计算组件及其 Params |
+| `arch35/grouped_rotate_quant_tensor_api.h` | 组装共享 MMAD/Epilogue 和分组 Kernel，逐字段转换库侧 Params |
 | `arch35/grouped_rotate_quant_tiling_data.h` | Host/Device 共用的 128 字节、8 字节对齐协议 |
 
 ```text
@@ -19,6 +19,9 @@ grouped_rotate_quant(x, rotation, alpha, groupList, y, scale, workspace, tiling)
   -> GroupedRotateQuantKernel<DTYPE_X, DTYPE_Y>
     -> RunGroupedRotateQuant<TensorApiBackend<...>>
       -> Backend::Kernel::operator()(const KernelArguments &)
+        -> Blaze::Attention::Kernel::GroupedRotateQuantKernel
+          -> GroupResolver + BlockSchedulerGroupedRotateQuant
+          -> BlockMmad<BlockRotateQuant<>> + BlockEpilogueRotateQuant
 ```
 
 输出类型由 OpDef 的六种 dtype 组合选择，无额外模板 key；x/rotation 类型一致，scale 为 E8M0。入口不借用其它算子的转置、量化输入或 split-K 分支。
@@ -34,20 +37,31 @@ grouped_rotate_quant(x, rotation, alpha, groupList, y, scale, workspace, tiling)
 
 ## 后端接入契约
 
-`TensorApiBackend<XType,YType>` 当前只有 `AVAILABLE=false`。接入时在此文件提供实际绑定，设为 `AVAILABLE=true`，并定义 `Kernel` 类型。该类型的 `__aicore__ operator()(const KernelArguments &)` 负责把本算子的参数转换为真实 tensorApi/Blaze 组件参数。这里没有预设不存在的库 API。
+`TensorApiBackend<XType,YType>` 已提供 `AVAILABLE=true` 及实际组件绑定。库侧参数与算子 tiling ABI 分离，禁止 reinterpret_cast 成单组 RotateQuant tiling。TilingData 的版本、长度、字段和资源预算保持不变。
 
 1. `xList/rotationList/yList/scaleList` **始终是四个独立 TensorList 描述符地址**，即使列表长度为 1。只有 `alpha/groupList` 是普通数据地址；未提供时外层统一传 nullptr。
 2. 一次后端调用覆盖本核全部 group；AIC 和 AIV 均进入后端。解析 groupList、检查组长/容量、跨组调度、同步和 rotation 缓存管理属于后端职责。禁止在此入口循环启动单组 RotateQuant。
 3. `KernelArguments::tiling` 引用当前调用中的只读数据；后端必须在返回前完成消费，不得保留引用供后续调用使用。
 4. 保持 FP32 累加、BF16 中间值、clamp 和 MX 量化的 RotateQuant 语义；FP4 打包、E8M0 padding、异常值和舍入不能借用不同量化输入算子的默认行为。需要的浮点控制状态及恢复由真实后端统一管理。
 5. 当前无用户 workspace，入口不会向后端传递系统 workspace 基址；不分配全量中间结果。新增用户 scratch 时必须同时修改 Host workspace 规划和参数契约。
-6. 后端需覆盖 FP16/BF16 × FP4_E2M1/FP8_E4M3FN/FP8_E5M2 六种组合，并提供统一的 AIC/AIV 无效输入处理路径。
+6. 后端模板覆盖 FP16/BF16 × FP4_E2M1/FP8_E4M3FN/FP8_E5M2 六种组合。所有 AIC/AIV 在计算及发布同步事件前执行相同的描述符/组表检查；设备断言不等同于 GetWorkspaceSize 阶段的同步参数错误码。
+
+## 分组执行与依赖
+
+- 每组任务拼成全局序列，以 `globalTile % usedCoreNum` 分配，空组和本核没有任务的组仍推进组遍历。
+- 两个 AIV 交替处理完整 tile；每个 tile 都回复 ACK，包括本组最后一个。AIC 在组末消费 ACK 并排空本核流水后，才允许改变 MMAD 的 L1 布局和 rotation 缓存。
+- `BlockMmad::Init(params, firstAiv)` 继承本核跨组 AIV 奇偶位置；原单组入口 `Init(params)` 的行为不变。
+- 不新增全量中间结果或用户 workspace。首版选择明确的组边界等待，性能需要设备实测。
+
+本地开发依赖同级 `ops-tensor_gmm_rotate_quant`，其中包含 PR 465 及分组扩展。也可以给 CMake 显式传入 `-DOPS_TENSOR_SOURCE_DIR=/path/to/ops-tensor_gmm_rotate_quant`，覆盖默认依赖解析。显式目录和开发同级目录不会被构建脚本 checkout。正式发布前需将分组库改动集成到可用的 ops-tensor 提交，再更新默认依赖版本；原 `deea03a7` 不包含此后端。
 
 ## 验证
 
-`../tests/ut/op_kernel/run_outer_contract_tests.py` 使用普通 C++17 编译器和最小 SDK 替身验证实际外层源码：六种 dtype 组合、四种 split 模式、两种 groupList 编码、runtimeM 的零任务数哨兵、独立输出描述符、可选输入、全空输入、ABI 布局，以及缺少后端时的预期编译失败。它不实现数学计算，不替代 CANN 编译、正式 kernel UT 或 Ascend950 功能/精度/性能验证。
+`../tests/ut/op_kernel/run_outer_contract_tests.py` 使用普通 C++17 编译器验证实际外层及参数适配器：六种 dtype 组合、四种 split 模式、两种 groupList 编码、runtimeM 的零任务数哨兵、独立输出描述符、可选输入、全空输入及 ABI 布局。底层组件使用记录替身。
+
+ops-tensor 的 `tests/ut/host/grouped_rotate_quant` 另行运行真实分组解析器/调度器，以及使用记录型计算组件和三个 Host 线程模拟 AIC/AIV 事件的真实 Kernel 编排。两类测试都不执行 MMAD/量化设备指令，不替代 CANN 编译或 NPU 数值和性能验证。
 
 ```text
-python tests/ut/op_kernel/run_outer_contract_tests.py --compiler g++
+python tests/ut/op_kernel/run_outer_contract_tests.py --compiler g++ --ops-tensor /path/to/ops-tensor_gmm_rotate_quant
 python tests/ut/op_kernel/run_outer_contract_tests.py --compiler <zig.exe> --compiler-arg c++
 ```

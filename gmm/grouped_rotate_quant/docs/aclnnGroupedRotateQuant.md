@@ -2,7 +2,7 @@
 
 [接口声明](../op_api/aclnn_grouped_rotate_quant.h) · [参数校验](../op_api/grouped_rotate_quant_checker.cpp) · [op_api 实现说明](../op_api/README.md)
 
-> 开发状态：当前已生成 op_api、op_host 和 Ascend950 tiling 层代码，尚需实现并接入 Tensor API kernel，才能执行非空计算。Host/device 约定见 [Host 与 tiling 设计](../op_host/README.md)。本文描述当前接口约束与目标计算语义；产品运行、精度、性能及确定性尚待完整实现后验证。
+> 开发状态：op_api、op_host、Ascend950 tiling 及分组 Tensor API kernel 已完成源码接线。Host/device 约定见 [Host 与 tiling 设计](../op_host/README.md)，本地 ops-tensor 依赖与验证范围见 [kernel 说明](../op_kernel/README.md)。真实 CANN 设备编译、出包、功能精度、性能及确定性仍待验证。
 
 ## 产品支持情况
 
@@ -69,7 +69,7 @@ $$
 V_g[m,32q+t]=\operatorname{clamp}\bigl(Z_g[m,32q+t],-\alpha a_{g,m,q},\alpha a_{g,m,q}\bigr)
 $$
 
-`alpha` 为所有组共享的一个 BFLOAT16 标量 Tensor。传入空指针或值为 0 时跳过 clamp；值为 1 时 clamp 不改变有限输入值。首版接口约定非空 `alpha` 的设备值位于 [0, 1]，op_api 仅检查其描述符，不读取数值。
+`alpha` 为所有组共享的一个 BFLOAT16 标量 Tensor。仅 `0 < alpha < 1` 时执行 clamp，其余值及空指针均跳过，沿用 RotateQuant 的设备判定。op_api 仅检查其描述符，不读取数值。
 
 ### 3. MX 量化
 
@@ -95,7 +95,7 @@ $$
 | 1 | FLOAT8_E4M3FN、FLOAT8_E5M2 | 由块最大绝对值与目的类型最大值之比得到浮点 scale，再按 RotateQuant 的 E8M0 指数取整规则转换 |
 | 2 | FLOAT4_E2M1 | 使用 `dstTypeMax` 选择 scale；6.0/7.0 采用 RotateQuant 对应的尾数阈值分支，其余有效值采用浮点 scale 到 E8M0 的转换分支 |
 
-`scaleAlg=0` 的 emax 对 FLOAT4_E2M1、FLOAT8_E4M3FN、FLOAT8_E5M2 分别为 2、8、15。`scaleAlg=1/2` 的详细数值规则参考 [RotateQuant 的 MX 量化说明](../../../../../rotate_quant_blaze/ops-nn_rotate_quant_blaze/matmul/rotate_quant/docs/aclnnRotateQuant.md)。上述数学公式不规定中间结果的实际存储精度；全零块、NaN/Inf、指数边界及 scale 填充位置的设备行为需要随 kernel 实现补充和验证。
+`scaleAlg=0` 的 emax 对 FLOAT4_E2M1、FLOAT8_E4M3FN、FLOAT8_E5M2 分别为 2、8、15。`scaleAlg=1/2` 的详细数值规则参考 [RotateQuant 的 MX 量化说明](../../../../../rotate_quant_blaze/ops-nn_rotate_quant_blaze/matmul/rotate_quant/docs/aclnnRotateQuant.md)。实现采用 FP32 累加，再经 Fixpipe 转为 BF16 后执行 clamp 和 MX 量化；全零块、NaN/Inf、指数边界及 scale padding 复用 RotateQuant 实现，仍需设备精度验证。
 
 ### 4. 输出布局
 
@@ -152,7 +152,7 @@ aclnnStatus aclnnGroupedRotateQuant(
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | x（const aclTensorList*） | 输入 | 各组输入数据 X | 必选；列表及元素指针非空，长度 1～1024；允许符合约束的空 Tensor；列表内 dtype 一致 | FLOAT16、BFLOAT16 | ND | 独立模式：1～7 维；M 分组：二维 `[M_i,N]` 或单个 `[M,N]` | √ |
 | rotation（const aclTensorList*） | 输入 | 旋转矩阵 A | 必选；长度为 1 或 E；dtype 与 x 相同；R 为 32/64/128 且整除对应 N；二维 Tensor 非空，三维仅在 N=0 时可为 `[0,R,R]` | 同 x | ND | 二维 `[R,R]` 或三维 `[N/R,R,R]` | √ |
-| alpha（const aclTensor*） | 输入 | 所有组共享的 clamp 系数 | 可为空指针；非空时必须为 `[1]`，不支持空 Tensor；设备值范围 [0,1]，空指针或值 0 表示跳过 clamp | BFLOAT16 | ND | 一维 `[1]` | √ |
+| alpha（const aclTensor*） | 输入 | 所有组共享的 clamp 系数 | 可为空指针；非空时必须为 `[1]`，不支持空 Tensor；仅设备值满足 `0 < alpha < 1` 时 clamp，其余值及空指针跳过 | BFLOAT16 | ND | 一维 `[1]` | √ |
 | groupListOptional（const aclTensor*） | 输入 | 各组 M 的设备分组信息 | 独立模式必须为空指针；M 分组单 x 时必选、多 x 时可省略；提供时不支持空 Tensor | INT64 | ND | 一维 `[E]` | √ |
 | splitItem（int64_t） | 输入 | 输出分组方式 | 0/1 表示 E 个输出 Tensor，2/3 表示一个拼接输出；输入布局由 x 的列表长度确定；独立模式仅支持 0/1 | - | - | - | - |
 | groupType（int64_t） | 输入 | 分组维度/模式 | -1：独立 Tensor；0：M 分组；其余值不支持 | - | - | - | - |
@@ -237,7 +237,7 @@ op_api 不读取设备 `groupListOptional`、`alpha` 的数值，因此返回成
 
 例如，三组行数为 `[2,0,3]`、总 M=5 时，累计编码为 `[2,2,5]`，行数编码为 `[2,0,3]`。允许零行组；组表必须完整覆盖全部输入行。
 
-当输入或输出以多个 Tensor 表示时，组表中的每个 M_g 还必须与对应 Tensor 的行数一致。op_api 检查描述符、列表长度及总行数等 Host 可见信息，不做设备组表的 D2H 拷贝，也无法在此阶段证明组值与分组输出容量逐项一致。调用方必须满足该约束，后续 kernel 实现还需处理运行时组边界。
+当输入或输出以多个 Tensor 表示时，组表中的每个 M_g 还必须与对应 Tensor 的行数一致。op_api 检查描述符、列表长度及总行数等 Host 可见信息，不做设备组表的 D2H 拷贝，也无法在此阶段证明组值与分组输出容量逐项一致。非空计算由分组 kernel 在数据读写前检查运行时组边界；全空快捷路径不读取设备组表。
 
 选择分组输出时，调用方需事先提供各个 `[M_g,N]` 输出 Tensor。若各 M_g 仅在设备侧已知，而 Host 只知道总 M，可选择拼接输出（splitItem=2/3），分配 `[M,N]` 的 yOut 和 `[M,ceil(N/64),2]` 的 scaleOut。
 
@@ -257,14 +257,14 @@ op_api 不读取设备 `groupListOptional`、`alpha` 的数值，因此返回成
 
 - 所有 TensorList 必须包含 1～1024 个有效 Tensor 指针；零元素 TensorList 和 shape 为 `[0]` 的 groupList 不支持。
 - 允许 M_g=0 或符合旋转约束的 N=0。即使全部输出为空，也会先完成参数及平台检查，再返回 workspaceSize=0 和有效执行器。
-- 混合空组与非空组会按常规路径提交计算，不能因其中一组为空而跳过全部计算；空组处理仍需后续 kernel 实现。
+- 混合空组与非空组会按常规路径提交计算，kernel 跳过空组并继续调度其余组。
 - 非连续 Tensor 通过输入连续化、输出 ViewCopy 适配；Tensor 的 shape、stride、viewOffset 及声明的存储范围须有效。此类适配可能增加 workspace 和数据搬运开销。
 - `tuningConfigOptional[0]` 为预期每组行数，合法范围为 `[0,max(x[i].M)]`。独立高维 x 的 M 是末维以外各维的乘积，一维 x 的 M 为 1；单个 M 分组 x 的该上界是总 M。
 - tuningConfig 是调优提示，不能替代实际 groupList；第 1 项及之后的项当前仅预留，未定义 GMM V5 中其他量化/打包开关的含义。
 
 ### 6. 确定性
 
-当前仅实现 op_api，尚无法声明设备计算的确定性行为，也未承诺通过确定性开关选择实现。该项需在 kernel 实现及验证完成后补充。
+内外层源码已接线，但尚未完成设备确定性验证，也未承诺通过确定性开关选择实现。
 
 ## 调用示例
 
@@ -284,7 +284,7 @@ op_api 不读取设备 `groupListOptional`、`alpha` 的数值，因此返回成
 | yOut | 1 个 FLOAT8_E4M3FN ND Tensor，shape 为 `[5,128]` |
 | scaleOut | 1 个 FLOAT8_E8M0 ND Tensor，shape 为 `[5,2,2]` |
 
-下例展示已有设备 Tensor 时的两段式调用。调用方需先初始化 ACL、设置 Ascend 950 设备、创建 Stream，并按上表创建 Tensor/TensorList、分配设备存储及准备输入数据。头文件来自本算子的 op_api 目录。**当前代码示例用于说明接口接线；非空执行须等待 op_host、tiling 和 kernel 完成。**
+下例展示已有设备 Tensor 时的两段式调用。调用方需先初始化 ACL、设置 Ascend 950 设备、创建 Stream，并按上表创建 Tensor/TensorList、分配设备存储及准备输入数据。头文件来自本算子的 op_api 目录。**非空执行需要包含分组后端的 ops-tensor 版本及真实 CANN 编译产物；本示例尚未完成设备验证。**
 
 ```cpp
 #include <cstdint>

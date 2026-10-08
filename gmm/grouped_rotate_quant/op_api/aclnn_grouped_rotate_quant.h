@@ -27,7 +27,7 @@ extern "C" {
  * Each tensor is [R,R] or [N/R,R,R], R in {32,64,128}, N divisible by R.
  * The first dimension of a rank-3 rotation is the number of column blocks, not E.
  * @param [in] alpha Optional shared BFLOAT16 ND tensor [1], as in RotateQuant.
- * Its device value is in [0,1]; null or zero disables clamping.
+ * Clamping is enabled only for 0 < alpha < 1; other values or null skip it.
  * @param [in] groupListOptional Device INT64 ND tensor [E]. Required for a single
  * M-grouped x, optional for E separate x tensors, and null for groupType=-1.
  * Boundaries must describe exactly all M rows and agree with separate x/y shapes.

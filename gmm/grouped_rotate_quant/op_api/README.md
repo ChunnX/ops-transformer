@@ -2,7 +2,7 @@
 
 本目录实现公开两段式接口、参数校验、输入连续化、L0 launcher 提交及双输出回写。
 目标为 Ascend 950（DAV_3510）的 MXFP4/MXFP8 路径。
-已生成 `GroupedRotateQuant` 的 op_host 定义、推导与 Ascend950 tiling；尚需实现 Tensor API kernel，才能执行非空计算。Host/device 协议见 [Host 与 tiling 设计](../op_host/README.md)。
+`GroupedRotateQuant` 的 op_host、tiling 及分组 Tensor API kernel 已完成源码接线，真实 CANN 编译和设备验证尚待完成。Host/device 协议见 [Host 与 tiling 设计](../op_host/README.md)，依赖配置见 [kernel 说明](../op_kernel/README.md)。
 
 ## 文件职责
 
@@ -44,7 +44,7 @@ M 分组且 x 为单 Tensor 时必须提供 `groupListOptional`；多 x 时可�
 
 op_api 校验 rank、dtype、E、声明的存储范围、列表长度及输入输出总 M；
 不解引用组表数据，不进行 D2H 拷贝，也不使用 tuningConfig 推测实际组长。
-**设备组值与各输出容量的一致性必须由后续 kernel 处理；op_api 返回成功并不证明设备组值有效。**
+**非空计算的设备组值与各输出容量由分组 kernel 在计算前检查；op_api 返回成功并不证明设备组值有效。全空快捷路径不读取设备组表。**
 `tuningConfigOptional[0]` 仅为 tiling 提供预期 M，校验范围与 GMM V5 一致。
 
 ## 量化和输出
