@@ -104,8 +104,8 @@ class QuantFlashMlaWithKvcacheOpBuilder(OpBuilder):
             "Tensor block_table, Tensor cache_seqlens, int quant_mode, *, "
             "Tensor? cu_seqlens_q=None, Tensor? seqused_q=None, "
             "Tensor? attn_mask=None, Tensor? metadata=None, "
-            "float softmax_scale=1.0, int mask_mode=0, "
-            "int max_seqlen_q=-1, int max_seqlen_kv=-1, int head_dim_v=512, "
+            "int head_dim_v=512, float softmax_scale=1.0, int mask_mode=0, "
+            "int max_seqlen_q=-1, int max_seqlen_kv=-1, "
             'str layout_q="BSND", str layout_kv="PA_BNBD", str layout_out="BSND", '
             "bool return_softmax_lse=False) -> (Tensor, Tensor)",
         ]
@@ -145,15 +145,16 @@ class QuantFlashMlaWithKvcacheOpBuilder(OpBuilder):
             block_table: torch.Tensor,
             cache_seqlens: torch.Tensor,
             quant_mode: Union[QuantMode, int],
+            *,
             cu_seqlens_q: Optional[torch.Tensor] = None,
             seqused_q: Optional[torch.Tensor] = None,
             attn_mask: Optional[torch.Tensor] = None,
             metadata: Optional[torch.Tensor] = None,
+            head_dim_v: Optional[int] = MLA_HEAD_DIM_V,
             softmax_scale: Optional[float] = 1.0,
             mask_mode: Optional[Union[MaskMode, int]] = MaskMode.NO_MASK,
             max_seqlen_q: Optional[int] = -1,
             max_seqlen_kv: Optional[int] = -1,
-            head_dim_v: Optional[int] = MLA_HEAD_DIM_V,
             layout_q: Optional[str] = "BSND",
             layout_kv: Optional[str] = "PA_BNBD",
             layout_out: Optional[str] = "BSND",
@@ -322,15 +323,16 @@ def quant_flash_mla_with_kvcache(
     block_table: torch.Tensor,
     cache_seqlens: torch.Tensor,
     quant_mode: Union[QuantMode, int],
+    *,
     cu_seqlens_q: Optional[torch.Tensor] = None,
     seqused_q: Optional[torch.Tensor] = None,
     attn_mask: Optional[torch.Tensor] = None,
     metadata: Optional[torch.Tensor] = None,
+    head_dim_v: Optional[int] = MLA_HEAD_DIM_V,
     softmax_scale: Optional[float] = 1.0,
     mask_mode: Optional[Union[MaskMode, int]] = MaskMode.NO_MASK,
     max_seqlen_q: Optional[int] = -1,
     max_seqlen_kv: Optional[int] = -1,
-    head_dim_v: Optional[int] = MLA_HEAD_DIM_V,
     layout_q: Optional[str] = "BSND",
     layout_kv: Optional[str] = "PA_BNBD",
     layout_out: Optional[str] = "BSND",
@@ -400,11 +402,11 @@ def quant_flash_mla_with_kvcache(
         seqused_q,
         attn_mask,
         metadata,
+        head_dim_v,
         softmax_scale,
         mask_mode,
         max_seqlen_q,
         max_seqlen_kv,
-        head_dim_v,
         layout_q,
         layout_kv,
         layout_out,

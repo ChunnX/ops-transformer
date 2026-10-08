@@ -119,11 +119,11 @@ cann_ops_transformer.quant_flash_mla_with_kvcache(
     seqused_q=None,
     attn_mask=None,
     metadata=None,
+    head_dim_v=512,
     softmax_scale=None,
     mask_mode=0,
     max_seqlen_q=-1,
     max_seqlen_kv=-1,
-    head_dim_v=512,
     layout_q="BSND",
     layout_kv="PA_BNBD",
     layout_out="BSND",
@@ -205,11 +205,11 @@ cann_ops_transformer.quant_flash_mla_with_kvcache(
 | attn_mask | Tensor | 可选 | 掩码矩阵，仅在mask_mode为3（CAUSAL）时需要 | int8/uint8/bool | ND | (2048, 2048) | × |
 | metadata | Tensor | 可选 | `quant_flash_mla_with_kvcache_metadata`生成的任务切分结果，传入后可优化调度 | int32 | ND | (max_schedule_size,) | x |
 | quant_mode | int | 必选 | 量化模式，支持传入枚举或对应 int 值 | int32 | - | - | - |
+| head_dim_v | int | 可选 | v的每个注意力头维度，默认值为512，当前仅支持512 | int32 | - | - | - |
 | softmax_scale | float | 可选 | 可显式设置缩放因子。不传入时默认取 1/sqrt(headdim) | float32 | - | - | - |
 | mask_mode | int/MaskMode | 可选 | 掩码模式，支持传入枚举或对应 int 值，枚举定义见「mask_mode 枚举」 | int32 | - | - | - |
 | max_seqlen_q | int | 可选 | 指定查询q序列的长度上限 | int32 | - | - | - |
 | max_seqlen_kv | int | 可选 | 指定键k和值v序列的长度上限 | int32 | - | - | - |
-| head_dim_v | int | 可选 | v的每个注意力头维度，默认值为512，当前仅支持512 | int32 | - | - | - |
 | layout_q | string | 可选 | 定义输入q张量的布局格式 | string | - | - | - |
 | layout_kv | string | 可选 | 定义输入k_cache张量的布局格式 | string | - | - | - |
 | layout_out | string | 可选 | 定义输出attn_out张量的布局格式 | string | - | - | - |

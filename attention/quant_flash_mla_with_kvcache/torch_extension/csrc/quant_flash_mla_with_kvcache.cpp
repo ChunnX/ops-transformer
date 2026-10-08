@@ -37,8 +37,8 @@ std::tuple<at::Tensor, at::Tensor> quant_flash_mla_with_kvcache(
     const at::Tensor& q, const at::Tensor& k_cache, const at::Tensor& q_descale, const at::Tensor& k_descale,
     const at::Tensor& block_table, const at::Tensor& cache_seqlens, int64_t quant_mode,
     const c10::optional<at::Tensor>& cu_seqlens_q, const c10::optional<at::Tensor>& seqused_q,
-    const c10::optional<at::Tensor>& attn_mask, const c10::optional<at::Tensor>& metadata, double softmax_scale,
-    int64_t mask_mode, int64_t max_seqlen_q, int64_t max_seqlen_kv, int64_t head_dim_v, std::string layout_q,
+    const c10::optional<at::Tensor>& attn_mask, const c10::optional<at::Tensor>& metadata, int64_t head_dim_v,
+    double softmax_scale, int64_t mask_mode, int64_t max_seqlen_q, int64_t max_seqlen_kv, std::string layout_q,
     std::string layout_kv, std::string layout_out, bool return_softmax_lse)
 {
     const c10::string_view device = "npu";
