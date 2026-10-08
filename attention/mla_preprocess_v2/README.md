@@ -123,7 +123,7 @@
     <td>deScale0</td>
     <td>输入</td>
     <td>Device侧的aclTensor，输入首次做矩阵乘的降维矩阵中的系数，shape为[qLoraDim + keyTotalDim]。input的dtype为FLOAT16时支持INT64，输入BFLOAT16时支持FLOAT</td>
-    <td>INT32, FLOAT</td>
+    <td>INT64, FLOAT</td>
     <td>ND</td>
   </tr>
   <tr>
