@@ -329,23 +329,14 @@ protected:
     {
         LocalTensor<T> lseSum = cntM % 2 == 0 ? fdSumBuf1.ReinterpretCast<T>() : fdSumBuf2.ReinterpretCast<T>();
         LocalTensor<T> lseMax = cntM % 2 == 0 ? fdMaxBuf1.ReinterpretCast<T>() : fdMaxBuf2.ReinterpretCast<T>();
-        if (unlikely(learnableSinkFlag)) {
-            SinkMax(startRow, dealRowCount);
-        }
         LocalTensor<T> lseMaxUb =
             cntM % 2 == 0 ? fdLseMaxUbBuf1.ReinterpretCast<T>() : fdLseMaxUbBuf2.ReinterpretCast<T>();
 
         LocalTensor<T> sinkExpBuf = fdSinkExpBuf.ReinterpretCast<T>();
         LocalTensor<T> maxLseUb = fdLseUbBuf.ReinterpretCast<T>();
-        if (unlikely(learnableSinkFlag)) {
-            FaVectorApi::ComputeScaleValue_VF_FD<T, T, SinkInjectStage::AT_FD_EPILOGUE>(
-                sinkExpBuf, lseMax, lseSum, lseExp, maxLseUb, lseMaxUb, dealRowCount, actualCombineLoopSize,
-                constInfo.isSoftmaxLseEnable, true);
-        } else {
-            FaVectorApi::ComputeScaleValue_VF_FD<T, T, SinkInjectStage::AT_FA_PROLOGUE>(
-                sinkExpBuf, lseMax, lseSum, lseExp, maxLseUb, lseMaxUb, dealRowCount, actualCombineLoopSize,
-                constInfo.isSoftmaxLseEnable, false);
-        }
+        FaVectorApi::ComputeScaleValue_VF_FD<T, T, SinkInjectStage::AT_FA_PROLOGUE>(
+            sinkExpBuf, lseMax, lseSum, lseExp, maxLseUb, lseMaxUb, dealRowCount, actualCombineLoopSize,
+            constInfo.isSoftmaxLseEnable, false);
     }
 
     __aicore__ inline void Bmm2DataCopyOutTrans(LocalTensor<OUTPUT_T> &attenOutUb, uint32_t startRow,

@@ -876,9 +876,8 @@ public:
             fixpipeParams.params.ndNum = 1U;
             fixpipeParams.params.srcNdStride = 0U;
             fixpipeParams.params.dstNdStride = 0U;
-            fixpipeParams.quantPre = QF322F32_PRE;
-            float scale = constInfo.scaleValue;
-            fixpipeParams.deqScalar = static_cast<uint64_t>(*reinterpret_cast<int32_t *>(&scale));
+            // Preserve QK in FP32. The ND vector softmax applies scale in
+            // FP32, keeping QK and the unscaled sink in the same domain.
 
             Fixpipe<MM_T, MM_T, FIXPIPE_ROW_MAJOR_UB_CONFIG>(dstTensor, l0C, fixpipeParams);
         }

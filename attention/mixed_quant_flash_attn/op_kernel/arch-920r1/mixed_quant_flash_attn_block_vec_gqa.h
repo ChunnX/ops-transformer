@@ -624,6 +624,8 @@ public:
         WaitFlag<HardEvent::MTE3_V>(MTE3_V_VEC1RES_0 + vec1ResId);
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM1_0 + bmm1BufId);
 
+        // QK stays FP32 through Fixpipe; ProcessVec1Vf applies scale together
+        // with softmax, so it remains in the same domain as the FP32 sink.
         bool initializeFromSink = constInfo.learnableSinkFlag && runInfo.isFirstS2Loop && runInfo.isFirstFdBlock;
         if (initializeFromSink) {
             InitSinkSoftmax(runInfo, sumUb, maxUb);

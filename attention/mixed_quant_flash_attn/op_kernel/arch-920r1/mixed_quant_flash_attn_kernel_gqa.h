@@ -165,10 +165,8 @@ public:
             if constexpr (QUANT_COMPUTE_MODE == AntiquantMode_FP8_PC) {
                 vecFaBlock.InitQuant(kDescale, vDescale);
             }
-            if (constInfo.learnableSinkFlag) {
-                sinkGm.SetGlobalBuffer((__gm__ float *)learnableSink);
-                vecFdBlock.InitLearnableSinkGm(sinkGm);
-            }
+            // Sink is seeded once in the first FA partition, as in flash_attn.
+            // FD combines ordinary partial max/sum/output; do not inject again.
             if (this->tilingData->mixedQuantFlashAttnBaseParams.needInitOutput) {
                 vecFaBlock.ClearOutput();
                 // if (constInfo.aicIdx == 0) {

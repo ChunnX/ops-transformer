@@ -47,7 +47,11 @@ def blob(repo: Path, ref: str, path: str) -> str:
 
 
 def report(
-    repo: Path, ref: str, case: str, changed_paths: list[str] | None = None
+    repo: Path,
+    ref: str,
+    case: str,
+    expected_commit: str | None = None,
+    changed_paths: list[str] | None = None,
 ) -> bool:
     paths = changed_paths if changed_paths is not None else summary_paths(repo, ref)
     for path in reversed(paths):
@@ -57,10 +61,13 @@ def report(
         )
         if fields.get("case") != case:
             continue
+        tested_commit = fields.get("commit", "unknown")
+        if expected_commit and not tested_commit.startswith(expected_commit):
+            continue
 
         print(
             f"CI log commit={git(repo, 'rev-parse', '--short', ref)} "
-            f"tested_commit={fields.get('commit', 'unknown')} case={case} "
+            f"tested_commit={tested_commit} case={case} "
             f"result={fields.get('result', 'unknown')}"
         )
         parent = str(Path(path).parent).replace("\\", "/")
@@ -70,6 +77,14 @@ def report(
         detail_paths = [
             f"{parent}/{name}" for name in ("build_errors.log", "verify.log")
         ]
+        artifacts = [
+            artifact
+            for artifact in git(
+                repo, "ls-tree", "-r", "--name-only", ref, "--", parent
+            ).splitlines()
+            if artifact.lower().endswith(".pt")
+        ]
+        print(f"  pt_artifacts={', '.join(artifacts) if artifacts else 'none'}")
         detail = "\n".join(blob(repo, ref, p) for p in detail_paths if p in available)
         compile_result = (
             "FAIL"
@@ -104,6 +119,10 @@ def main() -> int:
     parser.add_argument("--repo", type=Path, default=Path.cwd(), help="repository root")
     parser.add_argument("--case", default=DEFAULT_CASE, help="test case to report")
     parser.add_argument(
+        "--commit",
+        help="only report a result whose tested commit starts with this hash",
+    )
+    parser.add_argument(
         "--interval", type=float, default=20.0, help="poll interval in seconds"
     )
     parser.add_argument(
@@ -125,8 +144,11 @@ def main() -> int:
         git(repo, "fetch", "--quiet", "origin", "log")
         tip = git(repo, "rev-parse", "origin/log")
         if args.once:
-            if not report(repo, "origin/log", args.case):
-                print(f"No CI summary found for case {args.case} on origin/log.")
+            if not report(repo, "origin/log", args.case, args.commit):
+                print(
+                    f"No CI summary found for case {args.case}"
+                    f"{f' and commit {args.commit}' if args.commit else ''} on origin/log."
+                )
             return 0
 
         last = (
@@ -135,7 +157,7 @@ def main() -> int:
             else ""
         )
         if not last:
-            report(repo, "origin/log", args.case)
+            report(repo, "origin/log", args.case, args.commit)
             state_path.write_text(tip + "\n", encoding="utf-8")
         elif last != tip:
             merge_base = git(repo, "merge-base", last, tip, check=False)
@@ -153,7 +175,7 @@ def main() -> int:
                 message = git(repo, "show", "-s", "--format=%s", commit)
                 print(f"log branch update {commit[:12]}: {message}")
                 if summaries:
-                    report(repo, commit, args.case, summaries)
+                    report(repo, commit, args.case, args.commit, summaries)
             state_path.write_text(tip + "\n", encoding="utf-8")
 
         if args.once:
