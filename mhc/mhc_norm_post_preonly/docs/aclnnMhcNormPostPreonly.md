@@ -113,12 +113,14 @@
 ```Cpp
 aclnnStatus aclnnMhcNormPostPreonlyGetWorkspaceSize(
     const aclTensor *hOut, const aclTensor *residual, const aclTensor *hPost,
-    const aclTensor *hResOptional, const aclTensor *phi, const aclTensor *alpha0,
+    const aclTensor *hResOptional, const aclTensor *phi, const aclTensor *alpha,
     const aclTensor *bias, const aclTensor *gamma1,
+    const aclTensor *preMixOptional,
     const aclTensor *gamma0Optional, const aclTensor *gamma2Optional,
     float normEps, float mhcPreNormEps, float hcEps,
     bool returnHInF32, const aclTensor *hInPrimeOut,
     const aclTensor *x2Out, const aclTensor *hInF32OutOptional,
+    const aclTensor *hPreOptional,
     uint64_t *workspaceSize, aclOpExecutor **executor)
 ```
 
@@ -140,9 +142,10 @@ aclnnStatus aclnnMhcNormPostPreonly(
   <tr><td>hPost（aclTensor*）</td><td>输入</td><td>MHC_Post的主分支权重。</td><td><ul><li>不支持空Tensor。</li><li>shape为(T, N)或(B, S, N)。</li></ul></td><td>FLOAT32</td><td>ND</td><td>2-3</td><td>√</td></tr>
   <tr><td>hResOptional（aclTensor*）</td><td>可选输入</td><td>mHC的hRes变换矩阵，是做完sinkhorn变换后的双随机矩阵。该参数为接口预留，暂不支持传空指针。</td><td><ul><li>shape为(T, N, N)或(B, S, N, N)。</li></ul></td><td>FLOAT32</td><td>ND</td><td>3-4</td><td>√</td></tr>
   <tr><td>phi（aclTensor*）</td><td>输入</td><td>MHC_Pre的投影参数。</td><td><ul><li>不支持空Tensor。</li><li>shape为(N, N×D)。</li></ul></td><td>FLOAT32</td><td>ND</td><td>2</td><td>√</td></tr>
-  <tr><td>alpha0（aclTensor*）</td><td>输入</td><td>MHC_Pre的缩放参数。</td><td><ul><li>不支持空Tensor。</li><li>shape为(1)。</li></ul></td><td>FLOAT32</td><td>ND</td><td>1</td><td>√</td></tr>
+  <tr><td>alpha（aclTensor*）</td><td>输入</td><td>MHC_Pre的缩放参数。</td><td><ul><li>不支持空Tensor。</li><li>shape为(1)。</li></ul></td><td>FLOAT32</td><td>ND</td><td>1</td><td>√</td></tr>
   <tr><td>bias（aclTensor*）</td><td>输入</td><td>MHC_Pre的偏置参数。</td><td><ul><li>不支持空Tensor。</li><li>shape为(N)。</li></ul></td><td>FLOAT32</td><td>ND</td><td>1</td><td>√</td></tr>
   <tr><td>gamma1（aclTensor*）</td><td>输入</td><td>RMSNorm_1的缩放因子。</td><td><ul><li>不支持空Tensor。</li><li>shape为(D)。</li></ul></td><td>FLOAT32</td><td>ND</td><td>1</td><td>√</td></tr>
+  <tr><td>preMixOptional（aclTensor*）</td><td>可选输入</td><td>MHC_Pre门控加权系数的外部替代输入（典型用法为回填上一轮hPre输出）。该参数为接口预留，暂不支持非空输入。</td><td><ul><li>当前仅支持传空指针。</li><li>shape为(T, N)或(B, S, N)。</li></ul></td><td>FLOAT32</td><td>ND</td><td>2-3</td><td>√</td></tr>
   <tr><td>gamma0Optional（aclTensor*）</td><td>可选输入</td><td>RMSNorm_0的缩放因子。</td><td><ul><li>暂不支持传空指针。</li><li>shape为(D)。</li></ul></td><td>FLOAT32</td><td>ND</td><td>1</td><td>√</td></tr>
   <tr><td>gamma2Optional（aclTensor*）</td><td>可选输入</td><td>RMSNorm_mid的缩放因子。</td><td><ul><li>可传空指针，表示跳过RMSNorm_mid。</li><li>非空时shape为(N×D)。</li></ul></td><td>FLOAT32</td><td>ND</td><td>1</td><td>√</td></tr>
   <tr><td>normEps（float）</td><td>可选输入</td><td>RMSNorm的防除零参数。</td><td>建议值：1e-6。</td><td>FLOAT</td><td>-</td><td>-</td><td>-</td></tr>
@@ -152,6 +155,7 @@ aclnnStatus aclnnMhcNormPostPreonly(
   <tr><td>hInPrimeOut（aclTensor*）</td><td>输出</td><td>下一层输入，对应公式中的hInPrime。</td><td><ul><li>不支持空Tensor。</li><li>shape为(T, D)或(B, S, D)，数据类型与hOut一致。</li></ul></td><td>FLOAT16、BFLOAT16</td><td>ND</td><td>2-3</td><td>×</td></tr>
   <tr><td>x2Out（aclTensor*）</td><td>输出</td><td>MHC_Post或可选RMSNorm_mid的输出。</td><td><ul><li>不支持空Tensor。</li><li>shape为(T, N, D)或(B, S, N, D)，数据类型与hOut一致。</li></ul></td><td>FLOAT16、BFLOAT16</td><td>ND</td><td>3-4</td><td>×</td></tr>
   <tr><td>hInF32OutOptional（aclTensor*）</td><td>可选输出</td><td>RMSNorm_1的FLOAT计算结果。</td><td><ul><li>returnHInF32为false时必须传空指针。</li><li>returnHInF32为true时不支持空Tensor，shape为(T, D)或(B, S, D)。</li></ul></td><td>FLOAT32</td><td>ND</td><td>2-3</td><td>×</td></tr>
+  <tr><td>hPreOptional（aclTensor*）</td><td>可选输出</td><td>本轮内部计算的pre结果（sigmoid后的加权系数），可作为下一轮preMixOptional的输入。该参数为接口预留，暂不支持输出。</td><td><ul><li>当前仅支持传空指针。</li><li>shape为(T, N)或(B, S, N)。</li></ul></td><td>FLOAT32</td><td>ND</td><td>2-3</td><td>×</td></tr>
   <tr><td>workspaceSize（uint64_t*）</td><td>输出</td><td>返回需要在Device侧申请的workspace大小。</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td></tr>
   <tr><td>executor（aclOpExecutor**）</td><td>输出</td><td>返回op执行器，包含了算子计算流程。</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td></tr>
   </tbody></table>
@@ -189,9 +193,9 @@ aclnnStatus aclnnMhcNormPostPreonly(
 uint64_t workspaceSize = 0;
 aclOpExecutor *executor = nullptr;
 aclnnStatus ret = aclnnMhcNormPostPreonlyGetWorkspaceSize(
-    hOut.tensor, residual.tensor, hPost.tensor, hResOptional.tensor, phi.tensor, alpha0.tensor, bias.tensor, gamma1.tensor,
-    gamma0.tensor, nullptr, 1e-6, 1e-6, 1e-6, false, hInPrimeOut.tensor, x2Out.tensor, nullptr, &workspaceSize,
-    &executor);
+    hOut.tensor, residual.tensor, hPost.tensor, hResOptional.tensor, phi.tensor, alpha.tensor, bias.tensor, gamma1.tensor,
+    nullptr, gamma0.tensor, nullptr, 1e-6, 1e-6, 1e-6, false, hInPrimeOut.tensor, x2Out.tensor, nullptr, nullptr,
+    &workspaceSize, &executor);
 CHECK_RET(ret == ACLNN_SUCCESS, LOG_PRINT("GetWorkspaceSize failed, error: %d\n", ret); return -1);
 
 void *workspace = nullptr;

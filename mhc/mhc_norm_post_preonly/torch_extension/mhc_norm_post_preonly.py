@@ -28,6 +28,13 @@ def _output_shapes(h_out: torch.Tensor, residual: torch.Tensor):
     return (b, s, d), (b, s, n, d)
 
 
+def _h_pre_shape(h_out: torch.Tensor, residual: torch.Tensor):
+    # h_pre 为接口预留的可选输出，形状与 h_post 一致：2D [T, N]，3D [B, S, N]。
+    if h_out.dim() == 2:
+        return (h_out.shape[0], residual.shape[1])
+    return (h_out.shape[0], h_out.shape[1], residual.shape[2])
+
+
 class MhcNormPostPreonlyOpBuilder(OpBuilder):
     def __init__(self):
         super().__init__(_OP_NAME, category="mhc")
@@ -38,10 +45,10 @@ class MhcNormPostPreonlyOpBuilder(OpBuilder):
     def schema(self) -> List[str]:
         return [
             f"{_OP_NAME}(Tensor h_out, Tensor residual, Tensor h_post, Tensor? h_res, "
-            "Tensor phi, Tensor alpha_0, Tensor bias, Tensor gamma_0, Tensor gamma_1, "
-            "Tensor? gamma_2=None, float norm_eps=1e-6, float mhc_pre_norm_eps=1e-6, "
-            "float hc_eps=1e-6, bool return_h_in_f32=False) -> "
-            "(Tensor, Tensor, Tensor)",
+            "Tensor phi, Tensor alpha, Tensor bias, Tensor gamma_1, "
+            "Tensor? pre_mix=None, Tensor? gamma_0=None, Tensor? gamma_2=None, float norm_eps=1e-6, "
+            "float mhc_pre_norm_eps=1e-6, float hc_eps=1e-6, bool return_h_in_f32=False) -> "
+            "(Tensor, Tensor, Tensor, Tensor)",
         ]
 
     def register_meta(self):
@@ -52,10 +59,11 @@ class MhcNormPostPreonlyOpBuilder(OpBuilder):
             h_post,
             h_res,
             phi,
-            alpha_0,
+            alpha,
             bias,
-            gamma_0,
             gamma_1,
+            pre_mix=None,
+            gamma_0=None,
             gamma_2=None,
             norm_eps=1e-6,
             mhc_pre_norm_eps=1e-6,
@@ -72,6 +80,9 @@ class MhcNormPostPreonlyOpBuilder(OpBuilder):
                 torch.empty(h_in_shape, dtype=h_out.dtype, device="meta"),
                 torch.empty(x2_shape, dtype=h_out.dtype, device="meta"),
                 h_in_f32,
+                torch.empty(
+                    _h_pre_shape(h_out, residual), dtype=torch.float32, device="meta"
+                ),
             )
 
 
@@ -86,10 +97,11 @@ def _dispatch(
     h_post,
     h_res,
     phi,
-    alpha_0,
+    alpha,
     bias,
-    gamma_0,
     gamma_1,
+    pre_mix=None,
+    gamma_0=None,
     gamma_2=None,
     norm_eps=1e-6,
     mhc_pre_norm_eps=1e-6,
@@ -102,10 +114,11 @@ def _dispatch(
         h_post,
         h_res,
         phi,
-        alpha_0,
+        alpha,
         bias,
-        gamma_0,
         gamma_1,
+        pre_mix,
+        gamma_0,
         gamma_2,
         norm_eps,
         mhc_pre_norm_eps,
@@ -124,6 +137,7 @@ def mhc_norm_post_preonly(
     bias: torch.Tensor,
     gamma_1: torch.Tensor,
     *,
+    pre_mix: Optional[torch.Tensor] = None,
     gamma_0: Optional[torch.Tensor] = None,
     gamma_2: Optional[torch.Tensor] = None,
     norm_eps: float = 1e-6,
@@ -148,12 +162,14 @@ def mhc_norm_post_preonly(
         phi,
         alpha,
         bias,
-        gamma_0,
         gamma_1,
+        pre_mix,
+        gamma_0,
         gamma_2,
         norm_eps,
         mhc_pre_norm_eps,
         hc_eps,
         return_h_in_f32,
     )
-    return outputs if return_h_in_f32 else outputs[:2]
+    # h_pre 为接口预留的可选输出，当前版本暂不支持，返回形式保持不变。
+    return outputs[:3] if return_h_in_f32 else outputs[:2]
