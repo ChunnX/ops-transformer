@@ -2174,8 +2174,12 @@ if __name__ == "__main__":
     if ENABLE_LSE:
         logger.info("\n[Step 5] LSE 精度对比")
         # LSE输出规格: BSND/BNSD输入 -> BNS[B,N,S]; TND/TND_NTD输入 -> NT
-        lse_compare_layout = "BNSD" if INPUT_LAYOUT in ("BSND", "BNSD") else compare_layout
-        cpu_lse_tnd_torch = convert_q_bnsd_to_layout(cpu_lse, SEQUSED_Q, lse_compare_layout)
+        lse_compare_layout = (
+            "BNSD" if INPUT_LAYOUT in ("BSND", "BNSD") else compare_layout
+        )
+        cpu_lse_tnd_torch = convert_q_bnsd_to_layout(
+            cpu_lse, SEQUSED_Q, lse_compare_layout
+        )
         status, _, _ = result_compare_method.check_result_device(
             cpu_lse_tnd_torch, lse_out
         )
