@@ -12,8 +12,8 @@
  * \file mega_moe.cpp
  * \brief Unified MegaMoe entry kernel.
  *        - A3 (910_93): W4A8 (int4 weight), INT8 (int8 weight), BF16/FP16 weight
- *        - A2 (910B):   INT8 (int8 weight), BF16/FP16 weight
- *        Note: W4A8 on A2 is reserved but not yet implemented.
+ *        - A2 (910B):   W4A8 (int4 weight), INT8 (int8 weight), BF16/FP16 weight
+ *        Original INT32 weight instances remain excluded from the A2 kernel.
  */
 #if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
@@ -23,12 +23,10 @@
 #include "lib/matmul_intf.h"
 #include "mega_moe_tiling_a2a3.h"
 #include "mega_moe_tiling_key.h"
-#include "mega_moe_a2.h"
 #include "mega_moe_arch22.h"
 
 using namespace AscendC;
 using namespace MegaMoeImpl;
-using namespace MegaMoeA2Impl;
 
 template <bool TPL_IS_TRANSPOSE_W1, bool TPL_IS_TRANSPOSE_W2, int TPL_QUANT_MODE, int TPL_QUANT_OUT_TYPE, int TPL_ARCH>
 __global__ __aicore__ void mega_moe(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds, GM_ADDR topkWeights, GM_ADDR weight1,
@@ -44,38 +42,23 @@ __global__ __aicore__ void mega_moe(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds,
     constexpr bool isA2 = (TPL_ARCH == SOC_ASCEND910B);
     REGISTER_TILING_DEFAULT(MegaMoeTilingDataNonQuant);
     REGISTER_TILING_FOR_TILINGKEY("(QuantMode == MEGA_MOE_QUANT_MODE_PER_TOKEN)", MegaMoeTilingDataQuant);
-    if constexpr (isA2) {
 #if (ORIG_DTYPE_WEIGHT1 != DT_INT32)
-        if constexpr (TPL_QUANT_MODE == MEGA_MOE_QUANT_MODE_PER_TOKEN) {
-            GET_TILING_DATA_WITH_STRUCT(MegaMoeTilingDataQuant, tilingData, tilingGM);
-
-            MegaMoeA2<DTYPE_X, DTYPE_WEIGHT1, DTYPE_Y, TPL_IS_TRANSPOSE_W1, TPL_IS_TRANSPOSE_W2, isNz, true> op;
-            op.Init(context, x, topkIds, topkWeights, weight1, weight2, weightScales1, weightScales2, bias1, bias2,
-                    xActiveMask, scales, yOut, expertTokenNumsOut, workspaceGM, tilingGM);
-            op.Process();
-        } else if constexpr (TPL_QUANT_MODE == MEGA_MOE_QUANT_MODE_NO_QUANT) {
-            GET_TILING_DATA_WITH_STRUCT(MegaMoeTilingDataNonQuant, tilingData, tilingGM);
-
-            MegaMoeA2<DTYPE_X, DTYPE_WEIGHT1, DTYPE_Y, TPL_IS_TRANSPOSE_W1, TPL_IS_TRANSPOSE_W2, isNz, true> op;
-            op.Init(context, x, topkIds, topkWeights, weight1, weight2, weightScales1, weightScales2, bias1, bias2,
-                    xActiveMask, scales, yOut, expertTokenNumsOut, workspaceGM, tilingGM);
-            op.Process();
-        }
+    if constexpr (!isA2 || TPL_QUANT_MODE == MEGA_MOE_QUANT_MODE_PER_TOKEN ||
+                  TPL_QUANT_MODE == MEGA_MOE_QUANT_MODE_NO_QUANT) {
+#else
+    // The original INT32 weight path is unavailable on A2. Keep its template
+    // instance out of this translation unit while A3 retains the packed W4A8 path.
+    if constexpr (!isA2) {
 #endif
-    } else {
         if constexpr (TPL_QUANT_MODE == MEGA_MOE_QUANT_MODE_PER_TOKEN) {
             GET_TILING_DATA_WITH_STRUCT(MegaMoeTilingDataQuant, tilingData, tilingGM);
-            MegaMoe<DTYPE_X, DTYPE_WEIGHT1, DTYPE_Y, TPL_IS_TRANSPOSE_W1, TPL_IS_TRANSPOSE_W2, isNz, false> op;
-            op.Init(context, x, topkIds, topkWeights, weight1, weight2, weightScales1, weightScales2, bias1, bias2,
-                    xActiveMask, scales, maskBuffer, yOut, expertTokenNumsOut, workspaceGM, tilingGM);
-            op.Process();
         } else {
             GET_TILING_DATA_WITH_STRUCT(MegaMoeTilingDataNonQuant, tilingData, tilingGM);
-
-            MegaMoe<DTYPE_X, DTYPE_WEIGHT1, DTYPE_Y, TPL_IS_TRANSPOSE_W1, TPL_IS_TRANSPOSE_W2, isNz, false> op;
-            op.Init(context, x, topkIds, topkWeights, weight1, weight2, weightScales1, weightScales2, bias1, bias2,
-                    xActiveMask, scales, maskBuffer, yOut, expertTokenNumsOut, workspaceGM, tilingGM);
-            op.Process();
         }
+
+        MegaMoe<DTYPE_X, DTYPE_WEIGHT1, DTYPE_Y, TPL_IS_TRANSPOSE_W1, TPL_IS_TRANSPOSE_W2, isNz, isA2> op;
+        op.Init(context, x, topkIds, topkWeights, weight1, weight2, weightScales1, weightScales2, bias1, bias2,
+                xActiveMask, scales, maskBuffer, yOut, expertTokenNumsOut, workspaceGM, tilingGM);
+        op.Process();
     }
 }
