@@ -40,20 +40,27 @@ if("${CONDITION_UNIT}" STREQUAL "ascend950")
     )
 endif()
 
+# 说明：--cce-auto-sync=off 只保留给 950(PyPTO) 路径。arch22 kernel 移植自已验证的
+# A3 独立实现（其构建链默认 auto-sync=ON），其 MulAddDst 车道累积等写法依赖编译器
+# auto-sync 语义；CANN op 编译链对未显式给 off 的算子默认追加 --cce-auto-sync=on，
+# 故 arch22 不带该选项即为已验证配置（off 会在 scatter 相位产生数值损坏，已实机定位）。
 if (BUILD_OPS_RTY_KERNEL)
     add_ops_compile_options(
         OP_NAME CompressorGrad
-        OPTIONS --cce-auto-sync=off
-                -Wno-deprecated-declarations
+        OPTIONS -Wno-deprecated-declarations
                 -Werror
     )
 else()
     add_ops_compile_options(
         OP_NAME CompressorGrad
-        OPTIONS --cce-auto-sync=off
-                -Wno-deprecated-declarations
+        OPTIONS -Wno-deprecated-declarations
     )
 endif()
+add_ops_compile_options(
+    OP_NAME CompressorGrad
+    COMPUTE_UNIT Ascend950PR_9599
+    OPTIONS --cce-auto-sync=off
+)
 
 if(NOT BUILD_OPS_RTY_KERNEL)
     add_modules_sources(OPTYPE compressor_grad ACLNNTYPE aclnn)
