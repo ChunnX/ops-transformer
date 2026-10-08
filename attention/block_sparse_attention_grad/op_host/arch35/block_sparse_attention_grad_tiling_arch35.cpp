@@ -48,8 +48,8 @@ bool IsSameShape(Args... shapes)
     return true;
 }
 
-ge::graphStatus InputCheck(const std::vector<int32_t> &q_shape, const std::vector<int32_t> &k_shape,
-                           const std::vector<int32_t> &v_shape, const int32_t q_group, gert::TilingContext *context)
+ge::graphStatus InputCheck(const std::vector<int32_t>& q_shape, const std::vector<int32_t>& k_shape,
+                           const std::vector<int32_t>& v_shape, const int32_t q_group, gert::TilingContext* context)
 {
     /* function: 根据固定格式传入shape检查输入是否符合要求
      * shape：[b, n, s, d]
@@ -73,7 +73,7 @@ ge::graphStatus InputCheck(const std::vector<int32_t> &q_shape, const std::vecto
 
 class BlockSparseAttentionGradArch35Tiling : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit BlockSparseAttentionGradArch35Tiling(gert::TilingContext *context_)
+    explicit BlockSparseAttentionGradArch35Tiling(gert::TilingContext* context_)
         : TilingBaseClass(context_)
     {}
 
@@ -106,18 +106,22 @@ protected:
         int32_t k_batch_num, k_head_num, k_seq_len, k_head_dim;
         int32_t v_batch_num, v_head_num, v_seq_len, v_head_dim;
         auto qInputDesc = context_->GetInputDesc(1);
-        const gert::StorageShape *queryShape = context_->GetInputShape(1);
-        const gert::StorageShape *keyShape = context_->GetInputShape(2);
-        const gert::StorageShape *valueShape = context_->GetInputShape(3);
-        const char *qInputLayout = context_->GetAttrs()->GetAttrPointer<char>(0);
-        const char *kvInputLayout = context_->GetAttrs()->GetAttrPointer<char>(1);
+        const gert::StorageShape* queryShape = context_->GetInputShape(1);
+        const gert::StorageShape* keyShape = context_->GetInputShape(2);
+        const gert::StorageShape* valueShape = context_->GetInputShape(3);
+        const char* qInputLayout = context_->GetAttrs()->GetAttrPointer<char>(0);
+        const char* kvInputLayout = context_->GetAttrs()->GetAttrPointer<char>(1);
+        if (qInputLayout == nullptr || kvInputLayout == nullptr) {
+            OP_LOGE(context_->GetNodeName(), "qInputLayout or kvInputLayout is nullptr.");
+            return ge::GRAPH_FAILED;
+        }
         const float softmaxScale = *context_->GetAttrs()->GetAttrPointer<float>(4);
         auto blockShapeOptional = context_->GetInputTensor(8);
         if (blockShapeOptional == nullptr) {
             OP_LOGE(context_->GetNodeName(), "Block shape tensor is null");
             return ge::GRAPH_FAILED;
         }
-        const int64_t *blockShapeList = blockShapeOptional->GetData<int64_t>();
+        const int64_t* blockShapeList = blockShapeOptional->GetData<int64_t>();
         if (blockShapeList == nullptr) {
             OP_LOGE(context_->GetNodeName(), "Block shape tensor is null");
             return ge::GRAPH_FAILED;
@@ -214,7 +218,7 @@ protected:
             v_head_dim = valueShape->GetStorageShape().GetDim(2);
             q_group = q_head_num / k_head_num;
         } else {
-            OP_LOGE(context_->GetNodeName(), "Invaild Input Layout: InputLayout must be BSND or BNSD or TND.");
+            OP_LOGE(context_->GetNodeName(), "Invalid Input Layout: InputLayout must be BSND or BNSD or TND.");
             return ge::GRAPH_FAILED;
         }
 
@@ -303,17 +307,18 @@ protected:
         uint64_t sys_workspace_size = ascendcPlatform.GetLibApiWorkSpaceSize();
         uint64_t usr_workspace_offset = 0;
         if (strcmp(layout_, BSND_STR) == 0 || strcmp(layout_, BNSD_STR) == 0) {
-            dq_size = batch_num_ * q_seq_len_ * q_head_num_ * head_dim_;
-            dk_size = batch_num_ * kv_seq_len_ * kv_head_num_ * head_dim_;
+            // 首个操作数提宽到 uint64_t，避免中间乘积在 int32 域回绕导致 workspace 申报不足
+            dq_size = static_cast<uint64_t>(batch_num_) * q_seq_len_ * q_head_num_ * head_dim_;
+            dk_size = static_cast<uint64_t>(batch_num_) * kv_seq_len_ * kv_head_num_ * head_dim_;
             dv_size = dk_size;
-            sftg_size = batch_num_ * q_head_num_ * q_seq_len_ * 8;
+            sftg_size = static_cast<uint64_t>(batch_num_) * q_head_num_ * q_seq_len_ * 8;
         } else if (strcmp(layout_, TND_STR) == 0) {
-            dq_size = q_seq_len_ * q_head_num_ * head_dim_;
-            dk_size = kv_seq_len_ * kv_head_num_ * head_dim_;
+            dq_size = static_cast<uint64_t>(q_seq_len_) * q_head_num_ * head_dim_;
+            dk_size = static_cast<uint64_t>(kv_seq_len_) * kv_head_num_ * head_dim_;
             dv_size = dk_size;
-            sftg_size = q_seq_len_ * q_head_num_ * 8; // 存放逻辑按[B,N,S,8]
+            sftg_size = static_cast<uint64_t>(q_seq_len_) * q_head_num_ * 8; // 存放逻辑按[B,N,S,8]
         } else {
-            OP_LOGE(context_->GetNodeName(), "Invaild Input Layout: InputLayout must be BSDN or BNSD or TND.");
+            OP_LOGE(context_->GetNodeName(), "Invalid Input Layout: InputLayout must be BSND or BNSD or TND.");
             return ge::GRAPH_FAILED;
         }
 
@@ -327,7 +332,7 @@ protected:
                         "BlockSparseAttentionGrad only support blockSparseMask is not nullptr.");
                 return ge::GRAPH_FAILED;
             }
-            const gert::Shape &shape = maskShape->GetStorageShape();
+            const gert::Shape& shape = maskShape->GetStorageShape();
             uint64_t block_sparse_mask_size = 1;
             for (size_t i = 0; i < shape.GetDimNum(); i++) {
                 block_sparse_mask_size *= static_cast<uint64_t>(shape.GetDim(i));
@@ -398,12 +403,12 @@ private:
     static constexpr uint64_t NON_ZERO_SHAPE_WORKSPACE_SIZE = 512; // NonZero 输出 shape 占用 24B，留 512B
     static constexpr uint64_t NON_ZERO_COUNT_BYTES_PER_CORE = 128; // 每个 AIV 在计数 workspace 占 128B
 
-    const char *layout_;
+    const char* layout_;
     ge::DataType dataType_;
     BlockSparseAttentionGradTilingDataArch35 tilingData_;
-    static constexpr const char *BSND_STR = "BSND";
-    static constexpr const char *BNSD_STR = "BNSD";
-    static constexpr const char *TND_STR = "TND";
+    static constexpr const char* BSND_STR = "BSND";
+    static constexpr const char* BNSD_STR = "BNSD";
+    static constexpr const char* TND_STR = "TND";
     int32_t batch_num_ = 0;
     int32_t q_seq_len_ = 0;
     int32_t kv_seq_len_ = 0;
