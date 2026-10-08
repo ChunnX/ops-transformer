@@ -1,26 +1,26 @@
 # aclnnFusedInferAttentionScoreV5
 
-[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/attention/fused_infer_attention_score)
+[📄 查看源码](https://atomgit.com/cann/ops-transformer/tree/master/attention/fused_infer_attention_score)
 
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：支持
+- <term>Ascend 950PR&950DT系列产品</term>：支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
+- <term>Atlas A3系列产品</term>：不支持
 <!-- end id2 -->
 <!-- npu="910b" id3 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
+- <term>Atlas A2系列产品</term>：不支持
 <!-- end id3 -->
 <!-- npu="310b" id4 -->
-- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+- <term>Atlas 200I/500 A2推理产品</term>：不支持
 <!-- end id4 -->
 <!-- npu="310p" id5 -->
-- <term>Atlas 推理系列产品</term>：不支持
+- <term>Atlas推理系列产品</term>：不支持
 <!-- end id5 -->
 <!-- npu="910" id6 -->
-- <term>Atlas 训练系列产品</term>：不支持
+- <term>Atlas训练系列产品</term>：不支持
 <!-- end id6 -->
 
 ## 功能说明
@@ -1500,7 +1500,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
     </table>
 
       <!-- npu="A3,910b" id7 -->
-      - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+      - <term>Atlas A3系列产品</term>、<term>Atlas A2系列产品</term>：
         - Prefill MLA场景下，不支持tensorlist、左padding
         - MLA场景下，不支持后量化
 
@@ -1577,11 +1577,11 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
     - 入参attenMask的输入维度仅支持2/3/4
 
       <!-- npu="950" id8 -->
-      - <term>Ascend 950PR/Ascend 950DT</term>：
+      - <term>Ascend 950PR&950DT系列产品</term>：
         - 维度为2时，不支持sparseMode为0/1模式
       <!-- end id8 -->
       <!-- npu="A3,910b" id9 -->
-      - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+      - <term>Atlas A3系列产品</term>、<term>Atlas A2系列产品</term>：
         - sparseMode为0/1模式时，若传入query_rope和key_rope，或者query与key的D不等于value的D，则不支持attenMask输入维度为2
         - sparseMode为0/1模式时，若attenMask输入维度为2，则layout仅支持为BSH、BSND、BNSD、BNSD_BSND
       <!-- end id9 -->
@@ -1728,6 +1728,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
   - 无
 - 特性交叉约束
   - 伪量化场景
+    - Q_N, KV_N支持小于等于256
     - inputLayout仅支持BSH, BNSD, BSND, BNSD_BSND, TND
     - key/value的数据类型为INT8时，inputLayout不支持TND
     - Q_S = 1时：
@@ -2082,11 +2083,11 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
       aclTensor *valueTensor = nullptr;
       aclTensor *attenTensor = nullptr;
       aclTensor *outTensor = nullptr;
-      std::vector<float> queryHostData(batchSize * numHeads * sequenceLengthQ * headDims, 1.0f);
-      std::vector<float> keyHostData(batchSize * keyNumHeads * sequenceLengthKV * headDims, 1.0f);
-      std::vector<float> valueHostData(batchSize * keyNumHeads * sequenceLengthKV * headDims, 1.0f);
+      std::vector<op::fp16_t> queryHostData(batchSize * numHeads * sequenceLengthQ * headDims, 1.0f);
+      std::vector<op::fp16_t> keyHostData(batchSize * keyNumHeads * sequenceLengthKV * headDims, 1.0f);
+      std::vector<op::fp16_t> valueHostData(batchSize * keyNumHeads * sequenceLengthKV * headDims, 1.0f);
       std::vector<int8_t> attenHostData(batchSize * sequenceLengthKV, 0);
-      std::vector<float> outHostData(batchSize * numHeads * sequenceLengthQ * headDims, 1.0f);
+      std::vector<op::fp16_t> outHostData(batchSize * numHeads * sequenceLengthQ * headDims, 1.0f);
 
       // 创建query aclTensor
       ret = CreateAclTensor(queryHostData, queryShape, &queryDeviceAddr, aclDataType::ACL_FLOAT16, &queryTensor);
@@ -2111,13 +2112,10 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
       ret = CreateAclTensor(outHostData, outShape, &outDeviceAddr, aclDataType::ACL_FLOAT16, &outTensor);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
 
-      std::vector<int64_t> actualSeqlenVector = {sequenceLengthKV};
-      auto actualSeqLengths = aclCreateIntArray(actualSeqlenVector.data(), actualSeqlenVector.size());
-
       int64_t numKeyValueHeads = numHeads;
       double scaleValue = 1 / sqrt(headDims); // 1/sqrt(d)
-      int64_t preTokens = 65535;
-      int64_t nextTokens = 65535;
+      int64_t preTokens = 2147483647;
+      int64_t nextTokens = 2147483647;
       string sLayerOut = "BNSD";
       char layerOut[sLayerOut.length()+1];
       strcpy(layerOut, sLayerOut.c_str());
@@ -2134,6 +2132,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
       int64_t pseType = 0;
       aclOpExecutor* executor;
       // 调用第一段接口
+      // actualSeqLengthsOptional和actualSeqLengthsKvOptional传入nullptr，使用shape中的Q_S=1和KV_S=16。
       ret = aclnnFusedInferAttentionScoreV5GetWorkspaceSize(queryTensor, tensorKeyList, tensorValueList, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, numHeads, scaleValue, preTokens, nextTokens, layerOut, numKeyValueHeads, sparseMode, innerPrecise, blockSize, antiquantMode, softmaxLseFlag, keyAntiquantMode, valueAntiquantMode, queryAntiquantMode, pseType, outTensor, nullptr, &workspaceSize, &executor);
       CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnFusedInferAttentionScoreV5GetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
       // 根据第一段接口计算出的workspaceSize申请device内存
@@ -2166,7 +2165,6 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
       aclDestroyTensor(valueTensor);
       aclDestroyTensor(attenTensor);
       aclDestroyTensor(outTensor);
-      aclDestroyIntArray(actualSeqLengths);
       aclrtFree(queryDeviceAddr);
       aclrtFree(keyDeviceAddr);
       aclrtFree(valueDeviceAddr);

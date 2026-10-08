@@ -93,6 +93,7 @@ class _AllGatherQuantMatmulOpBuilder(OpBuilder):
 
 
 _all_gather_quant_matmul_op_builder = _AllGatherQuantMatmulOpBuilder()
+_all_gather_quant_matmul_op_builder._ensure_initialized()
 
 
 @impl(get_as_library(), _all_gather_quant_matmul_op_builder.name, "PrivateUse1")
