@@ -132,8 +132,9 @@ bool QuantFlashMlaWithKvcacheMetadataCpuKernel::ParamsInit()
     // KV侧: cache_seqlens为必选输入, shape为(batchSize,)
     const bool hasCacheSeqlens = cacheSeqlens_ != nullptr && cacheSeqlens_->GetData() != nullptr;
     if (hasCacheSeqlens) {
-        batchSize_ = cacheSeqlens_->GetTensorShape()->GetDimSize(0);
-        auto cacheSeqlens = GetTensorDataAsInt64(cacheSeqlens_, batchSize_);
+        auto cacheSeqlens = GetTensorDataAsInt64(cacheSeqlens_, cacheSeqlens_->NumElements());
+        // batch size 由 cacheSeqlens 实际长度推导(每batch一项), 与flmwkcc非量化版本一致
+        batchSize_ = static_cast<int32_t>(cacheSeqlens.size());
         baseInfo.actualKvSeqSize.resize(batchSize_, baseInfo.kvSeqSize);
         for (int64_t i = 0; i < batchSize_; ++i) {
             // PA场景: cache_seqlens为每batch实际长度, 直接存入actualKvSeqSize和kvSeqSize
@@ -161,8 +162,8 @@ bool QuantFlashMlaWithKvcacheMetadataCpuKernel::ParamsInit()
         }
     }
     if (baseInfo.isCumulativeQuerySeq && cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetData() != nullptr) {
-        batchSize_ = cuSeqlensQ_->GetTensorShape()->GetDimSize(0) - 1;
-        auto cuSeqlensQ = GetTensorDataAsInt64(cuSeqlensQ_, batchSize_ + 1);
+        auto cuSeqlensQ = GetTensorDataAsInt64(cuSeqlensQ_, cuSeqlensQ_->NumElements());
+        batchSize_ = static_cast<int32_t>(cuSeqlensQ.size()) - 1;
         baseInfo.actualQuerySeqSize.resize(batchSize_, baseInfo.querySeqSize);
         for (int64_t i = 0; i < batchSize_; ++i) {
             baseInfo.actualQuerySeqSize[i] = cuSeqlensQ[i + 1];
@@ -171,8 +172,8 @@ bool QuantFlashMlaWithKvcacheMetadataCpuKernel::ParamsInit()
         }
     }
     if (sequsedQ_ != nullptr && sequsedQ_->GetData() != nullptr) {
-        batchSize_ = sequsedQ_->GetTensorShape()->GetDimSize(0);
-        auto sequsedQ = GetTensorDataAsInt64(sequsedQ_, batchSize_);
+        auto sequsedQ = GetTensorDataAsInt64(sequsedQ_, sequsedQ_->NumElements());
+        batchSize_ = static_cast<int32_t>(sequsedQ.size());
         baseInfo.actualQuerySeqSize.resize(batchSize_, baseInfo.querySeqSize);
         for (int64_t i = 0; i < batchSize_; ++i) {
             baseInfo.actualQuerySeqSize[i] = sequsedQ[i];
