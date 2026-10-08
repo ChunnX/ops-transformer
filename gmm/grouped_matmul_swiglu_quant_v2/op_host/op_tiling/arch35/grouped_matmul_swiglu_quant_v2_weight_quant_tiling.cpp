@@ -325,7 +325,7 @@ bool CheckDtypes(const gert::TilingContext &context, bool isAsw, int32_t npuArch
 
     const auto weightDtype = wDesc->GetDataType();
     const bool validWeightDtype = weightDtype == ge::DT_FLOAT4_E2M1 ||
-                                  (isAsw && npuArch == static_cast<int32_t>(NpuArch::DAV_9201) &&
+                                  (isAsw && npuArch == NPU_ARCH_DAV_9201 &&
                                    weightDtype == ge::DT_HIFLOAT4);
     if (unlikely(!validWeightDtype)) {
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
@@ -447,7 +447,7 @@ bool CheckInputFormats(const gert::TilingContext &context, const GMMSQWeightQuan
         const auto weightFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(weightDesc->GetStorageFormat()));
         const auto scaleFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(weightScaleDesc->GetStorageFormat()));
         OP_CHECK_IF(weightFormat != ge::FORMAT_FRACTAL_NZ &&
-                        !(npuArch == static_cast<int32_t>(NpuArch::DAV_3510) &&
+                        !(npuArch == NPU_ARCH_DAV_3510 &&
                           weightFormat == ge::FORMAT_FRACTAL_NZ_C0_32),
                     OP_LOGE(OP_NAME, "Unsupported ASW weight storage format."), return false);
         OP_CHECK_IF(scaleFormat != ge::FORMAT_ND && scaleFormat != ge::FORMAT_NCHW,
@@ -660,8 +660,7 @@ void PrintInputParams(gert::TilingContext &context, const GMMSQWeightQuantInputP
 bool CheckWeightQuantAswCoreNum(int32_t npuArch, uint32_t aicNum, uint32_t aivNum)
 {
     constexpr uint32_t AIC_AIV_CORE_RATIO_ASW = 1;
-    const uint32_t ratio = npuArch == static_cast<int32_t>(NpuArch::DAV_3510) ? AIC_AIV_CORE_RATIO
-                                                                               : AIC_AIV_CORE_RATIO_ASW;
+    const uint32_t ratio = npuArch == NPU_ARCH_DAV_3510 ? AIC_AIV_CORE_RATIO : AIC_AIV_CORE_RATIO_ASW;
     OP_CHECK_IF(aicNum == 0 || aivNum == 0 || aicNum * ratio != aivNum,
                 OP_LOGE(OP_NAME, "ASW requires cube:vector core ratio 1:%u; got %u:%u.", ratio, aicNum, aivNum),
                 return false);

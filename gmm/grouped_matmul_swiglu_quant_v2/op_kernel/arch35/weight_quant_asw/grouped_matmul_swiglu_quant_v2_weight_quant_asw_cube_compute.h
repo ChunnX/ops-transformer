@@ -17,7 +17,7 @@
 
 #include "weight_quant_tool_asw.h"
 #include "weight_quant_grouped_matmul_asw_block.h"
-#include "weight_quant_grouped_matmul_cube_compute_tools.h"
+#include "../weight_quant_basic_block/gmmsq_weight_quant_cube_compute_tools.h"
 #include "grouped_matmul_swiglu_quant_v2_weight_quant_asw_tiling_data.h"
 
 using AscendC::DataCopy;
@@ -331,7 +331,7 @@ __aicore__ inline void GMMSQWeightQuantASWCubeCompute<GMMSQ_WQ_ASW_CUBE_TEMPLATE
     const ASWTilingParam &params, uint64_t kL1Size, uint64_t aScaleL1GroupNum, uint64_t bScaleL1GroupNum,
     uint64_t kInnerIdx, uint64_t kOffset)
 {
-    L0CopyAndCalcParams l0Params;
+    GMMSQWeightQuant::L0CopyAndCalcParams l0Params{};
     l0Params.mL1Size = params.singleCoreM;
     l0Params.nL1Size = params.singleCoreN;
     l0Params.mL0Size = l0Params.mL1Size;
@@ -362,18 +362,19 @@ __aicore__ inline void GMMSQWeightQuantASWCubeCompute<GMMSQ_WQ_ASW_CUBE_TEMPLATE
 
     WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT_ID + static_cast<uint8_t>(l0DbFlag_));
 
-    LoadAAndScaleL1ToL0<aL0DataType, xType, xScaleType>(
+    GMMSQWeightQuant::LoadAAndScaleL1ToL0<aL0DataType, xType, xScaleType, true>(
         aL0, aL1Tensor_[l1DbFlag_ * A_L1_OFFSET_ELEM + aL1Offset],
         aScaleL1Tensor_[scaleL1DbFlag_ * A_SCALE_L1_OFFSET_ELEM + aScaleL1Offset], l0Params);
 
-    LoadBAndScaleL1ToL0<wType, wType, weightScaleType>(
+    GMMSQWeightQuant::LoadBAndScaleL1ToL0<wType, wType, weightScaleType, true,
+                                         IsMxA8HiF4<xType, wType, weightScaleType>()>(
         bL0, bL1Tensor_[l1DbFlag_ * B_L1_OFFSET_ELEM + bL1Offset],
         bScaleL1Tensor_[scaleL1DbFlag_ * B_SCALE_L1_OFFSET_ELEM + bScaleL1Offset], l0Params);
 
     SetFlag<HardEvent::MTE1_M>(MTE1_M_EVENT_ID);
     WaitFlag<HardEvent::MTE1_M>(MTE1_M_EVENT_ID);
 
-    MmadCompute<float, aL0DataType, wType>(cL0Tensor_[l0cOffset_], aL0, bL0, l0Params);
+    GMMSQWeightQuant::MmadCompute<float, aL0DataType, wType, false>(cL0Tensor_[l0cOffset_], aL0, bL0, l0Params);
 
     SetFlag<HardEvent::M_MTE1>(M_MTE1_EVENT_ID + static_cast<uint8_t>(l0DbFlag_));
     l0DbFlag_ ^= 1;
@@ -383,12 +384,12 @@ GMMSQ_WQ_ASW_CUBE_TEMPLATE_CLASS_PARAMS
 __aicore__ inline void
 GMMSQWeightQuantASWCubeCompute<GMMSQ_WQ_ASW_CUBE_TEMPLATE_FUNC_PARAMS>::GetTensorC(const ASWTilingParam &params)
 {
-    FixL0CToDstParams fixParams;
+    GMMSQWeightQuant::FixL0CToDstParams fixParams{};
     fixParams.mL0Size = params.singleCoreM;
     fixParams.nL0Size = params.singleCoreN;
     fixParams.outNSize = params.singleCoreN;
 
-    FixL0CToDst<float, float>(yF32Buffer_, cL0Tensor_[l0cOffset_], fixParams);
+    GMMSQWeightQuant::FixL0CToDst<float, float, false>(yF32Buffer_, cL0Tensor_[l0cOffset_], fixParams);
 
     l0cOffset_ += Ops::Base::CeilAlign(fixParams.mL0Size, static_cast<uint64_t>(BLOCK_CUBE)) *
                   Ops::Base::CeilAlign(fixParams.nL0Size, static_cast<uint64_t>(BLOCK_CUBE));

@@ -23,6 +23,9 @@
 
 namespace optiling {
 
+constexpr int32_t NPU_ARCH_DAV_9201 = 9201;
+constexpr int32_t NPU_ARCH_DAV_3510 = 3510;
+
 // GMM 基本信息
 BEGIN_TILING_DATA_DEF(GMMSwigluQuantV2BaseParams)
 TILING_DATA_FIELD_DEF(int64_t, groupNum);
