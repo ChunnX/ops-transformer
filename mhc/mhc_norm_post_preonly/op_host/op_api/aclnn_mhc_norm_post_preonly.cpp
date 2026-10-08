@@ -36,13 +36,15 @@ static bool IsSupportedD(int64_t d)
     return d == SUPPORTED_D_2560 || d == SUPPORTED_D_5120 || d == SUPPORTED_D_6144 || d == SUPPORTED_D_7168;
 }
 
-static aclnnStatus MhcNormPostPreonlyCommonProcess(
-    const aclTensor *hOut, const aclTensor *residual, const aclTensor *hPost, const aclTensor *hResOptional,
-    const aclTensor *phi, const aclTensor *alpha, const aclTensor *bias, const aclTensor *preMixOptional,
-    const aclTensor *gamma0Optional, const aclTensor *gamma1, const aclTensor *gamma2Optional, float normEps,
-    float mhcPreNormEps, float hcEps, bool returnHInF32, const aclTensor *hInPrimeOut, const aclTensor *x2Out,
-    const aclTensor *hInF32OutOptional, const aclTensor *hPreOptional, uint64_t *workspaceSize,
-    aclOpExecutor **executor)
+static aclnnStatus MhcNormPostPreonlyCommonProcess(const aclTensor *hOut, const aclTensor *residual,
+                                                   const aclTensor *hPost, const aclTensor *hResOptional,
+                                                   const aclTensor *phi, const aclTensor *alpha, const aclTensor *bias,
+                                                   const aclTensor *preMixOptional, const aclTensor *gamma0Optional,
+                                                   const aclTensor *gamma1, const aclTensor *gamma2Optional,
+                                                   float normEps, float mhcPreNormEps, float hcEps, bool returnHInF32,
+                                                   const aclTensor *hInPrimeOut, const aclTensor *x2Out,
+                                                   const aclTensor *hInF32OutOptional, const aclTensor *hPreOptional,
+                                                   uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     auto uniqueExecutor = CREATE_EXECUTOR();
 
@@ -94,6 +96,8 @@ static aclnnStatus MhcNormPostPreonlyCommonProcess(
     bias = l0op::Contiguous(bias, uniqueExecutor.get());
     CHECK_COND(bias != nullptr, ACLNN_ERR_INNER_NULLPTR, "Contiguous bias failed.");
 
+    CHECK_COND(gamma0Optional != nullptr, ACLNN_ERR_PARAM_NULLPTR,
+               "gamma0Optional is an interface-reserved optional input and must not be nullptr currently.");
     gamma0Optional = l0op::Contiguous(gamma0Optional, uniqueExecutor.get());
     CHECK_COND(gamma0Optional != nullptr, ACLNN_ERR_INNER_NULLPTR, "Contiguous gamma0Optional failed.");
 
@@ -105,12 +109,12 @@ static aclnnStatus MhcNormPostPreonlyCommonProcess(
         CHECK_COND(gamma2Optional != nullptr, ACLNN_ERR_INNER_NULLPTR, "Contiguous gamma2 failed.");
     }
 
-    bool ok = MhcNormPostPreonlyl0op::MhcNormPostPreonly(
+    bool isLaunchPrepared = MhcNormPostPreonlyl0op::MhcNormPostPreonly(
         hOut, residual, hPost, hResOptional, phi, alpha, bias, preMixOptional, gamma0Optional, gamma1, gamma2Optional,
         normEps, mhcPreNormEps, hcEps, returnHInF32, hInPrimeOut, x2Out, hInF32OutOptional, hPreOptional,
         uniqueExecutor.get());
 
-    CHECK_RET(ok, ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(isLaunchPrepared, ACLNN_ERR_INNER_NULLPTR);
 
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
     uniqueExecutor.ReleaseTo(executor);
@@ -119,26 +123,28 @@ static aclnnStatus MhcNormPostPreonlyCommonProcess(
 
 } // namespace
 
-aclnnStatus aclnnMhcNormPostPreonlyGetWorkspaceSize(
-    const aclTensor *hOut, const aclTensor *residual, const aclTensor *hPost, const aclTensor *hResOptional,
-    const aclTensor *phi, const aclTensor *alpha, const aclTensor *bias, const aclTensor *gamma1,
-    const aclTensor *preMixOptional, const aclTensor *gamma0Optional, const aclTensor *gamma2Optional, float normEps,
-    float mhcPreNormEps, float hcEps, bool returnHInF32, const aclTensor *hInPrimeOut, const aclTensor *x2Out,
-    const aclTensor *hInF32OutOptional, const aclTensor *hPreOptional, uint64_t *workspaceSize,
-    aclOpExecutor **executor)
+aclnnStatus aclnnMhcNormPostPreonlyGetWorkspaceSize(const aclTensor *hOut, const aclTensor *residual,
+                                                    const aclTensor *hPost, const aclTensor *hResOptional,
+                                                    const aclTensor *phi, const aclTensor *alpha, const aclTensor *bias,
+                                                    const aclTensor *gamma1, const aclTensor *preMixOptional,
+                                                    const aclTensor *gamma0Optional, const aclTensor *gamma2Optional,
+                                                    float normEps, float mhcPreNormEps, float hcEps, bool returnHInF32,
+                                                    const aclTensor *hInPrimeOut, const aclTensor *x2Out,
+                                                    const aclTensor *hInF32OutOptional, const aclTensor *hPreOptional,
+                                                    uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(aclnnMhcNormPostPreonly,
                    DFX_IN(hOut, residual, hPost, hResOptional, phi, alpha, bias, gamma1, preMixOptional, gamma0Optional,
                           gamma2Optional),
                    DFX_OUT(hInPrimeOut, x2Out, hInF32OutOptional, hPreOptional));
-    return MhcNormPostPreonlyCommonProcess(hOut, residual, hPost, hResOptional, phi, alpha, bias,
-                                                   preMixOptional, gamma0Optional, gamma1, gamma2Optional, normEps,
-                                                   mhcPreNormEps, hcEps, returnHInF32, hInPrimeOut, x2Out,
-                                                   hInF32OutOptional, hPreOptional, workspaceSize, executor);
+    return MhcNormPostPreonlyCommonProcess(hOut, residual, hPost, hResOptional, phi, alpha, bias, preMixOptional,
+                                           gamma0Optional, gamma1, gamma2Optional, normEps, mhcPreNormEps, hcEps,
+                                           returnHInF32, hInPrimeOut, x2Out, hInF32OutOptional, hPreOptional,
+                                           workspaceSize, executor);
 }
 
 aclnnStatus aclnnMhcNormPostPreonly(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                            aclrtStream stream)
+                                    aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnMhcNormPostPreonly);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);

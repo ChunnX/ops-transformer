@@ -33,25 +33,30 @@ using namespace AscendC;
 // ---------------------------------------------------------------------------
 // 全局常量
 // ---------------------------------------------------------------------------
-constexpr uint32_t N_MAX  = 4;
+constexpr uint32_t N_MAX = 4;
 constexpr uint32_t ALIGN8 = 8;
-constexpr uint32_t BUFFER_NUM_TWO = 2;
 constexpr uint32_t BUFFER_NUM_ONE = 1;
-constexpr uint32_t BUFFER_NUM_FOUR = 4; // phi ping-pong：4槽让相邻o的搬运与计算重叠
+constexpr uint32_t BUFFER_NUM_FOUR = 4;       // phi ping-pong：4槽让相邻o的搬运与计算重叠
 constexpr uint32_t GAMMA1_CACHE_MAX_D = 5120; // 目标模型维度以内缓存完整gamma1
-constexpr uint32_t SCALAR_BUF_SIZE   = 256;    // 标量计算 UB buffer 大小 (bytes)
-constexpr uint32_t EXP_DIV_ELEM      = 8;      // sigmoid ExpDiv 计算元素数
-constexpr uint32_t POST_COMB_SIZE    = 8 + 16; // h_post[8] + h_res[16] buffer 大小
-constexpr uint32_t PARTIAL_SLOT_ELEMS = 8;     // 每个lane的partial固定占32B
-constexpr uint16_t MID_READY_FLAG = 0;         // R2平方和交换完成标志
-constexpr uint16_t PAIR_READY_FLAG = 1;        // R4/R5 partial交换完成标志
+constexpr uint32_t SCALAR_BUF_SIZE = 256;     // 标量计算 UB buffer 大小 (bytes)
+constexpr uint32_t EXP_DIV_ELEM = 8;          // sigmoid ExpDiv 计算元素数
+constexpr uint32_t POST_COMB_SIZE = 8 + 16;   // h_post[8] + h_res[16] buffer 大小
+constexpr uint32_t PARTIAL_SLOT_ELEMS = 8;    // 每个lane的partial固定占32B
+constexpr uint16_t MID_READY_FLAG = 0;        // R2平方和交换完成标志
+constexpr uint16_t PAIR_READY_FLAG = 1;       // R4/R5 partial交换完成标志
 
 // ---------------------------------------------------------------------------
 // Type trait: fp32->half uses CAST_NONE, fp32->bfloat16_t uses CAST_RINT
 // (per CANN RmsNorm reference)
 // ---------------------------------------------------------------------------
-template<typename A, typename B> struct IsSameT { static constexpr bool value = false; };
-template<typename A> struct IsSameT<A, A> { static constexpr bool value = true; };
+template <typename A, typename B>
+struct IsSameT {
+    static constexpr bool value = false;
+};
+template <typename A>
+struct IsSameT<A, A> {
+    static constexpr bool value = true;
+};
 
 
 
@@ -68,52 +73,5 @@ template<typename A> struct IsSameT<A, A> { static constexpr bool value = true; 
 
 
 // 引入各执行路径的方法实现
-
-
-
-// 构造一个低精度x2_post分块。R1使用normEps_，R2保持h_res的[j,n]索引顺序，
-// 并显式保留设计规定的两处低精度往返边界。
-
-
-// 双AIV仍需读取全部残差行，但每个lane只计算自己负责的两个输出head。
-
-
-// 将完整x2以输出dtype常驻UB，同时完成设计要求的低精度往返；写GM仅用于保留x2_out输出语义。
-
-
-// 双sibling路径仍在每个lane的私有UB中保留完整x2，便于两个lane按同一顺序执行R1/R2/R3；
-// 写回x2_out时每个lane只写自己负责的两个head，避免任何输出竞争。
-
-
-// R6读取完当前x2分块后，复用首个head缓存保留低精度h_in。
-// 恢复FP32与平方在同一VF内完成，保留量化往返边界并减少UB中间写读。
-
-
-
-
-// 固定的R4/R5归约树将与双sibling AIV路径共用。half0固定覆盖展平区间[0,2D)，
-// half1固定覆盖[2D,4D)，调用方只执行一次顶层合并partial0+partial1。
-
-
-
-
-
-
-
-
-
-// mode1只在同一物理AI Core的两个sibling AIV之间握手。
-__aicore__ inline void MhcPairMidReadySync()
-{
-    CrossCoreSetFlag<0x1, PIPE_MTE3>(MID_READY_FLAG);
-    CrossCoreWaitFlag<0x1, PIPE_MTE2>(MID_READY_FLAG);
-}
-
-// R4/R5使用独立flag，避免同一token内两次握手相互干扰。
-__aicore__ inline void MhcPairReadySync()
-{
-    CrossCoreSetFlag<0x1, PIPE_MTE3>(PAIR_READY_FLAG);
-    CrossCoreWaitFlag<0x1, PIPE_MTE2>(PAIR_READY_FLAG);
-}
 
 #endif // MHC_NORM_POST_PREONLY_COMMON_H_

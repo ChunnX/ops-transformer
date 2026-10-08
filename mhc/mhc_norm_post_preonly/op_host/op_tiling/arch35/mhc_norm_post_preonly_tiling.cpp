@@ -9,254 +9,305 @@
  */
 
 #include "mhc_norm_post_preonly_tiling.h"
+
 #include <algorithm>
-#include "register/op_impl_registry.h"
+#include <cstdint>
+#include "op_host/tiling_templates_registry.h"
+#include "register/op_def_registry.h"
 #include "tiling/platform/platform_ascendc.h"
+#include "platform/platform_infos_def.h"
 #include "log/log.h"
 
 namespace optiling {
 
-// Host侧常量，与Kernel公共头文件保持一致
-constexpr uint32_t HOST_N_MAX = 4;
-constexpr uint32_t HOST_D_TILE_MAX = 2560;
-constexpr uint32_t HOST_MAX_TOKENS = 1024 * 1024; // B*S 上限
-constexpr uint32_t NUM_TWO = 2;
-constexpr uint32_t PARTIAL_SLOT_BYTES = 32;
-constexpr uint32_t PARTIAL_SLOTS_PER_TOKEN = 2;
+using namespace Ops::Transformer::OpTiling;
+
+namespace {
+constexpr uint32_t HOST_N_MAX = 4U;
+constexpr uint32_t HOST_D_TILE_MAX = 2560U;
+constexpr uint32_t HOST_MAX_TOKENS = 1024U * 1024U;
+constexpr uint32_t NUM_TWO = 2U;
+constexpr uint32_t PARTIAL_SLOT_BYTES = 32U;
+constexpr uint32_t PARTIAL_SLOTS_PER_TOKEN = 2U;
+constexpr uint32_t DEFAULT_TILING_PRIORITY = 1000U;
+constexpr int32_t DUAL_SIBLING_SCHEDULE_MODE = 1;
+constexpr size_t PRE_MIX_INPUT_INDEX = 7U;
+constexpr size_t GAMMA_0_INPUT_INDEX = 8U;
+constexpr size_t GAMMA_2_INPUT_INDEX = 10U;
 
 constexpr uint64_t TILING_KEY_USE_RMS_MID = 1ULL << 0;
 constexpr uint64_t TILING_KEY_RETURN_H_IN_F32 = 1ULL << 1;
 constexpr uint64_t TILING_KEY_DUAL_SIBLING_AIV = 1ULL << 2;
 
-static bool IsSupportedD(uint32_t d)
+bool IsSupportedD(uint32_t embedDim)
 {
-    return d == 2560U || d == 5120U || d == 6144U || d == 7168U;
+    return embedDim == 2560U || embedDim == 5120U || embedDim == 6144U || embedDim == 7168U;
+}
+} // namespace
+
+REGISTER_OPS_TILING_TEMPLATE(MhcNormPostPreonly, MhcNormPostPreonlyTiling, DEFAULT_TILING_PRIORITY);
+
+ge::graphStatus MhcNormPostPreonlyTiling::GetPlatformInfo()
+{
+    const auto *compileInfo = context_->GetCompileInfo<MhcNormPostPreonlyCompileInfo>();
+    OP_CHECK_IF(compileInfo == nullptr, OP_LOGE(context_->GetNodeName(), "get compile info failed"),
+                return ge::GRAPH_FAILED);
+
+    auto platformInfo = context_->GetPlatformInfo();
+    OP_CHECK_IF(platformInfo == nullptr, OP_LOGE(context_->GetNodeName(), "get platform info failed"),
+                return ge::GRAPH_FAILED);
+    platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
+
+    uint64_t aivNum = compileInfo->aivNum != 0U ? compileInfo->aivNum : ascendcPlatform.GetCoreNumAiv();
+    OP_CHECK_IF(aivNum == 0U || aivNum > UINT32_MAX,
+                OP_LOGE(context_->GetNodeName(), "invalid AIV core count: %lu", aivNum), return ge::GRAPH_FAILED);
+    coreNumAiv_ = static_cast<uint32_t>(aivNum);
+    systemWorkspaceSize_ = static_cast<size_t>(compileInfo->systemWorkspaceSize);
+    if (systemWorkspaceSize_ == 0U) {
+        systemWorkspaceSize_ = ascendcPlatform.GetLibApiWorkSpaceSize();
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MhcNormPostPreonlyTiling::CheckInputDtype() const
+{
+    auto hOutDesc = context_->GetInputDesc(0);
+    auto residualDesc = context_->GetInputDesc(1);
+    OP_CHECK_IF(hOutDesc == nullptr || residualDesc == nullptr,
+                OP_LOGE(context_->GetNodeName(), "h_out or residual descriptor is null"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(hOutDesc->GetDataType() != residualDesc->GetDataType(),
+                OP_LOGE(context_->GetNodeName(), "h_out and residual must have the same dtype"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(hOutDesc->GetDataType() != ge::DT_BF16 && hOutDesc->GetDataType() != ge::DT_FLOAT16,
+                OP_LOGE(context_->GetNodeName(), "h_out and residual dtype must be BFLOAT16 or FLOAT16"),
+                return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MhcNormPostPreonlyTiling::CheckInputShape()
+{
+    auto hOutShape = context_->GetInputShape(0);
+    auto residualShape = context_->GetInputShape(1);
+    auto hPostShape = context_->GetInputShape(2);
+    auto hResShape = context_->GetOptionalInputShape(3);
+    auto phiShape = context_->GetInputShape(4);
+    OP_CHECK_IF(hOutShape == nullptr || residualShape == nullptr || hPostShape == nullptr || phiShape == nullptr,
+                OP_LOGE(context_->GetNodeName(), "required input shape is null"), return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(
+        context_->GetOptionalInputShape(PRE_MIX_INPUT_INDEX) != nullptr,
+        OP_LOGE(context_->GetNodeName(), "pre_mix is an interface-reserved optional input and must be empty currently"),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context_->GetOptionalInputShape(GAMMA_0_INPUT_INDEX) == nullptr,
+                OP_LOGE(context_->GetNodeName(),
+                        "gamma_0 is an interface-reserved optional input and must not be empty currently"),
+                return ge::GRAPH_FAILED);
+
+    const auto &hOut = hOutShape->GetStorageShape();
+    const auto &residual = residualShape->GetStorageShape();
+    const auto &hPost = hPostShape->GetStorageShape();
+    const auto &phi = phiShape->GetStorageShape();
+    const size_t hOutDimNum = hOut.GetDimNum();
+    const size_t residualDimNum = residual.GetDimNum();
+
+    OP_CHECK_IF(hOutDimNum != 2U && hOutDimNum != 3U,
+                OP_LOGE(context_->GetNodeName(), "h_out must be 2D [T,D] or 3D [B,S,D], got %zuD", hOutDimNum),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(residualDimNum != hOutDimNum + 1U,
+                OP_LOGE(context_->GetNodeName(), "residual.ndim (%zu) must be h_out.ndim (%zu) + 1", residualDimNum,
+                        hOutDimNum),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(hPost.GetDimNum() != 2U && hPost.GetDimNum() != 3U,
+                OP_LOGE(context_->GetNodeName(), "h_post must be 2D [T,N] or 3D [B,S,N], got %zuD", hPost.GetDimNum()),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(hResShape == nullptr,
+                OP_LOGE(context_->GetNodeName(),
+                        "h_res is an interface-reserved optional input and must not be empty currently"),
+                return ge::GRAPH_FAILED);
+    const auto &hRes = hResShape->GetStorageShape();
+    OP_CHECK_IF(
+        hRes.GetDimNum() != 3U && hRes.GetDimNum() != 4U,
+        OP_LOGE(context_->GetNodeName(), "h_res must be 3D [T,N,N] or 4D [B,S,N,N], got %zuD", hRes.GetDimNum()),
+        return ge::GRAPH_FAILED);
+
+    if (hOutDimNum == 2U) {
+        totalTokens_ = static_cast<uint32_t>(hOut.GetDim(0));
+        embedDim_ = static_cast<uint32_t>(hOut.GetDim(1));
+        headCount_ = static_cast<uint32_t>(residual.GetDim(1));
+    } else {
+        const uint32_t batch = static_cast<uint32_t>(hOut.GetDim(0));
+        const uint32_t sequence = static_cast<uint32_t>(hOut.GetDim(1));
+        totalTokens_ = batch * sequence;
+        embedDim_ = static_cast<uint32_t>(hOut.GetDim(NUM_TWO));
+        headCount_ = static_cast<uint32_t>(residual.GetDim(NUM_TWO));
+    }
+
+    OP_CHECK_IF(phi.GetDimNum() != 2U,
+                OP_LOGE(context_->GetNodeName(), "phi must be 2D [N, N*D], got %zuD", phi.GetDimNum()),
+                return ge::GRAPH_FAILED);
+    phiRows_ = static_cast<uint32_t>(phi.GetDim(0));
+    phiCols_ = static_cast<uint32_t>(phi.GetDim(1));
+
+    OP_CHECK_IF(
+        totalTokens_ == 0U || totalTokens_ > HOST_MAX_TOKENS,
+        OP_LOGE(context_->GetNodeName(), "totalTokens (B*S) must be in [1, %u], got %u", HOST_MAX_TOKENS, totalTokens_),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(headCount_ != HOST_N_MAX,
+                OP_LOGE(context_->GetNodeName(), "headCount (N) must be %u, got %u", HOST_N_MAX, headCount_),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        !IsSupportedD(embedDim_),
+        OP_LOGE(context_->GetNodeName(), "embedDim (D) must be one of 2560, 5120, 6144, or 7168, got %u", embedDim_),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(phiRows_ != headCount_ || phiCols_ != headCount_ * embedDim_,
+                OP_LOGE(context_->GetNodeName(), "phi shape invalid: expected [%u, %u], got [%u, %u]", headCount_,
+                        headCount_ * embedDim_, phiRows_, phiCols_),
+                return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MhcNormPostPreonlyTiling::CheckAttrs()
+{
+    const gert::RuntimeAttrs *attrs = context_->GetAttrs();
+    if (attrs != nullptr) {
+        const float *normEps = attrs->GetAttrPointer<float>(0);
+        const float *mhcPreNormEps = attrs->GetAttrPointer<float>(1);
+        const float *hcEps = attrs->GetAttrPointer<float>(2);
+        const bool *returnHInF32 = attrs->GetBool(3);
+        normEps_ = normEps != nullptr ? *normEps : normEps_;
+        mhcPreNormEps_ = mhcPreNormEps != nullptr ? *mhcPreNormEps : mhcPreNormEps_;
+        hcEps_ = hcEps != nullptr ? *hcEps : hcEps_;
+        returnHInF32_ = returnHInF32 != nullptr ? *returnHInF32 : returnHInF32_;
+    }
+
+    OP_CHECK_IF(normEps_ < 0.0F, OP_LOGE(context_->GetNodeName(), "norm_eps must be >= 0, got %e", normEps_),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(mhcPreNormEps_ < 0.0F,
+                OP_LOGE(context_->GetNodeName(), "mhc_pre_norm_eps must be >= 0, got %e", mhcPreNormEps_),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(hcEps_ < 0.0F, OP_LOGE(context_->GetNodeName(), "hc_eps must be >= 0, got %e", hcEps_),
+                return ge::GRAPH_FAILED);
+
+    useRmsMid_ = context_->GetOptionalInputShape(GAMMA_2_INPUT_INDEX) != nullptr;
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MhcNormPostPreonlyTiling::GetShapeAttrsInfo()
+{
+    if (CheckInputDtype() != ge::GRAPH_SUCCESS || CheckInputShape() != ge::GRAPH_SUCCESS ||
+        CheckAttrs() != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+void MhcNormPostPreonlyTiling::FillTilingData()
+{
+    tilingData_.set_totalTokens(totalTokens_);
+    tilingData_.set_headCount(headCount_);
+    tilingData_.set_embedDim(embedDim_);
+    tilingData_.set_usedCoreNum(usedCoreNum_);
+    tilingData_.set_rowsPerCore(rowsPerCore_);
+    tilingData_.set_rowsPerCoreSp(rowsPerCoreSp_);
+    tilingData_.set_blockPivot(blockPivot_);
+    tilingData_.set_dimTile(dimTile_);
+    tilingData_.set_dimLoop(dimLoop_);
+    tilingData_.set_lastDimTile(lastDimTile_);
+    tilingData_.set_phiRows(phiRows_);
+    tilingData_.set_phiCols(phiCols_);
+    tilingData_.set_normEps(normEps_);
+    tilingData_.set_mhcPreNormEps(mhcPreNormEps_);
+    tilingData_.set_hcEps(hcEps_);
+    tilingData_.set_invD(1.0F / static_cast<float>(embedDim_));
+    tilingData_.set_invK(1.0F / static_cast<float>(headCount_ * embedDim_));
+    tilingData_.set_useRmsMid(useRmsMid_ ? 1U : 0U);
+    tilingData_.set_coresPerToken(coresPerToken_);
+    tilingData_.set_returnHInF32(static_cast<int8_t>(returnHInF32_));
+}
+
+ge::graphStatus MhcNormPostPreonlyTiling::DoOpTiling()
+{
+    dimTile_ = std::min(embedDim_, HOST_D_TILE_MAX);
+    lastDimTile_ = embedDim_ % dimTile_;
+    dimLoop_ = embedDim_ / dimTile_ + (lastDimTile_ != 0U ? 1U : 0U);
+
+    enableDualSibling_ = totalTokens_ <= coreNumAiv_ / 2U;
+    coresPerToken_ = enableDualSibling_ ? 2U : 1U;
+    usedCoreNum_ = std::min(totalTokens_, enableDualSibling_ ? coreNumAiv_ / 2U : coreNumAiv_);
+    rowsPerCore_ = totalTokens_ / usedCoreNum_;
+    rowsPerCoreSp_ = rowsPerCore_ + 1U;
+    blockPivot_ = totalTokens_ % usedCoreNum_;
+
+    FillTilingData();
+    PrintTilingData();
+    return ge::GRAPH_SUCCESS;
+}
+
+uint64_t MhcNormPostPreonlyTiling::GetTilingKey() const
+{
+    return (useRmsMid_ ? TILING_KEY_USE_RMS_MID : 0ULL) | (returnHInF32_ ? TILING_KEY_RETURN_H_IN_F32 : 0ULL) |
+           (enableDualSibling_ ? TILING_KEY_DUAL_SIBLING_AIV : 0ULL);
+}
+
+ge::graphStatus MhcNormPostPreonlyTiling::GetWorkspaceSize()
+{
+    workspaceSize_ = systemWorkspaceSize_;
+    if (enableDualSibling_) {
+        workspaceSize_ += static_cast<size_t>(totalTokens_) * PARTIAL_SLOTS_PER_TOKEN * PARTIAL_SLOT_BYTES;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MhcNormPostPreonlyTiling::PostTiling()
+{
+    OP_CHECK_IF(
+        tilingData_.GetDataSize() % sizeof(uint64_t) != 0U,
+        OP_LOGE(context_->GetNodeName(), "tiling data size[%zu] is not aligned to 8", tilingData_.GetDataSize()),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetRawTilingData());
+    tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
+    context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
+    context_->SetBlockDim(usedCoreNum_);
+    if (enableDualSibling_) {
+        context_->SetScheduleMode(DUAL_SIBLING_SCHEDULE_MODE);
+    }
+
+    size_t *workspaces = context_->GetWorkspaceSizes(1);
+    OP_CHECK_IF(workspaces == nullptr, OPS_REPORT_CUBE_INNER_ERR(context_->GetNodeName(), "workspaces is null"),
+                return ge::GRAPH_FAILED);
+    workspaces[0] = workspaceSize_;
+    return ge::GRAPH_SUCCESS;
+}
+
+void MhcNormPostPreonlyTiling::PrintTilingData() const
+{
+    OP_LOGD(context_->GetNodeName(),
+            "tokens=%u, N=%u, D=%u, blockDim=%u, rows=[%u,%u], pivot=%u, dimTile=%u, dimLoop=%u, "
+            "dualSibling=%s, useRmsMid=%s, returnHInF32=%s",
+            totalTokens_, headCount_, embedDim_, usedCoreNum_, rowsPerCore_, rowsPerCoreSp_, blockPivot_, dimTile_,
+            dimLoop_, enableDualSibling_ ? "true" : "false", useRmsMid_ ? "true" : "false",
+            returnHInF32_ ? "true" : "false");
 }
 
 static ge::graphStatus TilingMhcNormPostPreonly(gert::TilingContext *context)
 {
-    // 平台信息
-    auto platformInfo = context->GetPlatformInfo();
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-    uint32_t coreNumAiv = ascendcPlatform.GetCoreNumAiv();
-    if (coreNumAiv == 0)
-        coreNumAiv = 1;
-
-    // 获取形状，同时支持[B,S,D]/[T,D]和[B,S,N,D]/[T,N,D]
-    auto h_out_shape = context->GetInputShape(0);         // [B,S,D] or [T,D]
-    auto res_shape = context->GetInputShape(1);           // [B,S,N,D] or [T,N,D]
-    auto h_post_shape = context->GetInputShape(2);        // [B,S,N] or [T,N]
-    auto h_res_shape = context->GetOptionalInputShape(3); // [B,S,N,N] or [T,N,N]
-    auto phi_shape = context->GetInputShape(4);           // [N, N*D]
-    if (h_out_shape == nullptr || res_shape == nullptr || h_post_shape == nullptr || phi_shape == nullptr) {
-        OP_LOGE("MhcNormPostPreonly", "GetInputShape is return nullptr");
-        return ge::GRAPH_FAILED;
-    }
-
-    // h_out与residual必须使用相同低精度类型，避免Kernel按错误元素类型解释输入。
-    auto hOutDesc = context->GetInputDesc(0);
-    auto residualDesc = context->GetInputDesc(1);
-    if (hOutDesc == nullptr || residualDesc == nullptr || hOutDesc->GetDataType() != residualDesc->GetDataType()) {
-        OP_LOGE("MhcNormPostPreonly", "h_out and residual must have the same dtype");
-        return ge::GRAPH_FAILED;
-    }
-    if (hOutDesc->GetDataType() != ge::DT_BF16 && hOutDesc->GetDataType() != ge::DT_FLOAT16) {
-        OP_LOGE("MhcNormPostPreonly", "h_out and residual dtype must be BFLOAT16 or FLOAT16");
-        return ge::GRAPH_FAILED;
-    }
-
-    const auto &hs = h_out_shape->GetStorageShape();
-    const auto &rs = res_shape->GetStorageShape();
-    const auto &hps = h_post_shape->GetStorageShape();
-    const auto &ps = phi_shape->GetStorageShape();
-
-    // 格式一致性：residual维数必须比h_out多1
-    size_t hDimNum = hs.GetDimNum();
-    size_t rDimNum = rs.GetDimNum();
-    if (hDimNum != 2U && hDimNum != 3U) {
-        OP_LOGE("MhcNormPostPreonly", "h_out must be 2D [T,D] or 3D [B,S,D], got %zuD", hDimNum);
-        return ge::GRAPH_FAILED;
-    }
-    if (rDimNum != hDimNum + 1U) {
-        OP_LOGE("MhcNormPostPreonly", "residual.ndim (%zu) must be h_out.ndim (%zu) + 1", rDimNum, hDimNum);
-        return ge::GRAPH_FAILED;
-    }
-    // h_post为二维[T,N]或三维[B,S,N]；h_res非空时为[T,N,N]或[B,S,N,N]
-    size_t hpDimNum = hps.GetDimNum();
-    if (hpDimNum != 2U && hpDimNum != 3U) {
-        OP_LOGE("MhcNormPostPreonly", "h_post must be 2D [T,N] or 3D [B,S,N], got %zuD", hpDimNum);
-        return ge::GRAPH_FAILED;
-    }
-    if (h_res_shape == nullptr) {
-        OP_LOGE("MhcNormPostPreonly",
-                "h_res is an interface-reserved optional input and must not be empty currently.");
-        return ge::GRAPH_FAILED;
-    }
-    const auto &hrs = h_res_shape->GetStorageShape();
-    size_t hrDimNum = hrs.GetDimNum();
-    if (hrDimNum != 3U && hrDimNum != 4U) {
-        OP_LOGE("MhcNormPostPreonly", "h_res must be 3D [T,N,N] or 4D [B,S,N,N], got %zuD", hrDimNum);
-        return ge::GRAPH_FAILED;
-    }
-
-    uint32_t totalTokens;
-    uint32_t D;
-    uint32_t N;
-    if (hDimNum == 2U) {
-        // [T, D] format
-        totalTokens = static_cast<uint32_t>(hs.GetDim(0));
-        D = static_cast<uint32_t>(hs.GetDim(1));
-        N = static_cast<uint32_t>(rs.GetDim(1)); // [T, N, D]
-    } else {
-        // [B, S, D] format
-        uint32_t B = static_cast<uint32_t>(hs.GetDim(0));
-        uint32_t S = static_cast<uint32_t>(hs.GetDim(1));
-        D = static_cast<uint32_t>(hs.GetDim(NUM_TWO));
-        N = static_cast<uint32_t>(rs.GetDim(NUM_TWO)); // [B, S, N, D]
-        totalTokens = B * S;
-    }
-
-    if (ps.GetDimNum() != 2U) {
-        OP_LOGE("MhcNormPostPreonly", "phi must be 2D [N, N*D], got %zuD", ps.GetDimNum());
-        return ge::GRAPH_FAILED;
-    }
-
-    uint32_t phiRows = static_cast<uint32_t>(ps.GetDim(0)); // N (pre-branch only)
-    uint32_t phiCols = static_cast<uint32_t>(ps.GetDim(1)); // N*D
-
-    // 参数校验
-    if (totalTokens == 0 || totalTokens > HOST_MAX_TOKENS) {
-        OP_LOGE("MhcNormPostPreonly", "totalTokens (B*S) must be in [1, %u], got %u", HOST_MAX_TOKENS,
-                totalTokens);
-        return ge::GRAPH_FAILED;
-    }
-    if (N != HOST_N_MAX) {
-        OP_LOGE("MhcNormPostPreonly", "headCount (N) must be %u, got %u", HOST_N_MAX, N);
-        return ge::GRAPH_FAILED;
-    }
-    if (!IsSupportedD(D)) {
-        OP_LOGE("MhcNormPostPreonly", "embedDim (D) must be one of 2560, 5120, 6144, or 7168, got %u", D);
-        return ge::GRAPH_FAILED;
-    }
-    if (phiRows != N || phiCols != N * D) {
-        OP_LOGE("MhcNormPostPreonly", "phi shape invalid: expected [%u, %u], got [%u, %u]", N, N * D, phiRows,
-                phiCols);
-        return ge::GRAPH_FAILED;
-    }
-
-    // 属性均为可选，先设置默认值
-    const gert::RuntimeAttrs *attrs = context->GetAttrs();
-    float normEps = 1e-6F;
-    float mhcPreNormEps = 1e-6F;
-    float hcEps = 1e-6F;
-    bool returnHInF32 = false;
-    if (attrs != nullptr) {
-        // op_host_aclnn生成的ACLNN封装按_def.cpp中的Float声明保存属性
-        const float *eps0 = attrs->GetAttrPointer<float>(0);
-        if (eps0 != nullptr) {
-            normEps = *eps0;
-        }
-        const float *preEps = attrs->GetAttrPointer<float>(1);
-        if (preEps != nullptr) {
-            mhcPreNormEps = *preEps;
-        }
-        const float *eps1 = attrs->GetAttrPointer<float>(2);
-        if (eps1 != nullptr) {
-            hcEps = *eps1;
-        }
-
-        const bool *returnHInF32Ptr = attrs->GetBool(3);
-        if (returnHInF32Ptr != nullptr) {
-            returnHInF32 = *returnHInF32Ptr;
-        }
-    }
-
-    // 校验数值稳定项
-    if (normEps < 0.0F) {
-        OP_LOGE("MhcNormPostPreonly", "norm_eps must be >= 0, got %e", normEps);
-        return ge::GRAPH_FAILED;
-    }
-    if (hcEps < 0.0F) {
-        OP_LOGE("MhcNormPostPreonly", "hc_eps must be >= 0, got %e", hcEps);
-        return ge::GRAPH_FAILED;
-    }
-    if (mhcPreNormEps < 0.0F) {
-        OP_LOGE("MhcNormPostPreonly", "mhc_pre_norm_eps must be >= 0, got %e", mhcPreNormEps);
-        return ge::GRAPH_FAILED;
-    }
-
-    // 检查索引10处的可选gamma_2；非空时执行RMSNorm_mid
-    auto gamma2_shape = context->GetOptionalInputShape(10);
-    bool useRmsMid = (gamma2_shape != nullptr);
-
-    // D轴分块必须在核映射前完成
-    uint32_t dimTile = std::min(D, HOST_D_TILE_MAX);
-
-    uint32_t lastDimTile = D % dimTile;
-    uint32_t dimLoop = D / dimTile + (lastDimTile ? 1 : 0);
-
-    // A5的MIX_AIC_1_2以一个物理AI Core为blockDim单位，并展开两个sibling AIV。
-    // 输入能力已在上方统一校验；有足够的物理AI Core时，每个token分配一对sibling AIV。
-    const bool hasSiblingCapacity = totalTokens <= coreNumAiv / 2U;
-    const bool enableDualSibling = hasSiblingCapacity;
-    const uint32_t coresPerToken = enableDualSibling ? 2U : 1U;
-    const uint32_t usedCoreNum = std::min(totalTokens, enableDualSibling ? (coreNumAiv / 2U) : coreNumAiv);
-    uint32_t rowsPerCore = totalTokens / usedCoreNum;
-    uint32_t remainTokens = totalTokens % usedCoreNum;
-    uint32_t rowsPerCoreSp = rowsPerCore + 1;
-    uint32_t blockPivot = remainTokens;
-
-    // 填充Tiling数据
-    MhcNormPostPreonlyTilingData tiling;
-    tiling.set_totalTokens(totalTokens);
-    tiling.set_headCount(N);
-    tiling.set_embedDim(D);
-    tiling.set_usedCoreNum(usedCoreNum);
-    tiling.set_rowsPerCore(rowsPerCore);
-    tiling.set_rowsPerCoreSp(rowsPerCoreSp);
-    tiling.set_blockPivot(blockPivot);
-    tiling.set_dimTile(dimTile);
-    tiling.set_dimLoop(dimLoop);
-    tiling.set_lastDimTile(lastDimTile);
-    tiling.set_phiRows(phiRows);
-    tiling.set_phiCols(phiCols);
-    tiling.set_normEps(normEps);
-    tiling.set_mhcPreNormEps(mhcPreNormEps);
-    tiling.set_hcEps(hcEps);
-    tiling.set_invD(1.0F / static_cast<float>(D));
-    tiling.set_invK(1.0F / static_cast<float>(N * D));
-    tiling.set_useRmsMid(useRmsMid ? 1U : 0U);
-    tiling.set_coresPerToken(coresPerToken);
-    tiling.set_returnHInF32(static_cast<int8_t>(returnHInF32));
-
-    // CrossCore同步不占GM；双sibling路径每个token只分配一个32B partial1槽。
-    size_t sysWsBytes = ascendcPlatform.GetLibApiWorkSpaceSize();
-    size_t *currentWorkspace = context->GetWorkspaceSizes(1);
-    if (currentWorkspace == nullptr) {
-        OP_LOGE("MhcNormPostPreonly", "GetWorkspaceSizes is nullptr");
-        return ge::GRAPH_FAILED;
-    }
-    currentWorkspace[0] =
-        sysWsBytes + (enableDualSibling ? (size_t)totalTokens * PARTIAL_SLOTS_PER_TOKEN * PARTIAL_SLOT_BYTES : 0U);
-
-    // 输出Tiling数据
-    context->SetBlockDim(usedCoreNum);
-    if (enableDualSibling) {
-        context->SetScheduleMode(1);
-    }
-    uint64_t tilingKey = (useRmsMid ? TILING_KEY_USE_RMS_MID : 0ULL) |
-                         (returnHInF32 ? TILING_KEY_RETURN_H_IN_F32 : 0ULL) |
-                         (coresPerToken == 2 ? TILING_KEY_DUAL_SIBLING_AIV : 0ULL);
-    context->SetTilingKey(tilingKey);
-    tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
-    context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
-
-    OP_LOGD(context->GetNodeName(), "returnHInF32:  %s", (returnHInF32 ? "true" : "false"));
-    return ge::GRAPH_SUCCESS;
+    return TilingRegistry::GetInstance().DoTilingImpl(context);
 }
 
-static ge::graphStatus TilingPrepareForMhcNormPostPreonly(gert::TilingParseContext *)
+static ge::graphStatus TilingPrepareForMhcNormPostPreonly(gert::TilingParseContext *context)
 {
+    OP_CHECK_IF(context == nullptr, OPS_REPORT_CUBE_INNER_ERR("MhcNormPostPreonly", "context is null"),
+                return ge::GRAPH_FAILED);
+    auto platformInfo = context->GetPlatformInfo();
+    OP_CHECK_IF(platformInfo == nullptr, OPS_REPORT_CUBE_INNER_ERR(context->GetNodeName(), "platformInfo is null"),
+                return ge::GRAPH_FAILED);
+    auto compileInfo = context->GetCompiledInfo<MhcNormPostPreonlyCompileInfo>();
+    OP_CHECK_IF(compileInfo == nullptr, OPS_REPORT_CUBE_INNER_ERR(context->GetNodeName(), "compileInfo is null"),
+                return ge::GRAPH_FAILED);
+
+    platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
+    compileInfo->aivNum = ascendcPlatform.GetCoreNumAiv();
+    compileInfo->systemWorkspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
     return ge::GRAPH_SUCCESS;
 }
 

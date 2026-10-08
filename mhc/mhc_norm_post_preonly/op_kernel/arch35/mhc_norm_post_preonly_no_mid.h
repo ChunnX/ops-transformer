@@ -12,8 +12,8 @@
 #define MHC_NORM_POST_PREONLY_NO_MID_H_
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
-                                                        DUAL_SIBLING>::ProcessTokenDualNoMid(uint32_t token)
+__aicore__ inline void
+KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ProcessTokenDualNoMid(uint32_t token)
 {
     float postVals[N_MAX];
     float sumSqHalf[2] = {0.0f, 0.0f};
@@ -64,7 +64,8 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     }
 
     // 两个lane均无条件执行一次mode1 Set/Wait；该等待不替代本核流水事件。
-    MhcPairReadySync();
+    CrossCoreSetFlag<0x1, PIPE_MTE3>(PAIR_READY_FLAG);
+    CrossCoreWaitFlag<0x1, PIPE_MTE2>(PAIR_READY_FLAG);
     if (laneId_ == 1U) {
         return;
     }
@@ -81,6 +82,12 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         dotHalf[1][o] = partialBuf.GetValue(o + 1U);
     }
 
+    // follower负责的两个head在GM和UB中均连续。partial到达后立即发起2D回读，
+    // 用下方Gate的Scalar/Vector计算隐藏这段MTE2；R6消费x2前再等待完成。
+    LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
+    const uint64_t followerHeadOffset = (uint64_t)token * N_ * D_ + 2U * D_;
+    {}
+
     const float totalSumSqPre = sumSqHalf[0] + sumSqHalf[1];
     float xHatVals[N_MAX];
     for (uint32_t o = 0; o < N_MAX; ++o) {
@@ -88,14 +95,11 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     }
     ComputeGateValues(totalSumSqPre, xHatVals);
 
-    // 会合后只有leader继续执行R6、R7和最终输出。leader的私有缓存仅包含
-    // 自己完成R3的前两行，从已经同步写出的x2_out恢复follower负责的后两行。
-    // follower负责的两个head在GM和UB中均连续，一次恢复完整2D区间，
-    // 避免按tile、按head重复发出MTE2搬运指令。
-    LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
-    const uint64_t followerHeadOffset = (uint64_t)token * N_ * D_ + 2U * D_;
-    DataCopy(x2Cache[2U * D_], x2OutGm_[followerHeadOffset], 2U * D_);
-    SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
+    // 会合后只有leader继续执行R6、R7和最终输出。
+    if constexpr (!false) {
+        DataCopy(x2Cache[2U * D_], x2OutGm_[followerHeadOffset], 2U * D_);
+        SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
+    }
     WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
 
     float sumSq1 = 0.0f;
@@ -136,8 +140,8 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
 }
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline void
-KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ProcessTokenSingleNoMid(uint32_t token)
+__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ProcessTokenSingleNoMid(
+    uint32_t token)
 {
     float postVals[N_MAX];
     float sumSqHalf[2] = {0.0f, 0.0f};
