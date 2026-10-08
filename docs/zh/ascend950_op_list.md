@@ -708,6 +708,13 @@ Ascend 950支持的算子分类和算子列表如下：
   </tr>
   <tr>
     <td>mhc</td>
+    <td><a href="../../mhc/mhc_sandwich_norm_post_preonly/README.md">mhc_sandwich_norm_post_preonly</a></td>
+    <td>✓</td><td>✓</td><td>✓</td><td>✗</td>
+    <td>AI Core</td>
+    <td>融合MHC Sandwich结构中的RMSNorm、Post和PreOnly计算。</td>
+  </tr>
+  <tr>
+    <td>mhc</td>
     <td><a href="../../mhc/mhc_pre/README.md">mhc_pre</a></td>
     <td>✓</td>
     <td>✓</td>
