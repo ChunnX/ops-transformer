@@ -37,18 +37,19 @@ O   = sum_i(w_i * O_i) / S
 ```
 
 请求 LSE 时，写回 FP32 `M` 和 `S`，对应 `LSE = M + log(S)`。
-归并每次处理至多 16 个 head，流水排空后复用 32 KiB float 与 16 KiB 输出缓冲区；
+归并每次处理至多 16 个 head：转换与累加各占独立的 32 KiB FP32 缓冲区，
+最终 FP16/BF16 输出占独立的 16 KiB 缓冲区，容量由编译期断言约束。
+流水排空后再复用这些缓冲区；
 小 G 的统计量按 32B 对齐存放，GM 按实际 G 精确读写。
 不新增 kernel launch，不新增公共开关。
 
 分核条件编码进 tiling key，使用编译期 `IS_FD` 特化，非分核实例不携带分核运行时分支。
 原非 TND `FLASH_DECODE` 工作区和输出语义保持独立，不与新 TND 分核路径共用。
 
-## 验证
+## 测试方法
 
-2026-10-08：host UT 35/35 通过，包括原生 8 个 G、FP16/BF16、可选 RoPE、LSE、
-多 batch、TopK 512–2048 的分核选择、24 核全占用时的 FD key、mode3/block2 回退、
-不支持 G/类型的公共拒绝，以及既有 shape/dtype 推导测试。
+Host UT 覆盖原生 G、FP16/BF16、可选 RoPE、LSE、多 batch、TopK 分核选择、
+全核占用时的 FD key、mode3/block2 回退、非法 G/类型拒绝及 shape/dtype 推导。
 
 ```bash
 bash build.sh --ophost_test --soc=ascend910b --ops=sparse_flash_attention -j8
@@ -62,21 +63,15 @@ bash build.sh --pkg --soc=ascend910b --ops=sparse_flash_attention \
 python -m pytest -q attention/sparse_flash_attention/tests/pytest/test_sfa_split_kv_arch22.py
 ```
 
-Ascend910B2 设备回归 **906 passed，0 skipped，0 failure/error**（127.98s）：原生 G、两种 dtype、可选 RoPE、LSE 开关、单/多 batch、
+设备回归覆盖原生 G、两种 dtype、可选 RoPE、LSE 开关、单/多 batch、
 完整/尾 padding/全空/混合索引、eager 与 NPU graph、3 个随机 seed、512 边界附近、
 TopK128 非分核、短实际 KV 和空 query batch。
 每行输出对照独立 FP32 softmax reference，relative L2 阈值为 BF16 0.02、FP16 0.005。
 LSE 分别检查 max、sum 和 `max + log(sum)`；全空行严格检查 output/max/sum 为零。
 
-完整单算子包以 CANN 9.1.0 编译，设备环境为 CANN 9.2.0、Python 3.11.10、
-PyTorch 2.10.0 / torch_npu 2.10.0.post7.dev20260918、Ascend910B2。
-master 基线为 `b2d40bd0d3c75356e2eb9af85d7313fe29e302f8`，完整索引数值回归 64/64 通过。
-单算子包 `cann-ops-transformer-sfa_a2_general_20261008_linux-aarch64.run` 的 SHA256 为
-`6cf3be4829e2752f329ab8042047672a50b97ffd5173ff9d0d268324383d42d9`，本地与设备端一致。
-
 ## 独立单算子性能
 
-同一 Ascend910B2 设备，对比上述 master 与本实现；TND/PA_BSND、BF16、RoPE64、
+同一 Ascend910B2 设备，对比 master 原生 SFA 与分核实现；TND/PA_BSND、BF16、RoPE64、
 单 KV head、dim512、TopK2048、KV4096、mode0/block1、LSE=false。
 每图 32 次调用，每轮 101 个 NPU Event 样本，baseline/candidate 交替测量 3 轮，
 取三轮中位数。每个计时配置先逐行校验独立 FP32 reference。

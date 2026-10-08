@@ -189,7 +189,7 @@ private:
     GlobalTensor<int32_t> kvValidSizeGm_;
 
     // ================================Local Buffer区====================================
-    TBuf<> inputBuff1;  // 32K
+    TBuf<> inputBuff1;  // 64K
     TBuf<> inputBuff2;  // 16K
     TBuf<> outputBuff1; // 32K
     TBuf<> outputBuff2; // 4K
@@ -366,6 +366,13 @@ __aicore__ inline void SFAVectorService<SFAT>::MergeSplitKV(GlobalTensor<OUT_T>&
                                                             GlobalTensor<OUT_T>& finalOut, GlobalTensor<T>& finalMax,
                                                             GlobalTensor<T>& finalSum, uint32_t queryIdx)
 {
+    constexpr uint32_t chunkElements = AttentionCommon::SPLIT_KV_HEADS_PER_CHUNK * AttentionCommon::SPLIT_KV_HEAD_DIM;
+    static_assert(chunkElements * sizeof(T) <= ConstInfo::SFA_BUFFER_BYTES_32K,
+                  "Split-KV converted and accum each require a 32 KiB buffer");
+    static_assert(chunkElements * sizeof(OUT_T) <= ConstInfo::SFA_BUFFER_BYTES_8K * 2,
+                  "Split-KV partial and result must fit in 16 KiB");
+    // converted: outputBuff1 (32 KiB); accum: tmpBuff1 (32 KiB).
+    // result: inputBuff2 (16 KiB), disjoint from both live FP32 buffers.
     AttentionCommon::MergeSparseSplitKV(
         sfaVecConstInfo.qSeqSize, queryIdx, sfaVecConstInfo.splitKVNum, sfaVecConstInfo.gSize,
         tilingData->baseParams.returnSoftmaxLse, partialOut, partialMax, partialSum, finalOut, finalMax, finalSum,
