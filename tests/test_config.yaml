@@ -131,7 +131,7 @@ attention:
       - attention/compressor_grad
     test:
       examples: False
-      ut: False
+      ut: True
     options:
       - compressor_grad
 
