@@ -82,9 +82,12 @@ void DestroyTensor(TensorResource &resource)
 int main()
 {
     constexpr int32_t deviceId = 0;
-    constexpr int64_t T = 1;
+    constexpr int64_t B = 1;
+    constexpr int64_t S = 4;
+    constexpr int64_t T = B * S;
     constexpr int64_t N = 4;
-    constexpr int64_t D = 2560;
+    constexpr int64_t D = 5120;
+    constexpr aclDataType hdt = ACL_BF16; // 性能主场景为 BF16
     aclrtContext context = nullptr;
     aclrtStream stream = nullptr;
     CHECK_RET(aclInit(nullptr) == ACL_SUCCESS, return -1);
@@ -92,39 +95,40 @@ int main()
     CHECK_RET(aclrtCreateContext(&context, deviceId) == ACL_SUCCESS, return -1);
     CHECK_RET(aclrtCreateStream(&stream) == ACL_SUCCESS, return -1);
 
-    TensorResource hOut, residual, hPost, hResOptional, phi, alpha, bias, gamma1, gamma0;
+    TensorResource hOut, residual, hPost, hResOptional, phi, alpha, bias, gamma1, gamma0, gamma2;
     TensorResource hInPrimeOut, x2Out;
-    CHECK_RET(CreateTensor({T, D}, ACL_FLOAT16, true, hOut) == 0, return -1);
-    CHECK_RET(CreateTensor({T, N, D}, ACL_FLOAT16, true, residual) == 0, return -1);
-    CHECK_RET(CreateTensor({T, N}, ACL_FLOAT, true, hPost) == 0, return -1);
-    CHECK_RET(CreateTensor({T, N, N}, ACL_FLOAT, true, hResOptional) == 0, return -1);
+    CHECK_RET(CreateTensor({B, S, D}, hdt, true, hOut) == 0, return -1);
+    CHECK_RET(CreateTensor({B, S, N, D}, hdt, true, residual) == 0, return -1);
+    CHECK_RET(CreateTensor({B, S, N}, ACL_FLOAT, true, hPost) == 0, return -1);
+    CHECK_RET(CreateTensor({B, S, N, N}, ACL_FLOAT, true, hResOptional) == 0, return -1);
     CHECK_RET(CreateTensor({N, N * D}, ACL_FLOAT, true, phi) == 0, return -1);
     CHECK_RET(CreateTensor({1}, ACL_FLOAT, true, alpha) == 0, return -1);
     CHECK_RET(CreateTensor({N}, ACL_FLOAT, true, bias) == 0, return -1);
     CHECK_RET(CreateTensor({D}, ACL_FLOAT, true, gamma1) == 0, return -1);
     CHECK_RET(CreateTensor({D}, ACL_FLOAT, true, gamma0) == 0, return -1);
-    CHECK_RET(CreateTensor({T, D}, ACL_FLOAT16, false, hInPrimeOut) == 0, return -1);
-    CHECK_RET(CreateTensor({T, N, D}, ACL_FLOAT16, false, x2Out) == 0, return -1);
+    CHECK_RET(CreateTensor({N * D}, ACL_FLOAT, true, gamma2) == 0, return -1);
+    CHECK_RET(CreateTensor({B, S, D}, hdt, false, hInPrimeOut) == 0, return -1);
+    CHECK_RET(CreateTensor({B, S, N, D}, hdt, false, x2Out) == 0, return -1);
 
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     aclnnStatus ret = aclnnMhcNormPostPreonlyGetWorkspaceSize(
         hOut.tensor, residual.tensor, hPost.tensor, hResOptional.tensor, phi.tensor, alpha.tensor, bias.tensor,
-        gamma1.tensor, nullptr, gamma0.tensor, nullptr, 1e-6, 1e-6, 1e-6, false, hInPrimeOut.tensor, x2Out.tensor,
+        gamma1.tensor, nullptr, gamma0.tensor, gamma2.tensor, 1e-6, 1e-6, 1e-6, false, hInPrimeOut.tensor, x2Out.tensor,
         nullptr, nullptr, &workspaceSize, &executor);
-    CHECK_RET(ret == ACLNN_SUCCESS, LOG_PRINT("GetWorkspaceSize failed, error: %d\n", ret); return -1);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("GetWorkspaceSize failed, error: %d\n", ret); return -1);
 
     void *workspace = nullptr;
     if (workspaceSize > 0) {
         CHECK_RET(aclrtMalloc(&workspace, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST) == ACL_SUCCESS, return -1);
     }
     ret = aclnnMhcNormPostPreonly(workspace, workspaceSize, executor, stream);
-    CHECK_RET(ret == ACLNN_SUCCESS, LOG_PRINT("Execute failed, error: %d\n", ret); return -1);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Execute failed, error: %d\n", ret); return -1);
     CHECK_RET(aclrtSynchronizeStream(stream) == ACL_SUCCESS, return -1);
     LOG_PRINT("MhcNormPostPreonly compute success!\n");
 
     for (TensorResource *resource :
-         {&hOut, &residual, &hPost, &hResOptional, &phi, &alpha, &bias, &gamma1, &gamma0, &hInPrimeOut, &x2Out}) {
+         {&hOut, &residual, &hPost, &hResOptional, &phi, &alpha, &bias, &gamma1, &gamma0, &gamma2, &hInPrimeOut, &x2Out}) {
         DestroyTensor(*resource);
     }
     if (workspace != nullptr) {
