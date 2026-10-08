@@ -44,7 +44,7 @@ public:
     static constexpr uint8_t VEC1 = 1;
     static constexpr uint32_t BLOCK_SIZE = 32;
 
-    __aicore__ inline BlockMmadTla(Arch::Resource<ArchTag> &resource)
+    __aicore__ inline BlockMmadTla(Arch::Resource<ArchTag>& resource)
     {
         // L1 区域顺序：P 数据 | P-scale | Q 数据 | Q-scale | KV(=V) 数据 | KV(=V)-scale
         // localGlobalMaxL1 = 256*4
@@ -60,7 +60,7 @@ public:
     __aicore__ inline ~BlockMmadTla() {}
 
     template <class TileInfoT>
-    __aicore__ inline void operator()(TileInfoT &delay3TileInfo)
+    __aicore__ inline void operator()(TileInfoT& delay3TileInfo)
     {
 #ifdef __DAV_CUBE__
         AscendC::LocalTensor<ElementLocalGlobalMax> localGlobalMax0 = localGlobalMaxL1[delay3TileInfo.tileMaxIdx];
@@ -75,9 +75,9 @@ public:
         // Cube 和 Vec 一起停。完成序靠调用方 CrossCoreSetFlag<PIPE_MTE1>。
         constexpr uint16_t burstLen = static_cast<uint16_t>(L1_SINGLE_GLOBAL_MAX_SIZE * sizeof(ElementLocalGlobalMax) /
                                                             BLOCK_SIZE); // 128 half = 8 * 32B
-        __ubuf__ void *dst = (__ubuf__ void *)peerGlobalMax.GetPhyAddr();
-        __cbuf__ void *src0 = (__cbuf__ void *)localGlobalMax0.GetPhyAddr();
-        __cbuf__ void *src1 = (__cbuf__ void *)localGlobalMax1.GetPhyAddr();
+        __ubuf__ void* dst = (__ubuf__ void*)peerGlobalMax.GetPhyAddr();
+        __cbuf__ void* src0 = (__cbuf__ void*)localGlobalMax0.GetPhyAddr();
+        __cbuf__ void* src1 = (__cbuf__ void*)localGlobalMax1.GetPhyAddr();
         asc_copy_l12ub(dst, src0, false, 1, burstLen, 0, 0); // VEC0
         asc_copy_l12ub(dst, src1, true, 1, burstLen, 0, 0);  // VEC1
 #endif

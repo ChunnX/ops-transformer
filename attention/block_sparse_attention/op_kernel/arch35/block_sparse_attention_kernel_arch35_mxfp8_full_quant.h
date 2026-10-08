@@ -83,10 +83,10 @@ public:
     // Methods
     __aicore__ inline BsaMXFP8FullQuantKernelArch35() {}
 
-    __aicore__ inline void operator()(BsaFullQuantKernelParamsArch35 const &params)
+    __aicore__ inline void operator()(BsaFullQuantKernelParamsArch35 const& params)
     {
-        __gm__ BlockSparseAttentionTilingData *bsaTilingData =
-            reinterpret_cast<__gm__ BlockSparseAttentionTilingData *>(params.tiling);
+        __gm__ BlockSparseAttentionTilingData* bsaTilingData =
+            reinterpret_cast<__gm__ BlockSparseAttentionTilingData*>(params.tiling);
         FetchBaseShapeInfo(bsaTilingData);
         // KV(V 数据) 与 V-scale 的 stride 预算（PV 稀疏 gather 用）
         // V 数据 e4m3：sizeof=1，元素偏移即字节偏移，行 stride = embed_
@@ -95,31 +95,31 @@ public:
         InitLayoutStride();
         // global buffers
         AscendC::GlobalTensor<ElementQ> gQ;
-        gQ.SetGlobalBuffer((__gm__ ElementQ *)params.query);
+        gQ.SetGlobalBuffer((__gm__ ElementQ*)params.query);
         AscendC::GlobalTensor<ElementK> gK;
-        gK.SetGlobalBuffer((__gm__ ElementK *)params.key);
+        gK.SetGlobalBuffer((__gm__ ElementK*)params.key);
         AscendC::GlobalTensor<ElementK> gV;
-        gV.SetGlobalBuffer((__gm__ ElementK *)params.value);
+        gV.SetGlobalBuffer((__gm__ ElementK*)params.value);
         AscendC::GlobalTensor<int64_t> gActualQseqlen;
-        gActualQseqlen.SetGlobalBuffer((__gm__ int64_t *)params.actualSeqLengths);
+        gActualQseqlen.SetGlobalBuffer((__gm__ int64_t*)params.actualSeqLengths);
         AscendC::GlobalTensor<int64_t> gActualKvseqlen;
-        gActualKvseqlen.SetGlobalBuffer((__gm__ int64_t *)params.actualSeqLengthsKv);
+        gActualKvseqlen.SetGlobalBuffer((__gm__ int64_t*)params.actualSeqLengthsKv);
         AscendC::GlobalTensor<uint8_t> gBlockSparseMask;
-        gBlockSparseMask.SetGlobalBuffer((__gm__ uint8_t *)params.blockSparseMask);
+        gBlockSparseMask.SetGlobalBuffer((__gm__ uint8_t*)params.blockSparseMask);
         AscendC::GlobalTensor<uint8_t> gQDequantScale;
-        gQDequantScale.SetGlobalBuffer((__gm__ uint8_t *)params.qDequantScale);
+        gQDequantScale.SetGlobalBuffer((__gm__ uint8_t*)params.qDequantScale);
         AscendC::GlobalTensor<uint8_t> gKDequantScale;
-        gKDequantScale.SetGlobalBuffer((__gm__ uint8_t *)params.kDequantScale);
+        gKDequantScale.SetGlobalBuffer((__gm__ uint8_t*)params.kDequantScale);
         AscendC::GlobalTensor<uint8_t> gVDequantScale;
-        gVDequantScale.SetGlobalBuffer((__gm__ uint8_t *)params.vDequantScale);
+        gVDequantScale.SetGlobalBuffer((__gm__ uint8_t*)params.vDequantScale);
         AscendC::GlobalTensor<ElementO> gO;
-        gO.SetGlobalBuffer((__gm__ ElementO *)params.attentionOut);
+        gO.SetGlobalBuffer((__gm__ ElementO*)params.attentionOut);
         AscendC::GlobalTensor<ElementLse> gLse;
-        gLse.SetGlobalBuffer((__gm__ ElementLse *)params.lse);
+        gLse.SetGlobalBuffer((__gm__ ElementLse*)params.lse);
         AscendC::GlobalTensor<ElementSparseIdx> gSparseIdx;
-        gSparseIdx.SetGlobalBuffer((__gm__ ElementSparseIdx *)params.workSpace);
+        gSparseIdx.SetGlobalBuffer((__gm__ ElementSparseIdx*)params.workSpace);
         AscendC::GlobalTensor<ElementSparseCount> gSparseCount;
-        gSparseCount.SetGlobalBuffer((__gm__ ElementSparseCount *)(params.workSpace + sparseIdxSize_));
+        gSparseCount.SetGlobalBuffer((__gm__ ElementSparseCount*)(params.workSpace + sparseIdxSize_));
 
         // cross core data move dst buffers
         AscendC::LocalTensor<ElementS> ubSTensor[EpMXFP8::UB_S_BUF_CNT];
@@ -158,7 +158,7 @@ public:
         // [QK/PV 共享] kernel 层单一 kvBufId，传引用进两 block ctor（QK 先构造预置 4 路 KV event；
         //   PV 后构造、其 ctor 内 InitL0BufferForReduceSum 把 kvBufId 0→1）
         uint32_t kvBufId = 0;
-        uint64_t softmaxScale = static_cast<uint64_t>(*reinterpret_cast<int32_t *>(&scaleValue_));
+        uint64_t softmaxScale = static_cast<uint64_t>(*reinterpret_cast<int32_t*>(&scaleValue_));
         BlockMmadQK blockMmadQK(resource, kvBufId, softmaxScale);
         BlockMmadPV blockMmadPV(resource, kvBufId);
 #endif
@@ -214,13 +214,13 @@ public:
             SkipEmptyCreatedTasks(delay20CoreTaskId, coreTaskId, taskInfos);
             SkipEmptyCreatedTasks(delay3CoreTaskId, coreTaskId, taskInfos);
 
-            TaskInfo &curTaskInfo = taskInfos[coreTaskId & PRELOAD_TASK_CACHE_MASK];
-            TaskInfo &delay20TaskInfo = taskInfos[delay20CoreTaskId & PRELOAD_TASK_CACHE_MASK];
-            TaskInfo &delay3TaskInfo = taskInfos[delay3CoreTaskId & PRELOAD_TASK_CACHE_MASK];
+            TaskInfo& curTaskInfo = taskInfos[coreTaskId & PRELOAD_TASK_CACHE_MASK];
+            TaskInfo& delay20TaskInfo = taskInfos[delay20CoreTaskId & PRELOAD_TASK_CACHE_MASK];
+            TaskInfo& delay3TaskInfo = taskInfos[delay3CoreTaskId & PRELOAD_TASK_CACHE_MASK];
 
-            TileInfo &curTileInfo = tileInfos[coreTileLoop & PRELOAD_TASK_CACHE_MASK];
-            TileInfo &delay20TileInfo = tileInfos[(coreTileLoop - PV_RE_DELAY_N) & PRELOAD_TASK_CACHE_MASK];
-            TileInfo &delay3TileInfo = tileInfos[(coreTileLoop - DELAY_PSCALE_N) & PRELOAD_TASK_CACHE_MASK];
+            TileInfo& curTileInfo = tileInfos[coreTileLoop & PRELOAD_TASK_CACHE_MASK];
+            TileInfo& delay20TileInfo = tileInfos[(coreTileLoop - PV_RE_DELAY_N) & PRELOAD_TASK_CACHE_MASK];
+            TileInfo& delay3TileInfo = tileInfos[(coreTileLoop - DELAY_PSCALE_N) & PRELOAD_TASK_CACHE_MASK];
 
             // 创建qs任务
             if (curTaskTileIdx == 0 && coreTaskId < coreTaskNum) {
@@ -438,7 +438,7 @@ public:
         ReleaseSyncFlags();
     }
 
-    __aicore__ inline void FetchBaseShapeInfo(__gm__ BlockSparseAttentionTilingData *bsaTilingData)
+    __aicore__ inline void FetchBaseShapeInfo(__gm__ BlockSparseAttentionTilingData* bsaTilingData)
     {
         batch_ = bsaTilingData->batch;
         qHeads_ = bsaTilingData->numHeads;
@@ -539,7 +539,7 @@ public:
         AscendC::LocalTensor<ElementS> (&l1LocalGlobalMax)[GmMXFP8::L1_LOCAL_GLOBAL_MAX_BUF_CNT],
         AscendC::LocalTensor<ElementS> (&ubSTensor)[EpMXFP8::UB_S_BUF_CNT],
         AscendC::LocalTensor<ElementS> (&ubPeerGlobalMax)[EpMXFP8::UB_PEER_GLOBAL_MAX_CNT],
-        AscendC::LocalTensor<ElementOTmp> &ubOTmpTensor)
+        AscendC::LocalTensor<ElementOTmp>& ubOTmpTensor)
 
     {
         // L1 侧 buffer 初始化：OFFSET + i * SIZE 递增
@@ -570,11 +570,11 @@ public:
 
     // 空 KV 行：attentionOut 置 0，softmaxLse 置 -inf。标量写 GM，不占用正在流水的 UB。
     template <class TensorO, class TensorLse>
-    __aicore__ inline void WriteEmptyKvOutput(const TaskInfo &info, TensorO &oGm, TensorLse &lseGm)
+    __aicore__ inline void WriteEmptyKvOutput(const TaskInfo& info, TensorO& oGm, TensorLse& lseGm)
     {
         constexpr uint32_t kNegInfBits = 0xFF800000u;
         float negInf = 0.0f;
-        *reinterpret_cast<uint32_t *>(&negInf) = kNegInfBits;
+        *reinterpret_cast<uint32_t*>(&negInf) = kNegInfBits;
 
         const uint32_t splitM = (EpMXFP8::QS_BASE_SIZE + 1) / 2;
         uint32_t rowBegin = 0;
@@ -595,7 +595,7 @@ public:
         }
     }
 
-    __aicore__ inline void SkipEmptyCreatedTasks(uint32_t &taskId, uint32_t createdTaskId, TaskInfo *taskInfos)
+    __aicore__ inline void SkipEmptyCreatedTasks(uint32_t& taskId, uint32_t createdTaskId, TaskInfo* taskInfos)
     {
         while (taskId < createdTaskId && taskInfos[taskId & PRELOAD_TASK_CACHE_MASK].taskTileNum == 0) {
             taskId++;
@@ -605,12 +605,12 @@ public:
     // 由 coreTaskId (本核上的 task 序号) 反推 globalTaskId 并填充 TaskInfo
     // 仅在 task 起始 tile (taskTileId == 0) 调用，避免每个 tile 重复计算
     // coreIdx / coreNum 由调用方 Process 传入, 避免重复调用 GetBlockIdx/GetBlockNum
-    __aicore__ inline void CreateTaskInfo(TaskInfo &info, uint32_t coreTaskId, uint32_t coreIdx, uint32_t coreNum,
-                                          AscendC::GlobalTensor<int64_t> &gActualQseqlen,
-                                          AscendC::GlobalTensor<int64_t> &gActualKvseqlen,
-                                          AscendC::GlobalTensor<ElementSparseCount> &gSparseCount,
-                                          AscendC::GlobalTensor<ElementSparseIdx> &gSparseIdx,
-                                          BatchOffsetInfo &batchInfo)
+    __aicore__ inline void CreateTaskInfo(TaskInfo& info, uint32_t coreTaskId, uint32_t coreIdx, uint32_t coreNum,
+                                          AscendC::GlobalTensor<int64_t>& gActualQseqlen,
+                                          AscendC::GlobalTensor<int64_t>& gActualKvseqlen,
+                                          AscendC::GlobalTensor<ElementSparseCount>& gSparseCount,
+                                          AscendC::GlobalTensor<ElementSparseIdx>& gSparseIdx,
+                                          BatchOffsetInfo& batchInfo)
     {
         uint32_t taskIdx = coreTaskId * coreNum + coreIdx; // 反推全局 task 序号
 
@@ -780,8 +780,8 @@ public:
     }
 
     // 每个 tile 调用一次，根据 coreTileLoop / curTaskTileIdx / taskInfo 填充 TileInfo
-    __aicore__ inline void CreateTileInfo(TileInfo &info, uint64_t coreTileLoop, uint32_t curTaskTileIdx,
-                                          const TaskInfo &taskInfo)
+    __aicore__ inline void CreateTileInfo(TileInfo& info, uint64_t coreTileLoop, uint32_t curTaskTileIdx,
+                                          const TaskInfo& taskInfo)
     {
         info.loop = static_cast<uint32_t>(coreTileLoop);
         info.curKvsTileLoopIdx = curTaskTileIdx;

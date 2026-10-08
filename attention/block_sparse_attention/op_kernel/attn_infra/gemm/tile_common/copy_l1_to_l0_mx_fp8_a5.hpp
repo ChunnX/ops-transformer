@@ -25,7 +25,7 @@ struct CopyL1ToL0AMxFp8A5 {
     __aicore__ inline CopyL1ToL0AMxFp8A5() {}
 
     template <class TensorDst, class TensorSrc, class TensorScale>
-    __aicore__ inline void operator()(TensorDst const &dst, TensorSrc const &src, TensorScale const &scale,
+    __aicore__ inline void operator()(TensorDst const& dst, TensorSrc const& src, TensorScale const& scale,
                                       uint32_t dAct, uint32_t s2Act, uint32_t s2Start = 0)
     {
         constexpr uint32_t NZ_C0 = Block::MXFP8::NZ_C0_ELEMS;
@@ -68,7 +68,7 @@ struct CopyL1ToL0AMxFp8A5 {
     // 带完整 L1 S2 行 stride 的重载（k-split 时 srcStride 必须是整 tile）。
     // scaleS2Start / scaleS2FullAlign16 允许 scale 与 data 不在同一 S2 窗口（P1b 512 行 scale）。
     template <class TensorDst, class TensorSrc, class TensorScale>
-    __aicore__ inline void operator()(TensorDst const &dst, TensorSrc const &src, TensorScale const &scale,
+    __aicore__ inline void operator()(TensorDst const& dst, TensorSrc const& src, TensorScale const& scale,
                                       uint32_t dAct, uint32_t s2Act, uint32_t s2Start, uint32_t s2FullAlign16,
                                       uint32_t scaleS2Start, uint32_t scaleS2FullAlign16)
     {
@@ -102,7 +102,7 @@ struct CopyL1ToL0AMxFp8A5 {
     }
 
     template <class TensorDst, class TensorSrc, class TensorScale>
-    __aicore__ inline void operator()(TensorDst const &dst, TensorSrc const &src, TensorScale const &scale,
+    __aicore__ inline void operator()(TensorDst const& dst, TensorSrc const& src, TensorScale const& scale,
                                       uint32_t dAct, uint32_t s2Act, uint32_t s2Start, uint32_t s2FullAlign16)
     {
         operator()(dst, src, scale, dAct, s2Act, s2Start, s2FullAlign16, s2Start, s2FullAlign16);
@@ -114,7 +114,7 @@ struct CopyL1ToL0BMxFp8A5 {
     __aicore__ inline CopyL1ToL0BMxFp8A5() {}
 
     template <class TensorDst, class TensorSrc, class TensorScale>
-    __aicore__ inline void operator()(TensorDst const &dst, TensorSrc const &src, TensorScale const &scale,
+    __aicore__ inline void operator()(TensorDst const& dst, TensorSrc const& src, TensorScale const& scale,
                                       uint32_t s2Align64, uint32_t dAct, uint32_t s2Base, uint32_t actScaleSrcStride,
                                       uint32_t s1Align64, uint32_t s2Start = 0)
     {
@@ -149,7 +149,7 @@ struct CopyL1ToL0AMxFp8QKA5 {
     __aicore__ inline CopyL1ToL0AMxFp8QKA5() {}
 
     template <class TensorDst, class TensorSrc, class TensorScale>
-    __aicore__ inline void operator()(TensorDst const &dst, TensorSrc const &src, TensorScale const &scale,
+    __aicore__ inline void operator()(TensorDst const& dst, TensorSrc const& src, TensorScale const& scale,
                                       uint32_t nSubRowStart, uint32_t nCur, uint32_t alignK, uint32_t s2Align16Full,
                                       uint32_t kStart = 0, uint32_t scaleRowStart = 0)
     {
@@ -185,7 +185,7 @@ struct CopyL1ToL0BMxFp8QKA5 {
     __aicore__ inline CopyL1ToL0BMxFp8QKA5() {}
 
     template <class TensorDst, class TensorSrc, class TensorScale>
-    __aicore__ inline void operator()(TensorDst const &dst, TensorSrc const &src, TensorScale const &scale,
+    __aicore__ inline void operator()(TensorDst const& dst, TensorSrc const& src, TensorScale const& scale,
                                       uint32_t mAlignL1, uint32_t alignK, uint32_t mAlignL0, uint32_t scaleMAlignL1,
                                       uint32_t kStart = 0)
     {
