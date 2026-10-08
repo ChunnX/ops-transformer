@@ -12,6 +12,7 @@
 
 import torch
 from .flash_mla_with_kvcache_golden import FlashMlaWithKvcacheGolden
+from .cross_check import enabled as cross_check_enabled
 
 
 def cpu_flash_mla_with_kvcache(
@@ -40,6 +41,11 @@ def cpu_flash_mla_with_kvcache(
     for name, value in arguments.items():
         if torch.is_tensor(value):
             arguments[name] = value.detach().cpu()
+    if cross_check_enabled():
+        # Independent FP32 reference for NPU/CUDA error ratios. Widen the
+        # already-quantized inputs; do not round exp weights or output to half.
+        arguments["q"] = arguments["q"].float()
+        arguments["k_cache"] = arguments["k_cache"].float()
     out, lse = FlashMlaWithKvcacheGolden().forward_golden(
         **arguments, device_mode="cpu"
     )
