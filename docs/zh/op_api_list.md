@@ -118,6 +118,7 @@
 |[aclnnGroupedMatmulSwigluQuantV2](../../gmm/grouped_matmul_swiglu_quant_v2/docs/aclnnGroupedMatmulSwigluQuantV2.md)|融合GroupedMatmul 、Dequant、Swiglu和Quant。|默认确定性实现|默认确定性实现|默认确定性实现|
 |[aclnnGroupedMatmulSwigluQuantWeightNZ](../../gmm/grouped_matmul_swiglu_quant/docs/aclnnGroupedMatmulSwigluQuantWeightNZ.md)|融合GroupedMatMul、Dequant、Swiglu和Quant，输入权重Weight会被强制视为NZ格式。|默认确定性实现|默认确定性实现|-|
 |[aclnnGroupedMatmulSwigluQuantWeightNzV2](../../gmm/grouped_matmul_swiglu_quant_v2/docs/aclnnGroupedMatmulSwigluQuantWeightNzV2.md)|融合GroupedMatMul、Dequant、Swiglu和Quant，输入权重Weight会被强制视为NZ格式。|默认确定性实现|默认确定性实现|默认确定性实现|
+|[aclnnGroupedMatmulSwigluQuantWeightNzV3](../../gmm/grouped_matmul_swiglu_quant_v2/docs/aclnnGroupedMatmulSwigluQuantWeightNzV3.md)|融合GroupedMatmul、Dequant、SwiGLU和MXFP8量化，支持weight为FRACTAL_NZ格式的单Tensor输入，swigluMode仅支持2。|-|-|默认确定性实现|
 |[aclnnGroupedMatmulWeightNz](../../gmm/grouped_matmul/docs/aclnnGroupedMatmulWeightNz.md)|实现分组矩阵乘计算，每组矩阵乘的维度大小可以不同，输入权重Weight会被强制视为NZ格式。|默认确定性实现|默认确定性实现|默认确定性实现|
 |[aclnnIncreFlashAttentionV4](../../attention/incre_flash_attention/docs/aclnnIncreFlashAttentionV4.md)|在全量推理场景的FlashAttention算子的基础上实现增量推理。|默认确定性实现|默认确定性实现|-|
 |[aclnnIndexerQuantCache](../../attention/indexer_quant_cache/docs/aclnnIndexerQuantCache.md)|在Indexer注意力机制的Epilog阶段，对KV Cache进行原地逐块动态量化压缩更新，支持MX-FP8、Normal、HiFloat8、MX-FP4四种量化模式。|-|-|默认确定性实现|
@@ -203,7 +204,7 @@
 |[aclnnMhcPreV2](../../mhc/mhc_pre/docs/aclnnMhcPreV2.md)|兼容[aclnnMhcPre](../../mhc/mhc_pre/docs/aclnnMhcPre.md)支持的功能，在此基础上新增opImplMode参数，供用户选择MhcPre计算模式。|-|-|默认确定性实现|
 |[aclnnMhcPreBackward](../../mhc/mhc_pre_backward/docs/aclnnMhcPreBackward.md)|[aclnnMhcPre](../../mhc/mhc_pre/docs/aclnnMhcPre.md)的反向传播。|默认确定性实现|默认确定性实现|默认确定性实现|
 |[aclnnMhcPreBackwardV2](../../mhc/mhc_pre_backward/docs/aclnnMhcPreBackwardV2.md)|兼容[aclnnMhcPreBackward](../../mhc/mhc_pre_backward/docs/aclnnMhcPreBackward.md)支持的功能，在此基础上新增opImplMode参数，供用户选择MhcPreBackward的Cube计算模式。|-|-|默认确定性实现|
-|[aclnnMhcPreSinkhorn](../../mhc/mhc_pre_sinkhorn/docs/aclnnMhcPreSinkhorn.md)|基于一系列计算得到MHC架构中hidden层的$\mathbf{H}'_{\text{res}}$和$\mathbf{H}_{\text{post}}$投影矩阵以及Attention或MLP层的输入矩阵$\mathbf{h}_{\text{in}}$。对$\mathbf{H}'_{\text{res}}$矩阵执行Sinkhorn迭代归一化变换，最终得到双随机矩阵$\mathbf{H}_{\text{res}}$；支持输出中间计算结果，用于反向梯度计算。|默认确定性实现|默认确定性实现|默认确定性实现|
+|[aclnnMhcPreSinkhorn](../../mhc/mhc_pre_sinkhorn/docs/aclnnMhcPreSinkhorn.md)|基于一系列计算得到MHC架构中hidden层的$\mathbf{H}'_{\text{res}}$和$\mathbf{H}_{\text{post}}$投影矩阵以及Attention或MLP层的输入矩阵$\mathbf{h}_{\text{in}}$。对$\mathbf{H}'_{\text{res}}$矩阵执行Sinkhorn迭代归一化变换，最终得到双随机矩阵$\mathbf{H}_{\text{res}}$；支持输出中间计算结果，用于反向梯度计算。其中，该接口在Cube中使用的计算模式为HF32。|默认确定性实现|默认确定性实现|默认确定性实现|
 |[aclnnMhcPost](../../mhc/mhc_post/docs/aclnnMhcPost.md)|基于一系列计算对mHC架构中上一层输出进行Post Mapping，对上一层的输入进行Res Mapping，然后对二者进行残差连接，得到下一层的输入。|默认确定性实现|默认确定性实现|默认确定性实现|
 |[aclnnMhcPostBackward](../../mhc/mhc_post_backward/docs/aclnnMhcPostBackward.md)|mhc_post基于一系列计算对mHC架构中上一层输出进行Post Mapping，对上一层的输入进行Res Mapping，然后对二者进行残差连接，得到下一层的输入。该算子实现前述过程的反向。|默认确定性实现|默认确定性实现|默认确定性实现|
 |[aclnnMhcSinkhorn](../../mhc/mhc_sinkhorn/docs/aclnnMhcSinkhorn.md)|对mHC架构中的$\mathbf{H}'_{\text{res}}$矩阵执行Sinkhorn迭代归一化变换，最终得到双随机矩阵$\mathbf{H}_{\text{res}}$；支持输出迭代过程中的中间归一化结果（norm_out）和求和结果（sum_out），用于反向梯度计算。|-|-|默认确定性实现|
