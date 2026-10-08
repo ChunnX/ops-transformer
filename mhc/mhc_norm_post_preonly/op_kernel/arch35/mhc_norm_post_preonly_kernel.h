@@ -125,7 +125,7 @@ private:
     TBuf<TPosition::VECCALC> bufResFp32_;
     TBuf<TPosition::VECCALC> bufPostComb_;
     TQue<TPosition::VECIN, 2> bufPhiFp32_;
-    TQue<TPosition::VECOUT, BUFFER_NUM_ONE> bufHInPrimeBf16_;
+    TBuf<TPosition::VECCALC> bufHInPrimeBf16_;
     TBuf<TPosition::VECCALC> bufScalar_;
 
     GlobalTensor<T> hOutGm_, residualGm_, hInPrimeGm_, x2OutGm_;
