@@ -28,16 +28,20 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     const uint32_t headBegin = laneId_ * 2U;
     LoadTokenWeights(token, postVals, headBegin, headBegin + 2U);
 
+    // Start the first residual tile before R1. Its queue storage is disjoint
+    // from the R1 square scratch, so MTE2 can overlap the reduction/Scalar work.
+    {}
+
     // 两个lane按完全相同的分块和顺序冗余执行R1。
     float sumSq0 = 0.0f;
-    for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
-        const uint32_t tD = GetTileD(tile);
-        const uint32_t tOff = tile * dimTile_;
-        sumSq0 += ReduceSumSqFromCache(tOff, tD);
+    {
+        for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
+            const uint32_t tD = GetTileD(tile);
+            const uint32_t tOff = tile * dimTile_;
+            sumSq0 += ReduceSumSqFromCache(tOff, tD);
+        }
     }
     const float invRms0 = ComputeInvRms(sumSq0, invD_);
-
-    {}
 
     // 两个lane分别构造自己负责的两个x2 head。
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
@@ -116,9 +120,12 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         const uint32_t tOff = tile * dimTile_;
         LocalTensor<T> x2Cache = bufX2Cache_.Get<T>()[tOff];
         LocalTensor<float> gateBuf = bufScalar_.Get<float>()[EXP_DIV_ELEM];
-        sumSq1 += ComputeHInCacheAndReduceSumSq(tOff, tD, x2Cache, gateBuf);
+        {
+            sumSq1 += ComputeHInCacheAndReduceSumSq(tOff, tD, x2Cache, gateBuf);
+        }
     }
 
+    {}
     const float invRms1 = ComputeInvRms(sumSq1, invD_);
     WaitCacheGamma1();
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
@@ -134,12 +141,21 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         } else {
             gamma1 = gamma1[tOff];
         }
-        MhcNormRegBase::VFCastB16ScaleAndMulGamma(hIn, hInCache, gamma1, invRms1, tD);
-        PipeBarrier<PIPE_V>();
-        if (D_ > GAMMA1_CACHE_MAX_D) {
-            FenceVToMte2();
+        if constexpr (RETURN_H_IN_F32) {
+            MhcNormRegBase::VFCastB16ScaleAndMulGamma(hIn, hInCache, gamma1, invRms1, tD);
+            PipeBarrier<PIPE_V>();
+            if (D_ > GAMMA1_CACHE_MAX_D) {
+                FenceVToMte2();
+            }
+            WriteHInPrimeTile(hIn, (uint64_t)token * D_ + tOff, tD);
+        } else {
+            WriteHInPrimeTileFromCache(hInCache, gamma1, invRms1,
+                                       (uint64_t)token * D_ + tOff, tD);
+            if (D_ > GAMMA1_CACHE_MAX_D) {
+                // gamma1已被当前VF消费，允许下一tile的MTE2覆盖gamma缓存。
+                FenceVToMte2();
+            }
         }
-        WriteHInPrimeTile(hIn, (uint64_t)token * D_ + tOff, tD);
     }
 }
 
@@ -220,12 +236,21 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         } else {
             gamma1 = gamma1[tOff];
         }
-        MhcNormRegBase::VFCastB16ScaleAndMulGamma(hIn, hInCache, gamma1, invRms1, tD);
-        PipeBarrier<PIPE_V>();
-        if (D_ > GAMMA1_CACHE_MAX_D) {
-            FenceVToMte2();
+        if constexpr (RETURN_H_IN_F32) {
+            MhcNormRegBase::VFCastB16ScaleAndMulGamma(hIn, hInCache, gamma1, invRms1, tD);
+            PipeBarrier<PIPE_V>();
+            if (D_ > GAMMA1_CACHE_MAX_D) {
+                FenceVToMte2();
+            }
+            WriteHInPrimeTile(hIn, (uint64_t)token * D_ + tOff, tD);
+        } else {
+            WriteHInPrimeTileFromCache(hInCache, gamma1, invRms1,
+                                       (uint64_t)token * D_ + tOff, tD);
+            if (D_ > GAMMA1_CACHE_MAX_D) {
+                // gamma1已被当前VF消费，允许下一tile的MTE2覆盖gamma缓存。
+                FenceVToMte2();
+            }
         }
-        WriteHInPrimeTile(hIn, (uint64_t)token * D_ + tOff, tD);
     }
 }
 
