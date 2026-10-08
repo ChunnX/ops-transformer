@@ -13,9 +13,9 @@
 #include "../allto_all_matmul_host_ut_param.h"
 #include "tiling_case_executor.h"
 
-static std::string GetCsvPath(const char *file)
+static std::string GetCsvPath(const char* file)
 {
-    const char *envPath = std::getenv("CSV_CASE_PATH");
+    const char* envPath = std::getenv("CSV_CASE_PATH");
     if (envPath != nullptr && strlen(envPath) > 0) {
         return std::string(envPath);
     }
