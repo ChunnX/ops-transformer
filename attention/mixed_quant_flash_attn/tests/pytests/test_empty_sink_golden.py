@@ -1,3 +1,12 @@
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# ======================================================================================================================
+
 import pytest
 import torch
 
@@ -273,6 +282,43 @@ def test_softmax_flash_keeps_multiple_fully_masked_blocks_empty():
     assert torch.count_nonzero(block_sum) == 0
     assert torch.isneginf(block_max).all()
     torch.testing.assert_close(block_exp, torch.ones_like(block_exp))
+
+
+@pytest.mark.parametrize("sink_values", [[-2.0, 8.0], [5.0, -4.0]])
+def test_chunked_sink_softmax_matches_flash_attn_reference(sink_values):
+    logits = torch.tensor(
+        [[1.0, -torch.inf, 3.0, 0.5, 2.0, -1.0, 4.0],
+         [-2.0, 1.0, 0.0, 3.0, -torch.inf, 2.0, 1.5]],
+        dtype=torch.float32,
+    )
+    values = torch.arange(21, dtype=torch.float32).reshape(7, 3) / 7
+    sinks = torch.tensor(sink_values, dtype=torch.float32).reshape(2, 1)
+
+    # Same full-row formula as flash_attn's tsoftmax.
+    row_max = torch.maximum(logits.max(dim=-1, keepdim=True).values, sinks)
+    exp_logits = torch.exp(logits - row_max)
+    row_sum = exp_logits.sum(dim=-1, keepdim=True) + torch.exp(sinks - row_max)
+    expected_out = exp_logits @ values / row_sum
+
+    block_sum = torch.zeros((2, 1), dtype=torch.float32)
+    block_max = torch.full((2, 1), -torch.inf, dtype=torch.float32)
+    block_exp = torch.ones((2, 1), dtype=torch.float32)
+    out = torch.zeros((2, 3), dtype=torch.float32)
+    for block_idx, (start, end) in enumerate(((0, 3), (3, 5), (5, 7))):
+        weights, block_sum, block_max, block_exp = softmax_flash(
+            logits[:, start:end],
+            block_sum,
+            block_max,
+            block_exp,
+            is_first=block_idx == 0,
+            sink=sinks if block_idx == 0 else None,
+        )
+        block_out = weights @ values[start:end]
+        out = block_out if block_idx == 0 else out * block_exp + block_out
+
+    torch.testing.assert_close(block_max, row_max)
+    torch.testing.assert_close(block_sum, row_sum)
+    torch.testing.assert_close(out / block_sum, expected_out)
 
 
 @pytest.mark.parametrize(

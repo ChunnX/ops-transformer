@@ -260,12 +260,16 @@ def trans_pa_to_no_pa(batch, n2, s2, d, layout_kv, quant_data, descale, block_ta
     return data, scale
 
 
-def softmax_flash(x, block_sum, block_max, block_exp, is_first):
-    # this func is only used by quant_dequant
+def softmax_flash(x, block_sum, block_max, block_exp, is_first, sink=None):
     x = x.to(torch.float32)
     x_max = x.max(axis=-1, keepdims=True).values
+    if is_first and sink is not None:
+        x_max = torch.maximum(x_max, sink)
     pre_max = block_max
-    block_max = torch.max(torch.hstack([block_max, x_max]), axis=1, keepdims=True).values
+    if is_first:
+        block_max = x_max
+    else:
+        block_max = torch.max(torch.hstack([block_max, x_max]), axis=1, keepdims=True).values
     if is_first:
         block_exp = block_exp
     else:
@@ -279,6 +283,8 @@ def softmax_flash(x, block_sum, block_max, block_exp, is_first):
     x_sum = y.sum(axis=-1, keepdims=True)
     if is_first:
         block_sum = x_sum
+        if sink is not None:
+            block_sum += torch.exp(sink - block_max)
     else:
         block_sum *= block_exp
         block_sum += x_sum
@@ -729,7 +735,7 @@ def tforward(sinner=-1, souter=-1, use_npu=False, **kwargs):
                 sink_values = get_sink_values_for_block(
                     sinks, n2_idx, g, valid_qs_cur_batch, souter_idx * souter, souter_actual, gs_flag
                 )
-                if sink_values is not None:
+                if kvs_cur_batch == 0 and sink_values is not None:
                     block_max = sink_values
                     block_sum.fill_(1.0)
                 if gs_flag:
@@ -782,7 +788,8 @@ def tforward(sinner=-1, souter=-1, use_npu=False, **kwargs):
                         mm1 = mm1 + torch.where(mask_block.to(torch.bool), -torch.inf, 0.0).to(torch.float32)
                     p_block, block_sum, block_max, block_exp = softmax_flash(
                         mm1 * softmax_scale, block_sum, block_max, block_exp,
-                        sinner_idx == 0 and sink_values is None
+                        sinner_idx == 0,
+                        sink_values if sinner_idx == 0 else None,
                     )
                     if use_npu:
                         mm2 = npu_batch_matmul_fp32(p_block.to(q.dtype), v_block.contiguous())
