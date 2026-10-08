@@ -41,6 +41,7 @@
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #include "../../common/op_kernel/mc2_moe_context.h"
 #include "../../common/op_kernel/moe_ep_exception_dump_writer.h"
+#include "../../common/op_kernel/moe_shared_jetty_context.h"
 #include "../../common/op_kernel/moe_ep_send_completion.h"
 
 #include "moe_ep_combine_epilogue_tiling_key.h"
@@ -98,7 +99,7 @@ private:
 
     TPipe* tpipe_{nullptr};
     const MoeEpCombineEpilogueInfo* tilingData_{nullptr};
-    __gm__ Mc2Aclnn::MoeCommContext* mc2Context_{nullptr};
+    __gm__ Mc2Aclnn::MoeSharedJettyContext* mc2Context_{nullptr};
     MoeEpExceptionDump::MoeEpCoreDiagWriter diagWriter_;
 
     uint32_t rankId_{0};
@@ -158,7 +159,7 @@ private:
     DataCopyParams weightCopyParams_{1U, static_cast<uint16_t>(sizeof(float)), 0U, 0U};
     DataCopyParams xCopyParams_;
 
-    GM_ADDR winRankAddr_[Mc2Aclnn::HCCL_MAX_RANK_SIZE];
+    GM_ADDR winRankAddr_[Mc2Aclnn::MOE_SHARED_JETTY_MAX_RANK_SIZE];
 };
 
 template <TemplateMoeEpCombineEpilogueTypeClass>
@@ -182,10 +183,9 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
     recvCapacity_ = tilingData->recvCapacity;
     hAlignSize_ = Ceil(axisH_ * sizeof(XType), UB_ALIGN) * UB_ALIGN;
     xCopyParams_ = {1U, static_cast<uint16_t>(hAlignSize_), 0U, 0U};
-    mc2Context_ = reinterpret_cast<__gm__ Mc2Aclnn::MoeCommContext*>(context);
+    mc2Context_ = reinterpret_cast<__gm__ Mc2Aclnn::MoeSharedJettyContext*>(context);
     rankId_ = mc2Context_->epRankId;
-    combineChannelCount_ = mc2Context_->channelsPerRank;
-    combineChannelCount_ = combineChannelCount_ == 0U ? 1U : combineChannelCount_;
+    combineChannelCount_ = mc2Context_->sharedJettyNum < aivNum_ ? mc2Context_->sharedJettyNum : aivNum_;
     for (uint32_t i = 0; i < epWorldSize_; ++i) {
         winRankAddr_[i] = (GM_ADDR)mc2Context_->epHcclBuffer[i];
     }
@@ -208,8 +208,8 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
 
     constexpr size_t metadataOffset = offsetof(MoeEpCombineEpilogueTilingData, moeEpCombineEpilogueInfo) +
                                       offsetof(MoeEpCombineEpilogueInfo, dumpMetadata);
-    MoeEpExceptionDump::WriteMetadata(context, tilingGM + metadataOffset);
-    diagWriter_.Init(context, MOE_EP_CORE_DIAG_COMBINE_EPILOGUE, tpipe_);
+    MoeEpExceptionDump::WriteMetadata<Mc2Aclnn::MoeSharedJettyContext>(context, tilingGM + metadataOffset);
+    diagWriter_.Init<Mc2Aclnn::MoeSharedJettyContext>(context, MOE_EP_CORE_DIAG_COMBINE_EPILOGUE, tpipe_);
     diagWriter_.RunPosRecord(MOE_EP_COMBINE_EPILOGUE_RUN_POS_INIT_DONE);
 }
 
@@ -268,16 +268,7 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
 template <TemplateMoeEpCombineEpilogueTypeClass>
 __aicore__ inline uint32_t MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc>::GetCompletionChannelCount()
 {
-    if (aivNum_ < epWorldSize_) {
-        return 1U;
-    }
-    uint32_t maxChannelAivNum = epWorldSize_ * combineChannelCount_;
-    if (aivNum_ > maxChannelAivNum) {
-        return combineChannelCount_;
-    }
-    uint32_t baseGroupSize = aivNum_ / epWorldSize_;
-    uint32_t remainder = aivNum_ % epWorldSize_;
-    return baseGroupSize + ((rankId_ < remainder) ? 1U : 0U);
+    return combineChannelCount_;
 }
 
 template <TemplateMoeEpCombineEpilogueTypeClass>

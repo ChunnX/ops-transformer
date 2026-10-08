@@ -27,7 +27,7 @@ uint64_t AlignMoeEpWin(uint64_t value)
 }
 
 ge::graphStatus ResolveMoeEpTopology(uint32_t epWorldSize, int64_t requestedNetworkMode, int64_t rankNumPerServer,
-                                     MoeEpTopology &topology)
+                                     MoeEpTopology& topology)
 {
     if ((requestedNetworkMode != MOE_EP_NETWORK_DIRECT && requestedNetworkMode != MOE_EP_NETWORK_HYBRID) ||
         rankNumPerServer <= 0 || epWorldSize % static_cast<uint64_t>(rankNumPerServer) != 0UL) {
@@ -41,7 +41,7 @@ ge::graphStatus ResolveMoeEpTopology(uint32_t epWorldSize, int64_t requestedNetw
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CalcMoeEpWindowLayout(const MoeEpWindowLayoutParams &params, MoeEpWindowLayout &layout)
+ge::graphStatus CalcMoeEpWindowLayout(const MoeEpWindowLayoutParams& params, MoeEpWindowLayout& layout)
 {
     std::memset(&layout, 0, sizeof(layout));
 
@@ -57,11 +57,7 @@ ge::graphStatus CalcMoeEpWindowLayout(const MoeEpWindowLayoutParams &params, Moe
     const uint64_t countNotifySize = epWorldSize * MOE_EP_WIN_ALIGN;
     const uint64_t expertCountSize = epWorldSize * AlignMoeEpWin(params.localExpertNum * sizeof(int32_t));
 
-    uint64_t notifySlots = MOE_EP_CHANNEL_BUDGET / (epWorldSize - 1UL);
-    if (notifySlots > MOE_EP_DISPATCH_NOTIFY_COUNT) {
-        notifySlots = MOE_EP_DISPATCH_NOTIFY_COUNT;
-    }
-    layout.dispatchNotifyCount = static_cast<uint32_t>(notifySlots == 0UL ? 1UL : notifySlots);
+    layout.dispatchNotifyCount = static_cast<uint32_t>(MOE_EP_DISPATCH_NOTIFY_COUNT);
 
     layout.cntWinStateOffset = MOE_EP_FIXED_PREFIX_BYTES;
     layout.cntWinStateSize = countNotifySize + expertCountSize;
@@ -70,8 +66,7 @@ ge::graphStatus CalcMoeEpWindowLayout(const MoeEpWindowLayoutParams &params, Moe
     layout.payloadWinStateOffset = layout.slotWinStateOffset + layout.dispatchSlotStateSize;
     layout.payloadWinStateSize = layout.dispatchNotifyCount * MOE_EP_WIN_ALIGN;
     layout.combineStateWinOffset = layout.payloadWinStateOffset + layout.payloadWinStateSize;
-    const uint64_t combineFlagCount =
-        epWorldSize > MOE_EP_COMBINE_CHANNEL_HANDLE_COUNT ? epWorldSize : MOE_EP_COMBINE_CHANNEL_HANDLE_COUNT;
+    const uint64_t combineFlagCount = epWorldSize * MOE_EP_JETTY_COUNT;
     const uint64_t combineReceiveStateSize = nmt * topK * MOE_EP_WIN_ALIGN + combineFlagCount * MOE_EP_WIN_ALIGN;
     layout.combineFlagSourceWinOffset = layout.combineStateWinOffset + combineReceiveStateSize;
     // The non-inline asynchronous completion write must read from persistent window storage, not op workspace.
@@ -107,7 +102,7 @@ ge::graphStatus CalcMoeEpWindowLayout(const MoeEpWindowLayoutParams &params, Moe
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CheckMoeEpWindowCapacity(uint64_t requiredBytes, uint64_t cclBufferSize, const char *nodeName)
+ge::graphStatus CheckMoeEpWindowCapacity(uint64_t requiredBytes, uint64_t cclBufferSize, const char* nodeName)
 {
     if (requiredBytes > cclBufferSize) {
         OP_LOGE(nodeName, "ccl_buffer_size is not enough, need %lu bytes, but got %lu bytes.", requiredBytes,
@@ -117,7 +112,7 @@ ge::graphStatus CheckMoeEpWindowCapacity(uint64_t requiredBytes, uint64_t cclBuf
     return ge::GRAPH_SUCCESS;
 }
 
-MoeEpDumpMetadata BuildMoeEpDumpMetadata(const MoeEpWindowLayoutParams &params, const MoeEpWindowLayout &layout,
+MoeEpDumpMetadata BuildMoeEpDumpMetadata(const MoeEpWindowLayoutParams& params, const MoeEpWindowLayout& layout,
                                          uint32_t aivNum)
 {
     MoeEpDumpMetadata metadata{};
