@@ -41,7 +41,7 @@ struct TaskInfo {
 template <typename FIAT>
 class FiaBlockVecFlashDecode {
 public:
-    // =================================类型定义区=================================
+    // =================================类型定义区================================= 
     // 中间计算数据类型为float，高精度模式
     using T = float;
     using OUT_T = typename FIAT::outputType;
