@@ -2576,9 +2576,7 @@ def flash_kda_aclnn(
     assert initial_state.dim() == 4, "initial_state must be rank-4"
     batch = initial_state.shape[0]
     n_v = initial_state.shape[1]
-    state_dv = initial_state.shape[2]
-    state_dk = initial_state.shape[3]
-    assert state_dv == state_dk == SUPPORTED_HEAD_DIM, "FlashKDA input shape or layout is invalid"
+    assert initial_state.shape[2] == initial_state.shape[3] == SUPPORTED_HEAD_DIM, "FlashKDA input shape or layout is invalid"
 
     if layout_qkv == "TND":
         assert q.dim() == k.dim() == v.dim() == g.dim() == 3, "TND q/k/v/g must be rank-3"
@@ -2643,13 +2641,13 @@ def flash_kda_aclnn(
     gamma_rows = WORKSPACE_SLOTS * SUPPORTED_HEAD_DIM
     kr = torch.empty((scratch_tokens, SUPPORTED_HEAD_DIM), dtype=torch.bfloat16, device=q.device)
     gamma = torch.empty((gamma_rows, 1), dtype=torch.float32, device=q.device)
-    qd = torch.empty((scratch_tokens, SUPPORTED_HEAD_DIM), dtype=torch.bfloat16, device=q.device)
-    w = torch.empty((scratch_tokens, SUPPORTED_HEAD_DIM), dtype=torch.bfloat16, device=q.device)
+    qd = torch.empty_like(kr)
+    w = torch.empty_like(kr)
     mqk = torch.empty((scratch_tokens, CHUNK_SIZE), dtype=torch.bfloat16, device=q.device)
-    u = torch.empty((scratch_tokens, SUPPORTED_HEAD_DIM), dtype=torch.bfloat16, device=q.device)
+    u = torch.empty_like(kr)
     qk_exchange = torch.empty((core_num, 2, 2, CHUNK_SIZE), dtype=torch.float32, device=q.device)
     identity = torch.empty((16, 16), dtype=torch.float16, device=q.device)
-    final_state = torch.empty(initial_state.shape, dtype=initial_state.dtype, device=initial_state.device)
+    final_state = torch.empty_like(initial_state)
     fn = _compile_flash_kda()
     fn(
         k_logical,

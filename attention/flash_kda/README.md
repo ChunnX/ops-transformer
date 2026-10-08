@@ -79,10 +79,28 @@ The installed DSO integration tests additionally take
 and exported filtering. The obsolete legacy `build_cannbotdsl` command and its
 Python environment hook are removed. The bridge detects `@aclnn` sources and
 uses OpKit's generated HostAPI and operator modules instead of frozen bundles.
-The root CMake and `config.cmake` retain the separation between selected DSL
-and AscendC operators, allowing a DSL-only package to skip AscendC preparation.
+The root CMake has one early-return branch for a DSL-only package. Ordinary
+and mixed builds follow the mainline flow; `config.cmake` passes only the
+remaining AscendC selection to preparation. `custom_build.cmake` is identical
+to upstream. The real ACLNN DSO target replaces the old empty umbrella target,
+and symbol linking uses that target directly.
 Mixed packages retain AscendC and attach the helper DSO in `symbol.cmake`.
 `package.cmake` omits the unrelated torch-extension wheel for a DSL-only build;
 OpsTransformer.xml delivers Native providers and the ACLNN DSO. The installer
 only creates the TBE init file when that directory exists. Obsolete custom
 vendor handling introduced by the previous bridge has been removed.
+
+## Delta against the initial FlashKDA source
+
+The initial working-tree source had 2,772 lines; the final source has 2,676.
+The textual diff adds 192 lines and removes 288 (96 fewer overall). These
+counts include comments, validation, and moved host logic. An AST comparison
+finds 22 unchanged top-level definitions, including `flash_kda_kernel` and
+all stage compute functions. The compute algorithm is unchanged.
+
+The adaptation adds one shared ACLNN/eager host body and a small identity
+initializer. The compile-cache helper reuses the original launch bindings.
+Nine workspace/constants/cache helpers are removed; allocations live in the
+shared host body. The public eager entry only checks the common device, selects
+it, and delegates. Descriptor checks, manifest verification, and source/wheel
+cache invalidation remain because they protect runtime bindings and rebuilds.

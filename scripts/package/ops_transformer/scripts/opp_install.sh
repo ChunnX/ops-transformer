@@ -354,8 +354,6 @@ add_init_py() {
   local built_in_impl_path=${TARGET_OPP_BUILT_IN}/op_impl/ai_core/tbe/impl/ops_transformer
   if [ -d ${built_in_impl_path} ]; then
     opp_builtin_mod=$(stat -c %a ${built_in_impl_path})
-  fi
-  if [ -d "${built_in_impl_path}" ]; then
     touch "${built_in_impl_path}/__init__.py"
   fi
 

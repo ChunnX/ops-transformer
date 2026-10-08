@@ -186,8 +186,9 @@ function(gen_opapi_symbol)
     opapi_math
     dl
   )
-  if(COMMAND cannbotdsl_attach_aclnn)
-    cannbotdsl_attach_aclnn(${OPAPI_NAME})
+  if (TARGET cannbotdsl_aclnn)
+    target_link_libraries(${OPAPI_NAME} PRIVATE
+      "-Wl,--no-as-needed" cannbotdsl_aclnn "-Wl,--as-needed")
   endif()
 endfunction()
 

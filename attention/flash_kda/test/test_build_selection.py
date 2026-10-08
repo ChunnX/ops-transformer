@@ -20,7 +20,7 @@ def test_selection(tmp_path, selected, builtin, soc, expected, has_dsl, error):
     repo = Path(__file__).parents[3]
     (tmp_path / "cmake").mkdir()
     shutil.copy2(repo / "cmake/cannbotdsl.cmake", tmp_path / "cmake")
-    (tmp_path / "cmake/cannbotdsl_aclnn.cmake").write_text("# Generation is checked by the real built-in integration test.\n")
+    (tmp_path / "cmake/cannbotdsl_aclnn.cmake").write_text("add_library(cannbotdsl_aclnn INTERFACE)\n")
     source = tmp_path / "attention/flash_kda/op_kernel"
     source.mkdir(parents=True)
     (source / "flash_kda.py").write_text('@aclnn("FlashKDA")\ndef entry(): pass\n')
@@ -39,7 +39,7 @@ include(cmake/cannbotdsl.cmake)
 if(NOT "${{ASCENDC_BUILD_OPS}}" STREQUAL "{expected}")
   message(FATAL_ERROR "unexpected AscendC selection: ${{ASCENDC_BUILD_OPS}}")
 endif()
-if({'NOT ' if has_dsl else ''}TARGET ops_transformer_cannbotdsl)
+if({'NOT ' if has_dsl else ''}TARGET cannbotdsl_aclnn)
   message(FATAL_ERROR "unexpected DSL target state")
 endif()
 """)

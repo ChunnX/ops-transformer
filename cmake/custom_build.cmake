@@ -8,7 +8,6 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-if(ASCENDC_BUILD_OPS)
 if (BUILD_OPEN_PROJECT)
     set(CMAKE_MODULE_PATH
         ${CMAKE_MODULE_PATH}
@@ -1274,8 +1273,6 @@ if (ENABLE_OPS_KERNEL)
         )
     endforeach ()
 endif ()
-
-endif()
 
 if (NOT ENABLE_BUILT_IN AND BUILD_OPEN_PROJECT)
     add_custom_target(modify_vendor ALL
