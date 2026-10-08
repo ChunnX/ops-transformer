@@ -40,10 +40,10 @@ extern "C" {
  *
  */
 ACLNN_API aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMapGetWorkspaceSize(
-    const aclTensor *permutedTokens, const aclTensor *sortedIndices, const aclTensor *routingMapOptional,
-    const aclTensor *probsOptional, bool paddedMode, const aclIntArray *restoreShapeOptional,
-    aclTensor *unpermutedTokens, aclTensor *outIndex, aclTensor *permuteTokenId, aclTensor *permuteProbs,
-    uint64_t *workspaceSize, aclOpExecutor **executor);
+    const aclTensor* permutedTokens, const aclTensor* sortedIndices, const aclTensor* routingMapOptional,
+    const aclTensor* probsOptional, bool paddedMode, const aclIntArray* restoreShapeOptional,
+    aclTensor* unpermutedTokens, aclTensor* outIndex, aclTensor* permuteTokenId, aclTensor* permuteProbs,
+    uint64_t* workspaceSize, aclOpExecutor** executor);
 /**
  * @brief aclnnMoeTokenUnpermuteWithRoutingMap的第二段接口，根据具体的计算流程，计算workspace大小。
  * @param [in] workspace: 在npu device侧申请的workspace内存起址。
@@ -54,8 +54,8 @@ ACLNN_API aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMapGetWorkspaceSize(
  * @return aclnnStatus: 返回状态码
  */
 
-ACLNN_API aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMap(void *workspace, uint64_t workspaceSize,
-                                                           aclOpExecutor *executor, const aclrtStream stream);
+ACLNN_API aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMap(void* workspace, uint64_t workspaceSize,
+                                                           aclOpExecutor* executor, const aclrtStream stream);
 
 #ifdef __cplusplus
 }
