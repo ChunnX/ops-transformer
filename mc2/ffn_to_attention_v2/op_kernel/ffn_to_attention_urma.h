@@ -119,10 +119,6 @@ private:
     template <typename BatchHandleType>
     __aicore__ inline void AppendRemoteFlagWrite(BatchHandleType& batchHandle, GM_ADDR remoteWindowAddr,
                                                  const RemoteAddressEntry& addressEntry, bool enableCqe);
-    template <typename BatchHandleType>
-    __aicore__ inline void ClearRemoteFlags(BatchHandleType& batchHandle, GM_ADDR remoteWindowAddr,
-                                            HcommChannelHandle channel, GlobalTensor<uint64_t> rankAddressTable,
-                                            uint32_t entryCount, uint32_t channelIdx);
     __aicore__ inline void BuildAddressTable();
     __aicore__ inline uint32_t GetAddressTableCount(uint32_t targetRank);
     __aicore__ inline void SendAddressTable(uint32_t targetRank, uint32_t entryCount, uint32_t channelIdx);
@@ -140,7 +136,6 @@ private:
 
     GM_ADDR inputDataAddr_{nullptr};
     GM_ADDR localFlagAddr_{nullptr};
-    GM_ADDR zeroFlagAddr_{nullptr};
     GM_ADDR localWinAddr_{nullptr};
     GM_ADDR addressTableWinAddr_{nullptr};
     GM_ADDR totalRankCountWinAddr_{nullptr};
@@ -270,9 +265,6 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::I
         addressTableWinOffset_);
     GM_ADDR localScratchAddr = addressTableWinAddr_ - flagWindowSize;
     localFlagAddr_ = localScratchAddr + static_cast<uint64_t>(aivId_) * URMA_FLAG_SLOT_SIZE;
-    // Zero source for the per-round flag-clear phase; lives inside this AIV's own 32B source slot
-    // (word1), so the reserved flagWindowSize = aivNum_ * URMA_FLAG_SLOT_SIZE stays unchanged.
-    zeroFlagAddr_ = localFlagAddr_ + sizeof(int32_t);
 
     // x may be a view of registered memory, but its payload must not alias the scratch tail.
     const uint64_t inputAddr = reinterpret_cast<uint64_t>(inputDataAddr_);
@@ -313,9 +305,6 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::I
 {
     constexpr uint32_t flagSlotElementNum = URMA_FLAG_SLOT_SIZE / sizeof(int32_t);
     Duplicate<int32_t>(statusTensor_, URMA_FLAG_VALUE, flagSlotElementNum);
-    // word0 keeps the flag value (1) used by the flag phase; word1 becomes the constant zero
-    // source consumed by the per-round clear phase (ClearRemoteFlags / SendToLocal).
-    statusTensor_.SetValue(1, 0);
     SyncFunc<HardEvent::V_MTE3>();
     SyncFunc<HardEvent::S_MTE3>();
     GlobalTensor<int32_t> localFlagGMTensor;
@@ -390,20 +379,16 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::S
     xQueue_.EnQue(xTmpTensor_);
     xTmpTensor_ = xQueue_.DeQue<xType>();
 
-    // Per-round flag clear for self-delivered tokens: write 0 (statusTensor_ word1) into the local
-    // window slot before data/flag, so the consumer sees a fresh 0->1 edge every round. MTE3 is
-    // in-order, so clear lands before data and data lands before the flag.
-    GlobalTensor<int32_t> tokenInfoTableGMTensor;
-    tokenInfoTableGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(remoteFlagAddr));
-    DataCopyExtParams flagCopyParams = {1U, sizeof(int32_t), 0U, 0U, 0U};
-    DataCopyPad(tokenInfoTableGMTensor, statusTensor_[1], flagCopyParams);
-
     GlobalTensor<xType> tokenDataGMTensor;
     tokenDataGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ xType*>(remoteDataAddr));
     DataCopyPad(tokenDataGMTensor, xTmpTensor_, xCopyParams);
     PipeBarrier<PIPE_MTE3>();
     xQueue_.FreeTensor<xType>(xTmpTensor_);
 
+    // MTE3 is in-order, so self-delivered data lands before the flag.
+    GlobalTensor<int32_t> tokenInfoTableGMTensor;
+    tokenInfoTableGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(remoteFlagAddr));
+    DataCopyExtParams flagCopyParams = {1U, sizeof(int32_t), 0U, 0U, 0U};
     DataCopyPad(tokenInfoTableGMTensor, statusTensor_, flagCopyParams);
     SyncFunc<HardEvent::MTE3_S>();
 }
@@ -432,8 +417,8 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::A
 {
     uint64_t remoteFlagOffset = addressEntry.tokenSlot * sizeof(int32_t);
     // Every flag write uses the ordered config (same as attention_to_ffn's flag phase): each flag
-    // must land after this round's clear/data WQEs on the same channel, otherwise a late clear
-    // could erase an already-visible flag on the same slot.
+    // must land after this round's data WQEs on the same channel, so the consumer never observes
+    // a ready flag before its data.
     if (enableCqe) {
         (void)hcomm_.WriteNbi<remoteOrderedFlagCqeWqeConfig>(batchHandle, remoteWindowAddr + remoteFlagOffset,
                                                              localFlagAddr_, static_cast<uint32_t>(sizeof(int32_t)));
@@ -619,70 +604,6 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::C
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
-template <typename BatchHandleType>
-__aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::ClearRemoteFlags(
-    BatchHandleType& batchHandle, GM_ADDR remoteWindowAddr, HcommChannelHandle channel,
-    GlobalTensor<uint64_t> rankAddressTable, uint32_t entryCount, uint32_t channelIdx)
-{
-    if (entryCount == 0U) {
-        return;
-    }
-    LocalTensor<uint64_t> entriesLocal = metadataBuf_.Get<uint64_t>();
-    constexpr uint32_t entryElements = REMOTE_ADDRESS_ENTRY_SIZE / sizeof(uint64_t);
-    constexpr uint32_t entryChunkMax = METADATA_CHUNK_BUFFER_SIZE / REMOTE_ADDRESS_ENTRY_SIZE;
-    const DataCopyPadExtParams<uint64_t> padParams{false, 0U, 0U, 0UL};
-    uint32_t preparedWqeCount = 0U;
-    uint32_t sqWriteCount = 0U;
-    // This channel owns table entries whose index is congruent to channelIdx (mod channelsPerRank_),
-    // the same split as the data/flag phases below.
-    uint32_t entryCountChannel =
-        (entryCount > channelIdx) ? (entryCount - 1U - channelIdx) / channelsPerRank_ + 1U : 0U;
-    const uint32_t strideBytes = (channelsPerRank_ - 1U) * REMOTE_ADDRESS_ENTRY_SIZE;
-
-    // Per-round flag clear: zero the remote flag slots this channel is about to use BEFORE the
-    // data/flag phases, so the receiver sees a fresh 0->1 edge on every slot every round. All
-    // clears use the ordered config so they land after the previous round's data/flag WQEs on
-    // this channel and can never stomp an unconsumed round. No extra Drain is introduced here:
-    // the existing full-batch commit / SQ-limit handling is kept as-is.
-    for (uint32_t chunkStart = 0U; chunkStart < entryCountChannel; chunkStart += entryChunkMax) {
-        uint32_t curEntries =
-            (chunkStart + entryChunkMax > entryCountChannel) ? entryCountChannel - chunkStart : entryChunkMax;
-        DataCopyExtParams copyParams{static_cast<uint16_t>(curEntries), REMOTE_ADDRESS_ENTRY_SIZE, strideBytes, 0U, 0U};
-        SyncFunc<HardEvent::S_MTE2>();
-        DataCopyPad<uint64_t, PaddingMode::Compact>(
-            entriesLocal,
-            rankAddressTable[static_cast<uint64_t>(channelIdx + chunkStart * channelsPerRank_) * entryElements],
-            copyParams, padParams);
-        SyncFunc<HardEvent::MTE2_S>();
-        for (uint32_t i = 0U; i < curEntries; ++i) {
-            uint32_t entryOffset = i * entryElements;
-            uint64_t remoteFlagOffset = entriesLocal.GetValue(entryOffset) * sizeof(int32_t);
-            bool enableCqe = sqWriteCount + 1U >= HCOMM_SQ_MAX_PENDING;
-            if (enableCqe) {
-                (void)hcomm_.WriteNbi<remoteOrderedFlagCqeWqeConfig>(batchHandle, remoteWindowAddr + remoteFlagOffset,
-                                                                     zeroFlagAddr_,
-                                                                     static_cast<uint32_t>(sizeof(int32_t)));
-            } else {
-                (void)hcomm_.WriteNbi<remoteOrderedFlagWqeConfig>(batchHandle, remoteWindowAddr + remoteFlagOffset,
-                                                                  zeroFlagAddr_,
-                                                                  static_cast<uint32_t>(sizeof(int32_t)));
-            }
-            ++preparedWqeCount;
-            ++sqWriteCount;
-            if (enableCqe) {
-                CommitAndDrainChannel(batchHandle, channel, preparedWqeCount, sqWriteCount);
-            } else if (preparedWqeCount == URMA_BATCH_WQE_CAPACITY) {
-                (void)hcomm_.BatchCommit(batchHandle);
-                preparedWqeCount = 0U;
-            }
-        }
-    }
-    if (preparedWqeCount != 0U) {
-        (void)hcomm_.BatchCommit(batchHandle);
-    }
-}
-
-template <TemplateFFNToAttentionUrmaTypeClass>
 __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::SendAddressTable(uint32_t targetRank,
                                                                                                 uint32_t entryCount,
                                                                                                 uint32_t channelIdx)
@@ -706,10 +627,6 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::S
     uint32_t entryCountChannel =
         (entryCount > channelIdx) ? (entryCount - 1U - channelIdx) / channelsPerRank_ + 1U : 0U;
     const uint32_t strideBytes = (channelsPerRank_ - 1U) * REMOTE_ADDRESS_ENTRY_SIZE;
-
-    // Per-round flag clear before this round's data/flag phases (see ClearRemoteFlags): the
-    // receiver observes a fresh 0->1 edge per round on every flag slot.
-    ClearRemoteFlags(batchHandle, remoteWindowAddr, channel, rankAddressTable, entryCount, channelIdx);
 
     // Data phase: an entry whose index within the rank is congruent to channelIdx is sent on this
     // channel. Strided MTE2 reads fetch only this channel's entries (every channelsPerRank_-th one,
@@ -743,7 +660,7 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::S
 
     // Flag phase: the same entries on the same channel, appended after the data WQEs. Every flag
     // write uses the ordered config (see AppendRemoteFlagWrite) so each per-token flag lands after
-    // this round's clear/data WQEs; the receiver sees a fresh 0->1 edge per round on every slot.
+    // this round's data WQEs on the same channel.
     for (uint32_t chunkStart = 0U; chunkStart < entryCountChannel; chunkStart += entryChunkMax) {
         uint32_t curEntries =
             (chunkStart + entryChunkMax > entryCountChannel) ? entryCountChannel - chunkStart : entryChunkMax;
