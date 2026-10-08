@@ -22,7 +22,7 @@ public:
                                 GM_ADDR phi_gm, GM_ADDR alpha_gm, GM_ADDR bias_gm, GM_ADDR pre_mix_gm,
                                 GM_ADDR gamma_0_gm, GM_ADDR gamma_1_gm, GM_ADDR gamma_2_gm, GM_ADDR h_in_prime_gm,
                                 GM_ADDR x_2_out_gm, GM_ADDR h_in_f32_gm, GM_ADDR h_pre_gm, GM_ADDR workspace,
-                                GM_ADDR tiling);
+                                GM_ADDR tilingDataGm);
 
     // =====================================================================
     //  Process: gamma hoisting + token loop dispatch
@@ -59,19 +59,10 @@ private:
     __aicore__ inline void LoadTokenWeights(uint32_t token, float (&postVals)[N_MAX], uint32_t headBegin = 0U,
                                             uint32_t headEnd = N_MAX);
 
-    /// 把一个h_out分块预取到输入队列；双槽允许下一分块MTE2与当前分块Vector重叠。
-    __aicore__ inline void PrefetchHOutTile(uint64_t gmOffset, uint32_t tD);
-
-    /// 按队列顺序取出已经预取的h_out分块并转换为FP32。
-    __aicore__ inline void ConsumeHOutTile(uint32_t tD);
-
-    /// 非流水调用点仍使用成对的预取与消费。
-    __aicore__ inline void LoadHOutAndCast(uint64_t gmOffset, uint32_t tD);
-
     /// 提前搬运完整h_out；后续权重加载的全流水等待同时保证该数据对Vector可见。
     __aicore__ inline void CacheHOut(uint64_t gmOffset);
 
-    /// 每个token一次搬运完整gamma0，与h_out和权重共用初始全流水等待。
+    /// 多分块路径每个token搬运完整gamma0；D=2560由Process在token循环外仅加载一次。
     __aicore__ inline void CacheGamma0();
 
     /// 提前发起完整gamma1搬运到bufGamma0Fp32_，使MTE2与R6的Vector计算重叠。
@@ -139,13 +130,11 @@ private:
                                                     const float (&postVals)[N_MAX]);
 
     // 将完整x2以输出dtype常驻UB，同时完成设计要求的低精度往返；写GM仅用于保留x2_out输出语义。
-    __aicore__ inline void CacheX2Tile(uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput,
-                                       bool quantizeInput = true);
+    __aicore__ inline void CacheX2Tile(uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput);
 
-    // 双sibling路径仍在每个lane的私有UB中保留完整x2，便于两个lane按同一顺序执行R1/R2/R3；
-    // 写回x2_out时每个lane只写自己负责的两个head，避免任何输出竞争。
-    __aicore__ inline void CacheX2TileForLane(uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput,
-                                              bool quantizeInput = true);
+    // 双sibling的低精度缓存按完整输出布局寻址，但每个lane只有自己负责的两行有效；
+    // 写回x2_out时也只写这两行，leader会合后再从GM恢复follower的两行。
+    __aicore__ inline void CacheX2TileForLane(uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput);
 
     // R6读取完当前x2分块后，复用首个head缓存保留低精度h_in。
     // 恢复FP32与平方在同一VF内完成，保留量化往返边界并减少UB中间写读。
@@ -164,7 +153,6 @@ private:
     TPipe pipe_;
 
     // UB缓存
-    TQue<TPosition::VECIN, BUFFER_NUM_ONE> bufHOutBf16_;
     TBuf<TPosition::VECCALC> bufGamma0Fp32_;
     TBuf<TPosition::VECCALC> bufGamma2Fp32_;
     TBuf<TPosition::VECCALC> bufX2Fp32_;
@@ -188,13 +176,11 @@ private:
     uint32_t totalTokens_ = 0, N_ = 0, D_ = 0, K_ = 0;
     uint32_t usedCoreNum_ = 0, rowsPerCore_ = 0, rowsPerCoreSp_ = 0, blockPivot_ = 0;
     uint32_t dimTile_ = 0, dimLoop_ = 0, lastDimTile_ = 0;
-    uint32_t phiRows_ = 0, phiCols_ = 0;
+    uint32_t phiCols_ = 0;
     float normEps_ = 1e-6f, mhcPreNormEps_ = 1e-6f, hcEps_ = 1e-6f, invD_ = 0.0f, invK_ = 0.0f;
     uint32_t tokenStart_ = 0, tokenEnd_ = 0;
     float alpha0_ = 0.0f;
     float biasCache_[N_MAX] = {0.0f};
-    // A5执行方案选择值，第一阶段只使用1
-    uint32_t coresPerToken_ = 1;
     uint32_t laneId_ = 0;
 
     int32_t evtMte2toV_ = 0;
