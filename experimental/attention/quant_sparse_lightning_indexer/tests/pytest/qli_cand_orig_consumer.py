@@ -13,8 +13,9 @@
 #
 # 来源与本分支改造 (2026-09-30):
 #   由主算子测试 tests/pytest/qli_cand_orig.py（其上溯 /opt/tjj/qli_cand_test/test_qli_cand.py）按
-#   cand_mode 切片迁移而来：承载原 harness 中 cand_mode=2 的全部用例（大 shape/1M、TND、
-#   pa_gap 0 轴非连续、offset 等形态），路由只保留 consumer 入口。
+#   cand_mode 切片迁移而来：承载原 harness 中 cand_mode=2 的用例（大 shape、TND、
+#   pa_gap 0 轴非连续、offset 等形态），路由只保留 consumer 入口；
+#   1M 组与 cand_blocks=64（超出本分支 2048-only 契约）的用例 2026-10-08 按约定删除。
 #   - 本算子无 candidate_mode 属性：固定消费第一级输出的块级候选索引，候选尺寸约定与第一级一致
 #     （candidate_topk_blocks=2048 / candidate_block_size=8）
 #   - 用例返回统一补成 3 元组（第三元恒空，与该 mode 语义一致），下游比对代码无需改动
@@ -1494,11 +1495,9 @@ CASES = [
     # ratio=2 + mask=0 (无 residual, decode)
     # 极小 S2: actS2Size=1 (单块单位置, 块数=1)
     # candBlocks=64 x mode=2 (掩码窗口 + topk_blocks<候选数的部分选)
-    ("r1_m2_cand64", 1, 1, [4096], 1, None, 0, 2, 32, 512, 64),
     # R11 leak 回归 (v41 issue 场景门禁): prefill + candBlocks=64 (128 块缺 64) +
     # vl<=topk 的行 (0..511) → 输出必须完整 0..vl (候选只降级排序不取消资格);
     # 行 512+ 覆盖 regime 2: 候选外按索引升序泄漏填充
-    ("r1_m2_leakprefill", 1, 1024, [1024], 1, None, 3, 2, 32, 512, 64),
     # g=64 prefill 扩展 (此前仅 decode 一例)
 ]
 
@@ -1607,23 +1606,6 @@ NEW_CASES = [
         None,
     ),
     (
-        "big1m_m2",
-        {
-            "name": "big1m_m2",
-            "batch": 1,
-            "q_seq": 1048576,
-            "seqused_k": [1048576],
-            "cmp_ratio": 1,
-            "mask_mode": 3,
-            "cand_mode": 2,
-            "g": 32,
-            "topk": 512,
-            "sample_rows": True,
-            "sample_rand": 2,
-        },
-        None,
-    ),
-    (
         "tnd_m2_rand",
         {
             "name": "tnd_m2_rand",
@@ -1713,24 +1695,6 @@ NEW_CASES = [
             "table_w": 1055,
             "pa_gap": True,
             "sample_rows": True,
-        },
-        None,
-    ),
-    (
-        "pa_gap_1m_m2",
-        {
-            "name": "pa_gap_1m_m2",
-            "batch": 1,
-            "q_seq": 1048576,
-            "seqused_k": [1048576],
-            "cmp_ratio": 1,
-            "mask_mode": 3,
-            "cand_mode": 2,
-            "g": 32,
-            "topk": 512,
-            "pa_gap": True,
-            "sample_rows": True,
-            "sample_rand": 2,
         },
         None,
     ),
@@ -1933,78 +1897,6 @@ NEW_CASES = [
             "table_w": 1055,
             "sample_rows": True,
             "sample_rand": 4,
-            "layout": "TND",
-        },
-        None,
-    ),
-    (
-        "mask0_1m_bsnd_m2_r1",
-        {
-            "name": "mask0_1m_bsnd_m2_r1",
-            "batch": 1,
-            "q_seq": 1048576,
-            "seqused_k": [1048576],
-            "cmp_ratio": 1,
-            "mask_mode": 0,
-            "cand_mode": 2,
-            "g": 32,
-            "topk": 512,
-            "sample_rows": True,
-            "sample_rand": 2,
-        },
-        None,
-    ),
-    (
-        "mask0_1m_bsnd_m2_r2",
-        {
-            "name": "mask0_1m_bsnd_m2_r2",
-            "batch": 1,
-            "q_seq": 1048576,
-            "seqused_k": [1048576],
-            "cmp_ratio": 2,
-            "mask_mode": 0,
-            "cand_mode": 2,
-            "g": 32,
-            "topk": 512,
-            "sample_rows": True,
-            "sample_rand": 2,
-        },
-        None,
-    ),
-    (
-        "mask0_1m_tnd_m2_r1",
-        {
-            "name": "mask0_1m_tnd_m2_r1",
-            "batch": 1,
-            "q_seq": 1048576,
-            "seqs_q": [1048576],
-            "seqused_k": [1048576],
-            "cmp_ratio": 1,
-            "mask_mode": 0,
-            "cand_mode": 2,
-            "g": 32,
-            "topk": 512,
-            "sample_rows": True,
-            "sample_rand": 2,
-            "layout": "TND",
-        },
-        None,
-    ),
-    (
-        "mask0_1m_tnd_m2_r2",
-        {
-            "name": "mask0_1m_tnd_m2_r2",
-            "batch": 1,
-            "q_seq": 1048576,
-            "seqs_q": [1048576],
-            "seqused_k": [1048576],
-            "cmp_ratio": 2,
-            "mask_mode": 0,
-            "cand_mode": 2,
-            "g": 32,
-            "topk": 512,
-            "sample_rows": True,
-            "sample_rand": 2,
             "layout": "TND",
         },
         None,

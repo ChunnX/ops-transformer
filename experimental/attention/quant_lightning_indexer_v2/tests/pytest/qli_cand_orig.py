@@ -24,6 +24,7 @@
 #   - 官方比对规则 result_compare_method 改为取自本目录（仓库内），去掉对 /opt 绝对路径的依赖
 # 自包含 harness: 输入生成(910b int8/PA) + torch 参考实现 + NPU 调用 + 集合比较
 # 用例矩阵: 设计文档 §6.5 (cmp_ratio 1/2 x mode 1/3, g64/32, decode/prefill, numBlocks 边界)
+#      注: 1M 组与 cand_blocks=64 (超出本分支 2048-only 契约) 的用例已删除
 #
 # 运行（需先 source CANN 的 set_env.sh，以取到仓库侧的 cann_ops_transformer 包）:
 #   source <CANN>/set_env.sh
@@ -1491,9 +1492,7 @@ CASES = [
     ("r1_m1_g64_regress", 1, 1, [2048], 1, None, 0, 1, 64, 512),
     ("r1_m1_sparse2048", 1, 1, [4096], 1, None, 0, 1, 32, 2048),
     # pin 生效场景: candBlocks=64 < 总块数 512 (s2=4096, bs=8), 最新块必须被 pin 进候选
-    ("r1_m1_pin64", 1, 1, [4096], 1, None, 0, 1, 32, 512, 64),
     # pin + 多 tile: s2=8192 (4 tiles, 1024 块), candBlocks=64
-    ("r1_m1_pin64_mt", 1, 1, [8192], 1, None, 0, 1, 32, 512, 64),
     # ---- 缺口补齐 (2026-09-07, 对照设计矩阵 §6.3) ----
     # B=4 变长 batch (矩阵要求 1/4)
     ("r1_m1_b4_varlen", 4, 4, [512, 1024, 1536, 2048], 1, None, 3, 1, 32, 512),
@@ -1537,7 +1536,8 @@ def case_dict(t):
 # ---- 大 shape (16K/128K/1M) 直入 pytest (设计文档 §6.6 抽样比对机制) + TND/key非连续/offset 用例 ----
 NEW_CASES = [
     # (id, case dict, xfail reason 或 None)
-    # ---- 大 shape 全遍历 (§6.6): q_seq {16K,128K,1M} x layout {BSND,TND} x cmp_ratio {1,2} ----
+    # ---- 大 shape 全遍历 (§6.6): q_seq {16K,128K} x layout {BSND,TND} x cmp_ratio {1,2} ----
+    #      (1M 组与 cand_blocks=64 用例 2026-10-08 按约定删除)
     # 生产规格: key pool [7936,128,1,128], block_table [1,1055]; 1M pool 默认 8192+4; ratio2 带 residual=1
     (
         "big16k_bsnd_r1",
@@ -1703,80 +1703,6 @@ NEW_CASES = [
         },
         None,
     ),
-    (
-        "big1m_bsnd_r1",
-        {
-            "name": "big1m_bsnd_r1",
-            "batch": 1,
-            "q_seq": 1048576,
-            "seqused_k": [1048576],
-            "cmp_ratio": 1,
-            "mask_mode": 3,
-            "cand_mode": 1,
-            "g": 32,
-            "topk": 512,
-            "sample_rows": True,
-            "sample_rand": 2,
-        },
-        None,
-    ),
-    (
-        "big1m_bsnd_r2",
-        {
-            "name": "big1m_bsnd_r2",
-            "batch": 1,
-            "q_seq": 1048576,
-            "seqused_k": [1048576],
-            "cmp_ratio": 2,
-            "cmp_res": [1],
-            "mask_mode": 3,
-            "cand_mode": 1,
-            "g": 32,
-            "topk": 512,
-            "sample_rows": True,
-            "sample_rand": 2,
-        },
-        None,
-    ),
-    (
-        "big1m_tnd_r1",
-        {
-            "name": "big1m_tnd_r1",
-            "batch": 1,
-            "q_seq": 1048576,
-            "seqs_q": [1048576],
-            "seqused_k": [1048576],
-            "cmp_ratio": 1,
-            "mask_mode": 3,
-            "cand_mode": 1,
-            "g": 32,
-            "topk": 512,
-            "sample_rows": True,
-            "sample_rand": 2,
-            "layout": "TND",
-        },
-        None,
-    ),
-    (
-        "big1m_tnd_r2",
-        {
-            "name": "big1m_tnd_r2",
-            "batch": 1,
-            "q_seq": 1048576,
-            "seqs_q": [1048576],
-            "seqused_k": [1048576],
-            "cmp_ratio": 2,
-            "cmp_res": [1],
-            "mask_mode": 3,
-            "cand_mode": 1,
-            "g": 32,
-            "topk": 512,
-            "sample_rows": True,
-            "sample_rand": 2,
-            "layout": "TND",
-        },
-        None,
-    ),
     # 生产规格: key pool [7936,128,1,128], block_table [B,1055]; 1M pool 8192/表 8192
     # ---- 大 shape mode=2 遍历补缺 (2026-09-08): TND / ratio2 / 1M / 16K ----
     (
@@ -1827,24 +1753,6 @@ NEW_CASES = [
             "cand_mode": 1,
             "g": 32,
             "topk": 512,
-            "layout": "TND",
-        },
-        None,
-    ),
-    (
-        "tnd_m1_pin64",
-        {
-            "name": "tnd_m1_pin64",
-            "batch": 1,
-            "q_seq": 1,
-            "seqs_q": [1],
-            "seqused_k": [8192],
-            "cmp_ratio": 1,
-            "mask_mode": 0,
-            "cand_mode": 1,
-            "g": 32,
-            "topk": 512,
-            "cand_blocks": 64,
             "layout": "TND",
         },
         None,
@@ -1963,24 +1871,6 @@ NEW_CASES = [
         },
         None,
     ),
-    (
-        "pa_gap_1m_m1",
-        {
-            "name": "pa_gap_1m_m1",
-            "batch": 1,
-            "q_seq": 1048576,
-            "seqused_k": [1048576],
-            "cmp_ratio": 1,
-            "mask_mode": 3,
-            "cand_mode": 1,
-            "g": 32,
-            "topk": 512,
-            "pa_gap": True,
-            "sample_rows": True,
-            "sample_rand": 2,
-        },
-        None,
-    ),
     # ---- B=2 变长大 shape (2026-09-08): batch 前缀/变长 vl/block_table 独立置换的大 shape 验证 ----
     (
         "big128k_b2_varlen",
@@ -2016,24 +1906,6 @@ NEW_CASES = [
             "pool": 2048,
             "table_w": 1024,
             "sample_rows": True,
-        },
-        None,
-    ),
-    (
-        "big1m_b2_m1",
-        {
-            "name": "big1m_b2_m1",
-            "batch": 2,
-            "q_seq": 524288,
-            "seqs_q": [524288, 524288],
-            "seqused_k": [524288, 1048576],
-            "cmp_ratio": 1,
-            "mask_mode": 3,
-            "cand_mode": 1,
-            "g": 32,
-            "topk": 512,
-            "sample_rows": True,
-            "sample_rand": 2,
         },
         None,
     ),
@@ -2245,78 +2117,6 @@ NEW_CASES = [
             "table_w": 1055,
             "sample_rows": True,
             "sample_rand": 4,
-            "layout": "TND",
-        },
-        None,
-    ),
-    (
-        "mask0_1m_bsnd_m1_r1",
-        {
-            "name": "mask0_1m_bsnd_m1_r1",
-            "batch": 1,
-            "q_seq": 1048576,
-            "seqused_k": [1048576],
-            "cmp_ratio": 1,
-            "mask_mode": 0,
-            "cand_mode": 1,
-            "g": 32,
-            "topk": 512,
-            "sample_rows": True,
-            "sample_rand": 2,
-        },
-        None,
-    ),
-    (
-        "mask0_1m_bsnd_m1_r2",
-        {
-            "name": "mask0_1m_bsnd_m1_r2",
-            "batch": 1,
-            "q_seq": 1048576,
-            "seqused_k": [1048576],
-            "cmp_ratio": 2,
-            "mask_mode": 0,
-            "cand_mode": 1,
-            "g": 32,
-            "topk": 512,
-            "sample_rows": True,
-            "sample_rand": 2,
-        },
-        None,
-    ),
-    (
-        "mask0_1m_tnd_m1_r1",
-        {
-            "name": "mask0_1m_tnd_m1_r1",
-            "batch": 1,
-            "q_seq": 1048576,
-            "seqs_q": [1048576],
-            "seqused_k": [1048576],
-            "cmp_ratio": 1,
-            "mask_mode": 0,
-            "cand_mode": 1,
-            "g": 32,
-            "topk": 512,
-            "sample_rows": True,
-            "sample_rand": 2,
-            "layout": "TND",
-        },
-        None,
-    ),
-    (
-        "mask0_1m_tnd_m1_r2",
-        {
-            "name": "mask0_1m_tnd_m1_r2",
-            "batch": 1,
-            "q_seq": 1048576,
-            "seqs_q": [1048576],
-            "seqused_k": [1048576],
-            "cmp_ratio": 2,
-            "mask_mode": 0,
-            "cand_mode": 1,
-            "g": 32,
-            "topk": 512,
-            "sample_rows": True,
-            "sample_rand": 2,
             "layout": "TND",
         },
         None,
