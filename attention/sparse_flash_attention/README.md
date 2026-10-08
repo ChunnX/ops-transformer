@@ -24,6 +24,8 @@
     其中$\tilde{K},\tilde{V}$为基于某种选择算法（如`lightning_indexer`）得到的重要性较高的Key和Value，一般具有稀疏或分块稀疏的特征，$d_k$为$Q,\tilde{K}$每一个头的维度。
     本次公布的`sparse_flash_attention`是面向Sparse Attention的全新算子，针对离散访存进行了指令缩减及搬运聚合的细致优化。
 
+- A2 原生 SFA Split-KV decode 的适配范围、算法与测试方式见 [A2 Split-KV 说明](./docs/sfa_split_kv_arch22.md)。
+
 ## 参数说明
 
 > **说明：**<br>
