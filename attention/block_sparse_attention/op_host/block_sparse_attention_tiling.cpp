@@ -666,7 +666,7 @@ ge::graphStatus BSATiling::CheckSparsePattern(gert::TilingContext *bsaContext, c
                 blockShapeX_, blockShapeY_);
         return ge::GRAPH_FAILED;
     }
-    // Only blockShapeY requires alignment (A950: 16; A910/A910B: 128). blockShapeX has no align constraint.
+    // Only blockShapeY requires alignment (A950: 16; A2/A3: 64). blockShapeX has no align constraint.
     if (blockShapeY_ % defaultShape != 0) {
         OP_LOGE(bsaContext->GetNodeName(),
                 "BlockShape elem1 must be a multiple of %ld, "
@@ -704,6 +704,7 @@ ge::graphStatus BSATiling::CheckSparsePattern(gert::TilingContext *bsaContext, c
 ge::graphStatus BSATiling::ParseSparsePattern(gert::TilingContext *bsaContext)
 {
     constexpr int64_t MIN_BLOCK_ALIGN = 16;
+    constexpr int64_t A2A3_BLOCK_ALIGN = 64;
     constexpr int64_t DEFAULT_BLOCK_SHAPE = 128;
     blockShapeX_ = DEFAULT_BLOCK_SHAPE;
     blockShapeY_ = DEFAULT_BLOCK_SHAPE;
@@ -726,7 +727,7 @@ ge::graphStatus BSATiling::ParseSparsePattern(gert::TilingContext *bsaContext)
             blockShapeY_ = blockShapeList[1];
         }
     }
-    const int64_t defaultShape = (socVer_ == SOC_VER_950_CODE) ? MIN_BLOCK_ALIGN : DEFAULT_BLOCK_SHAPE;
+    const int64_t defaultShape = (socVer_ == SOC_VER_950_CODE) ? MIN_BLOCK_ALIGN : A2A3_BLOCK_ALIGN;
     if (CheckSparsePattern(bsaContext, defaultShape) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
