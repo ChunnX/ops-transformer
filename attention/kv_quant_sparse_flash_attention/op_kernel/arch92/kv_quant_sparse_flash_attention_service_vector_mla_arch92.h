@@ -51,18 +51,18 @@ public:
 
     // ==================== Functions ======================
     __aicore__ inline QSFAVectorService(){};
-    __aicore__ inline void InitVecBlock(TPipe *pipe, const KvQuantSparseFlashAttentionTilingDataMla *__restrict tiling,
-                                        CVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx,
-                                        __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths)
+    __aicore__ inline void InitVecBlock(TPipe* pipe, const KvQuantSparseFlashAttentionTilingDataMla* __restrict tiling,
+                                        CVSharedParams& sharedParams, int32_t aicIdx, uint8_t subBlockIdx,
+                                        __gm__ uint8_t* actualSeqLengthsQ, __gm__ uint8_t* actualSeqLengths)
     {
         if ASCEND_IS_AIV {
             tilingData = tiling;
             tPipe = pipe;
             if (actualSeqLengths != nullptr) {
-                actualSeqLengthsKVGm.SetGlobalBuffer((__gm__ int32_t *)actualSeqLengths);
+                actualSeqLengthsKVGm.SetGlobalBuffer((__gm__ int32_t*)actualSeqLengths);
             }
             if (actualSeqLengthsQ != nullptr) {
-                cuSeqlensQGm.SetGlobalBuffer((__gm__ int32_t *)actualSeqLengthsQ);
+                cuSeqlensQGm.SetGlobalBuffer((__gm__ int32_t*)actualSeqLengthsQ);
             }
 
             this->InitCubeVecSharedParams(sharedParams, aicIdx, subBlockIdx);
@@ -71,92 +71,92 @@ public:
     }
 
     // 初始化LocalTensor
-    __aicore__ inline void InitLocalBuffer(TPipe *pipe, ConstInfo &constInfo);
+    __aicore__ inline void InitLocalBuffer(TPipe* pipe, ConstInfo& constInfo);
     __aicore__ inline void UninitLocalBuffer();
     // 初始化attentionOutGM
 #if KVQSFA_VERSION >= 2
-    __aicore__ inline void CleanOutput(__gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxMax,
-                                       __gm__ uint8_t *softmaxSum, ConstInfo &constInfo);
-    __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *sparseIndices,
-                                            __gm__ uint8_t *blockTable, __gm__ uint8_t *sinks);
+    __aicore__ inline void CleanOutput(__gm__ uint8_t* attentionOut, __gm__ uint8_t* softmaxMax,
+                                       __gm__ uint8_t* softmaxSum, ConstInfo& constInfo);
+    __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t* key, __gm__ uint8_t* value, __gm__ uint8_t* sparseIndices,
+                                            __gm__ uint8_t* blockTable, __gm__ uint8_t* sinks);
 #else
-    __aicore__ inline void CleanOutput(__gm__ uint8_t *attentionOut, ConstInfo &constInfo);
-    __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *sparseIndices,
-                                            __gm__ uint8_t *blockTable);
+    __aicore__ inline void CleanOutput(__gm__ uint8_t* attentionOut, ConstInfo& constInfo);
+    __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t* key, __gm__ uint8_t* value, __gm__ uint8_t* sparseIndices,
+                                            __gm__ uint8_t* blockTable);
 #endif
-    __aicore__ inline void InitOutputSingleCore(ConstInfo &constInfo);
-    __aicore__ inline void ProcessVec0(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
-                                       Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
-                                       const RunInfo &runInfo, ConstInfo &constInfo);
-    __aicore__ inline void ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
-                                       Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
-                                       RunInfo &runInfo, ConstInfo &constInfo);
+    __aicore__ inline void InitOutputSingleCore(ConstInfo& constInfo);
+    __aicore__ inline void ProcessVec0(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>& outputL1,
+                                       Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD>& v0ResGm,
+                                       const RunInfo& runInfo, ConstInfo& constInfo);
+    __aicore__ inline void ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>& outputBuf,
+                                       Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>& bmm1ResBuf,
+                                       RunInfo& runInfo, ConstInfo& constInfo);
     using mm2ResPos = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
-    __aicore__ inline void ProcessVec2(mm2ResPos &bmm2ResBuf, RunInfo &runInfo, ConstInfo &constInfo);
+    __aicore__ inline void ProcessVec2(mm2ResPos& bmm2ResBuf, RunInfo& runInfo, ConstInfo& constInfo);
     __aicore__ inline void GetKVPhyAddr(uint32_t hasLoad, uint32_t bN2StartIdx, uint32_t bN2EndIdx,
-                                        uint32_t gS1StartIdx, uint32_t nextGs1Idx, __gm__ uint8_t *workspace,
-                                        ConstInfo &constInfo);
+                                        uint32_t gS1StartIdx, uint32_t nextGs1Idx, __gm__ uint8_t* workspace,
+                                        ConstInfo& constInfo);
 
 private:
-    __aicore__ inline void ProcessVec1SoftmaxDispatchQSFA(LocalTensor<Q_T> &stage1CastTensor, LocalTensor<T> &mmRes,
-                                                          LocalTensor<float> &sumUb, LocalTensor<float> &maxUb,
-                                                          LocalTensor<T> &apiTmpBuffer, RunInfo &runInfo,
-                                                          ConstInfo &constInfo);
-    __aicore__ inline void ProcessSparseKv(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
-                                           Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
-                                           const RunInfo &runInfo, ConstInfo &constInfo);
-    __aicore__ inline void CalSparseCalSize(const RunInfo &runInfo, ConstInfo &constInfo);
+    __aicore__ inline void ProcessVec1SoftmaxDispatchQSFA(LocalTensor<Q_T>& stage1CastTensor, LocalTensor<T>& mmRes,
+                                                          LocalTensor<float>& sumUb, LocalTensor<float>& maxUb,
+                                                          LocalTensor<T>& apiTmpBuffer, RunInfo& runInfo,
+                                                          ConstInfo& constInfo);
+    __aicore__ inline void ProcessSparseKv(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>& outputL1,
+                                           Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD>& v0ResGm,
+                                           const RunInfo& runInfo, ConstInfo& constInfo);
+    __aicore__ inline void CalSparseCalSize(const RunInfo& runInfo, ConstInfo& constInfo);
     __aicore__ inline void CopyPhyAddrToGm(LocalTensor<uint32_t> kvPhyAddrUb, int64_t bS1Idx, int64_t s1Idx,
-                                           int64_t validS2, int64_t alignNum, ConstInfo &constInfo);
-    __aicore__ inline void CopyPaTableToUb(LocalTensor<int32_t> blkTableUb, int64_t bIdx, ConstInfo &constInfo);
+                                           int64_t validS2, int64_t alignNum, ConstInfo& constInfo);
+    __aicore__ inline void CopyPaTableToUb(LocalTensor<int32_t> blkTableUb, int64_t bIdx, ConstInfo& constInfo);
     __aicore__ inline void CopySparseIdxToUb(LocalTensor<int32_t> sparseIdxUb, int64_t bS1Idx, int64_t s1Idx,
-                                             int64_t validS2, ConstInfo &constInfo);
-    __aicore__ inline int32_t GetActualS1Size(uint32_t bIdx, ConstInfo &constInfo);
-    __aicore__ inline int32_t GetActualS2Size(uint32_t bIdx, ConstInfo &constInfo);
-    __aicore__ inline int64_t GetkeyOffset(int64_t s2Idx, const RunInfo &runInfo, ConstInfo &constInfo);
-    __aicore__ inline void GetRealCmpS2Idx(int64_t &token0Idx, int64_t &token1Idx, int64_t s2IdxInBase,
-                                           int64_t topkBS1Idx, int64_t s2LoopOffset, const RunInfo &runInfo,
-                                           ConstInfo &constInfo);
-    __aicore__ inline void GetRealS2Addr(int64_t &token0Idx, int64_t &token1Idx, int64_t s2IdxInBase,
-                                         int64_t topkBS1Idx, int64_t s2LoopOffset, const RunInfo &runInfo,
-                                         ConstInfo &constInfo);
+                                             int64_t validS2, ConstInfo& constInfo);
+    __aicore__ inline int32_t GetActualS1Size(uint32_t bIdx, ConstInfo& constInfo);
+    __aicore__ inline int32_t GetActualS2Size(uint32_t bIdx, ConstInfo& constInfo);
+    __aicore__ inline int64_t GetkeyOffset(int64_t s2Idx, const RunInfo& runInfo, ConstInfo& constInfo);
+    __aicore__ inline void GetRealCmpS2Idx(int64_t& token0Idx, int64_t& token1Idx, int64_t s2IdxInBase,
+                                           int64_t topkBS1Idx, int64_t s2LoopOffset, const RunInfo& runInfo,
+                                           ConstInfo& constInfo);
+    __aicore__ inline void GetRealS2Addr(int64_t& token0Idx, int64_t& token1Idx, int64_t s2IdxInBase,
+                                         int64_t topkBS1Idx, int64_t s2LoopOffset, const RunInfo& runInfo,
+                                         ConstInfo& constInfo);
     __aicore__ inline void CopyInKvNotSparse(LocalTensor<KV_T> kvMergUb, int64_t v0Loop, int64_t dealRow,
-                                             int64_t s2StartIdx, const RunInfo &runInfo, ConstInfo &constInfo);
+                                             int64_t s2StartIdx, const RunInfo& runInfo, ConstInfo& constInfo);
     __aicore__ inline uint32_t CopyInKvSparse(LocalTensor<KV_T> kvInUb, int64_t startRow, int64_t token0Idx,
-                                              int64_t token1Idx, const RunInfo &runInfo, ConstInfo &constInfo);
+                                              int64_t token1Idx, const RunInfo& runInfo, ConstInfo& constInfo);
     __aicore__ inline void DequantKv(LocalTensor<Q_T> antiKvTensorAsB16, LocalTensor<KV_T> srcTensor, int64_t dealRow,
-                                     ConstInfo &constInfo);
-    __aicore__ inline void CopyOutKvUb2L1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
+                                     ConstInfo& constInfo);
+    __aicore__ inline void CopyOutKvUb2L1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>& outputL1,
                                           LocalTensor<Q_T> antiKvTensorAsB16, int64_t dealRow, int64_t s2StartIdx,
-                                          const RunInfo &runInfo, ConstInfo &constInfo);
-    __aicore__ inline void CopyOutKvUb2Gm(Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
+                                          const RunInfo& runInfo, ConstInfo& constInfo);
+    __aicore__ inline void CopyOutKvUb2Gm(Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD>& v0ResGm,
                                           LocalTensor<Q_T> antiKvTensorAsB16, int64_t dealRow, int64_t s2StartIdx,
-                                          const RunInfo &runInfo, ConstInfo &constInfo);
-    __aicore__ inline void CopyOutMrgeResult(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
+                                          const RunInfo& runInfo, ConstInfo& constInfo);
+    __aicore__ inline void CopyOutMrgeResult(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>& outputL1,
                                              int64_t mte2Size, int64_t mte3Size, int64_t s2keyOffset,
-                                             int64_t mergeMte3Idx, const RunInfo &runInfo);
+                                             int64_t mergeMte3Idx, const RunInfo& runInfo);
     __aicore__ inline void CopyInSingleKv(LocalTensor<KV_T> kvInUb, int64_t startRow, int64_t keyOffset,
                                           uint32_t combineBytes);
     /* VEC2_RES_T 表示bmm2ResUb当前的类型，VEC2_RES_T = Q_T那么不需要做Cast。另外，无效行场景当前默认需要做Cast */
     using VEC2_RES_T = T;
     template <typename VEC2_RES_T>
-    __aicore__ inline void Bmm2DataCopyOut(RunInfo &runInfo, ConstInfo &constInfo, LocalTensor<VEC2_RES_T> &vec2ResUb,
+    __aicore__ inline void Bmm2DataCopyOut(RunInfo& runInfo, ConstInfo& constInfo, LocalTensor<VEC2_RES_T>& vec2ResUb,
                                            int64_t vec2S1Idx, int64_t qsfaVec2CalcSize = 0);
     template <typename VEC2_RES_T>
-    __aicore__ inline void CopyOutAttentionOut(RunInfo &runInfo, ConstInfo &constInfo,
-                                               LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t vec2S1Idx,
+    __aicore__ inline void CopyOutAttentionOut(RunInfo& runInfo, ConstInfo& constInfo,
+                                               LocalTensor<VEC2_RES_T>& vec2ResUb, int64_t vec2S1Idx,
                                                int64_t qsfaVec2CalcSize);
     __aicore__ inline void SoftmaxInitBuffer();
 #if KVQSFA_VERSION >= 2
-    __aicore__ inline void InitSinksBuffer(ConstInfo &constInfo);
-    __aicore__ inline void CopyFALseToGm(RunInfo &runInfo, ConstInfo &constInfo);
+    __aicore__ inline void InitSinksBuffer(ConstInfo& constInfo);
+    __aicore__ inline void CopyFALseToGm(RunInfo& runInfo, ConstInfo& constInfo);
 #endif
-    __aicore__ inline void InitCubeVecSharedParams(CVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx);
-    __aicore__ inline void ComputeNeedInitQSFA(CVSharedParams &sharedParams) const;
-    __aicore__ inline void GetExtremeValue(T &negativeScalar);
+    __aicore__ inline void InitCubeVecSharedParams(CVSharedParams& sharedParams, int32_t aicIdx, uint8_t subBlockIdx);
+    __aicore__ inline void ComputeNeedInitQSFA(CVSharedParams& sharedParams) const;
+    __aicore__ inline void GetExtremeValue(T& negativeScalar);
 
-    TPipe *tPipe;
-    const KvQuantSparseFlashAttentionTilingDataMla *__restrict tilingData;
+    TPipe* tPipe;
+    const KvQuantSparseFlashAttentionTilingDataMla* __restrict tilingData;
 
     GlobalTensor<OUTPUT_T> attentionOutGm;
 #if KVQSFA_VERSION >= 2
@@ -205,8 +205,8 @@ private:
 };
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::GetRealCmpS2Idx(
-    int64_t &token0Idx, int64_t &token1Idx, int64_t s2IdxInBase, int64_t topkBS1Idx, int64_t s2LoopOffset,
-    const RunInfo &runInfo, ConstInfo &constInfo)
+    int64_t& token0Idx, int64_t& token1Idx, int64_t s2IdxInBase, int64_t topkBS1Idx, int64_t s2LoopOffset,
+    const RunInfo& runInfo, ConstInfo& constInfo)
 {
     int64_t topkKIdx = s2IdxInBase + s2LoopOffset;
     if (unlikely(topkKIdx >= constInfo.sparseBlockCount)) {
@@ -223,8 +223,8 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>
 }
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::GetRealS2Addr(
-    int64_t &token0Idx, int64_t &token1Idx, int64_t s2IdxInBase, int64_t topkBS1Idx, int64_t s2LoopOffset,
-    const RunInfo &runInfo, ConstInfo &constInfo)
+    int64_t& token0Idx, int64_t& token1Idx, int64_t s2IdxInBase, int64_t topkBS1Idx, int64_t s2LoopOffset,
+    const RunInfo& runInfo, ConstInfo& constInfo)
 {
     int64_t topkKIdx = s2IdxInBase + s2LoopOffset;
     GlobalTensor<int64_t> kvPhyAddrGm64 = kvPhyAddrGm.template ReinterpretCast<int64_t>();
@@ -242,7 +242,7 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>
 }
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline int64_t QSFAVectorService<TEMPLATE_ARGS>::GetkeyOffset(
-    int64_t s2Idx, const RunInfo &runInfo, ConstInfo &constInfo)
+    int64_t s2Idx, const RunInfo& runInfo, ConstInfo& constInfo)
 {
     if (s2Idx < 0) {
         return -1;
@@ -289,8 +289,8 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>
 }
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline uint32_t QSFAVectorService<TEMPLATE_ARGS>::CopyInKvSparse(
-    LocalTensor<KV_T> kvInUb, int64_t startRow, int64_t token0Idx, int64_t token1Idx, const RunInfo &runInfo,
-    ConstInfo &constInfo)
+    LocalTensor<KV_T> kvInUb, int64_t startRow, int64_t token0Idx, int64_t token1Idx, const RunInfo& runInfo,
+    ConstInfo& constInfo)
 {
     if constexpr (IS_VEC_S2PHYADDR) {
         uint32_t combineBytes = constInfo.dSizeVInput * sizeof(KV_T);
@@ -357,8 +357,8 @@ static constexpr Reg::CastTrait castTraithalf_1 = {Reg::RegLayout::ZERO, Reg::Sa
                                                    Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
 
 template <typename Q_T, typename KV_T>
-__simd_vf__ void AntiquantVFImplFp8D448(__ubuf__ int8_t *ubSrcAddr, __ubuf__ Q_T *ubDstAddr, // output first
-                                        __ubuf__ float *ubScaleSrcAddr, uint32_t dealRowCount)
+__simd_vf__ void AntiquantVFImplFp8D448(__ubuf__ int8_t* ubSrcAddr, __ubuf__ Q_T* ubDstAddr, // output first
+                                        __ubuf__ float* ubScaleSrcAddr, uint32_t dealRowCount)
 {
     uint32_t combineDim = 672; // 128对齐 640->672
     Reg::RegTensor<KV_T> vKvData0;
@@ -391,18 +391,18 @@ __simd_vf__ void AntiquantVFImplFp8D448(__ubuf__ int8_t *ubSrcAddr, __ubuf__ Q_T
     static constexpr bool isKvInt8 = (IsSameType<KV_T, int8_t>::value);
     // tilesize is 128, deal 128 b8 kv, deal 1 fp32 scale
     for (uint16_t j = 0; j < (nopeDim / kvNumPerLoop); j++) {
-        __ubuf__ int8_t *ubSrcTemp = ubSrcAddr + j * kvNumPerLoop;
-        __ubuf__ float *ubScaleSrcAddrTemp = ubScaleSrcAddr + j * scaleNumPerLoop;
-        __ubuf__ Q_T *ubDstAddrTmp = ubDstAddr + j * kvNumPerLoop * blockStride;
+        __ubuf__ int8_t* ubSrcTemp = ubSrcAddr + j * kvNumPerLoop;
+        __ubuf__ float* ubScaleSrcAddrTemp = ubScaleSrcAddr + j * scaleNumPerLoop;
+        __ubuf__ Q_T* ubDstAddrTmp = ubDstAddr + j * kvNumPerLoop * blockStride;
         for (uint16_t i = 0; i < static_cast<uint16_t>(dealRowCount); i++) {
             // load scale
             Reg::LoadAlign<int8_t, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_UNPACK4_B8>(
-                (Reg::RegTensor<int8_t> &)vKvData0, ubSrcTemp, tileSize / 2);
+                (Reg::RegTensor<int8_t>&)vKvData0, ubSrcTemp, tileSize / 2);
             Reg::LoadAlign<int8_t, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_UNPACK4_B8>(
-                (Reg::RegTensor<int8_t> &)vKvData1, ubSrcTemp, combineDim - tileSize / 2);
+                (Reg::RegTensor<int8_t>&)vKvData1, ubSrcTemp, combineDim - tileSize / 2);
 
             Reg::LoadAlign<float, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_BRC_B32>(
-                (Reg::RegTensor<float> &)vScale0, ubScaleSrcAddrTemp, combineDim / 4);
+                (Reg::RegTensor<float>&)vScale0, ubScaleSrcAddrTemp, combineDim / 4);
 
             if constexpr (isKvInt8) {
                 // int8 -> half
@@ -431,17 +431,17 @@ __simd_vf__ void AntiquantVFImplFp8D448(__ubuf__ int8_t *ubSrcAddr, __ubuf__ Q_T
 }
 
 template <typename Q_T, typename KV_T>
-__aicore__ inline void AntiquantVFFp8D448(LocalTensor<Q_T> &outputUb, LocalTensor<KV_T> &inputUb, uint32_t dealRowCount)
+__aicore__ inline void AntiquantVFFp8D448(LocalTensor<Q_T>& outputUb, LocalTensor<KV_T>& inputUb, uint32_t dealRowCount)
 {
-    __ubuf__ int8_t *ubSrcAddr = (__ubuf__ int8_t *)(inputUb.GetPhyAddr()); // nope改成在左，所以起始位置是0
-    __ubuf__ Q_T *ubDstAddr = (__ubuf__ Q_T *)(outputUb.GetPhyAddr());
-    __ubuf__ float *ubScaleAddr = (__ubuf__ float *)(inputUb[512 + 64 * 2].GetPhyAddr());
+    __ubuf__ int8_t* ubSrcAddr = (__ubuf__ int8_t*)(inputUb.GetPhyAddr()); // nope改成在左，所以起始位置是0
+    __ubuf__ Q_T* ubDstAddr = (__ubuf__ Q_T*)(outputUb.GetPhyAddr());
+    __ubuf__ float* ubScaleAddr = (__ubuf__ float*)(inputUb[512 + 64 * 2].GetPhyAddr());
 
     AntiquantVFImplFp8D448<Q_T, KV_T>(ubSrcAddr, ubDstAddr, ubScaleAddr, dealRowCount);
 }
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::DequantKv(
-    LocalTensor<Q_T> antiKvTensorAsB16, LocalTensor<KV_T> srcTensor, int64_t dealRow, ConstInfo &constInfo)
+    LocalTensor<Q_T> antiKvTensorAsB16, LocalTensor<KV_T> srcTensor, int64_t dealRow, ConstInfo& constInfo)
 {
     // srcTensor是nope(512) + nope(64) + scale + pad, dstTensor是nope(512) + rope(64)
     AntiquantVFFp8D448<Q_T, KV_T>(antiKvTensorAsB16, srcTensor, dealRow);
@@ -461,8 +461,8 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::CopyOutKvUb2L1(
-    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1, LocalTensor<Q_T> antiKvTensorAsB16,
-    int64_t dealRow, int64_t s2StartIdx, const RunInfo &runInfo, ConstInfo &constInfo)
+    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>& outputL1, LocalTensor<Q_T> antiKvTensorAsB16,
+    int64_t dealRow, int64_t s2StartIdx, const RunInfo& runInfo, ConstInfo& constInfo)
 {
     uint64_t blockElementNum = 16;
     DataCopyParams dataCopyParams;
@@ -477,8 +477,8 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::CopyOutKvUb2L1(
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::CopyOutKvUb2Gm(
-    Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm, LocalTensor<Q_T> antiKvTensorAsB16,
-    int64_t dealRow, int64_t s2StartIdx, const RunInfo &runInfo, ConstInfo &constInfo)
+    Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD>& v0ResGm, LocalTensor<Q_T> antiKvTensorAsB16,
+    int64_t dealRow, int64_t s2StartIdx, const RunInfo& runInfo, ConstInfo& constInfo)
 {
     GlobalTensor<Q_T> v0ResGmTensor = v0ResGm.template GetTensor<Q_T>();
     uint64_t blockElementNum = 16;
@@ -491,7 +491,7 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::CopyOutKvUb2Gm(
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::CalSparseCalSize(const RunInfo &runInfo, ConstInfo &constInfo)
+__aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::CalSparseCalSize(const RunInfo& runInfo, ConstInfo& constInfo)
 {
     if constexpr (IS_SPLIT_G) {
         uint32_t aicIdx = GetBlockIdx();
@@ -514,8 +514,8 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::CalSparseCalSize(const 
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ProcessVec0(
-    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
-    Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm, const RunInfo &runInfo, ConstInfo &constInfo)
+    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>& outputL1,
+    Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD>& v0ResGm, const RunInfo& runInfo, ConstInfo& constInfo)
 {
     outputL1.WaitCrossCore(); // 核间同步
     blockSize = constInfo.blockSize;
@@ -537,8 +537,8 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ProcessVec0(
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ProcessSparseKv(
-    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
-    Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm, const RunInfo &runInfo, ConstInfo &constInfo)
+    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>& outputL1,
+    Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD>& v0ResGm, const RunInfo& runInfo, ConstInfo& constInfo)
 {
     if (qsfaSparseCalSize <= 0) {
         return;
@@ -612,8 +612,8 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ProcessSparseKv(
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ProcessVec1(
-    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
-    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, RunInfo &runInfo, ConstInfo &constInfo)
+    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>& outputBuf,
+    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>& bmm1ResBuf, RunInfo& runInfo, ConstInfo& constInfo)
 {
     bmm1ResBuf.WaitCrossCore();
 
@@ -658,8 +658,8 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ProcessVec1(
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ProcessVec1SoftmaxDispatchQSFA(
-    LocalTensor<Q_T> &stage1CastTensor, LocalTensor<T> &mmRes, LocalTensor<float> &sumUb, LocalTensor<float> &maxUb,
-    LocalTensor<T> &apiTmpBuffer, RunInfo &runInfo, ConstInfo &constInfo)
+    LocalTensor<Q_T>& stage1CastTensor, LocalTensor<T>& mmRes, LocalTensor<float>& sumUb, LocalTensor<float>& maxUb,
+    LocalTensor<T>& apiTmpBuffer, RunInfo& runInfo, ConstInfo& constInfo)
 {
     if (runInfo.s2LoopCount == 0 && !isSinks) {
         if (likely(runInfo.s2RealSize == 128)) { // s2RealSize等于128分档, VF内常量化减少if判断
@@ -705,7 +705,7 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ProcessVec1SoftmaxDispa
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ProcessVec2(
-    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm2ResBuf, RunInfo &runInfo, ConstInfo &constInfo)
+    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>& bmm2ResBuf, RunInfo& runInfo, ConstInfo& constInfo)
 {
     bmm2ResBuf.WaitCrossCore();
 
@@ -752,8 +752,8 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ProcessVec2(
 
 TEMPLATES_DEF_NO_DEFAULT
 template <typename VEC2_RES_T>
-__aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::Bmm2DataCopyOut(RunInfo &runInfo, ConstInfo &constInfo,
-                                                                         LocalTensor<VEC2_RES_T> &vec2ResUb,
+__aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::Bmm2DataCopyOut(RunInfo& runInfo, ConstInfo& constInfo,
+                                                                         LocalTensor<VEC2_RES_T>& vec2ResUb,
                                                                          int64_t vec2S1Idx, int64_t qsfaVec2CalcSize)
 {
     LocalTensor<OUTPUT_T> attenOut;
@@ -776,8 +776,8 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::Bmm2DataCopyOut(RunInfo
 
 TEMPLATES_DEF_NO_DEFAULT
 template <typename VEC2_RES_T>
-__aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::CopyOutAttentionOut(RunInfo &runInfo, ConstInfo &constInfo,
-                                                                             LocalTensor<VEC2_RES_T> &vec2ResUb,
+__aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::CopyOutAttentionOut(RunInfo& runInfo, ConstInfo& constInfo,
+                                                                             LocalTensor<VEC2_RES_T>& vec2ResUb,
                                                                              int64_t vec2S1Idx,
                                                                              int64_t qsfaVec2CalcSize)
 {
@@ -785,7 +785,7 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::CopyOutAttentionOut(Run
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::InitOutputSingleCore(ConstInfo &constInfo)
+__aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::InitOutputSingleCore(ConstInfo& constInfo)
 {
     uint32_t coreNum = GetBlockNum();
     uint64_t totalOutputSize = 0;
@@ -839,7 +839,7 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::InitOutputSingleCore(Co
 
 #if KVQSFA_VERSION >= 2
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::CopyFALseToGm(RunInfo &runInfo, ConstInfo &constInfo)
+__aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::CopyFALseToGm(RunInfo& runInfo, ConstInfo& constInfo)
 {
     LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod2].template Get<float>();
     LocalTensor<float> maxUb = this->softmaxMaxBuf[runInfo.multiCoreIdxMod2].template Get<float>();
@@ -871,14 +871,14 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::CopyFALseToGm(RunInfo &
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::CleanOutput(__gm__ uint8_t *attentionOut,
-                                                                     __gm__ uint8_t *softmaxMax,
-                                                                     __gm__ uint8_t *softmaxSum, ConstInfo &constInfo)
+__aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::CleanOutput(__gm__ uint8_t* attentionOut,
+                                                                     __gm__ uint8_t* softmaxMax,
+                                                                     __gm__ uint8_t* softmaxSum, ConstInfo& constInfo)
 {
     if ASCEND_IS_AIV {
-        this->attentionOutGm.SetGlobalBuffer((__gm__ OUTPUT_T *)attentionOut);
-        this->softmaxSumGm.SetGlobalBuffer((__gm__ float *)softmaxSum);
-        this->softmaxMaxGm.SetGlobalBuffer((__gm__ float *)softmaxMax);
+        this->attentionOutGm.SetGlobalBuffer((__gm__ OUTPUT_T*)attentionOut);
+        this->softmaxSumGm.SetGlobalBuffer((__gm__ float*)softmaxSum);
+        this->softmaxMaxGm.SetGlobalBuffer((__gm__ float*)softmaxMax);
         if (constInfo.needInit == 1) {
             initOutputEventId = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
             SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId); // 释放剩余ub
@@ -890,27 +890,27 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::CleanOutput(__gm__ uint
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::InitGlobalBuffer(__gm__ uint8_t *key, __gm__ uint8_t *value,
-                                                                          __gm__ uint8_t *sparseIndices,
-                                                                          __gm__ uint8_t *blockTable,
-                                                                          __gm__ uint8_t *sinks)
+__aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::InitGlobalBuffer(__gm__ uint8_t* key, __gm__ uint8_t* value,
+                                                                          __gm__ uint8_t* sparseIndices,
+                                                                          __gm__ uint8_t* blockTable,
+                                                                          __gm__ uint8_t* sinks)
 {
-    keyGm.SetGlobalBuffer((__gm__ KV_T *)(key));
-    SparseIndicesGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
+    keyGm.SetGlobalBuffer((__gm__ KV_T*)(key));
+    SparseIndicesGm.SetGlobalBuffer((__gm__ int32_t*)sparseIndices);
     if constexpr (isPa) {
-        blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
+        blockTableGm.SetGlobalBuffer((__gm__ int32_t*)blockTable);
     }
     if (sinks != nullptr) {
-        sinksGm.SetGlobalBuffer((__gm__ T *)sinks);
+        sinksGm.SetGlobalBuffer((__gm__ T*)sinks);
         this->isSinks = true;
     }
 }
 #else
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::CleanOutput(__gm__ uint8_t *attentionOut, ConstInfo &constInfo)
+__aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::CleanOutput(__gm__ uint8_t* attentionOut, ConstInfo& constInfo)
 {
     if ASCEND_IS_AIV {
-        this->attentionOutGm.SetGlobalBuffer((__gm__ OUTPUT_T *)attentionOut);
+        this->attentionOutGm.SetGlobalBuffer((__gm__ OUTPUT_T*)attentionOut);
         if (constInfo.needInit == 1) {
             initOutputEventId = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
             SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId); // 释放剩余ub
@@ -922,14 +922,14 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::CleanOutput(__gm__ uint
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::InitGlobalBuffer(__gm__ uint8_t *key, __gm__ uint8_t *value,
-                                                                          __gm__ uint8_t *sparseIndices,
-                                                                          __gm__ uint8_t *blockTable)
+__aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::InitGlobalBuffer(__gm__ uint8_t* key, __gm__ uint8_t* value,
+                                                                          __gm__ uint8_t* sparseIndices,
+                                                                          __gm__ uint8_t* blockTable)
 {
-    keyGm.SetGlobalBuffer((__gm__ KV_T *)(key));
-    SparseIndicesGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
+    keyGm.SetGlobalBuffer((__gm__ KV_T*)(key));
+    SparseIndicesGm.SetGlobalBuffer((__gm__ int32_t*)sparseIndices);
     if constexpr (isPa) {
-        blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
+        blockTableGm.SetGlobalBuffer((__gm__ int32_t*)blockTable);
     }
 }
 #endif
@@ -955,7 +955,7 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::SoftmaxInitBuffer()
 
 #if KVQSFA_VERSION >= 2
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::InitSinksBuffer(ConstInfo &constInfo)
+__aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::InitSinksBuffer(ConstInfo& constInfo)
 {
     LocalTensor<T> sinksUb = this->sinksBuf.template Get<T>();
     const uint32_t qsfaMaxN = constInfo.gSize; // N最大支持128, sink shape是[N]
@@ -972,7 +972,7 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::InitSinksBuffer(ConstIn
 #endif
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe, ConstInfo &constInfo)
+__aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::InitLocalBuffer(TPipe* pipe, ConstInfo& constInfo)
 {
     // ub buffer
     SoftmaxInitBuffer();
@@ -1020,9 +1020,9 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>
 }
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::InitCubeVecSharedParams(
-    CVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx)
+    CVSharedParams& sharedParams, int32_t aicIdx, uint8_t subBlockIdx)
 {
-    auto &sparseAttnSharedkvBaseParams = this->tilingData->baseParams;
+    auto& sparseAttnSharedkvBaseParams = this->tilingData->baseParams;
     sharedParams.bSize = sparseAttnSharedkvBaseParams.batchSize;
     sharedParams.n2Size = 1;
     sharedParams.s1Size = sparseAttnSharedkvBaseParams.qSeqSize;
@@ -1050,8 +1050,8 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>
 
     if ASCEND_IS_AIV {
         if (subBlockIdx == 0) {
-            auto qsfaTempTilingSSbuf = reinterpret_cast<__ssbuf__ uint32_t *>(0); // 从ssbuf的0地址开始拷贝
-            auto tempTiling = reinterpret_cast<uint32_t *>(&sharedParams);
+            auto qsfaTempTilingSSbuf = reinterpret_cast<__ssbuf__ uint32_t*>(0); // 从ssbuf的0地址开始拷贝
+            auto tempTiling = reinterpret_cast<uint32_t*>(&sharedParams);
 
 #pragma unroll
             for (int i = 0; i < sizeof(CVSharedParams) / sizeof(uint32_t); ++i, ++qsfaTempTilingSSbuf, ++tempTiling) {
@@ -1064,7 +1064,7 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>
 }
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ComputeNeedInitQSFA(
-    CVSharedParams &sharedParams) const
+    CVSharedParams& sharedParams) const
 {
     sharedParams.needInit = 0;
     for (uint32_t bIdx = 0; bIdx < sharedParams.bSize; bIdx++) {
@@ -1098,14 +1098,14 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>
     }
 }
 
-TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::GetExtremeValue(T &negativeScalar)
+TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::GetExtremeValue(T& negativeScalar)
 {
     uint32_t tmp1 = NEGATIVE_MIN_VALUE_FP32;
-    negativeScalar = *((float *)&tmp1);
+    negativeScalar = *((float*)&tmp1);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline int32_t QSFAVectorService<TEMPLATE_ARGS>::GetActualS1Size(uint32_t bIdx, ConstInfo &constInfo)
+__aicore__ inline int32_t QSFAVectorService<TEMPLATE_ARGS>::GetActualS1Size(uint32_t bIdx, ConstInfo& constInfo)
 {
     int32_t actualS1Size = 0;
     if constexpr (LAYOUT_T == QSFA_LAYOUT::TND) {
@@ -1119,7 +1119,7 @@ __aicore__ inline int32_t QSFAVectorService<TEMPLATE_ARGS>::GetActualS1Size(uint
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline int32_t QSFAVectorService<TEMPLATE_ARGS>::GetActualS2Size(uint32_t bIdx, ConstInfo &constInfo)
+__aicore__ inline int32_t QSFAVectorService<TEMPLATE_ARGS>::GetActualS2Size(uint32_t bIdx, ConstInfo& constInfo)
 {
     int32_t actualS2Size = 0;
     if (constInfo.isActualLenDimsKVNull) {
@@ -1131,8 +1131,8 @@ __aicore__ inline int32_t QSFAVectorService<TEMPLATE_ARGS>::GetActualS2Size(uint
 }
 
 template <typename T>
-__simd_vf__ void GetKVPhyAddrVFImpl(__ubuf__ uint32_t *kvPhyAddrUb, __ubuf__ int32_t *sparseIdxUb,
-                                    __ubuf__ int32_t *blkTableUb, const uint16_t s2Loop, uint32_t s2Tail,
+__simd_vf__ void GetKVPhyAddrVFImpl(__ubuf__ uint32_t* kvPhyAddrUb, __ubuf__ int32_t* sparseIdxUb,
+                                    __ubuf__ int32_t* blkTableUb, const uint16_t s2Loop, uint32_t s2Tail,
                                     const uint32_t blockSize, const int16_t shiftRightNum,
                                     const uint32_t sparseBlockSize, const uint32_t kvDim, const uint32_t kvStride)
 {
@@ -1185,9 +1185,9 @@ __simd_vf__ void GetKVPhyAddrVFImpl(__ubuf__ uint32_t *kvPhyAddrUb, __ubuf__ int
 
     for (; s2Loop > 1;) {
         for (uint16_t i = 0; i < s2Loop - 1; i++) {
-            Reg::LoadAlign<int32_t, Reg::LoadDist::DIST_NORM>((Reg::RegTensor<int32_t> &)vreg_sparse_idx_1,
+            Reg::LoadAlign<int32_t, Reg::LoadDist::DIST_NORM>((Reg::RegTensor<int32_t>&)vreg_sparse_idx_1,
                                                               sparseIdxUb + i * s2NumPerLoop);
-            Reg::LoadAlign<int32_t, Reg::LoadDist::DIST_NORM>((Reg::RegTensor<int32_t> &)vreg_sparse_idx_2,
+            Reg::LoadAlign<int32_t, Reg::LoadDist::DIST_NORM>((Reg::RegTensor<int32_t>&)vreg_sparse_idx_2,
                                                               sparseIdxUb + s2NumPerReg + i * s2NumPerLoop);
             // * sparseBlockSize
             Reg::Muls(vreg_sparse_idx_1, vreg_sparse_idx_1, sparseBlockSize, preg_all_b32);
@@ -1243,9 +1243,9 @@ __simd_vf__ void GetKVPhyAddrVFImpl(__ubuf__ uint32_t *kvPhyAddrUb, __ubuf__ int
         Reg::Not(preg_tail_neg_1_b32, preg_tail_1_b32, preg_all_b32);
         Reg::Not(preg_tail_neg_2_b32, preg_tail_2_b32, preg_all_b32);
 
-        Reg::LoadAlign<int32_t, Reg::LoadDist::DIST_NORM>((Reg::RegTensor<int32_t> &)vreg_sparse_idx_1,
+        Reg::LoadAlign<int32_t, Reg::LoadDist::DIST_NORM>((Reg::RegTensor<int32_t>&)vreg_sparse_idx_1,
                                                           sparseIdxUb + i * s2NumPerLoop);
-        Reg::LoadAlign<int32_t, Reg::LoadDist::DIST_NORM>((Reg::RegTensor<int32_t> &)vreg_sparse_idx_2,
+        Reg::LoadAlign<int32_t, Reg::LoadDist::DIST_NORM>((Reg::RegTensor<int32_t>&)vreg_sparse_idx_2,
                                                           sparseIdxUb + s2NumPerReg + i * s2NumPerLoop);
         // * sparseBlockSize
         Reg::Muls(vreg_sparse_idx_1, vreg_sparse_idx_1, sparseBlockSize, preg_tail_1_b32);
@@ -1302,9 +1302,9 @@ __aicore__ inline void GetKVPhyAddrVF(LocalTensor<uint32_t> kvPhyAddrTensor, Loc
                                       const uint32_t blockSize, const int16_t shiftRightNum,
                                       const uint32_t sparseBlockSize, const uint32_t kvDim, const uint32_t kvStride)
 {
-    __ubuf__ uint32_t *kvPhyAddrUb = (__ubuf__ uint32_t *)(kvPhyAddrTensor.GetPhyAddr());
-    __ubuf__ int32_t *sparseIdxUb = (__ubuf__ int32_t *)(sparseIdxTensor.GetPhyAddr());
-    __ubuf__ int32_t *blkTableUb = (__ubuf__ int32_t *)(blkTableTensor.GetPhyAddr());
+    __ubuf__ uint32_t* kvPhyAddrUb = (__ubuf__ uint32_t*)(kvPhyAddrTensor.GetPhyAddr());
+    __ubuf__ int32_t* sparseIdxUb = (__ubuf__ int32_t*)(sparseIdxTensor.GetPhyAddr());
+    __ubuf__ int32_t* blkTableUb = (__ubuf__ int32_t*)(blkTableTensor.GetPhyAddr());
     GetKVPhyAddrVFImpl<uint32_t>(kvPhyAddrUb, sparseIdxUb, blkTableUb, s2Loop, s2Tail, blockSize, shiftRightNum,
                                  sparseBlockSize, kvDim, kvStride);
 }
@@ -1312,7 +1312,7 @@ __aicore__ inline void GetKVPhyAddrVF(LocalTensor<uint32_t> kvPhyAddrTensor, Loc
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::CopyPhyAddrToGm(LocalTensor<uint32_t> kvPhyAddrUb,
                                                                          int64_t bS1Idx, int64_t s1Idx, int64_t validS2,
-                                                                         int64_t alignNum, ConstInfo &constInfo)
+                                                                         int64_t alignNum, ConstInfo& constInfo)
 {
     static constexpr int64_t bytesPerBlock = 32;
     static constexpr int64_t phyAddrPerBlock = bytesPerBlock / sizeof(int64_t);
@@ -1329,7 +1329,7 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::CopyPhyAddrToGm(LocalTe
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::CopyPaTableToUb(LocalTensor<int32_t> blkTableUb, int64_t bIdx,
-                                                                         ConstInfo &constInfo)
+                                                                         ConstInfo& constInfo)
 {
     DataCopyExtParams dataCopyParams;
     dataCopyParams.blockCount = 1U; // 每次处理1行
@@ -1343,7 +1343,7 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::CopyPaTableToUb(LocalTe
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::CopySparseIdxToUb(LocalTensor<int32_t> sparseIdxUb,
                                                                            int64_t bS1Idx, int64_t s1Idx,
-                                                                           int64_t validS2, ConstInfo &constInfo)
+                                                                           int64_t validS2, ConstInfo& constInfo)
 {
     DataCopyExtParams dataCopyParams;
     dataCopyParams.blockCount = 1U;
@@ -1358,8 +1358,8 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::CopySparseIdxToUb(Local
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::GetKVPhyAddr(uint32_t hasLoad, uint32_t bN2StartIdx,
                                                                       uint32_t bN2EndIdx, uint32_t gS1StartIdx,
-                                                                      uint32_t nextGs1Idx, __gm__ uint8_t *workspace,
-                                                                      ConstInfo &constInfo)
+                                                                      uint32_t nextGs1Idx, __gm__ uint8_t* workspace,
+                                                                      ConstInfo& constInfo)
 {
     if (hasLoad == 0) {
         SyncAll();
@@ -1385,7 +1385,7 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::GetKVPhyAddr(uint32_t h
         uint32_t v0ResSize = constInfo.s2BaseSize * 576U * sizeof(Q_T);
         v0TotalOffset = v0ResSize * 3 * (GetBlockNum() >> 1U); // 3buffer
     }
-    this->kvPhyAddrGm.SetGlobalBuffer((__gm__ uint32_t *)(workspace + v0TotalOffset));
+    this->kvPhyAddrGm.SetGlobalBuffer((__gm__ uint32_t*)(workspace + v0TotalOffset));
 
     const uint32_t kvStride = (constInfo.keyStride0 != 0) ?
                                   constInfo.keyStride0 :
@@ -1526,30 +1526,30 @@ TEMPLATES_DEF class QSFAVectorServiceDummy {
 public:
     __aicore__ inline QSFAVectorServiceDummy(){};
 #if KVQSFA_VERSION >= 2
-    __aicore__ inline void CleanOutput(__gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxMax,
-                                       __gm__ uint8_t *softmaxSum, ConstInfo &constInfo)
+    __aicore__ inline void CleanOutput(__gm__ uint8_t* attentionOut, __gm__ uint8_t* softmaxMax,
+                                       __gm__ uint8_t* softmaxSum, ConstInfo& constInfo)
     {}
-    __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *sparseIndices,
-                                            __gm__ uint8_t *blockTable, __gm__ uint8_t *sinks)
+    __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t* key, __gm__ uint8_t* value, __gm__ uint8_t* sparseIndices,
+                                            __gm__ uint8_t* blockTable, __gm__ uint8_t* sinks)
     {}
 #else
-    __aicore__ inline void CleanOutput(__gm__ uint8_t *attentionOut, ConstInfo &constInfo) {}
-    __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *sparseIndices,
-                                            __gm__ uint8_t *blockTable)
+    __aicore__ inline void CleanOutput(__gm__ uint8_t* attentionOut, ConstInfo& constInfo) {}
+    __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t* key, __gm__ uint8_t* value, __gm__ uint8_t* sparseIndices,
+                                            __gm__ uint8_t* blockTable)
     {}
 #endif
-    __aicore__ inline void InitVecBlock(TPipe *pipe, const KvQuantSparseFlashAttentionTilingDataMla *__restrict tiling,
-                                        CVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx,
-                                        __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths) {};
-    __aicore__ inline void InitLocalBuffer(TPipe *pipe, ConstInfo &constInfo) {}
+    __aicore__ inline void InitVecBlock(TPipe* pipe, const KvQuantSparseFlashAttentionTilingDataMla* __restrict tiling,
+                                        CVSharedParams& sharedParams, int32_t aicIdx, uint8_t subBlockIdx,
+                                        __gm__ uint8_t* actualSeqLengthsQ, __gm__ uint8_t* actualSeqLengths) {};
+    __aicore__ inline void InitLocalBuffer(TPipe* pipe, ConstInfo& constInfo) {}
     __aicore__ inline void UninitLocalBuffer() {}
 
-    __aicore__ inline void ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
-                                       Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
-                                       RunInfo &runInfo, ConstInfo &constInfo)
+    __aicore__ inline void ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>& outputBuf,
+                                       Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>& bmm1ResBuf,
+                                       RunInfo& runInfo, ConstInfo& constInfo)
     {}
     using mm2ResPos = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
-    __aicore__ inline void ProcessVec2(mm2ResPos &bmm2ResBuf, RunInfo &runInfo, ConstInfo &constInfo) {}
+    __aicore__ inline void ProcessVec2(mm2ResPos& bmm2ResBuf, RunInfo& runInfo, ConstInfo& constInfo) {}
 };
 } // namespace BaseApi
 #endif // KV_QUANT_SPARSE_FLASH_ATTENTION_SERVICE_VECTOR_MLA_ARCH92_H
