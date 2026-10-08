@@ -28,6 +28,7 @@ const std::string PATTERN_X3 = "HasX3";
 const std::string PATTERN_SCALE = "HasScale";
 const std::string PATTERN_OFFSET = "HasOffset";
 const std::string PATTERN_DEQUANT = "HasDequant";
+const std::string PATTERN_PERTOKEN = "HasPertoken";
 const std::string PATTERN_SCALE_TRANSPOSE = "ScaleTranspose";
 const std::string PATTERN_OFFSET_TRANSPOSE = "OffsetTranspose";
 const std::string PATTERN_DEQUANT_TRANSPOSE = "DequantTranspose";
@@ -49,13 +50,14 @@ enum class TransposePort {
     Dequant
 };
 
-// ES：排列影响匹配拓扑的组合；x3 直连透传（对齐 canndev 原地改边保留 x3）；pertoken/comm_quant 仍固定 nullptr
+// ES：排列影响匹配拓扑的组合；x3/pertoken 直连透传（对齐 canndev 原地改边）；comm_quant 仍固定 nullptr
 struct OriginalGraphInfo {
     bool hasBias = false;
     bool hasX3 = false;
     bool hasScale = false;
     bool hasOffset = false;
     bool hasDequant = false;
+    bool hasPertoken = false;      // MX 等场景必传；不吸 Transpose
     bool scaleTranspose = false;   // 需 hasScale
     bool offsetTranspose = false;  // 需 hasOffset
     bool dequantTranspose = false; // 需 hasDequant
@@ -70,6 +72,7 @@ struct ReplaceGraphInputs {
     ge::es::EsTensorHolder rAntiquantScale;
     ge::es::EsTensorHolder rAntiquantOffset;
     ge::es::EsTensorHolder rDequantScale;
+    ge::es::EsTensorHolder rPertokenScale;
 };
 
 // 加载 EsTranspose 符号
@@ -129,6 +132,9 @@ static size_t GetPatternInputNum(const OriginalGraphInfo& info)
     if (info.hasDequant) {
         ++n;
     }
+    if (info.hasPertoken) {
+        ++n;
+    }
     return n;
 }
 
@@ -164,6 +170,9 @@ static ge::fusion::PatternUniqPtr MakePattern(const OriginalGraphInfo& info)
     }
     if (info.hasDequant) {
         patternName += PATTERN_DEQUANT;
+    }
+    if (info.hasPertoken) {
+        patternName += PATTERN_PERTOKEN;
     }
     if (info.scaleTranspose) {
         patternName += PATTERN_SCALE_TRANSPOSE;
@@ -205,6 +214,11 @@ static ge::fusion::PatternUniqPtr MakePattern(const OriginalGraphInfo& info)
     if (info.hasDequant) {
         dequantScale = inputs[idx++];
     }
+    // IR 顺序：dequant 后是 pertoken；直连透传，不吸 Transpose
+    ge::es::EsTensorHolder pertokenScale = nullptr;
+    if (info.hasPertoken) {
+        pertokenScale = inputs[idx++];
+    }
 
     // x2 必挂 Transpose（对齐 canndev：无 Bitcast）
     auto transposeX2 = MakeTransposeNode(x2);
@@ -231,9 +245,9 @@ static ge::fusion::PatternUniqPtr MakePattern(const OriginalGraphInfo& info)
     }
 
     const char* group = "";
-    // x3 按是否存在透传；pertoken / comm_quant 仍固定 nullptr
-    auto y = ge::es::MatmulAllReduce(x1, transposeX2, bias, x3, scaleIn, offsetIn, dequantIn, nullptr, nullptr, nullptr,
-                                     group);
+    // x3/pertoken 按是否存在透传；comm_quant 仍固定 nullptr
+    auto y = ge::es::MatmulAllReduce(x1, transposeX2, bias, x3, scaleIn, offsetIn, dequantIn, pertokenScale, nullptr,
+                                     nullptr, group);
     auto graph = graphBuilder.BuildAndReset({y});
     auto pattern = std::make_unique<ge::fusion::Pattern>(std::move(*graph));
     // Capture：0=mc2；其后按 x2 → scale → offset → dequant 顺序追加 Transpose
@@ -269,6 +283,7 @@ static size_t GetExpectedSubgraphInputNum(const std::string& patternNameStr)
     info.hasScale = patternNameStr.find(PATTERN_SCALE) != std::string::npos;
     info.hasOffset = patternNameStr.find(PATTERN_OFFSET) != std::string::npos;
     info.hasDequant = patternNameStr.find(PATTERN_DEQUANT) != std::string::npos;
+    info.hasPertoken = patternNameStr.find(PATTERN_PERTOKEN) != std::string::npos;
     return GetPatternInputNum(info);
 }
 
@@ -443,6 +458,28 @@ static bool IsAntiquantDirectConnectAllowed(const std::unique_ptr<ge::fusion::Ma
     return true;
 }
 
+static bool Mc2HasConnectedInput(const ge::GNode& mc2Node, int32_t inputIdx)
+{
+    ge::TensorDesc desc;
+    return mc2Node.GetInputDesc(inputIdx, desc) == ge::GRAPH_SUCCESS;
+}
+
+// MXFP4/8：dequant_scale 与 pertoken_scale 均为 FLOAT8_E8M0
+static bool IsMXQuantScenario(const ge::GNode& mc2Node)
+{
+    if (!Mc2HasConnectedInput(mc2Node, static_cast<int32_t>(ops::MC2InputIdx::K_DEQUANT)) ||
+        !Mc2HasConnectedInput(mc2Node, static_cast<int32_t>(ops::MC2InputIdx::K_PERTOKEN))) {
+        return false;
+    }
+    ge::TensorDesc dequantDesc;
+    ge::TensorDesc pertokenDesc;
+    if (mc2Node.GetInputDesc(static_cast<int>(ops::MC2InputIdx::K_DEQUANT), dequantDesc) != ge::GRAPH_SUCCESS ||
+        mc2Node.GetInputDesc(static_cast<int>(ops::MC2InputIdx::K_PERTOKEN), pertokenDesc) != ge::GRAPH_SUCCESS) {
+        return false;
+    }
+    return dequantDesc.GetDataType() == ge::DT_FLOAT8_E8M0 && pertokenDesc.GetDataType() == ge::DT_FLOAT8_E8M0;
+}
+
 static bool IsDequantDirectConnectAllowed(const std::unique_ptr<ge::fusion::MatchResult>& matchResult,
                                           const std::string& patternNameStr)
 {
@@ -458,6 +495,11 @@ static bool IsDequantDirectConnectAllowed(const std::unique_ptr<ge::fusion::Matc
         return false;
     }
 
+    // MX 3D scale 已是转置布局时可直连，仍需吸收 x2 Transpose 并强制 is_trans_b=true
+    if (IsMXQuantScenario(mc2Node)) {
+        return true;
+    }
+
     const int32_t dequantIdx = static_cast<int32_t>(ops::MC2InputIdx::K_DEQUANT);
     ge::TensorDesc dequantDesc;
     if (mc2Node.GetInputDesc(dequantIdx, dequantDesc) != ge::GRAPH_SUCCESS) {
@@ -471,12 +513,6 @@ static bool IsDequantDirectConnectAllowed(const std::unique_ptr<ge::fusion::Matc
         return false;
     }
     return true;
-}
-
-static bool Mc2HasConnectedInput(const ge::GNode& mc2Node, int32_t inputIdx)
-{
-    ge::TensorDesc desc;
-    return mc2Node.GetInputDesc(inputIdx, desc) == ge::GRAPH_SUCCESS;
 }
 
 // ES pattern 对 optional 口可能按“有边输入”紧凑匹配（如 bias 空时 x3 顶到 bias 位）。
@@ -524,6 +560,15 @@ static bool IsOptionalInputPresenceConsistent(const ge::GNode& mc2Node, const st
                   patternNameStr.c_str(), static_cast<int>(patternHasDequant), static_cast<int>(nodeHasDequant));
         return false;
     }
+
+    const bool patternHasPertoken = patternNameStr.find(PATTERN_PERTOKEN) != std::string::npos;
+    const bool nodeHasPertoken = Mc2HasConnectedInput(mc2Node, static_cast<int32_t>(ops::MC2InputIdx::K_PERTOKEN));
+    if (patternHasPertoken != nodeHasPertoken) {
+        OPS_LOG_D(FUSION_PASS_NAME.c_str(),
+                  "Skip pattern=%s: patternHasPertoken=%d nodeHasPertoken=%d (must be consistent).",
+                  patternNameStr.c_str(), static_cast<int>(patternHasPertoken), static_cast<int>(nodeHasPertoken));
+        return false;
+    }
     return true;
 }
 
@@ -536,27 +581,29 @@ std::vector<ge::fusion::PatternUniqPtr> MatmulAllReduceTransposeA5FusionPass::Pa
             for (bool hasScale : {false, true}) {
                 for (bool hasOffset : {false, true}) {
                     for (bool hasDequant : {false, true}) {
-                        for (bool scaleTranspose : {false, true}) {
-                            if (scaleTranspose && !hasScale) {
-                                continue;
-                            }
-                            for (bool offsetTranspose : {false, true}) {
-                                if (offsetTranspose && !hasOffset) {
+                        for (bool hasPertoken : {false, true}) {
+                            for (bool scaleTranspose : {false, true}) {
+                                if (scaleTranspose && !hasScale) {
                                     continue;
                                 }
-                                for (bool dequantTranspose : {false, true}) {
-                                    if (dequantTranspose && !hasDequant) {
+                                for (bool offsetTranspose : {false, true}) {
+                                    if (offsetTranspose && !hasOffset) {
                                         continue;
                                     }
-                                    for (bool dequantBitcast : {false, true}) {
-                                        if (dequantBitcast && !dequantTranspose) {
+                                    for (bool dequantTranspose : {false, true}) {
+                                        if (dequantTranspose && !hasDequant) {
                                             continue;
                                         }
-                                        OriginalGraphInfo info{
-                                            hasBias,       hasX3,          hasScale,        hasOffset,
-                                            hasDequant,    scaleTranspose, offsetTranspose, dequantTranspose,
-                                            dequantBitcast};
-                                        patternGraphs.emplace_back(MakePattern(info));
+                                        for (bool dequantBitcast : {false, true}) {
+                                            if (dequantBitcast && !dequantTranspose) {
+                                                continue;
+                                            }
+                                            OriginalGraphInfo info{hasBias,        hasX3,           hasScale,
+                                                                   hasOffset,      hasDequant,      hasPertoken,
+                                                                   scaleTranspose, offsetTranspose, dequantTranspose,
+                                                                   dequantBitcast};
+                                            patternGraphs.emplace_back(MakePattern(info));
+                                        }
                                     }
                                 }
                             }
@@ -713,6 +760,13 @@ static bool CreateReplaceGraphInputs(ReplaceGraphInputs& inputs, ge::es::EsGraph
     if (patternNameStr.find(PATTERN_DEQUANT) != std::string::npos) {
         inputs.rDequantScale = replaceGraphBuilder.CreateInput(inputIdx, "dequant_scale", inputDTypes[inputIdx],
                                                                inputFormats[inputIdx], inputShapes[inputIdx].GetDims());
+        ++inputIdx;
+    }
+
+    inputs.rPertokenScale = nullptr;
+    if (patternNameStr.find(PATTERN_PERTOKEN) != std::string::npos) {
+        inputs.rPertokenScale = replaceGraphBuilder.CreateInput(
+            inputIdx, "pertoken_scale", inputDTypes[inputIdx], inputFormats[inputIdx], inputShapes[inputIdx].GetDims());
     }
     return true;
 }
@@ -774,8 +828,13 @@ static ge::fusion::GraphUniqPtr BuildReplaceGraph(const std::vector<ge::fusion::
     bool isTransB = false;
     OP_LOGE_IF(mc2Node.GetAttr("is_trans_b", isTransB) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
                "Get Attr is_trans_b failed.");
-    // 吸收 x2 Transpose 后置反（对齐 canndev UpdateTransAttrOfMc2）
-    isTransB = !isTransB;
+    // MX：tiling/aclnn 要求吸收 x2 Transpose 后 is_trans_b 必须为 true（对齐 AlltoAllMatmul A5）
+    // 非 MX：吸收后置反（对齐 canndev UpdateTransAttrOfMc2）
+    if (IsMXQuantScenario(mc2Node)) {
+        isTransB = true;
+    } else {
+        isTransB = !isTransB;
+    }
 
     int64_t commTurn = 0;
     OP_LOGE_IF(mc2Node.GetAttr("comm_turn", commTurn) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
@@ -801,10 +860,11 @@ static ge::fusion::GraphUniqPtr BuildReplaceGraph(const std::vector<ge::fusion::
     OP_LOGE_IF(mc2Node.GetAttr("comm_mode", commMode) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
                "Get Attr comm_mode failed.");
 
-    auto y = ge::es::MatmulAllReduce(
-        inputTensors.rX1, inputTensors.rX2, inputTensors.rBias, inputTensors.rX3, inputTensors.rAntiquantScale,
-        inputTensors.rAntiquantOffset, dequantIn, nullptr, nullptr, nullptr, group.GetString(), reduceOp.GetString(),
-        isTransA, isTransB, commTurn, antiquantGroupSize, groupSize, yDtype, commQuantMode, commMode.GetString());
+    auto y = ge::es::MatmulAllReduce(inputTensors.rX1, inputTensors.rX2, inputTensors.rBias, inputTensors.rX3,
+                                     inputTensors.rAntiquantScale, inputTensors.rAntiquantOffset, dequantIn,
+                                     inputTensors.rPertokenScale, nullptr, nullptr, group.GetString(),
+                                     reduceOp.GetString(), isTransA, isTransB, commTurn, antiquantGroupSize, groupSize,
+                                     yDtype, commQuantMode, commMode.GetString());
     return replaceGraphBuilder.BuildAndReset({y});
 }
 
