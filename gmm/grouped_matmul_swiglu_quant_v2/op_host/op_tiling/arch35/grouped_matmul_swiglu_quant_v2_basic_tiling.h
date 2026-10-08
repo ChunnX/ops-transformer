@@ -66,8 +66,7 @@ protected:
 private:
     bool IsSplitSwigluMode() const
     {
-        constexpr int64_t SPLIT_SWIGLU_MODE = 2;
-        return swigluParams_.swigluMode == SPLIT_SWIGLU_MODE;
+        return useV3Path_;
     }
     bool AnalyzeV3Attrs();
     bool AnalyzeV3Dtype();
@@ -128,6 +127,7 @@ private:
     GroupedMatmulSwigluQuantV2TensorApi::GMMSwigluQuantV2TensorApiTilingData tensorApiTilingData_;
     uint32_t aivNum_ = 0;
     bool useTensorApi_ = false;
+    bool useV3Path_ = false;
 
     const std::vector<ge::DataType> quantDtypeSupportList = {ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2,
                                                              ge::DT_FLOAT4_E2M1};

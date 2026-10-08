@@ -111,6 +111,7 @@ void GroupedMatmulSwigluQuantV2Tiling950::Reset()
     tensorApiTilingData_ = {};
     aivNum_ = 0;
     useTensorApi_ = false;
+    useV3Path_ = false;
 }
 
 ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::GetShapeAttrsInfo()
@@ -121,6 +122,11 @@ ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::GetShapeAttrsInfo()
                            nullptr :
                            attrs->GetAttrPointer<int64_t>(GroupedMatmulSwigluQuantV2Tiling::ATTR_INDEX_SWIGLU_MODE);
     swigluParams_.swigluMode = mode == nullptr ? 0 : *mode;
+    const auto* xDesc = context_->GetInputDesc(X_INDEX);
+    const auto* weightDesc = context_->GetDynamicInputDesc(WEIGHT_INDEX, 0);
+    useV3Path_ = swigluParams_.swigluMode == V3_SWIGLU_MODE ||
+                 (swigluParams_.swigluMode == 0 && xDesc != nullptr && weightDesc != nullptr &&
+                  xDesc->GetDataType() == ge::DT_FLOAT4_E2M1 && weightDesc->GetDataType() == ge::DT_FLOAT4_E2M1);
     return GroupedQmmTiling::GetShapeAttrsInfo();
 }
 
@@ -1346,14 +1352,16 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeV3Attrs()
         OP_LOGE(context_->GetNodeName(), "group_list_type must be 0 or 1, but got %ld", groupListType), return false);
     OP_CHECK_IF(quantDtype != static_cast<int64_t>(inputParams_.outDataDtype),
                 OP_LOGE(context_->GetNodeName(), "quant_dtype must match the FP8 output dtype"), return false);
-    OP_CHECK_IF(swigluMode != V3_SWIGLU_MODE,
-                OP_LOGE(context_->GetNodeName(), "swiglu_mode currently only supports 2, but got %ld", swigluMode),
+    OP_CHECK_IF(swigluMode != 0 && swigluMode != V3_SWIGLU_MODE,
+                OP_LOGE(context_->GetNodeName(), "swiglu_mode only supports 0 or 2, but got %ld", swigluMode),
                 return false);
-    OP_CHECK_IF(!std::isfinite(swigluParams_.gluAlpha) || !std::isfinite(swigluParams_.gluBias),
-                OP_LOGE(context_->GetNodeName(), "glu_alpha and glu_bias must be finite"), return false);
-    OP_CHECK_IF((!std::isfinite(swigluParams_.clampLimit) || swigluParams_.clampLimit <= 0.0F),
-                OP_LOGE(context_->GetNodeName(), "clamp_limit must be finite and positive for swiglu_mode 2"),
-                return false);
+    if (swigluMode == V3_SWIGLU_MODE) {
+        OP_CHECK_IF(!std::isfinite(swigluParams_.gluAlpha) || !std::isfinite(swigluParams_.gluBias),
+                    OP_LOGE(context_->GetNodeName(), "glu_alpha and glu_bias must be finite"), return false);
+        OP_CHECK_IF((!std::isfinite(swigluParams_.clampLimit) || swigluParams_.clampLimit <= 0.0F),
+                    OP_LOGE(context_->GetNodeName(), "clamp_limit must be finite and positive for swiglu_mode 2"),
+                    return false);
+    }
     OP_CHECK_IF(std::string(roundMode) != V3_DEFAULT_ROUND_MODE,
                 OP_LOGE(context_->GetNodeName(), "round_mode must be rint, but got %s", roundMode), return false);
     OP_CHECK_IF(
