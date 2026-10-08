@@ -277,8 +277,7 @@ bool QuantFlashAttnMetadataCpuKernel::ParamsInit()
     }
     baseInfo.batchSize = batchSize_;
     baseInfo.queryHeadNum = numHeadsQ_;
-    bool isDecode = (layoutQDescale_ == "N2TGD");
-    baseInfo.kvHeadNum = isDecode ? numHeadsKv_ : numHeadsQ_;
+    baseInfo.kvHeadNum = numHeadsKv_;
     baseInfo.headDimQk = headDim_;
     baseInfo.headDimV = headDim_;
     baseInfo.attenMaskFlag = (maskMode_ != 0);
@@ -293,6 +292,8 @@ bool QuantFlashAttnMetadataCpuKernel::ParamsInit()
     }
     uint32_t sOuterFactor = 0;
     uint32_t sInnerFactor = 0;
+    // N2TGD(TND decode) / BN2S1GD(BSND decode) 均对应 DECODE 模板
+    bool isDecode = (layoutQDescale_ == "N2TGD" || layoutQDescale_ == "BN2S1GD");
     if (socVersion_.find("Ascend960") != std::string::npos) {
         // 基本块随 decode/prefill 与 vHeadDim 分级，按 vHeadDim 判档
         optiling::quant_flash_attn::qfa_tiling_util::AdjustSinnerAndSouterArch92(
@@ -324,7 +325,8 @@ bool QuantFlashAttnMetadataCpuKernel::ParamsInit()
         param.fdTolerance = 300;
         param.fdOn = false;
     }
-    param.kernelSplitMode = load_balance::KernelSplitMode::BN2_S1G_S2;
+    param.kernelSplitMode =
+        isDecode ? load_balance::KernelSplitMode::BN2_S1G_S2 : load_balance::KernelSplitMode::BN1_S1_S2;
 
     if (isGradEnabled_) {
         // 等长场景的 deterMaxRound, 由 GenMetaData 在 Clear 之后写入第二行槽位 0。
