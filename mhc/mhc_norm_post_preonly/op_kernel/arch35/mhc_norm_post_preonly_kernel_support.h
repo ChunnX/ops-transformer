@@ -11,28 +11,9 @@
 #ifndef MHC_NORM_POST_PREONLY_KERNEL_SUPPORT_H_
 #define MHC_NORM_POST_PREONLY_KERNEL_SUPPORT_H_
 
-// ========================================================================
-// mhc_norm_post_preonly_kernel.h — 类定义和共享计算模块
-//
-// 文件结构:
-//   1. 类声明 + Init / Process
-//   2. 共享计算成员实现
-//   3. 成员变量
-//   4. 引入各执行路径的实现头文件
-// ========================================================================
-
-
-
-// ========================================================================
-// mhc_norm_post_preonly_common.h — 常量、类型萃取、workspace layout 定义
-// ========================================================================
-
 #include "kernel_operator.h"
 using namespace AscendC;
 
-// ---------------------------------------------------------------------------
-// 全局常量
-// ---------------------------------------------------------------------------
 constexpr uint32_t N_MAX = 4;
 constexpr uint32_t ALIGN8 = 8;
 constexpr uint32_t BUFFER_NUM_ONE = 1;
@@ -42,12 +23,11 @@ constexpr uint32_t SCALAR_BUF_SIZE = 256;     // 标量计算 UB buffer 大小 (
 constexpr uint32_t EXP_DIV_ELEM = 8;          // sigmoid ExpDiv 计算元素数
 constexpr uint32_t POST_COMB_SIZE = 8 + 16;   // h_post[8] + h_res[16] buffer 大小
 constexpr uint32_t PARTIAL_SLOT_ELEMS = 8;    // 每个lane的partial固定占32B
-constexpr uint16_t MID_READY_FLAG = 0;        // R3/RMS_mid平方和交换完成标志
-constexpr uint16_t PAIR_READY_FLAG = 1;       // R4/R5 partial交换完成标志
+constexpr uint16_t MID_READY_FLAG = 0;        // RMS_mid平方和交换完成标志
+constexpr uint16_t PAIR_READY_FLAG = 1;       // 平方和与投影 partial交换完成标志
 
 // ---------------------------------------------------------------------------
 // Type trait: fp32->half uses CAST_NONE, fp32->bfloat16_t uses CAST_RINT
-// (per CANN RmsNorm reference)
 // ---------------------------------------------------------------------------
 template <typename A, typename B>
 struct IsSameT {
@@ -302,6 +282,7 @@ __aicore__ inline void VFAdd(const LocalTensor<float> &dst, const LocalTensor<fl
 }
 
 // 在一个VF内完成两路平方并求和，避免两个中间结果写回UB后再读出相加。
+template <bool ACCUMULATE = false>
 __aicore__ inline void VFPairSquareAdd(const LocalTensor<float> &dst, const LocalTensor<float> &src0,
                                        const LocalTensor<float> &src1, uint32_t count)
 {
@@ -321,12 +302,18 @@ __aicore__ inline void VFPairSquareAdd(const LocalTensor<float> &dst, const Loca
             Reg::Mul(src0SqReg, src0Reg, src0Reg, mask);
             Reg::Mul(src1SqReg, src1Reg, src1Reg, mask);
             Reg::Add(dstReg, src0SqReg, src1SqReg, mask);
+            if constexpr (ACCUMULATE) {
+                Reg::RegTensor<float> previous;
+                Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(previous, dstAddr + i * VL_FP32);
+                Reg::Add(dstReg, previous, dstReg, mask);
+            }
             Reg::StoreAlign(dstAddr + i * VL_FP32, dstReg, mask);
         }
     }
 }
 
 // 在一个VF内完成两路乘法并求和，用于相邻head对同一输出行的点积部分和。
+template <bool ACCUMULATE = false>
 __aicore__ inline void VFPairMulAdd(const LocalTensor<float> &dst, const LocalTensor<float> &src00,
                                     const LocalTensor<float> &src01, const LocalTensor<float> &src10,
                                     const LocalTensor<float> &src11, uint32_t count)
@@ -351,8 +338,50 @@ __aicore__ inline void VFPairMulAdd(const LocalTensor<float> &dst, const LocalTe
             Reg::Mul(product0Reg, src00Reg, src01Reg, mask);
             Reg::Mul(product1Reg, src10Reg, src11Reg, mask);
             Reg::Add(dstReg, product0Reg, product1Reg, mask);
+            if constexpr (ACCUMULATE) {
+                Reg::RegTensor<float> previous;
+                Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(previous, dstAddr + i * VL_FP32);
+                Reg::Add(dstReg, previous, dstReg, mask);
+            }
             Reg::StoreAlign(dstAddr + i * VL_FP32, dstReg, mask);
         }
+    }
+}
+
+// 完整分块在寄存器内跨向量累加，每行仅向UB写回一个向量供最终归约。
+template <bool ACCUMULATE = false>
+__aicore__ inline void VFPairMulAddCompact(const LocalTensor<float> &dst, const LocalTensor<float> &src00,
+                                            const LocalTensor<float> &src01, const LocalTensor<float> &src10,
+                                            const LocalTensor<float> &src11, uint32_t count)
+{
+    __local_mem__ float *dstAddr = (__local_mem__ float *)dst.GetPhyAddr();
+    __local_mem__ float *a = (__local_mem__ float *)src00.GetPhyAddr();
+    __local_mem__ float *b = (__local_mem__ float *)src01.GetPhyAddr();
+    __local_mem__ float *c = (__local_mem__ float *)src10.GetPhyAddr();
+    __local_mem__ float *d = (__local_mem__ float *)src11.GetPhyAddr();
+    const uint16_t loops = static_cast<uint16_t>(count / VL_FP32);
+    __VEC_SCOPE__
+    {
+        Reg::RegTensor<float> ar, br, cr, dr, p0, p1, pair, acc;
+        Reg::MaskReg mask = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
+        Reg::Duplicate(acc, 0.0f, mask);
+        for (uint16_t i = 0; i < loops; ++i) {
+            const uint32_t off = static_cast<uint32_t>(i) * VL_FP32;
+            Reg::LoadAlign(ar, a + off);
+            Reg::LoadAlign(br, b + off);
+            Reg::LoadAlign(cr, c + off);
+            Reg::LoadAlign(dr, d + off);
+            Reg::Mul(p0, ar, br, mask);
+            Reg::Mul(p1, cr, dr, mask);
+            Reg::Add(pair, p0, p1, mask);
+            Reg::Add(acc, acc, pair, mask);
+        }
+        if constexpr (ACCUMULATE) {
+            Reg::RegTensor<float> previous;
+            Reg::LoadAlign(previous, dstAddr);
+            Reg::Add(acc, previous, acc, mask);
+        }
+        Reg::StoreAlign(dstAddr, acc, mask);
     }
 }
 
@@ -376,7 +405,7 @@ __aicore__ inline void VFMuls(const LocalTensor<float> &dst, const LocalTensor<f
     }
 }
 
-// 从UB广播标量权重，单独验证R6拆分为多个VF后的性能。
+// 从UB广播标量权重，单独验证门控融合拆分为多个VF后的性能。
 __aicore__ inline void VFMulsWithUbScalar(const LocalTensor<float> &dst, const LocalTensor<float> &src,
                                           const LocalTensor<float> &scalars, uint32_t scalarIndex, uint32_t count)
 {
@@ -476,7 +505,7 @@ __aicore__ inline void VFCastB16ScaleAndMulGamma(const LocalTensor<float> &dst, 
     }
 }
 
-// 在一个VF内完成低精度恢复、R1缩放、gamma缩放以及规定的低精度往返边界。
+// 在一个VF内完成低精度恢复、输入归一化缩放、gamma缩放以及规定的低精度往返边界。
 template <typename T>
 __aicore__ inline void VFCastB16ScaleGammaQuantizeToFp32(const LocalTensor<float> &dst, const LocalTensor<T> &src,
                                                          const LocalTensor<float> &gamma, float scale, uint32_t count)
@@ -509,7 +538,7 @@ __aicore__ inline void VFCastB16ScaleGammaQuantizeToFp32(const LocalTensor<float
     }
 }
 
-// R3在一个VF内完成恢复与缩放后直接写回低精度缓存，保留第二次量化边界。
+// 中间归一化在一个VF内完成恢复与缩放后直接写回低精度缓存，保留第二次量化边界。
 template <typename T>
 __aicore__ inline void VFCastB16ScaleAndMulGammaToB16(const LocalTensor<T> &dst, const LocalTensor<T> &src,
                                                       const LocalTensor<float> &gamma, float scale, uint32_t count)
@@ -699,7 +728,7 @@ __aicore__ inline void VFComputePostHeadPair(const LocalTensor<T> &dst0, const L
     }
 }
 
-// R6在一个VF内完成四路低精度读取、FP32转换和门控累加，不生成四行FP32中间张量。
+// 门控融合在一个VF内完成四路低精度读取、FP32转换和门控累加，不生成四行FP32中间张量。
 // 四个gate权重对整个D循环不变，外提到循环外广播一次，循环内显式展开四路累加，
 // 避免每轮重复广播（参考mhc_pre::VFDoV1ProcessHInRows）。
 template <typename T>
@@ -742,7 +771,7 @@ __aicore__ inline void VFGateWeightedSum(const LocalTensor<float> &dst, const Lo
     }
 }
 
-// R6一次VF完成四路门控和、低精度缓存以及量化后平方，保留低精度往返语义并消除中间FP32写回。
+// 门控融合一次VF完成四路门控和、低精度缓存以及量化后平方，保留低精度往返语义并消除中间FP32写回。
 template <typename T>
 __aicore__ inline void VFGateWeightedSumQuantizeSquare(const LocalTensor<T> &dstCache, const LocalTensor<float> &square,
                                                        const LocalTensor<T> &src, uint32_t headStride,
