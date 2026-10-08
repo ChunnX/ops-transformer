@@ -307,10 +307,9 @@ protected:
         LocalTensor<T> lseMaxUb =
             cntM % 2 == 0 ? fdLseMaxUbBuf1.ReinterpretCast<T>() : fdLseMaxUbBuf2.ReinterpretCast<T>();
 
-        LocalTensor<T> sinkExpBuf;
         LocalTensor<T> maxLseUb = fdLseUbBuf.ReinterpretCast<T>();
         FaVectorApi::ComputeScaleValue_VF_FD<T, T, SinkInjectStage::AT_FA_PROLOGUE>(
-            sinkExpBuf, lseMax, lseSum, lseExp, maxLseUb, lseMaxUb, dealRowCount, actualCombineLoopSize,
+            lseMax, lseMax, lseSum, lseExp, maxLseUb, lseMaxUb, dealRowCount, actualCombineLoopSize,
             constInfo.isSoftmaxLseEnable, false);
     }
 
