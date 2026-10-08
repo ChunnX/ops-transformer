@@ -91,18 +91,10 @@ public:
     };
 
     CATLASS_DEVICE
-    MoePermutePrologue(Catlass::Arch::Resource<ArchTag> &resource, Params const &params)
+    MoePermutePrologue(Catlass::Arch::Resource<ArchTag>& resource, Params const& params)
         : params_(params)
     {
-        // 与 A3 核函数(mega_moe_kernel_a3.hpp)一致的逻辑核索引：
-        // GetBlockIdx()/GetBlockNum() 在 A3 上返回的是物理核信息，需结合 subblock 展开为逻辑核
-        if ASCEND_IS_AIV {
-            coreIdx = get_block_idx() + get_subblockid() * get_block_num();
-            coreNum = get_block_num() * get_subblockdim();
-        } else {
-            coreIdx = AscendC::GetBlockIdx();
-            coreNum = AscendC::GetBlockNum();
-        }
+        InitCoreIndex();
         const int64_t numExperts = params_.numExperts;
         const int64_t hidden = params_.hidden;
         const int64_t numTopk = params_.numTopk;
@@ -148,111 +140,33 @@ public:
     }
 
     CATLASS_DEVICE
-    void operator()(AscendC::GlobalTensor<ElementSrc> const &gmX, AscendC::GlobalTensor<int32_t> const &gmTopkIds,
-                    AscendC::GlobalTensor<ElementDst> &gmExpandX, AscendC::GlobalTensor<int32_t> &gmExpandRowIdx,
-                    AscendC::GlobalTensor<int32_t> &gmTokenPerExpert, GM_ADDR workspaceAddr,
+    void operator()(AscendC::GlobalTensor<ElementSrc> const& gmX, AscendC::GlobalTensor<int32_t> const& gmTopkIds,
+                    AscendC::GlobalTensor<ElementDst>& gmExpandX, AscendC::GlobalTensor<int32_t>& gmExpandRowIdx,
+                    AscendC::GlobalTensor<int32_t>& gmTokenPerExpert, GM_ADDR workspaceAddr,
                     GM_ADDR xActiveMaskAddr = nullptr)
     {
         const int64_t numTokens = params_.numTokens;
-        const int64_t hidden = params_.hidden;
         const int64_t numTopk = params_.numTopk;
-        const int64_t numExperts = params_.numExperts;
         // x_active_mask（shape [bs]，调用方已偏移到 chunk 基址）：被 mask 的 token 不参与
         // 计数与散射，其 expandRowIdx 全条目写 -1，由 unpermute 按无效索引跳过（输出 0）。
         // mask 为只读输入张量，执行期间不变化，标量读无 cache 陈旧风险。
         hasXActiveMask = (xActiveMaskAddr != nullptr);
         if (hasXActiveMask) {
-            gmXActiveMask.SetGlobalBuffer(reinterpret_cast<__gm__ bool *>(xActiveMaskAddr));
+            gmXActiveMask.SetGlobalBuffer(reinterpret_cast<__gm__ bool*>(xActiveMaskAddr));
         }
-        // 与构造器一致：A3 上需用 subblock 展开计算逻辑核索引/总数
-        if ASCEND_IS_AIV {
-            coreIdx = get_block_idx() + get_subblockid() * get_block_num();
-            coreNum = get_block_num() * get_subblockdim();
-        } else {
-            coreIdx = AscendC::GetBlockIdx();
-            coreNum = AscendC::GetBlockNum();
-        }
+        InitCoreIndex();
 
         int64_t tokenStartIdx = 0;
         int64_t tokenEndIdx = 0;
         int64_t numTokensCurCore = 0;
         SplitCore(numTokens, tokenStartIdx, tokenEndIdx, numTokensCurCore);
 
-        AscendC::Duplicate<int32_t>(coreExpertCount, 0, params_.alignedNumExperts);
         AscendC::DataCopyExtParams topkCopyParams{
             1, static_cast<uint32_t>(numTokensCurCore * numTopk * sizeof(int32_t)), 0, 0, 0};
-        AscendC::DataCopyPadExtParams<int32_t> topkPadParams{false, 0, 0, 0};
-        AscendC::DataCopyPad(topkIds, gmTopkIds[tokenStartIdx * numTopk], topkCopyParams, topkPadParams);
-        AscendC::PipeBarrier<PIPE_ALL>();
-        for (int64_t t = 0; t < numTokensCurCore; ++t) {
-            if (hasXActiveMask && !gmXActiveMask.GetValue(tokenStartIdx + t)) {
-                continue;
-            }
-            for (int64_t k = 0; k < numTopk; ++k) {
-                int32_t e = topkIds.GetValue(t * numTopk + k);
-                if (e >= 0 && e < numExperts) {
-                    coreExpertCount.SetValue(e, coreExpertCount.GetValue(e) + 1);
-                }
-            }
-        }
-        AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
-        AscendC::GlobalTensor<int32_t> expertCountPerCore;
-        // 基准为 workspace 起点；Phase1 写本核槽位 coreIdx*alignedE，Phase2 读全部核槽位 c*alignedE
-        expertCountPerCore.SetGlobalBuffer((__gm__ int32_t *)(workspaceAddr));
-        AscendC::DataCopy(expertCountPerCore[coreIdx * params_.alignedNumExperts], coreExpertCount,
-                          params_.alignedNumExperts);
-        AscendC::SyncAll<true>();
-
-        AscendC::Duplicate<int32_t>(prefixExpertCount, 0, params_.alignedNumExperts);
-        AscendC::PipeBarrier<PIPE_V>();
-        for (int64_t c = 0; c < coreIdx; ++c) {
-            AscendC::DataCopy(coreExpertCount, expertCountPerCore[c * params_.alignedNumExperts],
-                              params_.alignedNumExperts);
-            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
-            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
-            AscendC::Add(prefixExpertCount, prefixExpertCount, coreExpertCount, params_.alignedNumExperts);
-            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
-            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
-        }
-        AscendC::PipeBarrier<PIPE_V>();
-        AscendC::DataCopy(totalExpertCount, prefixExpertCount, params_.alignedNumExperts);
-        AscendC::PipeBarrier<PIPE_V>();
-        for (int64_t c = coreIdx; c < coreNum; ++c) {
-            AscendC::DataCopy(coreExpertCount, expertCountPerCore[c * params_.alignedNumExperts],
-                              params_.alignedNumExperts);
-            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
-            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
-            AscendC::Add(totalExpertCount, totalExpertCount, coreExpertCount, params_.alignedNumExperts);
-            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
-            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
-        }
-
-        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
-        countCopyParams = AscendC::DataCopyExtParams{1, params_.alignedNumExpertsBytes, 0, 0, 0};
-        AscendC::DataCopyPad(gmTokenPerExpert, totalExpertCount, countCopyParams);
-        // SyncAll 自带全流水同步，此处无需额外的 PipeBarrier
-        AscendC::SyncAll<true>();
-
-        AscendC::SetFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
-        int32_t globalPrefix = 0;
-        for (int64_t e = 0; e < numExperts; ++e) {
-            tokenPerExpertOffset.SetValue(e, globalPrefix);
-            globalPrefix += totalExpertCount.GetValue(e);
-        }
-        AscendC::SetFlag<AscendC::HardEvent::S_V>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::S_V>(EVENT_ID0);
-
-        AscendC::Add(tokenPerExpertOffset, tokenPerExpertOffset, prefixExpertCount, params_.alignedNumExperts);
-        AscendC::SetFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
-        if constexpr (std::is_same_v<ElementDst, bfloat16_t>) {
-            PermuteTokens<false>(tokenStartIdx, tokenEndIdx, gmX, gmExpandX);
-        } else {
-            PermuteTokens<true>(tokenStartIdx, tokenEndIdx, gmX, gmExpandX);
-        }
+        CountAndPublishExperts(gmTopkIds, gmTokenPerExpert, workspaceAddr, tokenStartIdx, numTokensCurCore,
+                               topkCopyParams);
+        BuildScatterOffsets();
+        PermuteTokens<!std::is_same_v<ElementDst, bfloat16_t>>(tokenStartIdx, tokenEndIdx, gmX, gmExpandX);
         AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
         AscendC::DataCopyPad(gmExpandRowIdx[tokenStartIdx * numTopk], expandRowIdx, topkCopyParams);
@@ -277,8 +191,102 @@ private:
     bool hasXActiveMask = false;
     AscendC::GlobalTensor<bool> gmXActiveMask;
 
+    // AIV uses logical subblocks; AIC uses the original physical core index.
     CATLASS_DEVICE
-    void SplitCore(int64_t numTokens, int64_t &tokenStartIdx, int64_t &tokenEndIdx, int64_t &numTokensCurCore)
+    void InitCoreIndex()
+    {
+        if ASCEND_IS_AIV {
+            coreIdx = get_block_idx() + get_subblockid() * get_block_num();
+            coreNum = get_block_num() * get_subblockdim();
+        } else {
+            coreIdx = AscendC::GetBlockIdx();
+            coreNum = AscendC::GetBlockNum();
+        }
+    }
+
+    CATLASS_DEVICE
+    void AccumulateExpertCount(AscendC::LocalTensor<int32_t>& accum, AscendC::GlobalTensor<int32_t>& expertCountPerCore,
+                               int64_t coreBegin, int64_t coreEnd)
+    {
+        for (int64_t c = coreBegin; c < coreEnd; ++c) {
+            AscendC::DataCopy(coreExpertCount, expertCountPerCore[c * params_.alignedNumExperts],
+                              params_.alignedNumExperts);
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
+            AscendC::Add(accum, accum, coreExpertCount, params_.alignedNumExperts);
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
+        }
+    }
+
+    CATLASS_DEVICE
+    void CountAndPublishExperts(AscendC::GlobalTensor<int32_t> const& gmTopkIds,
+                                AscendC::GlobalTensor<int32_t>& gmTokenPerExpert, GM_ADDR workspaceAddr,
+                                int64_t tokenStartIdx, int64_t numTokensCurCore,
+                                AscendC::DataCopyExtParams& topkCopyParams)
+    {
+        const int64_t numTopk = params_.numTopk;
+        const int64_t numExperts = params_.numExperts;
+        AscendC::Duplicate<int32_t>(coreExpertCount, 0, params_.alignedNumExperts);
+        AscendC::DataCopyPadExtParams<int32_t> topkPadParams{false, 0, 0, 0};
+        AscendC::DataCopyPad(topkIds, gmTopkIds[tokenStartIdx * numTopk], topkCopyParams, topkPadParams);
+        AscendC::PipeBarrier<PIPE_ALL>();
+        for (int64_t t = 0; t < numTokensCurCore; ++t) {
+            if (hasXActiveMask && !gmXActiveMask.GetValue(tokenStartIdx + t)) {
+                continue;
+            }
+            for (int64_t k = 0; k < numTopk; ++k) {
+                int32_t e = topkIds.GetValue(t * numTopk + k);
+                if (e >= 0 && e < numExperts) {
+                    coreExpertCount.SetValue(e, coreExpertCount.GetValue(e) + 1);
+                }
+            }
+        }
+        AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
+        AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
+        AscendC::GlobalTensor<int32_t> expertCountPerCore;
+        // Phase 1 writes this core's slot; phase 2 reads every core's slot.
+        expertCountPerCore.SetGlobalBuffer((__gm__ int32_t*)(workspaceAddr));
+        AscendC::DataCopy(expertCountPerCore[coreIdx * params_.alignedNumExperts], coreExpertCount,
+                          params_.alignedNumExperts);
+        AscendC::SyncAll<true>();
+
+        AscendC::Duplicate<int32_t>(prefixExpertCount, 0, params_.alignedNumExperts);
+        AscendC::PipeBarrier<PIPE_V>();
+        AccumulateExpertCount(prefixExpertCount, expertCountPerCore, 0, coreIdx);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::DataCopy(totalExpertCount, prefixExpertCount, params_.alignedNumExperts);
+        AscendC::PipeBarrier<PIPE_V>();
+        AccumulateExpertCount(totalExpertCount, expertCountPerCore, coreIdx, coreNum);
+
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+        countCopyParams = AscendC::DataCopyExtParams{1, params_.alignedNumExpertsBytes, 0, 0, 0};
+        AscendC::DataCopyPad(gmTokenPerExpert, totalExpertCount, countCopyParams);
+        // SyncAll also synchronizes the pipelines before scalar offset construction.
+        AscendC::SyncAll<true>();
+    }
+
+    CATLASS_DEVICE
+    void BuildScatterOffsets()
+    {
+        AscendC::SetFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
+        AscendC::WaitFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
+        int32_t globalPrefix = 0;
+        for (int64_t e = 0; e < params_.numExperts; ++e) {
+            tokenPerExpertOffset.SetValue(e, globalPrefix);
+            globalPrefix += totalExpertCount.GetValue(e);
+        }
+        AscendC::SetFlag<AscendC::HardEvent::S_V>(EVENT_ID0);
+        AscendC::WaitFlag<AscendC::HardEvent::S_V>(EVENT_ID0);
+
+        AscendC::Add(tokenPerExpertOffset, tokenPerExpertOffset, prefixExpertCount, params_.alignedNumExperts);
+        AscendC::SetFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
+        AscendC::WaitFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
+    }
+
+    CATLASS_DEVICE
+    void SplitCore(int64_t numTokens, int64_t& tokenStartIdx, int64_t& tokenEndIdx, int64_t& numTokensCurCore)
     {
         const int64_t baseNum = numTokens / coreNum;
         const int64_t remainder = numTokens % coreNum;
@@ -290,8 +298,8 @@ private:
 
     template <bool QUANT>
     CATLASS_DEVICE void PermuteTokens(int64_t tokenStartIdx, int64_t tokenEndIdx,
-                                      AscendC::GlobalTensor<ElementSrc> const &gmX,
-                                      AscendC::GlobalTensor<ElementDst> &gmExpandX)
+                                      AscendC::GlobalTensor<ElementSrc> const& gmX,
+                                      AscendC::GlobalTensor<ElementDst>& gmExpandX)
     {
         const int64_t hidden = params_.hidden;
         const int64_t numTopk = params_.numTopk;
@@ -313,32 +321,8 @@ private:
         int64_t topkBase = 0; // 本 token 的 topk 在本核切片内的偏移
         for (int64_t tokenIdx = tokenStartIdx; tokenIdx < tokenEndIdx;
              tokenIdx++, rowIdxOffset += numTopk, topkBase += numTopk) {
-            if constexpr (QUANT) {
-                // 等上一轮 V 读完 tokenIn 后才覆盖 tokenIn
-                AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(tokenListId);
-                AscendC::DataCopy(tokenInList[tokenListId], gmX[tokenIdx * hidden], hidden); // MTE2 加载
-                AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(tokenListId);
-                AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(tokenListId); // V 等加载完成
-                // 等上一轮 MTE3 读完 tokenOut 后才覆盖 tokenOut
-                AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(tokenListId);
-                QuantizeToken(tokenOutList[tokenListId], tmpBuffer, tokenInList[tokenListId], hidden); // V/S 量化
-                AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(tokenListId); // V 读完 tokenIn，tokenIn 可复用
-                AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(tokenListId);
-                AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(tokenListId); // MTE3 等量化 V 落盘
-                AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(tokenListId);
-                AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(tokenListId); // MTE3 等 scale S 落盘
-                ScatterToken(tokenOutList[tokenListId], gmExpandX, rowIdxOffset, rowStride, outLen, topkBase,
-                             tokenIdx);                                    // MTE3 散写
-                AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(tokenListId); // MTE3 读完 tokenOut，tokenOut 可复用
-            } else {
-                AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(tokenListId);
-                AscendC::DataCopy(tokenInList[tokenListId], gmX[tokenIdx * hidden], hidden); // MTE2 加载
-                AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(tokenListId);
-                AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(tokenListId); // MTE3 等加载完成
-                ScatterToken(tokenInList[tokenListId], gmExpandX, rowIdxOffset, rowStride, outLen, topkBase,
-                             tokenIdx);                                       // MTE3 散写
-                AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(tokenListId); // 散写完成，可复用
-            }
+            PermuteOneToken<QUANT>(tokenIdx, tokenListId, rowIdxOffset, rowStride, outLen, topkBase, hidden, gmX,
+                                   gmExpandX);
             tokenListId = (tokenListId + 1 < UB_STAGES) ? (tokenListId + 1) : 0;
         }
         for (uint32_t id = 0; id < UB_STAGES; ++id) {
@@ -351,8 +335,38 @@ private:
         }
     }
 
+    template <bool QUANT>
+    CATLASS_DEVICE void PermuteOneToken(int64_t tokenIdx, uint32_t tokenListId, uint32_t rowIdxOffset,
+                                        int64_t rowStride, int64_t outLen, int64_t topkBase, int64_t hidden,
+                                        AscendC::GlobalTensor<ElementSrc> const& gmX,
+                                        AscendC::GlobalTensor<ElementDst>& gmExpandX)
+    {
+        if constexpr (QUANT) {
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(tokenListId);
+            AscendC::DataCopy(tokenInList[tokenListId], gmX[tokenIdx * hidden], hidden);
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(tokenListId);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(tokenListId);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(tokenListId);
+            QuantizeToken(tokenOutList[tokenListId], tmpBuffer, tokenInList[tokenListId], hidden);
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(tokenListId);
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(tokenListId);
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(tokenListId);
+            AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(tokenListId);
+            AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(tokenListId);
+            ScatterToken(tokenOutList[tokenListId], gmExpandX, rowIdxOffset, rowStride, outLen, topkBase, tokenIdx);
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(tokenListId);
+        } else {
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(tokenListId);
+            AscendC::DataCopy(tokenInList[tokenListId], gmX[tokenIdx * hidden], hidden);
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(tokenListId);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(tokenListId);
+            ScatterToken(tokenInList[tokenListId], gmExpandX, rowIdxOffset, rowStride, outLen, topkBase, tokenIdx);
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(tokenListId);
+        }
+    }
+
     CATLASS_DEVICE
-    void ScatterToken(AscendC::LocalTensor<ElementDst> const &tokenOut, AscendC::GlobalTensor<ElementDst> &gmExpandX,
+    void ScatterToken(AscendC::LocalTensor<ElementDst> const& tokenOut, AscendC::GlobalTensor<ElementDst>& gmExpandX,
                       uint32_t rowIdxOffset, int64_t rowStride, int64_t copyLen, int64_t topkBase, int64_t tokenIdx)
     {
         // x_active_mask 融合（不改写输入 topk_ids）：被 mask 的 token 计数阶段已跳过
@@ -384,8 +398,8 @@ private:
     //   work [0,count)；abs 与 ReduceMax 的 max 复用 [count,2*count)；int32/half 复用 work（前类型字节数 >=
     //   后类型即可复用）
     CATLASS_DEVICE
-    void QuantizeToken(AscendC::LocalTensor<ElementDst> &dstTensor, AscendC::LocalTensor<float> &sharedTmpBuffer,
-                       AscendC::LocalTensor<ElementSrc> &srcTensor, uint32_t count)
+    void QuantizeToken(AscendC::LocalTensor<ElementDst>& dstTensor, AscendC::LocalTensor<float>& sharedTmpBuffer,
+                       AscendC::LocalTensor<ElementSrc>& srcTensor, uint32_t count)
     {
         AscendC::Cast(sharedTmpBuffer, srcTensor, AscendC::RoundMode::CAST_NONE, count);
         AscendC::PipeBarrier<PIPE_V>();
