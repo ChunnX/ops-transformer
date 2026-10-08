@@ -30,7 +30,6 @@ constexpr int64_t kDim2 = 2;
 constexpr int64_t kMxGroupSize = 64;
 constexpr int64_t kGeDtypeFloat8E4M3Fn = 36;
 constexpr int64_t kGeDtypeFloat8E8M0 = 37;
-constexpr int64_t kGeDtypeFloat4E2M1 = 40;
 constexpr int64_t kAclDtypeOffset = 256;
 constexpr double kDefaultClampLimit = 7.0;
 constexpr double kDefaultGluAlpha = 1.702;
@@ -43,7 +42,7 @@ int64_t CeilDiv(int64_t value, int64_t divisor)
 
 int64_t NormalizeGeDtype(int64_t dtype)
 {
-    if (dtype == kGeDtypeFloat8E4M3Fn || dtype == kGeDtypeFloat8E8M0 || dtype == kGeDtypeFloat4E2M1) {
+    if (dtype == kGeDtypeFloat8E4M3Fn || dtype == kGeDtypeFloat8E8M0) {
         return dtype;
     }
     if (dtype >= kAclDtypeOffset) {
@@ -58,7 +57,7 @@ int64_t NormalizeGeDtype(int64_t dtype)
 aclDataType GetAclDtypeFromValue(int64_t dtype)
 {
     const int64_t geDtype = NormalizeGeDtype(dtype);
-    if (geDtype == kGeDtypeFloat8E4M3Fn || geDtype == kGeDtypeFloat8E8M0 || geDtype == kGeDtypeFloat4E2M1) {
+    if (geDtype == kGeDtypeFloat8E4M3Fn || geDtype == kGeDtypeFloat8E8M0) {
         return static_cast<aclDataType>(geDtype);
     }
     return GetAclDataType(dtype);
@@ -72,16 +71,6 @@ aclDataType GetTensorAclDtype(const c10::optional<int64_t>& dtype, const at::Ten
     TORCH_CHECK(!dtype.has_value() || GetAclDtypeFromValue(dtype.value()) == storageDtype, name,
                 "_dtype must match the actual tensor dtype.");
     return storageDtype;
-}
-
-aclDataType GetMxDataAclDtype(const c10::optional<int64_t>& dtype, const at::Tensor& tensor, const char* name)
-{
-    if (dtype.has_value() && GetAclDtypeFromValue(dtype.value()) == ACL_FLOAT4_E2M1) {
-        TORCH_CHECK(tensor.scalar_type() == at::ScalarType::Char || tensor.scalar_type() == at::ScalarType::Byte, name,
-                    " must use torch.int8 or torch.uint8 storage for FLOAT4_E2M1.");
-        return ACL_FLOAT4_E2M1;
-    }
-    return GetTensorAclDtype(dtype, tensor, name);
 }
 
 aclDataType GetMxScaleAclDtype(const c10::optional<int64_t>& dtype, const at::Tensor& tensor, const char* name)
@@ -137,6 +126,10 @@ std::tuple<at::Tensor, at::Tensor> grouped_matmul_swiglu_quant(
     // The Torch schema has a TensorList bias, while ACLNN takes one Tensor.
     // Keep the empty-list bridge explicit instead of silently discarding input.
     TORCH_CHECK(!bias.has_value() || bias->empty(), "The V3 wrapper requires an empty bias TensorList.");
+    // ACLNN has no quant_dtype attribute: the caller provides the output tensor.
+    // Its dtype must agree with the FP8 allocation below.
+    TORCH_CHECK(!quantDtype.has_value() || NormalizeGeDtype(quantDtype.value()) == kGeDtypeFloat8E4M3Fn,
+                "swiglu_mode=2 only supports torch.float8_e4m3fn output.");
     // ACLNN takes a C string: reject embedded NUL bytes instead of silently
     // validating only the prefix of the Python/std::string value.
     TORCH_CHECK(roundMode.find('\0') == std::string::npos, "round_mode must not contain embedded NUL bytes.");
@@ -145,35 +138,24 @@ std::tuple<at::Tensor, at::Tensor> grouped_matmul_swiglu_quant(
     const int64_t n = InferLogicalN(weightScale[0]);
     TORCH_CHECK(n > 0 && n % kSwigluSplitFactor == 0, "The logical N dimension must be positive and even, but got ", n,
                 ".");
-    const aclDataType xAclDtype = GetMxDataAclDtype(xDtype, x, "x");
-    const aclDataType weightAclDtype = GetMxDataAclDtype(weightDtype, weight[0], "weight");
+    const aclDataType xAclDtype = GetTensorAclDtype(xDtype, x, "x");
+    const aclDataType weightAclDtype = GetTensorAclDtype(weightDtype, weight[0], "weight");
     const aclDataType weightScaleAclDtype = GetMxScaleAclDtype(weightScaleDtype, weightScale[0], "weight_scale");
     const aclDataType xScaleAclDtype = GetMxScaleAclDtype(xScaleDtype, xScale, "x_scale");
-
-    const bool isA4W4 = xAclDtype == ACL_FLOAT4_E2M1 && weightAclDtype == ACL_FLOAT4_E2M1;
-    // FP4 uses byte-packed Torch storage. The wrapper shape is therefore not
-    // the logical K dimension; ACLNN validates logical K after descriptor conversion.
-    TORCH_CHECK(!isA4W4 || n % (kMxGroupSize * kMxScalePairSize) == 0, "FLOAT4_E2M1 A4W4 requires N divisible by 128.");
-    TORCH_CHECK(!quantDtype.has_value() || (isA4W4 ? GetAclDtypeFromValue(quantDtype.value()) == ACL_BF16 :
-                                                     NormalizeGeDtype(quantDtype.value()) == kGeDtypeFloat8E4M3Fn),
-                isA4W4 ? "FLOAT4_E2M1 A4W4 only supports BF16 output." :
-                         "swiglu_mode=2 only supports torch.float8_e4m3fn output.");
 
     at::Tensor output;
     at::Tensor outputScale;
     {
         const c10::OptionalDeviceGuard deviceGuard(c10::Device(x.device()));
-        output = at::empty({m, n / kSwigluSplitFactor},
-                           x.options().dtype(isA4W4 ? at::ScalarType::BFloat16 : at::ScalarType::Float8_e4m3fn));
-        if (!isA4W4) {
-            // The MX scale writer can leave padding/empty lanes untouched. Clear
-            // the output tensor first so every externally visible lane is deterministic.
-            // ZerosLike does not support float8_e8m0fnu. Allocate byte storage,
-            // initialize it, then reinterpret the one-byte elements as E8M0.
-            outputScale = at::zeros({m, CeilDiv(n / kSwigluSplitFactor, kMxGroupSize), kMxScalePairSize},
-                                    x.options().dtype(at::ScalarType::Byte))
-                              .view(at::ScalarType::Float8_e8m0fnu);
-        }
+        output = at::empty({m, n / kSwigluSplitFactor}, x.options().dtype(at::ScalarType::Float8_e4m3fn));
+        // The MX scale writer can leave padding/empty lanes untouched. Clear
+        // the output tensor first so every externally visible lane is
+        // deterministic.
+        // ZerosLike does not support float8_e8m0fnu. Allocate byte storage,
+        // initialize it, then reinterpret the one-byte elements as E8M0.
+        outputScale = at::zeros({m, CeilDiv(n / kSwigluSplitFactor, kMxGroupSize), kMxScalePairSize},
+                                x.options().dtype(at::ScalarType::Byte))
+                          .view(at::ScalarType::Float8_e8m0fnu);
     }
 
     at::TensorList weightRef = weight;
@@ -194,7 +176,7 @@ std::tuple<at::Tensor, at::Tensor> grouped_matmul_swiglu_quant(
     TensorListWrapper weightWrapper = {weightRef, weightAclDtype};
     TensorListWrapper weightScaleWrapper = {weightScaleRef, weightScaleAclDtype};
     TensorWrapper xScaleWrapper = {xScale, xScaleAclDtype};
-    TensorWrapper outputWrapper = {output, isA4W4 ? ACL_BF16 : ACL_FLOAT8_E4M3FN};
+    TensorWrapper outputWrapper = {output, ACL_FLOAT8_E4M3FN};
     TensorWrapper outputScaleWrapper = {outputScale, ACL_FLOAT8_E8M0};
     const char* roundModePtr = roundMode.c_str();
     // ACLNN_CMD forwards every argument through the ACL type converter, whose
@@ -226,6 +208,6 @@ std::tuple<at::Tensor, at::Tensor> grouped_matmul_swiglu_quant(
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     m.def("grouped_matmul_swiglu_quant", &grouped_matmul_swiglu_quant,
-          "GroupedMatmulSwigluQuant V3 MX WeightNz torch wrapper");
+          "GroupedMatmulSwigluQuant V3 MXFP8 WeightNz torch wrapper");
 }
 } // namespace op_api

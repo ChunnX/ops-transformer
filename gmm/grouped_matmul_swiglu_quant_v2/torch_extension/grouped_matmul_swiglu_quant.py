@@ -23,9 +23,7 @@ GE_DTYPE_INT8 = 1
 GE_DTYPE_FLOAT8_E5M2 = 35
 GE_DTYPE_FLOAT8_E4M3FN = 36
 GE_DTYPE_FLOAT8_E8M0 = 37
-GE_DTYPE_FLOAT4_E2M1 = 40
 ACL_DTYPE_OFFSET = 256
-TORCH_DTYPE_BFLOAT16 = 15
 MX_GROUP_SIZE = 64
 WEIGHT_SCALE_RANK = 4
 WEIGHT_SCALE_N_AXIS = 2
@@ -40,7 +38,6 @@ FLOAT8_E8M0_DTYPE = getattr(
 
 _TORCH_DTYPE_TO_GE_DTYPE = {
     torch.float32: GE_DTYPE_FLOAT,
-    torch.bfloat16: TORCH_DTYPE_BFLOAT16,
     torch.int8: GE_DTYPE_INT8,
     torch.float8_e5m2: GE_DTYPE_FLOAT8_E5M2,
     torch.float8_e4m3fn: GE_DTYPE_FLOAT8_E4M3FN,
@@ -90,21 +87,10 @@ def _normalize_wrapper_dtype(dtype):
     return None if dtype is None else dtype + ACL_DTYPE_OFFSET
 
 
-def _is_a4w4(x_dtype, weight_dtype):
-    return (
-        _normalize_dtype(x_dtype) == GE_DTYPE_FLOAT4_E2M1
-        and _normalize_dtype(weight_dtype) == GE_DTYPE_FLOAT4_E2M1
-    )
-
-
-def _normalize_v3_quant_dtype(dtype, is_a4w4):
+def _normalize_v3_quant_dtype(dtype):
     dtype = _normalize_dtype(dtype)
-    expected_dtype = TORCH_DTYPE_BFLOAT16 if is_a4w4 else GE_DTYPE_FLOAT8_E4M3FN
-    if dtype is not None and dtype != expected_dtype:
-        expected_name = "torch.bfloat16" if is_a4w4 else "torch.float8_e4m3fn"
-        raise TypeError(
-            f"The current input dtype combination only supports {expected_name} output."
-        )
+    if dtype is not None and dtype != GE_DTYPE_FLOAT8_E4M3FN:
+        raise TypeError("swiglu_mode=2 only supports torch.float8_e4m3fn output.")
     return dtype
 
 
@@ -127,11 +113,11 @@ class GroupedMatmulSwigluQuantOpBuilder(OpBuilder):
             "Tensor x, Tensor[] weight, Tensor[] weight_scale, Tensor x_scale, Tensor group_list, "
             "*, Tensor? smooth_scale=None, Tensor[]? weight_assist_matrix=None, Tensor[]? bias=None, "
             f"int? dequant_mode={MX_QUANT_MODE}, int? dequant_dtype={TORCH_DTYPE_FLOAT}, "
-            f"int? quant_mode={MX_QUANT_MODE}, int? quant_dtype=None, "
+            f"int? quant_mode={MX_QUANT_MODE}, int? quant_dtype={GE_DTYPE_FLOAT8_E4M3FN}, "
             "int? group_list_type=0, int[]? tuning_config=None, int? x_dtype=None, int? weight_dtype=None, "
             "int? weight_scale_dtype=None, int? x_scale_dtype=None, int? swiglu_mode=None, "
             "float? clamp_limit=None, float? glu_alpha=None, float? glu_bias=None, "
-            'str round_mode="rint", int scale_alg=0, float dst_type_max=0.0) -> (Tensor, Tensor?)'
+            'str round_mode="rint", int scale_alg=0, float dst_type_max=0.0) -> (Tensor, Tensor)'
         )
 
     def register_meta(self):
@@ -148,7 +134,7 @@ class GroupedMatmulSwigluQuantOpBuilder(OpBuilder):
             dequant_mode=MX_QUANT_MODE,
             dequant_dtype=TORCH_DTYPE_FLOAT,
             quant_mode=MX_QUANT_MODE,
-            quant_dtype=None,
+            quant_dtype=GE_DTYPE_FLOAT8_E4M3FN,
             group_list_type=0,
             tuning_config=None,
             x_dtype=None,
@@ -176,8 +162,7 @@ class GroupedMatmulSwigluQuantOpBuilder(OpBuilder):
                 )
             if x.dim() == 0:
                 raise ValueError("x must have a dimension for output shape inference.")
-            is_a4w4 = _is_a4w4(x_dtype, weight_dtype)
-            _normalize_v3_quant_dtype(quant_dtype, is_a4w4)
+            _normalize_v3_quant_dtype(quant_dtype)
             n = _infer_v3_n(weight_scale[0])
             if n <= 0 or n % SWIGLU_SPLIT_FACTOR != 0:
                 raise ValueError("The logical N dimension must be positive and even.")
@@ -185,12 +170,10 @@ class GroupedMatmulSwigluQuantOpBuilder(OpBuilder):
             return (
                 torch.empty(
                     (m, n // SWIGLU_SPLIT_FACTOR),
-                    dtype=torch.bfloat16 if is_a4w4 else torch.float8_e4m3fn,
+                    dtype=torch.float8_e4m3fn,
                     device="meta",
                 ),
-                None
-                if is_a4w4
-                else torch.empty(
+                torch.empty(
                     (
                         m,
                         (
@@ -224,7 +207,7 @@ def _grouped_matmul_swiglu_quant(
     dequant_mode=MX_QUANT_MODE,
     dequant_dtype=TORCH_DTYPE_FLOAT,
     quant_mode=MX_QUANT_MODE,
-    quant_dtype=None,
+    quant_dtype=GE_DTYPE_FLOAT8_E4M3FN,
     group_list_type=0,
     tuning_config=None,
     x_dtype=None,
@@ -282,7 +265,7 @@ def grouped_matmul_swiglu_quant(
     dequant_mode: Optional[int] = MX_QUANT_MODE,
     dequant_dtype: Optional[Union[int, torch.dtype]] = TORCH_DTYPE_FLOAT,
     quant_mode: Optional[int] = MX_QUANT_MODE,
-    quant_dtype: Optional[Union[int, torch.dtype]] = None,
+    quant_dtype: Optional[Union[int, torch.dtype]] = torch.float8_e4m3fn,
     group_list_type: Optional[int] = 0,
     tuning_config: Optional[List[int]] = None,
     x_dtype: Optional[Union[int, torch.dtype]] = None,
@@ -296,12 +279,11 @@ def grouped_matmul_swiglu_quant(
     round_mode: str = "rint",
     scale_alg: int = 0,
     dst_type_max: float = 0.0,
-) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+) -> Tuple[torch.Tensor, torch.Tensor]:
     """调用 GroupedMatmulSwigluQuantWeightNzV3。
 
-    当前扩展仅支持 ``swiglu_mode=2`` 的 Ascend 950 单 Tensor MX WeightNZ
-    场景：MXFP8 E4M3 输出为 E4M3，MXFP4 A4W4 直接输出 BF16 且第二个返回值
-    未定义。未传 ``swiglu_mode`` 的旧 V2 场景仍使用
+    当前扩展仅支持 ``swiglu_mode=2`` 的 Ascend 950 单 Tensor MXFP8
+    FRACTAL_NZ weight 场景；未传 ``swiglu_mode`` 的旧 V2 场景仍使用
     ``torch_npu.npu_grouped_matmul_swiglu_quant_v2``。
     """
     weight = _normalize_tensor_list(weight, "weight")

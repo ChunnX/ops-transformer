@@ -8,6 +8,7 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-__all__ = ["grouped_matmul_swiglu_quant"]
+__all__ = ["grouped_matmul_activation_weight_nz", "grouped_matmul_swiglu_quant"]
 
+from .grouped_matmul_activation_weight_nz import grouped_matmul_activation_weight_nz
 from .grouped_matmul_swiglu_quant import grouped_matmul_swiglu_quant
