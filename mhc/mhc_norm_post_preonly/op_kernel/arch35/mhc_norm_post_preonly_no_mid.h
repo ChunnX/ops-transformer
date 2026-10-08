@@ -59,6 +59,9 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         for (uint32_t o = 0; o < N; ++o) {
             partialBuf.SetValue(o + 1U, dotHalf[1][o]);
         }
+        for (uint32_t i = N + 1U; i < PARTIAL_SLOT_ELEMS; ++i) {
+            partialBuf.SetValue(i, 0.0f);
+        }
         SetFlag<HardEvent::S_MTE3>(evtStoMte3_);
         WaitFlag<HardEvent::S_MTE3>(evtStoMte3_);
         const uint64_t followerSlot = ((uint64_t)token * SIBLING_AIV_COUNT + 1U) * PARTIAL_SLOT_ELEMS;
