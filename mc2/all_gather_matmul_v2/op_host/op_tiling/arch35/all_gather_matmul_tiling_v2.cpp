@@ -46,13 +46,8 @@ using namespace Mc2Tiling;
 
 namespace optiling {
 static constexpr int64_t CMP_MAX_LEN = 7;
-// 非量化恒走 APACE（R13 拍板，USING_APACE_IMPL 维度删除），v1 实现保留编译、不派发
-// commTile 256 对齐封顶（方案 §5.1 方案 A + a2a AlignCutResForKernel 同款）
 static constexpr uint64_t APACE_KERNEL_ALIGN_M = 256;
-// stepK 截断上限（mmv3 basic 消费口径：kL1 = baseK × min(stepKa, stepKb, 4)）
 static constexpr uint32_t APACE_STEPK_THRESHOLD = 4;
-// L1 A/B 滚动 buffer 数（Blaze basic l1BufferNum 常规值 / SWAT DB_SIZE 同款；mmv3 depthA1 为 K 深度
-// 语义非 buffer 数，跨语义直映射有 L1 越界风险——W2 核定结论）
 static constexpr uint8_t APACE_L1_BUFFER_NUM = 2;
 
 bool AllGatherMatmulTilingV2::IsCapable()
@@ -77,10 +72,6 @@ ge::graphStatus AllGatherMatmulTilingV2::SetRawTilingData()
 
 void AllGatherMatmulTilingV2::FillApaceMmTile(const Mc2MatMulV3TilingData& localTiling)
 {
-    // mmTile 字段映射（Mc2MatMulV3TilingData → QuantMatmulTilingData，方案 §3.4 映射表）：
-    //   m/n/k 供日志/校验（problemShape 由 kernel 三区拼装）；baseM/N/K 为 Blaze 基础块规格（L0 级）；
-    //   尾块因子（mTailTile/nTailTile/mBaseTailSplitCnt/nBaseTailSplitCnt/mTailMain/nTailMain）同名映射
-    //   （Blaze scheduler 尾块拆分，UpdateTailTile 判定式同构）。
     auto& mmTile = hcommTilingDataSelf_.mmTile;
     const auto& tCube = localTiling.tCubeTiling;
     mmTile = {};
@@ -90,7 +81,7 @@ void AllGatherMatmulTilingV2::FillApaceMmTile(const Mc2MatMulV3TilingData& local
     mmTile.baseM = tCube.baseM;
     mmTile.baseN = tCube.baseN;
     mmTile.baseK = tCube.baseK;
-    mmTile.scaleKL1 = 0; // 非量化不消费（N2 不读该字段）
+    mmTile.scaleKL1 = 0; // 非量化使用该字段
     mmTile.mTailTile = localTiling.mTailCnt;
     mmTile.nTailTile = localTiling.nTailCnt;
     mmTile.mBaseTailSplitCnt = localTiling.mBaseTailSplitCnt;
@@ -98,10 +89,6 @@ void AllGatherMatmulTilingV2::FillApaceMmTile(const Mc2MatMulV3TilingData& local
     mmTile.mTailMain = localTiling.mTailMain;
     mmTile.nTailMain = localTiling.nTailMain;
     mmTile.usedCoreNum = tCube.usedCoreNum;
-    // stepK/nBufferNum 语义核定（W2 收口）：Blaze FragL1Params{kL1 = stepK·baseK, l1BufNum = nBufferNum}
-    // 与 mmv3 basic 消费口径对齐（matmul_v3_base_tiling_advanced.h GetTilingData(Mc2MatMulV3BasicTilingData&)）：
-    //   kL1 = baseK × min(stepKa, stepKb, 4) ⇒ stepK = min(stepKa, stepKb) 截断 4；
-    //   nBufferNum 为 L1 A/B 滚动 buffer 数，取 2（Blaze basic 常规值 / SWAT DB_SIZE 同款）。
     uint32_t stepK = std::min(tCube.stepKa, tCube.stepKb);
     stepK = std::min(stepK, APACE_STEPK_THRESHOLD);
     mmTile.stepK = static_cast<uint8_t>(stepK);
@@ -111,9 +98,6 @@ void AllGatherMatmulTilingV2::FillApaceMmTile(const Mc2MatMulV3TilingData& local
 
 ge::graphStatus AllGatherMatmulTilingV2::DoApaceTiling()
 {
-    // commTile：cutRes（v1 fit-balance + CCU/AICPU 调整链产出，O4 必落地项）→ 256 对齐封顶
-    // （a2a AlignCutResForKernel 同款：tileM 向上 256 对齐、≥m 时收缩为单块；
-    //   CCU 候选集 {2048,1024,512,256} 天然 256 对齐——对齐为 no-op，AICPU 路径对齐后 tileCnt 只减不增）
     auto& rcsCfg = MutableRCSTilingData();
     uint64_t apaceTileM = tileMValue_;
     uint64_t apaceTileCnt = rcsCfg.tileCnt;
@@ -141,14 +125,11 @@ ge::graphStatus AllGatherMatmulTilingV2::DoApaceTiling()
     commTile.splitAxisTailCnt = apaceTailCnt;
     commTile.nonSplitAxisSize = args_.kValue;
 
-    // mmTile：v1 DoVersion2Tiling 的 local tiling 输出（M=per-rank m）→ QuantMatmulTilingData 字段映射
     FillApaceMmTile(MutableMC2MatmulV3LocalTilingData());
 
-    // mc2InitTiling/mc2CcTiling：SetMc2Hcomm 产出直接写入 apace 结构（a2a L565 同款）
     hcommTilingDataSelf_.mc2InitTiling = allGatherMatmulTilingDataV2_->mc2InitTiling;
     hcommTilingDataSelf_.mc2CcTiling = allGatherMatmulTilingDataV2_->mc2CcTiling;
 
-    // gatherLen：沿用 v1 GetStorageA 语义（is_gather_out=false 时 R·AlignUp(m·k·ds,512)，否则 0）
     hcommTilingDataSelf_.gatherLen = rcsCfg.gatherLen;
 
     OP_LOGI(opName_,
@@ -170,14 +151,12 @@ ge::graphStatus AllGatherMatmulTilingV2::DoOpTiling()
     MC2_CHECK_LOG_RET(opName_, SetRawTilingData());
     SetRcsTilingData(MutableRCSTilingData());
     DoSplitMTiling(MutableRCSTilingData());
-    // 通信配置放在切分之后：单轮通信量依赖切分结果 tileMValue_（对齐 alltoall 先切分后配置的时序）
     OP_TILING_CHECK(SetMc2Hcomm(MutableRCSTilingData()) != ge::GRAPH_SUCCESS, OP_LOGE(opName_, "Fail to set Mc2Hcomm."),
                     return ge::GRAPH_FAILED);
     MC2_CHECK_LOG_RET(opName_, DoVersion2Tiling());
     DoAllGatherTiling(MutableRCSTilingData(), MutableMC2MatmulV3TileTilingData().tCubeTiling,
                       MutableMC2MatmulV3TailTilingData().tCubeTiling, allGatherMatmulTilingDataV2_->debugMode,
                       allGatherMatmulTilingDataV2_->dataType);
-    // 非量化路径：cutRes 与 mc2InitTiling/mc2CcTiling 映射 apace tiling 结构（R13 起恒 APACE）
     OP_TILING_CHECK(DoApaceTiling() != ge::GRAPH_SUCCESS, OP_LOGE(opName_, "Fail to do apace tiling."),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -214,8 +193,6 @@ void AllGatherMatmulTilingV2::PrintAllTilingData()
 
 ge::graphStatus AllGatherMatmulTilingV2::PostTiling()
 {
-    // 非量化路径（R13 起唯一路径）：输出 hcommAllGatherMatmulTilingData（a2a PostTiling 输出范式）
-    // 非量化不启用 DFX：dumpInfo 保持默认零值（量化路径经 BuildWorkspaceLayout 填充后拷贝）
     auto* outTilingData = context_->GetTilingData<Apace::hcommAllGatherMatmulTilingData>();
     OP_TILING_CHECK((outTilingData == nullptr), OP_LOGE(opName_, "Fail to get hcomm tiling data from context"),
                     return ge::GRAPH_FAILED);
@@ -229,15 +206,11 @@ ge::graphStatus AllGatherMatmulTilingV2::PostTiling()
         OP_LOGE(opName_, "PostTiling: memcpy_s hcomm tiling data failed, ret=%d.", ret);
         return ge::GRAPH_FAILED;
     }
-    // SetDataSize 取 max（注册容量按最大结构申请；补零至注册容量，V2-B6 方向核对 + a2a capacity CHECK 双兜底）
     const size_t registeredMaxTilingSize = sizeof(Mc2Tiling::AllGatherMatmulTilingDataV2);
     const size_t apaceTilingSize = sizeof(Apace::hcommAllGatherMatmulTilingData);
     const size_t finalSize = (registeredMaxTilingSize > apaceTilingSize) ? registeredMaxTilingSize : apaceTilingSize;
     OP_TILING_CHECK((finalSize % sizeof(uint64_t) != 0),
                     OP_LOGE(opName_, "Tiling data size[%zu] not aligned to 8.", finalSize), return ge::GRAPH_FAILED);
-    // 容量防御 CHECK（a2a capacity CHECK 范式）：补齐 tilingBufCap∈[sizeof(hcomm), finalSize)
-    // 区间的防御缺口——SetDataSize 声称 finalSize 而实际容量不足时框架侧读取越界，显式拒绝。
-    // 正常配置（注册容量按最大结构申请，finalSize=1848 ≤ cap）不触发。
     OP_TILING_CHECK(
         (tilingBufCap < finalSize),
         OP_LOGE(opName_, "TilingBuffer capacity %zu is smaller than final tiling size %zu.", tilingBufCap, finalSize),
@@ -254,7 +227,6 @@ ge::graphStatus AllGatherMatmulTilingV2::PostTiling()
     OP_LOGI(opName_, "Final apace hcomm tiling data size=%zu (v2=%zu, apace=%zu), context capacity size=%zu.",
             finalSize, registeredMaxTilingSize, apaceTilingSize, tilingBufCap);
     context_->SetBlockDim(args_.aicCoreNum);
-    // 独占全核，设置以后会让所有核空闲以后才启动，有多核同步指令需要设置避免出现网络挂死
     context_->SetScheduleMode(1);
     return ge::GRAPH_SUCCESS;
 }
@@ -397,8 +369,6 @@ ge::graphStatus AllGatherMatmulTilingV2::CheckInput()
 
 ge::graphStatus AllGatherMatmulTilingV2::GetWorkspaceSize()
 {
-    // 非量化路径（R13 起唯一路径）：workspace = libApi + gatherLen（storageA_ 在 DAV_3510 下 = gatherLen；
-    // 不消费 v1 的 biasLen 预留——非量化 FP16/BF16 无 bias 扩展区需求）
     size_t* workspaces = context_->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workspaces == nullptr, OP_LOGE(opName_, "get workspace failed."), return ge::GRAPH_FAILED);
     workspaceSize_ = libApiWorkSpaceSize_ + storageA_;
@@ -419,7 +389,6 @@ uint64_t AllGatherMatmulTilingV2::GetTilingKey() const
             commMode = Mc2Comm::COMM_MODE_CCU;
         }
     }
-    // tiling key 6 维（R13：USING_APACE_IMPL 维度删除，非量化恒 APACE）——非量化 key 回落旧编码值
     const uint64_t tilingKey = GET_TPL_TILING_KEY(inputIsBf16Fp16_, args_.isBTrans, outputType, TPL_DEFAULT_MODE,
                                                   SCALE_TYPE_NOT_IS_MX, commMode);
     OP_LOGD(opName_, "AllGatherMatmulV2(apace), inputIsBf16Fp16_, args_.isBTrans, outputType, commMode: [%d,%d,%u,%u]",
