@@ -15,13 +15,14 @@
 
 #include <iostream>
 #include <fstream>
-#include <string.h>
+#include <cstring>
 #include <stdint.h>
 #include <vector>
 #include <string>
 #include <map>
 #include <memory>
 #include "assert.h"
+#include "securec.h"
 
 #include "graph.h"
 #include "types.h"
@@ -46,14 +47,14 @@ using std::vector;
 // clang-format off
 #define ADD_INPUT(intputIndex, intputName, intputDtype, inputShape)                                                    \
     vector<int64_t> placeholder##intputIndex##_shape = inputShape;                                                     \
-    auto placeholder##intputIndex = op::Data("placeholder" + intputIndex).set_attr_index(0);                           \
+    auto placeholder##intputIndex = op::Data((std::string("placeholder") + std::to_string(intputIndex)).c_str()).set_attr_index(intputIndex - 1);                           \
     TensorDesc placeholder##intputIndex##_desc =                                                                       \
         TensorDesc(ge::Shape(placeholder##intputIndex##_shape), FORMAT_ND, intputDtype);                               \
     placeholder##intputIndex##_desc.SetPlacement(ge::kPlacementHost);                                                  \
     placeholder##intputIndex##_desc.SetFormat(FORMAT_ND);                                                              \
     Tensor tensor_placeholder##intputIndex;                                                                            \
-    ret = GenOnesData(placeholder##intputIndex##_shape, tensor_placeholder##intputIndex,                               \
-                      placeholder##intputIndex##_desc, intputDtype, 2);                                                \
+    ret = GenInputData(placeholder##intputIndex##_shape, tensor_placeholder##intputIndex,                               \
+                      placeholder##intputIndex##_desc, intputDtype);                                                \
     if (ret != SUCCESS) {                                                                                              \
         printf("%s - ERROR - [XIR]: Generate input data failed\n", GetTime().c_str());                                 \
         return FAILED;                                                                                                 \
@@ -146,25 +147,35 @@ int32_t GenOnesDataFloat32(vector<int64_t> shapes, Tensor &input_tensor, TensorD
     return SUCCESS;
 }
 
-int32_t GenOnesData(vector<int64_t> shapes, Tensor &input_tensor, TensorDesc &input_tensor_desc, DataType data_type,
-                    int value)
+int32_t GenInputData(vector<int64_t> shapes, Tensor &input_tensor, TensorDesc &input_tensor_desc, DataType data_type)
 {
     input_tensor_desc.SetRealDimCnt(shapes.size());
     size_t size = 1;
     for (uint32_t i = 0; i < shapes.size(); i++) {
         size *= shapes[i];
     }
-    size_t data_len = size * GetDataTypeSize(data_type);
-    // Preserve the int32_t fill pattern while allocating only the required storage.
-    size_t data_count = data_len / sizeof(int32_t) + (data_len % sizeof(int32_t) != 0);
-    std::unique_ptr<int32_t[]> pData(new (std::nothrow) int32_t[data_count]);
-    if (pData == nullptr) {
+    const bool packedFp4 = data_type == DT_FLOAT4_E2M1 || data_type == DT_FLOAT4_E1M2;
+    size_t data_len = packedFp4 ? (size + 1) / 2 : size * GetDataTypeSize(data_type);
+    std::unique_ptr<uint8_t[]> data(new (std::nothrow) uint8_t[data_len]());
+    if (data == nullptr) {
         return FAILED;
     }
-    for (size_t i = 0; i < data_count; ++i) {
-        pData[i] = value;
+    for (size_t i = 0; i < size; ++i) {
+        if (data_type == DT_INT32) {
+            const int32_t slot = i + 1 == size ? -1 : static_cast<int32_t>(i);
+            const size_t offset = i * sizeof(slot);
+            if (memcpy_s(data.get() + offset, data_len - offset, &slot, sizeof(slot)) != EOK) {
+                return FAILED;
+            }
+        } else if (data_type == DT_FLOAT16 || data_type == DT_BF16) {
+            const uint16_t one = data_type == DT_FLOAT16 ? 0x3C00 : 0x3F80;
+            const size_t offset = i * sizeof(one);
+            if (memcpy_s(data.get() + offset, data_len - offset, &one, sizeof(one)) != EOK) {
+                return FAILED;
+            }
+        }
     }
-    input_tensor = Tensor(input_tensor_desc, reinterpret_cast<uint8_t *>(pData.get()), data_len);
+    input_tensor = Tensor(input_tensor_desc, data.get(), data_len);
     return SUCCESS;
 }
 
@@ -177,14 +188,14 @@ int32_t WriteDataToFile(string bin_file, uint64_t data_size, uint8_t *inputData)
     return SUCCESS;
 }
 
-int CreateOppInGraph(DataType inDtype, std::vector<ge::Tensor> &input, std::vector<Operator> &inputs,
+int CreateOppInGraph(int64_t quantMode, std::vector<ge::Tensor> &input, std::vector<Operator> &inputs,
                      std::vector<Operator> &outputs, Graph &graph)
 {
     Status ret = SUCCESS;
     // 自定义代码：添加单算子定义到图中
     auto indexer_quant_cache_op = op::IndexerQuantCache("test_geir_indexer_quant_cache");
 
-    // shape 定义（quant_mode=1, Normal block-wise quant）
+    // Four modes share the paged cache shape; scale dtype/width depends on quantMode.
     // x: [tokenNum, d]
     // cache: 4D [blockNum, blockSize, 1, headDim] (FLOAT8_E4M3FN), num_slots = blockNum*blockSize
     //        mode1 headDim=d=128 >= d
@@ -195,22 +206,25 @@ int CreateOppInGraph(DataType inDtype, std::vector<ge::Tensor> &input, std::vect
     const int64_t blockNum = 128;
     const int64_t blockSizeDim = 16; // num_slots = 128*16 = 2048
     std::vector<int64_t> cacheShape = {blockNum, blockSizeDim, 1, d};
-    std::vector<int64_t> cacheScaleShape = {blockNum, blockSizeDim, 1, 1};
+    const bool mx = quantMode == 0 || quantMode == 3;
+    const DataType cacheType = quantMode == 3 ? DT_FLOAT4_E2M1 : (quantMode == 2 ? DT_UINT8 : DT_FLOAT8_E4M3FN);
+    const DataType scaleType = mx ? DT_FLOAT8_E8M0 : DT_FLOAT;
+    std::vector<int64_t> cacheScaleShape = {blockNum, blockSizeDim, 1, mx ? d / 32 : 1};
     std::vector<int64_t> xShape = {tokenNum, d};
     std::vector<int64_t> slotMappingShape = {tokenNum};
 
     // 添加输入（顺序严格匹配 proto.h: cache, cache_scale, x, slot_mapping）
-    ADD_INPUT(1, cache, DT_FLOAT8_E4M3FN, cacheShape);
-    ADD_INPUT(2, cache_scale, DT_FLOAT, cacheScaleShape);
+    ADD_INPUT(1, cache, cacheType, cacheShape);
+    ADD_INPUT(2, cache_scale, scaleType, cacheScaleShape);
     ADD_INPUT(3, x, DT_FLOAT16, xShape);
     ADD_INPUT(4, slot_mapping, DT_INT32, slotMappingShape);
 
     // 添加输出（cache / cache_scale 原地更新）
-    ADD_OUTPUT(1, cache, DT_FLOAT8_E4M3FN, cacheShape);
-    ADD_OUTPUT(2, cache_scale, DT_FLOAT, cacheScaleShape);
+    ADD_OUTPUT(1, cache, cacheType, cacheShape);
+    ADD_OUTPUT(2, cache_scale, scaleType, cacheScaleShape);
 
-    // 添加属性（quant_mode=1: Normal block-wise quant, scale 存为 float32）
-    ADD_INPUT_ATTR(quant_mode, (int64_t)1);
+    // Select the mode requested on the command line.
+    ADD_INPUT_ATTR(quant_mode, quantMode);
     ADD_INPUT_ATTR(round_scale, true);
     ADD_INPUT_ATTR(x_scale, 1.0f);
 
@@ -219,12 +233,13 @@ int CreateOppInGraph(DataType inDtype, std::vector<ge::Tensor> &input, std::vect
     return SUCCESS;
 }
 
-int main(int argc, char *argv[])
-{
-    const char *graph_name = "tc_ge_irrun_test";
-    Graph graph(graph_name);
-    std::vector<ge::Tensor> input;
+namespace {
+constexpr int MAX_ARG_COUNT = 2;
+constexpr int64_t OUTPUT_PREVIEW_BYTES = 16;
+} // namespace
 
+int InitializeGraph(int64_t quantMode, std::vector<ge::Tensor> &input, Graph &graph)
+{
     printf("%s - INFO - [XIR]: Start to initialize ge using ge global options\n", GetTime().c_str());
     std::map<AscendString, AscendString> global_options = {{"ge.exec.deviceId", "0"}, {"ge.graphRunMode", "1"}};
     Status ret = ge::GEInitialize(global_options);
@@ -237,10 +252,7 @@ int main(int argc, char *argv[])
     std::vector<Operator> inputs{};
     std::vector<Operator> outputs{};
 
-    DataType inDtype = DT_FLOAT16;
-    std::cout << inDtype << std::endl;
-
-    ret = CreateOppInGraph(inDtype, input, inputs, outputs, graph);
+    ret = CreateOppInGraph(quantMode, input, inputs, outputs, graph);
     if (ret != SUCCESS) {
         printf("%s - ERROR - [XIR]: Create ir session using build options failed\n", GetTime().c_str());
         return FAILED;
@@ -250,11 +262,16 @@ int main(int argc, char *argv[])
         graph.SetInputs(inputs).SetOutputs(outputs);
     }
 
+    return SUCCESS;
+}
+
+int RunGraph(Graph &graph, std::vector<ge::Tensor> &input, std::vector<ge::Tensor> &output, ge::Session *&session)
+{
     std::map<AscendString, AscendString> build_options = {
 
     };
     printf("%s - INFO - [XIR]: Start to create ir session using build options\n", GetTime().c_str());
-    ge::Session *session = new Session(build_options);
+    session = new Session(build_options);
 
     if (session == nullptr) {
         printf("%s - ERROR - [XIR]: Create ir session using build options failed\n", GetTime().c_str());
@@ -267,14 +284,13 @@ int main(int argc, char *argv[])
 
     };
     uint32_t graph_id = 0;
-    ret = session->AddGraph(graph_id, graph, graph_options);
+    Status ret = session->AddGraph(graph_id, graph, graph_options);
 
     printf("%s - INFO - [XIR]: Session add ir compute graph to ir session success\n", GetTime().c_str());
     printf("%s - INFO - [XIR]: dump graph to txt\n", GetTime().c_str());
     std::string file_path = "./dump";
     aclgrphDumpGraph(graph, file_path.c_str(), file_path.length());
     printf("%s - INFO - [XIR]: Start to run ir compute graph\n", GetTime().c_str());
-    std::vector<ge::Tensor> output;
     ret = session->RunGraph(graph_id, input, output);
     if (ret != SUCCESS) {
         printf("%s - INFO - [XIR]: Run graph failed\n", GetTime().c_str());
@@ -284,6 +300,11 @@ int main(int argc, char *argv[])
     }
     printf("%s - INFO - [XIR]: Session run ir compute graph success\n", GetTime().c_str());
 
+    return SUCCESS;
+}
+
+void DumpTensors(std::vector<ge::Tensor> &input, std::vector<ge::Tensor> &output)
+{
     int input_num = input.size();
     for (int i = 0; i < input_num; i++) {
         std::cout << "input " << i << " dtype :  " << input[i].GetTensorDesc().GetDataType() << std::endl;
@@ -291,7 +312,7 @@ int main(int argc, char *argv[])
         uint8_t *input_data_i = input[i].GetData();
         int64_t input_shape = input[i].GetTensorDesc().GetShape().GetShapeSize();
         std::cout << "this is " << i << "th input, input shape size =" << input_shape << std::endl;
-        uint32_t data_size = input_shape * GetDataTypeSize(input[i].GetTensorDesc().GetDataType());
+        size_t data_size = input[i].GetSize();
         WriteDataToFile((const char *)input_file.c_str(), data_size, input_data_i);
     }
 
@@ -302,21 +323,49 @@ int main(int argc, char *argv[])
         uint8_t *output_data_i = output[i].GetData();
         int64_t output_shape = output[i].GetTensorDesc().GetShape().GetShapeSize();
         std::cout << "this is " << i << "th output, output shape size =" << output_shape << std::endl;
-        uint32_t data_size = output_shape * GetDataTypeSize(output[i].GetTensorDesc().GetDataType());
+        size_t data_size = output[i].GetSize();
         WriteDataToFile((const char *)output_file.c_str(), data_size, output_data_i);
-        for (int64_t j = 0; j < 16 && j < (int64_t)data_size; j++) {
+        for (int64_t j = 0; j < OUTPUT_PREVIEW_BYTES && j < (int64_t)data_size; j++) {
             LOG_PRINT("output[%d] byte[%ld] is: %u\n", i, j, (uint32_t)output_data_i[j]);
         }
     }
+}
+
+void PrintGeMessages()
+{
     ge::AscendString error_msg = ge::GEGetErrorMsgV2();
     std::string error_str(error_msg.GetString());
     std::cout << "Error message: " << error_str << std::endl;
     ge::AscendString warning_msg = ge::GEGetWarningMsgV2();
     std::string warning_str(warning_msg.GetString());
     std::cout << "Warning message: " << warning_str << std::endl;
+}
+
+int main(int argc, char *argv[])
+{
+    if (argc > MAX_ARG_COUNT ||
+        (argc == MAX_ARG_COUNT && (std::strlen(argv[1]) != 1 || argv[1][0] < '0' || argv[1][0] > '3'))) {
+        LOG_PRINT("Usage: %s [quant_mode: 0|1|2|3]\n", argv[0]);
+        return FAILED;
+    }
+    const int64_t quantMode = argc == MAX_ARG_COUNT ? argv[1][0] - '0' : 1;
+    const char *graph_name = "tc_ge_irrun_test";
+    Graph graph(graph_name);
+    std::vector<ge::Tensor> input;
+
+    if (InitializeGraph(quantMode, input, graph) != SUCCESS) {
+        return FAILED;
+    }
+    ge::Session *session = nullptr;
+    std::vector<ge::Tensor> output;
+    if (RunGraph(graph, input, output, session) != SUCCESS) {
+        return FAILED;
+    }
+    DumpTensors(input, output);
+    PrintGeMessages();
     printf("%s - INFO - [XIR]: Start to finalize ir graph session\n", GetTime().c_str());
     delete session;
-    ret = ge::GEFinalize();
+    Status ret = ge::GEFinalize();
     if (ret != SUCCESS) {
         printf("%s - INFO - [XIR]: Finalize ir graph session failed\n", GetTime().c_str());
         return FAILED;

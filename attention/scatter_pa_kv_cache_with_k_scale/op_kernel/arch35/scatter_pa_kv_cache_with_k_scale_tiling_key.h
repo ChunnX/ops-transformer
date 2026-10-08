@@ -18,12 +18,20 @@
 // 场景模式：泛化场景（k_head_size != v_head_size）
 #define SCATTER_KV_CACHE_SCENE_GENERALIZED 1
 
+// 模板模式：SIMT（通用场景，支持任意 stride）
+#define SCATTER_KV_CACHE_TPL_SIMT 0
+// 模板模式：SIMD（按 num_tokens 分核 + DataCopyPad 多行搬运，要求尾轴连续）
+#define SCATTER_KV_CACHE_TPL_SIMD 1
+
 ASCENDC_TPL_ARGS_DECL(ScatterPaKvCacheWithKScale,
                       ASCENDC_TPL_UINT_DECL(schMode, 1, ASCENDC_TPL_UI_LIST, SCATTER_KV_CACHE_SCENE_SPECIALIZED,
-                                            SCATTER_KV_CACHE_SCENE_GENERALIZED));
+                                            SCATTER_KV_CACHE_SCENE_GENERALIZED),
+                      ASCENDC_TPL_UINT_DECL(tplMode, 1, ASCENDC_TPL_UI_LIST, SCATTER_KV_CACHE_TPL_SIMT,
+                                            SCATTER_KV_CACHE_TPL_SIMD));
 
-ASCENDC_TPL_SEL(ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(schMode, ASCENDC_TPL_UI_LIST,
-                                                          SCATTER_KV_CACHE_SCENE_SPECIALIZED,
-                                                          SCATTER_KV_CACHE_SCENE_GENERALIZED)));
+ASCENDC_TPL_SEL(ASCENDC_TPL_ARGS_SEL(
+    ASCENDC_TPL_UINT_SEL(schMode, ASCENDC_TPL_UI_LIST, SCATTER_KV_CACHE_SCENE_SPECIALIZED,
+                         SCATTER_KV_CACHE_SCENE_GENERALIZED),
+    ASCENDC_TPL_UINT_SEL(tplMode, ASCENDC_TPL_UI_LIST, SCATTER_KV_CACHE_TPL_SIMT, SCATTER_KV_CACHE_TPL_SIMD)));
 
 #endif // SCATTER_PA_KV_CACHE_WITH_K_SCALE_TILING_KEY_H

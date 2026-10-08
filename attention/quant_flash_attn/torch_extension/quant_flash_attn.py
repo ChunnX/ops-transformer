@@ -82,8 +82,8 @@ def _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q):
     return 0
 
 
-def _calculate_max_schedule_size(batch_size, num_heads_kv):
-    """dim0 按 sectionNum 最坏值(batch*num_heads_kv)动态计算, 开启 section 后
+def _calculate_max_schedule_size(batch_size, num_heads_q):
+    """dim0 按 sectionNum 最坏值(batch*num_heads_q)动态计算, 开启 section 后
     FA/FD 调度区需求随 section 数线性增长, 固定值无法覆盖; 对齐 4096 便于对拍。
     (2, dim0) 布局中第二行即反向 FAG 区, grad 按 shape.GetDim(1)=dim0 推导其偏移。"""
     align_size = 4096
@@ -92,8 +92,8 @@ def _calculate_max_schedule_size(batch_size, num_heads_kv):
     # 按 1 兜底: sn 恒为 1 时需求为 16+(aic+aiv)*16, 4096 预算已覆盖
     batch_size = batch_size if batch_size and batch_size > 0 else 1
     aic_num, aiv_num = _get_core_nums()
-    fa_size = aic_num * METADATA_STRIDE * batch_size * num_heads_kv
-    fd_size = aiv_num * METADATA_STRIDE * batch_size * num_heads_kv
+    fa_size = aic_num * METADATA_STRIDE * batch_size * num_heads_q
+    fd_size = aiv_num * METADATA_STRIDE * batch_size * num_heads_q
 
     schedule_size = head_size + fa_size + fd_size
     return ((schedule_size + align_size - 1) // align_size) * align_size
@@ -164,6 +164,9 @@ def _get_output_shape_sizes(q, v, layout_q, layout_kv):
     调用前需保证 q/v 维度数已通过 _LAYOUT_EXPECTED_NDIM 校验。"""
     if layout_q == "TND":
         t_size, b_size, s_size, n_size = q.size(0), None, None, q.size(1)
+    elif layout_q == "NTD":
+        # GQA FP8 (quant_mode=6): q 为 [N, T, D], 输出/lse 与 TND 同形 (T/N 主序不同)
+        t_size, b_size, s_size, n_size = q.size(1), None, None, q.size(0)
     elif layout_q == "BSND":
         t_size, b_size, s_size, n_size = None, q.size(0), q.size(1), q.size(2)
     else:
@@ -204,6 +207,7 @@ class QuantFlashAttnOpBuilder(OpBuilder):
             "Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_kv=None, "
             "Tensor? seqused_q=None, Tensor? seqused_kv=None, "
             "Tensor? sinks=None, Tensor? attn_mask=None, Tensor? metadata=None, "
+            "Tensor? v_tail=None, Tensor? block_table_tail=None, Tensor? seqused_v_tail=None, "
             "float softmax_scale=1.0, int mask_mode=0, int win_left=-1, int win_right=-1, "
             "int max_seqlen_q=-1, int max_seqlen_kv=-1, "
             'str layout_q="BSND", str layout_q_descale="BSND", str layout_kv="BSND", str layout_out="BSND", '
@@ -240,7 +244,7 @@ class QuantFlashAttnOpBuilder(OpBuilder):
             is_grad_enabled: Optional[bool] = False,
         ):
             b_size = _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q)
-            max_schedule_size = _calculate_max_schedule_size(b_size, num_heads_kv)
+            max_schedule_size = _calculate_max_schedule_size(b_size, num_heads_q)
             return torch.empty((2, max_schedule_size), dtype=torch.int32, device="meta")
 
         @impl(get_as_library(), self.name, "Meta")
@@ -261,6 +265,9 @@ class QuantFlashAttnOpBuilder(OpBuilder):
             sinks: Optional[torch.Tensor] = None,
             attn_mask: Optional[torch.Tensor] = None,
             metadata: Optional[torch.Tensor] = None,
+            v_tail: Optional[torch.Tensor] = None,
+            block_table_tail: Optional[torch.Tensor] = None,
+            seqused_v_tail: Optional[torch.Tensor] = None,
             softmax_scale: Optional[float] = 1.0,
             mask_mode: Optional[Union[MaskMode, int]] = MaskMode.NO_MASK,
             win_left: Optional[int] = -1,
@@ -297,15 +304,24 @@ class QuantFlashAttnOpBuilder(OpBuilder):
             t_size, b_size, s_size, n_size, d_size = _get_output_shape_sizes(
                 q, v, layout_q, layout_kv
             )
-            if layout_q == "TND":
+            if layout_q in ("TND", "NTD"):
+                # NTD (GQA FP8, quant_mode=6) 的 lse 与 TND 同为 (N, T)
                 softmax_out_size = (n_size, t_size)
             else:
                 softmax_out_size = (b_size, n_size, s_size)
 
             if layout_out == "TND":
                 torch._check(
-                    layout_q == "TND",
-                    lambda: f"When the layout of output is TND, the layout of query must be TND, but got {layout_q}",
+                    layout_q == "TND"
+                    or (
+                        layout_q == "NTD"
+                        and int(quant_mode)
+                        == int(
+                            QuantMode.A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32
+                        )
+                    ),
+                    lambda: f"When the layout of output is TND, the layout of query must be TND "
+                    f"(or NTD when quant_mode=6), but got {layout_q}",
                 )
                 attention_out_size = (t_size, n_size, d_size)
             elif layout_out == "BNSD":
@@ -361,9 +377,10 @@ def quant_flash_attn_metadata(
     'PrivateUse1' is dispatch key for custom NPU backends.
     """
     torch._check(
-        quant_mode in (0, 1, 5, 6),
+        quant_mode in (0, 1, 3, 5, 6),
         lambda: f"The quant_mode of quant_flash_attn_metadata only supports 0 (A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32), "
         f"1 (A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32), "
+        f"3 (A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP16), "
         f"5 (A4C4_QKV_MXFP4_P_MXFP4_SOFTMAX_FP16) "
         f"or 6 (A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32), but got {quant_mode}",
     )
@@ -391,7 +408,7 @@ def quant_flash_attn_metadata(
 
     _check_layout_constraint(quant_mode, layout_q, layout_kv, layout_out)
 
-    max_schedule_size = _calculate_max_schedule_size(batch_size, num_heads_kv)
+    max_schedule_size = _calculate_max_schedule_size(batch_size, num_heads_q)
     output = torch.empty((2, max_schedule_size), dtype=torch.int32, device="npu")
 
     op_module = quant_flash_attn_op_builder.load()
@@ -486,6 +503,9 @@ def quant_flash_attn(
     sinks: Optional[torch.Tensor] = None,
     attn_mask: Optional[torch.Tensor] = None,
     metadata: Optional[torch.Tensor] = None,
+    v_tail: Optional[torch.Tensor] = None,
+    block_table_tail: Optional[torch.Tensor] = None,
+    seqused_v_tail: Optional[torch.Tensor] = None,
     softmax_scale: Optional[float] = 1.0,
     mask_mode: Optional[Union[MaskMode, int]] = MaskMode.NO_MASK,
     win_left: Optional[int] = -1,
@@ -503,9 +523,10 @@ def quant_flash_attn(
     'PrivateUse1' is the combine key for custom NPU backends.
     """
     torch._check(
-        quant_mode in (0, 1, 5, 6),
+        quant_mode in (0, 1, 3, 5, 6),
         lambda: f"The quant_mode of quant_flash_attn only supports 0 (A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32), "
         f"1 (A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32), "
+        f"3 (A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP16), "
         f"5 (A4C4_QKV_MXFP4_P_MXFP4_SOFTMAX_FP16) "
         f"or 6 (A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32), but got {quant_mode}",
     )
@@ -570,18 +591,12 @@ def quant_flash_attn(
             )
 
     if quant_mode == int(QuantMode.A4C4_QKV_MXFP4_P_MXFP4_SOFTMAX_FP16):
-        if q.dtype != torch.uint8:
-            raise ValueError(
-                f"In MxFP4 mode (quant_mode=5), q must be uint8, but got {q.dtype}"
-            )
-        if k.dtype != torch.uint8:
-            raise ValueError(
-                f"In MxFP4 mode (quant_mode=5), k must be uint8, but got {k.dtype}"
-            )
-        if v.dtype != torch.uint8:
-            raise ValueError(
-                f"In MxFP4 mode (quant_mode=5), v must be uint8, but got {v.dtype}"
-            )
+        for name, tensor in (("q", q), ("k", k), ("v", v)):
+            if tensor.dtype != torch.float4_e2m1fn_x2:
+                raise ValueError(
+                    f"In MxFP4 mode (quant_mode=5), {name} must be "
+                    f"float4_e2m1fn_x2, but got {tensor.dtype}"
+                )
 
     op_module = quant_flash_attn_op_builder.load()
     return op_module.quant_flash_attn(
@@ -601,6 +616,9 @@ def quant_flash_attn(
         sinks,
         attn_mask,
         metadata,
+        v_tail,
+        block_table_tail,
+        seqused_v_tail,
         softmax_scale,
         mask_mode,
         win_left,
