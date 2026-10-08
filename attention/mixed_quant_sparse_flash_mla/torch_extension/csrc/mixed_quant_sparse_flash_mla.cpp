@@ -172,8 +172,7 @@ std::tuple<at::Tensor, at::Tensor> MixedQuantSparseFlashMla(
         TORCH_CHECK(q.scalar_type() == at::kHalf || q.scalar_type() == at::kBFloat16,
                     "TurboQuant q must be float16 or bfloat16");
         TORCH_CHECK(oriKvVal.scalar_type() == q.scalar_type(), "ori_kv dtype must match q");
-        TORCH_CHECK(cmpKv.has_value() && cmpKv->scalar_type() == at::kByte,
-                    "TurboQuant cmp_kv must be uint8");
+        TORCH_CHECK(cmpKv.has_value() && cmpKv->scalar_type() == at::kByte, "TurboQuant cmp_kv must be uint8");
     }
     // convert str
     char *layoutQPtr = const_cast<char *>(layoutQStr.c_str());
