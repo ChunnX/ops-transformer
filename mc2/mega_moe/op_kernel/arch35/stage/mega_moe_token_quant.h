@@ -323,15 +323,14 @@ __aicore__ inline void PackPreQuantizedTokenRange(const WorkRange& tokenRange, c
     const uint32_t weightSrcRowBytes = Ops::Base::CeilAlign(weightValidBytes, static_cast<uint32_t>(ALIGN_32));
     const uint32_t weightSrcOffset = tokensPerCopyBatch * recordBytes;
 
+    if (tokenRange.count == 0U) {
+        return;
+    }
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
-    bool hasPendingCopyOut = false;
-    uint32_t pendingCopyOutTokenOffset = 0U;
-    uint32_t pendingCopyOutTokenCount = 0U;
-    TEventID pendingCopyOutEvent = EVENT_ID0;
 
-    for (uint32_t batchTokenOffset = 0U; batchTokenOffset < tokenRange.count; batchTokenOffset += tokensPerCopyBatch) {
-        uint32_t batchIndex = batchTokenOffset / tokensPerCopyBatch;
+    for (uint32_t batchIndex = 0U, batchTokenOffset = 0U; batchTokenOffset < tokenRange.count;
+         ++batchIndex, batchTokenOffset += tokensPerCopyBatch) {
         uint32_t batchTokenCount = tokensPerCopyBatch < tokenRange.count - batchTokenOffset ?
                                        tokensPerCopyBatch :
                                        tokenRange.count - batchTokenOffset;
@@ -362,30 +361,26 @@ __aicore__ inline void PackPreQuantizedTokenRange(const WorkRange& tokenRange, c
             SetFlag<AscendC::HardEvent::MTE2_MTE3>(event);
         }
 
-        if (hasPendingCopyOut) {
-            LocalTensor<uint8_t> pendingStage =
-                (pendingCopyOutEvent == EVENT_ID0) ? scratch.preQuantStage0 : scratch.preQuantStage1;
-            uint64_t pendingOutputOffset =
-                static_cast<uint64_t>(pendingCopyOutTokenOffset) * static_cast<uint64_t>(recordBytes);
+        if (batchIndex > 0U) {
+            TEventID previousEvent = ((batchIndex - 1U) % DOUBLE_BUFFER) == 0U ? EVENT_ID0 : EVENT_ID1;
+            LocalTensor<uint8_t> previousStage =
+                (previousEvent == EVENT_ID0) ? scratch.preQuantStage0 : scratch.preQuantStage1;
+            uint64_t previousOutputOffset =
+                static_cast<uint64_t>(batchTokenOffset - tokensPerCopyBatch) * static_cast<uint64_t>(recordBytes);
             PreQuantWriteTile<TopkWeightsType, TopkWeightsPrefetch>(
-                pendingStage, pendingCopyOutEvent, pendingCopyOutTokenCount, common.topK, recordBytes, weightSrcOffset,
-                weightSrcRowBytes, weightOffset, copyContext.tokenScaleDstGlobalTensor[pendingOutputOffset]);
+                previousStage, previousEvent, tokensPerCopyBatch, common.topK, recordBytes, weightSrcOffset,
+                weightSrcRowBytes, weightOffset, copyContext.tokenScaleDstGlobalTensor[previousOutputOffset]);
         }
-        hasPendingCopyOut = true;
-        pendingCopyOutTokenOffset = batchTokenOffset;
-        pendingCopyOutTokenCount = batchTokenCount;
-        pendingCopyOutEvent = event;
     }
 
-    if (hasPendingCopyOut) {
-        LocalTensor<uint8_t> pendingStage =
-            (pendingCopyOutEvent == EVENT_ID0) ? scratch.preQuantStage0 : scratch.preQuantStage1;
-        uint64_t pendingOutputOffset =
-            static_cast<uint64_t>(pendingCopyOutTokenOffset) * static_cast<uint64_t>(recordBytes);
-        PreQuantWriteTile<TopkWeightsType, TopkWeightsPrefetch>(
-            pendingStage, pendingCopyOutEvent, pendingCopyOutTokenCount, common.topK, recordBytes, weightSrcOffset,
-            weightSrcRowBytes, weightOffset, copyContext.tokenScaleDstGlobalTensor[pendingOutputOffset]);
-    }
+    const uint32_t lastBatchIndex = (tokenRange.count - 1U) / tokensPerCopyBatch;
+    const uint32_t lastTokenOffset = lastBatchIndex * tokensPerCopyBatch;
+    TEventID lastEvent = (lastBatchIndex % DOUBLE_BUFFER) == 0U ? EVENT_ID0 : EVENT_ID1;
+    LocalTensor<uint8_t> lastStage = (lastEvent == EVENT_ID0) ? scratch.preQuantStage0 : scratch.preQuantStage1;
+    uint64_t lastOutputOffset = static_cast<uint64_t>(lastTokenOffset) * static_cast<uint64_t>(recordBytes);
+    PreQuantWriteTile<TopkWeightsType, TopkWeightsPrefetch>(
+        lastStage, lastEvent, tokenRange.count - lastTokenOffset, common.topK, recordBytes, weightSrcOffset,
+        weightSrcRowBytes, weightOffset, copyContext.tokenScaleDstGlobalTensor[lastOutputOffset]);
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
 }
