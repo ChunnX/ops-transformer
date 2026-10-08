@@ -10,7 +10,7 @@
 
 /*!
  * \file test_aclnn_quant_lightning_indexer_v2.cpp
- * rief QuantLightningIndexerV2（两级TopK 的第一级 / source 级）aclnn 两段式接口调用示例。
+ * \brief QuantLightningIndexerV2（两级TopK 的第一级 / source 级）aclnn 两段式接口调用示例。
  *        candidate_topk_blocks=2048（开启 source 的唯一有效值）: 除 sparse_indices/sparse_values 外，还输出块级候选索引
  *        candidate_topk_index_out（供 QuantSparseLightningIndexer 消费）。
  *        arch22 (910B/910_93) 用例: INT8 量化, BSND query + PA_BBND 分页 key。
