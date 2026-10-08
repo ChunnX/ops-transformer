@@ -3,7 +3,8 @@
 ## Scope and versions
 
 This PR contains only the Ascend 950 (A5) `sparse_flash_attention` path:
-BF16, TND/PA_BSND, one KV head, G=8, sparse mode 0/3, TopK 256–2048,
+matching FP16 or BF16 inputs/output, TND/PA_BSND, one KV head, G=8,
+sparse mode 0/3, TopK 256–2048,
 without sinks or returned LSE. Unsupported shapes retain the original path.
 It does not change arch22, C8, indexer, or model integration code.
 
@@ -71,20 +72,24 @@ MTP acceptance recorded during the test was 0.232152 (baseline) and 0.243453
 ## Reproducing correctness checks
 
 On 2026-10-08, the independent A5 branch was rebuilt from code commit
-`9b9886b5b2c925825eb56bb699a6ab3411ee4934`:
+`f7a34b774` (FP16 support and redundant selector checks removed):
 
-- Host UT: 11 tests passed (two suites, including arch35 tiling and inference).
+- Host UT: 12 tests passed, including FP16 mode 0/3 partition selection and
+  common-validation rejection of sparse block sizes 0, 2 and 128 for both dtypes.
 - Complete `ascend950` SFA package: built successfully with CANN 9.1.
-- Device regression: 115 passed, 4 skipped, 1 xfailed on Ascend950DT_9582,
+- Device regression: 235 passed, 8 skipped, 1 xfailed on Ascend950DT_9582,
   CANN 9.1, Python 3.11.10, PyTorch 2.10.0 / torch_npu 2.10.0.post4.
-  Four skips are inapplicable one-query mixed-row cases; the xfail is the
-  existing mode-3 padded-index non-finite output case.
+  FP16: 116 passed, 4 skipped. BF16: 115 passed, 4 skipped, 1 xfailed.
+  Four additional tests verify that mixed Q/KV dtypes are rejected by the
+  existing ACLNN OpDef signature check in modes 0 and 3 (error 161002).
+  Skips are inapplicable one-query mixed-row cases; the xfail is the existing
+  BF16 mode-3 padded-index non-finite output case.
 - Repository pre-commit checks: clang-format 18.1.8, Ruff 0.14.14, OAT,
   duplicate-header and basic file checks passed.
 
 The package was installed in a private vendor prefix; system CANN was not
 changed. Package SHA256:
-`5a2435aa80f28ba697b70e5c80206c0923f57b2519898c8dbbeb10ba97da47c6`.
+`6bc31e130ed4d120d246a7c679f6eb5eb812811d9aa15ba1d9a03fb7111241ff`.
 
 Build an isolated operator package:
 
@@ -103,6 +108,10 @@ python3 -m pytest -q attention/sparse_flash_attention/tests/pytest/test_sfa_spli
 
 Coverage includes sparse mode 0/3, single/multi-batch TND, TopK 256–2048,
 eager/graph replay, full index rows, padded rows, and mixed split/fallback rows.
-Full rows use an independent softmax reference with relative L2 < 0.02.
-Padded rows are fallback smoke checks; a known non-finite mode-3 padded case
-is marked xfail. These checks do not assert padded-row numerical equivalence.
+Full rows use an independent softmax reference with relative L2 < 0.02 for
+BF16 and < 0.005 for FP16. Padded rows are fallback smoke checks; conditional
+xfails cover only B=1/Q=4 eager padded-index cases reproduced with partitioning
+disabled (BF16 mode 3 and FP16 modes 0/3). Only the BF16 case was non-finite in
+this run. These checks do not assert padded-row numerical equivalence.
+The historical performance tables above remain BF16 measurements; FP16
+coverage added here is correctness validation, not a new performance result.
