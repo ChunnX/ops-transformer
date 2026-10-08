@@ -7,6 +7,7 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
+#pragma once
 #include "err/ops_err.h"
 #include "log/log.h"
 #include "op_host/tiling_base.h"
@@ -14,6 +15,7 @@
 #include "tiling/platform/platform_ascendc.h"
 #include "../block_sparse_attention_grad_tiling.h"
 #include <algorithm>
+#include "non_zero_tiling_arch35.h"
 
 namespace optiling {
 namespace BSA_ARC35 {
@@ -21,6 +23,11 @@ namespace BSA_ARC35 {
 int64_t AlignTo(int64_t x, int64_t align)
 {
     return (x + align - 1) / align * align;
+}
+
+int64_t CeilDiv(int64_t x, int64_t align)
+{
+    return AlignTo(x, align) / align;
 }
 
 template <typename... Args>
@@ -248,8 +255,22 @@ protected:
         baseM_ = blockShapeX_ <= 128 ? blockShapeX_ : 128;
         baseN_ = blockShapeY_ <= 128 ? blockShapeY_ : 128;
         uint32_t singleM = AlignTo(2048, baseM_);
-        // Keep all Q tiles for the current KV block/head on one cube core when
-        // possible so DK/DV can accumulate in L0 and K/V stays cached in L1.
+        x_block_num_ = CeilDiv(q_seq_len_, blockShapeX_);
+        y_block_num_ = CeilDiv(kv_seq_len_, blockShapeY_);
+
+        if (!deterministic_) {
+            uint64_t vecCoreNum = cubeCoreNum_ * 2;
+            uint64_t vecRegLen = ascendcPlatform.GetVecRegLen();
+            uint64_t ubSize;
+            ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
+            NonZeroAscendCTilingImpl tilingImpl = NonZeroAscendCTilingImpl(context_);
+
+            if (tilingImpl.DoTiling(vecCoreNum, ubSize, vecRegLen, tilingData_.mNonZeroTilingData) !=
+                ge::GRAPH_SUCCESS) {
+                OP_LOGE(context_->GetNodeName(), "Tiling4NonZero do tiling failed, unsupported shape.");
+                return ge::GRAPH_FAILED;
+            }
+        }
 
         tilingData_.set_BlockX(blockShapeX_);
         tilingData_.set_BlockY(blockShapeY_);
@@ -298,6 +319,27 @@ protected:
 
         tilingData_.set_dqSize(dq_size);
         tilingData_.set_dkSize(dk_size);
+        if (!deterministic_) {
+            // 存放 NonZero 预 kernel 输出的有效 block 下标（数量上界 = mask 元素个数）
+            auto maskShape = context_->GetInputShape(6);
+            if (maskShape == nullptr) {
+                OP_LOGE(context_->GetNodeName(),
+                        "BlockSparseAttentionGrad only support blockSparseMask is not nullptr.");
+                return ge::GRAPH_FAILED;
+            }
+            const gert::Shape &shape = maskShape->GetStorageShape();
+            uint64_t block_sparse_mask_size = 1;
+            for (size_t i = 0; i < shape.GetDimNum(); i++) {
+                block_sparse_mask_size *= static_cast<uint64_t>(shape.GetDim(i));
+            }
+            tilingData_.set_indexWorkspaceOffset(usr_workspace_offset);
+            usr_workspace_offset += AlignTo(static_cast<int64_t>(block_sparse_mask_size) * sizeof(int32_t), 512);
+            tilingData_.set_indexShapeWorkspaceOffset(usr_workspace_offset);
+            usr_workspace_offset += NON_ZERO_SHAPE_WORKSPACE_SIZE;
+            uint64_t vecCoreNum = cubeCoreNum_ * 2;
+            tilingData_.set_nonZeroWorkspaceOffset(usr_workspace_offset);
+            usr_workspace_offset += AlignTo(static_cast<int64_t>(vecCoreNum) * NON_ZERO_COUNT_BYTES_PER_CORE, 512);
+        }
         tilingData_.set_sftgWorkspaceOffset(usr_workspace_offset);
         usr_workspace_offset += sftg_size * sizeof(float);
         tilingData_.set_dqWorkspaceOffset(usr_workspace_offset);
@@ -353,9 +395,11 @@ protected:
     }
 
 private:
+    static constexpr uint64_t NON_ZERO_SHAPE_WORKSPACE_SIZE = 512; // NonZero 输出 shape 占用 24B，留 512B
+    static constexpr uint64_t NON_ZERO_COUNT_BYTES_PER_CORE = 128; // 每个 AIV 在计数 workspace 占 128B
+
     const char *layout_;
     ge::DataType dataType_;
-    uint64_t tilingKey_ = 1000; // arc35 默认tilingkey从1000开始
     BlockSparseAttentionGradTilingDataArch35 tilingData_;
     static constexpr const char *BSND_STR = "BSND";
     static constexpr const char *BNSD_STR = "BNSD";
@@ -369,8 +413,8 @@ private:
     int32_t head_dim_ = 0;
     int32_t blockShapeX_ = 0;
     int32_t blockShapeY_ = 0;
-    int32_t max_q_seq_len_ = 0;
-    int32_t max_kv_seq_len_ = 0;
+    int32_t x_block_num_ = 0;
+    int32_t y_block_num_ = 0;
     bool deterministic_ = false;
     uint32_t cubeCoreNum_ = 0;
     uint32_t baseM_ = 0;

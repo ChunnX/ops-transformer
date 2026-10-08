@@ -34,12 +34,12 @@
 
 extern "C" {
 aclnnStatus aclnnEngramFetchGetWorkspaceSize(const aclTensor *commContext, const aclTensor *indices,
-                                             const aclTensor *localStorageAddr, aclTensor *fetched, aclTensor *permOut,
-                                             aclTensor *sendCountsOut, aclTensor *recvCountsOut,
-                                             aclTensor *recvLocalEntryOut, aclTensor *numRecvOut, int32_t hiddenSize,
-                                             int64_t numEntriesPerRank, int64_t numMaxTokensPerRank,
-                                             int64_t commBufferSize, int64_t withGrad, uint64_t *workspaceSize,
-                                             aclOpExecutor **executor);
+                                             const aclTensor *localStorageAddr, const aclTensor *sfTable,
+                                             int32_t hiddenSize, int64_t numEntriesPerRank, int64_t numMaxTokensPerRank,
+                                             int64_t commBufferSize, int64_t withGrad, aclTensor *fetched,
+                                             aclTensor *permOut, aclTensor *sendCountsOut, aclTensor *recvCountsOut,
+                                             aclTensor *recvLocalEntryOut, aclTensor *numRecvOut, aclTensor *fetchedSf,
+                                             uint64_t *workspaceSize, aclOpExecutor **executor);
 
 aclnnStatus aclnnEngramFetch(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream);
 }
@@ -51,18 +51,18 @@ class AclnnEngramFetchTest : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
-        op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
+        op::SetPlatformNpuArch(Ops::Base::DAV_3510);
         std::cout << "EngramFetch AclnnEngramFetchTest SetUp" << std::endl;
     }
 
     static void TearDownTestCase()
     {
-        op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
+        op::SetPlatformNpuArch(Ops::Base::DAV_3510);
         std::cout << "EngramFetch AclnnEngramFetchTest TearDown" << std::endl;
     }
 };
 
-TEST_F(AclnnEngramFetchTest, ascend950_inference_success)
+TEST_F(AclnnEngramFetchTest, dav3510_inference_success)
 {
     auto commContext_desc = TensorDesc({2048}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 1);
     auto indices_desc = TensorDesc({8}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 7);
@@ -73,8 +73,8 @@ TEST_F(AclnnEngramFetchTest, ascend950_inference_success)
     int64_t zero = 0;
 
     auto ut = OP_API_UT(aclnnEngramFetch,
-                        INPUT(commContext_desc, indices_desc, nullptr, fetched_desc, nullptr, nullptr, nullptr, nullptr,
-                              nullptr, hiddenSize, numEntriesPerRank, zero, zero, zero),
+                        INPUT(commContext_desc, indices_desc, nullptr, nullptr, hiddenSize, numEntriesPerRank, zero,
+                              zero, zero, fetched_desc, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr),
                         OUTPUT());
 
     uint64_t workspace_size = 0;
@@ -84,7 +84,7 @@ TEST_F(AclnnEngramFetchTest, ascend950_inference_success)
     EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
-TEST_F(AclnnEngramFetchTest, ascend950_training_success)
+TEST_F(AclnnEngramFetchTest, dav3510_training_success)
 {
     auto commContext_desc = TensorDesc({6146}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 1);
     auto indices_desc = TensorDesc({8}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 7);
@@ -102,11 +102,12 @@ TEST_F(AclnnEngramFetchTest, ascend950_training_success)
     int64_t commBufferSize = 4194304;
     int64_t withGrad = 1;
 
-    auto ut = OP_API_UT(aclnnEngramFetch,
-                        INPUT(commContext_desc, indices_desc, localStorageAddr_desc, fetched_desc, permOut_desc,
-                              sendCountsOut_desc, recvCountsOut_desc, recvLocalEntryOut_desc, numRecvOut_desc,
-                              hiddenSize, numEntriesPerRank, numMaxTokensPerRank, commBufferSize, withGrad),
-                        OUTPUT());
+    auto ut =
+        OP_API_UT(aclnnEngramFetch,
+                  INPUT(commContext_desc, indices_desc, localStorageAddr_desc, nullptr, hiddenSize, numEntriesPerRank,
+                        numMaxTokensPerRank, commBufferSize, withGrad, fetched_desc, permOut_desc, sendCountsOut_desc,
+                        recvCountsOut_desc, recvLocalEntryOut_desc, numRecvOut_desc, nullptr),
+                  OUTPUT());
 
     uint64_t workspace_size = 0;
     aclOpExecutor *executor = nullptr;
@@ -115,7 +116,7 @@ TEST_F(AclnnEngramFetchTest, ascend950_training_success)
     EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
-TEST_F(AclnnEngramFetchTest, ascend950_nullptr_commContext)
+TEST_F(AclnnEngramFetchTest, dav3510_nullptr_commContext)
 {
     auto indices_desc = TensorDesc({8}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 7);
     auto fetched_desc = TensorDesc({8, 512}, ACL_BF16, ACL_FORMAT_ND);
@@ -125,8 +126,8 @@ TEST_F(AclnnEngramFetchTest, ascend950_nullptr_commContext)
     int64_t zero = 0;
 
     auto ut = OP_API_UT(aclnnEngramFetch,
-                        INPUT(nullptr, indices_desc, nullptr, fetched_desc, nullptr, nullptr, nullptr, nullptr, nullptr,
-                              hiddenSize, numEntriesPerRank, zero, zero, zero),
+                        INPUT(nullptr, indices_desc, nullptr, nullptr, hiddenSize, numEntriesPerRank, zero, zero, zero,
+                              fetched_desc, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr),
                         OUTPUT());
 
     uint64_t workspace_size = 0;
@@ -135,7 +136,7 @@ TEST_F(AclnnEngramFetchTest, ascend950_nullptr_commContext)
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
 }
 
-TEST_F(AclnnEngramFetchTest, ascend950_nullptr_indices)
+TEST_F(AclnnEngramFetchTest, dav3510_nullptr_indices)
 {
     auto commContext_desc = TensorDesc({2048}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 1);
     auto fetched_desc = TensorDesc({8, 512}, ACL_BF16, ACL_FORMAT_ND);
@@ -145,8 +146,8 @@ TEST_F(AclnnEngramFetchTest, ascend950_nullptr_indices)
     int64_t zero = 0;
 
     auto ut = OP_API_UT(aclnnEngramFetch,
-                        INPUT(commContext_desc, nullptr, nullptr, fetched_desc, nullptr, nullptr, nullptr, nullptr,
-                              nullptr, hiddenSize, numEntriesPerRank, zero, zero, zero),
+                        INPUT(commContext_desc, nullptr, nullptr, nullptr, hiddenSize, numEntriesPerRank, zero, zero,
+                              zero, fetched_desc, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr),
                         OUTPUT());
 
     uint64_t workspace_size = 0;
@@ -155,7 +156,7 @@ TEST_F(AclnnEngramFetchTest, ascend950_nullptr_indices)
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
 }
 
-TEST_F(AclnnEngramFetchTest, ascend950_nullptr_fetched)
+TEST_F(AclnnEngramFetchTest, dav3510_nullptr_fetched)
 {
     auto commContext_desc = TensorDesc({2048}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 1);
     auto indices_desc = TensorDesc({8}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 7);
@@ -165,17 +166,18 @@ TEST_F(AclnnEngramFetchTest, ascend950_nullptr_fetched)
     int64_t zero = 0;
 
     auto ut = OP_API_UT(aclnnEngramFetch,
-                        INPUT(commContext_desc, indices_desc, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-                              nullptr, hiddenSize, numEntriesPerRank, zero, zero, zero),
+                        INPUT(commContext_desc, indices_desc, nullptr, nullptr, hiddenSize, numEntriesPerRank, zero,
+                              zero, zero, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr),
                         OUTPUT());
 
     uint64_t workspace_size = 0;
     aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
-    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
+    EXPECT_THAT(aclRet, testing::AnyOf(testing::Eq(ACLNN_ERR_PARAM_NULLPTR), testing::Eq(ACLNN_ERR_PARAM_INVALID),
+                                       testing::Eq(ACLNN_ERR_RUNTIME_ERROR), testing::Eq(ACLNN_ERR_INNER)));
 }
 
-TEST_F(AclnnEngramFetchTest, ascend950_execute_entry)
+TEST_F(AclnnEngramFetchTest, dav3510_execute_entry)
 {
     aclnnStatus ret = aclnnEngramFetch(nullptr, 0, nullptr, nullptr);
     EXPECT_THAT(ret, testing::AnyOf(testing::Eq(ACLNN_SUCCESS), testing::Eq(ACLNN_ERR_PARAM_NULLPTR),

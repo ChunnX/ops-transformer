@@ -5,22 +5,22 @@
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：支持
+- <term>Ascend 950PR&950DT系列产品</term>：支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+- <term>Atlas A3系列产品</term>：支持
 <!-- end id2 -->
 <!-- npu="910b" id3 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+- <term>Atlas A2系列产品</term>：支持
 <!-- end id3 -->
 <!-- npu="310b" id4 -->
-- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+- <term>Atlas 200I/500 A2推理产品</term>：不支持
 <!-- end id4 -->
 <!-- npu="310p" id5 -->
-- <term>Atlas 推理系列产品</term>：不支持
+- <term>Atlas推理系列产品</term>：不支持
 <!-- end id5 -->
 <!-- npu="910" id6 -->
-- <term>Atlas 训练系列产品</term>：不支持
+- <term>Atlas训练系列产品</term>：不支持
 <!-- end id6 -->
 
 ## 功能说明
@@ -29,14 +29,14 @@
     相较于[GroupedMatmul](aclnnGroupedMatmul.md)接口，**此接口新增**：
 
   <!-- npu="A3,910b" id7 -->
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+  - <term>Atlas A2系列产品</term>、<term>Atlas A3系列产品</term>：
     - 支持不同分组轴，由groupType表示。
     - 非量化场景，支持x，weight转置（转置指若shape为[M,K]时，则stride为[1,  M],数据排布为[K,M]的场景）。
     - 非量化场景支持x，weight输入都为float32类型。
     - 量化、伪量化场景，支持weight转置，支持weight为单tensor。
   <!-- end id7 -->
   <!-- npu="950" id8 -->
-  - <term>Ascend 950PR/Ascend 950DT</term>：
+  - <term>Ascend 950PR&950DT系列产品</term>：
     - 支持不同分组轴，由groupType表示。
     - 非量化场景支持x，weight输入都为float32类型。
     - 伪量化场景，支持weight转置，支持x，weight，y均为单tensor。
@@ -260,7 +260,7 @@ aclnnStatus aclnnGroupedMatmulV2(
   </tbody></table>
 
   <!-- npu="A3,910b" id9 -->
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+  - <term>Atlas A2系列产品</term>、<term>Atlas A3系列产品</term>：
     - x支持FLOAT16、BFLOAT16、INT8、FLOAT32
     - weight支持FLOAT16、BFLOAT16、INT8、FLOAT32
     - biasOptional支持FLOAT16、FLOAT32、INT32
@@ -268,14 +268,14 @@ aclnnStatus aclnnGroupedMatmulV2(
     - 输入参数x、weight，输出参数y支持最多128个tensor
   <!-- end id9 -->
   <!-- npu="950" id10 -->
-  - <term>Ascend 950PR/Ascend 950DT</term>：
+  - <term>Ascend 950PR&950DT系列产品</term>：
     - x支持FLOAT16、BFLOAT16、FLOAT32
     - weight支持FLOAT16、BFLOAT16、FLOAT32、INT8
     - biasOptional支持FLOAT16、BFLOAT16、FLOAT32
     - y支持FLOAT16、BFLOAT16、FLOAT32
     - 不支持scaleOptional、offsetOptional
     - groupType支持m轴分组和不分组，仅非量化支持k轴分组
-    - 输入参数x、weight，输出参数y在非量化场景支持最多1024个tensor，在伪量化场景支持最多128个tensor
+    - 输入参数x、weight，输出参数y支持最多128个tensor
 
   <!-- end id10 -->
 
@@ -373,7 +373,7 @@ aclnnStatus aclnnGroupedMatmulV2(
   - aclnnGroupedMatmulV2默认确定性实现。
 
 <!-- npu="A3,910b" id11 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+- <term>Atlas A2系列产品</term>、<term>Atlas A3系列产品</term>：
   - 非量化场景支持的输入类型为：
     - x为FLOAT16、weight为FLOAT16、biasOptional为FLOAT16、scaleOptional为空、offsetOptional为空、antiquantScaleOptional为空、 antiquantOffsetOptional为空、y为FLOAT16；
     - x为BFLOAT16、weight为BFLOAT16、biasOptional为FLOAT32、scaleOptional为空、offsetOptional为空、antiquantScaleOptional为空、 antiquantOffsetOptional为空、y为BFLOAT16；
@@ -381,6 +381,7 @@ aclnnStatus aclnnGroupedMatmulV2(
   - 量化场景支持的输入类型为：
 
     - x为INT8、weight为INT8、biasOptional为INT32、scaleOptional为UINT64、offsetOptional为空、antiquantScaleOptional为空、antiquantOffsetOptional为空、y为INT8；
+    - x为INT8、weight为INT8、biasOptional为INT32或空、scaleOptional为空、offsetOptional为空、antiquantScaleOptional为空、antiquantOffsetOptional为空、y为INT32；
   - 伪量化场景支持的输入类型为：
     - x为FLOAT16、weight为INT8、biasOptional为FLOAT16、scaleOptional为空，offsetOptional为空，antiquantScaleOptional为FLOAT16、 antiquantOffsetOptional为FLOAT16、y为FLOAT16；
     - x为BFLOAT16、weight为INT8、biasOptional为FLOAT32、scaleOptional为空，offsetOptional为空，antiquantScaleOptional为BFLOAT16、 antiquantOffsetOptional为BFLOAT16、y为BFLOAT16；
@@ -403,7 +404,7 @@ aclnnStatus aclnnGroupedMatmulV2(
 
 <!-- end id11 -->
 <!-- npu="950" id12 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：
+- <term>Ascend 950PR&950DT系列产品</term>：
 
     <details>
     <summary>非量化场景约束</summary>
@@ -454,11 +455,11 @@ aclnnStatus aclnnGroupedMatmulV2(
       | groupType | 支持场景 | 场景限制 |
       |:---------:|:-------:| :-------|
       | -1 | 多多多 |1）仅支持splitItem为0/1<br>2）非量化x，out中tensor需为2维， shape分别为（$m_i$, $k_i$）和（$m_i$, $n_i$）；伪量化场景x中tensor要求维度一致，支持2-6维，y中tensor维度和x保持一致；weight中tensor需为2维，shape为（$n_i$, $k_i$）或（$k_i$, $n_i$）；bias中tensor需为1维，shape为（$n_i$）<br>3）groupListOptional必须传空<br>4）仅支持ND进ND出<br>5）支持weight转置，但weight的tensorList中每个tensor是否转置需保持统一<br>6）x不支持转置 |
-      | 0 | 单单单 |1）仅支持splitItem为2/3<br>2）weight中tensor需为3维，shape为（g, N, K）或（g, K, N）；x，y中tensor需为2维，shape分别为（M, K）和（M, N）；bias中tensor需为2维，shape为（g, N）<br>3）必须传groupListOptional，最后一个值不大于x中tensor的第一维<br>4）groupListOptional第1维最大支持1024，即最多支持1024个group<br>5）仅支持ND进ND出<br>6）支持weight转置<br>7）x不支持转置|
-      | 0 | 单多单 |1）仅支持splitItem为2/3<br>2）必须传groupListOptional且最后一个值与x中tensor的第一维相等，长度最大为1024<br>3）x，y中tensor需为2维， shape分别为（M, K）和（M, N）；weight中tensor需为2维，shape为（N, K）或（K, N）；bias中tensor需为1维，shape为（N）<br>4）weight中每个tensor的N轴必须相等<br>5）仅支持ND进ND出<br>6）支持weight转置，但weight的tensorList中每个tensor是否转置需保持统一<br>7）x不支持转置 <br>8）仅支持非量化|
-      | 0 | 单多多 |1）仅支持splitItem为0/1<br>2）必须传groupListOptional，groupListOptional的差值需与y中tensor的第一维一一对应，且长度最大为1024<br>3）x，y中tensor需为2维， shape分别为（M, K）和（M, N）；weight中tensor需为2维，shape为（N, K）或（K, N）；bias中tensor需为1维，shape为（N）<br>4）仅支持ND进ND出<br>5）支持weight转置，但weight的tensorList中每个tensor是否转置需保持统一<br>6）x不支持转置<br>7）仅支持非量化|
-      | 0 | 多多单 |1）仅支持splitItem为2<br>2）x，y中tensor需为2维，shape分别为（M, K）和（M, N）；weight中tensor需为2维，shape为（N, K）或（K, N）；bias中tensor需为1维，shape为（N）<br>3）weight中每个tensor的N轴必须相等<br>4）若传groupListOptional，groupListOptional的差值需与x中tensor的第一维一一对应，且长度最大为1024<br>5）仅支持ND进ND出<br>6）支持weight转置，但weight的tensorList中每个tensor是否转置需保持统一<br>7）x不支持转置<br>8）仅支持非量化|
-      | 2 | 单单单 |1）仅支持splitItem为2/3<br>2）x，weight中tensor需为2维，shape分别为（K, M）和（K, N）；y中tensor需为3维，shape为（g, M, N）<br>3）必须传groupListOptional，最后一个值不大于x中tensor的第一维<br>4）groupListOptional第1维最大支持1024，即最多支持1024个group<br>5）x必须转置且weight不能转置<br>6）仅支持ND进ND出<br>7）仅支持非量化|
+      | 0 | 单单单 |1）仅支持splitItem为2/3<br>2）weight中tensor需为3维，shape为（g, N, K）或（g, K, N）；x，y中tensor需为2维，shape分别为（M, K）和（M, N）；bias中tensor需为2维，shape为（g, N）<br>3）必须传groupListOptional，最后一个值不大于x中tensor的第一维<br>4）groupListOptional第1维最大支持128，即最多支持128个group<br>5）仅支持ND进ND出<br>6）支持weight转置<br>7）x不支持转置|
+      | 0 | 单多单 |1）仅支持splitItem为2/3<br>2）必须传groupListOptional且最后一个值与x中tensor的第一维相等，长度最大为128<br>3）x，y中tensor需为2维， shape分别为（M, K）和（M, N）；weight中tensor需为2维，shape为（N, K）或（K, N）；bias中tensor需为1维，shape为（N）<br>4）weight中每个tensor的N轴必须相等<br>5）仅支持ND进ND出<br>6）支持weight转置，但weight的tensorList中每个tensor是否转置需保持统一<br>7）x不支持转置 <br>8）仅支持非量化|
+      | 0 | 单多多 |1）仅支持splitItem为0/1<br>2）必须传groupListOptional，groupListOptional的差值需与y中tensor的第一维一一对应，且长度最大为128<br>3）x，y中tensor需为2维， shape分别为（M, K）和（M, N）；weight中tensor需为2维，shape为（N, K）或（K, N）；bias中tensor需为1维，shape为（N）<br>4）仅支持ND进ND出<br>5）支持weight转置，但weight的tensorList中每个tensor是否转置需保持统一<br>6）x不支持转置<br>7）仅支持非量化|
+      | 0 | 多多单 |1）仅支持splitItem为2<br>2）x，y中tensor需为2维，shape分别为（M, K）和（M, N）；weight中tensor需为2维，shape为（N, K）或（K, N）；bias中tensor需为1维，shape为（N）<br>3）weight中每个tensor的N轴必须相等<br>4）若传groupListOptional，groupListOptional的差值需与x中tensor的第一维一一对应，且长度最大为128<br>5）仅支持ND进ND出<br>6）支持weight转置，但weight的tensorList中每个tensor是否转置需保持统一<br>7）x不支持转置<br>8）仅支持非量化|
+      | 2 | 单单单 |1）仅支持splitItem为2/3<br>2）x，weight中tensor需为2维，shape分别为（K, M）和（K, N）；y中tensor需为3维，shape为（g, M, N）<br>3）必须传groupListOptional，最后一个值不大于x中tensor的第一维<br>4）groupListOptional第1维最大支持128，即最多支持128个group<br>5）x必须转置且weight不能转置<br>6）仅支持ND进ND出<br>7）仅支持非量化|
 
     </details>
 

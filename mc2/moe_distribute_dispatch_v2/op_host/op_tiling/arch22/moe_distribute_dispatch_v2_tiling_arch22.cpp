@@ -619,6 +619,9 @@ static ge::graphStatus MoeDistributeDispatchA2CheckShapeAndSetTiling(const gert:
     auto attrs = context->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(K_INNER_DEBUG, "attrs"), return ge::GRAPH_FAILED);
     auto quantModePtr = attrs->GetAttrPointer<int64_t>(ATTR_QUANT_MODE_INDEX);
+    OP_TILING_CHECK(quantModePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "quantMode"),
+                    return ge::GRAPH_FAILED);
+
     OP_TILING_CHECK(MoeDistributeDispatchA2CheckHAndBs(xDesc->GetDataType(), h, bs, isLayered) != ge::GRAPH_SUCCESS,
                     OP_LOGE_WITHOUT_REPORT(nodeName, "MoeDistributeDispatchA2 CheckHAndBs Failed"),
                     return ge::GRAPH_FAILED);
@@ -626,6 +629,8 @@ static ge::graphStatus MoeDistributeDispatchA2CheckShapeAndSetTiling(const gert:
     auto moeExpertNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_MOE_EXPERT_NUM_INDEX);
     auto zeroExpertNumPtr = attrs->GetAttrPointer<int64_t>(static_cast<int>(ATTR_ZERO_EXPERT_NUM_INDEX));
     auto copyExpertNumPtr = attrs->GetAttrPointer<int64_t>(static_cast<int>(ATTR_COPY_EXPERT_NUM_INDEX));
+    OP_TILING_CHECK(moeExpertNumPtr == nullptr || zeroExpertNumPtr == nullptr || copyExpertNumPtr == nullptr,
+                    OP_LOGE_WITH_INVALID_INPUT(nodeName, "expertNum attrs"), return ge::GRAPH_FAILED);
     // 判断是否满足uint32_t及其他限制
     int32_t moeExpertNum = *moeExpertNumPtr;
     int32_t zeroExpertNum = static_cast<int32_t>(*zeroExpertNumPtr);
@@ -645,6 +650,9 @@ static ge::graphStatus MoeDistributeDispatchA2CheckShapeAndSetTiling(const gert:
         MoeDistributeDispatchA2CheckActiveMask(xActiveMaskStorageShape, bs, k, nodeName) != ge::GRAPH_SUCCESS,
         OP_LOGE_WITHOUT_REPORT(nodeName, "MoeDistributeDispatchA2 CheckActiveMask Failed"), return ge::GRAPH_FAILED);
     auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX);
+    OP_TILING_CHECK(epWorldSizePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "epWorldSize"),
+                    return ge::GRAPH_FAILED);
+
     OP_TILING_CHECK(
         MoeDistributeDispatchA2CheckPerformanceInfo(performanceInfoStorageShape, epWorldSizePtr) != ge::GRAPH_SUCCESS,
         OP_LOGE_WITHOUT_REPORT(nodeName, "MoeDistributeDispatchA2 CheckPerformanceInfo Failed"),
@@ -896,7 +904,7 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncA2A3::CheckQuantModeMatchScales
 
 ge::graphStatus MoeDistributeDispatchV2TilingFuncA2A3::CheckCommAlgPtr(const char *commAlgPtr, const char *nodeName)
 {
-    if ((strlen(commAlgPtr) != 0) && (strcmp(commAlgPtr, "fullmesh_v1") != 0) &&
+    if ((commAlgPtr != nullptr) && (strlen(commAlgPtr) != 0) && (strcmp(commAlgPtr, "fullmesh_v1") != 0) &&
         (strcmp(commAlgPtr, "fullmesh_v2") != 0) && (strcmp(commAlgPtr, "hierarchy") != 0)) {
         OP_LOGE_WITH_INVALID_ATTR(nodeName, "comm_alg", commAlgPtr,
                                   "\"hierarchy\", \"fullmesh_v1\" or \"fullmesh_v2\"");

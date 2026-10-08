@@ -8,7 +8,6 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-
 #include "nsa_selected_attention.h"
 #include "aclnn_nsa_selected_attention.h"
 #include "aclnn_kernels/contiguous.h"
@@ -88,8 +87,8 @@ void AnalysisAxisForTnd(const Shape &qShape, const Shape &kShape, const Shape &v
     shapeInfo.axes.dv = vShape[DIM_NUM_2];
 }
 
-aclnnStatus AnalysisAxis(const aclTensor *query, const aclTensor *key, const aclTensor *value, 
-                         const char *inputLayout, NSAShapeInfo &shapeInfo)
+aclnnStatus AnalysisAxis(const aclTensor *query, const aclTensor *key, const aclTensor *value, const char *inputLayout,
+                         NSAShapeInfo &shapeInfo)
 {
     Shape qShape = query->GetViewShape();
     Shape kShape = key->GetViewShape();
@@ -109,13 +108,13 @@ aclnnStatus AnalysisAxis(const aclTensor *query, const aclTensor *key, const acl
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (shapeInfo.axes.d != shapeInfo.axes.dk) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "qD and kD should be same, but got qD=%ld kD=%ld", shapeInfo.axes.d, 
-            shapeInfo.axes.dk);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "qD and kD should be same, but got qD=%ld kD=%ld", shapeInfo.axes.d,
+                shapeInfo.axes.dk);
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (shapeInfo.axes.d < shapeInfo.axes.dv) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "only support kD >= vD, but got kD=%ld vD=%ld", shapeInfo.axes.d, 
-            shapeInfo.axes.dv);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "only support kD >= vD, but got kD=%ld vD=%ld", shapeInfo.axes.d,
+                shapeInfo.axes.dv);
         return ACLNN_ERR_PARAM_INVALID;
     }
     auto qDim = qShape.GetDimNum();
@@ -123,13 +122,15 @@ aclnnStatus AnalysisAxis(const aclTensor *query, const aclTensor *key, const acl
     auto vDim = vShape.GetDimNum();
     if (qDim != DIM_NUM_3 || kDim != DIM_NUM_3 || vDim != DIM_NUM_3) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "input shape error: expected all shapes to be %dD, but got qDim=%ld, kDim=%ld, vDim=%ld",
-                DIM_NUM_3, qDim, kDim, vDim);
+                "input shape error: expected all shapes to be %dD, but got qDim=%ld, kDim=%ld, vDim=%ld", DIM_NUM_3,
+                qDim, kDim, vDim);
         return ACLNN_ERR_PARAM_INVALID;
     }
-    if (qShape[0] == 0 || kShape[0] == 0 || shapeInfo.axes.n1 == 0 || shapeInfo.axes.n2 == 0 ||shapeInfo.axes.d == 0 || shapeInfo.axes.dv == 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,  "input shape error, got 0 in Tq Tkv Nq Nkv Dqk Dv (%ld, %ld, %ld, %ld, %ld, %ld)", 
-        qShape[0], kShape[0], shapeInfo.axes.n1, shapeInfo.axes.n2, shapeInfo.axes.d, shapeInfo.axes.dv);
+    if (qShape[0] == 0 || kShape[0] == 0 || shapeInfo.axes.n1 == 0 || shapeInfo.axes.n2 == 0 || shapeInfo.axes.d == 0 ||
+        shapeInfo.axes.dv == 0) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "input shape error, got 0 in Tq Tkv Nq Nkv Dqk Dv (%ld, %ld, %ld, %ld, %ld, %ld)", qShape[0], kShape[0],
+                shapeInfo.axes.n1, shapeInfo.axes.n2, shapeInfo.axes.d, shapeInfo.axes.dv);
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
@@ -149,23 +150,22 @@ aclnnStatus InputDtypeCheck(const aclTensor *query, const aclTensor *key, const 
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus AnalysisInput(const aclTensor *query, const aclTensor *key, const aclTensor *value, 
-                          [[maybe_unused]] const aclTensor *topkIndices, char *inputLayout, NSAShapeInfo &shapeInfo, 
+aclnnStatus AnalysisInput(const aclTensor *query, const aclTensor *key, const aclTensor *value,
+                          [[maybe_unused]] const aclTensor *topkIndices, char *inputLayout, NSAShapeInfo &shapeInfo,
                           const aclIntArray *actualSeqQLenOptional = nullptr,
                           const aclIntArray *actualSeqKvLenOptional = nullptr)
 {
-    CHECK_RET(
-        AnalysisAxis(query, key, value, inputLayout, shapeInfo) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(AnalysisAxis(query, key, value, inputLayout, shapeInfo) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
     if (shapeInfo.axes.d > HEAD_DIM_MAX) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Head dim must <= 768, but got %ld", shapeInfo.axes.d);
         return ACLNN_ERR_PARAM_INVALID;
     }
 
-    if ((actualSeqQLenOptional != nullptr && actualSeqKvLenOptional != nullptr) && 
-                    (actualSeqQLenOptional->Size() > 3 * 1024 || actualSeqKvLenOptional->Size() > 3 * 1024)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, 
-                "actualSeqQLen size and actualSeqKvLen size must <= 3072, but got %lu ", actualSeqQLenOptional->Size());
+    if ((actualSeqQLenOptional != nullptr && actualSeqKvLenOptional != nullptr) &&
+        (actualSeqQLenOptional->Size() > 3 * 1024 || actualSeqKvLenOptional->Size() > 3 * 1024)) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "actualSeqQLen size and actualSeqKvLen size must <= 3072, but got %lu ",
+                actualSeqQLenOptional->Size());
         return ACLNN_ERR_PARAM_INVALID;
     }
 
@@ -178,7 +178,7 @@ aclnnStatus AnalysisInput(const aclTensor *query, const aclTensor *key, const ac
         return ACLNN_ERR_PARAM_INVALID;
     }
 
-    OP_LOGD("Analysis input success. Analysis result: " 
+    OP_LOGD("Analysis input success. Analysis result: "
             "[needReshape]: %d, [needPad]: %d, [padNum]: %lu,"
             "[needTranspose]: %d.",
             shapeInfo.needReshape, shapeInfo.needPad, shapeInfo.padNum, shapeInfo.needTranspose);
@@ -202,8 +202,7 @@ static inline const aclTensor *GeneratePaddings(int32_t dimNum, int32_t padNum, 
 }
 
 aclnnStatus Contiguous(const aclTensor *&query, const aclTensor *&key, const aclTensor *&value,
-                       const aclTensor *&topkIndices, const aclTensor *&attenMaskOptional,
-                       aclOpExecutor *executor)
+                       const aclTensor *&topkIndices, const aclTensor *&attenMaskOptional, aclOpExecutor *executor)
 {
     query = l0op::Contiguous(query, executor);
     CHECK_RET(query != nullptr, ACLNN_ERR_INNER_NULLPTR);
@@ -220,70 +219,54 @@ aclnnStatus Contiguous(const aclTensor *&query, const aclTensor *&key, const acl
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus PreprocessQKV(const aclTensor *&value,
-                          const struct NSAShapeInfo &shapeInfo, aclOpExecutor *executor)
+aclnnStatus PreprocessQKV(const aclTensor *&value, const struct NSAShapeInfo &shapeInfo, aclOpExecutor *executor)
 {
     if (shapeInfo.needPadValue) {
         int32_t dimNum = (shapeInfo.inputLayout == InputLayout::TND) ? DIM_NUM_3 : DIM_NUM_4;
         auto paddings = GeneratePaddings(dimNum, shapeInfo.axes.d - shapeInfo.axes.dv, executor);
         value = l0op::Pad(value, paddings, executor);
         CHECK_RET(value != nullptr, ACLNN_ERR_INNER_NULLPTR);
-
     }
     return ACLNN_SUCCESS;
 }
 
-
-aclnnStatus CheckNsaParam(const aclTensor *query, const aclTensor *key, const aclTensor *value, 
-    const aclTensor *topkIndices, const aclIntArray *actualSeqQLenOptional, const aclIntArray *actualSeqKvLenOptional, 
-    const char *inputLayout, const aclTensor *softmaxMaxOut, const aclTensor *softmaxSumOut, 
-    const aclTensor *attentionOut, const uint64_t *workspaceSize, aclOpExecutor ** const executor)
+aclnnStatus CheckNsaParam(const aclTensor *query, const aclTensor *key, const aclTensor *value,
+                          const aclTensor *topkIndices, const aclIntArray *actualSeqQLenOptional,
+                          const aclIntArray *actualSeqKvLenOptional, const char *inputLayout,
+                          const aclTensor *softmaxMaxOut, const aclTensor *softmaxSumOut, const aclTensor *attentionOut,
+                          const uint64_t *workspaceSize, aclOpExecutor **const executor)
 {
     // 必须的参数指针判空
-    CHECK_RET(query != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(key != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(value != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(topkIndices != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(actualSeqQLenOptional != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(actualSeqKvLenOptional != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(inputLayout != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(executor != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(workspaceSize != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(softmaxMaxOut != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(softmaxSumOut != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(attentionOut != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(query != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(key != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(value != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(topkIndices != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(actualSeqQLenOptional != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(actualSeqKvLenOptional != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(inputLayout != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(executor != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(workspaceSize != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(softmaxMaxOut != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(softmaxSumOut != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(attentionOut != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     return ACLNN_SUCCESS;
 }
 
-
 aclnnStatus aclnnNsaSelectedAttentionGetWorkspaceSize(
-    const aclTensor *query, 
-    const aclTensor *key, 
-    const aclTensor *value, 
-    const aclTensor *topkIndices, 
-    const aclTensor *attenMaskOptional,
-    const aclIntArray *actualSeqQLenOptional,
-    const aclIntArray *actualSeqKvLenOptional, 
-    double scaleValue, 
-    int64_t headNum,
-    char *inputLayout, 
-    int64_t sparseMode, 
-    int64_t selectedBlockSize,
-    int64_t selectedBlockCount, 
-    const aclTensor *softmaxMaxOut,
-    const aclTensor *softmaxSumOut, 
-    const aclTensor *attentionOut,
-    uint64_t *workspaceSize, 
-    aclOpExecutor **executor)
+    const aclTensor *query, const aclTensor *key, const aclTensor *value, const aclTensor *topkIndices,
+    const aclTensor *attenMaskOptional, const aclIntArray *actualSeqQLenOptional,
+    const aclIntArray *actualSeqKvLenOptional, double scaleValue, int64_t headNum, char *inputLayout,
+    int64_t sparseMode, int64_t selectedBlockSize, int64_t selectedBlockCount, const aclTensor *softmaxMaxOut,
+    const aclTensor *softmaxSumOut, const aclTensor *attentionOut, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    CHECK_RET(CheckNsaParam(query, key, value, topkIndices, actualSeqQLenOptional, actualSeqKvLenOptional, 
-    inputLayout, softmaxMaxOut, softmaxSumOut, attentionOut, 
-    workspaceSize, executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
-    L2_DFX_PHASE_1(aclnnNsaSelectedAttention,
-                   DFX_IN(query, key, value, topkIndices, attenMaskOptional, actualSeqQLenOptional, 
-                          actualSeqKvLenOptional, scaleValue, headNum, inputLayout,
-                          sparseMode, selectedBlockSize, selectedBlockCount),
-                   DFX_OUT(softmaxMaxOut, softmaxSumOut, attentionOut));
+    CHECK_RET(CheckNsaParam(query, key, value, topkIndices, actualSeqQLenOptional, actualSeqKvLenOptional, inputLayout,
+                            softmaxMaxOut, softmaxSumOut, attentionOut, workspaceSize, executor) == ACLNN_SUCCESS,
+              ACLNN_ERR_PARAM_NULLPTR);
+    L2_DFX_PHASE_1(
+        aclnnNsaSelectedAttention,
+        DFX_IN(query, key, value, topkIndices, attenMaskOptional, actualSeqQLenOptional, actualSeqKvLenOptional,
+               scaleValue, headNum, inputLayout, sparseMode, selectedBlockSize, selectedBlockCount),
+        DFX_OUT(softmaxMaxOut, softmaxSumOut, attentionOut));
 
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
@@ -301,9 +284,9 @@ aclnnStatus aclnnNsaSelectedAttentionGetWorkspaceSize(
         return ACLNN_ERR_PARAM_INVALID;
     }
     NSAShapeInfo shapeInfo;
-    CHECK_RET(AnalysisInput(query, key, value, topkIndices, inputLayout, 
-                            shapeInfo, actualSeqQLenOptional,
-                            actualSeqKvLenOptional) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(AnalysisInput(query, key, value, topkIndices, inputLayout, shapeInfo, actualSeqQLenOptional,
+                            actualSeqKvLenOptional) == ACLNN_SUCCESS,
+              ACLNN_ERR_PARAM_INVALID);
 
     aclOpExecutor *l0Executor = uniqueExecutor.get();
 
@@ -312,10 +295,9 @@ aclnnStatus aclnnNsaSelectedAttentionGetWorkspaceSize(
 
     CHECK_RET(PreprocessQKV(value, shapeInfo, l0Executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
 
-        auto l0NsaSelectedAttentionOuts = l0op::NsaSelectedAttention(
-        query, key, value, topkIndices, attenMaskOptional, actualSeqQLenOptional, 
-                          actualSeqKvLenOptional, scaleValue, headNum, shapeInfo.l0InputLayoutStr.c_str(),
-                          sparseMode, selectedBlockSize, selectedBlockCount, l0Executor);
+    auto l0NsaSelectedAttentionOuts = l0op::NsaSelectedAttention(
+        query, key, value, topkIndices, attenMaskOptional, actualSeqQLenOptional, actualSeqKvLenOptional, scaleValue,
+        headNum, shapeInfo.l0InputLayoutStr.c_str(), sparseMode, selectedBlockSize, selectedBlockCount, l0Executor);
 
     CHECK_RET(l0NsaSelectedAttentionOuts[0] != nullptr, ACLNN_ERR_INNER_NULLPTR);
     CHECK_RET(l0NsaSelectedAttentionOuts[1] != nullptr, ACLNN_ERR_INNER_NULLPTR);
@@ -345,13 +327,13 @@ aclnnStatus aclnnNsaSelectedAttentionGetWorkspaceSize(
 }
 
 aclnnStatus aclnnNsaSelectedAttention(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                           const aclrtStream stream)
+                                      const aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnNsaSelectedAttention);
     // 固定写法，调用框架能力，完成计算
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
 }
-}  // namespace
+} // namespace
 
 #ifdef __cplusplus
 }

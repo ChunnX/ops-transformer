@@ -5,6 +5,8 @@
 ```text
 pytest/
 ├── README.md                          # 测试框架说明
+├── pytest.ini                         # ci marker
+├── test_run.sh                        # 本地 ST 入口
 ├── test_kda_input_proj_accuracy.py    # 四路输出端到端精度用例
 ├── kda_input_proj_mx_quant_golden.py  # Stage1 DynamicMxQuant CPU golden
 ├── kda_input_proj_qkv_golden.py       # Stage2 QuantMatmul(qkv) CPU golden
@@ -21,6 +23,8 @@ pytest/
 
 仅支持 Ascend 950PR/950DT。非该器件时用例会 skip。
 
+可通过环境变量 `TEST_DEVICE_ID` 指定 NPU；未设置时会跳过已被占用、无法 `set_device` 的卡。
+
 ## 使用方法
 
 在仓库根目录执行：
@@ -29,4 +33,11 @@ pytest/
 python3 -m pytest -rA -s \
   attention/kda_input_proj/tests/pytest/test_kda_input_proj_accuracy.py \
   -v -m ci
+```
+
+或在本目录执行：
+
+```bash
+bash test_run.sh single
+# 指定卡号：TEST_DEVICE_ID=5 bash test_run.sh single
 ```

@@ -10,16 +10,16 @@
 
 | 开源软件 | 版本 | 下载地址 |
 |---|---|---|
-| googletest | 1.14.0 | [googletest-1.14.0.tar.gz](https://gitcode.com/cann-src-third-party/googletest/releases/download/v1.14.0/googletest-1.14.0.tar.gz) |
-| json | 3.11.3 | [include.zip](https://gitcode.com/cann-src-third-party/json/releases/download/v3.11.3/include.zip) |
-| makeself | 2.5.0 | [makeself-release-2.5.0-patch1.tar.gz](https://gitcode.com/cann-src-third-party/makeself/releases/download/release-2.5.0-patch1.0/makeself-release-2.5.0-patch1.tar.gz) |
-| pybind11 | 2.13.6 | [pybind11-2.13.6.tar.gz](https://gitcode.com/cann-src-third-party/pybind11/releases/download/v2.13.6/pybind11-2.13.6.tar.gz) |
-| eigen | 5.0.0 | [eigen-5.0.0.tar.gz](https://gitcode.com/cann-src-third-party/eigen/releases/download/5.0.0/eigen-5.0.0.tar.gz) |
-| protobuf | 25.1.0 | [protobuf-25.1.tar.gz](https://gitcode.com/cann-src-third-party/protobuf/releases/download/v25.1/protobuf-25.1.tar.gz) |
-| abseil-cpp | 20230802.1 | [abseil-cpp-20230802.1.tar.gz](https://gitcode.com/cann-src-third-party/abseil-cpp/releases/download/20230802.1/abseil-cpp-20230802.1.tar.gz) |
-| opbase(自CANN 9.0.0及以后版本需要下载) | master | [opbase](https://gitcode.com/cann/opbase) |
+| googletest | 1.14.0 | [googletest-1.14.0.tar.gz](https://atomgit.com/cann-src-third-party/googletest/releases/download/v1.14.0/googletest-1.14.0.tar.gz) |
+| json | 3.11.3 | [include.zip](https://atomgit.com/cann-src-third-party/json/releases/download/v3.11.3/include.zip) |
+| makeself | 2.5.0 | [makeself-release-2.5.0-patch1.tar.gz](https://atomgit.com/cann-src-third-party/makeself/releases/download/release-2.5.0-patch1.0/makeself-release-2.5.0-patch1.tar.gz) |
+| pybind11 | 2.13.6 | [pybind11-2.13.6.tar.gz](https://atomgit.com/cann-src-third-party/pybind11/releases/download/v2.13.6/pybind11-2.13.6.tar.gz) |
+| eigen | 5.0.0 | [eigen-5.0.0.tar.gz](https://atomgit.com/cann-src-third-party/eigen/releases/download/5.0.0/eigen-5.0.0.tar.gz) |
+| protobuf | 25.1.0 | [protobuf-25.1.tar.gz](https://atomgit.com/cann-src-third-party/protobuf/releases/download/v25.1/protobuf-25.1.tar.gz) |
+| abseil-cpp | 20230802.1 | [abseil-cpp-20230802.1.tar.gz](https://atomgit.com/cann-src-third-party/abseil-cpp/releases/download/20230802.1/abseil-cpp-20230802.1.tar.gz) |
+| opbase(自CANN 9.0.0及以后版本需要下载) | master | [opbase](https://atomgit.com/cann/opbase) |
 | cann-cmake | master-046 | [cmake-master-046.tar.gz](https://cann-3rd.obs.cn-north-4.myhuaweicloud.com/cmake/cmake-master-046.tar.gz) |
-| ops-tensor(自CANN 9.1.0及以后版本需要下载) | master | [ops-tensor](https://gitcode.com/cann/ops-tensor) |
+| ops-tensor(自CANN 9.1.0及以后版本需要下载) | master | [ops-tensor](https://atomgit.com/cann/ops-tensor) |
 
 若您的编译环境可以访问网络，请参考[联网编译](#联网编译)，编译脚本会自动联网下载第三方软件。否则，请参考[未联网编译](#未联网编译)手动下载第三方软件。
 
@@ -57,7 +57,7 @@
     # bash build.sh --pkg --experimental --soc=ascend910b --ops=${experimental_op}
     ```
 
-    - --soc：\$\{soc\_version\}表示NPU型号。Atlas A2系列产品使用"ascend910b"（默认），Atlas A3系列产品使用"ascend910_93"，Ascend 950PR/Ascend 950DT产品使用"ascend950"。
+    - --soc：\$\{soc\_version\}表示NPU型号。Atlas A2系列产品使用"ascend910b"（默认），Atlas A3系列产品使用"ascend910_93"，Ascend 950PR&950DT系列产品使用"ascend950"。
     - --vendor_name（可选）：\$\{vendor\_name\}表示构建的自定义算子包名，默认名为custom。
     - --ops（可选）：\$\{op\_list\}表示待编译算子，不指定时默认编译所有算子。格式形如"apply_rotary_pos_emb,rope_quant_kvcache,..."，多算子之间用英文逗号","分隔。
     - --experimental（可选）：表示编译experimental贡献目录下的算子，${experimental_op}为新贡献算子目录名。
@@ -104,7 +104,7 @@
     # bash build.sh --pkg --experimental --soc=${soc_version}
     ```
 
-    - --soc：\$\{soc\_version\}表示NPU型号。Atlas A2系列产品使用"ascend910b"（默认），Atlas A3系列产品使用"ascend910_93"，Ascend 950PR/Ascend 950DT产品使用"ascend950"。
+    - --soc：\$\{soc\_version\}表示NPU型号。Atlas A2系列产品使用"ascend910b"（默认），Atlas A3系列产品使用"ascend910_93"，Ascend 950PR&950DT系列产品使用"ascend950"。
     - --pkg-type（可选）：指定打包类型，取值 run/rpm/deb/all，默认为 run，仅可与 --pkg 同时使用。
     - --experimental（可选）：表示编译experimental贡献目录下的算子。
 
@@ -180,7 +180,7 @@
 
     请确保已按[环境部署](../install/quick_install.md)完成基础环境搭建，包括CANN包安装、源码下载等。
 
-    - 在联网环境中，进入[本项目主页](https://gitcode.com/cann/ops-transformer)，通过`下载ZIP`或`clone`按钮，根据指导完成源码下载。
+    - 在联网环境中，进入[本项目主页](https://atomgit.com/cann/ops-transformer)，通过`下载ZIP`或`clone`按钮，根据指导完成源码下载。
     - 连接离线环境，上传源码至您指定的目录下。若下载的是源码压缩包，请先进行解压。
 
 2. **下载第三方软件依赖**
