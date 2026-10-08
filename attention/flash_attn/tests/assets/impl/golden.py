@@ -581,15 +581,17 @@ class FlashAttnGolden:
             scores = scores.masked_fill(mask, float("-inf"))
 
         row_max = scores.amax(dim=-1, keepdim=True)
-        row_max = torch.where(
-            torch.isfinite(row_max), row_max, torch.zeros_like(row_max)
-        )
-
         if sink is not None:
             sink_value = torch.as_tensor(
                 sink, dtype=row_max.dtype, device=row_max.device
             )
             row_max = torch.maximum(row_max, sink_value)
+
+        # Include a finite sink before choosing the all-masked subtraction base.
+        # Otherwise a negative sink underflows relative to zero and loses its LSE.
+        row_max = torch.where(
+            torch.isfinite(row_max), row_max, torch.zeros_like(row_max)
+        )
 
         exp_scores = torch.exp(scores - row_max)
         row_sum = exp_scores.sum(dim=-1, keepdim=True)

@@ -94,15 +94,15 @@ def report(
             )
             else "PASS (no build errors recorded)"
         )
-        match = re.search(r"FailElems\s*:\s*([^\n]+)", detail)
-        max_abs = re.search(r"MaxAbsErr\s*:\s*([^\n]+)", detail)
+        matches = re.findall(r"FailElems\s*:\s*([^\n]+)", detail)
+        max_abs = re.findall(r"MaxAbsErr\s*:\s*([^\n]+)", detail)
         precision = (
-            f"fail_elements={match.group(1).strip()}"
-            if match
+            f"fail_elements={', '.join(value.strip() for value in matches)}"
+            if matches
             else "precision=not reported"
         )
         if max_abs:
-            precision += f" max_abs={max_abs.group(1).strip()}"
+            precision += f" max_abs={', '.join(value.strip() for value in max_abs)}"
         print(f"  compile={compile_result}; {precision}")
         for line in detail.splitlines():
             if re.search(
@@ -114,8 +114,12 @@ def report(
         if not strict:
             return True
 
-        fail_elements = re.search(r"FailElems\s*:\s*(\d+)\s*/", detail)
-        precision_ok = fail_elements is not None and int(fail_elements.group(1)) == 0
+        fail_elements = re.findall(r"FailElems\s*:\s*(\d+)\s*/", detail)
+        precision_ok = (
+            bool(fail_elements)
+            and len(fail_elements) == len(matches)
+            and all(int(count) == 0 for count in fail_elements)
+        )
         result_ok = fields.get("result", "").strip().upper() == "PASS"
         compile_ok = compile_result.startswith("PASS")
         return result_ok and compile_ok and precision_ok
@@ -153,20 +157,25 @@ def main() -> int:
     )
     state_path.parent.mkdir(parents=True, exist_ok=True)
 
+    first_poll = True
     while True:
         git(repo, "fetch", "--quiet", "origin", "log")
         tip = git(repo, "rev-parse", "origin/log")
-        if args.once:
+        # A restarted strict watcher must also inspect already-seen summaries:
+        # last-seen tracks the branch, not successful verification of --commit.
+        if args.once or (first_poll and args.check):
             status = report(
                 repo, "origin/log", args.case, args.commit, strict=args.check
             )
-            if status is None:
+            if status is not None:
+                return 0 if status else 1
+            if args.once:
                 print(
                     f"No CI summary found for case {args.case}"
                     f"{f' and commit {args.commit}' if args.commit else ''} on origin/log."
                 )
                 return 1 if args.check else 0
-            return 0 if status else 1
+        first_poll = False
 
         last = (
             state_path.read_text(encoding="utf-8").strip()

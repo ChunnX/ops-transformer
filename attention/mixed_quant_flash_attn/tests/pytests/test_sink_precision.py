@@ -8,11 +8,130 @@
 
 """Independent precision/FD contracts, without requiring an NPU."""
 
+import importlib.util
+from pathlib import Path
+
 import pytest
 import torch
 
 from core.cpu import run_cpu_golden, softmax_flash
 from core.gen_data import generate_inputs
+
+
+_mla_spec = importlib.util.spec_from_file_location(
+    "mqfa_mla_attention_reference",
+    Path(__file__).resolve().parents[3]
+    / "flash_mla_with_kvcache/tests/assets/impl/attention_math.py",
+)
+_mla = importlib.util.module_from_spec(_mla_spec)
+_mla_spec.loader.exec_module(_mla)
+
+_fa_spec = importlib.util.spec_from_file_location(
+    "mqfa_flash_attn_reference",
+    Path(__file__).resolve().parents[3] / "flash_attn/tests/assets/impl/golden.py",
+)
+_fa = importlib.util.module_from_spec(_fa_spec)
+_fa_spec.loader.exec_module(_fa)
+
+
+@pytest.mark.parametrize("sink", [None, -1000.0, 0.0, 1000.0])
+@pytest.mark.parametrize("mode", ["full", "tiled"])
+def test_fp32_sink_masked_rows_against_flash_attn(sink, mode):
+    generator = torch.Generator().manual_seed(21)
+    q = torch.randn(3, 8, generator=generator)
+    k = torch.randn(7, 8, generator=generator)
+    v = torch.randn(7, 8, generator=generator)
+    mask = torch.zeros(3, 7, dtype=torch.bool)
+    mask[0] = True
+    mask[1, :3] = True
+    out, total, maximum = _mqfa_partition(q, k, v, 0.25, mask, sink, tile_size=3)
+    lse = torch.where(total > 0, maximum + total.log(), torch.inf).squeeze(-1)
+    golden = _fa.FlashAttnGolden(1, 1, head_dim=8, tile_size=3)
+    if mode == "full":
+        expected, expected_lse = golden._compute_full_single(q, k, v, mask, 0.25, sink)
+    else:
+        expected, expected_lse = golden._compute_tiled_single(q, k, v, mask, 0.25, sink)
+    torch.testing.assert_close(out, expected, rtol=1e-6, atol=1e-6)
+    torch.testing.assert_close(lse, expected_lse, rtol=1e-6, atol=1e-6)
+    if sink is not None:
+        assert lse[0] == sink
+        assert not out[0].count_nonzero()
+
+
+def _mqfa_partition(q, k, v, scale, mask, sink, tile_size=512):
+    """Exercise MQFA softmax state and native PV rounding independently of packing."""
+    total = torch.zeros(q.shape[0], 1)
+    maximum = torch.full_like(total, -torch.inf)
+    acc = torch.zeros(q.shape[0], v.shape[-1])
+    for start in range(0, k.shape[0], tile_size):
+        stop = min(start + tile_size, k.shape[0])
+        scores = (q.float() @ k[start:stop].float().T) * scale
+        scores.masked_fill_(mask[:, start:stop], -torch.inf)
+        weights, total, maximum, correction = softmax_flash(
+            scores,
+            total,
+            maximum,
+            torch.ones_like(total),
+            start == 0,
+            torch.full_like(total, sink) if start == 0 and sink is not None else None,
+        )
+        acc = acc * correction + weights.to(q.dtype).float() @ v[start:stop].float()
+    out = acc / torch.where(total > 0, total, 1.0)
+    return out, total, maximum
+
+
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("sink", [None, -1000.0, 5.0, 1000.0])
+@pytest.mark.parametrize("split_count", [1, 3])
+def test_native_weight_online_and_fd_against_mla(dtype, sink, split_count):
+    generator = torch.Generator().manual_seed(20261009)
+    q = (torch.randn(3, 8, generator=generator) * 2).to(dtype)
+    k = (torch.randn(1025, 8, generator=generator) * 2).to(dtype)
+    v = torch.randn(1025, 8, generator=generator).to(dtype)
+    mask = torch.zeros(3, 1025, dtype=torch.bool)
+    mask[0] = True  # Fully masked row, including negative dominant sink.
+    mask[1, :512] = True  # First FD partition/tile has no KV mass.
+    mask[2, 1024] = True  # Non-aligned masked tail.
+    scale = 0.25
+    partitions = torch.tensor_split(torch.arange(k.shape[0]), split_count)
+    outputs, totals, maxima = [], [], []
+    for idx, indices in enumerate(partitions):
+        start, stop = int(indices[0]), int(indices[-1]) + 1
+        local_mask = mask[:, start:stop]
+        local_sink = sink if idx == 0 else None
+        out, total, maximum = _mqfa_partition(
+            q, k[start:stop], v[start:stop], scale, local_mask, local_sink
+        )
+        reference, reference_lse = _mla.attention_single(
+            q,
+            k[start:stop],
+            v[start:stop],
+            scale,
+            512,
+            lambda qs, qe, ks, ke: local_mask[qs:qe, ks:ke],
+            local_sink,
+        )
+        torch.testing.assert_close(out, reference, rtol=1e-6, atol=1e-6)
+        lse = torch.where(total > 0, maximum + total.log(), torch.inf).squeeze(-1)
+        torch.testing.assert_close(lse, reference_lse, rtol=1e-6, atol=1e-6)
+        outputs.append(out)
+        totals.append(total)
+        maxima.append(maximum)
+    maximum = torch.stack(maxima).amax(0)
+    safe_maximum = torch.where(torch.isneginf(maximum), 0.0, maximum)
+    masses = torch.stack(
+        [total * (m - safe_maximum).exp() for total, m in zip(totals, maxima)]
+    )
+    total = masses.sum(0)
+    merged = (torch.stack(outputs) * masses).sum(0) / torch.where(total > 0, total, 1.0)
+    lse = torch.where(total > 0, maximum + total.log(), torch.inf).squeeze(-1)
+    reference, reference_lse = _mla.attention_single(
+        q, k, v, scale, 512, lambda qs, qe, ks, ke: mask[qs:qe, ks:ke], sink
+    )
+    # Native rounding is partition dependent; use the existing operator tolerance.
+    atol, rtol = (0.0001, 0.0078125) if dtype == torch.bfloat16 else (0.000025, 0.005)
+    torch.testing.assert_close(merged, reference, rtol=rtol, atol=atol)
+    torch.testing.assert_close(lse, reference_lse, rtol=1e-6, atol=1e-6)
 
 
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
