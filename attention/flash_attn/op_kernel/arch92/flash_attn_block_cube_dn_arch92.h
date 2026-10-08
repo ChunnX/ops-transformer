@@ -10,7 +10,7 @@
 
 /*!
  * \file flash_attn_block_cube_dn_arch92.h
- * \brief FANoQuantGqaBlockCubeDn
+ * \brief FANoQuantGqaBlockCubeDnUnmerged
  */
 #ifndef FLASH_ATTN_BLOCK_CUBE_DN_ARCH92_H_
 #define FLASH_ATTN_BLOCK_CUBE_DN_ARCH92_H_
@@ -25,7 +25,7 @@ namespace BaseApi {
 using ArchInfo::CV_RATIO;
 
 template <typename FA_T>
-class FANoQuantGqaBlockCubeDn {
+class FANoQuantGqaBlockCubeDnUnmerged {
 public:
     using INPUT_T = typename FA_T::inputType;
     using OUTPUT_T = typename FA_T::outputType;
@@ -124,7 +124,7 @@ public:
     LocalTensor<uint8_t> l0CBuffers_;
     uint32_t l0cBufId_ = 0U;
 
-    __aicore__ inline FANoQuantGqaBlockCubeDn(ConstInfoX& constInfo, SeqLensTool<LAYOUT_T, SEQLEN_T>& qSeqLensTool,
+    __aicore__ inline FANoQuantGqaBlockCubeDnUnmerged(ConstInfoX& constInfo, SeqLensTool<LAYOUT_T, SEQLEN_T>& qSeqLensTool,
                                               SeqLensTool<LAYOUT_KV, SEQLEN_T>& kvSeqLensTool)
         : constInfo_(constInfo),
           qSeqLensTool_(qSeqLensTool),
@@ -490,18 +490,18 @@ public:
         Mutex::Unlock<PIPE_MTE1>(KV_L1_BUFFER_ID0 + kvL1BufId_);
         kvL1BufId_ = (kvL1BufId_ + 1) % L1_KV_BUFCNT;
     }
-}; // FANoQuantGqaBlockCubeDn
+}; // FANoQuantGqaBlockCubeDnUnmerged
 
 // AIC/AIV 分编译占位（Mix kernel 在 AIV 侧重编译时使用）
 template <typename FA_T>
-class FANoQuantGqaBlockCubeDummyDn {
+class FANoQuantGqaBlockCubeDummyDnUnmerged {
 public:
     static constexpr FA_LAYOUT LAYOUT_T = FA_T::qLayout;
     static constexpr FA_LAYOUT LAYOUT_KV = FA_T::kvLayout;
     using SEQLEN_T = uint32_t;
     using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
 
-    __aicore__ inline FANoQuantGqaBlockCubeDummyDn(ConstInfoX& constInfo, SeqLensTool<LAYOUT_T, SEQLEN_T>& qSeqLensTool,
+    __aicore__ inline FANoQuantGqaBlockCubeDummyDnUnmerged(ConstInfoX& constInfo, SeqLensTool<LAYOUT_T, SEQLEN_T>& qSeqLensTool,
                                                    SeqLensTool<LAYOUT_KV, SEQLEN_T>& kvSeqLensTool){};
 };
 

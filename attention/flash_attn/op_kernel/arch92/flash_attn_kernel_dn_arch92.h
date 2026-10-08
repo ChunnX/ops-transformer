@@ -10,7 +10,7 @@
 
 /*!
  * \file flash_attn_kernel_dn_arch92.h
- * \brief FlashAttentionNoQuantGqaKernelDn —— Dn 路径专用 kernel 模板（独立类）。
+ * \brief FlashAttentionNoQuantGqaKernelDnUnmerged —— Dn 路径专用 kernel 模板（独立类）。
  */
 
 #ifndef FLASH_ATTN_KERNEL_DN_ARCH92_H_
@@ -40,7 +40,7 @@ using namespace regbaseutil;
 namespace BaseApi {
 using ArchInfo::CV_RATIO;
 template <typename FA_T, typename CubeBlockType, typename VecFaBlockType, typename VecFdBlockType>
-class FlashAttentionNoQuantGqaKernelDn {
+class FlashAttentionNoQuantGqaKernelDnUnmerged {
 public:
     using T = float;
     using SEQLEN_T = uint32_t;
@@ -105,7 +105,7 @@ public:
     bool tailS2Split_ = false;
 
     // ==============================fuction=======================================================
-    __aicore__ inline FlashAttentionNoQuantGqaKernelDn()
+    __aicore__ inline FlashAttentionNoQuantGqaKernelDnUnmerged()
         : cubeBlock_(constInfo_, qSeqLensTool_, kvSeqLensTool_),
           vecFaBlock_(constInfo_, qSeqLensTool_, kvSeqLensTool_),
           vecFdBlock_(constInfo_, qSeqLensTool_, kvSeqLensTool_){};
@@ -630,7 +630,7 @@ public:
             cubeBlock_.UnInitCrossCoreSync();
         }
     }
-}; // FlashAttentionNoQuantGqaKernelDn
+}; // FlashAttentionNoQuantGqaKernelDnUnmerged
 
 } // namespace BaseApi
 
