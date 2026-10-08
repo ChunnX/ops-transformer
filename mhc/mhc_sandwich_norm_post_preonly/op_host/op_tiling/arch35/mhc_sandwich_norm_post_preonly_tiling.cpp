@@ -16,30 +16,27 @@
 
 namespace optiling {
 
-// Host-side constants (mirrors op_kernel/mhc_sandwich_norm_post_preonly_common.h)
-constexpr uint32_t HOST_D_MAX = 5120;
+// Host侧常量，与Kernel公共头文件保持一致
 constexpr uint32_t HOST_N_MAX = 4;
 constexpr uint32_t HOST_D_TILE_MAX = 2560;
-constexpr uint32_t HOST_D_TILE_ALIGN_ELEM = 128;
-constexpr uint32_t HOST_DUAL_CORE_COUNT = 2;
+constexpr uint32_t HOST_D_ALIGN_ELEM = 16;
 constexpr uint32_t HOST_MAX_TOKENS = 1024 * 1024; // B*S 上限
-constexpr uint32_t HOST_WS_HIN_BASE = 16;         // workspace pair header (sync blocks)
-constexpr uint32_t HOST_WS_SYNC_BLOCK = 8;        // floats per sync block
-constexpr uint32_t HOST_WS_NUM_EVENTS = 1;        // sense-reversing barrier: 1 flag per core
-constexpr uint32_t NUM_ONE = 1;
 constexpr uint32_t NUM_TWO = 2;
-constexpr size_t HOST_MIN_WORKSPACE = 64; // 最小 workspace 字节数
+
+constexpr uint64_t TILING_KEY_USE_RMS_MID = 1ULL << 0;
+constexpr uint64_t TILING_KEY_RETURN_H_IN_F32 = 1ULL << 1;
+constexpr uint64_t TILING_KEY_DUAL_SIBLING_AIV = 1ULL << 2;
 
 static ge::graphStatus TilingMhcSandwichNormPostPreonly(gert::TilingContext *context)
 {
-    // --- Platform info ---
+    // 平台信息
     auto platformInfo = context->GetPlatformInfo();
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     uint32_t coreNumAiv = ascendcPlatform.GetCoreNumAiv();
     if (coreNumAiv == 0)
         coreNumAiv = 1;
 
-    // --- Get shapes (support both [B,S,D]/[T,D] and [B,S,N,D]/[T,N,D]) ---
+    // 获取形状，同时支持[B,S,D]/[T,D]和[B,S,N,D]/[T,N,D]
     auto h_out_shape = context->GetInputShape(0);         // [B,S,D] or [T,D]
     auto res_shape = context->GetInputShape(1);           // [B,S,N,D] or [T,N,D]
     auto h_post_shape = context->GetInputShape(2);        // [B,S,N] or [T,N]
@@ -50,12 +47,20 @@ static ge::graphStatus TilingMhcSandwichNormPostPreonly(gert::TilingContext *con
         return ge::GRAPH_FAILED;
     }
 
+    // h_out与residual必须使用相同低精度类型，避免Kernel按错误元素类型解释输入。
+    auto hOutDesc = context->GetInputDesc(0);
+    auto residualDesc = context->GetInputDesc(1);
+    if (hOutDesc == nullptr || residualDesc == nullptr || hOutDesc->GetDataType() != residualDesc->GetDataType()) {
+        OP_LOGE("MhcSandwichNormPostPreonly", "h_out and residual must have the same dtype");
+        return ge::GRAPH_FAILED;
+    }
+
     const auto &hs = h_out_shape->GetStorageShape();
     const auto &rs = res_shape->GetStorageShape();
     const auto &hps = h_post_shape->GetStorageShape();
     const auto &ps = phi_shape->GetStorageShape();
 
-    // --- Format consistency: residual.ndim must be h_out.ndim + 1 ---
+    // 格式一致性：residual维数必须比h_out多1
     size_t hDimNum = hs.GetDimNum();
     size_t rDimNum = rs.GetDimNum();
     if (hDimNum != 2U && hDimNum != 3U) {
@@ -66,7 +71,7 @@ static ge::graphStatus TilingMhcSandwichNormPostPreonly(gert::TilingContext *con
         OP_LOGE("MhcSandwichNormPostPreonly", "residual.ndim (%zu) must be h_out.ndim (%zu) + 1", rDimNum, hDimNum);
         return ge::GRAPH_FAILED;
     }
-    // h_post is 2D [T,N] / 3D [B,S,N]. If supplied, h_res is [T,N,N] / [B,S,N,N].
+    // h_post为二维[T,N]或三维[B,S,N]；h_res非空时为[T,N,N]或[B,S,N,N]
     size_t hpDimNum = hps.GetDimNum();
     if (hpDimNum != 2U && hpDimNum != 3U) {
         OP_LOGE("MhcSandwichNormPostPreonly", "h_post must be 2D [T,N] or 3D [B,S,N], got %zuD", hpDimNum);
@@ -109,7 +114,7 @@ static ge::graphStatus TilingMhcSandwichNormPostPreonly(gert::TilingContext *con
     uint32_t phiRows = static_cast<uint32_t>(ps.GetDim(0)); // N (pre-branch only)
     uint32_t phiCols = static_cast<uint32_t>(ps.GetDim(1)); // N*D
 
-    // --- Parameter validation ---
+    // 参数校验
     if (totalTokens == 0 || totalTokens > HOST_MAX_TOKENS) {
         OP_LOGE("MhcSandwichNormPostPreonly", "totalTokens (B*S) must be in [1, %u], got %u", HOST_MAX_TOKENS,
                 totalTokens);
@@ -119,10 +124,9 @@ static ge::graphStatus TilingMhcSandwichNormPostPreonly(gert::TilingContext *con
         OP_LOGE("MhcSandwichNormPostPreonly", "headCount (N) must be %u, got %u", HOST_N_MAX, N);
         return ge::GRAPH_FAILED;
     }
-    // TODO: 支持泛化 D。当前多 tile Kernel 仅保存两块 D tile，解除该保护前需先
-    // 完成任意 tile 数的 x2 暂存、workspace 扩容及精度验证。
-    if (D != HOST_D_TILE_MAX && D != HOST_D_MAX) {
-        OP_LOGE("MhcSandwichNormPostPreonly", "embedDim (D) must be %u or %u, got %u", HOST_D_TILE_MAX, HOST_D_MAX, D);
+    if (D == 0 || D % HOST_D_ALIGN_ELEM != 0 || D > UINT32_MAX / HOST_N_MAX) {
+        OP_LOGE("MhcSandwichNormPostPreonly", "embedDim (D) must be positive and %u-element aligned, got %u",
+                HOST_D_ALIGN_ELEM, D);
         return ge::GRAPH_FAILED;
     }
     if (phiRows != N || phiCols != N * D) {
@@ -131,15 +135,14 @@ static ge::graphStatus TilingMhcSandwichNormPostPreonly(gert::TilingContext *con
         return ge::GRAPH_FAILED;
     }
 
-    // --- Attributes (all optional with defaults) ---
+    // 属性均为可选，先设置默认值
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
     float normEps = 1e-6F;
     float mhcPreNormEps = 1e-6F;
     float hcEps = 1e-6F;
     bool returnHInF32 = false;
     if (attrs != nullptr) {
-        // With op_host_aclnn (auto-generated aclnn wrapper), attrs are stored as float
-        // matching the .Float() declaration in _def.cpp.
+        // op_host_aclnn生成的ACLNN封装按_def.cpp中的Float声明保存属性
         const float *eps0 = attrs->GetAttrPointer<float>(0);
         if (eps0 != nullptr) {
             normEps = *eps0;
@@ -159,7 +162,7 @@ static ge::graphStatus TilingMhcSandwichNormPostPreonly(gert::TilingContext *con
         }
     }
 
-    // --- Validate eps ---
+    // 校验数值稳定项
     if (normEps < 0.0F) {
         OP_LOGE("MhcSandwichNormPostPreonly", "norm_eps must be >= 0, got %e", normEps);
         return ge::GRAPH_FAILED;
@@ -173,55 +176,26 @@ static ge::graphStatus TilingMhcSandwichNormPostPreonly(gert::TilingContext *con
         return ge::GRAPH_FAILED;
     }
 
-    // --- Detect gamma_2 optional input (index 9) ---
-    // If gamma_2 is provided, enable RMSNorm_mid; otherwise skip it
+    // 检查索引9处的可选gamma_2；非空时执行RMSNorm_mid
     auto gamma2_shape = context->GetOptionalInputShape(9);
     bool useRmsMid = (gamma2_shape != nullptr);
 
-    // --- D-axis tiling (must compute BEFORE core mapping) ---
-    const uint32_t alignElem = HOST_D_TILE_ALIGN_ELEM;
-    uint32_t dimTile = D;
-    if (dimTile > HOST_D_TILE_MAX) {
-        dimTile = HOST_D_TILE_MAX;
-    }
-    dimTile = (dimTile / alignElem) * alignElem;
-    if (dimTile == 0)
-        dimTile = alignElem;
+    // D轴分块必须在核映射前完成
+    uint32_t dimTile = std::min(D, HOST_D_TILE_MAX);
 
     uint32_t lastDimTile = D % dimTile;
     uint32_t dimLoop = D / dimTile + (lastDimTile ? 1 : 0);
 
-    // --- [R9] Core mapping: dual-core N-split for dimLoop<=2 ---
-    uint32_t coresPerToken = 1;
-    if (N >= HOST_DUAL_CORE_COUNT && dimLoop <= HOST_DUAL_CORE_COUNT &&
-        totalTokens <= (coreNumAiv / HOST_DUAL_CORE_COUNT)) {
-        coresPerToken = HOST_DUAL_CORE_COUNT;
-    }
-    uint32_t myHeadCount = N / coresPerToken;
-
-    uint32_t logicalTokens = totalTokens * coresPerToken;
-    uint32_t usedCoreNum = std::min(logicalTokens, coreNumAiv);
-
-    // Ensure core count is multiple of coresPerToken
-    if (coresPerToken == HOST_DUAL_CORE_COUNT) {
-        usedCoreNum = (usedCoreNum / HOST_DUAL_CORE_COUNT) * HOST_DUAL_CORE_COUNT;
-        if (usedCoreNum == 0)
-            usedCoreNum = HOST_DUAL_CORE_COUNT;
-    }
-
-    // Token distribution
-    uint32_t numUnits = usedCoreNum / coresPerToken;
-    if (numUnits == 0) {
-        numUnits = 1;
-        usedCoreNum = coresPerToken;
-    }
-
-    uint32_t rowsPerCore = totalTokens / numUnits;
-    uint32_t remainTokens = totalTokens % numUnits;
+    // 第一阶段固定使用可确定复现的A5单AIV回退路径。只有目标产品验证
+    // KERNEL_TYPE_MIX_AIV_1_0映射并将实测有收益的形状加入静态性能表后，才启用双sibling模板。
+    const uint32_t coresPerToken = 1;
+    const uint32_t usedCoreNum = std::min(totalTokens, coreNumAiv);
+    uint32_t rowsPerCore = totalTokens / usedCoreNum;
+    uint32_t remainTokens = totalTokens % usedCoreNum;
     uint32_t rowsPerCoreSp = rowsPerCore + 1;
     uint32_t blockPivot = remainTokens;
 
-    // --- Fill tiling data ---
+    // 填充Tiling数据
     MhcSandwichNormPostPreonlyTilingData tiling;
     tiling.set_totalTokens(totalTokens);
     tiling.set_headCount(N);
@@ -242,41 +216,24 @@ static ge::graphStatus TilingMhcSandwichNormPostPreonly(gert::TilingContext *con
     tiling.set_invK(1.0F / static_cast<float>(N * D));
     tiling.set_useRmsMid(useRmsMid ? 1U : 0U);
     tiling.set_coresPerToken(coresPerToken);
-    tiling.set_myHeadCount(myHeadCount);
-    tiling.set_maxTokensPerPair(rowsPerCoreSp); // max tokens any pair processes
     tiling.set_returnHInF32(static_cast<int8_t>(returnHInF32));
 
-    // --- Workspace sizing (also determines sync region start offset) ---
-    // Dual-core: per pair = 16 + N*D floats (sync blocks + x2 data from both cores)
-    // Single-core: per core = (N+1)*D floats
-    size_t pairWsFloats = HOST_WS_HIN_BASE + (size_t)HOST_N_MAX * HOST_D_MAX;
-    size_t singleWsFloats = (size_t)(HOST_N_MAX + 1) * HOST_D_MAX;
-    size_t wsPerUnit = std::max(pairWsFloats, singleWsFloats);
-    size_t dataWsBytes = (size_t)coreNumAiv * wsPerUnit * sizeof(float);
-    // Cross-core sync region comes right after the data region
-    size_t syncWsBytes = (size_t)coreNumAiv * HOST_WS_SYNC_BLOCK * HOST_WS_NUM_EVENTS * sizeof(int32_t);
+    // 单AIV路径仅在UB保存当前分块，并按设计使用两个低精度输出承载跨遍数据。
+    // 不分配GM同步标志区，也不分配(N+1)*D级私有临时空间。
     size_t sysWsBytes = ascendcPlatform.GetLibApiWorkSpaceSize();
-    size_t totalWsBytes = sysWsBytes + dataWsBytes + syncWsBytes;
-    if (totalWsBytes < HOST_MIN_WORKSPACE) {
-        totalWsBytes = HOST_MIN_WORKSPACE;
-    }
     size_t *currentWorkspace = context->GetWorkspaceSizes(1);
     if (currentWorkspace == nullptr) {
         OP_LOGE("MhcSandwichNormPostPreonly", "GetWorkspaceSizes is nullptr");
         return ge::GRAPH_FAILED;
     }
-    currentWorkspace[0] = totalWsBytes;
+    currentWorkspace[0] = sysWsBytes;
 
-    // Tell kernel where the sync region starts (float offset from workspace base).
-    // Matches dataWsBytes/sizeof(float) exactly so kernel writes sync flags
-    // into the region host reserved — not into the middle of the data region.
-    // Previously kernel computed this itself from runtime `usedCoreNum * wsPerUnit_runtime`,
-    // which only worked because usedCoreNum << coreNumAiv left unused data slots.
-    tiling.set_syncGmOffsetFloats(static_cast<uint32_t>(dataWsBytes / sizeof(float)));
-
-    // --- Emit tiling buffer ---
+    // 输出Tiling数据
     context->SetBlockDim(usedCoreNum);
-    context->SetTilingKey(0);
+    uint64_t tilingKey = (useRmsMid ? TILING_KEY_USE_RMS_MID : 0ULL) |
+                         (returnHInF32 ? TILING_KEY_RETURN_H_IN_F32 : 0ULL) |
+                         (coresPerToken == 2 ? TILING_KEY_DUAL_SIBLING_AIV : 0ULL);
+    context->SetTilingKey(tilingKey);
     tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
 

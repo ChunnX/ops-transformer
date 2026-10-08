@@ -131,7 +131,7 @@ def mhc_sandwich_norm_post_preonly(
     hc_eps: float = 1e-6,
     return_h_in_f32: bool = False,
 ):
-    """Fused RMSNorm + MHC post + MHC pre-only + RMSNorm operator."""
+    """融合执行RMSNorm、MHC post、MHC pre-only和末级RMSNorm。"""
     if h_res is None:
         raise ValueError(
             "h_res is an interface-reserved optional input and must not be None currently"
