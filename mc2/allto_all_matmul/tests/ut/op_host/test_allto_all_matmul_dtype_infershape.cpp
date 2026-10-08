@@ -31,7 +31,7 @@ protected:
 TEST_P(InferDataTypeAllToAllMatmulTest, param)
 {
     auto param = GetParam();
-    std::vector<void *> inputDataTypes;
+    std::vector<void*> inputDataTypes;
     if (param.inputInstance[0] == 1)
         inputDataTypes.emplace_back(&param.x1);
     if (param.inputInstance[1] == 1)

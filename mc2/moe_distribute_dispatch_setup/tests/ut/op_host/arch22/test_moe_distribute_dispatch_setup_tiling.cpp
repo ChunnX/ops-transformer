@@ -75,7 +75,7 @@ struct MoeDistributeDispatchSetupArch22TestParam {
     uint64_t mc2TilingDataReservedLen;
 };
 
-inline std::ostream &operator<<(std::ostream &os, const MoeDistributeDispatchSetupArch22TestParam &param)
+inline std::ostream& operator<<(std::ostream& os, const MoeDistributeDispatchSetupArch22TestParam& param)
 {
     return os << param.caseName;
 }
@@ -253,7 +253,7 @@ protected:
     }
 };
 
-gert::StorageShape MakeShape(const std::initializer_list<int64_t> &input_shape)
+gert::StorageShape MakeShape(const std::initializer_list<int64_t>& input_shape)
 {
     if (input_shape.size() == 0) {
         return gert::StorageShape{};
@@ -264,7 +264,7 @@ gert::StorageShape MakeShape(const std::initializer_list<int64_t> &input_shape)
 static struct MoeDistributeDispatchSetupCompileInfo {
 } compileInfo;
 
-static gert::TilingContextPara BuildTilingContextPara(const MoeDistributeDispatchSetupArch22TestParam &param)
+static gert::TilingContextPara BuildTilingContextPara(const MoeDistributeDispatchSetupArch22TestParam& param)
 {
     std::cout << "[TEST_CASE] " << param.caseName << std::endl;
 
