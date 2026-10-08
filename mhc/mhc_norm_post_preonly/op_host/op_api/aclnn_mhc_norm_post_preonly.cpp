@@ -28,12 +28,19 @@ namespace {
 
 static aclnnStatus MhcNormPostPreonlyCommonProcess(
     const aclTensor *hOut, const aclTensor *residual, const aclTensor *hPost, const aclTensor *hResOptional,
-    const aclTensor *phi, const aclTensor *alpha0, const aclTensor *bias, const aclTensor *gamma0Optional,
-    const aclTensor *gamma1, const aclTensor *gamma2Optional, float normEps, float mhcPreNormEps, float hcEps,
-    bool returnHInF32, const aclTensor *hInPrimeOut, const aclTensor *x2Out, const aclTensor *hInF32OutOptional,
-    uint64_t *workspaceSize, aclOpExecutor **executor)
+    const aclTensor *phi, const aclTensor *alpha, const aclTensor *bias, const aclTensor *preMixOptional,
+    const aclTensor *gamma0Optional, const aclTensor *gamma1, const aclTensor *gamma2Optional, float normEps,
+    float mhcPreNormEps, float hcEps, bool returnHInF32, const aclTensor *hInPrimeOut, const aclTensor *x2Out,
+    const aclTensor *hInF32OutOptional, const aclTensor *hPreOptional, uint64_t *workspaceSize,
+    aclOpExecutor **executor)
 {
     auto uniqueExecutor = CREATE_EXECUTOR();
+
+    // pre_mix、h_pre 为接口预留的可选输入/输出，当前版本暂不支持，先在此拦截。
+    CHECK_COND(preMixOptional == nullptr, ACLNN_ERR_PARAM_INVALID,
+               "preMixOptional is an interface-reserved optional input and must be nullptr currently.");
+    CHECK_COND(hPreOptional == nullptr, ACLNN_ERR_PARAM_INVALID,
+               "hPreOptional is an interface-reserved optional output and must be nullptr currently.");
 
     if (returnHInF32) {
         CHECK_COND(hInF32OutOptional != nullptr, ACLNN_ERR_PARAM_NULLPTR,
@@ -62,8 +69,8 @@ static aclnnStatus MhcNormPostPreonlyCommonProcess(
     phi = l0op::Contiguous(phi, uniqueExecutor.get());
     CHECK_COND(phi != nullptr, ACLNN_ERR_INNER_NULLPTR, "Contiguous phi failed.");
 
-    alpha0 = l0op::Contiguous(alpha0, uniqueExecutor.get());
-    CHECK_COND(alpha0 != nullptr, ACLNN_ERR_INNER_NULLPTR, "Contiguous alpha0 failed.");
+    alpha = l0op::Contiguous(alpha, uniqueExecutor.get());
+    CHECK_COND(alpha != nullptr, ACLNN_ERR_INNER_NULLPTR, "Contiguous alpha failed.");
 
     bias = l0op::Contiguous(bias, uniqueExecutor.get());
     CHECK_COND(bias != nullptr, ACLNN_ERR_INNER_NULLPTR, "Contiguous bias failed.");
@@ -80,8 +87,9 @@ static aclnnStatus MhcNormPostPreonlyCommonProcess(
     }
 
     bool ok = MhcNormPostPreonlyl0op::MhcNormPostPreonly(
-        hOut, residual, hPost, hResOptional, phi, alpha0, bias, gamma0Optional, gamma1, gamma2Optional, normEps,
-        mhcPreNormEps, hcEps, returnHInF32, hInPrimeOut, x2Out, hInF32OutOptional, uniqueExecutor.get());
+        hOut, residual, hPost, hResOptional, phi, alpha, bias, preMixOptional, gamma0Optional, gamma1, gamma2Optional,
+        normEps, mhcPreNormEps, hcEps, returnHInF32, hInPrimeOut, x2Out, hInF32OutOptional, hPreOptional,
+        uniqueExecutor.get());
 
     CHECK_RET(ok, ACLNN_ERR_INNER_NULLPTR);
 
@@ -94,18 +102,20 @@ static aclnnStatus MhcNormPostPreonlyCommonProcess(
 
 aclnnStatus aclnnMhcNormPostPreonlyGetWorkspaceSize(
     const aclTensor *hOut, const aclTensor *residual, const aclTensor *hPost, const aclTensor *hResOptional,
-    const aclTensor *phi, const aclTensor *alpha0, const aclTensor *bias, const aclTensor *gamma1,
-    const aclTensor *gamma0Optional, const aclTensor *gamma2Optional, float normEps, float mhcPreNormEps, float hcEps,
-    bool returnHInF32, const aclTensor *hInPrimeOut, const aclTensor *x2Out, const aclTensor *hInF32OutOptional,
-    uint64_t *workspaceSize, aclOpExecutor **executor)
+    const aclTensor *phi, const aclTensor *alpha, const aclTensor *bias, const aclTensor *gamma1,
+    const aclTensor *preMixOptional, const aclTensor *gamma0Optional, const aclTensor *gamma2Optional, float normEps,
+    float mhcPreNormEps, float hcEps, bool returnHInF32, const aclTensor *hInPrimeOut, const aclTensor *x2Out,
+    const aclTensor *hInF32OutOptional, const aclTensor *hPreOptional, uint64_t *workspaceSize,
+    aclOpExecutor **executor)
 {
-    L2_DFX_PHASE_1(
-        aclnnMhcNormPostPreonly,
-        DFX_IN(hOut, residual, hPost, hResOptional, phi, alpha0, bias, gamma1, gamma0Optional, gamma2Optional),
-        DFX_OUT(hInPrimeOut, x2Out, hInF32OutOptional));
-    return MhcNormPostPreonlyCommonProcess(
-        hOut, residual, hPost, hResOptional, phi, alpha0, bias, gamma0Optional, gamma1, gamma2Optional, normEps,
-        mhcPreNormEps, hcEps, returnHInF32, hInPrimeOut, x2Out, hInF32OutOptional, workspaceSize, executor);
+    L2_DFX_PHASE_1(aclnnMhcNormPostPreonly,
+                   DFX_IN(hOut, residual, hPost, hResOptional, phi, alpha, bias, gamma1, preMixOptional, gamma0Optional,
+                          gamma2Optional),
+                   DFX_OUT(hInPrimeOut, x2Out, hInF32OutOptional, hPreOptional));
+    return MhcNormPostPreonlyCommonProcess(hOut, residual, hPost, hResOptional, phi, alpha, bias,
+                                                   preMixOptional, gamma0Optional, gamma1, gamma2Optional, normEps,
+                                                   mhcPreNormEps, hcEps, returnHInF32, hInPrimeOut, x2Out,
+                                                   hInF32OutOptional, hPreOptional, workspaceSize, executor);
 }
 
 aclnnStatus aclnnMhcNormPostPreonly(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,

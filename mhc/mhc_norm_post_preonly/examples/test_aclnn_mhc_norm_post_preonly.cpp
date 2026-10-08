@@ -92,14 +92,14 @@ int main()
     CHECK_RET(aclrtCreateContext(&context, deviceId) == ACL_SUCCESS, return -1);
     CHECK_RET(aclrtCreateStream(&stream) == ACL_SUCCESS, return -1);
 
-    TensorResource hOut, residual, hPost, hResOptional, phi, alpha0, bias, gamma1, gamma0;
+    TensorResource hOut, residual, hPost, hResOptional, phi, alpha, bias, gamma1, gamma0;
     TensorResource hInPrimeOut, x2Out;
     CHECK_RET(CreateTensor({T, D}, ACL_FLOAT16, true, hOut) == 0, return -1);
     CHECK_RET(CreateTensor({T, N, D}, ACL_FLOAT16, true, residual) == 0, return -1);
     CHECK_RET(CreateTensor({T, N}, ACL_FLOAT, true, hPost) == 0, return -1);
     CHECK_RET(CreateTensor({T, N, N}, ACL_FLOAT, true, hResOptional) == 0, return -1);
     CHECK_RET(CreateTensor({N, N * D}, ACL_FLOAT, true, phi) == 0, return -1);
-    CHECK_RET(CreateTensor({1}, ACL_FLOAT, true, alpha0) == 0, return -1);
+    CHECK_RET(CreateTensor({1}, ACL_FLOAT, true, alpha) == 0, return -1);
     CHECK_RET(CreateTensor({N}, ACL_FLOAT, true, bias) == 0, return -1);
     CHECK_RET(CreateTensor({D}, ACL_FLOAT, true, gamma1) == 0, return -1);
     CHECK_RET(CreateTensor({D}, ACL_FLOAT, true, gamma0) == 0, return -1);
@@ -109,9 +109,9 @@ int main()
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     aclnnStatus ret = aclnnMhcNormPostPreonlyGetWorkspaceSize(
-        hOut.tensor, residual.tensor, hPost.tensor, hResOptional.tensor, phi.tensor, alpha0.tensor, bias.tensor,
-        gamma1.tensor, gamma0.tensor, nullptr, 1e-6, 1e-6, 1e-6, false, hInPrimeOut.tensor, x2Out.tensor, nullptr,
-        &workspaceSize, &executor);
+        hOut.tensor, residual.tensor, hPost.tensor, hResOptional.tensor, phi.tensor, alpha.tensor, bias.tensor,
+        gamma1.tensor, nullptr, gamma0.tensor, nullptr, 1e-6, 1e-6, 1e-6, false, hInPrimeOut.tensor, x2Out.tensor,
+        nullptr, nullptr, &workspaceSize, &executor);
     CHECK_RET(ret == ACLNN_SUCCESS, LOG_PRINT("GetWorkspaceSize failed, error: %d\n", ret); return -1);
 
     void *workspace = nullptr;
@@ -124,7 +124,7 @@ int main()
     LOG_PRINT("MhcNormPostPreonly compute success!\n");
 
     for (TensorResource *resource :
-         {&hOut, &residual, &hPost, &hResOptional, &phi, &alpha0, &bias, &gamma1, &gamma0, &hInPrimeOut, &x2Out}) {
+         {&hOut, &residual, &hPost, &hResOptional, &phi, &alpha, &bias, &gamma1, &gamma0, &hInPrimeOut, &x2Out}) {
         DestroyTensor(*resource);
     }
     if (workspace != nullptr) {

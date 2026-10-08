@@ -25,7 +25,6 @@
 
 - **接口功能**：融合 RMSNorm_0、MHC_Post、可选 RMSNorm_mid、MHC_Pre（仅 pre 分支）和 RMSNorm_1，输出下一层输入 h_in_prime 与 MHC_Post 中间结果 x_2_out。当 return_h_in_f32=True 时，额外返回 RMSNorm_1 的 FP32 结果 h_in_f32。
 
-- **支持模式**：该接口支持单算子模式、TorchAir 图模式调用。
 
 - **计算公式**：
 
@@ -103,13 +102,14 @@ cann_ops_transformer.mhc_norm_post_preonly(
     bias,
     gamma_1,
     *,
+    pre_mix: Optional[Tensor] = None,
     gamma_0=None,
     gamma_2=None,
     norm_eps=1e-6,
     mhc_pre_norm_eps=1e-6,
     hc_eps=1e-6,
     return_h_in_f32=False,
-) -> Tuple[Tensor, Tensor] | Tuple[Tensor, Tensor, Tensor]
+) -> Tuple[Tensor, Tensor] | Tuple[Tensor, Tensor, Tensor] | Tuple[Tensor, Tensor, Tensor, Tensor]
 ```
 
 ## 参数说明
@@ -119,12 +119,13 @@ cann_ops_transformer.mhc_norm_post_preonly(
 | h_out | Tensor | 必选 | RMSNorm_0 的输入。数据格式为 ND。 | float16、bfloat16 | [T, D] 或 [B, S, D] |
 | residual | Tensor | 必选 | MHC 多路残差输入；dtype 必须与 h_out 一致。 | 同 h_out | [T, N, D] 或 [B, S, N, D] |
 | h_post | Tensor | 必选 | MHC_Post 主分支权重。 | float32 | [T, N] 或 [B, S, N] |
-| h_res | Tensor | 可选 | mHC 的 hRes 变换矩阵，是做完 Sinkhorn 变换后的双随机矩阵；索引顺序为 $[j,n]$。该参数为接口预留，暂不支持传 None。 | float32 | [T, N, N] 或 [B, S, N, N] |
+| h_res | Tensor | 可选 | mHC 的 hRes 变换矩阵，是做完 Sinkhorn 变换后的双随机矩阵；索引顺序为 $[j,n]$。接口预留参数，暂不支持传 None。 | float32 | [T, N, N] 或 [B, S, N, N] |
 | phi | Tensor | 必选 | MHC_Pre 投影矩阵。 | float32 | [N, N*D] |
 | alpha | Tensor | 必选 | Sigmoid 门控缩放系数。 | float32 | [1] |
 | bias | Tensor | 必选 | Sigmoid 门控偏置。 | float32 | [N] |
 | gamma_1 | Tensor | 必选 | RMSNorm_1 缩放权重。 | float32 | [D] |
-| gamma_0 | Tensor | 可选 | RMSNorm_0 缩放权重。该参数位置为接口预留，暂不支持传 None，当前版本必须传入非空 Tensor。 | float32 | [D] |
+| pre_mix | Tensor | 可选 | 传入时，h_in 的加权求和直接使用 pre_mix 作为权重（典型用法：填入上一轮 h_pre 的输出）；不传入时，h_in 使用本轮内部计算的 h_pre 进行加权求和。不支持非连续。接口预留参数，当前仅支持传入 None。 | float32 | [T, N] 或 [B, S, N] |
+| gamma_0 | Tensor | 可选 | RMSNorm_0 缩放权重。当前暂不支持传 None。 | float32 | [D] |
 | gamma_2 | Tensor | 可选 | RMSNorm_mid 缩放权重。默认值为 None；非空时启用 RMSNorm_mid，为空时跳过。 | float32 | [N*D] |
 | norm_eps | float | 可选 | RMSNorm_0、RMSNorm_mid 和 RMSNorm_1 的数值稳定项，默认值为 1e-6。 | float | - |
 | mhc_pre_norm_eps | float | 可选 | MHC_Pre 内部 RMS 的数值稳定项，默认值为 1e-6。 | float | - |
@@ -133,16 +134,18 @@ cann_ops_transformer.mhc_norm_post_preonly(
 
 ## 返回值说明
 
-当 return_h_in_f32=False 时，返回 (h_in_prime, x_2_out)；当其为 True 时，返回 (h_in_prime, x_2_out, h_in_f32)。
+当 return_h_in_f32=False 时，返回 (h_in_prime, x_2_out)；当其为 True 时，返回 (h_in_prime, x_2_out, h_in_f32)。接口预留可选输出参数 h_pre，当前暂不支持输出。
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
 | --- | --- | --- | --- | --- | --- |
 | h_in_prime | Tensor | 必选 | RMSNorm_1 FP32 结果转换为输入 dtype 后的下一层输入。 | 同 h_out | [T, D] 或 [B, S, D] |
 | x_2_out | Tensor | 必选 | MHC_Post 以及可选 RMSNorm_mid 后的中间结果。 | 同 h_out | [T, N, D] 或 [B, S, N, D] |
 | h_in_f32 | Tensor | 可选 | RMSNorm_1 的 FP32 结果，仅在 return_h_in_f32=True 时返回。 | float32 | [T, D] 或 [B, S, D] |
+| h_pre | Tensor | 可选 | 本轮内部计算的 pre 结果（sigmoid 后的加权系数），可作为下一轮 pre_mix 的输入。不支持非连续。接口预留参数，当前暂不支持输出。 | float32 | [T, N] 或 [B, S, N] |
 
 ## 约束说明
 
+- 支持单算子模式、TorchAir 图模式调用。
 - 仅支持 N=4。
 
 ## 确定性/Batch一致性

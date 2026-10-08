@@ -76,14 +76,16 @@
       <tr><td>h_post</td><td>输入</td><td>MHC_Post的主分支权重。</td><td>FLOAT32</td><td>ND</td></tr>
       <tr><td>h_res</td><td>可选输入</td><td>mHC的hRes变换矩阵，是做完sinkhorn变换后的双随机矩阵。接口预留，暂不支持传空值。</td><td>FLOAT32</td><td>ND</td></tr>
       <tr><td>phi</td><td>输入</td><td>MHC_Pre的投影参数。</td><td>FLOAT32</td><td>ND</td></tr>
-      <tr><td>alpha_0</td><td>输入</td><td>MHC_Pre的缩放参数。</td><td>FLOAT32</td><td>ND</td></tr>
+      <tr><td>alpha</td><td>输入</td><td>MHC_Pre的缩放参数。</td><td>FLOAT32</td><td>ND</td></tr>
       <tr><td>bias</td><td>输入</td><td>MHC_Pre的偏置参数。</td><td>FLOAT32</td><td>ND</td></tr>
+      <tr><td>pre_mix</td><td>可选输入</td><td>MHC_Pre门控加权系数的外部替代输入（典型用法为回填上一轮h_pre输出）。接口预留，暂不支持非空输入。</td><td>FLOAT32</td><td>ND</td></tr>
       <tr><td>gamma_0</td><td>可选输入</td><td>RMSNorm_0的缩放因子。接口预留，暂不支持传None。</td><td>FLOAT32</td><td>ND</td></tr>
       <tr><td>gamma_1</td><td>输入</td><td>RMSNorm_1的缩放因子。</td><td>FLOAT32</td><td>ND</td></tr>
       <tr><td>gamma_2</td><td>可选输入</td><td>RMSNorm_mid的缩放因子，为空时跳过RMSNorm_mid。</td><td>FLOAT32</td><td>ND</td></tr>
       <tr><td>h_in_prime</td><td>输出</td><td>RMSNorm_1结果转换为h_out数据类型后的下一层输入。</td><td>BFLOAT16、FLOAT16</td><td>ND</td></tr>
       <tr><td>x_2_out</td><td>输出</td><td>MHC_Post结果；gamma_2非空时为RMSNorm_mid处理后的结果。</td><td>BFLOAT16、FLOAT16</td><td>ND</td></tr>
       <tr><td>h_in_f32</td><td>可选输出</td><td>RMSNorm_1的FLOAT32计算结果。</td><td>FLOAT32</td><td>ND</td></tr>
+      <tr><td>h_pre</td><td>可选输出</td><td>本轮内部计算的pre结果（sigmoid后的加权系数），可作为下一轮pre_mix的输入。接口预留，暂不支持输出。</td><td>FLOAT32</td><td>ND</td></tr>
       <tr><td>norm_eps</td><td>可选属性</td><td>RMSNorm_0、RMSNorm_mid和RMSNorm_1的防除零参数，默认值为1e-6。</td><td>FLOAT</td><td>-</td></tr>
       <tr><td>mhc_pre_norm_eps</td><td>可选属性</td><td>MHC_Pre内部RMS的防除零参数，默认值为1e-6。</td><td>FLOAT</td><td>-</td></tr>
       <tr><td>hc_eps</td><td>可选属性</td><td>Sigmoid门控结果的加性偏移，默认值为1e-6。</td><td>FLOAT</td><td>-</td></tr>
