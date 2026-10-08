@@ -102,6 +102,16 @@ public:
     using MM2_ABUF_T = Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
     using MM2_DBUF_T = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
 
+    static constexpr bool ENABLE_UNIT_FLAG = LAYOUT == LayOutTypeEnum::LAYOUT_TND && !PAGE_ATTENTION &&
+        mBaseSize == 128 && s2BaseSize == 256 && dBaseSize == 128 && dVBaseSize == 128;
+
+    __aicore__ inline bool UseUnitFlag(const RunInfoX &runInfo) const
+    {
+        return ENABLE_UNIT_FLAG &&
+            runInfo.actMSize == 128 && runInfo.actSingleLoopS2Size == 256 &&
+            constInfo_.dSize == 128 && constInfo_.dSizeV == 128;
+    }
+
     using L1KvType = BuffersPolicy4buff<BufferType::L1>;
     using L0AType = typename L0ABuffSel::Type;
     using L0BType = typename L0BBuffSel<s2BaseSize, dBaseSize>::Type;
@@ -177,6 +187,11 @@ public:
 
     __aicore__ inline void InitBuffers()
     {
+        if constexpr (ENABLE_UNIT_FLAG) {
+            if (constInfo_.dSize == 128 && constInfo_.dSizeV == 128) {
+                SetMMRowMajor();
+            }
+        }
         constexpr uint32_t s2BaseSizeCur = s2BaseSize;
         constexpr uint32_t mm1QSize = mBaseSize * dBaseSize * sizeof(INPUT_T);
         constexpr uint32_t mmKVSize = dBaseSize * s2BaseSizeCur * sizeof(INPUT_T);
@@ -368,6 +383,7 @@ public:
         // 源NZ矩阵中相邻Z排布的起始地址偏移
         fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16;
         fixpipeParams.dstStride = 64; // mmResUb上两行之间的间隔，单位：element
+        fixpipeParams.unitFlag = UseUnitFlag(runInfo) ? 3 : 0;
         fixpipeParams.dualDstCtl = 2; // 双目标模式，按M维度拆分， M * N / 2写入每个UB，M必须为2的倍数
         fixpipeParams.params.ndNum = 1;
         fixpipeParams.params.srcNdStride = 0;
@@ -403,6 +419,7 @@ public:
         mm1ResL0C.Wait<HardEvent::FIX_M>();
         MMParam param =
             MakeMMParam((uint32_t)s2CalcSize, (uint32_t)runInfo.actMSize, (uint32_t)constInfo_.dSize, false, true);
+        param.unitFlag = UseUnitFlag(runInfo) ? 3 : 0;
         MatmulFullMX<Q_T, KV_T, T, 256, 128, dBaseSize, ABLayout::MK, ABLayout::KN, L0AType, L0BType, float, float,
                      INPUT_T, INPUT_T>(mm1A.GetTensor<INPUT_T>(), mm1B.GetTensor<INPUT_T>(), mmL0ABuffers_,
                                        mmL0BBuffers_, mm1ResL0C.GetTensor<T>(), param);
@@ -411,8 +428,10 @@ public:
             mm1B.Set<HardEvent::MTE1_MTE2>();
         }
         mm1A.Set<HardEvent::MTE1_MTE2>();
-        mm1ResL0C.Set<HardEvent::M_FIX>();
-        mm1ResL0C.Wait<HardEvent::M_FIX>();
+        if (!UseUnitFlag(runInfo)) {
+            mm1ResL0C.Set<HardEvent::M_FIX>();
+            mm1ResL0C.Wait<HardEvent::M_FIX>();
+        }
 
         outputBuf.WaitCrossCore();
         FixpipeMm1Dn(outputBuf.template GetTensor<T>(), mm1ResL0C.GetTensor<T>(), runInfo, s2CalcSize);
@@ -435,6 +454,7 @@ public:
         fixpipeParams.srcStride = ((mBaseSize + 15) / 16) * 16;
 
         fixpipeParams.dstStride = ((uint32_t)dVTemplateType + 15) >> 4 << 4;
+        fixpipeParams.unitFlag = UseUnitFlag(runInfo) ? 3 : 0;
         fixpipeParams.dualDstCtl = 1;
         fixpipeParams.params.ndNum = 1;
         fixpipeParams.params.srcNdStride = 0;
@@ -472,6 +492,7 @@ public:
             MMParam param =
                 MakeMMParam((uint32_t)mBaseSize, (uint32_t)constInfo_.dSizeV,
                             (realK + 63) / MXFP_DIVISOR_SIZE * MXFP_DIVISOR_SIZE, USE_DN, false, k == 0, k == 0);
+            param.unitFlag = UseUnitFlag(runInfo) ? (k + 1 == kLoops ? 3 : 2) : 0;
             MatmulFullMX<INPUT_T, KV_T, T, 128, dVBaseSize, baseK, ABLayout::MK, ABLayout::KN, L0AType, L0BType, float,
                          float, INPUT_T, INPUT_T>(mm2A.GetTensor<INPUT_T>()[k * l1BaseKOffset], mm2BTensor,
                                                   mmL0ABuffers_, mmL0BBuffers_, mm2ResL0C.GetTensor<T>(), param,
@@ -479,8 +500,10 @@ public:
             mm2B.Set<HardEvent::MTE1_MTE2>();
         }
 
-        mm2ResL0C.Set<HardEvent::M_FIX>();
-        mm2ResL0C.Wait<HardEvent::M_FIX>();
+        if (!UseUnitFlag(runInfo)) {
+            mm2ResL0C.Set<HardEvent::M_FIX>();
+            mm2ResL0C.Wait<HardEvent::M_FIX>();
+        }
 
         outputBuf.WaitCrossCore();
         FixpipeMm2(outputBuf.template GetTensor<T>(), mm2ResL0C.GetTensor<T>(), runInfo);
