@@ -16,6 +16,7 @@
 #include "arch35/block_attn_res_prepare_apt_tiling_key.h"
 #include "arch35/block_attn_res_prepare_mix.h"
 #include "arch35/block_attn_res_prepare_vector.h"
+#include "arch35/block_attn_res_prepare_vector_s_tile.h"
 
 template <uint32_t TEMPLATE_MODE>
 __global__ __aicore__ void block_attn_res_prepare(GM_ADDR blockRes, GM_ADDR validBlocks, GM_ADDR pseudoQuery,
@@ -36,6 +37,11 @@ __global__ __aicore__ void block_attn_res_prepare(GM_ADDR blockRes, GM_ADDR vali
             op.Init(blockRes, validBlocks, pseudoQuery, numerator, logitMax, expSum);
             op.Process();
         }
+    } else if constexpr (TEMPLATE_MODE == BLOCK_ATTN_RES_PREPARE_TPL_VECTOR_S_TILE_BF16) {
+        GET_TILING_DATA_WITH_STRUCT(optiling::BlockAttnResPrepareTilingData, tilingData, tiling);
+        BlockAttnResPrepare::BlockAttnResPrepareVectorSTile<bfloat16_t> op(&tilingData);
+        op.Init(blockRes, validBlocks, pseudoQuery, numerator, logitMax, expSum);
+        op.Process();
     } else if constexpr (TEMPLATE_MODE == BLOCK_ATTN_RES_PREPARE_TPL_MIX) {
         AscendC::SetSysWorkspace(workspace);
         GM_ADDR userWorkspace = AscendC::GetUserWorkspace(workspace);

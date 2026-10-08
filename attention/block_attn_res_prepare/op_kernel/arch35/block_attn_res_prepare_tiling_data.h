@@ -17,6 +17,7 @@ namespace optiling {
 
 constexpr uint64_t BLOCK_ATTN_RES_PREPARE_VECTOR_KEY = 0UL;
 constexpr uint64_t BLOCK_ATTN_RES_PREPARE_MIX_KEY = 1UL;
+constexpr uint64_t BLOCK_ATTN_RES_PREPARE_VECTOR_S_TILE_BF16_KEY = 4UL;
 
 // Tiling data is deliberately declared as a plain struct.  The host writes
 // the scalar fields directly into the raw tiling buffer and the kernel reads
@@ -47,6 +48,8 @@ struct BlockAttnResPrepareTilingData {
     uint8_t qBufferNum;
     uint8_t vBufferNum;
     uint8_t oBufferNum;
+    // Number of S partitions per T for the BF16 S-tile Vector template.
+    uint8_t sTileNum;
 };
 
 // The Mix template has an independent data layout because its AIC/AIV work mapping and its L1/UB
