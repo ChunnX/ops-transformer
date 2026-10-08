@@ -354,7 +354,7 @@ ge::graphStatus KvRmsNormRopeCacheTilingDs::DoOpTiling()
     }
 
     if (IsB1SD(context_)) {
-        int64_t bns = batchSize * numHead * seqLen;
+        int64_t bns = batchSize * numHead * seqLength;
         int64_t blockFactor = (bns + coreNum_ - 1) / coreNum_;
         int64_t numBlocks = (bns + blockFactor - 1) / blockFactor;
         tilingData_.set_blockFactor(blockFactor);
