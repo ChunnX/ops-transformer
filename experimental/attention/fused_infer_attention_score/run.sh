@@ -29,7 +29,6 @@ echo "PROJECT_ROOT: $PROJECT_ROOT"
 
 function main {
     # 1. 清除遗留生成文件和日志文件
-    rm -rf $HOME/ascend/log/*
     rm -rf $PROJECT_ROOT/build
     rm -rf $PROJECT_ROOT/build_out
     rm -rf $CURRENT_DIR/output

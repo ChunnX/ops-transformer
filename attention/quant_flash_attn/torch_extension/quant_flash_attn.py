@@ -207,6 +207,7 @@ class QuantFlashAttnOpBuilder(OpBuilder):
             "Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_kv=None, "
             "Tensor? seqused_q=None, Tensor? seqused_kv=None, "
             "Tensor? sinks=None, Tensor? attn_mask=None, Tensor? metadata=None, "
+            "Tensor? v_tail=None, Tensor? block_table_tail=None, Tensor? seqused_v_tail=None, "
             "float softmax_scale=1.0, int mask_mode=0, int win_left=-1, int win_right=-1, "
             "int max_seqlen_q=-1, int max_seqlen_kv=-1, "
             'str layout_q="BSND", str layout_q_descale="BSND", str layout_kv="BSND", str layout_out="BSND", '
@@ -264,6 +265,9 @@ class QuantFlashAttnOpBuilder(OpBuilder):
             sinks: Optional[torch.Tensor] = None,
             attn_mask: Optional[torch.Tensor] = None,
             metadata: Optional[torch.Tensor] = None,
+            v_tail: Optional[torch.Tensor] = None,
+            block_table_tail: Optional[torch.Tensor] = None,
+            seqused_v_tail: Optional[torch.Tensor] = None,
             softmax_scale: Optional[float] = 1.0,
             mask_mode: Optional[Union[MaskMode, int]] = MaskMode.NO_MASK,
             win_left: Optional[int] = -1,
@@ -373,9 +377,10 @@ def quant_flash_attn_metadata(
     'PrivateUse1' is dispatch key for custom NPU backends.
     """
     torch._check(
-        quant_mode in (0, 1, 5, 6),
+        quant_mode in (0, 1, 3, 5, 6),
         lambda: f"The quant_mode of quant_flash_attn_metadata only supports 0 (A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32), "
         f"1 (A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32), "
+        f"3 (A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP16), "
         f"5 (A4C4_QKV_MXFP4_P_MXFP4_SOFTMAX_FP16) "
         f"or 6 (A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32), but got {quant_mode}",
     )
@@ -498,6 +503,9 @@ def quant_flash_attn(
     sinks: Optional[torch.Tensor] = None,
     attn_mask: Optional[torch.Tensor] = None,
     metadata: Optional[torch.Tensor] = None,
+    v_tail: Optional[torch.Tensor] = None,
+    block_table_tail: Optional[torch.Tensor] = None,
+    seqused_v_tail: Optional[torch.Tensor] = None,
     softmax_scale: Optional[float] = 1.0,
     mask_mode: Optional[Union[MaskMode, int]] = MaskMode.NO_MASK,
     win_left: Optional[int] = -1,
@@ -515,9 +523,10 @@ def quant_flash_attn(
     'PrivateUse1' is the combine key for custom NPU backends.
     """
     torch._check(
-        quant_mode in (0, 1, 5, 6),
+        quant_mode in (0, 1, 3, 5, 6),
         lambda: f"The quant_mode of quant_flash_attn only supports 0 (A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32), "
         f"1 (A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32), "
+        f"3 (A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP16), "
         f"5 (A4C4_QKV_MXFP4_P_MXFP4_SOFTMAX_FP16) "
         f"or 6 (A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32), but got {quant_mode}",
     )
@@ -607,6 +616,9 @@ def quant_flash_attn(
         sinks,
         attn_mask,
         metadata,
+        v_tail,
+        block_table_tail,
+        seqused_v_tail,
         softmax_scale,
         mask_mode,
         win_left,
