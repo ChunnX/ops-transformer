@@ -58,8 +58,8 @@ public:
     __aicore__ inline void operator()(FaGmTensorType &dstTensor, FaUbTensor<OUT_T, ROW_PAD> &srcTensor,
                                       GmCoordGs1Merge &gmCoord)
     {
-        auto &offsetCalculator = dstTensor.offsetCalculator;
         uint32_t s1Size = 0;
+        auto &offsetCalculator = dstTensor.offsetCalculator;
         if constexpr (GmLayoutParams<GM_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_TND) {
             s1Size = offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmCoord.bIdx);
         } else {

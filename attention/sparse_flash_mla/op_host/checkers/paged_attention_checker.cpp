@@ -13,15 +13,16 @@
 
 namespace optiling {
 namespace sparse_mla_checker {
+constexpr int64_t TURBO_QUANT_MODE = 3;
 namespace {
-const char *Op(const CheckContext &context)
+const char* Op(const CheckContext& context)
 {
     return context.opName == nullptr ? "SparseMla" : context.opName;
 }
 } // namespace
 
-ge::graphStatus PagedAttentionChecker::CheckBlockTable(const CheckContext &context, const TensorParam &param,
-                                                       const char *name) const
+ge::graphStatus PagedAttentionChecker::CheckBlockTable(const CheckContext& context, const TensorParam& param,
+                                                       const char* name) const
 {
     if (!param.present) {
         return ge::GRAPH_SUCCESS;
@@ -34,7 +35,7 @@ ge::graphStatus PagedAttentionChecker::CheckBlockTable(const CheckContext &conte
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus PagedAttentionChecker::CheckSinglePara(const CheckContext &context) const
+ge::graphStatus PagedAttentionChecker::CheckSinglePara(const CheckContext& context) const
 {
     if (CheckBlockTable(context, context.oriBlockTable, "ori_block_table") != ge::GRAPH_SUCCESS ||
         CheckBlockTable(context, context.cmpBlockTable, "cmp_block_table") != ge::GRAPH_SUCCESS) {
@@ -43,26 +44,33 @@ ge::graphStatus PagedAttentionChecker::CheckSinglePara(const CheckContext &conte
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus PagedAttentionChecker::CheckParaExistence(const CheckContext &context) const
+ge::graphStatus PagedAttentionChecker::CheckParaExistence(const CheckContext& context) const
 {
-    if (context.kvLayout != Layout::PA_BBND) {
-        OP_CHECK_IF(context.oriBlockTable.present || context.cmpBlockTable.present,
-                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
-                        Op(context), "ori_block_table and cmp_block_table",
-                        "Block tables are only supported when layout_kv is PA_BBND"),
+    if (context.variant == OperatorVariant::MIXED_QUANT && context.quantMode == TURBO_QUANT_MODE) {
+        OP_CHECK_IF(!context.oriBlockTable.present || !context.cmpBlockTable.present,
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(Op(context), "ori_block_table/cmp_block_table",
+                                                             "TurboQuant requires both block tables"),
                     return ge::GRAPH_FAILED);
+        return ge::GRAPH_SUCCESS;
+    }
+    if (context.kvLayout != Layout::PA_BBND) {
+        OP_CHECK_IF(
+            context.oriBlockTable.present || context.cmpBlockTable.present,
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(Op(context), "ori_block_table and cmp_block_table",
+                                                     "Block tables are only supported when layout_kv is PA_BBND"),
+            return ge::GRAPH_FAILED);
         return ge::GRAPH_SUCCESS;
     }
 
     OP_CHECK_IF(!context.oriBlockTable.present,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
-                    Op(context), "ori_block_table", "Ori_block_table is required when layout_kv is PA_BBND"),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(Op(context), "ori_block_table",
+                                                         "Ori_block_table is required when layout_kv is PA_BBND"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context.cmpKv.present != context.cmpBlockTable.present,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
-                    Op(context), "cmp_block_table",
-                    "Cmp_block_table must be present exactly when PA cmp_kv is present"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        context.cmpKv.present != context.cmpBlockTable.present,
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(Op(context), "cmp_block_table",
+                                                 "Cmp_block_table must be present exactly when PA cmp_kv is present"),
+        return ge::GRAPH_FAILED);
     OP_CHECK_IF(context.oriBlockTable.present && !context.sequsedOriKv.present && !CanOmitSequsedOriKv(context),
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
                     Op(context), "seqused_ori_kv and ori_topk_length",
@@ -78,7 +86,7 @@ ge::graphStatus PagedAttentionChecker::CheckParaExistence(const CheckContext &co
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus PagedAttentionChecker::CheckMultiPara(const CheckContext &context) const
+ge::graphStatus PagedAttentionChecker::CheckMultiPara(const CheckContext& context) const
 {
     if (context.oriBlockTable.present) {
         OP_CHECK_IF(GetDim(context.oriBlockTable, 0) != context.bSize,

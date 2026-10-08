@@ -36,6 +36,22 @@ def _load_impl_module(stem):
     return _impl_cache[stem]
 
 
+def _call_main_hook(stem, function, *args, **kwargs):
+    """Bind positional torch.ops arguments using the installed operator schema."""
+    import torch
+    import cann_ops_transformer  # noqa: F401
+
+    parameters = torch.ops.cann_ops_transformer.flash_attn.default._schema.arguments
+    if len(args) > len(parameters):
+        raise TypeError("too many positional FlashAttn arguments")
+    arguments = dict(kwargs)
+    for parameter, value in zip(parameters, args):
+        if parameter.name in arguments:
+            raise TypeError(f"multiple values for FlashAttn argument {parameter.name}")
+        arguments[parameter.name] = value
+    return getattr(_load_impl_module(stem), function)(**arguments)
+
+
 class FlashAttnSpec:
     """TestSpec for FlashAttn operator.
 
@@ -44,11 +60,11 @@ class FlashAttnSpec:
 
     @staticmethod
     def golden(*args, **kwargs):
-        return _load_impl_module("golden").cpu_flash_attn(*args, **kwargs)
+        return _call_main_hook("golden", "cpu_flash_attn", *args, **kwargs)
 
     @staticmethod
     def customize_inputs(*args, **kwargs):
-        return _load_impl_module("inputs").customize_inputs(*args, **kwargs)
+        return _call_main_hook("inputs", "customize_inputs", *args, **kwargs)
 
     tolerance = {
         "float16": {"standard": "stat_rel_err"},
@@ -61,7 +77,9 @@ class FlashAttnSpec:
 
     torch_graph = _load_impl_module("graph").FlashAttnAclGraph
 
-    npu_preprocess = _load_impl_module("npu_preprocess").run
+    @staticmethod
+    def npu_preprocess(*args, **kwargs):
+        return _call_main_hook("npu_preprocess", "run", *args, **kwargs)
 
 
 class FlashAttnMetadataSpec:
@@ -76,6 +94,7 @@ class FlashAttnMetadataSpec:
 
 
 __spec__ = {
+    "torch.ops.cann_ops_transformer.flash_attn": "FlashAttnSpec",
     "flash_attn_ttk_ops.flash_attn_ttk": "FlashAttnSpec",
     "torch.ops.cann_ops_transformer.flash_attn_metadata": "FlashAttnMetadataSpec",
 }

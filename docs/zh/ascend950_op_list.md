@@ -38,6 +38,16 @@ Ascend 950支持的算子分类和算子列表如下：
   </tr>
   <tr>
     <td>attention</td>
+    <td><a href="../../attention/attention_worker_combine/README.md">attention_worker_combine</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>将多个计算单元处理的注意力token数据进行融合，结合专家权重对结果进行加权，输出最终的注意力融合结果，并更新层ID。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
     <td><a href="../../attention/block_sparse_attention/README.md">block_sparse_attention</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -364,7 +374,7 @@ Ascend 950支持的算子分类和算子列表如下：
     <td>✓</td>
     <td>✗</td>
     <td>AI Core</td>
-    <td>融合GroupedMatmul 、dequant、swiglu和quant，新增了MXFP8量化场景（仅Ascend 950PR/Ascend 950DT AI处理器支持）。</td>
+    <td>融合GroupedMatmul 、dequant、swiglu和quant，新增了MXFP8量化场景（仅Ascend 950PR&950DT系列产品 AI处理器支持）。</td>
   </tr>
   <tr>
     <td>gmm</td>

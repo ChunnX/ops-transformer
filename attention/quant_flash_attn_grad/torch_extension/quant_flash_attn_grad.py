@@ -108,10 +108,9 @@ class QuantFlashAttnGradOpBuilder(OpBuilder):
         ):
             if layout_q == "TND":
                 t_q, n_q, d = q.size(0), q.size(1), q.size(2)
-                # excel1 规定 dk/dv 与 dq 同形 (用户决策保持原文，不按数学定义修正)
                 dq_size = (t_q, n_q, d)
-                dk_size = (t_q, n_q, d)
-                dv_size = (t_q, n_q, d)
+                dk_size = tuple(k.shape)
+                dv_size = tuple(v.shape)
             elif layout_q == "BSND":
                 b, s_q, s_k, n_q, d = (
                     q.size(0),

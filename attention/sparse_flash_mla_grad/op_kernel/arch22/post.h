@@ -24,8 +24,10 @@ class SparseFlashMlaGradPost {
 public:
     __aicore__ inline SparseFlashMlaGradPost(){};
     __aicore__ inline void Init(__gm__ uint8_t *dq, __gm__ uint8_t *d_ori_kv, __gm__ uint8_t *d_cmp_kv,
-                                __gm__ uint8_t *workspace, const TILING_TYPE *__restrict ordTilingData, TPipe *pipe_in);
+                                __gm__ uint8_t *dsinks, __gm__ uint8_t *workspace,
+                                const TILING_TYPE *__restrict ordTilingData, TPipe *pipe_in);
     __aicore__ inline void Process();
+    __aicore__ inline void ProcessSink();
 
     constexpr static uint32_t BUFFER_NUM = 1;
     TPipe *pipe;
@@ -36,6 +38,8 @@ public:
     AscendC::GlobalTensor<OUT_TYPE> dqGm;
     AscendC::GlobalTensor<OUT_TYPE> dOriKvGm;
     AscendC::GlobalTensor<OUT_TYPE> dCmpKvGm;
+    AscendC::GlobalTensor<float> dsinkGm;
+    AscendC::GlobalTensor<float> dsinkWorkspaceGm;
     // input
     AscendC::GlobalTensor<float> dqWorkSpaceGm;
     AscendC::GlobalTensor<float> dkWorkSpaceGm;
@@ -49,6 +53,9 @@ public:
 
     int64_t usedCoreNum;
     int64_t cBlockIdx;
+    int64_t aivNum{0};
+    int64_t dimG{0};
+    uint32_t isDeterministic{0};
     // query
     int64_t ubBaseSize;
     int64_t qPostBlockFactor;
@@ -88,8 +95,8 @@ public:
 template <typename OUT_TYPE, typename TILING_TYPE, const bool CAST_DV, const uint32_t LAYOUT,
           const uint32_t INPUT_FORMAT, const uint32_t MODE>
 __aicore__ inline void SparseFlashMlaGradPost<OUT_TYPE, TILING_TYPE, CAST_DV, LAYOUT, INPUT_FORMAT, MODE>::Init(
-    __gm__ uint8_t *dq, __gm__ uint8_t *d_ori_kv, __gm__ uint8_t *d_cmp_kv, __gm__ uint8_t *workspace,
-    const TILING_TYPE *__restrict ordTilingData, TPipe *pipe_in)
+    __gm__ uint8_t *dq, __gm__ uint8_t *d_ori_kv, __gm__ uint8_t *d_cmp_kv, __gm__ uint8_t *dsinks,
+    __gm__ uint8_t *workspace, const TILING_TYPE *__restrict ordTilingData, TPipe *pipe_in)
 {
     cBlockIdx = GetBlockIdx();
 
@@ -99,6 +106,7 @@ __aicore__ inline void SparseFlashMlaGradPost<OUT_TYPE, TILING_TYPE, CAST_DV, LA
     dqGm.SetGlobalBuffer((__gm__ OUT_TYPE *)dq);
     dOriKvGm.SetGlobalBuffer((__gm__ OUT_TYPE *)d_ori_kv);
     dCmpKvGm.SetGlobalBuffer((__gm__ OUT_TYPE *)d_cmp_kv);
+    dsinkGm.SetGlobalBuffer((__gm__ float *)dsinks);
 
     // tiling_data
     usedCoreNum = tilingData->postTilingData.coreNum;
@@ -119,30 +127,22 @@ __aicore__ inline void SparseFlashMlaGradPost<OUT_TYPE, TILING_TYPE, CAST_DV, LA
     cmpKvPostTailNum = tilingData->postTilingData.cmpKvPostTailNum;
 
     dimDqk = tilingData->opInfo.D;
+    dimG = tilingData->opInfo.G;
+    isDeterministic = tilingData->opInfo.isDeterministic;
+    aivNum = tilingData->opInfo.aivNum;
     dOriKvSize = LAYOUT == 3 ? tilingData->opInfo.S2 * tilingData->opInfo.N2 * dimDqk :
                                tilingData->opInfo.B * tilingData->opInfo.S2 * tilingData->opInfo.N2 * dimDqk;
     dCmpKvSize = LAYOUT == 3 ? tilingData->opInfo.S3 * tilingData->opInfo.N2 * dimDqk :
                                tilingData->opInfo.B * tilingData->opInfo.S3 * tilingData->opInfo.N2 * dimDqk;
-    /*
-     * 初始化workspace
-     */
-    int64_t usedWorkspaceLen = 0;
-    // select
-    usedWorkspaceLen += tilingData->opInfo.selectedKWorkspaceLen * usedCoreNum;
-    usedWorkspaceLen += tilingData->opInfo.selectedVWorkspaceLen * usedCoreNum;
-    // mm1 与 p 复用workspace
-    usedWorkspaceLen += tilingData->opInfo.mm12WorkspaceLen * usedCoreNum;
-    // mm2 与 ds 复用workspace
-    usedWorkspaceLen += tilingData->opInfo.mm12WorkspaceLen * usedCoreNum * usedCoreNum;
-    // post
-    int64_t dqAddr = usedWorkspaceLen / sizeof(float);
-    int64_t dkAddr = dqAddr + tilingData->opInfo.dqWorkspaceLen / sizeof(float);
-    int64_t dvAddr = dkAddr + tilingData->opInfo.dkWorkspaceLen / sizeof(float);
 
     dqWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
                                   tilingData->postTilingData.dqWorkSpaceOffset / sizeof(float));
     dkWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
                                   tilingData->postTilingData.dkWorkSpaceOffset / sizeof(float));
+    if (isDeterministic) {
+        dsinkWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace +
+                                         tilingData->postTilingData.dSinkWorkSpaceOffset / sizeof(float));
+    }
 
     pipe->InitBuffer(inQueue, 1, ubBaseSize * 2);
     pipe->InitBuffer(outQueue, 1, ubBaseSize);
@@ -200,60 +200,23 @@ __aicore__ inline void SparseFlashMlaGradPost<OUT_TYPE, TILING_TYPE, CAST_DV, LA
     WaitFlag<HardEvent::V_MTE2>(0);
     PIPE_BARRIER(PIPE_ALL);
 
-    // muls -> atomicAdd
-    uint64_t oriKvBegin = cBlockIdx * oriKvPostBlockFactor * oriKvPostBaseNum;
-    uint64_t oriKvEnd = (cBlockIdx + 1) * oriKvPostBlockFactor * oriKvPostBaseNum;
-    if (((cBlockIdx + 1) * oriKvPostBlockFactor * oriKvPostBaseNum) > oriKvPostBlockTotal) {
-        oriKvEnd = oriKvPostBlockTotal;
-    }
-    SetFlag<HardEvent::V_MTE2>(mte2WaitV);
-    SetFlag<HardEvent::MTE3_V>(vWaitMte3);
-    for (uint64_t i = oriKvBegin; i < oriKvEnd; i = i + oriKvPostBaseNum) {
-        AscendC::LocalTensor<float> vecIn = tmpBuf.GetWithOffset<float>(oriKvPostBaseNum, 0);
-        AscendC::LocalTensor<float> vecOut =
-            tmpBuf.GetWithOffset<float>(oriKvPostBaseNum, oriKvPostBaseNum * sizeof(float));
-        uint64_t dataSize = i + oriKvPostBaseNum < oriKvPostBlockTotal ? oriKvPostBaseNum : oriKvPostTailNum;
-        WaitFlag<HardEvent::V_MTE2>(mte2WaitV);
-        DataCopy(vecIn, dkWorkSpaceGm[i + dOriKvSize + dCmpKvSize], (dataSize + 7) / 8 * 8); // dataSize(fp32) align 32B
-        SetFlag<HardEvent::MTE2_V>(vWaitMte2);
-
-        WaitFlag<HardEvent::MTE2_V>(vWaitMte2);
-        WaitFlag<HardEvent::MTE3_V>(vWaitMte3);
-        Muls(vecOut, vecIn, (float)tilingData->postTilingData.scaleValue, dataSize);
-        SetFlag<HardEvent::V_MTE2>(mte2WaitV);
-
-        DataCopyParams repeatParams;
-        repeatParams.blockCount = dataSize / dimDqk;
-        repeatParams.blockLen = dimDqk * sizeof(float) / 32;
-        repeatParams.srcStride = 0;
-        repeatParams.dstStride = 0;
-
-        SetFlag<HardEvent::V_MTE3>(mte3WaitV);
-        WaitFlag<HardEvent::V_MTE3>(mte3WaitV);
-        SetAtomicAdd<float>();
-        DataCopy(dkWorkSpaceGm[i], vecOut, repeatParams);
-        SetAtomicNone();
-        SetFlag<HardEvent::MTE3_V>(vWaitMte3);
-    }
-    WaitFlag<HardEvent::V_MTE2>(mte2WaitV);
-    WaitFlag<HardEvent::MTE3_V>(vWaitMte3);
-    PIPE_BARRIER(PIPE_ALL);
-
-    if constexpr (MODE == SMLAG_CFA_MODE) {
-        uint64_t cmpKvBegin = cBlockIdx * cmpKvPostBlockFactor * cmpKvPostBaseNum;
-        uint64_t cmpKvEnd = (cBlockIdx + 1) * cmpKvPostBlockFactor * cmpKvPostBaseNum;
-        if (((cBlockIdx + 1) * cmpKvPostBlockFactor * cmpKvPostBaseNum) > cmpKvPostBlockTotal) {
-            cmpKvEnd = cmpKvPostBlockTotal;
+    // muls -> atomicAdd (非确定性路径；确定性路径已在 AccumulateKvDeter 中完成 scale+dv)
+    if (!isDeterministic) {
+        uint64_t oriKvBegin = cBlockIdx * oriKvPostBlockFactor * oriKvPostBaseNum;
+        uint64_t oriKvEnd = (cBlockIdx + 1) * oriKvPostBlockFactor * oriKvPostBaseNum;
+        if (((cBlockIdx + 1) * oriKvPostBlockFactor * oriKvPostBaseNum) > oriKvPostBlockTotal) {
+            oriKvEnd = oriKvPostBlockTotal;
         }
         SetFlag<HardEvent::V_MTE2>(mte2WaitV);
         SetFlag<HardEvent::MTE3_V>(vWaitMte3);
-        for (uint64_t i = cmpKvBegin; i < cmpKvEnd; i = i + cmpKvPostBaseNum) {
-            AscendC::LocalTensor<float> vecIn = tmpBuf.GetWithOffset<float>(cmpKvPostBaseNum, 0);
+        for (uint64_t i = oriKvBegin; i < oriKvEnd; i = i + oriKvPostBaseNum) {
+            AscendC::LocalTensor<float> vecIn = tmpBuf.GetWithOffset<float>(oriKvPostBaseNum, 0);
             AscendC::LocalTensor<float> vecOut =
-                tmpBuf.GetWithOffset<float>(cmpKvPostBaseNum, cmpKvPostBaseNum * sizeof(float));
-            uint64_t dataSize = i + cmpKvPostBaseNum < cmpKvPostBlockTotal ? cmpKvPostBaseNum : cmpKvPostTailNum;
+                tmpBuf.GetWithOffset<float>(oriKvPostBaseNum, oriKvPostBaseNum * sizeof(float));
+            uint64_t dataSize = i + oriKvPostBaseNum < oriKvPostBlockTotal ? oriKvPostBaseNum : oriKvPostTailNum;
             WaitFlag<HardEvent::V_MTE2>(mte2WaitV);
-            DataCopy(vecIn, dkWorkSpaceGm[i + dOriKvSize * 2 + dCmpKvSize], (dataSize + 7) / 8 * 8);
+            DataCopy(vecIn, dkWorkSpaceGm[i + dOriKvSize + dCmpKvSize],
+                     (dataSize + 7) / 8 * 8); // dataSize(fp32) align 32B
             SetFlag<HardEvent::MTE2_V>(vWaitMte2);
 
             WaitFlag<HardEvent::MTE2_V>(vWaitMte2);
@@ -270,16 +233,61 @@ __aicore__ inline void SparseFlashMlaGradPost<OUT_TYPE, TILING_TYPE, CAST_DV, LA
             SetFlag<HardEvent::V_MTE3>(mte3WaitV);
             WaitFlag<HardEvent::V_MTE3>(mte3WaitV);
             SetAtomicAdd<float>();
-            DataCopy(dkWorkSpaceGm[dOriKvSize + i], vecOut, repeatParams);
+            DataCopy(dkWorkSpaceGm[i], vecOut, repeatParams);
             SetAtomicNone();
             SetFlag<HardEvent::MTE3_V>(vWaitMte3);
         }
         WaitFlag<HardEvent::V_MTE2>(mte2WaitV);
         WaitFlag<HardEvent::MTE3_V>(vWaitMte3);
         PIPE_BARRIER(PIPE_ALL);
-    }
+
+        if constexpr (MODE == SMLAG_CFA_MODE) {
+            uint64_t cmpKvBegin = cBlockIdx * cmpKvPostBlockFactor * cmpKvPostBaseNum;
+            uint64_t cmpKvEnd = (cBlockIdx + 1) * cmpKvPostBlockFactor * cmpKvPostBaseNum;
+            if (((cBlockIdx + 1) * cmpKvPostBlockFactor * cmpKvPostBaseNum) > cmpKvPostBlockTotal) {
+                cmpKvEnd = cmpKvPostBlockTotal;
+            }
+            SetFlag<HardEvent::V_MTE2>(mte2WaitV);
+            SetFlag<HardEvent::MTE3_V>(vWaitMte3);
+            for (uint64_t i = cmpKvBegin; i < cmpKvEnd; i = i + cmpKvPostBaseNum) {
+                AscendC::LocalTensor<float> vecIn = tmpBuf.GetWithOffset<float>(cmpKvPostBaseNum, 0);
+                AscendC::LocalTensor<float> vecOut =
+                    tmpBuf.GetWithOffset<float>(cmpKvPostBaseNum, cmpKvPostBaseNum * sizeof(float));
+                uint64_t dataSize = i + cmpKvPostBaseNum < cmpKvPostBlockTotal ? cmpKvPostBaseNum : cmpKvPostTailNum;
+                WaitFlag<HardEvent::V_MTE2>(mte2WaitV);
+                DataCopy(vecIn, dkWorkSpaceGm[i + dOriKvSize * 2 + dCmpKvSize], (dataSize + 7) / 8 * 8);
+                SetFlag<HardEvent::MTE2_V>(vWaitMte2);
+
+                WaitFlag<HardEvent::MTE2_V>(vWaitMte2);
+                WaitFlag<HardEvent::MTE3_V>(vWaitMte3);
+                Muls(vecOut, vecIn, (float)tilingData->postTilingData.scaleValue, dataSize);
+                SetFlag<HardEvent::V_MTE2>(mte2WaitV);
+
+                DataCopyParams repeatParams;
+                repeatParams.blockCount = dataSize / dimDqk;
+                repeatParams.blockLen = dimDqk * sizeof(float) / 32;
+                repeatParams.srcStride = 0;
+                repeatParams.dstStride = 0;
+
+                SetFlag<HardEvent::V_MTE3>(mte3WaitV);
+                WaitFlag<HardEvent::V_MTE3>(mte3WaitV);
+                SetAtomicAdd<float>();
+                DataCopy(dkWorkSpaceGm[dOriKvSize + i], vecOut, repeatParams);
+                SetAtomicNone();
+                SetFlag<HardEvent::MTE3_V>(vWaitMte3);
+            }
+            WaitFlag<HardEvent::V_MTE2>(mte2WaitV);
+            WaitFlag<HardEvent::MTE3_V>(vWaitMte3);
+            PIPE_BARRIER(PIPE_ALL);
+        }
+    } // !isDeterministic
 
     // init oriKv
+    uint64_t oriKvBegin = cBlockIdx * oriKvPostBlockFactor * oriKvPostBaseNum;
+    uint64_t oriKvEnd = (cBlockIdx + 1) * oriKvPostBlockFactor * oriKvPostBaseNum;
+    if (((cBlockIdx + 1) * oriKvPostBlockFactor * oriKvPostBaseNum) > oriKvPostBlockTotal) {
+        oriKvEnd = oriKvPostBlockTotal;
+    }
     uint64_t dOriKvOutGmOffset = cBlockIdx * oriKvPostBlockFactor * (oriKvPostBaseNum / dimDqk) * dimDqk;
 
     SetFlag<HardEvent::V_MTE2>(0);
@@ -351,4 +359,53 @@ __aicore__ inline void SparseFlashMlaGradPost<OUT_TYPE, TILING_TYPE, CAST_DV, LA
         WaitFlag<HardEvent::V_MTE2>(0);
         PIPE_BARRIER(PIPE_ALL);
     }
+
+    if (isDeterministic) {
+        ProcessSink();
+    }
+}
+
+template <typename OUT_TYPE, typename TILING_TYPE, const bool CAST_DV, const uint32_t LAYOUT,
+          const uint32_t INPUT_FORMAT, const uint32_t MODE>
+__aicore__ inline void SparseFlashMlaGradPost<OUT_TYPE, TILING_TYPE, CAST_DV, LAYOUT, INPUT_FORMAT, MODE>::ProcessSink()
+{
+    // CopyOutDsinks 只写入 mix 实际 AIV：vecBlockIdx ∈ [0, usedCoreNum*2)
+    int64_t sinkAivNum = static_cast<int64_t>(tilingData->opInfo.usedCoreNum) * 2;
+    if (sinkAivNum <= 0 || dimG == 0) {
+        return;
+    }
+    // 按实际写 workspace 的 AIV 数均分 G，避免用平台 aivNum 导致尾部 G 无人写
+    int64_t gPerCore = (dimG + sinkAivNum - 1) / sinkAivNum;
+    int64_t gStart = cBlockIdx * gPerCore;
+    int64_t gEnd = gStart + gPerCore;
+    if (gEnd > dimG) {
+        gEnd = dimG;
+    }
+    if (gStart >= dimG) {
+        return;
+    }
+    int64_t gLen = gEnd - gStart;
+    // VEC/MTE 要求 UB 基址与长度按 32B（8 个 float）对齐
+    constexpr int64_t FP32_ALIGN = 8;
+    int64_t gLenAlign = (gLen + FP32_ALIGN - 1) / FP32_ALIGN * FP32_ALIGN;
+    AscendC::LocalTensor<float> accTensor = tmpBuf.GetWithOffset<float>(gLenAlign, 0);
+    AscendC::LocalTensor<float> tmpTensor = tmpBuf.GetWithOffset<float>(gLenAlign, gLenAlign * sizeof(float));
+
+    Duplicate(accTensor, (float)0.0, gLenAlign);
+    PIPE_BARRIER(PIPE_V);
+    event_t eventId = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
+    SetFlag<HardEvent::MTE3_MTE2>(eventId);
+    for (int64_t srcAiv = 0; srcAiv < sinkAivNum; srcAiv++) {
+        WaitFlag<HardEvent::MTE3_MTE2>(eventId);
+        DataCopyPad(tmpTensor, dsinkWorkspaceGm[srcAiv * dimG + gStart], {1, (uint32_t)(gLen * sizeof(float)), 0, 0, 0},
+                    {false, 0, 0, 0});
+        SetFlag<HardEvent::MTE2_V>(vWaitMte2);
+        WaitFlag<HardEvent::MTE2_V>(vWaitMte2);
+        Add(accTensor, accTensor, tmpTensor, gLenAlign);
+        SetFlag<HardEvent::V_MTE3>(mte3WaitV);
+        WaitFlag<HardEvent::V_MTE3>(mte3WaitV);
+        SetFlag<HardEvent::MTE3_MTE2>(eventId);
+    }
+    WaitFlag<HardEvent::MTE3_MTE2>(eventId);
+    DataCopyPad(dsinkGm[gStart], accTensor, {1, (uint32_t)(gLen * sizeof(float)), 0, 0, 0});
 }
