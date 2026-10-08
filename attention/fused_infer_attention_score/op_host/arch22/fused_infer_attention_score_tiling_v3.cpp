@@ -1178,7 +1178,7 @@ bool CheckSpecCondPA3Dim(int64_t tempQD, const gert::Shape& kShape, const gert::
     return isFAIDSize && blockSizeSupported;
 }
 
-bool CheckSpecCondPA4Dim(int64_t tempQD, const gert::Shape &kShape, const gert::Shape &vShape)
+bool CheckSpecCondPA4Dim(int64_t tempQD, const gert::Shape& kShape, const gert::Shape& vShape)
 {
     if (kShape.GetDimNum() != 4U || vShape.GetDimNum() != 4U) {
         return false;
@@ -1198,7 +1198,7 @@ bool CheckSpecCondPA4Dim(int64_t tempQD, const gert::Shape &kShape, const gert::
     return isFAIDSize && blockSizeSupported;
 }
 
-bool CheckSpecCondPA5Dim(int64_t tempQD, const gert::Shape &kShape, const gert::Shape &vShape)
+bool CheckSpecCondPA5Dim(int64_t tempQD, const gert::Shape& kShape, const gert::Shape& vShape)
 {
     int64_t tempKD = kShape.GetDim(DIM_2) * 16;
     int64_t tempVD = vShape.GetDim(DIM_2) * 16;
