@@ -20,7 +20,7 @@
 #define SORT_LIB_ONE_CORE_H
 
 #include "kernel_operator.h"
-#include "sort_lib_util.h"
+#include "sort_util.h"
 #include "sort_lib_params.h"
 
 namespace SortLib::detail {
