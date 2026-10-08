@@ -35,8 +35,8 @@ struct BnbdDescs {
 };
 
 // TensorListDesc/IntArrayDesc have no default constructor, so BnbdDescs must be aggregate-initialized.
-BnbdDescs MakeBnbdDescs(const vector<int64_t>& qShape, const vector<int64_t>& kShape, const vector<int64_t>& vShape,
-                        const vector<int64_t>& blockTableShape)
+BnbdDescs MakeBnbdDescs(const vector<int64_t> &qShape, const vector<int64_t> &kShape, const vector<int64_t> &vShape,
+                        const vector<int64_t> &blockTableShape)
 {
     return {TensorDesc(qShape, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1),
             TensorListDesc({TensorDesc(kShape, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1)}),
