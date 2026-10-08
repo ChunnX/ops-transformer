@@ -136,13 +136,7 @@ if [ "${task_name}" == "Pre_Compile" ]; then
     fi
     DP_ASSERT_EQUAL "$ret" "0" "Build ${REPOSITORY_NAME}"
 else
-    if [ "${CI_SOC}" == "ascend960dt" ]; then
-        LOG_DO bash build.sh --pkg --soc=ascend960dt --PR_COMPILE "pr_filelist.txt" --cann_3rd_lib_path="${ASCEND_3RD_LIB_PATH}" -j16
-        BUILD_EXIT_CODE=$?
-        if [ "${BUILD_EXIT_CODE}" != "200" ]; then
-            DP_ASSERT_EQUAL "${BUILD_EXIT_CODE}" "0" "Build ${REPOSITORY_NAME} for ascend960dt"
-        fi
-    elif [ "${GE_ST_RT2}X" == "kirinx90X" ]; then
+    if [ "${GE_ST_RT2}X" == "kirinx90X" ]; then
         if [ "${GIT_TARGET_BRANCH}" = "master" ]; then
             ops_names=$(GET_PR_RELATED_OPS)
             if [ -n "${ops_names}" ]; then
@@ -234,7 +228,7 @@ compile_package_name=$(ls "${WORKSPACE}/build_out/" |grep -E "*.run$"|head -n1)
 if [[ -z "${compile_package_name}" ]]; then
     if [[ "${BUILD_EXIT_CODE}" == "200" ]]; then
         echo "not need compile"
-        mkdir -p build_out
+        mkdir build_out
         touch build_out/cann-ops-transformer_linux-${OS_TYPE}.run
         echo "api-check=continue" >> "${ATOMGIT_OUTPUT}"
         exit 0
