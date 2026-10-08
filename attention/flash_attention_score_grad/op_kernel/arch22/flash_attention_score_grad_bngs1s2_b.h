@@ -215,6 +215,10 @@ protected:
     const FlashAttentionScoreGradUbngs1s2BbTilingData *__restrict ordTilingData_;
 
     TPipe *pipe;
+    event_t mte3ToMte2Event;
+    event_t mte3ToVEvent;
+    bool initOutputSyncInited{false};
+    bool initOutputMte2SyncInited{false};
 
     GlobalTensor<uint8_t> attenMaskU8Gm;
     GlobalTensor<T1> keyGm, valueGm, dxGm, queryGm, attenMaskGm, forwardResGm, pseGm;
@@ -372,6 +376,28 @@ protected:
                                           const int64_t &bCvMmOffset);
     __aicore__ inline void ResetGm4Dkdv(const uint32_t &inputLayoutTmp, const int64_t &currBatchSkvLoopOffset,
                                         const uint32_t &currBCvInner, const int64_t &mmNzDkvOffset);
+    // InitOutput 返回后 MTE3 仍可能在读 PopStackBuffer。
+    // waitMte2：这块 UB 随后会被 MTE2 复用（仅 Init 里、InitBuffer 之前的那一次）。
+    __aicore__ inline void SyncInitOutputUb(bool waitMte2)
+    {
+        if (g_coreType != AIV) {
+            return;
+        }
+        if (!initOutputSyncInited) {
+            mte3ToVEvent = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_V));
+            initOutputSyncInited = true;
+        }
+        if (waitMte2 && !initOutputMte2SyncInited) {
+            mte3ToMte2Event = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
+            initOutputMte2SyncInited = true;
+        }
+        if (waitMte2) {
+            SetFlag<HardEvent::MTE3_MTE2>(mte3ToMte2Event);
+            WaitFlag<HardEvent::MTE3_MTE2>(mte3ToMte2Event);
+        }
+        SetFlag<HardEvent::MTE3_V>(mte3ToVEvent);
+        WaitFlag<HardEvent::MTE3_V>(mte3ToVEvent);
+    }
     __aicore__ inline void NZCopyIn(int64_t mmOffset, GlobalTensor<T2> &mmWspGm, LocalTensor<T2> &mmTensorCurr,
                                     int64_t sQ, int64_t sKVAlign);
     __aicore__ inline void NZ2ND(LocalTensor<T2> &mmTensorCurr, LocalTensor<T2> &tmpTensor, int64_t sQ,
@@ -408,6 +434,7 @@ __aicore__ inline void FlashAttentionScoreGradUngs1s2Bb<
     syncGlobal.SetGlobalBuffer((__gm__ int32_t *)workspace, 100 * 8);
     dropoutWorkspaceGm.SetGlobalBuffer((__gm__ uint8_t *)workspace + 3200);
     InitOutput<int32_t>(syncGlobal[GetBlockIdx() * 8], 8, 0);
+    SyncInitOutputUb(true);
 
     ordTilingData_ = ordTilingData;
     pipe = pipe_in;
@@ -1370,20 +1397,26 @@ FlashAttentionScoreGradUngs1s2Bb<T1, T2, MM_CFG, layout, MMPre_OUT_FORMAT, MMNex
             if constexpr (MMNext_OUT_FORMAT == CubeFormat::NZ) {
                 int64_t nums = currBCvInner * n * 1 * sKV * originalDAlign;
                 InitOutput<T2>(dkWorkspaceGm[mmNzDkvOffset], nums, 0);
+                SyncInitOutputUb(false);
             } else {
                 InitOutput<T2>(dkWorkspaceGm[offset], num, 0);
+                SyncInitOutputUb(false);
             }
             InitOutput<T1>(dvGm[offset], num, 0);
+            SyncInitOutputUb(false);
         }
     } else {
         int64_t num = currBCvInner * n * 1 * sKV * d;
         if constexpr (MMNext_OUT_FORMAT == CubeFormat::NZ) {
             int64_t nums = currBCvInner * n * 1 * sKV * originalDAlign;
             InitOutput<T2>(dkWorkspaceGm[mmNzDkvOffset], nums, 0);
+            SyncInitOutputUb(false);
         } else {
             InitOutput<T2>(dkWorkspaceGm[currBatchSkvLoopOffset], num, 0);
+            SyncInitOutputUb(false);
         }
         InitOutput<T1>(dvGm[currBatchSkvLoopOffset], num, 0);
+        SyncInitOutputUb(false);
     }
 }
 
