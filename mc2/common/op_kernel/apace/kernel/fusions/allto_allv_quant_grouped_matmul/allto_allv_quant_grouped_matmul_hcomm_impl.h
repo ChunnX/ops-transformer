@@ -96,12 +96,12 @@ private:
     static constexpr AscendC::HcclDataType X_HCCL_DATA_TYPE = GetA2avGmmHcclDataType<AType>();
     static constexpr AscendC::HcclDataType SCALE_HCCL_DATA_TYPE = AscendC::HCCL_DATA_TYPE_FP8E8M0;
 
-    using LayoutA = asc::te::nd_ext_layout_ptn;
-    using LayoutB = AscendC::Std::conditional_t<TransB, asc::te::dn_ext_layout_ptn,
-                                                asc::te::nd_ext_layout_ptn>;
-    using LayoutC = asc::te::nd_ext_layout_ptn;
-    using LayoutBias = asc::te::nd_ext_layout_ptn;
-    using ProblemShape = asc::te::shape<int64_t, int64_t, int64_t, int64_t>;
+    using LayoutA = AscendC::Te::NDExtLayoutPtn;
+    using LayoutB =
+        AscendC::Std::conditional_t<TransB, AscendC::Te::DNExtLayoutPtn, AscendC::Te::NDExtLayoutPtn>;
+    using LayoutC = AscendC::Te::NDExtLayoutPtn;
+    using LayoutBias = AscendC::Te::NDExtLayoutPtn;
+    using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
     using BlockScheduler = Blaze::Gemm::Block::BlockSchedulerGmmSwatWithTailSplit;
     using DispatchPolicy =
         Blaze::Gemm::GroupedMatmulWithScaleMx<0, false, Blaze::Gemm::KernelGroupedMmadWithScaleMx>;
@@ -109,8 +109,8 @@ private:
                                                     float, LayoutBias>;
     using GmmKernel = Blaze::Gemm::Kernel::GroupedMatmulMxKernel<ProblemShape, BlockMmad, BlockScheduler>;
 
-    using MmLayoutB = AscendC::Std::conditional_t<TransMmB, asc::te::dn_ext_layout_ptn,
-                                                  asc::te::nd_ext_layout_ptn>;
+    using MmLayoutB =
+        AscendC::Std::conditional_t<TransMmB, AscendC::Te::DNExtLayoutPtn, AscendC::Te::NDExtLayoutPtn>;
     using MmBlockMmad = Blaze::Gemm::Block::BlockMmad<DispatchPolicy, AType, LayoutA, BType, MmLayoutB, CType,
                                                       LayoutC, float, LayoutBias>;
     using MmKernel = Blaze::Gemm::Kernel::GroupedMatmulMxKernel<ProblemShape, MmBlockMmad, BlockScheduler>;
