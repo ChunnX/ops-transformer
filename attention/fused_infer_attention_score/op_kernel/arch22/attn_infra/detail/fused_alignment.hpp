@@ -16,14 +16,14 @@
 namespace NpuArch::Detail::Alignment {
 
 template <uint32_t ALIGN, typename T>
-HOST_DEVICE constexpr T RoundUp(const T &val)
+HOST_DEVICE constexpr T RoundUp(const T& val)
 {
     static_assert(ALIGN != 0, "ALIGN must not be 0.");
     return (val + ALIGN - 1) / ALIGN * ALIGN;
 }
 
 template <class T, class U>
-HOST_DEVICE constexpr auto RoundUp(T const &val, U const &align)
+HOST_DEVICE constexpr auto RoundUp(T const& val, U const& align)
 {
     if (align == 0) {
         return val;
@@ -55,7 +55,7 @@ HOST_DEVICE constexpr T CeilDiv(const T dividend)
 }
 
 template <class T, class U>
-HOST_DEVICE constexpr auto CeilDiv(T const &dividend, U const &divisor)
+HOST_DEVICE constexpr auto CeilDiv(T const& dividend, U const& divisor)
 {
     if (divisor == 0) {
         return dividend;

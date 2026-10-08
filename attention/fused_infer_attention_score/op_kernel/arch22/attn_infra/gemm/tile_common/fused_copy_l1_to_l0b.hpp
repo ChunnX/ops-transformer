@@ -129,9 +129,9 @@ struct CopyL1ToL0B<ArchTag, NpuArch::Gemm::GemmType<Element, layout::nZ, AscendC
 
     __aicore__ inline CopyL1ToL0B(){};
 
-    __aicore__ inline void operator()(AscendC::LocalTensor<Element> const &dstTensor,
-                                      AscendC::LocalTensor<Element> const &srcTensor, LayoutDst const &layoutDst,
-                                      LayoutSrc const &layoutSrc)
+    __aicore__ inline void operator()(AscendC::LocalTensor<Element> const& dstTensor,
+                                      AscendC::LocalTensor<Element> const& srcTensor, LayoutDst const& layoutDst,
+                                      LayoutSrc const& layoutSrc)
     {
         AscendC::LoadData2DParams loadDataParams;
 
@@ -165,9 +165,9 @@ struct CopyL1ToL0B<ArchTag, NpuArch::Gemm::GemmType<Element, layout::zN, AscendC
 
     __aicore__ inline CopyL1ToL0B(){};
 
-    __aicore__ inline void operator()(AscendC::LocalTensor<Element> const &dstTensor,
-                                      AscendC::LocalTensor<Element> const &srcTensor, LayoutDst const &layoutDst,
-                                      LayoutSrc const &layoutSrc)
+    __aicore__ inline void operator()(AscendC::LocalTensor<Element> const& dstTensor,
+                                      AscendC::LocalTensor<Element> const& srcTensor, LayoutDst const& layoutDst,
+                                      LayoutSrc const& layoutSrc)
     {
         AscendC::LoadData2DParams loadDataParams;
 
@@ -198,9 +198,9 @@ struct CopyL1ToL0B<ArchTag, NpuArch::Gemm::GemmType<Element, layout::nN, AscendC
 
     __aicore__ inline CopyL1ToL0B(){};
 
-    __aicore__ inline void operator()(AscendC::LocalTensor<Element> const &dstTensor,
-                                      AscendC::LocalTensor<Element> const &srcTensor, LayoutDst const &layoutDst,
-                                      LayoutSrc const &layoutSrc)
+    __aicore__ inline void operator()(AscendC::LocalTensor<Element> const& dstTensor,
+                                      AscendC::LocalTensor<Element> const& srcTensor, LayoutDst const& layoutDst,
+                                      LayoutSrc const& layoutSrc)
     {
         AscendC::LoadData2DParams loadDataParams;
 
@@ -229,9 +229,9 @@ struct CopyL1ToL0B<ArchTag, NpuArch::Gemm::GemmType<float, layout::nN, AscendC::
 
     __aicore__ inline CopyL1ToL0B(){};
 
-    __aicore__ inline void operator()(AscendC::LocalTensor<Element> const &dstTensor,
-                                      AscendC::LocalTensor<Element> const &srcTensor, LayoutDst const &layoutDst,
-                                      LayoutSrc const &layoutSrc)
+    __aicore__ inline void operator()(AscendC::LocalTensor<Element> const& dstTensor,
+                                      AscendC::LocalTensor<Element> const& srcTensor, LayoutDst const& layoutDst,
+                                      LayoutSrc const& layoutSrc)
     {
         AscendC::LoadData2dTransposeParams loadDataParams;
 
@@ -264,9 +264,9 @@ struct CopyL1ToL0B<ArchTag, NpuArch::Gemm::GemmType<int8_t, layout::nZ, AscendC:
 
     __aicore__ inline CopyL1ToL0B(){};
 
-    __aicore__ inline void operator()(AscendC::LocalTensor<Element> const &dstTensor,
-                                      AscendC::LocalTensor<Element> const &srcTensor, LayoutDst const &layoutDst,
-                                      LayoutSrc const &layoutSrc)
+    __aicore__ inline void operator()(AscendC::LocalTensor<Element> const& dstTensor,
+                                      AscendC::LocalTensor<Element> const& srcTensor, LayoutDst const& layoutDst,
+                                      LayoutSrc const& layoutSrc)
     {
         AscendC::LoadData2dTransposeParams loadDataParams;
 
@@ -299,9 +299,9 @@ struct CopyL1ToL0B<ArchTag, Gemm::GemmType<int8_t, layout::zN, AscendC::TPositio
 
     __aicore__ inline CopyL1ToL0B(){};
 
-    __aicore__ inline void operator()(AscendC::LocalTensor<Element> const &dstTensor,
-                                      AscendC::LocalTensor<Element> const &srcTensor, LayoutDst const &layoutDst,
-                                      LayoutSrc const &layoutSrc)
+    __aicore__ inline void operator()(AscendC::LocalTensor<Element> const& dstTensor,
+                                      AscendC::LocalTensor<Element> const& srcTensor, LayoutDst const& layoutDst,
+                                      LayoutSrc const& layoutSrc)
     {
         AscendC::LoadData2dTransposeParams loadDataParams;
 
@@ -333,9 +333,9 @@ struct CopyL1ToL0B<ArchTag, Gemm::GemmType<float, layout::zN, AscendC::TPosition
 
     __aicore__ inline CopyL1ToL0B(){};
 
-    __aicore__ inline void operator()(AscendC::LocalTensor<Element> const &dstTensor,
-                                      AscendC::LocalTensor<Element> const &srcTensor, LayoutDst const &layoutDst,
-                                      LayoutSrc const &layoutSrc)
+    __aicore__ inline void operator()(AscendC::LocalTensor<Element> const& dstTensor,
+                                      AscendC::LocalTensor<Element> const& srcTensor, LayoutDst const& layoutDst,
+                                      LayoutSrc const& layoutSrc)
     {
         constexpr uint8_t PAD_LIST[4] = {0, 0, 0, 0};
         uint16_t l1K = layoutSrc.shape(0) * layoutSrc.shape(1);
@@ -372,9 +372,9 @@ struct CopyL1ToL0B<ArchTag, Gemm::GemmType<Element, layout::zN, AscendC::TPositi
 
     __aicore__ inline CopyL1ToL0B(){};
 
-    __aicore__ inline void operator()(AscendC::LocalTensor<Element> const &dstTensor,
-                                      AscendC::LocalTensor<Element> const &srcTensor, LayoutDst const &layoutDst,
-                                      LayoutSrc const &layoutSrc)
+    __aicore__ inline void operator()(AscendC::LocalTensor<Element> const& dstTensor,
+                                      AscendC::LocalTensor<Element> const& srcTensor, LayoutDst const& layoutDst,
+                                      LayoutSrc const& layoutSrc)
     {
         AscendC::LoadData2DParams loadDataParams;
 
@@ -406,9 +406,9 @@ struct CopyL1ToL0B<ArchTag, Gemm::GemmType<Element, layout::nZ, AscendC::TPositi
 
     __aicore__ inline CopyL1ToL0B(){};
 
-    __aicore__ inline void operator()(AscendC::LocalTensor<Element> const &dstTensor,
-                                      AscendC::LocalTensor<Element> const &srcTensor, LayoutDst const &layoutDst,
-                                      LayoutSrc const &layoutSrc)
+    __aicore__ inline void operator()(AscendC::LocalTensor<Element> const& dstTensor,
+                                      AscendC::LocalTensor<Element> const& srcTensor, LayoutDst const& layoutDst,
+                                      LayoutSrc const& layoutSrc)
     {
         AscendC::LoadData2DParams loadDataParams;
         if (layoutSrc.shape(3) == layoutDst.shape(3)) {
