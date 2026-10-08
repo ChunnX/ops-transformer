@@ -428,10 +428,7 @@ __aicore__ inline uint32_t MegaMoe<TemplateMegaMoeTypeFunc>::InitPreQuantScratch
     return scratchAddr + DOUBLE_BUFFER * stageBytes;
 }
 
-/*
- * 动态量化 scratch 的地址排布：MoE/shared 共用输入和 mxTemp，输出分别分配。
- * 返回量化区结束地址。
- */
+// 动态量化 scratch：MoE/shared 共用输入和 mxTemp，输出分别分配。
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline uint32_t MegaMoe<TemplateMegaMoeTypeFunc>::InitQuantScratchTensors(uint32_t mxTempTensorAddr)
 {
