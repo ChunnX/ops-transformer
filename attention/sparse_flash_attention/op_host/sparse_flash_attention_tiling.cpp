@@ -396,11 +396,11 @@ void SFAMlaTiling::CalcInnerSize(uint32_t sfaS2Size)
 bool SFAMlaTiling::IsSplitKVSupported() const
 {
     const auto& info = *sfaInfo_;
-    // Common validation guarantees B > 0, N2 == 1, mode 0/3 and output dtype matching Q.
+    // OpDef requires matching FP16/BF16 Q/K/V/output. Common validation guarantees
+    // B > 0, N2 == 1, mode 0/3 and A5 sparse block size 1.
     const bool kernelSupported = info.isA5 && info.gSize == 8 && !info.returnSoftmaxLse && info.ropeHeadDim == 64 &&
-                                 info.sparseBlockSize == 1 && info.inputQType == ge::DT_BF16 &&
-                                 info.inputKvType == ge::DT_BF16 && info.qLayout == SFALayout::TND &&
-                                 info.kvLayout == SFALayout::PA_BSND && info.opParamInfo.sinks.tensor == nullptr;
+                                 info.qLayout == SFALayout::TND && info.kvLayout == SFALayout::PA_BSND &&
+                                 info.opParamInfo.sinks.tensor == nullptr;
     const bool workloadSupported = info.s1Size > 0 && info.s2Size >= info.sparseBlockCount &&
                                    info.sparseBlockCount >= 256 && info.sparseBlockCount <= 2048;
     return kernelSupported && workloadSupported;

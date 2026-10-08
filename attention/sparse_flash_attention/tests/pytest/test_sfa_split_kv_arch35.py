@@ -18,6 +18,45 @@ torch_npu = pytest.importorskip("torch_npu")
 
 
 @pytest.mark.parametrize(
+    ("query_dtype", "kv_dtype"),
+    [(torch.float16, torch.bfloat16), (torch.bfloat16, torch.float16)],
+    ids=["fp16-bf16", "bf16-fp16"],
+)
+@pytest.mark.parametrize("sparse_mode", [0, 3])
+def test_mixed_query_kv_types_rejected(query_dtype, kv_dtype, sparse_mode):
+    if "950" not in torch.npu.get_device_name(0):
+        pytest.skip("This regression targets Ascend 950")
+    query = torch.zeros((1, 8, 512), dtype=query_dtype, device="npu")
+    query_rope = torch.zeros((1, 8, 64), dtype=query_dtype, device="npu")
+    key = torch.zeros((32, 128, 1, 512), dtype=kv_dtype, device="npu")
+    key_rope = torch.zeros((32, 128, 1, 64), dtype=kv_dtype, device="npu")
+    indices = torch.arange(2048, dtype=torch.int32, device="npu").reshape(1, 1, -1)
+    block_table = torch.arange(32, dtype=torch.int32, device="npu").reshape(1, -1)
+    query_lengths = torch.tensor([1], dtype=torch.int32, device="npu")
+    kv_lengths = torch.tensor([4096], dtype=torch.int32, device="npu")
+    # OpDef checks the complete dtype combination before launching a kernel.
+    with pytest.raises(RuntimeError, match="dtype or format.*inconsistent.*OpDef"):
+        torch_npu.npu_sparse_flash_attention(
+            query,
+            key,
+            key,
+            indices,
+            1.0 / math.sqrt(576),
+            block_table=block_table,
+            actual_seq_lengths_query=query_lengths,
+            actual_seq_lengths_kv=kv_lengths,
+            query_rope=query_rope,
+            key_rope=key_rope,
+            sparse_block_size=1,
+            layout_query="TND",
+            layout_kv="PA_BSND",
+            sparse_mode=sparse_mode,
+            attention_mode=2,
+            return_softmax_lse=False,
+        )
+
+
+@pytest.mark.parametrize(
     ("batch_count", "query_count", "topk_count", "valid_count"),
     [(1, q, 2048, valid) for q in (1, 4) for valid in (256, 2048, "mixed")]
     + [(1, q, topk, topk) for q in (1, 4) for topk in (256, 512, 768, 1000, 1024, 1536)]
@@ -31,8 +70,9 @@ torch_npu = pytest.importorskip("torch_npu")
 )
 @pytest.mark.parametrize("replay_graph", [False, True])
 @pytest.mark.parametrize("sparse_mode", [0, 3])
+@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16], ids=["bf16", "fp16"])
 def test_split_kv_pa_bsnd(
-    batch_count, query_count, topk_count, valid_count, replay_graph, sparse_mode
+    batch_count, query_count, topk_count, valid_count, replay_graph, sparse_mode, dtype
 ):
     if "950" not in torch.npu.get_device_name(0):
         pytest.skip("This tiling is only selected on Ascend 950")
@@ -46,15 +86,15 @@ def test_split_kv_pa_bsnd(
     kv_length, page_size, heads = 4096, 128, 8
     query_counts = [1] * (batch_count - 1) + [query_count - batch_count + 1]
     query_ends = [sum(query_counts[: index + 1]) for index in range(batch_count)]
-    query = torch.randn(query_count, heads, 512, generator=generator).bfloat16().npu()
+    query = torch.randn(query_count, heads, 512, generator=generator).to(dtype).npu()
     query_rope = (
-        torch.randn(query_count, heads, 64, generator=generator).bfloat16().npu()
+        torch.randn(query_count, heads, 64, generator=generator).to(dtype).npu()
     )
     key_flat = (
-        torch.randn(batch_count * kv_length, 512, generator=generator).bfloat16().npu()
+        torch.randn(batch_count * kv_length, 512, generator=generator).to(dtype).npu()
     )
     rope_flat = (
-        torch.randn(batch_count * kv_length, 64, generator=generator).bfloat16().npu()
+        torch.randn(batch_count * kv_length, 64, generator=generator).to(dtype).npu()
     )
     key_pages = key_flat.reshape(-1, page_size, 1, 512)
     rope_pages = rope_flat.reshape(-1, page_size, 1, 64)
@@ -106,15 +146,22 @@ def test_split_kv_pa_bsnd(
         actual = run_operator()
 
     torch.npu.synchronize()
+    assert actual.dtype == dtype
     checked_rows = 1 if valid_count == "mixed" else query_count
+    # Reproduced with Split-KV disabled for both dtypes: the Q=4 eager
+    # padded-index fallback can produce nonfinite output (BF16 mode 3;
+    # FP16 modes 0/3). Do not exempt other shapes or full-index rows.
     if (
-        sparse_mode == 3
+        batch_count == 1
+        and query_count == 4
+        and not replay_graph
         and valid_count == 256
-        and topk_count > 256
+        and topk_count == 2048
+        and (dtype == torch.float16 or sparse_mode == 3)
         and not torch.isfinite(actual).all()
     ):
         pytest.xfail(
-            "The unsplit baseline also produces nonfinite output for mode-3 padded indices"
+            "The unsplit baseline also produces nonfinite output for this padded-index fallback"
         )
     assert torch.isfinite(actual[:checked_rows]).all()
     if valid_count == 256 and topk_count > 256:
@@ -138,4 +185,5 @@ def test_split_kv_pa_bsnd(
     reference = torch.stack(expected)
     difference = actual[:checked_rows].float() - reference
     relative_l2 = difference.norm() / reference.norm()
-    assert relative_l2.item() < 0.02, f"relative L2 error: {relative_l2.item()}"
+    tolerance = 0.02 if dtype == torch.bfloat16 else 0.005
+    assert relative_l2.item() < tolerance, f"relative L2 error: {relative_l2.item()}"
