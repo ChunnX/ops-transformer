@@ -1,0 +1,13 @@
+===================================
+OAT Scan Result Summary
+===================================
+Scan Time: 2026-09-29 19:03:03
+Project: ops-transformer-dts
+Files Checked: 14
+
+-----------------------------------
+Invalid File Type Total Count: 0
+
+-----------------------------------
+License Header Invalid Total Count: 0
+===================================

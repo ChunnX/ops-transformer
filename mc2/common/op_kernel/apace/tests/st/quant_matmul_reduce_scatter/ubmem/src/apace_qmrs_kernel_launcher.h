@@ -25,7 +25,7 @@
 #pragma once
 
 #include "basic_api/kernel_basic_intf.h"
-#include "apace/tiling/quant_matmul_tiling_data.h"
+#include "apace/tiling/matmul_tiling/quant_matmul_tiling_data.h"
 #include "blaze/gemm/policy/dispatch_policy.h"
 #include "blaze/gemm/block/block_scheduler_qbmm.h"
 #include "blaze/gemm/block/block_mmad.h"
@@ -63,7 +63,7 @@ __global__ __aicore__ void QuantMatmulReduceScatterUbmemKernel(GM_ADDR hcclConte
     using Impl = Apace::QuantMatmulReduceScatterImpl<ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler>;
     using KernelImpl = typename Impl::KernelImpl;
 
-    __gm__ QuantMatmulTilingData *tilingData = (__gm__ QuantMatmulTilingData *)tilingGM;
+    __gm__ QuantMatmulTilingData* tilingData = (__gm__ QuantMatmulTilingData*)tilingGM;
 
     const uint64_t M = tilingData->m;
     const uint64_t N = tilingData->n;
