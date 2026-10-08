@@ -38,9 +38,8 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
         ComputeX2PostTile(token, tOff, tD, invRms0, postVals);
-        CacheX2TileForLane(token, tOff, tD, !false);
+        CacheX2TileForLane(token, tOff, tD, !false, false);
 
-        LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
         {
             AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf, laneId_, laneId_ + 1U);
         }
@@ -69,8 +68,11 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         return;
     }
 
+    // 发出本核MTE3完成事件，同时读取follower的partial1，用32B搬运隐藏事件等待。
+    SetFlag<HardEvent::MTE3_V>(evtMte3toV_);
     DataCopy(partialBuf, partial1Gm_[(uint64_t)token * PARTIAL_SLOT_ELEMS], PARTIAL_SLOT_ELEMS);
     SetFlag<HardEvent::MTE2_S>(evtMte2toS_);
+    WaitFlag<HardEvent::MTE3_V>(evtMte3toV_);
     WaitFlag<HardEvent::MTE2_S>(evtMte2toS_);
     sumSqHalf[1] = partialBuf.GetValue(0);
     for (uint32_t o = 0; o < N_MAX; ++o) {
@@ -98,8 +100,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
             MhcNormRegBase::AxpyB16WithUbScalar(hIn, x2Cache[n * D_], gateBuf, n, tD);
             PipeBarrier<PIPE_V>();
         }
-        CacheHInTile(tOff, tD, hIn);
-        sumSq1 += ReduceSumSq(hIn, tD);
+        sumSq1 += CacheHInAndReduceSumSq(tOff, tD, hIn);
     }
 
     StartCacheGamma1();
@@ -154,9 +155,8 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
         ComputeX2PostTile(token, tOff, tD, invRms0, postVals);
-        CacheX2Tile(token, tOff, tD, !false);
+        CacheX2Tile(token, tOff, tD, !false, false);
 
-        LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
         {
             AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf);
         }
@@ -189,8 +189,7 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
             MhcNormRegBase::AxpyB16WithUbScalar(hIn, x2Cache[n * D_], gateBuf, n, tD);
             PipeBarrier<PIPE_V>();
         }
-        CacheHInTile(tOff, tD, hIn);
-        sumSq1 += ReduceSumSq(hIn, tD);
+        sumSq1 += CacheHInAndReduceSumSq(tOff, tD, hIn);
     }
 
     // 第四遍：沿完整D轴计算R7并写最终输出。
