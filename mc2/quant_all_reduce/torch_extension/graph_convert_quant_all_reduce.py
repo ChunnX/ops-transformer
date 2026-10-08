@@ -36,7 +36,7 @@ except ImportError:
 
 # 触发算子 schema/Meta/PrivateUse1 注册，确保 converter 注册时 torch.ops 符号已存在
 from .quant_all_reduce import *
-from ..common import get_quant_mte_context_data
+from ..common import QuantMteContextManager
 
 if _TORCHAIR_AVAILABLE:
     # x valid dtype list
@@ -127,7 +127,7 @@ if _TORCHAIR_AVAILABLE:
         # converter 在 GE 序列化/tiling 前创建幂等 context，并固化真实查询值。
         # 注意：converter 运行于 AOT 编译期的 FakeTensorMode 下，必须使用不做
         # tensor op 的 data 接口，直接以 host int32 列表构造 ge.Const。
-        ctx_data, hccl_buffer_size = get_quant_mte_context_data(hcom)
+        ctx_data, hccl_buffer_size = QuantMteContextManager(hcom).get_context_data()
         context = ge.Const(ctx_data, dtype=int(DataType.DT_INT32))
 
         if x_dtype is not None:

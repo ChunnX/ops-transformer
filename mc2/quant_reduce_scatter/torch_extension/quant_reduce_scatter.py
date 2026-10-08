@@ -14,7 +14,8 @@ from typing import Optional
 from torch.library import impl
 from torch_npu.utils._error_code import ErrCode, ops_error
 from cann_ops_transformer.op_builder import OpBuilder, get_as_library
-from ..common import get_quant_mte_context
+from ..common import QUANT_MTE_CONTEXT_ELEM_NUM
+from ..common import QuantMteContextManager
 
 
 TORCH_DTYPE_ENUM_VALUE_TO_SCALAR_TYPE_MAP = {
@@ -123,8 +124,6 @@ class QuantReduceScatterOpBuilder(OpBuilder):
 quant_reduce_scatter_op_builder = QuantReduceScatterOpBuilder()
 quant_reduce_scatter_op_builder._ensure_initialized()
 
-_QUANT_MTE_CONTEXT_PLACEHOLDER_NUM = 4100
-
 
 @impl(get_as_library(), quant_reduce_scatter_op_builder.name, "PrivateUse1")
 def npu_quant_reduce_scatter(
@@ -179,15 +178,16 @@ def quant_reduce_scatter(
 
     if torch.compiler.is_compiling():
         # Dynamo trace 阶段只保留算子节点；converter 会创建真实 context 并覆写
-        # hccl_buffer_size，因此这里使用无业务语义的占位数据。
+        # hccl_buffer_size，因此这里使用无业务语义的占位数据，占位元素数与真实
+        # context 一致（QUANT_MTE_CONTEXT_ELEM_NUM 的定义处有布局来源说明）。
         context = torch.zeros(
-            _QUANT_MTE_CONTEXT_PLACEHOLDER_NUM,
+            QUANT_MTE_CONTEXT_ELEM_NUM,
             dtype=torch.int32,
             device=x.device,
         )
         hccl_buffer_size = 0
     else:
-        context, hccl_buffer_size = get_quant_mte_context(group_name)
+        context, hccl_buffer_size = QuantMteContextManager(group_name).get_context()
 
     return torch.ops.cann_ops_transformer.npu_quant_reduce_scatter(
         context,

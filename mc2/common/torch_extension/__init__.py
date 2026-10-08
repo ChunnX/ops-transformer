@@ -10,8 +10,8 @@
 __all__ = [
     "CommContextManager",
     "CommChannelBuilderManager",
-    "get_quant_mte_context",
-    "get_quant_mte_context_data",
+    "QuantMteContextManager",
+    "QUANT_MTE_CONTEXT_ELEM_NUM",
     "MoeDistributeBuffer",
     "ElasticBuffer",
     "EPHandle",
@@ -21,7 +21,5 @@ from .comm_context import CommContextManager
 from .moe_distribute_buffer import MoeDistributeBuffer
 from .elastic_buffer import ElasticBuffer, EPHandle
 from .comm_channel_builder_manager import CommChannelBuilderManager
-from .comm_channel_builder_manager import (
-    get_quant_mte_context,
-    get_quant_mte_context_data,
-)
+from .comm_channel_builder_manager import QUANT_MTE_CONTEXT_ELEM_NUM
+from .comm_channel_builder_manager import QuantMteContextManager
