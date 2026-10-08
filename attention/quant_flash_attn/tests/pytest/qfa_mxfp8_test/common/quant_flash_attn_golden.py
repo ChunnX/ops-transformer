@@ -205,6 +205,7 @@ def get_mxfp8_per_token_group_quant_scale(tensor, fp8_dtype, group_size=32):
     _validate_fp8_dtype(fp8_dtype)
     emax_elem = _EMAX_MAP[fp8_dtype]
 
+    tensor = tensor.to(torch.float32)
     dim1, dim2, dim3, dim4 = tensor.shape
     dim4_align = (dim4 + 63) // 64 * 64
     num_groups = math.ceil(dim4_align / group_size)
@@ -226,6 +227,7 @@ def get_mxfp8_per_channel_group_quant_scale(tensor, fp8_dtype, group_size=32):
     _validate_fp8_dtype(fp8_dtype)
     emax_elem = _EMAX_MAP[fp8_dtype]
 
+    tensor = tensor.to(torch.float32)
     dim1, dim2, dim3, dim4 = tensor.shape
     num_groups = math.ceil(dim3 / group_size)
     pad_size = num_groups * group_size - dim3
@@ -244,13 +246,13 @@ def get_mxfp8_per_channel_group_quant_scale(tensor, fp8_dtype, group_size=32):
 def mxfp8_per_token_group_quant(tensor, quant_scale, group_size=32):
     dim4 = tensor.shape[-1]
     scale_expanded = quant_scale.repeat_interleave(group_size, dim=-1)[..., :dim4]
-    return (tensor / scale_expanded.to(tensor.dtype)).to(torch.float32)
+    return (tensor.to(torch.float32) / scale_expanded).to(torch.float32)
 
 
 def mxfp8_per_channel_group_quant(tensor, quant_scale, group_size=32):
     dim3 = tensor.shape[2]
     scale_expanded = quant_scale.repeat_interleave(group_size, dim=2)[:, :, :dim3, :]
-    return (tensor / scale_expanded.to(tensor.dtype)).to(torch.float32)
+    return (tensor.to(torch.float32) / scale_expanded).to(torch.float32)
 
 
 def broadcast_kv(num_heads, num_kv_heads, kv_tensor):
@@ -287,6 +289,7 @@ def convert_q_bnsd_to_layout(tensor_bnsd, seq_lens, layout, cu_seqlens=None):
         return (
             tensor[:, :, :max_org_s, :]
             .permute(0, 2, 1, 3)
+            .contiguous()
             .reshape(B, max_org_s, N * D)
             .contiguous()
         )
@@ -389,13 +392,22 @@ def fp32_to_e8m0fnu_safe(scale, name="scale"):
 
 def canonical_q_scale_layout(layout):
     layout = (layout or "TND").upper()
-    if layout not in ("TND", "N2TGD"):
+    # BNSD/BSND: q_descale 与 query 同排布 (5D, D//64 组内偶奇打包)
+    # BN2S1GD: BSND decode 场景 (6D, B-N2-S1-G-D)
+    if layout not in ("TND", "N2TGD", "BNSD", "BSND", "BN2S1GD"):
         raise ValueError(f"Unsupported Q scale layout: {layout}")
     return layout
 
 
 def resolve_q_scale_layout(layout=None):
-    resolved = canonical_q_scale_layout(layout or Q_SCALE_LAYOUT)
+    effective = layout or Q_SCALE_LAYOUT
+    # BNSD/BSND 非 PA 场景: 算子约束 layout_q_descale 与模板绑定
+    if INPUT_LAYOUT in ("BNSD", "BSND"):
+        if INPUT_LAYOUT == "BNSD":
+            effective = "BNSD"  # BNSD: prefill/decode 统一 BNSD
+        else:  # BSND: prefill -> BSND, decode -> BN2S1GD
+            effective = "BN2S1GD" if effective in ("N2TGD", "BN2S1GD") else "BSND"
+    resolved = canonical_q_scale_layout(effective)
     if N_kv <= 0 or N_q % N_kv != 0:
         raise ValueError(f"N_q must be divisible by N_kv, got N_q={N_q}, N_kv={N_kv}")
     group = N_q // N_kv
@@ -488,12 +500,14 @@ def convert_q_scale_bnsd_to_layout(scale_bnsd, seq_lens, layout, cu_seqlens=None
         return (
             scale_bnsd[:, :, :max_org_s, :]
             .permute(0, 2, 1, 3)
+            .contiguous()
             .reshape(B, max_org_s, N, Dg_half, 2)
         )
     elif layout == "BSH":
         return (
             scale_bnsd[:, :, :max_org_s, :]
             .permute(0, 2, 1, 3)
+            .contiguous()
             .reshape(B, max_org_s, N * Dg_half, 2)
         )
     elif layout == "TND":
@@ -503,6 +517,15 @@ def convert_q_scale_bnsd_to_layout(scale_bnsd, seq_lens, layout, cu_seqlens=None
             scale_bnsd, seq_lens, cu_seqlens=cu_seqlens
         )
         return convert_q_scale_tnd_to_n2tgd_layout(tnd_result, N_kv)
+    elif layout == "BN2S1GD":
+        # BSND decode: (B, N_q, S1, Dg) -> (B, N2, S1, G, Dg//2, 2), 内存序 B-N2-S1-G-D
+        g = N // N_kv
+        return (
+            scale_bnsd[:, :, :max_org_s, :]
+            .reshape(B, N_kv, g, max_org_s, Dg_half, 2)
+            .permute(0, 1, 3, 2, 4, 5)
+            .contiguous()
+        )
     else:
         raise ValueError(f"Unsupported layout: {layout}")
 
@@ -546,7 +569,7 @@ def convert_v_scale_bnsd_to_layout(scale_bnsd, seq_lens, layout, group_size=32):
         result[..., 1] = transposed[..., 1::2, :]
         return result
     elif layout == "BSND":
-        transposed = scale_bnsd[:, :, :actual_Sg, :].permute(0, 2, 1, 3)
+        transposed = scale_bnsd[:, :, :actual_Sg, :].permute(0, 2, 1, 3).contiguous()
         if actual_Sg % 2 != 0:
             pad = torch.full(
                 (B, 1, N, D),
@@ -565,6 +588,7 @@ def convert_v_scale_bnsd_to_layout(scale_bnsd, seq_lens, layout, group_size=32):
         transposed = (
             scale_bnsd[:, :, :actual_Sg, :]
             .permute(0, 2, 1, 3)
+            .contiguous()
             .reshape(B, actual_Sg, N * D)
         )
         if actual_Sg % 2 != 0:
@@ -848,7 +872,7 @@ def make_accum_seq(seq_lens):
 
 
 def generate_data():
-    """生成 BNSD FP16 Q/K/V 并做 MXFP8 量化，使用原始序列长度"""
+    """生成 BNSD BF16 Q/K/V 并做 MXFP8 量化，使用原始序列长度"""
     max_sq = MAX_SEQLEN_Q
     max_skv = MAX_SEQLEN_KV
     seqused_q = _get_seqused_q()
@@ -861,16 +885,18 @@ def generate_data():
     logger.info("[INFO] max_sq=%d, max_skv=%d", max_sq, max_skv)
 
     torch.manual_seed(SEED_Q)
-    q_fp16 = (torch.rand(B, N_q, max_sq, D, dtype=torch.float16) * 2 - 1) * DATA_RANGE_Q
+    q_bf16 = (
+        torch.rand(B, N_q, max_sq, D, dtype=torch.bfloat16) * 2 - 1
+    ) * DATA_RANGE_Q
 
     torch.manual_seed(SEED_K)
-    k_fp16 = (
-        torch.rand(B, N_kv, max_skv, D, dtype=torch.float16) * 2 - 1
+    k_bf16 = (
+        torch.rand(B, N_kv, max_skv, D, dtype=torch.bfloat16) * 2 - 1
     ) * DATA_RANGE_K
 
     torch.manual_seed(SEED_V)
-    v_fp16 = (
-        torch.rand(B, N_kv, max_skv, D, dtype=torch.float16) * 2 - 1
+    v_bf16 = (
+        torch.rand(B, N_kv, max_skv, D, dtype=torch.bfloat16) * 2 - 1
     ) * DATA_RANGE_V
 
     qr_bf16 = None
@@ -886,17 +912,17 @@ def generate_data():
         ) * DATA_RANGE_KR
 
     logger.info(
-        "[INFO] q_fp16=%s, k_fp16=%s, v_fp16=%s",
-        q_fp16.shape,
-        k_fp16.shape,
-        v_fp16.shape,
+        "[INFO] q_bf16=%s, k_bf16=%s, v_bf16=%s",
+        q_bf16.shape,
+        k_bf16.shape,
+        v_bf16.shape,
     )
 
     quant_scale_q = get_mxfp8_per_token_group_quant_scale(
-        q_fp16, FP8_DTYPE, QUANT_GROUP_SIZE
+        q_bf16, FP8_DTYPE, QUANT_GROUP_SIZE
     )
     quant_scale_k = get_mxfp8_per_token_group_quant_scale(
-        k_fp16, FP8_DTYPE, QUANT_GROUP_SIZE
+        k_bf16, FP8_DTYPE, QUANT_GROUP_SIZE
     )
     # 尾块高精窗口: 主体段(每batch前align_down(kvLen,64)行)才参与V的量化, 尾段置零不进cache
     global _VTAIL_BUNDLE
@@ -929,12 +955,12 @@ def generate_data():
 
     fp8_max = 448.0 if FP8_DTYPE == torch.float8_e4m3fn else 57344.0
     q_fp8 = (
-        mxfp8_per_token_group_quant(q_fp16, quant_scale_q, QUANT_GROUP_SIZE)
+        mxfp8_per_token_group_quant(q_bf16, quant_scale_q, QUANT_GROUP_SIZE)
         .clamp(-fp8_max, fp8_max)
         .to(FP8_DTYPE)
     )
     k_fp8 = (
-        mxfp8_per_token_group_quant(k_fp16, quant_scale_k, QUANT_GROUP_SIZE)
+        mxfp8_per_token_group_quant(k_bf16, quant_scale_k, QUANT_GROUP_SIZE)
         .clamp(-fp8_max, fp8_max)
         .to(FP8_DTYPE)
     )
@@ -2575,7 +2601,7 @@ def prepare_npu_inputs(
     q_runtime_layout, q_group = resolve_q_scale_layout()
     logger.info("[NPU] Q layout: q_layout=%s, G=%d", q_runtime_layout, q_group)
 
-    npu_input_layout = "TND" if ENABLE_PA else INPUT_LAYOUT
+    npu_input_layout = INPUT_LAYOUT
     act_seqused_q = _get_seqused_q()
     act_seqused_kv = _get_seqused_kv()
     q_npu = (
@@ -2750,10 +2776,10 @@ def prepare_npu_inputs(
             q_n=N_q,
             kv_n=N_kv,
             softmax_scale=softmax_scale,
-            layout_q="TND",
+            layout_q=npu_input_layout,
             layout_q_descale=q_runtime_layout,
             layout_kv=pa_layout_kv,
-            layout_out="TND",
+            layout_out=npu_input_layout,
             block_size=BLOCK_SIZE,
             sparse_mode=SPARSE_MODE,
             out_dtype=out_dtype,
@@ -2906,9 +2932,11 @@ def npu_mxfp8_fa(
 
     act_seqused_q = _get_seqused_q()
     npu_output = atten_out
-    T_actual = cu_seqlens_q[-1] if cu_seqlens_q is not None else sum(act_seqused_q)
-    if npu_output.shape[0] > T_actual:
-        npu_output = npu_output[:T_actual]
+    out_layout = INPUT_LAYOUT
+    if out_layout == "TND":
+        T_actual = cu_seqlens_q[-1] if cu_seqlens_q is not None else sum(act_seqused_q)
+        if npu_output.shape[0] > T_actual:
+            npu_output = npu_output[:T_actual]
     logger.info("[NPU] output=%s", npu_output.shape)
     return npu_output, lse_out
 

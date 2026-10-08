@@ -178,7 +178,7 @@ public:
     CopyKvGmToL1<bfloat16_t, KV_FORMAT> copyVTailGmToL1_;
     FaGmTensor<bfloat16_t, KV_FORMAT, int32_t, KV_NEEDS_WZH> vTailGm_; // v_tail GM视图(同主KV布局)
     GlobalTensor<int32_t> vTailBttGm_;                                 // v_tail专用block table(PA)
-    CopyQueryScaleGmToL1<SCALE_T, Q_SCALE_FORMAT> copyQueryScaleGmToL1_;
+    CopyQueryScaleGmToL1<SCALE_T, Q_SCALE_FORMAT, L1Format::NZ, Q_M_LAYOUT> copyQueryScaleGmToL1_;
     KeyScaleGmToL1Type copyKeyScaleGmToL1_;
     ValueScaleGmToL1Type copyValueScaleGmToL1_;
 
@@ -279,8 +279,8 @@ public:
                      valueGm_, value, constInfo_.valueStrides.bnStride, constInfo_.valueStrides.n2Stride);
         InitKScaleBuffer(constInfo_.bSize, constInfo_.s2Size, constInfo_.n2Size, constInfo_.blockSize,
                          dBaseSize / MXFP_GROUP_SIZE, keyScaleGm_, dequantScaleKey);
-        InitVScaleBuffer(constInfo_.bSize, constInfo_.s2Size / MXFP_DIVISOR_SIZE, constInfo_.n2Size,
-                         constInfo_.blockSize / MXFP_DIVISOR_SIZE, constInfo_.dSizeV * MXFP_MULTI_BASE_SIZE,
+        InitVScaleBuffer(constInfo_.bSize, CeilDiv(constInfo_.s2Size, MXFP_DIVISOR_SIZE), constInfo_.n2Size,
+                         CeilDiv(constInfo_.blockSize, MXFP_DIVISOR_SIZE), constInfo_.dSizeV * MXFP_MULTI_BASE_SIZE,
                          valueScaleGm_, dequantScaleValue);
         if constexpr (HAS_V_TAIL) {
             InitVTailBuffer(vTail, blockTableTail);
@@ -349,8 +349,8 @@ public:
         } else if constexpr (KV_NEEDS_WZH) {
             kvGmTensor.offsetCalculator.Init(n2Size, headDim, *this->kvSeqParserPtr_);
         } else {
-            kvGmTensor.offsetCalculator.Init(batchSize, n2Size, kvSeqSize, headDim);
-            kvGmTensor.offsetCalculator.Init(*this->kvSeqParserPtr_);
+            // BNSD/BSND: GM_KV_BNSD 使用带 parser 的 5 参重载
+            kvGmTensor.offsetCalculator.Init(batchSize, n2Size, kvSeqSize, headDim, *this->kvSeqParserPtr_);
         }
     }
 
@@ -373,8 +373,8 @@ public:
         } else if constexpr (KV_NEEDS_WZH) {
             kScaleGmTensor.offsetCalculator.Init(n2Size, headDim, *this->kvSeqParserPtr_);
         } else {
-            kScaleGmTensor.offsetCalculator.Init(batchSize, n2Size, kvSeqSize, headDim);
-            kScaleGmTensor.offsetCalculator.Init(*this->kvSeqParserPtr_);
+            // BNSD/BSND: GM_KV_BNSD 使用带 parser 的 5 参重载
+            kScaleGmTensor.offsetCalculator.Init(batchSize, n2Size, kvSeqSize, headDim, *this->kvSeqParserPtr_);
         }
     }
 
@@ -396,8 +396,8 @@ public:
         } else if constexpr (KV_NEEDS_WZH) {
             vScaleGmTensor.offsetCalculator.Init(n2Size, headDim, *this->kvSeqParserPtr_);
         } else {
-            vScaleGmTensor.offsetCalculator.Init(batchSize, n2Size, kvSeqSize, headDim);
-            vScaleGmTensor.offsetCalculator.Init(*this->kvSeqParserPtr_);
+            // BNSD/BSND: GM_KV_BNSD 使用带 parser 的 5 参重载
+            vScaleGmTensor.offsetCalculator.Init(batchSize, n2Size, kvSeqSize, headDim, *this->kvSeqParserPtr_);
         }
     }
 
@@ -457,13 +457,25 @@ public:
         uint32_t dstStride = (runInfo.actMSize + 31) >> 5 << 5;
         FaL1Tensor<SCALE_T, L1Format::NZ> l1Tensor{.tensor = dstTensor, .rowCount = dstStride};
 
-        GmCoordGs1Merge gmCoord{.bIdx = runInfo.bIdx,
-                                .n2Idx = runInfo.realN2Idx,
-                                .gS1Idx = runInfo.gS1Idx,
-                                .dIdx = dOffset,
-                                .gS1DealSize = runInfo.actMSize,
-                                .dDealSize = dRealSize};
-        copyQueryScaleGmToL1_(l1Tensor, queryScaleGm_, gmCoord);
+        if constexpr (USE_DN) {
+            // DN分支下realGSize=1，gS1Idx即s1Idx，gIdx恒为0
+            GmCoordS1Only gmCoord{.bIdx = runInfo.bIdx,
+                                  .n2Idx = runInfo.realN2Idx,
+                                  .gIdx = 0,
+                                  .s1Idx = runInfo.gS1Idx,
+                                  .dIdx = dOffset,
+                                  .s1DealSize = runInfo.actMSize,
+                                  .dDealSize = dRealSize};
+            copyQueryScaleGmToL1_(l1Tensor, queryScaleGm_, gmCoord);
+        } else {
+            GmCoordGs1Merge gmCoord{.bIdx = runInfo.bIdx,
+                                    .n2Idx = runInfo.realN2Idx,
+                                    .gS1Idx = runInfo.gS1Idx,
+                                    .dIdx = dOffset,
+                                    .gS1DealSize = runInfo.actMSize,
+                                    .dDealSize = dRealSize};
+            copyQueryScaleGmToL1_(l1Tensor, queryScaleGm_, gmCoord);
+        }
     }
 
     __aicore__ inline void CopyQueryScaleTile(const LocalTensor<SCALE_T>& dstTensor, RunInfoX& runInfo)
@@ -562,7 +574,8 @@ public:
 
     __aicore__ inline void CopyValueScaleTile(const LocalTensor<SCALE_T>& dstTensor, RunInfoX& runInfo)
     {
-        CopyValueScaleSlice(dstTensor, runInfo.s2Idx, runInfo.actSingleLoopS2Size / MXFP_DIVISOR_SIZE, 0,
+        CopyValueScaleSlice(dstTensor, runInfo.s2Idx / MXFP_DIVISOR_SIZE,
+                            CeilDiv(runInfo.actSingleLoopS2Size, MXFP_DIVISOR_SIZE), 0,
                             constInfo_.dSizeV * MXFP_MULTI_BASE_SIZE, runInfo);
     }
 
