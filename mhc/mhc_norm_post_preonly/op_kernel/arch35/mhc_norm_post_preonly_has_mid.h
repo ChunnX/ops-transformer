@@ -20,7 +20,9 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     float dotHalf[2][N_MAX] = {{0.0f, 0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 0.0f}};
     float midSqHalf[2] = {0.0f, 0.0f};
     CacheHOut((uint64_t)token * D_);
-    if (dimLoop_ != 1U) {
+    // 单分块gamma0通常由Process预载；5op会在R3复用该缓冲缓存gamma2，
+    // 因此同一核处理后续token时需恢复gamma0。4op不增加重复搬运。
+    if (dimLoop_ != 1U || (true && token != tokenStart_)) {
         CacheGamma0();
     }
     const uint32_t headBegin = laneId_ * 2U;
@@ -35,11 +37,69 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     }
     const float invRms0 = ComputeInvRms(sumSq0, invD_);
 
+    {
+        // 5op第一遍R2后只使用bufResFp32_的第五行做midSq，前四行暂时空闲。
+        // tile0先进入队列，后续tile在队列与前四行scratch之间交替预取，
+        // 不增加UB占用即可让下一tile residual MTE2跨越当前tile的R2/RMS_mid计算。
+        LocalTensor<T> firstResidual = bufResidualBf16_.AllocTensor<T>();
+        const uint32_t firstTD = GetTileD(0U);
+        const uint64_t firstBaseOffset = (uint64_t)token * N_ * D_;
+        for (uint32_t n = 0; n < N_MAX; ++n) {
+            DataCopy(firstResidual[n * dimTile_], residualGm_[firstBaseOffset + (uint64_t)n * D_], firstTD);
+        }
+        bufResidualBf16_.EnQue(firstResidual);
+    }
+
     // 两个lane分别构造自己负责的两个x2 head。
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
-        ComputeX2PostTileForLane(token, tOff, tD, invRms0, postVals);
+        {
+            LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
+            LocalTensor<T> hOutCache = bufX2Cache_.Get<T>()[tOff];
+            MhcNormRegBase::VFCastB16ScaleGammaQuantizeToFp32(
+                hOut, hOutCache, bufGamma0Fp32_.Get<float>()[tOff], invRms0, tD);
+            PipeBarrier<PIPE_V>();
+
+            const bool residualFromQueue = (tile & 1U) == 0U;
+            LocalTensor<T> residual;
+            if (residualFromQueue) {
+                residual = bufResidualBf16_.DeQue<T>();
+            } else {
+                WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
+                residual = bufResFp32_.Get<T>();
+            }
+
+            if (tile + 1U < dimLoop_) {
+                const uint32_t nextTile = tile + 1U;
+                const uint32_t nextTOff = nextTile * dimTile_;
+                const uint32_t nextTD = GetTileD(nextTile);
+                const uint64_t nextBaseOffset = (uint64_t)token * N_ * D_ + nextTOff;
+                if (residualFromQueue) {
+                    LocalTensor<T> nextResidual = bufResFp32_.Get<T>();
+                    for (uint32_t n = 0; n < N_MAX; ++n) {
+                        DataCopy(nextResidual[n * dimTile_], residualGm_[nextBaseOffset + (uint64_t)n * D_], nextTD);
+                    }
+                    SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
+                } else {
+                    LocalTensor<T> nextResidual = bufResidualBf16_.AllocTensor<T>();
+                    for (uint32_t n = 0; n < N_MAX; ++n) {
+                        DataCopy(nextResidual[n * dimTile_], residualGm_[nextBaseOffset + (uint64_t)n * D_], nextTD);
+                    }
+                    bufResidualBf16_.EnQue(nextResidual);
+                }
+            }
+
+            LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
+            LocalTensor<float> combWeights = bufPostComb_.Get<float>()[ALIGN8];
+            MhcNormRegBase::VFComputePostHeadPair<T>(
+                x2Cache[headBegin * D_ + tOff], x2Cache[(headBegin + 1U) * D_ + tOff], hOut, residual, combWeights,
+                dimTile_, headBegin, postVals[headBegin], postVals[headBegin + 1U], tD);
+            PipeBarrier<PIPE_V>();
+            if (residualFromQueue) {
+                bufResidualBf16_.FreeTensor(residual);
+            }
+        }
         CacheX2TileForLane(token, tOff, tD, !true);
 
         {
@@ -57,6 +117,13 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     }
 
     {
+        // R2结束后gamma0不再使用：整段预取本lane第一个gamma2 head，
+        // 用下方RMS_mid跨核交换的Scalar/MTE3/MTE2时间隐藏这次搬运。
+        LocalTensor<float> gammaEvenCache = bufGamma0Fp32_.Get<float>();
+        FenceVToMte2();
+        LoadGammaInto(gammaEvenCache, gamma2Gm_, headBegin * D_, D_);
+        SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
+
         LocalTensor<float> midBuf = bufScalar_.Get<float>();
         midBuf.SetValue(0, midSqHalf[laneId_]);
         for (uint32_t i = 1U; i < PARTIAL_SLOT_ELEMS; ++i) {
@@ -75,17 +142,15 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         midSqHalf[1U - laneId_] = midBuf.GetValue(0);
         const float totalMidSq = midSqHalf[0] + midSqHalf[1];
         const float invRmsMid = 1.0f / sqrt(totalMidSq * invK_ + normEps_);
+        WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
         for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
             const uint32_t tD = GetTileD(tile);
             const uint32_t tOff = tile * dimTile_;
-            LocalTensor<float> gammaEven = bufGamma2Fp32_.Get<float>();
-            LocalTensor<float> gammaOdd = bufGamma0Fp32_.Get<float>();
-            LoadGammaInto(gammaEven, gamma2Gm_, headBegin * D_ + tOff, tD);
+            LocalTensor<float> gammaEven = gammaEvenCache[tOff];
+            LocalTensor<float> gammaOdd = bufGamma2Fp32_.Get<float>();
             LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
             // 每个lane只执行自己负责的两个head，另一半由sibling并行完成。
-            // 固定两次迭代显式展开；第二个head的MTE2仍与第一个head的Vector重叠。
-            SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
-            WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
+            // 第一个head已整段缓存；第二个head的分块MTE2与第一个head的Vector重叠。
             LoadGammaInto(gammaOdd, gamma2Gm_, (headBegin + 1U) * D_ + tOff, tD);
             MhcNormRegBase::VFCastB16ScaleAndMulGammaToB16(x2Cache[headBegin * D_ + tOff],
                                                            x2Cache[headBegin * D_ + tOff], gammaEven, invRmsMid, tD);

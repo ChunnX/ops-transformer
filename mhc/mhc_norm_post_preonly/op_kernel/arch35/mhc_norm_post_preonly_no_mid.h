@@ -20,7 +20,9 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     float dotHalf[2][N_MAX] = {{0.0f, 0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 0.0f}};
     float midSqHalf[2] = {0.0f, 0.0f};
     CacheHOut((uint64_t)token * D_);
-    if (dimLoop_ != 1U) {
+    // 单分块gamma0通常由Process预载；5op会在R3复用该缓冲缓存gamma2，
+    // 因此同一核处理后续token时需恢复gamma0。4op不增加重复搬运。
+    if (dimLoop_ != 1U || (false && token != tokenStart_)) {
         CacheGamma0();
     }
     const uint32_t headBegin = laneId_ * 2U;
@@ -35,11 +37,15 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     }
     const float invRms0 = ComputeInvRms(sumSq0, invD_);
 
+    {}
+
     // 两个lane分别构造自己负责的两个x2 head。
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
-        ComputeX2PostTileForLane(token, tOff, tD, invRms0, postVals);
+        {
+            ComputeX2PostTileForLane(token, tOff, tD, invRms0, postVals);
+        }
         CacheX2TileForLane(token, tOff, tD, !false);
 
         {
