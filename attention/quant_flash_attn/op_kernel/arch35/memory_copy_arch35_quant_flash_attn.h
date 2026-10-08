@@ -66,8 +66,17 @@ __aicore__ inline constexpr GmFormat GetQueryGmFormat()
 template <LayOutTypeEnum LAYOUT, bool useDn = false, bool isPerTokenHead = false>
 __aicore__ inline constexpr GmFormat GetQueryScaleGmFormat()
 {
-    if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BSH || LAYOUT == LayOutTypeEnum::LAYOUT_BNSD) {
+    if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BNSD) {
+        // BNSD: q_scale 统一按 BNSD 排布 (B-N-G-S-D)
         return GmFormat::BNGSD;
+    } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BSH) {
+        // BSND: PREFILL(useDn) 为 BSND 排布 (B-S-N-G-D, g=1);
+        //       DECODE 为 BNSGD 排布 (B-N2-S1-G-D), 与 BSND 的 S1-major gS1 合并方向一致
+        if constexpr (useDn) {
+            return GmFormat::BSNGD;
+        } else {
+            return GmFormat::BNSGD;
+        }
     } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND || LAYOUT == LayOutTypeEnum::LAYOUT_NTD) {
         if constexpr (isPerTokenHead) {
             return GmFormat::NGT;
@@ -144,11 +153,11 @@ __aicore__ inline constexpr UbFormat GetOutUbFormat()
 }
 
 template <LayOutTypeEnum LAYOUT>
-__aicore__ inline uint64_t SeqLenFromTensorList(__gm__ uint8_t *keyPtr, uint32_t bIndex)
+__aicore__ inline uint64_t SeqLenFromTensorList(__gm__ uint8_t* keyPtr, uint32_t bIndex)
 {
     uint64_t dimInfo[4]; // this mem is used to set shapeinfo, BSH(3) or BNSD(4)
     AscendC::TensorDesc<__gm__ uint8_t> keyTensorDesc;
-    ListTensorDesc keyListTensorDesc((__gm__ void *)keyPtr);
+    ListTensorDesc keyListTensorDesc((__gm__ void*)keyPtr);
     keyTensorDesc.SetShapeAddr(&dimInfo[0]);
     keyListTensorDesc.GetDesc(keyTensorDesc, bIndex);
     if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BSH) { // v100 没有bsnd
@@ -162,7 +171,7 @@ __aicore__ inline uint64_t SeqLenFromTensorList(__gm__ uint8_t *keyPtr, uint32_t
 template <typename T, typename CONST_INFO_T>
 __aicore__ inline void DataCopySoftmaxLseBSNDArch35(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc,
                                                     uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount,
-                                                    const CONST_INFO_T &constInfo, uint64_t s1LeftPaddingSize = 0)
+                                                    const CONST_INFO_T& constInfo, uint64_t s1LeftPaddingSize = 0)
 {
     // USE_DN时，realGSize=1(G合入N2)
     uint32_t startS1Idx = mOffset / constInfo.realGSize;
@@ -194,7 +203,7 @@ __aicore__ inline void DataCopySoftmaxLseBSNDArch35(GlobalTensor<float> softmaxL
 template <typename T, typename CONST_INFO_T>
 __aicore__ inline void DataCopySoftmaxLseBNSDArch35(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc,
                                                     uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount,
-                                                    const CONST_INFO_T &constInfo, uint64_t qActSeqLens,
+                                                    const CONST_INFO_T& constInfo, uint64_t qActSeqLens,
                                                     uint64_t s1LeftPaddingSize = 0)
 {
     uint64_t gOffset = mOffset / qActSeqLens * constInfo.s1Size;
@@ -251,7 +260,7 @@ __aicore__ inline void DataCopySoftmaxLseBNSDArch35(GlobalTensor<float> softmaxL
 template <typename T, typename CONST_INFO_T>
 __aicore__ inline void DataCopySoftmaxLseTNDArch35(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc,
                                                    uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount,
-                                                   const CONST_INFO_T &constInfo)
+                                                   const CONST_INFO_T& constInfo)
 {
     uint32_t startS1Idx = mOffset / constInfo.gSize;
     uint32_t startGIdx = mOffset % constInfo.gSize;
@@ -282,7 +291,7 @@ __aicore__ inline void DataCopySoftmaxLseTNDArch35(GlobalTensor<float> softmaxLs
 template <typename T, typename CONST_INFO_T>
 __aicore__ inline void DataCopySoftmaxLseTNDArch35NoGS1Merge(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc,
                                                              uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount,
-                                                             const CONST_INFO_T &constInfo)
+                                                             const CONST_INFO_T& constInfo)
 {
     uint32_t startS1Idx = mOffset / constInfo.realGSize;
     uint32_t startGIdx = mOffset % constInfo.realGSize;
@@ -319,7 +328,7 @@ template <typename T, typename CONST_INFO_T>
 __aicore__ inline void DataCopySoftmaxLseTNDtoNTArch35NoGS1Merge(GlobalTensor<float> softmaxLseGm,
                                                                  LocalTensor<T> lseSrc, uint64_t bN2Offset,
                                                                  uint32_t mOffset, uint32_t dealCount,
-                                                                 const CONST_INFO_T &constInfo)
+                                                                 const CONST_INFO_T& constInfo)
 {
     DataCopyExtParams dataCopyParams;
     dataCopyParams.blockCount = dealCount;
@@ -334,7 +343,7 @@ __aicore__ inline void DataCopySoftmaxLseTNDtoNTArch35NoGS1Merge(GlobalTensor<fl
 template <typename T, typename CONST_INFO_T>
 __aicore__ inline void DataCopySoftmaxLseTNDtoNTArch35(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc,
                                                        uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount,
-                                                       const CONST_INFO_T &constInfo)
+                                                       const CONST_INFO_T& constInfo)
 {
     uint32_t startS1Idx = mOffset / constInfo.realGSize;
     uint32_t startGIdx = mOffset % constInfo.realGSize;
@@ -365,7 +374,7 @@ __aicore__ inline void DataCopySoftmaxLseTNDtoNTArch35(GlobalTensor<float> softm
 template <typename T, typename CONST_INFO_T>
 __aicore__ inline void DataCopySoftmaxLseNTDArch35(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc,
                                                    uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount,
-                                                   const CONST_INFO_T &constInfo, uint32_t s1Size)
+                                                   const CONST_INFO_T& constInfo, uint32_t s1Size)
 {
     uint32_t startS1Idx = mOffset % s1Size;
     uint32_t startGIdx = mOffset / s1Size;

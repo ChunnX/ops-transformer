@@ -592,15 +592,17 @@ public:
             DataCopySoftmaxLseNTDArch35<T, ConstInfoX>(softmaxLseGm_, lseUb, bN2Offset, vecMIdx, gmDealRowCount,
                                                        constInfo_, s1Size);
         } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
+            // DN 范式下任务按 realN2Idx 逐 head 分解(realGSize=1), 头部偏移须用 realN2Idx*realGSize
             uint64_t bN2Offset = runInfo.bIdx * constInfo_.n2Size * constInfo_.gSize * constInfo_.s1Size +
-                                 runInfo.n2Idx * constInfo_.gSize * constInfo_.s1Size;
+                                 runInfo.realN2Idx * constInfo_.realGSize * constInfo_.s1Size;
             uint64_t qActSeqLens = qActSeqLensParser_->GetActualSeqLength(runInfo.bIdx);
             uint64_t s1LeftPaddingSize = 0;
             DataCopySoftmaxLseBSNDArch35<T, ConstInfoX>(softmaxLseGm_, lseUb, bN2Offset, vecMIdx, gmDealRowCount,
                                                         constInfo_, s1LeftPaddingSize);
         } else { // BNSD
+            // DN 范式下任务按 realN2Idx 逐 head 分解(realGSize=1), 头部偏移须用 realN2Idx*realGSize
             uint64_t bN2Offset = runInfo.bIdx * constInfo_.n2Size * constInfo_.gSize * constInfo_.s1Size +
-                                 runInfo.n2Idx * constInfo_.gSize * constInfo_.s1Size;
+                                 runInfo.realN2Idx * constInfo_.realGSize * constInfo_.s1Size;
             uint64_t qActSeqLens = qActSeqLensParser_->GetActualSeqLength(runInfo.bIdx);
             uint64_t s1LeftPaddingSize = 0;
             DataCopySoftmaxLseBNSDArch35<T, ConstInfoX>(softmaxLseGm_, lseUb, bN2Offset, vecMIdx, gmDealRowCount,
