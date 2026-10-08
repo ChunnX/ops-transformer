@@ -22,6 +22,20 @@
 
 #include "arch35/mhc_norm_post_preonly_kernel.h"
 
+// TilingKey三位依次为[dualSibling, returnHInF32, useRmsMid]：
+// 000=单AIV/4op/不返回FP32，001=单AIV/5op/不返回FP32；
+// 010=单AIV/4op/返回FP32，  011=单AIV/5op/返回FP32；
+// 100=双sibling/4op/不返回FP32，101=双sibling/5op/不返回FP32；
+// 110=双sibling/4op/返回FP32，  111=双sibling/5op/返回FP32。
+#define TILING_KEY_SINGLE_4OP 0
+#define TILING_KEY_SINGLE_5OP 1
+#define TILING_KEY_SINGLE_4OP_RETURN_F32 2
+#define TILING_KEY_SINGLE_5OP_RETURN_F32 3
+#define TILING_KEY_DUAL_4OP 4
+#define TILING_KEY_DUAL_5OP 5
+#define TILING_KEY_DUAL_4OP_RETURN_F32 6
+#define TILING_KEY_DUAL_5OP_RETURN_F32 7
+
 extern "C" __global__ __aicore__ void mhc_norm_post_preonly(GM_ADDR h_out, GM_ADDR residual, GM_ADDR h_post,
                                                             GM_ADDR h_res, GM_ADDR phi, GM_ADDR alpha, GM_ADDR bias,
                                                             GM_ADDR pre_mix, GM_ADDR gamma_0, GM_ADDR gamma_1,
@@ -31,55 +45,52 @@ extern "C" __global__ __aicore__ void mhc_norm_post_preonly(GM_ADDR h_out, GM_AD
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
 
-    // bit0和bit1选择可选语义分支，bit2保留给双sibling AIV执行方案。
-    // 枚举四个单AIV键，并把两个可选语义变为编译期常量，
-    // 使每个二进制只保留实际需要的执行分支。
-    if (TILING_KEY_IS(0)) {
+    if (TILING_KEY_IS(TILING_KEY_SINGLE_4OP)) {
         KernelMhcNormPostPreonly<DTYPE_H_OUT, false, false> op;
         op.Init(h_out, residual, h_post, h_res, phi, alpha, bias, pre_mix, gamma_0, gamma_1, gamma_2, h_in_prime,
                 x_2_out, h_in_f32, h_pre, nullptr, tiling);
         op.Process();
-    } else if (TILING_KEY_IS(1)) {
+    } else if (TILING_KEY_IS(TILING_KEY_SINGLE_5OP)) {
         KernelMhcNormPostPreonly<DTYPE_H_OUT, true, false> op;
         op.Init(h_out, residual, h_post, h_res, phi, alpha, bias, pre_mix, gamma_0, gamma_1, gamma_2, h_in_prime,
                 x_2_out, h_in_f32, h_pre, nullptr, tiling);
         op.Process();
-    } else if (TILING_KEY_IS(2)) {
+    } else if (TILING_KEY_IS(TILING_KEY_SINGLE_4OP_RETURN_F32)) {
         KernelMhcNormPostPreonly<DTYPE_H_OUT, false, true> op;
         op.Init(h_out, residual, h_post, h_res, phi, alpha, bias, pre_mix, gamma_0, gamma_1, gamma_2, h_in_prime,
                 x_2_out, h_in_f32, h_pre, nullptr, tiling);
         op.Process();
-    } else if (TILING_KEY_IS(3)) {
+    } else if (TILING_KEY_IS(TILING_KEY_SINGLE_5OP_RETURN_F32)) {
         KernelMhcNormPostPreonly<DTYPE_H_OUT, true, true> op;
         op.Init(h_out, residual, h_post, h_res, phi, alpha, bias, pre_mix, gamma_0, gamma_1, gamma_2, h_in_prime,
                 x_2_out, h_in_f32, h_pre, nullptr, tiling);
         op.Process();
-    } else if (TILING_KEY_IS(4)) {
-        KERNEL_TASK_TYPE(4, KERNEL_TYPE_MIX_AIC_1_2);
+    } else if (TILING_KEY_IS(TILING_KEY_DUAL_4OP)) {
+        KERNEL_TASK_TYPE(TILING_KEY_DUAL_4OP, KERNEL_TYPE_MIX_AIC_1_2);
         if ASCEND_IS_AIV {
             KernelMhcNormPostPreonly<DTYPE_H_OUT, false, false, true> op;
             op.Init(h_out, residual, h_post, h_res, phi, alpha, bias, pre_mix, gamma_0, gamma_1, gamma_2, h_in_prime,
                     x_2_out, h_in_f32, h_pre, GetUserWorkspace(workspace), tiling);
             op.Process();
         }
-    } else if (TILING_KEY_IS(5)) {
-        KERNEL_TASK_TYPE(5, KERNEL_TYPE_MIX_AIC_1_2);
+    } else if (TILING_KEY_IS(TILING_KEY_DUAL_5OP)) {
+        KERNEL_TASK_TYPE(TILING_KEY_DUAL_5OP, KERNEL_TYPE_MIX_AIC_1_2);
         if ASCEND_IS_AIV {
             KernelMhcNormPostPreonly<DTYPE_H_OUT, true, false, true> op;
             op.Init(h_out, residual, h_post, h_res, phi, alpha, bias, pre_mix, gamma_0, gamma_1, gamma_2, h_in_prime,
                     x_2_out, h_in_f32, h_pre, GetUserWorkspace(workspace), tiling);
             op.Process();
         }
-    } else if (TILING_KEY_IS(6)) {
-        KERNEL_TASK_TYPE(6, KERNEL_TYPE_MIX_AIC_1_2);
+    } else if (TILING_KEY_IS(TILING_KEY_DUAL_4OP_RETURN_F32)) {
+        KERNEL_TASK_TYPE(TILING_KEY_DUAL_4OP_RETURN_F32, KERNEL_TYPE_MIX_AIC_1_2);
         if ASCEND_IS_AIV {
             KernelMhcNormPostPreonly<DTYPE_H_OUT, false, true, true> op;
             op.Init(h_out, residual, h_post, h_res, phi, alpha, bias, pre_mix, gamma_0, gamma_1, gamma_2, h_in_prime,
                     x_2_out, h_in_f32, h_pre, GetUserWorkspace(workspace), tiling);
             op.Process();
         }
-    } else if (TILING_KEY_IS(7)) {
-        KERNEL_TASK_TYPE(7, KERNEL_TYPE_MIX_AIC_1_2);
+    } else if (TILING_KEY_IS(TILING_KEY_DUAL_5OP_RETURN_F32)) {
+        KERNEL_TASK_TYPE(TILING_KEY_DUAL_5OP_RETURN_F32, KERNEL_TYPE_MIX_AIC_1_2);
         if ASCEND_IS_AIV {
             KernelMhcNormPostPreonly<DTYPE_H_OUT, true, true, true> op;
             op.Init(h_out, residual, h_post, h_res, phi, alpha, bias, pre_mix, gamma_0, gamma_1, gamma_2, h_in_prime,

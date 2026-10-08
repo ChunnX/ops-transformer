@@ -20,7 +20,9 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     float dotHalf[2][N_MAX] = {{0.0f, 0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 0.0f}};
     float midSqHalf[2] = {0.0f, 0.0f};
     CacheHOut((uint64_t)token * D_);
-    CacheGamma0();
+    if (dimLoop_ != 1U) {
+        CacheGamma0();
+    }
     const uint32_t headBegin = laneId_ * 2U;
     LoadTokenWeights(token, postVals, headBegin, headBegin + 2U);
 
@@ -38,7 +40,7 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
         ComputeX2PostTileForLane(token, tOff, tD, invRms0, postVals);
-        CacheX2TileForLane(token, tOff, tD, !false, false);
+        CacheX2TileForLane(token, tOff, tD, !false);
 
         {
             AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf, laneId_, laneId_ + 1U);
@@ -146,7 +148,9 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     float dotHalf[2][N_MAX] = {{0.0f, 0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 0.0f}};
     float midSqHalf[2] = {0.0f, 0.0f};
     CacheHOut((uint64_t)token * D_);
-    CacheGamma0();
+    if (dimLoop_ != 1U) {
+        CacheGamma0();
+    }
     LoadTokenWeights(token, postVals);
 
     // 第一遍：沿完整D轴计算R1。
@@ -164,7 +168,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
         ComputeX2PostTile(token, tOff, tD, invRms0, postVals);
-        CacheX2Tile(token, tOff, tD, !false, false);
+        CacheX2Tile(token, tOff, tD, !false);
 
         {
             AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf);

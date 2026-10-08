@@ -20,7 +20,9 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     float dotHalf[2][N_MAX] = {{0.0f, 0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 0.0f}};
     float midSqHalf[2] = {0.0f, 0.0f};
     CacheHOut((uint64_t)token * D_);
-    CacheGamma0();
+    if (dimLoop_ != 1U) {
+        CacheGamma0();
+    }
     const uint32_t headBegin = laneId_ * 2U;
     LoadTokenWeights(token, postVals, headBegin, headBegin + 2U);
 
@@ -38,7 +40,7 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
         ComputeX2PostTileForLane(token, tOff, tD, invRms0, postVals);
-        CacheX2TileForLane(token, tOff, tD, !true, false);
+        CacheX2TileForLane(token, tOff, tD, !true);
 
         {
             // 每个lane只归约自己负责的两个head，循环结束后交换半和。
@@ -94,7 +96,7 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
             MhcNormRegBase::VFCastB16ScaleAndMulGammaToB16(
                 x2Cache[(headBegin + 1U) * D_ + tOff], x2Cache[(headBegin + 1U) * D_ + tOff], gammaOdd, invRmsMid, tD);
             PipeBarrier<PIPE_V>();
-            CacheX2TileForLane(token, tOff, tD, true, false);
+            CacheX2TileForLane(token, tOff, tD, true);
             AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf, laneId_, laneId_ + 1U);
         }
     }
@@ -201,7 +203,9 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     float dotHalf[2][N_MAX] = {{0.0f, 0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 0.0f}};
     float midSqHalf[2] = {0.0f, 0.0f};
     CacheHOut((uint64_t)token * D_);
-    CacheGamma0();
+    if (dimLoop_ != 1U) {
+        CacheGamma0();
+    }
     LoadTokenWeights(token, postVals);
 
     // 第一遍：沿完整D轴计算R1。
@@ -219,7 +223,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
         ComputeX2PostTile(token, tOff, tD, invRms0, postVals);
-        CacheX2Tile(token, tOff, tD, !true, false);
+        CacheX2Tile(token, tOff, tD, !true);
 
         {
             LocalTensor<float> out = bufResFp32_.Get<float>()[N_MAX * dimTile_];
@@ -267,7 +271,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
                     FenceVToMte2();
                 }
             }
-            CacheX2Tile(token, tOff, tD, true, false);
+            CacheX2Tile(token, tOff, tD, true);
             AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf);
         }
     }
