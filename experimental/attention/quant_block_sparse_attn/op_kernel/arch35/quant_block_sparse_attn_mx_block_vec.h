@@ -51,19 +51,20 @@ public:
     static constexpr QBSALayout KV_LAYOUT = kvLayout;
     static constexpr uint32_t M_BASE = static_cast<uint32_t>(s1TemplateType);
     static constexpr uint32_t S2_BASE = static_cast<uint32_t>(s2TemplateType);
-    static constexpr uint32_t S2_SPLIT = 256U;
+    static constexpr uint32_t S2_SPLIT = S2_BASE / 2U;
     static constexpr uint32_t VEC_M_BASE = M_BASE >> 1U;
     static constexpr uint32_t D_BASE = static_cast<uint32_t>(dTemplateType);
     static constexpr uint32_t DV_BASE = static_cast<uint32_t>(dVTemplateType);
     static_assert((LAYOUT == QBSALayout::TND || LAYOUT == QBSALayout::BSND || LAYOUT == QBSALayout::BNSD) &&
                       KV_LAYOUT == QBSALayout::PA_BNBD && IS_PA,
                   "MX vector currently supports TND/BSND/BNSD query and PA_BNBD KV");
-    static_assert(M_BASE == 128U && S2_BASE == 512U && D_BASE == 128U && DV_BASE == 128U,
-                  "MX vector currently only supports S1=128, S2=512, D=128 and DV=128");
+    static_assert(M_BASE == 128U && S2_BASE == (D_BASE == 256U ? 256U : 512U) && D_BASE == DV_BASE &&
+                      (D_BASE == 64U || D_BASE == 128U || D_BASE == 256U),
+                  "MX vector requires S1=128, S2=(D256 ? 256 : 512) and D=DV in {64,128,256}");
     // V2 比 V1 延迟三个 task，四槽状态避免 V1 覆盖尚未被 V2 消费的 softmax 状态。
     static constexpr uint32_t SOFTMAX_BUFFER_NUM = 4U;
     static constexpr uint32_t MX_SCALE_GROUP = 32U;
-    static constexpr uint32_t dTemplateAlign64 = 128U;
+    static constexpr uint32_t dTemplateAlign64 = DV_BASE;
     static constexpr uint32_t DN_VSELR_INDEX_SIZE = 256U;
     static constexpr uint32_t DN_VSELR_GROUP_NUM = 4U;
     static constexpr uint32_t DN_VSELR_GROUP_SIZE = DN_VSELR_INDEX_SIZE / DN_VSELR_GROUP_NUM;
@@ -114,7 +115,7 @@ public:
             // V1 DN packed P 使用双队列。
             tPipe_->InitBuffer(stage1OutQue_[0], 1, STAGE1_OUT_UB_SIZE);
             tPipe_->InitBuffer(stage1OutQue_[1], 1, STAGE1_OUT_UB_SIZE);
-            // 单个 256-column subLoop 的 e8m0 PScale。
+            // 单个 S2_SPLIT-column subLoop 的 e8m0 PScale。
             tPipe_->InitBuffer(pScaleSubLoop0Que_, 1, PSCALE_SUB_LOOP_UB_SIZE);
             // 四槽 softmax 状态覆盖 current V1 与延迟三个 task 的 V2。
             tPipe_->InitBuffer(softmaxSumBuf_[0], SOFTMAX_STATE_UB_SIZE);
@@ -137,7 +138,7 @@ public:
                 tPipe_->InitBuffer(softmaxLseQueue_, 1, (M_BASE >> 1U) * sizeof(float) * 8U);
             }
             if constexpr (HAS_ATTEN) {
-                // DN mask UB：[256,64]，按 sparse segment 拼接。
+                // DN mask UB：[S2_SPLIT,64]，按 sparse segment 拼接。
                 tPipe_->InitBuffer(attenMaskInQue_, 1, ATTEN_MASK_UB_SIZE);
             }
             // DN VF lane 重排索引；保留 USE_DN 分支，便于后续补充非 DN 索引表。
@@ -186,16 +187,21 @@ public:
             outCopyParams.srcStride = 0U;
             outCopyParams.dstStride = constInfo.attentionOutStride;
             const uint32_t querySequenceOffset = s1Idx + vecMbaseIdx;
-            const uint64_t outOffset = MxQuerySlot<LAYOUT>(queryTokenBase, querySequenceOffset, n1Idx,
-                                                           constInfo.realN2Size, constInfo.qSeqSize) *
-                                       constInfo.dSizeV;
             // 空行是冷路径，复用 V1 queue 作为临时零块，避免常驻占用 16 KiB UB。
-            LocalTensor<OUTPUT_T> emptyOut = stage1OutQue_[0].template AllocTensor<OUTPUT_T>();
-            Duplicate<OUTPUT_T>(emptyOut, 0.0F, actVecMSize * constInfo.dSizeV);
-            stage1OutQue_[0].template EnQue(emptyOut);
-            emptyOut = stage1OutQue_[0].template DeQue<OUTPUT_T>();
-            DataCopyPad(attentionOutGm_[outOffset], emptyOut, outCopyParams);
-            stage1OutQue_[0].template FreeTensor(emptyOut);
+            constexpr uint32_t emptyRowsPerCopy = STAGE1_OUT_UB_SIZE / (DV_BASE * sizeof(OUTPUT_T));
+            for (uint32_t row = 0U; row < actVecMSize; row += emptyRowsPerCopy) {
+                const uint32_t rows = actVecMSize - row < emptyRowsPerCopy ? actVecMSize - row : emptyRowsPerCopy;
+                LocalTensor<OUTPUT_T> emptyOut = stage1OutQue_[0].template AllocTensor<OUTPUT_T>();
+                Duplicate<OUTPUT_T>(emptyOut, 0.0F, rows * DV_BASE);
+                stage1OutQue_[0].template EnQue(emptyOut);
+                emptyOut = stage1OutQue_[0].template DeQue<OUTPUT_T>();
+                outCopyParams.blockCount = rows;
+                const uint64_t outOffset = MxQuerySlot<LAYOUT>(queryTokenBase, querySequenceOffset + row, n1Idx,
+                                                               constInfo.realN2Size, constInfo.qSeqSize) *
+                                           constInfo.dSizeV;
+                DataCopyPad(attentionOutGm_[outOffset], emptyOut, outCopyParams);
+                stage1OutQue_[0].template FreeTensor(emptyOut);
+            }
 
             if constexpr (HAS_LSE) {
                 DataCopyExtParams lseCopyParams;
@@ -217,7 +223,7 @@ public:
         }
     }
 
-    // V1：C1[128,256] -> P/PScale；两个 subLoop 写成 P[128,512]。
+    // V1：C1[128,S2_SPLIT] -> P/PScale；两个 subLoop 写成 P[128,S2_BASE]。
     template <uint32_t SUB_LOOP>
     __aicore__ inline void ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
                                        Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
@@ -498,7 +504,7 @@ private:
                                           const MxConstInfo &constInfo)
     {
         static_assert(SUB_LOOP < 2U, "MX V1 only supports subLoop 0/1");
-        // 将 subLoop PScale 整理到完整 P[128,512] 后方。
+        // 将 subLoop PScale 整理到完整 P[128,S2_BASE] 后方。
         constexpr uint64_t pScaleL1Offset = static_cast<uint64_t>(M_BASE) * S2_BASE;
         LocalTensor<SCALE_T> pScaleL1Tensor = outputBuf.GetTensor<SCALE_T>(pScaleL1Offset);
         pScaleSubLoop0Que_.template EnQue(pScaleSubLoopTensor);
@@ -509,18 +515,24 @@ private:
         // DataCopy 以 32B 为基本块，fp8_e8m0_t 每块 32 个元素。每行有
         // S2_SPLIT / MX_SCALE_GROUP 个 scale；DN packed 后按 4 个搬运列组写入。
         constexpr uint16_t pScaleDstStride = ((S2_SPLIT / MX_SCALE_GROUP) >> 1U) - 1U;
+        constexpr uint32_t pScaleColumnGroupSize = MX_SCALE_GROUP * 2U;
+        constexpr uint32_t pScaleCopyBlockElements = FaVectorApi::blockBytesU8 / sizeof(SCALE_T);
         const uint64_t vecOffset = constInfo.subBlockIdx * pScaleDataLen;
         if constexpr (SUB_LOOP == 1U) {
-            // subLoop1 写 P 的后 256 列：4 个 column group，每组起点相隔 32 个 E8M0 元素。
-            DataCopy(pScaleL1Tensor[vecOffset], pScaleSubLoopTensor, {4, 1, 0, pScaleDstStride});
-            DataCopy(pScaleL1Tensor[vecOffset + 32U], pScaleSubLoopTensor, {4, 1, 0, pScaleDstStride});
-            DataCopy(pScaleL1Tensor[vecOffset + 64U], pScaleSubLoopTensor, {4, 1, 0, pScaleDstStride});
-            DataCopy(pScaleL1Tensor[vecOffset + 96U], pScaleSubLoopTensor, {4, 1, 0, pScaleDstStride});
+            // subLoop1 写 P 的后 S2_SPLIT 列，每两个 MX_SCALE_GROUP 列重复一份行 scale。
+            for (uint32_t columnGroup = 0U; columnGroup < S2_SPLIT / pScaleColumnGroupSize; ++columnGroup) {
+                DataCopy(pScaleL1Tensor[vecOffset + columnGroup * pScaleCopyBlockElements], pScaleSubLoopTensor,
+                         {4, 1, 0, pScaleDstStride});
+            }
         } else if (runInfo.actSingleLoopS2Size <= S2_SPLIT) {
-            // 只有一个 256-token subLoop 时，需要把 PScale 同步填到完整 512-token tile 的两个半区。
-            // 每半区跨度为 256 个 E8M0 元素，即 8 个 32B 块。
-            DataCopy(pScaleL1Tensor[vecOffset], pScaleSubLoopTensor, {1, 8, 0, 0});
-            DataCopy(pScaleL1Tensor[vecOffset + 256U], pScaleSubLoopTensor, {1, 8, 0, 0});
+            // 只有一个 subLoop 时，将单位 scale 重复到该 AIV 的整个 scale 区域。
+            // 半区跨度随 S2_SPLIT 缩放。
+            constexpr uint64_t pScaleHalfDataLen = pScaleDataLen / 2U;
+            constexpr uint16_t pScaleHalfCopyBlocks =
+                static_cast<uint16_t>(pScaleHalfDataLen / pScaleCopyBlockElements);
+            DataCopy(pScaleL1Tensor[vecOffset], pScaleSubLoopTensor, {1, pScaleHalfCopyBlocks, 0, 0});
+            DataCopy(pScaleL1Tensor[vecOffset + pScaleHalfDataLen], pScaleSubLoopTensor,
+                     {1, pScaleHalfCopyBlocks, 0, 0});
         }
     }
 
@@ -534,7 +546,7 @@ private:
         constexpr uint64_t subLoopOffset = static_cast<uint64_t>(S2_SPLIT) * M_BASE * SUB_LOOP;
         constexpr uint64_t vecBlockOffset = static_cast<uint64_t>(S2_SPLIT) * VEC_M_BASE;
         constexpr uint64_t secondCopyDstOffset = static_cast<uint64_t>(32U) * S2_SPLIT;
-        constexpr uint64_t secondCopySrcOffset = 65U << 5U;
+        constexpr uint64_t secondCopySrcOffset = ((S2_SPLIT >> 2U) + 1U) << 5U;
         const uint64_t dstBase = subLoopOffset + constInfo.subBlockIdx * vecBlockOffset;
         DataCopy(pL1Tensor[dstBase], stage1CastTensor, {4, S2_SPLIT >> 2, (S2_SPLIT >> 2) + 2U, 0});
         DataCopy(pL1Tensor[dstBase + secondCopyDstOffset], stage1CastTensor[secondCopySrcOffset],
@@ -553,9 +565,14 @@ private:
         // 按编译期 Q/output layout 的 token/head stride 写回。
         LocalTensor<OUTPUT_T> attenOut;
         attenOut.SetAddr(vec2ResUb.address_);
+        // Tensor Cast has no per-instruction SatMode, so use the global NO_SAT prepared by the MX kernel entry.
+        AscendC::SetCtrlSpr<FaVectorApi::CAST_SAT_MODE_CTRL_BIT, FaVectorApi::CAST_SAT_MODE_CTRL_BIT>(
+            FaVectorApi::CAST_USE_GLOBAL_SAT_MODE);
         Cast(attenOut, vec2ResUb, RoundMode::CAST_ROUND, static_cast<int64_t>(runInfo.actVecMSize) * dTemplateAlign64);
         SetFlag<HardEvent::V_MTE3>(vToMte3Id_[0]);
         WaitFlag<HardEvent::V_MTE3>(vToMte3Id_[0]);
+        AscendC::SetCtrlSpr<FaVectorApi::CAST_SAT_MODE_CTRL_BIT, FaVectorApi::CAST_SAT_MODE_CTRL_BIT>(
+            FaVectorApi::CAST_USE_INSTRUCTION_SAT_MODE);
 
         DataCopyExtParams dataCopyParams;
         dataCopyParams.blockLen = constInfo.dSizeV * sizeof(OUTPUT_T);
