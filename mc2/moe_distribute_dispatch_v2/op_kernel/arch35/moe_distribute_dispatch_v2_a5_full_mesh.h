@@ -658,7 +658,12 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     GlobalTensor<XOutType> dstWinGMTensor;
     int32_t dstTokenIdx = 0;
 
-    for (int32_t index = aivId_; index < validTokenNum; index += moeUsedAivNum_) {
+    uint32_t startTokenId, endTokenId, sendTokenNum;
+    SplitToCore(validTokenNum, moeUsedAivNum_, startTokenId, endTokenId, sendTokenNum, true);
+    if (startTokenId >= validTokenNum) {
+        return;
+    }
+    for (int32_t index = startTokenId; index < endTokenId; index += 1) {
         int32_t tokenId = index / axisK_;
         int32_t topKId = index % axisK_;
         int32_t expertId = validExpertIdsTensor_(index);
