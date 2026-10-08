@@ -47,8 +47,7 @@ TILING_DATA_FIELD_DEF(float, invK); // 1.0f / (N*D)
 
 // 是否在MHC_Post与MHC_Pre之间执行RMSNorm_mid
 TILING_DATA_FIELD_DEF(uint32_t, useRmsMid); // 0表示关闭，1表示开启
-// A5执行方案。当前阶段仅启用已经验证的单AIV回退路径；双sibling AIV
-// 模板通过目标设备映射验证后，再使用该字段和TilingKey的bit2启用。
+// A5执行方案。bit2选择双sibling AIV模板，其他组合回退单AIV。
 TILING_DATA_FIELD_DEF(uint32_t, coresPerToken); // 取值为1或2
 
 // 是否返回h_in_f32

@@ -22,7 +22,7 @@
 
 #include "mhc_sandwich_norm_post_preonly_common.h"
 
-template<typename T>
+template<typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING = false>
 class KernelMhcSandwichNormPostPreonly {
 public:
     __aicore__ inline KernelMhcSandwichNormPostPreonly() {}
@@ -58,11 +58,13 @@ public:
         K_              = N_ * D_;
         invD_           = td.invD;
         invK_           = td.invK;
-        useRmsMid_      = (td.useRmsMid != 0);
         coresPerToken_  = td.coresPerToken;
-        returnHInF32_ = (td.returnHInF32 != 0);
 
-        const uint32_t blockIdx = GetBlockIdx();
+        const uint32_t aivIdx = GetBlockIdx();
+        // MIX_AIC_1_2在A5上按每个物理AI Core展开两个连续AIV。
+        // 该映射与同平台算子保持一致，只在双sibling模板中使用。
+        laneId_ = DUAL_SIBLING ? (aivIdx & 1U) : 0U;
+        const uint32_t blockIdx = DUAL_SIBLING ? (aivIdx >> 1U) : aivIdx;
         if (blockIdx >= usedCoreNum_) {
             tokenStart_ = 0;
             tokenEnd_ = 0;
@@ -90,13 +92,16 @@ public:
         biasGm_.SetGlobalBuffer((__gm__ float *)bias_gm,      ALIGN8);
         gamma0Gm_.SetGlobalBuffer((__gm__ float *)gamma_0_gm, D_);
         gamma1Gm_.SetGlobalBuffer((__gm__ float *)gamma_1_gm, D_);
-        if (useRmsMid_) {
+        if constexpr (USE_RMS_MID) {
             gamma2Gm_.SetGlobalBuffer((__gm__ float *)gamma_2_gm, K_);
         }
         hInPrimeGm_.SetGlobalBuffer((__gm__ T *)h_in_prime_gm, (uint64_t)totalTokens_ * D_);
         x2OutGm_.SetGlobalBuffer((__gm__ T *)x_2_out_gm,      (uint64_t)totalTokens_ * N_ * D_);
         if (h_in_f32_gm != nullptr) {
             hInF32Gm_.SetGlobalBuffer((__gm__ float *)h_in_f32_gm, (uint64_t)totalTokens_ * D_);
+        }
+        if constexpr (DUAL_SIBLING) {
+            partial1Gm_.SetGlobalBuffer((__gm__ float *)workspace, (uint64_t)totalTokens_ * PARTIAL_SLOT_ELEMS);
         }
 
         // UB空间分配
@@ -105,15 +110,17 @@ public:
         pipe_.InitBuffer(bufGamma0Fp32_,        dimTile_ * sizeof(float));
         pipe_.InitBuffer(bufGamma1Fp32_,        dimTile_ * sizeof(float));
         pipe_.InitBuffer(bufX2Fp32_,            N_ * dimTile_ * sizeof(float));
-        pipe_.InitBuffer(bufOutFp32_,           dimTile_ * sizeof(float));
+        // dimTile=2560时其余固定缓存共194912B；D=7168的完整低精度x2为57344B，
+        // 合计252256B，小于A5的256KiB UB上限。
+        pipe_.InitBuffer(bufX2Cache_,            K_ * sizeof(T));
         pipe_.InitBuffer(bufResidualBf16_,   1, N_ * dimTile_ * sizeof(T));
-        pipe_.InitBuffer(bufResFp32_,           N_ * dimTile_ * sizeof(float));
+        // 前四行先保存residual，之后复用为R4/R5的五行归约输入；第五行兼作通用输出暂存。
+        pipe_.InitBuffer(bufResFp32_,     (N_ + 1) * dimTile_ * sizeof(float));
         pipe_.InitBuffer(bufSqFp32_,            dimTile_ * sizeof(float));
         pipe_.InitBuffer(bufPostComb_,          POST_COMB_SIZE * sizeof(float));
         pipe_.InitBuffer(bufPhiFp32_,  BUFFER_NUM_TWO, dimTile_ * sizeof(float));
         pipe_.InitBuffer(bufHInPrimeBf16_,   1, dimTile_ * sizeof(T));
         pipe_.InitBuffer(bufScalar_,            SCALAR_BUF_SIZE);
-        pipe_.InitBuffer(bufReduceWork_,        dimTile_ * sizeof(float));
         pipe_.InitBuffer(bufGamma2Fp32_,        dimTile_ * sizeof(float));
 
         evtMte2toV_ = static_cast<int32_t>(pipe_.AllocEventID<HardEvent::MTE2_V>());
@@ -121,6 +128,10 @@ public:
         evtMte3toV_ = static_cast<int32_t>(pipe_.AllocEventID<HardEvent::MTE3_V>());
         evtVtoMte3_ = static_cast<int32_t>(pipe_.AllocEventID<HardEvent::V_MTE3>());
         evtMte3toMte2_ = static_cast<int32_t>(pipe_.AllocEventID<HardEvent::MTE3_MTE2>());
+        if constexpr (DUAL_SIBLING) {
+            evtMte2toS_ = static_cast<int32_t>(pipe_.AllocEventID<HardEvent::MTE2_S>());
+            evtStoMte3_ = static_cast<int32_t>(pipe_.AllocEventID<HardEvent::S_MTE3>());
+        }
     }
 
     // =====================================================================
@@ -133,7 +144,7 @@ public:
         }
         // 缓存标量
         alpha0_ = alpha0Gm_.GetValue(0);
-        for (uint32_t i = 0; i < phiRows_ && i < N_MAX; ++i) {
+        for (uint32_t i = 0; i < N_MAX; ++i) {
             biasCache_[i] = biasGm_.GetValue(i);
         }
 
@@ -151,7 +162,11 @@ public:
         WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
 
         for (uint32_t t = tokenStart_; t < tokenEnd_; ++t) {
-            ProcessTokenSingleAiv(t);
+            if constexpr (DUAL_SIBLING) {
+                ProcessTokenDualSiblingAiv(t);
+            } else {
+                ProcessTokenSingleAiv(t);
+            }
         }
 
         pipe_.ReleaseEventID<HardEvent::MTE2_V>(evtMte2toV_);
@@ -159,6 +174,10 @@ public:
         pipe_.ReleaseEventID<HardEvent::MTE3_V>(evtMte3toV_);
         pipe_.ReleaseEventID<HardEvent::V_MTE3>(evtVtoMte3_);
         pipe_.ReleaseEventID<HardEvent::MTE3_MTE2>(evtMte3toMte2_);
+        if constexpr (DUAL_SIBLING) {
+            pipe_.ReleaseEventID<HardEvent::MTE2_S>(evtMte2toS_);
+            pipe_.ReleaseEventID<HardEvent::S_MTE3>(evtStoMte3_);
+        }
     }
 
     // =================================================================
@@ -166,11 +185,16 @@ public:
     // =================================================================
 private:
     __aicore__ inline void ProcessTokenSingleAiv(uint32_t token);
+    __aicore__ inline void ProcessTokenDualSiblingAiv(uint32_t token);
     __aicore__ inline void ComputeX2PostTile(uint32_t token, uint32_t tOff, uint32_t tD,
         float invRms0, const float (&postVals)[N_MAX], const float (&combVals)[N_MAX * N_MAX]);
-    __aicore__ inline void LoadX2OutputTile(uint32_t token, uint32_t tOff, uint32_t tD);
+    __aicore__ inline void CacheX2Tile(uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput);
+    __aicore__ inline void CacheX2TileForLane(uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput);
+    __aicore__ inline void LoadX2CacheTile(uint32_t tOff, uint32_t tD);
+    __aicore__ inline void CacheHInTile(uint32_t tOff, uint32_t tD, LocalTensor<float> hIn);
+    __aicore__ inline void LoadHInCacheTile(uint32_t tOff, uint32_t tD, LocalTensor<float> hIn);
     __aicore__ inline void AccumulateHalfPartials(uint32_t tOff, uint32_t tD,
-        float (&sumSqHalf)[2], float (&dotHalf)[2][N_MAX]);
+        float (&sumSqHalf)[2], float (&dotHalf)[2][N_MAX], uint32_t halfBegin = 0, uint32_t halfEnd = 2);
 
     // =================================================================
     //  共享计算模块
@@ -190,7 +214,7 @@ private:
     TBuf<TPosition::VECCALC>   bufGamma1Fp32_;
     TBuf<TPosition::VECCALC>   bufGamma2Fp32_;
     TBuf<TPosition::VECCALC>   bufX2Fp32_;
-    TBuf<TPosition::VECCALC>   bufOutFp32_;
+    TBuf<TPosition::VECCALC>   bufX2Cache_;
     TQue<TPosition::VECIN, 1>  bufResidualBf16_;
     TBuf<TPosition::VECCALC>   bufResFp32_;
     TBuf<TPosition::VECCALC>   bufSqFp32_;
@@ -198,7 +222,6 @@ private:
     TQue<TPosition::VECIN, BUFFER_NUM_TWO>  bufPhiFp32_;
     TQue<TPosition::VECOUT, 1> bufHInPrimeBf16_;
     TBuf<TPosition::VECCALC>   bufScalar_;
-    TBuf<TPosition::VECCALC>   bufReduceWork_;
 
     // GM张量
     GlobalTensor<T>     hOutGm_, residualGm_, hInPrimeGm_, x2OutGm_;
@@ -206,6 +229,7 @@ private:
     GlobalTensor<float> alpha0Gm_, biasGm_;
     GlobalTensor<float> gamma0Gm_, gamma1Gm_, gamma2Gm_;
     GlobalTensor<float> hInF32Gm_;
+    GlobalTensor<float> partial1Gm_;
 
     // Tiling参数
     uint32_t totalTokens_ = 0, N_ = 0, D_ = 0, K_ = 0;
@@ -216,20 +240,22 @@ private:
     uint32_t tokenStart_ = 0, tokenEnd_ = 0;
     float alpha0_ = 0.0f;
     float biasCache_[N_MAX] = {0.0f};
-    bool useRmsMid_ = false;
-    bool returnHInF32_ = false;
-
     // A5执行方案选择值，第一阶段只使用1
     uint32_t coresPerToken_ = 1;
+    uint32_t laneId_ = 0;
 
     int32_t evtMte2toV_ = 0;
     int32_t evtVtoMte2_ = 0;
     int32_t evtMte3toV_ = 0;
     int32_t evtVtoMte3_ = 0;
     int32_t evtMte3toMte2_ = 0;
+    int32_t evtMte2toS_ = 0;
+    int32_t evtStoMte3_ = 0;
 };
 
 // 引入各执行路径的方法实现
 #include "mhc_sandwich_norm_post_preonly_single_aiv.h"
+#include "mhc_sandwich_norm_post_preonly_crosscore_sync.h"
+#include "mhc_sandwich_norm_post_preonly_dual_sibling_aiv.h"
 
 #endif // MHC_SANDWICH_NORM_POST_PREONLY_KERNEL_H_

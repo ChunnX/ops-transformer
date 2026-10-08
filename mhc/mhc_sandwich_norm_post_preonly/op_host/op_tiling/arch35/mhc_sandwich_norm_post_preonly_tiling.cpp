@@ -22,6 +22,7 @@ constexpr uint32_t HOST_D_TILE_MAX = 2560;
 constexpr uint32_t HOST_D_ALIGN_ELEM = 16;
 constexpr uint32_t HOST_MAX_TOKENS = 1024 * 1024; // B*S 上限
 constexpr uint32_t NUM_TWO = 2;
+constexpr uint32_t PARTIAL_SLOT_BYTES = 32;
 
 constexpr uint64_t TILING_KEY_USE_RMS_MID = 1ULL << 0;
 constexpr uint64_t TILING_KEY_RETURN_H_IN_F32 = 1ULL << 1;
@@ -186,10 +187,12 @@ static ge::graphStatus TilingMhcSandwichNormPostPreonly(gert::TilingContext *con
     uint32_t lastDimTile = D % dimTile;
     uint32_t dimLoop = D / dimTile + (lastDimTile ? 1 : 0);
 
-    // 第一阶段固定使用可确定复现的A5单AIV回退路径。只有目标产品验证
-    // KERNEL_TYPE_MIX_AIV_1_0映射并将实测有收益的形状加入静态性能表后，才启用双sibling模板。
-    const uint32_t coresPerToken = 1;
-    const uint32_t usedCoreNum = std::min(totalTokens, coreNumAiv);
+    // 首个双sibling候选只覆盖当前固定性能形状；其余组合继续走已验证的单AIV回退。
+    // A5的MIX_AIC_1_2以一个物理AI Core为blockDim单位，并展开两个sibling AIV。
+    const bool enableDualSibling = totalTokens == 4U && D == 5120U && useRmsMid && !returnHInF32 &&
+                                   hOutDesc->GetDataType() == ge::DT_BF16;
+    const uint32_t coresPerToken = enableDualSibling ? 2U : 1U;
+    const uint32_t usedCoreNum = std::min(totalTokens, enableDualSibling ? (coreNumAiv / 2U) : coreNumAiv);
     uint32_t rowsPerCore = totalTokens / usedCoreNum;
     uint32_t remainTokens = totalTokens % usedCoreNum;
     uint32_t rowsPerCoreSp = rowsPerCore + 1;
@@ -218,18 +221,20 @@ static ge::graphStatus TilingMhcSandwichNormPostPreonly(gert::TilingContext *con
     tiling.set_coresPerToken(coresPerToken);
     tiling.set_returnHInF32(static_cast<int8_t>(returnHInF32));
 
-    // 单AIV路径仅在UB保存当前分块，并按设计使用两个低精度输出承载跨遍数据。
-    // 不分配GM同步标志区，也不分配(N+1)*D级私有临时空间。
+    // CrossCore同步不占GM；双sibling路径每个token只分配一个32B partial1槽。
     size_t sysWsBytes = ascendcPlatform.GetLibApiWorkSpaceSize();
     size_t *currentWorkspace = context->GetWorkspaceSizes(1);
     if (currentWorkspace == nullptr) {
         OP_LOGE("MhcSandwichNormPostPreonly", "GetWorkspaceSizes is nullptr");
         return ge::GRAPH_FAILED;
     }
-    currentWorkspace[0] = sysWsBytes;
+    currentWorkspace[0] = sysWsBytes + (enableDualSibling ? (size_t)totalTokens * PARTIAL_SLOT_BYTES : 0U);
 
     // 输出Tiling数据
     context->SetBlockDim(usedCoreNum);
+    if (enableDualSibling) {
+        context->SetScheduleMode(1);
+    }
     uint64_t tilingKey = (useRmsMid ? TILING_KEY_USE_RMS_MID : 0ULL) |
                          (returnHInF32 ? TILING_KEY_RETURN_H_IN_F32 : 0ULL) |
                          (coresPerToken == 2 ? TILING_KEY_DUAL_SIBLING_AIV : 0ULL);

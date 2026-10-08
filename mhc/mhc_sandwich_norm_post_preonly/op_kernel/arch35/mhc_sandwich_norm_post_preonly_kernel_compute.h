@@ -18,7 +18,8 @@
 /// 加载一个token的h_post[N]和h_res[N*N]。
 __aicore__ inline void LoadTokenWeights(uint32_t token, float (&postVals)[N_MAX], float (&combVals)[N_MAX * N_MAX])
 {
-    const uint32_t N = N_;
+    // Host已固定校验N为4，使用编译期常量便于展开标量循环。
+    constexpr uint32_t N = N_MAX;
     LocalTensor<float> postCombUb = bufPostComb_.Get<float>();
     LocalTensor<float> hPostUb = postCombUb;
     LocalTensor<float> hResUb = postCombUb[ALIGN8]; // h_post[N] aligned to 8 elements
@@ -55,7 +56,8 @@ __aicore__ inline void LoadHOutAndCast(uint64_t gmOffset, uint32_t tD)
 /// 将residual[token, 0:N, tOff:tOff+tD]从低精度加载并转换为FP32。
 __aicore__ inline void LoadResidualAndCast(uint64_t gmBaseOffset, uint32_t tD)
 {
-    const uint32_t N = N_;
+    // Host已固定校验N为4，使用编译期常量便于展开标量循环。
+    constexpr uint32_t N = N_MAX;
     LocalTensor<T> resBf16 = bufResidualBf16_.AllocTensor<T>();
     for (uint32_t n = 0; n < N; ++n)
         DataCopy(resBf16[n * dimTile_], residualGm_[gmBaseOffset + (uint64_t)n * D_], tD);
@@ -86,7 +88,8 @@ __aicore__ inline float ReduceSumPrecise(LocalTensor<float> src, uint32_t tD)
     constexpr uint32_t REDUCE_ALIGN = 16; // ReduceSum要求16个元素对齐
     uint32_t tDAligned = (tD + REDUCE_ALIGN - 1) / REDUCE_ALIGN * REDUCE_ALIGN;
     uint32_t srcShape[2] = {1, tDAligned};
-    ReduceSum<float, AscendC::Pattern::Reduce::AR, false>(scBuf, src, srcShape, true);
+    // 输入在归约后不再使用，允许归约过程复用输入缓冲，减少内部UB与标量调度开销。
+    ReduceSum<float, AscendC::Pattern::Reduce::AR, true>(scBuf, src, srcShape, true);
     PipeBarrier<PIPE_V>();
     return scBuf.GetValue(0);
 }
@@ -121,7 +124,8 @@ __aicore__ inline void ApplyScaleAndGamma(LocalTensor<float> buf, float scale, L
 __aicore__ inline void ComputeX2AllHeadsBatched(const float (&postVals)[N_MAX], const float (&combVals)[N_MAX * N_MAX],
                                                 uint32_t tD)
 {
-    const uint32_t N = N_;
+    // Host已固定校验N为4，使用编译期常量便于展开标量循环。
+    constexpr uint32_t N = N_MAX;
     LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
     LocalTensor<float> hOut = bufHOutFp32_.Get<float>();
     LocalTensor<float> res = bufResFp32_.Get<float>();
@@ -140,7 +144,8 @@ __aicore__ inline void ComputeX2AllHeadsBatched(const float (&postVals)[N_MAX], 
 __aicore__ inline void ComputeX2AllHeadsSerial(const float (&postVals)[N_MAX], const float (&combVals)[N_MAX * N_MAX],
                                                uint32_t tD)
 {
-    const uint32_t N = N_;
+    // Host已固定校验N为4，使用编译期常量便于展开标量循环。
+    constexpr uint32_t N = N_MAX;
     LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
     LocalTensor<float> hOut = bufHOutFp32_.Get<float>();
     LocalTensor<float> res = bufResFp32_.Get<float>();
@@ -161,28 +166,28 @@ __aicore__ inline void ComputeX2AllHeadsSerial(const float (&postVals)[N_MAX], c
 ///   gate[i] = sigmoid(alpha0 * xHat[i] + bias[i]) + hcEps
 __aicore__ inline void ComputeGateValues(float totalSumSqPre, float (&xHatVals)[N_MAX], float (&gate)[N_MAX])
 {
-    const uint32_t N = N_;
+    // Host已固定校验N为4，使用编译期常量便于展开标量循环。
+    constexpr uint32_t N = N_MAX;
     float invRmsPre = 1.0f / sqrt(totalSumSqPre * invK_ + mhcPreNormEps_);
-    for (uint32_t o = 0; o < phiRows_; ++o)
+    for (uint32_t o = 0; o < N; ++o)
         xHatVals[o] *= invRmsPre;
 
     LocalTensor<float> scBuf = bufScalar_.Get<float>();
     for (uint32_t i = 0; i < N; ++i)
         scBuf.SetValue(i, -(alpha0_ * xHatVals[i] + biasCache_[i]));
-    for (uint32_t i = N; i < ALIGN8; ++i)
-        scBuf.SetValue(i, 0.0f);
     PipeBarrier<PIPE_V>();
-    Exp(scBuf, scBuf, EXP_DIV_ELEM);
+    // 三个缓冲仍按32B错开，只计算真实存在的四个head。
+    Exp(scBuf, scBuf, N);
     PipeBarrier<PIPE_V>();
-    Adds(scBuf, scBuf, 1.0f, EXP_DIV_ELEM); // 1 + exp(-z)
+    Adds(scBuf, scBuf, 1.0f, N); // 1 + exp(-z)
     PipeBarrier<PIPE_V>();
     LocalTensor<float> onesBuf = scBuf[EXP_DIV_ELEM * 2];
-    Duplicate(onesBuf, 1.0f, EXP_DIV_ELEM);
+    Duplicate(onesBuf, 1.0f, N);
     PipeBarrier<PIPE_V>();
     LocalTensor<float> gateBuf = scBuf[EXP_DIV_ELEM];
-    Div(gateBuf, onesBuf, scBuf, EXP_DIV_ELEM); // 1 / (1+exp(-z))
+    Div(gateBuf, onesBuf, scBuf, N); // 1 / (1+exp(-z))
     PipeBarrier<PIPE_V>();
-    Adds(gateBuf, gateBuf, hcEps_, EXP_DIV_ELEM); // + hcEps
+    Adds(gateBuf, gateBuf, hcEps_, N); // + hcEps
     PipeBarrier<PIPE_V>();
     for (uint32_t i = 0; i < N; ++i)
         gate[i] = gateBuf.GetValue(i);
