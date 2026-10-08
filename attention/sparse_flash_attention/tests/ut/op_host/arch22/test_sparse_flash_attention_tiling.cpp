@@ -1111,6 +1111,11 @@ TEST_F(SparseFlashAttentionTiling, SplitKvUsesArch22InnerBlocks)
                             variant.inputTensorDesc_[8].shape_ = gert::StorageShape{};
                         }
                         TilingInfo info;
+                        if (returnLse) {
+                            EXPECT_FALSE(ExecuteTiling(variant, info))
+                                << "A2 PA_BSND must retain the original LSE rejection";
+                            continue;
+                        }
                         ASSERT_TRUE(ExecuteTiling(variant, info))
                             << "G=" << heads << ", B=" << batchCount << ", Q=" << queryCount << ", TopK=" << topK;
                         EXPECT_EQ(info.blockNum, expectedBlocks);

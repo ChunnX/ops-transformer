@@ -146,8 +146,6 @@ private:
     GlobalTensor<OUT_T> attentionOutGm;
     GlobalTensor<T> softmaxMaxGm;
     GlobalTensor<T> softmaxSumGm;
-    GlobalTensor<T> finalSoftmaxMaxGm;
-    GlobalTensor<T> finalSoftmaxSumGm;
     GlobalTensor<int32_t> blockTableGm;
     GlobalTensor<int32_t> topKGm;
 
@@ -492,8 +490,6 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::Init(
     finalAttentionOutGm.SetGlobalBuffer((__gm__ OUT_T*)attentionOut);
     softmaxMaxGm.SetGlobalBuffer((__gm__ T*)softmaxMax);
     softmaxSumGm.SetGlobalBuffer((__gm__ T*)softmaxSum);
-    finalSoftmaxMaxGm = softmaxMaxGm;
-    finalSoftmaxSumGm = softmaxSumGm;
     if ASCEND_IS_AIV {
         if (sfaKernelConstInfo.needInit && LAYOUT_T != SFA_LAYOUT::TND) {
             InitOutputSingleCore();
@@ -529,6 +525,8 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::Init(
                 softmaxSumGm.SetGlobalBuffer(
                     (__gm__ T*)(staging + outputElems * sizeof(OUT_T) + statsElems * sizeof(T)) +
                     splitPart * queryCount * headCount);
+                // Store partition statistics in workspace for the merge, not in public LSE outputs.
+                // The original A2 interface still rejects PA_BSND with return_softmax_lse=true.
                 sfaKernelConstInfo.returnSoftmaxLse = true;
             } else if (splitPart == 0) {
                 sfaKernelConstInfo.s2Start = 0;
@@ -902,7 +900,7 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::Process()
         if (splitActive && splitPart == 0 && aiCoreIdx < usedCoreNum) {
             if ASCEND_IS_AIV {
                 sfaKernelVectorService.MergeSplitKV(splitAttentionOutGm, splitMaxGm, splitSumGm, finalAttentionOutGm,
-                                                    finalSoftmaxMaxGm, finalSoftmaxSumGm, splitQueryIdx);
+                                                    splitQueryIdx);
             }
         }
     }

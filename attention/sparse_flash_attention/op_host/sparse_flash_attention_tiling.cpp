@@ -2066,12 +2066,13 @@ ge::graphStatus SFAInfoParser::GetKvLayout()
                                                  "When layout_kv is PA_BSND, the shape dim of key must be 4");
         return ge::GRAPH_FAILED;
     }
-    OP_CHECK_IF(*opParamInfo_.returnSoftmaxLse && kvLayout_ == SFALayout::PA_BSND && !isA5_ &&
-                    !(npuArch_ == NpuArch::DAV_2201 && qLayout_ == SFALayout::TND),
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                    opName_, "layout_key", SFALayoutToSerialString(kvLayout_).c_str(),
-                    "PA_BSND with return_softmax_lse requires Ascend 950 or Ascend 910B with TND query"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        *opParamInfo_.returnSoftmaxLse && kvLayout_ == SFALayout::PA_BSND && !isA5_,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            opName_, "layout_key", SFALayoutToSerialString(kvLayout_).c_str(),
+            "When return_softmax_lse is true, layout_kv does not support PA_BSND, it is only supported on Ascend "
+            "950PR/Ascend 950DT"),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 

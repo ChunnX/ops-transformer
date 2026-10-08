@@ -68,9 +68,9 @@ def sfa_operator():
             kwargs.get("key_rope"),
             None,
             1,
-            "TND",
-            "PA_BSND",
-            0,
+            kwargs["layout_query"],
+            kwargs["layout_kv"],
+            kwargs["sparse_mode"],
             9223372036854775807,
             9223372036854775807,
             2,
@@ -95,6 +95,8 @@ def _run_reference_case(
     seed=20260929,
     actual_kv_length=4096,
     query_counts=None,
+    kv_layout="PA_BSND",
+    expect_lse_rejection=False,
 ):
     if "910B" not in torch.npu.get_device_name(0):
         pytest.skip("This test requires Ascend 910B")
@@ -135,27 +137,60 @@ def _run_reference_case(
     block_table = block_table.reshape(batch_count, kv_length // page_size).npu()
     query_lengths = torch.tensor(query_ends, dtype=torch.int32).npu()
     kv_lengths = torch.full((batch_count,), actual_kv_length, dtype=torch.int32).npu()
+    query_input, rope_input, indices_input = query, query_rope, indices
+    query_layout = "TND"
+    if kv_layout == "TND":
+        assert actual_kv_length == kv_length
+        key_pages = key.reshape(-1, 1, 512)
+        rope_pages = key_rope.reshape(-1, 1, 64) if use_rope else None
+        kv_lengths = kv_lengths.cumsum(0).int()
+        block_table = None
+    elif kv_layout == "BSND":
+        assert len(set(query_counts)) == 1
+        queries_per_batch = query_counts[0]
+        query_layout = "BSND"
+        query_input = query.reshape(batch_count, queries_per_batch, heads, 512)
+        rope_input = (
+            query_rope.reshape(batch_count, queries_per_batch, heads, 64)
+            if use_rope
+            else None
+        )
+        indices_input = indices.reshape(batch_count, queries_per_batch, 1, topk)
+        key_pages = key.reshape(batch_count, kv_length, 1, 512)
+        rope_pages = (
+            key_rope.reshape(batch_count, kv_length, 1, 64) if use_rope else None
+        )
+        query_lengths = torch.tensor(query_counts, dtype=torch.int32).npu()
+        block_table = None
     scale = 1.0 / math.sqrt(576 if use_rope else 512)
 
     def run_operator():
         return sfa_operator(
-            query,
+            query_input,
             key_pages,
             key_pages,
-            indices,
+            indices_input,
             scale,
             block_table=block_table,
             actual_seq_lengths_query=query_lengths,
             actual_seq_lengths_kv=kv_lengths,
-            query_rope=query_rope,
+            query_rope=rope_input,
             key_rope=rope_pages,
             sparse_block_size=1,
-            layout_query="TND",
-            layout_kv="PA_BSND",
+            layout_query=query_layout,
+            layout_kv=kv_layout,
             sparse_mode=0,
             attention_mode=2,
             return_softmax_lse=return_lse,
         )
+
+    if expect_lse_rejection:
+        assert kv_layout == "PA_BSND" and return_lse
+        with pytest.raises(
+            RuntimeError, match="PA_BSND|return_softmax_lse|aclnnSparseFlashAttention"
+        ):
+            run_operator()
+        return
 
     if replay_graph:
         run_operator()
@@ -169,6 +204,7 @@ def _run_reference_case(
     actual, max_out, sum_out = actual
     assert actual.dtype == dtype
     assert torch.isfinite(actual).all()
+    actual = actual.reshape(query_count, heads, 512)
 
     expected = []
     expected_lse = []
@@ -213,19 +249,26 @@ def _run_reference_case(
                 f"row={row}, relative L2={row_error.item()}"
             )
     if return_lse:
-        assert tuple(max_out.shape) == (1, query_count, heads)
+        expected_shape = (
+            (batch_count, 1, query_counts[0], heads)
+            if query_layout == "BSND"
+            else (1, query_count, heads)
+        )
+        assert tuple(max_out.shape) == tuple(sum_out.shape) == expected_shape
         assert max_out.dtype == sum_out.dtype == torch.float32
+        max_rows = max_out.reshape(query_count, heads)
+        sum_rows = sum_out.reshape(query_count, heads)
         torch.testing.assert_close(
-            max_out[0], torch.stack(expected_max), rtol=0.001, atol=0.03
+            max_rows, torch.stack(expected_max), rtol=0.001, atol=0.03
         )
         torch.testing.assert_close(
-            sum_out[0], torch.stack(expected_sum), rtol=tolerance, atol=0.03
+            sum_rows, torch.stack(expected_sum), rtol=tolerance, atol=0.03
         )
         for row, count in enumerate(row_valid_counts):
             if count == 0:
-                assert torch.count_nonzero(max_out[0, row]).item() == 0
-                assert torch.count_nonzero(sum_out[0, row]).item() == 0
-        lse = max_out[0] + sum_out[0].log()
+                assert torch.count_nonzero(max_rows[row]).item() == 0
+                assert torch.count_nonzero(sum_rows[row]).item() == 0
+        lse = max_rows + sum_rows.log()
         torch.testing.assert_close(
             lse, torch.stack(expected_lse), rtol=0.001, atol=0.03
         )
@@ -239,7 +282,6 @@ def _run_reference_case(
     "topk,valid_count", [(2048, 256), (1024, 1024), (1536, 1536), (2048, 2048)]
 )
 @pytest.mark.parametrize("replay_graph", [False, True])
-@pytest.mark.parametrize("return_lse", [False, True])
 @pytest.mark.parametrize("heads", [8, 64])
 def test_split_kv_arch22(
     sfa_operator,
@@ -248,7 +290,6 @@ def test_split_kv_arch22(
     topk,
     valid_count,
     replay_graph,
-    return_lse,
     heads,
 ):
     _run_reference_case(
@@ -258,7 +299,7 @@ def test_split_kv_arch22(
         topk,
         valid_count,
         replay_graph,
-        return_lse,
+        False,
         heads,
     )
 
@@ -266,11 +307,10 @@ def test_split_kv_arch22(
 @pytest.mark.parametrize("heads", [1, 2, 4, 8, 16, 32, 64, 128])
 @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16], ids=["bf16", "fp16"])
 @pytest.mark.parametrize("use_rope", [False, True], ids=["no_rope", "rope64"])
-@pytest.mark.parametrize("return_lse", [False, True])
 @pytest.mark.parametrize("replay_graph", [False, True])
 @pytest.mark.parametrize("row_kind", ["full", "tail", "empty", "mixed"])
 def test_general_heads_dtype_rope(
-    sfa_operator, heads, dtype, use_rope, return_lse, replay_graph, row_kind
+    sfa_operator, heads, dtype, use_rope, replay_graph, row_kind
 ):
     counts = {
         "full": [2048] * 4,
@@ -285,7 +325,7 @@ def test_general_heads_dtype_rope(
         2048,
         counts[0],
         replay_graph,
-        return_lse,
+        False,
         heads,
         dtype,
         use_rope,
@@ -296,11 +336,8 @@ def test_general_heads_dtype_rope(
 @pytest.mark.parametrize("heads", [8, 128])
 @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16], ids=["bf16", "fp16"])
 @pytest.mark.parametrize("use_rope", [False, True], ids=["no_rope", "rope64"])
-@pytest.mark.parametrize("return_lse", [False, True])
 @pytest.mark.parametrize("replay_graph", [False, True])
-def test_large_query_fallback(
-    sfa_operator, heads, dtype, use_rope, return_lse, replay_graph
-):
+def test_large_query_fallback(sfa_operator, heads, dtype, use_rope, replay_graph):
     _run_reference_case(
         sfa_operator,
         32,
@@ -308,7 +345,7 @@ def test_large_query_fallback(
         2048,
         0,
         replay_graph,
-        return_lse,
+        False,
         heads,
         dtype,
         use_rope,
@@ -328,7 +365,7 @@ def test_padding_random_seeds(sfa_operator, seed, heads, dtype, use_rope):
         2048,
         2048,
         False,
-        True,
+        False,
         heads,
         dtype,
         use_rope,
@@ -342,7 +379,7 @@ def test_padding_random_seeds(sfa_operator, seed, heads, dtype, use_rope):
 @pytest.mark.parametrize("valid_count", [0, 1, 511, 512, 513, 1023, 1024, 1025, 2047])
 def test_padding_block_boundaries(sfa_operator, heads, replay_graph, valid_count):
     _run_reference_case(
-        sfa_operator, 1, 1, 2048, valid_count, replay_graph, True, heads
+        sfa_operator, 1, 1, 2048, valid_count, replay_graph, False, heads
     )
 
 
@@ -361,9 +398,52 @@ def test_short_kv_and_empty_query_batch(
         topk,
         counts[0],
         replay_graph,
-        True,
+        False,
         heads,
         row_valid_counts=counts,
         actual_kv_length=256,
         query_counts=[0, 1, 3],
+    )
+
+
+@pytest.mark.parametrize("kv_layout", ["TND", "BSND"])
+@pytest.mark.parametrize("heads", [8, 128])
+@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16], ids=["bf16", "fp16"])
+@pytest.mark.parametrize("use_rope", [False, True], ids=["no_rope", "rope64"])
+@pytest.mark.parametrize("replay_graph", [False, True])
+def test_original_non_pa_lse(
+    sfa_operator, kv_layout, heads, dtype, use_rope, replay_graph
+):
+    _run_reference_case(
+        sfa_operator,
+        4,
+        2,
+        1024,
+        1024,
+        replay_graph,
+        True,
+        heads,
+        dtype,
+        use_rope,
+        query_counts=[2, 2],
+        kv_layout=kv_layout,
+    )
+
+
+@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16], ids=["bf16", "fp16"])
+@pytest.mark.parametrize("use_rope", [False, True], ids=["no_rope", "rope64"])
+@pytest.mark.parametrize("topk", [128, 2048])
+def test_original_pa_lse_rejected(sfa_operator, dtype, use_rope, topk):
+    _run_reference_case(
+        sfa_operator,
+        1,
+        1,
+        topk,
+        topk,
+        False,
+        True,
+        8,
+        dtype,
+        use_rope,
+        expect_lse_rejection=True,
     )

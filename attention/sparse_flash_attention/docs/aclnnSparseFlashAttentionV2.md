@@ -569,26 +569,14 @@ aclnnStatus aclnnSparseFlashAttentionV2(
   - <term>Ascend 950PR&950DT系列产品</term>：
     - 支持layout_kv为PA_BSND。
   <!-- end id11 -->
-  <!-- npu="A3" id12 -->
-  - <term>Atlas A3系列产品</term>：
+  <!-- npu="A3,910b" id12 -->
+  - <term>Atlas A3系列产品</term>、<term>Atlas A2系列产品</term>：
     - layout_kv不支持PA_BSND。
   <!-- end id12 -->
-  <!-- npu="910b" id13 -->
-  - <term>Atlas A2系列产品</term>：
-    - layoutKvOptional为PA_BSND时，layoutQueryOptional须为TND；softmaxMaxOut与softmaxSumOut为FLOAT类型，shape均为(N2,T1,N1/N2)。
-  <!-- end id13 -->
 
 - 参数sinks仅支持Ascend 950PR&950DT系列产品。
 
-<!-- npu="910b" id14 -->
-- <term>Atlas A2系列产品</term>：
-  - layoutQueryOptional为TND、layoutKvOptional为PA_BSND、sparseMode为0、sparseBlockSizeOptional为1、sparseSize在[256,2048]且KV长度不小于sparseSize时，算子根据可用核数与KV分块数自动选择KV分核，无需额外参数。其他合法配置使用原有计算路径。
-  - sparseIndices每行有效索引须位于连续前缀，无效索引用-1连续填充在行尾，不支持有效与无效索引交错。TND/PA_BSND布局下，尾部-1或实际KV长度不足的行使用不分核计算；全-1行的attentionOut为零，请求返回统计量时softmaxMaxOut与softmaxSumOut也为零。
-<!-- end id14 -->
-
 ## 调用示例
-
-使用TND/PA_BSND布局时，须传入blockTableOptional、actualSeqLengthsQueryOptional和actualSeqLengthsKvOptional；actualSeqLengthsQueryOptional为各batch的累积query长度，actualSeqLengthsKvOptional为各batch的实际KV长度。KV分核由算子自动选择，仍先调用GetWorkspaceSize接口获取workspace大小，再调用执行接口；请求返回统计量时，按(N2,T1,N1/N2)申请FLOAT类型的softmaxMaxOut和softmaxSumOut。
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 

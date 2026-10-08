@@ -19,7 +19,7 @@ import torch_npu  # noqa: F401
 from test_sfa_split_kv_arch22 import sfa_operator
 
 
-def measure(op, heads, batch, query_per_batch, dtype, rope, lse, calls, samples):
+def measure(op, heads, batch, query_per_batch, dtype, rope, calls, samples):
     total = batch * query_per_batch
     generator = torch.Generator().manual_seed(20261008 + total + heads)
     kv_length, page, topk = 4096, 128, 2048
@@ -75,7 +75,7 @@ def measure(op, heads, batch, query_per_batch, dtype, rope, lse, calls, samples)
             layout_kv="PA_BSND",
             sparse_mode=0,
             attention_mode=2,
-            return_softmax_lse=lse,
+            return_softmax_lse=False,
         )
 
     for _ in range(6):
@@ -88,7 +88,7 @@ def measure(op, heads, batch, query_per_batch, dtype, rope, lse, calls, samples)
     graph.replay()
     torch.npu.synchronize()
     assert torch.isfinite(output[0]).all()
-    references, maxima, sums = [], [], []
+    references = []
     for row in range(total):
         positions = (row // query_per_batch) * kv_length + indices[row, 0].long()
         q_ref, k_ref = q[row].float(), k[positions].float()
@@ -96,9 +96,6 @@ def measure(op, heads, batch, query_per_batch, dtype, rope, lse, calls, samples)
             q_ref = torch.cat((q_ref, qr[row].float()), dim=-1)
             k_ref = torch.cat((k_ref, kr[positions].float()), dim=-1)
         scores = (q_ref @ k_ref.T) / math.sqrt(576 if rope else 512)
-        max_ref = scores.max(dim=-1).values
-        maxima.append(max_ref)
-        sums.append((scores - max_ref[:, None]).exp().sum(dim=-1))
         references.append(scores.softmax(dim=-1) @ k[positions].float())
     reference = torch.stack(references)
     errors = (output[0].float() - reference).flatten(1).norm(
@@ -106,13 +103,6 @@ def measure(op, heads, batch, query_per_batch, dtype, rope, lse, calls, samples)
     ) / reference.flatten(1).norm(dim=-1)
     tolerance = 0.02 if dtype == torch.bfloat16 else 0.005
     assert errors.max().item() < tolerance
-    if lse:
-        torch.testing.assert_close(
-            output[1][0], torch.stack(maxima), rtol=0.001, atol=0.03
-        )
-        torch.testing.assert_close(
-            output[2][0], torch.stack(sums), rtol=tolerance, atol=0.03
-        )
     torch.npu.synchronize()
     values = []
     for _ in range(samples):
@@ -132,7 +122,7 @@ def measure(op, heads, batch, query_per_batch, dtype, rope, lse, calls, samples)
         total_q=total,
         dtype=str(dtype),
         rope=rope,
-        lse=lse,
+        lse=False,
         median_us=statistics.median(values),
         samples_us=values,
         worst_row_rel_l2=errors.max().item(),
@@ -144,7 +134,6 @@ def main():
     parser.add_argument("--variant", required=True)
     parser.add_argument("--calls", type=int, default=32)
     parser.add_argument("--samples", type=int, default=101)
-    parser.add_argument("--include-lse", action="store_true")
     args = parser.parse_args()
     op = sfa_operator.__wrapped__()
     print(
@@ -161,16 +150,15 @@ def main():
         flush=True,
     )
     cases = [
-        (g, b, q, torch.bfloat16, True, False)
+        (g, b, q, torch.bfloat16, True)
         for g in (1, 8, 32, 64, 128)
         for b, q in ((1, 1), (1, 4), (2, 2), (4, 4), (8, 8))
     ]
     cases += [
-        (g, 1, 1, dtype, rope, lse)
+        (g, 1, 1, dtype, rope)
         for g in (8, 128)
         for dtype in (torch.bfloat16, torch.float16)
         for rope in (False, True)
-        for lse in ((False, True) if args.include_lse else (False,))
     ]
     for case in dict.fromkeys(cases):
         record = measure(op, *case, args.calls, args.samples)

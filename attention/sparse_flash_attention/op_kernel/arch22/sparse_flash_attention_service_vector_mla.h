@@ -58,8 +58,7 @@ public:
     __aicore__ inline void InitSoftmaxDefaultBuffer();
     __aicore__ inline void InitZeroLse(uint64_t offset);
     __aicore__ inline void MergeSplitKV(GlobalTensor<OUT_T>& partialOut, GlobalTensor<T>& partialMax,
-                                        GlobalTensor<T>& partialSum, GlobalTensor<OUT_T>& finalOut,
-                                        GlobalTensor<T>& finalMax, GlobalTensor<T>& finalSum, uint32_t queryIdx);
+                                        GlobalTensor<T>& partialSum, GlobalTensor<OUT_T>& finalOut, uint32_t queryIdx);
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
     // ================================Base Vector==========================================
@@ -363,8 +362,7 @@ __aicore__ inline void SFAVectorService<SFAT>::InitZeroLse(uint64_t offset)
 template <typename SFAT>
 __aicore__ inline void SFAVectorService<SFAT>::MergeSplitKV(GlobalTensor<OUT_T>& partialOut,
                                                             GlobalTensor<T>& partialMax, GlobalTensor<T>& partialSum,
-                                                            GlobalTensor<OUT_T>& finalOut, GlobalTensor<T>& finalMax,
-                                                            GlobalTensor<T>& finalSum, uint32_t queryIdx)
+                                                            GlobalTensor<OUT_T>& finalOut, uint32_t queryIdx)
 {
     constexpr uint32_t chunkElements = AttentionCommon::SPLIT_KV_HEADS_PER_CHUNK * AttentionCommon::SPLIT_KV_HEAD_DIM;
     static_assert(chunkElements * sizeof(T) <= ConstInfo::SFA_BUFFER_BYTES_32K,
@@ -374,11 +372,10 @@ __aicore__ inline void SFAVectorService<SFAT>::MergeSplitKV(GlobalTensor<OUT_T>&
     // converted: outputBuff1 (32 KiB); accum: tmpBuff1 (32 KiB).
     // result: inputBuff2 (16 KiB), disjoint from both live FP32 buffers.
     AttentionCommon::MergeSparseSplitKV(
-        sfaVecConstInfo.qSeqSize, queryIdx, sfaVecConstInfo.splitKVNum, sfaVecConstInfo.gSize,
-        tilingData->baseParams.returnSoftmaxLse, partialOut, partialMax, partialSum, finalOut, finalMax, finalSum,
-        inputBuff1.template Get<OUT_T>(), outputBuff1.template Get<T>(), tmpBuff1.template Get<T>(),
-        inputBuff1.template Get<T>()[ConstInfo::SFA_BUFFER_BYTES_32K / sizeof(T)], outputBuff2.template Get<T>(),
-        inputBuff2.template Get<OUT_T>());
+        sfaVecConstInfo.qSeqSize, queryIdx, sfaVecConstInfo.splitKVNum, sfaVecConstInfo.gSize, partialOut, partialMax,
+        partialSum, finalOut, inputBuff1.template Get<OUT_T>(), outputBuff1.template Get<T>(),
+        tmpBuff1.template Get<T>(), inputBuff1.template Get<T>()[ConstInfo::SFA_BUFFER_BYTES_32K / sizeof(T)],
+        outputBuff2.template Get<T>(), inputBuff2.template Get<OUT_T>());
 }
 
 template <typename SFAT>

@@ -21,12 +21,11 @@ constexpr uint32_t SPLIT_KV_HEADS_PER_CHUNK = 16;
 // Arch22 MLA decode contract: native G in [1, 128], D=512, at most 16 partitions.
 template <typename OUT_T>
 __aicore__ inline void MergeSparseSplitKV(uint32_t queryCount, uint32_t queryIdx, uint32_t splitCount, uint32_t heads,
-                                          bool returnLse, GlobalTensor<OUT_T>& partialOut,
-                                          GlobalTensor<float>& partialMax, GlobalTensor<float>& partialSum,
-                                          GlobalTensor<OUT_T>& finalOut, GlobalTensor<float>& finalMax,
-                                          GlobalTensor<float>& finalSum, LocalTensor<OUT_T> partial,
-                                          LocalTensor<float> converted, LocalTensor<float> accum,
-                                          LocalTensor<float> stats, LocalTensor<float> work, LocalTensor<OUT_T> result)
+                                          GlobalTensor<OUT_T>& partialOut, GlobalTensor<float>& partialMax,
+                                          GlobalTensor<float>& partialSum, GlobalTensor<OUT_T>& finalOut,
+                                          LocalTensor<OUT_T> partial, LocalTensor<float> converted,
+                                          LocalTensor<float> accum, LocalTensor<float> stats, LocalTensor<float> work,
+                                          LocalTensor<OUT_T> result)
 {
     constexpr uint32_t DIM = SPLIT_KV_HEAD_DIM;
     constexpr uint32_t HEADS_PER_CHUNK = SPLIT_KV_HEADS_PER_CHUNK;
@@ -61,14 +60,6 @@ __aicore__ inline void MergeSparseSplitKV(uint32_t queryCount, uint32_t queryIdx
         PipeBarrier<PIPE_V>();
         Add(sum, sum, weight, heads);
         PipeBarrier<PIPE_V>();
-    }
-    if (returnLse && GetSubBlockIdx() == 0) {
-        SetFlag<HardEvent::V_MTE3>(0);
-        WaitFlag<HardEvent::V_MTE3>(0);
-        DataCopyPad(finalMax[queryIdx * heads], max, statsCopy);
-        DataCopyPad(finalSum[queryIdx * heads], sum, statsCopy);
-        SetFlag<HardEvent::MTE3_V>(0);
-        WaitFlag<HardEvent::MTE3_V>(0);
     }
     for (uint32_t split = 0; split < splitCount; ++split) {
         LocalTensor<float> weight = stats[(WEIGHT_ROWS + split) * statsStride];
