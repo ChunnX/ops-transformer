@@ -189,8 +189,8 @@ static ge::graphStatus TilingMhcNormPostPreonly(gert::TilingContext *context)
 
     // 首个双sibling候选只覆盖当前固定性能形状；其余组合继续走已验证的单AIV回退。
     // A5的MIX_AIC_1_2以一个物理AI Core为blockDim单位，并展开两个sibling AIV。
-    const bool enableDualSibling = totalTokens == 4U && D == 5120U && useRmsMid && !returnHInF32 &&
-                                   hOutDesc->GetDataType() == ge::DT_BF16;
+    const bool enableDualSibling =
+        totalTokens == 4U && D == 5120U && useRmsMid && !returnHInF32 && hOutDesc->GetDataType() == ge::DT_BF16;
     const uint32_t coresPerToken = enableDualSibling ? 2U : 1U;
     const uint32_t usedCoreNum = std::min(totalTokens, enableDualSibling ? (coreNumAiv / 2U) : coreNumAiv);
     uint32_t rowsPerCore = totalTokens / usedCoreNum;

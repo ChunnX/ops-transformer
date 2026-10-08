@@ -16,19 +16,20 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
                                                         DUAL_SIBLING>::ProcessTokenDualNoMid(uint32_t token)
 {
     float postVals[N_MAX];
-    float combVals[N_MAX * N_MAX];
     float sumSqHalf[2] = {0.0f, 0.0f};
     float dotHalf[2][N_MAX] = {{0.0f, 0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 0.0f}};
     float midSqHalf[2] = {0.0f, 0.0f};
-    LoadTokenWeights(token, postVals, combVals);
+    CacheHOut((uint64_t)token * D_);
+    CacheGamma0();
+    LoadTokenWeights(token, postVals);
 
     // 两个lane按完全相同的分块和顺序冗余执行R1。
     float sumSq0 = 0.0f;
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
-        LoadHOutAndCast((uint64_t)token * D_ + tOff, tD);
-        sumSq0 += ReduceSumSq(bufHOutFp32_.Get<float>(), tD);
+        LoadCachedHOut(tOff, tD);
+        sumSq0 += ReduceSumSq(bufResFp32_.Get<float>()[N_MAX * dimTile_], tD);
     }
     const float invRms0 = ComputeInvRms(sumSq0, invD_);
 
@@ -36,7 +37,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
-        ComputeX2PostTile(token, tOff, tD, invRms0, postVals, combVals);
+        ComputeX2PostTile(token, tOff, tD, invRms0, postVals);
         CacheX2TileForLane(token, tOff, tD, !false);
 
         LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
@@ -81,8 +82,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     for (uint32_t o = 0; o < N_MAX; ++o) {
         xHatVals[o] = dotHalf[0][o] + dotHalf[1][o];
     }
-    float gate[N_MAX];
-    ComputeGateValues(totalSumSqPre, xHatVals, gate);
+    ComputeGateValues(totalSumSqPre, xHatVals);
 
     // 会合后只有leader继续执行R6、R7和最终输出。
     float sumSq1 = 0.0f;
@@ -91,23 +91,37 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         const uint32_t tOff = tile * dimTile_;
         LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
         LocalTensor<T> x2Cache = bufX2Cache_.Get<T>()[tOff];
-        MhcNormRegBase::GateWeightedSum(hIn, x2Cache, D_, gate, tD);
+        LocalTensor<float> gateBuf = bufScalar_.Get<float>()[EXP_DIV_ELEM];
+        MhcNormRegBase::MulsB16WithUbScalar(hIn, x2Cache, gateBuf, 0U, tD);
         PipeBarrier<PIPE_V>();
+        for (uint32_t n = 1; n < N_MAX; ++n) {
+            MhcNormRegBase::AxpyB16WithUbScalar(hIn, x2Cache[n * D_], gateBuf, n, tD);
+            PipeBarrier<PIPE_V>();
+        }
         CacheHInTile(tOff, tD, hIn);
         sumSq1 += ReduceSumSq(hIn, tD);
     }
 
+    StartCacheGamma1();
     const float invRms1 = ComputeInvRms(sumSq1, invD_);
+    WaitCacheGamma1();
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
         LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
         LoadHInCacheTile(tOff, tD, hIn);
-        LoadGammaInto(bufGamma1Fp32_.Get<float>(), gamma1Gm_, tOff, tD);
-        SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
-        WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
-        ApplyScaleAndGamma(hIn, invRms1, bufGamma1Fp32_.Get<float>(), tD);
-        FenceVToMte2();
+        LocalTensor<float> gamma1 = bufGamma2Fp32_.Get<float>();
+        if (D_ > GAMMA1_CACHE_MAX_D) {
+            LoadGammaInto(gamma1, gamma1Gm_, tOff, tD);
+            SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
+            WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
+        } else {
+            gamma1 = gamma1[tOff];
+        }
+        ApplyScaleAndGamma(hIn, invRms1, gamma1, tD);
+        if (D_ > GAMMA1_CACHE_MAX_D) {
+            FenceVToMte2();
+        }
         WriteHInPrimeTile(hIn, (uint64_t)token * D_ + tOff, tD);
     }
 }
@@ -117,19 +131,20 @@ __aicore__ inline void
 KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ProcessTokenSingleNoMid(uint32_t token)
 {
     float postVals[N_MAX];
-    float combVals[N_MAX * N_MAX];
     float sumSqHalf[2] = {0.0f, 0.0f};
     float dotHalf[2][N_MAX] = {{0.0f, 0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 0.0f}};
     float midSqHalf[2] = {0.0f, 0.0f};
-    LoadTokenWeights(token, postVals, combVals);
+    CacheHOut((uint64_t)token * D_);
+    CacheGamma0();
+    LoadTokenWeights(token, postVals);
 
     // 第一遍：沿完整D轴计算R1。
     float sumSq0 = 0.0f;
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
-        LoadHOutAndCast((uint64_t)token * D_ + tOff, tD);
-        sumSq0 += ReduceSumSq(bufHOutFp32_.Get<float>(), tD);
+        LoadCachedHOut(tOff, tD);
+        sumSq0 += ReduceSumSq(bufResFp32_.Get<float>()[N_MAX * dimTile_], tD);
     }
     const float invRms0 = ComputeInvRms(sumSq0, invD_);
 
@@ -138,7 +153,7 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
-        ComputeX2PostTile(token, tOff, tD, invRms0, postVals, combVals);
+        ComputeX2PostTile(token, tOff, tD, invRms0, postVals);
         CacheX2Tile(token, tOff, tD, !false);
 
         LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
@@ -157,8 +172,7 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     for (uint32_t o = 0; o < N_MAX; ++o) {
         xHatVals[o] = dotHalf[0][o] + dotHalf[1][o];
     }
-    float gate[N_MAX];
-    ComputeGateValues(totalSumSqPre, xHatVals, gate);
+    ComputeGateValues(totalSumSqPre, xHatVals);
 
     // 第三遍：计算R6和h_in低精度边界。在完整D轴的R7标量确定前，
     // 复用已经消费完的x2缓存首段保存低精度h_in。
@@ -168,24 +182,38 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         const uint32_t tOff = tile * dimTile_;
         LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
         LocalTensor<T> x2Cache = bufX2Cache_.Get<T>()[tOff];
-        MhcNormRegBase::GateWeightedSum(hIn, x2Cache, D_, gate, tD);
+        LocalTensor<float> gateBuf = bufScalar_.Get<float>()[EXP_DIV_ELEM];
+        MhcNormRegBase::MulsB16WithUbScalar(hIn, x2Cache, gateBuf, 0U, tD);
         PipeBarrier<PIPE_V>();
+        for (uint32_t n = 1; n < N_MAX; ++n) {
+            MhcNormRegBase::AxpyB16WithUbScalar(hIn, x2Cache[n * D_], gateBuf, n, tD);
+            PipeBarrier<PIPE_V>();
+        }
         CacheHInTile(tOff, tD, hIn);
         sumSq1 += ReduceSumSq(hIn, tD);
     }
 
     // 第四遍：沿完整D轴计算R7并写最终输出。
+    StartCacheGamma1();
     const float invRms1 = ComputeInvRms(sumSq1, invD_);
+    WaitCacheGamma1();
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
         LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
         LoadHInCacheTile(tOff, tD, hIn);
-        LoadGammaInto(bufGamma1Fp32_.Get<float>(), gamma1Gm_, tOff, tD);
-        SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
-        WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
-        ApplyScaleAndGamma(hIn, invRms1, bufGamma1Fp32_.Get<float>(), tD);
-        FenceVToMte2();
+        LocalTensor<float> gamma1 = bufGamma2Fp32_.Get<float>();
+        if (D_ > GAMMA1_CACHE_MAX_D) {
+            LoadGammaInto(gamma1, gamma1Gm_, tOff, tD);
+            SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
+            WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
+        } else {
+            gamma1 = gamma1[tOff];
+        }
+        ApplyScaleAndGamma(hIn, invRms1, gamma1, tD);
+        if (D_ > GAMMA1_CACHE_MAX_D) {
+            FenceVToMte2();
+        }
         WriteHInPrimeTile(hIn, (uint64_t)token * D_ + tOff, tD);
     }
 }
