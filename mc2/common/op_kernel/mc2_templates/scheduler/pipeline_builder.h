@@ -18,7 +18,7 @@
 
 #include "../communication/comm_stage.h"
 #include "../computation/compute_stage.h"
-#if defined(__NPU_ARCH__) && __NPU_ARCH__ == 3510
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510 || __NPU_ARCH__ == 9201)
 #include "../quantization/quantize_stage.h"
 #endif
 

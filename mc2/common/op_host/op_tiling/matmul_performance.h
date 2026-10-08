@@ -70,7 +70,7 @@ public:
         mmShapeInfo_.cyclePerMicroSec = MatmulPerformance::CYCLE_PER_MICRO_SEC;
         if (npuArch_ == Ops::Base::DAV_2002) { // 310系
             mmShapeInfo_.cyclePerMicroSec = MatmulPerformance::CYCLE_PER_MICRO_SEC_VERSION310_P;
-        } else if (npuArch_ == Ops::Base::DAV_3510) { // A5
+        } else if (npuArch_ == Ops::Base::DAV_3510 || npuArch_ == Ops::Base::DAV_9201) { // A5
             mmShapeInfo_.cyclePerMicroSec = MatmulPerformance::CYCLE_PER_MICRO_SEC_NPUARCH_3510;
             mmMinDataSize_ = MatmulPerformance::MM_MIN_DATASIZE_NPUARCH_3510;
         } else {
@@ -79,11 +79,12 @@ public:
     }
     void SetCalcType(const mc2tiling::TilingArgs &args)
     {
-        if ((npuArch_ == Ops::Base::DAV_3510) && ((args.aType == matmul_tiling::DataType::DT_HIFLOAT8) ||
-                                                  (args.aType == matmul_tiling::DataType::DT_FLOAT8_E4M3FN) ||
-                                                  (args.aType == matmul_tiling::DataType::DT_FLOAT8_E5M2) ||
-                                                  (args.aType == matmul_tiling::DataType::DT_FLOAT4_E2M1) ||
-                                                  (args.aType == matmul_tiling::DataType::DT_FLOAT4_E1M2))) {
+        if ((npuArch_ == Ops::Base::DAV_3510 || npuArch_ == Ops::Base::DAV_9201) &&
+            ((args.aType == matmul_tiling::DataType::DT_HIFLOAT8) ||
+             (args.aType == matmul_tiling::DataType::DT_FLOAT8_E4M3FN) ||
+             (args.aType == matmul_tiling::DataType::DT_FLOAT8_E5M2) ||
+             (args.aType == matmul_tiling::DataType::DT_FLOAT4_E2M1) ||
+             (args.aType == matmul_tiling::DataType::DT_FLOAT4_E1M2))) {
             calcType_ = MatmulCalcType::QUANT;
         } else if ((args.aType == matmul_tiling::DataType::DT_INT8) &&
                    ((npuArch_ != Ops::Base::DAV_2201) ||

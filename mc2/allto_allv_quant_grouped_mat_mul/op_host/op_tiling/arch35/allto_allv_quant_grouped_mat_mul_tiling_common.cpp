@@ -169,6 +169,8 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::PostTiling()
     tilingData->taskTilingInfo.mainLoopExpertNum = expertNum;
     tilingData->taskTilingInfo.tailLoopExpertNum = (e_ % expertNum == 0) ? 0 : static_cast<uint32_t>(e_ % expertNum);
     tilingData->taskTilingInfo.totalLoopCount = static_cast<uint32_t>((e_ + expertNum - 1) / expertNum);
+    tilingData->workspaceInfo.wsDataRecvSize = permuteOutSize_;
+    tilingData->workspaceInfo.wsScaleRecvSize = permuteScaleOutSize_;
     tilingData->isNeedMM = hasSharedExpertFlag_;
     for (uint32_t i = 0; i < e_ * epWorldSize_; i++) {
         tilingData->taskTilingInfo.sendCnt[i] = sendCounts[i];
@@ -253,6 +255,12 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::QuantGetAndConvertCommMode(gert::
     if (strncmp(commModeStr, "ai_cpu", maxLength) == 0) {
         commMode = Mc2Comm::COMM_MODE_AICPU;
     } else if (strncmp(commModeStr, "ccu", maxLength) == 0) {
+        auto platformInfo = context->GetPlatformInfo();
+        auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+        if (ascendcPlatform.GetCurNpuArch() == Ops::Base::DAV_9201) {
+            OP_LOGE(context->GetNodeName(), "ascend910_96 does not support commMode 'ccu'.");
+            return ge::GRAPH_FAILED;
+        }
         commMode = Mc2Comm::COMM_MODE_CCU;
     } else {
         OP_LOGD(context->GetNodeName(), "Currently, commMode only support 'ccu', 'ai_cpu', but got %s.", commModeStr);
@@ -268,9 +276,9 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::SetHcclTiling() const
 
     const uint32_t alltoAllvReduceType = 0u;
     mc2tiling::HcclDataType alltoallvHcclDataType = mc2tiling::HcclDataType::HCCL_DATA_TYPE_RESERVED;
-    // mxfp4 场景使用int8类型通信，通信量减半
+    // MXFP4 is packed as an unsigned byte stream.
     if (gmmXDataType_ == ge::DataType::DT_FLOAT4_E2M1) {
-        alltoallvHcclDataType = mc2tiling::HcclDataType::HCCL_DATA_TYPE_INT8;
+        alltoallvHcclDataType = mc2tiling::HcclDataType::HCCL_DATA_TYPE_UINT8;
     } else {
         alltoallvHcclDataType = mc2tiling::ConvertGeTypeToHcclType(context_->GetNodeName(), gmmXDataType_);
     }

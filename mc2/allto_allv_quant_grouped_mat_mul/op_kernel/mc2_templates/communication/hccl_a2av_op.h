@@ -151,13 +151,15 @@ __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>
         hcclDataType_ = HCCL_DATA_TYPE_BFP16;
     } else if constexpr (AscendC::IsSameType<hcclDataType, half>::value) {
         hcclDataType_ = HCCL_DATA_TYPE_FP16;
-#if defined(__NPU_ARCH__) && __NPU_ARCH__ == 3510
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510 || __NPU_ARCH__ == 9201)
     } else if constexpr (AscendC::IsSameType<hcclDataType, hifloat8_t>::value) {
         hcclDataType_ = HCCL_DATA_TYPE_HIF8;
     } else if constexpr (AscendC::IsSameType<hcclDataType, fp8_e5m2_t>::value) {
         hcclDataType_ = HCCL_DATA_TYPE_FP8E5M2;
     } else if constexpr (AscendC::IsSameType<hcclDataType, fp8_e4m3fn_t>::value) {
         hcclDataType_ = HCCL_DATA_TYPE_FP8E4M3;
+    } else if constexpr (AscendC::IsSameType<hcclDataType, fp4x2_e2m1_t>::value) {
+        hcclDataType_ = HCCL_DATA_TYPE_UINT8;
 #endif
     } else {
         hcclDataType_ = HCCL_DATA_TYPE_INT8;
