@@ -196,17 +196,17 @@ private:
 };
 
 // fp8->fp32
-static constexpr MicroAPI::CastTrait castTraitFp8_1 = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::UNKNOWN,
-                                                       MicroAPI::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+static constexpr Reg::CastTrait castTraitFp8_1 = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
+                                                       Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
 // fp8->fp32
-static constexpr MicroAPI::CastTrait castTraitFp8_2 = {MicroAPI::RegLayout::ONE, MicroAPI::SatMode::UNKNOWN,
-                                                       MicroAPI::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+static constexpr Reg::CastTrait castTraitFp8_2 = {Reg::RegLayout::ONE, Reg::SatMode::UNKNOWN,
+                                                       Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
 // fp32->fp16
-static constexpr MicroAPI::CastTrait castTraitFp8_3 = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::NO_SAT,
-                                                       MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+static constexpr Reg::CastTrait castTraitFp8_3 = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT,
+                                                       Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
 // fp32->fp16
-static constexpr MicroAPI::CastTrait castTraitFp8_4 = {MicroAPI::RegLayout::ONE, MicroAPI::SatMode::NO_SAT,
-                                                       MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+static constexpr Reg::CastTrait castTraitFp8_4 = {Reg::RegLayout::ONE, Reg::SatMode::NO_SAT,
+                                                       Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
 
 /**
     i / b -> (i * m) >> p
@@ -216,74 +216,74 @@ __simd_vf__ void DivPABlockIdxVF(__ubuf__ int32_t *paBlockIdxOffsetUb, __ubuf__ 
                                  const uint32_t blockSize, const uint32_t mHigh, const uint32_t mLow, const uint8_t p,
                                  const uint32_t s2Stride)
 {
-    AscendC::MicroAPI::MaskReg preg32_all = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::ALL>();
-    AscendC::MicroAPI::MaskReg preg64_all = MicroAPI::CreateMask<uint64_t, MicroAPI::MaskPattern::ALL>();
-    AscendC::MicroAPI::RegTensor<uint32_t> vreg_sparse_indices_0;
-    AscendC::MicroAPI::RegTensor<uint32_t> vreg_sparse_indices_1;
-    AscendC::MicroAPI::RegTensor<uint32_t> vreg_m_l_0;
-    AscendC::MicroAPI::RegTensor<uint32_t> vreg_m_l_1;
-    AscendC::MicroAPI::RegTensor<uint32_t> vreg_mul_res_h_0;
-    AscendC::MicroAPI::RegTensor<uint32_t> vreg_mul_res_h_1;
-    AscendC::MicroAPI::RegTensor<uint32_t> vreg_m_l_0_dst0;
-    AscendC::MicroAPI::RegTensor<uint32_t> vreg_m_l_0_dst1;
-    AscendC::MicroAPI::RegTensor<uint32_t> vreg_m_l_1_dst0;
-    AscendC::MicroAPI::RegTensor<uint32_t> vreg_m_l_1_dst1;
-    AscendC::MicroAPI::RegTensor<uint32_t> vreg_res_h_0;
-    AscendC::MicroAPI::RegTensor<uint32_t> vreg_res_h_1;
-    AscendC::MicroAPI::RegTensor<uint32_t> vreg_mul_res_0;
-    AscendC::MicroAPI::RegTensor<uint32_t> vreg_mul_res_1;
-    AscendC::MicroAPI::RegTensor<uint32_t> vreg_mul_res_2;
-    AscendC::MicroAPI::RegTensor<uint32_t> vreg_mul_res_3;
-    AscendC::MicroAPI::RegTensor<uint32_t> vreg_pa_block_idx_0;
-    AscendC::MicroAPI::RegTensor<uint32_t> vreg_pa_block_idx_1;
-    AscendC::MicroAPI::RegTensor<uint32_t> vreg_zero;
-    AscendC::MicroAPI::RegTensor<uint32_t> vreg_whole_blocks2_offset_0;
-    AscendC::MicroAPI::RegTensor<uint32_t> vreg_tail_blocks2_offset_0;
-    AscendC::MicroAPI::RegTensor<uint32_t> vreg_tail_block_offset_0;
-    AscendC::MicroAPI::RegTensor<uint32_t> vreg_whole_blocks2_offset_1;
-    AscendC::MicroAPI::RegTensor<uint32_t> vreg_tail_blocks2_offset_1;
-    AscendC::MicroAPI::RegTensor<uint32_t> vreg_tail_block_offset_1;
-    AscendC::MicroAPI::Duplicate(vreg_m_l_0, mLow, preg32_all);
-    AscendC::MicroAPI::Duplicate(vreg_m_l_1, mLow, preg32_all);
-    AscendC::MicroAPI::LoadAlign<int32_t, MicroAPI::LoadDist::DIST_NORM>(
-        (MicroAPI::RegTensor<int32_t> &)vreg_sparse_indices_0, sparseIndiceUb);
-    AscendC::MicroAPI::LoadAlign<int32_t, MicroAPI::LoadDist::DIST_NORM>(
-        (MicroAPI::RegTensor<int32_t> &)vreg_sparse_indices_1, sparseIndiceUb + 64);
-    AscendC::MicroAPI::Muls(vreg_sparse_indices_0, vreg_sparse_indices_0, sparseBlockSize, preg32_all);
-    AscendC::MicroAPI::Muls(vreg_sparse_indices_1, vreg_sparse_indices_1, sparseBlockSize, preg32_all);
-    AscendC::MicroAPI::Mull(vreg_m_l_0_dst0, vreg_m_l_0_dst1, vreg_sparse_indices_0, vreg_m_l_0, preg32_all);
-    AscendC::MicroAPI::Mull(vreg_m_l_1_dst0, vreg_m_l_1_dst1, vreg_sparse_indices_1, vreg_m_l_1, preg32_all);
-    AscendC::MicroAPI::Muls(vreg_mul_res_h_0, vreg_sparse_indices_0, mHigh, preg32_all);
-    AscendC::MicroAPI::Muls(vreg_mul_res_h_1, vreg_sparse_indices_1, mHigh, preg32_all);
-    AscendC::MicroAPI::Add(vreg_res_h_0, vreg_mul_res_h_0, vreg_m_l_0_dst1, preg32_all);
-    AscendC::MicroAPI::Add(vreg_res_h_1, vreg_mul_res_h_1, vreg_m_l_1_dst1, preg32_all);
-    AscendC::MicroAPI::Interleave(vreg_mul_res_0, vreg_mul_res_1, vreg_m_l_0_dst0, vreg_res_h_0);
-    AscendC::MicroAPI::Interleave(vreg_mul_res_2, vreg_mul_res_3, vreg_m_l_1_dst0, vreg_res_h_1);
-    AscendC::MicroAPI::ShiftRights((MicroAPI::RegTensor<uint64_t> &)vreg_mul_res_0,
-                                   (MicroAPI::RegTensor<uint64_t> &)vreg_mul_res_0, (int16_t)p, preg64_all);
-    AscendC::MicroAPI::ShiftRights((MicroAPI::RegTensor<uint64_t> &)vreg_mul_res_1,
-                                   (MicroAPI::RegTensor<uint64_t> &)vreg_mul_res_1, (int16_t)p, preg64_all);
-    AscendC::MicroAPI::ShiftRights((MicroAPI::RegTensor<uint64_t> &)vreg_mul_res_2,
-                                   (MicroAPI::RegTensor<uint64_t> &)vreg_mul_res_2, (int16_t)p, preg64_all);
-    AscendC::MicroAPI::ShiftRights((MicroAPI::RegTensor<uint64_t> &)vreg_mul_res_3,
-                                   (MicroAPI::RegTensor<uint64_t> &)vreg_mul_res_3, (int16_t)p, preg64_all);
-    AscendC::MicroAPI::DeInterleave(vreg_pa_block_idx_0, vreg_zero, vreg_mul_res_0, vreg_mul_res_1);
-    AscendC::MicroAPI::DeInterleave(vreg_pa_block_idx_1, vreg_zero, vreg_mul_res_2, vreg_mul_res_3);
-    AscendC::MicroAPI::Muls(vreg_whole_blocks2_offset_0, vreg_pa_block_idx_0, blockSize, preg32_all);
-    AscendC::MicroAPI::Muls(vreg_whole_blocks2_offset_1, vreg_pa_block_idx_1, blockSize, preg32_all);
-    AscendC::MicroAPI::Sub(vreg_tail_blocks2_offset_0, vreg_sparse_indices_0, vreg_whole_blocks2_offset_0, preg32_all);
-    AscendC::MicroAPI::Sub(vreg_tail_blocks2_offset_1, vreg_sparse_indices_1, vreg_whole_blocks2_offset_1, preg32_all);
-    AscendC::MicroAPI::Muls(vreg_tail_block_offset_0, vreg_tail_blocks2_offset_0, s2Stride, preg32_all);
-    AscendC::MicroAPI::Muls(vreg_tail_block_offset_1, vreg_tail_blocks2_offset_1, s2Stride, preg32_all);
-    AscendC::MicroAPI::Muls(vreg_pa_block_idx_0, vreg_pa_block_idx_0, sizeof(uint32_t), preg32_all);
-    AscendC::MicroAPI::Muls(vreg_pa_block_idx_1, vreg_pa_block_idx_1, sizeof(uint32_t), preg32_all);
-    AscendC::MicroAPI::StoreAlign<int32_t, MicroAPI::StoreDist::DIST_NORM>(
-        paBlockIdxOffsetUb, (MicroAPI::RegTensor<int32_t> &)vreg_pa_block_idx_0, preg32_all);
-    AscendC::MicroAPI::StoreAlign<int32_t, MicroAPI::StoreDist::DIST_NORM>(
-        paBlockIdxOffsetUb + 64, (MicroAPI::RegTensor<int32_t> &)vreg_pa_block_idx_1, preg32_all);
-    AscendC::MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_NORM>(tailBlockOffsetUb, vreg_tail_block_offset_0,
+    AscendC::Reg::MaskReg preg32_all = Reg::CreateMask<uint32_t, Reg::MaskPattern::ALL>();
+    AscendC::Reg::MaskReg preg64_all = Reg::CreateMask<uint64_t, Reg::MaskPattern::ALL>();
+    AscendC::Reg::RegTensor<uint32_t> vreg_sparse_indices_0;
+    AscendC::Reg::RegTensor<uint32_t> vreg_sparse_indices_1;
+    AscendC::Reg::RegTensor<uint32_t> vreg_m_l_0;
+    AscendC::Reg::RegTensor<uint32_t> vreg_m_l_1;
+    AscendC::Reg::RegTensor<uint32_t> vreg_mul_res_h_0;
+    AscendC::Reg::RegTensor<uint32_t> vreg_mul_res_h_1;
+    AscendC::Reg::RegTensor<uint32_t> vreg_m_l_0_dst0;
+    AscendC::Reg::RegTensor<uint32_t> vreg_m_l_0_dst1;
+    AscendC::Reg::RegTensor<uint32_t> vreg_m_l_1_dst0;
+    AscendC::Reg::RegTensor<uint32_t> vreg_m_l_1_dst1;
+    AscendC::Reg::RegTensor<uint32_t> vreg_res_h_0;
+    AscendC::Reg::RegTensor<uint32_t> vreg_res_h_1;
+    AscendC::Reg::RegTensor<uint32_t> vreg_mul_res_0;
+    AscendC::Reg::RegTensor<uint32_t> vreg_mul_res_1;
+    AscendC::Reg::RegTensor<uint32_t> vreg_mul_res_2;
+    AscendC::Reg::RegTensor<uint32_t> vreg_mul_res_3;
+    AscendC::Reg::RegTensor<uint32_t> vreg_pa_block_idx_0;
+    AscendC::Reg::RegTensor<uint32_t> vreg_pa_block_idx_1;
+    AscendC::Reg::RegTensor<uint32_t> vreg_zero;
+    AscendC::Reg::RegTensor<uint32_t> vreg_whole_blocks2_offset_0;
+    AscendC::Reg::RegTensor<uint32_t> vreg_tail_blocks2_offset_0;
+    AscendC::Reg::RegTensor<uint32_t> vreg_tail_block_offset_0;
+    AscendC::Reg::RegTensor<uint32_t> vreg_whole_blocks2_offset_1;
+    AscendC::Reg::RegTensor<uint32_t> vreg_tail_blocks2_offset_1;
+    AscendC::Reg::RegTensor<uint32_t> vreg_tail_block_offset_1;
+    AscendC::Reg::Duplicate(vreg_m_l_0, mLow, preg32_all);
+    AscendC::Reg::Duplicate(vreg_m_l_1, mLow, preg32_all);
+    AscendC::Reg::LoadAlign<int32_t, Reg::LoadDist::DIST_NORM>(
+        (Reg::RegTensor<int32_t> &)vreg_sparse_indices_0, sparseIndiceUb);
+    AscendC::Reg::LoadAlign<int32_t, Reg::LoadDist::DIST_NORM>(
+        (Reg::RegTensor<int32_t> &)vreg_sparse_indices_1, sparseIndiceUb + 64);
+    AscendC::Reg::Muls(vreg_sparse_indices_0, vreg_sparse_indices_0, sparseBlockSize, preg32_all);
+    AscendC::Reg::Muls(vreg_sparse_indices_1, vreg_sparse_indices_1, sparseBlockSize, preg32_all);
+    AscendC::Reg::Mull(vreg_m_l_0_dst0, vreg_m_l_0_dst1, vreg_sparse_indices_0, vreg_m_l_0, preg32_all);
+    AscendC::Reg::Mull(vreg_m_l_1_dst0, vreg_m_l_1_dst1, vreg_sparse_indices_1, vreg_m_l_1, preg32_all);
+    AscendC::Reg::Muls(vreg_mul_res_h_0, vreg_sparse_indices_0, mHigh, preg32_all);
+    AscendC::Reg::Muls(vreg_mul_res_h_1, vreg_sparse_indices_1, mHigh, preg32_all);
+    AscendC::Reg::Add(vreg_res_h_0, vreg_mul_res_h_0, vreg_m_l_0_dst1, preg32_all);
+    AscendC::Reg::Add(vreg_res_h_1, vreg_mul_res_h_1, vreg_m_l_1_dst1, preg32_all);
+    AscendC::Reg::Interleave(vreg_mul_res_0, vreg_mul_res_1, vreg_m_l_0_dst0, vreg_res_h_0);
+    AscendC::Reg::Interleave(vreg_mul_res_2, vreg_mul_res_3, vreg_m_l_1_dst0, vreg_res_h_1);
+    AscendC::Reg::ShiftRights((Reg::RegTensor<uint64_t> &)vreg_mul_res_0,
+                                   (Reg::RegTensor<uint64_t> &)vreg_mul_res_0, (int16_t)p, preg64_all);
+    AscendC::Reg::ShiftRights((Reg::RegTensor<uint64_t> &)vreg_mul_res_1,
+                                   (Reg::RegTensor<uint64_t> &)vreg_mul_res_1, (int16_t)p, preg64_all);
+    AscendC::Reg::ShiftRights((Reg::RegTensor<uint64_t> &)vreg_mul_res_2,
+                                   (Reg::RegTensor<uint64_t> &)vreg_mul_res_2, (int16_t)p, preg64_all);
+    AscendC::Reg::ShiftRights((Reg::RegTensor<uint64_t> &)vreg_mul_res_3,
+                                   (Reg::RegTensor<uint64_t> &)vreg_mul_res_3, (int16_t)p, preg64_all);
+    AscendC::Reg::DeInterleave(vreg_pa_block_idx_0, vreg_zero, vreg_mul_res_0, vreg_mul_res_1);
+    AscendC::Reg::DeInterleave(vreg_pa_block_idx_1, vreg_zero, vreg_mul_res_2, vreg_mul_res_3);
+    AscendC::Reg::Muls(vreg_whole_blocks2_offset_0, vreg_pa_block_idx_0, blockSize, preg32_all);
+    AscendC::Reg::Muls(vreg_whole_blocks2_offset_1, vreg_pa_block_idx_1, blockSize, preg32_all);
+    AscendC::Reg::Sub(vreg_tail_blocks2_offset_0, vreg_sparse_indices_0, vreg_whole_blocks2_offset_0, preg32_all);
+    AscendC::Reg::Sub(vreg_tail_blocks2_offset_1, vreg_sparse_indices_1, vreg_whole_blocks2_offset_1, preg32_all);
+    AscendC::Reg::Muls(vreg_tail_block_offset_0, vreg_tail_blocks2_offset_0, s2Stride, preg32_all);
+    AscendC::Reg::Muls(vreg_tail_block_offset_1, vreg_tail_blocks2_offset_1, s2Stride, preg32_all);
+    AscendC::Reg::Muls(vreg_pa_block_idx_0, vreg_pa_block_idx_0, sizeof(uint32_t), preg32_all);
+    AscendC::Reg::Muls(vreg_pa_block_idx_1, vreg_pa_block_idx_1, sizeof(uint32_t), preg32_all);
+    AscendC::Reg::StoreAlign<int32_t, Reg::StoreDist::DIST_NORM>(
+        paBlockIdxOffsetUb, (Reg::RegTensor<int32_t> &)vreg_pa_block_idx_0, preg32_all);
+    AscendC::Reg::StoreAlign<int32_t, Reg::StoreDist::DIST_NORM>(
+        paBlockIdxOffsetUb + 64, (Reg::RegTensor<int32_t> &)vreg_pa_block_idx_1, preg32_all);
+    AscendC::Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_NORM>(tailBlockOffsetUb, vreg_tail_block_offset_0,
                                                                             preg32_all);
-    AscendC::MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_NORM>(tailBlockOffsetUb + 64,
+    AscendC::Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_NORM>(tailBlockOffsetUb + 64,
                                                                             vreg_tail_block_offset_1, preg32_all);
 }
 
@@ -291,164 +291,164 @@ __simd_vf__ void GetTotalOffsetVF(__ubuf__ uint32_t *totalOffsetUb, __ubuf__ int
                                   __ubuf__ uint32_t *tailBlockOffsetUb, const uint32_t blockNumStrideL,
                                   const uint32_t blockNumStrideH)
 {
-    AscendC::MicroAPI::MaskReg preg32_all = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::ALL>();
-    AscendC::MicroAPI::MaskReg preg64_all = MicroAPI::CreateMask<uint64_t, MicroAPI::MaskPattern::ALL>();
-    AscendC::MicroAPI::MaskReg carry_l_0;
-    AscendC::MicroAPI::MaskReg carry_l_1;
-    AscendC::MicroAPI::MaskReg carry_h_0;
-    AscendC::MicroAPI::MaskReg carry_h_1;
+    AscendC::Reg::MaskReg preg32_all = Reg::CreateMask<uint32_t, Reg::MaskPattern::ALL>();
+    AscendC::Reg::MaskReg preg64_all = Reg::CreateMask<uint64_t, Reg::MaskPattern::ALL>();
+    AscendC::Reg::MaskReg carry_l_0;
+    AscendC::Reg::MaskReg carry_l_1;
+    AscendC::Reg::MaskReg carry_h_0;
+    AscendC::Reg::MaskReg carry_h_1;
 
-    AscendC::MicroAPI::RegTensor<uint32_t> vreg_pa_block_id_0;
-    AscendC::MicroAPI::RegTensor<uint32_t> vreg_pa_block_id_1;
+    AscendC::Reg::RegTensor<uint32_t> vreg_pa_block_id_0;
+    AscendC::Reg::RegTensor<uint32_t> vreg_pa_block_id_1;
 
-    AscendC::MicroAPI::RegTensor<uint32_t> vreg_block_num_stride_l;
+    AscendC::Reg::RegTensor<uint32_t> vreg_block_num_stride_l;
 
-    AscendC::MicroAPI::RegTensor<uint32_t> vreg_whole_block_offset_l_0;
-    AscendC::MicroAPI::RegTensor<uint32_t> vreg_whole_block_offset_h_0;
-    AscendC::MicroAPI::RegTensor<uint32_t> vreg_tmp_whole_block_offset_h_0;
-    AscendC::MicroAPI::RegTensor<uint32_t> vreg_whole_block_offset_l_1;
-    AscendC::MicroAPI::RegTensor<uint32_t> vreg_whole_block_offset_h_1;
-    AscendC::MicroAPI::RegTensor<uint32_t> vreg_tmp_whole_block_offset_h_1;
+    AscendC::Reg::RegTensor<uint32_t> vreg_whole_block_offset_l_0;
+    AscendC::Reg::RegTensor<uint32_t> vreg_whole_block_offset_h_0;
+    AscendC::Reg::RegTensor<uint32_t> vreg_tmp_whole_block_offset_h_0;
+    AscendC::Reg::RegTensor<uint32_t> vreg_whole_block_offset_l_1;
+    AscendC::Reg::RegTensor<uint32_t> vreg_whole_block_offset_h_1;
+    AscendC::Reg::RegTensor<uint32_t> vreg_tmp_whole_block_offset_h_1;
 
-    AscendC::MicroAPI::RegTensor<uint32_t> vreg_l_0_dst1;
-    AscendC::MicroAPI::RegTensor<uint32_t> vreg_l_1_dst1;
+    AscendC::Reg::RegTensor<uint32_t> vreg_l_0_dst1;
+    AscendC::Reg::RegTensor<uint32_t> vreg_l_1_dst1;
 
-    AscendC::MicroAPI::RegTensor<uint32_t> vreg_tail_block_offset_0;
-    AscendC::MicroAPI::RegTensor<uint32_t> vreg_tail_block_offset_1;
+    AscendC::Reg::RegTensor<uint32_t> vreg_tail_block_offset_0;
+    AscendC::Reg::RegTensor<uint32_t> vreg_tail_block_offset_1;
 
-    AscendC::MicroAPI::RegTensor<uint32_t> vreg_total_offset_l_0;
-    AscendC::MicroAPI::RegTensor<uint32_t> vreg_total_offset_h_0;
-    AscendC::MicroAPI::RegTensor<uint32_t> vreg_total_offset_l_1;
-    AscendC::MicroAPI::RegTensor<uint32_t> vreg_total_offset_h_1;
+    AscendC::Reg::RegTensor<uint32_t> vreg_total_offset_l_0;
+    AscendC::Reg::RegTensor<uint32_t> vreg_total_offset_h_0;
+    AscendC::Reg::RegTensor<uint32_t> vreg_total_offset_l_1;
+    AscendC::Reg::RegTensor<uint32_t> vreg_total_offset_h_1;
 
-    AscendC::MicroAPI::RegTensor<uint32_t> vreg_zero;
+    AscendC::Reg::RegTensor<uint32_t> vreg_zero;
 
-    AscendC::MicroAPI::RegTensor<uint32_t> vreg_total_offset_0;
-    AscendC::MicroAPI::RegTensor<uint32_t> vreg_total_offset_1;
-    AscendC::MicroAPI::RegTensor<uint32_t> vreg_total_offset_2;
-    AscendC::MicroAPI::RegTensor<uint32_t> vreg_total_offset_3;
+    AscendC::Reg::RegTensor<uint32_t> vreg_total_offset_0;
+    AscendC::Reg::RegTensor<uint32_t> vreg_total_offset_1;
+    AscendC::Reg::RegTensor<uint32_t> vreg_total_offset_2;
+    AscendC::Reg::RegTensor<uint32_t> vreg_total_offset_3;
 
-    AscendC::MicroAPI::Duplicate(vreg_block_num_stride_l, blockNumStrideL, preg32_all);
-    AscendC::MicroAPI::Duplicate(vreg_zero, 0, preg32_all);
+    AscendC::Reg::Duplicate(vreg_block_num_stride_l, blockNumStrideL, preg32_all);
+    AscendC::Reg::Duplicate(vreg_zero, 0, preg32_all);
 
-    AscendC::MicroAPI::LoadAlign<int32_t, MicroAPI::LoadDist::DIST_NORM>(
-        (MicroAPI::RegTensor<int32_t> &)vreg_pa_block_id_0, paBlockIdUb);
-    AscendC::MicroAPI::LoadAlign<int32_t, MicroAPI::LoadDist::DIST_NORM>(
-        (MicroAPI::RegTensor<int32_t> &)vreg_pa_block_id_1, paBlockIdUb + 64);
-    AscendC::MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_NORM>(vreg_tail_block_offset_0, tailBlockOffsetUb);
-    AscendC::MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_NORM>(vreg_tail_block_offset_1,
+    AscendC::Reg::LoadAlign<int32_t, Reg::LoadDist::DIST_NORM>(
+        (Reg::RegTensor<int32_t> &)vreg_pa_block_id_0, paBlockIdUb);
+    AscendC::Reg::LoadAlign<int32_t, Reg::LoadDist::DIST_NORM>(
+        (Reg::RegTensor<int32_t> &)vreg_pa_block_id_1, paBlockIdUb + 64);
+    AscendC::Reg::LoadAlign<uint32_t, Reg::LoadDist::DIST_NORM>(vreg_tail_block_offset_0, tailBlockOffsetUb);
+    AscendC::Reg::LoadAlign<uint32_t, Reg::LoadDist::DIST_NORM>(vreg_tail_block_offset_1,
                                                                           tailBlockOffsetUb + 64);
-    AscendC::MicroAPI::Mull(vreg_whole_block_offset_l_0, vreg_l_0_dst1, vreg_pa_block_id_0, vreg_block_num_stride_l,
+    AscendC::Reg::Mull(vreg_whole_block_offset_l_0, vreg_l_0_dst1, vreg_pa_block_id_0, vreg_block_num_stride_l,
                             preg32_all);
-    AscendC::MicroAPI::Mull(vreg_whole_block_offset_l_1, vreg_l_1_dst1, vreg_pa_block_id_1, vreg_block_num_stride_l,
+    AscendC::Reg::Mull(vreg_whole_block_offset_l_1, vreg_l_1_dst1, vreg_pa_block_id_1, vreg_block_num_stride_l,
                             preg32_all);
-    AscendC::MicroAPI::Muls(vreg_tmp_whole_block_offset_h_0, vreg_pa_block_id_0, blockNumStrideH, preg32_all);
-    AscendC::MicroAPI::Muls(vreg_tmp_whole_block_offset_h_1, vreg_pa_block_id_1, blockNumStrideH, preg32_all);
+    AscendC::Reg::Muls(vreg_tmp_whole_block_offset_h_0, vreg_pa_block_id_0, blockNumStrideH, preg32_all);
+    AscendC::Reg::Muls(vreg_tmp_whole_block_offset_h_1, vreg_pa_block_id_1, blockNumStrideH, preg32_all);
 
-    AscendC::MicroAPI::Add(vreg_whole_block_offset_h_0, vreg_tmp_whole_block_offset_h_0, vreg_l_0_dst1, preg32_all);
-    AscendC::MicroAPI::Add(vreg_whole_block_offset_h_1, vreg_tmp_whole_block_offset_h_1, vreg_l_1_dst1, preg32_all);
-    AscendC::MicroAPI::Add(carry_l_0, vreg_total_offset_l_0, vreg_whole_block_offset_l_0, vreg_tail_block_offset_0,
+    AscendC::Reg::Add(vreg_whole_block_offset_h_0, vreg_tmp_whole_block_offset_h_0, vreg_l_0_dst1, preg32_all);
+    AscendC::Reg::Add(vreg_whole_block_offset_h_1, vreg_tmp_whole_block_offset_h_1, vreg_l_1_dst1, preg32_all);
+    AscendC::Reg::Add(carry_l_0, vreg_total_offset_l_0, vreg_whole_block_offset_l_0, vreg_tail_block_offset_0,
                            preg32_all);
-    AscendC::MicroAPI::Add(carry_l_1, vreg_total_offset_l_1, vreg_whole_block_offset_l_1, vreg_tail_block_offset_1,
+    AscendC::Reg::Add(carry_l_1, vreg_total_offset_l_1, vreg_whole_block_offset_l_1, vreg_tail_block_offset_1,
                            preg32_all);
 
-    AscendC::MicroAPI::AddC(carry_h_0, vreg_total_offset_h_0, vreg_whole_block_offset_h_0, vreg_zero, carry_l_0,
+    AscendC::Reg::AddC(carry_h_0, vreg_total_offset_h_0, vreg_whole_block_offset_h_0, vreg_zero, carry_l_0,
                             preg32_all);
-    AscendC::MicroAPI::AddC(carry_h_1, vreg_total_offset_h_1, vreg_whole_block_offset_h_1, vreg_zero, carry_l_1,
+    AscendC::Reg::AddC(carry_h_1, vreg_total_offset_h_1, vreg_whole_block_offset_h_1, vreg_zero, carry_l_1,
                             preg32_all);
 
-    AscendC::MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_INTLV_B32>(totalOffsetUb, vreg_total_offset_l_0,
+    AscendC::Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_INTLV_B32>(totalOffsetUb, vreg_total_offset_l_0,
                                                                                  vreg_total_offset_h_0, preg32_all);
-    AscendC::MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_INTLV_B32>(
+    AscendC::Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_INTLV_B32>(
         totalOffsetUb + 128, vreg_total_offset_l_1, vreg_total_offset_h_1, preg32_all);
 }
 
 __simd_vf__ void GetTndOffsetVf(__ubuf__ uint32_t *totalOffsetUb, __ubuf__ int32_t *sparseIndciesUb,
                                 const uint32_t tPrefix, const uint32_t dim)
 {
-    AscendC::MicroAPI::MaskReg preg32_all = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::ALL>();
+    AscendC::Reg::MaskReg preg32_all = Reg::CreateMask<uint32_t, Reg::MaskPattern::ALL>();
 
     constexpr int32_t SIZE_64 = 64;
     constexpr int32_t SIZE_128 = 128;
 
-    AscendC::MicroAPI::RegTensor<uint32_t> indices;
-    AscendC::MicroAPI::RegTensor<uint32_t> indices_unroll;
+    AscendC::Reg::RegTensor<uint32_t> indices;
+    AscendC::Reg::RegTensor<uint32_t> indices_unroll;
 
-    AscendC::MicroAPI::RegTensor<uint32_t> prefix_reg;
-    AscendC::MicroAPI::RegTensor<uint32_t> dim_reg;
+    AscendC::Reg::RegTensor<uint32_t> prefix_reg;
+    AscendC::Reg::RegTensor<uint32_t> dim_reg;
 
-    AscendC::MicroAPI::RegTensor<uint32_t> high_reg;
-    AscendC::MicroAPI::RegTensor<uint32_t> high_reg_unroll;
+    AscendC::Reg::RegTensor<uint32_t> high_reg;
+    AscendC::Reg::RegTensor<uint32_t> high_reg_unroll;
 
-    AscendC::MicroAPI::RegTensor<uint32_t> low_reg;
-    AscendC::MicroAPI::RegTensor<uint32_t> low_reg_unroll;
+    AscendC::Reg::RegTensor<uint32_t> low_reg;
+    AscendC::Reg::RegTensor<uint32_t> low_reg_unroll;
 
-    AscendC::MicroAPI::Duplicate(prefix_reg, tPrefix, preg32_all);
-    AscendC::MicroAPI::Duplicate(dim_reg, dim, preg32_all);
+    AscendC::Reg::Duplicate(prefix_reg, tPrefix, preg32_all);
+    AscendC::Reg::Duplicate(dim_reg, dim, preg32_all);
 
-    AscendC::MicroAPI::LoadAlign<int32_t, MicroAPI::LoadDist::DIST_NORM>((MicroAPI::RegTensor<int32_t> &)indices,
+    AscendC::Reg::LoadAlign<int32_t, Reg::LoadDist::DIST_NORM>((Reg::RegTensor<int32_t> &)indices,
                                                                          sparseIndciesUb);
-    AscendC::MicroAPI::LoadAlign<int32_t, MicroAPI::LoadDist::DIST_NORM>((MicroAPI::RegTensor<int32_t> &)indices_unroll,
+    AscendC::Reg::LoadAlign<int32_t, Reg::LoadDist::DIST_NORM>((Reg::RegTensor<int32_t> &)indices_unroll,
                                                                          sparseIndciesUb + SIZE_64);
 
-    AscendC::MicroAPI::Add(indices, indices, prefix_reg, preg32_all);
-    AscendC::MicroAPI::Add(indices_unroll, indices_unroll, prefix_reg, preg32_all);
+    AscendC::Reg::Add(indices, indices, prefix_reg, preg32_all);
+    AscendC::Reg::Add(indices_unroll, indices_unroll, prefix_reg, preg32_all);
 
-    AscendC::MicroAPI::Mull(low_reg, high_reg, indices, dim_reg, preg32_all);
-    AscendC::MicroAPI::Mull(low_reg_unroll, high_reg_unroll, indices_unroll, dim_reg, preg32_all);
+    AscendC::Reg::Mull(low_reg, high_reg, indices, dim_reg, preg32_all);
+    AscendC::Reg::Mull(low_reg_unroll, high_reg_unroll, indices_unroll, dim_reg, preg32_all);
 
-    AscendC::MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_INTLV_B32>(totalOffsetUb, low_reg, high_reg,
+    AscendC::Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_INTLV_B32>(totalOffsetUb, low_reg, high_reg,
                                                                                  preg32_all);
-    AscendC::MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_INTLV_B32>(
+    AscendC::Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_INTLV_B32>(
         totalOffsetUb + SIZE_128, low_reg_unroll, high_reg_unroll, preg32_all);
 }
 
 __simd_vf__ void GetBsndOffsetVf(__ubuf__ uint32_t *totalOffsetUb, __ubuf__ int32_t *sparseIndciesUb,
                                  const uint32_t prefixLow, const uint32_t prefixHigh, const uint32_t d)
 {
-    AscendC::MicroAPI::MaskReg preg32_all = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::ALL>();
-    AscendC::MicroAPI::MaskReg carry_l_0;
-    AscendC::MicroAPI::MaskReg carry_l_1;
-    AscendC::MicroAPI::MaskReg carry_h_0;
-    AscendC::MicroAPI::MaskReg carry_h_1;
+    AscendC::Reg::MaskReg preg32_all = Reg::CreateMask<uint32_t, Reg::MaskPattern::ALL>();
+    AscendC::Reg::MaskReg carry_l_0;
+    AscendC::Reg::MaskReg carry_l_1;
+    AscendC::Reg::MaskReg carry_h_0;
+    AscendC::Reg::MaskReg carry_h_1;
 
     constexpr int32_t SIZE_64 = 64;
     constexpr int32_t SIZE_128 = 128;
 
-    AscendC::MicroAPI::RegTensor<uint32_t> indices;
-    AscendC::MicroAPI::RegTensor<uint32_t> indices_unroll;
+    AscendC::Reg::RegTensor<uint32_t> indices;
+    AscendC::Reg::RegTensor<uint32_t> indices_unroll;
 
-    AscendC::MicroAPI::RegTensor<uint32_t> prefix_low_reg;
-    AscendC::MicroAPI::RegTensor<uint32_t> prefix_high_reg;
-    AscendC::MicroAPI::RegTensor<uint32_t> dim_reg;
+    AscendC::Reg::RegTensor<uint32_t> prefix_low_reg;
+    AscendC::Reg::RegTensor<uint32_t> prefix_high_reg;
+    AscendC::Reg::RegTensor<uint32_t> dim_reg;
 
-    AscendC::MicroAPI::RegTensor<uint32_t> r_low_reg;
-    AscendC::MicroAPI::RegTensor<uint32_t> r_low_reg_unroll;
+    AscendC::Reg::RegTensor<uint32_t> r_low_reg;
+    AscendC::Reg::RegTensor<uint32_t> r_low_reg_unroll;
 
-    AscendC::MicroAPI::RegTensor<uint32_t> r_high_reg;
-    AscendC::MicroAPI::RegTensor<uint32_t> r_high_reg_unroll;
+    AscendC::Reg::RegTensor<uint32_t> r_high_reg;
+    AscendC::Reg::RegTensor<uint32_t> r_high_reg_unroll;
 
-    AscendC::MicroAPI::LoadAlign<int32_t, MicroAPI::LoadDist::DIST_NORM>((MicroAPI::RegTensor<int32_t> &)indices,
+    AscendC::Reg::LoadAlign<int32_t, Reg::LoadDist::DIST_NORM>((Reg::RegTensor<int32_t> &)indices,
                                                                          sparseIndciesUb);
-    AscendC::MicroAPI::LoadAlign<int32_t, MicroAPI::LoadDist::DIST_NORM>((MicroAPI::RegTensor<int32_t> &)indices_unroll,
+    AscendC::Reg::LoadAlign<int32_t, Reg::LoadDist::DIST_NORM>((Reg::RegTensor<int32_t> &)indices_unroll,
                                                                          sparseIndciesUb + SIZE_64);
 
-    MicroAPI::Duplicate(dim_reg, d, preg32_all);
-    MicroAPI::Duplicate(prefix_low_reg, prefixLow, preg32_all);
-    MicroAPI::Duplicate(prefix_high_reg, prefixHigh, preg32_all);
+    Reg::Duplicate(dim_reg, d, preg32_all);
+    Reg::Duplicate(prefix_low_reg, prefixLow, preg32_all);
+    Reg::Duplicate(prefix_high_reg, prefixHigh, preg32_all);
 
-    AscendC::MicroAPI::Mull(r_low_reg, r_high_reg, indices, dim_reg, preg32_all);
-    AscendC::MicroAPI::Mull(r_low_reg_unroll, r_high_reg_unroll, indices_unroll, dim_reg, preg32_all);
+    AscendC::Reg::Mull(r_low_reg, r_high_reg, indices, dim_reg, preg32_all);
+    AscendC::Reg::Mull(r_low_reg_unroll, r_high_reg_unroll, indices_unroll, dim_reg, preg32_all);
 
-    AscendC::MicroAPI::Add(carry_l_0, r_low_reg, r_low_reg, prefix_low_reg, preg32_all);
-    AscendC::MicroAPI::Add(carry_l_1, r_low_reg_unroll, r_low_reg_unroll, prefix_low_reg, preg32_all);
+    AscendC::Reg::Add(carry_l_0, r_low_reg, r_low_reg, prefix_low_reg, preg32_all);
+    AscendC::Reg::Add(carry_l_1, r_low_reg_unroll, r_low_reg_unroll, prefix_low_reg, preg32_all);
 
-    AscendC::MicroAPI::AddC(carry_h_0, r_high_reg, r_high_reg, prefix_high_reg, carry_l_0, preg32_all);
-    AscendC::MicroAPI::AddC(carry_h_1, r_high_reg_unroll, r_high_reg_unroll, prefix_high_reg, carry_l_1, preg32_all);
+    AscendC::Reg::AddC(carry_h_0, r_high_reg, r_high_reg, prefix_high_reg, carry_l_0, preg32_all);
+    AscendC::Reg::AddC(carry_h_1, r_high_reg_unroll, r_high_reg_unroll, prefix_high_reg, carry_l_1, preg32_all);
 
-    AscendC::MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_INTLV_B32>(totalOffsetUb, r_low_reg, r_high_reg,
+    AscendC::Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_INTLV_B32>(totalOffsetUb, r_low_reg, r_high_reg,
                                                                                  preg32_all);
-    AscendC::MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_INTLV_B32>(
+    AscendC::Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_INTLV_B32>(
         totalOffsetUb + SIZE_128, r_low_reg_unroll, r_high_reg_unroll, preg32_all);
 }
 
@@ -501,12 +501,12 @@ template <typename T>
 __simd_vf__ void CastNd2NzVFImpl(__ubuf__ T *ubDstAddr, __ubuf__ T *ubSrcAddr, const uint32_t dealRowCount,
                                  const uint32_t blockStride)
 {
-    MicroAPI::RegTensor<T> kvData0;
-    MicroAPI::RegTensor<T> kvData1;
-    MicroAPI::RegTensor<T> kvData2;
-    MicroAPI::RegTensor<T> kvData3;
+    Reg::RegTensor<T> kvData0;
+    Reg::RegTensor<T> kvData1;
+    Reg::RegTensor<T> kvData2;
+    Reg::RegTensor<T> kvData3;
 
-    MicroAPI::MaskReg maskAll = MicroAPI::CreateMask<T, MicroAPI::MaskPattern::ALL>();
+    Reg::MaskReg maskAll = Reg::CreateMask<T, Reg::MaskPattern::ALL>();
     const uint32_t repeatStride = 1;
     const uint32_t combineDim = 512;
     const uint32_t elementNumPerVL = 128; // 2字节类型: 256B / 2B = 128
@@ -522,22 +522,22 @@ __simd_vf__ void CastNd2NzVFImpl(__ubuf__ T *ubDstAddr, __ubuf__ T *ubSrcAddr, c
     __ubuf__ T *ubDstAddrTmp3 = ubDstAddr + elementNumPerVL * 3 * blockStride;
 
     for (uint16_t i = 0; i < static_cast<uint16_t>(dealRowCount); i++) {
-        MicroAPI::LoadAlign<T, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_NORM>(
+        Reg::LoadAlign<T, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_NORM>(
             kvData0, ubSrcAddrTmp0, combineDim);
-        MicroAPI::LoadAlign<T, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_NORM>(
+        Reg::LoadAlign<T, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_NORM>(
             kvData1, ubSrcAddrTmp1, combineDim);
-        MicroAPI::LoadAlign<T, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_NORM>(
+        Reg::LoadAlign<T, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_NORM>(
             kvData2, ubSrcAddrTmp2, combineDim);
-        MicroAPI::LoadAlign<T, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_NORM>(
+        Reg::LoadAlign<T, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_NORM>(
             kvData3, ubSrcAddrTmp3, combineDim);
 
-        MicroAPI::StoreAlign<T, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+        Reg::StoreAlign<T, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
             ubDstAddrTmp0, kvData0, blockStride, repeatStride, maskAll);
-        MicroAPI::StoreAlign<T, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+        Reg::StoreAlign<T, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
             ubDstAddrTmp1, kvData1, blockStride, repeatStride, maskAll);
-        MicroAPI::StoreAlign<T, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+        Reg::StoreAlign<T, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
             ubDstAddrTmp2, kvData2, blockStride, repeatStride, maskAll);
-        MicroAPI::StoreAlign<T, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+        Reg::StoreAlign<T, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
             ubDstAddrTmp3, kvData3, blockStride, repeatStride, maskAll);
     }
 }
