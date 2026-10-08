@@ -58,7 +58,11 @@ __aicore__ inline void SetWaitFlag()
 //     arrangement (c/16)*2048 + r*16 + (c%16) — byte-identical to the gemm's
 //     former Nd2Nz(nValue=128, dValue=128, dstNzC0Stride=128, dstNzNStride=1)
 //     L1 image, so the dw B side loads one contiguous 32KB burst per tile.
-//   - wkv/wgate(C,H) ioT -> f16 (natural layout, dx B consumes it directly)
+//   - wkv/wgate(C,H) ioT -> f16, blocked-NZ layout (R7): (H/128) column
+//     strips of C x 128 tiles, tile (kb, nb) at GM tile index
+//     (nb*(C/128) + kb) within each tensor — the same in-tile arrangement
+//     as x — so the dx B side also loads one contiguous 32KB burst per tile.
+//     Both tensors are tiled by all cores in one shared index space.
 //   - dn_kv/dn_sc(T_pad,C) f16 zero-fill; d_ape(cr,C) f32 zero-fill
 // =========================================================================
 constexpr uint32_t CAST_VEC = 2048;  // elements per vector chunk
@@ -99,12 +103,7 @@ public:
     {
         uint32_t cid = GetBlockIdx();
         CastXNz(cid);
-        if (cid == 0) {
-            CastWeight(wkvGM_, wkvF16GM_);
-        }
-        if (cid == 1 || coreNum_ <= 1) {
-            CastWeight(wgateGM_, wgateF16GM_);
-        }
+        CastWeightNz(cid);
         ZeroDn(cid);
         if (cid == 0) {
             ZeroApe();
@@ -112,28 +111,6 @@ public:
     }
 
 private:
-    __aicore__ inline void CastOneRow(const GlobalTensor<ioT> &src, const GlobalTensor<half> &dst,
-                                      uint32_t row, uint32_t cols)
-    {
-        LocalTensor<ioT> inLocal = inBuf_.Get<ioT>();
-        LocalTensor<float> f32Local = f32Buf_.Get<float>();
-        LocalTensor<half> f16Local = f16Buf_.Get<half>();
-        for (uint32_t off = 0; off < cols; off += CAST_VEC) {
-            uint32_t cnt = MinU32(CAST_VEC, cols - off);
-            DataCopyExtParams cp{1, static_cast<uint32_t>(cnt * sizeof(ioT)), 0, 0, 0};
-            DataCopyPadExtParams<ioT> pp{true, 0, 0, static_cast<ioT>(0)};
-            DataCopyPad(inLocal, src[static_cast<uint64_t>(row) * cols + off], cp, pp);
-            SetWaitFlag<HardEvent::MTE2_V>();
-            Cast(f32Local, inLocal, RoundMode::CAST_NONE, cnt);
-            Cast(f16Local, f32Local, RoundMode::CAST_NONE, cnt);
-            SetWaitFlag<HardEvent::V_MTE3>();
-            DataCopyExtParams outCp{1, static_cast<uint32_t>(cnt * sizeof(half)), 0, 0, 0};
-            DataCopyPad(dst[static_cast<uint64_t>(row) * cols + off], f16Local, outCp);
-            SetWaitFlag<HardEvent::MTE3_V>();
-            SetWaitFlag<HardEvent::V_MTE2>();
-        }
-    }
-
     // Stage one 128x128 ioT tile (strided 256B rows from the natural x),
     // cast ioT -> f32 (full-tile contiguous, same rounding as the old row
     // path) -> f16 with per-16-column-group strided repeats that place each
@@ -181,15 +158,54 @@ private:
             DataCopy(xF16GM_[static_cast<uint64_t>(t) * X_TILE * X_TILE], nzLocal,
                      static_cast<int32_t>(X_TILE * X_TILE));
         }
-        SetWaitFlag<HardEvent::MTE3_V>();  // drain last tile write: ZeroDn/CastWeight reuse f16Buf_
-        SetWaitFlag<HardEvent::V_MTE2>();  // drain last tile casts: CastWeight reloads inBuf_
+        SetWaitFlag<HardEvent::MTE3_V>();  // drain last tile write: CastWeightNz/ZeroDn reuse f16Buf_
+        SetWaitFlag<HardEvent::V_MTE2>();  // drain last tile casts: CastWeightNz reloads inBuf_
     }
 
-    __aicore__ inline void CastWeight(const GlobalTensor<ioT> &src, const GlobalTensor<half> &dst)
+    // wkv/wgate (C,H) ioT -> f16 blocked-NZ tiles (R7). Same writer pipeline
+    // as CastXNz; C % 128 == 0 so tiles are always full (no pad path). One
+    // tile index space covers both tensors: t < kTilesC*nHm -> wkv, else
+    // wgate; tile (kb, nb) lands at in-tensor index tIn = nb*kTilesC + kb.
+    __aicore__ inline void CastWeightNz(uint32_t cid)
     {
-        for (uint32_t r = 0; r < cSize_; r++) {
-            CastOneRow(src, dst, r, hSize_);
+        uint32_t kTilesC = cSize_ / X_TILE;   // C % 128 == 0 (host TORCH_CHECK)
+        uint32_t nHm = hSize_ / X_TILE;       // H % 128 == 0
+        uint32_t perTensor = kTilesC * nHm;
+        uint32_t totalTiles = 2U * perTensor;
+        uint32_t tilesPerCore = CeilDivU32(totalTiles, coreNum_);
+        uint32_t t0 = cid * tilesPerCore;
+        uint32_t t1 = MinU32(t0 + tilesPerCore, totalTiles);
+        LocalTensor<ioT> inLocal = inBuf_.Get<ioT>();
+        LocalTensor<float> f32Local = f32Buf_.Get<float>();
+        LocalTensor<half> nzLocal = f16Buf_.Get<half>();
+        for (uint32_t t = t0; t < t1; t++) {
+            bool gate = (t >= perTensor);
+            uint32_t tIn = gate ? (t - perTensor) : t;
+            uint32_t nb = tIn / kTilesC;
+            uint32_t kb = tIn - nb * kTilesC;
+            const GlobalTensor<ioT> &src = gate ? wgateGM_ : wkvGM_;
+            const GlobalTensor<half> &dst = gate ? wgateF16GM_ : wkvF16GM_;
+            SetWaitFlag<HardEvent::V_MTE2>();  // prior tile's casts done reading inLocal
+            DataCopyExtParams cp{static_cast<uint16_t>(X_TILE),
+                                 static_cast<uint32_t>(X_TILE * sizeof(ioT)),
+                                 static_cast<uint32_t>((hSize_ - X_TILE) * sizeof(ioT)), 0, 0};
+            DataCopyPadExtParams<ioT> pp{false, 0, 0, static_cast<ioT>(0)};
+            DataCopyPad(inLocal,
+                        src[static_cast<uint64_t>(kb) * X_TILE * hSize_ + nb * X_TILE], cp, pp);
+            SetWaitFlag<HardEvent::MTE2_V>();
+            SetWaitFlag<HardEvent::MTE3_V>();  // prior tile's GM write of nzLocal drained
+            Cast(f32Local, inLocal, RoundMode::CAST_NONE, static_cast<int32_t>(X_TILE * X_TILE));
+            UnaryRepeatParams gather{1, 1, 1, static_cast<uint8_t>(X_TILE / 8)};
+            for (uint32_t g = 0; g < X_TILE / 16; g++) {
+                Cast(nzLocal[g * X_TILE * 16], f32Local[g * 16], RoundMode::CAST_NONE, 16, X_TILE,
+                     gather);
+            }
+            SetWaitFlag<HardEvent::V_MTE3>();
+            DataCopy(dst[static_cast<uint64_t>(tIn) * X_TILE * X_TILE], nzLocal,
+                     static_cast<int32_t>(X_TILE * X_TILE));
         }
+        SetWaitFlag<HardEvent::MTE3_V>();  // drain last tile write: ZeroDn reuses f16Buf_
+        SetWaitFlag<HardEvent::V_MTE2>();  // drain last tile casts
     }
 
     __aicore__ inline void ZeroDn(uint32_t cid)

@@ -107,13 +107,28 @@ std::vector<at::Tensor> compressor_grad(
     // ---- workspace ----
     // fp16 path: dn workspaces carry HiLo dual planes (dn = hi + lo, plane
     // stride T_pad*C); bf16 stays single-plane.
+    // R7 (P54): one allocation for all five workspaces + the gemm schedule
+    // dummy; every sub-block is a multiple of 128x128 half elements (T_pad,
+    // H, C all 128-aligned), so each offset keeps 32KB alignment. Saves five
+    // at::empty calls (~30us) of fixed host overhead per op call.
     const int64_t dnPlanes = (dtypeFlag == 0) ? 2 : 1;
-    auto wsOpt = x.options().dtype(at::kHalf);
-    at::Tensor xF16 = at::empty({T_pad, H}, wsOpt);
-    at::Tensor wkvF16 = at::empty({C, H}, wsOpt);
-    at::Tensor wgateF16 = at::empty({C, H}, wsOpt);
-    at::Tensor dnKv = at::empty({dnPlanes * T_pad, C}, wsOpt);
-    at::Tensor dnSc = at::empty({dnPlanes * T_pad, C}, wsOpt);
+    const int64_t xElems = T_pad * H;
+    const int64_t wElems = C * H;
+    const int64_t dnElems = dnPlanes * T_pad * C;
+    const int64_t offX = 0;
+    const int64_t offW = offX + xElems;
+    const int64_t offG = offW + wElems;
+    const int64_t offDnKv = offG + wElems;
+    const int64_t offDnSc = offDnKv + dnElems;
+    const int64_t offDummy = offDnSc + dnElems;
+    at::Tensor wsAll = at::empty({offDummy + 16}, x.options().dtype(at::kHalf));
+    uint8_t *wsBase = static_cast<uint8_t *>(wsAll.data_ptr());
+    uint8_t *xF16 = wsBase + offX * 2;
+    uint8_t *wkvF16 = wsBase + offW * 2;
+    uint8_t *wgateF16 = wsBase + offG * 2;
+    uint8_t *dnKv = wsBase + offDnKv * 2;
+    uint8_t *dnSc = wsBase + offDnSc * 2;
+    uint8_t *wsDummy = wsBase + offDummy * 2;
 
     // debug stage gate: CG_DEBUG_STAGE=1|2|3 limits how many kernels run
     const char *stageEnv = std::getenv("CG_DEBUG_STAGE");
@@ -190,6 +205,44 @@ std::vector<at::Tensor> compressor_grad(
     if (stageLimit >= 3) {
         int32_t gemmCores = aicCoreNum;
         int32_t gDx = std::max<int32_t>(1, gemmCores / 2);
+        // R8: shape-adaptive dx/dw core split, recalibrated post-PX (S3).
+        // PX flattened the dx branch into a cross-pair term stream, cutting
+        // the per-k-tile dx cost ~33%; what remains per dx unit is a fixed
+        // overhead (accumulator rotation, FixOut drain, stream prologue)
+        // that does not scale with C. Model: dx unit = 4 per k-tile (C/128)
+        // + 2 fixed per unit; fp16 HiLo scales x4/3 (dual A planes). dw
+        // unchanged: dw tile ~0.62 when the x workspace stays L2-resident,
+        // ~1.16 when it is HBM-streamed. Shift cores dx-ward when dx
+        // dominates (>=1.15x, lowered from 1.25 as dx got cheaper), clamp to
+        // [half, half+4]: balanced shapes (case5) keep the even split —
+        // dw-ward moves measurably regress there. Calibrated by CG_GDX
+        // sweeps of the PX kernel: case3 -> g13, case2 -> g14.
+        {
+            const int64_t nM = (T + 127) / 128;
+            const int64_t nH = H / 128;          // H % 128 == 0 (checked above)
+            const int64_t nCn = C / 128;         // C % 128 == 0
+            const int64_t nPairRow = (nH + 1) / 2;
+            const bool fp16 = (dtypeFlag == 0);
+            const double dxCost = static_cast<double>(nM * nPairRow)
+                * (4.0 * nCn + 2.0) * (fp16 ? 4.0 / 3.0 : 1.0);
+            const double dwTiles =
+                static_cast<double>(nCn * nH * (T_pad / 128)) * (fp16 ? 5 : 3);
+            const bool xResident = (T_pad * H * 2) <= (int64_t)128 * 1024 * 1024;
+            const double dwCost = dwTiles * (xResident ? 0.62 : 1.16);
+            if (dxCost >= 1.15 * dwCost) {
+                int64_t g = static_cast<int64_t>(
+                    static_cast<double>(gemmCores) * dxCost / (dxCost + dwCost) + 0.5);
+                g = std::min<int64_t>(std::max<int64_t>(g, gemmCores / 2), gemmCores / 2 + 4);
+                g = std::min<int64_t>(g, gemmCores);
+                g = std::min(g, std::max<int64_t>(1, nM * nPairRow));
+                gDx = static_cast<int32_t>(g);
+            }
+        }
+        // shm-tree sweep knob: CG_GDX overrides the dx/dw core split
+        const char *gdxEnv = std::getenv("CG_GDX");
+        if (gdxEnv != nullptr) {
+            gDx = std::max(0, std::min(gemmCores, std::atoi(gdxEnv)));
+        }
         // debug: CG_GEMM_MODE=dx -> only d_x branch; dw -> only d_w branch
         const char *gemmMode = std::getenv("CG_GEMM_MODE");
         if (gemmMode != nullptr) {
@@ -208,7 +261,6 @@ std::vector<at::Tensor> compressor_grad(
         int32_t gemmDbgL = gemmDbgEnv ? std::atoi(gemmDbgEnv) : 0;
         // MIX_AIC_1_2 schedule requires non-zero workspace;
         // blockDim counts AIC cores (AIV slots are auto-derived x2).
-        at::Tensor wsDummy = at::empty({32}, x.options().dtype(at::kByte));
         uint32_t blockDimG = static_cast<uint32_t>(gemmCores);
         EXEC_KERNEL_CMD(compressor_grad_gemm, blockDimG,
                         xF16, wkvF16, wgateF16, dnKv, dnSc,

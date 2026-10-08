@@ -12,9 +12,13 @@
  * at GM index (nb*kTiles + kb), each 128x128 tile contiguous in exactly the
  * former Nd2Nz L1 image — so the GM->L1 hop is one contiguous 32KB burst
  * (plain DataCopy) instead of 128 strided 256B rows; the L1->L0B load3dv2
- * path is untouched. The dx B operand (w) stays natural-layout Nd2Nz.
+ * path is untouched.
+ * R7 Step 1: the dx B operands (wkv/wgate) arrive in the same blocked-NZ
+ * layout — (H/128) strips of C x 128 tiles, tile (kb, nb) at GM index
+ * (nb*kTilesC + kb) — so the dx B GM->L1 hop is likewise one contiguous
+ * 32KB burst per tile.
  *   d_x (T, H) = dn_kv @ wkv + dn_sc @ wgate
- *     M=T, N=H, K=C:  A = dn_kv (M,K) direct;  B = wkv/wgate (C, H) natural
+ *     M=T, N=H, K=C:  A = dn_kv (M,K) direct;  B = wkv/wgate blocked-NZ (R7)
  *   d_wkv (C, H) = dn_kv^T(C,T) @ x(T,H)     [written to the final output]
  *     M=C, N=H, K=T_pad:  A = dn_kv^T via transposed L0A load of natural
  *     (T,C) dn tiles;  B = x blocked-NZ tiles (R6). d_wgate likewise.
@@ -301,113 +305,92 @@ private:
         SetWaitFlag<HardEvent::FIX_MTE2>();
     }
 
-    // One dx GEMM term (kv or sc) of one k-step: the term's shared A tile(s)
-    // and the pair's two w/wgate B tiles are DeQue'd in enqueue order. The A
-    // tile goes to L0A once and feeds both output tiles' Mmads; fp16 HiLo
-    // accumulates the lo plane against the same L0B tiles.
+    // One dx GEMM term (kv or sc) of one k-step, S3-PI split-stage form:
+    // stage 1 issues all of the term's L1->L0 copies back-to-back (A, B0, B1
+    // pipeline on MTE1 without intervening waits); stage 2 then takes a
+    // single MTE1_M wait covering all three before the Mmads — vs R7's
+    // per-tile issue->wait serialization. Queue pop order and Mmad order
+    // per accumulator are identical to R7 (bitwise preserved).
     __aicore__ inline void DxTerm(LocalTensor<float> &cA, LocalTensor<float> &cB, bool hasB,
                                   bool init)
     {
-        LocalTensor<half> aL0 = DeQueAToL0A();
-        LocalTensor<half> b0L0 = DeQueBToL0Natural();
-        LocalTensor<half> b1L0;
+        // ---- stage 1: L1 -> L0 issue
+        LocalTensor<half> aL1 = queA1_.DeQue<half>();
+        LocalTensor<half> aL0 = queL0A_.AllocTensor<half>();
+        LoadNzL1ToZzL0A(aL0, aL1, G_BM, G_BK, G_BM);
+        queL0A_.EnQue(aL0);
+        queA1_.FreeTensor(aL1);
+        LocalTensor<half> b0L1 = queB1_.DeQue<half>();
+        LocalTensor<half> b0L0 = queL0B_.AllocTensor<half>();
+        LoadNzL1ToZnL0BNatural(b0L0, b0L1, G_BK, G_BN);
+        queL0B_.EnQue(b0L0);
+        queB1_.FreeTensor(b0L1);
+        LocalTensor<half> b1L1, b1L0;
         if (hasB) {
-            b1L0 = DeQueBToL0Natural();
+            b1L1 = queB1_.DeQue<half>();
+            b1L0 = queL0B_.AllocTensor<half>();
+            LoadNzL1ToZnL0BNatural(b1L0, b1L1, G_BK, G_BN);
+            queL0B_.EnQue(b1L0);
+            queB1_.FreeTensor(b1L1);
         }
-        DoMmad(cA, aL0, b0L0, init);
+        // ---- stage 2: wait + Mmad (kv hi[, lo] order unchanged)
+        LocalTensor<half> aL0d = queL0A_.DeQue<half>();
+        LocalTensor<half> b0L0d = queL0B_.DeQue<half>();
+        LocalTensor<half> b1L0d;
+        DoMmad(cA, aL0d, b0L0d, init);
         if (hasB) {
-            DoMmad(cB, aL0, b1L0, init);
+            b1L0d = queL0B_.DeQue<half>();
+            DoMmad(cB, aL0d, b1L0d, init);
         }
-        queL0A_.FreeTensor(aL0);
+        queL0A_.FreeTensor(aL0d);
         if (hilo_) {
-            LocalTensor<half> aL0Lo = DeQueAToL0A();
-            DoMmad(cA, aL0Lo, b0L0, false);
+            LocalTensor<half> aL1Lo = queA1_.DeQue<half>();
+            LocalTensor<half> aL0Lo = queL0A_.AllocTensor<half>();
+            LoadNzL1ToZzL0A(aL0Lo, aL1Lo, G_BM, G_BK, G_BM);
+            queL0A_.EnQue(aL0Lo);
+            queA1_.FreeTensor(aL1Lo);
+            LocalTensor<half> aL0LoD = queL0A_.DeQue<half>();
+            DoMmad(cA, aL0LoD, b0L0d, false);
             if (hasB) {
-                DoMmad(cB, aL0Lo, b1L0, false);
+                DoMmad(cB, aL0LoD, b1L0d, false);
             }
-            queL0A_.FreeTensor(aL0Lo);
+            queL0A_.FreeTensor(aL0LoD);
         }
-        queL0B_.FreeTensor(b0L0);
+        queL0B_.FreeTensor(b0L0d);
         if (hasB) {
-            queL0B_.FreeTensor(b1L0);
+            queL0B_.FreeTensor(b1L0d);
         }
     }
 
-    // branch A unit: output tiles (m0,n0) and (m0,n0+G_BN) of
-    // d_x = dn_kv @ wkv + dn_sc @ wgate  (M=T, N=H, K=C).
-    // The two tiles share every A tile (dn_kv/dn_sc at (m0,k0)) in L1/L0A;
-    // B tiles load the natural (C, H) fp16 weights at (k0, n0).
-    __aicore__ inline void DxPair(uint32_t m0, uint32_t n0, bool hasB)
+    // Issue the GM->L1 loads of one dx term (kv or sc) of k-step k.
+    // Per-queue stream order is identical to the R7 per-step enqueue
+    // (A: kv hi[,lo], sc hi[,lo]; B: b0w, b1w, b0g, b1g), so the DeQue side
+    // (DxTerm kv then sc) is unchanged and bitwise semantics are preserved.
+    __aicore__ inline void DxEnqueueTerm(uint32_t m0, uint32_t n0, uint32_t k,
+                                         bool isSc, bool hasB, uint32_t kTiles)
     {
-        uint32_t kTiles = CeilDivU32(cSize_, G_BK);
-        uint64_t aBase = static_cast<uint64_t>(m0) * cSize_;
-        uint64_t b0Base = static_cast<uint64_t>(n0);
-        uint64_t b1Base = b0Base + G_BN;
-        bool scOn = (dbgMode_ != 1);
-        LocalTensor<float> cA = queL0C_.AllocTensor<float>();
-        LocalTensor<float> cB;
-        if (hasB) {
-            cB = queL0C_.AllocTensor<float>();
+        uint64_t aOff = static_cast<uint64_t>(m0) * cSize_ + k * G_BK;
+        const GlobalTensor<half> &dn = isSc ? dnScGM_ : dnKvGM_;
+        LocalTensor<half> a = queA1_.AllocTensor<half>();
+        LoadNdGmToNzL1(a, dn[aOff], G_BM, G_BK, cSize_);
+        queA1_.EnQue(a);
+        if (hilo_) {
+            LocalTensor<half> aLo = queA1_.AllocTensor<half>();
+            LoadNdGmToNzL1(aLo, dn[aOff + dnPlaneElems_], G_BM, G_BK, cSize_);
+            queA1_.EnQue(aLo);
         }
-        for (uint32_t k = 0; k < kTiles; k++) {
-            uint32_t k0 = k * G_BK;
-            bool init = (k == 0);
-            // ---- GM -> L1: shared A tiles first, then per-tile B tiles
-            LocalTensor<half> aKv = queA1_.AllocTensor<half>();
-            LoadNdGmToNzL1(aKv, dnKvGM_[aBase + k0], G_BM, G_BK, cSize_);
-            queA1_.EnQue(aKv);
-            if (hilo_) {
-                LocalTensor<half> aKvLo = queA1_.AllocTensor<half>();
-                LoadNdGmToNzL1(aKvLo, dnKvGM_[aBase + dnPlaneElems_ + k0], G_BM, G_BK, cSize_);
-                queA1_.EnQue(aKvLo);
-            }
-            if (scOn) {
-                LocalTensor<half> aSc = queA1_.AllocTensor<half>();
-                LoadNdGmToNzL1(aSc, dnScGM_[aBase + k0], G_BM, G_BK, cSize_);
-                queA1_.EnQue(aSc);
-                if (hilo_) {
-                    LocalTensor<half> aScLo = queA1_.AllocTensor<half>();
-                    LoadNdGmToNzL1(aScLo, dnScGM_[aBase + dnPlaneElems_ + k0], G_BM, G_BK, cSize_);
-                    queA1_.EnQue(aScLo);
-                }
-            }
-            uint64_t bRow = static_cast<uint64_t>(k0) * hSize_;
-            LocalTensor<half> b0w = queB1_.AllocTensor<half>();
-            LoadNdGmToNzL1(b0w, wkvF16GM_[bRow + b0Base], G_BK, G_BN, hSize_);
-            queB1_.EnQue(b0w);
-            if (hasB) {
-                LocalTensor<half> b1w = queB1_.AllocTensor<half>();
-                LoadNdGmToNzL1(b1w, wkvF16GM_[bRow + b1Base], G_BK, G_BN, hSize_);
-                queB1_.EnQue(b1w);
-            }
-            if (scOn) {
-                LocalTensor<half> b0g = queB1_.AllocTensor<half>();
-                LoadNdGmToNzL1(b0g, wgateF16GM_[bRow + b0Base], G_BK, G_BN, hSize_);
-                queB1_.EnQue(b0g);
-                if (hasB) {
-                    LocalTensor<half> b1g = queB1_.AllocTensor<half>();
-                    LoadNdGmToNzL1(b1g, wgateF16GM_[bRow + b1Base], G_BK, G_BN, hSize_);
-                    queB1_.EnQue(b1g);
-                }
-            }
-            // ---- L1 -> L0 -> Mmad, terms in R1 order: kv (hi,lo), sc (hi,lo).
-            // A queue pops kv hi[, kv lo, sc hi, sc lo]; B queue pops
-            // b0w, b1w, b0g, b1g — matching the enqueue order above.
-            DxTerm(cA, cB, hasB, init);            // kv
-            if (scOn) {
-                DxTerm(cA, cB, hasB, false);       // sc
-            }
-        }
-        uint32_t mValid = MinU32(G_BM, tLen_ - m0);
-        queL0C_.EnQue(cA);
-        cA = queL0C_.DeQue<float>();
-        FixOut(dXGM_, static_cast<uint64_t>(m0) * hSize_ + n0, cA, mValid, hSize_);
-        queL0C_.FreeTensor(cA);
+        // wkv/wgate are blocked-NZ from the cast kernel (R7): tile
+        // (k, n0/128) is one contiguous 32KB burst at strip-major index
+        // nb*kTilesC + k (kTilesC = C/128 = kTiles here).
+        const GlobalTensor<half> &w = isSc ? wgateF16GM_ : wkvF16GM_;
+        uint64_t b0Tile = (static_cast<uint64_t>(n0) / G_BN) * kTiles + k;
+        LocalTensor<half> b0w = queB1_.AllocTensor<half>();
+        DataCopy(b0w, w[b0Tile * (G_BK * G_BN)], G_BK * G_BN);
+        queB1_.EnQue(b0w);
         if (hasB) {
-            queL0C_.EnQue(cB);
-            cB = queL0C_.DeQue<float>();
-            FixOut(dXGM_, static_cast<uint64_t>(m0) * hSize_ + n0 + G_BN, cB, mValid, hSize_);
-            queL0C_.FreeTensor(cB);
+            LocalTensor<half> b1w = queB1_.AllocTensor<half>();
+            DataCopy(b1w, w[(b0Tile + kTiles) * (G_BK * G_BN)], G_BK * G_BN);
+            queB1_.EnQue(b1w);
         }
     }
 
@@ -484,6 +467,11 @@ private:
     }
 
     // branch A: d_x = dn_kv @ wkv + dn_sc @ wgate  (M=T, N=H, K=C)
+    // S3-PX: the unit loop is flattened into one term stream so the
+    // distance-2 load prefetch also runs across pair boundaries — the next
+    // pair's first tiles are fetched while the current pair's last terms and
+    // the FixOut drain play out. Per-unit accumulator rotation, Mmad order,
+    // and FixOut order are identical to the per-pair loop (bitwise).
     __aicore__ inline void ProcessDx(uint32_t cid)
     {
         uint32_t nM = CeilDivU32(tLen_, G_BM);
@@ -492,10 +480,76 @@ private:
         uint32_t total = nM * nPairRow;
         uint32_t start, count;
         BalancedRange(cid, gDx_, total, start, count);
-        for (uint32_t u = start; u < start + count; u++) {
-            uint32_t mi = u / nPairRow;
-            uint32_t pj = u % nPairRow;
-            DxPair(mi * G_BM, pj * 2U * G_BN, (pj * 2U + 1U) < nH);
+        if (count == 0) {
+            return;
+        }
+        uint32_t kTiles = CeilDivU32(cSize_, G_BK);
+        bool scOn = (dbgMode_ != 1);
+        uint32_t tpu = kTiles * (scOn ? 2U : 1U);  // terms per unit
+        uint32_t end = start + count;
+        // enqueue cursor (eU,eT) leads the consume cursor (cU,cT) by <=2 terms
+        uint32_t eU = start, eT = 0;
+        for (uint32_t i = 0; i < 2U && eU < end; i++) {   // prologue
+            uint32_t mi = eU / nPairRow, pj = eU % nPairRow;
+            DxEnqueueTerm(mi * G_BM, pj * 2U * G_BN, scOn ? (eT >> 1) : eT,
+                          scOn && ((eT & 1U) != 0U), (pj * 2U + 1U) < nH, kTiles);
+            eT++;
+            if (eT == tpu) {
+                eT = 0;
+                eU++;
+            }
+        }
+        uint32_t cU = start, cT = 0;
+        uint32_t mi = cU / nPairRow, pj = cU % nPairRow;
+        uint32_t cM0 = mi * G_BM, cN0 = pj * 2U * G_BN;
+        bool cHasB = (pj * 2U + 1U) < nH;
+        LocalTensor<float> cA = queL0C_.AllocTensor<float>();
+        LocalTensor<float> cB;
+        if (cHasB) {
+            cB = queL0C_.AllocTensor<float>();
+        }
+        while (cU < end) {
+            DxTerm(cA, cB, cHasB, cT == 0);
+            // refill the freed slots with the next stream term (may belong to
+            // the next unit — issued before this unit's FixOut on purpose)
+            if (eU < end) {
+                uint32_t emi = eU / nPairRow, epj = eU % nPairRow;
+                DxEnqueueTerm(emi * G_BM, epj * 2U * G_BN, scOn ? (eT >> 1) : eT,
+                              scOn && ((eT & 1U) != 0U), (epj * 2U + 1U) < nH, kTiles);
+                eT++;
+                if (eT == tpu) {
+                    eT = 0;
+                    eU++;
+                }
+            }
+            cT++;
+            if (cT == tpu) {   // unit done: drain + FixOut, rotate accumulators
+                cT = 0;
+                uint32_t mValid = MinU32(G_BM, tLen_ - cM0);
+                queL0C_.EnQue(cA);
+                cA = queL0C_.DeQue<float>();
+                FixOut(dXGM_, static_cast<uint64_t>(cM0) * hSize_ + cN0, cA, mValid, hSize_);
+                queL0C_.FreeTensor(cA);
+                if (cHasB) {
+                    queL0C_.EnQue(cB);
+                    cB = queL0C_.DeQue<float>();
+                    FixOut(dXGM_, static_cast<uint64_t>(cM0) * hSize_ + cN0 + G_BN, cB,
+                           mValid, hSize_);
+                    queL0C_.FreeTensor(cB);
+                }
+                cU++;
+                if (cU < end) {
+                    mi = cU / nPairRow;
+                    pj = cU % nPairRow;
+                    cM0 = mi * G_BM;
+                    cN0 = pj * 2U * G_BN;
+                    cHasB = (pj * 2U + 1U) < nH;
+                    cA = queL0C_.AllocTensor<float>();
+                    if (cHasB) {
+                        cB = queL0C_.AllocTensor<float>();
+                    }
+                }
+            }
         }
     }
 
