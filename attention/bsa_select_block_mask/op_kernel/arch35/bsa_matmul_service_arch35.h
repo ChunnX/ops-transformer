@@ -66,7 +66,7 @@ public:
 
     __aicore__ inline BSAMatmulService(){};
 
-    __aicore__ inline void InitParams(const BSAConstInfo &constInfo);
+    __aicore__ inline void InitParams(const BSAConstInfo& constInfo);
 
     /**
      * @brief 在 L1 和 L0 上分配所需的缓冲区
@@ -80,7 +80,7 @@ public:
      *
      * @param pipe Pipeline 指针，用于 InitBuffer 调用
      */
-    __aicore__ inline void InitBuffers(TPipe *pipe);
+    __aicore__ inline void InitBuffers(TPipe* pipe);
 
     /**
      * @brief 绑定 GM 全局张量引用
@@ -88,8 +88,8 @@ public:
      * @param kCmpGm      Key 压缩矩阵 GM 张量 [yBlocks, dSize] (float)
      * @param attnScoreGm 输出注意力分数 GM 张量 [xBlocks, yBlocks] (float)
      */
-    __aicore__ inline void InitGM(GlobalTensor<IN_T> &qCmpGm, GlobalTensor<IN_T> &kCmpGm,
-                                  GlobalTensor<MM_OUT_T> &attnScoreGm);
+    __aicore__ inline void InitGM(GlobalTensor<IN_T>& qCmpGm, GlobalTensor<IN_T>& kCmpGm,
+                                  GlobalTensor<MM_OUT_T>& attnScoreGm);
 
     /// @brief 分配硬件同步事件（MTE1↔MTE2, M↔MTE1, FIX↔M）
     __aicore__ inline void AllocEventID();
@@ -129,7 +129,7 @@ private:
      * @param srcD        源列数
      * @param srcDstride  源行 stride（跨 head/batch 的实际步长）
      */
-    __aicore__ inline void CopyGmToL1(LocalTensor<IN_T> &l1Tensor, GlobalTensor<IN_T> &gmSrcTensor, uint32_t srcN,
+    __aicore__ inline void CopyGmToL1(LocalTensor<IN_T>& l1Tensor, GlobalTensor<IN_T>& gmSrcTensor, uint32_t srcN,
                                       uint32_t srcD, uint32_t srcDstride);
 
     /**
@@ -165,7 +165,7 @@ private:
      * @param mSize     M 维度（对齐后）
      * @param kSize     K 维度（对齐后）
      */
-    __aicore__ inline void LoadDataMmA(LocalTensor<IN_T> &aL0Tensor, LocalTensor<IN_T> &aL1Tensor, uint32_t mSize,
+    __aicore__ inline void LoadDataMmA(LocalTensor<IN_T>& aL0Tensor, LocalTensor<IN_T>& aL1Tensor, uint32_t mSize,
                                        uint32_t kSize);
 
     /**
@@ -179,7 +179,7 @@ private:
      * @param kSize     K 维度（对齐后）
      * @param nSize     N 维度（对齐后）
      */
-    __aicore__ inline void LoadDataMmB(LocalTensor<IN_T> &bL0Tensor, LocalTensor<IN_T> &bL1Tensor, uint32_t kSize,
+    __aicore__ inline void LoadDataMmB(LocalTensor<IN_T>& bL0Tensor, LocalTensor<IN_T>& bL1Tensor, uint32_t kSize,
                                        uint32_t nSize);
 
     /**
@@ -214,7 +214,7 @@ private:
      * @param dstStride   GM 中行 stride（= yBlocks，即全量 K 维度）
      * @param l0PingPongFlag L0C 乒乓旗标
      */
-    __aicore__ inline void FixCopyOut(GlobalTensor<MM_OUT_T> &resGm, uint32_t mSize, uint32_t nSize, uint32_t dstStride,
+    __aicore__ inline void FixCopyOut(GlobalTensor<MM_OUT_T>& resGm, uint32_t mSize, uint32_t nSize, uint32_t dstStride,
                                       uint8_t l0PingPongFlag);
 
     /// L0A Ping-Pong 缓冲区大小: 32KB
@@ -257,13 +257,13 @@ private:
 };
 
 template <typename BSAT>
-__aicore__ inline void BSAMatmulService<BSAT>::InitParams(const BSAConstInfo &constInfo)
+__aicore__ inline void BSAMatmulService<BSAT>::InitParams(const BSAConstInfo& constInfo)
 {
     this->constInfo = constInfo;
 }
 
 template <typename BSAT>
-__aicore__ inline void BSAMatmulService<BSAT>::InitBuffers(TPipe *pipe)
+__aicore__ inline void BSAMatmulService<BSAT>::InitBuffers(TPipe* pipe)
 {
     // ---- L1 缓冲区: Q 单缓冲 + K 双缓冲 ----
     // Q 单缓冲: 尺寸 = CUBE_BASE_BLOCK(128) × dSize(128) × sizeof(float)= 64KB
@@ -295,8 +295,8 @@ __aicore__ inline void BSAMatmulService<BSAT>::InitBuffers(TPipe *pipe)
 }
 
 template <typename BSAT>
-__aicore__ inline void BSAMatmulService<BSAT>::InitGM(GlobalTensor<IN_T> &qCmpGm, GlobalTensor<IN_T> &kCmpGm,
-                                                      GlobalTensor<MM_OUT_T> &attnScoreGm)
+__aicore__ inline void BSAMatmulService<BSAT>::InitGM(GlobalTensor<IN_T>& qCmpGm, GlobalTensor<IN_T>& kCmpGm,
+                                                      GlobalTensor<MM_OUT_T>& attnScoreGm)
 {
     this->qCmpGmLocal = qCmpGm;
     this->kCmpGmLocal = kCmpGm;
@@ -341,7 +341,7 @@ __aicore__ inline void BSAMatmulService<BSAT>::FreeEventID()
 }
 
 template <typename BSAT>
-__aicore__ inline void BSAMatmulService<BSAT>::CopyGmToL1(LocalTensor<IN_T> &l1Tensor, GlobalTensor<IN_T> &gmSrcTensor,
+__aicore__ inline void BSAMatmulService<BSAT>::CopyGmToL1(LocalTensor<IN_T>& l1Tensor, GlobalTensor<IN_T>& gmSrcTensor,
                                                           uint32_t srcN, uint32_t srcD, uint32_t srcDstride)
 {
     Nd2NzParams nd2nzPara;
@@ -380,7 +380,7 @@ __aicore__ inline void BSAMatmulService<BSAT>::CopyInKToL1(uint32_t kBlockStart,
 // ==================== L1→L0 加载 ====================
 
 template <typename BSAT>
-__aicore__ inline void BSAMatmulService<BSAT>::LoadDataMmA(LocalTensor<IN_T> &aL0Tensor, LocalTensor<IN_T> &aL1Tensor,
+__aicore__ inline void BSAMatmulService<BSAT>::LoadDataMmA(LocalTensor<IN_T>& aL0Tensor, LocalTensor<IN_T>& aL1Tensor,
                                                            uint32_t mSize, uint32_t kSize)
 {
     // M, K 对齐到 C0_SIZE=16
@@ -398,7 +398,7 @@ __aicore__ inline void BSAMatmulService<BSAT>::LoadDataMmA(LocalTensor<IN_T> &aL
 }
 
 template <typename BSAT>
-__aicore__ inline void BSAMatmulService<BSAT>::LoadDataMmB(LocalTensor<IN_T> &bL0Tensor, LocalTensor<IN_T> &bL1Tensor,
+__aicore__ inline void BSAMatmulService<BSAT>::LoadDataMmB(LocalTensor<IN_T>& bL0Tensor, LocalTensor<IN_T>& bL1Tensor,
                                                            uint32_t kSize, uint32_t nSize)
 {
     uint32_t alignK = BSAAlignTo(kSize, static_cast<uint32_t>(C0_SIZE));
@@ -455,7 +455,7 @@ __aicore__ inline void BSAMatmulService<BSAT>::MmadInner(uint32_t mSize, uint32_
 // ==================== FixCopyOut 结果写回 ====================
 
 template <typename BSAT>
-__aicore__ inline void BSAMatmulService<BSAT>::FixCopyOut(GlobalTensor<MM_OUT_T> &resGm, uint32_t mSize, uint32_t nSize,
+__aicore__ inline void BSAMatmulService<BSAT>::FixCopyOut(GlobalTensor<MM_OUT_T>& resGm, uint32_t mSize, uint32_t nSize,
                                                           uint32_t dstStride, uint8_t l0PingPongFlag)
 {
     uint8_t flagVal = l0PingPongFlag & 1;
@@ -466,18 +466,21 @@ __aicore__ inline void BSAMatmulService<BSAT>::FixCopyOut(GlobalTensor<MM_OUT_T>
     WaitFlag<AscendC::HardEvent::M_FIX>(SYNC_MMFIX_FLAG[flagVal]);
 
     // Step 3: Fixpipe — L0C→GM 搬移（无 ReLU，纯数据搬移）
+    // NZ 直拷语义（对照 gmm copy_out_with_params_v220.h DAV2201 NZ 参考实现）：
+    //   dstStride 单位 = 32B（非元素），值 = orgM(=tile 全高128) * 16 * sizeof(T) / 32
+    //   nSize 需对齐到 16（NZ fractal 宽度），尾块 padding 落在本 tile 槽内无害
     FixpipeParamsV220 fixpipeParams;
-    fixpipeParams.nSize = nSize;
+    fixpipeParams.nSize = ((nSize + C0_SIZE - 1) / C0_SIZE) * C0_SIZE; // NZ: fractal 宽度对齐 16
     fixpipeParams.mSize = mSize;
     fixpipeParams.srcStride = ((mSize + C0_SIZE - 1) / C0_SIZE) * C0_SIZE; // L0C 行 stride（对齐到 16）
-    fixpipeParams.dstStride = dstStride;                                   // GM 行 stride (= yBlocks)
+    fixpipeParams.dstStride = dstStride; // 32B 单位（调用方按 NZ 语义计算）
     fixpipeParams.ndNum = 1;
     fixpipeParams.srcNdStride = 0;
     fixpipeParams.dstNdStride = 0;
     fixpipeParams.reluEn = false; // 不做 ReLU
 
     LocalTensor<MM_OUT_T> l0cTensor = cL0TensorPingPong[flagVal];
-    Fixpipe<MM_OUT_T, MM_OUT_T>(resGm, l0cTensor, fixpipeParams);
+    Fixpipe<MM_OUT_T, MM_OUT_T, CFG_NZ>(resGm, l0cTensor, fixpipeParams); // TODO(perf-test): NZ 直拷实验
     // Step 4: 通知 Cube L0C 已释放
     SetFlag<AscendC::HardEvent::FIX_M>(SYNC_MMFIX_FLAG[flagVal]);
 }
@@ -506,10 +509,13 @@ __aicore__ inline void BSAMatmulService<BSAT>::ComputeMatmulChunk(uint32_t qChun
     uint64_t perHead = static_cast<uint64_t>(xBlocks) * static_cast<uint64_t>(yBlocks);
     uint64_t perBatch = perHead * numHeads;
 
-    uint32_t singleM = qChunkSize;          // M: Q 行数 (≤128)
-    uint32_t singleK = constInfo.dSize;     // K: Head 维度 (128)
-    uint32_t dstStride = constInfo.yBlocks; // GM 行 stride（attnScore 全量 K 维度）
+    uint32_t singleM = qChunkSize;      // M: Q 行数 (≤128)
+    uint32_t singleK = constInfo.dSize; // K: Head 维度 (128)
+    // NZ 直拷：每个 kTile 视为独立 NZ 矩阵 [128 行 × 512 列]
+    // dstStride 单位 32B：= tile 全高(Q_CHUNK_SIZE) × 16 × sizeof(fp32) / 32 = 256
+    uint32_t dstStride = Q_CHUNK_SIZE * C0_SIZE * sizeof(MM_OUT_T) / 32;
     uint32_t nLoopTimes = (kChunkSize + CUBE_BASE_BLOCK - 1) / CUBE_BASE_BLOCK; // N 方向分块数
+    uint64_t tileBase = BSAScratchTileOffset(constInfo.aicIdx, kChunkStart, yBlocks);
 
     // ---- Step 1: Q 一次性加载到 L1 ----
     WaitFlag<AscendC::HardEvent::MTE1_MTE2>(SYNC_MTE21_FLAG_Q);
@@ -539,8 +545,9 @@ __aicore__ inline void BSAMatmulService<BSAT>::ComputeMatmulChunk(uint32_t qChun
 
         // ---- 2d: Fixpipe 写回 attnScoreGm ----
         // GM 偏移: attnScore[qChunkStart, kBlockStart]
-        uint32_t scoreGmOffset = kBlockStart + constInfo.aicIdx * dstStride * Q_CHUNK_SIZE;
-        auto dstScoreGm = scoreGmLocal[scoreGmOffset];
+        // NZ 寻址（元素）：nBlock 128 列 = 8 个 fractal 列块 × (orgM=128 × 16) = ×16384
+        uint64_t colBlockOff = static_cast<uint64_t>(nBlockIdx) * CUBE_BASE_BLOCK * Q_CHUNK_SIZE;
+        auto dstScoreGm = scoreGmLocal[tileBase + colBlockOff];
 
         FixCopyOut(dstScoreGm, singleM, curN, dstStride, l0PingPongFlag);
 
