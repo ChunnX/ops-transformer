@@ -484,13 +484,22 @@ class FlashAttnGolden:
         TILES_KV = (Skv + BS - 1) // BS
 
         out = torch.zeros(Sq, dv, dtype=torch.float32, device=q.device)
-        o_sum = torch.zeros(Sq, 1, dtype=torch.float32, device=q.device)
-        o_max = torch.full(
-            (Sq, 1),
-            torch.finfo(torch.float32).min,
-            dtype=torch.float32,
-            device=q.device,
-        )
+        # A sink is an extra softmax item with no V vector.  Seed the online
+        # softmax state once, before the first KV tile, exactly as flash_mla:
+        # max=sink and sum=1.  This keeps sink out of the PV numerator while
+        # retaining it in the denominator/LSE.
+        if sink is None:
+            o_sum = torch.zeros(Sq, 1, dtype=torch.float32, device=q.device)
+            o_max = torch.full(
+                (Sq, 1),
+                torch.finfo(torch.float32).min,
+                dtype=torch.float32,
+                device=q.device,
+            )
+        else:
+            sink_value = torch.as_tensor(sink, dtype=torch.float32, device=q.device)
+            o_sum = torch.ones(Sq, 1, dtype=torch.float32, device=q.device)
+            o_max = torch.ones(Sq, 1, dtype=torch.float32, device=q.device) * sink_value
 
         Q_BLOCKS = list(torch.split(q, BS, dim=0))
         K_BLOCKS = list(torch.split(k, BS, dim=0))
@@ -535,10 +544,16 @@ class FlashAttnGolden:
                 m_block = S_ij.amax(dim=-1, keepdim=True)
                 m_new = torch.maximum(mi, m_block)
 
-                P_ij = torch.exp(S_ij - m_new)
+                # For an entirely masked tile both values can be -inf.  Use
+                # a finite subtraction base to avoid NaNs while preserving a
+                # zero contribution to both sum and output.
+                safe_m_new = torch.where(
+                    torch.isneginf(m_new), torch.zeros_like(m_new), m_new
+                )
+                P_ij = torch.exp(S_ij - safe_m_new)
                 s_block = P_ij.sum(dim=-1, keepdim=True)
 
-                update_old = torch.exp(mi - m_new)
+                update_old = torch.exp(mi - safe_m_new)
                 P_V = torch.matmul(P_ij, Vj[: Kj.shape[0], :])
 
                 o_BLOCKS[i] = update_old * oi + P_V
@@ -571,13 +586,16 @@ class FlashAttnGolden:
         )
 
         if sink is not None:
-            row_max = torch.maximum(row_max, torch.full_like(row_max, sink))
+            sink_value = torch.as_tensor(
+                sink, dtype=row_max.dtype, device=row_max.device
+            )
+            row_max = torch.maximum(row_max, sink_value)
 
         exp_scores = torch.exp(scores - row_max)
         row_sum = exp_scores.sum(dim=-1, keepdim=True)
 
         if sink is not None:
-            row_sum = row_sum + math.exp(sink - row_max)
+            row_sum = row_sum + torch.exp(sink_value - row_max)
 
         probs = exp_scores / (row_sum + self.EPSILON)
         out = torch.matmul(probs, v)
@@ -714,11 +732,6 @@ def cpu_flash_attn(
     **_unused,
 ):
     """Compute CPU golden reference using FlashAttnGolden."""
-    if sinks is not None:
-        message = "FlashAttn golden does not support sinks yet"
-        print(message)
-        raise NotImplementedError(message)
-
     q_cpu = _to_cpu(q)
     k_cpu = _to_cpu(k)
     v_cpu = _to_cpu(v)
