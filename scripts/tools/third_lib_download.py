@@ -12,10 +12,12 @@
 import urllib.request
 import os
 import subprocess
+import sys
 
 
 def down_files_native(url_list):
     current_dir = os.path.dirname(os.path.abspath(__file__))
+    succeeded = True
 
     for url in url_list:
         # 判断是否为 Git 仓库 URL
@@ -34,8 +36,10 @@ def down_files_native(url_list):
                 subprocess.run(["git", "clone", url, repo_path], check=True)
             except subprocess.CalledProcessError as e:
                 print(f"克隆失败: {e}")
+                succeeded = False
             except FileNotFoundError:
                 print("git 命令未找到，请安装 git。")
+                succeeded = False
         else:
             # 普通文件下载
             file_name = url.split("/")[-1]
@@ -45,6 +49,8 @@ def down_files_native(url_list):
 
             print(f"正在下载 {url} 到 {file_path}")
             urllib.request.urlretrieve(url, file_path)
+
+    return succeeded
 
 
 if __name__ == "__main__":
@@ -67,4 +73,5 @@ if __name__ == "__main__":
         "https://atomgit.com/cann/ops-tensor.git",
     ]
 
-    down_files_native(my_urls)
+    if not down_files_native(my_urls):
+        sys.exit(1)
