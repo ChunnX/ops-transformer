@@ -157,6 +157,55 @@ __aicore__ inline void Muls(const LocalTensor<float> &dst, const LocalTensor<flo
     }
 }
 
+// 从UB广播标量权重，单独验证R6拆分为多个VF后的性能。
+__aicore__ inline void MulsWithUbScalar(const LocalTensor<float> &dst, const LocalTensor<float> &src,
+                                        const LocalTensor<float> &scalars, uint32_t scalarIndex, uint32_t count)
+{
+    __local_mem__ float *dstAddr = (__local_mem__ float *)dst.GetPhyAddr();
+    __local_mem__ float *srcAddr = (__local_mem__ float *)src.GetPhyAddr();
+    __local_mem__ float *scalarAddr = (__local_mem__ float *)scalars.GetPhyAddr();
+    uint32_t remain = count;
+    const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
+    __VEC_SCOPE__
+    {
+        RegTensor<float> srcReg, dstReg, scalarReg;
+        MaskReg mask;
+        DataCopy<float, LoadDist::DIST_BRC_B32>(scalarReg, scalarAddr + scalarIndex);
+        for (uint16_t i = 0; i < loops; ++i) {
+            mask = UpdateMask<float>(remain);
+            DataCopy<float, LoadDist::DIST_NORM>(srcReg, srcAddr + i * VL_FP32);
+            AscendC::Reg::Mul(dstReg, srcReg, scalarReg, mask);
+            DataCopy(dstAddr + i * VL_FP32, dstReg, mask);
+        }
+    }
+}
+
+// 单个head在一个VF内完成低精度读取、FP32转换和门控乘法，避免生成中间FP32张量。
+template <typename T>
+__aicore__ inline void MulsB16WithUbScalar(const LocalTensor<float> &dst, const LocalTensor<T> &src,
+                                           const LocalTensor<float> &scalars, uint32_t scalarIndex, uint32_t count)
+{
+    __local_mem__ float *dstAddr = (__local_mem__ float *)dst.GetPhyAddr();
+    __local_mem__ T *srcAddr = (__local_mem__ T *)src.GetPhyAddr();
+    __local_mem__ float *scalarAddr = (__local_mem__ float *)scalars.GetPhyAddr();
+    uint32_t remain = count;
+    const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
+    __VEC_SCOPE__
+    {
+        RegTensor<T> srcReg;
+        RegTensor<float> srcFp32Reg, dstReg, scalarReg;
+        MaskReg mask;
+        DataCopy<float, LoadDist::DIST_BRC_B32>(scalarReg, scalarAddr + scalarIndex);
+        for (uint16_t i = 0; i < loops; ++i) {
+            mask = UpdateMask<float>(remain);
+            DataCopy<T, LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + i * VL_FP32);
+            Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
+            AscendC::Reg::Mul(dstReg, srcFp32Reg, scalarReg, mask);
+            DataCopy(dstAddr + i * VL_FP32, dstReg, mask);
+        }
+    }
+}
+
 // 在寄存器内依次完成标量缩放和gamma缩放，只把最终结果写回UB。
 __aicore__ inline void ScaleAndMulGamma(const LocalTensor<float> &dst, const LocalTensor<float> &src,
                                         const LocalTensor<float> &gamma, float scale, uint32_t count)
@@ -206,18 +255,21 @@ __aicore__ inline void SigmoidAddEps(const LocalTensor<float> &dst, const LocalT
     }
 }
 
-// 一个VF内完成单个head的主分支和四路残差累加，保持残差索引与累加顺序不变。
+// 一个VF内完成单个head的主分支、残差转换和四路累加，保持残差索引与累加顺序不变。
+template <typename T>
 __aicore__ inline void ComputePostHead(const LocalTensor<float> &dst, const LocalTensor<float> &hOut,
-                                       const LocalTensor<float> &residual, uint32_t rowStride, float postWeight,
-                                       const float (&combWeights)[N_MAX], uint32_t count)
+                                       const LocalTensor<T> &residual, const LocalTensor<float> &combWeights,
+                                       uint32_t rowStride, uint32_t headIndex, float postWeight, uint32_t count)
 {
     __local_mem__ float *dstAddr = (__local_mem__ float *)dst.GetPhyAddr();
     __local_mem__ float *hOutAddr = (__local_mem__ float *)hOut.GetPhyAddr();
-    __local_mem__ float *residualAddr = (__local_mem__ float *)residual.GetPhyAddr();
+    __local_mem__ T *residualAddr = (__local_mem__ T *)residual.GetPhyAddr();
+    __local_mem__ float *combAddr = (__local_mem__ float *)combWeights.GetPhyAddr();
     uint32_t remain = count;
     const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
     __VEC_SCOPE__
     {
+        RegTensor<T> residualB16Reg;
         RegTensor<float> hOutReg, residualReg, weightReg, dstReg;
         MaskReg mask;
         for (uint16_t i = 0; i < loops; ++i) {
@@ -225,8 +277,10 @@ __aicore__ inline void ComputePostHead(const LocalTensor<float> &dst, const Loca
             DataCopy<float, LoadDist::DIST_NORM>(hOutReg, hOutAddr + i * VL_FP32);
             AscendC::Reg::Muls(dstReg, hOutReg, postWeight, mask);
             for (uint16_t j = 0; j < static_cast<uint16_t>(N_MAX); ++j) {
-                DataCopy<float, LoadDist::DIST_NORM>(residualReg, residualAddr + j * rowStride + i * VL_FP32);
-                AscendC::Reg::Duplicate(weightReg, combWeights[j], mask);
+                const uint32_t row = static_cast<uint32_t>(j);
+                DataCopy<T, LoadDist::DIST_UNPACK_B16>(residualB16Reg, residualAddr + row * rowStride + i * VL_FP32);
+                Cast<float, T, CAST_B16_TO_FP32>(residualReg, residualB16Reg, mask);
+                DataCopy<float, LoadDist::DIST_BRC_B32>(weightReg, combAddr + row * N_MAX + headIndex);
                 AscendC::Reg::MulAddDst(dstReg, residualReg, weightReg, mask);
             }
             DataCopy(dstAddr + i * VL_FP32, dstReg, mask);
@@ -237,10 +291,11 @@ __aicore__ inline void ComputePostHead(const LocalTensor<float> &dst, const Loca
 // R6在一个VF内完成四路低精度读取、FP32转换和门控累加，不生成四行FP32中间张量。
 template <typename T>
 __aicore__ inline void GateWeightedSum(const LocalTensor<float> &dst, const LocalTensor<T> &src, uint32_t headStride,
-                                       const float (&gate)[N_MAX], uint32_t count)
+                                       const LocalTensor<float> &gate, uint32_t count)
 {
     __local_mem__ T *srcAddr = (__local_mem__ T *)src.GetPhyAddr();
     __local_mem__ float *dstAddr = (__local_mem__ float *)dst.GetPhyAddr();
+    __local_mem__ float *gateAddr = (__local_mem__ float *)gate.GetPhyAddr();
     uint32_t remain = count;
     const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
     __VEC_SCOPE__
@@ -253,9 +308,10 @@ __aicore__ inline void GateWeightedSum(const LocalTensor<float> &dst, const Loca
             const uint32_t offset = static_cast<uint32_t>(i) * VL_FP32;
             // TODO：组合优化稳定后，单独评估固定四路循环展开，避免混入本轮性能结论。
             for (uint16_t n = 0; n < static_cast<uint16_t>(N_MAX); ++n) {
-                DataCopy<T, LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + n * headStride + offset);
+                const uint32_t head = static_cast<uint32_t>(n);
+                DataCopy<T, LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + head * headStride + offset);
                 Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
-                AscendC::Reg::Duplicate(weightReg, gate[n], mask);
+                DataCopy<float, LoadDist::DIST_BRC_B32>(weightReg, gateAddr + head);
                 if (n == 0U) {
                     AscendC::Reg::Mul(accReg, srcFp32Reg, weightReg, mask);
                 } else {
@@ -284,6 +340,57 @@ __aicore__ inline void Axpy(const LocalTensor<float> &dst, const LocalTensor<flo
             DataCopy<float, LoadDist::DIST_NORM>(srcReg, srcAddr + i * VL_FP32);
             DataCopy<float, LoadDist::DIST_NORM>(dstReg, dstAddr + i * VL_FP32);
             MulAddDst(dstReg, srcReg, scalarReg, mask);
+            DataCopy(dstAddr + i * VL_FP32, dstReg, mask);
+        }
+    }
+}
+
+// 从UB广播标量权重，并在寄存器内累加到目标张量。
+__aicore__ inline void AxpyWithUbScalar(const LocalTensor<float> &dst, const LocalTensor<float> &src,
+                                        const LocalTensor<float> &scalars, uint32_t scalarIndex, uint32_t count)
+{
+    __local_mem__ float *dstAddr = (__local_mem__ float *)dst.GetPhyAddr();
+    __local_mem__ float *srcAddr = (__local_mem__ float *)src.GetPhyAddr();
+    __local_mem__ float *scalarAddr = (__local_mem__ float *)scalars.GetPhyAddr();
+    uint32_t remain = count;
+    const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
+    __VEC_SCOPE__
+    {
+        RegTensor<float> srcReg, dstReg, scalarReg;
+        MaskReg mask;
+        DataCopy<float, LoadDist::DIST_BRC_B32>(scalarReg, scalarAddr + scalarIndex);
+        for (uint16_t i = 0; i < loops; ++i) {
+            mask = UpdateMask<float>(remain);
+            DataCopy<float, LoadDist::DIST_NORM>(srcReg, srcAddr + i * VL_FP32);
+            DataCopy<float, LoadDist::DIST_NORM>(dstReg, dstAddr + i * VL_FP32);
+            AscendC::Reg::MulAddDst(dstReg, srcReg, scalarReg, mask);
+            DataCopy(dstAddr + i * VL_FP32, dstReg, mask);
+        }
+    }
+}
+
+// 单个head在一个VF内完成低精度读取、FP32转换和门控累加。
+template <typename T>
+__aicore__ inline void AxpyB16WithUbScalar(const LocalTensor<float> &dst, const LocalTensor<T> &src,
+                                           const LocalTensor<float> &scalars, uint32_t scalarIndex, uint32_t count)
+{
+    __local_mem__ float *dstAddr = (__local_mem__ float *)dst.GetPhyAddr();
+    __local_mem__ T *srcAddr = (__local_mem__ T *)src.GetPhyAddr();
+    __local_mem__ float *scalarAddr = (__local_mem__ float *)scalars.GetPhyAddr();
+    uint32_t remain = count;
+    const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
+    __VEC_SCOPE__
+    {
+        RegTensor<T> srcReg;
+        RegTensor<float> srcFp32Reg, dstReg, scalarReg;
+        MaskReg mask;
+        DataCopy<float, LoadDist::DIST_BRC_B32>(scalarReg, scalarAddr + scalarIndex);
+        for (uint16_t i = 0; i < loops; ++i) {
+            mask = UpdateMask<float>(remain);
+            DataCopy<T, LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + i * VL_FP32);
+            Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
+            DataCopy<float, LoadDist::DIST_NORM>(dstReg, dstAddr + i * VL_FP32);
+            AscendC::Reg::MulAddDst(dstReg, srcFp32Reg, scalarReg, mask);
             DataCopy(dstAddr + i * VL_FP32, dstReg, mask);
         }
     }
