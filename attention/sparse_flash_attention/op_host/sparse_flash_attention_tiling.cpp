@@ -317,8 +317,8 @@ void SFAMlaTiling::GenTilingKey()
     }
 
     tilingKey_ = GET_TPL_TILING_KEY(
-        0U, pageAttention, layoutQuery, layoutKV, perfMode_ == SFAPerfMode::V_TEMPLATE_MODE,
-        static_cast<uint32_t>(sfaInfo_->gSize > 64),
+        static_cast<uint32_t>(splitKVFlag_), pageAttention, layoutQuery, layoutKV,
+        perfMode_ == SFAPerfMode::V_TEMPLATE_MODE, static_cast<uint32_t>(sfaInfo_->gSize > 64),
         static_cast<uint32_t>(sfaInfo_->ropeHeadDim != 0)); // N1 > 64时核间切G; rope 用独立 tiling key 避免污染原路径
 
     OP_LOGI(sfaInfo_->opName, "SFA tilingKey_: %lu.", tilingKey_);
@@ -396,15 +396,12 @@ void SFAMlaTiling::CalcInnerSize(uint32_t sfaS2Size)
 bool SFAMlaTiling::IsSplitKVSupported() const
 {
     const auto& info = *sfaInfo_;
-    // Common validation guarantees B > 0, N2 == 1, mode 0/3 and output dtype matching Q.
-    const bool platformSupported =
-        info.npuArch == NpuArch::DAV_2201 && (info.gSize == 8 || info.gSize == 64) && info.sparseMode == 0;
-    const bool kernelSupported = platformSupported && info.ropeHeadDim == 64 && info.sparseBlockSize == 1 &&
-                                 info.inputQType == ge::DT_BF16 && info.inputKvType == ge::DT_BF16 &&
-                                 info.qLayout == SFALayout::TND && info.kvLayout == SFALayout::PA_BSND &&
-                                 info.opParamInfo.sinks.tensor == nullptr;
-    const bool workloadSupported = info.s1Size > 0 && info.s2Size >= info.sparseBlockCount &&
-                                   info.sparseBlockCount >= 256 && info.sparseBlockCount <= 2048;
+    // Common validation covers positive dimensions, native G values and matching FP16/BF16 types.
+    const bool kernelSupported = info.npuArch == NpuArch::DAV_2201 && info.sparseMode == 0 &&
+                                 info.sparseBlockSize == 1 && info.qLayout == SFALayout::TND &&
+                                 info.kvLayout == SFALayout::PA_BSND && info.opParamInfo.sinks.tensor == nullptr;
+    const bool workloadSupported =
+        info.s2Size >= info.sparseBlockCount && info.sparseBlockCount >= 256 && info.sparseBlockCount <= 2048;
     return kernelSupported && workloadSupported;
 }
 

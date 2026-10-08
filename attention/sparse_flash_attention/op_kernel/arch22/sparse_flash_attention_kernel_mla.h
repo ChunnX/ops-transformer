@@ -77,6 +77,7 @@ private:
     static constexpr bool PAGE_ATTENTION = SFAT::pageAttention;
     static constexpr int TEMPLATE_MODE = SFAT::templateMode;
     static constexpr bool FLASH_DECODE = SFAT::flashDecode;
+    static constexpr bool IS_FD = SFAT::IS_FD;
     static constexpr SFA_LAYOUT LAYOUT_T = SFAT::layout;
     static constexpr SFA_LAYOUT KV_LAYOUT_T = SFAT::kvLayout;
 
@@ -285,9 +286,7 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::InitAllZeroOutput(uint32_t
             uint64_t softmaxSumOffset =
                 n2Idx * actualSeqLengthsQGm.GetValue(sfaKernelConstInfo.batchSize - 1) * sfaKernelConstInfo.gSize +
                 (tBase + s1Idx) * sfaKernelConstInfo.gSize;
-            uint64_t softmaxMaxOffset = softmaxSumOffset;
-            matmul::InitOutput<T>(softmaxSumGm[softmaxSumOffset], sfaKernelConstInfo.gSize, 0);
-            matmul::InitOutput<T>(softmaxMaxGm[softmaxMaxOffset], sfaKernelConstInfo.gSize, 0);
+            sfaKernelVectorService.InitZeroLse(softmaxSumOffset);
         }
     } else if (sfaKernelConstInfo.outputLayout == SFA_LAYOUT::BSND) {
         uint64_t attenOutOffset = bIdx * sfaKernelConstInfo.qSeqSize * kvHeadNum * sfaKernelConstInfo.gSize * headDim +
@@ -360,6 +359,27 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::GetSparseActualSeqLen(uint
         (sfaKernelConstInfo.sparseBlockCount * sfaKernelConstInfo.sparseBlockSize > threshold) ?
             threshold :
             (sfaKernelConstInfo.sparseBlockCount * sfaKernelConstInfo.sparseBlockSize);
+    if constexpr (LAYOUT_T == SFA_LAYOUT::TND && KV_LAYOUT_T == SFA_LAYOUT::PA_BSND) {
+        if (sfaKernelConstInfo.sparseMode == 0 && sfaKernelConstInfo.sparseBlockSize == 1 &&
+            sfaKernelLoopInfo.curActualSeqLen > 0) {
+            const uint32_t queryBase = bIdx == 0 ? 0 : actualSeqLengthsQGm.GetValue(bIdx - 1);
+            const uint64_t rowOffset = ((queryBase + s1Idx) * kvHeadNum + n2Idx) * sfaKernelConstInfo.sparseBlockCount;
+            uint32_t end = sfaKernelLoopInfo.curActualSeqLen;
+            if (topKGm.GetValue(rowOffset + end - 1) < 0) {
+                // Sparse indices have a valid prefix followed by contiguous -1 padding.
+                uint32_t begin = 0;
+                while (begin < end) {
+                    const uint32_t mid = begin + (end - begin) / 2;
+                    if (topKGm.GetValue(rowOffset + mid) >= 0) {
+                        begin = mid + 1;
+                    } else {
+                        end = mid;
+                    }
+                }
+                sfaKernelLoopInfo.curActualSeqLen = begin;
+            }
+        }
+    }
 }
 
 template <typename SFAT>
@@ -388,7 +408,9 @@ template <typename SFAT>
 __aicore__ inline void SparseFlashAttentionMla<SFAT>::DealActSeqLenIsZero(uint32_t bIdx, uint32_t s1Idx, uint32_t n2Idx)
 {
     if ASCEND_IS_AIV {
-        InitAllZeroOutput(bIdx, s1Idx, n2Idx);
+        if (GetSubBlockIdx() == 0) {
+            InitAllZeroOutput(bIdx, s1Idx, n2Idx);
+        }
     }
 }
 
@@ -482,33 +504,37 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::Init(
         blockTableGm.SetGlobalBuffer((__gm__ int32_t*)blockTable);
     }
     topKGm.SetGlobalBuffer((__gm__ int32_t*)sparseIndices);
-    if (sfaKernelConstInfo.splitKVNum > 1 && aiCoreIdx < usedCoreNum) {
-        if (splitQueryIdx >= actualSeqLengthsQGm.GetValue(sfaKernelConstInfo.batchSize - 1)) {
-            usedCoreNum = 0;
-        }
-        splitActive = topKGm.GetValue((splitQueryIdx + 1) * sfaKernelConstInfo.sparseBlockCount - 1) >= 0;
-        splitActive = splitActive && usedCoreNum > 0 &&
-                      GetActualSeqLenKV(sfaKernelConstInfo.bN2Start) >= sfaKernelConstInfo.sparseBlockCount;
-        if (splitActive) {
-            const uint64_t queryCount = sfaKernelConstInfo.qSeqSize;
-            const uint64_t headCount = sfaKernelConstInfo.gSize;
-            const uint64_t splitCount = sfaKernelConstInfo.splitKVNum;
-            __gm__ uint8_t* staging = workspace + tilingData->splitKVParams.stagingOffset;
-            const uint64_t outputElems = splitCount * queryCount * headCount * headDim;
-            const uint64_t statsElems = splitCount * queryCount * headCount;
-            splitAttentionOutGm.SetGlobalBuffer((__gm__ OUT_T*)staging);
-            splitMaxGm.SetGlobalBuffer((__gm__ T*)(staging + outputElems * sizeof(OUT_T)));
-            splitSumGm.SetGlobalBuffer((__gm__ T*)(staging + outputElems * sizeof(OUT_T) + statsElems * sizeof(T)));
-            attentionOutGm.SetGlobalBuffer((__gm__ OUT_T*)staging + splitPart * queryCount * headCount * headDim);
-            softmaxMaxGm.SetGlobalBuffer((__gm__ T*)(staging + outputElems * sizeof(OUT_T)) +
-                                         splitPart * queryCount * headCount);
-            softmaxSumGm.SetGlobalBuffer((__gm__ T*)(staging + outputElems * sizeof(OUT_T) + statsElems * sizeof(T)) +
-                                         splitPart * queryCount * headCount);
-            sfaKernelConstInfo.returnSoftmaxLse = true;
-        } else if (splitPart == 0) {
-            sfaKernelConstInfo.s2Start = 0;
-            sfaKernelConstInfo.s2End = (sfaKernelConstInfo.sparseBlockCount + sfaKernelConstInfo.s2BaseSize - 1) /
-                                       sfaKernelConstInfo.s2BaseSize;
+    if constexpr (IS_FD) {
+        if (aiCoreIdx < usedCoreNum) {
+            if (splitQueryIdx >= actualSeqLengthsQGm.GetValue(sfaKernelConstInfo.batchSize - 1)) {
+                usedCoreNum = 0;
+            }
+            if (usedCoreNum > 0) {
+                splitActive = topKGm.GetValue((splitQueryIdx + 1) * sfaKernelConstInfo.sparseBlockCount - 1) >= 0 &&
+                              GetActualSeqLenKV(sfaKernelConstInfo.bN2Start) >= sfaKernelConstInfo.sparseBlockCount;
+            }
+            if (splitActive) {
+                const uint64_t queryCount = sfaKernelConstInfo.qSeqSize;
+                const uint64_t headCount = sfaKernelConstInfo.gSize;
+                const uint64_t splitCount = sfaKernelConstInfo.splitKVNum;
+                __gm__ uint8_t* staging = workspace + tilingData->splitKVParams.stagingOffset;
+                const uint64_t outputElems = splitCount * queryCount * headCount * headDim;
+                const uint64_t statsElems = splitCount * queryCount * headCount;
+                splitAttentionOutGm.SetGlobalBuffer((__gm__ OUT_T*)staging);
+                splitMaxGm.SetGlobalBuffer((__gm__ T*)(staging + outputElems * sizeof(OUT_T)));
+                splitSumGm.SetGlobalBuffer((__gm__ T*)(staging + outputElems * sizeof(OUT_T) + statsElems * sizeof(T)));
+                attentionOutGm.SetGlobalBuffer((__gm__ OUT_T*)staging + splitPart * queryCount * headCount * headDim);
+                softmaxMaxGm.SetGlobalBuffer((__gm__ T*)(staging + outputElems * sizeof(OUT_T)) +
+                                             splitPart * queryCount * headCount);
+                softmaxSumGm.SetGlobalBuffer(
+                    (__gm__ T*)(staging + outputElems * sizeof(OUT_T) + statsElems * sizeof(T)) +
+                    splitPart * queryCount * headCount);
+                sfaKernelConstInfo.returnSoftmaxLse = true;
+            } else if (splitPart == 0) {
+                sfaKernelConstInfo.s2Start = 0;
+                sfaKernelConstInfo.s2End = (sfaKernelConstInfo.sparseBlockCount + sfaKernelConstInfo.s2BaseSize - 1) /
+                                           sfaKernelConstInfo.s2BaseSize;
+            }
         }
     }
 
@@ -541,7 +567,7 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::Init(
             (__gm__ int32_t*)(workspace + offset + (aiCoreIdx * 2) * 128 * 4 * sizeof(int32_t)));
     }
 
-    if constexpr (FLASH_DECODE) {
+    if constexpr (FLASH_DECODE && !IS_FD) {
         accumOutGm.SetGlobalBuffer((__gm__ float*)(workspace + offset));
         offset = offset + tilingData->splitKVParams.accumOutSize * sizeof(float);
         lseSumFdGm.SetGlobalBuffer((__gm__ float*)(workspace + offset));
@@ -576,7 +602,7 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::Init(
 template <typename SFAT>
 __aicore__ inline void SparseFlashAttentionMla<SFAT>::InitCalcParamsEach()
 {
-    if (sfaKernelConstInfo.splitKVNum > 1) {
+    if constexpr (IS_FD) {
         splitPart = aiCoreIdx % sfaKernelConstInfo.splitKVNum;
         splitQueryIdx = aiCoreIdx / sfaKernelConstInfo.splitKVNum;
         if (aiCoreIdx >= usedCoreNum) {
@@ -852,7 +878,11 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::ComputeMm2(const RunInfo& 
 template <typename SFAT>
 __aicore__ inline void SparseFlashAttentionMla<SFAT>::Process()
 {
-    if (aiCoreIdx < usedCoreNum && (sfaKernelConstInfo.splitKVNum <= 1 || splitActive || splitPart == 0)) {
+    bool runCore = aiCoreIdx < usedCoreNum;
+    if constexpr (IS_FD) {
+        runCore = runCore && (splitActive || splitPart == 0);
+    }
+    if (runCore) {
         if ASCEND_IS_AIV {
             sfaKernelVectorService.AllocEventID();
             sfaKernelVectorService.InitSoftmaxDefaultBuffer();
@@ -867,7 +897,7 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::Process()
             matmulService.FreeEventID();
         }
     }
-    if (sfaKernelConstInfo.splitKVNum > 1) {
+    if constexpr (IS_FD) {
         SyncAll();
         if (splitActive && splitPart == 0 && aiCoreIdx < usedCoreNum) {
             if ASCEND_IS_AIV {
@@ -923,16 +953,22 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::ProcessBalance()
             int s2SplitNum = (sfaKernelLoopInfo.curActualSeqLen + sfaKernelConstInfo.s2BaseSize - 1) /
                              sfaKernelConstInfo.s2BaseSize; // S2切分份数
             bool isEnd = (bN2LoopIdx == sfaKernelConstInfo.bN2End) && (gS1LoopIdx == sfaKernelConstInfo.gS1End);
-            sfaKernelLoopInfo.s2LoopTimes = splitActive ? sfaKernelConstInfo.s2End : s2SplitNum;
+            sfaKernelLoopInfo.s2LoopTimes = s2SplitNum;
             // 分核修改后需要打开
             // 当前s2是否被切，决定了输出是否要写到attenOut上
             sfaKernelLoopInfo.tndIsS2SplitCore =
-                splitActive ? false :
-                              !((sfaKernelConstInfo.s2Start == 0) && (sfaKernelLoopInfo.s2LoopTimes == s2SplitNum));
+                !((sfaKernelConstInfo.s2Start == 0) && (sfaKernelLoopInfo.s2LoopTimes == s2SplitNum));
             sfaKernelLoopInfo.tndCoreStartKVSplitPos = globalLoopStart ? sfaKernelConstInfo.coreStartKVSplitPos : 0;
             uint32_t extraLoop = isEnd ? 2 : 0;
 
-            uint32_t curTopKIdx = splitActive ? sfaKernelConstInfo.s2Start * sfaKernelConstInfo.s2BaseSize : 0;
+            uint32_t curTopKIdx = 0;
+            if constexpr (IS_FD) {
+                if (splitActive) {
+                    sfaKernelLoopInfo.s2LoopTimes = sfaKernelConstInfo.s2End;
+                    sfaKernelLoopInfo.tndIsS2SplitCore = false;
+                    curTopKIdx = sfaKernelConstInfo.s2Start * sfaKernelConstInfo.s2BaseSize;
+                }
+            }
             uint64_t curOffsetInSparseBlock = 0;
             for (int s2LoopIdx = sfaKernelConstInfo.s2Start; s2LoopIdx < (sfaKernelLoopInfo.s2LoopTimes + extraLoop);
                  s2LoopIdx++) {
