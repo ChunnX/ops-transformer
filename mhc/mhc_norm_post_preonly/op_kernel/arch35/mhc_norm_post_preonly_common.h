@@ -56,6 +56,14 @@ template<typename A> struct IsSameT<A, A> { static constexpr bool value = true; 
 
 
 
+// clang-format on
+
+
+
+
+
+
+
 // 引入各执行路径的方法实现
 
 
