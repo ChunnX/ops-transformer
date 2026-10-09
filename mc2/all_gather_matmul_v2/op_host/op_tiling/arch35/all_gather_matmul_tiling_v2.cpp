@@ -4,7 +4,7 @@
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
@@ -12,6 +12,7 @@
  * \file all_gather_matmul_tiling_v2.cpp
  * \brief
  */
+#include <algorithm>
 #include <queue>
 #include <dlfcn.h>
 #include <fcntl.h>
@@ -25,6 +26,7 @@
 #include <vector>
 
 #include "all_gather_matmul_tiling_v2.h"
+#include "../../../op_kernel/all_gather_matmul_v2_apt_tiling_key.h"
 #include "all_gather_comm_algo_table.h"
 #include "all_gather_fit_balance_tiling.h"
 #include "all_gather_hccl_utils.h"
@@ -34,6 +36,7 @@
 #include "mc2_comm_utils.h"
 #include "mc2_log.h"
 #include "op_host/op_tiling/matmul_formulaic_tiling.h"
+#include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "op_host/op_tiling/new_mc2_tiling_utils.h"
 #include "register/op_def_registry.h"
 
@@ -43,6 +46,9 @@ using namespace Mc2Tiling;
 
 namespace optiling {
 static constexpr int64_t CMP_MAX_LEN = 7;
+static constexpr uint64_t APACE_KERNEL_ALIGN_M = 256;
+static constexpr uint32_t APACE_STEPK_THRESHOLD = 4;
+static constexpr uint8_t APACE_L1_BUFFER_NUM = 2;
 
 bool AllGatherMatmulTilingV2::IsCapable()
 {
@@ -64,6 +70,80 @@ ge::graphStatus AllGatherMatmulTilingV2::SetRawTilingData()
     return ge::GRAPH_SUCCESS;
 }
 
+void AllGatherMatmulTilingV2::FillApaceMmTile(const Mc2MatMulV3TilingData& localTiling)
+{
+    auto& mmTile = hcommTilingDataSelf_.mmTile;
+    const auto& tCube = localTiling.tCubeTiling;
+    mmTile = {};
+    mmTile.m = static_cast<uint32_t>(args_.mValue);
+    mmTile.n = static_cast<uint32_t>(args_.nValue);
+    mmTile.k = static_cast<uint32_t>(args_.kValue);
+    mmTile.baseM = tCube.baseM;
+    mmTile.baseN = tCube.baseN;
+    mmTile.baseK = tCube.baseK;
+    mmTile.scaleKL1 = 0; // 非量化使用该字段
+    mmTile.mTailTile = localTiling.mTailCnt;
+    mmTile.nTailTile = localTiling.nTailCnt;
+    mmTile.mBaseTailSplitCnt = localTiling.mBaseTailSplitCnt;
+    mmTile.nBaseTailSplitCnt = localTiling.nBaseTailSplitCnt;
+    mmTile.mTailMain = localTiling.mTailMain;
+    mmTile.nTailMain = localTiling.nTailMain;
+    mmTile.usedCoreNum = tCube.usedCoreNum;
+    uint32_t stepK = std::min(tCube.stepKa, tCube.stepKb);
+    stepK = std::min(stepK, APACE_STEPK_THRESHOLD);
+    mmTile.stepK = static_cast<uint8_t>(stepK);
+    mmTile.nBufferNum = APACE_L1_BUFFER_NUM;
+    mmTile.dbL0c = static_cast<uint8_t>(tCube.dbL0C);
+}
+
+ge::graphStatus AllGatherMatmulTilingV2::DoApaceTiling()
+{
+    auto& rcsCfg = MutableRCSTilingData();
+    uint64_t apaceTileM = tileMValue_;
+    uint64_t apaceTileCnt = rcsCfg.tileCnt;
+    uint64_t apaceTailM = rcsCfg.tailM;
+    uint64_t apaceTailCnt = rcsCfg.tailCnt;
+    if ((apaceTileM != 0) && (args_.mValue != 0)) {
+        uint64_t alignedTileM = mc2tiling::AlignUp(apaceTileM, APACE_KERNEL_ALIGN_M);
+        if (alignedTileM >= args_.mValue) {
+            apaceTileM = args_.mValue;
+            apaceTileCnt = 1;
+            apaceTailM = 0;
+            apaceTailCnt = 0;
+        } else {
+            apaceTileM = alignedTileM;
+            apaceTileCnt = args_.mValue / alignedTileM;
+            uint64_t remainder = args_.mValue % alignedTileM;
+            apaceTailM = (remainder > 0) ? remainder : 0;
+            apaceTailCnt = (remainder > 0) ? 1 : 0;
+        }
+    }
+    auto& commTile = hcommTilingDataSelf_.commTile;
+    commTile.splitAxisTileSize = apaceTileM;
+    commTile.splitAxisTileCnt = apaceTileCnt;
+    commTile.splitAxisTailSize = apaceTailM;
+    commTile.splitAxisTailCnt = apaceTailCnt;
+    commTile.nonSplitAxisSize = args_.kValue;
+
+    FillApaceMmTile(MutableMC2MatmulV3LocalTilingData());
+
+    hcommTilingDataSelf_.mc2InitTiling = allGatherMatmulTilingDataV2_->mc2InitTiling;
+    hcommTilingDataSelf_.mc2CcTiling = allGatherMatmulTilingDataV2_->mc2CcTiling;
+
+    hcommTilingDataSelf_.gatherLen = rcsCfg.gatherLen;
+
+    OP_LOGI(opName_,
+            "[APACE] commTile: tileM=%lu, tileCnt=%lu, tailM=%lu, tailCnt=%lu, k=%lu; mmTile: baseM=%u, baseN=%u, "
+            "baseK=%u, stepK=%u, nBufferNum=%u, dbL0c=%u, mTailTile=%u, nTailTile=%u; gatherLen=%lu.",
+            commTile.splitAxisTileSize, commTile.splitAxisTileCnt, commTile.splitAxisTailSize,
+            commTile.splitAxisTailCnt, commTile.nonSplitAxisSize, hcommTilingDataSelf_.mmTile.baseM,
+            hcommTilingDataSelf_.mmTile.baseN, hcommTilingDataSelf_.mmTile.baseK, hcommTilingDataSelf_.mmTile.stepK,
+            hcommTilingDataSelf_.mmTile.nBufferNum, hcommTilingDataSelf_.mmTile.dbL0c,
+            hcommTilingDataSelf_.mmTile.mTailTile, hcommTilingDataSelf_.mmTile.nTailTile,
+            hcommTilingDataSelf_.gatherLen);
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus AllGatherMatmulTilingV2::DoOpTiling()
 {
     MC2_CHECK_LOG_RET(opName_, CheckHCCLSize());
@@ -71,17 +151,18 @@ ge::graphStatus AllGatherMatmulTilingV2::DoOpTiling()
     MC2_CHECK_LOG_RET(opName_, SetRawTilingData());
     SetRcsTilingData(MutableRCSTilingData());
     DoSplitMTiling(MutableRCSTilingData());
-    // 通信配置放在切分之后：单轮通信量依赖切分结果 tileMValue_（对齐 alltoall 先切分后配置的时序）
     OP_TILING_CHECK(SetMc2Hcomm(MutableRCSTilingData()) != ge::GRAPH_SUCCESS, OP_LOGE(opName_, "Fail to set Mc2Hcomm."),
                     return ge::GRAPH_FAILED);
     MC2_CHECK_LOG_RET(opName_, DoVersion2Tiling());
     DoAllGatherTiling(MutableRCSTilingData(), MutableMC2MatmulV3TileTilingData().tCubeTiling,
                       MutableMC2MatmulV3TailTilingData().tCubeTiling, allGatherMatmulTilingDataV2_->debugMode,
                       allGatherMatmulTilingDataV2_->dataType);
+    OP_TILING_CHECK(DoApaceTiling() != ge::GRAPH_SUCCESS, OP_LOGE(opName_, "Fail to do apace tiling."),
+                    return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
-void Mc2PrintMMV3TilingData(const std::string &opName, Mc2MatMulV3TilingData &tiling)
+void Mc2PrintMMV3TilingData(const std::string& opName, Mc2MatMulV3TilingData& tiling)
 {
     PrintTCubeTilingData(opName, tiling.tCubeTiling);
     OP_LOGD(opName, " tiling.mTailCnt %d", tiling.mTailCnt);
@@ -112,19 +193,40 @@ void AllGatherMatmulTilingV2::PrintAllTilingData()
 
 ge::graphStatus AllGatherMatmulTilingV2::PostTiling()
 {
-#if MC2_DFX_ENABLE
-    allGatherMatmulTilingDataV2_->dumpInfo.workspaceLayout = workspaceLayout_;
-#endif
-    OP_LOGD(opName_, "Final tiling data size=%zu and context capacity size=%zu.", sizeof(AllGatherMatmulTilingDataV2),
-            context_->GetRawTilingData()->GetCapacity());
-    context_->GetRawTilingData()->SetDataSize(sizeof(AllGatherMatmulTilingDataV2));
-
-    OP_TILING_CHECK(sizeof(AllGatherMatmulTilingDataV2) % sizeof(uint64_t) != 0,
-                    OP_LOGE(opName_, "Tiling data size[%zu] not aligned to 8.", sizeof(AllGatherMatmulTilingDataV2)),
+    auto* outTilingData = context_->GetTilingData<Apace::hcommAllGatherMatmulTilingData>();
+    OP_TILING_CHECK((outTilingData == nullptr), OP_LOGE(opName_, "Fail to get hcomm tiling data from context"),
                     return ge::GRAPH_FAILED);
-    PrintAllTilingData();
+    size_t tilingBufCap = context_->GetRawTilingData()->GetCapacity();
+    OP_TILING_CHECK((tilingBufCap < sizeof(hcommTilingDataSelf_)),
+                    OP_LOGE(opName_, "TilingBuffer capacity is too small, capacity = %zu, need = %zu.", tilingBufCap,
+                            sizeof(hcommTilingDataSelf_)),
+                    return ge::GRAPH_FAILED);
+    errno_t ret = memcpy_s(outTilingData, tilingBufCap, &hcommTilingDataSelf_, sizeof(hcommTilingDataSelf_));
+    if (ret != EOK) {
+        OP_LOGE(opName_, "PostTiling: memcpy_s hcomm tiling data failed, ret=%d.", ret);
+        return ge::GRAPH_FAILED;
+    }
+    const size_t registeredMaxTilingSize = sizeof(Mc2Tiling::AllGatherMatmulTilingDataV2);
+    const size_t apaceTilingSize = sizeof(Apace::hcommAllGatherMatmulTilingData);
+    const size_t finalSize = (registeredMaxTilingSize > apaceTilingSize) ? registeredMaxTilingSize : apaceTilingSize;
+    OP_TILING_CHECK((finalSize % sizeof(uint64_t) != 0),
+                    OP_LOGE(opName_, "Tiling data size[%zu] not aligned to 8.", finalSize), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        (tilingBufCap < finalSize),
+        OP_LOGE(opName_, "TilingBuffer capacity %zu is smaller than final tiling size %zu.", tilingBufCap, finalSize),
+        return ge::GRAPH_FAILED);
+    if ((tilingBufCap >= finalSize) && (finalSize > apaceTilingSize)) {
+        errno_t zeroRet = memset_s(reinterpret_cast<uint8_t*>(outTilingData) + apaceTilingSize,
+                                   tilingBufCap - apaceTilingSize, 0, finalSize - apaceTilingSize);
+        if (zeroRet != EOK) {
+            OP_LOGE(opName_, "PostTiling: memset_s hcomm tiling padding failed, ret=%d.", zeroRet);
+            return ge::GRAPH_FAILED;
+        }
+    }
+    context_->GetRawTilingData()->SetDataSize(finalSize);
+    OP_LOGI(opName_, "Final apace hcomm tiling data size=%zu (v2=%zu, apace=%zu), context capacity size=%zu.",
+            finalSize, registeredMaxTilingSize, apaceTilingSize, tilingBufCap);
     context_->SetBlockDim(args_.aicCoreNum);
-    // 独占全核，设置以后会让所有核空闲以后才启动，有多核同步指令需要设置避免出现网络挂死
     context_->SetScheduleMode(1);
     return ge::GRAPH_SUCCESS;
 }
@@ -145,9 +247,9 @@ CutResult AllGatherMatmulTilingV2::GetTilingResult()
     return result;
 }
 
-ge::graphStatus AllGatherMatmulTilingV2::DoMatmulV3Tiling(Mc2MatmulHelper::Mc2MatmulTilingCfg &tilingCfg,
-                                                          Mc2MMRegisterCfg &registerCfg,
-                                                          Mc2MatMulV3TilingData &tilingData)
+ge::graphStatus AllGatherMatmulTilingV2::DoMatmulV3Tiling(Mc2MatmulHelper::Mc2MatmulTilingCfg& tilingCfg,
+                                                          Mc2MMRegisterCfg& registerCfg,
+                                                          Mc2MatMulV3TilingData& tilingData)
 {
     tilingCfg.SetRankDim(args_.rankDim - 1);
     tilingCfg.SetMatMulV3TilingData(tilingData);
@@ -168,7 +270,7 @@ ge::graphStatus AllGatherMatmulTilingV2::DoVersion2Tiling()
 
     // 获取 compileInfo
     if (mc2_matmul_v3_advanced::InitCompileInfo(platformInfo, &compileInfo_) != ge::GRAPH_SUCCESS) {
-        OP_LOGE(opName_, "Fail to Init CompileInfo!");
+        OP_LOGE(opName_, "Fail to Init Compile Info!");
         return ge::GRAPH_FAILED;
     }
 
@@ -186,14 +288,14 @@ ge::graphStatus AllGatherMatmulTilingV2::DoVersion2Tiling()
     mc2tiling::NewUpdateMatmulV3Args(mmV3Args_, args_, opName_);
 
     // 计算 local 块 tiling
-    Mc2MatmulHelper::Mc2MatmulTilingCfg localTilingCfg(reinterpret_cast<const void *>(&compileInfo_),
-                                                       reinterpret_cast<const void *>(&mmV3Args_));
+    Mc2MatmulHelper::Mc2MatmulTilingCfg localTilingCfg(reinterpret_cast<const void*>(&compileInfo_),
+                                                       reinterpret_cast<const void*>(&mmV3Args_));
     MC2_CHECK_LOG_RET(opName_, DoMatmulV3Tiling(localTilingCfg, registerCfg, MutableMC2MatmulV3LocalTilingData()));
 
     // 计算 tile 块 tiling
     mmV3Args_.mValue = tileMValue_ * (args_.rankDim - 1) * (MutableRCSTilingData().tileCnt);
-    Mc2MatmulHelper::Mc2MatmulTilingCfg tileTilingCfg(reinterpret_cast<const void *>(&compileInfo_),
-                                                      reinterpret_cast<const void *>(&mmV3Args_), tileMValue_);
+    Mc2MatmulHelper::Mc2MatmulTilingCfg tileTilingCfg(reinterpret_cast<const void*>(&compileInfo_),
+                                                      reinterpret_cast<const void*>(&mmV3Args_), tileMValue_);
     tileTilingCfg.SetCommCnt(MutableRCSTilingData().tileCnt);
     MC2_CHECK_LOG_RET(opName_, DoMatmulV3Tiling(tileTilingCfg, registerCfg, MutableMC2MatmulV3TileTilingData()));
     MutableMC2MatmulV3TileTilingData().tCubeTiling.M = (tileMValue_ * (args_.rankDim - 1));
@@ -201,8 +303,8 @@ ge::graphStatus AllGatherMatmulTilingV2::DoVersion2Tiling()
     if (tailMValue_ > 0) {
         // 计算 tail 块 tiling
         mmV3Args_.mValue = tailMValue_ * (args_.rankDim - 1) * (MutableRCSTilingData().tailCnt);
-        Mc2MatmulHelper::Mc2MatmulTilingCfg tailTilingCfg(reinterpret_cast<const void *>(&compileInfo_),
-                                                          reinterpret_cast<const void *>(&mmV3Args_), tailMValue_);
+        Mc2MatmulHelper::Mc2MatmulTilingCfg tailTilingCfg(reinterpret_cast<const void*>(&compileInfo_),
+                                                          reinterpret_cast<const void*>(&mmV3Args_), tailMValue_);
         tailTilingCfg.SetCommCnt(MutableRCSTilingData().tailCnt);
         MC2_CHECK_LOG_RET(opName_, DoMatmulV3Tiling(tailTilingCfg, registerCfg, MutableMC2MatmulV3TailTilingData()));
         MutableMC2MatmulV3TailTilingData().tCubeTiling.M = (tailMValue_ * (args_.rankDim - 1));
@@ -211,7 +313,7 @@ ge::graphStatus AllGatherMatmulTilingV2::DoVersion2Tiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AllGatherMatmulTilingV2::SetMc2Hcomm(Mc2Tiling::RCSTiling &rcsCfg)
+ge::graphStatus AllGatherMatmulTilingV2::SetMc2Hcomm(Mc2Tiling::RCSTiling& rcsCfg)
 {
     // Set hccl comm engine with comm_mode
     uint8_t commEngine = Mc2Comm::ENGINE_AICPU;
@@ -225,7 +327,7 @@ ge::graphStatus AllGatherMatmulTilingV2::SetMc2Hcomm(Mc2Tiling::RCSTiling &rcsCf
     OP_LOGI(opName_, "[SetMc2Hcomm] commDataBytes=%llu, tileM=%llu, kValue=%llu, rankDim=%u, commEngine=%u",
             commDataBytes, tileMValue_, args_.kValue, args_.rankDim, commEngine);
     uint32_t algoCount = 0;
-    const Mc2Hcom::CommAlgoEntry *algoEntries = Mc2Tiling::GetAllGatherCommAlgoTable(algoCount);
+    const Mc2Hcom::CommAlgoEntry* algoEntries = Mc2Tiling::GetAllGatherCommAlgoTable(algoCount);
     std::string algConfig =
         Mc2Hcom::Mc2CommAlgoSelector::SelectAlgoName(opName_, group_, commEngine, commDataBytes, args_.rankDim,
                                                      algoEntries, algoCount, Mc2Tiling::ALLGATHER_DEFAULT_ALGO_NAME);
@@ -265,7 +367,37 @@ ge::graphStatus AllGatherMatmulTilingV2::CheckInput()
     return ge::GRAPH_SUCCESS;
 }
 
-AllGatherMatmulTilingV2::AllGatherMatmulTilingV2(gert::TilingContext *context)
+ge::graphStatus AllGatherMatmulTilingV2::GetWorkspaceSize()
+{
+    size_t* workspaces = context_->GetWorkspaceSizes(1);
+    OP_TILING_CHECK(workspaces == nullptr, OP_LOGE(opName_, "get workspace failed."), return ge::GRAPH_FAILED);
+    workspaceSize_ = libApiWorkSpaceSize_ + storageA_;
+    workspaces[0] = workspaceSize_;
+    OP_LOGD(opName_, "[APACE] workspaces[0] size=%zu, libApi=%u, gatherLen(storageA)=%u.", workspaces[0],
+            libApiWorkSpaceSize_, storageA_);
+    return ge::GRAPH_SUCCESS;
+}
+
+uint64_t AllGatherMatmulTilingV2::GetTilingKey() const
+{
+    uint8_t outputType = (outputIsFp8_) ? static_cast<uint8_t>(1) : static_cast<uint8_t>(0);
+
+    // Non-A5 platform must use AICPU mode
+    uint8_t commMode = Mc2Comm::COMM_MODE_AICPU;
+    if (npuArch_ == Ops::Base::DAV_3510) {
+        if (std::strncmp(commMode_, "ccu", CMP_MAX_LEN) == 0) {
+            commMode = Mc2Comm::COMM_MODE_CCU;
+        }
+    }
+    const uint64_t tilingKey = GET_TPL_TILING_KEY(inputIsBf16Fp16_, args_.isBTrans, outputType, TPL_DEFAULT_MODE,
+                                                  SCALE_TYPE_NOT_IS_MX, commMode);
+    OP_LOGD(opName_, "AllGatherMatmulV2(apace), inputIsBf16Fp16_, args_.isBTrans, outputType, commMode: [%d,%d,%u,%u]",
+            inputIsBf16Fp16_, args_.isBTrans, outputType, commMode);
+    OP_LOGD(opName_, "tilingKey=%lu", tilingKey);
+    return tilingKey;
+}
+
+AllGatherMatmulTilingV2::AllGatherMatmulTilingV2(gert::TilingContext* context)
     : AllGatherMatmulTilingBase(context),
       allGatherMatmulTilingDataV2_(&allGatherMatmulTilingDataV2Self_)
 {}
