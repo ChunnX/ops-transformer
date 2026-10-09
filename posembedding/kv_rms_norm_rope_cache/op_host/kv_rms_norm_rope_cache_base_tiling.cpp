@@ -289,7 +289,7 @@ bool KvRmsNormRopeCacheTilingBase::CheckCacheValidPA(const gert::TilingContext *
         return false;
     }
 
-    // Total PA slots must meet cache demands
+    // Total PA slots shall meet cache demands
     bool enoughSlots = false;
     const CacheMode &mode = currentCacheMode_;
     if (mode == CacheMode::Norm || mode == CacheMode::PA || mode == CacheMode::PA_NZ) {
@@ -300,10 +300,12 @@ bool KvRmsNormRopeCacheTilingBase::CheckCacheValidPA(const gert::TilingContext *
         enoughSlots = (cacheBlkNum >= ((this->seqLenKv_ + cacheBlkSize - 1) / cacheBlkSize) * this->batchKv_);
     }
     if (!enoughSlots) {
-        OP_LOGE(context_->GetNodeName(),
-                "Insufficient cache slots for %s.", cacheName);
+        // Note developer to check index contents if inputs are expected to be filtered into compact caches.
+        OP_LOGW(context_->GetNodeName(),
+                "ATTENTION: Potential insufficient cache slots for %s, make sure the slotmapping indices are safe.",
+                cacheName);
     }
-    return enoughSlots;
+    return true;
 }
 
 bool KvRmsNormRopeCacheTilingBase::CheckKCacheValidPA(const gert::TilingContext *context, int64_t numHead,

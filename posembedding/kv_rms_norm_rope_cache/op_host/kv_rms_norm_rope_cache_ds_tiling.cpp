@@ -148,8 +148,11 @@ bool KvRmsNormRopeCacheTilingDs::CheckCacheValid(const gert::TilingContext *cont
     int64_t cacheS = std::get<SHAPE_IDX_S>(cacheShapeTuple);
     int64_t cacheD = std::get<SHAPE_IDX_D>(cacheShapeTuple);
     // Batch and headnum of cache Must be consist with input kv
+    bool irregularCacheShape = false;
     if (cacheB != batchSize) {
-        OP_LOGE(context->GetNodeName(), "In CacheMode::Norm, inconsist B dimension %ld of %s with kv %ld.", cacheB,
+        // Norm mode does not support cache shrink on the Batch dim
+        OP_LOGE(context->GetNodeName(),
+                "In CacheMode::Norm, inconsist B dimension %ld of %s with kv %ld.", cacheB,
                 cacheName, batchSize);
         return false;
     }
@@ -164,12 +167,18 @@ bool KvRmsNormRopeCacheTilingDs::CheckCacheValid(const gert::TilingContext *cont
         return false;
     }
     if (cacheS < sKv) {
-        // 'sKv' here is seqlen of the input kv
-        OP_LOGE(context->GetNodeName(), "In CacheMode::Norm, Scache %ld of %s is smaller than kv %ld.", cacheS,
+        irregularCacheShape = true;
+        // Sparsification/compact cache, warn user to watch out bs size of the cache
+        OP_LOGW(context->GetNodeName(),
+                "ATTTENTION: In CacheMode::Norm, Scache %ld of %s is smaller than kv %ld.", cacheS,
                 cacheName, sKv);
-        return false;
     }
-
+    if (irregularCacheShape) {
+        OP_LOGW(context->GetNodeName(),
+                "ATTTENTION: Inconsist %s BS Shape [%ld, %ld] with the input kv [%ld, %ld],
+                watch out your slotmapping INDEX.",
+                cacheName, cacheB, cacheS, batchSize, sKv);
+    }
     return true;
 }
 
