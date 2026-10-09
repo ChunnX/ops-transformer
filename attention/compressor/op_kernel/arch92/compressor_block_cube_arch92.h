@@ -40,7 +40,6 @@ public:
     __aicore__ inline void AllocEventID(TPipe* pipe);
     __aicore__ inline void FreeEventID(TPipe* pipe);
     __aicore__ inline void ComputeMm1(const RunInfo& info);
-    __aicore__ inline void UpdateMRange(uint32_t mStart, uint32_t mEnd);
 
 private:
     using T = float;
@@ -207,13 +206,6 @@ __aicore__ inline void CompressorBlockCube<COMP, IS_FULL_LOAD>::FreeEventID(TPip
     WaitFlag<HardEvent::FIX_M>(L0C_EVENT1);
     WaitFlag<HardEvent::FIX_M>(L0C_EVENT2);
     WaitFlag<HardEvent::FIX_M>(L0C_EVENT3);
-}
-
-template <typename COMP, bool IS_FULL_LOAD>
-__aicore__ inline void CompressorBlockCube<COMP, IS_FULL_LOAD>::UpdateMRange(uint32_t mStart, uint32_t mEnd)
-{
-    constInfo_.mStart = mStart;
-    constInfo_.mEnd = mEnd;
 }
 
 template <typename COMP, bool IS_FULL_LOAD>

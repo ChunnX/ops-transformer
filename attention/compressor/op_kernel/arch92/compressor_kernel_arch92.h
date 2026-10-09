@@ -521,7 +521,6 @@ __aicore__ inline void CompressorKernel<COMP, IS_FULL_LOAD>::ComputeMm1(const Ru
 {
     CrossCoreWaitFlag<SYNC_MODE2, PIPE_FIX>(SYNC_V1_C1_FLAG + info.cubeDbIdx);
     if (isNeedExcute) {
-        blockCube_.UpdateMRange(constInfo.mStart, constInfo.mEnd);
         blockCube_.ComputeMm1(info);
     }
     CrossCoreSetFlag<SYNC_MODE0, PIPE_FIX>(SYNC_C1_FLAG);
