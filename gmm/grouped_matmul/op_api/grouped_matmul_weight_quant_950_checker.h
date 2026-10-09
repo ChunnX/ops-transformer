@@ -18,7 +18,15 @@ namespace gmm {
 class AclnnGroupedMatmulWeightQuantDAV3510Checker {
 public:
     explicit AclnnGroupedMatmulWeightQuantDAV3510Checker(const GroupedMatmulParams &gmmParams)
-        : gmmParams_(gmmParams) {};
+        : gmmParams_(gmmParams)
+    {
+        // WeightNzPool has the same dtype/format guards as WeightNz (same op, only the expert row lookup
+        // differs), so collapse the two here to reuse every API-version guard verbatim. Shape checks that
+        // do not hold for a pool rectangle are skipped explicitly via gmmParams_.isPoolMode.
+        if (gmmParams_.apiVersion == GMMApiVersion::WeightNzPool) {
+            gmmParams_.apiVersion = GMMApiVersion::WeightNz;
+        }
+    };
     ~AclnnGroupedMatmulWeightQuantDAV3510Checker() {};
     aclnnStatus CheckGroupedMatmulWeightQuantDAV3510();
 

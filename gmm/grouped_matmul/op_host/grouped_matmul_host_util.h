@@ -101,6 +101,14 @@ constexpr uint64_t ATTR_INDEX_GROUPTYPE = 4;
 constexpr uint32_t ATTR_INDEX_GROUP_LIST_TYPE = 5;
 constexpr uint64_t ATTR_INDEX_ACT_TYPE = 6;
 constexpr uint64_t ATTR_INDEX_TUNING_CONFIG = 7;
+// Pool row layout for indirect weight addressing: [row_bytes, w_seg_off, s_seg_off, n].
+// Empty (default) means the DIRECT addressing path.
+constexpr uint64_t ATTR_INDEX_POOL_META = 8;
+constexpr uint64_t POOL_META_ROW_BYTES_INDEX = 0;
+constexpr uint64_t POOL_META_W_SEG_OFF_INDEX = 1;
+constexpr uint64_t POOL_META_S_SEG_OFF_INDEX = 2;
+constexpr uint64_t POOL_META_N_INDEX = 3;
+constexpr uint64_t POOL_META_SIZE = 4;
 constexpr uint64_t DOUBLE_BUFFER_L0A_L0B = 2;
 constexpr uint64_t DOUBLE_BUFFER_STEPKA_STEPKB = 2;
 constexpr uint32_t SYS_WORKSPACE_SIZE = 16U * 1024U * 1024U;

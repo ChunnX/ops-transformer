@@ -37,6 +37,14 @@ constexpr uint64_t ATTR_TRANS_W_IDX = 2;
 constexpr uint64_t ATTR_TRANS_X_IDX = 3;
 constexpr uint64_t ATTR_GROUPTYPE_IDX = 4;
 constexpr uint32_t ATTR_GROUP_LIST_TYPE_IDX = 5;
+constexpr uint64_t ATTR_POOL_META_IDX = 8;
+
+// pool_meta layout: [row_bytes, w_seg_off, s_seg_off, n].
+constexpr size_t POOL_META_ROW_BYTES_INDEX = 0;
+constexpr size_t POOL_META_W_SEG_OFF_INDEX = 1;
+constexpr size_t POOL_META_S_SEG_OFF_INDEX = 2;
+constexpr size_t POOL_META_N_INDEX = 3;
+constexpr size_t POOL_META_SIZE = 4;
 
 constexpr uint32_t MAX_X_DIM = 6UL;
 constexpr uint32_t MIN_X_DIM = 2UL;
@@ -416,6 +424,14 @@ private:
     bool hasBias_ = false;
     bool weightNzFlag_ = false;
     bool hasAntiquantOffset_ = false;
+
+    // Pool indirect weight addressing. `weight`/`antiquantScale` then carry the whole pool and only
+    // `slot_table` (per-group row index into the pool) plus the row layout below locate each expert.
+    bool isPoolMode_ = false;
+    uint64_t poolRowBytes_ = 0;
+    uint64_t poolWSegOff_ = 0;
+    uint64_t poolSSegOff_ = 0;
+    uint64_t poolN_ = 0;
 
     uint64_t mSize_ = 0;
     uint64_t kSize_ = 0;

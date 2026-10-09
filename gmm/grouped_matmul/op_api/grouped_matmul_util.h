@@ -60,6 +60,13 @@ constexpr int64_t SPLIT_N = 1L;
 
 constexpr int64_t GROUP_LIST_SPARSE_M = 2L;
 
+// Pool row layout for indirect weight addressing: [row_bytes, w_seg_off, s_seg_off, n].
+constexpr size_t POOL_META_ROW_BYTES_INDEX = 0UL;
+constexpr size_t POOL_META_W_SEG_OFF_INDEX = 1UL;
+constexpr size_t POOL_META_S_SEG_OFF_INDEX = 2UL;
+constexpr size_t POOL_META_N_INDEX = 3UL;
+constexpr size_t POOL_META_SIZE = 4UL;
+
 constexpr size_t MAX_FM_DIM = 6UL;
 constexpr size_t MIN_FM_DIM = 2UL;
 constexpr size_t MIN_DIM_FOR_TRANSPOSE = 2UL;
@@ -116,7 +123,8 @@ enum class GMMApiVersion : uint32_t {
     V4 = 4U,
     V5 = 5U,
     WeightNz = 6U,
-    QuantGroupedMatmulInplaceAdd = 7U
+    QuantGroupedMatmulInplaceAdd = 7U,
+    WeightNzPool = 8U
 };
 
 template <typename T>
@@ -143,10 +151,17 @@ struct GroupedMatmulParamsBase {
     GMMApiVersion apiVersion = GMMApiVersion::V1;
     int64_t groupType = -1L;
     const aclIntArray *tuningConfigOptional = nullptr;
+    // Pool indirect addressing. Only set through aclnnGroupedMatmulWeightNzPool; the op kernel reads
+    // slotTable as an input and poolMeta as an attr, both of which are passed on to l0.
+    const aclTensor *slotTableOptional = nullptr;
+    const aclIntArray *poolMetaOptional = nullptr;
     const T *y = nullptr;
     const aclTensorList *activationFeatureOutOptional = nullptr;
     const aclTensorList *dynQuantScaleOutOptional = nullptr;
     DataType xDtype = DataType::DT_FLOAT16;
+    // True when poolMetaOptional carries a valid pool row layout. The pool rectangle is not a per-expert
+    // NZ weight, so the NZ shape/format validation and the NZ re-viewing below must both be skipped.
+    bool isPoolMode = false;
 };
 
 using GroupedMatmulParams = GroupedMatmulParamsBase<aclTensorList>;

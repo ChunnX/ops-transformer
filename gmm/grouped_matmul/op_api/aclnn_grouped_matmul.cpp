@@ -37,6 +37,7 @@
 #include "opdev/make_op_executor.h"
 
 #include "grouped_matmul_util.h"
+#include "aclnn_grouped_matmul_weight_nz_pool.h"
 #include "grouped_matmul_950_checker.h"
 #include "grouped_matmul_weight_quant_950_checker.h"
 #include "grouped_matmul_no_quant_950_checker.h"
@@ -97,6 +98,7 @@ static constexpr int ANTIQUANT_SCALE_4D_DIMS = 4;
 static constexpr int SCALE_TENSOR_EXPECTED_DIMS = 2;
 
 static constexpr int64_t MULTI_WEIGHT_DIM = 2L;
+
 
 static bool IsFormatNZWithC0(const aclTensor *tensor)
 {
@@ -1454,6 +1456,8 @@ const char *GetAclnnGetWorkspaceSizeOpName(gmm::GMMApiVersion apiVersion)
             return "aclnnGroupedMatmulV5GetWorkspaceSize";
         case gmm::GMMApiVersion::WeightNz:
             return "aclnnGroupedMatmulWeightNzGetWorkspaceSize";
+        case gmm::GMMApiVersion::WeightNzPool:
+            return "aclnnGroupedMatmulWeightNzPoolGetWorkspaceSize";
         case gmm::GMMApiVersion::QuantGroupedMatmulInplaceAdd:
             return "aclnnQuantGroupedMatmulInplaceAddGetWorkspaceSize";
         default:
@@ -2273,6 +2277,11 @@ static aclnnStatus CheckParamDifferentGroupType(const gmm::GroupedMatmulParams &
         IsWeightQuant(gmmParams.xDtype, weightDtype)) {
         // 伪量化场景DAV_3510除了单单单/单多单的GroupList，其他校验在AclnnGroupedMatmulWeightQuantDAV3510Checker均已完成，下方校验跳过
         if (gmmParams.groupType == gmm::SPLIT_M) {
+            // POOL mode carries group_list as an Int[] (groupListOptional); the groupTensorOptional is only
+            // derived later in GetGMMResultByL0Api, so the per-group tensor-list check below is skipped.
+            if (gmmParams.isPoolMode) {
+                return ACLNN_SUCCESS;
+            }
             size_t batchSizeWeight = (*gmmParams.weight)[0]->GetViewShape().GetDim(0);
             if (IsMultiTensorWeight(gmmParams)) {
                 batchSizeWeight = gmmParams.weight->Size();
@@ -2986,6 +2995,14 @@ static aclnnStatus PrepareParamsForL0(gmm::GroupedMatmulParams &params, aclOpExe
 
 static aclnnStatus PrepareWeightNz(gmm::GroupedMatmulParams &params, const char *opName, aclOpExecutor *executorPtr)
 {
+    if (params.isPoolMode) {
+        // The pool rectangle is not a per-expert NZ weight: it must reach the op exactly as the caller
+        // laid it out, so skip both the NZ re-viewing and the storage-shape rewriting. The dtype contract
+        // is still enforced, just like on the WeightNz path.
+        CHECK_COND(ParamsWeightNzDtype(params, opName) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
+                   "In op [%s], in pool mode, data type check failed.", opName);
+        return ACLNN_SUCCESS;
+    }
     std::vector<op::Shape> nzShapes;
     for (uint64_t idx = 0; idx < (*params.weight).Size(); idx++) {
         nzShapes.push_back((*params.weight)[idx]->GetStorageShape());
@@ -3023,9 +3040,10 @@ static aclnnStatus ExecuteL0GroupedMatmul(gmm::GroupedMatmulParams &params, aclO
     auto result =
         l0op::GroupedMatmul(params.x, params.weight, params.biasOptional, params.scaleOptional, params.offsetOptional,
                             params.antiquantScaleOptional, params.antiquantOffsetOptional, params.groupTensorOptional,
-                            perTokenScaleOptional, params.splitItem, (*params.y)[0]->GetDataType(),
-                            params.transposeWeight, params.transposeX, params.groupType, params.groupListType,
-                            params.activeType, params.tuningConfigOptional, params.y->Size(), executorPtr);
+                            perTokenScaleOptional, params.slotTableOptional, params.splitItem,
+                            (*params.y)[0]->GetDataType(), params.transposeWeight, params.transposeX, params.groupType,
+                            params.groupListType, params.activeType, params.tuningConfigOptional, params.poolMetaOptional,
+                            params.y->Size(), executorPtr);
     CHECK_RET(result != nullptr, ACLNN_ERR_INNER_NULLPTR);
     CHECK_COND(CheckOutputShape(result, params.y, opName) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
                "In op [%s], output shape check failed.", opName);
@@ -3164,15 +3182,18 @@ static aclnnStatus PrepareGmmParams(gmm::GroupedMatmulParams &gmmParams, const a
     return ACLNN_SUCCESS;
 }
 
+// Overload kept for the callers that do not use the pool parameters; it forwards with an unset
+// slot_table and empty pool_meta, which is exactly the DIRECT addressing behaviour.
+
 static aclnnStatus aclnnGroupedMatmulGetWorkspaceSizeCommon(
     const aclTensorList *x, const aclTensorList *weight, const aclTensorList *biasOptional,
     const aclTensorList *scaleOptional, const aclTensorList *offsetOptional,
     const aclTensorList *antiquantScaleOptional, const aclTensorList *antiquantOffsetOptional,
     const aclTensorList *perTokenScaleOptional, const aclIntArray *groupListOptional,
-    const aclTensor *groupTensorOptional, const aclTensorList *activationInputOptional,
-    const aclTensorList *activationQuantScaleOptional, const aclTensorList *activationQuantOffsetOptional,
-    int64_t splitItem, int64_t groupType, int64_t groupListType, int64_t actType,
-    const aclIntArray *tuningConfigOptional, gmm::GMMApiVersion apiVersion, const aclTensorList *y,
+    const aclTensor *groupTensorOptional, const aclTensor *slotTableOptional, const aclIntArray *poolMetaOptional,
+    const aclTensorList *activationInputOptional, const aclTensorList *activationQuantScaleOptional,
+    const aclTensorList *activationQuantOffsetOptional, int64_t splitItem, int64_t groupType, int64_t groupListType,
+    int64_t actType, const aclIntArray *tuningConfigOptional, gmm::GMMApiVersion apiVersion, const aclTensorList *y,
     const aclTensorList *activationFeatureOutOptional, const aclTensorList *dynQuantScaleOutOptional,
     uint64_t *workspaceSize, aclOpExecutor **executor, const char *opName)
 {
@@ -3214,10 +3235,44 @@ static aclnnStatus aclnnGroupedMatmulGetWorkspaceSizeCommon(
                                        apiVersion,
                                        groupType,
                                        tuningConfigOptional,
+                                       slotTableOptional,
+                                       poolMetaOptional,
                                        y,
                                        activationFeatureOutOptional,
                                        dynQuantScaleOutOptional,
                                        xDtype};
+    // pool_meta is the single switch for the pool addressing mode; nothing else changes the DIRECT path.
+    gmmParams.isPoolMode = poolMetaOptional != nullptr && poolMetaOptional->Size() >= gmm::POOL_META_SIZE;
+    if (gmmParams.isPoolMode) {
+        // Pool indirect addressing exists only on the 950 (arch35) kernels; the arch35 tiling is the only
+        // one that reads pool_meta. OpAICoreConfig has no Attr() in this CANN version, so pool_meta must be
+        // registered at op level and the 950-only restriction is enforced here rather than by the op def.
+        CHECK_COND(op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510, ACLNN_ERR_PARAM_INVALID,
+                   "In op [%s], pool indirect addressing is only supported on the 950 platform.", opName);
+        CHECK_COND(apiVersion == gmm::GMMApiVersion::WeightNzPool, ACLNN_ERR_PARAM_INVALID,
+                   "In op [%s], pool indirect addressing is only available through "
+                   "aclnnGroupedMatmulWeightNzPool, got apiVersion [%u].",
+                   opName, static_cast<uint32_t>(apiVersion));
+        CHECK_COND(slotTableOptional != nullptr, ACLNN_ERR_PARAM_NULLPTR,
+                   "In op [%s], slotTable must not be nullptr when pool_meta is set.", opName);
+        CHECK_COND(groupType == gmm::SPLIT_M, ACLNN_ERR_PARAM_INVALID,
+                   "In op [%s], pool indirect addressing requires groupType == 0 (split M), got [%ld].", opName,
+                   groupType);
+        CHECK_COND(weight->Size() == 1 && (*weight)[0] != nullptr, ACLNN_ERR_PARAM_INVALID,
+                   "In op [%s], pool indirect addressing takes the whole pool as a single weight tensor.", opName);
+        CHECK_COND(antiquantScaleOptional != nullptr && antiquantScaleOptional->Size() == 1 &&
+                       (*antiquantScaleOptional)[0] != nullptr,
+                   ACLNN_ERR_PARAM_INVALID,
+                   "In op [%s], pool indirect addressing requires the antiquantScale pool to be a single tensor.",
+                   opName);
+        const int64_t poolSlotCount = (*antiquantScaleOptional)[0]->GetViewShape().GetDim(0);
+        const op::Shape &slotShape = slotTableOptional->GetViewShape();
+        CHECK_COND(slotShape.GetDimNum() == 1, ACLNN_ERR_PARAM_INVALID,
+                   "In op [%s], slotTable must be 1-D, got dim num [%zu].", opName, slotShape.GetDimNum());
+        CHECK_COND(slotShape.GetDim(0) == poolSlotCount, ACLNN_ERR_PARAM_INVALID,
+                   "In op [%s], slotTable length must equal the pool slot count, got [%ld] and [%ld].", opName,
+                   slotShape.GetDim(0), poolSlotCount);
+    }
     CHECK_RET_CODE(PrepareGmmParams(gmmParams, x, y, splitItem, opName), "PrepareGmmParams failed.");
 
     aclnnStatus ret = GetGMMResultByL0Api(gmmParams, workspaceSize, executor, opName);
@@ -3298,27 +3353,24 @@ static void UnpackWeightQuantInputs(const aclTensorList *x, const aclTensorList 
     }
 }
 
-aclnnStatus aclnnGroupedMatmulWeightNzGetWorkspaceSize(
+// Shared body of aclnnGroupedMatmulWeightNz and aclnnGroupedMatmulWeightNzPool. slotTable/poolMeta stay
+// nullptr on the WeightNz entry point, which is exactly the DIRECT addressing behaviour it had before.
+// The DFX phase and the executor cache lookup stay in the two entry points: L2_DFX_PHASE_1 asserts that
+// the DFX name matches __func__, so it cannot be used from a function with any other name.
+static aclnnStatus aclnnGroupedMatmulWeightNzGetWorkspaceSizeCommon(
     const aclTensorList *x, const aclTensorList *weight, const aclTensorList *biasOptional,
     const aclTensorList *scaleOptional, const aclTensorList *offsetOptional,
     const aclTensorList *antiquantScaleOptional, const aclTensorList *antiquantOffsetOptional,
     const aclTensorList *perTokenScaleOptional, const aclTensor *groupListOptional,
-    const aclTensorList *activationInputOptional, const aclTensorList *activationQuantScaleOptional,
-    const aclTensorList *activationQuantOffsetOptional, int64_t splitItem, int64_t groupType, int64_t groupListType,
-    int64_t actType, aclIntArray *tuningConfigOptional, int64_t quantGroupSize, aclTensorList *out,
+    const aclTensor *slotTableOptional, const aclTensorList *activationInputOptional,
+    const aclTensorList *activationQuantScaleOptional, const aclTensorList *activationQuantOffsetOptional,
+    int64_t splitItem, int64_t groupType, int64_t groupListType, int64_t actType,
+    aclIntArray *tuningConfigOptional, aclIntArray *poolMetaOptional, int64_t quantGroupSize, aclTensorList *out,
     aclTensorList *activationFeatureOutOptional, aclTensorList *dynQuantScaleOutOptional, uint64_t *workspaceSize,
-    aclOpExecutor **executor)
+    aclOpExecutor **executor, gmm::GMMApiVersion apiVersion, const char *opName)
 {
-    const char *opName = "grouped_matmul";
     CHECK_COND(CheckNotNull(x, weight, out) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR,
                "In op [%s], required inputs must not be nullptr.", opName);
-    // Standard syntax, Check parameters.
-    L2_DFX_PHASE_1(aclnnGroupedMatmulWeightNz,
-                   DFX_IN(x, weight, biasOptional, scaleOptional, offsetOptional, antiquantScaleOptional,
-                          antiquantOffsetOptional, perTokenScaleOptional, activationInputOptional,
-                          activationQuantScaleOptional, activationQuantOffsetOptional, groupListOptional, splitItem,
-                          groupType, groupListType, actType, tuningConfigOptional, quantGroupSize),
-                   DFX_OUT(out, activationFeatureOutOptional, dynQuantScaleOutOptional));
     UnpackWeightQuantInputs(x, weight);
     if (IsS8S4PseudoQuantWeightNz(x, weight, scaleOptional)) {
         CHECK_RET_CODE(CheckOptionalTensorListNotNull(offsetOptional, "offset"), "Invalid offset tensor list.");
@@ -3341,10 +3393,66 @@ aclnnStatus aclnnGroupedMatmulWeightNzGetWorkspaceSize(
                ACLNN_ERR_PARAM_INVALID, "In op [%s], required inputs do not meet the requirement.", opName);
     return aclnnGroupedMatmulGetWorkspaceSizeCommon(
         x, weight, biasOptional, scaleOptional, offsetOptional, antiquantScaleOptional, antiquantOffsetOptional,
-        perTokenScaleOptional, nullptr, groupListOptional, activationInputOptional, activationQuantScaleOptional,
-        activationQuantOffsetOptional, splitItem, groupType, groupListType, actType, tuningConfigOptional,
-        gmm::GMMApiVersion::WeightNz, out, activationFeatureOutOptional, dynQuantScaleOutOptional, workspaceSize,
-        executor, opName);
+        perTokenScaleOptional, nullptr, groupListOptional, slotTableOptional, poolMetaOptional,
+        activationInputOptional, activationQuantScaleOptional, activationQuantOffsetOptional, splitItem, groupType,
+        groupListType, actType, tuningConfigOptional, apiVersion, out, activationFeatureOutOptional,
+        dynQuantScaleOutOptional, workspaceSize, executor, opName);
+}
+
+aclnnStatus aclnnGroupedMatmulWeightNzGetWorkspaceSize(
+    const aclTensorList *x, const aclTensorList *weight, const aclTensorList *biasOptional,
+    const aclTensorList *scaleOptional, const aclTensorList *offsetOptional,
+    const aclTensorList *antiquantScaleOptional, const aclTensorList *antiquantOffsetOptional,
+    const aclTensorList *perTokenScaleOptional, const aclTensor *groupListOptional,
+    const aclTensorList *activationInputOptional, const aclTensorList *activationQuantScaleOptional,
+    const aclTensorList *activationQuantOffsetOptional, int64_t splitItem, int64_t groupType, int64_t groupListType,
+    int64_t actType, aclIntArray *tuningConfigOptional, int64_t quantGroupSize, aclTensorList *out,
+    aclTensorList *activationFeatureOutOptional, aclTensorList *dynQuantScaleOutOptional, uint64_t *workspaceSize,
+    aclOpExecutor **executor)
+{
+    // Standard syntax, Check parameters.
+    L2_DFX_PHASE_1(aclnnGroupedMatmulWeightNz,
+                   DFX_IN(x, weight, biasOptional, scaleOptional, offsetOptional, antiquantScaleOptional,
+                          antiquantOffsetOptional, perTokenScaleOptional, activationInputOptional,
+                          activationQuantScaleOptional, activationQuantOffsetOptional, groupListOptional, splitItem,
+                          groupType, groupListType, actType, tuningConfigOptional, quantGroupSize),
+                   DFX_OUT(out, activationFeatureOutOptional, dynQuantScaleOutOptional));
+    return aclnnGroupedMatmulWeightNzGetWorkspaceSizeCommon(
+        x, weight, biasOptional, scaleOptional, offsetOptional, antiquantScaleOptional, antiquantOffsetOptional,
+        perTokenScaleOptional, groupListOptional, nullptr, activationInputOptional, activationQuantScaleOptional,
+        activationQuantOffsetOptional, splitItem, groupType, groupListType, actType, tuningConfigOptional, nullptr,
+        quantGroupSize, out, activationFeatureOutOptional, dynQuantScaleOutOptional, workspaceSize, executor,
+        gmm::GMMApiVersion::WeightNz, "grouped_matmul");
+}
+
+// Same as aclnnGroupedMatmulWeightNz, but weight/antiquantScale carry a single shared pool and the expert
+// row inside that pool is resolved per group from slot_table. pool_meta (an attr) describes the pool row
+// layout and the output N, which can no longer be read off the weight shape.
+aclnnStatus aclnnGroupedMatmulWeightNzPoolGetWorkspaceSize(
+    const aclTensorList *x, const aclTensorList *weight, const aclTensorList *biasOptional,
+    const aclTensorList *scaleOptional, const aclTensorList *offsetOptional,
+    const aclTensorList *antiquantScaleOptional, const aclTensorList *antiquantOffsetOptional,
+    const aclTensorList *perTokenScaleOptional, const aclTensor *groupListOptional, const aclTensor *slotTableOptional,
+    const aclTensorList *activationInputOptional, const aclTensorList *activationQuantScaleOptional,
+    const aclTensorList *activationQuantOffsetOptional, int64_t splitItem, int64_t groupType, int64_t groupListType,
+    int64_t actType, aclIntArray *tuningConfigOptional, aclIntArray *poolMetaOptional, int64_t quantGroupSize,
+    aclTensorList *out, aclTensorList *activationFeatureOutOptional, aclTensorList *dynQuantScaleOutOptional,
+    uint64_t *workspaceSize, aclOpExecutor **executor)
+{
+    // Standard syntax, Check parameters.
+    L2_DFX_PHASE_1(aclnnGroupedMatmulWeightNzPool,
+                   DFX_IN(x, weight, biasOptional, scaleOptional, offsetOptional, antiquantScaleOptional,
+                          antiquantOffsetOptional, perTokenScaleOptional, groupListOptional, slotTableOptional,
+                          activationInputOptional, activationQuantScaleOptional, activationQuantOffsetOptional,
+                          splitItem, groupType, groupListType, actType, tuningConfigOptional, poolMetaOptional,
+                          quantGroupSize),
+                   DFX_OUT(out, activationFeatureOutOptional, dynQuantScaleOutOptional));
+    return aclnnGroupedMatmulWeightNzGetWorkspaceSizeCommon(
+        x, weight, biasOptional, scaleOptional, offsetOptional, antiquantScaleOptional, antiquantOffsetOptional,
+        perTokenScaleOptional, groupListOptional, slotTableOptional, activationInputOptional,
+        activationQuantScaleOptional, activationQuantOffsetOptional, splitItem, groupType, groupListType, actType,
+        tuningConfigOptional, poolMetaOptional, quantGroupSize, out, activationFeatureOutOptional,
+        dynQuantScaleOutOptional, workspaceSize, executor, gmm::GMMApiVersion::WeightNzPool, "grouped_matmul");
 }
 
 aclnnStatus aclnnGroupedMatmulV5GetWorkspaceSize(
@@ -3387,8 +3495,9 @@ aclnnStatus aclnnGroupedMatmulV5GetWorkspaceSize(
                ACLNN_ERR_PARAM_INVALID, "In op [%s], required inputs do not meet the requirement.", opName);
     return aclnnGroupedMatmulGetWorkspaceSizeCommon(
         x, weight, biasOptional, scaleOptional, offsetOptional, antiquantScaleOptional, antiquantOffsetOptional,
-        perTokenScaleOptional, nullptr, groupListOptional, activationInputOptional, activationQuantScaleOptional,
-        activationQuantOffsetOptional, splitItem, groupType, groupListType, actType, tuningConfigOptional,
+        perTokenScaleOptional, nullptr, groupListOptional, nullptr, nullptr, activationInputOptional,
+        activationQuantScaleOptional, activationQuantOffsetOptional, splitItem, groupType, groupListType, actType,
+        tuningConfigOptional,
         gmm::GMMApiVersion::V5, out, activationFeatureOutOptional, dynQuantScaleOutOptional, workspaceSize, executor,
         opName);
 }
@@ -3432,8 +3541,9 @@ aclnnStatus aclnnGroupedMatmulV4GetWorkspaceSize(
                ACLNN_ERR_PARAM_INVALID, "In op [%s], required inputs do not meet the requirement.", opName);
     return aclnnGroupedMatmulGetWorkspaceSizeCommon(
         x, weight, biasOptional, scaleOptional, offsetOptional, antiquantScaleOptional, antiquantOffsetOptional,
-        perTokenScaleOptional, nullptr, groupListOptional, activationInputOptional, activationQuantScaleOptional,
-        activationQuantOffsetOptional, splitItem, groupType, groupListType, actType, nullptr, gmm::GMMApiVersion::V4,
+        perTokenScaleOptional, nullptr, groupListOptional, nullptr, nullptr, activationInputOptional,
+        activationQuantScaleOptional, activationQuantOffsetOptional, splitItem, groupType, groupListType, actType,
+        nullptr, gmm::GMMApiVersion::V4,
         out, activationFeatureOutOptional, dynQuantScaleOutOptional, workspaceSize, executor, opName);
 }
 
@@ -3469,8 +3579,8 @@ aclnnStatus aclnnGroupedMatmulV3GetWorkspaceSize(const aclTensorList *x, const a
                opName, "groupList", groupListOptional->GetViewShape().GetDimNum());
     return aclnnGroupedMatmulGetWorkspaceSizeCommon(
         x, weight, biasOptional, scaleOptional, offsetOptional, antiquantScaleOptional, antiquantOffsetOptional,
-        nullptr, nullptr, groupListOptional, nullptr, nullptr, nullptr, splitItem, groupType, 0, 0, nullptr,
-        gmm::GMMApiVersion::V3, y, nullptr, nullptr, workspaceSize, executor, opName);
+        nullptr, nullptr, groupListOptional, nullptr, nullptr, nullptr, nullptr, nullptr, splitItem, groupType, 0, 0,
+        nullptr, gmm::GMMApiVersion::V3, y, nullptr, nullptr, workspaceSize, executor, opName);
 }
 
 aclnnStatus aclnnGroupedMatmulV2GetWorkspaceSize(const aclTensorList *x, const aclTensorList *weight,
@@ -3498,8 +3608,8 @@ aclnnStatus aclnnGroupedMatmulV2GetWorkspaceSize(const aclTensorList *x, const a
                "In op [%s], [%s] check failed, got [%ld].", opName, "groupType", groupType);
     return aclnnGroupedMatmulGetWorkspaceSizeCommon(
         x, weight, biasOptional, scaleOptional, offsetOptional, antiquantScaleOptional, antiquantOffsetOptional,
-        nullptr, groupListOptional, nullptr, nullptr, nullptr, nullptr, splitItem, groupType, 0, 0, nullptr,
-        gmm::GMMApiVersion::V2, y, nullptr, nullptr, workspaceSize, executor, opName);
+        nullptr, groupListOptional, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, splitItem, groupType, 0, 0,
+        nullptr, gmm::GMMApiVersion::V2, y, nullptr, nullptr, workspaceSize, executor, opName);
 }
 
 aclnnStatus aclnnGroupedMatmulGetWorkspaceSize(const aclTensorList *x, const aclTensorList *weight,
@@ -3541,8 +3651,8 @@ aclnnStatus aclnnGroupedMatmulGetWorkspaceSize(const aclTensorList *x, const acl
     }
     return aclnnGroupedMatmulGetWorkspaceSizeCommon(
         x, weight, biasOptional, scaleOptional, offsetOptional, antiquantScaleOptional, antiquantOffsetOptional,
-        nullptr, groupListOptional, nullptr, nullptr, nullptr, nullptr, splitItem, groupType, 0, 0, nullptr,
-        gmm::GMMApiVersion::V1, y, nullptr, nullptr, workspaceSize, executor, opName);
+        nullptr, groupListOptional, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, splitItem, groupType, 0, 0,
+        nullptr, gmm::GMMApiVersion::V1, y, nullptr, nullptr, workspaceSize, executor, opName);
 }
 
 aclnnStatus aclnnGroupedMatmul(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)
@@ -3593,6 +3703,15 @@ aclnnStatus aclnnGroupedMatmulWeightNz(void *workspace, uint64_t workspaceSize, 
                                        aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnGroupedMatmulWeightNz);
+    CHECK_COND(CommonOpExecutorRun(workspace, workspaceSize, executor, stream) == ACLNN_SUCCESS, ACLNN_ERR_INNER,
+               "An error occurred when GMM launched on aicore.");
+    return ACLNN_SUCCESS;
+}
+
+aclnnStatus aclnnGroupedMatmulWeightNzPool(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                                           aclrtStream stream)
+{
+    L2_DFX_PHASE_2(aclnnGroupedMatmulWeightNzPool);
     CHECK_COND(CommonOpExecutorRun(workspace, workspaceSize, executor, stream) == ACLNN_SUCCESS, ACLNN_ERR_INNER,
                "An error occurred when GMM launched on aicore.");
     return ACLNN_SUCCESS;

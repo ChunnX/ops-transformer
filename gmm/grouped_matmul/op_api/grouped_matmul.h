@@ -17,9 +17,10 @@ const aclTensorList *GroupedMatmul(const aclTensorList *x, const aclTensorList *
                                    const aclTensorList *biasOptional, const aclTensorList *scaleOptional,
                                    const aclTensorList *offsetOptional, const aclTensorList *antiquantScaleOptional,
                                    const aclTensorList *antiquantOffsetOptional, const aclTensor *groupListOptional,
-                                   const aclTensor *perTokenScaleOptional, int64_t splitItem, op::DataType yDtype,
-                                   bool transposeWeight, bool transposeX, int64_t groupType, int64_t groupListType,
-                                   int64_t actType, const aclIntArray *tuningConfig, size_t outLength,
+                                   const aclTensor *perTokenScaleOptional, const aclTensor *slotTableOptional,
+                                   int64_t splitItem, op::DataType yDtype, bool transposeWeight, bool transposeX,
+                                   int64_t groupType, int64_t groupListType, int64_t actType,
+                                   const aclIntArray *tuningConfig, const aclIntArray *poolMeta, size_t outLength,
                                    aclOpExecutor *executor);
 }
 

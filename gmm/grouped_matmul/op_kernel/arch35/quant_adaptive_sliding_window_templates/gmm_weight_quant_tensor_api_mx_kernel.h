@@ -25,7 +25,8 @@ namespace GROUPED_MATMUL {
 template <class XType_, class WeightType_, class ScaleBType_, class BiasType_, class YType_, bool IsSingleMultiSingle_>
 __aicore__ inline void GmmWeightQuantTensorApiMxKernel(
     GM_ADDR x, GM_ADDR weight, GM_ADDR antiquantScale, GM_ADDR bias, GM_ADDR groupList, GM_ADDR perTokenScale,
-    GM_ADDR y, const GroupedMatmulTilingData::GMMWeightQuantParam *gmmBaseParams, const TCubeTiling *mmTilingData)
+    GM_ADDR y, GM_ADDR slotTable, const GroupedMatmulTilingData::GMMWeightQuantParam *gmmBaseParams,
+    const TCubeTiling *mmTilingData)
 {
     using XType = XType_;
     using WeightType = WeightType_;
@@ -59,18 +60,26 @@ __aicore__ inline void GmmWeightQuantTensorApiMxKernel(
         Blaze::Gemm::Kernel::GmmWeightQuantMxKernel<ProblemShape, BlockMmad, BlockScheduler, BlockEpilogue,
                                                     BlockPrologue, IS_SINGLE_MULTI_SINGLE>;
 
+    // Pool indirect addressing is opt-in from the tiling: weight/antiquantScale then describe one
+    // shared pool each (a flat pointer, never a tensor-list descriptor) and each group's expert row
+    // comes from slot_table instead of from the group index. A zero weightAddressMode keeps the
+    // DIRECT path byte-for-byte as it was.
+    const bool isPoolMode = gmmBaseParams->weightAddressMode != 0;
     GM_ADDR xAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<XType>(0, x));
     GM_ADDR weightAddr = weight;
     GM_ADDR scaleBAddr = antiquantScale;
     GM_ADDR biasAddr = bias;
     GM_ADDR yAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<YType>(0, y));
-    // SMS keeps W/ScaleB/Bias as tensor-list descriptors for per-group lookup.
+    // SMS keeps W/ScaleB/Bias as tensor-list descriptors for per-group lookup. In pool mode the two
+    // pool pointers are already resolved, so the list lookup below must be skipped for them.
     if constexpr (!IS_SINGLE_MULTI_SINGLE) {
         // The host builds this tiling-key bit as MX && singleX && !singleWeight && singleY. Therefore true is
         // SMS (singleWeight == 0), while a host-valid false key is SSS (singleWeight == 1); MX MMM is rejected by
         // the host NZ weight-dimension checks. Resolve each one-element list once for the SSS path.
-        weightAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<WeightType>(0, weight));
-        scaleBAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<ScaleBType>(0, antiquantScale));
+        if (!isPoolMode) {
+            weightAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<WeightType>(0, weight));
+            scaleBAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<ScaleBType>(0, antiquantScale));
+        }
         if (gmmBaseParams->hasBias != 0) {
             biasAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<BiasType>(0, bias));
         }
@@ -88,6 +97,14 @@ __aicore__ inline void GmmWeightQuantTensorApiMxKernel(
                                                     static_cast<int32_t>(mmTilingData->baseM),
                                                     static_cast<uint64_t>(gmmBaseParams->nSize)};
     typename BlockPrologue::Params prologueParams{reinterpret_cast<__gm__ BType *>(weightAddr)};
+    typename KernelImpl::PoolParams poolParams{};
+    if (isPoolMode) {
+        poolParams.ptrSlotTable = slotTable;
+        poolParams.rowBytes = gmmBaseParams->poolRowBytes;
+        poolParams.wSegOff = gmmBaseParams->poolWSegOff;
+        poolParams.sSegOff = gmmBaseParams->poolSSegOff;
+        prologueParams.ptrSlotTable = slotTable;
+    }
     typename KernelImpl::Params params{
         {0UL, static_cast<uint64_t>(gmmBaseParams->kSize), static_cast<uint64_t>(gmmBaseParams->nSize),
          static_cast<uint64_t>(gmmBaseParams->groupNum)},
@@ -96,7 +113,8 @@ __aicore__ inline void GmmWeightQuantTensorApiMxKernel(
         prologueParams,
         groupList,
         static_cast<uint32_t>(gmmBaseParams->groupListType),
-        static_cast<uint32_t>(gmmBaseParams->hasBias)};
+        static_cast<uint32_t>(gmmBaseParams->hasBias),
+        poolParams};
     KernelImpl kernelImpl;
     kernelImpl(params);
 }
