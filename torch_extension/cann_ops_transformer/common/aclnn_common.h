@@ -184,9 +184,13 @@ typedef struct {
     aclDataType dtype;
 } TensorListWrapper;
 
+// HiFloat4 has dtype value 42; older ACL headers do not expose its enum name.
+constexpr aclDataType ACL_HIFLOAT4_COMPAT = static_cast<aclDataType>(42);
+
 inline bool Is4BitDtype(const aclDataType acl_data_type)
 {
-    return acl_data_type == ACL_FLOAT4_E2M1 || acl_data_type == ACL_FLOAT4_E1M2 || acl_data_type == ACL_INT4;
+    return acl_data_type == ACL_FLOAT4_E2M1 || acl_data_type == ACL_FLOAT4_E1M2 || acl_data_type == ACL_INT4 ||
+           acl_data_type == ACL_HIFLOAT4_COMPAT;
 }
 
 inline int64_t ConvertToAclStorageOffset(const at::Tensor &at_tensor, const aclDataType acl_data_type)

@@ -55,6 +55,7 @@ public:
     using WEIGHT_T = typename QLIV2T::weightType;
     static constexpr bool IS_MX = QLIV2T::isMx;
     static constexpr bool IS_MXFP4 = QLIV2T::isMxFp4;
+    static constexpr bool IS_HIFLOAT4 = QLIV2T::isHiFloat4;
     using SCALE_T = typename QLIV2T::scaleType;
     static constexpr bool IS_WEIGHT_FP16 = QLIV2T::isWeightFP16;
     __aicore__ inline QLIV2Vector(){};
@@ -226,7 +227,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::InitBuffers(TPipe *pipe)
     topkOp_.InitBuffers(topkSharedTmpLocal_, indicesOutLocal_);
 
     // MX场景不走vector侧kScale路径
-    if constexpr (!IS_MX) {
+    if constexpr (!IS_MX && !IS_HIFLOAT4) {
         Duplicate(kScaleUB_, (SCALE_T)(0), 2 * s2BaseSize_ * 16);
     }
 }
@@ -349,7 +350,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::InitVecWorkspaceTensor(GlobalTensor<
 template <typename QLIV2T>
 __aicore__ inline void QLIV2Vector<QLIV2T>::AllocEventID()
 {
-    if constexpr (!IS_MX) {
+    if constexpr (!IS_MX && !IS_HIFLOAT4) {
         SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_KSCALE + 0);
         SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_KSCALE + 1);
     }
@@ -366,7 +367,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::AllocEventID()
 template <typename QLIV2T>
 __aicore__ inline void QLIV2Vector<QLIV2T>::FreeEventID()
 {
-    if constexpr (!IS_MX) {
+    if constexpr (!IS_MX && !IS_HIFLOAT4) {
         WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_KSCALE + 0);
         WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_KSCALE + 1);
     }
@@ -502,7 +503,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
         DataCopyPad(weightUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(WEIGHT_T))], weightsGm[weightGmOffset],
                     qwDataCopyExtParams, padWeightsParams);
 
-        if constexpr (!IS_MX) {
+        if constexpr (!IS_MX && !IS_HIFLOAT4) {
             if (constInfo_.quantMode != 4) {
                 // qScaleGm  -->  qScaleUB_
                 DataCopyPadExtParams<SCALE_T> padQScaleParams{false, 0, 0, 0};
@@ -520,7 +521,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
         WaitFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT_QSCALE + qScalepingpong);
     }
 
-    if constexpr (!IS_MX) {
+    if constexpr (!IS_MX && !IS_HIFLOAT4) {
         if (((info.s2Idx - info.s2Start) % 16 == 0) && (constInfo_.quantMode != 4)) {
             WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_KSCALE + kScalepingpong);
             uint32_t getLen = 16 * s2BaseSize_ > (info.validS2Len - info.s2Idx * s2BaseSize_) ?
@@ -546,7 +547,12 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
 
     auto qkBase = resMm1UB_[pingpong * (UB_BANK_STRIDE / sizeof(QK_T))];
     auto qkVLstride = (UB_BANK_DEPTH_STRIDE / sizeof(QK_T)) / CVRATIO * constInfo_.mBaseSizeMax;
-    if constexpr (IS_MXFP4) {
+
+    if constexpr (IS_HIFLOAT4) {
+        vector1::BatchMulWeightAndReduceSumFP4(outBase, UB_BANK_DEPTH_STRIDE / sizeof(SCORE_T), qkBase, qkVLstride,
+                                               (uint32_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(QK_T)), weightBase,
+                                               UB_BANK_DEPTH_STRIDE / sizeof(WEIGHT_T), gSize_, curAivS1ProcNum);
+    } else if constexpr (IS_MXFP4) {
         vector1::BatchMulWeightAndReduceSumMXFP4(outBase, UB_BANK_DEPTH_STRIDE / sizeof(SCORE_T), qkBase, qkVLstride,
                                                  (uint32_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(QK_T)), weightBase,
                                                  UB_BANK_DEPTH_STRIDE / sizeof(WEIGHT_T), gSize_, curAivS1ProcNum);
@@ -582,10 +588,11 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
                                             (uint32_t)0, qScaleBase, UB_BANK_DEPTH_STRIDE / sizeof(float), gSize_,
                                             curAivS1ProcNum);
     }
+
     if (info.isFirstS2InnerLoop) {
         SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_QSCALE + qScalepingpong);
     }
-    if constexpr (!IS_MX) {
+    if constexpr (!IS_MX && !IS_HIFLOAT4) {
         if (((info.s2Idx - info.s2Start) % 16 == 0) && (constInfo_.quantMode != 4)) {
             SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_KSCALE + kScalepingpong);
         }

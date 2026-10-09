@@ -100,7 +100,10 @@ using lightning_indexer_v2_checker::QUANT_MODE_HIFLOAT4;
 using lightning_indexer_v2_checker::MX_SCALE_SHAPE_ALIGN;
 using lightning_indexer_v2_checker::MX_E8M0_SCALE_PACK_NUM;
 using lightning_indexer_v2_checker::MXFP4_PACK_NUM;
+using lightning_indexer_v2_checker::HIFLOAT4_PACK_NUM;
 constexpr uint32_t MX_SCALE_GROUP_SIZE = 32; // MX量化每32个D维元素对应1个E8M0 scale
+constexpr uint32_t HIFLOAT4_BLOCK_SIZE = 64; // HIFLOAT4每64个D维元素对应1个scale
+
 
 // -----------算子TilingData定义---------------
 BEGIN_TILING_DATA_DEF(QLIV2TilingData)

@@ -30,6 +30,7 @@ constexpr int32_t QUANT_MODE_HIFLOAT4 = 6;
 constexpr uint32_t MX_SCALE_SHAPE_ALIGN = 64;
 constexpr uint32_t MX_E8M0_SCALE_PACK_NUM = 2; // MX的E8M0 scale形状最后一维打包数为2
 constexpr uint32_t MXFP4_PACK_NUM = 2;         // 每个uint8承载2个FP4 E2M1逻辑元素
+constexpr uint32_t HIFLOAT4_PACK_NUM = 2;
 
 enum class CheckerLayout : uint32_t {
     BSND = 0,

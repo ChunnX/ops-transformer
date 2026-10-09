@@ -20,12 +20,17 @@
 
 namespace optiling {
 
-inline constexpr uint32_t AIC_CORE_MAX_NUM = 32;
-inline constexpr uint32_t AIV_CORE_MAX_NUM = 72;
-constexpr uint32_t QLI_V2_METADATA_TOTAL_SIZE = 1024;
-inline constexpr uint32_t AIC_CORE_MAX_NUM_A6 = 80;
-inline constexpr uint32_t AIV_CORE_MAX_NUM_A6 = 80;
-constexpr uint32_t QLI_V2_METADATA_TOTAL_SIZE_A6 = 2048;
+// Constants
+#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201 || __NPU_ARCH__ == 9202))
+    inline constexpr uint32_t AIC_CORE_MAX_NUM = 80;
+    inline constexpr uint32_t AIV_CORE_MAX_NUM = 80;
+    constexpr uint32_t QLI_V2_METADATA_TOTAL_SIZE = 2048;
+#else
+    inline constexpr uint32_t AIC_CORE_MAX_NUM = 36;
+    inline constexpr uint32_t AIV_CORE_MAX_NUM = 72;
+    constexpr uint32_t QLI_V2_METADATA_TOTAL_SIZE = 1024;
+#endif 
+
 using QLI_V2_METADATA_T = int32_t;
 
 inline constexpr uint32_t QLI_V2_METADATA_SIZE = 8;
