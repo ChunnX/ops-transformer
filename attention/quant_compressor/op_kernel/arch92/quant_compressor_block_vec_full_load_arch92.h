@@ -91,14 +91,13 @@ __aicore__ inline void QuantCompressorBlockVectorFullLoad<COMP>::InitBuffers(TPi
 {
     pipe->InitBuffer(this->inputQue1, 1, BUFFER_SIZE_BYTE_64K);
     pipe->InitBuffer(this->inputQue2, 1, BUFFER_SIZE_BYTE_64K);
-    pipe->InitBuffer(this->inputQue3, 1, BUFFER_SIZE_BYTE_32K);
     pipe->InitBuffer(this->outputQue1, 1, BUFFER_SIZE_BYTE_32K);
-    pipe->InitBuffer(inputQueApe, 1, BUFFER_SIZE_BYTE_16K);
+    pipe->InitBuffer(inputQueApe, 1, BUFFER_SIZE_BYTE_32K);
     pipe->InitBuffer(this->wKvDescaleBuf, BUFFER_SIZE_BYTE_8K);
     pipe->InitBuffer(this->wGateDescaleBuf, BUFFER_SIZE_BYTE_8K);
     pipe->InitBuffer(this->tmpBuff1, BUFFER_SIZE_BYTE_64K);
     pipe->InitBuffer(this->tmpBuff2, BUFFER_SIZE_BYTE_64K);
-    pipe->InitBuffer(this->apeBuf, BUFFER_SIZE_BYTE_16K);
+    pipe->InitBuffer(this->apeBuf, BUFFER_SIZE_BYTE_32K);
     this->xWKvDescaleUb = this->wKvDescaleBuf.template Get<T>();
     this->xWGateDescaleUb = this->wGateDescaleBuf.template Get<T>();
     if constexpr (COMP::quantMode == QUANT_MODE::A8W8_A_HIFP8_PER_TENSOR_W_HIFP8_PER_CHANNEL) {
@@ -391,7 +390,7 @@ __aicore__ inline void QuantCompressorBlockVectorFullLoad<COMP>::ComputeVec1()
     uint32_t cnt = this->constInfo_.sSize * splitInfo.dBaseSize * this->coff_;
     uint32_t singleLoopBatchNum = BUFFER_SIZE_BYTE_32K / (cnt * sizeof(T));
     uint32_t loopTimes = CeilDivT(splitInfo.dealBatchNum, singleLoopBatchNum);
-    bool isApeFullLoad = this->coff_ * this->cmpRatio_ * splitInfo.dBaseSize * sizeof(T) <= BUFFER_SIZE_BYTE_16K;
+    bool isApeFullLoad = this->coff_ * this->cmpRatio_ * splitInfo.dBaseSize * sizeof(T) <= BUFFER_SIZE_BYTE_32K;
     if (isApeFullLoad) {
         CopyInApe(baseOffset, splitInfo.dBaseSize);
     }

@@ -82,13 +82,12 @@ __aicore__ inline void QuantCompressorBlockVectorNormal<COMP>::InitBuffers(TPipe
 {
     pipe->InitBuffer(this->inputQue1, 1, BUFFER_SIZE_BYTE_64K);
     pipe->InitBuffer(this->inputQue2, 1, BUFFER_SIZE_BYTE_64K);
-    pipe->InitBuffer(this->inputQue3, 1, BUFFER_SIZE_BYTE_32K);
     pipe->InitBuffer(this->tmpBuff1, BUFFER_SIZE_BYTE_64K);
     pipe->InitBuffer(this->tmpBuff2, BUFFER_SIZE_BYTE_64K);
     pipe->InitBuffer(this->outputQue1, 1, BUFFER_SIZE_BYTE_32K);
     pipe->InitBuffer(this->wKvDescaleBuf, BUFFER_SIZE_BYTE_8K);
     pipe->InitBuffer(this->wGateDescaleBuf, BUFFER_SIZE_BYTE_8K);
-    pipe->InitBuffer(this->apeBuf, BUFFER_SIZE_BYTE_32K);
+    pipe->InitBuffer(this->apeBuf, BUFFER_SIZE_BYTE_64K);
     this->apeUb = this->apeBuf.template Get<T>();
     this->xWKvDescaleUb = this->wKvDescaleBuf.template Get<T>();
     this->xWGateDescaleUb = this->wGateDescaleBuf.template Get<T>();

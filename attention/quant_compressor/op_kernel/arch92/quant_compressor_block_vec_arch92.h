@@ -185,7 +185,6 @@ protected:
     // in queue
     TQue<QuePosition::VECIN, 1> inputQue1;
     TQue<QuePosition::VECIN, 1> inputQue2;
-    TQue<QuePosition::VECIN, 1> inputQue3;
     // out queue
     TQue<QuePosition::VECOUT, 1> outputQue1;
 };
@@ -303,14 +302,14 @@ __aicore__ inline LoopInfo QuantCompressorBlockVector<COMP>::GetLoopInfo(const V
 template <typename COMP>
 __aicore__ inline void QuantCompressorBlockVector<COMP>::LoadDescale()
 {
-    LocalTensor<T> wDescale = this->inputQue3.template AllocTensor<T>();
+    LocalTensor<T> wDescale = this->inputQue2.template AllocTensor<T>();
     DataCopy(wDescale, this->wKvDescaleGm_, this->coff_ * this->constInfo_.headDim);
     DataCopy(wDescale[BUFFER_SIZE_BYTE_8K / sizeof(T)], this->wGateDescaleGm_, this->coff_ * this->constInfo_.headDim);
-    this->inputQue3.template EnQue(wDescale);
-    this->inputQue3.template DeQue<T>();
+    this->inputQue2.template EnQue(wDescale);
+    this->inputQue2.template DeQue<T>();
     DataCopy(this->xWKvDescaleUb, wDescale, this->coff_ * this->constInfo_.headDim);
     DataCopy(this->xWGateDescaleUb, wDescale[BUFFER_SIZE_BYTE_8K / sizeof(T)], this->coff_ * this->constInfo_.headDim);
-    this->inputQue3.template FreeTensor(wDescale);
+    this->inputQue2.template FreeTensor(wDescale);
     MulsVF(this->xWKvDescaleUb, this->xWKvDescaleUb, this->xDescale_, this->coff_, this->constInfo_.headDim);
     MulsVF(this->xWGateDescaleUb, this->xWGateDescaleUb, this->xDescale_, this->coff_, this->constInfo_.headDim);
 }
