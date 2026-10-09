@@ -48,7 +48,6 @@ constexpr uint32_t URMA_WQE_SIZE = 64U;
 constexpr uint32_t URMA_BATCH_WQE_CAPACITY = 256U;
 constexpr uint32_t HCOMM_CQE_SCRATCH_BYTES = 64U;
 constexpr uint32_t URMA_BATCH_BUFFER_SIZE = URMA_BATCH_WQE_CAPACITY * URMA_WQE_SIZE + HCOMM_CQE_SCRATCH_BYTES;
-constexpr uint32_t HCOMM_SQ_MAX_PENDING = 32767U;
 constexpr uint32_t METADATA_CHUNK_TOKEN_NUM = 256U;
 constexpr uint32_t METADATA_FIELD_NUM = 4U;
 constexpr uint32_t METADATA_TOKEN_BATCH_OFFSET_FIELD_INDEX = 2U;
@@ -63,11 +62,8 @@ constexpr uint32_t RANK_INFO_SEGMENT_NUM = 3U;
 constexpr uint32_t RANK_INFO_PREFIX_SEG_IDX = 1U;
 constexpr uint32_t RANK_INFO_REDUCE_SUM_SEG_IDX = 2U;
 static constexpr AscendC::UrmaWqeEntry REMOTE_WQE_CONFIG = {.odr = 5, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
-static constexpr AscendC::UrmaWqeEntry REMOTE_CQE_WQE_CONFIG = {.odr = 5, .fence = 1, .se = 0, .cqe = 1, .inlineEn = 0};
 static constexpr AscendC::UrmaWqeEntry REMOTE_ORDERED_FLAG_WQE_CONFIG = {
     .odr = 6, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
-static constexpr AscendC::UrmaWqeEntry REMOTE_ORDERED_FLAG_CQE_WQE_CONFIG = {
-    .odr = 6, .fence = 1, .se = 0, .cqe = 1, .inlineEn = 0};
 
 #define TemplateFFNToAttentionUrmaTypeClass typename xType, bool isInputRankTable
 #define TemplateFFNToAttentionUrmaTypeFunc xType, isInputRankTable
@@ -101,19 +97,16 @@ private:
                                        const DataCopyExtParams &xCopyParams);
     template <typename BatchHandleType>
     __aicore__ inline void AppendRemoteDataWrite(BatchHandleType &batchHandle, GM_ADDR remoteWindowAddr,
-                                                 const RemoteAddressEntry &addressEntry, bool enableCqe);
+                                                 const RemoteAddressEntry &addressEntry);
     template <typename BatchHandleType>
     __aicore__ inline void AppendRemoteFlagWrite(BatchHandleType &batchHandle, GM_ADDR remoteWindowAddr,
-                                                 const RemoteAddressEntry &addressEntry, bool lastFlag);
+                                                 const RemoteAddressEntry &addressEntry);
     template <typename BatchHandleType>
     __aicore__ inline void ClearRemoteFlags(BatchHandleType &batchHandle, GM_ADDR remoteWindowAddr,
                                             GlobalTensor<uint64_t> rankAddressTable, uint32_t entryCount);
     __aicore__ inline void BuildAddressTable();
     __aicore__ inline uint32_t GetAddressTableCount(uint32_t targetRank);
     __aicore__ inline void SendAddressTable(uint32_t targetRank, uint32_t entryCount);
-    template <typename BatchHandleType>
-    __aicore__ inline void CommitAndDrainChannel(BatchHandleType &batchHandle, HcommChannelHandle channel,
-                                                 uint32_t &preparedWqeCount, uint32_t &sqWriteCount);
     __aicore__ inline GM_ADDR GetRankAddressTableAddr(uint32_t targetRank)
     {
         return addressTableWinAddr_ + static_cast<uint64_t>(targetRank) * addressTableStridePerRank_;
@@ -371,36 +364,24 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::S
 template <TemplateFFNToAttentionUrmaTypeClass>
 template <typename BatchHandleType>
 __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::AppendRemoteDataWrite(
-    BatchHandleType &batchHandle, GM_ADDR remoteWindowAddr, const RemoteAddressEntry &addressEntry, bool enableCqe)
+    BatchHandleType &batchHandle, GM_ADDR remoteWindowAddr, const RemoteAddressEntry &addressEntry)
 {
     uint64_t remoteDataOffset =
         winTokenInfoTableSize_ + addressEntry.tokenSlot * static_cast<uint64_t>(axisHS_) * sizeof(xType);
     GM_ADDR sourceDataAddr = inputDataAddr_ + addressEntry.sourceTokenIndex * hSize_;
-    if (enableCqe) {
-        (void)hcomm_.WriteNbi<REMOTE_CQE_WQE_CONFIG>(batchHandle, remoteWindowAddr + remoteDataOffset, sourceDataAddr,
-                                                     static_cast<uint32_t>(hSize_));
-    } else {
-        (void)hcomm_.WriteNbi<REMOTE_WQE_CONFIG>(batchHandle, remoteWindowAddr + remoteDataOffset, sourceDataAddr,
-                                                 static_cast<uint32_t>(hSize_));
-    }
+    (void)hcomm_.WriteNbi<REMOTE_WQE_CONFIG>(batchHandle, remoteWindowAddr + remoteDataOffset, sourceDataAddr,
+                                             static_cast<uint32_t>(hSize_));
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
 template <typename BatchHandleType>
 __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::AppendRemoteFlagWrite(
-    BatchHandleType &batchHandle, GM_ADDR remoteWindowAddr, const RemoteAddressEntry &addressEntry, bool lastFlag)
+    BatchHandleType &batchHandle, GM_ADDR remoteWindowAddr, const RemoteAddressEntry &addressEntry)
 {
     uint64_t remoteFlagOffset = addressEntry.tokenSlot * sizeof(int32_t);
-    // Flag writes keep the ordered config so they land after this round's data WQEs; only the
-    // channel's LAST flag carries a CQE, which the tail Drain waits on. Intermediate flags stay
-    // CQE-free to keep completion traffic minimal.
-    if (lastFlag) {
-        (void)hcomm_.WriteNbi<REMOTE_ORDERED_FLAG_CQE_WQE_CONFIG>(
-            batchHandle, remoteWindowAddr + remoteFlagOffset, localFlagAddr_, static_cast<uint32_t>(sizeof(int32_t)));
-    } else {
-        (void)hcomm_.WriteNbi<REMOTE_ORDERED_FLAG_WQE_CONFIG>(batchHandle, remoteWindowAddr + remoteFlagOffset,
-                                                              localFlagAddr_, static_cast<uint32_t>(sizeof(int32_t)));
-    }
+    // Keep flag writes ordered after this round's data WQEs.
+    (void)hcomm_.WriteNbi<REMOTE_ORDERED_FLAG_WQE_CONFIG>(batchHandle, remoteWindowAddr + remoteFlagOffset,
+                                                          localFlagAddr_, static_cast<uint32_t>(sizeof(int32_t)));
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
@@ -559,20 +540,6 @@ __aicore__ inline uint32_t FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc
 
 template <TemplateFFNToAttentionUrmaTypeClass>
 template <typename BatchHandleType>
-__aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::CommitAndDrainChannel(
-    BatchHandleType &batchHandle, HcommChannelHandle channel, uint32_t &preparedWqeCount, uint32_t &sqWriteCount)
-{
-    if (preparedWqeCount != 0U) {
-        (void)hcomm_.BatchCommit(batchHandle);
-        preparedWqeCount = 0U;
-    }
-    int32_t ret = hcomm_.Drain(channel);
-    ascendc_assert(ret == 0, "Urma drain failed, ret=%d", ret);
-    sqWriteCount = 0U;
-}
-
-template <TemplateFFNToAttentionUrmaTypeClass>
-template <typename BatchHandleType>
 __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::ClearRemoteFlags(
     BatchHandleType &batchHandle, GM_ADDR remoteWindowAddr, GlobalTensor<uint64_t> rankAddressTable,
     uint32_t entryCount)
@@ -589,8 +556,7 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::C
     // Per-round flag clear: zero the remote flag slots this channel is about to use BEFORE the
     // data/flag phases, so the receiver sees a fresh 0->1 edge on every slot every round. All
     // clears use the ordered config so they land after the previous round's data/flag WQEs on
-    // this channel and can never stomp an unconsumed round. Completion anchoring is carried by
-    // the channel's last flag (cqe=1) plus the tail drain, so no clears carry a CQE here.
+    // this channel.
     for (uint32_t chunkStart = 0U; chunkStart < entryCount; chunkStart += entryChunkMax) {
         uint32_t curEntries = (chunkStart + entryChunkMax > entryCount) ? entryCount - chunkStart : entryChunkMax;
         DataCopyExtParams copyParams{1U, curEntries * REMOTE_ADDRESS_ENTRY_SIZE, 0U, 0U, 0U};
@@ -634,7 +600,6 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::S
     constexpr uint32_t entryChunkMax = METADATA_CHUNK_BUFFER_SIZE / REMOTE_ADDRESS_ENTRY_SIZE;
     const DataCopyPadExtParams<uint64_t> padParams{false, 0U, 0U, 0UL};
     uint32_t preparedWqeCount = 0U;
-    uint32_t sqWriteCount = 0U;
 
     // Per-round flag clear before this round's data/flag phases (see ClearRemoteFlags): the
     // receiver observes a fresh 0->1 edge per round on every flag slot.
@@ -652,13 +617,9 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::S
             uint32_t entryOffset = i * entryElements;
             RemoteAddressEntry addressEntry{entriesLocal.GetValue(entryOffset),
                                             entriesLocal.GetValue(entryOffset + 1U)};
-            bool enableCqe = sqWriteCount + 1U >= HCOMM_SQ_MAX_PENDING;
-            AppendRemoteDataWrite(batchHandle, remoteWindowAddr, addressEntry, enableCqe);
+            AppendRemoteDataWrite(batchHandle, remoteWindowAddr, addressEntry);
             ++preparedWqeCount;
-            ++sqWriteCount;
-            if (enableCqe) {
-                CommitAndDrainChannel(batchHandle, channel, preparedWqeCount, sqWriteCount);
-            } else if (preparedWqeCount == URMA_BATCH_WQE_CAPACITY) {
+            if (preparedWqeCount == URMA_BATCH_WQE_CAPACITY) {
                 (void)hcomm_.BatchCommit(batchHandle);
                 preparedWqeCount = 0U;
             }
@@ -676,12 +637,8 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::S
             uint32_t entryOffset = i * entryElements;
             RemoteAddressEntry addressEntry{entriesLocal.GetValue(entryOffset),
                                             entriesLocal.GetValue(entryOffset + 1U)};
-            // chunkStart + i is the global entry index of this channel; only the LAST flag of the
-            // channel carries a CQE, which the tail Drain waits on.
-            bool lastFlag = (chunkStart + i + 1U == entryCount);
-            AppendRemoteFlagWrite(batchHandle, remoteWindowAddr, addressEntry, lastFlag);
+            AppendRemoteFlagWrite(batchHandle, remoteWindowAddr, addressEntry);
             ++preparedWqeCount;
-            ++sqWriteCount;
             if (preparedWqeCount == URMA_BATCH_WQE_CAPACITY) {
                 (void)hcomm_.BatchCommit(batchHandle);
                 preparedWqeCount = 0U;
@@ -689,9 +646,9 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::S
         }
     }
 
-    // Per-channel drain after the send: wait until every WQE (data + flag) of this channel has
-    // landed; the channel's last flag carries the CQE this drain completes on.
-    CommitAndDrainChannel(batchHandle, channel, preparedWqeCount, sqWriteCount);
+    if (preparedWqeCount != 0U) {
+        (void)hcomm_.BatchCommit(batchHandle);
+    }
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
