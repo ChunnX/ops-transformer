@@ -14,17 +14,9 @@
 #include "mhc_norm_post_preonly_common.h"
 #include "mhc_norm_post_preonly_kernel_regbase.h"
 
-template <bool ACCUMULATE_IN_UB>
-struct MhcPartialAccumStorage {};
-
-template <>
-struct MhcPartialAccumStorage<true> {
-    TBuf<TPosition::VECCALC> bufPartialAccum_;
-};
-
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING = false,
           bool ACCUMULATE_IN_UB = false>
-class KernelMhcNormPostPreonly : private MhcPartialAccumStorage<ACCUMULATE_IN_UB> {
+class KernelMhcNormPostPreonly {
 public:
     __aicore__ inline KernelMhcNormPostPreonly() = default;
 
@@ -181,11 +173,11 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
                                  tD % MhcNormRegBase::VL_FP32 == 0U;
         const uint32_t reduceWidth = compactRows ? MhcNormRegBase::VL_FP32 : tD;
 
-        // 累积槽独立于ReduceSum的输出TBuf，避免归约接口复用输出缓冲时覆盖累积值。
+        // 累积槽位于标量缓冲区尾部，与ReduceSum输出隔开，避免归约覆盖累积值。
         // 仅大D启用；D<=5120保留原有标量取值和UB分配路径。
         if constexpr (ACCUMULATE_IN_UB) {
             if (tOff == 0U) {
-                LocalTensor<float> accumulator = this->bufPartialAccum_.template Get<float>();
+                LocalTensor<float> accumulator = bufScalar_.Get<float>()[MhcNormRegBase::VL_FP32];
                 for (uint32_t half = halfBegin; half < halfEnd; ++half) {
                     Duplicate(accumulator[half * MhcNormRegBase::VL_FP32], 0.0f,
                               MhcNormRegBase::VL_FP32);
@@ -337,7 +329,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     LocalTensor<float> scBuf, uint32_t half, uint32_t tOff, uint32_t tD, float (&sumSqHalf)[2],
     float (&dotHalf)[2][N])
 {
-    LocalTensor<float> result = this->bufPartialAccum_.template Get<float>()[half * MhcNormRegBase::VL_FP32];
+    LocalTensor<float> result = bufScalar_.Get<float>()[(half + 1U) * MhcNormRegBase::VL_FP32];
     AscendC::Add(result, result, scBuf, N + 1U);
     PipeBarrier<PIPE_V>();
     if (tOff + tD < D_) {
@@ -672,10 +664,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         pipe_.InitBuffer(bufPostComb_, POST_COMB_SIZE * sizeof(float));
         pipe_.InitBuffer(bufPhiFp32_, 2, 2U * dTile_ * sizeof(float));
         pipe_.InitBuffer(bufHInPrimeBf16_, dTile_ * sizeof(T));
-        pipe_.InitBuffer(bufScalar_, SCALAR_BUF_SIZE);
-        if constexpr (ACCUMULATE_IN_UB) {
-            pipe_.InitBuffer(this->bufPartialAccum_, PARTIAL_ACCUM_BUF_SIZE);
-        }
+        pipe_.InitBuffer(bufScalar_, SCALAR_BUF_SIZE + (ACCUMULATE_IN_UB ? PARTIAL_ACCUM_BUF_SIZE : 0U));
         const uint32_t gamma1CacheElems = (DUAL_SIBLING && USE_RMS_MID) || D_ <= GAMMA1_CACHE_MAX_D ? D_ : dTile_;
         pipe_.InitBuffer(bufScratchFp32_, gamma1CacheElems * sizeof(float));
 
@@ -720,7 +709,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         // 为initcheck建立一次性的MTE2初始化；后续Vector结果会覆盖这些槽位。
         DataCopy(bufScalar_.Get<float>(), gamma0Gm_, PARTIAL_SLOT_ELEMS);
         if constexpr (ACCUMULATE_IN_UB) {
-            LocalTensor<float> accumulator = this->bufPartialAccum_.template Get<float>();
+            LocalTensor<float> accumulator = bufScalar_.Get<float>()[MhcNormRegBase::VL_FP32];
             if constexpr (DUAL_SIBLING) {
                 DataCopy(accumulator[siblingAivIdx_ * MhcNormRegBase::VL_FP32], gamma0Gm_, PARTIAL_SLOT_ELEMS);
             } else {
