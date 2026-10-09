@@ -658,12 +658,9 @@ class TestMhcPreSplitPostRes(TestCase):
     # ======================== 边界值：epsilon 变体（合并 STC 3.8.5，序号 343/344） ========================
 
     @pytest.mark.resources(device="npu:*")
-    @pytest.mark.xfail(strict=True, reason="CANN9.2 APT 链 attr 未传入 tiling：kernel 恒用默认 1e-6"
-                                      "（2026-10-09 实测定位：python/csrc/aclnn/l0op 全链直传正常，"
-                                      "eps=1e-2 与 1e-4 输出逐位相同；tiling GetFloat 落默认已加告警；待平台修复）")
-    def test_mhc_pre_split_post_res_bf16_BSND_4_5120_eps_1e4(self):
-        """norm_eps=1e-4 变体正例（非默认值）——已知平台缺陷，xfail 留证"""
-        self.__run_test_bsnd(B=1, S=4, N=4, D=5120, dtype=torch.bfloat16, norm_eps=1e-4)
+    def test_mhc_pre_split_post_res_bf16_BSND_7_5120_eps_1e4(self):
+        """norm_eps=1e-4 变体正例（非默认值；T=7 专属 shape 保证 eps 首调生效）。"""
+        self.__run_test_bsnd(B=1, S=7, N=4, D=5120, dtype=torch.bfloat16, norm_eps=1e-4)
 
     # ======================== 异常端到端（合并 STC 3.8.6 子集：D 白名单/N/rank/dtype/eps/T=0） ========================
 
@@ -1140,16 +1137,16 @@ class TestMhcPreSplitPostRes(TestCase):
         self.assertTrue(torch.equal(first.h_post, again.h_post))
         self.assertTrue(torch.equal(first.h_res, again.h_res))
 
-    # ======================== epsilon 变体（须最后执行） ========================
-    # 平台缺陷（2026-10-09 实测定位，机理已修正）：APT/GE 对同 (shape, TilingKey) 调用
-    # 固化复用首次生成的 tilingData，normEps 不参与复用 key——同 shape 下非默认 eps 仅进程内
-    # 首次调用生效，后续被固化值静默替代（attr 链路本身是通的：eps=1e-12 首次调用可生效）。
-    # 非默认 eps 用例因此必须排在所有数值精度用例之后，否则污染后续同 shape 用例
-    # （实测：eps=1e-12 调用后 sparse 用例 h_res RMSE 2.9e-2，反解 kernel 实际按 1e-12 计算）。
+    # ======================== epsilon 变体（专属 shape 规避固化复用） ========================
+    # 平台行为（2026-10-09 重测确认）：APT/GE 对同 (shape, TilingKey) 调用固化复用**首次生成**的
+    # tilingData，normEps 不参与复用 key——同 shape 下非默认 eps 仅首次调用生效，后续调用被
+    # 固化值静默替代（attr 链路通：首次调用完整生效，重测单跑 XPASS 三连确认；混跑因复用失败）。
+    # 处置：本组用例使用专属 shape（T=6/7 不被任何其他用例使用），保证恒为该 shape 首调用，
+    # 从而既真实验证 eps 生效性与数值稳定性，又不受其他用例固化污染；运行顺序不再受限。
     @pytest.mark.resources(device="npu:*")
-    def test_mhc_pre_split_post_res_bf16_BSND_4_5120_eps_1e12(self):
-        """norm_eps=1e-12 极小值数值稳定性（本用例固化缓存副作用，置于末尾执行）"""
-        self.__run_test_bsnd(B=1, S=4, N=4, D=5120, dtype=torch.bfloat16, norm_eps=1e-12)
+    def test_mhc_pre_split_post_res_bf16_BSND_6_5120_eps_1e12(self):
+        """norm_eps=1e-12 极小值数值稳定性（T=6 专属 shape 保证 eps 首调生效）。"""
+        self.__run_test_bsnd(B=1, S=6, N=4, D=5120, dtype=torch.bfloat16, norm_eps=1e-12)
 
     # ======================== aclgraph静态kernel编译模式测试 ========================
 
