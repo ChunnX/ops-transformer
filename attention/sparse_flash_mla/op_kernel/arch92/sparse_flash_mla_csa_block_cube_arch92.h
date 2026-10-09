@@ -64,6 +64,8 @@ public:
     static constexpr uint32_t s2BaseSize = 128;
     static constexpr uint32_t dBaseSize = 512;
     static constexpr uint32_t dBaseMatmulSize = 128;
+    static constexpr uint32_t NUM_15 = 15;
+    static constexpr uint32_t NUM_4 = 4;
 
     __aicore__ inline CSABlockCube(){};
     __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> &l1BufferManager,
@@ -376,7 +378,7 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm1HCA(
         shape.actHeadDim = constInfo.dSize;
         shape.maxblockNumPerBatch = maxBlockNumPerBatch;
         shape.copyRowNum = runInfo.s2RealSize;
-        shape.copyRowNumAlign = (runInfo.s2RealSize + 15) >> 4 << 4;
+        shape.copyRowNumAlign = (runInfo.s2RealSize + NUM_15) >> NUM_4 << NUM_4;
         shape.pageStride = runInfo.isCmp ? constInfo.cmpKeyStride0 : constInfo.oriKeyStride0;
         GmCopyInToL1PA<KV_T>(inputRightTensor, curKvGm.gmTensor, blockTableGm, KVLAYOUT::BBH, shape, startPos);
     } else {
@@ -544,7 +546,7 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm1CSA(
             shape.actHeadDim = constInfo.dSize;
             shape.maxblockNumPerBatch = maxBlockNumPerBatch;
             shape.copyRowNum = runInfo.s2RealSize;
-            shape.copyRowNumAlign = (runInfo.s2RealSize + 15) >> 4 << 4;
+            shape.copyRowNumAlign = (runInfo.s2RealSize + NUM_15) >> NUM_4 << NUM_4;
             shape.pageStride = runInfo.isCmp ? constInfo.cmpKeyStride0 : constInfo.oriKeyStride0;
             GmCopyInToL1PA<KV_T>(inputRightTensor, curKvGm.gmTensor, blockTableGm, KVLAYOUT::BBH, shape, startPos);
         } else {
@@ -664,8 +666,8 @@ template <typename T>
 struct CubeBlockTraits; // 声明
 
 /* 生成CubeBlockTraits */
-#define GEN_TRAIT_TYPE(name, ...) using name##_TRAITS = name;
-#define GEN_TRAIT_CONST(name, type, ...) static constexpr type name##Traits = name;
+#define GEN_TRAIT_TYPE(name, ...) using name##_TRAITS = name
+#define GEN_TRAIT_CONST(name, type, ...) static constexpr type name##Traits = name
 
 #define DEFINE_CUBE_BLOCK_TRAITS(CUBE_BLOCK_CLASS) \
     TEMPLATES_DEF_NO_DEFAULT \
@@ -678,8 +680,8 @@ DEFINE_CUBE_BLOCK_TRAITS(CSABlockCube);
 DEFINE_CUBE_BLOCK_TRAITS(CSABlockCubeDummy);
 
 // /* 生成Arg Traits, kernel中只需要调用ARGS_TRAITS就可以获取所有CubeBlock中的模板参数 */
-#define GEN_ARGS_TYPE(name, ...) using name = typename CubeBlockTraits<CubeBlockType>::name##_TRAITS;
-#define GEN_ARGS_CONST(name, type, ...) static constexpr type name = CubeBlockTraits<CubeBlockType>::name##Traits;
+#define GEN_ARGS_TYPE(name, ...) using name = typename CubeBlockTraits<CubeBlockType>::name##_TRAITS
+#define GEN_ARGS_CONST(name, type, ...) static constexpr type name = CubeBlockTraits<CubeBlockType>::name##Traits
 #define ARGS_TRAITS \
     CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARGS_TYPE) \
     CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_ARGS_CONST)
