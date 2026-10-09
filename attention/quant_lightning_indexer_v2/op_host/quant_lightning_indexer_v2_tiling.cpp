@@ -395,7 +395,7 @@ ge::graphStatus QLIV2InfoParser::CheckAttrParaInfo()
                         (*qliV2Params_.quantMode != QUANT_MODE_MXFP8) &&
                         (*qliV2Params_.quantMode != QUANT_MODE_HIFLOAT8) &&
                         (*qliV2Params_.quantMode != QUANT_MODE_MXFP4) &&
-                        (*opParamInfo_.quantMode != QUANT_MODE_HIFLOAT4),
+                        (*qliV2Params_.quantMode != QUANT_MODE_HIFLOAT4),
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "quant_mode",
                                                           std::to_string(*qliV2Params_.quantMode).c_str(),
                                                           "Quant_mode only supports 1, 2, 3, 4 and 5"),
@@ -488,7 +488,7 @@ ge::graphStatus QLIV2InfoParser::GetAndCheckInOutDataType()
         } else if (*qliV2Params_.quantMode == QUANT_MODE_INT8) {
             expectQType = ge::DT_INT8;
             expectScaleType = ge::DT_FLOAT16;
-        } else if (*opParamInfo_.quantMode == QUANT_MODE_HIFLOAT4) {
+        } else if (*qliV2Params_.quantMode == QUANT_MODE_HIFLOAT4) {
             expectQType = ge::DT_HIFLOAT4;
         }
         OP_CHECK_IF(inputQType_ != expectQType,
@@ -1361,57 +1361,57 @@ ge::graphStatus QLIV2InfoParser::CheckScaleShape()
     } else if (isHiFloat4QuantMode) {
         OP_CHECK_IF(headDim_ % HIFLOAT4_BLOCK_SIZE != 0,
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        opName_, "q", ToStringRaw(opParamInfo_.query.shape->GetStorageShape()).c_str(),
+                        opName_, "q", ToStringRaw(qliV2Params_.query.shape->GetStorageShape()).c_str(),
                         "When quant_mode is 6, head_dim should be a multiple of " +
                             std::to_string(HIFLOAT4_BLOCK_SIZE) + ", but now is " + std::to_string(headDim_)),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(qDequantScaleShapeDim != qShapeDim,
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                         opName_, "q_descale",
-                        ToStringRaw(opParamInfo_.query_dequant_scale.shape->GetStorageShape()).c_str(),
+                        ToStringRaw(qliV2Params_.query_dequant_scale.shape->GetStorageShape()).c_str(),
                         "When quant_mode is 6, the dim num of q_descale should be " + std::to_string(qShapeDim)),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(kDequantScaleShapeDim != kShapeDim,
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                         opName_, "k_descale",
-                        ToStringRaw(opParamInfo_.key_dequant_scale.shape->GetStorageShape()).c_str(),
+                        ToStringRaw(qliV2Params_.key_dequant_scale.shape->GetStorageShape()).c_str(),
                         "When quant_mode is 6, the dim num of k_descale should be " + std::to_string(kShapeDim)),
                     return ge::GRAPH_FAILED);
         for (uint32_t i = 0; i < (qShapeDim - 1); i++) {
-            uint32_t dimValueQueryScale = opParamInfo_.query_dequant_scale.shape->GetStorageShape().GetDim(i);
-            uint32_t dimValueQuery = opParamInfo_.query.shape->GetStorageShape().GetDim(i);
+            uint32_t dimValueQueryScale = qliV2Params_.query_dequant_scale.shape->GetStorageShape().GetDim(i);
+            uint32_t dimValueQuery = qliV2Params_.query.shape->GetStorageShape().GetDim(i);
             OP_CHECK_IF(dimValueQueryScale != dimValueQuery,
                         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                             opName_, "q and q_descale",
-                            Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()) + " and " +
-                                Ops::Base::ToString(opParamInfo_.query_dequant_scale.shape->GetStorageShape()),
+                            Ops::Base::ToString(qliV2Params_.query.shape->GetStorageShape()) + " and " +
+                                Ops::Base::ToString(qliV2Params_.query_dequant_scale.shape->GetStorageShape()),
                             "Q_descale's shape[" + std::to_string(i) + "]" + std::to_string(dimValueQueryScale) +
                                 " and q's shape[" + std::to_string(i) + "]" + std::to_string(dimValueQuery) +
                                 " are not same"),
                         return ge::GRAPH_FAILED);
         }
         for (uint32_t i = 0; i < (kShapeDim - 1); i++) {
-            uint32_t dimValueKeyScale = opParamInfo_.key_dequant_scale.shape->GetStorageShape().GetDim(i);
-            uint32_t dimValueKey = opParamInfo_.key.shape->GetStorageShape().GetDim(i);
+            uint32_t dimValueKeyScale = qliV2Params_.key_dequant_scale.shape->GetStorageShape().GetDim(i);
+            uint32_t dimValueKey = qliV2Params_.key.shape->GetStorageShape().GetDim(i);
             OP_CHECK_IF(dimValueKeyScale != dimValueKey,
                         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                             opName_, "k and k_descale",
-                            Ops::Base::ToString(opParamInfo_.key.shape->GetStorageShape()) + " and " +
-                                Ops::Base::ToString(opParamInfo_.key_dequant_scale.shape->GetStorageShape()),
+                            Ops::Base::ToString(qliV2Params_.key.shape->GetStorageShape()) + " and " +
+                                Ops::Base::ToString(qliV2Params_.key_dequant_scale.shape->GetStorageShape()),
                             "K_descale's shape[" + std::to_string(i) + "]" + std::to_string(dimValueKeyScale) +
                                 " and k's shape[" + std::to_string(i) + "]" + std::to_string(dimValueKey) +
                                 " are not same"),
                         return ge::GRAPH_FAILED);
         }
         uint32_t expectHif4ScaleD = headDim_ / HIFLOAT4_BLOCK_SIZE;
-        OP_CHECK_IF(opParamInfo_.query_dequant_scale.shape->GetStorageShape().GetDim(qShapeDim - 1) != expectHif4ScaleD,
+        OP_CHECK_IF(qliV2Params_.query_dequant_scale.shape->GetStorageShape().GetDim(qShapeDim - 1) != expectHif4ScaleD,
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                opName_, "q_descale", Ops::Base::ToString(opParamInfo_.query_dequant_scale.shape->GetStorageShape()),
+                opName_, "q_descale", Ops::Base::ToString(qliV2Params_.query_dequant_scale.shape->GetStorageShape()),
                 "When quant_mode is 6, q_descale's last dim should be " + std::to_string(expectHif4ScaleD)),
             return ge::GRAPH_FAILED);
-        OP_CHECK_IF(opParamInfo_.key_dequant_scale.shape->GetStorageShape().GetDim(kShapeDim - 1) != expectHif4ScaleD,
+        OP_CHECK_IF(qliV2Params_.key_dequant_scale.shape->GetStorageShape().GetDim(kShapeDim - 1) != expectHif4ScaleD,
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                opName_, "k_descale", Ops::Base::ToString(opParamInfo_.key_dequant_scale.shape->GetStorageShape()),
+                opName_, "k_descale", Ops::Base::ToString(qliV2Params_.key_dequant_scale.shape->GetStorageShape()),
                 "When quant_mode is 6, k_descale's last dim should be " + std::to_string(expectHif4ScaleD)),
             return ge::GRAPH_FAILED);
     } else {
@@ -1530,7 +1530,7 @@ ge::graphStatus QLIV2InfoParser::CheckKeyContiguous() const
                         "2-element FP4 packing alignment, but got " +
                             std::to_string(keyStridesVec_[0])),
                     return ge::GRAPH_FAILED);
-            } else if (*opParamInfo_.quantMode == QUANT_MODE_HIFLOAT4) {
+            } else if (*qliV2Params_.quantMode == QUANT_MODE_HIFLOAT4) {
                 OP_CHECK_IF(
                     keyStridesVec_[0] <= 0 || keyStridesVec_[0] % HIFLOAT4_PACK_NUM != 0,
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
@@ -1603,11 +1603,11 @@ void QLIV2InfoParser::GenerateInfo(QLIV2TilingInfo &QLIV2Info)
         if (*qliV2Params_.quantMode == QUANT_MODE_MXFP4) {
             // FP4 shape stride以逻辑元素计数，kernel侧以打包后的uint8为寻址单位。
             keyStride0 /= MXFP4_PACK_NUM;
-        } else if (*opParamInfo_.quantMode == QUANT_MODE_HIFLOAT4) {
+        } else if (*qliV2Params_.quantMode == QUANT_MODE_HIFLOAT4) {
             keyStride0 /= HIFLOAT4_PACK_NUM;
         }
         QLIV2Info.keyStride0 = keyStride0;
-    } else if (kLayout_ == DataLayout::PA_BBND && *opParamInfo_.quantMode == QUANT_MODE_HIFLOAT4) {
+    } else if (kLayout_ == DataLayout::PA_BBND && *qliV2Params_.quantMode == QUANT_MODE_HIFLOAT4) {
         QLIV2Info.keyStride0 = static_cast<uint32_t>(blockSize_) * n2Size_ * (headDim_ / HIFLOAT4_PACK_NUM);
     } else {
         QLIV2Info.keyStride0 = 0; // 非PA无需使用stride
@@ -1616,7 +1616,7 @@ void QLIV2InfoParser::GenerateInfo(QLIV2TilingInfo &QLIV2Info)
         QLIV2Info.keyDequantScaleStride0 = static_cast<uint32_t>(keyDequantScaleStridesVec_[0]);
     } else if ((*qliV2Params_.quantMode == QUANT_MODE_MXFP8) || (*qliV2Params_.quantMode == QUANT_MODE_MXFP4)) {
         QLIV2Info.keyDequantScaleStride0 = static_cast<uint32_t>(blockSize_) * (headDim_ / MX_SCALE_GROUP_SIZE);
-    } else if (*opParamInfo_.quantMode == QUANT_MODE_HIFLOAT4) {
+    } else if (*qliV2Params_.quantMode == QUANT_MODE_HIFLOAT4) {
         QLIV2Info.keyDequantScaleStride0 = static_cast<uint32_t>(blockSize_) * (headDim_ / HIFLOAT4_BLOCK_SIZE);
     } else {
         QLIV2Info.keyDequantScaleStride0 = 0;
