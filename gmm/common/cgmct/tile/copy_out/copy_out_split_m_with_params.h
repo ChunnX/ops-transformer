@@ -58,7 +58,7 @@ public:
                                       int32_t curRow, int32_t curCol, int32_t l0CTileH, int32_t l0CTileW, int32_t baseM,
                                       int32_t baseN, int32_t orgM, int32_t orgN, int32_t orgKc, uint8_t id = 0)
     {
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510 || __NPU_ARCH__ == 9201 || __NPU_ARCH__ == 9202)
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
         l0CTileH = AscendC::Align(l0CTileH, 2); // 2 means SplitM scenario aligned to 2
         uint32_t dimN = orgKc != 0 ? orgKc : orgN;
         constexpr uint32_t blockCount = AscendC::ONE_BLK_SIZE / sizeof(DstT);
