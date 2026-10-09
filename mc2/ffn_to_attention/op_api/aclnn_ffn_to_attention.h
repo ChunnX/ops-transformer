@@ -41,10 +41,10 @@ extern "C" {
  *
  */
 ACLNN_API aclnnStatus aclnnFFNToAttentionGetWorkspaceSize(
-    const aclTensor *x, const aclTensor *sessionIds, const aclTensor *microBatchIds, const aclTensor *tokenIds,
-    const aclTensor *expertOffsets, const aclTensor *actualTokenNum, const aclTensor *attnRankTable, const char *group,
-    int64_t worldSize, const aclIntArray *tokenInfoTableShape, const aclIntArray *tokenDataShape,
-    uint64_t *workspaceSize, aclOpExecutor **executor);
+    const aclTensor* x, const aclTensor* sessionIds, const aclTensor* microBatchIds, const aclTensor* tokenIds,
+    const aclTensor* expertOffsets, const aclTensor* actualTokenNum, const aclTensor* attnRankTable, const char* group,
+    int64_t worldSize, const aclIntArray* tokenInfoTableShape, const aclIntArray* tokenDataShape,
+    uint64_t* workspaceSize, aclOpExecutor** executor);
 
 /**
  * @brief aclnnFFNToAttention的第二段接口，用于执行计算。
@@ -54,7 +54,7 @@ ACLNN_API aclnnStatus aclnnFFNToAttentionGetWorkspaceSize(
  * @param [in] stream: acl stream流。
  * @return aclnnStatus: 返回状态码
  */
-ACLNN_API aclnnStatus aclnnFFNToAttention(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+ACLNN_API aclnnStatus aclnnFFNToAttention(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
                                           aclrtStream stream);
 
 #ifdef __cplusplus

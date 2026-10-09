@@ -47,11 +47,11 @@ extern "C" {
  *
  */
 ACLNN_API aclnnStatus aclnnAttentionToFFNGetWorkspaceSize(
-    const aclTensor *x, const aclTensor *sessionId, const aclTensor *microBatchId, const aclTensor *layerId,
-    const aclTensor *expertIds, const aclTensor *expertRankTable, const aclTensor *scales, const aclTensor *activeMask,
-    const char *group, int64_t worldSize, const aclIntArray *ffnTokenInfoTableShape,
-    const aclIntArray *ffnTokenDataShape, const aclIntArray *attnTokenInfoTableShape, int64_t moeExpertNum,
-    int64_t quantMode, int64_t syncFlag, int64_t ffnStartRankId, uint64_t *workspaceSize, aclOpExecutor **executor);
+    const aclTensor* x, const aclTensor* sessionId, const aclTensor* microBatchId, const aclTensor* layerId,
+    const aclTensor* expertIds, const aclTensor* expertRankTable, const aclTensor* scales, const aclTensor* activeMask,
+    const char* group, int64_t worldSize, const aclIntArray* ffnTokenInfoTableShape,
+    const aclIntArray* ffnTokenDataShape, const aclIntArray* attnTokenInfoTableShape, int64_t moeExpertNum,
+    int64_t quantMode, int64_t syncFlag, int64_t ffnStartRankId, uint64_t* workspaceSize, aclOpExecutor** executor);
 
 /**
  * @brief aclnnAttentionToFFN的第二段接口，用于执行计算。
@@ -61,7 +61,7 @@ ACLNN_API aclnnStatus aclnnAttentionToFFNGetWorkspaceSize(
  * @param [in] stream: acl stream流。
  * @return aclnnStatus: 返回状态码
  */
-ACLNN_API aclnnStatus aclnnAttentionToFFN(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+ACLNN_API aclnnStatus aclnnAttentionToFFN(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
                                           aclrtStream stream);
 
 #ifdef __cplusplus
