@@ -36,10 +36,6 @@ const std::string DISTRIBUTE_BARRIER_OP_TYPE = "DistributeBarrier";
 const std::string MOE_DISTRIBUTE_DISPATCH_V2_OP_TYPE = "MoeDistributeDispatchV2";
 const std::string MOE_DISTRIBUTE_COMBINE_V2_OP_TYPE = "MoeDistributeCombineV2";
 const std::string MOE_DISTRIBUTE_COMBINE_ADD_RMS_NORM_OP_TYPE = "MoeDistributeCombineAddRmsNorm";
-const std::string MOE_DISTRIBUTE_COMBINE_SETUP_OP_TYPE = "MoeDistributeCombineSetup";
-const std::string MOE_DISTRIBUTE_COMBINE_TEARDOWN_OP_TYPE = "MoeDistributeCombineTeardown";
-const std::string MOE_DISTRIBUTE_DISPATCH_SETUP_OP_TYPE = "MoeDistributeDispatchSetup";
-const std::string MOE_DISTRIBUTE_DISPATCH_TEARDOWN_OP_TYPE = "MoeDistributeDispatchTeardown";
 const std::string ALLTO_ALLV_GROUPED_MAT_MUL_OP_TYPE = "AlltoAllvGroupedMatMul";
 const std::string GROUPED_MAT_MUL_ALLTO_ALLV_OP_TYPE = "GroupedMatMulAlltoAllv";
 const std::string ALL_TO_ALLV_QUANT_GROUPED_MM_OP_TYPE = "AlltoAllvQuantGroupedMatMul";
@@ -48,7 +44,6 @@ const std::string ATTENTION_TO_FFN_OP_TYPE = "AttentionToFFN";
 const std::string FFN_TO_ATTENTION_OP_TYPE = "FFNToAttention";
 const int32_t GROUP_CNT_OF_DS_TRAINING = 1;
 const int32_t GROUP_CNT_OF_MOE_DISTRIBUTE = 2;
-const int32_t ONE_GROUP_CNT_OF_MOE_DISTRIBUTE = 1;
 const int32_t GROUP_CNT_OF_DISTRIBUTE_BARRIER = 1;
 const int32_t GROUP_CNT_OF_ATTENTION_FFN = 1;
 const int32_t GROUP_CNT = 2;
@@ -69,10 +64,6 @@ static const std::map<const std::string, int32_t> GROUP_CNT_MAP{
     {MOE_DISTRIBUTE_DISPATCH_V2_OP_TYPE, GROUP_CNT_OF_MOE_DISTRIBUTE},
     {MOE_DISTRIBUTE_COMBINE_V2_OP_TYPE, GROUP_CNT_OF_MOE_DISTRIBUTE},
     {MOE_DISTRIBUTE_COMBINE_ADD_RMS_NORM_OP_TYPE, GROUP_CNT_OF_MOE_DISTRIBUTE},
-    {MOE_DISTRIBUTE_COMBINE_SETUP_OP_TYPE, ONE_GROUP_CNT_OF_MOE_DISTRIBUTE},
-    {MOE_DISTRIBUTE_COMBINE_TEARDOWN_OP_TYPE, ONE_GROUP_CNT_OF_MOE_DISTRIBUTE},
-    {MOE_DISTRIBUTE_DISPATCH_SETUP_OP_TYPE, ONE_GROUP_CNT_OF_MOE_DISTRIBUTE},
-    {MOE_DISTRIBUTE_DISPATCH_TEARDOWN_OP_TYPE, ONE_GROUP_CNT_OF_MOE_DISTRIBUTE},
     {ALLTO_ALLV_GROUPED_MAT_MUL_OP_TYPE, GROUP_CNT_OF_DS_TRAINING},
     {GROUPED_MAT_MUL_ALLTO_ALLV_OP_TYPE, GROUP_CNT_OF_DS_TRAINING},
     {ALL_TO_ALLV_QUANT_GROUPED_MM_OP_TYPE, GROUP_CNT_OF_DS_TRAINING},
@@ -84,8 +75,6 @@ static const std::unordered_set<std::string> NO_AI_CPU_SET{MOE_DISTRIBUTE_DISPAT
                                                            MOE_DISTRIBUTE_COMBINE_OP_TYPE,
                                                            MOE_DISTRIBUTE_DISPATCH_V2_OP_TYPE,
                                                            MOE_DISTRIBUTE_COMBINE_V2_OP_TYPE,
-                                                           MOE_DISTRIBUTE_DISPATCH_TEARDOWN_OP_TYPE,
-                                                           MOE_DISTRIBUTE_COMBINE_TEARDOWN_OP_TYPE,
                                                            MOE_DISTRIBUTE_COMBINE_ADD_RMS_NORM_OP_TYPE,
                                                            DISTRIBUTE_BARRIER_OP_TYPE,
                                                            ATTENTION_TO_FFN_OP_TYPE,
@@ -104,7 +93,7 @@ struct HcclCommParamDescTmp {
     uint64_t isDyn : 48;
 };
 
-static bool IsPlatform910B(const char *nodeName)
+static bool IsPlatform910B(const char* nodeName)
 {
     fe::PlatFormInfos platform_info;
     fe::OptionalInfos optional_info;
@@ -123,7 +112,7 @@ static bool IsPlatform910B(const char *nodeName)
     return supported_soc.count(short_soc_version) > 0;
 }
 
-static bool GetGroupCnt(const char *nodeName, const char *opType, int32_t &cnt)
+static bool GetGroupCnt(const char* nodeName, const char* opType, int32_t& cnt)
 {
     const std::string opTypeStr = opType;
     if (GROUP_CNT_MAP.find(opTypeStr) == GROUP_CNT_MAP.end()) {
@@ -141,14 +130,14 @@ static bool GetGroupCnt(const char *nodeName, const char *opType, int32_t &cnt)
 } // namespace
 
 namespace ops {
-ge::Status Mc2MoeGenTaskOpsUtils::McMoeInsertHiddenInputForAicore(const gert::ExeResGenerationContext *context,
+ge::Status Mc2MoeGenTaskOpsUtils::McMoeInsertHiddenInputForAicore(const gert::ExeResGenerationContext* context,
                                                                   const int32_t groupCnt,
-                                                                  std::vector<std::vector<uint8_t>> &tasks)
+                                                                  std::vector<std::vector<uint8_t>>& tasks)
 {
-    const char *nodeName = context->GetNodeName();
+    const char* nodeName = context->GetNodeName();
 
     // 找到插入位置
-    const auto getIdxFunc = [](const std::vector<ge::ArgDescInfo> &argDescInfo) {
+    const auto getIdxFunc = [](const std::vector<ge::ArgDescInfo>& argDescInfo) {
         size_t insertIdx = 0U; // 从 0: ffts 开始查找
         for (; insertIdx < argDescInfo.size(); ++insertIdx) {
             if (argDescInfo[insertIdx].GetType() == ge::ArgDescType::kIrInput ||
@@ -173,8 +162,8 @@ ge::Status Mc2MoeGenTaskOpsUtils::McMoeInsertHiddenInputForAicore(const gert::Ex
 
 // McMoeInsertHiddenInputForAicoreV2 在新接口中与V1无差别，整合为一
 
-ge::Status Mc2MoeGenTaskOpsUtils::CreateAicpuTaskMc2Moe(const gert::ExeResGenerationContext *context,
-                                                        ge::KernelLaunchInfo &aicpuTask, const int32_t groupCnt)
+ge::Status Mc2MoeGenTaskOpsUtils::CreateAicpuTaskMc2Moe(const gert::ExeResGenerationContext* context,
+                                                        ge::KernelLaunchInfo& aicpuTask, const int32_t groupCnt)
 {
     // desc 配置
     union {
@@ -205,11 +194,11 @@ ge::Status Mc2MoeGenTaskOpsUtils::CreateAicpuTaskMc2Moe(const gert::ExeResGenera
 
 // 单、双通信域均需要保证填入task顺序 [wait task, aicpu task, record task,
 // aicore task]
-ge::Status Mc2MoeGenTaskOpsUtils::Mc2MoeInsertTask(const gert::ExeResGenerationContext *context,
-                                                   std::vector<std::vector<uint8_t>> &tasks, int32_t groupCnt)
+ge::Status Mc2MoeGenTaskOpsUtils::Mc2MoeInsertTask(const gert::ExeResGenerationContext* context,
+                                                   std::vector<std::vector<uint8_t>>& tasks, int32_t groupCnt)
 {
     int64_t aicoreIdx = 0; // 直接置0
-    const char *nodeName = context->GetNodeName();
+    const char* nodeName = context->GetNodeName();
 
     const auto streamInfos = context->GetAttachedStreamInfos();
     if (streamInfos.empty()) {
@@ -220,9 +209,9 @@ ge::Status Mc2MoeGenTaskOpsUtils::Mc2MoeInsertTask(const gert::ExeResGenerationC
     const int64_t streamId = context->GetStreamId();
 
     // 1. wait task
-    const char *opType = context->GetNodeType();
+    const char* opType = context->GetNodeType();
     const std::string opTypeStr = opType;
-    const char *groupName =
+    const char* groupName =
         opTypeStr == DISTRIBUTE_BARRIER_OP_TYPE || opTypeStr == ALLTO_ALLV_GROUPED_MAT_MUL_OP_TYPE ||
                 opTypeStr == GROUPED_MAT_MUL_ALLTO_ALLV_OP_TYPE || opTypeStr == ALL_TO_ALLV_QUANT_GROUPED_MM_OP_TYPE ||
                 opTypeStr == QUANT_GROUPED_MM_ALL_TO_ALLV_OP_TYPE || opTypeStr == ATTENTION_TO_FFN_OP_TYPE ||
@@ -238,8 +227,8 @@ ge::Status Mc2MoeGenTaskOpsUtils::Mc2MoeInsertTask(const gert::ExeResGenerationC
     bool needAicpuTesk = IsPlatform910B(nodeName) || NO_AI_CPU_SET.find(opTypeStr) == NO_AI_CPU_SET.end();
     if (needAicpuTesk) {
         const bool useA5AicpuServer = IsTargetPlatformNpuArch(nodeName, NPUARCH_A5);
-        const std::string &soName = useA5AicpuServer ? SO_NAME_MC2_SERVER : SO_NAME_LEGACY;
-        const std::string &kernelName = useA5AicpuServer ? KERNEL_NAME_MC2_SERVER : KERNEL_NAME_V1;
+        const std::string& soName = useA5AicpuServer ? SO_NAME_MC2_SERVER : SO_NAME_LEGACY;
+        const std::string& kernelName = useA5AicpuServer ? KERNEL_NAME_MC2_SERVER : KERNEL_NAME_V1;
         OPS_LOG_I(nodeName, "Create AICPU KFC task for MC2 MOE, so[%s], kernel[%s], useA5AicpuServer[%d].",
                   soName.c_str(), kernelName.c_str(), useA5AicpuServer);
         ge::KernelLaunchInfo aicpuTask =
@@ -271,14 +260,14 @@ ge::Status Mc2MoeGenTaskOpsUtils::Mc2MoeInsertTask(const gert::ExeResGenerationC
     return ge::GRAPH_SUCCESS;
 }
 
-ge::Status Mc2MoeGenTaskOpsUtils::Mc2MoeGenTaskCallback(const gert::ExeResGenerationContext *context,
-                                                        std::vector<std::vector<uint8_t>> &tasks)
+ge::Status Mc2MoeGenTaskOpsUtils::Mc2MoeGenTaskCallback(const gert::ExeResGenerationContext* context,
+                                                        std::vector<std::vector<uint8_t>>& tasks)
 {
     // 先插了aicore task, 再插wait + aicpu + record
-    const char *nodeName = context->GetNodeName();
+    const char* nodeName = context->GetNodeName();
 
     int32_t groupCnt = -1;
-    const char *opType = context->GetNodeType();
+    const char* opType = context->GetNodeType();
     if (opType == nullptr) {
         OPS_LOG_E(nodeName, "Op type is nullptr.");
         return ge::GRAPH_FAILED;
@@ -299,25 +288,21 @@ ge::Status Mc2MoeGenTaskOpsUtils::Mc2MoeGenTaskCallback(const gert::ExeResGenera
         return ge::GRAPH_SUCCESS;
     }
 
-    const std::string opTypeStr = opType; // 和V2的差异点，待确认，应该可以整合为一，用V2的if逻辑即可
-    if (opTypeStr == MOE_DISTRIBUTE_COMBINE_TEARDOWN_OP_TYPE || opTypeStr == MOE_DISTRIBUTE_DISPATCH_TEARDOWN_OP_TYPE) {
-        return ge::GRAPH_SUCCESS;
-    }
     return Mc2MoeInsertTask(context, tasks, groupCnt);
 }
 
 // 支持静态图在线编译.o
-ge::Status Mc2MoeGenTaskOpsUtils::Mc2MoeGenTaskCallbackV2(const gert::ExeResGenerationContext *context,
-                                                          std::vector<std::vector<uint8_t>> &tasks)
+ge::Status Mc2MoeGenTaskOpsUtils::Mc2MoeGenTaskCallbackV2(const gert::ExeResGenerationContext* context,
+                                                          std::vector<std::vector<uint8_t>>& tasks)
 {
-    const char *nodeName = context->GetNodeName();
+    const char* nodeName = context->GetNodeName();
     if (tasks.size() <= 0) {
         OPS_LOG_E(nodeName, "Failed to get task for mc2 node.");
         return ge::GRAPH_FAILED;
     }
 
     int32_t groupCnt = -1;
-    const char *opType = context->GetNodeType();
+    const char* opType = context->GetNodeType();
     if (opType == nullptr) {
         OPS_LOG_E(nodeName, "Op type is nullptr.");
         return ge::GRAPH_FAILED;
