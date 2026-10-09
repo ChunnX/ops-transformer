@@ -201,7 +201,6 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
                 LocalTensor<float> scBuf = bufScalar_.Get<float>();
                 uint32_t reduceShape[2] = {N + 1U, tD};
                 ReduceSum<float, AscendC::Pattern::Reduce::AR, true>(scBuf, reduceRows, reduceShape, true);
-                PipeBarrier<PIPE_V>();
                 sumSqHalf[half] += scBuf.GetValue(0);
                 for (uint32_t o = 0; o < N; ++o) {
                     dotHalf[half][o] += scBuf.GetValue(o + 1U);
@@ -292,7 +291,6 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
             uint32_t reduceShape[2] = {N + 1U, reduceWidth};
             // 五行输入在归约后不再使用，允许接口复用源缓冲，避免额外申请UB。
             ReduceSum<float, AscendC::Pattern::Reduce::AR, true>(scBuf, reduceRows, reduceShape, true);
-            PipeBarrier<PIPE_V>();
             sumSqHalf[half] += scBuf.GetValue(0);
             for (uint32_t o = 0; o < N; ++o) {
                 dotHalf[half][o] += scBuf.GetValue(o + 1);
@@ -725,7 +723,6 @@ __aicore__ inline float KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32
         uint32_t tDAligned = (tD + REDUCE_ALIGN - 1) / REDUCE_ALIGN * REDUCE_ALIGN;
         uint32_t srcShape[2] = {1, tDAligned};
         ReduceSum<float, AscendC::Pattern::Reduce::AR, true>(scBuf, src, srcShape, true);
-        PipeBarrier<PIPE_V>();
         return scBuf.GetValue(0);
     }
 
