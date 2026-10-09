@@ -495,11 +495,7 @@ static bool IsDequantDirectConnectAllowed(const std::unique_ptr<ge::fusion::Matc
         return false;
     }
 
-    // MX 3D scale 已是转置布局时可直连，仍需吸收 x2 Transpose 并强制 is_trans_b=true
-    if (IsMXQuantScenario(mc2Node)) {
-        return true;
-    }
-
+    // 对齐 canndev GetDequantScaleTransposeFusionInfos：dequant dim>1 且无合法 Transpose → 整次不融
     const int32_t dequantIdx = static_cast<int32_t>(ops::MC2InputIdx::K_DEQUANT);
     ge::TensorDesc dequantDesc;
     if (mc2Node.GetInputDesc(dequantIdx, dequantDesc) != ge::GRAPH_SUCCESS) {
