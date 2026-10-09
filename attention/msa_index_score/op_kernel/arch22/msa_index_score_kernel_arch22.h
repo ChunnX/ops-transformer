@@ -104,7 +104,7 @@ public:
 
         scheduler_.Init(tiling_->batch, tiling_->numQHeads, tiling_->maxBlocksPerBatch, tiling_->scoreBlockStride,
                         tiling_->sparseMode, tiling_->initBlocks, tiling_->localBlocks, tiling_->keyLayout,
-                        tiling_->kvChunks, gActualSeqQlen_, gActualSeqKlen_, gStartLoc_);
+                        tiling_->kvChunks, gActualSeqQlen_, gActualSeqKlen_, gStartLoc_, true);
     }
 
     __aicore__ inline void Process()

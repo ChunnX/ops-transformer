@@ -34,7 +34,7 @@ __aicore__ inline uint32_t MsaCeilDiv(uint32_t a, uint32_t b)
 }
 
 // C2UB 非量化 F322F16 单目标：两次 Fixpipe 的 mSize 切分（每段偶数），AIV 必须相同。
-__aicore__ inline void MsaC2UbHalfSplit(uint32_t mActual, uint32_t &m0, uint32_t &m1)
+__aicore__ inline void MsaC2UbHalfSplit(uint32_t mActual, uint32_t& m0, uint32_t& m1)
 {
     const uint32_t mEven = (mActual + 1U) & ~1U;
     m0 = mEven / 2U;
@@ -93,9 +93,9 @@ public:
     __aicore__ inline void Init(uint32_t batch, uint32_t numQHeads, uint32_t maxBlocksPerBatch,
                                 uint32_t scoreBlockStride, uint32_t sparseMode, uint32_t initBlocks,
                                 uint32_t localBlocks, uint32_t keyLayout, uint32_t kvChunks,
-                                const AscendC::GlobalTensor<int32_t> &actualSeqQlen,
-                                const AscendC::GlobalTensor<int32_t> &actualSeqKlen,
-                                const AscendC::GlobalTensor<int32_t> &startLoc)
+                                const AscendC::GlobalTensor<int32_t>& actualSeqQlen,
+                                const AscendC::GlobalTensor<int32_t>& actualSeqKlen,
+                                const AscendC::GlobalTensor<int32_t>& startLoc, bool balanceChunks = false)
     {
         batch_ = batch;
         numQHeads_ = numQHeads;
@@ -106,6 +106,7 @@ public:
         localBlocks_ = localBlocks;
         keyLayout_ = keyLayout;
         kvChunks_ = (kvChunks < 1U) ? 1U : kvChunks;
+        balanceChunks_ = balanceChunks;
         gActualSeqQlen_ = actualSeqQlen;
         gActualSeqKlen_ = actualSeqKlen;
         gStartLoc_ = startLoc;
@@ -141,7 +142,7 @@ public:
         return kvLen_ < 0 ? 0 : kvLen_;
     }
 
-    __aicore__ inline void Decode(uint32_t taskIdx, MsaTask &task)
+    __aicore__ inline void Decode(uint32_t taskIdx, MsaTask& task)
     {
         while (taskIdx >= taskBase_ + curTasks_) {
             taskBase_ += curTasks_;
@@ -174,7 +175,7 @@ public:
     }
 
 private:
-    __aicore__ inline void GetMTile(uint32_t tileIdx, uint32_t &mStart, uint32_t &mActual) const
+    __aicore__ inline void GetMTile(uint32_t tileIdx, uint32_t& mStart, uint32_t& mActual) const
     {
         mStart = tileIdx * MSA_ROW_TILE_M;
         mActual = MsaMinU32(MSA_ROW_TILE_M, (curRows_ > mStart) ? (curRows_ - mStart) : 0U);
@@ -208,7 +209,7 @@ private:
     }
 
     __aicore__ inline void AssignSRange(uint32_t visibleEndBlk, uint32_t sChunkIdx, uint32_t sChunks,
-                                        MsaTask &task) const
+                                        MsaTask& task) const
     {
         const uint32_t nStiles = MsaCeilDiv(visibleEndBlk, MSA_BLOCKS_PER_STILE);
         if (sChunks <= 1U || nStiles == 0U) {
@@ -224,12 +225,23 @@ private:
             const uint32_t extra = nStiles % sc;
             uint32_t st0 = 0;
             uint32_t nst = 0;
-            if (sChunkIdx < extra) {
-                st0 = sChunkIdx * (base + 1U);
-                nst = base + 1U;
+            // A2：按 batch 轮转哪几段更长，避免核步进 gcd(chunks, aic)>1 时一直分到胖段。950 不转。
+            const uint32_t rot = (balanceChunks_ && extra != 0U) ? (curBatch_ % sc) : 0U;
+            if (rot == 0U) {
+                if (sChunkIdx < extra) {
+                    st0 = sChunkIdx * (base + 1U);
+                    nst = base + 1U;
+                } else {
+                    st0 = extra * (base + 1U) + (sChunkIdx - extra) * base;
+                    nst = base;
+                }
             } else {
-                st0 = extra * (base + 1U) + (sChunkIdx - extra) * base;
-                nst = base;
+                for (uint32_t i = 0; i < sChunkIdx; ++i) {
+                    const uint32_t sized = (i + rot) % sc;
+                    st0 += (sized < extra) ? (base + 1U) : base;
+                }
+                const uint32_t sizedSelf = (sChunkIdx + rot) % sc;
+                nst = (sizedSelf < extra) ? (base + 1U) : base;
             }
             task.sBlkBegin = st0 * MSA_BLOCKS_PER_STILE;
             task.sBlkEnd = MsaMinU32((st0 + nst) * MSA_BLOCKS_PER_STILE, visibleEndBlk);
@@ -239,7 +251,7 @@ private:
         task.sStileEnd = MsaCeilDiv(task.sBlkEnd, MSA_BLOCKS_PER_STILE);
     }
 
-    __aicore__ inline void FillTask(MsaTask &task, uint32_t mStart, uint32_t mActual, uint32_t sChunkIdx,
+    __aicore__ inline void FillTask(MsaTask& task, uint32_t mStart, uint32_t mActual, uint32_t sChunkIdx,
                                     uint32_t sChunks) const
     {
         task.batchIdx = curBatch_;
@@ -333,6 +345,7 @@ private:
     uint32_t localBlocks_ = MSA_DEFAULT_LOCAL_BLOCKS;
     uint32_t keyLayout_ = MSA_KEY_LAYOUT_BBND;
     uint32_t kvChunks_ = 1;
+    bool balanceChunks_ = false;
 
     uint32_t totalTasks_ = 0;
     uint32_t curBatch_ = 0;
