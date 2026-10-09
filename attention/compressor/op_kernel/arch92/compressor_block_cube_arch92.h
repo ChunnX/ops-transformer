@@ -345,9 +345,6 @@ __aicore__ inline void CompressorBlockCube<COMP, IS_FULL_LOAD>::CopyOutMm1Res(co
     } else {
         nOffset = constInfo_.dIdx * constInfo_.dBaseSize;
     }
-    // mStart 是【本 M 段内的行号】，加 mRowBase 换算为【全局 token 行号】后写出：
-    // M×K 叠加下各 M 段的核写同一 K 段槽位内互不重叠的行区间，vec 侧无需感知段边界，
-    // 从槽位基址按全局行连续读取即可（因此 mRowBase 不参与 vec 寻址）。
     uint64_t globalRow = (uint64_t)constInfo_.mRowBase + mStart;
     uint64_t gmOffset = nOffset + coffId * constInfo_.headDim + globalRow * fixParams.dstStride + dbOffset;
     uint32_t kvOffset = Align(mDealSize, NZ_FRACTAL_DIM) * nStart;

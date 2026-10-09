@@ -215,8 +215,6 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::OverLapScoreKv(
     overLapSliceIterator.SetMaxBatchSize(this->constInfo_.batchSize);
     Vec1SliceInfo& overLapSliceInfo = overLapSliceIterator.GetSlice();
 
-    // vec 不做 M 段偏移：cube 写出时已换算为【全局 token 行号】（mRowBase == mStart），
-    // 各 M 段结果落在同一 K 段槽位内互不重叠的行区间，vec 从槽位基址按全局行连续读。
     GlobalTensor<T> scoreDBMm1ResGm = this->scoreMm1ResGm_[c1v1DbIdx_ * this->constInfo_.dbSize];
     overLapSliceIterator.Reset(originSliceInfo.bIdx, originSliceInfo.sIdx, originSliceInfo.dealedSeqCnt, 0U);
     overLapSliceIterator.SetNeedDealTcSize(needDealTcSize);
@@ -291,10 +289,6 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::DealVec1BaseBlock(
 template <typename COMP>
 __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::CalcGroupInfo(Vec1SplitInfo& splitInfo)
 {
-    // [AIV 对 M 段切分透明] vec 不感知 cube 的 M×K 分核：按【全部 batch】均分给全 AIV，
-    // 从 K 段槽位基址按【全局 token 行】读取（与 NORMAL 模板一致）。
-    // 原实现用 mStart/mEnd 截出"本 M 段的 batch 数"与"本 M 段的核数"，使 vec 与
-    // cube 分核耦合，M 段边界/多轮下读错行（softmax前后均错、stateCache 却对）。
     uint32_t aiCoreNum = this->constInfo_.usedCoreNum * this->cvRatio_;
     splitInfo.dBaseSize =
         this->constInfo_.headDim / min(FloorPow2(aiCoreNum), CeilPow2(CeilDivT(aiCoreNum, this->constInfo_.batchSize)));
@@ -314,7 +308,6 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::CalcTaskDistribution
     uint32_t blockIdx = GetBlockIdx();
     uint32_t groupSize = splitInfo.vec1GroupSize;
     uint32_t groupNum = splitInfo.vec1GroupNum;
-    // [AIV 对 M 段切分透明] 分工用【全部 batch】+ 全 AIV 的 blockIdx，不再减 M 段核偏移
     uint32_t totalDealBatchNum = this->constInfo_.batchSize;
 
     if (blockIdx < groupSize * (totalDealBatchNum % groupNum)) {
@@ -332,8 +325,6 @@ template <typename COMP>
 __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::UpdateIteratorState(Vec1SplitInfo& splitInfo)
 {
     splitInfo.preCompressedCnt = 0;
-    // [AIV 对 M 段切分透明] dealSeqStartIdx 回归【全局 token 行】语义（原为段内相对，
-    // 需靠 mStart 补偿，且 ComputeVec1/OverLap 两处补偿口径不一致导致读错行）。
     splitInfo.dealSeqStartIdx = splitInfo.preDealBatchNum * this->constInfo_.sSize;
     splitInfo.curBStart = splitInfo.preDealBatchNum;
     splitInfo.dealSeqCnt = splitInfo.dealBatchNum * this->constInfo_.sSize;
@@ -384,7 +375,6 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::ComputeVec1(uint32_t
     LoopInfo loopInfo;
     loopInfo.groupSize = splitInfo.vec1GroupSize;
     loopInfo.groupNum = splitInfo.vec1GroupNum;
-    // [AIV 对 M 段切分透明] 直接按全局 blockIdx 定位 D 轴分工，去掉 M 段核偏移
     loopInfo.coreRowIdx = GetBlockIdx() / splitInfo.vec1GroupSize;
     loopInfo.coreColIdx = GetBlockIdx() % splitInfo.vec1GroupSize;
     loopInfo.isCoreRowLast = loopInfo.coreRowIdx == splitInfo.vec1GroupNum - 1;
@@ -406,9 +396,6 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::ComputeVec1(uint32_t
         uint32_t curLoopBatchNum = min(singleLoopBatchNum, splitInfo.dealBatchNum - singleLoopBatchNum * idx);
         scoreUb = this->inputQue1.template AllocTensor<T>();
         kvUb = scoreUb[BUFFER_SIZE_BYTE_32K / sizeof(T)];
-        // [AIV 对 M 段切分透明] mm1 行偏移用【全局 token 行】（dealSeqStartIdx 已全局），
-        // 不再叠加 M 段起点 mStart。cube 已按全局行写出（mRowBase+mStart），
-        // 各 M 段结果落在同一 K 段槽位内互不重叠的行区间，vec 从槽位基址连续读即可。
         uint32_t globalRowOffset = splitInfo.dealSeqStartIdx;
         this->FromWokrSpaceToUb(scoreUb, scoreDbGm, globalRowOffset, curLoopBatchNum * this->constInfo_.sSize,
                                 baseOffset, splitInfo.dBaseSize);

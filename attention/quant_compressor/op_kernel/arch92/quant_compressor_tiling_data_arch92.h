@@ -46,9 +46,6 @@ struct QuantCompressorBaseParams {
     uint32_t kBaseNum = 0;
     uint32_t kBaseSize = 0;
     uint32_t coreGroupNum = 0;
-    // M 轴被切成的段数（FULL_LOAD 由 host 传入 = ceil(tokenSize/mBaseSize)，
-    // NORMAL 由 kernel 的 SplitK() 自行设置）。kernel 侧 mm1KvResSize 的
-    // "一个 K 段槽位需容纳全 M 行" 依赖该值。
     uint32_t mGroupNum = 0;
     uint32_t mLoopNum = 0;
     uint32_t batchConsistency = 0;

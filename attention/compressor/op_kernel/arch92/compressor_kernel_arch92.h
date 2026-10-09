@@ -164,7 +164,7 @@ __aicore__ inline void CompressorKernel<COMP, IS_FULL_LOAD>::Init(
         loopTimes = GetLoopTimes();
     } else {
         // 2. FULL_LOAD整块加载, 主循环只跑一次
-        loopTimes = constInfo.mLoopNum;
+        loopTimes = 1;
     }
     // 4. 初始化workspace
     InitWorkspace(workspace);
@@ -215,7 +215,6 @@ __aicore__ inline void CompressorKernel<COMP, IS_FULL_LOAD>::InitTilingData()
         constInfo.mLoopNum = tilingData_->baseParams.mLoopNum;
         constInfo.kBaseNum = tilingData_->baseParams.kBaseNum;
         constInfo.kBaseSize = tilingData_->baseParams.kBaseSize;
-        // 注：mGroupNum 在 CalcSplitCoreInfo() 中按 IS_FULL_LOAD 分支设置。
     } else {
         constInfo.kBaseSize = tilingData_->baseParams.hiddenSize;
         constInfo.kBaseNum = 1;
@@ -234,54 +233,28 @@ __aicore__ inline void CompressorKernel<COMP, IS_FULL_LOAD>::SplitK()
     uint32_t mBaseNum = CeilDivT(mSize, constInfo.mBaseSize);
     if (constInfo.dBasicBlockNum * mBaseNum < constInfo.usedCoreNum &&
         constInfo.batchConsistency != BATCH_CONSISTENCY) {
-        // M×K叠加切分(M外层K内层)，替代原纯K切分(M退整段)：
-        // kBaseNum=coreGroupNum/mBaseNum，K段更宽(64核下160->640~2560)，
-        // 避免M整段+K窄段导致的Cube利用率下降(与920r1 FULL_LOAD模板策略一致)。
-        // 外if成立时必有 mBaseNum < coreGroupNum，kBaseNum>=1恒成立。
-        //
-        // [遗留·性能] 更细的 M 切分：mBaseNum 由 mBaseSize（host 固定 256）与实际 seq 量算出，
-        // mSize 较小时 mBaseNum 很小，并行度仍压在 K 轴上（kBaseNum 偏大）→ 每核 K 段过细；
-        // 且 kBaseSize 向下 16 对齐后取整余数全落在末段（kBaseSize=16 时末段可达数十倍），
-        // 而单轮内 T_kernel = max(核)，一个慢核拖住整条流水线。
-        // 若让 mBaseSize 与核数联动自适应（M 切得更细），可使每核 K 段变宽、M 行数下降，
-        // 并提升 X 按行访问时的连续字节数（缓解 strided 读的 burst 浪费）。
-        // 注意：需同步调整 mm1KvResSize / workspace 尺寸与 vec 侧的全局行偏移推导。
         constInfo.kBaseNum = constInfo.coreGroupNum / mBaseNum;
         uint32_t kAlignSize = CeilDivT(
             Align(constInfo.hSize, static_cast<uint32_t>(BUFFER_SIZE_BYTE_32B / sizeof(X_T))), constInfo.kBaseNum);
         constInfo.kBaseSize = Trunc(kAlignSize, static_cast<uint32_t>(BUFFER_SIZE_BYTE_32B / sizeof(X_T)));
-        // 每核只处理一个M基本块；curGroupIdx >= mBaseNum*kBaseNum的核为超范围核，
-        // SkipOneLoop返回dealSeqCnt=0自动闲置
         constInfo.mGroupNum = mBaseNum;
         constInfo.mCurGroupIdx = constInfo.curGroupIdx / constInfo.kBaseNum;
     } else if (mBaseNum > constInfo.coreGroupNum) {
-        // [与 arch35(origin/master) 保持一致的兜底]
-        // 切 M 要求每个 M 段都能分到一个核组：mBaseNum > coreGroupNum 时（如 28 核下
-        // mBaseNum=4 > coreGroupNum=3），第 coreGroupNum 组之后的 M 段没有任何核处理，
-        // 序列尾部的 token（压缩块 / stateCache）全丢失，必须改走 K 轴切分；
-        // 该兜底不依赖确定性开关（确定性模式下同样丢尾，正确性优先）。
-        // 此处退回"纯 K 切分"：全 M 当一段（mGroupNum=1）、每个核一个 K 段，
-        // 靠 loopTimes 多轮 + double buffer 覆盖全序列。
         constInfo.kBaseNum = constInfo.coreGroupNum;
         uint32_t kAlignSize = CeilDivT(
             Align(constInfo.hSize, static_cast<uint32_t>(BUFFER_SIZE_BYTE_32B / sizeof(X_T))), constInfo.kBaseNum);
         constInfo.kBaseSize = Trunc(kAlignSize, static_cast<uint32_t>(BUFFER_SIZE_BYTE_32B / sizeof(X_T)));
-        constInfo.mGroupNum = 1;    // 在 m 轴处理上所有核当一个组
+        constInfo.mGroupNum = 1;
         constInfo.mCurGroupIdx = 0; // 只有一个组
     }
     // 每轮固定不变，预计算后主循环直接复用
     if (constInfo.kBaseNum > 1) {
-        // M×K叠加: kStartIdx_=K内层索引(curGroupIdx%kBaseNum)；纯K: curGroupIdx<kBaseNum恒成立, 取模不变
         kStartIdx_ = constInfo.curGroupIdx % constInfo.kBaseNum;
         if (kStartIdx_ + 1 < constInfo.kBaseNum) {
             dealKSize_ = constInfo.kBaseSize;
         } else {
             dealKSize_ = constInfo.hSize - kStartIdx_ * constInfo.kBaseSize;
         }
-        // [与库上 arch35 一致] 残组核（curGroupIdx >= coreGroupNum，usedCoreNum 非
-        // dBasicBlockNum 整数倍时尾部多出的核组）无 K 段归属：置 dealKSize_=0 令 cube
-        // 空转（ComputeMm1 的 h 循环不执行，不访问带 curGroupIdx 偏移的 mm1KvResGm，
-        // 规避越界；vector 仍按"全 AIV 均分全程 TC"参与）。不砍核，避免 AIC/AIV 浪费。
         if (constInfo.curGroupIdx >= constInfo.coreGroupNum) {
             dealKSize_ = 0;
         }
@@ -356,12 +329,6 @@ __aicore__ inline BasicBlockInfo CompressorKernel<COMP, IS_FULL_LOAD>::SkipOneLo
     isFirstUpdateCurGroup = true;
     uint32_t curGroupQuota = constInfo.mBaseSize * constInfo.mCurGroupIdx;
     uint32_t quota = constInfo.mGroupNum * constInfo.mBaseSize;
-    // 说明：M×K 叠加下 M 段边界（curGroupQuota 归零点）可能切在某个 TC(压缩块) 内部，
-    // 但这对 vec 已无影响——cube 按【全局行】写 mm1（见 ConstInfo::mRowBase），
-    // vec 从 K 段槽位基址按全局行连续读取，各 M 段只负责同一槽位内互不重叠的行区间。
-    // 因此原先"按 seq 比例分摊块内 TC 份额"（blockDealTcNum / blockCompressedTcNum /
-    // preBlockCompressedTcNum）的近似统计已整体删除：vec 一律以"轮次起点 + 全程 TC"分工。
-
     for (; batchInfo.bIdx < constInfo.batchSize;) {
         uint32_t curDealSeq = 0;
         uint32_t curDealTcNum = 0;
@@ -447,43 +414,25 @@ __aicore__ inline void CompressorKernel<COMP, IS_FULL_LOAD>::CalcSplitCoreInfo()
     // 当前组id
     constInfo.curGroupIdx = constInfo.aiCoreIdx / constInfo.dBasicBlockNum;
     if constexpr (IS_FULL_LOAD) {
-        // FULL_LOAD 的 M 段由 host 静态切分（splitCoreParam），段数必须与 host 一致：
-        // kernel 侧 mm1KvResSize（一个 K 段槽位需容纳全 M 行）按 mGroupNum 缩放，
-        // 该值偏了会使各 M 段写入的全局行区间互相覆盖 / 超出 workspace。
         constInfo.mGroupNum = tilingData_->baseParams.mGroupNum;
         constInfo.mCurGroupIdx = constInfo.curGroupIdx / constInfo.kBaseNum;
     } else {
-        // NORMAL 先按"整个 M 为一段"初始化，SplitK() 会依据实际 seq 量重新设置
         constInfo.mGroupNum = constInfo.coreGroupNum;
         constInfo.mCurGroupIdx = constInfo.curGroupIdx;
     }
 
     constInfo.mm1ResSize = (uint64_t)constInfo.mBaseSize * constInfo.headDim * constInfo.coreGroupNum;
     constInfo.vec1ResSize = (uint64_t)constInfo.mBaseSize * constInfo.headDim * constInfo.nSize;
-
-    // mm1KvResSize / mm1ScoreResSize / dbSize / mRowBase 依赖最终确定的 kBaseNum 与 mGroupNum
-    // （NORMAL 由 SplitK() 再切一次），故统一放到 InitWorkspace() 开头计算。
 }
 
 template <typename COMP, bool IS_FULL_LOAD>
 __aicore__ inline void CompressorKernel<COMP, IS_FULL_LOAD>::InitWorkspace(__gm__ uint8_t* workspace)
 {
-    // 此处 kBaseNum / mGroupNum 已确定：NORMAL 由 SplitK() 依据实际 seq 量设置，
-    // FULL_LOAD 由 host tiling 带入（mGroupNum == mBaseNum）。
     uint32_t coff = (uint32_t)COMP::coff;
-    // 【语义】mm1KvResSize / mm1ScoreResSize = "一个 K 段槽位的步长"，须容纳【全 M 所有行】。
-    // M×K 叠加把 M 轴切成 mGroupNum 段后，各 M 段的核把结果写到同一 K 段槽位内互不重叠的
-    // 行区间（行号 = 全局行 mRowBase），vec 按全局行连续读，对 M 段切分完全无感。
-    // 这样"M 段边界是否切在某个 TC(压缩块) 内部"不再影响正确性。
-    // 注意：勿与 host 侧 workspaceParams.mm1KvResSize（仍表示"单个 M 段大小"）混淆；
-    // workspace 总量不变：kBaseNum*(mGroupNum*mBaseSize*headDim*coff) == coreGroupNum*(mBaseSize*headDim*coff)。
     constInfo.mm1KvResSize = (uint64_t)constInfo.mGroupNum * constInfo.mBaseSize * constInfo.headDim * coff;
     constInfo.mm1ScoreResSize = (uint64_t)constInfo.mGroupNum * constInfo.mBaseSize * constInfo.headDim * coff;
-    // 一个 double buffer 的总大小（= coreGroupNum 个"单 M 段槽位"），与改造前取值一致
     constInfo.dbSize = (uint64_t)constInfo.coreGroupNum * constInfo.mBaseSize * constInfo.headDim * coff;
-    // 本核负责的 M 段在全局 token 行中的起始行号：cube 写出 mm1 与 vec 读取都用它定位
     if constexpr (IS_FULL_LOAD) {
-        // FULL_LOAD 的 M 段由 host 静态切分（splitCoreParam.mStart），不经过 SkipOneLoop 游标
         constInfo.mRowBase = constInfo.mStart;
     } else {
         constInfo.mRowBase = constInfo.mCurGroupIdx * constInfo.mBaseSize;
@@ -491,8 +440,6 @@ __aicore__ inline void CompressorKernel<COMP, IS_FULL_LOAD>::InitWorkspace(__gm_
 
     uint64_t offset = 0;
     uint64_t mm1KvResStartOffset = offset;
-    // M×K 叠加下同一 K 段被多个 M 段的核共享，基址只按 K 段号取；
-    // 段内行由 mRowBase 提供全局行号，故 vec 读到的是连续的全 M 行。
     uint32_t kIdx = constInfo.curGroupIdx % constInfo.kBaseNum;
     // mm1KvResGm
     mm1KvResGm.SetGlobalBuffer(
@@ -534,7 +481,6 @@ __aicore__ inline void CompressorKernel<COMP, IS_FULL_LOAD>::ComputeVec1(const V
     CrossCoreWaitFlag<SYNC_MODE2, PIPE_MTE2>(SYNC_C1_V1_FLAG + info.c1v1DbIdx);
     CrossCoreWaitFlag<SYNC_MODE0, PIPE_MTE2>(SYNC_V1_FLAG2 + info.c1v1DbIdx);
     if constexpr (IS_FULL_LOAD) {
-        // [AIV 对 M 段切分透明] vec 不再接收 M 段范围（已改为全局分工 + 全局行读取）
         blockVec_.ComputeVec1(info.c1v1DbIdx);
     } else {
         blockVec_.ComputeVec1(info);
@@ -588,13 +534,6 @@ __aicore__ inline void CompressorKernel<COMP, IS_FULL_LOAD>::CalcC1V1Params(RunI
     vec1Info.sStart = batchInfo.sIdx;
     vec1Info.c1v1DbIdx = (vec1Loop++ & (constInfo.dbWorkspaceRatio - 1));
     BasicBlockInfo basicBlockInfo = SkipOneLoop(batchInfo);
-    // 超范围核(尾部轮块数不足 / curGroupIdx >= mGroupNum*kBaseNum)：SkipOneLoop 已置
-    // dealSeqCnt=0，但其 dealTcNum 累积了全程 TC。M×K 叠加下 vec 对 M 段切分透明
-    // （从 K 段槽位基址按【全局行】读取，数据由有效核组的 cube 写全），且 vec 侧已按
-    // "全 AIV 均分轮次内全程 TC" 分工——闲置核组的 AIV 同样分到了 TC 份额，
-    // 故此处【不能清零 dealTcNum】：清零会使该份额的 TC 无人处理，导致 cmp_kv /
-    // stateCache 部分数据缺失（误差比例 ≈ 闲置核组数 / 总核组数）。
-    // 注：闲置核的 cube 仍不执行（IsNeedExcuteC1 判 bStart），只做跨核同步。
     info.cubeDbIdx = (cubeLoop++ & (constInfo.dbWorkspaceRatio - 1));
     info.dealSeqCnt = basicBlockInfo.dealSeqCnt;
     info.dealTcNum = basicBlockInfo.dealTcNum;
@@ -603,11 +542,6 @@ __aicore__ inline void CompressorKernel<COMP, IS_FULL_LOAD>::CalcC1V1Params(RunI
     info.kStartIdx = kStartIdx_;
     info.dealKSize = dealKSize_;
     info.hStart = hStart_;
-    // AIV 一律按"轮次起点 + 轮次内全程 TC"分工，与 M 段切分无关：
-    // 各核 SkipOneLoop 的配额(quota)与遍历范围相同，故 dealTcNum / compressedTcNum 一致，
-    // vec 视野里不存在 M 段；其按【全局行】从 workspace 连续取数（cube 写入时已带行号）。
-    // 注意 vec1Info.bStart/sStart 取的是 SkipOneLoop 之前的 batchInfo，即轮次起点，
-    // 不能用 basicBlockInfo（那是被 curGroupQuota 跳过的 M 段起点）。
     vec1Info.dealTcNum = basicBlockInfo.dealTcNum;
     vec1Info.dealScSize = basicBlockInfo.compressedTcNum;
 }
@@ -644,18 +578,12 @@ template <typename COMP, bool IS_FULL_LOAD>
 __aicore__ inline void CompressorKernel<COMP, IS_FULL_LOAD>::ProcessFullLoadLoop()
 {
     RunInfo extraInfo[1];
-    uint32_t mStartBase = constInfo.mStart;
-    uint32_t mEndBase = constInfo.mEnd;
-    for (uint32_t i = 0; i < loopTimes; ++i) {
-        RunInfo& extraInfo0 = extraInfo[0];
-        constInfo.mStart = mStartBase + i * constInfo.mBaseSize;
-        constInfo.mEnd = min(constInfo.mStart + constInfo.mBaseSize, mEndBase);
-        if ASCEND_IS_AIC {
-            CalcCubeParams(extraInfo0);
-            ComputeMm1(extraInfo0);
-        } else {
-            ComputeVec1(Vec1RunInfo{});
-        }
+    RunInfo& extraInfo0 = extraInfo[0];
+    if ASCEND_IS_AIC {
+        CalcCubeParams(extraInfo0);
+        ComputeMm1(extraInfo0);
+    } else {
+        ComputeVec1(Vec1RunInfo{});
     }
 }
 

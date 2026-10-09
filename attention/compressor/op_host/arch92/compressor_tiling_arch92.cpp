@@ -224,52 +224,14 @@ ge::graphStatus CompressorTiling::SetTemplateId()
 
 ge::graphStatus CompressorTiling::SetFullLoadSplitInfo()
 {
-    // M 轴基本块大小需同时满足三个约束：
-    //   1) 为 seqSize 的整数倍 —— FULL_LOAD 的 AIV 用
-    //      dealSeqStartIdx = (preDealBatchNum - mStartBatch) * seqSize 反推 mm1 行偏移，
-    //      隐含要求 M 段起点 mStart = mIdx * mBaseSize 落在 batch 边界上。
-    //      否则段边界切在 batch 内部：AIV 会把块首 token 当成该 batch 的 sIdx=0，
-    //      整体错位 (mStart % seqSize) 行，且 mEndBatch 的 ceil 会放大覆盖行数而尾部越界。
-    //   2) 上界 = M_BASE_TARGET(256) —— ComputeMm1 中 L0C 只有 4 块，索引
-    //      l0cBufId = (mL0/M_L0_BASE)*2 + (nL0/N_L0_BASE) + coffId，要求 mL0/128 ≤ 1，
-    //      即单核 mSize = mEnd - mStart ≤ 256；超过会直接写出 tmpBufL0C。
-    //   3) 尽量贴近上界 —— 使 tokenSize(≤512) 在"每段 ≤256"前提下尽量只分两段，
-    //      避免段数增多时 kBaseNum = coreGroupNum/mBaseNum 整除性变差而闲置核数上升。
-    // 故取"不超过 M_BASE_TARGET 的最大 seqSize 倍数"：
-    //   seqSize=1/2/4 → 256（与改前完全一致）；seqSize=3 → 255（两段恰好覆盖 510）。
-    // 注：该结果不保证 16 对齐，M 方向的分形对齐由 CopyXGmToL1 的 dstNzC0Stride
-    //     与 Fixpipe 的 srcStride 内部 Align 处理。
-    constexpr uint32_t M_BASE_TARGET = 256; // M 基本块目标 = L0C 决定的 M 上界
+    constexpr uint32_t M_BASE_TARGET = 256;
     uint32_t seqSize = baseParams_->seqSize != 0 ? baseParams_->seqSize : 1U;
     innerSplitParams_->mBaseSize = M_BASE_TARGET - (M_BASE_TARGET % seqSize);
-    // [遗留·性能] M 基本块按"≤256 行"的目标切分。tokenSize 较小且 D 方向切不动时
-    // （如 headDim=128、coff=1 → dBaseSize=headDim → dBaseNum=1），M 只能切成 mBaseNum=1 段，
-    // 并行度被迫全部压在 K 轴上（kBaseNum = coreGroupNum），于是：
-    //   1) 每核 K 段过细（hidden/64），mmad 的 K 方向利用率低；
-    //   2) kBaseSize 向下 16 对齐后取整余数全落在末段（如 hidden=1536、kBaseNum=64 时
-    //      kBaseSize=16 而末段=528），单轮内 T_kernel = max(核)，一个慢核拖住整条流水线；
-    //   3) 每核 K 段仅 16~48 列，X 按行 strided 读时每行连续字节仅 32~96B，远低于 burst 粒度。
-    // 改进方向：mBaseSize 改为与核数/规模自适应（例如按 tokenSize 与 coreGroupNum 联动，
-    // 取 max(M_ALIGN_UNIT, seqSize) 的整数倍），使 M 与 K 同时切分，可同时缓解上述三点。
-    // 注意：会牵动 mm1KvResSize / workspace 尺寸与 AIV 的 effectiveBatchSize 推导
-    // （mBaseSize 仍需满足约束 2），需配套精度用例验证后再启用。
     innerSplitParams_->dBaseSize = 256 / (coff * 2); // nBase = dBase * coff * 2
     uint32_t dBaseNum = baseParams_->headDim / innerSplitParams_->dBaseSize;
     uint32_t mBaseNum = (baseParams_->tokenSize + innerSplitParams_->mBaseSize - 1) / innerSplitParams_->mBaseSize;
-    // M 轴段数需传给 kernel：它决定 workspace 中"一个 K 段槽位"的大小（需容纳全 M 行），
-    // 使各 M 段的 cube 写入同一槽位内互不重叠的行区间，vec 无需感知段边界。
     baseParams_->mGroupNum = mBaseNum;
     baseParams_->coreGroupNum = baseParams_->usedCoreNum / dBaseNum;
-    // 每个 M 段必须能分到一个核组：mBaseNum > coreGroupNum 时，
-    // 第 coreGroupNum 组之后的 M 段没有核负责（kernel 的 FULL_LOAD 主循环固定 loopTimes=1，
-    // 不消费 mLoopNum，无法靠多轮补齐），序列尾部 token 会整体丢失。
-    // 当前参数下 tokenSize<=512 且 mBaseSize>=255 → mBaseNum<=3，而 coreGroupNum>=8，恒成立，
-    // 此处仅作显式防护（宁可报错，不要静默丢尾）。
-    OP_CHECK_IF(baseParams_->coreGroupNum < mBaseNum,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                    context_->opName, "coreGroupNum", std::to_string(baseParams_->coreGroupNum),
-                    "each M block needs one core group, but mBaseNum=" + std::to_string(mBaseNum) + " > coreGroupNum"),
-                return ge::GRAPH_FAILED);
     baseParams_->kBaseNum = 1;
     baseParams_->kBaseSize = baseParams_->hiddenSize;
     if (baseParams_->coreGroupNum >= mBaseNum && baseParams_->batchConsistency != BATCH_CONSISTENCY) {
@@ -344,9 +306,6 @@ ge::graphStatus CompressorTiling::SetFullLoadSplitInfo()
 
 ge::graphStatus CompressorTiling::SetNormalSplitInfo()
 {
-    // [遗留·性能] 同 SetFullLoadSplitInfo()：mBaseSize 固定为 256。
-    // NORMAL 的 M 段数由 kernel 的 SplitK() 依据实际 seq 量（mSize）算得，
-    // mSize 较小时同样会把并行度压在 K 轴上，建议后续一并改为与核数联动自适应。
     innerSplitParams_->mBaseSize = 256;        // 256:核间切分，M轴基本块大小
     innerSplitParams_->dBaseSize = 128 / coff; // 128：核间切分，D轴基本块大小
     return ge::GRAPH_SUCCESS;
@@ -357,12 +316,6 @@ ge::graphStatus CompressorTiling::SetInnerSplitInfo()
     if (context_->templateId == TemplateId::FULL_LOAD) {
         return SetFullLoadSplitInfo();
     }
-    // 不做核数对齐（不再把 usedCoreNum 向下取整到 dBasicBlockNum 的整数倍）：
-    // usedCoreNum 非 dBasicBlockNum 整数倍时尾部会产生"残组核"，改由 kernel 侧空转处理——
-    // CalcC1V1Params 对残组核（curGroupIdx >= mGroupNum*kBaseNum / coreGroupNum）置
-    // dealSeqCnt=0，使 cube 入口早退（不访问带 curGroupIdx 偏移的 mm1KvResGm，无越界）；
-    // 其 AIV 仍按"全 AIV 均分全程 TC"参与（vec 读槽位 0 基址 + 全局行，无核组几何依赖）。
-    // 砍核会造成 AIC/AIV 利用率损失（如 54 核 headDim=512 时 54→48）。
     return SetNormalSplitInfo();
 }
 
@@ -442,9 +395,9 @@ ge::graphStatus CompressorTiling::RunBigKernelTiling(CompressorTilingData* tilin
                                                     std::bind(&CompressorTiling::SetPageAttentionInfo, this),
                                                     std::bind(&CompressorTiling::CheckFeature, this),
                                                     std::bind(&CompressorTiling::CheckMultiParaConsistency, this),
-                                                    std::bind(&CompressorTiling::CheckBlockDimConstrain, this),
                                                     std::bind(&CompressorTiling::SetTemplateId, this),
                                                     std::bind(&CompressorTiling::SetInnerSplitInfo, this),
+                                                    std::bind(&CompressorTiling::CheckBlockDimConstrain, this),
                                                     std::bind(&CompressorTiling::SetWorkSpaceInfo, this),
                                                     std::bind(&CompressorTiling::SetScenarioInfo, this)};
     for (const auto& func : requiredTilingFuncs) {
@@ -1081,6 +1034,10 @@ ge::graphStatus CompressorTiling::CheckDimNumConsistency() const
 ge::graphStatus CompressorTiling::CheckBlockDimConstrain() const
 {
     uint32_t minBlockNum = baseParams_->headDim / 64; // 64 is the largest dBaseSize
+    if (context_->templateId == TemplateId::FULL_LOAD) {
+        uint32_t dBaseNum = baseParams_->headDim / innerSplitParams_->dBaseSize;
+        minBlockNum = std::max(minBlockNum, dBaseNum * baseParams_->mGroupNum);
+    }
     OP_CHECK_IF(aicNum_ < minBlockNum,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->opName, "aicNum", std::to_string(aicNum_),
                                                       "aicNum should not be less than " + std::to_string(minBlockNum)),
