@@ -70,7 +70,7 @@ std::tuple<const aclTensor*, const aclTensor*> ScatterPaKvCache(
     return std::tuple<const aclTensor*, const aclTensor*>(keyCacheRef, valueCacheRef);
 }
 
-std::tuple<const aclTensor*, const aclTensor*> ScatterPaKvCacheOutOfPlace(
+std::tuple<const aclTensor*, const aclTensor*> ScatterPaKvCacheWithAllocOut(
     const aclTensor *key,
     aclTensor *keyCacheRef,
     const aclTensor *slotMapping,
@@ -85,7 +85,7 @@ std::tuple<const aclTensor*, const aclTensor*> ScatterPaKvCacheOutOfPlace(
     const aclIntArray *offsetsOptional,
     aclOpExecutor *executor)
 {
-    L0_DFX(ScatterPaKvCacheOutOfPlace, key, keyCacheRef, slotMapping, value, valueCacheRef,
+    L0_DFX(ScatterPaKvCacheWithAllocOut, key, keyCacheRef, slotMapping, value, valueCacheRef,
            compressLensOptional, compressSeqOffsetOptional, seqLensOptional,
            cacheModeOptional, scatterModeOptional, stridesOptional, offsetsOptional);
 
@@ -97,16 +97,12 @@ std::tuple<const aclTensor*, const aclTensor*> ScatterPaKvCacheOutOfPlace(
     aclTensor *valueCacheOut = valueCacheRef;
     if (!isArch35) {
         // 独立输出buffer: storage/view shape与format均与cacheRef一致, 保证kernel按原布局写入。
-        keyCacheOut = executor->AllocTensor(keyCacheRef->GetStorageShape(), keyCacheRef->GetViewShape(),
-                                            keyCacheRef->GetDataType(), keyCacheRef->GetStorageFormat(),
-                                            keyCacheRef->GetViewFormat());
+        keyCacheOut = executor->AllocTensor(keyCacheRef->GetViewShape(), keyCacheRef->GetDataType());
         if (value != nullptr) {
-            valueCacheOut = executor->AllocTensor(valueCacheRef->GetStorageShape(), valueCacheRef->GetViewShape(),
-                                                  valueCacheRef->GetDataType(), valueCacheRef->GetStorageFormat(),
-                                                  valueCacheRef->GetViewFormat());
+            valueCacheOut = executor->AllocTensor(keyCacheRef->GetViewShape(), keyCacheRef->GetDataType());
         }
         if (keyCacheOut == nullptr || (value != nullptr && valueCacheOut == nullptr)) {
-            OP_LOGE(ACLNN_ERR_INNER, "AllocTensor for ScatterPaKvCache out-of-place output failed.");
+            OP_LOGE(ACLNN_ERR_INNER, "AllocTensor for ScatterPaKvCacheWithAllocOut output failed.");
             return {nullptr, nullptr};
         }
     }

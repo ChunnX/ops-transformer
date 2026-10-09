@@ -440,7 +440,7 @@ static aclnnStatus ProcessContiguous(const aclTensor *key, aclTensor *keyCacheRe
 
     std::tuple<const aclTensor *, const aclTensor *> scatterResult;
     if (isCacheRefContiguous) {
-        scatterResult = l0op::ScatterPaKvCacheOutOfPlace(
+        scatterResult = l0op::ScatterPaKvCacheWithAllocOut(
             keyContiguous, keyCacheContiguous, slotMappingContiguous, valueContiguous, valueCacheContiguous,
             compressLensContiguous, compressSeqOffsetContiguous, seqLensContiguous, cacheModeOptional,
             scatterModeOptional, stridesOptional, offsetsOptional, uniqueExecutor.get());
