@@ -67,8 +67,9 @@ __aicore__ constexpr uint64_t Align64Func(uint64_t data)
 } // namespace BaseApi
 
 #define TEMPLATE_INTF \
-    template <typename Q_T, typename KV_T, typename T, typename OUTPUT_T, bool FLASH_DECODE, bool isPa, SFA_LAYOUT LAYOUT_T, \
-              SFA_LAYOUT KV_LAYOUT_T, SFATemplateMode TEMPLATE_MODE, bool IS_SPLIT_G, bool HAS_ROPE>
+    template <typename Q_T, typename KV_T, typename T, typename OUTPUT_T, bool FLASH_DECODE, bool isPa, \
+              SFA_LAYOUT LAYOUT_T, SFA_LAYOUT KV_LAYOUT_T, SFATemplateMode TEMPLATE_MODE, bool IS_SPLIT_G, \
+              bool HAS_ROPE>
 
 #define TEMPLATE_INTF_ARGS \
     Q_T, KV_T, T, OUTPUT_T, FLASH_DECODE, isPa, LAYOUT_T, KV_LAYOUT_T, TEMPLATE_MODE, IS_SPLIT_G, HAS_ROPE
