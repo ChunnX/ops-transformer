@@ -33,56 +33,54 @@ __global__ __aicore__ void mhc_norm_post_preonly(GM_ADDR h_out, GM_ADDR residual
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
 
-    constexpr bool accumulateInUb = TILING_MODE >= TILING_KEY_LARGE_D_OFFSET;
-    constexpr int32_t baseMode = TILING_MODE & (TILING_KEY_LARGE_D_OFFSET - 1);
-    if constexpr (baseMode == TILING_KEY_SINGLE_4OP) {
-        KernelMhcNormPostPreonly<DTYPE_H_OUT, false, false, false, accumulateInUb> op;
+    if constexpr (TILING_MODE == TILING_KEY_SINGLE_4OP) {
+        KernelMhcNormPostPreonly<DTYPE_H_OUT, false, false> op;
         op.Init(h_out, residual, h_post, h_res, phi, alpha, bias, pre_mix, gamma_0, gamma_1, gamma_2, h_in_prime,
                 x_2_out, h_in_f32, h_pre, nullptr, tiling);
         op.Process();
-    } else if constexpr (baseMode == TILING_KEY_SINGLE_5OP) {
-        KernelMhcNormPostPreonly<DTYPE_H_OUT, true, false, false, accumulateInUb> op;
+    } else if constexpr (TILING_MODE == TILING_KEY_SINGLE_5OP) {
+        KernelMhcNormPostPreonly<DTYPE_H_OUT, true, false> op;
         op.Init(h_out, residual, h_post, h_res, phi, alpha, bias, pre_mix, gamma_0, gamma_1, gamma_2, h_in_prime,
                 x_2_out, h_in_f32, h_pre, nullptr, tiling);
         op.Process();
-    } else if constexpr (baseMode == TILING_KEY_SINGLE_4OP_RETURN_F32) {
-        KernelMhcNormPostPreonly<DTYPE_H_OUT, false, true, false, accumulateInUb> op;
+    } else if constexpr (TILING_MODE == TILING_KEY_SINGLE_4OP_RETURN_F32) {
+        KernelMhcNormPostPreonly<DTYPE_H_OUT, false, true> op;
         op.Init(h_out, residual, h_post, h_res, phi, alpha, bias, pre_mix, gamma_0, gamma_1, gamma_2, h_in_prime,
                 x_2_out, h_in_f32, h_pre, nullptr, tiling);
         op.Process();
-    } else if constexpr (baseMode == TILING_KEY_SINGLE_5OP_RETURN_F32) {
-        KernelMhcNormPostPreonly<DTYPE_H_OUT, true, true, false, accumulateInUb> op;
+    } else if constexpr (TILING_MODE == TILING_KEY_SINGLE_5OP_RETURN_F32) {
+        KernelMhcNormPostPreonly<DTYPE_H_OUT, true, true> op;
         op.Init(h_out, residual, h_post, h_res, phi, alpha, bias, pre_mix, gamma_0, gamma_1, gamma_2, h_in_prime,
                 x_2_out, h_in_f32, h_pre, nullptr, tiling);
         op.Process();
-    } else if constexpr (baseMode == TILING_KEY_DUAL_4OP) {
-        KERNEL_TASK_TYPE(TILING_MODE, KERNEL_TYPE_MIX_AIC_1_2);
+    } else if constexpr (TILING_MODE == TILING_KEY_DUAL_4OP) {
+        KERNEL_TASK_TYPE(TILING_KEY_DUAL_4OP, KERNEL_TYPE_MIX_AIC_1_2);
         if ASCEND_IS_AIV {
-            KernelMhcNormPostPreonly<DTYPE_H_OUT, false, false, true, accumulateInUb> op;
+            KernelMhcNormPostPreonly<DTYPE_H_OUT, false, false, true> op;
             op.Init(h_out, residual, h_post, h_res, phi, alpha, bias, pre_mix, gamma_0, gamma_1, gamma_2, h_in_prime,
                     x_2_out, h_in_f32, h_pre, GetUserWorkspace(workspace), tiling);
             op.Process();
         }
-    } else if constexpr (baseMode == TILING_KEY_DUAL_5OP) {
-        KERNEL_TASK_TYPE(TILING_MODE, KERNEL_TYPE_MIX_AIC_1_2);
+    } else if constexpr (TILING_MODE == TILING_KEY_DUAL_5OP) {
+        KERNEL_TASK_TYPE(TILING_KEY_DUAL_5OP, KERNEL_TYPE_MIX_AIC_1_2);
         if ASCEND_IS_AIV {
-            KernelMhcNormPostPreonly<DTYPE_H_OUT, true, false, true, accumulateInUb> op;
+            KernelMhcNormPostPreonly<DTYPE_H_OUT, true, false, true> op;
             op.Init(h_out, residual, h_post, h_res, phi, alpha, bias, pre_mix, gamma_0, gamma_1, gamma_2, h_in_prime,
                     x_2_out, h_in_f32, h_pre, GetUserWorkspace(workspace), tiling);
             op.Process();
         }
-    } else if constexpr (baseMode == TILING_KEY_DUAL_4OP_RETURN_F32) {
-        KERNEL_TASK_TYPE(TILING_MODE, KERNEL_TYPE_MIX_AIC_1_2);
+    } else if constexpr (TILING_MODE == TILING_KEY_DUAL_4OP_RETURN_F32) {
+        KERNEL_TASK_TYPE(TILING_KEY_DUAL_4OP_RETURN_F32, KERNEL_TYPE_MIX_AIC_1_2);
         if ASCEND_IS_AIV {
-            KernelMhcNormPostPreonly<DTYPE_H_OUT, false, true, true, accumulateInUb> op;
+            KernelMhcNormPostPreonly<DTYPE_H_OUT, false, true, true> op;
             op.Init(h_out, residual, h_post, h_res, phi, alpha, bias, pre_mix, gamma_0, gamma_1, gamma_2, h_in_prime,
                     x_2_out, h_in_f32, h_pre, GetUserWorkspace(workspace), tiling);
             op.Process();
         }
-    } else if constexpr (baseMode == TILING_KEY_DUAL_5OP_RETURN_F32) {
-        KERNEL_TASK_TYPE(TILING_MODE, KERNEL_TYPE_MIX_AIC_1_2);
+    } else if constexpr (TILING_MODE == TILING_KEY_DUAL_5OP_RETURN_F32) {
+        KERNEL_TASK_TYPE(TILING_KEY_DUAL_5OP_RETURN_F32, KERNEL_TYPE_MIX_AIC_1_2);
         if ASCEND_IS_AIV {
-            KernelMhcNormPostPreonly<DTYPE_H_OUT, true, true, true, accumulateInUb> op;
+            KernelMhcNormPostPreonly<DTYPE_H_OUT, true, true, true> op;
             op.Init(h_out, residual, h_post, h_res, phi, alpha, bias, pre_mix, gamma_0, gamma_1, gamma_2, h_in_prime,
                     x_2_out, h_in_f32, h_pre, GetUserWorkspace(workspace), tiling);
             op.Process();
