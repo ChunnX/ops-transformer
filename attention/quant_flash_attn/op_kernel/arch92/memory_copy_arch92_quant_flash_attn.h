@@ -81,13 +81,13 @@ struct FIAType {
 };
 
 struct FDparams {
-    uint32_t *bN2IdxOfFdHead;
-    uint32_t *gS1IdxOfFdHead;
-    uint32_t *s2SplitNumOfFdHead;
-    uint32_t *gS1SplitNumOfFdHead;
-    uint32_t *gS1LastPartSizeOfFdHead;
-    uint32_t *gS1IdxEndOfFdHead;
-    uint32_t *gS1IdxEndOfFdHeadSplit;
+    uint32_t* bN2IdxOfFdHead;
+    uint32_t* gS1IdxOfFdHead;
+    uint32_t* s2SplitNumOfFdHead;
+    uint32_t* gS1SplitNumOfFdHead;
+    uint32_t* gS1LastPartSizeOfFdHead;
+    uint32_t* gS1IdxEndOfFdHead;
+    uint32_t* gS1IdxEndOfFdHeadSplit;
     uint32_t usedVecNumOfFd;
     uint32_t gS1BaseSizeOfFd;
 };
@@ -258,8 +258,8 @@ struct MSplitInfo {
 };
 
 template <FIA_LAYOUT LAYOUT_T>
-__aicore__ inline void GetGS1Idx(uint32_t gS1Idx, uint32_t &gIdx, uint32_t &s1Idx,
-                                 AttentionCommon::ConstInfo &constInfo)
+__aicore__ inline void GetGS1Idx(uint32_t gS1Idx, uint32_t& gIdx, uint32_t& s1Idx,
+                                 AttentionCommon::ConstInfo& constInfo)
 {
     // GS1
     if constexpr (LAYOUT_T == FIA_LAYOUT::BNSD || LAYOUT_T == FIA_LAYOUT::NBSD || LAYOUT_T == FIA_LAYOUT::NTD) {
@@ -408,8 +408,8 @@ __aicore__ inline constexpr UbFormat GetPseUbFormat()
 
 // ---------------------------------------Set attention Gm To Zero--------------------------------
 template <GmFormat FORMAT, typename OUT_T, typename OffsetCalcType>
-__aicore__ inline void DealActSeqLenIsZero(uint32_t bIdx, uint32_t n2Idx, OffsetCalcType &offsetCalculator,
-                                           GlobalTensor<OUT_T> &attentionOutGm)
+__aicore__ inline void DealActSeqLenIsZero(uint32_t bIdx, uint32_t n2Idx, OffsetCalcType& offsetCalculator,
+                                           GlobalTensor<OUT_T>& attentionOutGm)
 {
     if constexpr (FORMAT == GmFormat::TNGD) {
         uint32_t s1Count = offsetCalculator.actualSeqLensQParser.GetFullActualSeqLength(bIdx);
@@ -515,7 +515,7 @@ template <typename T, GmFormat GM_FORMAT, UbFormat UB_FORMAT>
 class CopyLseUbToGm {
 public:
     template <typename FaGmTensorType>
-    __aicore__ inline void operator()(FaGmTensorType &softmaxLseGm, LocalTensor<T> &lseSrc, GmCoordGs1Merge &gmCoord)
+    __aicore__ inline void operator()(FaGmTensorType& softmaxLseGm, LocalTensor<T>& lseSrc, GmCoordGs1Merge& gmCoord)
     {
         if constexpr (UB_FORMAT == UbFormat::S1G && GM_FORMAT == GmFormat::LSE_BN2GS1) {
             CopyBSND(softmaxLseGm, lseSrc, gmCoord);
@@ -532,9 +532,9 @@ public:
 
 private:
     template <typename FaGmTensorType>
-    __aicore__ inline void CopyBSND(FaGmTensorType &softmaxLseGm, LocalTensor<T> &lseSrc, GmCoordGs1Merge &gmCoord)
+    __aicore__ inline void CopyBSND(FaGmTensorType& softmaxLseGm, LocalTensor<T>& lseSrc, GmCoordGs1Merge& gmCoord)
     {
-        auto &offsetCalculator = softmaxLseGm.offsetCalculator;
+        auto& offsetCalculator = softmaxLseGm.offsetCalculator;
         uint32_t s1Size = offsetCalculator.GetDimS1();
         uint64_t gSize = offsetCalculator.GetDimG();
 
@@ -561,9 +561,9 @@ private:
     }
 
     template <typename FaGmTensorType>
-    __aicore__ inline void CopyBNSD(FaGmTensorType &softmaxLseGm, LocalTensor<T> &lseSrc, GmCoordGs1Merge &gmCoord)
+    __aicore__ inline void CopyBNSD(FaGmTensorType& softmaxLseGm, LocalTensor<T>& lseSrc, GmCoordGs1Merge& gmCoord)
     {
-        auto &offsetCalculator = softmaxLseGm.offsetCalculator;
+        auto& offsetCalculator = softmaxLseGm.offsetCalculator;
 
         uint64_t qActSeqLens = offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmCoord.bIdx);
         ;
@@ -615,9 +615,9 @@ private:
     }
 
     template <typename FaGmTensorType>
-    __aicore__ inline void CopyTND(FaGmTensorType &softmaxLseGm, LocalTensor<T> &lseSrc, GmCoordGs1Merge &gmCoord)
+    __aicore__ inline void CopyTND(FaGmTensorType& softmaxLseGm, LocalTensor<T>& lseSrc, GmCoordGs1Merge& gmCoord)
     {
-        auto &offsetCalculator = softmaxLseGm.offsetCalculator;
+        auto& offsetCalculator = softmaxLseGm.offsetCalculator;
         uint64_t gSize = offsetCalculator.GetDimG();
         uint32_t startS1Idx = gmCoord.gS1Idx / gSize;
         uint32_t startGIdx = gmCoord.gS1Idx % gSize;
@@ -645,9 +645,9 @@ private:
     //         = n2Idx * realGSize * t1Size + prefixBS1 + gIdx * t1Size + s1Idx
     // 即最终 GM 排布为 [N2, G, T], 与 host infershape 声明的 (N, T) 对齐 (N=N2*G)
     template <typename FaGmTensorType>
-    __aicore__ inline void CopyTNDtoNT(FaGmTensorType &softmaxLseGm, LocalTensor<T> &lseSrc, GmCoordGs1Merge &gmCoord)
+    __aicore__ inline void CopyTNDtoNT(FaGmTensorType& softmaxLseGm, LocalTensor<T>& lseSrc, GmCoordGs1Merge& gmCoord)
     {
-        auto &offsetCalculator = softmaxLseGm.offsetCalculator;
+        auto& offsetCalculator = softmaxLseGm.offsetCalculator;
         uint64_t gSize = offsetCalculator.GetDimG();
         uint64_t t1Size = offsetCalculator.GetDimT();
         uint32_t startS1Idx = gmCoord.gS1Idx / gSize;
@@ -671,9 +671,9 @@ private:
     }
 
     template <typename FaGmTensorType>
-    __aicore__ inline void CopyNTD(FaGmTensorType &softmaxLseGm, LocalTensor<T> &lseSrc, GmCoordGs1Merge &gmCoord)
+    __aicore__ inline void CopyNTD(FaGmTensorType& softmaxLseGm, LocalTensor<T>& lseSrc, GmCoordGs1Merge& gmCoord)
     {
-        auto &offsetCalculator = softmaxLseGm.offsetCalculator;
+        auto& offsetCalculator = softmaxLseGm.offsetCalculator;
         uint32_t s1Size = offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmCoord.bIdx);
         uint64_t gSize = offsetCalculator.GetDimG();
         uint64_t n2Size = offsetCalculator.GetDimN2();

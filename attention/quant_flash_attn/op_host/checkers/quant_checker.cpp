@@ -82,7 +82,7 @@ ge::graphStatus QuantChecker::CheckQDescaleDimHiF4(const QfaTilingInfo& qfaInfo)
     if (qfaInfo.quantMode != QfaQuantMode::A4C4_QKV_HIF4_P_FP8_E4M3_SOFTMAX_FP16) {
         return ge::GRAPH_SUCCESS;
     }
-    const gert::StorageShape *shape = qfaInfo.opParamInfo.qDescale.shape;
+    const gert::StorageShape* shape = qfaInfo.opParamInfo.qDescale.shape;
     uint32_t dimNum = shape->GetStorageShape().GetDimNum();
     const std::vector<uint32_t> supportedDims = {DIM_NUM_4};
     OP_CHECK_IF(std::find(supportedDims.begin(), supportedDims.end(), dimNum) == supportedDims.end(),
@@ -182,7 +182,7 @@ ge::graphStatus QuantChecker::CheckKDescaleDimHiF4(const QfaTilingInfo& qfaInfo)
     if (qfaInfo.quantMode != QfaQuantMode::A4C4_QKV_HIF4_P_FP8_E4M3_SOFTMAX_FP16) {
         return ge::GRAPH_SUCCESS;
     }
-    const gert::StorageShape *shape = qfaInfo.opParamInfo.kDescale.shape;
+    const gert::StorageShape* shape = qfaInfo.opParamInfo.kDescale.shape;
     uint32_t dimNum = shape->GetStorageShape().GetDimNum();
     const std::vector<uint32_t> supportedDims = {DIM_NUM_4};
     OP_CHECK_IF(std::find(supportedDims.begin(), supportedDims.end(), dimNum) == supportedDims.end(),
@@ -282,7 +282,7 @@ ge::graphStatus QuantChecker::CheckVDescaleDimHiF4(const QfaTilingInfo& qfaInfo)
     if (qfaInfo.quantMode != QfaQuantMode::A4C4_QKV_HIF4_P_FP8_E4M3_SOFTMAX_FP16) {
         return ge::GRAPH_SUCCESS;
     }
-    const gert::StorageShape *shape = qfaInfo.opParamInfo.vDescale.shape;
+    const gert::StorageShape* shape = qfaInfo.opParamInfo.vDescale.shape;
     uint32_t dimNum = shape->GetStorageShape().GetDimNum();
     const std::vector<uint32_t> supportedDims = {DIM_NUM_4};
     OP_CHECK_IF(std::find(supportedDims.begin(), supportedDims.end(), dimNum) == supportedDims.end(),
@@ -496,7 +496,7 @@ ge::graphStatus QuantChecker::CheckQDescaleShapeHiF4(const QfaTilingInfo& qfaInf
     // 文档(descale_shape匹配关系表):
     //   HiF4 (quant_mode=10):
     //     4D: (B, Q_N, Q_S, D/64)              layout_q_descale=BNSD
-    const gert::StorageShape *shape = qfaInfo.opParamInfo.qDescale.shape;
+    const gert::StorageShape* shape = qfaInfo.opParamInfo.qDescale.shape;
     int64_t D = qfaInfo.qkHeadDim;
     int64_t dPerGroup = (D + 63) / 64; // HiF4 block size = 64
     uint32_t dimNum = shape->GetStorageShape().GetDimNum();
@@ -604,7 +604,7 @@ ge::graphStatus QuantChecker::CheckKDescaleShapeHiF4(const QfaTilingInfo& qfaInf
     // 文档(k_descale/v_descale shape匹配关系表):
     //   HiF4 (quant_mode=10):
     //     4D: (B, KV_N, KV_S, D/64)                    - layout_kv=BNSD
-    const gert::StorageShape *shape = qfaInfo.opParamInfo.kDescale.shape;
+    const gert::StorageShape* shape = qfaInfo.opParamInfo.kDescale.shape;
     int64_t D = qfaInfo.qkHeadDim;
     int64_t dPerGroup = (D + 63) / 64;
     uint32_t dimNum = shape->GetStorageShape().GetDimNum();
@@ -706,7 +706,7 @@ ge::graphStatus QuantChecker::CheckVDescaleShapeHiF4(const QfaTilingInfo& qfaInf
     // 文档(k_descale/v_descale shape匹配关系表):
     //   HiF4 (quant_mode=10):
     //     4D: (B, KV_N, D, KV_S/64)                    - layout_kv=BNSD
-    const gert::StorageShape *shape = qfaInfo.opParamInfo.vDescale.shape;
+    const gert::StorageShape* shape = qfaInfo.opParamInfo.vDescale.shape;
     uint32_t dimNum = shape->GetStorageShape().GetDimNum();
     // HiF4: BNSD 4D shape (B, KV_N, D, KV_S/64)
     std::vector<int64_t> expected = {qfaInfo.bSize, qfaInfo.n2Size, qfaInfo.vHeadDim, (qfaInfo.s2Size + 63) / 64};
@@ -913,11 +913,7 @@ const std::map<QfaQuantMode, QfaLayoutConstraintConfig> QFA_LAYOUT_CONSTRAINT_TA
       {QfaLayout::TND, QfaLayout::N2TGD},
       false}},
     {QfaQuantMode::A4C4_QKV_HIF4_P_FP8_E4M3_SOFTMAX_FP16,
-     {{QfaLayout::BNSD}, 
-      {QfaLayout::BNSD}, 
-      {QfaLayout::BNSD}, 
-      {QfaLayout::BNSD}, 
-      true}},
+     {{QfaLayout::BNSD}, {QfaLayout::BNSD}, {QfaLayout::BNSD}, {QfaLayout::BNSD}, true}},
 };
 
 // 按 quant_mode 的支持列表动态拼接报错文案, 避免硬编码误导 (如 HIF8 打印 mxfp8 的列表)

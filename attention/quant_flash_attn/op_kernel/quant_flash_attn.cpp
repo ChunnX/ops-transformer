@@ -173,15 +173,12 @@ __aicore__ inline void quant_flash_attn_mxfp8_nd(__gm__ uint8_t* query, __gm__ u
 
 template <uint8_t inOutLayoutType, uint16_t config, uint8_t quantMode, bool hasAttenMask, uint8_t KvLayoutType,
           bool isFd>
-__aicore__ inline void quant_flash_attn_hifp4(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
-                                              __gm__ uint8_t *dequantScaleQuery, __gm__ uint8_t *dequantScaleKey,
-                                              __gm__ uint8_t *dequantScaleValue, __gm__ uint8_t *blockTable,
-                                              __gm__ uint8_t *pScale, __gm__ uint8_t *cuSeqLensQ,
-                                              __gm__ uint8_t *cuSeqLensKv, __gm__ uint8_t *sequsedQ,
-                                              __gm__ uint8_t *sequsedKv, __gm__ uint8_t *sinks,
-                                              __gm__ uint8_t *attnMask, __gm__ uint8_t *metadata,
-                                              __gm__ uint8_t *attnOut, __gm__ uint8_t *softmaxLse,
-                                              __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
+__aicore__ inline void quant_flash_attn_hifp4(
+    __gm__ uint8_t* query, __gm__ uint8_t* key, __gm__ uint8_t* value, __gm__ uint8_t* dequantScaleQuery,
+    __gm__ uint8_t* dequantScaleKey, __gm__ uint8_t* dequantScaleValue, __gm__ uint8_t* blockTable,
+    __gm__ uint8_t* pScale, __gm__ uint8_t* cuSeqLensQ, __gm__ uint8_t* cuSeqLensKv, __gm__ uint8_t* sequsedQ,
+    __gm__ uint8_t* sequsedKv, __gm__ uint8_t* sinks, __gm__ uint8_t* attnMask, __gm__ uint8_t* metadata,
+    __gm__ uint8_t* attnOut, __gm__ uint8_t* softmaxLse, __gm__ uint8_t* workspace, __gm__ uint8_t* tiling)
 {
     using INPUT_T = hifloat4x2_t;
     using OUT_T = bfloat16_t;
@@ -229,7 +226,8 @@ __aicore__ inline void quant_flash_attn_hifp4(__gm__ uint8_t *query, __gm__ uint
     using Kernel = BaseApi::QuantFlashAttnKernelHifp4<CubeBlockDummy, VecFaBlock, VecFdBlock>;
 #endif
 
-    const __gm__ QuantFlashAttnTilingData *__restrict tilingData = (const __gm__ QuantFlashAttnTilingData *__restrict)tiling;
+    const __gm__ QuantFlashAttnTilingData* __restrict tilingData =
+        (const __gm__ QuantFlashAttnTilingData* __restrict)tiling;
 
     Kernel op;
     op.Init(query, key, value, sinks, attnMask, cuSeqLensQ, cuSeqLensKv, blockTable, dequantScaleQuery, dequantScaleKey,

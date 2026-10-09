@@ -43,9 +43,9 @@ namespace FaVectorApi {
 using AscendC::LocalTensor;
 
 template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128>
-__simd_vf__ inline void ProcessVec1DnHif4NoUpdateVF(__ubuf__ fp8_e4m3fn_t *x_exp, __ubuf__ T *input_x_local_UB,
-                                                    __ubuf__ T *exp_max, __ubuf__ T *max, __ubuf__ T *global_max,
-                                                    __ubuf__ uint8_t *indexesUb, __ubuf__ fp8_e8m0_t *pScaleSubLoop,
+__simd_vf__ inline void ProcessVec1DnHif4NoUpdateVF(__ubuf__ fp8_e4m3fn_t* x_exp, __ubuf__ T* input_x_local_UB,
+                                                    __ubuf__ T* exp_max, __ubuf__ T* max, __ubuf__ T* global_max,
+                                                    __ubuf__ uint8_t* indexesUb, __ubuf__ fp8_e8m0_t* pScaleSubLoop,
                                                     const uint32_t m, const uint32_t n, const uint32_t originN,
                                                     float pScale, const T minValue, int32_t subLoop, uint32_t c1v1Loop)
 {
@@ -105,15 +105,15 @@ __simd_vf__ inline void ProcessVec1DnHif4NoUpdateVF(__ubuf__ fp8_e4m3fn_t *x_exp
     RegTensor<bfloat16_t> vreg_pscale_bf16_0, vreg_pscale_bf16_1;
     RegTensor<fp8_e8m0_t> vreg_pscale_f8e8m0_0, vreg_pscale_f8e8m0_1, vreg_pscale_f8e8m0_dst;
 
-    __ubuf__ half *src_ub0 = input_x_local_UB; // 解bank冲突
-    __ubuf__ half *src_ub1 = src_ub0 + BANK_STRIDE_B16;
-    __ubuf__ half *src_ub2 = src_ub1 + BANK_STRIDE_B16;
-    __ubuf__ half *src_ub3 = src_ub2 + BANK_STRIDE_B16;
+    __ubuf__ half* src_ub0 = input_x_local_UB; // 解bank冲突
+    __ubuf__ half* src_ub1 = src_ub0 + BANK_STRIDE_B16;
+    __ubuf__ half* src_ub2 = src_ub1 + BANK_STRIDE_B16;
+    __ubuf__ half* src_ub3 = src_ub2 + BANK_STRIDE_B16;
 
-    __ubuf__ fp8_e4m3fn_t *x_exp_0 = x_exp;
-    __ubuf__ fp8_e4m3fn_t *x_exp_1 = x_exp_0 + 16 * BANK_STRIDE_B8; // NZ偏移
-    __ubuf__ fp8_e4m3fn_t *x_exp_2 = x_exp_1 + 16 * BANK_STRIDE_B8;
-    __ubuf__ fp8_e4m3fn_t *x_exp_3 = x_exp_2 + 16 * BANK_STRIDE_B8;
+    __ubuf__ fp8_e4m3fn_t* x_exp_0 = x_exp;
+    __ubuf__ fp8_e4m3fn_t* x_exp_1 = x_exp_0 + 16 * BANK_STRIDE_B8; // NZ偏移
+    __ubuf__ fp8_e4m3fn_t* x_exp_2 = x_exp_1 + 16 * BANK_STRIDE_B8;
+    __ubuf__ fp8_e4m3fn_t* x_exp_3 = x_exp_2 + 16 * BANK_STRIDE_B8;
 
     Duplicate(max0, minValue);
     Duplicate(max1, minValue);
@@ -123,7 +123,7 @@ __simd_vf__ inline void ProcessVec1DnHif4NoUpdateVF(__ubuf__ fp8_e4m3fn_t *x_exp
     Duplicate(vreg_p_scale, static_cast<half>(pScale));
     Ln(vreg_ln_p_scale, vreg_p_scale, preg_b16);
     for (uint16_t i = originN; i < n; ++i) {
-        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>((__ubuf__ T *&)input_x_local_UB + i * BANK_STRIDE_B16,
+        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>((__ubuf__ T*&)input_x_local_UB + i * BANK_STRIDE_B16,
                                                           vreg_min, preg_b16);
     }
 
@@ -153,10 +153,10 @@ __simd_vf__ inline void ProcessVec1DnHif4NoUpdateVF(__ubuf__ fp8_e4m3fn_t *x_exp
     }
 
     if (subLoop == c1v1Loop) {
-        StoreAlign<half, MicroAPI::StoreDist::DIST_NORM_B16>((__ubuf__ half *&)global_max, max0, preg_b16);
+        StoreAlign<half, MicroAPI::StoreDist::DIST_NORM_B16>((__ubuf__ half*&)global_max, max0, preg_b16);
     }
 
-    StoreAlign<half, MicroAPI::StoreDist::DIST_NORM_B16>((__ubuf__ half *&)max + subLoop * m, max0, preg_b16);
+    StoreAlign<half, MicroAPI::StoreDist::DIST_NORM_B16>((__ubuf__ half*&)max + subLoop * m, max0, preg_b16);
     Sub(max_sub, max0, vreg_ln_p_scale, preg_b16);
     LoadAlign(idx_nd2nz, indexesUb);
     for (uint16_t i0 = 0; i0 < n / 8; ++i0) { // 一次处理八行
@@ -187,37 +187,37 @@ __simd_vf__ inline void ProcessVec1DnHif4NoUpdateVF(__ubuf__ fp8_e4m3fn_t *x_exp
         Cast<fp8_e4m3fn_t, half, castTraitRintZero>(vreg_x_exp_fp8_6, vreg_x_exp_6, preg_b16);
         Cast<fp8_e4m3fn_t, half, castTraitRintOne>(vreg_x_exp_fp8_7, vreg_x_exp_7, preg_b16);
 
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
-           (RegTensor<uint8_t> &)vreg_x_exp_fp8_1, preg_b8);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_2,
-           (RegTensor<uint8_t> &)vreg_x_exp_fp8_3, preg_b8);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_2, (RegTensor<uint8_t> &)vreg_x_exp_fp8_4,
-           (RegTensor<uint8_t> &)vreg_x_exp_fp8_5, preg_b8);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_3, (RegTensor<uint8_t> &)vreg_x_exp_fp8_6,
-           (RegTensor<uint8_t> &)vreg_x_exp_fp8_7, preg_b8);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_fp8_0,
+           (RegTensor<uint8_t>&)vreg_x_exp_fp8_1, preg_b8);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_fp8_2,
+           (RegTensor<uint8_t>&)vreg_x_exp_fp8_3, preg_b8);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_2, (RegTensor<uint8_t>&)vreg_x_exp_fp8_4,
+           (RegTensor<uint8_t>&)vreg_x_exp_fp8_5, preg_b8);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_3, (RegTensor<uint8_t>&)vreg_x_exp_fp8_6,
+           (RegTensor<uint8_t>&)vreg_x_exp_fp8_7, preg_b8);
 
-        Interleave((RegTensor<uint16_t> &)vreg_x_exp_fp8_intlv_0, (RegTensor<uint16_t> &)vreg_x_exp_fp8_intlv_1,
-                   (RegTensor<uint16_t> &)vreg_x_exp_fp8_0, (RegTensor<uint16_t> &)vreg_x_exp_fp8_1);
-        Interleave((RegTensor<uint16_t> &)vreg_x_exp_fp8_intlv_2, (RegTensor<uint16_t> &)vreg_x_exp_fp8_intlv_3,
-                   (RegTensor<uint16_t> &)vreg_x_exp_fp8_2, (RegTensor<uint16_t> &)vreg_x_exp_fp8_3);
+        Interleave((RegTensor<uint16_t>&)vreg_x_exp_fp8_intlv_0, (RegTensor<uint16_t>&)vreg_x_exp_fp8_intlv_1,
+                   (RegTensor<uint16_t>&)vreg_x_exp_fp8_0, (RegTensor<uint16_t>&)vreg_x_exp_fp8_1);
+        Interleave((RegTensor<uint16_t>&)vreg_x_exp_fp8_intlv_2, (RegTensor<uint16_t>&)vreg_x_exp_fp8_intlv_3,
+                   (RegTensor<uint16_t>&)vreg_x_exp_fp8_2, (RegTensor<uint16_t>&)vreg_x_exp_fp8_3);
 
-        Interleave((RegTensor<uint32_t> &)vreg_x_exp_fp8_intlv_4, (RegTensor<uint32_t> &)vreg_x_exp_fp8_intlv_5,
-                   (RegTensor<uint32_t> &)vreg_x_exp_fp8_intlv_0, (RegTensor<uint32_t> &)vreg_x_exp_fp8_intlv_2);
-        Interleave((RegTensor<uint32_t> &)vreg_x_exp_fp8_intlv_6, (RegTensor<uint32_t> &)vreg_x_exp_fp8_intlv_7,
-                   (RegTensor<uint32_t> &)vreg_x_exp_fp8_intlv_1, (RegTensor<uint32_t> &)vreg_x_exp_fp8_intlv_3);
+        Interleave((RegTensor<uint32_t>&)vreg_x_exp_fp8_intlv_4, (RegTensor<uint32_t>&)vreg_x_exp_fp8_intlv_5,
+                   (RegTensor<uint32_t>&)vreg_x_exp_fp8_intlv_0, (RegTensor<uint32_t>&)vreg_x_exp_fp8_intlv_2);
+        Interleave((RegTensor<uint32_t>&)vreg_x_exp_fp8_intlv_6, (RegTensor<uint32_t>&)vreg_x_exp_fp8_intlv_7,
+                   (RegTensor<uint32_t>&)vreg_x_exp_fp8_intlv_1, (RegTensor<uint32_t>&)vreg_x_exp_fp8_intlv_3);
 
-        Gather((RegTensor<uint8_t> &)vreg_x_exp_f8_pack_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_intlv_4, idx_nd2nz);
-        Gather((RegTensor<uint8_t> &)vreg_x_exp_f8_pack_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_intlv_5, idx_nd2nz);
-        Gather((RegTensor<uint8_t> &)vreg_x_exp_f8_pack_2, (RegTensor<uint8_t> &)vreg_x_exp_fp8_intlv_6, idx_nd2nz);
-        Gather((RegTensor<uint8_t> &)vreg_x_exp_f8_pack_3, (RegTensor<uint8_t> &)vreg_x_exp_fp8_intlv_7, idx_nd2nz);
+        Gather((RegTensor<uint8_t>&)vreg_x_exp_f8_pack_0, (RegTensor<uint8_t>&)vreg_x_exp_fp8_intlv_4, idx_nd2nz);
+        Gather((RegTensor<uint8_t>&)vreg_x_exp_f8_pack_1, (RegTensor<uint8_t>&)vreg_x_exp_fp8_intlv_5, idx_nd2nz);
+        Gather((RegTensor<uint8_t>&)vreg_x_exp_f8_pack_2, (RegTensor<uint8_t>&)vreg_x_exp_fp8_intlv_6, idx_nd2nz);
+        Gather((RegTensor<uint8_t>&)vreg_x_exp_f8_pack_3, (RegTensor<uint8_t>&)vreg_x_exp_fp8_intlv_7, idx_nd2nz);
 
-        StoreAlign(((__ubuf__ uint8_t *&)x_exp_0) + i0 * BANK_STRIDE_B8, (RegTensor<uint8_t> &)vreg_x_exp_f8_pack_0,
+        StoreAlign(((__ubuf__ uint8_t*&)x_exp_0) + i0 * BANK_STRIDE_B8, (RegTensor<uint8_t>&)vreg_x_exp_f8_pack_0,
                    preg_b8);
-        StoreAlign(((__ubuf__ uint8_t *&)x_exp_1) + i0 * BANK_STRIDE_B8, (RegTensor<uint8_t> &)vreg_x_exp_f8_pack_1,
+        StoreAlign(((__ubuf__ uint8_t*&)x_exp_1) + i0 * BANK_STRIDE_B8, (RegTensor<uint8_t>&)vreg_x_exp_f8_pack_1,
                    preg_b8);
-        StoreAlign(((__ubuf__ uint8_t *&)x_exp_2) + i0 * BANK_STRIDE_B8, (RegTensor<uint8_t> &)vreg_x_exp_f8_pack_2,
+        StoreAlign(((__ubuf__ uint8_t*&)x_exp_2) + i0 * BANK_STRIDE_B8, (RegTensor<uint8_t>&)vreg_x_exp_f8_pack_2,
                    preg_b8);
-        StoreAlign(((__ubuf__ uint8_t *&)x_exp_3) + i0 * BANK_STRIDE_B8, (RegTensor<uint8_t> &)vreg_x_exp_f8_pack_3,
+        StoreAlign(((__ubuf__ uint8_t*&)x_exp_3) + i0 * BANK_STRIDE_B8, (RegTensor<uint8_t>&)vreg_x_exp_f8_pack_3,
                    preg_b8);
     }
 
@@ -229,18 +229,18 @@ __simd_vf__ inline void ProcessVec1DnHif4NoUpdateVF(__ubuf__ fp8_e4m3fn_t *x_exp
             Cast<bfloat16_t, half, castTraitRintZero>(vreg_pscale_bf16_0, vreg_expmax_subloop, preg_b16);
             Cast<fp8_e8m0_t, bfloat16_t, castTraitTruncZero>(vreg_pscale_f8e8m0_0, vreg_pscale_bf16_0, preg_b16);
             Cast<fp8_e8m0_t, bfloat16_t, castTraitTruncOne>(vreg_pscale_f8e8m0_1, vreg_pscale_bf16_0, preg_b16);
-            Or((RegTensor<uint8_t> &)vreg_pscale_f8e8m0_dst, (RegTensor<uint8_t> &)vreg_pscale_f8e8m0_0,
-               (RegTensor<uint8_t> &)vreg_pscale_f8e8m0_1, preg_b8);
-            StoreAlign<fp8_e8m0_t, MicroAPI::StoreDist::DIST_NORM_B8>(((__ubuf__ fp8_e8m0_t *&)pScaleSubLoop + i * 256),
+            Or((RegTensor<uint8_t>&)vreg_pscale_f8e8m0_dst, (RegTensor<uint8_t>&)vreg_pscale_f8e8m0_0,
+               (RegTensor<uint8_t>&)vreg_pscale_f8e8m0_1, preg_b8);
+            StoreAlign<fp8_e8m0_t, MicroAPI::StoreDist::DIST_NORM_B8>(((__ubuf__ fp8_e8m0_t*&)pScaleSubLoop + i * 256),
                                                                       vreg_pscale_f8e8m0_dst, preg_b8);
         }
     }
 }
 
 template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128>
-__simd_vf__ inline void ProcessVec1DnHif4UpdateVF(__ubuf__ fp8_e4m3fn_t *x_exp, __ubuf__ T *input_x_local_UB,
-                                                  __ubuf__ T *exp_max, __ubuf__ T *max, __ubuf__ T *global_max,
-                                                  __ubuf__ uint8_t *indexesUb, __ubuf__ fp8_e8m0_t *pScaleSubLoop,
+__simd_vf__ inline void ProcessVec1DnHif4UpdateVF(__ubuf__ fp8_e4m3fn_t* x_exp, __ubuf__ T* input_x_local_UB,
+                                                  __ubuf__ T* exp_max, __ubuf__ T* max, __ubuf__ T* global_max,
+                                                  __ubuf__ uint8_t* indexesUb, __ubuf__ fp8_e8m0_t* pScaleSubLoop,
                                                   const uint32_t m, const uint32_t n, const uint32_t originN,
                                                   float pScale, const T minValue, int32_t subLoop, uint32_t c1v1Loop)
 {
@@ -299,15 +299,15 @@ __simd_vf__ inline void ProcessVec1DnHif4UpdateVF(__ubuf__ fp8_e4m3fn_t *x_exp, 
     RegTensor<bfloat16_t> vreg_pscale_bf16_0, vreg_pscale_bf16_1;
     RegTensor<fp8_e8m0_t> vreg_pscale_f8e8m0_0, vreg_pscale_f8e8m0_1, vreg_pscale_f8e8m0_dst;
 
-    __ubuf__ half *src_ub0 = input_x_local_UB;
-    __ubuf__ half *src_ub1 = src_ub0 + BANK_STRIDE_B16;
-    __ubuf__ half *src_ub2 = src_ub1 + BANK_STRIDE_B16;
-    __ubuf__ half *src_ub3 = src_ub2 + BANK_STRIDE_B16;
+    __ubuf__ half* src_ub0 = input_x_local_UB;
+    __ubuf__ half* src_ub1 = src_ub0 + BANK_STRIDE_B16;
+    __ubuf__ half* src_ub2 = src_ub1 + BANK_STRIDE_B16;
+    __ubuf__ half* src_ub3 = src_ub2 + BANK_STRIDE_B16;
 
-    __ubuf__ fp8_e4m3fn_t *x_exp_0 = x_exp;
-    __ubuf__ fp8_e4m3fn_t *x_exp_1 = x_exp_0 + 16 * BANK_STRIDE_B8; //
-    __ubuf__ fp8_e4m3fn_t *x_exp_2 = x_exp_1 + 16 * BANK_STRIDE_B8;
-    __ubuf__ fp8_e4m3fn_t *x_exp_3 = x_exp_2 + 16 * BANK_STRIDE_B8;
+    __ubuf__ fp8_e4m3fn_t* x_exp_0 = x_exp;
+    __ubuf__ fp8_e4m3fn_t* x_exp_1 = x_exp_0 + 16 * BANK_STRIDE_B8; //
+    __ubuf__ fp8_e4m3fn_t* x_exp_2 = x_exp_1 + 16 * BANK_STRIDE_B8;
+    __ubuf__ fp8_e4m3fn_t* x_exp_3 = x_exp_2 + 16 * BANK_STRIDE_B8;
 
     Duplicate(max0, minValue);
     Duplicate(max1, minValue);
@@ -317,7 +317,7 @@ __simd_vf__ inline void ProcessVec1DnHif4UpdateVF(__ubuf__ fp8_e4m3fn_t *x_exp, 
     Duplicate(vreg_p_scale, static_cast<half>(pScale));
     Ln(vreg_ln_p_scale, vreg_p_scale, preg_b16);
     for (uint16_t i = originN; i < n; ++i) {
-        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>((__ubuf__ T *&)input_x_local_UB + i * BANK_STRIDE_B16,
+        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>((__ubuf__ T*&)input_x_local_UB + i * BANK_STRIDE_B16,
                                                           vreg_min, preg_b16);
     }
 
@@ -351,10 +351,10 @@ __simd_vf__ inline void ProcessVec1DnHif4UpdateVF(__ubuf__ fp8_e4m3fn_t *x_exp, 
     if (subLoop == c1v1Loop) {
         LoadAlign(vreg_x_max, global_max);
         FusedExpSub(vreg_exp_max_loop, vreg_x_max, max0, preg_b16);
-        StoreAlign<half, MicroAPI::StoreDist::DIST_NORM_B16>((__ubuf__ half *&)global_max, max0, preg_b16);
-        StoreAlign<half, MicroAPI::StoreDist::DIST_NORM_B16>((__ubuf__ half *&)exp_max, vreg_exp_max_loop, preg_b16);
+        StoreAlign<half, MicroAPI::StoreDist::DIST_NORM_B16>((__ubuf__ half*&)global_max, max0, preg_b16);
+        StoreAlign<half, MicroAPI::StoreDist::DIST_NORM_B16>((__ubuf__ half*&)exp_max, vreg_exp_max_loop, preg_b16);
     }
-    StoreAlign<half, MicroAPI::StoreDist::DIST_NORM_B16>((__ubuf__ half *&)max + subLoop * m, max0, preg_b16);
+    StoreAlign<half, MicroAPI::StoreDist::DIST_NORM_B16>((__ubuf__ half*&)max + subLoop * m, max0, preg_b16);
     Sub(max_sub, max0, vreg_ln_p_scale, preg_b16);
     LoadAlign(idx_nd2nz, indexesUb);
     for (uint16_t i0 = 0; i0 < n / 8; ++i0) {
@@ -385,37 +385,37 @@ __simd_vf__ inline void ProcessVec1DnHif4UpdateVF(__ubuf__ fp8_e4m3fn_t *x_exp, 
         Cast<fp8_e4m3fn_t, half, castTraitRintZero>(vreg_x_exp_fp8_6, vreg_x_exp_6, preg_b16);
         Cast<fp8_e4m3fn_t, half, castTraitRintOne>(vreg_x_exp_fp8_7, vreg_x_exp_7, preg_b16);
 
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
-           (RegTensor<uint8_t> &)vreg_x_exp_fp8_1, preg_b8);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_2,
-           (RegTensor<uint8_t> &)vreg_x_exp_fp8_3, preg_b8);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_2, (RegTensor<uint8_t> &)vreg_x_exp_fp8_4,
-           (RegTensor<uint8_t> &)vreg_x_exp_fp8_5, preg_b8);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_3, (RegTensor<uint8_t> &)vreg_x_exp_fp8_6,
-           (RegTensor<uint8_t> &)vreg_x_exp_fp8_7, preg_b8);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_fp8_0,
+           (RegTensor<uint8_t>&)vreg_x_exp_fp8_1, preg_b8);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_fp8_2,
+           (RegTensor<uint8_t>&)vreg_x_exp_fp8_3, preg_b8);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_2, (RegTensor<uint8_t>&)vreg_x_exp_fp8_4,
+           (RegTensor<uint8_t>&)vreg_x_exp_fp8_5, preg_b8);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_3, (RegTensor<uint8_t>&)vreg_x_exp_fp8_6,
+           (RegTensor<uint8_t>&)vreg_x_exp_fp8_7, preg_b8);
 
-        Interleave((RegTensor<uint16_t> &)vreg_x_exp_fp8_intlv_0, (RegTensor<uint16_t> &)vreg_x_exp_fp8_intlv_1,
-                   (RegTensor<uint16_t> &)vreg_x_exp_fp8_0, (RegTensor<uint16_t> &)vreg_x_exp_fp8_1);
-        Interleave((RegTensor<uint16_t> &)vreg_x_exp_fp8_intlv_2, (RegTensor<uint16_t> &)vreg_x_exp_fp8_intlv_3,
-                   (RegTensor<uint16_t> &)vreg_x_exp_fp8_2, (RegTensor<uint16_t> &)vreg_x_exp_fp8_3);
+        Interleave((RegTensor<uint16_t>&)vreg_x_exp_fp8_intlv_0, (RegTensor<uint16_t>&)vreg_x_exp_fp8_intlv_1,
+                   (RegTensor<uint16_t>&)vreg_x_exp_fp8_0, (RegTensor<uint16_t>&)vreg_x_exp_fp8_1);
+        Interleave((RegTensor<uint16_t>&)vreg_x_exp_fp8_intlv_2, (RegTensor<uint16_t>&)vreg_x_exp_fp8_intlv_3,
+                   (RegTensor<uint16_t>&)vreg_x_exp_fp8_2, (RegTensor<uint16_t>&)vreg_x_exp_fp8_3);
 
-        Interleave((RegTensor<uint32_t> &)vreg_x_exp_fp8_intlv_4, (RegTensor<uint32_t> &)vreg_x_exp_fp8_intlv_5,
-                   (RegTensor<uint32_t> &)vreg_x_exp_fp8_intlv_0, (RegTensor<uint32_t> &)vreg_x_exp_fp8_intlv_2);
-        Interleave((RegTensor<uint32_t> &)vreg_x_exp_fp8_intlv_6, (RegTensor<uint32_t> &)vreg_x_exp_fp8_intlv_7,
-                   (RegTensor<uint32_t> &)vreg_x_exp_fp8_intlv_1, (RegTensor<uint32_t> &)vreg_x_exp_fp8_intlv_3);
+        Interleave((RegTensor<uint32_t>&)vreg_x_exp_fp8_intlv_4, (RegTensor<uint32_t>&)vreg_x_exp_fp8_intlv_5,
+                   (RegTensor<uint32_t>&)vreg_x_exp_fp8_intlv_0, (RegTensor<uint32_t>&)vreg_x_exp_fp8_intlv_2);
+        Interleave((RegTensor<uint32_t>&)vreg_x_exp_fp8_intlv_6, (RegTensor<uint32_t>&)vreg_x_exp_fp8_intlv_7,
+                   (RegTensor<uint32_t>&)vreg_x_exp_fp8_intlv_1, (RegTensor<uint32_t>&)vreg_x_exp_fp8_intlv_3);
 
-        Gather((RegTensor<uint8_t> &)vreg_x_exp_f8_pack_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_intlv_4, idx_nd2nz);
-        Gather((RegTensor<uint8_t> &)vreg_x_exp_f8_pack_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_intlv_5, idx_nd2nz);
-        Gather((RegTensor<uint8_t> &)vreg_x_exp_f8_pack_2, (RegTensor<uint8_t> &)vreg_x_exp_fp8_intlv_6, idx_nd2nz);
-        Gather((RegTensor<uint8_t> &)vreg_x_exp_f8_pack_3, (RegTensor<uint8_t> &)vreg_x_exp_fp8_intlv_7, idx_nd2nz);
+        Gather((RegTensor<uint8_t>&)vreg_x_exp_f8_pack_0, (RegTensor<uint8_t>&)vreg_x_exp_fp8_intlv_4, idx_nd2nz);
+        Gather((RegTensor<uint8_t>&)vreg_x_exp_f8_pack_1, (RegTensor<uint8_t>&)vreg_x_exp_fp8_intlv_5, idx_nd2nz);
+        Gather((RegTensor<uint8_t>&)vreg_x_exp_f8_pack_2, (RegTensor<uint8_t>&)vreg_x_exp_fp8_intlv_6, idx_nd2nz);
+        Gather((RegTensor<uint8_t>&)vreg_x_exp_f8_pack_3, (RegTensor<uint8_t>&)vreg_x_exp_fp8_intlv_7, idx_nd2nz);
 
-        StoreAlign(((__ubuf__ uint8_t *&)x_exp_0) + i0 * BANK_STRIDE_B8, (RegTensor<uint8_t> &)vreg_x_exp_f8_pack_0,
+        StoreAlign(((__ubuf__ uint8_t*&)x_exp_0) + i0 * BANK_STRIDE_B8, (RegTensor<uint8_t>&)vreg_x_exp_f8_pack_0,
                    preg_b8);
-        StoreAlign(((__ubuf__ uint8_t *&)x_exp_1) + i0 * BANK_STRIDE_B8, (RegTensor<uint8_t> &)vreg_x_exp_f8_pack_1,
+        StoreAlign(((__ubuf__ uint8_t*&)x_exp_1) + i0 * BANK_STRIDE_B8, (RegTensor<uint8_t>&)vreg_x_exp_f8_pack_1,
                    preg_b8);
-        StoreAlign(((__ubuf__ uint8_t *&)x_exp_2) + i0 * BANK_STRIDE_B8, (RegTensor<uint8_t> &)vreg_x_exp_f8_pack_2,
+        StoreAlign(((__ubuf__ uint8_t*&)x_exp_2) + i0 * BANK_STRIDE_B8, (RegTensor<uint8_t>&)vreg_x_exp_f8_pack_2,
                    preg_b8);
-        StoreAlign(((__ubuf__ uint8_t *&)x_exp_3) + i0 * BANK_STRIDE_B8, (RegTensor<uint8_t> &)vreg_x_exp_f8_pack_3,
+        StoreAlign(((__ubuf__ uint8_t*&)x_exp_3) + i0 * BANK_STRIDE_B8, (RegTensor<uint8_t>&)vreg_x_exp_f8_pack_3,
                    preg_b8);
     }
 
@@ -427,30 +427,30 @@ __simd_vf__ inline void ProcessVec1DnHif4UpdateVF(__ubuf__ fp8_e4m3fn_t *x_exp, 
             Cast<bfloat16_t, half, castTraitRintZero>(vreg_pscale_bf16_0, vreg_expmax_subloop, preg_b16);
             Cast<fp8_e8m0_t, bfloat16_t, castTraitTruncZero>(vreg_pscale_f8e8m0_0, vreg_pscale_bf16_0, preg_b16);
             Cast<fp8_e8m0_t, bfloat16_t, castTraitTruncOne>(vreg_pscale_f8e8m0_1, vreg_pscale_bf16_0, preg_b16);
-            Or((RegTensor<uint8_t> &)vreg_pscale_f8e8m0_dst, (RegTensor<uint8_t> &)vreg_pscale_f8e8m0_0,
-               (RegTensor<uint8_t> &)vreg_pscale_f8e8m0_1, preg_b8);
-            StoreAlign<fp8_e8m0_t, MicroAPI::StoreDist::DIST_NORM_B8>(((__ubuf__ fp8_e8m0_t *&)pScaleSubLoop + i * 256),
+            Or((RegTensor<uint8_t>&)vreg_pscale_f8e8m0_dst, (RegTensor<uint8_t>&)vreg_pscale_f8e8m0_0,
+               (RegTensor<uint8_t>&)vreg_pscale_f8e8m0_1, preg_b8);
+            StoreAlign<fp8_e8m0_t, MicroAPI::StoreDist::DIST_NORM_B8>(((__ubuf__ fp8_e8m0_t*&)pScaleSubLoop + i * 256),
                                                                       vreg_pscale_f8e8m0_dst, preg_b8);
         }
     }
 }
 
 template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128>
-__aicore__ inline void ProcessVec1DnNoUpdateHif4(const uint64_t &dstTensor, const uint64_t &maxTensor,
-                                                 const uint64_t &globalMaxTensor, const LocalTensor<T> srcTensor,
-                                                 const uint64_t &expMaxTensor,
-                                                 const LocalTensor<uint8_t> &vselrIndexesBuf, const uint32_t m,
+__aicore__ inline void ProcessVec1DnNoUpdateHif4(const uint64_t& dstTensor, const uint64_t& maxTensor,
+                                                 const uint64_t& globalMaxTensor, const LocalTensor<T> srcTensor,
+                                                 const uint64_t& expMaxTensor,
+                                                 const LocalTensor<uint8_t>& vselrIndexesBuf, const uint32_t m,
                                                  const uint32_t n, const uint32_t originN, float pScale,
                                                  const T minValue, int32_t subLoop, uint32_t c1v1Loop,
-                                                 const uint64_t &pScaleSubLoopTensor)
+                                                 const uint64_t& pScaleSubLoopTensor)
 {
-    __ubuf__ fp8_e4m3fn_t *x_exp = (__ubuf__ fp8_e4m3fn_t *)dstTensor;
-    __ubuf__ half *input_x_local_UB = (__ubuf__ half *)srcTensor.GetPhyAddr();
-    __ubuf__ half *exp_max = (__ubuf__ half *)expMaxTensor;
-    __ubuf__ half *max = (__ubuf__ half *)maxTensor;
-    __ubuf__ half *global_max = (__ubuf__ half *)globalMaxTensor;
-    __ubuf__ fp8_e8m0_t *pScaleSubLoopUb = (__ubuf__ fp8_e8m0_t *)pScaleSubLoopTensor;
-    __ubuf__ uint8_t *indexesUb = (__ubuf__ uint8_t *)vselrIndexesBuf.GetPhyAddr();
+    __ubuf__ fp8_e4m3fn_t* x_exp = (__ubuf__ fp8_e4m3fn_t*)dstTensor;
+    __ubuf__ half* input_x_local_UB = (__ubuf__ half*)srcTensor.GetPhyAddr();
+    __ubuf__ half* exp_max = (__ubuf__ half*)expMaxTensor;
+    __ubuf__ half* max = (__ubuf__ half*)maxTensor;
+    __ubuf__ half* global_max = (__ubuf__ half*)globalMaxTensor;
+    __ubuf__ fp8_e8m0_t* pScaleSubLoopUb = (__ubuf__ fp8_e8m0_t*)pScaleSubLoopTensor;
+    __ubuf__ uint8_t* indexesUb = (__ubuf__ uint8_t*)vselrIndexesBuf.GetPhyAddr();
 
     ProcessVec1DnHif4NoUpdateVF<T, T2, hasAtten, ubN>(x_exp, input_x_local_UB, exp_max, max, global_max, indexesUb,
                                                       pScaleSubLoopUb, m, n, originN, pScale, minValue, subLoop,
@@ -458,20 +458,20 @@ __aicore__ inline void ProcessVec1DnNoUpdateHif4(const uint64_t &dstTensor, cons
 }
 
 template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128>
-__aicore__ inline void ProcessVec1DnUpdateHif4(const uint64_t &dstTensor, const uint64_t &maxTensor,
-                                               const uint64_t &globalMaxTensor, const LocalTensor<T> srcTensor,
-                                               const uint64_t &expMaxTensor,
-                                               const LocalTensor<uint8_t> &vselrIndexesBuf, const uint32_t m,
+__aicore__ inline void ProcessVec1DnUpdateHif4(const uint64_t& dstTensor, const uint64_t& maxTensor,
+                                               const uint64_t& globalMaxTensor, const LocalTensor<T> srcTensor,
+                                               const uint64_t& expMaxTensor,
+                                               const LocalTensor<uint8_t>& vselrIndexesBuf, const uint32_t m,
                                                const uint32_t n, const uint32_t originN, float pScale, const T minValue,
-                                               int32_t subLoop, uint32_t c1v1Loop, const uint64_t &pScaleSubLoopTensor)
+                                               int32_t subLoop, uint32_t c1v1Loop, const uint64_t& pScaleSubLoopTensor)
 {
-    __ubuf__ fp8_e4m3fn_t *x_exp = (__ubuf__ fp8_e4m3fn_t *)dstTensor;
-    __ubuf__ half *input_x_local_UB = (__ubuf__ half *)srcTensor.GetPhyAddr();
-    __ubuf__ half *exp_max = (__ubuf__ half *)expMaxTensor;
-    __ubuf__ half *max = (__ubuf__ half *)maxTensor;
-    __ubuf__ half *global_max = (__ubuf__ half *)globalMaxTensor;
-    __ubuf__ fp8_e8m0_t *pScaleSubLoopUb = (__ubuf__ fp8_e8m0_t *)pScaleSubLoopTensor;
-    __ubuf__ uint8_t *indexesUb = (__ubuf__ uint8_t *)vselrIndexesBuf.GetPhyAddr();
+    __ubuf__ fp8_e4m3fn_t* x_exp = (__ubuf__ fp8_e4m3fn_t*)dstTensor;
+    __ubuf__ half* input_x_local_UB = (__ubuf__ half*)srcTensor.GetPhyAddr();
+    __ubuf__ half* exp_max = (__ubuf__ half*)expMaxTensor;
+    __ubuf__ half* max = (__ubuf__ half*)maxTensor;
+    __ubuf__ half* global_max = (__ubuf__ half*)globalMaxTensor;
+    __ubuf__ fp8_e8m0_t* pScaleSubLoopUb = (__ubuf__ fp8_e8m0_t*)pScaleSubLoopTensor;
+    __ubuf__ uint8_t* indexesUb = (__ubuf__ uint8_t*)vselrIndexesBuf.GetPhyAddr();
 
     ProcessVec1DnHif4UpdateVF<T, T2, hasAtten, ubN>(x_exp, input_x_local_UB, exp_max, max, global_max, indexesUb,
                                                     pScaleSubLoopUb, m, n, originN, pScale, minValue, subLoop,
@@ -479,10 +479,10 @@ __aicore__ inline void ProcessVec1DnUpdateHif4(const uint64_t &dstTensor, const 
 }
 
 template <typename T, typename T2, bool isUpdate = false, bool hasAtten = false, uint16_t ubN = 128>
-__aicore__ inline void ProcessVec1VfDnHif4(const uint64_t &dstTensor, const uint64_t &maxTensor,
-                                           const uint64_t &globalMaxTensor, const LocalTensor<T> srcTensor,
-                                           const uint64_t &expMaxTensor, const LocalTensor<uint8_t> indexesTensor,
-                                           const uint64_t &pScaleSubLoopTensor, const uint32_t m, const uint32_t n,
+__aicore__ inline void ProcessVec1VfDnHif4(const uint64_t& dstTensor, const uint64_t& maxTensor,
+                                           const uint64_t& globalMaxTensor, const LocalTensor<T> srcTensor,
+                                           const uint64_t& expMaxTensor, const LocalTensor<uint8_t> indexesTensor,
+                                           const uint64_t& pScaleSubLoopTensor, const uint32_t m, const uint32_t n,
                                            const uint32_t originN, float pScale, const T minValue, int32_t subLoop,
                                            uint32_t c1v1Loop)
 {

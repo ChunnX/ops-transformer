@@ -27,9 +27,9 @@ public:
         this->Input("q")
             .ParamType(REQUIRED)
             .DataType({
-                ge::DT_FLOAT8_E4M3FN, 
-                ge::DT_FLOAT8_E4M3FN, 
-                ge::DT_HIFLOAT8, 
+                ge::DT_FLOAT8_E4M3FN,
+                ge::DT_FLOAT8_E4M3FN,
+                ge::DT_HIFLOAT8,
 #ifdef ENABLE_HIFLOAT4
                 ge::DT_HIFLOAT4,
 #endif
@@ -39,9 +39,9 @@ public:
         this->Input("k")
             .ParamType(REQUIRED)
             .DataType({
-                ge::DT_FLOAT8_E4M3FN, 
-                ge::DT_FLOAT8_E4M3FN, 
-                ge::DT_HIFLOAT8, 
+                ge::DT_FLOAT8_E4M3FN,
+                ge::DT_FLOAT8_E4M3FN,
+                ge::DT_HIFLOAT8,
 #ifdef ENABLE_HIFLOAT4
                 ge::DT_HIFLOAT4,
 #endif
@@ -51,9 +51,9 @@ public:
         this->Input("v")
             .ParamType(REQUIRED)
             .DataType({
-                ge::DT_FLOAT8_E4M3FN, 
-                ge::DT_FLOAT8_E4M3FN, 
-                ge::DT_HIFLOAT8, 
+                ge::DT_FLOAT8_E4M3FN,
+                ge::DT_FLOAT8_E4M3FN,
+                ge::DT_HIFLOAT8,
 #ifdef ENABLE_HIFLOAT4
                 ge::DT_HIFLOAT4,
 #endif
@@ -63,9 +63,9 @@ public:
         this->Input("q_descale")
             .ParamType(REQUIRED)
             .DataType({
-                ge::DT_FLOAT8_E8M0, 
-                ge::DT_FLOAT, 
-                ge::DT_FLOAT, 
+                ge::DT_FLOAT8_E8M0,
+                ge::DT_FLOAT,
+                ge::DT_FLOAT,
 #ifdef ENABLE_HIFLOAT4
                 ge::DT_HIFLOAT4_SCALE,
 #endif
@@ -75,9 +75,9 @@ public:
         this->Input("k_descale")
             .ParamType(REQUIRED)
             .DataType({
-                ge::DT_FLOAT8_E8M0, 
-                ge::DT_FLOAT, 
-                ge::DT_FLOAT, 
+                ge::DT_FLOAT8_E8M0,
+                ge::DT_FLOAT,
+                ge::DT_FLOAT,
 #ifdef ENABLE_HIFLOAT4
                 ge::DT_HIFLOAT4_SCALE,
 #endif
@@ -87,9 +87,9 @@ public:
         this->Input("v_descale")
             .ParamType(REQUIRED)
             .DataType({
-                ge::DT_FLOAT8_E8M0, 
-                ge::DT_FLOAT, 
-                ge::DT_FLOAT, 
+                ge::DT_FLOAT8_E8M0,
+                ge::DT_FLOAT,
+                ge::DT_FLOAT,
 #ifdef ENABLE_HIFLOAT4
                 ge::DT_HIFLOAT4_SCALE,
 #endif
@@ -159,10 +159,10 @@ public:
         this->Output("attn_out")
             .ParamType(REQUIRED)
             .DataType({
-                ge::DT_BF16, 
-                ge::DT_BF16, 
-                ge::DT_BF16, 
-#ifdef ENABLE_HIFLOAT4               
+                ge::DT_BF16,
+                ge::DT_BF16,
+                ge::DT_BF16,
+#ifdef ENABLE_HIFLOAT4
                 ge::DT_BF16,
 #endif
             })

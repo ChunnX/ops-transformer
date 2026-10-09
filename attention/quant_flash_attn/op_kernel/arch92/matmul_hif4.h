@@ -24,8 +24,8 @@ static constexpr uint32_t DB = 2;
 
 // 搬入Rowsum所需全1补充矩阵到L0A
 template <typename INPUT_T, typename T> // isLoadFull表示进行全载
-__aicore__ inline void LoadDataRowsumToL0A(LocalTensor<INPUT_T> &aL0Tensor, const LocalTensor<INPUT_T> &aL1Tensor,
-                                           const LocalTensor<T> &aL1ScaleTensor, int32_t kSplitSize, int32_t mSize)
+__aicore__ inline void LoadDataRowsumToL0A(LocalTensor<INPUT_T>& aL0Tensor, const LocalTensor<INPUT_T>& aL1Tensor,
+                                           const LocalTensor<T>& aL1ScaleTensor, int32_t kSplitSize, int32_t mSize)
 {
     // GQA hif4 全量化
     LoadData2DParamsV2 loadData2DParamsA; // 基础API LoadData的参数结构体
@@ -57,8 +57,8 @@ __aicore__ inline void LoadDataRowsumToL0A(LocalTensor<INPUT_T> &aL0Tensor, cons
 
 // 搬入Rowsum所需全1补充矩阵到L0A
 template <typename INPUT_T, typename T> // isLoadFull表示进行全载
-__aicore__ inline void LoadDataRowsumMxToL0A(LocalTensor<INPUT_T> &aL0Tensor, const LocalTensor<INPUT_T> &aL1Tensor,
-                                             const LocalTensor<T> &aL1ScaleTensor, int32_t kSplitSize)
+__aicore__ inline void LoadDataRowsumMxToL0A(LocalTensor<INPUT_T>& aL0Tensor, const LocalTensor<INPUT_T>& aL1Tensor,
+                                             const LocalTensor<T>& aL1ScaleTensor, int32_t kSplitSize)
 {
     // GQA hif4 全量化
     LoadData2DParamsV2 loadData2DParamsA; // 基础API LoadData的参数结构体
@@ -89,8 +89,8 @@ __aicore__ inline void LoadDataRowsumMxToL0A(LocalTensor<INPUT_T> &aL0Tensor, co
 }
 
 template <typename INPUT_T, typename T>
-__aicore__ inline void LoadDataMxToL0AHiF4Bmm1(LocalTensor<INPUT_T> &aL0Tensor, const LocalTensor<INPUT_T> &aL1Tensor,
-                                               const LocalTensor<T> &aL1ScaleTensor, uint64_t L1Aoffset,
+__aicore__ inline void LoadDataMxToL0AHiF4Bmm1(LocalTensor<INPUT_T>& aL0Tensor, const LocalTensor<INPUT_T>& aL1Tensor,
+                                               const LocalTensor<T>& aL1ScaleTensor, uint64_t L1Aoffset,
                                                uint64_t xStartPosition, uint32_t kSplitSize, uint32_t mSplitSize)
 {
     // GQA hif4 全量化
@@ -127,8 +127,8 @@ __aicore__ inline void LoadDataMxToL0AHiF4Bmm1(LocalTensor<INPUT_T> &aL0Tensor, 
 }
 
 template <typename INPUT_T, typename T>
-__aicore__ inline void LoadDataMxToL0BHiF4Bmm1(LocalTensor<INPUT_T> &bL0Tensor, const LocalTensor<INPUT_T> &bL1Tensor,
-                                               const LocalTensor<T> &bL1ScaleTensor, uint64_t L1Boffset,
+__aicore__ inline void LoadDataMxToL0BHiF4Bmm1(LocalTensor<INPUT_T>& bL0Tensor, const LocalTensor<INPUT_T>& bL1Tensor,
+                                               const LocalTensor<T>& bL1ScaleTensor, uint64_t L1Boffset,
                                                uint64_t xStartPosition, uint32_t kSplitSize, uint32_t nSplitSize)
 {
     // GQA hif4 全量化
@@ -164,10 +164,10 @@ __aicore__ inline void LoadDataMxToL0BHiF4Bmm1(LocalTensor<INPUT_T> &bL0Tensor, 
 }
 
 template <typename A, typename B, typename C, typename D, typename E, uint32_t baseM, uint32_t baseN, uint32_t baseK>
-__aicore__ inline void MatmulMxHiF4Bmm1First(const LocalTensor<A> &aL1Tensor, const LocalTensor<B> &bL1Tensor,
-                                             const LocalTensor<D> &aL1ScaleTensor, const LocalTensor<E> &bL1ScaleTensor,
-                                             LocalTensor<A> &aL0BuffsDb, LocalTensor<B> &bL0BuffsDb,
-                                             const LocalTensor<C> &cL0Tensor, const uint8_t subLoop,
+__aicore__ inline void MatmulMxHiF4Bmm1First(const LocalTensor<A>& aL1Tensor, const LocalTensor<B>& bL1Tensor,
+                                             const LocalTensor<D>& aL1ScaleTensor, const LocalTensor<E>& bL1ScaleTensor,
+                                             LocalTensor<A>& aL0BuffsDb, LocalTensor<B>& bL0BuffsDb,
+                                             const LocalTensor<C>& cL0Tensor, const uint8_t subLoop,
                                              const uint32_t s1CalcSize, const uint32_t s2CalcSize)
 {
     static constexpr int32_t EVENT_ID_C1_M_MTE1_PING = 3;
@@ -195,10 +195,10 @@ __aicore__ inline void MatmulMxHiF4Bmm1First(const LocalTensor<A> &aL1Tensor, co
 }
 
 template <typename A, typename B, typename C, typename D, typename E, uint32_t baseM, uint32_t baseN, uint32_t baseK>
-__aicore__ inline void MatmulMxHiF4Bmm1(const LocalTensor<A> &aL1Tensor, const LocalTensor<B> &bL1Tensor,
-                                        const LocalTensor<D> &aL1ScaleTensor, const LocalTensor<E> &bL1ScaleTensor,
-                                        LocalTensor<A> &aL0BuffsDb, LocalTensor<B> &bL0BuffsDb,
-                                        const LocalTensor<C> &cL0Tensor, const uint8_t subLoop,
+__aicore__ inline void MatmulMxHiF4Bmm1(const LocalTensor<A>& aL1Tensor, const LocalTensor<B>& bL1Tensor,
+                                        const LocalTensor<D>& aL1ScaleTensor, const LocalTensor<E>& bL1ScaleTensor,
+                                        LocalTensor<A>& aL0BuffsDb, LocalTensor<B>& bL0BuffsDb,
+                                        const LocalTensor<C>& cL0Tensor, const uint8_t subLoop,
                                         const uint32_t s1CalcSize, const uint32_t s2CalcSize)
 {
     static constexpr int32_t EVENT_ID_C1_M_MTE1_PING = 3;
@@ -225,9 +225,9 @@ __aicore__ inline void MatmulMxHiF4Bmm1(const LocalTensor<A> &aL1Tensor, const L
 }
 
 template <typename INPUT_T, typename T>
-__aicore__ inline void LoadDataMxfp8ToL0ABmm2(LocalTensor<mx_fp8_e4m3_t> &aL0Tensor,
-                                              const LocalTensor<INPUT_T> &aL1Tensor,
-                                              const LocalTensor<T> &aL1ScaleTensor, uint64_t L1Aoffset,
+__aicore__ inline void LoadDataMxfp8ToL0ABmm2(LocalTensor<mx_fp8_e4m3_t>& aL0Tensor,
+                                              const LocalTensor<INPUT_T>& aL1Tensor,
+                                              const LocalTensor<T>& aL1ScaleTensor, uint64_t L1Aoffset,
                                               uint64_t xStartPosition, uint32_t kSplitSize, uint32_t mSplitSize)
 {
     // GQA hif4 全量化
@@ -266,8 +266,8 @@ __aicore__ inline void LoadDataMxfp8ToL0ABmm2(LocalTensor<mx_fp8_e4m3_t> &aL0Ten
 }
 
 template <typename INPUT_T, typename T>
-__aicore__ inline void LoadDataFif4ToL0BBmm2(LocalTensor<INPUT_T> &bL0Tensor, const LocalTensor<INPUT_T> &bL1Tensor,
-                                             const LocalTensor<T> &bL1ScaleTensor, uint64_t L1Boffset,
+__aicore__ inline void LoadDataFif4ToL0BBmm2(LocalTensor<INPUT_T>& bL0Tensor, const LocalTensor<INPUT_T>& bL1Tensor,
+                                             const LocalTensor<T>& bL1ScaleTensor, uint64_t L1Boffset,
                                              uint64_t xStartPosition, uint32_t kSplitSize, uint32_t mSplitSize)
 {
     // GQA hif4 全量化
@@ -299,10 +299,10 @@ __aicore__ inline void LoadDataFif4ToL0BBmm2(LocalTensor<INPUT_T> &bL0Tensor, co
 }
 
 template <typename A, typename B, typename C, typename D, typename E, uint32_t baseM, uint32_t baseN, uint32_t baseK>
-__aicore__ inline void MatmulMxfp8HiF4Bmm2(const LocalTensor<A> &aL1Tensor, const LocalTensor<B> &bL1Tensor,
-                                           const LocalTensor<D> &aL1ScaleTensor, const LocalTensor<E> &bL1ScaleTensor,
-                                           LocalTensor<mx_fp8_e4m3_t> &aL0BuffsDb, LocalTensor<B> &bL0BuffsDb,
-                                           const LocalTensor<C> &cL0Tensor, const uint32_t kIdx)
+__aicore__ inline void MatmulMxfp8HiF4Bmm2(const LocalTensor<A>& aL1Tensor, const LocalTensor<B>& bL1Tensor,
+                                           const LocalTensor<D>& aL1ScaleTensor, const LocalTensor<E>& bL1ScaleTensor,
+                                           LocalTensor<mx_fp8_e4m3_t>& aL0BuffsDb, LocalTensor<B>& bL0BuffsDb,
+                                           const LocalTensor<C>& cL0Tensor, const uint32_t kIdx)
 {
     static constexpr int32_t EVENT_ID_M_MTE1_PING = 3;
     static constexpr int32_t EVENT_ID_M_MTE1_PONG = 4;
@@ -332,12 +332,12 @@ __aicore__ inline void MatmulMxfp8HiF4Bmm2(const LocalTensor<A> &aL1Tensor, cons
 }
 
 template <typename A, typename B, typename C, typename D, typename E, uint32_t baseM, uint32_t baseN, uint32_t baseK>
-__aicore__ inline void MatmulMxfp8HiF4Bmm2Tail(const LocalTensor<A> &aL1Tensor, const LocalTensor<B> &bL1Tensor,
-                                               const LocalTensor<D> &aL1ScaleTensor,
-                                               const LocalTensor<E> &bL1ScaleTensor,
-                                               LocalTensor<mx_fp8_e4m3_t> &aL0BuffsDb, LocalTensor<B> &bL0BuffsDb,
-                                               const LocalTensor<C> &cL0Tensor,
-                                               const LocalTensor<uint16_t> &RowSumFullOneVandScale, const uint32_t kIdx,
+__aicore__ inline void MatmulMxfp8HiF4Bmm2Tail(const LocalTensor<A>& aL1Tensor, const LocalTensor<B>& bL1Tensor,
+                                               const LocalTensor<D>& aL1ScaleTensor,
+                                               const LocalTensor<E>& bL1ScaleTensor,
+                                               LocalTensor<mx_fp8_e4m3_t>& aL0BuffsDb, LocalTensor<B>& bL0BuffsDb,
+                                               const LocalTensor<C>& cL0Tensor,
+                                               const LocalTensor<uint16_t>& RowSumFullOneVandScale, const uint32_t kIdx,
                                                const uint32_t tailS2Align64)
 {
     static constexpr int32_t EVENT_ID_M_MTE1_PING = 3;

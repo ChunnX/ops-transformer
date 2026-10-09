@@ -67,7 +67,7 @@ public:
     using pseShiftType = half;
 
     static constexpr T BOOL_ATTEN_MASK_SCALAR_VALUE = -1000000000000.0; // 用于mask为bool类型
-    uint32_t negativeIntScalar = *((uint32_t *)&BOOL_ATTEN_MASK_SCALAR_VALUE);
+    uint32_t negativeIntScalar = *((uint32_t*)&BOOL_ATTEN_MASK_SCALAR_VALUE);
     // 核内同步id
     static constexpr int32_t EVENT_ID_P_MTE3_V_PING = 0; // 生产者 wait 消费者
     static constexpr int32_t EVENT_ID_P_MTE3_V_PONG = 1;
@@ -130,9 +130,9 @@ public:
     using QSeqParserType =
         typename std::conditional<(layout == LayOutTypeEnum::LAYOUT_TND), ActualSeqLensParser<Q_MODE, int32_t, true>,
                                   ActualSeqLensParser<Q_MODE, int32_t>>::type;
-    QSeqParserType *qActSeqLensParser = nullptr;
+    QSeqParserType* qActSeqLensParser = nullptr;
 
-    __aicore__ inline void SetCuSeqLensParser(QSeqParserType &qParser)
+    __aicore__ inline void SetCuSeqLensParser(QSeqParserType& qParser)
     {
         this->qActSeqLensParser = &qParser;
     }
@@ -176,53 +176,52 @@ public:
     uint64_t softmaxExpMaxTensorAddr[BUFFER_CNT2];
     uint64_t v2ResAddr;
 
-    const ConstInfoX &constInfo;
+    const ConstInfoX& constInfo;
     T negativeFloatScalar;
     float pScaleValue{1.0f};
     bool isSkipMask{false};
     uint32_t minValue{NEGATIVE_MIN_VALUE_FP32};
 
     // ==================== Functions ======================
-    __aicore__ inline QuantFlashAttnBlockVecHifp4(ConstInfoX &constInfo)
+    __aicore__ inline QuantFlashAttnBlockVecHifp4(ConstInfoX& constInfo)
         : constInfo(constInfo){};
 
-    __aicore__ inline void InitInput(__gm__ uint8_t *actualSeqQlenAddr, __gm__ uint8_t *actualSeqKvlenAddr,
-                                     __gm__ uint8_t *pScale, __gm__ uint8_t *attenMask, __gm__ uint8_t *softmaxLse,
-                                     __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace)
+    __aicore__ inline void InitInput(__gm__ uint8_t* actualSeqQlenAddr, __gm__ uint8_t* actualSeqKvlenAddr,
+                                     __gm__ uint8_t* pScale, __gm__ uint8_t* attenMask, __gm__ uint8_t* softmaxLse,
+                                     __gm__ uint8_t* attentionOut, __gm__ uint8_t* workspace)
     {
         uint32_t tmp1 = NEGATIVE_MIN_VALUE_FP16;
-        this->negativeFloatScalar = *((T *)&tmp1);
+        this->negativeFloatScalar = *((T*)&tmp1);
         UpdateMinCheckValue();
 
         InitVecInput(actualSeqQlenAddr, actualSeqKvlenAddr, pScale, attenMask, softmaxLse, attentionOut, workspace);
     }
 
-    __aicore__ inline void InitVecInput(__gm__ uint8_t *actualSeqQlenAddr, __gm__ uint8_t *actualSeqKvlenAddr,
-                                        __gm__ uint8_t *pScale, __gm__ uint8_t *attenMask, __gm__ uint8_t *softmaxLse,
-                                        __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace)
+    __aicore__ inline void InitVecInput(__gm__ uint8_t* actualSeqQlenAddr, __gm__ uint8_t* actualSeqKvlenAddr,
+                                        __gm__ uint8_t* pScale, __gm__ uint8_t* attenMask, __gm__ uint8_t* softmaxLse,
+                                        __gm__ uint8_t* attentionOut, __gm__ uint8_t* workspace)
     {
-        this->attentionOutGm.SetGlobalBuffer((__gm__ OUTPUT_T *)attentionOut);
+        this->attentionOutGm.SetGlobalBuffer((__gm__ OUTPUT_T*)attentionOut);
         if (constInfo.isSoftmaxLseEnable) {
-            softmaxLseGm.SetGlobalBuffer((__gm__ float *)softmaxLse);
+            softmaxLseGm.SetGlobalBuffer((__gm__ float*)softmaxLse);
         }
 
         uint64_t actualLenQSize =
             (layout == LayOutTypeEnum::LAYOUT_TND) ? constInfo.cuSeqLensQSize : constInfo.seqUsedQSize;
-        actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ int32_t *)actualSeqQlenAddr, actualLenQSize);
+        actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ int32_t*)actualSeqQlenAddr, actualLenQSize);
 
         if constexpr (HAS_MASK) {
-            attenMaskGmInt.SetGlobalBuffer((__gm__ uint8_t *)attenMask);
+            attenMaskGmInt.SetGlobalBuffer((__gm__ uint8_t*)attenMask);
         }
         if (pScale != nullptr) {
-            pScaleGm.SetGlobalBuffer((__gm__ float *)pScale);
+            pScaleGm.SetGlobalBuffer((__gm__ float*)pScale);
             pScaleValue = this->pScaleGm.GetValue(0);
         }
 
         if constexpr (FLASH_DECODE) {
-            accumOutGm.SetGlobalBuffer((__gm__ float *)workspace);
-            softmaxFDSumGm.SetGlobalBuffer((__gm__ float *)workspace + constInfo.accumOutSize);
-            softmaxFDMaxGm.SetGlobalBuffer((__gm__ float *)workspace + constInfo.accumOutSize +
-                                           constInfo.logSumExpSize);
+            accumOutGm.SetGlobalBuffer((__gm__ float*)workspace);
+            softmaxFDSumGm.SetGlobalBuffer((__gm__ float*)workspace + constInfo.accumOutSize);
+            softmaxFDMaxGm.SetGlobalBuffer((__gm__ float*)workspace + constInfo.accumOutSize + constInfo.logSumExpSize);
         }
     }
 
@@ -268,7 +267,7 @@ public:
             WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
             if constexpr (IsSameType<OUT_T, int8_t>::value) {
                 GlobalTensor<half> attentionOutTmpGm;
-                attentionOutTmpGm.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(attentionOutGm.GetPhyAddr(0)));
+                attentionOutTmpGm.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(attentionOutGm.GetPhyAddr(0)));
                 matmul::InitOutput<half>(attentionOutTmpGm[constInfo.aivIdx * singleCoreSize], singleInitOutputSize, 0);
             } else {
                 matmul::InitOutput<OUT_T>(attentionOutGm[constInfo.aivIdx * singleCoreSize], singleInitOutputSize, 0);
@@ -317,8 +316,8 @@ public:
         // 内部静态Tensor索引 (与kernel原调用逻辑一致)
         uint32_t pTensorIdx = (runInfo.loop % DB == 0) ? (subLoop % 8) : (subLoop % 8 + 8); // 8: 一个bank上的p块数
         uint32_t pScaleIdx = runInfo.loop % DB;
-        LocalTensor<uint8_t> &outputBuf = PTensor[pTensorIdx];
-        LocalTensor<uint8_t> &outputScaleBuf = PscaleTensor[pScaleIdx];
+        LocalTensor<uint8_t>& outputBuf = PTensor[pTensorIdx];
+        LocalTensor<uint8_t>& outputScaleBuf = PscaleTensor[pScaleIdx];
         LocalTensor<half> bmm1ResBuf =
             mm1ResUB[subLoop % BUFFER_CNT4 * 128]; // 128: 解bank冲突，每个buffer起始地址相差256B
 
@@ -385,7 +384,7 @@ public:
         return;
     }
 
-    __aicore__ inline void SoftmaxDataCopyOut(RunInfoX runInfo, const uint64_t &maxUb, LocalTensor<float> &sumUb)
+    __aicore__ inline void SoftmaxDataCopyOut(RunInfoX runInfo, const uint64_t& maxUb, LocalTensor<float>& sumUb)
     {
         if constexpr (FLASH_DECODE) {
             if (!runInfo.isS2SplitCore && constInfo.isSoftmaxLseEnable) {
@@ -400,7 +399,7 @@ public:
 
     __aicore__ inline void UpdateMinCheckValue()
     {
-        float min = *((float *)&minValue);
+        float min = *((float*)&minValue);
         if constexpr (USE_DN) {
             min *= constInfo.scaleValue;
         }
@@ -412,11 +411,11 @@ public:
         } else {
             min = tmp * LN2;
         }
-        minValue = static_cast<uint32_t>(*reinterpret_cast<int32_t *>(&min));
+        minValue = static_cast<uint32_t>(*reinterpret_cast<int32_t*>(&min));
     }
 
-    __aicore__ inline void SoftmaxLseCopyOut(const uint64_t &softmaxMaxTmp, LocalTensor<float> &softmaxSumTmp,
-                                             RunInfoX &runInfo)
+    __aicore__ inline void SoftmaxLseCopyOut(const uint64_t& softmaxMaxTmp, LocalTensor<float>& softmaxSumTmp,
+                                             RunInfoX& runInfo)
     {
         if (unlikely(runInfo.actVecMSize == 0)) {
             return;
@@ -504,7 +503,7 @@ public:
         }
     }
 
-    __aicore__ inline void Bmm2ResCastAndCopyOut(RunInfoX &runInfo, LocalTensor<float> &vec2ResUb, uint32_t mStartVec,
+    __aicore__ inline void Bmm2ResCastAndCopyOut(RunInfoX& runInfo, LocalTensor<float>& vec2ResUb, uint32_t mStartVec,
                                                  uint32_t mDealSize, uint32_t gmDealRowCount)
     {
         LocalTensor<OUTPUT_T> attenOut;
@@ -518,13 +517,13 @@ public:
         Bmm2DataCopyOutTrans(runInfo, attenOut, mStartVec, mDealSize, gmDealRowCount);
     }
 
-    __aicore__ inline void CopyOutAttentionOut(RunInfoX runInfo, LocalTensor<float> &vec2ResUb, uint32_t mStartVec,
+    __aicore__ inline void CopyOutAttentionOut(RunInfoX runInfo, LocalTensor<float>& vec2ResUb, uint32_t mStartVec,
                                                uint32_t mDealSize, uint32_t gmDealRowCount)
     {
         Bmm2ResCastAndCopyOut(runInfo, vec2ResUb, mStartVec, mDealSize, gmDealRowCount);
     }
 
-    __aicore__ inline void Bmm2DataCopyOutTrans(const RunInfoX &info, LocalTensor<OUTPUT_T> &attenOutUb,
+    __aicore__ inline void Bmm2DataCopyOutTrans(const RunInfoX& info, LocalTensor<OUTPUT_T>& attenOutUb,
                                                 uint32_t vecMIdx, uint32_t dealRowCount, uint32_t gmDealRowCount)
     {
         // mxfp8 colCount 只能为64或者128，与dDealSize相等
@@ -538,7 +537,7 @@ public:
         CopyAttentionOut(ubTensor, gmCoord);
     }
 
-    __aicore__ inline void CopyAttentionOut(FaUbTensor<OUTPUT_T> &ubTensor, GmCoordGs1Merge &gmCoord)
+    __aicore__ inline void CopyAttentionOut(FaUbTensor<OUTPUT_T>& ubTensor, GmCoordGs1Merge& gmCoord)
     {
         if constexpr (outLayout == LayOutTypeEnum::LAYOUT_TND) {
             constexpr GmFormat OUT_FORMAT = GmFormat::TNGD;
@@ -743,7 +742,7 @@ public:
     static constexpr bool FLASH_DECODE = isFd;
     using OUT_T = OUTPUT_T;
     using ConstInfoX = ConstInfo_t;
-    __aicore__ inline QuantFlashAttnBlockVecHifp4Dummy(ConstInfoX &constInfo){};
+    __aicore__ inline QuantFlashAttnBlockVecHifp4Dummy(ConstInfoX& constInfo){};
 };
 } // namespace BaseApi
 #endif // QUANT_FLASH_ATTN_BLOCK_VEC_HIFP4_H_
