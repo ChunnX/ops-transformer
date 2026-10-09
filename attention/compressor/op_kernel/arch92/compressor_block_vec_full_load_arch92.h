@@ -37,6 +37,7 @@ public:
     __aicore__ inline CompressorBlockVectorFullLoad(){};
     __aicore__ inline void InitBuffers(TPipe* pipe);
     __aicore__ inline void ComputeVec1(uint32_t c1v1DbIdx);
+    __aicore__ inline void Warmup();
 
 private:
     __aicore__ inline void CopyInApe(uint32_t dStartIdx, uint32_t dDealSize);
@@ -73,6 +74,7 @@ private:
     LocalTensor<T> scoreUb;
     LocalTensor<T> kvUb;
     TQue<QuePosition::VECIN, 1> inputQueApe;
+    Vec1SplitInfo splitInfo_;
 };
 
 template <typename COMP>
@@ -360,13 +362,42 @@ __aicore__ inline Vec1SplitInfo CompressorBlockVectorFullLoad<COMP>::SplitCoreV1
 
     return splitInfo;
 }
+
+template <typename COMP>
+__aicore__ inline void CompressorBlockVectorFullLoad<COMP>::Warmup()
+{
+    splitInfo_ = SplitCoreV1();
+    if (splitInfo_.dealBatchNum == 0) {
+        return;
+    }
+
+    __gm__ uint64_t* blockTableAddr = reinterpret_cast<__gm__ uint64_t*>(this->stateBlockTableGm_.GetPhyAddr(0));
+    if constexpr (COMP::cacheMode == CACHE_MODE::RING_BUFFER) {
+        int64_t blockTableOffset = splitInfo_.curBStart * sizeof(int32_t);
+        dc_preload(blockTableAddr, blockTableOffset);
+    } else {
+        uint32_t batchStart = splitInfo_.curBStart;
+        uint32_t batchEnd = batchStart + splitInfo_.dealBatchNum;
+        for (uint32_t curB = batchStart; curB < batchEnd; ++curB) {
+            if (this->GetSeqUsed(curB) <= 0) {
+                continue;
+            }
+            uint32_t startPos = this->GetStartPos(curB);
+            uint64_t rowOffset = curB * this->constInfo_.maxBlockNumPerBatch;
+            uint32_t firstBlock = startPos / this->constInfo_.blockSize;
+            int64_t blockTableOffset = (rowOffset + firstBlock) * sizeof(int32_t);
+            dc_preload(blockTableAddr, blockTableOffset);
+        }
+    }
+}
+
 template <typename COMP>
 __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::ComputeVec1(uint32_t c1v1DbIdx)
 {
     c1v1DbIdx_ = c1v1DbIdx;
     GlobalTensor<T> scoreDbGm = this->scoreMm1ResGm_[(uint64_t)c1v1DbIdx * this->constInfo_.dbSize];
     GlobalTensor<T> kvDbGm = this->kvMm1ResGm_[(uint64_t)c1v1DbIdx * this->constInfo_.dbSize];
-    Vec1SplitInfo splitInfo = SplitCoreV1();
+    Vec1SplitInfo& splitInfo = splitInfo_;
     // 计算当前VecCore的任务量
     if (splitInfo.dealBatchNum == 0) {
         return;

@@ -584,6 +584,7 @@ __aicore__ inline void CompressorKernel<COMP, IS_FULL_LOAD>::ProcessFullLoadLoop
         CalcCubeParams(extraInfo0);
         ComputeMm1(extraInfo0);
     } else {
+        blockVec_.Warmup();
         ComputeVec1(Vec1RunInfo{});
     }
 }
