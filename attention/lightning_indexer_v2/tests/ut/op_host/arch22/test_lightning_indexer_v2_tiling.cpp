@@ -173,8 +173,10 @@ TEST_F(LightningIndexerV2Tiling, LightningIndexerV2_910b_tiling_3)
          {"return_value", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
         &compileInfo, "Ascend910B", 64, 262144, 16384);
     int64_t expectTilingKey = 203547;
+    // 尾部两个值: candidateTopkBlocks(-1) 与 returnValue(0) 打包为 -4294967296, candidateBlockSize(8)
+    // （candidate_topk_blocks 缺省 off，TilingData 布局见 tiling.h 尾部 candidate 字段）
     std::string expectTilingData = "2 167503724608 8796093022272 274877906944 0 3 "
-                                   "9223372036854775807 9223372036854775807 1 0 0 ";
+                                   "9223372036854775807 9223372036854775807 1 0 -4294967296 8 ";
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
 }
 
@@ -214,8 +216,10 @@ TEST_F(LightningIndexerV2Tiling, LightningIndexerV2_910b_tiling_4)
          {"return_value", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
         &compileInfo, "Ascend910B", 64, 262144, 16384);
     int64_t expectTilingKey = 1090722587;
+    // 尾部两个值: candidateTopkBlocks(-1) 与 returnValue(0) 打包为 -4294967296, candidateBlockSize(8)
+    // （candidate_topk_blocks 缺省 off，TilingData 布局见 tiling.h 尾部 candidate 字段）
     std::string expectTilingData = "2 167503724608 8796093022224 274877906944 4294967312 3 "
-                                   "9223372036854775807 9223372036854775807 1 0 0 ";
+                                   "9223372036854775807 9223372036854775807 1 0 -4294967296 8 ";
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
 }
 
@@ -467,7 +471,7 @@ TEST_F(LightningIndexerV2Tiling, LightningIndexerV2_tiling_unsupported_arch_fail
 // Tiling data classes are registered for the op
 TEST_F(LightningIndexerV2Tiling, LightningIndexerV2_tiling_data_class_registered)
 {
-    auto &factory = optiling::CTilingDataClassFactory::GetInstance();
+    auto& factory = optiling::CTilingDataClassFactory::GetInstance();
     EXPECT_NE(factory.CreateTilingDataInstance("LightningIndexerV2"), nullptr);
 }
 
@@ -1125,4 +1129,228 @@ TEST_F(LightningIndexerV2Tiling, LightningIndexerV2_910b_tiling_tnd_k_contiguous
          {"return_value", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
         &compileInfo, "Ascend910B", 64, 262144, 16384);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, SKIP_TILING_KEY);
+}
+
+// ============================================================================
+// 【candidate (two-level topk) 新增用例】host 校验矩阵（镜像 pytest candidate 套件：
+// 值域校验 / topk>2048 拒绝 / return_value=1 拒绝 / block_size 非法拒绝 / 950+candidate 拒绝）
+// 公共骨架：BSND/BSND 合法输入（同 tiling_3），按需替换 attr；candidate 属性按
+// GetAttrPointer<int64_t> 读取（tiling.cpp 新增属性惯例）
+// ============================================================================
+namespace {
+struct LIV2CandidateFixture {
+    struct LIV2CompileInfo {
+    } compileInfo;
+
+    std::vector<gert::TilingContextPara::TensorDescription> inputs;
+    std::vector<gert::TilingContextPara::TensorDescription> outputs;
+    std::vector<gert::TilingContextPara::OpAttr> attrs;
+
+    LIV2CandidateFixture()
+        : inputs{
+              {{{2, 39, 64, 128}, {2, 39, 64, 128}}, ge::DT_BF16, ge::FORMAT_ND}, // q
+              {{{2, 64, 1, 128}, {2, 64, 1, 128}}, ge::DT_BF16, ge::FORMAT_ND},   // k
+              {{{2, 39, 64}, {2, 39, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},          // w
+              {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                            // cu_seqlens_q
+              {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                            // cu_seqlens_k
+              {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                            // seqused_q
+              {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                            // seqused_k
+              {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                            // cmp_residual_k
+              {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                            // block_table
+              {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                            // output_idx_offset
+              {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                            // metadata
+          },
+          outputs{
+              {{{2, 39, 1, 2048}, {2, 39, 1, 2048}}, ge::DT_INT32, ge::FORMAT_ND}, // sparse_indices
+              {{{0}, {0}}, ge::DT_FLOAT, ge::FORMAT_ND},                           // sparse_values
+          },
+          attrs{
+              {"topk", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2048)},
+              {"max_seqlen_q", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)},
+              {"layout_q", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
+              {"layout_k", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
+              {"mask_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+              {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+              {"return_value", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+          }
+    {}
+    void SetAttr(const std::string& name, Ops::Transformer::AnyValue v)
+    {
+        for (auto& a : attrs) {
+            if (a.attrName_ == name) {
+                a.attr_ = v;
+                return;
+            }
+        }
+        attrs.emplace_back(name, v);
+    }
+    gert::TilingContextPara Build()
+    {
+        return gert::TilingContextPara("LightningIndexerV2", inputs, outputs, attrs, &compileInfo, "Ascend910B", 64,
+                                       262144, 16384);
+    }
+};
+} // namespace
+
+// candidate 值域矩阵：非法 blocks（0/-2/100/2112）、非法 block_size（1/3/128/66）、topk>2048+on
+// 均被 host 校验拒绝；合法 on（bs=2/8/64 边界与缺省、blocks=2048 上界）tiling 成功
+TEST_F(LightningIndexerV2Tiling, LightningIndexerV2_910b_tiling_candidate_matrix)
+{
+    // candidate_topk_blocks 值域：(0, 2048] 且 64 的倍数（-1 为缺省关闭）
+    const int64_t badBlocks[] = {0, -2, 100, 2112};
+    for (int64_t blocks : badBlocks) {
+        LIV2CandidateFixture f;
+        f.SetAttr("candidate_topk_blocks", Ops::Transformer::AnyValue::CreateFrom<int64_t>(blocks));
+        ExecuteTestCase(f.Build(), ge::GRAPH_FAILED);
+    }
+    // candidate_block_size 值域：[2, 64] 内 2 的幂（恒校验，off 时亦拒绝带病配置）
+    const int64_t badBlockSizes[] = {1, 3, 128, 66};
+    for (int64_t bs : badBlockSizes) {
+        LIV2CandidateFixture f;
+        f.SetAttr("candidate_topk_blocks", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64));
+        f.SetAttr("candidate_block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(bs));
+        ExecuteTestCase(f.Build(), ge::GRAPH_FAILED);
+    }
+    // candidate_block_size 非法值在 candidate 关闭时同样拒绝（恒校验）
+    {
+        LIV2CandidateFixture f;
+        f.SetAttr("candidate_block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(7));
+        ExecuteTestCase(f.Build(), ge::GRAPH_FAILED);
+    }
+    // topk>2048 + candidate on → 拒绝
+    {
+        LIV2CandidateFixture f;
+        f.outputs[0] = {{{2, 39, 1, 3072}, {2, 39, 1, 3072}}, ge::DT_INT32, ge::FORMAT_ND};
+        f.SetAttr("topk", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3072));
+        f.SetAttr("candidate_topk_blocks", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64));
+        ExecuteTestCase(f.Build(), ge::GRAPH_FAILED);
+    }
+    // 合法 on + 全 64 对齐：成功（含 bs=2/8/64 边界与缺省值）
+    for (int64_t bs : {2, 8, 64}) {
+        LIV2CandidateFixture ok;
+        ok.SetAttr("candidate_topk_blocks", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64));
+        ok.SetAttr("candidate_block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(bs));
+        ExecuteTestCase(ok.Build(), ge::GRAPH_SUCCESS, SKIP_TILING_KEY);
+    }
+    // blocks=2048 上界（(0, 2048] 闭端）+ topk=2048：成功
+    {
+        LIV2CandidateFixture ok;
+        ok.SetAttr("candidate_topk_blocks", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2048));
+        ExecuteTestCase(ok.Build(), ge::GRAPH_SUCCESS, SKIP_TILING_KEY);
+    }
+}
+
+// return_value=1 + candidate on → 拒绝（candidate 与 return_value 互斥，host 层钉死）
+TEST_F(LightningIndexerV2Tiling, LightningIndexerV2_910b_tiling_reject_rv1_candidate_on)
+{
+    LIV2CandidateFixture f;
+    f.SetAttr("return_value", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1));
+    f.SetAttr("candidate_topk_blocks", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64));
+    ExecuteTestCase(f.Build(), ge::GRAPH_FAILED);
+}
+
+// Ascend950(DAV_3510) + candidate on → 拒绝：candidate 仅 ascend910b/ascend910_93 生效，
+// 950 上启用由 TilingForLightningIndexerV2 入口守卫（useArch35Checker 路由之前）显式拒绝。
+// 缺省 -1(off) 不受影响（950 正常走 ParseAndCheckLIV2Arch35 单级 TopK 路径）。
+TEST_F(LightningIndexerV2Tiling, LightningIndexerV2_950_tiling_reject_candidate_on)
+{
+    struct LIV2CompileInfo {
+    } compileInfo;
+    gert::TilingContextPara tilingContextPara(
+        "LightningIndexerV2",
+        {
+            {{{2, 39, 64, 128}, {2, 39, 64, 128}}, ge::DT_BF16, ge::FORMAT_ND}, // q            input0
+            {{{2, 64, 1, 128}, {2, 64, 1, 128}}, ge::DT_BF16, ge::FORMAT_ND},   // k            input1
+            {{{2, 39, 64}, {2, 39, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},          // w            input2
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                            // cu_seqlens_q input3
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                            // cu_seqlens_k input4
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                            // seqused_q    input5
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                            // seqused_k    input6
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                            // cmp_residual_k input7
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                            // block_table  input8
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                            // output_idx_offset input9
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}                             // metadata     input10
+        },
+        {
+            {{{2, 39, 1, 2048}, {2, 39, 1, 2048}}, ge::DT_INT32, ge::FORMAT_ND}, // sparse_indices
+            {{{0}, {0}}, ge::DT_FLOAT, ge::FORMAT_ND}                            // sparse_values
+        },
+        {{"topk", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2048)},
+         {"max_seqlen_q", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)},
+         {"layout_q", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
+         {"layout_k", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
+         {"mask_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+         {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+         {"return_value", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"candidate_topk_blocks", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)}},
+        &compileInfo, "Ascend950", 56, 262144, 16384);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+// TND + candidate on/off 的 s1Size 行为（R5 host 侧配对项，MERGE_PLAN §6.1）：
+//   on  → s1Size = query.dim0（78，供 kernel ProcessInvalid 的 TND 全域 -1/-inf 清理）；
+//   off → s1Size = 0（主干既有行为：TND 不赋值，缺省路径逐位不变）。
+// TilingData 布局（tiling.h）：word1 = [low32: gSize | high32: s1Size]；
+// word(total-2) = [low32: returnValue | high32: candidateTopkBlocks]；word(total-1) = candidateBlockSize。
+TEST_F(LightningIndexerV2Tiling, LightningIndexerV2_910b_tiling_tnd_candidate_s1size)
+{
+    struct LIV2CompileInfo {
+    } compileInfo;
+    int64_t cuSeqlensQData[] = {0, 39, 78};
+    int64_t cuSeqlensKData[] = {0, 64, 128};
+    auto buildTndCase = [&compileInfo, &cuSeqlensQData, &cuSeqlensKData](int64_t candBlocks) {
+        std::vector<gert::TilingContextPara::OpAttr> attrs{
+            {"topk", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2048)},
+            {"max_seqlen_q", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)},
+            {"layout_q", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
+            {"layout_k", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
+            {"mask_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+            {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"return_value", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        };
+        if (candBlocks != -1) {
+            attrs.emplace_back("candidate_topk_blocks", Ops::Transformer::AnyValue::CreateFrom<int64_t>(candBlocks));
+        }
+        return gert::TilingContextPara(
+            "LightningIndexerV2",
+            {
+                {{{78, 64, 128}, {78, 64, 128}}, ge::DT_BF16, ge::FORMAT_ND},    // q            input0
+                {{{128, 1, 128}, {128, 1, 128}}, ge::DT_BF16, ge::FORMAT_ND},    // k            input1
+                {{{78, 64}, {78, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},             // w            input2
+                {{{3}, {3}}, ge::DT_INT32, ge::FORMAT_ND, true, cuSeqlensQData}, // cu_seqlens_q input3
+                {{{3}, {3}}, ge::DT_INT32, ge::FORMAT_ND, true, cuSeqlensKData}, // cu_seqlens_k input4
+                {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                         // seqused_q    input5
+                {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                         // seqused_k    input6
+                {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                         // cmp_residual_k input7
+                {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                         // block_table  input8
+                {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                         // output_idx_offset input9
+                {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}                          // metadata     input10
+            },
+            {
+                {{{78, 1, 2048}, {78, 1, 2048}}, ge::DT_INT32, ge::FORMAT_ND}, // sparse_indices
+                {{{0}, {0}}, ge::DT_FLOAT, ge::FORMAT_ND}                      // sparse_values
+            },
+            attrs, &compileInfo, "Ascend910B", 64, 262144, 16384);
+    };
+
+    // candidate on（topk=2048 与 candidate 兼容上限）：s1Size = query.dim0 = 78
+    {
+        TilingInfo info;
+        ASSERT_TRUE(ExecuteTiling(buildTndCase(64), info));
+        const int64_t* data = reinterpret_cast<const int64_t*>(info.tilingData.get());
+        ASSERT_EQ(info.tilingDataSize / sizeof(int64_t), 12U);
+        EXPECT_EQ(static_cast<uint32_t>(data[1] >> 32), 78U); // s1Size = q.dim0
+        EXPECT_EQ(data[10], static_cast<int64_t>(64) << 32);  // returnValue=0 | candTopk=64
+        EXPECT_EQ(data[11], 8);                               // candidateBlockSize 缺省 8
+    }
+    // candidate off（缺省，不传属性）：s1Size = 0（主干行为逐位保持）
+    {
+        TilingInfo info;
+        ASSERT_TRUE(ExecuteTiling(buildTndCase(-1), info));
+        const int64_t* data = reinterpret_cast<const int64_t*>(info.tilingData.get());
+        ASSERT_EQ(info.tilingDataSize / sizeof(int64_t), 12U);
+        EXPECT_EQ(static_cast<uint32_t>(data[1] >> 32), 0U);        // s1Size 保持 0
+        EXPECT_EQ(data[10], static_cast<int64_t>(-1) * 4294967296); // returnValue=0 | candTopk=-1
+        EXPECT_EQ(data[11], 8);                                     // candidateBlockSize 缺省 8
+    }
 }

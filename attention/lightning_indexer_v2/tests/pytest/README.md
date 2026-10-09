@@ -253,3 +253,79 @@ bash batch_isolated_run.sh ./pt_path 1 graph   # graph模式 + 性能采集
 | `batch_summary.log` | 批量执行详细日志 |
 | `batch_fail_list.log` | 失败用例清单 |
 | `PROF_*/` | msprof性能原始数据目录 |
+
+## candidate（两级 TopK candidate source）模型场景套件
+
+`candidateTopkBlocks != -1` 时开启的两级 TopK 候选源（source）模式有独立的模型场景测试套，与上述 single/paramset/batch 套件互不影响。
+
+### 文件说明
+
+- `liv2_candidate_golden.py`  # candidate golden 纯 CPU 实现（`select_candidate_blocks_ref` numpy/torch 双实现，仅依赖 numpy+torch，可在无 NPU 环境导入自检）
+- `test_lightning_indexer_v2_model.py`  # candidate 模型场景测试套（10 条默认用例 + `LIV2_MODEL_LARGE=1` 追加重型边界用例）
+- `lightning_indexer_v2_golden.py`（尾部 candidate 段）  # candidate golden + NPU 驱动（`liv2_output_candidate_single` / `liv2_candidate_host_reject` 950 拒绝探针 / `resolve_candidate_op`）
+- `result_compare_method.py`（尾部 candidate 段）  # `check_result_candidate` 候选比较器
+
+### 模型场景规格（BSND）
+
+| 参数 | 取值 |
+|---|---|
+| layout | BSND×BSND（泛化：BSND×PA_BBND） |
+| N1 (q_head_num) | 32 / 16 / 8 / 4 |
+| D (head_dim) | 128 |
+| topK | 512 |
+| candidate_topk_blocks | 2048 |
+| candidate_block_size | 8 |
+| S1 / S2 | 4096 / 4096（S2 为压缩后 K 长度；`LIV2_MODEL_LARGE=1` 追加 16K 满覆盖边界与 24K 真实筛选） |
+| cmp_ratio | 2 |
+| sparse_mode (mask_mode) | 0 / 3 |
+| 其余泛化 | dtype FP16/BF16、B>1 变长 seqused_k、PA_BBND key |
+
+用例清单（默认 10 条，`LIV2_MODEL_LARGE=1` 追加 2 条重型边界用例）：
+
+| 用例 | 覆盖点 |
+|---|---|
+| LIV2_MODEL_N1_32_MODE3 | 主规格：B=1，mask_mode=3 causal，cmp_residual_k=[1] |
+| LIV2_MODEL_N1_16_MODE3 | N1=16，B=2 |
+| LIV2_MODEL_N1_8_MODE3 | N1=8，B=2 |
+| LIV2_MODEL_N1_4_MODE3 | N1=4，B=4 |
+| LIV2_MODEL_N1_32_MODE0 | sparse_mode=0（no mask），cmp_residual_k=None |
+| LIV2_MODEL_N1_4_MODE0 | sparse_mode=0，N1=4，B=2 |
+| LIV2_MODEL_N1_32_MODE3_BF16 | BF16 dtype |
+| LIV2_MODEL_N1_8_MODE0_BF16 | BF16 + sparse_mode=0 |
+| LIV2_MODEL_VARLEN_MODE3 | B=2 seqused_k=[4096, 2049]（S2 非对齐） |
+| LIV2_MODEL_PA_MODE3 | BSND q × PA_BBND k（block_table） |
+| LIV2_MODEL_S2_16K_N1_4_MODE3 | k_seq=16384（numBlocks==candidate_topk_blocks 满覆盖边界），需 `LIV2_MODEL_LARGE=1` |
+| LIV2_MODEL_S2_24K_N1_4_MODE3 | k_seq=24576（numBlocks>candidate_topk_blocks 块级真实筛选），需 `LIV2_MODEL_LARGE=1` |
+
+Per case 校验三件套：
+
+1. `sparse_indices` vs golden（`check_result`；source 不得改变位置级 topk）；
+2. `candidate_block_length` 恒空 (0,)（预留接口）；
+3. `candidate_topk_indices` vs golden（`check_result_candidate`；行级块号集合 + -1 槽数硬校验）。
+
+### candidate 比对契约（`check_result_candidate`）
+
+candidate 输出是**无序块号集合**（归并排序 tie-break 不保证与 torch 一致），比对契约为五层：
+
+1. multiset 门：有效（非 -1）块号集合相等 → PASS（顺序不敏感）；
+2. 边界容差：集合不等但每个交换块对的 golden blkScore 在 `thres` 相对容差内 → PASS（bf16 tie 仲裁）；
+3. -1 槽位硬校验：每行 -1 个数必须精确相等，否则 FAIL；
+4. 重复块硬校验：行内出现重复块号 → FAIL；
+5. pin 块硬校验：golden +inf（最新可达 token 所在块）必须出现在 NPU 输出行内，否则 FAIL。
+
+### 运行
+
+```bash
+# 全套（Ascend910B / 910_93，需已编译 candidate 算子）
+python3 -m pytest -rA -s test_lightning_indexer_v2_model.py -v -m ci
+
+# 指定用例
+LIV2_CASE_NAMES=LIV2_MODEL_N1_32_MODE3 python3 -m pytest -s test_lightning_indexer_v2_model.py -m ci
+
+# 追加 16K 满覆盖边界 + 24K 真实筛选重型用例
+LIV2_MODEL_LARGE=1 python3 -m pytest -s test_lightning_indexer_v2_model.py -m ci
+```
+
+> 说明：candidate source 仅支持 arch22（Ascend 910B / Ascend 910_93）；arch35（Ascend 950）上
+> candidate-on 被 host 校验拒绝（tiling 入口守卫返回 GRAPH_FAILED），本套件在 950 环境直接
+> skip。candidate torch 算子未随包构建/注册时自动 skip（`candidate_ops_unavailable_reason`）。

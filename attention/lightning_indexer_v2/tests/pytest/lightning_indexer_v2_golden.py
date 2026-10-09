@@ -1598,3 +1598,276 @@ def generate_cpu_golden(data):
     data["topk_value"] = topk_value
     data["cpu_topk_value"] = cpu_topk_value
     return data
+
+
+# -----------------------------------------------------------------------------------------------------------
+# candidate (source / candidate_mode==1) golden + NPU driver
+#
+# Provenance: candidate-source impl design §5.1 (Golden) / §5.3 (pytest matrix).
+# The candidate golden is computed in the fp32 score domain (after w-sum + causal mask, before
+# sort) directly from the score matrix that GeneralizedLIV2.forward already returns as
+# ``topk_value`` (BNSD [B,N2,S1,S2max], -inf at unreachable positions).  This keeps the
+# sparse_indices golden bit-identical (the "two independent accumulators" carrier) and adds the
+# block golden non-invasively.
+#
+# 主干合并注：candidate 随主干 cann_ops_transformer 包发布（与现网 lightning_indexer 同源），
+# 算子句柄按主干受控导入模式从 cann_ops_transformer.ops 惰性解析（见 resolve_candidate_op）；
+# metadata 构造沿用主干 liv2_output_single 的 lightning_indexer_metadata 直调方式。
+# -----------------------------------------------------------------------------------------------------------
+
+import liv2_candidate_golden as _cand_golden
+
+# Re-export the pure candidate golden helpers so that the design's named location
+# (candidate-source impl design §6: "lightning_indexer_v2_golden.py |
+# select_candidate_blocks_ref + GeneralizedLIV2 source path") resolves here, while the
+# dependency-light implementation lives in liv2_candidate_golden (importable on a pure-CPU
+# host without torch_npu / cann_ops_transformer, for the golden self-check).
+select_candidate_blocks_ref = _cand_golden.select_candidate_blocks_ref
+select_candidate_blocks_torch = _cand_golden.select_candidate_blocks_torch
+compute_candidate_golden_bnsd = _cand_golden.compute_candidate_golden_bnsd
+derive_compress_lens = _cand_golden.derive_compress_lens
+CANDIDATE_TOPK_BLOCKS_OFF = _cand_golden.CANDIDATE_TOPK_BLOCKS_OFF
+
+
+class CandidateOpUnavailableError(RuntimeError):
+    """Raised when the candidate torch op is not registered yet (kernel under development)."""
+
+
+def compute_candidate_golden(
+    score_bnsd,
+    candidate_topk_blocks,
+    candidate_block_size,
+    layout_q,
+    cu_seqlens_q=None,
+):
+    """Build the candidate golden + block-amax matrix in the operator output layout.
+
+    Args:
+        score_bnsd: [B,N2,S1,S2max] fp32 score (== ``topk_value`` from GeneralizedLIV2.forward).
+        candidate_topk_blocks: K (output width); -1 (off) -> empty (0,) candidate.
+        candidate_block_size: candidate block size ([2,64] power of two).
+        layout_q: "BSND" or "TND".
+        cu_seqlens_q: per-batch q lengths (prefix-sum size B+1, or lengths size B); TND only.
+
+    Returns:
+        (cand torch.int32, blk torch.float32) where
+          cand: BSND [B,S1,N2,K] / TND [T,N2,K] (off -> shape (0,))
+          blk : row-major [total_rows, NBmax] block-amax (pin == +inf), same row order as cand.
+    """
+    score = (
+        score_bnsd.detach().cpu().numpy() if torch.is_tensor(score_bnsd) else score_bnsd
+    )
+    score = np.asarray(score, dtype=np.float32)
+    if candidate_topk_blocks == CANDIDATE_TOPK_BLOCKS_OFF:
+        empty = torch.zeros(0, dtype=torch.int32)
+        return empty, torch.zeros(0, dtype=torch.float32)
+    cand_bnsd, blk_bnsd = _cand_golden.compute_candidate_golden_bnsd(
+        score, candidate_topk_blocks, candidate_block_size, return_block_scores=True
+    )
+    cand = _cand_golden.bnsd_to_output_layout(
+        cand_bnsd, layout_q, cu_seqlens_q, fill=-1
+    )
+    blk = _cand_golden.bnsd_to_output_layout(
+        blk_bnsd, layout_q, cu_seqlens_q, fill=_cand_golden.NEG_INF
+    )
+    return (
+        torch.from_numpy(np.ascontiguousarray(cand)).to(torch.int32),
+        torch.from_numpy(np.ascontiguousarray(blk)).to(torch.float32),
+    )
+
+
+# Candidate torch op binding name.  The raw overload mirrors the existing
+# ``lightning_indexer`` signature plus the two candidate attrs (design §4.2).
+_CANDIDATE_OP_NAMES = ("lightning_indexer_candidate",)
+
+
+def resolve_candidate_op():
+    """Return (callable, name) for the candidate torch op, or (None, None) if unavailable.
+
+    candidate 随主干 cann_ops_transformer 包发布（torch_extension/__init__ 导出
+    lightning_indexer_candidate），与现网 lightning_indexer 同源同包。沿用主干
+    ``from cann_ops_transformer.ops import ...`` 的受控导入模式：从 ops 子包惰性解析
+    candidate 符号，旧版包（未收录 candidate 构建）解析失败返回 (None, None)，caller
+    skips，测试侧不做 torch.ops 探测。
+    """
+    for name in _CANDIDATE_OP_NAMES:
+        try:
+            fn = getattr(cann_ops_transformer.ops, name, None)
+        except Exception:  # noqa: BLE001 - lazy attr may raise for unregistered op
+            fn = None
+        if fn is not None:
+            return fn, name
+    return None, None
+
+
+def candidate_ops_unavailable_reason():
+    """Skip reason when the candidate torch op is unusable; None when usable.
+
+    与现网接口可用性（模块级 from cann_ops_transformer.ops import，缺包即 ImportError）
+    解耦：candidate 测试套在仅安装未收录 candidate 的旧版主包环境下应可收集并 skip。
+    """
+    fn, _ = resolve_candidate_op()
+    return (
+        None
+        if fn is not None
+        else (
+            "candidate torch op unavailable: %s missing in cann_ops_transformer.ops"
+            % (list(_CANDIDATE_OP_NAMES),)
+        )
+    )
+
+
+def _candidate_to_npu(tensor):
+    if tensor is None:
+        return None
+    if torch.is_tensor(tensor):
+        return tensor.npu()
+    return torch.as_tensor(tensor).npu()
+
+
+def _prepare_candidate_npu_args(
+    params, data, candidate_topk_blocks, candidate_block_size
+):
+    """Build the kwargs for the candidate torch op from generate_liv2_test_data() output."""
+    qk_dtype = data["query"].dtype
+    query = data["query"].to(qk_dtype)
+    key = data["key"].to(qk_dtype)
+    block_fusion = data.get("blockFusion")
+    if block_fusion is not None:
+        block_size = int(params[8])
+        block_num = int(params[9])
+        head_dim = int(params[7])
+        k_head_num = int(params[6])
+        block_fusion = block_fusion.to(qk_dtype).npu()
+        key = block_fusion[:, : block_size * k_head_num * head_dim].view(
+            block_num, block_size, k_head_num, head_dim
+        )
+    else:
+        key = key.npu()
+
+    # metadata inputs are CPU tensors in the pytest data dict; the metadata op runs on NPU,
+    # so move every tensor argument to npu first (mirrors the eager / acl_graph paths).
+    # 构造方式沿用主干 liv2_output_single：lightning_indexer_metadata 直调（前置算子
+    # 在现网包内恒可用），与现网路径同源。
+    meta_in = {
+        mk: (mv.npu() if torch.is_tensor(mv) else mv)
+        for mk, mv in data["metadata_input"].items()
+    }
+    metadata = lightning_indexer_metadata(**meta_in)
+    return {
+        "q": query.npu(),
+        "k": key,
+        "w": data["weights"].npu(),
+        "topk": int(data["topk"]),
+        "cu_seqlens_q": _candidate_to_npu(data.get("cu_seqlens_q")),
+        "cu_seqlens_k": _candidate_to_npu(data.get("cu_seqlens_k")),
+        "seqused_q": _candidate_to_npu(data.get("seqused_q")),
+        "seqused_k": _candidate_to_npu(data.get("seqused_k")),
+        "cmp_residual_k": _candidate_to_npu(data.get("cmp_residual_k_for_npu")),
+        "block_table": _candidate_to_npu(data.get("block_table")),
+        "output_idx_offset": _candidate_to_npu(data.get("output_idx_offset")),
+        "metadata": metadata.npu(),
+        "max_seqlen_q": int(data["max_seqlen_q"]),
+        "layout_q": data["layout_query"],
+        "layout_k": data["layout_key"],
+        "mask_mode": int(data["mask_mode"]),
+        "cmp_ratio": int(data["cmp_ratio"]),
+        "candidate_topk_blocks": int(candidate_topk_blocks),
+        "candidate_block_size": int(candidate_block_size),
+    }
+
+
+def liv2_output_candidate_single(
+    params,
+    candidate_topk_blocks,
+    candidate_block_size=8,
+    generate_golden=True,
+):
+    """Run the CPU candidate golden and (when available) the NPU candidate op.
+
+    Returns a dict with: cpu_sparse, cpu_candidate, cpu_blk, npu_sparse, npu_candidate,
+    npu_candidate_block_length, topk_value(score), op_name.  Raises CandidateOpUnavailableError
+    when the candidate torch op is not registered yet (so callers can pytest.skip).
+    """
+    data = generate_liv2_test_data(params, generate_golden=generate_golden)
+    score = data["topk_value"]
+    layout_q = data["layout_query"]
+    cu_seqlens_q = data.get("cu_seqlens_q")
+
+    cpu_candidate, cpu_blk = compute_candidate_golden(
+        score, candidate_topk_blocks, candidate_block_size, layout_q, cu_seqlens_q
+    )
+
+    op, op_name = resolve_candidate_op()
+    if op is None:
+        raise CandidateOpUnavailableError(
+            "candidate torch op not registered (looked for "
+            f"{list(_CANDIDATE_OP_NAMES)}); kernel/op_api still under development"
+        )
+
+    run_kwargs = _prepare_candidate_npu_args(
+        params, data, candidate_topk_blocks, candidate_block_size
+    )
+    q = run_kwargs.pop("q")
+    k = run_kwargs.pop("k")
+    w = run_kwargs.pop("w")
+    topk = run_kwargs.pop("topk")
+    outputs = op(q, k, w, topk, **run_kwargs)
+    if not isinstance(outputs, (tuple, list)) or len(outputs) != 4:
+        raise CandidateOpUnavailableError(
+            f"candidate op '{op_name}' returned {type(outputs)} (expected a 4-tuple: "
+            "sparse_indices, sparse_values, candidate_topk_indices, candidate_block_length)"
+        )
+    npu_sparse, npu_sparse_value, npu_candidate, npu_cand_len = outputs
+    torch.npu.synchronize()
+
+    return {
+        "params": params,
+        "data": data,
+        "op_name": op_name,
+        "cpu_sparse": data["cpu_result"],
+        "cpu_topk_value": data["cpu_topk_value"],
+        "topk_value": score,
+        "cpu_candidate": cpu_candidate,
+        "cpu_blk": cpu_blk,
+        "npu_sparse": npu_sparse,
+        "npu_sparse_value": npu_sparse_value,
+        "npu_candidate": npu_candidate,
+        "npu_candidate_block_length": npu_cand_len,
+    }
+
+
+def liv2_candidate_host_reject(params, candidate_topk_blocks, candidate_block_size):
+    """Assert the host validation rejects an illegal candidate configuration (design §2.3 V1-V7).
+
+    Builds the NPU inputs WITHOUT materializing the CPU golden (generate_golden=False), then
+    calls the candidate op expecting it to raise.  Returns (rejected: bool, message: str).
+    Raises CandidateOpUnavailableError when the op is not registered yet (caller skips).
+
+    950 拒绝路径探针：在 ascend950（DAV_3510）环境上以 candidate_topk_blocks != -1 调用，
+    host 侧 tiling 入口守卫应返回 GRAPH_FAILED（表现为 torch RuntimeError），本探针据此
+    断言"950 上启用 candidate 模式被明确拒绝"。
+    """
+    op, op_name = resolve_candidate_op()
+    if op is None:
+        raise CandidateOpUnavailableError(
+            "candidate torch op not registered (looked for "
+            f"{list(_CANDIDATE_OP_NAMES)}); kernel/op_api still under development"
+        )
+    data = generate_liv2_test_data(params, generate_golden=False)
+    run_kwargs = _prepare_candidate_npu_args(
+        params, data, candidate_topk_blocks, candidate_block_size
+    )
+    q = run_kwargs.pop("q")
+    k = run_kwargs.pop("k")
+    w = run_kwargs.pop("w")
+    topk = run_kwargs.pop("topk")
+    try:
+        op(q, k, w, topk, **run_kwargs)
+        torch.npu.synchronize()
+    except Exception as exc:  # noqa: BLE001 - host validation surfaces as a torch RuntimeError
+        return True, f"{op_name} rejected as expected: {type(exc).__name__}: {exc}"
+    return (
+        False,
+        f"{op_name} did NOT reject candidate_topk_blocks={candidate_topk_blocks}, candidate_block_size={candidate_block_size}",
+    )

@@ -61,6 +61,7 @@
 - [sparse_flash_mla](../../attention/sparse_flash_mla/docs/torchapi_sparse_flash_mla.md)
 - [sparse_flash_mla_grad](../../attention/sparse_flash_mla_grad/docs/torchapi_sparse_flash_mla_grad.md)
 - [sparse_flash_mla_softmax_l1_norm](../../attention/sparse_flash_mla_softmax_l1_norm/docs/torchapi_sparse_flash_mla_softmax_l1_norm.md)
+- [sparse_lightning_indexer](../../attention/sparse_lightning_indexer/docs/torchapi_sparse_lightning_indexer.md)
 - [sparse_lightning_indexer_kl_loss_grad](../../attention/sparse_lightning_indexer_kl_loss_grad/docs/torchapi_sparse_lightning_indexer_kl_loss_grad.md)
 - [stem_oam_prep_paged_kv](../../attention/stem_oam_prep_paged_kv/docs/torchapi_stem_oam_prep_paged_kv.md)
 - [stem_oam_prep_varlen_q](../../attention/stem_oam_prep_varlen_q/docs/torchapi_stem_oam_prep_varlen_q.md)

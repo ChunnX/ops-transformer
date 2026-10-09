@@ -548,6 +548,16 @@
   </tr>
   <tr>
     <td>attention</td>
+    <td><a href="../../attention/sparse_lightning_indexer/README.md">sparse_lightning_indexer</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>lightning_indexer_v2候选模式（candidateTopkBlocks开启）的consumer侧算子，消费source输出的候选块索引，对候选外可达位置做leak降级TopK，选取每个token的Top-k稀疏位置。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
     <td><a href="../../attention/sparse_lightning_indexer_grad_kl_loss/README.md">sparse_lightning_indexer_grad_kl_loss</a></td>
     <td>✓</td>
     <td>✓</td>

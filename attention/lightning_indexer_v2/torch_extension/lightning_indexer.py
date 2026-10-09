@@ -14,6 +14,10 @@ from cann_ops_transformer.op_builder import OpBuilder, get_as_library
 
 LI_METADATA_SIZE = 1024
 LI_METADATA_OP_NAME = "lightning_indexer_metadata"
+# candidate (two-level topk) 独立算子名：schema 由 LightningIndexerOpBuilder.schema() 定义，
+# Meta/PrivateUse1 实现必须注册到该名字而非基算子名（self.name），否则与 lightning_indexer
+# 的实现重复注册冲突（torch 对同一 op+dispatch key 的第二次 impl 抛 RuntimeError）
+LI_CANDIDATE_OP_NAME = "lightning_indexer_candidate"
 
 
 class LightningIndexerOpBuilder(OpBuilder):
@@ -41,6 +45,15 @@ class LightningIndexerOpBuilder(OpBuilder):
             'str layout_q="BSND", str layout_k="BSND", int mask_mode=0, '
             "int cmp_ratio=1,"
             "int return_value=0) -> (Tensor, Tensor)",
+            # candidate (two-level topk) source 模式：旧 schema 不动，现网调用零影响；
+            # candidate_topk_blocks=-1(off) 时后两个输出为 (0,) 占位，行为与旧接口等价
+            "lightning_indexer_candidate(Tensor q, Tensor k, Tensor w, "
+            "int topk, *, Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_k=None,"
+            "Tensor? seqused_q=None, Tensor? seqused_k=None, "
+            "Tensor? cmp_residual_k=None, Tensor? block_table=None, "
+            "Tensor? output_idx_offset=None, Tensor? metadata=None, int max_seqlen_q=-1,"
+            'str layout_q="BSND", str layout_k="BSND", int mask_mode=0, int cmp_ratio=1, '
+            "int candidate_topk_blocks=-1, int candidate_block_size=8) -> (Tensor, Tensor, Tensor, Tensor)",
         ]
 
     def register_meta(self):
@@ -120,6 +133,78 @@ class LightningIndexerOpBuilder(OpBuilder):
             else:
                 sparse_values_out = torch.empty([0], dtype=torch.float, device="meta")
             return (sparse_indices_out, sparse_values_out)
+
+        @impl(get_as_library(), LI_CANDIDATE_OP_NAME, "Meta")
+        def lightning_indexer_candidate_meta(
+            q,
+            k,
+            w,
+            topk,
+            *,
+            cu_seqlens_q=None,
+            cu_seqlens_k=None,
+            seqused_q=None,
+            seqused_k=None,
+            cmp_residual_k=None,
+            block_table=None,
+            output_idx_offset=None,
+            metadata=None,
+            max_seqlen_q=-1,
+            layout_q="BSND",
+            layout_k="BSND",
+            mask_mode=0,
+            cmp_ratio=1,
+            candidate_topk_blocks=-1,
+            candidate_block_size=8,
+        ):
+            key_head_num = k.shape[1] if layout_k == "TND" else k.shape[2]
+            sparse_indices_out, sparse_values_out = lightning_indexer_meta(
+                q,
+                k,
+                w,
+                topk,
+                cu_seqlens_q=cu_seqlens_q,
+                cu_seqlens_k=cu_seqlens_k,
+                seqused_q=seqused_q,
+                seqused_k=seqused_k,
+                cmp_residual_k=cmp_residual_k,
+                block_table=block_table,
+                output_idx_offset=output_idx_offset,
+                metadata=metadata,
+                max_seqlen_q=max_seqlen_q,
+                layout_q=layout_q,
+                layout_k=layout_k,
+                mask_mode=mask_mode,
+                cmp_ratio=cmp_ratio,
+                return_value=0,  # candidate 与 return_value 互斥
+            )
+            if candidate_topk_blocks > 0:
+                if layout_q == "BSND":
+                    candidate_topk_indices_out = torch.empty(
+                        [q.shape[0], q.shape[1], key_head_num, candidate_topk_blocks],
+                        dtype=torch.int32,
+                        device="meta",
+                    )
+                else:
+                    candidate_topk_indices_out = torch.empty(
+                        [q.shape[0], key_head_num, candidate_topk_blocks],
+                        dtype=torch.int32,
+                        device="meta",
+                    )
+            else:
+                candidate_topk_indices_out = torch.empty(
+                    [0], dtype=torch.int32, device="meta"
+                )
+            # candidate_block_length：预留接口，恒空
+            candidate_block_length_out = torch.empty(
+                [0], dtype=torch.int32, device="meta"
+            )
+            return (
+                sparse_indices_out,
+                sparse_values_out,
+                candidate_topk_indices_out,
+                candidate_block_length_out,
+            )
 
 
 # Instantiate the builder
@@ -269,4 +354,58 @@ def lightning_indexer(
         mask_mode,
         cmp_ratio,
         return_value,
+    )
+
+
+@impl(get_as_library(), LI_CANDIDATE_OP_NAME, "PrivateUse1")
+def lightning_indexer_candidate(
+    q,
+    k,
+    w,
+    topk,
+    *,
+    cu_seqlens_q=None,
+    cu_seqlens_k=None,
+    seqused_q=None,
+    seqused_k=None,
+    cmp_residual_k=None,
+    block_table=None,
+    output_idx_offset=None,
+    metadata=None,
+    max_seqlen_q=-1,
+    layout_q="BSND",
+    layout_k="BSND",
+    mask_mode=0,
+    cmp_ratio=1,
+    candidate_topk_blocks=-1,
+    candidate_block_size=8,
+):
+    """
+    candidate (two-level topk) source 模式入口：
+    candidate_topk_blocks != -1 时额外输出候选块索引 candidate_topk_indices
+    （块号或 -1、无序、相对块号），供 sparse_lightning_indexer 消费；
+    candidate_block_length 为预留接口恒空 tensor。candidate_topk_blocks == -1
+    时后两个输出为 (0,) 占位，行为与 lightning_indexer(return_value=0) 等价。
+    """
+    op_module = lightning_indexer_op_builder.load()
+    return op_module.lightning_indexer_candidate(
+        q,
+        k,
+        w,
+        topk,
+        cu_seqlens_q,
+        cu_seqlens_k,
+        seqused_q,
+        seqused_k,
+        cmp_residual_k,
+        block_table,
+        output_idx_offset,
+        metadata,
+        max_seqlen_q,
+        layout_q,
+        layout_k,
+        mask_mode,
+        cmp_ratio,
+        candidate_topk_blocks,
+        candidate_block_size,
     )

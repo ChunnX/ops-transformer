@@ -71,7 +71,7 @@ std::string LIV2DataTypeToSerialString(ge::DataType type)
     }
 }
 
-static std::string ToStringRaw(const gert::Shape &shape)
+static std::string ToStringRaw(const gert::Shape& shape)
 {
     std::ostringstream liV2Oss;
     const size_t liV2DimCount = shape.GetDimNum();
@@ -233,6 +233,9 @@ ge::graphStatus LIV2InfoParser::GetAndCheckAttrParaInfo()
     liV2Params_.maskMode = attrs->GetAttrPointer<int32_t>(ATTR_MASK_MODE_INDEX);
     liV2Params_.cmpRatio = attrs->GetAttrPointer<int64_t>(ATTR_CMP_RATIO_INDEX);
     liV2Params_.returnValue = attrs->GetAttrPointer<int32_t>(ATTR_RETURN_VALUE_INDEX);
+    // candidate (two-level topk)：新增属性按 int64_t 读取（GE .Int() 属性惯例，无兼容包袱）
+    liV2Params_.candidateTopkBlocks = attrs->GetAttrPointer<int64_t>(ATTR_CANDIDATE_TOPK_BLOCKS_INDEX);
+    liV2Params_.candidateBlockSize = attrs->GetAttrPointer<int64_t>(ATTR_CANDIDATE_BLOCK_SIZE_INDEX);
 
     auto keyStrides = context_->GetDynamicInputStride(KEY_INDEX, 0);
     if (keyStrides != nullptr && keyStrides->GetDimNum() > 0) {
@@ -316,6 +319,47 @@ ge::graphStatus LIV2InfoParser::GetAndCheckAttrParaInfo()
     OP_CHECK_IF((*liV2Params_.cmpRatio <= 0) || (*liV2Params_.cmpRatio > 128),
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "cmp_ratio", std::to_string(*liV2Params_.cmpRatio),
                                                       "Cmp_ratio must > 0 and <= 128"),
+                return ge::GRAPH_FAILED);
+    // ------------------candidate (two-level topk) 校验（仅 arch22 路径生效）------------------
+    // candidate_mode 不上参数面：candidate_topk_blocks == -1（缺省）即 off，回退现网行为
+    int32_t candTopkBlocks = (liV2Params_.candidateTopkBlocks != nullptr) ?
+                                 static_cast<int32_t>(*liV2Params_.candidateTopkBlocks) :
+                                 CANDIDATE_TOPK_BLOCKS_OFF;
+    uint32_t candBlockSize = (liV2Params_.candidateBlockSize != nullptr) ?
+                                 static_cast<uint32_t>(*liV2Params_.candidateBlockSize) :
+                                 CANDIDATE_BLOCK_SIZE_DEFAULT;
+    bool candidateOn = (candTopkBlocks != CANDIDATE_TOPK_BLOCKS_OFF);
+    if (candidateOn) {
+        OP_CHECK_IF(candTopkBlocks <= 0 || static_cast<uint32_t>(candTopkBlocks) > CANDIDATE_TOPK_BLOCKS_FIX ||
+                        static_cast<uint32_t>(candTopkBlocks) % CANDIDATE_TOPK_BLOCKS_MULTIPLE != 0,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        opName_, "candidate_topk_blocks", std::to_string(candTopkBlocks),
+                        "Candidate_topk_blocks must be -1(off) or in (0, 2048] and a multiple of 64"),
+                    return ge::GRAPH_FAILED);
+        // 双保险：candidate 仅 arch22(910B/910_93) 支持。950 正常走 ParseAndCheckLIV2Arch35 路由
+        // 不经本函数（入口守卫已先行拒绝），此断言防御路由误配
+        OP_CHECK_IF(npuArch_ == NpuArch::DAV_3510,
+                    OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+                        opName_, "candidate_topk_blocks", "candidate_topk_blocks=" + std::to_string(candTopkBlocks),
+                        "Candidate_topk_blocks is only supported on ascend910b/ascend910_93, not on ascend950"),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(*liV2Params_.topk > SPARSE_2K,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "topk", std::to_string(*liV2Params_.topk),
+                                                          "Topk must be <= 2048 when candidate_topk_blocks is enabled"),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(liV2Params_.returnValue != nullptr && *liV2Params_.returnValue != 0,
+                    OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+                        opName_, "candidate_topk_blocks and return_value",
+                        "candidate_topk_blocks=" + std::to_string(candTopkBlocks) +
+                            " return_value=" + std::to_string(*liV2Params_.returnValue),
+                        "Return_value is not supported when candidate_topk_blocks is enabled"),
+                    return ge::GRAPH_FAILED);
+    }
+    // block_size 恒校验（[2,64] 且 2 的幂），off 时亦拒绝带病配置
+    OP_CHECK_IF(candBlockSize < CANDIDATE_BLOCK_SIZE_MIN || candBlockSize > CANDIDATE_BLOCK_SIZE_MAX ||
+                    (candBlockSize & (candBlockSize - 1U)) != 0,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "candidate_block_size", std::to_string(candBlockSize),
+                                                      "Candidate_block_size must be a power of 2 in [2, 64]"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -628,7 +672,7 @@ ge::graphStatus LIV2InfoParser::CheckKeyContiguous() const
     // Non-PA_BBND: check starts from axis 0
     size_t checkStartIdx = (kLayout_ == DataLayout::PA_BBND) ? 1 : 0;
     if (!keyStridesVec_.empty() && liV2Params_.key.shape != nullptr) {
-        auto &shape = liV2Params_.key.shape->GetStorageShape();
+        auto& shape = liV2Params_.key.shape->GetStorageShape();
         std::vector<uint32_t> expectedStrides;
         if (kLayout_ == DataLayout::BSND || kLayout_ == DataLayout::PA_BBND) {
             expectedStrides = {shape.GetDim(1) * shape.GetDim(2) * shape.GetDim(3), shape.GetDim(2) * shape.GetDim(3),
@@ -666,8 +710,8 @@ ge::graphStatus LIV2InfoParser::GetN1Size()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus LIV2InfoParser::GetActualSeqLenSize(int64_t &size, const gert::Tensor *tensor,
-                                                    const std::string &actualSeqLenName) const
+ge::graphStatus LIV2InfoParser::GetActualSeqLenSize(int64_t& size, const gert::Tensor* tensor,
+                                                    const std::string& actualSeqLenName) const
 {
     size = tensor->GetShapeSize() - 1;
     if (size <= 0) {
@@ -774,6 +818,16 @@ ge::graphStatus LIV2InfoParser::GetS1Size()
 {
     if (qLayout_ == DataLayout::BSND) {
         s1Size_ = liV2Params_.query.shape->GetStorageShape().GetDim(1);
+    } else if (liV2Params_.candidateTopkBlocks != nullptr &&
+               *liV2Params_.candidateTopkBlocks != CANDIDATE_TOPK_BLOCKS_OFF) {
+        // 【R5 host 侧配对项，MERGE_PLAN §6.1】TND + candidate source 时取 query.dim0 作为 s1Size：
+        // 唯一新增消费点是 kernel ProcessInvalid 的 TND 全域清理（输出 [T,N2,topk]，需覆盖全部
+        // T 行；不赋值则 usedCoreNum==0 时输出保持未初始化内存）。candidate 关闭时保持主干行为
+        // （TND 不赋值恒 0），缺省路径逐位不变；本分支必须与 kernel 侧 ProcessInvalid 的 layout
+        // 分支公式成对存在（缺本分支不清理；只改 kernel 不改 host 则 TND 按 B×T×N2×K 越界写）。
+        // 其余 s1Size/qSeqSize 消费点均在 BSND 守卫内（TND 主路径恒走 cuSeqlens 前缀和），无影响；
+        // s1Size_ 的 BSND 一致性校验位于 ValidateInputShapesMatchQbsnd（仅 BSND 调用），TND 不触及。
+        s1Size_ = liV2Params_.query.shape->GetStorageShape().GetDim(0);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -1058,7 +1112,7 @@ ge::graphStatus LIV2InfoParser::ValidateInputShapesMatch()
     return ge::GRAPH_SUCCESS;
 }
 
-void LIV2InfoParser::GenerateInfo(LIV2TilingInfo &liInfo)
+void LIV2InfoParser::GenerateInfo(LIV2TilingInfo& liInfo)
 {
     liInfo.opName = opName_;
     liInfo.platformInfo = platformInfo_;
@@ -1087,6 +1141,12 @@ void LIV2InfoParser::GenerateInfo(LIV2TilingInfo &liInfo)
     liInfo.maxSeqlenQ = *liV2Params_.maxSeqlenQ;
     liInfo.cmpRatio = *liV2Params_.cmpRatio;
     liInfo.returnValue = *liV2Params_.returnValue;
+    liInfo.candidateTopkBlocks = (liV2Params_.candidateTopkBlocks != nullptr) ?
+                                     static_cast<int32_t>(*liV2Params_.candidateTopkBlocks) :
+                                     CANDIDATE_TOPK_BLOCKS_OFF;
+    liInfo.candidateBlockSize = (liV2Params_.candidateBlockSize != nullptr) ?
+                                    static_cast<uint32_t>(*liV2Params_.candidateBlockSize) :
+                                    CANDIDATE_BLOCK_SIZE_DEFAULT;
 
     if (!keyStridesVec_.empty()) {
         liInfo.keyStride0 = static_cast<uint32_t>(keyStridesVec_[0]);
@@ -1098,7 +1158,7 @@ void LIV2InfoParser::GenerateInfo(LIV2TilingInfo &liInfo)
     liInfo.inputKLayout = kLayout_;
 }
 
-ge::graphStatus LIV2InfoParser::ParseAndCheck(LIV2TilingInfo &liInfo)
+ge::graphStatus LIV2InfoParser::ParseAndCheck(LIV2TilingInfo& liInfo)
 {
     if (ge::GRAPH_SUCCESS != GetOpName() || ge::GRAPH_SUCCESS != GetNpuInfo() || ge::GRAPH_SUCCESS != GetOpParaInfo() ||
         ge::GRAPH_SUCCESS != CheckLiv2RequiredParameters()) {
@@ -1130,13 +1190,13 @@ ge::graphStatus LIV2InfoParser::ParseAndCheck(LIV2TilingInfo &liInfo)
 }
 
 // --------------------------TilingPrepare函数定义-------------------------------------
-static ge::graphStatus TilingPrepareForLightningIndexerV2(gert::TilingParseContext * /* context */)
+static ge::graphStatus TilingPrepareForLightningIndexerV2(gert::TilingParseContext* /* context */)
 {
     return ge::GRAPH_SUCCESS;
 }
 
 // --------------------------LightningIndexerV2Tiling类成员函数定义-----------------------
-ge::graphStatus LightningIndexerV2Tiling::DoTiling(LIV2TilingInfo *tilingInfo)
+ge::graphStatus LightningIndexerV2Tiling::DoTiling(LIV2TilingInfo* tilingInfo)
 {
     // -------------set blockdim-----------------
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(tilingInfo->platformInfo);
@@ -1178,7 +1238,7 @@ ge::graphStatus LightningIndexerV2Tiling::DoTiling(LIV2TilingInfo *tilingInfo)
         workspaceSize += V1_DECODE_DATA_NUM * S1_BASE_SIZE * V1_DECODE_PARAM_NUM * V1_DECODE_PARAM_ELEM_SIZE * aicNum;
     }
 
-    size_t *liV2WorkSpaces = context_->GetWorkspaceSizes(1);
+    size_t* liV2WorkSpaces = context_->GetWorkspaceSizes(1);
     liV2WorkSpaces[0] = workspaceSize;
 
     // -------------set tilingdata-----------------
@@ -1195,6 +1255,9 @@ ge::graphStatus LightningIndexerV2Tiling::DoTiling(LIV2TilingInfo *tilingInfo)
     tilingData_.set_cmpRatio(tilingInfo->cmpRatio);
     tilingData_.set_keyStride0(tilingInfo->keyStride0);
     tilingData_.set_returnValue(tilingInfo->returnValue);
+    // candidate (two-level topk)：-1 原值下发，kernel 侧推导 on/off
+    tilingData_.set_candidateTopkBlocks(tilingInfo->candidateTopkBlocks);
+    tilingData_.set_candidateBlockSize(tilingInfo->candidateBlockSize);
     tilingData_.set_usedCoreNum(blockDim);
     tilingData_.set_batchSupperFlag(tilingInfo->batchSupperFlag);
     tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
@@ -1218,7 +1281,7 @@ ge::graphStatus LightningIndexerV2Tiling::DoTiling(LIV2TilingInfo *tilingInfo)
 }
 
 // --------------------------Tiling函数定义---------------------------
-ge::graphStatus TilingForLightningIndexerV2(gert::TilingContext *context)
+ge::graphStatus TilingForLightningIndexerV2(gert::TilingContext* context)
 {
     OP_CHECK_IF(context == nullptr, OPS_REPORT_VECTOR_INNER_ERR("LightningIndexerV2", "Tiling context is null."),
                 return ge::GRAPH_FAILED);
@@ -1226,6 +1289,21 @@ ge::graphStatus TilingForLightningIndexerV2(gert::TilingContext *context)
     auto platformInfoPtr = context->GetPlatformInfo();
     OP_CHECK_IF(platformInfoPtr == nullptr, OP_LOGE(context, "platformInfoPtr is null"), return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
+    // candidate (two-level topk) 仅 arch22(ascend910b/ascend910_93) 生效：950(DAV_3510) 上启用必须显式拒绝。
+    // 守卫置于 useArch35Checker 路由之前：950 走 ParseAndCheckLIV2Arch35 路径（不读 candidate 属性），
+    // 入口守卫是覆盖 arch22/arch35 两条路由的唯一单点；缺省 -1(off) 不受影响。
+    const auto* candAttrs = context->GetAttrs();
+    if (candAttrs != nullptr) {
+        const int64_t* candTopkBlocks = candAttrs->GetAttrPointer<int64_t>(ATTR_CANDIDATE_TOPK_BLOCKS_INDEX);
+        if (candTopkBlocks != nullptr && *candTopkBlocks != CANDIDATE_TOPK_BLOCKS_OFF &&
+            ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
+            OP_LOGE(context->GetNodeName(),
+                    "candidate_topk_blocks[%lld] is only supported on ascend910b/ascend910_93; "
+                    "enabling candidate mode on ascend950(DAV_3510) is rejected.",
+                    *candTopkBlocks);
+            return ge::GRAPH_FAILED;
+        }
+    }
     const bool useArch35Checker = ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510;
     LIV2InfoParser liV2InfoParser(context);
     const ge::graphStatus parseStatus =

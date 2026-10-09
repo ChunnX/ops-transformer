@@ -82,6 +82,16 @@ public:
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND});
+        // candidate (two-level topk): source 模式输出候选块索引 (candidate_topk_blocks != -1 时生效)
+        this->Output("candidate_topk_indices")
+            .ParamType(OPTIONAL)
+            .DataType({ge::DT_INT32, ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND});
+        // candidate_block_length: 预留接口, 恒输出空 tensor
+        this->Output("candidate_block_length")
+            .ParamType(OPTIONAL)
+            .DataType({ge::DT_INT32, ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND});
         this->Attr("topk").AttrType(REQUIRED).Int(2048); // 筛选前2048个作为输出index
         this->Attr("max_seqlen_q").AttrType(OPTIONAL).Int(-1);
         this->Attr("layout_q").AttrType(OPTIONAL).String("BSND");
@@ -89,6 +99,9 @@ public:
         this->Attr("mask_mode").AttrType(OPTIONAL).Int(0);
         this->Attr("cmp_ratio").AttrType(OPTIONAL).Int(1);
         this->Attr("return_value").AttrType(OPTIONAL).Int(0);
+        // candidate (two-level topk): -1=关闭(现网行为), 有效值 (0,2048] 且 64 的倍数时开启 source 模式
+        this->Attr("candidate_topk_blocks").AttrType(OPTIONAL).Int(-1);
+        this->Attr("candidate_block_size").AttrType(OPTIONAL).Int(8); // [2,64] 且为 2 的幂
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)

@@ -25,28 +25,35 @@ constexpr uint32_t ATTR_TOPK_INDEX = 0;
 constexpr uint32_t ATTR_QUERY_LAYOUT_INDEX = 2;
 constexpr uint32_t ATTR_KEY_LAYOUT_INDEX = 3;
 constexpr uint32_t ATTR_RETURN_VALUE_INDEX = 6;
+constexpr uint32_t ATTR_CANDIDATE_TOPK_BLOCKS_INDEX = 7;
+constexpr int64_t CANDIDATE_TOPK_BLOCKS_OFF = -1;
 
-static ge::graphStatus InferShapeLightningIndexerV2(gert::InferShapeContext *context)
+static ge::graphStatus InferShapeLightningIndexerV2(gert::InferShapeContext* context)
 {
     OP_CHECK_IF(context == nullptr, OP_LOGE("LightningIndexerV2", "InferShapeContext is nullptr!"),
                 return ge::GRAPH_FAILED);
-    const gert::Shape *queryShape = context->GetInputShape(QUERY_INDEX);
+    const gert::Shape* queryShape = context->GetInputShape(QUERY_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, queryShape);
-    const gert::Shape *keyShape = context->GetInputShape(KEY_INDEX);
+    const gert::Shape* keyShape = context->GetInputShape(KEY_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, keyShape);
 
-    gert::Shape *sparseIndicesShape = context->GetOutputShape(0);
+    gert::Shape* sparseIndicesShape = context->GetOutputShape(0);
     OP_CHECK_NULL_WITH_CONTEXT(context, sparseIndicesShape);
-    gert::Shape *sparseValuesShape = context->GetOutputShape(1);
+    gert::Shape* sparseValuesShape = context->GetOutputShape(1);
     OP_CHECK_NULL_WITH_CONTEXT(context, sparseValuesShape);
+    // candidate (two-level topk)：source 输出 + 预留 block_length（恒空）
+    gert::Shape* candidateTopkIndicesShape = context->GetOutputShape(2);
+    OP_CHECK_NULL_WITH_CONTEXT(context, candidateTopkIndicesShape);
+    gert::Shape* candidateBlockLengthShape = context->GetOutputShape(3);
+    OP_CHECK_NULL_WITH_CONTEXT(context, candidateBlockLengthShape);
 
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
-    const char *inputLayoutQueryPtr = attrs->GetAttrPointer<char>(ATTR_QUERY_LAYOUT_INDEX);
+    const char* inputLayoutQueryPtr = attrs->GetAttrPointer<char>(ATTR_QUERY_LAYOUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, inputLayoutQueryPtr);
-    const char *inputLayoutKeyPtr = attrs->GetAttrPointer<char>(ATTR_KEY_LAYOUT_INDEX);
+    const char* inputLayoutKeyPtr = attrs->GetAttrPointer<char>(ATTR_KEY_LAYOUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, inputLayoutKeyPtr);
-    const int64_t *seleced_count = attrs->GetInt(ATTR_TOPK_INDEX);
+    const int64_t* seleced_count = attrs->GetInt(ATTR_TOPK_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, seleced_count);
     std::string inputLayoutQueryPtrStr = std::string(inputLayoutQueryPtr);
     std::string inputLayoutKeyPtrStr = std::string(inputLayoutKeyPtr);
@@ -78,7 +85,7 @@ static ge::graphStatus InferShapeLightningIndexerV2(gert::InferShapeContext *con
         sparseIndicesShape->SetDim(2, *seleced_count);                   // 2:Dim K
     }
 
-    const bool *return_value = attrs->GetAttrPointer<bool>(ATTR_RETURN_VALUE_INDEX);
+    const bool* return_value = attrs->GetAttrPointer<bool>(ATTR_RETURN_VALUE_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, return_value);
     bool returnValueFlag = (return_value != nullptr) ? *return_value : false;
     if (returnValueFlag) {
@@ -87,12 +94,27 @@ static ge::graphStatus InferShapeLightningIndexerV2(gert::InferShapeContext *con
         sparseValuesShape->SetDimNum(1);
         sparseValuesShape->SetDim(0, 0);
     }
+
+    // candidate_topk_indices: candidate_topk_blocks != -1(source) 时输出，复制 sparse_indices shape、
+    // 末维改 candidate_topk_blocks（BSND 4 维 / TND 3 维双布局）；off 时输出 (0,)
+    const int64_t* candidate_topk_blocks = attrs->GetAttrPointer<int64_t>(ATTR_CANDIDATE_TOPK_BLOCKS_INDEX);
+    int64_t candBlocks = (candidate_topk_blocks != nullptr) ? *candidate_topk_blocks : CANDIDATE_TOPK_BLOCKS_OFF;
+    if (candBlocks > 0) {
+        *candidateTopkIndicesShape = *sparseIndicesShape;
+        candidateTopkIndicesShape->SetDim(candidateTopkIndicesShape->GetDimNum() - 1, candBlocks);
+    } else {
+        candidateTopkIndicesShape->SetDimNum(1);
+        candidateTopkIndicesShape->SetDim(0, 0);
+    }
+    // candidate_block_length: 预留接口，恒空
+    candidateBlockLengthShape->SetDimNum(1);
+    candidateBlockLengthShape->SetDim(0, 0);
     OP_LOGI(context->GetNodeName(), "LightningIndexerV2 InferShape end.");
 
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferDataTypeLightningIndexerV2(gert::InferDataTypeContext *context)
+static ge::graphStatus InferDataTypeLightningIndexerV2(gert::InferDataTypeContext* context)
 {
     OP_CHECK_IF(context == nullptr, OP_LOGE("LightningIndexerV2", "InferDataTypeContext is nullptr!"),
                 return ge::GRAPH_FAILED);
@@ -102,6 +124,9 @@ static ge::graphStatus InferDataTypeLightningIndexerV2(gert::InferDataTypeContex
     // attention_out, outidx:0
     context->SetOutputDataType(0, outputType);
     context->SetOutputDataType(1, ge::DT_FLOAT);
+    // candidate_topk_indices:2 / candidate_block_length:3
+    context->SetOutputDataType(2, ge::DT_INT32);
+    context->SetOutputDataType(3, ge::DT_INT32);
     OP_LOGI(context->GetNodeName(), "LightningIndexerV2 InferDataType end.");
     return GRAPH_SUCCESS;
 }
