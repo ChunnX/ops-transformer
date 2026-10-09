@@ -75,6 +75,8 @@ constexpr uint32_t MIX_LAYERED = 2U;
 constexpr uint32_t MIX_CLOS_SLOT = 0U;
 constexpr uint32_t MIX_MESH_SLOT = 1U;
 constexpr uint32_t MIX_LAYERED_RANK_SIZE = 8U;
+using _HcclAllReduce = HcclResult (*)(void*, void*, uint64_t, HcclDataType, HcclReduceOp, HcclComm, aclrtStream);
+static _HcclAllReduce HcclAllReduceFunc = nullptr;
 
 // RAII guard for multi-step host buffer allocation
 struct HostBufferGuard {
@@ -1880,6 +1882,8 @@ private:
     bool engramWriteCalled_ = false;
     int64_t fetchMode_ = ENGRAM_FETCH_MODE_SLICED; // 0 = sliced cross-NPU (default), 1 = local full table
     aclrtStream commStream_ = nullptr;
+    at::Tensor barrierSendTensor_;
+    at::Tensor barrierRecvTensor_;
 };
 
 // Constructor
@@ -1903,6 +1907,8 @@ ElasticBuffer::ElasticBuffer(const std::string& groupName, int64_t numCpuBytes, 
                 withGrad, ", fetch_mode=", fetchMode);
     InitHcclEngineCtxFunctions();
     InitHcclFunctions();
+    HcclAllReduceFunc = GetHcclFuncAddr<_HcclAllReduce>("HcclAllReduce");
+    TORCH_CHECK(HcclAllReduceFunc != nullptr, "getFuncHcclAllReduce failed.");
 }
 
 // Destructor - automatic resource cleanup only when explicitlyDestroy is false
@@ -1930,6 +1936,9 @@ void ElasticBuffer::EnsureEngramContext(void* externalHostPtr, int64_t externalB
     }
     commStream_ = c10_npu::getNPUStreamFromPool().stream(false);
     TORCH_CHECK(commStream_ != nullptr, "Failed to get NPU stream from pool for comm stream");
+    auto barrierOptions = at::TensorOptions().dtype(at::kInt).device(c10::DeviceType::PrivateUse1);
+    barrierSendTensor_ = at::zeros({1}, barrierOptions);
+    barrierRecvTensor_ = at::empty({1}, barrierOptions);
     int64_t numCpuBytes = withGrad_ ? 0 : engramNumCpuBytes_;
     if (!withGrad_ && fetchMode_ == ENGRAM_FETCH_MODE_LOCAL && externalHostPtr == nullptr) {
         // local 模式先 barrier 初始化时暂不自建窗口: 后续 engram_write 可能将调用方存储原地
@@ -2205,8 +2214,12 @@ void ElasticBuffer::EngramBarrier(bool useCommStream, bool withCpuSync)
         TORCH_CHECK(aclRet == ACL_SUCCESS, "aclrtSynchronizeDevice failed, ret: ", aclRet);
     }
 
-    HcclResult ret = HcclBarrierFunc(engramHcclComm_, stream);
-    TORCH_CHECK(ret == HCCL_SUCCESS, "HcclBarrier failed, ret: ", ret);
+    // Use a 1-element AllReduce as the portable barrier. HcclBarrier can select an NHR
+    // path that times out on some CANN/topology combinations, while the same comm supports
+    // the standard AICPU AllReduce path.
+    HcclResult ret = HcclAllReduceFunc(barrierSendTensor_.data_ptr(), barrierRecvTensor_.data_ptr(), 1,
+                                       HCCL_DATA_TYPE_INT32, HCCL_REDUCE_SUM, engramHcclComm_, stream);
+    TORCH_CHECK(ret == HCCL_SUCCESS, "HcclAllReduce barrier failed, ret: ", ret);
 
     if (withCpuSync) {
         aclError aclRet = aclrtSynchronizeDevice();
