@@ -131,6 +131,7 @@ private:
     TQue<TPosition::VECIN, 2> bufPhiFp32_;
     TBuf<TPosition::VECCALC> bufHInPrimeBf16_;
     TBuf<TPosition::VECCALC> bufScalar_;
+    TBuf<TPosition::VECCALC> bufPartialAccum_;
 
     GlobalTensor<T> hOutGm_, residualGm_, hInPrimeGm_, x2OutGm_;
     GlobalTensor<float> hPostGm_, hResGm_, phiGm_;
@@ -172,13 +173,12 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
                                  tD % MhcNormRegBase::VL_FP32 == 0U;
         const uint32_t reduceWidth = compactRows ? MhcNormRegBase::VL_FP32 : tD;
 
-        // 一个寄存器宽度存放ReduceSum结果，另两个寄存器宽度跨tile保留两个half的五项partial。
+        // 累积槽独立于ReduceSum的输出TBuf，避免归约接口复用输出缓冲时覆盖累积值。
         // 只在多tile且未延迟归约时启用，单tile和已有的dual has-mid延迟归约路径保持原样。
         if (dLoop_ > 1U && !deferReduce && tOff == 0U) {
-            LocalTensor<float> scalar = bufScalar_.Get<float>();
-            Duplicate(scalar, 0.0f, MhcNormRegBase::VL_FP32);
+            LocalTensor<float> accumulator = bufPartialAccum_.Get<float>();
             for (uint32_t half = halfBegin; half < halfEnd; ++half) {
-                Duplicate(scalar[(half + 1U) * MhcNormRegBase::VL_FP32], 0.0f,
+                Duplicate(accumulator[half * MhcNormRegBase::VL_FP32], 0.0f,
                           MhcNormRegBase::VL_FP32);
             }
         }
@@ -315,7 +315,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
 {
     LocalTensor<float> result = scBuf;
     if (dLoop_ > 1U && !(DUAL_SIBLING && USE_RMS_MID && lastDTile_ == 0U)) {
-        result = bufScalar_.Get<float>()[(half + 1U) * MhcNormRegBase::VL_FP32];
+        result = bufPartialAccum_.Get<float>()[half * MhcNormRegBase::VL_FP32];
         // 使用AscendC向量接口，使initcheck能跟踪五个有效槽位的写入。
         AscendC::Add(result, result, scBuf, N + 1U);
         PipeBarrier<PIPE_V>();
@@ -654,7 +654,10 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         pipe_.InitBuffer(bufHInPrimeBf16_, dTile_ * sizeof(T));
         const bool usePartialAccumulator = dLoop_ > 1U &&
             !(DUAL_SIBLING && USE_RMS_MID && lastDTile_ == 0U);
-        pipe_.InitBuffer(bufScalar_, usePartialAccumulator ? PARTIAL_ACCUM_BUF_SIZE : SCALAR_BUF_SIZE);
+        pipe_.InitBuffer(bufScalar_, SCALAR_BUF_SIZE);
+        if (usePartialAccumulator) {
+            pipe_.InitBuffer(bufPartialAccum_, PARTIAL_ACCUM_BUF_SIZE);
+        }
         const uint32_t gamma1CacheElems = (DUAL_SIBLING && USE_RMS_MID) || D_ <= GAMMA1_CACHE_MAX_D ? D_ : dTile_;
         pipe_.InitBuffer(bufScratchFp32_, gamma1CacheElems * sizeof(float));
 
