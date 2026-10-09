@@ -33,6 +33,14 @@ if (BUILD_OPEN_PROJECT)  # custom
                     -mllvm -cce-aicore-dcci-before-kernel-end=false
                     -DENABLE_CV_COMM_VIA_SSBUF=true
         )
+    elseif("${CONDITION_UNIT}" STREQUAL "ascend910_96")
+        # A6(ascend910_96)复用950(arch35)编译选项
+        add_ops_compile_options(
+            OP_NAME MatmulReduceScatterV2
+            OPTIONS --cce-auto-sync=off
+                    -mllvm -cce-aicore-dcci-before-kernel-end=false
+                    -DENABLE_CV_COMM_VIA_SSBUF=true
+        )
     elseif("${CONDITION_UNIT}" STREQUAL "ascend910_93")
         add_ops_compile_options(
             OP_NAME MatmulReduceScatterV2

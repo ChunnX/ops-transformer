@@ -236,7 +236,9 @@ public:
         if constexpr (IS_4BIT_WEIGHT ||
                       (IsSameType<wType, int8_t>::value && (!bTrans || antiQuantType == Mc2QuantType::PER_GROUP))) {
 #ifndef __CCE_KT_TEST__
+#if (__NPU_ARCH__ != 9201)
             CrossCoreWaitFlag<SYNC_MODE4, PIPE_MTE1>(1 + FLAG_ID_MAX);
+#endif
             CrossCoreWaitFlag<SYNC_MODE4, PIPE_MTE1>(1);
 #endif
             return;
@@ -250,7 +252,9 @@ public:
         }
         if (unlikely((bl1pingpong_ == 1) && (tiling_->vecCoreParallel == 1))) {
 #ifndef __CCE_KT_TEST__
+#if (__NPU_ARCH__ != 9201)
             CrossCoreWaitFlag<SYNC_MODE4, PIPE_MTE1>(1 + FLAG_ID_MAX);
+#endif
             CrossCoreWaitFlag<SYNC_MODE4, PIPE_MTE1>(1);
 #endif
             return;
@@ -259,7 +263,9 @@ public:
         if (likely(bl1pingpong_ == DOUBLE_BUFFER)) {
             if (bL1BufIdx == 1) {
 #ifndef __CCE_KT_TEST__
+#if (__NPU_ARCH__ != 9201)
                 CrossCoreWaitFlag<SYNC_MODE4, PIPE_MTE1>(1 + FLAG_ID_MAX);
+#endif
 #endif
             } else {
 #ifndef __CCE_KT_TEST__
@@ -274,7 +280,9 @@ public:
         if constexpr (IS_4BIT_WEIGHT ||
                       (IsSameType<wType, int8_t>::value && (!bTrans || antiQuantType == Mc2QuantType::PER_GROUP))) {
 #ifndef __CCE_KT_TEST__
+#if (__NPU_ARCH__ != 9201)
             CrossCoreSetFlag<SYNC_MODE4, PIPE_MTE1>(SYNC_AIV_AIC_FLAG + FLAG_ID_MAX);
+#endif
             CrossCoreSetFlag<SYNC_MODE4, PIPE_MTE1>(SYNC_AIV_AIC_FLAG);
 #endif
             return;
@@ -289,7 +297,9 @@ public:
 
         if (unlikely((bl1pingpong_ == 1) && (tiling_->vecCoreParallel == 1))) {
 #ifndef __CCE_KT_TEST__
+#if (__NPU_ARCH__ != 9201)
             CrossCoreSetFlag<SYNC_MODE4, PIPE_MTE1>(SYNC_AIV_AIC_FLAG + FLAG_ID_MAX);
+#endif
             CrossCoreSetFlag<SYNC_MODE4, PIPE_MTE1>(SYNC_AIV_AIC_FLAG);
 #endif
             return;
@@ -298,7 +308,9 @@ public:
         if (likely(bl1pingpong_ == DOUBLE_BUFFER)) {
             if (bL1BufIdx == 1) {
 #ifndef __CCE_KT_TEST__
+#if (__NPU_ARCH__ != 9201)
                 CrossCoreSetFlag<SYNC_MODE4, PIPE_MTE1>(SYNC_AIV_AIC_FLAG + FLAG_ID_MAX);
+#endif
 #endif
             } else {
 #ifndef __CCE_KT_TEST__
@@ -363,6 +375,7 @@ public:
     int8_t bl1pingpong_;
     int8_t al1pingpong_;
     int8_t biasPingPong_;
+    bool isA6SecondVecTask_ = false;
 
     int32_t curBlockIdx_;
     int32_t nDimIdx_;
@@ -1718,9 +1731,15 @@ Mc2WeightQuantBatchMatmulV2RegBaseCommonKernel<xType, wType, biasType, yType, aT
 
     uint32_t l1BufOffset = curBL1BufIdx * bL1DataSize_;
     int64_t l1Offset = l1BufOffset;
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201)
+    if (isA6SecondVecTask_ && nBL1Len_ > tiling_->nBubSize) {
+        l1Offset += tiling_->nBubSize * BLOCK_CUBE;
+    }
+#else
     if (AscendC::GetSubBlockIdx() == 1 && nBL1Len_ > tiling_->nBubSize) {
         l1Offset += AscendC::GetSubBlockIdx() * tiling_->nBubSize * BLOCK_CUBE;
     }
+#endif
 
     CopyVecOut2L1(l1Offset, weightOutUb_[ubOutBufIdx_ * vecWeightOutSize_], bubKLen, bubNLen);
     SetFlag<HardEvent::MTE3_V>(ubOutBufIdx_);
@@ -1850,12 +1869,18 @@ Mc2WeightQuantBatchMatmulV2RegBaseCommonKernel<xType, wType, biasType, yType, aT
     if constexpr (antiQuantType == Mc2QuantType::PER_GROUP) {
         int64_t nl1Offset = 0;
         int64_t kl1Offset = 0;
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201)
+        if (isA6SecondVecTask_ && twoVectorCoreSplitK_ && kBL1Len_ > bubKLen) {
+            kl1Offset += tiling_->kBubSize;
+        }
+#else
         if (AscendC::GetSubBlockIdx() == 1 && twoVectorCoreSplitK_ && kBL1Len_ > bubKLen) {
             // 存在尾块kBL1Len_= bubKLen的情况，此时两个vec核处理同一块BL1buffer,往同一个地址搬运
             kl1Offset += CeilDiv(CeilDiv(kBL1Len_, tiling_->kBubSize), 2) * tiling_->kBubSize;
         } else if (AscendC::GetSubBlockIdx() == 1 && twoVectorCoreSplitN_ && nBL1Len_ > bubNLen) {
             nl1Offset += CeilDiv(CeilDiv(nBL1Len_, tiling_->nBubSize), 2) * tiling_->nBubSize;
         }
+#endif
         l1Offset += nl1Offset * CeilAlign(kBL1Len_, BLOCK_CUBE) + kl1Offset * BLOCK_CUBE;
     } else {
         // not support this scenario
@@ -2054,6 +2079,22 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2RegBaseCommonKernel<
     if constexpr (antiQuantType == Mc2QuantType::PER_GROUP && !weightNz && bTrans) {
         // A16W4-ND-perGroup, A16W8-ND-perGroup
         // 只在n方向切分，且只有2个或1个任务。一个任务时AIV0，AIV1执行相同的任务
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201)
+        isA6SecondVecTask_ = false;
+        const int64_t originalNBL1Offset = nBL1Offset_;
+        vecNBL1Len_ = Min(tiling_->nBubSize, static_cast<uint64_t>(nBL1Len_));
+        WaitForCube();
+        BL1Process(curBL1BufIdx_, nBL1Offset_, kBL1Offset_, kBL1Len_, baseUseN_);
+        if (nBL1Len_ > tiling_->nBubSize) {
+            nBL1Offset_ = originalNBL1Offset + tiling_->nBubSize;
+            vecNBL1Len_ = nBL1Len_ - tiling_->nBubSize;
+            isA6SecondVecTask_ = true;
+            BL1Process(curBL1BufIdx_, nBL1Offset_, kBL1Offset_, kBL1Len_, baseUseN_);
+        }
+        NotifyCube();
+        nBL1Offset_ = originalNBL1Offset;
+        isA6SecondVecTask_ = false;
+#else
         if (AscendC::GetSubBlockIdx() == 1) {
             nBL1Offset_ += nBL1Len_ > tiling_->nBubSize ? tiling_->nBubSize : 0;
             vecNBL1Len_ = nBL1Len_ > tiling_->nBubSize ? nBL1Len_ - tiling_->nBubSize : nBL1Len_;
@@ -2061,9 +2102,27 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2RegBaseCommonKernel<
             vecNBL1Len_ = Min(tiling_->nBubSize, static_cast<uint64_t>(nBL1Len_));
         }
         VectorProcess();
+#endif
     } else if constexpr (antiQuantType == Mc2QuantType::PER_GROUP && !weightNz && !bTrans) {
         // A16W4-ND-perGroup, A16W8-ND-perGroup
         // 只在k方向切分，且只有2个或1个任务。一个任务时AIV0，AIV1执行相同的任务
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201)
+        isA6SecondVecTask_ = false;
+        const int64_t originalKBL1Offset = kBL1Offset_;
+        twoVectorCoreSplitK_ = kBL1Len_ > tiling_->kBubSize;
+        vecKBL1Len_ = Min(tiling_->kBubSize, static_cast<uint64_t>(kBL1Len_));
+        WaitForCube();
+        BL1Process(curBL1BufIdx_, nBL1Offset_, kBL1Offset_, kBL1Len_, baseUseN_);
+        if (twoVectorCoreSplitK_) {
+            kBL1Offset_ = originalKBL1Offset + tiling_->kBubSize;
+            vecKBL1Len_ = kBL1Len_ - tiling_->kBubSize;
+            isA6SecondVecTask_ = true;
+            BL1Process(curBL1BufIdx_, nBL1Offset_, kBL1Offset_, kBL1Len_, baseUseN_);
+        }
+        NotifyCube();
+        kBL1Offset_ = originalKBL1Offset;
+        isA6SecondVecTask_ = false;
+#else
         twoVectorCoreSplitK_ = kBL1Len_ > tiling_->kBubSize;
         if (AscendC::GetSubBlockIdx() == 1) {
             kBL1Offset_ += twoVectorCoreSplitK_ ? tiling_->kBubSize : 0;
@@ -2072,6 +2131,7 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2RegBaseCommonKernel<
             vecKBL1Len_ = Min(tiling_->kBubSize, static_cast<uint64_t>(kBL1Len_));
         }
         VectorProcess();
+#endif
     } else if constexpr (IS_4BIT_WEIGHT) {
         // A16W4-NZ-perGroup, A16Fp4-NZ-perGroup
         uint64_t nBubFactor = CeilDiv(nBL1Len_, tiling_->nBubSize);

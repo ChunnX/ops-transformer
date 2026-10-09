@@ -37,7 +37,12 @@ __global__ __aicore__ void allto_allv_grouped_mat_mul(GM_ADDR gmmxGM, GM_ADDR gm
                                                       GM_ADDR permuteOutOptionalGM, GM_ADDR workspaceGM,
                                                       GM_ADDR tilingGM)
 {
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201)
+    // A6(ascend910_96) AIC:AIV为1:1
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
+#else
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+#endif
     if (workspaceGM == nullptr) {
         return;
     }

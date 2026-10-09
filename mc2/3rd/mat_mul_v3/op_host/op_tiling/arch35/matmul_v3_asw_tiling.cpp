@@ -135,6 +135,7 @@ using namespace strategy;
 
 MC2_MM_REGISTER_TILING_TEMPLATE(Mc2MatMulV3, Mc2MatMulV3AswTiling, DAV_3510, BASE);
 MC2_MM_REGISTER_TILING_TEMPLATE(Mc2MatMulV3, Mc2MatMulV3AswTiling, DAV_RESV, BASE); // supportMmadS8S4平台
+MC2_MM_REGISTER_TILING_TEMPLATE(Mc2MatMulV3, Mc2MatMulV3AswTiling, DAV_9201, BASE);
 
 void Mc2MatMulV3AswTiling::CalcTailBasicBlock()
 {
