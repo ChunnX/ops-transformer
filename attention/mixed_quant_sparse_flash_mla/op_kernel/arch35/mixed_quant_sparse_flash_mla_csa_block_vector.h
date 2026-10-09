@@ -246,7 +246,7 @@ private:
                                          const RunInfo<HIGH_PERF>& mq35VecRunInfo,
                                          ConstInfo<HIGH_PERF>& mq35VecConstInfo);
     __aicore__ inline void CopyInKvNotSparse(LocalTensor<KV_T> kvMergUb, int64_t v0Loop, int64_t dealRow,
-                                             int64_t s2StartIdx, const RunInfo<HIGH_PERF>& mq35VecRunInfo,
+                                             int64_t s2StartOffset, const RunInfo<HIGH_PERF>& mq35VecRunInfo,
                                              ConstInfo<HIGH_PERF>& mq35VecConstInfo);
     template <bool IS_FULL = false>
     __aicore__ inline void CopyInKvSparse(LocalTensor<KV_T> kvInUb, int64_t startRow, int64_t* tokenData,
@@ -279,7 +279,7 @@ private:
                                                ConstInfo<HIGH_PERF>& mq35VecConstInfo,
                                                LocalTensor<VEC2_RES_T>& mq35Vec2ResultUb, int64_t vec2S1Idx,
                                                int64_t vec2CalcSize);
-    __aicore__ inline void SoftmaxInitBuffer(uint32_t& ubAddr);
+    __aicore__ inline void SoftmaxInitBuffer(uint32_t& ubBaseAddr);
     __aicore__ inline void GetExtremeValue(T& negativeScalar);
     __aicore__ inline void InitSinksBuffer(ConstInfo<HIGH_PERF>& mq35VecConstInfo);
     __aicore__ inline int32_t GetSeqLenForPhyAddr(int32_t bIdx, bool hasActualSeq, bool hasCuSeqlens,

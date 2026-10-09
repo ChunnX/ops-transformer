@@ -225,7 +225,7 @@ private:
                                            ConstInfo& qs35VecConstInfo);
     __aicore__ inline void GetRealS2Addr(int64_t* tokenData, int64_t s2IdxInBase, const RunInfo& qs35VecRunInfo,
                                          ConstInfo& qs35VecConstInfo);
-    __aicore__ inline void CopyInKvNotSparse(LocalTensor<KV_T> kvMergUb, int64_t v0ProcessSize, int64_t s2StartIdx,
+    __aicore__ inline void CopyInKvNotSparse(LocalTensor<KV_T> kvMergUb, int64_t v0ProcessSize, int64_t s2StartOffset,
                                              const RunInfo& qs35VecRunInfo, ConstInfo& qs35VecConstInfo);
     __aicore__ inline uint32_t CopyInKvSparse(LocalTensor<KV_T> kvInUb, int64_t startRow, int64_t* tokenData,
                                               const RunInfo& qs35VecRunInfo, ConstInfo& qs35VecConstInfo);
@@ -236,9 +236,6 @@ private:
     __aicore__ inline void CopyOutKvUb2Gm(Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD>& v0ResGm,
                                           LocalTensor<Q_T> kvOutUb, int64_t dealRow, int64_t s2StartIdx,
                                           const RunInfo& qs35VecRunInfo, ConstInfo& qs35VecConstInfo);
-    __aicore__ inline void CopyOutMrgeResult(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>& outputL1,
-                                             int64_t mte2Size, int64_t mte3Size, int64_t s2keyOffset,
-                                             int64_t mergeMte3Idx, const RunInfo& qs35VecRunInfo);
     __aicore__ inline void CopyInSingleKv(LocalTensor<KV_T> kvInUb, int64_t startRow, int64_t keyOffset);
     /* VEC2_RES_T 表示bmm2ResUb当前的类型，VEC2_RES_T = Q_T那么不需要做Cast。另外，无效行场景当前默认需要做Cast */
     using VEC2_RES_T = T;

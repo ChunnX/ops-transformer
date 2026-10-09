@@ -182,7 +182,7 @@ private:
     __aicore__ inline void CalcMSizeInfo(RunInfo& kvSfaKernelRunInfo);
     __aicore__ inline void CalcFirstTensorOffsets(RunInfo& kvSfaKernelRunInfo, uint64_t qsfaActualSeqQPrefixSum,
                                                   uint64_t actualSeqKVPrefixSum);
-    __aicore__ inline void GetAxisStartIdx(uint32_t bN2EndPrev, uint32_t gS1EndPrev, uint32_t s2EndPrev);
+    __aicore__ inline void GetAxisStartIdx(uint32_t bN2EndPrev, uint32_t s1GEndPrev, uint32_t s2EndPrev);
     __aicore__ inline uint64_t GetBalanceActualSeqLengths(GlobalTensor<int32_t>& actualSeqLengths, uint32_t bIdx);
     __aicore__ inline uint32_t GetActualSeqLenKV(uint32_t bIdx);
     __aicore__ inline void GetBN2Idx(uint32_t bN2Idx, uint32_t& bIdx, uint32_t& n2Idx);
