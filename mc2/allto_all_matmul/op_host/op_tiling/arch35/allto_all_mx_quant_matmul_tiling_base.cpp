@@ -409,9 +409,10 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::InitTilingContextParameters()
         opName_, MatmulAlltoAllTilingUtil::SetAttrsInfo(context_, opName_, contextInfo_, ALLTOALL_MATMUL_INDEX_SCHEMA));
     MC2_CHECK_LOG_RET(opName_, SetMxDataTypeInfo(context_, opName_, contextInfo_));
     MC2_CHECK_LOG_RET(opName_, SetAlltoAllMatmulShapeInfo(context_, contextInfo_));
-    // 判断是否使用apace实现: all2all_out为空且卡数<=8
+    // A6不支持APACE实现，仅A5在all2all_out为空且卡数<=8时使用APACE。
     constexpr uint64_t APACE_IMPL_MAX_RANK_DIM = 8;
-    usingApaceImpl_ = (!contextInfo_.allToAllOutFlag) && (contextInfo_.args_.rankDim <= APACE_IMPL_MAX_RANK_DIM);
+    usingApaceImpl_ = (npuArch_ == Ops::Base::DAV_3510) && (!contextInfo_.allToAllOutFlag) &&
+                      (contextInfo_.args_.rankDim <= APACE_IMPL_MAX_RANK_DIM);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -424,14 +425,14 @@ CutResult AllToAllMxQuantMatmulTilingBase::GetCutResOfCommAndCompute()
         OP_LOGD(opName_, "GetAndConvertCommMode failed, use default commMode AICPU for tiling.");
     }
     CutResult cutRes;
-    if ((!usingApaceImpl_) && (contextInfo_.args_.rankDim == COMM_RANKDIM_FOUR)) {
+    if ((!usingApaceImpl_) && (npuArch_ == Ops::Base::DAV_3510) && (contextInfo_.args_.rankDim == COMM_RANKDIM_FOUR)) {
         // A5的4卡形态使用基于拟合数据的公式化tiling
         AlltoAllMatmulFitBalanceTiling tiling(matmulQuantType_, contextInfo_.args_, TopoType::STANDARD_CARD, commMode);
         cutRes = tiling.GetTiling();
     } else {
         OP_LOGD(opName_, "Falling back to formulaic tiling for arch35 tiling");
         AlltoAllMM alltoallMatmulTileFormulate(contextInfo_.args_, contextInfo_.args_.rankDim, KernelType::ALL_TO_ALL,
-                                               Ops::Base::DAV_3510, true);
+                                               npuArch_, true);
         if (commMode == mc2tiling::A5_AICPU_TS_ENGINE) {
             constexpr uint64_t MX_AICPU_TILING_MAX_NUM = 3;
             alltoallMatmulTileFormulate.tilingM_.SetMaxTileCnt(MX_AICPU_TILING_MAX_NUM);
@@ -1111,6 +1112,8 @@ AllToAllMxQuantMatmulTilingBase::AllToAllMxQuantMatmulTilingBase(gert::TilingCon
 
 // 注册tiling类
 REGISTER_TILING_TEMPLATE_WITH_ARCH(AlltoAllMatmul, AllToAllMxQuantMatmulTilingBase,
-                                   static_cast<int32_t>(Ops::Base::DAV_3510), 2);
+                                   std::vector<int32_t>({static_cast<int32_t>(Ops::Base::DAV_3510),
+                                                         static_cast<int32_t>(Ops::Base::DAV_9201)}),
+                                   2);
 
 } // namespace MC2Tiling

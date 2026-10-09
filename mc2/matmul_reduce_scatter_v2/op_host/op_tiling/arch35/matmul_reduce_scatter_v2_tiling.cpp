@@ -53,7 +53,8 @@ constexpr uint32_t ALG_CONFIG_RANK_SIZE = 16U;
 // 新功能从这里开始
 bool MatmulReduceScatterV2Tiling::IsCapable()
 {
-    if ((npuArch_ == Ops::Base::DAV_3510) && ((args_.geAType == ge::DT_BF16) || (args_.geAType == ge::DT_FLOAT16))) {
+    if ((npuArch_ == Ops::Base::DAV_3510 || npuArch_ == Ops::Base::DAV_9201) && // A6复用A5 tiling路径
+        ((args_.geAType == ge::DT_BF16) || (args_.geAType == ge::DT_FLOAT16))) {
         OP_LOGI(opName_, "start with MatmulReduceScatterV2Tiling tiling.");
         return true;
     }
@@ -262,7 +263,8 @@ CutResult MatmulReduceScatterV2Tiling::GetTilingResult()
 }
 
 // 注册Tiling类
-REGISTER_TILING_TEMPLATE_WITH_ARCH(MatmulReduceScatterV2, MatmulReduceScatterV2Tiling,
-                                   static_cast<int32_t>(Ops::Base::DAV_3510), 0);
+REGISTER_TILING_TEMPLATE_WITH_ARCH(
+    MatmulReduceScatterV2, MatmulReduceScatterV2Tiling,
+    std::vector<int32_t>({static_cast<int32_t>(Ops::Base::DAV_3510), static_cast<int32_t>(Ops::Base::DAV_9201)}), 0);
 
 } // namespace optiling

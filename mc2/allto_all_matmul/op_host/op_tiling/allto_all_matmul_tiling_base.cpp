@@ -56,6 +56,12 @@ ge::graphStatus AllToAllMatmulTilingBase::GetPlatformInfo()
     OP_TILING_CHECK(platformInfo == nullptr, OP_LOGE(opName_, "Fail to get platform info"), return ge::GRAPH_FAILED);
     platform_ascendc::PlatformAscendC ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     contextInfo_.args_.aicCoreNum = ascendcPlatform.GetCoreNumAic();
+    const uint32_t aivCoreNum = ascendcPlatform.GetCoreNumAiv();
+    cvRatio_ = 1U;
+    if (contextInfo_.args_.aicCoreNum != 0U) {
+        const uint64_t cvRatio = static_cast<uint64_t>(aivCoreNum) / contextInfo_.args_.aicCoreNum;
+        cvRatio_ = cvRatio == 0U ? 1U : static_cast<uint32_t>(cvRatio);
+    }
     npuArch_ = ascendcPlatform.GetCurNpuArch();
     libApiWorkSpaceSize_ = ascendcPlatform.GetLibApiWorkSpaceSize();
     return ge::GRAPH_SUCCESS;
