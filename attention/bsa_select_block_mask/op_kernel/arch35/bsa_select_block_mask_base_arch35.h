@@ -43,38 +43,33 @@ public:
     static constexpr BSALayout LAYOUT_KV = BSAT::layoutKV;
 
     __aicore__ inline BSASelectBlockMaskBase(){};
-    __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *blockShape,
-                                __gm__ uint8_t *postBlockShape, __gm__ uint8_t *actualSeqLensQ,
-                                __gm__ uint8_t *actualSeqLensKV, __gm__ uint8_t *actualBlockLenQ,
-                                __gm__ uint8_t *actualBlockLenKV, __gm__ uint8_t *maskOut, __gm__ uint8_t *workspace,
-                                const optiling::BSASelectBlockMaskTilingData *__restrict tiling, TPipe *tPipe);
+    __aicore__ inline void Init(__gm__ uint8_t* query, __gm__ uint8_t* key, __gm__ uint8_t* blockShape,
+                                __gm__ uint8_t* postBlockShape, __gm__ uint8_t* actualSeqLensQ,
+                                __gm__ uint8_t* actualSeqLensKV, __gm__ uint8_t* actualBlockLenQ,
+                                __gm__ uint8_t* actualBlockLenKV, __gm__ uint8_t* maskOut, __gm__ uint8_t* workspace,
+                                const optiling::BSASelectBlockMaskTilingData* __restrict tiling, TPipe* tPipe);
     __aicore__ inline void Process();
 
 private:
     __aicore__ inline void InitConstInfo();
-    __aicore__ inline void InitWorkspace(__gm__ uint8_t *workspace);
-    __aicore__ inline void CalcMultiCoreOffset(uint32_t &startRow, uint32_t &endRow);
-    __aicore__ inline void CalcKPoolingRange(uint32_t &startKBlock, uint32_t &endKBlock);
+    __aicore__ inline void InitWorkspace(__gm__ uint8_t* workspace);
+    __aicore__ inline void CalcMultiCoreOffset(uint32_t& startRow, uint32_t& endRow);
+    __aicore__ inline void CalcKPoolingRange(uint32_t& startKBlock, uint32_t& endKBlock);
     // D2: dynamic partition by validYBlocks
-    __aicore__ inline void CalcKPoolingRangeValid(uint32_t &startKBlock, uint32_t &endKBlock, uint32_t validYBlocks);
+    __aicore__ inline void CalcKPoolingRangeValid(uint32_t& startKBlock, uint32_t& endKBlock, uint32_t validYBlocks);
     // D2: dynamic partition by validXBlocks
-    __aicore__ inline void CalcMultiCoreOffsetValid(uint32_t &startRow, uint32_t &endRow, uint32_t validXBlocks);
+    __aicore__ inline void CalcMultiCoreOffsetValid(uint32_t& startRow, uint32_t& endRow, uint32_t validXBlocks);
     __aicore__ inline void ProcessPoolingK(uint32_t batchIdx, uint32_t headIdx, uint64_t seqPrefixSumKV,
                                            uint64_t blockPrefixSumKV, uint32_t validYBlocks);
     __aicore__ inline void ProcessPoolingQ(uint32_t batchIdx, uint32_t headIdx, uint32_t tokenStart, uint32_t tokenEnd,
                                            uint64_t seqPrefixSumQ, uint64_t blockPrefixSumQ);
     __aicore__ inline void ProcessMatmulSoftmax(uint32_t batchIdx, uint32_t headIdx, uint32_t qChunkStart,
-                                                uint32_t curQChunkSize, uint32_t validYBlocks);
+                                                uint32_t curQChunkSize, uint32_t validXBlocks, uint32_t validYBlocks);
     __aicore__ inline void ProcessSoftmaxSecondPass(uint32_t qChunkStart, uint32_t curQChunkSize, uint32_t batchIdx,
-                                                    uint32_t headIdx, uint32_t validYBlocks);
-    __aicore__ inline void ProcessPostSoftmaxPooling(uint32_t batchIdx, uint32_t headIdx, uint32_t validXBlocks,
-                                                     uint32_t validYBlocks);
-    // 标量兜底路径（postBlockShape 超出向量化路径支持上限时使用，现实规格不会命中）
-    __aicore__ inline void ProcessPostSoftmaxPoolingScalar(uint32_t batchIdx, uint32_t headIdx, uint32_t validXBlocks,
-                                                           uint32_t validYBlocks);
+                                                    uint32_t headIdx, uint32_t validXBlocks, uint32_t validYBlocks);
 
-    TPipe *pipe = nullptr;
-    const optiling::BSASelectBlockMaskTilingData *__restrict tilingData = nullptr;
+    TPipe* pipe = nullptr;
+    const optiling::BSASelectBlockMaskTilingData* __restrict tilingData = nullptr;
     BSAConstInfo constInfo;
 
     BSAMatmulService<BSAT> matmulService;
@@ -89,7 +84,7 @@ private:
 
     GlobalTensor<POOL_OUT_T> qCmpGm, kCmpGm;
     GlobalTensor<SFTMAX_OUT_T> attnScoreFp16Gm;
-    GlobalTensor<SFTMAX_OUT_T> pooledScoreGm;
+    GlobalTensor<T> postStagingGm;
     GlobalTensor<T> scoreFp32Gm;
     GlobalTensor<int32_t> topkWorkspaceGm;
 };
@@ -106,7 +101,7 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::InitConstInfo()
     }
     constInfo.aivNum = GetBlockNum() * AIC_AIV_RATIO;
 
-    auto &baseInfo = tilingData->baseParams;
+    auto& baseInfo = tilingData->baseParams;
     constInfo.batchSize = baseInfo.batchSize;
     constInfo.numHeads = baseInfo.numHeads;
     constInfo.maxQSeqlen = baseInfo.maxQSeqlen;
@@ -121,7 +116,7 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::InitConstInfo()
     constInfo.topKValue = baseInfo.topKValue;
     constInfo.sparsityMode = static_cast<BSASparseMode>(baseInfo.sparsityMode);
 
-    auto &mcInfo = tilingData->multiCoreParams;
+    auto& mcInfo = tilingData->multiCoreParams;
     constInfo.coreNum = mcInfo.coreNum;
     constInfo.activeCoreNum = mcInfo.activeCoreNum;
     constInfo.rowsPerCore = mcInfo.rowsPerCore;
@@ -133,12 +128,12 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::InitConstInfo()
     constInfo.kChunkSize = baseInfo.kChunkSize;
     constInfo.activeYVecCoreNum = mcInfo.activeYVecCoreNum;
 
-    auto &outInfo = tilingData->outputParams;
+    auto& outInfo = tilingData->outputParams;
     constInfo.qCmpOffset = 0;
     constInfo.kCmpOffset = constInfo.qCmpOffset + outInfo.qCmpSize;
     constInfo.attnScoreOffset = constInfo.kCmpOffset + outInfo.kCmpSize;
-    constInfo.pooledScoreOffset = constInfo.attnScoreOffset + outInfo.attnScoreSize;
-    constInfo.softmaxTmpOffset = constInfo.pooledScoreOffset + outInfo.pooledScoreSize;
+    constInfo.postStagingOffset = (constInfo.attnScoreOffset + outInfo.attnScoreSize + 511) / 512 * 512;
+    constInfo.softmaxTmpOffset = (constInfo.postStagingOffset + outInfo.postStagingSize + 511) / 512 * 512;
     constInfo.topkWorkspaceOffset = constInfo.softmaxTmpOffset + outInfo.softmaxTmpSize;
 
     constInfo.usePostBlockShape = baseInfo.usePostBlockShape;
@@ -149,30 +144,30 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::InitConstInfo()
 }
 
 template <typename BSAT>
-__aicore__ inline void BSASelectBlockMaskBase<BSAT>::InitWorkspace(__gm__ uint8_t *workspace)
+__aicore__ inline void BSASelectBlockMaskBase<BSAT>::InitWorkspace(__gm__ uint8_t* workspace)
 {
-    auto &outInfo = tilingData->outputParams;
+    auto& outInfo = tilingData->outputParams;
 
-    qCmpGm.SetGlobalBuffer((__gm__ POOL_OUT_T *)(workspace + constInfo.qCmpOffset),
+    qCmpGm.SetGlobalBuffer((__gm__ POOL_OUT_T*)(workspace + constInfo.qCmpOffset),
                            outInfo.qCmpSize / sizeof(POOL_OUT_T));
-    kCmpGm.SetGlobalBuffer((__gm__ POOL_OUT_T *)(workspace + constInfo.kCmpOffset),
+    kCmpGm.SetGlobalBuffer((__gm__ POOL_OUT_T*)(workspace + constInfo.kCmpOffset),
                            outInfo.kCmpSize / sizeof(POOL_OUT_T));
-    attnScoreFp16Gm.SetGlobalBuffer((__gm__ SFTMAX_OUT_T *)(workspace + constInfo.attnScoreOffset),
+    attnScoreFp16Gm.SetGlobalBuffer((__gm__ SFTMAX_OUT_T*)(workspace + constInfo.attnScoreOffset),
                                     outInfo.attnScoreSize / sizeof(SFTMAX_OUT_T));
     if (constInfo.usePostBlockShape) {
-        pooledScoreGm.SetGlobalBuffer((__gm__ SFTMAX_OUT_T *)(workspace + constInfo.pooledScoreOffset),
-                                      outInfo.pooledScoreSize / sizeof(SFTMAX_OUT_T));
+        postStagingGm.SetGlobalBuffer((__gm__ T*)(workspace + constInfo.postStagingOffset),
+                                      outInfo.postStagingSize / sizeof(T));
     }
-    scoreFp32Gm.SetGlobalBuffer((__gm__ T *)(workspace + constInfo.softmaxTmpOffset),
+    scoreFp32Gm.SetGlobalBuffer((__gm__ T*)(workspace + constInfo.softmaxTmpOffset),
                                 outInfo.softmaxTmpSize / sizeof(T));
-    topkWorkspaceGm.SetGlobalBuffer((__gm__ int32_t *)(workspace + constInfo.topkWorkspaceOffset),
+    topkWorkspaceGm.SetGlobalBuffer((__gm__ int32_t*)(workspace + constInfo.topkWorkspaceOffset),
                                     outInfo.topkWorkspaceSize / sizeof(int32_t));
 
     SyncAll();
 }
 
 template <typename BSAT>
-__aicore__ inline void BSASelectBlockMaskBase<BSAT>::CalcMultiCoreOffset(uint32_t &startRow, uint32_t &endRow)
+__aicore__ inline void BSASelectBlockMaskBase<BSAT>::CalcMultiCoreOffset(uint32_t& startRow, uint32_t& endRow)
 {
     uint32_t coreIdx = constInfo.aicIdx;
     uint32_t extraCores = constInfo.extraCores;
@@ -193,7 +188,7 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::CalcMultiCoreOffset(uint32_
 }
 
 template <typename BSAT>
-__aicore__ inline void BSASelectBlockMaskBase<BSAT>::CalcKPoolingRange(uint32_t &startKBlock, uint32_t &endKBlock)
+__aicore__ inline void BSASelectBlockMaskBase<BSAT>::CalcKPoolingRange(uint32_t& startKBlock, uint32_t& endKBlock)
 {
     uint32_t coreIdx = constInfo.aivIdx; // vec idx
     uint32_t extraYCores = constInfo.extraYCores;
@@ -215,7 +210,7 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::CalcKPoolingRange(uint32_t 
 
 // D2: dynamic partition by validYBlocks (early-return style)
 template <typename BSAT>
-__aicore__ inline void BSASelectBlockMaskBase<BSAT>::CalcKPoolingRangeValid(uint32_t &startKBlock, uint32_t &endKBlock,
+__aicore__ inline void BSASelectBlockMaskBase<BSAT>::CalcKPoolingRangeValid(uint32_t& startKBlock, uint32_t& endKBlock,
                                                                             uint32_t validYBlocks)
 {
     if (validYBlocks == 0) {
@@ -256,8 +251,9 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::CalcKPoolingRangeValid(uint
 }
 
 // D2: dynamic partition by validXBlocks (early-return style)
+// post 模式下按 postXBlock 组对齐切分：保证跨 chunk 的 post 行组片元不跨核（staging 同核合并）
 template <typename BSAT>
-__aicore__ inline void BSASelectBlockMaskBase<BSAT>::CalcMultiCoreOffsetValid(uint32_t &startRow, uint32_t &endRow,
+__aicore__ inline void BSASelectBlockMaskBase<BSAT>::CalcMultiCoreOffsetValid(uint32_t& startRow, uint32_t& endRow,
                                                                               uint32_t validXBlocks)
 {
     if (validXBlocks == 0) {
@@ -273,6 +269,16 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::CalcMultiCoreOffsetValid(ui
     if (coreIdx >= actualActiveCores) {
         startRow = 0;
         endRow = 0;
+        return;
+    }
+
+    if (constInfo.usePostBlockShape) {
+        // 以 postXBlock 组为最小分配单位：组不跨核，负载差 ≤ postXBlock-1 行
+        uint32_t postXBlock = constInfo.postBlockShapeX;
+        uint32_t totalGroups = BSACeilDiv(validXBlocks, postXBlock);
+        uint32_t groupsPerCore = BSACeilDiv(totalGroups, actualActiveCores);
+        startRow = coreIdx * groupsPerCore * postXBlock;
+        endRow = BSAMin(startRow + groupsPerCore * postXBlock, validXBlocks);
         return;
     }
 
@@ -299,60 +305,57 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::CalcMultiCoreOffsetValid(ui
 
 template <typename BSAT>
 __aicore__ inline void BSASelectBlockMaskBase<BSAT>::Init(
-    __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *blockShape, __gm__ uint8_t *postBlockShape,
-    __gm__ uint8_t *actualSeqLensQ, __gm__ uint8_t *actualSeqLensKV, __gm__ uint8_t *actualBlockLenQ,
-    __gm__ uint8_t *actualBlockLenKV, __gm__ uint8_t *maskOut, __gm__ uint8_t *workspace,
-    const optiling::BSASelectBlockMaskTilingData *__restrict tiling, TPipe *tPipe)
+    __gm__ uint8_t* query, __gm__ uint8_t* key, __gm__ uint8_t* blockShape, __gm__ uint8_t* postBlockShape,
+    __gm__ uint8_t* actualSeqLensQ, __gm__ uint8_t* actualSeqLensKV, __gm__ uint8_t* actualBlockLenQ,
+    __gm__ uint8_t* actualBlockLenKV, __gm__ uint8_t* maskOut, __gm__ uint8_t* workspace,
+    const optiling::BSASelectBlockMaskTilingData* __restrict tiling, TPipe* tPipe)
 {
     pipe = tPipe;
     tilingData = tiling;
     InitConstInfo();
 
-    queryGm.SetGlobalBuffer((__gm__ IN_T *)query);
-    keyGm.SetGlobalBuffer((__gm__ IN_T *)key);
+    queryGm.SetGlobalBuffer((__gm__ IN_T*)query);
+    keyGm.SetGlobalBuffer((__gm__ IN_T*)key);
     if (blockShape != nullptr) {
-        blockShapeGm.SetGlobalBuffer((__gm__ int64_t *)blockShape, 2);
+        blockShapeGm.SetGlobalBuffer((__gm__ int64_t*)blockShape, 2);
     }
     if (actualSeqLensQ != nullptr) {
-        actualSeqLensQGm.SetGlobalBuffer((__gm__ int64_t *)actualSeqLensQ, constInfo.batchSize);
+        actualSeqLensQGm.SetGlobalBuffer((__gm__ int64_t*)actualSeqLensQ, constInfo.batchSize);
     } else {
-        actualSeqLensQGm.SetGlobalBuffer((__gm__ int64_t *)actualSeqLensQ, 0);
+        actualSeqLensQGm.SetGlobalBuffer((__gm__ int64_t*)actualSeqLensQ, 0);
     }
     if (actualSeqLensKV != nullptr) {
-        actualSeqLensKVGm.SetGlobalBuffer((__gm__ int64_t *)actualSeqLensKV, constInfo.batchSize);
+        actualSeqLensKVGm.SetGlobalBuffer((__gm__ int64_t*)actualSeqLensKV, constInfo.batchSize);
     } else {
-        actualSeqLensKVGm.SetGlobalBuffer((__gm__ int64_t *)actualSeqLensKV, 0);
+        actualSeqLensKVGm.SetGlobalBuffer((__gm__ int64_t*)actualSeqLensKV, 0);
     }
     if (actualBlockLenQ != nullptr) {
         uint32_t totalQBlocks = constInfo.batchSize * constInfo.xBlocks;
-        actualBlockLenQGm.SetGlobalBuffer((__gm__ int64_t *)actualBlockLenQ, totalQBlocks);
+        actualBlockLenQGm.SetGlobalBuffer((__gm__ int64_t*)actualBlockLenQ, totalQBlocks);
     } else {
-        actualBlockLenQGm.SetGlobalBuffer((__gm__ int64_t *)actualBlockLenQ, 0);
+        actualBlockLenQGm.SetGlobalBuffer((__gm__ int64_t*)actualBlockLenQ, 0);
     }
     if (actualBlockLenKV != nullptr) {
         uint32_t totalKVBlocks = constInfo.batchSize * constInfo.yBlocks;
-        actualBlockLenKVGm.SetGlobalBuffer((__gm__ int64_t *)actualBlockLenKV, totalKVBlocks);
+        actualBlockLenKVGm.SetGlobalBuffer((__gm__ int64_t*)actualBlockLenKV, totalKVBlocks);
     } else {
-        actualBlockLenKVGm.SetGlobalBuffer((__gm__ int64_t *)actualBlockLenKV, 0);
+        actualBlockLenKVGm.SetGlobalBuffer((__gm__ int64_t*)actualBlockLenKV, 0);
     }
-    maskOutGmU8.SetGlobalBuffer((__gm__ uint8_t *)maskOut);
+    maskOutGmU8.SetGlobalBuffer((__gm__ uint8_t*)maskOut);
 
     InitWorkspace(workspace);
 
     if ASCEND_IS_AIV {
         vectorService.InitParams(constInfo, tilingData);
         vectorService.InitBuffers(pipe);
-        vectorService.InitGM(qCmpGm, kCmpGm, attnScoreFp16Gm, scoreFp32Gm, queryGm, keyGm, actualBlockLenQGm,
-                             actualBlockLenKVGm, actualSeqLensQGm, actualSeqLensKVGm);
-        if (constInfo.usePostBlockShape) {
-            vectorService.InitPostPoolGM(attnScoreFp16Gm, pooledScoreGm);
-        }
+        vectorService.InitGM(qCmpGm, kCmpGm, attnScoreFp16Gm, scoreFp32Gm, attnScoreFp16Gm, postStagingGm, queryGm,
+                             keyGm, actualBlockLenQGm, actualBlockLenKVGm, actualSeqLensQGm, actualSeqLensKVGm);
 
         radixTopKService.InitParams(constInfo, tilingData);
         radixTopKService.InitBuffers(pipe);
-        // post 启用时 TopK 在粗粒度 pooledScore 上选择并直接输出粗粒度 mask [B,N,postX,postY]
+        // post 启用时 TopK 在 attnScore 槽粗粒度折叠分上选择并直接输出粗粒度 mask [B,N,postX,postY]
         if (constInfo.usePostBlockShape) {
-            radixTopKService.InitGM(pooledScoreGm, topkWorkspaceGm, maskOutGmU8);
+            radixTopKService.InitGM(attnScoreFp16Gm, topkWorkspaceGm, maskOutGmU8);
         } else {
             radixTopKService.InitGM(attnScoreFp16Gm, topkWorkspaceGm, maskOutGmU8);
         }
@@ -432,19 +435,13 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::Process()
                     CrossCoreWaitFlag(SYNC_V1_TO_C1_FLAG[qChunkStart & 1]);
                 }
 
-                ProcessMatmulSoftmax(batchIdx, headIdx, qChunkStart, curQChunkSize, validYBlocks);
+                ProcessMatmulSoftmax(batchIdx, headIdx, qChunkStart, curQChunkSize, validXBlocks, validYBlocks);
 
-                ProcessSoftmaxSecondPass(qChunkStart, curQChunkSize, batchIdx, headIdx, validYBlocks);
+                ProcessSoftmaxSecondPass(qChunkStart, curQChunkSize, batchIdx, headIdx, validXBlocks, validYBlocks);
             }
 
             AscendC::PipeBarrier<PIPE_ALL>();
             SyncAll<false>();
-
-            if (constInfo.usePostBlockShape) {
-                ProcessPostSoftmaxPooling(batchIdx, headIdx, validXBlocks, validYBlocks);
-                AscendC::PipeBarrier<PIPE_ALL>();
-                SyncAll<false>();
-            }
 
             if ASCEND_IS_AIV {
                 radixTopKService.ProcessRadixTopKAndWriteMask(batchIdx, headIdx);
@@ -533,7 +530,7 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::ProcessPoolingQ(uint32_t ba
 template <typename BSAT>
 __aicore__ inline void BSASelectBlockMaskBase<BSAT>::ProcessMatmulSoftmax(uint32_t batchIdx, uint32_t headIdx,
                                                                           uint32_t qChunkStart, uint32_t curQChunkSize,
-                                                                          uint32_t validYBlocks)
+                                                                          uint32_t validXBlocks, uint32_t validYBlocks)
 {
     uint32_t loopChunkSize = CV_EXEC_RATIO * constInfo.kChunkSize;
     uint32_t flagId = 0;
@@ -550,7 +547,7 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::ProcessMatmulSoftmax(uint32
         if ASCEND_IS_AIV {
             CrossCoreWaitFlag(SYNC_C1_TO_V1_FLAG[flagId % SYNC_C1_TO_V1_FLAG_NUMS]);
             vectorService.OnlineSoftmaxFirstPassChunk(qChunkStart, curQChunkSize, kChunkStart, curKChunkSize,
-                                                      validYBlocks);
+                                                      validXBlocks, validYBlocks);
         }
         flagId++;
     }
@@ -559,7 +556,8 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::ProcessMatmulSoftmax(uint32
 template <typename BSAT>
 __aicore__ inline void BSASelectBlockMaskBase<BSAT>::ProcessSoftmaxSecondPass(uint32_t qChunkStart,
                                                                               uint32_t curQChunkSize, uint32_t batchIdx,
-                                                                              uint32_t headIdx, uint32_t validYBlocks)
+                                                                              uint32_t headIdx, uint32_t validXBlocks,
+                                                                              uint32_t validYBlocks)
 {
     if ASCEND_IS_AIV {
         AscendC::PipeBarrier<PIPE_ALL>();
@@ -570,103 +568,7 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::ProcessSoftmaxSecondPass(ui
             uint32_t curKChunkSize = kChunkEnd - kChunkStart;
 
             vectorService.SoftmaxSecondPassAndCast(qChunkStart, curQChunkSize, kChunkStart, curKChunkSize, batchIdx,
-                                                   headIdx, validYBlocks);
-        }
-    }
-}
-
-template <typename BSAT>
-__aicore__ inline void BSASelectBlockMaskBase<BSAT>::ProcessPostSoftmaxPooling(uint32_t batchIdx, uint32_t headIdx,
-                                                                               uint32_t validXBlocks,
-                                                                               uint32_t validYBlocks)
-{
-    if ASCEND_IS_AIV {
-        if (constInfo.postBlockShapeY > BSA_POST_POOL_COL_CAP) {
-            // 超大 post 列宽超出向量化路径支持上限，走标量兜底
-            ProcessPostSoftmaxPoolingScalar(batchIdx, headIdx, validXBlocks, validYBlocks);
-            return;
-        }
-        vectorService.PostPoolRange(batchIdx, headIdx, validXBlocks, validYBlocks);
-    }
-}
-
-template <typename BSAT>
-__aicore__ inline void BSASelectBlockMaskBase<BSAT>::ProcessPostSoftmaxPoolingScalar(uint32_t batchIdx,
-                                                                                     uint32_t headIdx,
-                                                                                     uint32_t validXBlocks,
-                                                                                     uint32_t validYBlocks)
-{
-    if ASCEND_IS_AIV {
-        if (constInfo.aivIdx != 0) {
-            return;
-        }
-        // attnScore workspace 是单 head 复用的 scratch buffer（每个 head 的 softmax 重写同一区域），
-        // 读取当前 head 的 attn_score 偏移恒为 0。
-        // pooledScore 逐 head 布局：head 间距为最大粗粒度网格 postXBlocks*postYBlocks，
-        // head 内部为紧凑布局 [validPostX × validPostY]（与 TopK 线性读取一致）。
-        uint64_t pooledHeadOffset = static_cast<uint64_t>(batchIdx) * constInfo.numHeads;
-        pooledHeadOffset = (pooledHeadOffset + headIdx) * constInfo.postXBlocks * constInfo.postYBlocks;
-
-        uint32_t postBlockShapeX = constInfo.postBlockShapeX;
-        uint32_t postBlockShapeY = constInfo.postBlockShapeY;
-        uint32_t validPostXBlocks = BSACeilDiv(validXBlocks, postBlockShapeX);
-        uint32_t validPostYBlocks = BSACeilDiv(validYBlocks, postBlockShapeY);
-        uint32_t validCount = validPostXBlocks * validPostYBlocks;
-
-        // UB 布局（借用 postPoolOP 的 readUb scratch，与向量化路径同相位）: [readUb: 256 half = 512B | pooledUb: 1536
-        // half = 3KB]
-        constexpr uint32_t READ_CHUNK = 256;
-        constexpr uint32_t POOLED_CHUNK = 1536;
-        LocalTensor<half> readUb = vectorService.GetPostPoolScalarScratch();
-        LocalTensor<half> pooledUb = readUb[READ_CHUNK];
-
-        // pooledScore 在 head 区域内按紧凑布局 [validPostX × validPostY] 存储，
-        // 与 TopK 的线性读取（sortLen = validPostX*validPostY，跨距 validPostY）一致。
-        // head 间距仍为最大网格 postXBlocks*postYBlocks。
-        for (uint32_t base = 0; base < validCount; base += POOLED_CHUNK) {
-            uint32_t end = BSAMin(base + POOLED_CHUNK, validCount);
-            for (uint32_t idx = base; idx < end; idx++) {
-                uint32_t px = idx / validPostYBlocks;
-                uint32_t py = idx % validPostYBlocks;
-                uint32_t dstIdx = idx - base;
-                uint32_t numFineRows = BSAMin(postBlockShapeX, validXBlocks - px * postBlockShapeX);
-                uint32_t numFineCols = BSAMin(postBlockShapeY, validYBlocks - py * postBlockShapeY);
-                if (numFineCols == 0 || numFineRows == 0) {
-                    pooledUb.SetValue(dstIdx, static_cast<half>(0.0f));
-                    continue;
-                }
-                float totalSum = 0.0f;
-                for (uint32_t x = 0; x < numFineRows; x++) {
-                    uint32_t fineX = px * postBlockShapeX + x;
-                    // attnScore scratch 为紧凑布局 [validX × validY]（softmax 按 validYBlocks 跨距写出）
-                    uint64_t gmOffset = static_cast<uint64_t>(fineX) * validYBlocks + py * postBlockShapeY;
-                    uint32_t remain = numFineCols;
-                    uint64_t cur = gmOffset;
-                    while (remain > 0) {
-                        uint32_t curLen = BSAMin(remain, READ_CHUNK);
-                        DataCopyPad(readUb, attnScoreFp16Gm[cur], DataCopyExtParams(1, curLen * sizeof(half), 0, 0, 0),
-                                    DataCopyPadExtParams<half>{true, 0, 0, 0});
-                        // 标量消费前必须用 PipeBarrier 等 MTE2 完成
-                        // （WaitFlag<MTE2_V> 在标量上下文不阻塞标量流水，存在竞争）
-                        AscendC::PipeBarrier<PIPE_ALL>();
-                        for (uint32_t c = 0; c < curLen; c++) {
-                            totalSum += static_cast<float>(readUb.GetValue(c));
-                        }
-                        remain -= curLen;
-                        cur += curLen;
-                    }
-                }
-                float count = static_cast<float>(static_cast<int32_t>(numFineRows * numFineCols));
-                float meanVal = totalSum / count;
-                pooledUb.SetValue(dstIdx, static_cast<half>(meanVal));
-            }
-            AscendC::PipeBarrier<PIPE_ALL>();
-            // 写出长度对齐到 32B（向上取整；尾部溢出部分落入下一 head 区域，会被其后续写出覆盖，
-            // 最后一个 head 的溢出落入 workspace 之后的 softmaxTmp 区域，不会影响任何读取方，安全）
-            uint32_t writeBytes = (end - base) * sizeof(half);
-            uint32_t alignedBytes = (writeBytes + UB_BLOCK_SIZE - 1) / UB_BLOCK_SIZE * UB_BLOCK_SIZE;
-            DataCopyPad(pooledScoreGm[pooledHeadOffset + base], pooledUb, DataCopyExtParams(1, alignedBytes, 0, 0, 0));
-            AscendC::PipeBarrier<PIPE_ALL>();
+                                                   headIdx, validXBlocks, validYBlocks);
         }
     }
 }
