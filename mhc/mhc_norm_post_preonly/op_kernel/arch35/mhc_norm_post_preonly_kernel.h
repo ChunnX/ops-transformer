@@ -61,6 +61,9 @@ private:
     // 输入归一化直接从低精度h_out缓存计算平方和，省去先恢复完整FP32 h_out再平方的中间UB写读。
     __aicore__ inline float ReduceSumSqFromCache(uint32_t tOff, uint32_t tD);
 
+    // 多 tile 时在 UB 中合并每个 tile 的平方和，只在最后回读一次标量。
+    __aicore__ inline float ReduceSumSqFromCacheTiles();
+
     // 使用标量精度计算1/sqrt(sumSq * invCount + eps)。
     __aicore__ inline __attribute__((always_inline)) float ComputeInvRms(float sumSq, float invCount);
 
@@ -748,6 +751,35 @@ __aicore__ inline float KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32
         PipeBarrier<PIPE_V>();
         return ReduceSumPrecise(sqBuf, tD);
     }
+
+template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
+__aicore__ inline float KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ReduceSumSqFromCacheTiles()
+{
+    if (dLoop_ == 1U) {
+        return ReduceSumSqFromCache(0U, D_);
+    }
+
+    constexpr uint32_t ACCUM_OFFSET = SCALAR_BUF_SIZE / sizeof(float) - PARTIAL_SLOT_ELEMS;
+    LocalTensor<float> scBuf = bufScalar_.Get<float>();
+    LocalTensor<float> accum = scBuf[ACCUM_OFFSET];
+    Duplicate(accum, 0.0f, PARTIAL_SLOT_ELEMS);
+    for (uint32_t tile = 0; tile < dLoop_; ++tile) {
+        const uint32_t tD = GetTileD(tile);
+        const uint32_t tOff = tile * dTile_;
+        LocalTensor<T> hOutCache = bufActivationLowp_.Get<T>()[tOff];
+        LocalTensor<float> sqBuf = bufScratchFp32_.Get<float>();
+        MhcNormRegBase::VFCastB16ToFp32Square(sqBuf, hOutCache, tD);
+        PipeBarrier<PIPE_V>();
+        constexpr uint32_t REDUCE_ALIGN = 16;
+        const uint32_t tDAligned = (tD + REDUCE_ALIGN - 1U) / REDUCE_ALIGN * REDUCE_ALIGN;
+        uint32_t srcShape[2] = {1U, tDAligned};
+        ReduceSum<float, AscendC::Pattern::Reduce::AR, true>(scBuf, sqBuf, srcShape, true);
+        PipeBarrier<PIPE_V>();
+        Add(accum, accum, scBuf, 1U);
+        PipeBarrier<PIPE_V>();
+    }
+    return accum.GetValue(0);
+}
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::RestoreAndCopyOutX2Tile(uint32_t token, uint32_t tOff, uint32_t tD)
