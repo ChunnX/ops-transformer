@@ -14,7 +14,7 @@
 namespace op {
 
 SocVersion g_socVersion = SocVersion::ASCEND910B;
-PlatformInfo *g_platformInfo = new PlatformInfo();
+PlatformInfo* g_platformInfo = new PlatformInfo();
 
 bool PlatformInfo::CheckSupport(SocSpec socSpec, SocSpecAbility ability) const
 {
@@ -33,7 +33,7 @@ bool PlatformInfo::Valid() const
     return valid_;
 }
 
-void PlatformInfo::SetPlatformImpl(PlatformInfoImpl *impl)
+void PlatformInfo::SetPlatformImpl(PlatformInfoImpl* impl)
 {
     impl_ = impl;
     valid_ = true;
@@ -44,7 +44,7 @@ SocVersion PlatformInfo::GetSocVersion() const
     return g_socVersion;
 }
 
-const std::string &PlatformInfo::GetSocLongVersion() const
+const std::string& PlatformInfo::GetSocLongVersion() const
 {
     return "";
 }
@@ -74,12 +74,12 @@ bool PlatformInfo::GetFftsPlusMode() const
     return true;
 }
 
-fe::PlatFormInfos *PlatformInfo::GetPlatformInfos() const
+fe::PlatFormInfos* PlatformInfo::GetPlatformInfos() const
 {
     return nullptr;
 }
 
-const PlatformInfo &GetCurrentPlatformInfo()
+const PlatformInfo& GetCurrentPlatformInfo()
 {
     return *g_platformInfo;
 }
@@ -87,10 +87,11 @@ const PlatformInfo &GetCurrentPlatformInfo()
 NpuArch PlatformInfo::GetCurNpuArch() const
 {
     static const std::map<SocVersion, NpuArch> soc2ArchMap = {
-        {SocVersion::ASCEND910, NpuArch::DAV_1001},    {SocVersion::ASCEND910B, NpuArch::DAV_2201},
-        {SocVersion::ASCEND910_93, NpuArch::DAV_2201}, {SocVersion::ASCEND950, NpuArch::DAV_3510},
-        {SocVersion::ASCEND310P, NpuArch::DAV_2002},   {SocVersion::ASCEND310B, NpuArch::DAV_3002},
-        {SocVersion::ASCEND610LITE, NpuArch::DAV_3102}};
+        {SocVersion::ASCEND910, NpuArch::DAV_1001},     {SocVersion::ASCEND910B, NpuArch::DAV_2201},
+        {SocVersion::ASCEND910_93, NpuArch::DAV_2201},  {SocVersion::ASCEND950, NpuArch::DAV_3510},
+        {SocVersion::ASCEND310P, NpuArch::DAV_2002},    {SocVersion::ASCEND310B, NpuArch::DAV_3002},
+        {SocVersion::ASCEND610LITE, NpuArch::DAV_3102}, {SocVersion::ASCEND960DT, NpuArch::DAV_9201},
+        {SocVersion::ASCEND960PR, NpuArch::DAV_9202}};
     const auto it = soc2ArchMap.find(g_socVersion);
     if (it != soc2ArchMap.end()) {
         return it->second;
@@ -108,7 +109,8 @@ ge::AscendString ToString(SocVersion socVersion)
         {SocVersion::ASCEND310P, "Ascend310P"},     {SocVersion::ASCEND310B, "Ascend310B"},
         {SocVersion::ASCEND310C, "Ascend310C"},     {SocVersion::ASCEND610LITE, "Ascend610LITE"},
         {SocVersion::KIRINX90, "KirinX90"},         {SocVersion::KIRIN9030, "Kirin9030"},
-        {SocVersion::ASCEND5162A, "Ascend5162A"},   {SocVersion::RESERVED_VERSION, "UnknowSocVersion"},
+        {SocVersion::ASCEND5162A, "Ascend5162A"},   {SocVersion::ASCEND960DT, "Ascend960DT"},
+        {SocVersion::ASCEND960PR, "Ascend960PR"},   {SocVersion::RESERVED_VERSION, "UnknowSocVersion"},
     };
     static const std::string reserved("UnknowSocVersion");
     const auto it = kSocVersionMap.find(socVersion);
@@ -128,6 +130,8 @@ void SetPlatformNpuArch(NpuArch npuArch)
 {
     static const std::map<NpuArch, SocVersion> NpuArchSocVersionMap = {
         {NpuArch::DAV_3510, SocVersion::ASCEND950},
+        {NpuArch::DAV_9201, SocVersion::ASCEND960DT},
+        {NpuArch::DAV_9202, SocVersion::ASCEND960PR},
         {NpuArch::DAV_RESV, SocVersion::RESERVED_VERSION},
     };
     g_socVersion = SocVersion::RESERVED_VERSION;
