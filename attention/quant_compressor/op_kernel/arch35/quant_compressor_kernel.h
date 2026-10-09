@@ -42,7 +42,8 @@ public:
                                 __gm__ uint8_t *stateCache, __gm__ uint8_t *ape, __gm__ uint8_t *xDescale,
                                 __gm__ uint8_t *wKvDescale, __gm__ uint8_t *wGateDescale,
                                 __gm__ uint8_t *stateBlockTable, __gm__ uint8_t *cuSeqlens, __gm__ uint8_t *seqUsed,
-                                __gm__ uint8_t *startPos, __gm__ uint8_t *cmpKvOut, __gm__ uint8_t *workspace);
+                                __gm__ uint8_t *startPos, __gm__ uint8_t *cmpKvOut, __gm__ uint8_t *workspace,
+                                __gm__ uint8_t *xCache = nullptr, __gm__ uint8_t *xCacheSlotMapping = nullptr);
     __aicore__ inline void Process();
 
 private:
@@ -120,6 +121,7 @@ private:
     uint32_t dealKSize_ = 0;
     uint32_t hStart_ = 0;
     bool isFirstUpdateCurGroup = true;
+    bool isExistXCache_ = false;
 };
 
 template <typename COMP, bool IS_FULL_LOAD>
@@ -127,35 +129,52 @@ __aicore__ inline void QuantCompressorKernel<COMP, IS_FULL_LOAD>::Init(
     __gm__ uint8_t *x, __gm__ uint8_t *wKv, __gm__ uint8_t *wGate, __gm__ uint8_t *stateCache, __gm__ uint8_t *ape,
     __gm__ uint8_t *xDescale, __gm__ uint8_t *wKvDescale, __gm__ uint8_t *wGateDescale, __gm__ uint8_t *stateBlockTable,
     __gm__ uint8_t *cuSeqlens, __gm__ uint8_t *seqUsed, __gm__ uint8_t *startPos, __gm__ uint8_t *cmpKvOut,
-    __gm__ uint8_t *workspace)
+    __gm__ uint8_t *workspace, __gm__ uint8_t *xCache, __gm__ uint8_t *xCacheSlotMapping)
 {
     if ASCEND_IS_AIV {
         constInfo.aiCoreIdx = GetBlockIdx() / 2;
     } else {
         constInfo.aiCoreIdx = GetBlockIdx();
     }
+    isExistXCache_ = (xCache != nullptr);
     InitTilingData();
     // init tools
     tools_.toolParams_.seqSize = tilingData_->baseParams.seqSize;
+    tools_.toolParams_.xCacheReadSize = isExistXCache_ ? constInfo.xCacheReadSize : 0;
     tools_.toolParams_.cmpRatio = tilingData_->baseParams.cmpRatio;
     tools_.Init(startPos, seqUsed, cuSeqlens);
 
-    // 剔除尾部的无效batch
-    for (; constInfo.batchSize > 0; --constInfo.batchSize) {
-        uint32_t bSeqUsed = tools_.isExistSeqUsed_ ? tools_.GetSeqUsed(constInfo.batchSize - 1) :
-                                                     tools_.GetSeqLength(constInfo.batchSize - 1);
+    // 剔除尾部的无效batch（只收缩压缩范围，raw batch 数保持不变以供 x_cache 刷新）
+    for (; constInfo.projectionBatchSize > 0; --constInfo.projectionBatchSize) {
+        const uint32_t idx = constInfo.projectionBatchSize - 1;
+        const uint32_t bSeqUsed =
+            tools_.isExistSeqUsed_ ? tools_.GetSeqUsed(idx) : tools_.GetSeqLength(idx);
         if (bSeqUsed > 0) {
             break;
         }
     }
 
+    const bool hasProjectionWork = constInfo.projectionBatchSize > 0;
+    const bool isXCacheUpdateOnly =
+        isExistXCache_ && !hasProjectionWork && constInfo.xCacheUpdateBatchSize > 0;
+    if ASCEND_IS_AIV {
+        if (isXCacheUpdateOnly) {
+            // No compression ran this call, but the ring cache still has to take
+            // the raw tokens. Only the small staging buffer is initialized here.
+            blockVec_.InitParams(constInfo, tools_);
+            blockVec_.Init(x, wKv, wGate, stateCache, ape, xDescale, wKvDescale, wGateDescale, stateBlockTable,
+                           cuSeqlens, seqUsed, startPos, cmpKvOut, xCache, xCacheSlotMapping);
+            blockVec_.InitXCacheUpdateBuffers(pipe_);
+        }
+    }
+
     // 所有batch的有效序列都为0时, 直接退出
-    if (constInfo.batchSize == 0) {
+    if (!hasProjectionWork) {
         return;
     }
 
     // 0. 计算最后一个Tc块的起始位置
-    constInfo.bIdxOfLastTc = constInfo.batchSize - 1;
+    constInfo.bIdxOfLastTc = constInfo.projectionBatchSize - 1;
     // 1. 计算head_dim的切分大小, 构建ConstInfo的其他信息
     CalcSplitCoreInfo();
     if constexpr (!IS_FULL_LOAD) {
@@ -173,13 +192,13 @@ __aicore__ inline void QuantCompressorKernel<COMP, IS_FULL_LOAD>::Init(
     if ASCEND_IS_AIC {
         blockCube_.InitParams(constInfo, tools_);
         blockCube_.Init(x, wKv, wGate, stateCache, ape, xDescale, wKvDescale, wGateDescale, stateBlockTable, cuSeqlens,
-                        seqUsed, startPos, cmpKvOut);
+                        seqUsed, startPos, cmpKvOut, xCache, xCacheSlotMapping);
         blockCube_.InitBuffers(pipe_);
         blockCube_.InitGlobalBuffers(mm1KvResGm, mm1ScoreResGm);
     } else {
         blockVec_.InitParams(constInfo, tools_);
         blockVec_.Init(x, wKv, wGate, stateCache, ape, xDescale, wKvDescale, wGateDescale, stateBlockTable, cuSeqlens,
-                       seqUsed, startPos, cmpKvOut);
+                       seqUsed, startPos, cmpKvOut, xCache, xCacheSlotMapping);
         blockVec_.InitBuffers(pipe_);
         blockVec_.InitVec1GlobalTensor(Vec1InputKvGm, Vec1InputScoreGm, vec1KvCacheGm, vec1ScoreCacheGm);
     }
@@ -190,6 +209,7 @@ __aicore__ inline void QuantCompressorKernel<COMP, IS_FULL_LOAD>::InitTilingData
 {
     constInfo.cmpRatio = tilingData_->baseParams.cmpRatio;
     constInfo.batchSize = tilingData_->baseParams.batchSize;
+    constInfo.projectionBatchSize = tilingData_->baseParams.batchSize;
     constInfo.mBaseSize = tilingData_->innerSplitParams.mBaseSize;
     constInfo.dBaseSize = tilingData_->innerSplitParams.dBaseSize;
     constInfo.headDim = tilingData_->baseParams.headDim;
@@ -206,6 +226,13 @@ __aicore__ inline void QuantCompressorKernel<COMP, IS_FULL_LOAD>::InitTilingData
     constInfo.vec1TailCacheSize = tilingData_->workspaceParams.vec1TailCacheSize;
     constInfo.dbWorkspaceRatio = tilingData_->workspaceParams.dbWorkspaceRatio;
     constInfo.batchConsistency = tilingData_->baseParams.batchConsistency;
+
+    // Grouped-decode shared x-cache plan. Everything stays zero unless the
+    // optional x_cache input is bound, so the ordinary schedule is unchanged.
+    constInfo.xCacheReadSize = isExistXCache_ ? tilingData_->groupedDecodeParams.xCacheReadSize : 0;
+    constInfo.xCacheSize = isExistXCache_ ? tilingData_->groupedDecodeParams.xCacheSize : 0;
+    constInfo.xCacheUpdateBatchSize =
+        isExistXCache_ ? tilingData_->groupedDecodeParams.xCacheUpdateBatchSize : 0;
 
     if constexpr (IS_FULL_LOAD) {
         constInfo.mStart = tilingData_->baseParams.splitCoreParam[constInfo.aiCoreIdx].mStart;
@@ -227,8 +254,10 @@ template <typename COMP, bool IS_FULL_LOAD>
 __aicore__ inline void QuantCompressorKernel<COMP, IS_FULL_LOAD>::SplitK()
 {
     uint32_t mSize = 0;
-    for (uint32_t i = 0; i < constInfo.batchSize; i++) {
-        uint32_t bSeqUsed = tools_.GetSeqLength(i);
+    for (uint32_t i = 0; i < constInfo.projectionBatchSize; i++) {
+        // Grouped decode only carries the completed windows of active requests;
+        // every other schedule keeps summing the raw sequence length.
+        uint32_t bSeqUsed = isExistXCache_ ? tools_.GetSeqUsed(i) : tools_.GetSeqLength(i);
         // 获取m大小
         mSize += bSeqUsed;
     }
@@ -263,26 +292,34 @@ __aicore__ inline void QuantCompressorKernel<COMP, IS_FULL_LOAD>::SplitK()
 template <typename COMP, bool IS_FULL_LOAD>
 __aicore__ inline void QuantCompressorKernel<COMP, IS_FULL_LOAD>::SkipInvalidBatch(BatchInfo &batchInfo)
 {
-    for (; batchInfo.bIdx < constInfo.batchSize; ++batchInfo.bIdx) {
-        batchInfo.seqCnt = tools_.GetSeqLength(batchInfo.bIdx);
-        if (batchInfo.seqCnt > 0) {
+    // Skip requests that carry no visible compression work this call. For
+    // grouped decode that means "did not finish a group" (logicalSeqUsed == 0),
+    // so the M range only covers composed windows; the cube copy loop walks the
+    // same request order.
+    BatchMetadata metadata{};
+    for (; batchInfo.bIdx < constInfo.projectionBatchSize; ++batchInfo.bIdx) {
+        metadata = tools_.GetBatchMetadata(batchInfo.bIdx);
+        // Grouped decode skips requests with no completed window; every other
+        // schedule keeps the original seq-length predicate unchanged.
+        const uint32_t visible = isExistXCache_ ? metadata.logicalSeqUsed : metadata.seqLength;
+        if (visible > 0) {
             break;
         }
     }
-    batchInfo.remSeqCnt = batchInfo.seqCnt;
-    if (tools_.isExistSeqUsed_) {
-        batchInfo.seqUsedCnt = tools_.GetSeqUsed(batchInfo.bIdx);
-    } else {
-        batchInfo.seqUsedCnt = batchInfo.seqCnt;
-    }
-    if (batchInfo.bIdx < constInfo.batchSize) {
-        batchInfo.bStartPos = tools_.GetStartPos(batchInfo.bIdx);
+    if (batchInfo.bIdx < constInfo.projectionBatchSize) {
+        batchInfo.seqCnt = metadata.seqLength;
+        batchInfo.remSeqCnt = batchInfo.seqCnt;
+        batchInfo.seqUsedCnt = tools_.isExistSeqUsed_ ? metadata.logicalSeqUsed : batchInfo.seqCnt;
+        batchInfo.bStartPos = metadata.windowStart;
         batchInfo.sIdx = 0;
         batchInfo.headHolderSeq = (uint32_t)(batchInfo.bStartPos % constInfo.cmpRatio);
         batchInfo.tcNum = (batchInfo.bStartPos + batchInfo.seqCnt + constInfo.cmpRatio - 1) / constInfo.cmpRatio -
                           batchInfo.bStartPos / constInfo.cmpRatio;
         batchInfo.compressedTcNum = (batchInfo.bStartPos + batchInfo.seqUsedCnt) / constInfo.cmpRatio -
                                     batchInfo.bStartPos / constInfo.cmpRatio;
+    } else {
+        batchInfo.seqCnt = 0;
+        batchInfo.remSeqCnt = 0;
     }
 }
 
@@ -303,10 +340,10 @@ __aicore__ inline void QuantCompressorKernel<COMP, IS_FULL_LOAD>::UpdateCurGroup
     basicBlockInfo.dealSeqCnt += curGroupDealSeq;
     curGroupQuota -= curGroupDealSeq;
     // 结尾需要跳batch，需要考虑在当前组起始为末尾，或者当前组起始大于整个M轴
-    if ((curGroupQuota == 0 || basicBlockInfo.bIdx == constInfo.batchSize - 1) &&
+    if ((curGroupQuota == 0 || basicBlockInfo.bIdx == constInfo.projectionBatchSize - 1) &&
         basicBlockInfo.sIdx == batchInfo.seqCnt) {
         basicBlockInfo.sIdx = 0;
-        for (basicBlockInfo.bIdx++; basicBlockInfo.bIdx < constInfo.batchSize; ++basicBlockInfo.bIdx) {
+        for (basicBlockInfo.bIdx++; basicBlockInfo.bIdx < constInfo.projectionBatchSize; ++basicBlockInfo.bIdx) {
             uint32_t seqCnt = tools_.GetSeqLength(basicBlockInfo.bIdx);
             if (seqCnt > 0) {
                 break;
@@ -324,7 +361,7 @@ __aicore__ inline BasicBlockInfo QuantCompressorKernel<COMP, IS_FULL_LOAD>::Skip
     bool curGroupStartFlag = false;
     uint32_t quota = constInfo.mGroupNum * constInfo.mBaseSize;
 
-    for (; batchInfo.bIdx < constInfo.batchSize;) {
+    for (; batchInfo.bIdx < constInfo.projectionBatchSize;) {
         uint32_t curDealSeq = 0;
         uint32_t curDealTcNum = 0;
         uint32_t curDealCompressedTcNum = 0;
@@ -391,7 +428,7 @@ __aicore__ inline uint32_t QuantCompressorKernel<COMP, IS_FULL_LOAD>::GetLoopTim
     uint32_t loopTimes = 0;
     BatchInfo batchInfo{};
     SkipInvalidBatch(batchInfo);
-    for (; batchInfo.bIdx < constInfo.batchSize; ++loopTimes) {
+    for (; batchInfo.bIdx < constInfo.projectionBatchSize; ++loopTimes) {
         SkipOneLoop(batchInfo);
     }
     return loopTimes;
@@ -508,7 +545,7 @@ template <typename COMP, bool IS_FULL_LOAD>
 __aicore__ inline bool QuantCompressorKernel<COMP, IS_FULL_LOAD>::IsNeedExcuteC1(RunInfo info)
 {
     // B超出范围则cube不执行
-    return info.bStart < constInfo.batchSize;
+    return info.bStart < constInfo.projectionBatchSize;
 }
 
 template <typename COMP, bool IS_FULL_LOAD>
@@ -577,8 +614,19 @@ __aicore__ inline void QuantCompressorKernel<COMP, IS_FULL_LOAD>::ProcessFullLoa
 template <typename COMP, bool IS_FULL_LOAD>
 __aicore__ inline void QuantCompressorKernel<COMP, IS_FULL_LOAD>::Process()
 {
-    // 所有batch的有效序列都为0时, 直接退出
-    if (constInfo.batchSize == 0) {
+    // Refresh the shared ring cache first. Both core types evaluate the barrier
+    // condition identically so the cross-core SyncAll counts always match: AIV
+    // performs the write, AIC waits for it only when a projection follows.
+    if (isExistXCache_ && !IS_FULL_LOAD && constInfo.xCacheUpdateBatchSize > 0) {
+        if ASCEND_IS_AIV {
+            blockVec_.UpdateXCache();
+        }
+        if (constInfo.projectionBatchSize > 0) {
+            SyncAll<false>();
+        }
+    }
+    // 所有batch的有效序列都为0时, 直接退出（x_cache 更新已完成）
+    if (constInfo.projectionBatchSize == 0) {
         return;
     }
     AllocEventID();

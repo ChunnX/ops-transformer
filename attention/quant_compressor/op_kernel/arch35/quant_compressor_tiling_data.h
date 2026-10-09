@@ -67,11 +67,20 @@ struct QuantCompressorWorkspaceParams {
     uint32_t dbWorkspaceRatio = 1;
 };
 
+// Grouped-decode shared x-cache plan. Present only when the optional x_cache
+// input is bound; the fields stay zero for the ordinary cache schedule.
+struct QuantCompressorGroupedDecodeParams {
+    uint32_t xCacheReadSize = 0;
+    uint32_t xCacheUpdateBatchSize = 0;
+    uint32_t xCacheSize = 0;
+};
+
 struct QuantCompressorTilingData {
     QuantCompressorBaseParams baseParams;
     QuantCompressorPageAttentionParams pageAttentionParams;
     QuantCompressorInnerSplitParams innerSplitParams;
     QuantCompressorWorkspaceParams workspaceParams;
+    QuantCompressorGroupedDecodeParams groupedDecodeParams;
 };
 } // namespace optiling
 

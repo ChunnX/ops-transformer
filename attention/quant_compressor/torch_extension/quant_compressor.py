@@ -42,7 +42,8 @@ class QuantCompressorOpBuilder(OpBuilder):
             "Tensor? x_descale=None, Tensor? wkv_descale=None, Tensor? wgate_descale=None, "
             "Tensor? state_block_table=None, Tensor? cu_seqlens=None, "
             "Tensor? seqused=None, Tensor? start_pos=None, "
-            "int coff=1, int cache_mode=1) -> Tensor"
+            "Tensor(b!)? x_cache=None, Tensor? x_cache_slot_mapping=None, "
+            "int coff=1, int cache_mode=1, bool x_cache_update=True) -> Tensor"
         )
 
     def register_meta(self):
@@ -68,8 +69,11 @@ class QuantCompressorOpBuilder(OpBuilder):
             cu_seqlens=None,
             seqused=None,
             start_pos=None,
+            x_cache=None,
+            x_cache_slot_mapping=None,
             coff=1,
             cache_mode=CacheMode.LINEAR_BUFFER,
+            x_cache_update=True,
         ):
             d = wkv.size(0) // coff
             if x.dim() == 3:
@@ -107,8 +111,11 @@ def quant_compressor(
     cu_seqlens: Optional[torch.Tensor] = None,
     seqused: Optional[torch.Tensor] = None,
     start_pos: Optional[torch.Tensor] = None,
+    x_cache: Optional[torch.Tensor] = None,
+    x_cache_slot_mapping: Optional[torch.Tensor] = None,
     coff: Optional[int] = 1,
     cache_mode: CacheMode = CacheMode.LINEAR_BUFFER,
+    x_cache_update: Optional[bool] = True,
 ) -> torch.tensor:
     """
     dispatcher implementation for NPU.
@@ -130,8 +137,11 @@ def quant_compressor(
         cu_seqlens,
         seqused,
         start_pos,
+        x_cache,
+        x_cache_slot_mapping,
         coff,
         cache_mode,
+        x_cache_update,
     )
 
 

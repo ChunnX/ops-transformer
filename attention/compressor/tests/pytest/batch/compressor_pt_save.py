@@ -11,8 +11,9 @@
 # -----------------------------------------------------------------------------------------------------------
 
 import os
+import sys
 from functools import partial
-from compressor_golden import cpu_compressor, get_seq_used_by_batch
+from pathlib import Path
 import pandas as pd
 import numpy as np
 import torch
@@ -23,6 +24,35 @@ import math
 import ast
 import argparse
 import custom_ops
+
+# The Pro0921 grouped contract lives in tests/pytest/; resolve it relative to
+# this file so the batch saver can route grouped rows explicitly.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from pro0921_grouped_cases import emit_pt_from_spec  # noqa: E402
+
+
+def _golden():
+    """Lazy import: the golden module pulls in the NPU/native provider stack."""
+    from compressor_golden import cpu_compressor, get_seq_used_by_batch
+
+    return cpu_compressor, get_seq_used_by_batch
+
+
+# Variant -> frozen fixture geometry for explicitly grouped Excel rows.  A
+# grouped row without a recognised variant is a hard error; it is never run as
+# normal.  The geometry must match the Excel row (cmp_ratio/coff/head/hidden).
+GROUPED_GEOMETRY = {
+    "boundary": {"builder": "hca_boundary", "cmp_ratio": 128, "coff": 1,
+                 "head_dim": 128, "hidden_size": 1024, "x_cache_update": True},
+    "update_only": {"builder": "hca_update_only", "cmp_ratio": 128, "coff": 1,
+                    "head_dim": 128, "hidden_size": 1024, "x_cache_update": True},
+    "coff2_boundary": {"builder": "csa_coff2", "cmp_ratio": 4, "coff": 2,
+                       "head_dim": 512, "hidden_size": 1024, "x_cache_update": True,
+                       "params": {"li": False}},
+    "li_read_shared": {"builder": "csa_coff2", "cmp_ratio": 4, "coff": 2,
+                       "head_dim": 128, "hidden_size": 1024, "x_cache_update": False,
+                       "params": {"li": True}},
+}
 
 
 def load_excel_test_cases(excel_file_path: str, sheetname: str):
@@ -83,6 +113,23 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
                 allow_module_level=True,
             )
 
+        # 显式路径列（可选）。缺列时这些普通行按契约在*生成*阶段显式写成
+        # path="normal"（不是读取旧 PT 时的运行期回退）；出现时必须是
+        # normal/grouped 之一，grouped 行必须带合法的 case_variant，绝不静默回退。
+        has_path = "path" in df.columns
+        if has_path:
+            bad = sorted({str(v) for v in df["path"].dropna().tolist()
+                          if str(v) not in ("normal", "grouped")})
+            if bad:
+                raise ValueError(
+                    f"Excel 'path' column must be normal or grouped, got {bad}")
+        has_variant = "case_variant" in df.columns
+
+        def row_path(row):
+            if has_path:
+                return row["path"]
+            return "normal"
+
         # 构建测试用例列表
         test_cases = []
         for _, row in df.iterrows():
@@ -109,6 +156,8 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
                     row["ape_datarange"],
                     row["kv_state_datarange"],
                     row["score_state_datarange"],
+                    row_path(row),
+                    row["case_variant"] if has_variant else None,
                 )
             )
 
@@ -138,6 +187,7 @@ class Generalized_operator:
         coff,
         cache_mode,
     ):
+        cpu_compressor, _ = _golden()
         return cpu_compressor(
             x,
             wkv,
@@ -159,7 +209,14 @@ class Generalized_operator:
 
 def compressor_output_single(data_case):
     casename = data_case[0]
-    params = data_case[1:]
+    params = list(data_case[1:21])
+    path = data_case[21] if len(data_case) > 21 else None
+    variant = data_case[22] if len(data_case) > 22 else None
+    if path != "normal":
+        raise ValueError(
+            f"case {casename}: compressor_output_single is the normal path only, got "
+            f"path={path!r}; grouped rows must go through emit_grouped_pt")
+    _, get_seq_used_by_batch = _golden()
 
     (
         batch_size,
@@ -510,6 +567,7 @@ def compressor_output_single(data_case):
 
     output_tensors = {
         "params": params,
+        "path": "normal",
         "cpu_result": cpu_result,
         "kv_mask_result": kv_mask_result,
         "update_kv": update_kv,
@@ -539,8 +597,14 @@ def save_test_case(test_cases, file_path):
     os.makedirs(file_path, exist_ok=True)
 
     for idx, case in enumerate(test_cases):
+        path = case[21] if len(case) > 21 else None
         try:
-            case_name, output_tensors = compressor_output_single(case)
+            if path == "normal":
+                case_name, output_tensors = compressor_output_single(case)
+            elif path == "grouped":
+                case_name, output_tensors = emit_grouped_pt(case, file_path)
+            else:
+                raise ValueError(f"case {case[0]}: unknown path {path!r}")
             # 生成文件名
             input_filename = f"{case_name}.pt"
             input_filepath = os.path.join(file_path, input_filename)
@@ -552,18 +616,89 @@ def save_test_case(test_cases, file_path):
         except Exception as e:
             print(f"[失败] 生成 pt 文件失败: {case[0]} (索引: {idx})")
             print(f"错误详情: {e}")
+            # 普通路径保持既有“逐条打印失败并继续”的语义；显式 grouped 行失败必须
+            # 让调用方看到非零结果，不能静默跳过。
+            if path == "grouped":
+                raise
+
+
+def emit_grouped_pt(case, file_path):
+    """Route an explicitly grouped Excel row through the grouped contract."""
+    casename = case[0]
+    params = list(case[1:21])
+    variant = case[22] if len(case) > 22 else None
+    if variant not in GROUPED_GEOMETRY:
+        raise ValueError(
+            f"grouped case {casename}: case_variant must be one of "
+            f"{sorted(GROUPED_GEOMETRY)}, got {variant!r}")
+    geometry = GROUPED_GEOMETRY[variant]
+    (batch_size, hidden_size, seq_len, head_dim, _block_size, cmp_ratio, coff, _start_p,
+     cache_mode, layout_x, _data_type, *_rest) = params
+    if layout_x != "BSH":
+        raise ValueError(f"grouped case {casename}: layout_x must be BSH, got {layout_x!r}")
+    mismatches = {
+        "hidden_size": (int(hidden_size), geometry["hidden_size"]),
+        "head_dim": (int(head_dim), geometry["head_dim"]),
+        "cmp_ratio": (int(cmp_ratio), geometry["cmp_ratio"]),
+        "coff": (int(coff), geometry["coff"]),
+        "cache_mode": (int(cache_mode), 1),
+    }
+    bad = {k: v for k, v in mismatches.items() if v[0] != v[1]}
+    if bad:
+        raise ValueError(
+            f"grouped case {casename}: Excel geometry does not match variant "
+            f"{variant!r}: {bad}")
+    spec = {
+        "name": casename,
+        "path": "grouped",
+        "builder": geometry["builder"],
+        "cmp_ratio": geometry["cmp_ratio"],
+        "coff": geometry["coff"],
+        "cache_mode": 1,
+        "hidden_size": geometry["hidden_size"],
+        "head_dim": geometry["head_dim"],
+        "batch": int(batch_size),
+        "seq": int(seq_len),
+        "dtype": "bfloat16",
+        "x_cache_update": geometry["x_cache_update"],
+        "params": geometry.get("params", {}),
+    }
+    import torch
+
+    import pro0921_grouped_cases as grouped
+
+    tmp = os.path.join(file_path, "_grouped_tmp", casename + ".pt")
+    os.makedirs(os.path.dirname(tmp), exist_ok=True)
+    grouped.emit_pt_from_spec(spec, tmp)
+    return casename, torch.load(tmp, map_location="cpu", weights_only=False)
 
 
 def main():
     parser = argparse.ArgumentParser(description="compressor_pt_save.py 接收路径参数")
-    parser.add_argument("path1", type=str, help="第一个路径")
-    parser.add_argument("path2", type=str, help="第二个路径")
+    parser.add_argument("path1", type=str, nargs="?", help="第一个路径")
+    parser.add_argument("path2", type=str, nargs="?", help="第二个路径")
+    parser.add_argument(
+        "--cases-json",
+        type=str,
+        default="",
+        help="直接执行的小 JSON 用例集；设置时按 grouped 契约生成 .pt，不读取 Excel",
+    )
     args = parser.parse_args()
+    if args.cases_json:
+        # 不要求手改 Excel：直接用 JSON 用例集入口生成 grouped .pt。
+        import pro0921_grouped_cases as grouped
+
+        if not args.path2:
+            parser.error("--cases-json 需要指定第二个路径作为 .pt 输出目录")
+        return grouped.main(["--cases", args.cases_json, "--emit-pt", args.path2])
+    if not (args.path1 and args.path2):
+        parser.error("需要 path1(Excel) 与 path2(pt 目录)，或使用 --cases-json")
     path1 = args.path1
     path2 = args.path2
     testcase = load_excel_test_cases(path1, "Sheet1")
     save_test_case(testcase, path2)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

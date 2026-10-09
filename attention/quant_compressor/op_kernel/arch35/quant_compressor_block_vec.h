@@ -44,6 +44,7 @@ public:
     // 中间计算数据类型为float，高精度模式
     using T = float;
     using O_T = bfloat16_t;
+    using X_T = hifloat8_t;
 
     __aicore__ inline QuantCompressorBlockVector(){};
     // =================================设置参数=================================
@@ -52,7 +53,11 @@ public:
                                 __gm__ uint8_t *stateCache, __gm__ uint8_t *ape, __gm__ uint8_t *xDescale,
                                 __gm__ uint8_t *wKvDescale, __gm__ uint8_t *wGateDescale,
                                 __gm__ uint8_t *stateBlockTable, __gm__ uint8_t *cuSeqlens, __gm__ uint8_t *seqUsed,
-                                __gm__ uint8_t *startPos, __gm__ uint8_t *cmpKvOut);
+                                __gm__ uint8_t *startPos, __gm__ uint8_t *cmpKvOut,
+                                __gm__ uint8_t *xCache = nullptr, __gm__ uint8_t *xCacheSlotMapping = nullptr);
+    __aicore__ inline void InitXCacheUpdateBuffers(TPipe *pipe);
+    // ============================Grouped decode x_cache==========================
+    __aicore__ inline void UpdateXCache();
     // =================================资源管理=================================
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
@@ -170,6 +175,10 @@ protected:
     GlobalTensor<T> wKvDescaleGm_;
     GlobalTensor<T> wGateDescaleGm_;
     GlobalTensor<O_T> cmpKvOutGm_;
+    GlobalTensor<X_T> xCacheGm_;
+    GlobalTensor<int32_t> xCacheSlotMappingGm_;
+    GlobalTensor<X_T> xGm_;
+    bool isExistXCache_ = false;
 
     // ================================Local Buffer区====================================
     LocalTensor<T> apeUb;
@@ -186,6 +195,7 @@ protected:
     TQue<QuePosition::VECIN, 1> inputQue3;
     // out queue
     TQue<QuePosition::VECOUT, 1> outputQue1;
+    TBuf<TPosition::VECCALC> xCacheUpdateBuf;
 };
 
 // =================================Init=================================
@@ -203,12 +213,19 @@ template <typename COMP>
 __aicore__ inline void QuantCompressorBlockVector<COMP>::Init(
     __gm__ uint8_t *x, __gm__ uint8_t *wKv, __gm__ uint8_t *wGate, __gm__ uint8_t *stateCache, __gm__ uint8_t *ape,
     __gm__ uint8_t *xDescale, __gm__ uint8_t *wKvDescale, __gm__ uint8_t *wGateDescale, __gm__ uint8_t *stateBlockTable,
-    __gm__ uint8_t *cuSeqlens, __gm__ uint8_t *seqUsed, __gm__ uint8_t *startPos, __gm__ uint8_t *cmpKvOut)
+    __gm__ uint8_t *cuSeqlens, __gm__ uint8_t *seqUsed, __gm__ uint8_t *startPos, __gm__ uint8_t *cmpKvOut,
+    __gm__ uint8_t *xCache, __gm__ uint8_t *xCacheSlotMapping)
 {
     stateBlockTableGm_.SetGlobalBuffer((__gm__ int32_t *)stateBlockTable);
     stateCacheGm_.SetGlobalBuffer((__gm__ T *)stateCache);
     apeGm_.SetGlobalBuffer((__gm__ T *)ape);
     cmpKvOutGm_.SetGlobalBuffer((__gm__ O_T *)cmpKvOut);
+    xGm_.SetGlobalBuffer((__gm__ X_T *)x);
+    isExistXCache_ = (xCache != nullptr);
+    if (isExistXCache_) {
+        xCacheGm_.SetGlobalBuffer((__gm__ X_T *)xCache);
+        xCacheSlotMappingGm_.SetGlobalBuffer((__gm__ int32_t *)xCacheSlotMapping);
+    }
     isExistSeqUsed_ = (seqUsed != nullptr);
     isExistStartPos_ = (startPos != nullptr);
     if constexpr (COMP::xLayout == X_LAYOUT::TH) {
@@ -252,34 +269,21 @@ __aicore__ inline void QuantCompressorBlockVector<COMP>::InitVec1GlobalTensor(Gl
 template <typename COMP>
 __aicore__ inline uint32_t QuantCompressorBlockVector<COMP>::GetSeqUsed(uint32_t bIdx)
 {
-    if (isExistSeqUsed_) {
-        return (uint32_t)sequsedGm_.GetValue(bIdx);
-    } else {
-        if constexpr (COMP::xLayout == X_LAYOUT::TH) {
-            return (uint32_t)(cuSeqlensGm_.GetValue(bIdx + 1) - cuSeqlensGm_.GetValue(bIdx));
-        } else {
-            return constInfo_.sSize;
-        }
-    }
+    // The tools own the visible-length contract; for grouped decode they expose
+    // the logical completed window instead of the raw start_pos/seqused pair.
+    return tools_.GetSeqUsed(bIdx);
 }
 
 template <typename COMP>
 __aicore__ inline uint32_t QuantCompressorBlockVector<COMP>::GetStartPos(uint32_t bIdx)
 {
-    if (isExistStartPos_) {
-        return startPosGm_.GetValue(bIdx);
-    }
-    return 0;
+    return tools_.GetStartPos(bIdx);
 }
 
 template <typename COMP>
 __aicore__ inline uint32_t QuantCompressorBlockVector<COMP>::GetSeqLength(uint32_t bIdx)
 {
-    if (COMP::xLayout == X_LAYOUT::TH) {
-        return cuSeqlensGm_.GetValue(bIdx + 1) - cuSeqlensGm_.GetValue(bIdx);
-    } else {
-        return constInfo_.sSize;
-    }
+    return tools_.GetSeqLength(bIdx);
 }
 
 // =================================DataCopy=================================
@@ -831,7 +835,7 @@ __aicore__ inline void QuantCompressorBlockVector<COMP>::CopyOutVec1ResToOutput(
         uint32_t bIdx = sliceInfo.bIdx;
         uint32_t sIdx = sliceInfo.sIdx;
         uint64_t ubOffset = 0;
-        while (compressTcSize > 0 && bIdx < constInfo_.batchSize) {
+        while (compressTcSize > 0 && bIdx < constInfo_.projectionBatchSize) {
             uint32_t bStartPos = GetStartPos(bIdx);
             uint32_t preScSize = (sIdx + bStartPos) / cmpRatio_;
             uint32_t totalScSize = (GetSeqUsed(bIdx) + bStartPos) / cmpRatio_;
@@ -870,6 +874,71 @@ __aicore__ inline void QuantCompressorBlockVector<COMP>::CalcTilingStrategy(Vec1
         splitInfo.dSplitSize = splitInfo.dBaseSize;
         splitInfo.dLoopCount = splitInfo.dBaseSize / splitInfo.dSplitSize; // 此处常等于1，保留原逻辑
         splitInfo.tcSplitSize = maxDealColNum / splitInfo.dBaseSize;
+    }
+}
+
+template <typename COMP>
+__aicore__ inline void QuantCompressorBlockVector<COMP>::InitXCacheUpdateBuffers(TPipe *pipe)
+{
+    // The grouped fast path that only refreshes x_cache still needs one UB
+    // staging buffer; the normal vec1 queues are unused in that case.
+    pipe->InitBuffer(xCacheUpdateBuf, BUFFER_SIZE_BYTE_32K);
+}
+
+template <typename COMP>
+__aicore__ inline void QuantCompressorBlockVector<COMP>::UpdateXCache()
+{
+    if (!isExistXCache_) {
+        return;
+    }
+    // Write this decode step's raw BSH tokens into the shared ring cache before
+    // any grouped-window read. Only tokens the step actually owns are written:
+    // a padded request (seqused == 0) and a negative slot mapping are skipped
+    // so the ring never takes a token from an unused position. The KV/HCA
+    // compressor of a layer performs this; the same-layer LI compressor skips
+    // it (x_cache_update=False) and only reads the window.
+    constexpr uint32_t COPY_BASE = BUFFER_SIZE_BYTE_32K / sizeof(X_T);
+    uint32_t hBlockNum = CeilDivT(constInfo_.hSize, COPY_BASE);
+    uint32_t taskNumPerBatch = constInfo_.sSize * hBlockNum;
+    uint32_t totalTaskNum = constInfo_.xCacheUpdateBatchSize * taskNumPerBatch;
+    uint32_t aivCoreIdx = constInfo_.aiCoreIdx;
+    uint32_t aivCoreNum = constInfo_.usedCoreNum;
+    if ASCEND_IS_AIV {
+        uint32_t subBlockNum = static_cast<uint32_t>(GetSubBlockNum());
+        uint32_t subBlockIdx = static_cast<uint32_t>(GetSubBlockIdx());
+        aivCoreIdx = constInfo_.aiCoreIdx * subBlockNum + subBlockIdx;
+        aivCoreNum = constInfo_.usedCoreNum * subBlockNum;
+    }
+    if (aivCoreNum == 0) {
+        return;
+    }
+    LocalTensor<X_T> inputUb =
+        constInfo_.projectionBatchSize > 0 ? tmpBuff1.Get<X_T>() : xCacheUpdateBuf.Get<X_T>();
+    for (uint32_t taskIdx = aivCoreIdx; taskIdx < totalTaskNum; taskIdx += aivCoreNum) {
+        uint32_t bIdx = taskIdx / taskNumPerBatch;
+        uint32_t batchTaskIdx = taskIdx % taskNumPerBatch;
+        uint32_t sIdx = batchTaskIdx / hBlockNum;
+        if (sIdx >= tools_.GetRawSeqUsed(bIdx)) {
+            continue;
+        }
+        uint32_t hBlockIdx = batchTaskIdx % hBlockNum;
+        uint32_t hStart = hBlockIdx * COPY_BASE;
+        uint32_t hDealSize = min(COPY_BASE, constInfo_.hSize - hStart);
+        uint32_t tokenIdx = tools_.GetTIdxByBatch(bIdx) + sIdx;
+        int32_t slot = xCacheSlotMappingGm_.GetValue(tokenIdx);
+        if (slot < 0) {
+            continue;
+        }
+        uint64_t srcOffset = static_cast<uint64_t>(tokenIdx) * constInfo_.hSize + hStart;
+        uint64_t dstOffset = static_cast<uint64_t>(slot) * constInfo_.hSize + hStart;
+        DataCopy(inputUb, xGm_[srcOffset], hDealSize);
+        event_t eventMte2ToMte3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_MTE3));
+        SetFlag<HardEvent::MTE2_MTE3>(eventMte2ToMte3);
+        WaitFlag<HardEvent::MTE2_MTE3>(eventMte2ToMte3);
+        DataCopy(xCacheGm_[dstOffset], inputUb, hDealSize);
+        event_t eventMte3ToMte2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
+        SetFlag<HardEvent::MTE3_MTE2>(eventMte3ToMte2);
+        WaitFlag<HardEvent::MTE3_MTE2>(eventMte3ToMte2);
     }
 }
 

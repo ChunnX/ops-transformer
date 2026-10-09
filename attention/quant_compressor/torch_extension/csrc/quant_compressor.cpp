@@ -88,7 +88,9 @@ at::Tensor QuantCompressor(const at::Tensor &x, const at::Tensor &wkv, const at:
                            const c10::optional<at::Tensor> &wgateDescale,
                            const c10::optional<at::Tensor> &stateBlockTable, const c10::optional<at::Tensor> &cuSeqlens,
                            const c10::optional<at::Tensor> &seqused, const c10::optional<at::Tensor> &startPos,
-                           int64_t coff, int64_t cacheMode)
+                           const c10::optional<at::Tensor> &xCache,
+                           const c10::optional<at::Tensor> &xCacheSlotMapping, int64_t coff, int64_t cacheMode,
+                           bool xCacheUpdate)
 {
     TORCH_CHECK(x.defined(), "Check x != nullptr failed");
     TORCH_CHECK(x.scalar_type() == at::kByte, "x dtype should be uint8 (carrier for hifloat8), got ", x.scalar_type());
@@ -117,10 +119,13 @@ at::Tensor QuantCompressor(const at::Tensor &x, const at::Tensor &wkv, const at:
     TensorWrapper xWrapper = make_wrapper(x, ACL_HIFLOAT8);
     TensorWrapper wkvWrapper = make_wrapper(wkv, ACL_HIFLOAT8);
     TensorWrapper wgateWrapper = make_wrapper(wgate, ACL_HIFLOAT8);
+    TORCH_CHECK(!xCache.has_value() || xCache->scalar_type() == at::kByte,
+                "x_cache dtype should be uint8 (carrier for hifloat8)");
+    TensorWrapper xCacheWrapper = make_wrapper(xCache.value_or(at::Tensor()), ACL_HIFLOAT8);
 
     ACLNN_CMD(aclnnQuantCompressor, xWrapper, wkvWrapper, wgateWrapper, stateCache, ape, xDescale, wkvDescale,
-              wgateDescale, stateBlockTable, cuSeqlens, seqused, startPos, quantMode, cmpRatio, coff, cacheMode,
-              stateCacheStrideDim0, cmpKv);
+              wgateDescale, stateBlockTable, cuSeqlens, seqused, startPos, xCacheWrapper, xCacheSlotMapping, quantMode,
+              cmpRatio, coff, cacheMode, stateCacheStrideDim0, xCacheUpdate, cmpKv);
 
     return cmpKv;
 }

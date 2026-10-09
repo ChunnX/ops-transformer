@@ -217,6 +217,12 @@ struct ConstInfo {
     uint32_t nSize = 0;
 
     uint64_t dbSize = 0;
+
+    // Grouped-decode shared x-cache plan (all zero for the ordinary schedule).
+    uint32_t xCacheReadSize = 0;
+    uint32_t xCacheSize = 0;
+    uint32_t xCacheUpdateBatchSize = 0;
+    uint32_t projectionBatchSize = 0;
 };
 
 struct RunInfo {

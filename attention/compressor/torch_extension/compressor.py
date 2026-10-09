@@ -28,13 +28,14 @@ class CompressorOpBuilder(OpBuilder):
             "compressor(Tensor x, Tensor wkv, Tensor wgate, Tensor(a!) state_cache, Tensor ape, "
             "int cmp_ratio, *, "
             "Tensor? state_block_table=None, Tensor? cu_seqlens=None, Tensor? seqused=None, "
-            "Tensor? start_pos=None, int coff=1, int cache_mode=1) -> Tensor"
+            "Tensor? start_pos=None, Tensor(b!)? x_cache=None, Tensor? x_cache_slot_mapping=None, "
+            "int coff=1, int cache_mode=1, bool x_cache_update=True) -> Tensor"
         )
 
     def register_meta(self):
         """
         Registers the Meta implementation (Shape/Dtype inference).
-        Essential for Autograd and FakeTensor support.
+        Essential for FakeTensor/shape inference.
         """
 
         @impl(get_as_library(), self.name, "Meta")
@@ -50,8 +51,11 @@ class CompressorOpBuilder(OpBuilder):
             cu_seqlens: Optional[torch.Tensor] = None,
             seqused: Optional[torch.Tensor] = None,
             start_pos: Optional[torch.Tensor] = None,
+            x_cache: Optional[torch.Tensor] = None,
+            x_cache_slot_mapping: Optional[torch.Tensor] = None,
             coff: Optional[int] = 1,
             cache_mode: Optional[int] = 1,
+            x_cache_update: Optional[bool] = True,
         ):
             cmp_kv, _, _ = _compressor_forward_fake(
                 x,
@@ -64,9 +68,11 @@ class CompressorOpBuilder(OpBuilder):
                 cu_seqlens,
                 seqused,
                 start_pos,
+                x_cache,
+                x_cache_slot_mapping,
                 coff,
                 cache_mode,
-                False,
+                x_cache_update,
             )
             return cmp_kv
 
@@ -76,25 +82,32 @@ compressor_op_builder._ensure_initialized()
 
 
 # ===========================================================================
-# Register compressor forward
+# Register the stateful Compressor inference kernel
 # ===========================================================================
-@torch.library.custom_op(
-    "cann_ops_transformer::_compressor_forward", mutates_args=(), device_types="npu"
-)
-def _compressor_forward(
+def _compressor_forward_impl(
     x: torch.Tensor,
     wkv: torch.Tensor,
     wgate: torch.Tensor,
     state_cache: torch.Tensor,
     ape: torch.Tensor,
     cmp_ratio: int,
-    state_block_table: Optional[torch.Tensor] = None,
-    cu_seqlens: Optional[torch.Tensor] = None,
-    seqused: Optional[torch.Tensor] = None,
-    start_pos: Optional[torch.Tensor] = None,
+    # state_block_table..x_cache stay Optional (None is a legal value) but must
+    # be positional-or-keyword arguments without a default. The ADInplaceOrView
+    # kernel of this mutable custom op bumps the version of the mutated args by
+    # positional index (state_cache=3, x_cache=10). Older PyTorch dispatchers
+    # drop a trailing run of positionals that equal their schema default, so a
+    # defaulted x_cache let the args tuple shrink to length 10 and
+    # ``increment_version(args[10])`` raised IndexError. Requiring explicit
+    # values keeps the mutated index present for every caller.
+    state_block_table: Optional[torch.Tensor],
+    cu_seqlens: Optional[torch.Tensor],
+    seqused: Optional[torch.Tensor],
+    start_pos: Optional[torch.Tensor],
+    x_cache: Optional[torch.Tensor],
+    x_cache_slot_mapping: Optional[torch.Tensor] = None,
     coff: Optional[int] = 1,
     cache_mode: Optional[int] = 1,
-    grad_enabled: Optional[bool] = False,
+    x_cache_update: Optional[bool] = True,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     op_module = compressor_op_builder.load()
     return op_module.compressor(
@@ -108,13 +121,28 @@ def _compressor_forward(
         cu_seqlens,
         seqused,
         start_pos,
+        x_cache,
+        x_cache_slot_mapping,
         coff,
         cache_mode,
-        grad_enabled,
+        x_cache_update,
+        # The native forward is inference-only by contract: the gradient branch
+        # is never enabled, regardless of the caller's autograd state.
+        False,
     )
 
 
-@torch.library.register_fake("cann_ops_transformer::_compressor_forward")
+# Compressor is a stateful inference operator: it mutates state_cache and, when
+# supplied, x_cache. PyTorch forbids autograd formulas on mutable ops, and this
+# project does not implement Compressor training, so the single registration is
+# the mutable inference kernel below.
+_compressor_inference = torch.library.custom_op(
+    "cann_ops_transformer::_compressor_inference",
+    mutates_args=("state_cache", "x_cache"), device_types="npu"
+)(_compressor_forward_impl)
+
+
+@torch.library.register_fake("cann_ops_transformer::_compressor_inference")
 def _compressor_forward_fake(
     x: torch.Tensor,
     wkv: torch.Tensor,
@@ -126,9 +154,11 @@ def _compressor_forward_fake(
     cu_seqlens: Optional[torch.Tensor] = None,
     seqused: Optional[torch.Tensor] = None,
     start_pos: Optional[torch.Tensor] = None,
+    x_cache: Optional[torch.Tensor] = None,
+    x_cache_slot_mapping: Optional[torch.Tensor] = None,
     coff: Optional[int] = 1,
     cache_mode: Optional[int] = 1,
-    grad_enabled: Optional[bool] = False,
+    x_cache_update: Optional[bool] = True,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     d = wkv.size(0) // coff
     coff_cmp = coff * cmp_ratio
@@ -155,107 +185,21 @@ def _compressor_forward_fake(
     return (cmp_kv_out, softmax_score_out, kv_out)
 
 
-# ===========================================================================
-# Register compressor backward
-# ===========================================================================
-@torch.library.custom_op(
-    "cann_ops_transformer::_compressor_backward", mutates_args=(), device_types="npu"
-)
-def _compressor_backward(
-    d_cmp_kv: torch.Tensor,
-    x: torch.Tensor,
-    wkv: torch.Tensor,
-    wgate: torch.Tensor,
-    softmax_score: torch.Tensor,
-    kv: torch.Tensor,
-    cmp_ratio: int,
-    cu_seqlens: Optional[torch.Tensor] = None,
-    seqused: Optional[torch.Tensor] = None,
-    start_pos: Optional[torch.Tensor] = None,
-    coff: Optional[int] = 1,
-) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-    op_module = compressor_op_builder.load()
-    return op_module.compressor_backward(
-        d_cmp_kv,
-        x,
-        wkv,
-        wgate,
-        softmax_score,
-        kv,
-        cu_seqlens,
-        seqused,
-        start_pos,
-        cmp_ratio,
-        coff,
-    )
-
-
-@torch.library.register_fake("cann_ops_transformer::_compressor_backward")
-def _compressor_backward_fake(
-    d_cmp_kv: torch.Tensor,
-    x: torch.Tensor,
-    wkv: torch.Tensor,
-    wgate: torch.Tensor,
-    softmax_score: torch.Tensor,
-    kv: torch.Tensor,
-    cmp_ratio: int,
-    cu_seqlens: Optional[torch.Tensor] = None,
-    seqused: Optional[torch.Tensor] = None,
-    start_pos: Optional[torch.Tensor] = None,
-    coff: Optional[int] = 1,
-) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-    d_x = torch.empty_like(x)
-    d_wkv = torch.empty_like(wkv)
-    d_wgate = torch.empty_like(wgate)
-    d_ape_size = (cmp_ratio, wkv.size(0))
-    d_ape = torch.empty(d_ape_size, dtype=torch.float32, device=x.device)
-    return (d_x, d_wkv, d_wgate, d_ape)
-
-
-# ===========================================================================
-# Register AutoGrad
-# ===========================================================================
-def setup_context(ctx, inputs, output):
-    ctx.set_materialize_grads(False)
-    x, wkv, wgate = inputs[:3]
-    cmp_ratio = inputs[5]
-    cu_seqlens, seqused, start_pos = inputs[7:10]
-    coff = inputs[10]
-
-    cmp_kv, softmax_score, kv = output
-    ctx.save_for_backward(
-        x, wkv, wgate, cu_seqlens, seqused, start_pos, softmax_score, kv
-    )
-    ctx.cmp_ratio = cmp_ratio
-    ctx.coff = coff
-
-
-def backward(ctx, dout, *grads):
-    """
-    Args:
-        dout: d_cmp_kv
-    """
-    x, wkv, wgate, cu_seqlens, seqused, start_pos, softmax_score, kv = ctx.saved_tensors
-    cmp_ratio = ctx.cmp_ratio
-    coff = ctx.coff
-
-    d_x, d_wkv, d_wgate, d_ape = _compressor_backward(
-        dout,
-        x,
-        wkv,
-        wgate,
-        softmax_score,
-        kv,
-        cmp_ratio,
-        cu_seqlens,
-        seqused,
-        start_pos,
-        coff,
-    )
-    return d_x, d_wkv, d_wgate, None, d_ape, *((None,) * 8)
-
-
-_compressor_forward.register_autograd(backward, setup_context=setup_context)
+def _reject_grad_tracking_inputs(named_tensors) -> None:
+    """Refuse grad-tracked inputs on this inference-only entry point."""
+    offenders = [
+        name
+        for name, value in named_tensors
+        if isinstance(value, torch.Tensor)
+        and value.requires_grad
+        and (value.is_floating_point() or value.is_complex())
+    ]
+    if offenders:
+        raise ValueError(
+            "compressor is an inference-only entry point and does not support "
+            "autograd; input tensor(s) [{}] require grad. Run under "
+            "torch.no_grad() or torch.inference_mode().".format(", ".join(offenders))
+        )
 
 
 @impl(get_as_library(), compressor_op_builder.name, "PrivateUse1")
@@ -272,17 +216,41 @@ def compressor(
     cu_seqlens: Optional[torch.Tensor] = None,
     seqused: Optional[torch.Tensor] = None,
     start_pos: Optional[torch.Tensor] = None,
+    x_cache: Optional[torch.Tensor] = None,
+    x_cache_slot_mapping: Optional[torch.Tensor] = None,
     coff: Optional[int] = 1,
     cache_mode: Optional[int] = 1,
-) -> Tuple[torch.Tensor]:
+    x_cache_update: Optional[bool] = True,
+) -> torch.Tensor:
     """
     dispatcher implementation for NPU.
     'PrivateUse1' is the combine key for custom NPU backends.
+
+    This is the project's formal Compressor entry point and it is stateful
+    inference only: it reads and writes ``state_cache`` (and ``x_cache`` when
+    provided) in place. Grad-tracked inputs are rejected before the native
+    kernel is reached; run under ``torch.no_grad()`` or
+    ``torch.inference_mode()``.
     """
     if x is None or not isinstance(x, torch.Tensor):
         raise ValueError("x must be a torch.Tensor, got {}".format(type(x).__name__))
-    grad_enabled = x.requires_grad
-    cmp_kv, softmax_score, kv = _compressor_forward(
+    if torch.is_grad_enabled():
+        _reject_grad_tracking_inputs(
+            (
+                ("x", x),
+                ("wkv", wkv),
+                ("wgate", wgate),
+                ("state_cache", state_cache),
+                ("ape", ape),
+                ("state_block_table", state_block_table),
+                ("cu_seqlens", cu_seqlens),
+                ("seqused", seqused),
+                ("start_pos", start_pos),
+                ("x_cache", x_cache),
+                ("x_cache_slot_mapping", x_cache_slot_mapping),
+            )
+        )
+    cmp_kv, _, _ = _compressor_inference(
         x,
         wkv,
         wgate,
@@ -293,8 +261,10 @@ def compressor(
         cu_seqlens,
         seqused,
         start_pos,
+        x_cache,
+        x_cache_slot_mapping,
         coff,
         cache_mode,
-        grad_enabled,
+        x_cache_update,
     )
     return cmp_kv
