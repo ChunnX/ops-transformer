@@ -1616,6 +1616,16 @@ static aclnnStatus CheckFunctionParams(const gmm::GroupedMatmulParams &gmmParams
 
     if (IsNpuArch3510Series()) {
         const bool isLegacyDav3510 = op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510;
+        if (!isLegacyDav3510) {
+            const bool isNonQuant = gmmParams.xDtype == weightDtype &&
+                                    (gmmParams.xDtype == DataType::DT_FLOAT16 ||
+                                     gmmParams.xDtype == DataType::DT_BF16 || gmmParams.xDtype == DataType::DT_FLOAT);
+            CHECK_COND(isNonQuant, ACLNN_ERR_PARAM_INVALID,
+                       "In op [%s], ASCEND960DT/ASCEND960PR only support non-quant FP16/BF16/FP32 inputs.", opName);
+            CHECK_COND(isNoActivation, ACLNN_ERR_PARAM_INVALID,
+                       "In op [%s], activation is not supported on ASCEND960DT/ASCEND960PR, got activeType[%ld].",
+                       opName, gmmParams.activeType);
+        }
         // 量化/伪量化checker仅DAV_3510开放; V121/V122(DAV_9201/DAV_9202)当前仅支持非量化场景
         if (isLegacyDav3510 && IsQuant(gmmParams.xDtype, weightDtype)) {
             CHECK_COND(isNoActivation || CheckIsEnabledActive(gmmParams), ACLNN_ERR_PARAM_INVALID,
@@ -1632,10 +1642,11 @@ static aclnnStatus CheckFunctionParams(const gmm::GroupedMatmulParams &gmmParams
                        gmmParams.activeType);
             return gmm::AclnnGroupedMatmulWeightQuantDAV3510Checker(gmmParams).CheckGroupedMatmulWeightQuantDAV3510();
         } else {
-            // No-quant: GELU_TANH post-process is enabled on DAV_3510 series for FP16/BF16 output. The first
+            // No-quant: GELU_TANH post-process is enabled only on DAV_3510 for FP16/BF16 output. The first
             // phase restricts it to NO_SPLIT(-1)/SPLIT_M(0); SPLIT_K(2) is deferred.
             DataType yDtype = (*gmmParams.y)[0]->GetDataType();
-            bool isGeluSupported = gmmParams.activeType == GMMActType::GMM_ACT_TYPE_GELU_TANH &&
+            bool isGeluSupported = isLegacyDav3510 &&
+                                   gmmParams.activeType == GMMActType::GMM_ACT_TYPE_GELU_TANH &&
                                    (yDtype == DataType::DT_FLOAT16 || yDtype == DataType::DT_BF16) &&
                                    (gmmParams.groupType == -1L || gmmParams.groupType == 0L);
             CHECK_COND(isNoActivation || isGeluSupported, ACLNN_ERR_PARAM_INVALID,
@@ -1670,9 +1681,10 @@ static aclnnStatus CheckFunctionParams(const gmm::GroupedMatmulParams &gmmParams
         }
         CHECK_COND(CheckNonQuantMatmulDataType(gmmParams, weightDtype, opName) == ACLNN_SUCCESS,
                    ACLNN_ERR_PARAM_INVALID, "In op [%s], when non-quant, data type check failed.", opName);
-        // No-quant GELU_TANH is only enabled on DAV_3510 series (y dtype checked in the DAV_3510 series branch above).
+        // No-quant GELU_TANH is only enabled on DAV_3510 (y dtype checked above).
         bool isNoQuantActAllowed =
-            isNoActivation || (IsNpuArch3510Series() && gmmParams.activeType == GMMActType::GMM_ACT_TYPE_GELU_TANH);
+            isNoActivation || (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 &&
+                               gmmParams.activeType == GMMActType::GMM_ACT_TYPE_GELU_TANH);
         CHECK_COND(isNoQuantActAllowed, ACLNN_ERR_PARAM_INVALID,
                    "In op [%s], when %s, [%s] is not supported, got [%ld]. Constraint:[activation is not supported].",
                    opName, GetGmmScenarioName(gmmParams.xDtype, weightDtype), "activeType", gmmParams.activeType);

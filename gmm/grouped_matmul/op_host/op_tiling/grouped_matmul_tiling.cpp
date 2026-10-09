@@ -2434,13 +2434,15 @@ ASCENDC_EXTERN_C ge::graphStatus TilingGMM(gert::TilingContext *context)
         // V121(ascend960dt/DAV_9201)/V122(ascend960pr/DAV_9202): 当前仅开放非量化场景
         bool isUnQuant =
             (xDType == ge::DT_FLOAT16 || xDType == ge::DT_BF16 || xDType == ge::DT_FLOAT) && (xDType == weightDtype);
-        if (isUnQuant) {
-            GroupedNoQuantMatmulTiling groupedNoQuantMatmulTiling;
-            OP_CHECK_IF(!groupedNoQuantMatmulTiling.SetTiling(context),
-                        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "SetTiling failed."),
-                        return ge::GRAPH_FAILED);
-            return ge::GRAPH_SUCCESS;
-        }
+        OP_CHECK_IF(!isUnQuant,
+                    OPS_REPORT_VECTOR_INNER_ERR(
+                        context->GetNodeName(), "ASCEND960DT/ASCEND960PR only support non-quant FP16/BF16/FP32 inputs."),
+                    return ge::GRAPH_FAILED);
+        GroupedNoQuantMatmulTiling groupedNoQuantMatmulTiling;
+        OP_CHECK_IF(!groupedNoQuantMatmulTiling.SetTiling(context),
+                    OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "SetTiling failed."),
+                    return ge::GRAPH_FAILED);
+        return ge::GRAPH_SUCCESS;
     }
     GMMTiling tiling;
     if (xDType == ge::DT_INT8 && weightDtype == ge::DT_INT4) { // A8W4 Tiling
