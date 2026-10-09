@@ -184,6 +184,11 @@ struct ConstInfo {
     uint32_t sIdxOfLastTc = 0;
     uint32_t mGroupNum = 0;
     uint32_t mCurGroupIdx = 0;
+    // 本核负责的 M 段在"全局 token 行"中的起始行号（NORMAL = mCurGroupIdx*mBaseSize，
+    // FULL_LOAD = host 给的 mStart）。M×K 叠加把 M 轴切成 mGroupNum 段后，cube 写 mm1
+    // 时用【全局行号】定位，各 M 段写在同一个 K 段槽位内互不重叠的行区间，
+    // vec 从槽位基址按全局行连续读即可，对 M 段边界是否切在 TC 内部完全无感。
+    uint32_t mRowBase = 0;
     uint32_t batchConsistency = 0;
 
     // shape及参数

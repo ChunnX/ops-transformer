@@ -227,45 +227,95 @@ ge::graphStatus QuantCompressorTiling::SetTemplateId()
 
 ge::graphStatus QuantCompressorTiling::SetFullLoadSplitInfo()
 {
-    innerSplitParams_->mBaseSize = 256;              // 256:核间切分，M轴基本块大小
+    // M 轴基本块大小需为 seqSize 的整数倍 —— FULL_LOAD 的 AIV 用
+    // dealSeqStartIdx = (preDealBatchNum - mStartBatch) * seqSize 反推 mm1 行偏移，
+    // 隐含要求 M 段起点 mStart = mIdx * mBaseSize 落在 batch 边界上。
+    // 故取"不超过 M_BASE_TARGET(256) 的最大 seqSize 倍数"：
+    //   seqSize=1/2/4 → 256；seqSize=3 → 255。
+    constexpr uint32_t M_BASE_TARGET = 256; // M 基本块目标 = L0C 决定的 M 上界
+    uint32_t seqSize = baseParams_->seqSize != 0 ? baseParams_->seqSize : 1U;
+    innerSplitParams_->mBaseSize = M_BASE_TARGET - (M_BASE_TARGET % seqSize);
     innerSplitParams_->dBaseSize = 256 / (coff * 2); // nBase = dBase * coff * 2
     uint32_t dBaseNum = baseParams_->headDim / innerSplitParams_->dBaseSize;
     uint32_t mBaseNum = (baseParams_->tokenSize + innerSplitParams_->mBaseSize - 1) / innerSplitParams_->mBaseSize;
+    // M 轴段数需传给 kernel：它决定 workspace 中"一个 K 段槽位"的大小（需容纳全 M 行），
+    // 使各 M 段的 cube 写入同一槽位内互不重叠的行区间，vec 无需感知段边界。
+    baseParams_->mGroupNum = mBaseNum;
     baseParams_->coreGroupNum = baseParams_->usedCoreNum / dBaseNum;
+    // 每个 M 段必须能分到一个核组：mBaseNum > coreGroupNum 时，第 coreGroupNum 组之后的
+    // M 段没有核负责，序列尾部 token 会整体丢失（宁可报错，不要静默丢尾）。
+    OP_CHECK_IF(baseParams_->coreGroupNum < mBaseNum,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context_->opName, "coreGroupNum", std::to_string(baseParams_->coreGroupNum),
+                    "each M block needs one core group, but mBaseNum=" + std::to_string(mBaseNum) + " > coreGroupNum"),
+                return ge::GRAPH_FAILED);
     baseParams_->kBaseNum = 1;
     baseParams_->kBaseSize = baseParams_->hiddenSize;
-    if ((dBaseNum * mBaseNum) < baseParams_->usedCoreNum && baseParams_->batchConsistency != BATCH_CONSISTENCY) {
-        baseParams_->kBaseNum = baseParams_->usedCoreNum / dBaseNum;
-        uint32_t kAlignSize = (baseParams_->hiddenSize + baseParams_->kBaseNum - 1) / baseParams_->kBaseNum;
+    if (baseParams_->coreGroupNum >= mBaseNum && baseParams_->batchConsistency != BATCH_CONSISTENCY) {
+        // M和K可同时切(M外层K内层)；mBaseNum==1时等价于仅切K
+        uint32_t kBaseNum = baseParams_->coreGroupNum / mBaseNum;
+        baseParams_->kBaseNum = kBaseNum;
+        uint32_t kAlignSize = (baseParams_->hiddenSize + kBaseNum - 1) / kBaseNum;
         baseParams_->kBaseSize = kAlignSize / 32 * 32; // 切k的size需要32对齐(hifloat8)
-    }
-    for (uint32_t i = 0; i < baseParams_->usedCoreNum; i++) {
-        baseParams_->splitCoreParam[i].nStart = (i % dBaseNum) * innerSplitParams_->dBaseSize;
-        baseParams_->splitCoreParam[i].nEnd = baseParams_->splitCoreParam[i].nStart + innerSplitParams_->dBaseSize;
-        if (baseParams_->kBaseNum > 1) {
-            uint32_t kStartIdx = i / dBaseNum;
-            if (kStartIdx + 1 < baseParams_->coreGroupNum) {
-                uint32_t dealKSize = baseParams_->kBaseSize;
-                baseParams_->splitCoreParam[i].kStart = kStartIdx * baseParams_->kBaseSize;
-                baseParams_->splitCoreParam[i].kEnd = baseParams_->splitCoreParam[i].kStart + dealKSize;
-            } else {
-                uint32_t dealKSize = kStartIdx < baseParams_->coreGroupNum ?
-                                         baseParams_->hiddenSize - kStartIdx * baseParams_->kBaseSize :
-                                         0;
-                baseParams_->splitCoreParam[i].kStart = kStartIdx * baseParams_->kBaseSize;
-                baseParams_->splitCoreParam[i].kEnd = baseParams_->splitCoreParam[i].kStart + dealKSize;
+        baseParams_->mLoopNum = 1;
+        uint32_t usedGroupNum = mBaseNum * kBaseNum; // 每个D组实际使用的核数
+        for (uint32_t i = 0; i < baseParams_->usedCoreNum; i++) {
+            baseParams_->splitCoreParam[i].nStart = (i % dBaseNum) * innerSplitParams_->dBaseSize;
+            baseParams_->splitCoreParam[i].nEnd = baseParams_->splitCoreParam[i].nStart + innerSplitParams_->dBaseSize;
+            uint32_t groupIdx = i / dBaseNum;
+            if (groupIdx >= usedGroupNum) {
+                // 空闲核，不分配M/K任务
+                baseParams_->splitCoreParam[i].mStart = 0;
+                baseParams_->splitCoreParam[i].mEnd = 0;
+                baseParams_->splitCoreParam[i].kStart = 0;
+                baseParams_->splitCoreParam[i].kEnd = 0;
+                continue;
             }
-            baseParams_->splitCoreParam[i].mStart = 0;
-            baseParams_->splitCoreParam[i].mEnd = baseParams_->tokenSize;
-            baseParams_->mLoopNum = 1;
-        } else {
-            baseParams_->splitCoreParam[i].kStart = 0;
-            baseParams_->splitCoreParam[i].kEnd = baseParams_->splitCoreParam[i].kStart + baseParams_->kBaseSize;
-            uint32_t mStart = (i / dBaseNum) * innerSplitParams_->mBaseSize;
-            baseParams_->splitCoreParam[i].mStart = mStart < baseParams_->tokenSize ? mStart : baseParams_->tokenSize;
-            uint32_t mEnd = baseParams_->splitCoreParam[i].mStart + innerSplitParams_->mBaseSize;
-            baseParams_->splitCoreParam[i].mEnd = mEnd < baseParams_->tokenSize ? mEnd : baseParams_->tokenSize;
-            baseParams_->mLoopNum = mBaseNum / baseParams_->coreGroupNum;
+            uint32_t mIdx = groupIdx / kBaseNum; // M外层
+            uint32_t kIdx = groupIdx % kBaseNum; // K内层
+            uint32_t mStart = mIdx * innerSplitParams_->mBaseSize;
+            baseParams_->splitCoreParam[i].mStart = mStart;
+            baseParams_->splitCoreParam[i].mEnd =
+                std::min(mStart + innerSplitParams_->mBaseSize, baseParams_->tokenSize);
+            uint32_t kStart = kIdx * baseParams_->kBaseSize;
+            baseParams_->splitCoreParam[i].kStart = kStart;
+            if (kIdx + 1 < kBaseNum) {
+                baseParams_->splitCoreParam[i].kEnd = kStart + baseParams_->kBaseSize;
+            } else {
+                uint32_t dealKSize = kStart < baseParams_->hiddenSize ? baseParams_->hiddenSize - kStart : 0;
+                baseParams_->splitCoreParam[i].kEnd = kStart + dealKSize;
+            }
+        }
+    } else {
+        for (uint32_t i = 0; i < baseParams_->usedCoreNum; i++) {
+            baseParams_->splitCoreParam[i].nStart = (i % dBaseNum) * innerSplitParams_->dBaseSize;
+            baseParams_->splitCoreParam[i].nEnd = baseParams_->splitCoreParam[i].nStart + innerSplitParams_->dBaseSize;
+            if (baseParams_->kBaseNum > 1) {
+                uint32_t kStartIdx = i / dBaseNum;
+                if (kStartIdx + 1 < baseParams_->coreGroupNum) {
+                    uint32_t dealKSize = baseParams_->kBaseSize;
+                    baseParams_->splitCoreParam[i].kStart = kStartIdx * baseParams_->kBaseSize;
+                    baseParams_->splitCoreParam[i].kEnd = baseParams_->splitCoreParam[i].kStart + dealKSize;
+                } else {
+                    uint32_t dealKSize = kStartIdx < baseParams_->coreGroupNum ?
+                                             baseParams_->hiddenSize - kStartIdx * baseParams_->kBaseSize :
+                                             0;
+                    baseParams_->splitCoreParam[i].kStart = kStartIdx * baseParams_->kBaseSize;
+                    baseParams_->splitCoreParam[i].kEnd = baseParams_->splitCoreParam[i].kStart + dealKSize;
+                }
+                baseParams_->splitCoreParam[i].mStart = 0;
+                baseParams_->splitCoreParam[i].mEnd = baseParams_->tokenSize;
+                baseParams_->mLoopNum = 1;
+            } else {
+                baseParams_->splitCoreParam[i].kStart = 0;
+                baseParams_->splitCoreParam[i].kEnd = baseParams_->splitCoreParam[i].kStart + baseParams_->kBaseSize;
+                uint32_t mStart = (i / dBaseNum) * innerSplitParams_->mBaseSize;
+                baseParams_->splitCoreParam[i].mStart =
+                    mStart < baseParams_->tokenSize ? mStart : baseParams_->tokenSize;
+                uint32_t mEnd = baseParams_->splitCoreParam[i].mStart + innerSplitParams_->mBaseSize;
+                baseParams_->splitCoreParam[i].mEnd = mEnd < baseParams_->tokenSize ? mEnd : baseParams_->tokenSize;
+                baseParams_->mLoopNum = mBaseNum / baseParams_->coreGroupNum;
+            }
         }
     }
     return ge::GRAPH_SUCCESS;
