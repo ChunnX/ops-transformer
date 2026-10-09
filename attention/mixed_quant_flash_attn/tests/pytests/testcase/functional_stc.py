@@ -1355,9 +1355,9 @@ TestCases = {
         "mask_mode": [3],
         "seqused_kv": [[48, 128, 256]],
         "sinks": [True],
-        # Exercise sink-dominant, QK-dominant, and competitive logits. The
-        # Short KV exercises stable softmax; the companion case below checks FD.
-        "sinks_datarange": [(-600.0, 600.0)],
+        # Preserve the seed-21 strong-competition reproduction: no-sink LSE
+        # is about 145~400. Wider sink ranges can hide scale precision errors.
+        "sinks_datarange": [(250.0, 420.0)],
         "max_seqlen_q": [5],
         "max_seqlen_kv": [256],
         "softmax_scale": 0.08838834764831843,
