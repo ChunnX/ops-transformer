@@ -14,7 +14,7 @@
  */
 #include "moe_token_unpermute.h"
 #include "kernel_operator.h"
-
+//测试
 #define MOE_TOKEN_UNPERMUTE_IMPL(T1, T2, T3, haveProbs)                                  \
     do {                                                                                 \
         GET_TILING_DATA(tiling_data_in, tiling);                                         \
