@@ -62,7 +62,7 @@ C[M][N] = bias[N] + Σ_{r∈[0,rankSize)} A_r[M][K] · B_r[K][N]
 | 模式1 | rankSize | 1 | 无 | 1（splitKIdx==0）|
 | 模式2 | rankSize | 1 | 无 | 1（self）|
 | 模式3-LOCAL | 1 | 1 | 无 | 1 |
-| 模式3-REMOTE | rankSize-1 | 1（atomic）| Run 级 `SetAtomicAdd` | 0（mmad `isBias_=false`）|
+| 模式3-REMOTE | rankSize-1 | 1（atomic）| Run 级 `SetAtomicAdd` | 0（`biasGmAddr=nullptr`，mmad 指针判断）|
 
 ## 3. 文件与命名
 
@@ -73,8 +73,8 @@ C[M][N] = bias[N] + Σ_{r∈[0,rankSize)} A_r[M][K] · B_r[K][N]
   - 枚举：`MatmulMode { REMOTE=0, LOCAL=1, DEFERRED_SYNC=2 }`（保持不变）
   - 结构体：`MMTiling`（对照 `QBMMTiling`）、`LocalParams`、`Params`
   - 方法：`Init`/`Run`/`operator()`/`GetCommPolicy`/`ResetGmAddr`/`ProcessSingleBatch`/`CalcDependTileIdx`/`SetL2Cache`
-  - 成员：`mmadOp_`/`commPolicy_`/`aGmAddr_`/`localAGmAddr_`/`bGmAddr_`/`cGmAddr_`/`biasGmAddr_`/`isAtomicAdd_`/`isBias_`。
-    **无** `zeroBiasGmAddr_`、`needUpdateTail_`（旧 GM 累加与量化调度器动态尾块机制均已删除）。
+  - 成员：`mmadOp_`/`commPolicy_`/`aGmAddr_`/`localAGmAddr_`/`bGmAddr_`/`cGmAddr_`/`biasGmAddr_`/`isAtomicAdd_`。
+    **无** `zeroBiasGmAddr_`、`needUpdateTail_`、`isBias_`（bias 是否处理改由 mmad 按 `biasGmAddr` 指针判断）。
 
 ## 4. 类结构设计
 
@@ -165,10 +165,10 @@ __aicore__ inline void Run(const Params &params)
 `Init` 判定：
 
 ```cpp
-isBias_ = (params.mmadParams.biasGmAddr != nullptr);
 if ((matmulMode == MatmulMode::REMOTE) && (localMatmul == 2)) {
     isAtomicAdd_ = true;    // GM累加模式：local 已写 GM，REMOTE 全原子
-    isBias_ = false;        // bias 已在 LOCAL 阶段写入 GM，REMOTE 必须跳过
+    // bias 跳过：由 Run() 里把 mmadParams.biasGmAddr 置空，
+    // mmad Init 内部据此推导 isBias_=false（指针判断，不传 isBias 参数）
 }
 ResetGmAddr(params);
 ```

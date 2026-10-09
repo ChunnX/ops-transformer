@@ -49,7 +49,7 @@
 | 模式1 | rankSize | 1 | 无 | 1（splitKIdx==0）|
 | 模式2 | rankSize | 1 | 无 | 1（self）|
 | 模式3-LOCAL | 1 | 1 | 无 | 1 |
-| 模式3-REMOTE | rankSize-1 | 1（atomic）| Run 级 `SetAtomicAdd` | 0（mmad isBias_=false）|
+| 模式3-REMOTE | rankSize-1 | 1（atomic）| Run 级 `SetAtomicAdd` | 0（`biasGmAddr=nullptr`，mmad 指针判断）|
 
 ---
 

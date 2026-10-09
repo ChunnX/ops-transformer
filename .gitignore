@@ -49,6 +49,9 @@ third_party/
 .opencode/
 .claude/
 
+# local dev tooling (arts IDE/devtools cache, env, configs)
+.arts/
+
 # pre-commit log
 log/
 oat_reports/

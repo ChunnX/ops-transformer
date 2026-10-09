@@ -24,8 +24,8 @@
 
 #include "blaze/gemm/utils/common_utils.h"
 #include "include/tensor_api/tensor.h"
-// splitKIdx 增强版基本 mmad（上游 de3bf6f 基线 + L0C 跨调用累加，apace 本地维护，
-// fork 合入上游后切回 "blaze/gemm/block/block_mmad_matmul_basic.h" 并删除该文件）
+// splitKIdx 增强版基本 mmad（L0C 跨调用累加，apace 本地维护）
+// blaze库更新后切回 "blaze/gemm/block/block_mmad_matmul_basic.h" 并删除该文件
 #include "apace/block/mmad/block_mmad_matmul_basic_splitk.h"
 #define WINDOW_LEN 4L // 调度器窗口设置为1，非侵入式修改
 #include "blaze/gemm/block/block_scheduler_matmul_basic.h"
@@ -46,13 +46,12 @@ using AscendC::Te::Get;
  * @brief 非量化 all-to-all MatMul 内核实现
  * 该类负责具体的矩阵乘块调度和计算，支持本地(LOCAL)和远程(REMOTE)两种切片模式。
  * 核心机制：
- * 1. 非量化 mmad(block_mmad_matmul_basic.h) 已支持 splitKIdx 接口：同一个输出块由 rankSize 次
+ * 1. 非量化 mmad(block_mmad_matmul_basic_splitk.h) 支持 splitKIdx 接口：同一个输出块由 rankSize 次
  *    mmad 调用在 L0C 上跨调用累加，splitKIdx==0 清零 L0C 并加 bias，splitKIdx==splitKNum-1 触发单次 fixpipe。
  * 2. 调度器使用非量化 BlockSchedulerMatmulBasic：按下标 for 循环遍历（blockIdx 步进 coreNums），
  *    GetBlockShape 返回 {m, n, k_, batch_}（K 即每 rank 的 K 段长度），尾块由 Params 静态切分，
  *    不参与尾块切分的核会收到空子片 {0,0,k_,batch_}，kernel 需 continue 跳过。
- * 3. bias 由 mmad 按 isFirstSplitK 自动只加一次。
- * 4. 通信等待逻辑经 CommPolicy 策略类注入（组合模式）：调用点直接 commPolicy_.WaitTile(tileIdx)，
+ * 3. 通信等待逻辑经 CommPolicy 策略类注入（组合模式）：调用点直接 commPolicy_.WaitTile(tileIdx)，
  *    编译期由模板参数绑定具体策略，无需继承与 static_cast。
  */
 
@@ -162,7 +161,6 @@ private:
     __gm__ BiasType *biasGmAddr_ = nullptr;
 
     bool isAtomicAdd_{false}; // GM累加模式（模式3-REMOTE）需要原子累加到 C
-    bool isBias_{false};
 };
 
 MM_KERNEL_CLASS_TEM_PARAMS
@@ -173,14 +171,16 @@ __aicore__ inline void AllToAllMmKernel<MM_KERNEL_FUNC_TEM_PARAMS>::Run(const Pa
     if (isAtomicAdd_) {
         AscendC::SetAtomicAdd<CType>(); // 开启原子累加（模式3-REMOTE 单次 fixpipe 累加到 LOCAL 已写的 GM）
     }
+
     BlockScheduler bs(params.problemShape, params.schParams);
 
-    // GM累加模式（模式3-REMOTE）：bias 已在 LOCAL 阶段写入 GM，mmad 必须跳过 bias，否则重复累加导致精度偏差
+    // GM累加模式（模式3-REMOTE）：bias 已在 LOCAL 阶段写入 GM，必须跳过，否则重复累加导致精度偏差。
+    // 把 mmadParams.biasGmAddr 置空，mmad Init 内部据此推导 isBias_=false（指针判断，不再传 isBias 参数）。
     BlockMmadParams mmadParams = params.mmadParams;
     if ((params.localParams.matmulMode == MatmulMode::REMOTE) && (params.localParams.localMatmul == 2)) {
         mmadParams.biasGmAddr = nullptr;
     }
-    mmadOp_.Init(mmadParams, isBias_);
+    mmadOp_.Init(mmadParams);
 
     ProcessSingleBatch(params, bs, 0, true);
 
@@ -195,12 +195,10 @@ __aicore__ inline void AllToAllMmKernel<MM_KERNEL_FUNC_TEM_PARAMS>::Init(const P
     if ASCEND_IS_AIV {
         return;
     }
-    isBias_ = (params.mmadParams.biasGmAddr != nullptr);
 
     if ((params.localParams.matmulMode == MatmulMode::REMOTE) && (params.localParams.localMatmul == 2)) {
         isAtomicAdd_ = true; // GM累加模式（local已写GM）需要原子累加
-        isBias_ = false; // GM累加模式：bias 已在 RunLocalMatmul(LOCAL) 阶段写入 GM，
-                         // REMOTE 阶段必须跳过 bias，否则会重复累加 bias 导致精度偏差
+        // bias 跳过：由 Run() 里把 mmadParams.biasGmAddr 置空，mmad 内部据此推导 isBias_=false
     }
     ResetGmAddr(params);
 }
@@ -295,23 +293,28 @@ __aicore__ inline void AllToAllMmKernel<MM_KERNEL_FUNC_TEM_PARAMS>::ProcessSingl
     constexpr int64_t kPos = 0L;
     uint32_t totalTiles = (oriM + params.localParams.headTileSize - 1) / params.localParams.headTileSize;
     int32_t readyTileIdx = -1;
+
+    // 获取当前核编号，初始核编号 = 分配块编号，后续按总核数步进
     int64_t curBlockIdx = AscendC::GetBlockIdx();
+    // bs.GetCoreNums()：调度器获取需要干活的核数。当前核编号超出实际所需，直接退出
     if (curBlockIdx >= bs.GetCoreNums()) {
-        return; // 核数超出实际所需（如 blockNums < coreNums），直接退出
+        return;
     }
+    // 总共启动的核数
     int64_t coreNums = AscendC::GetBlockNum();
-    // 遍历当前块的调度任务（按下标步进，空子片 continue 跳过）
+
+    // 遍历当前核的调度任务（按下标步进，空子片 continue 跳过），bs.GetBlockNums()：调度器生成的任务块总数
     for (int64_t blockIdx = curBlockIdx; blockIdx < bs.GetBlockNums(); blockIdx += coreNums) {
-        // 非量化调度器返回 {blkM, blkN, k_, batch_}，K 维即当前 rank 的 K 段长度
+        // 非量化调度器返回 {blkM, blkN, k_, batch_}，k_ 维即当前 rank 的 K 段长度 ka
         auto singleShape = bs.template GetBlockShape<transB, BType>(blockIdx);
+        // 非量化尾块静态切分，不参与该尾块切分的核，跳过本次迭代
         if ((Te::Get<IDX_M_TILEIDX>(singleShape) <= 0) || (Te::Get<IDX_N_TILEIDX>(singleShape) <= 0)) {
-            continue; // 空子片：不参与该尾块切分的核，跳过本次迭代
+            continue;
         }
         // GetBlockCoord 必须在 GetBlockShape 之后调用（mSplitOffset_ 由 GetBlockShape 计算）
         auto blockCoord = bs.GetBlockCoord(blockIdx);
         mPos = Te::Get<MNK_M>(blockCoord);
         nPos = Te::Get<MNK_N>(blockCoord);
-        // 切分输出块：地址基址已在外部按流水步偏移，此处仅按调度器位置切局部块
         auto gmBlockC = gmC.Slice(AscendC::Te::MakeCoord(mPos, nPos),
                                   AscendC::Te::MakeShape(Get<MNK_M>(singleShape), Get<MNK_N>(singleShape)));
         auto gmBlockBias =
@@ -325,8 +328,8 @@ __aicore__ inline void AllToAllMmKernel<MM_KERNEL_FUNC_TEM_PARAMS>::ProcessSingl
                                AscendC::Te::MakeShape(Get<MNK_M>(singleShape), Get<MNK_K>(params.problemShape)));
             auto gmBlockB = gmB.Slice(AscendC::Te::MakeCoord(rankId * Get<MNK_K>(params.problemShape), nPos),
                                       AscendC::Te::MakeShape(Get<MNK_K>(params.problemShape), Get<MNK_N>(singleShape)));
-
             mmadOp_(gmBlockA, gmBlockB, gmBlockBias, gmBlockC, singleShape, nullptr, 0);
+
         } else if (deferredSync) {
             // DEFERRED_SYNC 模式：
             // Phase 1: 本 rank 的 local A × 本 rank 的 B 段 → L0C（reset，splitKIdx=0）
@@ -387,9 +390,9 @@ __aicore__ inline void AllToAllMmKernel<MM_KERNEL_FUNC_TEM_PARAMS>::ProcessSingl
                     if (params.localParams.localMatmul == 2) {
                         continue; // GM累加模式：self rank 已在 RunLocalMatmul 计算，REMOTE 阶段跳过
                     } else {
-                        gmBlockA = gmALocal.Slice(AscendC::Te::MakeCoord(actualMPos, kPos),
-                                                  AscendC::Te::MakeShape(Get<MNK_M>(singleShape),
-                                                                         Get<MNK_K>(params.problemShape)));
+                        gmBlockA = gmALocal.Slice(
+                            AscendC::Te::MakeCoord(actualMPos, kPos),
+                            AscendC::Te::MakeShape(Get<MNK_M>(singleShape), Get<MNK_K>(params.problemShape)));
                     }
                 }
 

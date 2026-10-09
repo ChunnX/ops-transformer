@@ -122,7 +122,7 @@ public:
         }
     }
 
-    __aicore__ inline void Init(const Params &params, bool isBias)
+    __aicore__ inline void Init(const Params &params)
     {
         mL1_ = params.mL1;
         nL1_ = params.nL1;
@@ -130,7 +130,7 @@ public:
         baseM_ = params.mL0;
         baseN_ = params.nL0;
         baseK_ = params.kL0;
-        isBias_ = isBias;
+        isBias_ = (params.biasGmAddr != nullptr);
         l1Stages_ = params.l1Stages;
         splitKNum_ = params.splitKNum;
         enableL0cPingPong_ = params.l0cStages > 1;
