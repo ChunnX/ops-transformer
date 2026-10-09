@@ -1578,7 +1578,7 @@ bool GroupedMatmulSwigluQuantV2Tiling950::IsTensorApiCapable() const
     if (IsSplitSwigluMode() && IsMxFp4WeightNz()) {
         return aicoreParams_.l1Size != 0 && aicoreParams_.l0cSize != 0 && aicoreParams_.aicNum != 0 && aivNum_ != 0 &&
                aivNum_ == GroupedMatmulSwigluQuantTensorApiTiling::AIC_AIV_CORE_RATIO * aicoreParams_.aicNum &&
-               inputParams_.nSize % (GroupedMatmulSwigluQuantTensorApiTiling::FP8_N_ALIGN * V3_SWIGLU_SPLIT) == 0 &&
+               inputParams_.nSize % GroupedMatmulSwigluQuantTensorApiTiling::FP8_N_ALIGN == 0 &&
                inputParams_.kSize % GroupedMatmulSwigluQuantTensorApiTiling::K_ALIGN == 0;
     }
     // Match V2 BasicApiTiling950::IsCapable after the V3-specific FP8/NZ,
