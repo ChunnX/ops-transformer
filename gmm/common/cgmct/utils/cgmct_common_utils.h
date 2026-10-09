@@ -145,7 +145,7 @@ template <typename CType, typename AType>
 __aicore__ inline constexpr static bool IsQuantSenario()
 {
     using L0cT = typename AscendC::GetMmDstType<AType>::Type;
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510 || __NPU_ARCH__ == 9201 || __NPU_ARCH__ == 9202)
     if constexpr (!AscendC::IsTypeOneOfV<AType, int8_t, hifloat8_t, fp8_e4m3fn_t, fp8_e5m2_t, fp4x2_e2m1_t,
                                          fp4x2_e1m2_t> &&
                   AscendC::IsTypeOneOfV<CType, half, bfloat16_t>) {
