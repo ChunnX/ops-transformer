@@ -38,7 +38,7 @@ __aicore__ inline uint64_t GetGmmFrScaleKL1(const TCubeTiling &matmulTiling)
 }
 } // namespace
 
-template <typename layoutA, typename layoutB, typename logitType>
+template <typename layoutA, typename layoutB, typename logitType, typename rowIndexType>
 __aicore__ inline void grouped_matmul_finalize_routing_mx(GM_ADDR x, GM_ADDR w, GM_ADDR wScale, GM_ADDR bias,
                                                           GM_ADDR xScale, GM_ADDR groupList, GM_ADDR shareInput,
                                                           GM_ADDR logit, GM_ADDR rowIndex, GM_ADDR offset, GM_ADDR y,
@@ -59,7 +59,7 @@ __aicore__ inline void grouped_matmul_finalize_routing_mx(GM_ADDR x, GM_ADDR w, 
     // output dtype is applied by the vector epilogue after logit processing.
     using C1Type = float;
     using LogitType = logitType;
-    using RowIndexType = AscendC::Std::conditional_t<AscendC::Std::is_same_v<CType, bfloat16_t>, int32_t, int64_t>;
+    using RowIndexType = rowIndexType;
     using LayoutA = layoutA;
     using LayoutB = layoutB;
     using LayoutC = AscendC::Te::NDExtLayoutPtn;
