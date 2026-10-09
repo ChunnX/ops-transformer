@@ -131,7 +131,7 @@ class ElasticBuffer:
 - **num_topk** (`int`)：可选参数，表示选取topK个专家。
 - **with_grad** (`bool`)：可选参数，是否开启训练。默认为 `False`（推理）。设为 `True` 时，前向 [engram_fetch](#engram_fetch) 会额外保存反向所需的通信元数据（封装为 [EngramFetchCtx](#engramfetchctx)），并可通过 [engram_fetch_grad](#engram_fetch_grad) 执行反向。
 - **explicitly_destroy** (`bool`)：可选参数，是否需要显式调用 [destroy](#destroy) 释放资源。默认为 `False`，实例被垃圾回收时会自动调用 `destroy` 释放资源；设为 `True` 时，调用方需要显式调用 `destroy` 释放资源。推荐设置为 `True` 并在使用结束后手动调用 `destroy` 释放资源，以确保资源释放时机确定。
-- **fetch_mode** (`int`)：可选参数，Engram fetch模式，默认为 `0`（`FETCH_MODE_SLICED`，切片跨卡模式）：全局表按rank切片，抓取经跨卡通信（推理RDMA one-sided read，训练a2a）；`1`（`FETCH_MODE_LOCAL`，本地全表模式，仅推理）：全表在每个rank上均可见，[engram_write](#engram_write) 将调用方 `storage` 的主机内存原地注册（各rank共享同一块host内存时，如fork继承同一份vocab映射，所有NPU映射的是同一份表，全流程仅一次host拷贝；host内存不可设备注册时回退为 `num_cpu_bytes` 容量的逐rank自建窗口并整表拷入），[engram_fetch](#engram_fetch) 为纯本地gather，无跨卡通信，返回的callable无需跨卡等待。`fetch_mode=1` 不支持与 `with_grad=True` 同时使用；同一通信域各rank必须使用相同的 `fetch_mode`。可用类属性 `ElasticBuffer.FETCH_MODE_SLICED`/`ElasticBuffer.FETCH_MODE_LOCAL` 引用。
+- **fetch_mode** (`int`)：可选参数，Engram fetch模式，默认为 `0`（`FETCH_MODE_SLICED`，切片跨卡模式）：全局表按rank切片，抓取经跨卡通信（推理RDMA one-sided read，训练a2a）；`1`（`FETCH_MODE_LOCAL`，本地全表模式，仅推理）：全表在每个rank上均可见，[engram_write](#engram_write) 将调用方 `storage` 的主机内存原地注册（各rank共享同一块host内存时，如fork继承同一份vocab映射，所有NPU映射的是同一份表，全流程仅一次host拷贝；host内存不可设备注册时回退为 `num_cpu_bytes` 容量的逐rank自建窗口并整表拷入），[engram_fetch](#engram_fetch) 为纯本地gather，无跨卡通信，返回的callable无需跨卡等待。`fetch_mode=1` 不支持与 `with_grad=True` 同时使用；同一通信域的所有rank必须以相同的 `fetch_mode` 创建ElasticBuffer（与 `with_grad` 同级约束），否则跨rank集合操作参与不一致会导致挂死。可用类属性 `ElasticBuffer.FETCH_MODE_SLICED`/`ElasticBuffer.FETCH_MODE_LOCAL` 引用。
 
 **输出**：无返回值，构造ElasticBuffer实例。
 

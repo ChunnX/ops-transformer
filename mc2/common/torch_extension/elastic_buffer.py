@@ -653,6 +653,12 @@ class ElasticBuffer:
         FETCH_MODE_LOCAL (1, inference only): full global table replicated
             on every NPU, fetching is purely local (no cross-NPU
             communication); not supported with with_grad=True.
+
+    All ranks of the same comm group must create ElasticBuffer with the
+    same fetch_mode (a same-level constraint as with_grad): a local-mode
+    rank skips the collective channel setup that a sliced rank performs,
+    so mismatched modes across ranks make collective participation
+    inconsistent and can hang the group.
     """
 
     FETCH_MODE_SLICED = FETCH_MODE_SLICED
@@ -711,6 +717,11 @@ class ElasticBuffer:
                 SAME table on every NPU with a single host copy; otherwise it
                 falls back to per-rank table replication;
                 not supported together with with_grad=True.
+                All ranks of the same comm group must construct
+                ElasticBuffer with the same ``fetch_mode`` (a same-level
+                constraint as ``with_grad``): a local-mode rank skips the
+                collective channel setup that a sliced rank performs, so
+                mismatched modes across ranks can hang the group.
         """
         moe_args = (num_max_tokens_per_rank, hidden, num_topk)
         self._validate_init_args(group, num_cpu_bytes, moe_args, with_grad)
