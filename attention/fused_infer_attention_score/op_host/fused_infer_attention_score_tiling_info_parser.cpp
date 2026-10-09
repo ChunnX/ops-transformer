@@ -13,6 +13,7 @@
  * \brief
  */
 
+#include <cstdio>
 #include <map>
 #include <numeric>
 #include "log/log.h"
@@ -339,6 +340,16 @@ ge::graphStatus FiaInfoParser::GetStrides()
     // Cache view routing is scoped to K/V/KeyRope. KScale/VScale remain AutoContiguous in the OpDef,
     // so scale-only TensorV2 metadata must not change the legacy Arch35 cache-stride behavior.
     hasViewStride_ = HasStrideMetadata(kStrideCache_) || HasStrideMetadata(vStrideCache_) || kRopeStrides_ != nullptr;
+    // [CI-DEBUG] PR#13207 UT 排查: 打印 stride 元数据是否送达 tiling 层。
+    // 若 CI 上 6 个 cov*stride case 失败时此处 hasViewStride_=0 且 k/v dimNum=9999,
+    // 则说明 stride 元数据在 faker->context 传递链上丢失(CI 环境问题), 而非 checker 逻辑问题。
+    // 用 fprintf(stderr) 直出: UT host 进程 slog 未初始化, OP_LOGI 无处落盘; stderr 必进 CI 日志。
+    fprintf(stderr, "[CI-DEBUG] GetStrides: hasViewStride=%d kCacheSize=%zu vCacheSize=%zu "
+        "kStride0DimNum=%zu vStride0DimNum=%zu keyIsView=%d valueIsView=%d\n",
+        static_cast<int>(hasViewStride_), kStrideCache_.size(), vStrideCache_.size(),
+        (kStrideCache_.size() > 0 && kStrideCache_[0] != nullptr) ? kStrideCache_[0]->GetDimNum() : 9999,
+        (vStrideCache_.size() > 0 && vStrideCache_[0] != nullptr) ? vStrideCache_[0]->GetDimNum() : 9999,
+        static_cast<int>(keyIsView), static_cast<int>(valueIsView));
     // TensorV1 can report InputIsView=true for the result of an explicit
     // Contiguous node, but it cannot expose any stride metadata.  In that
     // all-or-nothing case the OpAPI has already materialized K/V/KeyRope, so
