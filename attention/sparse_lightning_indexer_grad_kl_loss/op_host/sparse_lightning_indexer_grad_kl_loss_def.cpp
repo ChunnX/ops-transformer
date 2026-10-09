@@ -85,7 +85,7 @@ public:
             .AutoContiguous();
         this->Input("sinks")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT})
+            .DataType({ge::DT_INT64, ge::DT_INT64, ge::DT_INT64, ge::DT_INT64})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         this->Output("d_query_index")
@@ -119,6 +119,17 @@ public:
             .PrecisionReduceFlag(true)
             .ExtendCfgInfo("aclnnSupport.value", "support_aclnn");
         this->AICore().AddConfig("ascend950", aicore_config_95);
+
+        OpAICoreConfig aicore_config_96;
+        aicore_config_96.DynamicCompileStaticFlag(true)
+            .DynamicFormatFlag(true)
+            .DynamicRankSupportFlag(true)
+            .DynamicShapeSupportFlag(true)
+            .NeedCheckSupportFlag(false)
+            .PrecisionReduceFlag(true)
+            .ExtendCfgInfo("aclnnSupport.value", "support_aclnn");
+        this->AICore().AddConfig("ascend960dt", aicore_config_96);
+        this->AICore().AddConfig("ascend960pr", aicore_config_96);
 
         OpAICoreConfig aicore_config;
         aicore_config.Input("query")
