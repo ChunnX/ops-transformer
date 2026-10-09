@@ -2315,6 +2315,7 @@ ge::graphStatus DequantChecker::CheckStrideForAntiquantNoPA(const FiaTilingInfo&
 {
     // tensor list 场景 key/value 连续性由 parser 及 paged_attention_checker 校验, 此处跳过
     if (fiaInfo.kvStorageMode != KvStorageMode::TENSOR_LIST) {
+        // ut 触发测试
         const gert::Shape keyShape = fiaInfo.opParamInfo.key.shape->GetStorageShape();
         const uint32_t keyDimNum = keyShape.GetDimNum();
         const gert::Shape valueShape = fiaInfo.opParamInfo.value.shape->GetStorageShape();
