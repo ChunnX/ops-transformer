@@ -389,7 +389,7 @@ __aicore__ inline void QuantCompressorBlockVectorFullLoad<COMP>::ComputeVec1()
     uint64_t baseOffset = loopInfo.coreColIdx * splitInfo.dBaseSize;
 
     uint32_t cnt = this->constInfo_.sSize * splitInfo.dBaseSize * this->coff_;
-    uint32_t singleLoopBatchNum = BUFFER_SIZE_BYTE_16K / (cnt * sizeof(T));
+    uint32_t singleLoopBatchNum = BUFFER_SIZE_BYTE_32K / (cnt * sizeof(T));
     uint32_t loopTimes = CeilDivT(splitInfo.dealBatchNum, singleLoopBatchNum);
     bool isApeFullLoad = this->coff_ * this->cmpRatio_ * splitInfo.dBaseSize * sizeof(T) <= BUFFER_SIZE_BYTE_16K;
     if (isApeFullLoad) {
@@ -398,7 +398,7 @@ __aicore__ inline void QuantCompressorBlockVectorFullLoad<COMP>::ComputeVec1()
     for (uint32_t idx = 0; idx < loopTimes; idx++) {
         uint32_t curLoopBatchNum = min(singleLoopBatchNum, splitInfo.dealBatchNum - singleLoopBatchNum * idx);
         scoreUb = this->inputQue1.template AllocTensor<T>();
-        kvUb = scoreUb[BUFFER_SIZE_BYTE_16K / sizeof(T)];
+        kvUb = scoreUb[BUFFER_SIZE_BYTE_32K / sizeof(T)];
         this->FromWokrSpaceToUb(scoreUb, this->scoreMm1ResGm_, splitInfo.dealSeqStartIdx,
                                 curLoopBatchNum * this->constInfo_.sSize, baseOffset, splitInfo.dBaseSize);
         this->FromWokrSpaceToUb(kvUb, this->kvMm1ResGm_, splitInfo.dealSeqStartIdx,

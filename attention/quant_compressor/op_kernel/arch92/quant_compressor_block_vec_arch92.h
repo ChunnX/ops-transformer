@@ -401,7 +401,7 @@ __aicore__ inline void QuantCompressorBlockVector<COMP>::DataCopyWithInputQue(
     if (copyRowCount == 0) {
         return;
     }
-    uint32_t singleCopyRowCount = BUFFER_SIZE_BYTE_32K / (copyColCount * sizeof(O));
+    uint32_t singleCopyRowCount = BUFFER_SIZE_BYTE_64K / (copyColCount * sizeof(O));
     for (uint32_t rowCount = 0; rowCount < copyRowCount; rowCount += singleCopyRowCount) {
         LocalTensor<O> inputUb = inputQue2.AllocTensor<O>();
 
@@ -428,11 +428,11 @@ __aicore__ inline void QuantCompressorBlockVector<COMP>::AddMultiDataToUb(
     uint32_t srcSingleRowCount, uint32_t dstSingleRowCount, uint32_t repeatTimes, uint64_t offset)
 {
     uint32_t cnt = dealRowCount * dstSingleRowCount;
-    uint32_t groupSize = BUFFER_SIZE_BYTE_32K / (cnt * sizeof(O));
+    uint32_t groupSize = BUFFER_SIZE_BYTE_64K / (cnt * sizeof(O));
     uint32_t loopTimes = CeilDivT(repeatTimes, groupSize);
     uint64_t srcGmOffset = 0;
     for (uint32_t idx = 0; idx < loopTimes; idx++) {
-        auto& inputQue = idx % 2 == 0 ? inputQue2 : inputQue3;
+        auto& inputQue = inputQue2;
         uint32_t curGroupSize = min(groupSize, (repeatTimes - groupSize * idx));
         LocalTensor<O> splitLocal = inputQue.AllocTensor<O>();
         if (srcSingleRowCount == dstSingleRowCount && dstSingleRowCount == dealRowCount) {
