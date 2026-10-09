@@ -1354,14 +1354,14 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::GetC
     DataCopyParams statusCopyParams{static_cast<uint16_t>(copySumNum), 1, 0, 0};
     LocalTensor<float> statusTensorFp32 = statusBuf_.Get<float>();
     DataCopy(statusTensorFp32, windowInstatusFp32Tensor_, statusCopyParams);
-    SyncFunc<AscendC::HardEvent::MTE2_S>();
-    LocalTensor<int32_t> statusBlocksTensor = statusTensorFp32.ReinterpretCast<int32_t>();
-    int32_t prefixCnt = 0;
-    for (uint32_t i = 0; i < copySumNum; ++i) {
-        prefixCnt += statusBlocksTensor.GetValue(i * (UB_ALIGN / sizeof(int32_t)) + STATUS_BLOCK_COUNT_FIELD_OFFSET);
-    }
+    LocalTensor<float> recvCntSumOutTensor = scalarBuf_.GetWithOffset<float>(UB_ALIGN / sizeof(float), UB_ALIGN);
+    LocalTensor<float> sharedTmpTensor = sumContinueBuf_.Get<float>();
+    uint32_t mask = 2;
+    SyncFunc<AscendC::HardEvent::MTE2_V>();
+    ReduceSum(recvCntSumOutTensor, statusTensorFp32, sharedTmpTensor, mask, startStatusIndex_, 1);
+    SyncFunc<AscendC::HardEvent::V_S>();
     // 最终输出outLocal第0个元素是当前核前面所有核recv cnt总和
-    outLocal.SetValue(0, prefixCnt);
+    outLocal.SetValue(0, recvCntSumOutTensor.ReinterpretCast<int32_t>().GetValue(0));
 }
 
 template <TemplateDispatchV2TypeClass>

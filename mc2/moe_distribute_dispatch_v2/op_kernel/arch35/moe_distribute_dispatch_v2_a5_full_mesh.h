@@ -832,7 +832,7 @@ template <TemplateMC2A5FullMeshTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTypeFunc>::CalTokenSendExpertCnt(
     uint32_t dstExpertId, int32_t calCnt, int32_t &curExpertCnt)
 {
-    if (calCnt == 0) {
+    if (calCnt < axisK_) {
         curExpertCnt = 0;
         return;
     }
@@ -1060,22 +1060,21 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
                {1, (uint16_t)recStatusNumPerCore_, 1, 0}, recvCnt);
     PipeBarrier<PIPE_V>();
 
+    // 对当前核对应的专家recv cnt求和，对inner要求32对齐
+    uint32_t recStatusNumPerCoreInner = Ceil(recStatusNumPerCore_ * sizeof(float), UB_ALIGN) * UB_ALIGN / sizeof(float);
+    SumParams sumParams{1, recStatusNumPerCoreInner, recStatusNumPerCore_};
+    Sum(statusSumOutTensor, gatherMaskOutTensor, sumParams);
     SyncFunc<AscendC::HardEvent::V_S>();
-    LocalTensor<int32_t> gatherMaskOutIntTensor = gatherMaskOutTensor.ReinterpretCast<int32_t>();
-    int32_t sumOfRecvCnt = 0;
-    for (uint32_t i = 0; i < recStatusNumPerCore_; ++i) {
-        sumOfRecvCnt += gatherMaskOutIntTensor.GetValue(i);
-    }
+    float sumOfRecvCnt = statusSumOutTensor.ReinterpretCast<float>().GetValue(0);
 
     // 把当前核的所有专家recv cnt之和写到状态区
     uint32_t newAivId = aivId_ - aivUsedAllToAll_;
     // 每个核把sumOfRecvCnt重复写 aivUsedCumSum_ 份
     LocalTensor<float> sumCoreFP32Tensor = sumCoreBuf_.Get<float>();
-    LocalTensor<int32_t> sumCoreInt32Tensor = sumCoreBuf_.Get<int32_t>();
     uint64_t maskArrayCount[2] = {0x0101010101010101, 0};
     uint8_t repeatTimes = Ceil(aivUsedCumSum_, 8); // 8 = 256 / 32
     // 每次处理256字节，8个datablock，1、8分别为dst、src相邻迭代间地址步长
-    Duplicate<int32_t>(sumCoreInt32Tensor, sumOfRecvCnt, maskArrayCount, repeatTimes, 1, 8);
+    Duplicate<float>(sumCoreFP32Tensor, sumOfRecvCnt, maskArrayCount, repeatTimes, 1, 8);
     uint64_t maskArrayFlag[2] = {0x0202020202020202, 0};
     Duplicate<float>(sumCoreFP32Tensor, static_cast<float>(1.0), maskArrayFlag, repeatTimes, 1, 8);
     DataCopyParams sumIntriParams{static_cast<uint16_t>(aivUsedCumSum_), 1, 0, 0};
@@ -1141,13 +1140,20 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
         outLocal.SetValue(0, 0);
     } else {
         LocalTensor<float> sumLocalTensor = sumLocalBuf_.Get<float>();
-        SyncFunc<AscendC::HardEvent::MTE2_S>();
-        LocalTensor<int32_t> sumLocalIntTensor = sumLocalTensor.ReinterpretCast<int32_t>();
-        int32_t prefixSum = 0;
-        for (uint32_t idx = 0; idx < newAivId; ++idx) {
-            prefixSum += sumLocalIntTensor.GetValue(idx * UB_ALIGN_DATA_COUNT);
-        }
-        outLocal.SetValue(0, prefixSum);
+        LocalTensor<uint32_t> gatherSumPattern = scalarBuf_.GetWithOffset<uint32_t>(UB_ALIGN / sizeof(uint32_t), 0);
+        LocalTensor<float> sumContinueTensor = sumContinueBuf_.Get<float>();
+        LocalTensor<float> recvCntSumOutTensor = scalarBuf_.GetWithOffset<float>(UB_ALIGN / sizeof(float), UB_ALIGN);
+        uint64_t recvCnt = 0;
+        gatherSumPattern.SetValue(0, 1);
+        SyncFunc<AscendC::HardEvent::S_V>();
+        GatherMask(sumContinueTensor, sumLocalTensor, gatherSumPattern, true, 1,
+                   {1, static_cast<uint16_t>(newAivId), 1, 0}, recvCnt);
+        PipeBarrier<PIPE_V>();
+        uint32_t innerCumSumParams = Ceil(newAivId * sizeof(float), UB_ALIGN) * UB_ALIGN / sizeof(float);
+        SumParams cumSumParams{1, innerCumSumParams, newAivId};
+        Sum(recvCntSumOutTensor, sumContinueTensor, cumSumParams);
+        SyncFunc<AscendC::HardEvent::V_S>();
+        outLocal.SetValue(0, recvCntSumOutTensor.ReinterpretCast<int32_t>().GetValue(0));
     }
 }
 
@@ -1361,17 +1367,19 @@ template <TemplateMC2A5FullMeshTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTypeFunc>::WaitCumSumFlag()
 {
     // Check cumsum is finished
+    int32_t cumSumFlag = 0;
     int32_t targetFlag = aivUsedCumSum_ * UB_ALIGN_DATA_COUNT;
     uint32_t cumSumFlagOffset = (CUMSUM_WS_FLAG_OFFSET + aivId_ * aivUsedCumSum_ * UB_ALIGN) / sizeof(float);
+    uint32_t innerSumParams = aivUsedCumSum_ * UB_ALIGN / sizeof(float);
+    SumParams sumFlagParams{1, innerSumParams, aivUsedCumSum_ * UB_ALIGN_DATA_COUNT};
+    LocalTensor<float> statusSumOutTensor = scalarBuf_.Get<float>();
 
     while (true) {
         DataCopy(statusFp32Tensor_, cumsumWsGMTensor_[cumSumFlagOffset], aivUsedCumSum_ * UB_ALIGN_DATA_COUNT);
-        SyncFunc<AscendC::HardEvent::MTE2_S>();
-        LocalTensor<int32_t> flagBlocksTensor = statusFp32Tensor_.ReinterpretCast<int32_t>();
-        int32_t cumSumFlag = 0;
-        for (uint32_t idx = 0; idx < aivUsedCumSum_ * UB_ALIGN_DATA_COUNT; ++idx) {
-            cumSumFlag += flagBlocksTensor.GetValue(idx);
-        }
+        SyncFunc<AscendC::HardEvent::MTE2_V>();
+        Sum(statusSumOutTensor, statusFp32Tensor_, sumFlagParams);
+        SyncFunc<AscendC::HardEvent::V_S>();
+        cumSumFlag = statusSumOutTensor.ReinterpretCast<int32_t>().GetValue(0);
         if (cumSumFlag == targetFlag) {
             break;
         }
