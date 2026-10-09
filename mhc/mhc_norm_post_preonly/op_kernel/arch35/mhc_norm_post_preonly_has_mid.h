@@ -99,9 +99,7 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
 
     LocalTensor<float> midBuf = bufScalar_.Get<float>();
-    for (uint32_t i = 1U; i < PARTIAL_SLOT_ELEMS; ++i) {
-        midBuf.SetValue(i, 0.0f);
-    }
+    // Process() 已通过 MTE2 初始化完整 32B 槽；跨核接收方只读取元素 0。
     midBuf.SetValue(0, midSqHalf[siblingAivIdx_]);
     SetFlag<HardEvent::S_MTE3>(evtStoMte3_);
     WaitFlag<HardEvent::S_MTE3>(evtStoMte3_);
@@ -158,9 +156,7 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         for (uint32_t o = 0; o < N; ++o) {
             partialBuf.SetValue(o + 1U, dotHalf[1][o]);
         }
-        for (uint32_t i = N + 1U; i < PARTIAL_SLOT_ELEMS; ++i) {
-            partialBuf.SetValue(i, 0.0f);
-        }
+        // 槽尾 padding 已在 Process() 初始化，接收方仅读取前 N+1 项。
         SetFlag<HardEvent::S_MTE3>(evtStoMte3_);
         WaitFlag<HardEvent::S_MTE3>(evtStoMte3_);
         const uint64_t followerSlot =
