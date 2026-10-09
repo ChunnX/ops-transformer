@@ -68,6 +68,9 @@ protected:
     int64_t tileUB_{0};
     int64_t skIterCount_{0};
     float hcEps_{0};
+    // kernel bf16 路径 gradX 改 fp32 workspace 单次舍入装配（one_stage 独有），
+    // workspace 大小、mm1 输出 dtype、tileUB 常数均按此分流
+    bool isBf16_{false};
 
     int64_t mm1K_{0};
     int64_t mm1M_{0};
