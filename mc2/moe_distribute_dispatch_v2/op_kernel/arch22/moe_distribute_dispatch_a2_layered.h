@@ -30,6 +30,17 @@
 #include "moe_distribute_a2_adump.h"
 #include "moe_distribute_a2_constant.h"
 
+// ==== A2LProf 分段耗时打点（强制生效，无需编译开关）====
+// 记录不再走设备侧 printf/plog，改经 expandIdx 空置 GM 区带回（DataCopy UB->GM），
+// 宿主脚本在算子返回后从 expand_idx 张量解析出 CSV。
+// 记录布局（每核每轮 64B = 16*uint32，时间戳为 GetCurrentTimestampUs 绝对值）：
+//   [0]magic [1]rank [2]core|(aivNum<<16) [3]seq(magic) [4..13]时间戳 [14..15]保留
+// GM 落点 = RoundUp(moeExpertNum_, 8)*4 之后 —— 避开 combine 对 sendCount
+// (assist_info_for_combine 前 RoundUp(moeExpertNum_,8) 个 int32) 的读取区；
+// 需 expandIdx 张量容量 >= RoundUp(moeExpertNum_,8)*4 + aivNum*64 字节（默认场景余量充足）。
+constexpr uint32_t A2LPROF_MAGIC_DISPATCH = 0xA2C0DE01;
+constexpr uint32_t A2LPROF_RECORD_BYTES = 64;
+
 namespace MoeDistributeDispatchA2Impl {
 #define TemplateMC2TypeA2layeredClass \
     typename XType, typename ExpandXOutType, bool StaticQuant, bool DynamicQuant, bool IsSmoothScaleExist
@@ -134,6 +145,11 @@ private:
     __gm__ HcclAiRMAInfo *qp_info_;
     GM_ADDR expandXGM_;
     GM_ADDR expandIdxGM_;
+    // A2LProf 打点：expandIdx 空置 GM 区作记录落点 + init 段时间戳
+    TBuf<> profTBuf_;
+    GM_ADDR profGmBase_;
+    uint32_t profInitStart_{0};
+    uint32_t profInitEnd_{0};
     GM_ADDR weightsGM_;
     GM_ADDR expertTokenNumsOutGM_;
     GM_ADDR epRecvCountsGM_;
@@ -330,6 +346,9 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
         Duplicate<int32_t>(performanceInfoI32Tensor_, 0, performanceInfoSize_ * sizeof(int64_t) / sizeof(int32_t));
         leftBufSize -= RoundUp(worldSize_, B64_PER_BLOCK) * sizeof(uint64_t);
     }
+    // A2LProf: 打点记录 UB 缓冲（每核 64B）
+    tpipe_->InitBuffer(profTBuf_, A2LPROF_RECORD_BYTES);
+    leftBufSize -= A2LPROF_RECORD_BYTES;
     tpipe_->InitBuffer(tBuf, leftBufSize);
 
     // The maximum value of expertIdsCnt_ is 256 * 16, so there is no integer wrap.
@@ -363,12 +382,17 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
     GM_ADDR dynamicScalesOut, GM_ADDR expandIdxOut, GM_ADDR expertTokenNumsOut, GM_ADDR epRecvCountsOut,
     GM_ADDR expandScales, GM_ADDR workspaceGM, TPipe *pipe, GM_ADDR tilingGM, GM_ADDR contextGM0)
 {
+    // A2LProf: init 段起点（含 HCCL InitV2/UB 初始化等全部初始化开销）
+    profInitStart_ = static_cast<uint32_t>(GetCurrentTimestampUs());
+    profGmBase_ = expandIdxOut; // a2_layered 不使用 expandIdxOut, 借作打点记录落点
     InitCommTiling(pipe, tilingGM, contextGM0);
     InitTokenStruct();
     InitGlobalTensor(x, expertIds, expertScales, expandXOut, dynamicScalesOut, expertTokenNumsOut, epRecvCountsOut,
                      expandScales, workspaceGM);
     InitUBBuffer(performanceInfo);
     InitADump();
+    // A2LProf: init 段终点
+    profInitEnd_ = static_cast<uint32_t>(GetCurrentTimestampUs());
 }
 
 template <TemplateMC2TypeA2layeredClass>
@@ -1397,10 +1421,19 @@ template <TemplateMC2TypeA2layeredClass>
 __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFunc>::Process()
 {
     if ASCEND_IS_AIV { // 全aiv处理
+        // 分段耗时打点： GetCurrentTimestampUs()=GetSystemCycle()/50，单位 us
+        const int64_t profT0 = GetCurrentTimestampUs();
+        int64_t profT1 = profT0;
+        int64_t profT2 = profT0;
+        int64_t profT3 = profT0;
+        int64_t profT4 = profT0;
+        int64_t profT5 = profT0;
+        int64_t profT6 = profT0;
         ReorderTokens();
         aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_DISPATCH_REORDERTOKEN);
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
+        profT1 = GetCurrentTimestampUs();
         if (aivId_ < serverNum) {
             if (aivId_ != serverId_) {
                 SendDataToServer(aivId_);
@@ -1415,20 +1448,49 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
         aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_DISPATCH_INTER_FINISH);
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
+        profT2 = GetCurrentTimestampUs();
         SetIpcFlag(IPC_FLAG_STEP_1);
         WaitIpcFlag(IPC_FLAG_STEP_1);
         aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_DISPATCH_INTRA_FINISH);
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
+        profT3 = GetCurrentTimestampUs();
         Ipc2Out();
         aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_DISPATCH_IPC2OUT);
         PipeBarrier<PIPE_ALL>();
+        profT4 = GetCurrentTimestampUs();
         CleanUp();
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
+        profT5 = GetCurrentTimestampUs();
         CopyPerformanceInfo();
         aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_END);
         hccl_.Finalize();
+        profT6 = GetCurrentTimestampUs(); // A2LProf: tail 段终点（含 CopyPerformanceInfo/Finalize 等收尾清空）
+        // A2LProf: 记录写入 expandIdx 空置 GM 区（替代 printf/plog），宿主从 expand_idx 张量解析 CSV
+        LocalTensor<uint32_t> profLt = profTBuf_.Get<uint32_t>();
+        profLt.SetValue(0, A2LPROF_MAGIC_DISPATCH);
+        profLt.SetValue(1, rankId_);
+        profLt.SetValue(2, aivId_ | (aivNum_ << 16));
+        profLt.SetValue(3, static_cast<uint32_t>(magicVal_));
+        profLt.SetValue(4, profInitStart_);
+        profLt.SetValue(5, profInitEnd_);
+        profLt.SetValue(6, static_cast<uint32_t>(profT0));
+        profLt.SetValue(7, static_cast<uint32_t>(profT1));
+        profLt.SetValue(8, static_cast<uint32_t>(profT2));
+        profLt.SetValue(9, static_cast<uint32_t>(profT3));
+        profLt.SetValue(10, static_cast<uint32_t>(profT4));
+        profLt.SetValue(11, static_cast<uint32_t>(profT5));
+        profLt.SetValue(12, static_cast<uint32_t>(profT6));
+        profLt.SetValue(13, 0);
+        profLt.SetValue(14, 0);
+        profLt.SetValue(15, 0);
+        GlobalTensor<uint32_t> profGm;
+        profGm.SetGlobalBuffer((__gm__ uint32_t *)(profGmBase_ +
+            RoundUp(moeExpertNum_, BITS32_PER_BLOCK) * sizeof(int32_t) + aivId_ * A2LPROF_RECORD_BYTES));
+        PipeBarrier<PIPE_ALL>();
+        SyncFunc<AscendC::HardEvent::S_MTE3>();
+        DataCopy(profGm, profLt, A2LPROF_RECORD_BYTES / sizeof(uint32_t));
     }
 }
 } // namespace MoeDistributeDispatchA2Impl

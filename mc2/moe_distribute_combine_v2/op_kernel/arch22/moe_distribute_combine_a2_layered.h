@@ -30,6 +30,16 @@
 
 #include "../../../common/op_kernel/mc2_combine_type_traits.h"
 
+// ==== A2LProf 分段耗时打点（强制生效，无需编译开关）====
+// 记录不再走设备侧 printf/plog，改经 expandIdx 空置 GM 区带回（DataCopy UB->GM），
+// 宿主脚本在算子返回后从传入的 assist 张量（即 expandIdx GM 区）解析出 CSV。
+// 记录布局（每核每轮 64B = 16*uint32，时间戳为 GetCurrentTimestampUs 绝对值）：
+//   [0]magic [1]rank [2]core|(aivNum<<16) [3]seq(magic) [4..13]时间戳 [14..15]保留
+// GM 落点 = RoundUp(moeExpertNum_, 8)*4 之后 —— 避开本核开头对 sendCount
+// (前 RoundUp(moeExpertNum_,8) 个 int32) 的读取区；dispatch 写入的落点公式与本核一致。
+constexpr uint32_t A2LPROF_MAGIC_COMBINE = 0xA2C0DE02;
+constexpr uint32_t A2LPROF_RECORD_BYTES = 64;
+
 namespace MoeDistributeCombineA2Impl {
 
 constexpr int UB_ALIGN_SIZE = 32;
@@ -245,6 +255,11 @@ private:
     TBuf<> statusBuf_;
     TBuf<> performanceInfoBuf_;
     TBuf<TPosition::LCM> aDumpBuf_;
+    // A2LProf 打点：expandIdx 空置 GM 区作记录落点 + init 段时间戳
+    TBuf<> profTBuf_;
+    GM_ADDR profGmBase_;
+    uint32_t profInitStart_{0};
+    uint32_t profInitEnd_{0};
 
     uint64_t sumTarget_{0};
     uint32_t startBs{0};
@@ -446,6 +461,9 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
     GM_ADDR XOut, GM_ADDR workspaceGM, TPipe *pipe, const MoeDistributeCombineA2TilingData *tilingData,
     GM_ADDR contextGM)
 {
+    // A2LProf: init 段起点（含 HCCL/UB/状态区等全部初始化开销）
+    profInitStart_ = static_cast<uint32_t>(GetCurrentTimestampUs());
+    profGmBase_ = expandIdx; // a2_layered 不读 expandIdx 入参, 借作打点记录落点
     tpipe_ = pipe;
     InitTilingAttrs(tilingData, contextGM);
     InitGlobalBuffers(expandX, sendCount, scales, XOut, performanceInfo);
@@ -455,6 +473,8 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
     SplitCoreCal();
 
     InitSendCountsAndStatus(sendCount);
+    // A2LProf: init 段终点
+    profInitEnd_ = static_cast<uint32_t>(GetCurrentTimestampUs());
 }
 
 template <TemplateMC2TypeA2layeredClass>
@@ -526,6 +546,10 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
         Std::max(RoundUp(Mc2A2Kernel::H_POS + 1U, B32_PER_BLOCK), B32_PER_BLOCK * 2U) * sizeof(uint32_t);
     tpipe_->InitBuffer(aDumpBuf_, aDumpSize);
     leftBufSize -= aDumpSize;
+
+    // A2LProf: 打点记录 UB 缓冲（每核 64B）
+    tpipe_->InitBuffer(profTBuf_, A2LPROF_RECORD_BYTES);
+    leftBufSize -= A2LPROF_RECORD_BYTES;
 
     // 总tBuf
     tpipe_->InitBuffer(tBuf, leftBufSize);
@@ -1342,10 +1366,23 @@ template <TemplateMC2TypeA2layeredClass>
 __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFunc>::Process()
 {
     if ASCEND_IS_AIV {
+        // 分段耗时打点： GetCurrentTimestampUs()=GetSystemCycle()/50，单位 us
+        const int64_t profT0 = GetCurrentTimestampUs();
+        int64_t profT1 = profT0;
+        int64_t profT2 = profT0;
+        int64_t profT3 = profT0;
+        int64_t profT4 = profT0;
+        int64_t profT5 = profT0;
+        int64_t profT6 = profT0;
+        int64_t profT7 = profT0;
         GM2IPC();
         aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_COMBINE_GM2IPC);
+        PipeBarrier<PIPE_ALL>();
+        profT1 = GetCurrentTimestampUs();
         WaitIPC();
         aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_COMBINE_WAITIPC);
+        PipeBarrier<PIPE_ALL>();
+        profT2 = GetCurrentTimestampUs();
         stepCoreNum = IPC_REDUCE_USED_CORE_NUM;
         if (coreIdx_ < stepCoreNum) {
             SumToWindow();
@@ -1354,13 +1391,45 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
         }
         aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_COMBINE_INTER_SEND);
         SyncAll<true>();
+        profT3 = GetCurrentTimestampUs();
         Preload();
+        PipeBarrier<PIPE_ALL>();
+        profT4 = GetCurrentTimestampUs();
         WaitDispatch();
         aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_COMBINE_INTER_RECV);
+        PipeBarrier<PIPE_ALL>();
+        profT5 = GetCurrentTimestampUs();
         SumToServer();
+        PipeBarrier<PIPE_ALL>();
+        profT6 = GetCurrentTimestampUs();
         CopyPerformanceInfo();
         aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_END);
         hccl_.Finalize();
+        profT7 = GetCurrentTimestampUs(); // A2LProf: tail 段终点（含 CopyPerformanceInfo/Finalize 等收尾清空）
+        // A2LProf: 记录写入 expandIdx 空置 GM 区（替代 printf/plog），宿主从 assist 张量解析 CSV
+        LocalTensor<uint32_t> profLt = profTBuf_.Get<uint32_t>();
+        profLt.SetValue(0, A2LPROF_MAGIC_COMBINE);
+        profLt.SetValue(1, rankId_);
+        profLt.SetValue(2, coreIdx_ | (aivNum_ << 16));
+        profLt.SetValue(3, static_cast<uint32_t>(magicValue_));
+        profLt.SetValue(4, profInitStart_);
+        profLt.SetValue(5, profInitEnd_);
+        profLt.SetValue(6, static_cast<uint32_t>(profT0));
+        profLt.SetValue(7, static_cast<uint32_t>(profT1));
+        profLt.SetValue(8, static_cast<uint32_t>(profT2));
+        profLt.SetValue(9, static_cast<uint32_t>(profT3));
+        profLt.SetValue(10, static_cast<uint32_t>(profT4));
+        profLt.SetValue(11, static_cast<uint32_t>(profT5));
+        profLt.SetValue(12, static_cast<uint32_t>(profT6));
+        profLt.SetValue(13, static_cast<uint32_t>(profT7));
+        profLt.SetValue(14, 0);
+        profLt.SetValue(15, 0);
+        GlobalTensor<uint32_t> profGm;
+        profGm.SetGlobalBuffer((__gm__ uint32_t *)(profGmBase_ +
+            RoundUp(moeExpertNum_, B32_PER_BLOCK) * sizeof(int32_t) + coreIdx_ * A2LPROF_RECORD_BYTES));
+        PipeBarrier<PIPE_ALL>();
+        SyncFunc<AscendC::HardEvent::S_MTE3>();
+        DataCopy(profGm, profLt, A2LPROF_RECORD_BYTES / sizeof(uint32_t));
     }
 }
 } // namespace MoeDistributeCombineA2Impl
