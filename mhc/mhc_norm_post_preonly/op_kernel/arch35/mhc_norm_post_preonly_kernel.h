@@ -701,6 +701,15 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
 
         // 为initcheck建立一次性的MTE2初始化；后续Vector结果会覆盖这些槽位。
         DataCopy(bufScalar_.Get<float>(), gamma0Gm_, PARTIAL_SLOT_ELEMS);
+        if (dLoop_ > 1U && !(DUAL_SIBLING && USE_RMS_MID && lastDTile_ == 0U)) {
+            LocalTensor<float> accumulator = bufPartialAccum_.Get<float>();
+            if constexpr (DUAL_SIBLING) {
+                DataCopy(accumulator[siblingAivIdx_ * MhcNormRegBase::VL_FP32], gamma0Gm_, PARTIAL_SLOT_ELEMS);
+            } else {
+                DataCopy(accumulator, gamma0Gm_, PARTIAL_SLOT_ELEMS);
+                DataCopy(accumulator[MhcNormRegBase::VL_FP32], gamma0Gm_, PARTIAL_SLOT_ELEMS);
+            }
+        }
         LocalTensor<T> x2Cache = bufActivationLowp_.Get<T>();
         const uint32_t nBegin = DUAL_SIBLING ? siblingAivIdx_ * HEADS_PER_SIBLING : 0U;
         const uint32_t nEnd = DUAL_SIBLING ? nBegin + HEADS_PER_SIBLING : N;
