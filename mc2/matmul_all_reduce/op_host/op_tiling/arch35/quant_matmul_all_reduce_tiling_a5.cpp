@@ -1021,8 +1021,9 @@ CutResult QuantMatmulAllReduceTilingA5::GetTilingResult()
 }
 
 // 注册tiling类
-REGISTER_TILING_TEMPLATE_WITH_ARCH(MatmulAllReduce, QuantMatmulAllReduceTilingA5,
-                                   static_cast<int32_t>(Ops::Base::DAV_3510), 0);
+REGISTER_TILING_TEMPLATE_WITH_ARCH(
+    MatmulAllReduce, QuantMatmulAllReduceTilingA5,
+    std::vector<int32_t>({static_cast<int32_t>(Ops::Base::DAV_3510), static_cast<int32_t>(Ops::Base::DAV_9201)}), 0);
 } // namespace optiling
 
 #endif //_QUANT_MATMUL_ALL_REDUCE_TILING_A5_CC_

@@ -38,6 +38,13 @@ if (BUILD_OPEN_PROJECT)  # custom
  	             OP_NAME MatmulAlltoAll
  	             OPTIONS -DAICORE_EXCEPTION_RESTART
  	     )
+    elseif("${CONDITION_UNIT}" STREQUAL "ascend910_96")
+        add_ops_compile_options(
+            OP_NAME MatmulAlltoAll
+            OPTIONS --cce-auto-sync=off
+                    -mllvm -cce-aicore-dcci-before-kernel-end=false
+                    -DENABLE_CV_COMM_VIA_SSBUF=true
+        )
     endif()
 
 else() # 回黄host

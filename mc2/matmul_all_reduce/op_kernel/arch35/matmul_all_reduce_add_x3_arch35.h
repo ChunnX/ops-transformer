@@ -39,7 +39,7 @@ public:
         pipe_->InitBuffer(inQueueX_, DOUBLE_BUFFER, tileCnt * sizeof(T));
         pipe_->InitBuffer(inQueueY_, DOUBLE_BUFFER, tileCnt * sizeof(T));
         pipe_->InitBuffer(outQueueZ_, DOUBLE_BUFFER, tileCnt * sizeof(T));
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510 || __NPU_ARCH__ == 9201) // A6同A5支持直接Add
 #else
         if (std::is_same<T, bfloat16_t>::value) {
             pipe_->InitBuffer(tempQueOutFp32_, tileCnt * sizeof(float));
@@ -68,7 +68,7 @@ public:
         LocalTensor<T> xLocal = inQueueX_.DeQue<T>();
         LocalTensor<T> yLocal = inQueueY_.DeQue<T>();
         LocalTensor<T> zLocal = outQueueZ_.AllocTensor<T>();
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510 || __NPU_ARCH__ == 9201) // A6同A5支持直接Add
         Add(zLocal, xLocal, yLocal, calcCnt);
         PipeBarrier<PIPE_V>();
 #else
@@ -100,7 +100,7 @@ public:
     TQue<QuePosition::VECIN, DOUBLE_BUFFER> inQueueX_;
     TQue<QuePosition::VECIN, DOUBLE_BUFFER> inQueueY_;
     TQue<QuePosition::VECOUT, DOUBLE_BUFFER> outQueueZ_;
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510 || __NPU_ARCH__ == 9201) // A6同A5支持直接Add
 #else
     TBuf<TPosition::VECCALC> tempQueOutFp32_;
     TBuf<TPosition::VECCALC> tempQueAddFp32_;

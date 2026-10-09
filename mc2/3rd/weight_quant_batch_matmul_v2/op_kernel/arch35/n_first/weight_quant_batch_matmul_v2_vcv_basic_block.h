@@ -30,6 +30,11 @@ using AscendC::LocalTensor;
 using AscendC::TBuf;
 using AscendC::TPipe;
 using AscendC::TPosition;
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201)
+constexpr uint32_t kVecCoreNum = 1;
+#else
+constexpr uint32_t kVecCoreNum = 2;
+#endif
 
 namespace Mc2WeightQuantBatchMatmulV2::Arch35 {
 
@@ -63,7 +68,9 @@ protected:
     __aicore__ inline void WaitAivToAic(uint64_t syncFlag)
     {
 #ifndef __CCE_KT_TEST__
+#if (__NPU_ARCH__ != 9201)
         CrossCoreWaitFlag<SYNC_MODE4, pipe>(syncFlag + FLAG_ID_MAX);
+#endif
         CrossCoreWaitFlag<SYNC_MODE4, pipe>(syncFlag);
 #endif
     };
@@ -72,7 +79,9 @@ protected:
     __aicore__ inline void SetAicToAiv(uint64_t syncFlag)
     {
 #ifndef __CCE_KT_TEST__
+#if (__NPU_ARCH__ != 9201)
         CrossCoreSetFlag<SYNC_MODE4, pipe>(syncFlag + FLAG_ID_MAX);
+#endif
         CrossCoreSetFlag<SYNC_MODE4, pipe>(syncFlag);
 #endif
     };
@@ -151,7 +160,7 @@ WeightQuantVcvMatmulBasicBlock<xType, wType, biasType, yType, wqmmConfig, vecCon
         uint64_t curCvLoopIdx = cvLoopIdx_;
         // vec上两core切n
         uint64_t mte2RealN = curOffsetParam.nL1Size > C0_SIZE_B8 ?
-                                 CeilAlign(curOffsetParam.nL1Size >> 1, static_cast<uint64_t>(C0_SIZE_B8)) :
+                                 CeilAlign(curOffsetParam.nL1Size / kVecCoreNum, static_cast<uint64_t>(C0_SIZE_B8)) :
                                  curOffsetParam.nL1Size;
         uint64_t nL1Offset = GetSubBlockIdx() * mte2RealN;
         mte2RealN = GetSubBlockIdx() == 0 ? mte2RealN : curOffsetParam.nL1Size - mte2RealN;
@@ -161,9 +170,9 @@ WeightQuantVcvMatmulBasicBlock<xType, wType, biasType, yType, wqmmConfig, vecCon
 
         if (curCvLoopIdx > 0) {
             // y反量化再vec上两core切m
-            uint64_t lastBasicBlockMSize = lastOffsetParam.mL1Size - (lastOffsetParam.mL1Size >> 1);
+            uint64_t lastBasicBlockMSize = lastOffsetParam.mL1Size - (lastOffsetParam.mL1Size / kVecCoreNum);
             uint64_t lastBasicBlockMOffset = GetSubBlockIdx() == 0 ? 0 : lastBasicBlockMSize;
-            lastBasicBlockMSize = GetSubBlockIdx() == 0 ? lastBasicBlockMSize : (lastOffsetParam.mL1Size >> 1);
+            lastBasicBlockMSize = GetSubBlockIdx() == 0 ? lastBasicBlockMSize : (lastOffsetParam.mL1Size / kVecCoreNum);
 
             SetAivToAic<PIPE_MTE3>(SYNC_AIV_MTE3_AIC_FIX_FLAG);
             WaitAicToAiv<PIPE_V>(SYNC_AIC_FIX_AIV_VF_FLAG);
@@ -268,9 +277,9 @@ __aicore__ inline void WeightQuantVcvMatmulBasicBlock<xType, wType, biasType, yT
     } else {
         if (cvLoopIdx_ > 0) {
             SetAivToAic<PIPE_MTE3>(SYNC_AIV_MTE3_AIC_FIX_FLAG);
-            uint64_t lastBasicBlockMSize = curOffsetParam.mL1Size - (curOffsetParam.mL1Size >> 1);
+            uint64_t lastBasicBlockMSize = curOffsetParam.mL1Size - (curOffsetParam.mL1Size / kVecCoreNum);
             uint64_t lastBasicBlockMOffset = GetSubBlockIdx() == 0 ? 0 : lastBasicBlockMSize;
-            lastBasicBlockMSize = GetSubBlockIdx() == 0 ? lastBasicBlockMSize : (curOffsetParam.mL1Size >> 1);
+            lastBasicBlockMSize = GetSubBlockIdx() == 0 ? lastBasicBlockMSize : (curOffsetParam.mL1Size / kVecCoreNum);
             WaitAicToAiv<PIPE_V>(SYNC_AIC_FIX_AIV_VF_FLAG);
             vecCompute_.AntiQuantYWithKc(curOffsetParam.nL1Size, lastBasicBlockMSize);
             vecCompute_.CopyYUbToGm(curOffsetParam.nL1Size, lastBasicBlockMSize,
