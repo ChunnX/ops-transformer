@@ -12,7 +12,7 @@
  * \file sparse_flash_mla.cpp
  * \brief
  */
-#if (__NPU_ARCH__ == 9201)
+#if (__NPU_ARCH__ == 9201 || __NPU_ARCH__ == 9202)
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
 #include "sparse_flash_mla_template_tiling_key.h"
@@ -61,11 +61,11 @@ using namespace SMLAKernel;
 #define SMLA_OP_IMPL(templateClass, tilingdataClass, ...) \
     do { \
         using CubeBlockType = \
-            typename std::conditional<g_coreType == AscendC::AIC, SMLAKernel::CSABlockCube<__VA_ARGS__>, \
-                                      SMLAKernel::CSABlockCubeDummy<__VA_ARGS__>>::type; \
+            typename std::conditional<g_coreType == AscendC::AIC, SMLAKernel::SmlaCsaBlockCube<__VA_ARGS__>, \
+                                      SMLAKernel::SmlaCsaBlockCubeDummy<__VA_ARGS__>>::type; \
         using VecBlockType = \
             typename std::conditional<g_coreType == AscendC::AIC, SMLAKernel::CSABlockVecDummy<__VA_ARGS__>, \
-                                      SMLAKernel::CSABlockVec<__VA_ARGS__>>::type; \
+                                      SMLAKernel::SmlaCsaBlockVector<__VA_ARGS__>>::type; \
         templateClass<CubeBlockType, VecBlockType> op; \
         GET_TILING_DATA_WITH_STRUCT(tilingdataClass, tilingDataIn, tiling); \
         const tilingdataClass* __restrict tilingData = &tilingDataIn; \
