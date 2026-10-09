@@ -142,7 +142,6 @@ bool CommonGatherPaKvCacheTiling(gert::TilingContext *context)
     bool isSeqLensCumsum = (isSeqLensCumsumPtr == nullptr) ? true : *isSeqLensCumsumPtr;
     int64_t kCacheBlockStride = 0;
     int64_t vCacheBlockStride = 0;
-
     if (isViewKCache) {
         auto *kCacheStride = context->GetInputStride(DIM_0);
         if (kCacheStride != nullptr) {
