@@ -10,5 +10,8 @@
 
 
 if(UT_TEST_ALL OR OP_API_UT)
+    # The checker header uses the same logging macros as the op_api implementation.
+    set_source_files_properties(test_aclnn_grouped_matmul_finalize_routing_platform_dtype.cpp
+        PROPERTIES COMPILE_DEFINITIONS OP_LOG_LIBOPAPI_ONLY)
     add_modules_ut_sources(UT_NAME ${OP_API_MODULE_NAME} MODE PRIVATE DIR ${CMAKE_CURRENT_SOURCE_DIR})
 endif()

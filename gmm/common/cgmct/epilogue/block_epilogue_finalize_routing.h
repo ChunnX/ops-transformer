@@ -15,7 +15,7 @@
 
 #ifndef BLOCK_EPILOGUE_FINALIZE_ROUTING_H
 #define BLOCK_EPILOGUE_FINALIZE_ROUTING_H
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510 || __NPU_ARCH__ == 9201 || __NPU_ARCH__ == 9202)
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
 #else
@@ -60,6 +60,7 @@ public:
         GM_ADDR rowIndexGmAddr{nullptr};
         int32_t baseM = 256;
         int32_t baseN = 256;
+        uint32_t l0cOutUbSize = MAX_SINGLE_MN;
         Arguments() = default;
     };
 
@@ -93,7 +94,7 @@ private:
     AscendC::GlobalTensor<DataTypeOut> yGlobal_;
 
     // UB ADDR
-    AscendC::LocalTensor<DataTypeOut> l0cOutUb_{AscendC::TPosition::VECIN, 0, MAX_SINGLE_MN};
+    AscendC::LocalTensor<DataTypeOut> l0cOutUb_;
     AscendC::LocalTensor<float> logitUbPing_;
     AscendC::LocalTensor<float> logitUbPong_;
     AscendC::LocalTensor<DataTypeOut> outUbPing_;
@@ -120,8 +121,8 @@ __aicore__ inline void BlockEpilogueFinalizeRouting<GMM_BLOCK_EPILOGUE_FINALIZE_
     }
     params_ = &params;
     yGlobal_.SetGlobalBuffer((__gm__ DataTypeOut *)params_->yGMAddr);
-    // input
-    uint32_t afterFirstIn = MAX_SINGLE_MN * sizeof(DataTypeOut);
+    l0cOutUb_ = AscendC::LocalTensor<DataTypeOut>(AscendC::TPosition::VECIN, 0, params_->l0cOutUbSize);
+    uint32_t afterFirstIn = params_->l0cOutUbSize * sizeof(DataTypeOut);
     logitUbPing_ = AscendC::LocalTensor<float>(AscendC::TPosition::VECIN, afterFirstIn, BLOCK_BYTES);
     uint32_t afterSecondIn = afterFirstIn + BLOCK_BYTES * sizeof(DataTypeOut);
     logitUbPong_ = AscendC::LocalTensor<float>(AscendC::TPosition::VECIN, afterSecondIn, BLOCK_BYTES);
