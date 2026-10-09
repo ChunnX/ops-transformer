@@ -109,4 +109,7 @@ static ge::graphStatus InferDataTypeLightningIndexerV2(gert::InferDataTypeContex
 IMPL_OP_INFERSHAPE(LightningIndexerV2)
     .InferShape(InferShapeLightningIndexerV2)
     .InferDataType(InferDataTypeLightningIndexerV2);
+IMPL_OP_INFERSHAPE(LightningIndexerV2BatchInvariant)
+    .InferShape(InferShapeLightningIndexerV2)
+    .InferDataType(InferDataTypeLightningIndexerV2);
 } // namespace ops

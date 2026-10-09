@@ -1244,6 +1244,7 @@ ge::graphStatus LightningIndexerV2Tiling::DoTiling(LIV2TilingInfo *tilingInfo)
     tilingData_.set_cmpRatio(tilingInfo->cmpRatio);
     tilingData_.set_keyStride0(tilingInfo->keyStride0);
     tilingData_.set_returnValue(tilingInfo->returnValue);
+    tilingData_.set_batchInvariant(batchInvariant_ ? 1U : 0U);
     tilingData_.set_usedCoreNum(blockDim);
     tilingData_.set_batchSupperFlag(tilingInfo->batchSupperFlag);
     tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
@@ -1267,7 +1268,7 @@ ge::graphStatus LightningIndexerV2Tiling::DoTiling(LIV2TilingInfo *tilingInfo)
 }
 
 // --------------------------Tiling函数定义---------------------------
-ge::graphStatus TilingForLightningIndexerV2(gert::TilingContext *context)
+static ge::graphStatus TilingForLightningIndexerV2Impl(gert::TilingContext *context, bool batchInvariant)
 {
     OP_CHECK_IF(context == nullptr, OPS_REPORT_VECTOR_INNER_ERR("LightningIndexerV2", "Tiling context is null."),
                 return ge::GRAPH_FAILED);
@@ -1276,11 +1277,24 @@ ge::graphStatus TilingForLightningIndexerV2(gert::TilingContext *context)
     if (LIV2InfoParser.ParseAndCheck(liV2Info) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    LightningIndexerV2Tiling liTiling(context);
+    LightningIndexerV2Tiling liTiling(context, batchInvariant);
     return liTiling.DoTiling(&liV2Info);
+}
+
+ge::graphStatus TilingForLightningIndexerV2(gert::TilingContext *context)
+{
+    return TilingForLightningIndexerV2Impl(context, false);
+}
+
+ge::graphStatus TilingForLightningIndexerV2BatchInvariant(gert::TilingContext *context)
+{
+    return TilingForLightningIndexerV2Impl(context, true);
 }
 // --------------------------Tiling函数及TilingPrepare函数注册--------
 IMPL_OP_OPTILING(LightningIndexerV2)
     .Tiling(TilingForLightningIndexerV2)
+    .TilingParse<LIV2CompileInfo>(TilingPrepareForLightningIndexerV2);
+IMPL_OP_OPTILING(LightningIndexerV2BatchInvariant)
+    .Tiling(TilingForLightningIndexerV2BatchInvariant)
     .TilingParse<LIV2CompileInfo>(TilingPrepareForLightningIndexerV2);
 } // namespace optiling

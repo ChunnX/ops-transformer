@@ -104,8 +104,10 @@ TILING_DATA_FIELD_DEF(int64_t, cmpRatio)
 TILING_DATA_FIELD_DEF(uint32_t, batchSupperFlag)
 TILING_DATA_FIELD_DEF(uint32_t, keyStride0)
 TILING_DATA_FIELD_DEF(uint32_t, returnValue)
+TILING_DATA_FIELD_DEF(uint32_t, batchInvariant)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(LightningIndexerV2, LIV2TilingData)
+REGISTER_TILING_DATA_CLASS(LightningIndexerV2BatchInvariant, LIV2TilingData)
 
 // -----------算子CompileInfo定义-------------------
 struct LIV2CompileInfo {};
@@ -259,13 +261,16 @@ public:
 // ---------------算子Tiling类---------------
 class LightningIndexerV2Tiling {
 public:
-    explicit LightningIndexerV2Tiling(gert::TilingContext *context)
-        : context_(context) {};
+    explicit LightningIndexerV2Tiling(gert::TilingContext *context, bool batchInvariant)
+        : context_(context),
+          batchInvariant_(batchInvariant)
+    {}
     ge::graphStatus DoTiling(LIV2TilingInfo *tilingInfo);
 
 private:
     gert::TilingContext *context_ = nullptr;
     LIV2TilingData tilingData_;
+    const bool batchInvariant_;
 };
 } // namespace optiling
 #endif // LIGHTNING_INDEXER_V2_TILING_H_

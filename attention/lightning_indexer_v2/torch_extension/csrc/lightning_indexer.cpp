@@ -15,16 +15,10 @@
 
 #include <torch/extension.h>
 #include "aclnn_common.h"
+#include "lightning_indexer_common.h"
 
 namespace op_api {
 using namespace at_npu::native;
-
-// npu tensor max size
-const int SIZE = 8;
-const int DIM_0 = 0;
-const int DIM_1 = 1;
-const int DIM_2 = 2;
-const int DIM_3 = 3;
 
 constexpr int64_t LI_V2_METADATA_SIZE = 1024;
 
@@ -68,76 +62,10 @@ at::Tensor LightningIndexerMetadata(int64_t numHeadsQ, int64_t numHeadsK, int64_
     return output;
 }
 
-// 工具函数，推导输出shape
-std::tuple<at::Tensor, at::Tensor> ConstructLightningIndexerOutputTensor(const at::Tensor &query, const at::Tensor &key,
-                                                                         int64_t topk, std::string queryLayoutStr,
-                                                                         std::string keyLayoutStr, bool returnValue)
-{
-    at::SmallVector<int64_t, SIZE> outputSize;
-    for (size_t i = 0; i < query.sizes().size(); i++) {
-        TORCH_CHECK(query.size(i) > 0,
-                    "All values within query's shape should be greater "
-                    "than 0, but shape[",
-                    i, "] is ", query.size(i));
-    }
-    for (size_t i = 0; i < key.sizes().size(); i++) {
-        TORCH_CHECK(key.size(i) > 0,
-                    "All values within key's shape should be greater "
-                    "than 0, but shape[",
-                    i, "] is ", key.size(i));
-    }
-    TORCH_CHECK(topk > 0, "topk should be greater than 0, but now is ", topk);
-    int64_t keyHeadNum = (keyLayoutStr == "TND") ? key.size(DIM_1) : key.size(DIM_2);
-    if (queryLayoutStr == "BSND") {
-        outputSize = {query.size(DIM_0), query.size(DIM_1), keyHeadNum, topk};
-    } else {
-        int nDimIndex = 0;
-        nDimIndex = (keyLayoutStr == "TND") ? DIM_1 : DIM_2;
-        outputSize = {query.size(DIM_0), key.size(nDimIndex), topk};
-    }
-    at::Tensor sparseIndicesOut = at::empty(outputSize, query.options().dtype(at::kInt));
-    at::Tensor sparseValuesOut;
-    if (returnValue) {
-        sparseValuesOut = at::empty(outputSize, query.options().dtype(at::kFloat));
-    } else {
-        sparseValuesOut = at::empty({0}, query.options().dtype(at::kFloat));
-    }
-
-    return std::tuple<at::Tensor, at::Tensor>(sparseIndicesOut, sparseValuesOut);
-}
-
-std::tuple<at::Tensor, at::Tensor> LightningIndexer(
-    const at::Tensor &q, const at::Tensor &k, const at::Tensor &w, int64_t topk,
-    const c10::optional<at::Tensor> &cuSeqlensQ, const c10::optional<at::Tensor> &cuSeqlensK,
-    const c10::optional<at::Tensor> &sequsedQ, const c10::optional<at::Tensor> &sequsedK,
-    const c10::optional<at::Tensor> &cmpResidualK, const c10::optional<at::Tensor> &blockTable,
-    const c10::optional<at::Tensor> &outputIdxOffset, const c10::optional<at::Tensor> &metadata, int64_t maxSeqlenQ,
-    c10::string_view layoutQ, c10::string_view layoutK, int64_t maskMode, int64_t cmpRatio, int64_t returnValue)
-{
-    TORCH_CHECK(q.numel() > 0, "Tensor q is empty.")
-    TORCH_CHECK(k.numel() > 0, "Tensor k is empty.")
-
-    std::string queryLayoutStr = std::string(layoutQ);
-    std::string keyLayoutStr = std::string(layoutK);
-
-    // construct the output tensor
-    std::tuple<at::Tensor, at::Tensor> lightningIndexerOutput =
-        ConstructLightningIndexerOutputTensor(q, k, topk, queryLayoutStr, keyLayoutStr, returnValue);
-    at::Tensor sparseIndicesOut = std::get<0>(lightningIndexerOutput);
-    at::Tensor sparseValuesOut = std::get<1>(lightningIndexerOutput);
-    // convert str
-    char *queryLayoutPtr = const_cast<char *>(queryLayoutStr.c_str());
-    char *keyLayoutPtr = const_cast<char *>(keyLayoutStr.c_str());
-
-    ACLNN_CMD(aclnnLightningIndexerV2, q, k, w, cuSeqlensQ, cuSeqlensK, sequsedQ, sequsedK, cmpResidualK, blockTable,
-              outputIdxOffset, metadata, topk, maxSeqlenQ, queryLayoutPtr, keyLayoutPtr, maskMode, cmpRatio,
-              returnValue, sparseIndicesOut, sparseValuesOut);
-    return std::tuple<at::Tensor, at::Tensor>(sparseIndicesOut, sparseValuesOut);
-}
 // Bind the C++ function to Python module
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     m.def("lightning_indexer_metadata", &LightningIndexerMetadata, "lightning_indexer_metadata");
-    m.def("lightning_indexer", &LightningIndexer, "lightning_indexer");
+    m.def("lightning_indexer", &LightningIndexer<false>, "lightning_indexer");
 }
 } // namespace op_api

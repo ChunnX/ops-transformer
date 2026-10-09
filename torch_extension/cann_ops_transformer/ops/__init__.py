@@ -125,6 +125,7 @@ _legacy_map = {
     "kv_compress_epilog": "attention.kv_compress_epilog",
     "kv_quant_sparse_flash_attention": "attention.kv_quant_sparse_flash_attention_v2",
     "lightning_indexer": "attention.lightning_indexer_v2",
+    "lightning_indexer_batch_invariant": "attention.lightning_indexer_v2_batch_invariant",
     "lightning_indexer_kl_loss": "attention.lightning_indexer_kl_loss",
     "mega_moe": "mc2.mega_moe",
     "mhc_post": "mhc.mhc_post",

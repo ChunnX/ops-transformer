@@ -11,6 +11,10 @@ from typing import Optional
 import torch
 from torch.library import impl
 from cann_ops_transformer.op_builder import OpBuilder, get_as_library
+from cann_ops_transformer.op_builder.lightning_indexer import (
+    lightning_indexer_schema,
+    register_lightning_indexer,
+)
 
 LI_METADATA_SIZE = 1024
 LI_METADATA_OP_NAME = "lightning_indexer_metadata"
@@ -33,14 +37,7 @@ class LightningIndexerOpBuilder(OpBuilder):
             "Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_k=None, Tensor? seqused_q=None, Tensor? seqused_k=None, "
             "Tensor? cmp_residual_k=None, int? batch_size=None, int? max_seqlen_q=None, int? max_seqlen_k=None, "
             "str? layout_q=None, str? layout_k=None, int? mask_mode=None, int? cmp_ratio=None) -> Tensor",
-            "lightning_indexer(Tensor q, Tensor k, Tensor w, "
-            "int topk, *, Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_k=None,"
-            "Tensor? seqused_q=None, Tensor? seqused_k=None, "
-            "Tensor? cmp_residual_k=None, Tensor? block_table=None, "
-            "Tensor? output_idx_offset=None, Tensor? metadata=None, int max_seqlen_q=-1,"
-            'str layout_q="BSND", str layout_k="BSND", int mask_mode=0, '
-            "int cmp_ratio=1,"
-            "int return_value=0) -> (Tensor, Tensor)",
+            lightning_indexer_schema(self.name),
         ]
 
     def register_meta(self):
@@ -70,61 +67,13 @@ class LightningIndexerOpBuilder(OpBuilder):
         ):
             return torch.empty((LI_METADATA_SIZE), dtype=torch.int32, device="npu")
 
-        @impl(get_as_library(), self.name, "Meta")
-        def lightning_indexer_meta(
-            q,
-            k,
-            w,
-            topk,
-            *,
-            cu_seqlens_q=None,
-            cu_seqlens_k=None,
-            seqused_q=None,
-            seqused_k=None,
-            cmp_residual_k=None,
-            block_table=None,
-            output_idx_offset=None,
-            metadata=None,
-            max_seqlen_q=-1,
-            layout_q="BSND",
-            layout_k="BSND",
-            mask_mode=0,
-            cmp_ratio=1,
-            return_value=0,
-        ):
-            key_head_num = k.shape[1] if layout_k == "TND" else k.shape[2]
-
-            if layout_q == "BSND":
-                sparse_indices_out = torch.empty(
-                    [q.shape[0], q.shape[1], key_head_num, topk],
-                    dtype=torch.int32,
-                    device="meta",
-                )
-            else:
-                sparse_indices_out = torch.empty(
-                    [q.shape[0], key_head_num, topk], dtype=torch.int32, device="meta"
-                )
-            if return_value:
-                if layout_q == "BSND":
-                    sparse_values_out = torch.empty(
-                        [q.shape[0], q.shape[1], key_head_num, topk],
-                        dtype=torch.float,
-                        device="meta",
-                    )
-                else:
-                    sparse_values_out = torch.empty(
-                        [q.shape[0], key_head_num, topk],
-                        dtype=torch.float,
-                        device="meta",
-                    )
-            else:
-                sparse_values_out = torch.empty([0], dtype=torch.float, device="meta")
-            return (sparse_indices_out, sparse_values_out)
+        self.forward = register_lightning_indexer(self)
 
 
 # Instantiate the builder
 lightning_indexer_op_builder = LightningIndexerOpBuilder()
 lightning_indexer_op_builder._ensure_initialized()
+lightning_indexer = lightning_indexer_op_builder.forward
 
 
 @impl(get_as_library(), LI_METADATA_OP_NAME, "PrivateUse1")
@@ -221,52 +170,3 @@ def lightning_indexer_metadata_fallback(
 
 
 torch.compiler.allow_in_graph(lightning_indexer_metadata)
-
-
-@impl(get_as_library(), lightning_indexer_op_builder.name, "PrivateUse1")
-def lightning_indexer(
-    q,
-    k,
-    w,
-    topk,
-    *,
-    cu_seqlens_q=None,
-    cu_seqlens_k=None,
-    seqused_q=None,
-    seqused_k=None,
-    cmp_residual_k=None,
-    block_table=None,
-    output_idx_offset=None,
-    metadata=None,
-    max_seqlen_q=-1,
-    layout_q="BSND",
-    layout_k="BSND",
-    mask_mode=0,
-    cmp_ratio=1,
-    return_value=0,
-):
-    """
-    dispatcher implementation for NPU.zhe
-    'PrivateUse1' is the combine key for custom NPU backends.
-    """
-    op_module = lightning_indexer_op_builder.load()
-    return op_module.lightning_indexer(
-        q,
-        k,
-        w,
-        topk,
-        cu_seqlens_q,
-        cu_seqlens_k,
-        seqused_q,
-        seqused_k,
-        cmp_residual_k,
-        block_table,
-        output_idx_offset,
-        metadata,
-        max_seqlen_q,
-        layout_q,
-        layout_k,
-        mask_mode,
-        cmp_ratio,
-        return_value,
-    )
