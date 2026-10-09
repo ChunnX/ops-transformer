@@ -118,3 +118,4 @@
 | 调用方式      | 调用样例                 | 说明                                                         |
 |--------------|-------------------------|--------------------------------------------------------------|
 | aclnn调用 | [test_aclnn_mhc_post_backward](examples/test_aclnn_mhc_post_backward.cpp) | 通过[aclnnMhcpostBackward](docs/aclnnMhcPostBackward.md)接口方式调用算子。|
+| PyTorch API | [test_torch_mhc_post_backward](examples/test_torch_mhc_post_backward.py) | 通过[mhc_post_backward](docs/torchapi_mhc_post_backward.md)接口方式调用MhcPostBackward算子。|
