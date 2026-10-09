@@ -45,6 +45,7 @@ constexpr size_t BATCHED_MATRIX_COLUMN_DIM = 2;
 constexpr size_t SCALE_PAIR_DIM = 3;
 constexpr size_t EMPTY_TENSOR_RANK = 1;
 constexpr int64_t MIN_GROUP_NUM = 1;
+constexpr int64_t NO_CLAMP_SWIGLU_MODE = 0;
 constexpr int64_t SPLIT_SWIGLU_MODE = 2;
 constexpr int64_t GROUP_LIST_COUNTS = 1;
 constexpr size_t OUTPUT_SCALE_RESULT_INDEX = 1;
@@ -63,6 +64,19 @@ constexpr char EXECUTE_API_NAME[] = "aclnnGroupedMatmulSwigluQuantWeightNzV3";
 bool IsMxfp8(DataType dtype)
 {
     return dtype == DataType::DT_FLOAT8_E4M3FN;
+}
+
+bool IsMxfp4A4W4(DataType xDtype, DataType weightDtype)
+{
+    return xDtype == DataType::DT_FLOAT4_E2M1 && weightDtype == DataType::DT_FLOAT4_E2M1;
+}
+
+bool IsA4W4Bf16Output(const aclTensor* x, const aclTensorList* weight, const aclTensor* output)
+{
+    return x != nullptr && weight != nullptr && weight->Size() == gmm_swiglu_quant_v3::SINGLE_TENSOR_SIZE &&
+           (*weight)[gmm_swiglu_quant_v3::FIRST_TENSOR_INDEX] != nullptr && output != nullptr &&
+           IsMxfp4A4W4(x->GetDataType(), (*weight)[gmm_swiglu_quant_v3::FIRST_TENSOR_INDEX]->GetDataType()) &&
+           output->GetDataType() == DataType::DT_BF16;
 }
 
 bool IsNzFormat(const aclTensor* tensor)
@@ -212,26 +226,31 @@ bool IsRepresentableFloat(double value)
 }
 
 aclnnStatus CheckSwigluAttrs(int64_t swigluMode, double clampLimit, double gluAlpha, double gluBias,
-                             const char* roundMode, int64_t scaleAlg, double dstTypeMax)
+                             const char* roundMode, int64_t scaleAlg, double dstTypeMax, bool allowNoClamp)
 {
     GMM_SWIGLU_V3_CHECK_WITH_LOG(
-        swigluMode == SPLIT_SWIGLU_MODE, ACLNN_ERR_PARAM_INVALID,
+        swigluMode == SPLIT_SWIGLU_MODE || (allowNoClamp && swigluMode == NO_CLAMP_SWIGLU_MODE),
+        ACLNN_ERR_PARAM_INVALID,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(API_NAME, "swigluMode", std::to_string(swigluMode),
-                                              "currently only 2 is supported"));
-    GMM_SWIGLU_V3_CHECK_WITH_LOG(
-        IsRepresentableFloat(clampLimit), ACLNN_ERR_PARAM_INVALID,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(API_NAME, "clampLimit", std::to_string(clampLimit),
-                                              "must be finite and representable by float32"));
-    GMM_SWIGLU_V3_CHECK_WITH_LOG(
-        clampLimit > 0.0, ACLNN_ERR_PARAM_INVALID,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(API_NAME, "clampLimit", std::to_string(clampLimit),
-                                              "must be greater than 0 for swigluMode 2"));
-    GMM_SWIGLU_V3_CHECK_WITH_LOG(IsRepresentableFloat(gluAlpha), ACLNN_ERR_PARAM_INVALID,
-                                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(API_NAME, "gluAlpha", std::to_string(gluAlpha),
-                                                                       "must be finite and representable by float32"));
-    GMM_SWIGLU_V3_CHECK_WITH_LOG(IsRepresentableFloat(gluBias), ACLNN_ERR_PARAM_INVALID,
-                                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(API_NAME, "gluBias", std::to_string(gluBias),
-                                                                       "must be finite and representable by float32"));
+                                              "only 2, or 0 for FLOAT4_E2M1 A4W4, is supported"));
+    if (swigluMode == SPLIT_SWIGLU_MODE) {
+        GMM_SWIGLU_V3_CHECK_WITH_LOG(
+            IsRepresentableFloat(clampLimit), ACLNN_ERR_PARAM_INVALID,
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(API_NAME, "clampLimit", std::to_string(clampLimit),
+                                                  "must be finite and representable by float32"));
+        GMM_SWIGLU_V3_CHECK_WITH_LOG(
+            clampLimit > 0.0, ACLNN_ERR_PARAM_INVALID,
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(API_NAME, "clampLimit", std::to_string(clampLimit),
+                                                  "must be greater than 0 for swigluMode 2"));
+        GMM_SWIGLU_V3_CHECK_WITH_LOG(
+            IsRepresentableFloat(gluAlpha), ACLNN_ERR_PARAM_INVALID,
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(API_NAME, "gluAlpha", std::to_string(gluAlpha),
+                                                  "must be finite and representable by float32"));
+        GMM_SWIGLU_V3_CHECK_WITH_LOG(
+            IsRepresentableFloat(gluBias), ACLNN_ERR_PARAM_INVALID,
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(API_NAME, "gluBias", std::to_string(gluBias),
+                                                  "must be finite and representable by float32"));
+    }
     GMM_SWIGLU_V3_CHECK_WITH_LOG(
         roundMode == nullptr || roundMode[0] == '\0' ||
             std::strcmp(roundMode, gmm_swiglu_quant_v3::DEFAULT_ROUND_MODE) == 0,
@@ -302,8 +321,11 @@ aclnnStatus CheckDimensionNumbers(const aclTensor* x, const aclTensorList* weigh
               ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckTensorDimNum(output, "output", gmm_swiglu_quant_v3::OUTPUT_DIM_NUM) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
-    CHECK_RET(CheckTensorDimNum(outputScale, "outputScale", gmm_swiglu_quant_v3::OUTPUT_SCALE_DIM_NUM) == ACLNN_SUCCESS,
-              ACLNN_ERR_PARAM_INVALID);
+    if (outputScale != nullptr) {
+        CHECK_RET(
+            CheckTensorDimNum(outputScale, "outputScale", gmm_swiglu_quant_v3::OUTPUT_SCALE_DIM_NUM) == ACLNN_SUCCESS,
+            ACLNN_ERR_PARAM_INVALID);
+    }
     GMM_SWIGLU_V3_CHECK_WITH_LOG(
         (*weight)[gmm_swiglu_quant_v3::FIRST_TENSOR_INDEX]->GetStorageShape().GetDimNum() ==
             gmm_swiglu_quant_v3::WEIGHT_STORAGE_DIM_NUM,
@@ -320,14 +342,12 @@ aclnnStatus CheckDtype(const aclTensor* x, const aclTensorList* weight, const ac
 {
     const aclTensor* weightTensor = (*weight)[gmm_swiglu_quant_v3::FIRST_TENSOR_INDEX];
     const aclTensor* weightScaleTensor = (*weightScale)[gmm_swiglu_quant_v3::FIRST_TENSOR_INDEX];
-    GMM_SWIGLU_V3_CHECK_WITH_LOG(
-        IsMxfp8(x->GetDataType()), ACLNN_ERR_PARAM_INVALID,
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(API_NAME, "x", op::ToString(x->GetDataType()).GetString(),
-                                              "x must be FLOAT8_E4M3FN"));
-    GMM_SWIGLU_V3_CHECK_WITH_LOG(
-        IsMxfp8(weightTensor->GetDataType()), ACLNN_ERR_PARAM_INVALID,
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(API_NAME, "weight", op::ToString(weightTensor->GetDataType()).GetString(),
-                                              "weight must be FLOAT8_E4M3FN"));
+    const bool isMxfp8 = IsMxfp8(x->GetDataType()) && IsMxfp8(weightTensor->GetDataType());
+    const bool isMxfp4A4W4 = IsMxfp4A4W4(x->GetDataType(), weightTensor->GetDataType());
+    GMM_SWIGLU_V3_CHECK_WITH_LOG(isMxfp8 || isMxfp4A4W4, ACLNN_ERR_PARAM_INVALID,
+                                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(API_NAME, "x, weight",
+                                                                          "must be FLOAT8_E4M3FN/FLOAT8_E4M3FN or "
+                                                                          "FLOAT4_E2M1/FLOAT4_E2M1"));
     GMM_SWIGLU_V3_CHECK_WITH_LOG(
         xScale->GetDataType() == DataType::DT_FLOAT8_E8M0, ACLNN_ERR_PARAM_INVALID,
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(API_NAME, "xScale", op::ToString(xScale->GetDataType()).GetString(),
@@ -341,14 +361,19 @@ aclnnStatus CheckDtype(const aclTensor* x, const aclTensorList* weight, const ac
         groupList->GetDataType() == DataType::DT_INT64, ACLNN_ERR_PARAM_INVALID,
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(API_NAME, "groupList", op::ToString(groupList->GetDataType()).GetString(),
                                               "groupList must be INT64"));
-    GMM_SWIGLU_V3_CHECK_WITH_LOG(
-        output->GetDataType() == DataType::DT_FLOAT8_E4M3FN, ACLNN_ERR_PARAM_INVALID,
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(API_NAME, "output", op::ToString(output->GetDataType()).GetString(),
-                                              "WeightNZ MXFP8 output must be FLOAT8_E4M3FN"));
-    GMM_SWIGLU_V3_CHECK_WITH_LOG(outputScale->GetDataType() == DataType::DT_FLOAT8_E8M0, ACLNN_ERR_PARAM_INVALID,
-                                 OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
-                                     API_NAME, "outputScale", op::ToString(outputScale->GetDataType()).GetString(),
-                                     "outputScale must be FLOAT8_E8M0"));
+    if (isMxfp8) {
+        GMM_SWIGLU_V3_CHECK_WITH_LOG(
+            output->GetDataType() == DataType::DT_FLOAT8_E4M3FN && outputScale != nullptr &&
+                outputScale->GetDataType() == DataType::DT_FLOAT8_E8M0,
+            ACLNN_ERR_PARAM_INVALID,
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(API_NAME, "output, outputScale",
+                                                     "FLOAT8_E4M3FN output requires FLOAT8_E8M0 outputScale"));
+    } else {
+        GMM_SWIGLU_V3_CHECK_WITH_LOG(
+            output->GetDataType() == DataType::DT_BF16 && outputScale == nullptr, ACLNN_ERR_PARAM_INVALID,
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(API_NAME, "output, outputScale",
+                                                     "FLOAT4_E2M1 A4W4 requires BF16 output and nullptr outputScale"));
+    }
     return ACLNN_SUCCESS;
 }
 
@@ -359,14 +384,23 @@ aclnnStatus CheckFormat(const aclTensor* x, const aclTensorList* weight, const a
     const struct {
         const aclTensor* tensor;
         const char* name;
-    } ndTensors[] = {{x, "x"},           {(*weightScale)[gmm_swiglu_quant_v3::FIRST_TENSOR_INDEX], "weightScale"},
-                     {xScale, "xScale"}, {groupList, "groupList"},
-                     {output, "output"}, {outputScale, "outputScale"}};
+    } ndTensors[] = {{x, "x"},
+                     {(*weightScale)[gmm_swiglu_quant_v3::FIRST_TENSOR_INDEX], "weightScale"},
+                     {xScale, "xScale"},
+                     {groupList, "groupList"},
+                     {output, "output"}};
     for (const auto& item : ndTensors) {
         GMM_SWIGLU_V3_CHECK_WITH_LOG(!op::IsPrivateFormat(item.tensor->GetStorageFormat()), ACLNN_ERR_PARAM_INVALID,
                                      OP_LOGE_FOR_INVALID_FORMAT_WITH_REASON(
                                          API_NAME, item.name, op::ToString(item.tensor->GetStorageFormat()).GetString(),
                                          "the format must be ND"));
+    }
+    if (outputScale != nullptr) {
+        GMM_SWIGLU_V3_CHECK_WITH_LOG(
+            !op::IsPrivateFormat(outputScale->GetStorageFormat()), ACLNN_ERR_PARAM_INVALID,
+            OP_LOGE_FOR_INVALID_FORMAT_WITH_REASON(API_NAME, "outputScale",
+                                                   op::ToString(outputScale->GetStorageFormat()).GetString(),
+                                                   "the format must be ND"));
     }
     const aclTensor* weightTensor = (*weight)[gmm_swiglu_quant_v3::FIRST_TENSOR_INDEX];
     GMM_SWIGLU_V3_CHECK_WITH_LOG(IsNzFormat(weightTensor), ACLNN_ERR_PARAM_INVALID,
@@ -390,6 +424,7 @@ aclnnStatus CheckShape(const aclTensor* x, const aclTensorList* weight, const ac
                                         weightTensor->GetViewShape().GetDim(BATCHED_MATRIX_COLUMN_DIM);
     const int64_t weightK = transposeWeight ? weightTensor->GetViewShape().GetDim(BATCHED_MATRIX_COLUMN_DIM) :
                                               weightTensor->GetViewShape().GetDim(BATCHED_MATRIX_ROW_DIM);
+    const bool isMxfp4A4W4 = IsMxfp4A4W4(x->GetDataType(), weightTensor->GetDataType());
 
     GMM_SWIGLU_V3_CHECK_WITH_LOG(e >= MIN_GROUP_NUM && e <= gmm_swiglu_quant_v3::MAX_GROUP_NUM, ACLNN_ERR_PARAM_INVALID,
                                  OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(API_NAME, "groupList dim 0", std::to_string(e),
@@ -398,11 +433,17 @@ aclnnStatus CheckShape(const aclTensor* x, const aclTensorList* weight, const ac
                                  OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
                                      API_NAME, "M, K", ("{" + std::to_string(m) + ", " + std::to_string(k) + "}"),
                                      "M and K must both be greater than 0"));
+    const int64_t nAlignment =
+        isMxfp4A4W4 ? 2 * gmm_swiglu_quant_v3::MXFP8_N_ALIGN : gmm_swiglu_quant_v3::MXFP8_N_ALIGN;
     GMM_SWIGLU_V3_CHECK_WITH_LOG(
-        n > 0 && n % gmm_swiglu_quant_v3::MXFP8_N_ALIGN == 0 && n % gmm_swiglu_quant_v3::SWIGLU_SPLIT_FACTOR == 0,
-        ACLNN_ERR_PARAM_INVALID,
+        n > 0 && n % nAlignment == 0 && n % gmm_swiglu_quant_v3::SWIGLU_SPLIT_FACTOR == 0, ACLNN_ERR_PARAM_INVALID,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(API_NAME, "N", std::to_string(n),
-                                              "N must be greater than 0 and divisible by 64"));
+                                              isMxfp4A4W4 ? "must be greater than 0 and divisible by 128" :
+                                                            "must be greater than 0 and divisible by 64"));
+    GMM_SWIGLU_V3_CHECK_WITH_LOG(!isMxfp4A4W4 || k % (2 * gmm_swiglu_quant_v3::MXFP8_N_ALIGN) == 0,
+                                 ACLNN_ERR_PARAM_INVALID,
+                                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(API_NAME, "K", std::to_string(k),
+                                                                       "FLOAT4_E2M1 V3 requires K divisible by 128"));
     GMM_SWIGLU_V3_CHECK_WITH_LOG(
         weightE == e, ACLNN_ERR_PARAM_INVALID,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
@@ -424,13 +465,14 @@ aclnnStatus CheckShape(const aclTensor* x, const aclTensorList* weight, const ac
     const op::Shape outputExpected = {m, nAfterSwiGlu};
     const op::Shape outputScaleExpected = {m, Ops::Base::CeilDiv(nAfterSwiGlu, gmm_swiglu_quant_v3::MX_GROUP_SIZE),
                                            gmm_swiglu_quant_v3::MX_SCALE_PAIR};
+    const int64_t nzC0Size =
+        IsMxfp4A4W4(x->GetDataType(), weightTensor->GetDataType()) ? 64 : gmm_swiglu_quant_v3::NZ_C0_SIZE;
     const op::Shape weightStorageExpected =
-        transposeWeight ? op::Shape({e, Ops::Base::CeilDiv(k, gmm_swiglu_quant_v3::NZ_C0_SIZE),
-                                     Ops::Base::CeilDiv(n, gmm_swiglu_quant_v3::NZ_INNER_SIZE),
-                                     gmm_swiglu_quant_v3::NZ_INNER_SIZE, gmm_swiglu_quant_v3::NZ_C0_SIZE}) :
-                          op::Shape({e, Ops::Base::CeilDiv(n, gmm_swiglu_quant_v3::NZ_C0_SIZE),
-                                     Ops::Base::CeilDiv(k, gmm_swiglu_quant_v3::NZ_INNER_SIZE),
-                                     gmm_swiglu_quant_v3::NZ_INNER_SIZE, gmm_swiglu_quant_v3::NZ_C0_SIZE});
+        transposeWeight ?
+            op::Shape({e, Ops::Base::CeilDiv(k, nzC0Size), Ops::Base::CeilDiv(n, gmm_swiglu_quant_v3::NZ_INNER_SIZE),
+                       gmm_swiglu_quant_v3::NZ_INNER_SIZE, nzC0Size}) :
+            op::Shape({e, Ops::Base::CeilDiv(n, nzC0Size), Ops::Base::CeilDiv(k, gmm_swiglu_quant_v3::NZ_INNER_SIZE),
+                       gmm_swiglu_quant_v3::NZ_INNER_SIZE, nzC0Size});
 
     const struct {
         const aclTensor* tensor;
@@ -440,14 +482,20 @@ aclnnStatus CheckShape(const aclTensor* x, const aclTensorList* weight, const ac
                   {xScale, "xScale", &xScaleExpected},
                   {weightTensor, "weight", &weightExpected},
                   {weightScaleTensor, "weightScale", &weightScaleExpected},
-                  {output, "output", &outputExpected},
-                  {outputScale, "outputScale", &outputScaleExpected}};
+                  {output, "output", &outputExpected}};
     for (const auto& item : shapes) {
         GMM_SWIGLU_V3_CHECK_WITH_LOG(
             item.tensor->GetViewShape() == *item.expected, ACLNN_ERR_PARAM_INVALID,
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                 API_NAME, item.name, op::ToString(item.tensor->GetViewShape()).GetString(),
                 (std::string("the shape must be ") + op::ToString(*item.expected).GetString()).c_str()));
+    }
+    if (outputScale != nullptr) {
+        GMM_SWIGLU_V3_CHECK_WITH_LOG(
+            outputScale->GetViewShape() == outputScaleExpected, ACLNN_ERR_PARAM_INVALID,
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                API_NAME, "outputScale", op::ToString(outputScale->GetViewShape()).GetString(),
+                (std::string("the shape must be ") + op::ToString(outputScaleExpected).GetString()).c_str()));
     }
     GMM_SWIGLU_V3_CHECK_WITH_LOG(
         weightTensor->GetStorageShape() == weightStorageExpected, ACLNN_ERR_PARAM_INVALID,
@@ -507,14 +555,14 @@ aclnnStatus CheckParams(const aclTensor* x, const aclTensorList* weight, const a
 {
     CHECK_RET(CheckOptionalInputs(weightAssistMatrix, bias, smoothScale, tuningConfigOptional) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
-    CHECK_RET(
-        CheckSwigluAttrs(swigluMode, clampLimit, gluAlpha, gluBias, roundMode, scaleAlg, dstTypeMax) == ACLNN_SUCCESS,
-        ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckGmmAttrs(dequantMode, dequantDtype, quantMode, groupListType) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckDimensionNumbers(x, weight, weightScale, xScale, groupList, output, outputScale) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckDtype(x, weight, weightScale, xScale, groupList, output, outputScale) == ACLNN_SUCCESS,
+              ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckSwigluAttrs(swigluMode, clampLimit, gluAlpha, gluBias, roundMode, scaleAlg, dstTypeMax,
+                               IsA4W4Bf16Output(x, weight, output)) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
     GMM_SWIGLU_V3_CHECK_WITH_LOG(op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510,
                                  ACLNN_ERR_PARAM_INVALID,
@@ -602,9 +650,9 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3GetWorkspaceSize(
     aclTensor* output, aclTensor* outputScale, uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     OP_CHECK_COMM_INPUT(workspaceSize, executor);
-    aclnnStatus status =
-        gmm_swiglu_quant_api_check::CheckRequiredInputs(API_NAME, x, weight, weightScale, xScale, groupList, output,
-                                                        outputScale, gmm_swiglu_quant_v3::SINGLE_TENSOR_SIZE);
+    aclnnStatus status = gmm_swiglu_quant_api_check::CheckRequiredInputs(
+        API_NAME, x, weight, weightScale, xScale, groupList, output, outputScale,
+        gmm_swiglu_quant_v3::SINGLE_TENSOR_SIZE, !IsA4W4Bf16Output(x, weight, output));
     if (status != ACLNN_SUCCESS) {
         return status;
     }
@@ -622,8 +670,10 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3GetWorkspaceSize(
     CHECK_RET(gmm::CheckTensorStorageBounds(groupList, "GroupedMatmulSwigluQuant", "groupList"),
               ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(gmm::CheckTensorStorageBounds(output, "GroupedMatmulSwigluQuant", "output"), ACLNN_ERR_PARAM_INVALID);
-    CHECK_RET(gmm::CheckTensorStorageBounds(outputScale, "GroupedMatmulSwigluQuant", "outputScale"),
-              ACLNN_ERR_PARAM_INVALID);
+    if (outputScale != nullptr) {
+        CHECK_RET(gmm::CheckTensorStorageBounds(outputScale, "GroupedMatmulSwigluQuant", "outputScale"),
+                  ACLNN_ERR_PARAM_INVALID);
+    }
 
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
@@ -674,9 +724,12 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3GetWorkspaceSize(
     CHECK_RET(result != std::tuple(nullptr, nullptr), ACLNN_ERR_INNER_NULLPTR);
 
     const aclTensor* outputResult = l0op::ViewCopy(std::get<0>(result), output, uniqueExecutor.get());
-    const aclTensor* outputScaleResult =
-        l0op::ViewCopy(std::get<OUTPUT_SCALE_RESULT_INDEX>(result), outputScale, uniqueExecutor.get());
-    CHECK_RET(outputResult != nullptr && outputScaleResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(outputResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    if (outputScale != nullptr) {
+        const aclTensor* outputScaleResult =
+            l0op::ViewCopy(std::get<OUTPUT_SCALE_RESULT_INDEX>(result), outputScale, uniqueExecutor.get());
+        CHECK_RET(outputScaleResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
 
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
     uniqueExecutor.ReleaseTo(executor);

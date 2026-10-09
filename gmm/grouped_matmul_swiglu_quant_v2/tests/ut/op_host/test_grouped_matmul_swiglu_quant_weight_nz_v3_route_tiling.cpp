@@ -102,7 +102,7 @@ using CgmctTilingData = ::GMMSwigluQuantV2TilingDataParams;
 using TensorApiTilingData = GroupedMatmulSwigluQuantV2TensorApi::GMMSwigluQuantV2TensorApiTilingData;
 
 gert::TilingContextPara MakeContext(const RouteCase& c, optiling::GMMSwigluV2CompileInfo* info, int scaleAlg,
-                                    int aiv = AIV_CORE_COUNT, int64_t swigluMode = SPLIT_SWIGLU_MODE)
+                                    int aiv = AIV_CORE_COUNT, int64_t swigluMode = SPLIT_SWIGLU_MODE, bool a4w4 = false)
 {
     using Desc = gert::TilingContextPara::TensorDescription;
     using Value = Ops::Transformer::AnyValue;
@@ -114,11 +114,14 @@ gert::TilingContextPara MakeContext(const RouteCase& c, optiling::GMMSwigluV2Com
     const std::vector<int64_t> w = c.trans ? std::vector<int64_t>{c.e, c.n, c.k} : std::vector<int64_t>{c.e, c.k, c.n};
     const std::vector<int64_t> ws = c.trans ? std::vector<int64_t>{c.e, c.n, s, SCALE_PAIR_SIZE} :
                                               std::vector<int64_t>{c.e, s, c.n, SCALE_PAIR_SIZE};
+    const int64_t nzC0 = a4w4 ? 64 : NZ_C0;
+    const ge::DataType inputDtype = a4w4 ? ge::DT_FLOAT4_E2M1 : ge::DT_FLOAT8_E4M3FN;
+    const ge::DataType outputDtype = a4w4 ? ge::DT_BF16 : ge::DT_FLOAT8_E4M3FN;
     const std::vector<int64_t> storage =
-        c.trans ? std::vector<int64_t>{c.e, (c.k + NZ_C0 - CEIL_DIV_ADJUSTMENT) / NZ_C0,
-                                       (c.n + NZ_K0 - CEIL_DIV_ADJUSTMENT) / NZ_K0, NZ_K0, NZ_C0} :
-                  std::vector<int64_t>{c.e, (c.n + NZ_C0 - CEIL_DIV_ADJUSTMENT) / NZ_C0,
-                                       (c.k + NZ_K0 - CEIL_DIV_ADJUSTMENT) / NZ_K0, NZ_K0, NZ_C0};
+        c.trans ? std::vector<int64_t>{c.e, (c.k + nzC0 - CEIL_DIV_ADJUSTMENT) / nzC0,
+                                       (c.n + NZ_K0 - CEIL_DIV_ADJUSTMENT) / NZ_K0, NZ_K0, nzC0} :
+                  std::vector<int64_t>{c.e, (c.n + nzC0 - CEIL_DIV_ADJUSTMENT) / nzC0,
+                                       (c.k + NZ_K0 - CEIL_DIV_ADJUSTMENT) / NZ_K0, NZ_K0, nzC0};
     info->aicNum_ = AIC_CORE_COUNT;
     info->aivNum_ = static_cast<uint32_t>(aiv);
     info->ubSize_ = UB_BYTES;
@@ -128,16 +131,16 @@ gert::TilingContextPara MakeContext(const RouteCase& c, optiling::GMMSwigluV2Com
     info->supportL12BtBf16 = true;
     gert::TilingContextPara context(
         "GroupedMatmulSwigluQuantV2",
-        {tensor({c.m, c.k}, ge::DT_FLOAT8_E4M3FN), tensor({c.m, s, SCALE_PAIR_SIZE}, ge::DT_FLOAT8_E8M0),
+        {tensor({c.m, c.k}, inputDtype), tensor({c.m, s, SCALE_PAIR_SIZE}, ge::DT_FLOAT8_E8M0),
          tensor({c.e}, ge::DT_INT64),
-         Desc(ops::ut::MakeGertStorageShape(w, storage), ge::DT_FLOAT8_E4M3FN, ge::FORMAT_FRACTAL_NZ),
+         Desc(ops::ut::MakeGertStorageShape(w, storage), inputDtype, ge::FORMAT_FRACTAL_NZ),
          tensor(ws, ge::DT_FLOAT8_E8M0)},
-        {tensor({c.m, h}, ge::DT_FLOAT8_E4M3FN),
+        {tensor({c.m, h}, outputDtype),
          tensor({c.m, (h + MX_GROUP_SIZE - CEIL_DIV_ADJUSTMENT) / MX_GROUP_SIZE, SCALE_PAIR_SIZE}, ge::DT_FLOAT8_E8M0)},
         {{"dequant_mode", Value::CreateFrom<int64_t>(SPLIT_SWIGLU_MODE)},
          {"dequant_dtype", Value::CreateFrom<int64_t>(0)},
          {"quant_mode", Value::CreateFrom<int64_t>(SPLIT_SWIGLU_MODE)},
-         {"quant_dtype", Value::CreateFrom<int64_t>(ge::DT_FLOAT8_E4M3FN)},
+         {"quant_dtype", Value::CreateFrom<int64_t>(static_cast<int64_t>(outputDtype))},
          {"transpose_weight", Value::CreateFrom<bool>(c.trans)},
          {"group_list_type", Value::CreateFrom<int64_t>(0)},
          {"tuning_config", Value::CreateFrom<std::vector<int64_t>>({})},
@@ -310,6 +313,19 @@ TEST(GroupedMatmulSwigluQuantV3Route, HostTailResetOverwritesPreviousModeAndRese
     ExpectHostTailReset<CgmctTilingData>(cgmctHost);
     optiling::GMMSwigluQuantV2TensorApiTilingData tensorApiHost;
     ExpectHostTailReset<TensorApiTilingData>(tensorApiHost);
+}
+
+TEST(GroupedMatmulSwigluQuantV3Route, A4W4Bf16UsesTensorApiInsteadOfLegacyFp4Fallback)
+{
+    optiling::GMMSwigluV2CompileInfo info;
+    const RouteCase route{32, 128, 128, 1, false, V3_TENSOR_API_NZ_KEY};
+    auto context = MakeContext(route, &info, 0, AIV_CORE_COUNT, SPLIT_SWIGLU_MODE, true);
+    TilingInfo result;
+    ASSERT_TRUE(ExecuteTiling(context, result));
+    EXPECT_EQ(result.tilingKey, V3_TENSOR_API_NZ_KEY);
+    const auto* params = GetSwigluParams(result);
+    ASSERT_NE(params, nullptr);
+    ExpectSwigluParams(*params, SPLIT_SWIGLU_MODE, 0);
 }
 
 void CheckCsvRouteCase(const RouteCsvCase& item, bool trans, int scaleAlg)
