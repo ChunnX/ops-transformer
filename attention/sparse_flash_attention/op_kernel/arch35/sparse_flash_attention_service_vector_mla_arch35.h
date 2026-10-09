@@ -22,6 +22,7 @@
 #include "lib/matrix/matmul/tiling.h"
 
 #include "../../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_sfa.h"
+#include "./common/sfa_split_kv.h"
 #include "../../../common/op_kernel/arch35/vf/vf_flashupdate_new.h"
 #include "../../../common/op_kernel/buffers_policy.h"
 #include "../../../common/op_kernel/attn_buffer_manager.h"
@@ -90,6 +91,9 @@ public:
                                        RunInfo& runInfo, ConstInfo& constInfo);
     using mm2ResPos = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
     __aicore__ inline void ProcessVec2(mm2ResPos& bmm2ResBuf, RunInfo& runInfo, ConstInfo& constInfo);
+    __aicore__ inline void InitSplitKVStaging(__gm__ uint8_t* workspace, const ConstInfo& constInfo);
+    __aicore__ inline void MergeSplitKV(uint32_t queryIdx, ConstInfo& constInfo);
+    __aicore__ inline void ZeroSparseRow(const RunParamStr& runParam, const ConstInfo& constInfo);
 
 private:
     __aicore__ inline void ProcessVec1SoftmaxDispatchSFA(LocalTensor<Q_T>& stage1CastTensor, LocalTensor<T>& mmRes,
@@ -141,6 +145,12 @@ private:
     GlobalTensor<int32_t> actualSeqLengthsKVGm;
     GlobalTensor<float> softmaxMaxGm;
     GlobalTensor<float> softmaxSumGm;
+    __gm__ uint8_t* splitKVStagingBase = nullptr;
+    GlobalTensor<float> splitKVOutputGm;
+    GlobalTensor<float> splitKVMaxGm;
+    GlobalTensor<float> splitKVSumGm;
+    uint32_t splitKVSlotCount = 0;
+    TBuf<> splitKVStatsTmpBuf;
     GlobalTensor<T> sinksGm;
     LocalTensor<float> lseUb;
 
@@ -189,16 +199,23 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
     }
     int64_t cmpS2LoopCnt = runInfo.s2LoopCount;
     int64_t topkKIdx = s2IdxInBase + cmpS2LoopCnt * constInfo.s2BaseSize;
+    int64_t tokenOffset = runInfo.s2StartIdx;
+    if constexpr (FLASH_DECODE) {
+        if (constInfo.splitKVActive) {
+            topkKIdx += runInfo.s2StartIdx;
+            tokenOffset = 0;
+        }
+    }
     if (unlikely(topkKIdx >= constInfo.sparseBlockCount)) {
         token0Idx = -1;
     } else {
-        token0Idx = sparseIndicesGm.GetValue(topkBS1Idx + topkKIdx) + runInfo.s2StartIdx;
+        token0Idx = sparseIndicesGm.GetValue(topkBS1Idx + topkKIdx) + tokenOffset;
     }
     topkKIdx += 1;
     if (unlikely((topkKIdx >= constInfo.sparseBlockCount) || (s2IdxInBase + 1 >= sparseS2End))) {
         token1Idx = -1;
     } else {
-        token1Idx = sparseIndicesGm.GetValue(topkBS1Idx + topkKIdx) + runInfo.s2StartIdx;
+        token1Idx = sparseIndicesGm.GetValue(topkBS1Idx + topkKIdx) + tokenOffset;
     }
 }
 
@@ -361,7 +378,7 @@ __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::CopyOutKvUb2Gm(
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::CalSparseCalSize(const RunInfo& runInfo, ConstInfo& constInfo)
 {
-    if constexpr (IS_SPLIT_G) {
+    if constexpr (IS_SPLIT_G && !FLASH_DECODE) {
         uint32_t aicIdx = constInfo.aivIdx >> 1U;
         uint32_t v0S2SizeFirstCore = CeilDiv(runInfo.s2RealSize, 2);
         uint32_t v0S2SizeSecondCore = runInfo.s2RealSize - v0S2SizeFirstCore;
@@ -404,7 +421,7 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
 
     CalSparseCalSize(runInfo, constInfo);
     ProcessSparseKv(outputL1, v0ResGm, runInfo, constInfo, startPos);
-    if constexpr (IS_SPLIT_G) {
+    if constexpr (IS_SPLIT_G && !FLASH_DECODE) {
         CrossCoreSetFlag<0, PIPE_MTE3>(15);  // 15: 跨核同步标志位值
         CrossCoreWaitFlag<0, PIPE_MTE3>(15); // 15: 跨核同步标志位值
     }
@@ -496,8 +513,27 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
     if (runInfo.s2LoopCount != 0 || (runInfo.s2LoopCount == 0 && isSinks)) {
         SFAUpdateExpSumAndExpMax<T>(sumUb, maxUb, sfaExpUb, sumUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize);
     }
-    if (constInfo.returnSoftmaxLse && runInfo.s2LoopCount == runInfo.s2LoopLimit) {
+    if (constInfo.returnSoftmaxLse && (!FLASH_DECODE || !constInfo.splitKVActive) &&
+        runInfo.s2LoopCount == runInfo.s2LoopLimit) {
         CopyFALseToGm(runInfo, constInfo);
+    }
+    if constexpr (FLASH_DECODE) {
+        if (constInfo.splitKVActive && runInfo.halfMRealSize > 0 && runInfo.s2LoopCount == runInfo.s2LoopLimit) {
+            constexpr uint32_t headParts = IS_SPLIT_G ? 2U : 1U;
+            AttentionCommon::S2SplitFdStagingLayout layout = {
+                CeilDiv(constInfo.gSize, headParts * 2), sfaDTemplateAlign64, splitKVSlotCount,
+                AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW, AttentionCommon::FD_REDUCE_CHUNK_ROWS};
+            const int64_t queryIdx =
+                runInfo.s1oIdx + (runInfo.boIdx == 0 ? 0 : cuSeqlensQGm.GetValue(runInfo.boIdx - 1));
+            const int64_t headTile = queryIdx * headParts + constInfo.aicIdx % headParts;
+            const int64_t slot =
+                ((headTile * 2 + constInfo.subBlockIdx) * constInfo.splitKVNum) + constInfo.splitKVPart;
+            LocalTensor<float> statsTmp = splitKVStatsTmpBuf.Get<float>();
+            WaitFlag<HardEvent::MTE3_V>(mte3ToVLseOutId);
+            AttentionCommon::StageVec1Lse(layout, splitKVStagingBase, slot, 0, runInfo.halfMRealSize, maxUb, sumUb,
+                                          statsTmp, vToMte3LseOutId, mte3ToVLseOutId);
+            SetFlag<HardEvent::MTE3_V>(mte3ToVLseOutId);
+        }
     }
 }
 
@@ -588,7 +624,28 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
                                                                      sfaDTemplateAlign64, 1.0);
         }
 
-        this->CopyOutAttentionOut(runInfo, constInfo, vec2ResUb, 0, sfaVec2CalcSize);
+        if constexpr (FLASH_DECODE) {
+            if (constInfo.splitKVActive) {
+                constexpr uint32_t headParts = IS_SPLIT_G ? 2U : 1U;
+                AttentionCommon::S2SplitFdStagingLayout layout = {
+                    CeilDiv(constInfo.gSize, headParts * 2), sfaDTemplateAlign64, splitKVSlotCount,
+                    AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW, AttentionCommon::FD_REDUCE_CHUNK_ROWS};
+                const int64_t queryIdx =
+                    runInfo.s1oIdx + (runInfo.boIdx == 0 ? 0 : cuSeqlensQGm.GetValue(runInfo.boIdx - 1));
+                const int64_t headTile = queryIdx * headParts + constInfo.aicIdx % headParts;
+                const int64_t slot =
+                    ((headTile * 2 + constInfo.subBlockIdx) * constInfo.splitKVNum) + constInfo.splitKVPart;
+                if (runInfo.vec2MRealSize > 0) {
+                    AttentionCommon::StageVec2PartialOAndWait<T>(layout, splitKVOutputGm, slot, 0,
+                                                                 runInfo.vec2MRealSize, constInfo.dSizeV, vec2ResUb,
+                                                                 vToMte3AttnOutId, mte3ToVAttnOutId);
+                }
+            } else {
+                this->CopyOutAttentionOut(runInfo, constInfo, vec2ResUb, 0, sfaVec2CalcSize);
+            }
+        } else {
+            this->CopyOutAttentionOut(runInfo, constInfo, vec2ResUb, 0, sfaVec2CalcSize);
+        }
     }
     SetFlag<HardEvent::MTE3_V>(mte3ToVAttnOutId);
 }
@@ -713,6 +770,121 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
     }
 }
 
+TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::ZeroSparseRow(
+    const RunParamStr& runParam, const ConstInfo& constInfo)
+{
+    if (runParam.halfMRealSize == 0) {
+        return;
+    }
+    // Reuse transient scratch, not the live attention accumulator: an empty
+    // query can be encountered while the preceding query is still in flight.
+    constexpr uint32_t ZERO_BYTES = 512;
+    LocalTensor<OUTPUT_T> zeros = commonTBuf.Get<OUTPUT_T>();
+    WaitFlag<HardEvent::MTE3_V>(mte3ToVAttnOutId);
+    Duplicate(zeros, static_cast<OUTPUT_T>(0), ZERO_BYTES / sizeof(OUTPUT_T));
+    SetFlag<HardEvent::V_MTE3>(vToMte3AttnOutId);
+    WaitFlag<HardEvent::V_MTE3>(vToMte3AttnOutId);
+    DataCopyExtParams outputParams{1, ZERO_BYTES, 0, 0, 0};
+    const int64_t elements = runParam.halfMRealSize * constInfo.dSizeV;
+    for (int64_t offset = 0; offset < elements; offset += ZERO_BYTES / sizeof(OUTPUT_T)) {
+        DataCopyPad(attentionOutGm[runParam.attentionOutOffset + offset], zeros, outputParams);
+    }
+    SetFlag<HardEvent::MTE3_V>(mte3ToVAttnOutId);
+    WaitFlag<HardEvent::MTE3_V>(mte3ToVAttnOutId);
+    SetFlag<HardEvent::MTE3_V>(mte3ToVAttnOutId);
+    if (constInfo.returnSoftmaxLse) {
+        LocalTensor<float> stats = commonTBuf.Get<float>();
+        WaitFlag<HardEvent::MTE3_V>(mte3ToVLseOutId);
+        Duplicate(stats, 0.0f, ZERO_BYTES / sizeof(float));
+        SetFlag<HardEvent::V_MTE3>(vToMte3LseOutId);
+        WaitFlag<HardEvent::V_MTE3>(vToMte3LseOutId);
+        DataCopyExtParams statsParams{1, static_cast<uint32_t>(runParam.halfMRealSize * sizeof(float)), 0, 0, 0};
+        DataCopyPad(softmaxMaxGm[runParam.softmaxLseOffset], stats, statsParams);
+        DataCopyPad(softmaxSumGm[runParam.softmaxLseOffset], stats, statsParams);
+        SetFlag<HardEvent::MTE3_V>(mte3ToVLseOutId);
+        WaitFlag<HardEvent::MTE3_V>(mte3ToVLseOutId);
+        SetFlag<HardEvent::MTE3_V>(mte3ToVLseOutId);
+    }
+}
+
+TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::InitSplitKVStaging(
+    __gm__ uint8_t* workspace, const ConstInfo& constInfo)
+{
+    constexpr uint32_t headParts = IS_SPLIT_G ? 2U : 1U;
+    constexpr uint32_t STAGING_BLOCKS = 3;
+    const uint64_t kvScratchBytes =
+        static_cast<uint64_t>(GetBlockNum()) * STAGING_BLOCKS * s2BaseSize * dVTemplateTypeInput * sizeof(Q_T);
+    splitKVStagingBase = workspace + kvScratchBytes;
+    splitKVSlotCount = constInfo.s1Size * headParts * constInfo.splitKVNum * 2;
+    AttentionCommon::S2SplitFdStagingLayout layout = {CeilDiv(constInfo.gSize, headParts * 2), sfaDTemplateAlign64,
+                                                      splitKVSlotCount, AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW,
+                                                      AttentionCommon::FD_REDUCE_CHUNK_ROWS};
+    splitKVOutputGm.SetGlobalBuffer((__gm__ float*)layout.AttenOutRegion(splitKVStagingBase));
+    splitKVMaxGm.SetGlobalBuffer((__gm__ float*)layout.MaxRegion(splitKVStagingBase));
+    splitKVSumGm.SetGlobalBuffer((__gm__ float*)layout.SumRegion(splitKVStagingBase));
+}
+
+TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::MergeSplitKV(uint32_t queryIdx,
+                                                                                              ConstInfo& constInfo)
+{
+    constexpr uint32_t headParts = IS_SPLIT_G ? 2U : 1U;
+    const uint32_t headPart = constInfo.aicIdx % headParts;
+    const uint32_t headsPerTile = CeilDiv(constInfo.gSize, headParts);
+    const uint32_t tileHeads = headPart == 0 ? headsPerTile : constInfo.gSize - headsPerTile;
+    const uint32_t firstHalfHeads = CeilDiv(tileHeads, 2);
+    const uint32_t stagingRows = CeilDiv(constInfo.gSize, headParts * 2);
+    const uint32_t subblockIdx = GetSubBlockIdx();
+    const uint32_t rows = subblockIdx == 0 ? firstHalfHeads : tileHeads - firstHalfHeads;
+    const uint32_t headOffset = headPart * headsPerTile + subblockIdx * firstHalfHeads;
+    if (rows == 0) {
+        return;
+    }
+    constexpr uint32_t kStatsElems = 16 * 16 * 8;
+    constexpr uint32_t kPartialElems = 16 * sfaDTemplateAlign64;
+    uint32_t ubOffset = 0;
+    LocalTensor<T> accum(TPosition::VECIN, ubOffset, rows * sfaDTemplateAlign64 * sizeof(T));
+    ubOffset += rows * sfaDTemplateAlign64 * sizeof(T);
+    LocalTensor<float> blockMax(TPosition::VECIN, ubOffset, kStatsElems * sizeof(float));
+    ubOffset += kStatsElems * sizeof(float);
+    LocalTensor<float> blockSum(TPosition::VECIN, ubOffset, kStatsElems * sizeof(float));
+    ubOffset += kStatsElems * sizeof(float);
+    LocalTensor<float> lseExp(TPosition::VECIN, ubOffset, 16 * 8 * sizeof(float));
+    ubOffset += 16 * 8 * sizeof(float);
+    LocalTensor<T> partial(TPosition::VECIN, ubOffset, kPartialElems * sizeof(T));
+    AttentionCommon::S2SplitFdStagingLayout layout = {stagingRows, sfaDTemplateAlign64, splitKVSlotCount,
+                                                      AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW,
+                                                      AttentionCommon::FD_REDUCE_CHUNK_ROWS};
+    const uint32_t firstSlot = ((queryIdx * headParts + headPart) * 2 + subblockIdx) * constInfo.splitKVNum;
+    TEventID vToMte2First = GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>();
+    TEventID vToMte2Second = GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>();
+    SetFlag<HardEvent::V_MTE2>(vToMte2First);
+    SetFlag<HardEvent::V_MTE2>(vToMte2Second);
+    AttentionCommon::Reduce<T, sfaDTemplateAlign64>(layout, splitKVStagingBase, firstSlot, constInfo.splitKVNum, 0,
+                                                    rows, constInfo.dSizeV, accum, lseExp, blockMax, blockSum, partial,
+                                                    vToMte2First, vToMte2Second, mte2ToV, constInfo.returnSoftmaxLse);
+    WaitFlag<HardEvent::V_MTE2>(vToMte2First);
+    WaitFlag<HardEvent::V_MTE2>(vToMte2Second);
+    GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE2>(vToMte2First);
+    GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE2>(vToMte2Second);
+
+    RunInfo outputRunInfo;
+    outputRunInfo.vec2MRealSize = rows;
+    outputRunInfo.attentionOutOffset = (queryIdx * constInfo.gSize + headOffset) * constInfo.dSizeV;
+    WaitFlag<HardEvent::MTE3_V>(mte3ToVAttnOutId);
+    CopyOutAttentionOut(outputRunInfo, constInfo, accum, 0, rows * sfaDTemplateAlign64);
+    SetFlag<HardEvent::MTE3_V>(mte3ToVAttnOutId);
+    if (constInfo.returnSoftmaxLse) {
+        const int64_t statsOffset = queryIdx * constInfo.gSize + headOffset;
+        DataCopyExtParams params{1, static_cast<uint32_t>(rows * sizeof(float)), 0, 0, 0};
+        WaitFlag<HardEvent::MTE3_V>(mte3ToVLseOutId);
+        SetFlag<HardEvent::V_MTE3>(vToMte3LseOutId);
+        WaitFlag<HardEvent::V_MTE3>(vToMte3LseOutId);
+        DataCopyPad(this->softmaxMaxGm[statsOffset], lseExp, params);
+        DataCopyPad(this->softmaxSumGm[statsOffset], lseExp[AttentionCommon::FD_FINAL_STATS_STRIDE], params);
+        SetFlag<HardEvent::MTE3_V>(mte3ToVLseOutId);
+    }
+}
+
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::SoftmaxInitBuffer()
 {
     constexpr uint32_t softmaxBufSize = 256; // VF单次操作256Byte
@@ -775,6 +947,9 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
                                                                                                  ConstInfo& constInfo)
 {
     SoftmaxInitBuffer();
+    if constexpr (FLASH_DECODE) {
+        tPipe->InitBuffer(splitKVStatsTmpBuf, 2048);
+    }
 
     tPipe->InitBuffer(commonTBuf, 512); // commonTBuf内存申请512B
     tPipe->InitBuffer(sinksBuf, 512);   // sinksBuf内存申请512B
@@ -851,6 +1026,7 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
     sharedParams.dSize = 512;       // 512: 模型特征维度(dSize)
     sharedParams.dSizeVInput = 512; // 512: 模型特征维度(dSize)
     sharedParams.usedCoreNum = this->tilingData->singleCoreParams.usedCoreNum;
+    sharedParams.splitKVNum = this->tilingData->splitKVParams.s2;
 
     // pageAttention, rope在C侧搬运时使用
     if constexpr (isPa) {
@@ -942,6 +1118,9 @@ public:
 
     using mm2ResPos = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
     __aicore__ inline void ProcessVec2(mm2ResPos& bmm2ResBuf, RunInfo& runInfo, ConstInfo& constInfo) {}
+    __aicore__ inline void InitSplitKVStaging(__gm__ uint8_t* workspace, const ConstInfo& constInfo) {}
+    __aicore__ inline void MergeSplitKV(uint32_t queryIdx, ConstInfo& constInfo) {}
+    __aicore__ inline void ZeroSparseRow(const RunParamStr& runParam, const ConstInfo& constInfo) {}
 };
 } // namespace BaseApi
 

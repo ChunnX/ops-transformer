@@ -243,11 +243,15 @@ struct RunInfo {
     uint32_t blockSize : 12; \
     uint32_t maxBlockNumPerBatch; \
     uint32_t usedCoreNum; \
+    uint32_t splitKVNum; \
     bool returnSoftmaxLse
 
 struct ConstInfo {
     SFA_CONST_INFO_FIELDS;
     SFA_INFER_CONST_INFO_FIELDS;
+    uint32_t splitKVNum = 0;
+    uint32_t splitKVPart = 0;
+    bool splitKVActive = false;
 };
 
 /* only support b32 or b64 */

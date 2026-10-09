@@ -74,6 +74,7 @@ private:
     __aicore__ inline void InitUniqueConstInfo();
     __aicore__ inline void ComputeAxisIdxByBnAndGs1(int64_t bnIndex, int64_t gS1Index, RunParamStr& sfaRunParam);
     __aicore__ inline void InitUniqueRunInfo(const RunParamStr& sfaRunParam, RunInfo& sfaRunInfo);
+    __aicore__ inline bool TrimSparsePadding(RunParamStr& runParam);
 
     __aicore__ inline void InitCalcParamsEach();
     __aicore__ inline uint64_t GetBalanceActualSeqLengths(GlobalTensor<int32_t>& actualSeqLengths, uint32_t bIdx);
@@ -84,6 +85,7 @@ private:
     const SparseFlashAttentionTilingDataMla* __restrict tilingData;
     static constexpr uint64_t SYNC_MODE = 4;
     static constexpr uint32_t PRELOAD_NUM = 2;
+    static constexpr uint32_t HEAD_PARTS = IS_SPLIT_G ? 2U : 1U;
     /* 核间通道 */
     BufferManager<BufferType::GM> gmBufferManager;
 
@@ -98,6 +100,8 @@ private:
     /* GM信息 */
     __gm__ int32_t* actualSeqKvlenAddr = nullptr;
     __gm__ int32_t* actualSeqQlenAddr = nullptr;
+    __gm__ int32_t* sparseIndexAddr = nullptr;
+    bool hasSinks = false;
 
     GlobalTensor<int32_t> actualSeqLengthsQGm;
     uint32_t usedCoreNum = 0U;
@@ -131,6 +135,7 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
     const SparseFlashAttentionTilingDataMla* __restrict tiling, __gm__ uint8_t* gmTiling, TPipe* tPipe)
 {
     fa_base_matmul::ResetIdCounter();
+    hasSinks = sinks != nullptr;
     sfaConstInfo.subBlockIdx = GetSubBlockIdx();
     if ASCEND_IS_AIC {
         this->aicIdx = GetBlockIdx();
@@ -193,6 +198,31 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
     uint32_t actBatchS2 = 1;
     uint32_t coreNum = GetBlockNum(); // G128时相邻两个cube核处理一个s1，coreNum减半
     uint32_t sfaCurrCoreIdx = aicIdx;
+    if constexpr (FLASH_DECODE) {
+        sfaConstInfo.splitKVNum = sharedParams.splitKVNum;
+        sfaConstInfo.splitKVPart = (aicIdx / HEAD_PARTS) % sfaConstInfo.splitKVNum;
+        usedCoreNum = sfaConstInfo.s1Size * sfaConstInfo.splitKVNum * HEAD_PARTS;
+        if (aicIdx < usedCoreNum) {
+            const uint32_t queryIdx = aicIdx / (sfaConstInfo.splitKVNum * HEAD_PARTS);
+            uint32_t batchIdx = 0;
+            while (batchIdx + 1 < sfaConstInfo.bSize && queryIdx >= actualSeqQlenAddr[batchIdx]) {
+                ++batchIdx;
+            }
+            const uint32_t batchStart = batchIdx == 0 ? 0 : actualSeqQlenAddr[batchIdx - 1];
+            sfaConstInfo.bN2Start = batchIdx;
+            sfaConstInfo.bN2End = batchIdx;
+            sfaConstInfo.gS1Start = queryIdx - batchStart;
+            sfaConstInfo.gS1End = sfaConstInfo.gS1Start;
+            const uint32_t sparseBlocks =
+                (sfaConstInfo.sparseBlockCount + sfaConstInfo.s2BaseSize - 1) / sfaConstInfo.s2BaseSize;
+            sfaConstInfo.s2Start =
+                sparseBlocks * sfaConstInfo.splitKVPart / sfaConstInfo.splitKVNum * sfaConstInfo.s2BaseSize;
+            sfaConstInfo.s2End =
+                Min(sfaConstInfo.sparseBlockCount,
+                    sparseBlocks * (sfaConstInfo.splitKVPart + 1) / sfaConstInfo.splitKVNum * sfaConstInfo.s2BaseSize);
+        }
+        return;
+    }
     if constexpr (IS_SPLIT_G) {
         coreNum = coreNum >> 1;
         sfaCurrCoreIdx = sfaCurrCoreIdx >> 1;
@@ -334,7 +364,13 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
         actualSeqKvlenAddr = (__gm__ int32_t*)actualSeqLengths;
     }
 
+    sparseIndexAddr = (__gm__ int32_t*)sparseIndices;
     vecBlock.InitGlobalBuffer(key, value, keyRope, sparseIndices, blockTable, softmaxMax, softmaxSum, sinks);
+    if ASCEND_IS_AIV {
+        if constexpr (FLASH_DECODE) {
+            vecBlock.InitSplitKVStaging(workspace, sfaConstInfo);
+        }
+    }
     cubeBlock.InitCubeInput(key, keyRope, sparseIndices, blockTable, actualSeqLengthsQ, sfaConstInfo);
 }
 
@@ -376,7 +412,9 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
     constexpr uint32_t kvTokenWidth = HAS_ROPE ? 576U : 512U;
     uint32_t v0ResSize = sfaConstInfo.s2BaseSize * kvTokenWidth * sizeof(Q_T);
     int64_t totalOffset;
-    if constexpr (IS_SPLIT_G) {
+    // FD head tiles gather KV independently; only the original paired-head
+    // path shares its gather scratch and requires the all-AIV barrier.
+    if constexpr (IS_SPLIT_G && !FLASH_DECODE) {
         totalOffset = v0ResSize * 3 * (aicIdx >> 1U);
     } else {
         totalOffset = v0ResSize * 3 * aicIdx;
@@ -402,6 +440,9 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
 {
     // 计算轴的乘积
     usedCoreNum = sharedParams.usedCoreNum;
+    if constexpr (FLASH_DECODE) {
+        sfaConstInfo.splitKVNum = sharedParams.splitKVNum;
+    }
 
     if ASCEND_IS_AIC {
         sfaConstInfo.bSize = this->sharedParams.bSize;
@@ -483,6 +524,14 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
     }
 
     ProcessMainLoop();
+    if ASCEND_IS_AIV {
+        if constexpr (FLASH_DECODE) {
+            SyncAll();
+            if (sfaConstInfo.splitKVActive && sfaConstInfo.splitKVPart == 0) {
+                vecBlock.MergeSplitKV(aicIdx / (sfaConstInfo.splitKVNum * HEAD_PARTS), sfaConstInfo);
+            }
+        }
+    }
     FreeEvent();
 }
 
@@ -501,12 +550,45 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
 }
 
 template <typename CubeBlockType, typename VecBlockType>
+__aicore__ inline bool SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType>::TrimSparsePadding(
+    RunParamStr& runParam)
+{
+    int64_t queryIdx = runParam.s1oIdx;
+    if constexpr (LAYOUT_T == SFA_LAYOUT::TND) {
+        queryIdx += runParam.boIdx == 0 ? 0 : actualSeqQlenAddr[runParam.boIdx - 1];
+    } else {
+        queryIdx += runParam.boIdx * sfaConstInfo.s1Size;
+    }
+    const int64_t rowOffset = queryIdx * sfaConstInfo.sparseBlockCount;
+    uint32_t validCount = sfaConstInfo.sparseBlockCount;
+    if (sparseIndexAddr[rowOffset + validCount - 1] < 0) {
+        // Valid sparse indices precede a contiguous -1 suffix. Keep the original
+        // row stride, but never feed unwritten gather scratch into QK/softmax/PV.
+        uint32_t low = 0;
+        uint32_t high = validCount;
+        while (low < high) {
+            const uint32_t middle = low + (high - low) / 2;
+            if (sparseIndexAddr[rowOffset + middle] >= 0) {
+                low = middle + 1;
+            } else {
+                high = middle;
+            }
+        }
+        validCount = low;
+    }
+    runParam.s2LineEndIdx = Min(runParam.s2LineEndIdx, validCount);
+    runParam.kvLoopEndIdx = (runParam.s2LineEndIdx + sfaConstInfo.s2BaseSize - 1) / sfaConstInfo.s2BaseSize;
+    runParam.s2LoopEndIdx = runParam.kvLoopEndIdx;
+    return runParam.s2LineEndIdx <= runParam.s2LineStartIdx;
+}
+
+template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType>::ProcessMainLoop()
 {
     bool hasLoad = aicIdx < usedCoreNum;
     if (!hasLoad) {
         if ASCEND_IS_AIV {
-            if constexpr (IS_SPLIT_G) {
+            if constexpr (IS_SPLIT_G && !FLASH_DECODE) {
                 for (int64_t loopCnt = 0; loopCnt < maxS2LoopCnt; loopCnt++) {
                     CrossCoreSetFlag<SFA_SYNC_MODE0, PIPE_MTE3>(15);
                     CrossCoreWaitFlag<SFA_SYNC_MODE0, PIPE_MTE3>(15);
@@ -514,6 +596,24 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
             }
         }
         return;
+    }
+
+    if constexpr (FLASH_DECODE) {
+        const uint32_t queryIdx = aicIdx / (sfaConstInfo.splitKVNum * HEAD_PARTS);
+        if (queryIdx >= actualSeqQlenAddr[sfaConstInfo.bSize - 1]) {
+            return;
+        }
+        const uint32_t batchIdx = sfaConstInfo.bN2Start;
+        const int64_t actualKv = actualSeqKvlenAddr[batchIdx];
+        sfaConstInfo.splitKVActive = sparseIndexAddr[(queryIdx + 1) * sfaConstInfo.sparseBlockCount - 1] >= 0;
+        // Keep the original mode-3 loop bound. Short causal rows use the unsplit path.
+        const int64_t queryEnd = actualSeqQlenAddr[batchIdx];
+        const int64_t causalEnd = actualKv - queryEnd + queryIdx + 1;
+        sfaConstInfo.splitKVActive = sfaConstInfo.splitKVActive && actualKv >= sfaConstInfo.sparseBlockCount &&
+                                     (sfaConstInfo.sparseMode == 0 || causalEnd >= sfaConstInfo.sparseBlockCount);
+        if (!sfaConstInfo.splitKVActive && sfaConstInfo.splitKVPart != 0) {
+            return;
+        }
     }
 
     // 适配分核左闭右开
@@ -579,11 +679,35 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
                                                                        this->actualSeqQlenAddr);
                 // s1和s2有任意一个不需要算, 则continue, 如果是当前核最后一次循环，则补充计算taskIdx+2的部分
                 bool s2NoNeedCalc = ComputeS2LoopInfo<TEMPLATE_INTF_ARGS>(sfaRunParam, this->sfaConstInfo);
+                if (!s1NoNeedCalc && !s2NoNeedCalc && !hasSinks) {
+                    if constexpr (FLASH_DECODE) {
+                        if (!sfaConstInfo.splitKVActive) {
+                            s2NoNeedCalc = TrimSparsePadding(sfaRunParam);
+                        }
+                    } else {
+                        s2NoNeedCalc = TrimSparsePadding(sfaRunParam);
+                    }
+                    if (s2NoNeedCalc) {
+                        if ASCEND_IS_AIV {
+                            vecBlock.ZeroSparseRow(sfaRunParam, sfaConstInfo);
+                        }
+                    }
+                }
                 if (s1NoNeedCalc || s2NoNeedCalc) {
                     continue;
                 }
+                if constexpr (FLASH_DECODE) {
+                    if (sfaConstInfo.splitKVActive) {
+                        sfaRunParam.s2LineStartIdx = sfaConstInfo.s2Start;
+                        sfaRunParam.s2LineEndIdx = sfaConstInfo.s2End;
+                        sfaRunParam.kvLoopEndIdx =
+                            (sfaConstInfo.s2End - sfaConstInfo.s2Start + sfaConstInfo.s2BaseSize - 1) /
+                            sfaConstInfo.s2BaseSize;
+                        sfaRunParam.s2LoopEndIdx = sfaRunParam.kvLoopEndIdx;
+                    }
+                }
                 s2LoopLimit = sfaRunParam.s2LoopEndIdx - 1;
-                if constexpr (IS_SPLIT_G) {
+                if constexpr (IS_SPLIT_G && !FLASH_DECODE) {
                     maxS2LoopCnt -= (s2LoopLimit + 1);
                 }
             } else {
@@ -602,7 +726,7 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
                     }
                 } else {
                     if ASCEND_IS_AIV {
-                        if constexpr (IS_SPLIT_G) {
+                        if constexpr (IS_SPLIT_G && !FLASH_DECODE) {
                             if (maxS2LoopCnt > 0) {
                                 maxS2LoopCnt--;
                                 CrossCoreSetFlag<0, PIPE_MTE3>(15);
@@ -635,7 +759,7 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
         sfaGS1StartIdx = 0;
     }
     if ASCEND_IS_AIV {
-        if constexpr (IS_SPLIT_G) {
+        if constexpr (IS_SPLIT_G && !FLASH_DECODE) {
             for (int64_t loopCnt = 0; loopCnt < maxS2LoopCnt; loopCnt++) {
                 CrossCoreSetFlag<0, PIPE_MTE3>(15);
                 CrossCoreWaitFlag<0, PIPE_MTE3>(15);
