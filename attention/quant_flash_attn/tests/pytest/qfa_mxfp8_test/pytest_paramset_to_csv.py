@@ -33,9 +33,12 @@ prepare_npu_inputs 产出的算子入参布局纯 Python 推导, 无需 torch/NP
 仅支持 MXFP8 (quant_mode=1)。
 
 用法:
-  python3 gen_csv_case_store.py [--paramset quant_flash_attn_paramset_func_rdv]
-                                [--output qfa_mxfp8.csv]
-                                [--dry-run]
+  python3 pytest_paramset_to_csv.py [--paramset quant_flash_attn_paramset_func_rdv]
+                                    [--output qfa_mxfp8.csv]
+                                    [--dry-run]
+
+命名与 excel_to_pytest_paramset.py 对齐: 两者构成 Excel → pytest paramset →
+ttk CSV 的转换链。
 """
 
 import argparse
@@ -179,7 +182,7 @@ def _derive_case(case):
     quant_mode = case.get("quant_mode", 1)
     quant_mode = 1 if quant_mode is None else int(quant_mode)
     if quant_mode != 1:
-        raise ValueError(f"gen_csv_case_store only supports MXFP8 (quant_mode=1), got {quant_mode}")
+        raise ValueError(f"pytest_paramset_to_csv only supports MXFP8 (quant_mode=1), got {quant_mode}")
 
     B = int(case["B"])
     N_q = int(case["N_q"])
@@ -396,7 +399,7 @@ def main():
         try:
             rows.append(case_to_csv_row(case))
         except ValueError as exc:
-            print(f"[gen_csv_case_store] SKIP {case['name']}: {exc}")
+            print(f"[pytest_paramset_to_csv] SKIP {case['name']}: {exc}")
             skipped += 1
             continue
         written += 1
